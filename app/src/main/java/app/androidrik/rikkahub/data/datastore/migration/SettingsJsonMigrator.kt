@@ -22,8 +22,15 @@ object SettingsJsonMigrator {
      * 若发生异常则返回原始 JSON，不中断恢复流程。
      */
     fun migrate(settingsJson: String): String {
+        // V0: 包名迁移。本项目 fork 自 RikkaHub 后包名从 me.rerere.rikkahub 改为
+        // app.androidrik.rikkahub，而 Kotlin serialization 多态 sealed class 的 type
+        // 字段默认存完整类名（如 Avatar.Dummy）。上游导出的旧备份里这些 type 是旧包名
+        // 完整类名，反序列化按新包名找不到对应子类会抛
+        // "Serializer for subclass ... is not found in the polymorphic scope"。
+        // 这里在解析前统一把旧包名前缀替换为新包名，覆盖所有多态字段。
+        val pkgMigrated = settingsJson.replace("me.rerere.", "app.androidrik.")
         return runCatching {
-            val root = JsonInstant.parseToJsonElement(settingsJson).jsonObject.toMutableMap()
+            val root = JsonInstant.parseToJsonElement(pkgMigrated).jsonObject.toMutableMap()
 
             // V1: 修复 mcpServers 中全限定类名的 type 字段
             root["mcpServers"]?.let { element ->
@@ -63,7 +70,7 @@ object SettingsJsonMigrator {
 
             JsonInstant.encodeToString(JsonObject(root))
         }.onFailure {
-            Log.e(TAG, "migrate: Failed to migrate settings JSON, using original", it)
-        }.getOrDefault(settingsJson)
+            Log.e(TAG, "migrate: Failed to migrate settings JSON, using package-migrated JSON", it)
+        }.getOrDefault(pkgMigrated)
     }
 }
