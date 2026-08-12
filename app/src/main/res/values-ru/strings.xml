@@ -232,6 +232,7 @@
   <string name="chat_message_add_favorite">Добавить в избранное</string>
   <string name="chat_message_remove_favorite">Удалить из избранного</string>
   <string name="chat_message_tool_approve">Одобрить</string>
+  <string name="chat_message_tool_approve_all">Одобрить все</string>
   <string name="chat_message_tool_ask_questions">Задать %d вопросов</string>
   <string name="chat_message_tool_call_generic">Вызван инструмент %1$s</string>
   <string name="chat_message_tool_call_label">Вызван инструмент %1$s</string>

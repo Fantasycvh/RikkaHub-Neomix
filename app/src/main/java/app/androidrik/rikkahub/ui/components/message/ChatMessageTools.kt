@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.components.message
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -66,6 +67,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     loading: Boolean = false,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    onApproveAll: (() -> Unit)? = null,
 ) {
     // ask_user 是交互式问答流程, 不走注册式渲染框架
     if (tool.toolName == ASK_USER_TOOL_NAME) {
@@ -152,6 +154,18 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                             contentDescription = stringResource(R.string.chat_message_tool_approve),
                             modifier = Modifier.size(14.dp)
                         )
+                    }
+                    if (onApproveAll != null) {
+                        TextButton(
+                            onClick = { onApproveAll() },
+                            contentPadding = PaddingValues(horizontal = 6.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.chat_message_tool_approve_all),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }

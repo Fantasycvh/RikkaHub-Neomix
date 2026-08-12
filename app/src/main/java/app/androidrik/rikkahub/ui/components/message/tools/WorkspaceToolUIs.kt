@@ -311,6 +311,7 @@ object ShellToolUI : ToolUIRenderer {
             listOf(content.getStringContent("stdout"), content.getStringContent("stderr"))
                 .filterNot { it.isNullOrBlank() }
                 .joinToString("\n")
+                .let { limitLineLength(it) }
                 .trim()
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -375,7 +376,7 @@ object ShellToolUI : ToolUIRenderer {
             if (stdout.isNotEmpty()) {
                 Text(text = "stdout", style = MaterialTheme.typography.labelMedium)
                 HighlightCodeBlock(
-                    code = stdout,
+                    code = limitLineLength(stdout),
                     language = "plaintext",
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -387,13 +388,30 @@ object ShellToolUI : ToolUIRenderer {
                     color = MaterialTheme.colorScheme.error,
                 )
                 HighlightCodeBlock(
-                    code = stderr,
+                    code = limitLineLength(stderr),
                     language = "plaintext",
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
     }
+
+    private fun limitLineLength(text: String): String {
+        // 对超长单行强制断行，避免单个无换行行撑爆 Compose 文本布局（二进制/压缩输出场景）
+        return buildString {
+            text.lineSequence().forEachIndexed { index, line ->
+                if (index > 0) append('\n')
+                if (line.length > LINE_MAX_CHARS) {
+                    append(line.take(LINE_MAX_CHARS))
+                    append("…") // …
+                } else {
+                    append(line)
+                }
+            }
+        }
+    }
+
+    private const val LINE_MAX_CHARS = 512
 }
 
 /** Shell 退出状态文本: exit code 为 0 显示绿色, 超时或非零显示错误色 */

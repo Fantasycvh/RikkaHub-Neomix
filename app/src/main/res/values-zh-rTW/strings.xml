@@ -232,6 +232,7 @@
   <string name="chat_message_add_favorite">加入最愛</string>
   <string name="chat_message_remove_favorite">移除最愛</string>
   <string name="chat_message_tool_approve">核准</string>
+  <string name="chat_message_tool_approve_all">全部核准</string>
   <string name="chat_message_tool_ask_questions">詢問 %d 個問題</string>
   <string name="chat_message_tool_call_generic">調用工具 %1$s</string>
   <string name="chat_message_tool_call_label">調用工具 %1$s</string>

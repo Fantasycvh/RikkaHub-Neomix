@@ -231,6 +231,11 @@ class ChatVM(
         chatService.handleToolApproval(_conversationId, toolCallId, approved, reason)
     }
 
+    fun handleApproveAllPending() {
+        analytics.logEvent("ai_tool_approve_all", null)
+        chatService.handleApproveAllPending(_conversationId)
+    }
+
     fun handleToolAnswer(
         toolCallId: String,
         answer: String,

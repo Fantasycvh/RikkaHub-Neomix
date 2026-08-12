@@ -234,6 +234,7 @@
   <string name="chat_message_add_favorite">添加收藏</string>
   <string name="chat_message_remove_favorite">取消收藏</string>
   <string name="chat_message_tool_approve">批准</string>
+  <string name="chat_message_tool_approve_all">全部批准</string>
   <string name="chat_message_tool_ask_questions">询问 %d 个问题</string>
   <string name="chat_message_tool_call_generic">调用工具 %1$s</string>
   <string name="chat_message_tool_call_label">调用工具 %1$s</string>

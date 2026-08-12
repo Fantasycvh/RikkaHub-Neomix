@@ -476,6 +476,9 @@ private fun ChatPageContent(
                 onToolAnswer = { toolCallId, answer ->
                     vm.handleToolAnswer(toolCallId, answer)
                 },
+                onApproveAll = {
+                    vm.handleApproveAllPending()
+                },
                 onToggleFavorite = { node ->
                     vm.toggleMessageFavorite(node)
                 },

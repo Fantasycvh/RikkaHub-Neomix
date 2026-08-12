@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -420,26 +421,36 @@ class ChatService(
                     else -> ToolApprovalState.Denied(reason)
                 }
 
-                // Update the tool approval state
+                // 内存态更新：短路重建，只有包含目标 tool 的分支才深拷贝，
+                // 避免每次批准都全量重建整棵消息树（大量命令批准时主线程累积阻塞 → ANR）。
                 val updatedNodes = conversation.messageNodes.map { node ->
-                    node.copy(
-                        messages = node.messages.map { msg ->
-                            msg.copy(
-                                parts = msg.parts.map { part ->
-                                    when {
-                                        part is UIMessagePart.Tool && part.toolCallId == toolCallId -> {
-                                            part.copy(approvalState = newApprovalState)
-                                        }
-
-                                        else -> part
-                                    }
-                                }
-                            )
+                    val targetMsgIndex = node.messages.indexOfFirst { msg ->
+                        msg.parts.any { it is UIMessagePart.Tool && it.toolCallId == toolCallId }
+                    }
+                    if (targetMsgIndex < 0) {
+                        node
+                    } else {
+                        val targetMsg = node.messages[targetMsgIndex]
+                        val updatedParts = targetMsg.parts.map { part ->
+                            if (part is UIMessagePart.Tool && part.toolCallId == toolCallId) {
+                                part.copy(approvalState = newApprovalState)
+                            } else {
+                                part
+                            }
                         }
-                    )
+                        node.copy(
+                            messages = node.messages.mapIndexed { i, msg ->
+                                if (i == targetMsgIndex) msg.copy(parts = updatedParts) else msg
+                            }
+                        )
+                    }
                 }
                 val updatedConversation = conversation.copy(messageNodes = updatedNodes)
-                saveConversation(conversationId, updatedConversation)
+
+                // 持久化移 IO 线程：Room 写 + 深拷贝不在主线程执行
+                withContext(Dispatchers.IO) {
+                    saveConversation(conversationId, updatedConversation)
+                }
 
                 // Check if there are still pending tools
                 val hasPendingTools = updatedNodes.any { node ->
@@ -463,6 +474,52 @@ class ChatService(
     }
 
     // ---- 处理消息补全 ----
+
+    /**
+     * 批量批准当前所有待批准的工具调用（方案 C：减少逐条批准次数，缓解大量命令场景下的 ANR）。
+     */
+    fun handleApproveAllPending(conversationId: Uuid) {
+        val session = getOrCreateSession(conversationId)
+        session.getJob()?.cancel()
+
+        val job = appScope.launch {
+            try {
+                val conversation = session.state.value
+                // 找到所有 pending tools，统一置 Approved
+                var approvedCount = 0
+                val updatedNodes = conversation.messageNodes.map { node ->
+                    var nodeChanged = false
+                    val updatedMessages = node.messages.map { msg ->
+                        val updatedParts = msg.parts.map { part ->
+                            if (part is UIMessagePart.Tool && part.isPending) {
+                                nodeChanged = true
+                                approvedCount++
+                                part.copy(approvalState = ToolApprovalState.Approved)
+                            } else {
+                                part
+                            }
+                        }
+                        if (nodeChanged) msg.copy(parts = updatedParts) else msg
+                    }
+                    if (nodeChanged) node.copy(messages = updatedMessages) else node
+                }
+                if (approvedCount == 0) return@launch // 没有待批准工具，无需处理
+
+                val updatedConversation = conversation.copy(messageNodes = updatedNodes)
+                withContext(Dispatchers.IO) {
+                    saveConversation(conversationId, updatedConversation)
+                }
+
+                // 批量批准后没有 pending，继续生成
+                handleMessageComplete(conversationId)
+                _generationDoneFlow.emit(conversationId)
+            } catch (e: Exception) {
+                addError(e, conversationId, title = context.getString(R.string.error_title_tool_approval))
+            }
+        }
+
+        session.setJob(job)
+    }
 
     private suspend fun handleMessageComplete(
         conversationId: Uuid,
