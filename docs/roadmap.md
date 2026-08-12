@@ -71,6 +71,41 @@
 | P4 | 记忆语义检索（本地 HNSW） | 价值中等，工程较大 |
 | — | 生活感知/健康/云同步 | **明确不做** |
 
-## 状态记录
+---
+
+## 二、对话分享（导出）功能规划
+
+**需求**：将完整对话以可读形态分享/导出给他人。**两种入口 + 三种形态**，导出即走系统分享（ACTION_SEND）。
+
+### 入口
+
+| 入口 | 位置 | 说明 |
+|---|---|---|
+| **列表页分享**（不点进聊天） | `ConversationList.kt` 的 `ConversationItem` 长按菜单 | 加「分享对话」菜单项 → ChatDrawer 弹分享 sheet |
+| **聊天内全量分享/导出**（点进对话） | 聊天页（ChatPage）顶栏/菜单 | 一键全量导出，不经"消息多选→全选"流程 |
+
+### 形态
+
+| 形态 | 说明 | 复用基础 |
+|---|---|---|
+| **HTML 可视化对话** ⭐ | 自包含 HTML：内联 CSS 气泡分色（用户/助手）、标题+时间、markdown 渲染、图片 base64 内嵌、思考过程 `<details>` 折叠、工具调用展示 | `generateMarkdownHtml`（`MarkdownNew.kt` L115，离线 JVM 转换）、`part.encodeBase64()`、`escapeHtml`（`StringUtils.kt`） |
+| **Markdown** | 全量对话转 markdown 文件 | `exportToMarkdown`（`Export.kt` L240，现 private） |
+| **图片 PNG** | 全量对话渲染长图 | `exportToImage`（`Export.kt` L379，现 private） |
+
+### 复用基础（已确认）
+
+- `ChatExportSheet`（`Export.kt` L110，public，接受 conversation + 消息列表，可独立调用，无需多选模式）
+- `shareFile`（`Export.kt` L768，ACTION_SEND + FileProvider）——FileProvider 已在 AndroidManifest 配置
+- `Conversation.currentMessages`（全量消息）
+- 导出函数目前 private：分享 sheet 与其同文件，可直接调用（无需改可见性）
+
+### 状态
+
+- 2026-08-12：方案已设计（列表页 + 聊天内双入口、HTML/Markdown/图片三形态），已批准计划存档。**暂不实现**。
+
+---
+
+## 三、状态记录
 
 - 2026-08-12：完成橘瓣分析并记录本规划（借鉴价值分级 + 优先级）。**暂不实现**，待用户决定何时推进。
+- 2026-08-12：补充「对话分享（导出）」方案规划（双入口 + 三形态）。**暂不实现**。
