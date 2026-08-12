@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "me.rerere.search"
+    namespace = "app.androidrik.search"
 
     defaultConfig {
         minSdk = 23

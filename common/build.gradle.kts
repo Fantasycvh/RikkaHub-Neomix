@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "me.rerere.common"
+    namespace = "app.androidrik.common"
     tasks.withType<KotlinCompile>().configureEach {
         compilerOptions.optIn.add("kotlin.uuid.ExperimentalUuidApi")
         compilerOptions.optIn.add("kotlin.time.ExperimentalTime")

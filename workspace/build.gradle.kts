@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "me.rerere.workspace"
+    namespace = "app.androidrik.workspace"
 
     defaultConfig {
         externalNativeBuild {

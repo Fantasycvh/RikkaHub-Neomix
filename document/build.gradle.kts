@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "me.rerere.document"
+    namespace = "app.androidrik.document"
 
     defaultConfig {
         consumerProguardFiles("consumer-rules.pro")

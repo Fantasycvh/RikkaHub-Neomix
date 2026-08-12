@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "me.rerere.speech"
+    namespace = "app.androidrik.speech"
     tasks.withType<KotlinCompile>().configureEach {
         compilerOptions.optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
         compilerOptions.optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")

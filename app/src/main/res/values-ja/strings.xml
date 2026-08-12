@@ -7,7 +7,7 @@
   <string name="about_page_version">バージョン</string>
   <string name="about_page_website">ウェブサイト</string>
   <string name="add">追加</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">RikkaHub Plus</string>
   <string name="asr_button_content_description">音声認識</string>
   <string name="asr_button_stop">停止</string>
   <string name="assistant_detail_basic_desc">名前、アバター、モデル、パラメータを設定</string>
@@ -926,6 +926,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_provider_page_response_api_warning">Response APIはOpenAIの次世代APIです。ほとんどのプロバイダーはサポートしていません。これが何かわからない場合は、有効にしないでください。</string>
   <string name="setting_provider_page_save">保存</string>
   <string name="setting_provider_page_save_success">保存に成功しました</string>
+  <string name="setting_provider_page_network_proxy">ネットワークプロキシ</string>
+  <string name="setting_provider_page_proxy_host">ホスト</string>
+  <string name="setting_provider_page_proxy_port">ポート</string>
+  <string name="setting_provider_page_proxy_username">ユーザー名 (オプション)</string>
+  <string name="setting_provider_page_proxy_password">パスワード (オプション)</string>
   <string name="setting_provider_page_scan_error">エラー: %s</string>
   <string name="setting_provider_page_scan_qr_code">QRコードをスキャン</string>
   <string name="setting_provider_page_search_providers">プロバイダーを検索</string>

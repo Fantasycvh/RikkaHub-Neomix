@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "me.rerere.material3"
+    namespace = "app.androidrik.material3"
     sourceSets {
         named("main") {
             kotlin.srcDir("material-color-utilities/kotlin")

@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "me.rerere.highlight"
+    namespace = "app.androidrik.highlight"
 
     defaultConfig {
         minSdk = 24

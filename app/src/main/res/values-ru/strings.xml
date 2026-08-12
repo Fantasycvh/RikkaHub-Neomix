@@ -7,7 +7,7 @@
   <string name="about_page_version">Версия</string>
   <string name="about_page_website">Веб-сайт</string>
   <string name="add">Добавить</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">RikkaHub Plus</string>
   <string name="asr_button_content_description">Распознавание речи</string>
   <string name="asr_button_stop">Стоп</string>
   <string name="assistant_detail_basic_desc">Настройте имя, аватар, модель и параметры</string>
@@ -926,6 +926,11 @@
   <string name="setting_provider_page_response_api_warning">Response API — это новое поколение API от OpenAI. Большинство поставщиков его не поддерживают. Если вы не знаете, что это такое, не включайте его.</string>
   <string name="setting_provider_page_save">Сохранить</string>
   <string name="setting_provider_page_save_success">Сохранено успешно</string>
+  <string name="setting_provider_page_network_proxy">Сетевой прокси</string>
+  <string name="setting_provider_page_proxy_host">Хост</string>
+  <string name="setting_provider_page_proxy_port">Порт</string>
+  <string name="setting_provider_page_proxy_username">Имя пользователя (необязательно)</string>
+  <string name="setting_provider_page_proxy_password">Пароль (необязательно)</string>
   <string name="setting_provider_page_scan_error">Ошибка: %s</string>
   <string name="setting_provider_page_scan_qr_code">Сканировать QR-код</string>
   <string name="setting_provider_page_search_providers">Поиск поставщиков</string>

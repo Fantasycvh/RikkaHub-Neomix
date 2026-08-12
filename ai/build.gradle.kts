@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "me.rerere.ai"
+    namespace = "app.androidrik.ai"
 
     defaultConfig {
 //        externalNativeBuild {
