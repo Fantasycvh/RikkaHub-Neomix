@@ -99,13 +99,49 @@
 - `Conversation.currentMessages`（全量消息）
 - 导出函数目前 private：分享 sheet 与其同文件，可直接调用（无需改可见性）
 
+### 桌面版参考（Rikkahub Desktop 1.4.0，2026-08-12 源码调研）
+
+- 桌面版（`yuh-G/rikkahub-desktop`，TypeScript/WebView2，Windows）已实现「重做对话分享」：**仅 Markdown（图片 base64 内联）+ 图片 PNG（DOM 截图）**，**无 HTML 形态** —— 我们的 HTML 可视化是增量
+- 细节大多与我们 Android 版**等价**：图片 base64 内联、Tool input JSON 美化、`expandReasoning` 开关，且桌面版注释明确"对齐 APP `Export.kt` 的 encodeBase64 内联策略" → 两端导出策略一致
+- 交互差异：桌面版是"浏览器下载文件"，我们是 ACTION_SEND 系统分享
+
 ### 状态
 
 - 2026-08-12：方案已设计（列表页 + 聊天内双入口、HTML/Markdown/图片三形态），已批准计划存档。**暂不实现**。
 
 ---
 
-## 三、状态记录
+## 三、搜索服务多 key 故障转移（功能规划）
+
+**需求**：搜索服务配置多 key（空白/逗号分隔），请求遇 key 失效自动切换下一个重试。
+
+### 现状（Android 版）
+
+- **多 key 轮换已支持**：`KeyRoulette.next(keys, providerId)`（`ai/.../util/KeyRoulette.kt`）内部按 `[\s,]+` 拆分多 key，`Default`=随机、`Lru`=LRU 轮换 —— 填多 key 即可轮换，但**不追踪失败**（请求失败不自动换 key）
+- 搜索服务已接入 `keyRoulette`
+
+### 桌面版参考（Rikkahub Desktop，源码已调研）
+
+`pc-server/search/index.ts` 实现（思路可直接吸收）：
+- `splitSearchApiKeys`：空白/逗号分隔、去重保序 —— **分隔符与 Android `KeyRoulette.splitKey` 一字一致**（注释明确：PC 写入的多 key 配置导出到 APP 必须能拆分，字段结构不变、备份兼容）
+- `isSearchKeyError(status)`：**仅 401/403/429** 判定为"换 key 可解决"
+- `withSearchKeyFailover`：逐个 key 执行，抛 `SearchKeyError`（401/403/429）且还有 key → 换下一个重试；网络/解析/5xx 或最后 key 失败 → 直接抛；单 key 等价直接执行
+- `testAllSearchKeys`：逐个 key 测试（ok/fail + failCode + 脱敏 key），供设置页诊断
+
+### 实现要点（吸收到 Android 版）
+
+- 在 `SearchTools.kt` 搜索调用处包装一层失败重试（等价 `withSearchKeyFailover`），各搜索服务实现不动
+- 错误判定沿用 401/403/429；超时/网络/5xx 不触发换 key
+- 可选项：设置页"测试所有 key"（对齐桌面版 `testAllSearchKeys`）
+
+### 状态
+
+- 2026-08-12：桌面版实现已调研确认可参考，思路与规划一致，两端分隔符兼容已验证。**暂不实现**。
+
+---
+
+## 四、状态记录
 
 - 2026-08-12：完成橘瓣分析并记录本规划（借鉴价值分级 + 优先级）。**暂不实现**，待用户决定何时推进。
 - 2026-08-12：补充「对话分享（导出）」方案规划（双入口 + 三形态）。**暂不实现**。
+- 2026-08-12：补充「搜索服务多 key 故障转移」方案规划（含桌面版参考）。**暂不实现**。
