@@ -641,23 +641,13 @@ class ChatService(
                     }
                 },
             ).onCompletion {
-                // 可能被取消了，或者意外结束，兜底更新。
-                // 全量重建 + StateFlow 更新移 IO 线程：批准点击 cancel 时此回调同步执行，
-                // 大量消息会话的全量 map 会阻塞主线程（Workspace 多命令场景的交互卡顿主因）。
-                val updatedConversation = withContext(Dispatchers.IO) {
-                    val current = getConversationFlow(conversationId).value
-                    current.copy(
-                        messageNodes = current.messageNodes.map { node ->
-                            // 短路：没有 Reasoning part 的消息直接复用，避免无谓深拷贝
-                            if (node.messages.none { msg -> msg.parts.any { it is UIMessagePart.Reasoning } }) {
-                                node
-                            } else {
-                                node.copy(messages = node.messages.map { it.finishReasoning() })
-                            }
-                        },
-                        updateAt = Instant.now()
-                    )
-                }
+                // 可能被取消了，或者意外结束，兜底更新
+                val updatedConversation = getConversationFlow(conversationId).value.copy(
+                    messageNodes = getConversationFlow(conversationId).value.messageNodes.map { node ->
+                        node.copy(messages = node.messages.map { it.finishReasoning() })
+                    },
+                    updateAt = Instant.now()
+                )
                 updateConversation(conversationId, updatedConversation)
 
                 // 生成结束：取消 Live Update 通知，后台时发送完成通知
