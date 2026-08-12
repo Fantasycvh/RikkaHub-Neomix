@@ -1078,11 +1078,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="translator_page_translate">翻訳</string>
   <string name="tts">音声</string>
   <string name="unpin_chat">チャットのピン留めを解除</string>
-  <string name="update_card_check_failed">更新チェックに失敗しました</string>
-  <string name="update_card_close">閉じる</string>
-  <string name="update_card_downloading">ダウンロード中です。進捗はステータスバーでご確認ください</string>
-  <string name="update_card_new_version_found">新しいバージョンが見つかりました %s</string>
-  <string name="update_card_unknown_error">不明なエラー</string>
   <string name="upload_file">ファイルをアップロード</string>
   <string name="use_web_search">ウェブ検索を</string>
   <string name="user_default_name">ユーザー</string>

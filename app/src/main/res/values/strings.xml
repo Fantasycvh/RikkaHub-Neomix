@@ -1136,11 +1136,6 @@
   <string name="translator_page_translate">Translate</string>
   <string name="tts">TTS</string>
   <string name="unpin_chat">Unpin the Chat</string>
-  <string name="update_card_check_failed">Check update failed</string>
-  <string name="update_card_close">Close</string>
-  <string name="update_card_downloading">Downloading, please check status bar for progress</string>
-  <string name="update_card_new_version_found">New version found %s</string>
-  <string name="update_card_unknown_error">Unknown error</string>
   <string name="upload_file">Upload File</string>
   <string name="use_web_search">Web Search</string>
   <string name="user_default_name">User</string>

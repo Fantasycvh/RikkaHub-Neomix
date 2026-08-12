@@ -40,8 +40,6 @@ import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.ui.hooks.writeStringPreference
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
-import app.androidrik.rikkahub.utils.UiState
-import app.androidrik.rikkahub.utils.UpdateChecker
 import java.util.Locale
 import kotlin.uuid.Uuid
 
@@ -53,7 +51,6 @@ class ChatVM(
     private val settingsStore: SettingsStore,
     private val conversationRepo: ConversationRepository,
     private val chatService: ChatService,
-    val updateChecker: UpdateChecker,
     private val analytics: FirebaseAnalytics,
     private val filesManager: FilesManager,
     private val favoriteRepository: FavoriteRepository,
@@ -162,10 +159,6 @@ class ChatVM(
             }
         }
     }
-
-    // Update checker
-    val updateState =
-        updateChecker.checkUpdate().stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
 
     /**
      * 处理消息发送

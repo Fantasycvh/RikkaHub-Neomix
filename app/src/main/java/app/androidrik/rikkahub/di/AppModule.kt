@@ -13,7 +13,6 @@ import app.androidrik.rikkahub.utils.EmojiData
 import app.androidrik.rikkahub.utils.EmojiUtils
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.utils.SoundEffectPlayer
-import app.androidrik.rikkahub.utils.UpdateChecker
 import app.androidrik.rikkahub.web.WebServerManager
 import app.androidrik.tts.provider.TTSManager
 import org.koin.dsl.module
@@ -27,10 +26,6 @@ val appModule = module {
 
     single {
         LocalTools(get(), get(), get(), get())
-    }
-
-    single {
-        UpdateChecker(get())
     }
 
     single {

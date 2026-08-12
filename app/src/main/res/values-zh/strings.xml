@@ -1113,11 +1113,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="translator_page_translate">翻译</string>
   <string name="tts">语音</string>
   <string name="unpin_chat">取消置顶聊天</string>
-  <string name="update_card_check_failed">检查更新失败</string>
-  <string name="update_card_close">关闭</string>
-  <string name="update_card_downloading">正在下载，请在状态栏查看进度</string>
-  <string name="update_card_new_version_found">发现新版本 %s</string>
-  <string name="update_card_unknown_error">未知错误</string>
   <string name="upload_file">上传文件</string>
   <string name="use_web_search">网络搜索</string>
   <string name="user_default_name">用户</string>

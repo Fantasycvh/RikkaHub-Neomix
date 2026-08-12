@@ -79,14 +79,12 @@ import app.androidrik.rikkahub.ui.components.ui.BackupReminderCard
 import app.androidrik.rikkahub.ui.components.ui.Greeting
 import app.androidrik.rikkahub.ui.components.ui.Tooltip
 import app.androidrik.rikkahub.ui.components.ui.UIAvatar
-import app.androidrik.rikkahub.ui.components.ui.UpdateCard
 import androidx.compose.ui.draw.clip
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.context.Navigator
 import com.dokar.sonner.ToastType
 import app.androidrik.rikkahub.ui.hooks.EditStateContent
 import app.androidrik.rikkahub.ui.hooks.readBooleanPreference
-import app.androidrik.rikkahub.ui.hooks.rememberIsPlayStoreVersion
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.modifier.onClick
 import app.androidrik.rikkahub.utils.navigateToChatPage
@@ -105,7 +103,6 @@ fun ChatDrawerContent(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val toaster = LocalToaster.current
-    val isPlayStore = rememberIsPlayStoreVersion()
     val repo = koinInject<ConversationRepository>()
 
     val activity = context as ComponentActivity
@@ -168,10 +165,6 @@ fun ChatDrawerContent(
             modifier = Modifier.padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (settings.displaySetting.showUpdates && !isPlayStore) {
-                UpdateCard(vm)
-            }
-
             BackupReminderCard(
                 settings = settings,
                 onClick = { navController.navigate(Screen.Backup) },
