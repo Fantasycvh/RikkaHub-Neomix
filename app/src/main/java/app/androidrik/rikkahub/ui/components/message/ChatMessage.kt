@@ -364,8 +364,7 @@ private fun MessagePartsBlock(
                         val textContent = @Composable {
                             if (role == MessageRole.USER) {
                                 Surface(
-                                    // loading 时禁用尺寸动画：持续触发布局动画与内容重组叠加是卡顿源
-                                    modifier = if (loading) Modifier else Modifier.animateContentSize(),
+                                    modifier = Modifier.animateContentSize(),
                                     shape = RoundedCornerShape(16.dp),
                                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = settings.displaySetting.bubbleOpacity),
                                     onClick = { onUserMessageClick?.invoke() },
@@ -385,7 +384,7 @@ private fun MessagePartsBlock(
                             } else {
                                 if (settings.displaySetting.showAssistantBubble) {
                                     Surface(
-                                        modifier = if (loading) Modifier else Modifier.animateContentSize(),
+                                        modifier = Modifier.animateContentSize(),
                                         shape = RoundedCornerShape(16.dp),
                                         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
                                     ) {
@@ -410,7 +409,7 @@ private fun MessagePartsBlock(
                                         ),
                                         onClickCitation = handleClickCitation,
                                         streaming = loading,
-                                        modifier = if (loading) Modifier else Modifier.animateContentSize()
+                                        modifier = Modifier.animateContentSize()
                                     )
                                 }
                             }
