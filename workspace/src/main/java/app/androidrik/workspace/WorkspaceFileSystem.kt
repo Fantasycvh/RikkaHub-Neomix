@@ -73,6 +73,10 @@ class WorkspaceFileSystem(
     fun delete(root: File, path: String, recursive: Boolean = false): Boolean {
         require(path.isNotBlank() && path != ".") { "Refusing to delete workspace root" }
         val file = resolvePath(root, path)
+        // [FIX] "./"（或 "/"、" ." 等变体）可绕过上面的字面量检查，resolvePath 会解析到
+        // 工作区根目录 → recursive=true 时 deleteRecursively 删除整个工作区。
+        // 用 canonical 对比根目录，任何等价写法都拒绝（移植自 rikkahub-turbo 9677cd4）。
+        require(file.canonicalFile != root.canonicalFile) { "Refusing to delete workspace root" }
         if (!file.exists()) return false
         return if (file.isDirectory) {
             require(recursive) { "Directory delete requires recursive = true" }
@@ -86,6 +90,9 @@ class WorkspaceFileSystem(
         require(source.isNotBlank() && source != ".") { "Refusing to move workspace root" }
         val sourceFile = resolvePath(root, source)
         val targetFile = resolvePath(root, target)
+        // [FIX] 同 delete："./" 变体可解析到根目录 → renameTo 移动整个工作区
+        //（移植自 rikkahub-turbo 9677cd4）。
+        require(sourceFile.canonicalFile != root.canonicalFile) { "Refusing to move workspace root" }
         require(sourceFile.exists()) { "Source does not exist: $source" }
         if (targetFile.exists()) {
             require(overwrite) { "Target already exists: $target" }

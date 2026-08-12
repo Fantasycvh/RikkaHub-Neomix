@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- [FIX] 收窄 filesDir 暴露面（移植自 rikkahub-turbo db26bff）：原 path="."
+     会把整个 filesDir（含 skills/、fonts/、workspaces/ 等）暴露给获得分享 URI 的
+     外部 app；只保留实际通过 FileProvider 分享的目录（附件/工具输出）。
+     其余分享路径（导出、相机、workspace 导出）都在 cacheDir，由 cache-path 覆盖。 -->
 <paths>
   <cache-path
     name="cache"
@@ -8,5 +12,8 @@
     path="." />
   <files-path
     name="upload"
-    path="." />
+    path="upload/" />
+  <files-path
+    name="tool_outputs"
+    path="tool_outputs/" />
 </paths>

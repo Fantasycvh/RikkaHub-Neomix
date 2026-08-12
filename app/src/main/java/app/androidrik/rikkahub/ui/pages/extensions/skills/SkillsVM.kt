@@ -21,6 +21,11 @@ import app.androidrik.rikkahub.data.files.SkillMetadata
 import org.json.JSONArray
 import kotlin.collections.iterator
 
+/** 单个 zip 条目最大未压缩大小（技能文件通常 <1MB，32MB 覆盖一切合法场景） */
+private const val MAX_ZIP_ENTRY_SIZE = 32L * 1024 * 1024
+/** zip 解压总量上限，防 zip bomb */
+private const val MAX_ZIP_TOTAL_SIZE = 256L * 1024 * 1024
+
 class SkillsVM(
     private val skillManager: SkillManager,
 ) : ViewModel() {
@@ -157,14 +162,29 @@ class SkillsVM(
 
     private fun importSkillsFromZip(bytes: ByteArray): List<String> {
         val files = LinkedHashMap<String, ByteArray>()
+        // [FIX] zip bomb 防护（移植自 rikkahub-turbo f2a84d9）：技能 zip 来自用户导入，
+        // 恶意/损坏 zip 可声明极小压缩体积解压出 GB 级内容（readBytes 全量载入内存）→ OOM。
+        // 限制单文件与总解压量。
+        var totalUncompressedBytes = 0L
         ZipInputStream(ByteArrayInputStream(bytes)).use { zipInput ->
             while (true) {
                 val entry = zipInput.nextEntry ?: break
                 try {
                     if (!entry.isDirectory) {
+                        if (entry.size > MAX_ZIP_ENTRY_SIZE) {
+                            continue
+                        }
+                        if (totalUncompressedBytes + entry.size > MAX_ZIP_TOTAL_SIZE) {
+                            error("压缩包解压后体积过大")
+                        }
                         val path = normalizeZipEntryPath(entry.name)
                         if (path != null) {
-                            files[path] = zipInput.readBytes()
+                            val content = zipInput.readBytes()
+                            totalUncompressedBytes += content.size
+                            if (totalUncompressedBytes > MAX_ZIP_TOTAL_SIZE) {
+                                error("压缩包解压后体积过大")
+                            }
+                            files[path] = content
                         }
                     }
                 } finally {

@@ -260,7 +260,18 @@ class S3Sync(
                                         Log.i(TAG, "restoreFromBackupFile: Created upload directory")
                                     }
 
-                                    val targetFile = File(uploadFolder, fileName)
+                                    // [FIX] zip-slip 防护（移植自 rikkahub-turbo 88a12d1）：
+                                    // canonical 解析后必须仍位于 upload 目录内，否则恶意/损坏备份的
+                                    // "upload/../../<app私有路径>" 条目可逃逸写入 app 私有目录任意位置。
+                                    val targetFile = uploadFolder.resolve(fileName).canonicalFile
+                                    val uploadCanonical = uploadFolder.canonicalFile
+                                    if (!targetFile.path.startsWith(uploadCanonical.path + File.separator)) {
+                                        Log.w(
+                                            TAG,
+                                            "restoreFromBackupFile: Skipping path-traversal entry ${zipEntry.name}"
+                                        )
+                                        return@let
+                                    }
                                     Log.i(
                                         TAG,
                                         "restoreFromBackupFile: Restoring file ${zipEntry.name} to ${targetFile.absolutePath}"
