@@ -253,6 +253,7 @@
   <string name="chat_message_tool_search_results_count">%1$d результатов</string>
   <string name="chat_message_tool_search_web">Поиск в интернете: %1$s</string>
   <string name="chat_message_tool_submit">Отправить</string>
+  <string name="chat_message_tool_custom_answer_placeholder">Или введите свой ответ</string>
   <string name="chat_page_cancel">Отмена</string>
   <string name="chat_page_check_title_model_settings">Проверьте настройки модели заголовков</string>
   <string name="chat_page_clear_all_errors">Очистить всё</string>

@@ -256,6 +256,8 @@ private fun ChainOfThoughtScope.AskUserToolStep(
     val answers = remember { mutableStateMapOf<String, String>() }
     // Track selected options for multi questions
     val multiAnswers = remember { mutableStateMapOf<String, Set<String>>() }
+    // Track free-text custom answers (for single/multi questions, covers "Other"-style answers)
+    val customAnswers = remember { mutableStateMapOf<String, String>() }
 
     val firstQuestion = questions.firstOrNull()?.question ?: "..."
 
@@ -305,7 +307,7 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                         if (isPending && onToolAnswer != null) {
                             when (q.selectionType) {
                                 "single" -> {
-                                    // Single select: chips only, no text input
+                                    // Single select: chips + optional custom free-text input
                                     if (q.options.isNotEmpty()) {
                                         FlowRow(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -314,7 +316,10 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                                             q.options.forEach { option ->
                                                 FilterChip(
                                                     selected = answers[q.id] == option,
-                                                    onClick = { answers[q.id] = option },
+                                                    onClick = {
+                                                        answers[q.id] = option
+                                                        customAnswers.remove(q.id)
+                                                    },
                                                     label = {
                                                         Text(
                                                             text = option,
@@ -325,9 +330,23 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                                             }
                                         }
                                     }
+
+                                    // Custom answer input (covers "Other"-style answers)
+                                    OutlinedTextField(
+                                        value = customAnswers[q.id] ?: "",
+                                        onValueChange = { customAnswers[q.id] = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textStyle = MaterialTheme.typography.bodySmall,
+                                        singleLine = false,
+                                        minLines = 1,
+                                        maxLines = 3,
+                                        placeholder = {
+                                            Text(stringResource(R.string.chat_message_tool_custom_answer_placeholder))
+                                        },
+                                    )
                                 }
                                 "multi" -> {
-                                    // Multi select: chips only, multiple can be selected
+                                    // Multi select: chips + optional custom free-text input
                                     if (q.options.isNotEmpty()) {
                                         FlowRow(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -353,6 +372,20 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                                             }
                                         }
                                     }
+
+                                    // Custom answer input (covers "Other"-style answers)
+                                    OutlinedTextField(
+                                        value = customAnswers[q.id] ?: "",
+                                        onValueChange = { customAnswers[q.id] = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textStyle = MaterialTheme.typography.bodySmall,
+                                        singleLine = false,
+                                        minLines = 1,
+                                        maxLines = 3,
+                                        placeholder = {
+                                            Text(stringResource(R.string.chat_message_tool_custom_answer_placeholder))
+                                        },
+                                    )
                                 }
                                 else -> {
                                     // Text (default): optional option chips + free text input
@@ -414,7 +447,26 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                                 put("answers", buildJsonObject {
                                     questions.forEach { q ->
                                         when (q.selectionType) {
-                                            "multi" -> put(q.id, JsonPrimitive(multiAnswers[q.id]?.joinToString(", ") ?: ""))
+                                            "multi" -> {
+                                                val custom = customAnswers[q.id]?.trim().orEmpty()
+                                                val selected = multiAnswers[q.id].orEmpty()
+                                                put(
+                                                    q.id,
+                                                    JsonPrimitive(
+                                                        (if (custom.isNotEmpty()) selected + custom else selected)
+                                                            .joinToString(", ")
+                                                    )
+                                                )
+                                            }
+                                            "single" -> {
+                                                val custom = customAnswers[q.id]?.trim().orEmpty()
+                                                put(
+                                                    q.id,
+                                                    JsonPrimitive(
+                                                        if (custom.isNotEmpty()) custom else (answers[q.id] ?: "")
+                                                    )
+                                                )
+                                            }
                                             else -> put(q.id, JsonPrimitive(answers[q.id] ?: ""))
                                         }
                                     }
@@ -424,8 +476,8 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                         },
                         enabled = questions.all { q ->
                             when (q.selectionType) {
-                                "multi" -> !multiAnswers[q.id].isNullOrEmpty()
-                                else -> !answers[q.id].isNullOrBlank()
+                                "multi" -> !multiAnswers[q.id].isNullOrEmpty() || !customAnswers[q.id].isNullOrBlank()
+                                else -> !answers[q.id].isNullOrBlank() || !customAnswers[q.id].isNullOrBlank()
                             }
                         },
                         modifier = Modifier.align(Alignment.End),

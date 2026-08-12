@@ -253,6 +253,7 @@
   <string name="chat_message_tool_search_results_count">%1$d件の結果</string>
   <string name="chat_message_tool_search_web">ウェブ検索: %1$s</string>
   <string name="chat_message_tool_submit">送信</string>
+  <string name="chat_message_tool_custom_answer_placeholder">または独自の回答を入力</string>
   <string name="chat_page_cancel">キャンセル</string>
   <string name="chat_page_check_title_model_settings">タイトルモデル設定を確認</string>
   <string name="chat_page_clear_all_errors">すべてクリア</string>

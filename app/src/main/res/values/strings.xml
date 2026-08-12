@@ -255,6 +255,7 @@
   <string name="chat_message_tool_search_results_count">%1$d results</string>
   <string name="chat_message_tool_search_web">Search web: %1$s</string>
   <string name="chat_message_tool_submit">Submit</string>
+  <string name="chat_message_tool_custom_answer_placeholder">Or type your own answer</string>
   <string name="chat_page_cancel">Cancel</string>
   <string name="chat_page_check_title_model_settings">Check title model settings</string>
   <string name="chat_page_clear_all_errors">Clear all</string>

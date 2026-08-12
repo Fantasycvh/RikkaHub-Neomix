@@ -14,6 +14,9 @@ internal fun buildAskUserTool(): Tool = Tool(
         Each question can optionally provide a list of suggested options for the user to choose from.
         The user may select an option or provide their own free-text answer for each question.
         The answers will be returned as a JSON object mapping question IDs to the user's responses.
+        IMPORTANT: The UI always provides a free-text input for every question. Do NOT include generic fallback options
+        like "Other", "其他", "Others", or "Custom" in the options list — the user will type such answers directly
+        into the free-text input when none of the suggested options fits.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
