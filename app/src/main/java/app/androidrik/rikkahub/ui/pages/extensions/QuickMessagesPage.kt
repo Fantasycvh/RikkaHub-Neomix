@@ -209,6 +209,13 @@ private fun QuickMessageCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = HugeIcons.Delete01,
+                    contentDescription = stringResource(R.string.delete),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
                     Icon(
@@ -231,20 +238,6 @@ private fun QuickMessageCard(
                         onClick = {
                             menuExpanded = false
                             onEdit()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = HugeIcons.Delete01,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onDelete()
                         },
                     )
                 }

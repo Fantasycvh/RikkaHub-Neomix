@@ -61,6 +61,7 @@ import me.rerere.hugeicons.stroke.MoreVertical
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANTS_IDS
+import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
@@ -212,6 +213,9 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                             onShowActions = {
                                 actionSheetAssistant = assistant
                             },
+                            onDelete = {
+                                vm.removeAssistant(assistant)
+                            },
                             modifier = Modifier
                                 .scale(if (isDragging) 0.95f else 1f)
                                 .fillMaxWidth()
@@ -246,10 +250,6 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
             onDismiss = { actionSheetAssistant = null },
             onCopy = {
                 vm.copyAssistant(assistant)
-                actionSheetAssistant = null
-            },
-            onDelete = {
-                vm.removeAssistant(assistant)
                 actionSheetAssistant = null
             }
         )
@@ -397,7 +397,9 @@ private fun AssistantItem(
     memories: List<AssistantMemory>,
     onEdit: () -> Unit,
     onShowActions: () -> Unit,
+    onDelete: () -> Unit,
 ) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
     Card(
         modifier = modifier.fillMaxWidth(),
         onClick = onEdit,
@@ -468,15 +470,41 @@ private fun AssistantItem(
                 }
             }
 
-            IconButton(
-                onClick = onShowActions
-            ) {
-                Icon(
-                    imageVector = HugeIcons.MoreVertical,
-                    contentDescription = stringResource(R.string.assistant_page_actions)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (assistant.id !in DEFAULT_ASSISTANTS_IDS) {
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(
+                            imageVector = HugeIcons.Delete01,
+                            contentDescription = stringResource(R.string.assistant_page_delete),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = onShowActions
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.MoreVertical,
+                        contentDescription = stringResource(R.string.assistant_page_actions)
+                    )
+                }
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        RikkaConfirmDialog(
+            show = true,
+            title = stringResource(R.string.assistant_page_delete),
+            confirmText = stringResource(R.string.confirm),
+            dismissText = stringResource(R.string.cancel),
+            onConfirm = {
+                showDeleteDialog = false
+                onDelete()
+            },
+            onDismiss = { showDeleteDialog = false },
+            text = { Text(stringResource(R.string.assistant_page_delete_dialog_text)) },
+        )
     }
 }
 
@@ -484,11 +512,8 @@ private fun AssistantItem(
 private fun AssistantActionSheet(
     assistant: Assistant,
     onDismiss: () -> Unit,
-    onCopy: () -> Unit,
-    onDelete: () -> Unit
+    onCopy: () -> Unit
 ) {
-    var showDeleteDialog by remember { mutableStateOf(false) }
-
     ModalBottomSheet(
         onDismissRequest = onDismiss
     ) {
@@ -532,48 +557,6 @@ private fun AssistantActionSheet(
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent)
             )
 
-            // 删除选项（仅非默认助手显示）
-            if (assistant.id !in DEFAULT_ASSISTANTS_IDS) {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            stringResource(R.string.assistant_page_delete),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = HugeIcons.Delete01,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    },
-                    modifier = Modifier.onClick { showDeleteDialog = true },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                )
-            }
         }
-    }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text(stringResource(R.string.assistant_page_delete)) },
-            text = { Text(stringResource(R.string.assistant_page_delete_dialog_text)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                        onDelete()
-                    }) {
-                    Text(stringResource(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
     }
 }

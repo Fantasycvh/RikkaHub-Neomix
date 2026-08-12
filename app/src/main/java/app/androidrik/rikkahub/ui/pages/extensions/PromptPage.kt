@@ -10,6 +10,7 @@ import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Tools
 import me.rerere.hugeicons.stroke.Share03
 import me.rerere.hugeicons.stroke.Delete01
+import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Cancel01
 import androidx.compose.animation.AnimatedVisibility
@@ -306,6 +307,7 @@ private fun ModeInjectionCard(
     val swipeState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
     var showExportDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     val exporter = rememberExporter(injection, ModeInjectionSerializer)
 
     SwipeToDismissBox(
@@ -378,6 +380,13 @@ private fun ModeInjectionCard(
                 IconButton(onClick = onEdit) {
                     Icon(HugeIcons.Tools, stringResource(R.string.prompt_page_edit))
                 }
+                IconButton(onClick = { showDeleteDialog = true }) {
+                    Icon(
+                        HugeIcons.Delete01,
+                        stringResource(R.string.prompt_page_delete),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
     }
@@ -386,6 +395,21 @@ private fun ModeInjectionCard(
         ExportDialog(
             exporter = exporter,
             onDismiss = { showExportDialog = false }
+        )
+    }
+
+    if (showDeleteDialog) {
+        RikkaConfirmDialog(
+            show = true,
+            title = stringResource(R.string.prompt_page_delete),
+            confirmText = stringResource(R.string.confirm),
+            dismissText = stringResource(R.string.cancel),
+            onConfirm = {
+                showDeleteDialog = false
+                onDelete()
+            },
+            onDismiss = { showDeleteDialog = false },
+            text = { Text(stringResource(R.string.prompt_page_delete_confirm)) },
         )
     }
 }
@@ -718,6 +742,7 @@ private fun LorebookCard(
     val swipeState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
     var showExportDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     val exporter = rememberExporter(book, LorebookSerializer)
 
     SwipeToDismissBox(
@@ -801,6 +826,13 @@ private fun LorebookCard(
                 IconButton(onClick = onEdit) {
                     Icon(HugeIcons.Tools, stringResource(R.string.prompt_page_edit))
                 }
+                IconButton(onClick = { showDeleteDialog = true }) {
+                    Icon(
+                        HugeIcons.Delete01,
+                        stringResource(R.string.prompt_page_delete),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
     }
@@ -809,6 +841,21 @@ private fun LorebookCard(
         ExportDialog(
             exporter = exporter,
             onDismiss = { showExportDialog = false }
+        )
+    }
+
+    if (showDeleteDialog) {
+        RikkaConfirmDialog(
+            show = true,
+            title = stringResource(R.string.prompt_page_delete),
+            confirmText = stringResource(R.string.confirm),
+            dismissText = stringResource(R.string.cancel),
+            onConfirm = {
+                showDeleteDialog = false
+                onDelete()
+            },
+            onDismiss = { showDeleteDialog = false },
+            text = { Text(stringResource(R.string.prompt_page_delete_confirm)) },
         )
     }
 }

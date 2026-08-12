@@ -475,6 +475,7 @@
   <string name="prompt_page_constant_active">持續啟用</string>
   <string name="prompt_page_constant_active_desc">無需關鍵字配對即可觸發</string>
   <string name="prompt_page_delete">刪除</string>
+  <string name="prompt_page_delete_confirm">確定刪除該條目？</string>
   <string name="prompt_page_description">說明</string>
   <string name="prompt_page_disabled">已停用</string>
   <string name="prompt_page_edit">編輯</string>
@@ -701,6 +702,7 @@
   <string name="setting_files_page_no_files">無檔案</string>
   <string name="setting_files_page_title">檔案管理</string>
   <string name="setting_mcp_page_add_header">添加請求頭</string>
+  <string name="setting_mcp_page_delete_confirm">確定刪除該 MCP 伺服器？</string>
   <string name="setting_mcp_page_add_one_to_get_started">新增一個即可開始使用</string>
   <string name="setting_mcp_page_basic_settings">基本設定</string>
   <string name="setting_mcp_page_custom_headers">自定義請求頭</string>

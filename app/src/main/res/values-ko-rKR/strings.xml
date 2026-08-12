@@ -475,6 +475,7 @@
   <string name="prompt_page_constant_active">항상 활성</string>
   <string name="prompt_page_constant_active_desc">키워드 일치 없이 트리거</string>
   <string name="prompt_page_delete">삭제</string>
+  <string name="prompt_page_delete_confirm">이 항목을 삭제하시겠습니까?</string>
   <string name="prompt_page_description">설명</string>
   <string name="prompt_page_disabled">비활성화됨</string>
   <string name="prompt_page_edit">편집</string>
@@ -701,6 +702,7 @@
   <string name="setting_files_page_no_files">파일 없음</string>
   <string name="setting_files_page_title">파일 관리</string>
   <string name="setting_mcp_page_add_header">헤더 추가</string>
+  <string name="setting_mcp_page_delete_confirm">이 MCP 서버를 삭제하시겠습니까?</string>
   <string name="setting_mcp_page_add_one_to_get_started">시작하려면 하나를 추가하세요</string>
   <string name="setting_mcp_page_basic_settings">기본 설정</string>
   <string name="setting_mcp_page_custom_headers">사용자 정의 헤더</string>

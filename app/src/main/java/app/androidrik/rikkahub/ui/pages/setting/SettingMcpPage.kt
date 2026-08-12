@@ -88,6 +88,7 @@ import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Delete01
+import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.McpServer
 import me.rerere.hugeicons.stroke.MessageBlocked
@@ -259,6 +260,7 @@ private fun McpServerItem(
     val dismissBoxState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
     var errorDetail by remember { mutableStateOf<McpStatus.Error?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     errorDetail?.let { error ->
         val context = LocalContext.current
@@ -427,6 +429,13 @@ private fun McpServerItem(
                     }
                 }
 
+                IconButton(onClick = { showDeleteDialog = true }) {
+                    Icon(
+                        HugeIcons.Delete01,
+                        contentDescription = stringResource(R.string.delete),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
                 IconButton(
                     onClick = {
                         onEdit(item)
@@ -436,6 +445,21 @@ private fun McpServerItem(
                 }
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        RikkaConfirmDialog(
+            show = true,
+            title = stringResource(R.string.delete),
+            confirmText = stringResource(R.string.confirm),
+            dismissText = stringResource(R.string.cancel),
+            onConfirm = {
+                showDeleteDialog = false
+                onDelete()
+            },
+            onDismiss = { showDeleteDialog = false },
+            text = { Text(stringResource(R.string.setting_mcp_page_delete_confirm)) },
+        )
     }
 }
 

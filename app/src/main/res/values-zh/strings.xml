@@ -477,6 +477,7 @@
   <string name="prompt_page_constant_active">常驻激活</string>
   <string name="prompt_page_constant_active_desc">无需匹配关键词即触发</string>
   <string name="prompt_page_delete">删除</string>
+  <string name="prompt_page_delete_confirm">确定删除该条目？</string>
   <string name="prompt_page_description">描述</string>
   <string name="prompt_page_disabled">已禁用</string>
   <string name="prompt_page_edit">编辑</string>
@@ -733,6 +734,7 @@
   <string name="setting_files_page_no_files">无文件</string>
   <string name="setting_files_page_title">文件管理</string>
   <string name="setting_mcp_page_add_header">添加请求头</string>
+  <string name="setting_mcp_page_delete_confirm">确定删除该 MCP 服务器？</string>
   <string name="setting_mcp_page_add_one_to_get_started">添加一个即可开始使用</string>
   <string name="setting_mcp_page_basic_settings">基础设置</string>
   <string name="setting_mcp_page_custom_headers">自定义请求头</string>

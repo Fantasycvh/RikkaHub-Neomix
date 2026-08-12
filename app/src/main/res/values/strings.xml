@@ -482,6 +482,7 @@
   <string name="prompt_page_constant_active">Always Active</string>
   <string name="prompt_page_constant_active_desc">Trigger without keyword matching</string>
   <string name="prompt_page_delete">Delete</string>
+  <string name="prompt_page_delete_confirm">Are you sure you want to delete this item?</string>
   <string name="prompt_page_description">Description</string>
   <string name="prompt_page_disabled">Disabled</string>
   <string name="prompt_page_edit">Edit</string>
@@ -739,6 +740,7 @@
   <string name="setting_files_page_no_files">No Files</string>
   <string name="setting_files_page_title">File Management</string>
   <string name="setting_mcp_page_add_header">Add Header</string>
+  <string name="setting_mcp_page_delete_confirm">Are you sure you want to delete this MCP server?</string>
   <string name="setting_mcp_page_add_one_to_get_started">Add one to get started</string>
   <string name="setting_mcp_page_basic_settings">Basic Settings</string>
   <string name="setting_mcp_page_custom_headers">Custom Headers</string>

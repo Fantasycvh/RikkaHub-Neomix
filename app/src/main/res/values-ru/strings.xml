@@ -475,6 +475,7 @@
   <string name="prompt_page_constant_active">Всегда активно</string>
   <string name="prompt_page_constant_active_desc">Срабатывание без совпадения ключевых слов</string>
   <string name="prompt_page_delete">Удалить</string>
+  <string name="prompt_page_delete_confirm">Удалить этот элемент?</string>
   <string name="prompt_page_description">Описание</string>
   <string name="prompt_page_disabled">Отключено</string>
   <string name="prompt_page_edit">Редактировать</string>
@@ -701,6 +702,7 @@
   <string name="setting_files_page_no_files">Нет файлов</string>
   <string name="setting_files_page_title">Управление файлами</string>
   <string name="setting_mcp_page_add_header">Добавить заголовок</string>
+  <string name="setting_mcp_page_delete_confirm">Удалить этот MCP-сервер?</string>
   <string name="setting_mcp_page_add_one_to_get_started">Добавьте один, чтобы начать</string>
   <string name="setting_mcp_page_basic_settings">Основные настройки</string>
   <string name="setting_mcp_page_custom_headers">Пользовательские заголовки</string>
