@@ -887,6 +887,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_add">添加</string>
   <string name="setting_provider_page_add_model">添加模型</string>
   <string name="setting_provider_page_add_models_hint">点击下方按钮添加模型</string>
+  <string name="setting_provider_page_fetch_models">获取模型</string>
+  <string name="setting_provider_page_fetch_models_loading">正在获取模型…</string>
+  <string name="setting_provider_page_fetch_models_error">获取模型失败：%1$s</string>
+  <string name="setting_provider_page_fetch_models_retry">重试</string>
   <string name="setting_provider_page_add_new_model">添加新模型</string>
   <string name="setting_provider_page_add_provider">添加提供商</string>
   <string name="setting_provider_page_add_provider_override">添加提供商重写</string>

@@ -855,6 +855,10 @@
   <string name="setting_provider_page_add">Добавить</string>
   <string name="setting_provider_page_add_model">Добавить модель</string>
   <string name="setting_provider_page_add_models_hint">Нажмите кнопку ниже, чтобы добавить модели</string>
+  <string name="setting_provider_page_fetch_models">Получить модели</string>
+  <string name="setting_provider_page_fetch_models_loading">Получение моделей…</string>
+  <string name="setting_provider_page_fetch_models_error">Не удалось получить модели: %1$s</string>
+  <string name="setting_provider_page_fetch_models_retry">Повторить</string>
   <string name="setting_provider_page_add_new_model">Добавить новую модель</string>
   <string name="setting_provider_page_add_provider">Добавить поставщика</string>
   <string name="setting_provider_page_add_provider_override">Добавить переопределение поставщика</string>

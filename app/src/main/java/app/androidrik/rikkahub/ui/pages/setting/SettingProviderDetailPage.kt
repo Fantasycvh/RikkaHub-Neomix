@@ -38,6 +38,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -71,9 +72,10 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -512,16 +514,25 @@ private fun ModelList(
     onUpdateProvider: (ProviderSetting) -> Unit
 ) {
     val providerManager = koinInject<ProviderManager>()
-    val modelList by produceState(emptyList(), providerSetting) {
+    var fetchState by remember { mutableStateOf<UiState<List<Model>>>(UiState.Idle) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    LaunchedEffect(providerSetting, refreshTrigger) {
+        fetchState = UiState.Loading
         runCatching {
-            println("loading models...")
-            value = providerManager.getProviderByType(providerSetting)
+            providerManager.getProviderByType(providerSetting)
                 .listModels(providerSetting)
                 .sortedBy { it.modelId }
                 .toList()
+        }.onSuccess {
+            fetchState = UiState.Success(it)
         }.onFailure {
             it.printStackTrace()
+            fetchState = UiState.Error(it)
         }
+    }
+    val candidateModels = when (val state = fetchState) {
+        is UiState.Success -> state.data
+        else -> emptyList()
     }
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
@@ -545,24 +556,66 @@ private fun ModelList(
         ) {
             // 模型列表
             if (providerSetting.models.isEmpty()) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillParentMaxHeight(0.8f)
-                            .fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = stringResource(R.string.setting_provider_page_no_models),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = stringResource(R.string.setting_provider_page_add_models_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
+                when (val state = fetchState) {
+                    is UiState.Loading -> item {
+                        Column(
+                            modifier = Modifier
+                                .fillParentMaxHeight(0.8f)
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator()
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.setting_provider_page_fetch_models_loading),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    is UiState.Error -> item {
+                        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.setting_provider_page_fetch_models_error,
+                                        state.error.message ?: "Unknown"
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                TextButton(onClick = { refreshTrigger++ }) {
+                                    Text(stringResource(R.string.setting_provider_page_fetch_models_retry))
+                                }
+                            }
+                        }
+                    }
+                    else -> item {
+                        Column(
+                            modifier = Modifier
+                                .fillParentMaxHeight(0.8f)
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.setting_provider_page_no_models),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(R.string.setting_provider_page_add_models_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
             } else {
@@ -602,19 +655,37 @@ private fun ModelList(
                 .align(Alignment.BottomCenter)
                 .offset(y = -ScreenOffset),
         ) {
-            AddModelButton(
-                models = modelList,
-                selectedModels = providerSetting.models,
-                onAddModel = {
-                    onUpdateProvider(providerSetting.addModel(it))
-                },
-                onRemoveModel = {
-                    onUpdateProvider(providerSetting.delModel(it))
-                },
-                expanded = expanded,
-                parentProvider = providerSetting,
-                onUpdateProvider = onUpdateProvider
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilledIconButton(onClick = { refreshTrigger++ }) {
+                    if (fetchState is UiState.Loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = HugeIcons.Refresh03,
+                            contentDescription = stringResource(R.string.setting_provider_page_fetch_models)
+                        )
+                    }
+                }
+                AddModelButton(
+                    models = candidateModels,
+                    selectedModels = providerSetting.models,
+                    onAddModel = {
+                        onUpdateProvider(providerSetting.addModel(it))
+                    },
+                    onRemoveModel = {
+                        onUpdateProvider(providerSetting.delModel(it))
+                    },
+                    expanded = expanded,
+                    parentProvider = providerSetting,
+                    onUpdateProvider = onUpdateProvider
+                )
+            }
         }
     }
 }

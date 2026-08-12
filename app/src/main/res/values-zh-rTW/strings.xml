@@ -853,6 +853,10 @@
   <string name="setting_provider_page_add">添加</string>
   <string name="setting_provider_page_add_model">添加模型</string>
   <string name="setting_provider_page_add_models_hint">點擊下方按鈕添加模型</string>
+  <string name="setting_provider_page_fetch_models">獲取模型</string>
+  <string name="setting_provider_page_fetch_models_loading">正在獲取模型…</string>
+  <string name="setting_provider_page_fetch_models_error">獲取模型失敗：%1$s</string>
+  <string name="setting_provider_page_fetch_models_retry">重試</string>
   <string name="setting_provider_page_add_new_model">添加新模型</string>
   <string name="setting_provider_page_add_provider">添加提供商</string>
   <string name="setting_provider_page_add_provider_override">新增提供商覆寫</string>

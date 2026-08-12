@@ -907,6 +907,10 @@
   <string name="setting_provider_page_add">Add</string>
   <string name="setting_provider_page_add_model">Add Model</string>
   <string name="setting_provider_page_add_models_hint">Click the button below to add models</string>
+  <string name="setting_provider_page_fetch_models">Fetch models</string>
+  <string name="setting_provider_page_fetch_models_loading">Fetching models…</string>
+  <string name="setting_provider_page_fetch_models_error">Failed to fetch models: %1$s</string>
+  <string name="setting_provider_page_fetch_models_retry">Retry</string>
   <string name="setting_provider_page_add_new_model">Add New Model</string>
   <string name="setting_provider_page_add_provider">Add Provider</string>
   <string name="setting_provider_page_add_provider_override">Add Provider Override</string>

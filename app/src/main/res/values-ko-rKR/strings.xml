@@ -855,6 +855,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_provider_page_add">추가</string>
   <string name="setting_provider_page_add_model">모델 추가</string>
   <string name="setting_provider_page_add_models_hint">아래 버튼을 눌러 모델 추가</string>
+  <string name="setting_provider_page_fetch_models">모델 가져오기</string>
+  <string name="setting_provider_page_fetch_models_loading">모델 가져오는 중…</string>
+  <string name="setting_provider_page_fetch_models_error">모델 가져오기 실패：%1$s</string>
+  <string name="setting_provider_page_fetch_models_retry">재시도</string>
   <string name="setting_provider_page_add_new_model">새 모델 추가</string>
   <string name="setting_provider_page_add_provider">제공업체 추가</string>
   <string name="setting_provider_page_add_provider_override">제공업체 재정의 추가</string>
