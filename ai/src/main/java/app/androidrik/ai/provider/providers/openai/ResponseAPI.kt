@@ -302,6 +302,13 @@ class ResponseAPI(
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
 
+        // 状态维护：DeepSeek / opencode 网关按"每个工具调用轮次"校验 reasoning，
+        // 同一轮里第二个及以后的 function_call 前也必须带 reasoning item（issue #1690）
+        var lastReasoningText: String? = null
+        var lastReasoningId: String? = null
+        var lastEncryptedContent: String? = null
+        var toolEmittedSinceReasoning = false
+
         for (group in groups) {
             when (group) {
                 is PartGroup.Content -> {
@@ -313,13 +320,24 @@ class ResponseAPI(
                                     addContentItem(MessageRole.ASSISTANT, contentBuffer)
                                     contentBuffer.clear()
                                 }
-                                // 输出 reasoning item
+                                // 记录 reasoning 状态，供后续 tool 轮次补插
                                 val reasoningMetadata = part.metadataAs<OpenAIReasoningMetadata>()
+                                lastReasoningText = part.reasoning.takeIf { it.isNotBlank() }
+                                lastReasoningId = reasoningMetadata?.reasoningId
+                                lastEncryptedContent = reasoningMetadata?.encryptedContent
+                                toolEmittedSinceReasoning = false
+                                // 输出 reasoning item（content 为规范必填字段，summary 为摘要）
                                 add(buildJsonObject {
                                     put("type", "reasoning")
                                     reasoningMetadata?.reasoningId?.let {
                                         put("id", it)
                                     }
+                                    put("content", buildJsonArray {
+                                        add(buildJsonObject {
+                                            put("type", "reasoning_text")
+                                            put("text", part.reasoning)
+                                        })
+                                    })
                                     put("summary", buildJsonArray {
                                         add(buildJsonObject {
                                             put("type", "summary_text")
@@ -358,6 +376,28 @@ class ResponseAPI(
 
                     // 输出 function_call + function_call_output
                     group.tools.forEach { tool ->
+                        // 同一轮第二个及以后的 function_call 前补插 reasoning item（issue #1690）
+                        if (toolEmittedSinceReasoning && lastReasoningText != null) {
+                            val text = lastReasoningText!!
+                            add(buildJsonObject {
+                                put("type", "reasoning")
+                                lastReasoningId?.let { put("id", it) }
+                                put("content", buildJsonArray {
+                                    add(buildJsonObject {
+                                        put("type", "reasoning_text")
+                                        put("text", text)
+                                    })
+                                })
+                                put("summary", buildJsonArray {
+                                    add(buildJsonObject {
+                                        put("type", "summary_text")
+                                        put("text", text)
+                                    })
+                                })
+                                lastEncryptedContent?.let { put("encrypted_content", it) }
+                            })
+                            toolEmittedSinceReasoning = false
+                        }
                         add(buildJsonObject {
                             put("type", "function_call")
                             put("call_id", tool.toolCallId)
@@ -399,6 +439,8 @@ class ResponseAPI(
                                 )
                             }
                         })
+                        // 标记：此工具调用轮次已输出，后续 function_call 需补插 reasoning
+                        toolEmittedSinceReasoning = true
                     }
                 }
             }

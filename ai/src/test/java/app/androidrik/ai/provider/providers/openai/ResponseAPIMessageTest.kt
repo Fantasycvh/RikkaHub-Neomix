@@ -424,6 +424,73 @@ class ResponseAPIMessageTest {
         )
     }
 
+    @Test
+    fun `multi tool calls in one round should re-emit reasoning before every function_call`() {
+        // Regression for issue #1690: DeepSeek/openode gateways require a reasoning
+        // item before EVERY function_call within the same round (not just the first).
+        val assistantMessage = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(reasoning = "thinking..."),
+                createExecutedTool("call_1", "search_web", """{"q": "a"}""", "result a"),
+                createExecutedTool("call_2", "search_web", """{"q": "b"}""", "result b"),
+                createExecutedTool("call_3", "get_time_info", "{}", "now"),
+                UIMessagePart.Text("Done")
+            )
+        )
+        val input = invokeBuildMessages(listOf(assistantMessage))
+
+        // 统计每个 function_call 前是否紧跟 reasoning item
+        var functionCalls = 0
+        var reasoningBeforeCall = 0
+        var prevWasReasoning = false
+        val items = input.filter { it is JsonObject }
+        for (item in items) {
+            val obj = item.jsonObject
+            val type = obj["type"]?.jsonPrimitive?.content
+            if (type == "reasoning") {
+                prevWasReasoning = true
+                val content = obj["content"]?.jsonArray
+                assertTrue("reasoning item must carry content[].reasoning_text", content != null && content.isNotEmpty())
+                val textPart = content!!.first().jsonObject
+                assertEquals("reasoning_text", textPart["type"]?.jsonPrimitive?.content)
+                assertEquals("thinking...", textPart["text"]?.jsonPrimitive?.content)
+            } else if (type == "function_call") {
+                functionCalls++
+                if (prevWasReasoning) reasoningBeforeCall++
+                prevWasReasoning = false
+            } else {
+                prevWasReasoning = false
+            }
+        }
+        assertEquals("3 function_calls should be emitted", 3, functionCalls)
+        assertEquals(
+            "every function_call must be preceded by a reasoning item",
+            functionCalls, reasoningBeforeCall
+        )
+    }
+
+    @Test
+    fun `reasoning item should include content reasoning_text for spec compliance`() {
+        // Issue #1690 part 1: historical reasoning replayed as item must carry content[].reasoning_text
+        val assistantMessage = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(reasoning = "chain of thought"),
+                createExecutedTool("call_1", "search", """{"q": "x"}""", "r")
+            )
+        )
+        val input = invokeBuildMessages(listOf(assistantMessage))
+        val reasoningItem = input.filterIsInstance<JsonObject>()
+            .firstOrNull { it["type"]?.jsonPrimitive?.content == "reasoning" }
+        assertTrue("reasoning item should exist", reasoningItem != null)
+        val content = reasoningItem!!["content"]?.jsonArray
+        assertTrue("reasoning item must have content array", content != null)
+        val textPart = content!!.first().jsonObject
+        assertEquals("reasoning_text", textPart["type"]?.jsonPrimitive?.content)
+        assertEquals("chain of thought", textPart["text"]?.jsonPrimitive?.content)
+    }
+
     private fun createExecutedTool(
         callId: String,
         name: String,
