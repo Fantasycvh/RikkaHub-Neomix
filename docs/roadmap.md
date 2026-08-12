@@ -317,6 +317,25 @@
 - **SkillFrontmatterParser**：纯文本 YAML 子集解析（`---` 分隔 + `: ` 分割 + 去引号，非完整 YAML）；`allowed_tools` 支持逗号/JSON 数组/`Bash(gh issue view:*)` 带参三种格式
 - **SkillAutoTriggerTransformer**：按 inject_position 分类后，在 system 前后/in_chat 插入 `[Skill: name]\nbody` 消息
 
+### 5. RikkaHub Math+（test27818/rikkahub-math-plus，7★）
+
+**定位**：RikkaHub 2.4.3 数学增强——**TikZ 图表自动渲染 + ai4math-lean 数学形式化技能**。
+
+**① TikZ 图表渲染管线**（核心，新增 3 文件 + 改 4 文件）
+- 检测 AI 输出的 TikZ 代码（tikzpicture / tikzcd / tikztiming 全家族）
+- 动态生成 preamble（**自动提取用户代码里的 `\usepackage` / `\usetikzlibrary`**）
+- 工作区 pdflatex 编译 → pdftocairo 转 SVG → **三层缓存**（内存 LRU → 磁盘 → 重编译）
+- 深色模式 LaTeX 源头注入 `\color{white}`（告别黑字隐形）
+- **缺包诊断**：编译失败读 `.log` 红字提示"缺少宏包: xxx.sty"；**失败可视化**而非静默乱码
+- 智能尺寸：小图原尺寸、大图限宽 320dp
+
+**② ai4math-lean 技能**：proot 工作区部署 Lean（elan + mathlib），`#check` API 探测、退出码验证；成果 47 定理机器验证。**垂直场景，不参考**。
+
+**价值评估**：
+- TikZ 渲染**管线架构**（检测→preamble 生成→编译→三层缓存）可作参考——RikkaHub jlatexmath 只渲染公式不渲染图表
+- **动态 preamble 提取** + **缺包诊断 UX** 设计巧妙
+- 依赖工作区 pdflatex（我们 fork 有 workspace，技术栈可通）；**与我们 roadmap 无关但值得记录**
+
 ---
 
 ## 八、状态记录
@@ -328,3 +347,4 @@
 - 2026-08-12：记录备份互通性已知边界（原版→本 fork 通、本 fork→原版不通）+ 可选根治方向。**暂不处理**。
 - 2026-08-13：调研 4 个 RikkaHub 二改版（agent/root/turbo/plus），记录可吸收点（免 key 搜索+断路器、Hardline 安全底线、技能触发词自动注入、前台保活），增补「七、RikkaHub 二改版调研」。**暂不实现**。
 - 2026-08-13：深挖 rikkahub-turbo `perf/rendering-and-streaming` 分支（PROGRESS.md），记录 R3.2 块级流式渲染 / R2.1 折叠调优 / setJob identity 修复 / #57 Response API 同根因复现 / 增量发送全禁用结论 / 80+ bug 修复清单。**已移植 setJob identity 修复**（ConversationSession.kt，对应 c897647）；R3.2 块级流式渲染为卡顿解药方向，**待实现**。
+- 2026-08-13：调研 rikkahub-math-plus（TikZ 图表渲染管线 + Lean 技能），记录 TikZ 管线架构（检测→preamble 生成→编译→三层缓存）作参考。增补「七」第 5 节。**暂不实现**。
