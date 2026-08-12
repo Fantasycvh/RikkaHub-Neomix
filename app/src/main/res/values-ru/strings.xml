@@ -644,6 +644,8 @@
   <string name="setting_display_page_enable_blur_effect_desc">Включить эффект размытия на панели ввода чата</string>
   <string name="setting_display_page_enable_blur_effect_title">Включить эффект размытия</string>
   <string name="setting_display_page_enable_latex_rendering_desc">Отображать математические выражения и формулы с использованием синтаксиса LaTeX</string>
+  <string name="setting_display_page_enable_diagram_rendering_title">Рендеринг диаграмм TikZ</string>
+  <string name="setting_display_page_enable_diagram_rendering_desc">Рендеринг созданного ИИ кода tikzpicture / tikzcd в виде векторной графики</string>
   <string name="setting_display_page_enable_latex_rendering_title">Включить рендеринг LaTeX</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_desc">Включить виброотклик при генерации сообщений</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_title">Тактильный эффект при генерации сообщения</string>
