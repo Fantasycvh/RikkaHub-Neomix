@@ -20,7 +20,6 @@ import app.androidrik.rikkahub.data.ai.transformers.AssistantTemplateLoader
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.api.RikkaHubAPI
-import app.androidrik.rikkahub.data.api.SponsorAPI
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.fts.MessageFtsManager
@@ -205,10 +204,6 @@ val dataSourceModule = module {
                 level = HttpLoggingInterceptor.Level.HEADERS
             })
             .build().also { SearchService.init(it, get()) }
-    }
-
-    single {
-        SponsorAPI.create(get())
     }
 
     single {

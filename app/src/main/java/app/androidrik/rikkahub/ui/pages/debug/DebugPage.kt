@@ -242,56 +242,6 @@ private fun MainPage(vm: DebugVM) {
             Text("创建 1024 个消息的聊天")
         }
 
-        HorizontalDivider()
-
-        Text("Launch Stats", style = MaterialTheme.typography.labelMedium)
-
-        var launchCountInput by remember(settings.launchCount) {
-            mutableStateOf(settings.launchCount.toString())
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedTextField(
-                value = launchCountInput,
-                onValueChange = { launchCountInput = it },
-                label = { Text("launchCount (current: ${settings.launchCount})") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-            )
-            Button(onClick = {
-                launchCountInput.toIntOrNull()?.let {
-                    vm.updateSettings(settings.copy(launchCount = it))
-                }
-            }) {
-                Text("Set")
-            }
-        }
-
-        var dismissedAtInput by remember(settings.sponsorAlertDismissedAt) {
-            mutableStateOf(settings.sponsorAlertDismissedAt.toString())
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedTextField(
-                value = dismissedAtInput,
-                onValueChange = { dismissedAtInput = it },
-                label = { Text("sponsorAlertDismissedAt (current: ${settings.sponsorAlertDismissedAt})") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-            )
-            Button(onClick = {
-                dismissedAtInput.toIntOrNull()?.let {
-                    vm.updateSettings(settings.copy(sponsorAlertDismissedAt = it))
-                }
-            }) {
-                Text("Set")
-            }
-        }
-
         var markdown by remember { mutableStateOf("") }
         MarkdownBlock(markdown, modifier = Modifier.fillMaxWidth())
         MathBlock(markdown)
