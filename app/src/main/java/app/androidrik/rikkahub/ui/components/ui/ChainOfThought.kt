@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.components.ui
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -92,7 +93,9 @@ fun <T> ChainOfThought(
                 modifier = Modifier
                     .padding(horizontal = 12.dp, vertical = 4.dp)
                     .animateContentSize(
-                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()
+                        // γ: 用短 tween 替代 expressive 长曲线。步骤列表大时（Workspace 多命令）
+                        // 长尺寸动画 + 反复测量是交互卡顿主因，短动画显著降低卡顿感
+                        animationSpec = tween(durationMillis = 120)
                     ),
             ) {
                 val visibleSteps = if (expanded || !canCollapse) {

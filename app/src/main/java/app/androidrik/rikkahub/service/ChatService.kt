@@ -7,6 +7,7 @@ import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -461,6 +462,9 @@ class ChatService(
 
                 // Only continue generation when all pending tools are handled
                 if (!hasPendingTools) {
+                    // β: yield 让出主线程，先让"批准状态更新 → Compose 重组"完成渲染，
+                    // 再重启生成，避免状态更新与生成首帧双重组在同一帧竞争主线程（交互卡顿）
+                    yield()
                     handleMessageComplete(conversationId)
                 }
 
@@ -511,6 +515,8 @@ class ChatService(
                 }
 
                 // 批量批准后没有 pending，继续生成
+                // β: yield 让出主线程，先完成"批量批准状态 → 重组"渲染，再重启生成
+                yield()
                 handleMessageComplete(conversationId)
                 _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
