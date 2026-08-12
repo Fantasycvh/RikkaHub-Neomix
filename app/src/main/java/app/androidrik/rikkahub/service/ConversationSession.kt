@@ -73,7 +73,13 @@ class ConversationSession(
         _generationJob.value?.cancel()
         _generationJob.value = job
         job?.invokeOnCompletion {
-            _generationJob.value = null
+            // 旧 job 的完成回调可能晚于新 job 设置执行（连续 sendMessage / approve 重启生成时）：
+            // 无条件清 null 会误清新 job 的引用 → isGenerating 假 false、stopGeneration 找不到
+            // job、空闲检查提前清理会话。按 identity 判断只清自己。
+            // （移植自 rikkahub-turbo c897647）
+            if (_generationJob.value === job) {
+                _generationJob.value = null
+            }
             if (refCount.get() <= 0) {
                 scheduleIdleCheck()
             }

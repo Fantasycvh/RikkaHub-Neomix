@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +77,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -230,28 +232,144 @@ private fun parseMarkdown(content: String): MarkdownParseResult {
     return MarkdownParseResult(preprocessed, astTree, astTree.containsHtml())
 }
 
+/**
+ * 进程内 markdown 解析缓存（LRU，上限 30）。
+ * 流式生成期间后台预热完整 AST；消息滚回 LazyColumn 重建时命中缓存 → 主线程零解析。
+ * 来自 rikkahub-turbo R3（流式降级渲染配套）。
+ */
+internal object MarkdownParseCache {
+    private const val MAX_ENTRIES = 30
+
+    private val cache = object : LinkedHashMap<String, Any>(MAX_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Any>): Boolean =
+            size > MAX_ENTRIES
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> getOrPut(key: String, compute: () -> T): T {
+        synchronized(cache) {
+            cache[key]?.let { return it as T }
+        }
+        val value = compute()
+        synchronized(cache) {
+            cache[key] = value
+        }
+        return value
+    }
+}
+
 @Composable
 fun MarkdownBlock(
     content: String,
     modifier: Modifier = Modifier,
     style: TextStyle = LocalTextStyle.current,
-    onClickCitation: (String) -> Unit = {}
+    onClickCitation: (String) -> Unit = {},
+    // 流式生成期间降级渲染开关，由调用方传 loading。
+    streaming: Boolean = false,
 ) {
-    var (data, setData) = remember { mutableStateOf(parseMarkdown(content)) }
+    // 初始值优先取进程内缓存：历史消息滚回 LazyColumn 重建时命中缓存 → 主线程零解析，
+    // 避免 remember 初始值同步解析长文本导致掉帧；首次 miss 才同步解析一次并入缓存。
+    var (data, setData) = remember {
+        mutableStateOf(MarkdownParseCache.getOrPut(content) { parseMarkdown(content) })
+    }
 
-    // 监听内容变化，重新解析AST树
-    // 这里在后台线程解析AST树, 防止频繁更新的时候掉帧
+    // 监听内容变化，在后台线程解析 AST 树（flowOn Default + mapLatest conflate），防掉帧；
+    // 解析结果写入缓存，供后续重组 / 滚回直接命中。
     val updatedContent by rememberUpdatedState(content)
     LaunchedEffect(Unit) {
         snapshotFlow { updatedContent }
             .distinctUntilChanged()
-            .mapLatest { parseMarkdown(it) }
+            .mapLatest { MarkdownParseCache.getOrPut(it) { parseMarkdown(it) } }
             .catch { exception -> exception.printStackTrace() }
             .flowOn(Dispatchers.Default)
             .collect { setData(it) }
     }
 
-    if (data.hasHtml) {
+    if (streaming) {
+        // 流式降级渲染：生成中的消息每帧 content 真变、markdown 树真变，
+        // 长回答时主线程每帧重组整棵 markdown 子树 = "生成时顿"的根因。
+        // 降级渲染成本比几百节点的 markdown 树低一个数量级。
+        // 上方后台 LaunchedEffect 仍 parse 预热 data，故 streaming→false 切完整分支时
+        // data 已就绪，零 parse 零跳变卡顿。
+        // 块级结构化降级：按行分类 代码块/标题/引用/列表/段落，样式与最终渲染对齐。
+        // markdown 追加式 → 已渲染块参数不变，Compose 智能跳过重组；每帧成本 O(n) 行扫描。
+        // 行内格式：闭合标记（code/bold/italic）流式中即可见且与最终渲染样式一致，
+        // 未闭合标记按字面量显示 → 结束切完整渲染零跳变。
+        // 流式降级块计算从组合阶段（主线程）移到后台：splitStreamingBlocks
+        // 每 chunk 对全文做 O(行数) 正则扫描，长回答时主线程每帧可达数 ms。
+        // 首帧同步算一次（生成刚开始内容短，成本低），此后 LaunchedEffect 后台 mapLatest
+        // 计算，组合只消费 state → 主线程零正则。
+        var streamBlocks by remember { mutableStateOf(splitStreamingBlocks(content)) }
+        val updatedStreamContent by rememberUpdatedState(content)
+        LaunchedEffect(Unit) {
+            snapshotFlow { updatedStreamContent }
+                .distinctUntilChanged()
+                .mapLatest { splitStreamingBlocks(it) }
+                .flowOn(Dispatchers.Default)
+                .collect { streamBlocks = it }
+        }
+        val fontSizeRatio = LocalSettings.current.displaySetting.fontSizeRatio
+        ProvideTextStyle(style) {
+            Column(
+                modifier = modifier.padding(horizontal = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                streamBlocks.forEach { block ->
+                    when (block.kind) {
+                        StreamBlockKind.CODE -> {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            ) {
+                                Text(
+                                    text = block.text,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = (style.fontSize * 0.9f).let { if (it.isUnspecified) 13.sp else it },
+                                    lineHeight = if (style.lineHeight.isUnspecified) 18.sp else style.lineHeight,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                )
+                            }
+                        }
+
+                        StreamBlockKind.HEADING -> {
+                            Text(
+                                text = styleStreamingLine(block.text),
+                                style = HeaderStyle.fromLevel(block.headingLevel, fontSizeRatio),
+                            )
+                        }
+
+                        StreamBlockKind.QUOTE -> {
+                            // 与最终 BLOCK_QUOTE 对齐：斜体 + 左侧竖线 + 浅背景（单级简化）
+                            val borderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                            val bgColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .drawWithContent {
+                                        drawContent()
+                                        drawRect(color = bgColor, size = size)
+                                        drawRect(color = borderColor, size = Size(10f, size.height))
+                                    }
+                                    .padding(8.dp),
+                            ) {
+                                Text(text = block.text, fontStyle = FontStyle.Italic)
+                            }
+                        }
+
+                        StreamBlockKind.LIST -> {
+                            val prefix = if (block.listOrdered) "${block.listIndex}. " else "• "
+                            Text(text = "$prefix${block.text}")
+                        }
+
+                        StreamBlockKind.PARAGRAPH -> {
+                            Text(text = block.text)
+                        }
+                    }
+                }
+            }
+        }
+    } else if (data.hasHtml) {
         MarkdownNew(
             content = content,
             modifier = modifier,

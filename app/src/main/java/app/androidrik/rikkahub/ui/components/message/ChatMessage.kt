@@ -364,7 +364,8 @@ private fun MessagePartsBlock(
                         val textContent = @Composable {
                             if (role == MessageRole.USER) {
                                 Surface(
-                                    modifier = Modifier.animateContentSize(),
+                                    // loading 时禁用尺寸动画：持续触发布局动画与内容重组叠加是卡顿源
+                                    modifier = if (loading) Modifier else Modifier.animateContentSize(),
                                     shape = RoundedCornerShape(16.dp),
                                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = settings.displaySetting.bubbleOpacity),
                                     onClick = { onUserMessageClick?.invoke() },
@@ -376,14 +377,15 @@ private fun MessagePartsBlock(
                                                 scope = AssistantAffectScope.USER,
                                                 visual = true,
                                             ),
-                                            onClickCitation = handleClickCitation
+                                            onClickCitation = handleClickCitation,
+                                            streaming = loading,
                                         )
                                     }
                                 }
                             } else {
                                 if (settings.displaySetting.showAssistantBubble) {
                                     Surface(
-                                        modifier = Modifier.animateContentSize(),
+                                        modifier = if (loading) Modifier else Modifier.animateContentSize(),
                                         shape = RoundedCornerShape(16.dp),
                                         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
                                     ) {
@@ -395,6 +397,7 @@ private fun MessagePartsBlock(
                                                     visual = true,
                                                 ),
                                                 onClickCitation = handleClickCitation,
+                                                streaming = loading,
                                             )
                                         }
                                     }
@@ -406,8 +409,8 @@ private fun MessagePartsBlock(
                                             visual = true,
                                         ),
                                         onClickCitation = handleClickCitation,
-                                        modifier = Modifier
-                                            .animateContentSize()
+                                        streaming = loading,
+                                        modifier = if (loading) Modifier else Modifier.animateContentSize()
                                     )
                                 }
                             }
