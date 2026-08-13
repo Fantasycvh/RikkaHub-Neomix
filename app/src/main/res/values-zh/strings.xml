@@ -283,6 +283,8 @@
   <string name="chat_page_export_image">导出为图片</string>
   <string name="chat_page_export_image_desc">将对话导出为PNG图片</string>
   <string name="chat_page_export_image_expand_reasoning">展开思维过程</string>
+  <string name="chat_page_share_conversation">分享对话</string>
+  <string name="chat_page_export_include_all_versions">包含全部版本（含分支/编辑历史）</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">将对话导出为markdown文件</string>
   <string name="chat_page_export_share_via">分享方式</string>

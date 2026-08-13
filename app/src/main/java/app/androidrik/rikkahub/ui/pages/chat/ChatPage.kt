@@ -63,6 +63,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
+import me.rerere.hugeicons.stroke.Share01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findProvider
@@ -283,6 +284,7 @@ private fun ChatPageContent(
     val hazeState = rememberHazeState()
     val assistant = setting.getCurrentAssistant()
     var showFilesSheet by remember { mutableStateOf(false) }
+    var showExportSheet by remember { mutableStateOf(false) }
 
     val completionProviders = remember(assistant.workspaceId, conversation.workspaceCwd, workspaceRepository) {
         assistant.workspaceId?.let { workspaceId ->
@@ -316,6 +318,9 @@ private fun ChatPageContent(
                     },
                     onClickMenu = {
                         previewMode = !previewMode
+                    },
+                    onExport = {
+                        showExportSheet = true
                     },
                     onUpdateTitle = {
                         vm.updateTitle(it)
@@ -497,6 +502,15 @@ private fun ChatPageContent(
                 assistant = assistant,
                 vm = vm,
                 onDismiss = { showFilesSheet = false },
+            )
+        }
+
+        if (showExportSheet) {
+            ChatExportSheet(
+                visible = showExportSheet,
+                onDismissRequest = { showExportSheet = false },
+                conversation = conversation,
+                selectedMessages = conversation.currentMessages,
             )
         }
     }
@@ -716,6 +730,7 @@ private fun TopBar(
     previewMode: Boolean,
     onClickMenu: () -> Unit,
     onNewChat: () -> Unit,
+    onExport: () -> Unit,
     onUpdateTitle: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -780,6 +795,14 @@ private fun TopBar(
                 }
             ) {
                 Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
+            }
+
+            IconButton(
+                onClick = {
+                    onExport()
+                }
+            ) {
+                Icon(HugeIcons.Share01, "Export Conversation")
             }
 
             IconButton(

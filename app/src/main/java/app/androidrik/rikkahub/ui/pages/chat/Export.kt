@@ -120,6 +120,12 @@ fun ChatExportSheet(
     val density = LocalDensity.current
     val settings = LocalSettings.current
     var imageExportOptions by remember { mutableStateOf(ImageExportOptions()) }
+    var includeAllVersions by remember { mutableStateOf(false) }
+    // 导出的消息：默认当前选中版本（多选流程传筛选后消息）；开启后含分支/编辑历史的全部版本
+    val exportMessages = remember(includeAllVersions, conversation, selectedMessages) {
+        if (includeAllVersions) conversation.messageNodes.flatMap { it.messages }
+        else selectedMessages
+    }
 
     if (visible) {
         ModalBottomSheet(
@@ -135,11 +141,25 @@ fun ChatExportSheet(
             ) {
                 Text(text = stringResource(id = R.string.chat_page_export_format))
 
+                ListItem(
+                    headlineContent = {
+                        Text(stringResource(R.string.chat_page_export_include_all_versions))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = includeAllVersions,
+                            onCheckedChange = { includeAllVersions = it }
+                        )
+                    }
+                )
+
+                HorizontalDivider()
+
                 val markdownSuccessMessage =
                     stringResource(id = R.string.chat_page_export_success, "Markdown")
                 OutlinedCard(
                     onClick = {
-                        exportToMarkdown(context, conversation, selectedMessages)
+                        exportToMarkdown(context, conversation, exportMessages)
                         toaster.show(
                             markdownSuccessMessage,
                             type = ToastType.Success
@@ -208,7 +228,7 @@ fun ChatExportSheet(
                                                 scope = scope,
                                                 density = density,
                                                 conversation = conversation,
-                                                messages = selectedMessages,
+                                                messages = exportMessages,
                                                 settings = settings,
                                                 options = imageExportOptions
                                             )

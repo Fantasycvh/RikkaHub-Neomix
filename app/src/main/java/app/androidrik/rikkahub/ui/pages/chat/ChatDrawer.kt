@@ -151,6 +151,10 @@ fun ChatDrawerContent(
     var showMoveToFolderSheet by remember { mutableStateOf(false) }
     var conversationToMoveFolder by remember { mutableStateOf<Conversation?>(null) }
     val folderSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
+
+    // 对话分享/导出状态
+    var showExportSheet by remember { mutableStateOf(false) }
+    var conversationToShare by remember { mutableStateOf<Conversation?>(null) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var folderToRename by remember { mutableStateOf<Folder?>(null) }
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
@@ -271,6 +275,10 @@ fun ChatDrawerContent(
                 onMoveToFolder = {
                     conversationToMoveFolder = it
                     showMoveToFolderSheet = true
+                },
+                onShare = {
+                    conversationToShare = it
+                    showExportSheet = true
                 }
             )
 
@@ -664,6 +672,20 @@ fun ChatDrawerContent(
                 }
             }
         }
+    }
+
+    // 对话分享/导出 Bottom Sheet（列表页长按入口）
+    if (showExportSheet && conversationToShare != null) {
+        val shareConversation = conversationToShare!!
+        ChatExportSheet(
+            visible = showExportSheet,
+            onDismissRequest = {
+                showExportSheet = false
+                conversationToShare = null
+            },
+            conversation = shareConversation,
+            selectedMessages = shareConversation.currentMessages,
+        )
     }
 }
 

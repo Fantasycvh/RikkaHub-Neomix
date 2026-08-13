@@ -7,6 +7,7 @@ import me.rerere.hugeicons.stroke.Pin
 import me.rerere.hugeicons.stroke.PinOff
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.Share01
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -83,7 +84,8 @@ fun ColumnScope.ConversationList(
     onRegenerateTitle: (Conversation) -> Unit = {},
     onPin: (Conversation) -> Unit = {},
     onMoveToAssistant: (Conversation) -> Unit = {},
-    onMoveToFolder: (Conversation) -> Unit = {}
+    onMoveToFolder: (Conversation) -> Unit = {},
+    onShare: (Conversation) -> Unit = {}
 ) {
     var hasScrolledToCurrent by remember(current.id) { mutableStateOf(false) }
 
@@ -160,6 +162,7 @@ fun ColumnScope.ConversationList(
                         onPin = onPin,
                         onMoveToAssistant = onMoveToAssistant,
                         onMoveToFolder = onMoveToFolder,
+                        onShare = onShare,
                         modifier = Modifier.animateItem()
                     )
                 }
@@ -231,6 +234,7 @@ private fun ConversationItem(
     onPin: (Conversation) -> Unit = {},
     onMoveToAssistant: (Conversation) -> Unit = {},
     onMoveToFolder: (Conversation) -> Unit = {},
+    onShare: (Conversation) -> Unit = {},
     onClick: (Conversation) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -346,6 +350,19 @@ private fun ConversationItem(
                     },
                     leadingIcon = {
                         Icon(HugeIcons.Folder01, null)
+                    }
+                )
+
+                DropdownMenuItem(
+                    text = {
+                        Text(stringResource(R.string.chat_page_share_conversation))
+                    },
+                    onClick = {
+                        onShare(conversation)
+                        showDropdownMenu = false
+                    },
+                    leadingIcon = {
+                        Icon(HugeIcons.Share01, null)
                     }
                 )
 
