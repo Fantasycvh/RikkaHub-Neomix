@@ -76,6 +76,7 @@ import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
+import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.replaceRegexes
 import app.androidrik.rikkahub.data.model.toMessageNode
 import app.androidrik.rikkahub.data.repository.ConversationRepository
@@ -92,6 +93,23 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatService"
+
+/**
+ * 将压缩结果合并到最新会话状态，而不是用压缩开始时的快照整体覆盖。
+ *
+ * compressConversation 要跑多个 LLM 请求（长对话可达数十秒~数分钟），期间用户可能继续
+ * 发消息/生成回复（追加在会话末尾）。旧实现用快照 copy 后整体 saveConversation，会把
+ * 压缩期间的新消息连内存带库一起覆盖丢失。此函数保留快照之后追加的新节点，并基于
+ * latest 而非快照做 copy，避免把期间更新的 title/folderId 等字段回滚成旧值。
+ */
+fun mergeCompressedConversation(
+    snapshot: Conversation,
+    latest: Conversation,
+    compressedNodes: List<MessageNode>,
+): Conversation = latest.copy(
+    messageNodes = compressedNodes + latest.messageNodes.drop(snapshot.messageNodes.size),
+    chatSuggestions = emptyList(),
+)
 
 internal fun backgroundTextGenerationParams(
     model: Model,
@@ -968,10 +986,9 @@ class ChatService(
             }
             addAll(messagesToKeep.map { it.toMessageNode() })
         }
-        val newConversation = conversation.copy(
-            messageNodes = newMessageNodes,
-            chatSuggestions = emptyList(),
-        )
+        // 合并最新状态而非整体覆盖：保留压缩期间用户追加的新节点（见 mergeCompressedConversation）
+        val latest = getConversationFlow(conversationId).value
+        val newConversation = mergeCompressedConversation(conversation, latest, newMessageNodes)
 
         saveConversation(conversationId, newConversation)
     }

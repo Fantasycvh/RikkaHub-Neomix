@@ -34,7 +34,15 @@ class HistoryVM(
 
     fun deleteConversation(conversation: Conversation) {
         viewModelScope.launch {
-            conversationRepo.deleteConversation(conversation)
+            // 历史页滑动删除有撤销：先只删 DB（保留附件文件），
+            // 撤销窗口结束未撤销时再由页面调用 deleteConversationFiles 清理文件。
+            conversationRepo.deleteConversation(conversation, deleteFiles = false)
+        }
+    }
+
+    fun deleteConversationFiles(conversation: Conversation) {
+        viewModelScope.launch {
+            conversationRepo.deleteConversationFiles(conversation)
         }
     }
 

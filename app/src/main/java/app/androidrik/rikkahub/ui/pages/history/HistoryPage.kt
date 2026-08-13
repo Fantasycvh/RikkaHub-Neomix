@@ -125,6 +125,9 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                             )
                             if (result == SnackbarResult.ActionPerformed) {
                                 vm.restoreConversation(fullConversation)
+                            } else {
+                                // 撤销窗口结束：清理保留的附件文件，避免磁盘泄漏
+                                vm.deleteConversationFiles(fullConversation)
                             }
                         }
                     },

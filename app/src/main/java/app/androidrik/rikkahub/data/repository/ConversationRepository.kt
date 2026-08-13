@@ -305,7 +305,7 @@ class ConversationRepository(
         messageFtsManager.indexConversation(conversation)
     }
 
-    suspend fun deleteConversation(conversation: Conversation) {
+    suspend fun deleteConversation(conversation: Conversation, deleteFiles: Boolean = true) {
         // 获取完整的 Conversation（包含 messageNodes）以正确清理文件
         val fullConversation = if (conversation.messageNodes.isEmpty()) {
             getConversationById(conversation.id) ?: conversation
@@ -319,7 +319,15 @@ class ConversationRepository(
                 conversationToConversationEntity(conversation)
             )
         }
-        filesManager.deleteChatFiles(fullConversation.files)
+        // 历史页撤销场景：deleteFiles=false 时保留附件文件，
+        // 撤销窗口结束后由调用方清理（否则撤销恢复的对话附件会永久丢失）。
+        if (deleteFiles) {
+            filesManager.deleteChatFiles(fullConversation.files)
+        }
+    }
+
+    suspend fun deleteConversationFiles(conversation: Conversation) {
+        filesManager.deleteChatFiles(conversation.files)
     }
 
     suspend fun searchMessages(
