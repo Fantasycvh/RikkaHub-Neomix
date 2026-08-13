@@ -1,55 +1,43 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
-import android.graphics.BitmapFactory
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import android.webkit.JavascriptInterface
-import androidx.activity.compose.LocalActivity
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.dokar.sonner.ToastType
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Download01
-import me.rerere.hugeicons.stroke.View
-import app.androidrik.rikkahub.R
-import app.androidrik.rikkahub.Screen
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.webview.TIKZ_ASSET_URL
 import app.androidrik.rikkahub.ui.components.webview.WebView
 import app.androidrik.rikkahub.ui.components.webview.rememberWebViewState
-import app.androidrik.rikkahub.ui.context.LocalNavController
-import app.androidrik.rikkahub.ui.context.LocalToaster
-import app.androidrik.rikkahub.utils.exportImage
+import app.androidrik.rikkahub.utils.PdfToBitmap
 
 /**
- * 通过 WebView + 原版 tikzjax（主线程 wasm 编译 TikZ→SVG）渲染 AI 输出的 TikZ 图表代码。
+ * 通过 WebView + Tectonic wasm（XeTeX）渲染 AI 输出的 TikZ 图表代码。
  *
  * 触发形式：
  * - ```tikz / ```tikzpicture / ```tikzcd / ```tikztiming 代码围栏
  * - $$...$$ 块公式内嵌的 \begin{tikzpicture} / \begin{tikzcd} / \begin{axis} / \xymatrix / \begin{CD}
  *
- * 原理：原版 kisonecat/tikzjax 是**纯主线程架构**（无 Web Worker）——load() fetch tex.wasm +
- * core.dump.gz，tex() 主线程 WebAssembly.instantiate 直接跑 wasm，process() 把 <script type="text/tikz">
- * 替换为 SVG。与 1.0.2 fork（Comlink worker）不同，主线程无 blob/origin/worker 竞态问题，
- * 在受限 WebView 环境稳定。
+ * 原理：Tectonic（XeTeX + xdvipdfmx）编译 TikZ → PDF，Android PdfRenderer 渲染为 Bitmap。
+ * 支持中文：XeTeX 原生 UTF-8 + 方括号字体语法 \font"[simhei.ttf]" 注入字体，免 fontspec/xeCJK。
  *
- * 加载方式：WebViewAssetLoader（真实 https origin appassets.androidplatform.net）+ loadUrl 加载
- * assets/html/tikz.html 模板，TikZ 代码经 base64url 放 URL fragment，模板 JS 解码后动态注入。
+ * 流程：WebView 加载 assets/html/tecton.html#fragment（真实 https origin）→ JS 解 bundle +
+ * 注入 simhei.ttf + Tectonic 编译 → onPdf(base64) 回调 → PdfToBitmap 渲染 → 展示 ImageBitmap。
  */
 @Composable
 fun TikzJax(
@@ -57,62 +45,65 @@ fun TikzJax(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val activity = LocalActivity.current
-    val toaster = LocalToaster.current
-    val navController = LocalNavController.current
 
-    var svgHeight by remember(code) { mutableStateOf(0f) }
+    var pdfBitmap by remember(code) { mutableStateOf<ImageBitmap?>(null) }
     var errorMessage by remember(code) { mutableStateOf<String?>(null) }
+    var isRendering by remember(code) { mutableStateOf(true) }
+
+    // JS 回调（@JavascriptInterface）运行在 JavaBridge 线程，Compose state 必须在主线程更新。
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+
+    // 渲染分辨率对齐屏幕物理宽度，避免 FillWidth 拉伸时模糊。
+    val screenWidthPx = remember { context.resources.displayMetrics.widthPixels }
 
     val jsInterface = remember(code) {
         TikzJaxInterface(
-            onSvgHeight = { heightPx -> svgHeight = heightPx },
-            onError = { msg -> errorMessage = msg },
-            onExportImage = { base64Image ->
-                runCatching {
-                    activity?.let {
-                        try {
-                            val imageBytes = Base64.decode(base64Image, Base64.DEFAULT)
-                            val bitmap =
-                                BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-                            context.exportImage(
-                                it,
-                                bitmap,
-                                "tikz_${System.currentTimeMillis()}.png"
-                            )
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+            onPdf = { base64Pdf ->
+                // 解析 + PdfRenderer 渲染放回调线程（阻塞但非 UI 线程），只把 state 更新切主线程。
+                val pdfBytes = runCatching {
+                    Base64.decode(base64Pdf, Base64.DEFAULT)
+                }.getOrNull()
+                val bitmap = pdfBytes?.let { PdfToBitmap.renderFirstPage(it, screenWidthPx) }
+                val error = when {
+                    pdfBytes == null -> "PDF 解码失败"
+                    bitmap == null -> "PDF 渲染失败"
+                    else -> null
+                }
+                mainHandler.post {
+                    if (error != null) {
+                        errorMessage = error
+                    } else {
+                        pdfBitmap = bitmap!!.asImageBitmap()
                     }
-                    toaster.show(
-                        context.getString(R.string.mermaid_export_success),
-                        type = ToastType.Success
-                    )
-                }.onFailure {
-                    it.printStackTrace()
-                    toaster.show(
-                        context.getString(R.string.mermaid_export_failed),
-                        type = ToastType.Error
-                    )
+                    isRendering = false
+                }
+            },
+            onProgress = { msg ->
+                // 进度回调，暂不显示（避免闪烁），可后续用于 loading 状态
+            },
+            onError = { msg ->
+                mainHandler.post {
+                    errorMessage = msg
+                    isRendering = false
                 }
             }
         )
     }
 
-    // base64url 编码 TikZ 代码（URL-safe，无 padding），放 URL fragment
+    // base64url 编码 TikZ 代码，放 URL fragment
     val fragment = remember(code) {
         Base64.encodeToString(
             code.toByteArray(Charsets.UTF_8),
             Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
         )
     }
-    val url = remember(fragment) { "$TIKZ_ASSET_URL/html/tikz.html#$fragment" }
+    val url = remember(fragment) { "$TIKZ_ASSET_URL/html/tecton.html#$fragment" }
 
     val webViewState = rememberWebViewState(
         url = url,
         interfaces = mapOf("AndroidInterface" to jsInterface),
         settings = {
-            builtInZoomControls = true
+            builtInZoomControls = false
             displayZoomControls = false
         }
     )
@@ -121,74 +112,56 @@ fun TikzJax(
         modifier = modifier
     ) {
         if (errorMessage != null) {
-            // 渲染失败时显示错误，仍保留原文可读
-            androidx.compose.material3.Text(
-                text = errorMessage!!,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.error,
-                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+            Text(
+                text = "TikZ 渲染失败: $errorMessage",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(8.dp),
             )
         }
 
+        val bitmap = pdfBitmap
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(vertical = 4.dp),
+                contentScale = ContentScale.FillWidth,
+            )
+        } else if (isRendering) {
+            Text(
+                text = "渲染中...",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(8.dp),
+            )
+        }
+
+        // WebView 保持极小尺寸以执行 JS（不可见，只做编译）
         WebView(
             state = webViewState,
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .height(if (svgHeight > 0f) svgHeight.dp else 40.dp),
+            modifier = Modifier.height(1.dp),
         )
-
-        if (activity != null) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                IconButton(
-                    onClick = {
-                        navController.navigate(Screen.WebView(url = url))
-                    },
-                ) {
-                    Icon(
-                        HugeIcons.View,
-                        contentDescription = "Preview"
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        webViewState.webView?.evaluateJavascript(
-                            "exportSvgToPng();",
-                            null
-                        )
-                    },
-                ) {
-                    Icon(
-                        HugeIcons.Download01,
-                        contentDescription = stringResource(R.string.mermaid_export)
-                    )
-                }
-            }
-        }
     }
 }
 
 private class TikzJaxInterface(
-    private val onSvgHeight: (Float) -> Unit,
+    private val onPdf: (String) -> Unit,
+    private val onProgress: (String) -> Unit,
     private val onError: (String) -> Unit,
-    private val onExportImage: (String) -> Unit,
 ) {
     @JavascriptInterface
-    fun onSvgHeight(heightPx: Float) {
-        onSvgHeight(heightPx)
+    fun onPdf(base64Pdf: String) {
+        onPdf(base64Pdf)
+    }
+
+    @JavascriptInterface
+    fun onProgress(message: String) {
+        onProgress(message)
     }
 
     @JavascriptInterface
     fun onError(message: String) {
         onError(message)
-    }
-
-    @JavascriptInterface
-    fun exportImage(base64Image: String) {
-        onExportImage(base64Image)
     }
 }
