@@ -47,7 +47,9 @@ internal object HljsFixtures {
             val expectedFile = File(directory, "${source.nameWithoutExtension}.tokens")
             assertTrue("missing golden tokens for ${source.name}", expectedFile.isFile)
 
-            val code = source.readText()
+            // Windows checkout（core.autocrlf=true）会把 fixture 源文件与 golden tokens
+            // 都检出为 CRLF，而高亮输出按 LF 连接；两侧统一规范化为 LF，避免行尾差异误报。
+            val code = source.readText().replace("\r\n", "\n")
             val actual = engine.highlight(code, language)
                 ?: error("language '$language' is not registered with the engine")
 
@@ -58,7 +60,7 @@ internal object HljsFixtures {
             )
             assertEquals(
                 "highlight.js parity for $language/${source.name}",
-                expectedFile.readText().trimEnd('\n'),
+                expectedFile.readText().replace("\r\n", "\n").trimEnd('\n'),
                 actual.joinToString(separator = "\n") { it.encode() },
             )
         }
