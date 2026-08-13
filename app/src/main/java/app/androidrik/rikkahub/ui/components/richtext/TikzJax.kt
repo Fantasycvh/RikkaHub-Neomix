@@ -30,7 +30,8 @@ import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.View
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
-import app.androidrik.rikkahub.ui.components.webview.TIKZ_ASSET_URL
+import app.androidrik.rikkahub.ui.components.webview.WEB_VIEW_ASSET_URL
+import app.androidrik.rikkahub.ui.components.webview.WEB_VIEW_BASE_URL
 import app.androidrik.rikkahub.ui.components.webview.WebView
 import app.androidrik.rikkahub.ui.components.webview.WebViewContentCache
 import app.androidrik.rikkahub.ui.components.webview.rememberWebViewState
@@ -105,7 +106,7 @@ fun TikzJax(
 
     val webViewState = rememberWebViewState(
         data = html,
-        baseUrl = TIKZ_ASSET_URL,
+        baseUrl = WEB_VIEW_BASE_URL,
         mimeType = "text/html",
         encoding = "UTF-8",
         interfaces = mapOf(
@@ -201,7 +202,7 @@ private fun buildTikzHtml(
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <script src="${TIKZ_ASSET_URL}/html/tikzjax.min.js"></script>
+            <script src="${WEB_VIEW_ASSET_URL}/html/tikzjax.min.js"></script>
             <style>
                 body {
                     margin: 0;
