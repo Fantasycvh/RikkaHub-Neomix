@@ -27,11 +27,23 @@
 <body>
     <div id="tikz-container"></div>
     <script>
+        function report(msg) {
+            if (window.AndroidInterface) AndroidInterface.onError(msg);
+        }
+
+        // 全局错误捕获，让 Android 端能看到具体失败点
+        window.addEventListener('error', function (e) {
+            report('error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno);
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+            report('rejection: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+        });
+
         // 读 URL fragment（base64url 编码的 UTF-8 TikZ 代码），动态注入 <script type="text/tikz">
         (function () {
             var hash = location.hash.slice(1);
             if (!hash) {
-                if (window.AndroidInterface) AndroidInterface.onError('empty');
+                report('empty hash');
                 return;
             }
             try {
@@ -46,9 +58,19 @@
                 script.textContent = code;
                 document.getElementById('tikz-container').appendChild(script);
             } catch (e) {
-                if (window.AndroidInterface) AndroidInterface.onError(e.message);
+                report('decode: ' + e.message);
             }
         })();
+
+        // 渲染超时检测：15 秒后若仍无 svg，报告当前状态
+        setTimeout(function () {
+            var svg = document.querySelector('#tikz-container svg');
+            if (!svg) {
+                var hasTikzJax = typeof window.TikzJax !== 'undefined';
+                var scripts = document.querySelectorAll('script[type="text/tikz"]').length;
+                report('timeout: svg=0 tikzjax=' + hasTikzJax + ' scripts=' + scripts);
+            }
+        }, 15000);
 
         // 轮询等待原版 tikzjax 渲染出 svg，回传实际高度驱动 WebView 尺寸自适应
         (function poll() {

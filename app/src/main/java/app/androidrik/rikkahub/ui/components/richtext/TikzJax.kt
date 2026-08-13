@@ -31,7 +31,6 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.webview.TIKZ_ASSET_URL
 import app.androidrik.rikkahub.ui.components.webview.WebView
-import app.androidrik.rikkahub.ui.components.webview.WebViewContentCache
 import app.androidrik.rikkahub.ui.components.webview.rememberWebViewState
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -147,8 +146,7 @@ fun TikzJax(
             ) {
                 IconButton(
                     onClick = {
-                        val contentId = WebViewContentCache.store(context.cacheDir, url)
-                        navController.navigate(Screen.WebView(contentId = contentId))
+                        navController.navigate(Screen.WebView(url = url))
                     },
                 ) {
                     Icon(
