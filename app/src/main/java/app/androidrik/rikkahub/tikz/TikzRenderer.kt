@@ -52,6 +52,7 @@ object TikzRenderer {
         val arrowEnd: ArrowTip? = null,
         val shape: NodeShape = NodeShape.RECTANGLE,
         val rounded: Boolean = false,
+        val roundedRadius: Double = 5.0,
     )
 
     private sealed interface Element
@@ -504,6 +505,11 @@ object TikzRenderer {
                 token == "diamond" -> style = style.copy(shape = NodeShape.DIAMOND)
                 token == "star" -> style = style.copy(shape = NodeShape.STAR)
                 token == "rounded corners" -> style = style.copy(rounded = true)
+                token.startsWith("rounded corners=") -> {
+                    val r = token.substringAfter("=").removeSuffix("pt").removeSuffix("cm").removeSuffix("mm")
+                        .toDoubleOrNull() ?: 5.0
+                    style = style.copy(rounded = true, roundedRadius = r)
+                }
                 else -> {
                     // 纯颜色名 / #hex 作为 stroke
                     val c = resolveColor(token)
@@ -597,8 +603,7 @@ object TikzRenderer {
 
     private fun renderDraw(el: DrawElement, sx: (Double) -> Double, sy: (Double) -> Double): String {
         val style = el.style
-        val strokeJoin = if (style.rounded) " stroke-linejoin=\"round\" stroke-linecap=\"round\"" else ""
-        val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${style.strokeWidth}\"$strokeJoin"
+        val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${style.strokeWidth}\""
         val dash = if (style.dashed) " stroke-dasharray=\"5,5\"" else ""
         val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
         val rectRx = if (style.rounded) "8" else "2"
@@ -616,19 +621,8 @@ object TikzRenderer {
                 """<rect x="${fmt(sx(x))}" y="${fmt(sy(yTop))}" width="${fmt(w * SCALE)}" height="${fmt(h * SCALE)}" rx="$rectRx" $stroke$fill$dash/>"""
             }
             else -> {
-                val d = buildString {
-                    el.segs.forEach { seg ->
-                        when (seg) {
-                            is MoveTo -> append("M ").append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
-                            is LineTo -> append(" L ").append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
-                            is QuadTo -> append(" Q ").append(fmt(sx(seg.c.x))).append(',').append(fmt(sy(seg.c.y)))
-                                .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
-                            is CubicTo -> append(" C ").append(fmt(sx(seg.c1.x))).append(',').append(fmt(sy(seg.c1.y)))
-                                .append(' ').append(fmt(sx(seg.c2.x))).append(',').append(fmt(sy(seg.c2.y)))
-                                .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
-                        }
-                    }
-                }
+                val d = if (style.rounded) renderRoundedD(el.segs, style.roundedRadius, sx, sy)
+                        else renderPlainD(el.segs, sx, sy)
                 val sb = StringBuilder()
                 sb.append("""<path d="$d" $stroke$fill$dash/>""")
                 // 箭头：AndroidSVG 不支持 <marker>，手动算几何直接画 polygon（尖在端点，往回推 L，垂直扩 W）
@@ -658,6 +652,60 @@ object TikzRenderer {
             is CubicTo -> it.p
         }
     }
+
+    /** 普通路径渲染（无圆角） */
+    private fun renderPlainD(segs: List<Seg>, sx: (Double) -> Double, sy: (Double) -> Double): String = buildString {
+        segs.forEach { seg ->
+            when (seg) {
+                is MoveTo -> append("M ").append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
+                is LineTo -> append(" L ").append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
+                is QuadTo -> append(" Q ").append(fmt(sx(seg.c.x))).append(',').append(fmt(sy(seg.c.y)))
+                    .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
+                is CubicTo -> append(" C ").append(fmt(sx(seg.c1.x))).append(',').append(fmt(sy(seg.c1.y)))
+                    .append(' ').append(fmt(sx(seg.c2.x))).append(',').append(fmt(sy(seg.c2.y)))
+                    .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
+            }
+        }
+    }
+
+    /**
+     * 折线几何圆角（rounded corners）：每个内角处，沿两条边各缩进 r，
+     * 用二次贝塞尔连接（控制点 = 角点本身），实现真正倒角（非 stroke-linejoin 近似）。
+     * 边短于 2r 时收缩 r = min(r, 边长/2)；含曲线段时退回普通渲染。
+     */
+    private fun renderRoundedD(segs: List<Seg>, r: Double, sx: (Double) -> Double, sy: (Double) -> Double): String {
+        val purePolyline = segs.all { it is MoveTo || it is LineTo }
+        val pts = pathPoints(segs)
+        if (!purePolyline || pts.size < 3) {
+            return renderPlainD(segs, sx, sy)
+        }
+        return buildString {
+            append("M ").append(fmt(sx(pts[0].x))).append(',').append(fmt(sy(pts[0].y)))
+            for (i in 1 until pts.size - 1) {
+                val p0 = pts[i - 1]
+                val p1 = pts[i]
+                val p2 = pts[i + 1]
+                val inDx = p1.x - p0.x; val inDy = p1.y - p0.y
+                val inLen = kotlin.math.sqrt(inDx * inDx + inDy * inDy)
+                val outDx = p2.x - p1.x; val outDy = p2.y - p1.y
+                val outLen = kotlin.math.sqrt(outDx * outDx + outDy * outDy)
+                if (inLen < 1e-9 || outLen < 1e-9) {
+                    append(" L ").append(fmt(sx(p1.x))).append(',').append(fmt(sy(p1.y)))
+                    continue
+                }
+                val rr = minOf(r, inLen / 2, outLen / 2)
+                val ux = inDx / inLen; val uy = inDy / inLen
+                val vx = outDx / outLen; val vy = outDy / outLen
+                val ax = p1.x - ux * rr; val ay = p1.y - uy * rr
+                val bx = p1.x + vx * rr; val by = p1.y + vy * rr
+                append(" L ").append(fmt(sx(ax))).append(',').append(fmt(sy(ay)))
+                append(" Q ").append(fmt(sx(p1.x))).append(',').append(fmt(sy(p1.y)))
+                    .append(' ').append(fmt(sx(bx))).append(',').append(fmt(sy(by)))
+            }
+            append(" L ").append(fmt(sx(pts.last().x))).append(',').append(fmt(sy(pts.last().y)))
+        }
+    }
+
     /** 末段箭头：(尖, 指向线内的参考点)。直线用上一顶点，曲线用切线（Q: ctrl，C: c2） */
     private fun segmentArrowEnd(segs: List<Seg>): Pair<Point, Point>? {
         val last = segs.lastOrNull() ?: return null

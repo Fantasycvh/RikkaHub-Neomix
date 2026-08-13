@@ -336,10 +336,12 @@ class TikzRendererTest {
     }
 
     @Test
-    fun `rounded corners polyline uses round line join`() {
+    fun `rounded corners polyline uses geometric bezier chamfer`() {
         val code = """\begin{tikzpicture}\draw[rounded corners] (5,0) -- (6.5,1) -- (5,2.5);\end{tikzpicture}"""
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
-        assertTrue(result.getOrThrow().contains("stroke-linejoin=\"round\""))
+        val svg = result.getOrThrow()
+        assertTrue("missing geometric chamfer Q", svg.contains(" Q "))
+        assertTrue("should not use stroke-linejoin approximation", !svg.contains("stroke-linejoin"))
     }
 }
