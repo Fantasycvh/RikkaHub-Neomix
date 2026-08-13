@@ -383,11 +383,6 @@ class GenerationHandler(
                     appendLine()
                     append(tool.systemPrompt(model, messages))
                 }
-                // TikZ 渲染提示（启用时引导模型以 $$...$$ 块输出图表，触发 MathBlock 渲染）
-                if (settings.displaySetting.enableDiagramRendering) {
-                    appendLine()
-                    append("Use \\begin{tikzcd}...\\end{tikzcd} inside $$...$$ for diagrams. They render as vector graphics inline.")
-                }
             }
             if (system.isNotBlank()) add(UIMessage.system(prompt = system))
             addAll(messages.limitContext(assistant.contextMessageLimit))

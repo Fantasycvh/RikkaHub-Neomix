@@ -674,8 +674,6 @@
   <string name="setting_display_page_enable_blur_effect_desc">在聊天输入栏启用模糊效果</string>
   <string name="setting_display_page_enable_blur_effect_title">启用模糊效果</string>
   <string name="setting_display_page_enable_latex_rendering_desc">使用 LaTeX 语法渲染数学表达式和公式</string>
-  <string name="setting_display_page_enable_diagram_rendering_title">渲染 TikZ 图表</string>
-  <string name="setting_display_page_enable_diagram_rendering_desc">将 AI 输出的 tikzpicture / tikzcd 代码渲染为矢量图</string>
   <string name="setting_display_page_enable_latex_rendering_title">启用 LaTeX 渲染</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_desc">消息生成时启用触觉反馈效果</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_title">消息生成触觉反馈</string>
