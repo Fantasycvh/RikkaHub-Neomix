@@ -166,8 +166,8 @@ fun TikzJax(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                // 诊断：WebView 加载状态（定位"JS 未执行"）
-                val wvError = webViewState.loadError
+                // 诊断：WebView 加载状态（定位"JS 未执行"）。favicon 请求落在拦截器之外是正常噪音，忽略。
+                val wvError = webViewState.loadError?.takeUnless { it.contains("/favicon.ico") }
                 val wvUrl = webViewState.currentUrl
                 if (wvError != null) {
                     Text(
