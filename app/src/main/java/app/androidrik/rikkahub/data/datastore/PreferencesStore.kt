@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -71,6 +73,13 @@ class SettingsStore(
     context: Context,
     scope: AppScope,
 ) : KoinComponent {
+    /**
+     * 串行化 update(fn) 的读-改-写（D5）：并发调用基于同一快照做 fn 会 lost update
+     * （MCP syncTools 并发丢工具列表根因）。注意：只锁 update 方法，勿动 settingsFlowRaw
+     * 流链（turbo 曾把 Mutex 插进流链导致 205 个编译错误）。
+     */
+    private val updateMutex = Mutex()
+
     companion object {
         // 版本号
         val VERSION = intPreferencesKey("data_version")
@@ -420,7 +429,9 @@ class SettingsStore(
     }
 
     suspend fun update(fn: (Settings) -> Settings) {
-        update(fn(settingsFlow.value))
+        updateMutex.withLock {
+            update(fn(settingsFlow.value))
+        }
     }
 
     suspend fun updateAssistant(assistantId: Uuid) {

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.ui
 
+import android.provider.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,21 +33,25 @@ fun FloatingWindow(
     }
 
     DisposableEffect(context) {
-        window = FloatingX.install {
-            setTag(tag)
-            setContext(context)
-            setGravity(FxGravity.LEFT_OR_BOTTOM)
-            setOffsetXY(20f, -20f)
-            setEnableAnimation(true)
-            setLayoutView(ComposeView(context).apply {
-                setContent {
-                    RikkahubTheme {
-                        content()
+        // 无 SYSTEM_ALERT_WINDOW 权限时 FloatingX.show() 会抛 WindowManager SecurityException
+        // → TTS 朗读即崩溃。静默降级：未授权不显示悬浮窗（TTS 朗读本身不受影响）。
+        if (Settings.canDrawOverlays(context)) {
+            window = FloatingX.install {
+                setTag(tag)
+                setContext(context)
+                setGravity(FxGravity.LEFT_OR_BOTTOM)
+                setOffsetXY(20f, -20f)
+                setEnableAnimation(true)
+                setLayoutView(ComposeView(context).apply {
+                    setContent {
+                        RikkahubTheme {
+                            content()
+                        }
                     }
-                }
-            })
+                })
+            }
+            if (visibility) window?.show() else window?.hide()
         }
-        if (visibility) window?.show() else window?.hide()
         onDispose {
             window?.cancel()
         }

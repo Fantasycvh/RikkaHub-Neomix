@@ -2,6 +2,7 @@ package app.androidrik.rikkahub
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -197,13 +198,25 @@ class RouteActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * 兼容读取分享 Intent 的 EXTRA_STREAM：部分系统/App 以 Parcelable Uri 传递
+     * （getStringExtra 返回 null → 图片/文件丢失），多图分享时 Uri 在 clipData 而非 extra。
+     * 依次尝试：String extra → Parcelable Uri extra → clipData 第一项。
+     */
+    private fun Intent?.readShareStreamUri(): String? {
+        if (this == null) return null
+        return getStringExtra(Intent.EXTRA_STREAM)
+            ?: getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.toString()
+            ?: clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri?.toString()
+    }
+
     @Composable
     private fun ShareHandler(backStack: MutableList<NavKey>) {
         val shareIntent = remember {
             Intent().apply {
                 action = intent?.action
                 putExtra(Intent.EXTRA_TEXT, intent?.getStringExtra(Intent.EXTRA_TEXT))
-                putExtra(Intent.EXTRA_STREAM, intent?.getStringExtra(Intent.EXTRA_STREAM))
+                putExtra(Intent.EXTRA_STREAM, intent?.readShareStreamUri())
                 putExtra(Intent.EXTRA_PROCESS_TEXT, intent?.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT))
             }
         }

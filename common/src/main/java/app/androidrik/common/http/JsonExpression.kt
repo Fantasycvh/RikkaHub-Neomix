@@ -8,6 +8,9 @@ import kotlinx.serialization.json.JsonPrimitive
 
 // Public API
 
+/** 表达式最大长度：超长/深嵌套输入曾触发 StackOverflowError（Error 无法被 catch(Exception) 捕获） */
+private const val MAX_EXPRESSION_LENGTH = 512
+
 data class ParseResult(
     val success: Boolean,
     val expr: Expr? = null,
@@ -53,13 +56,20 @@ fun isJsonExprValid(input: String): Boolean = parseExpression(input).success
  * @return 作为字符串的评估值。
  */
 fun evaluateJsonExpr(input: String, root: JsonObject): String {
-    val lexer = Lexer(input)
-    val parser = Parser(lexer)
-    val expr = parser.parse()
-    val value = Evaluator(root).eval(expr)
-    return when (value) {
-        is Value.Str -> value.value
-        is Value.Num -> formatNumber(value.value)
+    if (input.length > MAX_EXPRESSION_LENGTH) return ""
+    return try {
+        val lexer = Lexer(input)
+        val parser = Parser(lexer)
+        val expr = parser.parse()
+        val value = Evaluator(root).eval(expr)
+        when (value) {
+            is Value.Str -> value.value
+            is Value.Num -> formatNumber(value.value)
+        }
+    } catch (e: ParseException) {
+        ""
+    } catch (e: Exception) {
+        ""
     }
 }
 

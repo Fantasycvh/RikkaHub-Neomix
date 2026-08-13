@@ -104,4 +104,18 @@ class StringUtilsTest {
     fun `no brackets returns original text`() {
         assertEquals("没有括号", "没有括号".removeBracketedContent())
     }
+
+    @Test
+    fun `base64 decode valid input works`() {
+        assertEquals("hello", "aGVsbG8=".base64Decode())
+        assertEquals("你好", "5L2g5aW9".base64Decode())
+    }
+
+    @Test
+    fun `base64 decode corrupted input returns empty string`() {
+        // 回归：损坏 base64 曾抛 IllegalArgumentException（分享/粘贴路径崩溃）
+        assertEquals("", "!!!not-base64!!!".base64Decode())
+        assertEquals("", "aGVsbG8=".dropLast(1).base64Decode())
+        assertEquals("", "".base64Decode())
+    }
 }

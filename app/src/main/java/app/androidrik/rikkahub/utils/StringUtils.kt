@@ -21,7 +21,12 @@ fun String.base64Encode(): String {
 
 @OptIn(ExperimentalEncodingApi::class)
 fun String.base64Decode(): String {
-    return String(Base64.decode(this))
+    // 损坏 base64 曾抛 IllegalArgumentException（分享/粘贴路径崩溃），降级返回空串
+    return try {
+        String(Base64.decode(this))
+    } catch (e: IllegalArgumentException) {
+        ""
+    }
 }
 
 fun String.escapeHtml(): String {

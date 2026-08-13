@@ -25,11 +25,19 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.File
 import java.io.InputStream
 import java.io.StringReader
+import java.net.URLEncoder
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 private const val TAG = "WebDavClient"
+
+/**
+ * WebDAV 路径段 percent-encode（UTF-8，空格用 %20 而非 +）。
+ * 文件名含空格/中文/#/?/& 时 URL 非法会导致同步失败。
+ */
+internal fun encodeWebDavPathSegment(segment: String): String =
+    URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
 
 class WebDavClient(
     private val config: WebDavConfig,
@@ -45,7 +53,7 @@ class WebDavClient(
         return if (pathSegments.isEmpty()) {
             base
         } else {
-            "$base/${pathSegments.joinToString("/")}"
+            "$base/${pathSegments.joinToString("/") { encodeWebDavPathSegment(it) }}"
         }
     }
     suspend fun put(

@@ -112,24 +112,8 @@ class WebServerManager(
     }
 
     fun stop() {
-        _state.value =
-            _state.value.copy(isRunning = false, isLoading = true, hostname = null, address = null, error = null)
         appScope.launch {
-            try {
-                Log.i(TAG, "Stopping web server")
-                server?.stop(1000, 2000)
-                server = null
-                runCatching {
-                    nsdRegistrar.unregister()
-                }.onFailure {
-                    Log.w(TAG, "NSD unregister failed", it)
-                }
-                _state.value = _state.value.copy(isLoading = false)
-                Log.i(TAG, "Web server stopped")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to stop web server", e)
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
-            }
+            stopServer()
         }
     }
 
@@ -138,8 +122,32 @@ class WebServerManager(
         serviceName: String = _state.value.serviceName,
         localhostOnly: Boolean = _state.value.localhostOnly
     ) {
-        stop()
-        start(port, serviceName, localhostOnly)
+        // F10：旧实现 stop()（异步）后立即 start()，start 被 server!=null 守卫挡掉 → 只停不启。
+        // 现改为同一协程内同步停止（server=null）后再启动。
+        appScope.launch {
+            stopServer()
+            start(port, serviceName, localhostOnly)
+        }
+    }
+
+    private suspend fun stopServer() {
+        _state.value =
+            _state.value.copy(isRunning = false, isLoading = true, hostname = null, address = null, error = null)
+        try {
+            Log.i(TAG, "Stopping web server")
+            server?.stop(1000, 2000)
+            server = null
+            runCatching {
+                nsdRegistrar.unregister()
+            }.onFailure {
+                Log.w(TAG, "NSD unregister failed", it)
+            }
+            _state.value = _state.value.copy(isLoading = false)
+            Log.i(TAG, "Web server stopped")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop web server", e)
+            _state.value = _state.value.copy(isLoading = false, error = e.message)
+        }
     }
 
     private fun isPortAvailable(port: Int): Boolean {
