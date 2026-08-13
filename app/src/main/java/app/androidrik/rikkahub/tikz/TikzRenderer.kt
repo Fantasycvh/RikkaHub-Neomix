@@ -68,6 +68,8 @@ object TikzRenderer {
         val points: List<Point> = emptyList(),
         val circleRadius: Double? = null,
         val rectCorner: Point? = null,
+        /** 弯曲段：key = points 段起点索引 i（points[i]→points[i+1]），value = 弯曲角度（正 left / 负 right） */
+        val bends: Map<Int, Double> = emptyMap(),
     ) : Element
 
     private class ParseContext {
@@ -253,14 +255,14 @@ object TikzRenderer {
 
         // 折线 + path 内 node
         val elements = mutableListOf<Element>()
-        val points = scanPath(body, ctx) { name, at, nodeStyleStr, text ->
+        val scan = scanPath(body, ctx) { name, at, nodeStyleStr, text ->
             val nodeStyle = parseStyle(nodeStyleStr)
             name?.let { ctx.coordinates[it] = at }
             elements.add(NodeElement(name, at, nodeStyle, nodeStyle.shape, text))
         }
         // 只有 ≥2 点才画折线（T1：只有 node 无线段时不输出 path）
-        if (points.size >= 2) {
-            elements.add(DrawElement(style, points = points))
+        if (scan.points.size >= 2) {
+            elements.add(DrawElement(style, points = scan.points, bends = scan.bends))
         }
         return elements
     }
@@ -277,16 +279,22 @@ object TikzRenderer {
         }
     }
 
+    private data class PathScan(
+        val points: List<Point>,
+        val bends: Map<Int, Double>,
+    )
+
     /**
-     * 顺序扫描路径 body：识别坐标 `(x,y)` 与 `node [opts] (name) {text}`。
-     * node 出现的位置 = 路径累加到的当前点（cur）；返回所有折线坐标。
+     * 顺序扫描路径 body：识别坐标 `(x,y)`、`to[bend ...]` 与 `node [opts] (name) {text}`。
+     * node 出现的位置 = 路径累加到的当前点（cur）；返回折线坐标与弯曲段信息。
      */
     private fun scanPath(
         body: String,
         ctx: ParseContext,
         onNode: (name: String?, at: Point, styleStr: String, text: String) -> Unit,
-    ): List<Point> {
+    ): PathScan {
         val points = mutableListOf<Point>()
+        val bends = mutableMapOf<Int, Double>()
         var cur = Point(0.0, 0.0)
         var i = 0
         while (i < body.length) {
@@ -322,10 +330,31 @@ object TikzRenderer {
                     }
                     onNode(name, cur, styleStr, text)
                 }
+                body.startsWith("to", i) -> {
+                    i += 2
+                    // 可选 [bend left/right=angle]；无 bend 的 to 按直线处理（不标记弯曲）
+                    if (i < body.length && body[i] == '[') {
+                        val close = body.indexOf(']', i)
+                        if (close >= 0) {
+                            val opts = body.substring(i + 1, close)
+                            if (opts.contains("bend")) {
+                                var angle = 30.0
+                                val right = opts.contains("right")
+                                Regex("""=([\d.]+)""").find(opts)?.let {
+                                    angle = it.groupValues[1].toDoubleOrNull() ?: 30.0
+                                }
+                                if (points.isNotEmpty()) {
+                                    bends[points.size - 1] = if (right) -angle else angle
+                                }
+                            }
+                            i = close + 1
+                        }
+                    }
+                }
                 else -> i++
             }
         }
-        return points
+        return PathScan(points, bends)
     }
 
     private fun parseCoordinatePoint(raw: String, ctx: ParseContext): Point {
@@ -490,8 +519,21 @@ object TikzRenderer {
             else -> {
                 val d = buildString {
                     el.points.forEachIndexed { i, p ->
-                        append(if (i == 0) "M " else " L ")
-                        append(fmt(sx(p.x))).append(',').append(fmt(sy(p.y)))
+                        val px = fmt(sx(p.x)); val py = fmt(sy(p.y))
+                        if (i == 0) {
+                            append("M ").append(px).append(',').append(py)
+                        } else {
+                            val bend = el.bends[i - 1]
+                            if (bend != null) {
+                                // 二次贝塞尔曲线（to[bend]）：控制点在中点垂直偏移
+                                val prev = el.points[i - 1]
+                                val ctrl = bendControl(prev, p, bend)
+                                append(" Q ").append(fmt(sx(ctrl.x))).append(',').append(fmt(sy(ctrl.y)))
+                                    .append(' ').append(px).append(',').append(py)
+                            } else {
+                                append(" L ").append(px).append(',').append(py)
+                            }
+                        }
                     }
                 }
                 val sb = StringBuilder()
@@ -509,6 +551,21 @@ object TikzRenderer {
                 sb.toString()
             }
         }
+    }
+
+    /** 计算 to[bend] 二次贝塞尔控制点（TikZ 坐标系，y 向上）：中点 + 垂直偏移 */
+    private fun bendControl(from: Point, to: Point, angle: Double): Point {
+        val midX = (from.x + to.x) / 2
+        val midY = (from.y + to.y) / 2
+        val dx = to.x - from.x
+        val dy = to.y - from.y
+        val len = kotlin.math.sqrt(dx * dx + dy * dy)
+        if (len < 1e-9) return Point(midX, midY)
+        // 垂直方向（left = 逆时针）；angle 正 left / 负 right，offset 符号随 angle
+        val nx = -dy / len
+        val ny = dx / len
+        val offset = len * 0.5 * kotlin.math.tan(Math.toRadians(angle / 2))
+        return Point(midX + nx * offset, midY + ny * offset)
     }
 
     /** 在 [tip] 端点画实心三角形箭头（沿 [tip]→[from] 反方向张开） */

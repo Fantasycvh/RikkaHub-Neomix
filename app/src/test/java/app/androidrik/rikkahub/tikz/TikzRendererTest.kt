@@ -229,4 +229,28 @@ class TikzRendererTest {
         assertTrue(svg.contains("C"))
         assertTrue("missing polyline", svg.split("<path").size - 1 >= 1)
     }
+
+    @Test
+    fun `bend left curve renders quadratic bezier`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) to[bend left] (2,0);\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing quadratic bezier", svg.contains(" Q "))
+        assertTrue("unexpected straight line", !svg.contains(" L "))
+    }
+
+    @Test
+    fun `bend right with angle renders quadratic bezier`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) to[bend right=60] (2,0);\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().contains(" Q "))
+    }
+
+    @Test
+    fun `plain to without bend stays straight line`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) to (2,0);\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("should be straight line", svg.contains(" L "))
+    }
 }
