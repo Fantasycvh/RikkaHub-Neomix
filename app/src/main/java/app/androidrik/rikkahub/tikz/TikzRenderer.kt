@@ -322,7 +322,9 @@ object TikzRenderer {
 
     private fun resolveColor(token: String): String? {
         if (token.startsWith("#")) return token
-        return COLOR_NAMES[token.lowercase()]
+        // 支持 red!30 形式（颜色 + 透明度），忽略 ! 后部分
+        val base = token.substringBefore('!')
+        return COLOR_NAMES[base.lowercase()]
     }
 
     // ---- SVG 生成 ----
@@ -371,13 +373,6 @@ object TikzRenderer {
         sb.append("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(width)} ${fmt(height)}">""")
         sb.append('\n')
 
-        // 箭头 marker
-        val hasArrow = elements.any { (it as? DrawElement)?.style?.arrow != Arrow.NONE }
-        if (hasArrow) {
-            sb.append("""<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>""")
-            sb.append('\n')
-        }
-
         // 先画 draw（底层），再画 node（上层）
         elements.forEach { el ->
             when (el) {
@@ -421,11 +416,40 @@ object TikzRenderer {
                         append(fmt(sx(p.x))).append(',').append(fmt(sy(p.y)))
                     }
                 }
-                val markerEnd = if (style.arrow == Arrow.END || style.arrow == Arrow.BOTH) " marker-end=\"url(#arrow)\"" else ""
-                val markerStart = if (style.arrow == Arrow.START || style.arrow == Arrow.BOTH) " marker-start=\"url(#arrow)\"" else ""
-                """<path d="$d" $stroke$fill$dash$markerEnd$markerStart/>"""
+                val sb = StringBuilder()
+                sb.append("""<path d="$d" $stroke$fill$dash/>""")
+                // 箭头：AndroidSVG 不支持 <marker>，改为在端点直接画三角形
+                val arrowSize = 7.0
+                if (el.points.size >= 2) {
+                    if (style.arrow == Arrow.END || style.arrow == Arrow.BOTH) {
+                        sb.append('\n').append(arrowHead(el.points.last(), el.points[el.points.size - 2], style, sx, sy, arrowSize))
+                    }
+                    if (style.arrow == Arrow.START || style.arrow == Arrow.BOTH) {
+                        sb.append('\n').append(arrowHead(el.points.first(), el.points[1], style, sx, sy, arrowSize))
+                    }
+                }
+                sb.toString()
             }
         }
+    }
+
+    /** 在 [tip] 端点画实心三角形箭头（沿 [tip]→[from] 反方向张开） */
+    private fun arrowHead(
+        tip: Point,
+        from: Point,
+        style: Style,
+        sx: (Double) -> Double,
+        sy: (Double) -> Double,
+        size: Double,
+    ): String {
+        val tipX = sx(tip.x); val tipY = sy(tip.y)
+        val fromX = sx(from.x); val fromY = sy(from.y)
+        val angle = Math.atan2(tipY - fromY, tipX - fromX)
+        val a1 = angle + Math.PI * 0.8
+        val a2 = angle - Math.PI * 0.8
+        val p1x = tipX - size * Math.cos(a1); val p1y = tipY - size * Math.sin(a1)
+        val p2x = tipX - size * Math.cos(a2); val p2y = tipY - size * Math.sin(a2)
+        return """<path d="M ${fmt(p1x)},${fmt(p1y)} L ${fmt(tipX)},${fmt(tipY)} L ${fmt(p2x)},${fmt(p2y)} Z" fill="${style.stroke}"/>"""
     }
 
     private fun renderNode(el: NodeElement, sx: (Double) -> Double, sy: (Double) -> Double): String {
@@ -434,15 +458,15 @@ object TikzRenderer {
         val cy = sy(el.at.y)
         val stroke = if (style.draw) "stroke=\"${style.stroke}\" stroke-width=\"${style.strokeWidth}\"" else ""
         val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
-        val textAnchor = " text-anchor=\"middle\" dominant-baseline=\"central\""
         val textColor = " fill=\"${style.stroke}\""
         val shapeSvg = when (el.shape) {
             NodeShape.CIRCLE -> """<circle cx="${fmt(cx)}" cy="${fmt(cy)}" r="${fmt(NODE_CIRCLE_R * SCALE)}" $stroke$fill/>"""
             NodeShape.ELLIPSE -> """<ellipse cx="${fmt(cx)}" cy="${fmt(cy)}" rx="${fmt(NODE_HALF_W * SCALE)}" ry="${fmt(NODE_HALF_H * SCALE)}" $stroke$fill/>"""
             NodeShape.RECTANGLE -> """<rect x="${fmt(cx - NODE_HALF_W * SCALE)}" y="${fmt(cy - NODE_HALF_H * SCALE)}" width="${fmt(2 * NODE_HALF_W * SCALE)}" height="${fmt(2 * NODE_HALF_H * SCALE)}" rx="2" $stroke$fill/>"""
         }
+        // 文本：y 直接定位到近似垂直中心（fontSize 14 的一半略多）；AndroidSVG 不支持 dominant-baseline/dy em
         val text = if (el.text.isNotBlank()) {
-            """<text x="${fmt(cx)}" y="${fmt(cy)}"$textAnchor font-size="14">${escapeXml(el.text)}</text>"""
+            """<text x="${fmt(cx)}" y="${fmt(cy + 5.0)}" text-anchor="middle" font-size="14"$textColor>${escapeXml(el.text)}</text>"""
         } else ""
         return "$shapeSvg\n$text"
     }

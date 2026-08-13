@@ -430,31 +430,48 @@ private fun exportToMarkdown(
 }
 
 /** 匹配 ```tikz / ```tikzcd 等围栏代码块 */
-private val TIKZ_FENCE_REGEX = Regex("""```(?:tikz|tikzpicture|tikzcd|tikztiming)\s*\n([\s\S]*?)```""")
+private val TIKZ_FENCE_REGEX = Regex("""```(?:tikz|tikzpicture|tikzcd|tikztiming)[^\n]*\n([\s\S]*?)```""")
+
+/** $$...$$ 块内嵌的 TikZ 图表特征（与 MathBlock.isDiagramLatex 一致） */
+private val DIAGRAM_LATEX_PATTERNS = listOf(
+    Regex("""\\begin\{tikz\w*\}"""),
+    Regex("""\\begin\{axis\}"""),
+    Regex("""\\xymatrix\{"""),
+    Regex("""\\begin\{CD\}"""),
+)
+
+private val DOLLAR_TIKZ_REGEX = Regex("""\$\$([\s\S]*?)\$\$""")
 
 /**
- * 将 markdown 中的 TikZ 代码围栏渲染为内嵌 <svg>（矢量），其余 markdown 交给 generateMarkdownHtml。
- * 用占位符绕过 flexmark 对原始 HTML 的转义。
+ * 将 markdown 中的 TikZ（代码围栏 + $$ 内嵌图表）渲染为内嵌 <svg>（矢量），
+ * 其余 markdown 交给 generateMarkdownHtml。用占位符绕过 flexmark 对原始 HTML 的转义。
  */
 private fun renderMarkdownWithTikz(content: String): String {
-    if (!content.contains("```tikz") && !content.contains("```tikzpicture") &&
-        !content.contains("```tikzcd") && !content.contains("```tikztiming")
-    ) {
-        return generateMarkdownHtml(content)
-    }
     val svgs = mutableListOf<String>()
-    val withPlaceholders = TIKZ_FENCE_REGEX.replace(content) { match ->
-        val code = match.groupValues[1].trim()
-        val svg = TikzRenderer.render(code).getOrNull()
-        if (svg != null) {
-            val placeholder = "%%TIKZ_PH_${svgs.size}%%"
-            svgs.add(svg)
-            placeholder
+
+    fun renderToPlaceholder(code: String): String? {
+        val svg = TikzRenderer.render(code.trim()).getOrNull() ?: return null
+        val placeholder = "%%TIKZ_PH_${svgs.size}%%"
+        svgs.add(svg)
+        return placeholder
+    }
+
+    // 1. 处理 $$...$$ 块内嵌的 TikZ 图表（\begin{tikzpicture}/\begin{tikzcd} 等）
+    val afterDollar = DOLLAR_TIKZ_REGEX.replace(content) { m ->
+        val latex = m.groupValues[1]
+        if (DIAGRAM_LATEX_PATTERNS.any { it.containsMatchIn(latex) }) {
+            renderToPlaceholder(latex) ?: m.value
         } else {
-            match.value
+            m.value // 普通数学公式，保留
         }
     }
-    val html = generateMarkdownHtml(withPlaceholders)
+
+    // 2. 处理 ```tikz 围栏
+    val afterFence = TIKZ_FENCE_REGEX.replace(afterDollar) { m ->
+        renderToPlaceholder(m.groupValues[1]) ?: m.value
+    }
+
+    val html = generateMarkdownHtml(afterFence)
     var result = html
     svgs.forEachIndexed { i, svg ->
         result = result.replace("%%TIKZ_PH_${i}%%", svg)

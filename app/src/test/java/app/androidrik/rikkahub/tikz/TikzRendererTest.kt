@@ -39,7 +39,8 @@ class TikzRendererTest {
         val result = TikzRenderer.render("""\begin{tikzpicture}\draw[->, red] (0,0) -- (1,1);\end{tikzpicture}""")
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
-        assertTrue("missing marker-end", svg.contains("marker-end"))
+        val pathCount = svg.split("<path").size - 1
+        assertTrue("missing arrow head (expected 2 paths: line + triangle)", pathCount >= 2)
         assertTrue("missing red stroke", svg.contains("red") || svg.contains("#"))
     }
 
@@ -108,8 +109,7 @@ class TikzRendererTest {
         val svg = result.getOrThrow()
         assertTrue(svg.contains("A"))
         assertTrue(svg.contains("B"))
-        assertTrue("missing arrow marker", svg.contains("marker-end"))
-        assertTrue("missing path", svg.contains("<path"))
+        assertTrue("missing arrow", svg.split("<path").size - 1 >= 2)
     }
 
     @Test
