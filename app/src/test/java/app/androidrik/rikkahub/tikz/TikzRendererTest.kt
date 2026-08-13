@@ -142,4 +142,43 @@ class TikzRendererTest {
         assertTrue(result.isSuccess)
         assertTrue(result.getOrThrow().contains("<path"))
     }
+
+    @Test
+    fun `node without at defaults to origin`() {
+        // 回归：\node {Hi} 缺省 at 坐标曾导致解析失败
+        val result = TikzRenderer.render("""\begin{tikzpicture}\node[draw] {Hi};\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().contains("Hi"))
+    }
+
+    @Test
+    fun `node without at or style defaults to origin`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\node {Hi};\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().contains("Hi"))
+    }
+
+    @Test
+    fun `chinese node without at renders`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\node[draw] {默认原点};\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().contains("默认原点"))
+    }
+
+    @Test
+    fun `named nodes connected by draw without anchors`() {
+        val code = """
+            \begin{tikzpicture}
+            \node[draw] (A) at (0,0) {A};
+            \node[draw] (B) at (3,1) {B};
+            \draw (A) -- (B);
+            \end{tikzpicture}
+        """.trimIndent()
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue(svg.contains("A"))
+        assertTrue(svg.contains("B"))
+        assertTrue("missing connecting path", svg.split("<path").size - 1 >= 1)
+    }
 }

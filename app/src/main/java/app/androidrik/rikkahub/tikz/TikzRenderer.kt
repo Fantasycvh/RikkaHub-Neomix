@@ -205,19 +205,22 @@ object TikzRenderer {
         ctx.coordinates[name] = point
     }
 
-    /** 第一遍收集 \node 的 name 坐标，供后续 \draw (A) 引用 */
+    /** 第一遍收集 \node 的 name 坐标，供后续 \draw (A) 引用（at 缺省时用原点兜底） */
     private fun collectNodeName(cmd: String, ctx: ParseContext) {
-        val m = Regex("""\\node\s*(\[[^\]]*\])?\s*\(([^)]+)\)\s*at\s+\(([^)]+)\)""").find(cmd) ?: return
+        val m = Regex("""\\node\s*(\[[^\]]*\])?\s*\(([^)]+)\)\s*(?:at\s+\(([^)]+)\))?""").find(cmd) ?: return
         val name = m.groupValues[2].trim()
-        val point = parseCoordinatePoint(m.groupValues[3], ctx)
+        val atRaw = m.groupValues[3]
+        val point = if (atRaw.isNotBlank()) parseCoordinatePoint(atRaw, ctx) else Point(0.0, 0.0)
         ctx.coordinates[name] = point
     }
 
     private fun parseNode(cmd: String, ctx: ParseContext): Element? {
-        val m = Regex("""\\node\s*(\[[^\]]*\])?\s*(?:\(([^)]+)\))?\s*(?:at\s+)?\(([^)]+)\)\s*\{([^}]*)\}""").find(cmd) ?: return null
+        // 组1=选项 组2=名字 组3=at坐标 组4=文本；at 坐标可选，缺省原点 (0,0)
+        val m = Regex("""\\node\s*(\[[^\]]*\])?\s*(?:\(([^)]+)\))?\s*(?:at\s+\(([^)]+)\))?\s*\{([^}]*)\}""").find(cmd) ?: return null
         val styleStr = m.groupValues[1].orEmpty()
         val name = m.groupValues[2].ifBlank { null }
-        val at = parseCoordinatePoint(m.groupValues[3], ctx)
+        val atRaw = m.groupValues[3]
+        val at = if (atRaw.isNotBlank()) parseCoordinatePoint(atRaw, ctx) else Point(0.0, 0.0)
         val text = m.groupValues[4]
         val style = parseStyle(styleStr)
         name?.let { ctx.coordinates[it] = at }
