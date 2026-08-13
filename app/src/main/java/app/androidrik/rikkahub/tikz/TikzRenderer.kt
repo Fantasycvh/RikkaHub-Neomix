@@ -603,7 +603,7 @@ object TikzRenderer {
 
     private fun renderDraw(el: DrawElement, sx: (Double) -> Double, sy: (Double) -> Double): String {
         val style = el.style
-        val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${style.strokeWidth}\""
+        val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${fmt(style.strokeWidth)}\""
         val dash = if (style.dashed) " stroke-dasharray=\"5,5\"" else ""
         val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
         val rectRx = if (style.rounded) "8" else "2"
@@ -810,7 +810,7 @@ object TikzRenderer {
         val style = el.style
         val cx = sx(el.at.x)
         val cy = sy(el.at.y)
-        val stroke = if (style.draw) "stroke=\"${style.stroke}\" stroke-width=\"${style.strokeWidth}\"" else ""
+        val stroke = if (style.draw) "stroke=\"${style.stroke}\" stroke-width=\"${fmt(style.strokeWidth)}\"" else ""
         val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
         val textColor = " fill=\"${style.stroke}\""
         val shapeSvg = when (el.shape) {
