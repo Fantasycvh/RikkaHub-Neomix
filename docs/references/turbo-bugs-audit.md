@@ -11,7 +11,7 @@
 
 | # | Bug | turbo commit | 状态 | 备注 |
 |---|---|---|---|---|
-| C1 | 设置保存崩溃：删光搜索服务后 `coerceIn(0, size-1)` = `coerceIn(0,-1)` → IllegalArgumentException | 5be15b3 | ⚠️ 待修 | 我们 `PreferencesStore.kt:387` 同款，无空列表守卫 |
+| C1 | 设置保存崩溃：删光搜索服务后 `coerceIn(0, size-1)` = `coerceIn(0,-1)` → IllegalArgumentException | 5be15b3 | ✅ 已修 | `SettingsStore.sanitizeSearchServiceSelected`（空列表守卫，coerceAtLeast(0)） |
 | C2 | 损坏 base64 图片 decode null → NPE 崩溃（应降级保留原 part） | 1588d97 | 🔍 待查 | `StringUtils.kt:24` Base64.decode 无容错 |
 | C3 | 技能 zip bomb：readBytes 无上限 → OOM | f2a84d9 | ✅ 已修 | SkillsVM 单文件 32MB/总量 256MB（已移植） |
 | C4 | BitmapComposer 取消挂起 + view 泄漏 | 48dd5c3 | 🔍 待查 | 导出取消场景 |
@@ -34,9 +34,9 @@
 | # | Bug | turbo commit | 状态 | 备注 |
 |---|---|---|---|---|
 | D1 | 超长消息保存失败静默吞掉（>2MB blob 限制）→ 用户无感知丢消息 | c135a3a | 🔍 待查 | 需改用户可见错误 |
-| D2 | 压缩期间新消息被整体覆盖 → 丢失追加节点 | ffc5a3a | ⚠️ 已确认待修？ | 需核对我们 ChatService 压缩逻辑 |
+| D2 | 压缩期间新消息被整体覆盖 → 丢失追加节点 | ffc5a3a | ✅ 已修 | 已核对 ChatService 压缩逻辑同款；`mergeCompressedConversation` 保留快照后追加节点 |
 | D3 | 工具结果 base64 图片漏转 → require 失败消息丢失 | 77fef1b | 🔍 待查 | 需抽取 parts 级转换复用 |
-| D4 | 历史页滑动删除立即物理删附件 → 撤销恢复后附件永久丢失 | 2b3574d | ⚠️ 待修 | 我们 `deleteConversation`（ConversationRepository.kt:308）无延迟清理参数 |
+| D4 | 历史页滑动删除立即物理删附件 → 撤销恢复后附件永久丢失 | 2b3574d | ✅ 已修 | `deleteConversation(deleteFiles=false)` + 撤销窗口结束 `deleteConversationFiles` 清理 |
 | D5 | SettingsStore.update 并发 lost update（MCP syncTools 并发丢工具列表） | df7bb7c | 🔍 待查 | 需 Mutex 串行化读-改-写 |
 | D6 | ShareHandler 只 getStringExtra(EXTRA_STREAM)，Parcelable Uri 类型不匹配 → 分享图片/文件丢失 | 40da9cf | 🔍 待查 | 需兼容 Parcelable 读取 |
 | D7 | 多图分享 Uri 在 clipData 而非 EXTRA_STREAM → 仍丢图 | 4374afa | 🔍 待查 | 需兜底取 clipData 第一项 |
@@ -85,9 +85,9 @@
 ## 核查进度
 
 - [x] 安全修复 5 项已移植（F1-F4 + C3）：commit e33535eb / 发布于 v2.4.5-androidrik.17
-- [ ] **C1 coerceIn(0,-1)**：确认同款，`PreferencesStore.kt:387` 需空列表守卫 —— 优先修
-- [ ] **D4 删除附件延迟清理**：确认待查，deleteConversation 无 deleteFiles 参数
-- [ ] **D2 压缩覆盖新消息**：待核对我们 ChatService 压缩逻辑
+- [x] **C1 coerceIn(0,-1)**：已修（`SettingsStore.sanitizeSearchServiceSelected` 空列表守卫 + 4 单测）
+- [x] **D4 删除附件延迟清理**：已修（`deleteConversation(deleteFiles=false)` + 撤销窗口结束清理）
+- [x] **D2 压缩覆盖新消息**：已核对同款并修（`mergeCompressedConversation` 合并最新状态 + 4 单测）
 - [ ] 其余 ⚠️/🔍 项待逐条核查
 
 > 记录：2026-08-13。原始来源 docs/references/turbo-PROGRESS.md（turbo 仓库存档）。
