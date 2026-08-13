@@ -344,4 +344,26 @@ class TikzRendererTest {
         assertTrue("missing geometric chamfer Q", svg.contains(" Q "))
         assertTrue("should not use stroke-linejoin approximation", !svg.contains("stroke-linejoin"))
     }
+
+    @Test
+    fun `rounded corners multi-corner with mixed left right turns`() {
+        // R1：3 个内角 + 左右转交替，且含长边（检验半径单位修正，不中毒）
+        val code = """\begin{tikzpicture}\draw[rounded corners, thick] (0,0) -- (4,0) -- (4,3) -- (0,3) -- (0,6);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        val qCount = svg.split(" Q ").size - 1
+        assertTrue("expected 3 chamfers, got $qCount", qCount >= 3)
+    }
+
+    @Test
+    fun `rounded corners sawtooth alternating turns`() {
+        // R3：锯齿左右交替
+        val code = """\begin{tikzpicture}\draw[rounded corners, thick] (0,0) -- (2,1) -- (4,0) -- (6,1) -- (8,0);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        val qCount = svg.split(" Q ").size - 1
+        assertTrue("expected 3 chamfers, got $qCount", qCount >= 3)
+    }
 }

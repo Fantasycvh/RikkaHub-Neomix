@@ -671,38 +671,39 @@ object TikzRenderer {
     /**
      * 折线几何圆角（rounded corners）：每个内角处，沿两条边各缩进 r，
      * 用二次贝塞尔连接（控制点 = 角点本身），实现真正倒角（非 stroke-linejoin 近似）。
-     * 边短于 2r 时收缩 r = min(r, 边长/2)；含曲线段时退回普通渲染。
+     * 先在 SVG px 坐标系（sx/sy 转换）做几何，r 直接是 px；控制点永远用 p1（左右转通用）；
+     * 边短于 2r 时收缩 r = min(r, 边长/2)；零长度段跳过；含曲线段时退回普通渲染。
      */
-    private fun renderRoundedD(segs: List<Seg>, r: Double, sx: (Double) -> Double, sy: (Double) -> Double): String {
+    private fun renderRoundedD(segs: List<Seg>, rPx: Double, sx: (Double) -> Double, sy: (Double) -> Double): String {
         val purePolyline = segs.all { it is MoveTo || it is LineTo }
-        val pts = pathPoints(segs)
-        if (!purePolyline || pts.size < 3) {
+        val rawPts = pathPoints(segs)
+        if (!purePolyline || rawPts.size < 3) {
             return renderPlainD(segs, sx, sy)
         }
+        // 转换到 SVG px 坐标（含 y 翻转），几何在 px 坐标系计算
+        val pts = rawPts.map { Point(sx(it.x), sy(it.y)) }
         return buildString {
-            append("M ").append(fmt(sx(pts[0].x))).append(',').append(fmt(sy(pts[0].y)))
+            append("M ").append(fmt(pts[0].x)).append(',').append(fmt(pts[0].y))
             for (i in 1 until pts.size - 1) {
                 val p0 = pts[i - 1]
                 val p1 = pts[i]
                 val p2 = pts[i + 1]
-                val inDx = p1.x - p0.x; val inDy = p1.y - p0.y
-                val inLen = kotlin.math.sqrt(inDx * inDx + inDy * inDy)
-                val outDx = p2.x - p1.x; val outDy = p2.y - p1.y
-                val outLen = kotlin.math.sqrt(outDx * outDx + outDy * outDy)
-                if (inLen < 1e-9 || outLen < 1e-9) {
-                    append(" L ").append(fmt(sx(p1.x))).append(',').append(fmt(sy(p1.y)))
+                val len1 = kotlin.math.sqrt((p1.x - p0.x) * (p1.x - p0.x) + (p1.y - p0.y) * (p1.y - p0.y))
+                val len2 = kotlin.math.sqrt((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y))
+                if (len1 < 1e-9 || len2 < 1e-9) {
+                    append(" L ").append(fmt(p1.x)).append(',').append(fmt(p1.y))
                     continue
                 }
-                val rr = minOf(r, inLen / 2, outLen / 2)
-                val ux = inDx / inLen; val uy = inDy / inLen
-                val vx = outDx / outLen; val vy = outDy / outLen
+                val rr = minOf(rPx, minOf(len1, len2) / 2)
+                val ux = (p1.x - p0.x) / len1; val uy = (p1.y - p0.y) / len1
+                val vx = (p2.x - p1.x) / len2; val vy = (p2.y - p1.y) / len2
                 val ax = p1.x - ux * rr; val ay = p1.y - uy * rr
                 val bx = p1.x + vx * rr; val by = p1.y + vy * rr
-                append(" L ").append(fmt(sx(ax))).append(',').append(fmt(sy(ay)))
-                append(" Q ").append(fmt(sx(p1.x))).append(',').append(fmt(sy(p1.y)))
-                    .append(' ').append(fmt(sx(bx))).append(',').append(fmt(sy(by)))
+                append(" L ").append(fmt(ax)).append(',').append(fmt(ay))
+                append(" Q ").append(fmt(p1.x)).append(',').append(fmt(p1.y))
+                    .append(' ').append(fmt(bx)).append(',').append(fmt(by))
             }
-            append(" L ").append(fmt(sx(pts.last().x))).append(',').append(fmt(sy(pts.last().y)))
+            append(" L ").append(fmt(pts.last().x)).append(',').append(fmt(pts.last().y))
         }
     }
 
