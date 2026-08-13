@@ -39,8 +39,8 @@ class TikzRendererTest {
         val result = TikzRenderer.render("""\begin{tikzpicture}\draw[->, red] (0,0) -- (1,1);\end{tikzpicture}""")
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
-        val pathCount = svg.split("<path").size - 1
-        assertTrue("missing arrow head (expected 2 paths: line + triangle)", pathCount >= 2)
+        assertTrue("missing arrow polygon", svg.contains("<polygon"))
+        assertTrue("missing line path", svg.contains("<path"))
         assertTrue("missing red stroke", svg.contains("red") || svg.contains("#"))
     }
 
@@ -109,7 +109,7 @@ class TikzRendererTest {
         val svg = result.getOrThrow()
         assertTrue(svg.contains("A"))
         assertTrue(svg.contains("B"))
-        assertTrue("missing arrow", svg.split("<path").size - 1 >= 2)
+        assertTrue("missing arrow", svg.contains("<polygon"))
     }
 
     @Test
@@ -199,7 +199,8 @@ class TikzRendererTest {
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
         assertTrue(svg.contains("终点"))
-        assertTrue("missing line + arrow head", svg.split("<path").size - 1 >= 2)
+        assertTrue("missing arrow polygon", svg.contains("<polygon"))
+        assertTrue("missing line", svg.contains("<path"))
     }
 
     @Test
@@ -252,5 +253,93 @@ class TikzRendererTest {
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
         assertTrue("should be straight line", svg.contains(" L "))
+    }
+
+    @Test
+    fun `relative coordinate plus plus updates current point`() {
+        val code = """\begin{tikzpicture}\draw (0,0) -- ++(2,0) -- ++(0,1.5) -- ++(-2,0) -- ++(0,-1.5);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing line", svg.contains(" L "))
+    }
+
+    @Test
+    fun `relative coordinate plus does not update current point`() {
+        // + 不更新：4 条线都从 (3,0) 出发 → 4 个子路径（4 个 M）
+        val code = """\begin{tikzpicture}\draw (3,0) -- +(1,1) -- +(2,0) -- +(1,-1);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        val moveCount = svg.split("M ").size - 1
+        assertTrue("expected 4 subpaths, got $moveCount", moveCount >= 4)
+    }
+
+    @Test
+    fun `cubic bezier with controls renders`() {
+        val code = """\begin{tikzpicture}\draw (0,0) .. controls (1,1.5) and (2,-1) .. (3,0);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        assertTrue("missing cubic bezier C", result.getOrThrow().contains(" C "))
+    }
+
+    @Test
+    fun `arrow styles render polygon`() {
+        val code = """
+            \begin{tikzpicture}
+            \draw[<-] (0,3) -- (2,3);
+            \draw[<->] (0,2) -- (2,2);
+            \draw[-stealth] (0,1) -- (2,1);
+            \draw[latex-] (0,0) -- (2,0);
+            \end{tikzpicture}
+        """.trimIndent()
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing arrow polygons", svg.contains("<polygon"))
+        // <- / <-> 有 start 箭头，latex- 有空心箭头（fill=none stroke）
+        assertTrue("missing hollow latex arrow", svg.contains("fill=\"none\""))
+    }
+
+    @Test
+    fun `bend curve arrow follows tangent`() {
+        val code = """\begin{tikzpicture}\draw[->, red, thick] (0,2) to [bend left] (3,2);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing curve Q", svg.contains(" Q "))
+        assertTrue("missing arrow polygon", svg.contains("<polygon"))
+    }
+
+    @Test
+    fun `diamond and star node shapes render polygon`() {
+        val code = """
+            \begin{tikzpicture}
+            \node[diamond, draw] at (0,1.5) {D};
+            \node[star, draw, fill=yellow] at (0,0) {S};
+            \end{tikzpicture}
+        """.trimIndent()
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing diamond/star polygon", svg.contains("<polygon"))
+        assertTrue(svg.contains("D"))
+        assertTrue(svg.contains("S"))
+    }
+
+    @Test
+    fun `rounded corners rectangle renders with larger rx`() {
+        val code = """\begin{tikzpicture}\draw[rounded corners, thick] (2,0) rectangle (4.5,2.5);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        assertTrue("missing rounded rect", result.getOrThrow().contains("rx=\"8\""))
+    }
+
+    @Test
+    fun `rounded corners polyline uses round line join`() {
+        val code = """\begin{tikzpicture}\draw[rounded corners] (5,0) -- (6.5,1) -- (5,2.5);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().contains("stroke-linejoin=\"round\""))
     }
 }

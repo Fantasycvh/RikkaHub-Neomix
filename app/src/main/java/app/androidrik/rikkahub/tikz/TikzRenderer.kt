@@ -37,9 +37,10 @@ object TikzRenderer {
 
     private data class Point(val x: Double, val y: Double)
 
-    private enum class NodeShape { RECTANGLE, CIRCLE, ELLIPSE }
+    private enum class NodeShape { RECTANGLE, CIRCLE, ELLIPSE, DIAMOND, STAR }
 
-    private enum class Arrow { NONE, END, START, BOTH }
+    /** 箭头尖端类型 */
+    private enum class ArrowTip { TRIANGLE, STEALTH, LATEX }
 
     private data class Style(
         val draw: Boolean = true,
@@ -47,8 +48,10 @@ object TikzRenderer {
         val fill: String? = null,
         val strokeWidth: Double = 1.0,
         val dashed: Boolean = false,
-        val arrow: Arrow = Arrow.NONE,
+        val arrowStart: ArrowTip? = null,
+        val arrowEnd: ArrowTip? = null,
         val shape: NodeShape = NodeShape.RECTANGLE,
+        val rounded: Boolean = false,
     )
 
     private sealed interface Element
@@ -63,13 +66,23 @@ object TikzRenderer {
 
     private data class CoordinateElement(val name: String, val at: Point) : Element
 
+    private sealed interface Seg
+
+    private data class MoveTo(val p: Point) : Seg
+
+    private data class LineTo(val p: Point) : Seg
+
+    private data class QuadTo(val c: Point, val p: Point) : Seg
+
+    private data class CubicTo(val c1: Point, val c2: Point, val p: Point) : Seg
+
     private data class DrawElement(
         val style: Style,
-        val points: List<Point> = emptyList(),
+        val segs: List<Seg> = emptyList(),
+        val circleCenter: Point? = null,
         val circleRadius: Double? = null,
+        val rectStart: Point? = null,
         val rectCorner: Point? = null,
-        /** 弯曲段：key = points 段起点索引 i（points[i]→points[i+1]），value = 弯曲角度（正 left / 负 right） */
-        val bends: Map<Int, Double> = emptyMap(),
     ) : Element
 
     private class ParseContext {
@@ -131,7 +144,7 @@ object TikzRenderer {
                     val (dr, dc) = dirToDelta(spec.dir)
                     val from = Point(x, y)
                     val to = Point((col + dc) * TIKZCD_COL_SEP, -(row + dr) * TIKZCD_ROW_SEP)
-                    elements.add(DrawElement(Style(arrow = Arrow.END), points = listOf(from, to)))
+                    elements.add(DrawElement(Style(arrowEnd = ArrowTip.TRIANGLE), segs = listOf(MoveTo(from), LineTo(to))))
                     spec.label?.let { lbl ->
                         val mid = Point((from.x + to.x) / 2, (from.y + to.y) / 2)
                         elements.add(NodeElement(null, mid, Style(draw = false), NodeShape.RECTANGLE, lbl))
@@ -244,25 +257,25 @@ object TikzRenderer {
         Regex("""\(([^)]+)\)\s+circle\s+\(([^)]+)\)""").find(body)?.let {
             val center = parseCoordinatePoint(it.groupValues[1], ctx)
             val radius = it.groupValues[2].toDoubleOrNull() ?: return emptyList()
-            return listOf(DrawElement(style, circleRadius = radius, points = listOf(center)))
+            return listOf(DrawElement(style, circleCenter = center, circleRadius = radius))
         }
         // rectangle (x2,y2)
         Regex("""\(([^)]+)\)\s+rectangle\s+\(([^)]+)\)""").find(body)?.let {
             val a = parseCoordinatePoint(it.groupValues[1], ctx)
             val b = parseCoordinatePoint(it.groupValues[2], ctx)
-            return listOf(DrawElement(style, rectCorner = b, points = listOf(a)))
+            return listOf(DrawElement(style, rectStart = a, rectCorner = b))
         }
 
         // 折线 + path 内 node
         val elements = mutableListOf<Element>()
-        val scan = scanPath(body, ctx) { name, at, nodeStyleStr, text ->
+        val segs = scanPath(body, ctx) { name, at, nodeStyleStr, text ->
             val nodeStyle = parseStyle(nodeStyleStr)
             name?.let { ctx.coordinates[it] = at }
             elements.add(NodeElement(name, at, nodeStyle, nodeStyle.shape, text))
         }
-        // 只有 ≥2 点才画折线（T1：只有 node 无线段时不输出 path）
-        if (scan.points.size >= 2) {
-            elements.add(DrawElement(style, points = scan.points, bends = scan.bends))
+        // 只有 ≥2 段才画（T1：只有 node 无线段时不输出 path）
+        if (segs.size >= 2) {
+            elements.add(DrawElement(style, segs = segs))
         }
         return elements
     }
@@ -279,23 +292,26 @@ object TikzRenderer {
         }
     }
 
-    private data class PathScan(
-        val points: List<Point>,
-        val bends: Map<Int, Double>,
-    )
-
     /**
-     * 顺序扫描路径 body：识别坐标 `(x,y)`、`to[bend ...]` 与 `node [opts] (name) {text}`。
-     * node 出现的位置 = 路径累加到的当前点（cur）；返回折线坐标与弯曲段信息。
+     * 顺序扫描路径 body，产出 SVG 路径段序列（M/L/Q/C）。
+     * 支持：坐标（绝对/相对 ++/＋/极坐标/命名节点）、`--`、`to[bend]`、`.. controls ..`、`node`。
+     * 相对坐标语义：++ 更新当前点；+ 不更新（下一条线从锚点重新出发，用独立子路径）。
      */
     private fun scanPath(
         body: String,
         ctx: ParseContext,
         onNode: (name: String?, at: Point, styleStr: String, text: String) -> Unit,
-    ): PathScan {
-        val points = mutableListOf<Point>()
-        val bends = mutableMapOf<Int, Double>()
+    ): List<Seg> {
+        val segs = mutableListOf<Seg>()
         var cur = Point(0.0, 0.0)
+        var lastAbsolute = Point(0.0, 0.0)
+        var hasPoint = false
+        var pendingConnector: String? = null  // "line" / "bend" / "controls"
+        var pendingBendAngle = 30.0
+        var pendingC1: Point? = null
+        var pendingC2: Point? = null
+        var relativeUpdate = false  // ++
+        var relativeKeep = false    // +
         var i = 0
         while (i < body.length) {
             val ch = body[i]
@@ -304,11 +320,44 @@ object TikzRenderer {
                     val close = body.indexOf(')', i)
                     if (close < 0) { i++; continue }
                     val raw = body.substring(i + 1, close)
-                    val p = parseCoordinatePoint(raw, ctx)
-                    points.add(p)
-                    cur = p
+                    var p = parseCoordinatePoint(raw, ctx)
+                    if (relativeUpdate) {
+                        p = Point(cur.x + p.x, cur.y + p.y)
+                    } else if (relativeKeep) {
+                        p = Point(lastAbsolute.x + p.x, lastAbsolute.y + p.y)
+                    }
+                    if (!hasPoint) {
+                        segs.add(MoveTo(p))
+                        hasPoint = true
+                    } else if (relativeKeep) {
+                        // + 独立子路径：回到锚点再画线
+                        segs.add(MoveTo(lastAbsolute))
+                        segs.add(LineTo(p))
+                    } else {
+                        when (pendingConnector) {
+                            "bend" -> segs.add(QuadTo(bendControl(cur, p, pendingBendAngle), p))
+                            "controls" -> segs.add(CubicTo(pendingC1 ?: cur, pendingC2 ?: p, p))
+                            else -> segs.add(LineTo(p))
+                        }
+                    }
+                    if (relativeUpdate) {
+                        cur = p
+                        lastAbsolute = p
+                    } else if (!relativeKeep) {
+                        cur = p
+                        lastAbsolute = p
+                    }
+                    // relativeKeep 时 cur/lastAbsolute 不变
+                    pendingConnector = null
+                    pendingC1 = null
+                    pendingC2 = null
+                    relativeUpdate = false
+                    relativeKeep = false
                     i = close + 1
                 }
+                body.startsWith("++", i) -> { relativeUpdate = true; i += 2 }
+                body.startsWith("+", i) -> { relativeKeep = true; i += 1 }
+                body.startsWith("--", i) -> { pendingConnector = "line"; i += 2 }
                 body.startsWith("node", i) -> {
                     i += 4
                     var styleStr = ""
@@ -332,29 +381,60 @@ object TikzRenderer {
                 }
                 body.startsWith("to", i) -> {
                     i += 2
-                    // 可选 [bend left/right=angle]；无 bend 的 to 按直线处理（不标记弯曲）
+                    while (i < body.length && body[i].isWhitespace()) i++
+                    pendingConnector = "line"  // 无 bend 的 to 按直线
                     if (i < body.length && body[i] == '[') {
                         val close = body.indexOf(']', i)
                         if (close >= 0) {
                             val opts = body.substring(i + 1, close)
                             if (opts.contains("bend")) {
+                                pendingConnector = "bend"
                                 var angle = 30.0
-                                val right = opts.contains("right")
                                 Regex("""=([\d.]+)""").find(opts)?.let {
                                     angle = it.groupValues[1].toDoubleOrNull() ?: 30.0
                                 }
-                                if (points.isNotEmpty()) {
-                                    bends[points.size - 1] = if (right) -angle else angle
-                                }
+                                pendingBendAngle = if (opts.contains("right")) -angle else angle
                             }
                             i = close + 1
                         }
                     }
                 }
+                body.startsWith("..", i) -> {
+                    i += 2
+                    while (i < body.length && body[i].isWhitespace()) i++
+                    if (body.startsWith("controls", i)) {
+                        i += 8
+                        while (i < body.length && body[i].isWhitespace()) i++
+                        if (i < body.length && body[i] == '(') {
+                            val close = body.indexOf(')', i)
+                            if (close >= 0) {
+                                pendingC1 = parseCoordinatePoint(body.substring(i + 1, close), ctx)
+                                i = close + 1
+                            }
+                        }
+                        while (i < body.length && body[i].isWhitespace()) i++
+                        if (body.startsWith("and", i)) {
+                            i += 3
+                            while (i < body.length && body[i].isWhitespace()) i++
+                            if (i < body.length && body[i] == '(') {
+                                val close = body.indexOf(')', i)
+                                if (close >= 0) {
+                                    pendingC2 = parseCoordinatePoint(body.substring(i + 1, close), ctx)
+                                    i = close + 1
+                                }
+                            }
+                        }
+                        while (i < body.length && body[i].isWhitespace()) i++
+                        if (body.startsWith("..", i)) i += 2
+                        pendingConnector = "controls"
+                    } else {
+                        pendingConnector = "line"  // .. (p) .. 简单形式按直线
+                    }
+                }
                 else -> i++
             }
         }
-        return PathScan(points, bends)
+        return segs
     }
 
     private fun parseCoordinatePoint(raw: String, ctx: ParseContext): Point {
@@ -409,14 +489,21 @@ object TikzRenderer {
                 token == "dotted" -> style = style.copy(dashed = true)
                 token == "circle" -> style = style.copy(shape = NodeShape.CIRCLE)
                 token == "ellipse" -> style = style.copy(shape = NodeShape.ELLIPSE)
-                token == "->" -> style = style.copy(arrow = Arrow.END)
-                token == "<-" -> style = style.copy(arrow = Arrow.START)
-                token == "<->" -> style = style.copy(arrow = Arrow.BOTH)
+                token == "->" -> style = style.copy(arrowEnd = ArrowTip.TRIANGLE)
+                token == "<-" -> style = style.copy(arrowStart = ArrowTip.TRIANGLE)
+                token == "<->" -> style = style.copy(arrowStart = ArrowTip.TRIANGLE, arrowEnd = ArrowTip.TRIANGLE)
+                token == "-stealth" -> style = style.copy(arrowEnd = ArrowTip.STEALTH)
+                token == "-latex" -> style = style.copy(arrowEnd = ArrowTip.LATEX)
+                token == "latex-" -> style = style.copy(arrowStart = ArrowTip.LATEX)
+                token == "stealth->" -> style = style.copy(arrowStart = ArrowTip.STEALTH, arrowEnd = ArrowTip.TRIANGLE)
                 token == "thick" -> style = style.copy(strokeWidth = 2.0)
                 token == "very thick" -> style = style.copy(strokeWidth = 3.0)
                 token == "ultra thick" -> style = style.copy(strokeWidth = 4.0)
                 token == "thin" -> style = style.copy(strokeWidth = 0.7)
                 token == "rectangle" -> style = style.copy(shape = NodeShape.RECTANGLE)
+                token == "diamond" -> style = style.copy(shape = NodeShape.DIAMOND)
+                token == "star" -> style = style.copy(shape = NodeShape.STAR)
+                token == "rounded corners" -> style = style.copy(rounded = true)
                 else -> {
                     // 纯颜色名 / #hex 作为 stroke
                     val c = resolveColor(token)
@@ -447,21 +534,31 @@ object TikzRenderer {
         elements.forEach { el ->
             when (el) {
                 is NodeElement -> {
-                    val halfW = if (el.shape == NodeShape.CIRCLE) NODE_CIRCLE_R else NODE_HALF_W
-                    val halfH = if (el.shape == NodeShape.CIRCLE) NODE_CIRCLE_R else NODE_HALF_H
+                    val (halfW, halfH) = when (el.shape) {
+                        NodeShape.CIRCLE, NodeShape.DIAMOND, NodeShape.STAR -> NODE_CIRCLE_R to NODE_CIRCLE_R
+                        else -> NODE_HALF_W to NODE_HALF_H
+                    }
                     allPoints.add(Point(el.at.x - halfW, el.at.y - halfH))
                     allPoints.add(Point(el.at.x + halfW, el.at.y + halfH))
                 }
                 is CoordinateElement -> allPoints.add(el.at)
                 is DrawElement -> {
-                    allPoints.addAll(el.points)
-                    el.rectCorner?.let { allPoints.add(it) }
-                    el.circleRadius?.let { r ->
-                        el.points.firstOrNull()?.let { c ->
+                    el.segs.forEach { seg ->
+                        when (seg) {
+                            is MoveTo -> allPoints.add(seg.p)
+                            is LineTo -> allPoints.add(seg.p)
+                            is QuadTo -> { allPoints.add(seg.c); allPoints.add(seg.p) }
+                            is CubicTo -> { allPoints.add(seg.c1); allPoints.add(seg.c2); allPoints.add(seg.p) }
+                        }
+                    }
+                    el.circleCenter?.let { c ->
+                        el.circleRadius?.let { r ->
                             allPoints.add(Point(c.x - r, c.y - r))
                             allPoints.add(Point(c.x + r, c.y + r))
                         }
                     }
+                    el.rectStart?.let { allPoints.add(it) }
+                    el.rectCorner?.let { allPoints.add(it) }
                 }
             }
         }
@@ -500,57 +597,105 @@ object TikzRenderer {
 
     private fun renderDraw(el: DrawElement, sx: (Double) -> Double, sy: (Double) -> Double): String {
         val style = el.style
-        val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${style.strokeWidth}\""
+        val strokeJoin = if (style.rounded) " stroke-linejoin=\"round\" stroke-linecap=\"round\"" else ""
+        val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${style.strokeWidth}\"$strokeJoin"
         val dash = if (style.dashed) " stroke-dasharray=\"5,5\"" else ""
         val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
+        val rectRx = if (style.rounded) "8" else "2"
 
         return when {
             el.circleRadius != null -> {
-                val c = el.points.first()
+                val c = el.circleCenter!!
                 """<circle cx="${fmt(sx(c.x))}" cy="${fmt(sy(c.y))}" r="${fmt(el.circleRadius * SCALE)}" $stroke$fill$dash/>"""
             }
             el.rectCorner != null -> {
-                val a = el.points.first()
-                val b = el.rectCorner
+                val a = el.rectStart!!
+                val b = el.rectCorner!!
                 val x = minOf(a.x, b.x); val yTop = maxOf(a.y, b.y)
                 val w = kotlin.math.abs(b.x - a.x); val h = kotlin.math.abs(b.y - a.y)
-                """<rect x="${fmt(sx(x))}" y="${fmt(sy(yTop))}" width="${fmt(w * SCALE)}" height="${fmt(h * SCALE)}" $stroke$fill$dash/>"""
+                """<rect x="${fmt(sx(x))}" y="${fmt(sy(yTop))}" width="${fmt(w * SCALE)}" height="${fmt(h * SCALE)}" rx="$rectRx" $stroke$fill$dash/>"""
             }
             else -> {
                 val d = buildString {
-                    el.points.forEachIndexed { i, p ->
-                        val px = fmt(sx(p.x)); val py = fmt(sy(p.y))
-                        if (i == 0) {
-                            append("M ").append(px).append(',').append(py)
-                        } else {
-                            val bend = el.bends[i - 1]
-                            if (bend != null) {
-                                // 二次贝塞尔曲线（to[bend]）：控制点在中点垂直偏移
-                                val prev = el.points[i - 1]
-                                val ctrl = bendControl(prev, p, bend)
-                                append(" Q ").append(fmt(sx(ctrl.x))).append(',').append(fmt(sy(ctrl.y)))
-                                    .append(' ').append(px).append(',').append(py)
-                            } else {
-                                append(" L ").append(px).append(',').append(py)
-                            }
+                    el.segs.forEach { seg ->
+                        when (seg) {
+                            is MoveTo -> append("M ").append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
+                            is LineTo -> append(" L ").append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
+                            is QuadTo -> append(" Q ").append(fmt(sx(seg.c.x))).append(',').append(fmt(sy(seg.c.y)))
+                                .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
+                            is CubicTo -> append(" C ").append(fmt(sx(seg.c1.x))).append(',').append(fmt(sy(seg.c1.y)))
+                                .append(' ').append(fmt(sx(seg.c2.x))).append(',').append(fmt(sy(seg.c2.y)))
+                                .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
                         }
                     }
                 }
                 val sb = StringBuilder()
                 sb.append("""<path d="$d" $stroke$fill$dash/>""")
-                // 箭头：AndroidSVG 不支持 <marker>，改为在端点直接画三角形
-                val arrowSize = 7.0
-                if (el.points.size >= 2) {
-                    if (style.arrow == Arrow.END || style.arrow == Arrow.BOTH) {
-                        sb.append('\n').append(arrowHead(el.points.last(), el.points[el.points.size - 2], style, sx, sy, arrowSize))
-                    }
-                    if (style.arrow == Arrow.START || style.arrow == Arrow.BOTH) {
-                        sb.append('\n').append(arrowHead(el.points.first(), el.points[1], style, sx, sy, arrowSize))
-                    }
+                // 箭头：AndroidSVG 不支持 <marker>，手动算几何直接画 polygon（尖在端点，往回推 L，垂直扩 W）
+                val endArrow = segmentArrowEnd(el.segs)
+                if (endArrow != null && style.arrowEnd != null) {
+                    sb.append('\n').append(
+                        arrowHeadSvg(endArrow.first, endArrow.second, style.arrowEnd, style.stroke, style.strokeWidth, sx, sy)
+                    )
+                }
+                val startArrow = segmentArrowStart(el.segs)
+                if (startArrow != null && style.arrowStart != null) {
+                    sb.append('\n').append(
+                        arrowHeadSvg(startArrow.first, startArrow.second, style.arrowStart, style.stroke, style.strokeWidth, sx, sy)
+                    )
                 }
                 sb.toString()
             }
         }
+    }
+
+    /** 提取路径所有点（MoveTo 起点 + 各段终点），用于箭头方向与边界 */
+    private fun pathPoints(segs: List<Seg>): List<Point> = segs.mapNotNull {
+        when (it) {
+            is MoveTo -> it.p
+            is LineTo -> it.p
+            is QuadTo -> it.p
+            is CubicTo -> it.p
+        }
+    }
+    /** 末段箭头：(尖, 指向线内的参考点)。直线用上一顶点，曲线用切线（Q: ctrl，C: c2） */
+    private fun segmentArrowEnd(segs: List<Seg>): Pair<Point, Point>? {
+        val last = segs.lastOrNull() ?: return null
+        return when (last) {
+            is MoveTo -> null
+            is LineTo -> {
+                val prev = secondLastPoint(segs) ?: return null
+                last.p to prev
+            }
+            is QuadTo -> last.p to last.c
+            is CubicTo -> last.p to last.c2
+        }
+    }
+
+    /** 首段箭头：(尖, 指向线内的参考点)。尖为 MoveTo 起点，参考点为第一段切线方向 */
+    private fun segmentArrowStart(segs: List<Seg>): Pair<Point, Point>? {
+        val first = segs.firstOrNull() as? MoveTo ?: return null
+        val second = segs.getOrNull(1) ?: return null
+        val inside = when (second) {
+            is LineTo -> second.p
+            is QuadTo -> second.c
+            is CubicTo -> second.c1
+            is MoveTo -> return null
+        }
+        return first.p to inside
+    }
+
+    private fun secondLastPoint(segs: List<Seg>): Point? {
+        for (i in segs.size - 2 downTo 0) {
+            val s = segs[i]
+            return when (s) {
+                is MoveTo -> s.p
+                is LineTo -> s.p
+                is QuadTo -> s.p
+                is CubicTo -> s.p
+            }
+        }
+        return null
     }
 
     /** 计算 to[bend] 二次贝塞尔控制点（TikZ 坐标系，y 向上）：中点 + 垂直偏移 */
@@ -568,23 +713,48 @@ object TikzRenderer {
         return Point(midX + nx * offset, midY + ny * offset)
     }
 
-    /** 在 [tip] 端点画实心三角形箭头（沿 [tip]→[from] 反方向张开） */
-    private fun arrowHead(
+    /**
+     * 手动算几何画箭头（TikZ 坐标，尖在 tip，inside 指向线内）。
+     * 三种形状：TRIANGLE 实心三角 / STEALTH 凹底 / LATEX 空心。
+     */
+    private fun arrowHeadSvg(
         tip: Point,
-        from: Point,
-        style: Style,
+        inside: Point,
+        shape: ArrowTip,
+        color: String,
+        strokeW: Double,
         sx: (Double) -> Double,
         sy: (Double) -> Double,
-        size: Double,
     ): String {
-        val tipX = sx(tip.x); val tipY = sy(tip.y)
-        val fromX = sx(from.x); val fromY = sy(from.y)
-        val angle = Math.atan2(tipY - fromY, tipX - fromX)
-        val a1 = angle + Math.PI * 0.8
-        val a2 = angle - Math.PI * 0.8
-        val p1x = tipX - size * Math.cos(a1); val p1y = tipY - size * Math.sin(a1)
-        val p2x = tipX - size * Math.cos(a2); val p2y = tipY - size * Math.sin(a2)
-        return """<path d="M ${fmt(p1x)},${fmt(p1y)} L ${fmt(tipX)},${fmt(tipY)} L ${fmt(p2x)},${fmt(p2y)} Z" fill="${style.stroke}"/>"""
+        val L = 10.0 + strokeW * 1.5  // 箭身长度
+        val W = 5.0 + strokeW          // 半宽
+        val tx = sx(tip.x); val ty = sy(tip.y)
+        val ix = sx(inside.x); val iy = sy(inside.y)
+        val dx = tx - ix
+        val dy = ty - iy
+        val len = kotlin.math.sqrt(dx * dx + dy * dy)
+        if (len < 1e-9) return ""
+        val ux = dx / len
+        val uy = dy / len
+        val nx = -uy
+        val ny = ux
+        val backX = tx + ux * L
+        val backY = ty + uy * L
+        val backRx = backX + nx * W
+        val backRy = backY + ny * W
+        val backLx = backX - nx * W
+        val backLy = backY - ny * W
+        return when (shape) {
+            ArrowTip.TRIANGLE ->
+                """<polygon points="${fmt(tx)},${fmt(ty)} ${fmt(backRx)},${fmt(backRy)} ${fmt(backLx)},${fmt(backLy)}" fill="$color"/>"""
+            ArrowTip.STEALTH -> {
+                val notchX = tx + ux * L * 0.7
+                val notchY = ty + uy * L * 0.7
+                """<polygon points="${fmt(tx)},${fmt(ty)} ${fmt(backRx)},${fmt(backRy)} ${fmt(notchX)},${fmt(notchY)} ${fmt(backLx)},${fmt(backLy)}" fill="$color"/>"""
+            }
+            ArrowTip.LATEX ->
+                """<polygon points="${fmt(tx)},${fmt(ty)} ${fmt(backRx)},${fmt(backRy)} ${fmt(backLx)},${fmt(backLy)}" fill="none" stroke="$color" stroke-width="${fmt(strokeW)}"/>"""
+        }
     }
 
     private fun renderNode(el: NodeElement, sx: (Double) -> Double, sy: (Double) -> Double): String {
@@ -598,6 +768,21 @@ object TikzRenderer {
             NodeShape.CIRCLE -> """<circle cx="${fmt(cx)}" cy="${fmt(cy)}" r="${fmt(NODE_CIRCLE_R * SCALE)}" $stroke$fill/>"""
             NodeShape.ELLIPSE -> """<ellipse cx="${fmt(cx)}" cy="${fmt(cy)}" rx="${fmt(NODE_HALF_W * SCALE)}" ry="${fmt(NODE_HALF_H * SCALE)}" $stroke$fill/>"""
             NodeShape.RECTANGLE -> """<rect x="${fmt(cx - NODE_HALF_W * SCALE)}" y="${fmt(cy - NODE_HALF_H * SCALE)}" width="${fmt(2 * NODE_HALF_W * SCALE)}" height="${fmt(2 * NODE_HALF_H * SCALE)}" rx="2" $stroke$fill/>"""
+            NodeShape.DIAMOND -> {
+                val w = NODE_HALF_W * SCALE
+                val h = NODE_HALF_H * SCALE
+                """<polygon points="${fmt(cx)},${fmt(cy - h)} ${fmt(cx + w)},${fmt(cy)} ${fmt(cx)},${fmt(cy + h)} ${fmt(cx - w)},${fmt(cy)}" $stroke$fill/>"""
+            }
+            NodeShape.STAR -> {
+                // 五角星：外半径 R，内半径 0.5R，10 个点交替
+                val r = NODE_CIRCLE_R * SCALE * 1.3
+                val pts = (0 until 10).joinToString(" ") { idx ->
+                    val rr = if (idx % 2 == 0) r else r * 0.5
+                    val a = Math.toRadians(-90.0 + idx * 36.0)
+                    "${fmt(cx + rr * Math.cos(a))},${fmt(cy + rr * Math.sin(a))}"
+                }
+                """<polygon points="$pts" $stroke$fill/>"""
+            }
         }
         // 文本：y 直接定位到近似垂直中心（fontSize 14 的一半略多）；AndroidSVG 不支持 dominant-baseline/dy em
         val text = if (el.text.isNotBlank()) {
