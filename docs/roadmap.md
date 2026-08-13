@@ -289,7 +289,7 @@
 #### 其他高价值发现（可参考）
 - **#56 工具消息 reasoning 兜底**（c0253dc）：thinking 开启时工具消息缺 reasoning → 400，chat/completions 补 `reasoning_content:""` + responses 补占位 item——与我们 #1690 互补的边界
 - **大文件拆分**（Strangler Fig）：>800 行文件全拆 <600，ChatService 1291→746、PreferencesStore 801→519 等 33 个——长期可维护方向
-- **修复 80+ bug 清单**（PROGRESS.md）：超长消息保存静默失败、压缩覆盖新消息、zip-slip 路径穿越、SettingsStore update 并发 lost update（Mutex 串行化）、webhook HMAC 恒失败、Room AutoMigration 缺口、QuickJS 原生内存泄漏、JSON 深嵌套 SOE、文件名路径逃逸等——**是上游 2.4.5 已知 bug 的完整清单，可逐条对照我们的 fork 检查**
+- **修复 80+ bug 清单**（PROGRESS.md）：超长消息保存静默失败、压缩覆盖新消息、zip-slip 路径穿越、SettingsStore update 并发 lost update（Mutex 串行化）、webhook HMAC 恒失败、Room AutoMigration 缺口、QuickJS 原生内存泄漏、JSON 深嵌套 SOE、文件名路径逃逸等——**是上游 2.4.5 已知 bug 的完整清单，可逐条对照我们的 fork 检查**。⚠️ 已整理为**可核查清单**：`docs/references/turbo-bugs-audit.md`（48+ 项分四类 + fork 状态列），原始存档 `docs/references/turbo-PROGRESS.md`
 
 **评估**：turbo 的 **R3.2 块级流式渲染** + **c897647 setJob（已移植）** 最值得吸收；修复清单可作我们 fork 的 bug 审计对照表。
 
@@ -348,3 +348,5 @@
 - 2026-08-13：调研 4 个 RikkaHub 二改版（agent/root/turbo/plus），记录可吸收点（免 key 搜索+断路器、Hardline 安全底线、技能触发词自动注入、前台保活），增补「七、RikkaHub 二改版调研」。**暂不实现**。
 - 2026-08-13：深挖 rikkahub-turbo `perf/rendering-and-streaming` 分支（PROGRESS.md），记录 R3.2 块级流式渲染 / R2.1 折叠调优 / setJob identity 修复 / #57 Response API 同根因复现 / 增量发送全禁用结论 / 80+ bug 修复清单。**已移植 setJob identity 修复**（ConversationSession.kt，对应 c897647）；R3.2 块级流式渲染为卡顿解药方向，**待实现**。
 - 2026-08-13：调研 rikkahub-math-plus（TikZ 图表渲染管线 + Lean 技能），记录 TikZ 管线架构（检测→preamble 生成→编译→三层缓存）作参考。增补「七」第 5 节。**暂不实现**。
+- 2026-08-13：TikZ 图表自动渲染实现后**真机空白，用户决定暂时放弃**。git revert 4 个 TikZ commit（84152089/beffca60/d32ac40b/d4fcaa26），分支回到无 TikZ 状态。**WebView 内跑 wasm+worker 引擎（tikzjax）在 Android 虚拟 origin 下不可行**，未来重启应走 JVM 渲染或 workspace pdflatex。安全修复版发布 v2.4.5-androidrik.17。
+- 2026-08-13：拉取 turbo `PROGRESS.md` 存档（docs/references/turbo-PROGRESS.md，742 行），并整理**可核查 bug 清单** docs/references/turbo-bugs-audit.md（48+ 项分四类：崩溃 17 / 数据丢失 9 / 资源防护 12 / 功能 15，含 turbo commit + 我们 fork 状态列）。**核查进度：已修 5 项安全**；**C1 coerceIn(0,-1) 崩溃已确认同款待修**（PreferencesStore.kt:387）；D4 删除附件延迟清理、D2 压缩覆盖新消息待核。**先不修复**，待用户决定优先级。
