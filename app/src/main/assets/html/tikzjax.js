@@ -1,3 +1,11 @@
+// [RikkaHub] UTF-8 safe btoa: dvi2html writes files with non-Latin1 (Chinese) content via btoa, which throws.
+(function(){
+  var origBtoa = window.btoa;
+  window.btoa = function(str){
+    try { return origBtoa(str); }
+    catch(e) { return origBtoa(unescape(encodeURIComponent(str))); }
+  };
+})();
 !function(A){var e={};function t(g){if(e[g])return e[g].exports;var r=e[g]={i:g,l:!1,exports:{}};return A[g].call(r.exports,r,r.exports,t),r.l=!0,r.exports}t.m=A,t.c=e,t.d=function(A,e,g){t.o(A,e)||Object.defineProperty(A,e,{enumerable:!0,get:g})},t.r=function(A){"undefined"!=typeof Symbol&&Symbol.toStringTag&&Object.defineProperty(A,Symbol.toStringTag,{value:"Module"}),Object.defineProperty(A,"__esModule",{value:!0})},t.t=function(A,e){if(1&e&&(A=t(A)),8&e)return A;if(4&e&&"object"==typeof A&&A&&A.__esModule)return A;var g=Object.create(null);if(t.r(g),Object.defineProperty(g,"default",{enumerable:!0,value:A}),2&e&&"string"!=typeof A)for(var r in A)t.d(g,r,function(e){return A[e]}.bind(null,r));return g},t.n=function(A){var e=A&&A.__esModule?function(){return A.default}:function(){return A};return t.d(e,"a",e),e},t.o=function(A,e){return Object.prototype.hasOwnProperty.call(A,e)},t.p="/",t(t.s=33)}([function(A,e,t){"use strict";(function(A){
 /*!
  * The buffer module from node.js, for the browser.
