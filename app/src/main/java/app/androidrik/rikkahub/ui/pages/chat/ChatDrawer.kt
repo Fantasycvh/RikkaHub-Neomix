@@ -277,8 +277,12 @@ fun ChatDrawerContent(
                     showMoveToFolderSheet = true
                 },
                 onShare = {
-                    conversationToShare = it
-                    showExportSheet = true
+                    // 列表项是轻量摘要（messageNodes 为空），导出前加载完整 conversation
+                    scope.launch {
+                        val full = repo.getConversationById(it.id) ?: it
+                        conversationToShare = full
+                        showExportSheet = true
+                    }
                 }
             )
 
