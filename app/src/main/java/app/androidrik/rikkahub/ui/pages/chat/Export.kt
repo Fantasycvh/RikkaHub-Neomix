@@ -90,6 +90,7 @@ import app.androidrik.rikkahub.ui.components.message.ThinkingStep
 import app.androidrik.rikkahub.ui.components.message.groupMessageParts
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.richtext.generateMarkdownHtml
+import app.androidrik.rikkahub.tikz.TikzRenderer
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.BitmapComposer
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThought
@@ -428,6 +429,39 @@ private fun exportToMarkdown(
     }
 }
 
+/** 匹配 ```tikz / ```tikzcd 等围栏代码块 */
+private val TIKZ_FENCE_REGEX = Regex("""```(?:tikz|tikzpicture|tikzcd|tikztiming)\s*\n([\s\S]*?)```""")
+
+/**
+ * 将 markdown 中的 TikZ 代码围栏渲染为内嵌 <svg>（矢量），其余 markdown 交给 generateMarkdownHtml。
+ * 用占位符绕过 flexmark 对原始 HTML 的转义。
+ */
+private fun renderMarkdownWithTikz(content: String): String {
+    if (!content.contains("```tikz") && !content.contains("```tikzpicture") &&
+        !content.contains("```tikzcd") && !content.contains("```tikztiming")
+    ) {
+        return generateMarkdownHtml(content)
+    }
+    val svgs = mutableListOf<String>()
+    val withPlaceholders = TIKZ_FENCE_REGEX.replace(content) { match ->
+        val code = match.groupValues[1].trim()
+        val svg = TikzRenderer.render(code).getOrNull()
+        if (svg != null) {
+            val placeholder = "%%TIKZ_PH_${svgs.size}%%"
+            svgs.add(svg)
+            placeholder
+        } else {
+            match.value
+        }
+    }
+    val html = generateMarkdownHtml(withPlaceholders)
+    var result = html
+    svgs.forEachIndexed { i, svg ->
+        result = result.replace("%%TIKZ_PH_${i}%%", svg)
+    }
+    return result
+}
+
 private fun exportToHtml(
     context: Context,
     conversation: Conversation,
@@ -474,7 +508,7 @@ private fun exportToHtml(
         message.parts.forEach { part ->
             when (part) {
                 is UIMessagePart.Text -> {
-                    sb.append(generateMarkdownHtml(part.text))
+                    sb.append(renderMarkdownWithTikz(part.text))
                     sb.append('\n')
                 }
 

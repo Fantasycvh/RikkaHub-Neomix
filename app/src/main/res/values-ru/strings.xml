@@ -1281,5 +1281,7 @@
   <string name="assistant_page_context_message_limit_count">Лимит сообщений контекста: %d</string>
   <string name="assistant_page_context_message_limit_unlimited">Неограниченные сообщения контекста</string>
   <string name="assistant_page_context_message_limit_warning">Ограничение контекста аннулирует кэш промпта каждый раз, когда контекст усекается. Больший лимит усекает реже; безлимитный не усекает никогда и сохраняет кэш полностью нетронутым.</string>
+  <string name="setting_display_page_enable_diagram_rendering_title">Рендеринг диаграмм TikZ</string>
+  <string name="setting_display_page_enable_diagram_rendering_desc">Рендеринг созданного ИИ кода tikzpicture / tikzcd в виде векторной графики</string>
 </resources>
 

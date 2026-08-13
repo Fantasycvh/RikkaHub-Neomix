@@ -1,0 +1,384 @@
+package app.androidrik.rikkahub.tikz
+
+/**
+ * 纯 Kotlin TikZ 子集渲染器：TikZ 源码 → SVG 字符串。
+ *
+ * 覆盖 MVP 子集：
+ * - `\node[style] (name) at (x,y) {text}` / `\coordinate (name) at (x,y)`
+ * - `\draw[style] (p) -- (q) ...` / `circle (r)` / `rectangle (x2,y2)`
+ * - 坐标：直角 `(x,y)`、极坐标 `(angle:radius)`、命名节点 `(A)`、锚点 `(A.north)`
+ * - 样式：颜色名/#hex、draw、fill、thick/very thick、dashed、箭头 ->/<-/<->
+ * - 中文文本原样输出
+ *
+ * 坐标约定：TikZ y 轴向上，SVG y 轴向下（渲染时翻转）；1 TikZ 单位 = 100 SVG 单位。
+ */
+object TikzRenderer {
+
+    private const val SCALE = 100.0
+
+    /** 渲染 TikZ 源码为 SVG 字符串；失败时返回异常（runCatching 包装）。 */
+    fun render(code: String, darkMode: Boolean = false): Result<String> = runCatching {
+        val body = extractBody(code)
+        val ctx = ParseContext()
+        val elements = parseCommands(body, ctx)
+        if (elements.isEmpty()) {
+            throw IllegalArgumentException("No renderable TikZ elements found")
+        }
+        val svg = renderSvg(elements, ctx)
+        // 深色模式：默认黑色线条/文本改为白色（命名颜色如 red/blue 深色下仍可见，保持不变）
+        if (darkMode) svg.replace("black", "white") else svg
+    }
+
+    // ---- 坐标 / 样式 AST ----
+
+    private data class Point(val x: Double, val y: Double)
+
+    private enum class NodeShape { RECTANGLE, CIRCLE, ELLIPSE }
+
+    private enum class Arrow { NONE, END, START, BOTH }
+
+    private data class Style(
+        val draw: Boolean = true,
+        val stroke: String = "black",
+        val fill: String? = null,
+        val strokeWidth: Double = 1.0,
+        val dashed: Boolean = false,
+        val arrow: Arrow = Arrow.NONE,
+        val shape: NodeShape = NodeShape.RECTANGLE,
+    )
+
+    private sealed interface Element
+
+    private data class NodeElement(
+        val name: String?,
+        val at: Point,
+        val style: Style,
+        val shape: NodeShape,
+        val text: String,
+    ) : Element
+
+    private data class CoordinateElement(val name: String, val at: Point) : Element
+
+    private data class DrawElement(
+        val style: Style,
+        val points: List<Point> = emptyList(),
+        val circleRadius: Double? = null,
+        val rectCorner: Point? = null,
+    ) : Element
+
+    private class ParseContext {
+        val coordinates = mutableMapOf<String, Point>()
+    }
+
+    // ---- 预处理 ----
+
+    private fun extractBody(code: String): String {
+        val trimmed = code.trim()
+        if (trimmed.contains("\\begin{tikzcd}")) {
+            throw IllegalArgumentException("tikzcd is not supported yet")
+        }
+        val beginMarker = "\\begin{tikzpicture}"
+        val beginIdx = trimmed.indexOf(beginMarker)
+        val endIdx = trimmed.lastIndexOf("\\end{tikzpicture}")
+        return when {
+            beginIdx >= 0 && endIdx > beginIdx -> {
+                var bodyStart = beginIdx + beginMarker.length
+                // 跳过可选的 [options]
+                if (bodyStart < trimmed.length && trimmed[bodyStart] == '[') {
+                    val close = trimmed.indexOf(']', bodyStart)
+                    if (close >= 0) bodyStart = close + 1
+                }
+                trimmed.substring(bodyStart, endIdx)
+            }
+            else -> trimmed
+        }
+    }
+
+    // ---- 命令解析 ----
+
+    private fun parseCommands(body: String, ctx: ParseContext): List<Element> {
+        val commands = splitCommands(body)
+        // 第一遍：收集所有命名坐标（\coordinate + \node 的 name）
+        commands.forEach { cmd ->
+            parseCoordinate(cmd, ctx)
+            collectNodeName(cmd, ctx)
+        }
+        // 第二遍：生成可渲染元素
+        val elements = mutableListOf<Element>()
+        commands.forEach { cmd ->
+            val el = parseNode(cmd, ctx) ?: parseDraw(cmd, ctx)
+            if (el != null) elements.add(el)
+        }
+        return elements
+    }
+
+    /** 按分号分割命令，忽略空段与行尾注释（% 到行尾） */
+    private fun splitCommands(body: String): List<String> {
+        val result = mutableListOf<String>()
+        val sb = StringBuilder()
+        var inComment = false
+        for (ch in body) {
+            when {
+                inComment -> if (ch == '\n') inComment = false
+                ch == '%' -> inComment = true
+                ch == ';' -> { result.add(sb.toString().trim()); sb.clear() }
+                else -> sb.append(ch)
+            }
+        }
+        val tail = sb.toString().trim()
+        if (tail.isNotEmpty()) result.add(tail)
+        return result.filter { it.isNotEmpty() && it.startsWith("\\") }
+    }
+
+    private fun parseCoordinate(cmd: String, ctx: ParseContext) {
+        val m = Regex("""\\coordinate\s*\(([^)]+)\)\s+at\s+\(([^)]+)\)""").find(cmd) ?: return
+        val name = m.groupValues[1].trim()
+        val point = parseCoordinatePoint(m.groupValues[2], ctx)
+        ctx.coordinates[name] = point
+    }
+
+    /** 第一遍收集 \node 的 name 坐标，供后续 \draw (A) 引用 */
+    private fun collectNodeName(cmd: String, ctx: ParseContext) {
+        val m = Regex("""\\node\s*(\[[^\]]*\])?\s*\(([^)]+)\)\s*at\s+\(([^)]+)\)""").find(cmd) ?: return
+        val name = m.groupValues[2].trim()
+        val point = parseCoordinatePoint(m.groupValues[3], ctx)
+        ctx.coordinates[name] = point
+    }
+
+    private fun parseNode(cmd: String, ctx: ParseContext): Element? {
+        val m = Regex("""\\node\s*(\[[^\]]*\])?\s*(?:\(([^)]+)\))?\s*(?:at\s+)?\(([^)]+)\)\s*\{([^}]*)\}""").find(cmd) ?: return null
+        val styleStr = m.groupValues[1].orEmpty()
+        val name = m.groupValues[2].ifBlank { null }
+        val at = parseCoordinatePoint(m.groupValues[3], ctx)
+        val text = m.groupValues[4]
+        val style = parseStyle(styleStr)
+        name?.let { ctx.coordinates[it] = at }
+        return NodeElement(name, at, style, style.shape, text)
+    }
+
+    private fun parseDraw(cmd: String, ctx: ParseContext): Element? {
+        val m = Regex("""\\(?:draw|path)\s*(\[[^\]]*\])?(.*)""").find(cmd) ?: return null
+        val styleStr = m.groupValues[1].orEmpty()
+        val body = m.groupValues[2].trim()
+        val style = parseStyle(styleStr)
+
+        // circle (r)
+        Regex("""\(([^)]+)\)\s+circle\s+\(([^)]+)\)""").find(body)?.let {
+            val center = parseCoordinatePoint(it.groupValues[1], ctx)
+            val radius = it.groupValues[2].toDoubleOrNull() ?: return null
+            return DrawElement(style, circleRadius = radius, points = listOf(center))
+        }
+        // rectangle (x2,y2)
+        Regex("""\(([^)]+)\)\s+rectangle\s+\(([^)]+)\)""").find(body)?.let {
+            val a = parseCoordinatePoint(it.groupValues[1], ctx)
+            val b = parseCoordinatePoint(it.groupValues[2], ctx)
+            return DrawElement(style, rectCorner = b, points = listOf(a))
+        }
+        // 折线 -- 连接
+        val coords = Regex("""\(([^)]+)\)""").findAll(body).map { parseCoordinatePoint(it.groupValues[1], ctx) }.toList()
+        if (coords.size >= 2) {
+            return DrawElement(style, points = coords)
+        }
+        return null
+    }
+
+    private fun parseCoordinatePoint(raw: String, ctx: ParseContext): Point {
+        val s = raw.trim()
+        // 极坐标 (angle:radius)
+        if (s.contains(':')) {
+            val (angle, radius) = s.split(':', limit = 2)
+            val a = angle.toDoubleOrNull() ?: 0.0
+            val r = radius.toDoubleOrNull() ?: 0.0
+            val rad = Math.toRadians(a)
+            return Point(r * kotlin.math.cos(rad), r * kotlin.math.sin(rad))
+        }
+        // 直角 (x,y)
+        if (s.contains(',')) {
+            val parts = s.split(',')
+            val x = parts[0].trim().toDoubleOrNull() ?: 0.0
+            val y = parts.getOrNull(1)?.trim()?.toDoubleOrNull() ?: 0.0
+            return Point(x, y)
+        }
+        // 命名节点 (A) 或锚点 (A.north)
+        val anchor = s.split('.', limit = 2)
+        val base = ctx.coordinates[anchor[0]] ?: throw IllegalArgumentException("Unknown coordinate: $s")
+        val anchorName = anchor.getOrNull(1)?.trim()
+        return when (anchorName) {
+            "north" -> base.copy(y = base.y + 0.3)
+            "south" -> base.copy(y = base.y - 0.3)
+            "east" -> base.copy(x = base.x + 0.3)
+            "west" -> base.copy(x = base.x - 0.3)
+            else -> base
+        }
+    }
+
+    // ---- 样式解析 ----
+
+    private val COLOR_NAMES = mapOf(
+        "red" to "red", "blue" to "blue", "green" to "green", "black" to "black",
+        "white" to "white", "gray" to "gray", "grey" to "gray", "orange" to "orange",
+        "purple" to "purple", "yellow" to "yellow", "pink" to "pink", "brown" to "brown",
+        "cyan" to "cyan", "magenta" to "magenta",
+    )
+
+    private fun parseStyle(raw: String): Style {
+        var style = Style()
+        if (raw.isBlank()) return style
+        val inner = raw.removePrefix("[").removeSuffix("]")
+        inner.split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { token ->
+            when {
+                token == "draw" -> style = style.copy(draw = true)
+                token == "fill" -> style = style.copy(fill = "black")
+                token.startsWith("fill=") -> style = style.copy(fill = resolveColor(token.substringAfter("=")))
+                token == "dashed" -> style = style.copy(dashed = true)
+                token == "dotted" -> style = style.copy(dashed = true)
+                token == "circle" -> style = style.copy(shape = NodeShape.CIRCLE)
+                token == "ellipse" -> style = style.copy(shape = NodeShape.ELLIPSE)
+                token == "->" -> style = style.copy(arrow = Arrow.END)
+                token == "<-" -> style = style.copy(arrow = Arrow.START)
+                token == "<->" -> style = style.copy(arrow = Arrow.BOTH)
+                token == "thick" -> style = style.copy(strokeWidth = 2.0)
+                token == "very thick" -> style = style.copy(strokeWidth = 3.0)
+                token == "ultra thick" -> style = style.copy(strokeWidth = 4.0)
+                token == "thin" -> style = style.copy(strokeWidth = 0.7)
+                token == "rectangle" -> style = style.copy(shape = NodeShape.RECTANGLE)
+                else -> {
+                    // 纯颜色名 / #hex 作为 stroke
+                    val c = resolveColor(token)
+                    if (c != null) style = style.copy(stroke = c)
+                }
+            }
+        }
+        return style
+    }
+
+    private fun resolveColor(token: String): String? {
+        if (token.startsWith("#")) return token
+        return COLOR_NAMES[token.lowercase()]
+    }
+
+    // ---- SVG 生成 ----
+
+    private const val PADDING = 0.5
+    private const val NODE_HALF_W = 0.42
+    private const val NODE_HALF_H = 0.28
+    private const val NODE_CIRCLE_R = 0.22
+
+    private fun renderSvg(elements: List<Element>, ctx: ParseContext): String {
+        // 收集所有坐标计算边界（TikZ 坐标系，y 向上）
+        val allPoints = mutableListOf<Point>()
+        elements.forEach { el ->
+            when (el) {
+                is NodeElement -> {
+                    val halfW = if (el.shape == NodeShape.CIRCLE) NODE_CIRCLE_R else NODE_HALF_W
+                    val halfH = if (el.shape == NodeShape.CIRCLE) NODE_CIRCLE_R else NODE_HALF_H
+                    allPoints.add(Point(el.at.x - halfW, el.at.y - halfH))
+                    allPoints.add(Point(el.at.x + halfW, el.at.y + halfH))
+                }
+                is CoordinateElement -> allPoints.add(el.at)
+                is DrawElement -> {
+                    allPoints.addAll(el.points)
+                    el.rectCorner?.let { allPoints.add(it) }
+                    el.circleRadius?.let { r ->
+                        el.points.firstOrNull()?.let { c ->
+                            allPoints.add(Point(c.x - r, c.y - r))
+                            allPoints.add(Point(c.x + r, c.y + r))
+                        }
+                    }
+                }
+            }
+        }
+        val minX = allPoints.minOf { it.x }
+        val maxX = allPoints.maxOf { it.x }
+        val minY = allPoints.minOf { it.y }
+        val maxY = allPoints.maxOf { it.y }
+        val width = ((maxX - minX) + 2 * PADDING) * SCALE
+        val height = ((maxY - minY) + 2 * PADDING) * SCALE
+
+        // TikZ → SVG 坐标转换（y 翻转）
+        fun sx(x: Double): Double = (x - minX + PADDING) * SCALE
+        fun sy(y: Double): Double = (maxY - y + PADDING) * SCALE
+
+        val sb = StringBuilder()
+        sb.append("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(width)} ${fmt(height)}">""")
+        sb.append('\n')
+
+        // 箭头 marker
+        val hasArrow = elements.any { (it as? DrawElement)?.style?.arrow != Arrow.NONE }
+        if (hasArrow) {
+            sb.append("""<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>""")
+            sb.append('\n')
+        }
+
+        // 先画 draw（底层），再画 node（上层）
+        elements.forEach { el ->
+            when (el) {
+                is DrawElement -> sb.append(renderDraw(el, ::sx, ::sy)).append('\n')
+                is NodeElement -> sb.append(renderNode(el, ::sx, ::sy)).append('\n')
+                is CoordinateElement -> Unit
+            }
+        }
+
+        sb.append("</svg>")
+        return sb.toString()
+    }
+
+    private fun fmt(v: Double): String {
+        val rounded = Math.round(v * 100.0) / 100.0
+        return if (rounded == rounded.toLong().toDouble()) rounded.toLong().toString() else rounded.toString()
+    }
+
+    private fun renderDraw(el: DrawElement, sx: (Double) -> Double, sy: (Double) -> Double): String {
+        val style = el.style
+        val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${style.strokeWidth}\""
+        val dash = if (style.dashed) " stroke-dasharray=\"5,5\"" else ""
+        val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
+
+        return when {
+            el.circleRadius != null -> {
+                val c = el.points.first()
+                """<circle cx="${fmt(sx(c.x))}" cy="${fmt(sy(c.y))}" r="${fmt(el.circleRadius * SCALE)}" $stroke$fill$dash/>"""
+            }
+            el.rectCorner != null -> {
+                val a = el.points.first()
+                val b = el.rectCorner
+                val x = minOf(a.x, b.x); val yTop = maxOf(a.y, b.y)
+                val w = kotlin.math.abs(b.x - a.x); val h = kotlin.math.abs(b.y - a.y)
+                """<rect x="${fmt(sx(x))}" y="${fmt(sy(yTop))}" width="${fmt(w * SCALE)}" height="${fmt(h * SCALE)}" $stroke$fill$dash/>"""
+            }
+            else -> {
+                val d = buildString {
+                    el.points.forEachIndexed { i, p ->
+                        append(if (i == 0) "M " else " L ")
+                        append(fmt(sx(p.x))).append(',').append(fmt(sy(p.y)))
+                    }
+                }
+                val markerEnd = if (style.arrow == Arrow.END || style.arrow == Arrow.BOTH) " marker-end=\"url(#arrow)\"" else ""
+                val markerStart = if (style.arrow == Arrow.START || style.arrow == Arrow.BOTH) " marker-start=\"url(#arrow)\"" else ""
+                """<path d="$d" $stroke$fill$dash$markerEnd$markerStart/>"""
+            }
+        }
+    }
+
+    private fun renderNode(el: NodeElement, sx: (Double) -> Double, sy: (Double) -> Double): String {
+        val style = el.style
+        val cx = sx(el.at.x)
+        val cy = sy(el.at.y)
+        val stroke = if (style.draw) "stroke=\"${style.stroke}\" stroke-width=\"${style.strokeWidth}\"" else ""
+        val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
+        val textAnchor = " text-anchor=\"middle\" dominant-baseline=\"central\""
+        val textColor = " fill=\"${style.stroke}\""
+        val shapeSvg = when (el.shape) {
+            NodeShape.CIRCLE -> """<circle cx="${fmt(cx)}" cy="${fmt(cy)}" r="${fmt(NODE_CIRCLE_R * SCALE)}" $stroke$fill/>"""
+            NodeShape.ELLIPSE -> """<ellipse cx="${fmt(cx)}" cy="${fmt(cy)}" rx="${fmt(NODE_HALF_W * SCALE)}" ry="${fmt(NODE_HALF_H * SCALE)}" $stroke$fill/>"""
+            NodeShape.RECTANGLE -> """<rect x="${fmt(cx - NODE_HALF_W * SCALE)}" y="${fmt(cy - NODE_HALF_H * SCALE)}" width="${fmt(2 * NODE_HALF_W * SCALE)}" height="${fmt(2 * NODE_HALF_H * SCALE)}" rx="2" $stroke$fill/>"""
+        }
+        val text = if (el.text.isNotBlank()) {
+            """<text x="${fmt(cx)}" y="${fmt(cy)}"$textAnchor font-size="14">${escapeXml(el.text)}</text>"""
+        } else ""
+        return "$shapeSvg\n$text"
+    }
+
+    private fun escapeXml(s: String): String =
+        s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+}

@@ -83,6 +83,8 @@ import kotlin.time.Clock
 
 private const val COLLAPSE_LINES = 10
 private val PREVIEWABLE_LANGUAGES = setOf("html", "svg")
+/** 触发 TikZ 图表渲染的代码围栏语言（normalizedLanguage 已小写化） */
+private val TIKZ_FENCE_LANGS = setOf("tikz", "tikzpicture", "tikzcd", "tikztiming")
 
 @Composable
 fun HighlightCodeBlock(
@@ -173,6 +175,12 @@ fun HighlightCodeBlock(
                 }
                 completeCodeBlock && normalizedLanguage == "mermaid" -> {
                     Mermaid(
+                        code = code,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                completeCodeBlock && normalizedLanguage in TIKZ_FENCE_LANGS -> {
+                    TikzJax(
                         code = code,
                         modifier = Modifier.fillMaxWidth(),
                     )

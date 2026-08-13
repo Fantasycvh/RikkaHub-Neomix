@@ -1286,4 +1286,6 @@
   <string name="assistant_page_context_message_limit_count">Context message limit: %d</string>
   <string name="assistant_page_context_message_limit_unlimited">Unlimited context messages</string>
   <string name="assistant_page_context_message_limit_warning">Limiting context invalidates the prompt cache each time the context is trimmed. A larger limit trims less often; unlimited never trims and keeps the cache fully intact.</string>
+  <string name="setting_display_page_enable_diagram_rendering_title">Render TikZ Diagrams</string>
+  <string name="setting_display_page_enable_diagram_rendering_desc">Render AI-generated tikzpicture / tikzcd code as vector graphics</string>
 </resources>

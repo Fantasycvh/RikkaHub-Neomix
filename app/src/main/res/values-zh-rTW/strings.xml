@@ -1279,5 +1279,7 @@
   <string name="assistant_page_context_message_limit_count">上下文訊息限制：%d</string>
   <string name="assistant_page_context_message_limit_unlimited">無限上下文訊息</string>
   <string name="assistant_page_context_message_limit_warning">限制上下文會在每次上下文被裁減時使提示詞快取失效。較大的限制裁減頻率較低；無限則永不裁減並保持快取完整。</string>
+  <string name="setting_display_page_enable_diagram_rendering_title">渲染 TikZ 圖表</string>
+  <string name="setting_display_page_enable_diagram_rendering_desc">將 AI 輸出的 tikzpicture / tikzcd 程式碼渲染為向量圖</string>
 </resources>
 

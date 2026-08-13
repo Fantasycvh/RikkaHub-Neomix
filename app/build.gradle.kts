@@ -22,8 +22,8 @@ android {
         applicationId = "app.androidrik.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 188
-        versionName = "2.4.5-androidrik.24"
+        versionCode = 189
+        versionName = "2.4.5-androidrik.25"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -218,6 +218,7 @@ dependencies {
     implementation(libs.coil.gif)
     implementation(libs.coil.okhttp)
     implementation(libs.coil.svg)
+    implementation(libs.androidsvg)
     implementation(libs.coil.cache.control)
 
     // serialization

@@ -257,6 +257,18 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                     item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_enable_diagram_rendering_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_display_page_enable_diagram_rendering_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.enableDiagramRendering,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(enableDiagramRendering = it))
+                                }
+                            )
+                        },
+                    )
+                    item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_chat_font_family_title)) },
                         supportingContent = {
                             Select(
