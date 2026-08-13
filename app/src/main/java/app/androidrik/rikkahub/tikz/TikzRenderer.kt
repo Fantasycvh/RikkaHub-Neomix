@@ -18,9 +18,13 @@ object TikzRenderer {
 
     /** 渲染 TikZ 源码为 SVG 字符串；失败时返回异常（runCatching 包装）。 */
     fun render(code: String, darkMode: Boolean = false): Result<String> = runCatching {
-        val body = extractBody(code)
+        val trimmed = code.trim()
         val ctx = ParseContext()
-        val elements = parseCommands(body, ctx)
+        val elements = if (trimmed.contains("\\begin{tikzcd}")) {
+            parseTikzcd(trimmed, ctx)
+        } else {
+            parseCommands(extractBody(trimmed), ctx)
+        }
         if (elements.isEmpty()) {
             throw IllegalArgumentException("No renderable TikZ elements found")
         }
@@ -74,9 +78,6 @@ object TikzRenderer {
 
     private fun extractBody(code: String): String {
         val trimmed = code.trim()
-        if (trimmed.contains("\\begin{tikzcd}")) {
-            throw IllegalArgumentException("tikzcd is not supported yet")
-        }
         val beginMarker = "\\begin{tikzpicture}"
         val beginIdx = trimmed.indexOf(beginMarker)
         val endIdx = trimmed.lastIndexOf("\\end{tikzpicture}")
@@ -92,6 +93,73 @@ object TikzRenderer {
             }
             else -> trimmed
         }
+    }
+
+    // ---- tikzcd 交换图 ----
+
+    private data class ArrowSpec(val dir: String, val label: String?, val prime: Boolean)
+
+    private val ARROW_REGEX = Regex("""\\arrow\s*\[([^\]]*)\]""")
+
+    /** tikzcd 布局参数（TikZ 单位） */
+    private const val TIKZCD_COL_SEP = 2.0
+    private const val TIKZCD_ROW_SEP = 1.5
+
+    private fun parseTikzcd(code: String, ctx: ParseContext): List<Element> {
+        var body = code.substringAfter("\\begin{tikzcd}").substringBefore("\\end{tikzcd}")
+        if (body.startsWith("[")) {
+            val close = body.indexOf(']')
+            if (close >= 0) body = body.substring(close + 1)
+        }
+
+        val elements = mutableListOf<Element>()
+        // 按 \\ 分行（注意：\\arrow 是单个反斜杠，不会被 split("\\\\") 误伤）
+        val rows = body.split("\\\\")
+        rows.forEachIndexed { row, rowStr ->
+            if (rowStr.isBlank()) return@forEachIndexed
+            val cells = rowStr.split("&")
+            cells.forEachIndexed { col, cellStr ->
+                val x = col * TIKZCD_COL_SEP
+                val y = -row * TIKZCD_ROW_SEP
+                val text = cellStr.replace(ARROW_REGEX, "").trim()
+                elements.add(NodeElement(null, Point(x, y), Style(draw = false), NodeShape.RECTANGLE, text))
+                // 解析该单元格的所有 \arrow
+                ARROW_REGEX.findAll(cellStr).forEach { m ->
+                    val spec = parseArrow(m.groupValues[1])
+                    val (dr, dc) = dirToDelta(spec.dir)
+                    val from = Point(x, y)
+                    val to = Point((col + dc) * TIKZCD_COL_SEP, -(row + dr) * TIKZCD_ROW_SEP)
+                    elements.add(DrawElement(Style(arrow = Arrow.END), points = listOf(from, to)))
+                    spec.label?.let { lbl ->
+                        val mid = Point((from.x + to.x) / 2, (from.y + to.y) / 2)
+                        elements.add(NodeElement(null, mid, Style(draw = false), NodeShape.RECTANGLE, lbl))
+                    }
+                }
+            }
+        }
+        return elements
+    }
+
+    private fun parseArrow(spec: String): ArrowSpec {
+        val parts = spec.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val dir = parts.firstOrNull() ?: "r"
+        val label = parts.firstOrNull { it.startsWith("\"") }?.trim('"')?.takeIf { it.isNotEmpty() }
+        val prime = parts.any { it == "'" }
+        return ArrowSpec(dir, label, prime)
+    }
+
+    private fun dirToDelta(dir: String): Pair<Int, Int> {
+        var dr = 0
+        var dc = 0
+        for (ch in dir) {
+            when (ch) {
+                'r' -> dc += 1
+                'l' -> dc -= 1
+                'u' -> dr -= 1
+                'd' -> dr += 1
+            }
+        }
+        return dr to dc
     }
 
     // ---- 命令解析 ----

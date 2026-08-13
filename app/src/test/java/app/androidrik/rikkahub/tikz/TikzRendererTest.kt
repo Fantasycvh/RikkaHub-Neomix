@@ -95,4 +95,51 @@ class TikzRendererTest {
         assertTrue(result.isSuccess)
         assertTrue(result.getOrThrow().contains("viewBox"))
     }
+
+    @Test
+    fun `tikzcd simple two node arrow renders`() {
+        val code = """
+            \begin{tikzcd}
+            A \arrow[r] & B
+            \end{tikzcd}
+        """.trimIndent()
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue(svg.contains("A"))
+        assertTrue(svg.contains("B"))
+        assertTrue("missing arrow marker", svg.contains("marker-end"))
+        assertTrue("missing path", svg.contains("<path"))
+    }
+
+    @Test
+    fun `tikzcd two row diagram with labels`() {
+        val code = """
+            \begin{tikzcd}
+            A \arrow[r, "f"] \arrow[d] & B \\
+            C & D
+            \end{tikzcd}
+        """.trimIndent()
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue(svg.contains("f"))
+        assertTrue(svg.contains("A"))
+        assertTrue(svg.contains("B"))
+        assertTrue(svg.contains("C"))
+        assertTrue(svg.contains("D"))
+    }
+
+    @Test
+    fun `tikzcd diagonal arrow renders`() {
+        val code = """
+            \begin{tikzcd}
+            A \arrow[dr] & B \\
+            C & D
+            \end{tikzcd}
+        """.trimIndent()
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().contains("<path"))
+    }
 }
