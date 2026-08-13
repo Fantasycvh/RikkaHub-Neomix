@@ -166,6 +166,22 @@ fun TikzJax(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // 诊断：WebView 加载状态（定位"JS 未执行"）
+                val wvError = webViewState.loadError
+                val wvUrl = webViewState.currentUrl
+                if (wvError != null) {
+                    Text(
+                        text = "加载错误: $wvError",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else if (wvUrl != null && wvUrl != url) {
+                    Text(
+                        text = "WebView 当前: $wvUrl",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
 
