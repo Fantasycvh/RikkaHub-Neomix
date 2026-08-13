@@ -217,7 +217,10 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.gif)
     implementation(libs.coil.okhttp)
-    implementation(libs.coil.svg)
+    implementation(libs.coil.svg) {
+        // coil-svg 传递依赖 androidsvg-aar，与显式 androidsvg jar 变体重复类；排除整个 caverock group
+        exclude(group = "com.caverock")
+    }
     implementation(libs.androidsvg)
     implementation(libs.coil.cache.control)
 
