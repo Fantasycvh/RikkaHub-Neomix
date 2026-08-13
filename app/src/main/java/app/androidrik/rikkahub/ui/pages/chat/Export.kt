@@ -68,6 +68,7 @@ import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.request.crossfade
 import com.dokar.sonner.ToastType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -232,7 +233,15 @@ fun ChatExportSheet(
                                                 settings = settings,
                                                 options = imageExportOptions
                                             )
+                                        }.onSuccess {
+                                            toaster.show(
+                                                imageSuccessMessage,
+                                                type = ToastType.Success
+                                            )
+                                            onDismissRequest()
                                         }.onFailure {
+                                            // 取消必须向上传播，否则手动关闭 sheet 会被误报为导出失败
+                                            if (it is CancellationException) throw it
                                             it.printStackTrace()
                                             toaster.show(
                                                 message = "Failed to export image: ${it.message}",
@@ -240,11 +249,6 @@ fun ChatExportSheet(
                                             )
                                         }
                                     }
-                                    toaster.show(
-                                        imageSuccessMessage,
-                                        type = ToastType.Success
-                                    )
-                                    onDismissRequest()
                                 }
                             ) {
                                 Text(stringResource(R.string.mermaid_export))
