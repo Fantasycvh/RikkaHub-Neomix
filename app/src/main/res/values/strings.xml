@@ -287,6 +287,8 @@
   <string name="chat_page_export_include_all_versions">Include all versions (branches &amp; edit history)</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">Export conversation as a markdown file</string>
+  <string name="chat_page_export_html">Export as HTML</string>
+  <string name="chat_page_export_html_desc">Export conversation as a visualized HTML page</string>
   <string name="chat_page_export_share_via">Share via</string>
   <string name="chat_page_export_success">Exported to %1$s</string>
   <string name="chat_page_history">Chat History</string>

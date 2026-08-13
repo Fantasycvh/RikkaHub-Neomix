@@ -112,7 +112,7 @@ private val flavour by lazy {
 
 private val parser by lazy { MarkdownParser(flavour) }
 
-private fun generateMarkdownHtml(content: String): String {
+internal fun generateMarkdownHtml(content: String): String {
     val preprocessed = preProcess(content)
     val tree = parser.buildMarkdownTreeFromString(preprocessed)
     return HtmlGenerator(preprocessed, tree, flavour).generateHtml()

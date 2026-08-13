@@ -285,6 +285,8 @@
   <string name="chat_page_export_include_all_versions">모든 버전 포함(브랜치/편집 기록)</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">대화를 마크다운 파일로 내보내기</string>
+  <string name="chat_page_export_html">HTML로 내보내기</string>
+  <string name="chat_page_export_html_desc">대화를 시각화된 HTML 페이지로 내보내기</string>
   <string name="chat_page_export_share_via">공유 방법</string>
   <string name="chat_page_export_success">%1$s(으)로 내보내기 완료</string>
   <string name="chat_page_history">채팅 기록</string>

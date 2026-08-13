@@ -287,6 +287,8 @@
   <string name="chat_page_export_include_all_versions">包含全部版本（含分支/编辑历史）</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">将对话导出为markdown文件</string>
+  <string name="chat_page_export_html">导出为 HTML</string>
+  <string name="chat_page_export_html_desc">将对话导出为可视化 HTML 页面</string>
   <string name="chat_page_export_share_via">分享方式</string>
   <string name="chat_page_export_success">已导出为%1$s</string>
   <string name="chat_page_history">聊天历史</string>

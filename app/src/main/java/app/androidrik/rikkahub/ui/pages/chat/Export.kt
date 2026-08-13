@@ -89,6 +89,7 @@ import app.androidrik.rikkahub.ui.components.message.MessagePartBlock
 import app.androidrik.rikkahub.ui.components.message.ThinkingStep
 import app.androidrik.rikkahub.ui.components.message.groupMessageParts
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
+import app.androidrik.rikkahub.ui.components.richtext.generateMarkdownHtml
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.BitmapComposer
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThought
@@ -101,6 +102,7 @@ import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import app.androidrik.rikkahub.utils.exportImage
 import app.androidrik.rikkahub.utils.getActivity
 import app.androidrik.rikkahub.utils.JsonInstantPretty
+import app.androidrik.rikkahub.utils.escapeHtml
 import app.androidrik.rikkahub.utils.jsonPrimitiveOrNull
 import app.androidrik.rikkahub.utils.toLocalString
 import java.io.FileOutputStream
@@ -178,6 +180,32 @@ fun ChatExportSheet(
                         },
                         leadingContent = {
                             Icon(HugeIcons.File02, contentDescription = null)
+                        }
+                    )
+                }
+
+                val htmlSuccessMessage =
+                    stringResource(id = R.string.chat_page_export_success, "HTML")
+                OutlinedCard(
+                    onClick = {
+                        exportToHtml(context, conversation, exportMessages)
+                        toaster.show(
+                            htmlSuccessMessage,
+                            type = ToastType.Success
+                        )
+                        onDismissRequest()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    ListItem(
+                        headlineContent = {
+                            Text(stringResource(id = R.string.chat_page_export_html))
+                        },
+                        supportingContent = {
+                            Text(stringResource(id = R.string.chat_page_export_html_desc))
+                        },
+                        leadingContent = {
+                            Icon(HugeIcons.Earth, contentDescription = null)
                         }
                     )
                 }
@@ -395,6 +423,144 @@ private fun exportToMarkdown(
         )
         shareFile(context, uri, "text/markdown")
 
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
+private fun exportToHtml(
+    context: Context,
+    conversation: Conversation,
+    messages: List<UIMessage>
+) {
+    val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.html"
+
+    val sb = StringBuilder()
+    sb.append("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n")
+    sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
+    sb.append("<style>\n")
+    sb.append(
+        """
+        body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f5f6f8; color: #1a1a1a; line-height: 1.6; }
+        h1 { font-size: 1.5em; margin-bottom: 4px; }
+        .meta { color: #888; font-size: 0.85em; margin-bottom: 24px; }
+        .message { border-radius: 10px; padding: 12px 16px; margin: 12px 0; }
+        .message.user { background: #e8f0fe; border-left: 4px solid #4285f4; }
+        .message.assistant { background: #ffffff; border-left: 4px solid #b0b0b0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .role { font-weight: 700; margin-bottom: 6px; font-size: 0.9em; }
+        .message.user .role { color: #1a5dc7; }
+        .message.assistant .role { color: #555; }
+        .tool { background: #fafafa; border: 1px solid #e5e5e5; border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
+        .tool-name { font-weight: 600; font-family: ui-monospace, monospace; font-size: 0.9em; }
+        details { margin: 8px 0; background: #fff8e1; border-radius: 6px; padding: 8px 12px; }
+        summary { cursor: pointer; font-weight: 600; color: #b26a00; }
+        img { max-width: 100%; border-radius: 6px; }
+        pre { background: #f0f0f0; padding: 10px; border-radius: 6px; overflow-x: auto; }
+        code { background: #f0f0f0; padding: 2px 4px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 0.9em; }
+        pre code { background: transparent; padding: 0; }
+        """.trimIndent()
+    )
+    sb.append("\n</style>\n</head>\n<body>\n")
+
+    sb.append("<h1>").append(conversation.title.escapeHtml()).append("</h1>\n")
+    sb.append("<p class=\"meta\">Exported on ").append(LocalDateTime.now().toLocalString().escapeHtml()).append("</p>\n")
+
+    messages.forEach { message ->
+        val isUser = message.role == MessageRole.USER
+        val roleClass = if (isUser) "user" else "assistant"
+        val roleLabel = if (isUser) "User" else "Assistant"
+        sb.append("<div class=\"message ").append(roleClass).append("\">\n")
+        sb.append("<div class=\"role\">").append(roleLabel).append("</div>\n")
+        message.parts.forEach { part ->
+            when (part) {
+                is UIMessagePart.Text -> {
+                    sb.append(generateMarkdownHtml(part.text))
+                    sb.append('\n')
+                }
+
+                is UIMessagePart.Image -> {
+                    part.encodeBase64().getOrNull()?.let { enc ->
+                        sb.append("<img src=\"").append(enc.base64).append("\" alt=\"image\" />\n")
+                    }
+                }
+
+                is UIMessagePart.Reasoning -> {
+                    sb.append("<details>\n<summary>").append("思考过程".escapeHtml()).append("</summary>\n")
+                    sb.append(generateMarkdownHtml(part.reasoning))
+                    sb.append("\n</details>\n")
+                }
+
+                is UIMessagePart.Tool -> {
+                    sb.append("<div class=\"tool\">\n")
+                    sb.append("<div class=\"tool-name\">").append(part.toolName.escapeHtml()).append("</div>\n")
+                    if (part.toolCallId.isNotBlank()) {
+                        sb.append("<div style=\"color:#888;font-size:0.8em;\">Call ID: ").append(part.toolCallId.escapeHtml()).append("</div>\n")
+                    }
+                    sb.append("<div><strong>Input</strong></div>\n")
+                    sb.append("<pre>").append(JsonInstantPretty.encodeToString(part.inputAsJson()).escapeHtml()).append("</pre>\n")
+                    if (part.output.isNotEmpty()) {
+                        sb.append("<div><strong>Output</strong></div>\n")
+                        part.output.forEach { outputPart ->
+                            when (outputPart) {
+                                is UIMessagePart.Text -> {
+                                    sb.append("<pre>").append(outputPart.text.escapeHtml()).append("</pre>\n")
+                                }
+
+                                is UIMessagePart.Reasoning -> {
+                                    sb.append(generateMarkdownHtml(outputPart.reasoning)).append('\n')
+                                }
+
+                                is UIMessagePart.Image -> {
+                                    outputPart.encodeBase64().getOrNull()?.let { enc ->
+                                        sb.append("<img src=\"").append(enc.base64).append("\" alt=\"tool image\" />\n")
+                                    }
+                                }
+
+                                is UIMessagePart.Document -> {
+                                    sb.append("<a href=\"").append(outputPart.url.escapeHtml()).append("\">Document: ").append(outputPart.fileName.escapeHtml()).append("</a>\n")
+                                }
+
+                                is UIMessagePart.Video -> {
+                                    sb.append("<a href=\"").append(outputPart.url.escapeHtml()).append("\">Video</a>\n")
+                                }
+
+                                is UIMessagePart.Audio -> {
+                                    sb.append("<a href=\"").append(outputPart.url.escapeHtml()).append("\">Audio</a>\n")
+                                }
+
+                                else -> {}
+                            }
+                        }
+                    }
+                    sb.append("</div>\n")
+                }
+
+                else -> {}
+            }
+        }
+        sb.append("</div>\n")
+    }
+    sb.append("</body>\n</html>")
+
+    try {
+        val dir = context.appTempFolder
+        val file = dir.resolve(filename)
+        if (!file.exists()) {
+            file.createNewFile()
+        } else {
+            file.delete()
+            file.createNewFile()
+        }
+        FileOutputStream(file).use {
+            it.write(sb.toString().toByteArray(Charsets.UTF_8))
+        }
+
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        shareFile(context, uri, "text/html")
     } catch (e: Exception) {
         e.printStackTrace()
     }

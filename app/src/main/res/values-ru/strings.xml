@@ -285,6 +285,8 @@
   <string name="chat_page_export_include_all_versions">Включить все версии (ветки и историю правок)</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">Экспортировать разговор как файл Markdown</string>
+  <string name="chat_page_export_html">Экспортировать как HTML</string>
+  <string name="chat_page_export_html_desc">Экспортировать разговор как визуализированную HTML-страницу</string>
   <string name="chat_page_export_share_via">Поделиться через</string>
   <string name="chat_page_export_success">Экспортировано в %1$s</string>
   <string name="chat_page_history">История чата</string>
