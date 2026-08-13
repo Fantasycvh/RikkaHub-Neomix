@@ -181,4 +181,52 @@ class TikzRendererTest {
         assertTrue(svg.contains("B"))
         assertTrue("missing connecting path", svg.split("<path").size - 1 >= 1)
     }
+
+    @Test
+    fun `path node without leading coordinate renders only node`() {
+        // T1：\draw (0,0) node {Hi} —— 只有 node，无折线
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) node {Hi};\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue(svg.contains("Hi"))
+        assertEquals(0, svg.split("<path").size - 1)
+    }
+
+    @Test
+    fun `path node at segment end renders`() {
+        // T2：线段终点挂 node
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw[->] (0,0) -- (2,1) node[draw] {终点};\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue(svg.contains("终点"))
+        assertTrue("missing line + arrow head", svg.split("<path").size - 1 >= 2)
+    }
+
+    @Test
+    fun `path node named and referenced by anchor`() {
+        // T3：path 内命名 + 后续锚点引用
+        val code = """
+            \begin{tikzpicture}
+            \draw (0,0) node[draw] (A) {A};
+            \draw (A.east) -- (2,1);
+            \end{tikzpicture}
+        """.trimIndent()
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue(svg.contains("A"))
+        assertTrue("missing connecting path", svg.split("<path").size - 1 >= 1)
+    }
+
+    @Test
+    fun `multiple path nodes in a chain`() {
+        // T4：多 node 一串
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) node {A} -- (2,0) node {B} -- (4,0) node {C};\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue(svg.contains("A"))
+        assertTrue(svg.contains("B"))
+        assertTrue(svg.contains("C"))
+        assertTrue("missing polyline", svg.split("<path").size - 1 >= 1)
+    }
 }

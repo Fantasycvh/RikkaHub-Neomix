@@ -166,16 +166,21 @@ object TikzRenderer {
 
     private fun parseCommands(body: String, ctx: ParseContext): List<Element> {
         val commands = splitCommands(body)
-        // 第一遍：收集所有命名坐标（\coordinate + \node 的 name）
+        // 第一遍：收集所有命名坐标（\coordinate + 顶层 \node + path 内 node）
         commands.forEach { cmd ->
             parseCoordinate(cmd, ctx)
             collectNodeName(cmd, ctx)
+            collectDrawNodeNames(cmd, ctx)
         }
-        // 第二遍：生成可渲染元素
+        // 第二遍：生成可渲染元素（parseDraw 可能返回多个：折线 + path 内 node）
         val elements = mutableListOf<Element>()
         commands.forEach { cmd ->
-            val el = parseNode(cmd, ctx) ?: parseDraw(cmd, ctx)
-            if (el != null) elements.add(el)
+            val el = parseNode(cmd, ctx)
+            if (el != null) {
+                elements.add(el)
+            } else {
+                elements.addAll(parseDraw(cmd, ctx))
+            }
         }
         return elements
     }
@@ -227,30 +232,100 @@ object TikzRenderer {
         return NodeElement(name, at, style, style.shape, text)
     }
 
-    private fun parseDraw(cmd: String, ctx: ParseContext): Element? {
-        val m = Regex("""\\(?:draw|path)\s*(\[[^\]]*\])?(.*)""").find(cmd) ?: return null
+    private fun parseDraw(cmd: String, ctx: ParseContext): List<Element> {
+        val m = Regex("""\\(?:draw|path)\s*(\[[^\]]*\])?(.*)""").find(cmd) ?: return emptyList()
         val styleStr = m.groupValues[1].orEmpty()
         val body = m.groupValues[2].trim()
         val style = parseStyle(styleStr)
 
-        // circle (r)
+        // circle (r) —— 不含 node，正则快速返回
         Regex("""\(([^)]+)\)\s+circle\s+\(([^)]+)\)""").find(body)?.let {
             val center = parseCoordinatePoint(it.groupValues[1], ctx)
-            val radius = it.groupValues[2].toDoubleOrNull() ?: return null
-            return DrawElement(style, circleRadius = radius, points = listOf(center))
+            val radius = it.groupValues[2].toDoubleOrNull() ?: return emptyList()
+            return listOf(DrawElement(style, circleRadius = radius, points = listOf(center)))
         }
         // rectangle (x2,y2)
         Regex("""\(([^)]+)\)\s+rectangle\s+\(([^)]+)\)""").find(body)?.let {
             val a = parseCoordinatePoint(it.groupValues[1], ctx)
             val b = parseCoordinatePoint(it.groupValues[2], ctx)
-            return DrawElement(style, rectCorner = b, points = listOf(a))
+            return listOf(DrawElement(style, rectCorner = b, points = listOf(a)))
         }
-        // 折线 -- 连接
-        val coords = Regex("""\(([^)]+)\)""").findAll(body).map { parseCoordinatePoint(it.groupValues[1], ctx) }.toList()
-        if (coords.size >= 2) {
-            return DrawElement(style, points = coords)
+
+        // 折线 + path 内 node
+        val elements = mutableListOf<Element>()
+        val points = scanPath(body, ctx) { name, at, nodeStyleStr, text ->
+            val nodeStyle = parseStyle(nodeStyleStr)
+            name?.let { ctx.coordinates[it] = at }
+            elements.add(NodeElement(name, at, nodeStyle, nodeStyle.shape, text))
         }
-        return null
+        // 只有 ≥2 点才画折线（T1：只有 node 无线段时不输出 path）
+        if (points.size >= 2) {
+            elements.add(DrawElement(style, points = points))
+        }
+        return elements
+    }
+
+    /** 第一遍收集 path 内 node 的 name 坐标，供后续 (A)/(A.east) 引用 */
+    private fun collectDrawNodeNames(cmd: String, ctx: ParseContext) {
+        if (!cmd.startsWith("\\draw") && !cmd.startsWith("\\path")) return
+        val m = Regex("""\\(?:draw|path)\s*(\[[^\]]*\])?(.*)""").find(cmd) ?: return
+        val body = m.groupValues[2].trim()
+        // circle/rectangle 不含 node，跳过扫描（避免把 circle 半径 (1) 误当坐标解析）
+        if (body.contains("circle") || body.contains("rectangle")) return
+        scanPath(body, ctx) { name, at, _, _ ->
+            name?.let { ctx.coordinates[it] = at }
+        }
+    }
+
+    /**
+     * 顺序扫描路径 body：识别坐标 `(x,y)` 与 `node [opts] (name) {text}`。
+     * node 出现的位置 = 路径累加到的当前点（cur）；返回所有折线坐标。
+     */
+    private fun scanPath(
+        body: String,
+        ctx: ParseContext,
+        onNode: (name: String?, at: Point, styleStr: String, text: String) -> Unit,
+    ): List<Point> {
+        val points = mutableListOf<Point>()
+        var cur = Point(0.0, 0.0)
+        var i = 0
+        while (i < body.length) {
+            val ch = body[i]
+            when {
+                ch == '(' -> {
+                    val close = body.indexOf(')', i)
+                    if (close < 0) { i++; continue }
+                    val raw = body.substring(i + 1, close)
+                    val p = parseCoordinatePoint(raw, ctx)
+                    points.add(p)
+                    cur = p
+                    i = close + 1
+                }
+                body.startsWith("node", i) -> {
+                    i += 4
+                    var styleStr = ""
+                    if (i < body.length && body[i] == '[') {
+                        val close = body.indexOf(']', i)
+                        if (close >= 0) { styleStr = body.substring(i + 1, close); i = close + 1 }
+                    }
+                    while (i < body.length && body[i].isWhitespace()) i++
+                    var name: String? = null
+                    if (i < body.length && body[i] == '(') {
+                        val close = body.indexOf(')', i)
+                        if (close >= 0) { name = body.substring(i + 1, close).trim(); i = close + 1 }
+                    }
+                    while (i < body.length && body[i].isWhitespace()) i++
+                    var text = ""
+                    if (i < body.length && body[i] == '{') {
+                        val close = body.indexOf('}', i)
+                        if (close >= 0) { text = body.substring(i + 1, close); i = close + 1 }
+                    }
+                    onNode(name, cur, styleStr, text)
+                }
+                else -> i++
+            }
+        }
+        return points
     }
 
     private fun parseCoordinatePoint(raw: String, ctx: ParseContext): Point {
