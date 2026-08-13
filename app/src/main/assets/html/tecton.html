@@ -4,21 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="./pako.min.js"></script>
+    <script src="./imports.js"></script>
+    <script src="./engine.js"></script>
 </head>
 <body>
     <div id="status">loading</div>
-    <script type="module">
-        import { TexEngine } from './engine.js';
-
+    <script>
+        // 普通 script（非 ES module）：Android WebView 下 module+import 静默失败，普通 script 保证执行。
         const statusEl = document.getElementById('status');
         const report = (s) => {
             statusEl.textContent = s;
+            document.title = 'TIKZ: ' + s;
             if (window.AndroidInterface) AndroidInterface.onProgress(s);
         };
         const reportError = (s) => {
             statusEl.textContent = 'ERROR: ' + s;
+            document.title = 'TIKZ-ERR: ' + s;
             if (window.AndroidInterface) AndroidInterface.onError(s);
         };
+
+        // 兜底标记：script 同步执行即立刻回调，区分"HTML 加载但 JS 没跑"
+        report('script-started');
 
         // URL fragment：base64url 编码的 UTF-8 TikZ 代码
         function decodeHash() {

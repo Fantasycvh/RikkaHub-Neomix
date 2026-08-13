@@ -8,7 +8,7 @@
  * engine never uses (Tectonic routes all I/O through its own Rust `IoProvider`).
  */
 /** Thrown by `proc_exit`; carries the process exit code. */
-export class ExitStatus extends Error {
+class ExitStatus extends Error {
     code;
     constructor(code) {
         super(`wasm exited with status ${code}`);
@@ -31,7 +31,7 @@ const WASI_ESUCCESS = 0;
  * must reference the module's memory and function table, which do not exist
  * until after instantiation — a circular dependency inherent to the ABI.
  */
-export function createImports(io = {}) {
+function createImports(io = {}) {
     let target;
     const decoder = new TextDecoder();
     const view = () => new DataView(must().memory.buffer);
@@ -51,10 +51,11 @@ export function createImports(io = {}) {
             if (len === 0)
                 continue;
             const text = decoder.decode(mem.subarray(ptr, ptr + len));
-            if (fd === 1)
-                io.onStdout?.(text);
-            else
-                io.onStderr?.(text);
+            if (fd === 1) {
+                if (io.onStdout) io.onStdout(text);
+            } else if (io.onStderr) {
+                io.onStderr(text);
+            }
             written += len;
         }
         dv.setUint32(nwritten, written, true);
@@ -162,4 +163,7 @@ export function createImports(io = {}) {
         }
     };
 }
+// 普通 script 全局暴露（Android WebView 下不用 ES module，规避 module/import 兼容性问题）
+window.createImports = createImports;
+window.ExitStatus = ExitStatus;
 //# sourceMappingURL=imports.js.map
