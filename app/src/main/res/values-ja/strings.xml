@@ -648,6 +648,8 @@
   <string name="setting_display_page_enable_blur_effect_desc">チャット入力バーにぼかし効果を有効にする</string>
   <string name="setting_display_page_enable_blur_effect_title">ぼかし効果を有効にする</string>
   <string name="setting_display_page_enable_latex_rendering_desc">LaTeX構文を使用して数式や数値表現をレンダリングする</string>
+  <string name="setting_display_page_enable_diagram_rendering_title">TikZ図をレンダリング</string>
+  <string name="setting_display_page_enable_diagram_rendering_desc">AIが生成したtikzpicture / tikzcdコードをベクター画像としてレンダリングする</string>
   <string name="setting_display_page_enable_latex_rendering_title">LaTeXレンダリングを有効にする</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_desc">メッセージ生成時に触覚フィードバックを有効にする</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_title">メッセージ生成時の触覚効果</string>

@@ -684,6 +684,8 @@
   <string name="setting_display_page_enable_blur_effect_desc">Enable blur effect on chat input bar</string>
   <string name="setting_display_page_enable_blur_effect_title">Enable Blur Effect</string>
   <string name="setting_display_page_enable_latex_rendering_desc">Render mathematical expressions and formulas using LaTeX syntax</string>
+  <string name="setting_display_page_enable_diagram_rendering_title">Render TikZ Diagrams</string>
+  <string name="setting_display_page_enable_diagram_rendering_desc">Render AI-generated tikzpicture / tikzcd code as vector graphics</string>
   <string name="setting_display_page_enable_latex_rendering_title">Enable LaTeX Rendering</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_desc">Enable haptic feedback when messages are being generated</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_title">Message Generation Haptic Effect</string>
