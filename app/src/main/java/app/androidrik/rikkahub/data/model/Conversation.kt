@@ -138,9 +138,16 @@ fun UIMessage.toMessageNode(): MessageNode {
 
 /**
  * 递归展开所有 parts，包括工具调用结果中的嵌套 parts。
+ * 深度上限：恶意/异常深嵌套工具结果曾触发 StackOverflowError。
  */
-private fun List<UIMessagePart>.collectAllParts(): List<UIMessagePart> =
-    this + filterIsInstance<UIMessagePart.Tool>().flatMap { it.output.collectAllParts() }
+private const val MAX_PARTS_DEPTH = 16
+
+private fun List<UIMessagePart>.collectAllParts(depth: Int = 0): List<UIMessagePart> =
+    if (depth >= MAX_PARTS_DEPTH) {
+        this
+    } else {
+        this + filterIsInstance<UIMessagePart.Tool>().flatMap { it.output.collectAllParts(depth + 1) }
+    }
 
 /**
  * 提取 part 中引用的本地文件 URI，新增文件类型时只需在此处添加。

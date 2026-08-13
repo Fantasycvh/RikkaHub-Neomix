@@ -59,6 +59,7 @@ object BingSearchService : SearchService<SearchServiceOptions.BingLocalOptions> 
                 .referrer("https://www.bing.com/")
                 .cookie("SRCHHPGUSR", "ULSR=1")
                 .timeout(5000)
+                .maxBodySize(2 * 1024 * 1024) // 显式 2MB 响应上限，防超大 HTML 全量读入 OOM
                 .get()
 
             // 解析搜索结果

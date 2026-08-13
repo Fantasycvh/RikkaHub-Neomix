@@ -54,6 +54,8 @@ import kotlin.uuid.Uuid
 private const val TAG = "GenerationHandler"
 private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
+/** 翻译输入最大字符数：超长翻译文本曾 API 413 */
+private const val MAX_TRANSLATE_CHARS = 200_000
 
 @Serializable
 sealed interface GenerationChunk {
@@ -278,10 +280,11 @@ class GenerationHandler(
                         runCatching {
                             val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
                                 ?: error("Tool ${tool.toolName} not found")
-                            val args = runCatching {
+                            val args = try {
                                 json.parseToJsonElement(tool.input.ifBlank { "{}" })
-                            }.getOrElse {
-                                error("Invalid tool arguments JSON for ${tool.toolName}: ${it.message}")
+                            } catch (t: Throwable) {
+                                // Throwable：深嵌套工具输入抛 StackOverflowError（Error），runCatching 捕不到
+                                error("Invalid tool arguments JSON for ${tool.toolName}: ${t.message}")
                             }
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
                             val result = toolDef.execute(args)
@@ -508,7 +511,7 @@ class GenerationHandler(
         if (!ModelRegistry.QWEN_MT.match(model.modelId)) {
             // Use regular translation with prompt
             val prompt = settings.translatePrompt.applyPlaceholders(
-                "source_text" to sourceText,
+                "source_text" to sourceText.take(MAX_TRANSLATE_CHARS),
                 "target_lang" to targetLanguage.toString(),
             )
 

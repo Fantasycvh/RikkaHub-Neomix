@@ -9,6 +9,9 @@ import app.androidrik.rikkahub.data.model.AssistantMemory
 class MemoryRepository(private val memoryDAO: MemoryDAO) {
     companion object {
         const val GLOBAL_MEMORY_ID = "__global__"
+
+        /** 助手记忆条数上限：超限时删除最旧记录（turbo 06baee4） */
+        const val MAX_MEMORY_COUNT = 200
     }
 
     fun getMemoriesOfAssistantFlow(assistantId: String): Flow<List<AssistantMemory>> =
@@ -62,6 +65,13 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
                 )
             ).toInt()
         )
+        // 200 条上限：超限删除最旧记录，防记忆无限膨胀（turbo 06baee4）
+        val all = memoryDAO.getMemoriesOfAssistant(assistantId)
+        if (all.size > MAX_MEMORY_COUNT) {
+            all.sortedBy { it.id }
+                .take(all.size - MAX_MEMORY_COUNT)
+                .forEach { memoryDAO.deleteMemory(it.id) }
+        }
         return newMemory
     }
 

@@ -166,7 +166,8 @@ fun CustomBodies(customBodies: List<CustomBody>, onUpdate: (List<CustomBody>) ->
                                             updatedBodies[index].copy(value = newJsonValue)
                                         onUpdate(updatedBodies)
                                         jsonParseError = null
-                                    } catch (e: Exception) {
+                                    } catch (e: Throwable) {
+                                        // Throwable：深嵌套 JSON 抛 StackOverflowError（Error），catch(Exception) 捕不到
                                         jsonParseError =
                                             context.getString(
                                                 R.string.assistant_page_invalid_json,

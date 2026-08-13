@@ -37,38 +37,43 @@ internal fun buildJavascriptTool(): Tool = Tool(
     execute = {
         val logs = arrayListOf<String>()
         val context = QuickJSContext.create()
-        context.setConsole(object : QuickJSContext.Console {
-            override fun log(info: String?) {
-                logs.add("[LOG] $info")
-            }
-
-            override fun info(info: String?) {
-                logs.add("[INFO] $info")
-            }
-
-            override fun warn(info: String?) {
-                logs.add("[WARN] $info")
-            }
-
-            override fun error(info: String?) {
-                logs.add("[ERROR] $info")
-            }
-        })
-        val code = it.jsonObject["code"]?.jsonPrimitive?.contentOrNull
-        val result = context.evaluate(code)
-        val payload = buildJsonObject {
-            if (logs.isNotEmpty()) {
-                put("logs", JsonPrimitive(logs.joinToString("\n")))
-            }
-            put(
-                key = "result",
-                element = when (result) {
-                    null -> JsonNull
-                    is QuickJSObject -> JsonPrimitive(result.stringify())
-                    else -> JsonPrimitive(result.toString())
+        try {
+            context.setConsole(object : QuickJSContext.Console {
+                override fun log(info: String?) {
+                    logs.add("[LOG] $info")
                 }
-            )
+
+                override fun info(info: String?) {
+                    logs.add("[INFO] $info")
+                }
+
+                override fun warn(info: String?) {
+                    logs.add("[WARN] $info")
+                }
+
+                override fun error(info: String?) {
+                    logs.add("[ERROR] $info")
+                }
+            })
+            val code = it.jsonObject["code"]?.jsonPrimitive?.contentOrNull
+            val result = context.evaluate(code)
+            val payload = buildJsonObject {
+                if (logs.isNotEmpty()) {
+                    put("logs", JsonPrimitive(logs.joinToString("\n")))
+                }
+                put(
+                    key = "result",
+                    element = when (result) {
+                        null -> JsonNull
+                        is QuickJSObject -> JsonPrimitive(result.stringify())
+                        else -> JsonPrimitive(result.toString())
+                    }
+                )
+            }
+            listOf(UIMessagePart.Text(payload.toString()))
+        } finally {
+            // QuickJS 原生内存：每次 eval 不销毁会泄漏，长会话累积 OOM
+            context.destroy()
         }
-        listOf(UIMessagePart.Text(payload.toString()))
     }
 )

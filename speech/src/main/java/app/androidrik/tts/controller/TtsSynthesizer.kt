@@ -33,7 +33,12 @@ class TtsSynthesizer(
         flow.collect { chunk ->
             if (format == null) format = chunk.format
             if (sampleRate == null) sampleRate = chunk.sampleRate
-            output.write(chunk.data)
+            // 8MB 上限：异常/恶意流全量收集曾 OOM，超限即停止
+            if (output.size() + chunk.data.size <= MAX_TTS_AUDIO_BYTES) {
+                output.write(chunk.data)
+            } else {
+                return@collect
+            }
         }
         return TTSResponse(
             audioData = output.toByteArray(),
@@ -42,4 +47,7 @@ class TtsSynthesizer(
         )
     }
 }
+
+/** TTS 合成音频最大字节数（约 8MB） */
+private const val MAX_TTS_AUDIO_BYTES = 8 * 1024 * 1024
 

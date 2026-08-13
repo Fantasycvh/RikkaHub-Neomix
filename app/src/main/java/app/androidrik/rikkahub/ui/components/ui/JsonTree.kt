@@ -79,6 +79,9 @@ fun JsonTree(
     }
 }
 
+/** 递归渲染深度上限：深嵌套 AI 输出曾触发 StackOverflowError */
+private const val MAX_JSON_TREE_DEPTH = 12
+
 @Composable
 private fun JsonNode(
     element: JsonElement,
@@ -87,6 +90,16 @@ private fun JsonNode(
     initialExpandLevel: Int,
     onStringClick: (String) -> Unit
 ) {
+    if (depth >= MAX_JSON_TREE_DEPTH && (element is JsonObject || element is JsonArray)) {
+        // 深度超限：渲染折叠占位，不再递归展开子节点
+        Text(
+            text = if (element is JsonObject) "{…}" else "[…]",
+            fontFamily = JetbrainsMono,
+            modifier = Modifier.padding(start = (depth * 16).dp, top = 2.dp, bottom = 2.dp),
+            style = MaterialTheme.typography.bodySmall
+        )
+        return
+    }
     when (element) {
         is JsonObject -> JsonObjectNode(element, key, depth, initialExpandLevel, onStringClick)
         is JsonArray -> JsonArrayNode(element, key, depth, initialExpandLevel, onStringClick)

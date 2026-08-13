@@ -68,9 +68,23 @@ fun JsonObject.mergeCustomBody(bodies: List<CustomBody>): JsonObject {
 }
 
 /**
- * 递归合并两个JsonObject
+ * 拼接 API endpoint，baseUrl 已含 path 时不重复追加（如 /responses/responses 404）。
  */
-private fun mergeJsonObjects(base: JsonObject, overlay: JsonObject): JsonObject {
+fun apiEndpoint(baseUrl: String, path: String): String {
+    val trimmed = baseUrl.trimEnd('/')
+    return if (trimmed.endsWith(path)) trimmed else "$trimmed$path"
+}
+
+/**
+ * 递归合并两个JsonObject。深度上限：深嵌套 CustomBody/响应曾触发 StackOverflowError。
+ */
+private const val MAX_JSON_MERGE_DEPTH = 32
+
+private fun mergeJsonObjects(base: JsonObject, overlay: JsonObject, depth: Int = 0): JsonObject {
+    if (depth >= MAX_JSON_MERGE_DEPTH) {
+        // 深度超限：直接以 overlay 覆盖，放弃更深层合并
+        return JsonObject(base.toMutableMap().apply { putAll(overlay) })
+    }
     val result = base.toMutableMap()
 
     for ((key, value) in overlay) {
@@ -78,7 +92,7 @@ private fun mergeJsonObjects(base: JsonObject, overlay: JsonObject): JsonObject 
 
         result[key] = if (baseValue is JsonObject && value is JsonObject) {
             // 如果两者都是JsonObject，递归合并
-            mergeJsonObjects(baseValue, value)
+            mergeJsonObjects(baseValue, value, depth + 1)
         } else {
             // 否则使用新值替换旧值
             value
@@ -94,7 +108,8 @@ private fun mergeJsonObjects(base: JsonObject, overlay: JsonObject): JsonObject 
  * @param keepOnly 如果为 true，则只保留指定的键；如果为 false，则移除指定的键
  * @return 处理后的 JsonElement
  */
-fun JsonElement.removeElements(keys: List<String>, keepOnly: Boolean = false): JsonElement {
+fun JsonElement.removeElements(keys: List<String>, keepOnly: Boolean = false, depth: Int = 0): JsonElement {
+    if (depth >= MAX_JSON_MERGE_DEPTH) return this
     return when (this) {
         is JsonObject -> {
             val newContent = if (keepOnly) {
@@ -109,12 +124,12 @@ fun JsonElement.removeElements(keys: List<String>, keepOnly: Boolean = false): J
 
             // 递归处理嵌套的 JsonElement
             JsonObject(newContent.mapValues { (_, value) ->
-                value.removeElements(keys, keepOnly)
+                value.removeElements(keys, keepOnly, depth + 1)
             })
         }
 
         is JsonArray -> {
-            JsonArray(map { it.removeElements(keys, keepOnly) })
+            JsonArray(map { it.removeElements(keys, keepOnly, depth + 1) })
         }
 
         else -> this // 基本类型直接返回

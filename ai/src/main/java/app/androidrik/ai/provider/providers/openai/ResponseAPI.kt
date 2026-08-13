@@ -41,6 +41,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.metadataAs
 import app.androidrik.ai.ui.toMetadata
 import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.ai.util.apiEndpoint
 import app.androidrik.ai.util.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
 import app.androidrik.ai.util.encodeBase64
@@ -81,7 +82,7 @@ class ResponseAPI(
             stream = false,
         )
         val request = Request.Builder()
-            .url("${providerSetting.baseUrl}/responses")
+            .url(apiEndpoint(providerSetting.baseUrl, "/responses"))
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(
@@ -119,7 +120,7 @@ class ResponseAPI(
             stream = true,
         )
         val request = Request.Builder()
-            .url("${providerSetting.baseUrl}/responses")
+            .url(apiEndpoint(providerSetting.baseUrl, "/responses"))
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(

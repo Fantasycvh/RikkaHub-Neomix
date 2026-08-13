@@ -13,6 +13,9 @@ import app.androidrik.document.PptxParser
 import java.io.File
 
 object DocumentAsPromptTransformer : InputMessageTransformer {
+    /** 文档注入 prompt 最大字符数：超大文档曾 API 413/超时 */
+    private const val MAX_DOCUMENT_PROMPT_CHARS = 200_000
+
     override suspend fun transform(
         ctx: TransformerContext,
         messages: List<UIMessage>,
@@ -80,7 +83,7 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> parsePptxAsText(file)
                 "application/epub+zip" -> parseEpubAsText(file)
                 else -> file.readText()
-            }
+            }.take(MAX_DOCUMENT_PROMPT_CHARS)
         }.getOrElse {
             "[ERROR, failed to read file: ${document.fileName}]"
         }

@@ -94,6 +94,9 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "ChatService"
 
+/** 用户消息单点最大字符数：超长消息存库膨胀 + 上下文爆表 + API 413 */
+private const val MAX_USER_INPUT_CHARS = 200_000
+
 /**
  * 将压缩结果合并到最新会话状态，而不是用压缩开始时的快照整体覆盖。
  *
@@ -368,7 +371,7 @@ class ChatService(
                             assistant = assistant,
                             scope = AssistantAffectScope.USER,
                             visual = false
-                        )
+                        ).take(MAX_USER_INPUT_CHARS)
                     )
                 }
 

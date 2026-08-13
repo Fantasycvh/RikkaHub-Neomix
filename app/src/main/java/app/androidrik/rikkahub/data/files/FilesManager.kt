@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.files
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
@@ -33,6 +34,12 @@ class FilesManager(
 ) {
     companion object {
         private const val TAG = "FilesManager"
+
+        /** 模型输出 base64 图片字符数上限（约 20MB base64）：超大 decode 曾 OOM */
+        private const val MAX_BASE64_IMAGE_CHARS = 20_000_000
+
+        /** 位图最长边采样上限：超 4096px 时降采样，避免全尺寸解码 OOM */
+        private const val MAX_BITMAP_DIMENSION = 4096
     }
 
     suspend fun saveManagedFromUri(
@@ -174,32 +181,67 @@ class FilesManager(
     @OptIn(ExperimentalEncodingApi::class)
     suspend fun convertBase64ImagePartToLocalFile(message: UIMessage): UIMessage =
         withContext(Dispatchers.IO) {
-            message.copy(
-                parts = message.parts.map { part ->
-                    when (part) {
-                        is UIMessagePart.Image -> {
-                            if (part.url.startsWith("data:image")) {
-                                val sourceByteArray = Base64.decode(part.url.substringAfter("base64,").toByteArray())
-                                val bitmap = BitmapFactory.decodeByteArray(sourceByteArray, 0, sourceByteArray.size)
-                                val byteArray = FileUtils.compressBitmapToPng(bitmap)
-                                val urls = createChatFilesByByteArrays(listOf(byteArray))
-                                Log.i(
-                                    TAG,
-                                    "convertBase64ImagePartToLocalFile: convert base64 img to ${urls.joinToString(", ")}"
-                                )
-                                part.copy(
-                                    url = urls.first().toString(),
-                                )
-                            } else {
-                                part
-                            }
-                        }
+            message.copy(parts = convertBase64PartsRecursively(message.parts))
+        }
 
-                        else -> part
+    /**
+     * 递归转换 parts 中的 base64 图片为本地文件，含工具结果嵌套 parts（D3）：
+     * 旧实现只转 message 顶层 parts，UIMessagePart.Tool.output 里的图片漏转，
+     * 后续 require/base64 渲染失败导致消息丢失。
+     */
+    private suspend fun convertBase64PartsRecursively(parts: List<UIMessagePart>): List<UIMessagePart> =
+        parts.map { part ->
+            when (part) {
+                is UIMessagePart.Image -> {
+                    if (part.url.startsWith("data:image")) {
+                        val base64Data = part.url.substringAfter("base64,")
+                        if (base64Data.length > MAX_BASE64_IMAGE_CHARS) {
+                            // 超大 base64 跳过转换（保留原 part，避免 decode OOM）
+                            part
+                        } else {
+                            val sourceByteArray = Base64.decode(base64Data.toByteArray())
+                            val bitmap = decodeSampledBitmap(sourceByteArray)
+                            val byteArray = FileUtils.compressBitmapToPng(bitmap)
+                            val urls = createChatFilesByByteArrays(listOf(byteArray))
+                            Log.i(
+                                TAG,
+                                "convertBase64ImagePartToLocalFile: convert base64 img to ${urls.joinToString(", ")}"
+                            )
+                            part.copy(
+                                url = urls.first().toString(),
+                            )
+                        }
+                    } else {
+                        part
                     }
                 }
-            )
+
+                is UIMessagePart.Tool -> part.copy(
+                    output = convertBase64PartsRecursively(part.output)
+                )
+
+                else -> part
+            }
         }
+
+    /** 采样解码位图：先读边界，超 4096px 时 inSampleSize 降采样 + RGB_565，防全尺寸解码 OOM */
+    private fun decodeSampledBitmap(bytes: ByteArray): Bitmap {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sampleSize = 1
+        while (
+            bounds.outWidth / sampleSize > MAX_BITMAP_DIMENSION ||
+            bounds.outHeight / sampleSize > MAX_BITMAP_DIMENSION
+        ) {
+            sampleSize *= 2
+        }
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+            ?: error("Failed to decode image")
+    }
 
     fun deleteChatFiles(uris: List<Uri>) {
         val relativePaths = mutableSetOf<String>()

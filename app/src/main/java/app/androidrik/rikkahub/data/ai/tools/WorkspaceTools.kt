@@ -22,6 +22,8 @@ import java.io.ByteArrayOutputStream
 
 private const val SHELL_TIMEOUT_MAX_SECONDS = 600L
 private const val MAX_READ_FILE_BYTES = 8L * 1024 * 1024
+/** rootfs 写入最大字节数（对齐 WorkspaceFileSystem 的 2MB require） */
+private const val MAX_ROOTFS_WRITE_BYTES = 2 * 1024 * 1024
 
 val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_read_file" to false,
@@ -317,6 +319,11 @@ private suspend fun WorkspaceRepository.writeTextInRootfs(
     text: String,
     overwrite: Boolean,
 ): WorkspaceFileEntry {
+    // rootfs 写路径（shell cat >）曾绕过 WorkspaceFileSystem 的 2MB require，超大内容直接灌入
+    val bytes = text.toByteArray(Charsets.UTF_8)
+    require(bytes.size <= MAX_ROOTFS_WRITE_BYTES) {
+        "File content exceeds ${MAX_ROOTFS_WRITE_BYTES / 1024 / 1024}MB limit"
+    }
     val pathArg = path.shellQuote()
     val result = runRootfsCommand(
         workspaceId = workspaceId,
@@ -335,7 +342,7 @@ private suspend fun WorkspaceRepository.writeTextInRootfs(
             cat > $pathArg || exit 1
             ${statEntryCommand(path)}
         """.trimIndent(),
-        stdin = text.toByteArray(Charsets.UTF_8),
+        stdin = bytes,
     )
     return result.stdout.parseRootfsEntry()
 }

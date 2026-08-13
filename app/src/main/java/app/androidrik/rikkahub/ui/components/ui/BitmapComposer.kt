@@ -16,10 +16,12 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.drawToBitmap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.math.roundToInt
 
 private val MAX_HEIGHT = 10000.dp
@@ -53,70 +55,58 @@ class BitmapComposer(private val mainScope: CoroutineScope) {
         content: @Composable () -> Unit
     ): Bitmap = suspendCancellableCoroutine { continuation ->
         mainScope.launch {
-            // Step 1: Interpret the pixels while taking into account the screen density
-            val contentWidthInPixels = (screenDensity.density * (width ?: MAX_WIDTH).value).roundToInt()
-            val contentHeightInPixels = (screenDensity.density * (height ?: MAX_HEIGHT).value).roundToInt()
+            var decorView: ViewGroup? = null
+            var composeViewContainer: FrameLayout? = null
+            try {
+                // Step 1: Interpret the pixels while taking into account the screen density
+                val contentWidthInPixels = (screenDensity.density * (width ?: MAX_WIDTH).value).roundToInt()
+                val contentHeightInPixels = (screenDensity.density * (height ?: MAX_HEIGHT).value).roundToInt()
 
-            // Step 2: Create a container to hold the ComposeView temporarily
-            val composeViewContainer = FrameLayout(activity).apply {
-                layoutParams = ViewGroup.LayoutParams(contentWidthInPixels, contentHeightInPixels)
-                visibility = View.INVISIBLE // Keep it invisible
-            }
+                // Step 2: Create a container to hold the ComposeView temporarily
+                val container = FrameLayout(activity).apply {
+                    layoutParams = ViewGroup.LayoutParams(contentWidthInPixels, contentHeightInPixels)
+                    visibility = View.INVISIBLE // Keep it invisible
+                }
+                composeViewContainer = container
 
-            // Step 3: Create and configure the ComposeView using the activity
-            val composeView = ComposeView(activity).apply {
-                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-                setContent {
-                    CompositionLocalProvider(LocalExportContext provides true) {
-                        content()
+                // Step 3: Create and configure the ComposeView using the activity
+                val composeView = ComposeView(activity).apply {
+                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                    setContent {
+                        CompositionLocalProvider(LocalExportContext provides true) {
+                            content()
+                        }
                     }
                 }
-            }
 
-            // add the composable view to the container
-            composeViewContainer.addView(composeView)
+                // add the composable view to the container
+                container.addView(composeView)
 
-            // Step 4: Attach container to the root decor view
-            val decorView = activity.window.decorView as ViewGroup
-            decorView.addView(composeViewContainer) // since the container is invisible, we are OK.
+                // Step 4: Attach container to the root decor view
+                val decor = activity.window.decorView as ViewGroup
+                decorView = decor
+                decor.addView(container) // since the container is invisible, we are OK.
 
-            // Step 5: Create measure specifications for the ComposeView
-            // If height or width is not provided, use AT_MOST to let the content decide the height
-            val widthMeasureSpecs = if (width == null) {
-                View.MeasureSpec.AT_MOST // or View.MeasureSpec.UNSPECIFIED
-                // UNSPECIFIED width may not work with horizontally scrollable content - use caution.
-            } else {
-                View.MeasureSpec.EXACTLY
-            }
+                // Step 5: Create measure specifications for the ComposeView
+                // If height or width is not provided, use AT_MOST to let the content decide the height
+                val widthMeasureSpecs = if (width == null) {
+                    View.MeasureSpec.AT_MOST // or View.MeasureSpec.UNSPECIFIED
+                    // UNSPECIFIED width may not work with horizontally scrollable content - use caution.
+                } else {
+                    View.MeasureSpec.EXACTLY
+                }
 
-            val heightMeasureSpecs = if (height == null) {
-                View.MeasureSpec.AT_MOST // or View.MeasureSpec.UNSPECIFIED
-                // UNSPECIFIED height may not work with vertically scrollable content - use caution.
-            } else {
-                View.MeasureSpec.EXACTLY
-            }
+                val heightMeasureSpecs = if (height == null) {
+                    View.MeasureSpec.AT_MOST // or View.MeasureSpec.UNSPECIFIED
+                    // UNSPECIFIED height may not work with vertically scrollable content - use caution.
+                } else {
+                    View.MeasureSpec.EXACTLY
+                }
 
-            // Step 5: Wait for the ComposeView to be drawn and capture the bitmap
-            Handler(Looper.getMainLooper()).post {
-                // ask for the container view to measure itself
-                composeViewContainer.measure(
-                    View.MeasureSpec.makeMeasureSpec(
-                        contentWidthInPixels,
-                        widthMeasureSpecs
-                    ),
-                    View.MeasureSpec.makeMeasureSpec(
-                        contentHeightInPixels,
-                        heightMeasureSpecs
-                    )
-                )
-
-                // now request a layout at origin
-                composeViewContainer.layout(0, 0, contentWidthInPixels, contentHeightInPixels)
-
-                // Wait for async components to complete rendering before capturing bitmap
-                Handler(Looper.getMainLooper()).postDelayed({
-                    // Re-measure after async components have loaded to get proper height
-                    composeViewContainer.measure(
+                // Step 6: Wait for the ComposeView to be drawn and capture the bitmap
+                Handler(Looper.getMainLooper()).post {
+                    // ask for the container view to measure itself
+                    container.measure(
                         View.MeasureSpec.makeMeasureSpec(
                             contentWidthInPixels,
                             widthMeasureSpecs
@@ -127,17 +117,46 @@ class BitmapComposer(private val mainScope: CoroutineScope) {
                         )
                     )
 
-                    // Re-layout with the actual measured dimensions
-                    val actualWidth = composeViewContainer.measuredWidth
-                    val actualHeight = composeViewContainer.measuredHeight
-                    composeViewContainer.layout(0, 0, actualWidth, actualHeight)
+                    // now request a layout at origin
+                    container.layout(0, 0, contentWidthInPixels, contentHeightInPixels)
 
-                    val bitmap = composeView.drawToBitmap() // layout finished, draw to bitmap
-                    continuation.resume(bitmap) // notify the caller with the bitmap
+                    // Wait for async components to complete rendering before capturing bitmap
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        try {
+                            // Re-measure after async components have loaded to get proper height
+                            container.measure(
+                                View.MeasureSpec.makeMeasureSpec(
+                                    contentWidthInPixels,
+                                    widthMeasureSpecs
+                                ),
+                                View.MeasureSpec.makeMeasureSpec(
+                                    contentHeightInPixels,
+                                    heightMeasureSpecs
+                                )
+                            )
 
-                    // Step 6: Clean up - remove the container
-                    decorView.removeView(composeViewContainer)
-                }, 100) // delay to allow ComposeView to finish rendering
+                            // Re-layout with the actual measured dimensions
+                            val actualWidth = container.measuredWidth
+                            val actualHeight = container.measuredHeight
+                            container.layout(0, 0, actualWidth, actualHeight)
+
+                            val bitmap = composeView.drawToBitmap() // layout finished, draw to bitmap
+                            continuation.resume(bitmap) // notify the caller with the bitmap
+                        } catch (e: Exception) {
+                            // 渲染失败：不永久挂起，向调用方传播异常
+                            continuation.resumeWithException(e)
+                        } finally {
+                            // 无论成功失败都清理视图（取消/异常时 view 不泄漏）
+                            decor.removeView(container)
+                        }
+                    }, 100) // delay to allow ComposeView to finish rendering
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 视图创建/挂载阶段异常：避免调用方永久挂起
+                continuation.resumeWithException(e)
+                decorView?.removeView(composeViewContainer)
             }
         }
     }

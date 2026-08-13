@@ -151,9 +151,12 @@ sealed class UIMessagePart {
         val canResumeExecution: Boolean get() = !isExecuted && approvalState.canResumeToolExecution()
 
         /** Parse input string as JsonElement */
-        fun inputAsJson(): JsonElement = runCatching {
+        fun inputAsJson(): JsonElement = try {
             json.parseToJsonElement(input.ifBlank { "{}" })
-        }.getOrElse { JsonObject(emptyMap()) }
+        } catch (t: Throwable) {
+            // Throwable：深嵌套输入抛 StackOverflowError（Error），runCatching/catch(Exception) 捕不到
+            JsonObject(emptyMap())
+        }
 
         fun merge(other: Tool): Tool {
             return Tool(

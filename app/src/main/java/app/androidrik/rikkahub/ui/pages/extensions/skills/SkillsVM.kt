@@ -25,6 +25,8 @@ import kotlin.collections.iterator
 private const val MAX_ZIP_ENTRY_SIZE = 32L * 1024 * 1024
 /** zip 解压总量上限，防 zip bomb */
 private const val MAX_ZIP_TOTAL_SIZE = 256L * 1024 * 1024
+/** GitHub 下载响应最大字符数（约 4MB） */
+private const val MAX_GITHUB_DOWNLOAD_CHARS = 4_000_000
 
 class SkillsVM(
     private val skillManager: SkillManager,
@@ -336,8 +338,21 @@ class SkillsVM(
         connection.readTimeout = 30_000
         connection.setRequestProperty("Accept", "application/vnd.github+json")
         return try {
-            if (connection.responseCode == 200) connection.inputStream.bufferedReader().readText()
-            else null
+            if (connection.responseCode == 200) {
+                // 限量读取：GitHub 响应超 4MB 曾全量读入 OOM
+                val reader = connection.inputStream.bufferedReader()
+                val buffer = CharArray(8192)
+                val sb = StringBuilder()
+                var total = 0
+                while (total < MAX_GITHUB_DOWNLOAD_CHARS) {
+                    val read = reader.read(buffer)
+                    if (read == -1) break
+                    val toAppend = minOf(read, MAX_GITHUB_DOWNLOAD_CHARS - total)
+                    sb.append(buffer, 0, toAppend)
+                    total += toAppend
+                }
+                sb.toString()
+            } else null
         } finally {
             connection.disconnect()
         }

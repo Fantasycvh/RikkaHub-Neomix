@@ -1035,7 +1035,10 @@ private fun McpToolCard(
 }
 
 private fun isValidMcpName(name: String): Boolean {
-    return name.isEmpty() || name.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }
+    // 放行字母数字 + - _ （MCP 工具/服务器名常含连字符下划线）
+    return name.isEmpty() || name.all {
+        it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_'
+    }
 }
 
 private fun parseMcpServersFromJson(json: String): List<McpServerConfig> {

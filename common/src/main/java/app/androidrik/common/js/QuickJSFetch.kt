@@ -14,6 +14,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 private val json = Json { ignoreUnknownKeys = true }
 
+/** fetch 响应体最大字节数：恶意/超大响应全量读入曾 OOM */
+private const val MAX_FETCH_RESPONSE_BYTES = 5 * 1024 * 1024
+
 @Serializable
 private data class HttpResponseDto(
     val status: Int,
@@ -89,7 +92,18 @@ fun QuickJSContext.injectFetch(httpClient: OkHttpClient) {
         }
 
         val response = httpClient.newCall(requestBuilder.build()).execute()
-        val responseBody = response.body.string()
+        val charset = response.body.contentType()?.charset() ?: Charsets.UTF_8
+        val responseBody = response.body.byteStream().use { input ->
+            // 限量读取：防恶意/超大响应 OOM（body.string() 会全量读入）
+            val buffer = ByteArray(MAX_FETCH_RESPONSE_BYTES + 1)
+            val read = input.read(buffer)
+            if (read < 0) {
+                ""
+            } else {
+                val kept = minOf(read, MAX_FETCH_RESPONSE_BYTES)
+                String(buffer, 0, kept, charset) + if (read > kept) "\n[TRUNCATED]" else ""
+            }
+        }
         val code = response.code
         val message = response.message
         response.close()

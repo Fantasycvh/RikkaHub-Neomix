@@ -50,6 +50,9 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.modifier.onClick
 
+/** 文件导入最大字符数：超大文件导入会渲染卡死 + system prompt 膨胀 413 */
+private const val MAX_IMPORT_CHARS = 200_000
+
 /**
  * A multi-line text input component with a header and file import functionality.
  *
@@ -92,7 +95,7 @@ fun TextArea(
                 try {
                     val content = withContext(Dispatchers.IO) {
                         context.contentResolver.openInputStream(uri)?.bufferedReader()
-                            ?.use { reader -> reader.readText() }
+                            ?.use { reader -> reader.readText().take(MAX_IMPORT_CHARS) }
                             ?: error("Failed to read file")
                     }
                     state.setTextAndPlaceCursorAtEnd(content)

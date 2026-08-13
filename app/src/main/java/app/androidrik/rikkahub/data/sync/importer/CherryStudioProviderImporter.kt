@@ -13,14 +13,33 @@ import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.common.http.jsonObjectOrNull
 import app.androidrik.rikkahub.utils.JsonInstant
 import java.io.File
+import java.io.Reader
 import java.util.zip.ZipFile
+
+/** 限制读取 Reader 前 [MAX_IMPORT_CHARS] 字符，防止恶意超大文件全量读入内存 */
+private fun Reader.readLimited(): String {
+    val buffer = CharArray(8192)
+    val sb = StringBuilder()
+    var total = 0
+    while (total < MAX_IMPORT_CHARS) {
+        val read = read(buffer)
+        if (read == -1) break
+        val toAppend = minOf(read, MAX_IMPORT_CHARS - total)
+        sb.append(buffer, 0, toAppend)
+        total += toAppend
+    }
+    return sb.toString()
+}
+
+/** 导入文件最大读取字符数（约 5MB）：恶意超大备份 readText 全量读曾 OOM */
+internal const val MAX_IMPORT_CHARS = 5_000_000
 
 object CherryStudioProviderImporter {
     fun importProviders(file: File): List<ProviderSetting> {
         val dataJson = ZipFile(file).use { zip ->
             val entry = zip.getEntry("data.json")
                 ?: throw IllegalArgumentException("Invalid Cherry Studio backup: data.json not found")
-            zip.getInputStream(entry).bufferedReader().use { it.readText() }
+            zip.getInputStream(entry).bufferedReader().use { it.readLimited() }
         }
 
         val root = JsonInstant.parseToJsonElement(dataJson).jsonObject
