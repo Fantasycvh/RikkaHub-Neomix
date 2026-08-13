@@ -6,7 +6,6 @@ import android.util.Log
 import android.view.ViewGroup.LayoutParams
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -71,17 +70,6 @@ internal class MyWebViewClient(private val state: WebViewState) : WebViewClient(
         state.pageTitle = view?.title // Update title
         state.canGoBack = view?.canGoBack() == true
         state.canGoForward = view?.canGoForward() == true
-    }
-
-    override fun onReceivedError(
-        view: WebView?,
-        request: WebResourceRequest?,
-        error: WebResourceError?
-    ) {
-        super.onReceivedError(view, request, error)
-        val msg = "code=${error?.errorCode} desc=${error?.description} url=${request?.url}"
-        Log.w(TAG, "onReceivedError: $msg")
-        state.loadError = msg
     }
 }
 
@@ -257,10 +245,6 @@ class WebViewState(
     var pageTitle: String? by mutableStateOf(null)
         internal set
     var currentUrl: String? by mutableStateOf(null)
-        internal set
-
-    // --- Load Error (diagnostic) ---
-    var loadError: String? by mutableStateOf(null)
         internal set
 
     // --- Navigation State ---

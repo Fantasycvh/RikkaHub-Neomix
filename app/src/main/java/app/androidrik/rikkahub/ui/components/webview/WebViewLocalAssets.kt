@@ -17,43 +17,18 @@ const val WEB_VIEW_BASE_URL = "https://rikkahub.local"
  */
 const val WEB_VIEW_ASSET_URL = "$WEB_VIEW_BASE_URL/assets"
 
-/**
- * TikZ 图表渲染使用的真实 https origin。
- *
- * rikkahub.local 是未注册的虚拟域名——对纯 JS 库（mermaid）够用，但 tikzjax 依赖
- * Web Worker + blob URL + WebAssembly：Worker 内 importScripts 加载 blob 时 origin 解析为
- * null（"blob:null/..."），WebView 拦截 "Not allowed to load local resource" → 渲染空白。
- *
- * appassets.androidplatform.net 提供 https secure context，blob URL 继承真实 origin，
- * Worker + wasm 全部可用（androidx.webkit 官方为 "WebView 内托管本地 assets 且需要完整
- * Web 能力" 提供的标准域名）。
- */
-const val TIKZ_ASSET_URL = "https://appassets.androidplatform.net/assets"
-
 private const val ASSET_HOST = "rikkahub.local"
 private const val ASSET_PATH_PREFIX = "/assets/"
-private const val APPASSETS_HOST = "appassets.androidplatform.net"
 
 internal object WebViewLocalAssets {
-    /**
-     * 把两个虚拟域名的 `/assets/...` 请求映射到 app 的 assets 目录。
-     *
-     * 统一走手动拦截（自定义 MIME 表），**不依赖 WebViewAssetLoader**：
-     * AssetsPathHandler 用 Android MimeTypeMap 推断 MIME，`.js`/`.wasm` 常返回 null 或
-     * 错误类型——ES module `import` 严格校验 JS MIME，`.wasm` 的 instantiateStreaming 也
-     * 要求 `application/wasm`，MIME 不对 → module 不执行 → 页面"JS 未执行"（TikZ 真机空白根因）。
-     */
     fun intercept(context: Context, uri: Uri): WebResourceResponse? {
-        val host = uri.host ?: return null
-        if (!host.equals(APPASSETS_HOST, ignoreCase = true) &&
-            !host.equals(ASSET_HOST, ignoreCase = true)
-        ) {
-            return null
-        }
+        if (!uri.host.equals(ASSET_HOST, ignoreCase = true)) return null
         val path = uri.path ?: return null
         if (!path.startsWith(ASSET_PATH_PREFIX)) return null
+
         val assetPath = path.removePrefix(ASSET_PATH_PREFIX)
         if (assetPath.isEmpty() || assetPath.contains("..")) return null
+
         val mimeType = mimeTypeOf(assetPath)
         return runCatching {
             WebResourceResponse(
@@ -70,7 +45,6 @@ internal object WebViewLocalAssets {
         "html", "htm" -> "text/html"
         "json" -> "application/json"
         "svg" -> "image/svg+xml"
-        "wasm" -> "application/wasm"
         "png" -> "image/png"
         "jpg", "jpeg" -> "image/jpeg"
         "webp" -> "image/webp"

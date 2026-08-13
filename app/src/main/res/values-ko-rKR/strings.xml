@@ -648,8 +648,6 @@
   <string name="setting_display_page_enable_blur_effect_desc">채팅 입력창에 블러 효과 활성화</string>
   <string name="setting_display_page_enable_blur_effect_title">흐림 효과 활성화</string>
   <string name="setting_display_page_enable_latex_rendering_desc">LaTeX 구문을 사용해 수식과 공식을 렌더링합니다</string>
-  <string name="setting_display_page_enable_diagram_rendering_title">TikZ 다이어그램 렌더링</string>
-  <string name="setting_display_page_enable_diagram_rendering_desc">AI가 생성한 tikzpicture / tikzcd 코드를 벡터 그래픽으로 렌더링합니다</string>
   <string name="setting_display_page_enable_latex_rendering_title">LaTeX 렌더링 활성화</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_desc">메시지 생성 시 진동 피드백 활성화</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_title">메시지 생성 진동 효과 활성화</string>
