@@ -3,16 +3,19 @@ package app.androidrik.rikkahub.ui.components.richtext
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.util.Log
 import android.webkit.JavascriptInterface
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -49,6 +52,22 @@ fun TikzJax(
     var pdfBitmap by remember(code) { mutableStateOf<ImageBitmap?>(null) }
     var errorMessage by remember(code) { mutableStateOf<String?>(null) }
     var isRendering by remember(code) { mutableStateOf(true) }
+    var statusMessage by remember(code) { mutableStateOf<String?>(null) }
+
+    // 超时兜底：Tectonic 编译在低端设备可能极慢或内存不足卡死，90s 未完成则提示。
+    // statusMessage 为 null 说明 JS 从未回调（onProgress 都没触发）→ 大概率 WebView 页面加载失败。
+    LaunchedEffect(code) {
+        delay(90_000)
+        if (isRendering) {
+            Log.w(TAG, "TikZ 渲染超时，status=$statusMessage")
+            errorMessage = if (statusMessage == null) {
+                "渲染失败：JS 未执行（WebView 页面可能未加载）"
+            } else {
+                "渲染超时（卡在: $statusMessage，可能是设备内存不足）"
+            }
+            isRendering = false
+        }
+    }
 
     // JS 回调（@JavascriptInterface）运行在 JavaBridge 线程，Compose state 必须在主线程更新。
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -60,6 +79,7 @@ fun TikzJax(
         TikzJaxInterface(
             onPdf = { base64Pdf ->
                 // 解析 + PdfRenderer 渲染放回调线程（阻塞但非 UI 线程），只把 state 更新切主线程。
+                Log.d(TAG, "onPdf: pdf base64 len=${base64Pdf.length}")
                 val pdfBytes = runCatching {
                     Base64.decode(base64Pdf, Base64.DEFAULT)
                 }.getOrNull()
@@ -69,6 +89,7 @@ fun TikzJax(
                     bitmap == null -> "PDF 渲染失败"
                     else -> null
                 }
+                Log.d(TAG, "onPdf: decoded=${pdfBytes?.size} bitmap=${bitmap?.width}x${bitmap?.height} error=$error")
                 mainHandler.post {
                     if (error != null) {
                         errorMessage = error
@@ -79,9 +100,12 @@ fun TikzJax(
                 }
             },
             onProgress = { msg ->
-                // 进度回调，暂不显示（避免闪烁），可后续用于 loading 状态
+                // 显示 JS 侧进度（解压 bundle / 加载引擎 / 编译中），便于定位卡点。
+                Log.d(TAG, "onProgress: $msg")
+                mainHandler.post { statusMessage = msg }
             },
             onError = { msg ->
+                Log.w(TAG, "onError: $msg")
                 mainHandler.post {
                     errorMessage = msg
                     isRendering = false
@@ -130,11 +154,19 @@ fun TikzJax(
                 contentScale = ContentScale.FillWidth,
             )
         } else if (isRendering) {
-            Text(
-                text = "渲染中...",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(8.dp),
-            )
+            Column(Modifier.padding(8.dp)) {
+                Text(
+                    text = "渲染中...",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (statusMessage != null) {
+                    Text(
+                        text = "进度: $statusMessage",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
 
         // WebView 保持极小尺寸以执行 JS（不可见，只做编译）
@@ -144,6 +176,8 @@ fun TikzJax(
         )
     }
 }
+
+private const val TAG = "TikzJax"
 
 private class TikzJaxInterface(
     private val onPdf: (String) -> Unit,
