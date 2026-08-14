@@ -332,7 +332,19 @@ class TikzRendererTest {
         val code = """\begin{tikzpicture}\draw[rounded corners, thick] (2,0) rectangle (4.5,2.5);\end{tikzpicture}"""
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
-        assertTrue("missing rounded rect", result.getOrThrow().contains("rx=\"8\""))
+        // rx 统一读 roundedRadius（默认 5），不再硬编码 8
+        assertTrue("missing rounded rect", result.getOrThrow().contains("rx=\"5\""))
+    }
+
+    @Test
+    fun `rounded corners multi-subpath does not chamfer`() {
+        // 两条分离子路径（两次 MoveTo）：退回普通渲染，禁止圆角错误连接
+        val code = """\begin{tikzpicture}\draw[rounded corners] (0,0) -- (1,0) (3,0) -- (4,0);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("should not chamfer multi-subpath", !svg.contains(" Q "))
+        assertTrue("expected two subpaths", svg.split("M ").size - 1 >= 2)
     }
 
     @Test

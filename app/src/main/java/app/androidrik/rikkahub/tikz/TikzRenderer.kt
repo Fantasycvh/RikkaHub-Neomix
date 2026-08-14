@@ -334,12 +334,16 @@ object TikzRenderer {
                         // + 独立子路径：回到锚点再画线
                         segs.add(MoveTo(lastAbsolute))
                         segs.add(LineTo(p))
-                    } else {
+                    } else if (pendingConnector != null) {
                         when (pendingConnector) {
                             "bend" -> segs.add(QuadTo(bendControl(cur, p, pendingBendAngle), p))
                             "controls" -> segs.add(CubicTo(pendingC1 ?: cur, pendingC2 ?: p, p))
                             else -> segs.add(LineTo(p))
                         }
+                    } else {
+                        // 无连接符的独立坐标 → 新子路径起点（TikZ：空格分隔的坐标另起线段，
+                        // 如 (0,0)--(1,0) (3,0)--(4,0) 是两条分离线）
+                        segs.add(MoveTo(p))
                     }
                     if (relativeUpdate) {
                         cur = p
@@ -603,10 +607,13 @@ object TikzRenderer {
 
     private fun renderDraw(el: DrawElement, sx: (Double) -> Double, sy: (Double) -> Double): String {
         val style = el.style
+        // 数值一律走 fmt（消除 .0 尾零）：AndroidSVG 1.4 对 "X.0" 数字格式有兼容性怪癖，
+        // d 属性坐标与 stroke-width 必须同一套数字格式，避免埋雷。
         val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${fmt(style.strokeWidth)}\""
         val dash = if (style.dashed) " stroke-dasharray=\"5,5\"" else ""
         val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
-        val rectRx = if (style.rounded) "8" else "2"
+        // 圆角半径统一读 style.roundedRadius（矩形 rx 与折线倒角同源，不再硬编码 8）
+        val rectRx = if (style.rounded) fmt(style.roundedRadius) else "2"
 
         return when {
             el.circleRadius != null -> {
@@ -675,7 +682,12 @@ object TikzRenderer {
      * 边短于 2r 时收缩 r = min(r, 边长/2)；零长度段跳过；含曲线段时退回普通渲染。
      */
     private fun renderRoundedD(segs: List<Seg>, rPx: Double, sx: (Double) -> Double, sy: (Double) -> Double): String {
-        val purePolyline = segs.all { it is MoveTo || it is LineTo }
+        // 只允许"开头一个 MoveTo + 其余全 LineTo"的单一折线子路径；
+        // 若出现两次 MoveTo（分离的多子路径，如 \draw (0,0)--(1,0) (3,0)--(4,0)）直接退回普通渲染，
+        // 避免把两条子路径用圆角错误连接。
+        val purePolyline = segs.size >= 2 &&
+            segs.first() is MoveTo &&
+            segs.drop(1).all { it is LineTo }
         val rawPts = pathPoints(segs)
         if (!purePolyline || rawPts.size < 3) {
             return renderPlainD(segs, sx, sy)
