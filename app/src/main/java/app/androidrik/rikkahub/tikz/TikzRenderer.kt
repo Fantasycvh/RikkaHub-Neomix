@@ -249,29 +249,13 @@ object TikzRenderer {
     }
 
     private fun parseNode(cmd: String, ctx: ParseContext): Element? {
-        // 前缀（选项/名字/at 坐标），文本用平衡花括号单独提取（\frac{a}{b} 等嵌套 {} 不能被 [^}]* 截断）
-        val m = Regex("""\\node\s*(\[[^\]]*\])?\s*(?:\(([^)]+)\))?\s*(?:at\s+\(([^)]+)\))?""").find(cmd) ?: return null
+        // 组1=选项 组2=名字 组3=at坐标 组4=文本；at 坐标可选，缺省原点 (0,0)
+        val m = Regex("""\\node\s*(\[[^\]]*\])?\s*(?:\(([^)]+)\))?\s*(?:at\s+\(([^)]+)\))?\s*\{([^}]*)\}""").find(cmd) ?: return null
         val styleStr = m.groupValues[1].orEmpty()
         val name = m.groupValues[2].ifBlank { null }
         val atRaw = m.groupValues[3]
         val at = if (atRaw.isNotBlank()) parseCoordinatePoint(atRaw, ctx) else Point(0.0, 0.0)
-        var i = m.range.last + 1
-        while (i < cmd.length && cmd[i].isWhitespace()) i++
-        var text = ""
-        if (i < cmd.length && cmd[i] == '{') {
-            var depth = 1
-            val sb = StringBuilder()
-            i++
-            while (i < cmd.length && depth > 0) {
-                when (cmd[i]) {
-                    '{' -> { depth++; sb.append('{') }
-                    '}' -> { depth--; if (depth > 0) sb.append('}') }
-                    else -> sb.append(cmd[i])
-                }
-                i++
-            }
-            text = sb.toString()
-        }
+        val text = m.groupValues[4]
         val style = parseStyle(styleStr)
         name?.let { ctx.coordinates[it] = at }
         return NodeElement(name, at, style, style.shape, text)
@@ -1174,14 +1158,9 @@ object TikzRenderer {
                 """<polygon points="$pts" $stroke$fill/>"""
             }
         }
-        // 文本：含数学子集（^ _ \frac \sqrt \sum）走 MathText 多元素堆叠排版；
-        // 否则 y 直接定位到近似垂直中心（fontSize 14 的一半略多）；AndroidSVG 不支持 dominant-baseline/dy em
+        // 文本：y 直接定位到近似垂直中心（fontSize 14 的一半略多）；AndroidSVG 不支持 dominant-baseline/dy em
         val text = if (el.text.isNotBlank()) {
-            if (MathText.needsMath(el.text)) {
-                MathText.render(el.text, cx, cy, style.stroke)
-            } else {
-                """<text x="${fmt(cx)}" y="${fmt(cy + 5.0)}" text-anchor="middle" font-size="14"$textColor>${escapeXml(el.text)}</text>"""
-            }
+            """<text x="${fmt(cx)}" y="${fmt(cy + 5.0)}" text-anchor="middle" font-size="14"$textColor>${escapeXml(el.text)}</text>"""
         } else ""
         return "$shapeSvg\n$text"
     }
