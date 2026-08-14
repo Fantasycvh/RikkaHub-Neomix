@@ -106,6 +106,48 @@ class TikzRendererTest {
     }
 
     @Test
+    fun `fill command fills path without stroke`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\fill[red] (0,0) -- (1,0) -- (1,1) -- cycle;\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing red fill", svg.contains("fill=\"red\""))
+        assertTrue("fill should have no stroke", !svg.contains("stroke="))
+    }
+
+    @Test
+    fun `filldraw command fills and strokes`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\filldraw[fill=red, draw=blue] (0,0) -- (1,0) -- (1,1) -- cycle;\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing red fill", svg.contains("fill=\"red\""))
+        assertTrue("missing blue stroke", svg.contains("stroke=\"blue\""))
+    }
+
+    @Test
+    fun `filldraw defaults to black fill and stroke`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\filldraw (0,0) -- (1,0) -- (1,1) -- cycle;\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing black fill", svg.contains("fill=\"black\""))
+        assertTrue("missing black stroke", svg.contains("stroke=\"black\""))
+    }
+
+    @Test
+    fun `draw with draw equals color option sets stroke`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw[draw=blue] (0,0) -- (1,0);\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().contains("stroke=\"blue\""))
+    }
+
+    @Test
     fun `draw line renders path with move and line commands`() {
         val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}""")
         assertTrue(result.isSuccess)

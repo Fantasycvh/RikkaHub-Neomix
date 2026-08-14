@@ -262,10 +262,21 @@ object TikzRenderer {
     }
 
     private fun parseDraw(cmd: String, ctx: ParseContext): List<Element> {
-        val m = Regex("""\\(?:draw|path)\s*(\[[^\]]*\])?(.*)""").find(cmd) ?: return emptyList()
-        val styleStr = m.groupValues[1].orEmpty()
-        val body = m.groupValues[2].trim()
-        val style = parseStyle(styleStr)
+        // 备选顺序：长词在前（filldraw 先于 fill），避免 \filldraw 被 fill 前缀抢走
+        val m = Regex("""\\(draw|path|filldraw|fill)\s*(\[[^\]]*\])?(.*)""").find(cmd) ?: return emptyList()
+        val cmdName = m.groupValues[1]
+        val styleStr = m.groupValues[2].orEmpty()
+        val body = m.groupValues[3].trim()
+        var style = parseStyle(styleStr)
+        // \fill：纯填充（无描边），裸颜色/默认黑作填充色；\filldraw：描边+填充（默认均黑）
+        when (cmdName) {
+            "fill" -> style = style.copy(
+                fill = style.fill ?: (if (style.stroke != "black") style.stroke else "black"),
+                draw = false,
+            )
+            "filldraw" -> style = style.copy(fill = style.fill ?: "black")
+            else -> Unit  // draw/path 保持默认
+        }
 
         // circle (r) —— 不含 node，正则快速返回
         Regex("""\(([^)]+)\)\s+circle\s+\(([^)]+)\)""").find(body)?.let {
@@ -569,6 +580,10 @@ object TikzRenderer {
         inner.split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { token ->
             when {
                 token == "draw" -> style = style.copy(draw = true)
+                token.startsWith("draw=") -> style = style.copy(
+                    draw = true,
+                    stroke = resolveColor(token.substringAfter("=")) ?: style.stroke,
+                )
                 token == "fill" -> style = style.copy(fill = "black")
                 token.startsWith("fill=") -> style = style.copy(fill = resolveColor(token.substringAfter("=")))
                 token == "dashed" -> style = style.copy(dashed = true)
@@ -699,7 +714,8 @@ object TikzRenderer {
         val style = el.style
         // 数值一律走 fmt（消除 .0 尾零）：AndroidSVG 1.4 对 "X.0" 数字格式有兼容性怪癖，
         // d 属性坐标与 stroke-width 必须同一套数字格式，避免埋雷。
-        val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${fmt(style.strokeWidth)}\""
+        // draw=false（如 \fill 纯填充）时不输出 stroke 属性
+        val stroke = if (style.draw) "stroke=\"${style.stroke}\" stroke-width=\"${fmt(style.strokeWidth)}\"" else ""
         val dash = if (style.dashed) " stroke-dasharray=\"5,5\"" else ""
         val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
         // 圆角半径：显式值（rounded corners=NNpt）优先；裸 rounded corners 按图形对角线
