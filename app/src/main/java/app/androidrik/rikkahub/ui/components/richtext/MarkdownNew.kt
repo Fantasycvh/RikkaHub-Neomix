@@ -96,8 +96,7 @@ private fun preProcess(content: String): String {
     fun isInCodeBlock(pos: Int) = codeBlocks.any { pos in it }
 
     var result = INLINE_LATEX_REGEX.replace(content) { m ->
-        // trim：IntelliJ inline math 要求 $ 后紧跟内容（含空格的 $ \frac{a}{b} $ 不识别）
-        if (isInCodeBlock(m.range.first)) m.value else "$" + m.groupValues[1].trim() + "$"
+        if (isInCodeBlock(m.range.first)) m.value else "$" + m.groupValues[1] + "$"
     }
     result = BLOCK_LATEX_REGEX.replace(result) { m ->
         if (isInCodeBlock(m.range.first)) m.value else "$$" + m.groupValues[1] + "$$"
