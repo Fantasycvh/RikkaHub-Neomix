@@ -138,19 +138,20 @@ object MathText {
         }
         is MT.Frac -> {
             val s = size * SCRIPT_FACTOR
-            val (numSvg, numW) = layoutTokens(t.num, x, baseY - size * 0.32, s, color)
-            val (denSvg, denW) = layoutTokens(t.den, x, baseY + size * 0.34, s, color)
+            // 分子/分母基线离横线 ±0.55*size，避免字身贴线/重叠（dump 验证 0.32 太紧）
+            val (numSvg, numW) = layoutTokens(t.num, x, baseY - size * 0.55, s, color)
+            val (denSvg, denW) = layoutTokens(t.den, x, baseY + size * 0.55, s, color)
             val w = maxOf(numW, denW) + 4
             val line = """<line x1="${fmt(x - 1)}" y1="${fmt(baseY)}" x2="${fmt(x + w - 3)}" y2="${fmt(baseY)}" stroke="$color" stroke-width="1"/>"""
             (numSvg + line + denSvg) to w
         }
         is MT.Sqrt -> {
-            // 根号折线：√ 形 + 上横线覆盖被开方数
+            // 根号折线：√ 形（斜线更斜）+ 上横线覆盖被开方数
             val h = size * 0.9
-            val radW = size * 0.42
+            val radW = size * 0.5
             val (innerSvg, innerW) = layoutTokens(t.inner, x + radW + 1, baseY, size * 0.95, color)
-            val d = "M ${fmt(x)},${fmt(baseY - h)} l ${fmt(radW * 0.28)},${fmt(h)} l ${fmt(radW * 0.5)},${fmt(-h)} " +
-                "l ${fmt(radW * 0.45)},${fmt(h * 0.72)} h ${fmt(innerW + 1)}"
+            val d = "M ${fmt(x)},${fmt(baseY - h)} l ${fmt(radW * 0.4)},${fmt(h)} l ${fmt(radW * 0.6)},${fmt(-h)} " +
+                "l ${fmt(radW * 0.4)},${fmt(h * 0.75)} h ${fmt(innerW + 1)}"
             val path = """<path d="$d" fill="none" stroke="$color" stroke-width="1"/>"""
             (path + innerSvg) to (radW + 1 + innerW)
         }
@@ -159,24 +160,25 @@ object MathText {
             val sumSvg = text(x, baseY - 1, size * 1.3, "∑", color)
             var w = sumW
             var extra = ""
+            // 上下限远离 ∑ 主体（dump 验证 0.62 重叠）
             t.hi?.let {
-                val (s, sw) = layoutTokens(it, x + sumW * 0.5, baseY - size * 0.62, size * 0.62, color)
-                extra += s; w = maxOf(w, sumW * 0.5 + sw)
+                val (s, sw) = layoutTokens(it, x + sumW * 0.55, baseY - size * 0.8, size * 0.58, color)
+                extra += s; w = maxOf(w, sumW * 0.55 + sw)
             }
             t.lo?.let {
-                val (s, sw) = layoutTokens(it, x + sumW * 0.5, baseY + size * 0.55, size * 0.62, color)
-                extra += s; w = maxOf(w, sumW * 0.5 + sw)
+                val (s, sw) = layoutTokens(it, x + sumW * 0.55, baseY + size * 0.75, size * 0.58, color)
+                extra += s; w = maxOf(w, sumW * 0.55 + sw)
             }
             (sumSvg + extra) to w
         }
     }
 
-    /** 文本宽度估算：拉丁/数字 0.62em，Unicode 符号 0.9em，空白 0.3em */
+    /** 文本宽度估算：拉丁/数字 0.68em，Unicode 符号 0.95em，空白 0.3em（0.62 偏窄导致元素重叠） */
     private fun estWidth(s: String, size: Double): Double = s.sumOf { ch ->
         when {
             ch.isWhitespace() -> size * 0.3
-            ch.code > 0x2000 -> size * 0.9
-            else -> size * 0.62
+            ch.code > 0x2000 -> size * 0.95
+            else -> size * 0.68
         }
     }
 
