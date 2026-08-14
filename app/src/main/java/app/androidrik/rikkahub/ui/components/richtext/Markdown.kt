@@ -124,8 +124,6 @@ private val parser by lazy {
 
 private val INLINE_LATEX_REGEX = Regex("\\\\\\((.+?)\\\\\\)")
 private val BLOCK_LATEX_REGEX = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
-/** $...$ 内容含 LaTeX 命令（\ + 字母）且带空格 → IntelliJ 不识别；仅此类才 trim（$5$ 价格/无命令保持原样） */
-private val INLINE_DOLLAR_LATEX = Regex("""\$([^$\n]*\\[a-zA-Z][^$\n]*)\$""")
 val THINKING_REGEX = Regex("<think>([\\s\\S]*?)(?:</think>|$)", RegexOption.DOT_MATCHES_ALL)
 private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
 private val BREAK_LINE_REGEX = Regex("(?i)<br\\s*/?>")
@@ -163,15 +161,6 @@ private fun preProcess(content: String): String {
                 .trim()
                 .replace(LATEX_BLOCK_LINE_BREAK_REGEX, " ")
             "$$" + formula + "$$"
-        }
-    }
-
-    // 用户直接写的 $ ... $（含空格且含 LaTeX 命令）→ 去空格，IntelliJ 才能识别为 INLINE_MATH
-    result = INLINE_DOLLAR_LATEX.replace(result) { matchResult ->
-        if (isInCodeBlock(matchResult.range.first)) {
-            matchResult.value
-        } else {
-            "$" + matchResult.groupValues[1].trim() + "$"
         }
     }
 

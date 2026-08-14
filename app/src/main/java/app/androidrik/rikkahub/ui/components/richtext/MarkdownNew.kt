@@ -88,8 +88,6 @@ import org.jsoup.nodes.TextNode
 
 private val INLINE_LATEX_REGEX = Regex("\\\\\\((.+?)\\\\\\)")
 private val BLOCK_LATEX_REGEX = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
-/** $...$ 内容含 LaTeX 命令（\ + 字母）且带空格 → IntelliJ 不识别；仅此类才 trim（$5$ 价格/无命令保持原样） */
-private val INLINE_DOLLAR_LATEX = Regex("""\$([^$\n]*\\[a-zA-Z][^$\n]*)\$""")
 private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
 
 private fun preProcess(content: String): String {
@@ -103,10 +101,6 @@ private fun preProcess(content: String): String {
     }
     result = BLOCK_LATEX_REGEX.replace(result) { m ->
         if (isInCodeBlock(m.range.first)) m.value else "$$" + m.groupValues[1] + "$$"
-    }
-    // 用户直接写的 $ ... $（含空格且含 LaTeX 命令）→ 去空格
-    result = INLINE_DOLLAR_LATEX.replace(result) { m ->
-        if (isInCodeBlock(m.range.first)) m.value else "$" + m.groupValues[1].trim() + "$"
     }
     return result
 }
