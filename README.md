@@ -14,16 +14,17 @@ RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，�
 
 ## 📥 下载
 
-🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.5-androidrik.48`）
+🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.6`）
 
-> 本仓库为私有测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**（自 .48 起）。
+> 本仓库为私有测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**。
 
 ## 📌 项目简介
 
-RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5`，已同步至 `2.4.8`）的 fork，
+RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5`，含已吸收的 `2.4.8` 修复）的 fork，
 包名 `app.androidrik.rikkahub`，应用名 **RikkaHub Plus**。
 
-- **开发者分支不跟随上游**：所有定制集中在 `feat/restore-proxy`，`master` 仅作为上游镜像（`ff-only` 同步），两者互不干扰。
+- **自 v2.4.6 起与上游分离**：不再同步上游 `master`，上游仅作**功能 / 机制 / bug 修复的参考**（按需人工评估吸收）
+- **独立版本体系**：`2.4.6` 为独立维护起点，此前定制积累完整保留
 - **私有测试用途**：本仓库为个人/团队测试发布，不面向公网分发。
 
 ## ✨ 本项目定制功能
@@ -40,7 +41,7 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 🧮 **TikZ 图表渲染** | **纯 Kotlin TikZ 渲染器**（`TikzRenderer`）→ SVG 字符串 → AndroidSVG 矢量绘制（无 WebView/wasm）：`\node`/`\draw`/`-- cycle` 闭合/`arc` 圆弧/`\fill`·`\filldraw`/`grid` 网格/`plot` 函数图像（MathExpr 表达式求值 + NaN 断开）、rounded corners 几何倒角、tikzcd 交换图、箭头/贝塞尔/极坐标/命名节点/中文文本、深色模式；`$$...$$` 内嵌 + ```tikz 围栏双触发；导出 HTML 内嵌 `<svg>` 矢量；系统提示词引导模型输出闭合 `$$` 格式 |
 | 🐛 **turbo bug 审计与修复** | 对照 rikkahub-turbo 48 项 bug 清单全量核查（`docs/references/turbo-bugs-audit.md`），分多批修复：崩溃（深递归 SOE 兜底、base64 容错、TTS 悬浮窗无权限守卫）、数据丢失（压缩覆盖新消息合并、附件延迟清理、设置并发 Mutex）、资源防护（文档/记忆/消息/网络体积上限、QuickJS destroy）、功能正确性（WebDAV 路径编码、分享 EXTRA_STREAM 兼容、MCP 名校验） |
 | 💬 **对话分享/导出** | 列表页长按「分享对话」+ 聊天内顶栏导出双入口，Markdown / 图片 PNG 两形态（系统分享 ACTION_SEND），支持版本范围可选 |
-| 🔧 **上游同步** | 同步上游 `2.4.8`，含「R8 保留 `@Serializable` 类」修复（防添加部分搜索商时反序列化崩溃） |
+| 🔧 **上游吸收** | 已吸收上游 `2.4.8` 的「R8 保留 `@Serializable` 类」修复（防添加部分搜索商时反序列化崩溃）；v2.4.6 起与上游分离，后续按需人工吸收 |
 
 ## 🎨 核心功能（继承上游）
 
@@ -78,14 +79,10 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 
 | 分支 | 角色 |
 |---|---|
-| `master` | **上游跟踪镜像**，仅 `ff-only` 同步 `upstream/master`，不参与开发 |
-| `feat/restore-proxy` | **开发分支**（远程默认），全部定制与发布在此进行，不跟随上游 |
+| `feat/restore-proxy` | **唯一开发分支**（远程默认），全部定制与发布在此进行 |
+| `master` | 历史上游镜像（v2.4.6 起**不再同步**，仅留存） |
 
-上游同步命令（仅动 `master`）：
-
-```bash
-git fetch upstream && git checkout master && git merge --ff-only upstream/master && git push origin master
-```
+**与上游关系（自 v2.4.6）**：与上游分离，不再同步 `master`；上游（rikkahub/rikkahub）仅作**功能 / 机制 / bug 修复的参考**，按需人工评估吸收。
 
 ## 🛠️ 构建指南
 

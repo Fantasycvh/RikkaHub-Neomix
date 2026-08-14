@@ -380,3 +380,4 @@
   - **QuickJS**：基础设施现成（RikkaHubApp QuickJSLoader.init()），但用途需界定——「AI 执行 JS 脚本（code-interpreter 风格，无 DOM 安全环境）」可行且有价值；**替代 WebView 渲染 Mermaid/tikzjax 不可行**（需 DOM）；QuickJS 无 DOM，与 math 渲染无关。见「一、1 QuickJS 插件系统（P1）」。
   - **液体玻璃**：Compose 可行（Modifier.blur RenderEffect Android 12+ / Haze 库），但 **blur 重操作 → 消息列表大面积模糊掉帧**，建议仅局部（底部输入栏/侧滑面板）+ 低端机验证 + Android<12 半透明 fallback；与 M3 动态色叠加。见「一、2 液态玻璃主题（P2）」。
   - 两者**暂不实现**，待用户决定推进时机。
+- 2026-08-14：**v2.4.6 独立版本体系 + 与上游分离**——以 .48（.43 基线）为底，versionName 切为 `2.4.6`（versionCode 213），正式发布（Latest）。**自此与上游分离**：不再同步上游 `master`（ff-only 停止），上游仅作功能/机制/bug 修复参考（按需人工评估吸收）。README 分支结构/上游说明、roadmap 上游跟踪同步更新。此后「五、上游 issue 关注清单」转为**参考性质**（仅在有价值的修复/功能时按需吸收）。
