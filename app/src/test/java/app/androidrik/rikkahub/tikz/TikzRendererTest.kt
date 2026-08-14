@@ -62,6 +62,50 @@ class TikzRendererTest {
     }
 
     @Test
+    fun `draw arc from angles produces SVG arc command`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) arc (0:90:1);\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        assertTrue("missing arc command", result.getOrThrow().contains(" A "))
+    }
+
+    @Test
+    fun `draw arc with option syntax produces SVG arc`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw (0,0) arc[start angle=0, end angle=180, radius=1];\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        assertTrue("missing arc command", result.getOrThrow().contains(" A "))
+    }
+
+    @Test
+    fun `draw mixed line and arc path`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw (0,0) -- (1,0) arc (0:90:0.5) -- (1,1);\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing arc command", svg.contains(" A "))
+        assertTrue("missing line commands", svg.contains(" L "))
+    }
+
+    @Test
+    fun `draw arc geometry computes correct end point and flags`() {
+        // (0,0) arc (0:90:1)：圆心 (-1,0)，终点 (-1,1)；SVG px：起点(150,150) 终点(50,50) 半径100，小弧逆时针 sweep=0
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) arc (0:90:1);\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("wrong arc svg: $svg", svg.contains("A 100 100 0 0 0 50,50"))
+    }
+
+    @Test
+    fun `draw arc larger than half circle uses large arc flag`() {
+        // 0:270 → 弧长 270 > 180 → large-arc=1
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) arc (0:270:1);\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().contains("A 100 100 0 1 0"))
+    }
+
+    @Test
     fun `draw line renders path with move and line commands`() {
         val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}""")
         assertTrue(result.isSuccess)

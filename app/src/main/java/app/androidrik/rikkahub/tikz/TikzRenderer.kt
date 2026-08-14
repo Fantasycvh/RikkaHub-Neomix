@@ -82,6 +82,14 @@ object TikzRenderer {
     /** 闭合当前子路径：从当前点连回子路径起点（p = 子路径起点，供几何计算） */
     private data class ClosePath(val p: Point) : Seg
 
+    /** SVG 圆弧段：p = 终点（TikZ 坐标）；radius/largeArc/sweep 为 SVG A 命令参数 */
+    private data class ArcTo(
+        val p: Point,
+        val radius: Double,
+        val largeArc: Boolean,
+        val sweep: Boolean,
+    ) : Seg
+
     private data class DrawElement(
         val style: Style,
         val segs: List<Seg> = emptyList(),
@@ -445,6 +453,56 @@ object TikzRenderer {
                         pendingConnector = "line"  // .. (p) .. 简单形式按直线
                     }
                 }
+                body.startsWith("arc", i) -> {
+                    i += 3
+                    while (i < body.length && body[i].isWhitespace()) i++
+                    var startAngle = 0.0
+                    var endAngle = 0.0
+                    var radius = 0.0
+                    if (i < body.length && body[i] == '(') {
+                        // arc (start:end:radius)
+                        val close = body.indexOf(')', i)
+                        if (close >= 0) {
+                            val parts = body.substring(i + 1, close).split(':')
+                            if (parts.size == 3) {
+                                startAngle = parts[0].trim().toDoubleOrNull() ?: 0.0
+                                endAngle = parts[1].trim().toDoubleOrNull() ?: 0.0
+                                radius = parts[2].trim().toDoubleOrNull() ?: 0.0
+                            }
+                            i = close + 1
+                        }
+                    } else if (i < body.length && body[i] == '[') {
+                        // arc[start angle=.., end angle=.., radius=..]
+                        val close = body.indexOf(']', i)
+                        if (close >= 0) {
+                            val opts = body.substring(i + 1, close)
+                            Regex("""start\s*angle\s*=\s*([-\d.]+)""").find(opts)?.let {
+                                startAngle = it.groupValues[1].toDoubleOrNull() ?: 0.0
+                            }
+                            Regex("""end\s*angle\s*=\s*([-\d.]+)""").find(opts)?.let {
+                                endAngle = it.groupValues[1].toDoubleOrNull() ?: 0.0
+                            }
+                            Regex("""radius\s*=\s*([-\d.]+)""").find(opts)?.let {
+                                radius = it.groupValues[1].toDoubleOrNull() ?: 0.0
+                            }
+                            i = close + 1
+                        }
+                    }
+                    if (radius > 0) {
+                        // TikZ 逆时针（y 上）；弧长 = (end-start) 归一化；sweep=0（y 翻转后方向不变）
+                        var d = (endAngle - startAngle) % 360.0
+                        if (d <= 0) d += 360.0
+                        val p = arcEndPoint(cur, startAngle, endAngle, radius)
+                        segs.add(ArcTo(p, radius * SCALE, d > 180.0, sweep = false))
+                        cur = p
+                        lastAbsolute = p
+                    }
+                    pendingConnector = null
+                    pendingC1 = null
+                    pendingC2 = null
+                    relativeUpdate = false
+                    relativeKeep = false
+                }
                 body.startsWith("cycle", i) -> {
                     // 闭合当前子路径：连回最近 MoveTo 起点
                     i += 5
@@ -587,6 +645,7 @@ object TikzRenderer {
                             is LineTo -> allPoints.add(seg.p)
                             is QuadTo -> { allPoints.add(seg.c); allPoints.add(seg.p) }
                             is CubicTo -> { allPoints.add(seg.c1); allPoints.add(seg.c2); allPoints.add(seg.p) }
+                            is ArcTo -> allPoints.add(seg.p)
                             is ClosePath -> Unit
                         }
                     }
@@ -692,6 +751,7 @@ object TikzRenderer {
             is LineTo -> it.p
             is QuadTo -> it.p
             is CubicTo -> it.p
+            is ArcTo -> it.p
             is ClosePath -> null
         }
     }
@@ -705,6 +765,7 @@ object TikzRenderer {
                 is LineTo -> pts.add(seg.p)
                 is QuadTo -> { pts.add(seg.c); pts.add(seg.p) }
                 is CubicTo -> { pts.add(seg.c1); pts.add(seg.c2); pts.add(seg.p) }
+                is ArcTo -> pts.add(seg.p)
                 is ClosePath -> Unit  // 起点已在 MoveTo
             }
         }
@@ -735,6 +796,10 @@ object TikzRenderer {
                     .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
                 is CubicTo -> append(" C ").append(fmt(sx(seg.c1.x))).append(',').append(fmt(sy(seg.c1.y)))
                     .append(' ').append(fmt(sx(seg.c2.x))).append(',').append(fmt(sy(seg.c2.y)))
+                    .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
+                is ArcTo -> append(" A ").append(fmt(seg.radius)).append(' ').append(fmt(seg.radius))
+                    .append(" 0 ").append(if (seg.largeArc) "1" else "0")
+                    .append(' ').append(if (seg.sweep) "1" else "0")
                     .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
                 is ClosePath -> append(" Z")
             }
@@ -836,12 +901,13 @@ object TikzRenderer {
         }
     }
 
-    /** 末段箭头：(尖, 指向线内的参考点)。直线用上一顶点，曲线用切线（Q: ctrl，C: c2）；cycle 末尾无箭头 */
+    /** 末段箭头：(尖, 指向线内的参考点)。直线用上一顶点，曲线用切线（Q: ctrl，C: c2）；cycle/arc 末尾无箭头 */
     private fun segmentArrowEnd(segs: List<Seg>): Pair<Point, Point>? {
         val last = segs.lastOrNull() ?: return null
         return when (last) {
             is MoveTo -> null
             is ClosePath -> null
+            is ArcTo -> null
             is LineTo -> {
                 val prev = secondLastPoint(segs) ?: return null
                 last.p to prev
@@ -859,6 +925,7 @@ object TikzRenderer {
             is LineTo -> second.p
             is QuadTo -> second.c
             is CubicTo -> second.c1
+            is ArcTo -> second.p
             is MoveTo -> return null
             is ClosePath -> return null
         }
@@ -873,6 +940,7 @@ object TikzRenderer {
                 is LineTo -> s.p
                 is QuadTo -> s.p
                 is CubicTo -> s.p
+                is ArcTo -> s.p
                 is ClosePath -> continue
             }
         }
@@ -880,8 +948,7 @@ object TikzRenderer {
     }
 
     /** 计算 to[bend] 二次贝塞尔控制点（TikZ 坐标系，y 向上）：中点 + 垂直偏移 */
-    private fun bendControl(from: Point, to: Point, angle: Double): Point {
-        val midX = (from.x + to.x) / 2
+    private fun bendControl(from: Point, to: Point, angle: Double): Point {        val midX = (from.x + to.x) / 2
         val midY = (from.y + to.y) / 2
         val dx = to.x - from.x
         val dy = to.y - from.y
@@ -892,6 +959,15 @@ object TikzRenderer {
         val ny = dx / len
         val offset = len * 0.5 * kotlin.math.tan(Math.toRadians(angle / 2))
         return Point(midX + nx * offset, midY + ny * offset)
+    }
+
+    /** arc 终点（TikZ 坐标系，y 向上）：圆心 = 起点沿 start 角反向偏移 r，终点 = 圆心沿 end 角 */
+    private fun arcEndPoint(startP: Point, startAngle: Double, endAngle: Double, r: Double): Point {
+        val rad0 = Math.toRadians(startAngle)
+        val rad1 = Math.toRadians(endAngle)
+        val cx = startP.x - r * Math.cos(rad0)
+        val cy = startP.y - r * Math.sin(rad0)
+        return Point(cx + r * Math.cos(rad1), cy + r * Math.sin(rad1))
     }
 
     /**
