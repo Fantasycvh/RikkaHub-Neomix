@@ -142,12 +142,13 @@ private fun preProcess(content: String): String {
         return codeBlocks.any { range -> position in range }
     }
 
-    // 替换行内公式 \( ... \) 到 $ ... $，但跳过代码块内的内容
+    // 替换行内公式 \( ... \) 到 $ ... $，但跳过代码块内的内容。
+    // 必须 trim：IntelliJ markdown 的 inline math 要求 $ 后紧跟内容（含空格的 $ \frac{a}{b} $ 不识别 → 显示源码）
     var result = INLINE_LATEX_REGEX.replace(content) { matchResult ->
         if (isInCodeBlock(matchResult.range.first)) {
             matchResult.value // 保持原样
         } else {
-            "$" + matchResult.groupValues[1] + "$"
+            "$" + matchResult.groupValues[1].trim() + "$"
         }
     }
 

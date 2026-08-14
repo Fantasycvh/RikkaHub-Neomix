@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -85,6 +86,8 @@ private const val COLLAPSE_LINES = 10
 private val PREVIEWABLE_LANGUAGES = setOf("html", "svg")
 /** 触发 TikZ 图表渲染的代码围栏语言（normalizedLanguage 已小写化） */
 private val TIKZ_FENCE_LANGS = setOf("tikz", "tikzpicture", "tikzcd", "tikztiming")
+/** 触发公式渲染的代码围栏语言（内容如 \(...\) / $...$ 走 jlatexmath；渲染失败自动回退代码文本） */
+private val MATH_FENCE_LANGS = setOf("latex", "tex", "math", "formula")
 
 @Composable
 fun HighlightCodeBlock(
@@ -185,6 +188,14 @@ fun HighlightCodeBlock(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                completeCodeBlock && normalizedLanguage in MATH_FENCE_LANGS -> {
+                    // latex/tex/math 围栏：内容按公式渲染（\(...\) / $...$ / 裸命令走 jlatexmath）；
+                    // jlatexmath 解析失败时 LatexText 自动回退显示原始代码
+                    LatexBlock(
+                        latex = code,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 else -> {
                     val textStyle = LocalTextStyle.current.merge(style)
                     val codeLines = remember(code) { code.lines() }
@@ -254,6 +265,20 @@ fun HighlightCodeBlock(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LatexBlock(latex: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        LatexText(
+            latex = latex,
+            color = LocalContentColor.current,
+            fontSize = 16.sp,
+        )
     }
 }
 

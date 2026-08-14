@@ -10,16 +10,16 @@ import org.jsoup.Jsoup
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 模拟 MarkdownNew.kt preProcess（`\(...\)`/`\[...\]` → `$`/`$$`，跳过代码块） */
+/** 模拟 MarkdownNew.kt preProcess（`\(...\)`/`\[...\]` → `$`/`$$`，跳过代码块；内容 trim 供 IntelliJ 识别） */
 private fun preProcess(content: String): String {
     val codeBlocks = mutableListOf<IntRange>()
     Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL).findAll(content).forEach { codeBlocks.add(it.range) }
     fun isInCodeBlock(pos: Int) = codeBlocks.any { pos in it }
     var result = Regex("\\\\\\((.+?)\\\\\\)").replace(content) { m ->
-        if (isInCodeBlock(m.range.first)) m.value else "$" + m.groupValues[1] + "$"
+        if (isInCodeBlock(m.range.first)) m.value else "$" + m.groupValues[1].trim() + "$"
     }
     result = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL).replace(result) { m ->
-        if (isInCodeBlock(m.range.first)) m.value else "$$" + m.groupValues[1] + "$$"
+        if (isInCodeBlock(m.range.first)) m.value else "$$" + m.groupValues[1].trim() + "$$"
     }
     return result
 }
@@ -162,6 +162,71 @@ none of these work"""
             t.startsWith("\\[") && t.endsWith("\\]") && t.length > 4 -> t.substring(2, t.length - 2).trim()
             else -> t
         }
+    }
+
+    @Test
+    fun `diag - inline latex paren in text vs code block`() {
+        // 普通文本里的 \(...\)：preProcess 应替换为 $...$ → INLINE_MATH
+        val msg1 = """公式：\( \frac{a}{b} \) 测试 \( \sqrt[3]{x} \)"""
+        val p1 = preProcess(msg1)
+        println("=== text: ${p1.replace("\n", "\\n")}")
+        val parser = MarkdownParser(GFMFlavourDescriptor(makeHttpsAutoLinks = true, useSafeLinks = true))
+        val tree1 = parser.buildMarkdownTreeFromString(p1)
+        val math1 = mutableListOf<String>()
+        collectMath(tree1, p1, math1)
+        println("  MATH count=${math1.size}")
+        math1.forEachIndexed { i, m -> println("  MATH[$i]: ${m.replace("\n", "\\n")}") }
+
+        // 代码块里的 \(...\)：preProcess 应跳过（isInCodeBlock）→ 原样保留在代码块
+        val msg2 = """```latex
+\( \frac{a}{b} \)
+```"""
+        val p2 = preProcess(msg2)
+        println("=== codeblock: ${p2.replace("\n", "\\n")}")
+        val tree2 = parser.buildMarkdownTreeFromString(p2)
+        val math2 = mutableListOf<String>()
+        collectMath(tree2, p2, math2)
+        println("  MATH count=${math2.size}")
+        val sb = StringBuilder()
+        walk(tree2, p2, 0, sb)
+        println(sb.toString())
+    }
+
+    @Test
+    fun `diag - inline math recognition variants`() {
+        val D = "${'$'}"
+        val variants = listOf(
+            """公式：${D}\frac{a}{b}${D} 测试""",
+            """公式：${D}\sqrt[3]{x}${D} 测试""",
+            """公式：${D}x^2${D} 测试""",
+            """公式：${D} \frac{a}{b} ${D} 测试""",
+            """公式：$D$D\frac{a}{b}$D$D 测试""".replace("$D$D", "$$"),
+        )
+        val parser = MarkdownParser(GFMFlavourDescriptor(makeHttpsAutoLinks = true, useSafeLinks = true))
+        variants.forEach { msg ->
+            val tree = parser.buildMarkdownTreeFromString(msg)
+            val math = mutableListOf<String>()
+            collectMath(tree, msg, math)
+            println("=== [$msg] MATH count=${math.size}")
+            math.forEachIndexed { i, m -> println("  MATH[$i]: ${m.replace("\n", "\\n")}") }
+        }
+    }
+
+    @Test
+    fun `inline latex paren with spaces is trimmed and recognized`() {
+        // AI 常见格式 \( \frac{a}{b} \)（括号内带空格）→ preProcess 应 trim 成 $\frac{a}{b}$ → INLINE_MATH
+        val msg = """公式：\( \frac{a}{b} \) 和 \( \sqrt[3]{x} \)"""
+        val preprocessed = preProcess(msg)
+        assertTrue("should be converted to dollar form: $preprocessed", preprocessed.contains("$\\frac{a}{b}$"))
+        val parser = MarkdownParser(GFMFlavourDescriptor(makeHttpsAutoLinks = true, useSafeLinks = true))
+        val tree = parser.buildMarkdownTreeFromString(preprocessed)
+        val math = mutableListOf<String>()
+        collectMath(tree, preprocessed, math)
+        println("  MATH count=${math.size}")
+        math.forEachIndexed { i, m -> println("  MATH[$i]: ${m.replace("\n", "\\n")}") }
+        assertTrue("expected 2 inline math blocks, got ${math.size}", math.size >= 2)
+        assertTrue("frac missing", math.joinToString().contains("\\frac{a}{b}"))
+        assertTrue("sqrt3 missing", math.joinToString().contains("\\sqrt[3]{x}"))
     }
 
     @Test
