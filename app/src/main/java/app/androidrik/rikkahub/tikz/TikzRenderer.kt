@@ -52,7 +52,9 @@ object TikzRenderer {
         val arrowEnd: ArrowTip? = null,
         val shape: NodeShape = NodeShape.RECTANGLE,
         val rounded: Boolean = false,
+        /** 圆角半径（px）。裸 rounded corners 时按图形对角线比例计算；=NNpt 时用户显式指定 */
         val roundedRadius: Double = 5.0,
+        val roundedRadiusExplicit: Boolean = false,
     )
 
     private sealed interface Element
@@ -510,9 +512,14 @@ object TikzRenderer {
                 token == "star" -> style = style.copy(shape = NodeShape.STAR)
                 token == "rounded corners" -> style = style.copy(rounded = true)
                 token.startsWith("rounded corners=") -> {
-                    val r = token.substringAfter("=").removeSuffix("pt").removeSuffix("cm").removeSuffix("mm")
-                        .toDoubleOrNull() ?: 5.0
-                    style = style.copy(rounded = true, roundedRadius = r)
+                    // 显式半径（pt 按 1.333 转 px；无单位直接当 px）
+                    val raw = token.substringAfter("=").trim()
+                    val r = if (raw.endsWith("pt")) {
+                        (raw.removeSuffix("pt").toDoubleOrNull() ?: 5.0) * 1.333
+                    } else {
+                        raw.removeSuffix("cm").removeSuffix("mm").toDoubleOrNull() ?: 5.0
+                    }
+                    style = style.copy(rounded = true, roundedRadius = r, roundedRadiusExplicit = true)
                 }
                 else -> {
                     // 纯颜色名 / #hex 作为 stroke
@@ -612,8 +619,12 @@ object TikzRenderer {
         val stroke = "stroke=\"${style.stroke}\" stroke-width=\"${fmt(style.strokeWidth)}\""
         val dash = if (style.dashed) " stroke-dasharray=\"5,5\"" else ""
         val fill = style.fill?.let { " fill=\"$it\"" } ?: " fill=\"none\""
-        // 圆角半径统一读 style.roundedRadius（矩形 rx 与折线倒角同源，不再硬编码 8）
-        val rectRx = if (style.rounded) fmt(style.roundedRadius) else "2"
+        // 圆角半径：显式值（rounded corners=NNpt）优先；裸 rounded corners 按图形对角线
+        // 3% 且至少 2.5 倍线宽——保证高密度屏与任意图形尺寸下圆角可见（风格意图，非固定像素）
+        val rPx = if (!style.rounded) 0.0
+                  else if (style.roundedRadiusExplicit) style.roundedRadius
+                  else maxOf(figureDiagonalPx(el, sx, sy) * 0.03, style.strokeWidth * 2.5)
+        val rectRx = if (style.rounded) fmt(rPx) else "2"
 
         return when {
             el.circleRadius != null -> {
@@ -628,7 +639,7 @@ object TikzRenderer {
                 """<rect x="${fmt(sx(x))}" y="${fmt(sy(yTop))}" width="${fmt(w * SCALE)}" height="${fmt(h * SCALE)}" rx="$rectRx" $stroke$fill$dash/>"""
             }
             else -> {
-                val d = if (style.rounded) renderRoundedD(el.segs, style.roundedRadius, sx, sy)
+                val d = if (style.rounded) renderRoundedD(el.segs, rPx, sx, sy)
                         else renderPlainD(el.segs, sx, sy)
                 val sb = StringBuilder()
                 sb.append("""<path d="$d" $stroke$fill$dash/>""")
@@ -658,6 +669,33 @@ object TikzRenderer {
             is QuadTo -> it.p
             is CubicTo -> it.p
         }
+    }
+
+    /** 图形包围盒对角线（px，经 sx/sy 转换）：用于裸 rounded corners 的按比例半径 */
+    private fun figureDiagonalPx(el: DrawElement, sx: (Double) -> Double, sy: (Double) -> Double): Double {
+        val pts = mutableListOf<Point>()
+        el.segs.forEach { seg ->
+            when (seg) {
+                is MoveTo -> pts.add(seg.p)
+                is LineTo -> pts.add(seg.p)
+                is QuadTo -> { pts.add(seg.c); pts.add(seg.p) }
+                is CubicTo -> { pts.add(seg.c1); pts.add(seg.c2); pts.add(seg.p) }
+            }
+        }
+        el.rectStart?.let { pts.add(it) }
+        el.rectCorner?.let { pts.add(it) }
+        el.circleCenter?.let { c ->
+            el.circleRadius?.let { r ->
+                pts.add(Point(c.x - r, c.y - r)); pts.add(Point(c.x + r, c.y + r))
+            }
+        }
+        if (pts.isEmpty()) return 100.0
+        val px = pts.map { Point(sx(it.x), sy(it.y)) }
+        val xMin = px.minOf { it.x }; val xMax = px.maxOf { it.x }
+        val yMin = px.minOf { it.y }; val yMax = px.maxOf { it.y }
+        val w = xMax - xMin
+        val h = yMax - yMin
+        return kotlin.math.sqrt(w * w + h * h)
     }
 
     /** 普通路径渲染（无圆角） */

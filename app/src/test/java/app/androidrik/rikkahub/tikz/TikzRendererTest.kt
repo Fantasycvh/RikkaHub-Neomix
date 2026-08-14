@@ -328,12 +328,42 @@ class TikzRendererTest {
     }
 
     @Test
-    fun `rounded corners rectangle renders with larger rx`() {
-        val code = """\begin{tikzpicture}\draw[rounded corners, thick] (2,0) rectangle (4.5,2.5);\end{tikzpicture}"""
+    fun `rounded corners rectangle renders with explicit radius rx`() {
+        // 显式半径 15pt → 15*1.333 ≈ 20px，rx 统一读该值
+        val code = """\begin{tikzpicture}\draw[rounded corners=15pt, thick] (2,0) rectangle (4.5,2.5);\end{tikzpicture}"""
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
-        // rx 统一读 roundedRadius（默认 5），不再硬编码 8
-        assertTrue("missing rounded rect", result.getOrThrow().contains("rx=\"5\""))
+        assertTrue("missing rounded rect", result.getOrThrow().contains("rx=\"20\""))
+    }
+
+    @Test
+    fun `rounded corners explicit large radius chamfers`() {
+        // V1：显式 15pt 大半径
+        val code = """\begin{tikzpicture}\draw[rounded corners=15pt, thick] (0,0) -- (4,0) -- (4,3) -- (0,3) -- (0,6);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val qCount = result.getOrThrow().split(" Q ").size - 1
+        assertTrue("expected chamfers, got $qCount", qCount >= 3)
+    }
+
+    @Test
+    fun `rounded corners bare scales radius with figure size`() {
+        // V2：裸 rounded corners——半径按图形对角线比例（随尺寸缩放）
+        val code = """\begin{tikzpicture}\draw[rounded corners, thick] (0,0) -- (4,0) -- (4,3) -- (0,3) -- (0,6);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val qCount = result.getOrThrow().split(" Q ").size - 1
+        assertTrue("expected chamfers, got $qCount", qCount >= 3)
+    }
+
+    @Test
+    fun `rounded corners small sawtooth stays controlled`() {
+        // V3：短边小锯齿——半径被 min(r, 边长/2) 约束，仍有圆角但不过度
+        val code = """\begin{tikzpicture}\draw[rounded corners, thick] (0,0) -- (1,1) -- (2,0) -- (3,1) -- (4,0);\end{tikzpicture}"""
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val qCount = result.getOrThrow().split(" Q ").size - 1
+        assertTrue("expected chamfers, got $qCount", qCount >= 3)
     }
 
     @Test
