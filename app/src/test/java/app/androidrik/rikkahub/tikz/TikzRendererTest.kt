@@ -25,6 +25,43 @@ class TikzRendererTest {
     }
 
     @Test
+    fun `draw with cycle closes path with Z`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) -- (1,0) -- (1,1) -- cycle;\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing Z close", svg.contains(" Z"))
+    }
+
+    @Test
+    fun `draw with rounded corners and cycle stays closed with chamfers`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw[rounded corners, thick] (0,0) -- (1,0) -- (1,1) -- cycle;\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing Z close", svg.contains(" Z"))
+        assertTrue("missing chamfer curves", svg.contains(" C "))
+    }
+
+    @Test
+    fun `draw with cycle closes only current subpath`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw (0,0) -- (1,0) (3,0) -- (4,0) -- cycle;\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        // 第二条子路径 (3,0)->(4,0) 闭合回 (3,0)
+        assertTrue("missing Z close", svg.contains(" Z"))
+    }
+
+    @Test
+    fun `draw with cycle on single point still closes`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) -- cycle;\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().contains(" Z"))
+    }
+
+    @Test
     fun `draw line renders path with move and line commands`() {
         val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}""")
         assertTrue(result.isSuccess)

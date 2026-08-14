@@ -79,6 +79,9 @@ object TikzRenderer {
 
     private data class CubicTo(val c1: Point, val c2: Point, val p: Point) : Seg
 
+    /** 闭合当前子路径：从当前点连回子路径起点（p = 子路径起点，供几何计算） */
+    private data class ClosePath(val p: Point) : Seg
+
     private data class DrawElement(
         val style: Style,
         val segs: List<Seg> = emptyList(),
@@ -309,6 +312,7 @@ object TikzRenderer {
         var cur = Point(0.0, 0.0)
         var lastAbsolute = Point(0.0, 0.0)
         var hasPoint = false
+        var subpathStart: Point? = null  // 最近 MoveTo 起点，供 cycle 闭合
         var pendingConnector: String? = null  // "line" / "bend" / "controls"
         var pendingBendAngle = 30.0
         var pendingC1: Point? = null
@@ -332,10 +336,12 @@ object TikzRenderer {
                     if (!hasPoint) {
                         segs.add(MoveTo(p))
                         hasPoint = true
+                        subpathStart = p
                     } else if (relativeKeep) {
                         // + 独立子路径：回到锚点再画线
                         segs.add(MoveTo(lastAbsolute))
                         segs.add(LineTo(p))
+                        subpathStart = lastAbsolute
                     } else if (pendingConnector != null) {
                         when (pendingConnector) {
                             "bend" -> segs.add(QuadTo(bendControl(cur, p, pendingBendAngle), p))
@@ -346,6 +352,7 @@ object TikzRenderer {
                         // 无连接符的独立坐标 → 新子路径起点（TikZ：空格分隔的坐标另起线段，
                         // 如 (0,0)--(1,0) (3,0)--(4,0) 是两条分离线）
                         segs.add(MoveTo(p))
+                        subpathStart = p
                     }
                     if (relativeUpdate) {
                         cur = p
@@ -437,6 +444,19 @@ object TikzRenderer {
                     } else {
                         pendingConnector = "line"  // .. (p) .. 简单形式按直线
                     }
+                }
+                body.startsWith("cycle", i) -> {
+                    // 闭合当前子路径：连回最近 MoveTo 起点
+                    i += 5
+                    val start = subpathStart ?: cur
+                    segs.add(ClosePath(start))
+                    cur = start
+                    lastAbsolute = start
+                    pendingConnector = null
+                    pendingC1 = null
+                    pendingC2 = null
+                    relativeUpdate = false
+                    relativeKeep = false
                 }
                 else -> i++
             }
@@ -567,6 +587,7 @@ object TikzRenderer {
                             is LineTo -> allPoints.add(seg.p)
                             is QuadTo -> { allPoints.add(seg.c); allPoints.add(seg.p) }
                             is CubicTo -> { allPoints.add(seg.c1); allPoints.add(seg.c2); allPoints.add(seg.p) }
+                            is ClosePath -> Unit
                         }
                     }
                     el.circleCenter?.let { c ->
@@ -664,13 +685,14 @@ object TikzRenderer {
         }
     }
 
-    /** 提取路径所有点（MoveTo 起点 + 各段终点），用于箭头方向与边界 */
+    /** 提取路径所有点（MoveTo 起点 + 各段终点），用于箭头方向与边界；ClosePath 忽略（点=起点已含） */
     private fun pathPoints(segs: List<Seg>): List<Point> = segs.mapNotNull {
         when (it) {
             is MoveTo -> it.p
             is LineTo -> it.p
             is QuadTo -> it.p
             is CubicTo -> it.p
+            is ClosePath -> null
         }
     }
 
@@ -683,6 +705,7 @@ object TikzRenderer {
                 is LineTo -> pts.add(seg.p)
                 is QuadTo -> { pts.add(seg.c); pts.add(seg.p) }
                 is CubicTo -> { pts.add(seg.c1); pts.add(seg.c2); pts.add(seg.p) }
+                is ClosePath -> Unit  // 起点已在 MoveTo
             }
         }
         el.rectStart?.let { pts.add(it) }
@@ -713,6 +736,7 @@ object TikzRenderer {
                 is CubicTo -> append(" C ").append(fmt(sx(seg.c1.x))).append(',').append(fmt(sy(seg.c1.y)))
                     .append(' ').append(fmt(sx(seg.c2.x))).append(',').append(fmt(sy(seg.c2.y)))
                     .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
+                is ClosePath -> append(" Z")
             }
         }
     }
@@ -724,50 +748,100 @@ object TikzRenderer {
      * 边短于 2r 时收缩 r = min(r, 边长/2)；零长度段跳过；含曲线段时退回普通渲染。
      */
     private fun renderRoundedD(segs: List<Seg>, rPx: Double, sx: (Double) -> Double, sy: (Double) -> Double): String {
-        // 只允许"开头一个 MoveTo + 其余全 LineTo"的单一折线子路径；
+        // 只允许"开头一个 MoveTo + 其余全 LineTo（可含末尾一个 ClosePath）"的单一折线子路径；
         // 若出现两次 MoveTo（分离的多子路径，如 \draw (0,0)--(1,0) (3,0)--(4,0)）直接退回普通渲染，
         // 避免把两条子路径用圆角错误连接。
-        val purePolyline = segs.size >= 2 &&
-            segs.first() is MoveTo &&
-            segs.drop(1).all { it is LineTo }
-        val rawPts = pathPoints(segs)
+        val closed = segs.lastOrNull() is ClosePath
+        val bodySegs = if (closed) segs.dropLast(1) else segs
+        val purePolyline = bodySegs.size >= 2 &&
+            bodySegs.first() is MoveTo &&
+            bodySegs.drop(1).all { it is LineTo }
+        val rawPts = pathPoints(bodySegs)
         if (!purePolyline || rawPts.size < 3) {
             return renderPlainD(segs, sx, sy)
         }
         // 转换到 SVG px 坐标（含 y 翻转），几何在 px 坐标系计算
         val pts = rawPts.map { Point(sx(it.x), sy(it.y)) }
         return buildString {
-            append("M ").append(fmt(pts[0].x)).append(',').append(fmt(pts[0].y))
-            for (i in 1 until pts.size - 1) {
-                val p0 = pts[i - 1]
-                val p1 = pts[i]
-                val p2 = pts[i + 1]
-                val len1 = kotlin.math.sqrt((p1.x - p0.x) * (p1.x - p0.x) + (p1.y - p0.y) * (p1.y - p0.y))
-                val len2 = kotlin.math.sqrt((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y))
-                if (len1 < 1e-9 || len2 < 1e-9) {
-                    append(" L ").append(fmt(p1.x)).append(',').append(fmt(p1.y))
-                    continue
+            if (closed && pts.size >= 3) {
+                // 闭合环形倒角：每个角由前一点 (i-1)%n 与下一点 (i+1)%n 决定，含起点角；
+                // 输出从角 0 进入点开始，逐角倒角，最后连回角 0 进入点并 Z 闭合。
+                val n = pts.size
+                data class Corner(
+                    val valid: Boolean, val px: Double, val py: Double,
+                    val ax: Double, val ay: Double, val bx: Double, val by: Double,
+                )
+                val corners = (0 until n).map { i ->
+                    val p0 = pts[(i - 1 + n) % n]
+                    val p1 = pts[i]
+                    val p2 = pts[(i + 1) % n]
+                    val len1 = kotlin.math.sqrt((p1.x - p0.x) * (p1.x - p0.x) + (p1.y - p0.y) * (p1.y - p0.y))
+                    val len2 = kotlin.math.sqrt((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y))
+                    if (len1 < 1e-9 || len2 < 1e-9) {
+                        Corner(false, p1.x, p1.y, p1.x, p1.y, p1.x, p1.y)
+                    } else {
+                        val rr = minOf(rPx, minOf(len1, len2) / 2)
+                        val ux = (p1.x - p0.x) / len1; val uy = (p1.y - p0.y) / len1
+                        val vx = (p2.x - p1.x) / len2; val vy = (p2.y - p1.y) / len2
+                        Corner(
+                            true, p1.x, p1.y,
+                            p1.x - ux * rr, p1.y - uy * rr,
+                            p1.x + vx * rr, p1.y + vy * rr,
+                        )
+                    }
                 }
-                val rr = minOf(rPx, minOf(len1, len2) / 2)
-                val ux = (p1.x - p0.x) / len1; val uy = (p1.y - p0.y) / len1
-                val vx = (p2.x - p1.x) / len2; val vy = (p2.y - p1.y) / len2
-                val ax = p1.x - ux * rr; val ay = p1.y - uy * rr
-                val bx = p1.x + vx * rr; val by = p1.y + vy * rr
-                append(" L ").append(fmt(ax)).append(',').append(fmt(ay))
-                // Q p1 b 等价转 C（控制点重复），规避 AndroidSVG 1.4 对 Q 的兼容问题
-                append(" C ").append(fmt(p1.x)).append(',').append(fmt(p1.y))
-                    .append(' ').append(fmt(p1.x)).append(',').append(fmt(p1.y))
-                    .append(' ').append(fmt(bx)).append(',').append(fmt(by))
+                val start = corners[0]
+                append("M ").append(fmt(if (start.valid) start.ax else start.px))
+                    .append(',').append(fmt(if (start.valid) start.ay else start.py))
+                for (i in 0 until n) {
+                    val c = corners[i]
+                    if (c.valid) {
+                        // Q p1 b 等价转 C（控制点重复），规避 AndroidSVG 1.4 对 Q 的兼容问题
+                        append(" C ").append(fmt(c.px)).append(',').append(fmt(c.py))
+                            .append(' ').append(fmt(c.px)).append(',').append(fmt(c.py))
+                            .append(' ').append(fmt(c.bx)).append(',').append(fmt(c.by))
+                    } else {
+                        append(" L ").append(fmt(c.px)).append(',').append(fmt(c.py))
+                    }
+                    val next = corners[(i + 1) % n]
+                    append(" L ").append(fmt(if (next.valid) next.ax else next.px))
+                        .append(',').append(fmt(if (next.valid) next.ay else next.py))
+                }
+                append(" Z")
+            } else {
+                append("M ").append(fmt(pts[0].x)).append(',').append(fmt(pts[0].y))
+                for (i in 1 until pts.size - 1) {
+                    val p0 = pts[i - 1]
+                    val p1 = pts[i]
+                    val p2 = pts[i + 1]
+                    val len1 = kotlin.math.sqrt((p1.x - p0.x) * (p1.x - p0.x) + (p1.y - p0.y) * (p1.y - p0.y))
+                    val len2 = kotlin.math.sqrt((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y))
+                    if (len1 < 1e-9 || len2 < 1e-9) {
+                        append(" L ").append(fmt(p1.x)).append(',').append(fmt(p1.y))
+                        continue
+                    }
+                    val rr = minOf(rPx, minOf(len1, len2) / 2)
+                    val ux = (p1.x - p0.x) / len1; val uy = (p1.y - p0.y) / len1
+                    val vx = (p2.x - p1.x) / len2; val vy = (p2.y - p1.y) / len2
+                    val ax = p1.x - ux * rr; val ay = p1.y - uy * rr
+                    val bx = p1.x + vx * rr; val by = p1.y + vy * rr
+                    append(" L ").append(fmt(ax)).append(',').append(fmt(ay))
+                    // Q p1 b 等价转 C（控制点重复），规避 AndroidSVG 1.4 对 Q 的兼容问题
+                    append(" C ").append(fmt(p1.x)).append(',').append(fmt(p1.y))
+                        .append(' ').append(fmt(p1.x)).append(',').append(fmt(p1.y))
+                        .append(' ').append(fmt(bx)).append(',').append(fmt(by))
+                }
+                append(" L ").append(fmt(pts.last().x)).append(',').append(fmt(pts.last().y))
             }
-            append(" L ").append(fmt(pts.last().x)).append(',').append(fmt(pts.last().y))
         }
     }
 
-    /** 末段箭头：(尖, 指向线内的参考点)。直线用上一顶点，曲线用切线（Q: ctrl，C: c2） */
+    /** 末段箭头：(尖, 指向线内的参考点)。直线用上一顶点，曲线用切线（Q: ctrl，C: c2）；cycle 末尾无箭头 */
     private fun segmentArrowEnd(segs: List<Seg>): Pair<Point, Point>? {
         val last = segs.lastOrNull() ?: return null
         return when (last) {
             is MoveTo -> null
+            is ClosePath -> null
             is LineTo -> {
                 val prev = secondLastPoint(segs) ?: return null
                 last.p to prev
@@ -786,6 +860,7 @@ object TikzRenderer {
             is QuadTo -> second.c
             is CubicTo -> second.c1
             is MoveTo -> return null
+            is ClosePath -> return null
         }
         return first.p to inside
     }
@@ -798,6 +873,7 @@ object TikzRenderer {
                 is LineTo -> s.p
                 is QuadTo -> s.p
                 is CubicTo -> s.p
+                is ClosePath -> continue
             }
         }
         return null
