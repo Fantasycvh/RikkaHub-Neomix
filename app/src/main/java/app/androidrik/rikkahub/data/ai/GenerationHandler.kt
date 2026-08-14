@@ -395,6 +395,14 @@ class GenerationHandler(
                         """For TikZ diagrams, wrap the ENTIRE environment in a CLOSED $$...$$ block: open with $$ immediately before \begin{tikzpicture} (or \begin{tikzcd}), and close with $$ immediately after \end{tikzpicture} (or \end{tikzcd}). Never omit the closing $$, and never put anything between \end{tikzpicture} and the closing $$. Example: $$\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}$$. Diagrams render as inline vector graphics."""
                     )
                 }
+                // 数学公式提示（启用 LaTeX 渲染时）：引导模型用 \(...\) / $...$ 输出公式并触发 jlatexmath。
+                // 注意：定界符内不能有空格（$ x^2 $ 不会被识别为公式）；括号形式 \(x^2\) 更稳妥。
+                if (settings.displaySetting.enableLatexRendering) {
+                    appendLine()
+                    append(
+                        """For math formulas, wrap them in \( ... \) (preferred) or $...$ with NO whitespace immediately after the opening delimiter and before the closing delimiter, e.g. \(x^2 + y^2 = r^2\) or $\frac{a}{b}$ or $\sqrt{x}$. They render as inline math symbols."""
+                    )
+                }
             }
             if (system.isNotBlank()) add(UIMessage.system(prompt = system))
             addAll(messages.limitContext(assistant.contextMessageLimit))
