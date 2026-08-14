@@ -182,13 +182,14 @@ class ChatCompletionsAPI(
                         val id = it["id"]?.jsonPrimitive?.contentOrNull ?: ""
                         val model = it["model"]?.jsonPrimitive?.contentOrNull ?: ""
 
-                        val choices = it["choices"]?.jsonArray ?: JsonArray(emptyList())
+                        val choices = it["choices"] as? JsonArray ?: JsonArray(emptyList())
                         val choiceList = buildList {
                             if (choices.isNotEmpty()) {
-                                val choice = choices[0].jsonObject
+                                // 部分 OpenAI 兼容接口会把 choices[0]/delta 显式写成 null，强制解析会中断整轮生成
+                                val choice = choices[0] as? JsonObject ?: return@buildList
                                 val message =
-                                    choice["delta"]?.jsonObject ?: choice["message"]?.jsonObject
-                                    ?: throw Exception("delta/message is null")
+                                    choice["delta"] as? JsonObject ?: choice["message"] as? JsonObject
+                                    ?: return@buildList
                                 val finishReason =
                                     choice["finish_reason"]?.jsonPrimitive?.contentOrNull
                                         ?: "unknown"
@@ -405,6 +406,7 @@ class ChatCompletionsAPI(
                             if (level != ReasoningLevel.AUTO) {
                                 val effort = when (level) {
                                     ReasoningLevel.XHIGH -> "max"
+                                    ReasoningLevel.MAX -> "max"
                                     ReasoningLevel.OFF -> "none"
                                     else -> "high"
                                 }
@@ -745,13 +747,14 @@ class ChatCompletionsAPI(
                     )
                 }
                 toolCalls.forEach { toolCalls ->
-                    val type = toolCalls.jsonObject["type"]?.jsonPrimitive?.contentOrNull
+                    val toolCallObj = toolCalls as? JsonObject ?: return@forEach
+                    val type = toolCallObj["type"]?.jsonPrimitive?.contentOrNull
                     if (!type.isNullOrEmpty() && type != "function") error("tool call type not supported: $type")
-                    val toolCallId = toolCalls.jsonObject["id"]?.jsonPrimitive?.contentOrNull
+                    val toolCallId = toolCallObj["id"]?.jsonPrimitive?.contentOrNull
                     val toolName =
-                        toolCalls.jsonObject["function"]?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull
+                        (toolCallObj["function"] as? JsonObject)?.let { it["name"]?.jsonPrimitive?.contentOrNull }
                     val arguments =
-                        toolCalls.jsonObject["function"]?.jsonObject?.get("arguments")?.jsonPrimitive?.contentOrNull
+                        (toolCallObj["function"] as? JsonObject)?.let { it["arguments"]?.jsonPrimitive?.contentOrNull }
                     add(
                         UIMessagePart.Tool(
                             toolCallId = toolCallId ?: "",
