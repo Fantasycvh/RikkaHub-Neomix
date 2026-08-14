@@ -21,6 +21,11 @@ private fun preProcess(content: String): String {
     result = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL).replace(result) { m ->
         if (isInCodeBlock(m.range.first)) m.value else "$$" + m.groupValues[1].trim() + "$$"
     }
+    // 用户直接写的 $ ... $（含空格且含 LaTeX 命令）→ 去空格
+    val dollarLatex = Regex("""\$([^$\n]*\\[a-zA-Z][^$\n]*)\$""")
+    result = dollarLatex.replace(result) { m ->
+        if (isInCodeBlock(m.range.first)) m.value else "$" + m.groupValues[1].trim() + "$"
+    }
     return result
 }
 
@@ -190,6 +195,26 @@ none of these work"""
         val sb = StringBuilder()
         walk(tree2, p2, 0, sb)
         println(sb.toString())
+    }
+
+    @Test
+    fun `dollar math with spaces trimmed when contains latex command`() {
+        // 用户手动输入 $ \sqrt[3]{x} $（带空格）→ IntelliJ 不识别 INLINE_MATH → 显示源码含 $ 残留。
+        // 修复：内容含 LaTeX 命令（\ + 字母）时 trim → $\sqrt[3]{x}$ → INLINE_MATH。
+        val msg = """公式 $ \sqrt[3]{x} $ 和 $ \frac{a}{b} $ 与价格 $5$ 元"""
+        val preprocessed = preProcess(msg)
+        println("=== preprocessed: ${preprocessed.replace("\n", "\\n")}")
+        val parser = MarkdownParser(GFMFlavourDescriptor(makeHttpsAutoLinks = true, useSafeLinks = true))
+        val tree = parser.buildMarkdownTreeFromString(preprocessed)
+        val math = mutableListOf<String>()
+        collectMath(tree, preprocessed, math)
+        println("  MATH count=${math.size}")
+        math.forEachIndexed { i, m -> println("  MATH[$i]: ${m.replace("\n", "\\n")}") }
+        assertTrue("expected 2 math blocks, got ${math.size}", math.size >= 2)
+        assertTrue("sqrt3 missing", math.joinToString().contains("\\sqrt[3]{x}"))
+        assertTrue("frac missing", math.joinToString().contains("\\frac{a}{b}"))
+        // $5$（无 LaTeX 命令）不应被当作公式处理
+        assertTrue("price should stay plain", preprocessed.contains("$5$"))
     }
 
     @Test

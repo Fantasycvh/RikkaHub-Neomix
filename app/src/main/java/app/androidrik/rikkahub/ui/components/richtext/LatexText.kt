@@ -69,8 +69,9 @@ fun LatexText(
             }
         }
     } else {
+        // jlatexmath 解析失败（如不支持的命令）：回退显示剥掉 $/\(...\) 包装后的原文，避免 $ 定界符残留
         Text(
-            text = latex,
+            text = processLatex(latex),
             style = style,
             modifier = modifier
         )
