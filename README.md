@@ -14,13 +14,13 @@ RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，�
 
 ## 📥 下载
 
-🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.5-androidrik.8`）
+🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.5-androidrik.48`）
 
-> 本仓库为私有测试仓库，Release 提供 `arm64-v8a` / `x86_64` / `universal` 三种架构 APK。
+> 本仓库为私有测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**（自 .48 起）。
 
 ## 📌 项目简介
 
-RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5`）的 fork，
+RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5`，已同步至 `2.4.8`）的 fork，
 包名 `app.androidrik.rikkahub`，应用名 **RikkaHub Plus**。
 
 - **开发者分支不跟随上游**：所有定制集中在 `feat/restore-proxy`，`master` 仅作为上游镜像（`ff-only` 同步），两者互不干扰。
@@ -37,6 +37,10 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 💾 **备份恢复兼容** | 兼容上游旧包名（`me.rerere.`）导出的备份：恢复时自动迁移包名（SettingsJsonMigrator V0），S3 / WebDAV / 本地恢复均可用 |
 | 📂 **远端备份目录区分** | 远端备份默认目录改为 `rikkahub_plus_backups`，与上游备份互不混淆 |
 | 🧹 **移除上游营销功能** | 移除应用内更新检查、赞助入口/捐赠页/启动次数赞助弹窗、导出图片中的 `rikka-ai.com` 品牌水印 |
+| 🧮 **TikZ 图表渲染** | **纯 Kotlin TikZ 渲染器**（`TikzRenderer`）→ SVG 字符串 → AndroidSVG 矢量绘制（无 WebView/wasm）：`\node`/`\draw`/`-- cycle` 闭合/`arc` 圆弧/`\fill`·`\filldraw`/`grid` 网格/`plot` 函数图像（MathExpr 表达式求值 + NaN 断开）、rounded corners 几何倒角、tikzcd 交换图、箭头/贝塞尔/极坐标/命名节点/中文文本、深色模式；`$$...$$` 内嵌 + ```tikz 围栏双触发；导出 HTML 内嵌 `<svg>` 矢量；系统提示词引导模型输出闭合 `$$` 格式 |
+| 🐛 **turbo bug 审计与修复** | 对照 rikkahub-turbo 48 项 bug 清单全量核查（`docs/references/turbo-bugs-audit.md`），分多批修复：崩溃（深递归 SOE 兜底、base64 容错、TTS 悬浮窗无权限守卫）、数据丢失（压缩覆盖新消息合并、附件延迟清理、设置并发 Mutex）、资源防护（文档/记忆/消息/网络体积上限、QuickJS destroy）、功能正确性（WebDAV 路径编码、分享 EXTRA_STREAM 兼容、MCP 名校验） |
+| 💬 **对话分享/导出** | 列表页长按「分享对话」+ 聊天内顶栏导出双入口，Markdown / 图片 PNG 两形态（系统分享 ACTION_SEND），支持版本范围可选 |
+| 🔧 **上游同步** | 同步上游 `2.4.8`，含「R8 保留 `@Serializable` 类」修复（防添加部分搜索商时反序列化崩溃） |
 
 ## 🎨 核心功能（继承上游）
 
@@ -46,7 +50,7 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 - 🖼️ 多模态输入（图片、文本、PDF、Docx）
 - 🖥️ Web 访问，多平台使用
 - 🛠️ MCP 支持
-- 📝 Markdown 渲染（代码高亮、LaTeX 公式、表格、Mermaid）
+- 📝 Markdown 渲染（代码高亮、LaTeX 公式、表格、Mermaid、TikZ 图表）
 - 🪾 消息分支
 - 🔍 搜索能力（Exa、Tavily、智谱、LinkUp、Brave、Perplexity 等）
 - 🧩 提示词变量（模型名、时间等）
@@ -61,10 +65,9 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 
 本项目维护一份[规划文档](docs/roadmap.md)，记录已调研的未来方向与可行性分析。当前方向：
 
-- 🧩 **QuickJS 插件系统**：基于 RikkaHub 已内置的 QuickJS 引擎，构建 JS 插件框架（借鉴橘瓣 OrangeChat）
-- 💎 **液态玻璃主题 / 三色定制**：全局背景 / 用户气泡 / 重点色 三色映射 + 玻璃质感
+- 🧩 **QuickJS 插件系统**：基于 RikkaHub 已内置的 QuickJS 引擎，构建 JS 插件框架（借鉴橘瓣 OrangeChat）——用途界定为「AI 执行 JS 脚本」类工具
+- 💎 **液态玻璃主题 / 三色定制**：全局背景 / 用户气泡 / 重点色 三色映射 + 玻璃质感——建议仅局部浮层（全列表 blur 掉帧风险）
 - 🎨 **轻量个性化**：气泡透明度、输入框背景、字体包导入
-- 💬 **对话分享**：列表页 / 聊天内一键分享整个对话（HTML 可视化 + Markdown + 图片）
 - 🔑 **搜索多 key 故障转移**：搜索服务多 key，遇 401/403/429 自动切换重试
 - 👁️ **本地 OCR**：ML Kit 本地识别优先 + AI 兜底（图片不出设备）
 
@@ -104,7 +107,7 @@ git fetch upstream && git checkout master && git merge --ff-only upstream/master
 2. 准备 `app/google-services.json`（**占位即可**，仅需 package 匹配 `app.androidrik.rikkahub`；debug 变体需额外 `.debug` client）——缺失时 release 编译可过但运行时 Firebase 初始化崩溃
 3. 构建 Debug：`gradle :app:assembleDebug`
 4. 构建 Release：`gradle :app:assembleRelease`
-5. 产物：`app/build/outputs/apk/release/app-{arm64-v8a,universal,x86_64}-release.apk`
+5. 产物：`app/build/outputs/apk/release/app-{arm64-v8a,universal,x86_64}-release.apk`（**发布仅上传 arm64-v8a**）
 
 > [!NOTE]
 > Gradle wrapper 下载可能超时，可用本地缓存（`~/.gradle/wrapper/dists/gradle-9.5.0-all/.../gradle-9.5.0/bin/gradle`）。
