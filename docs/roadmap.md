@@ -71,6 +71,8 @@
 | P4 | 记忆语义检索（本地 HNSW） | 价值中等，工程较大 |
 | — | 生活感知/健康/云同步 | **明确不做** |
 
+**状态（2026-08-14）**：QuickJS 与液态玻璃经用户再次提出后评估——QuickJS 用途须界定为「AI 执行 JS 脚本」类（替代 WebView 渲染不可行，QuickJS 无 DOM）；液体玻璃建议仅局部浮层（全列表 blur 掉帧）。**两者暂不实现**，详见「八、状态记录」末条。
+
 ---
 
 ## 二、对话分享（导出）功能规划
@@ -367,3 +369,14 @@
 - 2026-08-14：**TikZ `to[bend]` 曲线（v2.4.5-androidrik.30 草稿）**——scanPath 识别 `to[bend left/right=angle]`，renderDraw 用二次贝塞尔 `Q`（bendControl：中点 + 垂直偏移，offset = len/2·tan(angle/2)）。angle 正 left / 负 right；无 [bend] 的 to 仍直线。TikzRendererTest 增至 24（新增 bend 曲线 3 个）。**待办（P2）**：placement 锚点 node[above/below/left/right]。**真机待验**（bend 曲线、无 bend 直线）。
 - 2026-08-14：**TikZ 相对坐标/箭头/曲线/形状四大增强（v2.4.5-androidrik.31 草稿）**——路径表示升级为段序列 Seg（MoveTo/LineTo/QuadTo/CubicTo），DrawElement 改 segs+circleCenter/rectStart。⑤ 相对坐标 ++（更新）/＋（不更新，独立子路径 MoveTo 锚点）；① 箭头弃 marker（AndroidSVG 不支持），手动几何 polygon（tip 三角/stealth 凹底/latex 空心）+ 曲线切线方向（Q: p1-c，C: p1-c2）；④ `.. controls (a) and (b) ..` 三次贝塞尔 C（to[bend] 修空格）；③ diamond/star 形状（polygon）+ rounded corners（stroke-linejoin=round / rect rx=8）。TikzRendererTest 增至 32。**真机待验**（四方向全部）。
 - 2026-08-14：**TikZ rounded corners 折线几何倒角（v2.4.5-androidrik.32 草稿）**——S4 真机挂：stroke-linejoin 近似在 AndroidSVG 未走通。改**几何倒角**：每个内角沿两边各缩进 r，用二次贝塞尔连接（控制点=角点本身，方向自然衔接）；r 默认 5px，`=4pt` 解析去单位；边短于 2r 时 r=min(r,边长/2)。rectangle rx=8 保持不变。TikzRendererTest 32/32。**真机待验**（折线圆角）。
+- 2026-08-14：**TikZ rounded 单位/视觉修正（.33-.36 系列草稿）**：.33 真机挂（几何层 rawPts<3 直走 renderPlainD + 单位错误）→ 半径先经 sx/sy 转 px 再算；.34 stroke-width 数值 fmt 规范化（AndroidSVG 对 "X.0" 兼容怪癖）；.35 圆角 review 三项；.36 裸 rounded corners 半径随图形对角线 3% 且 ≥2.5×线宽（高密度屏可见）。**真机 S4 仍挂**。
+- 2026-08-14：**TikZ 真机渲染根因定位与修复（.37-.39）**：.37 显式 width/height + Q→C 等价转（AndroidSVG 对 Q 兼容问题）+ scale 防 0；.38 **renderToPicture→renderToCanvas**（AndroidSVG FAQ：硬件加速 Canvas 不支持 drawPicture）+ 诊断日志（TikzJax tag），真机 logcat 定位「getBytes() null 是 svg=null 传 null 的伴生噪音」，主因是 **TikzRenderer 抛「No renderable」/「Unknown coordinate」**；.39 **未定义命名坐标原点兜底不崩溃**（parseCoordinatePoint 不再 throw）+ 完整 code 100 字符分段日志。**TikZ 显示路径（renderToCanvas）真机可用**。
+- 2026-08-14：**TikZ 输入格式根因（.40-.41）**：真机消息实为「$$ 开头无闭合」——IntelliJ markdown **不识别无闭合 $$ 为 BLOCK_MATH**（MATH count=0，本地实测）→ 整段按普通文本显示（看似源码，实际未走 TikzJax）。修复：**系统提示词改原始字符串 + 明确要求闭合 $$...$$**（顺带修复 Kotlin 普通字符串 `$$` 被转义成单个 `$` 的隐藏 bug）。.41 正式发布（Latest）。**之后用户输入规范闭合 $$ 即可渲染**。
+- 2026-08-14：**TikZ 四项待办落地（v2.4.5-androidrik.42 正式发布）**：① `-- cycle` 闭合路径（ClosePath 段 + 普通 Z + **rounded corners 环形倒角**含起点角 + 多子路径各闭各的）；② `arc` 圆弧（(start:end:radius) 与 [start angle=..] 两种语法，SVG A 命令，TikZ 逆时针 sweep=0）；③ `\fill`（纯填充无描边）/`\filldraw`（描边+填充），parseStyle 支持 `draw=color`，修 `filldraw` 被 `fill` 前缀抢匹配的正则 bug；④ `grid` 网格（step 统一步长含端点）。TikzRendererTest 增至 58。
+- 2026-08-14：**TikZ plot 函数图像（v2.4.5-androidrik.43 正式发布，路线 2）**：MathExpr 递归下降求值器（`^` 右结合 > 一元负 > `*/` > `+-`；x/pi/e + sin/cos/tan/ln/log/sqrt/abs/exp/asin/acos；非法输入返回 NaN 不抛）→ `plot (\x, {expr})` / `plot[domain=a:b, samples=N]` / 参数曲线 `({cos(\x)*2},{sin(\x)*2})`，**NaN/Inf 显式断开路径** + fmt 规范化。踩坑：`cos(...)` 函数括号使 indexOf(')') 提前截断 → 平衡括号扫描；`\x` 替换为 x。TikzRendererTest 增至 64 + MathExprTest 9。
+- 2026-08-14：**节点内嵌数学子集尝试（.44-.47 系列，已回退）**：.44 MathText 排版（`^`/`_` 上下标、`\frac` 分数横线、`\sqrt` 根号折线、`\sum` 上下限，多 text 堆叠不依赖 tspan）+ parseNode 平衡花括号提取文本；.45 间距修正（分数/∑ 上下限/根号形状/宽度估算）；.46 修 `\(...\)`（IntelliJ inline math 要求 `$` 后紧跟内容，含空格不识别）+ latex 代码围栏走 jlatexmath；.47 修 `$...$` 含空格不识别（含 LaTeX 命令的 `$..$` trim，`$5$` 价格安全）+ LatexText fallback 剥定界符。**真机反馈 MathText 排版混乱（分数贴线/∑ 重叠/根号形状）且 inline LaTeX 需求与 TikZ 渲染器重叠，用户决定整体回退**。
+- 2026-08-14：**回退到 .43 基线（v2.4.5-androidrik.48 正式发布）**——用 **git revert** 逐个撤销 .44-.47（8 个反向 commit，历史完整保留可追溯），代码与 .43 逐字节一致（diff 干净）。**之后构建版只发布 arm64-v8a 单架构 APK**。数学渲染恢复原 jlatexmath 路径（LatexText）。
+- 2026-08-14：**QuickJS / 液体玻璃方向评估（暂不实现）**——用户提「quick js 和液体玻璃主题」：
+  - **QuickJS**：基础设施现成（RikkaHubApp QuickJSLoader.init()），但用途需界定——「AI 执行 JS 脚本（code-interpreter 风格，无 DOM 安全环境）」可行且有价值；**替代 WebView 渲染 Mermaid/tikzjax 不可行**（需 DOM）；QuickJS 无 DOM，与 math 渲染无关。见「一、1 QuickJS 插件系统（P1）」。
+  - **液体玻璃**：Compose 可行（Modifier.blur RenderEffect Android 12+ / Haze 库），但 **blur 重操作 → 消息列表大面积模糊掉帧**，建议仅局部（底部输入栏/侧滑面板）+ 低端机验证 + Android<12 半透明 fallback；与 M3 动态色叠加。见「一、2 液态玻璃主题（P2）」。
+  - 两者**暂不实现**，待用户决定推进时机。
