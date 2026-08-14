@@ -376,6 +376,29 @@ class TikzRendererTest {
         assertTrue("should not fail on undefined anchor", result.isSuccess)
     }
 
+    /** 诊断：用户 R1 三个变体（单线段 rounded corners）本地实测——定位真机 No renderable 根因 */
+    @Test
+    fun `diag - user three variants single segment`() {
+        val variants = listOf(
+            """\draw[thick, rounded corners] (0,0) -- (4,0);""",
+            """\draw[rounded corners, dashed] (0,0) -- (4,0);""",
+            """\draw[rounded corners=5, thick] (0,0) -- (4,0);""",
+            """\begin{tikzpicture}\draw[thick, rounded corners] (0,0) -- (4,0);\end{tikzpicture}""",
+            """\begin{tikzpicture}\draw[rounded corners, dashed] (0,0) -- (4,0);\end{tikzpicture}""",
+            """\begin{tikzpicture}\draw[rounded corners=5, thick] (0,0) -- (4,0);\end{tikzpicture}""",
+            // 用户 R1 完整 U 形（裸值 + thick）
+            """\begin{tikzpicture}\draw[rounded corners, thick] (0,0) -- (4,0) -- (4,3) -- (0,3) -- (0,6);\end{tikzpicture}""",
+        )
+        variants.forEach { code ->
+            val r = TikzRenderer.render(code)
+            if (r.isFailure) {
+                println("DIAG2 FAIL [$code]: ${r.exceptionOrNull()}")
+            } else {
+                println("DIAG2 OK   [$code] len=${r.getOrThrow().length}")
+            }
+        }
+    }
+
     @Test
     fun `rounded corners rectangle renders with explicit radius rx`() {
         // 显式半径 15pt → 15*1.333 ≈ 20px，rx 统一读该值

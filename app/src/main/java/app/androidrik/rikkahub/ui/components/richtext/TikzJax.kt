@@ -59,8 +59,9 @@ fun TikzJax(
             },
             onFailure = { e ->
                 Log.w("TikzJax", "render failed: ${e.message}", e)
-                // 完整 code 分段打印（logcat 单行会截断长内容）
-                code.chunked(1800).forEachIndexed { idx, chunk ->
+                // 完整 code 每 100 字符一行打印：logcat 单行超宽会截断，分段保证完整可见
+                Log.w("TikzJax", "code len=${code.length}")
+                code.chunked(100).forEachIndexed { idx, chunk ->
                     Log.w("TikzJax", "code[$idx]: $chunk")
                 }
                 null
