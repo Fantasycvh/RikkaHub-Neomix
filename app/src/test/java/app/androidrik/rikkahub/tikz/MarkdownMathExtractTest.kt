@@ -7,6 +7,7 @@ import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
 import org.jsoup.Jsoup
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** 模拟 MarkdownNew.kt preProcess（`\(...\)`/`\[...\]` → `$`/`$$`，跳过代码块） */

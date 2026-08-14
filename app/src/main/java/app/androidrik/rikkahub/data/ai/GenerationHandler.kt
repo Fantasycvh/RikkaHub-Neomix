@@ -386,10 +386,14 @@ class GenerationHandler(
                     appendLine()
                     append(tool.systemPrompt(model, messages))
                 }
-                // TikZ 渲染提示（启用时引导模型以 $$...$$ 块输出图表，触发 MathBlock 渲染）
+                // TikZ 渲染提示（启用时引导模型以闭合 $$...$$ 块输出图表，触发 MathBlock 渲染）。
+                // 注意：必须是原始字符串——普通字符串里 $$ 会被 Kotlin 转义成单个 $，模型将收到错误指令。
+                // 强调「闭合」：只写开头 $$ 漏掉结尾 $$ 的块，客户端不会识别为图表（显示为源码）。
                 if (settings.displaySetting.enableDiagramRendering) {
                     appendLine()
-                    append("Use \\begin{tikzcd}...\\end{tikzcd} inside $$...$$ for diagrams. They render as vector graphics inline.")
+                    append(
+                        """For TikZ diagrams, wrap the ENTIRE environment in a CLOSED $$...$$ block: open with $$ immediately before \begin{tikzpicture} (or \begin{tikzcd}), and close with $$ immediately after \end{tikzpicture} (or \end{tikzcd}). Never omit the closing $$, and never put anything between \end{tikzpicture} and the closing $$. Example: $$\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}$$. Diagrams render as inline vector graphics."""
+                    )
                 }
             }
             if (system.isNotBlank()) add(UIMessage.system(prompt = system))
