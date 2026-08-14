@@ -290,6 +290,15 @@ object TikzRenderer {
             val b = parseCoordinatePoint(it.groupValues[2], ctx)
             return listOf(DrawElement(style, rectStart = a, rectCorner = b))
         }
+        // grid —— (x1,y1) grid (x2,y2)：按 step（默认 1）生成垂直+水平网格线
+        Regex("""\(([^)]+)\)\s+grid\s+\(([^)]+)\)""").find(body)?.let {
+            val a = parseCoordinatePoint(it.groupValues[1], ctx)
+            val b = parseCoordinatePoint(it.groupValues[2], ctx)
+            val step = Regex("""step\s*=\s*([\d.]+)""").find(styleStr)?.groupValues?.get(1)?.toDoubleOrNull() ?: 1.0
+            if (step > 0) {
+                return listOf(DrawElement(style, segs = gridSegs(a, b, step)))
+            }
+        }
 
         // 折线 + path 内 node
         val elements = mutableListOf<Element>()
@@ -984,6 +993,26 @@ object TikzRenderer {
         val cx = startP.x - r * Math.cos(rad0)
         val cy = startP.y - r * Math.sin(rad0)
         return Point(cx + r * Math.cos(rad1), cy + r * Math.sin(rad1))
+    }
+
+    /** 生成网格线路径段（TikZ 坐标，y 向上）：按 step 从 (a) 到 (b) 生成垂直+水平线，含端点 */
+    private fun gridSegs(a: Point, b: Point, step: Double): List<Seg> {
+        val segs = mutableListOf<Seg>()
+        val x0 = minOf(a.x, b.x); val x1 = maxOf(a.x, b.x)
+        val y0 = minOf(a.y, b.y); val y1 = maxOf(a.y, b.y)
+        var x = x0
+        while (x <= x1 + 1e-9) {
+            segs.add(MoveTo(Point(x, y0)))
+            segs.add(LineTo(Point(x, y1)))
+            x += step
+        }
+        var y = y0
+        while (y <= y1 + 1e-9) {
+            segs.add(MoveTo(Point(x0, y)))
+            segs.add(LineTo(Point(x1, y)))
+            y += step
+        }
+        return segs
     }
 
     /**

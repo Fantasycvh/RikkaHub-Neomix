@@ -148,6 +148,39 @@ class TikzRendererTest {
     }
 
     @Test
+    fun `grid command draws grid lines with step`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw[step=0.5] (0,0) grid (2,1);\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        // step 统一作用于 x/y：垂直线 x=0,0.5,1,1.5,2（5 条）+ 水平线 y=0,0.5,1（3 条）= 8 条
+        val mCount = Regex("M ").findAll(svg).count()
+        assertTrue("expected 8 grid lines, got $mCount", mCount == 8)
+    }
+
+    @Test
+    fun `grid command default step is one`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) grid (2,2);\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        // x=0,1,2（3 条垂直线）+ y=0,1,2（3 条水平线）= 6 条
+        val mCount = Regex("M ").findAll(svg).count()
+        assertTrue("expected 6 grid lines, got $mCount", mCount == 6)
+    }
+
+    @Test
+    fun `grid with negative corner still works`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw[step=1] (2,1) grid (-2,-1);\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        // x=-2..2（5 条）+ y=-1..1（3 条）= 8 条
+        val mCount = Regex("M ").findAll(result.getOrThrow()).count()
+        assertTrue("expected 8 grid lines, got $mCount", mCount == 8)
+    }
+
+    @Test
     fun `draw line renders path with move and line commands`() {
         val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}""")
         assertTrue(result.isSuccess)
