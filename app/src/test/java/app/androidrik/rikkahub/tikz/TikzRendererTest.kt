@@ -181,6 +181,83 @@ class TikzRendererTest {
     }
 
     @Test
+    fun `draw plot samples expression into polyline`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw plot (\x, {\x*\x});\end{tikzpicture}""")
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing polyline start", svg.contains("M "))
+        assertTrue("missing sampled segments", svg.contains(" L "))
+    }
+
+    @Test
+    fun `draw plot with domain limits samples within range`() {
+        // domain 0:1，y=x → 起点 (0,0) → px (50,150)；终点 (1,1) → px (150,50)
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw plot[domain=0:1] (\x, {\x});\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("wrong start point", svg.contains("M 50,150"))
+        assertTrue("wrong end point", svg.contains("150,50"))
+    }
+
+    @Test
+    fun `draw plot skips NaN segments breaking path`() {
+        // 1/sqrt(x^2-4) 默认 domain -5:5：|x|<2 为 NaN，x=±2 除零 → 路径断成两段（两端各一段）
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw plot (\x, {1/sqrt(\x*\x - 4)});\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        val mCount = Regex("M ").findAll(svg).count()
+        assertTrue("expected path break (>=2), got $mCount", mCount >= 2)
+        assertTrue("NaN must not leak into svg", !svg.contains("NaN"))
+    }
+
+    @Test
+    fun `draw plot parametric circle`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw plot ({cos(\x)*2}, {sin(\x)*2});\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        assertTrue("missing polyline", svg.contains("M ") && svg.contains(" L "))
+    }
+
+    @Test
+    fun `draw plot with samples option`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw plot[samples=10, domain=0:1] (\x, {\x});\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+        // 10 段 → 11 个点 → 1 M + 10 L
+        val lCount = Regex(" L ").findAll(result.getOrThrow()).count()
+        assertTrue("expected 10 segments, got $lCount", lCount == 10)
+    }
+
+    @Test
+    fun `acceptance parabola and sine wave on axes`() {
+        val code = """
+            \begin{tikzpicture}
+            \draw[->, gray] (-4,0) -- (4,0);
+            \draw[->, gray] (0,-3) -- (0,3);
+            \draw[red, thick] plot (\x, {0.5*\x*\x - 1});
+            \draw[blue] plot (\x, {sin(\x*1.57)*2});
+            \end{tikzpicture}
+        """.trimIndent()
+        val result = TikzRenderer.render(code)
+        assertTrue(result.isSuccess)
+        val svg = result.getOrThrow()
+        // 2 坐标轴 + 2 曲线 = 至少 4 个 <path>
+        val pathCount = Regex("<path").findAll(svg).count()
+        assertTrue("expected >=4 paths, got $pathCount", pathCount >= 4)
+        assertTrue("curve should have sampled segments", Regex(" L ").findAll(svg).count() >= 10)
+        assertTrue("NaN must not leak", !svg.contains("NaN"))
+        assertTrue("red stroke", svg.contains("stroke=\"red\""))
+        assertTrue("blue stroke", svg.contains("stroke=\"blue\""))
+    }
+
+    @Test
     fun `draw line renders path with move and line commands`() {
         val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}""")
         assertTrue(result.isSuccess)

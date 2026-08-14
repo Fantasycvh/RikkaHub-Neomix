@@ -523,6 +523,70 @@ object TikzRenderer {
                     relativeUpdate = false
                     relativeKeep = false
                 }
+                body.startsWith("plot", i) -> {
+                    i += 4
+                    while (i < body.length && body[i].isWhitespace()) i++
+                    var domainStart = -5.0
+                    var domainEnd = 5.0
+                    var samples = 100
+                    if (i < body.length && body[i] == '[') {
+                        val close = body.indexOf(']', i)
+                        if (close >= 0) {
+                            val opts = body.substring(i + 1, close)
+                            Regex("""domain\s*=\s*([-\d.]+)\s*:\s*([-\d.]+)""").find(opts)?.let {
+                                domainStart = it.groupValues[1].toDoubleOrNull() ?: -5.0
+                                domainEnd = it.groupValues[2].toDoubleOrNull() ?: 5.0
+                            }
+                            Regex("""samples\s*=\s*(\d+)""").find(opts)?.let {
+                                samples = it.groupValues[1].toIntOrNull() ?: 100
+                            }
+                            i = close + 1
+                        }
+                    }
+                    while (i < body.length && body[i].isWhitespace()) i++
+                    if (i < body.length && body[i] == '(') {
+                        // 平衡括号找坐标对结尾：表达式 {..} 内可能有函数括号 cos(...)，不能用 indexOf(')')
+                        var close = -1
+                        var depth = 0
+                        for (j in i until body.length) {
+                            when (body[j]) {
+                                '(' -> depth++
+                                ')' -> {
+                                    depth--
+                                    if (depth == 0) { close = j; break }
+                                }
+                            }
+                        }
+                        if (close >= 0) {
+                            val raw = body.substring(i + 1, close)
+                            val comma = raw.indexOf(',')
+                            if (comma > 0) {
+                                val first = raw.substring(0, comma).trim()
+                                val second = raw.substring(comma + 1).trim()
+                                // (\x, {expr})：\x 是采样参数；({expr1}, {expr2})：两轴都用参数求值
+                                val xPart = if (first == "\\x") "x" else first
+                                val yPart = if (first == "\\x") second else second
+                                var open = false
+                                var lastP: Point? = null
+                                for (k in 0..samples) {
+                                    val t = domainStart + (domainEnd - domainStart) * k / samples
+                                    val px = plotCoord(xPart, t) ?: run { open = false; continue }
+                                    val py = plotCoord(yPart, t) ?: run { open = false; continue }
+                                    val p = Point(px, py)
+                                    lastP = p
+                                    if (!open) { segs.add(MoveTo(p)); open = true } else segs.add(LineTo(p))
+                                }
+                                lastP?.let { cur = it; lastAbsolute = it }
+                            }
+                            i = close + 1
+                        }
+                    }
+                    pendingConnector = null
+                    pendingC1 = null
+                    pendingC2 = null
+                    relativeUpdate = false
+                    relativeKeep = false
+                }
                 body.startsWith("cycle", i) -> {
                     // 闭合当前子路径：连回最近 MoveTo 起点
                     i += 5
@@ -1013,6 +1077,14 @@ object TikzRenderer {
             y += step
         }
         return segs
+    }
+
+    /** plot 坐标分量求值：`x` 返回采样参数 t；`{expr}` 用 MathExpr 求值；非法/非有限返回 null（断开采样段） */
+    private fun plotCoord(part: String, t: Double): Double? {
+        if (part == "x") return t
+        val expr = Regex("""\{([^}]*)\}""").find(part)?.groupValues?.get(1) ?: return null
+        val v = MathExpr.evaluate(expr.replace("\\x", "x"), t)
+        return if (v.isFinite()) v else null
     }
 
     /**
