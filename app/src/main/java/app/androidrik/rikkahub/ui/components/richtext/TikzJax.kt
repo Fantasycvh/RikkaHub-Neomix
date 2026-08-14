@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -50,20 +51,28 @@ fun TikzJax(
     val toaster = LocalToaster.current
     val darkMode = LocalDarkMode.current
 
-    val svg = remember(code, darkMode) { TikzRenderer.render(code, darkMode).getOrNull() }
-    val picture = remember(svg) {
-        runCatching { SVG.getFromString(svg)?.renderToPicture() }.getOrNull()
+    val svg = remember(code, darkMode) {
+        TikzRenderer.render(code, darkMode).getOrNull()?.also {
+            Log.i("TikzJax", "svg ok, len=${it.length}: $it")
+        } ?: run {
+            Log.w("TikzJax", "render failed, code=$code")
+            null
+        }
     }
-    val aspectRatio = remember(svg) {
-        runCatching {
-            val s = SVG.getFromString(svg)
-            val w = s?.documentWidth ?: 1f
-            val h = s?.documentHeight ?: 1f
-            if (w > 0f && h > 0f) w / h else 1f
-        }.getOrDefault(1f)
+    // AndroidSVG 对象（渲染用 renderToCanvas 而非 renderToPicture+drawPicture：
+    // 硬件加速 Canvas 不支持 drawPicture，FAQ 明确 —— 直接渲染到 Canvas 才可靠）
+    val svgObj = remember(svg) {
+        val parsed = runCatching { SVG.getFromString(svg) }
+        Log.i("TikzJax", "getFromString -> ${parsed.fold({ "OK" }, { "FAIL ${it.message}" })}")
+        parsed.getOrNull()
+    }
+    val aspectRatio = remember(svgObj) {
+        val w = svgObj?.documentWidth ?: 1f
+        val h = svgObj?.documentHeight ?: 1f
+        if (w > 0f && h > 0f) w / h else 1f
     }
 
-    if (picture != null && svg != null) {
+    if (svgObj != null && svg != null) {
         Column(modifier = modifier) {
             Canvas(
                 modifier = Modifier
@@ -72,11 +81,13 @@ fun TikzJax(
                     .clip(RoundedCornerShape(4.dp))
             ) {
                 drawIntoCanvas { canvas ->
-                    val scale = if (picture.width > 0) size.width / picture.width else 1f
-                    canvas.save()
-                    canvas.scale(scale, scale)
-                    canvas.nativeCanvas.drawPicture(picture)
-                    canvas.restore()
+                    val c = canvas.nativeCanvas
+                    val w = svgObj.documentWidth
+                    val scale = if (w > 0f) size.width / w else 1f
+                    c.save()
+                    c.scale(scale, scale)
+                    svgObj.renderToCanvas(c)
+                    c.restore()
                 }
             }
 
