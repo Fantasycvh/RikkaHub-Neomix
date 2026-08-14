@@ -327,6 +327,55 @@ class TikzRendererTest {
         assertTrue(svg.contains("S"))
     }
 
+    /** 诊断：遍历用户 R1 消息可能的变体，定位真机 render failed 的确切语法（定位后清理） */
+    @Test
+    fun `diag - enumerate rounded corner variants to find failing one`() {
+        val base = """\draw[rounded corners=5, thick] (0.5,0.5) -- (4.5,0.5) -- (4.5,3.5) -- (0.5,3.5) -- (0.5,6.5);"""
+        val candidates = listOf(
+            "bare draw (no begin)" to base,
+            "begin+end wrapped" to """\begin{tikzpicture}$base\end{tikzpicture}""",
+            "with cycle" to """\draw[rounded corners=5, thick] (0.5,0.5) -- (4.5,0.5) -- (4.5,3.5) -- (0.5,3.5) -- (0.5,6.5) -- cycle;""",
+            "with node above" to """\draw[rounded corners=5, thick] (0.5,0.5) -- (4.5,0.5) -- (4.5,3.5) -- (0.5,3.5) -- (0.5,6.5) node[above] {y};""",
+            "with node midway" to """\draw[rounded corners=5, thick] (0.5,0.5) -- (4.5,0.5) -- (4.5,3.5) -- (0.5,3.5) -- (0.5,6.5) node[midway, above] {y};""",
+            "undefined named coord" to """\draw[rounded corners=5, thick] (A) -- (B);""",
+            "defined named coord" to """\begin{tikzpicture}\node (A) at (1,2) {A};\draw[rounded corners=5, thick] (A) -- (4,0);\end{tikzpicture}""",
+            "rectangle form" to """\draw[rounded corners=5, thick] (0.5,0.5) rectangle (4.5,6.5);""",
+            "with percent comment" to """\draw[rounded corners=5, thick] (0.5,0.5) -- (4.5,0.5); % comment""",
+            "two draws same line" to """\begin{tikzpicture}\draw[rounded corners=5, thick] (0.5,0.5) -- (4.5,0.5);\draw[rounded corners=5, thick] (0.5,6.5) -- (4.5,6.5);\end{tikzpicture}""",
+            "to bend" to """\draw[rounded corners=5, thick] (0,0) -- (1,0) to[bend left] (2,1);""",
+            "controls" to """\draw[rounded corners=5, thick] (0,0) -- (1,1) .. controls (2,0) and (3,2) .. (4,1);""",
+            "polar" to """\draw[rounded corners=5, thick] (0:2) -- (90:2) -- (180:2);""",
+            "relative ++" to """\draw[rounded corners=5, thick] (0,0) -- ++(1,1) -- ++(1,-1);""",
+            "relative +" to """\draw[rounded corners=5, thick] (0,0) -- +(1,1) -- +(2,0);""",
+            "with arrow" to """\draw[rounded corners=5, thick, -stealth] (2,3.5) -- (2,6);""",
+            "circle inside" to """\draw[rounded corners=5, thick] (0,0) circle (1);""",
+            "empty body" to """\draw[rounded corners=5, thick];""",
+            "brackets only" to """\draw[rounded corners=5, thick]; % nothing""",
+        )
+        candidates.forEach { (label, code) ->
+            val r = TikzRenderer.render(code)
+            if (r.isFailure) {
+                println("DIAG FAIL [$label]: ${r.exceptionOrNull()}")
+            } else {
+                println("DIAG OK   [$label] len=${r.getOrThrow().length}")
+            }
+        }
+    }
+
+    @Test
+    fun `undefined named coordinate falls back to origin instead of crashing`() {
+        // 用户 R1 真机失败根因：\draw[...] (A) -- (B) 引用未定义命名坐标 → 抛异常 → 显示源码。
+        // 修复：原点兜底不崩溃（与 .28 node 无 at 兜底一致）。
+        val result = TikzRenderer.render("""\draw[rounded corners=5, thick] (A) -- (B);""")
+        assertTrue("should not fail on undefined coordinate", result.isSuccess)
+    }
+
+    @Test
+    fun `undefined named anchor falls back to origin`() {
+        val result = TikzRenderer.render("""\begin{tikzpicture}\draw (A.north) -- (0,0);\end{tikzpicture}""")
+        assertTrue("should not fail on undefined anchor", result.isSuccess)
+    }
+
     @Test
     fun `rounded corners rectangle renders with explicit radius rx`() {
         // 显式半径 15pt → 15*1.333 ≈ 20px，rx 统一读该值

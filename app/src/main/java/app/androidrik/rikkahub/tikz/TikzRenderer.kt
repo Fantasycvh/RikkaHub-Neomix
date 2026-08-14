@@ -461,9 +461,10 @@ object TikzRenderer {
             val y = parts.getOrNull(1)?.trim()?.toDoubleOrNull() ?: 0.0
             return Point(x, y)
         }
-        // 命名节点 (A) 或锚点 (A.north)
+        // 命名节点 (A) 或锚点 (A.north) —— 未定义坐标容错：原点兜底不崩溃
+        // （TikZ 语义上引用未定义坐标是用户错误，但渲染器不应整体失败显示源码）
         val anchor = s.split('.', limit = 2)
-        val base = ctx.coordinates[anchor[0]] ?: throw IllegalArgumentException("Unknown coordinate: $s")
+        val base = ctx.coordinates[anchor[0]] ?: Point(0.0, 0.0)
         val anchorName = anchor.getOrNull(1)?.trim()
         return when (anchorName) {
             "north" -> base.copy(y = base.y + 0.3)

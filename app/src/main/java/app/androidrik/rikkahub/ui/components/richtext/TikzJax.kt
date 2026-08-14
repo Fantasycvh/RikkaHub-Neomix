@@ -52,19 +52,33 @@ fun TikzJax(
     val darkMode = LocalDarkMode.current
 
     val svg = remember(code, darkMode) {
-        TikzRenderer.render(code, darkMode).getOrNull()?.also {
-            Log.i("TikzJax", "svg ok, len=${it.length}: $it")
-        } ?: run {
-            Log.w("TikzJax", "render failed, code=$code")
-            null
-        }
+        TikzRenderer.render(code, darkMode).fold(
+            onSuccess = {
+                Log.i("TikzJax", "svg ok, len=${it.length}: $it")
+                it
+            },
+            onFailure = { e ->
+                Log.w("TikzJax", "render failed: ${e.message}", e)
+                // 完整 code 分段打印（logcat 单行会截断长内容）
+                code.chunked(1800).forEachIndexed { idx, chunk ->
+                    Log.w("TikzJax", "code[$idx]: $chunk")
+                }
+                null
+            },
+        )
     }
     // AndroidSVG 对象（渲染用 renderToCanvas 而非 renderToPicture+drawPicture：
     // 硬件加速 Canvas 不支持 drawPicture，FAQ 明确 —— 直接渲染到 Canvas 才可靠）
     val svgObj = remember(svg) {
-        val parsed = runCatching { SVG.getFromString(svg) }
-        Log.i("TikzJax", "getFromString -> ${parsed.fold({ "OK" }, { "FAIL ${it.message}" })}")
-        parsed.getOrNull()
+        if (svg == null) {
+            Log.w("TikzJax", "getFromString skipped: svg is null (render failed upstream)")
+            null
+        } else {
+            val parsed = runCatching { SVG.getFromString(svg) }
+            parsed.onFailure { Log.w("TikzJax", "getFromString FAIL: ${it.message}", it) }
+            Log.i("TikzJax", "getFromString -> ${if (parsed.isSuccess) "OK" else "FAIL"}")
+            parsed.getOrNull()
+        }
     }
     val aspectRatio = remember(svgObj) {
         val w = svgObj?.documentWidth ?: 1f
