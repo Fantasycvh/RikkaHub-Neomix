@@ -236,7 +236,7 @@ class TikzRendererTest {
         val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) to[bend left] (2,0);\end{tikzpicture}""")
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
-        assertTrue("missing quadratic bezier", svg.contains(" Q "))
+        assertTrue("missing quadratic bezier", svg.contains(" C "))
         assertTrue("unexpected straight line", !svg.contains(" L "))
     }
 
@@ -244,7 +244,7 @@ class TikzRendererTest {
     fun `bend right with angle renders quadratic bezier`() {
         val result = TikzRenderer.render("""\begin{tikzpicture}\draw (0,0) to[bend right=60] (2,0);\end{tikzpicture}""")
         assertTrue(result.isSuccess)
-        assertTrue(result.getOrThrow().contains(" Q "))
+        assertTrue(result.getOrThrow().contains(" C "))
     }
 
     @Test
@@ -307,7 +307,7 @@ class TikzRendererTest {
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
-        assertTrue("missing curve Q", svg.contains(" Q "))
+        assertTrue("missing curve Q", svg.contains(" C "))
         assertTrue("missing arrow polygon", svg.contains("<polygon"))
     }
 
@@ -342,7 +342,7 @@ class TikzRendererTest {
         val code = """\begin{tikzpicture}\draw[rounded corners=15pt, thick] (0,0) -- (4,0) -- (4,3) -- (0,3) -- (0,6);\end{tikzpicture}"""
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
-        val qCount = result.getOrThrow().split(" Q ").size - 1
+        val qCount = result.getOrThrow().split(" C ").size - 1
         assertTrue("expected chamfers, got $qCount", qCount >= 3)
     }
 
@@ -352,7 +352,7 @@ class TikzRendererTest {
         val code = """\begin{tikzpicture}\draw[rounded corners, thick] (0,0) -- (4,0) -- (4,3) -- (0,3) -- (0,6);\end{tikzpicture}"""
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
-        val qCount = result.getOrThrow().split(" Q ").size - 1
+        val qCount = result.getOrThrow().split(" C ").size - 1
         assertTrue("expected chamfers, got $qCount", qCount >= 3)
     }
 
@@ -362,7 +362,7 @@ class TikzRendererTest {
         val code = """\begin{tikzpicture}\draw[rounded corners, thick] (0,0) -- (1,1) -- (2,0) -- (3,1) -- (4,0);\end{tikzpicture}"""
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
-        val qCount = result.getOrThrow().split(" Q ").size - 1
+        val qCount = result.getOrThrow().split(" C ").size - 1
         assertTrue("expected chamfers, got $qCount", qCount >= 3)
     }
 
@@ -373,7 +373,7 @@ class TikzRendererTest {
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
-        assertTrue("should not chamfer multi-subpath", !svg.contains(" Q "))
+        assertTrue("should not chamfer multi-subpath", !svg.contains(" C "))
         assertTrue("expected two subpaths", svg.split("M ").size - 1 >= 2)
     }
 
@@ -383,7 +383,7 @@ class TikzRendererTest {
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
-        assertTrue("missing geometric chamfer Q", svg.contains(" Q "))
+        assertTrue("missing geometric chamfer Q", svg.contains(" C "))
         assertTrue("should not use stroke-linejoin approximation", !svg.contains("stroke-linejoin"))
     }
 
@@ -394,7 +394,7 @@ class TikzRendererTest {
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
-        val qCount = svg.split(" Q ").size - 1
+        val qCount = svg.split(" C ").size - 1
         assertTrue("expected 3 chamfers, got $qCount", qCount >= 3)
     }
 
@@ -405,7 +405,7 @@ class TikzRendererTest {
         val result = TikzRenderer.render(code)
         assertTrue(result.isSuccess)
         val svg = result.getOrThrow()
-        val qCount = svg.split(" Q ").size - 1
+        val qCount = svg.split(" C ").size - 1
         assertTrue("expected 3 chamfers, got $qCount", qCount >= 3)
     }
 }

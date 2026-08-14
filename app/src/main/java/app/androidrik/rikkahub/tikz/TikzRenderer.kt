@@ -591,7 +591,9 @@ object TikzRenderer {
         fun sy(y: Double): Double = (maxY - y + PADDING) * SCALE
 
         val sb = StringBuilder()
-        sb.append("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(width)} ${fmt(height)}">""")
+        // 显式 width/height（= viewBox 尺寸）：部分 AndroidSVG 版本只有 viewBox 时 documentWidth/Height 为 0，
+        // renderToPicture 的 Picture 宽度 0 会导致下游 scale 除零。显式尺寸规避。
+        sb.append("""<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(width)}" height="${fmt(height)}" viewBox="0 0 ${fmt(width)} ${fmt(height)}">""")
         sb.append('\n')
 
         // 先画 draw（底层），再画 node（上层）
@@ -698,13 +700,14 @@ object TikzRenderer {
         return kotlin.math.sqrt(w * w + h * h)
     }
 
-    /** 普通路径渲染（无圆角） */
+    /** 普通路径渲染（无圆角）。Q 命令等价转 C（控制点重复）以规避 AndroidSVG 1.4 对 Q 的兼容问题 */
     private fun renderPlainD(segs: List<Seg>, sx: (Double) -> Double, sy: (Double) -> Double): String = buildString {
         segs.forEach { seg ->
             when (seg) {
                 is MoveTo -> append("M ").append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
                 is LineTo -> append(" L ").append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
-                is QuadTo -> append(" Q ").append(fmt(sx(seg.c.x))).append(',').append(fmt(sy(seg.c.y)))
+                is QuadTo -> append(" C ").append(fmt(sx(seg.c.x))).append(',').append(fmt(sy(seg.c.y)))
+                    .append(' ').append(fmt(sx(seg.c.x))).append(',').append(fmt(sy(seg.c.y)))
                     .append(' ').append(fmt(sx(seg.p.x))).append(',').append(fmt(sy(seg.p.y)))
                 is CubicTo -> append(" C ").append(fmt(sx(seg.c1.x))).append(',').append(fmt(sy(seg.c1.y)))
                     .append(' ').append(fmt(sx(seg.c2.x))).append(',').append(fmt(sy(seg.c2.y)))
@@ -750,7 +753,9 @@ object TikzRenderer {
                 val ax = p1.x - ux * rr; val ay = p1.y - uy * rr
                 val bx = p1.x + vx * rr; val by = p1.y + vy * rr
                 append(" L ").append(fmt(ax)).append(',').append(fmt(ay))
-                append(" Q ").append(fmt(p1.x)).append(',').append(fmt(p1.y))
+                // Q p1 b 等价转 C（控制点重复），规避 AndroidSVG 1.4 对 Q 的兼容问题
+                append(" C ").append(fmt(p1.x)).append(',').append(fmt(p1.y))
+                    .append(' ').append(fmt(p1.x)).append(',').append(fmt(p1.y))
                     .append(' ').append(fmt(bx)).append(',').append(fmt(by))
             }
             append(" L ").append(fmt(pts.last().x)).append(',').append(fmt(pts.last().y))

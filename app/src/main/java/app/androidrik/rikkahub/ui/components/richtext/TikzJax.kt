@@ -72,7 +72,7 @@ fun TikzJax(
                     .clip(RoundedCornerShape(4.dp))
             ) {
                 drawIntoCanvas { canvas ->
-                    val scale = size.width / picture.width
+                    val scale = if (picture.width > 0) size.width / picture.width else 1f
                     canvas.save()
                     canvas.scale(scale, scale)
                     canvas.nativeCanvas.drawPicture(picture)
