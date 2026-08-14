@@ -23,7 +23,7 @@ RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，�
 RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5`，含已吸收的 `2.4.8` 修复）的 fork，
 包名 `app.androidrik.rikkahub`，应用名 **RikkaHub Plus**。
 
-- **自 v2.4.6 起与上游分离**：不再同步上游 `master`，上游仅作**功能 / 机制 / bug 修复的参考**（按需人工评估吸收）
+- **自 v2.4.6 起上游选择性跟进**：`master` 仍可同步上游（ff-only 镜像机制保留），但上游修复/功能**选择性吸收**——不再全部跟进，仅按需人工评估有价值的部分
 - **独立版本体系**：`2.4.6` 为独立维护起点，此前定制积累完整保留
 - **私有测试用途**：本仓库为个人/团队测试发布，不面向公网分发。
 
@@ -80,9 +80,9 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 分支 | 角色 |
 |---|---|
 | `feat/restore-proxy` | **唯一开发分支**（远程默认），全部定制与发布在此进行 |
-| `master` | 历史上游镜像（v2.4.6 起**不再同步**，仅留存） |
+| `master` | **上游镜像**，可继续 `ff-only` 同步上游（`git fetch upstream && git checkout master && git merge --ff-only upstream/master && git push origin master`） |
 
-**与上游关系（自 v2.4.6）**：与上游分离，不再同步 `master`；上游（rikkahub/rikkahub）仅作**功能 / 机制 / bug 修复的参考**，按需人工评估吸收。
+**与上游关系（自 v2.4.6）**：`master` 仍可同步上游，但上游修复/功能**选择性吸收**——不再全部跟进，仅按需人工评估有价值的部分（如关键 bug 修复、低成本高价值功能），评估后移植到 `feat/restore-proxy`。
 
 ## 🛠️ 构建指南
 
