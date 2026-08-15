@@ -318,22 +318,6 @@ private fun ChatListNormal(
         }
 
         ChatFontProvider(displaySetting = settings.displaySetting) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = innerPadding.calculateTopPadding()),
-            ) {
-            // 液态玻璃层：固定尺寸兄弟节点，blur 只消费背景 source（glassHazeState），避免自引用/无限测量
-            if (settings.displaySetting.enableGlassTheme) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .hazeBlur(
-                            input = HazeInput.Sources(glassHazeState),
-                            style = glassHazeStyle(),
-                        )
-                )
-            }
             LazyColumn(
                 state = state,
                 contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
@@ -341,7 +325,14 @@ private fun ChatListNormal(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .hazeSource(state = hazeState),
+                    .then(
+                        if (settings.displaySetting.enableGlassTheme) Modifier.hazeBlur(
+                            input = HazeInput.Sources(glassHazeState),
+                            style = glassHazeStyle(),
+                        ) else Modifier
+                    )
+                    .hazeSource(state = hazeState)
+                    .padding(top = innerPadding.calculateTopPadding()),
             ) {
             itemsIndexed(
                 items = conversation.messageNodes,
@@ -401,7 +392,7 @@ private fun ChatListNormal(
                     }
                 }
                 }
-            }
+                }
 
             if (!loading && assistant?.allowConversationSystemPrompt == true && onConversationSystemPromptChange != null) {
                 item(key = "ConversationSystemPrompt") {
@@ -561,7 +552,6 @@ private fun ChatListNormal(
             }
         }
     }
-}
 
 /**
  * 提取包含搜索词的文本片段，确保匹配词在开头可见
