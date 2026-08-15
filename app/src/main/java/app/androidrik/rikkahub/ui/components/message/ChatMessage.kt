@@ -371,7 +371,7 @@ private fun MessagePartsBlock(
                                 ) {
                                     Column(modifier = Modifier.padding(8.dp)) {
                                         MarkdownBlock(
-                                            content = part.text.replaceRegexes(
+                                            content = part.text.renderSafe().replaceRegexes(
                                                 assistant = assistant,
                                                 scope = AssistantAffectScope.USER,
                                                 visual = true,
@@ -390,7 +390,7 @@ private fun MessagePartsBlock(
                                     ) {
                                         Column(modifier = Modifier.padding(8.dp)) {
                                             MarkdownBlock(
-                                                content = part.text.replaceRegexes(
+                                                content = part.text.renderSafe().replaceRegexes(
                                                     assistant = assistant,
                                                     scope = AssistantAffectScope.ASSISTANT,
                                                     visual = true,
@@ -402,7 +402,7 @@ private fun MessagePartsBlock(
                                     }
                                 } else {
                                     MarkdownBlock(
-                                        content = part.text.replaceRegexes(
+                                        content = part.text.renderSafe().replaceRegexes(
                                             assistant = assistant,
                                             scope = AssistantAffectScope.ASSISTANT,
                                             visual = true,
@@ -632,4 +632,12 @@ private fun MessagePartsBlock(
             }
         }
     }
+}
+
+
+/** 渲染前保护：超长消息文本截断，避免 Compose 测量高度溢出 Int.MAX（vet 图极长空白消息曾触发） */
+private const val MAX_RENDER_TEXT_LENGTH = 100_000
+private fun String.renderSafe(): String {
+    if (length <= MAX_RENDER_TEXT_LENGTH) return this
+    return take(MAX_RENDER_TEXT_LENGTH) + "\n\n[内容过长，已截断显示前 ${MAX_RENDER_TEXT_LENGTH} 字符]"
 }
