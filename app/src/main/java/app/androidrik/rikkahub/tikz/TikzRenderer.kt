@@ -17,10 +17,10 @@ object TikzRenderer {
     private const val SCALE = 100.0
 
     /** SVG 最大像素尺寸：防异常坐标（10^12 级）产生巨型画布导致布局溢出 */
-    private const val MAX_SVG_PIXELS = 1_000_000.0
+    private const val MAX_SVG_PIXELS = 20_000.0
 
     /** plot 采样坐标绝对值上限：防巨大有限值（如 10^12）撑爆画布 */
-    private const val MAX_PLOT_ABS = 100_000.0
+    private const val MAX_PLOT_ABS = 5_000.0
 
     /** 渲染 TikZ 源码为 SVG 字符串；失败时返回异常（runCatching 包装）。 */
     fun render(code: String, darkMode: Boolean = false): Result<String> = runCatching {

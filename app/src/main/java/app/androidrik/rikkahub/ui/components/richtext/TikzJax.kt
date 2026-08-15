@@ -41,7 +41,7 @@ import app.androidrik.rikkahub.utils.exportImage
  * 与旧版（WebView + tikzjax wasm）不同：无 WebView/wasm/JS，渲染结果直接可矢量缩放；
  * SVG 字符串同时可作为导出（HTML 内嵌 / 位图）的中间产物。
  */
-private const val MAX_SVG_DIMENSION = 100_000f
+private const val MAX_SVG_DIMENSION = 20_000f
 
 @Composable
 fun TikzJax(

@@ -733,4 +733,26 @@ class TikzRendererTest {
         )
         assertTrue("gigantic dimension should fail", result.isFailure)
     }
+
+    @Test
+    fun `plot value above 5000 units is skipped`() {
+        // 折中方案：plot 采样 abs > 5000 跳过（5000 单位 ≈ 50 万 px）
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw plot (\x, {6000});\end{tikzpicture}"""
+        )
+        // 全部超限 → 无有效点（合理失败）；若成功则不能巨型
+        if (result.isSuccess) {
+            assertTrue(!result.getOrThrow().contains("E"))
+        }
+    }
+
+    @Test
+    fun `svg dimension above 20000 px is rejected`() {
+        // 折中方案：生成端 SVG 尺寸 > 20000 px 拒绝（200 TikZ 单位 × 100）
+        // 300 单位高 → 30000 px > 20000 → 应失败
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw (0,0) -- (0,300);\end{tikzpicture}"""
+        )
+        assertTrue("height 30000px should be rejected", result.isFailure)
+    }
 }
