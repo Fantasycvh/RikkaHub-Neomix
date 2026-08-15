@@ -338,7 +338,7 @@ private fun ChatListNormal(
                 items = conversation.messageNodes,
                 key = { index, item -> item.id },
             ) { index, node ->
-                HeightClamp(maxHeight = 2000.dp) {
+                HeightClamp(maxHeight = 10000.dp) {
                 Column {
                     ListSelectableItem(
                         key = node.id,

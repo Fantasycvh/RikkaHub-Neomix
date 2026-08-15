@@ -636,7 +636,7 @@ private fun MessagePartsBlock(
 
 
 /** 渲染前保护：超长消息文本截断，避免 Compose 测量高度溢出 Int.MAX（vet 图极长空白消息曾触发） */
-private const val MAX_RENDER_TEXT_LENGTH = 100_000
+private const val MAX_RENDER_TEXT_LENGTH = 1_100_000
 private fun String.renderSafe(): String {
     if (length <= MAX_RENDER_TEXT_LENGTH) return this
     // 按码点截断（UTF-16 length 会劈开 emoji/代理对/组合字符）
