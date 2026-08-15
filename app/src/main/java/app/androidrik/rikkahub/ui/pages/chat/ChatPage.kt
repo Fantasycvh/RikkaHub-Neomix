@@ -51,6 +51,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.dokar.sonner.ToastType
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.material3.Material3
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
@@ -314,6 +319,8 @@ private fun ChatPageContent(
                     bigScreen = bigScreen,
                     drawerState = drawerState,
                     previewMode = previewMode,
+                    hazeState = hazeState,
+                    glassHazeState = glassHazeState,
                     onNewChat = {
                         navigateToChatPage(navController)
                     },
@@ -724,12 +731,19 @@ private fun ChatFilesPickerSheet(
 }
 
 @Composable
+private fun glassHazeStyle(): HazeBlurStyle = HazeBlurStyle.Material3 {
+    blurRadius(16.dp)
+}
+
+@Composable
 private fun TopBar(
     settings: Settings,
     conversation: Conversation,
     drawerState: DrawerState,
     bigScreen: Boolean,
     previewMode: Boolean,
+    hazeState: HazeState,
+    glassHazeState: HazeState,
     onClickMenu: () -> Unit,
     onNewChat: () -> Unit,
     onExport: () -> Unit,
@@ -742,6 +756,12 @@ private fun TopBar(
     }
 
     TopAppBar(
+        modifier = Modifier.then(
+            if (settings.displaySetting.enableGlassTheme) Modifier.hazeBlur(
+                input = HazeInput.Sources(glassHazeState),
+                style = glassHazeStyle(),
+            ) else Modifier
+        ),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         navigationIcon = {
             if (!bigScreen) {
