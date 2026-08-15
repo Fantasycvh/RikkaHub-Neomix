@@ -213,7 +213,7 @@ fun ChatInput(
                     .fillMaxWidth()
                     .clip(containerShape)
                     .then(
-                        if (settings.displaySetting.enableBlurEffect || settings.displaySetting.enableGlassTheme) Modifier.hazeBlur(
+                        if (settings.displaySetting.enableBlurEffect) Modifier.hazeBlur(
                             input = HazeInput.Sources(hazeState),
                             style = inputHazeStyle,
                         )
@@ -222,7 +222,7 @@ fun ChatInput(
                 shape = containerShape,
                 tonalElevation = 0.dp,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                color = if (settings.displaySetting.enableBlurEffect || settings.displaySetting.enableGlassTheme) Color.Transparent else hazeTintColor,
+                color = if (settings.displaySetting.enableBlurEffect) Color.Transparent else hazeTintColor,
             ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
