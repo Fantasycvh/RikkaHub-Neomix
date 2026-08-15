@@ -82,7 +82,11 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceAtLeast
 import androidx.compose.ui.zIndex
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.material3.Material3
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -107,6 +111,11 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "ChatList"
 private const val LoadingIndicatorKey = "LoadingIndicator"
+@Composable
+private fun glassHazeStyle(): HazeBlurStyle = HazeBlurStyle.Material3 {
+    blurRadius(16.dp)
+}
+
 private const val ScrollBottomKey = "ScrollBottomKey"
 
 @Composable
@@ -312,6 +321,12 @@ private fun ChatListNormal(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(
+                        if (settings.displaySetting.enableGlassTheme) Modifier.hazeBlur(
+                            input = HazeInput.Sources(hazeState),
+                            style = glassHazeStyle(),
+                        ) else Modifier
+                    )
                     .hazeSource(state = hazeState)
                     .padding(top = innerPadding.calculateTopPadding()),
             ) {
@@ -622,6 +637,12 @@ private fun ChatListPreview(
         modifier = Modifier
             .padding(top = innerPadding.calculateTopPadding())
             .fillMaxSize()
+            .then(
+                if (settings.displaySetting.enableGlassTheme) Modifier.hazeBlur(
+                    input = HazeInput.Sources(hazeState),
+                    style = glassHazeStyle(),
+                ) else Modifier
+            )
             .hazeSource(state = hazeState),
     ) {
         // 搜索框

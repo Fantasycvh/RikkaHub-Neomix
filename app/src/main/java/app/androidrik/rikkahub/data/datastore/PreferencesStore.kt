@@ -625,6 +625,7 @@ data class DisplaySetting(
     val enableLatexRendering: Boolean = true,
     val enableDiagramRendering: Boolean = true,
     val enableBlurEffect: Boolean = false,
+    val enableGlassTheme: Boolean = false,
     val chatFontFamily: ChatFontFamily = ChatFontFamily.DEFAULT,
     val chatCustomFontPath: String = "",
     val chatCustomFontName: String = "",
