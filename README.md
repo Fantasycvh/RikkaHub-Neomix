@@ -62,6 +62,16 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 - 🌐 自定义 HTTP 请求头与请求体
 - 💌 SillyTavern 角色卡导入
 
+## ⚠️ 已知问题与排查记录
+
+### 中转站模型报「no effective pricing」
+
+- **现象**：通过中转站（new-api / one-api 类网关，如 `<relay-host>`）调用部分模型时，返回
+  `Current group has no effective pricing for model <模型名>`
+- **根因**：该模型在中转站已被**撤下/失效**，或当前 API key 所属**用户组**未为该模型配置**有效定价**——**与客户端无关**（已验证 fork 与上游原版在 URL 拼接、请求体、鉴权、模型名发送上完全一致）
+- **处理**：在中转站后台确认该模型是否仍上架；换用仍有效的模型 id；或联系中转站为该 key 组绑定模型定价
+- **记录**：2026-08-14 —— `gpt-5.6` 于 `<relay-host>` 撤下导致此报错，客户端无需任何改动
+
 ## 🔭 后续规划
 
 本项目维护一份[规划文档](docs/roadmap.md)，记录已调研的未来方向与可行性分析。当前方向：
