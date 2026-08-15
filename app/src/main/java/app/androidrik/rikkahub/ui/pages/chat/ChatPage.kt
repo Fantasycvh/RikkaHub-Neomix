@@ -757,7 +757,7 @@ private fun TopBar(
 
     TopAppBar(
         modifier = Modifier.then(
-            if (settings.displaySetting.enableGlassTheme) Modifier.hazeBlur(
+            if (settings.displaySetting.enableTopBarBlur) Modifier.hazeBlur(
                 input = HazeInput.Sources(glassHazeState),
                 style = glassHazeStyle(),
             ) else Modifier

@@ -50,4 +50,12 @@ class PreferencesStoreTest {
         org.junit.Assert.assertTrue(decoded.enableBlurEffect)
         org.junit.Assert.assertFalse(decoded.enableGlassTheme)
     }
+
+    @Test
+    fun `display setting top bar blur defaults false`() {
+        val setting = DisplaySetting()
+        org.junit.Assert.assertFalse(setting.enableTopBarBlur)
+        org.junit.Assert.assertFalse(setting.enableBlurEffect)
+        org.junit.Assert.assertFalse(setting.enableGlassTheme)
+    }
 }

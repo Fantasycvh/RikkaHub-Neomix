@@ -173,6 +173,18 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                     item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_enable_top_bar_blur_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_display_page_enable_top_bar_blur_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.enableTopBarBlur,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(enableTopBarBlur = it))
+                                }
+                            )
+                        },
+                    )
+                    item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_desc)) },
                         trailingContent = {
