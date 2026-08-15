@@ -52,6 +52,8 @@ import app.androidrik.rikkahub.data.ai.tools.createConversationTools
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.ai.tools.createSearchTools
 import app.androidrik.rikkahub.data.ai.tools.createSkillTools
+import app.androidrik.rikkahub.data.ai.tools.createSkillInstallTools
+import app.androidrik.rikkahub.data.files.SkillInstaller
 import app.androidrik.rikkahub.data.ai.tools.createWorkspaceTools
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
@@ -622,6 +624,8 @@ class ChatService(
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
                     addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
+                    // 动态添加 Skill（上游 #1031）：AI 可从 GitHub 安装 / 把对话经验保存为技能。始终注册（不依赖已启用技能）。
+                    addAll(createSkillInstallTools(SkillInstaller(skillManager)))
                     if (assistant.enabledSkills.isNotEmpty()) {
                         addAll(
                             createSkillTools(

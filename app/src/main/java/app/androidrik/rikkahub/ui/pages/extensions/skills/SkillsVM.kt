@@ -5,8 +5,6 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import java.io.ByteArrayInputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.LinkedHashMap
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.Dispatchers
@@ -17,8 +15,8 @@ import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.data.files.FileUtils
 import app.androidrik.rikkahub.data.files.SkillFrontmatterParser
 import app.androidrik.rikkahub.data.files.SkillManager
+import app.androidrik.rikkahub.data.files.SkillInstaller
 import app.androidrik.rikkahub.data.files.SkillMetadata
-import org.json.JSONArray
 import kotlin.collections.iterator
 
 /** 单个 zip 条目最大未压缩大小（技能文件通常 <1MB，32MB 覆盖一切合法场景） */
@@ -26,11 +24,11 @@ private const val MAX_ZIP_ENTRY_SIZE = 32L * 1024 * 1024
 /** zip 解压总量上限，防 zip bomb */
 private const val MAX_ZIP_TOTAL_SIZE = 256L * 1024 * 1024
 /** GitHub 下载响应最大字符数（约 4MB） */
-private const val MAX_GITHUB_DOWNLOAD_CHARS = 4_000_000
 
 class SkillsVM(
     private val skillManager: SkillManager,
 ) : ViewModel() {
+    private val skillInstaller by lazy { SkillInstaller(skillManager) }
     private val _skills = MutableStateFlow<List<SkillMetadata>>(emptyList())
     val skills = _skills.asStateFlow()
 
@@ -92,59 +90,14 @@ class SkillsVM(
 
     fun importSkillFromGitHub(repoUrl: String, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val info = parseGitHubUrl(repoUrl) ?: run {
-                    withContext(Dispatchers.Main) { onResult(false, "无效的 GitHub 仓库链接") }
-                    return@launch
+            skillInstaller.installFromGitHub(repoUrl)
+                .onSuccess { skill ->
+                    _skills.value = skillManager.listSkills()
+                    withContext(Dispatchers.Main) { onResult(true, skill.name) }
                 }
-
-                // Collect all files recursively via GitHub Contents API
-                val files = mutableListOf<Pair<String, String>>() // relativePath -> downloadUrl
-                val listed = listFilesRecursively(info.owner, info.repo, info.branch, info.path, info.path, files)
-                if (!listed) {
-                    withContext(Dispatchers.Main) { onResult(false, "读取 GitHub 目录失败") }
-                    return@launch
+                .onFailure { e ->
+                    withContext(Dispatchers.Main) { onResult(false, e.message ?: "未知错误") }
                 }
-
-                val skillMdEntry = files.find { it.first == "SKILL.md" } ?: run {
-                    withContext(Dispatchers.Main) { onResult(false, "目录中未找到 SKILL.md") }
-                    return@launch
-                }
-
-                val skillMdContent = downloadText(skillMdEntry.second) ?: run {
-                    withContext(Dispatchers.Main) { onResult(false, "下载 SKILL.md 失败，请检查链接或网络") }
-                    return@launch
-                }
-
-                val frontmatter = SkillFrontmatterParser.parse(skillMdContent)
-                val name = frontmatter["name"]
-                if (name.isNullOrBlank()) {
-                    withContext(Dispatchers.Main) { onResult(false, "SKILL.md 格式错误：缺少 name 字段") }
-                    return@launch
-                }
-
-                val fileContents = LinkedHashMap<String, String>()
-                for ((relativePath, downloadUrl) in files) {
-                    val content = downloadText(downloadUrl)
-                    if (content == null) {
-                        withContext(Dispatchers.Main) { onResult(false, "下载文件失败：$relativePath") }
-                        return@launch
-                    }
-                    fileContents[relativePath] = content
-                }
-
-                val saved = skillManager.saveSkillFilesAtomically(name, fileContents)
-                if (!saved) {
-                    withContext(Dispatchers.Main) { onResult(false, "保存失败") }
-                    return@launch
-                }
-
-                _skills.value = skillManager.listSkills()
-                withContext(Dispatchers.Main) { onResult(true, name) }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) { onResult(false, e.message ?: "未知错误") }
-            }
         }
     }
 
@@ -277,84 +230,5 @@ class SkillsVM(
     private fun ByteArray.startsWithBytes(vararg values: Int): Boolean {
         if (size < values.size) return false
         return values.indices.all { index -> (this[index].toInt() and 0xFF) == values[index] }
-    }
-
-    private fun listFilesRecursively(
-        owner: String,
-        repo: String,
-        branch: String,
-        dirPath: String,
-        basePath: String,
-        result: MutableList<Pair<String, String>>,
-    ): Boolean {
-        val apiUrl = "https://api.github.com/repos/$owner/$repo/contents/$dirPath?ref=$branch"
-        val json = downloadText(apiUrl) ?: return false
-        val array = JSONArray(json)
-        for (i in 0 until array.length()) {
-            val item = array.getJSONObject(i)
-            val type = item.getString("type")
-            val itemPath = item.getString("path")
-            val relativePath = itemPath.removePrefix("$basePath/").removePrefix(basePath)
-            when (type) {
-                "file" -> {
-                    val downloadUrl = item.optString("download_url").takeIf { it.isNotBlank() }
-                        ?: return false
-                    result.add(relativePath to downloadUrl)
-                }
-
-                "dir" -> {
-                    val ok = listFilesRecursively(owner, repo, branch, itemPath, basePath, result)
-                    if (!ok) return false
-                }
-            }
-        }
-        return true
-    }
-
-    private data class GitHubRepoInfo(
-        val owner: String,
-        val repo: String,
-        val branch: String,
-        val path: String,
-    )
-
-    private fun parseGitHubUrl(url: String): GitHubRepoInfo? {
-        val trimmed = url.trim().trimEnd('/')
-        // https://github.com/owner/repo
-        // https://github.com/owner/repo/tree/branch
-        // https://github.com/owner/repo/tree/branch/sub/path
-        val regex = Regex("""https://github\.com/([^/]+)/([^/]+)(?:/tree/([^/]+)(/.*)?)?""")
-        val match = regex.matchEntire(trimmed) ?: return null
-        val owner = match.groupValues[1]
-        val repo = match.groupValues[2]
-        val branch = match.groupValues[3].ifBlank { "HEAD" }
-        val subPath = match.groupValues[4].trimStart('/')
-        return GitHubRepoInfo(owner, repo, branch, subPath)
-    }
-
-    private fun downloadText(url: String): String? {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 30_000
-        connection.setRequestProperty("Accept", "application/vnd.github+json")
-        return try {
-            if (connection.responseCode == 200) {
-                // 限量读取：GitHub 响应超 4MB 曾全量读入 OOM
-                val reader = connection.inputStream.bufferedReader()
-                val buffer = CharArray(8192)
-                val sb = StringBuilder()
-                var total = 0
-                while (total < MAX_GITHUB_DOWNLOAD_CHARS) {
-                    val read = reader.read(buffer)
-                    if (read == -1) break
-                    val toAppend = minOf(read, MAX_GITHUB_DOWNLOAD_CHARS - total)
-                    sb.append(buffer, 0, toAppend)
-                    total += toAppend
-                }
-                sb.toString()
-            } else null
-        } finally {
-            connection.disconnect()
-        }
     }
 }
