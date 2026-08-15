@@ -12,7 +12,35 @@ data class McpCommonOptions(
     val headers: List<Pair<String, String>> = emptyList(),
     val tools: List<McpTool> = emptyList(),
     val oauth: McpOAuthState? = null,
+    val clientCertificate: McpClientCertificate = McpClientCertificate(),
 )
+
+/**
+ * MCP 客户端证书（mTLS 双向认证，上游 #1687）。
+ *
+ * - format: `P12`（PKCS#12，certData 为 .p12 文件 base64）或 `PEM`（certData 为证书，keyData 为私钥，均 base64）
+ * - password: P12 文件密码或 PEM 私钥密码（无则空）
+ * - 敏感字段脱敏 toString，避免证书/私钥随配置打印到日志
+ */
+@Serializable
+data class McpClientCertificate(
+    val enabled: Boolean = false,
+    val format: String = "P12",
+    val certData: String = "",
+    val keyData: String = "",
+    val password: String = "",
+) {
+    val isConfigured: Boolean get() = certData.isNotBlank() && (format == "P12" || keyData.isNotBlank())
+
+    override fun toString(): String =
+        "McpClientCertificate(enabled=$enabled, format=$format, cert=${certData.masked()}, " +
+            "key=${keyData.masked()}, password=${password.masked()})"
+
+    private fun String?.masked(): String = when {
+        this == null || isBlank() -> "***"
+        else -> "***(${length})"
+    }
+}
 
 /**
  * OAuth 2.1 授权状态，遵循 MCP 授权规范 (2025-11-25)。

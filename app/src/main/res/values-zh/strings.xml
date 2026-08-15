@@ -745,6 +745,15 @@
   <string name="setting_mcp_page_add_one_to_get_started">添加一个即可开始使用</string>
   <string name="setting_mcp_page_basic_settings">基础设置</string>
   <string name="setting_mcp_page_custom_headers">自定义请求头</string>
+
+  <string name="setting_mcp_page_client_cert">客户端证书 (mTLS)</string>
+  <string name="setting_mcp_page_client_cert_desc">上传客户端证书以进行双向 TLS 认证（自托管 mTLS 服务）</string>
+  <string name="setting_mcp_page_client_cert_enable">启用客户端证书</string>
+  <string name="setting_mcp_page_client_cert_choose">选择证书文件</string>
+  <string name="setting_mcp_page_client_cert_selected">已选择证书（点击更换）</string>
+  <string name="setting_mcp_page_client_key_choose">选择私钥文件</string>
+  <string name="setting_mcp_page_client_key_selected">已选择私钥（点击更换）</string>
+  <string name="setting_mcp_page_client_cert_password">证书密码</string>
   <string name="setting_mcp_page_custom_headers_desc">为MCP服务器请求添加自定义HTTP头</string>
   <string name="setting_mcp_page_delete_header">删除请求头</string>
   <string name="setting_mcp_page_enable">启用</string>

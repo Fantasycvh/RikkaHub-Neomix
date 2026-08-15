@@ -751,6 +751,15 @@
   <string name="setting_mcp_page_add_one_to_get_started">Add one to get started</string>
   <string name="setting_mcp_page_basic_settings">Basic Settings</string>
   <string name="setting_mcp_page_custom_headers">Custom Headers</string>
+
+  <string name="setting_mcp_page_client_cert">Client Certificate (mTLS)</string>
+  <string name="setting_mcp_page_client_cert_desc">Upload a client certificate for mutual TLS authentication (self-hosted mTLS servers)</string>
+  <string name="setting_mcp_page_client_cert_enable">Enable client certificate</string>
+  <string name="setting_mcp_page_client_cert_choose">Choose certificate file</string>
+  <string name="setting_mcp_page_client_cert_selected">Certificate selected (tap to change)</string>
+  <string name="setting_mcp_page_client_key_choose">Choose private key file</string>
+  <string name="setting_mcp_page_client_key_selected">Private key selected (tap to change)</string>
+  <string name="setting_mcp_page_client_cert_password">Certificate password</string>
   <string name="setting_mcp_page_custom_headers_desc">Add custom HTTP headers for MCP server requests</string>
   <string name="setting_mcp_page_delete_header">Delete Header</string>
   <string name="setting_mcp_page_enable">Enable</string>

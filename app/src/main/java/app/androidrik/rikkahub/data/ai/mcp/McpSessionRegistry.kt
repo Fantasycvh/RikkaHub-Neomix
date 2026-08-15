@@ -99,8 +99,10 @@ internal class McpSessionRegistry(
     private val httpClient: HttpClient,
     private val oauthCoordinator: McpOAuthCoordinator,
     private val statusStore: McpStatusStore,
+    private val mtlsClientFactory: McpTlsClientFactory = McpTlsClientFactory(),
 ) {
     private val sessions = ConcurrentHashMap<Uuid, McpSession>()
+    private val mtlsClients = ConcurrentHashMap<Uuid, HttpClient>()
 
     fun getClient(configId: Uuid): Client? = sessions[configId]?.client
 
@@ -115,6 +117,7 @@ internal class McpSessionRegistry(
             val detached = sessions.remove(configId) ?: return@forEach
             oauthCoordinator.forget(configId)
             statusStore.remove(configId)
+            releaseMtlsClient(configId)
             appScope.launch { closeSession(detached) }
         }
 
@@ -193,6 +196,7 @@ internal class McpSessionRegistry(
         oauthCoordinator.forget(config.id)
         if (session != null) closeSession(session)
         statusStore.remove(config.id)
+        releaseMtlsClient(config.id)
     }
 
     suspend fun syncAll() {
@@ -432,15 +436,28 @@ internal class McpSessionRegistry(
     private fun createTransport(config: McpServerConfig): AbstractTransport = when (config) {
         is McpServerConfig.SseTransportServer -> SseClientTransport(
             urlString = config.url,
-            client = httpClient,
+            client = clientFor(config),
             requestBuilder = { appendResolvedHeaders(config) },
         )
 
         is McpServerConfig.StreamableHTTPServer -> StreamableHttpClientTransport(
             url = config.url,
-            client = httpClient,
+            client = clientFor(config),
             requestBuilder = { appendResolvedHeaders(config) },
         )
+    }
+
+    /** 按 server 选择 HttpClient：配置了 mTLS 客户端证书则用独立 mTLS client（缓存），否则用默认共享 client */
+    private fun releaseMtlsClient(configId: Uuid) {
+        mtlsClients.remove(configId)?.close()
+    }
+
+    private fun clientFor(config: McpServerConfig): HttpClient {
+        val cert = config.commonOptions.clientCertificate
+        if (!cert.enabled || !cert.isConfigured) return httpClient
+        return mtlsClients.getOrPut(config.id) {
+            mtlsClientFactory.createHttpClient(cert) ?: httpClient
+        }
     }
 
     private fun HttpRequestBuilder.appendResolvedHeaders(config: McpServerConfig) {

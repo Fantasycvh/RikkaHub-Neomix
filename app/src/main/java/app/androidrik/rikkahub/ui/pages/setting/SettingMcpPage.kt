@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -866,6 +868,172 @@ private fun McpCommonOptionsConfigure(
                     Spacer(Modifier.width(4.dp))
                     Text(stringResource(R.string.setting_mcp_page_add_header))
                 }
+            }
+        }
+
+        HorizontalDivider()
+
+        // 客户端证书（mTLS，上游 #1687）
+        val cert = config.commonOptions.clientCertificate
+        val context = LocalContext.current
+        val certLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null) {
+                    val b64 = java.util.Base64.getEncoder().encodeToString(bytes)
+                    update(
+                        when (config) {
+                            is McpServerConfig.SseTransportServer -> config.copy(
+                                commonOptions = config.commonOptions.copy(
+                                    clientCertificate = cert.copy(enabled = true, certData = b64)
+                                )
+                            )
+                            is McpServerConfig.StreamableHTTPServer -> config.copy(
+                                commonOptions = config.commonOptions.copy(
+                                    clientCertificate = cert.copy(enabled = true, certData = b64)
+                                )
+                            )
+                        }
+                    )
+                }
+            }
+        }
+        val keyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null) {
+                    val b64 = java.util.Base64.getEncoder().encodeToString(bytes)
+                    update(
+                        when (config) {
+                            is McpServerConfig.SseTransportServer -> config.copy(
+                                commonOptions = config.commonOptions.copy(
+                                    clientCertificate = cert.copy(enabled = true, keyData = b64)
+                                )
+                            )
+                            is McpServerConfig.StreamableHTTPServer -> config.copy(
+                                commonOptions = config.commonOptions.copy(
+                                    clientCertificate = cert.copy(enabled = true, keyData = b64)
+                                )
+                            )
+                        }
+                    )
+                }
+            }
+        }
+        FormItem(
+            label = { Text(stringResource(R.string.setting_mcp_page_client_cert)) },
+            description = { Text(stringResource(R.string.setting_mcp_page_client_cert_desc)) }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(stringResource(R.string.setting_mcp_page_client_cert_enable))
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = cert.enabled,
+                        onCheckedChange = { enabled ->
+                            update(
+                                when (config) {
+                                    is McpServerConfig.SseTransportServer -> config.copy(
+                                        commonOptions = config.commonOptions.copy(
+                                            clientCertificate = cert.copy(enabled = enabled)
+                                        )
+                                    )
+                                    is McpServerConfig.StreamableHTTPServer -> config.copy(
+                                        commonOptions = config.commonOptions.copy(
+                                            clientCertificate = cert.copy(enabled = enabled)
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                    )
+                }
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    listOf("P12", "PEM").forEachIndexed { index, fmt ->
+                        SegmentedButton(
+                            shape = SegmentedButtonDefaults.itemShape(index, 2),
+                            onClick = {
+                                update(
+                                    when (config) {
+                                        is McpServerConfig.SseTransportServer -> config.copy(
+                                            commonOptions = config.commonOptions.copy(
+                                                clientCertificate = cert.copy(format = fmt)
+                                            )
+                                        )
+                                        is McpServerConfig.StreamableHTTPServer -> config.copy(
+                                            commonOptions = config.commonOptions.copy(
+                                                clientCertificate = cert.copy(format = fmt)
+                                            )
+                                        )
+                                    }
+                                )
+                            },
+                            selected = cert.format == fmt,
+                        ) {
+                            Text(fmt)
+                        }
+                    }
+                }
+                Button(
+                    onClick = { certLauncher.launch(arrayOf("*/*")) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (cert.certData.isNotBlank()) {
+                            stringResource(R.string.setting_mcp_page_client_cert_selected)
+                        } else {
+                            stringResource(R.string.setting_mcp_page_client_cert_choose)
+                        }
+                    )
+                }
+                if (cert.format == "PEM") {
+                    Button(
+                        onClick = { keyLauncher.launch(arrayOf("*/*")) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            if (cert.keyData.isNotBlank()) {
+                                stringResource(R.string.setting_mcp_page_client_key_selected)
+                            } else {
+                                stringResource(R.string.setting_mcp_page_client_key_choose)
+                            }
+                        )
+                    }
+                }
+                var passwordVisible by rememberSaveable { mutableStateOf(false) }
+                OutlinedTextField(
+                    value = cert.password,
+                    onValueChange = { pwd ->
+                        update(
+                            when (config) {
+                                is McpServerConfig.SseTransportServer -> config.copy(
+                                    commonOptions = config.commonOptions.copy(
+                                        clientCertificate = cert.copy(password = pwd)
+                                    )
+                                )
+                                is McpServerConfig.StreamableHTTPServer -> config.copy(
+                                    commonOptions = config.commonOptions.copy(
+                                        clientCertificate = cert.copy(password = pwd)
+                                    )
+                                )
+                            }
+                        )
+                    },
+                    label = { Text(stringResource(R.string.setting_mcp_page_client_cert_password)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                if (passwordVisible) HugeIcons.ViewOff else HugeIcons.View,
+                                contentDescription = null
+                            )
+                        }
+                    }
+                )
             }
         }
     }
