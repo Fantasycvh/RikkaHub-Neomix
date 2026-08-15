@@ -314,11 +314,7 @@ private fun ChatListNormal(
         }
 
         ChatFontProvider(displaySetting = settings.displaySetting) {
-            LazyColumn(
-                state = state,
-                contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
@@ -327,8 +323,16 @@ private fun ChatListNormal(
                             style = glassHazeStyle(),
                         ) else Modifier
                     )
-                    .hazeSource(state = hazeState)
                     .padding(top = innerPadding.calculateTopPadding()),
+            ) {
+            LazyColumn(
+                state = state,
+                contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(state = hazeState),
             ) {
             itemsIndexed(
                 items = conversation.messageNodes,
@@ -427,6 +431,7 @@ private fun ChatListNormal(
                         .fillMaxWidth()
                         .height(5.dp)
                 )
+            }
             }
             }
         }
