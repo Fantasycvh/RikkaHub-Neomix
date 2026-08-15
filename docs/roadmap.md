@@ -13,15 +13,17 @@
 
 ### 高价值（建议未来实现）
 
-#### 1. QuickJS 插件系统（核心）⭐
+#### 1. QuickJS 插件系统（~~核心~~ **确定不做**）🚫
 
-- **橘瓣实现**：完整插件框架 `plugin/` 目录——`PluginSandbox`（QuickJS 沙箱）、`PluginLoader`、`PluginManager`、`PluginUI`（声明式 UI + WebView）、`PluginToolProvider`（工具注册）、`PluginScanner`（发现）
-- **插件形态**：`manifest.json`（声明 tools/配置/模板）+ `main.js`（`exports.xxx` 实现工具），zip 打包导入
-- **沙箱内置 API**：同步 `fetch`（15s 超时）、`config`（用户配置）、`memoryBank`（语义检索/存取）、`TextEncoder/TextDecoder`、`btoa/atob`、`console`
-- **高级能力**：`config` 声明式配置项（string/password/number/boolean/select）、`promptTemplate` 系统提示、`hooks`（message_sent/message_received/daily_cron 事件）、声明式 UI（Compose Material 3 渲染）、`customPageWebView`
-- **我们的现状**：RikkaHub **已内置 QuickJS 引擎**（`RikkaHubApp.kt` 的 `QuickJSLoader.init()`），基础设施现成；现有扩展只有 Skill（markdown 技能）与 MCP，**没有"JS 插件 + 宿主工具注册"层**
-- **价值**：用户可用 JS 脚本扩展 AI 工具，比改代码灵活；与 Skill/MCP 互补（Skill=文档技能、MCP=外部服务、插件=任意 JS 逻辑）
-- **工程量**：中（沙箱封装 + manifest 解析 + 工具注册 + 管理页 UI + 内置示例插件）
+> **决策（2026-08-14）**：经架构评估后确定**不做**。理由：本 fork 已有 `eval_javascript`（AI 现场写 JS 执行，最灵活）、MCP（外部工具服务）、Skill（指令扩展）、Workspace（任意执行环境）四类机制，QuickJS 插件系统的核心增量（预打包复用 + 声明式 schema + 用户配置 + 可分发）仅对第三方生态/复杂配置有价值，对私有自用项目锦上添花、工程成本不匹配。详见「八、状态记录」。
+
+- ~~**橘瓣实现**~~：完整插件框架 `plugin/` 目录——`PluginSandbox`（QuickJS 沙箱）、`PluginLoader`、`PluginManager`、`PluginUI`（声明式 UI + WebView）、`PluginToolProvider`（工具注册）、`PluginScanner`（发现）
+- ~~**插件形态**~~：`manifest.json`（声明 tools/配置/模板）+ `main.js`（`exports.xxx` 实现工具），zip 打包导入
+- ~~**沙箱内置 API**~~：同步 `fetch`（15s 超时）、`config`（用户配置）、`memoryBank`（语义检索/存取）、`TextEncoder/TextDecoder`、`btoa/atob`、`console`
+- ~~**高级能力**~~：`config` 声明式配置项（string/password/number/boolean/select）、`promptTemplate` 系统提示、`hooks`（message_sent/message_received/daily_cron 事件）、声明式 UI（Compose Material 3 渲染）、`customPageWebView`
+- **我们的现状**：RikkaHub **已内置 QuickJS 引擎**（`RikkaHubApp.kt` 的 `QuickJSLoader.init()`）+ 已内置 `eval_javascript` 工具（`JavascriptTool.kt`，QuickJS 沙箱 + console + destroy 防泄漏）；另有 Skill（markdown 技能）、MCP（外部服务）、Workspace（Linux 沙箱）——**四类机制已覆盖插件系统的价值点**
+- ~~**价值**~~：~~用户可用 JS 脚本扩展 AI 工具，比改代码灵活~~ —— 已被 `eval_javascript` 现场执行覆盖（AI 需要时现写即可，省去打包/管理成本）
+- ~~**工程量**~~：中（沙箱封装 + manifest 解析 + 工具注册 + 管理页 UI + 内置示例插件）
 
 #### 2. 液态玻璃主题 / 三色定制
 
@@ -65,13 +67,13 @@
 
 | 优先级 | 项 | 理由 |
 |---|---|---|
-| P1 | QuickJS 插件系统 | 核心扩展能力，基础设施现成（QuickJS 已内置） |
-| P2 | 液态玻璃主题 / 三色定制 | 轻量、体验提升明显 |
-| P3 | 轻量个性化（气泡/输入框/字体） | 小改动零风险 |
-| P4 | 记忆语义检索（本地 HNSW） | 价值中等，工程较大 |
+| P1 | 液态玻璃主题 / 三色定制 | 轻量、体验提升明显 |
+| P2 | 轻量个性化（气泡/输入框/字体） | 小改动零风险 |
+| P3 | 记忆语义检索（本地 HNSW） | 价值中等，工程较大 |
+| — | QuickJS 插件系统 | **明确不做**（已有 eval_javascript / MCP / Skill / Workspace 四类机制覆盖） |
 | — | 生活感知/健康/云同步 | **明确不做** |
 
-**状态（2026-08-14）**：QuickJS 与液态玻璃经用户再次提出后评估——QuickJS 用途须界定为「AI 执行 JS 脚本」类（替代 WebView 渲染不可行，QuickJS 无 DOM）；液体玻璃建议仅局部浮层（全列表 blur 掉帧）。**两者暂不实现**，详见「八、状态记录」末条。
+**状态（2026-08-14）**：QuickJS 插件系统经架构评估后**确定不做**（详见「八、状态记录」；已有 eval_javascript/MCP/Skill/Workspace 覆盖）；液体玻璃建议仅局部浮层（全列表 blur 掉帧），**暂不实现**，详见「八、状态记录」。
 
 ---
 
@@ -385,3 +387,5 @@
 - 2026-08-14：**v2.4.8 吸收上游 2.4.9 四项**（versionCode 215）：① jlatexmath R8 整类 keep（原仅 keep Cyrillic/Greek 注册，release 下数学公式失效风险）；② OpenAI 流式 null 容错（choices/choices[0]/delta/message/tool_calls/function 显式 null 不再崩溃，as? 容错 + 无效 chunk 跳过——fork 无 StreamDecoder 文件，改在 ChatCompletionsAPI 内对应处）；③ ImgGenVM 图片生成/编辑用 findProvider 结果（修 Provider Override 未生效）；④ ReasoningLevel 新增 MAX(32_000,"max") + OpenAI effort 映射 + nvidia deepseek-v4 分支 + ReasoningPicker 3 处 + 6 语言 reasoning_max。**已正式发布**（tag 2.4.8 曾被上游同名 tag 抢占，已删 tag 重打指向本分支 commit 修复）。
 - 2026-08-14：**v2.4.8.1 数学渲染路线确认**（versionCode 216）：**数学公式确定走上游 jlatexmath（LatexText）**，放弃节点内置（MathText）方案——.44-.47 尝试已 revert，本次明确不再做；代码无 MathText 残留。发布为 2.4.8.1（无功能代码改动，路线确认版）。
 - 2026-08-14：**中转站「no effective pricing」排查定论**——用户报 gpt-5.6 通过中状站（<relay-host>，new-api 类）调用报 `Current group has no effective pricing for model gpt-5.6`，上游原版同配置可用。**全量对比** fork 与上游（原版 2.4.5 / master 2.4.9）：URL 拼接（apiEndpoint 无 /v1 重复）、请求体字段（model/stream_options/modalities/reasoning 各分支）、鉴权、Refer 头、默认推理级别（AUTO）**全部一致**。**定论：客户端无差异，根因在中转站侧（gpt-5.6 被撤下/key 组未配定价）**。README 增补「已知问题与排查记录」节。**无代码改动**。
+
+- 2026-08-14：**QuickJS 插件系统确定不做**——用户问「在 MCP 和 Skill 等的基础上，还有必要吗」，经评估确认**不做**：① 已有 `eval_javascript`（AI 现场写 JS 执行，最灵活）覆盖「任意 JS 逻辑」；② MCP 覆盖外部工具服务、Skill 覆盖指令扩展、Workspace 覆盖任意执行环境；③ QuickJS 插件系统增量（预打包复用 + 声明式 schema + 用户配置 + 可分发）只对第三方生态/复杂配置有价值，自用场景工程成本不匹配。README 后续规划移除该条目，roadmap「一、1」与优先级表标注明确不做。**无代码改动**。
