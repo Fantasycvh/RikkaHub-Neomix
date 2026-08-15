@@ -71,6 +71,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import app.androidrik.rikkahub.ui.components.ui.HeightClamp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalScrollCaptureInProgress
 import androidx.compose.ui.res.stringResource
@@ -346,6 +347,7 @@ private fun ChatListNormal(
                 items = conversation.messageNodes,
                 key = { index, item -> item.id },
             ) { index, node ->
+                HeightClamp(maxHeight = 2000.dp) {
                 Column {
                     ListSelectableItem(
                         key = node.id,
@@ -397,6 +399,7 @@ private fun ChatListNormal(
                             lastMessage = index == lastMessageIndex,
                         )
                     }
+                }
                 }
             }
 

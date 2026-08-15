@@ -639,5 +639,15 @@ private fun MessagePartsBlock(
 private const val MAX_RENDER_TEXT_LENGTH = 100_000
 private fun String.renderSafe(): String {
     if (length <= MAX_RENDER_TEXT_LENGTH) return this
-    return take(MAX_RENDER_TEXT_LENGTH) + "\n\n[内容过长，已截断显示前 ${MAX_RENDER_TEXT_LENGTH} 字符]"
+    // 按码点截断（UTF-16 length 会劈开 emoji/代理对/组合字符）
+    val sb = StringBuilder()
+    var i = 0
+    var count = 0
+    while (i < length && count < MAX_RENDER_TEXT_LENGTH) {
+        val cp = codePointAt(i)
+        sb.appendCodePoint(cp)
+        i += Character.charCount(cp)
+        count++
+    }
+    return sb.append("\n\n[内容过长，已截断显示前 ${MAX_RENDER_TEXT_LENGTH} 字符]").toString()
 }
