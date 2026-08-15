@@ -41,6 +41,8 @@ import app.androidrik.rikkahub.utils.exportImage
  * 与旧版（WebView + tikzjax wasm）不同：无 WebView/wasm/JS，渲染结果直接可矢量缩放；
  * SVG 字符串同时可作为导出（HTML 内嵌 / 位图）的中间产物。
  */
+private const val MAX_SVG_DIMENSION = 100_000f
+
 @Composable
 fun TikzJax(
     code: String,
@@ -77,8 +79,25 @@ fun TikzJax(
         } else {
             val parsed = runCatching { SVG.getFromString(svg) }
             parsed.onFailure { Log.w("TikzJax", "getFromString FAIL: ${it.message}", it) }
-            Log.i("TikzJax", "getFromString -> ${if (parsed.isSuccess) "OK" else "FAIL"}")
-            parsed.getOrNull()
+            val obj = parsed.getOrNull()
+            // 渲染前数值校验：documentWidth/Height 必须有限、为正、且不超合理上限。
+            // 真机曾出现 TikZ→SVG height=4.58e11（12 万公里画布），aspectRatio 趋 0 →
+            // Compose 高度 = width/ratio 溢出 Int.MAX → `Can't represent height of 2147483647` 崩溃。
+            // 超限直接拒收（降级显示，不进入布局）。
+            if (obj != null) {
+                val w = obj.documentWidth
+                val h = obj.documentHeight
+                if (!w.isFinite() || !h.isFinite() || w <= 0f || h <= 0f || w > MAX_SVG_DIMENSION || h > MAX_SVG_DIMENSION) {
+                    Log.w("TikzJax", "svg dimension abnormal, reject: w=$w h=$h")
+                    null
+                } else {
+                    Log.i("TikzJax", "getFromString -> OK (w=$w h=$h)")
+                    obj
+                }
+            } else {
+                Log.w("TikzJax", "getFromString -> FAIL")
+                null
+            }
         }
     }
     val aspectRatio = remember(svgObj) {

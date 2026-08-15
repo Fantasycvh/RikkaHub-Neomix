@@ -16,6 +16,12 @@ object TikzRenderer {
 
     private const val SCALE = 100.0
 
+    /** SVG 最大像素尺寸：防异常坐标（10^12 级）产生巨型画布导致布局溢出 */
+    private const val MAX_SVG_PIXELS = 1_000_000.0
+
+    /** plot 采样坐标绝对值上限：防巨大有限值（如 10^12）撑爆画布 */
+    private const val MAX_PLOT_ABS = 100_000.0
+
     /** 渲染 TikZ 源码为 SVG 字符串；失败时返回异常（runCatching 包装）。 */
     fun render(code: String, darkMode: Boolean = false): Result<String> = runCatching {
         val trimmed = code.trim()
@@ -755,6 +761,13 @@ object TikzRenderer {
         val width = ((maxX - minX) + 2 * PADDING) * SCALE
         val height = ((maxY - minY) + 2 * PADDING) * SCALE
 
+        // 尺寸上限校验：真机曾出现某个坐标被解析成巨大值（如 plot 表达式 10^12），
+        // 导致 SVG height≈4.58e11（12 万公里画布），AndroidSVG/Compose 布局溢出 Int.MAX 崩溃。
+        // 生成端直接拒绝，避免巨型 SVG 进入渲染/导出链路。
+        if (!width.isFinite() || !height.isFinite() || width > MAX_SVG_PIXELS || height > MAX_SVG_PIXELS) {
+            throw IllegalArgumentException("TikZ 图表尺寸异常 (${fmt(width)} x ${fmt(height)})，已拒绝渲染")
+        }
+
         // TikZ → SVG 坐标转换（y 翻转）
         fun sx(x: Double): Double = (x - minX + PADDING) * SCALE
         fun sy(y: Double): Double = (maxY - y + PADDING) * SCALE
@@ -1084,7 +1097,7 @@ object TikzRenderer {
         if (part == "x") return t
         val expr = Regex("""\{([^}]*)\}""").find(part)?.groupValues?.get(1) ?: return null
         val v = MathExpr.evaluate(expr.replace("\\x", "x"), t)
-        return if (v.isFinite()) v else null
+        return if (v.isFinite() && kotlin.math.abs(v) <= MAX_PLOT_ABS) v else null
     }
 
     /**

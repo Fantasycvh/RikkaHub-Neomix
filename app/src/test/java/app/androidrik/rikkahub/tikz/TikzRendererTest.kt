@@ -713,4 +713,24 @@ class TikzRendererTest {
         val qCount = svg.split(" C ").size - 1
         assertTrue("expected 3 chamfers, got $qCount", qCount >= 3)
     }
+
+    @Test
+    fun `plot with huge finite value is skipped to avoid giant canvas`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw plot (\x, {10^12});\end{tikzpicture}"""
+        )
+        // 巨大有限值（10^12）全部被跳过 → 可能无有效点（合理失败）；若成功则 SVG 绝不能是巨型画布
+        if (result.isSuccess) {
+            val svg = result.getOrThrow()
+            assertTrue("height must not be gigantic", !svg.contains("E1"))
+        }
+    }
+
+    @Test
+    fun `render rejects gigantic svg dimension`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\draw (0,0) -- (0,1000000000);\end{tikzpicture}"""
+        )
+        assertTrue("gigantic dimension should fail", result.isFailure)
+    }
 }
