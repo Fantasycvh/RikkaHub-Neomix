@@ -318,6 +318,22 @@ private fun ChatListNormal(
         }
 
         ChatFontProvider(displaySetting = settings.displaySetting) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = innerPadding.calculateTopPadding()),
+            ) {
+            // 液态玻璃层：固定尺寸兄弟节点，blur 只消费背景 source（glassHazeState）
+            if (settings.displaySetting.enableGlassTheme) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeBlur(
+                            input = HazeInput.Sources(glassHazeState),
+                            style = glassHazeStyle(),
+                        )
+                )
+            }
             LazyColumn(
                 state = state,
                 contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
@@ -325,14 +341,7 @@ private fun ChatListNormal(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (settings.displaySetting.enableGlassTheme) Modifier.hazeBlur(
-                            input = HazeInput.Sources(glassHazeState),
-                            style = glassHazeStyle(),
-                        ) else Modifier
-                    )
-                    .hazeSource(state = hazeState)
-                    .padding(top = innerPadding.calculateTopPadding()),
+                    .hazeSource(state = hazeState),
             ) {
             itemsIndexed(
                 items = conversation.messageNodes,
@@ -549,6 +558,7 @@ private fun ChatListNormal(
                     onClickSuggestion = onClickSuggestion,
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
+            }
             }
         }
     }
