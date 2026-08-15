@@ -128,6 +128,7 @@ fun ChatList(
     previewMode: Boolean,
     settings: Settings,
     hazeState: HazeState,
+    glassHazeState: HazeState,
     errors: List<ChatError> = emptyList(),
     onDismissError: (Uuid) -> Unit = {},
     onClearAllErrors: () -> Unit = {},
@@ -171,6 +172,7 @@ fun ChatList(
                 processingStatus = processingStatus,
                 settings = settings,
                 hazeState = hazeState,
+                glassHazeState = glassHazeState,
                 errors = errors,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
@@ -202,6 +204,7 @@ private fun ChatListNormal(
     processingStatus: String? = null,
     settings: Settings,
     hazeState: HazeState,
+    glassHazeState: HazeState,
     errors: List<ChatError>,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
@@ -317,14 +320,19 @@ private fun ChatListNormal(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (settings.displaySetting.enableGlassTheme) Modifier.hazeBlur(
-                            input = HazeInput.Sources(hazeState),
-                            style = glassHazeStyle(),
-                        ) else Modifier
-                    )
                     .padding(top = innerPadding.calculateTopPadding()),
             ) {
+            // 液态玻璃层：固定尺寸兄弟节点，blur 只消费背景 source（glassHazeState），避免自引用/无限测量
+            if (settings.displaySetting.enableGlassTheme) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeBlur(
+                            input = HazeInput.Sources(glassHazeState),
+                            style = glassHazeStyle(),
+                        )
+                )
+            }
             LazyColumn(
                 state = state,
                 contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
@@ -642,12 +650,6 @@ private fun ChatListPreview(
         modifier = Modifier
             .padding(top = innerPadding.calculateTopPadding())
             .fillMaxSize()
-            .then(
-                if (settings.displaySetting.enableGlassTheme) Modifier.hazeBlur(
-                    input = HazeInput.Sources(hazeState),
-                    style = glassHazeStyle(),
-                ) else Modifier
-            )
             .hazeSource(state = hazeState),
     ) {
         // 搜索框
