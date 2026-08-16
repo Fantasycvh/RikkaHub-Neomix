@@ -144,6 +144,37 @@
 
 ---
 
+## 三.5、提供商多 key 故障转移（评估，待立项）
+
+**需求**：LLM 提供商（OpenAI/Claude/Google 等）配置多个 API key，请求遇 key 失效（401/403/429）自动切换下一个重试。
+
+### 现状（2026-08-16 核查）
+
+- **多 key 轮换已存在**：`KeyRoulette.next(apiKey, providerId)` 已接入全部 Provider（OpenAI/Claude/Google 请求头 `Bearer ${keyRoulette.next(...)}`），`apiKey` 文本框支持填分隔多 key（`[\s,]+` 拆分，随机/LRU）
+- **无失败转移**：401/403/429 不会换 key 重试
+- **用户实际未配置多 key**：日常提供商均为单 key，无现有多 key 数据 → 迁移成本几乎为零
+
+### 方案（用户倾向：每 key 一输入框）
+
+- **数据模型**：新增 `apiKeys: List<String> = emptyList()`，旧 `apiKey: String` 保留；读取 `keys = if (apiKeys.isNotEmpty()) apiKeys else listOf(apiKey)`（单 key 无缝）
+- **UI**：配置页 apiKey 单框改为「多 key 输入区」——每个 key 一个输入框，支持添加/删除；多 key 才显示完整列表
+- **轮换/失败转移**：直接操作 `apiKeys` 列表（`keys[i]` 切换），无需分隔符解析；401/403/429 换下一个 key 重试，网络/5xx 不换（复用搜索 `withSearchKeyFailover` 思路）
+- **不做迁移脚本**：无现有多 key 数据
+- **难度**：中（UI 多输入框 + 列表模型 + 失败转移，重点在流式重试）
+
+### 范围建议（若立项）
+
+1. UI 多 key 输入区（含「支持多 key」提示）
+2. 统一 key 错误异常（401/403/429 → `ProviderKeyException`）
+3. 失败转移：非流式 `generateText` 低难度；主聊天流式 `streamText` 中难度（`retryWhen` 重跑 SSE）
+4. 标题/建议/压缩等非流式生成一并接入
+
+### 状态
+
+- 2026-08-16：评估完成（可行性高，难度中；轮换已有，仅缺失败转移 + UI 多输入框）。**用户待时间安排后立项，暂不实现**。
+
+---
+
 ## 四、本地 OCR（本地优先 + AI 兜底）
 
 **需求**：图片发给非视觉模型时由 AI OCR 识图（`OcrTransformer`）；纯文本模型或网络失败时 OCR 会**静默出错/空结果**，且图片出设备（隐私敏感）。
@@ -389,3 +420,5 @@
 - 2026-08-14：**中转站「no effective pricing」排查定论**——用户报 gpt-5.6 通过中状站（<relay-host>，new-api 类）调用报 `Current group has no effective pricing for model gpt-5.6`，上游原版同配置可用。**全量对比** fork 与上游（原版 2.4.5 / master 2.4.9）：URL 拼接（apiEndpoint 无 /v1 重复）、请求体字段（model/stream_options/modalities/reasoning 各分支）、鉴权、Refer 头、默认推理级别（AUTO）**全部一致**。**定论：客户端无差异，根因在中转站侧（gpt-5.6 被撤下/key 组未配定价）**。README 增补「已知问题与排查记录」节。**无代码改动**。
 
 - 2026-08-14：**QuickJS 插件系统确定不做**——用户问「在 MCP 和 Skill 等的基础上，还有必要吗」，经评估确认**不做**：① 已有 `eval_javascript`（AI 现场写 JS 执行，最灵活）覆盖「任意 JS 逻辑」；② MCP 覆盖外部工具服务、Skill 覆盖指令扩展、Workspace 覆盖任意执行环境；③ QuickJS 插件系统增量（预打包复用 + 声明式 schema + 用户配置 + 可分发）只对第三方生态/复杂配置有价值，自用场景工程成本不匹配。README 后续规划移除该条目，roadmap「一、1」与优先级表标注明确不做。**无代码改动**。
+
+- 2026-08-16：**提供商多 key 故障转移评估（待立项）**——核查确认多 key 轮换已存在（KeyRoulette 已接入全部 Provider，apiKey 支持分隔多 key），缺失败转移（401/403/429 不换 key）。用户方案：每 key 一输入框（`apiKeys: List`，旧 `apiKey` 保留兼容），轮换=切换 key 配置，失败转移直接操作列表。用户当前未配多 key（迁移成本零）。难度中（UI 多输入框 + 列表模型 + 流式重试）。详见「三.5」。**暂不实现，待用户安排时间**。
