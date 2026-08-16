@@ -10,6 +10,7 @@ import me.rerere.hugeicons.stroke.Refresh03
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -54,6 +56,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.key
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import sh.calvin.reorderable.ReorderableColumn
+import sh.calvin.reorderable.ReorderableItem
+import me.rerere.hugeicons.stroke.DragDropVertical
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -513,13 +522,43 @@ private fun AssistantPromptContent(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.padding(horizontal = 8.dp)
             ) {
-                assistant.regexes.fastForEachIndexed { index, regex ->
-                    AssistantRegexCard(
-                        regex = regex,
-                        onUpdate = onUpdate,
-                        assistant = assistant,
-                        index = index
-                    )
+                val haptic = LocalHapticFeedback.current
+                ReorderableColumn(
+                    list = assistant.regexes,
+                    onSettle = { fromIndex, toIndex ->
+                        val regexes = assistant.regexes.toMutableList().apply {
+                            add(toIndex, removeAt(fromIndex))
+                        }
+                        onUpdate(assistant.copy(regexes = regexes))
+                    },
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) { index, regex, isDragging ->
+                    key(regex.id) {
+                        ReorderableItem(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            AssistantRegexCard(
+                                regex = regex,
+                                onUpdate = onUpdate,
+                                assistant = assistant,
+                                index = index,
+                                modifier = Modifier.scale(if (isDragging) 0.95f else 1f),
+                                dragHandleModifier = Modifier
+                                    .size(48.dp)
+                                    .longPressDraggableHandle(
+                                        enabled = assistant.regexes.size > 1,
+                                        onDragStarted = {
+                                            haptic.performHapticFeedback(
+                                                HapticFeedbackType.GestureThresholdActivate
+                                            )
+                                        },
+                                        onDragStopped = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                        }
+                                    )
+                            )
+                        }
+                    }
                 }
                 Button(
                     onClick = {
@@ -545,13 +584,15 @@ private fun AssistantRegexCard(
     regex: AssistantRegex,
     onUpdate: (Assistant) -> Unit,
     assistant: Assistant,
-    index: Int
+    index: Int,
+    modifier: Modifier = Modifier,
+    dragHandleModifier: Modifier = Modifier,
 ) {
     var expanded by remember {
         mutableStateOf(false)
     }
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
@@ -562,6 +603,15 @@ private fun AssistantRegexCard(
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Box(
+                    modifier = dragHandleModifier,
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.DragDropVertical,
+                        contentDescription = null,
+                    )
+                }
                 Text(
                     text = regex.name,
                     maxLines = 1,
