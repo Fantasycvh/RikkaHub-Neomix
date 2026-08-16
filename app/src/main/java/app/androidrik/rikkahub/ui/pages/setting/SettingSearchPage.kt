@@ -271,6 +271,7 @@ private fun AddProviderDialog(
                         SearchServiceOptions.TinyfishOptions::class -> SearchServiceOptions.TinyfishOptions()
                         SearchServiceOptions.SerperOptions::class -> SearchServiceOptions.SerperOptions()
                         SearchServiceOptions.CustomJsOptions::class -> SearchServiceOptions.CustomJsOptions()
+                        SearchServiceOptions.DoubaoOptions::class -> SearchServiceOptions.DoubaoOptions()
                         else -> error("Unknown search service type")
                     }
                     onConfirm(instance)
