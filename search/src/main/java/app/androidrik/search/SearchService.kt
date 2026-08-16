@@ -350,6 +350,12 @@ function search(query, resultSize) {
     }
 }
 
+/**
+ * 豆包搜索模式：
+ * - GLOBAL（global_search）：全球搜索——精选文档，上限 20 条（DocCount），带图片数控制（MaxImageCountPerDoc），适合综合摘要/快速答案
+ * - CUSTOM（web_search）：自定义 Web 搜索——常规网页搜索，上限 50 条（Count），可关查询重写（QueryControl.QueryRewrite=false），适合需要更多候选/完整网页列表
+ * 日常默认 CUSTOM（更通用），需要精炼带图摘要可切 GLOBAL。
+ */
 @Serializable
 enum class DoubaoSearchMode {
     @SerialName("global")
