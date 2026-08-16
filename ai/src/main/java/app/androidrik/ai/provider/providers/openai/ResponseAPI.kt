@@ -328,24 +328,29 @@ class ResponseAPI(
                                 lastEncryptedContent = reasoningMetadata?.encryptedContent
                                 toolEmittedSinceReasoning = false
                                 // 输出 reasoning item（content 为规范必填字段，summary 为摘要）
+                                val encryptedContent = reasoningMetadata?.encryptedContent
                                 add(buildJsonObject {
                                     put("type", "reasoning")
                                     reasoningMetadata?.reasoningId?.let {
                                         put("id", it)
                                     }
-                                    put("content", buildJsonArray {
-                                        add(buildJsonObject {
-                                            put("type", "reasoning_text")
-                                            put("text", part.reasoning)
+                                    // 若推理内容已加密（encryptedContent 存在），只回传 encrypted_content，
+                                    // 不回放明文 content/summary——避免把历史明文推理重放回上下文（上游 #1719）
+                                    if (encryptedContent == null) {
+                                        put("content", buildJsonArray {
+                                            add(buildJsonObject {
+                                                put("type", "reasoning_text")
+                                                put("text", part.reasoning)
+                                            })
                                         })
-                                    })
-                                    put("summary", buildJsonArray {
-                                        add(buildJsonObject {
-                                            put("type", "summary_text")
-                                            put("text", part.reasoning)
+                                        put("summary", buildJsonArray {
+                                            add(buildJsonObject {
+                                                put("type", "summary_text")
+                                                put("text", part.reasoning)
+                                            })
                                         })
-                                    })
-                                    reasoningMetadata?.encryptedContent?.let {
+                                    }
+                                    encryptedContent?.let {
                                         put("encrypted_content", it)
                                     }
                                 })
@@ -383,18 +388,21 @@ class ResponseAPI(
                             add(buildJsonObject {
                                 put("type", "reasoning")
                                 lastReasoningId?.let { put("id", it) }
-                                put("content", buildJsonArray {
-                                    add(buildJsonObject {
-                                        put("type", "reasoning_text")
-                                        put("text", text)
+                                // 与主 reasoning item 一致：已加密时不回放明文 content/summary（#1719）
+                                if (lastEncryptedContent == null) {
+                                    put("content", buildJsonArray {
+                                        add(buildJsonObject {
+                                            put("type", "reasoning_text")
+                                            put("text", text)
+                                        })
                                     })
-                                })
-                                put("summary", buildJsonArray {
-                                    add(buildJsonObject {
-                                        put("type", "summary_text")
-                                        put("text", text)
+                                    put("summary", buildJsonArray {
+                                        add(buildJsonObject {
+                                            put("type", "summary_text")
+                                            put("text", text)
+                                        })
                                     })
-                                })
+                                }
                                 lastEncryptedContent?.let { put("encrypted_content", it) }
                             })
                             toolEmittedSinceReasoning = false
