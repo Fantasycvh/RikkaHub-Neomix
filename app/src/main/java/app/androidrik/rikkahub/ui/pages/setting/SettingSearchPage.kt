@@ -65,7 +65,6 @@ import app.androidrik.search.SearchServiceOptions
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import kotlin.reflect.full.primaryConstructor
 
 @Composable
 fun SettingSearchPage(vm: SettingVM = koinViewModel()) {
@@ -251,7 +250,29 @@ private fun AddProviderDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val instance = selectedType.primaryConstructor!!.callBy(mapOf())
+                    // 不用反射（R8 混淆下 kotlin-reflect 的 primaryConstructor 失效 → release 崩溃），
+                    // 显式按类型创建默认实例
+                    val instance: SearchServiceOptions = when (selectedType) {
+                        SearchServiceOptions.BingLocalOptions::class -> SearchServiceOptions.BingLocalOptions()
+                        SearchServiceOptions.RikkaHubOptions::class -> SearchServiceOptions.RikkaHubOptions()
+                        SearchServiceOptions.ZhipuOptions::class -> SearchServiceOptions.ZhipuOptions()
+                        SearchServiceOptions.TavilyOptions::class -> SearchServiceOptions.TavilyOptions()
+                        SearchServiceOptions.ExaOptions::class -> SearchServiceOptions.ExaOptions()
+                        SearchServiceOptions.SearXNGOptions::class -> SearchServiceOptions.SearXNGOptions()
+                        SearchServiceOptions.LinkUpOptions::class -> SearchServiceOptions.LinkUpOptions()
+                        SearchServiceOptions.BraveOptions::class -> SearchServiceOptions.BraveOptions()
+                        SearchServiceOptions.MetasoOptions::class -> SearchServiceOptions.MetasoOptions()
+                        SearchServiceOptions.OllamaOptions::class -> SearchServiceOptions.OllamaOptions()
+                        SearchServiceOptions.PerplexityOptions::class -> SearchServiceOptions.PerplexityOptions()
+                        SearchServiceOptions.FirecrawlOptions::class -> SearchServiceOptions.FirecrawlOptions()
+                        SearchServiceOptions.JinaOptions::class -> SearchServiceOptions.JinaOptions()
+                        SearchServiceOptions.BochaOptions::class -> SearchServiceOptions.BochaOptions()
+                        SearchServiceOptions.GrokOptions::class -> SearchServiceOptions.GrokOptions()
+                        SearchServiceOptions.TinyfishOptions::class -> SearchServiceOptions.TinyfishOptions()
+                        SearchServiceOptions.SerperOptions::class -> SearchServiceOptions.SerperOptions()
+                        SearchServiceOptions.CustomJsOptions::class -> SearchServiceOptions.CustomJsOptions()
+                        else -> error("Unknown search service type")
+                    }
                     onConfirm(instance)
                 }
             ) {
