@@ -14,13 +14,13 @@ RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，�
 
 ## 📥 下载
 
-🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.6`）
+🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.10.11`）
 
 > 本仓库为私有测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**。
 
 ## 📌 项目简介
 
-RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5`，含已吸收的 `2.4.8` 修复）的 fork，
+RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5`，含已吸收的 `2.4.8`-`2.4.10` 修复与功能）的 fork，
 包名 `app.androidrik.rikkahub`，应用名 **RikkaHub Plus**。
 
 - **自 v2.4.6 起上游选择性跟进**：`master` 仍可同步上游（ff-only 镜像机制保留），但上游修复/功能**选择性吸收**——不再全部跟进，仅按需人工评估有价值的部分
@@ -39,9 +39,13 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 📂 **远端备份目录区分** | 远端备份默认目录改为 `rikkahub_plus_backups`，与上游备份互不混淆 |
 | 🧹 **移除上游营销功能** | 移除应用内更新检查、赞助入口/捐赠页/启动次数赞助弹窗、导出图片中的 `rikka-ai.com` 品牌水印 |
 | 🧮 **TikZ 图表渲染** | **纯 Kotlin TikZ 渲染器**（`TikzRenderer`）→ SVG 字符串 → AndroidSVG 矢量绘制（无 WebView/wasm）：`\node`/`\draw`/`-- cycle` 闭合/`arc` 圆弧/`\fill`·`\filldraw`/`grid` 网格/`plot` 函数图像（MathExpr 表达式求值 + NaN 断开）、rounded corners 几何倒角、tikzcd 交换图、箭头/贝塞尔/极坐标/命名节点/中文文本、深色模式；`$$...$$` 内嵌 + ```tikz 围栏双触发；导出 HTML 内嵌 `<svg>` 矢量；系统提示词引导模型输出闭合 `$$` 格式 |
+| 🧩 **动态添加 Skill（#1031）** | `install_skill` / `save_skill` AI 工具：从 GitHub 安装 Skill / 把对话经验保存为技能（SkillInstaller 共享类，SkillsVM 与 AI 工具共用） |
+| 🔐 **MCP mTLS 客户端证书（#1687）** | MCP 服务支持上传客户端证书（P12/PEM + 密码），OkHttp SSLContext 双向认证；设置页完整 UI |
+| 💎 **毛玻璃三开关** | 输入栏 / 列表·背景 / 顶栏 模糊各自独立开关（enableBlurEffect / enableGlassTheme / enableTopBarBlur），兄弟层架构无自引用 |
+| 🛡️ **TikZ 崩溃防线** | 三层防线（TikzJax 渲染前尺寸校验 / renderSvg 生成端上限 / plot 采样值上限）+ 高度哨兵 HeightClamp + 文本按码点截断——杜绝巨型 SVG（height 4.58e11）导致 Compose 布局溢出崩溃 |
 | 🐛 **turbo bug 审计与修复** | 对照 rikkahub-turbo 48 项 bug 清单全量核查（`docs/references/turbo-bugs-audit.md`），分多批修复：崩溃（深递归 SOE 兜底、base64 容错、TTS 悬浮窗无权限守卫）、数据丢失（压缩覆盖新消息合并、附件延迟清理、设置并发 Mutex）、资源防护（文档/记忆/消息/网络体积上限、QuickJS destroy）、功能正确性（WebDAV 路径编码、分享 EXTRA_STREAM 兼容、MCP 名校验） |
 | 💬 **对话分享/导出** | 列表页长按「分享对话」+ 聊天内顶栏导出双入口，Markdown / 图片 PNG 两形态（系统分享 ACTION_SEND），支持版本范围可选 |
-| 🔧 **上游吸收** | 已吸收上游 `2.4.8` 的「R8 保留 `@Serializable` 类」修复（防添加部分搜索商时反序列化崩溃）；v2.4.6 起与上游分离，后续按需人工吸收 |
+| 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10`：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721） |
 
 ## 🎨 核心功能（继承上游）
 
@@ -53,7 +57,7 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 - 🛠️ MCP 支持
 - 📝 Markdown 渲染（代码高亮、LaTeX 公式、表格、Mermaid、TikZ 图表）
 - 🪾 消息分支
-- 🔍 搜索能力（Exa、Tavily、智谱、LinkUp、Brave、Perplexity 等）
+- 🔍 搜索能力（Exa、Tavily、智谱、豆包、LinkUp、Brave、Perplexity 等）
 - 🧩 提示词变量（模型名、时间等）
 - 🤳 提供商配置二维码导出 / 导入
 - 🤖 Agent 自定义
@@ -76,9 +80,9 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 
 本项目维护一份[规划文档](docs/roadmap.md)，记录已调研的未来方向与可行性分析。当前方向：
 
-- 💎 **液态玻璃主题 / 三色定制**：全局背景 / 用户气泡 / 重点色 三色映射 + 玻璃质感——建议仅局部浮层（全列表 blur 掉帧风险）
-- 🎨 **轻量个性化**：气泡透明度、输入框背景、字体包导入
-- 🔑 **搜索多 key 故障转移**：搜索服务多 key，遇 401/403/429 自动切换重试
+- 💎 **三色定制**：毛玻璃已实现（输入栏/列表/顶栏独立开关），「全局背景 / 用户气泡 / 重点色 三色映射」定制仍未做
+- 🎨 **轻量个性化**：气泡透明度已有，输入框背景 / 字体包导入 / 头像框 未做
+- 🔑 **搜索 / 提供商多 key 故障转移**：多 key **轮换（LRU）已有**，401/403/429 失败自动换 key 重试未做（roadmap 三 / 三.5）
 - 👁️ **本地 OCR**：ML Kit 本地识别优先 + AI 兜底（图片不出设备）
 
 > 规划明确**不做**：生活感知类能力（定位、短信、App 使用轨迹、健康数据等）、QuickJS 插件系统（已有 `eval_javascript` / MCP / Skill / Workspace 四类机制覆盖），保持隐私优先定位。
