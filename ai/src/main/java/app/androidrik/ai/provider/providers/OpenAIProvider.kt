@@ -34,7 +34,11 @@ import app.androidrik.ai.util.json
 import app.androidrik.ai.util.mergeCustomBody
 import app.androidrik.ai.util.toHeaders
 import app.androidrik.common.http.await
+import app.androidrik.common.http.evaluateJsonExpr
 import app.androidrik.common.http.getByKey
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import okhttp3.MultipartBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -87,30 +91,79 @@ class OpenAIProvider(
         }
 
     override suspend fun getBalance(providerSetting: ProviderSetting.OpenAI): String = withContext(Dispatchers.IO) {
+        val balanceOption = providerSetting.balanceOption
         val key = keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())
-        val url = if (providerSetting.balanceOption.apiPath.startsWith("http")) {
-            providerSetting.balanceOption.apiPath
-        } else {
-            "${providerSetting.baseUrl}${providerSetting.balanceOption.apiPath}"
-        }
-        val request = Request.Builder()
-            .url(url)
-            .addHeader("Authorization", "Bearer $key")
-            .get()
-            .build()
-        val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
-        if (!response.isSuccessful) {
-            error("Failed to get balance: ${response.code} ${response.body?.string()}")
-        }
 
-        val bodyStr = response.body.string()
-        val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
-        val value = bodyJson.getByKey(providerSetting.balanceOption.resultPath)
-        val digitalValue = value.toFloatOrNull()
-        if(digitalValue != null) {
-            "%.2f".format(digitalValue)
+        if (balanceOption.sources.isEmpty()) {
+            // 旧逻辑：单接口模式
+            val url = if (balanceOption.apiPath.startsWith("http")) {
+                balanceOption.apiPath
+            } else {
+                "${providerSetting.baseUrl}${balanceOption.apiPath}"
+            }
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer $key")
+                .get()
+                .build()
+            val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
+            if (!response.isSuccessful) {
+                error("Failed to get balance: ${response.code} ${response.body?.string()}")
+            }
+
+            val bodyStr = response.body.string()
+            val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
+            val value = bodyJson.getByKey(balanceOption.resultPath)
+            val digitalValue = value.toFloatOrNull()
+            if (digitalValue != null) {
+                "%.2f".format(digitalValue)
+            } else {
+                value
+            }
         } else {
-            value
+            // 新逻辑：多接口模式 — 并行调用各 source，合并为单一 JSON，求值表达式
+            val merged = coroutineScope {
+                val results = balanceOption.sources.map { source ->
+                    async {
+                        val url = if (source.apiPath.startsWith("http")) {
+                            source.apiPath
+                        } else {
+                            "${providerSetting.baseUrl}${source.apiPath}"
+                        }
+                        val request = Request.Builder()
+                            .url(url)
+                            .addHeader("Authorization", "Bearer $key")
+                            .get()
+                            .build()
+                        val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
+                        if (!response.isSuccessful) {
+                            error("Failed to get balance source '${source.name}': ${response.code} ${response.body?.string()}")
+                        }
+                        val bodyStr = response.body.string()
+                        val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
+                        val rawValue = bodyJson.getByKey(source.resultPath)
+                        source.name to rawValue
+                    }
+                }
+                val pairs = results.awaitAll()
+                buildJsonObject {
+                    pairs.forEach { (name, rawValue) ->
+                        val num = rawValue.toFloatOrNull()
+                        if (num != null) {
+                            put(name, JsonPrimitive(num))
+                        } else {
+                            put(name, JsonPrimitive(rawValue))
+                        }
+                    }
+                }
+            }
+            val result = evaluateJsonExpr(balanceOption.expression, merged)
+            val digitalValue = result.toFloatOrNull()
+            if (digitalValue != null) {
+                "%.2f".format(digitalValue)
+            } else {
+                result
+            }
         }
     }
 

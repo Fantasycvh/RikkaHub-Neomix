@@ -83,21 +83,47 @@ fun SettingProviderBalanceOption(
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(
-                    value = balanceOption.apiPath,
-                    onValueChange = { onEdit(balanceOption.copy(apiPath = it)) },
-                    label = { Text(stringResource(R.string.setting_provider_page_balance_api_path)) },
-                    isError = !balanceOption.apiPath.matches(ApiPathRegex),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = balanceOption.resultPath,
-                    onValueChange = { onEdit(balanceOption.copy(resultPath = it)) },
-                    label = { Text(stringResource(R.string.setting_provider_page_balance_json_key)) },
-                    isError = !isJsonExprValid(balanceOption.resultPath),
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono)
-                )
+                if (balanceOption.sources.isNotEmpty()) {
+                    // 多接口模式：显示数据源摘要 + 计算表达式
+                    Text(
+                        text = stringResource(R.string.setting_provider_page_balance_sources_summary),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    balanceOption.sources.forEach { source ->
+                        Text(
+                            text = "${source.name} ← ${source.apiPath} → ${source.resultPath}",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    OutlinedTextField(
+                        value = balanceOption.expression,
+                        onValueChange = { onEdit(balanceOption.copy(expression = it)) },
+                        label = { Text(stringResource(R.string.setting_provider_page_balance_expression)) },
+                        isError = !isJsonExprValid(balanceOption.expression),
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono)
+                    )
+                } else {
+                    // 单接口模式：原有字段
+                    OutlinedTextField(
+                        value = balanceOption.apiPath,
+                        onValueChange = { onEdit(balanceOption.copy(apiPath = it)) },
+                        label = { Text(stringResource(R.string.setting_provider_page_balance_api_path)) },
+                        isError = !balanceOption.apiPath.matches(ApiPathRegex),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = balanceOption.resultPath,
+                        onValueChange = { onEdit(balanceOption.copy(resultPath = it)) },
+                        label = { Text(stringResource(R.string.setting_provider_page_balance_json_key)) },
+                        isError = !isJsonExprValid(balanceOption.resultPath),
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono)
+                    )
+                }
                 IconButton(
                     onClick = {
                         val defaultProvider = DEFAULT_PROVIDERS.find { it.id == provider.id }

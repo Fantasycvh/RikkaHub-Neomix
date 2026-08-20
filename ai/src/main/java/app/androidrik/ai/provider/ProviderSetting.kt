@@ -25,8 +25,17 @@ sealed class ProviderProxy {
 @Serializable
 data class BalanceOption(
     val enabled: Boolean = false, // 是否开启余额获取功能
-    val apiPath: String = "/credits", // 余额获取API路径
-    val resultPath: String = "data.total_usage", // 余额获取JSON路径
+    val apiPath: String = "/credits", // 余额获取API路径（单接口模式）
+    val resultPath: String = "data.total_usage", // 余额获取JSON路径（单接口模式）
+    val sources: List<BalanceSource> = emptyList(), // 多接口模式：各数据源
+    val expression: String = "", // 多接口模式：最终表达式，如 "quota - usage"
+)
+
+@Serializable
+data class BalanceSource(
+    val name: String, // 变量名，供 expression 引用（如 "quota"、"usage"）
+    val apiPath: String, // API 路径（如 "/api/user/self"）
+    val resultPath: String, // JSON 取值路径（如 "quota"）
 )
 
 @Serializable

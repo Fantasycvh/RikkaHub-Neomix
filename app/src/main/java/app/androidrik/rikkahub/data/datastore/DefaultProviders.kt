@@ -9,6 +9,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import app.androidrik.ai.provider.BalanceOption
+import app.androidrik.ai.provider.BalanceSource
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
@@ -308,5 +309,22 @@ val DEFAULT_PROVIDERS = listOf(
                 }
             )
         }
+    ),
+    // New API 系列（中转站，典型接口如 one-api / new-api）
+    ProviderSetting.OpenAI(
+        id = Uuid.parse("7b3e9f1a-2c4d-5e6f-8a9b-0c1d2e3f4a5b"),
+        name = "New API",
+        baseUrl = "https://your-api.com/v1",
+        apiKey = "",
+        enabled = false,
+        builtIn = true,
+        balanceOption = BalanceOption(
+            enabled = true,
+            sources = listOf(
+                BalanceSource("quota", "/api/user/self", "quota"),
+                BalanceSource("usage", "/dashboard/billing/usage", "total_usage"),
+            ),
+            expression = "quota - usage",
+        ),
     ),
 )
