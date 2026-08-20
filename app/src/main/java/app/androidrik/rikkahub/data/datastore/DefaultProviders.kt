@@ -9,7 +9,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import app.androidrik.ai.provider.BalanceOption
-import app.androidrik.ai.provider.BalanceSource
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
@@ -311,6 +310,9 @@ val DEFAULT_PROVIDERS = listOf(
         }
     ),
     // New API 系列（中转站，典型接口如 one-api / new-api）
+    // 余额接口：/api/usage/token/ 直接用 API Key 查询当前 token 额度，返回
+    // total_granted（总充值）/ total_used（已使用）/ total_available（可用）。
+    // 站点按 1 USD = 500000 quota 折算；若某站点比例不同，可在设置里改 resultPath。
     ProviderSetting.OpenAI(
         id = Uuid.parse("7b3e9f1a-2c4d-5e6f-8a9b-0c1d2e3f4a5b"),
         name = "New API",
@@ -320,11 +322,8 @@ val DEFAULT_PROVIDERS = listOf(
         builtIn = true,
         balanceOption = BalanceOption(
             enabled = true,
-            sources = listOf(
-                BalanceSource("quota", "/api/user/self", "quota"),
-                BalanceSource("usage", "/dashboard/billing/usage", "total_usage"),
-            ),
-            expression = "quota - usage",
+            apiPath = "/api/usage/token/",
+            resultPath = "(data.total_granted - data.total_used) / 500000",
         ),
     ),
 )

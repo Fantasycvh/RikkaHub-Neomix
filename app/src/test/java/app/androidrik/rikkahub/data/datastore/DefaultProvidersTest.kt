@@ -23,4 +23,19 @@ class DefaultProvidersTest {
         assertEquals("/credits", provider.balanceOption.apiPath)
         assertEquals("balance", provider.balanceOption.resultPath)
     }
+
+    @Test
+    fun `default new api provider should use token usage endpoint for balance`() {
+        val newApiProviders = DEFAULT_PROVIDERS
+            .filterIsInstance<ProviderSetting.OpenAI>()
+            .filter { it.name == "New API" }
+
+        assertEquals(1, newApiProviders.size)
+
+        val provider = newApiProviders.single()
+        assertTrue(provider.balanceOption.enabled)
+        assertEquals("/api/usage/token/", provider.balanceOption.apiPath)
+        assertEquals("(data.total_granted - data.total_used) / 500000", provider.balanceOption.resultPath)
+        assertTrue(provider.balanceOption.sources.isEmpty())
+    }
 }

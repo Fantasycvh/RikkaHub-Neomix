@@ -1,7 +1,9 @@
 # New API 真实余额计算——方案设计
 
-> 状态：**待启动**（2026-08-17 记录，用户安排时间后立项）
+> 状态：**已实现**（2026-08-17 记录，2026-08-20 改用 `/api/usage/token/` 单接口方案）
 > 关联：`BalanceOption`（`ai/.../provider/ProviderSetting.kt:26`）、`evaluateJsonExpr`（`common/.../http/JsonExpression.kt:58`）
+>
+> 更新（2026-08-20）：实际验证发现更优接口为 `GET /api/usage/token/` —— 直接用 API Key 作为 `Authorization: Bearer`，返回 `total_granted`（总充值）、`total_used`（已使用）、`total_available`（可用），单接口即可完成 `总充值 − 已使用`，无需再调 `/api/user/self`（该接口要求用户系统令牌，普通 `sk-` Key 不可用）。默认 New API 供应商已改为该接口（见 `DefaultProviders.kt`）。
 
 ---
 
@@ -15,9 +17,10 @@ New API 的「真实余额」需要计算：**真实余额 = 总充值 − 已�
 
 | 所需数据 | 接口 | 字段 |
 |---|---|---|
-| 总充值额度 | `/api/user/self` | `quota` |
-| 已使用额度 | `/dashboard/billing/usage` | `total_usage` |
-| 最终结果 | — | `quota - total_usage` |
+| 总充值额度 | `/api/usage/token/` | `data.total_granted` |
+| 已使用额度 | `/api/usage/token/` | `data.total_used` |
+| 可用余额 | `/api/usage/token/` | `data.total_available`（= granted − used） |
+| 最终结果（美元） | — | `(data.total_granted - data.total_used) / 500000` |
 
 ### 当前配置的局限
 
@@ -86,13 +89,21 @@ if (sources.isEmpty()) {
 ### New API 配置用例
 
 ```kotlin
+// 推荐：单接口 /api/usage/token/ 一次返回 total_granted / total_used / total_available
+BalanceOption(
+    enabled = true,
+    apiPath = "/api/usage/token/",
+    resultPath = "(data.total_granted - data.total_used) / 500000",
+)
+
+// 多接口写法仍可用（同端点取两个字段再相减，供参考）
 BalanceOption(
     enabled = true,
     sources = listOf(
-        BalanceSource("quota", "/api/user/self", "quota"),
-        BalanceSource("usage", "/dashboard/billing/usage", "total_usage"),
+        BalanceSource("granted", "/api/usage/token/", "data.total_granted"),
+        BalanceSource("used", "/api/usage/token/", "data.total_used"),
     ),
-    expression = "quota - usage",
+    expression = "(granted - used) / 500000",
 )
 ```
 

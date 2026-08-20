@@ -51,6 +51,21 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 
 private const val TAG = "OpenAIProvider"
 
+/**
+ * New API 的管理接口（/api/...）挂在站点根路径，不在 OpenAI 兼容的 /v1 下。
+ * 因此当 balance 路径以 /api/ 开头且 baseUrl 以 /v1 结尾时，先剥掉 /v1 再拼接。
+ */
+private fun balanceApiUrl(baseUrl: String, path: String): String {
+    if (path.startsWith("http")) return path
+    val trimmed = baseUrl.trimEnd('/')
+    val root = if (path.startsWith("/api/") && trimmed.endsWith("/v1")) {
+        trimmed.removeSuffix("/v1")
+    } else {
+        trimmed
+    }
+    return "$root$path"
+}
+
 class OpenAIProvider(
     private val client: OkHttpClient,
     context: Context? = null
@@ -96,11 +111,7 @@ class OpenAIProvider(
 
         if (balanceOption.sources.isEmpty()) {
             // 旧逻辑：单接口模式
-            val url = if (balanceOption.apiPath.startsWith("http")) {
-                balanceOption.apiPath
-            } else {
-                "${providerSetting.baseUrl}${balanceOption.apiPath}"
-            }
+            val url = balanceApiUrl(providerSetting.baseUrl, balanceOption.apiPath)
             val request = Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer $key")
@@ -125,11 +136,7 @@ class OpenAIProvider(
             val merged = coroutineScope {
                 val results = balanceOption.sources.map { source ->
                     async {
-                        val url = if (source.apiPath.startsWith("http")) {
-                            source.apiPath
-                        } else {
-                            "${providerSetting.baseUrl}${source.apiPath}"
-                        }
+                        val url = balanceApiUrl(providerSetting.baseUrl, source.apiPath)
                         val request = Request.Builder()
                             .url(url)
                             .addHeader("Authorization", "Bearer $key")
