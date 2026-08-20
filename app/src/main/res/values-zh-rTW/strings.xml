@@ -879,6 +879,12 @@
   <string name="setting_provider_page_balance_json_key">結果 JSON 鍵值</string>
   <string name="setting_provider_page_balance_expression">計算表達式</string>
   <string name="setting_provider_page_balance_sources_summary">資料來源</string>
+  <string name="setting_provider_page_balance_mode_single">單接口</string>
+  <string name="setting_provider_page_balance_mode_multi">多接口（計算）</string>
+  <string name="setting_provider_page_balance_source_name">變數名</string>
+  <string name="setting_provider_page_balance_source_add">新增資料來源</string>
+  <string name="setting_provider_page_balance_source_delete">刪除</string>
+  <string name="setting_provider_page_balance_mode">餘額模式</string>
   <string name="setting_provider_page_basic_settings">基本設定</string>
   <string name="setting_provider_page_chat_model">聊天</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl">提示快取時長</string>

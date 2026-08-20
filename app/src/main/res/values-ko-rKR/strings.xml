@@ -881,6 +881,12 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_provider_page_balance_json_key">결과 Json 키</string>
   <string name="setting_provider_page_balance_expression">계산식</string>
   <string name="setting_provider_page_balance_sources_summary">데이터 소스</string>
+  <string name="setting_provider_page_balance_mode_single">단일 API</string>
+  <string name="setting_provider_page_balance_mode_multi">다중 API（계산）</string>
+  <string name="setting_provider_page_balance_source_name">변수명</string>
+  <string name="setting_provider_page_balance_source_add">소스 추가</string>
+  <string name="setting_provider_page_balance_source_delete">삭제</string>
+  <string name="setting_provider_page_balance_mode">잔액 모드</string>
   <string name="setting_provider_page_basic_settings">기본 설정</string>
   <string name="setting_provider_page_chat_model">채팅</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl">프롬프트 캐시 TTL</string>

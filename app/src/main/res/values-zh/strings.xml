@@ -926,6 +926,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_balance_json_key">结果 JSON 键</string>
   <string name="setting_provider_page_balance_expression">计算表达式</string>
   <string name="setting_provider_page_balance_sources_summary">数据源</string>
+  <string name="setting_provider_page_balance_mode_single">单接口</string>
+  <string name="setting_provider_page_balance_mode_multi">多接口（计算）</string>
+  <string name="setting_provider_page_balance_source_name">变量名</string>
+  <string name="setting_provider_page_balance_source_add">添加数据源</string>
+  <string name="setting_provider_page_balance_source_delete">删除</string>
+  <string name="setting_provider_page_balance_mode">余额模式</string>
   <string name="setting_provider_page_basic_settings">基本设置</string>
   <string name="setting_provider_page_chat_model">聊天</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl">提示缓存时长</string>

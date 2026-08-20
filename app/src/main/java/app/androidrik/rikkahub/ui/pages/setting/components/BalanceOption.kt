@@ -11,12 +11,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.androidrik.ai.provider.BalanceOption
+import app.androidrik.ai.provider.BalanceSource
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.common.http.isJsonExprValid
 import app.androidrik.rikkahub.R
@@ -44,6 +47,9 @@ fun SettingProviderBalanceOption(
     onEdit: (BalanceOption) -> Unit,
 ) {
     var expand by remember { mutableStateOf(false) }
+    // 当前模式：sources 非空 = 多接口，否则单接口
+    val isMultiMode = balanceOption.sources.isNotEmpty()
+
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
@@ -83,20 +89,117 @@ fun SettingProviderBalanceOption(
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (balanceOption.sources.isNotEmpty()) {
-                    // 多接口模式：显示数据源摘要 + 计算表达式
-                    Text(
-                        text = stringResource(R.string.setting_provider_page_balance_sources_summary),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // 模式切换
+                Text(
+                    text = stringResource(R.string.setting_provider_page_balance_mode),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = !isMultiMode,
+                        onClick = {
+                            // 切到单接口：清空 sources + expression
+                            if (isMultiMode) {
+                                onEdit(balanceOption.copy(sources = emptyList(), expression = ""))
+                            }
+                        },
+                        label = { Text(stringResource(R.string.setting_provider_page_balance_mode_single)) },
                     )
-                    balanceOption.sources.forEach { source ->
-                        Text(
-                            text = "${source.name} ← ${source.apiPath} → ${source.resultPath}",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    FilterChip(
+                        selected = isMultiMode,
+                        onClick = {
+                            // 切到多接口：初始化一个空 source（若仍空）
+                            if (!isMultiMode) {
+                                onEdit(balanceOption.copy(
+                                    sources = listOf(BalanceSource("var", "/api/path", "field")),
+                                    expression = "var",
+                                ))
+                            }
+                        },
+                        label = { Text(stringResource(R.string.setting_provider_page_balance_mode_multi)) },
+                    )
+                }
+
+                if (isMultiMode) {
+                    // 多接口模式：可编辑 sources 列表 + expression
+                    balanceOption.sources.forEachIndexed { index, source ->
+                        Surface(
+                            tonalElevation = 1.dp,
                             modifier = Modifier.fillMaxWidth(),
-                        )
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = "#${index + 1}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    TextButton(
+                                        onClick = {
+                                            val updated = balanceOption.sources.toMutableList().also { it.removeAt(index) }
+                                            onEdit(balanceOption.copy(sources = updated))
+                                        }
+                                    ) {
+                                        Text(stringResource(R.string.setting_provider_page_balance_source_delete))
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = source.name,
+                                    onValueChange = { newName ->
+                                        val updated = balanceOption.sources.toMutableList()
+                                        updated[index] = source.copy(name = newName)
+                                        onEdit(balanceOption.copy(sources = updated))
+                                    },
+                                    label = { Text(stringResource(R.string.setting_provider_page_balance_source_name)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
+                                )
+                                OutlinedTextField(
+                                    value = source.apiPath,
+                                    onValueChange = { newPath ->
+                                        val updated = balanceOption.sources.toMutableList()
+                                        updated[index] = source.copy(apiPath = newPath)
+                                        onEdit(balanceOption.copy(sources = updated))
+                                    },
+                                    label = { Text(stringResource(R.string.setting_provider_page_balance_api_path)) },
+                                    isError = !source.apiPath.matches(ApiPathRegex),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
+                                )
+                                OutlinedTextField(
+                                    value = source.resultPath,
+                                    onValueChange = { newPath ->
+                                        val updated = balanceOption.sources.toMutableList()
+                                        updated[index] = source.copy(resultPath = newPath)
+                                        onEdit(balanceOption.copy(sources = updated))
+                                    },
+                                    label = { Text(stringResource(R.string.setting_provider_page_balance_json_key)) },
+                                    isError = !isJsonExprValid(source.resultPath),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
+                                )
+                            }
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            onEdit(balanceOption.copy(
+                                sources = balanceOption.sources + BalanceSource("var${balanceOption.sources.size + 1}", "/api/path", "field")
+                            ))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.setting_provider_page_balance_source_add))
                     }
                     OutlinedTextField(
                         value = balanceOption.expression,

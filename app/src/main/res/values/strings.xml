@@ -946,6 +946,12 @@
   <string name="setting_provider_page_balance_json_key">Result Json Key</string>
   <string name="setting_provider_page_balance_expression">Calculation Expression</string>
   <string name="setting_provider_page_balance_sources_summary">Data Sources</string>
+  <string name="setting_provider_page_balance_mode_single">Single API</string>
+  <string name="setting_provider_page_balance_mode_multi">Multi API (Calculate)</string>
+  <string name="setting_provider_page_balance_source_name">Variable Name</string>
+  <string name="setting_provider_page_balance_source_add">Add Source</string>
+  <string name="setting_provider_page_balance_source_delete">Delete</string>
+  <string name="setting_provider_page_balance_mode">Balance Mode</string>
   <string name="setting_provider_page_basic_settings">Basic Settings</string>
   <string name="setting_provider_page_chat_model">Chat</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl">Prompt cache TTL</string>

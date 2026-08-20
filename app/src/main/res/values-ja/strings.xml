@@ -881,6 +881,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_provider_page_balance_json_key">結果のJsonキー</string>
   <string name="setting_provider_page_balance_expression">計算式</string>
   <string name="setting_provider_page_balance_sources_summary">データソース</string>
+  <string name="setting_provider_page_balance_mode_single">単一API</string>
+  <string name="setting_provider_page_balance_mode_multi">複数API（計算）</string>
+  <string name="setting_provider_page_balance_source_name">変数名</string>
+  <string name="setting_provider_page_balance_source_add">ソース追加</string>
+  <string name="setting_provider_page_balance_source_delete">削除</string>
+  <string name="setting_provider_page_balance_mode">残高モード</string>
   <string name="setting_provider_page_basic_settings">基本設定</string>
   <string name="setting_provider_page_chat_model">チャット</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl">プロンプトキャッシュ TTL</string>

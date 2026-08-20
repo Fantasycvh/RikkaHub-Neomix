@@ -881,6 +881,12 @@
   <string name="setting_provider_page_balance_json_key">Ключ результата JSON</string>
   <string name="setting_provider_page_balance_expression">Выражение расчёта</string>
   <string name="setting_provider_page_balance_sources_summary">Источники данных</string>
+  <string name="setting_provider_page_balance_mode_single">Одиночный API</string>
+  <string name="setting_provider_page_balance_mode_multi">Множественный API（расчёт）</string>
+  <string name="setting_provider_page_balance_source_name">Имя переменной</string>
+  <string name="setting_provider_page_balance_source_add">Добавить источник</string>
+  <string name="setting_provider_page_balance_source_delete">Удалить</string>
+  <string name="setting_provider_page_balance_mode">Режим баланса</string>
   <string name="setting_provider_page_basic_settings">Основные настройки</string>
   <string name="setting_provider_page_chat_model">Чат</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl">TTL кэша промпта</string>
