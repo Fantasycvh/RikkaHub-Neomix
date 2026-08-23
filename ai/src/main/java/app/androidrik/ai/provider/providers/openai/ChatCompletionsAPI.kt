@@ -177,10 +177,7 @@ class ChatCompletionsAPI(
                     .trim()
                     .split("\n")
                     .filter { it.isNotBlank() }
-                    .map {
-                        json.parseToJsonElement(it).jsonObjectOrNull
-                            ?: error("Chat stream event is not a JSON object: ${it.take(200)}")
-                    }
+                    .mapNotNull { json.parseToJsonElement(it).jsonObjectOrNull }
                     .forEach {
                         if (it["error"] != null) {
                             val error = it["error"]!!.parseErrorDetail()

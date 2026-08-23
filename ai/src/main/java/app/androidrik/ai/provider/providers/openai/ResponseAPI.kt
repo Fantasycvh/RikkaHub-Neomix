@@ -149,11 +149,12 @@ class ResponseAPI(
                 }
                 Log.d(TAG, "onEvent: $id/$type $data")
                 val json = json.parseToJsonElement(data).jsonObjectOrNull
-                    ?: error("Responses stream event is not a JSON object: ${data.take(200)}")
-                val chunk = parseResponseDelta(json)
-                if (chunk != null) {
-                    trySend(chunk).onFailure { e ->
-                        Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                if (json != null) {
+                    val chunk = parseResponseDelta(json)
+                    if (chunk != null) {
+                        trySend(chunk).onFailure { e ->
+                            Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                        }
                     }
                 }
                 if (type == "response.completed") {
