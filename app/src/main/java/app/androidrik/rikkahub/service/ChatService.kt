@@ -48,6 +48,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
+import app.androidrik.rikkahub.data.ai.mcp.McpNameSanitizer
 import app.androidrik.rikkahub.data.ai.tools.createConversationTools
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.ai.tools.createSearchTools
@@ -634,27 +635,18 @@ class ChatService(
                             )
                         )
                     }
-                    mcpManager.getAllAvailableTools().also { allTools ->
-                        val invalidNames = allTools
-                            .map { it.second }
-                            .distinct()
-                            .filter { name -> name.isEmpty() || !name.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' } }
-                        if (invalidNames.isNotEmpty()) {
-                            addError(
-                                error = IllegalStateException(
-                                    context.getString(
-                                        R.string.error_mcp_invalid_server_name,
-                                        invalidNames.joinToString(", ")
-                                    )
-                                ),
-                                conversationId = conversationId,
-                            )
-                            return
-                        }
-                    }.forEach { (serverId, serverName, tool) ->
+                    // 服务器名/工具名允许含中文等非 ASCII 字符，这里净化为 provider 可接受的
+                    // function name（^[a-zA-Z0-9_-]{1,64}$），显示层仍用原名。
+                    // 不同原名可能净化后相同，用 usedNames 保证发给模型的名字唯一。
+                    val usedToolNames = mutableSetOf<String>()
+                    mcpManager.getAllAvailableTools().forEach { (serverId, serverName, tool) ->
                         add(
                             Tool(
-                                name = "mcp__${serverName}__${tool.name}",
+                                name = McpNameSanitizer.buildUniqueFunctionName(
+                                    serverName = serverName,
+                                    toolName = tool.name,
+                                    used = usedToolNames,
+                                ),
                                 description = tool.description ?: "",
                                 parameters = { tool.inputSchema },
                                 needsApproval = { tool.needsApproval },

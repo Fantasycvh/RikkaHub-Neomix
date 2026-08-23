@@ -1203,10 +1203,10 @@ private fun McpToolCard(
 }
 
 private fun isValidMcpName(name: String): Boolean {
-    // 放行字母数字 + - _ （MCP 工具/服务器名常含连字符下划线）
-    return name.isEmpty() || name.all {
-        it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_'
-    }
+    // 名称允许任意字符（中文、emoji 等）——发给模型的 function name 会在 ChatService
+    // 里经 McpNameSanitizer 净化为 ^[a-zA-Z0-9_-]{1,64}$，此处无需限制字符集。
+    // 仅保留「非空白」这一实质约束：空名会导致会话被 McpSessionRegistry 过滤掉。
+    return name.isEmpty() || name.isNotBlank()
 }
 
 private fun parseMcpServersFromJson(json: String): List<McpServerConfig> {
