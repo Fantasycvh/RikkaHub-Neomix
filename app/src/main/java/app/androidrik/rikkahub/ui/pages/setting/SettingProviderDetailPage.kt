@@ -125,6 +125,7 @@ import app.androidrik.rikkahub.ui.pages.assistant.detail.CustomBodies
 import app.androidrik.rikkahub.ui.pages.assistant.detail.CustomHeaders
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConfigure
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConnectionTester
+import app.androidrik.rikkahub.ui.pages.setting.components.ProviderRetryOption
 import app.androidrik.rikkahub.ui.pages.setting.components.SettingProviderBalanceOption
 import app.androidrik.rikkahub.ui.pages.setting.components.isUsingDefaultBaseUrl
 import app.androidrik.rikkahub.ui.pages.setting.components.resetBaseUrlToDefault
@@ -305,6 +306,12 @@ private fun SettingProviderConfigPage(
             onUpdate = { headers ->
                 internalProvider = internalProvider.copyProvider(customHeaders = headers)
             }
+        )
+
+        // per-provider 自动重试覆盖（null = 跟随全局默认）
+        ProviderRetryOption(
+            provider = internalProvider,
+            onEdit = { internalProvider = it },
         )
 
         if (internalProvider is ProviderSetting.OpenAI) {

@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -24,6 +26,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -275,6 +278,71 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                                     Text(text = "${(displaySetting.volumeKeyScrollRatio * 100).toInt()}%")
                                 }
                             }
+                        )
+                    }
+                }
+            }
+
+            item {
+                var retrySetting by remember(settings) { mutableStateOf(settings.retrySetting) }
+                // 间隔序列以文本编辑；仅合法值才落盘
+                var delaysText by remember(settings) {
+                    mutableStateOf(retrySetting.delaysSeconds.joinToString(","))
+                }
+
+                fun updateRetrySetting(setting: RetrySetting) {
+                    retrySetting = setting
+                    vm.updateSettings(settings.copy(retrySetting = setting))
+                }
+
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.setting_retry_title)) },
+                ) {
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_retry_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_retry_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = retrySetting.enabled,
+                                onCheckedChange = { enabled ->
+                                    updateRetrySetting(retrySetting.copy(enabled = enabled))
+                                }
+                            )
+                        },
+                    )
+                    if (retrySetting.enabled) {
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_retry_delays_title)) },
+                            supportingContent = {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(stringResource(R.string.setting_retry_delays_desc))
+                                    val parsed = RetrySetting.parseDelays(delaysText)
+                                    OutlinedTextField(
+                                        value = delaysText,
+                                        onValueChange = {
+                                            delaysText = it
+                                            RetrySetting.parseDelays(it)?.let { delays ->
+                                                updateRetrySetting(retrySetting.copy(delaysSeconds = delays))
+                                            }
+                                        },
+                                        isError = parsed == null,
+                                        supportingText = if (parsed == null) {
+                                            { Text(stringResource(R.string.setting_retry_delays_invalid)) }
+                                        } else {
+                                            {
+                                                Text(
+                                                    stringResource(R.string.setting_retry_delays_title) +
+                                                        ": ${parsed.size} · " +
+                                                        parsed.sum().toString() + "s"
+                                                )
+                                            }
+                                        },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                            },
                         )
                     }
                 }

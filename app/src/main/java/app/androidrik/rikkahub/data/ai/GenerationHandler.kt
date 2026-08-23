@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
@@ -40,6 +41,8 @@ import app.androidrik.rikkahub.data.ai.transformers.onGenerationFinish
 import app.androidrik.rikkahub.data.ai.transformers.transforms
 import app.androidrik.rikkahub.data.ai.transformers.visualTransforms
 import app.androidrik.rikkahub.data.ai.tools.buildMemoryTools
+import app.androidrik.ai.provider.RetrySetting
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.datastore.findProvider
@@ -346,6 +349,58 @@ class GenerationHandler(
 
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * 生成失败自动重试。
+     *
+     * 配置解析优先级：per-provider [ProviderSetting.retryOption]（非 null 时完全覆盖）→
+     * 全局 [Settings.retrySetting]。未启用或间隔序列为空时直接执行，零开销。
+     *
+     * 语义：delaysSeconds 长度 = 重试次数（不含首次请求），值 = 每次重试前的等待秒数。
+     * 仅对「可重试错误」（网络异常/限流/服务端错误）重试；用户取消（CancellationException）
+     * 与不可重试错误（鉴权失败、参数错误等）立即上抛。重试等待状态通过
+     * [processingStatus] 反馈到 UI。
+     */
+    private suspend fun <T> withGenerationRetry(
+        providerSetting: ProviderSetting,
+        settings: Settings,
+        processingStatus: MutableStateFlow<String?>?,
+        action: suspend () -> T,
+    ): T {
+        val plan = providerSetting.retryOption ?: settings.retrySetting
+        if (!plan.enabled || plan.delaysSeconds.isEmpty()) return action()
+
+        var retryIndex = -1 // 已执行的重试序号；首次请求前为 -1
+        while (true) {
+            try {
+                return action()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                val next = retryIndex + 1
+                if (next >= plan.delaysSeconds.size || !isRetryableGenerationError(e)) throw e
+                retryIndex = next
+                val waitSec = plan.delaysSeconds[retryIndex].coerceAtLeast(0)
+                Log.w(
+                    TAG,
+                    "generation failed, retry ${retryIndex + 1}/${plan.delaysSeconds.size} in ${waitSec}s: ${e.message}"
+                )
+                if (processingStatus != null) {
+                    processingStatus.value = context.getString(
+                        R.string.generation_retry_waiting,
+                        retryIndex + 1,
+                        plan.delaysSeconds.size,
+                        waitSec,
+                    )
+                }
+                try {
+                    delay(waitSec * 1000L)
+                } finally {
+                    if (processingStatus != null) processingStatus.value = null
+                }
+            }
+        }
+    }
+
     private suspend fun generateInternal(
         assistant: Assistant,
         settings: Settings,
@@ -436,42 +491,71 @@ class GenerationHandler(
             }
         )
         if (stream) {
-            providerImpl.streamText(
+            withGenerationRetry(
                 providerSetting = provider,
-                messages = internalMessages,
-                params = params
-            ).collect {
-                messages = messages.handleMessageChunk(chunk = it, model = model)
-                it.usage?.let { usage ->
-                    messages = messages.mapIndexed { index, message ->
-                        if (index == messages.lastIndex) {
-                            message.copy(usage = message.usage.merge(usage))
-                        } else {
-                            message
+                settings = settings,
+                processingStatus = processingStatus,
+            ) {
+                // 快照：流中途失败时回滚已输出的部分内容，重试从干净状态重新生成
+                val snapshot = messages
+                try {
+                    providerImpl.streamText(
+                        providerSetting = provider,
+                        messages = internalMessages,
+                        params = params
+                    ).collect {
+                        messages = messages.handleMessageChunk(chunk = it, model = model)
+                        it.usage?.let { usage ->
+                            messages = messages.mapIndexed { index, message ->
+                                if (index == messages.lastIndex) {
+                                    message.copy(usage = message.usage.merge(usage))
+                                } else {
+                                    message
+                                }
+                            }
                         }
+                        onUpdateMessages(messages)
                     }
+                } catch (e: Throwable) {
+                    if (e is CancellationException) throw e
+                    messages = snapshot
+                    onUpdateMessages(messages)
+                    throw e
                 }
-                onUpdateMessages(messages)
             }
         } else {
-            val chunk = providerImpl.generateText(
+            withGenerationRetry(
                 providerSetting = provider,
-                messages = internalMessages,
-                params = params,
-            )
-            messages = messages.handleMessageChunk(chunk = chunk, model = model)
-            chunk.usage?.let { usage ->
-                messages = messages.mapIndexed { index, message ->
-                    if (index == messages.lastIndex) {
-                        message.copy(
-                            usage = message.usage.merge(usage)
-                        )
-                    } else {
-                        message
+                settings = settings,
+                processingStatus = processingStatus,
+            ) {
+                val snapshot = messages
+                try {
+                    val chunk = providerImpl.generateText(
+                        providerSetting = provider,
+                        messages = internalMessages,
+                        params = params,
+                    )
+                    messages = messages.handleMessageChunk(chunk = chunk, model = model)
+                    chunk.usage?.let { usage ->
+                        messages = messages.mapIndexed { index, message ->
+                            if (index == messages.lastIndex) {
+                                message.copy(
+                                    usage = message.usage.merge(usage)
+                                )
+                            } else {
+                                message
+                            }
+                        }
                     }
+                    onUpdateMessages(messages)
+                } catch (e: Throwable) {
+                    if (e is CancellationException) throw e
+                    messages = snapshot
+                    onUpdateMessages(messages)
+                    throw e
                 }
             }
-            onUpdateMessages(messages)
         }
     }
 
@@ -535,46 +619,57 @@ class GenerationHandler(
             var messages = listOf(UIMessage.user(prompt))
             var translatedText = ""
 
-            providerHandler.streamText(
-                providerSetting = provider,
-                messages = messages,
-                params = TextGenerationParams(
-                    model = model,
-                    reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
-                ),
-            ).collect { chunk ->
-                messages = messages.handleMessageChunk(chunk)
-                translatedText = messages.lastOrNull()?.toText() ?: ""
+            withGenerationRetry(provider, settings, null) {
+                val snapshot = messages
+                try {
+                    providerHandler.streamText(
+                        providerSetting = provider,
+                        messages = messages,
+                        params = TextGenerationParams(
+                            model = model,
+                            reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
+                        ),
+                    ).collect { chunk ->
+                        messages = messages.handleMessageChunk(chunk)
+                        translatedText = messages.lastOrNull()?.toText() ?: ""
 
-                if (translatedText.isNotBlank()) {
-                    onStreamUpdate?.invoke(translatedText)
-                    emit(translatedText)
+                        if (translatedText.isNotBlank()) {
+                            onStreamUpdate?.invoke(translatedText)
+                            emit(translatedText)
+                        }
+                    }
+                } catch (e: Throwable) {
+                    if (e is CancellationException) throw e
+                    messages = snapshot
+                    throw e
                 }
             }
         } else {
             // Use Qwen MT model with special translation options
             val messages = listOf(UIMessage.user(sourceText))
-            val chunk = providerHandler.generateText(
-                providerSetting = provider,
-                messages = messages,
-                params = TextGenerationParams(
-                    model = model,
-                    temperature = 0.3f,
-                    topP = 0.95f,
-                    customBody = listOf(
-                        CustomBody(
-                            key = "translation_options",
-                            value = buildJsonObject {
-                                put("source_lang", JsonPrimitive("auto"))
-                                put(
-                                    "target_lang",
-                                    JsonPrimitive(targetLanguage.getDisplayLanguage(Locale.ENGLISH))
-                                )
-                            }
+            val chunk = withGenerationRetry(provider, settings, null) {
+                providerHandler.generateText(
+                    providerSetting = provider,
+                    messages = messages,
+                    params = TextGenerationParams(
+                        model = model,
+                        temperature = 0.3f,
+                        topP = 0.95f,
+                        customBody = listOf(
+                            CustomBody(
+                                key = "translation_options",
+                                value = buildJsonObject {
+                                    put("source_lang", JsonPrimitive("auto"))
+                                    put(
+                                        "target_lang",
+                                        JsonPrimitive(targetLanguage.getDisplayLanguage(Locale.ENGLISH))
+                                    )
+                                }
+                            )
                         )
-                    )
-                ),
-            )
+                    ),
+                )
+            }
             val translatedText = chunk.choices.firstOrNull()?.message?.toText() ?: ""
 
             if (translatedText.isNotBlank()) {
@@ -583,4 +678,29 @@ class GenerationHandler(
             }
         }
     }.flowOn(Dispatchers.IO)
+}
+
+/**
+ * 判断生成错误是否值得自动重试：
+ * - 网络层异常（超时/DNS/连接失败/TLS 等 IOException 家族）→ 重试
+ * - 响应解析失败（中转站返回 HTML 错误页等非 JSON 内容）→ 重试
+ * - HTTP 408/425/429/5xx → 重试；401/403（鉴权）、400（参数）、404（模型不存在）→ 不重试
+ *
+ * provider 层抛的是字符串异常（如 "Failed to get response: 429 ..."），状态码从 message 提取。
+ */
+internal fun isRetryableGenerationError(t: Throwable): Boolean {
+    if (t is java.io.IOException) return true
+    if (t is kotlinx.serialization.SerializationException) return true
+    val code = findHttpStatusCode(t.message) ?: return false
+    return code == 408 || code == 425 || code == 429 || code in 500..599
+}
+
+/** 从错误 message 提取 HTTP 状态码：优先 "code/status: NNN" 形态，回退到首个独立的 3 位数字。 */
+private fun findHttpStatusCode(message: String?): Int? {
+    if (message == null) return null
+    val prefixed = Regex("""(?:code|status|HTTP)[\s:=]*(\d{3})""", RegexOption.IGNORE_CASE)
+        .find(message)?.groupValues?.get(1)?.toIntOrNull()
+    if (prefixed != null) return prefixed
+    // 回退：形如 ": 429"、">502" 的独立三位数（覆盖中转站 HTML 错误页正文）
+    return Regex("""[\s:>(](\d{3})\b""").find(message)?.groupValues?.get(1)?.toIntOrNull()
 }

@@ -1291,5 +1291,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="assistant_page_context_message_limit_warning">컨텍스트 제한 시 컨텍스트가 정리될 때마다 프롬프트 캐시가 무효화됩니다. 제한이 클수록 정리 빈도가 낮아지며, 무제한일 경우 정리되지 않아 캐시가 완전히 보존됩니다.</string>
   <string name="setting_display_page_enable_diagram_rendering_title">TikZ 다이어그램 렌더링</string>
   <string name="setting_display_page_enable_diagram_rendering_desc">AI가 생성한 tikzpicture / tikzcd 코드를 벡터 그래픽으로 렌더링합니다</string>
+  <string name="setting_retry_title">실패 시 자동 재시도</string>
+  <string name="setting_retry_desc">공급자 오류(네트워크 문제, 요청 제한, 서버 오류) 발생 시 설정된 간격에 따라 자동으로 재시도합니다</string>
+  <string name="setting_retry_delays_title">재시도 간격 시퀀스</string>
+  <string name="setting_retry_delays_desc">쉼표로 구분된 초 단위 값이며 길이가 재시도 횟수입니다. 예: 2,2,2,2,2,5,10,20,60,120 = 처음 5회는 2초 간격, 이후 5s,10s,20s,60s,120s</string>
+  <string name="setting_retry_delays_invalid">잘못된 형식입니다: 쉼표로 구분된 음수가 아닌 정수를 입력하세요</string>
+  <string name="generation_retry_waiting">생성 실패, %2$d회 중 %1$d번째 재시도, %3$d초 후 진행</string>
+  <string name="setting_provider_page_retry_override">재시도 설정 사용자 지정</string>
+  <string name="setting_provider_page_retry_override_desc">활성화하면 이 공급자는 전역 기본값 대신 자체 재시도 설정을 사용합니다</string>
 </resources>
 

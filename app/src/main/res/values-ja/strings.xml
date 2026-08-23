@@ -1291,5 +1291,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="assistant_page_context_message_limit_warning">コンテキストの制限は、コンテキストが切り詰められるたびにプロンプトキャッシュを無効化します。制限が大きいほど切り詰めの頻度が減り、無制限なら切り詰めが発生せず、キャッシュは完全に保持されます。</string>
   <string name="setting_display_page_enable_diagram_rendering_title">TikZ図をレンダリング</string>
   <string name="setting_display_page_enable_diagram_rendering_desc">AIが生成したtikzpicture / tikzcdコードをベクター画像としてレンダリングする</string>
+  <string name="setting_retry_title">失敗時の自動リトライ</string>
+  <string name="setting_retry_desc">プロバイダーのエラー（ネットワーク異常、レート制限、サーバーエラー）時に設定した間隔で自動リトライします</string>
+  <string name="setting_retry_delays_title">リトライ間隔シーケンス</string>
+  <string name="setting_retry_delays_desc">カンマ区切りの秒数。長さがリトライ回数になります。例: 2,2,2,2,2,5,10,20,60,120 = 最初の5回は2秒ごと、その後5s→10s→20s→60s→120s</string>
+  <string name="setting_retry_delays_invalid">無効な形式：カンマ区切りの非負整数を入力してください</string>
+  <string name="generation_retry_waiting">生成に失敗しました。%2$d 回中 %1$d 回目のリトライを %3$d 秒後に実行</string>
+  <string name="setting_provider_page_retry_override">リトライ設定をカスタマイズ</string>
+  <string name="setting_provider_page_retry_override_desc">有効にすると、このプロバイダーはグローバル設定の代わりに独自のリトライ設定を使用します</string>
 </resources>
 

@@ -38,6 +38,36 @@ data class BalanceSource(
     val resultPath: String, // JSON 取值路径（如 "quota"）
 )
 
+/**
+ * 生成失败自动重试配置。
+ *
+ * [delaysSeconds] 的长度即重试次数（不含首次请求），值即每次重试前的等待秒数，
+ * 可表达任意阶梯节奏。默认值含义：前 5 次每 2 秒重试一次，之后 5s/10s/20s/60s/120s。
+ */
+@Serializable
+data class RetrySetting(
+    val enabled: Boolean = false,
+    val delaysSeconds: List<Int> = DEFAULT_DELAYS_SECONDS,
+) {
+    companion object {
+        val DEFAULT_DELAYS_SECONDS = listOf(2, 2, 2, 2, 2, 5, 10, 20, 60, 120)
+
+        /**
+         * 解析逗号分隔的秒数序列（UI 输入），非法返回 null。
+         * 允许空白；每项必须是非负整数。
+         */
+        fun parseDelays(text: String): List<Int>? {
+            val trimmed = text.trim()
+            if (trimmed.isEmpty()) return null
+            val parts = trimmed.split(',', ',', '，').map { it.trim() }
+            if (parts.any { it.isEmpty() }) return null
+            return parts.map {
+                it.toIntOrNull()?.takeIf { v -> v >= 0 } ?: return null
+            }
+        }
+    }
+}
+
 @Serializable
 enum class ClaudePromptCacheTtl(val apiValue: String?) {
     @SerialName("5m")
@@ -56,6 +86,8 @@ sealed class ProviderSetting {
     abstract val proxy: ProviderProxy
     abstract val balanceOption: BalanceOption
     abstract val customHeaders: List<CustomHeader>
+    /** per-provider 重试配置覆盖；null = 跟随全局 Settings.retrySetting */
+    abstract val retryOption: RetrySetting?
 
     abstract val builtIn: Boolean
     abstract val description: @Composable() () -> Unit
@@ -73,6 +105,7 @@ sealed class ProviderSetting {
         proxy: ProviderProxy = this.proxy,
         balanceOption: BalanceOption = this.balanceOption,
         customHeaders: List<CustomHeader> = this.customHeaders,
+        retryOption: RetrySetting? = this.retryOption,
         builtIn: Boolean = this.builtIn,
         description: @Composable (() -> Unit) = this.description,
         shortDescription: @Composable (() -> Unit) = this.shortDescription,
@@ -88,6 +121,7 @@ sealed class ProviderSetting {
         override var proxy: ProviderProxy = ProviderProxy.None,
         override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
+        override val retryOption: RetrySetting? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -127,6 +161,7 @@ sealed class ProviderSetting {
             proxy: ProviderProxy,
             balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
+            retryOption: RetrySetting?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -141,6 +176,7 @@ sealed class ProviderSetting {
                 proxy = proxy,
                 balanceOption = balanceOption,
                 customHeaders = customHeaders,
+                retryOption = retryOption,
                 shortDescription = shortDescription
             )
         }
@@ -156,6 +192,7 @@ sealed class ProviderSetting {
         override var proxy: ProviderProxy = ProviderProxy.None,
         override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
+        override val retryOption: RetrySetting? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -198,6 +235,7 @@ sealed class ProviderSetting {
             proxy: ProviderProxy,
             balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
+            retryOption: RetrySetting?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -212,7 +250,8 @@ sealed class ProviderSetting {
                 shortDescription = shortDescription,
                 proxy = proxy,
                 balanceOption = balanceOption,
-                customHeaders = customHeaders
+                customHeaders = customHeaders,
+                retryOption = retryOption
             )
         }
     }
@@ -227,6 +266,7 @@ sealed class ProviderSetting {
         override var proxy: ProviderProxy = ProviderProxy.None,
         override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
+        override val retryOption: RetrySetting? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -265,6 +305,7 @@ sealed class ProviderSetting {
             proxy: ProviderProxy,
             balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
+            retryOption: RetrySetting?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -277,6 +318,7 @@ sealed class ProviderSetting {
                 proxy = proxy,
                 balanceOption = balanceOption,
                 customHeaders = customHeaders,
+                retryOption = retryOption,
                 builtIn = builtIn,
                 description = description,
                 shortDescription = shortDescription,

@@ -25,6 +25,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
@@ -569,6 +570,7 @@ data class Settings(
     val webServerAccessPassword: String = "",
     val webServerLocalhostOnly: Boolean = false,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
+    val retrySetting: RetrySetting = RetrySetting(),
     val launchCount: Int = 0,
 ) {
     companion object {
