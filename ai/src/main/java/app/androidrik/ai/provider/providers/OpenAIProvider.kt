@@ -37,6 +37,7 @@ import app.androidrik.ai.util.toHeaders
 import app.androidrik.common.http.await
 import app.androidrik.common.http.evaluateJsonExpr
 import app.androidrik.common.http.getByKey
+import app.androidrik.common.http.jsonObjectOrNull
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -126,7 +127,8 @@ class OpenAIProvider(
             }
 
             val bodyStr = response.body.string()
-            val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
+            val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
+                ?: error("Balance API response is not a JSON object: ${bodyStr.take(200)}")
             val value = bodyJson.getByKey(balanceOption.resultPath)
             val digitalValue = value.toFloatOrNull()
             if (digitalValue != null) {
@@ -151,7 +153,8 @@ class OpenAIProvider(
                             error("Failed to get balance source '${source.name}': ${response.code} ${response.body?.string()}")
                         }
                         val bodyStr = response.body.string()
-                        val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
+                        val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
+                            ?: error("Balance API response for source '${source.name}' is not a JSON object: ${bodyStr.take(200)}")
                         val rawValue = bodyJson.getByKey(source.resultPath)
                         source.name to rawValue
                     }
