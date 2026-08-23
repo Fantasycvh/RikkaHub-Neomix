@@ -103,7 +103,8 @@ class ChatCompletionsAPI(
         }
 
         val bodyStr = response.body?.string() ?: ""
-        val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
+        val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
+            ?: error("Chat response is not a JSON object: ${bodyStr.take(200)}")
 
         // 从 JsonObject 中提取必要的信息
         val id = bodyJson["id"]?.jsonPrimitive?.contentOrNull ?: ""
@@ -176,7 +177,10 @@ class ChatCompletionsAPI(
                     .trim()
                     .split("\n")
                     .filter { it.isNotBlank() }
-                    .map { json.parseToJsonElement(it).jsonObject }
+                    .map {
+                        json.parseToJsonElement(it).jsonObjectOrNull
+                            ?: error("Chat stream event is not a JSON object: ${it.take(200)}")
+                    }
                     .forEach {
                         if (it["error"] != null) {
                             val error = it["error"]!!.parseErrorDetail()

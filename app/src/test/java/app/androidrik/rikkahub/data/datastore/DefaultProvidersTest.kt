@@ -51,7 +51,7 @@ class DefaultProvidersTest {
         assertEquals("https://agentrouter.org/v1", provider.baseUrl)
         assertFalse(provider.enabled)
         assertTrue(provider.builtIn)
-        assertTrue(provider.balanceOption.enabled)
+        assertFalse(provider.balanceOption.enabled)
         assertEquals("/api/usage/token/", provider.balanceOption.apiPath)
         assertEquals("(data.total_granted - data.total_used) / 500000", provider.balanceOption.resultPath)
     }

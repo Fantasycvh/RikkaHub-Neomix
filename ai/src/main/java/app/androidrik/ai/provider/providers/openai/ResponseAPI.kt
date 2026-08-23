@@ -104,7 +104,8 @@ class ResponseAPI(
 
         val bodyStr = response.body?.string() ?: ""
         Log.i(TAG, "generateText: $bodyStr")
-        val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
+        val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
+            ?: error("Responses API response is not a JSON object: ${bodyStr.take(200)}")
         val output = parseResponseOutput(bodyJson)
 
         return output
@@ -147,7 +148,8 @@ class ResponseAPI(
                     return
                 }
                 Log.d(TAG, "onEvent: $id/$type $data")
-                val json = json.parseToJsonElement(data).jsonObject
+                val json = json.parseToJsonElement(data).jsonObjectOrNull
+                    ?: error("Responses stream event is not a JSON object: ${data.take(200)}")
                 val chunk = parseResponseDelta(json)
                 if (chunk != null) {
                     trySend(chunk).onFailure { e ->

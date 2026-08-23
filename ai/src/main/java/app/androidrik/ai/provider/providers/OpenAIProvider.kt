@@ -94,7 +94,8 @@ class OpenAIProvider(
             }
 
             val bodyStr = response.body?.string() ?: ""
-            val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
+            val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
+                ?: error("Models API response is not a JSON object: ${bodyStr.take(200)}")
             val data = bodyJson["data"]?.jsonArray ?: return@withContext emptyList()
 
             data.mapNotNull { modelJson ->

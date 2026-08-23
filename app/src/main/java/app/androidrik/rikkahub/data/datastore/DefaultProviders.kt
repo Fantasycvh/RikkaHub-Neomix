@@ -326,7 +326,8 @@ val DEFAULT_PROVIDERS = listOf(
             resultPath = "(data.total_granted - data.total_used) / 500000",
         ),
     ),
-    // Agent Router（公益中转，New API 系；OpenAI 兼容入口）
+    // Agent Router（公益中转，OpenAI 兼容入口）
+    // 实测无余额 API（/api/usage/token、/v1/dashboard/billing/* 均 Invalid URL），默认关闭余额显示
     ProviderSetting.OpenAI(
         id = Uuid.parse("1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"),
         name = "Agent Router",
@@ -335,7 +336,7 @@ val DEFAULT_PROVIDERS = listOf(
         enabled = false,
         builtIn = true,
         balanceOption = BalanceOption(
-            enabled = true,
+            enabled = false,
             apiPath = "/api/usage/token/",
             resultPath = "(data.total_granted - data.total_used) / 500000",
         ),
