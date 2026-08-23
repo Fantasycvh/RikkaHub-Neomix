@@ -1299,5 +1299,13 @@
   <string name="generation_retry_waiting">Ошибка генерации, повтор %1$d/%2$d через %3$d с</string>
   <string name="setting_provider_page_retry_override">Свои настройки повтора</string>
   <string name="setting_provider_page_retry_override_desc">Если включено, этот провайдер использует собственные настройки повтора вместо глобальных</string>
+  <string name="setting_keep_alive_title">Фоновая активность</string>
+  <string name="setting_keep_alive_desc">Передний план (foreground service) удерживает процесс живым: генерация не прерывается в фоне. Автовосстановление после убийства системой или свайпа из недавних</string>
+  <string name="setting_keep_alive_battery_ok">Оптимизация батареи отключена</string>
+  <string name="setting_keep_alive_battery_request">Оптимизация батареи не отключена. Нажмите для запроса в белый список (защита от Doze)</string>
+  <string name="setting_keep_alive_notification_missing">Нет разрешения на уведомления: foreground service требует постоянное уведомление, выдайте его в настройках системы</string>
+  <string name="notification_channel_keep_alive">Фоновая активность</string>
+  <string name="notification_keep_alive_running">Фоновая активность включена</string>
+  <string name="notification_keep_alive_stop">Стоп</string>
 </resources>
 

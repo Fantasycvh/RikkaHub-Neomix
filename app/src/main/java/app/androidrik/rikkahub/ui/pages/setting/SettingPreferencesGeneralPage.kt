@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -16,19 +18,26 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
+import app.androidrik.rikkahub.service.KeepAliveService
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.hooks.rememberSharedPreferenceBoolean
@@ -349,6 +358,10 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
             }
 
             item {
+                KeepAliveSettingGroup()
+            }
+
+            item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
                     title = { Text(stringResource(R.string.setting_page_tts_settings)) },
@@ -391,6 +404,81 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * 后台保活设置分组：开关（SharedPreferences keep_alive）+ 前置条件引导。
+ *
+ * 电池优化白名单/通知权限状态在每次 ON_RESUME 后重新计算——用户从系统设置
+ * 授权返回时状态自动刷新，无需手动重建页面。
+ */
+@Composable
+private fun KeepAliveSettingGroup() {
+    val context = LocalContext.current
+    var enabled by rememberSharedPreferenceBoolean(KeepAliveService.PREF_KEY, false)
+
+    // 从系统设置页授权返回后刷新前置条件状态
+    var resumeTick by remember { mutableIntStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) resumeTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val notificationGranted = remember(resumeTick) { KeepAliveService.hasNotificationPermission(context) }
+    val batteryIgnored = remember(resumeTick) { KeepAliveService.isIgnoringBatteryOptimizations(context) }
+
+    CardGroup(
+        modifier = Modifier.padding(horizontal = 8.dp),
+        title = { Text(stringResource(R.string.setting_keep_alive_title)) },
+    ) {
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_keep_alive_title)) },
+            supportingContent = { Text(stringResource(R.string.setting_keep_alive_desc)) },
+            trailingContent = {
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = { checked ->
+                        enabled = checked
+                        KeepAliveService.setEnabled(context, checked)
+                        when {
+                            checked && notificationGranted -> KeepAliveService.start(context)
+                            !checked -> KeepAliveService.stop(context)
+                            // 开启但缺通知权限：不启动，由下面的引导行提示
+                        }
+                    }
+                )
+            },
+        )
+        if (enabled && !notificationGranted) {
+            item(
+                headlineContent = {
+                    Text(
+                        stringResource(R.string.setting_keep_alive_notification_missing),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                },
+            )
+        }
+        if (enabled && notificationGranted && !batteryIgnored) {
+            item(
+                headlineContent = { Text(stringResource(R.string.setting_keep_alive_battery_request)) },
+                modifier = Modifier.clickable {
+                    runCatching {
+                        context.startActivity(KeepAliveService.batteryOptimizationIntent(context))
+                    }
+                },
+            )
+        }
+        if (enabled && batteryIgnored) {
+            item(
+                headlineContent = { Text(stringResource(R.string.setting_keep_alive_battery_ok)) },
+            )
         }
     }
 }

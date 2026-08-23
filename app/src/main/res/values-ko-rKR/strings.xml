@@ -1299,5 +1299,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="generation_retry_waiting">생성 실패, %2$d회 중 %1$d번째 재시도, %3$d초 후 진행</string>
   <string name="setting_provider_page_retry_override">재시도 설정 사용자 지정</string>
   <string name="setting_provider_page_retry_override_desc">활성화하면 이 공급자는 전역 기본값 대신 자체 재시도 설정을 사용합니다</string>
+  <string name="setting_keep_alive_title">백그라운드 유지</string>
+  <string name="setting_keep_alive_desc">포그라운드 서비스로 프로세스를 유지하여 생성 작업이 백그라운드에서도 중단되지 않습니다. 강제 종료나 최근 작업 제거 후 자동 복구됩니다</string>
+  <string name="setting_keep_alive_battery_ok">배터리 최적화 제외됨</string>
+  <string name="setting_keep_alive_battery_request">배터리 최적화가 제외되지 않았습니다. 탭하여 화이트리스트 신청 (Doze 절전 방지)</string>
+  <string name="setting_keep_alive_notification_missing">알림 권한 없음: 포그라운드 서비스에는 상시 알림이 필요합니다. 시스템 설정에서 허용해 주세요</string>
+  <string name="notification_channel_keep_alive">백그라운드 유지</string>
+  <string name="notification_keep_alive_running">백그라운드 유지 중</string>
+  <string name="notification_keep_alive_stop">중지</string>
 </resources>
 

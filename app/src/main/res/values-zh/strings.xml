@@ -1315,5 +1315,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="generation_retry_waiting">生成失败，%1$d/%2$d 次重试，%3$d 秒后进行</string>
   <string name="setting_provider_page_retry_override">自定义重试设置</string>
   <string name="setting_provider_page_retry_override_desc">开启后此提供商使用独立的重试配置，覆盖全局默认</string>
+  <string name="setting_keep_alive_title">后台保活</string>
+  <string name="setting_keep_alive_desc">前台服务保持进程常驻，生成任务切后台不被中断；被系统杀死或划掉最近任务后自动恢复</string>
+  <string name="setting_keep_alive_battery_ok">已忽略电池优化</string>
+  <string name="setting_keep_alive_battery_request">未忽略电池优化，点按申请加入白名单（防止 Doze 休眠挂起）</string>
+  <string name="setting_keep_alive_notification_missing">缺少通知权限：前台服务需要常驻通知，请在系统设置中授予通知权限</string>
+  <string name="notification_channel_keep_alive">后台保活</string>
+  <string name="notification_keep_alive_running">后台保活运行中</string>
+  <string name="notification_keep_alive_stop">停止</string>
 </resources>
 

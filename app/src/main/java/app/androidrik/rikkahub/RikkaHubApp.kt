@@ -31,6 +31,7 @@ import app.androidrik.rikkahub.di.viewModelModule
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.service.WebServerService
+import app.androidrik.rikkahub.service.KeepAliveService
 import app.androidrik.rikkahub.utils.CrashHandler
 import app.androidrik.rikkahub.utils.DatabaseUtil
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
@@ -46,6 +47,7 @@ private const val TAG = "RikkaHubApp"
 const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
+const val KEEP_ALIVE_NOTIFICATION_CHANNEL_ID = "keep_alive"
 
 class RikkaHubApp : Application() {
     override fun onCreate() {
@@ -84,6 +86,9 @@ class RikkaHubApp : Application() {
 
         // Start WebServer if enabled in settings
         startWebServerIfEnabled()
+
+        // Start keep-alive foreground service if enabled in settings
+        startKeepAliveIfEnabled()
 
         // Increment launch count
         incrementLaunchCount()
@@ -192,6 +197,23 @@ class RikkaHubApp : Application() {
         }
     }
 
+    private fun startKeepAliveIfEnabled() {
+        get<AppScope>().launch {
+            runCatching {
+                delay(500)
+                if (!KeepAliveService.isEnabled(this@RikkaHubApp)) return@launch
+                // 前台服务的常驻通知必须可见：无通知权限时不启动（设置页有引导）
+                if (!KeepAliveService.hasNotificationPermission(this@RikkaHubApp)) {
+                    Log.w(TAG, "startKeepAliveIfEnabled: notification permission not granted, skipping")
+                    return@launch
+                }
+                KeepAliveService.start(this@RikkaHubApp)
+            }.onFailure {
+                Log.e(TAG, "startKeepAliveIfEnabled failed", it)
+            }
+        }
+    }
+
     private fun createNotificationChannel() {
         val notificationManager = NotificationManagerCompat.from(this)
         val chatCompletedChannel = NotificationChannelCompat
@@ -221,6 +243,14 @@ class RikkaHubApp : Application() {
             .setShowBadge(false)
             .build()
         notificationManager.createNotificationChannel(webServerChannel)
+
+        val keepAliveChannel = NotificationChannelCompat
+            .Builder(KEEP_ALIVE_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+            .setName(getString(R.string.notification_channel_keep_alive))
+            .setVibrationEnabled(false)
+            .setShowBadge(false)
+            .build()
+        notificationManager.createNotificationChannel(keepAliveChannel)
     }
 
     override fun onTerminate() {
