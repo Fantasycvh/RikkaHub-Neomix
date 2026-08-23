@@ -51,6 +51,7 @@ import app.androidrik.ai.util.json
 import app.androidrik.ai.util.mergeCustomBody
 import app.androidrik.ai.util.parseErrorDetail
 import app.androidrik.ai.util.stringSafe
+import app.androidrik.ai.util.applyCustomHeaders
 import app.androidrik.ai.util.toHeaders
 import app.androidrik.common.http.await
 import app.androidrik.common.http.jsonPrimitiveOrNull
@@ -77,6 +78,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 .addHeader("x-api-key", keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString()))
                 .addHeader("anthropic-version", ANTHROPIC_VERSION)
                 .get()
+                .applyCustomHeaders(providerSetting.customHeaders)
                 .build()
 
             val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).execute()
@@ -120,6 +122,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .addHeader("x-api-key", keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString()))
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .configureReferHeaders(providerSetting.baseUrl)
+            .applyCustomHeaders(providerSetting.customHeaders)
             .build()
 
         Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
@@ -168,6 +171,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
+            .applyCustomHeaders(providerSetting.customHeaders)
             .build()
 
         Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")

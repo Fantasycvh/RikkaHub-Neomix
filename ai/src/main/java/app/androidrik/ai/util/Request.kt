@@ -21,6 +21,11 @@ fun List<CustomHeader>.toHeaders(): Headers {
     }.build()
 }
 
+fun Request.Builder.applyCustomHeaders(headers: List<CustomHeader>): Request.Builder {
+    headers.filter { it.name.isNotBlank() }.forEach { addHeader(it.name, it.value) }
+    return this
+}
+
 fun Request.Builder.configureReferHeaders(url: String): Request.Builder {
     val httpUrl = url.toHttpUrl()
     return when (httpUrl.host) {

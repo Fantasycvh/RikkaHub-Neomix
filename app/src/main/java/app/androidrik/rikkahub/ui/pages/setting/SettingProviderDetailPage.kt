@@ -300,6 +300,13 @@ private fun SettingProviderConfigPage(
             }
         )
 
+        CustomHeaders(
+            headers = internalProvider.customHeaders,
+            onUpdate = { headers ->
+                internalProvider = internalProvider.copyProvider(customHeaders = headers)
+            }
+        )
+
         if (internalProvider is ProviderSetting.OpenAI) {
             SettingProviderBalanceOption(
                 provider = internalProvider,

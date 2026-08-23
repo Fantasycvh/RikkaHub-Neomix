@@ -55,6 +55,7 @@ import app.androidrik.ai.util.json
 import app.androidrik.ai.util.mergeCustomBody
 import app.androidrik.ai.util.removeElements
 import app.androidrik.ai.util.stringSafe
+import app.androidrik.ai.util.applyCustomHeaders
 import app.androidrik.ai.util.toHeaders
 import app.androidrik.common.http.await
 import app.androidrik.common.http.jsonPrimitiveOrNull
@@ -124,6 +125,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 request = Request.Builder()
                     .url(url)
                     .get()
+                    .applyCustomHeaders(providerSetting.customHeaders)
                     .build()
             )
             val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
@@ -180,6 +182,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     json.encodeToString(requestBody).toRequestBody("application/json".toMediaType())
                 )
                 .configureReferHeaders(providerSetting.baseUrl)
+                .applyCustomHeaders(providerSetting.customHeaders)
                 .build()
         )
 
@@ -236,6 +239,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     json.encodeToString(requestBody).toRequestBody("application/json".toMediaType())
                 )
                 .configureReferHeaders(providerSetting.baseUrl)
+                .applyCustomHeaders(providerSetting.customHeaders)
                 .build()
         )
 

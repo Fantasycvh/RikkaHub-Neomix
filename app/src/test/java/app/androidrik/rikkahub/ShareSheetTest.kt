@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub
 
 import app.androidrik.ai.provider.BalanceOption
+import app.androidrik.ai.provider.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.ui.components.ui.decodeProviderSetting
@@ -112,6 +113,27 @@ class ShareSheetTest {
         assertEquals(true, decoded.balanceOption.enabled)
         assertEquals("/custom/credits", decoded.balanceOption.apiPath)
         assertEquals("data.balance", decoded.balanceOption.resultPath)
+    }
+
+    @Test
+    fun `share round trip should preserve provider custom headers`() {
+        val original = ProviderSetting.OpenAI(
+            id = Uuid.random(),
+            enabled = true,
+            name = "Test Headers",
+            models = emptyList(),
+            apiKey = "test-key",
+            baseUrl = "https://api.test.com",
+            customHeaders = listOf(
+                CustomHeader("X-Custom", "abc"),
+                CustomHeader("Authorization", "Bearer custom-token")
+            )
+        )
+
+        val encoded = original.encodeForShare()
+        val decoded = decodeProviderSetting(encoded) as ProviderSetting.OpenAI
+
+        assertEquals(original.customHeaders, decoded.customHeaders)
     }
 
     @Test(expected = IllegalArgumentException::class)

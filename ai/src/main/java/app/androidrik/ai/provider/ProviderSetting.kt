@@ -55,6 +55,7 @@ sealed class ProviderSetting {
     abstract val models: List<Model>
     abstract val proxy: ProviderProxy
     abstract val balanceOption: BalanceOption
+    abstract val customHeaders: List<CustomHeader>
 
     abstract val builtIn: Boolean
     abstract val description: @Composable() () -> Unit
@@ -71,6 +72,7 @@ sealed class ProviderSetting {
         models: List<Model> = this.models,
         proxy: ProviderProxy = this.proxy,
         balanceOption: BalanceOption = this.balanceOption,
+        customHeaders: List<CustomHeader> = this.customHeaders,
         builtIn: Boolean = this.builtIn,
         description: @Composable (() -> Unit) = this.description,
         shortDescription: @Composable (() -> Unit) = this.shortDescription,
@@ -85,6 +87,7 @@ sealed class ProviderSetting {
         override var models: List<Model> = emptyList(),
         override var proxy: ProviderProxy = ProviderProxy.None,
         override val balanceOption: BalanceOption = BalanceOption(),
+        override val customHeaders: List<CustomHeader> = emptyList(),
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -123,6 +126,7 @@ sealed class ProviderSetting {
             models: List<Model>,
             proxy: ProviderProxy,
             balanceOption: BalanceOption,
+            customHeaders: List<CustomHeader>,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -136,6 +140,7 @@ sealed class ProviderSetting {
                 description = description,
                 proxy = proxy,
                 balanceOption = balanceOption,
+                customHeaders = customHeaders,
                 shortDescription = shortDescription
             )
         }
@@ -150,6 +155,7 @@ sealed class ProviderSetting {
         override var models: List<Model> = emptyList(),
         override var proxy: ProviderProxy = ProviderProxy.None,
         override val balanceOption: BalanceOption = BalanceOption(),
+        override val customHeaders: List<CustomHeader> = emptyList(),
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -191,6 +197,7 @@ sealed class ProviderSetting {
             models: List<Model>,
             proxy: ProviderProxy,
             balanceOption: BalanceOption,
+            customHeaders: List<CustomHeader>,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -204,7 +211,8 @@ sealed class ProviderSetting {
                 description = description,
                 shortDescription = shortDescription,
                 proxy = proxy,
-                balanceOption = balanceOption
+                balanceOption = balanceOption,
+                customHeaders = customHeaders
             )
         }
     }
@@ -218,6 +226,7 @@ sealed class ProviderSetting {
         override var models: List<Model> = emptyList(),
         override var proxy: ProviderProxy = ProviderProxy.None,
         override val balanceOption: BalanceOption = BalanceOption(),
+        override val customHeaders: List<CustomHeader> = emptyList(),
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -255,6 +264,7 @@ sealed class ProviderSetting {
             models: List<Model>,
             proxy: ProviderProxy,
             balanceOption: BalanceOption,
+            customHeaders: List<CustomHeader>,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -266,6 +276,7 @@ sealed class ProviderSetting {
                 models = models,
                 proxy = proxy,
                 balanceOption = balanceOption,
+                customHeaders = customHeaders,
                 builtIn = builtIn,
                 description = description,
                 shortDescription = shortDescription,

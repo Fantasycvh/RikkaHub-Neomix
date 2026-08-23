@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.setting.components
 
 import app.androidrik.ai.provider.BalanceOption
+import app.androidrik.ai.provider.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -70,6 +71,22 @@ class ProviderConfigureConvertToTest {
         val converted = original.convertTo(ProviderSetting.OpenAI::class) as ProviderSetting.OpenAI
         assertEquals("https://proxy.example.com/vendor/gemini/v1", converted.baseUrl)
         assertEquals("proxy.example.com", converted.baseUrl.toHttpUrlOrNull()?.host)
+    }
+
+    @Test
+    fun `convertTo should preserve provider custom headers`() {
+        val original = ProviderSetting.OpenAI(
+            name = "Proxy OpenAI",
+            apiKey = "proxy-key",
+            baseUrl = "https://gateway.example.com/api/v1",
+            customHeaders = listOf(
+                CustomHeader("X-Provider", "abc"),
+                CustomHeader("X-Extra", "1")
+            )
+        )
+
+        val converted = original.convertTo(ProviderSetting.Google::class) as ProviderSetting.Google
+        assertEquals(original.customHeaders, converted.customHeaders)
     }
 
     @Test

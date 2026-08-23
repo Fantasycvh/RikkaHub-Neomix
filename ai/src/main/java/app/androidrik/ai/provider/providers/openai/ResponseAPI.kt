@@ -49,6 +49,7 @@ import app.androidrik.ai.util.json
 import app.androidrik.ai.util.mergeCustomBody
 import app.androidrik.ai.util.parseErrorDetail
 import app.androidrik.ai.util.stringSafe
+import app.androidrik.ai.util.applyCustomHeaders
 import app.androidrik.ai.util.toHeaders
 import app.androidrik.common.http.await
 import app.androidrik.common.http.jsonObjectOrNull
@@ -91,6 +92,7 @@ class ResponseAPI(
             )
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
+            .applyCustomHeaders(providerSetting.customHeaders)
             .build()
 
         Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
@@ -128,6 +130,7 @@ class ResponseAPI(
                 "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}"
             )
             .configureReferHeaders(providerSetting.baseUrl)
+            .applyCustomHeaders(providerSetting.customHeaders)
             .build()
 
         Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")

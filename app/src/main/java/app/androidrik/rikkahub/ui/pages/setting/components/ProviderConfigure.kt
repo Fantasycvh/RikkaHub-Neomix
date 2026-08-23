@@ -103,20 +103,20 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
     return when (type) {
         ProviderSetting.OpenAI::class -> ProviderSetting.OpenAI(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
-            proxy = this.proxy, balanceOption = this.balanceOption, builtIn = this.builtIn,
-            description = this.description, shortDescription = this.shortDescription,
+            proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
+            builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
             apiKey = apiKey, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Google::class -> ProviderSetting.Google(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
-            proxy = this.proxy, balanceOption = this.balanceOption, builtIn = this.builtIn,
-            description = this.description, shortDescription = this.shortDescription,
+            proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
+            builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
             apiKey = apiKey, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Claude::class -> ProviderSetting.Claude(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
-            proxy = this.proxy, balanceOption = this.balanceOption, builtIn = this.builtIn,
-            description = this.description, shortDescription = this.shortDescription,
+            proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
+            builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
             apiKey = apiKey, baseUrl = convertedBaseUrl
         )
         else -> error("Unsupported provider type: $type")
