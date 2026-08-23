@@ -326,4 +326,18 @@ val DEFAULT_PROVIDERS = listOf(
             resultPath = "(data.total_granted - data.total_used) / 500000",
         ),
     ),
+    // Agent Router（公益中转，New API 系；OpenAI 兼容入口）
+    ProviderSetting.OpenAI(
+        id = Uuid.parse("1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"),
+        name = "Agent Router",
+        baseUrl = "https://agentrouter.org/v1",
+        apiKey = "",
+        enabled = false,
+        builtIn = true,
+        balanceOption = BalanceOption(
+            enabled = true,
+            apiPath = "/api/usage/token/",
+            resultPath = "(data.total_granted - data.total_used) / 500000",
+        ),
+    ),
 )

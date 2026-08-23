@@ -38,4 +38,21 @@ class DefaultProvidersTest {
         assertEquals("(data.total_granted - data.total_used) / 500000", provider.balanceOption.resultPath)
         assertTrue(provider.balanceOption.sources.isEmpty())
     }
+
+    @Test
+    fun `default agent router provider should use token usage endpoint for balance`() {
+        val agentRouterProviders = DEFAULT_PROVIDERS
+            .filterIsInstance<ProviderSetting.OpenAI>()
+            .filter { it.name == "Agent Router" }
+
+        assertEquals(1, agentRouterProviders.size)
+
+        val provider = agentRouterProviders.single()
+        assertEquals("https://agentrouter.org/v1", provider.baseUrl)
+        assertFalse(provider.enabled)
+        assertTrue(provider.builtIn)
+        assertTrue(provider.balanceOption.enabled)
+        assertEquals("/api/usage/token/", provider.balanceOption.apiPath)
+        assertEquals("(data.total_granted - data.total_used) / 500000", provider.balanceOption.resultPath)
+    }
 }
