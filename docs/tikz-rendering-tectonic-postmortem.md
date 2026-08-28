@@ -299,7 +299,26 @@ POC crate：`<work>\projects\tectonic-poc\`（WSL 内构建于 `~/tex-poc`）。
 
 **POC 后的体积预算**：引擎 so 13.4MB + bundle 13.4MB + 字体 9.7MB ≈ 36MB（可按需裁剪：bundle 仅保留 tikz/article/amsmath 子集可显著缩小；ICU so 运行期另需 ~30MB 或改用数据裁剪）。
 
-**第 2 步预览**：JNI 桥（`jni` crate 直接暴露 `compile(bundle, font, tex) -> pdf`）→ Android 侧 PdfRenderer → Compose 位图；编译放独立进程（SoLab isolatedProcess 模式）；失败回退链 = TikzRenderer → native 编译 → 显示源码。dvisvgm 矢量路径（第 3 步）随后。
+#### 8.4.2 第 2 步 app 集成结果（2026-08-29，已完成 ✅）
+
+commit `83b23ca7`。**instrumented test 3 项全部通过（<device> 真机）**：
+
+| 验证项 | 结果 |
+|---|---|
+| `compileChineseTikzOnDevice`：assets bundle+字体 → JNI → PDF | ✅ 4982 bytes |
+| `compileIsDeterministicAcrossRuns`：两次编译输出一致 | ✅ |
+| `invalidTexReturnsNullWithLastError`：坏 LaTeX → null + lastError | ✅ |
+
+实现（均入 app 模块）：
+
+- `tikz/TectonicNative.kt`：JNI 桥；bundle+字体从 assets 读入常驻内存（~23MB）；format 缓存落 `cacheDir/texfmt`（已验证生效：`<digest>-latex-33.fmt`，22MB）。
+- `tikz/PdfToBitmap.kt`：PdfRenderer 首页位图（衬白底）。
+- `TikzJax.kt` 三级回退链：TikzRenderer 矢量 → TectonicNative（LaunchedEffect 异步，不阻塞组合）→ 源码展示。
+- jniLibs（arm64-v8a）：`libtex_poc.so` + `libc++_shared.so` + `libgraphite2.so` + ICU（Termux 78.3，patchelf 改名 `libicuuc78.so`/`libicudata78.so` 适配 AGP 的 .so 命名约束）+ fontconfig stub。
+
+真机耗时（<device> / 骁龙 845）：format 首建后每次编译 **~3.6s**（bundle 加载 0.37s + 编译 ~3s）；下一次优化方向是 bundle 进程常驻与 isolatedProcess 隔离。
+
+**待办（第 3/4 步）**：dvisvgm 矢量路径；isolatedProcess 隔离；bundle/字体改按需下载（当前 APK +83MB）；UI 层人工验证（发一条 positioning 语法的 TikZ 消息观察回退链）。
 
 ---
 
