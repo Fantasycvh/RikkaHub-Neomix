@@ -1,7 +1,7 @@
 # RikkaHub TikZ 图表渲染：Tectonic 中文路线探索与 Android 集成失败复盘
 
 > 日期：2026-08-13 ~ 2026-08-14
-> 状态：**暂时放弃**（代码已回退到 v2.4.5-androidrik.19 无 TikZ 状态，历史与记录保留）
+> 状态：**WebView 路线放弃；2026-08-28 完成重启评估（见文末第八节），倾向方案 B（native Tectonic + dvisvgm）**
 > 目的：沉淀"为什么走不通"的技术事实，为未来重启提供完整决策依据。
 
 ---
@@ -227,4 +227,61 @@ const pdf = engine.pdf();
 
 ---
 
-*本文档由探索全程记录整理（参考：Tectonic wasm 调研 / 中文宏包注入 / POC 验证 / MuPDF 决策 5 份记录 + 本轮 Android 集成实现与排查），代码已回退，结论与事实供未来决策复用。*
+## 八、重启评估（2026-08-28）
+
+### 8.1 现状：纯 Kotlin 子集渲染器已成为第三条路线（文档前七节未覆盖）
+
+复盘后 fork 内长出了当前主线（未回退，持续演进）：
+
+- `app/src/main/java/app/androidrik/rikkahub/tikz/TikzRenderer.kt`（~1200 行）：**纯 Kotlin TikZ 子集解析器**，TikZ 源码 → SVG 字符串。覆盖 MVP 子集：`node/coordinate/draw/circle/rectangle/grid/arc/plot/cycle`、`to[bend]`、`.. controls ..`、极坐标/命名坐标/锚点、三种箭头、`fill/thick/dashed/rounded corners`、`tikzcd` 交换图，中文文本原样输出。
+- `ui/components/richtext/TikzJax.kt`（文件名为历史遗留）：TikzRenderer → SVG → AndroidSVG → Picture → Compose Canvas **纯矢量**绘制；无 WebView/wasm/JS；SVG 字符串同时作为导出产物。
+- 防线内建：`MAX_SVG_PIXELS = 20_000`、`MAX_PLOT_ABS = 5_000`（对应第五节崩溃问题的修复，commit `e5f0fcba`/`9e8e89fd`）。
+
+**四个原始痛点的满足情况**：中文 ✅、矢量 ✅、离线 ✅、同步零依赖 ✅。短板是**覆盖面**——子集之外的语法直接渲染失败，而 AI 输出常踩：positioning 库（`right=of A`）、`\tikzset`/`foreach`/`scope`/`fit`/矩阵、pgfplots（`\begin{axis}`，轴刻度计算必须真 TeX 引擎）、node 文本内 LaTeX 数学（当前 `<text>` escapeXml 直出，观感最差）。
+
+旧 WebView/tikzjax 路线（无中文）已彻底移除，不回头。
+
+### 8.2 路线对比
+
+| 路线 | 完整性 | 中文 | 输出 | 成本 | 结论 |
+|---|---|---|---|---|---|
+| **A. 继续扩展纯 Kotlin 渲染器** | 子集，pgfplots 类永久不可达 | ✅ | 矢量 SVG | 低（渐进） | 主线维持，但需数据驱动 |
+| **B. native Tectonic + dvisvgm（JNI，绕开 WebView）** | 任意 TikZ/pgfplots | ✅（已验证） | **真矢量 SVG** | 中高 | **倾向选择，见 8.4** |
+| C. workspace 沙箱内 TeX（rootfs 装 tectonic/dvisvgm） | 完整 | ✅ | SVG | 高（依赖 workspace 初始化 + 几百 MB） | 不进渲染管线；定位为 agent 能力 |
+| D. 修复 WebView 路线（tectonic wasm + localhost Ktor HTTP） | 完整 | ✅ | PDF→位图（非 SVG） | 中 | B 的严格下位替代，放弃 |
+
+补充事实（相对第七节"未来方向"表的更新）：
+
+- **B 的原生编译有先例**：Tectonic（Rust）在 Termux 有 aarch64 打包，cargo-ndk 交叉编译走得通；dvisvgm（C++）依赖 freetype/potrace（可选），交叉编译可行。
+- **TikZ 自带 dvisvgm driver**（SVG specials 写入 DVI），**不需要 ghostscript**；`dvisvgm --no-fonts` 把文本转轮廓 path，中文完美显示。
+- **复盘资产直接复用**：离线 bundle（13.4MB / 1130 文件，headless 验证过）、中文字体注入语法 `\font"[simhei.ttf]"`、glyphtex 引擎侧验证结论。
+- **隔离先例**：SoLab 的 `BlutterRunnerService` 模式（`isolatedProcess="true"` + AIDL + ParcelFileDescriptor，每作业一进程用完即弃）是 native 编译崩溃隔离的现成方案。
+- WebView 失败根因（`script-started` 都不触发）仍未诊断；fork 虽新增了内嵌 Ktor web server 可消除拦截变量，但 WebView+大资产行为仍是未知数，且 D 输出非矢量——不值得再投入。
+
+### 8.3 立即可做的低成本项（与路线选择解耦）
+
+1. **失败埋点**：TikzRenderer 失败路径按原因分类记录（positioning/foreach/axis/语法其他），用真实失败分布决定 A 路线的扩展优先级。
+2. **node 文本接 jlatexmath**：数学公式是当前观感最差的短板（LaTeX 源码直出）。
+3. **内置系统提示引导**：引导模型输出受支持子集（如 positioning 改显式坐标）——同类先例 `d0ec2e2a`（LaTeX 定界符提示）。
+
+### 8.4 决策与方案 B 实施草案
+
+**决策：倾向方案 B**（native Tectonic + dvisvgm 矢量管线），A 路线维持现状不再主动扩展（埋点观察）。
+
+POC 分步（每步独立可验证、可放弃）：
+
+1. **交叉编译 POC**：cargo-ndk 编 tectonic 核心 aarch64 `.so` + 最小 JNI，跑通一次 TikZ 编译出 XDV/PDF（复用现有离线 bundle 资产，中文字体方括号语法）。
+2. **位图闭环**：编译结果 PDF → PdfRenderer → Compose（复盘第四节链路，无 WebView）异步渲染；与 TikzRenderer 形成分级：子集命中走现有纯 Kotlin（快），未命中走 native 编译。
+3. **矢量闭环**：交叉编译 dvisvgm，XDV → SVG（`--no-fonts` 文本转 path），接入现有 AndroidSVG 显示端。
+4. **隔离与体验**：编译放 isolatedProcess（SoLab 模式）；异步 + 占位 UI；失败回退链 = TikzRenderer → native 编译 → 显示源码。
+
+风险与待验证：
+
+- tectonic 核心 JNI 化的 API 面积（需梳理 tectonic C API 或自写 FFI 桥）；
+- bundle 精简后能否继续走离线注入（IoProvider 不支持 fontconfig 的结论仍有效）；
+- dvisvgm 对 pgf SVG specials 的兼容性（TikZ driver 依赖 pgf 版本，需实测）；
+- 资产体积预算：引擎 so + bundle 13.4MB + 字体 9.7MB ≈ 25-30MB，与旧 WebView 方案持平，可按需拆分下载。
+
+---
+
+*本文档由探索全程记录整理（参考：Tectonic wasm 调研 / 中文宏包注入 / POC 验证 / MuPDF 决策 5 份记录 + 本轮 Android 集成实现与排查 + 2026-08-28 重启评估），结论与事实供未来决策复用。*
