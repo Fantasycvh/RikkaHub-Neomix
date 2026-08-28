@@ -268,19 +268,38 @@ const pdf = engine.pdf();
 
 **决策：倾向方案 B**（native Tectonic + dvisvgm 矢量管线），A 路线维持现状不再主动扩展（埋点观察）。
 
-POC 分步（每步独立可验证、可放弃）：
+#### 8.4.1 第 1 步 POC 结果（2026-08-28，已完成 ✅）
 
-1. **交叉编译 POC**：cargo-ndk 编 tectonic 核心 aarch64 `.so` + 最小 JNI，跑通一次 TikZ 编译出 XDV/PDF（复用现有离线 bundle 资产，中文字体方括号语法）。
-2. **位图闭环**：编译结果 PDF → PdfRenderer → Compose（复盘第四节链路，无 WebView）异步渲染；与 TikzRenderer 形成分级：子集命中走现有纯 Kotlin（快），未命中走 native 编译。
-3. **矢量闭环**：交叉编译 dvisvgm，XDV → SVG（`--no-fonts` 文本转 path），接入现有 AndroidSVG 显示端。
-4. **隔离与体验**：编译放 isolatedProcess（SoLab 模式）；异步 + 占位 UI；失败回退链 = TikzRenderer → native 编译 → 显示源码。
+POC crate：`<work>\projects\tectonic-poc\`（WSL 内构建于 `~/tex-poc`）。
 
-风险与待验证：
+**已验证结论：**
 
-- tectonic 核心 JNI 化的 API 面积（需梳理 tectonic C API 或自写 FFI 桥）；
-- bundle 精简后能否继续走离线注入（IoProvider 不支持 fontconfig 的结论仍有效）；
-- dvisvgm 对 pgf SVG specials 的兼容性（TikZ driver 依赖 pgf 版本，需实测）；
-- 资产体积预算：引擎 so + bundle 13.4MB + 字体 9.7MB ≈ 25-30MB，与旧 WebView 方案持平，可按需拆分下载。
+| 验证项 | 结果 |
+|---|---|
+| 离线 bundle（tar.gz 1130 文件）内存注入 + 自定义 IoProvider | ✅ |
+| 英文 TikZ → PDF | ✅ 4247 bytes，6.0s（含 format 重建） |
+| 中文 TikZ（`\font\zhfont="[simhei.ttf]"` + 节点中文） | ✅ 5886 bytes，554ms（format 缓存命中后） |
+| format 版本兼容 | ✅ 移除历史 `latex.fmt`，由当前引擎从 `latex.ltx` 自动重建（合成 `tectonic-format-latex.tex` 入口文件） |
+| 字体文件经 IoStack 加载 | ✅ tectonic 0.17 的 `createFontFromFile` 走 `engine.input_open()`，内存 bundle 可命中，无需 fontconfig 查找 |
+| aarch64-linux-android 交叉编译 | ✅ `libtex_poc.so`（13.4MB，C ABI：`poc_compile`/`poc_free`）+ CLI 均链接成功 |
+| 真机运行 | ⏳ 待设备接入（`adb devices` 当前为空） |
+
+**关键实现事实（第 2 步集成依据）：**
+
+1. **API 版本**：tectonic 0.17 的 `ProcessingSession` 只有 `run()` / `into_file_data()`；`input_open_name` 无 FileFormat 参数；`Bundle` trait 在独立的 `tectonic_bundles` crate（0.4.x），需实现 `get_digest`（POC 用全零摘要）+ `all_files`。
+2. **format 自动重建**：`ProcessingSession::run` 在 `.fmt` 缺失时自动从 `latex.ltx` 构建（6s 一次性成本），之后复用缓存 ~0.55s/次。Android 侧应设置 `format_cache_path` 持久化首次构建结果。
+3. **Android 交叉编译的依赖清单**（全部解决，脚本 `build-android.sh`）：
+   - `libpng16.a` / `libfreetype.a` / `libgraphite2.so`：NDK cmake 工具链自行交叉编译 → `/root/android-libs` + 手写/生成的 `.pc`
+   - `zlib`：NDK sysroot 自带头文件 + Android 系统 libz（手写 `zlib.pc`）
+   - `ICU`：直接复用 **Termux 预编译包**（libicu 78.3 aarch64 deb，含 unicode 头），手写 `icu-uc.pc`/`icu-i18n.pc`——绕开 ICU 交叉构建的大坑
+   - `fontconfig`：**stub**（真头文件 + Fc* 空实现静态库）——运行时字体不查 fontconfig，仅满足链接
+4. **宿主 dev 包污染**：交叉编译前必须卸载宿主的 libgraphite2/libharfbuzz/libfontconfig/libfreetype/libpng `-dev` 包，否则 pkg-config 把 `-I/usr/include`（glibc 头）注入 Android 编译（fatal: bits/wordsize.h not found）。
+5. **build script 缓存坑**：修改 pkg-config 目标后需 `cargo clean -p <对应桥crate>`，否则旧的 DEP_*_INCLUDE 缓存值继续生效。
+6. **cargo-ndk v4.1.2 在本机 panic**（已知问题），改用 `~/.cargo/config.toml` 手动配 target linker，效果等价。
+
+**POC 后的体积预算**：引擎 so 13.4MB + bundle 13.4MB + 字体 9.7MB ≈ 36MB（可按需裁剪：bundle 仅保留 tikz/article/amsmath 子集可显著缩小；ICU so 运行期另需 ~30MB 或改用数据裁剪）。
+
+**第 2 步预览**：JNI 桥（`jni` crate 直接暴露 `compile(bundle, font, tex) -> pdf`）→ Android 侧 PdfRenderer → Compose 位图；编译放独立进程（SoLab isolatedProcess 模式）；失败回退链 = TikzRenderer → native 编译 → 显示源码。dvisvgm 矢量路径（第 3 步）随后。
 
 ---
 
