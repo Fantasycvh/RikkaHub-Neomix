@@ -31,6 +31,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Download01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.tikz.TikzRenderer
+import app.androidrik.rikkahub.tikz.TikzTelemetry
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import app.androidrik.rikkahub.utils.exportImage
@@ -56,10 +57,14 @@ fun TikzJax(
     val svg = remember(code, darkMode) {
         TikzRenderer.render(code, darkMode).fold(
             onSuccess = {
+                // 失败分布埋点：成功也记（不含代码内容），提供计算失败率的分母。
+                // 注意 darkMode 切换会重渲染一次，计数会有少量重复，可接受。
+                TikzTelemetry.recordSuccess(context, it.length)
                 Log.i("TikzJax", "svg ok, len=${it.length}: $it")
                 it
             },
             onFailure = { e ->
+                TikzTelemetry.record(context, code, e)
                 Log.w("TikzJax", "render failed: ${e.message}", e)
                 // 完整 code 每 100 字符一行打印：logcat 单行超宽会截断，分段保证完整可见
                 Log.w("TikzJax", "code len=${code.length}")
