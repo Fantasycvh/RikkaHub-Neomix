@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,21 +16,32 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.caverock.androidsvg.SVG
 import com.dokar.sonner.ToastType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Download01
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.tikz.PdfToBitmap
+import app.androidrik.rikkahub.tikz.TectonicNative
 import app.androidrik.rikkahub.tikz.TikzRenderer
 import app.androidrik.rikkahub.tikz.TikzTelemetry
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -37,10 +49,10 @@ import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import app.androidrik.rikkahub.utils.exportImage
 
 /**
- * 纯 Java 渲染 AI 输出的 TikZ 图表：TikzRenderer → SVG 字符串 → AndroidSVG → Picture → Compose Canvas 矢量绘制。
- *
- * 与旧版（WebView + tikzjax wasm）不同：无 WebView/wasm/JS，渲染结果直接可矢量缩放；
- * SVG 字符串同时可作为导出（HTML 内嵌 / 位图）的中间产物。
+ * TikZ 渲染三级回退链：
+ * 1. TikzRenderer（纯 Kotlin 子集 → SVG → AndroidSVG 矢量，最快）
+ * 2. TectonicNative（真 TeX 引擎 → PDF → PdfRenderer 位图，完整性最高）
+ * 3. 原始代码展示
  */
 private const val MAX_SVG_DIMENSION = 20_000f
 
@@ -75,6 +87,24 @@ fun TikzJax(
             },
         )
     }
+    // Native TeX 回退状态：子集渲染失败时异步触发真编译（不阻塞组合）
+    var nativeBitmap by remember(code) { mutableStateOf<ImageBitmap?>(null) }
+    var nativeFailed by remember(code) { mutableStateOf(false) }
+    val widthPx = with(LocalDensity.current) {
+        LocalConfiguration.current.screenWidthDp.dp.toPx().toInt().coerceAtLeast(1)
+    }
+
+    LaunchedEffect(code, svg == null) {
+        if (svg == null && !nativeFailed && TectonicNative.available) {
+            val bitmap = withContext(Dispatchers.IO) {
+                val pdf = TectonicNative.compile(context, code)
+                pdf?.let { PdfToBitmap.renderFirstPage(it, widthPx) }
+            }
+            nativeBitmap = bitmap
+            if (bitmap == null) nativeFailed = true
+        }
+    }
+
     // AndroidSVG 对象（渲染用 renderToCanvas 而非 renderToPicture+drawPicture：
     // 硬件加速 Canvas 不支持 drawPicture，FAQ 明确 —— 直接渲染到 Canvas 才可靠）
     val svgObj = remember(svg) {
@@ -174,8 +204,17 @@ fun TikzJax(
                 }
             }
         }
+    } else if (nativeBitmap != null) {
+        // 回退链第 2 级：Tectonic 编译 PDF → PdfRenderer 位图
+        Image(
+            bitmap = nativeBitmap!!,
+            contentDescription = null,
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(4.dp),
+        )
     } else {
-        // 渲染失败：降级显示原始 TikZ 代码
+        // 回退链第 3 级：渲染失败降级显示原始 TikZ 代码
         Text(
             text = code,
             fontSize = 12.sp,
