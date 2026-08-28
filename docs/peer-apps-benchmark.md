@@ -7,7 +7,7 @@
 > - 上游 `3a533a6a` 工作区终端后台运行 + 多 Tab（**已在 master**，特性分支未吸收）
 >
 > **许可证结论：三个项目均为 AGPL-3.0**（我们仓库根 LICENSE 即 AGPL-3.0），代码级互相摘取许可兼容。
-> 本地参考副本：`%TEMP%\rikkahub-agent-src\`（git clone）、`%TEMP%\solab-src\solab-open-source-2.0\`（源码包解压）、`%TEMP%\apk-out\`（两个 APK 的 jadx 反编译产物）。
+> 本地参考副本：`<work>\projects\rikkahub-agent-src\`（git clone）、`<work>\projects\solab-open-source-2.0\`（源码包解压）。
 
 ## 一、两个应用是什么
 
