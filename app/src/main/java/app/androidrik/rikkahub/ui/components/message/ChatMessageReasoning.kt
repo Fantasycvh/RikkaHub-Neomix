@@ -8,7 +8,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -175,7 +174,9 @@ private fun ReasoningContent(
                     visual = true,
                 ),
                 style = reasoningTextStyle,
-                modifier = Modifier.fillMaxSize(),
+                // fillMaxWidth 而非 fillMaxSize：LazyColumn item 内 fillMaxSize 会把
+                // 思考卡片撑到整个视口高度——短思考内容后出现整屏空白的根因
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         // 流式生成期间不启用 SelectionContainer，避免 selectable 列表并发修改导致的
