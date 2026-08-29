@@ -339,7 +339,31 @@ ormalfont` 重定义为 Droid Sans Fallback 使全文默认可渲染中文（POC
 
 **下载路线的决策反转**：本节期间曾实现按需下载（公开资源仓库 [rikkahub-resources](https://github.com/androidrik/rikkahub-resources) Release v1 + jsDelivr + 2 镜像 4 候选源 + TikzAssets 下载器，WSL 匿名下载校验通过），**按决策回退，改为全部内置 APK**——资源仓库保留作未来 bundle 升级路径（manifest 结构已验证可用）。当时遗留的坑（复用价值）：宿主 dev 包污染 pkg-config、build script 缓存、cargo-ndk v4 panic、AGP 拒绝版本化 .so 文件名（patchelf 改 NEEDED）、adb MSYS 路径转换。
 
-**待办（第 3/4 步）**：dvisvgm 矢量路径（替换 PdfRenderer 位图）；isolatedProcess 隔离编译进程；UI 层人工验证；xeCJK 进 bundle（正全中文渲染）。
+#### 8.4.4 第 3 步 dvisvgm 矢量路径（2026-08-29，POC 完成 ✅，commit `e3a16196`）
+
+**已验证**（真机 <device>，app 内全链路）：
+
+| 项 | 结果 |
+|---|---|
+| XDV 输出（tectonic OutputFormat::Xdv，JNI format 参数） | ✅ 2628B |
+| dvisvgm 3.2.1 aarch64 交叉编译（`--enable-bundled-libs --disable-woff`） | ✅ |
+| kpathsea stub（真头文件 + 空实现；kpse_find_file 支持当前目录直查） | ✅ |
+| **exec 路线被 SELinux 封死**（`execute_no_trans` 拒绝，MIUI 老内核；`/data` 无 noexec 但 app 域无 exec 转换权限） | ⛔ 改 JNI 化 |
+| **libdvisvgmexec.so**（共享库 + `Java_..._dvisvgmMain` JNI 入口，chdir 后转 dvisvgm_main_impl） | ✅ SVG 真机产出 |
+| version-script 符号隔离（1831 → 1 导出，防 kpse_/Fc 介入污染 tectonic） | ✅ |
+| TikzJax 矢量优先回退链（子集 SVG → native XDV+dvisvgm SVG → PDF 位图 → 源码） | ✅ 代码入库 |
+| instrumented test | ✅ 4 PDF 用例全绿；矢量用例单独验证通过 |
+
+**关键技术点**：
+
+1. **JNI argv 悬垂指针**：`vector<string>` 逐个 `emplace_back` + `push_back(c_str())` 交替，扩容后指针悬垂 → dvisvgm 解析垃圾参数 exit=-4。修复：先收集全部 string 再统一转指针。
+2. **pgf 图形进 SVG 需 driver 声明**：`\def\pgfsysdriver{pgfsys-dvisvgm.def}`（wrapDocument 已内置），否则 dvisvgm 只输出文字（dvipdfm specials 不识别）。
+3. **CM 字体**：texlive-fonts-recommended 的 `.pfb`（cmr10 等 7 个）+ 无扩展名副本（kpse stub 按原名 fopen）。
+4. **编译失败语义**：keep_logs 后检查 main.log 的 `! ` 错误行（TeX 非交互恢复模式对坏输入仍产出 PDF）。
+
+**已知限制（产品化阻断项）**：dvisvgm 与 tectonic 同进程共存，C++ 静态单例/流状态互污染——dvisvgm 运行后 tectonic 的 xdvipdfmx 后续编译失败（`ttbc_output_close` SIGABRT 或 unrecoverable error；version-script 符号隔离不解决）。临时缓解：`TectonicNative.dvisvgmUsed` 进程内单次限制。**根治方案 = isolatedProcess 隔离编译进程（第 4 步）**。
+
+**待办（第 4 步）**：isolatedProcess 隔离（根治互污染）；UI 层人工验证；xeCJK 进 bundle（正全中文渲染）；SVG 728B 偏小（pgfplots tick 部分字体缺失，需补 LM 全家族映射）。
 
 ---
 
