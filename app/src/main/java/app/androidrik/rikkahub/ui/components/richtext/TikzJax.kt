@@ -43,16 +43,13 @@ import me.rerere.hugeicons.stroke.Download01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.tikz.PdfToBitmap
 import app.androidrik.rikkahub.tikz.TectonicNative
-import app.androidrik.rikkahub.tikz.TikzRenderer
-import app.androidrik.rikkahub.tikz.TikzTelemetry
 import app.androidrik.rikkahub.ui.context.LocalToaster
-import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import app.androidrik.rikkahub.utils.exportImage
 
 /**
  * TikZ 渲染三级回退链：
- * 1. TikzRenderer（纯 Kotlin 子集 → SVG → AndroidSVG 矢量，最快）
- * 2. TectonicNative（真 TeX 引擎 → PDF → PdfRenderer 位图，完整性最高）
+ * 1. TectonicNative（真 TeX 引擎全语法）：XDV→dvisvgm SVG 矢量优先
+ * 2. PDF → PdfRenderer 位图降级
  * 3. 原始代码展示
  */
 private const val MAX_SVG_DIMENSION = 20_000f
@@ -65,32 +62,10 @@ fun TikzJax(
     val context = LocalContext.current
     val activity = LocalActivity.current
     val toaster = LocalToaster.current
-    val darkMode = LocalDarkMode.current
 
-    val svg = remember(code, darkMode) {
-        TikzRenderer.render(code, darkMode).fold(
-            onSuccess = {
-                // 失败分布埋点：成功也记（不含代码内容），提供计算失败率的分母。
-                // 注意 darkMode 切换会重渲染一次，计数会有少量重复，可接受。
-                TikzTelemetry.recordSuccess(context, it.length)
-                Log.i("TikzJax", "svg ok, len=${it.length}: $it")
-                it
-            },
-            onFailure = { e ->
-                TikzTelemetry.record(context, code, e)
-                Log.w("TikzJax", "render failed: ${e.message}", e)
-                // 完整 code 每 100 字符一行打印：logcat 单行超宽会截断，分段保证完整可见
-                Log.w("TikzJax", "code len=${code.length}")
-                code.chunked(100).forEachIndexed { idx, chunk ->
-                    Log.w("TikzJax", "code[$idx]: $chunk")
-                }
-                null
-            },
-        )
-    }
-    // Native TeX 回退状态：子集渲染失败时异步触发真编译（不阻塞组合）
-    // 矢量路径优先：XDV → dvisvgm → SVG（与第 1 级同为矢量）；
-    // dvisvgm 失败时降级 PDF → PdfRenderer 位图
+    // 统一走 native 引擎（真 TeX，全语法支持）：XDV→dvisvgm SVG 矢量优先，
+    // 失败降级 PDF→PdfRenderer 位图。原第①级 TikzRenderer 子集渲染已移除
+    //（"部分解析画错图"的静默错误风险 > 毫秒级渲染收益；复杂图仍需 3-6s 编译）
     var nativeSvg by remember(code) { mutableStateOf<String?>(null) }
     var nativeBitmap by remember(code) { mutableStateOf<ImageBitmap?>(null) }
     var nativeFailed by remember(code) { mutableStateOf(false) }
@@ -98,9 +73,9 @@ fun TikzJax(
         LocalConfiguration.current.screenWidthDp.dp.toPx().toInt().coerceAtLeast(1)
     }
 
-    LaunchedEffect(code, svg == null) {
-        if (svg == null && !nativeFailed && TectonicNative.available) {
-            // 隔离进程执行（tectonic 与 dvisvgm 各占一个 isolatedProcess，根治互污染）
+    LaunchedEffect(code) {
+        if (!nativeFailed && TectonicNative.available) {
+            // 双私有进程执行（tectonic 与 dvisvgm 各占一进程，根治互污染）
             val (svgText, bitmap) = withContext(Dispatchers.IO) {
                 val xdv = TectonicNative.compileIsolated(context, code, "xdv")
                 val svgText = xdv?.let { TectonicNative.xdvToSvgIsolated(context, it) }
@@ -139,12 +114,11 @@ fun TikzJax(
         }
     }
 
-    val svgObj = remember(svg) { parseSvgText(svg, "tier1") }
     val nativeSvgObj = remember(nativeSvg) { parseSvgText(nativeSvg, "native") }
-    val displaySvgObj = svgObj ?: nativeSvgObj
-    val displaySvgText: String? = svg ?: nativeSvg
-    // native SVG 黑色笔画在暗色主题不可见：渲染时衬白底（第 1 级已做 darkMode 颜色替换）
-    val whiteBackground = svg == null && nativeSvg != null
+    val displaySvgObj = nativeSvgObj
+    val displaySvgText: String? = nativeSvg
+    // native SVG 黑色笔画在暗色主题不可见：渲染时衬白底
+    val whiteBackground = nativeSvg != null
     val aspectRatio = remember(displaySvgObj) {
         val w = displaySvgObj?.documentWidth ?: 1f
         val h = displaySvgObj?.documentHeight ?: 1f

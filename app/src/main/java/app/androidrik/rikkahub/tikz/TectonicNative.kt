@@ -132,21 +132,11 @@ object TectonicNative {
      * 不做 exec：untrusted_app（targetSdk≥29）对 apk 库目录只有读权限，exec 会被
      * SELinux execute_no_trans 拒绝。改为 System.loadLibrary("dvisvgmexec") 后
      * JNI 直调，规避整个 exec 路径。
+     *
+     * 注：曾有的 dvisvgmUsed 进程内单次限制已移除——那是双进程隔离前的互污染
+     * 补丁；现在 dvisvgm 独占 :svgconvert 进程，tectonic 互不影响，可重复调用。
      */
-    /**
-     * dvisvgmMain 已调用过：其 C++ 静态单例/流状态会污染同进程 tectonic 的
-     * xdvipdfmx/output 管线（真机实测第二次 TeX 编译在 ttbc_output_close
-     * SIGABRT，即使 version-script 符号隔离后依旧）。每进程只允许一次矢量
-     * 转换，之后回落 PDF 位图路径。
-     */
-    @Volatile
-    private var dvisvgmUsed = false
-
     fun xdvToSvg(context: Context, xdv: ByteArray): String? {
-        if (dvisvgmUsed) {
-            Log.i(TAG, "dvisvgm already used in this process, fallback to bitmap")
-            return null
-        }
         return try {
             load()
             val work = File(context.cacheDir, "texwork").apply { deleteRecursively(); mkdirs() }
@@ -164,7 +154,6 @@ object TectonicNative {
                 work.absolutePath,
                 arrayOf("--no-fonts", "main.xdv", "-o", "main.svg"),
             )
-            dvisvgmUsed = true
             if (rc != 0) {
                 Log.w(TAG, "dvisvgmMain exit=$rc")
                 return null
@@ -182,6 +171,9 @@ object TectonicNative {
         if (trimmed.contains("\\documentclass", ignoreCase = true)) return trimmed
         return buildString {
             append("\\documentclass{article}\n")
+            // XDV 矢量路径必须：pgf 默认 dvipdfm 驱动的 PDF specials dvisvgm 不识别
+            //（图形全丢只剩文字），需显式切换 dvisvgm 驱动。必须在 \usepackage{tikz} 前
+            append("\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\n")
             append("\\usepackage{tikz}\n")
             append("\\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}\n")
             append("\\pagestyle{empty}\n")
