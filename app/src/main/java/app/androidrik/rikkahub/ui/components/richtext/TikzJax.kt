@@ -43,6 +43,7 @@ import me.rerere.hugeicons.stroke.Download01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.tikz.PdfToBitmap
 import app.androidrik.rikkahub.tikz.TectonicNative
+import app.androidrik.rikkahub.tikz.TikzSvgCache
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.utils.exportImage
 
@@ -75,11 +76,18 @@ fun TikzJax(
 
     LaunchedEffect(code) {
         if (!nativeFailed && TectonicNative.available) {
+            // 缓存命中：历史消息秒开（TeX 确定性输出，sha256(code) 内容寻址）
+            val cached: String? = withContext(Dispatchers.IO) { TikzSvgCache.get(context, code) }
+            if (cached != null) {
+                nativeSvg = cached
+                return@LaunchedEffect
+            }
             // 双私有进程执行（tectonic 与 dvisvgm 各占一进程，根治互污染）
             val (svgText, bitmap) = withContext(Dispatchers.IO) {
                 val xdv = TectonicNative.compileIsolated(context, code, "xdv")
                 val svgText = xdv?.let { TectonicNative.xdvToSvgIsolated(context, it) }
                 if (svgText != null) {
+                    TikzSvgCache.put(context, code, svgText)
                     svgText to null
                 } else {
                     val pdf = TectonicNative.compileIsolated(context, code)

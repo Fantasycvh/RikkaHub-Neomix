@@ -91,6 +91,7 @@ import app.androidrik.rikkahub.ui.components.message.groupMessageParts
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.richtext.generateMarkdownHtml
 import app.androidrik.rikkahub.tikz.TectonicNative
+import app.androidrik.rikkahub.tikz.TikzSvgCache
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.BitmapComposer
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThought
@@ -476,18 +477,22 @@ private suspend fun renderMarkdownWithTikz(context: Context, content: String): S
     }
 
     // 3. 统一 native 编译（XDV→dvisvgm SVG，与聊天渲染同链路；IO 线程阻塞 ~3-6s/图）
+    //    先查内容寻址缓存（聊天里渲染过的图直接复用，免编译）
     val html = generateMarkdownHtml(afterFence)
     var result = html
     pendingRaw.forEachIndexed { i, code ->
+        val trimmed = code.trim()
         val svg = withContext(Dispatchers.IO) {
-            val xdv = TectonicNative.compileIsolated(context, code.trim(), "xdv")
-            xdv?.let { TectonicNative.xdvToSvgIsolated(context, it) }
+            TikzSvgCache.get(context, trimmed)
+                ?: TectonicNative.compileIsolated(context, trimmed, "xdv")
+                    ?.let { TectonicNative.xdvToSvgIsolated(context, it) }
+                    ?.also { TikzSvgCache.put(context, trimmed, it) }
         }
         if (svg != null) {
             result = result.replace("%%TIKZ_PH_${i}%%", svg)
         } else {
             // native 失败：占位符还原为原始围栏（导出可见源码，不残留占位文本）
-            result = result.replace("%%TIKZ_PH_${i}%%", "```tikz\n${code.trim()}\n```")
+            result = result.replace("%%TIKZ_PH_${i}%%", "```tikz\n$trimmed\n```")
         }
     }
     return result
