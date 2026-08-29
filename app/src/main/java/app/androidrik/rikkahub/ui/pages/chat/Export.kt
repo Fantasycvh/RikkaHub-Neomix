@@ -90,7 +90,7 @@ import app.androidrik.rikkahub.ui.components.message.ThinkingStep
 import app.androidrik.rikkahub.ui.components.message.groupMessageParts
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.richtext.generateMarkdownHtml
-import app.androidrik.rikkahub.tikz.TikzRenderer
+import app.androidrik.rikkahub.tikz.TectonicNative
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.BitmapComposer
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThought
@@ -189,12 +189,15 @@ fun ChatExportSheet(
                     stringResource(id = R.string.chat_page_export_success, "HTML")
                 OutlinedCard(
                     onClick = {
-                        exportToHtml(context, conversation, exportMessages)
-                        toaster.show(
-                            htmlSuccessMessage,
-                            type = ToastType.Success
-                        )
-                        onDismissRequest()
+                        // TikZ 导出走 native 编译（阻塞数秒/图），协程化避免卡 UI
+                        scope.launch {
+                            exportToHtml(context, conversation, exportMessages)
+                            toaster.show(
+                                htmlSuccessMessage,
+                                type = ToastType.Success
+                            )
+                            onDismissRequest()
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -445,22 +448,21 @@ private val DOLLAR_TIKZ_REGEX = Regex("""\$\$([\s\S]*?)\$\$""")
 /**
  * 将 markdown 中的 TikZ（代码围栏 + $$ 内嵌图表）渲染为内嵌 <svg>（矢量），
  * 其余 markdown 交给 generateMarkdownHtml。用占位符绕过 flexmark 对原始 HTML 的转义。
+ *
+ * TikZ 走 native 引擎（与聊天渲染同链路：XDV→dvisvgm SVG），须在 IO 线程
+ * 调用（内部阻塞等待隔离进程编译，~3-6s/图）。
  */
-private fun renderMarkdownWithTikz(content: String): String {
-    val svgs = mutableListOf<String>()
-
-    fun renderToPlaceholder(code: String): String? {
-        val svg = TikzRenderer.render(code.trim()).getOrNull() ?: return null
-        val placeholder = "%%TIKZ_PH_${svgs.size}%%"
-        svgs.add(svg)
-        return placeholder
-    }
+private suspend fun renderMarkdownWithTikz(context: Context, content: String): String {
+    // replace 回调非 suspend：先收集待编译 TikZ 源码，占位标记后统一走 native
+    val pendingRaw = mutableListOf<String>()
 
     // 1. 处理 $$...$$ 块内嵌的 TikZ 图表（\begin{tikzpicture}/\begin{tikzcd} 等）
     val afterDollar = DOLLAR_TIKZ_REGEX.replace(content) { m ->
         val latex = m.groupValues[1]
         if (DIAGRAM_LATEX_PATTERNS.any { it.containsMatchIn(latex) }) {
-            renderToPlaceholder(latex) ?: m.value
+            val placeholder = "%%TIKZ_PH_${pendingRaw.size}%%"
+            pendingRaw.add(latex)
+            placeholder
         } else {
             m.value // 普通数学公式，保留
         }
@@ -468,18 +470,30 @@ private fun renderMarkdownWithTikz(content: String): String {
 
     // 2. 处理 ```tikz 围栏
     val afterFence = TIKZ_FENCE_REGEX.replace(afterDollar) { m ->
-        renderToPlaceholder(m.groupValues[1]) ?: m.value
+        val placeholder = "%%TIKZ_PH_${pendingRaw.size}%%"
+        pendingRaw.add(m.groupValues[1])
+        placeholder
     }
 
+    // 3. 统一 native 编译（XDV→dvisvgm SVG，与聊天渲染同链路；IO 线程阻塞 ~3-6s/图）
     val html = generateMarkdownHtml(afterFence)
     var result = html
-    svgs.forEachIndexed { i, svg ->
-        result = result.replace("%%TIKZ_PH_${i}%%", svg)
+    pendingRaw.forEachIndexed { i, code ->
+        val svg = withContext(Dispatchers.IO) {
+            val xdv = TectonicNative.compileIsolated(context, code.trim(), "xdv")
+            xdv?.let { TectonicNative.xdvToSvgIsolated(context, it) }
+        }
+        if (svg != null) {
+            result = result.replace("%%TIKZ_PH_${i}%%", svg)
+        } else {
+            // native 失败：占位符还原为原始围栏（导出可见源码，不残留占位文本）
+            result = result.replace("%%TIKZ_PH_${i}%%", "```tikz\n${code.trim()}\n```")
+        }
     }
     return result
 }
 
-private fun exportToHtml(
+private suspend fun exportToHtml(
     context: Context,
     conversation: Conversation,
     messages: List<UIMessage>
@@ -525,7 +539,7 @@ private fun exportToHtml(
         message.parts.forEach { part ->
             when (part) {
                 is UIMessagePart.Text -> {
-                    sb.append(renderMarkdownWithTikz(part.text))
+                    sb.append(renderMarkdownWithTikz(context, part.text))
                     sb.append('\n')
                 }
 
