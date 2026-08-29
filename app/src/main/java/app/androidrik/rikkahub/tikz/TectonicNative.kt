@@ -28,6 +28,12 @@ object TectonicNative {
     @Volatile
     private var loaded = false
 
+    /** 最近一次隔离进程（:texcompile/:svgconvert）返回的错误文本。
+     * 隔离进程内 native 的 lastError 只存在于该进程，跨进程回传后在此缓存，
+     * 供主进程 [lastErrorText] 统一读取。 */
+    @Volatile
+    private var lastIsolatedError: String? = null
+
     /** so 是否可用（仅打包了 arm64-v8a；其他 ABI 或加载失败时为 false，回退链自动降级） */
     val available: Boolean
         get() = runCatching { load() }.isSuccess
@@ -104,6 +110,7 @@ object TectonicNative {
         if (result.data != null) {
             Log.i(TAG, "isolated compile ok ($format): ${result.data.size} bytes")
         } else {
+            lastIsolatedError = result.error
             Log.w(TAG, "isolated compile failed ($format): ${result.error}")
         }
         return result.data
@@ -120,6 +127,7 @@ object TectonicNative {
         if (result.data != null) {
             Log.i(TAG, "isolated svg convert ok: ${result.data.size} bytes")
         } else {
+            lastIsolatedError = result.error
             Log.w(TAG, "isolated svg convert failed: ${result.error}")
         }
         return result.data?.toString(Charsets.UTF_8)
@@ -193,7 +201,10 @@ object TectonicNative {
     }
 
     fun lastErrorText(): String? = try {
-        lastError()
+        // 隔离进程回传缓存（compileIsolated/xdvToSvgIsolated 主路径）优先，
+        // 无则回退主进程 native 槽（直接 compile 用）。
+        // 注意 native 槽失败时返回 "unknown error" 而非 null，故不能先取它。
+        lastIsolatedError ?: lastError()
     } catch (t: Throwable) {
         t.message
     }

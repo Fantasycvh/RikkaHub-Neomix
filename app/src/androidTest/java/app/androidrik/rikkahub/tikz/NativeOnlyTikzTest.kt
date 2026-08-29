@@ -64,4 +64,27 @@ class NativeOnlyTikzTest {
         val svg = compileToSvg("native_t4", tcd)
         assertTrue("t4 not svg", svg == null || svg.contains("<svg"))
     }
+
+    // #hex!NN（十六进制颜色 + 不透明度）——pgf/TeX 层已知限制（见 docs §8.4.8）：
+    // `#` 在 TeX 中为参数 token，pgf options 展开进 \tikz@temp 时报
+    // Illegal parameter number，整图编译失败、走降级。非引擎 bug，宿主系统 TeX 同错。
+    private val tHex = "\\begin{tikzpicture}\n\\node[draw, fill=#4A90D9!30] (a) {A};\n\\node[draw, fill=#E85D75!40, right=of a] (b) {B};\n\\draw[->, #4A90D9!60] (a) -- (b);\n\\end{tikzpicture}"
+
+    @Test
+    fun t5HexColorWithOpacity() {
+        // 记录性用例：文档化 pgf 对 #hex 的限制（真机 + 宿主 TeX 双端确认）。
+        // 若未来引擎加了 #hex 预处理，本用例需随行为更新。
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        assumeTrue(TectonicNative.available)
+        val xdv = TectonicNative.compileIsolated(ctx, tHex, "xdv")
+        val err = TectonicNative.lastErrorText()
+        if (xdv != null) {
+            // 引擎若已支持（未来改进），SVG 转换后尺寸应正常
+            val svg = TectonicNative.xdvToSvgIsolated(ctx, xdv)
+            assertTrue("unexpected svg too small", svg == null || svg.length > 500)
+        } else {
+            // 当前预期：TeX 层失败，报 Illegal parameter number
+            assertTrue("expected pgf #hex failure, got err=$err", err?.contains("Illegal parameter number") == true)
+        }
+    }
 }

@@ -426,3 +426,36 @@ TikZ 输入（任意语法）
 ```
 
 **遗留**（非阻断，未排期）：进程驻留策略；xeCJK（粗体/斜体中文）；LM 字体映射补全（SVG 728B 量级偏小）；tikz_cache 无 LRU（可挂设置存储清理）。
+
+#### 8.4.8 排雷：`#hex!opacity` 颜色语法边界（2026-08-29）
+
+用户报告原版图 `fill[#4A90D9!30]` 导致整图失败、降级为源码。真机 native 引擎 + 宿主 Ubuntu TeX Live 2023/Debian（上游 pgf，非 fork bundle）双端对照，v1-v5 隔离用例结论完全一致：
+
+| 语法 | 用例 | 真机 native | 宿主系统 TeX | 结果 |
+|---|---|---|---|---|
+| 颜色名 `blue` | - | ✅ | ✅ | 支持 |
+| 颜色名+不透明度 `blue!30` | v3 | ✅ | ✅ PASS | 支持 |
+| `#hex` 纯十六进制 `#4A90D9`（node fill） | v1 | ❌ | ❌ FAIL | **不支持** |
+| `#hex` 纯十六进制（draw） | v5 | ❌ | ❌ FAIL | **不支持** |
+| `#hex!opacity` `#4A90D9!30`（node） | v2 | ❌ | ❌ FAIL | 不支持 |
+| `#hex!opacity`（draw） | v4 | ❌ | ❌ FAIL | 不支持 |
+
+> **修正**：初判以为"`#hex` 纯十六进制可用、仅 `!NN` 组合失败"——真机隔离测试（v1 也 FAIL）与宿主对照（v1/v5 FAIL）均否定。**pgf options 里出现裸 `#` 一律失败**，`#hex` 与 `#hex!NN` 同等待遇。早期"`#hex` 可用"的印象来自已删除的第①级纯 Kotlin 渲染器自带的颜色解析模块（`#hex` 由其自行解析），native 路径没有这个模块——代码原样进 TeX。
+
+**错误信息**（真机与宿主完全一致）：
+- node 选项（`fill=#4A90D9!30`）→ `! Illegal parameter number in definition of \tikz@temp.`
+- draw 选项（`\draw[->, #4A90D9!60]`）→ `! Illegal parameter number in definition of \pgfkeyscurrentkey.`
+
+**根因**：`#` 在 TeX 中是参数 token，pgf 解析 options 时把键值对展开进 `\tikz@temp`/`\pgfkeyscurrentkey` 这类内部宏定义，`#hex` 被当作非法参数号 → 解析崩 → 整图失败、TikzJax 降级源码。**这是 pgf/TeX 层通用限制，不是引擎 bug，也不是 fork bundle 缺宏包问题**——宿主上游 pgf 同文件同报错即铁证。
+
+**替代方案**（推荐给模型/用户）：
+1. `颜色名!NN`（`blue!30`、`red!20`）——效果最接近，已实测渲染正常
+2. 预算混合后的纯 `颜色名` 或 `#hex` 仅在**非 options 位置**（如颜色字面量直接出现）考虑；options 内一律用颜色名
+
+**排雷经验**：pgf options（`[...]`）里出现裸 `#` 一律视为雷区；`Illegal parameter number in definition of \tikz@temp` 报错第一反应检查 options 内是否含 `#hex`。已同步写入项目记忆 [[tikz-hex-color-opacity]]。
+
+**顺带改进：native 错误详情透出**（lib.rs + TectonicNative.kt）。此前 JNI 失败只回传 `"unknown error"`/`"TeX errors detected in main.log"`，主进程拿到的是隔离进程丢失的错误——诊断要靠 CLI 复现。本次改动：
+- `lib.rs tex_compile`：main.log 里取首条 `! ` 行拼 `TeX error: <detail>`（XeTeX 致命错时 session.run 先返回 "unrecoverable error"，但 main.log 仍有 `! ` 详细行，优先取它）；
+- `TectonicNative.lastErrorText()`：隔离进程的错误文本经 `lastIsolatedError` 缓存回主进程（此前只读主进程 native 槽，隔离编译失败拿到的是空值）。现在编译失败 `lastErrorText()` 直接给出 `TeX error: Illegal parameter number in definition of \tikz@temp.`，提示词同步加了 `#hex` 禁用说明（GenerationHandler.kt）。
+
+复现脚本（`<work>\projects\tectonic-poc\`）：`hex_host_matrix.sh`（宿主 TeX v1-v5 矩阵）、`hex_variants.py`（真机 v1-v5 隔离）、`test_hexop.tex`/`test_hexvariants.tex`（设备 CLI 复现）。
