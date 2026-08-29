@@ -318,7 +318,28 @@ commit `83b23ca7`。**instrumented test 3 项全部通过（<device> 真机）**
 
 真机耗时（<device> / 骁龙 845）：format 首建后每次编译 **~3.6s**（bundle 加载 0.37s + 编译 ~3s）；下一次优化方向是 bundle 进程常驻与 isolatedProcess 隔离。
 
-**待办（第 3/4 步）**：dvisvgm 矢量路径；isolatedProcess 隔离；bundle/字体改按需下载（当前 APK +83MB）；UI 层人工验证（发一条 positioning 语法的 TikZ 消息观察回退链）。
+#### 8.4.3 扩展 bundle + 字体替换（2026-08-29，已完成 ✅，commit `6299c328`）
+
+真机（<device>）暴露关键缺口后补全：
+
+| 项 | 结果 |
+|---|---|
+| 精简 bundle 缺 tikz 库文件（`tikzlibrarypositioning.code.tex` 等）→ positioning 语法编译失败 | ✅ 从 pgf 3.1.12 TDS 补全全部库（tikzlibrary 77 + pgflibrary 47 + core 同版本对齐） |
+| pgfplots 1.18.3 axis + 中文标签编译 | ✅ 4600 B / 3.8s |
+| 字体 SimHei（9.7MB，**不可再分发**） | ✅ 换 Droid Sans Fallback（3.4MB，Apache 2.0），真机中文渲染通过 |
+| bundle 体积 | 13.4MB → 14.5MB（1598 文件） |
+| instrumented test | ✅ 4 项通过（positioning 片段 / pgfplots / 确定性 / 坏输入 null+lastError） |
+
+新增机制：
+
+- **wrapDocument**：TikZ 片段自动包装为完整文档（article + tikz + 常用库 positioning/arrows.meta/calc/shapes + 中文字体）；`
+ormalfont` 重定义为 Droid Sans Fallback 使全文默认可渲染中文（POC 限制：无粗/斜体变体，xeCJK 待后续进 bundle）。
+- **编译失败语义**：TeX 非交互恢复模式对含错误文档仍可能产出 PDF，故 keep_logs 保留 main.log，含 `! ` 错误行即判失败（修复"坏输入返回位图"问题）。
+- 打包注意：重打 bundle 时 tar 成员不能带 `./` 前缀（Rust tar loader 按名字精确查找）。
+
+**下载路线的决策反转**：本节期间曾实现按需下载（公开资源仓库 [rikkahub-resources](https://github.com/androidrik/rikkahub-resources) Release v1 + jsDelivr + 2 镜像 4 候选源 + TikzAssets 下载器，WSL 匿名下载校验通过），**按决策回退，改为全部内置 APK**——资源仓库保留作未来 bundle 升级路径（manifest 结构已验证可用）。当时遗留的坑（复用价值）：宿主 dev 包污染 pkg-config、build script 缓存、cargo-ndk v4 panic、AGP 拒绝版本化 .so 文件名（patchelf 改 NEEDED）、adb MSYS 路径转换。
+
+**待办（第 3/4 步）**：dvisvgm 矢量路径（替换 PdfRenderer 位图）；isolatedProcess 隔离编译进程；UI 层人工验证；xeCJK 进 bundle（正全中文渲染）。
 
 ---
 
