@@ -384,7 +384,19 @@ ormalfont` 重定义为 Droid Sans Fallback 使全文默认可渲染中文（POC
 2. **isolatedProcess 的 makeApplication 链路仍有问题**（handleCreateService 阶段 `getApplicationContext` on null）→ 放弃 isolatedProcess，改普通私有进程 `android:process=":texcompile"`（同 UID，Application 正常，隔离目标——防 native 崩溃拖垮主进程——不受影响；安全沙箱非本步目标）。
 3. **Service 构造阶段 base context 未 attach**：`Messenger(IncomingHandler(this))` 写在字段初始化 → IncomingHandler 构造里 `applicationContext` NPE（反复崩溃的直接根因）→ messenger 懒初始化到 `onCreate`，Handler 提为文件级类。
 
-**遗留**（后续优化，非阻断）：进程驻留策略（当前每次 bind/unbind，系统延迟回收进程可复用）；UI 层人工验证；xeCJK 进 bundle；SVG 728B 偏小（LM 字体映射补全）；dvisvgmUsed 单次限制已随隔离解除（xdvToSvg 在 svgconvert 进程内可重复调用）。
+#### 8.4.6 移除第①级子集渲染（2026-08-29，commit `0db5e6f7`）
+
+**决策**：TikzJax 统一走 native 引擎（XDV→dvisvgm SVG 矢量 → PDF 位图 → 源码），TikzRenderer 从渲染链移除（文件与单测保留，可随时接回）。
+
+**动机**：第①级的边界不是白名单而是"尽力解析"，存在"部分解析画错图"的静默错误类（positioning 重叠 bug 即此例——语法被当未知样式忽略，节点落原点，渲染"成功"但错误）。子集实现的正确性验证成本随语法数线性增长，native 引擎一个实现路径天然全语法正确。代价是简单图也需 3-6s 编译（异步渲染，体验可接受）。
+
+**顺带修复**：
+1. 删除 `dvisvgmUsed` 单次限制（双进程隔离前的互污染旧补丁，隔离后无必要；残留导致 svgconvert 进程第二次调用起全部走位图）。
+2. `wrapDocument` 补 `\def\pgfsysdriver{pgfsys-dvisvgm.def}`：缺失时 pgf 写 dvipdfm PDF specials，dvisvgm 不识别 → 图形全丢只剩文字（T1 SVG 398B→1292B）。
+
+**验证**：NativeOnlyTikzTest 真机 3/3（T1/T2/T3 positioning 全场景），SVG 浏览器渲染确认布局与图形完整。
+
+**遗留**（非阻断）：进程驻留；xeCJK；LM 字体映射补全。
 
 ---
 
