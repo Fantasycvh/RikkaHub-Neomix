@@ -107,7 +107,31 @@ object TikzRenderer {
 
     private class ParseContext {
         val coordinates = mutableMapOf<String, Point>()
+
+        /** positioning 定位声明（第一遍收集，第二遍前统一求解） */
+        val pendingPlacements = mutableListOf<PlacementSpec>()
+
+        /** 声明为 circle 形状的节点名（求解定位时用圆半径而非矩形半宽） */
+        val circleNodes = mutableSetOf<String>()
     }
+
+    /**
+     * positioning 库定位（`right=of a` / `above right=2cm of b` / 旧语法 `right of=a`）。
+     *
+     * @param dx/dy 方向（TikZ y 轴向上，above=+1）
+     * @param distance 边到边距离（TikZ 单位）；null = 默认 node distance 1cm
+     * @param refNode 参考节点名
+     * @param legacy 旧语法（`right of=a`，无等号）：中心到中心语义
+     */
+    private data class PlacementSpec(
+        val nodeName: String,
+        val dx: Int,
+        val dy: Int,
+        val distance: Double?,
+        val refNode: String,
+        val legacy: Boolean,
+        val styleStr: String,
+    )
 
     // ---- 预处理 ----
 
@@ -207,6 +231,8 @@ object TikzRenderer {
             collectNodeName(cmd, ctx)
             collectDrawNodeNames(cmd, ctx)
         }
+        // positioning 定位统一求解（支持链式依赖：T2 的 c 依赖 b，b 依赖 a）
+        solvePlacements(ctx)
         // 第二遍：生成可渲染元素（parseDraw 可能返回多个：折线 + path 内 node）
         val elements = mutableListOf<Element>()
         commands.forEach { cmd ->
@@ -219,6 +245,74 @@ object TikzRenderer {
         }
         return elements
     }
+
+    /**
+     * positioning 定位求解：按依赖顺序迭代（链式定位逐轮解锁），写入 ctx.coordinates。
+     * 参考节点未定义或依赖成环的节点兜底原点。
+     *
+     * 语义：
+     * - 新语法（`right=of a`）：边到边（border gap），TikZ positioning 库标准语义
+     * - 旧语法（`right of=a`）：中心到中心（废弃写法的历史语义）
+     * - 对角组合（`above right`）：沿 45° 方向的边到边投影
+     * - 节点尺寸用绘制同款常量（NODE_HALF_W/H），保证定位与绘制自洽
+     */
+    private fun solvePlacements(ctx: ParseContext) {
+        if (ctx.pendingPlacements.isEmpty()) return
+        val pending = ctx.pendingPlacements.toMutableList()
+        val maxRounds = pending.size + 1
+        repeat(maxRounds) {
+            if (pending.isEmpty()) return
+            val iter = pending.iterator()
+            while (iter.hasNext()) {
+                val spec = iter.next()
+                val ref = ctx.coordinates[spec.refNode] ?: continue  // 依赖未定位，下一轮
+                val pos = computePlacedPosition(spec, ref, ctx)
+                ctx.coordinates[spec.nodeName] = pos
+                iter.remove()
+            }
+        }
+        // 依赖无法满足的（未定义参考节点/环）兜底原点
+        pending.forEach { ctx.coordinates[it.nodeName] = Point(0.0, 0.0) }
+        ctx.pendingPlacements.clear()
+    }
+
+    private fun computePlacedPosition(spec: PlacementSpec, ref: Point, ctx: ParseContext): Point {
+        val (rhw, rhh) = halfSizesOf(spec.refNode, ctx)
+        val (hw, hh) = halfSizesOf(spec.nodeName, ctx)
+        val d = spec.distance ?: DEFAULT_NODE_DISTANCE
+        val sx = spec.dx.toDouble()
+        val sy = spec.dy.toDouble()
+        return if (spec.legacy) {
+            // 旧语法：中心到中心
+            Point(ref.x + sx * d, ref.y + sy * d)
+        } else if (spec.dx != 0 && spec.dy != 0) {
+            // 对角：45° 方向边到边投影
+            Point(
+                ref.x + sx * ((rhw + d * 0.7071 + hw) * 0.7071 + 0.05),
+                ref.y + sy * ((rhh + d * 0.7071 + hh) * 0.7071 + 0.05),
+            )
+        } else {
+            // 纯水平/垂直：边到边
+            Point(
+                ref.x + sx * (rhw + d + hw),
+                ref.y + sy * (rhh + d + hh),
+            )
+        }
+    }
+
+    /** 节点半尺寸估算（与 renderNode 绘制常量一致；circle 类用圆半径） */
+    private fun halfSizesOf(nodeName: String, ctx: ParseContext): Pair<Double, Double> {
+        // circle 类形状的判断依赖 style，求解阶段简化：按绘制默认矩形尺寸
+        //（circle 节点在 positioning 布局中的误差可接受）
+        val isCircleLike = ctx.circleNodes.contains(nodeName)
+        return if (isCircleLike) {
+            NODE_CIRCLE_R to NODE_CIRCLE_R
+        } else {
+            NODE_HALF_W to NODE_HALF_H
+        }
+    }
+
+    private val DEFAULT_NODE_DISTANCE = 1.0
 
     /** 按分号分割命令，忽略空段与行尾注释（% 到行尾） */
     private fun splitCommands(body: String): List<String> {
@@ -250,17 +344,90 @@ object TikzRenderer {
         val m = Regex("""\\node\s*(\[[^\]]*\])?\s*\(([^)]+)\)\s*(?:at\s+\(([^)]+)\))?""").find(cmd) ?: return
         val name = m.groupValues[2].trim()
         val atRaw = m.groupValues[3]
+        val styleStr = m.groupValues[1].orEmpty()
+        if (styleStr.contains("circle")) ctx.circleNodes.add(name)
+        val placement = parsePlacement(styleStr, name)
+        if (placement != null && atRaw.isBlank()) {
+            // positioning 定位节点：坐标延后到 solvePlacements 统一求解
+            ctx.coordinates[name] = Point(0.0, 0.0)
+            ctx.pendingPlacements.add(placement)
+            return
+        }
         val point = if (atRaw.isNotBlank()) parseCoordinatePoint(atRaw, ctx) else Point(0.0, 0.0)
         ctx.coordinates[name] = point
     }
 
+    /**
+     * 解析 positioning 库定位语法（style 选项内）。
+     * 新语法：`right=of a` / `above right=2cm of b`（边到边，默认 node distance 1cm）
+     * 旧语法：`right of=a`（无等号，中心到中心，废弃写法兼容）
+     * 不匹配返回 null。
+     */
+    private fun parsePlacement(styleStr: String, nodeName: String): PlacementSpec? {
+        // 前置快速检查：新语法 "of " 与旧语法 "of=" 任一出现
+        if (!styleStr.contains("of ") && !styleStr.contains("of=")) return null
+        // 新语法：<dirs>=<dist> of <node>（dist 可缺省）
+        PLACEMENT_NEW_REGEX.find(styleStr)?.let { m ->
+            val dirs = m.groupValues[1]
+            val distRaw = m.groupValues[2]
+            val unit = m.groupValues[3]
+            val ref = m.groupValues[4].trim()
+            val (dx, dy) = parsePlacementDirs(dirs)
+            if (dx == 0 && dy == 0) return null
+            val distance = if (distRaw.isBlank()) null
+            else (distRaw.toDoubleOrNull() ?: return null) * unitScale(unit)
+            return PlacementSpec(nodeName, dx, dy, distance, ref, legacy = false, styleStr = styleStr)
+        }
+        // 旧语法：<dirs> of <node>（无等号）
+        PLACEMENT_LEGACY_REGEX.find(styleStr)?.let { m ->
+            val dirs = m.groupValues[1]
+            val ref = m.groupValues[2].trim()
+            val (dx, dy) = parsePlacementDirs(dirs)
+            if (dx == 0 && dy == 0) return null
+            return PlacementSpec(nodeName, dx, dy, null, ref, legacy = true, styleStr = styleStr)
+        }
+        return null
+    }
+
+    private val PLACEMENT_NEW_REGEX = Regex(
+        """((?:above|below|left|right)(?:\s+(?:above|below|left|right))*)\s*=\s*(?:([0-9.]+)\s*(cm|mm|pt|em|ex)?\s+)?of\s+([A-Za-z0-9_.]+)"""
+    )
+    private val PLACEMENT_LEGACY_REGEX = Regex(
+        """((?:above|below|left|right)(?:\s+(?:above|below|left|right))*)\s+of\s*=\s*([A-Za-z0-9_.]+)"""
+    )
+
+    private fun parsePlacementDirs(words: String): Pair<Int, Int> {
+        var dx = 0
+        var dy = 0
+        if (words.contains("left")) dx = -1
+        if (words.contains("right")) dx = 1
+        if (words.contains("above")) dy = 1
+        if (words.contains("below")) dy = -1
+        return dx to dy
+    }
+
+    /** 距离单位 → TikZ 单位（1cm = 1.0） */
+    private fun unitScale(unit: String): Double = when (unit) {
+        "mm" -> 0.1
+        "pt" -> 1.0 / 28.45274
+        "em" -> 0.35
+        "ex" -> 0.2
+        else -> 1.0  // cm 或无单位
+    }
+
     private fun parseNode(cmd: String, ctx: ParseContext): Element? {
-        // 组1=选项 组2=名字 组3=at坐标 组4=文本；at 坐标可选，缺省原点 (0,0)
+        // 组1=选项 组2=名字 组3=at坐标 组4=文本；at 坐标可选：
+        // 有名字且无 at 时用求解后的坐标（positioning 节点在 solvePlacements 已定位），
+        // 无名字兜底原点
         val m = Regex("""\\node\s*(\[[^\]]*\])?\s*(?:\(([^)]+)\))?\s*(?:at\s+\(([^)]+)\))?\s*\{([^}]*)\}""").find(cmd) ?: return null
         val styleStr = m.groupValues[1].orEmpty()
         val name = m.groupValues[2].ifBlank { null }
         val atRaw = m.groupValues[3]
-        val at = if (atRaw.isNotBlank()) parseCoordinatePoint(atRaw, ctx) else Point(0.0, 0.0)
+        val at = when {
+            atRaw.isNotBlank() -> parseCoordinatePoint(atRaw, ctx)
+            name != null -> ctx.coordinates[name] ?: Point(0.0, 0.0)
+            else -> Point(0.0, 0.0)
+        }
         val text = m.groupValues[4]
         val style = parseStyle(styleStr)
         name?.let { ctx.coordinates[it] = at }

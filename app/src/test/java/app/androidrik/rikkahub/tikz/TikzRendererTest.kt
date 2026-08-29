@@ -755,4 +755,82 @@ class TikzRendererTest {
         )
         assertTrue("height 30000px should be rejected", result.isFailure)
     }
+
+    // ---- positioning (T1/T2/T3) ----
+
+    private fun textXs(svg: String): List<Double> =
+        Regex("""<text x="([0-9.-]+)"""").findAll(svg).map { it.groupValues[1].toDouble() }.toList()
+
+    @Test
+    fun `T1 basic right=of positions B right of A`() {
+        val svg = TikzRenderer.render(
+            """\begin{tikzpicture}\node (a) {A};\node[right=of a] (b) {B};\draw[->] (a) -- (b);\end{tikzpicture}"""
+        ).getOrThrow()
+        val xs = textXs(svg)
+        assertEquals(2, xs.size)
+        assertTrue(xs[1] > xs[0] + 20)
+    }
+    @Test
+    fun `T2 explicit distance makes C-B gap wider than B-A`() {
+        val svg = TikzRenderer.render(
+            """\begin{tikzpicture}\node[draw] (a) {A};\node[draw, right=of a] (b) {B};\node[draw, right=2cm of b] (c) {C};\draw (a) -- (b) -- (c);\end{tikzpicture}"""
+        ).getOrThrow()
+        val xs = textXs(svg)
+        assertEquals(3, xs.size)
+        val gapAB = xs[1] - xs[0]
+        val gapBC = xs[2] - xs[1]
+        assertTrue("gapBC $gapBC should exceed gapAB $gapAB", gapBC > gapAB * 1.3)
+    }
+
+    @Test
+    fun `T3 four directions plus diagonal`() {
+        val svg = TikzRenderer.render(
+            """\begin{tikzpicture}\node[draw] (a) {中心};\node[draw, above=of a] (t) {上};\node[draw, below=of a] (d) {下};\node[draw, left=of a] (l) {左};\node[draw, right=of a] (r) {右};\node[draw, above right=of a] (ar) {右上};\end{tikzpicture}"""
+        ).getOrThrow()
+        val pts = Regex("""<text x="([0-9.-]+)" y="([0-9.-]+)"""").findAll(svg)
+            .map { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }.toList()
+        assertEquals("T3 should render 6 text nodes, got $pts", 6, pts.size)
+        // 中心节点 = x、y 都取中位数的点（十字布局的中心；距离法会被 SVG y 翻转/平移干扰）
+        val xsSorted = pts.map { it.first }.sorted()
+        val ysSorted = pts.map { it.second }.sorted()
+        val medX = (xsSorted[2] + xsSorted[3]) / 2
+        val medY = (ysSorted[2] + ysSorted[3]) / 2
+        val center = pts.minBy { (x, y) -> kotlin.math.hypot(x - medX, y - medY) }
+        val others = pts.filter { it != center }
+        for ((x, y) in others) {
+            val dist = kotlin.math.hypot(x - center.first, y - center.second)
+            assertTrue("too close dist=$dist at ($x,$y), center=($center)", dist > 15)
+        }
+        // 中心左半边应有 2 个节点（左 + 右上的左边？不对——十字+右上对角：
+        // 中心左侧只有 left；右侧有 right 和右上（ar.x > center.x）
+        val leftCount = others.count { it.first < center.first - 10 }
+        val rightCount = others.count { it.first > center.first + 10 }
+        val upCount = others.count { it.second < center.second - 10 }
+        val downCount = others.count { it.second > center.second + 10 }
+        assertTrue("expect left nodes, got $others center=$center", leftCount >= 1)
+        assertTrue("expect right nodes (right+diagonal), got $others center=$center", rightCount >= 2)
+        assertTrue("expect up nodes (up+diagonal), got $others center=$center", upCount >= 2)
+        assertTrue("expect down nodes, got $others center=$center", downCount >= 1)
+        // 对角右上：同时满足右侧+上侧的那个点存在
+        val diag = others.any { it.first > center.first + 10 && it.second < center.second - 10 }
+        assertTrue("diagonal above-right node missing, got $others center=$center", diag)
+    }
+
+    @Test
+    fun `legacy right of=a center-to-center`() {
+        val svg = TikzRenderer.render(
+            """\begin{tikzpicture}\node (a) {A};\node[right of=a] (b) {B};\end{tikzpicture}"""
+        ).getOrThrow()
+        val xs = textXs(svg)
+        assertEquals("legacy should render 2 nodes: $xs", 2, xs.size)
+        assertTrue("legacy B should be right of A: $xs", xs[1] > xs[0] + 20)
+    }
+
+    @Test
+    fun `unknown placement ref falls back safely`() {
+        val result = TikzRenderer.render(
+            """\begin{tikzpicture}\node (a) {A};\node[right=of undefined] (b) {B};\end{tikzpicture}"""
+        )
+        assertTrue(result.isSuccess)
+    }
 }
