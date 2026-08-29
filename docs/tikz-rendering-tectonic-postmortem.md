@@ -363,7 +363,28 @@ ormalfont` 重定义为 Droid Sans Fallback 使全文默认可渲染中文（POC
 
 **已知限制（产品化阻断项）**：dvisvgm 与 tectonic 同进程共存，C++ 静态单例/流状态互污染——dvisvgm 运行后 tectonic 的 xdvipdfmx 后续编译失败（`ttbc_output_close` SIGABRT 或 unrecoverable error；version-script 符号隔离不解决）。临时缓解：`TectonicNative.dvisvgmUsed` 进程内单次限制。**根治方案 = isolatedProcess 隔离编译进程（第 4 步）**。
 
-**待办（第 4 步）**：isolatedProcess 隔离（根治互污染）；UI 层人工验证；xeCJK 进 bundle（正全中文渲染）；SVG 728B 偏小（pgfplots tick 部分字体缺失，需补 LM 全家族映射）。
+#### 8.4.5 第 4 步 双私有进程隔离（2026-08-29，完成 ✅，commit `9dee4f4c`）
+
+**根治互污染**：TexCompileService（tectonic，`:texcompile` 进程）+ SvgConvertService（dvisvgm，`:svgconvert` 进程），Messenger 协议（MSG_RUN/MSG_RESULT），`IsoServiceClient` bindService+CountDownLatch 同步封装。native 崩溃只杀对应子进程。
+
+**真机 5/5 全绿**（此前同进程 dvisvgm 后 tectonic 必坏）：
+
+| 用例 | 结果 |
+|---|---|
+| positioning 片段（XDV→SVG 矢量链） | ✅ SVG 728B |
+| positioning 片段（PDF 位图链） | ✅ 2245B |
+| pgfplots axis | ✅ 4063B |
+| 坏 LaTeX → null+lastError | ✅ |
+| 确定性（两次编译一致） | ✅ |
+| **SVG 转换后 5 次编译无互污染** | ✅（架构级验证） |
+
+**三个坑（反复崩溃的排障记录）**：
+
+1. **isolatedProcess 跑完整 Application**：RikkaHubApp 初始化（WorkManager 的 JobScheduler cast）在隔离环境直接崩 → `isIsolatedProcess()`（uid ≥ 99000）短路全部初始化。
+2. **isolatedProcess 的 makeApplication 链路仍有问题**（handleCreateService 阶段 `getApplicationContext` on null）→ 放弃 isolatedProcess，改普通私有进程 `android:process=":texcompile"`（同 UID，Application 正常，隔离目标——防 native 崩溃拖垮主进程——不受影响；安全沙箱非本步目标）。
+3. **Service 构造阶段 base context 未 attach**：`Messenger(IncomingHandler(this))` 写在字段初始化 → IncomingHandler 构造里 `applicationContext` NPE（反复崩溃的直接根因）→ messenger 懒初始化到 `onCreate`，Handler 提为文件级类。
+
+**遗留**（后续优化，非阻断）：进程驻留策略（当前每次 bind/unbind，系统延迟回收进程可复用）；UI 层人工验证；xeCJK 进 bundle；SVG 728B 偏小（LM 字体映射补全）；dvisvgmUsed 单次限制已随隔离解除（xdvToSvg 在 svgconvert 进程内可重复调用）。
 
 ---
 
