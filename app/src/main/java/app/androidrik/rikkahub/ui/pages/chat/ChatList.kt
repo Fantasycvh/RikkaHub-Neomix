@@ -347,7 +347,8 @@ private fun ChatListNormal(
                 items = conversation.messageNodes,
                 key = { index, item -> item.id },
             ) { index, node ->
-                HeightClamp(maxHeight = 10000.dp) {
+                // 哨兵只兜异常高度（防 Int.MAX 崩溃），正常长内容不再被裁剪
+                HeightClamp(normalLimit = 100_000.dp) {
                 Column {
                     ListSelectableItem(
                         key = node.id,
