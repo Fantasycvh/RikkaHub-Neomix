@@ -102,38 +102,33 @@ fun TikzJax(
 
     // AndroidSVG 对象（渲染用 renderToCanvas 而非 renderToPicture+drawPicture：
     // 硬件加速 Canvas 不支持 drawPicture，FAQ 明确 —— 直接渲染到 Canvas 才可靠）
-    fun parseSvgText(text: String?, tag: String): SVG? {
+    fun parseSvgText(text: String?): SVG? {
         if (text == null) return null
         val parsed = runCatching { SVG.getFromString(text) }
-        parsed.onFailure { Log.w("TikzJax", "$tag getFromString FAIL: ${it.message}", it) }
+        parsed.onFailure { Log.w("TikzJax", "getFromString FAIL: ${it.message}", it) }
         val obj = parsed.getOrNull() ?: return null
-        // 渲染前数值校验：documentWidth/Height 必须有限、为正、且不超合理上限。
-        // 真机曾出现 TikZ→SVG height=4.58e11（12 万公里画布），aspectRatio 趋 0 →
-        // Compose 高度 = width/ratio 溢出 Int.MAX → `Can't represent height of 2147483647` 崩溃。
-        // 超限直接拒收（降级显示，不进入布局）。
+        // 渲染前数值校验（布局层防线，非渲染引擎兼容）：documentWidth/Height 必须
+        // 有限、为正、且不超合理上限——畸形 SVG 的 aspectRatio 趋 0 会使 Compose
+        // 高度 = width/ratio 溢出 Int.MAX 崩溃，超限直接拒收走降级链
         val w = obj.documentWidth
         val h = obj.documentHeight
         return if (!w.isFinite() || !h.isFinite() || w <= 0f || h <= 0f || w > MAX_SVG_DIMENSION || h > MAX_SVG_DIMENSION) {
-            Log.w("TikzJax", "$tag svg dimension abnormal, reject: w=$w h=$h")
+            Log.w("TikzJax", "svg dimension abnormal, reject: w=$w h=$h")
             null
         } else {
-            Log.i("TikzJax", "$tag getFromString -> OK (w=$w h=$h)")
+            Log.i("TikzJax", "getFromString -> OK (w=$w h=$h)")
             obj
         }
     }
 
-    val nativeSvgObj = remember(nativeSvg) { parseSvgText(nativeSvg, "native") }
-    val displaySvgObj = nativeSvgObj
-    val displaySvgText: String? = nativeSvg
-    // native SVG 黑色笔画在暗色主题不可见：渲染时衬白底
-    val whiteBackground = nativeSvg != null
-    val aspectRatio = remember(displaySvgObj) {
-        val w = displaySvgObj?.documentWidth ?: 1f
-        val h = displaySvgObj?.documentHeight ?: 1f
+    val svgObj = remember(nativeSvg) { parseSvgText(nativeSvg) }
+    val aspectRatio = remember(svgObj) {
+        val w = svgObj?.documentWidth ?: 1f
+        val h = svgObj?.documentHeight ?: 1f
         if (w > 0f && h > 0f) w / h else 1f
     }
 
-    if (displaySvgObj != null && displaySvgText != null) {
+    if (svgObj != null && nativeSvg != null) {
         Column(modifier = modifier) {
             Canvas(
                 modifier = Modifier
@@ -141,14 +136,15 @@ fun TikzJax(
                     .aspectRatio(aspectRatio)
                     .clip(RoundedCornerShape(4.dp))
             ) {
-                if (whiteBackground) drawRect(color = Color.White)
+                // native SVG 黑色笔画在暗色主题不可见：衬白底
+                drawRect(color = Color.White)
                 drawIntoCanvas { canvas ->
                     val c = canvas.nativeCanvas
-                    val w = displaySvgObj.documentWidth
+                    val w = svgObj.documentWidth
                     val scale = if (w > 0f) size.width / w else 1f
                     c.save()
                     c.scale(scale, scale)
-                    displaySvgObj.renderToCanvas(c)
+                    svgObj.renderToCanvas(c)
                     c.restore()
                 }
             }
@@ -163,12 +159,12 @@ fun TikzJax(
                     IconButton(
                         onClick = {
                             runCatching {
-                                val s = SVG.getFromString(displaySvgText) ?: error("parse failed")
+                                val s = SVG.getFromString(nativeSvg) ?: error("parse failed")
                                 val exportScale = 2f
                                 val w = (s.documentWidth * exportScale).toInt().coerceAtLeast(1)
                                 val h = (s.documentHeight * exportScale).toInt().coerceAtLeast(1)
                                 val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                                if (whiteBackground) bitmap.eraseColor(android.graphics.Color.WHITE)
+                                bitmap.eraseColor(android.graphics.Color.WHITE)
                                 val bitmapCanvas = android.graphics.Canvas(bitmap)
                                 bitmapCanvas.scale(exportScale, exportScale)
                                 s.renderToCanvas(bitmapCanvas)
