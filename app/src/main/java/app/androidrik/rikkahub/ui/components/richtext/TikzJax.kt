@@ -100,13 +100,14 @@ fun TikzJax(
 
     LaunchedEffect(code, svg == null) {
         if (svg == null && !nativeFailed && TectonicNative.available) {
+            // 隔离进程执行（tectonic 与 dvisvgm 各占一个 isolatedProcess，根治互污染）
             val (svgText, bitmap) = withContext(Dispatchers.IO) {
-                val xdv = TectonicNative.compile(context, code, "xdv")
-                val svgText = xdv?.let { TectonicNative.xdvToSvg(context, it) }
+                val xdv = TectonicNative.compileIsolated(context, code, "xdv")
+                val svgText = xdv?.let { TectonicNative.xdvToSvgIsolated(context, it) }
                 if (svgText != null) {
                     svgText to null
                 } else {
-                    val pdf = TectonicNative.compile(context, code)
+                    val pdf = TectonicNative.compileIsolated(context, code)
                     null to pdf?.let { PdfToBitmap.renderFirstPage(it, widthPx) }
                 }
             }

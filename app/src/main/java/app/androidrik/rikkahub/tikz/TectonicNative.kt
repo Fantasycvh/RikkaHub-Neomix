@@ -73,6 +73,9 @@ object TectonicNative {
      * TikZ 片段（无 \documentclass）自动包上完整文档外壳：article + tikz +
      * 常用库 + 中文字体（\normalfont 重定义使全文默认可渲染中文；POC 限制：
      * 无粗体/斜体变体，xeCJK 待后续）。
+     *
+     * 主进程走隔离进程（TexCompileService）编译——根治 dvisvgm/tectonic 同进程
+     * 互污染；隔离进程自身（service 侧）直接调本方法内的 native 路径。
      */
     fun compile(context: Context, texSource: String, format: String = "pdf"): ByteArray? {
         return try {
@@ -86,6 +89,40 @@ object TectonicNative {
             Log.w(TAG, "native compile error", t)
             null
         }
+    }
+
+    /** 主进程入口：跨隔离进程（tectonic 专属）编译。须在 IO 线程（内部阻塞等待）。 */
+    fun compileIsolated(context: Context, texSource: String, format: String = "pdf"): ByteArray? {
+        val tex = wrapDocument(texSource)
+        val result = IsoServiceClient.call(context, TexCompileService::class.java) { replyTo ->
+            android.os.Message.obtain(null, IsoProto.MSG_RUN).apply {
+                arg1 = if (format == "xdv") 1 else 0
+                this.replyTo = replyTo
+                data = android.os.Bundle().apply { putString(TexProto.KEY_TEX, tex) }
+            }
+        }
+        if (result.data != null) {
+            Log.i(TAG, "isolated compile ok ($format): ${result.data.size} bytes")
+        } else {
+            Log.w(TAG, "isolated compile failed ($format): ${result.error}")
+        }
+        return result.data
+    }
+
+    /** 主进程入口：跨隔离进程（dvisvgm 专属）XDV→SVG。须在 IO 线程（内部阻塞等待）。 */
+    fun xdvToSvgIsolated(context: Context, xdv: ByteArray): String? {
+        val result = IsoServiceClient.call(context, SvgConvertService::class.java) { replyTo ->
+            android.os.Message.obtain(null, IsoProto.MSG_RUN).apply {
+                this.replyTo = replyTo
+                data = android.os.Bundle().apply { putByteArray(SvgProto.KEY_XDV, xdv) }
+            }
+        }
+        if (result.data != null) {
+            Log.i(TAG, "isolated svg convert ok: ${result.data.size} bytes")
+        } else {
+            Log.w(TAG, "isolated svg convert failed: ${result.error}")
+        }
+        return result.data?.toString(Charsets.UTF_8)
     }
 
     /**

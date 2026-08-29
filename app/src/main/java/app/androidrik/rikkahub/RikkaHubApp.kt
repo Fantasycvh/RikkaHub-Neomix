@@ -44,6 +44,10 @@ import org.koin.core.context.startKoin
 
 private const val TAG = "RikkaHubApp"
 
+/** isolatedProcess 里的 Service（uid 99000+ 段，无大多系统服务）识别 */
+private fun isIsolatedProcess(): Boolean =
+    android.os.Process.myUid() >= 99000
+
 const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
@@ -52,6 +56,10 @@ const val KEEP_ALIVE_NOTIFICATION_CHANNEL_ID = "keep_alive"
 class RikkaHubApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // 隔离进程（TexCompileService/SvgConvertService，TikZ native 编译）跳过
+        // 全部应用初始化：isolatedProcess 无大部分系统服务（WorkManager 依赖的
+        // JobScheduler 为 null 直接崩溃），Koin/DB/WorkManager 与编译无关
+        if (isIsolatedProcess()) return
         startKoin {
             androidLogger()
             androidContext(this@RikkaHubApp)

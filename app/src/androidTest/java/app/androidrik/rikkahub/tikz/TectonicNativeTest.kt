@@ -10,9 +10,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Tectonic native 编译链真机验证（方案 B，扩展 bundle 内置）：
- * assets bundle（1598 文件，pgf 3.1.12 + pgfplots 1.18.3）→ libtex_poc.so → PDF。
- * 非 arm64-v8a 设备自动跳过。
+ * Tectonic native 编译链真机验证（方案 B 第 4 步：双隔离进程）：
+ * TexCompileService（tectonic）+ SvgConvertService（dvisvgm）各自 isolatedProcess，
+ * Messenger 传输。非 arm64-v8a 设备自动跳过。
  */
 @RunWith(AndroidJUnit4::class)
 class TectonicNativeTest {
@@ -44,7 +44,7 @@ class TectonicNativeTest {
     fun compileFragmentWithPositioningOnDevice() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assumeTrue("libtex_poc.so not available on this ABI", TectonicNative.available)
-        val pdf = TectonicNative.compile(context, positioningFragment)
+        val pdf = TectonicNative.compileIsolated(context, positioningFragment)
         assertNotNull("compile returned null, lastError=${TectonicNative.lastErrorText()}", pdf)
         assertTrue("pdf too small: ${pdf!!.size}", pdf.size > 1000)
     }
@@ -53,7 +53,7 @@ class TectonicNativeTest {
     fun compilePgfplotsAxisOnDevice() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assumeTrue(TectonicNative.available)
-        val pdf = TectonicNative.compile(context, pgfplotsDoc)
+        val pdf = TectonicNative.compileIsolated(context, pgfplotsDoc)
         assertNotNull("compile returned null, lastError=${TectonicNative.lastErrorText()}", pdf)
         assertTrue("pdf too small: ${pdf!!.size}", pdf.size > 1000)
     }
@@ -62,8 +62,8 @@ class TectonicNativeTest {
     fun compileIsDeterministicAcrossRuns() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assumeTrue(TectonicNative.available)
-        val first = TectonicNative.compile(context, positioningFragment)!!
-        val second = TectonicNative.compile(context, positioningFragment)!!
+        val first = TectonicNative.compileIsolated(context, positioningFragment)!!
+        val second = TectonicNative.compileIsolated(context, positioningFragment)!!
         assertEquals(first.size, second.size)
         assertTrue(first.sliceArray(0..31).contentEquals(second.sliceArray(0..31)))
     }
@@ -75,14 +75,13 @@ class TectonicNativeTest {
      * 单例/流状态共享所致；产品化需 isolatedProcess 隔离，见 docs 8.4.4）。
      * 全量套件中本用例与 PDF 用例互斥，故 Ignore；单独跑时验证矢量链路。
      */
-    @org.junit.Ignore("dvisvgm/tectonic same-process limitation, run in isolation")
     @Test
     fun xdvToSvgProducesVectorSvg() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assumeTrue(TectonicNative.available)
-        val xdv = TectonicNative.compile(context, positioningFragment, "xdv")
+        val xdv = TectonicNative.compileIsolated(context, positioningFragment, "xdv")
         assertNotNull("xdv compile returned null, lastError=${TectonicNative.lastErrorText()}", xdv)
-        val svg = TectonicNative.xdvToSvg(context, xdv!!)
+        val svg = TectonicNative.xdvToSvgIsolated(context, xdv!!)
         assertNotNull("xdvToSvg returned null", svg)
         assertTrue("not an svg: ${svg!!.take(80)}", svg.contains("<svg"))
         // --no-fonts 下文字轮廓为 <defs><path id=…> + <use> 引用；图形元素可能是 <path>/<use>/<rect> 等任意矢量节点
@@ -96,7 +95,7 @@ class TectonicNativeTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assumeTrue(TectonicNative.available)
         val bad = "\\documentclass{article}\\begin{document}\\undefinedmacro"
-        val result = TectonicNative.compile(context, bad)
+        val result = TectonicNative.compileIsolated(context, bad)
         android.util.Log.i(
             "TectonicNativeTest",
             "bad input result=${result?.size ?: "null"} lastError=${TectonicNative.lastErrorText()}",
