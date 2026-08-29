@@ -50,7 +50,7 @@ object TectonicNative {
         bundleCache?.let { return it }
         synchronized(this) {
             if (bundleCache == null) {
-                bundleCache = context.assets.open("tex/tectonic-bundle-v2.tikzbundle").use { it.readBytes() }
+                bundleCache = context.assets.open("tex/tectonic-bundle-v3.tikzbundle").use { it.readBytes() }
             }
         }
         return bundleCache!!
@@ -176,6 +176,10 @@ object TectonicNative {
             append("\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\n")
             append("\\usepackage{tikz}\n")
             append("\\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}\n")
+            // tikzcd 交换图：需 tikz-cd 宏包（bundle v3+），按内容检测加载
+            if (trimmed.contains("\\begin{tikzcd}")) {
+                append("\\usepackage{tikz-cd}\n")
+            }
             append("\\pagestyle{empty}\n")
             append("\\font\\zhfont=\"[droidsans.ttf]\"\n")
             append("\\let\\tikzoldnormalfont\\normalfont\n")

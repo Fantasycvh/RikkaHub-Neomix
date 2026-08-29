@@ -56,4 +56,12 @@ class NativeOnlyTikzTest {
         val svg = compileToSvg("native_t3", t3)
         assertTrue("t3 not svg", svg == null || svg.contains("<svg"))
     }
+
+    private val tcd = "\\begin{tikzcd}\nA \\arrow[r, \"f\"] & B\\\\\nC \\arrow[u] \\arrow[ur, \"g\"] &\n\\end{tikzcd}"
+
+    @Test
+    fun t4TikzcdDiagram() {
+        val svg = compileToSvg("native_t4", tcd)
+        assertTrue("t4 not svg", svg == null || svg.contains("<svg"))
+    }
 }
