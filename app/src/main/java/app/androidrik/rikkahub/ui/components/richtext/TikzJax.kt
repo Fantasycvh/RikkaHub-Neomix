@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -88,6 +89,9 @@ fun TikzJax(
         )
     }
     // Native TeX 回退状态：子集渲染失败时异步触发真编译（不阻塞组合）
+    // 矢量路径优先：XDV → dvisvgm → SVG（与第 1 级同为矢量）；
+    // dvisvgm 失败时降级 PDF → PdfRenderer 位图
+    var nativeSvg by remember(code) { mutableStateOf<String?>(null) }
     var nativeBitmap by remember(code) { mutableStateOf<ImageBitmap?>(null) }
     var nativeFailed by remember(code) { mutableStateOf(false) }
     val widthPx = with(LocalDensity.current) {
@@ -96,52 +100,57 @@ fun TikzJax(
 
     LaunchedEffect(code, svg == null) {
         if (svg == null && !nativeFailed && TectonicNative.available) {
-            val bitmap = withContext(Dispatchers.IO) {
-                val pdf = TectonicNative.compile(context, code)
-                pdf?.let { PdfToBitmap.renderFirstPage(it, widthPx) }
+            val (svgText, bitmap) = withContext(Dispatchers.IO) {
+                val xdv = TectonicNative.compile(context, code, "xdv")
+                val svgText = xdv?.let { TectonicNative.xdvToSvg(context, it) }
+                if (svgText != null) {
+                    svgText to null
+                } else {
+                    val pdf = TectonicNative.compile(context, code)
+                    null to pdf?.let { PdfToBitmap.renderFirstPage(it, widthPx) }
+                }
             }
+            nativeSvg = svgText
             nativeBitmap = bitmap
-            if (bitmap == null) nativeFailed = true
+            if (svgText == null && bitmap == null) nativeFailed = true
         }
     }
 
     // AndroidSVG 对象（渲染用 renderToCanvas 而非 renderToPicture+drawPicture：
     // 硬件加速 Canvas 不支持 drawPicture，FAQ 明确 —— 直接渲染到 Canvas 才可靠）
-    val svgObj = remember(svg) {
-        if (svg == null) {
-            Log.w("TikzJax", "getFromString skipped: svg is null (render failed upstream)")
+    fun parseSvgText(text: String?, tag: String): SVG? {
+        if (text == null) return null
+        val parsed = runCatching { SVG.getFromString(text) }
+        parsed.onFailure { Log.w("TikzJax", "$tag getFromString FAIL: ${it.message}", it) }
+        val obj = parsed.getOrNull() ?: return null
+        // 渲染前数值校验：documentWidth/Height 必须有限、为正、且不超合理上限。
+        // 真机曾出现 TikZ→SVG height=4.58e11（12 万公里画布），aspectRatio 趋 0 →
+        // Compose 高度 = width/ratio 溢出 Int.MAX → `Can't represent height of 2147483647` 崩溃。
+        // 超限直接拒收（降级显示，不进入布局）。
+        val w = obj.documentWidth
+        val h = obj.documentHeight
+        return if (!w.isFinite() || !h.isFinite() || w <= 0f || h <= 0f || w > MAX_SVG_DIMENSION || h > MAX_SVG_DIMENSION) {
+            Log.w("TikzJax", "$tag svg dimension abnormal, reject: w=$w h=$h")
             null
         } else {
-            val parsed = runCatching { SVG.getFromString(svg) }
-            parsed.onFailure { Log.w("TikzJax", "getFromString FAIL: ${it.message}", it) }
-            val obj = parsed.getOrNull()
-            // 渲染前数值校验：documentWidth/Height 必须有限、为正、且不超合理上限。
-            // 真机曾出现 TikZ→SVG height=4.58e11（12 万公里画布），aspectRatio 趋 0 →
-            // Compose 高度 = width/ratio 溢出 Int.MAX → `Can't represent height of 2147483647` 崩溃。
-            // 超限直接拒收（降级显示，不进入布局）。
-            if (obj != null) {
-                val w = obj.documentWidth
-                val h = obj.documentHeight
-                if (!w.isFinite() || !h.isFinite() || w <= 0f || h <= 0f || w > MAX_SVG_DIMENSION || h > MAX_SVG_DIMENSION) {
-                    Log.w("TikzJax", "svg dimension abnormal, reject: w=$w h=$h")
-                    null
-                } else {
-                    Log.i("TikzJax", "getFromString -> OK (w=$w h=$h)")
-                    obj
-                }
-            } else {
-                Log.w("TikzJax", "getFromString -> FAIL")
-                null
-            }
+            Log.i("TikzJax", "$tag getFromString -> OK (w=$w h=$h)")
+            obj
         }
     }
-    val aspectRatio = remember(svgObj) {
-        val w = svgObj?.documentWidth ?: 1f
-        val h = svgObj?.documentHeight ?: 1f
+
+    val svgObj = remember(svg) { parseSvgText(svg, "tier1") }
+    val nativeSvgObj = remember(nativeSvg) { parseSvgText(nativeSvg, "native") }
+    val displaySvgObj = svgObj ?: nativeSvgObj
+    val displaySvgText: String? = svg ?: nativeSvg
+    // native SVG 黑色笔画在暗色主题不可见：渲染时衬白底（第 1 级已做 darkMode 颜色替换）
+    val whiteBackground = svg == null && nativeSvg != null
+    val aspectRatio = remember(displaySvgObj) {
+        val w = displaySvgObj?.documentWidth ?: 1f
+        val h = displaySvgObj?.documentHeight ?: 1f
         if (w > 0f && h > 0f) w / h else 1f
     }
 
-    if (svgObj != null && svg != null) {
+    if (displaySvgObj != null && displaySvgText != null) {
         Column(modifier = modifier) {
             Canvas(
                 modifier = Modifier
@@ -149,13 +158,14 @@ fun TikzJax(
                     .aspectRatio(aspectRatio)
                     .clip(RoundedCornerShape(4.dp))
             ) {
+                if (whiteBackground) drawRect(color = Color.White)
                 drawIntoCanvas { canvas ->
                     val c = canvas.nativeCanvas
-                    val w = svgObj.documentWidth
+                    val w = displaySvgObj.documentWidth
                     val scale = if (w > 0f) size.width / w else 1f
                     c.save()
                     c.scale(scale, scale)
-                    svgObj.renderToCanvas(c)
+                    displaySvgObj.renderToCanvas(c)
                     c.restore()
                 }
             }
@@ -170,11 +180,12 @@ fun TikzJax(
                     IconButton(
                         onClick = {
                             runCatching {
-                                val s = SVG.getFromString(svg) ?: error("parse failed")
+                                val s = SVG.getFromString(displaySvgText) ?: error("parse failed")
                                 val exportScale = 2f
                                 val w = (s.documentWidth * exportScale).toInt().coerceAtLeast(1)
                                 val h = (s.documentHeight * exportScale).toInt().coerceAtLeast(1)
                                 val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                                if (whiteBackground) bitmap.eraseColor(android.graphics.Color.WHITE)
                                 val bitmapCanvas = android.graphics.Canvas(bitmap)
                                 bitmapCanvas.scale(exportScale, exportScale)
                                 s.renderToCanvas(bitmapCanvas)

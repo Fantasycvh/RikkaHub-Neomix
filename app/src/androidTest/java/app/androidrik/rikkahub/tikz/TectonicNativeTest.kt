@@ -68,6 +68,29 @@ class TectonicNativeTest {
         assertTrue(first.sliceArray(0..31).contentEquals(second.sliceArray(0..31)))
     }
 
+    /**
+     * dvisvgm JNI 矢量转换验证。真机已验证可产出 SVG（argv 悬垂修复后），
+     * 但 dvisvgm 与 tectonic 同进程共存存在已知限制：dvisvgm 运行后 tectonic
+     * 的 xdvipdfmx 状态被污染，后续 PDF 编译失败（符号隔离不解决，C++ 静态
+     * 单例/流状态共享所致；产品化需 isolatedProcess 隔离，见 docs 8.4.4）。
+     * 全量套件中本用例与 PDF 用例互斥，故 Ignore；单独跑时验证矢量链路。
+     */
+    @org.junit.Ignore("dvisvgm/tectonic same-process limitation, run in isolation")
+    @Test
+    fun xdvToSvgProducesVectorSvg() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assumeTrue(TectonicNative.available)
+        val xdv = TectonicNative.compile(context, positioningFragment, "xdv")
+        assertNotNull("xdv compile returned null, lastError=${TectonicNative.lastErrorText()}", xdv)
+        val svg = TectonicNative.xdvToSvg(context, xdv!!)
+        assertNotNull("xdvToSvg returned null", svg)
+        assertTrue("not an svg: ${svg!!.take(80)}", svg.contains("<svg"))
+        // --no-fonts 下文字轮廓为 <defs><path id=…> + <use> 引用；图形元素可能是 <path>/<use>/<rect> 等任意矢量节点
+        val hasVector = svg.contains("<path") || svg.contains("<use") || svg.contains("<rect")
+        assertTrue("no vector elements in svg", hasVector)
+        assertTrue("svg too small: ${svg.length}", svg.length > 300)
+    }
+
     @Test
     fun invalidTexReturnsNullWithLastError() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
