@@ -400,4 +400,29 @@ ormalfont` 重定义为 Droid Sans Fallback 使全文默认可渲染中文（POC
 
 ---
 
-*本文档由探索全程记录整理（参考：Tectonic wasm 调研 / 中文宏包注入 / POC 验证 / MuPDF 决策 5 份记录 + 本轮 Android 集成实现与排查 + 2026-08-28 重启评估），结论与事实供未来决策复用。*
+#### 8.4.7 收尾：第①级删除 + 缓存 + 渲染修复 + 发布（2026-08-29）
+
+**后续完成的收尾工作**（均在 8.4.6 之后）：
+
+| 提交 | 内容 |
+|---|---|
+| `d5118bbf` | 删除第①级遗留代码（TikzRenderer/TikzTelemetry/MathExpr + 4 单测；恢复从历史 `a10aaed5` 取回）；Export.kt（HTML 导出）TikZ 改走 native 同链路（suspend + 占位收集统一编译，失败还原为围栏源码） |
+| `3b75520a` | **SVG 落盘缓存**（TikzSvgCache）：sha256(trim(code)) 内容寻址，原子写；TeX 确定性输出已验证，同源码必同产物。TikzJax/Export 共用。历史消息秒开 |
+| `5a17ab40` | tikzcd 支持：bundle v3（+tikz-cd.sty，CTAN）+ wrapDocument 检测自动加载。**经验：宏包缺失症状 = terminal input forbidden** |
+| `3b966c10` | 超长消息/思考部分渲染修复：HeightClamp 语义反转（测量约束原样传递，仅结果异常巨大时 clamp）——旧固定 10000dp 会把 >20 屏的正常内容静默裁剪 |
+| `d2de1429` | 短思考后整屏空白：思考卡片 MarkdownBlock 误用 fillMaxSize（LazyColumn item 内=填满视口）→ fillMaxWidth |
+| `ec99c43a` | 系统提示词：告知全语法支持（避免模型自我降级）+ axis 示例 |
+| `fe580f09`+`00ee99fd` | versionCode 239 / versionName 2.4.10.15 草稿 + release notes；GitHub Release `v2.4.10.15-build239` |
+
+**最终架构**（全仓库唯一 TikZ 路径）：
+
+```
+TikZ 输入（任意语法）
+  ├─ TikzSvgCache 命中 → SVG（毫秒级）
+  ├─ XDV 编译（:texcompile）→ dvisvgm（:svgconvert）→ SVG 矢量
+  ├─ PDF → PdfRenderer 位图降级
+  └─ 源码展示
+聊天显示与 HTML 导出同链路同缓存。
+```
+
+**遗留**（非阻断，未排期）：进程驻留策略；xeCJK（粗体/斜体中文）；LM 字体映射补全（SVG 728B 量级偏小）；tikz_cache 无 LRU（可挂设置存储清理）。
