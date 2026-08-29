@@ -28,6 +28,8 @@ Updates:
 
 使用github cli创建release, 并上传 app/release/xxx.apk 文件
 
-- 仅上传arm64版本, 上传前重命名apk，添加版本号到文件名内
+- 仅上传arm64版本
+- **APK 命名固定格式：`应用名（英文）-版本-架构`**（如 `RikkaHub Plus-2.4.10.16-arm64-v8a.apk`），
+  其中架构用 Gradle splits 的 ABI 名（arm64-v8a）；发布前将构建产物复制到 `app/release/` 并按此重命名
 - release标题使用版本号, 描述使用更新日志
 - tag名字使用版本号，不带v
