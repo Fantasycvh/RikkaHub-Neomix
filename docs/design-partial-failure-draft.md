@@ -4,6 +4,16 @@
 > 背景：上游 issue [#1812](https://github.com/rikkahub/rikkahub/issues/1812)——差网络下生成被截断，自动重试反复重发、一次都没保存，白烧多次额度。上游的解法是加自动重试开关（`41353567`，2.4.16）；本方案是我们 fork 的备选设计：让"保留已有内容"和"自动重试"按失败类型分流。
 > 现状行为：`GenerationHandler.kt`（我们的 `withGenerationRetry` + 两处 `catch (e: Throwable)`，流式 :519 / 非流式 :552）——流中途失败时 `messages = snapshot` 回滚、重试从头重发；重试耗尽后上抛 ChatService 走 addError。**半截内容在每个环节都被丢弃**，与上游同款。
 
+## 问题解剖：为什么"连一次生成都没留下"（2026-09-03 核实代码后确认）
+
+"什么都没留下"不是单一 bug，而是三个环节环环相扣的结果：
+
+1. **流式过程只写内存，从不落库**：`GenerationHandler` 每收一个 chunk 调 `onUpdateMessages`（GenerationHandler.kt:517）→ ChatService `updateCurrentMessages`（ChatService.kt:683）→ `updateConversation` 只做 `session.state.value = conversation`（ChatService.kt:997-1002），**纯内存**。落库唯一入口 `saveConversation`（ChatService.kt:1058）在生成期间只在 `onSuccess` 调用（ChatService.kt:706）。半截内容在数据库里从不存在，进程一死就没了。
+2. **重试 = 每次清空半截，从头再来**：`withGenerationRetry` 捕获异常后延迟重跑 `action()`（GenerationHandler.kt:375-400）；action 内 catch 先 `messages = snapshot; onUpdateMessages(messages)`（:519-524），snapshot 是生成前干净状态（:500）。N 次重试 = N 次清空 + N 次从头烧 token。
+3. **重试耗尽后，半截内容已不在内存，只剩错误卡片**：:380 耗尽后 `throw e`，此时 messages 已被回滚成 snapshot；ChatService `onFailure` 只调 `addError`（ChatService.kt:696-703），而 `addError`（:189-199）只往内存 `_errors` 列表加一条，**不保存消息内容也不落库**。
+
+**推论（对设计的影响）**："立即持久化"不是保险，而是**给一条完全不落库的失败路径补上第一个写库动作**——它同时缓解 #1820（切走回来消失，根因同为"生成中不落库、内存态在切换/重建时丢失"）。
+
 ## 核心思路：按"是否已收到输出"切分两种失败
 
 | 失败类型 | 特征 | 策略 |
@@ -22,7 +32,8 @@
 ### 第 1 层 — GenerationHandler（捕获与分流）
 
 - 流式 catch 块回滚前保存 `val partial = messages`（已合并的半截消息列表）到 `lastPartial`；
-- `withGenerationRetry` 收到"半截输出失败"信号后**直接上抛**，不进重试循环；抛出携带上下文的类型化异常：
+  - **判定必须放在流式 catch 块内**（GenerationHandler.kt:519），因为 `messages` 的当前状态只有 action 内部可见，`withGenerationRetry` 只能看到异常对象；
+- `withGenerationRetry` 收到"半截输出失败"信号后**直接上抛**，不进重试循环——**"半截信号"以异常为载体**：`withGenerationRetry` 在异常判定处（:380 之前）识别该类型直接 rethrow，而不是靠共享变量传状态；
   ```kotlin
   class GenerationPartialFailureException(
       cause: Throwable,
@@ -30,7 +41,7 @@
   ) : Exception(cause)
   ```
   （实现上可借上游版重试的 `StreamChunkHandlingException` 包裹思路）
-- "半截"判定阈值：过滤 reasoning 后可见文本 ≥ 阈值（建议 50~100 字符，可配）；低于阈值按零输出处理，照常自动重试；
+- "半截"判定阈值：过滤 reasoning 后可见文本 ≥ 阈值（建议 50~100 字符，可配）；低于阈值按零输出处理，照常自动重试。**判定实现零成本**：`messages.lastOrNull()` 即正在生成的 assistant 消息，过滤 `UIMessagePart.Text` 即可，无需额外状态；
 - 非流式路径无半截概念，维持现状；translateText 等旁路不动。
 
 ### 第 2 层 — ChatService（落草稿）
@@ -38,7 +49,7 @@
 catch `GenerationPartialFailureException` 时：
 
 - 半截 assistant 消息提交进当前 MessageNode——**复用现有再生成分支机制**（它就是候选消息 #0；用户点"重试"走现有 regenerate 管道，成功后自然成为候选 #1，无需新 UI 分支）；
-- 打标记（见第 3 层）并**立即持久化会话**（防杀进程再丢一次，#1812 的核心抱怨）；
+- 打标记（见第 3 层）并**立即持久化会话**（防杀进程再丢一次，#1812 的核心抱怨；见上文"问题解剖"——这是失败路径的第一个写库动作，`saveConversation` 为 suspend 且走 repository，在 `onFailure` 块（ChatService.kt:696）内可直接调用）；
 - 不发 error 卡片，改发软提示"生成失败，已保留部分内容"；
 - 非此类异常：现有 addError 路径不变。
 
@@ -51,7 +62,7 @@ catch `GenerationPartialFailureException` 时：
 ## 边界与注意点
 
 1. **工具循环中的半截**：半截消息可能含未闭环的 tool call/result。限定**仅当失败发生在用户可见的最终回答流（非工具循环中途）才落草稿**——简单且安全；或退一步只保留 text/reasoning、丢弃未闭环 tool 部分。
-2. **usage 记账**：半截流可能已收到 usage chunk，草稿保留 usage 无妨；确认重试路径不重复累计（现有 merge 按消息走）。
+2. **usage 记账**：半截流可能已收到 usage chunk，且已被 `merge` 进最后一条消息（GenerationHandler.kt:511）。草稿随 `partialMessages` 携带 usage 即可保留；重试成功后新候选 #1 有独立 usage，两者按消息各自记账，不重复累计——实现上零成本，随消息走。
 3. **reasoning 部分**：保留但默认折叠——半截思考对用户定位断点有用。
 4. **"保留并续写"（可选 v2）**：Claude 系支持 assistant prefill，可从截断点续写而非整段重生成，是真正省 token 的彻底方案；OpenAI Chat Completions 不支持预填，需 provider 能力检测 + 仅 Claude 可用，成本高，v2 评估或不做。
 5. **与 #1820 的交集**：切对话回复消失的痛感会被"尽早持久化半截状态"同一机制缓解——一个机制治两个病。
