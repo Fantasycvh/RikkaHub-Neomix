@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -9,6 +10,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 import androidx.core.net.toUri
 import com.termux.terminal.TerminalEmulator
 import com.termux.terminal.TerminalSession
@@ -236,15 +238,7 @@ internal class WorkspaceTerminalViewClient(
 
         val match = URL_REGEX.findAll(line).firstOrNull { tapIndex in it.range } ?: return false
         val url = match.value.trimEnd(*URL_TRAILING_TRIM)
-        return runCatching {
-            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-            true
-        }.getOrElse {
-            Log.w("WorkspaceTerminal", "Failed to open url: $url", it)
-            false
-        }
+        return dispatchTerminalUrl(context, url)
     }
 
     fun focusAndShowKeyboard() {
@@ -320,10 +314,86 @@ private const val SKILLS_DIR = "/skills"
 private const val URL_MAX_WRAP_ROWS = 50
 
 private val URL_REGEX =
-    Regex("""(https?|ftp)://[\w\-._~:/?#\[\]@!$&'()*+,;=%]+""", RegexOption.IGNORE_CASE)
+    Regex(
+        """(?i)(https?|ftp|ssh|git)://[\w\-._~:/?#\[\]@!$&'()*+,;=%]+|mailto:[\w\-._%+]+@[\w\-._]+\.[\w\-]+|file:///[\w\-._~/]+|git@[\w\-._]+:[\w\-._~/]+""",
+    )
 
 // 终端里 URL 后面常跟标点(行尾句号、被括号包裹等), 打开前去掉这些结尾字符
 private val URL_TRAILING_TRIM = charArrayOf('.', ',', ';', ':', '!', '?', ')', ']', '}', '\'', '"')
+
+// 终端里点击 URL 的协议分发: 返回 true 表示已处理该次点击
+private fun dispatchTerminalUrl(context: Context, url: String): Boolean {
+    val uri = runCatching { url.toUri() }.getOrNull() ?: return false
+    return when {
+        // 工作区本地文件: 复制完整路径, 跳转文件浏览器留给工作区联动阶段
+        uri.scheme == "file" -> {
+            copyText(context, url)
+            Toast.makeText(context, "已复制路径: $url", Toast.LENGTH_SHORT).show()
+            true
+        }
+        // git/ssh 仓库地址: 弹菜单(复制 / 打开浏览器), 直接 ACTION_VIEW 在多数设备没有处理器
+        uri.scheme == "git" || uri.scheme == "ssh" || url.startsWith("git@") -> {
+            showGitUrlMenu(context, url)
+            true
+        }
+        uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "ftp" || uri.scheme == "mailto" -> {
+            runCatching {
+                val intent = Intent(Intent.ACTION_VIEW, uri)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+                true
+            }.getOrElse {
+                Log.w("WorkspaceTerminal", "Failed to open url: $url", it)
+                false
+            }
+        }
+        else -> false
+    }
+}
+
+// git@github.com:org/repo 这类 scp-like 地址没有 scheme, 转成 https 网页地址供浏览器打开
+private fun gitUrlToHttp(url: String): String? {
+    val trimmed = url.trimEnd(*URL_TRAILING_TRIM)
+    val hostAndPath = when {
+        trimmed.startsWith("git@") -> trimmed.removePrefix("git@").replaceFirst(':', '/')
+        trimmed.startsWith("git://") -> trimmed.removePrefix("git://")
+        trimmed.startsWith("ssh://") -> trimmed.removePrefix("ssh://")
+        else -> return null
+    }
+    // 去掉 ssh://user@host:port 形式的 user@ 和端口段
+    val authority = hostAndPath.substringBefore('/')
+    val path = hostAndPath.substringAfter('/', missingDelimiterValue = "")
+    val host = authority.substringAfter('@', authority).substringBefore(':')
+    return "https://$host/$path"
+}
+
+private fun showGitUrlMenu(context: Context, url: String) {
+    val dialogContext = context
+    AlertDialog.Builder(dialogContext)
+        .setTitle(url)
+        .setItems(
+            arrayOf("在浏览器打开", "复制到剪贴板", "取消"),
+        ) { _, which ->
+            when (which) {
+                0 -> gitUrlToHttp(url)?.let { httpUrl ->
+                    runCatching {
+                        val intent = Intent(Intent.ACTION_VIEW, httpUrl.toUri())
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        dialogContext.startActivity(intent)
+                    }.onFailure {
+                        Log.w("WorkspaceTerminal", "Failed to open git url: $httpUrl", it)
+                    }
+                }
+                1 -> copyText(dialogContext, url)
+            }
+        }
+        .show()
+}
+
+private fun copyText(context: Context, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("terminal", text))
+}
 
 private fun Context.activeDnsServers(): List<String> {
     val connectivityManager =
