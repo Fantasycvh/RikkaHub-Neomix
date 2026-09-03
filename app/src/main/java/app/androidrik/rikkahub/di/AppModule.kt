@@ -13,6 +13,7 @@ import app.androidrik.rikkahub.utils.EmojiData
 import app.androidrik.rikkahub.utils.EmojiUtils
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.utils.SoundEffectPlayer
+import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalSessionManager
 import app.androidrik.rikkahub.web.WebServerManager
 import app.androidrik.tts.provider.TTSManager
 import org.koin.dsl.module
@@ -50,6 +51,10 @@ val appModule = module {
 
     single {
         SoundEffectPlayer(get())
+    }
+
+    single {
+        WorkspaceTerminalSessionManager(get(), get())
     }
 
     // 生成通知与业务解耦：ChatService 只发事件，通知由这里消费；

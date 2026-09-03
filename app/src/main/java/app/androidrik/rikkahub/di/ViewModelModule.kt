@@ -70,6 +70,7 @@ val viewModelModule = module {
         WorkspaceDetailVM(
             id = it.get(),
             repository = get(),
+            terminalSessionManager = get(),
         )
     }
     viewModelOf(::FavoriteVM)
