@@ -1309,5 +1309,7 @@
   <string name="notification_channel_keep_alive">背景常駐</string>
   <string name="notification_keep_alive_running">背景常駐執行中</string>
   <string name="notification_keep_alive_stop">停止</string>
+  <string name="message_partial_failure_banner">生成中斷，已保留部分內容</string>
+  <string name="message_partial_failure_regenerate">重新生成</string>
 </resources>
 

@@ -1327,5 +1327,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="notification_channel_keep_alive">后台保活</string>
   <string name="notification_keep_alive_running">后台保活运行中</string>
   <string name="notification_keep_alive_stop">停止</string>
+  <string name="message_partial_failure_banner">生成中断，已保留部分内容</string>
+  <string name="message_partial_failure_regenerate">重新生成</string>
 </resources>
 

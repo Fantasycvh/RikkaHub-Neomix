@@ -48,6 +48,10 @@ data class BalanceSource(
 data class RetrySetting(
     val enabled: Boolean = false,
     val delaysSeconds: List<Int> = DEFAULT_DELAYS_SECONDS,
+    /** #1812：半截输出失败时保留已流式内容为草稿（默认开）；false 则照旧清空重试 */
+    val keepPartialOnFailure: Boolean = true,
+    /** #1812：半截输出失败后仍自动重试（默认关，给想要全自动的用户）；开时 keepPartialOnFailure 不生效 */
+    val retryAfterPartial: Boolean = false,
 ) {
     companion object {
         val DEFAULT_DELAYS_SECONDS = listOf(2, 2, 2, 2, 2, 5, 10, 20, 60, 120)

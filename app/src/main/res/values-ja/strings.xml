@@ -1307,5 +1307,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="notification_channel_keep_alive">バックグラウンド保持</string>
   <string name="notification_keep_alive_running">バックグラウンド保持中</string>
   <string name="notification_keep_alive_stop">停止</string>
+  <string name="message_partial_failure_banner">生成が中断されました — 部分的な内容を保持</string>
+  <string name="message_partial_failure_regenerate">再生成</string>
 </resources>
 

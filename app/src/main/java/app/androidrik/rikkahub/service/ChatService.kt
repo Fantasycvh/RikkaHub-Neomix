@@ -37,6 +37,7 @@ import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.canResumeToolExecution
 import app.androidrik.ai.ui.finishPendingTools
@@ -46,6 +47,7 @@ import app.androidrik.common.android.Logging
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.GenerationChunk
+import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.mcp.McpNameSanitizer
@@ -696,6 +698,27 @@ class ChatService(
         }.onFailure {
             // 兜底取消 Live Update 通知（生成开始前失败时 onCompletion 不会执行）
             appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null))
+
+            if (it is GenerationPartialFailureException) {
+                // #1812：半截输出失败 → 保留为草稿候选并立即落库。
+                // 这是失败路径的第一个写库点（正常流程只在 onSuccess 落库），
+                // 同时缓解 #1820（切对话后内存态丢失）。
+                val annotated = it.partialMessages.mapIndexed { index, message ->
+                    if (index == it.partialMessages.lastIndex && message.role == MessageRole.ASSISTANT) {
+                        message.copy(
+                            annotations = message.annotations + UIMessageAnnotation.PartialFailure
+                        )
+                    } else {
+                        message
+                    }
+                }
+                val updatedConversation = getConversationFlow(conversationId).value
+                    .updateCurrentMessages(annotated)
+                updateConversation(conversationId, updatedConversation)
+                saveConversation(conversationId, updatedConversation)
+                Logging.log(TAG, "handleMessageComplete: partial generation kept as draft")
+                return@onFailure
+            }
 
             it.printStackTrace()
             addError(it, conversationId, title = context.getString(R.string.error_title_generation))

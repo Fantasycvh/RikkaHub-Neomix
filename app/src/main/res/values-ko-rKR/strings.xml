@@ -1307,5 +1307,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="notification_channel_keep_alive">백그라운드 유지</string>
   <string name="notification_keep_alive_running">백그라운드 유지 중</string>
   <string name="notification_keep_alive_stop">중지</string>
+  <string name="message_partial_failure_banner">생성이 중단됨 — 일부 내용이 유지됨</string>
+  <string name="message_partial_failure_regenerate">다시 생성</string>
 </resources>
 

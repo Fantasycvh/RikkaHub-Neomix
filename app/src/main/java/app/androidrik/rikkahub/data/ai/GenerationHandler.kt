@@ -375,6 +375,10 @@ class GenerationHandler(
                 return action()
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: GenerationPartialFailureException) {
+                // #1812：半截输出失败不进重试循环——已流式内容有计费价值，
+                // 清空重发必然丢失；直接上抛由 ChatService 保留为草稿
+                throw e
             } catch (e: Throwable) {
                 val next = retryIndex + 1
                 if (next >= plan.delaysSeconds.size || !isRetryableGenerationError(e)) throw e
@@ -518,6 +522,11 @@ class GenerationHandler(
                     }
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
+                    val plan = provider.retryOption ?: settings.retrySetting
+                    // #1812 分流：已流式输出可见内容后断开 → 保留为草稿（不再回滚清空）
+                    if (plan.keepPartialOnFailure && !plan.retryAfterPartial && isPartialOutput(messages)) {
+                        throw GenerationPartialFailureException(e, messages)
+                    }
                     messages = snapshot
                     onUpdateMessages(messages)
                     throw e
@@ -678,6 +687,29 @@ class GenerationHandler(
             }
         }
     }.flowOn(Dispatchers.IO)
+}
+
+/**
+ * #1812：半截输出失败信号——以异常为载体把「已流式合并的半截消息」交给上层落草稿。
+ *
+ * [withGenerationRetry] 识别该类型直接上抛（不重试）；ChatService catch 后保留候选草稿。
+ */
+class GenerationPartialFailureException(
+    cause: Throwable,
+    val partialMessages: List<UIMessage>,
+) : Exception(cause)
+
+/** 半截输出判定阈值：过滤 reasoning 后最后一条 assistant 消息可见 Text ≥ 该值视为「已产生有效输出」。 */
+private const val PARTIAL_OUTPUT_THRESHOLD_CHAR = 50
+
+/** 是否达到「半截输出」判定线：仅看最后一条 assistant 消息的可见 Text（reasoning 不计入）。 */
+internal fun isPartialOutput(messages: List<UIMessage>): Boolean {
+    val last = messages.lastOrNull() ?: return false
+    if (last.role != MessageRole.ASSISTANT) return false
+    val visibleChars = last.parts.sumOf { part ->
+        if (part is UIMessagePart.Text) part.text.length else 0
+    }
+    return visibleChars >= PARTIAL_OUTPUT_THRESHOLD_CHAR
 }
 
 /**

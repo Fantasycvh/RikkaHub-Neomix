@@ -137,6 +137,14 @@ fun ChatMessage(
         horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // #1812：半截生成失败的草稿横幅——放置在消息上方，重试复用现有 regenerate
+        if (message.annotations.any { it is UIMessageAnnotation.PartialFailure }) {
+            PartialFailureBanner(
+                onRegenerate = onRegenerate,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
         if (!message.parts.isEmptyUIMessage()) {
             Row(
                 modifier = Modifier
@@ -576,8 +584,11 @@ private fun MessagePartsBlock(
         }
     }
 
+    // 仅 URL 引用进入尾部折叠列表（PartialFailure 横幅已在消息顶部渲染，不算入引文数）
+    val urlAnnotations = annotations.filterIsInstance<UIMessageAnnotation.UrlCitation>()
+
     // Annotations (always rendered at the end)
-    if (annotations.isNotEmpty()) {
+    if (urlAnnotations.isNotEmpty()) {
         Column(
             modifier = Modifier.animateContentSize(),
         ) {
@@ -601,7 +612,7 @@ private fun MessagePartsBlock(
                             .padding(4.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        annotations.fastForEachIndexed { index, annotation ->
+                        urlAnnotations.fastForEachIndexed { index, annotation ->
                             when (annotation) {
                                 is UIMessageAnnotation.UrlCitation -> {
                                     Row(
@@ -618,6 +629,7 @@ private fun MessagePartsBlock(
                                         )
                                     }
                                 }
+
                             }
                         }
                     }
@@ -628,7 +640,43 @@ private fun MessagePartsBlock(
                     expand = !expand
                 }
             ) {
-                Text(stringResource(R.string.citations_count, annotations.size))
+                Text(stringResource(R.string.citations_count, urlAnnotations.size))
+            }
+        }
+    }
+}
+
+/**
+ * #1812：半截生成失败草稿的警示横幅。
+ *
+ * 提示「生成中断，已保留部分内容」，提供「重新生成」入口（复用现有 regenerate 管道，
+ * 成功后原草稿成为候选 #0、新回复成为候选 #1，无需新 UI 分支）。
+ */
+@Composable
+private fun PartialFailureBanner(
+    onRegenerate: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.message_partial_failure_banner),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onRegenerate) {
+                Text(stringResource(R.string.message_partial_failure_regenerate))
             }
         }
     }

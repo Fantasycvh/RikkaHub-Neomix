@@ -1329,4 +1329,6 @@
   <string name="notification_channel_keep_alive">Keep alive</string>
   <string name="notification_keep_alive_running">Keep alive active</string>
   <string name="notification_keep_alive_stop">Stop</string>
+  <string name="message_partial_failure_banner">Generation interrupted — partial content kept</string>
+  <string name="message_partial_failure_regenerate">Regenerate</string>
 </resources>
