@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | B1 | `5403bc96` + `2f05019b` | **TTS 合成自动重试 + 可重试错误分类** | 中高 | 中 | TtsController 加 3 次合成重试（500ms 起步）+ 预取窗口 4→2；新增 `TTSProviderException` 标记可重试错误，11 个 provider 逐个接入。我们只覆盖了聊天生成重试，TTS 是新面。speech 模块我们改动少，两个提交合起来吸收 |
 | B2 | `f7869e35` | **Gemini 混合 server/client 工具错误修复**（#1817 #1815） | 中高 | 中 | 434 行，GoogleProvider + GoogleStreamDecoder + StreamChunk 体系联动改动。是 2.4.14 `9851d037`（工具共存）的后续修复——**若吸收 B2(Gemini 工具共存) 必须连同本提交一起**，单独吸收 `9851d037` 会引入已知 bug |
-| B3 | `9365c297` | 快速模型可配思考级别；移除独立的标题/建议模型配置 | 中 | 中 | 净 -60 行的简化（标题和建议改用快速模型）；触及 ChatService + SettingModelPage（我们的重改文件），需手工适配。是否跟随「砍掉独立标题/建议模型」属产品决策 |
+| B3 | `9365c297` | 快速模型可配思考级别；移除独立的标题/建议模型配置 | 中 | 中 | 净 -60 行的简化（标题和建议改用快速模型）；触及 ChatService + SettingModelPage（我们的重改文件），需手工适配。是否跟随「砍掉独立标题/建议模型」属产品决策。**2026-09-04 已放弃**（保留独立标题/建议模型配置） |
 | B4 | `d3a53e0a` | 图片选择改用 PickVisualMedia（#1821） | 低中 | 小 | Photo Picker 现代化，4 文件 |
 | B5 | `ef94834a` | MCP kotlin-sdk 换 client-only 构件 | 低 | 极低 | 1 行依赖变更（去 server 侧）；我们只作 MCP client，跟随即可 |
 | B6 | `8ea375a9` | cloudflare MCP OAuth 匹配修复 | 低 | 极低 | 1 行 |
