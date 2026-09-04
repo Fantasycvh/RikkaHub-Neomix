@@ -26,6 +26,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.TokenUsage
@@ -451,6 +452,7 @@ class ChatCompletionsAPI(
                                     "parameters",
                                     json.encodeToJsonElement(
                                         tool.parameters()
+                                            ?: InputSchema.Obj(properties = JsonObject(emptyMap()))
                                     )
                                 )
                             })

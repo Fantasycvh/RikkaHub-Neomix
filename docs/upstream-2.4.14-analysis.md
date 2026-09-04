@@ -49,9 +49,9 @@ git checkout feat/restore-proxy
 
 | # | 提交 | 内容 | 价值 | 整合成本 | 说明 |
 |---|---|---|---|---|---|
-| B1 | `e8293d35` | Chat Completions 空 tool schema 归一化 (#1781) | 高 | 极低（1 行 + 77 行测试） | `tool.parameters()` 为 null 时补空 Obj schema，避免严格 OpenAI 兼容端点 400。我们分支同款代码，直接适配包名 |
+| B1 | `e8293d35` | Chat Completions 空 tool schema 归一化 (#1781) | 高 | 极低（1 行 + 77 行测试） | `tool.parameters()` 为 null 时补空 Obj schema，避免严格 OpenAI 兼容端点 400。我们分支同款代码，直接适配包名。**2026-09-04 已吸收** |
 | B2 | `9851d037` | Gemini 服务端工具与客户端工具共存 | 中高 | 小（GoogleProvider 单文件） | 原实现中 `model.tools` 非空会整体覆盖 functionDeclarations，导致 Gemini 搜索等内置工具与 function calling 互斥；现在合并进同一 tools 数组 |
-| B3 | `b62d29d1` | workspace 非交互命令 stdin 立即 EOF (#1605) | 中高 | 小（32 行） | ProcessBuilder stdin 管道不写不关导致 cat/gh 等 CLI 永久挂起；我们 workspace 模块已迁移包名，适配即可 |
+| B3 | `b62d29d1` | workspace 非交互命令 stdin 立即 EOF (#1605) | 中高 | 小（32 行） | ProcessBuilder stdin 管道不写不关导致 cat/gh 等 CLI 永久挂起；我们 workspace 模块已迁移包名，适配即可。**2026-09-04 已吸收** |
 | B4 | `942d0d28` | 合成消息不参与消息模版 (#1790) | 中 | 中 | UIMessage 加 `@Transient isSynthetic`，TemplateTransformer/PromptInjection/TimeReminder/WorkspaceReminder 全部排除；触及 GenerationHandler（我们重改文件），需手工合入 |
 | B5 | `fa0305ba` + `daae3749` | 模型搜索 IME 自动关闭修复 + ChatInput IME 动画稳定性 | 中 | 中 | 注意：配套的输入栏折叠功能 `ca31612d` 已被上游自己在 `7aa909b8` 回滚，净效果只剩 IME 修复；我们的 ChatInput 有定制，需逐段确认 |
 | B6 | `6c6a8458` | fork 会话继承 folder id 和 workspace cwd (#1778) | 中 | 小 | 39 行 |
