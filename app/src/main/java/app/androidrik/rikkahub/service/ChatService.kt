@@ -715,7 +715,17 @@ class ChatService(
                 val updatedConversation = getConversationFlow(conversationId).value
                     .updateCurrentMessages(annotated)
                 updateConversation(conversationId, updatedConversation)
-                saveConversation(conversationId, updatedConversation)
+                // D1：落库防护——超大内容(>2MB blob)等写入失败时降级为可见错误，
+                // 不能让草稿保存异常在 onFailure 内静默上抛
+                runCatching { saveConversation(conversationId, updatedConversation) }
+                    .onFailure { saveError ->
+                        addError(
+                            saveError,
+                            conversationId,
+                            title = context.getString(R.string.error_title_generation),
+                        )
+                        Logging.log(TAG, "handleMessageComplete: partial draft save failed: $saveError")
+                    }
                 Logging.log(TAG, "handleMessageComplete: partial generation kept as draft")
                 return@onFailure
             }
@@ -726,7 +736,16 @@ class ChatService(
             Logging.log(TAG, it.stackTraceToString())
         }.onSuccess {
             val finalConversation = getConversationFlow(conversationId).value
-            saveConversation(conversationId, finalConversation)
+            // D1：落库防护——与 onFailure 半截落库同款降级，防止成功路径写入静默失败
+            runCatching { saveConversation(conversationId, finalConversation) }
+                .onFailure { saveError ->
+                    addError(
+                        saveError,
+                        conversationId,
+                        title = context.getString(R.string.error_title_generation),
+                    )
+                    Logging.log(TAG, "handleMessageComplete: save failed: $saveError")
+                }
 
             launchWithConversationReference(conversationId) {
                 generateTitle(conversationId, finalConversation)

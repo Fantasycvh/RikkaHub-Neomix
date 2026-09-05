@@ -1329,5 +1329,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成中断，已保留部分内容</string>
   <string name="message_partial_failure_regenerate">重新生成</string>
+  <string name="asr_error_not_configured">未配置语音识别——请先设置 ASR 供应商和 API Key</string>
+  <string name="asr_error_audio_focus">无法获取音频焦点（麦克风可能被占用）</string>
 </resources>
 

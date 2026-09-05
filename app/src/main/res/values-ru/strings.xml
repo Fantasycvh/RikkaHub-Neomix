@@ -1309,5 +1309,7 @@
   <string name="notification_keep_alive_stop">Стоп</string>
   <string name="message_partial_failure_banner">Генерация прервана — часть ответа сохранена</string>
   <string name="message_partial_failure_regenerate">Перегенерировать</string>
+  <string name="asr_error_not_configured">Распознавание речи не настроено — сначала укажите провайдера ASR и API-ключ</string>
+  <string name="asr_error_audio_focus">Не удалось получить аудиофокус (микрофон, возможно, занят)</string>
 </resources>
 

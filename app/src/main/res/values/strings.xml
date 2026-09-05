@@ -1331,4 +1331,6 @@
   <string name="notification_keep_alive_stop">Stop</string>
   <string name="message_partial_failure_banner">Generation interrupted — partial content kept</string>
   <string name="message_partial_failure_regenerate">Regenerate</string>
+  <string name="asr_error_not_configured">Speech recognition not configured — set an ASR provider and API key first</string>
+  <string name="asr_error_audio_focus">Microphone busy — could not get audio focus</string>
 </resources>

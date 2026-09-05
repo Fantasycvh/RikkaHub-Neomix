@@ -245,13 +245,16 @@ class RootfsInstaller(
         )
     }
 
-    private fun parsePax(text: String): Map<String, String> {
+    internal fun parsePax(text: String): Map<String, String> {
         val result = mutableMapOf<String, String>()
         var index = 0
         while (index < text.length) {
             val space = text.indexOf(' ', index)
             if (space < 0) break
-            val length = text.substring(index, space).toIntOrNull() ?: break
+            val length = text.substring(index, space).toIntOrNull()
+            // F7：损坏/伪造的 pax 头（length ≤ 0）——继续会让 index 不前进触发死循环，
+            // 且 end 可能小于 space+1 导致 substring 越界崩溃；直接放弃本条安全退出
+            if (length == null || length <= 0) break
             val end = (index + length).coerceAtMost(text.length)
             val record = text.substring(space + 1, end).trimEnd('\n')
             val equals = record.indexOf('=')

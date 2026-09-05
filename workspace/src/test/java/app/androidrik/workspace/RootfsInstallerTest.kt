@@ -2,6 +2,7 @@ package app.androidrik.workspace
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -68,5 +69,48 @@ class RootfsInstallerTest {
 
     companion object {
         private const val TAR_BLOCK = 512
+    }
+
+    // ---------- F7: parsePax 健壮性 ----------
+
+    @Test
+    fun `parsePax parses normal records`() {
+        val installer = createInstaller()
+        val pax = installer.parsePax("20 path=usr/bin/env\n20 mtime=1700000000\n")
+        // pax 记录的 length 含数字+空格+内容+换行：path=usr/bin/env\n 与 mtime=1700000000\n 均为 20
+        assertEquals("usr/bin/env", pax["path"])
+        assertEquals("1700000000", pax["mtime"])
+    }
+
+    @Test
+    fun `parsePax breaks on zero length record without infinite loop`() {
+        val installer = createInstaller()
+        // length=0 的损坏记录：旧实现 index 不前进会死循环
+        val pax = installer.parsePax("0 path=x\n")
+        assertTrue(pax.isEmpty())
+    }
+
+    @Test
+    fun `parsePax breaks on negative length record without crash`() {
+        val installer = createInstaller()
+        val pax = installer.parsePax("-5 path=x\n")
+        assertTrue(pax.isEmpty())
+    }
+
+    @Test
+    fun `parsePax breaks on garbage length without substring crash`() {
+        val installer = createInstaller()
+        // 非数字前缀：旧实现 substring(space+1, end) 可能越界
+        val pax = installer.parsePax("bad path=x\n")
+        assertTrue(pax.isEmpty())
+    }
+
+    @Test
+    fun `parsePax tolerates oversized length by clamping to text end`() {
+        val installer = createInstaller()
+        val text = "999 path=usr/bin\n"
+        val pax = installer.parsePax(text)
+        // length 超出剩余文本：coerceAtMost 到末尾，不得越界崩溃
+        assertTrue(pax.containsKey("path"))
     }
 }

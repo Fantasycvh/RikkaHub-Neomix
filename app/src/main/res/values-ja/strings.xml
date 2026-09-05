@@ -1309,5 +1309,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成が中断されました — 部分的な内容を保持</string>
   <string name="message_partial_failure_regenerate">再生成</string>
+  <string name="asr_error_not_configured">音声認識が未設定です——ASR プロバイダーと API キーを先に設定してください</string>
+  <string name="asr_error_audio_focus">オーディオフォーカスを取得できません（マイクが使用中かも）</string>
 </resources>
 

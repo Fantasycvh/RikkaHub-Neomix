@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.StateFlow
 import app.androidrik.asr.ASRController
 import app.androidrik.asr.ASRProviderSetting
 import app.androidrik.asr.ASRState
+import app.androidrik.asr.ASRStatus
+import app.androidrik.rikkahub.R
 import app.androidrik.asr.providers.DashScopeASRController
 import app.androidrik.asr.providers.MiMoASRController
 import app.androidrik.asr.providers.OpenAIRealtimeASRController
@@ -75,30 +77,54 @@ private class CustomAsrStateImpl(
         .setAcceptsDelayedFocusGain(false)
         .build()
 
+    /** F9：启动前置失败（未配置 / 音频焦点被拒）时接管 UI 状态显示，消除静默。 */
+    private var startFailed = false
+
     override val state: StateFlow<ASRState>
-        get() = controller?.state ?: idleState
+        get() = if (startFailed) idleState else (controller?.state ?: idleState)
 
     fun updateProvider(provider: ASRProviderSetting?) {
         controller?.dispose()
         controller = provider?.let { createController(it) }
+        startFailed = false
         if (controller == null) {
             idleState.value = ASRState()
         }
     }
 
     override fun start(onTranscriptChange: (String) -> Unit) {
+        val providerController = controller
+        if (providerController == null) {
+            // F9：未配置供应商 / apiKey 为空时不静默——置错误状态让 UI 提示
+            startFailed = true
+            idleState.value = ASRState(
+                status = ASRStatus.Error,
+                errorMessage = context.getString(R.string.asr_error_not_configured),
+            )
+            return
+        }
         val result = audioManager.requestAudioFocus(audioFocusRequest)
         if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            controller?.start(onTranscriptChange)
+            startFailed = false
+            providerController.start(onTranscriptChange)
+        } else {
+            // F9：焦点被拒（麦克风被占用）时不静默
+            startFailed = true
+            idleState.value = ASRState(
+                status = ASRStatus.Error,
+                errorMessage = context.getString(R.string.asr_error_audio_focus),
+            )
         }
     }
 
     override fun stop() {
+        startFailed = false
         controller?.stop()
         audioManager.abandonAudioFocusRequest(audioFocusRequest)
     }
 
     override fun cleanup() {
+        startFailed = false
         controller?.dispose()
         controller = null
         audioManager.abandonAudioFocusRequest(audioFocusRequest)

@@ -1309,5 +1309,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="notification_keep_alive_stop">중지</string>
   <string name="message_partial_failure_banner">생성이 중단됨 — 일부 내용이 유지됨</string>
   <string name="message_partial_failure_regenerate">다시 생성</string>
+  <string name="asr_error_not_configured">음성 인식이 설정되지 않음 — ASR 공급자와 API 키를 먼저 설정하세요</string>
+  <string name="asr_error_audio_focus">오디오 포커스를 얻을 수 없음 (마이크 사용 중일 수 있음)</string>
 </resources>
 

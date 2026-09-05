@@ -1311,5 +1311,7 @@
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成中斷，已保留部分內容</string>
   <string name="message_partial_failure_regenerate">重新生成</string>
+  <string name="asr_error_not_configured">未配置語音辨識——請先設定 ASR 供應商和 API Key</string>
+  <string name="asr_error_audio_focus">無法取得音訊焦點（麥克風可能被占用）</string>
 </resources>
 
