@@ -220,6 +220,7 @@
 | **#1644**（open） | OCR 识图带 `reasoning_effort="none"` → 400（MIMO2.5/OpenCodeGo） | 跟踪；当前 OCR 路径若用这些模型会踩 |
 | **#1632**（closed PR） | 本地 ML Kit OCR 优先 + AI fallback | 见「四、本地 OCR」 |
 | **#1687**（closed） | MCP 连接支持 mTLS 客户端证书 | **已实现**（v2.4.9，P12/PEM + 密码 + 设置 UI） |
+| **#1812**（closed） | 差网络下重试丢弃半截回复+重复计费 | **已由本 fork 自研方案实现**（零输出照旧重试 / 半截保留草稿落库，`20d84333`；阈值可配 `partialOutputMinChars` `e8e9d4e5`），**待真机测试**；同机制缓解 #1820（切对话回复消失）。v2「保留并续写」已放弃（2026-09-06） |
 | **#1083** | apiKey 管理策略 | 与「搜索多 key 故障转移」同主题 |
 | **#540** | 对话分享勾选方向 bug | 对话分享实现时规避 |
 | **#1069** | 压缩上下文前自动导出聊天 | 对话分享「全量导出」形态互补 |
@@ -425,3 +426,5 @@
 
 - 2026-08-16：**豆包搜索（#1721）落地完成（v2.4.10.11）**——DoubaoSearchService（global/web 双模式）：GLOBAL=全球搜索精选文档（上限 20、带图控制、适合综合摘要）；CUSTOM=常规 Web 搜索（上限 50、可关查询重写、默认）。经历：2.4.10.7 首上 → 误判崩溃回滚 → 真凶定位 R8 反射（2.4.10.9 修）→ 重上（2.4.10.10）→ 补漏显式 when Doubao 分支（2.4.10.11 正式）。
 - 2026-08-17：**下一步目标——New API 真实余额计算（待实现）**。现状：`BalanceOption`（ai/src/main/java/app/androidrik/ai/provider/ProviderSetting.kt:26）仅 `apiPath` 单接口 + `resultPath` 单 JSON 节点取值（默认 `/credits` + `data.total_usage`），**无法做减法**——配置 `/dashboard/billing/usage` + `total_usage` 显示的是"累计已使用总额"，非真实余额。需求：真实余额 = 总充值（`quota`，New API `/api/user/self`）− 已使用（`total_usage`，`/dashboard/billing/usage`）。方案方向（待定）：①**扩展 BalanceOption 模型**——多接口/多节点 + 算术表达式（如 `balance = quota - total_usage`，配置驱动通用，兼容 one-api/new-api 系）；②**New API 专属计算**——识别 provider 特征走专用余额逻辑。现有 BalanceOption 用例在 DefaultProviders.kt:106-156。**暂不实现，先记录目标**。
+
+- 2026-09-06：**未实现项全量盘点**（完整清单见 `docs/handoff-2026-09-04.md` 第七节）。上游 2.4.14/2.4.16 未吸收批次（Gemini 工具共存须与 2.4.16 修复捆绑、TTS 合成自动重试、MCP client-only/cloudflare OAuth/通知图标/qwen 音色等 1 行小件、终端标签关闭确认等 C 类按需）；peer-apps 借鉴落地顺序 ②-⑥（ContextBudgetPlanner、LoopGuard+forget、WifiLock 补强、世界书 seed 三重迁移、MCP host 按需）；自有规划仍开放（提供商/搜索多 key 失败转移待立项、R3.2 块级流式渲染待实现、本地 OCR 暂缓）；issue 关注新增 #1644（OCR reasoning_effort=none 400）跟踪。已闭环：终端 ①④ 落地（`fbfcde5e`/`958f011e`）、②⑥ 放弃；#1812 实现待真机测试、阈值可配置化完成、v2 续写放弃；turbo 尾巴仅剩 F6 待定。
