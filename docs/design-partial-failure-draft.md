@@ -1,6 +1,6 @@
 # 设计：生成失败时保留半截回复为可见草稿（#1812 对策）
 
-> 状态：**已实现，真机测试中**（2026-09-04；同批吸收 B1 空 tool schema `e8293d35` / B3 workspace stdin EOF `b62d29d1`）。半截阈值已可配置化：`RetrySetting.partialOutputMinChars`（默认 50，`e8e9d4e5`）。**2026-09-06 真机确认（2/3）：切对话回来生成内容不丢（#1820 缓解生效）+ 断网/飞行模式零输出自动重试照旧**；差网络半截落库待续验
+> 状态：**已实现，真机测试中**（2026-09-04；同批吸收 B1 空 tool schema `e8293d35` / B3 workspace stdin EOF `b62d29d1`）。半截阈值已可配置化：`RetrySetting.partialOutputMinChars`（默认 50，`e8e9d4e5`）。**2026-09-06 真机确认（2/3）：切对话回来生成内容不丢（#1820 缓解生效）+ 断网/飞行模式零输出自动重试照旧**；差网络半截落库因当前网络环境无断流场景**留待真实弱网自然验证**（判定逻辑已有 10 项单测覆盖，风险可控）
 > 背景：上游 issue [#1812](https://github.com/rikkahub/rikkahub/issues/1812)——差网络下生成被截断，自动重试反复重发、一次都没保存，白烧多次额度。上游的解法是加自动重试开关（`41353567`，2.4.16）；本方案是我们 fork 的备选设计：让"保留已有内容"和"自动重试"按失败类型分流。
 > 现状行为：`GenerationHandler.kt`（我们的 `withGenerationRetry` + 两处 `catch (e: Throwable)`，流式 :519 / 非流式 :552）——流中途失败时 `messages = snapshot` 回滚、重试从头重发；重试耗尽后上抛 ChatService 走 addError。**半截内容在每个环节都被丢弃**，与上游同款。
 
