@@ -4,6 +4,7 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.Model
@@ -24,7 +25,10 @@ data class UIMessage(
     val finishedAt: LocalDateTime? = null,
     val modelId: Uuid? = null,
     val usage: TokenUsage? = null,
-    val translation: String? = null
+    val translation: String? = null,
+    // 请求期间生成的内部消息；该标记仅在内存中使用
+    @Transient
+    val isSynthetic: Boolean = false,
 ) {
     private fun appendChunk(chunk: MessageChunk): UIMessage {
         val choice = chunk.choices.getOrNull(0)
