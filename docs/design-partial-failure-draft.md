@@ -1,6 +1,6 @@
 # 设计：生成失败时保留半截回复为可见草稿（#1812 对策）
 
-> 状态：**已实现，待真机测试**（2026-09-04；同批吸收 B1 空 tool schema `e8293d35` / B3 workspace stdin EOF `b62d29d1`）
+> 状态：**已实现，待真机测试**（2026-09-04；同批吸收 B1 空 tool schema `e8293d35` / B3 workspace stdin EOF `b62d29d1`）。半截阈值已可配置化：`RetrySetting.partialOutputMinChars`（默认 50，`e8e9d4e5`）
 > 背景：上游 issue [#1812](https://github.com/rikkahub/rikkahub/issues/1812)——差网络下生成被截断，自动重试反复重发、一次都没保存，白烧多次额度。上游的解法是加自动重试开关（`41353567`，2.4.16）；本方案是我们 fork 的备选设计：让"保留已有内容"和"自动重试"按失败类型分流。
 > 现状行为：`GenerationHandler.kt`（我们的 `withGenerationRetry` + 两处 `catch (e: Throwable)`，流式 :519 / 非流式 :552）——流中途失败时 `messages = snapshot` 回滚、重试从头重发；重试耗尽后上抛 ChatService 走 addError。**半截内容在每个环节都被丢弃**，与上游同款。
 
@@ -41,7 +41,7 @@
   ) : Exception(cause)
   ```
   （实现上可借上游版重试的 `StreamChunkHandlingException` 包裹思路）
-- "半截"判定阈值：过滤 reasoning 后可见文本 ≥ 阈值（建议 50~100 字符，可配）；低于阈值按零输出处理，照常自动重试。**判定实现零成本**：`messages.lastOrNull()` 即正在生成的 assistant 消息，过滤 `UIMessagePart.Text` 即可，无需额外状态；
+- "半截"判定阈值：过滤 reasoning 后可见文本 ≥ `RetrySetting.partialOutputMinChars`（默认 50，可配，UI 暂不暴露与 keepPartialOnFailure 同口径）；低于阈值按零输出处理，照常自动重试。**判定实现零成本**：`messages.lastOrNull()` 即正在生成的 assistant 消息，过滤 `UIMessagePart.Text` 即可，无需额外状态；
 - 非流式路径无半截概念，维持现状；translateText 等旁路不动。
 
 ### 第 2 层 — ChatService（落草稿）
