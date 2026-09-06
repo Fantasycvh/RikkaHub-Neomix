@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -27,7 +28,8 @@ private const val TAG = "KeepAliveService"
  *
  * 三重策略——①前台 Service + 常驻通知提升进程优先级；②START_STICKY 被系统杀死后自动重启；
  * ③onTaskRemoved 中重新断言前台状态（配合 Manifest 的 stopWithTask="false"，
- * 用户从最近任务划掉后服务不销毁）。
+ * 用户从最近任务划掉后服务不销毁）。服务存续期间持有 WifiLock（Wi-Fi 高性能模式，
+ * 借鉴 SoLab 保活四件套），避免 Doze 下 Wi-Fi 进入省电中断流式请求。
  *
  * 前置条件：通知权限（Android 13+，常驻通知必须可见）；建议加入电池优化白名单防 Doze 休眠
  * （见 [isIgnoringBatteryOptimizations] 与设置页引导）。
@@ -102,8 +104,12 @@ class KeepAliveService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // 服务存续期间持有的 Wi-Fi 高性能锁；持有失败不阻塞保活主路径
+    private var wifiLock: WifiManager.WifiLock? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            releaseWifiLock()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -119,6 +125,7 @@ class KeepAliveService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        acquireWifiLock()
         return START_STICKY
     }
 
@@ -128,6 +135,38 @@ class KeepAliveService : Service() {
             startForegroundCompat()
         }
         super.onTaskRemoved(rootIntent)
+    }
+
+    override fun onDestroy() {
+        releaseWifiLock()
+        super.onDestroy()
+    }
+
+    private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
+        try {
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val lock = wm.createWifiLock(
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                "rikkahub:keepalive"
+            )
+            lock.setReferenceCounted(false)
+            lock.acquire()
+            wifiLock = lock
+        } catch (e: Exception) {
+            // 个别 ROM 限制 WifiLock 时不影响前台服务本身
+            Log.w(TAG, "acquire WifiLock failed", e)
+        }
+    }
+
+    private fun releaseWifiLock() {
+        try {
+            wifiLock?.let { if (it.isHeld) it.release() }
+        } catch (e: Exception) {
+            Log.w(TAG, "release WifiLock failed", e)
+        } finally {
+            wifiLock = null
+        }
     }
 
     private fun startForegroundCompat(): Boolean {
