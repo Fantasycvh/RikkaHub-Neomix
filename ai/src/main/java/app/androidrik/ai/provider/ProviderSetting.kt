@@ -52,6 +52,8 @@ data class RetrySetting(
     val keepPartialOnFailure: Boolean = true,
     /** #1812：半截输出失败后仍自动重试（默认关，给想要全自动的用户）；开时 keepPartialOnFailure 不生效 */
     val retryAfterPartial: Boolean = false,
+    /** #1812：半截输出判定阈值——过滤 reasoning 后可见 Text 字符数 ≥ 该值视为「已产生有效输出」 */
+    val partialOutputMinChars: Int = 50,
 ) {
     companion object {
         val DEFAULT_DELAYS_SECONDS = listOf(2, 2, 2, 2, 2, 5, 10, 20, 60, 120)

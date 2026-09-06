@@ -60,6 +60,27 @@ class GenerationPartialFailureTest {
     }
 
     @Test
+    fun `custom threshold raises the partial bar`() {
+        // 阈值调高到 100：80 可见字符不再判定为半截（默认阈值下会判定）
+        val messages = listOf(assistant(UIMessagePart.Text("A".repeat(80))))
+        assertFalse("自定义阈值 100 时 80 字符不应判定为半截", isPartialOutput(messages, 100))
+    }
+
+    @Test
+    fun `custom threshold lowers the partial bar`() {
+        // 阈值调低到 10：同样 80 可见字符仍判定为半截
+        val messages = listOf(assistant(UIMessagePart.Text("A".repeat(80))))
+        assertTrue("自定义阈值 10 时 80 字符应判定为半截", isPartialOutput(messages, 10))
+    }
+
+    @Test
+    fun `custom threshold zero coerced by caller still requires text`() {
+        // 调用方防呆（coerceAtLeast(1)）：无可见文本时即使阈值为 0 也不判定为半截
+        val messages = listOf(assistant())
+        assertFalse("阈值为 1 时无文本不应判定为半截", isPartialOutput(messages, 1))
+    }
+
+    @Test
     fun `partial exception carries cause and partial messages`() {
         val cause = RuntimeException("stream interrupted")
         val partial = listOf(assistant(UIMessagePart.Text("半截".repeat(40))))

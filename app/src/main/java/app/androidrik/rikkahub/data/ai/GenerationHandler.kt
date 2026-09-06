@@ -523,8 +523,11 @@ class GenerationHandler(
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
                     val plan = provider.retryOption ?: settings.retrySetting
-                    // #1812 分流：已流式输出可见内容后断开 → 保留为草稿（不再回滚清空）
-                    if (plan.keepPartialOnFailure && !plan.retryAfterPartial && isPartialOutput(messages)) {
+                    // #1812 分流：已流式输出可见内容后断开 → 保留为草稿（不再回滚清空）；
+                    // 阈值可配（partialOutputMinChars），防呆下限 1（避免误配 0/负数把零输出也当半截）
+                    if (plan.keepPartialOnFailure && !plan.retryAfterPartial &&
+                        isPartialOutput(messages, plan.partialOutputMinChars.coerceAtLeast(1))
+                    ) {
                         throw GenerationPartialFailureException(e, messages)
                     }
                     messages = snapshot
@@ -699,17 +702,20 @@ class GenerationPartialFailureException(
     val partialMessages: List<UIMessage>,
 ) : Exception(cause)
 
-/** 半截输出判定阈值：过滤 reasoning 后最后一条 assistant 消息可见 Text ≥ 该值视为「已产生有效输出」。 */
+/** 半截输出判定默认阈值：过滤 reasoning 后最后一条 assistant 消息可见 Text ≥ 该值视为「已产生有效输出」。 */
 private const val PARTIAL_OUTPUT_THRESHOLD_CHAR = 50
 
 /** 是否达到「半截输出」判定线：仅看最后一条 assistant 消息的可见 Text（reasoning 不计入）。 */
-internal fun isPartialOutput(messages: List<UIMessage>): Boolean {
+internal fun isPartialOutput(
+    messages: List<UIMessage>,
+    minChars: Int = PARTIAL_OUTPUT_THRESHOLD_CHAR,
+): Boolean {
     val last = messages.lastOrNull() ?: return false
     if (last.role != MessageRole.ASSISTANT) return false
     val visibleChars = last.parts.sumOf { part ->
         if (part is UIMessagePart.Text) part.text.length else 0
     }
-    return visibleChars >= PARTIAL_OUTPUT_THRESHOLD_CHAR
+    return visibleChars >= minChars
 }
 
 /**
