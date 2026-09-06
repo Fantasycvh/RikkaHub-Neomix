@@ -64,7 +64,7 @@ catch `GenerationPartialFailureException` 时：
 1. **工具循环中的半截**：半截消息可能含未闭环的 tool call/result。限定**仅当失败发生在用户可见的最终回答流（非工具循环中途）才落草稿**——简单且安全；或退一步只保留 text/reasoning、丢弃未闭环 tool 部分。
 2. **usage 记账**：半截流可能已收到 usage chunk，且已被 `merge` 进最后一条消息（GenerationHandler.kt:511）。草稿随 `partialMessages` 携带 usage 即可保留；重试成功后新候选 #1 有独立 usage，两者按消息各自记账，不重复累计——实现上零成本，随消息走。
 3. **reasoning 部分**：保留但默认折叠——半截思考对用户定位断点有用。
-4. **"保留并续写"（可选 v2）**：Claude 系支持 assistant prefill，可从截断点续写而非整段重生成，是真正省 token 的彻底方案；OpenAI Chat Completions 不支持预填，需 provider 能力检测 + 仅 Claude 可用，成本高，v2 评估或不做。
+4. **"保留并续写"（可选 v2）**：Claude 系支持 assistant prefill，可从截断点续写而非整段重生成，是真正省 token 的彻底方案；OpenAI Chat Completions 不支持预填，需 provider 能力检测 + 仅 Claude 可用，成本高，v2 评估或不做。**已放弃（2026-09-06）**：仅对长输出场景有净收益（output 差额 vs 前缀 input 重复费），普通聊天无感；中转链路 assistant 结尾不可靠、必须真实 API 测试。协议层零改动（ClaudeProvider 构建器本就支持 assistant 结尾），搁置成本低，若真机测试显示长输出断流高频可随时重启。
 5. **与 #1820 的交集**：切对话回复消失的痛感会被"尽早持久化半截状态"同一机制缓解——一个机制治两个病。
 
 ## 落地顺序（实现时）
