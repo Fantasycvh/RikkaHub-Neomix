@@ -26,6 +26,8 @@ Updates:
 
 ## 发布
 
+构建前固定缓存路径：`export GRADLE_USER_HOME=<gradle-home>/gradle`（PUB_CACHE 同理指向 <gradle-home>/pub-cache；用户已迁移，C 盘旧缓存已清理）。构建命令用 `./gradlew :app:assembleRelease --max-workers=2`。
+
 使用github cli创建release, 并上传 app/release/xxx.apk 文件
 
 - 仅上传arm64版本
