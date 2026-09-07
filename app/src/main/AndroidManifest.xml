@@ -146,11 +146,6 @@
       android:process=":texcompile" />
 
     <service
-      android:name=".tikz.SvgConvertService"
-      android:exported="false"
-      android:process=":svgconvert" />
-
-    <service
       android:name=".service.KeepAliveService"
       android:exported="false"
       android:stopWithTask="false"

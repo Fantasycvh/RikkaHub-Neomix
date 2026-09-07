@@ -12,23 +12,17 @@ import java.io.File
  * `libtex_poc.so`（仅 arm64-v8a）；扩展 bundle（1598 文件，pgf 3.1.12 +
  * pgfplots 1.18.3）与中文字体（Droid Sans Fallback）内置 assets。
  *
- * 矢量路径：编译出 XDV → `libdvisvgm.so`（PIE 可执行，随包分发于
- * nativeLibraryDir）转 SVG（字形转轮廓，CM 字体由随包 .pfb + fontmap 提供）。
- * dvisvgm 失败时可降级 PDF → PdfRenderer 位图（见 TikzJax 回退链）。
+ * 矢量路径：编译 PDF（tectonic 必内嵌字体）→ MupdfSvgBridge（libmupdf_java.so）
+ * 转 SVG（FZ_SVG_TEXT_AS_TEXT，文字保留为 <text>，不依赖随包字体资产）。
+ * SVG 失败时降级 PDF → PdfRenderer 位图（见 TikzJax 回退链）。
  */
 object TectonicNative {
     private const val TAG = "TectonicNative"
 
-    /** 随包分发的 CM Type1 字体（dvisvgm 字形轮廓来源） */
-    private val CM_PFB_FONTS = listOf(
-        "cmr10.pfb", "cmbx10.pfb", "cmmi10.pfb", "cmsy10.pfb",
-        "cmex10.pfb", "cmss10.pfb", "cmssbx10.pfb",
-    )
-
     @Volatile
     private var loaded = false
 
-    /** 最近一次隔离进程（:texcompile/:svgconvert）返回的错误文本。
+    /** 最近一次隔离进程（:texcompile）返回的错误文本。
      * 隔离进程内 native 的 lastError 只存在于该进程，跨进程回传后在此缓存，
      * 供主进程 [lastErrorText] 统一读取。 */
     @Volatile
@@ -42,7 +36,6 @@ object TectonicNative {
         if (!loaded) synchronized(this) {
             if (!loaded) {
                 System.loadLibrary("tex_poc")
-                System.loadLibrary("dvisvgmexec")
                 loaded = true
             }
         }
@@ -87,7 +80,7 @@ object TectonicNative {
         return try {
             load()
             val cacheDir = File(context.cacheDir, "texfmt").apply { mkdirs() }.absolutePath
-            val tex = wrapDocument(texSource)
+            val tex = wrapDocument(texSource, format)
             val data = compile(bundle(context), font(context), tex.toByteArray(Charsets.UTF_8), cacheDir, format)
             if (data != null) Log.i(TAG, "native compile ok ($format): ${data.size} bytes") else Log.w(TAG, "native compile failed ($format): ${lastErrorText()}")
             data
@@ -99,7 +92,7 @@ object TectonicNative {
 
     /** 主进程入口：跨隔离进程（tectonic 专属）编译。须在 IO 线程（内部阻塞等待）。 */
     fun compileIsolated(context: Context, texSource: String, format: String = "pdf"): ByteArray? {
-        val tex = wrapDocument(texSource)
+        val tex = wrapDocument(texSource, format)
         val result = IsoServiceClient.call(context, TexCompileService::class.java) { replyTo ->
             android.os.Message.obtain(null, IsoProto.MSG_RUN).apply {
                 arg1 = if (format == "xdv") 1 else 0
@@ -116,72 +109,21 @@ object TectonicNative {
         return result.data
     }
 
-    /** 主进程入口：跨隔离进程（dvisvgm 专属）XDV→SVG。须在 IO 线程（内部阻塞等待）。 */
-    fun xdvToSvgIsolated(context: Context, xdv: ByteArray): String? {
-        val result = IsoServiceClient.call(context, SvgConvertService::class.java) { replyTo ->
-            android.os.Message.obtain(null, IsoProto.MSG_RUN).apply {
-                this.replyTo = replyTo
-                data = android.os.Bundle().apply { putByteArray(SvgProto.KEY_XDV, xdv) }
-            }
-        }
-        if (result.data != null) {
-            Log.i(TAG, "isolated svg convert ok: ${result.data.size} bytes")
-        } else {
-            lastIsolatedError = result.error
-            Log.w(TAG, "isolated svg convert failed: ${result.error}")
-        }
-        return result.data?.toString(Charsets.UTF_8)
-    }
-
     /**
-     * XDV → SVG（dvisvgm 以共享库形式 JNI 调用，字形转轮廓 + CM 字体走 fontmap）。
-     * 失败返回 null；成功返回 SVG 文本。
-     *
-     * 不做 exec：untrusted_app（targetSdk≥29）对 apk 库目录只有读权限，exec 会被
-     * SELinux execute_no_trans 拒绝。改为 System.loadLibrary("dvisvgmexec") 后
-     * JNI 直调，规避整个 exec 路径。
-     *
-     * 注：曾有的 dvisvgmUsed 进程内单次限制已移除——那是双进程隔离前的互污染
-     * 补丁；现在 dvisvgm 独占 :svgconvert 进程，tectonic 互不影响，可重复调用。
+     * 包装裸 TikZ 片段为完整文档。format 决定 pgf 驱动注入：
+     * - "xdv"（dvisvgm 链路）：必须注入 pgfsys-dvisvgm.def——pgf 默认 dvipdfm
+     *   驱动的 PDF specials dvisvgm 不识别（图形全丢只剩文字）
+     * - "pdf"（mupdf/位图链路）：保持默认 dvipdfm 驱动——注入 dvisvgm 驱动会让
+     *   xdvipdfmx 不识别 specials、图形全丢（实测"大部分空"）。必须在 \usepackage{tikz} 前。
      */
-    fun xdvToSvg(context: Context, xdv: ByteArray): String? {
-        return try {
-            load()
-            val work = File(context.cacheDir, "texwork").apply { deleteRecursively(); mkdirs() }
-            File(work, "droidsans.ttf").writeBytes(font(context))
-            for (pfb in CM_PFB_FONTS) {
-                val bytes = context.assets.open("tex/fonts/$pfb").use { it.readBytes() }
-                File(work, pfb).writeBytes(bytes)
-                // kpse stub 的 fopen 按原始名字查找；无扩展名副本让 dvisvgm 的 FileFinder
-                // 按字体名（cmr10）直接命中（CLI 验证成功路径即此配置，不带 -m）
-                File(work, pfb.removeSuffix(".pfb")).writeBytes(bytes)
-            }
-            File(work, "main.xdv").writeBytes(xdv)
-
-            val rc = dvisvgmMain(
-                work.absolutePath,
-                arrayOf("--no-fonts", "main.xdv", "-o", "main.svg"),
-            )
-            if (rc != 0) {
-                Log.w(TAG, "dvisvgmMain exit=$rc")
-                return null
-            }
-            val svg = File(work, "main.svg")
-            if (svg.isFile && svg.length() > 0) svg.readText() else null
-        } catch (t: Throwable) {
-            Log.w(TAG, "xdvToSvg error", t)
-            null
-        }
-    }
-
-    internal fun wrapDocument(code: String): String {
+    internal fun wrapDocument(code: String, format: String = "pdf"): String {
         val trimmed = code.trim()
         if (trimmed.contains("\\documentclass", ignoreCase = true)) return trimmed
         return buildString {
             append("\\documentclass{article}\n")
-            // XDV 矢量路径必须：pgf 默认 dvipdfm 驱动的 PDF specials dvisvgm 不识别
-            //（图形全丢只剩文字），需显式切换 dvisvgm 驱动。必须在 \usepackage{tikz} 前
-            append("\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\n")
+            if (format == "xdv") {
+                append("\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\n")
+            }
             append("\\usepackage{tikz}\n")
             append("\\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}\n")
             // tikzcd 交换图：需 tikz-cd 宏包（bundle v3+），按内容检测加载
@@ -194,6 +136,10 @@ object TectonicNative {
             append("\\renewcommand{\\normalfont}{\\tikzoldnormalfont\\zhfont}\n")
             append("\\renewcommand{\\rmfamily}{\\zhfont}\n")
             append("\\renewcommand{\\sffamily}{\\zhfont}\n")
+            // node 文本的字体走 TeX 字体机制内部路径（\rmfamily 重定义不覆盖），
+            // 必须强制 every node 用 zhfont，否则中文进不了 PDF（实测缺失字符）。
+            // 用户 node 自身 font 选项优先级高于此默认样式，可正常覆盖。
+            append("\\tikzset{every node/.style={font=\\zhfont}}\n")
             append("\\begin{document}\n")
             append(trimmed)
             append("\n\\end{document}")
@@ -210,6 +156,5 @@ object TectonicNative {
     }
 
     private external fun compile(bundle: ByteArray, font: ByteArray, tex: ByteArray, cacheDir: String, format: String): ByteArray?
-    private external fun dvisvgmMain(workDir: String, args: Array<String>): Int
     private external fun lastError(): String?
 }

@@ -11,7 +11,7 @@ import java.io.File
 
 /**
  * 移除第①级后的端到端验证：T1/T2/T3（positioning 全场景）直接走
- * native 引擎（XDV→dvisvgm SVG 矢量），真机全链路。
+ * native 引擎（PDF→mupdf SVG 矢量），真机全链路。
  * 非 arm64-v8a 设备自动跳过。
  */
 @RunWith(AndroidJUnit4::class)

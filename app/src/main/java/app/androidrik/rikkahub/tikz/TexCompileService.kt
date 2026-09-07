@@ -19,13 +19,12 @@ import java.util.concurrent.TimeUnit
 /**
  * TikZ native 引擎隔离进程（方案 B 第 4 步，docs 8.4.5）。
  *
- * 根因隔离：tectonic 与 dvisvgm 同进程共存时 C++ 静态单例/流状态互污染
- * （dvisvgm 跑过后 tectonic 的 xdvipdfmx 后续编译坏，version-script 符号
- * 隔离不解决）。解法：两个引擎各占一个 isolatedProcess Service——
- * [TexCompileService]（tectonic，XDV/PDF 编译）与 [SvgConvertService]
- * （dvisvgm，XDV→SVG）。native 崩溃只杀对应隔离进程，主进程无感。
+ * 根因隔离：tectonic 与 dvisvgm（已移除，mupdf 链接管）同进程共存时会 C++
+ * 静态单例/流状态互污染。现在 tectonic 独占 [TexCompileService] 隔离进程
+ * （PDF/XDV 编译）；SVG 转换由主进程内 MupdfSvgBridge（libmupdf_java.so）
+ * 完成，无需第二个隔离进程。native 崩溃只杀隔离进程，主进程无感。
  *
- * Messenger 协议（两 Service 共用消息号）：
+ * Messenger 协议：
  * - 请求 MSG_RUN(1)：data 携带业务参数（见各 Service）
  * - 响应 MSG_RESULT(2)：arg1=0 成功（data "data" ByteArray）/ 1 失败（data "error"）
  */
@@ -43,11 +42,6 @@ object IsoProto {
 /** tectonic 编译协议 */
 object TexProto {
     const val KEY_TEX = "tex"
-}
-
-/** dvisvgm 转换协议 */
-object SvgProto {
-    const val KEY_XDV = "xdv"
 }
 
 /**
@@ -69,30 +63,6 @@ class TexCompileService : Service() {
     override fun onBind(intent: Intent?): IBinder = messengerField!!.binder
 }
 
-/**
- * dvisvgm 专属进程：XDV → SVG（文本）。
- * SVG 以 UTF-8 ByteArray 回传（Messenger Bundle 不宜传超大字符串，SVG 通常 <100KB 无碍）。
- */
-class SvgConvertService : Service() {
-
-    // 同 TexCompileService：构造阶段不可用 context，懒初始化
-    private var messengerField: Messenger? = null
-
-    override fun onCreate() {
-        super.onCreate()
-        messengerField = Messenger(SvgIncomingHandler(applicationContext))
-        Log.i(TAG_BASE, "svgconvert process ready (pid=${android.os.Process.myPid()})")
-    }
-
-    override fun onBind(intent: Intent?): IBinder = messengerField!!.binder
-
-    override fun onDestroy() {
-        // dvisvgm 工作目录在本进程 cacheDir，退出时自清
-        runCatching { File(cacheDir, "texwork").deleteRecursively() }
-        super.onDestroy()
-    }
-}
-
 /** tectonic 编译请求处理（文件级：Service 构造阶段不实例化） */
 private class TexIncomingHandler(private val app: Context) : Handler(Looper.getMainLooper()) {
     override fun handleMessage(msg: Message) {
@@ -104,23 +74,6 @@ private class TexIncomingHandler(private val app: Context) : Handler(Looper.getM
                 val data = TectonicNative.compile(app, tex, format)
                     ?: error(TectonicNative.lastErrorText() ?: "compile failed")
                 data
-            }
-        } else {
-            super.handleMessage(msg)
-        }
-    }
-}
-
-/** dvisvgm 转换请求处理（文件级：Service 构造阶段不实例化） */
-private class SvgIncomingHandler(private val app: Context) : Handler(Looper.getMainLooper()) {
-    override fun handleMessage(msg: Message) {
-        val replyTo = msg.replyTo ?: return
-        if (msg.what == IsoProto.MSG_RUN) {
-            val xdv = msg.data.getByteArray(SvgProto.KEY_XDV) ?: ByteArray(0)
-            respond(replyTo) {
-                val svg = TectonicNative.xdvToSvg(app, xdv)
-                    ?: error("xdv to svg failed")
-                svg.toByteArray(Charsets.UTF_8)
             }
         } else {
             super.handleMessage(msg)

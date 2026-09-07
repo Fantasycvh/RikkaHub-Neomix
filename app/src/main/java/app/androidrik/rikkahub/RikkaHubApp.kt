@@ -56,7 +56,7 @@ const val KEEP_ALIVE_NOTIFICATION_CHANNEL_ID = "keep_alive"
 class RikkaHubApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // 隔离进程（TexCompileService/SvgConvertService，TikZ native 编译）跳过
+        // 隔离进程（TexCompileService，TikZ native 编译）跳过
         // 全部应用初始化：isolatedProcess 无大部分系统服务（WorkManager 依赖的
         // JobScheduler 为 null 直接崩溃），Koin/DB/WorkManager 与编译无关
         if (isIsolatedProcess()) return

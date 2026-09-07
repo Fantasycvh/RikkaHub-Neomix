@@ -90,6 +90,7 @@ import app.androidrik.rikkahub.ui.components.message.ThinkingStep
 import app.androidrik.rikkahub.ui.components.message.groupMessageParts
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.richtext.generateMarkdownHtml
+import app.androidrik.rikkahub.tikz.MupdfSvgBridge
 import app.androidrik.rikkahub.tikz.TectonicNative
 import app.androidrik.rikkahub.tikz.TikzSvgCache
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
@@ -483,10 +484,17 @@ private suspend fun renderMarkdownWithTikz(context: Context, content: String): S
     pendingRaw.forEachIndexed { i, code ->
         val trimmed = code.trim()
         val svg = withContext(Dispatchers.IO) {
-            TikzSvgCache.get(context, trimmed)
-                ?: TectonicNative.compileIsolated(context, trimmed, "xdv")
-                    ?.let { TectonicNative.xdvToSvgIsolated(context, it) }
+            val cached = TikzSvgCache.get(context, trimmed)
+            if (cached != null) {
+                cached
+            } else if (MupdfSvgBridge.available) {
+                // mupdf 链优先：tectonic PDF（内嵌字体）→ <text> 保留型 SVG（与聊天同链路）
+                TectonicNative.compileIsolated(context, trimmed)
+                    ?.let { MupdfSvgBridge.pdfToSvg(it) }
                     ?.also { TikzSvgCache.put(context, trimmed, it) }
+            } else {
+                null
+            }
         }
         if (svg != null) {
             result = result.replace("%%TIKZ_PH_${i}%%", svg)

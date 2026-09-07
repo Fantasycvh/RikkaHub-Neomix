@@ -28,12 +28,11 @@ class TikzSvgCacheTest {
         java.io.File(ctx.filesDir, "tikz_cache").deleteRecursively()
         assertNull("cache should be empty initially", TikzSvgCache.get(ctx, code))
 
-        // native 渲染并落盘（与 TikzJax 相同的链路）
-        val xdv = TectonicNative.compileIsolated(ctx, code, "xdv")
-        assertNotNull("xdv compile failed: ${TectonicNative.lastErrorText()}", xdv)
-        val svg = TectonicNative.xdvToSvgIsolated(ctx, xdv!!)
-        assertNotNull("svg convert failed", svg)
-        TikzSvgCache.put(ctx, code, svg!!)
+        // native 渲染并落盘（与 TikzJax 相同的链路：mupdf SVG）
+        val pdf = TectonicNative.compileIsolated(ctx, code)
+            ?: error("pdf compile failed: ${TectonicNative.lastErrorText()}")
+        val svg = MupdfSvgBridge.pdfToSvg(pdf) ?: error("mupdf svg convert failed")
+        TikzSvgCache.put(ctx, code, svg)
 
         // 二次读取：命中且内容一致
         val cached = TikzSvgCache.get(ctx, code)
