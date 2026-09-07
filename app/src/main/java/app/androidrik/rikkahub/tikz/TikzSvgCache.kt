@@ -24,9 +24,14 @@ object TikzSvgCache {
 
     private fun dir(context: Context): File = File(context.filesDir, DIR)
 
+    // 渲染链路版本号：引擎（dvisvgm→mupdf）、字体资产（DroidSansFallback→Noto Sans SC）、
+    // wrapDocument（pgfplots 按需加载/every node font）演进后，旧键必须失效。
+    // 若再改渲染链路，递增此常量即可整体失效旧缓存（内容寻址只防同引擎复用）。
+    private const val CACHE_VERSION = "v2"
+
     private fun key(code: String): String {
         val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(code.trim().toByteArray(Charsets.UTF_8))
+        val digest = md.digest("$CACHE_VERSION:".toByteArray(Charsets.UTF_8) + code.trim().toByteArray(Charsets.UTF_8))
         return digest.joinToString("") { "%02x".format(it) }
     }
 
