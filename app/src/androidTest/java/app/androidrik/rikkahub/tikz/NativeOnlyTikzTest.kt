@@ -24,17 +24,15 @@ class NativeOnlyTikzTest {
     private fun compileToSvg(name: String, code: String): String? {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         assumeTrue(TectonicNative.available)
-        val xdv = TectonicNative.compileIsolated(ctx, code, "xdv")
-        assertNotNull("$name xdv compile failed: ${TectonicNative.lastErrorText()}", xdv)
-        val svg = TectonicNative.xdvToSvgIsolated(ctx, xdv!!)
+        val pdf = TectonicNative.compileIsolated(ctx, code)
+        assertNotNull("$name pdf compile failed: ${TectonicNative.lastErrorText()}", pdf)
+        val svg = MupdfSvgBridge.pdfToSvg(pdf!!)
         if (svg != null) {
             val out = File(ctx.getExternalFilesDir(null), "$name.svg")
             out.writeText(svg)
             android.util.Log.i("NativeOnly", "$name SVG ok (${svg.length} bytes) -> ${out.absolutePath}")
         } else {
-            android.util.Log.w("NativeOnly", "$name svg convert failed, trying pdf fallback")
-            val pdf = TectonicNative.compileIsolated(ctx, code)
-            assertNotNull("$name pdf fallback also failed", pdf)
+            android.util.Log.w("NativeOnly", "$name svg convert failed")
         }
         return svg
     }
@@ -76,11 +74,11 @@ class NativeOnlyTikzTest {
         // 若未来引擎加了 #hex 预处理，本用例需随行为更新。
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         assumeTrue(TectonicNative.available)
-        val xdv = TectonicNative.compileIsolated(ctx, tHex, "xdv")
+        val pdf = TectonicNative.compileIsolated(ctx, tHex)
         val err = TectonicNative.lastErrorText()
-        if (xdv != null) {
+        if (pdf != null) {
             // 引擎若已支持（未来改进），SVG 转换后尺寸应正常
-            val svg = TectonicNative.xdvToSvgIsolated(ctx, xdv)
+            val svg = MupdfSvgBridge.pdfToSvg(pdf)
             assertTrue("unexpected svg too small", svg == null || svg.length > 500)
         } else {
             // 当前预期：TeX 层失败，报 Illegal parameter number

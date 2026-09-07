@@ -56,8 +56,11 @@ class MupdfSvgBridgeTest {
         assertTrue("svg should contain <text elements: ${s.take(300)}", s.contains("<text"))
         // 中转存日志便于诊断——真机 logcat 看实际文字形态
         android.util.Log.i("MupdfSvgBridgeTest", "SVG_DUMP: ${s.length} chars:\\n${s.take(1200)}")
-        // 中文字符应出现在文本内容里（内嵌 droidsans 经 ToUnicode 映射）
-        assertTrue("svg should contain CJK text content", s.contains("\u4e2d\u6587"))
+        // 中文字符应出现在文本内容里（mupdf 以 &#x4e2d; HTML 实体形式输出）
+        assertTrue(
+            "svg should contain CJK text content: ${s.take(400)}",
+            s.contains("&#x4e2d;") && s.contains("&#x6587;"),
+        )
     }
 
     @Test
