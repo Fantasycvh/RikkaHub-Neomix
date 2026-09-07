@@ -111,4 +111,74 @@ class MupdfSvgBridgeTest {
         android.util.Log.i("MupdfSvgBridgeTest", "PGFPLOTS_SVG: ${svg.take(800)}")
         assertTrue("pgfplots svg should have shape paths", svg.contains("<path"))
     }
+
+    // —— 用户原样复现：函数型 pgfplots（sin(x rad)*exp(-x^2/8)，区别于 coordinates 系列）——
+    private val userPgfplots = """
+        \begin{tikzpicture}
+        \begin{axis}[
+          width=8cm, height=4.5cm,
+          xmin=-6, xmax=6, ymin=-1.4, ymax=1.4,
+          axis lines=middle, grid=both,
+          xlabel={${'$'}x${'$'}}, ylabel={${'$'}y${'$'}}, title={${'$'}\sin(x)\,e^{-x^2/8}${'$'}},
+        ]
+        \addplot[blue, thick, samples=200] {sin(x rad)*exp(-x^2/8)};
+        \end{axis}
+        \end{tikzpicture}
+    """.trimIndent()
+
+    @Test
+    fun userPgfplotsFunctionAddplotRenders() {
+        assumeBridgeAvailable()
+        val pdf = pdfOf(userPgfplots)
+        android.util.Log.i("MupdfSvgBridgeTest", "USER_PGFPLOTS lastError=${TectonicNative.lastErrorText()}")
+        android.util.Log.i("MupdfSvgBridgeTest", "USER_PGFPLOTS pdf=${pdf?.size ?: "null"}")
+        val svg = pdf?.let { toSvg(it) }
+        android.util.Log.i("MupdfSvgBridgeTest", "USER_PGFPLOTS svg=${svg?.take(600) ?: "null"}")
+        assertNotNull("user pgfplots function addplot failed", svg)
+        assertTrue("user pgfplots svg should contain shapes", svg!!.contains("<path"))
+    }
+
+    // —— 用户原样复现：裸 tikzpicture 内 CJK node（中英对照）——
+    private val userCjkNode = """
+        \begin{tikzpicture}
+        \node (a) at (0,0) {中文};
+        \node (b) at (2,0) {Hello World};
+        \end{tikzpicture}
+    """.trimIndent()
+
+    @Test
+    fun userBareTikzCjkNodeKept() {
+        assumeBridgeAvailable()
+        val pdf = pdfOf(userCjkNode)
+        android.util.Log.i("MupdfSvgBridgeTest", "USER_CJK lastError=${TectonicNative.lastErrorText()}")
+        val svg = pdf?.let { toSvg(it) }
+        android.util.Log.i("MupdfSvgBridgeTest", "USER_CJK svg=${svg?.take(600) ?: "null"}")
+        assertNotNull("user bare cjk node failed", svg)
+        assertTrue("user cjk node should keep CJK text", svg!!.contains("&#x4e2d;"))
+    }
+
+
+    // —— 修复对照：rad → deg(x)（提示词已引导，验证编译走通）——
+    private val userPgfplotsDeg = """
+        \begin{tikzpicture}
+        \begin{axis}[
+          width=8cm, height=4.5cm,
+          xmin=-6, xmax=6, ymin=-1.4, ymax=1.4,
+          axis lines=middle, grid=both,
+          xlabel={${'$'}x${'$'}}, ylabel={${'$'}y${'$'}}, title={${'$'}sin(x)e^{-x^2/8}${'$'}},
+        ]
+        \addplot[blue, thick, samples=200] {sin(deg(x))*exp(-x^2/8)};
+        \end{axis}
+        \end{tikzpicture}
+    """.trimIndent()
+
+    @Test
+    fun userPgfplotsDegVariantRenders() {
+        assumeBridgeAvailable()
+        val svg = userPgfplotsDeg.let { pdfOf(it)?.let { toSvg(it) } }
+        android.util.Log.i("MupdfSvgBridgeTest", "DEG_SVG=${svg?.take(600) ?: "null"}")
+        assertNotNull("deg() variant should render", svg)
+        assertTrue("deg() svg should contain path", svg!!.contains("<path"))
+    }
+
 }
