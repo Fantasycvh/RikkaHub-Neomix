@@ -126,9 +126,17 @@ object TectonicNative {
             }
             append("\\usepackage{tikz}\n")
             append("\\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}\n")
-            // tikzcd 交换图：需 tikz-cd 宏包（bundle v3+），按内容检测加载
+            // 按内容检测加载额外宏包（bundle v3+ 均内置）：
+            // - tikzcd 交换图：tikz-cd
+            // - pgfplots：\begin{axis}（曲线/散点/饼图），缺则 axis 未注册编译失败
             if (trimmed.contains("\\begin{tikzcd}")) {
                 append("\\usepackage{tikz-cd}\n")
+            }
+            if (trimmed.contains("\\begin{axis}") || trimmed.contains("\\begin{semilogyaxis}") ||
+                trimmed.contains("\\begin{loglogaxis}") || trimmed.contains("\\begin{polaraxis}")
+            ) {
+                append("\\usepackage{pgfplots}\n")
+                append("\\pgfplotsset{compat=1.18}\n")
             }
             append("\\pagestyle{empty}\n")
             append("\\font\\zhfont=\"[droidsans.ttf]\"\n")

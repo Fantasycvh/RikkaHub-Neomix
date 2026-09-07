@@ -71,4 +71,44 @@ class MupdfSvgBridgeTest {
         // 图形（node 边框矩形）必须存在——图形与文字同源，不应因文字模式而丢失
         assertTrue("svg should contain path elements", svg.contains("<path"))
     }
+
+    // —— 回归复现：foreach 中文 label（用户实测"中文标丢、英文标在"）——
+    private val foreachCn = """
+        \begin{tikzpicture}
+        \foreach \x/\label in {0/A, 1/中, 2/B} {
+            \node[draw] at (\x, 0) {\label};
+        }
+        \end{tikzpicture}
+    """.trimIndent()
+
+    @Test
+    fun foreachCjkLabelKeptInSvg() {
+        assumeBridgeAvailable()
+        val pdf = pdfOf(foreachCn) ?: error("foreach compile failed: ${TectonicNative.lastErrorText()}")
+        val svg = toSvg(pdf) ?: error("mupdf svg failed")
+        android.util.Log.i("MupdfSvgBridgeTest", "FOREACH_SVG: ${svg.take(1200)}")
+        // 中文「中」(U+4E2D) 必须出现在文本内容（实体形式 &#x4e2d;）
+        assertTrue("foreach CJK label lost in svg: ${svg.take(400)}", svg.contains("&#x4e2d;"))
+        // 英文 A/B 也应在
+        assertTrue("foreach EN labels lost", svg.contains("A") && svg.contains("B"))
+    }
+
+    // —— 回归复现：pgfplots 裸片段（用户实测"整块不渲染输出源码"）——
+    private val pgfplotsBare = """
+        \begin{tikzpicture}
+        \begin{axis}
+        \addplot coordinates {(0,1) (1,3) (2,2)};
+        \end{axis}
+        \end{tikzpicture}
+    """.trimIndent()
+
+    @Test
+    fun pgfplotsBareFragmentRenders() {
+        assumeBridgeAvailable()
+        // 裸片段（无 documentclass）→ wrapDocument 应自动加载 pgfplots
+        val pdf = pdfOf(pgfplotsBare) ?: error("pgfplots compile failed: ${TectonicNative.lastErrorText()}")
+        val svg = toSvg(pdf) ?: error("mupdf svg failed")
+        android.util.Log.i("MupdfSvgBridgeTest", "PGFPLOTS_SVG: ${svg.take(800)}")
+        assertTrue("pgfplots svg should have shape paths", svg.contains("<path"))
+    }
 }
