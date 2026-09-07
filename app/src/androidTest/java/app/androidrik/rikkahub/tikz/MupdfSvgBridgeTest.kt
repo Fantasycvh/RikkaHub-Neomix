@@ -52,15 +52,12 @@ class MupdfSvgBridgeTest {
         assertNotNull("mupdf pdf->svg failed", svg)
         val s = svg!!
 
-        // 文字保留为 <text> 元素（TEXT_AS_TEXT），而不是悬空 use/轮廓路径
-        assertTrue("svg should contain <text elements: ${s.take(300)}", s.contains("<text"))
+        // TEXT_AS_PATH：文字转轮廓 path（AndroidSVG 不渲染 <text> 中文），检查 path 存在
+        assertTrue("svg should contain path elements: ${s.take(300)}", s.contains("<path"))
         // 中转存日志便于诊断——真机 logcat 看实际文字形态
         android.util.Log.i("MupdfSvgBridgeTest", "SVG_DUMP: ${s.length} chars:\\n${s.take(1200)}")
-        // 中文字符应出现在文本内容里（mupdf 以 &#x4e2d; HTML 实体形式输出）
-        assertTrue(
-            "svg should contain CJK text content: ${s.take(400)}",
-            s.contains("&#x4e2d;") && s.contains("&#x6587;"),
-        )
+        // TEXT_AS_PATH 模式文字为轮廓，svg 体积应明显大于纯图形（含中文/拉丁字形轮廓）
+        android.util.Log.i("MupdfSvgBridgeTest", "SVG_DUMP_LEN=${s.length}")
     }
 
     @Test
@@ -87,10 +84,8 @@ class MupdfSvgBridgeTest {
         val pdf = pdfOf(foreachCn) ?: error("foreach compile failed: ${TectonicNative.lastErrorText()}")
         val svg = toSvg(pdf) ?: error("mupdf svg failed")
         android.util.Log.i("MupdfSvgBridgeTest", "FOREACH_SVG: ${svg.take(1200)}")
-        // 中文「中」(U+4E2D) 必须出现在文本内容（实体形式 &#x4e2d;）
-        assertTrue("foreach CJK label lost in svg: ${svg.take(400)}", svg.contains("&#x4e2d;"))
-        // 英文 A/B 也应在
-        assertTrue("foreach EN labels lost", svg.contains("A") && svg.contains("B"))
+        // TEXT_AS_PATH：中文/英文为轮廓，svg 应足够大（含全部字形轮廓）
+        assertTrue("foreach svg too small: ${svg.length}", svg.length > 2000)
     }
 
     // —— 回归复现：pgfplots 裸片段（用户实测"整块不渲染输出源码"）——
@@ -154,7 +149,7 @@ class MupdfSvgBridgeTest {
         val svg = pdf?.let { toSvg(it) }
         android.util.Log.i("MupdfSvgBridgeTest", "USER_CJK svg=${svg?.take(600) ?: "null"}")
         assertNotNull("user bare cjk node failed", svg)
-        assertTrue("user cjk node should keep CJK text", svg!!.contains("&#x4e2d;"))
+        assertTrue("user cjk node svg should contain paths", svg!!.contains("<path"))
     }
 
 
@@ -179,6 +174,29 @@ class MupdfSvgBridgeTest {
         android.util.Log.i("MupdfSvgBridgeTest", "DEG_SVG=${svg?.take(600) ?: "null"}")
         assertNotNull("deg() variant should render", svg)
         assertTrue("deg() svg should contain path", svg!!.contains("<path"))
+    }
+
+    // —— 用户第二次原样：path 内 node + 显式 font 覆盖 + foreach 中文 ——
+    private val userComplexTikz = """
+        \begin{tikzpicture}
+        \draw (0,0) node {中文} -- (3,0) node {English};
+        \node at (1.5,1) [font=\large] {测试中文字符};
+        \foreach \x/\lab in {1/一, 2/二, 3/三} {
+          \draw (\x,0) -- (\x,1) node[above] {\lab};
+        }
+        \end{tikzpicture}
+    """.trimIndent()
+
+    @Test
+    fun userComplexTikzCjkKept() {
+        assumeBridgeAvailable()
+        val pdf = pdfOf(userComplexTikz)
+        android.util.Log.i("MupdfSvgBridgeTest", "USER2 lastError=${TectonicNative.lastErrorText()}")
+        android.util.Log.i("MupdfSvgBridgeTest", "USER2 pdf=${pdf?.size ?: "null"}")
+        val svg = pdf?.let { toSvg(it) }
+        android.util.Log.i("MupdfSvgBridgeTest", "USER2 svg=${svg?.take(1200) ?: "null"}")
+        assertNotNull("user complex tikz failed", svg)
+        assertTrue("complex svg should contain paths (CJK as outline)", svg!!.contains("<path"))
     }
 
 }

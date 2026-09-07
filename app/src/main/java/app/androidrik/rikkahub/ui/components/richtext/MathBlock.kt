@@ -42,7 +42,18 @@ fun MathInline(
     modifier: Modifier = Modifier,
     fontSize: TextUnit = TextUnit.Unspecified
 ) {
+    // 行内公式也可能承载 TikZ（$$ 同行紧贴式如 $$\begin{tikzpicture}...$$ 会被
+    // flexmark 判为 INLINE_MATH）→ 与 MathBlock 同口径分发到 TikzJax，否则
+    // 走 jlatexmath 会静默丢中文/剥离 node 文本/不认 pgfplots axis。
+    val settings = LocalSettings.current.displaySetting
     val proceededLatex = latex
+    if (settings.enableDiagramRendering && isDiagramLatex(proceededLatex)) {
+        TikzJax(
+            code = stripDollarWrappers(proceededLatex),
+            modifier = modifier,
+        )
+        return
+    }
     LatexText(
         latex = proceededLatex,
         color = LocalContentColor.current,
