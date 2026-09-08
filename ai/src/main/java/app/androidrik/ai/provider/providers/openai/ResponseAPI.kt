@@ -1,11 +1,14 @@
 package app.androidrik.ai.provider.providers.openai
 
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArrayBuilder
@@ -75,7 +78,7 @@ class ResponseAPI(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): MessageChunk {
+    ): MessageChunk = withContext(Dispatchers.IO) {
         val requestBody = buildRequestBody(
             providerSetting = providerSetting,
             messages = messages,
@@ -83,7 +86,7 @@ class ResponseAPI(
             stream = false,
         )
         val request = Request.Builder()
-            .url(apiEndpoint(providerSetting.baseUrl, "/responses"))
+            .url(apiEndpoint(providerSetting.baseUrl, providerSetting.responsesPath))
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(
@@ -97,18 +100,18 @@ class ResponseAPI(
 
         Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
 
-        val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
-        if (!response.isSuccessful) {
-            throw Exception("Failed to get response: ${response.code} ${response.body.string()}")
+        // await() 只等响应头；读 body 仍可能阻塞——use 确保流关闭，整体在 IO 线程执行（对齐 ab8b6cc8）
+        client.newCall(request).await().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Failed to get response: ${response.code} ${response.body.string()}")
+            }
+
+            val bodyStr = response.body?.string() ?: ""
+            Log.i(TAG, "generateText: $bodyStr")
+            val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
+                ?: error("Responses API response is not a JSON object: ${bodyStr.take(200)}")
+            parseResponseOutput(bodyJson)
         }
-
-        val bodyStr = response.body?.string() ?: ""
-        Log.i(TAG, "generateText: $bodyStr")
-        val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
-            ?: error("Responses API response is not a JSON object: ${bodyStr.take(200)}")
-        val output = parseResponseOutput(bodyJson)
-
-        return output
     }
 
     override suspend fun streamText(
@@ -123,7 +126,7 @@ class ResponseAPI(
             stream = true,
         )
         val request = Request.Builder()
-            .url(apiEndpoint(providerSetting.baseUrl, "/responses"))
+            .url(apiEndpoint(providerSetting.baseUrl, providerSetting.responsesPath))
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(
@@ -197,7 +200,7 @@ class ResponseAPI(
             eventSource.cancel()
         }
         // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
-    }.buffer(Channel.UNLIMITED)
+    }.buffer(Channel.UNLIMITED).flowOn(Dispatchers.IO)
 
     internal fun buildRequestBody(
         providerSetting: ProviderSetting.OpenAI,
