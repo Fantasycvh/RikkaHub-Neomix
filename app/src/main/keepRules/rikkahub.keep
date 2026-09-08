@@ -16,5 +16,10 @@
 -keepattributes Signature,InnerClasses,EnclosingMethod
 -keep,allowobfuscation class * extends com.fasterxml.jackson.core.type.TypeReference
 
+# 内嵌 Ktor 服务器通过 Auth0/Jackson 运行时签名/校验 JWT（WebApiModule）——
+# R8 优化可能破坏 JWT payload 解析，保活完整实现（对齐上游 3b4b80a4 / #1725）
+-keep class com.fasterxml.jackson.** { *; }
+-keep class com.auth0.jwt.** { *; }
+
 # Keep JlatexMath（R8 混淆会破坏 jlatexmath 的反射/解析，release 下数学公式失效——对齐上游 2.4.9 修复）
 -keep class org.scilab.forge.jlatexmath.** { *; }
