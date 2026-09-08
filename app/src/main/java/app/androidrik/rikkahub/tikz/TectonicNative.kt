@@ -117,7 +117,7 @@ object TectonicNative {
      *   xdvipdfmx 不识别 specials、图形全丢（实测"大部分空"）。必须在 \usepackage{tikz} 前。
      */
     internal fun wrapDocument(code: String, format: String = "pdf"): String {
-        val trimmed = normalizePgfMath(code.trim())
+        val (trimmed, hexColorDefs) = normalizeHexColors(normalizePgfMath(code.trim()))
         if (trimmed.contains("\\documentclass", ignoreCase = true)) return trimmed
         return buildString {
             append("\\documentclass{article}\n")
@@ -125,6 +125,7 @@ object TectonicNative {
                 append("\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\n")
             }
             append("\\usepackage{tikz}\n")
+            hexColorDefs.forEach { append(it + "\n") }
             append("\\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}\n")
             // 按内容检测加载额外宏包（bundle v3+ 均内置）：
             // - tikzcd 交换图：tikz-cd
@@ -197,5 +198,31 @@ object TectonicNative {
             val varName = m.groupValues[2]
             "$fn(deg($varName))"
         }
+    }
+
+    /**
+     * 把 #RRGGBB 十六进制颜色替换为 pgf 可用颜色名（HTML 命名注册）。
+     * # 是 TeX 参数 token，pgf options 里 #hex 直接 Illegal parameter number
+     * （实测：draw[thick, #4A90D9] 报 Illegal parameter number in \\pgfkeyscurrentkey）。
+     * 方案：每个唯一颜色 \\definecolor{hexN}{HTML}{RRGGBB}（xcolor HTML 支持，bundle 可用），
+     * 引用处替换为 hexN，保留 !NN 透明度后缀（hex0!30 ⊃ 原 #4A90D9!30 语义）。
+     * 返回替换后的代码 + 颜色定义行（注入 wrapDocument preamble）。
+     */
+    internal fun normalizeHexColors(tex: String): Pair<String, List<String>> {
+        val hexRe = Regex("""#(?i)([0-9a-f]{6})(!\d+)?""")
+        val seen = mutableMapOf<String, String>()  // RRGGBB -> hexN
+        val defs = mutableListOf<String>()
+        var counter = 0
+        val replaced = hexRe.replace(tex) { m ->
+            val rgb = m.groupValues[1].lowercase()
+            val suffix = m.groupValues[2]  // !NN 或不带
+            val name = seen.getOrPut(rgb) {
+                val n = counter++
+                defs.add("\\definecolor{hex$n}{HTML}{$rgb}")
+                "hex$n"
+            }
+            name + suffix
+        }
+        return replaced to defs
     }
 }
