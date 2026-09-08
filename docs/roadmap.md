@@ -163,11 +163,28 @@
 - **不做迁移脚本**：无现有多 key 数据
 - **难度**：中（UI 多输入框 + 列表模型 + 失败转移，重点在流式重试）
 
+### 数据模型与 UI 设计（2026-09-08 增补，比搜索侧更进一步）
+
+```kotlin
+@Serializable
+data class ApiKeyEntry(
+    val key: String,
+    val enabled: Boolean = true,   // 可单独启停（临时熔断/调试），不删 key
+)
+// ProviderSetting 各家：apiKey（旧字段保留，备份兼容）+ apiKeys: List<ApiKeyEntry>
+// 读取：apiKeys.filter { it.enabled }.map { it.key }.ifEmpty { listOf(apiKey) }
+```
+
+- **UI**：每 key 一框 + 启用开关 + 添加/删除（参照 customHeaders 动态列表交互）；key 值脱敏显示；单 key 用户默认一行无感知；旧 apiKey 值首入显示为第一行（写回迁入列表）。
+- **enabled 三价值**：临时熔断（限流 key 禁用不删）；调试单 key；**自动熔断铺路**（失败转移落地后可演进：连续 401/403 N 次内存态禁用 + 冷却恢复，LoopGuard 语义在 key 层的应用）。
+- **与搜索侧（三）的关系**：搜索桌面版参考是字符串一框分隔（无启停）——实现搜索侧时**直接采用同款结构化模型**，两端统一，搜索不停留在字符串形态。
+- **降级链全景**（与多提供商轮换的层级关系，2026-09-08 比较结论）：key 级（凭证冗余，本设计）→ provider 级（服务冗余，用「fallback 模型链」轻量实现：主模型重试耗尽切备选模型，仍走 RetrySetting 循环；完整路由抽象/OpenRouter 式不做）→ #1812 半截保留草稿。
+
 ### 范围建议（若立项）
 
-1. UI 多 key 输入区（含「支持多 key」提示）
+1. UI 多 key 输入区（每 key 一框 + enabled 开关，见上增补设计）
 2. 统一 key 错误异常（401/403/429 → `ProviderKeyException`）
-3. 失败转移：非流式 `generateText` 低难度；主聊天流式 `streamText` 中难度（`retryWhen` 重跑 SSE）
+3. 失败转移：非流式 `generateText` 低难度；主聊天流式 `streamText` 中难度（`retryWhen` 重跑 SSE）；**仅零输出失败换 key**（#1812 分流约束：半截 429 保留草稿不自动换）
 4. 标题/建议/压缩等非流式生成一并接入
 
 ### 与搜索多 key（三）的借鉴关系（2026-09-06 分析）
