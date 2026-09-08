@@ -381,6 +381,14 @@ class GenerationHandler(
                 throw e
             } catch (e: Throwable) {
                 val next = retryIndex + 1
+                // 鉴权失败（401/403，天然零输出）且配置了多个 key：立即换 key 重试，
+                // 不等延迟——LRU KeyRoulette 会选下一个 key（provider 侧按 effectiveApiKeys 轮换）。
+                // 429 限流不在此列：可能是半截（#1812 约束保留草稿），且换 key 不解决服务端限流。
+                if (isKeyAuthError(e) && hasMultipleEnabledKeys(providerSetting)) {
+                    retryIndex = next
+                    Log.w(TAG, "key auth failed, switching key and retrying: ${e.message}")
+                    continue
+                }
                 if (next >= plan.delaysSeconds.size || !isRetryableGenerationError(e)) throw e
                 retryIndex = next
                 val waitSec = plan.delaysSeconds[retryIndex].coerceAtLeast(0)
@@ -733,6 +741,22 @@ internal fun isRetryableGenerationError(t: Throwable): Boolean {
     if (t is kotlinx.serialization.SerializationException) return true
     val code = findHttpStatusCode(t.message) ?: return false
     return code == 408 || code == 425 || code == 429 || code in 500..599
+}
+
+/** 鉴权/凭证错误（401/403）：换 key 可解决；天然零输出，符合 #1812 零输出才自动重试约束 */
+internal fun isKeyAuthError(t: Throwable): Boolean {
+    val code = findHttpStatusCode(t.message) ?: return false
+    return code == 401 || code == 403
+}
+
+/** 该提供商是否配置了多个可用 key（enabled 过滤后） */
+internal fun hasMultipleEnabledKeys(providerSetting: ProviderSetting): Boolean {
+    val keys = when (providerSetting) {
+        is ProviderSetting.OpenAI -> providerSetting.apiKeys
+        is ProviderSetting.Google -> providerSetting.apiKeys
+        is ProviderSetting.Claude -> providerSetting.apiKeys
+    }
+    return keys.count { it.enabled && it.key.isNotBlank() } > 1
 }
 
 /** 从错误 message 提取 HTTP 状态码：优先 "code/status: NNN" 形态，回退到首个独立的 3 位数字。 */

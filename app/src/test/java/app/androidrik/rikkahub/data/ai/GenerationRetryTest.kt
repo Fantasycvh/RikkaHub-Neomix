@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.ai.provider.ApiKeyEntry
+import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.RetrySetting
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
@@ -49,6 +51,34 @@ class GenerationRetryTest {
         assertEquals(listOf(2, 2, 2, 2, 2, 5, 10, 20, 60, 120), RetrySetting.DEFAULT_DELAYS_SECONDS)
         assertNotNull(RetrySetting().delaysSeconds)
         assertFalse(RetrySetting().enabled)
+    }
+
+    // ---------- isKeyAuthError / hasMultipleEnabledKeys ----------
+
+    @Test
+    fun `key auth errors are 401 and 403 only`() {
+        assertTrue(isKeyAuthError(RuntimeException("Failed to get response: 401 unauthorized")))
+        assertTrue(isKeyAuthError(RuntimeException("status: 403 Forbidden")))
+        assertFalse(isKeyAuthError(RuntimeException("Failed to get response: 429 too many requests")))
+        assertFalse(isKeyAuthError(RuntimeException("Failed to get response: 500 internal")))
+        assertFalse(isKeyAuthError(IOException("connect timeout")))
+    }
+
+    @Test
+    fun `hasMultipleEnabledKeys counts only enabled non-blank keys`() {
+        // 空列表回退旧单 key 字段，不算多 key
+        assertFalse(hasMultipleEnabledKeys(ProviderSetting.OpenAI()))
+        // 多 key 全启用
+        val multi = ProviderSetting.OpenAI().copy(
+            apiKeys = listOf(ApiKeyEntry("k1"), ApiKeyEntry("k2")),
+        )
+        assertTrue(hasMultipleEnabledKeys(multi))
+        // 禁用的 key 不计入
+        val oneEnabled = multi.copy(apiKeys = listOf(ApiKeyEntry("k1", enabled = false), ApiKeyEntry("k2")))
+        assertFalse(hasMultipleEnabledKeys(oneEnabled))
+        // 空白 key 不计入
+        val blank = multi.copy(apiKeys = listOf(ApiKeyEntry("  "), ApiKeyEntry("k2")))
+        assertFalse(hasMultipleEnabledKeys(blank))
     }
 
     // ---------- isRetryableGenerationError ----------
