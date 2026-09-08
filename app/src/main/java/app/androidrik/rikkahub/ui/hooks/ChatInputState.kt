@@ -59,11 +59,16 @@ class ChatInputState {
                 originalParts.forEachIndexed { index, part ->
                     when {
                         index == editedTextIndex -> {
-                            merged.add(UIMessagePart.Text(text))
+                            // 纯图片消息：编辑文本为空时不生成空 Text part（对齐 5902feab）
+                            if (text.isNotBlank()) {
+                                merged.add(UIMessagePart.Text(text))
+                            }
                         }
 
                         part is UIMessagePart.Text -> {
-                            merged.add(part)
+                            if (part.text.isNotBlank()) {
+                                merged.add(part)
+                            }
                         }
 
                         else -> {
@@ -74,17 +79,22 @@ class ChatInputState {
                         }
                     }
                 }
+                // 原消息无文本（纯图片编辑）且新文本非空：文本放最前
+                if (editedTextIndex < 0 && text.isNotBlank()) {
+                    merged.add(0, UIMessagePart.Text(text))
+                }
                 // Newly added attachments are appended in insertion order.
                 merged.addAll(remainingAttachments)
                 return merged
             }
             return if (text.isBlank()) messageContent else listOf(UIMessagePart.Text(text)) + messageContent
         }
-        return listOf(UIMessagePart.Text(text)) + messageContent
+        return if (text.isBlank()) messageContent else listOf(UIMessagePart.Text(text)) + messageContent
     }
 
     fun isEmpty(): Boolean {
-        return textContent.text.isEmpty()
+        // 纯图片/纯附件消息：无文本但有内容时不算空（对齐 5902feab）
+        return textContent.text.isBlank() && messageContent.isEmpty()
     }
 
     fun addImages(uris: List<Uri>) {
