@@ -78,6 +78,29 @@ class PgfNormalizeTest {
     }
 
     @Test
+    fun shortRgb_threeDigit_expanded() {
+        val (replaced, defs) = TectonicNative.normalizeHexColors("\\draw[#f80] (0,0) -- (1,1);")
+        assertEquals("\\draw[hex0] (0,0) -- (1,1);", replaced)
+        assertEquals(listOf("\\definecolor{hex0}{HTML}{ff8800}"), defs)
+    }
+
+    @Test
+    fun eightDigit_rgbIgnoreAlpha() {
+        val (replaced, defs) = TectonicNative.normalizeHexColors("\\draw[#4A90D9FF] (0,0) -- (1,1);")
+        assertEquals("\\draw[hex0] (0,0) -- (1,1);", replaced)
+        assertEquals(listOf("\\definecolor{hex0}{HTML}{4a90d9}"), defs)
+    }
+
+    @Test
+    fun hexInOptionReplaced_hexInNodeTextKept() {
+        // 颜色在 [...] 选项内替换；node 文本里的字面 #hex（如绘制 `#4A90D9` 文字）不替换
+        val code = "\\draw[#4A90D9] (0,0) node {#E85D75};"
+        val (replaced, defs) = TectonicNative.normalizeHexColors(code)
+        assertEquals("\\draw[hex0] (0,0) node {#E85D75};", replaced)
+        assertEquals(listOf("\\definecolor{hex0}{HTML}{4a90d9}"), defs)
+    }
+
+    @Test
     fun fullDocument_hexKept_radNormalized() {
         // 完整 documentclass 文档：用户自管 preamble，#hex 不替换（避免 Undefined color），
         // 弧度归一化仍生效（原地自洽、无害）—— wrapDocument 修复语义

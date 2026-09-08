@@ -208,28 +208,55 @@ object TectonicNative {
     }
 
     /**
-     * 把 #RRGGBB 十六进制颜色替换为 pgf 可用颜色名（HTML 命名注册）。
+     * 把 #RRGGBB / #RGB 十六进制颜色替换为 pgf 可用颜色名（HTML 命名注册）。
      * # 是 TeX 参数 token，pgf options 里 #hex 直接 Illegal parameter number
      * （实测：draw[thick, #4A90D9] 报 Illegal parameter number in \\pgfkeyscurrentkey）。
      * 方案：每个唯一颜色 \\definecolor{hexN}{HTML}{RRGGBB}（xcolor HTML 支持，bundle 可用），
      * 引用处替换为 hexN，保留 !NN 透明度后缀（hex0!30 ⊃ 原 #4A90D9!30 语义）。
+     * 支持 3 位简写 #RGB（#f80 → #ff8800，展开为 6 位）与 8 位 #RRGGBBAA（alpha 忽略，取前 6 位）。
+     * 限定替换范围：仅在 `[...]` 选项上下文中替换（颜色几乎只出现在 pgfkey options），
+     * 避免误伤 node 文本内容里字面的 #hex（盲区 4）。
      * 返回替换后的代码 + 颜色定义行（注入 wrapDocument preamble）。
      */
     internal fun normalizeHexColors(tex: String): Pair<String, List<String>> {
-        val hexRe = Regex("""#(?i)([0-9a-f]{6})(!\d+)?""")
+        val hexRe = Regex("""#(?i)([0-9a-f]{3,8})(!\d+)?""")
         val seen = mutableMapOf<String, String>()  // RRGGBB -> hexN
         val defs = mutableListOf<String>()
         var counter = 0
-        val replaced = hexRe.replace(tex) { m ->
-            val rgb = m.groupValues[1].lowercase()
-            val suffix = m.groupValues[2]  // !NN 或不带
-            val name = seen.getOrPut(rgb) {
-                val n = counter++
-                defs.add("\\definecolor{hex$n}{HTML}{$rgb}")
-                "hex$n"
+        // 逐字符扫描以跟踪 `[`..`]` 选项上下文；#hex 仅在 options 内替换
+        val sb = StringBuilder(tex.length)
+        var inOptions = false
+        var i = 0
+        while (i < tex.length) {
+            val ch = tex[i]
+            when (ch) {
+                '[' -> { inOptions = true; sb.append(ch); i++ }
+                ']' -> { inOptions = false; sb.append(ch); i++ }
+                '#' -> {
+                    val m = hexRe.find(tex, i)
+                    if (m != null && m.range.first == i && inOptions) {
+                        val raw = m.groupValues[1].lowercase()
+                        // 归一：3 位按位展开（#f80→ff8800），6/8 位取前 6（8 位忽略 alpha）
+                        val rgb = when (raw.length) {
+                            3 -> raw.map { it.toString() + it }.joinToString("")
+                            else -> raw.take(6)
+                        }
+                        val suffix = m.groupValues[2]  // !NN 或不带
+                        val name = seen.getOrPut(rgb) {
+                            val n = counter++
+                            defs.add("\\definecolor{hex$n}{HTML}{$rgb}")
+                            "hex$n"
+                        }
+                        sb.append(name).append(suffix)
+                        i = m.range.last + 1
+                    } else {
+                        sb.append(ch)
+                        i++
+                    }
+                }
+                else -> { sb.append(ch); i++ }
             }
-            name + suffix
         }
-        return replaced to defs
+        return sb.toString() to defs
     }
 }
