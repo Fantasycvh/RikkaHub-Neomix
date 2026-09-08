@@ -71,7 +71,7 @@
 | `7714f2bc` | chatbox v2 导入 | 仅按需 |
 | `c62f1eb1` | 生成期临时 FGS | 与自有 KeepAliveService 重叠，保留自有 |
 | `c16fe44f`/`41353567` | 固定 3 次重试 + 关闭开关 | 自有的 RetrySetting 是超集，保留自有 |
-| `986b9c39`+`3509406b` | 全局代理页 | 与 per-provider ProviderProxy 设计冲突，需融合语义（provider 优先，None=跟随全局）后再谈 |
+| `986b9c39`+`3509406b` | 全局代理页 | **已放弃（2026-09-08）**：与 per-provider ProviderProxy 设计冲突，融合语义需改动代理配置模型 + 请求链路，收益小于维护两套代理的成本；保留每提供商独立代理 |
 | `b6df5f04` | OAuth 模块重构 | 等 MCP OAuth 实际需求 |
 | `96fbe7e3` | videogen 模块 | 上游 UI 未出 |
 | `0533acde` | 移除默认 rikkahub 提供商 | fork 默认提供商策略自行决策 |
