@@ -25,6 +25,8 @@
 | `6c6a8458` | fork 会话继承 folder id + workspace cwd (#1778) | `77abbd89` | 2026-09-06 |
 | `5736c05e` | 代码块导出截断模式修复 (#1841) | `e2f6b836` | 2026-09-05 |
 | 1c09d5cd 等 5 提交 | TikZ 渲染走 mupdf SVG 桥（TEXT_AS_PATH）+ 缓存版本 | fork 会话 | 2026-09-08 |
+| `85402745` | think 标签误判锚定修复 | `c3385e63` | 2026-09-08 |
+| `54030ec4` | Skill frontmatter 改 SnakeYAML 解析 | `3b482036` | 2026-09-08 |
 
 ## 待吸收（按优先级，合并清单）
 
@@ -57,9 +59,7 @@
 | 提交 | 内容 | 批次 | 备注 |
 |---|---|---|---|
 | `3b4b4a4`（实为 R8 系）→ 见注意点 | R8 JWT keep 规则 | 2.4.11 B1 | 我们正暴露同样 bug（webServerJwt release 混淆） |
-| `85402745` | think 标签误判（正则锚定 \A） | 2.4.11 B2 | 我们分支有同款 bug |
-| `54030ec4` | Skill frontmatter 用 SnakeYAML | 2.4.11 B3 | 手写 YAML 边界问题 |
-| `6c6a8458` 系列之后的 `fa0305ba`+`daae3749` | IME 修复 | 2.4.14 B5 | ChatInput 定制，逐段确认 |
+| ~~`fa0305ba`+`daae3749`~~ | IME 修复 | 2.4.14 B5 | **不吸收（2026-09-08）**：UX 动画优化非 bug，ChatInput 定制深，合入成本>收益 |
 | `9328a6e5`（fence/弧度归一化系 TikZ 改）| TikZ 细节 | 2026-09 | 已随 mupdf 桥路线消化 |
 
 ## 已放弃 / 不跟（合并清单）
