@@ -872,6 +872,8 @@
   <string name="setting_provider_page_advanced_settings">進階設定</string>
   <string name="setting_provider_page_api_base_url">API Base Url</string>
   <string name="setting_provider_page_api_key">API Key</string>
+  <string name="setting_provider_page_delete_key">刪除 Key</string>
+  <string name="setting_provider_page_add_key">新增 Key</string>
   <string name="setting_provider_page_api_path">API 路徑</string>
   <string name="setting_provider_page_avaliable_models">可用模型</string>
   <string name="setting_provider_page_balance_api_path">餘額 API 路徑</string>

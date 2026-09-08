@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -16,6 +17,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,11 +31,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.dokar.sonner.ToastType
+import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.DEFAULT_PROVIDERS
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -87,6 +92,11 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
         is ProviderSetting.Google -> this.apiKey
         is ProviderSetting.Claude -> this.apiKey
     }
+    val apiKeys = when (this) {
+        is ProviderSetting.OpenAI -> this.apiKeys
+        is ProviderSetting.Google -> this.apiKeys
+        is ProviderSetting.Claude -> this.apiKeys
+    }
     val sourceBaseUrl = when (this) {
         is ProviderSetting.OpenAI -> this.baseUrl
         is ProviderSetting.Google -> this.baseUrl
@@ -105,19 +115,19 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
             builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Google::class -> ProviderSetting.Google(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
             builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Claude::class -> ProviderSetting.Claude(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
             builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl
         )
         else -> error("Unsupported provider type: $type")
     }
@@ -425,19 +435,11 @@ private fun ProviderConfigureGoogle(
     )
 
     if (!(provider.vertexAI && provider.useServiceAccount)) {
-        var keyVisible by remember { mutableStateOf(false) }
-        OutlinedTextField(
-            value = provider.apiKey,
-            onValueChange = { onEdit(provider.copy(apiKey = it.trim())) },
-            label = { Text(stringResource(R.string.setting_provider_page_api_key)) },
-            modifier = Modifier.fillMaxWidth(),
-            maxLines = 3,
-            visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                IconButton(onClick = { keyVisible = !keyVisible }) {
-                    Icon(if (keyVisible) HugeIcons.ViewOff else HugeIcons.View, contentDescription = null)
-                }
-            },
+        // 多 key 编辑器：每 key 一框 + 启用开关（兼容旧单 key 字段展示）
+        ProviderApiKeysEditor(
+            keys = provider.apiKeys,
+            legacyKey = provider.apiKey,
+            onChange = { newKeys -> onEdit(provider.copy(apiKeys = newKeys)) },
         )
     }
 
@@ -539,5 +541,71 @@ private fun ProviderConfigureGoogle(
             label = { Text(stringResource(R.string.setting_provider_page_project_id)) },
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+/**
+ * 多 key 编辑器：每 key 一框 + 启用开关 + 删除；底部「添加 key」。
+ * 旧单 key 字段（apiKey）有值且列表为空时，首行展示旧值，写回时迁入列表。
+ */
+@Composable
+private fun ProviderApiKeysEditor(
+    keys: List<ApiKeyEntry>,
+    legacyKey: String,
+    onChange: (List<ApiKeyEntry>) -> Unit,
+) {
+    // 展示列表：结构化列表优先；空则用旧单 key 字段兜底展示（不修改数据直到用户编辑）
+    val entries = remember(keys, legacyKey) {
+        if (keys.isNotEmpty()) keys else ApiKeyEntry.fromLegacy(legacyKey)
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        entries.forEachIndexed { index, entry ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = entry.key,
+                    onValueChange = { newKey ->
+                        val updated = entries.toMutableList().also { it[index] = entry.copy(key = newKey) }
+                        onChange(updated)
+                    },
+                    label = { Text(stringResource(R.string.setting_provider_page_api_key)) },
+                    modifier = Modifier.weight(1f),
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+                Switch(
+                    checked = entry.enabled,
+                    onCheckedChange = { enabled ->
+                        val updated = entries.toMutableList().also { it[index] = entry.copy(enabled = enabled) }
+                        onChange(updated)
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+                IconButton(
+                    onClick = {
+                        val updated = entries.toMutableList().also { it.removeAt(index) }
+                        onChange(updated)
+                    },
+                ) {
+                    Icon(HugeIcons.Delete01, contentDescription = stringResource(R.string.setting_provider_page_delete_key))
+                }
+            }
+        }
+
+        TextButton(
+            onClick = {
+                val updated = entries.toMutableList().also { it.add(ApiKeyEntry("")) }
+                onChange(updated)
+            },
+            modifier = Modifier.align(Alignment.Start),
+        ) {
+            Icon(HugeIcons.Add01, contentDescription = null)
+            Text(
+                text = stringResource(R.string.setting_provider_page_add_key),
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
     }
 }
