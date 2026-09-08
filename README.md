@@ -45,7 +45,7 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 🛡️ **TikZ 崩溃防线** | 三层防线（TikzJax 渲染前尺寸校验 / renderSvg 生成端上限 / plot 采样值上限）+ 高度哨兵 HeightClamp + 文本按码点截断——杜绝巨型 SVG（height 4.58e11）导致 Compose 布局溢出崩溃 |
 | 🐛 **turbo bug 审计与修复** | 对照 rikkahub-turbo 48 项 bug 清单全量核查（`docs/references/turbo-bugs-audit.md`），分多批修复：崩溃（深递归 SOE 兜底、base64 容错、TTS 悬浮窗无权限守卫）、数据丢失（压缩覆盖新消息合并、附件延迟清理、设置并发 Mutex）、资源防护（文档/记忆/消息/网络体积上限、QuickJS destroy）、功能正确性（WebDAV 路径编码、分享 EXTRA_STREAM 兼容、MCP 名校验） |
 | 💬 **对话分享/导出** | 列表页长按「分享对话」+ 聊天内顶栏导出双入口，Markdown / 图片 PNG 两形态（系统分享 ACTION_SEND），支持版本范围可选 |
-| 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10`：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721） |
+| 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10` 批次：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721）；以及 `2.4.11`-`2.5.0` 批次精选：终端多 Tab 后台运行（`3a533a6a`）、空 tool schema 归一化（#1781）、workpace stdin EOF（#1605）、合成消息不参与模板（#1790）、fork 会话继承 folder/cwd（#1778）、代码块导出截断模式（#1841）。master 已 ff-only 同步至 `2.5.0`；详细评估见 `docs/upstream-analysis.md`。TikZ 渲染已定稿 mupdf SVG 桥（TEXT_AS_PATH 轮廓，中英文字形矢量，dvisvgm 链移除） |
 
 ## 🎨 核心功能（继承上游）
 
