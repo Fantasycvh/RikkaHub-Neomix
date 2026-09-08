@@ -95,7 +95,8 @@ class GenerationHandler(
         // 跨 provider 轻量降级（fallback 模型链）：主模型整体不可用时切备用模型重跑整轮。
         // 仅限"零输出失败"（重试耗尽后仍无可见内容）——半截输出（GenerationPartialFailureException）
         // 保留草稿不 fallback（#1812 约束，避免丢已计费内容）；取消不 fallback。
-        val fallbackModel = assistant.fallbackChatModelId?.let { settings.findModelById(it) }
+        // 备用模型优先级：助手设置 > 全局默认（与主模型 chatModelId 的两级模式一致）
+        val fallbackModel = (assistant.fallbackChatModelId ?: settings.fallbackChatModelId)?.let { settings.findModelById(it) }
         val fallbackProvider = fallbackModel?.findProvider(settings.providers)
         val fallbackProviderImpl = fallbackProvider?.let { providerManager.getProviderByType(it) }
 

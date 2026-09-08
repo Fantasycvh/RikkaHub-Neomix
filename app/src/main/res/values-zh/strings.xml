@@ -792,6 +792,8 @@
   <string name="setting_mcp_page_url_label">URL</string>
   <string name="setting_model_page_chat_model">聊天模型</string>
   <string name="setting_model_page_chat_model_desc">全局默认的聊天模型</string>
+  <string name="setting_model_page_fallback_model">默认备用模型</string>
+  <string name="setting_model_page_fallback_model_desc">助手未配置备用模型、且主模型重试耗尽后使用</string>
   <string name="setting_model_page_compress_model">压缩模型</string>
   <string name="setting_model_page_compress_model_desc">用于压缩对话历史的模型</string>
   <string name="setting_model_page_compress_prompt_vars">变量：{content}、{target_tokens}、{additional_context}</string>

@@ -116,6 +116,17 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
             )
         }
         item {
+            // 全局默认备用模型：助手未配置 fallback 时生效（优先级 助手 > 全局）
+            ModelSettingItem(
+                title = stringResource(R.string.setting_model_page_fallback_model),
+                description = stringResource(R.string.setting_model_page_fallback_model_desc),
+                modelId = settings.fallbackChatModelId,
+                providers = settings.providers,
+                onSelect = { vm.updateSettings(settings.copy(fallbackChatModelId = it.id)) },
+                onClear = { vm.updateSettings(settings.copy(fallbackChatModelId = null)) },
+            )
+        }
+        item {
             ModelSettingItem(
                 title = stringResource(R.string.setting_model_page_fast_model),
                 description = stringResource(R.string.setting_model_page_fast_model_desc),
