@@ -25,7 +25,7 @@ object TikzSvgCache {
     // 渲染链路版本号：引擎（dvisvgm→mupdf）、字体资产（DroidSansFallback→Noto Sans SC）、
     // wrapDocument（pgfplots 按需加载/every node font/selectfont 包装 zhfont）演进后，
     // 旧键必须失效。递增此常量即整体重置缓存。
-    private const val CACHE_VERSION = "v4"
+    private const val CACHE_VERSION = "v5"
     private const val VERSION_MARKER = "tikz_cache_" + CACHE_VERSION
 
     /**
