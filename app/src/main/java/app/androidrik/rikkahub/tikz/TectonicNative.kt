@@ -132,6 +132,13 @@ object TectonicNative {
                 append("\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\n")
             }
             append("\\usepackage{tikz}\n")
+            // 裁剪 PDF 到图内容 bbox（preview 包 tightpage）：article 整页(A4 612x792)
+            // 不裁会让 SVG 四周大空白、图居中占小块（实测）。preview 纯 TeX 层改页面尺寸，
+            // 不依赖外部 pdfcrop（standalone 裁剪需 pdfcrop，设备无此工具故不可行）。
+            // preview.sty/prtightpage.def/prauctex.cfg 已放 bundle 根路径（kpse 直查）。
+            append("\\usepackage[active,tightpage]{preview}\n")
+            append("\\PreviewEnvironment{tikzpicture}\n")
+            append("\\PreviewEnvironment{tikzcd}\n")
             hexColorDefs.forEach { append(it + "\n") }
             append("\\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}\n")
             // 按内容检测加载额外宏包（bundle v3+ 均内置）：
