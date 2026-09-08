@@ -7,8 +7,9 @@ import org.junit.Test
 
 /**
  * 取证：聊天 UI 的 IntelliJ Markdown 解析对 $$...$$ 同行式 TikZ 的实际处理。
- * 验证两点：① $$\begin{tikzpicture}...$$ 是否生成 <span class="math">；
- * ② \begin/\end 的反斜杠是否被 markdown 转义吞掉（用户提示的识别问题）。
+ * 验证：① $$\begin{tikzpicture}...$$ 是否生成 <span class="math">；
+ * ② \begin/\end 的反斜杠是否被 markdown 转义吞掉；
+ * ③ AI 常见 ``` 空标注 + $$...$$ 包裹的代码块解析结果。
  */
 class MarkdownMathParseTest {
 
@@ -24,7 +25,6 @@ class MarkdownMathParseTest {
 
     @Test
     fun blockStyleDollarTikz_should_contain_span_math_raw_backslash() {
-        // 换行式 $$（用户系统提示词的推荐形式）
         val content = """
             $$
 
@@ -39,14 +39,12 @@ class MarkdownMathParseTest {
         val hasMathSpan = html.contains("class=\"math\"")
         val backslashKept = html.contains("\\begin{tikzpicture}")
         println("hasMathSpan=$hasMathSpan backslashKept=$backslashKept")
-        // 断言 MathBlock 走通的前提：生成 math span 且反斜杠保留
-        assert(hasMathSpan) { "换行式 $$ 应生成 span.math，实际 HTML 无 math span" }
-        assert(backslashKept) { "\\begin 反斜杠应保留，但 HTML 中丢失/被转义" }
+        assert(hasMathSpan) { "换行式 $$ 应生成 span.math" }
+        assert(backslashKept) { "\\begin 反斜杠应保留" }
     }
 
     @Test
     fun inlineStyleDollarTikz_what_happens() {
-        // 同行式 $$（用户实际输入形式：$$ 紧跟 \begin{tikzpicture}）
         val content = """$$\begin{tikzpicture}
 \draw (0,0) node {中文} -- (3,0) node {English};
 \node at (1.5,1) [font=\large] {测试中文字符};
@@ -71,5 +69,20 @@ class MarkdownMathParseTest {
         """.trimIndent()
         val html = htmlOf(content)
         println("BARE_HTML: $html")
+    }
+
+    @Test
+    fun aiReplyFencedBlankWithDollarTikz() {
+        // AI 常见：``` 空标注 + $$...tlz...$$ 包裹（截图源码根因复现）
+        val content = "我重新检查：\n```\n$$\\begin{tikzpicture}\n\\draw (0,0) node {中文} -- (3,0) node {English};\n\\end{tikzpicture}$$\n```"
+        val html = htmlOf(content)
+        println("AI_FENCE_HTML: $html")
+        val codeLang = Regex("""class="[^"]*language-([a-z]+)""").find(html)?.groupValues?.get(1) ?: "none"
+        println("codeLanguage=$codeLang")
+        val hasBegin = html.contains("\\begin{tikzpicture}")
+        println("hasBegin=$hasBegin")
+        val codeContent = Regex("<code[^>]*>(.*?)</code>", RegexOption.DOT_MATCHES_ALL)
+            .find(html)?.groupValues?.get(1)?.take(120)
+        println("codeContent=$codeContent")
     }
 }
