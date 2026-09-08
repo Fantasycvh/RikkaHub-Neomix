@@ -451,70 +451,79 @@ class ChatService(
         answer: String? = null,
     ) {
         val session = getOrCreateSession(conversationId)
-        session.getJob()?.cancel()
+        val previousJob = session.getJob()
 
         val job = appScope.launch {
             try {
-                val conversation = session.state.value
-                val newApprovalState = when {
-                    answer != null -> ToolApprovalState.Answered(answer)
-                    approved -> ToolApprovalState.Approved
-                    else -> ToolApprovalState.Denied(reason)
-                }
-
-                // 内存态更新：短路重建，只有包含目标 tool 的分支才深拷贝，
-                // 避免每次批准都全量重建整棵消息树（大量命令批准时主线程累积阻塞 → ANR）。
-                val updatedNodes = conversation.messageNodes.map { node ->
-                    val targetMsgIndex = node.messages.indexOfFirst { msg ->
-                        msg.parts.any { it is UIMessagePart.Tool && it.toolCallId == toolCallId }
+                // 串行化审批落地：等前任决策保存完成后再应用本决策——连续审批不互相打断
+                //（55506496 修复：旧实现 setJob 会 cancel 前任 → 连续工具审批丢失）。
+                afterPreviousGeneration(previousJob) {
+                    val conversation = session.state.value
+                    // 忽略双击与对已完成/不活跃工具的过期审批：已执行（isExecuted）或已取消
+                    // 的工具不再等待审批，直接跳过本次落地。
+                    if (conversation.currentMessages.none { message ->
+                            message.getTools().any { it.toolCallId == toolCallId && it.isPending }
+                        }) return@afterPreviousGeneration
+                    val newApprovalState = when {
+                        answer != null -> ToolApprovalState.Answered(answer)
+                        approved -> ToolApprovalState.Approved
+                        else -> ToolApprovalState.Denied(reason)
                     }
-                    if (targetMsgIndex < 0) {
-                        node
-                    } else {
-                        val targetMsg = node.messages[targetMsgIndex]
-                        val updatedParts = targetMsg.parts.map { part ->
-                            if (part is UIMessagePart.Tool && part.toolCallId == toolCallId) {
-                                part.copy(approvalState = newApprovalState)
-                            } else {
-                                part
-                            }
+
+                    // 内存态更新：短路重建，只有包含目标 tool 的分支才深拷贝，
+                    // 避免每次批准都全量重建整棵消息树（大量命令批准时主线程累积阻塞 → ANR）。
+                    val updatedNodes = conversation.messageNodes.map { node ->
+                        val targetMsgIndex = node.messages.indexOfFirst { msg ->
+                            msg.parts.any { it is UIMessagePart.Tool && it.toolCallId == toolCallId }
                         }
-                        node.copy(
-                            messages = node.messages.mapIndexed { i, msg ->
-                                if (i == targetMsgIndex) msg.copy(parts = updatedParts) else msg
+                        if (targetMsgIndex < 0) {
+                            node
+                        } else {
+                            val targetMsg = node.messages[targetMsgIndex]
+                            val updatedParts = targetMsg.parts.map { part ->
+                                if (part is UIMessagePart.Tool && part.toolCallId == toolCallId) {
+                                    part.copy(approvalState = newApprovalState)
+                                } else {
+                                    part
+                                }
                             }
-                        )
+                            node.copy(
+                                messages = node.messages.mapIndexed { i, msg ->
+                                    if (i == targetMsgIndex) msg.copy(parts = updatedParts) else msg
+                                }
+                            )
+                        }
                     }
-                }
-                val updatedConversation = conversation.copy(messageNodes = updatedNodes)
+                    val updatedConversation = conversation.copy(messageNodes = updatedNodes)
 
-                // 持久化移 IO 线程：Room 写 + 深拷贝不在主线程执行
-                withContext(Dispatchers.IO) {
-                    saveConversation(conversationId, updatedConversation)
-                }
-
-                // Check if there are still pending tools
-                val hasPendingTools = updatedNodes.any { node ->
-                    node.currentMessage.parts.any { part ->
-                        part is UIMessagePart.Tool && part.isPending
+                    // 持久化移 IO 线程：Room 写 + 深拷贝不在主线程执行
+                    withContext(Dispatchers.IO) {
+                        saveConversation(conversationId, updatedConversation)
                     }
-                }
 
-                // Only continue generation when all pending tools are handled
-                if (!hasPendingTools) {
-                    // β: yield 让出主线程，先让"批准状态更新 → Compose 重组"完成渲染，
-                    // 再重启生成，避免状态更新与生成首帧双重组在同一帧竞争主线程（交互卡顿）
-                    yield()
-                    handleMessageComplete(conversationId)
-                }
+                    // Check if there are still pending tools
+                    val hasPendingTools = updatedNodes.any { node ->
+                        node.currentMessage.parts.any { part ->
+                            part is UIMessagePart.Tool && part.isPending
+                        }
+                    }
 
-                _generationDoneFlow.emit(conversationId)
+                    // Only continue generation when all pending tools are handled
+                    if (!hasPendingTools) {
+                        // β: yield 让出主线程，先让"批准状态更新 → Compose 重组"完成渲染，
+                        // 再重启生成，避免状态更新与生成首帧双重组在同一帧竞争主线程（交互卡顿）
+                        yield()
+                        handleMessageComplete(conversationId)
+                    }
+
+                    _generationDoneFlow.emit(conversationId)
+                }
             } catch (e: Exception) {
                 addError(e, conversationId, title = context.getString(R.string.error_title_tool_approval))
             }
         }
 
-        session.setJob(job)
+        session.setJob(job, cancelPrevious = false)
     }
 
     // ---- 处理消息补全 ----
@@ -840,7 +849,8 @@ class ChatService(
                     """{"status":"cancelled","error":"Generation cancelled by user before tool execution completed."}"""
                 )
             ),
-            approvalState = ToolApprovalState.Denied("Generation cancelled by user")
+            // 不再标 Denied：cancel 后 output 非空 → isExecuted=true → isPending=false
+            //（isPending = !isExecuted && Pending），取消状态不会误标成"拒绝待处理"。
         )
     }
 
@@ -1382,9 +1392,12 @@ class ChatService(
 
     // 停止当前会话生成任务（不清理会话缓存）
     suspend fun stopGeneration(conversationId: Uuid) {
-        val job = sessions[conversationId]?.getJob() ?: return
-        job.cancel()
-        runCatching { job.join() }
+        val session = sessions[conversationId] ?: return
+        val jobs = synchronized(session) {
+            session.cancelJobs()
+        }
+        if (jobs.isEmpty()) return
+        jobs.forEach { it.join() }
         finishInterruptedPendingTools(conversationId)
     }
 }

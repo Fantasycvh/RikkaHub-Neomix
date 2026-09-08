@@ -144,8 +144,8 @@ sealed class UIMessagePart {
         /** Whether the tool has been executed (has output) */
         val isExecuted: Boolean get() = output.isNotEmpty()
 
-        /** Whether the tool is pending user approval */
-        val isPending: Boolean get() = approvalState is ToolApprovalState.Pending
+        /** Whether the tool is pending user approval (已执行/已取消的工具不再等待审批) */
+        val isPending: Boolean get() = !isExecuted && approvalState is ToolApprovalState.Pending
 
         /** Whether generation can resume and handle this tool immediately */
         val canResumeExecution: Boolean get() = !isExecuted && approvalState.canResumeToolExecution()

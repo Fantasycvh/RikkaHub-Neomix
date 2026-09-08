@@ -1,13 +1,16 @@
 package app.androidrik.rikkahub.service
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.data.model.Conversation
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.uuid.Uuid
@@ -35,6 +38,9 @@ class ConversationSession(
     val generationJob: StateFlow<Job?> = _generationJob.asStateFlow()
     val isGenerating: Boolean get() = _generationJob.value?.isActive == true
     val isInUse: Boolean get() = refCount.get() > 0 || isGenerating
+
+    // 所有活动生成/审批协程（含排队等待前任的）：stopGeneration 全链取消
+    private val activeJobs = mutableSetOf<Job>()
 
     // 空闲检查任务
     private var idleCheckJob: Job? = null
@@ -69,16 +75,29 @@ class ConversationSession(
         }
     }
 
-    fun setJob(job: Job?) {
-        _generationJob.value?.cancel()
+    /**
+     * 注册生成协程。连续审批/连续发送时 [cancelPrevious]=false 不清前任——
+     * 审批决策要串行落地（前任的保存不被后任打断），停时由 [cancelJobs] 全链取消。
+     */
+    @Synchronized
+    fun setJob(job: Job?, cancelPrevious: Boolean = true) {
+        val previous = _generationJob.value
+        if (cancelPrevious) previous?.cancel()
         _generationJob.value = job
-        job?.invokeOnCompletion {
-            // 旧 job 的完成回调可能晚于新 job 设置执行（连续 sendMessage / approve 重启生成时）：
-            // 无条件清 null 会误清新 job 的引用 → isGenerating 假 false、stopGeneration 找不到
-            // job、空闲检查提前清理会话。按 identity 判断只清自己。
-            // （移植自 rikkahub-turbo c897647）
-            if (_generationJob.value === job) {
-                _generationJob.value = null
+        if (job != null) activeJobs.add(job)
+        job?.invokeOnCompletion { cause ->
+            synchronized(this) {
+                activeJobs.remove(job)
+                // 排队等待前任的协程从未进入体即被取消时，把取消传播给前任——
+                // 避免"等待新审批 → 前任永远留在 activeJobs / 后继不启动"的悬挂
+                if (!cancelPrevious && cause is CancellationException) previous?.cancel()
+                // 旧 job 的完成回调可能晚于新 job 设置执行（连续 sendMessage / approve 重启生成时）：
+                // 无条件清 null 会误清新 job 的引用 → isGenerating 假 false、stopGeneration 找不到
+                // job、空闲检查提前清理会话。按 identity 判断只清自己。
+                // （移植自 rikkahub-turbo c897647）
+                if (_generationJob.value === job) {
+                    _generationJob.value = null
+                }
             }
             if (refCount.get() <= 0) {
                 scheduleIdleCheck()
@@ -87,6 +106,12 @@ class ConversationSession(
     }
 
     fun getJob(): Job? = _generationJob.value
+
+    /** @Synchronized 返回全部活动协程并逆序取消（先取消等待者，防止前任完成启动下一个审批） */
+    @Synchronized
+    fun cancelJobs(): List<Job> = activeJobs.toList().also { jobs ->
+        jobs.asReversed().forEach { it.cancel() }
+    }
 
     private fun scheduleIdleCheck() {
         idleCheckJob?.cancel()
@@ -104,9 +129,20 @@ class ConversationSession(
     }
 
     fun cleanup() {
-        _generationJob.value?.cancel()
+        cancelJobs()
         _generationJob.value = null
         idleCheckJob?.cancel()
         idleCheckJob = null
+    }
+}
+
+/** 串行化审批保存：等前任完成后再落地本决策，避免连续审批互相打断（不主动 cancel 前任）。 */
+internal suspend fun afterPreviousGeneration(previous: Job?, block: suspend () -> Unit) {
+    try {
+        previous?.join()
+        block()
+    } catch (e: CancellationException) {
+        // 后继被 stopGeneration 取消时不把 CancellationException 吞掉
+        throw e
     }
 }
