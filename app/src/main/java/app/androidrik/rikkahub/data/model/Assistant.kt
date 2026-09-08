@@ -16,6 +16,7 @@ import kotlin.uuid.Uuid
 data class Assistant(
     val id: Uuid = Uuid.random(),
     val chatModelId: Uuid? = null, // 如果为null, 使用全局默认模型
+    val fallbackChatModelId: Uuid? = null, // 主模型重试耗尽后切换的备用模型（跨 provider 轻量降级）
     val name: String = "",
     val avatar: Avatar = Avatar.Dummy,
     val useAssistantAvatar: Boolean = false, // 使用助手头像替代模型头像

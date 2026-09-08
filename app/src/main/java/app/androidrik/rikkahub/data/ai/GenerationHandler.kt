@@ -92,10 +92,22 @@ class GenerationHandler(
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
 
-        var messages: List<UIMessage> = messages
+        // 跨 provider 轻量降级（fallback 模型链）：主模型整体不可用时切备用模型重跑整轮。
+        // 仅限"零输出失败"（重试耗尽后仍无可见内容）——半截输出（GenerationPartialFailureException）
+        // 保留草稿不 fallback（#1812 约束，避免丢已计费内容）；取消不 fallback。
+        val fallbackModel = assistant.fallbackChatModelId?.let { settings.findModelById(it) }
+        val fallbackProvider = fallbackModel?.findProvider(settings.providers)
+        val fallbackProviderImpl = fallbackProvider?.let { providerManager.getProviderByType(it) }
 
-        for (stepIndex in 0 until maxSteps) {
-            Log.i(TAG, "streamText: start step #$stepIndex (${model.id})")
+        suspend fun runLoop(
+            targetModel: Model,
+            targetProvider: ProviderSetting,
+            targetProviderImpl: Provider<ProviderSetting>,
+        ) {
+            var messages: List<UIMessage> = messages
+
+            for (stepIndex in 0 until maxSteps) {
+                Log.i(TAG, "streamText: start step #$stepIndex (${targetModel.id})")
 
             val toolsInternal = buildList {
                 Log.i(TAG, "generateInternal: build tools($assistant)")
@@ -138,7 +150,7 @@ class GenerationHandler(
                         messages = it.transforms(
                             transformers = outputTransformers,
                             context = context,
-                            model = model,
+                            model = targetModel,
                             assistant = assistant,
                             settings = settings
                         )
@@ -147,7 +159,7 @@ class GenerationHandler(
                                 messages.visualTransforms(
                                     transformers = outputTransformers,
                                     context = context,
-                                    model = model,
+                                    model = targetModel,
                                     assistant = assistant,
                                     settings = settings
                                 )
@@ -155,9 +167,9 @@ class GenerationHandler(
                         )
                     },
                     transformers = inputTransformers,
-                    model = model,
-                    providerImpl = providerImpl,
-                    provider = provider,
+                    model = targetModel,
+                    providerImpl = targetProviderImpl,
+                    provider = targetProvider,
                     tools = toolsInternal,
                     memories = memories ?: emptyList(),
                     stream = assistant.streamOutput,
@@ -170,14 +182,14 @@ class GenerationHandler(
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,
                     context = context,
-                    model = model,
+                    model = targetModel,
                     assistant = assistant,
                     settings = settings
                 )
                 messages = messages.onGenerationFinish(
                     transformers = outputTransformers,
                     context = context,
-                    model = model,
+                    model = targetModel,
                     assistant = assistant,
                     settings = settings
                 )
@@ -339,14 +351,29 @@ class GenerationHandler(
                     messages.transforms(
                         transformers = outputTransformers,
                         context = context,
-                        model = model,
+                        model = targetModel,
                         assistant = assistant,
                         settings = settings
                     )
                 )
             )
         }
+        }
 
+        // 主模型整轮失败（重试耗尽、非半截、非取消）时切 fallback 模型重跑整轮。
+        // 半截输出（GenerationPartialFailureException）保留草稿不 fallback——#1812 约束。
+        try {
+            runLoop(model, provider, providerImpl)
+        } catch (e: Throwable) {
+            if (e is CancellationException) throw e
+            if (e is GenerationPartialFailureException) throw e
+            if (fallbackModel != null && fallbackProviderImpl != null) {
+                Log.w(TAG, "primary model failed, fallback to ${fallbackModel.id}: ${e.message}")
+                runLoop(fallbackModel, fallbackProvider!!, fallbackProviderImpl)
+            } else {
+                throw e
+            }
+        }
     }.flowOn(Dispatchers.IO)
 
     /**

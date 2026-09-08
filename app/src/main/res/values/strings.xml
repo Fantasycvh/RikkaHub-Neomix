@@ -61,6 +61,8 @@
   <string name="assistant_page_chat_background_desc">Set background image for assistant chat page</string>
   <string name="assistant_page_chat_model">Chat Model</string>
   <string name="assistant_page_chat_model_desc">Set the default chat model for the assistant. If not set, the global default chat model will be used</string>
+  <string name="assistant_page_fallback_model">Fallback model</string>
+  <string name="assistant_page_fallback_model_desc">Used when the primary model fails after retries (e.g. provider outage). Leave empty to disable</string>
   <string name="assistant_page_clone">Clone</string>
   <string name="assistant_page_confirm">Confirm</string>
   <string name="assistant_page_creative">Creative</string>

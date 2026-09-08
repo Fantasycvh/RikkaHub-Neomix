@@ -262,6 +262,31 @@ internal fun AssistantBasicContent(
             FormItem(
                 modifier = Modifier.padding(8.dp),
                 label = {
+                    Text(stringResource(R.string.assistant_page_fallback_model))
+                },
+                description = {
+                    Text(stringResource(R.string.assistant_page_fallback_model_desc))
+                },
+                content = {
+                    ModelSelector(
+                        modelId = assistant.fallbackChatModelId,
+                        providers = providers,
+                        type = ModelType.CHAT,
+                        allowClear = true,
+                        onSelect = {
+                            onUpdate(
+                                assistant.copy(
+                                    fallbackChatModelId = it.id
+                                )
+                            )
+                        },
+                    )
+                }
+            )
+            HorizontalDivider()
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = {
                     Text(stringResource(R.string.assistant_page_temperature))
                 },
                 description = {

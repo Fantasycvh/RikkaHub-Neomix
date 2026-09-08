@@ -60,6 +60,8 @@
   <string name="assistant_page_chat_background">聊天背景</string>
   <string name="assistant_page_chat_background_desc">設定助手聊天頁面的背景圖片</string>
   <string name="assistant_page_chat_model">聊天模型</string>
+  <string name="assistant_page_fallback_model">備用模型</string>
+  <string name="assistant_page_fallback_model_desc">主模型重試耗盡後自動切換（如提供商不可用）。留空則停用</string>
   <string name="assistant_page_chat_model_desc">設定助手的預設聊天模型，如果不設定，則使用全域預設聊天模型</string>
   <string name="assistant_page_clone">複製</string>
   <string name="assistant_page_confirm">確定</string>
