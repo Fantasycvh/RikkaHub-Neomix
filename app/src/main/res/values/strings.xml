@@ -942,6 +942,8 @@
   <string name="setting_provider_page_api_key">API Key</string>
   <string name="setting_provider_page_delete_key">Delete key</string>
   <string name="setting_provider_page_add_key">Add key</string>
+  <string name="setting_provider_page_show_keys">Show keys</string>
+  <string name="setting_provider_page_hide_keys">Hide keys</string>
   <string name="setting_provider_page_api_path">API Path</string>
   <string name="setting_provider_page_avaliable_models">Avaliable Models</string>
   <string name="setting_provider_page_balance_api_path">Balance API Path</string>

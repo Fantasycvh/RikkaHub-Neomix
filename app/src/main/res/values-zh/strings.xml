@@ -923,6 +923,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_api_key">API Key</string>
   <string name="setting_provider_page_delete_key">删除 Key</string>
   <string name="setting_provider_page_add_key">添加 Key</string>
+  <string name="setting_provider_page_show_keys">显示 Key</string>
+  <string name="setting_provider_page_hide_keys">隐藏 Key</string>
   <string name="setting_provider_page_api_path">API 路径</string>
   <string name="setting_provider_page_avaliable_models">可用模型</string>
   <string name="setting_provider_page_balance_api_path">余额 API 路径</string>

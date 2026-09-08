@@ -542,8 +542,31 @@ private fun ProviderApiKeysEditor(
     val entries = remember(keys, legacyKey) {
         if (keys.isNotEmpty()) keys else ApiKeyEntry.fromLegacy(legacyKey)
     }
+    // 全局显隐切换：控制所有 key 行明文/遮蔽（对齐单 key 时代的眼睛按钮）
+    var keyVisible by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.setting_provider_page_api_key),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { keyVisible = !keyVisible }) {
+                Icon(
+                    if (keyVisible) HugeIcons.ViewOff else HugeIcons.View,
+                    contentDescription = if (keyVisible) {
+                        stringResource(R.string.setting_provider_page_hide_keys)
+                    } else {
+                        stringResource(R.string.setting_provider_page_show_keys)
+                    },
+                )
+            }
+        }
         entries.forEachIndexed { index, entry ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -557,7 +580,7 @@ private fun ProviderApiKeysEditor(
                     },
                     label = { Text(stringResource(R.string.setting_provider_page_api_key)) },
                     modifier = Modifier.weight(1f),
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 )
                 Switch(
                     checked = entry.enabled,
