@@ -435,10 +435,12 @@ TikZ 输入（任意语法）
 |---|---|---|---|---|
 | 颜色名 `blue` | - | ✅ | ✅ | 支持 |
 | 颜色名+不透明度 `blue!30` | v3 | ✅ | ✅ PASS | 支持 |
-| `#hex` 纯十六进制 `#4A90D9`（node fill） | v1 | ❌ | ❌ FAIL | **不支持** |
-| `#hex` 纯十六进制（draw） | v5 | ❌ | ❌ FAIL | **不支持** |
-| `#hex!opacity` `#4A90D9!30`（node） | v2 | ❌ | ❌ FAIL | 不支持 |
-| `#hex!opacity`（draw） | v4 | ❌ | ❌ FAIL | 不支持 |
+| `#hex` 纯十六进制 `#4A90D9`（node fill） | v1 | ❌ 原始 | ❌ FAIL | **已由运行时归一化支持**（见下） |
+| `#hex` 纯十六进制（draw） | v5 | ❌ 原始 | ❌ FAIL | 同上 |
+| `#hex!opacity` `#4A90D9!30`（node） | v2 | ❌ 原始 | ❌ FAIL | 同上 |
+| `#hex!opacity`（draw） | v4 | ❌ 原始 | ❌ FAIL | 同上 |
+
+> **2026-09-08 更新**：上表是"原生进 TeX"的结果。现已落地**运行时归一化** `normalizeHexColors`（`TectonicNative.kt`）——渲染前把 options 内的 `#hex` 替换为 `\definecolor{hexN}{HTML}{RRGGBB}` + 引用名，真机验证 `#4A90D9`/`!30`/3 位 `#f80`/8 位 alpha 均可渲染（D 图通过）。下方"不支持/禁用"结论仅适用于"未经归一化直接进 TeX"的场景，保留作根因记录。
 
 > **修正**：初判以为"`#hex` 纯十六进制可用、仅 `!NN` 组合失败"——真机隔离测试（v1 也 FAIL）与宿主对照（v1/v5 FAIL）均否定。**pgf options 里出现裸 `#` 一律失败**，`#hex` 与 `#hex!NN` 同等待遇。早期"`#hex` 可用"的印象来自已删除的第①级纯 Kotlin 渲染器自带的颜色解析模块（`#hex` 由其自行解析），native 路径没有这个模块——代码原样进 TeX。
 
@@ -477,3 +479,24 @@ TikZ 输入（任意语法）
 **排障工具链资产**（8.4.9 起可复用）：真机 root + run-as/`su` 拉缓存与 XDV、adb logcat TAG 过滤、SoLab MCP（`zhou.solab` :8800，so 字符串逆向——此轮靠它确认 dvisvgm 选项集）、CTAN 资产下载（amsfonts.zip / lm.zip）。
 
 **决策**：dvisvgm 矢量链的"字形轮廓"目标被 mupdf 方案零成本超越，不再回去补字体映射。
+
+#### 8.4.10 文字链收官 + SVG 裁剪 + #hex 运行时归一化（2026-09-08）
+
+**A. 文字链三连修复（全部真机验证）**
+1. **`\selectfont` 包装 `\zhfont`（`5b063217`）**：`\small`/`\textbf`/`\footnotesize` 等字号/字重切换都经 `\selectfont` 按默认族（cmr/lmroman）重设字体族 → 中文缺字形整行丢（转生图 `\textbf{前世}` 粗体标题空实锤）。修复：`\let\zholdselectfont\selectfont` + `\renewcommand{\selectfont}{\zholdselectfont\zhfont}`（末尾强制回 droidsans）；**勿改单个 `\small` 等命令**（破坏 tikz `font=` 选项展开）。
+2. **bundle 缺数学字号 pfb → xdvipdfmx `ttbc_output_close` SIGABRT（`b9a7f620`）**：`\footnotesize $x$`（8pt 数学）需 cmmi8/lmmi8/lmsy8 等 pfb，bundle 只有 tfm 无 pfb → **崩溃无 TeX 报错文本、非 Missing、非语法**，直接退化源码。修复：从 WSL TeX 提取 **CM**（cmmi8/9/12/5/6、cmsy8/9/5/6、cmr6/8/9/12/17）与 **LM**（lmmi8/9/12/5/6、lmsy8/9/5/6、lmex10、lmmib5/7）pfb 入 bundle **tar 根路径**（kpse 直查）。**今后“编译崩溃无报错”第一反应查 bundle 字体 pfb 齐全性**（脚本比对 tfm 全集 vs pfb 全集）。
+3. **完整 `\documentclass` #hex 盲区（`5e2c3858`）**：wrapDocument 先判 documentclass → 完整文档只做弧度归一化、**不碰 #hex**（用户自管 preamble，避免替换后无定义的 Undefined color）；裸片段才做 #hex 替换+注入。
+
+**B. #hex 运行时归一化（`42ed36ef` 起，`72d5ee90` 扩展）**
+- 方案：`normalizeHexColors` 把 options 内 `#hex` 替换为 `\definecolor{hexN}{HTML}{RRGGBB}`（xcolor HTML 命名）+ 引用名，保留 `!NN` 后缀（`hex0!30`）。
+- 范围：6 位 `#RRGGBB`、3 位 `#RGB` 按位展开（`#f80`→`ff8800`）、8 位 alpha 取前 6、**仅 `[...]` 选项上下文替换**（逐字符扫描，避免 node 文本内 #hex 误伤）；完整文档不碰（见 A3）。
+- 真机：D 图（`#4A90D9`/`#E85D75`/`#7ED321`/`#F5A623`）通过。
+- **残留盲区**（低频，未处理）：多层 `!30!50`（第二段应为颜色名）、`hexN` 命名冲突、8 位 alpha 的 alpha 语义（pgf 本身不支持）。
+
+**C. SVG 裁剪到图 bbox（`89233a77`，v2.4.10.22）**
+- 问题：wrapDocument 用 `article` 整页（612×792pt），PDF→SVG 后四周大空白、图居中占小块。
+- **方案取舍**：math-plus 用 `standalone[border]`，但其 bbox 裁剪依赖外部 `pdfcrop`（设备 tectonic 无此工具）→ **方案 B 在设备上伪可行**，否决。改用 **preview.sty + tightpage**（纯 TeX 层改 `\pdfpagewidth/height`，WSL 验证裁出 58×58pt / 171×185pt）。
+- **实现**：bundle 根路径补 `preview.sty`/`prtightpage.def`/`prauctex.cfg`（**kpse stub 只按文件名直查根目录——首次放 `tex/latex/preview/` 子目录导致 `preview.sty not found`，是上次“全渲染失效”的根因，已修**）；wrapDocument 注入 `\usepackage[active,tightpage]{preview}` + `\PreviewEnvironment{tikzpicture}`/`{tikzcd}`。
+- **缓存联动**：裁剪改变渲染输出 → `CACHE_VERSION` 递增 v4→v5（**改渲染输出必递增，否则历史消息命中旧 A4 SVG**——`5b063217` 漏递增的教训）。
+
+**教训沉淀**：①“编译崩溃无报错”→ 查 bundle 字体 pfb 齐全性；②bundle 补文件必须放根路径；③改渲染输出必须递增 CACHE_VERSION；④二分崩溃用 instrumented `BisectTest`（一次装 APK 跑完全部组合）高效。
