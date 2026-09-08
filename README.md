@@ -14,7 +14,7 @@ RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，�
 
 ## 📥 下载
 
-🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.10.11`）
+🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.10.21`）
 
 > 本仓库为私有测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**。
 
@@ -38,12 +38,11 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 💾 **备份恢复兼容** | 兼容上游旧包名（`me.rerere.`）导出的备份：恢复时自动迁移包名（SettingsJsonMigrator V0），S3 / WebDAV / 本地恢复均可用 |
 | 📂 **远端备份目录区分** | 远端备份默认目录改为 `rikkahub_plus_backups`，与上游备份互不混淆 |
 | 🧹 **移除上游营销功能** | 移除应用内更新检查、赞助入口/捐赠页/启动次数赞助弹窗、导出图片中的 `rikka-ai.com` 品牌水印 |
-| 🧮 **TikZ 图表渲染** | **纯 Kotlin TikZ 渲染器**（`TikzRenderer`）→ SVG 字符串 → AndroidSVG 矢量绘制（无 WebView/wasm）：`\node`/`\draw`/`-- cycle` 闭合/`arc` 圆弧/`\fill`·`\filldraw`/`grid` 网格/`plot` 函数图像（MathExpr 表达式求值 + NaN 断开）、rounded corners 几何倒角、tikzcd 交换图、箭头/贝塞尔/极坐标/命名节点/中文文本、深色模式；`$$...$$` 内嵌 + ```tikz 围栏双触发；导出 HTML 内嵌 `<svg>` 矢量；系统提示词引导模型输出闭合 `$$` 格式 |
+| 🧮 **TikZ 图表渲染** | **mupdf路线`$$...$$` 内嵌 + ```tikz 围栏双触发；导出 HTML 内嵌 `<svg>` 矢量；系统提示词引导模型输出闭合 `$$` 格式 |
 | 🧩 **动态添加 Skill（#1031）** | `install_skill` / `save_skill` AI 工具：从 GitHub 安装 Skill / 把对话经验保存为技能（SkillInstaller 共享类，SkillsVM 与 AI 工具共用） |
 | 🔐 **MCP mTLS 客户端证书（#1687）** | MCP 服务支持上传客户端证书（P12/PEM + 密码），OkHttp SSLContext 双向认证；设置页完整 UI |
 | 💎 **毛玻璃三开关** | 输入栏 / 列表·背景 / 顶栏 模糊各自独立开关（enableBlurEffect / enableGlassTheme / enableTopBarBlur），兄弟层架构无自引用 |
 | 🛡️ **TikZ 崩溃防线** | 三层防线（TikzJax 渲染前尺寸校验 / renderSvg 生成端上限 / plot 采样值上限）+ 高度哨兵 HeightClamp + 文本按码点截断——杜绝巨型 SVG（height 4.58e11）导致 Compose 布局溢出崩溃 |
-| 🐛 **turbo bug 审计与修复** | 对照 rikkahub-turbo 48 项 bug 清单全量核查（`docs/references/turbo-bugs-audit.md`），分多批修复：崩溃（深递归 SOE 兜底、base64 容错、TTS 悬浮窗无权限守卫）、数据丢失（压缩覆盖新消息合并、附件延迟清理、设置并发 Mutex）、资源防护（文档/记忆/消息/网络体积上限、QuickJS destroy）、功能正确性（WebDAV 路径编码、分享 EXTRA_STREAM 兼容、MCP 名校验） |
 | 💬 **对话分享/导出** | 列表页长按「分享对话」+ 聊天内顶栏导出双入口，Markdown / 图片 PNG 两形态（系统分享 ACTION_SEND），支持版本范围可选 |
 | 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10` 批次：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721）；以及 `2.4.11`-`2.5.0` 批次精选：终端多 Tab 后台运行（`3a533a6a`）、空 tool schema 归一化（#1781）、workpace stdin EOF（#1605）、合成消息不参与模板（#1790）、fork 会话继承 folder/cwd（#1778）、代码块导出截断模式（#1841）。master 已 ff-only 同步至 `2.5.0`；详细评估见 `docs/upstream-analysis.md`。TikZ 渲染已定稿 mupdf SVG 桥（TEXT_AS_PATH 轮廓，中英文字形矢量，dvisvgm 链移除） |
 
