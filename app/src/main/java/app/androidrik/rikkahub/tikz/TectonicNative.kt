@@ -117,8 +117,15 @@ object TectonicNative {
      *   xdvipdfmx 不识别 specials、图形全丢（实测"大部分空"）。必须在 \usepackage{tikz} 前。
      */
     internal fun wrapDocument(code: String, format: String = "pdf"): String {
-        val (trimmed, hexColorDefs) = normalizeHexColors(normalizePgfMath(code.trim()))
-        if (trimmed.contains("\\documentclass", ignoreCase = true)) return trimmed
+        val original = code.trim()
+        // 完整文档（用户自管 preamble）：只做无害的弧度归一化（原地自洽），
+        // 不碰 #hex——替换了但无注入定义（hexColorDefs 只给裸片段 preamble 注入）
+        // 会变成 Undefined color 半途而废；保持原样，让用户自己的 preamble 处理。
+        if (original.contains("\\documentclass", ignoreCase = true)) {
+            return normalizePgfMath(original)
+        }
+        // 裸片段：我们写 preamble，可安全注入 #hex 定义 + 弧度归一化
+        val (trimmed, hexColorDefs) = normalizeHexColors(normalizePgfMath(original))
         return buildString {
             append("\\documentclass{article}\n")
             if (format == "xdv") {
