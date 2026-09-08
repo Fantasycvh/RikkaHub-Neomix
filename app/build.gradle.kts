@@ -227,6 +227,9 @@ dependencies {
     // serialization
     implementation(libs.kotlinx.serialization.json)
 
+    // YAML front matter（Skill frontmatter 解析，对齐上游 54030ec4）
+    implementation(libs.snakeyaml)
+
     // zxing
     implementation(libs.zxing.core)
 

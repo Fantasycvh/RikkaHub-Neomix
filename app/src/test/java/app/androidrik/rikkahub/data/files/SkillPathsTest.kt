@@ -20,6 +20,41 @@ class SkillPathsTest {
     }
 
     @Test
+    fun `parse supports YAML syntax`() {
+        val content = """
+            ---
+            name: test-skill
+            description: |
+              A multiline description
+              with a colon: supported
+            metadata:
+              author: tester
+            ---
+            body
+        """.trimIndent()
+
+        val frontmatter = SkillFrontmatterParser.parse(content)
+
+        // SnakeYAML 正规解析：支持多行/冒号值（对齐上游 54030ec4，手写逐行解析会错）
+        assertEquals("test-skill", frontmatter["name"])
+        assertEquals(
+            "A multiline description\nwith a colon: supported\n",
+            frontmatter["description"],
+        )
+    }
+
+    @Test
+    fun `parse returns empty frontmatter for malformed YAML`() {
+        val content = "---\nname: [invalid\n---\nbody"
+
+        val frontmatter = SkillFrontmatterParser.parse(content)
+
+        // 畸形 YAML 回退空 frontmatter，不抛异常；正文仍可抽取
+        assertNull(frontmatter["name"])
+        assertEquals("body", SkillFrontmatterParser.extractBody(content))
+    }
+
+    @Test
     fun `resolve skill dir rejects traversal and nested names`() {
         val skillsRoot = Files.createTempDirectory("skills-root").toFile()
 
