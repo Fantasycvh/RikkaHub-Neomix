@@ -459,3 +459,21 @@ TikZ 输入（任意语法）
 - `TectonicNative.lastErrorText()`：隔离进程的错误文本经 `lastIsolatedError` 缓存回主进程（此前只读主进程 native 槽，隔离编译失败拿到的是空值）。现在编译失败 `lastErrorText()` 直接给出 `TeX error: Illegal parameter number in definition of \tikz@temp.`，提示词同步加了 `#hex` 禁用说明（GenerationHandler.kt）。
 
 复现脚本（`<work>\projects\tectonic-poc\`）：`hex_host_matrix.sh`（宿主 TeX v1-v5 矩阵）、`hex_variants.py`（真机 v1-v5 隔离）、`test_hexop.tex`/`test_hexvariants.tex`（设备 CLI 复现）。
+
+
+#### 8.4.9 dvisvgm 文字悬空真相 + 路线切换 mupdf SVG 桥（2026-09-07/08）
+
+**会话排查结论（用户 A/B/C 三例截图 + 三轮真机取证实锤）**：
+
+1. **文字悬空是 8.4.5 验收缺陷**：当时"矢量链 ✅"只验证了图形进 SVG，文字从未验证——日志 `SVG 728B` 量级偏小即为证（单个字形 path 就几百字节）。遗留清单里的「LM 字体映射补全」正是病名。
+2. **三层障碍依次定位**：
+   - dvisvgm 默认 glyph cache 写 `XDG_CACHE_HOME`/`~/.cache`——Android HOME 未设、路径不可写 → 轮廓转换静默失败但 rc=0（`--cache=<work>` 可缓解，但该 so 参数集窄，无 `--no-cache`/`--font-dir`）；**`--cache` 走 glyph cache 反而让字形错乱（实测只有拉丁字符、连英文都丢），是错误方向**。
+   - 补 CM pfb 无济于事：tectonic bundle v3 的默认文本字体是 **Latin Modern**，XDV 记录 OT 名 `lmroman10-regular`（不是 cmr10）——assets 只随包 7 个 CM pfb 时 dvisvgm 按名找不到。
+   - 补 LM **Type1 pfb** 也错：pfb 是 OT1 编码（TeX 字形索引），与 XDV 的 **OpenType glyph id** 错配 → 轮廓"转出但内容全错"。
+3. **正确路线 = mupdf SVG 桥（已实现，取代 dvisvgm）**：tectonic 编译 PDF（必内嵌字体）→ `MupdfSvgBridge.pdfToSvg` 用 mupdf `FZ_SVG_TEXT_AS_PATH(0)`（非默认 TEXT_AS_TEXT）→ mupdf 从 PDF 内嵌字形直接提取轮廓输出 `<path>`——**中英文都渲染、与字体文件查找完全无关**。旧文本态（TEXT_AS_TEXT 输出 `<text>`，AndroidSVG 渲不了中文 glyph）是根因之一。
+   - 相关提交：`1c09d5cd`（TEXT_AS_PATH + MathInline 补 TikZ 分发）、`92961b83`（cache v3）、`42ed36ef`（fence/complete/弧度归一化）、`5b063217`（selectfont 追 zhfont）、`6385a138`（cache v4 自动清空）、fork 会话补提交 `07a5661e`（MarkdownMathParseTest 取证）。
+4. **现状**：SVG 矢量路径 = mupdf 桥（arm64-v8a；x86_64 自动落 PDF 位图链）；PDF 位图保留为降级。`wrapDocument` 已按 format 条件注入 dvisvgm driver 的版本一并废弃（PDF 用默认 dvipdfm 驱动）。
+
+**排障工具链资产**（8.4.9 起可复用）：真机 root + run-as/`su` 拉缓存与 XDV、adb logcat TAG 过滤、SoLab MCP（`zhou.solab` :8800，so 字符串逆向——此轮靠它确认 dvisvgm 选项集）、CTAN 资产下载（amsfonts.zip / lm.zip）。
+
+**决策**：dvisvgm 矢量链的"字形轮廓"目标被 mupdf 方案零成本超越，不再回去补字体映射。

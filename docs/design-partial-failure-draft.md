@@ -73,4 +73,4 @@ catch `GenerationPartialFailureException` 时：
 2. 第 2 层：ChatService 落草稿 + 立即持久化（复用 MessageNode 候选机制）；
 3. 第 3 层 A：注解横幅 UI（重试走现有 regenerate）。
 
-关联：[upstream-2.4.16-analysis.md](upstream-2.4.16-analysis.md)（上游 `41353567` 关闭开关）、[peer-apps-benchmark.md](peer-apps-benchmark.md)（rikkahub-agent isUiNotice 参考）。
+关联：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，含 `41353567` 关闭开关评估）、[peer-apps-benchmark.md](peer-apps-benchmark.md)（rikkahub-agent isUiNotice 参考）。

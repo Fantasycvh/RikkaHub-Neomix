@@ -101,4 +101,4 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 | 5 | SoLab | 世界书 seed 三重迁移、previewToken 审批、schema 三档加载 | 中 |
 | 6 | SoLab | MCP host 模式（手机当桌面 AI 工具箱） | 高，按需 |
 
-关联文档：[upstream-2.4.14-analysis.md](upstream-2.4.14-analysis.md)（A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据）。
+关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据）。
