@@ -144,6 +144,18 @@ object TectonicNative {
             append("\\renewcommand{\\normalfont}{\\tikzoldnormalfont\\zhfont}\n")
             append("\\renewcommand{\\rmfamily}{\\zhfont}\n")
             append("\\renewcommand{\\sffamily}{\\zhfont}\n")
+            append("\\renewcommand{\\bfdefault}{m}\n")
+            append("\\renewcommand{\\itdefault}{m}\n")
+            append("\\renewcommand{\\sldefault}{m}\n")
+            // \\small/\\textbf/\\footnotesize 等一切字号/字重切换都走 \\selectfont，
+            // 而 \\selectfont 按 \\f@family（默认 cmr/lmroman）重设字体族，中文缺字形
+            // 整行丢弃（实测：box style font=\\small + \\textbf 的标题行空）。
+            // 在 \\selectfont 末尾强制回 \\zhfont：任何切换后中英文仍走 droidsans
+            //（Noto Sans SC 含 Latin+CJK），一次覆盖全字号/字重。
+            // 注：不能重定义 \\small 等单独命令——会破坏 tikz font= 选项展开；\\selectfont
+            // 是它们共同的下游，在这里追加最稳妥。
+            append("\\let\\zholdselectfont\\selectfont\n")
+            append("\\renewcommand{\\selectfont}{\\zholdselectfont\\zhfont}\n")
             // node 文本的字体走 TeX 字体机制内部路径（\rmfamily 重定义不覆盖），
             // 必须强制 every node 用 zhfont，否则中文进不了 PDF（实测缺失字符）。
             // 用户 node 自身 font 选项优先级高于此默认样式，可正常覆盖。
