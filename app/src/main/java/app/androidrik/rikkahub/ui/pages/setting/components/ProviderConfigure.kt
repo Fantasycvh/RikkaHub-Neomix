@@ -224,19 +224,11 @@ private fun ProviderConfigureOpenAI(
         modifier = Modifier.fillMaxWidth(),
     )
 
-    var keyVisible by remember { mutableStateOf(false) }
-    OutlinedTextField(
-        value = provider.apiKey,
-        onValueChange = { onEdit(provider.copy(apiKey = it.trim())) },
-        label = { Text(stringResource(R.string.setting_provider_page_api_key)) },
-        modifier = Modifier.fillMaxWidth(),
-        maxLines = 3,
-        visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-        trailingIcon = {
-            IconButton(onClick = { keyVisible = !keyVisible }) {
-                Icon(if (keyVisible) HugeIcons.ViewOff else HugeIcons.View, contentDescription = null)
-            }
-        },
+    // 多 key 编辑器：每 key 一框 + 启用开关（兼容旧单 key 字段展示）
+    ProviderApiKeysEditor(
+        keys = provider.apiKeys,
+        legacyKey = provider.apiKey,
+        onChange = { newKeys -> onEdit(provider.copy(apiKeys = newKeys)) },
     )
 
     OutlinedTextField(
@@ -323,19 +315,11 @@ private fun ProviderConfigureClaude(
         maxLines = 3,
     )
 
-    var keyVisible by remember { mutableStateOf(false) }
-    OutlinedTextField(
-        value = provider.apiKey,
-        onValueChange = { onEdit(provider.copy(apiKey = it.trim())) },
-        label = { Text(stringResource(R.string.setting_provider_page_api_key)) },
-        modifier = Modifier.fillMaxWidth(),
-        maxLines = 3,
-        visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-        trailingIcon = {
-            IconButton(onClick = { keyVisible = !keyVisible }) {
-                Icon(if (keyVisible) HugeIcons.ViewOff else HugeIcons.View, contentDescription = null)
-            }
-        },
+    // 多 key 编辑器：每 key 一框 + 启用开关（兼容旧单 key 字段展示）
+    ProviderApiKeysEditor(
+        keys = provider.apiKeys,
+        legacyKey = provider.apiKey,
+        onChange = { newKeys -> onEdit(provider.copy(apiKeys = newKeys)) },
     )
 
     OutlinedTextField(
