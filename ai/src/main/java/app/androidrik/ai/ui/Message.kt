@@ -265,6 +265,8 @@ fun List<UIMessagePart>.isEmptyUIMessage(): Boolean {
             is UIMessagePart.Reasoning -> message.reasoning.isBlank()
             is UIMessagePart.Video -> message.url.isBlank()
             is UIMessagePart.Audio -> message.url.isBlank()
+            // tool-only 消息是可见 UI 内容：操作按钮（重新生成/审批等）应保持可用（对齐 321443d8 / #1689）
+            is UIMessagePart.Tool -> false
             else -> true
         }
     }
