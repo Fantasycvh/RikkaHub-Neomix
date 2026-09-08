@@ -117,7 +117,7 @@ object TectonicNative {
      *   xdvipdfmx 不识别 specials、图形全丢（实测"大部分空"）。必须在 \usepackage{tikz} 前。
      */
     internal fun wrapDocument(code: String, format: String = "pdf"): String {
-        val trimmed = code.trim()
+        val trimmed = normalizePgfMath(code.trim())
         if (trimmed.contains("\\documentclass", ignoreCase = true)) return trimmed
         return buildString {
             append("\\documentclass{article}\n")
@@ -165,4 +165,25 @@ object TectonicNative {
 
     private external fun compile(bundle: ByteArray, font: ByteArray, tex: ByteArray, cacheDir: String, format: String): ByteArray?
     private external fun lastError(): String?
+
+    /**
+     * 运行时归一化 PGF Math 弧度写法：引擎内置 PGF Math 不支持 [rad]/[r] 后缀，
+     * `sin(x rad)` / `sin(x r)` 会报 Unknown function `xrad' 编译失败、降级源码。
+     * 把常见三角函数弧度参数重写为等价的 deg() 形式（POC 实测兼容）。
+     *
+     * 处理：sin/cos/tan/sinh/cosh/tanh/log 前紧贴 `(` 的参数若以 ` rad)` 或 ` r)` 结尾
+     * → 去掉空格后缀，包裹成 deg(...)。例如 `sin(x rad)` → `sin(deg(x))`。
+     * 避免误伤：仅当参数是**单个变量**（如 x/t/theta）时才可安全替换为 deg()；
+     * 复杂表达式（如 (x*pi/180)）本就兼容、且替换会改变语义，故限定单 token + 弧度后缀。
+     */
+    internal fun normalizePgfMath(tex: String): String {
+        // 匹配: sin( 空格? 单变量token 空格? rad|r 空格? ) —— 只处理三角函数+单变量+弧度
+        val FUNCS = "(?:sin|cos|tan|sinh|cosh|tanh)"
+        val re = Regex("""(?i)\b($FUNCS)\(\s*([a-zA-Z]\w*)\s+(rad|r)\s*\)""")
+        return re.replace(tex) { m ->
+            val fn = m.groupValues[1].lowercase()
+            val varName = m.groupValues[2]
+            "$fn(deg($varName))"
+        }
+    }
 }

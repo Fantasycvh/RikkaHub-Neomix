@@ -725,6 +725,12 @@ private fun MarkdownNode(
                 node.findChildOfTypeRecursive(MarkdownTokenTypes.FENCE_LANG)?.getTextInNode(content) ?: "plaintext"
             val hasEnd = node.findChildOfTypeRecursive(MarkdownTokenTypes.CODE_FENCE_END) != null
 
+            // AST 分支（hasHtml=false）：fenced block 无语言标注但内容含 TikZ 时，
+            // 直接交给 HighlightCodeBlock 的内容检测（HighlightCodeBlock 内 isTikzContent 兜底）。
+            // 但 AST 分支的 language 传给 HighlightCodeBlock 是给定值，需在此把 tikz 内容
+            // 归一化语言，或依赖 HighlightCodeBlock 的内部内容检测。后者已实现——
+            // HighlightCodeBlock 判 `normalizedLanguage in TIKZ_FENCE_LANGS || isTikzContent(code)`，
+            // 故直接传原始 language + code 即可，内部会命中。
             HighlightCodeBlock(
                 code = code,
                 language = language,
