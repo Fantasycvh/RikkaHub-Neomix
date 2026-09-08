@@ -22,12 +22,34 @@ object TikzSvgCache {
     private const val TAG = "TikzSvgCache"
     private const val DIR = "tikz_cache"
 
-    private fun dir(context: Context): File = File(context.filesDir, DIR)
-
     // 渲染链路版本号：引擎（dvisvgm→mupdf）、字体资产（DroidSansFallback→Noto Sans SC）、
-    // wrapDocument（pgfplots 按需加载/every node font）演进后，旧键必须失效。
-    // 若再改渲染链路，递增此常量即可整体失效旧缓存（内容寻址只防同引擎复用）。
-    private const val CACHE_VERSION = "v3"
+    // wrapDocument（pgfplots 按需加载/every node font/selectfont 包装 zhfont）演进后，
+    // 旧键必须失效。递增此常量即整体重置缓存。
+    private const val CACHE_VERSION = "v4"
+    private const val VERSION_MARKER = "tikz_cache_" + CACHE_VERSION
+
+    /**
+     * 渲染链路版本变化时自动清空整个缓存目录（不依赖手动清理）：
+     * 目录内写版本标记文件 [VERSION_MARKER]，每次访问对比；不一致则整目录删除重建。
+     * 这样 CACHE_VERSION 递增 = 旧 SVG 文件 + 旧键全部一次性清除，杜绝"旧渲染残留
+     * 占位导致直接加载旧结果"（实测：5b063217 改了渲染输出但漏了递增版本 → 旧 v3
+     * 键命中坏 SVG）。已存在的旧目录（无标记或不匹配）也一并清空。
+     */
+    private fun dir(context: Context): File {
+        val d = File(context.filesDir, DIR)
+        val marker = File(d, VERSION_MARKER)
+        if (marker.isFile) return d
+        // 版本不一致或首次创建：整目录清空（旧文件不再残留占位）
+        runCatching {
+            if (d.exists()) {
+                d.listFiles()?.forEach { it.deleteRecursively() }
+            } else {
+                d.mkdirs()
+            }
+            marker.writeText("1")
+        }
+        return d
+    }
 
     private fun key(code: String): String {
         val md = MessageDigest.getInstance("SHA-256")
