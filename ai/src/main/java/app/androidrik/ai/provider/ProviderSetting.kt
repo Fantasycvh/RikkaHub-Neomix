@@ -84,6 +84,42 @@ enum class ClaudePromptCacheTtl(val apiValue: String?) {
 }
 
 @Serializable
+data class ApiKeyEntry(
+    val key: String,
+    val enabled: Boolean = true,
+) {
+    companion object {
+        /** 从旧单 key 字段（空白/逗号分隔）拆出结构化列表 */
+        fun fromLegacy(legacy: String): List<ApiKeyEntry> =
+            legacy.split("[\\s,]+".toRegex())
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .map { ApiKeyEntry(it) }
+    }
+}
+
+/** 多 key 统一读取：enabled 过滤后回退旧单 key 字段（备份兼容，单 key 用户零迁移） */
+val ProviderSetting.effectiveApiKeys: String
+    get() {
+        val apiKeys = when (this) {
+            is ProviderSetting.OpenAI -> this.apiKeys
+            is ProviderSetting.Google -> this.apiKeys
+            is ProviderSetting.Claude -> this.apiKeys
+        }
+        val keys = apiKeys.filter { it.enabled }.map { it.key }.filter { it.isNotBlank() }.distinct()
+        return if (keys.isNotEmpty()) {
+            keys.joinToString("\n")
+        } else {
+            when (this) {
+                is ProviderSetting.OpenAI -> this.apiKey
+                is ProviderSetting.Google -> this.apiKey
+                is ProviderSetting.Claude -> this.apiKey
+            }
+        }
+    }
+
+@Serializable
 sealed class ProviderSetting {
     abstract val id: Uuid
     abstract val enabled: Boolean
@@ -132,6 +168,7 @@ sealed class ProviderSetting {
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
         var apiKey: String = "",
+        var apiKeys: List<ApiKeyEntry> = emptyList(),
         var baseUrl: String = "https://api.openai.com/v1",
         var chatCompletionsPath: String = "/chat/completions",
         var useResponseApi: Boolean = false,
@@ -204,6 +241,7 @@ sealed class ProviderSetting {
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
         var apiKey: String = "",
+        var apiKeys: List<ApiKeyEntry> = emptyList(),
         var baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
         var vertexAI: Boolean = false,
         var useServiceAccount: Boolean = false,
@@ -278,6 +316,7 @@ sealed class ProviderSetting {
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
         var apiKey: String = "",
+        var apiKeys: List<ApiKeyEntry> = emptyList(),
         var baseUrl: String = "https://api.anthropic.com/v1",
         var promptCaching: Boolean = false,
         var promptCacheTtl: ClaudePromptCacheTtl = ClaudePromptCacheTtl.FIVE_MINUTES,

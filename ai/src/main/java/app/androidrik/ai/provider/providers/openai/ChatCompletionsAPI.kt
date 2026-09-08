@@ -31,6 +31,7 @@ import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.TokenUsage
+import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
@@ -92,7 +93,7 @@ class ChatCompletionsAPI(
             .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
-            .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}")
+            .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}")
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting.customHeaders)
             .build()
@@ -151,7 +152,7 @@ class ChatCompletionsAPI(
             .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
-            .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}")
+            .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}")
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting.customHeaders)

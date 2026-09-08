@@ -30,6 +30,7 @@ import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.TokenUsage
+import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
@@ -105,7 +106,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
         } else {
-            val key = keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())
+            val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
             if (providerSetting.vertexAI) {
                 request.newBuilder()
                     .url(request.url.newBuilder().addQueryParameter("key", key).build())

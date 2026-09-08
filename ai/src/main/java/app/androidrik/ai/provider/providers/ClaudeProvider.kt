@@ -29,6 +29,7 @@ import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.TokenUsage
+import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
 import app.androidrik.ai.provider.ImageGenerationParams
 import app.androidrik.ai.provider.Model
@@ -76,7 +77,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url("${providerSetting.baseUrl}/models")
-                .addHeader("x-api-key", keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString()))
+                .addHeader("x-api-key", keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString()))
                 .addHeader("anthropic-version", ANTHROPIC_VERSION)
                 .get()
                 .applyCustomHeaders(providerSetting.customHeaders)
@@ -120,7 +121,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .url("${providerSetting.baseUrl}/messages")
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
-            .addHeader("x-api-key", keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString()))
+            .addHeader("x-api-key", keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString()))
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting.customHeaders)
@@ -168,7 +169,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .url("${providerSetting.baseUrl}/messages")
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
-            .addHeader("x-api-key", keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString()))
+            .addHeader("x-api-key", keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString()))
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)

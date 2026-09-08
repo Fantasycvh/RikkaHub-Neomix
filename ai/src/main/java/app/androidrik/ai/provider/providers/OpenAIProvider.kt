@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.EmbeddingGenerationParams
 import app.androidrik.ai.provider.EmbeddingGenerationResult
 import app.androidrik.ai.provider.ImageEditParams
@@ -80,7 +81,7 @@ class OpenAIProvider(
 
     override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> =
         withContext(Dispatchers.IO) {
-            val key = keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())
+            val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
             val request = Request.Builder()
                 .url("${providerSetting.baseUrl}/models")
                 .addHeader("Authorization", "Bearer $key")
@@ -111,7 +112,7 @@ class OpenAIProvider(
 
     override suspend fun getBalance(providerSetting: ProviderSetting.OpenAI): String = withContext(Dispatchers.IO) {
         val balanceOption = providerSetting.balanceOption
-        val key = keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())
+        val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
 
         if (balanceOption.sources.isEmpty()) {
             // 旧逻辑：单接口模式
@@ -224,7 +225,7 @@ class OpenAIProvider(
     ): EmbeddingGenerationResult = withContext(Dispatchers.IO) {
         require(params.input.isNotEmpty()) { "Embedding input cannot be empty" }
 
-        val key = keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())
+        val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
         val requestBody = json.encodeToString(
             buildJsonObject {
                 put("model", params.model.modelId)
@@ -278,7 +279,7 @@ class OpenAIProvider(
             "Expected OpenAI provider setting"
         }
 
-        val key = keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())
+        val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
 
         val requestBody = json.encodeToString(
             buildJsonObject {
@@ -330,7 +331,7 @@ class OpenAIProvider(
             "At least one image is required"
         }
 
-        val key = keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())
+        val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
         val bodyBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("model", params.model.modelId)

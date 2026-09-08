@@ -28,6 +28,7 @@ import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.TokenUsage
+import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
@@ -91,7 +92,7 @@ class ResponseAPI(
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(
                 "Authorization",
-                "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}"
+                "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}"
             )
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
@@ -131,7 +132,7 @@ class ResponseAPI(
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(
                 "Authorization",
-                "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}"
+                "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}"
             )
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting.customHeaders)
