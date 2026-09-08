@@ -27,7 +27,7 @@ case "${1:-}" in
     # 勿用 -Pandroid.injected.build.abi（干扰 AGP splits）；OOM 用 --max-workers 限制而非提高 Xmx
     ./gradlew :app:assembleRelease --max-workers=2 "$@"
     # 复制改名：应用名-版本-架构（发布流程固定格式），产物暂存 app/release/（已 gitignore）
-    APK="$(ls app/build/outputs/apk/release/arm64-v8a/*.apk 2>/dev/null | head -1)"
+    APK="$(ls app/build/outputs/apk/release/app-arm64-v8a-release.apk 2>/dev/null | head -1)"
     if [ -n "$APK" ]; then
       VERSION="$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)"
       mkdir -p app/release
