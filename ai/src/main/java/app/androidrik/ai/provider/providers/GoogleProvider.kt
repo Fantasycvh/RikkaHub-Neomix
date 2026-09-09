@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -450,6 +451,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                                                 "enum",
                                             )
                                         )
+                                        .ensureArrayItems()
                                 )
                             })
                         }
@@ -807,5 +809,30 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             totalTokens = totalTokens,
             cachedTokens = cachedTokens
         )
+    }
+}
+
+
+/**
+ * Gemini function schema 归一化：数组类型（type=array）属性必须带 items 声明，
+ * 缺则补 {\"type\":\"string\"}（最小可接受）——否则 Gemini API 报
+ * `missing field: ...items` 校验错误（fallback 切 Gemini 时暴露，上游 9851d037/f7869e35
+ * 未覆盖此点）。递归处理嵌套 properties 与 items。
+ */
+internal fun JsonElement.ensureArrayItems(): JsonElement {
+    val obj = this as? JsonObject ?: return this
+    return buildJsonObject {
+        obj.forEach { (key, value) ->
+            if (value is JsonObject && value["type"]?.jsonPrimitive?.contentOrNull == "array") {
+                // 数组类型：确保 items 存在（缺则 string），再递归包装 items 与其余字段
+                val resolvedItems = value["items"] ?: buildJsonObject { put("type", "string") }
+                put(key, buildJsonObject {
+                    value.forEach { (k, v) -> put(k, v) }  // 原字段保留（含原 items）
+                    put("items", resolvedItems.ensureArrayItems())  // 补/递归 items
+                })
+            } else {
+                put(key, value.ensureArrayItems())
+            }
+        }
     }
 }
