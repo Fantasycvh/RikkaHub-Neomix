@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.ui
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -163,7 +164,7 @@ fun UIAvatar(
                 when (value) {
                     is Avatar.Image -> {
                         AsyncImage(
-                            model = value.url,
+                            model = resolveAvatarUrl(context, value.url),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
@@ -364,6 +365,20 @@ private fun vercelAvatarColors(name: String): Pair<Color, Color> {
         hslToColor(hue, 0.65f, 0.55f),
         hslToColor((hue + 120f) % 360f, 0.65f, 0.55f)
     )
+}
+
+/**
+ * file:// 头像 URL 归一化：备份恢复/跨包迁移（release→debug 等）后存档里的绝对路径
+ * 指向别的包私有目录（uid 不同不可读）——取 `.../files/upload/<name>` 文件名段，
+ * 重写到当前包 filesDir 下同名文件。仅显示层兜底，不迁移数据；非 upload 路径原样返回。
+ */
+private fun resolveAvatarUrl(context: Context, url: String): String {
+    if (!url.startsWith("file://")) return url
+    val marker = "/files/upload/"
+    val index = url.indexOf(marker)
+    if (index < 0) return url
+    val name = url.substring(index + marker.length)
+    return File(context.filesDir, "upload").resolve(name).toUri().toString()
 }
 
 private fun hslToColor(h: Float, s: Float, l: Float): Color {
