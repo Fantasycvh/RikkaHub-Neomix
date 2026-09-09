@@ -1,7 +1,7 @@
 # 上游变更分析（综合版，2.4.11 → 2.5.0）
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
-> 当前 master 同步点：`12ee935e`（2.5.0 tag，2026-09-08 ff-only 同步并推送）。
+> 当前 master 同步点：`6e0aa7d4`（2026-09-09 ff-only 同步并推送；上一同步点 `12ee935e` 2.5.0 tag）。
 > 决策总原则：**等上游稳定后按需吸收**；触及 `GenerationHandler.kt` / `ChatService.kt` / `ChatInput.kt`（我们重改最重的文件）的提交一律手工适配，不直接 cherry-pick；所有 cherry-pick 需包名适配（`me.rerere.rikkahub` → `app.androidrik.rikkahub`）。
 
 ## 批次概览
@@ -12,6 +12,7 @@
 | 2.4.12–2.4.14（38 提交） | `1e3351f7`..`7da69770` | 103 文件 +4842/-2196 | 后台生成稳定性（FGS/重试，与我们正面重叠）、Gemini 工具共存 |
 | 2.4.16（17 提交） | `5662945c`..`08c2648b` | 54 文件 +839/-301 | TTS 重试、Gemini 混合工具后续修复 |
 | 2.5.0（16 提交） | `b153028d`..`12ee935e` | — | 终端 Tab 标题、工具审批修复、消息队列/语音、ChatToolFactory |
+| 2.5.0 后批（20 提交） | `12ee935e`..`6e0aa7d4` | 2026-09-09 | workspace 预览/Shell 兼容、会话头、时间提醒间隔、多选、工具详情/回执 |
 
 ## 已吸收（合并清单）
 
@@ -78,6 +79,56 @@
 | `ef94834a` | MCP kotlin-sdk 换 client-only | 完整包 server 侧是 MCP host（⑥）依赖，避免回切，暂不吸收（2026-09-06 决策） |
 | `d3a53e0a` | PickVisualMedia | 上游自撤，失效 |
 | 2.5.0 大块（`66de8b30` 队列 / `a621e277` 语音 / `580e05d6` ASR 双向流 / `097cdb90` ChatToolFactory） | 大功能 | 暂缓；语音与 roadmap 合并评估，ChatToolFactory 与重改 ChatService 冲突大 |
+
+## 2.5.0 后批评估（2026-09-09，`12ee935e`..`6e0aa7d4`，20 提交）
+
+> 本批 20 提交已逐个评估。前 10 个已核源码，其余按文件名/规模/与 fork 差异估算。
+> fork 差异度数据见各表备注（`git diff --stat upstream/master HEAD -- <file>`）。
+
+### A 已吸收 / 重叠（无需动作）
+
+| 提交 | 内容 | 说明 |
+|---|---|---|
+| `5bf6d8c2`/`7dd2b3f8`/`8b3e094b` | 新增 apimart 赞助商、移除 ack ai（3 连 docs） | README/文档类，our fork 独立 README，不跟 |
+
+### B 修复优先级（值得吸收，成本低-中）
+
+| 提交 | 内容 | 成本 | 备注 |
+|---|---|---|---|
+| `7b92f89e` | 禁用代码块连字（#1623） | 极低 | highlight 模块独立，`Highlighter.kt` +2 行；fork 该文件 8 行差异，可直套 |
+| `77a58c2c` | 统计页不合法 JSON 崩溃（#1694） | 低 | `MessageNodeDAO` 用 `json_valid` CASE 兜底 + 单测；fork 文件 17 行差异，结构一致可直套 |
+| `dee88dca` | workspace_edit_file 非 JSON 对象崩溃（#1873） | 低 | `ChatMessageEditedFiles` JsonArray 安全转换 +2 行；fork 16 行差异 |
+| `a7ee362f` | 退出终端后系统栏图标颜色异常（#1876） | 低-中 | `Theme.kt` SideEffect→DisposableEffect + onDispose 恢复；fork Theme 109 行差异，改动自包含 |
+| `20e552f9` | X-Session-ID + opencode 会话头 | 中 | ai 5 文件：Request.kt 新增 `configureSessionHeaders`；fork provider 路径已迁（`app.androidrik.ai.provider.*`）、baseUrl 用 `apiEndpoint` 工具——需适配 apiEndpoint 拼 URL，`ApiKeyEntry` 无影响 |
+| `ab07ac1f` | 注册 DeepSeek V4.1 Flash（多模态） | 极低 | ModelRegistry +8 行；fork 同文件 700 行差异（fork 模型更多）但追加式注册，`ALL_MODELS`/definition 两处插入 |
+| `6e0aa7d4` | 工具执行完成前可打开调用详情（#1840） | 中 | `ChatMessageTools` 移除点击状态限制（1 行实质）；fork 该文件 168/91 差异（审批/回执定制深），需手工合 |
+| `05a85a09` | ask_user 所有选项支持自定义文本（#1868） | 中 | `AskUserTool` +5 行 + `ChatMessageTools` 129 行重构；与 fork 定制重叠，手工合 |
+| `5b4d7895` | 自定义时间提醒间隔 | 中 | `TimeReminderTransformer` 间隔参数化（fork 20 行差异）+ `Assistant` 新字段（**需补 PreferencesStore 三件套**）+ `AssistantMemoryPage` 配置（fork 81 行差异） |
+
+### C 冲突 / 大改（需先评估，暂缓）
+
+| 提交 | 内容 | 备注 |
+|---|---|---|
+| `7038e981` | workspace HTML/SVG 预览 | `WorkspaceFileEditorPage` +39 行 + DetailPage；fork WorkspaceDetailPage 340 行差异（终端 Tab 定制），合入前先比 |
+| `03246406` | workspace Shell 兼容模式 + 基础信息页布局 | 19 文件 +747/-128，含 **DB 迁移 25.json**（WorkspaceEntity +compatMode）+ PRoot seccomp 开关 + DetailPage 210 行重排；fork 有独立 WorkspaceEntity 演进史，需 DB 迁移对齐 |
+| `1a1e672e` | 模型名/提供商名支持空格（保存时去尾） | 3 文件小改；fork SettingProviderDetailPage 372 行 / ProviderConfigure 239 行差异（多 key 编辑器定制），需手工合 |
+| `3896b6d6` | 图片生成页长按多选（#1813） | ImgGenPage 375 行大改 + VM；fork ImgGenPage 405 行差异（Imggen override/模型定制），成本高，收益集中图片管理场景 |
+
+### D chore / UI（低优先或按需）
+
+| 提交 | 内容 | 备注 |
+|---|---|---|
+| `45275025` | 上下文限制 1~19 + 文案 | AssistantBasicPage 配置文案；fork 该页定制，低优先 |
+| `fcb04126` | web ask_user 多选（#1654） | web-ui 前端 1 文件，需 pnpm 重装 web-ui |
+| `3d75f83f` | web-ui 模型弹窗厂商标签堆叠（#1871） | web-ui 2 行 |
+| `019c46ae` | /skills 免审批安全区 | WorkspaceTools 白名单 +2 行；fork 有自有白名单，核对后 1 行可合 |
+
+### 本批推荐吸收顺序（按价值/成本）
+
+1. **立即**：`7b92f89e`（连字）、`77a58c2c`（统计 JSON 崩溃）、`dee88dca`（edit_file 崩溃）、`ab07ac1f`（DeepSeek 注册）——全部低风险直套
+2. **近期**：`a7ee362f`（系统栏颜色）、`20e552f9`（会话头）
+3. **规划**：`5b4d7895`（时间提醒间隔，含持久化三件套）、`6e0aa7d4`/`05a85a09`（工具回执/自定义文本，ChatMessageTools 手工合）、`1a1e672e`（空格支持）
+4. **暂缓**：`7038e981`/`03246406`（workspace 大改+DB）、`3896b6d6`（Imggen 大改）
 
 ## 同步方式（ff-only）
 
