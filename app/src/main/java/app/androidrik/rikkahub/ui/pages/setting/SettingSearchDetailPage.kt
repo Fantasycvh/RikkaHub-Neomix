@@ -52,6 +52,8 @@ import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.richtext.HighlightCodeVisualTransformation
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.pages.setting.components.ProviderApiKeysEditor
+import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
@@ -355,19 +357,11 @@ internal fun TavilyOptions(
     options: SearchServiceOptions.TavilyOptions,
     onUpdateOptions: (SearchServiceOptions.TavilyOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 
     FormItem(
         label = {
@@ -398,19 +392,11 @@ internal fun ExaOptions(
     options: SearchServiceOptions.ExaOptions,
     onUpdateOptions: (SearchServiceOptions.ExaOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 }
 
 @Composable
@@ -418,19 +404,11 @@ internal fun ZhipuOptions(
     options: SearchServiceOptions.ZhipuOptions,
     onUpdateOptions: (SearchServiceOptions.ZhipuOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 }
 
 @Composable
@@ -438,13 +416,11 @@ internal fun DoubaoOptions(
     options: SearchServiceOptions.DoubaoOptions,
     onUpdateOptions: (SearchServiceOptions.DoubaoOptions) -> Unit
 ) {
-    FormItem(label = { Text(stringResource(R.string.search_detail_api_key)) }) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = { onUpdateOptions(options.copy(apiKey = it)) },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 
     FormItem(label = { Text("Mode") }) {
         val modes = DoubaoSearchMode.entries
@@ -543,19 +519,11 @@ internal fun SearchLinkUpOptions(
     options: SearchServiceOptions.LinkUpOptions,
     onUpdateOptions: (SearchServiceOptions.LinkUpOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 
     FormItem(
         label = {
@@ -586,19 +554,11 @@ internal fun BraveOptions(
     options: SearchServiceOptions.BraveOptions,
     onUpdateOptions: (SearchServiceOptions.BraveOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 }
 
 @Composable
@@ -606,19 +566,11 @@ internal fun SerperOptions(
     options: SearchServiceOptions.SerperOptions,
     onUpdateOptions: (SearchServiceOptions.SerperOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 }
 
 @Composable
@@ -626,19 +578,11 @@ internal fun MetasoOptions(
     options: SearchServiceOptions.MetasoOptions,
     onUpdateOptions: (SearchServiceOptions.MetasoOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 }
 
 @Composable
@@ -646,19 +590,11 @@ internal fun OllamaOptions(
     options: SearchServiceOptions.OllamaOptions,
     onUpdateOptions: (SearchServiceOptions.OllamaOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 }
 
 @Composable
@@ -666,19 +602,11 @@ internal fun PerplexityOptions(
     options: SearchServiceOptions.PerplexityOptions,
     onUpdateOptions: (SearchServiceOptions.PerplexityOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 
     FormItem(
         label = {
@@ -716,19 +644,11 @@ internal fun FirecrawlOptions(
     options: SearchServiceOptions.FirecrawlOptions,
     onUpdateOptions: (SearchServiceOptions.FirecrawlOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 }
 
 @Composable
@@ -736,19 +656,11 @@ internal fun JinaOptions(
     options: SearchServiceOptions.JinaOptions,
     onUpdateOptions: (SearchServiceOptions.JinaOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 
     FormItem(
         label = {
@@ -790,19 +702,11 @@ internal fun BochaOptions(
     options: SearchServiceOptions.BochaOptions,
     onUpdateOptions: (SearchServiceOptions.BochaOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 
     FormItem(
         label = {
@@ -827,19 +731,11 @@ internal fun RikkaHubOptions(
     options: SearchServiceOptions.RikkaHubOptions,
     onUpdateOptions: (SearchServiceOptions.RikkaHubOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 
     FormItem(
         label = {
@@ -870,19 +766,11 @@ internal fun TinyfishOptions(
     options: SearchServiceOptions.TinyfishOptions,
     onUpdateOptions: (SearchServiceOptions.TinyfishOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 }
 
 @Composable
@@ -890,19 +778,11 @@ internal fun GrokOptions(
     options: SearchServiceOptions.GrokOptions,
     onUpdateOptions: (SearchServiceOptions.GrokOptions) -> Unit
 ) {
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_api_key))
-        }
-    ) {
-        OutlinedTextField(
-            value = options.apiKey,
-            onValueChange = {
-                onUpdateOptions(options.copy(apiKey = it))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
 
     FormItem(
         label = {
@@ -1022,6 +902,24 @@ internal fun CustomJsOptions(
                 darkMode = darkMode
             ),
             textStyle = MaterialTheme.typography.bodySmall.merge(fontFamily = JetbrainsMono),
+        )
+    }
+}
+
+/** 搜索服务 API Key 编辑器（每 key 一框 + 启停 + 拖拽优先级，结构化存入 apiKeys，兼容旧 apiKey 字段） */
+@Composable
+private fun ApiKeysFormItem(
+    apiKeys: List<ApiKeyEntry>,
+    legacyKey: String,
+    onChange: (List<ApiKeyEntry>) -> Unit,
+) {
+    FormItem(
+        label = { Text(stringResource(R.string.search_detail_api_key)) }
+    ) {
+        ProviderApiKeysEditor(
+            keys = apiKeys,
+            legacyKey = legacyKey,
+            onChange = onChange,
         )
     }
 }

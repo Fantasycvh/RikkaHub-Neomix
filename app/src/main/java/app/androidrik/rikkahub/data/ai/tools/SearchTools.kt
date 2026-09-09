@@ -13,6 +13,10 @@ import app.androidrik.rikkahub.utils.JsonInstantPretty
 import app.androidrik.rikkahub.utils.toLocalString
 import app.androidrik.search.SearchService
 import app.androidrik.search.SearchServiceOptions
+import app.androidrik.search.effectiveApiKeys
+import app.androidrik.search.splitSearchApiKeys
+import app.androidrik.search.withNextKey
+import app.androidrik.rikkahub.data.ai.isKeySwitchingError
 import java.time.LocalDate
 import kotlin.uuid.Uuid
 
@@ -57,11 +61,13 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                         index = settings.searchServiceSelected,
                         defaultValue = { SearchServiceOptions.DEFAULT })
                     val service = SearchService.getService(options)
-                    val result = service.search(
-                        params = it.jsonObject,
-                        commonOptions = settings.searchCommonOptions,
-                        serviceOptions = options,
-                    )
+                    val result = withSearchKeyFailover(options) { current ->
+                        service.search(
+                            params = it.jsonObject,
+                            commonOptions = settings.searchCommonOptions,
+                            serviceOptions = current,
+                        )
+                    }
                     val results =
                         JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject.let { json ->
                             val map = json.toMutableMap()
@@ -104,15 +110,46 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             index = settings.searchServiceSelected,
                             defaultValue = { SearchServiceOptions.DEFAULT })
                         val service = SearchService.getService(options)
-                        val result = service.scrape(
-                            params = it.jsonObject,
-                            commonOptions = settings.searchCommonOptions,
-                            serviceOptions = options,
-                        )
+                        val result = withSearchKeyFailover(options) { current ->
+                            service.scrape(
+                                params = it.jsonObject,
+                                commonOptions = settings.searchCommonOptions,
+                                serviceOptions = current,
+                            )
+                        }
                         val payload = JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject
                         listOf(UIMessagePart.Text(payload.toString()))
                     }
                 ))
         }
     }
+}
+
+/**
+ * 搜索 key 失败转移：请求遇"换 key 可解决"错误（401/403/429/余额耗尽/限流，复用生成侧
+ * isKeySwitchingError 分类）且还有下一个 key 时，轮转副本重试（去首个生效 key，顺序=优先级）。
+ * 每 key 至多试一次：剩 1 个 key 时不再切换，错误原样上抛（Result.failure）。
+ * 单 key 用户零开销（effectiveApiKeys 拆分 ≤1 → 直接返回原结果）。
+ */
+private suspend fun <T : SearchServiceOptions, R> withSearchKeyFailover(
+    options: T,
+    block: suspend (T) -> Result<R>,
+): Result<R> {
+    var current = options
+    while (true) {
+        val result = block(current)
+        val error = result.exceptionOrNull()
+        if (error != null && isSearchKeySwitchable(current, error)) {
+            val rotated = current.withNextKey() ?: return result
+            android.util.Log.w("SearchTools", "search key error, switching key (${splitSearchApiKeys(rotated.effectiveApiKeys).size} left): ${error.message}")
+            current = rotated
+            continue
+        }
+        return result
+    }
+}
+
+private fun <T : SearchServiceOptions> isSearchKeySwitchable(options: T, error: Throwable): Boolean {
+    if (!isKeySwitchingError(error)) return false
+    return splitSearchApiKeys(options.effectiveApiKeys).size > 1
 }

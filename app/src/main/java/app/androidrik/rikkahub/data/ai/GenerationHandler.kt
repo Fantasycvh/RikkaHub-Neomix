@@ -883,6 +883,6 @@ private fun findHttpStatusCode(message: String?): Int? {
     val prefixed = Regex("""(?:code|status|HTTP)[\s:=]*(\d{3})""", RegexOption.IGNORE_CASE)
         .find(message)?.groupValues?.get(1)?.toIntOrNull()
     if (prefixed != null) return prefixed
-    // 回退：形如 ": 429"、">502" 的独立三位数（覆盖中转站 HTML 错误页正文）
-    return Regex("""[\s:>(](\d{3})\b""").find(message)?.groupValues?.get(1)?.toIntOrNull()
+    // 回退：形如 ": 429"、">502"、"#401" 的独立三位数（覆盖中转站 HTML 错误页正文与搜索服务 "#${code}" 形态）
+    return Regex("""[\s:>(#](\d{3})\b""").find(message)?.groupValues?.get(1)?.toIntOrNull()
 }

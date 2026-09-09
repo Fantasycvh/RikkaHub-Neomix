@@ -541,7 +541,7 @@ private fun ProviderConfigureGoogle(
  * 旧单 key 字段（apiKey）有值且列表为空时，首行展示旧值，写回时迁入列表。
  */
 @Composable
-private fun ProviderApiKeysEditor(
+fun ProviderApiKeysEditor(
     keys: List<ApiKeyEntry>,
     legacyKey: String,
     onChange: (List<ApiKeyEntry>) -> Unit,

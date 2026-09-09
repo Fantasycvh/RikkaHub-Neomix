@@ -87,6 +87,10 @@ class GenerationRetryTest {
         assertTrue(isKeySwitchingError(RuntimeException("status: 403 Forbidden")))
         // 429 账户级限流：多账户场景换 key 可避开（流式半截 429 已被 #1812 分流拦截）
         assertTrue(isKeySwitchingError(RuntimeException("Failed to get response: 429 too many requests")))
+        // 搜索服务 "#${code}" 形态（Tavily/LinkUp 等）：#401 也须识别为可换 key
+        assertTrue(isKeySwitchingError(RuntimeException("response failed #401")))
+        assertFalse(isKeySwitchingError(RuntimeException("response failed #500")))
+        assertFalse(isKeySwitchingError(RuntimeException("response failed #400")))
         assertFalse(isKeySwitchingError(RuntimeException("Failed to get response: 500 internal")))
         assertFalse(isKeySwitchingError(IOException("connect timeout")))
     }
