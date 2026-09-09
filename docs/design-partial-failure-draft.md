@@ -65,7 +65,7 @@ catch `GenerationPartialFailureException` 时：
 2. **usage 记账**：半截流可能已收到 usage chunk，且已被 `merge` 进最后一条消息（GenerationHandler.kt:511）。草稿随 `partialMessages` 携带 usage 即可保留；重试成功后新候选 #1 有独立 usage，两者按消息各自记账，不重复累计——实现上零成本，随消息走。
 3. **reasoning 部分**：保留但默认折叠——半截思考对用户定位断点有用。
 4. **"保留并续写"（可选 v2）**：Claude 系支持 assistant prefill，可从截断点续写而非整段重生成，是真正省 token 的彻底方案；OpenAI Chat Completions 不支持预填，需 provider 能力检测 + 仅 Claude 可用，成本高，v2 评估或不做。**已放弃（2026-09-06）**：仅对长输出场景有净收益（output 差额 vs 前缀 input 重复费），普通聊天无感；中转链路 assistant 结尾不可靠、必须真实 API 测试。协议层零改动（ClaudeProvider 构建器本就支持 assistant 结尾），搁置成本低，若真机测试显示长输出断流高频可随时重启。
-5. **与 #1820 的交集**：切对话回复消失的痛感会被"尽早持久化半截状态"同一机制缓解——一个机制治两个病。
+   - **2026-09-09 探讨修正（跨协议续写机制）**：生态里续写分三层——①协议原生：Anthropic assistant 结尾、Gemini `MAX_TOKENS` 候选续接；②**通用 hack（跨协议，关键）**：OpenAI 兼容端点（含 DeepSeek/中转/ZCode 类多 provider 工具底层）把半截 text 合并回历史 assistant 消息 + 追一条 user（空串/continue/继续），模型接着风格续写——**无需任何 prefill 能力**，OpenRouter 更有 `model:continue` 中间件语法免实现；③agent 工具自身节奏：输出停在 tool_calls 边界 + 工具结果回填 = 天然断点续写。**修正结论：「仅 Claude 可用」是错的**——通用 hack 覆盖面更大成本更低，代价是衔接精度略差（hack 靠提示引导，prefill 靠协议保证）。若重启 v2，不必限定 Claude。5. **与 #1820 的交集**：切对话回复消失的痛感会被"尽早持久化半截状态"同一机制缓解——一个机制治两个病。
 
 ## 落地顺序（实现时）
 
