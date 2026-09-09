@@ -167,13 +167,13 @@ fun ChatInput(
     fun sendMessage() {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        if (loading) onCancelClick() else onSendClick()
+        if (loading && state.isEmpty()) onCancelClick() else onSendClick()
     }
 
     fun sendMessageWithoutAnswer() {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        if (loading) onCancelClick() else onLongSendClick()
+        if (loading && state.isEmpty()) onCancelClick() else onLongSendClick()
     }
 
     val asr = LocalASRState.current
@@ -364,7 +364,7 @@ fun ChatInput(
                                     .testTag("chat_send_button")
                                     .clip(CircleShape)
                                     .combinedClickable(
-                                        enabled = loading || !state.isEmpty(),
+                                        enabled = loading && state.isEmpty() || !state.isEmpty(),
                                         onClick = {
                                             sendMessage()
                                         }, onLongClick = {
@@ -372,13 +372,14 @@ fun ChatInput(
                                         }
                                     )
                             ) {
+                                val showStop = loading && state.isEmpty()
                                 val containerColor = when {
-                                    loading -> MaterialTheme.colorScheme.errorContainer
+                                    showStop -> MaterialTheme.colorScheme.errorContainer
                                     state.isEmpty() -> MaterialTheme.colorScheme.surfaceContainerHigh
                                     else -> MaterialTheme.colorScheme.primary
                                 }
                                 val contentColor = when {
-                                    loading -> MaterialTheme.colorScheme.onErrorContainer
+                                    showStop -> MaterialTheme.colorScheme.onErrorContainer
                                     state.isEmpty() -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                                     else -> MaterialTheme.colorScheme.onPrimary
                                 }
@@ -387,7 +388,7 @@ fun ChatInput(
                                     shape = CircleShape,
                                     color = containerColor,
                                     content = {})
-                                if (loading) {
+                                if (showStop) {
                                     KeepScreenOn()
                                     Icon(
                                         imageVector = HugeIcons.Cancel01,
