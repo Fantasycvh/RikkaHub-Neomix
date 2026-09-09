@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -585,7 +586,11 @@ private fun ProviderApiKeysEditor(
         }
         LazyColumn(
             state = lazyListState,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                // 有限高度约束：Editor 外层是普通 Column（FormItem content），
+                // LazyColumn 无高度上限会崩（measure 无限约束）。条目少，固定上限足够。
+                .heightIn(max = 240.dp),
         ) {
             itemsIndexed(
                 items = entries,
