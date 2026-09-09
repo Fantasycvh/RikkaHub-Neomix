@@ -9,7 +9,11 @@ interface KeyRoulette {
     fun next(keys: String, providerId: String = ""): String
 
     companion object {
-        fun default(): KeyRoulette = DefaultKeyRoulette()
+        /**
+         * 默认=顺序模式（优先级语义）：取列表中第一个启用 key。
+         * 多 key 列表顺序即优先级（首个=首选），失败转移由生成器按序切下一个。
+         */
+        fun default(): KeyRoulette = OrderKeyRoulette()
 
         /**
          * LRU 轮询，持久化存储到 cacheDir/lru_key_roulette.json
@@ -27,6 +31,14 @@ private fun splitKey(key: String): List<String> {
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .distinct()
+}
+
+/** 顺序模式（优先级语义）：取第一个 key；provider 侧已按 enabled 过滤，失败转移由生成器按序切下一个 */
+private class OrderKeyRoulette : KeyRoulette {
+    override fun next(keys: String, providerId: String): String {
+        val keyList = splitKey(keys)
+        return keyList.firstOrNull() ?: keys
+    }
 }
 
 private class DefaultKeyRoulette : KeyRoulette {

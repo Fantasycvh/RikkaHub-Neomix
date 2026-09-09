@@ -7,6 +7,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.draw.scale
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +45,7 @@ import app.androidrik.rikkahub.data.datastore.DEFAULT_PROVIDERS
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.DragDropVertical
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -567,36 +574,70 @@ private fun ProviderApiKeysEditor(
                 )
             }
         }
-        entries.forEachIndexed { index, entry ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = entry.key,
-                    onValueChange = { newKey ->
-                        val updated = entries.toMutableList().also { it[index] = entry.copy(key = newKey) }
-                        onChange(updated)
-                    },
-                    label = { Text(stringResource(R.string.setting_provider_page_api_key)) },
-                    modifier = Modifier.weight(1f),
-                    visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                )
-                Switch(
-                    checked = entry.enabled,
-                    onCheckedChange = { enabled ->
-                        val updated = entries.toMutableList().also { it[index] = entry.copy(enabled = enabled) }
-                        onChange(updated)
-                    },
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                )
-                IconButton(
-                    onClick = {
-                        val updated = entries.toMutableList().also { it.removeAt(index) }
-                        onChange(updated)
-                    },
-                ) {
-                    Icon(HugeIcons.Delete01, contentDescription = stringResource(R.string.setting_provider_page_delete_key))
+        // 拖拽排序：列表顺序即优先级（首个=首选，失败按序切下一个）
+        val lazyListState = rememberLazyListState()
+        val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+            val updated = entries.toMutableList().also {
+                val item = it.removeAt(from.index)
+                it.add(to.index, item)
+            }
+            onChange(updated)
+        }
+        LazyColumn(
+            state = lazyListState,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            itemsIndexed(
+                items = entries,
+                key = { _, entry -> entry.key.hashCode() },
+            ) { index, entry ->
+                ReorderableItem(
+                    state = reorderableState,
+                    key = entry.key.hashCode(),
+                ) { isDragging ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .scale(if (isDragging) 0.95f else 1f)
+                            .animateItem(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = {},
+                            modifier = Modifier.longPressDraggableHandle(
+    onDragStarted = {},
+    onDragStopped = {},
+),
+                        ) {
+                            Icon(HugeIcons.DragDropVertical, contentDescription = stringResource(R.string.setting_provider_page_drag_to_reorder))
+                        }
+                        OutlinedTextField(
+                            value = entry.key,
+                            onValueChange = { newKey ->
+                                val updated = entries.toMutableList().also { it[index] = entry.copy(key = newKey) }
+                                onChange(updated)
+                            },
+                            label = { Text(stringResource(R.string.setting_provider_page_api_key)) },
+                            modifier = Modifier.weight(1f),
+                            visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        )
+                        Switch(
+                            checked = entry.enabled,
+                            onCheckedChange = { enabled ->
+                                val updated = entries.toMutableList().also { it[index] = entry.copy(enabled = enabled) }
+                                onChange(updated)
+                            },
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                        )
+                        IconButton(
+                            onClick = {
+                                val updated = entries.toMutableList().also { it.removeAt(index) }
+                                onChange(updated)
+                            },
+                        ) {
+                            Icon(HugeIcons.Delete01, contentDescription = stringResource(R.string.setting_provider_page_delete_key))
+                        }
+                    }
                 }
             }
         }

@@ -877,6 +877,7 @@
   <string name="setting_provider_page_api_base_url">API Base Url</string>
   <string name="setting_provider_page_api_key">API Key</string>
   <string name="setting_provider_page_delete_key">刪除 Key</string>
+  <string name="setting_provider_page_drag_to_reorder">拖拽排序（首個為首選）</string>
   <string name="setting_provider_page_add_key">新增 Key</string>
   <string name="setting_provider_page_show_keys">顯示 Key</string>
   <string name="setting_provider_page_hide_keys">隱藏 Key</string>

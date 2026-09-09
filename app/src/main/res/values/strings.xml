@@ -943,6 +943,7 @@
   <string name="setting_provider_page_api_base_url">API Base Url</string>
   <string name="setting_provider_page_api_key">API Key</string>
   <string name="setting_provider_page_delete_key">Delete key</string>
+  <string name="setting_provider_page_drag_to_reorder">Drag to reorder</string>
   <string name="setting_provider_page_add_key">Add key</string>
   <string name="setting_provider_page_show_keys">Show keys</string>
   <string name="setting_provider_page_hide_keys">Hide keys</string>
