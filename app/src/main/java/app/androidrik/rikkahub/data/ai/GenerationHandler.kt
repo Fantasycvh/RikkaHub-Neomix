@@ -20,7 +20,9 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.core.merge
+import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.CustomBody
+import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderManager
@@ -409,17 +411,18 @@ class GenerationHandler(
         settings: Settings,
         processingStatus: MutableStateFlow<String?>?,
         maxRetries: Int? = null,
-        action: suspend () -> T,
+        action: suspend (ProviderSetting) -> T,
     ): T {
         val plan = providerSetting.retryOption ?: settings.retrySetting
-        if (!plan.enabled || plan.delaysSeconds.isEmpty()) return action()
+        if (!plan.enabled || plan.delaysSeconds.isEmpty()) return action(providerSetting)
         // 重试预算：有 fallback 模型时压缩（快速失败切备用，避免长延迟重试拖慢恢复）
         val retryBudget = maxRetries?.coerceAtMost(plan.delaysSeconds.size) ?: plan.delaysSeconds.size
 
+        var currentSetting = providerSetting
         var retryIndex = -1 // 已执行的重试序号；首次请求前为 -1
         while (true) {
             try {
-                return action()
+                return action(currentSetting)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: GenerationPartialFailureException) {
@@ -428,13 +431,23 @@ class GenerationHandler(
                 throw e
             } catch (e: Throwable) {
                 val next = retryIndex + 1
-                // 鉴权失败（401/403）或账户限流（429，多账户场景换 key 可避开）且配置了多个 key：
-                // 立即换 key 重试，不等延迟——LRU KeyRoulette 会选下一个 key。
-                // 安全保证：#1812 分流——流式半截 429 已抛 GenerationPartialFailureException 被上方
-                // rethrow（保留草稿不换 key），能走到这里的一定是零输出，换 key 无计费损失。
-                if (isKeySwitchingError(e) && hasMultipleEnabledKeys(providerSetting)) {
+                // 鉴权失败（401/403）或账户限流（429，多账户场景换 key 可避开）且还有其他 key：
+                // 立即换 key 重试，不等延迟。OrderKeyRoulette 固定取首个 key，故轮转 =
+                // 从瞬态副本去掉刚失败的首个 key（不落盘），下次请求自然用下一个；
+                // 每次换 key 消耗一个 key，耗尽后 hasMultipleEnabledKeys=false → 走正常路径上抛，
+                // 不会死循环。安全保证：#1812 分流——流式半截 429 已抛
+                // GenerationPartialFailureException 被上方 rethrow（保留草稿不换 key），
+                // 能走到这里的一定是零输出，换 key 无计费损失。
+                if (isKeySwitchingError(e) && hasMultipleEnabledKeys(currentSetting)) {
+                    val rotated = rotateProviderKeys(currentSetting)
+                    if (rotated == null) throw e // 理论不可达（hasMultipleEnabledKeys 已保证 ≥2 个）
                     retryIndex = next
-                    Log.w(TAG, "key error, switching key and retrying: ${e.message}")
+                    currentSetting = rotated
+                    Log.w(
+                        TAG,
+                        "key error, switching key (${splitEffectiveKeys(rotated.effectiveApiKeys).size} key(s) left) " +
+                            "and retrying: ${e.message}"
+                    )
                     continue
                 }
                 if (next >= retryBudget || !isRetryableGenerationError(e)) throw e
@@ -559,7 +572,7 @@ class GenerationHandler(
                 settings = settings,
                 processingStatus = processingStatus,
                 maxRetries = retryBudgetOverride,
-            ) {
+            ) { provider ->
                 // 快照：流中途失败时回滚已输出的部分内容，重试从干净状态重新生成
                 val snapshot = messages
                 try {
@@ -601,7 +614,7 @@ class GenerationHandler(
                 settings = settings,
                 processingStatus = processingStatus,
                 maxRetries = retryBudgetOverride,
-            ) {
+            ) { provider ->
                 val snapshot = messages
                 try {
                     val chunk = providerImpl.generateText(
@@ -692,7 +705,7 @@ class GenerationHandler(
             var messages = listOf(UIMessage.user(prompt))
             var translatedText = ""
 
-            withGenerationRetry(provider, settings, null) {
+            withGenerationRetry(provider, settings, null) { provider ->
                 val snapshot = messages
                 try {
                     providerHandler.streamText(
@@ -720,7 +733,7 @@ class GenerationHandler(
         } else {
             // Use Qwen MT model with special translation options
             val messages = listOf(UIMessage.user(sourceText))
-            val chunk = withGenerationRetry(provider, settings, null) {
+            val chunk = withGenerationRetry(provider, settings, null) { provider ->
                 providerHandler.generateText(
                     providerSetting = provider,
                     messages = messages,
@@ -812,6 +825,28 @@ internal fun hasMultipleEnabledKeys(providerSetting: ProviderSetting): Boolean {
     }
     return keys.count { it.enabled && it.key.isNotBlank() } > 1
 }
+
+/**
+ * 换 key 重试的轮转：去掉首个生效 key（OrderKeyRoulette 固定取首个 = 刚失败的那个），
+ * 剩余 key 写回瞬态副本（apiKeys + 旧 apiKey 字段同时覆盖，兼容旧字符串多 key）。
+ * 副本仅用于本次重试循环内传给 provider，不落盘。只剩 ≤1 个 key 时返回 null（无可切换）。
+ */
+internal fun rotateProviderKeys(setting: ProviderSetting): ProviderSetting? {
+    val keys = splitEffectiveKeys(setting.effectiveApiKeys)
+    if (keys.size <= 1) return null
+    val remaining = keys.drop(1)
+    val entries = remaining.map { ApiKeyEntry(it) }
+    val legacy = remaining.joinToString("\n")
+    return when (setting) {
+        is ProviderSetting.OpenAI -> setting.copy(apiKeys = entries, apiKey = legacy)
+        is ProviderSetting.Google -> setting.copy(apiKeys = entries, apiKey = legacy)
+        is ProviderSetting.Claude -> setting.copy(apiKeys = entries, apiKey = legacy)
+    }
+}
+
+/** 拆分 effectiveApiKeys 字符串（与 KeyRoulette.splitKey 同规则：空白/逗号分隔 + 去重） */
+internal fun splitEffectiveKeys(keys: String): List<String> =
+    keys.split("[\\s,]+".toRegex()).map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
 /** 从错误 message 提取 HTTP 状态码：优先 "code/status: NNN" 形态，回退到首个独立的 3 位数字。 */
 private fun findHttpStatusCode(message: String?): Int? {

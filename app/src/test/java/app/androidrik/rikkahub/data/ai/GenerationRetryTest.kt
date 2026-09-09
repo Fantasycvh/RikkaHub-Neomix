@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.ai
 import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.RetrySetting
+import app.androidrik.ai.provider.effectiveApiKeys
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -80,6 +81,73 @@ class GenerationRetryTest {
         // 空白 key 不计入
         val blank = multi.copy(apiKeys = listOf(ApiKeyEntry("  "), ApiKeyEntry("k2")))
         assertFalse(hasMultipleEnabledKeys(blank))
+    }
+
+    // ---------- rotateProviderKeys / splitEffectiveKeys ----------
+
+    @Test
+    fun `rotate drops first enabled key in priority order`() {
+        val setting = ProviderSetting.OpenAI().copy(
+            apiKeys = listOf(ApiKeyEntry("k1"), ApiKeyEntry("k2"), ApiKeyEntry("k3")),
+        )
+        val rotated = rotateProviderKeys(setting)!!
+        // 顺序模式首个=刚失败的 k1，轮转后生效 key 应为 k2,k3
+        assertEquals(listOf("k2", "k3"), splitEffectiveKeys(rotated.effectiveApiKeys))
+        assertEquals("k2", splitEffectiveKeys(rotated.effectiveApiKeys).first())
+        // 轮转副本的 apiKeys 与旧 apiKey 字段同步覆盖
+        val openAI = rotated as ProviderSetting.OpenAI
+        assertEquals(listOf(ApiKeyEntry("k2"), ApiKeyEntry("k3")), openAI.apiKeys)
+        assertEquals("k2\nk3", openAI.apiKey)
+        // 再转一次 → 只剩 k3
+        val rotated2 = rotateProviderKeys(rotated)!!
+        assertEquals(listOf("k3"), splitEffectiveKeys(rotated2.effectiveApiKeys))
+        // 最后一次 → null（无可切换）
+        assertNull(rotateProviderKeys(rotated2))
+    }
+
+    @Test
+    fun `rotate skips disabled keys and stops at single remaining`() {
+        // 首个启用的才是"刚失败的"；禁用 key 不参与轮转
+        val setting = ProviderSetting.OpenAI().copy(
+            apiKeys = listOf(
+                ApiKeyEntry("k1", enabled = false),
+                ApiKeyEntry("k2"),
+                ApiKeyEntry("k3"),
+            ),
+        )
+        val rotated = rotateProviderKeys(setting)!!
+        assertEquals(listOf("k3"), splitEffectiveKeys(rotated.effectiveApiKeys))
+    }
+
+    @Test
+    fun `rotate supports legacy newline separated multi key string`() {
+        // 旧形态：apiKeys 为空，apiKey 字符串里塞多个 key
+        val setting = ProviderSetting.OpenAI().copy(apiKey = "k1\nk2")
+        val rotated = rotateProviderKeys(setting)!!
+        assertEquals(listOf("k2"), splitEffectiveKeys(rotated.effectiveApiKeys))
+    }
+
+    @Test
+    fun `rotate returns null for single or empty key`() {
+        assertNull(rotateProviderKeys(ProviderSetting.OpenAI()))
+        assertNull(rotateProviderKeys(ProviderSetting.OpenAI().copy(apiKey = "only")))
+        assertNull(
+            rotateProviderKeys(
+                ProviderSetting.OpenAI().copy(apiKeys = listOf(ApiKeyEntry("only")))
+            )
+        )
+    }
+
+    @Test
+    fun `rotate works for google and claude providers`() {
+        val google = rotateProviderKeys(
+            ProviderSetting.Google().copy(apiKeys = listOf(ApiKeyEntry("g1"), ApiKeyEntry("g2")))
+        )!!
+        assertEquals("g2", splitEffectiveKeys(google.effectiveApiKeys).single())
+        val claude = rotateProviderKeys(
+            ProviderSetting.Claude().copy(apiKeys = listOf(ApiKeyEntry("c1"), ApiKeyEntry("c2")))
+        )!!
+        assertEquals("c2", splitEffectiveKeys(claude.effectiveApiKeys).single())
     }
 
     // ---------- isRetryableGenerationError ----------
