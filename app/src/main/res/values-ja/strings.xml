@@ -1007,7 +1007,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="share_handler_page_title">共有を処理するアシスタントを選択</string>
   <string name="shortcut_take_picture">写真で質問</string>
   <string name="silicon_flow_description">**世界をリードするAI能力プロバイダー、AGIの普及を加速して人類に貢献。**</string>
-  <string name="silicon_flow_website">公式サイト: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)</string>
+  <string name="silicon_flow_website">公式サイト: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/)</string>
   <string name="skill_detail_page_content">コンテンツ</string>
   <string name="skill_detail_page_create">作成</string>
   <string name="skill_detail_page_delete_confirm">ファイル"%s"を削除してもよろしいですか？</string>

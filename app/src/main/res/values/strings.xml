@@ -1121,7 +1121,7 @@
   <string name="share_handler_page_title">Select an Assistant</string>
   <string name="shortcut_take_picture">Take Picture &amp; Ask</string>
   <string name="silicon_flow_description">**Leading global AI capability provider, accelerating AGI to benefit humanity.**</string>
-  <string name="silicon_flow_website">Website: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)</string>
+  <string name="silicon_flow_website">Website: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/)</string>
   <string name="skill_detail_page_content">Content</string>
   <string name="skill_detail_page_create">Create</string>
   <string name="skill_detail_page_delete_confirm">Are you sure you want to delete file "%s"?</string>

@@ -1100,7 +1100,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="share_handler_page_title">选择一个助手处理分享</string>
   <string name="shortcut_take_picture">拍照提问</string>
   <string name="silicon_flow_description">**全球领先的 AI 能力提供商，加速 AGI 普惠人类。**</string>
-  <string name="silicon_flow_website">官网: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)</string>
+  <string name="silicon_flow_website">官网: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/)</string>
   <string name="skill_detail_page_content">内容</string>
   <string name="skill_detail_page_create">创建</string>
   <string name="skill_detail_page_delete_confirm">确定要删除文件“%s”吗？</string>

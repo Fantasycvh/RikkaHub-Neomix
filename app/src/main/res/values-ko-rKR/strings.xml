@@ -1007,7 +1007,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="share_handler_page_title">어시스턴트 선택</string>
   <string name="shortcut_take_picture">사진 찍고 질문하기</string>
   <string name="silicon_flow_description">**세계를 선도하는 AI 서비스 제공업체로, 인공 일반 지능(AGI)의 발전을 통해 인류에 기여합니다.**</string>
-  <string name="silicon_flow_website">웹사이트: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)</string>
+  <string name="silicon_flow_website">웹사이트: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/)</string>
   <string name="skill_detail_page_content">콘텐츠</string>
   <string name="skill_detail_page_create">생성</string>
   <string name="skill_detail_page_delete_confirm">파일 "%s"을(를) 삭제하시겠습니까?</string>
