@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,7 +23,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,8 +75,10 @@ import app.androidrik.rikkahub.ui.components.ui.FaviconRow
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.utils.JsonInstantPretty
 import app.androidrik.rikkahub.utils.jsonPrimitiveOrNull
+import app.androidrik.rikkahub.utils.toLocalString
 import app.androidrik.rikkahub.utils.openUrl
 import org.koin.compose.koinInject
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZonedDateTime
@@ -689,6 +694,36 @@ private fun SearchWebPreview(
             Text(stringResource(R.string.chat_message_tool_search_prefix, query))
         }
 
+        val parameters = arguments.jsonObjectOrNull?.entries?.filter { it.key != "query" }.orEmpty()
+        if (parameters.isNotEmpty()) {
+            item {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    parameters.forEach { (name, value) ->
+                        val displayValue = when (value) {
+                            is JsonArray -> value.joinToString(", ") {
+                                it.jsonPrimitiveOrNull?.contentOrNull ?: it.toString()
+                            }
+                            else -> value.jsonPrimitiveOrNull?.contentOrNull ?: value.toString()
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ) {
+                            Text(
+                                text = "$name: $displayValue",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         if (answer != null) {
             item {
                 Card(
@@ -754,6 +789,23 @@ private fun SearchWebPreview(
                         )
                         Column {
                             Text(text = title, maxLines = 1)
+                            val publishedDate = item.getStringContent("publishedDate")?.takeIf { it.isNotBlank() }
+                            val dateLabel = remember(publishedDate) {
+                                publishedDate?.let { value ->
+                                    runCatching {
+                                        LocalDate.parse(value, DateTimeFormatter.ISO_DATE_TIME)
+                                    }.recoverCatching {
+                                        LocalDate.parse(value, DateTimeFormatter.ISO_DATE)
+                                    }.getOrNull()?.toLocalString(includeYear = true) ?: value
+                                }
+                            }
+                            if (dateLabel != null) {
+                                Text(
+                                    text = dateLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             Text(
                                 text = text,
                                 maxLines = 2,

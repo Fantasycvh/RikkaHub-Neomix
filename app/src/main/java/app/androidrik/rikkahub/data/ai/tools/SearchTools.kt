@@ -18,6 +18,7 @@ import app.androidrik.search.splitSearchApiKeys
 import app.androidrik.search.withNextKey
 import app.androidrik.rikkahub.data.ai.isKeySwitchingError
 import java.time.LocalDate
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 fun createSearchTools(settings: Settings): Set<Tool> {
@@ -28,11 +29,17 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                 description = """
                     Search the web for up-to-date or specific information.
                     Use this when the user asks for the latest news, current facts, or needs verification.
+                    Do not treat result order as proof of freshness. Prefer primary sources and inspect
+                    each result's title, URL, publication date, and content before making a current claim.
+                    Use the optional publication-date and domain filters only when they match the question.
+                    If a date or primary source is missing, or sources conflict, run another focused search
+                    or use scrape_web to verify the most relevant source before answering.
                     Generate focused keywords and run multiple searches if needed.
                     Today is ${LocalDate.now().toLocalString(true)}.
 
                     Response format:
-                    - items[].id (short id), title, url, text
+                    - retrievedAt is the local retrieval time, never a publication date
+                    - items[].id (short id), index, title, url, publishedDate (if supplied), highlights (if supplied), text
                     - images[]: image urls related to the query (may be empty)
 
                     Citations:
@@ -68,8 +75,9 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             serviceOptions = current,
                         )
                     }
+                    val searchResult = result.getOrThrow().copy(retrievedAt = Clock.System.now().toString())
                     val results =
-                        JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject.let { json ->
+                        JsonInstantPretty.encodeToJsonElement(searchResult).jsonObject.let { json ->
                             val map = json.toMutableMap()
                             map["items"] =
                                 JsonArray(map["items"]!!.jsonArray.mapIndexed { index, item ->
@@ -117,7 +125,8 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                                 serviceOptions = current,
                             )
                         }
-                        val payload = JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject
+                        val scraped = result.getOrThrow().copy(retrievedAt = Clock.System.now().toString())
+                        val payload = JsonInstantPretty.encodeToJsonElement(scraped).jsonObject
                         listOf(UIMessagePart.Text(payload.toString()))
                     }
                 ))

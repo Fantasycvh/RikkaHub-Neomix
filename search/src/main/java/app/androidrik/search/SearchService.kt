@@ -104,18 +104,25 @@ data class SearchResult(
     val answer: String? = null,
     val items: List<SearchResultItem>,
     val images: List<String> = emptyList(),
+    /** 本地检索时间，非发布日期 */
+    val retrievedAt: String? = null,
 ) {
     @Serializable
     data class SearchResultItem(
         val title: String,
         val url: String,
         val text: String,
+        /** 服务商提供的发布日期；null = 未提供 */
+        val publishedDate: String? = null,
+        val highlights: List<String> = emptyList(),
     )
 }
 
 @Serializable
 data class ScrapedResult(
     val urls: List<ScrapedResultUrl>,
+    /** 本地检索时间，非发布日期 */
+    val retrievedAt: String? = null,
 )
 
 @Serializable
@@ -130,6 +137,8 @@ data class ScrapedResultMetadata(
     val title: String? = null,
     val description: String? = null,
     val language: String? = null,
+    /** 服务商提供的发布日期；null = 未提供 */
+    val publishedDate: String? = null,
 )
 
 @Serializable
