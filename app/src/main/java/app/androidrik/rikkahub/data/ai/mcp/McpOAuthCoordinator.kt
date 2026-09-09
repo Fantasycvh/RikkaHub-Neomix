@@ -118,8 +118,9 @@ internal class McpOAuthCoordinator(
     }
 
     suspend fun needsAuthorization(config: McpServerConfig, error: Throwable): Boolean {
-        if (!looksUnauthorized(error)) return false
-        if (config.commonOptions.oauth?.enabled == true) return true
+        // cloudflare MCP 的失败形态不像标准 401/403（#1818）：显式启用 OAuth 的服务器
+        // 任何失败都走授权，looksUnauthorized 只作未启用时的探测闸门（吸收上游 8ea375a9）
+        if (looksUnauthorized(error) && config.commonOptions.oauth?.enabled == true) return true
         if (config.commonOptions.headers.any { it.first.equals("Authorization", ignoreCase = true) }) {
             return false
         }
