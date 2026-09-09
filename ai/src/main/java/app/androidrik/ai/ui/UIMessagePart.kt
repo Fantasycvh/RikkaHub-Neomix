@@ -132,6 +132,17 @@ sealed class UIMessagePart {
     ) : UIMessagePart()
 
     @Serializable
+    @SerialName("server_tool")
+    data class ServerTool(
+        val toolCallId: String,
+        val toolName: String,
+        val input: JsonElement? = null,
+        val output: JsonElement? = null,
+        val status: ServerToolStatus = ServerToolStatus.IN_PROGRESS,
+        override var metadata: JsonObject? = null,
+    ) : UIMessagePart()
+
+    @Serializable
     @SerialName("tool")
     data class Tool(
         val toolCallId: String,
@@ -169,4 +180,13 @@ sealed class UIMessagePart {
             )
         }
     }
+}
+
+@Serializable
+enum class ServerToolStatus {
+    @SerialName("in_progress")
+    IN_PROGRESS,
+
+    @SerialName("completed")
+    COMPLETED,
 }

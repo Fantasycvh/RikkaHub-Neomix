@@ -44,6 +44,7 @@ import app.androidrik.ai.provider.providers.vertex.ServiceAccountTokenProvider
 import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.ai.ui.GoogleThoughtMetadata
 import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessageChoice
@@ -583,6 +584,29 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     metadata = GoogleThoughtMetadata(
                         thoughtSignature = jsonObject["thoughtSignature"]?.jsonPrimitive?.contentOrNull
                     ).toMetadata()
+                )
+            }
+
+            // 内置工具（googleSearch/urlContext 等）的执行进程/结果——不粘审批流（f7869e35 语义）
+            jsonObject.containsKey("toolCall") -> {
+                val toolCall = jsonObject["toolCall"]!!.jsonObject
+                UIMessagePart.ServerTool(
+                    toolCallId = toolCall["id"]?.jsonPrimitive?.contentOrNull
+                        ?: Uuid.random().toString(),
+                    toolName = toolCall["toolType"]?.jsonPrimitive?.contentOrNull ?: "",
+                    input = toolCall["args"],
+                    status = ServerToolStatus.IN_PROGRESS,
+                )
+            }
+
+            jsonObject.containsKey("toolResponse") -> {
+                val toolResponse = jsonObject["toolResponse"]!!.jsonObject
+                UIMessagePart.ServerTool(
+                    toolCallId = toolResponse["id"]?.jsonPrimitive?.contentOrNull
+                        ?: Uuid.random().toString(),
+                    toolName = toolResponse["toolType"]?.jsonPrimitive?.contentOrNull ?: "",
+                    output = toolResponse["response"],
+                    status = ServerToolStatus.COMPLETED,
                 )
             }
 

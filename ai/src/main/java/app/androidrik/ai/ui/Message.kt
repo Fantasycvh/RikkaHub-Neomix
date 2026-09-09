@@ -120,6 +120,26 @@ data class UIMessage(
                         }
                     }
 
+                    is UIMessagePart.ServerTool -> {
+                        // 内置工具（googleSearch/urlContext 等）整 part 到达：按 id 找到 IN_PROGRESS 则更新为 COMPLETED，否则追加
+                        val existsPart = acc.find {
+                            it is UIMessagePart.ServerTool && it.toolCallId == deltaPart.toolCallId
+                        } as? UIMessagePart.ServerTool
+                        if (existsPart == null) {
+                            acc + deltaPart
+                        } else {
+                            acc.map { part ->
+                                if (part is UIMessagePart.ServerTool && part.toolCallId == deltaPart.toolCallId) {
+                                    part.copy(
+                                        status = deltaPart.status,
+                                        input = deltaPart.input ?: part.input,
+                                        output = deltaPart.output ?: part.output,
+                                    )
+                                } else part
+                            }
+                        }
+                    }
+
                     else -> {
                         println("delta part append not supported: $deltaPart")
                         acc
@@ -381,6 +401,7 @@ fun List<UIMessagePart>.toSortedMessageParts(): List<UIMessagePart> {
             is UIMessagePart.Tool -> 0
             is UIMessagePart.ToolCall -> 0
             is UIMessagePart.ToolResult -> 0
+            is UIMessagePart.ServerTool -> 0
             is UIMessagePart.Search -> 0
             is UIMessagePart.Image -> 1
             is UIMessagePart.Video -> 1

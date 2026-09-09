@@ -1315,6 +1315,8 @@
   <string name="setting_retry_partial_chars_desc">可見文字 ≥ 該值視為已產生有效輸出（reasoning 不計，下限 1）</string>
   <string name="setting_retry_partial_chars_applied">目前生效：%1$d</string>
   <string name="generation_retry_waiting">生成失敗，%1$d/%2$d 次重試，%3$d 秒後進行</string>
+  <string name="chat_server_tool_running">正在執行內建工具 %1$s…</string>
+  <string name="chat_server_tool_done">內建工具 %1$s 已完成</string>
   <string name="setting_provider_page_retry_override">自訂重試設定</string>
   <string name="setting_provider_page_retry_override_desc">開啟後此提供商使用獨立的重試設定，覆蓋全域預設</string>
   <string name="setting_keep_alive_title">背景常駐</string>

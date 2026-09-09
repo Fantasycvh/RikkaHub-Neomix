@@ -1335,6 +1335,8 @@
   <string name="setting_retry_partial_chars_desc">Visible text ≥ this value counts as valid output; reasoning does not count; floor is 1</string>
   <string name="setting_retry_partial_chars_applied">Applied: %1$d</string>
   <string name="generation_retry_waiting">Generation failed, retry %1$d/%2$d in %3$d s</string>
+  <string name="chat_server_tool_running">Running built-in tool %1$s…</string>
+  <string name="chat_server_tool_done">Built-in tool %1$s completed</string>
   <string name="setting_provider_page_retry_override">Custom retry settings</string>
   <string name="setting_provider_page_retry_override_desc">When enabled, this provider uses its own retry configuration instead of the global default</string>
   <string name="setting_keep_alive_title">Keep alive in background</string>

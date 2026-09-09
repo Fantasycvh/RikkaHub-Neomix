@@ -1333,6 +1333,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_retry_partial_chars_desc">可见文本 ≥ 该值视为已产生有效输出（reasoning 不计，下限 1）</string>
   <string name="setting_retry_partial_chars_applied">当前生效：%1$d</string>
   <string name="generation_retry_waiting">生成失败，%1$d/%2$d 次重试，%3$d 秒后进行</string>
+  <string name="chat_server_tool_running">正在执行内置工具 %1$s…</string>
+  <string name="chat_server_tool_done">内置工具 %1$s 已完成</string>
   <string name="setting_provider_page_retry_override">自定义重试设置</string>
   <string name="setting_provider_page_retry_override_desc">开启后此提供商使用独立的重试配置，覆盖全局默认</string>
   <string name="setting_keep_alive_title">后台保活</string>
