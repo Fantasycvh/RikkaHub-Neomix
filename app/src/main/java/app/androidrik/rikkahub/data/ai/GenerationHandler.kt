@@ -803,17 +803,46 @@ internal fun isPartialOutput(
 internal fun isRetryableGenerationError(t: Throwable): Boolean {
     if (t is java.io.IOException) return true
     if (t is kotlinx.serialization.SerializationException) return true
+    // 额度耗尽是确定性失败：余额不会自恢复，等待无意义——快速失败走换 key / fallback
+    if (t.matchesAnyMarker(QUOTA_EXHAUSTED_MARKERS)) return false
+    // 限流：等窗口重置可解（无状态码的 SSE 流内限流错误在此兜底）
+    if (t.matchesAnyMarker(RATE_LIMITED_MARKERS)) return true
     val code = findHttpStatusCode(t.message) ?: return false
     return code == 408 || code == 425 || code == 429 || code in 500..599
 }
 
 /**
- * 换 key 可解决的错误：401/403（鉴权/凭证失效）+ 429（账户级限流，多账户场景换 key 可避开）。
+ * 换 key 可解决的错误：401/403（鉴权/凭证失效）+ 429（账户级限流，多账户场景换 key 可避开），
+ * 以及无状态码的 SSE 流内错误文本兜底（中转站 200 + error 事件）——额度耗尽/限流都是账户级问题。
  * 到此处的一定是零输出（流式半截 429 已被 #1812 分流拦截），换 key 无计费损失。
  */
 internal fun isKeySwitchingError(t: Throwable): Boolean {
-    val code = findHttpStatusCode(t.message) ?: return false
-    return code == 401 || code == 403 || code == 429
+    val code = findHttpStatusCode(t.message)
+    if (code == 401 || code == 403 || code == 429) return true
+    return t.matchesAnyMarker(QUOTA_EXHAUSTED_MARKERS) || t.matchesAnyMarker(RATE_LIMITED_MARKERS)
+}
+
+/** 账户额度耗尽特征：等待无用（余额不自恢复），换 key（换账户）或 fallback 模型可解 */
+private val QUOTA_EXHAUSTED_MARKERS = listOf(
+    "quota is not enough",       // new-api 系中转站（实测复制样例）
+    "insufficient quota",        // OpenAI 官方系
+    "insufficient_quota",
+    "exceeded your current quota",
+    "quota exceeded",
+    "余额不足", "额度不足",
+)
+
+/** 限流特征（TPM/RPM/速率）：等窗口重置或换 key（换账户）可解；锚定写法防 "tpm-mini" 之类误伤 */
+private val RATE_LIMITED_MARKERS = listOf(
+    "rate limit", "rate_limit", "ratelimit",
+    "too many requests",
+    "tpm/rpm", "exceeds tpm", "exceeds rpm", "tpm limit", "rpm limit",
+    "请求过于频繁", "触发限流",
+)
+
+private fun Throwable.matchesAnyMarker(markers: List<String>): Boolean {
+    val message = this.message?.lowercase() ?: return false
+    return markers.any { it in message }
 }
 
 /** 该提供商是否配置了多个可用 key（enabled 过滤后） */

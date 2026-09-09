@@ -66,6 +66,44 @@ class GenerationRetryTest {
         assertFalse(isKeySwitchingError(IOException("connect timeout")))
     }
 
+    // ---------- SSE 流内错误文本兜底（无状态码，复制自真实错误提示） ----------
+
+    @Test
+    fun `tpm rpm limit error is key switchable and wait retryable`() {
+        // 中转站 200 + 流内 error 事件，HttpException 无状态码
+        val streamError = Exception("inference exceeds tpm/rpm limit")
+        assertTrue(isKeySwitchingError(streamError))
+        assertTrue(isRetryableGenerationError(streamError))
+        // 非流式形态（带 429 状态码）不受影响
+        val httpError = Exception("Failed to get response: 429 {\"error\":{\"message\":\"inference exceeds tpm/rpm limit\"}}")
+        assertTrue(isKeySwitchingError(httpError))
+        assertTrue(isRetryableGenerationError(httpError))
+    }
+
+    @Test
+    fun `token quota exhausted switches key but never waits`() {
+        // new-api 系余额耗尽：request id 里的长数字串不得被误提取为状态码
+        val quota = Exception(
+            "token quota is not enough, token remain quota: ¥0.073324, need quota: ¥0.073752 " +
+                "(request id: 202609090425431078668348268d9d6Dw4MAYsr)"
+        )
+        assertTrue(isKeySwitchingError(quota))
+        assertFalse(isRetryableGenerationError(quota))
+        // OpenAI 官方形态
+        assertTrue(isKeySwitchingError(Exception("You exceeded your current quota, please check your plan and billing details")))
+        assertFalse(isRetryableGenerationError(Exception("insufficient_quota: this month's balance")))
+    }
+
+    @Test
+    fun `marker matching does not hijack unrelated errors`() {
+        // "tpm" 锚定写法：模型名含 tpm 不误伤
+        assertFalse(isKeySwitchingError(Exception("model not found: tpm-mini")))
+        assertFalse(isRetryableGenerationError(Exception("model not found: tpm-mini")))
+        // 普通参数错误不受兜底影响
+        assertFalse(isKeySwitchingError(Exception("This model's maximum context length is 4096 tokens")))
+        assertFalse(isRetryableGenerationError(Exception("This model's maximum context length is 4096 tokens")))
+    }
+
     @Test
     fun `hasMultipleEnabledKeys counts only enabled non-blank keys`() {
         // 空列表回退旧单 key 字段，不算多 key
