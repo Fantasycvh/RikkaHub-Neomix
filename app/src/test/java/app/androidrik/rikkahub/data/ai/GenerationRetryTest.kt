@@ -53,15 +53,16 @@ class GenerationRetryTest {
         assertFalse(RetrySetting().enabled)
     }
 
-    // ---------- isKeyAuthError / hasMultipleEnabledKeys ----------
+    // ---------- isKeySwitchingError / hasMultipleEnabledKeys ----------
 
     @Test
-    fun `key auth errors are 401 and 403 only`() {
-        assertTrue(isKeyAuthError(RuntimeException("Failed to get response: 401 unauthorized")))
-        assertTrue(isKeyAuthError(RuntimeException("status: 403 Forbidden")))
-        assertFalse(isKeyAuthError(RuntimeException("Failed to get response: 429 too many requests")))
-        assertFalse(isKeyAuthError(RuntimeException("Failed to get response: 500 internal")))
-        assertFalse(isKeyAuthError(IOException("connect timeout")))
+    fun `key switching errors are 401 403 and 429`() {
+        assertTrue(isKeySwitchingError(RuntimeException("Failed to get response: 401 unauthorized")))
+        assertTrue(isKeySwitchingError(RuntimeException("status: 403 Forbidden")))
+        // 429 账户级限流：多账户场景换 key 可避开（流式半截 429 已被 #1812 分流拦截）
+        assertTrue(isKeySwitchingError(RuntimeException("Failed to get response: 429 too many requests")))
+        assertFalse(isKeySwitchingError(RuntimeException("Failed to get response: 500 internal")))
+        assertFalse(isKeySwitchingError(IOException("connect timeout")))
     }
 
     @Test

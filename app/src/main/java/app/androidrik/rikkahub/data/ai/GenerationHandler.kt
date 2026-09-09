@@ -409,12 +409,13 @@ class GenerationHandler(
                 throw e
             } catch (e: Throwable) {
                 val next = retryIndex + 1
-                // 鉴权失败（401/403，天然零输出）且配置了多个 key：立即换 key 重试，
-                // 不等延迟——LRU KeyRoulette 会选下一个 key（provider 侧按 effectiveApiKeys 轮换）。
-                // 429 限流不在此列：可能是半截（#1812 约束保留草稿），且换 key 不解决服务端限流。
-                if (isKeyAuthError(e) && hasMultipleEnabledKeys(providerSetting)) {
+                // 鉴权失败（401/403）或账户限流（429，多账户场景换 key 可避开）且配置了多个 key：
+                // 立即换 key 重试，不等延迟——LRU KeyRoulette 会选下一个 key。
+                // 安全保证：#1812 分流——流式半截 429 已抛 GenerationPartialFailureException 被上方
+                // rethrow（保留草稿不换 key），能走到这里的一定是零输出，换 key 无计费损失。
+                if (isKeySwitchingError(e) && hasMultipleEnabledKeys(providerSetting)) {
                     retryIndex = next
-                    Log.w(TAG, "key auth failed, switching key and retrying: ${e.message}")
+                    Log.w(TAG, "key error, switching key and retrying: ${e.message}")
                     continue
                 }
                 if (next >= plan.delaysSeconds.size || !isRetryableGenerationError(e)) throw e
@@ -771,10 +772,13 @@ internal fun isRetryableGenerationError(t: Throwable): Boolean {
     return code == 408 || code == 425 || code == 429 || code in 500..599
 }
 
-/** 鉴权/凭证错误（401/403）：换 key 可解决；天然零输出，符合 #1812 零输出才自动重试约束 */
-internal fun isKeyAuthError(t: Throwable): Boolean {
+/**
+ * 换 key 可解决的错误：401/403（鉴权/凭证失效）+ 429（账户级限流，多账户场景换 key 可避开）。
+ * 到此处的一定是零输出（流式半截 429 已被 #1812 分流拦截），换 key 无计费损失。
+ */
+internal fun isKeySwitchingError(t: Throwable): Boolean {
     val code = findHttpStatusCode(t.message) ?: return false
-    return code == 401 || code == 403
+    return code == 401 || code == 403 || code == 429
 }
 
 /** 该提供商是否配置了多个可用 key（enabled 过滤后） */
