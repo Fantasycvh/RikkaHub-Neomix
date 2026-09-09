@@ -96,7 +96,20 @@ class GenerationHandler(
         // 仅限"零输出失败"（重试耗尽后仍无可见内容）——半截输出（GenerationPartialFailureException）
         // 保留草稿不 fallback（#1812 约束，避免丢已计费内容）；取消不 fallback。
         // 备用模型优先级：助手设置 > 全局默认（与主模型 chatModelId 的两级模式一致）
-        val fallbackModel = (assistant.fallbackChatModelId ?: settings.fallbackChatModelId)?.let { settings.findModelById(it) }
+        // 优先级：助手级 > 全局级。助手级 ID 悬空（模型被删/重建导致 ID 失效）时
+        // 回退到全局级——否则悬空的助手引用会遮蔽有效的全局配置（用户实测踩坑）。
+        val assistantFallbackModel = assistant.fallbackChatModelId?.let { settings.findModelById(it) }
+        if (assistant.fallbackChatModelId != null && assistantFallbackModel == null) {
+            Log.w(TAG, "assistant fallback model ${assistant.fallbackChatModelId} not found, trying global fallback")
+        }
+        val fallbackModel = assistantFallbackModel
+            ?: settings.fallbackChatModelId?.let { settings.findModelById(it) }
+        if (fallbackModel == null &&
+            (assistant.fallbackChatModelId != null || settings.fallbackChatModelId != null)
+        ) {
+            // 助手级与全局级都解析失败：fallback 不生效，必须可见
+            Log.w(TAG, "fallback model not found in providers, fallback disabled")
+        }
         val fallbackProvider = fallbackModel?.findProvider(settings.providers)
         val fallbackProviderImpl = fallbackProvider?.let { providerManager.getProviderByType(it) }
 
@@ -179,6 +192,9 @@ class GenerationHandler(
                     conversationModeInjectionIds = conversationModeInjectionIds,
                     conversationLorebookIds = conversationLorebookIds,
                     workspaceCwd = workspaceCwd,
+                    // 有 fallback 时压缩主模型重试预算（最多 2 次），快速切备用模型——
+                    // 否则连接类故障会先等完整个延迟序列（默认可达 100s+）才降级
+                    retryBudgetOverride = if (fallbackModel != null) 2 else null,
                 )
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,
@@ -392,10 +408,13 @@ class GenerationHandler(
         providerSetting: ProviderSetting,
         settings: Settings,
         processingStatus: MutableStateFlow<String?>?,
+        maxRetries: Int? = null,
         action: suspend () -> T,
     ): T {
         val plan = providerSetting.retryOption ?: settings.retrySetting
         if (!plan.enabled || plan.delaysSeconds.isEmpty()) return action()
+        // 重试预算：有 fallback 模型时压缩（快速失败切备用，避免长延迟重试拖慢恢复）
+        val retryBudget = maxRetries?.coerceAtMost(plan.delaysSeconds.size) ?: plan.delaysSeconds.size
 
         var retryIndex = -1 // 已执行的重试序号；首次请求前为 -1
         while (true) {
@@ -418,18 +437,18 @@ class GenerationHandler(
                     Log.w(TAG, "key error, switching key and retrying: ${e.message}")
                     continue
                 }
-                if (next >= plan.delaysSeconds.size || !isRetryableGenerationError(e)) throw e
+                if (next >= retryBudget || !isRetryableGenerationError(e)) throw e
                 retryIndex = next
                 val waitSec = plan.delaysSeconds[retryIndex].coerceAtLeast(0)
                 Log.w(
                     TAG,
-                    "generation failed, retry ${retryIndex + 1}/${plan.delaysSeconds.size} in ${waitSec}s: ${e.message}"
+                    "generation failed, retry ${retryIndex + 1}/$retryBudget in ${waitSec}s: ${e.message}"
                 )
                 if (processingStatus != null) {
                     processingStatus.value = context.getString(
                         R.string.generation_retry_waiting,
                         retryIndex + 1,
-                        plan.delaysSeconds.size,
+                        retryBudget,
                         waitSec,
                     )
                 }
@@ -459,6 +478,7 @@ class GenerationHandler(
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
+        retryBudgetOverride: Int? = null,
     ) {
         val internalMessages = buildList {
             val system = buildString {
@@ -538,6 +558,7 @@ class GenerationHandler(
                 providerSetting = provider,
                 settings = settings,
                 processingStatus = processingStatus,
+                maxRetries = retryBudgetOverride,
             ) {
                 // 快照：流中途失败时回滚已输出的部分内容，重试从干净状态重新生成
                 val snapshot = messages
@@ -579,6 +600,7 @@ class GenerationHandler(
                 providerSetting = provider,
                 settings = settings,
                 processingStatus = processingStatus,
+                maxRetries = retryBudgetOverride,
             ) {
                 val snapshot = messages
                 try {
