@@ -161,9 +161,21 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
         )
         vm.updateSettings(newSettings)
     }
+    // 使用该提供商模型作为主/备用模型的助手（删除后会悬空，删除前必须提示）
+    val affectedAssistants = settings.assistants.filter { assistant ->
+        provider.models.any { model ->
+            assistant.chatModelId == model.id || assistant.fallbackChatModelId == model.id
+        }
+    }
     val onDelete = {
         val newSettings = settings.copy(
-            providers = settings.providers - provider
+            providers = settings.providers - provider,
+            // 内置提供商删除 = 墓碑（默认回填逻辑跳过）；非内置直接移除
+            removedBuiltInProviderIds = if (provider.builtIn) {
+                settings.removedBuiltInProviderIds + provider.id
+            } else {
+                settings.removedBuiltInProviderIds
+            }
         )
         vm.updateSettings(newSettings)
         navController.popBackStack()
@@ -255,7 +267,8 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
                         },
                         onDelete = {
                             onDelete()
-                        }
+                        },
+                        affectedAssistantCount = affectedAssistants.size
                     )
                 }
 
@@ -281,7 +294,8 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
 private fun SettingProviderConfigPage(
     provider: ProviderSetting,
     onEdit: (ProviderSetting) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    affectedAssistantCount: Int = 0
 ) {
     var internalProvider by remember(provider) { mutableStateOf(provider) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -334,14 +348,12 @@ private fun SettingProviderConfigPage(
 
             Spacer(Modifier.weight(1f))
 
-            if (!internalProvider.builtIn) {
-                IconButton(
-                    onClick = {
-                        showDeleteDialog = true
-                    },
-                ) {
-                    Icon(HugeIcons.Delete01, null)
-                }
+            IconButton(
+                onClick = {
+                    showDeleteDialog = true
+                },
+            ) {
+                Icon(HugeIcons.Delete01, null)
             }
 
             IconButton(
@@ -383,7 +395,17 @@ private fun SettingProviderConfigPage(
                 Text(stringResource(R.string.confirm_delete))
             },
             text = {
-                Text(stringResource(R.string.setting_provider_page_delete_dialog_text))
+                // 内置提供商被助手引用时给更强警告（三件套第二件：悬空引用保护）
+                Text(
+                    if (affectedAssistantCount > 0) {
+                        stringResource(
+                            R.string.setting_provider_page_delete_dialog_affected,
+                            affectedAssistantCount,
+                        )
+                    } else {
+                        stringResource(R.string.setting_provider_page_delete_dialog_text)
+                    }
+                )
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {

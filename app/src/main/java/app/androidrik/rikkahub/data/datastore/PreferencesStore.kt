@@ -116,6 +116,8 @@ class SettingsStore(
 
         // 生成重试（全局默认，per-provider retryOption 覆盖；#1812 半截保留三字段同存）
         val RETRY_SETTING = stringPreferencesKey("retry_setting")
+        // 已删除的内置提供商（墓碑：默认回填跳过）
+        val REMOVED_BUILTIN_PROVIDERS = stringPreferencesKey("removed_builtin_providers")
 
         // 助手
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
@@ -212,6 +214,9 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
                 providers = JsonInstant.decodeFromString(preferences[PROVIDERS] ?: "[]"),
+                removedBuiltInProviderIds = preferences[REMOVED_BUILTIN_PROVIDERS]?.let {
+                    JsonInstant.decodeFromString<List<String>>(it).map { raw -> Uuid.parse(raw) }.toSet()
+                } ?: emptySet(),
                 retrySetting = preferences[RETRY_SETTING]?.let { JsonInstant.decodeFromString(it) }
                     ?: RetrySetting(),
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
@@ -269,9 +274,11 @@ class SettingsStore(
             )
         }
         .map {
-            var providers = it.providers.ifEmpty { DEFAULT_PROVIDERS }.toMutableList()
+            var providers = it.providers.toMutableList()
             DEFAULT_PROVIDERS.forEach { defaultProvider ->
-                if (providers.none { it.id == defaultProvider.id }) {
+                if (providers.none { it.id == defaultProvider.id } &&
+                    defaultProvider.id !in it.removedBuiltInProviderIds
+                ) {
                     providers.add(defaultProvider.copyProvider())
                 }
             }
@@ -405,6 +412,8 @@ class SettingsStore(
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
+            preferences[REMOVED_BUILTIN_PROVIDERS] =
+                JsonInstant.encodeToString(settings.removedBuiltInProviderIds.map { it.toString() })
             preferences[RETRY_SETTING] = JsonInstant.encodeToString(settings.retrySetting)
 
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
@@ -560,6 +569,8 @@ data class Settings(
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val providers: List<ProviderSetting> = DEFAULT_PROVIDERS,
+    /** 用户显式删除的内置提供商 id（墓碑）——默认回填逻辑跳过这些 */
+    val removedBuiltInProviderIds: Set<Uuid> = emptySet(),
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,
     val assistantTags: List<Tag> = emptyList(),
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),

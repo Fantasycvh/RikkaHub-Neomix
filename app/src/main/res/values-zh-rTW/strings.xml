@@ -903,6 +903,7 @@
   <string name="setting_provider_page_configuration">配置</string>
   <string name="setting_provider_page_configure_provider_override">配置提供商覆寫</string>
   <string name="setting_provider_page_delete_dialog_text">確定要刪除這個提供商嗎？此操作無法撤銷。</string>
+  <string name="setting_provider_page_delete_dialog_affected">被 %1$d 個助手用作主/備用模型，刪除後這些助手將無法生成。確定刪除？</string>
   <string name="setting_provider_page_deselect_models">取消全選</string>
   <string name="setting_provider_page_disabled">禁用</string>
   <string name="setting_provider_page_edit_model">編輯模型</string>

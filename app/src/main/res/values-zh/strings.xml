@@ -950,6 +950,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_configuration">配置</string>
   <string name="setting_provider_page_configure_provider_override">配置提供商重写</string>
   <string name="setting_provider_page_delete_dialog_text">确定要删除这个提供商吗？此操作无法撤销。</string>
+  <string name="setting_provider_page_delete_dialog_affected">被 %1$d 个助手用作主/备用模型，删除后这些助手将无法生成。确定删除？</string>
   <string name="setting_provider_page_deselect_models">取消全选</string>
   <string name="setting_provider_page_disabled">禁用</string>
   <string name="setting_provider_page_edit_model">编辑模型</string>
