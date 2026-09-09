@@ -1,7 +1,7 @@
 # 上游变更分析（综合版，2.4.11 → 2.5.0）
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
-> 当前 master 同步点：`6e0aa7d4`（2026-09-09 ff-only 同步并推送；上一同步点 `12ee935e` 2.5.0 tag）。
+> 当前 master 同步点：`a9b35ba2`（2026-09-10 ff-only 同步并推送 2.5.1 批次；上一同步点 `6e0aa7d4` 2026-09-09）。
 > 决策总原则：**等上游稳定后按需吸收**；触及 `GenerationHandler.kt` / `ChatService.kt` / `ChatInput.kt`（我们重改最重的文件）的提交一律手工适配，不直接 cherry-pick；所有 cherry-pick 需包名适配（`me.rerere.rikkahub` → `app.androidrik.rikkahub`）。
 
 ## 批次概览
@@ -131,6 +131,16 @@
 2. **近期**：`a7ee362f`（系统栏颜色）、`20e552f9`（会话头）
 3. **规划**：`5b4d7895`（时间提醒间隔，含持久化三件套）、`6e0aa7d4`/`05a85a09`（工具回执/自定义文本，ChatMessageTools 手工合）、`1a1e672e`（空格支持）
 4. **暂缓**：`7038e981`/`03246406`（workspace 大改+DB）、`3896b6d6`（Imggen 大改）
+
+## 2.5.1 批次评估（2026-09-10，`6e0aa7d4`..`a9b35ba2`，3 提交）
+
+| 提交 | 内容 | 分类 | 备注 |
+|---|---|---|---|
+| `42b933d8` | debug 启动图标 DEV 角标（5 文件全在 `app/src/debug/` 新增） | **D** | 纯 debug 变体资源新增，零冲突（fork debug 变体存在）；debug/正式一眼区分，可顺手吸收 |
+| `513b784c` | 翻译快捷方式（`shortcuts.xml` + `ic_translate`）+ RouteActivity 统一 Intent 导航 | **B（中）** | 翻译入口增量有价值；但 RouteActivity +70/-35 重排与 fork 定制（分享 EXTRA_STREAM 兜底、翻译适配、turbo F6 待核区）冲突集中，需手工合；Manifest +5 注册 shortcuts |
+| `a9b35ba2` | bump 2.5.1 | **跳过** | 版本号提交，fork 自有版本体系（当前 v1.0.0 草稿） |
+
+**结论**：本批无紧急项。DEV 角标可低成本顺手吸收；翻译快捷方式按需（RouteActivity 冲突区手工合，成本中等）。
 
 ## 同步方式（ff-only）
 
