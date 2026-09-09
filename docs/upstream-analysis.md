@@ -79,7 +79,7 @@
 | `ef94834a` | MCP kotlin-sdk 换 client-only | 完整包 server 侧是 MCP host（⑥）依赖，避免回切，暂不吸收（2026-09-06 决策） |
 | `d3a53e0a` | PickVisualMedia | 上游自撤，失效 |
 | ~~2.5.0 队列~~（`66de8b30`） | ~~大功能~~ | **✅ 已自研落地（2026-09-09，`3a911f1e`+`6680668d`）**：生成间连发入队、轮次后自动派发、失败暂停、附件清理；保活走 fork 独立 KeepAliveService |
-| 语音 `a621e277` / ASR 双向流 `580e05d6` | 大功能 | 暂缓；语音与 roadmap 合并评估 |
+| ~~语音 `a621e277` / ASR 双向流 `580e05d6`~~ | ~~大功能~~ | **✅ 已落地（2026-09-10）**：服务端 VAD 语音轮闭环（`1c499b79`/`d2789207`/`bf0cf85a`/`a80fbd47`/`27dc690d`），OpenAIRealtime/DashScope/Volcengine 支持 |
 | ChatToolFactory `097cdb90` | 纯重构 | **不吸收**（2026-09-09 复核）：结构重组零功能收益，fork ChatService/GenerationHandler 深层定制碰撞成本高；除非出现第二个工具集装配调用方（MCP host / web 生成） |
 
 ## 2.5.0 后批评估（2026-09-09，`12ee935e`..`6e0aa7d4`，20 提交）
