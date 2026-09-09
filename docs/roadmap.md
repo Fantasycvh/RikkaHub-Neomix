@@ -73,7 +73,7 @@
 | — | QuickJS 插件系统 | **明确不做**（已有 eval_javascript / MCP / Skill / Workspace 四类机制覆盖） |
 | — | 生活感知/健康/云同步 | **明确不做** |
 
-**状态（2026-08-16）**：QuickJS 插件系统**确定不做**（已有 eval_javascript/MCP/Skill/Workspace 覆盖）；**毛玻璃已实现**（v2.4.10.5.2 三开关：输入栏/列表/顶栏独立），三色映射定制仍待；**MCP mTLS 已实现**（v2.4.9）；**动态添加 Skill 已实现**（v2.4.9）；多 key 故障转移待立项。详见「八、状态记录」。
+**状态（2026-08-16）**：QuickJS 插件系统**确定不做**（已有 eval_javascript/MCP/Skill/Workspace 覆盖）；**毛玻璃已实现**（v2.4.10.5.2 三开关：输入栏/列表/顶栏独立），三色映射定制仍待；**MCP mTLS 已实现**（v2.4.9）；**动态添加 Skill 已实现**（v2.4.9）；**提供商多 key 已落地**（2026-09-09，见三.5）。详见「八、状态记录」。
 
 ---
 
@@ -145,7 +145,7 @@
 
 ---
 
-## 三.5、提供商多 key 故障转移（评估，待立项）
+## 三.5、提供商多 key 故障转移（✅ 已落地 2026-09-09，真机验证）
 
 **需求**：LLM 提供商（OpenAI/Claude/Google 等）配置多个 API key，请求遇 key 失效（401/403/429）自动切换下一个重试。
 
@@ -206,6 +206,7 @@ data class ApiKeyEntry(
 
 - 2026-08-16：评估完成（可行性高，难度中；轮换已有，仅缺失败转移 + UI 多输入框）。**用户待时间安排后立项，暂不实现**。
 - 2026-09-06：补充与搜索多 key 的借鉴关系分析（见上节）：错误分类/诊断/克制原则直接搬，包装器模式须改造为 `withGenerationRetry` 内的重试原因，换 key 仅限零输出失败（与 #1812 分流兼容）。实施顺序：先搜索侧（三）跑通三件套再上提供商侧。
+- 2026-09-09：**全部落地并真机验证**。提交链：`2726b287`（数据模型 ApiKeyEntry + effectiveApiKeys）→ `03131ffa`（401/403 换 key）→ `c988652c`（每 key 一框编辑器）→ `68195b91`（fallback 模型链）→ `a040f947`（全局默认备用，助手 > 全局两级）→ `7c7e7a3f`（429 换 key）→ `e9d32dee`（顺序优先级 + 拖拽排序，default() 从 LRU 改 Order）→ `e902f630`（Gemini schema 补 items）→ `e0986cb2`（fallback 悬空回退全局 + 有 fallback 压缩重试预算为 2）→ `37e28306`（全局备用持久化三件套——a040f947 漏接线是四轮排查最终根因）→ `d45e2d0c`（换 key 实际轮转修复：顺序模式首个 key 恒定导致假切换 + 无上界死循环；改为 action 接收 providerSetting + 瞬态副本轮转，每 key 至多试一次）→ `01581e5c`（SSE 流内错误文本兜底：额度耗尽可换 key 不等待、限流可换可等待，覆盖中转站 200+流内 error 无状态码形态）。**验证**：fallback 链真机生效（悬空→全局→0.3s 切换）；换 key 真机生效（真实 `inference exceeds tpm/rpm limit` → `key error, switching key (1 key(s) left)` → 第二 key 成功；双 key 皆限流时等待重试恢复）。搜索侧（三）的结构化多 key 仍待做。
 
 ---
 
@@ -464,4 +465,4 @@ data class ApiKeyEntry(
 - 2026-09-06：**未实现项全量盘点**（完整清单见 `docs/handoff-2026-09-04.md` 第七节）。上游 2.4.14/2.4.16 未吸收批次（Gemini 工具共存须与 2.4.16 修复捆绑、TTS 合成自动重试、MCP client-only/cloudflare OAuth/通知图标/qwen 音色等 1 行小件、终端标签关闭确认等 C 类按需）；peer-apps 借鉴落地顺序 ②-⑥（ContextBudgetPlanner、LoopGuard+forget、WifiLock 补强、世界书 seed 三重迁移、MCP host 按需）；自有规划仍开放（提供商/搜索多 key 失败转移待立项、R3.2 块级流式渲染待实现、本地 OCR 暂缓）；issue 关注新增 #1644（OCR reasoning_effort=none 400）跟踪。已闭环：终端 ①④ 落地（`fbfcde5e`/`958f011e`）、②⑥ 放弃；#1812 实现待真机测试、阈值可配置化完成、v2 续写放弃；turbo 尾巴仅剩 F6 待定。
 - 2026-09-07：**TikZ 渲染管线重构——dvisvgm 移除，mupdf SVG 接管（1138120d + cb2bc18a，真机 12 测试全绿）**。tectonic PDF（自动内嵌字体）→ 自写 JNI 桥调 mupdf 1.26.8 `fz_new_svg_device_with_id`（FZ_SVG_TEXT_AS_TEXT）→ `<text>` 保留型 SVG。文字三大根因修复：rmfamily 重定义对 node 无效（改 `tikzset{every node/.style={font=<zhfont>}}`）；DroidSansFallback 无拉丁（换 Noto Sans SC，droidsans.ttf 槽位保持）；wrapDocument 恒注入 dvisvgm 驱动致 PDF 图形丢（按 format 注入）。移除 libdvisvgm、svgconvert 进程、CM pfb/fontmap 资产。JNI 坑：SVG UTF-8 需转 Modified UTF-8 才能 NewStringUTF。详见 [[tikz-rendering-direction]] 记忆与 tikz-rendering-tectonic-postmortem.md 待补。
 - 2026-09-08：**TikZ 文字渲染定稿 TEXT_AS_PATH + 上游 2.5.0 同步**。①TikZ：文字最终改 mupdf `FZ_SVG_TEXT_AS_TEXT→FZ_SVG_TEXT_AS_PATH`（`1c09d5cd`）——TEXT 态输出 `<text>` 元素、AndroidSVG 渲不了中文 glyph；PATH 态由 mupdf 从 PDF 内嵌字形直接提轮廓 `<path>`，中英文矢量渲染与字体查找无关（修正 2026-09-07 条目仍是 TEXT_AS_TEXT 的早期描述）。TikzSvgCache CACHE_VERSION 随链升 v4。**dvisvgm 矢量链正式废弃**（文字悬空/字体映射遗留，真相见 tikz postmortem 8.4.9）。②上游：master ff-only 同步至 2.5.0（`12ee935e`），16 提交评估并入综合文档 `docs/upstream-analysis.md`（原 2.4.11/2.4.14/2.4.16/2.5.0 四份分析已合并删除）；重点待吸收：终端 Tab 标题 `104040df`、工具审批修复 `55506496`、Exa 新鲜度 `a8f8c3a1`；消息队列/语音/ASR 双向流大功能块暂缓。
-- 2026-09-08 晚：**TikZ #hex 全链路收官 + 缓存持久化确认**。①**完整 documentclass 保护（`5e2c3858`）**：wrapDocument 先判 documentclass→完整文档只做弧度归一化、不碰 #hex（用户自管 preamble，避免 Undefined color）；裸片段才做 #hex 替换+定义注入。②**#hex 扩展（`72d5ee90`）**：3 位 `#RGB` 按位展开（`#f80`→`ff8800`）、8 位 alpha 取前 6、**仅 `[...]` 选项上下文替换**（避免 node 文本 #hex 误伤）；13 单测全绿。③**渲染持久化确认**：结果落 `files/tikz_cache/`（app 私有），键 `sha256("v4:"+code)` 内容寻址，CACHE_VERSION v4 + 目录标记自动清空；**改渲染输出必同步递增 CACHE_VERSION**（5b063217 漏递增→旧 v3 键命中坏 SVG 的教训）。④**待办——裁剪 A4 空白**：当前 SVG 为 A4 整页图居中留白，借鉴 math-plus `standalone[border]`/preview tightpage 裁到图 bbox；**已定位坑：bundle 补文件须放根路径**（preview.sty 放 `tex/latex/preview/` 子目录 kpse 找不到→`preview.sty not found`，用户已回退到 b9a7f620 基线正常态；修正版裁剪（preview 根路径）可另开一轮，或改为补 `standalone.cls` 走 math-plus 同款）。
+- 2026-09-08 晚：**TikZ #hex 全链路收官 + 缓存持久化确认**。①**完整 documentclass 保护（`5e2c3858`）**：wrapDocument 先判 documentclass→完整文档只做弧度归一化、不碰 #hex（用户自管 preamble，避免 Undefined color）；裸片段才做 #hex 替换+定义注入。②**#hex 扩展（`72d5ee90`）**：3 位 `#RGB` 按位展开（`#f80`→`ff8800`）、8 位 alpha 取前 6、**仅 `[...]` 选项上下文替换**（避免 node 文本 #hex 误伤）；13 单测全绿。③**渲染持久化确认**：结果落 `files/tikz_cache/`（app 私有），键 `sha256("v4:"+code)` 内容寻址，CACHE_VERSION v4 + 目录标记自动清空；**改渲染输出必同步递增 CACHE_VERSION**（5b063217 漏递增→旧 v3 键命中坏 SVG 的教训）。④**待办——裁剪 A4 空白**：当前 SVG 为 A4 整页图居中留白，借鉴 math-plus `standalone[border]`/preview tightpage 裁到图 bbox；**已定位坑：bundle 补文件须放根路径**（preview.sty 放 `tex/latex/preview/` 子目录 kpse 找不到→`preview.sty not found`，用户已回退到 b9a7f620 基线正常态；修正版裁剪（preview 根路径）可另开一轮，或改为补 `standalone.cls` 走 math-plus 同款）。- 2026-09-09：**提供商多 key + fallback 模型链全部落地（v2.4.10.23/247 草稿，真机验证）**。①多 key：ApiKeyEntry 结构化存储（每 key 一框 + 启停 + 拖拽排序=优先级），失败转移覆盖 401/403/429/余额耗尽/TPM-RPM 限流（后者为 SSE 流内错误文本兜底，中转站 200+流内 error 无状态码形态）；仅零输出失败换 key（#1812 半截保留草稿不换）。②fallback 模型链：助手级 > 全局级两级配置，主模型整轮失败切备用重跑；悬空引用自动回退全局；有 fallback 时主模型重试预算压缩为 2 快速切换。③排查三连教训：重试预算长（100s+）易误判"没 fallback"；悬空引用遮蔽全局（`?:` 走不到）；**Settings 新字段必须补 PreferencesStore 三件套**（key/读/写，漏了 UI 能选重启即丢）；换 key 轮转须真实前进（顺序模式恒返首个 key=假切换 + 死循环，action 改收 providerSetting 轮转瞬态副本修复）。详见三.5 状态与 [[provider-multikey-design]]/[[settings-persistence-trio]] 记忆。发布：草稿资产与更新日志已重建替换（顺序优先级语义修正），待转正。

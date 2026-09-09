@@ -14,7 +14,7 @@ RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，�
 
 ## 📥 下载
 
-🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.10.21`）
+🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.10.22`）
 
 > 本仓库为私有测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**。
 
@@ -35,6 +35,8 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 |---|---|
 | 🌐 **网络代理支持** | 恢复自上游 1.6.15 的 HTTP 代理功能：支持 HTTP 代理 + 基本认证，OpenAI / Claude / Google 三种 Provider 的请求均走代理；设置页提供独立「网络代理」tab |
 | 🔄 **模型拉取反馈增强** | 借鉴 Cherry Studio：填写 Base URL / API Key 后自动拉取提供商模型列表；拉取失败不再静默，显示错误卡片（含原因）+ 重试按钮；底部工具栏新增「获取模型列表」显式刷新；候选模型经搜索/过滤/全选勾选添加 |
+| 🔑 **提供商多 Key** | 每 key 独立输入框 + 启用开关 + 拖拽排序（列表顺序=优先级，首个=首选）；失败转移覆盖 401/403/429、余额耗尽、TPM/RPM 限流（含中转站 SSE 流内错误无状态码形态）——账户级故障自动切下一个 key，仅零输出失败换 key（半截保留草稿不换）；兼容旧单 key 与分隔符多 key |
+| 🛟 **备用模型链（fallback）** | 助手可配置备用模型：主模型整轮失败自动切备用模型重跑；助手级 > 全局默认两级配置，引用失效（模型被删）自动回退全局；有 fallback 时压缩主模型重试预算快速切换 |
 | 💾 **备份恢复兼容** | 兼容上游旧包名（`me.rerere.`）导出的备份：恢复时自动迁移包名（SettingsJsonMigrator V0），S3 / WebDAV / 本地恢复均可用 |
 | 📂 **远端备份目录区分** | 远端备份默认目录改为 `rikkahub_plus_backups`，与上游备份互不混淆 |
 | 🧹 **移除上游营销功能** | 移除应用内更新检查、赞助入口/捐赠页/启动次数赞助弹窗、导出图片中的 `rikka-ai.com` 品牌水印 |
@@ -44,7 +46,7 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 💎 **毛玻璃三开关** | 输入栏 / 列表·背景 / 顶栏 模糊各自独立开关（enableBlurEffect / enableGlassTheme / enableTopBarBlur），兄弟层架构无自引用 |
 | 🛡️ **TikZ 崩溃防线** | 三层防线（TikzJax 渲染前尺寸校验 / renderSvg 生成端上限 / plot 采样值上限）+ 高度哨兵 HeightClamp + 文本按码点截断——杜绝巨型 SVG（height 4.58e11）导致 Compose 布局溢出崩溃 |
 | 💬 **对话分享/导出** | 列表页长按「分享对话」+ 聊天内顶栏导出双入口，Markdown / 图片 PNG 两形态（系统分享 ACTION_SEND），支持版本范围可选 |
-| 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10` 批次：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721）；以及 `2.4.11`-`2.5.0` 批次精选：终端多 Tab 后台运行（`3a533a6a`）、空 tool schema 归一化（#1781）、workpace stdin EOF（#1605）、合成消息不参与模板（#1790）、fork 会话继承 folder/cwd（#1778）、代码块导出截断模式（#1841）。master 已 ff-only 同步至 `2.5.0`；详细评估见 `docs/upstream-analysis.md`。TikZ 渲染已定稿 mupdf SVG 桥（TEXT_AS_PATH 轮廓，中英文字形矢量，dvisvgm 链移除） |
+| 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10` 批次：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721）；以及 `2.4.11`-`2.5.0` 批次精选：终端多 Tab 后台运行（`3a533a6a`）、空 tool schema 归一化（#1781）、workpace stdin EOF（#1605）、合成消息不参与模板（#1790）、fork 会话继承 folder/cwd（#1778）、代码块导出截断模式（#1841）；2026-09-08 批次：工具审批丢失修复（`55506496`）、think 标签误判锚定（`85402745`/#1725 系）、Skill frontmatter SnakeYAML 正规解析、纯图片/纯附件消息、模型注册组补充、自定义 Response API 路径、provider 阻塞工作移 IO 调度、R8 JWT keep 规则。master 已 ff-only 同步至 `2.5.0`；详细评估见 `docs/upstream-analysis.md`。TikZ 渲染已定稿 mupdf SVG 桥（TEXT_AS_PATH 轮廓，中英文字形矢量，dvisvgm 链移除） |
 
 ## 🎨 核心功能（继承上游）
 
