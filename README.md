@@ -41,13 +41,8 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 📂 **远端备份目录区分** | 远端备份默认目录改为 `rikkahub_plus_backups`，与上游备份互不混淆 |
 | 🧹 **移除上游营销功能** | 移除应用内更新检查、赞助入口/捐赠页/启动次数赞助弹窗、导出图片中的 `rikka-ai.com` 品牌水印 |
 | 🧮 **TikZ 图表渲染** | **mupdf路线`$$...$$` 内嵌 + ```tikz 围栏双触发；导出 HTML 内嵌 `<svg>` 矢量；系统提示词引导模型输出闭合 `$$` 格式 |
-| 🧩 **动态添加 Skill（#1031）** | `install_skill` / `save_skill` AI 工具：从 GitHub 安装 Skill / 把对话经验保存为技能（SkillInstaller 共享类，SkillsVM 与 AI 工具共用） |
-| 🔐 **MCP mTLS 客户端证书（#1687）** | MCP 服务支持上传客户端证书（P12/PEM + 密码），OkHttp SSLContext 双向认证；设置页完整 UI |
-| 💎 **毛玻璃三开关** | 输入栏 / 列表·背景 / 顶栏 模糊各自独立开关（enableBlurEffect / enableGlassTheme / enableTopBarBlur），兄弟层架构无自引用 |
 | 🛡️ **TikZ 崩溃防线** | 三层防线（TikzJax 渲染前尺寸校验 / renderSvg 生成端上限 / plot 采样值上限）+ 高度哨兵 HeightClamp + 文本按码点截断——杜绝巨型 SVG（height 4.58e11）导致 Compose 布局溢出崩溃 |
 | 💬 **对话分享/导出** | 列表页长按「分享对话」+ 聊天内顶栏导出双入口，Markdown / 图片 PNG 两形态（系统分享 ACTION_SEND），支持版本范围可选 |
-| 💬 **消息发送队列** | 生成回复期间可继续发送消息：新消息自动排队，等当前轮次（含待审批工具）结束后逐条派发；失败暂停可恢复；排队消息可编辑/撤销，附件引用联动清理 |
-| 🎙️ **语音对话模式** | 服务端 VAD 语音轮闭环：语音输入自动识别 → 助手回复 TTS 自动朗读 → 说完继续聆听（OpenAI Realtime / 通义千问 / 火山引擎 ASR）；与消息队列共享派发链路 |
 | 🗑️ **允许删除内置提供商** | 系统内置 AI 服务提供商可真删除（墓碑 + 悬空引用保护 + 迁移兼容），删除前提示受影响助手计数 |
 | 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10` 批次：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721）；以及 `2.4.11`-`2.5.0` 批次精选：终端多 Tab 后台运行（`3a533a6a`）、空 tool schema 归一化（#1781）、workpace stdin EOF（#1605）、合成消息不参与模板（#1790）、fork 会话继承 folder/cwd（#1778）、代码块导出截断模式（#1841）；2026-09-08 批次：工具审批丢失修复（`55506496`）、think 标签误判锚定（`85402745`/#1725 系）、Skill frontmatter SnakeYAML 正规解析、纯图片/纯附件消息、模型注册组补充、自定义 Response API 路径、provider 阻塞工作移 IO 调度、R8 JWT keep 规则；2026-09-09/09-10 批次：搜索侧多 key 结构化与失败转移、Gemini 捆绑（单数组 tools + ServerTool 流式重实现 + OpenAI 兼容 items 归一化）、终端 Tab 动态标题、cloudflare MCP OAuth、TTS 合成自动重试、Exa 新鲜度、qwen 音色（Serena）、统计页 JSON 兜底、edited_files 安全 cast、DeepSeek V4.1 Flash、工具执行中展开详情、消息队列与语音/ASR 双向流（2.5.0 大块自研适配）。master 已 ff-only 同步至 `2.5.0`；详细评估见 `docs/upstream-analysis.md`。TikZ 渲染已定稿 mupdf SVG 桥（TEXT_AS_PATH 轮廓，中英文字形矢量，dvisvgm 链移除） |
 
