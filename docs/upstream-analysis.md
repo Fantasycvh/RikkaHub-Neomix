@@ -139,7 +139,7 @@ git fetch upstream
 git checkout master
 git merge --ff-only upstream/master
 git push origin master
-git checkout feat/restore-proxy   # 特性分支独立演进
+git checkout imperfect-customization-and-refinement   # 特性分支独立演进
 ```
 
 ## 注意点（合并历史教训）
