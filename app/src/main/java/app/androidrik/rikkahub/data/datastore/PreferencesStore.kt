@@ -95,6 +95,7 @@ class SettingsStore(
         // 模型选择
         val FAVORITE_MODELS = stringPreferencesKey("favorite_models")
         val SELECT_MODEL = stringPreferencesKey("chat_model")
+        val FALLBACK_CHAT_MODEL = stringPreferencesKey("fallback_chat_model")
         val FAST_MODEL = stringPreferencesKey("fast_model")
         val TITLE_MODEL = stringPreferencesKey("title_model")
         val TRANSLATE_MODEL = stringPreferencesKey("translate_model")
@@ -185,6 +186,7 @@ class SettingsStore(
                 } ?: emptyList(),
                 chatModelId = preferences[SELECT_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
+                fallbackChatModelId = preferences[FALLBACK_CHAT_MODEL]?.let { Uuid.parse(it) },
                 fastModelId = preferences[FAST_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
                 titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) },
@@ -375,6 +377,9 @@ class SettingsStore(
 
             preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
             preferences[SELECT_MODEL] = settings.chatModelId.toString()
+            settings.fallbackChatModelId?.let {
+                preferences[FALLBACK_CHAT_MODEL] = it.toString()
+            } ?: preferences.remove(FALLBACK_CHAT_MODEL)
             preferences[FAST_MODEL] = settings.fastModelId.toString()
             settings.titleModelId?.let {
                 preferences[TITLE_MODEL] = it.toString()
