@@ -23,7 +23,15 @@ class ConversationSession(
     initial: Conversation,
     private val scope: CoroutineScope,
     private val onIdle: (Uuid) -> Unit,
+    private val onGenerationFinished: (Uuid, Throwable?) -> Unit = { _, _ -> },
 ) {
+    // 待发消息队列（生成期间入队，当前轮次结束后自动派发）
+    val messageQueue = MessageQueue()
+
+    // 从队列取出到写入会话历史之间，附件仍需作为有效引用保留。
+    @Volatile
+    var submittingMessage: QueuedMessage? = null
+        internal set
     // 会话状态
     val state = MutableStateFlow(initial)
 
@@ -37,7 +45,9 @@ class ConversationSession(
     private val _generationJob = MutableStateFlow<Job?>(null)
     val generationJob: StateFlow<Job?> = _generationJob.asStateFlow()
     val isGenerating: Boolean get() = _generationJob.value?.isActive == true
-    val isInUse: Boolean get() = refCount.get() > 0 || isGenerating
+    val isInUse: Boolean
+        get() = refCount.get() > 0 || isGenerating ||
+                messageQueue.state.value.messages.isNotEmpty()
 
     // 所有活动生成/审批协程（含排队等待前任的）：stopGeneration 全链取消
     private val activeJobs = mutableSetOf<Job>()
@@ -97,6 +107,8 @@ class ConversationSession(
                 // （移植自 rikkahub-turbo c897647）
                 if (_generationJob.value === job) {
                     _generationJob.value = null
+                    // 队列派发钩子：失败暂停队列，结束后取下一个
+                    onGenerationFinished(id, cause)
                 }
             }
             if (refCount.get() <= 0) {

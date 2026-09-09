@@ -38,6 +38,8 @@ import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FavoriteRepository
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.ChatService
+import app.androidrik.rikkahub.service.MessageQueueState
+import app.androidrik.rikkahub.service.QueuedMessage
 import app.androidrik.rikkahub.ui.hooks.writeStringPreference
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import java.util.Locale
@@ -172,6 +174,20 @@ class ChatVM(
 
         chatService.sendMessage(_conversationId, content, answer)
     }
+
+    // ---- 消息队列（发送不打断生成：入队等当前轮次结束后自动派发） ----
+
+    val messageQueue: StateFlow<MessageQueueState> = chatService.getMessageQueueFlow(_conversationId)
+
+    fun removeQueuedMessage(messageId: Uuid) = chatService.removeQueuedMessage(_conversationId, messageId)
+
+    fun beginEditQueuedMessage(messageId: Uuid): QueuedMessage? =
+        chatService.beginEditQueuedMessage(_conversationId, messageId)
+
+    fun finishEditQueuedMessage(messageId: Uuid, parts: List<UIMessagePart>?) =
+        chatService.finishEditQueuedMessage(_conversationId, messageId, parts)
+
+    fun resumeMessageQueue() = chatService.resumeMessageQueue(_conversationId)
 
     fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {
         if (parts.isEmptyInputMessage()) return

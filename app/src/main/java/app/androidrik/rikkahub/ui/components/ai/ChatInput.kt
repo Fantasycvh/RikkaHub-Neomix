@@ -83,6 +83,7 @@ import dev.chrisbanes.haze.blur.material3.Material3
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.asr.ASRStatus
@@ -112,6 +113,9 @@ import app.androidrik.rikkahub.ui.context.LocalASRState
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
+import app.androidrik.rikkahub.service.MessageQueueState
+import app.androidrik.rikkahub.service.QueuedMessage
+import kotlin.uuid.Uuid
 import app.androidrik.rikkahub.utils.SoundEffectPlayer
 import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.seconds
@@ -133,6 +137,11 @@ fun ChatInput(
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
+    messageQueue: MessageQueueState = MessageQueueState(),
+    onRemoveQueuedMessage: (Uuid) -> Unit = {},
+    onBeginEditQueuedMessage: (Uuid) -> QueuedMessage? = { null },
+    onFinishEditQueuedMessage: (Uuid, List<UIMessagePart>?) -> Unit = { _, _ -> },
+    onResumeMessageQueue: () -> Unit = {},
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -229,6 +238,14 @@ fun ChatInput(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    MessageQueuePanel(
+                        state = messageQueue,
+                        onRemove = onRemoveQueuedMessage,
+                        onBeginEdit = onBeginEditQueuedMessage,
+                        onFinishEdit = onFinishEditQueuedMessage,
+                        onResume = onResumeMessageQueue,
+                    )
+
                     if (state.messageContent.isNotEmpty()) {
                         MediaFileInputRow(state = state)
                     }

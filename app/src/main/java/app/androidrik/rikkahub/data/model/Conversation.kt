@@ -159,3 +159,21 @@ private fun UIMessagePart.fileUri(): Uri? = when (this) {
     is UIMessagePart.Audio -> url.takeIf { it.startsWith("file://") }?.toUri()
     else -> null
 }
+
+/** 递归提取 parts（含工具输出嵌套）中引用的本地文件 URL——消息队列附件清理用它判断引用。 */
+internal fun List<UIMessagePart>.localFileUrls(): Set<String> = buildSet {
+    this@localFileUrls.forEach { part ->
+        val url = when (part) {
+            is UIMessagePart.Image -> part.url
+            is UIMessagePart.Document -> part.url
+            is UIMessagePart.Video -> part.url
+            is UIMessagePart.Audio -> part.url
+            is UIMessagePart.Tool -> {
+                addAll(part.output.localFileUrls())
+                null
+            }
+            else -> null
+        }
+        if (url?.startsWith("file://") == true) add(url)
+    }
+}

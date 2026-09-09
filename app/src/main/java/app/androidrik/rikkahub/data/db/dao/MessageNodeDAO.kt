@@ -46,6 +46,10 @@ interface MessageNodeDAO {
 
     @RawQuery
     suspend fun getMessageCountPerDayRaw(query: SupportSQLiteQuery): List<MessageDayCount>
+    // 队列附件清理：判断某 file:// URL 是否仍被任何消息 JSON 引用（保守保留所有分支出现的 URL）。
+    @Query("SELECT EXISTS(SELECT 1 FROM message_node WHERE instr(messages, :encodedFileUrl) > 0)")
+    suspend fun hasFileReference(encodedFileUrl: String): Boolean
+
 }
 
 data class MessageTokenStats(
@@ -56,6 +60,7 @@ data class MessageTokenStats(
 )
 
 data class MessageDayCount(val day: String, val count: Int)
+
 
 // 在 json_each() 的参数内校验 JSON，避免损坏行导致整个统计查询失败。
 // 使用 CASE 而非依赖 WHERE 条件的求值顺序，无效 JSON 按空数组处理。
