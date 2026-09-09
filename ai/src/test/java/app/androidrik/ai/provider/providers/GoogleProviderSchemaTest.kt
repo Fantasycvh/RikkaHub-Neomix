@@ -1,6 +1,9 @@
 package app.androidrik.ai.provider.providers
 
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -67,3 +70,34 @@ class GoogleProviderSchemaTest {
         assertEquals("integer", args["items"]!!.jsonObject["type"]?.jsonPrimitive?.contentOrNull)
     }
 }
+
+    @Test
+    fun `malformed type node does not crash and list-form type gets items`() {
+        // 畸形 type（JsonObject）：此前 `value["type"]?.jsonPrimitive` 抛
+        // "Element class JsonObject is not a JsonPrimitive"——OpenAI 兼容路径加归一化后暴露
+        val malformed = buildJsonObject {
+            put("args", buildJsonObject {
+                put("type", buildJsonObject { put("\$ref", "SomeType") })
+            })
+        }
+        val out1 = malformed.ensureArrayItems().jsonObject
+        // 不抛异常；畸形节点原样保留（非数组不补 items）
+        assertEquals(
+            "SomeType",
+            out1["args"]!!.jsonObject["type"]!!.jsonObject["\$ref"]?.jsonPrimitive?.contentOrNull
+        )
+
+        // type 列表形态 ["array","null"]：按数组处理，补 items
+        val listType = buildJsonObject {
+            put("outputs", buildJsonObject {
+                put("type", buildJsonArray {
+                    add(JsonPrimitive("array"))
+                    add(JsonPrimitive("null"))
+                })
+            })
+        }
+        val out2 = listType.ensureArrayItems().jsonObject
+        val outputs = out2["outputs"]!!.jsonObject
+        assertEquals("array", outputs["type"]!!.jsonArray[0].jsonPrimitive.contentOrNull)
+        assertNotNull(outputs["items"])
+    }

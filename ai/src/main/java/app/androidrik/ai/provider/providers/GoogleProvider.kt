@@ -847,7 +847,7 @@ internal fun JsonElement.ensureArrayItems(): JsonElement {
     val obj = this as? JsonObject ?: return this
     return buildJsonObject {
         obj.forEach { (key, value) ->
-            if (value is JsonObject && value["type"]?.jsonPrimitive?.contentOrNull == "array") {
+            if (value is JsonObject && value.isArrayTyped()) {
                 // 数组类型：确保 items 存在（缺则 string），再递归包装 items 与其余字段
                 val resolvedItems = value["items"] ?: buildJsonObject { put("type", "string") }
                 put(key, buildJsonObject {
@@ -858,5 +858,18 @@ internal fun JsonElement.ensureArrayItems(): JsonElement {
                 put(key, value.ensureArrayItems())
             }
         }
+    }
+}
+
+/**
+ * type 判定：`"array"` 或 type 列表含 "array"（兼容 `type:["array","null"]`）；畸形 type
+ * （JsonObject/其他非原始类型）按非数组处理、不抛——真实 MCP schema 可能混入畸形节点。
+ */
+private fun JsonObject.isArrayTyped(): Boolean {
+    val typeElement = this["type"] ?: return false
+    return when (typeElement) {
+        is JsonPrimitive -> typeElement.contentOrNull == "array"
+        is JsonArray -> typeElement.any { (it as? JsonPrimitive)?.contentOrNull == "array" }
+        else -> false
     }
 }
