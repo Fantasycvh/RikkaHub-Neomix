@@ -5,6 +5,8 @@ import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
 @Serializable
+const val VOLCENGINE_ASR_WEBSOCKET_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
+
 sealed class ASRProviderSetting {
     abstract val id: Uuid
     abstract val name: String
@@ -70,9 +72,10 @@ sealed class ASRProviderSetting {
         override val id: Uuid = Uuid.random(),
         override val name: String = "Volcengine ASR",
         val apiKey: String = "",
-        val websocketUrl: String = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
+        val websocketUrl: String = VOLCENGINE_ASR_WEBSOCKET_URL,
         val resourceId: String = "volc.seedasr.sauc.duration",
         val language: String = "",
+        val silenceDurationMs: Int = 800,
     ) : ASRProviderSetting() {
         override fun copyProvider(
             id: Uuid,
@@ -85,7 +88,8 @@ sealed class ASRProviderSetting {
         }
     }
 
-    /**
+
+/**
      * 小米 MiMo ASR (mimo-v2.5-asr)。
      *
      * 与 OpenAIRealtime / DashScope / Volcengine 不同, MiMo ASR 是基于 OpenAI 兼容
@@ -181,3 +185,7 @@ sealed class ASRProviderSetting {
         }
     }
 }
+
+/** 描述的是我们适配器，而非厂商全部 API。 */
+val ASRProviderSetting.supportsServerVadVoiceMode: Boolean
+    get() = this is ASRProviderSetting.OpenAIRealtime || this is ASRProviderSetting.DashScope || this is ASRProviderSetting.Volcengine
