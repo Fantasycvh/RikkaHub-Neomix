@@ -2,20 +2,26 @@ package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
 import android.graphics.Typeface
 import android.view.MotionEvent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.IconButton
@@ -162,21 +168,26 @@ private fun WorkspaceTerminalContent(
         modifier = Modifier
             .fillMaxSize()
             .padding(contentPadding)
-            .imePadding(),
+            .consumeWindowInsets(contentPadding)
+            // 按 IME 动画终态尺寸一次性调整——避免每帧 SIGWINCH 导致终端重排与键盘手势抖动（上游 1d86b3c1 / #1861）
+            .windowInsetsPadding(WindowInsets.imeAnimationTarget),
         color = Color.Black,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
             SecondaryScrollableTabRow(
                 selectedTabIndex = selectedIndex,
                 edgePadding = 0.dp,
-                minTabWidth = 64.dp,
+                // 加宽 tab，切换（点击标题区）与关闭（尾部 ×）分区明确（上游 104040df）
+                minTabWidth = 96.dp,
                 containerColor = MaterialTheme.colorScheme.surface,
             ) {
                 state.tabs.forEach { tab ->
-                    val tabDescription = stringResource(
-                        R.string.workspace_terminal_tab,
-                        tab.number,
-                    )
+                    val tabDescription = if (tab.title != null) {
+                        stringResource(R.string.workspace_terminal_tab, tab.number) + " · " + tab.title
+                    } else {
+                        stringResource(R.string.workspace_terminal_tab, tab.number)
+                    }
                     Tab(
                         selected = selectedTab.id == tab.id,
                         onClick = { onSelectTab(tab.id) },
@@ -188,12 +199,24 @@ private fun WorkspaceTerminalContent(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(0.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(start = 8.dp),
                         ) {
+                            val isSelectedTab = selectedTab.id == tab.id
                             Text(
-                                text = tab.number.toString(),
+                                text = tab.title ?: tab.number.toString(),
                                 maxLines = 1,
                                 style = MaterialTheme.typography.labelMedium,
+                                // 选中 tab 的 PTY 标题走 marquee，未选中省略截断
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .then(
+                                        if (isSelectedTab && tab.title != null) {
+                                            Modifier.basicMarquee()
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
                             )
                             val closeDescription = stringResource(
                                 R.string.workspace_terminal_close_tab,
