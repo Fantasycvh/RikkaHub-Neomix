@@ -1,18 +1,27 @@
 package app.androidrik.ai.provider.providers.openai
 
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.Modality
+import app.androidrik.ai.provider.ModelAbility
+import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.KeyRoulette
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -400,4 +409,62 @@ class ChatCompletionsAPIMessageTest {
             output = listOf(UIMessagePart.Text(output))
         )
     }
+
+
+    @Test
+    fun `tools schema fills array items (Gemini-proxy relay compatibility)`() {
+        // 带数组属性的工具（args/outputs 嵌套数组，此前经 OpenAI 兼容中转站转 functionDeclarations
+        // 时缺 items，Gemini 报 missing field——OpenAI 路径此前没有 ensureArrayItems 归一化）
+        val toolWithArrays = Tool(
+            name = "reorder_items",
+            description = "reorder nested arrays",
+            parameters = {
+                InputSchema.Obj(
+                    properties = buildJsonObject {
+                        put("args", buildJsonObject { put("type", JsonPrimitive("array")) })
+                        put("outputs", buildJsonObject {
+                            put("type", JsonPrimitive("object"))
+                            put("properties", buildJsonObject {
+                                put("items", buildJsonObject { put("type", JsonPrimitive("array")) })
+                            })
+                        })
+                    }
+                )
+            },
+            execute = { emptyList() },
+        )
+        val params = TextGenerationParams(
+            model = Model(
+                modelId = "gemini-3.7-flash",
+                displayName = "g",
+                abilities = listOf(ModelAbility.TOOL),
+            ),
+            tools = listOf(toolWithArrays),
+        )
+        val requestBody = invokeBuildChatCompletionRequest(params)
+        val tools = requestBody["tools"]!!.jsonArray
+        val fn = tools[0].jsonObject["function"]!!.jsonObject
+        val parameters = fn["parameters"]!!.jsonObject
+        // args 数组补上 items
+        val args = parameters["properties"]!!.jsonObject["args"]!!.jsonObject
+        assertNotNull(args["items"])
+        assertEquals("string", args["items"]!!.jsonObject["type"]?.jsonPrimitive?.content)
+        // 嵌套 object 里的 items 数组也补上（递归）
+        val outputs = parameters["properties"]!!.jsonObject["outputs"]!!.jsonObject
+        val nestedItems = outputs["properties"]!!.jsonObject["items"]!!.jsonObject
+        assertNotNull(nestedItems["items"])
+    }
+
+    private fun invokeBuildChatCompletionRequest(params: TextGenerationParams): JsonObject {
+        val method = ChatCompletionsAPI::class.java.getDeclaredMethod(
+            "buildChatCompletionRequest",
+            List::class.java,
+            TextGenerationParams::class.java,
+            ProviderSetting.OpenAI::class.java,
+            Boolean::class.javaPrimitiveType,
+        )
+        method.isAccessible = true
+        return method.invoke(api, emptyList<UIMessage>(), params, ProviderSetting.OpenAI(), false) as JsonObject
+    }
+
 }
