@@ -114,6 +114,9 @@ class SettingsStore(
         // 提供商
         val PROVIDERS = stringPreferencesKey("providers")
 
+        // 生成重试（全局默认，per-provider retryOption 覆盖；#1812 半截保留三字段同存）
+        val RETRY_SETTING = stringPreferencesKey("retry_setting")
+
         // 助手
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
         val ASSISTANTS = stringPreferencesKey("assistants")
@@ -209,6 +212,8 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
                 providers = JsonInstant.decodeFromString(preferences[PROVIDERS] ?: "[]"),
+                retrySetting = preferences[RETRY_SETTING]?.let { JsonInstant.decodeFromString(it) }
+                    ?: RetrySetting(),
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
                 dynamicColor = preferences[DYNAMIC_COLOR] != false,
                 themeId = preferences[THEME_ID] ?: PresetThemes[0].id,
@@ -400,6 +405,7 @@ class SettingsStore(
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
+            preferences[RETRY_SETTING] = JsonInstant.encodeToString(settings.retrySetting)
 
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
             preferences[SELECT_ASSISTANT] = settings.assistantId.toString()

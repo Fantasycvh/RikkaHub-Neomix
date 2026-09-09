@@ -38,6 +38,10 @@ fun ProviderRetryOption(
     var delaysText by remember(override) {
         mutableStateOf((override ?: RetrySetting()).delaysSeconds.joinToString(","))
     }
+    // #1812：半截字数阈值（仅合法值落盘）
+    var partialCharsText by remember(override) {
+        mutableStateOf((override ?: RetrySetting()).partialOutputMinChars.toString())
+    }
 
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -107,6 +111,56 @@ fun ProviderRetryOption(
                     },
                 )
             }
+
+            // #1812：半截保留 + 半截后重试 + 阈值（与全局页同款，per-provider 覆盖）
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.setting_retry_keep_partial_title))
+                Switch(
+                    checked = current.keepPartialOnFailure,
+                    onCheckedChange = { keep ->
+                        onEdit(provider.copyProvider(retryOption = current.copy(keepPartialOnFailure = keep)))
+                    },
+                )
+            }
+
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.setting_retry_after_partial_title))
+                Switch(
+                    checked = current.retryAfterPartial,
+                    onCheckedChange = { retry ->
+                        onEdit(provider.copyProvider(retryOption = current.copy(retryAfterPartial = retry)))
+                    },
+                )
+            }
+
+            OutlinedTextField(
+                value = partialCharsText,
+                onValueChange = { text ->
+                    // 仅数字、最多 5 位（阈值上限 99999）
+                    partialCharsText = text.filter(Char::isDigit).take(5)
+                    partialCharsText.toIntOrNull()?.let { parsedChars ->
+                        onEdit(
+                            provider.copyProvider(
+                                retryOption = current.copy(partialOutputMinChars = parsedChars.coerceAtLeast(1))
+                            )
+                        )
+                    }
+                },
+                label = { Text(stringResource(R.string.setting_retry_partial_chars_title)) },
+                supportingText = {
+                    Text(stringResource(R.string.setting_retry_partial_chars_applied, current.partialOutputMinChars))
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

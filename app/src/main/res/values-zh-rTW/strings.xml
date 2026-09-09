@@ -1307,6 +1307,13 @@
   <string name="setting_retry_delays_title">重試間隔序列</string>
   <string name="setting_retry_delays_desc">逗號分隔的秒數，長度即重試次數。例：2,2,2,2,2,5,10,20,60,120 表示前 5 次每 2 秒重試一次，之後依次間隔 5s、10s、20s、60s、120s</string>
   <string name="setting_retry_delays_invalid">格式無效：請輸入逗號分隔的非負整數</string>
+  <string name="setting_retry_keep_partial_title">保留半截草稿</string>
+  <string name="setting_retry_keep_partial_desc">串流中斷且已有可見輸出時，保留已串流內容為草稿、不重發（reasoning 不計）</string>
+  <string name="setting_retry_after_partial_title">半截後自動重試</string>
+  <string name="setting_retry_after_partial_desc">半截輸出後仍整輪重試；開啟時上方「保留半截草稿」不生效</string>
+  <string name="setting_retry_partial_chars_title">半截字數門檻</string>
+  <string name="setting_retry_partial_chars_desc">可見文字 ≥ 該值視為已產生有效輸出（reasoning 不計，下限 1）</string>
+  <string name="setting_retry_partial_chars_applied">目前生效：%1$d</string>
   <string name="generation_retry_waiting">生成失敗，%1$d/%2$d 次重試，%3$d 秒後進行</string>
   <string name="setting_provider_page_retry_override">自訂重試設定</string>
   <string name="setting_provider_page_retry_override_desc">開啟後此提供商使用獨立的重試設定，覆蓋全域預設</string>

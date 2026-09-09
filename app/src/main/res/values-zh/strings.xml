@@ -1325,6 +1325,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_retry_delays_title">重试间隔序列</string>
   <string name="setting_retry_delays_desc">逗号分隔的秒数，长度即重试次数。例：2,2,2,2,2,5,10,20,60,120 表示前 5 次每 2 秒重试一次，之后依次间隔 5s、10s、20s、60s、120s</string>
   <string name="setting_retry_delays_invalid">格式无效：请输入逗号分隔的非负整数</string>
+  <string name="setting_retry_keep_partial_title">保留半截草稿</string>
+  <string name="setting_retry_keep_partial_desc">流式中断且已有可见输出时，保留已流式内容为草稿、不重发（reasoning 不计）</string>
+  <string name="setting_retry_after_partial_title">半截后自动重试</string>
+  <string name="setting_retry_after_partial_desc">半截输出后仍整轮重试；开启时上方「保留半截草稿」不生效</string>
+  <string name="setting_retry_partial_chars_title">半截字数阈值</string>
+  <string name="setting_retry_partial_chars_desc">可见文本 ≥ 该值视为已产生有效输出（reasoning 不计，下限 1）</string>
+  <string name="setting_retry_partial_chars_applied">当前生效：%1$d</string>
   <string name="generation_retry_waiting">生成失败，%1$d/%2$d 次重试，%3$d 秒后进行</string>
   <string name="setting_provider_page_retry_override">自定义重试设置</string>
   <string name="setting_provider_page_retry_override_desc">开启后此提供商使用独立的重试配置，覆盖全局默认</string>

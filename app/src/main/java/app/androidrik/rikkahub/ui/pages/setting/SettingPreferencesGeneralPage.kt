@@ -298,6 +298,10 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                 var delaysText by remember(settings) {
                     mutableStateOf(retrySetting.delaysSeconds.joinToString(","))
                 }
+                // #1812 半截字数阈值以文本编辑；仅合法值落盘
+                var partialCharsText by remember(settings) {
+                    mutableStateOf(retrySetting.partialOutputMinChars.toString())
+                }
 
                 fun updateRetrySetting(setting: RetrySetting) {
                     retrySetting = setting
@@ -346,6 +350,60 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                                                         parsed.sum().toString() + "s"
                                                 )
                                             }
+                                        },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                            },
+                        )
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_retry_keep_partial_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_retry_keep_partial_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = retrySetting.keepPartialOnFailure,
+                                    onCheckedChange = { keep ->
+                                        updateRetrySetting(retrySetting.copy(keepPartialOnFailure = keep))
+                                    }
+                                )
+                            },
+                        )
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_retry_after_partial_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_retry_after_partial_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = retrySetting.retryAfterPartial,
+                                    onCheckedChange = { retry ->
+                                        updateRetrySetting(retrySetting.copy(retryAfterPartial = retry))
+                                    }
+                                )
+                            },
+                        )
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_retry_partial_chars_title)) },
+                            supportingContent = {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(stringResource(R.string.setting_retry_partial_chars_desc))
+                                    OutlinedTextField(
+                                        value = partialCharsText,
+                                        onValueChange = { text ->
+                                            // 仅数字、最多 5 位（阈值上限 99999）
+                                            partialCharsText = text.filter(Char::isDigit).take(5)
+                                            partialCharsText.toIntOrNull()?.let { parsedChars ->
+                                                updateRetrySetting(
+                                                    retrySetting.copy(partialOutputMinChars = parsedChars.coerceAtLeast(1))
+                                                )
+                                            }
+                                        },
+                                        supportingText = {
+                                            Text(
+                                                stringResource(
+                                                    R.string.setting_retry_partial_chars_applied,
+                                                    retrySetting.partialOutputMinChars
+                                                )
+                                            )
                                         },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth(),

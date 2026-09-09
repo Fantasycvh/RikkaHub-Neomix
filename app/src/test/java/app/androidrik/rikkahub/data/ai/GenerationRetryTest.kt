@@ -4,6 +4,7 @@ import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.ai.provider.effectiveApiKeys
+import app.androidrik.rikkahub.utils.JsonInstant
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -52,6 +53,30 @@ class GenerationRetryTest {
         assertEquals(listOf(2, 2, 2, 2, 2, 5, 10, 20, 60, 120), RetrySetting.DEFAULT_DELAYS_SECONDS)
         assertNotNull(RetrySetting().delaysSeconds)
         assertFalse(RetrySetting().enabled)
+    }
+
+    // ---------- RetrySetting JSON 持久化 round-trip（全局 retrySetting 三件套通道） ----------
+
+    @Test
+    fun `RetrySetting full-config json round-trip preserves partial fields`() {
+        val original = RetrySetting(
+            enabled = true,
+            delaysSeconds = listOf(1, 4, 9),
+            keepPartialOnFailure = false,
+            retryAfterPartial = true,
+            partialOutputMinChars = 120,
+        )
+        val restored = JsonInstant.decodeFromString<RetrySetting>(
+            JsonInstant.encodeToString(original)
+        )
+        assertEquals(original, restored)
+        // #1812 默认值：保留开、半截重试关、阈值 50
+        val defaults = JsonInstant.decodeFromString<RetrySetting>(
+            JsonInstant.encodeToString(RetrySetting())
+        )
+        assertEquals(true, defaults.keepPartialOnFailure)
+        assertEquals(false, defaults.retryAfterPartial)
+        assertEquals(50, defaults.partialOutputMinChars)
     }
 
     // ---------- isKeySwitchingError / hasMultipleEnabledKeys ----------

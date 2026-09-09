@@ -1327,6 +1327,13 @@
   <string name="setting_retry_delays_title">Retry interval sequence</string>
   <string name="setting_retry_delays_desc">Comma-separated seconds; the length is the retry count. Example: 2,2,2,2,2,5,10,20,60,120 = first 5 retries every 2s, then 5s,10s,20s,60s,120s</string>
   <string name="setting_retry_delays_invalid">Invalid format: enter comma-separated non-negative integers</string>
+  <string name="setting_retry_keep_partial_title">Keep partial output on failure</string>
+  <string name="setting_retry_keep_partial_desc">Preserve already-streamed content as a draft when the stream breaks after visible output (reasoning excluded); no re-send</string>
+  <string name="setting_retry_after_partial_title">Retry after partial output</string>
+  <string name="setting_retry_after_partial_desc">Retry the full round even after partial output; disables the keep-partial switch above</string>
+  <string name="setting_retry_partial_chars_title">Partial output threshold (chars)</string>
+  <string name="setting_retry_partial_chars_desc">Visible text ≥ this value counts as valid output; reasoning does not count; floor is 1</string>
+  <string name="setting_retry_partial_chars_applied">Applied: %1$d</string>
   <string name="generation_retry_waiting">Generation failed, retry %1$d/%2$d in %3$d s</string>
   <string name="setting_provider_page_retry_override">Custom retry settings</string>
   <string name="setting_provider_page_retry_override_desc">When enabled, this provider uses its own retry configuration instead of the global default</string>
