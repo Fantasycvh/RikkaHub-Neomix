@@ -133,6 +133,11 @@ class DashScopeASRController(
         }
     }
 
+    override fun pauseCapture() {
+        recorderJob?.cancel()
+        runCatching { audioRecord?.stop() }
+    }
+
     override fun dispose() {
         stop()
         scope.cancel()
@@ -198,6 +203,14 @@ class DashScopeASRController(
         }
 
         when (val type = event.optString("type")) {
+            "input_audio_buffer.speech_started" -> {
+                _state.update { it.copy(voiceTurn = it.voiceTurn.started(event.optString("item_id"))) }
+            }
+
+            "input_audio_buffer.speech_stopped" -> {
+                _state.update { it.copy(voiceTurn = it.voiceTurn.stopped(event.optString("item_id"))) }
+            }
+
             "conversation.item.input_audio_transcription.delta" -> {
                 val itemId = event.optString("item_id", "default")
                 val delta = event.optString("delta")
@@ -220,6 +233,7 @@ class DashScopeASRController(
                 val itemId = event.optString("item_id", "default")
                 val transcript = event.optString("transcript").trim()
                 partialTranscripts.remove(itemId)
+                _state.update { it.copy(voiceTurn = it.voiceTurn.completed(itemId, transcript)) }
                 if (transcript.isNotEmpty()) {
                     completedTranscripts.add(transcript)
                 }
