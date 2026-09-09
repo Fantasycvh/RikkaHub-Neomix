@@ -80,6 +80,8 @@ import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.MessageQueueState
+import app.androidrik.rikkahub.ui.pages.chat.VoiceSessionState
+import app.androidrik.rikkahub.ui.pages.chat.rememberVoiceModeStarter
 import app.androidrik.rikkahub.ui.components.ai.ChatInput
 import app.androidrik.rikkahub.ui.components.ai.FilesPicker
 import app.androidrik.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvider
@@ -122,6 +124,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     val currentChatModel by vm.currentChatModel.collectAsStateWithLifecycle()
     val enableWebSearch by vm.enableWebSearch.collectAsStateWithLifecycle()
     val errors by vm.errors.collectAsStateWithLifecycle()
+    val voiceState by vm.voiceSession.state.collectAsStateWithLifecycle()
+    val startVoiceMode = rememberVoiceModeStarter(vm, setting)
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
@@ -222,6 +226,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     enableWebSearch = enableWebSearch,
                     currentChatModel = currentChatModel,
                     messageQueueState = messageQueueState,
+                    voiceState = voiceState,
+                    startVoiceMode = startVoiceMode,
                     bigScreen = true,
                     errors = errors,
                     onDismissError = { vm.dismissError(it) },
@@ -255,6 +261,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     enableWebSearch = enableWebSearch,
                     currentChatModel = currentChatModel,
                     messageQueueState = messageQueueState,
+                    voiceState = voiceState,
+                    startVoiceMode = startVoiceMode,
                     bigScreen = false,
                     errors = errors,
                     onDismissError = { vm.dismissError(it) },
@@ -283,6 +291,8 @@ private fun ChatPageContent(
     enableWebSearch: Boolean,
     currentChatModel: Model?,
     messageQueueState: MessageQueueState,
+    voiceState: VoiceSessionState,
+    startVoiceMode: () -> Unit,
     errors: List<ChatError>,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
@@ -402,6 +412,9 @@ private fun ChatPageContent(
                     onBeginEditQueuedMessage = vm::beginEditQueuedMessage,
                     onFinishEditQueuedMessage = vm::finishEditQueuedMessage,
                     onResumeMessageQueue = vm::resumeMessageQueue,
+                    voiceState = voiceState,
+                    onStartVoiceMode = startVoiceMode,
+                    onStopVoiceMode = vm.voiceSession::stop,
                     onUpdateChatModel = {
                         vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
                     },

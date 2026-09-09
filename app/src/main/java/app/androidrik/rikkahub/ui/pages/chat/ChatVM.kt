@@ -179,6 +179,10 @@ class ChatVM(
 
     val messageQueue: StateFlow<MessageQueueState> = chatService.getMessageQueueFlow(_conversationId)
 
+    val voiceSession = VoiceSessionController(viewModelScope, context::getString) {
+        chatService.enqueueVoiceMessage(_conversationId, it)
+    }
+
     fun removeQueuedMessage(messageId: Uuid) = chatService.removeQueuedMessage(_conversationId, messageId)
 
     fun beginEditQueuedMessage(messageId: Uuid): QueuedMessage? =
@@ -188,6 +192,8 @@ class ChatVM(
         chatService.finishEditQueuedMessage(_conversationId, messageId, parts)
 
     fun resumeMessageQueue() = chatService.resumeMessageQueue(_conversationId)
+
+    fun stopVoiceMode() = voiceSession.stop()
 
     fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {
         if (parts.isEmptyInputMessage()) return

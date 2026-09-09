@@ -114,6 +114,8 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import app.androidrik.rikkahub.service.MessageQueueState
+import app.androidrik.rikkahub.ui.pages.chat.VoicePhase
+import app.androidrik.rikkahub.ui.pages.chat.VoiceSessionState
 import app.androidrik.rikkahub.service.QueuedMessage
 import kotlin.uuid.Uuid
 import app.androidrik.rikkahub.utils.SoundEffectPlayer
@@ -142,6 +144,9 @@ fun ChatInput(
     onBeginEditQueuedMessage: (Uuid) -> QueuedMessage? = { null },
     onFinishEditQueuedMessage: (Uuid, List<UIMessagePart>?) -> Unit = { _, _ -> },
     onResumeMessageQueue: () -> Unit = {},
+    onStartVoiceMode: (() -> Unit)? = null,
+    voiceState: VoiceSessionState = VoiceSessionState(),
+    onStopVoiceMode: () -> Unit = {},
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -238,6 +243,16 @@ fun ChatInput(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    if (voiceState.phase != VoicePhase.Off) {
+                        VoiceModeRow(
+                            state = voiceState,
+                            onStop = onStopVoiceMode,
+                            onRetry = { onStartVoiceMode?.invoke() },
+                        )
+                        androidx.compose.material3.HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                    }
                     MessageQueuePanel(
                         state = messageQueue,
                         onRemove = onRemoveQueuedMessage,
