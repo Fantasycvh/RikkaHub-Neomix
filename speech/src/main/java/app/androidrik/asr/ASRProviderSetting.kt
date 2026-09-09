@@ -4,9 +4,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
-@Serializable
 const val VOLCENGINE_ASR_WEBSOCKET_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
 
+@Serializable
 sealed class ASRProviderSetting {
     abstract val id: Uuid
     abstract val name: String
