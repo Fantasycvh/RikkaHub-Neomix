@@ -14,7 +14,7 @@ RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，�
 
 ## 📥 下载
 
-🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.10.22`）
+🔗 [GitHub Releases](https://github.com/androidrik/rikkahub-dev/releases)（当前：`v2.4.10.23`）
 
 > 本仓库为私有测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**。
 
