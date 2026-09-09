@@ -255,6 +255,13 @@
   <string name="chat_message_tool_scrape_prefix">抓取网站：%1$s</string>
   <string name="chat_message_tool_scrape_web">抓取网页</string>
   <string name="chat_message_tool_search_prefix">搜索: %1$s</string>
+  <string name="chat_page_voice_paused">已暂停</string>
+  <string name="chat_page_voice_resume_queue">消息队列已暂停，请先恢复。</string>
+  <string name="chat_page_voice_failed">语音模式失败，请重新启动。</string>
+  <string name="chat_page_voice_tool_approval">需要工具审批。请先处理审批，再重启语音模式。</string>
+  <string name="chat_page_voice_empty">未识别到语音</string>
+  <string name="chat_page_voice_tools_before_resume">请先处理待审批的工具，再继续语音模式</string>
+  <string name="chat_page_voice_generation_failed">模型生成失败，请查看聊天中的错误。</string>
   <string name="chat_message_queue_pending">待发送：%1$d 条</string>
   <string name="chat_message_queue_paused">队列已暂停 · %1$d 条</string>
   <string name="chat_message_queue_resume">继续发送</string>

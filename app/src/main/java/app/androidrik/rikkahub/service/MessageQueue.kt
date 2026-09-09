@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.service
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import app.androidrik.ai.ui.UIMessagePart
@@ -13,6 +14,8 @@ data class QueuedMessage(
     val parts: List<UIMessagePart>,
     val answer: Boolean = true,
     val isEditing: Boolean = false,
+    // 可选内存观察者：语音模式等回复用；null 结果 = 队列项被撤下
+    val reply: CompletableDeferred<String?>? = null,
 )
 
 data class MessageQueueState(
@@ -32,18 +35,25 @@ internal fun unreferencedQueuedAttachmentUrls(
     return previous.parts.localFileUrls() - retainedParts.localFileUrls()
 }
 
+/** 队列暂停时回复等待者（语音模式感知「队列被暂停」而非卡死）。 */
+class MessageQueuePausedException : IllegalStateException()
+
 /** 待发消息保持在会话历史之外，直到被派发。 */
 class MessageQueue {
     private val mutableState = MutableStateFlow(MessageQueueState())
     val state = mutableState.asStateFlow()
 
     @Synchronized
-    fun enqueue(parts: List<UIMessagePart>, answer: Boolean = true) {
-        if (parts.isEmptyInputMessage()) return
+    fun enqueue(parts: List<UIMessagePart>, answer: Boolean = true, reply: CompletableDeferred<String?>? = null) {
+        if (parts.isEmptyInputMessage()) {
+            reply?.complete(null)
+            return
+        }
         mutableState.value = state.value.copy(
             messages = state.value.messages + QueuedMessage(
                 parts = parts.toList(),
-                answer = answer
+                answer = answer,
+                reply = reply,
             ),
         )
     }
@@ -62,6 +72,7 @@ class MessageQueue {
         val removed = state.value.messages.find { it.id == id } ?: return null
         mutableState.value =
             state.value.copy(messages = state.value.messages.filterNot { it.id == id })
+        removed.reply?.complete(null)
         return removed
     }
 
@@ -93,6 +104,13 @@ class MessageQueue {
     @Synchronized
     fun pause() {
         mutableState.value = state.value.copy(paused = true)
+        state.value.messages.forEach { it.reply?.completeExceptionally(MessageQueuePausedException()) }
+    }
+
+    fun failReplyWaiters(message: String) {
+        state.value.messages.forEach {
+            it.reply?.completeExceptionally(IllegalStateException(message))
+        }
     }
 
     @Synchronized

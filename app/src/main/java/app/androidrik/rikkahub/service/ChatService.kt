@@ -5,6 +5,9 @@ import android.content.Context
 import android.util.Log
 import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.completeWith
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
@@ -248,8 +251,16 @@ class ChatService(
                 scope = appScope,
                 onIdle = { removeSession(it) },
                 onGenerationFinished = { sessionId, cause ->
-                    // 生成失败暂停队列（用户 resume 后继续）；成功则派发下一条
-                    if (cause != null) sessions[sessionId]?.messageQueue?.pause()
+                    val session = sessions[sessionId]
+                    if (cause != null) session?.messageQueue?.pause()
+                    // 本轮停在工具审批：语音模式的 reply 等待者等不到文本，直接失败提示
+                    if (session?.state?.value?.currentMessages?.any { message ->
+                            message.parts.any { it is UIMessagePart.Tool && it.isPending }
+                        } == true) {
+                        session.messageQueue.failReplyWaiters(
+                            context.getString(R.string.chat_page_voice_tool_approval)
+                        )
+                    }
                     appScope.launch { dispatchNextQueuedMessage(sessionId) }
                 }
             ).also {
@@ -360,6 +371,25 @@ class ChatService(
         }
     }
 
+    /** 语音模式：立即入队，返回的 Deferred 在本轮生成完成后 resolve 为新增的 assistant 文本。 */
+    fun enqueueVoiceMessage(conversationId: Uuid, text: String): Deferred<String?> {
+        val session = getOrCreateSession(conversationId)
+        val reply = CompletableDeferred<String?>()
+        synchronized(session) {
+            check(text.isNotBlank()) { context.getString(R.string.chat_page_voice_empty) }
+            check(!session.messageQueue.state.value.paused || session.messageQueue.state.value.messages.isEmpty()) {
+                context.getString(R.string.chat_page_voice_resume_queue)
+            }
+            check(session.state.value.currentMessages.none { message ->
+                message.parts.any { it is UIMessagePart.Tool && it.isPending }
+            }) { context.getString(R.string.chat_page_voice_tools_before_resume) }
+            if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
+            session.messageQueue.enqueue(listOf(UIMessagePart.Text(text)), reply = reply)
+            dispatchNextQueuedMessage(conversationId)
+        }
+        return reply
+    }
+
     fun getMessageQueueFlow(conversationId: Uuid): StateFlow<MessageQueueState> =
         getOrCreateSession(conversationId).messageQueue.state
 
@@ -417,23 +447,24 @@ class ChatService(
         }
     }
 
-    /** 当前无生成任务且无待审批工具时才派发下一条（与审批串行化天然对齐）。 */
-    private fun dispatchNextQueuedMessage(conversationId: Uuid) {
-        val session = sessions[conversationId] ?: return
+    /** 当前无生成任务且无待审批工具时才派发下一条（与审批串行化天然对齐）。返回派发的 Job（供语音模式观测）。 */
+    private fun dispatchNextQueuedMessage(conversationId: Uuid): Job? {
+        val session = sessions[conversationId] ?: return null
         synchronized(session) {
             if (session.getJob() != null || session.state.value.currentMessages.any { message ->
                     message.parts.any { it is UIMessagePart.Tool && it.isPending }
-                }) return
-            val next = session.messageQueue.takeNext() ?: return
+                }) return null
+            val next = session.messageQueue.takeNext() ?: return null
             session.submittingMessage = next
-            sendQueuedMessage(session, next)
+            return sendQueuedMessage(session, next)
         }
     }
 
-    private fun sendQueuedMessage(session: ConversationSession, queued: QueuedMessage) {
+    private fun sendQueuedMessage(session: ConversationSession, queued: QueuedMessage): Job {
         val conversationId = session.id
         val content = queued.parts
         val answer = queued.answer
+        val previousAssistantIds = session.state.value.currentMessages.map { it.id }.toSet()
         val job = appScope.launch {
             try {
                 finishInterruptedPendingTools(conversationId)
@@ -460,6 +491,19 @@ class ChatService(
                 }
 
                 _generationDoneFlow.emit(conversationId)
+                // 语音模式：等本轮生成真正落库后，把新增的 assistant 文本 resolve 给 reply。
+                queued.reply?.completeWith(runCatching {
+                    val messages = session.state.value.currentMessages
+                    check(!session.messageQueue.state.value.paused) {
+                        context.getString(R.string.chat_page_voice_generation_failed)
+                    }
+                    check(messages.none { message ->
+                        message.parts.any { it is UIMessagePart.Tool && it.isPending }
+                    }) { context.getString(R.string.chat_page_voice_tool_approval) }
+                    messages
+                        .filter { it.id !in previousAssistantIds && it.role == MessageRole.ASSISTANT }
+                        .joinToString("\n") { it.toText() }
+                })
             } catch (e: Exception) {
                 e.printStackTrace()
                 if (e is CancellationException) throw e
@@ -467,13 +511,15 @@ class ChatService(
                 addError(e, conversationId, title = context.getString(R.string.error_title_send_message))
             }
         }
-        job.invokeOnCompletion {
+        job.invokeOnCompletion { cause ->
             synchronized(session) {
                 if (session.submittingMessage?.id == queued.id) session.submittingMessage = null
             }
+            if (cause != null) queued.reply?.completeExceptionally(cause)
             appScope.launch { dispatchNextQueuedMessage(conversationId) }
         }
         session.setJob(job)
+        return job
     }
 
     private fun preprocessUserInputParts(parts: List<UIMessagePart>, assistant: Assistant): List<UIMessagePart> {

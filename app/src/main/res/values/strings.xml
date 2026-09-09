@@ -255,6 +255,13 @@
   <string name="chat_message_tool_scrape_prefix">Scrape website: %1$s</string>
   <string name="chat_message_tool_scrape_web">Scrape web page</string>
   <string name="chat_message_tool_search_prefix">Search: %1$s</string>
+  <string name="chat_page_voice_paused">Paused</string>
+  <string name="chat_page_voice_resume_queue">The message queue is paused. Resume it first.</string>
+  <string name="chat_page_voice_failed">Voice mode failed. Please restart it.</string>
+  <string name="chat_page_voice_tool_approval">Tool approval is required. Resolve it, then restart voice mode.</string>
+  <string name="chat_page_voice_empty">No speech was recognized</string>
+  <string name="chat_page_voice_tools_before_resume">Resolve pending tool approvals before resuming voice mode</string>
+  <string name="chat_page_voice_generation_failed">Model generation failed. Check the error in the chat.</string>
   <string name="chat_message_queue_pending">Pending: %1$d message(s)</string>
   <string name="chat_message_queue_paused">Queue paused · %1$d message(s)</string>
   <string name="chat_message_queue_resume">Resume</string>

@@ -253,6 +253,13 @@
   <string name="chat_message_tool_scrape_prefix">爬取網站：%1$s</string>
   <string name="chat_message_tool_scrape_web">爬取網頁</string>
   <string name="chat_message_tool_search_prefix">搜尋: %1$s</string>
+  <string name="chat_page_voice_paused">已暫停</string>
+  <string name="chat_page_voice_resume_queue">訊息佇列已暫停，請先恢復。</string>
+  <string name="chat_page_voice_failed">語音模式失敗，請重新啟動。</string>
+  <string name="chat_page_voice_tool_approval">需要工具審批。請先處理審批，再重啟語音模式。</string>
+  <string name="chat_page_voice_empty">未識別到語音</string>
+  <string name="chat_page_voice_tools_before_resume">請先處理待審批的工具，再繼續語音模式</string>
+  <string name="chat_page_voice_generation_failed">模型生成失敗，請查看聊天中的錯誤。</string>
   <string name="chat_message_queue_pending">待發送：%1$d 條</string>
   <string name="chat_message_queue_paused">佇列已暫停 · %1$d 條</string>
   <string name="chat_message_queue_resume">繼續發送</string>
