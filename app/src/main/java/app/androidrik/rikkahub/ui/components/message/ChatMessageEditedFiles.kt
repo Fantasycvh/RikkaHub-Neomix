@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import app.androidrik.ai.ui.UIMessagePart
@@ -64,7 +65,9 @@ internal fun EditedFilesList(
         parts.filterIsInstance<UIMessagePart.Tool>()
             .filter { it.toolName in WORKSPACE_FILE_TOOL_NAMES && it.isExecuted }
             .mapNotNull { tool ->
-                tool.inputAsJson().jsonObject["path"]?.jsonPrimitive?.contentOrNull
+                // 流式合并的 tool-call 参数可能是 JsonArray 等畸形形态（第三方中转），
+                // 安全 cast 跳过，不因缺 path 崩溃聊天页（#1873）
+                (tool.inputAsJson() as? JsonObject)?.get("path")?.jsonPrimitive?.contentOrNull
             }
             .distinct()
     }
