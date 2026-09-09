@@ -9,6 +9,7 @@ import app.androidrik.tts.model.AudioChunk
 import app.androidrik.tts.model.AudioFormat
 import app.androidrik.tts.model.TTSRequest
 import app.androidrik.tts.provider.TTSProvider
+import app.androidrik.tts.provider.TTSProviderException
 import app.androidrik.tts.provider.TTSProviderSetting
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -48,7 +49,7 @@ class OpenAITTSProvider : TTSProvider<TTSProviderSetting.OpenAI> {
         val response = httpClient.newCall(httpRequest).execute()
 
         if (!response.isSuccessful) {
-            throw Exception("TTS request failed: ${response.code} ${response.message}")
+            throw TTSProviderException("TTS request failed: ${response.code} ${response.message}", statusCode = response.code)
         }
 
         val audioData = response.body.bytes()

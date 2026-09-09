@@ -10,6 +10,7 @@ import app.androidrik.tts.model.AudioChunk
 import app.androidrik.tts.model.AudioFormat
 import app.androidrik.tts.model.TTSRequest
 import app.androidrik.tts.provider.TTSProvider
+import app.androidrik.tts.provider.TTSProviderException
 import app.androidrik.tts.provider.TTSProviderSetting
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -76,8 +77,9 @@ class StepTTSProvider : TTSProvider<TTSProviderSetting.Step> {
         if (!response.isSuccessful) {
             // 把错误响应体读出来方便排查 (4xx 通常返回 JSON 错误信息)
             val errorBody = runCatching { response.body?.string() }.getOrNull().orEmpty()
-            throw Exception(
-                "Step TTS request failed: HTTP ${response.code} ${response.message}. body=$errorBody"
+            throw TTSProviderException(
+                message = "Step TTS request failed: HTTP ${response.code} ${response.message}. body=$errorBody",
+                statusCode = response.code
             )
         }
 

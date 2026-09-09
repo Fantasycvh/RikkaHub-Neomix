@@ -8,6 +8,7 @@ import app.androidrik.tts.model.AudioChunk
 import app.androidrik.tts.model.AudioFormat
 import app.androidrik.tts.model.TTSRequest
 import app.androidrik.tts.provider.TTSProvider
+import app.androidrik.tts.provider.TTSProviderException
 import app.androidrik.tts.provider.TTSProviderSetting
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -60,7 +61,7 @@ class FishAudioTTSProvider : TTSProvider<TTSProviderSetting.FishAudio> {
             val errorBody = response.body?.string()
             Log.e(TAG, "generateSpeech: ${response.code} ${response.message}")
             Log.e(TAG, "generateSpeech: $errorBody")
-            throw Exception("Fish Audio TTS request failed: ${response.code} ${response.message}")
+            throw TTSProviderException("Fish Audio TTS request failed: ${response.code} ${response.message}", statusCode = response.code)
         }
 
         val audioData = response.body.bytes()
