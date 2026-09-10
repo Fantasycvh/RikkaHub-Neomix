@@ -281,6 +281,7 @@
   <string name="chat_page_export_image">Экспортировать как изображение</string>
   <string name="chat_page_export_image_desc">Экспортировать переписку как изображение PNG</string>
   <string name="chat_page_export_image_expand_reasoning">Развернуть рассуждение</string>
+  <string name="chat_page_export_image_too_long">Диалог слишком длинный — экспорт изображения обрезан (лимит высоты устройства)</string>
   <string name="chat_page_share_conversation">Поделиться беседой</string>
   <string name="chat_page_export_include_all_versions">Включить все версии (ветки и историю правок)</string>
   <string name="chat_page_export_markdown">Markdown</string>

@@ -7,9 +7,14 @@ import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.Density
@@ -155,6 +160,148 @@ class BitmapComposer(private val mainScope: CoroutineScope) {
                 throw e
             } catch (e: Exception) {
                 // 视图创建/挂载阶段异常：避免调用方永久挂起
+                continuation.resumeWithException(e)
+                decorView?.removeView(composeViewContainer)
+            }
+        }
+    }
+
+    /**
+     * 只 measure/layout（不 draw）量取内容的真实高度（px）。
+     * 长图导出第一步：超过单 Bitmap 硬件上限时须分页捕获，需先知道总高。
+     */
+    suspend fun measureContentHeight(
+        activity: Activity,
+        width: Dp,
+        screenDensity: Density,
+        content: @Composable () -> Unit
+    ): Int = suspendCancellableCoroutine { continuation ->
+        mainScope.launch {
+            var decorView: ViewGroup? = null
+            var composeViewContainer: FrameLayout? = null
+            try {
+                val widthPx = (screenDensity.density * width.value).roundToInt()
+                val container = FrameLayout(activity).apply {
+                    layoutParams = ViewGroup.LayoutParams(widthPx, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    visibility = View.INVISIBLE
+                }
+                composeViewContainer = container
+
+                val composeView = ComposeView(activity).apply {
+                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                    setContent {
+                        CompositionLocalProvider(LocalExportContext provides true) {
+                            content()
+                        }
+                    }
+                }
+                container.addView(composeView)
+
+                val decor = activity.window.decorView as ViewGroup
+                decorView = decor
+                decor.addView(container)
+
+                Handler(Looper.getMainLooper()).post {
+                    container.measure(
+                        View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                    )
+                    container.layout(0, 0, container.measuredWidth, container.measuredHeight)
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        try {
+                            container.measure(
+                                View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                            )
+                            continuation.resume(container.measuredHeight)
+                        } catch (e: Exception) {
+                            continuation.resumeWithException(e)
+                        } finally {
+                            decor.removeView(container)
+                        }
+                    }, 100)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                continuation.resumeWithException(e)
+                decorView?.removeView(composeViewContainer)
+            }
+        }
+    }
+
+    /**
+     * 窗口页捕获：内容整体上移 [offset]，只绘制 [offset, offset+pageHeight] 窗口段。
+     * 长图导出分页：每页捕获后按位置拼接成一张连续长图（单张 Bitmap 有硬件尺寸上限）。
+     */
+    suspend fun composableToBitmapPage(
+        activity: Activity,
+        width: Dp,
+        pageHeight: Dp,
+        offset: Dp,
+        screenDensity: Density,
+        content: @Composable () -> Unit
+    ): Bitmap = suspendCancellableCoroutine { continuation ->
+        mainScope.launch {
+            var decorView: ViewGroup? = null
+            var composeViewContainer: FrameLayout? = null
+            try {
+                val widthPx = (screenDensity.density * width.value).roundToInt()
+                val pageHeightPx = (screenDensity.density * pageHeight.value).roundToInt()
+                val offsetPx = (screenDensity.density * offset.value).roundToInt()
+
+                val container = FrameLayout(activity).apply {
+                    layoutParams = ViewGroup.LayoutParams(widthPx, pageHeightPx)
+                    visibility = View.INVISIBLE
+                }
+                composeViewContainer = container
+
+                val composeView = ComposeView(activity).apply {
+                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                    setContent {
+                        CompositionLocalProvider(LocalExportContext provides true) {
+                            Box(
+                                modifier = Modifier
+                                    .height(pageHeight)
+                                    .clipToBounds()
+                            ) {
+                                Box(modifier = Modifier.offset(y = -offset)) {
+                                    content()
+                                }
+                            }
+                        }
+                    }
+                }
+                container.addView(composeView)
+
+                val decor = activity.window.decorView as ViewGroup
+                decorView = decor
+                decor.addView(container)
+
+                Handler(Looper.getMainLooper()).post {
+                    container.measure(
+                        View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(pageHeightPx, View.MeasureSpec.EXACTLY)
+                    )
+                    container.layout(0, 0, widthPx, pageHeightPx)
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        try {
+                            container.measure(
+                                View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(pageHeightPx, View.MeasureSpec.EXACTLY)
+                            )
+                            container.layout(0, 0, widthPx, pageHeightPx)
+                            continuation.resume(composeView.drawToBitmap())
+                        } catch (e: Exception) {
+                            continuation.resumeWithException(e)
+                        } finally {
+                            decor.removeView(container)
+                        }
+                    }, 100)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 continuation.resumeWithException(e)
                 decorView?.removeView(composeViewContainer)
             }

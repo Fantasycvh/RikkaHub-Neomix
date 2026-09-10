@@ -103,6 +103,7 @@ import com.dokar.sonner.rememberToasterState
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import app.androidrik.rikkahub.utils.exportImage
+import kotlin.math.roundToInt
 import app.androidrik.rikkahub.utils.getActivity
 import app.androidrik.rikkahub.utils.JsonInstantPretty
 import app.androidrik.rikkahub.utils.escapeHtml
@@ -467,6 +468,10 @@ private suspend fun compileTikzToSvg(context: Context, code: String): String? =
         }
     }
 
+/** PNG 导出分页捕获参数：单页高度与单张 Bitmap 高度上限（超出上限退回截断并提示） */
+private val PAGE_CAPTURE_HEIGHT_PX = 15_000
+private const val MAX_EXPORT_BITMAP_HEIGHT = 30_000
+
 /** 收集消息文本中的 TikZ 代码块（$$ 内嵌图表 + ```tikz 围栏，与 renderMarkdownWithTikz 同口径） */
 private fun collectTikzCodeBlocks(messages: List<UIMessage>): List<String> =
     messages.flatMap { message ->
@@ -695,20 +700,63 @@ private suspend fun exportToImage(
         compileTikzToSvg(context, code)
     }
 
-    val bitmap = composer.composableToBitmap(
+    val exportContent: @Composable () -> Unit = {
+        CompositionLocalProvider(LocalSettings provides settings) {
+            ExportedChatImage(
+                conversation = conversation,
+                messages = messages,
+                options = options
+            )
+        }
+    }
+    val widthDp = 540.dp
+
+    // 长对话内容高度可能超过原 10000dp 容器上限（≈26250px）→ 原实现下方被 canvas 裁剪
+    // （"对话只导出一部分"）。先量真实总高，再分页窗口捕获后拼成一张连续长图。
+    val totalHeightPx = composer.measureContentHeight(
         activity = activity,
-        width = 540.dp,
+        width = widthDp,
         screenDensity = density,
-        content = {
-            CompositionLocalProvider(LocalSettings provides settings) {
-                ExportedChatImage(
-                    conversation = conversation,
-                    messages = messages,
-                    options = options
-                )
+        content = exportContent,
+    )
+
+    val bitmap: Bitmap = if (totalHeightPx <= MAX_EXPORT_BITMAP_HEIGHT && totalHeightPx > 0) {
+        val pages = mutableListOf<Bitmap>()
+        var offsetPx = 0
+        while (offsetPx < totalHeightPx) {
+            val pageHeightPx = minOf(PAGE_CAPTURE_HEIGHT_PX, totalHeightPx - offsetPx)
+            pages += composer.composableToBitmapPage(
+                activity = activity,
+                width = widthDp,
+                pageHeight = density.run { pageHeightPx.toDp() },
+                offset = density.run { offsetPx.toDp() },
+                screenDensity = density,
+                content = exportContent,
+            )
+            offsetPx += pageHeightPx
+        }
+        if (pages.size == 1) {
+            pages[0]
+        } else {
+            // 硬件上限内的拼接：每页窗口段按 y 坐标贴回一张长图
+            runCatching {
+                val full = Bitmap.createBitmap(pages[0].width, totalHeightPx, Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(full)
+                var y = 0
+                pages.forEach { page ->
+                    canvas.drawBitmap(page, 0f, y.toFloat(), null)
+                    y += page.height
+                }
+                full
+            }.getOrElse {
+                // 设备 Bitmap 高度上限低于对话高度（如 16384px 老设备）：退回单次捕获（截断），提示用户
+                Toast.makeText(context, context.getString(R.string.chat_page_export_image_too_long), Toast.LENGTH_LONG).show()
+                composer.composableToBitmap(activity = activity, width = widthDp, screenDensity = density, content = exportContent)
             }
         }
-    )
+    } else {
+        composer.composableToBitmap(activity = activity, width = widthDp, screenDensity = density, content = exportContent)
+    }
 
     try {
         val dir = context.appTempFolder
