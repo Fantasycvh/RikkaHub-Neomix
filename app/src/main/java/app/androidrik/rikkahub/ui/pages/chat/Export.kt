@@ -472,6 +472,29 @@ private suspend fun compileTikzToSvg(context: Context, code: String): String? =
 /** PNG 导出分页捕获参数：单页高度（每页一张 PNG，一次分享多张；不受单 Bitmap 高度上限约束） */
 private val PAGE_CAPTURE_HEIGHT_PX = 15_000
 
+/** 页数硬上限（防止空页检测失效时死循环；15000px/页 ≈ 300 万 px 内容） */
+private const val MAX_EXPORT_PAGES = 200
+
+/** 整页采样是否全为同一颜色（末尾空白页判定；正常页含文字/图片必有色差） */
+private fun isBlankPage(bitmap: Bitmap): Boolean {
+    val w = bitmap.width
+    val h = bitmap.height
+    if (w <= 0 || h <= 0) return true
+    val first = bitmap.getPixel(0, 0)
+    val stepX = (w / 8).coerceAtLeast(1)
+    val stepY = (h / 32).coerceAtLeast(1)
+    var y = 0
+    while (y < h) {
+        var x = 0
+        while (x < w) {
+            if (bitmap.getPixel(x, y) != first) return false
+            x += stepX
+        }
+        y += stepY
+    }
+    return true
+}
+
 /** 收集消息文本中的 TikZ 代码块（$$ 内嵌图表 + ```tikz 围栏，与 renderMarkdownWithTikz 同口径） */
 private fun collectTikzCodeBlocks(messages: List<UIMessage>): List<String> =
     messages.flatMap { message ->
@@ -711,33 +734,30 @@ private suspend fun exportToImage(
     }
     val widthDp = 540.dp
 
-    // 长对话高度可能超过单 Bitmap 硬件上限（16384~32768px）——分页每页一张 PNG，
-    // 每页固定窗口捕获（不受单张超长图限制），一次分享全部（ACTION_SEND_MULTIPLE）。
-    val totalHeightPx = composer.measureContentHeight(
-        activity = activity,
-        width = widthDp,
-        screenDensity = density,
-        content = exportContent,
-    )
-    val pageCount =
-        if (totalHeightPx > 0) (totalHeightPx + PAGE_CAPTURE_HEIGHT_PX - 1) / PAGE_CAPTURE_HEIGHT_PX
-        else 1
-
+    // 长对话高度可能超过单 Bitmap 硬件上限（16384~32768px）——分页每页一张 PNG。
+    // 不预先量总高：两次 composition 的高度会因图片/图表加载状态差异而不同，量偏大
+    // 会在末尾多产出整页背景色的空图（"纯色页"）。改为固定页高逐页窗口捕获，
+    // 捕获到纯背景空页即认为内容结束——丢弃该页并停止，不产出空页。
     val dir = context.appTempFolder
     val files = mutableListOf<File>()
     try {
-        for (pageIndex in 0 until pageCount) {
-            val offsetPx = pageIndex * PAGE_CAPTURE_HEIGHT_PX
-            val pageHeightPx = minOf(PAGE_CAPTURE_HEIGHT_PX, totalHeightPx - offsetPx).coerceAtLeast(1)
+        var pageIndex = 0
+        var offsetPx = 0
+        while (pageIndex < MAX_EXPORT_PAGES) {
             val pageBitmap = composer.composableToBitmapPage(
                 activity = activity,
                 width = widthDp,
-                pageHeight = density.run { pageHeightPx.toDp() },
+                pageHeight = density.run { PAGE_CAPTURE_HEIGHT_PX.toDp() },
                 offset = density.run { offsetPx.toDp() },
                 screenDensity = density,
                 content = exportContent,
             )
-            val name = if (pageCount == 1) "$timestamp.png" else "$timestamp-p${pageIndex + 1}.png"
+            if (isBlankPage(pageBitmap)) {
+                // 内容已到末尾（整页均为背景色）——丢弃，不落盘不分享
+                pageBitmap.recycle()
+                break
+            }
+            val name = "$timestamp-p${pageIndex + 1}.png"
             val file = dir.resolve(name)
             if (file.exists()) file.delete()
             file.createNewFile()
@@ -748,6 +768,8 @@ private suspend fun exportToImage(
             context.exportImage(activity, pageBitmap, name)
             pageBitmap.recycle()
             files += file
+            pageIndex++
+            offsetPx += PAGE_CAPTURE_HEIGHT_PX
         }
 
         if (files.isEmpty()) error("No pages rendered")
