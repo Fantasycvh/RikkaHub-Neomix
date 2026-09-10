@@ -281,7 +281,6 @@
   <string name="chat_page_export_image">이미지로 내보내기</string>
   <string name="chat_page_export_image_desc">대화를 PNG 이미지로 내보내기</string>
   <string name="chat_page_export_image_expand_reasoning">사고 과정 확장</string>
-  <string name="chat_page_export_image_too_long">대화가 너무 길어 이미지 내보내기가 잘렸습니다 (기기 높이 제한)</string>
   <string name="chat_page_share_conversation">대화 공유</string>
   <string name="chat_page_export_include_all_versions">모든 버전 포함(브랜치/편집 기록)</string>
   <string name="chat_page_export_markdown">Markdown</string>

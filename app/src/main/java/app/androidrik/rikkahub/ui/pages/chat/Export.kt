@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import java.io.File
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Book02
 import me.rerere.hugeicons.stroke.Book04
@@ -468,9 +469,8 @@ private suspend fun compileTikzToSvg(context: Context, code: String): String? =
         }
     }
 
-/** PNG 导出分页捕获参数：单页高度与单张 Bitmap 高度上限（超出上限退回截断并提示） */
+/** PNG 导出分页捕获参数：单页高度（每页一张 PNG，一次分享多张；不受单 Bitmap 高度上限约束） */
 private val PAGE_CAPTURE_HEIGHT_PX = 15_000
-private const val MAX_EXPORT_BITMAP_HEIGHT = 30_000
 
 /** 收集消息文本中的 TikZ 代码块（$$ 内嵌图表 + ```tikz 围栏，与 renderMarkdownWithTikz 同口径） */
 private fun collectTikzCodeBlocks(messages: List<UIMessage>): List<String> =
@@ -684,7 +684,7 @@ private suspend fun exportToImage(
     settings: Settings,
     options: ImageExportOptions = ImageExportOptions()
 ) {
-    val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.png"
+    val timestamp = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
     val composer = BitmapComposer(scope)
     val activity = context.getActivity()
     if (activity == null) {
@@ -694,8 +694,8 @@ private suspend fun exportToImage(
         return
     }
 
-    // PNG 是一次性捕获：TikZ 图表须预编译落入缓存（TikzJax 同步读缓存出图），
-    // 否则异步渲染在捕获瞬间未就绪 → 导出缺图（HTML 走同步管线不受影响）
+    // PNG 是逐页捕获：TikZ 图表须预编译落入缓存（TikzJax 同步读缓存出图），
+    // 否则异步渲染在捕获瞬间未就绪 → 该页缺图（HTML 走同步管线不受影响）
     collectTikzCodeBlocks(messages).forEach { code ->
         compileTikzToSvg(context, code)
     }
@@ -711,21 +711,25 @@ private suspend fun exportToImage(
     }
     val widthDp = 540.dp
 
-    // 长对话内容高度可能超过原 10000dp 容器上限（≈26250px）→ 原实现下方被 canvas 裁剪
-    // （"对话只导出一部分"）。先量真实总高，再分页窗口捕获后拼成一张连续长图。
+    // 长对话高度可能超过单 Bitmap 硬件上限（16384~32768px）——分页每页一张 PNG，
+    // 每页固定窗口捕获（不受单张超长图限制），一次分享全部（ACTION_SEND_MULTIPLE）。
     val totalHeightPx = composer.measureContentHeight(
         activity = activity,
         width = widthDp,
         screenDensity = density,
         content = exportContent,
     )
+    val pageCount =
+        if (totalHeightPx > 0) (totalHeightPx + PAGE_CAPTURE_HEIGHT_PX - 1) / PAGE_CAPTURE_HEIGHT_PX
+        else 1
 
-    val bitmap: Bitmap = if (totalHeightPx <= MAX_EXPORT_BITMAP_HEIGHT && totalHeightPx > 0) {
-        val pages = mutableListOf<Bitmap>()
-        var offsetPx = 0
-        while (offsetPx < totalHeightPx) {
-            val pageHeightPx = minOf(PAGE_CAPTURE_HEIGHT_PX, totalHeightPx - offsetPx)
-            pages += composer.composableToBitmapPage(
+    val dir = context.appTempFolder
+    val files = mutableListOf<File>()
+    try {
+        for (pageIndex in 0 until pageCount) {
+            val offsetPx = pageIndex * PAGE_CAPTURE_HEIGHT_PX
+            val pageHeightPx = minOf(PAGE_CAPTURE_HEIGHT_PX, totalHeightPx - offsetPx).coerceAtLeast(1)
+            val pageBitmap = composer.composableToBitmapPage(
                 activity = activity,
                 width = widthDp,
                 pageHeight = density.run { pageHeightPx.toDp() },
@@ -733,62 +737,35 @@ private suspend fun exportToImage(
                 screenDensity = density,
                 content = exportContent,
             )
-            offsetPx += pageHeightPx
-        }
-        if (pages.size == 1) {
-            pages[0]
-        } else {
-            // 硬件上限内的拼接：每页窗口段按 y 坐标贴回一张长图
-            runCatching {
-                val full = Bitmap.createBitmap(pages[0].width, totalHeightPx, Bitmap.Config.ARGB_8888)
-                val canvas = android.graphics.Canvas(full)
-                var y = 0
-                pages.forEach { page ->
-                    canvas.drawBitmap(page, 0f, y.toFloat(), null)
-                    y += page.height
-                }
-                full
-            }.getOrElse {
-                // 设备 Bitmap 高度上限低于对话高度（如 16384px 老设备）：退回单次捕获（截断），提示用户
-                Toast.makeText(context, context.getString(R.string.chat_page_export_image_too_long), Toast.LENGTH_LONG).show()
-                composer.composableToBitmap(activity = activity, width = widthDp, screenDensity = density, content = exportContent)
+            val name = if (pageCount == 1) "$timestamp.png" else "$timestamp-p${pageIndex + 1}.png"
+            val file = dir.resolve(name)
+            if (file.exists()) file.delete()
+            file.createNewFile()
+            FileOutputStream(file).use { fos ->
+                pageBitmap.compress(Bitmap.CompressFormat.PNG, 90, fos)
             }
+            // 每页分别存入相册（独立文件名）
+            context.exportImage(activity, pageBitmap, name)
+            pageBitmap.recycle()
+            files += file
         }
-    } else {
-        composer.composableToBitmap(activity = activity, width = widthDp, screenDensity = density, content = exportContent)
-    }
 
-    try {
-        val dir = context.appTempFolder
-        val file = dir.resolve(filename)
-        if (!file.exists()) {
-            file.createNewFile()
+        if (files.isEmpty()) error("No pages rendered")
+
+        // 一起分享：多页走 ACTION_SEND_MULTIPLE（一次带全部 PNG）
+        val uris = files.map {
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it)
+        }
+        if (uris.size == 1) {
+            shareFile(context, uris[0], "image/png")
         } else {
-            file.delete()
-            file.createNewFile()
+            shareFiles(context, uris, "image/png")
         }
-
-        FileOutputStream(file).use { fos ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 90, fos)
-        }
-
-        // Save to gallery
-        context.exportImage(activity, bitmap, filename)
-
-        // Share the file
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
-        shareFile(context, uri, "image/png")
     } catch (e: Exception) {
         e.printStackTrace()
         withContext(Dispatchers.Main) {
             Toast.makeText(context, "Failed to export image: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-    } finally {
-        bitmap.recycle()
     }
 }
 
@@ -1117,6 +1094,24 @@ private fun shareFile(context: Context, uri: Uri, mimeType: String) {
     val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
         type = mimeType
         putExtra(android.content.Intent.EXTRA_STREAM, uri)
+        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(
+        android.content.Intent.createChooser(
+            intent,
+            context.getString(R.string.chat_page_export_share_via)
+        )
+    )
+}
+
+/** 多文件一起分享：长对话分页导出多张 PNG 时一次带全部 */
+private fun shareFiles(context: Context, uris: List<Uri>, mimeType: String) {
+    val intent = android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE).apply {
+        type = mimeType
+        putParcelableArrayListExtra(
+            android.content.Intent.EXTRA_STREAM,
+            ArrayList(uris)
+        )
         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(

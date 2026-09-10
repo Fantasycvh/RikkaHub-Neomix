@@ -281,7 +281,6 @@
   <string name="chat_page_export_image">画像としてエクスポート</string>
   <string name="chat_page_export_image_desc">会話をPNG画像としてエクスポート</string>
   <string name="chat_page_export_image_expand_reasoning">思考過程を展開</string>
-  <string name="chat_page_export_image_too_long">会話が長すぎて画像エクスポートが切り詰められました（端末の高さ上限）</string>
   <string name="chat_page_share_conversation">会話を共有</string>
   <string name="chat_page_export_include_all_versions">すべてのバージョンを含める（ブランチ/編集履歴）</string>
   <string name="chat_page_export_markdown">Markdown</string>

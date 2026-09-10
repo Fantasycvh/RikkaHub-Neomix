@@ -320,7 +320,6 @@
   <string name="chat_page_export_image">导出为图片</string>
   <string name="chat_page_export_image_desc">将对话导出为PNG图片</string>
   <string name="chat_page_export_image_expand_reasoning">展开思维过程</string>
-  <string name="chat_page_export_image_too_long">对话过长，图片导出已截断（设备单图高度上限）</string>
   <string name="chat_page_share_conversation">分享对话</string>
   <string name="chat_page_export_include_all_versions">包含全部版本（含分支/编辑历史）</string>
   <string name="chat_page_export_markdown">Markdown</string>

@@ -320,7 +320,6 @@
   <string name="chat_page_export_image">Export as Image</string>
   <string name="chat_page_export_image_desc">Export conversation as PNG image</string>
   <string name="chat_page_export_image_expand_reasoning">Expand Reasoning</string>
-  <string name="chat_page_export_image_too_long">Conversation too long — image export truncated (device height limit)</string>
   <string name="chat_page_share_conversation">Share Conversation</string>
   <string name="chat_page_export_include_all_versions">Include all versions (branches &amp; edit history)</string>
   <string name="chat_page_export_markdown">Markdown</string>
