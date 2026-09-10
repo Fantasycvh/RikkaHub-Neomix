@@ -68,7 +68,17 @@ fun TikzJax(
     // 统一走 native 引擎（真 TeX，全语法支持）：XDV→dvisvgm SVG 矢量优先，
     // 失败降级 PDF→PdfRenderer 位图。原第①级 TikzRenderer 子集渲染已移除
     //（"部分解析画错图"的静默错误风险 > 毫秒级渲染收益；复杂图仍需 3-6s 编译）
-    var nativeSvg by remember(code) { mutableStateOf<String?>(null) }
+    // 同步读缓存作初始值：缓存命中首帧即出图 —— PNG 导出（BitmapComposer 一次性捕获，
+    // 不等待 LaunchedEffect 异步协程）依赖此；未命中仍走下方 LaunchedEffect 异步编译
+    var nativeSvg by remember(code) {
+        mutableStateOf(
+            if (TectonicNative.available) {
+                runCatching { TikzSvgCache.get(context, code) }.getOrNull()
+            } else {
+                null
+            }
+        )
+    }
     var nativeBitmap by remember(code) { mutableStateOf<ImageBitmap?>(null) }
     var nativeFailed by remember(code) { mutableStateOf(false) }
     val widthPx = with(LocalDensity.current) {

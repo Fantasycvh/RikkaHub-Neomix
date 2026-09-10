@@ -448,6 +448,44 @@ private val DIAGRAM_LATEX_PATTERNS = listOf(
 private val DOLLAR_TIKZ_REGEX = Regex("""\$\$([\s\S]*?)\$\$""")
 
 /**
+ * native 编译 TikZ → 内嵌 <svg>（缓存优先；与聊天渲染同链路 mupdf）。
+ * 导出与 HTML/PNG 共用：PNG 导出前依赖它把图预编译落入缓存（一次性捕获拿不到异步结果）。
+ */
+private suspend fun compileTikzToSvg(context: Context, code: String): String? =
+    withContext(Dispatchers.IO) {
+        val trimmed = code.trim()
+        val cached = TikzSvgCache.get(context, trimmed)
+        if (cached != null) {
+            cached
+        } else if (MupdfSvgBridge.available) {
+            // mupdf 链优先：tectonic PDF（内嵌字体）→ <text> 保留型 SVG（与聊天同链路）
+            TectonicNative.compileIsolated(context, trimmed)
+                ?.let { MupdfSvgBridge.pdfToSvg(it) }
+                ?.also { TikzSvgCache.put(context, trimmed, it) }
+        } else {
+            null
+        }
+    }
+
+/** 收集消息文本中的 TikZ 代码块（$$ 内嵌图表 + ```tikz 围栏，与 renderMarkdownWithTikz 同口径） */
+private fun collectTikzCodeBlocks(messages: List<UIMessage>): List<String> =
+    messages.flatMap { message ->
+        message.parts.filterIsInstance<UIMessagePart.Text>().flatMap { part ->
+            val result = mutableListOf<String>()
+            DOLLAR_TIKZ_REGEX.findAll(part.text).forEach { m ->
+                val latex = m.groupValues[1]
+                if (DIAGRAM_LATEX_PATTERNS.any { it.containsMatchIn(latex) }) {
+                    result.add(latex.trim())
+                }
+            }
+            TIKZ_FENCE_REGEX.findAll(part.text).forEach { m ->
+                result.add(m.groupValues[1].trim())
+            }
+            result
+        }
+    }
+
+/**
  * 将 markdown 中的 TikZ（代码围栏 + $$ 内嵌图表）渲染为内嵌 <svg>（矢量），
  * 其余 markdown 交给 generateMarkdownHtml。用占位符绕过 flexmark 对原始 HTML 的转义。
  *
@@ -483,19 +521,7 @@ private suspend fun renderMarkdownWithTikz(context: Context, content: String): S
     var result = html
     pendingRaw.forEachIndexed { i, code ->
         val trimmed = code.trim()
-        val svg = withContext(Dispatchers.IO) {
-            val cached = TikzSvgCache.get(context, trimmed)
-            if (cached != null) {
-                cached
-            } else if (MupdfSvgBridge.available) {
-                // mupdf 链优先：tectonic PDF（内嵌字体）→ <text> 保留型 SVG（与聊天同链路）
-                TectonicNative.compileIsolated(context, trimmed)
-                    ?.let { MupdfSvgBridge.pdfToSvg(it) }
-                    ?.also { TikzSvgCache.put(context, trimmed, it) }
-            } else {
-                null
-            }
-        }
+        val svg = compileTikzToSvg(context, code)
         if (svg != null) {
             result = result.replace("%%TIKZ_PH_${i}%%", svg)
         } else {
@@ -661,6 +687,12 @@ private suspend fun exportToImage(
             Toast.makeText(context, "Failed to get activity", Toast.LENGTH_SHORT).show()
         }
         return
+    }
+
+    // PNG 是一次性捕获：TikZ 图表须预编译落入缓存（TikzJax 同步读缓存出图），
+    // 否则异步渲染在捕获瞬间未就绪 → 导出缺图（HTML 走同步管线不受影响）
+    collectTikzCodeBlocks(messages).forEach { code ->
+        compileTikzToSvg(context, code)
     }
 
     val bitmap = composer.composableToBitmap(
