@@ -10,7 +10,9 @@ import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -265,7 +267,13 @@ class BitmapComposer(private val mainScope: CoroutineScope) {
                                     .height(pageHeight)
                                     .clipToBounds()
                             ) {
-                                Box(modifier = Modifier.offset(y = -offset)) {
+                                // unbounded：内容必须按自身全高布局（父 height 约束会把内容
+                                // 压到页高，offset 上移后窗口落在截断之外成空白页）
+                                Box(
+                                    modifier = Modifier
+                                        .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                                        .offset(y = -offset)
+                                ) {
                                     content()
                                 }
                             }
