@@ -204,24 +204,43 @@ class BitmapComposer(private val mainScope: CoroutineScope) {
                 decor.addView(container)
 
                 Handler(Looper.getMainLooper()).post {
-                    container.measure(
-                        View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
-                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-                    )
-                    container.layout(0, 0, container.measuredWidth, container.measuredHeight)
-                    Handler(Looper.getMainLooper()).postDelayed({
+                    var lastHeight = -1
+                    var attempts = 0
+
+                    fun measureOnce(): Int {
+                        container.measure(
+                            View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                        )
+                        container.layout(0, 0, container.measuredWidth, container.measuredHeight)
+                        return container.measuredHeight
+                    }
+
+                    fun step() {
                         try {
-                            container.measure(
-                                View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
-                                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-                            )
-                            continuation.resume(container.measuredHeight)
+                            val height = measureOnce()
+                            attempts++
+                            // 连续两次测量一致才认为稳定——图片/Mermaid 等异步内容就绪后高度才不再变，
+                            // 单次测量会偏小 → 分页尾部内容被截
+                            if (height > 0 && height == lastHeight) {
+                                continuation.resume(height)
+                                decor.removeView(container)
+                                return
+                            }
+                            lastHeight = height
+                            if (attempts >= 8) {
+                                continuation.resume(height.coerceAtLeast(1))
+                                decor.removeView(container)
+                                return
+                            }
+                            Handler(Looper.getMainLooper()).postDelayed({ step() }, 120)
                         } catch (e: Exception) {
                             continuation.resumeWithException(e)
-                        } finally {
                             decor.removeView(container)
                         }
-                    }, 100)
+                    }
+
+                    step()
                 }
             } catch (e: CancellationException) {
                 throw e

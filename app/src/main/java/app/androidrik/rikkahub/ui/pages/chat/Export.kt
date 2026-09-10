@@ -475,6 +475,21 @@ private val PAGE_CAPTURE_HEIGHT_PX = 15_000
 /** 页数上限（防异常输入导致页数爆炸；15000px/页 ≈ 300 万 px 内容） */
 private const val MAX_EXPORT_PAGES = 200
 
+/** 整页是否纯背景色：逐行精确比较（真空白页每行同色；含任何内容必有色差行） */
+private fun isBlankPage(bitmap: Bitmap): Boolean {
+    val w = bitmap.width
+    val h = bitmap.height
+    if (w <= 0 || h <= 0) return true
+    val row = IntArray(w)
+    val ref = IntArray(w)
+    bitmap.getPixels(ref, 0, w, 0, 0, w, 1)
+    for (y in 1 until h) {
+        bitmap.getPixels(row, 0, w, 0, y, w, 1)
+        if (!row.contentEquals(ref)) return false
+    }
+    return true
+}
+
 /** 收集消息文本中的 TikZ 代码块（$$ 内嵌图表 + ```tikz 围栏，与 renderMarkdownWithTikz 同口径） */
 private fun collectTikzCodeBlocks(messages: List<UIMessage>): List<String> =
     messages.flatMap { message ->
@@ -755,6 +770,35 @@ private suspend fun exportToImage(
             context.exportImage(activity, pageBitmap, name)
             pageBitmap.recycle()
             files += file
+        }
+
+        // 兜底补页：图片/Mermaid 等异步内容就绪后实际高度可能高于量测值 → 量测偏小会截掉尾部。
+        // 继续逐页捕获，直到出现整页纯背景为止（逐行精确判定，误判率为零）
+        var overflowOffsetPx = pageCount * PAGE_CAPTURE_HEIGHT_PX
+        while (files.size < MAX_EXPORT_PAGES) {
+            val overflow = composer.composableToBitmapPage(
+                activity = activity,
+                width = widthDp,
+                pageHeight = density.run { PAGE_CAPTURE_HEIGHT_PX.toDp() },
+                offset = density.run { overflowOffsetPx.toDp() },
+                screenDensity = density,
+                content = exportContent,
+            )
+            if (isBlankPage(overflow)) {
+                overflow.recycle()
+                break
+            }
+            val name = "$timestamp-p${files.size + 1}.png"
+            val file = dir.resolve(name)
+            if (file.exists()) file.delete()
+            file.createNewFile()
+            FileOutputStream(file).use { fos ->
+                overflow.compress(Bitmap.CompressFormat.PNG, 90, fos)
+            }
+            context.exportImage(activity, overflow, name)
+            overflow.recycle()
+            files += file
+            overflowOffsetPx += PAGE_CAPTURE_HEIGHT_PX
         }
 
         if (files.isEmpty()) error("No pages rendered")
