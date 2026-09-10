@@ -78,6 +78,7 @@ import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.utils.normalizeLocalFileUrl
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.MessageNode
@@ -448,7 +449,7 @@ private fun MessagePartsBlock(
                                 intent.data = FileProvider.getUriForFile(
                                     context,
                                     "${context.packageName}.fileprovider",
-                                    part.url.toUri().toFile()
+                                    context.normalizeLocalFileUrl(part.url).toUri().toFile()
                                 )
                                 val chooserIndent = Intent.createChooser(intent, null)
                                 context.startActivity(chooserIndent)
@@ -471,7 +472,7 @@ private fun MessagePartsBlock(
                                 intent.data = FileProvider.getUriForFile(
                                     context,
                                     "${context.packageName}.fileprovider",
-                                    part.url.toUri().toFile()
+                                    context.normalizeLocalFileUrl(part.url).toUri().toFile()
                                 )
                                 val chooserIndent = Intent.createChooser(intent, null)
                                 context.startActivity(chooserIndent)
@@ -509,7 +510,7 @@ private fun MessagePartsBlock(
                             )
                         } else {
                             ZoomableAsyncImage(
-                                model = part.url,
+                                model = context.normalizeLocalFileUrl(part.url),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .clip(MaterialTheme.shapes.medium)
@@ -527,7 +528,7 @@ private fun MessagePartsBlock(
                                 intent.data = FileProvider.getUriForFile(
                                     context,
                                     "${context.packageName}.fileprovider",
-                                    part.url.toUri().toFile()
+                                    context.normalizeLocalFileUrl(part.url).toUri().toFile()
                                 )
                                 val chooserIndent = Intent.createChooser(intent, null)
                                 context.startActivity(chooserIndent)

@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.core.net.toUri
 import coil3.compose.AsyncImage
+import androidx.compose.ui.platform.LocalContext
+import app.androidrik.rikkahub.utils.normalizeLocalFileUrl
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
@@ -47,6 +49,7 @@ import org.koin.compose.koinInject
 internal fun MediaFileInputRow(
     state: ChatInputState,
 ) {
+    val context = LocalContext.current
     val filesManager: FilesManager = koinInject()
     val managedFiles by filesManager.observe().collectAsState(initial = emptyList())
     val displayNameByRelativePath = remember(managedFiles) {
@@ -87,7 +90,7 @@ internal fun MediaFileInputRow(
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             ) {
                                 AsyncImage(
-                                    model = part.url,
+                                    model = context.normalizeLocalFileUrl(part.url),
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
