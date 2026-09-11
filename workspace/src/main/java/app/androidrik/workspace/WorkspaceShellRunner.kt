@@ -20,6 +20,8 @@ data class WorkspaceShellContext(
     val timeoutMillis: Long,
     val stdin: ByteArray? = null,
     val bindMounts: List<WorkspaceBindMount> = emptyList(),
+    // Shell 兼容模式：禁用 PRoot seccomp 加速（对齐上游 03246406，部分内核/ROM 上 seccomp 会导致命令异常）
+    val shellCompatibilityMode: Boolean = false,
 )
 
 class HostShellRunner : WorkspaceShellRunner {

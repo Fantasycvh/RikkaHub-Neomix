@@ -177,6 +177,21 @@ class WorkspaceDetailVM(
         }
     }
 
+    // Shell 兼容模式（上游 03246406）：开关只落库，新开的终端/命令生效；已有终端需重开
+    fun setShellCompatibilityMode(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                val workspace = state.value.workspace ?: return@launch
+                repository.setShellCompatibilityMode(workspace.id, enabled)
+                loadWorkspace()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _installError.value = error.message ?: "保存 Shell 兼容模式失败"
+            }
+        }
+    }
+
     fun installRootfs(url: String) {
         viewModelScope.launch {
             _installError.value = null

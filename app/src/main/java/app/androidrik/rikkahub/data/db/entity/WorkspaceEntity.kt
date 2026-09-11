@@ -33,6 +33,9 @@ data class WorkspaceEntity(
     // 工具审批的用户覆盖项 (toolName -> needsApproval)，未覆盖的工具沿用默认值
     @ColumnInfo("tool_approvals", defaultValue = "{}")
     val toolApprovals: String = "{}",
+    // Shell 兼容模式：开启后为新终端及后续命令禁用 PRoot seccomp 加速（对齐上游 03246406）
+    @ColumnInfo("shell_compatibility_mode", defaultValue = "0")
+    val shellCompatibilityMode: Boolean = false,
 ) {
     fun toolApprovalOverrides(): Map<String, Boolean> = runCatching {
         JsonInstant.decodeFromString<Map<String, Boolean>>(toolApprovals)

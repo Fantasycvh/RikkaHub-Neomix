@@ -1260,6 +1260,8 @@
   <string name="workspace_detail_workspace_info">Workspace</string>
   <string name="workspace_detail_name">Name</string>
   <string name="workspace_detail_shell_status">Shell Status</string>
+  <string name="workspace_detail_shell_compatibility">Shell compatibility mode</string>
+  <string name="workspace_detail_shell_compatibility_desc">Disable PRoot seccomp acceleration for new terminals and commands. Takes effect for newly opened terminals.</string>
   <string name="workspace_detail_loading">Loading</string>
   <string name="workspace_detail_enable_shell">Enable Shell</string>
   <string name="workspace_detail_enable_shell_desc">Allow this workspace to run a terminal environment using local Rootfs</string>

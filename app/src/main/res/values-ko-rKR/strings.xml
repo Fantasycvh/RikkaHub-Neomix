@@ -1168,6 +1168,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_workspace_info">작업 공간</string>
   <string name="workspace_detail_name">이름</string>
   <string name="workspace_detail_shell_status">셸 상태</string>
+  <string name="workspace_detail_shell_compatibility">셸 호환 모드</string>
+  <string name="workspace_detail_shell_compatibility_desc">새 터미널과 이후 명령에 대해 PRoot seccomp 가속을 비활성화합니다. 새로 연 터미널에 적용됩니다.</string>
   <string name="workspace_detail_loading">로딩 중</string>
   <string name="workspace_detail_enable_shell">셸 활성화</string>
   <string name="workspace_detail_enable_shell_desc">이 워크스페이스에서 로컬 Rootfs를 사용하여 터미널 환경을 실행할 수 있도록 허용합니다.</string>

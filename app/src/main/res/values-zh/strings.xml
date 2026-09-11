@@ -1254,6 +1254,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_workspace_info">工作区</string>
   <string name="workspace_detail_name">名称</string>
   <string name="workspace_detail_shell_status">Shell 状态</string>
+  <string name="workspace_detail_shell_compatibility">Shell 兼容模式</string>
+  <string name="workspace_detail_shell_compatibility_desc">为新终端及后续命令禁用 PRoot seccomp 加速。对新打开的终端生效。</string>
   <string name="workspace_detail_loading">加载中</string>
   <string name="workspace_detail_enable_shell">启用 Shell</string>
   <string name="workspace_detail_enable_shell_desc">允许此工作区使用本地Rootfs运行终端环境</string>

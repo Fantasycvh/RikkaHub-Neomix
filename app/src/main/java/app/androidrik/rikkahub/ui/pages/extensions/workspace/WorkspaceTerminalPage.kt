@@ -77,8 +77,9 @@ fun WorkspaceTerminalPage(id: String) {
         initialValue = WorkspaceTerminalTabsState(),
     )
 
-    LaunchedEffect(root) {
-        root?.let { sessionManager.ensureSession(it) }
+    val shellCompatibilityMode = state.workspace?.shellCompatibilityMode ?: false
+    LaunchedEffect(root, shellCompatibilityMode) {
+        root?.let { sessionManager.ensureSession(it, shellCompatibilityMode) }
     }
 
     RikkahubTheme(colorMode = ColorMode.DARK) {
@@ -98,7 +99,7 @@ fun WorkspaceTerminalPage(id: String) {
                         IconButton(
                             onClick = {
                                 root?.let { currentRoot ->
-                                    sessionManager.createTab(currentRoot)
+                                    sessionManager.createTab(currentRoot, shellCompatibilityMode)
                                 }
                             },
                             enabled = root != null && !terminalState.isCreating,

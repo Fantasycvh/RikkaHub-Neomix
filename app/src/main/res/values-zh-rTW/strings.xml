@@ -1211,6 +1211,8 @@
   <string name="workspace_detail_workspace_info">工作區</string>
   <string name="workspace_detail_name">名稱</string>
   <string name="workspace_detail_shell_status">Shell 狀態</string>
+  <string name="workspace_detail_shell_compatibility">Shell 相容模式</string>
+  <string name="workspace_detail_shell_compatibility_desc">為新終端機及後續命令停用 PRoot seccomp 加速。對新開啟的終端機生效。</string>
   <string name="workspace_detail_loading">載入中</string>
   <string name="workspace_detail_enable_shell">啟用 Shell</string>
   <string name="workspace_detail_enable_shell_desc">允許此工作區使用本地 Rootfs 來執行終端環境</string>

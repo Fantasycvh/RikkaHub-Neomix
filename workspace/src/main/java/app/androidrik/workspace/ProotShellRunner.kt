@@ -47,6 +47,12 @@ class ProotShellRunner(
             .directory(context.filesDir)
             .redirectErrorStream(false)
             .apply {
+                // Shell 兼容模式：禁用 PRoot seccomp 加速（部分内核/ROM 上 seccomp 导致命令异常，上游 03246406）
+                if (context.shellCompatibilityMode) {
+                    environment()["PROOT_NO_SECCOMP"] = "1"
+                } else {
+                    environment().remove("PROOT_NO_SECCOMP")
+                }
                 environment()["PROOT_LOADER"] = loader.absolutePath
                 environment()["PROOT_TMP_DIR"] = context.tempDir.absolutePath
                 environment()["TMPDIR"] = context.tempDir.absolutePath
