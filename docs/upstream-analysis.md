@@ -30,6 +30,7 @@
 | `54030ec4` | Skill frontmatter 改 SnakeYAML 解析 | `3b482036` | 2026-09-08 |
 | `fcb04126` | web ask_user 多选（#1654） | `c468f0ba`（手工移植，fork 文件基线已分叉） | 2026-09-11 |
 | `3d75f83f` | web-ui 模型弹窗厂商标签堆叠（#1871） | `c468f0ba` | 2026-09-11 |
+| `5b4d7895` | 自定义时间提醒间隔 | `772cd77e`（fork 适配；@Serializable 自动持久化，旧数据默认 60 兜底，真机验证通过） | 2026-09-11 |
 
 ## 待吸收（按优先级，合并清单）
 
@@ -107,7 +108,7 @@
 | `ab07ac1f` | 注册 DeepSeek V4.1 Flash（多模态） | 极低 | ModelRegistry +8 行；fork 同文件 700 行差异（fork 模型更多）但追加式注册，`ALL_MODELS`/definition 两处插入 |
 | `6e0aa7d4` | 工具执行完成前可打开调用详情（#1840） | 中 | `ChatMessageTools` 移除点击状态限制（1 行实质）；fork 该文件 168/91 差异（审批/回执定制深），需手工合 |
 | `05a85a09` | ask_user 所有选项支持自定义文本（#1868） | 中 | `AskUserTool` +5 行 + `ChatMessageTools` 129 行重构；与 fork 定制重叠，手工合 |
-| `5b4d7895` | 自定义时间提醒间隔 | 中 | `TimeReminderTransformer` 间隔参数化（fork 20 行差异）+ `Assistant` 新字段（**需补 PreferencesStore 三件套**）+ `AssistantMemoryPage` 配置（fork 81 行差异） |
+| ~~`5b4d7895`~~ 自定义时间提醒间隔 | ~~中~~ | **✅ 已吸收（2026-09-11，`772cd77e`，真机验证通过）**：`TimeReminderTransformer` 阈值参数化 + `Assistant.timeReminderIntervalMinutes`（@Serializable 自动持久化，**无需 PreferencesStore 三件套**——评估时标注有误）+ `AssistantMemoryPage` 间隔条目+数字输入对话框 + 6 语言 5 key + 单测 10 用例 |
 
 ### C 冲突 / 大改（需先评估，暂缓）
 
