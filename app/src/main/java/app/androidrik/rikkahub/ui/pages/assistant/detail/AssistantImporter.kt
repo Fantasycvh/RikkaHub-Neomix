@@ -242,7 +242,15 @@ internal fun parseAssistantFromJson(
                     ?: "Unsupported spec: $spec"
             )
     } else {
-        // 无 spec：SillyTavern V1 老卡（顶层即字段，能识别出 name 就按 V1 解析）；
+        // 无 spec：先排除 SillyTavern 预设文件（Prompt Preset：prompts+prompt_order 结构，
+        // 常见张冠李戴下载为 .json 且非角色卡），给明确指引而非 "缺 spec"
+        if (json["prompts"] is kotlinx.serialization.json.JsonArray && json["prompt_order"] != null) {
+            error(
+                context?.getString(R.string.assistant_importer_is_preset)
+                    ?: "This is a SillyTavern preset file, not a character card."
+            )
+        }
+        // SillyTavern V1 老卡（顶层即字段，能识别出 name 就按 V1 解析）；
         // 否则视为非角色卡文件，报友好错误（B）
         if (json["name"]?.jsonPrimitiveOrNull?.contentOrNull != null) {
             TAVERN_PARSERS["chara_card_v1"]

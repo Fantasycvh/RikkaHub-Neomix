@@ -103,4 +103,23 @@ class AssistantImporterTest {
         assertTrue(exception != null)
         assertTrue(exception!!.message!!.contains("Unsupported spec"))
     }
+
+    @Test
+    fun `酒馆预设文件被识别为非角色卡并给指引`() {
+        val exception = try {
+            parse(
+                """
+                {
+                  "prompts": [{"name": "p", "content": "x"}],
+                  "prompt_order": []
+                }
+                """.trimIndent()
+            )
+            null
+        } catch (e: IllegalStateException) {
+            e
+        }
+        assertTrue(exception != null)
+        assertTrue(exception!!.message!!.contains("preset"))
+    }
 }

@@ -35,6 +35,7 @@
   <string name="assistant_importer_missing_data_field">缺少数据字段</string>
   <string name="assistant_importer_missing_name_field">缺少名称字段</string>
   <string name="assistant_importer_missing_spec_field">无法识别该角色卡：缺少 spec 字段（老版 SillyTavern V1 卡片会自动识别）</string>
+  <string name="assistant_importer_is_preset">这是 SillyTavern 预设文件（不是角色卡），请导入角色卡（JSON 或 PNG）</string>
   <string name="assistant_importer_read_json_failed">读取JSON失败</string>
   <string name="assistant_importer_unsupported_file_type">不支持的文件类型: %s</string>
   <string name="assistant_importer_unsupported_spec">不支持的规格: %s</string>
