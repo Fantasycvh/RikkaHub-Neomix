@@ -244,6 +244,7 @@ interface AskUserQuestion {
   id: string;
   question: string;
   options: string[];
+  selectionType: "text" | "single" | "multi";
 }
 
 function parseAskUserQuestions(args: unknown): AskUserQuestion[] {
@@ -258,7 +259,12 @@ function parseAskUserQuestions(args: unknown): AskUserQuestion[] {
         if (!id || !question) return null;
         const rawOptions = Array.isArray(record.options) ? record.options : [];
         const options = rawOptions.filter((o): o is string => typeof o === "string");
-        return { id, question, options } satisfies AskUserQuestion;
+        // 与后端 AskUserTool 下发的 selection_type（text/single/multi）对齐
+        const selectionType: AskUserQuestion["selectionType"] =
+          record.selection_type === "single" || record.selection_type === "multi"
+            ? record.selection_type
+            : "text";
+        return { id, question, options, selectionType } satisfies AskUserQuestion;
       })
       .filter((q): q is AskUserQuestion => q !== null);
   } catch {
@@ -279,6 +285,7 @@ function AskUserToolStep({
   const args = React.useMemo(() => safeJsonParse(tool.input), [tool.input]);
   const questions = React.useMemo(() => parseAskUserQuestions(args), [args]);
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
+  const [multiAnswers, setMultiAnswers] = React.useState<Record<string, string[]>>({});
 
   const isPending = tool.approvalState.type === "pending";
   const isAnswered = tool.approvalState.type === "answered";
@@ -289,18 +296,34 @@ function AskUserToolStep({
       ? firstQuestion
       : t("tool_part.ask_user_questions_count", { count: questions.length });
 
-  const allAnswered = questions.length > 0 && questions.every((q) => answers[q.id]?.trim());
+  // 多选 = 勾选项 join(", ") + 自由文本追加；单选/文本 = 文本框值（与后端解析语义一致）
+  const getAnswer = (q: AskUserQuestion): string => {
+    const text = answers[q.id] ?? "";
+    return q.selectionType === "multi"
+      ? [...(multiAnswers[q.id] ?? []), ...(text.trim() ? [text] : [])].join(", ")
+      : text;
+  };
+  const allAnswered = questions.length > 0 && questions.every((q) => getAnswer(q).trim());
 
   const handleSubmit = () => {
     if (!onToolApproval || !allAnswered) return;
     const payload = JSON.stringify({
-      answers: Object.fromEntries(questions.map((q) => [q.id, answers[q.id] ?? ""])),
+      answers: Object.fromEntries(questions.map((q) => [q.id, getAnswer(q)])),
     });
     void onToolApproval(tool.toolCallId, true, "", payload);
   };
 
   const setAnswer = (questionId: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
+  };
+
+  // 选项点击分流：多选 toggle 数组，单选/文本直接写入文本框
+  const toggleMulti = (questionId: string, option: string) => {
+    setMultiAnswers((prev) => {
+      const cur = prev[questionId] ?? [];
+      const next = cur.includes(option) ? cur.filter((o) => o !== option) : [...cur, option];
+      return { ...prev, [questionId]: next };
+    });
   };
 
   // Parse answered state for display
@@ -340,20 +363,31 @@ function AskUserToolStep({
               <>
                 {q.options.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {q.options.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => setAnswer(q.id, option)}
-                        className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                          answers[q.id] === option
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-muted-foreground/30 text-muted-foreground hover:border-primary/50"
-                        }`}
-                      >
-                        {option}
-                      </button>
-                    ))}
+                    {q.options.map((option) => {
+                      const isMultiSelected = q.selectionType === "multi" && (multiAnswers[q.id] ?? []).includes(option);
+                      const isSelected =
+                        q.selectionType === "multi"
+                          ? isMultiSelected
+                          : answers[q.id] === option;
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() =>
+                            q.selectionType === "multi"
+                              ? toggleMulti(q.id, option)
+                              : setAnswer(q.id, option)
+                          }
+                          className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                            isSelected
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-muted-foreground/30 text-muted-foreground hover:border-primary/50"
+                          }`}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
                 <Input
