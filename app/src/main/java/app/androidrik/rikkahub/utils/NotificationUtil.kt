@@ -19,7 +19,9 @@ class NotificationConfig {
     var title: String = ""
     var content: String = ""
     var subText: String? = null
-    var smallIcon: Int = R.drawable.small_icon
+    // ic_stat_rikkahub：纯 alpha 通道单色 PNG（五密度）——状态栏/焦点胶囊只取 alpha 渲染，
+    // 原 small_icon.xml（200dp 实心黑矢量）细节丢失致胶囊无图标（对齐上游 aab5026e / #1782）
+    var smallIcon: Int = R.drawable.ic_stat_rikkahub
     var autoCancel: Boolean = false
     var ongoing: Boolean = false
     var onlyAlertOnce: Boolean = false

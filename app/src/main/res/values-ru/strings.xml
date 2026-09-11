@@ -955,6 +955,11 @@
   <string name="setting_provider_page_select_from_gallery">Выбрать из галереи</string>
   <string name="setting_provider_page_service_account_email">Электронная почта служебной учётной записи</string>
   <string name="setting_provider_page_test">Тест</string>
+  <string name="setting_provider_page_test_non_streaming">Без стриминга</string>
+  <string name="setting_provider_page_test_streaming">Стриминг</string>
+  <string name="setting_provider_page_test_tool_call">Вызов инструмента</string>
+  <string name="setting_provider_page_test_tool_called">Вызван: %1$s  Аргументы: %2$s</string>
+  <string name="setting_provider_page_test_tool_not_called">Инструмент не вызван, ответ: %s</string>
   <string name="setting_provider_page_test_connection">Проверить подключение</string>
   <string name="setting_provider_page_text">Текст</string>
   <string name="setting_provider_page_title">Провайдеры</string>

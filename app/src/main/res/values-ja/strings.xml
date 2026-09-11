@@ -955,6 +955,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_provider_page_select_from_gallery">ギャラリーから選択</string>
   <string name="setting_provider_page_service_account_email">サービスアカウントメール</string>
   <string name="setting_provider_page_test">テスト</string>
+  <string name="setting_provider_page_test_non_streaming">非ストリーミング</string>
+  <string name="setting_provider_page_test_streaming">ストリーミング</string>
+  <string name="setting_provider_page_test_tool_call">ツール呼び出し</string>
+  <string name="setting_provider_page_test_tool_called">呼び出し: %1$s  引数: %2$s</string>
+  <string name="setting_provider_page_test_tool_not_called">ツール未呼び出し、応答: %s</string>
   <string name="setting_provider_page_test_connection">接続テスト</string>
   <string name="setting_provider_page_text">テキスト</string>
   <string name="setting_provider_page_title">プロバイダー</string>
