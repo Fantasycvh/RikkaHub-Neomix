@@ -34,7 +34,7 @@
   <string name="assistant_importer_importing">가져오는 중...</string>
   <string name="assistant_importer_missing_data_field">데이터 필드가 누락됨</string>
   <string name="assistant_importer_missing_name_field">이름 필드가 누락됨</string>
-  <string name="assistant_importer_missing_spec_field">spec 필드가 누락됨</string>
+  <string name="assistant_importer_missing_spec_field">캐릭터 카드를 인식할 수 없습니다: "spec" 필드가 없습니다 (구형 V1 카드는 자동 인식됩니다)</string>
   <string name="assistant_importer_read_json_failed">JSON 읽기 실패</string>
   <string name="assistant_importer_unsupported_file_type">지원되지 않는 파일 형식: %s</string>
   <string name="assistant_importer_unsupported_spec">지원되지 않는 사양: %s</string>

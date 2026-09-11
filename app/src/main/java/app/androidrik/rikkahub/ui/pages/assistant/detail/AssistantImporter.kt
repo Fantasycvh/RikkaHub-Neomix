@@ -150,99 +150,109 @@ private fun SillyTavernImporter(
 
 private interface TavernCardParser {
     val specName: String
-    fun parse(context: Context, json: JsonObject, background: String?): Assistant
+    fun parse(context: Context?, json: JsonObject, background: String?): Assistant
+}
+
+// V1/V2/V3 共用：data 对象（V2/V3 为 json["data"]，V1 老卡为顶层 json）→ Assistant
+private fun parseCardData(context: Context?, data: JsonObject, background: String?): Assistant {
+    val name = data["name"]?.jsonPrimitiveOrNull?.contentOrNull
+        ?: error(context?.getString(R.string.assistant_importer_missing_name_field) ?: "Missing name field")
+    val firstMessage = data["first_mes"]?.jsonPrimitiveOrNull?.contentOrNull
+    val system = data["system_prompt"]?.jsonPrimitiveOrNull?.contentOrNull
+    val description = data["description"]?.jsonPrimitiveOrNull?.contentOrNull
+    val personality = data["personality"]?.jsonPrimitiveOrNull?.contentOrNull
+    val scenario = data["scenario"]?.jsonPrimitiveOrNull?.contentOrNull
+    val example = data["mes_example"]?.jsonPrimitiveOrNull?.contentOrNull
+
+    val prompt = buildString {
+        appendLine("You are roleplaying as $name.")
+        appendLine()
+        if (!system.isNullOrBlank()) {
+            appendLine(system)
+            appendLine()
+        }
+        appendLine("## Description of the character")
+        appendLine(description ?: "Empty")
+        appendLine()
+        appendLine("## Personality of the character")
+        appendLine(personality ?: "Empty")
+        appendLine()
+        appendLine("## Scenario")
+        append(scenario ?: "Empty")
+        if (!example.isNullOrBlank()) {
+            appendLine()
+            appendLine()
+            appendLine("## Example of the dialogue")
+            append(example)
+        }
+    }
+
+    return Assistant(
+        name = name,
+        presetMessages = if (firstMessage != null) listOf(UIMessage.assistant(firstMessage)) else emptyList(),
+        systemPrompt = prompt,
+        background = background
+    )
 }
 
 private class CharaCardV2Parser : TavernCardParser {
     override val specName: String = "chara_card_v2"
 
-    override fun parse(context: Context, json: JsonObject, background: String?): Assistant {
-        val data = json["data"]?.jsonObject ?: error(context.getString(R.string.assistant_importer_missing_data_field))
-        val name = data["name"]?.jsonPrimitiveOrNull?.contentOrNull
-            ?: error(context.getString(R.string.assistant_importer_missing_name_field))
-        val firstMessage = data["first_mes"]?.jsonPrimitiveOrNull?.contentOrNull
-        val system = data["system_prompt"]?.jsonPrimitiveOrNull?.contentOrNull
-        val description = data["description"]?.jsonPrimitiveOrNull?.contentOrNull
-        val personality = data["personality"]?.jsonPrimitiveOrNull?.contentOrNull
-        val scenario = data["scenario"]?.jsonPrimitiveOrNull?.contentOrNull
-
-        val prompt = buildString {
-            appendLine("You are roleplaying as $name.")
-            appendLine()
-            if (!system.isNullOrBlank()) {
-                appendLine(system)
-                appendLine()
-            }
-            appendLine("## Description of the character")
-            appendLine(description ?: "Empty")
-            appendLine()
-            appendLine("## Personality of the character")
-            appendLine(personality ?: "Empty")
-            appendLine()
-            appendLine("## Scenario")
-            append(scenario ?: "Empty")
-        }
-
-        return Assistant(
-            name = name,
-            presetMessages = if (firstMessage != null) listOf(UIMessage.assistant(firstMessage)) else emptyList(),
-            systemPrompt = prompt,
-            background = background
-        )
+    override fun parse(context: Context?, json: JsonObject, background: String?): Assistant {
+        val data = json["data"]?.jsonObject
+            ?: error(context?.getString(R.string.assistant_importer_missing_data_field) ?: "Missing data field")
+        return parseCardData(context, data, background)
     }
 }
 
 private class CharaCardV3Parser : TavernCardParser {
     override val specName: String = "chara_card_v3"
 
-    override fun parse(context: Context, json: JsonObject, background: String?): Assistant {
-        val data = json["data"]?.jsonObject ?: error(context.getString(R.string.assistant_importer_missing_data_field))
-        val name = data["name"]?.jsonPrimitiveOrNull?.contentOrNull ?: error(context.getString(R.string.assistant_importer_missing_name_field))
-        val description = data["description"]?.jsonPrimitiveOrNull?.contentOrNull
-        val firstMessage = data["first_mes"]?.jsonPrimitiveOrNull?.contentOrNull
-        val system = data["system_prompt"]?.jsonPrimitiveOrNull?.contentOrNull
-        val personality = data["personality"]?.jsonPrimitiveOrNull?.contentOrNull
-        val scenario = data["scenario"]?.jsonPrimitiveOrNull?.contentOrNull
-
-        val prompt = buildString {
-            appendLine("You are roleplaying as $name.")
-            appendLine()
-            if (!system.isNullOrBlank()) {
-                appendLine(system)
-                appendLine()
-            }
-            appendLine("## Description of the character")
-            appendLine(description ?: "Empty")
-            appendLine()
-            appendLine("## Personality of the character")
-            appendLine(personality ?: "Empty")
-            appendLine()
-            appendLine("## Scenario")
-            append(scenario ?: "Empty")
-        }
-
-        return Assistant(
-            name = name,
-            presetMessages = if (firstMessage != null) listOf(UIMessage.assistant(firstMessage)) else emptyList(),
-            systemPrompt = prompt,
-            background = background
-        )
+    override fun parse(context: Context?, json: JsonObject, background: String?): Assistant {
+        val data = json["data"]?.jsonObject
+            ?: error(context?.getString(R.string.assistant_importer_missing_data_field) ?: "Missing data field")
+        return parseCardData(context, data, background)
     }
+}
+
+// 老版 SillyTavern V1：顶层即角色字段（name/description/first_mes...），无 spec/data 包裹
+private class CharaCardV1Parser : TavernCardParser {
+    override val specName: String = "chara_card_v1"
+
+    override fun parse(context: Context?, json: JsonObject, background: String?): Assistant =
+        parseCardData(context, json, background)
 }
 
 private val TAVERN_PARSERS: Map<String, TavernCardParser> = listOf(
     CharaCardV2Parser(),
-    CharaCardV3Parser()
+    CharaCardV3Parser(),
+    CharaCardV1Parser()
 ).associateBy { it.specName }
 
-private fun parseAssistantFromJson(
-    context: Context,
+internal fun parseAssistantFromJson(
+    context: Context?,
     json: JsonObject,
     background: String?,
 ): Assistant {
     val spec = json["spec"]?.jsonPrimitive?.contentOrNull
-        ?: error(context.getString(R.string.assistant_importer_missing_spec_field))
-    val parser = TAVERN_PARSERS[spec] ?: error(context.getString(R.string.assistant_importer_unsupported_spec, spec))
+    val parser = if (spec != null) {
+        TAVERN_PARSERS[spec]
+            ?: error(
+                context?.getString(R.string.assistant_importer_unsupported_spec, spec)
+                    ?: "Unsupported spec: $spec"
+            )
+    } else {
+        // 无 spec：SillyTavern V1 老卡（顶层即字段，能识别出 name 就按 V1 解析）；
+        // 否则视为非角色卡文件，报友好错误（B）
+        if (json["name"]?.jsonPrimitiveOrNull?.contentOrNull != null) {
+            TAVERN_PARSERS["chara_card_v1"]
+        } else {
+            null
+        }
+    } ?: error(
+        context?.getString(R.string.assistant_importer_missing_spec_field)
+            ?: "Cannot recognize character card: missing \"spec\" field"
+    )
     return parser.parse(context = context, json = json, background = background)
 }
 
