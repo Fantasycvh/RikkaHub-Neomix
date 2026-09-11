@@ -69,7 +69,7 @@
 | F3 | workspace delete/move "./" 变体可删整个工作区 | 9677cd4 | ✅ 已修 | canonical 对比根目录（已移植） |
 | F4 | file_paths.xml 暴露 filesDir | db26bff | ✅ 已修 | 收窄 upload/ + tool_outputs/（已移植） |
 | F5 | mermaid 导出失败误报成功 + 调试 URI 日志 | fe2109d | ✅ 不存在 | `Export.kt:270-278` onFailure 显示错误 toast + 取消向上传播，不误报成功 |
-| F6 | RouteActivity CRLF 规范化 | 3652fd6 | 🔍 低优先 | 源仓 `dcs666/rikkahub-turbo` 已不可达，diff 无法复核（2026-09-11 尝试：本地对象库无 / gh api 404 / commit 搜索无果）；fork `RouteActivity.kt:206-237` 分享文本读取（EXTRA_TEXT/PROCESS_TEXT）无 CRLF 归一，影响面低（换行风格问题、无崩溃/丢失）；并入吸收 `513b784c`（动 RouteActivity）时顺手一行关闭 |
+| F6 | RouteActivity CRLF 规范化 | 3652fd6 | ✅ 已修 | 2026-09-12 随 `513b784c` 吸收顺手关闭：`handleIntent` 中分享/划词文本 `normalizeNewlines()`（\r\n→\n）；源仓 `dcs666/rikkahub-turbo` 已不可达、diff 无法复核（按语义落地） |
 | F7 | extractTar 特殊头顺序（GNU tar 全局头 name 空跳过数据区）+ parsePax 死循环/损坏头崩溃 | d990687 | ✅ 已修 | `a766399f`（parsePax 健壮性）；`RootfsInstaller.kt` 防护齐全——空名全局头跳过数据区（120-123）、LONG_NAME/LONG_LINK/PAX pending 顺序（124-140）、OTHER 数据 skip（161-164）、parsePax length≤0 安全退出（248-267，注释明写 F7）、路径逃逸拒绝（338-348） |
 | F8 | WebDav buildUrl 路径段不编码（文件名含空格/中文/#/?/& → 同步失败） | ea17fb4 | ✅ 已修 | `encodeWebDavPathSegment` 逐段 percent-encode（UTF-8 + %20）+ 3 单测 |
 | F9 | ASR start() 静默失败（焦点被拒/provider 未配置无反馈） | bdae36e | ✅ 已修 | `a766399f`（ASR 静默）；VoiceMode 未配置/无 key/不支持均有文案（configure_asr/configure_key/unsupported_asr），焦点被拒显式 check 抛错（VoiceMode.kt:148），各 provider start 全失败路径 setError→ASRStatus.Error（DashScope/Volcengine 已逐一核对） |
