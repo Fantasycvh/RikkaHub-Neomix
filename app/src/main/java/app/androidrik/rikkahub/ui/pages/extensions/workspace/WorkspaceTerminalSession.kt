@@ -38,6 +38,11 @@ internal fun createWorkspaceTerminalSession(
     val proot = File(nativeLibraryDir, "libproot_exec.so")
     val loader = File(nativeLibraryDir, "libproot_loader.so")
 
+    // Shell 兼容模式：初始 cwd 移到 rootfs 内部 /root——PROOT_NO_SECCOMP 纯 ptrace 模式下
+    // getcwd 在绑定挂载点（/workspace）反向解析会返回 ENOSYS，bash 启动即报
+    // "shell-init: getcwd ... Function not implemented"；/root 为 rootfs 内部正向映射，无此问题
+    val initialCwd = if (shellCompatibilityMode) "/root" else WORKSPACE_DIR
+
     val args = mutableListOf(
         "--root-id",
         "--link2symlink",
@@ -45,7 +50,7 @@ internal fun createWorkspaceTerminalSession(
         "-r",
         linuxDir.absolutePath,
         "-w",
-        WORKSPACE_DIR,
+        initialCwd,
         "-b",
         "${filesDir.absolutePath}:$WORKSPACE_DIR",
         "-b",

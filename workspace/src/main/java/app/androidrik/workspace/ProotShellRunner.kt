@@ -66,6 +66,15 @@ class ProotShellRunner(
         context: WorkspaceShellContext,
         proot: File,
     ): List<String> {
+        // Shell 兼容模式（PROOT_NO_SECCOMP 纯 ptrace）：初始 cwd 移到 rootfs 内部 /root——
+        // getcwd 在绑定挂载点（/workspace）反向解析返回 ENOSYS，bash 启动即报
+        // "shell-init: getcwd"；chdir 正常，故启动后由命令容错 cd 到目标目录
+        val initialCwd = if (context.shellCompatibilityMode) "/root" else context.prootCwd()
+        val cdCommand = if (context.shellCompatibilityMode) {
+            "cd -- \"\$1\" 2>/dev/null || true; eval \"\$2\""
+        } else {
+            "cd -- \"\$1\" && eval \"\$2\""
+        }
         val command = mutableListOf(
             proot.absolutePath,
             "--root-id",
@@ -74,7 +83,7 @@ class ProotShellRunner(
             "-r",
             context.linuxDir.absolutePath,
             "-w",
-            context.prootCwd(),
+            initialCwd,
             "-b",
             "${context.filesDir.absolutePath}:$WORKSPACE_DIR",
         )
@@ -109,7 +118,7 @@ class ProotShellRunner(
             "-l",
             "-c",
             // 命令通过位置参数传入, 避免任何转义; eval "$2" 对命令文本只求值一次, 等价于 bash -c "$cmd"
-            "cd -- \"\$1\" && eval \"\$2\"",
+            cdCommand,
             "rikkahub",
             context.prootCwd(),
             context.command,
