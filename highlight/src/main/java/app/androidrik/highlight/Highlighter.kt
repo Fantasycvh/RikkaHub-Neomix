@@ -1,5 +1,6 @@
 package app.androidrik.highlight
 
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -71,6 +72,9 @@ fun CodeHighlightText(
     Text(
         modifier = modifier,
         text = annotatedString,
+        // 禁用连字特性（calt/liga/clig）：等宽代码字体开启连字会把 != >= -> 等渲染成单字形，
+        // 代码辨识度下降（对齐上游 7b92f89e / #1623）
+        style = LocalTextStyle.current.copy(fontFeatureSettings = "'calt' 0, 'liga' 0, 'clig' 0"),
         fontSize = fontSize,
         fontFamily = fontFamily,
         fontStyle = fontStyle,
