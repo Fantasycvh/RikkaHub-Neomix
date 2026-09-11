@@ -437,6 +437,10 @@
   <string name="imggen_page_cancel_generation_title">Cancel Generation</string>
   <string name="imggen_page_confirm">Confirm</string>
   <string name="imggen_page_delete">Delete</string>
+  <string name="imggen_page_selected_count">%1$d selected</string>
+  <string name="imggen_page_select_all">Select All</string>
+  <string name="imggen_page_delete_selected">Delete</string>
+  <string name="imggen_page_delete_failed_count">%1$d images failed to delete</string>
   <string name="imggen_page_gallery">Gallery</string>
   <string name="imggen_page_generate_image">Generate Image</string>
   <string name="imggen_page_generation_count">Generation Count</string>
@@ -1261,7 +1265,7 @@
   <string name="workspace_detail_name">Name</string>
   <string name="workspace_detail_shell_status">Shell Status</string>
   <string name="workspace_detail_shell_compatibility">Shell compatibility mode</string>
-  <string name="workspace_detail_shell_compatibility_desc">Disable PRoot seccomp acceleration for new terminals and commands. Takes effect for newly opened terminals.</string>
+  <string name="workspace_detail_shell_compatibility_desc">Disable PRoot seccomp acceleration for new terminals and commands. Takes effect for newly opened terminals. Warning: on some rooted devices (KernelSU etc.) this mode breaks path resolution (ENOSYS) — if commands fail after enabling, turn it back off.</string>
   <string name="workspace_detail_loading">Loading</string>
   <string name="workspace_detail_enable_shell">Enable Shell</string>
   <string name="workspace_detail_enable_shell_desc">Allow this workspace to run a terminal environment using local Rootfs</string>

@@ -398,6 +398,10 @@
   <string name="imggen_page_cancel_generation_title">生成をキャンセル</string>
   <string name="imggen_page_confirm">確認</string>
   <string name="imggen_page_delete">削除</string>
+  <string name="imggen_page_selected_count">%1$d 件選択中</string>
+  <string name="imggen_page_select_all">すべて選択</string>
+  <string name="imggen_page_delete_selected">削除</string>
+  <string name="imggen_page_delete_failed_count">%1$d 枚の画像の削除に失敗しました</string>
   <string name="imggen_page_gallery">ギャラリー</string>
   <string name="imggen_page_generate_image">画像を生成</string>
   <string name="imggen_page_generation_count">生成数</string>
@@ -1169,7 +1173,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_detail_name">名前</string>
   <string name="workspace_detail_shell_status">Shell ステータス</string>
   <string name="workspace_detail_shell_compatibility">シェル互換モード</string>
-  <string name="workspace_detail_shell_compatibility_desc">新しいターミナルと以後のコマンドで PRoot seccomp 加速を無効にします。新しく開いたターミナルに反映されます。</string>
+  <string name="workspace_detail_shell_compatibility_desc">新しいターミナルと以後のコマンドで PRoot seccomp 加速を無効にします。新しく開いたターミナルに反映されます。警告：一部の root 端末（KernelSU など）では有効化するとパス解決が失敗する（ENOSYS）場合があります。有効後にコマンドがエラーになる場合はオフにしてください。</string>
   <string name="workspace_detail_loading">読み込み中</string>
   <string name="workspace_detail_enable_shell">シェルを有効にする</string>
   <string name="workspace_detail_enable_shell_desc">このワークスペースでローカルのRootfsを使用したターミナル環境の実行を許可します</string>

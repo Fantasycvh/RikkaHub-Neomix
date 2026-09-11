@@ -437,6 +437,10 @@
   <string name="imggen_page_cancel_generation_title">取消生成</string>
   <string name="imggen_page_confirm">确定</string>
   <string name="imggen_page_delete">删除</string>
+  <string name="imggen_page_selected_count">已选 %1$d 项</string>
+  <string name="imggen_page_select_all">全选</string>
+  <string name="imggen_page_delete_selected">删除</string>
+  <string name="imggen_page_delete_failed_count">%1$d 张图片删除失败</string>
   <string name="imggen_page_gallery">相册</string>
   <string name="imggen_page_generate_image">生成图片</string>
   <string name="imggen_page_generation_count">生成数量</string>
@@ -1255,7 +1259,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_name">名称</string>
   <string name="workspace_detail_shell_status">Shell 状态</string>
   <string name="workspace_detail_shell_compatibility">Shell 兼容模式</string>
-  <string name="workspace_detail_shell_compatibility_desc">为新终端及后续命令禁用 PRoot seccomp 加速。对新打开的终端生效。</string>
+  <string name="workspace_detail_shell_compatibility_desc">为新终端及后续命令禁用 PRoot seccomp 加速。对新打开的终端生效。警告：部分 root 设备（KernelSU 等）开启后可能导致路径解析失败（ENOSYS）——若开启后命令报错请关闭本开关。</string>
   <string name="workspace_detail_loading">加载中</string>
   <string name="workspace_detail_enable_shell">启用 Shell</string>
   <string name="workspace_detail_enable_shell_desc">允许此工作区使用本地Rootfs运行终端环境</string>

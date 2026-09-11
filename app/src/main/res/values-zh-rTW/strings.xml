@@ -435,6 +435,10 @@
   <string name="imggen_page_cancel_generation_title">取消生成</string>
   <string name="imggen_page_confirm">確定</string>
   <string name="imggen_page_delete">刪除</string>
+  <string name="imggen_page_selected_count">已選 %1$d 項</string>
+  <string name="imggen_page_select_all">全選</string>
+  <string name="imggen_page_delete_selected">刪除</string>
+  <string name="imggen_page_delete_failed_count">%1$d 張圖片刪除失敗</string>
   <string name="imggen_page_gallery">相簿</string>
   <string name="imggen_page_generate_image">生成圖片</string>
   <string name="imggen_page_generation_count">生成數量</string>
@@ -1212,7 +1216,7 @@
   <string name="workspace_detail_name">名稱</string>
   <string name="workspace_detail_shell_status">Shell 狀態</string>
   <string name="workspace_detail_shell_compatibility">Shell 相容模式</string>
-  <string name="workspace_detail_shell_compatibility_desc">為新終端機及後續命令停用 PRoot seccomp 加速。對新開啟的終端機生效。</string>
+  <string name="workspace_detail_shell_compatibility_desc">為新終端機及後續命令停用 PRoot seccomp 加速。對新開啟的終端機生效。警告：部分 root 裝置（KernelSU 等）開啟後可能導致路徑解析失敗（ENOSYS）——若開啟後命令報錯請關閉本開關。</string>
   <string name="workspace_detail_loading">載入中</string>
   <string name="workspace_detail_enable_shell">啟用 Shell</string>
   <string name="workspace_detail_enable_shell_desc">允許此工作區使用本地 Rootfs 來執行終端環境</string>

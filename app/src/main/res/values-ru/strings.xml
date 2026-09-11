@@ -398,6 +398,10 @@
   <string name="imggen_page_cancel_generation_title">Отменить генерацию</string>
   <string name="imggen_page_confirm">Подтвердить</string>
   <string name="imggen_page_delete">Удалить</string>
+  <string name="imggen_page_selected_count">Выбрано: %1$d</string>
+  <string name="imggen_page_select_all">Выбрать все</string>
+  <string name="imggen_page_delete_selected">Удалить</string>
+  <string name="imggen_page_delete_failed_count">Не удалось удалить изображений: %1$d</string>
   <string name="imggen_page_gallery">Галерея</string>
   <string name="imggen_page_generate_image">Сгенерировать изображение</string>
   <string name="imggen_page_generation_count">Количество генераций</string>
@@ -1169,7 +1173,7 @@
   <string name="workspace_detail_name">Имя</string>
   <string name="workspace_detail_shell_status">Статус оболочки</string>
   <string name="workspace_detail_shell_compatibility">Режим совместимости оболочки</string>
-  <string name="workspace_detail_shell_compatibility_desc">Отключает ускорение PRoot seccomp для новых терминалов и команд. Применяется к вновь открытым терминалам.</string>
+  <string name="workspace_detail_shell_compatibility_desc">Отключает ускорение PRoot seccomp для новых терминалов и команд. Применяется к вновь открытым терминалам. Внимание: на некоторых устройствах с root (KernelSU и т.п.) этот режим ломает разрешение путей (ENOSYS) — если после включения команды выдают ошибки, выключите его.</string>
   <string name="workspace_detail_loading">Загрузка</string>
   <string name="workspace_detail_enable_shell">Включить оболочку</string>
   <string name="workspace_detail_enable_shell_desc">Разрешить этой рабочей области запускать терминальное окружение, используя локальный Rootfs</string>

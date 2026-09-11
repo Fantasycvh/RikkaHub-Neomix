@@ -398,6 +398,10 @@
   <string name="imggen_page_cancel_generation_title">생성 취소</string>
   <string name="imggen_page_confirm">확인</string>
   <string name="imggen_page_delete">삭제</string>
+  <string name="imggen_page_selected_count">%1$d개 선택됨</string>
+  <string name="imggen_page_select_all">전체 선택</string>
+  <string name="imggen_page_delete_selected">삭제</string>
+  <string name="imggen_page_delete_failed_count">%1$d장의 이미지 삭제 실패</string>
   <string name="imggen_page_gallery">갤러리</string>
   <string name="imggen_page_generate_image">이미지 생성</string>
   <string name="imggen_page_generation_count">생성 개수</string>
@@ -1169,7 +1173,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_name">이름</string>
   <string name="workspace_detail_shell_status">셸 상태</string>
   <string name="workspace_detail_shell_compatibility">셸 호환 모드</string>
-  <string name="workspace_detail_shell_compatibility_desc">새 터미널과 이후 명령에 대해 PRoot seccomp 가속을 비활성화합니다. 새로 연 터미널에 적용됩니다.</string>
+  <string name="workspace_detail_shell_compatibility_desc">새 터미널과 이후 명령에 대해 PRoot seccomp 가속을 비활성화합니다. 새로 연 터미널에 적용됩니다. 경고: 일부 루팅된 기기(KernelSU 등)에서는 활성화 시 경로 확인이 실패(ENOSYS)할 수 있습니다. 활성화 후 명령이 오류를 일으키면 이 스위치를 끄세요.</string>
   <string name="workspace_detail_loading">로딩 중</string>
   <string name="workspace_detail_enable_shell">셸 활성화</string>
   <string name="workspace_detail_enable_shell_desc">이 워크스페이스에서 로컬 Rootfs를 사용하여 터미널 환경을 실행할 수 있도록 허용합니다.</string>
