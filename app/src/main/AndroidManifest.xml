@@ -92,6 +92,11 @@
 
         <data android:mimeType="text/plain" />
       </intent-filter>
+      <intent-filter>
+        <action android:name="app.androidrik.rikkahub.action.TRANSLATE" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
 
       <meta-data
         android:name="android.app.shortcuts"

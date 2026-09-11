@@ -135,11 +135,15 @@ import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 
 private const val TAG = "RouteActivity"
+private const val ACTION_TRANSLATE = "app.androidrik.rikkahub.action.TRANSLATE"
 
 class RouteActivity : ComponentActivity() {
     private val okHttpClient by inject<OkHttpClient>()
     private val settingsStore by inject<SettingsStore>()
     private var navStack: MutableList<NavKey>? = null
+
+    // Compose 导航栈就绪前到达的 Intent 排队，SideEffect flush（对齐上游 513b784c）
+    private val pendingIntents = ArrayDeque<Intent>()
 
     // Volume key listener registry — last registered handler wins
     internal val volumeKeyListeners = mutableListOf<(isVolumeUp: Boolean) -> Boolean>()
@@ -165,6 +169,9 @@ class RouteActivity : ComponentActivity() {
             startActivity(Intent(this, SafeModeActivity::class.java))
             finish()
             return
+        }
+        if (savedInstanceState == null) {
+            handleIntent(intent)
         }
         setContent {
             RikkahubTheme {
@@ -210,39 +217,41 @@ class RouteActivity : ComponentActivity() {
             ?: clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri?.toString()
     }
 
-    @Composable
-    private fun ShareHandler(backStack: MutableList<NavKey>) {
-        val shareIntent = remember {
-            Intent().apply {
-                action = intent?.action
-                putExtra(Intent.EXTRA_TEXT, intent?.getStringExtra(Intent.EXTRA_TEXT))
-                putExtra(Intent.EXTRA_STREAM, intent?.readShareStreamUri())
-                putExtra(Intent.EXTRA_PROCESS_TEXT, intent?.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT))
-            }
+    /**
+     * 统一 Intent 入口（对齐上游 513b784c）：冷启动/onNewIntent 都走这里；
+     * 导航栈未就绪时排队（AppRoutes SideEffect flush）；末尾去重防连点。
+     * fork 适配：ACTION_SEND 的 streamUri 保留 readShareStreamUri 三级兜底（D6/D7）；
+     * 文本换行归一（F6：\r\n → \n，防 Windows 来源文本残留 \r）。
+     */
+    private fun handleIntent(intent: Intent) {
+        val backStack = navStack ?: run {
+            pendingIntents.addLast(intent)
+            return
         }
-
-        LaunchedEffect(backStack) {
-            when (shareIntent.action) {
-                Intent.ACTION_SEND -> {
-                    val text = shareIntent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
-                    val imageUri = shareIntent.getStringExtra(Intent.EXTRA_STREAM)
-                    backStack.add(Screen.ShareHandler(text, imageUri))
-                }
-
-                Intent.ACTION_PROCESS_TEXT -> {
-                    val text = shareIntent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString() ?: ""
-                    backStack.add(Screen.ShareHandler(text, null))
-                }
-            }
+        val destination = when (intent.action) {
+            ACTION_TRANSLATE -> Screen.Translator
+            Intent.ACTION_SEND -> Screen.ShareHandler(
+                text = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty().normalizeNewlines(),
+                streamUri = intent.readShareStreamUri(),
+            )
+            Intent.ACTION_PROCESS_TEXT -> Screen.ShareHandler(
+                text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty().normalizeNewlines(),
+            )
+            else -> intent.getStringExtra("conversationId")?.let { Screen.Chat(it) }
+        }
+        if (destination != null && backStack.lastOrNull() != destination) {
+            backStack.add(destination)
         }
     }
 
+    // F6：分享/划词文本换行归一（Windows CRLF 残留防护，turbo 3652fd6 语义）
+    private fun String.normalizeNewlines(): String =
+        replace("\r\n", "\n").replace('\r', '\n')
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // Navigate to the chat screen if a conversation ID is provided
-        intent.getStringExtra("conversationId")?.let { text ->
-            navStack?.add(Screen.Chat(text))
-        }
+        setIntent(intent)
+        handleIntent(intent)
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -278,9 +287,12 @@ class RouteActivity : ComponentActivity() {
         )
 
         val backStack = rememberNavBackStack(startScreen)
-        SideEffect { this@RouteActivity.navStack = backStack }
-
-        ShareHandler(backStack)
+        SideEffect {
+            this@RouteActivity.navStack = backStack
+            while (pendingIntents.isNotEmpty()) {
+                handleIntent(pendingIntents.removeFirst())
+            }
+        }
 
         SharedTransitionLayout {
             CompositionLocalProvider(
