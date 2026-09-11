@@ -4,7 +4,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,10 +62,12 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.border
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -513,6 +518,7 @@ private fun ReferenceImagesRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ImageGalleryScreen(
     vm: ImgGenVM,
@@ -525,153 +531,270 @@ private fun ImageGalleryScreen(
     val toaster = LocalToaster.current
     val pullToRefreshState = rememberPullToRefreshState()
 
-    PullToRefreshBox(
-        isRefreshing = false,
-        onRefresh = { generatedImages.refresh() },
-        state = pullToRefreshState
-    ) {
-        if (generatedImages.itemCount == 0) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+    // 长按进入多选，勾选后批量删除（对齐上游 3896b6d6 / #1813；fork GeneratedImage.id 为 Int）
+    var selectionMode by remember { mutableStateOf(false) }
+    val selectedIds = remember { mutableStateListOf<Int>() }
+    var deleting by remember { mutableStateOf(false) }
+
+    fun allImages(): List<GeneratedImage> =
+        (0 until generatedImages.itemCount).mapNotNull { generatedImages[it] }
+
+    fun toggleSelect(id: Int) {
+        if (id in selectedIds) selectedIds.remove(id) else selectedIds.add(id)
+    }
+
+    fun exitSelectionMode() {
+        selectionMode = false
+        selectedIds.clear()
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (selectionMode) {
+            // 多选模式顶栏：退出 / 已选计数 + 全选 / 删除
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
+                IconButton(onClick = { exitSelectionMode() }) {
+                    Icon(HugeIcons.Cancel01, contentDescription = stringResource(R.string.cancel))
+                }
+                Text(
+                    text = stringResource(R.string.imggen_page_selected_count, selectedIds.size),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = {
+                    selectedIds.addAll(allImages().map { img -> img.id })
+                }) {
+                    Text(stringResource(R.string.imggen_page_select_all))
+                }
+                TextButton(
+                    onClick = {
+                        if (deleting || selectedIds.isEmpty()) return@TextButton
+                        deleting = true
+                        scope.launch {
+                            val toDelete = allImages().filter { img -> img.id in selectedIds }
+                            val failed = vm.deleteImages(toDelete)
+                            exitSelectionMode()
+                            generatedImages.refresh()
+                            deleting = false
+                            if (failed.isNotEmpty()) {
+                                toaster.show(
+                                    message = context.getString(R.string.imggen_page_delete_failed_count, failed.size),
+                                    type = ToastType.Error
+                                )
+                            }
+                        }
+                    },
+                    enabled = selectedIds.isNotEmpty() && !deleting,
                 ) {
-                    Icon(
-                        imageVector = HugeIcons.Image03,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = stringResource(R.string.imggen_page_no_generated_images),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
+                        text = stringResource(R.string.imggen_page_delete_selected),
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
             }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                items(
-                    count = generatedImages.itemCount,
-                    key = generatedImages.itemKey { it.id },
-                    contentType = generatedImages.itemContentType { "GeneratedImage" }
-                ) { index ->
-                    val image = generatedImages[index]
-                    image?.let {
-                        var showPreview by remember { mutableStateOf(false) }
+        }
 
-                        Card(
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column {
-                                AsyncImage(
-                                    model = File(it.filePath),
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(1f)
-                                        .clickable { showPreview = true },
-                                    contentScale = ContentScale.Crop
-                                )
+        PullToRefreshBox(
+            isRefreshing = false,
+            onRefresh = { generatedImages.refresh() },
+            state = pullToRefreshState
+        ) {
+            if (generatedImages.itemCount == 0) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Image03,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.imggen_page_no_generated_images),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(
+                        count = generatedImages.itemCount,
+                        key = generatedImages.itemKey { img -> img.id },
+                        contentType = generatedImages.itemContentType { "GeneratedImage" }
+                    ) { index ->
+                        val image = generatedImages[index]
+                        image?.let { img ->
+                            var showPreview by remember { mutableStateOf(false) }
+                            val isSelected = img.id in selectedIds
 
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (selectionMode) toggleSelect(img.id) else showPreview = true
+                                        },
+                                        onLongClick = {
+                                            if (!selectionMode) {
+                                                selectionMode = true
+                                                selectedIds.add(img.id)
+                                            } else {
+                                                toggleSelect(img.id)
+                                            }
+                                        },
+                                    )
+                            ) {
+                                Box {
                                     Column {
-                                        Text(
-                                            text = it.model,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
+                                        AsyncImage(
+                                            model = File(img.filePath),
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(1f)
+                                                .clickable {
+                                                    if (!selectionMode) showPreview = true
+                                                },
+                                            contentScale = ContentScale.Crop
                                         )
-                                        Text(
-                                            text = it.prompt.take(20) + if (it.prompt.length > 20) "..." else "",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2
-                                        )
-                                    }
 
-                                    Row {
-                                        IconButton(
-                                            onClick = {
-                                                clipboardManager.setText(AnnotatedString(it.prompt))
-                                                toaster.show(
-                                                    message = "Prompt copied to clipboard",
-                                                    type = ToastType.Success
-                                                )
-                                            },
-                                            modifier = Modifier.size(32.dp)
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = HugeIcons.Copy01,
-                                                contentDescription = "Copy prompt",
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
+                                            Column {
+                                                Text(
+                                                    text = img.model,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    text = img.prompt.take(20) + if (img.prompt.length > 20) "..." else "",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 2
+                                                )
+                                            }
 
-                                        IconButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    try {
-                                                        filesManager.saveMessageImage(context, "file://${it.filePath}")
+                                            Row {
+                                                IconButton(
+                                                    onClick = {
+                                                        clipboardManager.setText(AnnotatedString(img.prompt))
                                                         toaster.show(
-                                                            message = context.getString(R.string.imggen_page_image_saved_success),
+                                                            message = "Prompt copied to clipboard",
                                                             type = ToastType.Success
                                                         )
-                                                    } catch (e: Exception) {
-                                                        toaster.show(
-                                                            message = context.getString(
-                                                                R.string.imggen_page_save_failed,
-                                                                e.message
-                                                            ),
-                                                            type = ToastType.Error
-                                                        )
-                                                    }
+                                                    },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = HugeIcons.Copy01,
+                                                        contentDescription = "Copy prompt",
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
                                                 }
-                                            },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = HugeIcons.FloppyDisk,
-                                                contentDescription = stringResource(R.string.imggen_page_save),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
 
-                                        IconButton(
-                                            onClick = { vm.deleteImage(it) },
-                                            modifier = Modifier.size(32.dp)
+                                                IconButton(
+                                                    onClick = {
+                                                        scope.launch {
+                                                            try {
+                                                                filesManager.saveMessageImage(context, "file://${img.filePath}")
+                                                                toaster.show(
+                                                                    message = context.getString(R.string.imggen_page_image_saved_success),
+                                                                    type = ToastType.Success
+                                                                )
+                                                            } catch (e: Exception) {
+                                                                toaster.show(
+                                                                    message = context.getString(
+                                                                        R.string.imggen_page_save_failed,
+                                                                        e.message
+                                                                    ),
+                                                                    type = ToastType.Error
+                                                                )
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = HugeIcons.FloppyDisk,
+                                                        contentDescription = stringResource(R.string.imggen_page_save),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+
+                                                IconButton(
+                                                    onClick = { vm.deleteImage(img) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = HugeIcons.Delete01,
+                                                        contentDescription = stringResource(R.string.imggen_page_delete),
+                                                        modifier = Modifier.size(16.dp),
+                                                        tint = MaterialTheme.colorScheme.error
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // 选中视觉反馈：主色边框 + 右上角勾选角标
+                                    if (isSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .matchParentSize()
+                                                .border(
+                                                    width = 3.dp,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(6.dp)
+                                                .size(22.dp)
+                                                .background(
+                                                    MaterialTheme.colorScheme.primary,
+                                                    CircleShape
+                                                ),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(
-                                                imageVector = HugeIcons.Delete01,
-                                                contentDescription = stringResource(R.string.imggen_page_delete),
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.error
+                                            Text(
+                                                text = "✓",
+                                                color = MaterialTheme.colorScheme.onPrimary,
+                                                style = MaterialTheme.typography.labelSmall
                                             )
                                         }
                                     }
                                 }
                             }
-                        }
 
-                        if (showPreview) {
-                            ImagePreviewDialog(
-                                images = listOf(it.filePath),
-                                onDismissRequest = { showPreview = false }
-                            )
+                            if (showPreview) {
+                                ImagePreviewDialog(
+                                    images = listOf(img.filePath),
+                                    onDismissRequest = { showPreview = false }
+                                )
+                            }
                         }
                     }
                 }

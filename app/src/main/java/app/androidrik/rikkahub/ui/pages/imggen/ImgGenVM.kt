@@ -9,6 +9,7 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import app.androidrik.ai.provider.ImageEditParams
 import app.androidrik.ai.provider.ImageGenerationParams
@@ -340,6 +342,27 @@ class ImgGenVM(
             }
         }
     }
+
+    /**
+     * 批量删除（对齐上游 3896b6d6 长按多选）：返回删除失败的图片以便 UI 保留/提示。
+     * 删除失败的图片 = 文件删除失败或 DB 删除失败。
+     */
+    suspend fun deleteImages(images: List<GeneratedImage>): List<GeneratedImage> =
+        withContext(Dispatchers.IO) {
+            images.filter { image ->
+                try {
+                    val file = File(image.filePath)
+                    check(!file.exists() || file.delete()) { "Failed to delete image file" }
+                    genMediaRepository.deleteMedia(image.id)
+                    false
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to delete image ${image.id}", e)
+                    true
+                }
+            }
+        }
 
     private fun deleteReferenceFiles(paths: List<String>) {
         viewModelScope.launch {
