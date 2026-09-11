@@ -45,6 +45,9 @@
 | `321443d8` | tool-only 消息操作按钮可见 (#1689) | `321443d8` 补齐（`isEmptyUIMessage` 补 `ServerTool -> false` + 单测） | 2026-09-12 |
 | `2689e753` | Workspace 读取 AGENTS.md 注入工作区指令 | `e8e047e5` | 2026-09-12 |
 | `7b92f89e` | 禁用代码块连字 (#1623) | `f26a19f1`（fork 核对为真缺口，grep 零命中 fontFeatureSettings） | 2026-09-12 |
+| `aab5026e` | 通知小图标（#1782 状态栏胶囊无图标） | `1e98f69a`（ic_stat_rikkahub 五密度 PNG + NotificationUtil 默认切换） | 2026-09-12 |
+| `4fcb590a` | 测试连接对话框本地化 | `1e98f69a`（标签 string 化 6 语言 5 key + 列宽 64→120dp） | 2026-09-12 |
+| `42b933d8` | debug 启动图标 DEV 角标 | `1e98f69a`（四 drawable + anydpi overlay，debug 变体） | 2026-09-12 |
 | 队列 `66de8b30` / 语音 `a621e277` / ASR `580e05d6` | 消息队列/语音模式/ASR 双向流 | **fork 自研落地**（`3a911f1e`/`6680668d` / `1c499b79`..`27dc690d`） | 2026-09-09/10 |
 
 ## 已放弃 / 不跟
@@ -64,21 +67,12 @@
 
 ## 待吸收（现状真存量，按优先级）
 
-### 第一批（小件，可直接套/核对）
-
-| 提交 | 内容 | 备注 |
-|---|---|---|
-| `aab5026e` | Live Update 通知图标（1 行） | 极低 |
-| `4fcb590a` | 测试连接对话框本地化 | 小 |
-| ~~`74397a32`~~ MaruCode 提供商 | **已放弃（2026-09-12）**：用户决策不跟 |
+> **2026-09-12 小件清仓**：第一批全部清空（`aab5026e`/`4fcb590a` 吸收、`74397a32` 放弃）；第二批仅剩搁置项。剩余真存量集中在第三批大改/暂缓。
 
 ### 第二批（值得吸收，需适配/手工合）
 
 | 提交 | 内容 | 备注 |
 |---|---|---|
-| `42b933d8` | debug 启动图标 DEV 角标 | **D 顺手**：debug 变体纯新增零冲突 |
-| ~~`513b784c`~~ 翻译快捷方式 + RouteActivity 统一导航 | **✅ 已吸收（2026-09-12，`58a64d8d`，真机通过）**：handleIntent 统一入口（冷启动/onNewIntent + pendingIntents flush + 去重）；fork 适配保留 readShareStreamUri 三级兜底；顺带关闭 turbo F6（normalizeNewlines） |
-| `4530...` 工具回执/审批细化（若有） | — | 已吸收（`6e0aa7d4`/`05a85a09` 见上），无存量 |
 | `20e552f9` | X-Session-ID 会话头 | 搁置（fork 无 sessionId 概念，无 opencode 端点） |
 
 ### 第三批（大改/暂缓）
@@ -88,7 +82,6 @@
 | `7038e981` / `03246406` | workspace HTML 预览 / Shell 兼容模式+DB 迁移 | fork WorkspaceDetailPage 340 行差异 + DB 25.json 迁移对齐，高成本 |
 | `3896b6d6` | Imggen 长按多选 | ImgGenPage 大改，fork 定制深 |
 | `45275025` / `019c46ae` | 上下文限制文案 / /skills 免审批 | D 类低优先，按需 |
-| `2689e753` | AGENTS.md 支持 | 新提交未评估——可能涉及 AGENTS.md 注入上下文，待评估 |
 
 ## 同步方式（ff-only）
 
