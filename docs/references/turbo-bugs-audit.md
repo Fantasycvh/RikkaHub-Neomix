@@ -69,7 +69,7 @@
 | F3 | workspace delete/move "./" 变体可删整个工作区 | 9677cd4 | ✅ 已修 | canonical 对比根目录（已移植） |
 | F4 | file_paths.xml 暴露 filesDir | db26bff | ✅ 已修 | 收窄 upload/ + tool_outputs/（已移植） |
 | F5 | mermaid 导出失败误报成功 + 调试 URI 日志 | fe2109d | ✅ 不存在 | `Export.kt:270-278` onFailure 显示错误 toast + 取消向上传播，不误报成功 |
-| F6 | RouteActivity CRLF 规范化 | 3652fd6 | 🔍 待定 | 未找到对应逻辑；影响面不明确 |
+| F6 | RouteActivity CRLF 规范化 | 3652fd6 | 🔍 低优先 | 源仓 `dcs666/rikkahub-turbo` 已不可达，diff 无法复核（2026-09-11 尝试：本地对象库无 / gh api 404 / commit 搜索无果）；fork `RouteActivity.kt:206-237` 分享文本读取（EXTRA_TEXT/PROCESS_TEXT）无 CRLF 归一，影响面低（换行风格问题、无崩溃/丢失）；并入吸收 `513b784c`（动 RouteActivity）时顺手一行关闭 |
 | F7 | extractTar 特殊头顺序（GNU tar 全局头 name 空跳过数据区）+ parsePax 死循环/损坏头崩溃 | d990687 | 🔍 待定 | `RootfsInstaller.kt:101` 有 extractTar + parsePax（135/248），细节未逐行核对 |
 | F8 | WebDav buildUrl 路径段不编码（文件名含空格/中文/#/?/& → 同步失败） | ea17fb4 | ✅ 已修 | `encodeWebDavPathSegment` 逐段 percent-encode（UTF-8 + %20）+ 3 单测 |
 | F9 | ASR start() 静默失败（焦点被拒/provider 未配置无反馈） | bdae36e | 🔍 待定 | 各 provider 有 ASRStatus.Error（DashScope:253 等），倾向已有反馈；焦点被拒路径未逐一核实 |
