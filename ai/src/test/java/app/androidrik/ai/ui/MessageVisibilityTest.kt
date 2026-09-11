@@ -20,6 +20,20 @@ class MessageVisibilityTest {
     }
 
     @Test
+    fun `server tool is visible UI content`() {
+        val parts = listOf(
+            UIMessagePart.ServerTool(
+                toolCallId = "call_1",
+                toolName = "web_search",
+                status = ServerToolStatus.IN_PROGRESS,
+            )
+        )
+
+        // server-tool-only 消息同样应保持操作按钮可见
+        assertFalse(parts.isEmptyUIMessage())
+    }
+
+    @Test
     fun `blank text remains empty UI content`() {
         assertTrue(listOf(UIMessagePart.Text(" ")).isEmptyUIMessage())
     }
