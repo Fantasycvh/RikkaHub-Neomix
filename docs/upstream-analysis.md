@@ -118,7 +118,7 @@
 |---|---|---|
 | `7038e981` | workspace HTML/SVG 预览 | `WorkspaceFileEditorPage` +39 行 + DetailPage；fork WorkspaceDetailPage 340 行差异（终端 Tab 定制），合入前先比 |
 | `03246406` | workspace Shell 兼容模式 + 基础信息页布局 | 19 文件 +747/-128，含 **DB 迁移 25.json**（WorkspaceEntity +compatMode）+ PRoot seccomp 开关 + DetailPage 210 行重排；fork 有独立 WorkspaceEntity 演进史，需 DB 迁移对齐 |
-| `1a1e672e` | 模型名/提供商名支持空格（保存时去尾） | 3 文件小改；fork SettingProviderDetailPage 372 行 / ProviderConfigure 239 行差异（多 key 编辑器定制），需手工合 |
+| ~~`1a1e672e`~~ 模型名/提供商名支持空格（保存时去尾） | ~~小~~ | **✅ 已吸收（2026-09-12，`bb92f489`，真机通过）**：ProviderConfigure 3 处 name 输入去即时 trim + 模型 displayName 输入去 trim（内部空格保留）；保存点 5 处去尾（Provider 保存/Override 保存/AddProvider/Add-Edit Model copyProvider(name=trim) 或 copy(displayName=trim)）；baseUrl/apiKey/modelId 保持即时 trim（与上游一致） |
 | `3896b6d6` | 图片生成页长按多选（#1813） | ImgGenPage 375 行大改 + VM；fork ImgGenPage 405 行差异（Imggen override/模型定制），成本高，收益集中图片管理场景 |
 
 ### D chore / UI（低优先或按需）
@@ -132,7 +132,7 @@
 
 1. **立即**：`7b92f89e`（连字）、`77a58c2c`（统计 JSON 崩溃）、`dee88dca`（edit_file 崩溃）、`ab07ac1f`（DeepSeek 注册）——全部低风险直套
 2. **近期**：~~`a7ee362f`（系统栏颜色，已吸收 2026-09-12）~~、`20e552f9`（会话头，已搁置）
-3. **规划**：`5b4d7895`（时间提醒间隔，含持久化三件套）、`6e0aa7d4`/`05a85a09`（工具回执/自定义文本，ChatMessageTools 手工合）、`1a1e672e`（空格支持）
+3. **规划**：`6e0aa7d4`/`05a85a09`（工具回执/自定义文本，ChatMessageTools 手工合）——`5b4d7895`（时间提醒间隔）已于 2026-09-11 吸收、`1a1e672e`（空格支持）已于 2026-09-12 吸收
 4. **暂缓**：`7038e981`/`03246406`（workspace 大改+DB）、`3896b6d6`（Imggen 大改）
 
 ## 2.5.1 批次评估（2026-09-10，`6e0aa7d4`..`a9b35ba2`，3 提交）
