@@ -114,4 +114,38 @@ class TimeReminderTransformerTest {
         val result = applyTimeReminder(emptyList())
         assertEquals(0, result.size)
     }
+
+    @Test
+    fun `自定义间隔 10 分钟时 30 分钟间隔触发提醒`() {
+        val messages = listOf(
+            userMessage("Hello", LocalDateTime(2026, 2, 22, 10, 0, 0)),
+            userMessage("World", LocalDateTime(2026, 2, 22, 10, 30, 0)), // 30 分钟
+        )
+        val result = applyTimeReminder(messages, intervalMinutes = 10)
+        assertEquals(4, result.size)
+        assertTrue(getMessageText(result[2]).contains("<time_reminder>"))
+        assertEquals("World", getMessageText(result[3]))
+    }
+
+    @Test
+    fun `自定义间隔 240 分钟时 2 小时间隔不触发提醒`() {
+        val messages = listOf(
+            userMessage("Hello", LocalDateTime(2026, 2, 22, 10, 0, 0)),
+            userMessage("World", LocalDateTime(2026, 2, 22, 12, 0, 0)), // 2 小时
+        )
+        val result = applyTimeReminder(messages, intervalMinutes = 240)
+        assertEquals(3, result.size)
+        assertEquals("World", getMessageText(result[2]))
+    }
+
+    @Test
+    fun `间隔钳制至少 1 分钟时 30 秒间隔不触发提醒`() {
+        val messages = listOf(
+            userMessage("Hello", LocalDateTime(2026, 2, 22, 10, 0, 0)),
+            userMessage("World", LocalDateTime(2026, 2, 22, 10, 0, 30)), // 30 秒
+        )
+        val result = applyTimeReminder(messages, intervalMinutes = 0)
+        assertEquals(3, result.size)
+        assertEquals("World", getMessageText(result[2]))
+    }
 }

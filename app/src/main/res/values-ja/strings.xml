@@ -146,6 +146,11 @@
   <string name="assistant_page_thinking_budget">思考バジェット</string>
   <string name="assistant_page_time_reminder">時間リマインダー</string>
   <string name="assistant_page_time_reminder_desc">会話の間隔が大きいメッセージの前に自動で時刻リマインダーを挿入し、AIが会話の間隔を理解しやすくします</string>
+  <string name="assistant_page_time_reminder_interval">時間リマインダー間隔</string>
+  <string name="assistant_page_time_reminder_interval_label">間隔（分）</string>
+  <string name="assistant_page_time_reminder_interval_hint">正の整数を入力してください。メッセージ間隔がこの値を超えるとリマインダーが挿入されます。</string>
+  <string name="assistant_page_time_reminder_interval_desc">メッセージ間隔がこの値を超えるとリマインダーを挿入します。最初のユーザーメッセージの前には常に挿入します。</string>
+  <string name="assistant_page_time_reminder_interval_value">%1$d 分</string>
   <string name="assistant_page_title">アシスタント設定</string>
   <string name="assistant_page_top_p">Top P</string>
   <string name="assistant_page_top_p_value">Top P: %s</string>
