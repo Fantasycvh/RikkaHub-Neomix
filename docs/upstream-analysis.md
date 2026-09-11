@@ -81,7 +81,7 @@
 |---|---|---|
 | `7038e981` / `03246406` | workspace HTML 预览 / Shell 兼容模式+DB 迁移 | fork WorkspaceDetailPage 340 行差异 + DB 25.json 迁移对齐，高成本 |
 | `3896b6d6` | Imggen 长按多选 | ImgGenPage 大改，fork 定制深 |
-| `45275025` / `019c46ae` | 上下文限制文案 / /skills 免审批 | D 类低优先，按需 |
+| ~~`45275025` / `019c46ae`~~ 上下文限制文案 / /skills 免审批 | **已放弃（2026-09-12）**：用户决策——fork 该页/该白名单自有定制，不跟 |
 
 ## 同步方式（ff-only）
 
