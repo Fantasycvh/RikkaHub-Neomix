@@ -1,7 +1,7 @@
 # 上游变更分析（综合版，2.4.11 → 2.5.1+，2026-09-12 重写）
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
-> 当前 master 同步点：`a9b35ba2`（2.5.1，2026-09-10 ff-only 推送）。上游其后 2 提交未同步：`46cacf23`（deepseek-flash，已手工吸收 `e9a39751`）、`2689e753`（AGENTS.md 支持，待评估）。
+> 当前 master 同步点：`a9b35ba2`（2.5.1，2026-09-10 ff-only 推送）。上游其后 2 提交未同步：`46cacf23`（deepseek-flash，已手工吸收 `e9a39751`）、`2689e753`（AGENTS.md 支持，已手工吸收 `e8e047e5`）。
 > 决策原则：**等上游稳定后按需吸收**；触及 `GenerationHandler.kt` / `ChatService.kt` / `ChatInput.kt`（fork 重改最重的文件）一律手工适配，不直接 cherry-pick；cherry-pick 需包名适配（`me.rerere.*` → `app.androidrik.*`）。
 > **判定方法（2026-09-12 纠正）**：fork 的"已吸收"以**代码等价核对**为准，**不用 `git merge-base --is-ancestor`**——fork 走手工直套/移植，上游 commit 不是 fork 分支祖先，merge-base 对已吸收项恒判"未吸收"（误报 glm5.3/hy4/kimi k3/deepseek v4.1 flash 等）。核对方式：grep fork 代码中对应定义/注释（如「对齐上游 xxx」）或 diff 等价。
 
@@ -15,7 +15,7 @@
 | 2.5.0（16 提交） | `b153028d`..`12ee935e` | — | 终端 Tab 标题、审批修复、**消息队列/语音/ASR（fork 自研落地）** | 核心功能已吸收/自研 |
 | 2.5.0 后批（20 提交） | `12ee935e`..`6e0aa7d4` | 2026-09-09 | workspace 预览/Shell 兼容、时间提醒间隔、多选、工具详情/回执、模型注册 | 大半已吸收（见清单） |
 | 2.5.1（3 提交） | `6e0aa7d4`..`a9b35ba2` | 2026-09-10 | DEV badge、翻译快捷方式 + RouteActivity 统一导航 | 未吸收（D/B 候选） |
-| 2.5.1 后（2 提交） | `a9b35ba2`..`2689e753` | 2026-09-11+ | deepseek-flash 注册、AGENTS.md 支持 | 前者已吸收，后者待评估 |
+| 2.5.1 后（2 提交） | `a9b35ba2`..`2689e753` | 2026-09-11+ | deepseek-flash 注册、AGENTS.md 支持 | 均已吸收（`e9a39751`/`e8e047e5`） |
 
 ## 已吸收（合并清单，**含 2026-09 全量**）
 
@@ -43,6 +43,7 @@
 | `1a1e672e` | 模型/提供商名支持空格（保存去尾） | `bb92f489` | 2026-09-12，真机通过 |
 | `513b784c` | 翻译快捷方式 + RouteActivity 统一 Intent 导航 | `58a64d8d` | 2026-09-12，真机通过（四路径冷/热） |
 | `321443d8` | tool-only 消息操作按钮可见 (#1689) | `321443d8` 补齐（`isEmptyUIMessage` 补 `ServerTool -> false` + 单测） | 2026-09-12 |
+| `2689e753` | Workspace 读取 AGENTS.md 注入工作区指令 | `e8e047e5` | 2026-09-12 |
 | 队列 `66de8b30` / 语音 `a621e277` / ASR `580e05d6` | 消息队列/语音模式/ASR 双向流 | **fork 自研落地**（`3a911f1e`/`6680668d` / `1c499b79`..`27dc690d`） | 2026-09-09/10 |
 
 ## 已放弃 / 不跟
