@@ -31,6 +31,8 @@
 | `fcb04126` | web ask_user 多选（#1654） | `c468f0ba`（手工移植，fork 文件基线已分叉） | 2026-09-11 |
 | `3d75f83f` | web-ui 模型弹窗厂商标签堆叠（#1871） | `c468f0ba` | 2026-09-11 |
 | `5b4d7895` | 自定义时间提醒间隔 | `772cd77e`（fork 适配；@Serializable 自动持久化，旧数据默认 60 兜底，真机验证通过） | 2026-09-11 |
+| `a7ee362f` | 退出终端后系统栏图标颜色异常（#1876） | `e9a39751`（SideEffect→DisposableEffect + onDispose 恢复） | 2026-09-12 |
+| `c73f8972` / `46cacf23` | GPT_6 / 裸 `deepseek-flash` 注册 | `e9a39751`（ModelRegistry 补注册，入 ALL_MODELS） | 2026-09-12 |
 
 ## 待吸收（按优先级，合并清单）
 
@@ -46,7 +48,7 @@
 | `ab8b6cc8` | provider 阻塞工作移 IO 调度 | 2.5.0 C3 | 小 |
 | `a61d116d` | 自定义 response API 路径 | 2.5.0 B4 | 小 |
 | `74397a32` | 新增 MaruCode 提供商 | 2.5.0 B5 | 极低 |
-| 模型注册组（glm 5.3/hy4/qwen 3.8/kimi icon 等） | 模型数据 | 2.4.14 C5 | 极低 |
+| ~~模型注册组（glm 5.3/hy4/qwen 3.8/kimi icon 等）~~ | 模型数据 | 2.4.14 C5 | **✅ 已吸收**——代码等价核对（2026-09-12）：glm5.3(`5b58c957`)/hy4(`86c85236`+`5b890d22`)/kimi k3/qwen3.8(`0826a3b9`)/deepseek v4.1 flash/kimi-color.svg(`979cd169`) 早在 fork（直套落地）；本次补真正缺口 GPT_6(`c73f8972`)+DEEPSEEK_FLASH(`46cacf23`)→`e9a39751` |
 
 ### 第二批（值得吸收，需适配）
 
@@ -103,7 +105,7 @@
 | `7b92f89e` | 禁用代码块连字（#1623） | 极低 | highlight 模块独立，`Highlighter.kt` +2 行；fork 该文件 8 行差异，可直套 |
 | `77a58c2c` | 统计页不合法 JSON 崩溃（#1694） | 低 | `MessageNodeDAO` 用 `json_valid` CASE 兜底 + 单测；fork 文件 17 行差异，结构一致可直套 |
 | `dee88dca` | workspace_edit_file 非 JSON 对象崩溃（#1873） | 低 | `ChatMessageEditedFiles` JsonArray 安全转换 +2 行；fork 16 行差异 |
-| `a7ee362f` | 退出终端后系统栏图标颜色异常（#1876） | 低-中 | `Theme.kt` SideEffect→DisposableEffect + onDispose 恢复；fork Theme 109 行差异，改动自包含 |
+| ~~`a7ee362f`~~ 退出终端后系统栏图标颜色异常（#1876） | ~~低-中~~ | **✅ 已吸收（2026-09-12，`e9a39751`，真机通过）**：`Theme.kt` SideEffect→DisposableEffect(view,darkTheme)+保存 previousLightStatus/NavigationBars、onDispose 恢复 |
 | `20e552f9` | X-Session-ID + opencode 会话头 | 中 | ai 5 文件：Request.kt 新增 `configureSessionHeaders`；fork provider 路径已迁（`app.androidrik.ai.provider.*`）、baseUrl 用 `apiEndpoint` 工具——需适配 apiEndpoint 拼 URL，`ApiKeyEntry` 无影响 |
 | `ab07ac1f` | 注册 DeepSeek V4.1 Flash（多模态） | 极低 | ModelRegistry +8 行；fork 同文件 700 行差异（fork 模型更多）但追加式注册，`ALL_MODELS`/definition 两处插入 |
 | `6e0aa7d4` | 工具执行完成前可打开调用详情（#1840） | 中 | `ChatMessageTools` 移除点击状态限制（1 行实质）；fork 该文件 168/91 差异（审批/回执定制深），需手工合 |
@@ -129,7 +131,7 @@
 ### 本批推荐吸收顺序（按价值/成本）
 
 1. **立即**：`7b92f89e`（连字）、`77a58c2c`（统计 JSON 崩溃）、`dee88dca`（edit_file 崩溃）、`ab07ac1f`（DeepSeek 注册）——全部低风险直套
-2. **近期**：`a7ee362f`（系统栏颜色）、`20e552f9`（会话头）
+2. **近期**：~~`a7ee362f`（系统栏颜色，已吸收 2026-09-12）~~、`20e552f9`（会话头，已搁置）
 3. **规划**：`5b4d7895`（时间提醒间隔，含持久化三件套）、`6e0aa7d4`/`05a85a09`（工具回执/自定义文本，ChatMessageTools 手工合）、`1a1e672e`（空格支持）
 4. **暂缓**：`7038e981`/`03246406`（workspace 大改+DB）、`3896b6d6`（Imggen 大改）
 
