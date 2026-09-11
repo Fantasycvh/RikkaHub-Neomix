@@ -370,7 +370,7 @@ private fun SettingProviderConfigPage(
 
             Button(
                 onClick = {
-                    onEdit(internalProvider)
+                    onEdit(internalProvider.copyProvider(name = internalProvider.name.trim()))
                 }
             ) {
                 Text(stringResource(R.string.setting_provider_page_save))
@@ -819,7 +819,7 @@ private fun ModelSettingsForm(
                         OutlinedTextField(
                             value = model.displayName,
                             onValueChange = {
-                                onModelChange(model.copy(displayName = it.trim()))
+                                onModelChange(model.copy(displayName = it))
                             },
                             label = { Text(stringResource(if (isEdit) R.string.setting_provider_page_model_name else R.string.setting_provider_page_model_display_name)) },
                             modifier = Modifier.fillMaxWidth(),
@@ -917,7 +917,7 @@ private fun AddModelButton(
     parentProvider: ProviderSetting,
     onUpdateProvider: (ProviderSetting) -> Unit
 ) {
-    val dialogState = useEditState<Model> { onAddModel(it) }
+    val dialogState = useEditState<Model> { onAddModel(it.copy(displayName = it.displayName.trim())) }
     val scope = rememberCoroutineScope()
 
     Row(
@@ -1397,7 +1397,7 @@ private fun ModelCard(
     parentProvider: ProviderSetting
 ) {
     val dialogState = useEditState<Model> {
-        onEdit(it)
+        onEdit(it.copy(displayName = it.displayName.trim()))
     }
     val swipeToDismissBoxState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
@@ -1790,7 +1790,7 @@ private fun ProviderOverrideSettings(
                         }
                         TextButton(
                             onClick = {
-                                onUpdateProviderOverride(internalProvider)
+                                onUpdateProviderOverride(internalProvider.copyProvider(name = internalProvider.name.trim()))
                                 showProviderConfig = false
                                 editingProvider = null
                             },
