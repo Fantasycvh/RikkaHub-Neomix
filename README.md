@@ -14,13 +14,13 @@ RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，�
 
 ## 📥 下载
 
-🔗 [GitHub Releases](https://github.com/androidrik/rikka2-my_feature_open/releases)（正式发布：`v2.4.10.26`；最新草稿：`v1.0.1`）
+🔗 [GitHub Releases](https://github.com/androidrik/rikka2-my_feature_open/releases)（正式发布：`v2.4.10.26`；最新草稿：`v1.0.2`）
 
 > 本仓库为私有测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**。
 
 ## 📌 项目简介
 
-RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5` 基线，master 已 ff-only 同步至上游 `2.5.0`，`2.4.8`-`2.5.0` 有选择性吸收）的 fork，
+RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5` 基线，master 已 ff-only 同步至上游 `2.5.1`，`2.4.8`-`2.5.1` 有选择性吸收）的 fork，
 包名 `app.androidrik.rikkahub`，应用名 **RikkaHub Plus**。
 
 - **自 v2.4.6 起上游选择性跟进**：`master` 仍可同步上游（ff-only 镜像机制保留），但上游修复/功能**选择性吸收**——不再全部跟进，仅按需人工评估有价值的部分
@@ -44,7 +44,7 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 🛡️ **TikZ 崩溃防线** | 三层防线（TikzJax 渲染前尺寸校验 / renderSvg 生成端上限 / plot 采样值上限）+ 高度哨兵 HeightClamp + 文本按码点截断——杜绝巨型 SVG（height 4.58e11）导致 Compose 布局溢出崩溃 |
 | 💬 **对话分享/导出** | 列表页长按「分享对话」+ 聊天内顶栏导出双入口，Markdown / 图片 PNG 两形态（系统分享 ACTION_SEND），支持版本范围可选 |
 | 🗑️ **允许删除内置提供商** | 系统内置 AI 服务提供商可真删除（墓碑 + 悬空引用保护 + 迁移兼容），删除前提示受影响助手计数 |
-| 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10` 批次：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721）；以及 `2.4.11`-`2.5.0` 批次精选：终端多 Tab 后台运行（`3a533a6a`）、空 tool schema 归一化（#1781）、workpace stdin EOF（#1605）、合成消息不参与模板（#1790）、fork 会话继承 folder/cwd（#1778）、代码块导出截断模式（#1841）；2026-09-08 批次：工具审批丢失修复（`55506496`）、think 标签误判锚定（`85402745`/#1725 系）、Skill frontmatter SnakeYAML 正规解析、纯图片/纯附件消息、模型注册组补充、自定义 Response API 路径、provider 阻塞工作移 IO 调度、R8 JWT keep 规则；2026-09-09/09-10 批次：搜索侧多 key 结构化与失败转移、Gemini 捆绑（单数组 tools + ServerTool 流式重实现 + OpenAI 兼容 items 归一化）、终端 Tab 动态标题、cloudflare MCP OAuth、TTS 合成自动重试、Exa 新鲜度、qwen 音色（Serena）、统计页 JSON 兜底、edited_files 安全 cast、DeepSeek V4.1 Flash、工具执行中展开详情、消息队列与语音/ASR 双向流（2.5.0 大块自研适配）。master 已 ff-only 同步至 `2.5.0`；详细评估见 `docs/upstream-analysis.md`。TikZ 渲染已定稿 mupdf SVG 桥（TEXT_AS_PATH 轮廓，中英文字形矢量，dvisvgm 链移除） |
+| 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10` 批次：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721）；以及 `2.4.11`-`2.5.1` 批次精选：终端多 Tab 后台运行（`3a533a6a`）、空 tool schema 归一化（#1781）、workpace stdin EOF（#1605）、合成消息不参与模板（#1790）、fork 会话继承 folder/cwd（#1778）、代码块导出截断模式（#1841）；2026-09-08 批次：工具审批丢失修复（`55506496`）、think 标签误判锚定（`85402745`/#1725 系）、Skill frontmatter SnakeYAML 正规解析、纯图片/纯附件消息、模型注册组补充、自定义 Response API 路径、provider 阻塞工作移 IO 调度、R8 JWT keep 规则；2026-09-09/09-12 批次：搜索侧多 key 结构化与失败转移、Gemini 捆绑（单数组 tools + ServerTool 流式重实现 + OpenAI 兼容 items 归一化）、终端 Tab 动态标题、cloudflare MCP OAuth、TTS 合成自动重试、Exa 新鲜度、qwen 音色（Serena）、统计页 JSON 兜底、edited_files 安全 cast、DeepSeek V4.1 Flash、工具执行中展开详情、消息队列与语音/ASR 双向流（2.5.0 大块自研适配）、翻译快捷方式与统一 Intent 导航、系统栏图标色恢复、自定义时间提醒间隔、SillyTavern V1 老卡与预设识别、模型名空格支持、通知小图标与测试连接本地化、代码块连字禁用、workspace HTML/SVG 预览与 Shell 兼容模式、图片生成页长按多选、图片选择改用系统相册（#1821）。master 已 ff-only 同步至 `2.5.1`；详细评估见 `docs/upstream-analysis.md`。TikZ 渲染已定稿 mupdf SVG 桥（TEXT_AS_PATH 轮廓，中英文字形矢量，dvisvgm 链移除） |
 
 ## 🎨 核心功能（继承上游）
 
