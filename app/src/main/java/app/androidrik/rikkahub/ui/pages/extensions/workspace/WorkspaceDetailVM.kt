@@ -169,6 +169,29 @@ class WorkspaceDetailVM(
         }
     }
 
+    /**
+     * 把当前区域下的文件导出到指定目录, 完成后回调 [onReady].
+     * 供列表内 SVG 缩略图渲染等复用 (与 [exportToCacheFile] 的 share 目录分离避免互相覆盖).
+     */
+    fun exportToCacheDir(entry: WorkspaceFileEntry, dir: File, onReady: (File) -> Unit) {
+        viewModelScope.launch {
+            runCatching {
+                dir.mkdirs()
+                // 同名文件在不同子目录会碰撞, 用路径替换分隔符保证唯一
+                val file = File(dir, entry.path.trim('/').replace('/', '_'))
+                file.outputStream().use { output ->
+                    repository.exportFile(
+                        id = id,
+                        area = state.value.area,
+                        path = entry.path,
+                        outputStream = output,
+                    )
+                }
+                file
+            }.onSuccess(onReady)
+        }
+    }
+
     fun setToolApproval(toolName: String, needsApproval: Boolean) {
         viewModelScope.launch {
             val workspace = state.value.workspace ?: return@launch

@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,11 +50,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
@@ -256,6 +261,9 @@ fun WorkspaceDetailPage(id: String) {
                             }
                             context.startActivity(Intent.createChooser(intent, null))
                         }
+                    },
+                    onExportToDir = { entry, dir, onReady ->
+                        vm.exportToCacheDir(entry, dir, onReady)
                     },
                 )
             }
@@ -617,6 +625,7 @@ private fun WorkspaceFilesPage(
     onDelete: (WorkspaceFileEntry) -> Unit,
     onExport: (WorkspaceFileEntry) -> Unit,
     onShare: (WorkspaceFileEntry) -> Unit,
+    onExportToDir: (WorkspaceFileEntry, File, (File) -> Unit) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -657,6 +666,7 @@ private fun WorkspaceFilesPage(
                 onDelete = { onDelete(entry) },
                 onExport = { onExport(entry) },
                 onShare = { onShare(entry) },
+                onExportToDir = onExportToDir,
             )
         }
     }
@@ -719,8 +729,23 @@ private fun WorkspaceFileCard(
     onDelete: () -> Unit,
     onExport: () -> Unit,
     onShare: () -> Unit,
+    onExportToDir: (WorkspaceFileEntry, File, (File) -> Unit) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    // SVG 文件直接在列表内渲染缩略图（导出到 cache 后由 Coil 单例的 SvgDecoder 加载）
+    val isSvg = !entry.isDirectory &&
+        entry.name.substringAfterLast('.', "").equals("svg", ignoreCase = true)
+    var svgThumbFile by remember(entry.path) { mutableStateOf<File?>(null) }
+    if (isSvg && svgThumbFile == null) {
+        LaunchedEffect(entry.path) {
+            val thumbDir = File(context.cacheDir, "workspace_svg_thumb")
+            onExportToDir(entry, thumbDir) { file ->
+                if (file.exists() && file.length() > 0) svgThumbFile = file
+            }
+        }
+    }
 
     Card(
         modifier = Modifier
@@ -734,16 +759,27 @@ private fun WorkspaceFileCard(
                 .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = if (entry.isDirectory) HugeIcons.Folder01 else HugeIcons.File02,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                tint = if (entry.isDirectory) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
+            if (isSvg && svgThumbFile != null) {
+                AsyncImage(
+                    model = svgThumbFile,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(MaterialTheme.shapes.small),
+                    contentScale = ContentScale.Fit,
+                )
+            } else {
+                Icon(
+                    imageVector = if (entry.isDirectory) HugeIcons.Folder01 else HugeIcons.File02,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    tint = if (entry.isDirectory) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
             Column(
                 modifier = Modifier
                     .weight(1f)

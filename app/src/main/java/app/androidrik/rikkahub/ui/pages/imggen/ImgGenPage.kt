@@ -566,7 +566,10 @@ private fun ImageGalleryScreen(
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = {
-                    selectedIds.addAll(allImages().map { img -> img.id })
+                    // 全选 = 精确选中当前全部图片（clear + addAll，避免重复叠加）
+                    val ids = allImages().map { img -> img.id }
+                    selectedIds.clear()
+                    selectedIds.addAll(ids)
                 }) {
                     Text(stringResource(R.string.imggen_page_select_all))
                 }
@@ -669,8 +672,9 @@ private fun ImageGalleryScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .aspectRatio(1f)
-                                                .clickable {
-                                                    if (!selectionMode) showPreview = true
+                                                // 多选模式下禁用内层点击，让事件穿透到卡片的勾选切换
+                                                .clickable(enabled = !selectionMode) {
+                                                    showPreview = true
                                                 },
                                             contentScale = ContentScale.Crop
                                         )
