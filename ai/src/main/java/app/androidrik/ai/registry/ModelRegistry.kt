@@ -87,6 +87,12 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    private val GPT_6 = defineModel {
+        tokens("gpt", "6")
+        visionInput()
+        toolReasoningAbility()
+    }
+
     private val GEMINI_20_FLASH = defineModel {
         tokens("gemini", "2", "0", "flash")
         visionInput()
@@ -267,6 +273,13 @@ object ModelRegistry {
 
     private val DEEPSEEK_REASONER = defineModel {
         tokens("deepseek", "reasoner")
+        toolReasoningAbility()
+    }
+
+    // 对齐上游 46cacf23：裸 deepseek-flash（无版本前缀 id）
+    private val DEEPSEEK_FLASH = defineModel {
+        tokens("deepseek", "flash")
+        visionInput()
         toolReasoningAbility()
     }
 
@@ -559,6 +572,7 @@ object ModelRegistry {
         GPT_5_4_NANO,
         GPT_5_5,
         GPT_5_6,
+        GPT_6,
         GEMINI_20_FLASH,
         GEMINI_2_5_FLASH,
         GEMINI_2_5_PRO,
@@ -585,6 +599,7 @@ object ModelRegistry {
         DEEPSEEK_CHAT,
         DEEPSEEK_R1_MODEL,
         DEEPSEEK_REASONER,
+        DEEPSEEK_FLASH,
         DEEPSEEK_V4_FLASH,
         DEEPSEEK_V4_1_FLASH,
         DEEPSEEK_V4_PRO,
