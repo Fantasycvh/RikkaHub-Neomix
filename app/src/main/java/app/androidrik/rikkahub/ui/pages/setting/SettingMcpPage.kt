@@ -102,6 +102,7 @@ import app.androidrik.rikkahub.data.ai.mcp.McpCommonOptions
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
 import app.androidrik.rikkahub.data.ai.mcp.McpStatus
+import app.androidrik.rikkahub.data.ai.mcp.displayText
 import app.androidrik.rikkahub.data.ai.mcp.McpTool
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.FormItem
@@ -271,14 +272,21 @@ private fun McpServerItem(
             onDismissRequest = { errorDetail = null },
             title = { Text(item.commonOptions.name.ifBlank { "MCP" }) },
             text = {
-                SelectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = fullText,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier
-                            .heightIn(max = 320.dp)
-                            .verticalScroll(rememberScrollState()),
+                        text = error.displayText(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
                     )
+                    SelectionContainer {
+                        Text(
+                            text = fullText,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .heightIn(max = 320.dp)
+                                .verticalScroll(rememberScrollState()),
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -395,7 +403,7 @@ private fun McpServerItem(
                     if (status is McpStatus.Error) {
                         val error = status as McpStatus.Error
                         Text(
-                            text = error.message,
+                            text = error.displayText(),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                             maxLines = 3,

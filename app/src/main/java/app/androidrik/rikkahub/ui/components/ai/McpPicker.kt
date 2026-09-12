@@ -50,6 +50,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
 import app.androidrik.rikkahub.data.ai.mcp.McpStatus
+import app.androidrik.rikkahub.data.ai.mcp.displayText
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
@@ -328,7 +329,7 @@ fun McpPicker(
                                 is McpStatus.Connecting -> "Connecting"
                                 is McpStatus.Connected -> "Connected"
                                 is McpStatus.Reconnecting -> "Reconnecting (${s.attempt}/${s.maxAttempts})"
-                                is McpStatus.Error -> "Error: ${s.message}"
+                                is McpStatus.Error -> s.displayText()
                                 is McpStatus.NeedsAuthorization -> "Needs authorization"
                                 is McpStatus.Authorizing -> "Authorizing"
                             },
