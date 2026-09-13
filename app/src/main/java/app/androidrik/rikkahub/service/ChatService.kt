@@ -1219,8 +1219,12 @@ class ChatService(
                 .awaitAll()
         }.joinToString("\n\n")
 
-        val boundaryNodeId = plan.toCompress.lastOrNull()?.id?.toString()
-            ?: return@runCatching null
+        val boundaryNode = plan.toCompress.lastOrNull() ?: return@runCatching null
+        val boundaryNodeId = boundaryNode.id.toString()
+        // 区域指纹：记录被摘要区域（含边界）的节点/选中消息状态，供 activeCompression 检测
+        // 后续改动（编辑/删除/重生成/切分支）使检查点失效
+        val boundaryIndex = conversation.messageNodes.indexOfFirst { it.id == boundaryNode.id }
+        val areaFingerprint = conversation.areaFingerprintFor(boundaryIndex)
         val priorCount = conversation.compressionSummaries.lastOrNull()?.messageCount ?: 0
         val checkpoint = CompressionSummary(
             conversationId = conversationId,
@@ -1228,6 +1232,7 @@ class ChatService(
             messageCount = priorCount + messagesToCompress.size,
             boundaryNodeId = boundaryNodeId,
             createdAt = Instant.now(),
+            areaFingerprint = areaFingerprint,
         )
 
         // 轨迹只追加：落库新检查点（含自增 id），清理更早的检查点行（摘要已合并）
@@ -1432,14 +1437,12 @@ class ChatService(
             ?: settings.getCurrentAssistant()
         val processedParts = preprocessUserInputParts(parts, assistant)
         var edited = false
-        var editedIndex = -1
 
         val updatedNodes = currentConversation.messageNodes.mapIndexed { index, node ->
             if (!node.messages.any { it.id == messageId }) {
                 return@mapIndexed node
             }
             edited = true
-            editedIndex = index
 
             node.copy(
                 messages = node.messages + UIMessage(
@@ -1452,27 +1455,8 @@ class ChatService(
 
         if (!edited) return
 
-        // 编辑落在压缩边界内 -> 摘要已与实际历史不一致，丢弃检查点（回退全量发送）
-        invalidateCheckpointIfWithinBoundary(conversationId, currentConversation, editedIndex)
-
+        // 编辑区域内的消息后，检查点由 activeCompression 的指纹校验自动失效（无需显式处理）
         saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
-    }
-
-    /**
-     * 若被改动节点落在压缩边界内（含边界），删除该会话的检查点并清空内存态。
-     *
-     * 摘要反映压缩时刻的历史；边界内消息被编辑/删除后摘要不再准确，继续用它会让 AI
-     * 的上下文与用户所见对不上。失效后回退全量发送，下次达阈值可重新压缩。
-     */
-    private suspend fun invalidateCheckpointIfWithinBoundary(
-        conversationId: Uuid,
-        conversation: Conversation,
-        affectedNodeIndex: Int,
-    ) {
-        if (affectedNodeIndex < 0) return
-        if (!conversation.isWithinCompressionBoundary(affectedNodeIndex)) return
-        conversationRepo.deleteCompressionCheckpoints(conversationId)
-        updateConversationState(conversationId) { it.copy(compressionSummaries = emptyList()) }
     }
 
     suspend fun forkConversationAtMessage(
@@ -1551,13 +1535,7 @@ class ChatService(
             return
         }
 
-        // 删除的消息在压缩边界内 -> 摘要失效（节点消失本身也会让 activeCompression 失效，
-        // 但边界内非边界节点的删除不会触发该判定，故显式清理）
-        val targetIndex = currentConversation.messageNodes.indexOfFirst { node ->
-            node.messages.any { it.id == messageId }
-        }
-        invalidateCheckpointIfWithinBoundary(conversationId, currentConversation, targetIndex)
-
+        // 删除区域内的消息后，检查点由 activeCompression 的指纹校验自动失效（无需显式处理）
         saveConversation(conversationId, updatedConversation)
     }
 

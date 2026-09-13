@@ -141,4 +141,132 @@ class CompressionWindowTest {
 
         assertFalse(conversation.isWithinCompressionBoundary(0))
     }
+
+    // ===== 区域指纹校验（B 方案：一次性覆盖全部改动路径）=====
+
+    /** 构造带正确指纹的检查点（模拟压缩落库时的记录） */
+    private fun conversationWithFingerprint(nodes: List<MessageNode>, boundaryIndex: Int):
+        Pair<Conversation, CompressionSummary> {
+        val base = conversation(nodes, emptyList())
+        val fingerprint = base.areaFingerprintFor(boundaryIndex)
+        val cp = checkpoint(boundaryNodeId = nodes[boundaryIndex].id.toString())
+            .copy(areaFingerprint = fingerprint)
+        return conversation(nodes, listOf(cp)) to cp
+    }
+
+    @Test
+    fun `checkpoint valid when area unchanged`() {
+        val nodes = listOf(node("a"), node("b"), node("c"))
+        val conversation = conversationWithFingerprint(nodes, boundaryIndex = 1).first
+
+        assertNotNull("区域未变时检查点应有效", conversation.activeCompression())
+    }
+
+    @Test
+    fun `editing a node within area invalidates checkpoint`() {
+        // 编辑 = 节点候选追加新消息并选中（updateCurrentMessages 语义）
+        val nodes = listOf(node("a"), node("b"), node("c"))
+        val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 1)
+        val edited = conversation.copy(
+            messageNodes = conversation.messageNodes.mapIndexed { index, n ->
+                if (index == 0) n.copy(messages = n.messages + node("a-edited").messages.first(), selectIndex = 1)
+                else n
+            }
+        )
+
+        assertNull("区域内编辑必须使检查点失效", edited.activeCompression())
+    }
+
+    @Test
+    fun `regenerating a node within area invalidates checkpoint`() {
+        // 重新生成 = 新增候选并被选中
+        val nodes = listOf(node("a"), node("b"), node("c"))
+        val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 1)
+        val regenerated = conversation.copy(
+            messageNodes = conversation.messageNodes.mapIndexed { index, n ->
+                if (index == 1) n.copy(messages = n.messages + node("b-v2").messages.first(), selectIndex = 1)
+                else n
+            }
+        )
+
+        assertNull("区域内重新生成必须使检查点失效", regenerated.activeCompression())
+    }
+
+    @Test
+    fun `switching branch within area invalidates checkpoint`() {
+        // 切换分支 = selectIndex 变化（候选不变）
+        val multi = MessageNode(
+            messages = listOf(node("v1").messages.first(), node("v2").messages.first()),
+            selectIndex = 0,
+        )
+        val nodes = listOf(multi, node("b"), node("c"))
+        val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 1)
+        val switched = conversation.copy(
+            messageNodes = conversation.messageNodes.mapIndexed { index, n ->
+                if (index == 0) n.copy(selectIndex = 1) else n
+            }
+        )
+
+        assertNull("区域内切换分支必须使检查点失效", switched.activeCompression())
+    }
+
+    @Test
+    fun `deleting a node within area invalidates checkpoint`() {
+        val nodes = listOf(node("a"), node("b"), node("c"), node("d"))
+        val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 1)
+        val afterDelete = conversation.copy(
+            messageNodes = conversation.messageNodes.filterIndexed { index, _ -> index != 0 }
+        )
+
+        assertNull("区域内删除节点必须使检查点失效", afterDelete.activeCompression())
+    }
+
+    @Test
+    fun `changes after boundary keep checkpoint valid`() {
+        // 窗口（边界之后）的改动不影响——那部分本就原样发送
+        val nodes = listOf(node("a"), node("b"), node("c"), node("d"))
+        val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 1)
+        val windowChanged = conversation.copy(
+            messageNodes = conversation.messageNodes.mapIndexed { index, n ->
+                if (index == 3) n.copy(messages = n.messages + node("d-v2").messages.first(), selectIndex = 1)
+                else n
+            }
+        )
+
+        assertNotNull("窗口内改动不应使检查点失效", windowChanged.activeCompression())
+    }
+
+    @Test
+    fun `checkpoint without fingerprint degrades to boundary-existence check`() {
+        // 旧数据（无指纹）保持原行为：仅校验边界节点存在
+        val nodes = listOf(node("a"), node("b"), node("c"))
+        val cp = checkpoint(boundaryNodeId = nodes[1].id.toString()) // 无指纹
+        val conversation = conversation(nodes, listOf(cp))
+
+        assertNotNull(conversation.activeCompression())
+    }
+
+    @Test
+    fun `invalidation is reversible when area returns to recorded state`() {
+        // 指纹是纯函数 -> 失效可逆：编辑后切回原分支，检查点重新生效（摘要对该内容仍准确）
+        val nodes = listOf(node("a"), node("b"), node("c"))
+        val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 1)
+
+        // 编辑：追加候选并选中 -> 失效
+        val edited = conversation.copy(
+            messageNodes = conversation.messageNodes.mapIndexed { index, n ->
+                if (index == 0) n.copy(messages = n.messages + node("a-edited").messages.first(), selectIndex = 1)
+                else n
+            }
+        )
+        assertNull(edited.activeCompression())
+
+        // 切回原候选（selectIndex 回 0）-> 指纹恢复 -> 重新生效
+        val restored = edited.copy(
+            messageNodes = edited.messageNodes.mapIndexed { index, n ->
+                if (index == 0) n.copy(selectIndex = 0) else n
+            }
+        )
+        assertNotNull("回到记录状态后检查点应重新生效", restored.activeCompression())
+    }
 }

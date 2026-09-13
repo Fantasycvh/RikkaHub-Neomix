@@ -428,6 +428,7 @@ class ConversationRepository(
                 messageCount = summary.messageCount,
                 boundaryNodeId = summary.boundaryNodeId,
                 createdAt = summary.createdAt.toEpochMilli(),
+                areaFingerprint = summary.areaFingerprint,
             )
         )
         return summary.copy(id = id)
@@ -450,6 +451,7 @@ class ConversationRepository(
         messageCount = messageCount,
         boundaryNodeId = boundaryNodeId,
         createdAt = Instant.ofEpochMilli(createdAt),
+        areaFingerprint = areaFingerprint,
     )
 
     fun getPinnedConversations(): Flow<List<Conversation>> {

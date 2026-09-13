@@ -276,7 +276,7 @@
   <string name="chat_page_compress_keep_recent">Сохранить недавних %</string>
   <string name="chat_page_compress_not_enough_messages">Истории пока недостаточно для сжатия — продолжите диалог и попробуйте снова.</string>
   <string name="chat_page_compress_target_tokens">Целевой размер токенов</string>
-  <string name="chat_page_compress_warning">ВНИМАНИЕ: ранние сообщения будут свёрнуты в резюме для контекста модели. Полная история остаётся в чате и доступна при разворачивании; правка или перегенерация отменит сжатие.</string>
+  <string name="chat_page_compress_warning">ВНИМАНИЕ: ранние сообщения будут свёрнуты в резюме для контекста модели. Полная история остаётся в чате и доступна при разворачивании. Правка, перегенерация, удаление или смена ветки сжатого сообщения автоматически отменяет сжатие.</string>
   <string name="chat_page_compressing">Сжатие...</string>
   <string name="chat_page_conversation_system_prompt">Системный запрос для беседы</string>
   <string name="chat_page_conversation_system_prompt_clear">Очистить</string>
@@ -772,7 +772,7 @@
   <string name="setting_model_page_auto_compress_threshold">Порог срабатывания</string>
   <string name="setting_model_page_auto_compress_retain">Сохранить недавних %</string>
   <string name="setting_model_page_auto_compress_target">Целевые токены резюме</string>
-  <string name="setting_model_page_auto_compress_hint">Сжатие можно отменить, отредактировав или перегенерировав затронутое сообщение</string>
+  <string name="setting_model_page_auto_compress_hint">Правка, перегенерация, удаление или смена ветки сжатого сообщения отменяет сжатие</string>
   <string name="setting_model_page_chat_model_desc">Глобальная модель чата по умолчанию</string>
   <string name="setting_model_page_compress_model">Сжать модель</string>
   <string name="setting_model_page_compress_model_desc">Модель для сжатия истории разговоров</string>

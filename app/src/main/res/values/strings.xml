@@ -315,7 +315,7 @@
   <string name="chat_page_compress_keep_recent">Keep recent %</string>
   <string name="chat_page_compress_not_enough_messages">Not enough history to compress yet — keep chatting and try again later.</string>
   <string name="chat_page_compress_target_tokens">Target Token Size</string>
-  <string name="chat_page_compress_warning">WARNING: Earlier messages will be summarized out of the model context. Your full history stays in the chat and can be expanded; editing or regenerating any message cancels compression.</string>
+  <string name="chat_page_compress_warning">WARNING: Earlier messages will be summarized out of the model context. Your full history stays in the chat and can be expanded. Editing, regenerating, deleting or switching the branch of a compressed message automatically cancels compression.</string>
   <string name="chat_page_compressing">Compressing...</string>
   <string name="chat_page_conversation_system_prompt">Conversation System Prompt</string>
   <string name="chat_page_conversation_system_prompt_clear">Clear</string>
@@ -859,7 +859,7 @@
   <string name="setting_model_page_auto_compress_threshold">Trigger threshold</string>
   <string name="setting_model_page_auto_compress_retain">Keep recent %</string>
   <string name="setting_model_page_auto_compress_target">Summary target tokens</string>
-  <string name="setting_model_page_auto_compress_hint">Compression can be cancelled by editing or regenerating any affected message</string>
+  <string name="setting_model_page_auto_compress_hint">Editing, regenerating, deleting or switching the branch of a compressed message cancels compression</string>
   <string name="setting_model_page_chat_model_desc">Global default chat model</string>
   <string name="setting_model_page_fallback_model">Default fallback model</string>
   <string name="setting_model_page_fallback_model_desc">Used when the assistant has no fallback configured and the primary model fails after retries</string>

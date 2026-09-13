@@ -276,7 +276,7 @@
   <string name="chat_page_compress_keep_recent">최근 대화 유지 비율</string>
   <string name="chat_page_compress_not_enough_messages">압축할 만큼 기록이 충분하지 않습니다. 대화를 더 진행한 뒤 다시 시도하세요.</string>
   <string name="chat_page_compress_target_tokens">대상 토큰 크기</string>
-  <string name="chat_page_compress_warning">⚠️ 이전 메시지는 모델에 전달되는 컨텍스트에서 요약됩니다. 전체 기록은 대화에 남아 있으며 펼쳐서 볼 수 있습니다. 메시지를 편집/재생성하면 압축이 취소됩니다.</string>
+  <string name="chat_page_compress_warning">⚠️ 이전 메시지는 모델에 전달되는 컨텍스트에서 요약됩니다. 전체 기록은 대화에 남아 있으며 펼칠 수 있습니다. 압축된 메시지를 편집·재생성·삭제·분기 전환하면 압축이 자동 해제됩니다.</string>
   <string name="chat_page_compressing">압축 중...</string>
   <string name="chat_page_conversation_system_prompt">대화 시스템 프롬프트</string>
   <string name="chat_page_conversation_system_prompt_clear">지우기</string>
@@ -772,7 +772,7 @@
   <string name="setting_model_page_auto_compress_threshold">트리거 임계값</string>
   <string name="setting_model_page_auto_compress_retain">최근 대화 유지 비율</string>
   <string name="setting_model_page_auto_compress_target">요약 목표 토큰</string>
-  <string name="setting_model_page_auto_compress_hint">영향받은 메시지를 편집하거나 재생성하면 압축이 취소됩니다</string>
+  <string name="setting_model_page_auto_compress_hint">압축된 메시지를 편집·재생성·삭제·분기 전환하면 압축이 해제됩니다</string>
   <string name="setting_model_page_chat_model_desc">전역 기본 채팅 모델</string>
   <string name="setting_model_page_compress_model">모델 압축</string>
   <string name="setting_model_page_compress_model_desc">대화 기록 압축용 모델</string>

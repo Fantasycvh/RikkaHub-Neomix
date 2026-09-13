@@ -108,7 +108,31 @@ data class Conversation(
     fun activeCompression(): CompressionSummary? {
         val checkpoint = compressionSummaries.lastOrNull() ?: return null
         val boundaryId = checkpoint.boundaryNodeId ?: return checkpoint
-        return if (messageNodes.any { it.id.toString() == boundaryId }) checkpoint else null
+        val boundaryIndex = messageNodes.indexOfFirst { it.id.toString() == boundaryId }
+        if (boundaryIndex < 0) return null
+        // 区域指纹校验：区域内节点或其选中消息被改动（编辑/删除/重新生成/切换分支）时，
+        // 摘要已过时 -> 失效回退全量发送（避免 AI 上下文与用户所见不一致）。
+        // 指纹为 null（旧数据/未记录）时退化为仅边界存在性校验。
+        val fingerprint = checkpoint.areaFingerprint ?: return checkpoint
+        return if (computeAreaFingerprint(boundaryIndex) == fingerprint) checkpoint else null
+    }
+
+    /**
+     * 计算被摘要区域指纹：`nodes[0..boundaryIndex]` 各节点的 id 与其**选中消息** id 的拼接哈希。
+     *
+     * 覆盖四种改动路径：编辑（节点候选追加 + 选中项变）、删除（节点/候选减少）、
+     * 重新生成（新增候选并选中）、切换分支（selectIndex 变）——都反映为「节点 id 序列」
+     * 或「选中消息 id」的变化。窗口（边界之后）的改动不影响指纹：那部分本就原样发送。
+     */
+    private fun computeAreaFingerprint(boundaryIndex: Int): String {
+        val builder = StringBuilder()
+        for (index in 0..boundaryIndex) {
+            val node = messageNodes.getOrNull(index) ?: break
+            builder.append(node.id).append(':')
+            node.messages.getOrNull(node.selectIndex)?.let { builder.append(it.id) }
+            builder.append('|')
+        }
+        return builder.toString().sha256()
     }
 
     /**
@@ -133,6 +157,13 @@ data class Conversation(
         return listOf(checkpointMessage) +
             messageNodes.drop(boundaryIndex + 1).map { it.currentMessage }
     }
+
+    /**
+     * 以 [boundaryNodeIndex] 为边界时应记录的指纹（压缩落库时调用，与 [activeCompression] 校验同源）。
+     * 越界返回 null。
+     */
+    fun areaFingerprintFor(boundaryNodeIndex: Int): String? =
+        if (boundaryNodeIndex in messageNodes.indices) computeAreaFingerprint(boundaryNodeIndex) else null
 
     /**
      * 边界之后的节点（存储侧视图，UI 折叠与压缩输入都以它为准）；无有效检查点时返回全量。
@@ -278,4 +309,11 @@ internal fun List<MessageNode>.repairCorruptedCandidates(): List<MessageNode> {
             node.copy(messages = listOf(node.messages.first()), selectIndex = 0)
         }
     }
+}
+
+/** 指纹用 SHA-256（仅取前 32 hex 字符，足够区分且节省存储） */
+private fun String.sha256(): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    val bytes = digest.digest(this.toByteArray(Charsets.UTF_8))
+    return bytes.joinToString("") { "%02x".format(it) }.take(32)
 }

@@ -32,6 +32,13 @@ data class CompressionSummary(
     /** 创建时间 */
     @Serializable(with = InstantSerializer::class)
     val createdAt: Instant = Instant.now(),
+    /**
+     * 被摘要区域（含边界节点）的指纹：各节点 id + 选中消息 id 的哈希。
+     *
+     * 用于检测区域内消息被改动（编辑/删除/重新生成/切换分支）→ 摘要过时 → 检查点失效。
+     * null = 旧数据或未记录，退化为仅做边界存在性校验。
+     */
+    val areaFingerprint: String? = null,
 ) {
     /** boundaryNodeId 为空时永远生效（无失效条件）；非空时由调用方校验节点存在性 */
     val canExpire: Boolean get() = boundaryNodeId != null

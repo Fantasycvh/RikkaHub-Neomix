@@ -315,7 +315,7 @@
   <string name="chat_page_compress_keep_recent">保留最近对话比例</string>
   <string name="chat_page_compress_not_enough_messages">历史还不够长，暂无可压缩内容——继续对话后再试。</string>
   <string name="chat_page_compress_target_tokens">目标Token大小</string>
-  <string name="chat_page_compress_warning">⚠️ 较早的消息将从发送给模型的上下文中摘要化；完整历史仍保留在对话中、可展开查看，编辑或重新生成任意消息即可取消压缩。</string>
+  <string name="chat_page_compress_warning">⚠️ 较早的消息将从发送给模型的上下文中摘要化；完整历史仍保留在对话中、可展开查看。对被压缩的消息做编辑、重新生成、删除或切换分支，都会自动取消压缩。</string>
   <string name="chat_page_compressing">正在压缩...</string>
   <string name="chat_page_conversation_system_prompt">对话系统提示</string>
   <string name="chat_page_conversation_system_prompt_clear">清除</string>
@@ -854,7 +854,7 @@
   <string name="setting_model_page_auto_compress_threshold">触发阈值</string>
   <string name="setting_model_page_auto_compress_retain">保留最近对话比例</string>
   <string name="setting_model_page_auto_compress_target">摘要目标 Token</string>
-  <string name="setting_model_page_auto_compress_hint">编辑或重新生成受影响的消息即可取消压缩</string>
+  <string name="setting_model_page_auto_compress_hint">对被压缩的消息做编辑、重新生成、删除或切换分支，会自动取消压缩</string>
   <string name="setting_model_page_chat_model_desc">全局默认的聊天模型</string>
   <string name="setting_model_page_fallback_model">默认备用模型</string>
   <string name="setting_model_page_fallback_model_desc">助手未配置备用模型、且主模型重试耗尽后使用</string>

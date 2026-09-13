@@ -276,7 +276,7 @@
   <string name="chat_page_compress_keep_recent">最近の会話を保持する割合</string>
   <string name="chat_page_compress_not_enough_messages">まだ圧縮できるほどの履歴がありません。会話を続けてからお試しください。</string>
   <string name="chat_page_compress_target_tokens">ターゲットトークンサイズ</string>
-  <string name="chat_page_compress_warning">⚠️ 古いメッセージはモデルに送るコンテキストから要約されます。完全な履歴はチャットに残り展開して確認できます。編集・再生成で圧縮を解除できます。</string>
+  <string name="chat_page_compress_warning">⚠️ 古いメッセージはモデルに送るコンテキストから要約されます。完全な履歴はチャットに残り展開できます。圧縮されたメッセージを編集・再生成・削除・ブランチ切替すると圧縮は自動解除されます。</string>
   <string name="chat_page_compressing">圧縮中…</string>
   <string name="chat_page_conversation_system_prompt">会話システムプロンプト</string>
   <string name="chat_page_conversation_system_prompt_clear">クリア</string>
@@ -772,7 +772,7 @@
   <string name="setting_model_page_auto_compress_threshold">トリガーしきい値</string>
   <string name="setting_model_page_auto_compress_retain">最近の会話を保持する割合</string>
   <string name="setting_model_page_auto_compress_target">要約の目標トークン</string>
-  <string name="setting_model_page_auto_compress_hint">影響を受けたメッセージを編集・再生成すると圧縮を解除できます</string>
+  <string name="setting_model_page_auto_compress_hint">圧縮されたメッセージを編集・再生成・削除・ブランチ切替すると圧縮は解除されます</string>
   <string name="setting_model_page_chat_model_desc">グローバルデフォルトチャットモデル</string>
   <string name="setting_model_page_compress_model">モデルを圧縮</string>
   <string name="setting_model_page_compress_model_desc">会話履歴を圧縮するモデル</string>

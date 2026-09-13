@@ -45,4 +45,12 @@ data class CompressionCheckpointEntity(
     /** 创建时间 epoch millis（取最后一行 = 最新检查点 = active） */
     @ColumnInfo("created_at")
     val createdAt: Long,
+    /**
+     * 被摘要区域（边界含之前）的指纹：各节点 id + 选中消息 id 的哈希。
+     *
+     * 用于检测「区域内消息被改动」（编辑/删除/重新生成/切换分支）——摘要已过时则检查点失效，
+     * 避免 AI 上下文与用户所见不一致。null = 旧数据 / 未记录，不做指纹校验（保持原边界存在性校验）。
+     */
+    @ColumnInfo("area_fingerprint")
+    val areaFingerprint: String? = null,
 )
