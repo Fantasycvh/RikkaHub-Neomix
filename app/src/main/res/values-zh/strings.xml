@@ -859,6 +859,8 @@
   <string name="setting_model_page_fallback_model">默认备用模型</string>
   <string name="setting_model_page_fallback_model_desc">助手未配置备用模型、且主模型重试耗尽后使用</string>
   <string name="setting_model_page_compress_model">压缩模型</string>
+  <string name="setting_model_page_compress_model_follow">跟随当前对话模型</string>
+  <string name="setting_model_page_compress_model_clear_hint">清除则改为跟随当前对话模型</string>
   <string name="setting_model_page_compress_model_desc">用于压缩对话历史的模型</string>
   <string name="setting_model_page_compress_prompt_vars">变量：{content}、{target_tokens}、{additional_context}</string>
   <string name="setting_model_page_ocr_model">OCR 模型</string>

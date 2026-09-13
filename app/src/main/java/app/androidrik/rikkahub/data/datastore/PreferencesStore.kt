@@ -218,7 +218,10 @@ class SettingsStore(
                 suggestionPrompt = preferences[SUGGESTION_PROMPT] ?: DEFAULT_SUGGESTION_PROMPT,
                 ocrModelId = preferences[OCR_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
                 ocrPrompt = preferences[OCR_PROMPT] ?: DEFAULT_OCR_PROMPT,
-                compressModelId = preferences[COMPRESS_MODEL]?.let { Uuid.parse(it) } ?: DEFAULT_AUTO_MODEL_ID,
+                // 空串哨兵 = 用户显式选择「跟随对话模型」；key 不存在 = 默认显式模型
+                compressModelId = preferences[COMPRESS_MODEL]
+                    ?.let { raw -> if (raw.isBlank()) null else Uuid.parse(raw) }
+                    ?: DEFAULT_AUTO_MODEL_ID,
                 compressPrompt = preferences[COMPRESS_PROMPT] ?: DEFAULT_COMPRESS_PROMPT,
                 assistantId = preferences[SELECT_ASSISTANT]?.let { Uuid.parse(it) }
                     ?: DEFAULT_ASSISTANT_ID,
@@ -428,7 +431,7 @@ class SettingsStore(
             preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
             preferences[OCR_MODEL] = settings.ocrModelId.toString()
             preferences[OCR_PROMPT] = settings.ocrPrompt
-            preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
+            preferences[COMPRESS_MODEL] = settings.compressModelId?.toString() ?: ""
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
@@ -592,7 +595,8 @@ data class Settings(
     val suggestionPrompt: String = DEFAULT_SUGGESTION_PROMPT,
     val ocrModelId: Uuid = Uuid.random(),
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
-    val compressModelId: Uuid = Uuid.random(),
+    /** 压缩使用的模型 id。默认锁定内置模型；**null = 跟随当前对话模型**（可选，避免单独配置） */
+    val compressModelId: Uuid? = DEFAULT_AUTO_MODEL_ID,
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val providers: List<ProviderSetting> = DEFAULT_PROVIDERS,
@@ -743,6 +747,17 @@ fun List<ProviderSetting>.findModelById(uuid: Uuid): Model? {
 fun Settings.getCurrentChatModel(): Model? {
     return findModelById(this.getCurrentAssistant().chatModelId ?: this.chatModelId)
 }
+
+/**
+ * 解析压缩使用的模型：
+ * 1. 显式指定且可解析 -> 用该模型（用户可专门配一个便宜模型做摘要）
+ * 2. **未指定（null = 「跟随对话模型」）或指定已失效（模型被删）** -> 用 [followModel]（该会话的生成模型）
+ * 3. 都没有 -> 全局当前对话模型
+ */
+fun Settings.resolveCompressionModel(followModel: Model? = null): Model? =
+    compressModelId?.let { findModelById(it) }
+        ?: followModel
+        ?: getCurrentChatModel()
 
 fun Settings.getCurrentAssistant(): Assistant {
     return this.assistants.find { it.id == assistantId } ?: this.assistants.first()

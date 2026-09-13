@@ -188,10 +188,19 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
         item {
             ModelSettingItem(
                 title = stringResource(R.string.setting_model_page_compress_model),
-                description = stringResource(R.string.setting_model_page_compress_model_desc),
+                description = if (settings.compressModelId == null) {
+                    // 已选「跟随当前对话模型」
+                    stringResource(R.string.setting_model_page_compress_model_follow)
+                } else {
+                    // 预设为固定模型；提示清除后可改为跟随对话
+                    stringResource(R.string.setting_model_page_compress_model_desc) + "\n" +
+                        stringResource(R.string.setting_model_page_compress_model_clear_hint)
+                },
                 modelId = settings.compressModelId,
                 providers = settings.providers,
                 onSelect = { vm.updateSettings(settings.copy(compressModelId = it.id)) },
+                onClear = { vm.updateSettings(settings.copy(compressModelId = null)) },
+                emptyText = stringResource(R.string.setting_model_page_compress_model_follow),
             )
         }
         item {
@@ -419,6 +428,8 @@ private fun ModelSettingItem(
     providers: List<ProviderSetting>,
     onSelect: (Model) -> Unit,
     onClear: (() -> Unit)? = null,
+    /** 未选模型时的右侧文案（默认「请选择模型」；压缩项传「跟随对话模型」） */
+    emptyText: String? = null,
 ) {
     val state = rememberModelListState(
         modelId = modelId,
@@ -438,6 +449,7 @@ private fun ModelSettingItem(
                     ) {
                         Text(
                             text = state.currentModel?.displayName
+                                ?: emptyText
                                 ?: stringResource(R.string.model_list_select_model),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

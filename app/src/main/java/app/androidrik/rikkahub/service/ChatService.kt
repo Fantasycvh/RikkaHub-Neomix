@@ -81,6 +81,7 @@ import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.datastore.getAssistantById
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
+import app.androidrik.rikkahub.data.datastore.resolveCompressionModel
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
 import app.androidrik.rikkahub.utils.effectiveContextLength
@@ -1163,10 +1164,14 @@ class ChatService(
         additionalPrompt: String = "",
         targetTokens: Int = COMPRESS_TARGET_TOKENS,
         retainRatio: Double = COMPRESS_RETAIN_RATIO,
+        /**
+         * 「跟随对话模型」时使用的模型（由调用方传入**该会话**实际的生成模型）。
+         * 传 null 时回退全局当前对话模型。
+         */
+        followModel: Model? = null,
     ): Result<CompressionSummary?> = runCatching {
         val settings = settingsStore.settingsFlow.first()
-        val model = settings.findModelById(settings.compressModelId)
-            ?: settings.getCurrentChatModel()
+        val model = settings.resolveCompressionModel(followModel)
             ?: throw IllegalStateException("No model available for compression")
         val provider = model.findProvider(settings.providers)
             ?: throw IllegalStateException("Provider not found")
@@ -1273,6 +1278,7 @@ class ChatService(
             windowTokens = windowTokens,
             targetTokens = settings.autoCompressTargetTokens,
             retainRatio = settings.autoCompressRetainPercent / 100.0,
+            followModel = model,
         ).onFailure {
             // 失败静默：不打断发送（limitContext 兜底），仅记录
             Log.w(TAG, "auto compress failed for $conversationId", it)

@@ -775,6 +775,8 @@
   <string name="setting_model_page_auto_compress_hint">圧縮されたメッセージを編集・再生成・削除・ブランチ切替すると圧縮は解除されます</string>
   <string name="setting_model_page_chat_model_desc">グローバルデフォルトチャットモデル</string>
   <string name="setting_model_page_compress_model">モデルを圧縮</string>
+  <string name="setting_model_page_compress_model_follow">現在の会話モデルに従う</string>
+  <string name="setting_model_page_compress_model_clear_hint">クリアすると現在の会話モデルに従います</string>
   <string name="setting_model_page_compress_model_desc">会話履歴を圧縮するモデル</string>
   <string name="setting_model_page_compress_prompt_vars">変数: {content}, {target_tokens}, {additional_context}</string>
   <string name="setting_model_page_ocr_model">OCRモデル</string>

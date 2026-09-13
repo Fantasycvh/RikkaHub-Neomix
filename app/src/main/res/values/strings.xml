@@ -864,6 +864,8 @@
   <string name="setting_model_page_fallback_model">Default fallback model</string>
   <string name="setting_model_page_fallback_model_desc">Used when the assistant has no fallback configured and the primary model fails after retries</string>
   <string name="setting_model_page_compress_model">Compress Model</string>
+  <string name="setting_model_page_compress_model_follow">Following current chat model</string>
+  <string name="setting_model_page_compress_model_clear_hint">Clear to follow the current chat model</string>
   <string name="setting_model_page_fast_model">Fast Model</string>
   <string name="setting_model_page_fast_model_desc">Model for fast or background tasks, also used as fallback for title and suggestion models when not set</string>
   <string name="setting_model_page_compress_model_desc">Model for compressing conversation history</string>

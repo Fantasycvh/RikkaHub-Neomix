@@ -219,6 +219,8 @@ class ChatVM(
                 additionalPrompt = additionalPrompt,
                 targetTokens = targetTokens,
                 retainRatio = retainRatio,
+                // 「跟随对话模型」时使用当前对话模型
+                followModel = model,
             )
             result
                 .onSuccess { checkpoint ->
