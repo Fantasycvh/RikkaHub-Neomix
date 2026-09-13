@@ -743,8 +743,6 @@
   <string name="setting_display_page_show_thinking_content_title">顯示思考內容</string>
   <string name="setting_display_page_show_token_usage_desc">顯示token用量和消息數量</string>
   <string name="setting_display_page_show_token_usage_title">顯示Token和上下文統計</string>
-  <string name="setting_display_page_show_updates_desc">是否顯示應用更新通知</string>
-  <string name="setting_display_page_show_updates_title">顯示更新</string>
   <string name="setting_display_page_show_user_avatar_desc">是否在聊天消息中顯示用戶頭像</string>
   <string name="setting_display_page_show_user_avatar_title">顯示用戶頭像</string>
   <string name="setting_display_page_skip_crop_image_desc">匯入圖片或拍照後跳過裁剪介面</string>

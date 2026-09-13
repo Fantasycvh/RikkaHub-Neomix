@@ -706,8 +706,6 @@
   <string name="setting_display_page_show_thinking_content_title">Показывать содержание размышлений</string>
   <string name="setting_display_page_show_token_usage_desc">Отображать использование токенов и количество сообщений</string>
   <string name="setting_display_page_show_token_usage_title">Показывать статистику токенов и контекста</string>
-  <string name="setting_display_page_show_updates_desc">Отображать ли уведомления об обновлениях приложения</string>
-  <string name="setting_display_page_show_updates_title">Показывать обновления</string>
   <string name="setting_display_page_show_user_avatar_desc">Отображать аватар пользователя в сообщениях чата</string>
   <string name="setting_display_page_show_user_avatar_title">Показывать аватар пользователя</string>
   <string name="setting_display_page_skip_crop_image_desc">Пропустить обрезку после импорта изображений или съёмки</string>
