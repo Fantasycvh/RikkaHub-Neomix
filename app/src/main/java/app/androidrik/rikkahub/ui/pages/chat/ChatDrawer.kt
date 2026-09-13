@@ -27,6 +27,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -56,7 +60,9 @@ import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.File01
 import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.Folder02
 import me.rerere.hugeicons.stroke.FolderAdd
 import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.InLove
@@ -89,6 +95,7 @@ import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.modifier.onClick
 import app.androidrik.rikkahub.utils.navigateToChatPage
 import app.androidrik.rikkahub.utils.toDp
+import app.androidrik.workspace.WorkspaceFileEntry
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
@@ -146,6 +153,24 @@ fun ChatDrawerContent(
     var showMoveToAssistantSheet by remember { mutableStateOf(false) }
     var conversationToMove by remember { mutableStateOf<Conversation?>(null) }
     val bottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
+
+    // 抽屉面板：当前助手绑定工作区时提供「会话 / 文件」切换（文件段 = 工作区文件浏览）
+    val boundWorkspaceId = remember(settings.assistantId) { drawerVm.boundWorkspaceId }
+    var showFilesPanel by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(boundWorkspaceId) {
+        if (boundWorkspaceId == null) showFilesPanel = false
+    }
+
+    // 文件面板状态（目录/搜索）
+    val workspaceFiles by drawerVm.workspaceFiles.collectAsStateWithLifecycle()
+    val filesPath by drawerVm.filesPath.collectAsStateWithLifecycle()
+    val filesSearchQuery by drawerVm.filesSearchQuery.collectAsStateWithLifecycle()
+    val filesSearchResults by drawerVm.filesSearchResults.collectAsStateWithLifecycle()
+    var filesSearchInput by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(filesPath) { drawerVm.loadWorkspaceFiles() }
+    LaunchedEffect(filesSearchInput) {
+        drawerVm.searchWorkspaceFiles(filesSearchInput)
+    }
 
     // 文件夹相关状态
     var showMoveToFolderSheet by remember { mutableStateOf(false) }
@@ -233,16 +258,38 @@ fun ChatDrawerContent(
 
             DrawerActions(navController = navController)
 
-            FolderBar(
-                folders = folders,
-                selectedFolderId = selectedFolderId,
-                onSelect = { drawerVm.selectFolder(it) },
-                onCreate = { showCreateFolderDialog = true },
-                onRename = { folderToRename = it },
-                onDelete = { folderToDelete = it },
-            )
+            // 助手绑定工作区时提供「会话 / 文件」面板切换
+            if (boundWorkspaceId != null) {
+                DrawerPanelSwitcher(
+                    showFiles = showFilesPanel,
+                    onSwitch = { showFilesPanel = it },
+                )
+            }
 
-            ConversationList(
+            if (showFilesPanel && boundWorkspaceId != null) {
+                WorkspaceFilesPanel(
+                    workspaceId = boundWorkspaceId.toString(),
+                    files = workspaceFiles,
+                    path = filesPath,
+                    searchQuery = filesSearchInput,
+                    searchResults = filesSearchResults,
+                    onSearchChange = { filesSearchInput = it },
+                    onEnterDir = drawerVm::enterFilesDir,
+                    onUpDir = drawerVm::navigateFilesUp,
+                    navController = navController,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                FolderBar(
+                    folders = folders,
+                    selectedFolderId = selectedFolderId,
+                    onSelect = { drawerVm.selectFolder(it) },
+                    onCreate = { showCreateFolderDialog = true },
+                    onRename = { folderToRename = it },
+                    onDelete = { folderToDelete = it },
+                )
+
+                ConversationList(
                 current = current,
                 conversations = conversations,
                 conversationJobs = conversationJobs.keys,
@@ -285,6 +332,7 @@ fun ChatDrawerContent(
                     }
                 }
             )
+            } // else：会话面板（FolderBar + ConversationList）
 
             // 助手选择器
             AssistantPicker(
@@ -946,4 +994,174 @@ private fun AssistantItem(
             }
         }
     }
+}
+
+/** 抽屉「会话 / 文件」面板切换器（助手绑定工作区时显示）。 */
+@Composable
+private fun DrawerPanelSwitcher(
+    showFiles: Boolean,
+    onSwitch: (Boolean) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+    ) {
+        SegmentedButton(
+            selected = !showFiles,
+            onClick = { onSwitch(false) },
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+        ) {
+            Text(
+                text = stringResource(R.string.chat_drawer_panel_chats),
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        SegmentedButton(
+            selected = showFiles,
+            onClick = { onSwitch(true) },
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+        ) {
+            Text(
+                text = stringResource(R.string.chat_drawer_panel_files),
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+    }
+}
+
+/**
+ * 抽屉「文件」面板：工作区文件浏览（FILES 区）。
+ * 目录导航 + 文件名搜索；点击目录进入，点击文件跳工作区文件详情页。
+ * 列表数据来自 ChatDrawerVM（目录级缓存 + BFS 搜索）。
+ */
+@Composable
+private fun WorkspaceFilesPanel(
+    workspaceId: String,
+    files: List<WorkspaceFileEntry>,
+    path: String,
+    searchQuery: String,
+    searchResults: List<WorkspaceFileEntry>?,
+    onSearchChange: (String) -> Unit,
+    onEnterDir: (String) -> Unit,
+    onUpDir: () -> Unit,
+    navController: Navigator,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        // 搜索框
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(stringResource(R.string.chat_drawer_files_search_hint)) },
+            singleLine = true,
+            leadingIcon = { Icon(HugeIcons.Search01, null, modifier = Modifier.size(16.dp)) },
+            textStyle = MaterialTheme.typography.bodySmall,
+        )
+
+        // 路径行（非根目录时显示返回）
+        if (path.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onUpDir() }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Folder02,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = if (path.isEmpty()) "/" else path,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+        }
+
+        val visible = if (searchQuery.isNotBlank()) searchResults else files
+        if (visible.isNullOrEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.chat_drawer_files_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                items(visible, key = { it.path }) { entry ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (entry.isDirectory) {
+                                    onEnterDir(entry.path)
+                                } else {
+                                    navController.navigate(
+                                        Screen.WorkspaceFileEditor(
+                                            id = workspaceId,
+                                            area = "FILES",
+                                            path = entry.path,
+                                        )
+                                    )
+                                }
+                            }
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (entry.isDirectory) HugeIcons.Folder01 else HugeIcons.File01,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (entry.isDirectory) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                        Text(
+                            text = entry.name,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (!entry.isDirectory && entry.sizeBytes > 0) {
+                            Text(
+                                text = formatDrawerFileSize(entry.sizeBytes),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatDrawerFileSize(bytes: Long): String = when {
+    bytes >= 1_000_000 -> "%.1fMB".format(bytes / 1_000_000.0)
+    bytes >= 1_000 -> "%.1fKB".format(bytes / 1_000.0)
+    else -> "$bytes B"
 }

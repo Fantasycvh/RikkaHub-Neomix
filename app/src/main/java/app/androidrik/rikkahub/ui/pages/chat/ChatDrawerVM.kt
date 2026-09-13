@@ -26,8 +26,12 @@ import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.model.Folder
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FolderRepository
+import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.utils.toLocalString
+import app.androidrik.workspace.WorkspaceFileEntry
+import app.androidrik.workspace.WorkspaceStorageArea
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.uuid.Uuid
@@ -38,6 +42,7 @@ class ChatDrawerVM(
     conversationRepo: ConversationRepository,
     private val folderRepo: FolderRepository,
     private val chatService: ChatService,
+    private val workspaceRepo: WorkspaceRepository,
     private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -180,6 +185,65 @@ class ChatDrawerVM(
         viewModelScope.launch {
             // 经 ChatService 移动：活跃会话会先同步内存态，避免后续整对象保存覆盖 folder_id
             chatService.moveConversationToFolder(conversationId, folderId)
+        }
+    }
+
+    // ---- 抽屉「文件」面板（工作区文件浏览，子集：目录导航 + 缓存 + 文件名搜索）----
+
+    /** 目录级缓存：path（""=根）→ 文件列表，切回时秒开 */
+    private val filesCache: MutableMap<String, List<WorkspaceFileEntry>> = mutableMapOf()
+
+    private val _filesPath = MutableStateFlow("")
+    val filesPath: StateFlow<String> = _filesPath.asStateFlow()
+
+    private val _workspaceFiles = MutableStateFlow<List<WorkspaceFileEntry>>(emptyList())
+    val workspaceFiles: StateFlow<List<WorkspaceFileEntry>> = _workspaceFiles.asStateFlow()
+
+    private val _filesSearchQuery = MutableStateFlow("")
+    val filesSearchQuery: StateFlow<String> = _filesSearchQuery.asStateFlow()
+
+    private val _filesSearchResults = MutableStateFlow<List<WorkspaceFileEntry>?>(null)
+    val filesSearchResults: StateFlow<List<WorkspaceFileEntry>?> = _filesSearchResults.asStateFlow()
+
+    /** 当前助手绑定的工作区 id；未绑定返回 null */
+    val boundWorkspaceId: Uuid? get() = settingsStore.settingsFlow.value.getCurrentAssistant().workspaceId
+
+    fun enterFilesDir(path: String) {
+        _filesPath.value = path
+        loadWorkspaceFiles()
+    }
+
+    fun navigateFilesUp() {
+        val parent = _filesPath.value.substringBeforeLast('/', "").trim('/')
+        enterFilesDir(parent)
+    }
+
+    fun invalidateFilesCache() {
+        filesCache.clear()
+    }
+
+    fun loadWorkspaceFiles() {
+        val workspaceId = boundWorkspaceId ?: return
+        val path = _filesPath.value
+        viewModelScope.launch {
+            val entries = filesCache[path] ?: run {
+                val loaded = workspaceRepo.listFiles(workspaceId.toString(), WorkspaceStorageArea.FILES, path)
+                filesCache[path] = loaded
+                loaded
+            }
+            _workspaceFiles.value = entries
+        }
+    }
+
+    fun searchWorkspaceFiles(query: String) {
+        _filesSearchQuery.value = query
+        val workspaceId = boundWorkspaceId ?: return
+        if (query.isBlank()) {
+            _filesSearchResults.value = null
+            return
+        }
+        viewModelScope.launch {
+            _filesSearchResults.value = workspaceRepo.searchFilesByName(workspaceId.toString(), query)
         }
     }
 

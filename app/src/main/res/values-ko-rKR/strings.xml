@@ -233,6 +233,10 @@
   <string name="chain_of_thought_collapse">접기</string>
   <string name="chain_of_thought_show_more_steps">%d단계 더 보기</string>
   <string name="chat_input_placeholder">AI와 채팅하기</string>
+  <string name="chat_drawer_panel_chats">대화</string>
+  <string name="chat_drawer_panel_files">파일</string>
+  <string name="chat_drawer_files_search_hint">파일 이름으로 검색</string>
+  <string name="chat_drawer_files_empty">파일 없음</string>
   <string name="chat_context_usage_tooltip">사용 중 컨텍스트: %1$s / %2$s</string>
   <string name="chat_input_unsupported_file_type">지원되지 않는 파일 형식: %s</string>
   <string name="chat_input_file_read_failed">파일 읽기 실패: %s</string>

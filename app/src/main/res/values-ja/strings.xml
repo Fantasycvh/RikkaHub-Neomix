@@ -233,6 +233,10 @@
   <string name="chain_of_thought_collapse">折りたたむ</string>
   <string name="chain_of_thought_show_more_steps">あと %d ステップを表示</string>
   <string name="chat_input_placeholder">AIとチャットするメッセージを入力</string>
+  <string name="chat_drawer_panel_chats">会話</string>
+  <string name="chat_drawer_panel_files">ファイル</string>
+  <string name="chat_drawer_files_search_hint">ファイル名で検索</string>
+  <string name="chat_drawer_files_empty">ファイルがありません</string>
   <string name="chat_context_usage_tooltip">使用中コンテキスト：%1$s / %2$s</string>
   <string name="chat_input_unsupported_file_type">サポートされていないファイルタイプ: %s</string>
   <string name="chat_input_file_read_failed">ファイルの読み取りに失敗しました: %s</string>

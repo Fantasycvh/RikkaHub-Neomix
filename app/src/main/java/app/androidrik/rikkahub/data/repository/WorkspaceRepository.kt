@@ -150,6 +150,40 @@ class WorkspaceRepository(
         manager.listFiles(workspace.root, path, area)
     }
 
+    /**
+     * 按文件名搜索（BFS 遍历 + limit），供侧滑文件面板等场景使用。
+     *
+     * 搜索 FILES 区（/workspace）；大小写不敏感，命中文件名（不含目录）；limit 防止超大 rootfs 拖垮查询。
+     */
+    suspend fun searchFilesByName(
+        id: String,
+        query: String,
+        limit: Int = 80,
+    ): List<WorkspaceFileEntry> = withContext(Dispatchers.IO) {
+        val needle = query.trim().lowercase()
+        if (needle.isEmpty()) return@withContext emptyList()
+        val workspace = dao.getById(id) ?: return@withContext emptyList()
+        manager.ensureWorkspace(workspace.root)
+        val results = mutableListOf<WorkspaceFileEntry>()
+        val pending = ArrayDeque<String>()
+        pending.add("")
+        while (pending.isNotEmpty() && results.size < limit) {
+            val dir = pending.removeFirst()
+            val entries = runCatching {
+                manager.listFiles(workspace.root, dir, WorkspaceStorageArea.FILES)
+            }.getOrElse { emptyList() }
+            for (entry in entries) {
+                if (results.size >= limit) break
+                if (entry.isDirectory) {
+                    pending.add(entry.path)
+                } else if (entry.name.lowercase().contains(needle)) {
+                    results.add(entry)
+                }
+            }
+        }
+        results
+    }
+
     suspend fun readText(
         id: String,
         path: String,

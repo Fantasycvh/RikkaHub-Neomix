@@ -233,6 +233,10 @@
   <string name="chain_of_thought_collapse">Свернуть</string>
   <string name="chain_of_thought_show_more_steps">Показать ещё %d шагов</string>
   <string name="chat_input_placeholder">Общайтесь с ИИ</string>
+  <string name="chat_drawer_panel_chats">Чаты</string>
+  <string name="chat_drawer_panel_files">Файлы</string>
+  <string name="chat_drawer_files_search_hint">Поиск по имени файла</string>
+  <string name="chat_drawer_files_empty">Нет файлов</string>
   <string name="chat_context_usage_tooltip">Контекст: %1$s / %2$s</string>
   <string name="chat_input_unsupported_file_type">Неподдерживаемый тип файла: %s</string>
   <string name="chat_input_file_read_failed">Не удалось прочитать файл: %s</string>
