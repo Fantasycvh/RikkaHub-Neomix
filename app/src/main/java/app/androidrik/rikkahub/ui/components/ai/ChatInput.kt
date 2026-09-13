@@ -880,26 +880,32 @@ private fun ContextUsageBarButton(
         label = "contextUsageFraction",
     )
 
+    // 外层容器高度与推理强度（ReasoningButton ~40dp）对齐，进度条在容器内垂直居中，
+    // 避免在 Top 对齐的 horizontalScroll 行里贴顶偏高
     Box(
-        modifier = Modifier
-            .height(32.dp)
-            .clip(RoundedCornerShape(percent = 50))
-            .clickable { showPopup = true }
-            .padding(horizontal = 6.dp),
+        modifier = Modifier.height(40.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        Box(
+            modifier = Modifier
+                .height(32.dp)
+                .clip(RoundedCornerShape(percent = 50))
+                .clickable { showPopup = true }
+                .padding(horizontal = 6.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Canvas(modifier = Modifier.size(width = 34.dp, height = 5.dp)) {
-                val radius = size.height / 2f
-                drawRoundRect(
-                    color = trackColor,
-                    cornerRadius = CornerRadius(radius),
-                )
-                if (animatedFraction > 0f) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Canvas(modifier = Modifier.size(width = 34.dp, height = 5.dp)) {
+                    val radius = size.height / 2f
                     drawRoundRect(
+                        color = trackColor,
+                        cornerRadius = CornerRadius(radius),
+                    )
+                    if (animatedFraction > 0f) {
+                        drawRoundRect(
                         color = barColor,
                         size = Size(
                             width = (size.width * animatedFraction).coerceAtLeast(size.height),
@@ -921,6 +927,7 @@ private fun ContextUsageBarButton(
                 maxLines = 1,
                 modifier = Modifier.widthIn(min = 28.dp),
             )
+        }
         }
     }
 
