@@ -3,6 +3,8 @@
 > 状态：**分析完成，待排期**（2026-09-13）。
 > 背景：Yuihub（RikkaHub 二改，`<work>\projects\Yuihub`）在 `e0cb5101` 引入「harness 式自动压缩」，自述对齐 **deepseek-harness compaction-basic**。本文核实两边实现后给出借鉴判定与适配 fork 的设计，并附录三项相关探讨的结论（界面/发送解耦、超长对话懒加载、引入 Rust）。
 > 一句话结论：**机制值得借鉴，但 fork 落地的第一步不是搬代码，而是补 `Model.contextLength` 与 token 估算，然后把「发送侧丢老消息」升级为「摘要压缩」——架构上 fork 已经是目标形状。**
+>
+> **文档构成**：一~四（压缩机制借鉴 + fork 适配设计）、4.3.1（**Phase 0.5 可见先行项：对话界面「已使用上下文」统计**，可独立交付）、五（附录 A 懒加载）、六（附录 B Rust）、六.5（附录 C 工作区文件送达：发送文件工具 + 侧滑文件面板子集）、七（落地路线）、八（明确不做）。
 
 ## 一、现状核实（fork）
 
@@ -138,12 +140,35 @@ Continue the task directly from the messages that follow, without acknowledging 
 
 `limitContext` 保留现有滞回与 `alignContextStart` 逻辑（1.2），定位为**同步安全网**——防止「压缩还没跑完/失败了」时上下文溢出。
 
-### 4.3 前置条件（Phase 0）
+### 4.3 前置条件（Phase 0）——「已使用上下文统计」为可见先行项
+
+Phase 0 的估算底座**可独立交付**：用户先看到「上下文用了多少」（无需压缩），压缩后置。Yuihub 已有同款（`ChatInput.kt` 的 `ContextUsageBarButton`：细进度条 + 百分比 + 点击弹「已用 X / 窗口 Y」+ 80% 警告变色），它的**显示侧与压缩共享同一套估算**——这是先行项的天然依据。
 
 1. **`Model.contextLength` 字段**（ai 模块），含宽松解析（对齐 Yuihub `parseContextLength` 的多字段名：`context_length` / `context_length_limit` / `context_window` / `max_context_length` / `max_input_tokens` / `input_token_limit` / `inputTokenLimit`，值域 (0, 100M]），拉取模型列表时顺带解析；用户可手填覆盖。
 2. **token 估算 util**：usage 优先 + 陈旧判定（检查点后无新回复 → 回退本地估算）+ CJK 感知估算、**纳入工具输出**（fork 工具输出上限 128KB/32KB，不纳入会低估）。
 3. **参数配置化**：阈值 / 保留比 / 目标 token / 压缩模型（复用 `compressModelId`），落 Settings（顶层平铺项 → **必须补 PreferencesStore 三件套**）。
 4. 摘要提示词升级为结构化分节（基于现有 `DEFAULT_COMPRESS_PROMPT` 改造，保留用户可编辑）。
+
+#### 4.3.1 先行项：对话界面「已使用上下文」统计（压缩无关，可立即落地）
+
+**形态**（对齐 Yuihub `ContextUsageBarButton`）：输入框附近一条细进度条 + 百分比数字，达到 80%（复用 `AUTO_COMPRESS_THRESHOLD_RATIO` 阈值，但**仅作警告色，不触发任何压缩动作**）变红，点击弹出具体用量（`已用 X / 窗口 Y`），450ms 动画平滑过渡。
+
+**估算**（与压缩共用 `estimateWindowTokens`）：
+
+- **usage 优先**：取发送窗口最后一条 assistant 消息的 `usage.promptTokens`——它恰是「上一次实际发给模型的完整上下文 token 数」，比任何本地估算都准。
+- **fork 无检查点时的简化**：Yuihub 的陈旧判定（检查点后无新回复 → usage 虚高回退本地估算）依赖 `activeCompression()`；**fork 在压缩落地前没有检查点，`usage.promptTokens` 直接可信**——先行版只需 `usage 优先 + 无 usage 时本地估算兜底`，陈旧判定留到 Phase 1 随压缩一起加。
+- **本地估算**：CJK 1.5 字符/token、其他 4 字符/token，计入工具输出。
+- **窗口值**：`Model.effectiveContextLength()`（contextLength ?: 256K 兜底）。
+
+**fork 适配注意**：
+
+- `Settings.getCurrentChatModel()` 已存在（PreferencesStore.kt:706），模型来源零成本。
+- `Model` 加 `contextLength` 是**唯一的 ai 模块改动**（`@Serializable` 可选字段，旧数据零迁移）；UI 侧只新增组件 + 状态传参，不重构 ChatInput 现有结构。
+- **与 `limitContext`（条数截断）并存的暂时不一致**：`contextMessageLimit` 只留 N 条时，实际发送远小于模型窗口，进度条会偏低——显示的是「相对模型窗口的占用」而非「相对 limitContext 的占用」，两机制并存期属正常现象；Phase 1 压缩落地后发送窗口由压缩接管，两者统一。
+- 设置项（可选）：显示开关 + 模型窗口值手填覆盖；6 语言文案。
+- 单测覆盖：`parseContextLengthInput`（`256k`/`1M`/非法）、`estimateTokenCount`（CJK/工具输出）、`estimateWindowTokens`（usage 优先/兜底）。
+
+**与压缩的关系**：本项是 Phase 1 的估算底座，**独立交付不依赖压缩**；压缩落地后同一估算直接复用（触发判断 + UI 显示同源，Yuihub 即如此）。
 
 ### 4.4 数据模型（需 DB 迁移）
 
@@ -207,15 +232,63 @@ Continue the task directly from the messages that follow, without acknowledging 
 
 引入的触发条件 = 做本地语义检索/向量记忆、或需精确 tokenizer、或确定做桌面版共享 core。路径 = 先做**一个边界清晰的小模块**（如向量索引），用 `cargo-ndk` + jniLibs 打包（沿用 pdf2svg_bridge 模式）验证工具链，再考虑扩大；**不要一上来重写数据层**（那是把架构问题误判为性能问题，还赔上可复现性）。
 
+## 六.5、附录 C：工作区文件送达（Yuihub `3c31a625` 评估）
+
+**结论：采纳两块——① `workspace_present_file` 发送文件工具（推荐，成本小）；② 侧滑文件面板取两个低成本子集（不整体搬 ChatDrawer 双面板）。`ChatMessageNerdLine` 精简不跟（见八）。**
+
+### 6.5.1 发送文件工具 `workspace_present_file`（推荐采纳）
+
+**机制**（Yuihub `WorkspaceTools.kt` + `ChatMessagePresentedFiles.kt`）：新增 AI 工具，执行体**不返回文件内容**，只输出 JSON（`path`/`name`/`sizeBytes`/`note`）作为工具结果；聊天界面**复用 `UIMessagePart.Tool`**（按 `toolName == "workspace_present_file" && isExecuted` 过滤）渲染为文件卡片流，点卡片弹「打开 / 导出 / 分享」。
+
+**为何成本小**：
+
+- **零新 part 类型**——fork 的 `WorkspaceToolUIs.kt` 已按 `toolName` 分派工具卡片，**照同模式加一个 `PresentedFilesUI` 即可**，不动 `UIMessage` 模型。
+- **「打开」这步 fork 现成**——Yuihub 走 `Screen.WorkspaceFileEditor`，正是 fork 刚吸收的 HTML/SVG 预览页（`b2434dce`）。
+- **导出/分享 fork 有同款**——`WorkspaceDetailPage` 已用 cache + FileProvider + `ACTION_SEND`，可复用。
+- **审批默认关**（`needsApproval = false`）：只读展示，无副作用，不该打断生成流。
+
+**提示词值得原样借鉴**（Yuihub 原文要点）：文件写完后再调用；卡片由 App 自动渲染，**不要在回复里粘贴文件内容**（避免 AI 把整个 APK/文档贴进聊天的经典错误）；`note` 简述文件用途。
+
+**fork 适配点**：fork **没有 `resolveWorkspacePath`**（Yuihub 有），需按 fork 的 `WorkspaceRepository.exportFile(id, area, path, outputStream)` 签名适配；路径校验复用 fork 既有沙箱与 `rootfsFileSize`。估半天量级。
+
+**价值**：现在 AI 在 workspace 产出 APK/HTML/文档后只能说「路径在哪」，用户要自己去文件列表翻；有了它**产出即送达**，是 agent 工作流体验的直接提升。
+
+### 6.5.2 侧滑文件面板（取两个子集，不整体搬）
+
+Yuihub 把 `ChatDrawer` 重写为「会话 / 文件」双面板（1020 行），含目录导航、缓存秒开、文件名搜索、长按重命名/删除/导出/分享。
+
+**价值**：fork 的工作区文件入口在「扩展 → 工作区 → 详情页」三层导航里，聊着天要拿文件得退出聊天；侧滑面板把文件浏览搬进聊天场景。
+
+**成本**：`ChatDrawer.kt` 在 fork 也是重度定制（文件夹管理、移动到文件夹、新建/重命名对话框），整体搬 = 冲突 + 重写。
+
+**采纳的两个低成本子集**：
+
+1. **抽屉新增「文件」分段**（不重排现有会话面板）：只加一个 tab 分支，复用 fork 现有文件列表组件（`WorkspaceDetailPage` 的文件列表刚加过 SVG 缩略图，形态成熟）。
+2. **缓存 + 文件名搜索**（纯 repository 层，与 UI 解耦，可直接借鉴）：
+   - `filesCache: MutableMap<String, List<WorkspaceFileEntry>>` + 预加载根目录 + 失效（`invalidateFilesCache`）
+   - `searchFilesByName`：BFS 遍历 + limit 80 + 防抖 250ms
+   - 这两项可独立先做（`WorkspaceRepository` 侧），不依赖 UI 改造
+
+### 6.5.3 不跟：`ChatMessageNerdLine` 精简
+
+Yuihub 把消息统计行改为图标化（tokens/缓存图标）。fork 的 nerd line **刚定型**（追加式命中率 `(468K cached, 95%)`），形态已定案且刚真机验证，**不跟**（见八）。
+
+### 6.5.4 顺带印证
+
+`3c31a625` 清理了 videogen 模块——**印证 fork「videogen 不吸收」决策正确**（上游未接进 App，Yuihub 也清掉了）。
+
 ## 七、落地路线
 
 | 阶段 | 内容 | 产出 |
 |---|---|---|
-| **Phase 0** | `Model.contextLength` + 宽松解析；token 估算 util（usage 优先/陈旧判定/CJK/含工具输出）；参数三件套 | 可判断「距离阈值还有多远」 |
-| **Phase 1** | 发送侧压缩（结构化提示词 + 检查点替换 + 轨迹只追加），**先命令式/开关触发**验证摘要质量与续接效果 | 替换 fork 现有手动压缩的覆盖式实现 |
-| **Phase 2** | 自动触发（阈值 + 陈旧判定 + 失败静默）+ 与 `limitContext` 分工落地 | 长对话自动保持可用 |
+| **Phase 0** | `Model.contextLength` + 宽松解析；token 估算 util（usage 优先/CJK/含工具输出）；参数三件套 | 估算底座就绪 |
+| **Phase 0.5（可见先行）** | **对话界面「已使用上下文」统计**（4.3.1）：细进度条 + 百分比 + 点击弹用量 + 80% 警告色 | **用户即刻可见「上下文还剩多少」，不依赖压缩** |
+| **Phase 1** | 发送侧压缩（结构化提示词 + 检查点替换 + 轨迹只追加），**先命令式/开关触发**验证摘要质量与续接效果；补陈旧判定 | 替换 fork 现有手动压缩的覆盖式实现 |
+| **Phase 2** | 自动触发（阈值 + 失败静默）+ 与 `limitContext` 分工落地 | 长对话自动保持可用 |
 | **Phase 3** | 界面折叠行（**可展开**）+ 设置项 + 6 语言 | 三边界对齐，用户可回看全文 |
 | **Phase 4（可选）** | 真懒加载（按 5 节的观察阈值立项） | 打开速度优化 |
+
+> **Phase 0 + 0.5 可独立交付**：估算 util + 占用显示即构成一个完整可用的功能（用户看到占用），压缩（Phase 1+）后置且复用同一估算。这是本设计「先做可见面」的落地顺序。
 
 ## 八、明确不做
 
@@ -224,6 +297,7 @@ Continue the task directly from the messages that follow, without acknowledging 
 - 为性能引入 Rust（见 6）
 - 真懒加载先于压缩（见 5）
 - 成本估算（token × 价格表）——已在 token 统计方案中排除
+- **`ChatMessageNerdLine` 精简**（Yuihub 把 tokens/缓存改为图标）——fork 的 nerd line 刚定型（追加式命中率），形态已定，不跟
 
 ## 九、参考
 
@@ -232,8 +306,14 @@ Continue the task directly from the messages that follow, without acknowledging 
 - `app/.../utils/ContextLength.kt` 参数 + `estimateWindowTokens` + `estimateTokenCount`
 - `app/.../data/model/Conversation.kt:80` `activeCompression` / `requestWindowMessages` / `windowNodes`
 - `app/.../data/ai/prompts/CompressPrompt.kt` 检查点文本 + 结构化提示词
+- `app/.../ui/components/ai/ChatInput.kt:756` `ContextUsageBarButton` + `ContextUsage`（**Phase 0.5 可见先行项原型**）
+- `app/.../ui/pages/chat/ChatPage.kt:445` `contextUsage` 组装（`estimateWindowTokens` + `effectiveContextLength`）
 - `app/.../ui/components/message/CompactionRow.kt`（不可展开，我们的改进点）
-- 提交 `e0cb5101`（引入）、`6857dd18`（修复自动压缩失效）
+- `app/.../data/ai/tools/WorkspaceTools.kt` `createPresentFileTool`（**附录 C 发送文件工具**）
+- `app/.../ui/components/message/ChatMessagePresentedFiles.kt` 文件卡片 + 打开/导出/分享（**附录 C**）
+- `app/.../ui/pages/chat/ChatDrawer.kt` / `ChatDrawerVM.kt` 侧滑双面板 + `filesCache` / `searchFilesByName`（**附录 C 两个子集**）
+- `app/.../data/repository/WorkspaceRepository.kt` `searchFilesByName`（BFS + limit）
+- 提交 `e0cb5101`（自动压缩）、`6857dd18`（修复自动压缩失效）、`3c31a625`（侧滑文件页/发送文件工具）
 
 **fork**
 - `app/.../ui/pages/chat/ChatList.kt:274,347` 界面全量渲染
