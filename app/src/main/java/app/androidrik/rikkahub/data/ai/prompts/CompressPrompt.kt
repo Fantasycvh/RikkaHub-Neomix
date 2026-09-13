@@ -7,11 +7,30 @@ package app.androidrik.rikkahub.data.ai.prompts
  * 设计见 `docs/design-auto-compaction.md` §2.2 ②：检查点替换 + prior 合并。
  * 不落库为消息节点——仅在 [app.androidrik.rikkahub.data.ai.GenerationHandler] 组装发送
  * 窗口时与摘要正文拼成合成消息。
+ *
+ * ## ⚠️ 修改此常量前必读
+ *
+ * 本常量是**纯客户端硬编码**（不经过模型，因此与所用模型无关），但它同时充当
+ * [isCompactionCheckpointPreamble] 的**文本识别标记**——用于：
+ * 1. 发送窗口分离（[partitionCheckpointMessages]）：避免检查点被 limitContext 截掉；
+ * 2. 遗留数据自愈（`filterOutCheckpointMessages` / `repairCorruptedCandidates`）：
+ *    识别并清理历史上被误持久化的检查点消息。
+ *
+ * 因此**改措辞会导致旧数据识别失效**（与「改 TikZ 渲染输出必须递增 CACHE_VERSION」同类教训）。
+ * 若确需修改：**必须把旧措辞原文追加到 [LEGACY_COMPACTION_PREAMBLES]**，否则旧脏数据将无法自愈。
  */
 internal const val COMPACTION_CHECKPOINT_PREAMBLE =
     "This is an automatically generated checkpoint condensing an earlier span of the conversation to free up context. " +
         "Treat the captured context as established background and build on it without restating it. " +
         "Continue the task directly from the messages that follow, without acknowledging this checkpoint."
+
+/**
+ * 历史前导语措辞（已废弃但仍需识别）。
+ *
+ * 修改 [COMPACTION_CHECKPOINT_PREAMBLE] 时，把**旧版本措辞原文**追加到这里，
+ * 保证旧数据仍能被识别与自愈。当前为空（尚无措辞变更）。
+ */
+internal val LEGACY_COMPACTION_PREAMBLES: List<String> = emptyList()
 
 internal const val COMPACTION_SUMMARY_OPEN = "<compressed-summary>"
 internal const val COMPACTION_SUMMARY_CLOSE = "</compressed-summary>"
@@ -34,7 +53,8 @@ internal fun buildCompactionCheckpointText(summaryContent: String): String = bui
  * 此函数保留给将来「检查点作为消息节点落库」的兼容形态识别（Yuihub 两代方案并存）。
  */
 internal fun String.isCompactionCheckpointPreamble(): Boolean =
-    startsWith(COMPACTION_CHECKPOINT_PREAMBLE)
+    startsWith(COMPACTION_CHECKPOINT_PREAMBLE) ||
+        LEGACY_COMPACTION_PREAMBLES.any { legacy -> startsWith(legacy) }
 
 /** 从检查点文本中抽取摘要正文（<compressed-summary> 块内内容） */
 internal fun compactionCheckpointBody(text: String): String {

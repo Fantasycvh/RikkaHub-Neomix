@@ -163,4 +163,39 @@ class CompressPromptTest {
         assertEquals(once, twice)
         assertEquals(listOf("a", "b"), once.map { it.toText() })
     }
+
+    // ===== 前导语识别（文本标记，模型无关；须容忍历史措辞）=====
+
+    @Test
+    fun `preamble recognition is client-side and model independent`() {
+        // 前导语是客户端常量：摘要正文（模型生成）不同不影响识别
+        val fromGpt = buildCompactionCheckpointText("GPT generated summary")
+        val fromClaude = buildCompactionCheckpointText("Claude generated summary")
+        val fromGemini = buildCompactionCheckpointText("Gemini generated summary")
+        assertTrue(fromGpt.isCompactionCheckpointPreamble())
+        assertTrue(fromClaude.isCompactionCheckpointPreamble())
+        assertTrue(fromGemini.isCompactionCheckpointPreamble())
+        // 识别只依赖客户端前导语：三者去除前导语后的剩余部分都应从摘要标签开始
+        listOf(fromGpt, fromClaude, fromGemini).forEach { text ->
+            val rest = text.removePrefix(COMPACTION_CHECKPOINT_PREAMBLE).trimStart()
+            assertTrue(rest.startsWith(COMPACTION_SUMMARY_OPEN))
+        }
+    }
+
+    @Test
+    fun `legacy preamble list is honored by recognition`() {
+        // 机制保证：LEGACY_COMPACTION_PREAMBLES 中任一措辞都应被识别（当前为空列表，故恒不匹配）
+        LEGACY_COMPACTION_PREAMBLES.forEach { legacy ->
+            assertTrue((legacy + " rest").isCompactionCheckpointPreamble())
+        }
+        // 空列表时不误伤普通文本
+        assertFalse("Let's continue the task".isCompactionCheckpointPreamble())
+    }
+
+    @Test
+    fun `recognition requires prefix not mere containment`() {
+        // 前导语出现在中间不算检查点（避免误伤引用该文本的正常消息）
+        val quoted = "Here is a quote: " + COMPACTION_CHECKPOINT_PREAMBLE
+        assertFalse(quoted.isCompactionCheckpointPreamble())
+    }
 }
