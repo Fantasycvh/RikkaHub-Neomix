@@ -81,6 +81,11 @@ import app.androidrik.rikkahub.data.datastore.getAssistantById
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
+import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
+import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
+import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
+import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.service.QueuedMessage
 import app.androidrik.rikkahub.service.MessageQueueState
@@ -1202,6 +1207,94 @@ class ChatService(
 
         saveConversation(conversationId, newConversation)
     }
+
+    /**
+     * 检查点式压缩（design-auto-compaction §4.1 三边界对齐 + §4.4 独立表）：
+     *
+     * 1. 保留策略 token 驱动：从尾部往前累计，预算 = 模型窗口 × [COMPRESS_RETAIN_RATIO]（至少 2 条）；
+     * 2. 其余发送窗口历史分块并行摘要，与旧检查点（prior）合并为单一新摘要（避免层层累积）；
+     * 3. **轨迹只追加**：不改动 message_node，只往 compression_checkpoint 表追加一行
+     *    （content + boundaryNodeId），并 trimToLatest 清理旧行；
+     * 4. 更新内存态 conversation.compressionSummaries（发送窗口与 UI 据此生效）。
+     *
+     * @param windowTokens 模型上下文窗口 token 数（调用方用 effectiveContextLength 算好）
+     * @return 新检查点；无可压缩内容时返回 null
+     */
+    suspend fun compressToCheckpoint(
+        conversationId: Uuid,
+        windowTokens: Int,
+    ): CompressionSummary? = runCatching {
+        val settings = settingsStore.settingsFlow.first()
+        val model = settings.findModelById(settings.compressModelId)
+            ?: settings.getCurrentChatModel()
+            ?: throw IllegalStateException("No model available for compression")
+        val provider = model.findProvider(settings.providers)
+            ?: throw IllegalStateException("Provider not found")
+        val providerHandler = providerManager.getProviderByType(provider)
+
+        // 当前会话快照（含内存态最新）
+        val conversation = getConversationFlow(conversationId).value
+        // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
+        val window = conversation.windowNodes()
+        val budget = (windowTokens * COMPRESS_RETAIN_RATIO).toInt()
+        val plan = estimateCompressionPlan(window, budget)
+        if (!plan.shouldCompress) return@runCatching null
+
+        val messagesToCompress = plan.toCompress.map { it.currentMessage }
+        val priorSummary = conversation.compressionSummaries.lastOrNull()?.content.orEmpty()
+        val priorContext = if (priorSummary.isNotBlank()) {
+            "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n$priorSummary"
+        } else {
+            ""
+        }
+
+        suspend fun compressChunk(chunk: List<UIMessage>): String {
+            val contentToCompress = chunk.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
+            val prompt = settings.compressPrompt.applyPlaceholders(
+                "content" to contentToCompress,
+                "target_tokens" to COMPRESS_TARGET_TOKENS.toString(),
+                "additional_context" to priorContext,
+                "locale" to Locale.getDefault().displayName,
+            )
+            val result = providerHandler.generateText(
+                providerSetting = provider,
+                messages = listOf(UIMessage.user(prompt)),
+                params = backgroundTextGenerationParams(model),
+            )
+            return result.choices[0].message?.toText()?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("Failed to generate compressed summary")
+        }
+
+        val combined = coroutineScope {
+            splitIntoChunks(messagesToCompress)
+                .map { chunk -> async { compressChunk(chunk) } }
+                .awaitAll()
+        }.joinToString("\n\n")
+
+        val boundaryNodeId = plan.toCompress.lastOrNull()?.id?.toString()
+            ?: return@runCatching null
+        val priorCount = conversation.compressionSummaries.lastOrNull()?.messageCount ?: 0
+        val checkpoint = CompressionSummary(
+            conversationId = conversationId,
+            content = combined,
+            messageCount = priorCount + messagesToCompress.size,
+            boundaryNodeId = boundaryNodeId,
+            createdAt = Instant.now(),
+        )
+
+        // 轨迹只追加：落库新检查点（含自增 id），清理更早的检查点行（摘要已合并）
+        val saved = conversationRepo.addCompressionCheckpoint(checkpoint)
+        conversationRepo.trimCompressionCheckpoints(conversationId)
+
+        // 更新内存态：发送窗口与 UI 据此生效（不改 messageNodes——历史可回溯）
+        updateConversationState(conversationId) { latest ->
+            latest.copy(compressionSummaries = listOf(saved))
+        }
+        saved
+    }.onFailure {
+        Log.e(TAG, "compressToCheckpoint failed for $conversationId", it)
+    }.getOrNull()
 
     // ---- 对话状态更新 ----
 
