@@ -156,3 +156,29 @@ workspace_files/<root>/<相对路径>
 **顺带清理**：移除死开关 `DisplaySetting.showUpdates`（fork 无更新检查实现，该开关无消费方；上游对应字段
 `updateCheckDisabledUntilEpochMillis` 语义相反，导入时本就丢弃）——UI + 字段 + 6 语言字符串一并删除。
 
+## 九、大文件备份加固（2026-09-13 评估定稿，**暂不实现**）
+
+**触发**：用户指出「其他设备上导出时可能有 **2.8GB** 量级的数据」（工作区里难以再次获取的仓库克隆等）。
+当前实现按中小体积设计，2.8GB 下会暴露若干问题。以下按收益排序，**均与是否引入 Rust 无关**
+（评估见 `docs/design-auto-compaction.md` §6.5）。
+
+**实测依据**（PC `zlib`，与 Java `Deflater` 同库）：真实 81.4MB DB 级别 6 压缩 3.3s（2.27x）；
+**不可压缩 16MB（git pack 近似）级别 6 压缩比 1.000x、仍以 24 MB/s 烧单核**——即对已压缩数据 DEFLATE 纯属浪费。
+2.8GB 下 DEFLATE ≈ 2 分钟（PC）/ 3–5 分钟（手机），上传前的全量 SHA-256 再读一遍 → **两次读盘**，
+而网络上传（20 Mbps ≈ 19 分钟）才是支配项。
+
+| 优先级 | 项 | 现状 | 建议 |
+|---|---|---|---|
+| **P0** | 不可压缩数据用 STORED | 一律 DEFLATE（级别 6） | 按扩展名/可压缩性判定，跳过压缩（`ZipEntry.setMethod(STORED)`）——**归零数分钟 CPU，成本最低** |
+| **P0** | S3 分片上传 | `S3Client` **无 multipart**，单次 PUT 传整个文件 | 改 multipart（Part 5MB+）；2.8GB 单 PUT 失败即从头重来，且兼容端（R2/MinIO）限制更严——**健壮性问题** |
+| P1 | 单遍哈希 | `sha256Hex` 全量读完再上传（两遍读盘） | 边流式上传边算，或流式签名（`UNSIGNED-PAYLOAD`/chunked） |
+| P1 | zip 直传网络 | 写 cacheDir → 再读出上传 | 流式 `ZipOutputStream` → 网络 sink，省 5.6GB 磁盘往返 |
+| P2 | 空间预检 + 字节级进度 | 备份前不查剩余空间；UI 仅 spinner | 预检 cacheDir 空间；按字节显示进度（数分钟内用户无从判断是否卡死） |
+| P2 | ZIP64 | — | 工作区超 4GB 需 ZIP64；Java `ZipOutputStream` 会自动处理，但个别 WebDAV/兼容端可能不认 |
+
+> **若将来换压缩格式**（zstd 多线程，level 1–3 达 200–500 MB/s/核、比率不输 DEFLATE），才是 Rust `zstd`+rayon
+> 的舒适区；但这是格式决策（恢复需向后兼容），且 `zstd-jni` 在 Kotlin 侧同样可用——不构成现在引入 Rust 的理由。
+
+**结论**：先做 P0 两项即可把该量级从「可能失败/极慢」变为「可用」；P1/P2 为体验完善。本项与工作区备份功能解耦，
+可独立排期。
+
