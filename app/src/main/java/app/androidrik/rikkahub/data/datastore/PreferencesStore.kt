@@ -31,6 +31,7 @@ import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT
 import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
+import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
@@ -711,11 +712,6 @@ data class WebDavConfig(
         BackupItem.FILES
     ),
 ) {
-    @Serializable
-    enum class BackupItem {
-        DATABASE,
-        FILES,
-    }
 }
 
 @Serializable

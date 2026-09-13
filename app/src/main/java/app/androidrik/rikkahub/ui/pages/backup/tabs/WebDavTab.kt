@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.backup.tabs
 
+import app.androidrik.rikkahub.data.sync.BackupItem
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
@@ -193,11 +194,11 @@ fun WebDavTab(
                     MultiChoiceSegmentedButtonRow(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        WebDavConfig.BackupItem.entries.forEachIndexed { index, item ->
+                        BackupItem.entries.forEachIndexed { index, item ->
                             SegmentedButton(
                                 shape = SegmentedButtonDefaults.itemShape(
                                     index = index,
-                                    count = WebDavConfig.BackupItem.entries.size
+                                    count = BackupItem.entries.size
                                 ),
                                 onCheckedChange = { checked ->
                                     val newItems = if (checked) {
@@ -211,8 +212,8 @@ fun WebDavTab(
                             ) {
                                 Text(
                                     when (item) {
-                                        WebDavConfig.BackupItem.DATABASE -> stringResource(R.string.backup_page_chat_records)
-                                        WebDavConfig.BackupItem.FILES -> stringResource(R.string.backup_page_files)
+                                        BackupItem.DATABASE -> stringResource(R.string.backup_page_chat_records)
+                                        BackupItem.FILES -> stringResource(R.string.backup_page_files)
                                     }
                                 )
                             }

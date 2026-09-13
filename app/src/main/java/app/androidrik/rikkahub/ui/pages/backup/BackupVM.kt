@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.backup
 
+import app.androidrik.rikkahub.data.sync.BackupItem
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -84,7 +85,7 @@ class BackupVM(
 
     suspend fun exportToFile(): File {
         val file = webDavSync.prepareBackupFile(
-            settings.value.webDavConfig.copy(items = WebDavConfig.BackupItem.entries)
+            settings.value.webDavConfig.copy(items = BackupItem.entries)
         )
         recordBackupTime()
         return file
@@ -93,7 +94,7 @@ class BackupVM(
     suspend fun restoreFromLocalFile(file: File) {
         webDavSync.restoreFromLocalFile(
             file,
-            settings.value.webDavConfig.copy(items = WebDavConfig.BackupItem.entries),
+            settings.value.webDavConfig.copy(items = BackupItem.entries),
         )
     }
 

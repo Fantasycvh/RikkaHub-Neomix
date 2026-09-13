@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.di
 
+import app.androidrik.rikkahub.data.sync.WorkspaceBackupHelper
 import android.content.Context
 import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.files.FilesManager
@@ -46,7 +47,7 @@ val repositoryModule = module {
     single {
         val context: Context = get()
         WorkspaceManager(
-            baseDir = File(context.filesDir, "workspaces"),
+            baseDir = File(context.filesDir, WORKSPACES_DIR),
             shellRunner = ProotShellRunner(
                 nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
             ),

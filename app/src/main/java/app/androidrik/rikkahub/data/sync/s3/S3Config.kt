@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.sync.s3
 
 import kotlinx.serialization.Serializable
+import app.androidrik.rikkahub.data.sync.BackupItem
 
 @Serializable
 data class S3Config(
@@ -33,9 +34,4 @@ data class S3Config(
         }
     }
 
-    @Serializable
-    enum class BackupItem {
-        DATABASE,
-        FILES,
-    }
 }

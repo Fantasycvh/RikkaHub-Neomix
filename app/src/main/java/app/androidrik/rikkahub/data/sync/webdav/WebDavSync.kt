@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.sync.webdav
 
+import app.androidrik.rikkahub.data.sync.BackupItem
 import android.content.Context
 import android.util.Log
 import io.ktor.client.HttpClient
@@ -148,7 +149,7 @@ class WebDavSync(
             )
 
             // Backup database files
-            if (config.items.contains(WebDavConfig.BackupItem.DATABASE)) {
+            if (config.items.contains(BackupItem.DATABASE)) {
                 val dbFile = context.getDatabasePath("rikka_hub")
                 if (dbFile.exists()) {
                     addFileToZip(zipOut, dbFile, "rikka_hub.db")
@@ -166,7 +167,7 @@ class WebDavSync(
             }
 
             // Backup app files
-            if (config.items.contains(WebDavConfig.BackupItem.FILES)) {
+            if (config.items.contains(BackupItem.FILES)) {
                 val uploadFolder = File(context.filesDir, FileFolders.UPLOAD)
                 if (uploadFolder.exists() && uploadFolder.isDirectory) {
                     Log.i(TAG, "prepareBackupFile: Backing up files from ${uploadFolder.absolutePath}")
@@ -238,7 +239,7 @@ class WebDavSync(
                         }
 
                         "rikka_hub.db", "rikka_hub-wal", "rikka_hub-shm" -> {
-                            if (config.items.contains(WebDavConfig.BackupItem.DATABASE)) {
+                            if (config.items.contains(BackupItem.DATABASE)) {
                                 val dbFile = when (zipEntry.name) {
                                     "rikka_hub.db" -> context.getDatabasePath("rikka_hub")
                                     "rikka_hub-wal" -> File(
@@ -272,7 +273,7 @@ class WebDavSync(
                         }
 
                         else -> {
-                            if (config.items.contains(WebDavConfig.BackupItem.FILES) &&
+                            if (config.items.contains(BackupItem.FILES) &&
                                 zipEntry.name.startsWith("${FileFolders.UPLOAD}/")
                             ) {
                                 val fileName = zipEntry.name.substringAfter("${FileFolders.UPLOAD}/")
@@ -313,11 +314,11 @@ class WebDavSync(
                                         throw Exception("Failed to restore file ${zipEntry.name}: ${e.message}")
                                     }
                                 }
-                            } else if (config.items.contains(WebDavConfig.BackupItem.FILES) &&
+                            } else if (config.items.contains(BackupItem.FILES) &&
                                 zipEntry.name.startsWith("${FileFolders.SKILLS}/")
                             ) {
                                 restoreSkillEntry(zipIn, zipEntry.name)
-                            } else if (config.items.contains(WebDavConfig.BackupItem.FILES) &&
+                            } else if (config.items.contains(BackupItem.FILES) &&
                                 zipEntry.name.startsWith("${FileFolders.FONTS}/")
                             ) {
                                 val fileName = zipEntry.name.substringAfter("${FileFolders.FONTS}/")
