@@ -1183,6 +1183,14 @@
   <string name="stats_page_title">Statistics</string>
   <string name="stats_page_total_conversations">Total Conversations</string>
   <string name="stats_page_total_messages">Total Messages</string>
+  <string name="stats_page_scope_all">Actual Usage</string>
+  <string name="stats_page_scope_selected">Current Chat</string>
+  <string name="stats_page_heatmap_metric_messages">Messages</string>
+  <string name="stats_page_heatmap_metric_tokens">Tokens</string>
+  <string name="stats_page_cache_hit_rate">%1$d%% cached</string>
+  <string name="stats_page_model_usage_title">Usage by Model</string>
+  <string name="stats_page_model_usage_share">%1$d%%</string>
+  <string name="stats_page_model_usage_more">+%1$d more models</string>
   <string name="stop">Stop</string>
   <string name="tag_input_dialog_create_new">Create New Tag</string>
   <string name="tag_input_dialog_existing_tags">Existing Tags</string>

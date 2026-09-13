@@ -1069,6 +1069,14 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="stats_page_title">통계</string>
   <string name="stats_page_total_conversations">총 대화 수</string>
   <string name="stats_page_total_messages">총 메시지</string>
+  <string name="stats_page_scope_all">실제 사용량</string>
+  <string name="stats_page_scope_selected">현재 대화</string>
+  <string name="stats_page_heatmap_metric_messages">메시지 수</string>
+  <string name="stats_page_heatmap_metric_tokens">토큰 수</string>
+  <string name="stats_page_cache_hit_rate">적중 %1$d%%</string>
+  <string name="stats_page_model_usage_title">모델별 사용량</string>
+  <string name="stats_page_model_usage_share">%1$d%%</string>
+  <string name="stats_page_model_usage_more">외 %1$d개 모델</string>
   <string name="stop">중지</string>
   <string name="tag_input_dialog_create_new">새 태그 생성</string>
   <string name="tag_input_dialog_existing_tags">기존 태그</string>

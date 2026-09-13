@@ -24,6 +24,14 @@ data class UIMessage(
         .toLocalDateTime(TimeZone.currentSystemDefault()),
     val finishedAt: LocalDateTime? = null,
     val modelId: Uuid? = null,
+    /**
+     * 生成该消息时所用模型/提供商的名称快照（token 统计按名称分组用）。
+     *
+     * 存快照而非引用 id：模型/提供商被删除后 id 查不到（悬空），且删除后重建会得到新 UUID
+     * 导致同一模型在统计里裂成两行。快照保留"当时叫什么"，旧消息为 null 时回退按 id 查找。
+     */
+    val modelNameSnapshot: String? = null,
+    val providerNameSnapshot: String? = null,
     val usage: TokenUsage? = null,
     val translation: String? = null,
     // 请求期间生成的内部消息；该标记仅在内存中使用
@@ -237,16 +245,29 @@ data class UIMessage(
  * @receiver 已有消息列表
  * @param chunk 消息chunk
  * @param model 模型, 可以不传，如果传了，会把模型id写入到消息，标记是哪个模型输出的消息
+ * @param providerName 提供商名称快照, 与 model 一同写入新消息, 供 token 统计按名称分组
  * @return 新消息列表
  */
-fun List<UIMessage>.handleMessageChunk(chunk: MessageChunk, model: Model? = null): List<UIMessage> {
+fun List<UIMessage>.handleMessageChunk(
+    chunk: MessageChunk,
+    model: Model? = null,
+    providerName: String? = null,
+): List<UIMessage> {
     require(this.isNotEmpty()) {
         "messages must not be empty"
     }
     val choice = chunk.choices.getOrNull(0) ?: return this
     val message = choice.delta ?: choice.message ?: return this
     if (this.last().role != message.role) {
-        return this + (UIMessage(modelId = model?.id, role = message.role, parts = emptyList()) + chunk)
+        return this + (
+            UIMessage(
+                modelId = model?.id,
+                modelNameSnapshot = model?.displayName?.takeIf { it.isNotBlank() },
+                providerNameSnapshot = providerName?.takeIf { it.isNotBlank() },
+                role = message.role,
+                parts = emptyList(),
+            ) + chunk
+            )
     } else {
         val last = this.last() + chunk
         return this.dropLast(1) + last

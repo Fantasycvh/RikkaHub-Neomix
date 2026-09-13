@@ -581,7 +581,11 @@ class GenerationHandler(
                         messages = internalMessages,
                         params = params
                     ).collect {
-                        messages = messages.handleMessageChunk(chunk = it, model = model)
+                        messages = messages.handleMessageChunk(
+                            chunk = it,
+                            model = model,
+                            providerName = provider.name,
+                        )
                         it.usage?.let { usage ->
                             messages = messages.mapIndexed { index, message ->
                                 if (index == messages.lastIndex) {
@@ -622,7 +626,11 @@ class GenerationHandler(
                         messages = internalMessages,
                         params = params,
                     )
-                    messages = messages.handleMessageChunk(chunk = chunk, model = model)
+                    messages = messages.handleMessageChunk(
+                        chunk = chunk,
+                        model = model,
+                        providerName = provider.name,
+                    )
                     chunk.usage?.let { usage ->
                         messages = messages.mapIndexed { index, message ->
                             if (index == messages.lastIndex) {

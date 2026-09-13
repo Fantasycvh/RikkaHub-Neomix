@@ -27,6 +27,7 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.utils.formatNumber
 import app.androidrik.rikkahub.utils.toFixed
 import java.time.Duration
+import kotlin.math.roundToInt
 
 /**
  * 显示消息的技术统计信息（如 token 使用量）
@@ -60,10 +61,12 @@ fun ChatMessageNerdLine(
                         },
                         content = {
                             Text(text = "${usage.promptTokens.formatNumber()} tokens")
-                            // Cached tokens
+                            // Cached tokens：追加命中率（cached 是 prompt 的子集，各 provider 语义已统一）
                             if (usage.cachedTokens > 0) {
+                                val rate = (usage.cachedTokens.toDouble() / usage.promptTokens * 100)
+                                    .roundToInt()
                                 Text(
-                                    text = "(${message.usage?.cachedTokens?.formatNumber() ?: "0"} cached)"
+                                    text = "(${usage.cachedTokens.formatNumber()} cached, $rate%)"
                                 )
                             }
                         }
