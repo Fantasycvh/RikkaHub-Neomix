@@ -1049,6 +1049,7 @@ private fun AddModelButton(
                     modifier = Modifier
                         .fillMaxWidth()
                         .fillMaxHeight(0.95f)
+                        .imePadding()
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -1448,6 +1449,7 @@ private fun ModelCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .fillMaxHeight(0.95f)
+                        .imePadding()
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,

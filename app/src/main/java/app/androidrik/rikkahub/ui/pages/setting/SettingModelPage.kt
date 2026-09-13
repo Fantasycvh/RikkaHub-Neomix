@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -111,7 +112,10 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
 @Composable
 private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding: PaddingValues) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        // imePadding：键盘弹出时抬高列表底部，避免最后一个输入项（默认上下文窗口）被 IME 遮挡
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding(),
         contentPadding = contentPadding + PaddingValues(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
