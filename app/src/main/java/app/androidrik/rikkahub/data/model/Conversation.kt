@@ -8,6 +8,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.InstantSerializer
+import app.androidrik.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
 import java.time.Instant
 import kotlin.uuid.Uuid
@@ -94,6 +95,54 @@ data class Conversation(
         return this.copy(
             messageNodes = newNodes
         )
+    }
+
+    // ---- 压缩检查点（设计见 docs/design-auto-compaction.md §4.1 三边界对齐）----
+
+    /**
+     * 当前生效的压缩检查点（末行 = 最新边界 = active）。
+     *
+     * **失效判定**：boundaryNodeId 指向的节点不存在时（被 regenerate 截断 / 分支切换删除 /
+     * 会话重新加载后节点消失）检查点失效，返回 null 回退全量。boundaryNodeId 为空视为永不失效。
+     */
+    fun activeCompression(): CompressionSummary? {
+        val checkpoint = compressionSummaries.lastOrNull() ?: return null
+        val boundaryId = checkpoint.boundaryNodeId ?: return checkpoint
+        return if (messageNodes.any { it.id.toString() == boundaryId }) checkpoint else null
+    }
+
+    /**
+     * 发送窗口（检查点作为新段起点，边界之前的历史不发送）：
+     * `[检查点合成消息] + 边界节点之后的全部消息`；无有效检查点或边界找不到时返回全量。
+     *
+     * **轨迹只追加**：不改动 messageNodes，仅在发送时组装——历史可回溯 + 前缀稳定利于 prompt cache。
+     * 检查点合成消息为 isSynthetic（不落库），带前导语与 `<compressed-summary>` 包裹。
+     */
+    fun requestWindowMessages(): List<UIMessage> {
+        val checkpoint = activeCompression() ?: return currentMessages
+        val boundaryId = checkpoint.boundaryNodeId ?: return currentMessages
+        val boundaryIndex = messageNodes.indexOfFirst { it.id.toString() == boundaryId }
+        if (boundaryIndex < 0) return currentMessages
+        val checkpointMessage = UIMessage(
+            role = MessageRole.USER,
+            parts = listOf(
+                UIMessagePart.Text(buildCompactionCheckpointText(checkpoint.content))
+            ),
+            isSynthetic = true,
+        )
+        return listOf(checkpointMessage) +
+            messageNodes.drop(boundaryIndex + 1).map { it.currentMessage }
+    }
+
+    /**
+     * 边界之后的节点（存储侧视图，UI 折叠与压缩输入都以它为准）；无有效检查点时返回全量。
+     */
+    fun windowNodes(): List<MessageNode> {
+        val checkpoint = activeCompression() ?: return messageNodes
+        val boundaryId = checkpoint.boundaryNodeId ?: return messageNodes
+        val boundaryIndex = messageNodes.indexOfFirst { it.id.toString() == boundaryId }
+        if (boundaryIndex < 0) return messageNodes
+        return messageNodes.drop(boundaryIndex + 1)
     }
 
     companion object {
