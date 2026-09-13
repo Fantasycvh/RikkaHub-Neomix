@@ -1123,91 +1123,6 @@ class ChatService(
         }
     }
 
-    // ---- 压缩对话历史 ----
-
-    suspend fun compressConversation(
-        conversationId: Uuid,
-        conversation: Conversation,
-        additionalPrompt: String,
-        targetTokens: Int,
-        keepRecentMessages: Int = 32
-    ): Result<Unit> = runCatching {
-        val settings = settingsStore.settingsFlow.first()
-        val model = settings.findModelById(settings.compressModelId)
-            ?: settings.getCurrentChatModel()
-            ?: throw IllegalStateException("No model available for compression")
-        val provider = model.findProvider(settings.providers)
-            ?: throw IllegalStateException("Provider not found")
-
-        val providerHandler = providerManager.getProviderByType(provider)
-
-        val maxMessagesPerChunk = 256
-        val allMessages = conversation.currentMessages
-
-        // Split messages into those to compress and those to keep
-        val messagesToCompress: List<UIMessage>
-        val messagesToKeep: List<UIMessage>
-
-        if (keepRecentMessages > 0 && allMessages.size > keepRecentMessages) {
-            messagesToCompress = allMessages.dropLast(keepRecentMessages)
-            messagesToKeep = allMessages.takeLast(keepRecentMessages)
-        } else if (keepRecentMessages > 0) {
-            // Not enough messages to compress while keeping recent ones
-            throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
-        } else {
-            messagesToCompress = allMessages
-            messagesToKeep = emptyList()
-        }
-
-        fun splitMessages(messages: List<UIMessage>): List<List<UIMessage>> {
-            if (messages.size <= maxMessagesPerChunk) return listOf(messages)
-            val mid = messages.size / 2
-            val left = splitMessages(messages.subList(0, mid))
-            val right = splitMessages(messages.subList(mid, messages.size))
-            return left + right
-        }
-
-        suspend fun compressMessages(messages: List<UIMessage>): String {
-            val contentToCompress = messages.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
-            val prompt = settings.compressPrompt.applyPlaceholders(
-                "content" to contentToCompress,
-                "target_tokens" to targetTokens.toString(),
-                "additional_context" to if (additionalPrompt.isNotBlank()) {
-                    "Additional instructions from user: $additionalPrompt"
-                } else "",
-                "locale" to Locale.getDefault().displayName
-            )
-
-            val result = providerHandler.generateText(
-                providerSetting = provider,
-                messages = listOf(UIMessage.user(prompt)),
-                params = backgroundTextGenerationParams(model),
-            )
-
-            return result.choices[0].message?.toText()?.trim()
-                ?: throw IllegalStateException("Failed to generate compressed summary")
-        }
-
-        val compressedSummaries = coroutineScope {
-            splitMessages(messagesToCompress)
-                .map { chunk -> async { compressMessages(chunk) } }
-                .awaitAll()
-        }
-
-        // Create new conversation with compressed history as multiple user messages + kept messages
-        val newMessageNodes = buildList {
-            compressedSummaries.forEach { summary ->
-                add(UIMessage.user(summary).toMessageNode())
-            }
-            addAll(messagesToKeep.map { it.toMessageNode() })
-        }
-        // 合并最新状态而非整体覆盖：保留压缩期间用户追加的新节点（见 mergeCompressedConversation）
-        val latest = getConversationFlow(conversationId).value
-        val newConversation = mergeCompressedConversation(conversation, latest, newMessageNodes)
-
-        saveConversation(conversationId, newConversation)
-    }
-
     /**
      * 检查点式压缩（design-auto-compaction §4.1 三边界对齐 + §4.4 独立表）：
      *
@@ -1220,14 +1135,16 @@ class ChatService(
      * @param windowTokens 模型上下文窗口 token 数（调用方用 effectiveContextLength 算好）
      * @param additionalPrompt 用户附加指令（与 prior 检查点拼接后注入 {additional_context}）
      * @param targetTokens 摘要目标 token（注入 {target_tokens}）
-     * @return 新检查点；无可压缩内容时返回 null
+     * @param retainRatio 保留窗口占比（0.05~0.9 钳制；默认 COMPRESS_RETAIN_RATIO = 0.4）
+     * @return 成功时 Success(新检查点)，无可压缩内容时 Success(null)，失败时 Failure
      */
     suspend fun compressToCheckpoint(
         conversationId: Uuid,
         windowTokens: Int,
         additionalPrompt: String = "",
         targetTokens: Int = COMPRESS_TARGET_TOKENS,
-    ): CompressionSummary? = runCatching {
+        retainRatio: Double = COMPRESS_RETAIN_RATIO,
+    ): Result<CompressionSummary?> = runCatching {
         val settings = settingsStore.settingsFlow.first()
         val model = settings.findModelById(settings.compressModelId)
             ?: settings.getCurrentChatModel()
@@ -1240,9 +1157,9 @@ class ChatService(
         val conversation = getConversationFlow(conversationId).value
         // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
         val window = conversation.windowNodes()
-        val budget = (windowTokens * COMPRESS_RETAIN_RATIO).toInt()
+        val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
         val plan = estimateCompressionPlan(window, budget)
-        if (!plan.shouldCompress) return@runCatching null
+        if (!plan.shouldCompress) return@runCatching null  // 无可压缩内容（非错误）
 
         val messagesToCompress = plan.toCompress.map { it.currentMessage }
         val priorSummary = conversation.compressionSummaries.lastOrNull()?.content.orEmpty()
@@ -1305,7 +1222,7 @@ class ChatService(
         saved
     }.onFailure {
         Log.e(TAG, "compressToCheckpoint failed for $conversationId", it)
-    }.getOrNull()
+    }
 
     // ---- 对话状态更新 ----
 

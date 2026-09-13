@@ -28,18 +28,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import app.androidrik.rikkahub.R
-import app.androidrik.rikkahub.ui.components.ui.OutlinedNumberInput
 import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
 
 @Composable
 fun CompressContextDialog(
     onDismiss: () -> Unit,
-    onConfirm: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int) -> Job
+    onConfirm: (additionalPrompt: String, targetTokens: Int, retainRatio: Double) -> Job
 ) {
     var additionalPrompt by remember { mutableStateOf("") }
     var selectedTokens by remember { mutableIntStateOf(2000) }
-    var keepRecentMessages by remember { mutableIntStateOf(32) }
+    // 保留比例（百分比）：压缩只把「较早期」的历史摘要掉，尾部这部分保持原文，
+    // 保证最近对话的细节不丢失（design-auto-compaction §3.2 建议 30%~60% 区间）
+    var selectedRetainPercent by remember { mutableIntStateOf(40) }
     val tokenOptions = listOf(500, 1000, 2000, 4000)
+    val retainOptions = listOf(20, 30, 40, 50, 60)
     var currentJob by remember { mutableStateOf<Job?>(null) }
     val isLoading = currentJob?.isActive == true
 
@@ -103,13 +105,28 @@ fun CompressContextDialog(
                         }
                     }
 
-                    // Keep recent messages input
-                    OutlinedNumberInput(
-                        value = keepRecentMessages,
-                        onValueChange = { keepRecentMessages = it },
-                        label = stringResource(R.string.chat_page_compress_keep_recent),
-                        modifier = Modifier.fillMaxWidth(),
+                    // 保留比例选择器（真正生效的切分参数；旧的「保留最近消息数」在
+                    // 检查点式压缩中已不参与切分，故移除以免误导）
+                    Text(
+                        text = stringResource(R.string.chat_page_compress_keep_recent),
+                        style = MaterialTheme.typography.labelMedium
                     )
+                    SingleChoiceSegmentedButtonRow(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        retainOptions.forEachIndexed { index, percent ->
+                            SegmentedButton(
+                                selected = selectedRetainPercent == percent,
+                                onClick = { selectedRetainPercent = percent },
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = retainOptions.size
+                                )
+                            ) {
+                                Text("$percent%")
+                            }
+                        }
+                    }
 
                     // Additional context input
                     OutlinedTextField(
@@ -144,7 +161,7 @@ fun CompressContextDialog(
                 }
             } else {
                 TextButton(onClick = {
-                    currentJob = onConfirm(additionalPrompt, selectedTokens, keepRecentMessages)
+                    currentJob = onConfirm(additionalPrompt, selectedTokens, selectedRetainPercent / 100.0)
                 }) {
                     Text(stringResource(R.string.confirm))
                 }

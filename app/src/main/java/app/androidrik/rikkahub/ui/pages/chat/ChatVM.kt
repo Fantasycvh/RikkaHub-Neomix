@@ -206,20 +206,38 @@ class ChatVM(
         }
     }
 
-    fun handleCompressContext(additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int): Job {
+    fun handleCompressContext(additionalPrompt: String, targetTokens: Int, retainRatio: Double): Job {
         return viewModelScope.launch {
-            // 检查点式压缩：切分由 token 驱动的保留比例（COMPRESS_RETAIN_RATIO）决定，
-            // keepRecentMessages 不再参与切分（对齐 design-auto-compaction §4.1）。
+            // 检查点式压缩：切分由 token 驱动的保留比例决定（对齐 design-auto-compaction §4.1）
             val currentSettings = settings.value
             val model = currentSettings.getCurrentChatModel()
             val windowTokens = model?.effectiveContextLength(currentSettings.contextLengthOverride)
                 ?: DEFAULT_CONTEXT_LENGTH
-            chatService.compressToCheckpoint(
+            val result = chatService.compressToCheckpoint(
                 conversationId = _conversationId,
                 windowTokens = windowTokens,
                 additionalPrompt = additionalPrompt,
                 targetTokens = targetTokens,
+                retainRatio = retainRatio,
             )
+            result
+                .onSuccess { checkpoint ->
+                    if (checkpoint == null) {
+                        // 历史尚不足以切分（非错误）——明确提示，避免用户以为点击无效
+                        chatService.addError(
+                            IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages)),
+                            conversationId = _conversationId,
+                            title = context.getString(R.string.error_title_compress_conversation),
+                        )
+                    }
+                }
+                .onFailure {
+                    chatService.addError(
+                        it,
+                        conversationId = _conversationId,
+                        title = context.getString(R.string.error_title_compress_conversation),
+                    )
+                }
         }
     }
 

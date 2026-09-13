@@ -273,10 +273,10 @@
   <string name="chat_page_compress_context">履歴を圧縮</string>
   <string name="chat_page_compress_context_desc">会話を要約して圧縮し、トークンを節約します</string>
   <string name="chat_page_compress_context_title">会話履歴を圧縮</string>
-  <string name="chat_page_compress_keep_recent">最近のメッセージを保持</string>
-  <string name="chat_page_compress_not_enough_messages">圧縮するためのメッセージが不足しています。保持するメッセージ数を減らすか、メッセージを追加してください。</string>
+  <string name="chat_page_compress_keep_recent">最近の会話を保持する割合</string>
+  <string name="chat_page_compress_not_enough_messages">まだ圧縮できるほどの履歴がありません。会話を続けてからお試しください。</string>
   <string name="chat_page_compress_target_tokens">ターゲットトークンサイズ</string>
-  <string name="chat_page_compress_warning">⚠️ コンテキストを圧縮すると、現在の会話のすべてのメッセージがリセットされます</string>
+  <string name="chat_page_compress_warning">⚠️ 古いメッセージはモデルに送るコンテキストから要約されます。完全な履歴はチャットに残り展開して確認できます。編集・再生成で圧縮を解除できます。</string>
   <string name="chat_page_compressing">圧縮中…</string>
   <string name="chat_page_conversation_system_prompt">会話システムプロンプト</string>
   <string name="chat_page_conversation_system_prompt_clear">クリア</string>
