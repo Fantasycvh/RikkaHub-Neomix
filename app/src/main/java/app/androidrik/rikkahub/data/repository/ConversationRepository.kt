@@ -17,12 +17,14 @@ import app.androidrik.rikkahub.data.db.fts.MessageSearchSort
 import app.androidrik.rikkahub.data.db.dao.CompressionCheckpointDAO
 import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
+import app.androidrik.rikkahub.data.ai.prompts.filterOutCheckpointMessages
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
 import app.androidrik.rikkahub.data.db.entity.CompressionCheckpointEntity
 import app.androidrik.rikkahub.data.db.entity.ConversationEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.CompressionSummary
+import app.androidrik.rikkahub.data.model.repairCorruptedCandidates
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -519,20 +521,37 @@ class ConversationRepository(
                 }
                 if (page.isEmpty()) break
                 page.forEach { entity ->
-                    val messages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages)
+                    val rawMessages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages)
                     val nodeId = Uuid.parse(entity.id)
+                    // 自愈历史 bug：早前版本把检查点合成消息误持久化为消息候选（界面只看到摘要）。
+                    // 清洗后 selectIndex 需回落到有效范围（指向被移除的候选时回退到最后一条）。
+                    val messages = rawMessages.filterOutCheckpointMessages()
+                    // 未发生清洗（条数不变）时保持原 selectIndex；有清洗时按 id 重定位，
+                    // 原选中项被移除则回退到最后一条（保持节点可显示）
+                    val cleanSelectIndex = when {
+                        messages.isEmpty() -> 0
+                        messages.size == rawMessages.size -> entity.selectIndex
+                        else -> {
+                            val selected = rawMessages.getOrNull(entity.selectIndex)
+                            val relocated = selected?.let { sel ->
+                                messages.indexOfFirst { it.id == sel.id }
+                            } ?: -1
+                            if (relocated >= 0) relocated else messages.lastIndex
+                        }
+                    }
                     nodes.add(
                         MessageNode(
                             id = nodeId,
                             messages = messages,
-                            selectIndex = entity.selectIndex,
+                            selectIndex = cleanSelectIndex,
                             isFavorite = favoriteNodeIds.contains(nodeId)
                         )
                     )
                 }
                 offset += page.size
             }
-            nodes
+            // 自愈早期压缩 bug 造成的跨节点候选副本（详见 repairCorruptedCandidates）
+            nodes.repairCorruptedCandidates()
         }
     }
 

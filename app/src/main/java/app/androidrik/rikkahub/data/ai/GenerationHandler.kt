@@ -77,10 +77,18 @@ class GenerationHandler(
     private val json: Json,
     private val memoryRepo: MemoryRepository,
 ) {
+    /**
+     * @param messages 会话**全量**消息（与 messageNodes 对齐），既作回写基线也与 [windowMessages] 一致
+     *   时构成发送内容
+     * @param windowMessages 发送窗口（压缩时 = 检查点合成消息 + 边界后原文）。默认与 [messages] 相同；
+     *   仅用于构建发给 provider 的上下文——**不可**作为回写基线（否则合成消息会被持久化，且与
+     *   messageNodes 索引错位）
+     */
     fun generateText(
         settings: Settings,
         model: Model,
         messages: List<UIMessage>,
+        windowMessages: List<UIMessage>? = null,
         inputTransformers: List<InputMessageTransformer> = emptyList(),
         outputTransformers: List<OutputMessageTransformer> = emptyList(),
         assistant: Assistant,
@@ -164,6 +172,7 @@ class GenerationHandler(
                     assistant = assistant,
                     settings = settings,
                     messages = messages,
+                    windowMessages = windowMessages,
                     onUpdateMessages = {
                         messages = it.transforms(
                             transformers = outputTransformers,
@@ -480,6 +489,8 @@ class GenerationHandler(
         assistant: Assistant,
         settings: Settings,
         messages: List<UIMessage>,
+        /** 发送窗口（含检查点合成消息）；null = 与 messages 相同。仅用于构建 provider 上下文 */
+        windowMessages: List<UIMessage>? = null,
         onUpdateMessages: suspend (List<UIMessage>) -> Unit,
         transformers: List<MessageTransformer>,
         model: Model,
@@ -538,12 +549,14 @@ class GenerationHandler(
             if (system.isNotBlank()) {
                 add(UIMessage.system(prompt = system).copy(isSynthetic = true))
             }
-            // 压缩检查点合成消息固定在窗口最前，且不参与 limitContext 截断：
-            // limitContext 保留尾部（subList(startIndex, size)），若把检查点一起传入会被截掉，
-            // 导致模型看不到被压缩的历史（design §4.2 与 limitContext 的两层分工）。
-            val (checkpointMessages, windowMessages) = messages.partitionCheckpointMessages()
+            // 发给 provider 的上下文取自「发送窗口」（compression 时为 检查点合成消息 + 边界后原文）；
+            // 检查点固定在窗口最前且不参与 limitContext 截断（limitContext 保留尾部会截掉开头的检查点）。
+            // 注意：回写基线仍是全量 messages（下方 `var messages`），合成消息不会被持久化。
+            // design §4.2 与 limitContext 的两层分工。
+            val (checkpointMessages, restMessages) =
+                (windowMessages ?: messages).partitionCheckpointMessages()
             addAll(checkpointMessages)
-            addAll(windowMessages.limitContext(assistant.contextMessageLimit))
+            addAll(restMessages.limitContext(assistant.contextMessageLimit))
         }.transforms(
             transformers = transformers,
             context = context,

@@ -115,4 +115,52 @@ class CompressPromptTest {
         assertTrue(checkpoints.isEmpty())
         assertEquals(1, rest.size)
     }
+
+    // ===== filterOutCheckpointMessages（自愈历史泄漏数据）=====
+    // 注意：判据只用文本前导语——isSynthetic 是 @Transient，持久化后丢失（DB 读回恒 false）
+
+    @Test
+    fun `filter removes leaked checkpoint message even without synthetic flag`() {
+        // 模拟 DB 读回：isSynthetic 丢失（false），仅剩前导语文本
+        val leaked = user(buildCompactionCheckpointText("summary"), synthetic = false)
+        val real = user("real question")
+        val result = listOf(real, leaked).filterOutCheckpointMessages()
+
+        assertEquals(1, result.size)
+        assertEquals("real question", result.first().toText())
+    }
+
+    @Test
+    fun `filter keeps ordinary messages`() {
+        val real = user("q")
+        val assistant = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("a")))
+        val result = listOf(real, assistant).filterOutCheckpointMessages()
+
+        assertEquals(2, result.size)
+    }
+
+    @Test
+    fun `filter keeps assistant message that happens to be synthetic`() {
+        // 其它 synthetic（如时间提醒）是 USER 且无前导语 -> 保留；ASSISTANT 消息一律保留
+        val reminder = user("time reminder", synthetic = true)
+        val assistantSynthetic = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text("x")),
+            isSynthetic = true,
+        )
+        assertEquals(2, listOf(reminder, assistantSynthetic).filterOutCheckpointMessages().size)
+    }
+
+    @Test
+    fun `filter is idempotent and order preserving`() {
+        val messages = listOf(
+            user("a"),
+            user(buildCompactionCheckpointText("s")),
+            user("b"),
+        )
+        val once = messages.filterOutCheckpointMessages()
+        val twice = once.filterOutCheckpointMessages()
+        assertEquals(once, twice)
+        assertEquals(listOf("a", "b"), once.map { it.toText() })
+    }
 }

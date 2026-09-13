@@ -777,15 +777,21 @@ class ChatService(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
+                // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
+                // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
+                // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
                 messages = if (messageRange != null) {
-                    // 重新生成历史消息：保持原始轨迹（被压缩的原始消息仍在，上下文完整）
-                    // —— 压缩是「发送窗口」优化，不应改变对历史的重新生成语义
                     conversation.currentMessages.let {
                         it.subList(messageRange.start, messageRange.endInclusive + 1)
                     }
                 } else {
-                    // 发送窗口：压缩检查点作为新段起点，边界之前的旧历史不发送（design §4.1 三边界对齐）；
-                    // 无有效检查点时返回全量（与旧行为一致）
+                    conversation.currentMessages
+                },
+                // 发送窗口：压缩时 = 检查点合成消息 + 边界后原文（design §4.1 三边界对齐）；
+                // 重生成历史时传 null（= 与 messages 相同）——保持原始轨迹，压缩不改变重生成语义。
+                windowMessages = if (messageRange != null) {
+                    null
+                } else {
                     conversation.requestWindowMessages()
                 },
                 assistant = assistant,

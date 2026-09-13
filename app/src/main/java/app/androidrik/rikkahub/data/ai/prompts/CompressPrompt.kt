@@ -116,3 +116,22 @@ internal val DEFAULT_COMPRESS_PROMPT = """
     {content}
     </conversation>
 """.trimIndent()
+
+/**
+ * 清洗：剔除误当作消息持久化的检查点合成消息（历史 bug 产生的脏数据）。
+ *
+ * 早期版本把「发送窗口」（含检查点合成消息）当作回写基线，导致合成消息被追加为消息候选
+ * （`selectIndex` 指向它，界面上只看到摘要）。修复回写基线后不再产生；此函数用于**自愈**
+ * 已污染的数据。
+ *
+ * **判据只用文本前导语，不能依赖 `isSynthetic`**——该字段是 `@Transient`，持久化后丢失
+ * （见 `UIMessage.isSynthetic`「仅在内存中使用」），DB 读回来恒为 false。前导语是一段独特的
+ * 英文说明 + XML 标签，用户手输碰撞概率可忽略。
+ */
+internal fun List<app.androidrik.ai.ui.UIMessage>.filterOutCheckpointMessages():
+    List<app.androidrik.ai.ui.UIMessage> = filterNot { message ->
+    message.role == app.androidrik.ai.core.MessageRole.USER &&
+        message.parts.any { part ->
+            part is app.androidrik.ai.ui.UIMessagePart.Text && part.text.isCompactionCheckpointPreamble()
+        }
+}

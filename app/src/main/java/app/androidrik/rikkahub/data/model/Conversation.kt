@@ -246,3 +246,36 @@ internal fun List<UIMessagePart>.localFileUrls(): Set<String> = buildSet {
         if (url?.startsWith("file://") == true) add(url)
     }
 }
+
+
+/**
+ * 修复「检查点合成消息被误当作回写基线」造成的节点候选损坏（压缩功能早期实现的 bug）。
+ *
+ * 症状：`generateText` 曾把「发送窗口」（含检查点合成消息，且已 drop 掉边界前节点）当作回写
+ * 基线，`updateCurrentMessages` 按索引把窗口消息逐条**追加到各节点候选末尾** —— 于是每个节点
+ * 多出若干条「后文消息的副本」，`selectIndex` 也被改指向副本，界面表现为：展开压缩历史时只多出
+ * 一条消息、部分消息在展开/收起两个状态下重复出现。
+ *
+ * 修复策略（保守、幂等、非破坏性判断）：
+ * - 同一 message id 出现在**多个节点** = 追加副本（正常的分支/编辑历史各自 id 不同，不会跨节点重复）
+ * - 对这类受损节点只保留**首个候选**（追加永远发生在末尾，故首个候选必为该节点原始消息）
+ * - 未被污染的节点（无跨节点重复）完全不动，编辑/重生成历史得以保留
+ *
+ * 注：根因已在 `GenerationHandler`（windowMessages 与回写基线分离）修复，本函数只用于自愈
+ * 已受影响的既有数据；加载时执行，随下次保存落库。
+ */
+internal fun List<MessageNode>.repairCorruptedCandidates(): List<MessageNode> {
+    val idCounts = HashMap<Uuid, Int>()
+    forEach { node ->
+        node.messages.forEach { message -> idCounts[message.id] = (idCounts[message.id] ?: 0) + 1 }
+    }
+    return map { node ->
+        if (node.messages.size <= 1) return@map node
+        val hasCrossNodeDuplicate = node.messages.any { (idCounts[it.id] ?: 0) > 1 }
+        if (!hasCrossNodeDuplicate) {
+            node
+        } else {
+            node.copy(messages = listOf(node.messages.first()), selectIndex = 0)
+        }
+    }
+}
