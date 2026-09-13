@@ -362,6 +362,7 @@ private fun MessagePartsBlock(
                                         onToolApproval = onToolApproval,
                                         onToolAnswer = onToolAnswer,
                                         onApproveAll = onApproveAll,
+                                        workspaceId = assistant?.workspaceId?.toString(),
                                     )
                                 }
                             }

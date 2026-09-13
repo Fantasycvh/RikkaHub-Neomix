@@ -45,6 +45,8 @@ data class ToolUIContext(
     val content: JsonElement?,
     /** 该工具调用是否在生成中 */
     val loading: Boolean,
+    /** 当前助手绑定的工作区 id（present 文件等需要 workspace 上下文时使用） */
+    val workspaceId: String? = null,
 )
 
 /**
@@ -105,6 +107,7 @@ object ToolUIRegistry {
         EditFileToolUI,
         ReadFileToolUI,
         WriteFileToolUI,
+        PresentFileToolUI,
         ShellToolUI,
     ).associateBy { it.toolName }
 

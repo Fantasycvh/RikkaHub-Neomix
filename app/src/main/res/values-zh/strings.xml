@@ -1323,6 +1323,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="common_export">导出</string>
   <string name="common_share">分享</string>
   <string name="tool_ui_edit_file">编辑：%s</string>
+  <string name="tool_ui_present_file">发送文件 %1$s</string>
+  <string name="tool_ui_present_file_default">发送文件</string>
+  <string name="tool_ui_present_file_no_workspace">当前助手未绑定工作区</string>
+  <string name="tool_ui_present_file_size">%1$s</string>
+  <string name="tool_ui_present_file_export">导出</string>
+  <string name="tool_ui_present_file_share">分享</string>
   <string name="tool_ui_edit_file_default">编辑文件</string>
   <string name="tool_ui_read_file">读取: %s</string>
   <string name="tool_ui_read_file_default">读取文件</string>

@@ -1280,6 +1280,12 @@
   <string name="common_export">匯出</string>
   <string name="common_share">分享</string>
   <string name="tool_ui_edit_file">編輯：%s</string>
+  <string name="tool_ui_present_file">發送檔案 %1$s</string>
+  <string name="tool_ui_present_file_default">發送檔案</string>
+  <string name="tool_ui_present_file_no_workspace">目前助手未綁定工作區</string>
+  <string name="tool_ui_present_file_size">%1$s</string>
+  <string name="tool_ui_present_file_export">匯出</string>
+  <string name="tool_ui_present_file_share">分享</string>
   <string name="tool_ui_edit_file_default">編輯檔案</string>
   <string name="tool_ui_read_file">讀取: %s</string>
   <string name="tool_ui_read_file_default">讀取檔案</string>

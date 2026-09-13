@@ -1233,6 +1233,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="common_export">エクスポート</string>
   <string name="common_share">共有</string>
   <string name="tool_ui_edit_file">編集: %s</string>
+  <string name="tool_ui_present_file">ファイル送信 %1$s</string>
+  <string name="tool_ui_present_file_default">ファイル送信</string>
+  <string name="tool_ui_present_file_no_workspace">このアシスタントはワークスペースに紐付いていません</string>
+  <string name="tool_ui_present_file_size">%1$s</string>
+  <string name="tool_ui_present_file_export">エクスポート</string>
+  <string name="tool_ui_present_file_share">共有</string>
   <string name="tool_ui_edit_file_default">ファイル編集</string>
   <string name="tool_ui_read_file">読み取り: %s</string>
   <string name="tool_ui_read_file_default">ファイルを読む</string>

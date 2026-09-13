@@ -1329,6 +1329,12 @@
   <string name="common_export">Export</string>
   <string name="common_share">Share</string>
   <string name="tool_ui_edit_file">Edit: %s</string>
+  <string name="tool_ui_present_file">Present file %1$s</string>
+  <string name="tool_ui_present_file_default">Present file</string>
+  <string name="tool_ui_present_file_no_workspace">No workspace bound to this assistant</string>
+  <string name="tool_ui_present_file_size">%1$s</string>
+  <string name="tool_ui_present_file_export">Export</string>
+  <string name="tool_ui_present_file_share">Share</string>
   <string name="tool_ui_edit_file_default">Edit file</string>
   <string name="tool_ui_read_file">Read: %s</string>
   <string name="tool_ui_read_file_default">Read file</string>

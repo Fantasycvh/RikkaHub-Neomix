@@ -68,6 +68,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onApproveAll: (() -> Unit)? = null,
+    workspaceId: String? = null,
 ) {
     // ask_user 是交互式问答流程, 不走注册式渲染框架
     if (tool.toolName == ASK_USER_TOOL_NAME) {
@@ -76,7 +77,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     }
 
     val renderer = remember(tool.toolName) { ToolUIRegistry.resolve(tool.toolName) }
-    val context = remember(tool, loading) {
+    val context = remember(tool, loading, workspaceId) {
         ToolUIContext(
             tool = tool,
             arguments = tool.inputAsJson(),
@@ -90,6 +91,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                 null
             },
             loading = loading,
+            workspaceId = workspaceId,
         )
     }
 

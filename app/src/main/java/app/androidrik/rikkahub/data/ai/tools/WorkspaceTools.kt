@@ -29,6 +29,7 @@ val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_read_file" to false,
     "workspace_write_file" to false,
     "workspace_edit_file" to false,
+    "workspace_present_file" to false,
     "workspace_shell" to true,
 )
 
@@ -50,6 +51,7 @@ suspend fun createWorkspaceTools(
         createReadFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
+        createPresentFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
     )
 }
@@ -197,6 +199,55 @@ private fun createEditFileTool(
                 }.toString(),
                 // diff 存入 metadata 供 UI 渲染 diff view, 不会随工具结果发送给 API
                 metadata = diff?.let { d -> DiffMetadata(diff = d).toMetadata() },
+            )
+        )
+    },
+)
+
+/**
+ * 发送文件给用户：校验文件存在后输出 JSON，由聊天界面渲染为可见的文件卡片，
+ * 用户可对其打开/导出/分享（复用 Tool part，按 toolName 分派渲染）。
+ */
+private fun createPresentFileTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+) = Tool(
+    name = "workspace_present_file",
+    description = """
+        Send a file to the user as a visible file card in the chat, so they can open, export or share it.
+        Use this whenever you produce a file the user should receive (APK, HTML, images, documents, archives...).
+        Paths must be absolute inside Rootfs; use /workspace for the workspace files area.
+        Call it after the file is fully written; include a short note describing the file.
+        Note: the file card is rendered by the app automatically; do not paste the file content in your reply.
+    """.trimIndent().replace("\n", " "),
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                putPathProperty(required = true)
+                put("note", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional short note shown with the file, e.g. what it is or how to use it")
+                })
+            },
+            required = listOf("path"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_present_file") },
+    execute = {
+        val params = it.jsonObject
+        val path = params.absolutePath("path")
+        val note = params.string("note").orEmpty()
+        // 校验文件存在并取大小；不存在时 rootfsFileSize 抛错，工具结果按失败处理
+        val size = workspaceRepository.rootfsFileSize(workspaceId, path)
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("path", path)
+                    put("name", path.substringAfterLast('/').ifBlank { path })
+                    put("sizeBytes", size)
+                    if (note.isNotBlank()) put("note", note)
+                }.toString()
             )
         )
     },

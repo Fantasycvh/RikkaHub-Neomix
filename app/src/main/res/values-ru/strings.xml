@@ -1233,6 +1233,12 @@
   <string name="common_export">Экспорт</string>
   <string name="common_share">Поделиться</string>
   <string name="tool_ui_edit_file">Редактировать: %s</string>
+  <string name="tool_ui_present_file">Отправить файл %1$s</string>
+  <string name="tool_ui_present_file_default">Отправить файл</string>
+  <string name="tool_ui_present_file_no_workspace">Ассистент не привязан к рабочему пространству</string>
+  <string name="tool_ui_present_file_size">%1$s</string>
+  <string name="tool_ui_present_file_export">Экспорт</string>
+  <string name="tool_ui_present_file_share">Поделиться</string>
   <string name="tool_ui_edit_file_default">Редактировать файл</string>
   <string name="tool_ui_read_file">Чтение: %s</string>
   <string name="tool_ui_read_file_default">Читать файл</string>

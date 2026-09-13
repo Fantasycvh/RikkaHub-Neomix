@@ -1,5 +1,9 @@
 package app.androidrik.rikkahub.ui.components.message.tools
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,20 +12,29 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
@@ -35,16 +48,23 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.FileAdd
 import me.rerere.hugeicons.stroke.FileEdit
+import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.FileView
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.ui.components.richtext.DiffAddedColor
 import app.androidrik.rikkahub.ui.components.richtext.DiffRemovedColor
 import app.androidrik.rikkahub.ui.components.richtext.DiffView
 import app.androidrik.rikkahub.ui.components.richtext.HighlightCodeBlock
 import app.androidrik.rikkahub.ui.components.richtext.parseDiffStats
+import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.utils.generateUnifiedDiff
 import app.androidrik.rikkahub.utils.jsonPrimitiveOrNull
+import app.androidrik.workspace.WorkspaceStorageArea
+import org.koin.compose.koinInject
+import java.io.File
 
 /**
  * 工作空间编辑文件: 摘要显示增删统计与精简 diff, 详情为完整 diff view
@@ -475,4 +495,186 @@ private fun languageOf(path: String?): String = when (
     "sql" -> "sql"
     "gradle" -> "groovy"
     else -> "plaintext"
+}
+
+/**
+ * 工作空间发送文件（workspace_present_file）：AI 产出文件后以可见卡片交给用户。
+ *
+ * 折叠行标题 = 「发送文件 <name>」；展开摘要 = 文件卡片（名称/大小/note）+
+ * 打开（跳工作区文件详情页）/ 导出（系统保存对话框）/ 分享（cache + FileProvider）。
+ * 入参为 Rootfs 绝对路径；/workspace 前缀 → FILES 区，其余（/root 等）→ LINUX 区。
+ */
+object PresentFileToolUI : ToolUIRenderer {
+    override val toolName: String = "workspace_present_file"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.FileImport
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val name = context.arguments.getStringContent("path")
+            ?.substringAfterLast('/')
+            ?.takeIf { it.isNotBlank() }
+        return if (name != null) {
+            stringResource(R.string.tool_ui_present_file, name)
+        } else {
+            stringResource(R.string.tool_ui_present_file_default)
+        }
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val workspaceId = context.workspaceId
+        val content = context.content ?: return
+        val path = content.getStringContent("path") ?: return
+        val name = content.getStringContent("name") ?: path.substringAfterLast('/')
+        val note = content.getStringContent("note")
+        val sizeBytes = content.long("sizeBytes")
+
+        if (workspaceId == null) {
+            Text(
+                text = stringResource(R.string.tool_ui_present_file_no_workspace),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return
+        }
+
+        PresentFileCard(
+            workspaceId = workspaceId,
+            path = path,
+            name = name,
+            note = note,
+            sizeBytes = sizeBytes,
+        )
+    }
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        DefaultToolPreview(context = context)
+    }
+}
+
+@Composable
+private fun PresentFileCard(
+    workspaceId: String,
+    path: String,
+    name: String,
+    note: String?,
+    sizeBytes: Long?,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val navController = LocalNavController.current
+    val workspaceRepository: WorkspaceRepository = koinInject()
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("*/*"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val (area, relativePath) = resolvePresentPath(path)
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    workspaceRepository.exportFile(workspaceId, area, relativePath, output)
+                }
+            }
+        }
+    }
+
+    Surface(
+        onClick = { navController.navigate(Screen.WorkspaceFileEditor(workspaceId, presentArea(path).name, presentRelativePath(path))) },
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceBright,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = HugeIcons.FileImport,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+            }
+            if (sizeBytes != null && sizeBytes > 0) {
+                Text(
+                    text = stringResource(R.string.tool_ui_present_file_size, formatBytes(sizeBytes)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (!note.isNullOrBlank()) {
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 2.dp),
+            ) {
+                TextButton(onClick = { exportLauncher.launch(name) }) {
+                    Text(stringResource(R.string.tool_ui_present_file_export))
+                }
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            runCatching {
+                                val (area, relativePath) = resolvePresentPath(path)
+                                val dir = File(context.cacheDir, "workspace_share").apply { mkdirs() }
+                                val cacheFile = File(dir, name)
+                                cacheFile.outputStream().use { output ->
+                                    workspaceRepository.exportFile(workspaceId, area, relativePath, output)
+                                }
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    cacheFile,
+                                )
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/octet-stream"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, null))
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.tool_ui_present_file_share))
+                }
+            }
+        }
+    }
+}
+
+/** present 文件 Rootfs 绝对路径 → (存储区, 相对路径)：/workspace 前缀 → FILES 区，其余 → LINUX 区。 */
+private fun presentArea(path: String): WorkspaceStorageArea =
+    if (path.startsWith("/workspace")) WorkspaceStorageArea.FILES else WorkspaceStorageArea.LINUX
+
+private fun presentRelativePath(path: String): String =
+    if (path.startsWith("/workspace")) path.removePrefix("/workspace").trimStart('/') else path.trimStart('/')
+
+private fun resolvePresentPath(path: String): Pair<WorkspaceStorageArea, String> =
+    presentArea(path) to presentRelativePath(path)
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1_000_000 -> "%.1fMB".format(bytes / 1_000_000.0)
+    bytes >= 1_000 -> "%.1fKB".format(bytes / 1_000.0)
+    else -> "$bytes B"
 }
