@@ -4,7 +4,7 @@
 > 背景：Yuihub（RikkaHub 二改，`<work>\projects\Yuihub`）在 `e0cb5101` 引入「harness 式自动压缩」，自述对齐 **deepseek-harness compaction-basic**。本文核实两边实现后给出借鉴判定与适配 fork 的设计，并附录三项相关探讨的结论（界面/发送解耦、超长对话懒加载、引入 Rust）。
 > 一句话结论：**机制值得借鉴，但 fork 落地的第一步不是搬代码，而是补 `Model.contextLength` 与 token 估算，然后把「发送侧丢老消息」升级为「摘要压缩」——架构上 fork 已经是目标形状。**
 >
-> **文档构成**：一~四（压缩机制借鉴 + fork 适配设计）、4.3.1（**Phase 0.5 可见先行项：对话界面「已使用上下文」统计**，可独立交付）、五（附录 A 懒加载）、六（附录 B Rust）、六.5（附录 C 工作区文件送达：发送文件工具 + 侧滑文件面板子集）、七（落地路线）、八（明确不做）。
+> **文档构成**：一~四（压缩机制借鉴 + fork 适配设计）、4.3.1（**Phase 0.5 可见先行项：对话界面「已使用上下文」统计**，可独立交付）、五（附录 A 懒加载，含 **5.1 深化评估**：四层框架 + 三项修正 + 渲染层 key 核实 + L0-L3 排序）、六（附录 B Rust）、六.5（附录 C 工作区文件送达：发送文件工具 + 侧滑文件面板子集）、七（落地路线）、八（明确不做）。
 
 ## 一、现状核实（fork）
 
@@ -196,6 +196,61 @@ Phase 0 的估算底座**可独立交付**：用户先看到「上下文用了�
 - **真懒加载的难点是「索引基座漂移」**，多处代码假设位置全局稳定：滚动定位 `requestScrollToItem(messageNodes.lastIndex + 10)`、批量选择 `subList(0, messageNodes.indexOf(node) + 1)`、搜索跳转 `mapIndexed { index, node -> index to node }`、导出 `flatMap { it.messages }`。窗口化需虚拟索引映射或 `reverseLayout` + 锚定——是聊天分页的知名复杂度，工作量大于压缩本身。
 - **推荐中间形态**：数据保持全量在内存，仅让 `LazyColumn` 的 items 默认只放边界后窗口 + 一行可展开折叠行。零数据层改动、零索引漂移；省的是渲染/滚动 item 数（内存不省，但内存今天非瓶颈——768 节点警告阈值说明量级可控）。
 - **触发立项的观察阈值**：单会话约 3000~5000 节点，或打开会话出现可感知延迟。届时先加 profile 埋点确认瓶颈（怀疑点是「全量重载」策略与 `Conversation` 整对象复制，而非序列化速度）。
+
+### 5.1 深化评估（2026-09-13 讨论定稿）
+
+**核心矛盾**：渲染层已通过 LazyColumn 实现懒加载，但数据层仍全量加载（全量读取、全量 JSON 反序列化、内存常驻、全量搜索扫描）。以下按「破解索引漂移 → 数据层方案 → UI 折中 → 架构演进」四层评估，含三个修正。
+
+**关键事实（修正一：稳定锚点已存在）**：
+
+- `message_node` 表有 **`node_index` 列**（持久化、单调递增序数），且 DAO 查询 `ORDER BY node_index ASC`——内存列表位置 == node_index 顺序。
+- 节点主键是 UUID（创建生成、落库持久化）。
+- fork 已在用 Paging 3（会话列表 `Pager` + `collectAsLazyPagingItems`），依赖已在栈内。
+
+即**「索引基座不必漂移」——把锚点从「内存列表下标」换成「node_index」即可**。四处漂移点的解法：
+
+| 漂移点 | 现状 | 换锚点后的解法 |
+|---|---|---|
+| 批量选择 `subList(0, indexOf(node)+1)`（ChatList:386） | 内存下标 | **前缀语义适合序数比较**：`nodeIndex <= target` 即前缀成员。注意 **ID 替代不适用**——「选这条及其之前」是顺序语义，UUID 无法表达「之前」，序数才可以 |
+| `requestScrollToItem(lastIndex + 10)`（ChatList:300） | 内存下标 + 过滚 hack | 窗口模型下「底部」= 已加载窗口末尾，索引仍有效；+10 hack 可保留 |
+| 搜索跳转 `mapIndexed { index, node -> index to node }`（ChatList:644） | 内存下标当跳转目标 | 改用 `node_index`——DB 顺序即显示顺序，目标天然稳定 |
+| 导出 `flatMap { it.messages }`（Export.kt:134） | 全量 | 导出是低频批量操作，**保留一次性全载**，不纳入窗口模型 |
+
+**修正二（reverseLayout 是负资产）**：`reverseLayout = true` 是聊天新项目的标准模式，但 fork 列表现状为自上而下 + haze 毛玻璃 + 底部滚动逻辑，改造 reverseLayout 等于把所有既有索引假设翻转一遍，**迁移本身就制造一次全量索引漂移**。锚定改用 prepend 后 `scrollToItem(新增条数, 保留 firstVisibleItemScrollOffset)` 的经典补偿（Paging 3 内置此机制）。
+
+**修正三（真正的成本 = Conversation 是领域模型，化解钥匙 = 压缩）**：
+
+- `Conversation` 不只是 UI 模型，是**领域模型**——ChatService 流式生成每 chunk 整体替换 `messageNodes` 并写库，transformers/分支/备份都假设其完整。真窗口化 = 把「已加载窗口」与「领域会话」拆成两个模型，这是最大架构成本，不是 SQL 改写。
+- **化解**：发送侧已被 `limitContext` 限界（只保留 `contextMessageLimit` 条）——**生成只需要逻辑尾部，不需要全量**。窗口化只需覆盖「显示 + 搜索」，导出走一次性全载。
+- **冷热分离混合模型**：冷前缀（检查点之前）分页加载、不可变、按需取；热尾部（边界之后）内存态、可变、流式追加。**冷热边界恰好就是压缩检查点**——压缩决定「AI 看到哪」，窗口化决定「App 加载哪」，二者在同一边界合流。
+
+**渲染层核实（2026-09-13）：稳定 key 已就位**：
+
+| 位置 | 列表 | key |
+|---|---|---|
+| ChatList:346 | 主消息列表 | `key = { index, item -> item.id }`（节点 UUID） |
+| ChatList:698 | 会话内搜索面板 | `key = { index, item -> item.second.id }`（同为 UUID） |
+| 特殊项 | 系统提示卡/加载指示/滚底按钮 | 字符串哨兵 key（与 UUID 不冲突） |
+
+含义：窗口化 prepend 历史时，每个可见项的 `rememberSaveable`/`animateItem`/重组 diff 都会正确跟随 key，状态不串位——**方案一（稳定 ID）在渲染层已完全落地**，漂移面仅剩上表 4 处逻辑调用点（L0 范围进一步收窄）。**但 key 不解决滚动锚定**：`scrollToItem` 仍按 index 定位，prepend N 条后不补偿则内容整体下跳 N 项——「不跳动」仍需 L2 显式补偿或 Paging 内置锚定（key 就位使补偿实现安全，无状态丢失次生问题）。
+
+**其余方案判定**：
+
+- **虚拟索引映射**：窗口 = 历史尾部（最新 N 条）时，映射是**算术**（真实 node_index = 窗口首条 + 虚拟下标），非查表；真正难的只有 prepend 平移（归锚定解决）。手写完整 IndexMapper 不必要。
+- **游标分页**：用 `node_index` 作游标（`WHERE conversation_id=? AND node_index < ? ORDER BY node_index DESC LIMIT 50`）；**不是 createdAt**（时间在 JSON 内、非列）。DAO 已有 offset 分页（`getNodesOfConversationPaged`，当初为规避 `SQLiteBlobTooBigException`），换游标是小改。
+- **延迟反序列化**：**大部分被窗口分页吸收**——节点 JSON 通常 ~1KB 级，成本驱动是条数非单条大小；窗口 50 条时按需 decode 的额外复杂度收益有限。**不做独立逐条 lazy decode**。
+- **时间线/区间模型**：索引映射变两级（区间内下标 + 区间序），复杂度高于收益；全局搜索已有 SQLite FTS（`MessageFtsManager`），会话内跳转搜索改 FTS 或窗口内过滤即可，不需要区间模型。
+- **Paging 3 化（架构演进）**：栈内已有但**有真冲突**——流式生成每 chunk 产生新 `Conversation`，若消息列表走 `PagingSource`，每次保存触发 invalidate → 窗口重载，流式期间抖动。化解 = 上述冷热分离（冷前缀分页 + 热尾部内存态），而非整体 Paging 化。
+- **搜索引擎**：fork 已有 FTS，全局搜索已解耦；会话内搜索改查 FTS 或窗口过滤，无需新引擎。
+
+**落地排序（L0 可先行独立做）**：
+
+| 阶段 | 内容 | 理由 |
+|---|---|---|
+| **L0（先行）** | 4 处漂移点改 `node_index`/`id` 锚点（选择用序数、搜索跳转用 node_index） | 不需要窗口化就值得做——预先消灭漂移面，风险低 |
+| **L1** | UI 折叠中间形态（= 压缩 Phase 3 折叠行，**同一份工作**） | 与压缩合流，零数据层改动 |
+| **L2** | DB 游标分页（node_index 游标 + prepend 锚定补偿）+ 导出专用全载 + 会话内搜索改 FTS/窗口 | 真懒加载本体；前置 = L0 已清漂移面 |
+| **L3（可选）** | 冷前缀/热尾混合模型或 Paging 3 化 | 等压缩（Phase 1-2）落地后评估，冷热边界以检查点为准 |
 
 ## 六、附录 B：引入 Rust 的评估
 
