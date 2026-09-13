@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.ui.pages.backup.tabs
 
+import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.File01
 import me.rerere.hugeicons.stroke.FileImport
@@ -44,11 +47,14 @@ fun ImportExportTab(
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val settings by vm.settings.collectAsStateWithLifecycle()
     var isExporting by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
 
     // 导入类型：local 为本地备份，chatbox 为 Chatbox 导入，cherry 为 Cherry Studio 导入
     var importType by remember { mutableStateOf("local") }
+    // 本地备份导入前确认（覆盖且不可逆）
+    var pendingLocalImport by remember { mutableStateOf(false) }
 
     // 创建文件保存的launcher
     val createDocumentLauncher = rememberLauncherForActivityResult(
@@ -173,6 +179,20 @@ fun ImportExportTab(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(16.dp)
     ) {
+        item {
+            CardGroup {
+                item(
+                    headlineContent = { Text(stringResource(R.string.backup_page_backup_items)) },
+                    supportingContent = {
+                        BackupItemsSelector(
+                            items = settings.backupItems,
+                            onItemsChange = { vm.updateSettings(settings.copy(backupItems = it)) },
+                        )
+                    },
+                )
+            }
+        }
+
         stickyHeader {
             StickyHeader {
                 Text(stringResource(R.string.backup_page_local_backup_export))
@@ -212,7 +232,7 @@ fun ImportExportTab(
                     onClick = if (!isRestoring) {
                         {
                             importType = "local"
-                            openDocumentLauncher.launch(arrayOf("application/zip"))
+                            pendingLocalImport = true
                         }
                     } else null,
                     headlineContent = { Text(stringResource(R.string.backup_page_local_backup_import)) },
@@ -281,5 +301,16 @@ fun ImportExportTab(
                 )
             }
         }
+    }
+
+    if (pendingLocalImport) {
+        RestoreConfirmDialog(
+            items = settings.backupItems,
+            onConfirm = {
+                pendingLocalImport = false
+                openDocumentLauncher.launch(arrayOf("application/zip"))
+            },
+            onDismissRequest = { pendingLocalImport = false },
+        )
     }
 }

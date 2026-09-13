@@ -112,10 +112,10 @@ class S3Sync(
     }
 
     suspend fun prepareBackupFile(config: S3Config): File =
-        archiveEngine.prepareBackupFile(config.items)
+        archiveEngine.prepareBackupFile(settingsStore.settingsFlow.value.backupItems)
 
     private suspend fun restoreFromBackupFile(backupFile: File, config: S3Config) {
-        archiveEngine.restoreFromBackupFile(backupFile, config.items)
+        archiveEngine.restoreFromBackupFile(backupFile, settingsStore.settingsFlow.value.backupItems)
     }
 
                 }

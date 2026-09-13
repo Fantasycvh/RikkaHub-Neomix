@@ -210,6 +210,10 @@
   <string name="backup_page_restart_desc">应用需要重启以使设置生效。</string>
   <string name="backup_page_restore">恢复</string>
   <string name="backup_page_restore_failed">恢复失败: %s</string>
+  <string name="backup_page_restore_confirm_title">确认恢复</string>
+  <string name="backup_page_restore_confirm_message">恢复将**覆盖**以下现有数据：</string>
+  <string name="backup_page_restore_confirm_warning">对话记录为**整库替换**且不可撤销，不确定时请先导出当前数据。</string>
+  <string name="backup_page_restore_confirm_action">确认恢复</string>
   <string name="backup_page_restore_now">恢复</string>
   <string name="backup_page_restore_success">恢复成功</string>
   <string name="backup_page_restoring">恢复中...</string>

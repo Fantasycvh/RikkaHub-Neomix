@@ -208,6 +208,10 @@
   <string name="backup_page_restart_desc">Приложение необходимо перезапустить, чтобы изменения вступили в силу.</string>
   <string name="backup_page_restore">Восстановить</string>
   <string name="backup_page_restore_failed">Ошибка восстановления: %s</string>
+  <string name="backup_page_restore_confirm_title">Подтвердить восстановление</string>
+  <string name="backup_page_restore_confirm_message">Восстановление **перезапишет** существующие данные:</string>
+  <string name="backup_page_restore_confirm_warning">История чата **заменяется полностью** и не отменяется. При сомнении сначала экспортируйте текущие данные.</string>
+  <string name="backup_page_restore_confirm_action">Восстановить</string>
   <string name="backup_page_restore_now">Восстановить</string>
   <string name="backup_page_restore_success">Восстановление выполнено успешно</string>
   <string name="backup_page_restoring">Восстановление...</string>

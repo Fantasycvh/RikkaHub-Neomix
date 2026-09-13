@@ -137,10 +137,10 @@ class WebDavSync(
     }
 
     suspend fun prepareBackupFile(config: WebDavConfig): File =
-        archiveEngine.prepareBackupFile(config.items)
+        archiveEngine.prepareBackupFile(settingsStore.settingsFlow.value.backupItems)
 
     private suspend fun restoreFromBackupFile(backupFile: File, config: WebDavConfig) {
-        archiveEngine.restoreFromBackupFile(backupFile, config.items)
+        archiveEngine.restoreFromBackupFile(backupFile, settingsStore.settingsFlow.value.backupItems)
     }
 
                 }

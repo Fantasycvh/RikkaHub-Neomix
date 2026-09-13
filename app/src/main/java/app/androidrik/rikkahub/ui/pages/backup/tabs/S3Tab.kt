@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.backup.tabs
 
+import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
 import app.androidrik.rikkahub.data.sync.BackupItem
 import me.rerere.hugeicons.HugeIcons
@@ -85,9 +86,34 @@ fun S3Tab(
     var showBackupFiles by remember { mutableStateOf(false) }
     var restoringItemId by remember { mutableStateOf<String?>(null) }
     var isBackingUp by remember { mutableStateOf(false) }
+    // 恢复前确认：恢复是覆盖且不可逆，避免用户误以为「恢复=补数据」
+    var pendingRestoreItem by remember { mutableStateOf<S3BackupItem?>(null) }
 
     fun updateS3Config(newConfig: S3Config) {
         vm.updateSettings(settings.copy(s3Config = newConfig))
+    }
+
+    /** 实际执行恢复（经确认后调用） */
+    fun performRestore(restoreItem: S3BackupItem) {
+        scope.launch {
+            restoringItemId = restoreItem.displayName
+            runCatching {
+                vm.restoreFromS3(item = restoreItem)
+                toaster.show(
+                    context.getString(R.string.backup_page_restore_success),
+                    type = ToastType.Success
+                )
+                showBackupFiles = false
+                onShowRestartDialog()
+            }.onFailure { err ->
+                err.printStackTrace()
+                toaster.show(
+                    context.getString(R.string.backup_page_restore_failed, err.message ?: ""),
+                    type = ToastType.Error
+                )
+            }
+            restoringItemId = null
+        }
     }
 
     val lastBackupText = if (settings.backupReminderConfig.lastBackupTime == 0L) {
@@ -211,8 +237,8 @@ fun S3Tab(
                     headlineContent = { Text(stringResource(R.string.backup_page_backup_items)) },
                     supportingContent = {
                         BackupItemsSelector(
-                            items = s3Config.items,
-                            onItemsChange = { updateS3Config(s3Config.copy(items = it)) },
+                            items = settings.backupItems,
+                            onItemsChange = { vm.updateSettings(settings.copy(backupItems = it)) },
                         )
                     },
                 )
@@ -352,28 +378,7 @@ fun S3Tab(
                                     }
                                 },
                                 onRestore = { restoreItem ->
-                                    scope.launch {
-                                        restoringItemId = restoreItem.displayName
-                                        runCatching {
-                                            vm.restoreFromS3(item = restoreItem)
-                                            toaster.show(
-                                                context.getString(R.string.backup_page_restore_success),
-                                                type = ToastType.Success
-                                            )
-                                            showBackupFiles = false
-                                            onShowRestartDialog()
-                                        }.onFailure { err ->
-                                            err.printStackTrace()
-                                            toaster.show(
-                                                context.getString(
-                                                    R.string.backup_page_restore_failed,
-                                                    err.message ?: ""
-                                                ),
-                                                type = ToastType.Error
-                                            )
-                                        }
-                                        restoringItemId = null
-                                    }
+                                    pendingRestoreItem = restoreItem
                                 },
                             )
                         }
@@ -398,6 +403,17 @@ fun S3Tab(
                 }
             }
         }
+    }
+
+    pendingRestoreItem?.let { item ->
+        RestoreConfirmDialog(
+            items = settings.backupItems,
+            onConfirm = {
+                pendingRestoreItem = null
+                performRestore(item)
+            },
+            onDismissRequest = { pendingRestoreItem = null },
+        )
     }
 }
 

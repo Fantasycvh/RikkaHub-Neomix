@@ -84,18 +84,13 @@ class BackupVM(
     }
 
     suspend fun exportToFile(): File {
-        val file = webDavSync.prepareBackupFile(
-            settings.value.webDavConfig.copy(items = BackupItem.entries)
-        )
+        val file = webDavSync.prepareBackupFile(settings.value.webDavConfig)
         recordBackupTime()
         return file
     }
 
     suspend fun restoreFromLocalFile(file: File) {
-        webDavSync.restoreFromLocalFile(
-            file,
-            settings.value.webDavConfig.copy(items = BackupItem.entries),
-        )
+        webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig)
     }
 
     suspend fun restoreFromChatBox(file: File): ChatboxRestoreResult {

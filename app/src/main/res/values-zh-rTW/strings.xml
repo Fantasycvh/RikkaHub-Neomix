@@ -210,6 +210,10 @@
   <string name="backup_page_restart_desc">應用需要重啟以使設置生效。</string>
   <string name="backup_page_restore">恢復</string>
   <string name="backup_page_restore_failed">恢復失敗: %s</string>
+  <string name="backup_page_restore_confirm_title">確認恢復</string>
+  <string name="backup_page_restore_confirm_message">恢復將**覆蓋**以下現有資料：</string>
+  <string name="backup_page_restore_confirm_warning">對話記錄為**整庫取代**且不可撤销，不確定時請先匯出目前資料。</string>
+  <string name="backup_page_restore_confirm_action">確認恢復</string>
   <string name="backup_page_restore_now">恢復</string>
   <string name="backup_page_restore_success">恢復成功</string>
   <string name="backup_page_restoring">恢復中...</string>

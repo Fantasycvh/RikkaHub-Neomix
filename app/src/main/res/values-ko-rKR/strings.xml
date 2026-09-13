@@ -208,6 +208,10 @@
   <string name="backup_page_restart_desc">변경 사항을 적용하려면 앱을 다시 시작해야 합니다.</string>
   <string name="backup_page_restore">복원</string>
   <string name="backup_page_restore_failed">복원 실패: %s</string>
+  <string name="backup_page_restore_confirm_title">복원 확인</string>
+  <string name="backup_page_restore_confirm_message">복원은 다음 기존 데이터를 **덮어씁니다**:</string>
+  <string name="backup_page_restore_confirm_warning">대화 기록은 **전체 대재**되며 되돌릴 수 없습니다. 확실하지 않으면 먼저 내보내세요.</string>
+  <string name="backup_page_restore_confirm_action">복원</string>
   <string name="backup_page_restore_now">복원</string>
   <string name="backup_page_restore_success">복원 성공</string>
   <string name="backup_page_restoring">복원 중...</string>

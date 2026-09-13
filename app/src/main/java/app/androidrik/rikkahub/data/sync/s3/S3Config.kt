@@ -1,7 +1,6 @@
 package app.androidrik.rikkahub.data.sync.s3
 
 import kotlinx.serialization.Serializable
-import app.androidrik.rikkahub.data.sync.BackupItem
 
 @Serializable
 data class S3Config(
@@ -11,10 +10,6 @@ data class S3Config(
     val bucket: String = "",
     val region: String = "auto",
     val pathStyle: Boolean = true,
-    val items: List<BackupItem> = listOf(
-        BackupItem.DATABASE,
-        BackupItem.FILES
-    ),
 ) {
     val host: String
         get() = endpoint

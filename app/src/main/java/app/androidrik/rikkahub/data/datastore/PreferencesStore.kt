@@ -150,6 +150,9 @@ class SettingsStore(
         // S3
         val S3_CONFIG = stringPreferencesKey("s3_config")
 
+        // 备份内容项（全局：S3 / WebDAV / 本地共用同一份）
+        val BACKUP_ITEMS = stringPreferencesKey("backup_items")
+
         // TTS
         val TTS_PROVIDERS = stringPreferencesKey("tts_providers")
         val SELECTED_TTS_PROVIDER = stringPreferencesKey("selected_tts_provider")
@@ -259,6 +262,9 @@ class SettingsStore(
                 s3Config = preferences[S3_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: S3Config(),
+                backupItems = preferences[BACKUP_ITEMS]?.let {
+                    JsonInstant.decodeFromString<List<BackupItem>>(it)
+                } ?: DEFAULT_BACKUP_ITEMS,
                 ttsProviders = preferences[TTS_PROVIDERS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
@@ -451,6 +457,7 @@ class SettingsStore(
             preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
+            preferences[BACKUP_ITEMS] = JsonInstant.encodeToString(settings.backupItems)
             preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
             settings.selectedTTSProviderId?.let {
                 preferences[SELECTED_TTS_PROVIDER] = it.toString()
@@ -611,6 +618,14 @@ data class Settings(
     val mcpServers: List<McpServerConfig> = emptyList(),
     val webDavConfig: WebDavConfig = WebDavConfig(),
     val s3Config: S3Config = S3Config(),
+    /**
+     * 备份内容（S3 / WebDAV / 本地导出共用同一份）。
+     *
+     * **为何全局**：「想备份什么」与「存到哪里」是正交的，不应各自配一份（否则三处要分别维护、且本地无法选）。
+     * 需要「云端精简、本地完整」时，在备份前临时切换勾选即可（备份为纯手动、
+     * 无自动调度，故“别忘记改回来”的风险低）。
+     */
+    val backupItems: List<BackupItem> = DEFAULT_BACKUP_ITEMS,
     val ttsProviders: List<TTSProviderSetting> = DEFAULT_TTS_PROVIDERS,
     val selectedTTSProviderId: Uuid = DEFAULT_SYSTEM_TTS_ID,
     val defaultTTSPlaybackSpeed: Float = 1.0f,
@@ -707,10 +722,6 @@ data class WebDavConfig(
     val username: String = "",
     val password: String = "",
     val path: String = "rikkahub_plus_backups",
-    val items: List<BackupItem> = listOf(
-        BackupItem.DATABASE,
-        BackupItem.FILES
-    ),
 ) {
 }
 
@@ -851,3 +862,11 @@ val DEFAULT_MODE_INJECTIONS = listOf(
         name = "Learning Mode"
     )
 )
+
+/**
+ * 备份内容默认值：**全部三项**。
+ *
+ * 旧版默认只有 DATABASE+FILES，但那是当时尚无工作区项的局限，并非用户偏好；
+ * 默认全备更符合「防止数据丢失」的意图（嫌大可取消勾选）。
+ */
+val DEFAULT_BACKUP_ITEMS: List<BackupItem> = BackupItem.entries.toList()

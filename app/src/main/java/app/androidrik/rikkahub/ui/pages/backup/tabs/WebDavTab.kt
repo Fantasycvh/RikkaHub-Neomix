@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.backup.tabs
 
+import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
 import app.androidrik.rikkahub.data.sync.BackupItem
 import me.rerere.hugeicons.HugeIcons
@@ -84,9 +85,34 @@ fun WebDavTab(
     var showBackupFiles by remember { mutableStateOf(false) }
     var restoringItemId by remember { mutableStateOf<String?>(null) }
     var isBackingUp by remember { mutableStateOf(false) }
+    // 恢复前确认：恢复是覆盖且不可逆
+    var pendingRestoreItem by remember { mutableStateOf<WebDavBackupItem?>(null) }
 
     fun updateWebDavConfig(newConfig: WebDavConfig) {
         vm.updateSettings(settings.copy(webDavConfig = newConfig))
+    }
+
+    /** 实际执行恢复（经确认后调用） */
+    fun performRestore(restoreItem: WebDavBackupItem) {
+        scope.launch {
+            restoringItemId = restoreItem.displayName
+            runCatching {
+                vm.restore(item = restoreItem)
+                toaster.show(
+                    context.getString(R.string.backup_page_restore_success),
+                    type = ToastType.Success
+                )
+                showBackupFiles = false
+                onShowRestartDialog()
+            }.onFailure { err ->
+                err.printStackTrace()
+                toaster.show(
+                    context.getString(R.string.backup_page_restore_failed, err.message ?: ""),
+                    type = ToastType.Error
+                )
+            }
+            restoringItemId = null
+        }
     }
 
     val lastBackupText = if (settings.backupReminderConfig.lastBackupTime == 0L) {
@@ -193,8 +219,8 @@ fun WebDavTab(
                     headlineContent = { Text(stringResource(R.string.backup_page_backup_items)) },
                     supportingContent = {
                         BackupItemsSelector(
-                            items = webDavConfig.items,
-                            onItemsChange = { updateWebDavConfig(webDavConfig.copy(items = it)) },
+                            items = settings.backupItems,
+                            onItemsChange = { vm.updateSettings(settings.copy(backupItems = it)) },
                         )
                     },
                 )
@@ -333,28 +359,7 @@ fun WebDavTab(
                                     }
                                 },
                                 onRestore = { restoreItem ->
-                                    scope.launch {
-                                        restoringItemId = restoreItem.displayName
-                                        runCatching {
-                                            vm.restore(item = restoreItem)
-                                            toaster.show(
-                                                context.getString(R.string.backup_page_restore_success),
-                                                type = ToastType.Success
-                                            )
-                                            showBackupFiles = false
-                                            onShowRestartDialog()
-                                        }.onFailure { err ->
-                                            err.printStackTrace()
-                                            toaster.show(
-                                                context.getString(
-                                                    R.string.backup_page_restore_failed,
-                                                    err.message ?: ""
-                                                ),
-                                                type = ToastType.Error
-                                            )
-                                        }
-                                        restoringItemId = null
-                                    }
+                                    pendingRestoreItem = restoreItem
                                 },
                             )
                         }
@@ -379,6 +384,17 @@ fun WebDavTab(
                 }
             }
         }
+    }
+
+    pendingRestoreItem?.let { item ->
+        RestoreConfirmDialog(
+            items = settings.backupItems,
+            onConfirm = {
+                pendingRestoreItem = null
+                performRestore(item)
+            },
+            onDismissRequest = { pendingRestoreItem = null },
+        )
     }
 }
 

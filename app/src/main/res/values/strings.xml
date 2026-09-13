@@ -210,6 +210,10 @@
   <string name="backup_page_restart_desc">The app needs to restart for the changes to take effect.</string>
   <string name="backup_page_restore">Restore</string>
   <string name="backup_page_restore_failed">Restore failed: %s</string>
+  <string name="backup_page_restore_confirm_title">Confirm restore</string>
+  <string name="backup_page_restore_confirm_message">Restore will OVERWRITE existing data for the following items:</string>
+  <string name="backup_page_restore_confirm_warning">Chat history is replaced entirely and cannot be undone. Export current data first if unsure.</string>
+  <string name="backup_page_restore_confirm_action">Restore</string>
   <string name="backup_page_restore_now">Restore</string>
   <string name="backup_page_restore_success">Restore successful</string>
   <string name="backup_page_restoring">Restoring...</string>

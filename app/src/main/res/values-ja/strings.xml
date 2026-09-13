@@ -208,6 +208,10 @@
   <string name="backup_page_restart_desc">設定を有効にするにはアプリを再起動する必要があります。</string>
   <string name="backup_page_restore">復元</string>
   <string name="backup_page_restore_failed">復元失敗: %s</string>
+  <string name="backup_page_restore_confirm_title">復元の確認</string>
+  <string name="backup_page_restore_confirm_message">復元は以下の既存データを**上書き**します：</string>
+  <string name="backup_page_restore_confirm_warning">会話履歴は**全体置換**され元に戻せません。不安な場合は先にデータをエクスポートしてください。</string>
+  <string name="backup_page_restore_confirm_action">復元する</string>
   <string name="backup_page_restore_now">復元</string>
   <string name="backup_page_restore_success">復元成功</string>
   <string name="backup_page_restoring">復元中...</string>
