@@ -848,6 +848,13 @@
   <string name="setting_mcp_page_transport_type_desc">选择MCP服务器的传输协议类型</string>
   <string name="setting_mcp_page_url_label">URL</string>
   <string name="setting_model_page_chat_model">聊天模型</string>
+  <string name="setting_model_page_auto_compress">自动压缩</string>
+  <string name="setting_model_page_auto_compress_enable">启用</string>
+  <string name="setting_model_page_auto_compress_enable_desc">上下文占用超过阈值时，自动把较早的历史摘要化以腾出空间</string>
+  <string name="setting_model_page_auto_compress_threshold">触发阈值</string>
+  <string name="setting_model_page_auto_compress_retain">保留最近对话比例</string>
+  <string name="setting_model_page_auto_compress_target">摘要目标 Token</string>
+  <string name="setting_model_page_auto_compress_hint">编辑或重新生成受影响的消息即可取消压缩</string>
   <string name="setting_model_page_chat_model_desc">全局默认的聊天模型</string>
   <string name="setting_model_page_fallback_model">默认备用模型</string>
   <string name="setting_model_page_fallback_model_desc">助手未配置备用模型、且主模型重试耗尽后使用</string>

@@ -74,6 +74,7 @@ import app.androidrik.rikkahub.data.ai.transformers.TimeReminderTransformer
 import app.androidrik.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
+import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.datastore.findProvider
@@ -81,6 +82,10 @@ import app.androidrik.rikkahub.data.datastore.getAssistantById
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
+import app.androidrik.rikkahub.utils.effectiveContextLength
+import app.androidrik.rikkahub.utils.estimateWindowTokens
+import app.androidrik.rikkahub.data.ai.compression.shouldAutoCompress
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
@@ -756,6 +761,14 @@ class ChatService(
 
             // check invalid messages
             checkInvalidMessages(conversationId)
+
+            // 自动压缩（design §4.2 两层分工）：占用达阈值时先把早期历史摘要为检查点，
+            // 再按发送窗口组装上下文。失败静默（不影响本次发送，limitContext 仍作兜底）。
+            // 重生成历史消息时跳过（走完整轨迹，压缩不改变重生成语义）。
+            if (messageRange == null) {
+                maybeAutoCompress(conversationId, settings, model)
+            }
+
             val conversation = getConversationFlow(conversationId).value
 
             // start generating
@@ -1222,6 +1235,37 @@ class ChatService(
         saved
     }.onFailure {
         Log.e(TAG, "compressToCheckpoint failed for $conversationId", it)
+    }
+
+    /**
+     * 自动压缩：占用达到阈值时调用 [compressToCheckpoint]。
+     *
+     * - 未启用（默认关）或未达阈值时不动作
+     * - 失败/无可压缩内容时静默（不打断发送；`limitContext` 仍是同步兜底）
+     * - 占用估算复用 [estimateWindowTokens]（usage 优先 + 本地兜底），与 UI 进度条同源
+     */
+    private suspend fun maybeAutoCompress(
+        conversationId: Uuid,
+        settings: Settings,
+        model: Model,
+    ) {
+        if (!settings.autoCompressEnabled) return
+        val conversation = getConversationFlow(conversationId).value
+        // 已有检查点时仍按窗口占用判断（检查点已把边界前内容移出窗口，不会重复压缩同一段）
+        val windowTokens = model.effectiveContextLength(settings.contextLengthOverride)
+        val usedTokens = conversation.estimateWindowTokens(model)
+        if (!shouldAutoCompress(usedTokens, windowTokens, settings.autoCompressThresholdPercent)) return
+
+        Log.i(TAG, "auto compress triggered: $usedTokens / $windowTokens tokens")
+        compressToCheckpoint(
+            conversationId = conversationId,
+            windowTokens = windowTokens,
+            targetTokens = settings.autoCompressTargetTokens,
+            retainRatio = settings.autoCompressRetainPercent / 100.0,
+        ).onFailure {
+            // 失败静默：不打断发送（limitContext 兜底），仅记录
+            Log.w(TAG, "auto compress failed for $conversationId", it)
+        }
     }
 
     // ---- 对话状态更新 ----

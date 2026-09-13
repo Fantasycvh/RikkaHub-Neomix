@@ -20,6 +20,9 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -196,6 +199,104 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 settings = settings,
                 vm = vm,
             )
+        }
+        item {
+            AutoCompressSetting(
+                settings = settings,
+                vm = vm,
+            )
+        }
+    }
+}
+
+/**
+ * 自动压缩：占用达到阈值时自动把早期历史摘要为检查点（design-auto-compaction Phase 2）。
+ * 默认关闭——保持发送行为可预期；开启后阈值/保留比/目标 token 可调。
+ */
+@Composable
+private fun AutoCompressSetting(
+    settings: Settings,
+    vm: SettingVM,
+) {
+    val thresholdOptions = listOf(60, 70, 80, 90)
+    val retainOptions = listOf(20, 30, 40, 50, 60)
+    val targetTokenOptions = listOf(1000, 2000, 4000, 8000)
+
+    CardGroup(title = { Text(stringResource(R.string.setting_model_page_auto_compress)) }) {
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_model_page_auto_compress_enable)) },
+            supportingContent = { Text(stringResource(R.string.setting_model_page_auto_compress_enable_desc)) },
+            trailingContent = {
+                Switch(
+                    checked = settings.autoCompressEnabled,
+                    onCheckedChange = { vm.updateSettings(settings.copy(autoCompressEnabled = it)) },
+                )
+            },
+        )
+        if (settings.autoCompressEnabled) {
+            item {
+                Column(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.setting_model_page_auto_compress_threshold),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        thresholdOptions.forEachIndexed { index, percent ->
+                            SegmentedButton(
+                                selected = settings.autoCompressThresholdPercent == percent,
+                                onClick = {
+                                    vm.updateSettings(settings.copy(autoCompressThresholdPercent = percent))
+                                },
+                                shape = SegmentedButtonDefaults.itemShape(index, thresholdOptions.size),
+                            ) {
+                                Text("$percent%")
+                            }
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.setting_model_page_auto_compress_retain),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        retainOptions.forEachIndexed { index, percent ->
+                            SegmentedButton(
+                                selected = settings.autoCompressRetainPercent == percent,
+                                onClick = {
+                                    vm.updateSettings(settings.copy(autoCompressRetainPercent = percent))
+                                },
+                                shape = SegmentedButtonDefaults.itemShape(index, retainOptions.size),
+                            ) {
+                                Text("$percent%")
+                            }
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.setting_model_page_auto_compress_target),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        targetTokenOptions.forEachIndexed { index, tokens ->
+                            SegmentedButton(
+                                selected = settings.autoCompressTargetTokens == tokens,
+                                onClick = {
+                                    vm.updateSettings(settings.copy(autoCompressTargetTokens = tokens))
+                                },
+                                shape = SegmentedButtonDefaults.itemShape(index, targetTokenOptions.size),
+                            ) {
+                                Text("$tokens")
+                            }
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.setting_model_page_auto_compress_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }

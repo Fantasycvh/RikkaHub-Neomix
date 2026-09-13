@@ -803,6 +803,13 @@
   <string name="setting_mcp_page_transport_type_desc">選擇MCP伺服器的傳輸協定類型</string>
   <string name="setting_mcp_page_url_label">URL</string>
   <string name="setting_model_page_chat_model">聊天模型</string>
+  <string name="setting_model_page_auto_compress">自動壓縮</string>
+  <string name="setting_model_page_auto_compress_enable">啟用</string>
+  <string name="setting_model_page_auto_compress_enable_desc">上下文佔用超過閾值時，自動把較早的歷史摘要化以騰出空間</string>
+  <string name="setting_model_page_auto_compress_threshold">觸發閾值</string>
+  <string name="setting_model_page_auto_compress_retain">保留最近對話比例</string>
+  <string name="setting_model_page_auto_compress_target">摘要目標 Token</string>
+  <string name="setting_model_page_auto_compress_hint">編輯或重新生成受影響的訊息即可取消壓縮</string>
   <string name="setting_model_page_chat_model_desc">全域預設聊天模型</string>
   <string name="setting_model_page_fallback_model">預設備用模型</string>
   <string name="setting_model_page_fallback_model_desc">助手未設定備用模型、且主模型重試耗盡後使用</string>

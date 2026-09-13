@@ -105,4 +105,43 @@ class CompressionPlannerTest {
         // 防止后续误改回 harness 的编码 agent 值（0.16 会把聊天内容过度摘要）
         assertEquals(0.4, COMPRESS_RETAIN_RATIO, 0.0001)
     }
+
+    // ===== shouldAutoCompress（Phase 2 自动触发判断）=====
+
+    @Test
+    fun `triggers when usage reaches threshold`() {
+        // 80% 阈值：80/100 恰好达到即触发
+        assertTrue(shouldAutoCompress(usedTokens = 80, windowTokens = 100, thresholdPercent = 80))
+        assertTrue(shouldAutoCompress(usedTokens = 81, windowTokens = 100, thresholdPercent = 80))
+        assertFalse(shouldAutoCompress(usedTokens = 79, windowTokens = 100, thresholdPercent = 80))
+    }
+
+    @Test
+    fun `does not trigger without window or usage info`() {
+        assertFalse(shouldAutoCompress(usedTokens = 0, windowTokens = 100))
+        assertFalse(shouldAutoCompress(usedTokens = 100, windowTokens = 0))
+        assertFalse(shouldAutoCompress(usedTokens = -1, windowTokens = 100))
+    }
+
+    @Test
+    fun `threshold percent is clamped to avoid thrashing`() {
+        // 低于下限（50）会被钳到 50：占用 60% 因此触发
+        assertTrue(shouldAutoCompress(usedTokens = 60, windowTokens = 100, thresholdPercent = 10))
+        // 高于上限（95）会被钳到 95：占用 90% 因此不触发
+        assertFalse(shouldAutoCompress(usedTokens = 90, windowTokens = 100, thresholdPercent = 200))
+    }
+
+    @Test
+    fun `large token counts do not overflow`() {
+        // 用 Long 中间量比较，避免 Int 乘法溢出
+        val window = 1_000_000
+        assertFalse(shouldAutoCompress(usedTokens = 700_000, windowTokens = window, thresholdPercent = 80))
+        assertTrue(shouldAutoCompress(usedTokens = 900_000, windowTokens = window, thresholdPercent = 80))
+    }
+
+    @Test
+    fun `default threshold matches harness ratio`() {
+        assertEquals(80, DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT)
+        assertEquals(40, DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT)
+    }
 }

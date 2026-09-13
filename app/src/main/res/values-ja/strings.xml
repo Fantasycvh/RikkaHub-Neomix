@@ -766,6 +766,13 @@
   <string name="setting_mcp_page_transport_type_desc">MCPサーバーの転送プロトコルタイプを選択</string>
   <string name="setting_mcp_page_url_label">URL</string>
   <string name="setting_model_page_chat_model">チャットモデル</string>
+  <string name="setting_model_page_auto_compress">自動圧縮</string>
+  <string name="setting_model_page_auto_compress_enable">有効化</string>
+  <string name="setting_model_page_auto_compress_enable_desc">コンテキスト使用率がしきい値を超えると、古い履歴を要約して空きを作ります</string>
+  <string name="setting_model_page_auto_compress_threshold">トリガーしきい値</string>
+  <string name="setting_model_page_auto_compress_retain">最近の会話を保持する割合</string>
+  <string name="setting_model_page_auto_compress_target">要約の目標トークン</string>
+  <string name="setting_model_page_auto_compress_hint">影響を受けたメッセージを編集・再生成すると圧縮を解除できます</string>
   <string name="setting_model_page_chat_model_desc">グローバルデフォルトチャットモデル</string>
   <string name="setting_model_page_compress_model">モデルを圧縮</string>
   <string name="setting_model_page_compress_model_desc">会話履歴を圧縮するモデル</string>

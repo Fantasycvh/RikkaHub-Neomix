@@ -766,6 +766,13 @@
   <string name="setting_mcp_page_transport_type_desc">Выберите тип транспортного протокола для MCP-сервера</string>
   <string name="setting_mcp_page_url_label">URL</string>
   <string name="setting_model_page_chat_model">Модель чата</string>
+  <string name="setting_model_page_auto_compress">Автосжатие</string>
+  <string name="setting_model_page_auto_compress_enable">Включить</string>
+  <string name="setting_model_page_auto_compress_enable_desc">Когда занятость контекста превышает порог, ранняя история сворачивается в резюме</string>
+  <string name="setting_model_page_auto_compress_threshold">Порог срабатывания</string>
+  <string name="setting_model_page_auto_compress_retain">Сохранить недавних %</string>
+  <string name="setting_model_page_auto_compress_target">Целевые токены резюме</string>
+  <string name="setting_model_page_auto_compress_hint">Сжатие можно отменить, отредактировав или перегенерировав затронутое сообщение</string>
   <string name="setting_model_page_chat_model_desc">Глобальная модель чата по умолчанию</string>
   <string name="setting_model_page_compress_model">Сжать модель</string>
   <string name="setting_model_page_compress_model_desc">Модель для сжатия истории разговоров</string>

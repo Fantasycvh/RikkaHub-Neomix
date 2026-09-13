@@ -14,6 +14,21 @@ const val COMPRESS_TARGET_TOKENS: Int = 2000
  */
 const val COMPRESS_RETAIN_RATIO: Double = 0.4
 
+/** 自动压缩触发阈值默认值：占模型窗口的百分比（对齐 deepseek-harness 的 thresholdRatio 0.8） */
+const val DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT: Int = 80
+
+/** 自动压缩保留比例默认值（百分比，与 [COMPRESS_RETAIN_RATIO] 的 0.4 一致） */
+const val DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT: Int = 40
+
+/** 自动压缩摘要目标 token 默认值 */
+const val DEFAULT_AUTO_COMPRESS_TARGET_TOKENS: Int = 2000
+
+/** 阈值百分比钳制范围：低于 50% 会在刚压缩完又立刻触发（抖动），高于 95% 已接近溢出 */
+val AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE: IntRange = 50..95
+
+/** 保留比例钳制范围：过低保不住近期细节，过高则压缩收益不足 */
+val AUTO_COMPRESS_RETAIN_PERCENT_RANGE: IntRange = 10..80
+
 /** 单块最大消息数（超长时递归二分并行摘要） */
 const val COMPRESS_MAX_MESSAGES_PER_CHUNK: Int = 256
 
@@ -66,4 +81,22 @@ fun splitIntoChunks(
     val mid = messages.size / 2
     return splitIntoChunks(messages.subList(0, mid), maxPerChunk) +
         splitIntoChunks(messages.subList(mid, messages.size), maxPerChunk)
+}
+
+
+/**
+ * 自动压缩触发判断：占用达到模型窗口的 [thresholdPercent]% 时触发。
+ *
+ * - window/used 非正时返回 false（无窗口信息或空会话，不触发）
+ * - 阈值钳制在 [AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE]，避免误配导致抖动或永不触发
+ * - 使用 >=（达到阈值即触发），与 harness 的 thresholdRatio 语义一致
+ */
+fun shouldAutoCompress(
+    usedTokens: Int,
+    windowTokens: Int,
+    thresholdPercent: Int = DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
+): Boolean {
+    if (usedTokens <= 0 || windowTokens <= 0) return false
+    val threshold = thresholdPercent.coerceIn(AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE)
+    return usedTokens.toLong() * 100 >= windowTokens.toLong() * threshold
 }

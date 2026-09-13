@@ -27,6 +27,9 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT
+import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_TARGET_TOKENS
+import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT
 import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
@@ -176,6 +179,12 @@ class SettingsStore(
         // 上下文窗口全局默认（模型无 contextLength/customContextLength 时的兜底，null=不覆盖走 256K）
         val CONTEXT_LENGTH_OVERRIDE = intPreferencesKey("context_length_override")
 
+        // 自动压缩（超过阈值时把早期历史摘要为检查点，design-auto-compaction Phase 2）
+        val AUTO_COMPRESS_ENABLED = booleanPreferencesKey("auto_compress_enabled")
+        val AUTO_COMPRESS_THRESHOLD_PERCENT = intPreferencesKey("auto_compress_threshold_percent")
+        val AUTO_COMPRESS_RETAIN_PERCENT = intPreferencesKey("auto_compress_retain_percent")
+        val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
+
     }
 
     private val dataStore = context.settingsStore
@@ -275,6 +284,13 @@ class SettingsStore(
                 } ?: BackupReminderConfig(),
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
                 contextLengthOverride = preferences[CONTEXT_LENGTH_OVERRIDE],
+                autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
+                autoCompressThresholdPercent = preferences[AUTO_COMPRESS_THRESHOLD_PERCENT]
+                    ?: DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
+                autoCompressRetainPercent = preferences[AUTO_COMPRESS_RETAIN_PERCENT]
+                    ?: DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
+                autoCompressTargetTokens = preferences[AUTO_COMPRESS_TARGET_TOKENS]
+                    ?: DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
             )
         }
         .map {
@@ -453,6 +469,10 @@ class SettingsStore(
             settings.contextLengthOverride?.let {
                 preferences[CONTEXT_LENGTH_OVERRIDE] = it
             } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
+            preferences[AUTO_COMPRESS_ENABLED] = settings.autoCompressEnabled
+            preferences[AUTO_COMPRESS_THRESHOLD_PERCENT] = settings.autoCompressThresholdPercent
+            preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
+            preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
         }
     }
 
@@ -604,6 +624,14 @@ data class Settings(
     val launchCount: Int = 0,
     /** 上下文窗口全局默认（模型无 contextLength/customContextLength 时的兜底；null=不覆盖走 256K） */
     val contextLengthOverride: Int? = null,
+    /** 自动压缩：占用超过阈值时自动把早期历史摘要为检查点（默认关，保持行为可预期） */
+    val autoCompressEnabled: Boolean = false,
+    /** 触发阈值：占用达到模型窗口的百分比时触发（默认 80） */
+    val autoCompressThresholdPercent: Int = DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
+    /** 保留比例：尾部原文占窗口的百分比（默认 40） */
+    val autoCompressRetainPercent: Int = DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
+    /** 摘要目标 token（默认 2000） */
+    val autoCompressTargetTokens: Int = DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储

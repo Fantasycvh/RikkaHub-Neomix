@@ -766,6 +766,13 @@
   <string name="setting_mcp_page_transport_type_desc">MCP 서버의 전송 프로토콜 유형 선택</string>
   <string name="setting_mcp_page_url_label">URL</string>
   <string name="setting_model_page_chat_model">채팅 모델</string>
+  <string name="setting_model_page_auto_compress">자동 압축</string>
+  <string name="setting_model_page_auto_compress_enable">사용</string>
+  <string name="setting_model_page_auto_compress_enable_desc">컨텍스트 사용량이 임계값을 넘으면 이전 기록을 요약해 공간을 확보합니다</string>
+  <string name="setting_model_page_auto_compress_threshold">트리거 임계값</string>
+  <string name="setting_model_page_auto_compress_retain">최근 대화 유지 비율</string>
+  <string name="setting_model_page_auto_compress_target">요약 목표 토큰</string>
+  <string name="setting_model_page_auto_compress_hint">영향받은 메시지를 편집하거나 재생성하면 압축이 취소됩니다</string>
   <string name="setting_model_page_chat_model_desc">전역 기본 채팅 모델</string>
   <string name="setting_model_page_compress_model">모델 압축</string>
   <string name="setting_model_page_compress_model_desc">대화 기록 압축용 모델</string>

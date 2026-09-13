@@ -853,6 +853,13 @@
   <string name="setting_mcp_page_transport_type_desc">Select the transport protocol type for the MCP server</string>
   <string name="setting_mcp_page_url_label">URL</string>
   <string name="setting_model_page_chat_model">Chat Model</string>
+  <string name="setting_model_page_auto_compress">Auto Compression</string>
+  <string name="setting_model_page_auto_compress_enable">Enable</string>
+  <string name="setting_model_page_auto_compress_enable_desc">When context usage passes the threshold, earlier history is summarized to free space</string>
+  <string name="setting_model_page_auto_compress_threshold">Trigger threshold</string>
+  <string name="setting_model_page_auto_compress_retain">Keep recent %</string>
+  <string name="setting_model_page_auto_compress_target">Summary target tokens</string>
+  <string name="setting_model_page_auto_compress_hint">Compression can be cancelled by editing or regenerating any affected message</string>
   <string name="setting_model_page_chat_model_desc">Global default chat model</string>
   <string name="setting_model_page_fallback_model">Default fallback model</string>
   <string name="setting_model_page_fallback_model_desc">Used when the assistant has no fallback configured and the primary model fails after retries</string>
