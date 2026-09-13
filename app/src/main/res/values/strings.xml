@@ -170,6 +170,7 @@
   <string name="avatar_url_hint">Enter image URL</string>
   <string name="back">Back</string>
   <string name="backup_page_backing_up">Backing up...</string>
+  <string name="backup_page_workspace_files">Workspace files</string>
   <string name="backup_page_backup_items">Backup Items</string>
   <string name="backup_page_backup_now">Backup Now</string>
   <string name="backup_page_backup_success">Backup successful</string>

@@ -170,6 +170,7 @@
   <string name="avatar_url_hint">請輸入圖片連結</string>
   <string name="back">返回</string>
   <string name="backup_page_backing_up">備份中...</string>
+  <string name="backup_page_workspace_files">工作區檔案</string>
   <string name="backup_page_backup_items">備份項目</string>
   <string name="backup_page_backup_now">立即備份</string>
   <string name="backup_page_backup_success">備份成功</string>

@@ -27,7 +27,7 @@ internal object WorkspaceBackupHelper {
      * 单一真源：`RepositoryModule` 创建 WorkspaceManager 时也应使用本常量，
      * 避免备份路径与运行时路径各自硬编码而漂移。
      */
-    const val WORKSPACES_DIR = "workspaces"
+    private const val WORKSPACES_DIR = "workspaces"
 
     /** 工作区根目录（`<filesDir>/workspaces`） */
     fun workspacesDir(context: Context): File = File(context.filesDir, WORKSPACES_DIR)

@@ -214,6 +214,7 @@ fun WebDavTab(
                                     when (item) {
                                         BackupItem.DATABASE -> stringResource(R.string.backup_page_chat_records)
                                         BackupItem.FILES -> stringResource(R.string.backup_page_files)
+                                        BackupItem.WORKSPACE_FILES -> stringResource(R.string.backup_page_workspace_files)
                                     }
                                 )
                             }

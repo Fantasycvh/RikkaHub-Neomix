@@ -168,6 +168,7 @@
   <string name="avatar_url_hint">画像URLを入力してください</string>
   <string name="back">戻る</string>
   <string name="backup_page_backing_up">バックアップ中...</string>
+  <string name="backup_page_workspace_files">ワークスペースファイル</string>
   <string name="backup_page_backup_items">バックアップ項目</string>
   <string name="backup_page_backup_now">今すぐバックアップ</string>
   <string name="backup_page_backup_success">バックアップ成功</string>

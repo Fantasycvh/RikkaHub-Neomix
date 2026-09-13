@@ -168,6 +168,7 @@
   <string name="avatar_url_hint">이미지 URL 입력</string>
   <string name="back">뒤로</string>
   <string name="backup_page_backing_up">백업 중...</string>
+  <string name="backup_page_workspace_files">워크스페이스 파일</string>
   <string name="backup_page_backup_items">백업 항목</string>
   <string name="backup_page_backup_now">지금 백업</string>
   <string name="backup_page_backup_success">백업 성공</string>

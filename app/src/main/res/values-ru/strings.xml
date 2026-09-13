@@ -168,6 +168,7 @@
   <string name="avatar_url_hint">Введите URL изображения</string>
   <string name="back">Назад</string>
   <string name="backup_page_backing_up">Идёт резервное копирование…</string>
+  <string name="backup_page_workspace_files">Файлы рабочего пространства</string>
   <string name="backup_page_backup_items">Элементы резервной копии</string>
   <string name="backup_page_backup_now">Создать резервную копию</string>
   <string name="backup_page_backup_success">Резервное копирование выполнено успешно</string>
