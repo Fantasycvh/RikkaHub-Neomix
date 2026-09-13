@@ -10,6 +10,7 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import android.util.Log
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.fts.MessageFtsManager
@@ -30,6 +31,9 @@ import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.utils.JsonInstant
 import java.time.Instant
 import kotlin.uuid.Uuid
+
+/** 列表加载耗时埋点（诊断会话打开加载耗时，供判断是否需要窗口化） */
+private const val TAG = "ConversationRepository"
 
 class ConversationRepository(
     private val conversationDAO: ConversationDAO,
@@ -52,13 +56,25 @@ class ConversationRepository(
         internal const val SEP = "\u0001"
     }
 
-    suspend fun getRecentConversations(assistantId: Uuid, limit: Int = 10): List<Conversation> {
+    /**
+     * 最近会话。[加载节点] 默认 false（仅需 id/标题/时间的调用方不应付出
+     * 全量 JSON 解析代价——如 get_recent_chats 工具）。
+     */
+    suspend fun getRecentConversations(
+        assistantId: Uuid,
+        limit: Int = 10,
+        loadNodes: Boolean = false,
+    ): List<Conversation> {
         return conversationDAO.getRecentConversationsOfAssistant(
             assistantId = assistantId.toString(),
             limit = limit
         ).map { entity ->
-            val nodes = loadMessageNodes(entity.id)
-            conversationEntityToConversation(entity, nodes, loadCompressionSummaries(entity.id))
+            if (loadNodes) {
+                val nodes = loadMessageNodes(entity.id)
+                conversationEntityToConversation(entity, nodes, loadCompressionSummaries(entity.id))
+            } else {
+                conversationEntityToConversation(entity, emptyList())
+            }
         }
     }
 
@@ -506,6 +522,7 @@ class ConversationRepository(
             .getOrElse { emptyList() }
 
     private suspend fun loadMessageNodes(conversationId: String): List<MessageNode> {
+        val startNs = System.nanoTime()
         val favoriteNodeIds = favoriteDAO
             .getFavoriteNodeIdsOfConversation(conversationId)
             .mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
@@ -560,6 +577,11 @@ class ConversationRepository(
             }
             // 自愈早期压缩 bug 造成的跨节点候选副本（详见 repairCorruptedCandidates）
             nodes.repairCorruptedCandidates()
+        }.also { loaded ->
+            // 耗时埋点：打开会话、列表加载都经过这里。若出现可感知延迟（如 >300ms）
+            // 才值得考虑数据层窗口化（design-auto-compaction 附录 A L2）。
+            val ms = (System.nanoTime() - startNs) / 1_000_000
+            Log.i(TAG, "loadMessageNodes: ${loaded.size} nodes in ${ms}ms (conv=$conversationId)")
         }
     }
 
