@@ -876,6 +876,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_page_web_server_start">시작</string>
   <string name="setting_page_web_server_stop">중지</string>
   <string name="setting_provider_page_abilities">기능</string>
+  <string name="setting_provider_page_context_length">컨텍스트 창 (토큰)</string>
+  <string name="setting_provider_page_context_length_placeholder">내장 %1$s</string>
+  <string name="setting_provider_page_context_length_default">전역 기본값 따름</string>
+  <string name="setting_provider_page_context_length_hint">비움 = 내장 또는 전역 기본값 사용. 256k / 1M 지원</string>
+  <string name="setting_model_page_context_length_override">기본 컨텍스트 창</string>
+  <string name="setting_model_page_context_length_override_placeholder">예: 256k / 1M</string>
+  <string name="setting_model_page_context_length_override_hint">모델에 내장 창이 없을 때 사용. 비움 = 256K 폴백</string>
   <string name="setting_provider_page_add">추가</string>
   <string name="setting_provider_page_add_model">모델 추가</string>
   <string name="setting_provider_page_add_models_hint">아래 버튼을 눌러 모델 추가</string>

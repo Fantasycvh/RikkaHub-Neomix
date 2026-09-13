@@ -5,28 +5,35 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +52,8 @@ import app.androidrik.rikkahub.ui.components.ai.ModelListSheet
 import app.androidrik.rikkahub.ui.components.ai.rememberModelListState
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.utils.formatContextLength
+import app.androidrik.rikkahub.utils.parseContextLengthInput
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
@@ -176,6 +185,50 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 modelId = settings.compressModelId,
                 providers = settings.providers,
                 onSelect = { vm.updateSettings(settings.copy(compressModelId = it.id)) },
+            )
+        }
+        item {
+            ContextLengthOverrideSetting(
+                settings = settings,
+                vm = vm,
+            )
+        }
+    }
+}
+
+/**
+ * 上下文窗口全局默认：模型未内置 contextLength 且未手动指定时的兜底窗口大小。
+ * 支持 "256k"/"1M" 格式；留空 = 不覆盖，走 256K 内置兜底。
+ */
+@Composable
+private fun ContextLengthOverrideSetting(
+    settings: Settings,
+    vm: SettingVM,
+) {
+    var input by remember(settings.contextLengthOverride) {
+        mutableStateOf(settings.contextLengthOverride?.let { formatContextLength(it) } ?: "")
+    }
+    CardGroup(title = { Text(stringResource(R.string.setting_model_page_context_length_override)) }) {
+        item {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { newValue ->
+                    input = newValue
+                    val parsed = parseContextLengthInput(newValue)
+                    vm.updateSettings(settings.copy(contextLengthOverride = parsed))
+                },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(stringResource(R.string.setting_model_page_context_length_override_placeholder))
+                },
+                supportingText = {
+                    Text(
+                        text = stringResource(R.string.setting_model_page_context_length_override_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
             )
         }
     }

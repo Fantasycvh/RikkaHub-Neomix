@@ -979,6 +979,13 @@
   <string name="setting_page_web_server_start">Start</string>
   <string name="setting_page_web_server_stop">Stop</string>
   <string name="setting_provider_page_abilities">Abilities</string>
+  <string name="setting_provider_page_context_length">Context Window (tokens)</string>
+  <string name="setting_provider_page_context_length_placeholder">Built-in %1$s</string>
+  <string name="setting_provider_page_context_length_default">follow global default</string>
+  <string name="setting_provider_page_context_length_hint">Empty = use built-in or global default. Supports 256k / 1M</string>
+  <string name="setting_model_page_context_length_override">Default Context Window</string>
+  <string name="setting_model_page_context_length_override_placeholder">e.g. 256k / 1M</string>
+  <string name="setting_model_page_context_length_override_hint">Used when a model has no built-in window. Empty = 256K fallback</string>
   <string name="setting_provider_page_add">Add</string>
   <string name="setting_provider_page_add_model">Add Model</string>
   <string name="setting_provider_page_add_models_hint">Click the button below to add models</string>

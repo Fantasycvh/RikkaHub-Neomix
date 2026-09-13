@@ -367,7 +367,7 @@ private fun ChatPageContent(
                         val estimated = conversation.estimateWindowTokens(currentChatModel)
                         ContextUsage(
                             usedTokens = estimated,
-                            windowTokens = currentChatModel?.effectiveContextLength()
+                            windowTokens = currentChatModel?.effectiveContextLength(setting.contextLengthOverride)
                                 ?: DEFAULT_CONTEXT_LENGTH,
                         )
                     },

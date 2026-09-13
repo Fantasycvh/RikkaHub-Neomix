@@ -876,6 +876,13 @@
   <string name="setting_page_web_server_start">Запустить</string>
   <string name="setting_page_web_server_stop">Остановить</string>
   <string name="setting_provider_page_abilities">Возможности</string>
+  <string name="setting_provider_page_context_length">Окно контекста (токены)</string>
+  <string name="setting_provider_page_context_length_placeholder">Встроенный %1$s</string>
+  <string name="setting_provider_page_context_length_default">по глобальному умолчанию</string>
+  <string name="setting_provider_page_context_length_hint">Пусто = встроенный или глобальный по умолчанию. Поддержка 256k / 1M</string>
+  <string name="setting_model_page_context_length_override">Окно контекста по умолчанию</string>
+  <string name="setting_model_page_context_length_override_placeholder">напр. 256k / 1M</string>
+  <string name="setting_model_page_context_length_override_hint">Используется, если у модели нет встроенного окна. Пусто = 256K</string>
   <string name="setting_provider_page_add">Добавить</string>
   <string name="setting_provider_page_add_model">Добавить модель</string>
   <string name="setting_provider_page_add_models_hint">Нажмите кнопку ниже, чтобы добавить модели</string>

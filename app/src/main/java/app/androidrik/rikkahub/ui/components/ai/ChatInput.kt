@@ -296,14 +296,6 @@ fun ChatInput(
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            // 已使用上下文占用（usage 优先 + 本地估算兜底，与压缩触发判断同源）
-                            contextUsage?.let { usage ->
-                                ContextUsageBarButton(
-                                    usedTokens = usage.usedTokens,
-                                    windowTokens = usage.windowTokens,
-                                )
-                            }
-
                             // Model Picker
                             ModelSelector(
                                 modelId = assistant.chatModelId ?: settings.chatModelId,
@@ -348,6 +340,14 @@ fun ChatInput(
                                         onUpdateAssistant(assistant.copy(reasoningLevel = it))
                                     },
                                     onlyIcon = true,
+                                )
+                            }
+
+                            // 已使用上下文占用（usage 优先 + 本地估算兜底，与压缩触发判断同源）
+                            contextUsage?.let { usage ->
+                                ContextUsageBarButton(
+                                    usedTokens = usage.usedTokens,
+                                    windowTokens = usage.windowTokens,
                                 )
                             }
 

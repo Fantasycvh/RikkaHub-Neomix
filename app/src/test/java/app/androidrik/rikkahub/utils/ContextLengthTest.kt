@@ -52,6 +52,22 @@ class ContextLengthTest {
         assertEquals(128_000, Model(modelId = "m", contextLength = 128_000).effectiveContextLength())
     }
 
+    @Test
+    fun `effective context length priority custom builtin override default`() {
+        val model = Model(modelId = "m", contextLength = 128_000)
+        // custom 优先于 built-in
+        assertEquals(64_000, model.copy(customContextLength = 64_000).effectiveContextLength())
+        // built-in 优先于全局 override
+        assertEquals(128_000, model.effectiveContextLength(globalOverride = 32_000))
+        // 全局 override 在无 built-in/custom 时生效
+        assertEquals(
+            32_000,
+            Model(modelId = "m").effectiveContextLength(globalOverride = 32_000),
+        )
+        // 全部缺失走 256K
+        assertEquals(DEFAULT_CONTEXT_LENGTH, Model(modelId = "m").effectiveContextLength())
+    }
+
     // ===== estimateTokenCount =====
 
     @Test

@@ -173,6 +173,9 @@ class SettingsStore(
         // 统计
         val LAUNCH_COUNT = intPreferencesKey("launch_count")
 
+        // 上下文窗口全局默认（模型无 contextLength/customContextLength 时的兜底，null=不覆盖走 256K）
+        val CONTEXT_LENGTH_OVERRIDE = intPreferencesKey("context_length_override")
+
     }
 
     private val dataStore = context.settingsStore
@@ -271,6 +274,7 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
+                contextLengthOverride = preferences[CONTEXT_LENGTH_OVERRIDE],
             )
         }
         .map {
@@ -446,6 +450,9 @@ class SettingsStore(
             preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
+            settings.contextLengthOverride?.let {
+                preferences[CONTEXT_LENGTH_OVERRIDE] = it
+            } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
         }
     }
 
@@ -595,6 +602,8 @@ data class Settings(
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     val retrySetting: RetrySetting = RetrySetting(),
     val launchCount: Int = 0,
+    /** 上下文窗口全局默认（模型无 contextLength/customContextLength 时的兜底；null=不覆盖走 256K） */
+    val contextLengthOverride: Int? = null,
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储

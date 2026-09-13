@@ -10,8 +10,10 @@ data class Model(
     val displayName: String = "",
     val id: Uuid = Uuid.random(),
     val type: ModelType = ModelType.CHAT,
-    /** 模型上下文窗口大小（token 数），用于「已使用上下文」占用显示与（将来）自动压缩触发判断；null=未知，走默认兜底 */
+    /** 模型上下文窗口大小（token 数），拉取模型列表时解析或注册表内置；null=未知 */
     val contextLength: Int? = null,
+    /** 用户对该模型手动指定的上下文窗口（覆盖 [contextLength]），用于「已使用上下文」占用显示 */
+    val customContextLength: Int? = null,
     val customHeaders: List<CustomHeader> = emptyList(),
     val customBodies: List<CustomBody> = emptyList(),
     val inputModalities: List<Modality> = listOf(Modality.TEXT),

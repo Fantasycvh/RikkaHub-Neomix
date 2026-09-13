@@ -876,6 +876,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_page_web_server_start">開始</string>
   <string name="setting_page_web_server_stop">停止</string>
   <string name="setting_provider_page_abilities">能力</string>
+  <string name="setting_provider_page_context_length">コンテキストウィンドウ（トークン）</string>
+  <string name="setting_provider_page_context_length_placeholder">内蔵 %1$s</string>
+  <string name="setting_provider_page_context_length_default">グローバル既定に従う</string>
+  <string name="setting_provider_page_context_length_hint">空欄 = 内蔵またはグローバル既定を使用。256k / 1M 対応</string>
+  <string name="setting_model_page_context_length_override">既定コンテキストウィンドウ</string>
+  <string name="setting_model_page_context_length_override_placeholder">例: 256k / 1M</string>
+  <string name="setting_model_page_context_length_override_hint">モデルに内蔵ウィンドウがない場合に使用。空欄 = 256K フォールバック</string>
   <string name="setting_provider_page_add">追加</string>
   <string name="setting_provider_page_add_model">モデルを追加</string>
   <string name="setting_provider_page_add_models_hint">下のボタンをクリックしてモデルを追加</string>

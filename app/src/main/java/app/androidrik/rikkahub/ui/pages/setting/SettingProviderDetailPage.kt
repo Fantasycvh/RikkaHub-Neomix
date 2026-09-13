@@ -132,6 +132,8 @@ import app.androidrik.rikkahub.ui.pages.setting.components.resetBaseUrlToDefault
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.extendColors
 import app.androidrik.rikkahub.utils.UiState
+import app.androidrik.rikkahub.utils.formatContextLength
+import app.androidrik.rikkahub.utils.parseContextLengthInput
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -828,6 +830,34 @@ private fun ModelSettingsForm(
                                     Text(stringResource(R.string.setting_provider_page_model_display_name_placeholder))
                                 }
                             }
+                        )
+
+                        // 上下文窗口（token 数）：留空=跟随模型内置/全局默认；支持 "256k"/"1M" 格式
+                        OutlinedTextField(
+                            value = model.customContextLength?.let { formatContextLength(it) } ?: "",
+                            onValueChange = { input ->
+                                val parsed = parseContextLengthInput(input)
+                                onModelChange(model.copy(customContextLength = parsed))
+                            },
+                            label = { Text(stringResource(R.string.setting_provider_page_context_length)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = {
+                                Text(
+                                    text = stringResource(
+                                        R.string.setting_provider_page_context_length_placeholder,
+                                        model.contextLength?.let { formatContextLength(it) }
+                                            ?: stringResource(R.string.setting_provider_page_context_length_default),
+                                    )
+                                )
+                            },
+                            supportingText = {
+                                Text(
+                                    text = stringResource(R.string.setting_provider_page_context_length_hint),
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                         )
 
                         ModelTypeSelector(
