@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.sync.s3
 import android.util.Log
 import android.util.Xml
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.onUpload
 import io.ktor.client.request.headers
 import io.ktor.client.request.prepareRequest
 import io.ktor.client.request.request
@@ -68,10 +69,14 @@ class S3Client(
         key: String,
         file: File,
         contentType: String = "application/octet-stream",
+        onUploadProgress: ((sent: Long, total: Long?) -> Unit)? = null,
+        onHashProgress: ((hashed: Long, total: Long) -> Unit)? = null,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val path = "/${key.trimStart('/')}"
-            val fileSha256 = file.sha256Hex()
+            // 注意：这一步会完整读一遍文件（2.8GB 下数十秒），必须通过 onHashProgress 上报，
+            // 否则调用方的进度会长时间停在 0%（见设计稿 §9.1 坑 1）。
+            val fileSha256 = file.sha256Hex { hashed -> onHashProgress?.invoke(hashed, file.length()) }
             val signed = AwsSignatureV4.sign(
                 config = config,
                 method = "PUT",
@@ -86,6 +91,7 @@ class S3Client(
                 headers {
                     signed.headers.forEach { (k, v) -> append(k, v) }
                 }
+                onUploadProgress?.let { cb -> onUpload { sent, total -> cb(sent, total) } }
                 // Stream large files to avoid loading backup archives into heap.
                 setBody(file.readChannel())
             }
@@ -154,7 +160,11 @@ class S3Client(
         }
     }
 
-    suspend fun downloadObjectToFile(key: String, targetFile: File): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun downloadObjectToFile(
+        key: String,
+        targetFile: File,
+        onProgress: ((downloaded: Long, total: Long?) -> Unit)? = null,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val path = "/${key.trimStart('/')}"
             val signed = AwsSignatureV4.sign(
@@ -177,9 +187,18 @@ class S3Client(
                     throw S3Exception("Failed to download object: ${response.status}", errorBody)
                 }
 
+                val total = response.headers["Content-Length"]?.toLongOrNull()
                 response.bodyAsChannel().toInputStream().use { input ->
                     targetFile.outputStream().use { output ->
-                        input.copyTo(output)
+                        val buffer = ByteArray(8192)
+                        var downloaded = 0L
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n <= 0) break
+                            output.write(buffer, 0, n)
+                            downloaded += n
+                            onProgress?.invoke(downloaded, total)
+                        }
                     }
                 }
                 Log.d(TAG, "downloadObjectToFile success: downloaded ${targetFile.length()} bytes")
@@ -299,14 +318,17 @@ class S3Client(
         }
     }
 
-    private fun File.sha256Hex(): String {
+    private fun File.sha256Hex(onProgress: ((Long) -> Unit)? = null): String {
         val digest = MessageDigest.getInstance("SHA-256")
         inputStream().buffered().use { input ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var hashed = 0L
             while (true) {
                 val read = input.read(buffer)
                 if (read <= 0) break
                 digest.update(buffer, 0, read)
+                hashed += read
+                onProgress?.invoke(hashed)
             }
         }
         return digest.digest().joinToString("") { "%02x".format(it) }

@@ -72,6 +72,7 @@ internal object WorkspaceBackupHelper {
         zipOut: ZipOutputStream,
         workspaceBaseDir: File,
         roots: Collection<String>,
+        onBytes: (Long) -> Unit = {},
     ): Int {
         var count = 0
         roots.forEach { root ->
@@ -81,7 +82,13 @@ internal object WorkspaceBackupHelper {
             }
             val filesDir = File(workspaceBaseDir, "$root/files")
             if (!filesDir.isDirectory) return@forEach
-            count += addDirRecursive(zipOut, rootDir = filesDir, currentDir = filesDir, entryPrefix = "$ZIP_PREFIX$root/")
+            count += addDirRecursive(
+                zipOut = zipOut,
+                rootDir = filesDir,
+                currentDir = filesDir,
+                entryPrefix = "$ZIP_PREFIX$root/",
+                onBytes = onBytes,
+            )
         }
         return count
     }
@@ -91,15 +98,17 @@ internal object WorkspaceBackupHelper {
         rootDir: File,
         currentDir: File,
         entryPrefix: String,
+        onBytes: (Long) -> Unit,
     ): Int {
         var count = 0
         currentDir.listFiles()?.forEach { file ->
             if (file.isDirectory) {
-                count += addDirRecursive(zipOut, rootDir, file, entryPrefix)
+                count += addDirRecursive(zipOut, rootDir, file, entryPrefix, onBytes)
             } else if (file.isFile) {
                 val relative = file.relativeTo(rootDir).invariantSeparatorsPath
                 zipOut.putNextEntry(ZipEntry("$entryPrefix$relative"))
-                file.inputStream().use { it.copyTo(zipOut) }
+                // 边拷贝边上报：大文件内部也推进进度（工作区里可能有 GB 级克隆）
+                file.inputStream().use { copyReporting(it, zipOut, onBytes) }
                 zipOut.closeEntry()
                 count++
             }

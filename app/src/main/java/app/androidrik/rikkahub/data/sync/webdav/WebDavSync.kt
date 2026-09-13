@@ -2,6 +2,8 @@ package app.androidrik.rikkahub.data.sync.webdav
 
 import app.androidrik.rikkahub.data.sync.BackupArchiveEngine
 import app.androidrik.rikkahub.data.sync.BackupItem
+import app.androidrik.rikkahub.data.sync.BackupPhase
+import app.androidrik.rikkahub.data.sync.BackupProgress
 import android.content.Context
 import android.util.Log
 import io.ktor.client.HttpClient
@@ -49,25 +51,29 @@ class WebDavSync(
         Log.i(TAG, "testConnection: Connection successful")
     }
 
-    suspend fun backup(config: WebDavConfig) = withContext(Dispatchers.IO) {
-        val file = prepareBackupFile(config)
-        val client = getClient(config)
+    suspend fun backup(config: WebDavConfig, onProgress: (BackupProgress) -> Unit = {}) =
+        withContext(Dispatchers.IO) {
+            val file = prepareBackupFile(config, onProgress)
+            val client = getClient(config)
 
-        // Ensure the backup directory exists
-        client.ensureCollectionExists().getOrThrow()
+            // Ensure the backup directory exists
+            client.ensureCollectionExists().getOrThrow()
 
-        // Upload the backup file
-        client.put(
-            path = file.name,
-            file = file,
-            contentType = "application/zip"
-        ).getOrThrow()
+            // Upload the backup file
+            client.put(
+                path = file.name,
+                file = file,
+                contentType = "application/zip",
+                onProgress = { sent, total ->
+                    onProgress(BackupProgress(BackupPhase.UPLOADING, sent, total ?: file.length()))
+                },
+            ).getOrThrow()
 
-        Log.i(TAG, "backup: Uploaded ${file.name} (${file.length().fileSizeToString()})")
+            Log.i(TAG, "backup: Uploaded ${file.name} (${file.length().fileSizeToString()})")
 
-        // Clean up temp file
-        file.delete()
-    }
+            // Clean up temp file
+            file.delete()
+        }
 
     suspend fun listBackupFiles(config: WebDavConfig): List<WebDavBackupItem> = withContext(Dispatchers.IO) {
         val client = getClient(config)
@@ -90,27 +96,30 @@ class WebDavSync(
             .sortedByDescending { it.lastModified }
     }
 
-    suspend fun restore(config: WebDavConfig, item: WebDavBackupItem) = withContext(Dispatchers.IO) {
-        val client = getClient(config)
-        val backupFile = File(context.cacheDir, item.displayName)
+    suspend fun restore(config: WebDavConfig, item: WebDavBackupItem, onProgress: (BackupProgress) -> Unit = {}) =
+        withContext(Dispatchers.IO) {
+            val client = getClient(config)
+            val backupFile = File(context.cacheDir, item.displayName)
 
-        try {
-            // Download backup file directly to file to avoid OOM
-            Log.i(TAG, "restore: Downloading ${item.displayName}")
-            client.downloadToFile(item.displayName, backupFile).getOrThrow()
+            try {
+                // Download backup file directly to file to avoid OOM
+                Log.i(TAG, "restore: Downloading ${item.displayName}")
+                client.downloadToFile(item.displayName, backupFile) { downloaded, total ->
+                    onProgress(BackupProgress(BackupPhase.DOWNLOADING, downloaded, total ?: item.size))
+                }.getOrThrow()
 
-            Log.i(TAG, "restore: Downloaded ${backupFile.length().fileSizeToString()}")
+                Log.i(TAG, "restore: Downloaded ${backupFile.length().fileSizeToString()}")
 
-            // Restore from backup file
-            restoreFromBackupFile(backupFile, config)
-        } finally {
-            // Clean up temp file
-            if (backupFile.exists()) {
-                backupFile.delete()
-                Log.i(TAG, "restore: Cleaned up temporary backup file")
+                // Restore from backup file
+                restoreFromBackupFile(backupFile, config, onProgress)
+            } finally {
+                // Clean up temp file
+                if (backupFile.exists()) {
+                    backupFile.delete()
+                    Log.i(TAG, "restore: Cleaned up temporary backup file")
+                }
             }
         }
-    }
 
     suspend fun deleteBackupFile(config: WebDavConfig, item: WebDavBackupItem) = withContext(Dispatchers.IO) {
         val client = getClient(config)
@@ -118,7 +127,11 @@ class WebDavSync(
         Log.i(TAG, "deleteBackupFile: Deleted ${item.displayName}")
     }
 
-    suspend fun restoreFromLocalFile(file: File, config: WebDavConfig) = withContext(Dispatchers.IO) {
+    suspend fun restoreFromLocalFile(
+        file: File,
+        config: WebDavConfig,
+        onProgress: (BackupProgress) -> Unit = {},
+    ) = withContext(Dispatchers.IO) {
         Log.i(TAG, "restoreFromLocalFile: Starting restore from ${file.absolutePath}")
 
         if (!file.exists()) {
@@ -130,7 +143,7 @@ class WebDavSync(
         }
 
         try {
-            restoreFromBackupFile(file, config)
+            restoreFromBackupFile(file, config, onProgress)
             Log.i(TAG, "restoreFromLocalFile: Restore completed successfully")
         } catch (e: Exception) {
             Log.e(TAG, "restoreFromLocalFile: Failed to restore from local file", e)
@@ -138,11 +151,15 @@ class WebDavSync(
         }
     }
 
-    suspend fun prepareBackupFile(config: WebDavConfig): File =
-        archiveEngine.prepareBackupFile(settingsStore.settingsFlow.value.backupItems)
+    suspend fun prepareBackupFile(config: WebDavConfig, onProgress: (BackupProgress) -> Unit = {}): File =
+        archiveEngine.prepareBackupFile(settingsStore.settingsFlow.value.backupItems, onProgress)
 
-    private suspend fun restoreFromBackupFile(backupFile: File, config: WebDavConfig) {
-        archiveEngine.restoreFromBackupFile(backupFile, settingsStore.settingsFlow.value.backupItems)
+    private suspend fun restoreFromBackupFile(
+        backupFile: File,
+        config: WebDavConfig,
+        onProgress: (BackupProgress) -> Unit,
+    ) {
+        archiveEngine.restoreFromBackupFile(backupFile, settingsStore.settingsFlow.value.backupItems, onProgress)
     }
 
                 }

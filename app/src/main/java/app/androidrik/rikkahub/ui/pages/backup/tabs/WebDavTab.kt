@@ -63,6 +63,7 @@ import app.androidrik.rikkahub.data.sync.webdav.WebDavBackupItem
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.pages.backup.BackupVM
+import app.androidrik.rikkahub.ui.pages.backup.components.BackupProgressRow
 import app.androidrik.rikkahub.utils.UiState
 import app.androidrik.rikkahub.utils.fileSizeToString
 import app.androidrik.rikkahub.utils.onError
@@ -79,6 +80,7 @@ fun WebDavTab(
     val settings by vm.settings.collectAsStateWithLifecycle()
     val webDavConfig = settings.webDavConfig
     val backupItemsState by vm.webDavBackupItems.collectAsStateWithLifecycle()
+    val progress by vm.progress.collectAsStateWithLifecycle()
     val toaster = LocalToaster.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -306,6 +308,12 @@ fun WebDavTab(
                 )
             }
         }
+
+        // 字节级进度：备份/恢复进行中显示百分比（数分钟内用户方可判断是否卡死）
+        BackupProgressRow(
+            progress = progress,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
     }
 
     if (showBackupFiles) {

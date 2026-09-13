@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.sync.webdav
 import android.util.Log
 import android.util.Xml
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.onUpload
 import io.ktor.client.request.basicAuth
 import io.ktor.client.request.headers
 import io.ktor.client.request.prepareRequest
@@ -90,6 +91,7 @@ class WebDavClient(
         path: String,
         file: File,
         contentType: String = "application/octet-stream",
+        onProgress: ((sent: Long, total: Long?) -> Unit)? = null,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val url = config.buildUrl(path)
@@ -102,6 +104,7 @@ class WebDavClient(
                     append("Content-Type", contentType)
                     append("Content-Length", file.length().toString())
                 }
+                onProgress?.let { cb -> onUpload { sent, total -> cb(sent, total) } }
                 // Stream file content to avoid loading the whole backup zip into heap.
                 setBody(file.readChannel())
             }
@@ -158,7 +161,11 @@ class WebDavClient(
         }
     }
 
-    suspend fun downloadToFile(path: String, targetFile: File): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun downloadToFile(
+        path: String,
+        targetFile: File,
+        onProgress: ((downloaded: Long, total: Long?) -> Unit)? = null,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val url = config.buildUrl(path)
             Log.d(TAG, "GET (download to file): $url")
@@ -173,16 +180,22 @@ class WebDavClient(
                     throw WebDavException("Failed to download: ${response.status}", response.status.value, errorBody)
                 }
 
+                // 总量优先取响应头 Content-Length（可能缺失，如 chunked）
+                val total = response.headers["Content-Length"]?.toLongOrNull()
                 val channel = response.bodyAsChannel()
+                var downloaded = 0L
                 targetFile.outputStream().use { outputStream ->
                     val buffer = ByteArray(8192)
                     while (!channel.isClosedForRead) {
                         val bytesRead = channel.readAvailable(buffer)
                         if (bytesRead > 0) {
                             outputStream.write(buffer, 0, bytesRead)
+                            downloaded += bytesRead
+                            onProgress?.invoke(downloaded, total)
                         }
                     }
                 }
+                onProgress?.invoke(downloaded, total ?: downloaded)
                 Log.d(TAG, "downloadToFile success: downloaded ${targetFile.length()} bytes")
             }
             Unit

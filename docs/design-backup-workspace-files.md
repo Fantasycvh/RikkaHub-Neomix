@@ -182,3 +182,74 @@ workspace_files/<root>/<相对路径>
 **结论**：先做 P0 两项即可把该量级从「可能失败/极慢」变为「可用」；P1/P2 为体验完善。本项与工作区备份功能解耦，
 可独立排期。
 
+### 9.1 空间预检 + 字节级进度（2026-09-14 定稿，**先落实此项**）
+
+P2 中的这一项被提前，理由：**纯新增、不改备份格式、向后兼容**，且直接消除最坏的失败模式
+（跑几分钟才失败 / 磁盘写满导致部分覆盖），性价比高于 P0 的重构类改动。
+
+**空间预检的必要性（安全 > 体验）**：
+
+- **恢复是流式直接写最终目标**（`restoreFromBackupFile` 逐条目写 `filesDir`/目标目录）——磁盘中途写满 =
+  **部分文件已被覆盖**，比整体失败更糟；数据库虽已改为「暂存后交换」，但暂存本身也要 cacheDir 空间。
+- 备份打包同理：zip 写 `cacheDir`，写满即失败且无提示。
+
+**两个方向的峰值构成**（必须都算，别只按 zip 大小判）：
+
+| 方向 | 峰值需求 | 数据来源 |
+|---|---|---|
+| 备份打包 | zip ≈ **输入总量**（压缩只会更小，最坏持平） | **走盘求和**：`rikka_hub`(+`-wal`/`-shm`) 长度 + `upload/skills/fonts/tool_outputs` 递归 + `workspaces/*/files` 递归 |
+| 恢复 | `cacheDir` 里的 zip **与**解压产物**同时存在** | zip 大小 = 列表项 `contentLength`；解压总量 = `ZipFile` **中央目录** `entry.size` 求和（不用解压，开销极小） |
+
+**判据用保守值**（备份按不压缩计）：DB 是 JSON 型实测 2.27x 可压、工作区 git pack 近乎 1.0x，
+混合数据真实比率无法预判，故宁可保守误拒，也不要在 2.8GB 跑到一半失败。失败提示须给出
+**需要多少 / 现有多少**。
+
+**字节级进度（四阶段，数据来源均现成）**：
+
+| 阶段 | 来源 | 备注 |
+|---|---|---|
+| 打包 | 累计**读入**字节 / 走盘估算总量 | 计输入比计输出有意义（输出是压缩后） |
+| 上传 | ktor 3.5.1 `onUpload { bytesSentTotal, contentLength }` | 已确认 `BodyProgress` 插件在 jar 内，**无需自造 channel 包装** |
+| 下载 | ktor `onDownload` 或复用 `downloadToFile` 读循环计数 | `contentLength` 可能为 null（chunked）→ 退化为不确定态 |
+| 解压 | 已处理 zip 字节 / zip 总长 | — |
+
+**管道设计**：用**回调参数** `onProgress: (BackupProgress) -> Unit` 逐层传入，**不在引擎上挂 StateFlow**
+（`BackupArchiveEngine` 被两个 Koin singleton 各持一份，挂共享 StateFlow 有并发串扰风险）；VM 持
+`MutableStateFlow<BackupProgress?>` 接收、UI 收集。显式、无生命周期耦合、便于单测（传假回调断言序列）。
+
+**UI**：备份/恢复按钮内 spinner → 带百分比的 `LinearProgressIndicator` + `已完成/总量`。
+**不必加 6 语言字符串**（数字与百分比是纯量，阶段名可省）。
+
+**坑（按重要性）**：
+
+1. **S3 上传前的全量 SHA-256 是隐形空窗**：`S3Client.putObject(file)` 先 `file.sha256Hex()` 完整读一遍再上传，
+   2.8GB 下数十秒**零反馈**；只接 `onUpload` 会让进度停 0% 像是坏了。必须把这段作为「校验/准备」阶段上报，
+   或顺手做 P1 单遍哈希。**不处理则 S3 上的进度是假的。**
+2. `onUpload`/`onDownload` 按 chunk 高频触发 → 写 StateFlow 会狂重组 Compose，需**节流**（≥1% 或 ≥100ms），
+   并在 100% 强制补一次。
+3. 回调在 IO 线程 → 用 `MutableStateFlow`（线程安全），勿直接改 Compose state。
+4. **本地（SAF）目标/源空间查不到**（`ContentResolver` 不提供容量查询，见 9.2）→ 只预检 `cacheDir`，
+   UI 需说明。
+5. 分母在开始时**冻结**，进度做 clamp（打包中文件增删会让估值偏差）。
+
+### 9.2 本地备份同享（SAF 边界）
+
+**本地路径复用同一套引擎，故自动受益**：本地导出 `BackupVM.exportToFile()` → `webDavSync.prepareBackupFile()`
+→ 同一 `BackupArchiveEngine`；本地导入 `restoreFromLocalFile()` 同理（`BackupVM.kt:87/93`）。
+与「备份内容全局化」同一原理——engine 一处改动，本地/WebDAV/S3 三入口同时获得。
+
+**本地反而更适合首先验证**：本地导入/导出是**用户主动全量归档**最常用的入口（2.8GB 多半即本地导出），
+且没有 S3 的哈希空窗与网络不确定性，进度是干净的四段（拷贝入 / 打包 / 拷贝出 / 解压）。
+
+**特有边界（无解，需在 UI 说明）**：本地导出/导入是**两段式**，第二段走 SAF：
+
+| 段 | 位置 | 空间可查？ |
+|---|---|---|
+| 导出：`prepareBackupFile()` 写 cacheDir | app 私有 | ✅ `File.usableSpace` |
+| 导出：`copyTo(contentResolver 流)` 到用户选定位置（`ImportExportTab.kt:65`） | SAF（SD 卡/云盘等） | ❌ 平台不提供 |
+| 导入：从 SAF 源 `copyTo` 进 cacheDir（`ImportExportTab.kt:110`） | app 私有 | ✅ |
+| 导入：引擎解压到目标 | app 私有 | ✅ |
+
+故本地路径**只预检 `cacheDir`**，文案说明「仅检查应用缓存空间，目标位置由系统保证」。**导入侧预检尤其值得**：
+用户已选中文件、点过确认，此时才因空间不足失败最恼人。
+

@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.backup.tabs
 
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
+import app.androidrik.rikkahub.ui.pages.backup.components.BackupProgressRow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
 import me.rerere.hugeicons.HugeIcons
@@ -11,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -48,6 +50,7 @@ fun ImportExportTab(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val progress by vm.progress.collectAsStateWithLifecycle()
     var isExporting by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
 
@@ -190,6 +193,13 @@ fun ImportExportTab(
                         )
                     },
                 )
+            }
+        }
+
+        // 字节级进度：本地导出/导入进行中显示百分比
+        if (progress != null) {
+            item {
+                BackupProgressRow(progress = progress, modifier = Modifier.padding(horizontal = 8.dp))
             }
         }
 

@@ -45,24 +45,55 @@ internal class BackupArchiveEngine(
      * 生成备份 zip（写入 cacheDir）。
      *
      * 内容：settings.json（恒含）+ 按 [items] 选择性打包 DATABASE / FILES / WORKSPACE_FILES。
+     *
+     * @param onProgress 阶段进度回调（打包阶段按**读入字节**计）；IO 线程调用
+     * @throws IllegalStateException cacheDir 空间不足（见 §9.1 空间预检）
      */
-    suspend fun prepareBackupFile(items: Collection<BackupItem>): File = withContext(Dispatchers.IO) {
+    suspend fun prepareBackupFile(
+        items: Collection<BackupItem>,
+        onProgress: (BackupProgress) -> Unit = {},
+    ): File = withContext(Dispatchers.IO) {
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
         val backupFile = File(context.cacheDir, "backup_$timestamp.zip")
         if (backupFile.exists()) backupFile.delete()
+
+        // 空间预检：保守按「输入不压缩」估算；不足则提前失败（2.8GB 跑到一半失败代价太大）
+        val plannedInputs = collectBackupInputs(items)
+        val estimatedBytes = BackupSpaceCheck.estimateBackupBytes(plannedInputs)
+        val available = context.cacheDir.usableSpace
+        if (!BackupSpaceCheck.hasEnoughSpace(available, estimatedBytes)) {
+            throw IllegalStateException(
+                "Not enough cache space for backup: need ~${estimatedBytes.fileSizeToString()}, " +
+                    "available ${available.fileSizeToString()}"
+            )
+        }
+        Log.i(
+            TAG,
+            "prepareBackupFile: space check ok (need ~${estimatedBytes.fileSizeToString()}, " +
+                "available ${available.fileSizeToString()})",
+        )
+
+        val throttle = ProgressThrottle()
+        var processedBytes = 0L
+        fun report(delta: Long) {
+            processedBytes += delta
+            val progress = BackupProgress(BackupPhase.PACKING, processedBytes, estimatedBytes)
+            if (throttle.shouldEmit(progress)) onProgress(progress)
+        }
 
         ZipOutputStream(FileOutputStream(backupFile)).use { zipOut ->
             addVirtualFileToZip(
                 zipOut = zipOut,
                 name = "settings.json",
                 content = json.encodeToString(settingsStore.settingsFlow.value),
+                onBytes = ::report,
             )
 
             if (BackupItem.DATABASE in items) {
-                addDatabaseToZip(zipOut)
+                addDatabaseToZip(zipOut, ::report)
             }
             if (BackupItem.FILES in items) {
-                addAppFilesToZip(zipOut)
+                addAppFilesToZip(zipOut, ::report)
             }
             if (BackupItem.WORKSPACE_FILES in items) {
                 val wsDir = WorkspaceBackupHelper.workspacesDir(context)
@@ -71,10 +102,14 @@ internal class BackupArchiveEngine(
                     zipOut = zipOut,
                     workspaceBaseDir = wsDir,
                     roots = roots,
+                    onBytes = ::report,
                 )
                 Log.i(TAG, "prepareBackupFile: backed up $count workspace file(s) from ${roots.size} workspace(s)")
             }
         }
+
+        // 收尾：确保 UI 到达 100%（节流可能吞掉末次）
+        onProgress(BackupProgress(BackupPhase.PACKING, estimatedBytes, estimatedBytes))
 
         Log.i(
             TAG,
@@ -84,11 +119,43 @@ internal class BackupArchiveEngine(
     }
 
     /**
+     * 备份将读取的源（用于空间预检与进度分母）。
+     * 与打包分支一一对应：DB 三件套 / 应用文件区 / 工作区文件区。
+     */
+    private fun collectBackupInputs(items: Collection<BackupItem>): List<File> {
+        val inputs = mutableListOf<File>()
+        if (BackupItem.DATABASE in items) {
+            val dbFile = context.getDatabasePath("rikka_hub")
+            inputs += dbFile
+            DatabaseRestoreFiles.sidecarSuffixes().forEach { suffix ->
+                inputs += File(dbFile.parentFile, "rikka_hub$suffix")
+            }
+        }
+        if (BackupItem.FILES in items) {
+            listOf(FileFolders.UPLOAD, FileFolders.FONTS, FileFolders.TOOL_OUTPUTS, FileFolders.SKILLS)
+                .forEach { inputs += File(context.filesDir, it) }
+        }
+        if (BackupItem.WORKSPACE_FILES in items) {
+            val wsDir = WorkspaceBackupHelper.workspacesDir(context)
+            WorkspaceBackupHelper.listWorkspaceRoots(wsDir).forEach { root ->
+                inputs += File(wsDir, "$root/files")
+            }
+        }
+        return inputs
+    }
+
+    /**
      * 从备份 zip 恢复。
      *
+     * @param onProgress 解压阶段进度回调（按已处理的未压缩字节计，总量取自 zip 中央目录）
      * @return 恢复的工作区文件数（0 = 未包含/未恢复）；调用方据此提示「rootfs 需重装」
+     * @throws IllegalStateException 空间不足（解压产物 + zip 需同时存在于 cacheDir，见 §9.1）
      */
-    suspend fun restoreFromBackupFile(backupFile: File, items: Collection<BackupItem>): Int =
+    suspend fun restoreFromBackupFile(
+        backupFile: File,
+        items: Collection<BackupItem>,
+        onProgress: (BackupProgress) -> Unit = {},
+    ): Int =
         withContext(Dispatchers.IO) {
             Log.i(TAG, "restoreFromBackupFile: Starting from ${backupFile.absolutePath}")
             var workspaceFilesRestored = 0
@@ -96,8 +163,34 @@ internal class BackupArchiveEngine(
             // 这样「读到一半失败」不会先把现库关掉却没有可用的替代文件。
             val stagedDatabaseFiles = linkedMapOf<String, File>()
 
+            // 空间预检：解压产物与 zip 同时存在（cacheDir 与 filesDir 同为内部存储分区，查一次即可）
+            val uncompressedTotal = BackupSpaceCheck.uncompressedSizeOfZip(backupFile)
+            if (uncompressedTotal != null && uncompressedTotal > 0) {
+                val available = context.cacheDir.usableSpace
+                if (!BackupSpaceCheck.hasEnoughSpace(available, uncompressedTotal)) {
+                    throw IllegalStateException(
+                        "Not enough cache space for restore: need ~${uncompressedTotal.fileSizeToString()}, " +
+                            "available ${available.fileSizeToString()}"
+                    )
+                }
+                Log.i(
+                    TAG,
+                    "restoreFromBackupFile: space check ok (need ~${uncompressedTotal.fileSizeToString()}, " +
+                        "available ${available.fileSizeToString()})",
+                )
+            }
+
+            val throttle = ProgressThrottle()
+            // 进度按「已消费的归档字节」计（= backupFile 长度），比逐条目 size 稳——
+            // ZipInputStream 流式读时条目 size 常为 -1（本地头用 data descriptor）。
+            val archiveTotal = backupFile.length()
+            val countingIn = CountingInputStream(FileInputStream(backupFile)) { consumed ->
+                val progress = BackupProgress(BackupPhase.EXTRACTING, consumed, archiveTotal)
+                if (throttle.shouldEmit(progress)) onProgress(progress)
+            }
+
             try {
-                ZipInputStream(FileInputStream(backupFile)).use { zipIn ->
+                ZipInputStream(countingIn).use { zipIn ->
                     var entry: ZipEntry?
                     while (zipIn.nextEntry.also { entry = it } != null) {
                         val zipEntry = entry ?: continue
@@ -168,6 +261,8 @@ internal class BackupArchiveEngine(
                 }
 
                 Log.i(TAG, "restoreFromBackupFile: completed")
+                // 收尾：确保 UI 到达 100%（节流可能吞掉末次）
+                onProgress(BackupProgress(BackupPhase.EXTRACTING, archiveTotal, archiveTotal))
                 if (workspaceFilesRestored > 0) {
                     // rootfs 不在备份内（见设计稿）：工作区文件可用，但 shell/终端需重装 rootfs
                     Log.i(
@@ -249,25 +344,25 @@ internal class BackupArchiveEngine(
 
     // ---- 打包辅助 ----
 
-    private fun addDatabaseToZip(zipOut: ZipOutputStream) {
+    private fun addDatabaseToZip(zipOut: ZipOutputStream, onBytes: (Long) -> Unit) {
         val dbFile = context.getDatabasePath("rikka_hub")
         if (!dbFile.exists()) return
-        addFileToZip(zipOut, dbFile, "rikka_hub.db")
+        addFileToZip(zipOut, dbFile, "rikka_hub.db", onBytes)
         listOf("rikka_hub-wal", "rikka_hub-shm").forEach { name ->
             val f = File(dbFile.parentFile, name)
-            if (f.exists()) addFileToZip(zipOut, f, name)
+            if (f.exists()) addFileToZip(zipOut, f, name, onBytes)
         }
     }
 
     /** files/upload、files/skills、files/fonts、files/tool_outputs */
-    private fun addAppFilesToZip(zipOut: ZipOutputStream) {
+    private fun addAppFilesToZip(zipOut: ZipOutputStream, onBytes: (Long) -> Unit) {
         // upload / fonts / tool_outputs 是平铺文件（非递归）
         listOf(FileFolders.UPLOAD, FileFolders.FONTS, FileFolders.TOOL_OUTPUTS).forEach { folder ->
             val dir = File(context.filesDir, folder)
             if (dir.isDirectory) {
                 Log.i(TAG, "prepareBackupFile: packing $folder (${dir.absolutePath})")
                 dir.listFiles()?.forEach { file ->
-                    if (file.isFile) addFileToZip(zipOut, file, "$folder/${file.name}")
+                    if (file.isFile) addFileToZip(zipOut, file, "$folder/${file.name}", onBytes)
                 }
             } else {
                 Log.w(TAG, "prepareBackupFile: $folder does not exist")
@@ -282,22 +377,31 @@ internal class BackupArchiveEngine(
                 rootDir = skillsDir,
                 currentDir = skillsDir,
                 entryPrefix = "${FileFolders.SKILLS}/",
+                onBytes = onBytes,
             )
         } else {
             Log.w(TAG, "prepareBackupFile: skills does not exist")
         }
     }
 
-    private fun addVirtualFileToZip(zipOut: ZipOutputStream, name: String, content: String) {
+    private fun addVirtualFileToZip(
+        zipOut: ZipOutputStream,
+        name: String,
+        content: String,
+        onBytes: (Long) -> Unit = {},
+    ) {
+        val bytes = content.toByteArray(Charsets.UTF_8)
         zipOut.putNextEntry(ZipEntry(name))
-        zipOut.write(content.toByteArray(Charsets.UTF_8))
+        zipOut.write(bytes)
         zipOut.closeEntry()
+        onBytes(bytes.size.toLong())
     }
 
-    private fun addFileToZip(zipOut: ZipOutputStream, file: File, entryName: String) {
+    private fun addFileToZip(zipOut: ZipOutputStream, file: File, entryName: String, onBytes: (Long) -> Unit = {}) {
         FileInputStream(file).use { fis ->
             zipOut.putNextEntry(ZipEntry(entryName))
-            fis.copyTo(zipOut)
+            // 边拷贝边上报：单个大文件（85MB DB / 2.8GB 克隆）内部也要推进，否则进度条会冻住
+            copyReporting(fis, zipOut, onBytes)
             zipOut.closeEntry()
         }
     }
@@ -307,13 +411,14 @@ internal class BackupArchiveEngine(
         rootDir: File,
         currentDir: File,
         entryPrefix: String,
+        onBytes: (Long) -> Unit,
     ) {
         currentDir.listFiles()?.forEach { file ->
             if (file.isDirectory) {
-                addDirectoryToZip(zipOut, rootDir, file, entryPrefix)
+                addDirectoryToZip(zipOut, rootDir, file, entryPrefix, onBytes)
             } else if (file.isFile) {
                 val relativePath = file.relativeTo(rootDir).invariantSeparatorsPath
-                addFileToZip(zipOut, file, "$entryPrefix$relativePath")
+                addFileToZip(zipOut, file, "$entryPrefix$relativePath", onBytes)
             }
         }
     }

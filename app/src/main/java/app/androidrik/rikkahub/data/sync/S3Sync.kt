@@ -48,22 +48,31 @@ class S3Sync(
         Log.i(TAG, "testS3: Connection successful")
     }
 
-    suspend fun backupToS3(config: S3Config) = withContext(Dispatchers.IO) {
-        val file = prepareBackupFile(config)
-        val client = getS3Client(config)
-        val key = "rikkahub_plus_backups/${file.name}"
+    suspend fun backupToS3(config: S3Config, onProgress: (BackupProgress) -> Unit = {}) =
+        withContext(Dispatchers.IO) {
+            val file = prepareBackupFile(config, onProgress)
+            val client = getS3Client(config)
+            val key = "rikkahub_plus_backups/${file.name}"
 
-        client.putObject(
-            key = key,
-            file = file,
-            contentType = "application/zip"
-        ).getOrThrow()
+            client.putObject(
+                key = key,
+                file = file,
+                contentType = "application/zip",
+                // S3 上传前会先算 SHA-256 完整读一遍——这段必须上报为 PREPARING，
+                // 否则 2.8GB 下进度会长时间停在 0% 像是卡死（见设计稿 §9.1 坑 1）。
+                onHashProgress = { hashed, total ->
+                    onProgress(BackupProgress(BackupPhase.PREPARING, hashed, total))
+                },
+                onUploadProgress = { sent, total ->
+                    onProgress(BackupProgress(BackupPhase.UPLOADING, sent, total ?: file.length()))
+                },
+            ).getOrThrow()
 
-        Log.i(TAG, "backupToS3: Uploaded ${file.name} (${file.length().fileSizeToString()})")
+            Log.i(TAG, "backupToS3: Uploaded ${file.name} (${file.length().fileSizeToString()})")
 
-        // Clean up temp file
-        file.delete()
-    }
+            // Clean up temp file
+            file.delete()
+        }
 
     suspend fun listBackupFiles(config: S3Config): List<S3BackupItem> = withContext(Dispatchers.IO) {
         val client = getS3Client(config)
@@ -85,27 +94,30 @@ class S3Sync(
             .sortedByDescending { it.lastModified }
     }
 
-    suspend fun restoreFromS3(config: S3Config, item: S3BackupItem) = withContext(Dispatchers.IO) {
-        val client = getS3Client(config)
-        val backupFile = File(context.cacheDir, item.displayName)
+    suspend fun restoreFromS3(config: S3Config, item: S3BackupItem, onProgress: (BackupProgress) -> Unit = {}) =
+        withContext(Dispatchers.IO) {
+            val client = getS3Client(config)
+            val backupFile = File(context.cacheDir, item.displayName)
 
-        try {
-            // Download backup file directly to file to avoid OOM
-            Log.i(TAG, "restoreFromS3: Downloading ${item.displayName}")
-            client.downloadObjectToFile(item.key, backupFile).getOrThrow()
+            try {
+                // Download backup file directly to file to avoid OOM
+                Log.i(TAG, "restoreFromS3: Downloading ${item.displayName}")
+                client.downloadObjectToFile(item.key, backupFile) { downloaded, total ->
+                    onProgress(BackupProgress(BackupPhase.DOWNLOADING, downloaded, total ?: item.size))
+                }.getOrThrow()
 
-            Log.i(TAG, "restoreFromS3: Downloaded ${backupFile.length().fileSizeToString()}")
+                Log.i(TAG, "restoreFromS3: Downloaded ${backupFile.length().fileSizeToString()}")
 
-            // Restore from backup file
-            restoreFromBackupFile(backupFile, config)
-        } finally {
-            // Clean up temp file
-            if (backupFile.exists()) {
-                backupFile.delete()
-                Log.i(TAG, "restoreFromS3: Cleaned up temporary backup file")
+                // Restore from backup file
+                restoreFromBackupFile(backupFile, config, onProgress)
+            } finally {
+                // Clean up temp file
+                if (backupFile.exists()) {
+                    backupFile.delete()
+                    Log.i(TAG, "restoreFromS3: Cleaned up temporary backup file")
+                }
             }
         }
-    }
 
     suspend fun deleteS3BackupFile(config: S3Config, item: S3BackupItem) = withContext(Dispatchers.IO) {
         val client = getS3Client(config)
@@ -113,11 +125,15 @@ class S3Sync(
         Log.i(TAG, "deleteS3BackupFile: Deleted ${item.key}")
     }
 
-    suspend fun prepareBackupFile(config: S3Config): File =
-        archiveEngine.prepareBackupFile(settingsStore.settingsFlow.value.backupItems)
+    suspend fun prepareBackupFile(config: S3Config, onProgress: (BackupProgress) -> Unit = {}): File =
+        archiveEngine.prepareBackupFile(settingsStore.settingsFlow.value.backupItems, onProgress)
 
-    private suspend fun restoreFromBackupFile(backupFile: File, config: S3Config) {
-        archiveEngine.restoreFromBackupFile(backupFile, settingsStore.settingsFlow.value.backupItems)
+    private suspend fun restoreFromBackupFile(
+        backupFile: File,
+        config: S3Config,
+        onProgress: (BackupProgress) -> Unit,
+    ) {
+        archiveEngine.restoreFromBackupFile(backupFile, settingsStore.settingsFlow.value.backupItems, onProgress)
     }
 
                 }

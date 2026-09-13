@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.backup
 
 import app.androidrik.rikkahub.data.sync.BackupItem
+import app.androidrik.rikkahub.data.sync.BackupProgress
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -38,6 +39,22 @@ class BackupVM(
     val webDavBackupItems = MutableStateFlow<UiState<List<WebDavBackupItem>>>(UiState.Idle)
     val s3BackupItems = MutableStateFlow<UiState<List<S3BackupItem>>>(UiState.Idle)
 
+    /**
+     * 当前备份/恢复的进度（null = 无进行中任务）。UI 收集用于显示百分比。
+     *
+     * 用 StateFlow 而非在引擎上挂状态：引擎被两个 singleton 各持一份，挂共享状态有并发串扰风险；
+     * 这里由 VM 单点接收回调（回调在 IO 线程，StateFlow 本身线程安全）。
+     */
+    val progress = MutableStateFlow<BackupProgress?>(null)
+
+    private fun reportProgress(p: BackupProgress) {
+        progress.value = p
+    }
+
+    private fun clearProgress() {
+        progress.value = null
+    }
+
     init {
         loadBackupFileItems()
         loadS3BackupFileItems()
@@ -71,12 +88,20 @@ class BackupVM(
     }
 
     suspend fun backup() {
-        webDavSync.backup(settings.value.webDavConfig)
-        recordBackupTime()
+        try {
+            webDavSync.backup(settings.value.webDavConfig, ::reportProgress)
+            recordBackupTime()
+        } finally {
+            clearProgress()
+        }
     }
 
     suspend fun restore(item: WebDavBackupItem) {
-        webDavSync.restore(config = settings.value.webDavConfig, item = item)
+        try {
+            webDavSync.restore(config = settings.value.webDavConfig, item = item, onProgress = ::reportProgress)
+        } finally {
+            clearProgress()
+        }
     }
 
     suspend fun deleteWebDavBackupFile(item: WebDavBackupItem) {
@@ -84,13 +109,21 @@ class BackupVM(
     }
 
     suspend fun exportToFile(): File {
-        val file = webDavSync.prepareBackupFile(settings.value.webDavConfig)
-        recordBackupTime()
-        return file
+        return try {
+            val file = webDavSync.prepareBackupFile(settings.value.webDavConfig, ::reportProgress)
+            recordBackupTime()
+            file
+        } finally {
+            clearProgress()
+        }
     }
 
     suspend fun restoreFromLocalFile(file: File) {
-        webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig)
+        try {
+            webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig, ::reportProgress)
+        } finally {
+            clearProgress()
+        }
     }
 
     suspend fun restoreFromChatBox(file: File): ChatboxRestoreResult {
@@ -178,12 +211,20 @@ class BackupVM(
     }
 
     suspend fun backupToS3() {
-        s3Sync.backupToS3(settings.value.s3Config)
-        recordBackupTime()
+        try {
+            s3Sync.backupToS3(settings.value.s3Config, ::reportProgress)
+            recordBackupTime()
+        } finally {
+            clearProgress()
+        }
     }
 
     suspend fun restoreFromS3(item: S3BackupItem) {
-        s3Sync.restoreFromS3(config = settings.value.s3Config, item = item)
+        try {
+            s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, onProgress = ::reportProgress)
+        } finally {
+            clearProgress()
+        }
     }
 
     suspend fun deleteS3BackupFile(item: S3BackupItem) {

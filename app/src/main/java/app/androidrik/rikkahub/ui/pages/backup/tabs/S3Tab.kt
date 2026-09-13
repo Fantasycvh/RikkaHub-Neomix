@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.pages.backup.tabs
 
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
+import app.androidrik.rikkahub.ui.pages.backup.components.BackupProgressRow
 import app.androidrik.rikkahub.data.sync.BackupItem
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.View
@@ -80,6 +81,7 @@ fun S3Tab(
     val settings by vm.settings.collectAsStateWithLifecycle()
     val s3Config = settings.s3Config
     val backupItemsState by vm.s3BackupItems.collectAsStateWithLifecycle()
+    val progress by vm.progress.collectAsStateWithLifecycle()
     val toaster = LocalToaster.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -325,6 +327,11 @@ fun S3Tab(
                 )
             }
         }
+
+        BackupProgressRow(
+            progress = progress,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
     }
 
     if (showBackupFiles) {
