@@ -18,6 +18,12 @@ data class Conversation(
     val assistantId: Uuid,
     val title: String = "",
     val messageNodes: List<MessageNode>,
+    /**
+     * 压缩检查点列表（末行 = 最新边界 = active）。从 compression_checkpoint 表按需加载注入，
+     * 不存入 conversations 表（与 messageNodes 同模式——独立表管理，避免污染元数据列）。
+     * 默认空 = 未压缩。设计见 [CompressionSummary] 与 `docs/design-auto-compaction.md` §4.4。
+     */
+    val compressionSummaries: List<CompressionSummary> = emptyList(),
     val chatSuggestions: List<String> = emptyList(),
     val isPinned: Boolean = false,
     @Serializable(with = InstantSerializer::class)

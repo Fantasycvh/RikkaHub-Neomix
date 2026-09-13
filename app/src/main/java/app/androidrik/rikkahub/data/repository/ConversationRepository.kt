@@ -14,12 +14,15 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.fts.MessageFtsManager
 import app.androidrik.rikkahub.data.db.fts.MessageSearchSort
+import app.androidrik.rikkahub.data.db.dao.CompressionCheckpointDAO
 import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
+import app.androidrik.rikkahub.data.db.entity.CompressionCheckpointEntity
 import app.androidrik.rikkahub.data.db.entity.ConversationEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -33,6 +36,7 @@ class ConversationRepository(
     private val database: AppDatabase,
     private val filesManager: FilesManager,
     private val messageFtsManager: MessageFtsManager,
+    private val checkpointDAO: CompressionCheckpointDAO,
 ) {
     // 队列附件清理：判断某 file:// URL 是否仍被任何消息 JSON 引用（保守保留所有分支出现的 URL）
     suspend fun hasFileReference(fileUrl: String): Boolean =
@@ -49,7 +53,7 @@ class ConversationRepository(
             limit = limit
         ).map { entity ->
             val nodes = loadMessageNodes(entity.id)
-            conversationEntityToConversation(entity, nodes)
+            conversationEntityToConversation(entity, nodes, loadCompressionSummaries(entity.id))
         }
     }
 
@@ -275,7 +279,7 @@ class ConversationRepository(
         val entity = conversationDAO.getConversationById(uuid.toString())
         return if (entity != null) {
             val nodes = loadMessageNodes(entity.id)
-            conversationEntityToConversation(entity, nodes)
+            conversationEntityToConversation(entity, nodes, loadCompressionSummaries(entity.id))
         } else null
     }
 
@@ -360,6 +364,10 @@ class ConversationRepository(
 
     fun conversationToConversationEntity(conversation: Conversation): ConversationEntity {
         require(conversation.messageNodes.none { it.messages.any { message -> message.hasBase64Part() } })
+        // 注意：compressionSummaries 不在此持久化（独立表 compression_checkpoint 管理，见
+        // getCompressionCheckpoints/addCompressionCheckpoint）。整对象保存不会误删检查点；
+        // 但内存态若构造时漏填 compressionSummaries，会导致该会话内存中压缩态「看起来丢失」，
+        // 重新从 DB 加载即恢复（加载路径 loadCompressionSummaries 已填充）。
         return ConversationEntity(
             id = conversation.id.toString(),
             title = conversation.title,
@@ -379,12 +387,14 @@ class ConversationRepository(
 
     fun conversationEntityToConversation(
         conversationEntity: ConversationEntity,
-        messageNodes: List<MessageNode>
+        messageNodes: List<MessageNode>,
+        compressionSummaries: List<CompressionSummary> = emptyList(),
     ): Conversation {
         return Conversation(
             id = Uuid.parse(conversationEntity.id),
             title = conversationEntity.title,
             messageNodes = messageNodes.filter { it.messages.isNotEmpty() },
+            compressionSummaries = compressionSummaries,
             createAt = Instant.ofEpochMilli(conversationEntity.createAt),
             updateAt = Instant.ofEpochMilli(conversationEntity.updateAt),
             assistantId = Uuid.parse(conversationEntity.assistantId),
@@ -397,6 +407,48 @@ class ConversationRepository(
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
         )
     }
+
+    // ---- 压缩检查点读写（设计见 docs/design-auto-compaction.md §4.4 独立表方案）----
+
+    /** 加载会话的全部检查点（末行 = 最新边界 = active） */
+    suspend fun getCompressionCheckpoints(conversationId: Uuid): List<CompressionSummary> =
+        checkpointDAO.getOfConversation(conversationId.toString()).map { it.toSummary() }
+
+    /**
+     * 追加一条检查点（轨迹只追加）。返回落库后的 Summary（含自增 id）。
+     * 调用方负责在合并旧摘要后调 [trimCompressionCheckpoints] 清理冗余行。
+     */
+    suspend fun addCompressionCheckpoint(summary: CompressionSummary): CompressionSummary {
+        val id = checkpointDAO.insert(
+            CompressionCheckpointEntity(
+                conversationId = summary.conversationId.toString(),
+                content = summary.content,
+                messageCount = summary.messageCount,
+                boundaryNodeId = summary.boundaryNodeId,
+                createdAt = summary.createdAt.toEpochMilli(),
+            )
+        )
+        return summary.copy(id = id)
+    }
+
+    /** 只保留最新检查点，删除更早的行（新摘要已合并旧摘要时调用） */
+    suspend fun trimCompressionCheckpoints(conversationId: Uuid) {
+        checkpointDAO.trimToLatest(conversationId.toString())
+    }
+
+    /** 删除会话的全部检查点（取消压缩） */
+    suspend fun deleteCompressionCheckpoints(conversationId: Uuid) {
+        checkpointDAO.deleteOfConversation(conversationId.toString())
+    }
+
+    private fun CompressionCheckpointEntity.toSummary(): CompressionSummary = CompressionSummary(
+        id = id,
+        conversationId = Uuid.parse(conversationId),
+        content = content,
+        messageCount = messageCount,
+        boundaryNodeId = boundaryNodeId,
+        createdAt = Instant.ofEpochMilli(createdAt),
+    )
 
     fun getPinnedConversations(): Flow<List<Conversation>> {
         return conversationDAO
@@ -437,6 +489,11 @@ class ConversationRepository(
             folderId = entity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
         )
     }
+
+    /** 加载会话的压缩检查点（末行 = active）；失败静默返回空（不阻塞会话打开） */
+    private suspend fun loadCompressionSummaries(conversationId: String): List<CompressionSummary> =
+        runCatching { checkpointDAO.getOfConversation(conversationId).map { it.toSummary() } }
+            .getOrElse { emptyList() }
 
     private suspend fun loadMessageNodes(conversationId: String): List<MessageNode> {
         val favoriteNodeIds = favoriteDAO

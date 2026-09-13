@@ -146,6 +146,10 @@ val dataSourceModule = module {
     }
 
     single {
+        get<AppDatabase>().compressionCheckpointDao()
+    }
+
+    single {
         MessageFtsManager(get())
     }
 
