@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.backup.tabs
 
+import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
 import app.androidrik.rikkahub.data.sync.BackupItem
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.View
@@ -191,35 +192,10 @@ fun WebDavTab(
                 item(
                     headlineContent = { Text(stringResource(R.string.backup_page_backup_items)) },
                     supportingContent = {
-                    MultiChoiceSegmentedButtonRow(
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        BackupItem.entries.forEachIndexed { index, item ->
-                            SegmentedButton(
-                                shape = SegmentedButtonDefaults.itemShape(
-                                    index = index,
-                                    count = BackupItem.entries.size
-                                ),
-                                onCheckedChange = { checked ->
-                                    val newItems = if (checked) {
-                                        webDavConfig.items + item
-                                    } else {
-                                        webDavConfig.items - item
-                                    }
-                                    updateWebDavConfig(webDavConfig.copy(items = newItems))
-                                },
-                                checked = item in webDavConfig.items
-                            ) {
-                                Text(
-                                    when (item) {
-                                        BackupItem.DATABASE -> stringResource(R.string.backup_page_chat_records)
-                                        BackupItem.FILES -> stringResource(R.string.backup_page_files)
-                                        BackupItem.WORKSPACE_FILES -> stringResource(R.string.backup_page_workspace_files)
-                                    }
-                                )
-                            }
-                        }
-                    }
+                        BackupItemsSelector(
+                            items = webDavConfig.items,
+                            onItemsChange = { updateWebDavConfig(webDavConfig.copy(items = it)) },
+                        )
                     },
                 )
             }

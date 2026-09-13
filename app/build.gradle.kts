@@ -32,6 +32,12 @@ android {
         }
     }
 
+    // JVM 单测中 android.util.Log 等存桩方法返回默认值（避免
+    // "路径/边界校验逼辑类逻辑因打日志而无法单测" / "not mocked" 异常）
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     splits {
         abi {
             // AppBundle tasks usually contain "bundle" in their name

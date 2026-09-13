@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.backup.tabs
 
+import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
 import app.androidrik.rikkahub.data.sync.BackupItem
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.View
@@ -209,35 +210,10 @@ fun S3Tab(
                 item(
                     headlineContent = { Text(stringResource(R.string.backup_page_backup_items)) },
                     supportingContent = {
-                        MultiChoiceSegmentedButtonRow(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            BackupItem.entries.forEachIndexed { index, item ->
-                                SegmentedButton(
-                                    shape = SegmentedButtonDefaults.itemShape(
-                                        index = index,
-                                        count = BackupItem.entries.size
-                                    ),
-                                    onCheckedChange = { checked ->
-                                        val newItems = if (checked) {
-                                            s3Config.items + item
-                                        } else {
-                                            s3Config.items - item
-                                        }
-                                        updateS3Config(s3Config.copy(items = newItems))
-                                    },
-                                    checked = item in s3Config.items
-                                ) {
-                                    Text(
-                                        when (item) {
-                                            BackupItem.DATABASE -> stringResource(R.string.backup_page_chat_records)
-                                            BackupItem.FILES -> stringResource(R.string.backup_page_files)
-                                            BackupItem.WORKSPACE_FILES -> stringResource(R.string.backup_page_workspace_files)
-                                        }
-                                    )
-                                }
-                            }
-                        }
+                        BackupItemsSelector(
+                            items = s3Config.items,
+                            onItemsChange = { updateS3Config(s3Config.copy(items = it)) },
+                        )
                     },
                 )
             }

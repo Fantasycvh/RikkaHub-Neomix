@@ -40,7 +40,13 @@ internal object WorkspaceBackupHelper {
      */
     private val ROOT_NAME_REGEX = Regex("[A-Za-z0-9._-]+")
 
-    fun isValidRoot(root: String): Boolean = ROOT_NAME_REGEX.matches(root)
+    /**
+     * root 名合法性。**必须显式拒绝 `.` 与 `..`**——虽然它们能匹配 [ROOT_NAME_REGEX]
+     * （字符类含 `.`），但作为路径段会指向父目录/当前目录，用于恢复时即目录逃逸。
+     * 普通的 `.`/`..` 工作区名不存在，故显式排除无副作用。
+     */
+    fun isValidRoot(root: String): Boolean =
+        root != "." && root != ".." && ROOT_NAME_REGEX.matches(root)
 
     /**
      * 当前磁盘上存在的工作区 root 列表（目录扫描）。
@@ -113,14 +119,19 @@ internal object WorkspaceBackupHelper {
     ): File? {
         if (!zipEntryName.startsWith(ZIP_PREFIX)) return null
         val rest = zipEntryName.removePrefix(ZIP_PREFIX)
-        val root = rest.substringBefore('/', missingDelimiterValue = "")
-        val relative = rest.substringAfter('/', missingDelimiterValue = "")
+        val segments = rest.split('/')
+        // 至少需 <root>/<relative>；root 不得为 . 或 ..
+        if (segments.size < 2) return null
+        val root = segments[0]
+        val relative = segments.drop(1).joinToString("/")
         if (root.isEmpty() || relative.isEmpty()) return null
         if (!isValidRoot(root)) {
             Log.w(TAG, "reject invalid root in backup entry: $zipEntryName")
             return null
         }
 
+        // 注意：zip 内路径为 workspace_files/<root>/<相对于 files 区的路径>，
+        // **不再含 files 段**（与 addWorkspaceFilesToZip 的 entryPrefix 一致）。
         val filesDir = File(workspaceBaseDir, "$root/files")
         val target = File(filesDir, relative).canonicalFile
         val boundary = filesDir.canonicalFile
