@@ -233,6 +233,7 @@
   <string name="chain_of_thought_collapse">Свернуть</string>
   <string name="chain_of_thought_show_more_steps">Показать ещё %d шагов</string>
   <string name="chat_input_placeholder">Общайтесь с ИИ</string>
+  <string name="chat_context_usage_tooltip">Контекст: %1$s / %2$s</string>
   <string name="chat_input_unsupported_file_type">Неподдерживаемый тип файла: %s</string>
   <string name="chat_input_file_read_failed">Не удалось прочитать файл: %s</string>
   <string name="chat_message_add_favorite">Добавить в избранное</string>

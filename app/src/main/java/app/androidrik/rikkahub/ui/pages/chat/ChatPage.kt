@@ -84,9 +84,13 @@ import app.androidrik.rikkahub.service.MessageQueueState
 import app.androidrik.rikkahub.ui.pages.chat.VoiceSessionState
 import app.androidrik.rikkahub.ui.pages.chat.rememberVoiceModeStarter
 import app.androidrik.rikkahub.ui.components.ai.ChatInput
+import app.androidrik.rikkahub.ui.components.ai.ContextUsage
 import app.androidrik.rikkahub.ui.components.ai.FilesPicker
 import app.androidrik.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvider
 import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
+import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
+import app.androidrik.rikkahub.utils.effectiveContextLength
+import app.androidrik.rikkahub.utils.estimateWindowTokens
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionCamera
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -358,6 +362,15 @@ private fun ChatPageContent(
                     settings = setting,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
+                    contextUsage = run {
+                        // 与（将来）自动压缩触发判断同源：usage 优先 + 本地估算兜底
+                        val estimated = conversation.estimateWindowTokens(currentChatModel)
+                        ContextUsage(
+                            usedTokens = estimated,
+                            windowTokens = currentChatModel?.effectiveContextLength()
+                                ?: DEFAULT_CONTEXT_LENGTH,
+                        )
+                    },
                     onCancelClick = {
                         vm.stopGeneration()
                     },

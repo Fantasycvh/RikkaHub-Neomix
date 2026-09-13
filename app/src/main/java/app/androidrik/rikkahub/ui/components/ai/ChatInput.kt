@@ -1,10 +1,13 @@
 package app.androidrik.rikkahub.ui.components.ai
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -23,6 +26,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
@@ -61,6 +65,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
@@ -72,7 +78,9 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import com.dokar.sonner.ToastType
 import dev.chrisbanes.haze.HazeInput
@@ -82,9 +90,12 @@ import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.material3.Material3
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
+import kotlin.math.roundToInt
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.provider.ModelAbility
+import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
+import app.androidrik.rikkahub.utils.formatContextLength
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.asr.ASRStatus
 import me.rerere.hugeicons.HugeIcons
@@ -147,6 +158,7 @@ fun ChatInput(
     onStartVoiceMode: (() -> Unit)? = null,
     voiceState: VoiceSessionState = VoiceSessionState(),
     onStopVoiceMode: () -> Unit = {},
+    contextUsage: ContextUsage? = null,
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -284,6 +296,14 @@ fun ChatInput(
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
+                            // 已使用上下文占用（usage 优先 + 本地估算兜底，与压缩触发判断同源）
+                            contextUsage?.let { usage ->
+                                ContextUsageBarButton(
+                                    usedTokens = usage.usedTokens,
+                                    windowTokens = usage.windowTokens,
+                                )
+                            }
+
                             // Model Picker
                             ModelSelector(
                                 modelId = assistant.chatModelId ?: settings.chatModelId,
@@ -821,5 +841,101 @@ private fun FullScreenEditor(
                 }
             }
         }
+    }
+}
+
+/** 会话上下文占用数据：由 ChatPage 用 [app.androidrik.rikkahub.utils.estimateWindowTokens] 组装传入。 */
+data class ContextUsage(
+    val usedTokens: Int,
+    val windowTokens: Int,
+)
+
+/**
+ * 已使用上下文占用：细进度条 + 右侧百分比；点击弹出具体用量。
+ * 达到窗口 80%（CONTEXT_USAGE_WARNING_RATIO）变红警告。
+ */
+@Composable
+private fun ContextUsageBarButton(
+    usedTokens: Int,
+    windowTokens: Int,
+) {
+    var showPopup by remember { mutableStateOf(false) }
+    val fraction = if (windowTokens > 0) {
+        (usedTokens.toFloat() / windowTokens).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val isWarning = windowTokens > 0 && fraction >= CONTEXT_USAGE_WARNING_RATIO
+    val barColor = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    val textColor = if (isWarning) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val percent = (fraction * 100f).roundToInt()
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = tween(450),
+        label = "contextUsageFraction",
+    )
+
+    Box(
+        modifier = Modifier
+            .height(32.dp)
+            .clip(RoundedCornerShape(percent = 50))
+            .clickable { showPopup = true }
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Canvas(modifier = Modifier.size(width = 34.dp, height = 5.dp)) {
+                val radius = size.height / 2f
+                drawRoundRect(
+                    color = trackColor,
+                    cornerRadius = CornerRadius(radius),
+                )
+                if (animatedFraction > 0f) {
+                    drawRoundRect(
+                        color = barColor,
+                        size = Size(
+                            width = (size.width * animatedFraction).coerceAtLeast(size.height),
+                            height = size.height,
+                        ),
+                        cornerRadius = CornerRadius(radius),
+                    )
+                }
+            }
+            Text(
+                text = "$percent%",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.5.sp,
+                    lineHeight = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFeatureSettings = "tnum",
+                ),
+                color = textColor,
+                maxLines = 1,
+                modifier = Modifier.widthIn(min = 28.dp),
+            )
+        }
+    }
+
+    DropdownMenu(
+        expanded = showPopup,
+        onDismissRequest = { showPopup = false },
+    ) {
+        Text(
+            text = stringResource(
+                R.string.chat_context_usage_tooltip,
+                formatContextLength(usedTokens),
+                formatContextLength(windowTokens),
+            ),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
