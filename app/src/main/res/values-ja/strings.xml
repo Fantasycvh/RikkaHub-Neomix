@@ -326,6 +326,14 @@
   <string name="confirm_delete">削除を確認</string>
   <string name="copied">コピーしました</string>
   <string name="copy">コピー</string>
+  <string name="compaction_row_title">以前の %1$d 件を圧縮しました</string>
+  <string name="compaction_row_expand">圧縮された履歴を表示</string>
+  <string name="compaction_row_collapse">圧縮された履歴を隠す</string>
+  <string name="compaction_preview_user">ユーザー</string>
+  <string name="compaction_preview_assistant">アシスタント</string>
+  <string name="compaction_preview_system">システム</string>
+  <string name="compaction_preview_tool">ツール</string>
+  <string name="compaction_preview_attachments">テキスト以外 %1$d 件</string>
   <string name="copy_all">全てコピー</string>
   <string name="create_fork">フォークを作成</string>
   <string name="db_migrating">データベースを移行しています…</string>

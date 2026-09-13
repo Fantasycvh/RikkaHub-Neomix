@@ -1218,11 +1218,15 @@ class ChatService(
      * 4. 更新内存态 conversation.compressionSummaries（发送窗口与 UI 据此生效）。
      *
      * @param windowTokens 模型上下文窗口 token 数（调用方用 effectiveContextLength 算好）
+     * @param additionalPrompt 用户附加指令（与 prior 检查点拼接后注入 {additional_context}）
+     * @param targetTokens 摘要目标 token（注入 {target_tokens}）
      * @return 新检查点；无可压缩内容时返回 null
      */
     suspend fun compressToCheckpoint(
         conversationId: Uuid,
         windowTokens: Int,
+        additionalPrompt: String = "",
+        targetTokens: Int = COMPRESS_TARGET_TOKENS,
     ): CompressionSummary? = runCatching {
         val settings = settingsStore.settingsFlow.first()
         val model = settings.findModelById(settings.compressModelId)
@@ -1250,10 +1254,17 @@ class ChatService(
 
         suspend fun compressChunk(chunk: List<UIMessage>): String {
             val contentToCompress = chunk.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
+            val additional = buildString {
+                if (additionalPrompt.isNotBlank()) {
+                    appendLine("Additional instructions from user: $additionalPrompt")
+                    appendLine()
+                }
+                append(priorContext)
+            }.trim()
             val prompt = settings.compressPrompt.applyPlaceholders(
                 "content" to contentToCompress,
-                "target_tokens" to COMPRESS_TARGET_TOKENS.toString(),
-                "additional_context" to priorContext,
+                "target_tokens" to targetTokens.toString(),
+                "additional_context" to additional,
                 "locale" to Locale.getDefault().displayName,
             )
             val result = providerHandler.generateText(
@@ -1454,12 +1465,14 @@ class ChatService(
             ?: settings.getCurrentAssistant()
         val processedParts = preprocessUserInputParts(parts, assistant)
         var edited = false
+        var editedIndex = -1
 
-        val updatedNodes = currentConversation.messageNodes.map { node ->
+        val updatedNodes = currentConversation.messageNodes.mapIndexed { index, node ->
             if (!node.messages.any { it.id == messageId }) {
-                return@map node
+                return@mapIndexed node
             }
             edited = true
+            editedIndex = index
 
             node.copy(
                 messages = node.messages + UIMessage(
@@ -1472,7 +1485,27 @@ class ChatService(
 
         if (!edited) return
 
+        // 编辑落在压缩边界内 -> 摘要已与实际历史不一致，丢弃检查点（回退全量发送）
+        invalidateCheckpointIfWithinBoundary(conversationId, currentConversation, editedIndex)
+
         saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+    }
+
+    /**
+     * 若被改动节点落在压缩边界内（含边界），删除该会话的检查点并清空内存态。
+     *
+     * 摘要反映压缩时刻的历史；边界内消息被编辑/删除后摘要不再准确，继续用它会让 AI
+     * 的上下文与用户所见对不上。失效后回退全量发送，下次达阈值可重新压缩。
+     */
+    private suspend fun invalidateCheckpointIfWithinBoundary(
+        conversationId: Uuid,
+        conversation: Conversation,
+        affectedNodeIndex: Int,
+    ) {
+        if (affectedNodeIndex < 0) return
+        if (!conversation.isWithinCompressionBoundary(affectedNodeIndex)) return
+        conversationRepo.deleteCompressionCheckpoints(conversationId)
+        updateConversationState(conversationId) { it.copy(compressionSummaries = emptyList()) }
     }
 
     suspend fun forkConversationAtMessage(
@@ -1550,6 +1583,13 @@ class ChatService(
             }
             return
         }
+
+        // 删除的消息在压缩边界内 -> 摘要失效（节点消失本身也会让 activeCompression 失效，
+        // 但边界内非边界节点的删除不会触发该判定，故显式清理）
+        val targetIndex = currentConversation.messageNodes.indexOfFirst { node ->
+            node.messages.any { it.id == messageId }
+        }
+        invalidateCheckpointIfWithinBoundary(conversationId, currentConversation, targetIndex)
 
         saveConversation(conversationId, updatedConversation)
     }

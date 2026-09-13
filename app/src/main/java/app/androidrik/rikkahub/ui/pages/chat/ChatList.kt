@@ -100,6 +100,7 @@ import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.ui.components.message.ChatMessage
+import app.androidrik.rikkahub.ui.components.message.CompactionCheckpointRow
 import app.androidrik.rikkahub.ui.components.ui.ErrorCardsDisplay
 import app.androidrik.rikkahub.ui.components.ui.ListSelectableItem
 import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
@@ -284,7 +285,17 @@ private fun ChatListNormal(
             .flatMap { it.models }
             .associateBy { it.id }
     }
-    val lastMessageIndex = conversation.messageNodes.lastIndex
+    // 压缩检查点（design §4.1 界面侧三边界对齐）：
+    // 收起 = 检查点之后的窗口（= AI 实际看到的内容）；展开 = 完整轨迹。
+    // 展开态直接复用同一渲染块 -> 历史消息的编辑/重新生成/删除/分支/收藏等操作全部可用。
+    val activeCheckpoint = conversation.activeCompression()
+    var showCompressedHistory by remember(conversation.id) { mutableStateOf(false) }
+    val visibleNodes = if (activeCheckpoint != null && !showCompressedHistory) {
+        conversation.windowNodes()
+    } else {
+        conversation.messageNodes
+    }
+    val lastMessageIndex = visibleNodes.lastIndex
 
     Box(
         modifier = Modifier
@@ -343,8 +354,20 @@ private fun ChatListNormal(
                     .fillMaxSize()
                     .hazeSource(state = hazeState),
             ) {
+            // 压缩检查点折叠行：展开/收起切换 visibleNodes（历史消息仍是完整可操作的行）
+            if (activeCheckpoint != null) {
+                item(key = "CompactionCheckpoint") {
+                    CompactionCheckpointRow(
+                        messageCount = activeCheckpoint.messageCount,
+                        summaryPreview = activeCheckpoint.content.lineSequence().firstOrNull().orEmpty(),
+                        expanded = showCompressedHistory,
+                        onToggle = { showCompressedHistory = !showCompressedHistory },
+                    )
+                }
+            }
+
             itemsIndexed(
-                items = conversation.messageNodes,
+                items = visibleNodes,
                 key = { index, item -> item.id },
             ) { index, node ->
                 // 哨兵只兜异常高度（防 Int.MAX 崩溃），正常长内容不再被裁剪

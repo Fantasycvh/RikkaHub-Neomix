@@ -326,6 +326,14 @@
   <string name="confirm_delete">삭제 확인</string>
   <string name="copied">복사됨</string>
   <string name="copy">복사</string>
+  <string name="compaction_row_title">이전 %1$d개 메시지 압축됨</string>
+  <string name="compaction_row_expand">압축된 기록 표시</string>
+  <string name="compaction_row_collapse">압축된 기록 숨기기</string>
+  <string name="compaction_preview_user">사용자</string>
+  <string name="compaction_preview_assistant">어시스턴트</string>
+  <string name="compaction_preview_system">시스템</string>
+  <string name="compaction_preview_tool">도구</string>
+  <string name="compaction_preview_attachments">비텍스트 항목 %1$d개</string>
   <string name="copy_all">전체 복사</string>
   <string name="create_fork">포크 생성</string>
   <string name="db_migrating">데이터베이스 마이그레이션 중...</string>

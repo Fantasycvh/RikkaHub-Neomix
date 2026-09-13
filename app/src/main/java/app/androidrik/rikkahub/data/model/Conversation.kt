@@ -145,6 +145,20 @@ data class Conversation(
         return messageNodes.drop(boundaryIndex + 1)
     }
 
+    /**
+     * 判断某节点位置是否落在压缩边界内（含边界节点本身）。
+     *
+     * 用途：编辑/删除边界内的历史消息后，摘要与实际历史不一致（摘要反映的是压缩时刻的内容），
+     * 调用方据此丢弃检查点回退全量发送，避免 AI 的上下文与用户所见对不上。
+     * 无有效检查点时恒为 false。
+     */
+    fun isWithinCompressionBoundary(nodeIndex: Int): Boolean {
+        val checkpoint = activeCompression() ?: return false
+        val boundaryId = checkpoint.boundaryNodeId ?: return false
+        val boundaryIndex = messageNodes.indexOfFirst { it.id.toString() == boundaryId }
+        return boundaryIndex >= 0 && nodeIndex <= boundaryIndex
+    }
+
     companion object {
         fun ofId(
             id: Uuid,

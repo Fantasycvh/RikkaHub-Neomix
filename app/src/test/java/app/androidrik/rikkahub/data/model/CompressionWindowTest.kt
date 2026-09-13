@@ -5,6 +5,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import kotlinx.datetime.Clock
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -109,5 +110,35 @@ class CompressionWindowTest {
         conversation.requestWindowMessages()
         // 轨迹只追加：messageNodes 必须原样保留（可回溯）
         assertEquals(3, conversation.messageNodes.size)
+    }
+
+    // ===== isWithinCompressionBoundary（编辑/删除边界内消息 -> 检查点失效）=====
+
+    @Test
+    fun `nodes within boundary including boundary itself are flagged`() {
+        val nodes = listOf(node("a"), node("b"), node("c"), node("d"))
+        val cp = checkpoint(boundaryNodeId = nodes[1].id.toString())
+        val conversation = conversation(nodes, listOf(cp))
+
+        assertTrue("边界之前", conversation.isWithinCompressionBoundary(0))
+        assertTrue("边界节点本身", conversation.isWithinCompressionBoundary(1))
+        assertFalse("边界之后", conversation.isWithinCompressionBoundary(2))
+        assertFalse("边界之后", conversation.isWithinCompressionBoundary(3))
+    }
+
+    @Test
+    fun `without checkpoint nothing is within boundary`() {
+        val conversation = conversation(listOf(node("a"), node("b")), emptyList())
+        assertFalse(conversation.isWithinCompressionBoundary(0))
+        assertFalse(conversation.isWithinCompressionBoundary(1))
+    }
+
+    @Test
+    fun `expired checkpoint does not flag any node`() {
+        val nodes = listOf(node("a"), node("b"))
+        val cp = checkpoint(boundaryNodeId = Uuid.random().toString())
+        val conversation = conversation(nodes, listOf(cp))
+
+        assertFalse(conversation.isWithinCompressionBoundary(0))
     }
 }

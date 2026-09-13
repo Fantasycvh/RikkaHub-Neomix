@@ -28,6 +28,8 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
+import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
+import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
@@ -206,15 +208,18 @@ class ChatVM(
 
     fun handleCompressContext(additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int): Job {
         return viewModelScope.launch {
-            chatService.compressConversation(
-                _conversationId,
-                conversation.value,
-                additionalPrompt,
-                targetTokens,
-                keepRecentMessages
-            ).onFailure {
-                chatService.addError(it, title = context.getString(R.string.error_title_compress_conversation))
-            }
+            // 检查点式压缩：切分由 token 驱动的保留比例（COMPRESS_RETAIN_RATIO）决定，
+            // keepRecentMessages 不再参与切分（对齐 design-auto-compaction §4.1）。
+            val currentSettings = settings.value
+            val model = currentSettings.getCurrentChatModel()
+            val windowTokens = model?.effectiveContextLength(currentSettings.contextLengthOverride)
+                ?: DEFAULT_CONTEXT_LENGTH
+            chatService.compressToCheckpoint(
+                conversationId = _conversationId,
+                windowTokens = windowTokens,
+                additionalPrompt = additionalPrompt,
+                targetTokens = targetTokens,
+            )
         }
     }
 

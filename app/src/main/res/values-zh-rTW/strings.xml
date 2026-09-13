@@ -363,6 +363,14 @@
   <string name="confirm_delete">確認刪除</string>
   <string name="copied">已複製</string>
   <string name="copy">複製</string>
+  <string name="compaction_row_title">已壓縮早前 %1$d 則訊息</string>
+  <string name="compaction_row_expand">展開被壓縮的歷史</string>
+  <string name="compaction_row_collapse">收起被壓縮的歷史</string>
+  <string name="compaction_preview_user">使用者</string>
+  <string name="compaction_preview_assistant">助手</string>
+  <string name="compaction_preview_system">系統</string>
+  <string name="compaction_preview_tool">工具</string>
+  <string name="compaction_preview_attachments">%1$d 個非文字內容</string>
   <string name="copy_all">複製全部</string>
   <string name="create_fork">建立分支</string>
   <string name="db_migrating">正在移轉資料庫...</string>

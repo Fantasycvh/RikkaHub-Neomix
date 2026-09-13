@@ -365,6 +365,14 @@
   <string name="confirm_delete">Confirm Delete</string>
   <string name="copied">Copied</string>
   <string name="copy">Copy</string>
+  <string name="compaction_row_title">Compressed %1$d earlier messages</string>
+  <string name="compaction_row_expand">Show compressed history</string>
+  <string name="compaction_row_collapse">Hide compressed history</string>
+  <string name="compaction_preview_user">User</string>
+  <string name="compaction_preview_assistant">Assistant</string>
+  <string name="compaction_preview_system">System</string>
+  <string name="compaction_preview_tool">Tool</string>
+  <string name="compaction_preview_attachments">%1$d non-text item(s)</string>
   <string name="copy_all">Copy All</string>
   <string name="create_fork">Create a fork</string>
   <string name="db_migrating">Migrating database...</string>

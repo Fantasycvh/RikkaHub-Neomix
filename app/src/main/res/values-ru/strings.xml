@@ -326,6 +326,14 @@
   <string name="confirm_delete">Подтвердить удаление</string>
   <string name="copied">Скопировано</string>
   <string name="copy">Копировать</string>
+  <string name="compaction_row_title">Сжато %1$d сообщений</string>
+  <string name="compaction_row_expand">Показать сжатую историю</string>
+  <string name="compaction_row_collapse">Скрыть сжатую историю</string>
+  <string name="compaction_preview_user">Пользователь</string>
+  <string name="compaction_preview_assistant">Ассистент</string>
+  <string name="compaction_preview_system">Система</string>
+  <string name="compaction_preview_tool">Инструмент</string>
+  <string name="compaction_preview_attachments">%1$d нетекстовых элементов</string>
   <string name="copy_all">Копировать всё</string>
   <string name="create_fork">Создать форк</string>
   <string name="db_migrating">Перенос базы данных…</string>
