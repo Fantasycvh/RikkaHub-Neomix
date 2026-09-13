@@ -34,6 +34,8 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.handleMessageChunk
 import app.androidrik.ai.ui.limitContext
+import app.androidrik.rikkahub.data.ai.prompts.isCompactionCheckpointPreamble
+import app.androidrik.rikkahub.data.ai.prompts.partitionCheckpointMessages
 import app.androidrik.rikkahub.data.ai.transformers.InputMessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.OutputMessageTransformer
@@ -536,7 +538,12 @@ class GenerationHandler(
             if (system.isNotBlank()) {
                 add(UIMessage.system(prompt = system).copy(isSynthetic = true))
             }
-            addAll(messages.limitContext(assistant.contextMessageLimit))
+            // 压缩检查点合成消息固定在窗口最前，且不参与 limitContext 截断：
+            // limitContext 保留尾部（subList(startIndex, size)），若把检查点一起传入会被截掉，
+            // 导致模型看不到被压缩的历史（design §4.2 与 limitContext 的两层分工）。
+            val (checkpointMessages, windowMessages) = messages.partitionCheckpointMessages()
+            addAll(checkpointMessages)
+            addAll(windowMessages.limitContext(assistant.contextMessageLimit))
         }.transforms(
             transformers = transformers,
             context = context,

@@ -48,6 +48,24 @@ internal fun compactionCheckpointBody(text: String): String {
 }
 
 /**
+ * 分离压缩检查点合成消息与普通窗口消息（发送前组装用）。
+ *
+ * 检查点必须固定在窗口最前且**不参与 limitContext 截断**——limitContext 保留尾部，
+ * 若把检查点一起传入会被截掉，模型将看不到被压缩的历史。
+ *
+ * @return (检查点消息, 其余消息)，检查点按原相对顺序在前
+ */
+internal fun List<app.androidrik.ai.ui.UIMessage>.partitionCheckpointMessages():
+    Pair<List<app.androidrik.ai.ui.UIMessage>, List<app.androidrik.ai.ui.UIMessage>> =
+    partition { message ->
+        message.isSynthetic &&
+            message.role == app.androidrik.ai.core.MessageRole.USER &&
+            message.parts.any { part ->
+                part is app.androidrik.ai.ui.UIMessagePart.Text && part.text.isCompactionCheckpointPreamble()
+            }
+    }
+
+/**
  * 默认压缩提示词：结构化 8 段（对齐 deepseek-harness compaction-basic）。
  *
  * 比 fork 旧版（自由文本 7 条要求）更能保住可续接的事实——固定分节强制模型保留

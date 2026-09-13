@@ -759,12 +759,16 @@ class ChatService(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
-                messages = conversation.currentMessages.let {
-                    if (messageRange != null) {
+                messages = if (messageRange != null) {
+                    // 重新生成历史消息：保持原始轨迹（被压缩的原始消息仍在，上下文完整）
+                    // —— 压缩是「发送窗口」优化，不应改变对历史的重新生成语义
+                    conversation.currentMessages.let {
                         it.subList(messageRange.start, messageRange.endInclusive + 1)
-                    } else {
-                        it
                     }
+                } else {
+                    // 发送窗口：压缩检查点作为新段起点，边界之前的旧历史不发送（design §4.1 三边界对齐）；
+                    // 无有效检查点时返回全量（与旧行为一致）
+                    conversation.requestWindowMessages()
                 },
                 assistant = assistant,
                 conversationSystemPrompt = conversation.customSystemPrompt,

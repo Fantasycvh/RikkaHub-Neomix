@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.data.ai.prompts
 
+import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -74,5 +77,42 @@ class CompressPromptTest {
     @Test
     fun `body extraction tolerates missing tags`() {
         assertEquals("plain", compactionCheckpointBody("plain"))
+    }
+
+    // ===== partitionCheckpointMessages（发送前分离，避免 limitContext 截掉检查点）=====
+
+    private fun user(text: String, synthetic: Boolean = false) = UIMessage(
+        role = MessageRole.USER,
+        parts = listOf(UIMessagePart.Text(text)),
+        isSynthetic = synthetic,
+    )
+
+    @Test
+    fun `partition separates synthetic checkpoint from ordinary messages`() {
+        val checkpoint = user(buildCompactionCheckpointText("summary"), synthetic = true)
+        val messages = listOf(checkpoint, user("hello"), user("world"))
+        val (checkpoints, rest) = messages.partitionCheckpointMessages()
+
+        assertEquals(1, checkpoints.size)
+        assertEquals(2, rest.size)
+        assertTrue(checkpoints.first() === checkpoint)
+    }
+
+    @Test
+    fun `partition keeps ordinary synthetic message in window`() {
+        // isSynthetic 但非检查点前导语（如 workspaceReminder/时间提醒）应留在窗口内
+        val syntheticNonCheckpoint = user("workspace reminder", synthetic = true)
+        val (checkpoints, rest) = listOf(syntheticNonCheckpoint, user("hi")).partitionCheckpointMessages()
+
+        assertTrue(checkpoints.isEmpty())
+        assertEquals(2, rest.size)
+    }
+
+    @Test
+    fun `partition treats non-synthetic checkpoint-like text as ordinary`() {
+        // 用户手打同样文字（非 synthetic）不应被当作检查点
+        val (checkpoints, rest) = listOf(user(buildCompactionCheckpointText("x"))).partitionCheckpointMessages()
+        assertTrue(checkpoints.isEmpty())
+        assertEquals(1, rest.size)
     }
 }
