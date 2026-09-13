@@ -266,6 +266,8 @@ Phase 0 的估算底座**可独立交付**：用户先看到「上下文用了�
 
 即「Rust 编成 .so 供 Kotlin 调用」这条最后一公里有成熟先例（TikZ 桥）；但 app 的 .so 是**手工编译后签入**的，可复现性差，正经做需把 `cargo-ndk` 纳入 `scripts/build.sh`（并要求构建环境有 Rust 工具链），两个 ABI 各自交叉编译。
 
+**开发机 Rust 环境已核实就绪（2026-09-13）**：`~/.rustup/toolchains/` 已装 `stable-x86_64-pc-windows-msvc` + `gnu` 两个 toolchain，`cargo`/`rustc` **1.97.0** 可用；`~/.cargo/` 有 `registry` 与 `git` 缓存（说明此前编译过 Rust 项目，依赖缓存已热）。**但 PATH 未配 shim**（`~/.cargo/bin` 空，可执行真身在 `~/.rustup/toolchains/.../bin/`），用时需把该目录加进 PATH 或用全路径。引入 Android 交叉编译只需 `rustup target add aarch64-linux-android x86_64-linux-android` + `cargo install cargo-ndk`——接入成本比预估更低（工具链/缓存已就位）。
+
 ### 6.2 对本文三个议题的收益判定
 
 | 议题 | Rust 收益 | 理由 |
