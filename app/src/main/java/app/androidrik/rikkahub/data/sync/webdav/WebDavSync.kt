@@ -14,6 +14,7 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.WebDavConfig
 import app.androidrik.rikkahub.data.datastore.migration.SettingsJsonMigrator
+import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.utils.fileSizeToString
 import java.io.File
 import java.io.FileInputStream
@@ -32,9 +33,10 @@ class WebDavSync(
     private val json: Json,
     private val context: Context,
     private val httpClient: HttpClient,
+    private val appDatabase: AppDatabase,
 ) {
     /** 打包/恢复委托给共享引擎（与 S3Sync 共用同一实现） */
-    private val archiveEngine = BackupArchiveEngine(settingsStore, json, context)
+    private val archiveEngine = BackupArchiveEngine(settingsStore, json, context, appDatabase)
 
     private fun getClient(config: WebDavConfig): WebDavClient {
         return WebDavClient(config, httpClient)

@@ -5,6 +5,7 @@ import android.util.Log
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.migration.SettingsJsonMigrator
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.files.SkillPaths
 import app.androidrik.rikkahub.utils.fileSizeToString
@@ -36,6 +37,7 @@ internal class BackupArchiveEngine(
     private val settingsStore: SettingsStore,
     private val json: Json,
     private val context: Context,
+    private val appDatabase: AppDatabase,
 ) {
     private val TAG = "BackupArchive"
 
@@ -90,11 +92,15 @@ internal class BackupArchiveEngine(
         withContext(Dispatchers.IO) {
             Log.i(TAG, "restoreFromBackupFile: Starting from ${backupFile.absolutePath}")
             var workspaceFilesRestored = 0
+            // 数据库文件先落到 cacheDir 暂存，等整个 zip 读完、确认拿到主库后再关库交换。
+            // 这样「读到一半失败」不会先把现库关掉却没有可用的替代文件。
+            val stagedDatabaseFiles = linkedMapOf<String, File>()
 
-            ZipInputStream(FileInputStream(backupFile)).use { zipIn ->
-                var entry: ZipEntry?
-                while (zipIn.nextEntry.also { entry = it } != null) {
-                    entry?.let { zipEntry ->
+            try {
+                ZipInputStream(FileInputStream(backupFile)).use { zipIn ->
+                    var entry: ZipEntry?
+                    while (zipIn.nextEntry.also { entry = it } != null) {
+                        val zipEntry = entry ?: continue
                         Log.i(TAG, "restoreFromBackupFile: entry ${zipEntry.name}")
                         when (zipEntry.name) {
                             "settings.json" -> {
@@ -114,22 +120,15 @@ internal class BackupArchiveEngine(
 
                             "rikka_hub.db", "rikka_hub-wal", "rikka_hub-shm" -> {
                                 if (BackupItem.DATABASE in items) {
-                                    val target = when (zipEntry.name) {
-                                        "rikka_hub.db" -> context.getDatabasePath("rikka_hub")
-                                        "rikka_hub-wal" -> File(
-                                            context.getDatabasePath("rikka_hub").parentFile,
-                                            "rikka_hub-wal",
-                                        )
-
-                                        else -> File(
-                                            context.getDatabasePath("rikka_hub").parentFile,
-                                            "rikka_hub-shm",
-                                        )
-                                    }
-                                    Log.i(TAG, "restoreFromBackupFile: Restoring ${zipEntry.name} -> ${target.absolutePath}")
-                                    target.parentFile?.mkdirs()
-                                    FileOutputStream(target).use { zipIn.copyTo(it) }
-                                    Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${target.length()} bytes)")
+                                    // 仅暂存，不直接写现库（现库正被 Room 连接持有）
+                                    val staged = File(context.cacheDir, "restore_${zipEntry.name}")
+                                    FileOutputStream(staged).use { zipIn.copyTo(it) }
+                                    stagedDatabaseFiles[zipEntry.name] = staged
+                                    Log.i(
+                                        TAG,
+                                        "restoreFromBackupFile: staged ${zipEntry.name} " +
+                                            "(${staged.length()} bytes)",
+                                    )
                                 }
                             }
 
@@ -162,19 +161,91 @@ internal class BackupArchiveEngine(
                         zipIn.closeEntry()
                     }
                 }
+
+                // 关库 → 清陈旧 -wal/-shm → 放入暂存的备份数据库
+                if (BackupItem.DATABASE in items) {
+                    applyStagedDatabaseFiles(stagedDatabaseFiles)
+                }
+
+                Log.i(TAG, "restoreFromBackupFile: completed")
+                if (workspaceFilesRestored > 0) {
+                    // rootfs 不在备份内（见设计稿）：工作区文件可用，但 shell/终端需重装 rootfs
+                    Log.i(
+                        TAG,
+                        "restoreFromBackupFile: $workspaceFilesRestored workspace file(s) restored - " +
+                            "rootfs NOT included; reinstall to use shell/terminal",
+                    )
+                }
+                workspaceFilesRestored
+            } finally {
+                stagedDatabaseFiles.values.forEach { it.takeIf(File::exists)?.delete() }
+            }
+        }
+
+    /**
+     * 用暂存的备份数据库文件替换现库。
+     *
+     * **为什么必须关库**：恢复期间 Room 连接一直开着，持有旧库的页缓存与 `-wal`/`-shm`
+     * 文件映射。若原地覆盖主库、而备份又未带 `-wal`（上游导出包即只含主库），重启时
+     * 那条陈旧 WAL 会被回放，把刚恢复的数据整体盖掉——表现为「提示恢复成功、聊天记录没变」。
+     * 故先 `close()`（WAL 模式下会 checkpoint 并释放文件），清掉残留伴随文件，再放入备份。
+     *
+     * **失败顺序**：先把备份复制到目标目录内的临时文件（同文件系统，重命名快且原子），
+     * 再关库；这样「复制失败」发生在关库之前，不会留下一个已关闭、无法使用却又没换成功的库。
+     *
+     * 调用方随后**必须重启应用**（现流程已有「重启」弹窗）——连接已关闭，不能继续使用。
+     */
+    private fun applyStagedDatabaseFiles(staged: Map<String, File>) {
+        val stagedMain = staged["rikka_hub.db"] ?: run {
+            Log.w(TAG, "applyStagedDatabaseFiles: no staged main db, skip database replace")
+            return
+        }
+        val dbPath = context.getDatabasePath("rikka_hub")
+        val dbDir = dbPath.parentFile ?: return
+        dbDir.mkdirs()
+
+        // 1) 先把全部暂存文件复制到目标目录（重命名前的重活全在关库之前完成）
+        val prepared = staged.mapValues { (name, src) ->
+            val tmp = File(dbDir, "$name.restore-tmp")
+            try {
+                src.copyTo(tmp, overwrite = true)
+            } catch (e: Exception) {
+                Log.e(TAG, "applyStagedDatabaseFiles: staging $name failed", e)
+                throw Exception("Failed to prepare database file $name: ${e.message}")
+            }
+            tmp
+        }
+        val preparedMain = prepared.getValue("rikka_hub.db")
+
+        try {
+            // 2) 释放连接；失败则中止（继续覆盖可能得到「新旧混杂」的损坏库）
+            try {
+                appDatabase.close()
+                Log.i(TAG, "applyStagedDatabaseFiles: database closed")
+            } catch (e: Exception) {
+                Log.e(TAG, "applyStagedDatabaseFiles: closing database failed", e)
+                throw Exception("Failed to close database before restore: ${e.message}")
             }
 
-            Log.i(TAG, "restoreFromBackupFile: completed")
-            if (workspaceFilesRestored > 0) {
-                // rootfs 不在备份内（见设计稿）：工作区文件可用，但 shell/终端需重装 rootfs
-                Log.i(
-                    TAG,
-                    "restoreFromBackupFile: $workspaceFilesRestored workspace file(s) restored - " +
-                        "rootfs NOT included; reinstall to use shell/terminal",
-                )
+            // 3) 清理陈旧伴随文件（备份未提供时它们会盖掉恢复结果）
+            val deleted = DatabaseRestoreFiles.deleteSidecarFiles(dbDir, "rikka_hub")
+            if (deleted.isNotEmpty()) {
+                Log.i(TAG, "applyStagedDatabaseFiles: removed stale ${deleted.joinToString()}")
             }
-            workspaceFilesRestored
+
+            // 4) 换到位：同目录内重命名（回退复制）——主库必需，wal/shm 备份里带则一并还原
+            DatabaseRestoreFiles.moveIntoPlace(preparedMain, dbPath)
+            DatabaseRestoreFiles.sidecarSuffixes().forEach { suffix ->
+                prepared["rikka_hub$suffix"]?.let {
+                    DatabaseRestoreFiles.moveIntoPlace(it, File(dbDir, "rikka_hub$suffix"))
+                }
+            }
+            Log.i(TAG, "applyStagedDatabaseFiles: database replaced (${dbPath.length()} bytes)")
+        } finally {
+            // 未换走的临时文件（异常路径）不留在数据库目录里
+            prepared.values.forEach { it.takeIf(File::exists)?.delete() }
         }
+    }
 
     // ---- 打包辅助 ----
 
