@@ -5,7 +5,6 @@
   <string name="about_page_system">System</string>
   <string name="about_page_title">About</string>
   <string name="about_page_version">Version</string>
-  <string name="about_page_website">Website</string>
   <string name="add">Add</string>
   <string name="app_name">RikkaHub Plus</string>
   <string name="asr_button_content_description">Speech Recognition</string>
@@ -908,8 +907,6 @@
   <string name="setting_page_preferences_general_desc">Interaction behavior, scrolling, input settings</string>
   <string name="setting_page_preferences_ui">UI Preferences</string>
   <string name="setting_page_preferences_ui_desc">Message display, fonts, code blocks</string>
-  <string name="setting_page_documentation">Documentation</string>
-  <string name="setting_page_documentation_desc">View app usage instructions and help documentation</string>
   <string name="setting_page_dynamic_color">Dynamic Color</string>
   <string name="setting_page_dynamic_color_desc">Generate the app theme colors dynamically from your wallpaper</string>
   <string name="setting_page_extensions">Extensions</string>
@@ -920,7 +917,6 @@
   <string name="setting_page_mcp_desc">Configure MCP Servers</string>
   <string name="setting_page_message_display_settings">Message Display</string>
   <string name="setting_page_model_and_services">Models &amp; Services</string>
-  <string name="setting_page_no_share_app">No sharing app found</string>
   <string name="setting_page_providers">Providers</string>
   <string name="setting_page_providers_desc">Configure AI providers</string>
   <string name="setting_page_request_logs">Request Logs</string>
@@ -936,9 +932,6 @@
   <string name="setting_page_search_test_query_hint">Enter test query…</string>
   <string name="setting_page_search_test_run">Run Test</string>
   <string name="setting_page_search_title">Search Service</string>
-  <string name="setting_page_share">Share</string>
-  <string name="setting_page_share_desc">Share this app with friends</string>
-  <string name="setting_page_share_text">RikkaHub - Open Source Android AI Assistant\n\nWebsite: https://rikka-ai.com/</string>
   <string name="setting_page_theme_setting">Theme</string>
   <string name="setting_page_theme_setting_desc">Customize app color scheme</string>
   <string name="setting_theme_page_preset_themes">Preset Themes</string>
