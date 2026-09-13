@@ -1,8 +1,8 @@
 # RikkaHub TikZ 图表渲染：Tectonic 中文路线探索与 Android 集成失败复盘
 
-> 日期：2026-08-13 ~ 2026-08-14
-> 状态：**WebView 路线放弃；2026-08-28 完成重启评估（见文末第八节），倾向方案 B（native Tectonic + dvisvgm）**
-> 目的：沉淀"为什么走不通"的技术事实，为未来重启提供完整决策依据。
+> 日期：2026-08-13 ~ 2026-08-14（初稿）
+> 状态：**WebView 路线放弃；已重启并完成落地（2026-08-28 起，最终链「native Tectonic + mupdf SVG 桥」）**——`dvisvgm` 矢量链已废弃，SVG 由自写 JNI 桥调 mupdf `fz_new_svg_device`（`TEXT_AS_PATH`）生成；含 preview 裁剪（`CACHE_VERSION v5`）+ `#hex` 运行时归一化 + 字体 bundle 补全。落地清单见「八」8.4.9/8.4.10；**改渲染输出必递增 CACHE_VERSION**。
+> 目的：沉淀"为什么走不通"的技术事实 + 重启后的完整落地记录。
 
 ---
 

@@ -1,7 +1,7 @@
-# 上游变更分析（综合版，2.4.11 → 2.5.1+，2026-09-12 重写）
+# 上游变更分析（综合版，2.4.11 → 2.5.1+，2026-09-12 重写，2026-09-14 复核）
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
-> 当前 master 同步点：`a9b35ba2`（2.5.1，2026-09-10 ff-only 推送）。上游其后 2 提交未同步：`46cacf23`（deepseek-flash，已手工吸收 `e9a39751`）、`2689e753`（AGENTS.md 支持，已手工吸收 `e8e047e5`）。
+> 当前 master 同步点：`a9b35ba2`（2.5.1，2026-09-10 ff-only 推送）。上游其后 **6 提交未同步**（2026-09-14 `git fetch` 发现，见「待吸收」）：`46cacf23`（deepseek-flash，已手工吸收 `e9a39751`）、`2689e753`（AGENTS.md 支持，已手工吸收 `e8e047e5`）、`288a034c`/`bc9d2582`/`d6ba728e`（依赖更新）、`bd936caa`（非聊天请求 session-id 头修复）。
 > 决策原则：**等上游稳定后按需吸收**；触及 `GenerationHandler.kt` / `ChatService.kt` / `ChatInput.kt`（fork 重改最重的文件）一律手工适配，不直接 cherry-pick；cherry-pick 需包名适配（`me.rerere.*` → `app.androidrik.*`）。
 > **判定方法（2026-09-12 纠正）**：fork 的"已吸收"以**代码等价核对**为准，**不用 `git merge-base --is-ancestor`**——fork 走手工直套/移植，上游 commit 不是 fork 分支祖先，merge-base 对已吸收项恒判"未吸收"（误报 glm5.3/hy4/kimi k3/deepseek v4.1 flash 等）。核对方式：grep fork 代码中对应定义/注释（如「对齐上游 xxx」）或 diff 等价。
 
@@ -14,8 +14,9 @@
 | 2.4.16（17 提交） | `5662945c`..`08c2648b` | 54 文件 +839/-301 | TTS 重试、Gemini 混合工具后续 | 已吸收核心件 |
 | 2.5.0（16 提交） | `b153028d`..`12ee935e` | — | 终端 Tab 标题、审批修复、**消息队列/语音/ASR（fork 自研落地）** | 核心功能已吸收/自研 |
 | 2.5.0 后批（20 提交） | `12ee935e`..`6e0aa7d4` | 2026-09-09 | workspace 预览/Shell 兼容、时间提醒间隔、多选、工具详情/回执、模型注册 | 大半已吸收（见清单） |
-| 2.5.1（3 提交） | `6e0aa7d4`..`a9b35ba2` | 2026-09-10 | DEV badge、翻译快捷方式 + RouteActivity 统一导航 | 未吸收（D/B 候选） |
+| 2.5.1（3 提交） | `6e0aa7d4`..`a9b35ba2` | 2026-09-10 | DEV badge、翻译快捷方式 + RouteActivity 统一导航 | 已吸收（见清单） |
 | 2.5.1 后（2 提交） | `a9b35ba2`..`2689e753` | 2026-09-11+ | deepseek-flash 注册、AGENTS.md 支持 | 均已吸收（`e9a39751`/`e8e047e5`） |
+| **2.5.1 后再 4 提交** | `2689e753`..`bd936caa` | 2026-09-13 | 依赖更新（Gradle/lib.versions）、非聊天请求 session-id 头修复 | **未同步**（2026-09-14 fetch 发现，见「待吸收」） |
 
 ## 已吸收（合并清单，**含 2026-09 全量**）
 
@@ -74,7 +75,7 @@
 
 | 提交 | 内容 | 备注 |
 |---|---|---|
-| `20e552f9` | X-Session-ID 会话头 | 搁置（fork 无 sessionId 概念，无 opencode 端点） |
+| `20e552f9` | X-Session-ID 会话头 | 搁置（fork 无 sessionId 概念，无 opencode 端点）；**2026-09-14 上游 `bd936caa` 又修「非聊天请求不带 session-id 头」——与本项同主题，若将来做 sessionId 一并评估** |
 
 ### 第三批（大改/暂缓）
 
@@ -83,6 +84,17 @@
 | ~~`7038e981` / `03246406`~~ | workspace HTML 预览 / Shell 兼容模式+DB 迁移 | **已吸收（2026-09-12）**：b2434dce（SVG 路由+预览/源码切换+WebView 隔离加载）、e419085f（DB 24→25 + shell_compatibility_mode + PROOT_NO_SECCOMP + 详情页开关 + 6 语言）；Shell 兼容模式在 KernelSU/proot 5.1.0 下有 getcwd/chdir ENOSYS 固有限制（默认 seccomp 模式正常，详见 roadmap） |
 | ~~`3896b6d6`~~ | Imggen 长按多选 | **已吸收（2026-09-12）**：78b3fbf9（长按多选+批量删除，适配 fork `GeneratedImage.id` 为 Int；另有 a18a3193 修点击穿透/全选去重，SVG 列表缩略图见 roadmap） |
 | ~~`45275025` / `019c46ae`~~ 上下文限制文案 / /skills 免审批 | **已放弃（2026-09-12）**：用户决策——fork 该页/该白名单自有定制，不跟 |
+
+### 2026-09-14 新发现：2.5.1 后再 4 提交（未同步）
+
+`git fetch upstream` 后 `master..upstream/master` = 6 提交，其中前 2 个（`46cacf23`/`2689e753`）此前已手工吸收，**后 4 个为本次新发现**：
+
+| 提交 | 内容 | 评估 |
+|---|---|---|
+| `bd936caa` | **fix: 修复部分非聊天请求不带 session id 头的问题**（`Provider.kt`/`GenerationLoop.kt`/`ChatService.kt` + 测试） | **值得核**：fork 是否有非聊天请求该带 session-id（标题/建议/OCR/压缩等）却漏了的情形？fork 无 opencode 端点概念，但若 provider 端要求该头则同踩。**需先核实 fork 的请求头组装**再决定是否吸收 |
+| `d6ba728e` | 依赖更新（`FloatingWindow.kt`/`Theme.kt`/`common/build.gradle.kts`/lib.versions） | 低优先：`FloatingWindow`/`Theme` 是 fork 定制/曾对齐过的文件，需看具体依赖版本与改动 |
+| `288a034c` + `bc9d2582` | 依赖更新 + **修复误删 `lib.versions.toml`**（后者是前者的事故回滚） | **不吸收**：纯依赖版本变动（含一次事故与修复），合并净效果有限；若需某依赖版本单独评估 |
+| `2689e753` 起算的同步动作 | — | 同步方式仍是 ff-only：`git fetch upstream && git checkout master && git merge --ff-only upstream/master && git push origin master`（见下） |
 
 ## 同步方式（ff-only）
 

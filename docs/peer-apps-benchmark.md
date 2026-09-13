@@ -92,13 +92,17 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 
 ## 四、落地顺序建议
 
+> **落地状态（2026-09-14 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；④ 的 **WifiLock 已落地**（`ee1c9736`，KeepAliveService 持 `WIFI_MODE_FULL_HIGH_PERF`）；②⑤③⑥ 仍待动手（② 的 ContextBudgetPlanner 与终端 URL 点击待做；⑥ MCP host 前置=AI 后台任务三件套）。
+
 | # | 来源 | 内容 | 成本 |
 |---|---|---|---|
-| 1 | 上游 `3a533a6a` | 终端多 Tab 会话管理（已在 master，待包名适配吸收） | 低 |
+| 1 | 上游 `3a533a6a` | 终端多 Tab 会话管理 | ~~低~~ ✅ **已落地**（`fbfcde5e`） |
 | 2 | rikkahub-agent | 终端 URL 点击（单文件）、ContextBudgetPlanner（152 行 + 测试） | 低 |
 | 3 | rikkahub-agent | LoopGuard、工具审批模型、AgentRun 账本（等有 Cron/后台入口） | 中 |
-| 4 | SoLab | 保活补强（WifiLock + specialUse 决策依据）、ToolCallLoopGuard、工具结果外置 + 反翻页 | 低-中 |
+| 4 | SoLab | 保活补强（**WifiLock ✅ 已落地 `ee1c9736`** + specialUse 决策依据）、ToolCallLoopGuard、工具结果外置 + 反翻页 | 低-中 |
 | 5 | SoLab | 世界书 seed 三重迁移、previewToken 审批、schema 三档加载 | 中 |
 | 6 | SoLab | MCP host 模式（手机当桌面 AI 工具箱） | 高，按需 |
+
+**LoopGuard 移植提醒**：必须带 SoLab 2.3 的 `ToolCallLoopGuard.forget()` 补丁（失败调用移出指纹窗口，见本文附录）——否则网络恢复后相同参数的合理重试会被误判 `LOOP_DETECTED`。
 
 关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据）。
