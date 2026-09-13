@@ -47,6 +47,9 @@ class ConversationRepository(
     companion object {
         private const val PAGE_SIZE = 20
         private const val INITIAL_LOAD_SIZE = 40
+
+        /** 签名分隔符（控制字符 U+0001，JSON 与 UUID 中不会出现，避免拼接歧义） */
+        internal const val SEP = "\u0001"
     }
 
     suspend fun getRecentConversations(assistantId: Uuid, limit: Int = 10): List<Conversation> {
@@ -308,9 +311,12 @@ class ConversationRepository(
             conversationDAO.update(
                 conversationToConversationEntity(conversation)
             )
-            // 删除旧的节点，插入新的节点
-            messageNodeDAO.deleteByConversation(conversation.id.toString())
-            saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
+            // 增量保存（不再删全表重插；见 saveMessageNodes）。
+            // **保护**：messageNodes 为空时不动节点——避免误传「轻量 Conversation」
+            // （如 conversationSummaryToConversation 产物）导致整会话节点被清空（不可逆）。
+            if (conversation.messageNodes.isNotEmpty()) {
+                saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
+            }
         }
         messageFtsManager.indexConversation(conversation)
     }
@@ -557,17 +563,50 @@ class ConversationRepository(
         }
     }
 
+    /**
+     * 增量保存消息节点：只写「与库中公共前缀之后」的部分，并清理已不存在的尾部节点。
+     *
+     * **为何**：原实现每次保存都 `deleteByConversation` **删除全表再按下标重插**——
+     * 5000 节点的会话发一条消息就重写 5000 行；且该写法意味着
+     * 「内存列表 ≡ 全量」是写入侧依赖的不变量（窗口化前置障碍）。
+     *
+     * 算法：求「库中签名序列」与「内存签名序列」的公共**内容**前缀
+     * （签名 = id + select_index + messages，盖住「编辑后候选变但 id 不变」）
+     * -> 删除库中前缀之后的旧行 -> 插入内存中前缀之后的新行。
+     * 常见场景（尾部追加/修改最后一条）即只写 1 行。
+     *
+     * `node_index` 用**绝对位置**（common + i）而非分片内下标，为将来窗口化留余地。
+     */
     private suspend fun saveMessageNodes(conversationId: String, nodes: List<MessageNode>) {
-        val entities = nodes.mapIndexed { index, node ->
+        val existing = messageNodeDAO.getNodeSignaturesOfConversation(conversationId)
+        val incoming = nodes.map { node ->
+            node.id.toString() + SEP + node.selectIndex + SEP + JsonInstant.encodeToString(node.messages)
+        }
+        val common = commonPrefixLength(existing, incoming)
+
+        // 库中前缀之后的旧行已不存在于内存 -> 删除（含 node_index = common）
+        if (common < existing.size) {
+            messageNodeDAO.deleteFromIndex(conversationId, common)
+        }
+        if (common >= nodes.size) return
+        val entities = nodes.drop(common).mapIndexed { offset, node ->
             MessageNodeEntity(
                 id = node.id.toString(),
                 conversationId = conversationId,
-                nodeIndex = index,
+                nodeIndex = common + offset,
                 messages = JsonInstant.encodeToString(node.messages),
                 selectIndex = node.selectIndex
             )
         }
         messageNodeDAO.insertAll(entities)
+    }
+
+    /** 两个签名序列的公共前缀长度（签名 = id + select_index + messages） */
+    private fun commonPrefixLength(a: List<String>, b: List<String>): Int {
+        val max = minOf(a.size, b.size)
+        var i = 0
+        while (i < max && a[i] == b[i]) i++
+        return i
     }
 }
 

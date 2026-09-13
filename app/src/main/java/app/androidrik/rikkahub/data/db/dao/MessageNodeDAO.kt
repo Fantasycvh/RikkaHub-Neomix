@@ -40,6 +40,22 @@ interface MessageNodeDAO {
     @Query("DELETE FROM message_node WHERE id = :nodeId")
     suspend fun deleteById(nodeId: String)
 
+    /**
+     * 按 node_index 升序返回该会话全部节点的 id + 内容摘要（增量保存时求公共前缀）。
+     *
+     * 同时返回 `messages`：**只比 id 不够**——编辑消息时节点 id 不变（仅追加候选），
+     * 只比 id 会误判为「未变化」而跳过写入。
+     */
+    @Query(
+        "SELECT id || CHAR(1) || select_index || CHAR(1) || messages FROM message_node " +
+            "WHERE conversation_id = :conversationId ORDER BY node_index ASC"
+    )
+    suspend fun getNodeSignaturesOfConversation(conversationId: String): List<String>
+
+    /** 删除 node_index >= :fromIndex 的节点（增量保存：清理已不存在的尾部节点） */
+    @Query("DELETE FROM message_node WHERE conversation_id = :conversationId AND node_index >= :fromIndex")
+    suspend fun deleteFromIndex(conversationId: String, fromIndex: Int)
+
     // 使用 @RawQuery 绕过 Room 编译期校验，以便使用 json_each() 虚拟表
     @RawQuery
     suspend fun getTokenStatsRaw(query: SupportSQLiteQuery): MessageTokenStats
