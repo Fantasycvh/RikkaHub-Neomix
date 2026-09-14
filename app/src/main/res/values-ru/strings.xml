@@ -69,6 +69,7 @@
   <string name="assistant_page_custom_headers">Пользовательские заголовки</string>
   <string name="assistant_page_default_assistant">Ассистент по умолчанию</string>
   <string name="assistant_page_delete">Удалить</string>
+  <string name="assistant_page_copy_memory_id">Скопировать ID памяти</string>
   <string name="assistant_page_delete_body">Удалить текст</string>
   <string name="assistant_page_delete_dialog_text">Вы уверены, что хотите удалить этого ассистента? Это действие нельзя отменить.</string>
   <string name="assistant_page_delete_header">Удалить заголовок</string>

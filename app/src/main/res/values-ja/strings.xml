@@ -69,6 +69,7 @@
   <string name="assistant_page_custom_headers">カスタムヘッダー</string>
   <string name="assistant_page_default_assistant">デフォルトアシスタント</string>
   <string name="assistant_page_delete">削除</string>
+  <string name="assistant_page_copy_memory_id">記憶 ID をコピー</string>
   <string name="assistant_page_delete_body">ボディを削除</string>
   <string name="assistant_page_delete_dialog_text">このアシスタントを削除してもよろしいですか？この操作は元に戻せません。</string>
   <string name="assistant_page_delete_header">ヘッダーを削除</string>

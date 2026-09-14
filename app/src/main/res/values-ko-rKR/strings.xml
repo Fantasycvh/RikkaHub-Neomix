@@ -69,6 +69,7 @@
   <string name="assistant_page_custom_headers">사용자 정의 헤더</string>
   <string name="assistant_page_default_assistant">기본 어시스턴트</string>
   <string name="assistant_page_delete">삭제</string>
+  <string name="assistant_page_copy_memory_id">기억 ID 복사</string>
   <string name="assistant_page_delete_body">본문 삭제</string>
   <string name="assistant_page_delete_dialog_text">정말 이 어시스턴트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</string>
   <string name="assistant_page_delete_header">헤더 삭제</string>

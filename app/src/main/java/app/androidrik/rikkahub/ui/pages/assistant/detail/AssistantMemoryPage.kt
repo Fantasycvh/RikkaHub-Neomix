@@ -1,19 +1,18 @@
 package app.androidrik.rikkahub.ui.pages.assistant.detail
 
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.PencilEdit01
-import me.rerere.hugeicons.stroke.Add01
-import me.rerere.hugeicons.stroke.Delete01
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -37,7 +36,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,11 +51,19 @@ import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
+import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.EditStateContent
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import app.androidrik.rikkahub.utils.writeClipboardText
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.Copy01
+import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.PencilEdit01
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+
 
 @Composable
 fun AssistantMemoryPage(id: String) {
@@ -409,6 +418,10 @@ private fun MemoryItem(
     onEditMemory: (AssistantMemory) -> Unit,
     onDeleteMemory: (AssistantMemory) -> Unit
 ) {
+    val context = LocalContext.current
+    val toaster = LocalToaster.current
+    val copiedText = stringResource(R.string.copied)
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CustomColors.cardColorsOnSurfaceContainer
@@ -424,10 +437,29 @@ private fun MemoryItem(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = "#${memory.id}",
-                    style = MaterialTheme.typography.titleMediumEmphasized,
-                )
+                // id 是随机 opaque token、不便记忆——整行可点复制，方便用户粘到对话里引用该条记忆
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            context.writeClipboardText(memory.id)
+                            toaster.show(copiedText)
+                        }
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "#${memory.id}",
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                    )
+                    Icon(
+                        imageVector = HugeIcons.Copy01,
+                        contentDescription = stringResource(R.string.assistant_page_copy_memory_id),
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     text = memory.content,
 

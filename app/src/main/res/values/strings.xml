@@ -71,6 +71,7 @@
   <string name="assistant_page_custom_headers">Custom Headers</string>
   <string name="assistant_page_default_assistant">Default Assistant</string>
   <string name="assistant_page_delete">Delete</string>
+  <string name="assistant_page_copy_memory_id">Copy memory ID</string>
   <string name="assistant_page_delete_body">Delete Body</string>
   <string name="assistant_page_delete_dialog_text">Are you sure you want to delete this assistant? This action cannot be undone.</string>
   <string name="assistant_page_delete_header">Delete Header</string>

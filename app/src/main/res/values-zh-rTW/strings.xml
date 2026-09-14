@@ -71,6 +71,7 @@
   <string name="assistant_page_custom_headers">自定義 Headers</string>
   <string name="assistant_page_default_assistant">預設助手</string>
   <string name="assistant_page_delete">刪除</string>
+  <string name="assistant_page_copy_memory_id">複製記憶 ID</string>
   <string name="assistant_page_delete_body">刪除 Body</string>
   <string name="assistant_page_delete_dialog_text">確定要刪除這個助手嗎？此操作無法撤銷。</string>
   <string name="assistant_page_delete_header">刪除 Header</string>
