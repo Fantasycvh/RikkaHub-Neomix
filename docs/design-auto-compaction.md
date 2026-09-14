@@ -131,6 +131,15 @@ Continue the task directly from the messages that follow, without acknowledging 
 
 三者对齐后用户心智简单：**折叠行就是「AI 看到的是摘要，你看到的是全文」**。这也是对 Yuihub 2.5 不足的直接修正（折叠行可展开 → 「用户保留全部内容」在界面层也成立）。
 
+**⚠️ 发送层必须「每步重算」，不能冻结成回合快照**（2026-09-14 修复 `468a25d6`，回归来自 `ce311156`）：
+
+发送层 = `[检查点] + 边界后的 live 消息`，其中「边界后」必须取**本回合当前**的 messages。若把窗口在回合开始算一次、整个工具循环沿用该快照，本回合内新增的 tool call 与工具结果就**进不了上下文** → 模型看不到执行结果，重复调用同一工具（实测 memory_tool create 反复创建、search_web 同一 query 跑两次、回复偶尔重复）。
+
+- 实现：`Conversation.CompressionWindow(checkpointMessage, boundaryIndex)` + `applyTo(messages)`；生成循环每步对 live `messages` 调用（`GenerationHandler` 参数由冻结列表改为该描述）。
+- 只向尾部追加 → 以前缀形式保留 turn-start 消息时 boundary 下标语义不变，故「检查点前缀 + live 尾部」可安全重算。
+- 检查点两条约束不变：固定窗口最前、不参与 `limitContext` 截断。
+- `requestWindowMessages()` 保留为**回合初**一次性组装（供「仅导出 AI 所见上下文」之类的场景），**生成路径不要再用它**。
+
 ### 4.2 与 `limitContext` 的分工
 
 ```
@@ -436,7 +445,7 @@ Yuihub 把消息统计行改为图标化（tokens/缓存图标）。fork 的 ner
 **Yuihub（`<work>\projects\Yuihub`）**
 - `app/.../service/ChatService.kt:1194` `autoCompressIfNeeded` / `compressToSummary`
 - `app/.../utils/ContextLength.kt` 参数 + `estimateWindowTokens` + `estimateTokenCount`
-- `app/.../data/model/Conversation.kt:80` `activeCompression` / `requestWindowMessages` / `windowNodes`
+- `app/.../data/model/Conversation.kt` `activeCompression` / `compressionWindow`（+`CompressionWindow.applyTo`，生成路径用）/ `requestWindowMessages`（回合初一次性）/ `windowNodes`
 - `app/.../data/ai/prompts/CompressPrompt.kt` 检查点文本 + 结构化提示词
 - `app/.../ui/components/ai/ChatInput.kt:756` `ContextUsageBarButton` + `ContextUsage`（**Phase 0.5 可见先行项原型**）
 - `app/.../ui/pages/chat/ChatPage.kt:445` `contextUsage` 组装（`estimateWindowTokens` + `effectiveContextLength`）
