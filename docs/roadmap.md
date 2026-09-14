@@ -89,11 +89,15 @@
 - **改走的方向（Yuihub 借鉴，见 `peer-apps-benchmark.md` §四）**：①**打分校准 + 字符预算**替掉取前 N 条（`importance × (0.55 + 0.45 × exp(-ln2 × age/30天))`，按字符预算而非条数纳入）——成本低、无需新依赖、**直接治下面的实缺陷**，推荐先做；②**被动提取管道**（回复后异步提取事实，带现有记忆索引让 LLM 输出 add/update/delete，天然去重消解；成本=每轮多一次 LLM 调用，须配开关/阈值）；③**整理器**（合并重复、纠类、控体积；随提取管道一起上）
 - 与「记忆工具审批」是两件独立的事（一个是**写入管控**，一个是**检索能力**）
 
-#### 记忆注入缺陷：`take(60)` 取的恰是最旧 60 条（**实缺陷，待修**）
+#### 记忆注入缺陷：`take(60)` 取的恰是最旧 60 条 —— **✅ 已修（`0580c6a6`，2026-09-14，真机验证）**
 
-`GenerationPrompts.kt:19` 用 `memories.take(MAX_MEMORY_INJECT_COUNT)`（60 条）注入，而 `MemoryDAO` 全部查询**无 `ORDER BY`** → SQLite 按 rowid（=**插入顺序**）返回，实测确认（`no ORDER BY -> [1,2,3,4,5]`，`take(3) -> [1,2,3]`）。含义：`MAX_MEMORY_COUNT = 200` 上限保证最多堆 200 条，**超过 60 条后进 prompt 的是最旧的 60 条、最新写入的记忆反而进不去**，模型所见记忆集合自第 61 条起冻结在最早那批，越用越偏。
+原缺陷：`GenerationPrompts.kt:19` 用 `memories.take(MAX_MEMORY_INJECT_COUNT)`（60 条）注入，而 `MemoryDAO` 全部查询**无 `ORDER BY`** → SQLite 按 rowid（=**插入顺序**）返回 → **超过 60 条后进 prompt 的是最旧的 60 条、最新写入的记忆反而进不去**（`MAX_MEMORY_COUNT = 200` 上限保证能堆到 200，故第 61 条起必然触发）。
 
-**修法**（任选，前者更简、后者更优）：DAO 加 `ORDER BY id DESC` / `ORDER BY updated_at DESC`；或直接采用上节 Yuihub 的打分校准 + 预算截断（同一改动顺带解决「该取哪些」）。
+**修复**：`buildMemoryPrompt` 改 `sortedByDescending { it.id }.take(60)`（id 为 `AUTOINCREMENT` 单调递增，降序即写入先后；排序收敛在此，行为不再依赖调用方列表顺序）+ `MemoryDAO` 四处查询补**显式 `ORDER BY id ASC`**（保持原 de-facto 行为、记忆页展示顺序不变，消除对未定义行序的依赖）。
+
+**真机验证**（DB 副本补到 70 条记忆实测）：旧路径仅 `NEW-mem-1..12` 入选（最新 10 条全丢），新路径 22 条全入选。单测 4 项（含「结果不依赖入参顺序」回归护栏，撤销修复即失败）。
+
+**后续（未做）**：进一步升级为 Yuihub 式**打分校准 + 字符预算**（按 `importance × 时效衰减` 排序、按预算纳入而非数条数），即从「取最新」升级为「取最该取」——见 `peer-apps-benchmark.md` §四。
 
 ### 不建议（隐私冲突，与项目定位相反）
 
@@ -118,7 +122,7 @@
 | P1 | 三色定制（背景/气泡/重点色映射） | 毛玻璃已实现（输入栏/列表/顶栏三开关，依赖 haze 2.0），仅剩三色映射定制 |
 | P1 | **记忆工具审批（按 action 分档）** | **基础设施已就绪（约 1 提交）**：复用现有 `needsApproval` + 通用审批 UI，只差接线；防未许可的改/删记忆（详见「中等价值」节） |
 | P2 | 轻量个性化（输入框背景/字体包/头像框） | 气泡透明度已有，其余小改动零风险 |
-| P2 | **记忆注入取数修正**（`take(60)` → 打分校准/`ORDER BY`） | **实缺陷**（超 60 条后最新记忆进不去），成本低（见「一、中等价值」节） |
+| P2 | ~~记忆注入取数修正~~ | ✅ **已修**（`0580c6a6`：取最新 60 条 + DAO 显式 `ORDER BY`；打分校准留待后续，见「一、中等价值」节） |
 | P3 | 记忆提取管道 + 整理器 | 收益明确但成本中-高（每轮多一次 LLM 调用），须配开关（见 `peer-apps-benchmark.md` §四） |
 | — | ~~记忆语义检索（本地 HNSW）~~ | **评估后不做**（2026-09-14）——本仓成本分析 + Yuihub 上线即删除双重印证 |
 | — | QuickJS 插件系统 | **明确不做**（已有 eval_javascript / MCP / Skill / Workspace 四类机制覆盖） |
@@ -561,5 +565,5 @@ data class ApiKeyEntry(
 - 2026-09-14：**备份空间预检 + 字节级进度（`2a321c3a`，真机验证）——大文件加固第一项**——**空间预检**（安全 > 体验：恢复是流式直接写最终目标，磁盘写满=部分覆盖）：备份按「输入不压缩」走盘求和；恢复读 zip **中央目录** `entry.size`（不解压）；留 5% 余量、失败给「需要/现有」；**只预检 cacheDir**（SAF 目标/源空间平台不提供）。**字节级进度**：五阶段（打包/上传前准备/上传/下载/解压）经**回调参数**逐层传入（不在被两个 singleton 共享的引擎上挂 StateFlow，避免并发串扰），VM 持 StateFlow、三 tab 共用 `BackupProgressRow`（数字+百分比，无 6 语言资源）。**两坑**：①打包起初「整个文件拷完报一次」→ 85MB DB 期间进度条**冻住 0%**（截图实证），改 `copyReporting` 缓冲循环内增量上报；②S3 上传前 `sha256Hex` 全量读盘需上报为 PREPARING，否则进度长时间停 0%。**真实数据**：导出 39%→85%、恢复 27%、日志 `need ~127 MB, available 137 GB`。设计见 `design-backup-workspace-files.md` §9.1/§9.2。
 - 2026-09-14：**v1.0.4 (259) 转正为唯一 Latest**——bump `13db045b`（258→259，versionName 保持 1.0.4；**设备已装 release 258 故必须递增**）→ 同名 tag `v1.0.4` 替换草稿资产 + 更新日志 → 用户检查通过 → `gh release edit --draft=false --latest`（tag 指向 `13db045b`）。README 标注 `7af80573`（正式 v1.0.4，无草稿）。**注**：`app/release/` 残留同名旧 APK 会被构建脚本覆盖，须先核实 versionCode 再传。
 - 2026-09-14：**记忆工具审批落地（`a2add734`，真机验证通过）**——①`Assistant.memoryModifyApproval`（默认 true）按 action 分档：`create` 放行（追加式可撤销）、`edit`/`delete` 需审批（不可逆）；实现走既有 `Tool.needsApproval(input)` 基础设施（`GenerationHandler:159` 读 `input["action"]`），`ChatMessageTools:135` 自动渲染批准/拒绝（记忆工具零 UI 新增）；②补 `MemoryToolUI` delete 分支目标预览（`produceState` + `MemoryRepository.getMemoryById`，否则删记忆只能盲批）；③记忆页开关 + 6 语言文案。**同批修复内容风控 403**：风控/违禁词拦截的 403 被 `isKeySwitchingError` 误判为鉴权失败 → 白旋转 key 额度；加 `CONTENT_BLOCKED_MARKERS` 前置排除（同时在 `isRetryableGenerationError` 里置于 IOException 判定**之前**，因网关常包成 IOException），覆盖中英文标记（风控/违禁词/内容防火墙/content policy/moderation_blocked 等）。单测：审批 5 项 + 403 分类 3 项，全绿；真机 E2E（注入测试会话→审批卡片显示目标内容→拒绝后记忆 #2 仍在）。注：全仓 `generateEmbedding` 零调用、`ai.sqlite:vector` catalog 声明为悬空（无 build 引用、Maven Central 查无此物）。
-- 2026-09-14：**记忆机制借鉴评估（仅评估，未实现）+ 发现注入实缺陷**——①**Yuihub（RikkaHub fork，本地 `<work>\projects\Yuihub\`）记忆机制**：其**语义检索上线后第二天整套删除**（`a8c33b2d` 加 `EmbeddingService`/`embedding` 列/打分融合 → `fbd15331` 全删，含迁移 32→33 重建表去掉向量列、`EmbeddingConfig` 三件套与 170 行 repository 一并移除），构成「记忆语义检索不做」的**独立二次印证**（与本仓 §6.3 成本结论一致）；值得借鉴的是**组织方式**——打分校准+字符预算（`importance × (0.55+0.45×exp(-ln2×age/30天))`，按 1800 字符预算纳入而非数条数）、被动提取管道 `MemoryExtractor`（回复后异步带现有记忆索引让 LLM 输出 add/update/delete，天然去重消解；单飞+pending 防丢事实、防幻觉 id、fail-open）、整理器 `MemoryConsolidator`（先落库再删源、consumed 防重复消费、importance 取源最大值）；**不建议照搬记忆快照**（append-only 合成消息持久化，思路与本仓压缩检查点同族但嫁接同层、交互面大）。详见 `peer-apps-benchmark.md` §四。②**发现实缺陷**：`GenerationPrompts.kt:19` `memories.take(60)` + `MemoryDAO` 查询**无 `ORDER BY`**（SQLite 按 rowid=插入顺序）→ 超过 60 条后进 prompt 的是**最旧**的 60 条，最新记忆反而进不去（实测 `no ORDER BY -> [1,2,3,4,5]` 确认）；修法=DAO 加 `ORDER BY id DESC`/`updated_at DESC`，或直接采用 Yuihub 打分校准。roadmap 已把「语义检索 P3」改为「评估后不做」并登记该缺陷。
+- 2026-09-14：**记忆机制借鉴评估（仅评估，未实现）+ 发现注入实缺陷**——①**Yuihub（RikkaHub fork，本地 `<work>\projects\Yuihub\`）记忆机制**：其**语义检索上线后第二天整套删除**（`a8c33b2d` 加 `EmbeddingService`/`embedding` 列/打分融合 → `fbd15331` 全删，含迁移 32→33 重建表去掉向量列、`EmbeddingConfig` 三件套与 170 行 repository 一并移除），构成「记忆语义检索不做」的**独立二次印证**（与本仓 §6.3 成本结论一致）；值得借鉴的是**组织方式**——打分校准+字符预算（`importance × (0.55+0.45×exp(-ln2×age/30天))`，按 1800 字符预算纳入而非数条数）、被动提取管道 `MemoryExtractor`（回复后异步带现有记忆索引让 LLM 输出 add/update/delete，天然去重消解；单飞+pending 防丢事实、防幻觉 id、fail-open）、整理器 `MemoryConsolidator`（先落库再删源、consumed 防重复消费、importance 取源最大值）；**不建议照搬记忆快照**（append-only 合成消息持久化，思路与本仓压缩检查点同族但嫁接同层、交互面大）。详见 `peer-apps-benchmark.md` §四。②**发现实缺陷**：`GenerationPrompts.kt:19` `memories.take(60)` + `MemoryDAO` 查询**无 `ORDER BY`**（SQLite 按 rowid=插入顺序）→ 超过 60 条后进 prompt 的是**最旧**的 60 条，最新记忆反而进不去（实测 `no ORDER BY -> [1,2,3,4,5]` 确认）；修法=DAO 加 `ORDER BY id DESC`/`updated_at DESC`，或直接采用 Yuihub 打分校准。roadmap 已把「语义检索 P3」改为「评估后不做」并登记该缺陷。**该缺陷随后已修（`0580c6a6`，取最新 60 条 + DAO 显式 ORDER BY，真机验证）**，「记忆注入缺陷」节已转「✅ 已修」。
 - 2026-09-14：**记忆工具审批（评估→落地）**——评估结论「值得做且成本很小（约 1 提交）」已由实现验证，落地见上方 `a2add734` 条目；评估过程与基础设施盘点保留在「一、中等价值 → 记忆工具审批」节。
