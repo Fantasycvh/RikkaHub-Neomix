@@ -253,3 +253,20 @@ P2 中的这一项被提前，理由：**纯新增、不改备份格式、向后
 故本地路径**只预检 `cacheDir`**，文案说明「仅检查应用缓存空间，目标位置由系统保证」。**导入侧预检尤其值得**：
 用户已选中文件、点过确认，此时才因空间不足失败最恼人。
 
+## 十、记忆（MemoryEntity）在备份/恢复中的 id 语义（2026-09-14 核实）
+
+**问题背景**：记忆用整数 `id` 做 `memory_tool` 的 edit/delete 目标，历史消息里记录了这些 id（上游导出包中 158 处 `memory_tool` 调用含 id 引用）。恢复后这些 id 是否还对得上？
+
+**结论：对得上，且这是表结构强制的，不是数据碰巧。**
+
+| 事项 | 事实 |
+|---|---|
+| id 来源 | `MemoryEntity.id` = `INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL` → **行不可能无 id**；实测上游导出包 49 条记忆 id ∈ [1,66]，**空/非正 id = 0 条**（id 有空洞=删除留下的，AUTOINCREMENT 不复用旧号，`sqlite_sequence` 记录下次起点） |
+| 恢复方式 | **整库文件替换**（`DatabaseRestoreFiles.moveIntoPlace` 同目录 rename），非逐行 INSERT → id、空洞、`sqlite_sequence` **原样保留**；历史消息里引用的 id 恢复后仍指向同一条 |
+| 是否有 JSON 入口 | **无**。全仓无 `AssistantMemory` 的反序列化路径（只有 encode 成工具结果），记忆只能来自 DB——不存在「从 JSON 读进一条无 id 记忆」的通道 |
+| 对话导出 | **不含记忆库**（Export.kt 只导出对话内容，`memory_tool` 调用仅作为历史渲染）→ **记忆只靠整库备份迁移** |
+
+**唯一真实缺口：2025-04 之前的「内嵌记忆」格式会被静默丢弃。** 上游最早的记忆功能（`598d9c91`，2025-04-23）把记忆存在 **assistant JSON 内**（`Assistant.memories: List<AssistantMemory>`，id 为 **Uuid**）；次日 `d50d5cd7` 才迁到 DB 表（id 变 Int）。fork 的 `Assistant` 已无 `memories` 字段，Json 为 `ignoreUnknownKeys = true`，且 `SettingsJsonMigrator` **无任何一处**读 `assistants[].memories` → 拿 2025-04 前的旧备份恢复，这批内嵌记忆**不落 DB 表、UI 不显示、也不注入**（表现为记忆丢失，而非 id 报错）。**当前不处理**（极端老备份、低频）；若将来要兜底，可在 `SettingsJsonMigrator` 加一条：把 `assistants[].memories` 内容按 `assistant_id` 补建进 `MemoryEntity`。
+
+**悬空 id（引用的记忆已被删）行为**（非恢复问题，但同族）：注入侧只取活行不引用死 id；会碰到的是审批预览 `getMemoryById(id)` 返回 null（卡片不显示目标内容，不崩）、`edit` 抛 `"Memory record #N not found"`、`delete` 删 0 行**静默无操作**。
+
