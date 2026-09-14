@@ -34,4 +34,9 @@ Updates:
 - **APK 命名固定格式：`应用名（英文）-版本-架构`**（如 `RikkaHub Plus-2.4.10.16-arm64-v8a.apk`），
   其中架构用 Gradle splits 的 ABI 名（arm64-v8a）；发布前将构建产物复制到 `app/release/` 并按此重命名
 - release标题使用版本号, 描述使用更新日志
-- tag名字使用版本号，不带v
+- **tag 名带 `v` 前缀**（如 `v1.0.5`）——近期各版本（v1.0.0 起）均如此，保持一致
+- 命令固定带 `-R androidrik/rikka2-my_feature_open`（gh 默认指向上游时不会误发到上游）
+- **创建分两步**（`gh release create <tag> <apk>` 一次性传 76MB 资产偶发挂起、asset 为空）：
+  1. `gh release create <tag> --draft --title "v<ver> (<code>)" --notes-file <绝对路径>`
+  2. `gh release upload <tag> "app/release/RikkaHub Plus-<ver>-arm64-v8a.apk"`
+- **bump 前先清掉 `app/release/` 里同名旧产物**（历史草稿会留下同文件名，易误传）
