@@ -41,9 +41,9 @@
 
 ### 中等价值（可选）
 
-#### 记忆工具审批（按 action 分档）—— **✅ 已落地（`a2add734`，2026-09-14）**
+#### 记忆工具审批（按 action 分档）—— **✅ 已落地（`a2add734` + `49324ded`，2026-09-14）**
 
-> 实现：`Assistant.memoryModifyApproval`（默认 true，@Serializable 子对象字段随 JSON 自动持久化）+ `buildMemoryTools` 的 `needsApproval(action)` 分档回调 + `GenerationHandler:159` 接线 + 记忆页开关 + 6 语言文案 + `MemoryToolUI` 补 delete 目标预览（否则只能盲批）。同批修复**内容风控 403 不换 key**（实测暴露：风控 403 被误判为鉴权失败、白旋转 key 额度）。单测 5 项 + 真机 E2E 通过（审批卡片显示目标内容、拒绝后记忆保留）。
+> 实现：`Assistant.memoryModifyApproval`（默认 true）+ **`Assistant.memoryCreateApproval`（默认 false，opt-in）**（均为 @Serializable 子对象字段，随 JSON 自动持久化）+ 纯函数 `memoryToolNeedsApproval(assistant, action)` 承载分档判定（`ChatToolFactory.kt`，工厂 wiring 调用）+ 记忆页两个开关 + 6 语言文案 + `MemoryToolUI` 补 delete 目标预览。同批（`a2add734`）修复**内容风控 403 不换 key**（实测暴露：风控 403 被误判为鉴权失败、白旋转 key 额度）。**create 审批为后续 opt-in 增补（`49324ded`）**：默认关=保持「新增直接记录」，仅担心模型记流水账/想逐条把关的用户才开；与 modify 开关**相互独立**。单测：审批判定 7 项（含 create 矩阵）+ MemoryToolsTest 改测接线，全量 421 项仅既有 MarkdownMathParse 失败；真机开关默认关、开启后持久化生效。
 
 **需求**：AI 通过 `memory_tool` 可改/删长期记忆，用户无感知。加审批防止**未经许可的修改与删除**。
 
@@ -67,7 +67,7 @@
 
 | action | 建议默认 | 理由 |
 |---|---|---|
-| `create` | **放行（不审批）** | 追加式、不改动已有数据、记忆页可删（可撤销） |
+| `create` | **放行（不审批）**，但提供 `memoryCreateApproval` 开关（默认关） | 追加式、不改动已有数据、记忆页可删（可撤销）——故默认放行；开关留给想逐条把关的用户 |
 | `edit` | **审批** | 覆盖已有内容 = **不可逆修改**，真正的风险点 |
 | `delete` | **审批** | 数据丢失，最该拦 |
 
@@ -575,3 +575,4 @@ data class ApiKeyEntry(
 - 2026-09-14：**内置搜索/外挂搜索去重落地（`0b562833`）——顺藤摸出的一处漏吸收**——用户问工具装配方时发现：上游 `aac6e963`（#1666「统一内置搜索与外挂搜索行为」，2026-08-13）**在 fork 分叉点 `2c980642`（08-02）之后的 master 同步范围内，却从未移植到特性分支、批次分析也未记录**（被 2.4.14 批「已吸收核心件」概括吞掉）。**修复**：抽 `shouldUseExternalWebSearch(assistant, model) = enableWebSearch && BuiltInTools.Search !in model.tools`，两个调用点同口径——**工具注册**（`ChatService` tools buildList，原为无脑 `if (enableWebSearch)`）与**「模型不支持工具」告警**（原任一为真即告警，现按实际是否注册外挂搜索判断）；否则 Gemini/GPT 原生搜索与客户端搜索会同时下发（浪费 schema 预算 + 可能冲突）。移植上游 4 项单测。**验证**：单测 10 项全绿 + **falsify**（去掉内置搜索判断 → `built-in search suppresses enabled external web search` 即失败）；全量 408 项仅 MarkdownMathParse 既有失败；debug 装机启动正常、数据完好（215 会话；设备助手 `enableWebSearch=false` 故该分支未激活，改动由单测覆盖）。**教训入库**：upstream-analysis「注意点」新增第 10 条——「已吸收核心件」≠ 逐提交已核，对 `ChatService`/`GenerationHandler` 这类重改文件上的上游 `fix(...)` 应逐条 grep 等价。
 - 2026-09-14：**工具装配集中到 ChatToolFactory（`3893912f`，上游 `097cdb90` 的 fork 适配，真机验证）**——用户要求重构。**动机**：装配原分散两处——`ChatService` 内联 buildList（搜索/本地/对话/工作区/技能/MCP）+ `GenerationHandler` 生成循环内叠加记忆工具，新增装配方（MCP host、Agent/工作流入口）须改多处。**落地**：新增 `ChatToolFactory.createTools(settings, assistant, model, workspaceCwd)` 为唯一装配点（七类工具全量，**顺序保持迁移前不变**——Claude `promptCaching` 断点打在最后一个工具上）；`GenerationHandler` 只透传、去掉 `memoryRepo`；`ChatService` 构造以 `chatToolFactory` 取代 `localTools`/`skillManager`；DI 两模块同步；`shouldUseExternalWebSearch` 随工厂迁包、其 4 单测迁入 `ChatToolFactoryTest`。**与上游差异（有意保留）**：MCP 名沿用 fork `McpNameSanitizer` 净化去重而非上游 `InvalidMcpServerNamesException` 抛错——前者允许中文等非 ASCII 服务器名（用户可见收益）。**验证**：编译通过；单测 408 项仅 MarkdownMathParse 既有失败；真机 Koin 71 definitions 无错，生成端到端跑通——**记忆 40.8K tokens 注入生效、模型调用工厂装配的 `search_web` 成功执行并渲染结果 UI**（证明装配+执行链路完整）；测试会话已清理，原库 216 会话/54 记忆 integrity_check=ok。详见 `upstream-analysis.md`「已放弃」表 `097cdb90` + 「注意点」第 9 条。
 - 2026-09-14：**记忆对外 opaque id 落地（`e416e7d4`，真机端到端验证）**——用户要求实现「稳定 opaque id」。**动机**：对外暴露自增 id 有二害——删除留空洞、编号不连续（观感差）；编号泄漏记忆条数（上游 #1830 报告者实证「deepseek 把编号 28 理解成有 28 条记忆」）。**方案**：`MemoryEntity.public_id`（8 位小写十六进制随机，32 bit）+ DB **27→28**（`ALTER TABLE` + `lower(hex(randomblob(4)))` 就地回填，纯 SQL 不逐行）；`AssistantMemory.id: Int→String` 并加 `@Transient sortKey`（自增主键，仅供注入选最新 60 条、不序列化）；仓库按 token 查/改/删；工具 schema `id` integer→string + 描述「copy exactly, not a count」；提示词注入 token；UI 审批预览按 token 查、记忆页新建哨兵改为 `id==""`。**兼容**：历史消息里的旧自增编号引用（如 "12"）在 token 查不到时按 id 回退，故老对话的 edit/delete 仍可用。**真机实证**（消除唯一未知项——模型能否稳定用 token）：迁移 54 行全获唯一 token（零空值、integrity ok）→ 请求日志带 `"id":"b135fd7a"` → 模型回 `{"action":"delete","id":"b135fd7a"}` → 审批卡正确显示目标内容 → 批准后该行确实删除（55→54）。**对上游 #1830 的重新评估**：上游「隐藏显示」是半截修复（提示词仍注入自增编号），本方案同时根治观感与泄漏，且**随机 token 无「空洞」概念=永不需要重排**。**测试数据已清理**（含一次误删：清理用的 `LIKE %teal%` 误匹配了含 `>=stealth` 的真实记忆，已从安装前备份恢复并核验内容一致）。单测 +6（含 token 非序号 / legacy 数字回退 / 未知 token no-op），全量 414 项仅 MarkdownMathParse 既有失败。详见 `design-backup-workspace-files.md` §10.1。
+- 2026-09-14：**记忆创建审批开关（`49324ded`，真机验证）**——用户要求「为创建记忆也增加可选开关，默认关闭」。前一批（`a2add734`）的分档是 create 恒定放行；本次把 create 也做成 opt-in：`Assistant.memoryCreateApproval`（默认 false）+ 记忆页开关（与修改审批同款）+ 6 语言文案。两个开关**相互独立**（可只拦新增、不拦修改）。判定抽为纯函数 `memoryToolNeedsApproval(assistant, action)`：create→createApproval、edit/delete→modifyApproval、未知/缺失→按 modifyApproval（宁可多拦，不被当成 create 蒙混），工厂 wiring 调用它。**顺带修测试缺陷**：原 `MemoryToolsTest` 在测试里自己复刻 needsApproval 的 lambda 判定（等于没测到生产逻辑）——拆为 `MemoryToolApprovalTest`（直接测生产函数，create 矩阵/独立性/兜底）+ `MemoryToolsTest`（只测 JSON→action→判定的接线）。单测 +7，全量 421 项仅既有 MarkdownMathParse 失败；falsify 确认 create 判定写死即失败。真机：开关默认关、开启后 DataStore 落 `memoryCreateApproval:true`、关闭后回 false；测试数据已清理（含删掉一个 probe IME 时误留的 content='test' 记忆），库恢复 54 记忆/215 会话、integrity ok。
