@@ -159,8 +159,7 @@ val dataSourceModule = module {
         GenerationHandler(
             context = get(),
             providerManager = get(),
-            json = get(),
-            memoryRepo = get()
+            json = get()
         )
     }
 

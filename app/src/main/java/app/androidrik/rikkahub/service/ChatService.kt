@@ -33,7 +33,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonObject
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
-import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
@@ -54,15 +53,8 @@ import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
-import app.androidrik.rikkahub.data.ai.mcp.McpNameSanitizer
-import app.androidrik.rikkahub.data.ai.tools.createConversationTools
-import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
-import app.androidrik.rikkahub.data.ai.tools.createSearchTools
-import app.androidrik.rikkahub.data.ai.tools.createSkillTools
-import app.androidrik.rikkahub.data.ai.tools.createSkillInstallTools
-import app.androidrik.rikkahub.data.files.SkillInstaller
-import app.androidrik.rikkahub.data.ai.tools.createWorkspaceTools
-import app.androidrik.rikkahub.data.files.SkillManager
+import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
+import app.androidrik.rikkahub.data.ai.tools.shouldUseExternalWebSearch
 import app.androidrik.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import app.androidrik.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
 import app.androidrik.rikkahub.data.ai.transformers.OcrTransformer
@@ -109,7 +101,6 @@ import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.web.BadRequestException
 import app.androidrik.rikkahub.web.NotFoundException
 import app.androidrik.rikkahub.utils.applyPlaceholders
-import app.androidrik.workspace.WorkspaceShellStatus
 import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -146,17 +137,6 @@ internal fun backgroundTextGenerationParams(
     customHeaders = model.customHeaders,
     customBody = model.customBodies,
 )
-
-/**
- * 是否注册外挂（客户端）搜索工具。
- *
- * 模型自带内置搜索（`BuiltInTools.Search`，如 Gemini / GPT 原生搜索）时不再叠加，
- * 否则会同时下发两套搜索能力——既浪费 schema 预算，也可能让两套搜索冲突
- * （上游 `aac6e963` / #1666「统一内置搜索与外挂搜索行为」）。
- */
-internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boolean {
-    return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
-}
 
 internal fun createForkConversation(
     source: Conversation,
@@ -213,10 +193,9 @@ class ChatService(
     private val generationHandler: GenerationHandler,
     private val templateTransformer: TemplateTransformer,
     private val providerManager: ProviderManager,
-    private val localTools: LocalTools,
+    private val chatToolFactory: ChatToolFactory,
     val mcpManager: McpManager,
     private val filesManager: FilesManager,
-    private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
 ) {
@@ -826,47 +805,13 @@ class ChatService(
                     add(workspaceReminderTransformer)
                 },
                 outputTransformers = outputTransformers,
-                tools = buildList {
-                    if (useExternalWebSearch) {
-                        addAll(createSearchTools(settings))
-                    }
-                    addAll(localTools.getTools(assistant.localTools))
-                    if (assistant.enableRecentChatsReference) {
-                        addAll(createConversationTools(conversationRepo, assistant.id))
-                    }
-                    addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
-                    // 动态添加 Skill（上游 #1031）：AI 可从 GitHub 安装 / 把对话经验保存为技能。始终注册（不依赖已启用技能）。
-                    addAll(createSkillInstallTools(SkillInstaller(skillManager)))
-                    if (assistant.enabledSkills.isNotEmpty()) {
-                        addAll(
-                            createSkillTools(
-                                enabledSkills = assistant.enabledSkills,
-                                allSkills = skillManager.listSkills(),
-                            )
-                        )
-                    }
-                    // 服务器名/工具名允许含中文等非 ASCII 字符，这里净化为 provider 可接受的
-                    // function name（^[a-zA-Z0-9_-]{1,64}$），显示层仍用原名。
-                    // 不同原名可能净化后相同，用 usedNames 保证发给模型的名字唯一。
-                    val usedToolNames = mutableSetOf<String>()
-                    mcpManager.getAllAvailableTools().forEach { (serverId, serverName, tool) ->
-                        add(
-                            Tool(
-                                name = McpNameSanitizer.buildUniqueFunctionName(
-                                    serverName = serverName,
-                                    toolName = tool.name,
-                                    used = usedToolNames,
-                                ),
-                                description = tool.description ?: "",
-                                parameters = { tool.inputSchema },
-                                needsApproval = { tool.needsApproval },
-                                execute = {
-                                    mcpManager.callTool(serverId, tool.name, it.jsonObject)
-                                },
-                            )
-                        )
-                    }
-                },
+                // 工具装配集中到 ChatToolFactory（记忆 + 搜索 + 本地 + 对话 + 工作区 + 技能 + MCP）
+                tools = chatToolFactory.createTools(
+                    settings = settings,
+                    assistant = assistant,
+                    model = model,
+                    workspaceCwd = conversation.workspaceCwd,
+                ),
             ).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
@@ -962,19 +907,6 @@ class ChatService(
                 generateSuggestion(conversationId, finalConversation)
             }
         }
-    }
-
-    private suspend fun createWorkspaceToolsIfReady(workspaceId: String?, cwd: String? = null): List<Tool> {
-        if (workspaceId.isNullOrBlank()) return emptyList()
-        val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
-        if (workspace.shellStatus != WorkspaceShellStatus.READY.name) {
-            Log.d(
-                TAG,
-                "createWorkspaceToolsIfReady: skip workspace tools, workspace=$workspaceId, status=${workspace.shellStatus}"
-            )
-            return emptyList()
-        }
-        return createWorkspaceTools(workspaceId, workspaceRepository, cwd)
     }
 
     // ---- 检查无效消息 ----

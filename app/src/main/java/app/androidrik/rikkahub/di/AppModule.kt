@@ -5,6 +5,7 @@ import com.google.firebase.analytics.analytics
 import com.google.firebase.crashlytics.crashlytics
 import kotlinx.serialization.json.Json
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.service.ChatNotificationManager
@@ -69,6 +70,18 @@ val appModule = module {
     }
 
     single {
+        ChatToolFactory(
+            json = get(),
+            memoryRepository = get(),
+            conversationRepository = get(),
+            localTools = get(),
+            mcpManager = get(),
+            skillManager = get(),
+            workspaceRepository = get(),
+        )
+    }
+
+    single {
         ChatService(
             context = get(),
             appScope = get(),
@@ -79,10 +92,9 @@ val appModule = module {
             generationHandler = get(),
             templateTransformer = get(),
             providerManager = get(),
-            localTools = get(),
+            chatToolFactory = get(),
             mcpManager = get(),
             filesManager = get(),
-            skillManager = get(),
             workspaceRepository = get(),
             folderRepository = get()
         )

@@ -44,7 +44,6 @@ import java.io.File
 import app.androidrik.rikkahub.data.ai.transformers.onGenerationFinish
 import app.androidrik.rikkahub.data.ai.transformers.transforms
 import app.androidrik.rikkahub.data.ai.transformers.visualTransforms
-import app.androidrik.rikkahub.data.ai.tools.buildMemoryTools
 import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
@@ -52,7 +51,6 @@ import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
-import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.utils.applyPlaceholders
 import java.util.Locale
 import kotlin.time.Clock
@@ -75,7 +73,6 @@ class GenerationHandler(
     private val context: Context,
     private val providerManager: ProviderManager,
     private val json: Json,
-    private val memoryRepo: MemoryRepository,
 ) {
     /**
      * @param messages 会话**全量**消息（与 messageNodes 对齐），既作回写基线也与 [windowMessages] 一致
@@ -137,29 +134,8 @@ class GenerationHandler(
 
             val toolsInternal = buildList {
                 Log.i(TAG, "generateInternal: build tools($assistant)")
-                if (assistant?.enableMemory == true) {
-                    val memoryAssistantId = if (assistant.useGlobalMemory) {
-                        MemoryRepository.GLOBAL_MEMORY_ID
-                    } else {
-                        assistant.id.toString()
-                    }
-                    buildMemoryTools(
-                        json = json,
-                        onCreation = { content ->
-                            memoryRepo.addMemory(memoryAssistantId, content)
-                        },
-                        onUpdate = { id, content ->
-                            memoryRepo.updateContent(id, content)
-                        },
-                        onDelete = { id ->
-                            memoryRepo.deleteMemory(id)
-                        },
-                        // 分档：create 放行；edit/delete 在开启审批时需用户确认（防未经许可的改/删）
-                        needsApproval = { action ->
-                            assistant.memoryModifyApproval && action != "create"
-                        },
-                    ).let(this::addAll)
-                }
+                // 工具集（含记忆工具）已由 ChatToolFactory 装配后经 tools 传入。
+                // 早前记忆工具在此处内层叠加，是第二个装配点；集中到 factory 后此处只透传。
                 addAll(tools)
             }
 
