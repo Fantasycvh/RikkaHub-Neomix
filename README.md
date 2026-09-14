@@ -22,10 +22,10 @@ RikkaHub 2.4.5 的个人定制版 —— 原生 Android LLM 聊天客户端，�
 
 ## 📌 项目简介
 
-RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5` 基线，master 已 ff-only 同步至上游 `2.5.1`，`2.4.8`-`2.5.1` 有选择性吸收）的 fork，
+RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikkahub)（`2.4.5` 基线，本地 master 已同步至上游 `2.5.1`，`2.4.8`-`2.5.1` 有选择性吸收）的 fork，
 包名 `app.androidrik.rikkahub`，应用名 **RikkaHub Plus**。
 
-- **自 v2.4.6 起上游选择性跟进**：`master` 仍可同步上游（ff-only 镜像机制保留），但上游修复/功能**选择性吸收**——不再全部跟进，仅按需人工评估有价值的部分
+- **自 v2.4.6 起上游选择性跟进**：本地 `master` 可同步上游（ff-only 镜像仅本地保留），但上游修复/功能**选择性吸收**——不再全部跟进，仅按需人工评估有价值的部分
 - **独立版本体系**：`2.4.6` 为独立维护起点，此前定制积累完整保留
 
 ## ✨ 本项目定制功能
@@ -91,9 +91,9 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 分支 | 角色 |
 |---|---|
 | `imperfect-customization-and-refinement` | **唯一开发分支**（远程默认），全部定制与发布在此进行 |
-| `master` | **上游镜像**，可继续 `ff-only` 同步上游（`git fetch upstream && git checkout master && git merge --ff-only upstream/master && git push origin master`） |
+| `master`（本地） | **上游镜像**（仅本地保留），`ff-only` 同步上游（`git fetch upstream && git checkout master && git merge --ff-only upstream/master`）；**不再推送到 origin** |
 
-**与上游关系（自 v2.4.6）**：`master` 仍可同步上游，但上游修复/功能**选择性吸收**——不再全部跟进，仅按需人工评估有价值的部分（如关键 bug 修复、低成本高价值功能），评估后移植到 `imperfect-customization-and-refinement`。
+**与上游关系（自 v2.4.6）**：`master` 可本地同步上游，但上游修复/功能**选择性吸收**——不再全部跟进，仅按需人工评估有价值的部分（如关键 bug 修复、低成本高价值功能），评估后移植到 `imperfect-customization-and-refinement`。
 
 ## 🛠️ 构建指南
 

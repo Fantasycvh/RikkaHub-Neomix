@@ -1,7 +1,7 @@
 # 上游变更分析（综合版，2.4.11 → 2.5.1+，2026-09-12 重写，2026-09-14 复核）
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
-> 当前 master 同步点：`a9b35ba2`（2.5.1，2026-09-10 ff-only 推送）。上游其后 **6 提交未同步**（2026-09-14 `git fetch` 发现，见「待吸收」）：`46cacf23`（deepseek-flash，已手工吸收 `e9a39751`）、`2689e753`（AGENTS.md 支持，已手工吸收 `e8e047e5`）、`288a034c`/`bc9d2582`/`d6ba728e`（依赖更新）、`bd936caa`（非聊天请求 session-id 头修复）。
+> 当前 master 同步点：`a9b35ba2`（2.5.1，2026-09-10 ff-only）。**注：origin 上的 master 镜像已于 2026-09-15 删除，此镜像仅本地保留**。上游其后 **6 提交未同步**（2026-09-14 `git fetch` 发现，见「待吸收」）：`46cacf23`（deepseek-flash，已手工吸收 `e9a39751`）、`2689e753`（AGENTS.md 支持，已手工吸收 `e8e047e5`）、`288a034c`/`bc9d2582`/`d6ba728e`（依赖更新）、`bd936caa`（非聊天请求 session-id 头修复）。
 > 决策原则：**等上游稳定后按需吸收**；触及 `GenerationHandler.kt` / `ChatService.kt` / `ChatInput.kt`（fork 重改最重的文件）一律手工适配，不直接 cherry-pick；cherry-pick 需包名适配（`me.rerere.*` → `app.androidrik.*`）。
 > **判定方法（2026-09-12 纠正）**：fork 的"已吸收"以**代码等价核对**为准，**不用 `git merge-base --is-ancestor`**——fork 走手工直套/移植，上游 commit 不是 fork 分支祖先，merge-base 对已吸收项恒判"未吸收"（误报 glm5.3/hy4/kimi k3/deepseek v4.1 flash 等）。核对方式：grep fork 代码中对应定义/注释（如「对齐上游 xxx」）或 diff 等价。
 
@@ -96,15 +96,14 @@
 | `bd936caa` | **fix: 修复部分非聊天请求不带 session id 头的问题**（`Provider.kt`/`GenerationLoop.kt`/`ChatService.kt` + 测试，close #1902） | **不吸收（2026-09-14 核查）**：它是 `20e552f9`（引入 `X-Session-ID` + opencode session 头，2026-09-08，**在 fork 同步点之后**）的后续修复——给 `sessionId` 默认 `Uuid.random()` + `backgroundTextGenerationParams` 补 `conversationId`，让标题/建议/压缩/OCR/翻译/连通性测试等后台请求也带上头。**fork 工作分支根本没有 `sessionId` 概念**（`TextGenerationParams` 无该字段、全仓无 `configureSessionHeaders`/`X-Session-ID`/`x-opencode-session`），属「从未引入」而非「漏改」，修的是 fork 里不存在的机制。**影响为零**：该头仅 `opencode.ai` 网关校验，fork 内置提供商是 `api.rikka-ai.com`。**理论窗口**：fork 保留了 opencode 的 reasoning 适配（`ChatCompletionsAPI.kt:430`）却无 session 头 → 用户若自定义 `opencode.ai` 端点，主聊天可用但后台请求会 `400 MissingSessionID`。**当前不处理**（低频 + 要修须连带整条 session-id 链）；若将来做 X-Session-ID 一并评估 |
 | `d6ba728e` | 依赖更新（`FloatingWindow.kt`/`Theme.kt`/`common/build.gradle.kts`/lib.versions） | 低优先：`FloatingWindow`/`Theme` 是 fork 定制/曾对齐过的文件，需看具体依赖版本与改动 |
 | `288a034c` + `bc9d2582` | 依赖更新 + **修复误删 `lib.versions.toml`**（后者是前者的事故回滚） | **不吸收**：纯依赖版本变动（含一次事故与修复），合并净效果有限；若需某依赖版本单独评估 |
-| `2689e753` 起算的同步动作 | — | 同步方式仍是 ff-only：`git fetch upstream && git checkout master && git merge --ff-only upstream/master && git push origin master`（见下） |
+| `2689e753` 起算的同步动作 | — | 同步方式仍是 ff-only（仅本地）：`git fetch upstream && git checkout master && git merge --ff-only upstream/master`（**不再 push origin**，origin 上的 master 镜像已删除） |
 
-## 同步方式（ff-only）
+## 同步方式（ff-only，仅本地）
 
 ```
 git fetch upstream
 git checkout master
 git merge --ff-only upstream/master
-git push origin master
 git checkout imperfect-customization-and-refinement
 ```
 
