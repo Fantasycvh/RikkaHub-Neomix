@@ -13,6 +13,9 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -61,6 +64,35 @@ private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 /** 翻译输入最大字符数：超长翻译文本曾 API 413 */
 private const val MAX_TRANSLATE_CHARS = 200_000
+
+/**
+ * 工具调用指纹，用于识别同一批里的**重复调用**（相同工具 + 等价参数）。
+ *
+ * 参数先解析再**按键名递归排序**后序列化，使键序/空白不同的等价 JSON 归一为同一指纹
+ * （`JsonObject.toString()` 保留插入顺序，直接序列化会漏掉键序不同的等价调用）；
+ * **toolCallId 不参与**——重复下发的两条 call 恰恰是 id 不同、内容相同
+ * （实测 Gemini 系会这样下发，导致 memory_tool create 重复建记忆）。
+ */
+internal fun toolCallSignature(toolName: String, input: String, json: Json): String {
+    val normalized = runCatching {
+        canonicalize(json.parseToJsonElement(input.ifBlank { "{}" })).toString()
+    }.getOrDefault(input)
+    return toolName + "\u0000" + normalized
+}
+
+/** 递归排序对象键，保证等价 JSON 的序列化结果一致。 */
+private fun canonicalize(element: JsonElement): JsonElement =
+    when (element) {
+        is JsonObject ->
+            JsonObject(
+                element.entries.sortedBy { it.key }.associate { it.key to canonicalize(it.value) }
+            )
+
+        is JsonArray ->
+            JsonArray(element.map { canonicalize(it) })
+
+        else -> element
+    }
 
 @Serializable
 sealed interface GenerationChunk {
@@ -265,6 +297,12 @@ class GenerationHandler(
 
             // Handle tools (execute approved tools, handle denied tools)
             val executedTools = arrayListOf<UIMessagePart.Tool>()
+            // 同一批里「工具名 + 参数」完全相同的重复调用只真正执行一次，其余复用首个结果。
+            // 为什么需要：部分提供商（实测 Gemini 系）会在一次响应里下发**多条内容相同、
+            // 但 toolCallId 不同**的并行 tool_call，逐条执行会重复产生副作用
+            // （实测 memory_tool create 被下发 2 条 → 重复建记忆）。
+            // 注意：每个 toolCallId 都必须有 tool 结果（协议要求），故把首条输出复制回填给重复项。
+            val executedSignature = mutableMapOf<String, List<UIMessagePart>>()
             toolsToProcess.forEach { tool ->
                 when (tool.approvalState) {
                     is ToolApprovalState.Denied -> {
@@ -302,6 +340,13 @@ class GenerationHandler(
 
                     else -> {
                         // Auto or Approved - execute the tool
+                        // 去重：同工具同参数的重复下发只执行一次，其余复用首个结果
+                        val signature = toolCallSignature(tool.toolName, tool.input, json)
+                        executedSignature[signature]?.let { priorOutput ->
+                            Log.i(TAG, "generateText: duplicate ${tool.toolName} call skipped (same args), reused result")
+                            executedTools += tool.copy(output = priorOutput)
+                            return@forEach
+                        }
                         runCatching {
                             val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
                                 ?: error("Tool ${tool.toolName} not found")
@@ -314,9 +359,9 @@ class GenerationHandler(
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
                             val result = toolDef.execute(args)
                             val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
-                            executedTools += tool.copy(
-                                output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
-                            )
+                            val output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
+                            executedSignature[signature] = output
+                            executedTools += tool.copy(output = output)
                         }.onFailure {
                             // 取消必须向上传播，否则停止生成会被误报为工具执行错误
                             if (it is CancellationException) throw it

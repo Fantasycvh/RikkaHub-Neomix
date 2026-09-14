@@ -86,6 +86,45 @@ class MemoryRepositoryTest {
     }
 
     @Test
+    fun `addMemory is idempotent for identical content (tool loop re-create guard)`() = runBlocking {
+        // 回归：一轮生成里注入模型的记忆列表是快照，工具循环中新建的记忆当轮不可见 →
+        // 模型会对同一事实反复 create。同内容应复用而非新增（实测一次可建 6 条）。
+        val first = repo.addMemory("asst", "User's favorite color is teal.")
+        val again = repo.addMemory("asst", "User's favorite color is teal.")
+
+        assertEquals("should reuse the existing record", first.id, again.id)
+        assertEquals(1, repo.getMemoriesOfAssistant("asst").size)
+    }
+
+    @Test
+    fun `addMemory deduplicates ignoring surrounding whitespace`() = runBlocking {
+        val first = repo.addMemory("asst", "prefers brief replies")
+        val again = repo.addMemory("asst", "  prefers brief replies  ")
+
+        assertEquals(first.id, again.id)
+        assertEquals(1, repo.getMemoriesOfAssistant("asst").size)
+        // 落库内容已 trim
+        assertEquals("prefers brief replies", repo.getMemoriesOfAssistant("asst").first().content)
+    }
+
+    @Test
+    fun `addMemory still adds genuinely different content`() = runBlocking {
+        repo.addMemory("asst", "likes tea")
+        repo.addMemory("asst", "likes coffee")
+        assertEquals(2, repo.getMemoriesOfAssistant("asst").size)
+    }
+
+    @Test
+    fun `deduplication is scoped per assistant`() = runBlocking {
+        // 不同助手可以有相同内容，不应互相去重
+        val a = repo.addMemory("a", "same text")
+        val b = repo.addMemory("b", "same text")
+        assertNotEquals(a.id, b.id)
+        assertEquals(1, repo.getMemoriesOfAssistant("a").size)
+        assertEquals(1, repo.getMemoriesOfAssistant("b").size)
+    }
+
+    @Test
     fun `edit and delete address the record by public token`() = runBlocking {
         val m = repo.addMemory("asst", "original")
 

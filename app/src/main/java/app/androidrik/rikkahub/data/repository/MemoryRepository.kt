@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.repository
 
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
@@ -9,6 +10,8 @@ import kotlin.random.Random
 
 class MemoryRepository(private val memoryDAO: MemoryDAO) {
     companion object {
+        private const val TAG = "MemoryRepository"
+
         const val GLOBAL_MEMORY_ID = "__global__"
 
         /** 助手记忆条数上限：超限时删除最旧记录（turbo 06baee4） */
@@ -86,10 +89,28 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         return newMemory.toModel()
     }
 
+    /**
+     * 新增记忆。**同内容幂等**——已存在完全相同的内容时直接返回既有记录、不重复插入。
+     *
+     * 为什么需要：一轮生成里注入模型的 `<memories>` 是**生成开始时的快照**（`ChatService` 取一次），
+     * 工具循环中新建的记忆当轮不可见 → 模型会在后续 step 里对同一事实反复 `create`，
+     * 造成同内容多条（实测一次「保存我的偏好」可建 6 条）。
+     * 这里做去重而非"每个 step 重新注入记忆列表"：后者会让 system prompt 每步变化，
+     * 反而打掉前缀缓存（见 design-auto-compaction 的前缀稳定性约束）。
+     */
     suspend fun addMemory(assistantId: String, content: String): AssistantMemory {
+        val normalized = content.trim()
+        // 幂等检查：同助手下已有相同内容则直接复用（避免工具循环重复创建）
+        memoryDAO.getMemoriesOfAssistant(assistantId)
+            .firstOrNull { it.content.trim() == normalized }
+            ?.let { existing ->
+                Log.i(TAG, "addMemory: duplicate content, reuse #${existing.publicId}")
+                return existing.toModel()
+            }
+
         val newMemory = MemoryEntity(
             assistantId = assistantId,
-            content = content,
+            content = normalized,
             publicId = generatePublicId(),
         )
         val insertedId = memoryDAO.insertMemory(newMemory).toInt()
