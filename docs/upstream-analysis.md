@@ -67,7 +67,7 @@
 | `b6df5f04` / `96fbe7e3` / `0533acde` | OAuth 重构 / videogen / 移除默认提供商 | 无实益：OAuth 抽包是纯结构搬迁（fork 功能已等价，且已吸收其后的 `8ea375a9` cloudflare 匹配 + `c49be6fe` 令牌刷新）；videogen 上游未接进 App（模块自 8/24 初始化后零提交，吸进来是死代码）；移除的是上游自家 rikka-ai.com 内置提供商 |
 | `ef94834a` | MCP kotlin-sdk 换 client-only | 完整包 server 侧是 MCP host（⑥）依赖，待 ⑥ 立项时处理 |
 | `7714f2bc` | chatbox v2 导入 | 按需 |
-| `08c2648b` | 移除记忆 id 显示（close #1830） | **不吸收（2026-09-14 核实）：纯展示层微调**——全量 diff = `AssistantMemoryPage.kt` 单文件删 5 行（`Text("#${memory.id}")` 块 + 一空行），**不碰表结构 / `AssistantMemory` 模型（仍 `val id: Int`）/ 备份恢复 / 工具执行**。fork 保留 `#id` 显示（`AssistantMemoryPage:407`），便于核对审批卡片与 `memory_tool` 引用的是哪条。**重要更正：对其自身目的而言这次隐藏是半截修复**——`buildMemoryPrompt` 仍 `put("id", memory.id)`（已核 `upstream/master`），`memory_tool` schema 与示例仍暴露 id，故 duzhaokun123 的第一条理由「避免助手乱猜测记忆数量」**未被修复**（只治了「用户看着难受」）。#1830 以 **wontfix** 关闭（re-ovo「id不影响任何东西」；重排/自定义 id 均不采纳）。**重排难度评估见 `design-backup-workspace-files.md` §十** |
+| `08c2648b` | 移除记忆 id 显示（close #1830） | **仍不吸收，但动机已被更好的方案取代（2026-09-14 `e416e7d4`）**：该提交是单文件删 5 行的纯展示层改动，且对其自身目的是**半截修复**——`buildMemoryPrompt` 仍 `put("id", memory.id)`、工具 schema/示例仍暴露**自增编号**，故 duzhaokun123 的第一条理由「避免助手乱猜测记忆数量」未被修复（只治了「用户看着难受」）。**fork 改走 opaque id**：`MemoryEntity.public_id`（8 位十六进制随机）+ `AssistantMemory.id` 改 String + DB 27→28 + 工具 schema/提示词/UI 同步，**同时根治「空洞难看」与「泄漏条数」且永不需要重排**，并兼容历史消息里的旧编号引用。**本仓仍显示 `#` 前缀 id**（现为 token）——保留可见性以支撑审批核对「改/删的是哪条」。详见 `design-backup-workspace-files.md` §10.1 |
 
 ## 待吸收（现状真存量，按优先级）
 

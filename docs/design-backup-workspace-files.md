@@ -288,6 +288,14 @@ P2 中的这一项被提前，理由：**纯新增、不改备份格式、向后
 
 **结论：DB 重排 ≈ 中-高且不值得**（治不了本 → 上游 wontfix 合理）。若确在意，三条路：①**显示层连续序号**（UI `forEachIndexed`，不动 DB，~0.5h，零迁移零破坏，即报告者最低诉求；但模型侧仍收原始 id）；②**稳定 opaque id**（uuid/短哈希，同时根治「空洞难看」+「不泄漏条数」且永不需要重排；难度中：DB 迁移加列 + 工具 schema + 提示词 + UI，须验证模型能否稳定用 uuid 做 edit/delete 目标）；③**DB 重排——不做**。
 
-**fork 现状**：**两头都露**（UI `AssistantMemoryPage:407` 显示 `#id` + 提示词 `GenerationPrompts:27` 注入 `id`）。未吸收 `08c2648b` 是**有意保留**——审批功能靠 id 核对「改/删的是哪条」，可见性换来审批可核对性。
+**fork 现状（已演进）**：方案 ②「稳定 opaque id」**已于 2026-09-14 落地**（`e416e7d4`）——
+- `MemoryEntity.public_id`（8 位小写十六进制，32 bit 随机）；DB **27→28**（`ALTER TABLE` + `lower(hex(randomblob(4)))` 就地回填，纯 SQL）
+- `AssistantMemory.id: Int → String`（对外 token）；加 `@Transient sortKey`（自增主键）仅用于注入选「最新 60 条」，不参与序列化
+- 仓库按 token 查/改/删；**兼容历史消息里的旧自增编号引用**（token 查不到时按 id 回退）
+- 工具 schema `id` integer→string + 描述强调「copy exactly, not a count」；提示词注入 token
+- UI：审批预览按 token 查；记忆页新建哨兵 `id == ""`
+**真机端到端实证**：迁移 54 行全获唯一 token（零空值、integrity ok）→ 请求日志 `"id":"b135fd7a"` → 模型回 `{"action":"delete","id":"b135fd7a"}` → 审批卡正确显示目标 → 批准后该行删除。**模型能稳定用 token 做 edit/delete 目标（此前的唯一未知项已消除）。**
+
+**对上游 #1830 wontfix 的重新评估**：上游「隐藏显示」（`08c2648b`）**只治了「用户看着难受」，没治「模型猜条数」**（提示词仍注入自增编号，报告者实证的 deepseek 误判仍在）。本方案同时根治两者，且**永不需要重排**（随机 token 无「空洞」概念）——即当初判定「重排不做」是对的，但「隐藏显示」不是终点，opaque id 才是。
 
 
