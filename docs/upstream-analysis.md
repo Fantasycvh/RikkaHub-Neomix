@@ -50,6 +50,7 @@
 | `4fcb590a` | 测试连接对话框本地化 | `1e98f69a`（标签 string 化 6 语言 5 key + 列宽 64→120dp） | 2026-09-12 |
 | `42b933d8` | debug 启动图标 DEV 角标 | `1e98f69a`（四 drawable + anydpi overlay，debug 变体） | 2026-09-12 |
 | `d3a53e0a` | 图片选择改 PickVisualMedia (#1821 选图落 CR 文件夹而非相册) | `e9c36591`（fork 4 处图片入口；ChatPage 视频/音频保留 GetMultipleContents） | 2026-09-12 |
+| `aac6e963` | 统一内置搜索与外挂搜索行为 (#1666)：模型自带 `BuiltInTools.Search` 时不再注册外挂搜索 | `0b562833`（漏吸收补齐，工具注册 + 告警同口径 + 4 单测） | 2026-09-14 |
 | 队列 `66de8b30` / 语音 `a621e277` / ASR `580e05d6` | 消息队列/语音模式/ASR 双向流 | **fork 自研落地**（`3a911f1e`/`6680668d` / `1c499b79`..`27dc690d`） | 2026-09-09/10 |
 
 ## 已放弃 / 不跟
@@ -62,7 +63,7 @@
 | `c16fe44f`+`41353567` | 固定 3 次重试 + 开关 | 自有 RetrySetting 是超集 |
 | `fa0305ba`+`daae3749` | IME 修复 | UX 动画优化非 bug，ChatInput 定制深 |
 | `05a85a09` | ask_user 自定义文本 | **已自有**（AskUserTool 描述明示支持自由文本，`c1924f13` 复核） |
-| `097cdb90` | ChatToolFactory 重构 | 不跟（2026-09-14 复核并更正）：原判「零功能收益，除非出现第二个工具装配方」——**第二个装配方其实早已存在**（`GenerationHandler.kt:138` 在传入 tools 之上再叠记忆工具），故"除非"条件已成立；但仍不吸收，因它是**结构集中**而非功能修复，fork 定制碰撞点多。**装配方盘点见下「注意点」第 9 条**。**唯一行为差异值得单独摘取**：上游工厂引入 `shouldUseExternalWebSearch(assistant, model) = assistant.enableWebSearch && BuiltInTools.Search !in model.tools`，避免「模型自带原生搜索时仍注册外部搜索工具」；fork 现为 `if (assistant.enableWebSearch)` 无脑注册（`ChatService:815`），**这是可直接摘的 bug 修复，与是否做 factory 重构无关** |
+| `097cdb90` | ChatToolFactory 重构 | 不跟（2026-09-14 复核并更正）：原判「零功能收益，除非出现第二个工具装配方」——**第二个装配方其实早已存在**（`GenerationHandler.kt:138` 在传入 tools 之上再叠记忆工具），故"除非"条件已成立；但仍不吸收，因它是**结构集中**而非功能修复，fork 定制碰撞点多。**装配方盘点见下「注意点」第 9 条**。**唯一行为差异值得单独摘取**：上游工厂引入 `shouldUseExternalWebSearch(assistant, model) = assistant.enableWebSearch && BuiltInTools.Search !in model.tools`，避免「模型自带原生搜索时仍注册外部搜索工具」；fork 现为 `if (assistant.enableWebSearch)` 无脑注册（`ChatService:815`），**这是可直接摘的 bug 修复，与是否做 factory 重构无关**——**已于 2026-09-14 摘取（`0b562833`：`shouldUseExternalWebSearch` + 工具注册/告警同口径 + 4 单测）** |
 | `b6df5f04` / `96fbe7e3` / `0533acde` | OAuth 重构 / videogen / 移除默认提供商 | 无实益：OAuth 抽包是纯结构搬迁（fork 功能已等价，且已吸收其后的 `8ea375a9` cloudflare 匹配 + `c49be6fe` 令牌刷新）；videogen 上游未接进 App（模块自 8/24 初始化后零提交，吸进来是死代码）；移除的是上游自家 rikka-ai.com 内置提供商 |
 | `ef94834a` | MCP kotlin-sdk 换 client-only | 完整包 server 侧是 MCP host（⑥）依赖，待 ⑥ 立项时处理 |
 | `7714f2bc` | chatbox v2 导入 | 按需 |
@@ -129,6 +130,8 @@ git checkout imperfect-customization-and-refinement
    - **必须明确排除在 factory 之外的后台旁路**：标题 / 建议 / 压缩 / OCR / 翻译全部走 `backgroundTextGenerationParams`（`ChatService.kt:139`，**刻意不含 tools**）↔ 重构须保住这个"无工具"契约。
    - **展示侧另有一方**：`ToolUIRegistry`（`ToolUI.kt:93`）+ `ChatMessageTools.kt:79` 按 `toolName` 解析渲染器——非装配方，但是 **toolName 的第二个消费方**，改命名（MCP 前缀/技能名）须同步。
    - **签名含义**：上游 `createTools(settings, assistant, model, workspaceCwd)` 只覆盖主链路；若要容纳潜在方，需再开维度——**调用者类型**（device-local vs remote/headless，决定是否含设备工具）、**记忆工具的归属**（现由 `GenerationHandler` 装因它持 `memoryRepo`；收进 factory 则 factory 需依赖 `MemoryRepository` 或回调注入）、**统一审批解析层**（`needsApproval` 现每处自定义：记忆按 action 分档 / MCP 透传 / 工作区有 override；不抽层只是把散乱搬家）。
+
+10. **批次「已吸收核心件」不等于零缺口**（2026-09-14 教训）：`aac6e963`（#1666 统一内置/外挂搜索，2026-08-13）落在 fork 分叉点 `2c980642`（2026-08-02）之后的 master 同步范围内，但**特性分支从未移植、批次分析也未记录**——它被 2.4.14 批次的「已吸收核心件」概括吞掉了。**修正做法**：`已吸收核心件` 只表示"该批主线已处理"，不代表逐提交已核；对**`ChatService.kt`/`GenerationHandler.kt` 这类重改文件上的上游修复**（尤其带 `fix(...)` 且关 issue 的）应逐条 grep fork 是否等价，而非按批次概括。本次即由「工具装配方盘点」顺藤摸到。
 
 ## 关联
 
