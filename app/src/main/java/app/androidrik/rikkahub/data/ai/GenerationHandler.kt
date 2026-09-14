@@ -53,6 +53,7 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.utils.applyPlaceholders
 import java.util.Locale
@@ -107,17 +108,18 @@ class GenerationHandler(
     private val json: Json,
 ) {
     /**
-     * @param messages 会话**全量**消息（与 messageNodes 对齐），既作回写基线也与 [windowMessages] 一致
-     *   时构成发送内容
-     * @param windowMessages 发送窗口（压缩时 = 检查点合成消息 + 边界后原文）。默认与 [messages] 相同；
-     *   仅用于构建发给 provider 的上下文——**不可**作为回写基线（否则合成消息会被持久化，且与
-     *   messageNodes 索引错位）
+     * @param messages 会话**全量**消息（与 messageNodes 对齐），既是回写基线，也是发送上下文的来源
+     * @param compressionWindow 压缩发送窗口的**可重算**描述（检查点 + 边界下标）；null = 无压缩，
+     *   直接发送 [messages]。**刻意传描述而非冻结列表**：生成循环里 [messages] 会因工具调用增长，
+     *   冻结列表会让模型看不到刚执行的工具结果 → 重复调用（见 [Conversation.CompressionWindow]）。
+     *   仅用于构建发给 provider 的上下文——**不可**作为回写基线（否则合成消息会被持久化，
+     *   且与 messageNodes 索引错位）
      */
     fun generateText(
         settings: Settings,
         model: Model,
         messages: List<UIMessage>,
-        windowMessages: List<UIMessage>? = null,
+        compressionWindow: Conversation.CompressionWindow? = null,
         inputTransformers: List<InputMessageTransformer> = emptyList(),
         outputTransformers: List<OutputMessageTransformer> = emptyList(),
         assistant: Assistant,
@@ -184,7 +186,7 @@ class GenerationHandler(
                     assistant = assistant,
                     settings = settings,
                     messages = messages,
-                    windowMessages = windowMessages,
+                    compressionWindow = compressionWindow,
                     onUpdateMessages = {
                         messages = it.transforms(
                             transformers = outputTransformers,
@@ -514,8 +516,14 @@ class GenerationHandler(
         assistant: Assistant,
         settings: Settings,
         messages: List<UIMessage>,
-        /** 发送窗口（含检查点合成消息）；null = 与 messages 相同。仅用于构建 provider 上下文 */
-        windowMessages: List<UIMessage>? = null,
+        /**
+         * 压缩发送窗口的可重算描述；null = 不做压缩窗口处理。
+         *
+         * **本步重算**（而非接收调用方的冻结列表）：工具执行会让 [messages] 在本回合内增长，
+         * 重算才能把刚产生的 tool call + 结果带进上下文（否则模型重复调用同一工具）。
+         * 边界之前由检查点合成消息替代、边界之后取 live——见 [Conversation.CompressionWindow.applyTo]。
+         */
+        compressionWindow: Conversation.CompressionWindow? = null,
         onUpdateMessages: suspend (List<UIMessage>) -> Unit,
         transformers: List<MessageTransformer>,
         model: Model,
@@ -574,12 +582,14 @@ class GenerationHandler(
             if (system.isNotBlank()) {
                 add(UIMessage.system(prompt = system).copy(isSynthetic = true))
             }
-            // 发给 provider 的上下文取自「发送窗口」（compression 时为 检查点合成消息 + 边界后原文）；
-            // 检查点固定在窗口最前且不参与 limitContext 截断（limitContext 保留尾部会截掉开头的检查点）。
+            // 发给 provider 的上下文：压缩时 = 检查点合成消息 + 边界后**本步 live** 消息。
+            // 每步对 live `messages` 重算（而非用回合初快照）——否则本回合内工具调用的结果
+            // 进不了上下文，模型会重复调用同一工具。检查点固定在窗口最前
+            // 且不参与 limitContext 截断（limitContext 保留尾部会截掉开头的检查点）。
             // 注意：回写基线仍是全量 messages（下方 `var messages`），合成消息不会被持久化。
             // design §4.2 与 limitContext 的两层分工。
             val (checkpointMessages, restMessages) =
-                (windowMessages ?: messages).partitionCheckpointMessages()
+                (compressionWindow?.applyTo(messages) ?: messages).partitionCheckpointMessages()
             addAll(checkpointMessages)
             addAll(restMessages.limitContext(assistant.contextMessageLimit))
         }.transforms(

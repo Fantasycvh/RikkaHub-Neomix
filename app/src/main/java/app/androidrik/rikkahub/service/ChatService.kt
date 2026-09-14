@@ -784,10 +784,13 @@ class ChatService(
                 },
                 // 发送窗口：压缩时 = 检查点合成消息 + 边界后原文（design §4.1 三边界对齐）；
                 // 重生成历史时传 null（= 与 messages 相同）——保持原始轨迹，压缩不改变重生成语义。
-                windowMessages = if (messageRange != null) {
+                // 传「可重算的窗口描述」而非冻结列表：生成循环内每步对 live messages 重算，
+                // 本回合工具调用的结果才能进入上下文（否则模型重复调用同一工具）。
+                // 重生成历史时传 null（走完整轨迹，压缩不改变重生成语义）。
+                compressionWindow = if (messageRange != null) {
                     null
                 } else {
-                    conversation.requestWindowMessages()
+                    conversation.compressionWindow()
                 },
                 assistant = assistant,
                 conversationSystemPrompt = conversation.customSystemPrompt,

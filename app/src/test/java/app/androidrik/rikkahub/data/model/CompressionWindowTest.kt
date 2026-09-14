@@ -246,27 +246,71 @@ class CompressionWindowTest {
         assertNotNull(conversation.activeCompression())
     }
 
+    // ===== CompressionWindow：逐步重算（工具结果必须进入下一步上下文）=====
+
+    /**
+     * 回归（真机缺陷）：回合内工具调用会向 live messages 追加 assistant 消息与工具结果。
+     * 若沿用回合初冻结的窗口，模型下一步看不到工具结果 → 重复调用同一工具
+     * （实测 memory_tool create 重复执行、search_web 同一 query 跑两次）。
+     */
     @Test
-    fun `invalidation is reversible when area returns to recorded state`() {
-        // 指纹是纯函数 -> 失效可逆：编辑后切回原分支，检查点重新生效（摘要对该内容仍准确）
+    fun `recomputing window against live messages carries in-turn tool result`() {
+        val nodes = listOf(node("a"), node("b"), node("c"), node("d"))
+        val cp = checkpoint(boundaryNodeId = nodes[1].id.toString()) // 边界 = index 1
+        val conversation = conversation(nodes, listOf(cp))
+        val window = conversation.compressionWindow()!!
+
+        // 回合初：检查点 + c + d
+        val turnStart = conversation.currentMessages
+        assertEquals(3, window.applyTo(turnStart).size)
+
+        // 回合内：追加 assistant（含 tool call）+ 工具结果
+        val toolCall = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Tool(toolCallId = "t1", toolName = "memory_tool", input = "{}")),
+        )
+        val live = turnStart + toolCall
+
+        val applied = window.applyTo(live)
+        assertTrue("检查点仍在最前", applied.first().isSynthetic)
+        assertTrue(
+            "本回合新增的工具调用必须出现在下一步上下文里（否则模型会重复调用）",
+            applied.any { it.id == toolCall.id },
+        )
+    }
+
+    /** 边界之前的 live 消息仍被检查点替代（不因重算而泄漏被压缩的历史）。 */
+    @Test
+    fun `recomputed window still replaces pre-boundary history`() {
         val nodes = listOf(node("a"), node("b"), node("c"))
-        val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 1)
+        val cp = checkpoint(boundaryNodeId = nodes[1].id.toString())
+        val conversation = conversation(nodes, listOf(cp))
+        val window = conversation.compressionWindow()!!
 
-        // 编辑：追加候选并选中 -> 失效
-        val edited = conversation.copy(
-            messageNodes = conversation.messageNodes.mapIndexed { index, n ->
-                if (index == 0) n.copy(messages = n.messages + node("a-edited").messages.first(), selectIndex = 1)
-                else n
-            }
-        )
-        assertNull(edited.activeCompression())
+        val applied = window.applyTo(conversation.currentMessages)
+        // 只剩：检查点（替代 a/b）+ c
+        assertEquals(2, applied.size)
+        assertTrue(applied.first().isSynthetic)
+        assertTrue(applied.first().toText().contains("summary"))
+    }
 
-        // 切回原候选（selectIndex 回 0）-> 指纹恢复 -> 重新生效
-        val restored = edited.copy(
-            messageNodes = edited.messageNodes.mapIndexed { index, n ->
-                if (index == 0) n.copy(selectIndex = 0) else n
-            }
-        )
-        assertNotNull("回到记录状态后检查点应重新生效", restored.activeCompression())
+    /** 无有效检查点时不产生窗口（调用方直接发送 live messages）。 */
+    @Test
+    fun `no checkpoint yields null window`() {
+        val conversation = conversation(listOf(node("a")), emptyList())
+        assertNull(conversation.compressionWindow())
+    }
+
+    /** 边界下标越界（列表被截断等）时保守回退，不丢消息。 */
+    @Test
+    fun `applyTo returns messages unchanged when boundary out of range`() {
+        val nodes = listOf(node("a"), node("b"), node("c"))
+        val cp = checkpoint(boundaryNodeId = nodes[1].id.toString())
+        val conversation = conversation(nodes, listOf(cp))
+        val window = conversation.compressionWindow()!!
+
+        // 传入比边界更短的列表（模拟异常截断）→ 原样返回，不静默丢内容
+        val short = listOf(node("x").currentMessage)
+        assertEquals(short, window.applyTo(short))
     }
 }

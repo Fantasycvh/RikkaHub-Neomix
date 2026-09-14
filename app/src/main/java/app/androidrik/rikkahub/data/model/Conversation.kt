@@ -136,17 +136,41 @@ data class Conversation(
     }
 
     /**
-     * 发送窗口（检查点作为新段起点，边界之前的历史不发送）：
-     * `[检查点合成消息] + 边界节点之后的全部消息`；无有效检查点或边界找不到时返回全量。
+     * 压缩发送窗口的**可重算**描述：只固化「检查点合成消息 + 边界下标」，不固化消息列表。
      *
-     * **轨迹只追加**：不改动 messageNodes，仅在发送时组装——历史可回溯 + 前缀稳定利于 prompt cache。
-     * 检查点合成消息为 isSynthetic（不落库），带前导语与 `<compressed-summary>` 包裹。
+     * **为什么不直接给窗口列表**：一个回合内工具调用会让 live messages 增长（新增 assistant
+     * 消息及其工具结果）。若沿用回合初的窗口快照，模型在下一步就**看不到自己刚发出的 tool call
+     * 的结果** → 会重复调用同一工具（实测 memory_tool create 被重复执行、search_web 同一 query
+     * 跑两次）。改为每步对 live messages 重算即可让工具结果自然进入上下文。
+     *
+     * @param checkpointMessage 检查点合成消息（isSynthetic，不落库）
+     * @param boundaryIndex turn-start messages 中被摘要的最后一个节点下标；其后为原文
      */
-    fun requestWindowMessages(): List<UIMessage> {
-        val checkpoint = activeCompression() ?: return currentMessages
-        val boundaryId = checkpoint.boundaryNodeId ?: return currentMessages
+    data class CompressionWindow(
+        val checkpointMessage: UIMessage,
+        val boundaryIndex: Int,
+    ) {
+        /**
+         * 应用到给定消息列表：`[检查点] + drop(boundaryIndex + 1)`。
+         *
+         * 传入的 [messages] 允许是**本回合 live** 的列表——生成只向尾部追加，只要它以前缀形式
+         * 保留 turn-start 消息，边界下标的语义就不变，回合内新增的工具调用与结果因而自动带上。
+         */
+        fun applyTo(messages: List<UIMessage>): List<UIMessage> {
+            if (boundaryIndex !in messages.indices) return messages
+            return listOf(checkpointMessage) + messages.drop(boundaryIndex + 1)
+        }
+    }
+
+    /**
+     * 当前生效的压缩窗口（可重算）；无有效检查点 / 无边界 / 边界节点已消失时返回 null
+     * （= 直接发送 live messages）。
+     */
+    fun compressionWindow(): CompressionWindow? {
+        val checkpoint = activeCompression() ?: return null
+        val boundaryId = checkpoint.boundaryNodeId ?: return null
         val boundaryIndex = messageNodes.indexOfFirst { it.id.toString() == boundaryId }
-        if (boundaryIndex < 0) return currentMessages
+        if (boundaryIndex < 0) return null
         val checkpointMessage = UIMessage(
             role = MessageRole.USER,
             parts = listOf(
@@ -154,9 +178,21 @@ data class Conversation(
             ),
             isSynthetic = true,
         )
-        return listOf(checkpointMessage) +
-            messageNodes.drop(boundaryIndex + 1).map { it.currentMessage }
+        return CompressionWindow(checkpointMessage, boundaryIndex)
     }
+
+    /**
+     * 发送窗口（检查点作为新段起点，边界之前的历史不发送）：
+     * `[检查点合成消息] + 边界节点之后的全部消息`；无有效检查点或边界找不到时返回全量。
+     *
+     * **轨迹只追加**：不改动 messageNodes，仅在发送时组装——历史可回溯 + 前缀稳定利于 prompt cache。
+     * 检查点合成消息为 isSynthetic（不落库），带前导语与 `<compressed-summary>` 包裹。
+     *
+     * 注：这是**回合初**的一次性组装（对 turn-start messages 求值）。生成循环内应改用
+     * [compressionWindow] + 逐步重算，否则工具结果进不了上下文（见 [CompressionWindow]）。
+     */
+    fun requestWindowMessages(): List<UIMessage> =
+        compressionWindow()?.applyTo(currentMessages) ?: currentMessages
 
     /**
      * 以 [boundaryNodeIndex] 为边界时应记录的指纹（压缩落库时调用，与 [activeCompression] 校验同源）。
@@ -292,7 +328,7 @@ internal fun List<UIMessagePart>.localFileUrls(): Set<String> = buildSet {
  * - 对这类受损节点只保留**首个候选**（追加永远发生在末尾，故首个候选必为该节点原始消息）
  * - 未被污染的节点（无跨节点重复）完全不动，编辑/重生成历史得以保留
  *
- * 注：根因已在 `GenerationHandler`（windowMessages 与回写基线分离）修复，本函数只用于自愈
+ * 注：根因已在 `GenerationHandler`（发送上下文与回写基线分离）修复，本函数只用于自愈
  * 已受影响的既有数据；加载时执行，随下次保存落库。
  */
 internal fun List<MessageNode>.repairCorruptedCandidates(): List<MessageNode> {
