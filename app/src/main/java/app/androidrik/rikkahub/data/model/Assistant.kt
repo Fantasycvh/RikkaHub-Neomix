@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.CustomBody
 import app.androidrik.ai.provider.CustomHeader
@@ -70,10 +71,22 @@ data class QuickMessage(
     val content: String = "",
 )
 
+/**
+ * 一条长期记忆。
+ *
+ * [id] 是对外的**稳定 opaque token**（非自增编号）——模型在 `memory_tool` 里用它定位
+ * edit/delete 目标，UI 也显示它。之所以不用自增编号：删除空洞会让编号不连续（难看），
+ * 且编号泄漏记忆条数（模型会当成总数）；随机 token 一起根治且永不需要重排。
+ *
+ * [sortKey] 是内部排序键（自增主键），**不参与序列化**——它只用于注入时选「最新的 N 条」，
+ * 以及保持行为不依赖调用方列表顺序。
+ */
 @Serializable
 data class AssistantMemory(
-    val id: Int,
+    val id: String = "",
     val content: String = "",
+    @Transient
+    val sortKey: Int = 0,
 )
 
 @Serializable

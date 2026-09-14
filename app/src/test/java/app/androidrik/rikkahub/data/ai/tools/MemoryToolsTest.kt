@@ -22,7 +22,7 @@ class MemoryToolsTest {
 
     private fun memoryTool(approvalOn: Boolean) = buildMemoryTools(
         json = json,
-        onCreation = { AssistantMemory(1, it) },
+        onCreation = { AssistantMemory("00000001", it) },
         onUpdate = { id, content -> AssistantMemory(id, content) },
         onDelete = { },
         // 与 GenerationHandler 调用点同一判定

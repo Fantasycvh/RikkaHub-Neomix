@@ -29,6 +29,7 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_11_12
 import app.androidrik.rikkahub.data.db.migrations.Migration_13_14
 import app.androidrik.rikkahub.data.db.migrations.Migration_14_15
 import app.androidrik.rikkahub.data.db.migrations.Migration_15_16
+import app.androidrik.rikkahub.data.db.migrations.Migration_27_28
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.sync.webdav.WebDavSync
 import app.androidrik.search.SearchService
@@ -51,7 +52,7 @@ val dataSourceModule = module {
         val context: Context = get()
         Room.databaseBuilder(context, AppDatabase::class.java, "rikka_hub")
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .addMigrations(Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15, Migration_15_16)
+            .addMigrations(Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15, Migration_15_16, Migration_27_28)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     val dictDir = SimpleDictManager.extractDict(context)

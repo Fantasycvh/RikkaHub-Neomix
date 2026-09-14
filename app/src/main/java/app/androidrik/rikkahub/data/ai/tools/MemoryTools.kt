@@ -6,7 +6,6 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -20,8 +19,8 @@ import java.time.LocalDate
 fun buildMemoryTools(
     json: Json,
     onCreation: suspend (String) -> AssistantMemory,
-    onUpdate: suspend (Int, String) -> AssistantMemory,
-    onDelete: suspend (Int) -> Unit,
+    onUpdate: suspend (String, String) -> AssistantMemory,
+    onDelete: suspend (String) -> Unit,
     /** 修改/删除记忆需审批（按 action 名判定；create 始终放行——见 Assistant.memoryModifyApproval） */
     needsApproval: (action: String) -> Boolean = { false },
 ): List<Tool> = listOf(
@@ -33,6 +32,8 @@ fun buildMemoryTools(
             - No relevant record: `create` + `content`
             - Existing relevant record: `edit` + `id` + `content`
             - Outdated/irrelevant record: `delete` + `id`
+            `id` is an opaque token from the <memories> list (e.g. "a3f1c09e"). Copy it exactly;
+            it is not a count or an index, so never guess or derive it.
             Memories will automatically appear in the <memories> tag in later conversations.
             Do not store sensitive information (e.g., ethnicity, religion, sexual orientation, political views, sex life, criminal records).
             You may store: preferred name, preferences, plans, work-related notes, chat style preferences, first chat time, etc.
@@ -42,8 +43,8 @@ fun buildMemoryTools(
 
             Examples:
             {"action":"create","content":"User prefers brief replies and is more active on weekends."}
-            {"action":"edit","id":12,"content":"User’s preferred name updated to “A-Xing”, prefers Chinese replies."}
-            {"action":"delete","id":7}
+            {"action":"edit","id":"a3f1c09e","content":"User’s preferred name updated to “A-Xing”, prefers Chinese replies."}
+            {"action":"delete","id":"7bd20f45"}
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(
@@ -61,8 +62,8 @@ fun buildMemoryTools(
                         put("description", "Operation to perform: create, edit, or delete")
                     })
                     put("id", buildJsonObject {
-                        put("type", "integer")
-                        put("description", "The id of the memory record (required for edit/delete)")
+                        put("type", "string")
+                        put("description", "Opaque memory id token (required for edit/delete); copy it exactly from the memories list")
                     })
                     put("content", buildJsonObject {
                         put("type", "string")
@@ -88,13 +89,13 @@ fun buildMemoryTools(
                 }
 
                 "edit" -> {
-                    val id = params["id"]?.jsonPrimitive?.intOrNull ?: error("id is required")
+                    val id = params["id"]?.jsonPrimitive?.contentOrNull ?: error("id is required")
                     val content = params["content"]?.jsonPrimitive?.contentOrNull ?: error("content is required")
                     json.encodeToJsonElement(AssistantMemory.serializer(), onUpdate(id, content))
                 }
 
                 "delete" -> {
-                    val id = params["id"]?.jsonPrimitive?.intOrNull ?: error("id is required")
+                    val id = params["id"]?.jsonPrimitive?.contentOrNull ?: error("id is required")
                     onDelete(id)
                     buildJsonObject {
                         put("success", true)

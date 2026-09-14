@@ -45,7 +45,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
@@ -128,7 +127,7 @@ object MemoryToolUI : ToolUIRenderer {
                 // 审批执行前按 id 查库展示目标；执行后（已删除）自然查不到 → 不显示。
                 // 无此展示则用户只能盲批「删除记忆」，审批失去意义（见 roadmap 记忆工具审批）。
                 val memoryRepo: MemoryRepository = koinInject()
-                val memoryId = context.arguments.getStringContent("id")?.toIntOrNull()
+                val memoryId = context.arguments.getStringContent("id")
                 val target by produceState<AssistantMemory?>(initialValue = null, memoryId) {
                     value = memoryId?.let { memoryRepo.getMemoryById(it) }
                 }
@@ -162,7 +161,7 @@ object MemoryToolUI : ToolUIRenderer {
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val memoryRepo: MemoryRepository = koinInject()
         val scope = rememberCoroutineScope()
-        val memoryId = (context.content as? JsonObject)?.get("id")?.jsonPrimitiveOrNull?.intOrNull
+        val memoryId = (context.content as? JsonObject)?.get("id")?.jsonPrimitiveOrNull?.contentOrNull
         DefaultToolPreview(
             context = context,
             headerActions = if (action(context) in listOf(ACTION_CREATE, ACTION_EDIT) && memoryId != null) {
