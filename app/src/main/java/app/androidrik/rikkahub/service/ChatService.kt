@@ -34,6 +34,7 @@ import kotlinx.serialization.json.jsonObject
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.Tool
+import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderManager
@@ -145,6 +146,17 @@ internal fun backgroundTextGenerationParams(
     customHeaders = model.customHeaders,
     customBody = model.customBodies,
 )
+
+/**
+ * 是否注册外挂（客户端）搜索工具。
+ *
+ * 模型自带内置搜索（`BuiltInTools.Search`，如 Gemini / GPT 原生搜索）时不再叠加，
+ * 否则会同时下发两套搜索能力——既浪费 schema 预算，也可能让两套搜索冲突
+ * （上游 `aac6e963` / #1666「统一内置搜索与外挂搜索行为」）。
+ */
+internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boolean {
+    return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
+}
 
 internal fun createForkConversation(
     source: Conversation,
@@ -744,6 +756,9 @@ class ChatService(
             model.displayName
         }
 
+        // 模型自带内置搜索时不注册外挂搜索（上游 #1666）：工具注册与「工具不可用」告警同口径
+        val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
+
         runCatching {
 
             // reset suggestions
@@ -751,7 +766,7 @@ class ChatService(
 
             // memory tool
             if (!model.abilities.contains(ModelAbility.TOOL)) {
-                if (assistant.enableWebSearch || mcpManager.getAllAvailableTools().isNotEmpty()) {
+                if (useExternalWebSearch || mcpManager.getAllAvailableTools().isNotEmpty()) {
                     addError(
                         IllegalStateException(context.getString(R.string.tools_warning)),
                         conversationId,
@@ -812,7 +827,7 @@ class ChatService(
                 },
                 outputTransformers = outputTransformers,
                 tools = buildList {
-                    if (assistant.enableWebSearch) {
+                    if (useExternalWebSearch) {
                         addAll(createSearchTools(settings))
                     }
                     addAll(localTools.getTools(assistant.localTools))

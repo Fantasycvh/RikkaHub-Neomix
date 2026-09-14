@@ -2,10 +2,12 @@ package app.androidrik.rikkahub.service
 
 import kotlinx.serialization.json.JsonPrimitive
 import app.androidrik.ai.core.ReasoningLevel
+import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.CustomBody
 import app.androidrik.ai.provider.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.toMessageNode
@@ -13,6 +15,7 @@ import kotlin.uuid.Uuid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatServiceTest {
@@ -137,5 +140,39 @@ class ChatServiceTest {
         val result = mergeCompressedConversation(snapshot, latest, compressedNodes)
 
         assertEquals(listOf("summary"), result.messageNodes.map { it.currentMessage.toText() })
+    }
+
+    // 外挂搜索注册口径（上游 aac6e963 / #1666）：模型自带内置搜索时不再叠加外部搜索工具
+
+    @Test
+    fun `external web search is disabled when assistant preference is disabled`() {
+        val assistant = Assistant(enableWebSearch = false)
+        val model = Model()
+
+        assertFalse(shouldUseExternalWebSearch(assistant, model))
+    }
+
+    @Test
+    fun `external web search is enabled when assistant preference is enabled`() {
+        val assistant = Assistant(enableWebSearch = true)
+        val model = Model()
+
+        assertTrue(shouldUseExternalWebSearch(assistant, model))
+    }
+
+    @Test
+    fun `built-in search suppresses enabled external web search`() {
+        val assistant = Assistant(enableWebSearch = true)
+        val model = Model(tools = setOf(BuiltInTools.Search))
+
+        assertFalse(shouldUseExternalWebSearch(assistant, model))
+    }
+
+    @Test
+    fun `built-in search remains exclusive when external web search is disabled`() {
+        val assistant = Assistant(enableWebSearch = false)
+        val model = Model(tools = setOf(BuiltInTools.Search))
+
+        assertFalse(shouldUseExternalWebSearch(assistant, model))
     }
 }
