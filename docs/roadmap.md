@@ -41,12 +41,51 @@
 
 ### 中等价值（可选）
 
+#### 记忆工具审批（按 action 分档）—— **评估完成，待立项（2026-09-14）**
+
+**需求**：AI 通过 `memory_tool` 可改/删长期记忆，用户无感知。加审批防止**未经许可的修改与删除**。
+
+**结论：值得做且成本很小（约 1 个提交）——基础设施已就绪，只需接线。**
+
+**为什么便宜：fork 已有完整的工具审批基础设施**（`workspace_*` 工具在用，逐处已核实）：
+
+| 环节 | 现状 | 记忆审批需要做什么 |
+|---|---|---|
+| 判定入口 | `Tool.needsApproval: (JsonElement) -> Boolean = { false }`（`ai/core/Tool.kt:17`） | `buildMemoryTools` 加一个 `needsApproval` 参数并返回 true |
+| 运行时 | `GenerationHandler` 每步循环（`238-277`）：`needsApproval=true` 且状态 `Auto` → 打 `Pending` + break 等用户；批准后从 `pendingTools` 恢复 | **零改动** |
+| 拒绝回灌 | `Denied(reason)` 作为工具结果回给模型（`290-307`），模型能感知被拒 | **零改动** |
+| 持久化 | `UIMessagePart.Tool.approvalState`（auto/pending/approved/denied/answered）随消息落库 | **零改动**（离开再回来仍见待审批卡片） |
+| **审批 UI** | `ChatMessageTools.kt:135` 在 `isPending` 时自动渲染批准/拒绝按钮 | **零改动**——任何 `needsApproval=true` 的工具自动获得，记忆工具不用写 UI |
+| 内容预览 | `MemoryToolUI.Summary` 已显示 `content`（`BuiltinToolUIs.kt:118`） | **零改动**（用户能看到「将写入什么」再决定，这是审批有意义的前提） |
+| 配置模式可参考 | 工作区 per-tool 覆盖：`WorkspaceEntity.toolApprovals`（JSON map）+ `resolveWorkspaceToolApproval(name, overrides) = overrides[name] ?: defaults[name] ?: false` + 详情页 `WorkspaceToolApprovalCard` | 照抄模式（或更简，见下） |
+
+**核心设计：按 action 分档，不要一刀切**
+
+`memory_tool` 是**一个工具带三个 action**（create/edit/delete）。若整个工具都需审批，**连「新增记忆」也要每次点确认**——会显著伤害体验（记忆本意是自动积累），用户很可能干脆关掉记忆功能。
+
+| action | 建议默认 | 理由 |
+|---|---|---|
+| `create` | **放行（不审批）** | 追加式、不改动已有数据、记忆页可删（可撤销） |
+| `edit` | **审批** | 覆盖已有内容 = **不可逆修改**，真正的风险点 |
+| `delete` | **审批** | 数据丢失，最该拦 |
+
+实现即在 `needsApproval` 回调里读 `input["action"]` 判断（`GenerationHandler` 传的是 `tool.inputAsJson()`），**基础设施完全不动**。默认值可做成助手级配置（`Assistant` 加 `@Serializable` 字段，随 JSON 自动持久化，**无需 PreferencesStore 三件套**——与 Settings 顶层字段不同）；记忆页加一个开关（落点：`AssistantMemoryPage` 已有 `enableMemory`/`useGlobalMemory` 开关列表，`217-246`）。若接受"仅 edit/delete 拦截"硬编码，连开关都可省。
+
+**三个注意点**：
+
+1. **审批是打断式的**：遇 `Pending` 会 break 等用户（`274-277`），生成暂停。状态持久化故不丢，但打断本身是成本——这是建议 `create` 放行的主因。
+2. **看不到「原内容」**：`edit` 覆盖前的旧值不在 `arguments` 里，审批卡片只能显示新值（+ 记忆页可查）。要更严格可补旧值对比，不做也可接受。
+3. **拒绝后模型可能重试**：`Denied` 原因回灌后模型可能再试同一操作。工作区审批已有此性质，非新问题。
+
+**规模**：小（`MemoryTools.kt` 签名 + `GenerationHandler.kt:146` 调用点 + 助手字段 + 记忆页开关；UI 零新增）。**主要风险不在代码而在默认值**——默认全审批会因打扰致用户关闭记忆功能。
+
 #### 记忆系统增强（HNSW 语义检索）
 
 - **橘瓣实现**：HNSW 向量索引 + 记忆银行 + 每日总结（自动生成生活总结）
 - **我们的现状**：RikkaHub 有 assistant 记忆功能（基于消息），但无语义向量检索
 - **价值**：记忆从"关键词/消息"升级为"语义检索"
 - **注意**：橘瓣的 Supabase 云同步部分依赖第三方云，与隐私导向冲突，**仅借鉴本地索引部分**（如需要可本地跑 HNSW，项目 Rust 引擎 tantivy 已含向量能力）
+- 与上方「记忆工具审批」是两件独立的事（一个是**写入管控**，一个是**检索能力**）
 
 ### 不建议（隐私冲突，与项目定位相反）
 
@@ -69,6 +108,7 @@
 | 优先级 | 项 | 理由 |
 |---|---|---|
 | P1 | 三色定制（背景/气泡/重点色映射） | 毛玻璃已实现（输入栏/列表/顶栏三开关，依赖 haze 2.0），仅剩三色映射定制 |
+| P1 | **记忆工具审批（按 action 分档）** | **基础设施已就绪（约 1 提交）**：复用现有 `needsApproval` + 通用审批 UI，只差接线；防未许可的改/删记忆（详见「中等价值」节） |
 | P2 | 轻量个性化（输入框背景/字体包/头像框） | 气泡透明度已有，其余小改动零风险 |
 | P3 | 记忆语义检索（本地 HNSW） | 价值中等，工程较大（若做需评估 Rust，见 `design-auto-compaction.md` §6.3） |
 | — | QuickJS 插件系统 | **明确不做**（已有 eval_javascript / MCP / Skill / Workspace 四类机制覆盖） |
@@ -510,3 +550,4 @@ data class ApiKeyEntry(
 - 2026-09-14：**数据库恢复 WAL 修复（`6b3032fe`，真机验证）——「恢复成功但聊天记录没变」根因**——触发：**上游原版导出包只含 `rikka_hub.db`（无 `-wal`/`-shm`）**。原实现把 db 条目**原地覆盖**到现库路径，而恢复全程 Room 连接常开（Koin single，**全仓无一处 `close()`**）→ SQLite 下次打开把残留的同名旧 WAL 当作属于该库**回放**，把刚恢复的数据整体盖掉（且可能是新库结构+旧库部分页的**混杂损坏**）；流程末尾 `exitProcess(0)` 只是杀进程、**不触发 checkpoint**，兜不住。**修复**：db 条目先暂存 cacheDir → zip 读完 → ①先复制到目标目录（重活前置，失败发生在关库前）→ ②`appDatabase.close()`（WAL 下会 checkpoint 并释放文件）→ ③删陈旧 `-wal`/`-shm` → ④同目录 rename 换到位；纯文件操作抽 `DatabaseRestoreFiles`（JVM 单测）。**代价**：恢复后连接已关，**必须重启**（已有「重启」弹窗，属正确行为）。**真机验证**：上游包（165 会话/3916 节点）恢复后未重启即读到该数据、目录里只剩主库一个文件，重启后仍为该数据（修复前被旧 WAL 盖回 215/5112）。**顺带清理**（`9ce5a33f`）：删死开关 `DisplaySetting.showUpdates`（fork 无更新检查实现、无消费方；上游对应字段 `updateCheckDisabledUntilEpochMillis` 语义相反、导入时本就丢弃）——UI+字段+6 语言字符串。
 - 2026-09-14：**备份空间预检 + 字节级进度（`2a321c3a`，真机验证）——大文件加固第一项**——**空间预检**（安全 > 体验：恢复是流式直接写最终目标，磁盘写满=部分覆盖）：备份按「输入不压缩」走盘求和；恢复读 zip **中央目录** `entry.size`（不解压）；留 5% 余量、失败给「需要/现有」；**只预检 cacheDir**（SAF 目标/源空间平台不提供）。**字节级进度**：五阶段（打包/上传前准备/上传/下载/解压）经**回调参数**逐层传入（不在被两个 singleton 共享的引擎上挂 StateFlow，避免并发串扰），VM 持 StateFlow、三 tab 共用 `BackupProgressRow`（数字+百分比，无 6 语言资源）。**两坑**：①打包起初「整个文件拷完报一次」→ 85MB DB 期间进度条**冻住 0%**（截图实证），改 `copyReporting` 缓冲循环内增量上报；②S3 上传前 `sha256Hex` 全量读盘需上报为 PREPARING，否则进度长时间停 0%。**真实数据**：导出 39%→85%、恢复 27%、日志 `need ~127 MB, available 137 GB`。设计见 `design-backup-workspace-files.md` §9.1/§9.2。
 - 2026-09-14：**v1.0.4 (259) 转正为唯一 Latest**——bump `13db045b`（258→259，versionName 保持 1.0.4；**设备已装 release 258 故必须递增**）→ 同名 tag `v1.0.4` 替换草稿资产 + 更新日志 → 用户检查通过 → `gh release edit --draft=false --latest`（tag 指向 `13db045b`）。README 标注 `7af80573`（正式 v1.0.4，无草稿）。**注**：`app/release/` 残留同名旧 APK 会被构建脚本覆盖，须先核实 versionCode 再传。
+- 2026-09-14：**记忆工具审批评估（仅评估，待立项）**——用户提「给记忆功能弄个审批，防止未经许可的修改和删除」。核查结论：**值得做且成本很小（约 1 提交）**，因 fork 已有完整工具审批基础设施（`workspace_*` 在用）——`Tool.needsApproval` 判定入口 + `GenerationHandler:238-277` Pending/break/恢复循环 + `Denied` 原因回灌 + `approvalState` 随消息持久化 + `ChatMessageTools:135` 通用批准/拒绝按钮（**任何** `needsApproval=true` 的工具自动获得，记忆工具零 UI 新增）+ `MemoryToolUI.Summary` 已显示待写内容。**核心设计=按 action 分档**（`memory_tool` 一个工具带 create/edit/delete）：`create` 放行（追加式、可撤销）、`edit`/`delete` 审批（不可逆改/删）；实现即在 `needsApproval` 回调里读 `input["action"]`，基础设施零改动。助手级配置随 JSON 自动持久化（**无需三件套**）。**风险不在代码在默认值**（一刀切会因打扰致用户关闭记忆）。详见「一、中等价值 → 记忆工具审批」。
