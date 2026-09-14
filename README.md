@@ -16,7 +16,7 @@ RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，�
 
 🔗 [GitHub Releases](https://github.com/androidrik/rikka2-my_feature_open/releases)（正式发布：`v1.0.5`）
 
-> 本仓库为私有测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**。
+> 本仓库为个人测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**。
 
 ## 📌 项目简介
 
@@ -25,7 +25,6 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 
 - **自 v2.4.6 起上游选择性跟进**：`master` 仍可同步上游（ff-only 镜像机制保留），但上游修复/功能**选择性吸收**——不再全部跟进，仅按需人工评估有价值的部分
 - **独立版本体系**：`2.4.6` 为独立维护起点，此前定制积累完整保留
-- **私有测试用途**：本仓库为个人/团队测试发布，不面向公网分发。
 
 ## ✨ 本项目定制功能
 
@@ -33,7 +32,6 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 
 | 功能 | 说明 |
 |---|---|
-| 🌐 **网络代理支持** | 恢复自上游 1.6.15 的 HTTP 代理功能：支持 HTTP 代理 + 基本认证，OpenAI / Claude / Google 三种 Provider 的请求均走代理；设置页提供独立「网络代理」tab |
 | 🔄 **模型拉取反馈增强** | 借鉴 Cherry Studio：填写 Base URL / API Key 后自动拉取提供商模型列表；拉取失败不再静默，显示错误卡片（含原因）+ 重试按钮；底部工具栏新增「获取模型列表」显式刷新；候选模型经搜索/过滤/全选勾选添加 |
 | 🔑 **提供商多 Key** | 每 key 独立输入框 + 启用开关 + 拖拽排序（列表顺序=优先级，首个=首选）；失败转移覆盖 401/403/429、余额耗尽、TPM/RPM 限流（含中转站 SSE 流内错误无状态码形态）——账户级故障自动切下一个 key，仅零输出失败换 key（半截保留草稿不换）；兼容旧单 key 与分隔符多 key |
 | 🛟 **备用模型链（fallback）** | 助手可配置备用模型：主模型整轮失败自动切备用模型重跑；助手级 > 全局默认两级配置，引用失效（模型被删）自动回退全局；有 fallback 时压缩主模型重试预算快速切换 |
@@ -44,7 +42,7 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 🛡️ **TikZ 崩溃防线** | 三层防线（TikzJax 渲染前尺寸校验 / renderSvg 生成端上限 / plot 采样值上限）+ 高度哨兵 HeightClamp + 文本按码点截断——杜绝巨型 SVG（height 4.58e11）导致 Compose 布局溢出崩溃 |
 | 💬 **对话分享/导出** | 列表页长按「分享对话」+ 聊天内顶栏导出双入口，Markdown / 图片 PNG 两形态（系统分享 ACTION_SEND），支持版本范围可选 |
 | 🗑️ **允许删除内置提供商** | 系统内置 AI 服务提供商可真删除（墓碑 + 悬空引用保护 + 迁移兼容），删除前提示受影响助手计数 |
-| 🔧 **上游吸收** | 已吸收上游 `2.4.8`-`2.4.10` 批次：R8 保留 `@Serializable` / jlatexmath keep、流式 null tool_calls 容错、imggen Provider Override、reasoning max effort、加密推理不回放明文（#1719）、正则拖拽排序（#1700）、`.agc` 文件（#1717）、workspace SAF 修复、英文句首大写、豆包搜索（#1721）；以及 `2.4.11`-`2.5.1` 批次精选：终端多 Tab 后台运行（`3a533a6a`）、空 tool schema 归一化（#1781）、workpace stdin EOF（#1605）、合成消息不参与模板（#1790）、fork 会话继承 folder/cwd（#1778）、代码块导出截断模式（#1841）；2026-09-08 批次：工具审批丢失修复（`55506496`）、think 标签误判锚定（`85402745`/#1725 系）、Skill frontmatter SnakeYAML 正规解析、纯图片/纯附件消息、模型注册组补充、自定义 Response API 路径、provider 阻塞工作移 IO 调度、R8 JWT keep 规则；2026-09-09/09-12 批次：搜索侧多 key 结构化与失败转移、Gemini 捆绑（单数组 tools + ServerTool 流式重实现 + OpenAI 兼容 items 归一化）、终端 Tab 动态标题、cloudflare MCP OAuth、TTS 合成自动重试、Exa 新鲜度、qwen 音色（Serena）、统计页 JSON 兜底、edited_files 安全 cast、DeepSeek V4.1 Flash、工具执行中展开详情、消息队列与语音/ASR 双向流（2.5.0 大块自研适配）、翻译快捷方式与统一 Intent 导航、系统栏图标色恢复、自定义时间提醒间隔、SillyTavern V1 老卡与预设识别、模型名空格支持、通知小图标与测试连接本地化、代码块连字禁用、workspace HTML/SVG 预览与 Shell 兼容模式、图片生成页长按多选、图片选择改用系统相册（#1821）。master 已 ff-only 同步至 `2.5.1`；详细评估见 `docs/upstream-analysis.md`。TikZ 渲染已定稿 mupdf SVG 桥（TEXT_AS_PATH 轮廓，中英文字形矢量，dvisvgm 链移除） |
+| 🔧 **上游吸收** | 不在此地列出 |
 
 ## 🎨 核心功能（继承上游）
 
@@ -73,7 +71,6 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
   `Current group has no effective pricing for model <模型名>`
 - **根因**：该模型在中转站已被**撤下/失效**，或当前 API key 所属**用户组**未为该模型配置**有效定价**——**与客户端无关**（已验证 fork 与上游原版在 URL 拼接、请求体、鉴权、模型名发送上完全一致）
 - **处理**：在中转站后台确认该模型是否仍上架；换用仍有效的模型 id；或联系中转站为该 key 组绑定模型定价
-- **记录**：2026-08-14 —— `gpt-5.6` 于 `<relay-host>` 撤下导致此报错，客户端无需任何改动
 
 ## 🔭 后续规划
 
