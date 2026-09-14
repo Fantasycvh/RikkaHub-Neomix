@@ -132,7 +132,8 @@ internal class BackupArchiveEngine(
             }
         }
         if (BackupItem.FILES in items) {
-            listOf(FileFolders.UPLOAD, FileFolders.FONTS, FileFolders.TOOL_OUTPUTS, FileFolders.SKILLS)
+            // 不含 tool_outputs：会话级临时产物，启动即被 cleanupToolOutputs 清空（见 BackupItem 注释）
+            listOf(FileFolders.UPLOAD, FileFolders.FONTS, FileFolders.SKILLS)
                 .forEach { inputs += File(context.filesDir, it) }
         }
         if (BackupItem.WORKSPACE_FILES in items) {
@@ -233,6 +234,7 @@ internal class BackupArchiveEngine(
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.FONTS}/")) {
                                     restoreFontEntry(zipIn, zipEntry.name)
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.TOOL_OUTPUTS}/")) {
+                                    // 仅兼容旧备份（新备份已不含它）；恢复后也会在下次启动被 cleanup 清掉
                                     restoreFlatEntry(zipIn, zipEntry.name, FileFolders.TOOL_OUTPUTS)
                                 } else if (BackupItem.WORKSPACE_FILES in items &&
                                     zipEntry.name.startsWith(WorkspaceBackupHelper.ZIP_PREFIX)
@@ -354,10 +356,17 @@ internal class BackupArchiveEngine(
         }
     }
 
-    /** files/upload、files/skills、files/fonts、files/tool_outputs */
+    /**
+     * files/upload、files/skills、files/fonts。
+     *
+     * **不含 tool_outputs**（2026-09-15 决策，选项①）：它是会话级临时产物——[cleanupToolOutputs]
+     * 在每次启动时清空该目录，恢复流程末尾必然重启，刚恢复的文件立刻又被删；打包它只是徒增
+     * zip 体积。历史消息里 `/tool_outputs/<id>.txt` 的引用本就可能悬空，截断消息已内联前 4KB
+     * 预览（`TOOL_OUTPUT_PREVIEW_CHARS`）兜底。
+     */
     private fun addAppFilesToZip(zipOut: ZipOutputStream, onBytes: (Long) -> Unit) {
-        // upload / fonts / tool_outputs 是平铺文件（非递归）
-        listOf(FileFolders.UPLOAD, FileFolders.FONTS, FileFolders.TOOL_OUTPUTS).forEach { folder ->
+        // upload / fonts 是平铺文件（非递归）
+        listOf(FileFolders.UPLOAD, FileFolders.FONTS).forEach { folder ->
             val dir = File(context.filesDir, folder)
             if (dir.isDirectory) {
                 Log.i(TAG, "prepareBackupFile: packing $folder (${dir.absolutePath})")
@@ -426,10 +435,10 @@ internal class BackupArchiveEngine(
     // ---- 恢复辅助（严格对齐原 S3Sync/WebDavSync 行为）----
 
     /**
-     * 恢复 `upload/` 与 `tool_outputs/` 条目到同名目录。
+     * 恢复 `upload/` 与（旧备份的）`tool_outputs/` 条目到同名目录。
      *
      * 安全：canonical 解析后必须仍位于该目录内（防 zip-slip）。
-     * 注：upload 与 tool_outputs 都是**平铺**文件（子目录不会被打包），但仍接受带子目录的条目（向后公容）。
+     * 注：upload 是**平铺**文件（子目录不会被打包），但仍接受带子目录的条目（向后兼容）。
      */
     private fun restoreFlatEntry(zipIn: ZipInputStream, entryName: String, folder: String) {
         val fileName = entryName.substringAfter("$folder/")
