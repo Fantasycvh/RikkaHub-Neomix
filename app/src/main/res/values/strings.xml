@@ -932,6 +932,10 @@
   <string name="setting_page_preferences_general_desc">Interaction behavior, scrolling, input settings</string>
   <string name="setting_page_preferences_ui">UI Preferences</string>
   <string name="setting_page_preferences_ui_desc">Message display, fonts, code blocks</string>
+  <string name="setting_page_preferences_network">Network</string>
+  <string name="setting_page_preferences_network_desc">Configure global proxy for providers set to follow global</string>
+  <string name="setting_network_proxy_title">Global proxy</string>
+  <string name="setting_network_proxy_desc">Only transport-layer (proxy type) options apply to search; TTS, MCP, S3 and WebDAV use their own connections.</string>
   <string name="setting_page_dynamic_color">Dynamic Color</string>
   <string name="setting_page_dynamic_color_desc">Generate the app theme colors dynamically from your wallpaper</string>
   <string name="setting_page_extensions">Extensions</string>

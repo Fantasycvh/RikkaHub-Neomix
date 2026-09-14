@@ -1174,6 +1174,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_page_preferences_general_desc">操作動作、スクロール、入力設定</string>
   <string name="setting_page_preferences_ui">UI設定</string>
   <string name="setting_page_preferences_ui_desc">メッセージ表示、フォント、コードブロック</string>
+  <string name="setting_page_preferences_network">ネットワーク</string>
+  <string name="setting_page_preferences_network_desc">「グローバルに従う」プロバイダー用のグローバル代理を設定</string>
+  <string name="setting_network_proxy_title">グローバル代理</string>
+  <string name="setting_network_proxy_desc">代理の種類は共有接続を使う機能（検索・音声認識）にのみ適用されます。TTS・MCP・S3・WebDAV は独自の接続を使います。</string>
   <string name="skills_page_import_from_file">ファイルからインポート</string>
   <string name="skills_page_add_manually">手動追加</string>
   <string name="setting_model_page_tab_model">モデル</string>

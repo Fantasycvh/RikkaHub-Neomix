@@ -110,6 +110,7 @@ import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNotificationPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesGeneralPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesUIPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNetworkPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingFilesPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingMcpPage
@@ -448,6 +449,9 @@ class RouteActivity : ComponentActivity() {
                                 SettingPreferencesUIPage()
                             }
 
+                            entry<Screen.SettingPreferencesNetwork> {
+                                SettingPreferencesNetworkPage()
+                            }
                             entry<Screen.SettingProvider> {
                                 SettingProviderPage()
                             }
@@ -672,6 +676,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingPreferencesUI : Screen
+
+    @Serializable
+    data object SettingPreferencesNetwork : Screen
 
     @Serializable
     data object SettingProvider : Screen

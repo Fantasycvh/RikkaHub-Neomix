@@ -1174,6 +1174,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_page_preferences_general_desc">상호작용 방식, 스크롤, 입력 설정</string>
   <string name="setting_page_preferences_ui">UI 환경설정</string>
   <string name="setting_page_preferences_ui_desc">메시지 표시, 글꼴, 코드 블록</string>
+  <string name="setting_page_preferences_network">네트워크</string>
+  <string name="setting_page_preferences_network_desc">"전역 설정 따르기" 공급자용 전역 프록시 설정</string>
+  <string name="setting_network_proxy_title">전역 프록시</string>
+  <string name="setting_network_proxy_desc">프록시 유형은 공유 연결을 쓰는 기능(검색, 음성 인식)에만 적용됩니다. TTS, MCP, S3, WebDAV는 각자의 연결을 사용합니다.</string>
   <string name="skills_page_import_from_file">파일에서 가져오기</string>
   <string name="skills_page_add_manually">수동으로 추가</string>
   <string name="setting_model_page_tab_model">모델</string>
