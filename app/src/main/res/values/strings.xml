@@ -1090,6 +1090,11 @@
   <string name="setting_provider_page_proxy_port">Port</string>
   <string name="setting_provider_page_proxy_username">Username (Optional)</string>
   <string name="setting_provider_page_proxy_password">Password (Optional)</string>
+  <string name="setting_provider_page_proxy_inherit">Inherit</string>
+  <string name="setting_provider_page_proxy_none">None</string>
+  <string name="setting_provider_page_proxy_http">HTTP</string>
+  <string name="setting_provider_page_proxy_socks5">SOCKS5</string>
+  <string name="setting_provider_page_proxy_inherit_desc">Follow the global proxy setting. Choose None to always connect directly, or configure this provider’s own proxy below.</string>
   <string name="setting_provider_page_scan_error">Error: %s</string>
   <string name="setting_provider_page_scan_qr_code">Scan QR Code</string>
   <string name="setting_provider_page_search_providers">Search providers</string>

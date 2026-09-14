@@ -981,6 +981,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_provider_page_proxy_port">포트</string>
   <string name="setting_provider_page_proxy_username">사용자 이름 (선택 사항)</string>
   <string name="setting_provider_page_proxy_password">비밀번호 (선택 사항)</string>
+  <string name="setting_provider_page_proxy_inherit">전역 설정 따르기</string>
+  <string name="setting_provider_page_proxy_none">없음</string>
+  <string name="setting_provider_page_proxy_http">HTTP</string>
+  <string name="setting_provider_page_proxy_socks5">SOCKS5</string>
+  <string name="setting_provider_page_proxy_inherit_desc">전역 프록시 설정을 따릅니다. "없음"을 선택하면 항상 직접 연결합니다. 아래에서 개별 프록시를 설정할 수도 있습니다.</string>
   <string name="setting_provider_page_scan_error">오류: %s</string>
   <string name="setting_provider_page_scan_qr_code">QR 코드 스캔</string>
   <string name="setting_provider_page_search_providers">공급자 검색</string>

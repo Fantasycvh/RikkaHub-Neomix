@@ -1024,6 +1024,11 @@
   <string name="setting_provider_page_proxy_port">埠號</string>
   <string name="setting_provider_page_proxy_username">使用者名稱 (可選)</string>
   <string name="setting_provider_page_proxy_password">密碼 (可選)</string>
+  <string name="setting_provider_page_proxy_inherit">跟隨全域</string>
+  <string name="setting_provider_page_proxy_none">無</string>
+  <string name="setting_provider_page_proxy_http">HTTP</string>
+  <string name="setting_provider_page_proxy_socks5">SOCKS5</string>
+  <string name="setting_provider_page_proxy_inherit_desc">跟隨全域代理設定。選擇「無」則該供應商始終直連；也可在下方單獨設定代理。</string>
   <string name="setting_provider_page_scan_error">錯誤: %s</string>
   <string name="setting_provider_page_scan_qr_code">掃描二維碼</string>
   <string name="setting_provider_page_search_providers">搜尋提供者</string>

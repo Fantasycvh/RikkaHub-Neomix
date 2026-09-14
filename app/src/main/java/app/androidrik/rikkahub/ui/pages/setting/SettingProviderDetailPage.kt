@@ -438,9 +438,19 @@ private fun SettingProviderProxyPage(
     var editingProxy by remember(provider.proxy) {
         mutableStateOf(provider.proxy)
     }
-    val proxyType = when (editingProxy) {
-        is ProviderProxy.Http -> "HTTP"
-        is ProviderProxy.None -> "None"
+
+    // 四档（两层代理设计 §五）：跟随全局（默认）/ 无（显式直连）/ HTTP / SOCKS5
+    val options = listOf(
+        ProxyOption.Inherit,
+        ProxyOption.None,
+        ProxyOption.Http,
+        ProxyOption.Socks5,
+    )
+    val selected = when (editingProxy) {
+        is ProviderProxy.Inherit -> ProxyOption.Inherit
+        is ProviderProxy.None -> ProxyOption.None
+        is ProviderProxy.Http -> ProxyOption.Http
+        is ProviderProxy.Socks5 -> ProxyOption.Socks5
     }
 
     Column(
@@ -453,67 +463,44 @@ private fun SettingProviderProxyPage(
         SingleChoiceSegmentedButtonRow(
             modifier = Modifier.fillMaxWidth()
         ) {
-            val types = listOf("None", "HTTP")
-            types.forEachIndexed { index, type ->
+            options.forEachIndexed { index, option ->
                 SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(index, types.size),
-                    label = { Text(type) },
-                    selected = proxyType == type,
-                    onClick = {
-                        editingProxy = when (type) {
-                            "HTTP" -> ProviderProxy.Http(
-                                address = "",
-                                port = 8080
-                            )
-
-                            else -> ProviderProxy.None
-                        }
-                    }
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                    label = { Text(stringResource(option.labelRes)) },
+                    selected = selected == option,
+                    onClick = { editingProxy = option.toDefaultProxy() }
                 )
             }
         }
 
-        when (editingProxy) {
-            is ProviderProxy.None -> {}
-            is ProviderProxy.Http -> {
-                OutlinedTextField(
-                    value = (editingProxy as ProviderProxy.Http).address,
-                    onValueChange = {
-                        editingProxy = (editingProxy as ProviderProxy.Http).copy(address = it)
-                    },
-                    label = { Text(stringResource(id = R.string.setting_provider_page_proxy_host)) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                var portStr by remember { mutableStateOf((editingProxy as ProviderProxy.Http).port.toString()) }
-                OutlinedTextField(
-                    value = portStr,
-                    onValueChange = {
-                        portStr = it
-                        it.toIntOrNull()?.let { port ->
-                            editingProxy = (editingProxy as ProviderProxy.Http).copy(port = port)
-                        }
-                    },
-                    label = { Text(stringResource(id = R.string.setting_provider_page_proxy_port)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-                OutlinedTextField(
-                    value = (editingProxy as ProviderProxy.Http).username ?: "",
-                    onValueChange = {
-                        editingProxy = (editingProxy as ProviderProxy.Http).copy(username = it)
-                    },
-                    label = { Text(stringResource(id = R.string.setting_provider_page_proxy_username)) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = (editingProxy as ProviderProxy.Http).password ?: "",
-                    onValueChange = {
-                        editingProxy = (editingProxy as ProviderProxy.Http).copy(password = it)
-                    },
-                    label = { Text(stringResource(id = R.string.setting_provider_page_proxy_password)) },
-                    modifier = Modifier.fillMaxWidth(),
+        when (val current = editingProxy) {
+            is ProviderProxy.Inherit -> {
+                Text(
+                    text = stringResource(R.string.setting_provider_page_proxy_inherit_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            is ProviderProxy.None -> {}
+
+            is ProviderProxy.Http -> ProxyFields(
+                address = current.address,
+                port = current.port,
+                username = current.username.orEmpty(),
+                password = current.password.orEmpty(),
+                isSocks = false,
+                onChange = { editingProxy = it },
+            )
+
+            is ProviderProxy.Socks5 -> ProxyFields(
+                address = current.address,
+                port = current.port,
+                username = current.username.orEmpty(),
+                password = current.password.orEmpty(),
+                isSocks = true,
+                onChange = { editingProxy = it },
+            )
         }
 
         Row(
@@ -533,6 +520,65 @@ private fun SettingProviderProxyPage(
             }
         }
     }
+}
+
+private enum class ProxyOption(val labelRes: Int) {
+    Inherit(R.string.setting_provider_page_proxy_inherit),
+    None(R.string.setting_provider_page_proxy_none),
+    Http(R.string.setting_provider_page_proxy_http),
+    Socks5(R.string.setting_provider_page_proxy_socks5);
+
+    fun toDefaultProxy(): ProviderProxy = when (this) {
+        Inherit -> ProviderProxy.Inherit
+        None -> ProviderProxy.None
+        Http -> ProviderProxy.Http(address = "", port = 8080)
+        Socks5 -> ProviderProxy.Socks5(address = "", port = 1080)
+    }
+}
+
+/** HTTP / SOCKS5 共用的地址·端口·认证输入（[onChange] 回写同类型的新对象）。 */
+@Composable
+private fun ProxyFields(
+    address: String,
+    port: Int,
+    username: String,
+    password: String,
+    isSocks: Boolean,
+    onChange: (ProviderProxy) -> Unit,
+) {
+    fun build(addr: String = address, p: Int = port, user: String = username, pass: String = password) =
+        if (isSocks) ProviderProxy.Socks5(addr, p, user.ifBlank { null }, pass.ifBlank { null })
+        else ProviderProxy.Http(addr, p, user.ifBlank { null }, pass.ifBlank { null })
+
+    OutlinedTextField(
+        value = address,
+        onValueChange = { onChange(build(addr = it)) },
+        label = { Text(stringResource(id = R.string.setting_provider_page_proxy_host)) },
+        modifier = Modifier.fillMaxWidth()
+    )
+    var portStr by remember { mutableStateOf(port.toString()) }
+    OutlinedTextField(
+        value = portStr,
+        onValueChange = {
+            portStr = it
+            it.toIntOrNull()?.let { p -> onChange(build(p = p)) }
+        },
+        label = { Text(stringResource(id = R.string.setting_provider_page_proxy_port)) },
+        modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+    )
+    OutlinedTextField(
+        value = username,
+        onValueChange = { onChange(build(user = it)) },
+        label = { Text(stringResource(id = R.string.setting_provider_page_proxy_username)) },
+        modifier = Modifier.fillMaxWidth()
+    )
+    OutlinedTextField(
+        value = password,
+        onValueChange = { onChange(build(pass = it)) },
+        label = { Text(stringResource(id = R.string.setting_provider_page_proxy_password)) },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

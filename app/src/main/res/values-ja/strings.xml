@@ -981,6 +981,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_provider_page_proxy_port">ポート</string>
   <string name="setting_provider_page_proxy_username">ユーザー名 (オプション)</string>
   <string name="setting_provider_page_proxy_password">パスワード (オプション)</string>
+  <string name="setting_provider_page_proxy_inherit">グローバルに従う</string>
+  <string name="setting_provider_page_proxy_none">なし</string>
+  <string name="setting_provider_page_proxy_http">HTTP</string>
+  <string name="setting_provider_page_proxy_socks5">SOCKS5</string>
+  <string name="setting_provider_page_proxy_inherit_desc">グローバル代理設定に従います。「なし」を選ぶと常に直接接続します。下で個別に代理を設定することもできます。</string>
   <string name="setting_provider_page_scan_error">エラー: %s</string>
   <string name="setting_provider_page_scan_qr_code">QRコードをスキャン</string>
   <string name="setting_provider_page_search_providers">プロバイダーを検索</string>

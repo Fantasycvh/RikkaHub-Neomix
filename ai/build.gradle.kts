@@ -27,6 +27,12 @@ android {
         compilerOptions.optIn.add("kotlin.uuid.ExperimentalUuidApi")
         compilerOptions.optIn.add("kotlin.time.ExperimentalTime")
     }
+
+    // JVM 单测中 android.util.Log 等桩方法返回默认值（与 app 模块同款）：
+    // 代理语义矩阵等纯逻辑不宜因打日志而无法单测
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {

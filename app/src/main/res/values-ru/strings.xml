@@ -981,6 +981,11 @@
   <string name="setting_provider_page_proxy_port">Порт</string>
   <string name="setting_provider_page_proxy_username">Имя пользователя (необязательно)</string>
   <string name="setting_provider_page_proxy_password">Пароль (необязательно)</string>
+  <string name="setting_provider_page_proxy_inherit">Как глобально</string>
+  <string name="setting_provider_page_proxy_none">Нет</string>
+  <string name="setting_provider_page_proxy_http">HTTP</string>
+  <string name="setting_provider_page_proxy_socks5">SOCKS5</string>
+  <string name="setting_provider_page_proxy_inherit_desc">Следовать глобальной настройке прокси. Выберите «Нет», чтобы всегда подключаться напрямую, или задайте собственный прокси ниже.</string>
   <string name="setting_provider_page_scan_error">Ошибка: %s</string>
   <string name="setting_provider_page_scan_qr_code">Сканировать QR-код</string>
   <string name="setting_provider_page_search_providers">Поиск поставщиков</string>
