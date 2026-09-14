@@ -32,6 +32,21 @@ internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boo
 }
 
 /**
+ * 记忆工具是否需要用户审批（按 action 分档，两个开关相互独立）。
+ *
+ * - `create`：由 [Assistant.memoryCreateApproval] 决定（**默认关** = 直接记录）
+ * - `edit` / `delete`：由 [Assistant.memoryModifyApproval] 决定（默认开）
+ * - 缺失/未知 action：按 edit/delete 同口径（**宁可多拦，不可漏放**——不能被当成 create 蒙混过关）
+ *
+ * 抽成纯函数以便单测直接覆盖生产判定（此前测试各自复刻 lambda，等于没测到生产逻辑）。
+ */
+internal fun memoryToolNeedsApproval(assistant: Assistant, action: String): Boolean = when (action) {
+    "create" -> assistant.memoryCreateApproval
+    "edit", "delete" -> assistant.memoryModifyApproval
+    else -> assistant.memoryModifyApproval
+}
+
+/**
  * 单次生成所需工具集的**唯一装配点**（上游 `097cdb90` 的 fork 适配）。
  *
  * 迁移自 `ChatService` 的内联 `buildList` 与 `GenerationHandler` 内叠加的记忆工具——
@@ -75,8 +90,8 @@ class ChatToolFactory(
                     onCreation = { content -> memoryRepository.addMemory(memoryAssistantId, content) },
                     onUpdate = { id, content -> memoryRepository.updateContent(id, content) },
                     onDelete = { id -> memoryRepository.deleteMemory(id) },
-                    // 分档：create 放行；edit/delete 在开启审批时需用户确认（防未经许可的改/删）
-                    needsApproval = { action -> assistant.memoryModifyApproval && action != "create" },
+                    // 分档审批：create 默认放行（可选开关）、edit/delete 默认拦截——见 memoryToolNeedsApproval
+                    needsApproval = { action -> memoryToolNeedsApproval(assistant, action) },
                 )
             )
         }

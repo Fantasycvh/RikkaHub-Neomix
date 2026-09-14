@@ -3,67 +3,85 @@ package app.androidrik.rikkahub.data.ai.tools
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.uuid.Uuid
 
 /**
- * 记忆工具审批（按 action 分档）的判定逻辑。
+ * `buildMemoryTools` 的**接线**测试：验证 `needsApproval` 回调能从 `input` JSON 里正确取出
+ * `action` 并交给判定函数。
  *
- * 规则（见 roadmap「一、中等价值 → 记忆工具审批」与 [app.androidrik.rikkahub.data.model.Assistant.memoryModifyApproval]）：
- * **create 放行**（追加式、可撤销）；**edit/delete 在开启审批时拦截**（不可逆改/删）。
- * 一刀切拦截会因每次写记忆都打断而致用户关闭记忆功能，故按 action 分档。
+ * 审批**判定规则本身**（create 默认放行 / 可选拦截、edit-delete 默认拦截、未知 action 兜底）
+ * 见 [MemoryToolApprovalTest]，那里测的是生产函数 [memoryToolNeedsApproval]——
+ * 本类只负责"JSON → action → 判定"这条链路，不再复刻判定逻辑。
  */
 class MemoryToolsTest {
 
     private val json = Json
 
-    private fun memoryTool(approvalOn: Boolean) = buildMemoryTools(
+    /** 记录回调实际收到的 action，用于验证提取路径。 */
+    private val seenActions = mutableListOf<String>()
+
+    private fun memoryTool(
+        modifyApproval: Boolean = true,
+        createApproval: Boolean = false,
+    ) = buildMemoryTools(
         json = json,
         onCreation = { AssistantMemory("00000001", it) },
         onUpdate = { id, content -> AssistantMemory(id, content) },
         onDelete = { },
-        // 与 GenerationHandler 调用点同一判定
-        needsApproval = { action -> approvalOn && action != "create" },
+        needsApproval = { action ->
+            seenActions += action
+            memoryToolNeedsApproval(
+                Assistant(
+                    memoryModifyApproval = modifyApproval,
+                    memoryCreateApproval = createApproval,
+                ),
+                action,
+            )
+        },
     ).first { it.name == "memory_tool" }
 
     private fun input(action: String) = buildJsonObject { put("action", action) }
 
     @Test
-    fun `create is always allowed without approval`() {
-        assertFalse(memoryTool(approvalOn = true).needsApproval(input("create")))
-        assertFalse(memoryTool(approvalOn = false).needsApproval(input("create")))
+    fun `action is extracted from input json`() {
+        val tool = memoryTool()
+        tool.needsApproval(input("edit"))
+        tool.needsApproval(input("delete"))
+        tool.needsApproval(input("create"))
+        assertEquals(listOf("edit", "delete", "create"), seenActions)
     }
 
     @Test
-    fun `edit and delete require approval when enabled`() {
-        val tool = memoryTool(approvalOn = true)
+    fun `missing action yields empty string not a crash`() {
+        val tool = memoryTool()
+        // 缺 action 不应抛（回调收到空串，由判定函数按兜底处理）
+        tool.needsApproval(buildJsonObject { })
+        assertEquals(listOf(""), seenActions)
+    }
+
+    @Test
+    fun `default config gates edit and delete but allows create`() {
+        val tool = memoryTool()
         assertTrue(tool.needsApproval(input("edit")))
         assertTrue(tool.needsApproval(input("delete")))
+        assertFalse(tool.needsApproval(input("create")))
     }
 
     @Test
-    fun `edit and delete are auto when approval disabled`() {
-        val tool = memoryTool(approvalOn = false)
-        assertFalse(tool.needsApproval(input("edit")))
-        assertFalse(tool.needsApproval(input("delete")))
+    fun `create is gated end-to-end when create approval enabled`() {
+        val tool = memoryTool(createApproval = true)
+        assertTrue(tool.needsApproval(input("create")))
     }
 
     @Test
-    fun `missing or unknown action falls back to requiring approval`() {
-        // 无 action / 未知 action：不得被当作 create 放行（宁可多拦，不可漏放）
-        val tool = memoryTool(approvalOn = true)
-        assertTrue(tool.needsApproval(buildJsonObject { }))
-        assertTrue(tool.needsApproval(input("unknown")))
-    }
-
-    @Test
-    fun `tool name and id integrity`() {
-        val tool = memoryTool(approvalOn = true)
-        assertTrue(tool.name == "memory_tool")
-        // 放行与拦截都不应影响执行体（execute 非空）
+    fun `tool name and description integrity`() {
+        val tool = memoryTool()
+        assertEquals("memory_tool", tool.name)
         assertTrue(tool.description.isNotBlank())
     }
 }

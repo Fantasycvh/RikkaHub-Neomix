@@ -31,14 +31,21 @@ data class Assistant(
     val enableMemory: Boolean = false,
     val useGlobalMemory: Boolean = false, // 使用全局共享记忆而非助手隔离记忆
     /**
-     * 记忆修改审批：为 true 时，AI 通过 memory_tool **修改/删除**记忆需用户确认（create 始终放行，
-     * 追加式可撤销）；为 false 时全部自动执行（现状行为）。
+     * 记忆修改审批：为 true 时，AI 通过 memory_tool **修改/删除**记忆需用户确认；为 false 时自动执行。
      *
      * 为什么按 action 分档而非一刀切：create 是记忆的常态写入，每次打断会因打扰致用户关闭记忆功能；
      * edit 覆盖已有内容、delete 数据丢失，才是「未经许可的修改/删除」的真正风险点。
      * 见 roadmap「一、中等价值 → 记忆工具审批」。
      */
     val memoryModifyApproval: Boolean = true,
+    /**
+     * 记忆创建审批：为 true 时，AI 通过 memory_tool **新增**记忆也需用户确认。
+     *
+     * **默认 false**——保持既有行为（新增直接记录，不打断），本开关是 opt-in：
+     * 适用于担心模型过度记流水账、或希望逐条把关新增内容的用户。
+     * 与 [memoryModifyApproval] 相互独立（可只拦新增、不拦修改）。
+     */
+    val memoryCreateApproval: Boolean = false,
     val enableRecentChatsReference: Boolean = false,
     val messageTemplate: String = "{{ message }}",
     val presetMessages: List<UIMessage> = emptyList(),

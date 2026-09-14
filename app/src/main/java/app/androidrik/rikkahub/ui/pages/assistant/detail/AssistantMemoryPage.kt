@@ -269,6 +269,27 @@ private fun AssistantMemoryContent(
                 }
             )
             item(
+                headlineContent = { Text(stringResource(R.string.assistant_page_memory_create_approval)) },
+                supportingContent = {
+                    Text(
+                        text = stringResource(R.string.assistant_page_memory_create_approval_desc),
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.memoryCreateApproval,
+                        onCheckedChange = {
+                            onUpdateAssistant(
+                                assistant.copy(
+                                    memoryCreateApproval = it
+                                )
+                            )
+                        },
+                        enabled = assistant.enableMemory
+                    )
+                }
+            )
+            item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_recent_chats)) },
                 supportingContent = {
                     Text(
