@@ -165,6 +165,9 @@ object Logging {
  *
  * 为什么不用 JSONL：请求体本身就是一大段 JSON，再被 JSON 转义进单行会变得难读；
  * 排查场景（贴进 issue / 聊天）可读性优先，故用带分隔线的文本块、正文原样保留。
+ *
+ * **敏感头脱敏**：三个 provider 的凭据头（[SENSITIVE_HEADERS]）的值统一替换为 `[redacted]`，
+ * 避免把 API key 明文落盘或暴露在内存日志 UI 里。非敏感头原样保留（排查需要看 `Content-Type` 等）。
  */
 internal fun formatLogEntry(entry: LogEntry): String {
     val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date(entry.timestamp))
@@ -183,15 +186,35 @@ internal fun formatLogEntry(entry: LogEntry): String {
             }
             if (meta.isNotEmpty()) builder.append(meta.joinToString(" ")).append('\n')
             entry.error?.let { builder.append("error: ").append(it).append('\n') }
-            appendHeaders(builder, "request headers", entry.requestHeaders)
+            appendHeaders(builder, "request headers", entry.requestHeaders.redacted())
             entry.requestBody?.let { body ->
                 builder.append("[request body]\n").append(body).append('\n')
             }
-            appendHeaders(builder, "response headers", entry.responseHeaders)
+            appendHeaders(builder, "response headers", entry.responseHeaders.redacted())
         }
     }
     return builder.toString()
 }
+
+/**
+ * 敏感请求/响应头名（小写比较）：三个 provider 的凭据都在这里。
+ * - `Authorization`：OpenAI 兼容（`Bearer <key>`）、Claude（`x-api-key` 之外的 OAuth 路径）
+ * - `x-api-key`：Anthropic Claude
+ * - `x-goog-api-key`：Google / Gemini
+ * - `Proxy-Authorization`：全局/提供商代理认证（HTTP Basic，含 base64 编码的 user:pass）
+ *
+ * URL 里不带 key（三个 provider 全走 header），故 URL 不脱敏。
+ */
+private val SENSITIVE_HEADERS = setOf(
+    "authorization",
+    "x-api-key",
+    "x-goog-api-key",
+    "proxy-authorization",
+)
+
+/** 返回脱敏后的头副本（敏感头的值替换为 `[redacted]`，非敏感头原样保留）。 */
+fun Map<String, String>.redacted(): Map<String, String> =
+    mapValues { (k, v) -> if (k.lowercase(Locale.US) in SENSITIVE_HEADERS) "[redacted]" else v }
 
 private fun appendHeaders(builder: StringBuilder, title: String, headers: Map<String, String>) {
     if (headers.isEmpty()) return

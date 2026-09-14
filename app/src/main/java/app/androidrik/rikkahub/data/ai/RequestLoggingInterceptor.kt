@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.ai
 
 import app.androidrik.common.android.LogEntry
 import app.androidrik.common.android.Logging
+import app.androidrik.common.android.redacted
 import okhttp3.Interceptor
 import okhttp3.Response
 import okio.Buffer
@@ -15,7 +16,10 @@ class RequestLoggingInterceptor : Interceptor {
         val request = chain.request()
         val startTime = System.currentTimeMillis()
 
-        val requestHeaders = request.headers.toMap()
+        // 敏感头在落库前就脱敏（见 common/Logging.kt 的 SENSITIVE_HEADERS）：
+        // 内存 UI（RequestLogDetail）与文件 sink 共用同一份 RequestLog，
+        // 在源头脱敏确保两个展示面都不会明文暴露 API key。
+        val requestHeaders = request.headers.toMap().redacted()
         val requestBody = request.body?.let { body ->
             val buffer = Buffer()
             body.writeTo(buffer)
@@ -43,7 +47,7 @@ class RequestLoggingInterceptor : Interceptor {
         }
 
         val durationMs = System.currentTimeMillis() - startTime
-        val responseHeaders = response.headers.toMap()
+        val responseHeaders = response.headers.toMap().redacted()
 
         Logging.logRequest(
             LogEntry.RequestLog(
