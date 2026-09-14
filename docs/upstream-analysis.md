@@ -116,6 +116,9 @@ git checkout imperfect-customization-and-refinement
 5. **两个 B 编号体系**：2.4.14 批与 2.4.16 批各有 B1/B3（含义不同），引用注明批次。
 6. **TikZ 路线**：mupdf SVG 桥（TEXT_AS_PATH），dvisvgm 链已废弃。
 7. **fork 自研优先**：队列/语音/ASR/保活/审批串行化/多 key/fallback 均为 fork 自有实现——上游同类只是语义参考，不整体吸收。
+8. **提示词注入的「先合并、又想推翻」脉络**（2026-09-14 核实，回答「上游为何讨论将模式注入与提示词合并」）：
+   - **已落地的合并 = 上游 `1cece24e feat: 提示书`（2025-12-17）**，把三样各自独立的东西并成一套：①`ModeInjection` 原只有 `{name, priority, prompt}` 窄字段、②世界书 `RegexInjection` 只有 `{name, regex}`、③学习模式是硬编码布尔 `Assistant.learningMode`。该提交引入 `PromptInjection` 密封基类（公共字段 `id/name/enabled/priority/position/content`）+ `InjectionPosition` 枚举（模式注入**因此才获得插入位置控制**）+ `WorldBook`（后改名 `Lorebook`，`e94709ca`）+ 助手级绑定 `modeInjectionIds`/`lorebookIds` + 统一双 tab 页面 `ui/pages/prompts/PromptPage.kt`（1005 行）。**最强信号**：写死的 `learningMode` 布尔先删（`51cbe7ff`），随后 `1937223b` 把「学习模式」降格为 `DEFAULT_MODE_INJECTIONS` 里的一条普通 `ModeInjection`（内容 `LEARNING_MODE_PROMPT`）——特例被吸收成统一模型里的一行数据。命名演进：提示书 → 世界书更名 Lorebook → 现名「提示词注入」。**fork 已完整具备这套统一模型**（含后续修补 `a1c38afe` 同 role 注入合并、`885517b4`/`0c47d72b`/`390f4c5f` 注入破坏思维链/工具连续性的修复）。合并副作用遗留 open bug = 上游 #1845（两层结构「全局定义 + 助手引用」导致删除被引用的注入后，助手显示「已开启注入数量」不减；本仓 PromptPage 同款结构，未修）。
+   - **当前开着的「再合并/替换」讨论 = 上游 issue #1542《更好的上下文管理，删除提示词注入》（维护者 re-ovo，仍 open、0 评论）**：正文明确动因是「提示词注入和世界书**严重影响提示词缓存**」，方向是「**统一提示词注入和角色卡为上下文插件**? + 缓存友好设计」。即统一的是**数据模型**、未解决**请求形态**（注入落点打散前缀 → 打掉 prompt cache）；#1542 要从「数据统一」走到「上下文形态统一」。旁证：PR `#1630`（closed）以「系统提示 SHA-256 缓存 + WorkspaceReminder 改轮次尾部注入」把 DeepSeek 命中率从 0%→75.2%；#1499/#1562/#1558/#1178 反复报注入破坏缓存。**与 fork 的关联**：这是本仓**压缩/前缀稳定性**线（`design-auto-compaction.md`）的上游镜像——注入落点、检查点窗口、轮次尾部注入同属「请求前缀形态」一层，若将来动这条线应一并规划。**#1542 未实现、不排期**。
 
 ## 关联
 

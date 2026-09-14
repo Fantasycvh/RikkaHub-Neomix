@@ -456,3 +456,5 @@ Yuihub 把消息统计行改为图标化（tokens/缓存图标）。fork 的 ner
 - `app/.../ui/pages/chat/ChatSizeChecker.kt` 长对话警告阈值
 
 **关联**：`docs/roadmap.md`（第八节状态日志）、`docs/design-proxy-two-layer.md`（同类「设计完成待排期」）、`docs/peer-apps-benchmark.md`（peer 借鉴清单）。
+
+**上游同族议题（2026-09-14 补充）**：上游 issue **#1542《更好的上下文管理，删除提示词注入》**（维护者 re-ovo，仍 open）与本线的「请求前缀形态」是同一层——其动因是「提示词注入和世界书**严重影响提示词缓存**」，方向为「统一提示词注入和角色卡为**上下文插件** + 缓存友好设计」。提示词注入的落点（`InjectionPosition`）会打散请求前缀、打掉 prompt cache，与本仓压缩检查点、轮次尾部注入属同一约束族。上游 PR `#1630`（系统提示 SHA-256 稳定性 + `WorkspaceReminder` 改轮次尾部注入）实测 DeepSeek 命中率 0%→75.2%，是该方向的实证；#1499/#1562/#1558/#1178 反复报注入破坏缓存。**若将来动注入落点或检查点窗口，须一并考虑前缀稳定性**。详见 `upstream-analysis.md`「注意点」第 8 条。
