@@ -153,7 +153,11 @@ class GenerationHandler(
                         },
                         onDelete = { id ->
                             memoryRepo.deleteMemory(id)
-                        }
+                        },
+                        // 分档：create 放行；edit/delete 在开启审批时需用户确认（防未经许可的改/删）
+                        needsApproval = { action ->
+                            assistant.memoryModifyApproval && action != "create"
+                        },
                     ).let(this::addAll)
                 }
                 addAll(tools)
@@ -827,8 +831,11 @@ internal fun isPartialOutput(
  * - HTTP 408/425/429/5xx → 重试；401/403（鉴权）、400（参数）、404（模型不存在）→ 不重试
  *
  * provider 层抛的是字符串异常（如 "Failed to get response: 429 ..."），状态码从 message 提取。
+ * **内容风控拦截不重试**：同样内容重发同样被拦（见 [CONTENT_BLOCKED_MARKERS]）。
  */
 internal fun isRetryableGenerationError(t: Throwable): Boolean {
+    // 内容风控/违禁词：确定性失败，须用户改内容——优先于网络/状态码判定（重发同样被拦）
+    if (t.matchesAnyMarker(CONTENT_BLOCKED_MARKERS)) return false
     if (t is java.io.IOException) return true
     if (t is kotlinx.serialization.SerializationException) return true
     // 额度耗尽是确定性失败：余额不会自恢复，等待无意义——快速失败走换 key / fallback
@@ -843,12 +850,35 @@ internal fun isRetryableGenerationError(t: Throwable): Boolean {
  * 换 key 可解决的错误：401/403（鉴权/凭证失效）+ 429（账户级限流，多账户场景换 key 可避开），
  * 以及无状态码的 SSE 流内错误文本兜底（中转站 200 + error 事件）——额度耗尽/限流都是账户级问题。
  * 到此处的一定是零输出（流式半截 429 已被 #1812 分流拦截），换 key 无计费损失。
+ *
+ * **例外（内容风控拦截）**：网关按内容判定违禁并返回 403 时，问题在**请求内容**而非凭证——
+ * 所有 key 都会撞同一道防火墙，换 key 必然全败且把额度/时间白耗在轮换上。故先行排除（见
+ * [CONTENT_BLOCKED_MARKERS]）。这类错误也不重试（同样内容同样被拦）。
  */
 internal fun isKeySwitchingError(t: Throwable): Boolean {
+    if (t.matchesAnyMarker(CONTENT_BLOCKED_MARKERS)) return false
     val code = findHttpStatusCode(t.message)
     if (code == 401 || code == 403 || code == 429) return true
     return t.matchesAnyMarker(QUOTA_EXHAUSTED_MARKERS) || t.matchesAnyMarker(RATE_LIMITED_MARKERS)
 }
+
+/**
+ * 内容风控/违禁词拦截特征：网关按**内容**拒绝，与凭证无关。
+ *
+ * 实测样例（中转站/网关 403）：「触发网站风控违禁词，无法调用模型：内容命中网关内容防火墙规则
+ * [关键词：...]，已被拦截。请修改内容后重试。」——**换 key 无用**（同一防火墙）、**重试无用**
+ * （同样内容同样被拦），只能由用户改内容。若不加此判据，会被 403 规则误判为凭证失效而轮换所有 key。
+ *
+ * 注意：网关多按**子串**匹配（如 `sb`、`sm`、`anal` 会命中 `val sb = StringBuilder()`、`analyze`
+ * 等普通标识符），故用户侧报错常显「莫名其妙」；这是网关行为，客户端无法规避，只能如实归类。
+ */
+private val CONTENT_BLOCKED_MARKERS = listOf(
+    // 中文网关/中转站（"风控" 是内容风控惯用词）
+    "风控", "违禁词", "内容防火墙", "已被拦截", "命中网关", "请修改内容后重试",
+    // 国际厂商内容策略
+    "content policy", "content_policy_violation", "content filter", "content moderation",
+    "moderation_blocked", "safety system", "flagged by", "responsible ai",
+)
 
 /** 账户额度耗尽特征：等待无用（余额不自恢复），换 key（换账户）或 fallback 模型可解 */
 private val QUOTA_EXHAUSTED_MARKERS = listOf(

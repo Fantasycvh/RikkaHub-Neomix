@@ -21,7 +21,9 @@ fun buildMemoryTools(
     json: Json,
     onCreation: suspend (String) -> AssistantMemory,
     onUpdate: suspend (Int, String) -> AssistantMemory,
-    onDelete: suspend (Int) -> Unit
+    onDelete: suspend (Int) -> Unit,
+    /** 修改/删除记忆需审批（按 action 名判定；create 始终放行——见 Assistant.memoryModifyApproval） */
+    needsApproval: (action: String) -> Boolean = { false },
 ): List<Tool> = listOf(
     Tool(
         name = "memory_tool",
@@ -69,6 +71,12 @@ fun buildMemoryTools(
                 },
                 required = listOf("action")
             )
+        },
+        // 复用通用审批基础设施（GenerationHandler 循环 + ChatMessageTools 审批按钮）：
+        // 返回 true 时该工具调用被标记 Pending、break 等用户确认（create 不拦）。
+        needsApproval = { input ->
+            val action = input.jsonObject["action"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            needsApproval(action)
         },
         execute = {
             val params = it.jsonObject

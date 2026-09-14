@@ -98,6 +98,8 @@
   <string name="assistant_page_memory">記憶</string>
   <string name="assistant_page_memory_count">記憶: %d</string>
   <string name="assistant_page_memory_desc">記憶を有効にすると、モデルは会話中にあなたの情報を積極的に記録し、後続の会話で使用しようとします。この機能が正常に動作するには、モデルがツール呼び出しをサポートしている必要があります</string>
+  <string name="assistant_page_memory_modify_approval">記憶の変更承認</string>
+  <string name="assistant_page_memory_modify_approval_desc">有効にすると、AI が既存の記憶を編集・削除する前に確認を求めます。新しい記憶の追加は常に確認なしで記録されます。</string>
   <string name="assistant_page_message_template">チャットコンテンツテンプレート</string>
   <string name="assistant_page_message_template_desc">チャットメッセージがLLMに送信される前のコンテンツ形式を制御します。通常は変更する必要がありません</string>
   <string name="assistant_page_message_template_missing_message">テンプレートに{{ message }}が含まれていないため、ユーザーのメッセージは送信されません</string>

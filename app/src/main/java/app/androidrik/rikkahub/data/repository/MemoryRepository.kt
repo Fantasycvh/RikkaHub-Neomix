@@ -36,6 +36,10 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
             .map { AssistantMemory(it.id, it.content) }
     }
 
+    /** 按 id 取单条记忆（供审批卡片展示「将要修改/删除哪条」；不存在返回 null）。 */
+    suspend fun getMemoryById(id: Int): AssistantMemory? =
+        memoryDAO.getMemoryById(id)?.let { AssistantMemory(it.id, it.content) }
+
     suspend fun deleteMemoriesOfAssistant(assistantId: String) {
         memoryDAO.deleteMemoriesOfAssistant(assistantId)
     }

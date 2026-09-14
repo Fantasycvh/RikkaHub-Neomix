@@ -133,6 +133,37 @@ class GenerationRetryTest {
         assertFalse(isRetryableGenerationError(Exception("This model's maximum context length is 4096 tokens")))
     }
 
+    // ---------- 内容风控/违禁词 403：不换 key、不重试 ----------
+
+    @Test
+    fun `content firewall 403 does not trigger key switching`() {
+        // 真实形态：网关按内容拦截返回 403（关键词仅示意；换 key 无用，所有 key 撞同一防火墙）
+        val blocked = Exception(
+            "Failed to get response: 403 status_code=403, 触发网站风控违禁词，无法调用模型：" +
+                "内容命中网关内容防火墙规则[关键词：anal、sm、sb]，已被拦截。请修改内容后重试。"
+        )
+        assertFalse(isKeySwitchingError(blocked))
+        assertFalse(isRetryableGenerationError(blocked))
+    }
+
+    @Test
+    fun `content firewall markers cover intl vendors and match without status code`() {
+        // 无状态码（200 + 流内 error）形态也要识别
+        val openAiFilter = Exception("Your request was rejected as a result of our safety system")
+        assertFalse(isKeySwitchingError(openAiFilter))
+        assertFalse(isRetryableGenerationError(openAiFilter))
+        // 国际厂商常见措辞
+        assertFalse(isKeySwitchingError(Exception("This request was flagged by our content policy")))
+        assertFalse(isRetryableGenerationError(Exception("moderation_blocked: content filter triggered")))
+    }
+
+    @Test
+    fun `plain 403 auth failure still switches key`() {
+        // 回归保护：普通 403 鉴权失败仍应换 key（不得被内容风控判据误伤）
+        assertTrue(isKeySwitchingError(Exception("Failed to get response: 403 invalid api key")))
+        assertTrue(isKeySwitchingError(Exception("status: 403 Forbidden - no permission for this model")))
+    }
+
     @Test
     fun `hasMultipleEnabledKeys counts only enabled non-blank keys`() {
         // 空列表回退旧单 key 字段，不算多 key

@@ -25,6 +25,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -68,6 +70,7 @@ import me.rerere.hugeicons.stroke.VolumeHigh
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
+import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.ui.Favicon
@@ -111,20 +114,47 @@ object MemoryToolUI : ToolUIRenderer {
     }
 
     override fun hasSummary(context: ToolUIContext): Boolean =
-        action(context) in listOf(ACTION_CREATE, ACTION_EDIT) &&
-            context.content.getStringContent("content") != null
+        when (action(context)) {
+            ACTION_CREATE, ACTION_EDIT -> context.content.getStringContent("content") != null
+            // delete：输出里没有内容，但审批时（执行前）可按 id 查到将被删除的记忆
+            ACTION_DELETE -> true
+            else -> false
+        }
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        context.content.getStringContent("content")?.let { memoryContent ->
-            Text(
-                text = memoryContent,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.shimmer(isLoading = context.loading),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
+        when (action(context)) {
+            ACTION_DELETE -> {
+                // 审批执行前按 id 查库展示目标；执行后（已删除）自然查不到 → 不显示。
+                // 无此展示则用户只能盲批「删除记忆」，审批失去意义（见 roadmap 记忆工具审批）。
+                val memoryRepo: MemoryRepository = koinInject()
+                val memoryId = context.arguments.getStringContent("id")?.toIntOrNull()
+                val target by produceState<AssistantMemory?>(initialValue = null, memoryId) {
+                    value = memoryId?.let { memoryRepo.getMemoryById(it) }
+                }
+                target?.content?.let { memoryContent ->
+                    Text(
+                        text = memoryContent,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            else -> {
+                context.content.getStringContent("content")?.let { memoryContent ->
+                    Text(
+                        text = memoryContent,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.shimmer(isLoading = context.loading),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
 
