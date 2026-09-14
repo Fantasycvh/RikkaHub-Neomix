@@ -161,7 +161,7 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 | 3 | rikkahub-agent | LoopGuard、工具审批模型、AgentRun 账本（等有 Cron/后台入口） | 中 |
 | 4 | SoLab | 保活补强（**WifiLock ✅ 已落地 `ee1c9736`** + specialUse 决策依据）、ToolCallLoopGuard、工具结果外置 + 反翻页 | 低-中 |
 | 5 | SoLab | 世界书 seed 三重迁移、previewToken 审批、schema 三档加载 | 中 |
-| 6 | SoLab | MCP host 模式（手机当桌面 AI 工具箱） | 高，按需 |
+| 6 | SoLab | MCP host 模式（手机当桌面 AI 工具箱） | 高，按需；**一旦立项即成为第 4 个工具装配方**（远程调用者需设备工具子集、复用审批/loop guard，见 `upstream-analysis.md`「注意点」第 9 条装配方盘点） |
 | 7 | Yuihub | **记忆打分校准 + 字符预算**（替掉 `take(60)` 全量注入，含 DAO `ORDER BY`） | 低（**推荐先做**，见 §四） |
 | 8 | Yuihub | 记忆提取管道 + 整理器（须接受「每轮多一次 LLM 调用」） | 中-高 |
 
