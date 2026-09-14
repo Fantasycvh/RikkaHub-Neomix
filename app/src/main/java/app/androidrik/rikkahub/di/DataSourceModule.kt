@@ -21,6 +21,7 @@ import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.api.RikkaHubAPI
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.fts.MessageFtsManager
 import app.androidrik.rikkahub.data.db.fts.SimpleDictManager
@@ -31,6 +32,10 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_14_15
 import app.androidrik.rikkahub.data.db.migrations.Migration_15_16
 import app.androidrik.rikkahub.data.db.migrations.Migration_27_28
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
+import app.androidrik.rikkahub.data.network.RikkaProxyAuthenticator
+import app.androidrik.rikkahub.data.network.SettingsProxyAuthenticator
+import app.androidrik.rikkahub.data.network.SettingsProxySelector
+import app.androidrik.rikkahub.data.network.SocksCredentialRegistry
 import app.androidrik.rikkahub.data.sync.webdav.WebDavSync
 import app.androidrik.search.SearchService
 import app.androidrik.rikkahub.data.sync.S3Sync
@@ -42,6 +47,8 @@ import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 val dataSourceModule = module {
     single {
@@ -165,9 +172,29 @@ val dataSourceModule = module {
     }
 
     single<OkHttpClient> {
+        val settingsStore: SettingsStore = get()
         val acceptLang = AcceptLanguageBuilder.fromAndroid(get())
             .build()
+
+        // 两层代理的全局层（docs/design-proxy-two-layer.md §二）：
+        // 只装在共享 client 上——ai 模块对全局设置零感知（provider 选 Inherit 即不配置）。
+        val socksRegistry = SocksCredentialRegistry()
+        runCatching {
+            java.net.Authenticator.setDefault(RikkaProxyAuthenticator(socksRegistry))
+        }
+        // 启动即刷新一次凭据表；之后随 settings 变化持续跟进（热切换，无需重建 client）
+        get<AppScope>().launch {
+            settingsStore.settingsFlowRaw.collect { settings ->
+                socksRegistry.update(
+                    globalProxy = settings.globalProxy,
+                    providers = settings.providers.map { it.proxy },
+                )
+            }
+        }
+
         OkHttpClient.Builder()
+            .proxySelector(SettingsProxySelector(settingsStore))
+            .proxyAuthenticator(SettingsProxyAuthenticator(settingsStore))
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.MINUTES)
             .writeTimeout(120, TimeUnit.SECONDS)
@@ -205,6 +232,7 @@ val dataSourceModule = module {
             .addNetworkInterceptor(RequestLoggingInterceptor())
             .addInterceptor(AIRequestInterceptor())
             .addInterceptor(HttpLoggingInterceptor().apply {
+                redactHeader("Proxy-Authorization")
                 level = HttpLoggingInterceptor.Level.HEADERS
             })
             .build().also { SearchService.init(it, get()) }

@@ -188,6 +188,8 @@ class SettingsStore(
         val AUTO_COMPRESS_THRESHOLD_PERCENT = intPreferencesKey("auto_compress_threshold_percent")
         val AUTO_COMPRESS_RETAIN_PERCENT = intPreferencesKey("auto_compress_retain_percent")
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
+        // 全局代理（两层代理设计的全局兜底层）；结构化 JSON 存储
+        val GLOBAL_PROXY = stringPreferencesKey("global_proxy")
         // 日志落盘（Log 页「导出到文件」开关；默认关，避免无谓写盘）
         val LOG_TO_FILE_ENABLED = booleanPreferencesKey("log_to_file_enabled")
         // 请求记录（Log 页「记录请求」开关；默认关。**必须持久化**——否则重启后
@@ -301,6 +303,9 @@ class SettingsStore(
                 contextLengthOverride = preferences[CONTEXT_LENGTH_OVERRIDE],
                 autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
                 logToFileEnabled = preferences[LOG_TO_FILE_ENABLED] ?: false,
+                globalProxy = preferences[GLOBAL_PROXY]?.let {
+                    JsonInstant.decodeFromString<GlobalProxySetting>(it)
+                } ?: GlobalProxySetting(),
                 recordRequestsEnabled = preferences[RECORD_REQUESTS_ENABLED] ?: false,
                 autoCompressThresholdPercent = preferences[AUTO_COMPRESS_THRESHOLD_PERCENT]
                     ?: DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
@@ -492,6 +497,7 @@ class SettingsStore(
             preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
             preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
             preferences[LOG_TO_FILE_ENABLED] = settings.logToFileEnabled
+            preferences[GLOBAL_PROXY] = JsonInstant.encodeToString(settings.globalProxy)
             preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
         }
     }
@@ -649,6 +655,8 @@ data class Settings(
     val webServerAccessPassword: String = "",
     val webServerLocalhostOnly: Boolean = false,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
+    /** 全局代理（provider 未自配时兜底；默认 NONE = 不启用） */
+    val globalProxy: GlobalProxySetting = GlobalProxySetting(),
     val retrySetting: RetrySetting = RetrySetting(),
     val launchCount: Int = 0,
     /** 上下文窗口全局默认（模型无 contextLength/customContextLength 时的兜底；null=不覆盖走 256K） */
@@ -743,6 +751,32 @@ data class BackupReminderConfig(
     val intervalDays: Int = 7,
     val lastBackupTime: Long = 0L,
 )
+
+/** 全局代理类型（两层代理设计 §一）。 */
+@Serializable
+enum class ProxyType { NONE, HTTP, SOCKS5 }
+
+/**
+ * 全局代理设置（两层代理设计的「全局兜底层」）。
+ *
+ * 覆盖面（已盘点，见 docs/design-proxy-two-layer.md §四）：
+ * - AI chat：provider 未自配（`ProviderProxy.Inherit`）时走这里；
+ * - **只有走 DI 共享 client 的链路才受益**——搜索（`SearchService.init` 注入共享 client）、
+ *   ASR（`koinInject<OkHttpClient>`）在列；TTS / MCP 各自 `OkHttpClient.Builder()` 自建、
+ *   S3/WebDAV 走独立 Ktor client，**均不受全局层影响**。
+ */
+@Serializable
+data class GlobalProxySetting(
+    val type: ProxyType = ProxyType.NONE,
+    val host: String = "",
+    val port: Int = 0,
+    val username: String = "",
+    val password: String = "",
+) {
+    /** 是否可用（已选择类型且地址端口填写有效）。 */
+    val isConfigured: Boolean
+        get() = type != ProxyType.NONE && host.isNotBlank() && port in 1..65535
+}
 
 fun Settings.isNotConfigured() = providers.all { it.models.isEmpty() }
 
