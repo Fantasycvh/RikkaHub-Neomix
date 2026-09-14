@@ -15,8 +15,11 @@ internal fun buildMemoryPrompt(memories: List<AssistantMemory>) =
         appendLine()
         val json = buildJsonArray {
             // 注入上限：最多 60 条、总内容 100K，防记忆爆炸 prompt（turbo 06baee4）
+            // 取「最新」的 60 条而非列表头部：id 为 AUTOINCREMENT 单调递增，故按 id 降序即写入先后。
+            // （此前直接 take(60)，配合无 ORDER BY 的查询按 rowid 升序返回 = 只注入最旧的 60 条，
+            //   超过 60 条后新写入的记忆永远进不了 prompt；排序放这里，使行为不依赖调用方的列表顺序。）
             var totalChars = 0
-            memories.take(MAX_MEMORY_INJECT_COUNT).forEach { memory ->
+            memories.sortedByDescending { it.id }.take(MAX_MEMORY_INJECT_COUNT).forEach { memory ->
                 if (totalChars >= MAX_MEMORY_TOTAL_CHARS) return@forEach
                 val content = memory.content.take(MAX_MEMORY_TOTAL_CHARS - totalChars)
                 totalChars += content.length
