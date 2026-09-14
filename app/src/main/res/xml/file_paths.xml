@@ -16,4 +16,7 @@
   <files-path
     name="tool_outputs"
     path="tool_outputs/" />
+  <files-path
+    name="logs"
+    path="logs/" />
 </paths>

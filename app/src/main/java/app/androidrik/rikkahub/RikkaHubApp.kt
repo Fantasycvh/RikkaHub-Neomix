@@ -16,11 +16,13 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import app.androidrik.rikkahub.data.files.FileFolders
+import app.androidrik.common.android.Logging
 import java.io.File
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import app.androidrik.common.android.appTempFolder
 import com.whl.quickjs.android.QuickJSLoader
@@ -76,6 +78,9 @@ class RikkaHubApp : Application() {
 
         // Init QuickJS native library
         QuickJSLoader.init()
+
+        // 初始化日志落盘目录 + 应用持久化的落盘开关（在生成/网络发生前就绪）
+        initLogToFile()
 
         // delete temp files
         deleteTempFiles()
@@ -201,6 +206,30 @@ class RikkaHubApp : Application() {
                 }
             }.onFailure {
                 Log.e(TAG, "startWebServerIfEnabled failed", it)
+            }
+        }
+    }
+
+    /**
+     * 初始化日志落盘：指定目录 + 应用持久化开关。
+     *
+     * 同步执行（不 launch）以确保在网络/生成开始前就绪——[Logging] 的落盘写入是
+     * 触发性追加，开关状态在进程早期必须正确。
+     */
+    private fun initLogToFile() {
+        Logging.initLogDirectory(File(filesDir, FileFolders.LOGS))
+        // 必须读 settingsFlowRaw（真实 DataStore 流）：settingsFlow.value 在 DataStore 尚未加载时
+        // 是 Settings.dummy()（全默认 false），同步读会永远得到「关闭」——这正是「开关开着却不写文件」的坑。
+        // 持续跟随（而非只读一次）：用户在 Log 页切换后即使不经由直接 setter 也能生效
+        get<AppScope>().launch {
+            runCatching {
+                get<SettingsStore>().settingsFlowRaw.collect { settings ->
+                    Logging.setFileLoggingEnabled(settings.logToFileEnabled)
+                    // 两个开关都要跟随：只恢复落盘而请求记录重置为关时，文件会一直是空的（静默失效）
+                    Logging.setRequestLoggingEnabled(settings.recordRequestsEnabled)
+                }
+            }.onFailure {
+                Log.w(TAG, "initLogToFile: failed to observe settings, keeping logging off", it)
             }
         }
     }

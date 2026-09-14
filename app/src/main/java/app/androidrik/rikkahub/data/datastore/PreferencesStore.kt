@@ -188,6 +188,11 @@ class SettingsStore(
         val AUTO_COMPRESS_THRESHOLD_PERCENT = intPreferencesKey("auto_compress_threshold_percent")
         val AUTO_COMPRESS_RETAIN_PERCENT = intPreferencesKey("auto_compress_retain_percent")
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
+        // 日志落盘（Log 页「导出到文件」开关；默认关，避免无谓写盘）
+        val LOG_TO_FILE_ENABLED = booleanPreferencesKey("log_to_file_enabled")
+        // 请求记录（Log 页「记录请求」开关；默认关。**必须持久化**——否则重启后
+        // 「导出到文件」虽开着却收不到任何请求日志，是个静默失效的坑）
+        val RECORD_REQUESTS_ENABLED = booleanPreferencesKey("record_requests_enabled")
 
     }
 
@@ -295,6 +300,8 @@ class SettingsStore(
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
                 contextLengthOverride = preferences[CONTEXT_LENGTH_OVERRIDE],
                 autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
+                logToFileEnabled = preferences[LOG_TO_FILE_ENABLED] ?: false,
+                recordRequestsEnabled = preferences[RECORD_REQUESTS_ENABLED] ?: false,
                 autoCompressThresholdPercent = preferences[AUTO_COMPRESS_THRESHOLD_PERCENT]
                     ?: DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
                 autoCompressRetainPercent = preferences[AUTO_COMPRESS_RETAIN_PERCENT]
@@ -484,6 +491,8 @@ class SettingsStore(
             preferences[AUTO_COMPRESS_THRESHOLD_PERCENT] = settings.autoCompressThresholdPercent
             preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
             preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
+            preferences[LOG_TO_FILE_ENABLED] = settings.logToFileEnabled
+            preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
         }
     }
 
@@ -646,6 +655,10 @@ data class Settings(
     val contextLengthOverride: Int? = null,
     /** 自动压缩：占用超过阈值时自动把早期历史摘要为检查点（默认关，保持行为可预期） */
     val autoCompressEnabled: Boolean = false,
+    /** 日志落盘到 files/logs（默认关）：取回完整请求体等 logcat 截断看不到的内容 */
+    val logToFileEnabled: Boolean = false,
+    /** 记录 HTTP 请求日志（默认关）：与落盘开关独立，但落盘要有内容需它同时开启 */
+    val recordRequestsEnabled: Boolean = false,
     /** 触发阈值：占用达到模型窗口的百分比时触发（默认 80） */
     val autoCompressThresholdPercent: Int = DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
     /** 保留比例：尾部原文占窗口的百分比（默认 40） */

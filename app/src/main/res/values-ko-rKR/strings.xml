@@ -1317,6 +1317,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_asr_configure_step_hotwords_desc">고유명사/도메인 용어 인식 정확도를 높이기 위한 쉼표로 구분된 핫워드 목록</string>
   <string name="log_page_record_requests">요청 기록</string>
   <string name="log_page_record_requests_desc">요청 헤더, 본문 및 응답 메타데이터를 기록합니다.</string>
+  <string name="log_page_write_to_file">파일로 내보내기</string>
+  <string name="log_page_write_to_file_desc">로그를 files/logs에 추가 기록합니다(요청 본문 전체 포함, 재시작 후에도 유지). 기본값은 꺼짐.</string>
+  <string name="log_page_clear_file">파일 비우기</string>
   <string name="chat_message_tool_recent_chats">최근 채팅 보기</string>
   <string name="chat_message_tool_conversation_search">검색 기록: %1$s</string>
   <string name="assistant_page_local_tools_screen_time_title">화면 시간</string>

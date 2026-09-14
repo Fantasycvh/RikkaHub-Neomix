@@ -1384,6 +1384,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_mcp_page_name_invalid">名称不能为空</string>
   <string name="log_page_record_requests">记录请求</string>
   <string name="log_page_record_requests_desc">捕获请求标头、正文和响应元数据</string>
+  <string name="log_page_write_to_file">导出到文件</string>
+  <string name="log_page_write_to_file_desc">同时把日志追加写入 files/logs（含完整请求体，重启不丢）。默认关闭。</string>
+  <string name="log_page_clear_file">清空文件</string>
   <string name="chat_message_tool_recent_chats">查看最近的对话</string>
   <string name="chat_message_tool_conversation_search">搜索历史：%1$s</string>
   <string name="assistant_page_local_tools_screen_time_title">屏幕时间</string>

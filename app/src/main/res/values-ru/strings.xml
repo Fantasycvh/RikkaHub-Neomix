@@ -1317,6 +1317,9 @@
   <string name="setting_asr_configure_step_hotwords_desc">Список горячих слов через запятую для повышения точности распознавания имён собственных и терминов предметной области</string>
   <string name="log_page_record_requests">Записывать запросы</string>
   <string name="log_page_record_requests_desc">Записывать заголовки запросов, тела и метаданные ответов</string>
+  <string name="log_page_write_to_file">Экспорт в файл</string>
+  <string name="log_page_write_to_file_desc">Дополнительно дописывать логи в files/logs (включая тела запросов целиком; сохраняется после перезапуска). По умолчанию выключено.</string>
+  <string name="log_page_clear_file">Очистить файл</string>
   <string name="chat_message_tool_recent_chats">Посмотреть недавние чаты</string>
   <string name="chat_message_tool_conversation_search">История поиска: %1$s</string>
   <string name="assistant_page_local_tools_screen_time_title">Экранное время</string>

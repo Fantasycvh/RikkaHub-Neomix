@@ -1390,6 +1390,9 @@
   <string name="setting_mcp_page_name_invalid">Name cannot be empty</string>
   <string name="log_page_record_requests">Record requests</string>
   <string name="log_page_record_requests_desc">Capture request headers, bodies, and response metadata</string>
+  <string name="log_page_write_to_file">Export to file</string>
+  <string name="log_page_write_to_file_desc">Also append logs to files/logs (full request bodies included; survives restarts). Off by default.</string>
+  <string name="log_page_clear_file">Clear file</string>
   <string name="chat_message_tool_recent_chats">View recent chats</string>
   <string name="chat_message_tool_conversation_search">Search history: %1$s</string>
   <string name="assistant_page_local_tools_screen_time_title">Screen Time</string>

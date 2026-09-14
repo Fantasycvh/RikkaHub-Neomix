@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.pages.log
 
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.Share03
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
@@ -32,10 +33,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.core.content.FileProvider
+import android.content.Intent
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import app.androidrik.common.android.LogEntry
@@ -45,7 +50,10 @@ import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.JsonTree
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
+import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.utils.JsonInstantPretty
+import app.androidrik.rikkahub.utils.writeClipboardText
+import org.koin.compose.koinInject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -54,7 +62,13 @@ import java.util.Locale
 fun LogPage() {
     var logs by remember { mutableStateOf(Logging.getRecentLogs()) }
     var requestLoggingEnabled by remember { mutableStateOf(Logging.isRequestLoggingEnabled()) }
+    var fileLoggingEnabled by remember { mutableStateOf(Logging.isFileLoggingEnabled()) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsStore: SettingsStore = koinInject()
+    // 落盘文件大小：随开关与清空变化，供用户确认「确实写到东西了」
+    var logFileSize by remember { mutableStateOf(Logging.getLogFile()?.length() ?: 0L) }
 
     Scaffold(
         topBar = {
@@ -62,6 +76,30 @@ fun LogPage() {
                 title = { Text("Logs") },
                 navigationIcon = { BackButton() },
                 actions = {
+                    // 分享落盘文件：内存日志只有 100 条，且 logcat 单条 ~4KB 截断；
+                    // 完整请求体只在落盘文件里，排查时需能取出来贴给别人。
+                    if (logFileSize > 0) {
+                        IconButton(
+                            onClick = {
+                                val file = Logging.getLogFile() ?: return@IconButton
+                                runCatching {
+                                    val uri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file
+                                    )
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, null))
+                                }
+                            }
+                        ) {
+                            Icon(HugeIcons.Share03, null)
+                        }
+                    }
                     IconButton(
                         onClick = {
                             Logging.clear()
@@ -81,9 +119,23 @@ fun LogPage() {
         UnifiedLogList(
             logs = logs,
             requestLoggingEnabled = requestLoggingEnabled,
-            onRequestLoggingChange = {
-                requestLoggingEnabled = it
-                Logging.setRequestLoggingEnabled(it)
+            onRequestLoggingChange = { enabled ->
+                requestLoggingEnabled = enabled
+                Logging.setRequestLoggingEnabled(enabled)
+                // 持久化：否则重启后「导出到文件」虽开着却收不到请求日志（静默失效）
+                scope.launch { settingsStore.update { it.copy(recordRequestsEnabled = enabled) } }
+            },
+            fileLoggingEnabled = fileLoggingEnabled,
+            onFileLoggingChange = { enabled ->
+                fileLoggingEnabled = enabled
+                Logging.setFileLoggingEnabled(enabled)
+                scope.launch { settingsStore.update { it.copy(logToFileEnabled = enabled) } }
+                logFileSize = Logging.getLogFile()?.length() ?: 0L
+            },
+            logFileSizeBytes = logFileSize,
+            onClearLogFile = {
+                Logging.clearLogFile()
+                logFileSize = 0L
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -97,6 +149,10 @@ private fun UnifiedLogList(
     logs: List<LogEntry>,
     requestLoggingEnabled: Boolean,
     onRequestLoggingChange: (Boolean) -> Unit,
+    fileLoggingEnabled: Boolean,
+    onFileLoggingChange: (Boolean) -> Unit,
+    logFileSizeBytes: Long,
+    onClearLogFile: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedLog by remember { mutableStateOf<LogEntry.RequestLog?>(null) }
@@ -113,6 +169,15 @@ private fun UnifiedLogList(
             RequestLoggingSwitchCard(
                 enabled = requestLoggingEnabled,
                 onEnabledChange = onRequestLoggingChange
+            )
+        }
+
+        item {
+            FileLoggingSwitchCard(
+                enabled = fileLoggingEnabled,
+                onEnabledChange = onFileLoggingChange,
+                fileSizeBytes = logFileSizeBytes,
+                onClear = onClearLogFile,
             )
         }
 
@@ -174,6 +239,70 @@ private fun RequestLoggingSwitchCard(
             )
         }
     }
+}
+
+@Composable
+private fun FileLoggingSwitchCard(
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    fileSizeBytes: Long,
+    onClear: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.log_page_write_to_file),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = stringResource(R.string.log_page_write_to_file_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                // 有内容时才显示大小 + 清空（空文件显示 0 B 没有信息量）
+                if (fileSizeBytes > 0) {
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            text = formatFileSize(fileSizeBytes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontFamily = JetbrainsMono,
+                        )
+                        Text(
+                            text = stringResource(R.string.log_page_clear_file),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable(onClick = onClear),
+                        )
+                    }
+                }
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnabledChange
+            )
+        }
+    }
+}
+
+/** 人类可读文件大小（落盘日志通常几十 KB~几 MB）。 */
+private fun formatFileSize(bytes: Long): String = when {
+    bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / 1024.0 / 1024.0)
+    bytes >= 1024 -> "%.0f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
 }
 
 @Composable
