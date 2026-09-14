@@ -1,9 +1,10 @@
-# 同类应用借鉴评估：rikkahub-agent 与 SoLab（结合上游 3a533a6a）
+# 同类应用借鉴评估：rikkahub-agent、SoLab 与 Yuihub（结合上游 3a533a6a）
 
-> 生成时间：2026-08-28
+> 生成时间：2026-08-28（Yuihub 记忆机制评估见「四」，2026-09-14 补）
 > 分析对象：
 > - [ExTV/rikkahub-agent](https://github.com/ExTV/rikkahub-agent)（GitHub 仓库，基于上游 2.4.10，最后提交 2026-08-22；桌面 APK 为其构建产物 + `excp.rikkahub.zhcn` 资源覆盖包汉化）
 > - SoLab v2.1.0（MT 论坛分发，基于 [Kelivo](https://github.com/Chevey339/kelivo) 二次开发的「AI 驱动 APK 逆向工作台」；源码包 `F:\solab-2.1.zip`，Flutter + Kotlin）
+> - [xiaoyuili/Yuihub](https://github.com/xiaoyuili/Yuihub)（RikkaHub fork，本地副本 `<work>\projects\Yuihub\`，包名 `me.yui.yuihub`，仅维护 en/zh；记忆机制评估见「五」）
 > - 上游 `3a533a6a` 工作区终端后台运行 + 多 Tab（**已在 master**，特性分支未吸收）
 >
 > **许可证结论：三个项目均为 AGPL-3.0**（我们仓库根 LICENSE 即 AGPL-3.0），代码级互相摘取许可兼容。
@@ -26,7 +27,9 @@
 
 （新增 Dart 目录 `lib/features/chat/widgets/frosted/`、`test/goldens/`、`test/perf/`；Kotlin 新增 ApkArchiveTool/ApkZipCache/AsmFastIndex/PpPostings 等均为逆向引擎性能件。）
 
-## 一、两个应用是什么
+## 一、rikkahub-agent 与 SoLab 是什么
+
+（Yuihub 见「四」——其为 RikkaHub fork，同源关系无需单独介绍。）
 
 ### rikkahub-agent：Agent 化的 RikkaHub
 
@@ -90,7 +93,64 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 9. **记忆管线**（Kelivo 系，~6000 行，模块边界干净）：Gatekeeper → Extract → Smart Add → Distiller 四段式，水位线 + 窗口推进；**gatekeeper malformed 不推进水位线**（宁重跑不漏记）；Smart Add 的 MERGE/CONFLICT 目标必须在本地检索候选集内（堵 LLM 幻觉 id）；旧会话只注入 summary 不注入原文。
 10. 小件：政策文本常量单一来源（Agent 系统提示与 MCP 工具描述共用同一份，防漂移）；规则字典 JSON + 用户规则页 + 远程订阅源；PROCESS_TEXT 全局划词进 AI。
 
-## 四、落地顺序建议
+## 四、Yuihub 记忆机制评估（2026-09-14，源码级）
+
+**来源**：`<work>\projects\Yuihub\`（`me.yui.yuihub`，RikkaHub fork）。**结论：值得借鉴，但价值在「检索与写入的组织方式」，不在「语义向量」——恰恰相反，它上线语义检索后第二天整套删除了。**
+
+### 4.1 关键事实：语义检索上过又被删（时间线仅一天）
+
+| 提交 | 日期 | 动作 |
+|---|---|---|
+| `a8c33b2d` | 2026-08-31 | **上线**语义检索：`MemoryEntity` 加 `embedding` 向量列（迁移 26→27→28）、新增 `EmbeddingService.kt`（OpenAI 兼容 `/embeddings`，10s 超时、失败降级关键词）、检索改打分制 `重要度 × 时效衰减(30天半衰) × (1 + 0.3×关键词overlap + 0.6×余弦相似度)`、按字符预算截断注入、`PreferencesStore` 加 `EmbeddingConfig` 三件套（URL/Key/Model + 测试按钮） |
+| `fbd15331` | 2026-09-12 | **删除**：`EmbeddingService.kt` 整文件移除（-81）、`MemoryEntity` 去掉 `embedding` 与访问统计列（迁移 32→33 显式重建表，且 `WHERE assistant_id != '__global__'` 顺手清掉全局记忆）、`EmbeddingConfig` 及三处接线全删、`MemoryRepository` -170 行 |
+
+当前代码里 `embedding` 仅剩三条残留（迁移注释、通用的 `ProviderConnectionTester`、`ModelType.EMBEDDING` 列表标签），**链路已删干净非停用**。
+
+**意义**：Yuihub 条件比我们好（有 OpenAI 兼容路径、多作用域），仍选择放弃——这是对「记忆语义检索不做」的**独立二次印证**（与本仓 `design-auto-compaction.md` §6.3 的成本结论、以及 `roadmap.md` §一 的 `take(60)` 缺陷分析三方一致）。
+
+### 4.2 值得借鉴（按价值排序）
+
+**① 打分校准 + 字符预算，替掉「取前 N 条」—— 最推荐**
+
+现状 fork 是 `memories.take(60)`，而 `MemoryDAO` 查询无 `ORDER BY`（SQLite 按 rowid 即**插入顺序**返回）→ 超过 60 条后进 prompt 的是**最旧**的 60 条，最新记忆反而进不去（缺陷详见 `roadmap.md` 一·中等价值）。Yuihub 的 `selectForPrompt` 完全不用向量：
+
+```
+score = importance × (0.55 + 0.45 × exp(-ln2 × age / 30天))
+```
+
+再按 score 降序、以 1800 字符（约 600 token）**预算**逐个纳入（非数条数）。`importance` 由模型写入时给（0.9+ 身份/强偏好、0.6-0.8 普通偏好/进行中项目、0.2-0.5 次要），`updatedAt` 驱动时效衰减。**注意 Yuihub 的 DAO 明确写了 `ORDER BY updated_at DESC`**——它连这个坑也踩过并修了。方案比单纯加 `ORDER BY id DESC` 更进一层：不只取最新，而是取**最该取**的。
+
+**② 被动提取管道 `MemoryExtractor`**
+
+定位是「与模型自觉调用 `memory_tool` 互补」：每轮回复生成完成后异步跑，取最近 6 条消息（过滤记忆快照本身），带**现有记忆索引**（`id | [category] content`，≤100 条）让模型输出 `{"operations":[{"action":"add|update|delete",...}]}`——因提示词含现有记忆，**LLM 天然完成去重与冲突消解**，不靠模型「想起来该调工具」。工程稳健处：
+
+- **并发守卫**：`runningScopes` 单飞 + `pendingScopes` 记「最后触发的会话」，运行中再触发不丢弃、结束后重跑（注释：*「避免连续对话丢事实」*）。
+- **防幻觉 id**：`if (existing.none { it.id == id }) continue`——模型编的 id 改不到别的助手（与本仓记忆审批同族顾虑）。
+- **失败全 fail-open**：整条 `runCatching` 包住，解析失败直接 return，绝不因记忆提取搞坏正常回复。
+- 走 `backgroundTextGenerationParams(model, ReasoningLevel.AUTO)` 后台生成参数。
+
+**成本**：每轮回复多一次 LLM 调用（复用当前对话模型），由阈值兜底——自动整理要求「总数 ≥30 且自上次整理后新增 ≥10」，手动整理门槛 8。要做须配开关或仅长对话触发。
+
+**③ 整理器 `MemoryConsolidator`**
+
+把重复/相似/零散记忆合并成一条、修正归类、控制注入体积。落地讲究：合并**先落库新条再删源条**（避免中途失败丢信息）、`sources` 去重且校验真实存在、`consumed` 集合防一源被两组重复消费、合并条 importance 取源**最大值**（不因合并降权）、手动与自动整理间单飞保护。
+
+三者合起来是自洽闭环：**写入靠提取管道（可靠、去重）→ 存量靠整理器（压缩、纠类）→ 注入靠打分校准（按价值取）**。fork 目前三者皆无。
+
+### 4.3 不建议照搬：记忆快照（append-only 合成消息）
+
+Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合成 USER 消息**（`isSynthetic=true`，插在最新用户消息之前，`withMemorySnapshot`），意图是「内容仅变化时追加、既有字节永不重写 → 请求前缀稳定 → 持续命中供应商前缀缓存」。识别分两层（`isSynthetic` + 固定前导语，供 UI/搜索/导出过滤）。
+
+思路与本仓**压缩检查点同族**（append-only、合成消息、前缀字节稳定、发送窗口组装），说明双方对前缀缓存的认知一致。但嫁接代价高：需动 ChatService 请求组装、GenerationHandler transformer 跳过、导出/搜索/UI 过滤，**与本仓压缩窗口机制同层**，叠加后交互面不小（快照节点是否算进压缩区域？指纹怎么算？导出含不含快照？）。附带好处是记忆进历史、用户会话内直接可见（现状藏 system prompt 只能去记忆页查），但这点收益不值上述改动。
+
+### 4.4 建议顺序
+
+1. **先拿打分校准 + 预算截断**（含 DAO 补 `ORDER BY`）——成本小、直击现存 `take(60)` 实缺陷、无需新依赖，投产比最高；
+2. **再评估提取管道**——须先决定是否接受「每轮多一次 LLM 调用」（其可靠性来源也是最贵部分），建议做成可选开关 + 阈值触发；
+3. **整理器随提取管道一起上**（无提取则无膨胀压力，单独做意义不大）；
+4. **语义向量：不做**（三方独立结论一致）；**记忆快照：暂不做**，等压缩窗口真需统一时再议。
+
+## 五、落地顺序建议
 
 > **落地状态（2026-09-14 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；④ 的 **WifiLock 已落地**（`ee1c9736`，KeepAliveService 持 `WIFI_MODE_FULL_HIGH_PERF`）；②⑤③⑥ 仍待动手（② 的 ContextBudgetPlanner 与终端 URL 点击待做；⑥ MCP host 前置=AI 后台任务三件套）。
 
@@ -102,6 +162,10 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 | 4 | SoLab | 保活补强（**WifiLock ✅ 已落地 `ee1c9736`** + specialUse 决策依据）、ToolCallLoopGuard、工具结果外置 + 反翻页 | 低-中 |
 | 5 | SoLab | 世界书 seed 三重迁移、previewToken 审批、schema 三档加载 | 中 |
 | 6 | SoLab | MCP host 模式（手机当桌面 AI 工具箱） | 高，按需 |
+| 7 | Yuihub | **记忆打分校准 + 字符预算**（替掉 `take(60)` 全量注入，含 DAO `ORDER BY`） | 低（**推荐先做**，见 §四） |
+| 8 | Yuihub | 记忆提取管道 + 整理器（须接受「每轮多一次 LLM 调用」） | 中-高 |
+
+**记忆机制结论（Yuihub，详见 §四）**：值得借鉴的是**检索与写入的组织方式**（打分校准 / 提取管道 / 整理器），**不是语义向量**——Yuihub 上线语义检索后第二天整套删除（`a8c33b2d` → `fbd15331`），构成「记忆语义检索不做」的独立二次印证（与 `design-auto-compaction.md` §6.3 成本结论一致）。
 
 **LoopGuard 移植提醒**：必须带 SoLab 2.3 的 `ToolCallLoopGuard.forget()` 补丁（失败调用移出指纹窗口，见本文附录）——否则网络恢复后相同参数的合理重试会被误判 `LOOP_DETECTED`。
 
