@@ -2,7 +2,9 @@
   <img src="docs/icon.png" alt="App Icon" width="100" />
   <h1>RikkaHub Plus</h1>
 
-RikkaHub 2.4.5 的私有定制版 —— 原生 Android LLM 聊天客户端，支持多提供商切换 🤖💬
+RikkaHub 2.4.5 的个人定制版 —— 原生 Android LLM 聊天客户端，支持多提供商切换 🤖💬
+
+个人二改版，发到 GitHub 只是为了备份方便和git拉取的便利，没有维护承诺。
 
 [English (原版 README)](README-en-origin.md)
 </div>
