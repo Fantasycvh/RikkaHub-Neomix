@@ -581,7 +581,7 @@
   <string name="regenerate_scope_this_only">Только этот обмен</string>
   <string name="regenerate_scope_include_following">Вместе со всеми последующими</string>
   <string name="regenerate_scope_following_count">Последующие сообщения (%1$d) будут удалены</string>
-  <string name="regenerate_scope_export_then_continue">Сначала экспорт, затем продолжить</string>
+  <string name="regenerate_scope_export_then_continue">Сначала экспорт, затем удалить (то же, что выше)</string>
   <string name="regenerate_truncated">Удалено сообщений: %1$d</string>
   <string name="regenerate_truncated_undo">Отменить</string>
   <string name="render_with_webview">Отображать в WebView</string>

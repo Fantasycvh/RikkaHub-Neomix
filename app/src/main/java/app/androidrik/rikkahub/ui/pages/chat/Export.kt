@@ -120,7 +120,14 @@ fun ChatExportSheet(
     visible: Boolean,
     onDismissRequest: () -> Unit,
     conversation: Conversation,
-    selectedMessages: List<UIMessage>
+    selectedMessages: List<UIMessage>,
+    /**
+     * 某一种格式**导出成功后**回调（用于「先导出再移除」流程：导出完再执行移除）。
+     *
+     * 与 [onDismissRequest] 分开：dismiss 可能是**取消**（用户反悔），不应触发破坏性动作，
+     * 故破坏性续作只挂在真正的导出成功上。
+     */
+    onExported: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
@@ -173,6 +180,7 @@ fun ChatExportSheet(
                             type = ToastType.Success
                         )
                         onDismissRequest()
+                        onExported?.invoke()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -201,6 +209,7 @@ fun ChatExportSheet(
                                 type = ToastType.Success
                             )
                             onDismissRequest()
+                            onExported?.invoke()
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -275,6 +284,7 @@ fun ChatExportSheet(
                                                 type = ToastType.Success
                                             )
                                             onDismissRequest()
+                                            onExported?.invoke()
                                         }.onFailure {
                                             // 取消必须向上传播，否则手动关闭 sheet 会被误报为导出失败
                                             if (it is CancellationException) throw it

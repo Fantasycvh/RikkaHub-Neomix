@@ -620,7 +620,7 @@
   <string name="regenerate_scope_this_only">仅本条与对应回复</string>
   <string name="regenerate_scope_include_following">含后续所有对话</string>
   <string name="regenerate_scope_following_count">其后的 %1$d 条消息将被移除</string>
-  <string name="regenerate_scope_export_then_continue">先导出再继续</string>
+  <string name="regenerate_scope_export_then_continue">先导出再移除（与上一项相同）</string>
   <string name="regenerate_truncated">已移除 %1$d 条消息</string>
   <string name="regenerate_truncated_undo">撤销</string>
   <string name="render_with_webview">网页视图渲染</string>

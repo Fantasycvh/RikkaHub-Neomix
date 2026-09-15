@@ -624,7 +624,7 @@
   <string name="regenerate_scope_this_only">This exchange only</string>
   <string name="regenerate_scope_include_following">Include all following messages</string>
   <string name="regenerate_scope_following_count">%1$d message(s) after this one will be removed</string>
-  <string name="regenerate_scope_export_then_continue">Export first, then continue</string>
+  <string name="regenerate_scope_export_then_continue">Export first, then remove (same as above)</string>
   <string name="regenerate_truncated">Removed %1$d message(s)</string>
   <string name="regenerate_truncated_undo">Undo</string>
   <string name="render_with_webview">Render with WebView</string>

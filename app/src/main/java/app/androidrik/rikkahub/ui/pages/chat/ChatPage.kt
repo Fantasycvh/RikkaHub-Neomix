@@ -591,18 +591,22 @@ private fun ChatPageContent(
             ChatExportSheet(
                 visible = showExportSheet,
                 onDismissRequest = {
+                    // 单纯关闭 = **取消**：清掉待续作（用户可能反悔，不该触发破坏性动作）
                     showExportSheet = false
-                    // 「导出后继续」：用户已获得留存副本的机会 → 关闭导出后继续执行 scope B
+                    exportThenRegenerateFor = null
+                },
+                conversation = conversation,
+                // 「先导出再移除」时只导**将被移除的下游**（那才是要留存的）；否则导当前全量
+                selectedMessages = exportThenRegenerateFor
+                    ?.let { conversation.followingMessages(it.id) }
+                    ?: conversation.currentMessages,
+                // 仅**真正导出成功后**才续作 scope B（取消/返回不会走到这里）
+                onExported = {
                     exportThenRegenerateFor?.let { pending ->
                         exportThenRegenerateFor = null
                         doRegenerate(pending, ChatService.RegenerateScope.INCLUDE_FOLLOWING)
                     }
                 },
-                conversation = conversation,
-                // 「导出后继续」时只导**将被移除的下游**（那才是要留存的）；否则导当前全量
-                selectedMessages = exportThenRegenerateFor
-                    ?.let { conversation.followingMessages(it.id) }
-                    ?: conversation.currentMessages,
             )
         }
 
@@ -617,7 +621,7 @@ private fun ChatPageContent(
                 },
                 onExportThenContinue = {
                     regenerateScopeFor = null
-                    // 先打开导出（只含将被移除的下游），关闭时再由上面的 onDismissRequest 继续
+                    // 先打开导出（只含将被移除的下游）；导出成功后由 onExported 续作移除（取消则不续作）
                     exportThenRegenerateFor = message
                     showExportSheet = true
                 },
