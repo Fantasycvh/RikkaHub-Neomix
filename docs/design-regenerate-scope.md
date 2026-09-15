@@ -1,6 +1,8 @@
 # 重生成语义：scope 可选 + 撤销（设计稿）
 
-> 状态：**设计讨论中，未实现**（2026-09-15）。决策见 §三；**§五 的冲突已由 §六 的「导出后继续」基本消解**（§六 增补于 2026-09-15）。
+> 状态：**已实现（`ad3543b2`），真机验证通过**（2026-09-15）。决策见 §三。
+> **实现结果**：`RegenerateScope{THIS_ONLY, INCLUDE_FOLLOWING}`（不按角色）+ 仅 B 确认（含「先导出再继续」）+ 截断后「已移除 N 条 · 撤销」；纯函数抽到 `data/model/RegeneratePlan`（单测 14 项 + 检查点交叉 1 项）；死参数 `regenerateAssistantMsg` 已清。默认 scope 仍为 INCLUDE_FOLLOWING，web/API 调用方行为不变。
+> **§五 的冲突处理**：实现取「撤销覆盖已生成」——`undoRegenerateTruncation` 先 `stopGeneration` 再 `take(截断后长度)` 拼回尾巴（截断后新产生的回复与 #1812 半截草稿一并撤掉 = 回到截断前）；**用户已手动验证通过**。
 > 关联：`design-auto-compaction.md`（检查点失效）、`design-compress-presets.md`（同为压缩线）。
 
 ## 一、现状核实（两种角色已经不对称）
