@@ -301,4 +301,14 @@ P2 中的这一项被提前，理由：**纯新增、不改备份格式、向后
 
 **对上游 #1830 wontfix 的重新评估**：上游「隐藏显示」（`08c2648b`）**只治了「用户看着难受」，没治「模型猜条数」**（提示词仍注入自增编号，报告者实证的 deepseek 误判仍在）。本方案同时根治两者，且**永不需要重排**（随机 token 无「空洞」概念）——即当初判定「重排不做」是对的，但「隐藏显示」不是终点，opaque id 才是。
 
+## 附录：侧边文件栏内联文件管理（设计稿）
 
+**2026-09-16**：用户在评估「允许侧边的文件栏可以管理文件的难度」时确认——落成设计稿、暂不实现。
+**核实要点**：①**提问预设与实况有出入**——侧滑文件栏（`FilesPicker`）**根本不做文件浏览**，
+它只有附件选择/工作区绑定/扩展入口/cwd；"管理文件"已以**跳转 `WorkspaceDetailPage`** 的形式存在；
+②**完整文件管理器已存在**（`WorkspaceDetailPage` 907 行：双存储区/路径栏/打开/删除/导出/导入/终端）；
+③**逻辑层几乎齐备**（`WorkspaceFileSystem` 有 list/read/write/import/delete/**move**/glob/grep，
+`WorkspaceRepository` 已全暴露），**仅三个缺口**：`moveFile` 未接线、无 `mkdir`、
+浏览组件是 `private`。**核心设计=抽共享组件**（避免详情页与侧边栏两份 UI 漂移，
+与 `BackupItem`/`BackupArchiveEngine`/`ChatToolFactory` 的既有去重手法同源）。
+设计稿见 **`design-side-file-panel.md`**。
