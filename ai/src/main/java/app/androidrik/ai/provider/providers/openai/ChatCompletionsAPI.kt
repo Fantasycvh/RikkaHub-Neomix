@@ -38,7 +38,7 @@ import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.providers.PartGroup
-import app.androidrik.ai.provider.providers.ensureArrayItems
+import app.androidrik.ai.util.ensureArrayItems
 import app.androidrik.ai.provider.providers.groupPartsByToolBoundary
 import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.ai.ui.MessageChunk

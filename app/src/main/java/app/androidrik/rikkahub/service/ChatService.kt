@@ -52,6 +52,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
+import app.androidrik.rikkahub.data.ai.selectMemoriesForPrompt
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.ai.tools.shouldUseExternalWebSearch
@@ -78,6 +79,7 @@ import app.androidrik.rikkahub.data.datastore.resolveCompressionModel
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
 import app.androidrik.rikkahub.utils.effectiveContextLength
+import app.androidrik.rikkahub.utils.estimateTokens
 import app.androidrik.rikkahub.utils.estimateWindowTokens
 import app.androidrik.rikkahub.data.ai.compression.shouldAutoCompress
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
@@ -801,6 +803,20 @@ class ChatService(
                     memoryRepository.getGlobalMemories()
                 } else {
                     memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
+                }.also { loaded ->
+                    // 每回合一条：注入条数与实际占用（按当前预算选出后的结果）。
+                    // 与工具 schema 日志配套——两者是「固定开销」的两大项，合起来看才知道
+                    // 上下文被谁吃掉（实测 MCP schema 可达 3 万余 token，远超记忆注入）。
+                    // 用 Log.i 而非 Logging.log()：见 ChatToolFactory.logSchemaBreakdown 的说明。
+                    runCatching {
+                        val selected = selectMemoriesForPrompt(loaded, settings.memoryInjectBudgetTokens)
+                        val used = selected.sumOf { estimateTokens(it.content) }
+                        Log.i(
+                            TAG,
+                            "memory inject: ${selected.size}/${loaded.size} memories ≈${used} tokens " +
+                                "(budget=${settings.memoryInjectBudgetTokens})",
+                        )
+                    }.onFailure { Log.w(TAG, "memory inject log failed", it) }
                 },
                 inputTransformers = buildList {
                     addAll(inputTransformers)

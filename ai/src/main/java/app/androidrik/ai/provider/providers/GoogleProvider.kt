@@ -55,6 +55,7 @@ import app.androidrik.ai.util.KeyRoulette
 import app.androidrik.ai.util.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
 import app.androidrik.ai.util.encodeBase64
+import app.androidrik.ai.util.ensureArrayItems
 import app.androidrik.ai.util.json
 import app.androidrik.ai.util.mergeCustomBody
 import app.androidrik.ai.util.removeElements
@@ -837,39 +838,3 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
 }
 
 
-/**
- * Gemini function schema 归一化：数组类型（type=array）属性必须带 items 声明，
- * 缺则补 {\"type\":\"string\"}（最小可接受）——否则 Gemini API 报
- * `missing field: ...items` 校验错误（fallback 切 Gemini 时暴露，上游 9851d037/f7869e35
- * 未覆盖此点）。递归处理嵌套 properties 与 items。
- */
-internal fun JsonElement.ensureArrayItems(): JsonElement {
-    val obj = this as? JsonObject ?: return this
-    return buildJsonObject {
-        obj.forEach { (key, value) ->
-            if (value is JsonObject && value.isArrayTyped()) {
-                // 数组类型：确保 items 存在（缺则 string），再递归包装 items 与其余字段
-                val resolvedItems = value["items"] ?: buildJsonObject { put("type", "string") }
-                put(key, buildJsonObject {
-                    value.forEach { (k, v) -> put(k, v) }  // 原字段保留（含原 items）
-                    put("items", resolvedItems.ensureArrayItems())  // 补/递归 items
-                })
-            } else {
-                put(key, value.ensureArrayItems())
-            }
-        }
-    }
-}
-
-/**
- * type 判定：`"array"` 或 type 列表含 "array"（兼容 `type:["array","null"]`）；畸形 type
- * （JsonObject/其他非原始类型）按非数组处理、不抛——真实 MCP schema 可能混入畸形节点。
- */
-private fun JsonObject.isArrayTyped(): Boolean {
-    val typeElement = this["type"] ?: return false
-    return when (typeElement) {
-        is JsonPrimitive -> typeElement.contentOrNull == "array"
-        is JsonArray -> typeElement.any { (it as? JsonPrimitive)?.contentOrNull == "array" }
-        else -> false
-    }
-}

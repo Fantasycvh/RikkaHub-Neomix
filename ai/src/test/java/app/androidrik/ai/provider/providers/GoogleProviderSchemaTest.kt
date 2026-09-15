@@ -1,5 +1,6 @@
 package app.androidrik.ai.provider.providers
 
+import app.androidrik.ai.util.ensureArrayItems
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
