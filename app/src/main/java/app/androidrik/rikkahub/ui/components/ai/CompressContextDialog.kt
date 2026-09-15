@@ -27,21 +27,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_RANGE
+import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
+import app.androidrik.rikkahub.data.ai.compression.CompressPreset
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
 
 @Composable
 fun CompressContextDialog(
     onDismiss: () -> Unit,
-    onConfirm: (additionalPrompt: String, targetTokens: Int, retainRatio: Double) -> Job
+    onConfirm: (additionalPrompt: String, targetTokens: Int, retainRatio: Double) -> Job,
+    /**
+     * 初值：来自当前压缩设置（而不是每次重置为固定值）。
+     *
+     * 手动压缩**只暴露保留比例与摘要目标**——触发时机由用户自己判断（觉得长/快满了才点），
+     * 故没有阈值参数。见 `docs/design-compress-presets.md` §四。
+     */
+    initialRetainPercent: Int = 40,
+    initialTargetTokens: Int = 2000,
+    /** 当前设置里的自定义档，供选择器一键填入（对话框内的改动**不持久化**）。 */
+    customPresets: List<CompressPreset> = emptyList(),
 ) {
     var additionalPrompt by remember { mutableStateOf("") }
-    var selectedTokens by remember { mutableIntStateOf(2000) }
-    // 保留比例（百分比）：压缩只把「较早期」的历史摘要掉，尾部这部分保持原文，
-    // 保证最近对话的细节不丢失（design-auto-compaction §3.2 建议 30%~60% 区间）
-    var selectedRetainPercent by remember { mutableIntStateOf(40) }
-    val tokenOptions = listOf(500, 1000, 2000, 4000)
-    val retainOptions = listOf(20, 30, 40, 50, 60)
+    // 初值读设置，而非硬编码——此前每次打开都重置为 2000/40，用户上次的选择不被记住
+    var selectedTokens by remember { mutableIntStateOf(initialTargetTokens) }
+    var selectedRetainPercent by remember { mutableIntStateOf(initialRetainPercent) }
     var currentJob by remember { mutableStateOf<Job?>(null) }
     val isLoading = currentJob?.isActive == true
 
@@ -83,50 +95,30 @@ fun CompressContextDialog(
                 } else {
                     Text(stringResource(R.string.chat_page_compress_context_desc))
 
-                    // Token size selector
-                    Text(
-                        text = stringResource(R.string.chat_page_compress_target_tokens),
-                        style = MaterialTheme.typography.labelMedium
+                    // 压缩配置档：一键填入下面的两个数值（内置档 + 自定义档 + 自定义）。
+                    // 这里的改动是**一次性**的，不写回设置（决策 2）。
+                    CompressPresetSelector(
+                        selectedRetainPercent = selectedRetainPercent,
+                        selectedTargetTokens = selectedTokens,
+                        customPresets = customPresets,
+                        onApply = { retain, target ->
+                            selectedRetainPercent = retain
+                            selectedTokens = target
+                        },
                     )
-                    SingleChoiceSegmentedButtonRow(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        tokenOptions.forEachIndexed { index, tokens ->
-                            SegmentedButton(
-                                selected = selectedTokens == tokens,
-                                onClick = { selectedTokens = tokens },
-                                shape = SegmentedButtonDefaults.itemShape(
-                                    index = index,
-                                    count = tokenOptions.size
-                                )
-                            ) {
-                                Text("$tokens")
-                            }
-                        }
-                    }
 
-                    // 保留比例选择器（真正生效的切分参数；旧的「保留最近消息数」在
-                    // 检查点式压缩中已不参与切分，故移除以免误导）
-                    Text(
-                        text = stringResource(R.string.chat_page_compress_keep_recent),
-                        style = MaterialTheme.typography.labelMedium
+                    NumericDialogField(
+                        label = stringResource(R.string.chat_page_compress_target_tokens),
+                        value = selectedTokens,
+                        range = COMPRESS_TARGET_TOKENS_RANGE,
+                        onValueChange = { selectedTokens = it },
                     )
-                    SingleChoiceSegmentedButtonRow(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        retainOptions.forEachIndexed { index, percent ->
-                            SegmentedButton(
-                                selected = selectedRetainPercent == percent,
-                                onClick = { selectedRetainPercent = percent },
-                                shape = SegmentedButtonDefaults.itemShape(
-                                    index = index,
-                                    count = retainOptions.size
-                                )
-                            ) {
-                                Text("$percent%")
-                            }
-                        }
-                    }
+                    NumericDialogField(
+                        label = stringResource(R.string.chat_page_compress_keep_recent),
+                        value = selectedRetainPercent,
+                        range = AUTO_COMPRESS_RETAIN_PERCENT_RANGE,
+                        onValueChange = { selectedRetainPercent = it },
+                    )
 
                     // Additional context input
                     OutlinedTextField(
@@ -174,5 +166,38 @@ fun CompressContextDialog(
                 }
             }
         }
+    )
+}
+
+/**
+ * 对话框内的整数输入（初值来自设置，越界不提交）。
+ *
+ * 与设置页的数值项同口径：允许中间态（空串/超范围）不落值，解析成功且落在 [range] 内才提交。
+ */
+@Composable
+private fun NumericDialogField(
+    label: String,
+    value: Int,
+    range: IntRange,
+    onValueChange: (Int) -> Unit,
+) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    val parsed = text.trim().toIntOrNull()
+    val invalid = text.isNotBlank() && (parsed == null || parsed !in range)
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { new ->
+            text = new
+            new.trim().toIntOrNull()?.let { if (it in range) onValueChange(it) }
+        },
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        isError = invalid,
+        supportingText = {
+            Text(stringResource(R.string.compress_preset_range_hint, range.first, range.last))
+        },
+        modifier = Modifier.fillMaxWidth(),
     )
 }

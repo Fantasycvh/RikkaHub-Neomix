@@ -54,6 +54,12 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.ui.components.ai.ModelListSheet
 import app.androidrik.rikkahub.ui.components.ai.rememberModelListState
+import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_RANGE
+import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
+import app.androidrik.rikkahub.data.ai.compression.clamped
+import app.androidrik.rikkahub.ui.components.ai.CompressPresetManageDialog
+import app.androidrik.rikkahub.ui.components.ai.CompressPresetSelector
+import app.androidrik.rikkahub.ui.components.ai.builtInCompressPresetNames
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.utils.formatContextLength
@@ -228,8 +234,33 @@ private fun AutoCompressSetting(
     vm: SettingVM,
 ) {
     val thresholdOptions = listOf(60, 70, 80, 90)
-    val retainOptions = listOf(20, 30, 40, 50, 60)
-    val targetTokenOptions = listOf(1000, 2000, 4000, 8000)
+    val builtInNames = builtInCompressPresetNames()
+    var showPresetManager by remember { mutableStateOf(false) }
+
+    if (showPresetManager) {
+        CompressPresetManageDialog(
+            customPresets = settings.compressPresets,
+            builtInNames = builtInNames,
+            onDismiss = { showPresetManager = false },
+            onSavePreset = { index, preset ->
+                val clamped = preset.clamped()
+                val updated = if (index == null) {
+                    settings.compressPresets + clamped
+                } else {
+                    settings.compressPresets.toMutableList().also { it[index] = clamped }
+                }
+                vm.updateSettings(settings.copy(compressPresets = updated))
+            },
+            onDeletePreset = { index ->
+                // 删除是纯 UI 操作：真相源是数值，删档不改变当前压缩行为
+                vm.updateSettings(
+                    settings.copy(
+                        compressPresets = settings.compressPresets.filterIndexed { i, _ -> i != index },
+                    )
+                )
+            },
+        )
+    }
 
     CardGroup(title = { Text(stringResource(R.string.setting_model_page_auto_compress)) }) {
         item(
@@ -248,6 +279,7 @@ private fun AutoCompressSetting(
                     modifier = Modifier.padding(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    // 触发阈值：**只属自动压缩**（手动由用户自己判断何时压，无此参数）
                     Text(
                         text = stringResource(R.string.setting_model_page_auto_compress_threshold),
                         style = MaterialTheme.typography.labelMedium,
@@ -265,40 +297,40 @@ private fun AutoCompressSetting(
                             }
                         }
                     }
-                    Text(
-                        text = stringResource(R.string.setting_model_page_auto_compress_retain),
-                        style = MaterialTheme.typography.labelMedium,
+
+                    // 保留比例 + 摘要目标：由「压缩配置档」一键填入，也可自填（= 自定义）
+                    CompressPresetSelector(
+                        selectedRetainPercent = settings.autoCompressRetainPercent,
+                        selectedTargetTokens = settings.autoCompressTargetTokens,
+                        customPresets = settings.compressPresets,
+                        onApply = { retain, target ->
+                            vm.updateSettings(
+                                settings.copy(
+                                    autoCompressRetainPercent = retain,
+                                    autoCompressTargetTokens = target,
+                                )
+                            )
+                        },
+                        onManage = { showPresetManager = true },
                     )
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        retainOptions.forEachIndexed { index, percent ->
-                            SegmentedButton(
-                                selected = settings.autoCompressRetainPercent == percent,
-                                onClick = {
-                                    vm.updateSettings(settings.copy(autoCompressRetainPercent = percent))
-                                },
-                                shape = SegmentedButtonDefaults.itemShape(index, retainOptions.size),
-                            ) {
-                                Text("$percent%")
-                            }
-                        }
-                    }
-                    Text(
-                        text = stringResource(R.string.setting_model_page_auto_compress_target),
-                        style = MaterialTheme.typography.labelMedium,
+
+                    NumericSettingField(
+                        label = stringResource(R.string.setting_model_page_auto_compress_retain),
+                        value = settings.autoCompressRetainPercent,
+                        range = AUTO_COMPRESS_RETAIN_PERCENT_RANGE,
+                        onValueChange = {
+                            vm.updateSettings(settings.copy(autoCompressRetainPercent = it))
+                        },
                     )
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        targetTokenOptions.forEachIndexed { index, tokens ->
-                            SegmentedButton(
-                                selected = settings.autoCompressTargetTokens == tokens,
-                                onClick = {
-                                    vm.updateSettings(settings.copy(autoCompressTargetTokens = tokens))
-                                },
-                                shape = SegmentedButtonDefaults.itemShape(index, targetTokenOptions.size),
-                            ) {
-                                Text("$tokens")
-                            }
-                        }
-                    }
+                    NumericSettingField(
+                        label = stringResource(R.string.setting_model_page_auto_compress_target),
+                        value = settings.autoCompressTargetTokens,
+                        range = COMPRESS_TARGET_TOKENS_RANGE,
+                        onValueChange = {
+                            vm.updateSettings(settings.copy(autoCompressTargetTokens = it))
+                        },
+                    )
+
                     Text(
                         text = stringResource(R.string.setting_model_page_auto_compress_hint),
                         style = MaterialTheme.typography.labelSmall,
@@ -308,6 +340,41 @@ private fun AutoCompressSetting(
             }
         }
     }
+}
+
+/**
+ * 数值设置项：文本输入 + 提交时按 [range] 钳制落库。
+ *
+ * 为什么用文本而非 slider/分段：用户要能填**任意**值（设计稿 §五），但越界值必须钳制——
+ * 阈值/保留比例的合法范围是压缩正确性的一部分（如保留比例过低保不住近期细节）。
+ * 输入过程中允许中间态（如空串、超范围）不落库，只在解析成功且非空时提交。
+ */
+@Composable
+private fun NumericSettingField(
+    label: String,
+    value: Int,
+    range: IntRange,
+    onValueChange: (Int) -> Unit,
+) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    val parsed = text.trim().toIntOrNull()
+    val isOutOfRange = text.isNotBlank() && (parsed == null || parsed !in range)
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { new ->
+            text = new
+            new.trim().toIntOrNull()?.let { if (it in range) onValueChange(it) }
+        },
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        isError = isOutOfRange,
+        supportingText = {
+            Text(stringResource(R.string.compress_preset_range_hint, range.first, range.last))
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 /**

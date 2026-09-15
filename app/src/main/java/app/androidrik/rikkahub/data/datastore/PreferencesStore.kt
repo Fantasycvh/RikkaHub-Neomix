@@ -30,6 +30,7 @@ import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.DEFAULT_MEMORY_BUDGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_TARGET_TOKENS
+import app.androidrik.rikkahub.data.ai.compression.CompressPreset
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT
 import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
 import app.androidrik.rikkahub.data.sync.BackupItem
@@ -192,6 +193,8 @@ class SettingsStore(
         val AUTO_COMPRESS_THRESHOLD_PERCENT = intPreferencesKey("auto_compress_threshold_percent")
         val AUTO_COMPRESS_RETAIN_PERCENT = intPreferencesKey("auto_compress_retain_percent")
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
+        // 自定义压缩配置档（用户命名、可增改删；单 key 存 JSON 列表，与 modeInjections 同款）
+        val COMPRESS_PRESETS = stringPreferencesKey("compress_presets")
         // 全局代理（两层代理设计的全局兜底层）；结构化 JSON 存储
         val GLOBAL_PROXY = stringPreferencesKey("global_proxy")
         // 日志落盘（Log 页「导出到文件」开关；默认关，避免无谓写盘）
@@ -319,6 +322,9 @@ class SettingsStore(
                     ?: DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
                 autoCompressTargetTokens = preferences[AUTO_COMPRESS_TARGET_TOKENS]
                     ?: DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
+                compressPresets = preferences[COMPRESS_PRESETS]?.let {
+                    JsonInstant.decodeFromString<List<CompressPreset>>(it)
+                } ?: emptyList(),
             )
         }
         .map {
@@ -503,6 +509,7 @@ class SettingsStore(
             preferences[AUTO_COMPRESS_THRESHOLD_PERCENT] = settings.autoCompressThresholdPercent
             preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
             preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
+            preferences[COMPRESS_PRESETS] = JsonInstant.encodeToString(settings.compressPresets)
             preferences[LOG_TO_FILE_ENABLED] = settings.logToFileEnabled
             preferences[GLOBAL_PROXY] = JsonInstant.encodeToString(settings.globalProxy)
             preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
@@ -686,6 +693,14 @@ data class Settings(
     val autoCompressRetainPercent: Int = DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
     /** 摘要目标 token（默认 2000） */
     val autoCompressTargetTokens: Int = DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
+    /**
+     * 自定义压缩配置档（用户命名，可增/改/删）。
+     *
+     * **不是真相源**：真正决定压缩行为的是上面三个数值，档只是「一键填入保留比例 + 摘要目标」
+     * 的快捷方式，故删档不改变行为。内置档是常量、不入此列表。
+     * 见 `docs/design-compress-presets.md`。
+     */
+    val compressPresets: List<CompressPreset> = emptyList(),
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储

@@ -290,12 +290,19 @@ internal fun FilesPicker(
 
     // Compress Context Dialog
     if (showCompressDialog) {
-        CompressContextDialog(onDismiss = {
-            onShowCompressDialogChange(false)
-            onDismiss()
-        }, onConfirm = { additionalPrompt, targetTokens, retainRatio ->
-            onCompressContext(additionalPrompt, targetTokens, retainRatio)
-        })
+        CompressContextDialog(
+            onDismiss = {
+                onShowCompressDialogChange(false)
+                onDismiss()
+            },
+            onConfirm = { additionalPrompt, targetTokens, retainRatio ->
+                onCompressContext(additionalPrompt, targetTokens, retainRatio)
+            },
+            // 初值取当前设置（此前硬编码 2000/40，每次打开都重置）
+            initialRetainPercent = settings.autoCompressRetainPercent,
+            initialTargetTokens = settings.autoCompressTargetTokens,
+            customPresets = settings.compressPresets,
+        )
     }
 }
 
