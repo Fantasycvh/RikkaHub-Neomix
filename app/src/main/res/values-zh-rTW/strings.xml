@@ -614,6 +614,13 @@
   <string name="reasoning_max">最大</string>
   <string name="regenerate">重新生成</string>
   <string name="regenerate_confirm_message">您確定要重新產生這則訊息嗎？</string>
+  <string name="regenerate_scope_desc">只重做這一段，還是連同後續對話一起重做？</string>
+  <string name="regenerate_scope_this_only">僅本條與對應回覆</string>
+  <string name="regenerate_scope_include_following">含後續所有對話</string>
+  <string name="regenerate_scope_following_count">其後的 %1$d 則訊息將被移除</string>
+  <string name="regenerate_scope_export_then_continue">先匯出再繼續</string>
+  <string name="regenerate_truncated">已移除 %1$d 則訊息</string>
+  <string name="regenerate_truncated_undo">復原</string>
   <string name="render_with_webview">網頁視圖渲染</string>
   <string name="rikkahub_provider_description">官方免費 AI 服務，使用用戶贊助資金為新用戶提供部分免費模型作為備用，無需 API 金鑰。具有嚴格速率限制，若您已購買自己的提供者，請盡量使用自有提供者。</string>
   <string name="safe_mode_assistants">助理</string>

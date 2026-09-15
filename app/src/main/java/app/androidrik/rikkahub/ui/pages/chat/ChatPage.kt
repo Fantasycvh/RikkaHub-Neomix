@@ -52,6 +52,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.dokar.sonner.ToastType
+import com.dokar.sonner.TextToastAction
+import app.androidrik.rikkahub.data.model.followingCount
+import app.androidrik.rikkahub.data.model.followingMessages
+import app.androidrik.rikkahub.service.ChatService
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
@@ -59,9 +63,11 @@ import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.material3.Material3
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
@@ -304,13 +310,38 @@ private fun ChatPageContent(
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
+    val context = LocalContext.current
     val workspaceRepository: WorkspaceRepository = koinInject()
+
+    /**
+     * 执行重生成；scope B 发生截断时弹「撤销」（snackbar）。
+     *
+     * 撤销用现有 toaster（sonner）的 action 能力，**不需要替换页面 scaffold**。
+     * 撤销覆盖范围含"已开始生成"——[app.androidrik.rikkahub.service.ChatService.undoRegenerateTruncation]
+     * 会先取消在飞生成再还原（见 `docs/design-regenerate-scope.md` §五）。
+     */
+    fun doRegenerate(message: UIMessage, regenerateScope: ChatService.RegenerateScope) {
+        vm.regenerateAtMessage(message, regenerateScope) { truncation ->
+            toaster.show(
+                message = context.getString(R.string.regenerate_truncated, truncation.removedNodes.size),
+                action = TextToastAction(context.getString(R.string.regenerate_truncated_undo)) {
+                    vm.undoRegenerateTruncation(truncation)
+                },
+                type = ToastType.Info,
+                duration = 6.seconds,
+            )
+        }
+    }
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
     val glassHazeState = rememberHazeState()
     val assistant = setting.getCurrentAssistant()
     var showFilesSheet by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
+    // 重生成 scope 选择：非空时显示 RegenerateScopeDialog（仅当有下游时才需要选/确认）
+    var regenerateScopeFor by remember { mutableStateOf<UIMessage?>(null) }
+    // 「导出后继续」：导出下游消息的 sheet；关闭后执行 scope B
+    var exportThenRegenerateFor by remember { mutableStateOf<UIMessage?>(null) }
 
     val completionProviders = remember(assistant.workspaceId, conversation.workspaceCwd, workspaceRepository) {
         assistant.workspaceId?.let { workspaceId ->
@@ -472,8 +503,13 @@ private fun ChatPageContent(
                 errors = errors,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
-                onRegenerate = {
-                    vm.regenerateAtMessage(it)
+                onRegenerate = { message ->
+                    // 有下游才需要选择/确认；无下游时两个 scope 等价，直接执行非破坏的 A
+                    if (conversation.followingCount(message.id) > 0) {
+                        regenerateScopeFor = message
+                    } else {
+                        doRegenerate(message, ChatService.RegenerateScope.THIS_ONLY)
+                    }
                 },
                 onEdit = {
                     inputState.editingMessage = it.id
@@ -554,9 +590,37 @@ private fun ChatPageContent(
         if (showExportSheet) {
             ChatExportSheet(
                 visible = showExportSheet,
-                onDismissRequest = { showExportSheet = false },
+                onDismissRequest = {
+                    showExportSheet = false
+                    // 「导出后继续」：用户已获得留存副本的机会 → 关闭导出后继续执行 scope B
+                    exportThenRegenerateFor?.let { pending ->
+                        exportThenRegenerateFor = null
+                        doRegenerate(pending, ChatService.RegenerateScope.INCLUDE_FOLLOWING)
+                    }
+                },
                 conversation = conversation,
-                selectedMessages = conversation.currentMessages,
+                // 「导出后继续」时只导**将被移除的下游**（那才是要留存的）；否则导当前全量
+                selectedMessages = exportThenRegenerateFor
+                    ?.let { conversation.followingMessages(it.id) }
+                    ?: conversation.currentMessages,
+            )
+        }
+
+        // 重生成 scope 选择（不按角色区分；仅 B 需确认，且提供「导出后继续」）
+        regenerateScopeFor?.let { message ->
+            RegenerateScopeDialog(
+                followingCount = conversation.followingCount(message.id),
+                onDismiss = { regenerateScopeFor = null },
+                onConfirm = { chosen ->
+                    regenerateScopeFor = null
+                    doRegenerate(message, chosen)
+                },
+                onExportThenContinue = {
+                    regenerateScopeFor = null
+                    // 先打开导出（只含将被移除的下游），关闭时再由上面的 onDismissRequest 继续
+                    exportThenRegenerateFor = message
+                    showExportSheet = true
+                },
             )
         }
     }

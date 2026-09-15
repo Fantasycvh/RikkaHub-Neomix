@@ -80,7 +80,6 @@ fun ColumnScope.ChatMessageActionButtons(
     val settings = LocalSettings.current
     var isPendingDelete by remember { mutableStateOf(false) }
     var showTranslateDialog by remember { mutableStateOf(false) }
-    var showRegenerateConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(isPendingDelete) {
         if (isPendingDelete) {
@@ -111,13 +110,8 @@ fun ColumnScope.ChatMessageActionButtons(
             contentDescription = stringResource(R.string.regenerate),
             modifier = Modifier
                 .clip(CircleShape)
-                .clickable {
-                    if (message.role == MessageRole.USER) {
-                        showRegenerateConfirm = true
-                    } else {
-                        onRegenerate()
-                    }
-                }
+                // scope 选择与（仅 scope B 的）确认由页面层负责——见 RegenerateScopeDialog
+                .clickable { onRegenerate() }
                 .padding(8.dp)
                 .size(16.dp),
             tint = actionIconColor
@@ -227,19 +221,6 @@ fun ColumnScope.ChatMessageActionButtons(
         )
     }
 
-    // Regenerate confirmation dialog
-    RikkaConfirmDialog(
-        show = showRegenerateConfirm,
-        title = stringResource(R.string.regenerate),
-        confirmText = stringResource(R.string.confirm),
-        dismissText = stringResource(R.string.cancel),
-        onConfirm = {
-            showRegenerateConfirm = false
-            onRegenerate()
-        },
-        onDismiss = { showRegenerateConfirm = false },
-        text = { Text(stringResource(R.string.regenerate_confirm_message)) }
-    )
 }
 
 @Composable

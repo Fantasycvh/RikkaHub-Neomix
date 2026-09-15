@@ -577,6 +577,13 @@
   <string name="reasoning_max">最大</string>
   <string name="regenerate">再生成</string>
   <string name="regenerate_confirm_message">このメッセージを再生成してもよろしいですか？</string>
+  <string name="regenerate_scope_desc">このやり取りだけを再生成しますか、それとも以降の会話も破棄しますか？</string>
+  <string name="regenerate_scope_this_only">このやり取りのみ</string>
+  <string name="regenerate_scope_include_following">以降の会話もすべて含める</string>
+  <string name="regenerate_scope_following_count">この後の %1$d 件のメッセージが削除されます</string>
+  <string name="regenerate_scope_export_then_continue">先にエクスポートして続行</string>
+  <string name="regenerate_truncated">%1$d 件のメッセージを削除しました</string>
+  <string name="regenerate_truncated_undo">元に戻す</string>
   <string name="render_with_webview">WebViewで表示</string>
   <string name="rikkahub_provider_description">公式の無料AIサービスです。ユーザーのスポンサー資金を使い、新規ユーザーのためのフォールバック用の一部無料モデルを提供します。APIキーは不要です。厳しいレート制限があります。独自のプロバイダーを購入済みの場合は、可能な限りそちらをご利用ください。</string>
   <string name="safe_mode_assistants">アシスタント</string>

@@ -94,6 +94,12 @@ import app.androidrik.rikkahub.data.model.localFileUrls
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.TruncationPlan
+import app.androidrik.rikkahub.data.model.nodeIndexOfMessage
+import app.androidrik.rikkahub.data.model.regenerateBaselineRange
+import app.androidrik.rikkahub.data.model.regenerateReplyNodeIndex
+import app.androidrik.rikkahub.data.model.restoreAfterTruncation
+import app.androidrik.rikkahub.data.model.truncationPlan
 import app.androidrik.rikkahub.data.model.replaceRegexes
 import app.androidrik.rikkahub.data.model.toMessageNode
 import app.androidrik.rikkahub.data.repository.ConversationRepository
@@ -546,10 +552,35 @@ class ChatService(
 
     // ---- 重新生成消息 ----
 
+    /**
+     * 重生成的作用范围（与消息角色**无关**——用户编辑后既可能想"只修正这一段"，
+     * 也可能想"从这里重做"，见 `docs/design-regenerate-scope.md` §一/§三）。
+     */
+    enum class RegenerateScope {
+        /** 仅本条与对应回复：不删下游。**非破坏**，无需确认。 */
+        THIS_ONLY,
+
+        /** 含后续所有对话：先截断下游再重生成。**破坏**，须确认（UI 层负责）。 */
+        INCLUDE_FOLLOWING,
+    }
+
+    /**
+     * 重生成消息。
+     *
+     * 目标节点（新回复归属的节点）：**用户消息重做的是它的回复**（下一个节点），
+     * **助手消息重做的是自身**——两者的共同点是"基线不含目标节点"，故新回复总是作为
+     * 该节点的**候选**追加（而非新建节点），与 [handleMessageComplete] 的索引写回一致。
+     *
+     * @param scope [RegenerateScope.THIS_ONLY] 不删下游；[RegenerateScope.INCLUDE_FOLLOWING] 先截断。
+     *   默认 [RegenerateScope.INCLUDE_FOLLOWING] 以**保持既有行为**（web/API 调用方不受影响）；
+     *   UI 总是显式传入用户所选 scope。
+     * @param onTruncated 仅在发生截断时回调（scope B 且有尾部），供 UI 弹「撤销」。
+     */
     fun regenerateAtMessage(
         conversationId: Uuid,
         message: UIMessage,
-        regenerateAssistantMsg: Boolean = true
+        scope: RegenerateScope = RegenerateScope.INCLUDE_FOLLOWING,
+        onTruncated: ((TruncationPlan) -> Unit)? = null,
     ) {
         val session = getOrCreateSession(conversationId)
         session.getJob()?.cancel()
@@ -557,25 +588,28 @@ class ChatService(
         val job = appScope.launch {
             try {
                 val conversation = session.state.value
+                val nodeIndex = conversation.nodeIndexOfMessage(message.id)
+                    ?: throw NotFoundException("Message not found")
+                val replyNodeIndex = regenerateReplyNodeIndex(
+                    nodeIndex = nodeIndex,
+                    isUserMessage = message.role == MessageRole.USER,
+                )
 
-                if (message.role == MessageRole.USER) {
-                    // 如果是用户消息，则截止到当前消息
-                    val node = conversation.getMessageNodeByMessage(message)
-                    val indexAt = conversation.messageNodes.indexOf(node)
-                    val newConversation = conversation.copy(
-                        messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
-                    )
-                    saveConversation(conversationId, newConversation)
-                    handleMessageComplete(conversationId)
-                } else {
-                    if (regenerateAssistantMsg) {
-                        val node = conversation.getMessageNodeByMessage(message)
-                        val nodeIndex = conversation.messageNodes.indexOf(node)
-                        handleMessageComplete(conversationId, messageRange = 0..<nodeIndex)
-                    } else {
-                        saveConversation(conversationId, conversation)
+                if (scope == RegenerateScope.INCLUDE_FOLLOWING) {
+                    conversation.truncationPlan(message.id)?.let { plan ->
+                        saveConversation(
+                            conversationId,
+                            conversation.copy(messageNodes = conversation.messageNodes.take(plan.sizeAfterTruncation)),
+                        )
+                        onTruncated?.invoke(plan)
                     }
                 }
+
+                // 基线不含目标节点本身 → 新回复作为该节点的候选追加。
+                handleMessageComplete(
+                    conversationId,
+                    messageRange = regenerateBaselineRange(replyNodeIndex, conversation.messageNodes.size),
+                )
 
                 _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
@@ -584,6 +618,39 @@ class ChatService(
         }
 
         session.setJob(job)
+    }
+
+    /**
+     * 撤销一次 [RegenerateScope.INCLUDE_FOLLOWING] 的截断（snackbar 撤销）。
+     *
+     * 步骤：**先取消在飞生成并等待结束**（避免还原后又追加），再 `take(sizeAfterTruncation)`
+     * 去掉「截断后新产生的节点」、拼回被移除的尾巴。
+     *
+     * 为什么用 `take` 而非直接追加：截断后生成可能已产出新回复（甚至 #1812 半截草稿），
+     * 而**撤销的语义是「回到截断前」**，故这些新内容一并撤掉是正确行为。
+     */
+    fun undoRegenerateTruncation(
+        conversationId: Uuid,
+        plan: TruncationPlan,
+    ) {
+        appScope.launch {
+            runCatching {
+                stopGeneration(conversationId)
+                val current = getConversationFlow(conversationId).value
+                val restored = current.copy(
+                    messageNodes = restoreAfterTruncation(current.messageNodes, plan),
+                )
+                // 诊断：撤销是破坏性操作且难以从 UI 观察，记一行便于排查/验证
+                Log.i(
+                    TAG,
+                    "undoRegenerateTruncation: nodes ${current.messageNodes.size} -> ${restored.messageNodes.size} " +
+                        "(restored ${plan.removedNodes.size} removed)",
+                )
+                saveConversation(conversationId, restored)
+            }.onFailure {
+                addError(it, conversationId, title = context.getString(R.string.error_title_regenerate_message))
+            }
+        }
     }
 
     // ---- 处理工具调用审批 ----

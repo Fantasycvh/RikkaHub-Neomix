@@ -577,6 +577,13 @@
   <string name="reasoning_max">Максимум</string>
   <string name="regenerate">Сгенерировать заново</string>
   <string name="regenerate_confirm_message">Вы уверены, что хотите перегенерировать это сообщение?</string>
+  <string name="regenerate_scope_desc">Перегенерировать только этот обмен или удалить и всё после него?</string>
+  <string name="regenerate_scope_this_only">Только этот обмен</string>
+  <string name="regenerate_scope_include_following">Вместе со всеми последующими</string>
+  <string name="regenerate_scope_following_count">Последующие сообщения (%1$d) будут удалены</string>
+  <string name="regenerate_scope_export_then_continue">Сначала экспорт, затем продолжить</string>
+  <string name="regenerate_truncated">Удалено сообщений: %1$d</string>
+  <string name="regenerate_truncated_undo">Отменить</string>
   <string name="render_with_webview">Отображать в WebView</string>
   <string name="rikkahub_provider_description">Официальный бесплатный AI-сервис, использующий средства спонсоров для предоставления новым пользователям бесплатных моделей в качестве резерва; API-ключ не требуется. Действуют строгие ограничения по частоте запросов. Если у вас есть собственный провайдер, используйте его по возможности.</string>
   <string name="safe_mode_assistants">Помощники</string>

@@ -35,6 +35,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.TruncationPlan
 import app.androidrik.rikkahub.data.model.NodeFavoriteTarget
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FavoriteRepository
@@ -263,10 +264,16 @@ class ChatVM(
 
     fun regenerateAtMessage(
         message: UIMessage,
-        regenerateAssistantMsg: Boolean = true
+        scope: ChatService.RegenerateScope = ChatService.RegenerateScope.INCLUDE_FOLLOWING,
+        onTruncated: ((TruncationPlan) -> Unit)? = null,
     ) {
         analytics.logEvent("ai_regenerate_at_message", null)
-        chatService.regenerateAtMessage(_conversationId, message, regenerateAssistantMsg)
+        chatService.regenerateAtMessage(_conversationId, message, scope, onTruncated)
+    }
+
+    /** 撤销一次 scope B 的截断（snackbar 撤销）。 */
+    fun undoRegenerateTruncation(truncation: TruncationPlan) {
+        chatService.undoRegenerateTruncation(_conversationId, truncation)
     }
 
     fun handleToolApproval(

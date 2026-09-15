@@ -193,6 +193,27 @@ class CompressionWindowTest {
     }
 
     @Test
+    fun `scope B truncation invalidates checkpoint and undo restores it`() {
+        // 交叉用例：重生成 scope B（截断下游）后检查点必须失效；撤销还原后应重新有效
+        // （指纹是纯函数 → 失效可逆，见 design-regenerate-scope.md §七）
+        val nodes = listOf(node("a"), node("b"), node("c"), node("d"))
+        val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 2)
+        assertNotNull("前置：检查点应有效", conversation.activeCompression())
+
+        // 点第 2 条 → scope B 截断掉 c/d
+        val clickedId = conversation.messageNodes[1].currentMessage.id
+        val plan = conversation.truncationPlan(clickedId)!!
+        val truncated = conversation.copy(messageNodes = conversation.messageNodes.take(plan.sizeAfterTruncation))
+        assertEquals(2, truncated.messageNodes.size)
+        assertNull("截断掉边界节点后检查点必须失效", truncated.activeCompression())
+
+        // 撤销还原 → 检查点重新有效（可逆）
+        val restored = truncated.copy(messageNodes = restoreAfterTruncation(truncated.messageNodes, plan))
+        assertEquals(4, restored.messageNodes.size)
+        assertNotNull("撤销还原后检查点应重新有效（可逆）", restored.activeCompression())
+    }
+
+    @Test
     fun `switching branch within area invalidates checkpoint`() {
         // 切换分支 = selectIndex 变化（候选不变）
         val multi = MessageNode(
