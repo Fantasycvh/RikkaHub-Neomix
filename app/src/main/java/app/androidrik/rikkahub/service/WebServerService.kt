@@ -121,9 +121,15 @@ class WebServerService : Service() {
                 when {
                     state.isRunning -> {
                         wasRunning = true
-                        val host = if (state.localhostOnly) "localhost" else (state.address ?: "localhost")
-                        val url = "http://$host:${state.port}"
-                        updateNotification(buildRunningNotification(url))
+                        // 取不到 WiFi IP 时不要把 localhost 冒充成局域网地址（见 SettingWebPage 同款处理）：
+                        // 依次退到 mDNS 主机名，都没有就明确提示不可用。
+                        val text = when {
+                            state.localhostOnly -> "http://localhost:${state.port}"
+                            state.address != null -> "http://${state.address}:${state.port}"
+                            state.hostname != null -> "http://${state.hostname}:${state.port}"
+                            else -> getString(R.string.setting_page_web_server_lan_unavailable)
+                        }
+                        updateNotification(buildRunningNotification(text))
                     }
 
                     wasRunning && !state.isRunning && !state.isLoading -> {

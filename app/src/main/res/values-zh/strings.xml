@@ -967,6 +967,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_web_server_jwt_enable">启用身份验证</string>
   <string name="setting_page_web_server_jwt_enable_desc">访问网页界面时需要密码验证</string>
   <string name="setting_page_web_server_lan_address">局域网地址</string>
+  <string name="setting_page_web_server_lan_unavailable">不可用（未连接 Wi-Fi）</string>
   <string name="setting_page_web_server_local_address">本机地址</string>
   <string name="setting_page_web_server_localhost_only">仅本地主机</string>
   <string name="setting_page_web_server_localhost_only_desc">仅监听 localhost (127.0.0.1)，禁用 LAN 和 mDNS 访问</string>

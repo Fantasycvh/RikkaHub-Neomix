@@ -312,12 +312,28 @@ fun SettingWebPage() {
                     if (serverState.isRunning) {
                         val port = serverState.port
                         if (!serverState.localhostOnly) {
-                            val lanUrl = "http://${serverState.address ?: "localhost"}:$port"
-                            item(
-                                onClick = { copyUrl(lanUrl) },
-                                headlineContent = { Text(stringResource(R.string.setting_page_web_server_lan_address)) },
-                                supportingContent = { Text(lanUrl) },
-                            )
+                            // 取不到 WiFi IP（如移动数据下）时不显示可点击的假地址——那时
+                            // address 为 null，旧写法会 `?: "localhost"` 把「本机地址」冒充成
+                            // 「局域网地址」，误导用户复制到一个外部设备打不开的 URL。
+                            val address = serverState.address
+                            if (address != null) {
+                                val lanUrl = "http://$address:$port"
+                                item(
+                                    onClick = { copyUrl(lanUrl) },
+                                    headlineContent = { Text(stringResource(R.string.setting_page_web_server_lan_address)) },
+                                    supportingContent = { Text(lanUrl) },
+                                )
+                            } else {
+                                item(
+                                    headlineContent = { Text(stringResource(R.string.setting_page_web_server_lan_address)) },
+                                    supportingContent = {
+                                        Text(
+                                            text = stringResource(R.string.setting_page_web_server_lan_unavailable),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                )
+                            }
 
                             if (serverState.hostname != null) {
                                 val mdnsUrl = "http://${serverState.hostname}:$port"

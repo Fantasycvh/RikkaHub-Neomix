@@ -920,6 +920,7 @@
   <string name="setting_page_web_server_jwt_enable">啟用身分驗證</string>
   <string name="setting_page_web_server_jwt_enable_desc">存取網頁介面時需要密碼驗證</string>
   <string name="setting_page_web_server_lan_address">LAN 位址</string>
+  <string name="setting_page_web_server_lan_unavailable">無法使用（未連線 Wi-Fi）</string>
   <string name="setting_page_web_server_local_address">本機位址</string>
   <string name="setting_page_web_server_localhost_only">僅限本機</string>
   <string name="setting_page_web_server_localhost_only_desc">僅監聽 localhost (127.0.0.1)，停用區域網路與 mDNS 存取</string>

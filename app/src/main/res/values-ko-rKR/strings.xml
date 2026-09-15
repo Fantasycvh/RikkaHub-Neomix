@@ -883,6 +883,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_page_web_server_jwt_enable">인증 활성화</string>
   <string name="setting_page_web_server_jwt_enable_desc">웹 인터페이스에 접근할 때 비밀번호 인증이 필요합니다</string>
   <string name="setting_page_web_server_lan_address">LAN 주소</string>
+  <string name="setting_page_web_server_lan_unavailable">사용할 수 없음 (Wi-Fi 미연결)</string>
   <string name="setting_page_web_server_local_address">로컬 주소</string>
   <string name="setting_page_web_server_localhost_only">localhost만</string>
   <string name="setting_page_web_server_localhost_only_desc">localhost(127.0.0.1)에서만 수신, LAN 및 mDNS 접근 비활성화</string>

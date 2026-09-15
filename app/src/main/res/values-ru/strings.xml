@@ -883,6 +883,7 @@
   <string name="setting_page_web_server_jwt_enable">Включить аутентификацию</string>
   <string name="setting_page_web_server_jwt_enable_desc">Требовать проверку пароля при доступе к веб-интерфейсу</string>
   <string name="setting_page_web_server_lan_address">LAN-адрес</string>
+  <string name="setting_page_web_server_lan_unavailable">Недоступно (Wi-Fi не подключён)</string>
   <string name="setting_page_web_server_local_address">Локальный адрес</string>
   <string name="setting_page_web_server_localhost_only">Только localhost</string>
   <string name="setting_page_web_server_localhost_only_desc">Принимать запросы только на localhost (127.0.0.1), отключить доступ по LAN и mDNS</string>
