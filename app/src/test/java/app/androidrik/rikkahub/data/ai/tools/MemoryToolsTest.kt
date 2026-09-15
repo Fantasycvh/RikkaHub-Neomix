@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.ai.tools
 
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -30,8 +31,10 @@ class MemoryToolsTest {
         createApproval: Boolean = false,
     ) = buildMemoryTools(
         json = json,
-        onCreation = { AssistantMemory("00000001", it) },
-        onUpdate = { id, content -> AssistantMemory(id, content) },
+        onCreation = { content, importance -> AssistantMemory("00000001", content, importance ?: 0.6f) },
+        onUpdate = { id, content, importance ->
+            AssistantMemory(id, content, importance ?: 0.6f)
+        },
         onDelete = { },
         needsApproval = { action ->
             seenActions += action
@@ -83,5 +86,72 @@ class MemoryToolsTest {
         val tool = memoryTool()
         assertEquals("memory_tool", tool.name)
         assertTrue(tool.description.isNotBlank())
+    }
+
+    @Test
+    fun `description and schema both expose importance with tiered guidance`() {
+        val tool = memoryTool()
+        // 描述里给出分档锚点——模型不填/乱填会让打分校准退化成噪声，这是唯一能约束它的地方
+        assertTrue(tool.description.contains("importance"))
+        assertTrue(tool.description.contains("0.9"))
+        assertTrue(tool.description.contains("0.6-0.8"))
+        // schema 里也要有该参数，否则模型看不到
+        val schema = tool.parameters().toString()
+        assertTrue(schema.contains("importance"))
+    }
+
+    // ---- importance 的提取与传递（执行链路） ----
+
+    private val created = mutableListOf<Pair<String, Float?>>()
+    private val updated = mutableListOf<Triple<String, String, Float?>>()
+
+    private fun executingTool() = buildMemoryTools(
+        json = json,
+        onCreation = { content, importance ->
+            created += content to importance
+            AssistantMemory("00000001", content, importance ?: 0.6f)
+        },
+        onUpdate = { id, content, importance ->
+            updated += Triple(id, content, importance)
+            AssistantMemory(id, content, importance ?: 0.6f)
+        },
+        onDelete = { },
+    ).first { it.name == "memory_tool" }
+
+    @Test
+    fun `importance is passed through on create`() = runBlocking {
+        executingTool().execute(
+            buildJsonObject {
+                put("action", "create")
+                put("content", "likes tea")
+                put("importance", 0.9)
+            }
+        )
+        assertEquals(listOf("likes tea" to 0.9f), created)
+    }
+
+    @Test
+    fun `absent importance is passed as null so repository applies its default`() = runBlocking {
+        executingTool().execute(
+            buildJsonObject {
+                put("action", "create")
+                put("content", "likes tea")
+            }
+        )
+        // null（而非 0f）——由仓库决定缺省值，工具层不替它做主
+        assertEquals(listOf("likes tea" to null), created)
+    }
+
+    @Test
+    fun `importance is passed through on edit`() = runBlocking {
+        executingTool().execute(
+            buildJsonObject {
+                put("action", "edit")
+                put("id", "a3f1c09e")
+                put("content", "prefers coffee")
+                put("importance", 0.4)
+            }
+        )
+        assertEquals(listOf(Triple("a3f1c09e", "prefers coffee", 0.4f)), updated)
     }
 }

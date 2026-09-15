@@ -93,6 +93,7 @@
   <string name="assistant_page_local_tools_tts_desc">Let the AI read text aloud to you using your selected TTS service</string>
   <string name="assistant_page_local_tools_tts_title">Text to Speech</string>
   <string name="assistant_page_manage_memory_title">Manage Memory</string>
+  <string name="assistant_page_memory_importance">Importance</string>
   <string name="assistant_page_max_tokens">Max Tokens</string>
   <string name="assistant_page_max_tokens_desc">Maximum number of tokens to generate. Leave empty for no limit.</string>
   <string name="assistant_page_max_tokens_limit">Limit: %d tokens</string>

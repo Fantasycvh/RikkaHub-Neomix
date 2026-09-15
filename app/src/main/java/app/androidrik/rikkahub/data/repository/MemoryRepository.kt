@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.repository
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import app.androidrik.rikkahub.data.ai.memoryScoreBucket
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.data.model.AssistantMemory
@@ -33,7 +34,9 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     private fun MemoryEntity.toModel() = AssistantMemory(
         id = publicId.ifBlank { id.toString() }, // 极端情况（空串）按自增 id 兜底，保证 id 始终可用
         content = content,
+        importance = importance,
         sortKey = id,
+        updatedAt = updatedAt,
     )
 
     /**
@@ -81,10 +84,38 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         memoryDAO.deleteMemoriesOfAssistant(assistantId)
     }
 
-    /** 按对外 opaque id 更新内容（id 兼容旧的自增编号引用）。 */
-    suspend fun updateContent(id: String, content: String): AssistantMemory {
+    /**
+     * 按对外 opaque id 更新内容（id 兼容旧的自增编号引用）。
+     *
+     * **同时刷新 `updatedAt`**：它是时效衰减的时间基准，不刷新就等于「改了没用」——
+     * 刚维护过的记忆仍按旧时间被算成陈旧，最后被淘汰。
+     *
+     * [importance] 为 null 时保留原值（模型只说改内容、不该顺手把重要度重置掉）。
+     */
+    suspend fun updateContent(
+        id: String,
+        content: String,
+        importance: Float? = null,
+        now: Long = System.currentTimeMillis(),
+    ): AssistantMemory {
         val old = requireNotNull(findEntityByPublicId(id)) { "Memory record $id not found" }
-        val newMemory = old.copy(content = content)
+        val newMemory = old.copy(
+            content = content,
+            importance = importance?.coerceIn(0f, 1f) ?: old.importance,
+            updatedAt = now,
+        )
+        memoryDAO.updateMemory(newMemory)
+        return newMemory.toModel()
+    }
+
+    /** 只改重要度（记忆页里用户覆盖模型给的值）。同时刷新 `updatedAt`，口径同 [updateContent]。 */
+    suspend fun updateImportance(
+        id: String,
+        importance: Float,
+        now: Long = System.currentTimeMillis(),
+    ): AssistantMemory? {
+        val old = findEntityByPublicId(id) ?: return null
+        val newMemory = old.copy(importance = importance.coerceIn(0f, 1f), updatedAt = now)
         memoryDAO.updateMemory(newMemory)
         return newMemory.toModel()
     }
@@ -97,8 +128,16 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
      * 造成同内容多条（实测一次「保存我的偏好」可建 6 条）。
      * 这里做去重而非"每个 step 重新注入记忆列表"：后者会让 system prompt 每步变化，
      * 反而打掉前缀缓存（见 design-auto-compaction 的前缀稳定性约束）。
+     *
+     * [importance] 由模型在工具调用时给（见 `docs/design-memory-scoring.md` §四）；
+     * 缺失/越界时回落到 [MemoryEntity.DEFAULT_IMPORTANCE]。
      */
-    suspend fun addMemory(assistantId: String, content: String): AssistantMemory {
+    suspend fun addMemory(
+        assistantId: String,
+        content: String,
+        importance: Float? = null,
+        now: Long = System.currentTimeMillis(),
+    ): AssistantMemory {
         val normalized = content.trim()
         // 幂等检查：同助手下已有相同内容则直接复用（避免工具循环重复创建）
         memoryDAO.getMemoriesOfAssistant(assistantId)
@@ -112,14 +151,24 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
             assistantId = assistantId,
             content = normalized,
             publicId = generatePublicId(),
+            importance = importance?.coerceIn(0f, 1f) ?: MemoryEntity.DEFAULT_IMPORTANCE,
+            updatedAt = now,
         )
         val insertedId = memoryDAO.insertMemory(newMemory).toInt()
-        // 200 条上限：超限删除最旧记录，防记忆无限膨胀（turbo 06baee4）
+        // 200 条上限：超限按**分数最低**淘汰，防记忆无限膨胀（turbo 06baee4）。
+        // 改用分数（而非旧的「最旧」）：与入选口径一致——否则一条「重要但很久没改」的
+        // 记忆会被新写入的次要记忆挤掉，与打分校准的意图相悖。
         val all = memoryDAO.getMemoriesOfAssistant(assistantId)
         if (all.size > MAX_MEMORY_COUNT) {
-            all.sortedBy { it.id }
-                .take(all.size - MAX_MEMORY_COUNT)
-                .forEach { memoryDAO.deleteMemory(it.id) }
+            val excess = all.size - MAX_MEMORY_COUNT
+            val victims = all
+                .sortedWith(
+                    compareBy<MemoryEntity> { memoryScoreBucket(it.toModel(), now) }
+                        .thenBy { it.id } // 同桶内先淘汰更旧的，保证确定性
+                )
+                .take(excess)
+            victims.forEach { memoryDAO.deleteMemory(it.id) }
+            Log.i(TAG, "addMemory: evicted $excess lowest-score memory(ies) over $MAX_MEMORY_COUNT cap")
         }
         return newMemory.copy(id = insertedId).toModel()
     }

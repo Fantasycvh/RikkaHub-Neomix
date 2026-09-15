@@ -27,6 +27,7 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.ai.DEFAULT_MEMORY_BUDGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT
@@ -169,6 +170,9 @@ class SettingsStore(
         val WEB_SERVER_ACCESS_PASSWORD = stringPreferencesKey("web_server_access_password")
         val WEB_SERVER_LOCALHOST_ONLY = booleanPreferencesKey("web_server_localhost_only")
 
+        // 记忆注入预算（token）：注入哪些记忆由打分校准决定，装多少由此预算决定
+        val MEMORY_INJECT_BUDGET_TOKENS = intPreferencesKey("memory_inject_budget_tokens")
+
         // 提示词注入
         val MODE_INJECTIONS = stringPreferencesKey("mode_injections")
         val LOREBOOKS = stringPreferencesKey("lorebooks")
@@ -296,6 +300,8 @@ class SettingsStore(
                 webServerJwtEnabled = preferences[WEB_SERVER_JWT_ENABLED] == true,
                 webServerAccessPassword = preferences[WEB_SERVER_ACCESS_PASSWORD] ?: "",
                 webServerLocalhostOnly = preferences[WEB_SERVER_LOCALHOST_ONLY] == true,
+                memoryInjectBudgetTokens = preferences[MEMORY_INJECT_BUDGET_TOKENS]
+                    ?: DEFAULT_MEMORY_BUDGET_TOKENS,
                 backupReminderConfig = preferences[BACKUP_REMINDER_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
@@ -487,6 +493,7 @@ class SettingsStore(
             preferences[WEB_SERVER_JWT_ENABLED] = settings.webServerJwtEnabled
             preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
             preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
+            preferences[MEMORY_INJECT_BUDGET_TOKENS] = settings.memoryInjectBudgetTokens
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
             settings.contextLengthOverride?.let {
@@ -654,6 +661,12 @@ data class Settings(
     val webServerJwtEnabled: Boolean = false,
     val webServerAccessPassword: String = "",
     val webServerLocalhostOnly: Boolean = false,
+    /**
+     * 记忆注入预算（token）。注入**哪些**记忆由打分校准决定，**装多少**由此预算决定——
+     * 见 `docs/design-memory-scoring.md`。改它会改变 system prompt 前缀，
+     * 但只影响「入选集合」本身，不会每次请求漂移（输出顺序按 sortKey 固定）。
+     */
+    val memoryInjectBudgetTokens: Int = DEFAULT_MEMORY_BUDGET_TOKENS,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     /** 全局代理（provider 未自配时兜底；默认 NONE = 不启用） */
     val globalProxy: GlobalProxySetting = GlobalProxySetting(),

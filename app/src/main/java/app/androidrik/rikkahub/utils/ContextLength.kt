@@ -71,13 +71,33 @@ fun estimateTokenCount(messages: List<UIMessage>): Int {
                 else -> continue
             }
             for (ch in text) {
-                if (ch in '\u4e00'..'\u9fff' || ch in '\u3040'..'\u30ff' || ch in '\uac00'..'\ud7af') {
-                    cjk++
-                } else {
-                    other++
-                }
+                if (isCjk(ch)) cjk++ else other++
             }
         }
     }
-    return (cjk / 1.5 + other / 4.0).toInt().coerceAtLeast(0)
+    return tokensFromCounts(cjk, other)
 }
+
+/**
+ * 本地估算**纯文本** token 数（与 [estimateTokenCount] 同口径）。
+ *
+ * 记忆注入的预算截断需要按 token 计（`docs/design-memory-scoring.md` §六），
+ * 而记忆是纯字符串、没有 [UIMessage] 包装。共用本函数而非各写一份启发式，
+ * 是为了让「记忆预算」与「上下文占用/压缩切分」始终保持同一量纲——
+ * 将来若换真 tokenizer，改动面也只有这一处。
+ */
+fun estimateTokens(text: String): Int {
+    var cjk = 0
+    var other = 0
+    for (ch in text) {
+        if (isCjk(ch)) cjk++ else other++
+    }
+    return tokensFromCounts(cjk, other)
+}
+
+/** CJK（中日韩）字符判定：这些字符约 1.5 字符/token，其余约 4 字符/token。 */
+private fun isCjk(ch: Char): Boolean =
+    ch in '\u4e00'..'\u9fff' || ch in '\u3040'..'\u30ff' || ch in '\uac00'..'\ud7af'
+
+private fun tokensFromCounts(cjk: Int, other: Int): Int =
+    (cjk / 1.5 + other / 4.0).toInt().coerceAtLeast(0)

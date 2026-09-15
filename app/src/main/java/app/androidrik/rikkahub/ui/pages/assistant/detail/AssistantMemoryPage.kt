@@ -23,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -172,17 +173,42 @@ private fun AssistantMemoryContent(
                 Text(stringResource(R.string.assistant_page_manage_memory_title))
             },
             text = {
-                TextField(
-                    value = memory.content,
-                    onValueChange = {
-                        update(memory.copy(content = it))
-                    },
-                    label = {
-                        Text(stringResource(R.string.assistant_page_manage_memory_title))
-                    },
-                    minLines = 2,
-                    maxLines = 8
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextField(
+                        value = memory.content,
+                        onValueChange = {
+                            update(memory.copy(content = it))
+                        },
+                        label = {
+                            Text(stringResource(R.string.assistant_page_manage_memory_title))
+                        },
+                        minLines = 2,
+                        maxLines = 8
+                    )
+                    // 重要度：决定该记忆在预算内能否进上下文（模型写入时给初值，用户可在此覆盖）。
+                    // 注入预算有限，故这个值直接影响「谁会出现在后续对话里」。
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.assistant_page_memory_importance),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            Text(
+                                text = "%.2f".format(memory.importance),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Slider(
+                            value = memory.importance,
+                            onValueChange = { update(memory.copy(importance = it)) },
+                            valueRange = 0f..1f,
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(

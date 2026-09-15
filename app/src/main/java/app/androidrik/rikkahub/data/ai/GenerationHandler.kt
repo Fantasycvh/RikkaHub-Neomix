@@ -554,7 +554,13 @@ class GenerationHandler(
                 // 记忆
                 if (assistant.enableMemory) {
                     appendLine()
-                    append(buildMemoryPrompt(memories = memories))
+                    // 预算来自设置（可调）：注入「哪些」由打分校准决定、「装多少」由它决定
+                    append(
+                        buildMemoryPrompt(
+                            memories = memories,
+                            budgetTokens = settings.memoryInjectBudgetTokens,
+                        )
+                    )
                 }
                 // 工具prompt
                 tools.forEach { tool ->

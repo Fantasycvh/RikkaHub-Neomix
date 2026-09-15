@@ -6,6 +6,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -18,8 +19,8 @@ import java.time.LocalDate
 
 fun buildMemoryTools(
     json: Json,
-    onCreation: suspend (String) -> AssistantMemory,
-    onUpdate: suspend (String, String) -> AssistantMemory,
+    onCreation: suspend (String, Float?) -> AssistantMemory,
+    onUpdate: suspend (String, String, Float?) -> AssistantMemory,
     onDelete: suspend (String) -> Unit,
     /** 修改/删除记忆需审批（按 action 名判定；create 始终放行——见 Assistant.memoryModifyApproval） */
     needsApproval: (action: String) -> Boolean = { false },
@@ -29,9 +30,15 @@ fun buildMemoryTools(
         description = """
             The memory tool stores long-term information across conversations.
             Use `action` to control the operation: `create` (add), `edit` (update), `delete` (remove).
-            - No relevant record: `create` + `content`
-            - Existing relevant record: `edit` + `id` + `content`
+            - No relevant record: `create` + `content` + `importance`
+            - Existing relevant record: `edit` + `id` + `content` (+ `importance` when it changed)
             - Outdated/irrelevant record: `delete` + `id`
+            `importance` (0.0-1.0) decides which memories get loaded into future conversations —
+            only the most important ones fit in the context budget, so judge it honestly:
+            - 0.9-1.0: identity or strong long-term preference (preferred name, language, occupation, hard rules)
+            - 0.6-0.8: ordinary preference, or an ongoing project
+            - 0.2-0.5: minor or likely temporary note
+            Rate on that scale instead of defaulting everything to a high number.
             `id` is an opaque token from the <memories> list (e.g. "a3f1c09e"). Copy it exactly;
             it is not a count or an index, so never guess or derive it.
             Memories will automatically appear in the <memories> tag in later conversations.
@@ -42,8 +49,8 @@ fun buildMemoryTools(
             Similar memories should be merged; prefer updating existing records.
 
             Examples:
-            {"action":"create","content":"User prefers brief replies and is more active on weekends."}
-            {"action":"edit","id":"a3f1c09e","content":"User’s preferred name updated to “A-Xing”, prefers Chinese replies."}
+            {"action":"create","content":"User prefers brief replies and is more active on weekends.","importance":0.7}
+            {"action":"edit","id":"a3f1c09e","content":"User’s preferred name updated to “A-Xing”, prefers Chinese replies.","importance":0.95}
             {"action":"delete","id":"7bd20f45"}
         """.trimIndent(),
         parameters = {
@@ -69,6 +76,15 @@ fun buildMemoryTools(
                         put("type", "string")
                         put("description", "The content of the memory record (required for create/edit)")
                     })
+                    put("importance", buildJsonObject {
+                        put("type", "number")
+                        put(
+                            "description",
+                            "0.0-1.0: how important this memory is for future conversations. " +
+                                "0.9+ identity/strong preference, 0.6-0.8 ordinary preference or ongoing project, " +
+                                "0.2-0.5 minor note. Decides which memories fit the context budget."
+                        )
+                    })
                 },
                 required = listOf("action")
             )
@@ -85,13 +101,15 @@ fun buildMemoryTools(
             val payload = when (action) {
                 "create" -> {
                     val content = params["content"]?.jsonPrimitive?.contentOrNull ?: error("content is required")
-                    json.encodeToJsonElement(AssistantMemory.serializer(), onCreation(content))
+                    val importance = params["importance"]?.jsonPrimitive?.floatOrNull
+                    json.encodeToJsonElement(AssistantMemory.serializer(), onCreation(content, importance))
                 }
 
                 "edit" -> {
                     val id = params["id"]?.jsonPrimitive?.contentOrNull ?: error("id is required")
                     val content = params["content"]?.jsonPrimitive?.contentOrNull ?: error("content is required")
-                    json.encodeToJsonElement(AssistantMemory.serializer(), onUpdate(id, content))
+                    val importance = params["importance"]?.jsonPrimitive?.floatOrNull
+                    json.encodeToJsonElement(AssistantMemory.serializer(), onUpdate(id, content, importance))
                 }
 
                 "delete" -> {

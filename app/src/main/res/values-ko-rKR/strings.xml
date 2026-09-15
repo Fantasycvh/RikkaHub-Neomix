@@ -91,6 +91,7 @@
   <string name="assistant_page_local_tools_tts_desc">AI가 선택한 TTS 서비스를 사용해 텍스트를 음성으로 읽어줍니다</string>
   <string name="assistant_page_local_tools_tts_title">텍스트 음성 변환</string>
   <string name="assistant_page_manage_memory_title">기억 관리</string>
+  <string name="assistant_page_memory_importance">중요도</string>
   <string name="assistant_page_max_tokens">최대 토큰</string>
   <string name="assistant_page_max_tokens_desc">생성할 최대 토큰 수. 제한 없음은 비워두세요.</string>
   <string name="assistant_page_max_tokens_limit">%d 토큰 제한</string>

@@ -187,14 +187,20 @@ class AssistantDetailVM(
             }
             memoryRepository.addMemory(
                 assistantId = memoryAssistantId,
-                content = memory.content
+                content = memory.content,
+                importance = memory.importance,
             )
         }
     }
 
     fun updateMemory(memory: AssistantMemory) {
         viewModelScope.launch {
-            memoryRepository.updateContent(id = memory.id, content = memory.content)
+            // 一并写入 importance：用户在记忆页的滑块覆盖会走这里，不传就等于「改了不生效」
+            memoryRepository.updateContent(
+                id = memory.id,
+                content = memory.content,
+                importance = memory.importance,
+            )
         }
     }
 

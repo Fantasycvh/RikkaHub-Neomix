@@ -93,6 +93,7 @@
   <string name="assistant_page_local_tools_tts_desc">讓 AI 使用您所選的 TTS 服務為您朗讀文字</string>
   <string name="assistant_page_local_tools_tts_title">文字轉語音</string>
   <string name="assistant_page_manage_memory_title">管理記憶</string>
+  <string name="assistant_page_memory_importance">重要度</string>
   <string name="assistant_page_max_tokens">最大Token數</string>
   <string name="assistant_page_max_tokens_desc">最大生成Token數量。留空表示無限制。</string>
   <string name="assistant_page_max_tokens_limit">限制：%d 個Token</string>

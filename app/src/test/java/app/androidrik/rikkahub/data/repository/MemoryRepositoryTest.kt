@@ -167,4 +167,91 @@ class MemoryRepositoryTest {
         assertEquals(1, repo.getMemoriesOfAssistant("a").size)
         assertEquals("x", repo.getMemoriesOfAssistant("a").first().content)
     }
+
+    // ---- importance / updatedAt（打分校准的输入，见 design-memory-scoring.md） ----
+
+    @Test
+    fun `addMemory stores provided importance`() = runBlocking {
+        val m = repo.addMemory("asst", "identity fact", importance = 0.95f)
+        assertEquals(0.95f, m.importance, 0.001f)
+        assertEquals(0.95f, repo.getMemoryById(m.id)!!.importance, 0.001f)
+    }
+
+    @Test
+    fun `addMemory falls back to default importance when absent or out of range`() = runBlocking {
+        // 模型不填 → 用默认（普通偏好档）；越界 → 钳制
+        val missing = repo.addMemory("asst", "no importance")
+        assertEquals(MemoryEntity.DEFAULT_IMPORTANCE, missing.importance, 0.001f)
+
+        val tooBig = repo.addMemory("asst", "too big", importance = 5f)
+        assertEquals(1f, tooBig.importance, 0.001f)
+
+        val negative = repo.addMemory("asst", "negative", importance = -2f)
+        assertEquals(0f, negative.importance, 0.001f)
+    }
+
+    @Test
+    fun `updateContent refreshes updatedAt so edited memories are not treated as stale`() = runBlocking {
+        // 回归护栏：updatedAt 是时效衰减基准，不刷新就等于「改了没用」——
+        // 刚维护过的记忆仍按旧时间被算成陈旧，最后被淘汰。
+        val m = repo.addMemory("asst", "original", now = 1_000L)
+        assertEquals(1_000L, m.updatedAt)
+
+        val updated = repo.updateContent(m.id, "changed", now = 9_999L)
+        assertEquals(9_999L, updated.updatedAt)
+        assertEquals(9_999L, repo.getMemoryById(m.id)!!.updatedAt)
+    }
+
+    @Test
+    fun `updateContent keeps importance when not provided`() = runBlocking {
+        // 模型只说改内容时，不该顺手把重要度重置掉
+        val m = repo.addMemory("asst", "content", importance = 0.9f, now = 0L)
+        val updated = repo.updateContent(m.id, "new content", importance = null, now = 1L)
+        assertEquals(0.9f, updated.importance, 0.001f)
+    }
+
+    @Test
+    fun `updateContent applies explicit importance override`() = runBlocking {
+        val m = repo.addMemory("asst", "content", importance = 0.9f, now = 0L)
+        val updated = repo.updateContent(m.id, "content", importance = 0.3f, now = 1L)
+        assertEquals(0.3f, updated.importance, 0.001f)
+    }
+
+    @Test
+    fun `updateImportance changes only the score input`() = runBlocking {
+        val m = repo.addMemory("asst", "content", importance = 0.5f, now = 0L)
+        val updated = repo.updateImportance(m.id, 0.8f, now = 7L)!!
+        assertEquals(0.8f, updated.importance, 0.001f)
+        assertEquals("content", updated.content)
+        assertEquals(7L, updated.updatedAt)
+    }
+
+    @Test
+    fun `updateImportance on unknown id returns null`() = runBlocking {
+        assertNull(repo.updateImportance("deadbeef", 0.5f))
+    }
+
+    @Test
+    fun `overflow eviction drops lowest score not merely oldest`() = runBlocking {
+        // 与入选口径一致：淘汰按分数（否则「重要但久未改动」的记忆会被新写入的次要记忆挤掉）。
+        // 造 200 条：第 1 条是高重要度老记忆，其余是低重要度新记忆。
+        val now = 1_000_000L
+        repo.addMemory("asst", "important identity", importance = 1.0f, now = now)
+        repeat(199) { i ->
+            // 内容不能重复（幂等去重会合并），故带序号
+            repo.addMemory("asst", "minor note $i", importance = 0.1f, now = now)
+        }
+        assertEquals(MemoryRepository.MAX_MEMORY_COUNT, repo.getMemoriesOfAssistant("asst").size)
+
+        // 再加一条触发淘汰
+        repo.addMemory("asst", "one more", importance = 0.1f, now = now)
+
+        val remaining = repo.getMemoriesOfAssistant("asst")
+        assertEquals(MemoryRepository.MAX_MEMORY_COUNT, remaining.size)
+        // 高分那条必须还在（旧实现按「最旧」淘汰会把它删掉，因为它是最早插入的）
+        assertTrue(
+            "high-importance memory was evicted by low-importance newcomers",
+            remaining.any { it.content == "important identity" },
+        )
+    }
 }

@@ -87,8 +87,12 @@ class ChatToolFactory(
             addAll(
                 buildMemoryTools(
                     json = json,
-                    onCreation = { content -> memoryRepository.addMemory(memoryAssistantId, content) },
-                    onUpdate = { id, content -> memoryRepository.updateContent(id, content) },
+                    onCreation = { content, importance ->
+                        memoryRepository.addMemory(memoryAssistantId, content, importance)
+                    },
+                    onUpdate = { id, content, importance ->
+                        memoryRepository.updateContent(id, content, importance)
+                    },
                     onDelete = { id -> memoryRepository.deleteMemory(id) },
                     // 分档审批：create 默认放行（可选开关）、edit/delete 默认拦截——见 memoryToolNeedsApproval
                     needsApproval = { action -> memoryToolNeedsApproval(assistant, action) },

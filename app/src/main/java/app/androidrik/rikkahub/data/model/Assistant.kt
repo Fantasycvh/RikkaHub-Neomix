@@ -85,15 +85,27 @@ data class QuickMessage(
  * edit/delete 目标，UI 也显示它。之所以不用自增编号：删除空洞会让编号不连续（难看），
  * 且编号泄漏记忆条数（模型会当成总数）；随机 token 一起根治且永不需要重排。
  *
- * [sortKey] 是内部排序键（自增主键），**不参与序列化**——它只用于注入时选「最新的 N 条」，
- * 以及保持行为不依赖调用方列表顺序。
+ * [sortKey] 是内部排序键（自增主键），**不参与序列化**——用于注入时的稳定输出顺序
+ * （与记忆页展示一致），并保证行为不依赖调用方列表顺序。
+ *
+ * [importance]/[updatedAt] 服务于**注入打分校准**（`docs/design-memory-scoring.md`）：
+ * 打分 `importance × (0.55 + 0.45 × 时效衰减)` 决定「谁该进上下文」，
+ * 而输出顺序仍由 [sortKey] 固定以保住前缀缓存。
  */
 @Serializable
 data class AssistantMemory(
     val id: String = "",
     val content: String = "",
+    /**
+     * 重要度 0.0–1.0（模型写入时给、用户可覆盖）。序列化——工具结果里回显这个值，
+     * 模型可据此确认自己填了什么。
+     */
+    val importance: Float = 0.6f,
     @Transient
     val sortKey: Int = 0,
+    /** 最近修改时间（epoch millis），时效衰减基准。**不序列化**——对模型是噪声，仅内部打分用。 */
+    @Transient
+    val updatedAt: Long = 0L,
 )
 
 @Serializable
