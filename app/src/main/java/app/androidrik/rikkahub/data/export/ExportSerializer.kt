@@ -19,7 +19,21 @@ import kotlin.uuid.Uuid
 data class ExportData(
     val version: Int = 1,
     val type: String,
-    val data: JsonElement
+    val data: JsonElement,
+    /**
+     * 导出时刻（epoch millis）。用于"文件较旧"一类提示；可空以兼容旧文件。
+     */
+    val exportedAt: Long? = null,
+    /**
+     * **重复导入检测的幂等锚点**：导出时的 `Conversation.id`。
+     *
+     * 它随文件固定不变（导入不会改写它），故导入侧可用「该文件是否导入过」来提示重复——
+     * 这是必要的，因为导入**总是换新 id**（决策 1），原有的 `existsConversationById` 判据
+     * 在换 id 后永不命中（见 `docs/design-conversation-import-export.md` §十）。
+     *
+     * 可空：旧版导出文件没有该字段 → 无法判定 → **跳过检测**（不是"重复"）。
+     */
+    val sourceId: String? = null,
 )
 
 interface ExportSerializer<T> {

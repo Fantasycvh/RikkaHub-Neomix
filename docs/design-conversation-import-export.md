@@ -1,6 +1,9 @@
 # 对话导入导出（自家格式往返）设计稿
 
-> 状态：**设计定稿，未实现**（2026-09-16）。
+> 状态：**已实现**（2026-09-16；代码见 `ConversationSerializer` / `ConversationImportRemap` /
+> `ConversationImportConfirmDialog`；单测 `ConversationImportRemapTest` 23 项）。
+> 实现差异：**状态原文中的第一项"统一导入器（Chatbox/CherryStudio + 助手选择）"未做** ——
+> 用户决定「等待本格式导入功能验证后再实现」（§九.4）。
 > 用户决定：**①导入即换新 id（不覆盖）②第一阶段不导出附件，第二阶段再用内联 base64 ③导入时允许用户选择目标助手**。
 > 关联：`design-backup-workspace-files.md`（整库备份）、`design-favorite-management.md`（同批评估）。
 
@@ -136,7 +139,7 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 | `id`（会话/节点/消息） | **全部换新**（§三） |
 | `createAt` / `updateAt` | 直接反序列化（`InstantSerializer` 已就绪；比外部格式的 min/max 推断更准） |
 | `compressionSummaries` | **携带**（方案 A）：`conversationId`/`boundaryNodeId` 重映射 + `areaFingerprint` 重算，详见 §5.1 |
-| 附件 `file://` 引用 | **一阶段：保留占位文本**（或按 §七 选项清理）；二阶段内联 |
+| 附件 `file://` 引用 | **一阶段：原样保留 `file://` 文本引用**（不含附件字节）——同设备导入时经 `normalizeLocalFileUrl` 显示层归一化仍可读；跨设备则读不到（二阶段内联 base64 解决） |
 
 ### 5.1 压缩检查点：**决策 A（带检查点 + 重算指纹）**
 
@@ -230,9 +233,12 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 
 ## 九、待确认
 
-1. **重复导入提示的文案细节**（§十.3）：是否需要显示"原会话标题"？时间格式？
-2. **`importedSources` 的清理策略**（§十.4）：删掉导入的会话后，历史记录是否保留？
-3. 阶段划分确认：阶段 1 是否含 §十（重复检测）？
+> **已全部落实**（2026-09-16）：1 = 显示原会话标题 + `yyyy年MM月dd日`；2 = 保留、**不做清理**；
+> 3 = 阶段 1 含 §十 重复检测；4 = 统一导入器**待本格式验证后再做**（未实现）。
+
+1. ~~**重复导入提示的文案细节**（§十.3）：是否需要显示"原会话标题"？时间格式？~~
+2. ~~**`importedSources` 的清理策略**（§十.4）：删掉导入的会话后，历史记录是否保留？~~
+3. ~~阶段划分确认：阶段 1 是否含 §十（重复检测）？~~
 
 （已定：`assistantId` 不存 / 压缩检查点**方案 A** / 二阶段再定附件格式 /
 **统一导入器=导出功能验证后再做** / **重复导入检测+提示（允许继续）**。）

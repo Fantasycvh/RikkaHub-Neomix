@@ -191,6 +191,14 @@
   <string name="backup_page_import_cherry_studio_desc">Cherry Studioプロバイダー設定をインポート</string>
   <string name="backup_page_import_desc">ローカルバックアップファイルをインポート</string>
   <string name="backup_page_import_export">ローカル</string>
+  <string name="backup_page_import_conversation">会話（JSON）</string>
+  <string name="backup_page_import_conversation_desc">このアプリでエクスポートした単一会話をインポート（JSON）</string>
+  <string name="backup_page_import_invalid_file">有効な会話エクスポートファイルではありません</string>
+  <string name="backup_page_import_conversation_confirm_title">会話をインポート</string>
+  <string name="backup_page_import_conversation_confirm_message">「%1$s」をインポートしますか？新しい会話が作成され、既存のものは上書きされません。</string>
+  <string name="backup_page_import_duplicate_warning">重複インポート：「%1$s」は %2$s にインポート済みです。</string>
+  <string name="backup_page_import_duplicate_hint">続行すると重複したデータが作成されます。</string>
+  <string name="backup_page_import_target_assistant">インポート先</string>
   <string name="backup_page_import_from_chatbox">ChatBoxからインポート</string>
   <string name="backup_page_import_from_cherry_studio">Cherry Studioからインポート</string>
   <string name="backup_page_import_from_other_app">他のアプリからインポート</string>
@@ -304,6 +312,8 @@
   <string name="chat_page_export_image_expand_reasoning">思考過程を展開</string>
   <string name="chat_page_share_conversation">会話を共有</string>
   <string name="chat_page_export_include_all_versions">すべてのバージョンを含める（ブランチ/編集履歴）</string>
+  <string name="chat_page_export_json">JSON（再インポート可）</string>
+  <string name="chat_page_export_json_desc">分岐と圧縮を含む完全な会話。再インポートできます</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">会話をmarkdownファイルとしてエクスポート</string>
   <string name="chat_page_export_html">HTMLとしてエクスポート</string>

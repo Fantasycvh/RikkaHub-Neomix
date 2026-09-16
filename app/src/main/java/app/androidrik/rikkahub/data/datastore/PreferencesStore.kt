@@ -31,6 +31,7 @@ import app.androidrik.rikkahub.data.ai.DEFAULT_MEMORY_BUDGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.CompressPreset
+import app.androidrik.rikkahub.data.model.ImportSourceRecord
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT
 import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
 import app.androidrik.rikkahub.data.sync.BackupItem
@@ -195,6 +196,8 @@ class SettingsStore(
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
         // 自定义压缩配置档（用户命名、可增改删；单 key 存 JSON 列表，与 modeInjections 同款）
         val COMPRESS_PRESETS = stringPreferencesKey("compress_presets")
+        // 导入来源记录（重复导入提示用；见 docs/design-conversation-import-export.md §十）
+        val IMPORTED_SOURCES = stringPreferencesKey("imported_sources")
         // 全局代理（两层代理设计的全局兜底层）；结构化 JSON 存储
         val GLOBAL_PROXY = stringPreferencesKey("global_proxy")
         // 日志落盘（Log 页「导出到文件」开关；默认关，避免无谓写盘）
@@ -325,6 +328,9 @@ class SettingsStore(
                 compressPresets = preferences[COMPRESS_PRESETS]?.let {
                     JsonInstant.decodeFromString<List<CompressPreset>>(it)
                 } ?: emptyList(),
+                importedSources = preferences[IMPORTED_SOURCES]?.let {
+                    JsonInstant.decodeFromString<Map<String, ImportSourceRecord>>(it)
+                } ?: emptyMap(),
             )
         }
         .map {
@@ -510,6 +516,7 @@ class SettingsStore(
             preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
             preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
             preferences[COMPRESS_PRESETS] = JsonInstant.encodeToString(settings.compressPresets)
+            preferences[IMPORTED_SOURCES] = JsonInstant.encodeToString(settings.importedSources)
             preferences[LOG_TO_FILE_ENABLED] = settings.logToFileEnabled
             preferences[GLOBAL_PROXY] = JsonInstant.encodeToString(settings.globalProxy)
             preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
@@ -701,6 +708,15 @@ data class Settings(
      * 见 `docs/design-compress-presets.md`。
      */
     val compressPresets: List<CompressPreset> = emptyList(),
+    /**
+     * 导入来源记录：`sourceId`（导出时的会话 id，见 `ExportData.sourceId`）→ 导入时间与原标题。
+     *
+     * 用途：**重复导入提示**（同一文件再次导入时告知"已于 x 导入过"）。
+     * 之所以放在这里而不是 `ConversationEntity` 加列：零迁移，且它本质是**用户级的来源记录**
+     * 而非会话属性（导入总换新 id，故来源与会话不是一对一）。
+     * 见 `docs/design-conversation-import-export.md` §十。
+     */
+    val importedSources: Map<String, ImportSourceRecord> = emptyMap(),
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储

@@ -103,6 +103,7 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 import com.dokar.sonner.rememberToasterState
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
+import app.androidrik.rikkahub.data.export.ConversationSerializer
 import app.androidrik.rikkahub.utils.exportImage
 import kotlin.math.roundToInt
 import app.androidrik.rikkahub.utils.getActivity
@@ -167,6 +168,41 @@ fun ChatExportSheet(
                         )
                     }
                 )
+
+                HorizontalDivider()
+
+                // JSON（可导入）：自家格式往返——Markdown/HTML/PNG 三种只出不能回填，
+                // 这个格式可被「备份页 → 导入」读回（见 docs/design-conversation-import-export.md）。
+                // **有意忽略「包含全部版本」开关**：往返格式必须原样保留分支/编辑历史，
+                // 否则导入回来的会话会缺候选（该开关只影响 Markdown/HTML 等只读导出）。
+                val jsonSuccessMessage =
+                    stringResource(id = R.string.chat_page_export_success, "JSON")
+                OutlinedCard(
+                    onClick = {
+                        runCatching {
+                            exportToConversationJson(context, conversation)
+                        }.onSuccess {
+                            toaster.show(jsonSuccessMessage, type = ToastType.Success)
+                            onDismissRequest()
+                            onExported?.invoke()
+                        }.onFailure {
+                            toaster.show(
+                                message = it.message ?: "Export failed",
+                                type = ToastType.Error,
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    ListItem(
+                        headlineContent = {
+                            Text(stringResource(R.string.chat_page_export_json))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.chat_page_export_json_desc))
+                        },
+                    )
+                }
 
                 HorizontalDivider()
 
@@ -305,6 +341,34 @@ fun ChatExportSheet(
             }
         }
     }
+}
+
+/**
+ * 导出为**可导入的自家 JSON**（与 Markdown/HTML/PNG 不同：那三种只出不能回填）。
+ *
+ * 落点与 Markdown 一致：临时目录 + FileProvider + 分享面板。
+ * 文件名用 `conversation-<清洗后的标题>.json`。
+ */
+private fun exportToConversationJson(context: Context, conversation: Conversation) {
+    // 清洗文件系统非法字符（用字符列表而非正则，避免转义歧义）
+    val illegalFileNameChars = charArrayOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
+    val safeTitle = conversation.title
+        .ifBlank { "conversation" }
+        .map { ch -> if (ch in illegalFileNameChars || ch.code < 0x20) '_' else ch }
+        .joinToString("")
+        .trim()
+        .take(60)
+    val json = ConversationSerializer.toJson(conversation)
+    val file = context.appTempFolder.resolve("$safeTitle.json")
+    if (file.exists()) file.delete()
+    file.createNewFile()
+    FileOutputStream(file).use { it.write(json.toByteArray(Charsets.UTF_8)) }
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file,
+    )
+    shareFile(context, uri, "application/json")
 }
 
 private fun exportToMarkdown(

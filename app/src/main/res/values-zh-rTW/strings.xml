@@ -193,6 +193,14 @@
   <string name="backup_page_import_cherry_studio_desc">匯入 Cherry Studio 提供者設定</string>
   <string name="backup_page_import_desc">導入本地備份檔案</string>
   <string name="backup_page_import_export">本地</string>
+  <string name="backup_page_import_conversation">對話（JSON）</string>
+  <string name="backup_page_import_conversation_desc">匯入本應用匯出的單個對話（JSON）</string>
+  <string name="backup_page_import_invalid_file">不是有效的對話匯出檔案</string>
+  <string name="backup_page_import_conversation_confirm_title">匯入對話</string>
+  <string name="backup_page_import_conversation_confirm_message">匯入「%1$s」？將新建一個對話，不會覆蓋任何內容。</string>
+  <string name="backup_page_import_duplicate_warning">偵測到重複匯入：「%1$s」已於 %2$s 匯入過。</string>
+  <string name="backup_page_import_duplicate_hint">繼續匯入將產生重複資料。</string>
+  <string name="backup_page_import_target_assistant">匯入至</string>
   <string name="backup_page_import_from_chatbox">從ChatBox導入</string>
   <string name="backup_page_import_from_cherry_studio">從Cherry Studio導入</string>
   <string name="backup_page_import_from_other_app">從其他APP導入</string>
@@ -341,6 +349,8 @@
   <string name="chat_page_export_image_expand_reasoning">展開思維過程</string>
   <string name="chat_page_share_conversation">分享對話</string>
   <string name="chat_page_export_include_all_versions">包含全部版本（含分支/編輯歷史）</string>
+  <string name="chat_page_export_json">JSON（可匯入）</string>
+  <string name="chat_page_export_json_desc">含分支與壓縮的完整對話，可再匯入回本應用</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">將對話匯出為markdown檔案</string>
   <string name="chat_page_export_html">匯出為 HTML</string>

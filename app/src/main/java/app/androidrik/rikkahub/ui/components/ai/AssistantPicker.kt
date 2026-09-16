@@ -108,8 +108,16 @@ fun AssistantPicker(
     }
 }
 
+/**
+ * 助手选择底部弹窗（**纯选择器**：只回调选中的助手，不写 Settings）。
+ *
+ * 提为 internal 以便**导入流程**复用（"导入到哪个助手"）——那里**不能**用外层
+ * [AssistantPicker]，因为它的 `AssistantState.setSelectAssistant` 会写
+ * `settings.assistantId`（改掉用户的当前助手），而导入只是选目标、不该有副作用。
+ * 见 `docs/design-conversation-import-export.md` §4.2。
+ */
 @Composable
-private fun AssistantPickerSheet(
+internal fun AssistantPickerSheet(
     settings: Settings,
     currentAssistant: Assistant,
     onAssistantSelected: (Assistant) -> Unit,

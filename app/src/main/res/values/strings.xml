@@ -193,6 +193,14 @@
   <string name="backup_page_import_cherry_studio_desc">Import Cherry Studio provider configurations</string>
   <string name="backup_page_import_desc">Import local backup file</string>
   <string name="backup_page_import_export">Local</string>
+  <string name="backup_page_import_conversation">Conversation (JSON)</string>
+  <string name="backup_page_import_conversation_desc">Import a single conversation exported from this app (JSON)</string>
+  <string name="backup_page_import_invalid_file">Not a valid conversation export file</string>
+  <string name="backup_page_import_conversation_confirm_title">Import conversation</string>
+  <string name="backup_page_import_conversation_confirm_message">Import “%1$s”? This creates a new conversation and won’t overwrite anything.</string>
+  <string name="backup_page_import_duplicate_warning">Duplicate import: “%1$s” was imported on %2$s.</string>
+  <string name="backup_page_import_duplicate_hint">Continuing will create duplicate data.</string>
+  <string name="backup_page_import_target_assistant">Import to</string>
   <string name="backup_page_import_from_chatbox">Import from ChatBox</string>
   <string name="backup_page_import_from_cherry_studio">Import from Cherry Studio</string>
   <string name="backup_page_import_from_other_app">Import from other app</string>
@@ -343,6 +351,8 @@
   <string name="chat_page_export_image_expand_reasoning">Expand Reasoning</string>
   <string name="chat_page_share_conversation">Share Conversation</string>
   <string name="chat_page_export_include_all_versions">Include all versions (branches &amp; edit history)</string>
+  <string name="chat_page_export_json">JSON (re-importable)</string>
+  <string name="chat_page_export_json_desc">Full conversation with branches and compaction; can be imported back</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">Export conversation as a markdown file</string>
   <string name="chat_page_export_html">Export as HTML</string>

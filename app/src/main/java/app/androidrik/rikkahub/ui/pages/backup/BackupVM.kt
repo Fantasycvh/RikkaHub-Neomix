@@ -19,6 +19,15 @@ import app.androidrik.rikkahub.data.sync.webdav.WebDavBackupItem
 import app.androidrik.rikkahub.data.sync.webdav.WebDavSync
 import app.androidrik.rikkahub.data.sync.S3BackupItem
 import app.androidrik.rikkahub.data.sync.S3Sync
+import app.androidrik.rikkahub.data.export.ConversationSerializer
+import app.androidrik.rikkahub.data.export.ExportData
+import app.androidrik.rikkahub.data.export.remapForImport
+import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.ImportSourceRecord
+import app.androidrik.rikkahub.utils.JsonInstant
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlin.uuid.Uuid
 import app.androidrik.rikkahub.utils.UiState
 import java.io.File
 
@@ -124,6 +133,71 @@ class BackupVM(
         } finally {
             clearProgress()
         }
+    }
+
+    /** 查某来源是否导入过（重复导入提示用）。未导入过返回 null。 */
+    suspend fun findImportedSource(sourceId: String): ImportSourceRecord? =
+        settingsStore.settingsFlowRaw.first().importedSources[sourceId]
+
+    /**
+     * 解析一个「对话 JSON」导出文件（**不落库**）。
+     *
+     * 分两步是为了**重复导入检测**：先解析拿到 `sourceId`，与 `settings.importedSources` 比对，
+     * 命中则由 UI 弹确认；用户确认后才调 [commitConversationImport]。
+     * 见 `docs/design-conversation-import-export.md` §十。
+     *
+     * @return 解析出的会话（**id/助手均未替换**）与其来源信息；解析失败返回 null。
+     */
+    fun parseConversationImport(file: File): ConversationImportPreview? = runCatching {
+        val exportData = JsonInstant.decodeFromString(
+            ExportData.serializer(),
+            file.readText(),
+        )
+        if (exportData.type != ConversationSerializer.type) return null
+        val conversation = JsonInstant.decodeFromJsonElement(
+            Conversation.serializer(),
+            exportData.data,
+        )
+        ConversationImportPreview(
+            conversation = conversation,
+            sourceId = exportData.sourceId,
+        )
+    }.getOrNull()
+
+    /**
+     * 落库一个已解析的导入预览（**换新 id + 目标助手 + 检查点迁移 + 记录来源**）。
+     *
+     * 顺序关键（设计稿 §三）：**先换 id，再检查存在性/插入**——否则可能因旧 id 命中而被跳过，
+     * 让"换 id"白做。此处换 id 后 id 必然是新的，故 `existsConversationById` 恒为 false。
+     *
+     * @param targetAssistantId 用户选择的目标助手。
+     */
+    suspend fun commitConversationImport(
+        preview: ConversationImportPreview,
+        targetAssistantId: Uuid,
+    ): Conversation {
+        val imported = preview.conversation.remapForImport(targetAssistantId)
+        conversationRepository.insertConversation(imported)
+        // 压缩检查点：独立表，须显式写入（insertConversation 不处理检查点）
+        imported.compressionSummaries.forEach { summary ->
+            conversationRepository.addCompressionCheckpoint(summary)
+        }
+        // 记录来源（**成功之后**才记：取消/失败不该留下记录，否则下次会误报"已导入过"）
+        preview.sourceId?.let { sourceId ->
+            val current = settingsStore.settingsFlowRaw.first()
+            settingsStore.update(
+                current.copy(
+                    importedSources = current.importedSources +
+                        (sourceId to ImportSourceRecord(
+                            importedAt = System.currentTimeMillis(),
+                            title = imported.title.ifBlank { null },
+                        )),
+                )
+            )
+        }
+        Log.i(TAG, "commitConversationImport: id=${imported.id} nodes=${imported.messageNodes.size} " +
+            "checkpoints=${imported.compressionSummaries.size} sourceId=${preview.sourceId}")
+        return imported
     }
 
     suspend fun restoreFromChatBox(file: File): ChatboxRestoreResult {
@@ -248,4 +322,15 @@ data class ChatboxRestoreResult(
     val skippedExistingConversations: Int,
     val skippedImageParts: Int,
     val skippedEmptyMessages: Int,
+)
+
+/**
+ * 「对话 JSON」导入的预览（解析结果，尚未落库）。
+ *
+ * @param conversation 解析出的会话（id/助手仍是文件里的原值）
+ * @param sourceId 导出时的会话 id（**重复导入检测的锚点**）；旧版文件为 null → 跳过检测
+ */
+data class ConversationImportPreview(
+    val conversation: Conversation,
+    val sourceId: String?,
 )
