@@ -4,8 +4,8 @@
 > 真机端到端验证通过（导出 8 附件/0 缺失、sha256 全一致；导入 8/8 恢复、全换新名、内容哈希一致）。
 > 代码见 `ConversationSerializer` / `ConversationArchive` / `ExportAttachment` / `ConversationImportRemap` /
 > `ConversationImportConfirmDialog`；单测 `ConversationImportRemapTest` 23 项）。
-> 实现差异：**状态原文中的第一项"统一导入器（Chatbox/CherryStudio + 助手选择）"未做** ——
-> 用户决定「等待本格式导入功能验证后再实现」（§九.4）。
+> 统一导入器（Chatbox/CherryStudio + 助手选择）：**已实现 `d7d8c4b7`**（§八，含实测更正：
+> Cherry Studio 不导入会话，故只统一外围、保持 providers-only）。
 > 用户决定：**①导入即换新 id（不覆盖）②第一阶段不导出附件，第二阶段改走 zip 原字节（原定 base64 内联已否决）③导入时允许用户选择目标助手**。
 > 关联：`design-backup-workspace-files.md`（整库备份）、`design-favorite-management.md`（同批评估）。
 
@@ -294,17 +294,42 @@ data class ExportFileEntry(
 8. **幂等性**：换新 id 后**重复导入会得到多份副本**（这是决策 1 的直接后果，符合"导入即新建"语义）——
    需在 UI 文案里说清"每次导入都是新副本"。
 
-## 八、统一三种导入器 + 补助手选择（**待导入功能验证后再做**）
+## 八、统一三种导入器 + 补助手选择 ✅ 已实现 `d7d8c4b7`
 
-现在 `"local"/"chatbox"/"cherry"` 是三个独立分支 + 两个独立 Importer 类，**彼此无共同抽象**。
-而 `ExportSerializer` 已提供正确形状，`LorebookSerializer` 也示范了"自家优先 + 外部兜底"。
+> **实现时 recon 推翻了本节的一个前提**：**Cherry Studio 导入器根本不导入会话**
+> （全文 0 处 `Conversation` 引用，只读 `data.json` → `llm.providers`；UI 文案本就写"提供商配置"）。
+> 所以"三处共用助手选择"实际只能落到 **conversation + chatbox** 两处；`local` 是整库覆盖、
+> `cherry` 无会话，结构上都不适用"按会话归属"。
 
-**统一后新增格式只需加一个 serializer**。用户决定：**Chatbox/CherryStudio 也要加助手选择，
-并借此统一导入器；且该轮「等导入功能验证后再实现」**——即**依赖顺序**：先让自家格式往返落地并
-真机验证通过，再动这个重构（避免边验证功能边搬结构，问题难归因）。
+四条路径的真实语义（这是设计的出发点）：
 
-该轮的范围：①抽 `ExportSerializer` 同族抽象覆盖三种外部导入器（现三分支 + 两独立类无共同抽象）；
-②三处（含自家格式）共用「选择目标助手」这一步；③`importType` 分支收敛。
+| 路径 | 产出 | 需选助手 | 需事前确认 | 需重启 |
+|---|---|---|---|---|
+| `local` 整库 zip | 整个 DB | ✗ | ✓（覆盖不可逆，**选文件前**） | ✓ |
+| `conversation` 自家归档 | 1 个会话 | ✓ | ✗（确认在解析后，含重复警告） | ✗ |
+| `chatbox` json | providers + **N 个会话** | **✓（本轮补上）** | ✗ | ✓ |
+| `cherry` zip | **仅 providers** | ✗ | ✗ | ✓ |
+
+**最终做法：格式描述符 + 共享导入管线**（而**不是**原设想的 `ExportSerializer` 同族注册表——
+`ExportSerializer` 的形状是"1 文件 → 1 对象"，与 chatbox 的"N 会话 + providers"、
+local 的"整个 DB"不匹配，硬套需再加一层抽象）：
+
+1. **`ImportFormat` 枚举 + `ImportFormatSpec` 描述符**（`ui/pages/backup/ImportFormat.kt`）
+   = 单一真相源：`mimes` / `titleRes` / `descRes` / `needsAssistant` / `needsPrePickConfirm` /
+   `needsRestartDialog`。取代 4 张手写卡片 + `importType: String` + 三处 `importType == "x"`
+   字符串比对。**新增格式 = 加一个描述符 + 一个解析分支**。
+2. **共享管线**：一个 launcher（按 `pendingFormat: ImportFormat?` 分发）+ `runImport(format, uri)`
+   + `finishImport(format)`（把"是否提示重启"显式化为描述符字段——原先 conversation 分支靠
+   提前 return 绕过共享尾部，语义隐式）。
+3. **抽两个真实重复**：`Context.copyUriToTempFile`（原 4 处各写一遍；**并修掉一个静默失败**——
+   原 `openInputStream(uri)?.use{}` 在流为 null 时产出**空临时文件**，下游误报"格式不对"）、
+   `mergeProviders`（chatbox/cherry 各写一遍；**有意不去重**，用测试钉住该行为）。
+4. **chatbox 补上「选择目标助手」**（本轮唯一功能缺口）：`restoreFromChatBox(file, targetAssistantId)`；
+   **连带修正 `allowConversationSystemPrompt` 原先打在"当前助手"上**（会"导入到 A、却改 B 的配置"）；
+   新增 `ImportTargetAssistantDialog`（复用无副作用的 `AssistantPickerSheet`，默认当前助手 = 零回归）；
+   顺带把原先被 UI **整个丢弃**的返回值接上（现在 toast 报导入条数）。
+
+**Cherry Studio 保持 providers-only**（用户决策）；`local` 的整库覆盖语义不变。
 
 ## 九、待确认
 
