@@ -5,6 +5,8 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Conversation
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
 
 // 模型上下文长度的默认兜底值（未设置时的 256K）
 const val DEFAULT_CONTEXT_LENGTH: Int = 256 * 1024
@@ -39,20 +41,33 @@ fun formatContextLength(tokens: Int?): String = when {
 }
 
 /**
- * 会话发送窗口的 token 占用估算（「已使用上下文」显示与将来的自动压缩触发判断共用）。
+ * 会话发送窗口的 token 占用估算（「已使用上下文」显示与自动压缩触发判断共用）。
  *
- * 真实 usage 优先：最后一条 assistant 消息的 `usage.promptTokens` 恰是「上一次实际发给模型的
- * 完整上下文 token 数」，比任何本地估算都准。fork 暂无压缩检查点，该值直接可信；
- * 无 usage 时回退本地估算（[estimateTokenCount]）。
+ * **估算对象是发送窗口**（[Conversation.requestWindowMessages]），不是全量历史——压缩落地后
+ * 历史早期内容已由检查点替代，按全量算会系统性高估。
+ *
+ * **usage 优先但须判陈旧**：最后一条 assistant 消息的 `usage.promptTokens` 是「上次实际发给
+ * 模型的完整上下文 token 数」，比本地估算准。但它反映的是**那次请求当时**的上下文——若期间发生了
+ * 压缩，该值仍是压缩前的全量值，直接用会得出虚高的占用（表现为「手动压缩成功后占用条数字不动、
+ * 像没生效」，或导入带检查点的长会话后首次回复前一直偏高）。故检查点比它新时判定为陈旧，
+ * 回退本地估算（按压缩后窗口算）。
+ *
+ * @return 估算 token 数；无消息时 0。
  */
 fun Conversation.estimateWindowTokens(model: Model?): Int {
-    val lastAssistant = currentMessages.lastOrNull { it.role == MessageRole.ASSISTANT }
+    val window = requestWindowMessages()
+    val lastAssistant = window.lastOrNull { it.role == MessageRole.ASSISTANT }
     val usageTokens = lastAssistant?.usage?.promptTokens ?: 0
-    return if (usageTokens > 0 && lastAssistant != null) {
-        usageTokens
-    } else {
-        estimateTokenCount(currentMessages)
+    val usageIsFresh = usageTokens > 0 && lastAssistant != null && run {
+        val checkpoint = activeCompression()
+        if (checkpoint == null) return@run true
+        // usage 是在消息**生成完成**时产生的，故以 finishedAt 为准（缺失时退回 createdAt）。
+        // 它早于检查点创建 → 该 usage 计的是压缩前的上下文 → 陈旧。
+        val usageAt = lastAssistant.finishedAt ?: lastAssistant.createdAt
+        usageAt.toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds() >
+            checkpoint.createdAt.toEpochMilli()
     }
+    return if (usageIsFresh) usageTokens else estimateTokenCount(window)
 }
 
 /**

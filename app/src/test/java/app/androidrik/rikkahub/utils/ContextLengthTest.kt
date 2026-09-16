@@ -5,9 +5,14 @@ import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import java.time.Instant as JavaInstant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -135,5 +140,99 @@ class ContextLengthTest {
         )
         // 11 + 2 个非 CJK 字符 -> 3 token
         assertEquals(3, conversation.estimateWindowTokens(null))
+    }
+
+    // ===== estimateWindowTokens：压缩感知（陈旧判定 + 窗口估算）=====
+
+    private fun userNode(text: String) =
+        MessageNode(messages = listOf(UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text(text)))))
+
+    /**
+     * 五节点会话 + 边界在第 2 个节点（下标 1）的检查点 → 发送窗口 = 检查点合成消息 + 后 3 个节点。
+     * `areaFingerprint = null` 使其退化为「仅边界存在性校验」，测试无需构造真实指纹。
+     */
+    private fun compressedConversation(
+        checkpointCreatedAt: JavaInstant,
+        lastAssistant: UIMessage? = null,
+    ): Conversation {
+        val nodes = listOf(
+            userNode("aaaa"), userNode("bbbb"), userNode("cccc"), userNode("dddd"), userNode("eeee"),
+        ).let { if (lastAssistant == null) it else it + MessageNode(messages = listOf(lastAssistant)) }
+        return Conversation(
+            id = kotlin.uuid.Uuid.random(),
+            assistantId = kotlin.uuid.Uuid.random(),
+            messageNodes = nodes,
+            compressionSummaries = listOf(
+                CompressionSummary(
+                    conversationId = kotlin.uuid.Uuid.random(),
+                    content = "summary",
+                    messageCount = 2,
+                    boundaryNodeId = nodes[1].id.toString(),
+                    createdAt = checkpointCreatedAt,
+                    areaFingerprint = null,
+                )
+            ),
+        )
+    }
+
+    /** 期望值 = 对**发送窗口**（检查点合成消息 + 边界后原文）的本地估算。 */
+    private fun windowEstimate(c: Conversation) = estimateTokenCount(c.requestWindowMessages())
+
+    @Test
+    fun `estimation uses the compressed window not the full history`() {
+        // 无 usage → 走本地估算。断言口径是**窗口**（含检查点合成消息），不是全量历史
+        val conversation = compressedConversation(checkpointCreatedAt = JavaInstant.now())
+        assertEquals(windowEstimate(conversation), conversation.estimateWindowTokens(null))
+        assertNotEquals(
+            "按全量历史估算会得到不同结果（正是要避免的口径）",
+            estimateTokenCount(conversation.messageNodes.map { it.messages[it.selectIndex] }),
+            conversation.estimateWindowTokens(null),
+        )
+    }
+
+    @Test
+    fun `stale usage recorded before the checkpoint falls back to the window estimate`() {
+        // 压缩后、下一条回复到来前：最后一条 assistant 的 usage 仍是压缩前的全量值。
+        // 直接用会虚高（表现为「手动压缩成功后占用条数字不动、像没生效」）→ 须判陈旧并回退。
+        val stale = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text("reply")),
+            usage = TokenUsage(promptTokens = 99_999, completionTokens = 1, totalTokens = 100_000),
+        )
+        val conversation = compressedConversation(
+            checkpointCreatedAt = JavaInstant.now().plusSeconds(3600),  // 检查点比该消息新
+            lastAssistant = stale,
+        )
+        assertEquals(windowEstimate(conversation), conversation.estimateWindowTokens(null))
+        assertNotEquals("陈旧 usage 不能被采信", 99_999, conversation.estimateWindowTokens(null))
+    }
+
+    @Test
+    fun `usage recorded after the checkpoint is trusted`() {
+        // 压缩之后又生成过回复 → usage 反映压缩后的上下文，可信
+        val fresh = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text("reply")),
+            usage = TokenUsage(promptTokens = 12_345, completionTokens = 1, totalTokens = 12_346),
+        )
+        val conversation = compressedConversation(
+            checkpointCreatedAt = JavaInstant.now().minusSeconds(3600),
+            lastAssistant = fresh,
+        )
+        assertEquals(12_345, conversation.estimateWindowTokens(null))
+    }
+
+    @Test
+    fun `without a checkpoint usage is always trusted`() {
+        // 无压缩时不存在"陈旧"问题（回归保护）
+        val last = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text("reply")),
+            usage = TokenUsage(promptTokens = 4_242, completionTokens = 1, totalTokens = 4_243),
+        )
+        val conversation = conversationWith(
+            listOf(UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text("hi"))), last)
+        )
+        assertEquals(4_242, conversation.estimateWindowTokens(null))
     }
 }
