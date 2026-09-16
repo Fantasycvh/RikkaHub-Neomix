@@ -199,6 +199,9 @@
   <string name="backup_page_import_duplicate_warning">重複インポート：「%1$s」は %2$s にインポート済みです。</string>
   <string name="backup_page_import_duplicate_hint">続行すると重複したデータが作成されます。</string>
   <string name="backup_page_import_target_assistant">インポート先</string>
+  <string name="backup_page_import_target_assistant_title">対象アシスタントを選択</string>
+  <string name="backup_page_import_target_assistant_message">インポートした会話はこのアシスタントに属します。</string>
+  <string name="backup_page_import_chatbox_done">%1$s 件の会話と %2$s 件のプロバイダーをインポートしました。</string>
   <string name="backup_page_import_from_chatbox">ChatBoxからインポート</string>
   <string name="backup_page_import_from_cherry_studio">Cherry Studioからインポート</string>
   <string name="backup_page_import_from_other_app">他のアプリからインポート</string>

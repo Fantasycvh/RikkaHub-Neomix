@@ -30,6 +30,7 @@ import app.androidrik.rikkahub.data.export.unpackConversationArchive
 import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.ui.pages.backup.mergeProviders
 import app.androidrik.rikkahub.data.model.ImportSourceRecord
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlinx.coroutines.flow.first
@@ -273,12 +274,19 @@ class BackupVM(
         )
     }
 
-    suspend fun restoreFromChatBox(file: File): ChatboxRestoreResult {
+    /**
+     * 导入 Chatbox 导出（providers + 多个会话）。
+     *
+     * @param targetAssistantId **用户选择的**目标助手——导入的会话都归属到它。
+     *   此前隐式为「当前助手」（内部读 `settings.value.assistantId`），与自家格式导入
+     *   「让用户选助手」的做法不一致；见设计稿 §八。
+     */
+    suspend fun restoreFromChatBox(file: File, targetAssistantId: Uuid): ChatboxRestoreResult {
         var importedConversations = 0
         var skippedExistingConversations = 0
         val result = ChatboxImporter.importStreaming(
             file = file,
-            assistantId = settings.value.assistantId,
+            assistantId = targetAssistantId,
             providers = settings.value.providers,
             onConversation = { conversation ->
                 if (conversationRepository.existsConversationById(conversation.id)) {
@@ -290,11 +298,13 @@ class BackupVM(
             }
         )
 
-        val targetAssistantId = settings.value.assistantId
+        // 注意：`allowConversationSystemPrompt` 必须打在**用户选的目标助手**上——
+        // 原先用 settings.value.assistantId（当前助手），会出现"导入到 A、却改了 B 的配置"。
+        val current = settingsStore.settingsFlowRaw.first()
         settingsStore.update(
-            settings.value.copy(
-                providers = result.providers + settings.value.providers,
-                assistants = settings.value.assistants.map { assistant ->
+            current.copy(
+                providers = mergeProviders(current.providers, result.providers),
+                assistants = current.assistants.map { assistant ->
                     if (result.hasConversationSystemPrompt && assistant.id == targetAssistantId) {
                         assistant.copy(allowConversationSystemPrompt = true)
                     } else {
@@ -330,7 +340,7 @@ class BackupVM(
 
         updateSettings(
             settings.value.copy(
-                providers = importProviders + settings.value.providers,
+                providers = mergeProviders(settings.value.providers, importProviders),
             )
         )
     }

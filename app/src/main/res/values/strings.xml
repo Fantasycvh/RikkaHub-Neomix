@@ -201,6 +201,9 @@
   <string name="backup_page_import_duplicate_warning">Duplicate import: “%1$s” was imported on %2$s.</string>
   <string name="backup_page_import_duplicate_hint">Continuing will create duplicate data.</string>
   <string name="backup_page_import_target_assistant">Import to</string>
+  <string name="backup_page_import_target_assistant_title">Choose target assistant</string>
+  <string name="backup_page_import_target_assistant_message">Imported conversations will belong to this assistant.</string>
+  <string name="backup_page_import_chatbox_done">Imported %1$s conversation(s) and %2$s provider(s).</string>
   <string name="backup_page_import_from_chatbox">Import from ChatBox</string>
   <string name="backup_page_import_from_cherry_studio">Import from Cherry Studio</string>
   <string name="backup_page_import_from_other_app">Import from other app</string>

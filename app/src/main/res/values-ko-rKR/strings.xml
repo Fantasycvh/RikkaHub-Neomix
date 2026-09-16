@@ -199,6 +199,9 @@
   <string name="backup_page_import_duplicate_warning">중복 가져오기: 「%1$s」은(는) %2$s에 이미 가져왔습니다.</string>
   <string name="backup_page_import_duplicate_hint">계속하면 중복 데이터가 생성됩니다.</string>
   <string name="backup_page_import_target_assistant">가져올 대상</string>
+  <string name="backup_page_import_target_assistant_title">대상 어시스턴트 선택</string>
+  <string name="backup_page_import_target_assistant_message">가져온 대화는 이 어시스턴트에 속하게 됩니다.</string>
+  <string name="backup_page_import_chatbox_done">대화 %1$s개와 제공자 %2$s개를 가져왔습니다.</string>
   <string name="backup_page_import_from_chatbox">ChatBox에서 가져오기</string>
   <string name="backup_page_import_from_cherry_studio">Cherry Studio에서 가져오기</string>
   <string name="backup_page_import_from_other_app">다른 앱에서 가져오기</string>

@@ -1,8 +1,14 @@
 package app.androidrik.rikkahub.ui.pages.backup.tabs
 
+import android.net.Uri
 import app.androidrik.rikkahub.ui.pages.backup.ConversationImportPreview
+import app.androidrik.rikkahub.ui.pages.backup.ImportFormat
+import app.androidrik.rikkahub.ui.pages.backup.ImportFormatSpec
+import app.androidrik.rikkahub.ui.pages.backup.ImportFormatSpecs
+import app.androidrik.rikkahub.ui.pages.backup.specOf
 import app.androidrik.rikkahub.ui.pages.backup.components.ConversationImportConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.DuplicateImportRecord
+import app.androidrik.rikkahub.ui.pages.backup.components.ImportTargetAssistantDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupProgressRow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,14 +41,16 @@ import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.CardGroupScope
 import app.androidrik.rikkahub.ui.components.ui.StickyHeader
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.pages.backup.BackupVM
+import app.androidrik.rikkahub.utils.copyUriToTempFile
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import kotlin.uuid.Uuid
 
 @Composable
 fun ImportExportTab(
@@ -57,14 +65,38 @@ fun ImportExportTab(
     var isExporting by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
 
-    // 导入类型：local=本地备份，chatbox=Chatbox，cherry=Cherry Studio，conversation=本应用对话 JSON
-    var importType by remember { mutableStateOf("local") }
-    // 本地备份导入前确认（覆盖且不可逆）
+    // 当前正在进行的导入格式（卡片 spinner 与 SAF 回调分发都用它）。
+    // 用类型化的 ImportFormat 取代原先的 `importType: String`（stringly-typed，易拼错且分支散落）
+    var pendingFormat by remember { mutableStateOf<ImportFormat?>(null) }
+    // 整库恢复：**选文件之前**的覆盖确认（不可逆）
     var pendingLocalImport by remember { mutableStateOf(false) }
-    // 「对话 JSON」导入：解析出的预览（非空 = 待确认）与其重复导入记录
+    // 「对话归档」导入：解析出的预览（非空 = 待确认）与其重复导入记录
     // 见 docs/design-conversation-import-export.md §十
     var conversationImportPreview by remember { mutableStateOf<ConversationImportPreview?>(null) }
     var duplicateImportRecord by remember { mutableStateOf<DuplicateImportRecord?>(null) }
+    // Chatbox 导入：已复制到本地的临时文件，等待用户选目标助手
+    var pendingChatboxFile by remember { mutableStateOf<File?>(null) }
+
+    fun toastSuccess() = toaster.show(
+        context.getString(R.string.backup_page_restore_success),
+        type = ToastType.Success,
+    )
+
+    fun toastFailure(e: Throwable) = toaster.show(
+        context.getString(R.string.backup_page_restore_failed, e.message ?: ""),
+        type = ToastType.Error,
+    )
+
+    /**
+     * 导入完成的统一收尾：成功提示 +（按描述符）决定是否提示重启。
+     *
+     * 之前这段逻辑在四条分支后面各写一遍，且「conversation 提前 return」绕过了它——
+     * 现在把"是否要重启"变成描述符的一个字段，语义显式。
+     */
+    fun finishImport(format: ImportFormat) {
+        toastSuccess()
+        if (specOf(format).needsRestartDialog) onShowRestartDialog()
+    }
 
     // 创建文件保存的launcher
     val createDocumentLauncher = rememberLauncherForActivityResult(
@@ -74,146 +106,120 @@ fun ImportExportTab(
             scope.launch {
                 isExporting = true
                 runCatching {
-                    // 导出文件
                     val exportFile = vm.exportToFile()
-
-                    // 复制到用户选择的位置
                     context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
                         FileInputStream(exportFile).use { inputStream ->
                             inputStream.copyTo(outputStream)
                         }
                     }
-
-                    // 清理临时文件
                     exportFile.delete()
-
                     toaster.show(
                         context.getString(R.string.backup_page_backup_success),
                         type = ToastType.Success
                     )
                 }.onFailure { e ->
                     e.printStackTrace()
-                    toaster.show(
-                        context.getString(R.string.backup_page_restore_failed, e.message ?: ""),
-                        type = ToastType.Error
-                    )
+                    toastFailure(e)
                 }
                 isExporting = false
             }
         }
     }
 
-    // 创建文件选择的launcher
+    /** 分发一次导入（**共享管线**：复制到临时文件 → 按格式处理 → 收尾）。 */
+    suspend fun runImport(format: ImportFormat, uri: Uri) {
+        val ext = if (format == ImportFormat.CHATBOX) "json" else "zip"
+        val tempFile = context.copyUriToTempFile(uri, ext)
+        when (format) {
+            ImportFormat.LOCAL_BACKUP -> {
+                try {
+                    vm.restoreFromLocalFile(tempFile)
+                } finally {
+                    tempFile.delete()
+                }
+                finishImport(format)
+            }
+
+            ImportFormat.CHERRY_STUDIO -> {
+                try {
+                    vm.restoreFromCherryStudio(tempFile)
+                } finally {
+                    tempFile.delete()
+                }
+                finishImport(format)
+            }
+
+            ImportFormat.CHATBOX -> {
+                // 需先选**目标助手**（会话归属）→ 交给对话框，暂不删临时文件
+                pendingChatboxFile = tempFile
+            }
+
+            ImportFormat.CONVERSATION -> {
+                // **先解析、不落库**：需先拿 sourceId 做重复检测、并让用户选目标助手，
+                // 确认后才提交（见设计稿 §十）。parse 已把附件读进内存，故可立即删临时文件。
+                val preview = runCatching { vm.parseConversationImport(tempFile) }.getOrNull()
+                tempFile.delete()
+                if (preview == null) {
+                    // 「不是有效文件」与「读取失败」要分开报（后者不该被说成格式不对）
+                    toaster.show(
+                        context.getString(R.string.backup_page_import_invalid_file),
+                        type = ToastType.Error,
+                    )
+                    return
+                }
+                duplicateImportRecord = preview.sourceId
+                    ?.let { vm.findImportedSource(it) }
+                    ?.let { DuplicateImportRecord(title = it.title, importedAt = it.importedAt) }
+                conversationImportPreview = preview
+                // 尚未落库 → 不提示成功，交由确认弹窗收尾
+            }
+        }
+    }
+
+    /**
+     * 目标助手确定后真正执行 Chatbox 导入。
+     */
+    suspend fun runChatboxImport(file: File, targetAssistantId: Uuid) {
+        try {
+            val result = vm.restoreFromChatBox(file, targetAssistantId)
+            // 导入条数此前被整个丢弃（死返回）——现在如实报出来，用户才知道发生了什么
+            toaster.show(
+                context.getString(
+                    R.string.backup_page_import_chatbox_done,
+                    result.importedConversations.toString(),
+                    result.importedProviders.toString(),
+                ),
+                type = ToastType.Success,
+            )
+            if (specOf(ImportFormat.CHATBOX).needsRestartDialog) onShowRestartDialog()
+        } finally {
+            file.delete()
+        }
+    }
+
+    // 创建文件选择的launcher（**一个** launcher 服务所有格式，按 pendingFormat 分发）
     val openDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
-        uri?.let { sourceUri ->
-            scope.launch {
-                isRestoring = true
-                runCatching {
-                    when (importType) {
-                        "local" -> {
-                            // 本地备份导入：处理zip文件
-                            val tempFile =
-                                File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.zip")
-
-                            context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                                FileOutputStream(tempFile).use { outputStream ->
-                                    inputStream.copyTo(outputStream)
-                                }
-                            }
-
-                            // 从临时文件恢复
-                            vm.restoreFromLocalFile(tempFile)
-
-                            // 清理临时文件
-                            tempFile.delete()
-                        }
-
-                        "chatbox" -> {
-                            // Chatbox导入：处理json文件
-                            val tempFile =
-                                File(context.cacheDir, "temp_chatbox_${System.currentTimeMillis()}.json")
-
-                            context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                                FileOutputStream(tempFile).use { outputStream ->
-                                    inputStream.copyTo(outputStream)
-                                }
-                            }
-
-                            // 从Chatbox文件恢复
-                            vm.restoreFromChatBox(tempFile)
-
-                            // 清理临时文件
-                            tempFile.delete()
-                        }
-
-                        "conversation" -> {
-                            // 「对话 JSON」：**先解析、不落库** —— 需先拿 sourceId 做重复检测、
-                            // 并让用户选目标助手，确认后才提交（见设计稿 §十）
-                            val tempFile =
-                                File(context.cacheDir, "temp_conv_${System.currentTimeMillis()}.zip")
-
-                            context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                                FileOutputStream(tempFile).use { outputStream ->
-                                    inputStream.copyTo(outputStream)
-                                }
-                            }
-
-                            val preview = vm.parseConversationImport(tempFile)
-                            tempFile.delete()
-
-                            if (preview == null) {
-                                toaster.show(
-                                    context.getString(R.string.backup_page_import_invalid_file),
-                                    type = ToastType.Error,
-                                )
-                                // 必须 return：否则会继续落到下面的「恢复成功」提示 + 重启弹窗
-                                return@runCatching
-                            } else {
-                                duplicateImportRecord = preview.sourceId
-                                    ?.let { vm.findImportedSource(it) }
-                                    ?.let { DuplicateImportRecord(title = it.title, importedAt = it.importedAt) }
-                                conversationImportPreview = preview
-                                // 尚未落库 → 不显示"导入完成"，交由确认弹窗收尾
-                                return@runCatching
-                            }
-                        }
-
-                        "cherry" -> {
-                            // Cherry Studio导入：处理zip文件
-                            val tempFile =
-                                File(context.cacheDir, "temp_cherry_${System.currentTimeMillis()}.zip")
-
-                            context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                                FileOutputStream(tempFile).use { outputStream ->
-                                    inputStream.copyTo(outputStream)
-                                }
-                            }
-
-                            // 从Cherry Studio备份恢复
-                            vm.restoreFromCherryStudio(tempFile)
-
-                            // 清理临时文件
-                            tempFile.delete()
-                        }
-                    }
-
-                    toaster.show(
-                        context.getString(R.string.backup_page_restore_success),
-                        type = ToastType.Success
-                    )
-                    onShowRestartDialog()
-                }.onFailure { e ->
-                    e.printStackTrace()
-                    toaster.show(
-                        context.getString(R.string.backup_page_restore_failed, e.message ?: ""),
-                        type = ToastType.Error
-                    )
-                }
+        val format = pendingFormat
+        if (uri == null || format == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            isRestoring = true
+            try {
+                runImport(format, uri)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                toastFailure(e)
+            } finally {
                 isRestoring = false
+                pendingFormat = null
             }
         }
+    }
+
+    fun launchPicker(format: ImportFormat) {
+        pendingFormat = format
+        openDocumentLauncher.launch(specOf(format).mimes.toTypedArray())
     }
 
     LazyColumn(
@@ -277,56 +283,23 @@ fun ImportExportTab(
                     },
                 )
 
-                item(
-                    onClick = if (!isRestoring) {
-                        {
-                            importType = "local"
-                            pendingLocalImport = true
-                        }
-                    } else null,
-                    headlineContent = { Text(stringResource(R.string.backup_page_local_backup_import)) },
-                    supportingContent = {
-                        Text(
-                            if (isRestoring) {
-                                stringResource(R.string.backup_page_importing)
-                            } else {
-                                stringResource(R.string.backup_page_import_desc)
-                            }
-                        )
-                    },
-                    leadingContent = {
-                        if (isRestoring) {
-                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
-                        } else {
-                            Icon(HugeIcons.FileImport, null)
-                        }
-                    },
+                // 整库恢复：先弹覆盖确认，确认后才去挑文件
+                importItem(
+                    spec = specOf(ImportFormat.LOCAL_BACKUP),
+                    busy = isRestoring && pendingFormat == ImportFormat.LOCAL_BACKUP,
+                    enabled = !isRestoring,
+                    onClick = { pendingLocalImport = true },
                 )
             }
         }
 
         item {
             CardGroup {
-                item(
-                    onClick = if (!isRestoring) {
-                        {
-                            importType = "conversation"
-                            // 阶段 2 容器是 zip；仍接受阶段 1 的裸 JSON（两种 MIME 都放行，
-                            // 解析侧按 zip 魔数自动判别）
-                            openDocumentLauncher.launch(
-                                arrayOf("application/zip", "application/json")
-                            )
-                        }
-                    } else null,
-                    headlineContent = { Text(stringResource(R.string.backup_page_import_conversation)) },
-                    supportingContent = { Text(stringResource(R.string.backup_page_import_conversation_desc)) },
-                    leadingContent = {
-                        if (isRestoring && importType == "conversation") {
-                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
-                        } else {
-                            Icon(HugeIcons.FileImport, null)
-                        }
-                    },
+                importItem(
+                    spec = specOf(ImportFormat.CONVERSATION),
+                    busy = isRestoring && pendingFormat == ImportFormat.CONVERSATION,
+                    enabled = !isRestoring,
+                    onClick = { launchPicker(ImportFormat.CONVERSATION) },
                 )
             }
         }
@@ -339,46 +312,47 @@ fun ImportExportTab(
 
         item {
             CardGroup {
-                item(
-                    onClick = if (!isRestoring) {
-                        {
-                            importType = "chatbox"
-                            openDocumentLauncher.launch(arrayOf("application/json"))
-                        }
-                    } else null,
-                    headlineContent = { Text(stringResource(R.string.backup_page_import_from_chatbox)) },
-                    supportingContent = { Text(stringResource(R.string.backup_page_import_chatbox_desc)) },
-                    leadingContent = {
-                        if (isRestoring && importType == "chatbox") {
-                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
-                        } else {
-                            Icon(HugeIcons.FileImport, null)
-                        }
-                    },
-                )
-
-                item(
-                    onClick = if (!isRestoring) {
-                        {
-                            importType = "cherry"
-                            openDocumentLauncher.launch(arrayOf("application/zip"))
-                        }
-                    } else null,
-                    headlineContent = { Text(stringResource(R.string.backup_page_import_from_cherry_studio)) },
-                    supportingContent = { Text(stringResource(R.string.backup_page_import_cherry_studio_desc)) },
-                    leadingContent = {
-                        if (isRestoring && importType == "cherry") {
-                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
-                        } else {
-                            Icon(HugeIcons.FileImport, null)
-                        }
-                    },
-                )
+                ImportFormatSpecs
+                    .filterNot { it.format == ImportFormat.CONVERSATION || it.format == ImportFormat.LOCAL_BACKUP }
+                    .forEach { spec ->
+                        importItem(
+                            spec = spec,
+                            busy = isRestoring && pendingFormat == spec.format,
+                            enabled = !isRestoring,
+                            onClick = { launchPicker(spec.format) },
+                        )
+                    }
             }
         }
     }
 
-    // 「对话 JSON」导入确认：**独立于 pendingLocalImport**（后者只管 zip 整库恢复的入口确认）
+    // Chatbox：目标助手选择（**本轮补上的缺口**——此前隐式导入到当前助手）
+    pendingChatboxFile?.let { file ->
+        ImportTargetAssistantDialog(
+            settings = settings,
+            onConfirm = { targetAssistantId ->
+                pendingChatboxFile = null
+                scope.launch {
+                    isRestoring = true
+                    try {
+                        runChatboxImport(file, targetAssistantId)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        toastFailure(e)
+                    } finally {
+                        isRestoring = false
+                    }
+                }
+            },
+            onDismiss = {
+                // 取消 → 清掉临时文件（不留垃圾）
+                pendingChatboxFile = null
+                file.delete()
+            },
+        )
+    }
+
+    // 「对话归档」导入确认：**独立于 pendingLocalImport**（后者只管整库恢复的入口确认）
     conversationImportPreview?.let { preview ->
         ConversationImportConfirmDialog(
             settings = settings,
@@ -399,17 +373,9 @@ fun ImportExportTab(
                                 type = ToastType.Info,
                             )
                         } else {
-                            toaster.show(
-                                context.getString(R.string.backup_page_restore_success),
-                                type = ToastType.Success,
-                            )
+                            toastSuccess()
                         }
-                    }.onFailure { e ->
-                        toaster.show(
-                            context.getString(R.string.backup_page_restore_failed, e.message ?: ""),
-                            type = ToastType.Error,
-                        )
-                    }
+                    }.onFailure { e -> toastFailure(e) }
                     isRestoring = false
                 }
                 conversationImportPreview = null
@@ -427,9 +393,46 @@ fun ImportExportTab(
             items = settings.backupItems,
             onConfirm = {
                 pendingLocalImport = false
-                openDocumentLauncher.launch(arrayOf("application/zip"))
+                launchPicker(ImportFormat.LOCAL_BACKUP)
             },
             onDismissRequest = { pendingLocalImport = false },
         )
     }
+}
+
+/**
+ * 在 [CardGroup] 里挂一张导入卡片：标题/副标题/spinner 全部来自 [ImportFormatSpec]。
+ *
+ * 抽出来的意义：此前四张卡片各写一遍 stringResource 与
+ * `isRestoring && importType == "x"`（字符串字面量比对），新增格式极易漏改。
+ *
+ * 注意是 **`CardGroupScope` 的扩展**（`CardGroup` 的 content 不是 `@Composable`，
+ * 只有 `item {}` 内部的 lambda 是），故不能写成普通 `@Composable`。
+ */
+private fun CardGroupScope.importItem(
+    spec: ImportFormatSpec,
+    busy: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    item(
+        onClick = if (enabled) onClick else null,
+        headlineContent = { Text(stringResource(spec.titleRes)) },
+        supportingContent = {
+            Text(
+                if (busy) {
+                    stringResource(R.string.backup_page_importing)
+                } else {
+                    stringResource(spec.descRes)
+                }
+            )
+        },
+        leadingContent = {
+            if (busy) {
+                CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
+            } else {
+                Icon(HugeIcons.FileImport, null)
+            }
+        },
+    )
 }

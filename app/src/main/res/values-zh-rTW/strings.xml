@@ -201,6 +201,9 @@
   <string name="backup_page_import_duplicate_warning">偵測到重複匯入：「%1$s」已於 %2$s 匯入過。</string>
   <string name="backup_page_import_duplicate_hint">繼續匯入將產生重複資料。</string>
   <string name="backup_page_import_target_assistant">匯入至</string>
+  <string name="backup_page_import_target_assistant_title">選擇目標助手</string>
+  <string name="backup_page_import_target_assistant_message">匯入的對話將歸屬到該助手。</string>
+  <string name="backup_page_import_chatbox_done">已匯入 %1$s 個對話、%2$s 個提供商。</string>
   <string name="backup_page_import_from_chatbox">從ChatBox導入</string>
   <string name="backup_page_import_from_cherry_studio">從Cherry Studio導入</string>
   <string name="backup_page_import_from_other_app">從其他APP導入</string>

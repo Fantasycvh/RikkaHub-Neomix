@@ -199,6 +199,9 @@
   <string name="backup_page_import_duplicate_warning">Повторный импорт: «%1$s» уже импортирован %2$s.</string>
   <string name="backup_page_import_duplicate_hint">Продолжение создаст дубликаты данных.</string>
   <string name="backup_page_import_target_assistant">Импортировать в</string>
+  <string name="backup_page_import_target_assistant_title">Выберите ассистента</string>
+  <string name="backup_page_import_target_assistant_message">Импортированные диалоги будут относиться к этому ассистенту.</string>
+  <string name="backup_page_import_chatbox_done">Импортировано диалогов: %1$s, провайдеров: %2$s.</string>
   <string name="backup_page_import_from_chatbox">Импорт из ChatBox</string>
   <string name="backup_page_import_from_cherry_studio">Импорт из Cherry Studio</string>
   <string name="backup_page_import_from_other_app">Импорт из другого приложения</string>
