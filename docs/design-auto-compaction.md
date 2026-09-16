@@ -406,7 +406,7 @@ Yuihub 把 `ChatDrawer` 重写为「会话 / 文件」双面板（1020 行），
 1. **抽屉新增「文件」分段**（不重排现有会话面板）：只加一个 tab 分支，复用 fork 现有文件列表组件（`WorkspaceDetailPage` 的文件列表刚加过 SVG 缩略图，形态成熟）。
 2. **缓存 + 文件名搜索**（纯 repository 层，与 UI 解耦，可直接借鉴）：
    - `filesCache: MutableMap<String, List<WorkspaceFileEntry>>` + 预加载根目录 + 失效（`invalidateFilesCache`）
-   - `searchFilesByName`：BFS 遍历 + limit 80 + 防抖 250ms
+   - `searchFilesByName`：BFS 遍历 + limit 80 + 防抖 250ms → **实现时漏了防抖与缓存失效，2026-09-16 补（`5abe8bf6`）**：搜索改 `LaunchedEffect` + `delay(250)`（key 变化取消上一个协程即天然防抖）；`invalidateFilesCache()` 原为死代码（定义了无人调用）→ 进入文件面板时失效并重载
    - 这两项可独立先做（`WorkspaceRepository` 侧），不依赖 UI 改造
 
 ### 6.5.3 不跟：`ChatMessageNerdLine` 精简
