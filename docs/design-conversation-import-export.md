@@ -1,6 +1,8 @@
 # 对话导入导出（自家格式往返）设计稿
 
-> 状态：**已实现**（2026-09-16；代码见 `ConversationSerializer` / `ConversationImportRemap` /
+> 状态：**阶段 1+2 均已实现**（2026-09-16；阶段 1 `31d46101`，阶段 2 `c3fff5c3`）。
+> 真机端到端验证通过（导出 8 附件/0 缺失、sha256 全一致；导入 8/8 恢复、全换新名、内容哈希一致）。
+> 代码见 `ConversationSerializer` / `ConversationArchive` / `ExportAttachment` / `ConversationImportRemap` /
 > `ConversationImportConfirmDialog`；单测 `ConversationImportRemapTest` 23 项）。
 > 实现差异：**状态原文中的第一项"统一导入器（Chatbox/CherryStudio + 助手选择）"未做** ——
 > 用户决定「等待本格式导入功能验证后再实现」（§九.4）。
@@ -199,10 +201,20 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 | 助手不存在 | 一律以用户选择为准（§4.4） |
 | FTS 重建 | `MessageFtsManager.indexConversation` |
 
-### 阶段 2（中）：**zip 容器 + 附件原字节**
+### 阶段 2（中）：**zip 容器 + 附件原字节** ✅ 已实现 `c3fff5c3`
 
 > **决策（2026-09-16）**：容器**始终为 zip**（无裸 JSON 分支），附件走**原字节条目**。
 > **不做 base64 内联**——原稿写的理由是"体积膨胀 33%"，但实核发现更严重的问题（见 §六「阶段 2 的关键约束」）。
+>
+> **实现补充（与本文档原描述的差异）**：
+> 1. **导入侧仍接受阶段 1 的裸 JSON**（原写"无需兼容"）——理由不是历史包袱，而是**用户手上可能
+>    已经存在阶段 1 导出的文件**；靠 zip 魔数 `PK` 判别，不看扩展名（SAF 给的 URI 未必带扩展名）。
+> 2. **`packConversationArchive` / `planAttachments` / `parseConversationImport` 内部切 `Dispatchers.IO`**：
+>    它们做文件 IO 与 SHA-256，而调用点是 Compose 的 `rememberCoroutineScope()`（Main）——
+>    **首版漏了切线程，真机直接 ANR**（Input dispatching timed out）。这条是必须遵守的约束，不是优化。
+> 3. **软上限用"先 stat 再确认"两段式**（`planAttachments` 只 stat 不读内容）：否则要读一遍大文件
+>    才发现超限，白费一次 IO。
+> 4. **单附件上限 50MB**（超限跳过并计数），与 100MB 合计软上限配套。
 
 格式：**始终 zip，无需兼容裸 JSON**（用户决策：本功能尚未发布，无历史文件包袱）。
 
