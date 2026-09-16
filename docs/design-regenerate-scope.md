@@ -106,9 +106,11 @@ node.copy(messages = node.messages + UIMessage(role = node.role, parts = process
 
 ### 6.1 关键事实：导出的落点是临时文件 + 分享面板，启动即清
 
-> **2026-09-16 后续**：本节描述的「启动即清 + 取消也放行破坏操作」已被
-> `docs/design-export-retention.md` 立项修复（(b) 侧改 SAF `CreateDocument` 真落地 +
-> 引入 `files/exports` 留存区 + 导出管理入口）。**本节的现状描述仍准确，但结论会随之更新**。
+> **2026-09-16 后续（已实施）**：本节描述的「启动即清 + 取消也放行破坏操作」**已修复**（`534a5eef`，
+> 见 `docs/design-export-retention.md`）：(b) 侧改 SAF `CreateDocument` 真落地（取消＝中止移除）、
+> 引入 `files/exports` 留存区 + TTL + 导出管理入口。**另发现本节未提及的一个破坏性 bug**：
+> `onDismissRequest()` 会清掉 `exportThenRegenerateFor`，而 `onExported` 读它来续作 scope B——
+> 原实现顺序反了 ⇒ **「先导出再继续」的移除从未执行过**（功能是死的；已修正顺序）。
 
 `exportToMarkdown`（`Export.kt:413-430`）的落点是 `context.appTempFolder`（**临时目录**）
 → `FileProvider` → `shareFile()`。而 `RikkaHubApp.deleteTempFiles()` **每次启动

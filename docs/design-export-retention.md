@@ -1,6 +1,13 @@
 # 导出文件留存与「真落地」设计稿
 
-> 状态：**设计定稿，未实现**（2026-09-16）。
+> 状态：**已实现**（2026-09-16，`534a5eef`）。真机验证：导出的 JSON 落在 `files/exports` 且已登记
+> `managed_files`、`cache/temp` 不再产生导出残留；TTL 清理实测（植入 30 天前文件 → 冷启动 →
+> 被清、当日文件保留、`.tmp-` 残留被清，日志 `removed 1 expired export(s) (retention=7d)`）。
+> 单测 `ExportRetentionTest` 10 项；全量 536 项仅基线失败。
+>
+> **实现中又发现并修掉一个破坏性 bug（原设计稿未列）**：`onDismissRequest()` 会清掉 ChatPage 的
+> `exportThenRegenerateFor`，而 `onExported` 正是读它来续作 scope B——原实现先 dismiss 后 exported
+> ⇒ **「先导出再继续」的移除从未执行过**（方向安全但功能是死的）。见 §六.8。
 > 用户决策：**①「先导出再继续」走 SAF `CreateDocument` 真落地（取消 = 中止移除）；
 > ② 引入 `files/exports` 留存区 + 启动清理 + 可选周期任务 + 「导出管理」入口（可再分享/删除）**。
 > 关联：`design-regenerate-scope.md` §六（导出与回退的辨析）、`design-backup-workspace-files.md`（备份项）。
@@ -197,17 +204,32 @@ JSON 侧的文件名含标题但**不含时间戳**，覆盖语义由此变为"�
 7. **`SettingFilesPage` 的删除语义**：该页删除走 `filesManager.delete(id, deleteFromDisk = true)`，
    对留存区同样适用；但**清空**按钮作用于 `selectedFolder`，加 chip 后语义自动正确
    （因为它读的是 `selectedFolder`）。
+8. **⚠️ 回调顺序（实现中发现的破坏性 bug）**：`onDismissRequest()` 会清掉 ChatPage 的
+   `exportThenRegenerateFor`，而 `onExported` 正是读它来续作 scope B。原实现是
+   `onDismissRequest(); onExported?.invoke()` ⇒ **续作读到的必为 null，「先导出再继续」的移除
+   从未执行过**（方向上是安全的——没有误删——但功能是死的）。
+   修正为**先 `onExported` 后 `onDismissRequest`**。教训：**"清场"与"续作"共用同一状态时，
+   顺序即语义**；两个 lambda 在同一同步栈内顺序执行，MutableState 写入立即生效。
+9. **`PNG` 的 `activity == null` 分支原先静默 `return`**（只弹 Toast）→ 调用方随即报「已导出」，
+   又一处假成功。已改为抛错走失败分支。
+10. **分享面板弹 ≠ 成功**：`shareFile` = `startActivity(createChooser)`，无结果回调。
+    故"交给别的 app"语义下**不能**把"面板弹出"当作"已留存"——只有 SAF `CreateDocument`
+    的返回值可判定。这正是 (b) 侧必须换 SAF 的根本原因。
 
 ## 七、待确认
 
-1. **§3.1 的选项 A / B**：`CreateDocument` 成功后是否**还要**在 `files/exports` 存一份？
-   （倾向 A：不额外存。）
+1. **§3.1 的选项 A / B** → **用户选 B**：两边都存（留存区始终写一份 + `CreateDocument` 让用户另存）。
+   实现即如此：`deliver()` 总是先 `writeExportBytes`（必然落留存区），再按 `saveToDocument`
+   分流到「分享面板」或「另存对话框」。故**取消另存也不丢内容**，与「取消 = 中止移除」并存不冲突
+   （留存区那份是"真落地"的保证，我们自己写、写没写成可验证）。
 2. **TTL 默认值**：建议 7 天；`0` = 不清理。是否合适？
-3. **周期任务是否要（现在）做**：启动清理已能兜住绝大多数情况；周期任务是**首个 Worker**，
-   有基建成本。建议**先只做启动清理**，周期任务按需再立项。
-4. **PNG 是否进留存区**（§六.5）：它已进相册，留存区对它是冗余。
-5. **b 取消移除的文案**：取消 `CreateDocument` 后是"什么都不做"（推荐）还是"再问一次
-   是否仍要移除"？前者更安全（用户取消通常就是反悔）。
+3. **周期任务是否要（现在）做** → **本次未做**（按建议：启动清理已能兜住——"过期"粒度是天，
+   启动时清一次与周期任务等价）；周期任务仍是**首个 Worker**，按需再立项。
+4. **PNG 是否进留存区** → **本次仍进**（与其他格式统一走 `writeExportBytes`，避免分支），
+   但它同时进相册（MediaStore）——**主留存路径是相册**。另存对话框对 PNG 只存第一页
+   （多页由相册承载）。若将来要省空间，可单独把 PNG 排除出留存区。
+5. **b 取消移除的文案** → **什么都不做**（实现即此：取消 = 弹一条 Info「已取消保存。未执行移除——
+   文件已在『文件管理 → 导出』留存区」并中止续作）。理由：取消通常就是反悔，且内容已在留存区。
 
 ## 八、明确不做
 
