@@ -319,6 +319,15 @@
   <string name="chat_page_export_html">HTML로 내보내기</string>
   <string name="chat_page_export_html_desc">대화를 시각화된 HTML 페이지로 내보내기</string>
   <string name="chat_page_export_share_via">공유 방법</string>
+  <string name="chat_page_export_saved_to_retention">내보냈습니다. 「파일 관리 → 내보내기」에 보관되었습니다.</string>
+  <string name="chat_page_export_saved">저장됨</string>
+  <string name="chat_page_export_save_cancelled">저장을 취소했습니다. 삭제하지 않았습니다. 파일은 「파일 관리 → 내보내기」에 있습니다.</string>
+  <string name="chat_page_export_save_failed">저장 실패: %1$s</string>
+  <string name="setting_files_page_folder_exports">내보내기</string>
+  <string name="setting_files_page_share_content_description">공유</string>
+  <string name="setting_files_page_exports_empty_hint">내보낸 파일은 여기에 잠시 보관되며 만료되면 자동으로 정리됩니다.</string>
+  <string name="setting_page_export_retention">내보내기 보관 기간</string>
+  <string name="setting_page_export_retention_desc">내보낸 파일을 자동 정리하기 전까지 보관할 일수. 0 = 자동 정리 안 함.</string>
   <string name="chat_page_export_success">%1$s(으)로 내보내기 완료</string>
   <string name="chat_page_history">채팅 기록</string>
   <string name="chat_page_menu_ai_translator">AI 번역기</string>

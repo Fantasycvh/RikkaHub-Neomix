@@ -4,6 +4,8 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.Clean
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.Share08
+import me.rerere.hugeicons.stroke.Time04
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -43,6 +46,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.ContentScale
@@ -52,12 +58,18 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.files.DEFAULT_EXPORT_RETENTION_DAYS
+import app.androidrik.rikkahub.data.files.EXPORT_RETENTION_DAYS_MAX
 import app.androidrik.rikkahub.data.files.FileFolders
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.fileSizeToString
+import app.androidrik.rikkahub.utils.fileProviderUri
+import app.androidrik.rikkahub.utils.shareFile
 import org.koin.compose.koinInject
 import java.io.File
 
@@ -69,7 +81,12 @@ fun SettingFilesPage(
     val gridState = rememberLazyStaggeredGridState()
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
-    val folders = remember { listOf(FileFolders.UPLOAD) }
+    val context = LocalContext.current
+    val settingsStore: SettingsStore = koinInject()
+    val settings = LocalSettings.current
+    // 导出留存区与附件一起管：它是「用户想留的产物」，同样需要可见/可删/可再分享
+    // （见 docs/design-export-retention.md §4.4）
+    val folders = remember { listOf(FileFolders.UPLOAD, FileFolders.EXPORTS) }
 
     // 预先获取字符串资源
     val deletedToast = stringResource(R.string.setting_files_page_deleted_toast)
@@ -78,6 +95,7 @@ fun SettingFilesPage(
     val cleanFailedToast = stringResource(R.string.setting_files_page_clean_failed_toast)
 
     var selectedFolder by remember { mutableStateOf(FileFolders.UPLOAD) }
+    var showRetentionDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ManagedFileEntity?>(null) }
     var showCleanDialog by remember { mutableStateOf(false) }
     val files by filesManager.observe(selectedFolder).collectAsState(initial = emptyList())
@@ -107,6 +125,48 @@ fun SettingFilesPage(
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) {
+                    Text(stringResource(R.string.setting_files_page_cancel_action))
+                }
+            }
+        )
+    }
+
+    if (showRetentionDialog) {
+        var daysText by remember(settings.exportRetentionDays) {
+            mutableStateOf(settings.exportRetentionDays.toString())
+        }
+        AlertDialog(
+            onDismissRequest = { showRetentionDialog = false },
+            title = { Text(stringResource(R.string.setting_page_export_retention)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.setting_page_export_retention_desc))
+                    OutlinedTextField(
+                        value = daysText,
+                        onValueChange = { daysText = it.filter(Char::isDigit).take(4) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val days = daysText.toIntOrNull() ?: DEFAULT_EXPORT_RETENTION_DAYS
+                        scope.launch {
+                            settingsStore.update {
+                                it.copy(exportRetentionDays = days.coerceIn(0, EXPORT_RETENTION_DAYS_MAX))
+                            }
+                        }
+                        showRetentionDialog = false
+                    }
+                ) {
+                    Text(stringResource(R.string.setting_files_page_clean_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRetentionDialog = false }) {
                     Text(stringResource(R.string.setting_files_page_cancel_action))
                 }
             }
@@ -145,6 +205,12 @@ fun SettingFilesPage(
                 title = { Text(stringResource(R.string.setting_files_page_title)) },
                 navigationIcon = { BackButton() },
                 actions = {
+                    IconButton(onClick = { showRetentionDialog = true }) {
+                        Icon(
+                            imageVector = HugeIcons.Time04,
+                            contentDescription = stringResource(R.string.setting_page_export_retention),
+                        )
+                    }
                     IconButton(
                         onClick = { showCleanDialog = true },
                         enabled = files.isNotEmpty(),
@@ -181,10 +247,20 @@ fun SettingFilesPage(
             if (files.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize(),
+                        .fillMaxSize()
+                        .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(stringResource(R.string.setting_files_page_no_files))
+                    // 导出区为空时顺带说明 TTL 行为（用户不易猜到"留存会过期"）
+                    Text(
+                        text = if (selectedFolder == FileFolders.EXPORTS) {
+                            stringResource(R.string.setting_files_page_exports_empty_hint)
+                        } else {
+                            stringResource(R.string.setting_files_page_no_files)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             } else {
                 LazyVerticalStaggeredGrid(
@@ -204,7 +280,11 @@ fun SettingFilesPage(
                         FileItem(
                             file = file,
                             fileOnDisk = filesManager.getFile(file),
-                            onDelete = { pendingDelete = file }
+                            onDelete = { pendingDelete = file },
+                            onShare = {
+                                // 再分享：留存区的核心价值之一（"找得到、发得出"）
+                                context.shareFile(context.fileProviderUri(filesManager.getFile(file)), file.mimeType)
+                            }
                         )
                     }
                 }
@@ -239,6 +319,7 @@ private fun FolderRow(
 @Composable
 private fun folderDisplayName(folder: String): String = when (folder) {
     FileFolders.UPLOAD -> stringResource(R.string.setting_files_page_folder_upload)
+    FileFolders.EXPORTS -> stringResource(R.string.setting_files_page_folder_exports)
     else -> folder
 }
 
@@ -247,6 +328,7 @@ private fun FileItem(
     file: ManagedFileEntity,
     fileOnDisk: File,
     onDelete: () -> Unit,
+    onShare: (() -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -280,14 +362,21 @@ private fun FileItem(
                     }
                 }
 
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    Icon(
-                        HugeIcons.Delete01,
-                        contentDescription = stringResource(R.string.setting_files_page_delete_content_description)
-                    )
+                Row(modifier = Modifier.align(Alignment.TopEnd)) {
+                    if (onShare != null) {
+                        IconButton(onClick = onShare) {
+                            Icon(
+                                HugeIcons.Share08,
+                                contentDescription = stringResource(R.string.setting_files_page_share_content_description)
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            HugeIcons.Delete01,
+                            contentDescription = stringResource(R.string.setting_files_page_delete_content_description)
+                        )
+                    }
                 }
             }
 

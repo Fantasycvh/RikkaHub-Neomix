@@ -81,7 +81,6 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isEmptyUIMessage
 import app.androidrik.ai.util.encodeBase64
-import app.androidrik.common.android.appTempFolder
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findModelById
@@ -104,6 +103,15 @@ import com.dokar.sonner.rememberToasterState
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import app.androidrik.rikkahub.data.export.ConversationSerializer
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import org.koin.java.KoinJavaComponent.getKoin
+import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.utils.fileProviderUri
+import app.androidrik.rikkahub.utils.shareFile
+import app.androidrik.rikkahub.utils.shareFiles
+import java.io.ByteArrayOutputStream
+import android.util.Log
 import app.androidrik.rikkahub.utils.exportImage
 import kotlin.math.roundToInt
 import app.androidrik.rikkahub.utils.getActivity
@@ -116,6 +124,9 @@ import java.time.LocalDateTime
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 
+/** 本文件日志 TAG（导出失败要留痕：原先只有 printStackTrace，排查时看不到） */
+private const val TAG = "ChatExport"
+
 @Composable
 fun ChatExportSheet(
     visible: Boolean,
@@ -123,12 +134,22 @@ fun ChatExportSheet(
     conversation: Conversation,
     selectedMessages: List<UIMessage>,
     /**
-     * 某一种格式**导出成功后**回调（用于「先导出再移除」流程：导出完再执行移除）。
+     * 导出达成后回调（用于「先导出再继续」流程）。
      *
-     * 与 [onDismissRequest] 分开：dismiss 可能是**取消**（用户反悔），不应触发破坏性动作，
-     * 故破坏性续作只挂在真正的导出成功上。
+     * **语义（2026-09-16 修正）**：此前的含义是"分享面板弹出来了"，而分享面板**没有结果回调**，
+     * 用户随手取消也照样触发 → 会在"没保存任何东西"时放行破坏性操作（见
+     * `docs/design-export-retention.md` §1.2 ①）。现在 [saveToDocument] = true 时，
+     * 只有**用户真正选定位置且写盘成功**才回调；取消另存**不**回调（= 不继续移除）。
      */
     onExported: (() -> Unit)? = null,
+    /**
+     * 是否让用户**另存到指定位置**（SAF `CreateDocument`）= 真落地。
+     *
+     * - `false`（默认，普通导出）：写留存区 → 分享面板（"交给别的 app"语义）。
+     * - `true`（「先导出再继续」）：写留存区 → 弹另存对话框；**只有真的存下才回调**
+     *   [onExported]。留存区那份始终存在，故取消另存也不会丢内容。
+     */
+    saveToDocument: Boolean = false,
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
@@ -137,6 +158,82 @@ fun ChatExportSheet(
     val settings = LocalSettings.current
     var imageExportOptions by remember { mutableStateOf(ImageExportOptions()) }
     var includeAllVersions by remember { mutableStateOf(false) }
+    // 待另存的文件（非空 = 等用户选位置）。见 saveToDocument。
+    var pendingSave by remember { mutableStateOf<ExportedFile?>(null) }
+    val saveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("*/*"),
+    ) { uri ->
+        val target = pendingSave
+        pendingSave = null
+        if (uri == null || target == null) {
+            // **取消另存 = 不续作破坏性动作**（内容已躺在留存区，用户随时可在
+            // 「设置 → 文件管理 → 导出」找回）。见设计稿 §二 决策 1。
+            toaster.show(
+                message = context.getString(R.string.chat_page_export_save_cancelled),
+                type = ToastType.Info,
+            )
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    target.file.inputStream().use { it.copyTo(out) }
+                } ?: error("Cannot open output stream")
+            }.onSuccess {
+                toaster.show(context.getString(R.string.chat_page_export_saved), type = ToastType.Success)
+                // **顺序关键**：onExported 必须先于 onDismissRequest。
+                // ChatPage 的 onDismissRequest 会清掉 exportThenRegenerateFor，
+                // 而 onExported 正是读它来续作 scope B —— 反了则续作静默失效。
+                onExported?.invoke()
+                onDismissRequest()
+            }.onFailure {
+                toaster.show(
+                    message = context.getString(R.string.chat_page_export_save_failed, it.message ?: ""),
+                    type = ToastType.Error,
+                )
+            }
+        }
+    }
+
+    /**
+     * 导出达成后的统一分流：写留存区 → 分享面板 / 另存对话框。
+     *
+     * **分享面板弹不算"成功"**（无结果回调）；「另存」才有可验证的结果。
+     */
+    fun deliver(exported: ExportedFile) {
+        if (saveToDocument) {
+            pendingSave = exported
+            saveLauncher.launch(exported.displayName)
+        } else {
+            toaster.show(
+                message = context.getString(R.string.chat_page_export_saved_to_retention),
+                type = ToastType.Success,
+            )
+            context.shareFile(context.fileProviderUri(exported.file), exported.mimeType)
+            onExported?.invoke()
+            onDismissRequest()
+        }
+    }
+
+    /** 多文件（PNG 分页）分流：分享整批；另存只存第一页（PNG 已进相册，见设计稿 §六.5）。 */
+    fun deliverAll(files: List<File>, mimeType: String) {
+        if (saveToDocument) {
+            files.firstOrNull()?.let {
+                pendingSave = ExportedFile(it, it.name, mimeType)
+                saveLauncher.launch(it.name)
+            }
+        } else {
+            toaster.show(
+                message = context.getString(R.string.chat_page_export_saved_to_retention),
+                type = ToastType.Success,
+            )
+            val uris = files.map { context.fileProviderUri(it) }
+            if (uris.size == 1) context.shareFile(uris[0], mimeType)
+            else context.shareFiles(uris, mimeType)
+            onExported?.invoke()
+            onDismissRequest()
+        }
+    }
     // 导出的消息：默认当前选中版本（多选流程传筛选后消息）；开启后含分支/编辑历史的全部版本
     val exportMessages = remember(includeAllVersions, conversation, selectedMessages) {
         if (includeAllVersions) conversation.messageNodes.flatMap { it.messages }
@@ -175,21 +272,19 @@ fun ChatExportSheet(
                 // 这个格式可被「备份页 → 导入」读回（见 docs/design-conversation-import-export.md）。
                 // **有意忽略「包含全部版本」开关**：往返格式必须原样保留分支/编辑历史，
                 // 否则导入回来的会话会缺候选（该开关只影响 Markdown/HTML 等只读导出）。
-                val jsonSuccessMessage =
-                    stringResource(id = R.string.chat_page_export_success, "JSON")
                 OutlinedCard(
                     onClick = {
-                        runCatching {
-                            exportToConversationJson(context, conversation)
-                        }.onSuccess {
-                            toaster.show(jsonSuccessMessage, type = ToastType.Success)
-                            onDismissRequest()
-                            onExported?.invoke()
-                        }.onFailure {
-                            toaster.show(
-                                message = it.message ?: "Export failed",
-                                type = ToastType.Error,
-                            )
+                        scope.launch {
+                            runCatching {
+                                exportToConversationJson(context, conversation)
+                            }.onSuccess { deliver(it) }
+                                .onFailure {
+                                    // 写盘失败**不上报成功**（原先会报「已导出」+ 触发续作）
+                                    toaster.show(
+                                        message = it.message ?: "Export failed",
+                                        type = ToastType.Error,
+                                    )
+                                }
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -206,17 +301,21 @@ fun ChatExportSheet(
 
                 HorizontalDivider()
 
-                val markdownSuccessMessage =
-                    stringResource(id = R.string.chat_page_export_success, "Markdown")
                 OutlinedCard(
                     onClick = {
-                        exportToMarkdown(context, conversation, exportMessages)
-                        toaster.show(
-                            markdownSuccessMessage,
-                            type = ToastType.Success
-                        )
-                        onDismissRequest()
-                        onExported?.invoke()
+                        scope.launch {
+                            // 原先无 runCatching 且函数内部吞异常 → 写盘失败也报成功。
+                            // 现在失败会冒泡，这里统一报错、不上报成功。
+                            runCatching {
+                                exportToMarkdown(context, conversation, exportMessages)
+                            }.onSuccess { deliver(it) }
+                                .onFailure {
+                                    toaster.show(
+                                        message = it.message ?: "Export failed",
+                                        type = ToastType.Error,
+                                    )
+                                }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -233,19 +332,19 @@ fun ChatExportSheet(
                     )
                 }
 
-                val htmlSuccessMessage =
-                    stringResource(id = R.string.chat_page_export_success, "HTML")
                 OutlinedCard(
                     onClick = {
                         // TikZ 导出走 native 编译（阻塞数秒/图），协程化避免卡 UI
                         scope.launch {
-                            exportToHtml(context, conversation, exportMessages)
-                            toaster.show(
-                                htmlSuccessMessage,
-                                type = ToastType.Success
-                            )
-                            onDismissRequest()
-                            onExported?.invoke()
+                            runCatching {
+                                exportToHtml(context, conversation, exportMessages)
+                            }.onSuccess { deliver(it) }
+                                .onFailure {
+                                    toaster.show(
+                                        message = it.message ?: "Export failed",
+                                        type = ToastType.Error,
+                                    )
+                                }
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -263,8 +362,6 @@ fun ChatExportSheet(
                     )
                 }
 
-                val imageSuccessMessage =
-                    stringResource(id = R.string.chat_page_export_success, "Image")
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -314,22 +411,15 @@ fun ChatExportSheet(
                                                 settings = settings,
                                                 options = imageExportOptions
                                             )
-                                        }.onSuccess {
-                                            toaster.show(
-                                                imageSuccessMessage,
-                                                type = ToastType.Success
-                                            )
-                                            onDismissRequest()
-                                            onExported?.invoke()
-                                        }.onFailure {
-                                            // 取消必须向上传播，否则手动关闭 sheet 会被误报为导出失败
-                                            if (it is CancellationException) throw it
-                                            it.printStackTrace()
-                                            toaster.show(
-                                                message = "Failed to export image: ${it.message}",
-                                                type = ToastType.Error
-                                            )
-                                        }
+                                        }.onSuccess { deliverAll(it, "image/png") }
+                                            .onFailure {
+                                                // 取消必须向上传播，否则关闭 sheet 会被误报为导出失败
+                                                if (it is CancellationException) throw it
+                                                toaster.show(
+                                                    message = "Failed to export image: ${it.message}",
+                                                    type = ToastType.Error
+                                                )
+                                            }
                                     }
                                 }
                             ) {
@@ -346,36 +436,70 @@ fun ChatExportSheet(
 /**
  * 导出为**可导入的自家 JSON**（与 Markdown/HTML/PNG 不同：那三种只出不能回填）。
  *
- * 落点与 Markdown 一致：临时目录 + FileProvider + 分享面板。
- * 文件名用 `conversation-<清洗后的标题>.json`。
+ * 落点 = **留存区 `files/exports`**（原子写入），随后由调用方分享或另存。
+ * 文件名清洗非法字符（用字符列表而非正则，避免转义歧义）。
  */
-private fun exportToConversationJson(context: Context, conversation: Conversation) {
-    // 清洗文件系统非法字符（用字符列表而非正则，避免转义歧义）
-    val illegalFileNameChars = charArrayOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
-    val safeTitle = conversation.title
-        .ifBlank { "conversation" }
-        .map { ch -> if (ch in illegalFileNameChars || ch.code < 0x20) '_' else ch }
-        .joinToString("")
-        .trim()
-        .take(60)
-    val json = ConversationSerializer.toJson(conversation)
-    val file = context.appTempFolder.resolve("$safeTitle.json")
-    if (file.exists()) file.delete()
-    file.createNewFile()
-    FileOutputStream(file).use { it.write(json.toByteArray(Charsets.UTF_8)) }
-    val uri = FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        file,
+private suspend fun exportToConversationJson(
+    context: Context,
+    conversation: Conversation,
+): ExportedFile = writeExportBytes(
+    displayName = "${sanitizeExportFileName(conversation.title)}.json",
+    bytes = ConversationSerializer.toJson(conversation).toByteArray(Charsets.UTF_8),
+    mimeType = "application/json",
+)
+
+/** 文件系统非法字符（导出文件名清洗用）。 */
+private val ILLEGAL_FILENAME_CHARS = charArrayOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
+
+/** 清洗导出文件名（去非法字符、限长；空标题回退 `conversation`）。 */
+private fun sanitizeExportFileName(title: String): String = title
+    .ifBlank { "conversation" }
+    .map { ch -> if (ch in ILLEGAL_FILENAME_CHARS || ch.code < 0x20) '_' else ch }
+    .joinToString("")
+    .trim()
+    .take(60)
+    .ifBlank { "conversation" }
+
+/** 一次导出在留存区的落点。 */
+private data class ExportedFile(
+    val file: File,
+    val displayName: String,
+    val mimeType: String,
+)
+
+/**
+ * 把导出内容**原子地写进留存区**（`files/exports`）。
+ *
+ * **为什么不是 `cache/temp`**：那里由 [RikkaHubApp.deleteTempFiles] 在每次冷启动整目录清空，
+ * 留存物活不过一次重启——而「先导出再继续」的语义是"留一份"，必须跨重启。
+ *
+ * **为什么不用 `saveManagedFromBytes`**：后者直接写最终名；导出会复用同名（JSON 按标题命名），
+ * "先删旧再写新"在中途失败时会毁掉前一份。[FilesManager.saveExportAtomically] 改为
+ * "写临时文件 + rename"，故最终名始终完好。见 `docs/design-export-retention.md` §4.2。
+ */
+private suspend fun writeExportBytes(
+    displayName: String,
+    bytes: ByteArray,
+    mimeType: String,
+): ExportedFile {
+    val filesManager = getKoin().get<FilesManager>()
+    val entity = filesManager.saveExportAtomically(
+        bytes = bytes,
+        displayName = displayName,
+        mimeType = mimeType,
     )
-    shareFile(context, uri, "application/json")
+    return ExportedFile(
+        file = filesManager.getFile(entity),
+        displayName = displayName,
+        mimeType = mimeType,
+    )
 }
 
-private fun exportToMarkdown(
+private suspend fun exportToMarkdown(
     context: Context,
     conversation: Conversation,
     messages: List<UIMessage>
-) {
+): ExportedFile {
     val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.md"
 
     val sb = buildAnnotatedString {
@@ -484,30 +608,13 @@ private fun exportToMarkdown(
         }
     }
 
-    try {
-        val dir = context.appTempFolder
-        val file = dir.resolve(filename)
-        if (!file.exists()) {
-            file.createNewFile()
-        } else {
-            file.delete()
-            file.createNewFile()
-        }
-        FileOutputStream(file).use {
-            it.write(sb.toString().toByteArray())
-        }
-
-        // Share the file
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
-        shareFile(context, uri, "text/markdown")
-
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
+    // **不再吞异常**（原实现 catch + printStackTrace 导致卡片误报「已导出」，设计稿 §1.2 ①）；
+    // 也**不再自己分享**——统一由调用方按用途分流（分享面板 / 另存对话框）
+    return writeExportBytes(
+        displayName = filename,
+        bytes = sb.toString().toByteArray(Charsets.UTF_8),
+        mimeType = "text/markdown",
+    )
 }
 
 /** 匹配 ```tikz / ```tikzcd 等围栏代码块 */
@@ -633,7 +740,7 @@ private suspend fun exportToHtml(
     context: Context,
     conversation: Conversation,
     messages: List<UIMessage>
-) {
+): ExportedFile {
     val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.html"
 
     val sb = StringBuilder()
@@ -743,28 +850,12 @@ private suspend fun exportToHtml(
     }
     sb.append("</body>\n</html>")
 
-    try {
-        val dir = context.appTempFolder
-        val file = dir.resolve(filename)
-        if (!file.exists()) {
-            file.createNewFile()
-        } else {
-            file.delete()
-            file.createNewFile()
-        }
-        FileOutputStream(file).use {
-            it.write(sb.toString().toByteArray(Charsets.UTF_8))
-        }
-
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
-        shareFile(context, uri, "text/html")
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
+    // 同 Markdown：不吞异常、不自行分享
+    return writeExportBytes(
+        displayName = filename,
+        bytes = sb.toString().toByteArray(Charsets.UTF_8),
+        mimeType = "text/html",
+    )
 }
 
 private suspend fun exportToImage(
@@ -775,16 +866,13 @@ private suspend fun exportToImage(
     messages: List<UIMessage>,
     settings: Settings,
     options: ImageExportOptions = ImageExportOptions()
-) {
+): List<File> {
     val timestamp = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
     val composer = BitmapComposer(scope)
     val activity = context.getActivity()
-    if (activity == null) {
-        withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Failed to get activity", Toast.LENGTH_SHORT).show()
-        }
-        return
-    }
+        // 原先此处只弹 Toast 后 **静默 return** —— 调用方随即报「已导出」并触发续作，
+        // 又一处假成功。改为抛错，由调用方统一走失败分支。
+        ?: error("Failed to get activity for image export")
 
     // PNG 是逐页捕获：TikZ 图表须预编译落入缓存（TikzJax 同步读缓存出图），
     // 否则异步渲染在捕获瞬间未就绪 → 该页缺图（HTML 走同步管线不受影响）
@@ -819,7 +907,6 @@ private suspend fun exportToImage(
         1
     }
 
-    val dir = context.appTempFolder
     val files = mutableListOf<File>()
     try {
         for (pageIndex in 0 until pageCount) {
@@ -834,16 +921,10 @@ private suspend fun exportToImage(
                 content = exportContent,
             )
             val name = "$timestamp-p${pageIndex + 1}.png"
-            val file = dir.resolve(name)
-            if (file.exists()) file.delete()
-            file.createNewFile()
-            FileOutputStream(file).use { fos ->
-                pageBitmap.compress(Bitmap.CompressFormat.PNG, 90, fos)
-            }
-            // 每页分别存入相册（独立文件名）
+            files += writeBitmapToRetention(context, pageBitmap, name)
+            // 每页分别存入相册（独立文件名）——相册是 PNG 的主留存路径（见设计稿 §六.5）
             context.exportImage(activity, pageBitmap, name)
             pageBitmap.recycle()
-            files += file
         }
 
         // 兜底补页：图片/Mermaid 等异步内容就绪后实际高度可能高于量测值 → 量测偏小会截掉尾部。
@@ -863,35 +944,40 @@ private suspend fun exportToImage(
                 break
             }
             val name = "$timestamp-p${files.size + 1}.png"
-            val file = dir.resolve(name)
-            if (file.exists()) file.delete()
-            file.createNewFile()
-            FileOutputStream(file).use { fos ->
-                overflow.compress(Bitmap.CompressFormat.PNG, 90, fos)
-            }
+            files += writeBitmapToRetention(context, overflow, name)
             context.exportImage(activity, overflow, name)
             overflow.recycle()
-            files += file
             overflowOffsetPx += PAGE_CAPTURE_HEIGHT_PX
         }
 
         if (files.isEmpty()) error("No pages rendered")
 
-        // 一起分享：多页走 ACTION_SEND_MULTIPLE（一次带全部 PNG）
-        val uris = files.map {
-            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it)
-        }
-        if (uris.size == 1) {
-            shareFile(context, uris[0], "image/png")
-        } else {
-            shareFiles(context, uris, "image/png")
-        }
+        return files
+    } catch (e: CancellationException) {
+        // 取消必须向上传播（调用方据此区分"用户返回"与"导出失败"）
+        throw e
     } catch (e: Exception) {
-        e.printStackTrace()
-        withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Failed to export image: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
+        // **不再吞异常**：写盘/渲染失败必须冒泡，否则卡片会误报「已导出」（设计稿 §1.2 ①）
+        Log.e(TAG, "exportToImage failed", e)
+        throw e
     }
+}
+
+/** 把一页 PNG 原子写入留存区（返回落点文件），供后续分享。 */
+private suspend fun writeBitmapToRetention(
+    context: Context,
+    bitmap: Bitmap,
+    displayName: String,
+): File {
+    val bytes = ByteArrayOutputStream().use { out ->
+        bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
+        out.toByteArray()
+    }
+    return writeExportBytes(
+        displayName = displayName,
+        bytes = bytes,
+        mimeType = "image/png",
+    ).file
 }
 
 data class ImageExportOptions(val expandReasoning: Boolean = false)

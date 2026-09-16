@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -75,6 +76,51 @@ class FilesManager(
         createManagedFileEntity(
             folder = folder,
             file = target,
+            displayName = displayName,
+            mimeType = mimeType,
+        )
+    }
+
+    /**
+     * 原子写入留存区（`files/exports`）：**先写临时文件、再 rename**。
+     *
+     * 为什么不能用 [saveManagedFromBytes]（它直接 `writeBytes` 到最终名）：导出会复用同名
+     * （如 JSON 的 `"$safeTitle.json"`），若"先删旧再写新"，写入中途失败会**毁掉前一份**。
+     * 本方法写临时文件再原子 rename，故中途失败只会留下可被清理的临时文件，最终名始终完好
+     * （见 `docs/design-export-retention.md` §4.2）。
+     *
+     * 目标名仍是 UUID（`managed_files.relative_path` 有 UNIQUE 索引，不能同名覆盖），
+     * 人类可读名存 `displayName`。
+     *
+     * @return 落库后的 `ManagedFileEntity`（含 id，供后续分享/删除）。
+     */
+    suspend fun saveExportAtomically(
+        bytes: ByteArray,
+        displayName: String,
+        mimeType: String = "application/octet-stream",
+        folder: String = FileFolders.EXPORTS,
+    ): ManagedFileEntity = withContext(Dispatchers.IO) {
+        val dir = File(context.filesDir, folder).apply { if (!exists()) mkdirs() }
+        val finalFile = File(dir, FileUtils.buildUuidFileName(displayName, mimeType))
+        val tempFile = File(dir, "$EXPORT_TEMP_PREFIX${finalFile.name}")
+        try {
+            tempFile.outputStream().use { output ->
+                output.write(bytes)
+                output.flush()
+                // fsync：确保数据落盘后再 rename，避免断电/崩溃留下 0 字节的最终文件
+                (output as? FileOutputStream)?.fd?.sync()
+            }
+            // 同目录内 rename 是原子的（同一文件系统）；失败则抛错，最终名未被触碰
+            check(tempFile.renameTo(finalFile)) {
+                "Failed to finalize export file: ${finalFile.absolutePath}"
+            }
+        } finally {
+            // 无论成败都清掉临时文件（成功时它已被 rename 移走，exists() 为 false）
+            if (tempFile.exists()) tempFile.delete()
+        }
+        createManagedFileEntity(
+            folder = folder,
+            file = finalFile,
             displayName = displayName,
             mimeType = mimeType,
         )
@@ -534,6 +580,14 @@ object FileFolders {
     const val FONTS = "fonts"
     const val TOOL_OUTPUTS = "tool_outputs"
     const val LOGS = "logs"
+
+    /**
+     * 导出留存区（AI/用户导出的对话文件副本；经「设置 → 文件管理」可见、可再分享）。
+     *
+     * 与 `tool_outputs`（会话级临时产物、启动即清）不同：本目录是**用户想留的产物**，
+     * 故按 TTL 清理而非启动清空。见 `docs/design-export-retention.md`。
+     */
+    const val EXPORTS = "exports"
 }
 
 suspend fun FilesManager.saveUploadFromUri(

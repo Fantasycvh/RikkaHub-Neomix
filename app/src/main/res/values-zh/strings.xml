@@ -358,6 +358,15 @@
   <string name="chat_page_export_html">导出为 HTML</string>
   <string name="chat_page_export_html_desc">将对话导出为可视化 HTML 页面</string>
   <string name="chat_page_export_share_via">分享方式</string>
+  <string name="chat_page_export_saved_to_retention">已导出。已存入「文件管理 → 导出」留存区。</string>
+  <string name="chat_page_export_saved">已保存</string>
+  <string name="chat_page_export_save_cancelled">已取消保存。未执行移除——文件已在「文件管理 → 导出」留存区。</string>
+  <string name="chat_page_export_save_failed">保存失败：%1$s</string>
+  <string name="setting_files_page_folder_exports">导出</string>
+  <string name="setting_files_page_share_content_description">分享</string>
+  <string name="setting_files_page_exports_empty_hint">导出的文件会在此保留一段时间，到期自动清理。</string>
+  <string name="setting_page_export_retention">导出文件保留时长</string>
+  <string name="setting_page_export_retention_desc">导出文件在自动清理前保留的天数。0 = 不自动清理。</string>
   <string name="chat_page_export_success">已导出为%1$s</string>
   <string name="chat_page_history">聊天历史</string>
   <string name="chat_page_menu_ai_translator">AI翻译</string>

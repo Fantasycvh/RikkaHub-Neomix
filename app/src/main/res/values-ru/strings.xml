@@ -319,6 +319,15 @@
   <string name="chat_page_export_html">Экспортировать как HTML</string>
   <string name="chat_page_export_html_desc">Экспортировать разговор как визуализированную HTML-страницу</string>
   <string name="chat_page_export_share_via">Поделиться через</string>
+  <string name="chat_page_export_saved_to_retention">Экспортировано. Сохранено в «Файлы → Экспорт».</string>
+  <string name="chat_page_export_saved">Сохранено</string>
+  <string name="chat_page_export_save_cancelled">Сохранение отменено. Удаление не выполнено — файл в «Файлы → Экспорт».</string>
+  <string name="chat_page_export_save_failed">Не удалось сохранить: %1$s</string>
+  <string name="setting_files_page_folder_exports">Экспорт</string>
+  <string name="setting_files_page_share_content_description">Поделиться</string>
+  <string name="setting_files_page_exports_empty_hint">Экспортированные файлы хранятся здесь некоторое время, затем удаляются автоматически.</string>
+  <string name="setting_page_export_retention">Хранить экспорт</string>
+  <string name="setting_page_export_retention_desc">Сколько дней хранить экспортированные файлы. 0 = не удалять.</string>
   <string name="chat_page_export_success">Экспортировано в %1$s</string>
   <string name="chat_page_history">История чата</string>
   <string name="chat_page_menu_ai_translator">AI-переводчик</string>

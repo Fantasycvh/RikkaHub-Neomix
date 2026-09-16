@@ -600,7 +600,10 @@ private fun ChatPageContent(
                 selectedMessages = exportThenRegenerateFor
                     ?.let { conversation.followingMessages(it.id) }
                     ?: conversation.currentMessages,
-                // 仅**真正导出成功后**才续作 scope B（取消/返回不会走到这里）
+                // 「先导出再继续」= 破坏性操作前的留存，故要求**真落地**（SAF 另存）。
+                // 只有用户真正选定位置并写盘成功才续作 scope B；取消另存 = 不续作
+                // （内容已在留存区，见 docs/design-export-retention.md §二 决策 1）。
+                saveToDocument = exportThenRegenerateFor != null,
                 onExported = {
                     exportThenRegenerateFor?.let { pending ->
                         exportThenRegenerateFor = null

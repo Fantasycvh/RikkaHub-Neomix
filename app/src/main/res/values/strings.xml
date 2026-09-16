@@ -358,6 +358,15 @@
   <string name="chat_page_export_html">Export as HTML</string>
   <string name="chat_page_export_html_desc">Export conversation as a visualized HTML page</string>
   <string name="chat_page_export_share_via">Share via</string>
+  <string name="chat_page_export_saved_to_retention">Exported. Saved to File manager → Exports.</string>
+  <string name="chat_page_export_saved">Saved</string>
+  <string name="chat_page_export_save_cancelled">Save cancelled. Nothing was removed — the file is in File manager → Exports.</string>
+  <string name="chat_page_export_save_failed">Save failed: %1$s</string>
+  <string name="setting_files_page_folder_exports">Exports</string>
+  <string name="setting_files_page_share_content_description">Share</string>
+  <string name="setting_files_page_exports_empty_hint">Exports are kept here for a while, then cleaned up automatically.</string>
+  <string name="setting_page_export_retention">Keep exports for</string>
+  <string name="setting_page_export_retention_desc">Days to keep exported files before automatic cleanup. 0 = never clean up.</string>
   <string name="chat_page_export_success">Exported to %1$s</string>
   <string name="chat_page_history">Chat History</string>
   <string name="chat_page_menu_ai_translator">AI Translator</string>

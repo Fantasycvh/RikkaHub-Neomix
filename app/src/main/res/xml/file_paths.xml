@@ -19,4 +19,8 @@
   <files-path
     name="logs"
     path="logs/" />
+  <!-- 导出留存区：仅此目录（不用 path="." ，保持收窄暴露面） -->
+  <files-path
+    name="exports"
+    path="exports/" />
 </paths>

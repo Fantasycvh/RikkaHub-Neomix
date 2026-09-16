@@ -25,6 +25,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import app.androidrik.common.android.appTempFolder
+import app.androidrik.rikkahub.data.files.EXPORT_TEMP_PREFIX
+import app.androidrik.rikkahub.data.files.exportRetentionCutoff
+import app.androidrik.rikkahub.data.files.isExportExpired
 import com.whl.quickjs.android.QuickJSLoader
 import app.androidrik.rikkahub.di.appModule
 import app.androidrik.rikkahub.di.dataSourceModule
@@ -84,6 +87,9 @@ class RikkaHubApp : Application() {
 
         // delete temp files
         deleteTempFiles()
+
+        // purge expired files from the export retention area (files/exports)
+        purgeExpiredExports()
 
         // cleanup stale tool output files
         cleanupToolOutputs()
@@ -147,6 +153,48 @@ class RikkaHubApp : Application() {
             val dir = appTempFolder
             if (dir.exists()) {
                 dir.deleteRecursively()
+            }
+        }
+    }
+
+    /**
+     * 清理导出留存区（`files/exports`）中已过期的文件。
+     *
+     * 与 [deleteTempFiles] 的"清空"不同：留存区是**用户想留的产物**，按 TTL 清理
+     * （`Settings.exportRetentionDays`，0 = 不清理）。见 `docs/design-export-retention.md` §4.3。
+     *
+     * **必须读 `settingsFlowRaw.first()`** 而不是 `settingsFlow.value`——后者在 DataStore
+     * 尚未加载时是 `Settings.dummy()`（全默认），会静默用默认值而非用户设置
+     * （同 [initLogToFile] 里记录的坑）。
+     *
+     * 顺带清掉写入中断残留的临时文件（`.tmp-` 前缀）：它们未被登记进 `managed_files`，
+     * 若不清理会永远留在盘上。
+     */
+    private fun purgeExpiredExports() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                val dir = File(filesDir, FileFolders.EXPORTS)
+                if (!dir.isDirectory) return@runCatching
+                // 残留临时文件无条件清（未登记、无引用价值）
+                dir.listFiles()
+                    ?.filter { it.isFile && it.name.startsWith(EXPORT_TEMP_PREFIX) }
+                    ?.forEach { it.delete() }
+
+                val retentionDays = get<SettingsStore>().settingsFlowRaw.first().exportRetentionDays
+                val cutoff = exportRetentionCutoff(retentionDays, System.currentTimeMillis())
+                    ?: return@runCatching  // 0 = 不自动清理
+                var removed = 0
+                dir.listFiles()?.forEach { file ->
+                    if (file.isFile && isExportExpired(file.lastModified(), cutoff)) {
+                        if (file.delete()) removed++
+                    }
+                }
+                if (removed > 0) {
+                    Log.i(TAG, "purgeExpiredExports: removed $removed expired export(s) " +
+                        "(retention=${retentionDays}d)")
+                }
+            }.onFailure {
+                Log.e(TAG, "purgeExpiredExports failed", it)
             }
         }
     }

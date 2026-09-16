@@ -29,6 +29,7 @@ import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.DEFAULT_MEMORY_BUDGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT
+import app.androidrik.rikkahub.data.files.DEFAULT_EXPORT_RETENTION_DAYS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.CompressPreset
 import app.androidrik.rikkahub.data.model.ImportSourceRecord
@@ -193,6 +194,7 @@ class SettingsStore(
         val AUTO_COMPRESS_ENABLED = booleanPreferencesKey("auto_compress_enabled")
         val AUTO_COMPRESS_THRESHOLD_PERCENT = intPreferencesKey("auto_compress_threshold_percent")
         val AUTO_COMPRESS_RETAIN_PERCENT = intPreferencesKey("auto_compress_retain_percent")
+        val EXPORT_RETENTION_DAYS = intPreferencesKey("export_retention_days")
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
         // 自定义压缩配置档（用户命名、可增改删；单 key 存 JSON 列表，与 modeInjections 同款）
         val COMPRESS_PRESETS = stringPreferencesKey("compress_presets")
@@ -323,6 +325,8 @@ class SettingsStore(
                     ?: DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
                 autoCompressRetainPercent = preferences[AUTO_COMPRESS_RETAIN_PERCENT]
                     ?: DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
+                exportRetentionDays = preferences[EXPORT_RETENTION_DAYS]
+                    ?: DEFAULT_EXPORT_RETENTION_DAYS,
                 autoCompressTargetTokens = preferences[AUTO_COMPRESS_TARGET_TOKENS]
                     ?: DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
                 compressPresets = preferences[COMPRESS_PRESETS]?.let {
@@ -514,6 +518,7 @@ class SettingsStore(
             preferences[AUTO_COMPRESS_ENABLED] = settings.autoCompressEnabled
             preferences[AUTO_COMPRESS_THRESHOLD_PERCENT] = settings.autoCompressThresholdPercent
             preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
+            preferences[EXPORT_RETENTION_DAYS] = settings.exportRetentionDays
             preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
             preferences[COMPRESS_PRESETS] = JsonInstant.encodeToString(settings.compressPresets)
             preferences[IMPORTED_SOURCES] = JsonInstant.encodeToString(settings.importedSources)
@@ -698,6 +703,13 @@ data class Settings(
     val autoCompressThresholdPercent: Int = DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
     /** 保留比例：尾部原文占窗口的百分比（默认 40） */
     val autoCompressRetainPercent: Int = DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
+
+    /**
+     * 导出留存区的保留天数（`files/exports` 的 TTL）。**0 = 不自动清理**。
+     *
+     * 启动时按此清理过期导出（见 `docs/design-export-retention.md` §4.3）。
+     */
+    val exportRetentionDays: Int = DEFAULT_EXPORT_RETENTION_DAYS,
     /** 摘要目标 token（默认 2000） */
     val autoCompressTargetTokens: Int = DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
     /**

@@ -356,6 +356,15 @@
   <string name="chat_page_export_html">匯出為 HTML</string>
   <string name="chat_page_export_html_desc">將對話匯出為可視化 HTML 頁面</string>
   <string name="chat_page_export_share_via">分享方式</string>
+  <string name="chat_page_export_saved_to_retention">已匯出。已存入「檔案管理 → 匯出」留存區。</string>
+  <string name="chat_page_export_saved">已儲存</string>
+  <string name="chat_page_export_save_cancelled">已取消儲存。未執行移除——檔案已在「檔案管理 → 匯出」留存區。</string>
+  <string name="chat_page_export_save_failed">儲存失敗：%1$s</string>
+  <string name="setting_files_page_folder_exports">匯出</string>
+  <string name="setting_files_page_share_content_description">分享</string>
+  <string name="setting_files_page_exports_empty_hint">匯出的檔案會在此保留一段時間，到期自動清理。</string>
+  <string name="setting_page_export_retention">匯出檔案保留時長</string>
+  <string name="setting_page_export_retention_desc">匯出檔案在自動清理前保留的天數。0 = 不自動清理。</string>
   <string name="chat_page_export_success">已匯出為%1$s</string>
   <string name="chat_page_history">聊天歷史</string>
   <string name="chat_page_menu_ai_translator">AI 翻譯</string>
