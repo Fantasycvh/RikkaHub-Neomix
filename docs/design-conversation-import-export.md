@@ -48,6 +48,10 @@
 | 1 | **导入即新建、全部换新 id，永不覆盖** | 消掉"覆盖已有会话"的数据丢失风险；`existsConversationById` 的 skip 分支**永不命中** |
 | 2 | **第一阶段不导出附件** | 顺带消掉最麻烦的"附件路径跨设备失效"问题；二阶段再定附件格式 |
 | 3 | **导入时用户选择目标助手** | 消掉"跨设备 `assistantId` 悬空"问题 |
+| 4 | **导出文件不存 `assistantId`** | 跨设备必失效，一律以用户选择为准（§4.4） |
+| 5 | **不导出 `compressionSummaries`** | **但需配套处理上下文长度——见 §5.1**（原「无效应」判断已更正） |
+| 6 | **Chatbox/CherryStudio 也加助手选择，并借此统一导入器** | **新开一轮**（见 §八） |
+| 7 | **二阶段再决定附件格式** | 一阶段纯 JSON，`version` 位预留 |
 
 ## 三、换 id 清单（决策 1 展开）
 
@@ -127,8 +131,52 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 | `assistantId` | **丢弃**，改用用户选择（§四） |
 | `id`（会话/节点/消息） | **全部换新**（§三） |
 | `createAt` / `updateAt` | 直接反序列化（`InstantSerializer` 已就绪；比外部格式的 min/max 推断更准） |
-| `compressionSummaries` | **建议不带**（压缩检查点与 `boundaryNodeId`/区域指纹强绑定；换 id 后指纹必然失配 → 带了也无效应，不如不带，让导入的会话以全量历史开始） |
+| `compressionSummaries` | **不带**（用户决定）。**但这会引出上下文长度问题，需配套处理——见 §5.1**。原判断「带了也无效应」**有误，已更正**。 |
 | 附件 `file://` 引用 | **一阶段：保留占位文本**（或按 §七 选项清理）；二阶段内联 |
+
+### 5.1 「不带检查点」的真实代价与配套（更正原判断）
+
+**原判断有误**：我曾写「带了也无效应」，但核实 `activeCompression()` 后发现相反——
+
+```kotlin
+val fingerprint = checkpoint.areaFingerprint ?: return checkpoint   // ← 指纹为 null 时【仍生效】
+```
+
+即 **`areaFingerprint = null` 会退化为「仅边界存在性校验」，检查点依然生效**（`Conversation.kt:116`）。
+所以「带检查点但指纹失配」不是"无效应"，而是**两种可选策略**：
+
+| 策略 | 做法 | 后果 |
+|---|---|---|
+| **A. 带 + 重算指纹** | 导入换 id 后，用 `areaFingerprintFor(boundaryIndex)` **重算**（该 API 是 public） | 检查点**导入后有效**，上下文立刻是"压缩后"的大小 |
+| **B. 不带**（用户决定） | 不导出 `compressionSummaries` | 导入后**无检查点** → 发送全量历史 |
+
+**选 B 的代价（用户反问的正是这个）**：长会话导入后，`currentMessages` 全量参与发送，
+只靠 **`limitContext(assistant.contextMessageLimit)`** 兜底——而它的默认值是 **0（= 不限制）**！
+
+```kotlin
+// Assistant.kt:29
+val contextMessageLimit: Int = 0      // 0 = 不截断
+```
+
+`limitContext` 在 `limit <= 0` 时**直接返回原列表**（`Message.kt:336`）。所以：
+
+- 若目标助手的 `contextMessageLimit` 为 0（默认）→ **全量历史直接发给模型**
+  → 超过模型窗口时报错，或（更糟）被供应商静默截断/计费暴涨；
+- 只有用户**显式配过** `contextMessageLimit` 时才有兜底。
+
+**因此选 B 必须配套其一**：
+
+1. **导入后提示**：「该对话已压缩过，但摘要未随文件导入；若历史很长，建议在助手设置里配置
+   上下文消息上限，或对其手动执行一次压缩」；
+2. **或：导入时自动压缩一次**（复用现有 `compressToCheckpoint`，成本=一次 LLM 调用，
+   需用户确认/开关）；
+3. **或：改主意选 A**（重算指纹），零额外成本且语义最好。
+
+**我的建议**：**A 更好**（技术上一行 `areaFingerprintFor` 即可，且"导入的会话保持原压缩状态"更符合直觉）；
+若坚持 B，则**至少要做 1（提示）**，否则长会话导入是静默的上下文膨胀。
+
+> 注：B 的一个附带好处是"避免带进无效检查点行"。但 A 通过重算指纹就消除了"无效"，
+> 所以这个好处不构成选 B 的理由。
 
 ## 六、分阶段
 
@@ -157,8 +205,8 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 2. **换 id 与防覆盖的顺序**（§三）：务必"先换 id、后检查插入"，否则 skip 分支吃掉导入。
 3. **`AssistantPickerSheet` 的副作用**（§4.2）：**直接用 `AssistantPicker` 会改用户的当前助手**——
    必须用抽出的无副作用版本。
-4. **压缩检查点**（§五）：换 id 后区域指纹必然失配，**带 `compressionSummaries` 无意义**，
-   建议不导出（否则导入后要么留下无效行、要么依赖失效判定兜底）。
+4. **压缩检查点与上下文长度**（§5.1）：不带检查点是决策，但**必须配套**，否则长会话导入后
+   会出现「全量发送 + 无压缩」的上下文膨胀。
 5. **`restoreFromChatBox` 的助手设置副作用**（§4.4）：改目标助手 `allowConversationSystemPrompt`
    的行为在"导入到任意助手"后是否仍合理，需确认。
 6. **文件命名与 SAF**：`getExportFileName` 含会话标题 → 需**清洗非法字符**（`/ \ : * ? " < > |`）。
@@ -167,17 +215,23 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 8. **幂等性**：换新 id 后**重复导入会得到多份副本**（这是决策 1 的直接后果，符合"导入即新建"语义）——
    需在 UI 文案里说清"每次导入都是新副本"。
 
-## 八、可选：统一三种导入器（建议另开一批）
+## 八、统一三种导入器 + 补助手选择（**已定为新开一轮**）
 
 现在 `"local"/"chatbox"/"cherry"` 是三个独立分支 + 两个独立 Importer 类，**彼此无共同抽象**。
 而 `ExportSerializer` 已提供正确形状，`LorebookSerializer` 也示范了"自家优先 + 外部兜底"。
 
-**统一后新增格式只需加一个 serializer**。但这是重构，**不建议塞进这 1 个提交**。
+**统一后新增格式只需加一个 serializer**。用户已决定：**Chatbox/CherryStudio 也要加助手选择，
+并借此统一导入器——单开一轮**（不塞进本设计的阶段 1）。
+
+该轮的范围：①抽 `ExportSerializer` 同族抽象覆盖三种外部导入器（现三分支 + 两独立类无共同抽象）；
+②三处（含自家格式）共用「选择目标助手」这一步；③`importType` 分支收敛。
 
 ## 九、待确认
 
-1. **Chatbox / CherryStudio 导入是否也加"选择目标助手"**？（它们现在同样硬用当前助手，属同一问题）
-2. **`compressionSummaries` 确认不导出**？（我建议不导出，理由见 §五/§七.4）
-3. **二阶段附件格式**：base64 内联（简单但有体积/内存代价）还是 zip 条目（干净但要改格式）？
-4. **重复导入的文案**是否需要显式提示"将新增副本"？
-5. **是否顺带统一三种导入器**（§八，建议另批）。
+1. **上下文长度配套怎么选**（§5.1）：**A 带检查点+重算指纹**（我建议，零额外成本、语义最好）
+   还是 **B 不带 + 导入时提示**（用户已选 B 的大方向，但需确认配套）？
+2. **重复导入的文案**是否需要显式提示"将新增副本"？
+3. 统一导入器那一轮（§八）是否本设计落地后紧接着做？
+
+（原待确认项 1/2/3/5 均已定：Chatbox/CherryStudio 加助手选择并统一导入器=新开一轮；
+`compressionSummaries` 不带=已定（配套见上）；二阶段附件格式=二阶段再定。）
