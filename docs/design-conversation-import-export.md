@@ -40,7 +40,8 @@
 | **导入确认弹窗** | `RestoreConfirmDialog` | 天然的挂载点 |
 | 附件内联编码 | `Export.kt` 的 `part.encodeBase64()` | Markdown 导出已在用（二阶段复用） |
 | **压缩检查点迁移（方案 A）** | `addCompressionCheckpoint` + 重映射 + `areaFingerprintFor` 重算（§5.1） |
-| FTS 重建 | `MessageFtsManager.indexConversation` | 导入后调用即可 |
+| FTS 重建 | `MessageFtsManager.indexConversation` |
+| **重复导入检测（§十）** | `ExportData.sourceId` + `Settings.importedSources` 三件套 + 确认弹窗 | 导入后调用即可 |
 
 ## 二、已定决策
 
@@ -53,6 +54,8 @@
 | 5 | **导出并携带 `compressionSummaries`，导入时重算指纹（方案 A）** | 见 §5.1；**原「不带」判断已更正**——不带会导致长会话静默的全量发送 |
 | 6 | **Chatbox/CherryStudio 也加助手选择，并借此统一导入器** | **新开一轮**（见 §八） |
 | 7 | **二阶段再决定附件格式** | 一阶段纯 JSON，`version` 位预留 |
+| 8 | **重复导入检测 + 提示（允许继续）** | 因决策 1 换新 id 使旧判据失效，**需新增 `sourceId` 锚点**——见 §十 |
+| 9 | **统一导入器：等导入功能验证后再做** | 依赖顺序（不是并行）——见 §八 |
 
 ## 三、换 id 清单（决策 1 展开）
 
@@ -213,20 +216,102 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 8. **幂等性**：换新 id 后**重复导入会得到多份副本**（这是决策 1 的直接后果，符合"导入即新建"语义）——
    需在 UI 文案里说清"每次导入都是新副本"。
 
-## 八、统一三种导入器 + 补助手选择（**已定为新开一轮**）
+## 八、统一三种导入器 + 补助手选择（**待导入功能验证后再做**）
 
 现在 `"local"/"chatbox"/"cherry"` 是三个独立分支 + 两个独立 Importer 类，**彼此无共同抽象**。
 而 `ExportSerializer` 已提供正确形状，`LorebookSerializer` 也示范了"自家优先 + 外部兜底"。
 
-**统一后新增格式只需加一个 serializer**。用户已决定：**Chatbox/CherryStudio 也要加助手选择，
-并借此统一导入器——单开一轮**（不塞进本设计的阶段 1）。
+**统一后新增格式只需加一个 serializer**。用户决定：**Chatbox/CherryStudio 也要加助手选择，
+并借此统一导入器；且该轮「等导入功能验证后再实现」**——即**依赖顺序**：先让自家格式往返落地并
+真机验证通过，再动这个重构（避免边验证功能边搬结构，问题难归因）。
 
 该轮的范围：①抽 `ExportSerializer` 同族抽象覆盖三种外部导入器（现三分支 + 两独立类无共同抽象）；
 ②三处（含自家格式）共用「选择目标助手」这一步；③`importType` 分支收敛。
 
 ## 九、待确认
 
-1. **重复导入的文案**是否显式提示"将新增副本"？（决策 1 的直接后果）
-2. **统一导入器那一轮**（§八）是否本设计落地后紧接着做？
+1. **重复导入提示的文案细节**（§十.3）：是否需要显示"原会话标题"？时间格式？
+2. **`importedSources` 的清理策略**（§十.4）：删掉导入的会话后，历史记录是否保留？
+3. 阶段划分确认：阶段 1 是否含 §十（重复检测）？
 
-（已定：`assistantId` 不存 / 压缩检查点**方案 A** / Chatbox+CherryStudio 加助手选择并统一导入器=新开一轮 / 二阶段再定附件格式。）
+（已定：`assistantId` 不存 / 压缩检查点**方案 A** / 二阶段再定附件格式 /
+**统一导入器=导出功能验证后再做** / **重复导入检测+提示（允许继续）**。）
+
+## 十、重复导入检测 + 提示（决策 8）
+
+### 10.1 为什么需要新锚点
+
+**决策 1（导入即换新 id）使旧判据永久失效**：现在 `restoreFromChatBox` 里的
+`existsConversationById(conversation.id)` 在换 id 后**永不命中**——所以"同一文件导入两次"
+会被当成两次全新导入，**静默产生重复副本**。
+
+核实发现**没有现成锚点**：
+- `ConversationEntity` 无"来源/导入批次"列（只有 id/title/nodes/时间/注入绑定等业务字段）；
+- `ExportData(version, type, data)` 也无来源信息。
+
+### 10.2 方案：导出携带 `sourceId` + Settings 存导入历史
+
+**① 导出侧加两个字段**（`ExportData` 是 JSON，加字段**零迁移**，各 serializer 只读自己关心的）：
+
+```kotlin
+@Serializable
+data class ExportData(
+    val version: Int = 1,
+    val type: String,
+    val data: JsonElement,
+    val exportedAt: Long? = null,     // 导出时间（提示文案要显示）
+    val sourceId: String? = null,     // ← 导出时刻的会话 id，作为幂等锚点（随文件固定不变）
+)
+```
+
+`sourceId` 用**导出时的 `Conversation.id`**——它随文件走、不随导入改变，是稳定的幂等键。
+
+**② 导入侧记录"来源 → 时间"映射**，放 **`Settings` 顶层**（三件套，与 `compressPresets`
+同一套写法：`stringPreferencesKey` + `JsonInstant` 编解码）：
+
+```kotlin
+/** 导入来源记录：sourceId -> (导入时间, 原会话标题)。用于重复导入提示。 */
+@Serializable
+data class ImportSourceRecord(val importedAt: Long, val title: String? = null)
+
+val importedSources: Map<String, ImportSourceRecord> = emptyMap()
+```
+
+**为什么放 Settings 而不加 DB 列**：
+- **零迁移**（DB 列需 29→30 迁移，且每个会话多一列永久占位）；
+- 它本质是**用户级的"来源→时间"记录**，不是会话属性；
+- 提示文案要的"xxx 已于 xxx 导入过"正好由该映射直接提供（还能带上原会话标题）。
+
+### 10.3 流程与文案
+
+**落点**：现有导入流程是「选文件 → `isRestoring = true` → 直接落库」，**没有中间确认态**。
+需在**读完文件、落库之前**插入一步检测：
+
+```
+选中文件 → 解析出 sourceId → 查 importedSources
+  ├─ 未命中 → 照常导入（换新 id）→ 成功后记入 importedSources
+  └─ 命中   → 弹「重复导入」确认
+              ├─ 继续 → 照常导入（换新 id）→ 更新时间戳
+              └─ 取消 → 终止（不落库、不记录）
+```
+
+**文案**（用户给定形态，**语义是"允许继续"而非阻止**）：
+
+> 检测到重复导入：**{原会话标题}** 已于 **{yyyy年MM月dd日}** 导入过。
+> 继续导入将产生重复数据，确定要继续吗？
+
+（`title` 缺失时退化为"该对话"；时间用用户给定的中文年月日格式，其余语言用当地习惯格式。）
+
+### 10.4 注意点
+
+1. **`sourceId` 是"导出时会话 id"，不是"导入后新会话 id"** —— 两者必须区分：
+   前者随文件固定（幂等键），后者每次导入都新生成。**把新 id 记进 `importedSources` 就永远查不到了**。
+2. **记录时机 = 导入成功之后**（取消/失败都不该留下记录，否则下次会误报"已导入过"）。
+3. **同一文件导入到不同助手**仍算重复（锚点是文件来源，不是助手）——符合"检测同一文件"的直觉。
+4. **清理策略待定**（§九.2）：删掉导入产生的会话后，`importedSources` 里的记录**建议保留**
+   （它记的是"这个来源导入过"，与产物是否还在无关）；但记录会**只增不减**，
+   极端情况下需要手动清理或设上限（几十条量级，暂不处理）。
+5. **旧版导出文件没有 `sourceId`**（该字段为 null）→ **跳过检测**（无法判定，不是重复）：
+   这是向后兼容的正确降级。
+6. **与 `exportedAt` 的关系**：提示里显示的是**导入时间**（`importedSources` 的值），
+   不是 `exportedAt`（导出时间）——用户说的是"已于 x 导入过"。`exportedAt` 可选用于"文件较旧"的额外提示，**本次不做**。
