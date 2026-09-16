@@ -166,7 +166,9 @@ Phase 0 的估算底座**可独立交付**：用户先看到「上下文用了�
 **估算**（与压缩共用 `estimateWindowTokens`）：
 
 - **usage 优先**：取发送窗口最后一条 assistant 消息的 `usage.promptTokens`——它恰是「上一次实际发给模型的完整上下文 token 数」，比任何本地估算都准。
-- **fork 无检查点时的简化**：Yuihub 的陈旧判定（检查点后无新回复 → usage 虚高回退本地估算）依赖 `activeCompression()`；**fork 在压缩落地前没有检查点，`usage.promptTokens` 直接可信**——先行版只需 `usage 优先 + 无 usage 时本地估算兜底`，陈旧判定留到 Phase 1 随压缩一起加。
+- ~~**fork 无检查点时的简化**~~ → **已补齐（2026-09-16，`ace85288`）**：Phase 0.5 先行版不含陈旧判定（当时无检查点），但**承诺"留到 Phase 1 随压缩一起加"，Phase 1 落地时漏了**，收尾补上：
+  - **陈旧判定**：`usage.promptTokens` 报的是**那次请求当时**的上下文；若期间发生压缩，该值仍是压缩前的全量值 → 显示虚高（表现为「手动压缩成功占用条数字不动、像没生效」）。判定 = 最后一条 assistant 的 `finishedAt`（缺失退回 `createdAt`）与检查点 `createdAt` 比较，更早 → 回退本地估算。
+  - **估算对象改为发送窗口**（`requestWindowMessages()`，含检查点合成消息）而非全量历史——压缩后按全量算会系统性高估。无检查点时该函数返回 `currentMessages`，非压缩场景零变化。
 - **本地估算**：CJK 1.5 字符/token、其他 4 字符/token，计入工具输出。
 - **窗口值**：`Model.effectiveContextLength()`（contextLength ?: 256K 兜底）。
 
