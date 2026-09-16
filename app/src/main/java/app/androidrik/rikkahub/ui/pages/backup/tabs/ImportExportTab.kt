@@ -152,7 +152,7 @@ fun ImportExportTab(
                             // 「对话 JSON」：**先解析、不落库** —— 需先拿 sourceId 做重复检测、
                             // 并让用户选目标助手，确认后才提交（见设计稿 §十）
                             val tempFile =
-                                File(context.cacheDir, "temp_conv_${System.currentTimeMillis()}.json")
+                                File(context.cacheDir, "temp_conv_${System.currentTimeMillis()}.zip")
 
                             context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
                                 FileOutputStream(tempFile).use { outputStream ->
@@ -311,7 +311,11 @@ fun ImportExportTab(
                     onClick = if (!isRestoring) {
                         {
                             importType = "conversation"
-                            openDocumentLauncher.launch(arrayOf("application/json"))
+                            // 阶段 2 容器是 zip；仍接受阶段 1 的裸 JSON（两种 MIME 都放行，
+                            // 解析侧按 zip 魔数自动判别）
+                            openDocumentLauncher.launch(
+                                arrayOf("application/zip", "application/json")
+                            )
                         }
                     } else null,
                     headlineContent = { Text(stringResource(R.string.backup_page_import_conversation)) },
@@ -384,11 +388,22 @@ fun ImportExportTab(
                 scope.launch {
                     isRestoring = true
                     runCatching {
-                        vm.commitConversationImport(preview, targetAssistantId)
-                        toaster.show(
-                            context.getString(R.string.backup_page_restore_success),
-                            type = ToastType.Success,
-                        )
+                        val result = vm.commitConversationImport(preview, targetAssistantId)
+                        // 附件缺失要如实说明（否则用户以为完整导入了）
+                        if (result.missingAttachments > 0) {
+                            toaster.show(
+                                context.getString(
+                                    R.string.backup_page_import_attachment_missing,
+                                    result.missingAttachments.toString(),
+                                ),
+                                type = ToastType.Info,
+                            )
+                        } else {
+                            toaster.show(
+                                context.getString(R.string.backup_page_restore_success),
+                                type = ToastType.Success,
+                            )
+                        }
                     }.onFailure { e ->
                         toaster.show(
                             context.getString(R.string.backup_page_restore_failed, e.message ?: ""),

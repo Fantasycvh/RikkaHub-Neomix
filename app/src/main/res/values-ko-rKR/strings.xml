@@ -192,7 +192,7 @@
   <string name="backup_page_import_desc">로컬 백업 파일 가져오기</string>
   <string name="backup_page_import_export">로컬</string>
   <string name="backup_page_import_conversation">대화(JSON)</string>
-  <string name="backup_page_import_conversation_desc">이 앱에서 내보낸 단일 대화 가져오기(JSON)</string>
+  <string name="backup_page_import_conversation_desc">이 앱에서 내보낸 대화 아카이브 가져오기(.zip)</string>
   <string name="backup_page_import_invalid_file">유효한 대화 내보내기 파일이 아닙니다</string>
   <string name="backup_page_import_conversation_confirm_title">대화 가져오기</string>
   <string name="backup_page_import_conversation_confirm_message">「%1$s」을(를) 가져올까요? 새 대화가 만들어지며 기존 내용은 덮어쓰지 않습니다.</string>
@@ -312,8 +312,8 @@
   <string name="chat_page_export_image_expand_reasoning">사고 과정 확장</string>
   <string name="chat_page_share_conversation">대화 공유</string>
   <string name="chat_page_export_include_all_versions">모든 버전 포함(브랜치/편집 기록)</string>
-  <string name="chat_page_export_json">JSON(다시 가져오기 가능)</string>
-  <string name="chat_page_export_json_desc">분기와 압축을 포함한 전체 대화이며 다시 가져올 수 있습니다</string>
+  <string name="chat_page_export_json">대화 아카이브(다시 가져오기 가능)</string>
+  <string name="chat_page_export_json_desc">분기·압축·첨부를 포함한 전체 대화(.zip). 다시 가져올 수 있습니다</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">대화를 마크다운 파일로 내보내기</string>
   <string name="chat_page_export_html">HTML로 내보내기</string>
@@ -329,6 +329,10 @@
   <string name="setting_page_export_retention">내보내기 보관 기간</string>
   <string name="setting_page_export_retention_desc">내보낸 파일을 자동 정리하기 전까지 보관할 일수. 0 = 자동 정리 안 함.</string>
   <string name="chat_page_export_success">%1$s(으)로 내보내기 완료</string>
+  <string name="chat_page_export_oversize_title">내보내기 용량이 큼</string>
+  <string name="chat_page_export_oversize_message">첨부 파일 합계가 약 %1$s MB(%2$s개)입니다. 계속하면 오래 걸리고 파일이 커집니다. 계속할까요?</string>
+  <string name="backup_page_import_attachment_missing">가져왔습니다. 첨부 파일 %1$s개를 찾을 수 없거나 읽을 수 없습니다.</string>
+  <string name="chat_page_export_attachment_skipped">내보냈지만 첨부 파일 %1$s개를 찾을 수 없어 포함되지 않았습니다.</string>
   <string name="chat_page_history">채팅 기록</string>
   <string name="chat_page_menu_ai_translator">AI 번역기</string>
   <string name="chat_page_menu_image_generation">이미지 생성</string>

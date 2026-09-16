@@ -22,7 +22,7 @@ object ConversationSerializer : ExportSerializer<Conversation> {
     override val type: String = "conversation"
 
     override fun export(data: Conversation): ExportData = ExportData(
-        version = 1,
+        version = 2,  // 阶段 2：容器为 zip 且携带附件清单（见 docs/design-conversation-import-export.md §六）
         type = type,
         data = JsonInstant.encodeToJsonElement(Conversation.serializer(), data),
         exportedAt = System.currentTimeMillis(),

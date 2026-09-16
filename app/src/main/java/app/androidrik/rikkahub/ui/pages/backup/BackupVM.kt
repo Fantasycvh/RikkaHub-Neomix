@@ -22,11 +22,20 @@ import app.androidrik.rikkahub.data.sync.S3Sync
 import app.androidrik.rikkahub.data.export.ConversationSerializer
 import app.androidrik.rikkahub.data.export.ExportData
 import app.androidrik.rikkahub.data.export.remapForImport
+import app.androidrik.rikkahub.data.export.ExportFileEntry
+import app.androidrik.rikkahub.data.export.attachmentBasename
+import app.androidrik.rikkahub.data.export.matchesContent
+import app.androidrik.rikkahub.data.export.rewriteAttachmentUrls
+import app.androidrik.rikkahub.data.export.unpackConversationArchive
+import app.androidrik.rikkahub.data.files.FileFolders
+import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.ImportSourceRecord
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 import app.androidrik.rikkahub.utils.UiState
 import java.io.File
@@ -38,6 +47,7 @@ class BackupVM(
     private val webDavSync: WebDavSync,
     private val s3Sync: S3Sync,
     private val conversationRepository: ConversationRepository,
+    private val filesManager: FilesManager,
 ) : ViewModel() {
     val settings = settingsStore.settingsFlow.stateIn(
         scope = viewModelScope,
@@ -146,23 +156,48 @@ class BackupVM(
      * 命中则由 UI 弹确认；用户确认后才调 [commitConversationImport]。
      * 见 `docs/design-conversation-import-export.md` §十。
      *
+     * **在 IO 线程执行**（读文件 + 解 zip + 解码 JSON 都是重活；调用方是 Compose 的
+     * `rememberCoroutineScope()`，不切线程会卡主线程 → ANR）。
+     *
      * @return 解析出的会话（**id/助手均未替换**）与其来源信息；解析失败返回 null。
      */
-    fun parseConversationImport(file: File): ConversationImportPreview? = runCatching {
-        val exportData = JsonInstant.decodeFromString(
-            ExportData.serializer(),
-            file.readText(),
-        )
-        if (exportData.type != ConversationSerializer.type) return null
-        val conversation = JsonInstant.decodeFromJsonElement(
-            Conversation.serializer(),
-            exportData.data,
-        )
-        ConversationImportPreview(
-            conversation = conversation,
-            sourceId = exportData.sourceId,
-        )
-    }.getOrNull()
+    suspend fun parseConversationImport(file: File): ConversationImportPreview? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                // 阶段 2 起容器是 zip；**仍接受阶段 1 的裸 JSON**（向后兼容：用户手上已有的文件）。
+                // 靠魔数判别而非扩展名（SAF 返回的 URI 未必带正确扩展名）。
+                val raw = file.readBytes()
+                val exportData: ExportData
+                val attachments: Map<String, ByteArray>
+                if (isZip(raw)) {
+                    val unpacked = unpackConversationArchive(raw) ?: return@runCatching null
+                    exportData = JsonInstant.decodeFromString(ExportData.serializer(), unpacked.json)
+                    attachments = unpacked.attachments
+                } else {
+                    exportData = JsonInstant.decodeFromString(
+                        ExportData.serializer(),
+                        raw.toString(Charsets.UTF_8),
+                    )
+                    attachments = emptyMap()
+                }
+                if (exportData.type != ConversationSerializer.type) return@runCatching null
+                val conversation = JsonInstant.decodeFromJsonElement(
+                    Conversation.serializer(),
+                    exportData.data,
+                )
+                ConversationImportPreview(
+                    conversation = conversation,
+                    sourceId = exportData.sourceId,
+                    manifest = exportData.files,
+                    attachments = attachments,
+                )
+            }.getOrNull()
+        }
+
+    /** zip 魔数（`PK`）。用魔数而非扩展名：SAF 给的 URI 未必带正确扩展名。 */
+    private fun isZip(bytes: ByteArray): Boolean =
+        bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte() &&
+            bytes[2] == 0x03.toByte() && bytes[3] == 0x04.toByte()
 
     /**
      * 落库一个已解析的导入预览（**换新 id + 目标助手 + 检查点迁移 + 记录来源**）。
@@ -175,8 +210,41 @@ class BackupVM(
     suspend fun commitConversationImport(
         preview: ConversationImportPreview,
         targetAssistantId: Uuid,
-    ): Conversation {
-        val imported = preview.conversation.remapForImport(targetAssistantId)
+    ): ConversationImportResult {
+        // ① 物化附件：清单 → files/upload/<新 uuid>，并建 `originalUrl → 新 file://` 映射。
+        //    **必须走 FilesManager.saveManagedFromBytes**：它同时登记 managed_files，
+        //    否则文件管理页会把 UUID 当显示名（设计稿 §六 阶段 2）。
+        //    生成新文件名（真拷贝）而非复用原路径：`deleteConversation` 会按 part URL 删盘，
+        //    复用会"删原会话连带删掉导入副本的附件"（约束 4）。
+        val mapping = LinkedHashMap<String, String>()
+        var missingAttachments = 0
+        preview.manifest.forEach { entry ->
+            val bytes = preview.attachments[entry.entry]
+            if (bytes == null || !entry.matchesContent(bytes)) {
+                // 条目缺失或内容不符（归档损坏）→ 跳过并计数；该 URL 不改写（仍指向原处）
+                missingAttachments++
+                Log.w(TAG, "commitConversationImport: attachment unavailable entry=${entry.entry}")
+                return@forEach
+            }
+            val displayName = entry.fileName.ifBlank { attachmentBasename(entry.originalUrl) }
+            runCatching {
+                val saved = filesManager.saveManagedFromBytes(
+                    folder = FileFolders.UPLOAD,
+                    bytes = bytes,
+                    displayName = displayName,
+                    mimeType = entry.mime,
+                )
+                mapping[entry.originalUrl] = "file://" + filesManager.getFile(saved).absolutePath
+            }.onFailure {
+                missingAttachments++
+                Log.e(TAG, "commitConversationImport: failed to materialize ${entry.entry}", it)
+            }
+        }
+
+        // ② 改写 part URL（递归，含工具输出嵌套），再换 id —— 顺序无所谓，
+        //    但改写必须先于落库（库里不能出现旧路径/伪协议）。
+        val rewritten = preview.conversation.rewriteAttachmentUrls(mapping)
+        val imported = rewritten.remapForImport(targetAssistantId)
         conversationRepository.insertConversation(imported)
         // 压缩检查点：独立表，须显式写入（insertConversation 不处理检查点）
         imported.compressionSummaries.forEach { summary ->
@@ -196,8 +264,13 @@ class BackupVM(
             )
         }
         Log.i(TAG, "commitConversationImport: id=${imported.id} nodes=${imported.messageNodes.size} " +
-            "checkpoints=${imported.compressionSummaries.size} sourceId=${preview.sourceId}")
-        return imported
+            "checkpoints=${imported.compressionSummaries.size} sourceId=${preview.sourceId} " +
+            "attachments=${mapping.size} missing=$missingAttachments")
+        return ConversationImportResult(
+            conversation = imported,
+            restoredAttachments = mapping.size,
+            missingAttachments = missingAttachments,
+        )
     }
 
     suspend fun restoreFromChatBox(file: File): ChatboxRestoreResult {
@@ -333,4 +406,15 @@ data class ChatboxRestoreResult(
 data class ConversationImportPreview(
     val conversation: Conversation,
     val sourceId: String?,
+    /** 附件清单（阶段 1 的裸 JSON 为空列表）。 */
+    val manifest: List<ExportFileEntry> = emptyList(),
+    /** zip 内解出的附件字节（key = 条目名）。裸 JSON 为空。 */
+    val attachments: Map<String, ByteArray> = emptyMap(),
+)
+
+/** 导入结果：会话 + 附件恢复统计（供 UI 提示"有 N 个附件缺失"）。 */
+data class ConversationImportResult(
+    val conversation: Conversation,
+    val restoredAttachments: Int,
+    val missingAttachments: Int,
 )

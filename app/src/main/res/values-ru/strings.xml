@@ -192,7 +192,7 @@
   <string name="backup_page_import_desc">Импортировать локальный файл резервной копии</string>
   <string name="backup_page_import_export">Локальный</string>
   <string name="backup_page_import_conversation">Диалог (JSON)</string>
-  <string name="backup_page_import_conversation_desc">Импорт одного диалога, экспортированного из этого приложения (JSON)</string>
+  <string name="backup_page_import_conversation_desc">Импорт архива диалога, экспортированного из этого приложения (.zip)</string>
   <string name="backup_page_import_invalid_file">Это не файл экспорта диалога</string>
   <string name="backup_page_import_conversation_confirm_title">Импорт диалога</string>
   <string name="backup_page_import_conversation_confirm_message">Импортировать «%1$s»? Будет создан новый диалог, существующие не перезаписываются.</string>
@@ -312,8 +312,8 @@
   <string name="chat_page_export_image_expand_reasoning">Развернуть рассуждение</string>
   <string name="chat_page_share_conversation">Поделиться беседой</string>
   <string name="chat_page_export_include_all_versions">Включить все версии (ветки и историю правок)</string>
-  <string name="chat_page_export_json">JSON (для повторного импорта)</string>
-  <string name="chat_page_export_json_desc">Полный диалог с ветками и сжатием; можно импортировать обратно</string>
+  <string name="chat_page_export_json">Архив диалога (можно импортировать)</string>
+  <string name="chat_page_export_json_desc">Полный диалог с ветками, сжатием и вложениями (.zip). Можно импортировать обратно</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">Экспортировать разговор как файл Markdown</string>
   <string name="chat_page_export_html">Экспортировать как HTML</string>
@@ -329,6 +329,10 @@
   <string name="setting_page_export_retention">Хранить экспорт</string>
   <string name="setting_page_export_retention_desc">Сколько дней хранить экспортированные файлы. 0 = не удалять.</string>
   <string name="chat_page_export_success">Экспортировано в %1$s</string>
+  <string name="chat_page_export_oversize_title">Большой экспорт</string>
+  <string name="chat_page_export_oversize_message">Вложения: около %1$s МБ (%2$s файлов). Продолжение может занять время и создать большой файл. Продолжить?</string>
+  <string name="backup_page_import_attachment_missing">Импортировано. Не найдено или не читается вложений: %1$s.</string>
+  <string name="chat_page_export_attachment_skipped">Экспортировано, но %1$s вложений не найдено и они не включены.</string>
   <string name="chat_page_history">История чата</string>
   <string name="chat_page_menu_ai_translator">AI-переводчик</string>
   <string name="chat_page_menu_image_generation">Генерация изображений</string>

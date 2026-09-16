@@ -34,6 +34,13 @@ data class ExportData(
      * 可空：旧版导出文件没有该字段 → 无法判定 → **跳过检测**（不是"重复"）。
      */
     val sourceId: String? = null,
+    /**
+     * **附件清单**（阶段 2）：zip 内 `attachments/` 条目与 part URL 的关联。
+     *
+     * 空列表 = 无附件（阶段 1 的裸 JSON 也反序列化为此）→ 导入侧跳过附件处理。
+     * 见 `docs/design-conversation-import-export.md` §六 阶段 2。
+     */
+    val files: List<ExportFileEntry> = emptyList(),
 )
 
 interface ExportSerializer<T> {

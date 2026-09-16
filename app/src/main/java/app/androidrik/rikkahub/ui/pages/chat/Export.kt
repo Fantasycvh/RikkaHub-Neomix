@@ -32,12 +32,14 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
@@ -102,7 +104,10 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 import com.dokar.sonner.rememberToasterState
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
+import app.androidrik.rikkahub.data.export.AttachmentPlan
 import app.androidrik.rikkahub.data.export.ConversationSerializer
+import app.androidrik.rikkahub.data.export.packConversationArchive
+import app.androidrik.rikkahub.data.export.planAttachments
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import org.koin.java.KoinJavaComponent.getKoin
@@ -160,6 +165,9 @@ fun ChatExportSheet(
     var includeAllVersions by remember { mutableStateOf(false) }
     // 待另存的文件（非空 = 等用户选位置）。见 saveToDocument。
     var pendingSave by remember { mutableStateOf<ExportedFile?>(null) }
+    // 附件合计超软上限时的待确认计划（非空 = 显示确认弹窗）。确认后原样重跑导出。
+    var oversizePlan by remember { mutableStateOf<AttachmentPlan?>(null) }
+    var oversizeConfirmed by remember { mutableStateOf(false) }
     val saveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*"),
     ) { uri ->
@@ -240,6 +248,51 @@ fun ChatExportSheet(
         else selectedMessages
     }
 
+    // 附件体积软上限确认（确认后置 oversizeConfirmed 并重跑导出）
+    oversizePlan?.let { plan ->
+        AlertDialog(
+            onDismissRequest = { oversizePlan = null },
+            title = { Text(stringResource(R.string.chat_page_export_oversize_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.chat_page_export_oversize_message,
+                        (plan.totalBytes / 1024 / 1024).toString(),
+                        plan.count.toString(),
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        oversizePlan = null
+                        oversizeConfirmed = true
+                        // 重跑导出：第二次不会再拦（oversizeConfirmed = true）
+                        scope.launch {
+                            runCatching {
+                                exportToConversationArchive(context, conversation)
+                            }.onSuccess { deliver(it) }
+                                .onFailure {
+                                    toaster.show(
+                                        message = it.message ?: "Export failed",
+                                        type = ToastType.Error,
+                                    )
+                                }
+                            oversizeConfirmed = false
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { oversizePlan = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
     if (visible) {
         ModalBottomSheet(
             onDismissRequest = onDismissRequest,
@@ -275,8 +328,17 @@ fun ChatExportSheet(
                 OutlinedCard(
                     onClick = {
                         scope.launch {
+                            // 软上限：合计体积超阈值先提示确认（**不硬拒**）。只 stat 不读内容，
+                            // 避免"读一遍大文件才发现超限"。
+                            val plan = runCatching {
+                                conversationAttachmentPlan(context, conversation)
+                            }.getOrNull()
+                            if (plan != null && plan.exceedsSoftLimit && !oversizeConfirmed) {
+                                oversizePlan = plan
+                                return@launch
+                            }
                             runCatching {
-                                exportToConversationJson(context, conversation)
+                                exportToConversationArchive(context, conversation)
                             }.onSuccess { deliver(it) }
                                 .onFailure {
                                     // 写盘失败**不上报成功**（原先会报「已导出」+ 触发续作）
@@ -434,19 +496,40 @@ fun ChatExportSheet(
 }
 
 /**
- * 导出为**可导入的自家 JSON**（与 Markdown/HTML/PNG 不同：那三种只出不能回填）。
+ * 导出为**可导入的自家归档**（zip：`conversation.json` + `attachments/`）。
+ *
+ * 与 Markdown/HTML/PNG 不同：那三种只出不能回填。**始终 zip**（阶段 2 决策——本功能未发布，
+ * 无裸 JSON 的历史包袱），见 `docs/design-conversation-import-export.md` §六 阶段 2。
  *
  * 落点 = **留存区 `files/exports`**（原子写入），随后由调用方分享或另存。
  * 文件名清洗非法字符（用字符列表而非正则，避免转义歧义）。
+ *
+ * 缺失附件**跳过并计数**（导出照常成功）——挡死导出会让人连文字部分都导不出。
  */
-private suspend fun exportToConversationJson(
+private suspend fun exportToConversationArchive(
     context: Context,
     conversation: Conversation,
-): ExportedFile = writeExportBytes(
-    displayName = "${sanitizeExportFileName(conversation.title)}.json",
-    bytes = ConversationSerializer.toJson(conversation).toByteArray(Charsets.UTF_8),
-    mimeType = "application/json",
-)
+): ExportedFile {
+    val packed = packConversationArchive(context, conversation, ConversationSerializer.export(conversation))
+    if (packed.missingUrls.isNotEmpty() || packed.oversizedUrls.isNotEmpty()) {
+        Log.i(
+            TAG,
+            "exportConversationArchive: skipped ${packed.missingUrls.size} missing, " +
+                "${packed.oversizedUrls.size} oversized attachment(s)",
+        )
+    }
+    return writeExportBytes(
+        displayName = "${sanitizeExportFileName(conversation.title)}.zip",
+        bytes = packed.bytes,
+        mimeType = "application/zip",
+    )
+}
+
+/** 供 UI 在打包前决定是否提示软上限（只 stat，不读内容；内部切 IO 线程）。 */
+private suspend fun conversationAttachmentPlan(
+    context: Context,
+    conversation: Conversation,
+): AttachmentPlan = planAttachments(context, conversation)
 
 /** 文件系统非法字符（导出文件名清洗用）。 */
 private val ILLEGAL_FILENAME_CHARS = charArrayOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')

@@ -194,7 +194,7 @@
   <string name="backup_page_import_desc">导入本地备份文件</string>
   <string name="backup_page_import_export">本地</string>
   <string name="backup_page_import_conversation">对话（JSON）</string>
-  <string name="backup_page_import_conversation_desc">导入本应用导出的单个对话（JSON）</string>
+  <string name="backup_page_import_conversation_desc">导入本应用导出的对话归档（.zip）</string>
   <string name="backup_page_import_invalid_file">不是有效的对话导出文件</string>
   <string name="backup_page_import_conversation_confirm_title">导入对话</string>
   <string name="backup_page_import_conversation_confirm_message">导入「%1$s」？将新建一个对话，不会覆盖任何内容。</string>
@@ -351,8 +351,8 @@
   <string name="chat_page_export_image_expand_reasoning">展开思维过程</string>
   <string name="chat_page_share_conversation">分享对话</string>
   <string name="chat_page_export_include_all_versions">包含全部版本（含分支/编辑历史）</string>
-  <string name="chat_page_export_json">JSON（可导入）</string>
-  <string name="chat_page_export_json_desc">含分支与压缩的完整对话，可再导入回本应用</string>
+  <string name="chat_page_export_json">对话归档（可再导入）</string>
+  <string name="chat_page_export_json_desc">含分支、压缩与附件的完整对话（.zip），可再导入回本应用</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">将对话导出为markdown文件</string>
   <string name="chat_page_export_html">导出为 HTML</string>
@@ -368,6 +368,10 @@
   <string name="setting_page_export_retention">导出文件保留时长</string>
   <string name="setting_page_export_retention_desc">导出文件在自动清理前保留的天数。0 = 不自动清理。</string>
   <string name="chat_page_export_success">已导出为%1$s</string>
+  <string name="chat_page_export_oversize_title">导出体积较大</string>
+  <string name="chat_page_export_oversize_message">附件合计约 %1$s MB（%2$s 个文件）。继续可能较慢，且会生成较大的文件。确定继续吗？</string>
+  <string name="backup_page_import_attachment_missing">已导入。有 %1$s 个附件缺失或无法读取。</string>
+  <string name="chat_page_export_attachment_skipped">已导出，但有 %1$s 个附件缺失，未包含在内。</string>
   <string name="chat_page_history">聊天历史</string>
   <string name="chat_page_menu_ai_translator">AI翻译</string>
   <string name="chat_page_menu_image_generation">图像生成</string>

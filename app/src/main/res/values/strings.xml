@@ -194,7 +194,7 @@
   <string name="backup_page_import_desc">Import local backup file</string>
   <string name="backup_page_import_export">Local</string>
   <string name="backup_page_import_conversation">Conversation (JSON)</string>
-  <string name="backup_page_import_conversation_desc">Import a single conversation exported from this app (JSON)</string>
+  <string name="backup_page_import_conversation_desc">Import a conversation archive exported from this app (.zip)</string>
   <string name="backup_page_import_invalid_file">Not a valid conversation export file</string>
   <string name="backup_page_import_conversation_confirm_title">Import conversation</string>
   <string name="backup_page_import_conversation_confirm_message">Import “%1$s”? This creates a new conversation and won’t overwrite anything.</string>
@@ -351,8 +351,8 @@
   <string name="chat_page_export_image_expand_reasoning">Expand Reasoning</string>
   <string name="chat_page_share_conversation">Share Conversation</string>
   <string name="chat_page_export_include_all_versions">Include all versions (branches &amp; edit history)</string>
-  <string name="chat_page_export_json">JSON (re-importable)</string>
-  <string name="chat_page_export_json_desc">Full conversation with branches and compaction; can be imported back</string>
+  <string name="chat_page_export_json">Conversation archive (re-importable)</string>
+  <string name="chat_page_export_json_desc">Full conversation with branches, compression and attachments, as a .zip you can import back</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">Export conversation as a markdown file</string>
   <string name="chat_page_export_html">Export as HTML</string>
@@ -368,6 +368,10 @@
   <string name="setting_page_export_retention">Keep exports for</string>
   <string name="setting_page_export_retention_desc">Days to keep exported files before automatic cleanup. 0 = never clean up.</string>
   <string name="chat_page_export_success">Exported to %1$s</string>
+  <string name="chat_page_export_oversize_title">Large export</string>
+  <string name="chat_page_export_oversize_message">Attachments total about %1$s MB (%2$s files). Continuing may take a while and produce a large file. Continue?</string>
+  <string name="backup_page_import_attachment_missing">Imported. %1$s attachment(s) were missing or unreadable.</string>
+  <string name="chat_page_export_attachment_skipped">Exported, but %1$s attachment(s) were missing and not included.</string>
   <string name="chat_page_history">Chat History</string>
   <string name="chat_page_menu_ai_translator">AI Translator</string>
   <string name="chat_page_menu_image_generation">Image Generation</string>

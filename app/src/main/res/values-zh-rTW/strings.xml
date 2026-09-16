@@ -194,7 +194,7 @@
   <string name="backup_page_import_desc">導入本地備份檔案</string>
   <string name="backup_page_import_export">本地</string>
   <string name="backup_page_import_conversation">對話（JSON）</string>
-  <string name="backup_page_import_conversation_desc">匯入本應用匯出的單個對話（JSON）</string>
+  <string name="backup_page_import_conversation_desc">匯入本應用匯出的對話封存（.zip）</string>
   <string name="backup_page_import_invalid_file">不是有效的對話匯出檔案</string>
   <string name="backup_page_import_conversation_confirm_title">匯入對話</string>
   <string name="backup_page_import_conversation_confirm_message">匯入「%1$s」？將新建一個對話，不會覆蓋任何內容。</string>
@@ -349,8 +349,8 @@
   <string name="chat_page_export_image_expand_reasoning">展開思維過程</string>
   <string name="chat_page_share_conversation">分享對話</string>
   <string name="chat_page_export_include_all_versions">包含全部版本（含分支/編輯歷史）</string>
-  <string name="chat_page_export_json">JSON（可匯入）</string>
-  <string name="chat_page_export_json_desc">含分支與壓縮的完整對話，可再匯入回本應用</string>
+  <string name="chat_page_export_json">對話封存（可再匯入）</string>
+  <string name="chat_page_export_json_desc">含分支、壓縮與附件的完整對話（.zip），可再匯入回本應用</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">將對話匯出為markdown檔案</string>
   <string name="chat_page_export_html">匯出為 HTML</string>
@@ -366,6 +366,10 @@
   <string name="setting_page_export_retention">匯出檔案保留時長</string>
   <string name="setting_page_export_retention_desc">匯出檔案在自動清理前保留的天數。0 = 不自動清理。</string>
   <string name="chat_page_export_success">已匯出為%1$s</string>
+  <string name="chat_page_export_oversize_title">匯出體積較大</string>
+  <string name="chat_page_export_oversize_message">附件合計約 %1$s MB（%2$s 個檔案）。繼續可能較慢，且會產生較大的檔案。確定繼續嗎？</string>
+  <string name="backup_page_import_attachment_missing">已匯入。有 %1$s 個附件缺失或無法讀取。</string>
+  <string name="chat_page_export_attachment_skipped">已匯出，但有 %1$s 個附件缺失，未包含在內。</string>
   <string name="chat_page_history">聊天歷史</string>
   <string name="chat_page_menu_ai_translator">AI 翻譯</string>
   <string name="chat_page_menu_image_generation">圖像生成</string>
