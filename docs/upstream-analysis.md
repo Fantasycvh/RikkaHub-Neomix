@@ -98,6 +98,69 @@
 | `288a034c` + `bc9d2582` | 依赖更新 + **修复误删 `lib.versions.toml`**（后者是前者的事故回滚） | **不吸收**：纯依赖版本变动（含一次事故与修复），合并净效果有限；若需某依赖版本单独评估 |
 | `2689e753` 起算的同步动作 | — | 同步方式仍是 ff-only（仅本地）：`git fetch upstream && git checkout master && git merge --ff-only upstream/master`（**不再 push origin**，origin 上的 master 镜像已删除） |
 
+### 2026-09-16 新发现：上游已发 **2.5.2**（同步点后 6 提交）
+
+`3428c60b` bump to 2.5.2。同步点 `a9b35ba2`（2.5.1）之后的全部提交：
+
+| 提交 | 内容 | 评估 |
+|---|---|---|
+| `c8853531` | **fix(quickjs): 迁移到 quickjs-kt 并修复资源泄露**（close #1904；含依赖切换 + `search` 模块同改 + 两个新测试） | **部分吸收（2026-09-16，`641b46fe`）——只取防护，不迁引擎**。issue #1903 三点：fork ① 死循环挂起 ❌、② 无内存上限 ❌、③ context 未 destroy ✅（早已有）。**关键发现：fork 现用的 `wang.harlon.quickjs:3.2.3` 本身就提供 `setMemoryLimit`/`setMaxStackSize`** ⇒ ② 两行即可，无需迁依赖；① 该库无中断接口 ⇒ 独立线程 + `join(10s)`（超时路径**不 destroy**，否则 use-after-free）。顺带加固 `search` 的 `CustomJsSearchService`（同一库执行用户手写脚本，同样会拖崩 app）。**真机 instrumented 8/8 验证**（死循环返超时/大分配被拦且进程存活/深递归转 JS 异常）；纯 JVM 单测 10 项 |
+| `5078ce19` | Refresh MiniMax regional and TTS defaults（#1911） | 待评估：仅默认值刷新，看 fork 是否有对应 provider 注册项 |
+| `7ee13f2a` + `9a35e3f2` | **feat: 支持 blur/glass 2 种输入栏效果** + haze 版本升级（13 文件 108+） | 待评估：**与 fork 的输入栏定制（haze/glassHazeState 已用）有重叠**，须先看是否已等价、避免冲突 |
+| `d47d13a6` | **fix: 完善所有语言的重新生成消息确认提示**（6 语言各 1 行） | **已评估待定（2026-09-14）→ 现在更需重评**：fork 的重生成已改为 **scope 对话框**（`ad3543b2`），上游那版文案未必适用；改文案前先看它对的是哪个入口 |
+| `8e304bb1` | **feat: 火山引擎 TTS 支持**（+120 行 provider + 配置 UI + 测试） | **已评估待定（2026-09-14）**：fork 的 TTS 是 `speech` 模块自有实现，需确认是否同构；纯新增 provider，冲突面小 |
+| `d6ba728e`/`288a034c`/`bc9d2582` | 依赖更新 + 一次 `lib.versions.toml` 误删事故回滚 | 不吸收（同前述判断） |
+| `bd936caa` | 非聊天请求 session id 头 | 不吸收（fork 无 sessionId 概念，见上） |
+
+### 2026-09-16 上游 issue 巡检（值得注意的）
+
+| issue | 内容 | 与 fork 的关系 |
+|---|---|---|
+| **#1915** | bug: 收藏页删除时撤销失效（OPEN，0 评论，报于 2.5.2） | **fork 已修**（`aa2c9a53`）：这正是 fork 设计稿 §1.4 缺陷 A —— `removeFavorite`/`restoreFavorite` 是 fire-and-forget ⇒ `upsert` 可能先于 `delete` 落库、撤销被覆盖。**该 issue 的「补充」段引用的就是 fork 的分析**。**可考虑回馈上游**（需先比对两侧 `FavoriteVM` 结构） |
+| **#1918** | bug: 助手消息预填充不生效（OPEN；用户带完整抓包） | **已评估（2026-09-16）：不是 bug，是「注入模型不含末尾位置」的结构限制**。详见下节 |
+| #1903/#1904 | eval_javascript 缺资源防护 | **已修**（`641b46fe`） |
+| #1912 | 工具审批无法关闭（OPEN） | **fork 不受影响**：前置修复（`55506496` 连续审批丢失、`1f04d2db` /tmp 免审批）**代码等价核对均在 fork**；且上游 2.5.2 也未修此 issue |
+| #1889 | 切换对话时思考过程/消息丢失 | **fork 结构上不受影响**：`ConversationSession` 是引用计数 + idle check，切页只 `release()` 不中断生成 |
+| #1910/#1906/#1899/#1901/#1905 | OAuth 账号登录 / 消息引用 / 远程服务器模式 / Skills 分类搜索 / 屏幕常亮 | 功能请求，未评估（体量见 issue 本身） |
+
+### #1918 助手预填充评估（2026-09-16，仅评估未实现）
+
+**结论：用户观察属实、诊断精确，但这不是 bug 而是「不想实现」——fork 与上游一致，属注入模型的
+结构限制。**
+
+**用户的诊断已被代码逐条印证**：
+
+1. 「注入的 assistant 消息**不在数组末尾**」——✅ 属实且**结构上不可能**在末尾：
+   `PromptInjectionTransformer` 只有四个插入位置，**没有一个能插到最后一条消息之后**：
+   `TOP_OF_CHAT`（第一条 USER 前）、`BOTTOM_OF_CHAT`（`insertIndex = result.size - 1` → **最后一条之前**）、
+   `AT_DEPTH`（`depth=0` 被 `coerceAtLeast(1)` → 同样 `size-1`）、system 前后两处。
+   fork 自己的单测 `mode injection with BOTTOM_OF_CHAT should insert before last message`
+   **把这个行为钉住了**（注释即「在最后一条消息之前插入」）。
+2. 「需要 `prefix: true`」——✅ 属实：全仓**无 `prefix` 字段**（唯一命中是 S3 的 prefix）。
+3. 「界面应显示预填充+续写」——需生成回路改动（预填充文本要进落库消息）。
+
+**历史脉络**（查 issue 得到的，很关键）：**#723**（请求预填充）→ **PR #733 已合并**，
+但实现的是「**给注入加 USER/ASSISTANT 角色**」（`InjectionRole`）+ UI 选择器
+（`prompt_page_role_assistant` = "助手（预填充）"）——**它只是让注入消息的 role 可以是
+assistant，并没有加「末尾位置」，也没加 `prefix`**。**#763** 用户再次要求，maintainer 回
+「`助手设置>提示词>预设聊天消息` 不就是吗？」并指其 issue 是 AI 生成的；用户解释了
+「开头注入=伪造已完成回复 vs 末尾注入=正在进行的回复」的区别，随后 PR #733 合并。
+
+⇒ **所以 upsteam 在 2026-01 就以「加 role 选项」的形式关掉了这个需求，但那个实现解决不了
+用户真正要的「末尾预填充」**。#1918 是同一需求的第二次出现（用户这次带了抓包证据）。
+
+**要真做，需要三件事**（都不是小改）：
+
+| # | 改动 | 说明 |
+|---|---|---|
+| 1 | **新增「末尾」注入位置** | 现有四个位置都在末尾之前；且 `findSafeInsertIndex` 会**主动前移**（避免插进 `USER → ASSISTANT(含Tool)` 之间）——末尾注入必须绕开它，否则又会被推回去 |
+| 2 | **provider 侧支持 prefill** | Chat Completions 需在末尾 assistant 消息带 `prefix: true`（DeepSeek 且可能要 `/beta` 路径）；Claude 原生 API 的 assistant 末尾消息**本身就是预填充**（无需 prefix）；Gemini 用 `model` role。**三家语义与字段各不相同**（与本仓记录的「跨 provider 缓存语义不同」同类问题） |
+| 3 | **生成回路与落库** | 预填充文本要不要进 `messageNodes`？要则需处理「模型续写接在其后」的合并；不要则 UI 上会出现一条看不见的上下文（用户第 3 点期望是**要显示**） |
+
+**阻塞点**：与 fork 的**压缩线**交互——注入在 `windowMessages` 组装**之后**由 transformer 施加，
+新增"末尾"位置须与检查点合成消息/区域指纹/`isSynthetic` 共存；且预填充若落库还会触发
+区域指纹与 FTS 索引。**评估：可行但属独立课题，不建议顺手做**。
+
 ## 同步方式（ff-only，仅本地）
 
 ```
