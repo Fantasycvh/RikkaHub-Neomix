@@ -121,7 +121,9 @@
 | #1903/#1904 | eval_javascript 缺资源防护 | **已修**（`641b46fe`） |
 | #1912 | 工具审批无法关闭（OPEN） | **fork 不受影响**：前置修复（`55506496` 连续审批丢失、`1f04d2db` /tmp 免审批）**代码等价核对均在 fork**；且上游 2.5.2 也未修此 issue |
 | #1889 | 切换对话时思考过程/消息丢失 | **fork 结构上不受影响**：`ConversationSession` 是引用计数 + idle check，切页只 `release()` 不中断生成 |
-| #1910/#1906/#1899/#1901/#1905 | OAuth 账号登录 / 消息引用 / 远程服务器模式 / Skills 分类搜索 / 屏幕常亮 | 功能请求，未评估（体量见 issue 本身） |
+| **#1906** | feat: 聊天消息支持「引用」（QQ 式） | **已评估（2026-09-16，未实现）：体量「小–中」，是本次巡检里性价比最高的一项**。见下节 |
+| **#1901** | feat: Skills 分类 / 标签 / 搜索 | **已评估（2026-09-16，未实现）：搜索最便宜、分类次之、标签最贵；且 issue 正文给的 `tags: [word, document]` 写法在本仓读不出来**（实测）。见下节 |
+| #1910/#1899/#1905 | OAuth 账号登录 / 远程服务器模式 / 屏幕常亮 | 功能请求，未评估（体量见 issue 本身） |
 
 ### #1918 助手预填充评估（2026-09-16，仅评估未实现）
 
@@ -160,6 +162,152 @@ assistant，并没有加「末尾位置」，也没加 `prefix`**。**#763** 用
 **阻塞点**：与 fork 的**压缩线**交互——注入在 `windowMessages` 组装**之后**由 transformer 施加，
 新增"末尾"位置须与检查点合成消息/区域指纹/`isSynthetic` 共存；且预填充若落库还会触发
 区域指纹与 FTS 索引。**评估：可行但属独立课题，不建议顺手做**。
+
+### #1906 消息引用评估（2026-09-16，仅评估未实现）
+
+**结论：值得做，且应落在 `UIMessageAnnotation` 上——不要新加 `UIMessagePart` 子类。**
+
+#### 决定性事实：新 part 会被三家 provider 静默丢弃
+
+issue 建议「消息体扩展一个 quote 字段，对已有消息结构兼容性好」——**方向对，但选点若落在
+part 上会得到一个「本地看得见、模型看不见」的假功能**。核实：三家 provider 的 part→API
+转换**都是「白名单遍历 + `else -> null`」**：
+
+| provider | 位置 | 形状 |
+|---|---|---|
+| Claude | `ClaudeProvider.kt:484` | `UIMessagePart.toContentBlock(): JsonObject?` … `else -> null` |
+| Google | `GoogleProvider.kt:705` | 同上，`else -> null`（`:746`） |
+| OpenAI 系 | `ChatCompletionsAPI.kt:565` 等 5 处、`ResponseAPI.kt:325/493` | 同样 `else -> {}` / `else -> null` |
+
+调用方一律是 `message.parts.mapNotNull { it.toContentBlock() }`（Claude `:479`/`:441`）。**后果**：
+新增 part 类型**能编译过、也会被静默过滤掉**——UI 上引用卡片正常渲染，但发给模型的消息里
+什么都不剩。这正是本仓已知的「静默丢弃」类陷阱（同类：`ChatMessage.kt:333` 的
+`else -> { /* Skip unknown part types */ }`）。
+
+⇒ **正确选点 = `UIMessageAnnotation`**（`ai/src/main/java/app/androidrik/ai/ui/UIMessageAnnotation.kt`），
+加 `@SerialName("quoted_message") data class QuotedMessage(...)`。理由：
+
+1. **注解不在 provider 白名单路径上** ⇒ 不会被 `mapNotNull` 意外吞掉，语义明确。
+2. **已有先例**：`UrlCitation`、`PartialFailure`（#1812）都是注解，且
+   `ChatMessage.kt:145`/`:631` 已按注解渲染 UI（`PartialFailureBanner` 就是现成模板）。
+3. **零迁移**：`MessageNodeEntity.messages` 是 `String`（JSON blob，`ConversationRepository.kt:626`
+   `JsonInstant.encodeToString`），而 `JsonInstant` 开了 `ignoreUnknownKeys` ⇒ 加字段不动 DB。
+
+**但要「让模型看到引用」仍需一步显式转换**：注解本身也不进请求。最小做法是在
+`preprocessUserInputParts`（`ChatService.kt:535`）或一个 `InputMessageTransformer` 里，把引用
+**展开成文本前缀**（`<quoted author="user">…</quoted>\n\n新内容`）。这与
+`DocumentAsPromptTransformer` 把文档转 `<UploadFile>` 提示词是同一手法，**有现成范式可抄**。
+
+#### 数据形态：存节点 id，不存内容快照（与 issue 建议的差异）
+
+issue 建议存 `content` 前 100 字摘要。**不建议**：那会重蹈本仓
+[[conversation-import-export]] 中「压缩检查点 boundaryNodeId 换 id 后失效」的覆辙——
+引用若只存文本，重新生成/编辑后引用就指向幽灵。**建议存 `nodeId: Uuid` + `messageId: Uuid`，
+渲染时实时解析**；解析不到（原消息被删/被截断）则降级显示为「原消息已不可用」占位。
+`NodeFavoriteRef(conversationId, nodeId)`（`data/model/Favorite.kt:39`）就是这个形状的现成先例。
+
+#### 真难点（都是本仓特有的，不是 UI 活）
+
+| # | 难点 | 说明 |
+|---|---|---|
+| 1 | **消息队列不携带注解** | `QueuedMessage(parts, answer, isEditing, reply)`（`MessageQueue.kt:12`）**只有 parts、无注解位**。生成期间点发送走的是入队路径（`sendMessage` → `enqueue`），引用信息会在入队这步**丢掉**。要么给 `QueuedMessage` 加字段，要么把引用编码进 parts（后者又回到「模型可见性」问题）。**这是最容易漏的一处** |
+| 2 | **送达模型要显式展开** | 见上：注解不进请求，须 transformer/预处理展开成文本。且**展开文本会进 FTS 与 token 统计** |
+| 3 | **跨分支/截断引用会悬空** | 引用的是「另一分支」的消息、或被 `limitContext`/压缩检查点截断掉的消息时，`nodeId` 在发送窗口内不存在。需定义降级语义（建议：照常展开文本，仅跳转失效） |
+| 4 | **跳转已有现成件** | `onJumpToMessage(index)` 已存在（`ChatList.kt:145`、`ChatPage.kt:553`），目前供压缩检查点预览用。引用卡片点击复用它能省掉 LazyColumn 定位那一摊 |
+
+#### 建议范围（分批）
+
+- **A（小，推荐先做）**：注解模型 + 长按菜单「引用」入口 + 输入框上方引用预览卡 + 发送时
+  展开为文本前缀 + 消息上方引用块渲染（**不做跳转**，只显示引用来源的文本摘要）。
+- **B（中）**：引用块点击跳转原消息（复用 `onJumpToMessage`）+ `QueuedMessage` 携带引用 + 悬空降级。
+- **C（不做）**：存内容快照（会被删/编辑/重生成变成幽灵）、跨设备引用（本仓对话导出已换新 id）。
+
+**估**：A 约 1 个提交（UI 3 处 + 模型 1 处 + 展开 1 处 + 6 语言字符串）；B 再加 1 个提交。
+**比 #1901 便宜，比 #1918 便宜得多。**
+
+### #1901 Skills 分类 / 标签 / 搜索评估（2026-09-16，仅评估未实现）
+
+**结论：搜索最便宜（几乎零风险），分类中等，标签最贵且会引入一个跨模块的数据一致性问题。
+建议只做「搜索 + 分类」，先把标签放掉。**
+
+#### ⚠️ 首要发现：issue 建议的 YAML 写法本仓读不出来（实测）
+
+issue 正文给的 frontmatter 是：
+
+```yaml
+tags:
+  - word
+  - document
+```
+
+**实测结论：这个 `tags` 在当前代码里解析为 `null`。** 我写了临时探针单测跑出：
+
+```
+name       = word-documents
+category   = office          ← 标量正常
+tags(block)= null            ← 块式列表 → null
+tagsInline = null            ← [aa, bb] → null
+tagsComma  = x, y            ← 字符串正常
+```
+
+**根因**：`SkillFrontmatter.get`（`SkillFrontmatterParser.kt:52`）是
+`values[key] as? String`——snakeyaml 把列表解析成 `ArrayList`，`as? String` 直接给 `null`。
+**所以无论块式还是内联，任何 `List` 都被静默吞掉。**
+
+⇒ **要做标签，第一步必须扩 `SkillFrontmatter`**（加 `fun getList(key): List<String>?`，兼容
+`List` 与逗号分隔字符串两种写法）。**这是 issue 作者没意识到的前置工作**，也是「必须
+`.getList` 而非 `.get`」这种「接口存在但取不到值」的典型静默失败。（上游同一解析器，
+**必然同样读不出**。）
+
+#### 各处改动成本（按面）
+
+| 面 | 位置 | 成本 |
+|---|---|---|
+| 解析 | `SkillFrontmatterParser`（`getList`）+ `SkillMetadata` 加 `category`/`tags` | 小，但**是标签的前提** |
+| 列表页 | `SkillsPage.kt`（460 行，`items(skills)` 平铺）| 中：搜索框 + 分类筛选 chips + 分组 |
+| 填充 | `SkillManager.parseSkillFile`（`:189`，唯一构造 `SkillMetadata` 处）| 小 |
+| **AI 侧** | `SkillsTools.createSkillTools`（`systemPrompt` 把**所有已启用技能**的名字+描述**全量注入**）| ⚠️ 见下 |
+| **AI 写入** | `SkillInstallTools` → `SkillInstaller.saveFromContent` → `buildSkillMarkdown`（`:66`）**硬编码只写 name+description 两行** | ⚠️ 见下 |
+| 另两处 UI | `ExtensionSelector.kt:203`（扩展面板技能 tab）、`AssistantExtensionsPage.kt:195` | 共享 `SkillsContent` 组件，**加参数即可** |
+| 详情页 | `SkillDetailPage.kt`（含 `EditFileDialog` 直接编辑 SKILL.md 原文）| 小 |
+
+#### 两个真陷阱
+
+**陷阱 1（数据丢失）：AI 装技能会抹掉 category/tags。**
+`buildSkillMarkdown`（`SkillInstaller.kt:66`）是**字符串模板硬编码**：
+
+```kotlin
+append("---\n"); append("name: $name\n"); append("description: $description\n"); append("---\n\n")
+```
+
+`validateSkillContent` 也只收 name/description/content。⇒ **AI 用 `install_skill` 覆盖已有技能
+时，用户手写的 `category`/`tags` 会被整段丢掉**（`saveSkillFileBytesAtomically` 是**整体替换**
+目录，不是合并）。这不是新 bug（`compatibility` 今天就有同样问题），但**加了标签后会立刻变得
+显眼**。修法：`saveFromContent` 走「读原文件 → 保留未知 frontmatter 键 → 重写」而不是模板拼串。
+
+**陷阱 2（injection 成本）：分类注入 AI 会让「分类」变成 token 负担。**
+`SkillsTools` 的 `systemPrompt` 把已启用技能全量列出（本仓已实测：MCP 工具 schema 就能占 ~33K
+token，见 [[prompt-size-composition]]）。若把 `category`/`tags` 也塞进这段注入，**每个已启用
+技能都多几个 token，且这些字段对模型决策无用**。⇒ **建议：分类/标签只做「管理页的组织维度」，
+不进 systemPrompt**（`use_skill` 的检索靠 name+description 已足够）。这与 issue 的诉求
+（「数量变多后列表难以管理」）完全一致——**要解决的是人的浏览问题，不是模型的检索问题**。
+
+#### 建议范围
+
+- **A（小，推荐）**：**搜索框**（按 name + description 过滤，纯前端，`remember(query)` 即可，
+  参考 `ChatList.kt:664` 的现成写法）。**零数据模型改动、零迁移、零 AI 侧影响。**
+- **B（中，推荐）**：**单 `category` 标量 + 分类筛选 chips + 可选分组**。需扩
+  `SkillFrontmatter.get`→标量已有、只加 `SkillMetadata` 字段 + `parseSkillFile` 填充 + UI。
+  **顺带修陷阱 1**（否则 AI 装技能会抹掉分类）。
+- **C（暂不做）**：**多标签**。要新增 `getList` 解析、多标签筛选 UI、标签池管理
+  （可参考 fork 已落地的 [[favorite-management]] 标签设计：**存 id 不存名**）。
+  收益相对 B 小很多，且撞上陷阱 1/2。
+
+**估**：A 约半天（1 提交）；B 约 1–1.5 天（含陷阱 1 修复与 6 语言字符串）。
+**注意：分类是 SKILL.md 里的**手写**字段**——与 fork 的<b>收藏标签</b>（存在 `meta_json`、有独立标签池）
+**不是同一形态**：技能没有可放标签池的 DB 表，标签只能进 frontmatter 文本，
+**所以「重命名标签」在技能上就是要批量改文件**（收藏那边存 id 才免掉这一步）。
+这也是建议把 C 放掉的一个理由。
 
 ## 同步方式（ff-only，仅本地）
 
