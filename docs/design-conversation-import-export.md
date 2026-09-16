@@ -39,6 +39,7 @@
 | **助手选择 UI** | `ui/components/ai/AssistantPicker.kt`（247 行） | `AssistantPicker` + `AssistantPickerSheet` + `AssistantItem` |
 | **导入确认弹窗** | `RestoreConfirmDialog` | 天然的挂载点 |
 | 附件内联编码 | `Export.kt` 的 `part.encodeBase64()` | Markdown 导出已在用（二阶段复用） |
+| **压缩检查点迁移（方案 A）** | `addCompressionCheckpoint` + 重映射 + `areaFingerprintFor` 重算（§5.1） |
 | FTS 重建 | `MessageFtsManager.indexConversation` | 导入后调用即可 |
 
 ## 二、已定决策
@@ -49,7 +50,7 @@
 | 2 | **第一阶段不导出附件** | 顺带消掉最麻烦的"附件路径跨设备失效"问题；二阶段再定附件格式 |
 | 3 | **导入时用户选择目标助手** | 消掉"跨设备 `assistantId` 悬空"问题 |
 | 4 | **导出文件不存 `assistantId`** | 跨设备必失效，一律以用户选择为准（§4.4） |
-| 5 | **不导出 `compressionSummaries`** | **但需配套处理上下文长度——见 §5.1**（原「无效应」判断已更正） |
+| 5 | **导出并携带 `compressionSummaries`，导入时重算指纹（方案 A）** | 见 §5.1；**原「不带」判断已更正**——不带会导致长会话静默的全量发送 |
 | 6 | **Chatbox/CherryStudio 也加助手选择，并借此统一导入器** | **新开一轮**（见 §八） |
 | 7 | **二阶段再决定附件格式** | 一阶段纯 JSON，`version` 位预留 |
 
@@ -131,52 +132,49 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 | `assistantId` | **丢弃**，改用用户选择（§四） |
 | `id`（会话/节点/消息） | **全部换新**（§三） |
 | `createAt` / `updateAt` | 直接反序列化（`InstantSerializer` 已就绪；比外部格式的 min/max 推断更准） |
-| `compressionSummaries` | **不带**（用户决定）。**但这会引出上下文长度问题，需配套处理——见 §5.1**。原判断「带了也无效应」**有误，已更正**。 |
+| `compressionSummaries` | **携带**（方案 A）：`conversationId`/`boundaryNodeId` 重映射 + `areaFingerprint` 重算，详见 §5.1 |
 | 附件 `file://` 引用 | **一阶段：保留占位文本**（或按 §七 选项清理）；二阶段内联 |
 
-### 5.1 「不带检查点」的真实代价与配套（更正原判断）
+### 5.1 压缩检查点：**决策 A（带检查点 + 重算指纹）**
 
-**原判断有误**：我曾写「带了也无效应」，但核实 `activeCompression()` 后发现相反——
+> **更正**：本文档早期版本写「不导出检查点（带了也无效应）」——**该判断有误**。
+> 核实 `Conversation.activeCompression()`：`val fingerprint = checkpoint.areaFingerprint ?: return checkpoint`
+> （`Conversation.kt:116`）→ **指纹为 null 时检查点仍生效**（退化为「仅边界存在性校验」）。
+> 故这不是"有效/无效"，而是两种策略。**用户拍板选 A**。
 
-```kotlin
-val fingerprint = checkpoint.areaFingerprint ?: return checkpoint   // ← 指纹为 null 时【仍生效】
-```
+**A 的做法**：导出携带 `compressionSummaries`；导入换 id 后**重算指纹**再落库。
 
-即 **`areaFingerprint = null` 会退化为「仅边界存在性校验」，检查点依然生效**（`Conversation.kt:116`）。
-所以「带检查点但指纹失配」不是"无效应"，而是**两种可选策略**：
+**为什么可行**：`Conversation.areaFingerprintFor(boundaryNodeIndex)` 是 **public**
+（`Conversation.kt:201`），且指纹算法本就是「区域内节点 id + 选中消息 id 的哈希」——
+换 id 后在新 id 上重算即可自洽。
 
-| 策略 | 做法 | 后果 |
+**A 的实施清单（比"一行调用"多几点，均已核实）**：
+
+| # | 事项 | 依据 |
 |---|---|---|
-| **A. 带 + 重算指纹** | 导入换 id 后，用 `areaFingerprintFor(boundaryIndex)` **重算**（该 API 是 public） | 检查点**导入后有效**，上下文立刻是"压缩后"的大小 |
-| **B. 不带**（用户决定） | 不导出 `compressionSummaries` | 导入后**无检查点** → 发送全量历史 |
+| 1 | **`conversationId` 重映射** | 检查点是**独立表** `compression_checkpoint`，主键自增、外键指向 `conversation_id`（`onDelete = CASCADE`）→ 必须改成**新会话 id**，否则外键悬空/被级联删 |
+| 2 | **`boundaryNodeId` 重映射** | 指向 `message_node.id`；换 id 后必须**换成新节点 id**（旧 id 在新会话里不存在 → 检查点立即失效） |
+| 3 | **重算 `areaFingerprint`** | 用 `areaFingerprintFor(boundaryIndex)`（新节点序列上）覆盖文件里带的值 |
+| 4 | **`messageCount` 原样保留** | 它只是**展示**用（「已压缩 N 条」，`CompactionCheckpoint.kt:61`）与下次压缩的累计基数（`ChatService.kt:1266`），与新 id 无关 |
+| 5 | **`content` / `createdAt` 原样** | 摘要正文与时间不受换 id 影响 |
+| 6 | **落库时机** | 用现成的 `addCompressionCheckpoint(summary)`（`ConversationRepository.kt:444`，签名收 `CompressionSummary`） |
+| 7 | **顺序** | 必须在**会话与节点 id 已确定之后**落库（与 §三 的换 id 同批完成） |
 
-**选 B 的代价（用户反问的正是这个）**：长会话导入后，`currentMessages` 全量参与发送，
-只靠 **`limitContext(assistant.contextMessageLimit)`** 兜底——而它的默认值是 **0（= 不限制）**！
+**A 的收益**：导入的会话**保持原压缩状态**——`currentMessages` 仍是「检查点合成消息 + 边界后原文」，
+发送上下文立刻是压缩后的大小，**不依赖 `limitContext` 兜底**（其默认 `contextMessageLimit = 0` = 不限制，
+见下方"为何必须处理"）。
 
-```kotlin
-// Assistant.kt:29
-val contextMessageLimit: Int = 0      // 0 = 不截断
-```
+### 5.2 为何必须处理（B 的代价，作为 A 的反证）
 
-`limitContext` 在 `limit <= 0` 时**直接返回原列表**（`Message.kt:336`）。所以：
+若**不带**检查点（原 B 方案）：
 
-- 若目标助手的 `contextMessageLimit` 为 0（默认）→ **全量历史直接发给模型**
-  → 超过模型窗口时报错，或（更糟）被供应商静默截断/计费暴涨；
-- 只有用户**显式配过** `contextMessageLimit` 时才有兜底。
+- `currentMessages` 全量参与发送，**唯一兜底是 `limitContext(assistant.contextMessageLimit)`**；
+- 而 **`contextMessageLimit` 默认值是 `0` = 不限制**（`Assistant.kt:29`）——
+  `limitContext` 在 `limit <= 0` 时**直接返回原列表**（`Message.kt:336`）；
+- → 目标助手**未显式配过上限时，长会话导入等于全量发送**：超模型窗口报错，
+  或被供应商静默截断/计费暴涨。
 
-**因此选 B 必须配套其一**：
-
-1. **导入后提示**：「该对话已压缩过，但摘要未随文件导入；若历史很长，建议在助手设置里配置
-   上下文消息上限，或对其手动执行一次压缩」；
-2. **或：导入时自动压缩一次**（复用现有 `compressToCheckpoint`，成本=一次 LLM 调用，
-   需用户确认/开关）；
-3. **或：改主意选 A**（重算指纹），零额外成本且语义最好。
-
-**我的建议**：**A 更好**（技术上一行 `areaFingerprintFor` 即可，且"导入的会话保持原压缩状态"更符合直觉）；
-若坚持 B，则**至少要做 1（提示）**，否则长会话导入是静默的上下文膨胀。
-
-> 注：B 的一个附带好处是"避免带进无效检查点行"。但 A 通过重算指纹就消除了"无效"，
-> 所以这个好处不构成选 B 的理由。
+**这是静默的上下文膨胀，不是"少了点优化"**——故 A 不只是"更优雅"，而是避免一条真实故障路径。
 
 ## 六、分阶段
 
@@ -205,8 +203,8 @@ val contextMessageLimit: Int = 0      // 0 = 不截断
 2. **换 id 与防覆盖的顺序**（§三）：务必"先换 id、后检查插入"，否则 skip 分支吃掉导入。
 3. **`AssistantPickerSheet` 的副作用**（§4.2）：**直接用 `AssistantPicker` 会改用户的当前助手**——
    必须用抽出的无副作用版本。
-4. **压缩检查点与上下文长度**（§5.1）：不带检查点是决策，但**必须配套**，否则长会话导入后
-   会出现「全量发送 + 无压缩」的上下文膨胀。
+4. **压缩检查点**（§5.1）：方案 A 需重映射 `conversationId`/`boundaryNodeId` 并**重算指纹**；
+   漏掉任一项 → 检查点失效（边界 id 悬空）或外键悬空。
 5. **`restoreFromChatBox` 的助手设置副作用**（§4.4）：改目标助手 `allowConversationSystemPrompt`
    的行为在"导入到任意助手"后是否仍合理，需确认。
 6. **文件命名与 SAF**：`getExportFileName` 含会话标题 → 需**清洗非法字符**（`/ \ : * ? " < > |`）。
@@ -228,10 +226,7 @@ val contextMessageLimit: Int = 0      // 0 = 不截断
 
 ## 九、待确认
 
-1. **上下文长度配套怎么选**（§5.1）：**A 带检查点+重算指纹**（我建议，零额外成本、语义最好）
-   还是 **B 不带 + 导入时提示**（用户已选 B 的大方向，但需确认配套）？
-2. **重复导入的文案**是否需要显式提示"将新增副本"？
-3. 统一导入器那一轮（§八）是否本设计落地后紧接着做？
+1. **重复导入的文案**是否显式提示"将新增副本"？（决策 1 的直接后果）
+2. **统一导入器那一轮**（§八）是否本设计落地后紧接着做？
 
-（原待确认项 1/2/3/5 均已定：Chatbox/CherryStudio 加助手选择并统一导入器=新开一轮；
-`compressionSummaries` 不带=已定（配套见上）；二阶段附件格式=二阶段再定。）
+（已定：`assistantId` 不存 / 压缩检查点**方案 A** / Chatbox+CherryStudio 加助手选择并统一导入器=新开一轮 / 二阶段再定附件格式。）
