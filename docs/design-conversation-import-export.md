@@ -4,7 +4,7 @@
 > `ConversationImportConfirmDialog`；单测 `ConversationImportRemapTest` 23 项）。
 > 实现差异：**状态原文中的第一项"统一导入器（Chatbox/CherryStudio + 助手选择）"未做** ——
 > 用户决定「等待本格式导入功能验证后再实现」（§九.4）。
-> 用户决定：**①导入即换新 id（不覆盖）②第一阶段不导出附件，第二阶段再用内联 base64 ③导入时允许用户选择目标助手**。
+> 用户决定：**①导入即换新 id（不覆盖）②第一阶段不导出附件，第二阶段改走 zip 原字节（原定 base64 内联已否决）③导入时允许用户选择目标助手**。
 > 关联：`design-backup-workspace-files.md`（整库备份）、`design-favorite-management.md`（同批评估）。
 
 ## 一、现状核实
@@ -41,7 +41,7 @@
 | **换新 id 写法** | `ChatService.forkConversationAtMessage:1513-1526` | `node.copy(id = Uuid.random(), ...)` |
 | **助手选择 UI** | `ui/components/ai/AssistantPicker.kt`（247 行） | `AssistantPicker` + `AssistantPickerSheet` + `AssistantItem` |
 | **导入确认弹窗** | `RestoreConfirmDialog` | 天然的挂载点 |
-| 附件内联编码 | `Export.kt` 的 `part.encodeBase64()` | Markdown 导出已在用（二阶段复用） |
+| zip 读写 + zip-slip 防护 | `BackupArchiveEngine` | 整库备份已在用（二阶段复用） |
 | **压缩检查点迁移（方案 A）** | `addCompressionCheckpoint` + 重映射 + `areaFingerprintFor` 重算（§5.1） |
 | FTS 重建 | `MessageFtsManager.indexConversation` |
 | **重复导入检测（§十）** | `ExportData.sourceId` + `Settings.importedSources` 三件套 + 确认弹窗 | 导入后调用即可 |
@@ -51,12 +51,12 @@
 | # | 决策 | 后果 |
 |---|---|---|
 | 1 | **导入即新建、全部换新 id，永不覆盖** | 消掉"覆盖已有会话"的数据丢失风险；`existsConversationById` 的 skip 分支**永不命中** |
-| 2 | **第一阶段不导出附件** | 顺带消掉最麻烦的"附件路径跨设备失效"问题；二阶段再定附件格式 |
+| 2 | **第一阶段不导出附件** | 顺带消掉最麻烦的"附件路径跨设备失效"问题；二阶段走 zip 原字节（§六 阶段 2） |
 | 3 | **导入时用户选择目标助手** | 消掉"跨设备 `assistantId` 悬空"问题 |
 | 4 | **导出文件不存 `assistantId`** | 跨设备必失效，一律以用户选择为准（§4.4） |
 | 5 | **导出并携带 `compressionSummaries`，导入时重算指纹（方案 A）** | 见 §5.1；**原「不带」判断已更正**——不带会导致长会话静默的全量发送 |
 | 6 | **Chatbox/CherryStudio 也加助手选择，并借此统一导入器** | **新开一轮**（见 §八） |
-| 7 | **二阶段再决定附件格式** | 一阶段纯 JSON，`version` 位预留 |
+| 7 | ~~二阶段再决定附件格式~~ | **已定：始终 zip + 附件原字节**（2026-09-16） |
 | 8 | **重复导入检测 + 提示（允许继续）** | 因决策 1 换新 id 使旧判据失效，**需新增 `sourceId` 锚点**——见 §十 |
 | 9 | **统一导入器：等导入功能验证后再做** | 依赖顺序（不是并行）——见 §八 |
 
@@ -139,7 +139,10 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 | `id`（会话/节点/消息） | **全部换新**（§三） |
 | `createAt` / `updateAt` | 直接反序列化（`InstantSerializer` 已就绪；比外部格式的 min/max 推断更准） |
 | `compressionSummaries` | **携带**（方案 A）：`conversationId`/`boundaryNodeId` 重映射 + `areaFingerprint` 重算，详见 §5.1 |
-| 附件 `file://` 引用 | **一阶段：原样保留 `file://` 文本引用**（不含附件字节）——同设备导入时经 `normalizeLocalFileUrl` 显示层归一化仍可读；跨设备则读不到（二阶段内联 base64 解决） |
+| `folderId` | **清空**（源文件夹属于源助手；悬空会让会话在抽屉默认视图里消失） |
+| `workspaceCwd` | **清空**（源工作区绝对路径；目标工作区无此路径时 executeCommand 抛错） |
+| `modeInjectionIds` / `lorebookIds` | **保留**（按 id 过滤匹配，悬空无副作用） |
+| 附件 `file://` 引用 | **一阶段：原样保留 `file://` 文本引用**（不含附件字节）——同设备导入时经 `normalizeLocalFileUrl` 显示层归一化仍可读；跨设备则读不到（二阶段 zip 原字节解决） |
 
 ### 5.1 压缩检查点：**决策 A（带检查点 + 重算指纹）**
 
@@ -196,16 +199,76 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 | 助手不存在 | 一律以用户选择为准（§4.4） |
 | FTS 重建 | `MessageFtsManager.indexConversation` |
 
-### 阶段 2（中）
+### 阶段 2（中）：**zip 容器 + 附件原字节**
 
-附件内联 base64（复用 `Export.kt` 的 `encodeBase64`）。
-**先定格式**（见 §七.1），再实现。
+> **决策（2026-09-16）**：容器**始终为 zip**（无裸 JSON 分支），附件走**原字节条目**。
+> **不做 base64 内联**——原稿写的理由是"体积膨胀 33%"，但实核发现更严重的问题（见 §六「阶段 2 的关键约束」）。
+
+格式：**始终 zip，无需兼容裸 JSON**（用户决策：本功能尚未发布，无历史文件包袱）。
+
+```
+conversation.zip
+├── conversation.json                      # ExportData，version = 2
+└── attachments/<sha256 前 16 位>.<ext>     # 按内容哈希命名 → 单次导出内天然去重
+```
+
+`conversation.json` 仍是完整的 `ExportData`，**不自带附件字节**；附件与 JSON 之间靠
+`ExportData` 新增的一张清单关联——**不把 URL 改写成 `attachment://` 之类伪协议**
+（导入中途失败时伪协议会残留在库里成为非法值）：
+
+```kotlin
+@Serializable
+data class ExportFileEntry(
+    val originalUrl: String,   // 导出时的 part URL（可能是旧包名路径）→ 导入侧据此回填
+    val entry: String,         // zip 内条目名，如 "attachments/ab12cd34.png"
+    val fileName: String,      // Document.fileName 或 URL basename
+    val mime: String,
+    val size: Long,
+    val sha256: String,        // 去重键 + 完整性校验
+)
+// ExportData 加：val files: List<ExportFileEntry> = emptyList()
+```
+
+导入流程：解 zip → 读 `conversation.json` → 逐条目 `FilesManager.saveManagedFromBytes` 落到
+`files/upload/<新 uuid>` → 按 `originalUrl → 新 file://` 建映射、**递归**替换所有 part 的 URL
+（须用 `Conversation.files` 那套 `collectAllParts`，工具输出里也能嵌附件）→ 再套 `remapForImport`
+→ 提交。
+
+**必须走 `saveManagedFromBytes`**（而不是自己 writeBytes）：它同时登记 `managed_files`，
+否则文件管理页会把 UUID 当显示名。
+
+### 阶段 2 的关键约束（实核得出）
+
+1. **`Image.encodeBase64` 会破坏数据，不能用**：`FileEncoder.kt:117` 的 `compressAndEncode`
+   把图片**有损重编码**为 JPEG quality 85（丢 PNG 透明通道、动图丢帧），超过 1600 万像素还会
+   降采样（上限 10000px）。往返格式必须是**原字节**。
+2. **`Document` 没有 `encodeBase64` 重载**（只有 Image/Video/Audio）→ base64 方案连覆盖面都不全。
+3. **导入不能把 base64 写回 part 再插库**：`ConversationRepository.kt:390` 有
+   `require(messageNodes.none { it.messages.any { it.hasBase64Part() } })`
+   → 带 `data:` 图片的消息**会抛异常**。故必须先把附件物化成文件、URL 换成 `file://`。
+4. **删会话会删附件文件**（`deleteConversation(deleteFiles = true)` 按 part URL 删盘）
+   → 导入必须生成**新文件名**（真拷贝），不能复用原路径，否则删原会话会连带删掉导入副本的附件。
+5. **导出侧的 URL 要经 `normalizeLocalFileUrl` 归一化**：存量数据的 part URL 大量写成旧包名
+   `file:///data/user/0/me.rerere.rikkahub/files/upload/...`（**实核：设备上 28 个 document +
+   9 个 image 都是这个形状**），磁盘上并不存在，只能靠取 basename 重解析找到真实文件。
+   不归一化会把大量附件误判为"缺失"。
+6. **附件缺失 → 跳过并计数**（用户决策）：导出照常成功，JSON 里记缺失清单，导入后提示
+   "该对话有 N 个附件缺失"。挡死导出会让人连文字部分都导不出。
+7. **软上限**（用户决策）：合计体积超阈值时提示确认（不硬拒），避免单个大视频让 zip 巨大
+   且 SAF 分享体验崩坏。
+8. **去重范围 = 单次导出内**（用户决策）：zip 内同 sha256 只存一份；**不做跨会话全局去重**
+   —— 后者会重新引入"删一个会话删掉共用文件"的危险（见第 4 点）。
+9. **`version = 2`**；收到 version=2 但内容不是 zip（异常）→ 直接报错，不做兼容猜测。
+
+复用件：zip 读写与 zip-slip 防护见 `BackupArchiveEngine`（`canonicalFile.path.startsWith(destDir)`）；
+条目前缀分区见 `WorkspaceBackupHelper.ZIP_PREFIX`；`FilesManager.saveManagedFromBytes`（落盘+登记）；
+`FilesManager.getFileNameFromUri` / `guessMimeType`（小写私有，需提可见或用 `FileUtils`）。
 
 ## 七、风险与注意点
 
-1. **格式别提前锁死**：一阶段 JSON 不含附件；二阶段若附件走 base64 内联，长对话带多图时
-   **体积膨胀 ~33% 且整段进单个 JSON 字符串**（内存/解析压力）。届时可能应改为**附件单列 zip 条目**
-   （即格式变 zip）。`ExportData.version` 就是为这种演进留的位。
+1. ~~格式别提前锁死~~ **已定**：二阶段**始终 zip + 附件原字节**（§六 阶段 2）。原稿猜"base64 内联
+   体积膨胀 33%"——实核发现真正的问题是 **`encodeBase64` 有损重编码**（JPEG q85 + 降采样）与
+   **`Document` 无该重载**，故 base64 方案从根上不成立，不只是体积问题。
 2. **换 id 与防覆盖的顺序**（§三）：务必"先换 id、后检查插入"，否则 skip 分支吃掉导入。
 3. **`AssistantPickerSheet` 的副作用**（§4.2）：**直接用 `AssistantPicker` 会改用户的当前助手**——
    必须用抽出的无副作用版本。
