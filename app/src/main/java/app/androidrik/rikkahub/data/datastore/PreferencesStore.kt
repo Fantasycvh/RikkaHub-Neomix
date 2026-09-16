@@ -131,6 +131,7 @@ class SettingsStore(
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
         val ASSISTANTS = stringPreferencesKey("assistants")
         val ASSISTANT_TAGS = stringPreferencesKey("assistant_tags")
+        val FAVORITE_TAGS = stringPreferencesKey("favorite_tags")
 
         // 搜索
         val SEARCH_SERVICES = stringPreferencesKey("search_services")
@@ -248,6 +249,9 @@ class SettingsStore(
                 compressPrompt = preferences[COMPRESS_PROMPT] ?: DEFAULT_COMPRESS_PROMPT,
                 assistantId = preferences[SELECT_ASSISTANT]?.let { Uuid.parse(it) }
                     ?: DEFAULT_ASSISTANT_ID,
+                favoriteTags = preferences[FAVORITE_TAGS]?.let {
+                    JsonInstant.decodeFromString<List<Tag>>(it)
+                } ?: emptyList(),
                 assistantTags = preferences[ASSISTANT_TAGS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
@@ -483,6 +487,7 @@ class SettingsStore(
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
             preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
             preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
+            preferences[FAVORITE_TAGS] = JsonInstant.encodeToString(settings.favoriteTags)
 
             preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
             preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
@@ -653,6 +658,14 @@ data class Settings(
     val removedBuiltInProviderIds: Set<Uuid> = emptySet(),
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,
     val assistantTags: List<Tag> = emptyList(),
+
+    /**
+     * 收藏标签池（**独立于 [assistantTags]**，两者语义不同：前者标签"对话"，后者标签"助手"）。
+     *
+     * 存 id 清单而非名字，收藏侧只存 tag id → 改名不必批量更新收藏。
+     * 与 `assistantTags` 同款写法（单 key JSON 列表）。
+     */
+    val favoriteTags: List<Tag> = emptyList(),
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
     val searchServiceSelected: Int = 0,

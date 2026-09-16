@@ -459,6 +459,17 @@
   <string name="extensions_page_title">擴充功能</string>
   <string name="favorite_page_no_favorites">尚無收藏</string>
   <string name="favorite_page_removed">已移除最愛</string>
+  <string name="favorite_page_sort">排序</string>
+  <string name="favorite_page_sort_by_time">按收藏時間</string>
+  <string name="favorite_page_sort_by_title">按標題</string>
+  <string name="favorite_page_no_match">沒有符合所選標籤的收藏</string>
+  <string name="favorite_page_manage_tags">管理標籤</string>
+  <string name="favorite_page_edit_tags">標籤</string>
+  <string name="favorite_page_no_tags_yet">還沒有標籤，可在下方新增。</string>
+  <string name="favorite_page_new_tag">新標籤</string>
+  <string name="favorite_page_add_tag">新增</string>
+  <string name="favorite_page_rename_tag">重新命名標籤</string>
+  <string name="favorite_page_rename_tag_short">重新命名</string>
   <string name="favorite_page_title">收藏</string>
   <string name="favorite_page_untitled_conversation">未命名對話</string>
   <string name="history_page_cancel">取消</string>

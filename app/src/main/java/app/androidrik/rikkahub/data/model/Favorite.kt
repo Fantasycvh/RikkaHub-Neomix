@@ -26,6 +26,13 @@ data class FavoriteMeta(
     val title: String? = null,
     val subtitle: String? = null,
     val previewText: String? = null,
+    /**
+     * 标签 id 列表（**存 id 而非名** → 标签改名只需改标签池一处，不必批量更新收藏）。
+     *
+     * **零迁移**：`meta_json` 是 JSON blob 且 `JsonInstant` 开了 `ignoreUnknownKeys`
+     * → 旧行缺该字段自动为默认空列表，不加列、不写迁移。见设计稿 §五。
+     */
+    val tagIds: List<Uuid> = emptyList(),
 )
 
 @Serializable

@@ -422,6 +422,17 @@
   <string name="extensions_page_title">Расширения</string>
   <string name="favorite_page_no_favorites">Пока нет избранного</string>
   <string name="favorite_page_removed">Избранное удалено</string>
+  <string name="favorite_page_sort">Сортировка</string>
+  <string name="favorite_page_sort_by_time">По времени</string>
+  <string name="favorite_page_sort_by_title">По названию</string>
+  <string name="favorite_page_no_match">Нет избранного с выбранными тегами</string>
+  <string name="favorite_page_manage_tags">Управление тегами</string>
+  <string name="favorite_page_edit_tags">Теги</string>
+  <string name="favorite_page_no_tags_yet">Тегов пока нет. Создайте ниже.</string>
+  <string name="favorite_page_new_tag">Новый тег</string>
+  <string name="favorite_page_add_tag">Добавить</string>
+  <string name="favorite_page_rename_tag">Переименовать тег</string>
+  <string name="favorite_page_rename_tag_short">Переименовать</string>
   <string name="favorite_page_title">Избранное</string>
   <string name="favorite_page_untitled_conversation">Безымянный разговор</string>
   <string name="history_page_cancel">Отмена</string>

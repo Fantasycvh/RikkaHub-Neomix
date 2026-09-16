@@ -26,10 +26,15 @@ object NodeFavoriteAdapter : FavoriteAdapter<NodeFavoriteTarget> {
             conversationId = target.conversationId,
             nodeId = target.nodeId,
         )
+        // **必须保留既有标签**：本函数每次从 target 重建 meta，若不显式带上 `existing.tagIds`，
+        // 「取消收藏 → 重新收藏」会静默丢掉标签（设计稿 §五 的坑）。
+        // 注：`decodeMeta` 用 runCatching 解析，旧行/坏 JSON 退化为 null → 空标签，安全。
+        val existingTags = existing?.let { decodeMeta(it)?.tagIds }.orEmpty()
         val meta = FavoriteMeta(
             title = target.conversationTitle.ifBlank { null },
             subtitle = target.nodeId.toString(),
             previewText = target.node.buildFavoritePreview(),
+            tagIds = existingTags,
         )
 
         return FavoriteEntity(

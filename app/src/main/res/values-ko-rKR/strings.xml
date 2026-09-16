@@ -422,6 +422,17 @@
   <string name="extensions_page_title">확장 프로그램</string>
   <string name="favorite_page_no_favorites">즐겨찾기 없음</string>
   <string name="favorite_page_removed">즐겨찾기에서 제거됨</string>
+  <string name="favorite_page_sort">정렬</string>
+  <string name="favorite_page_sort_by_time">추가한 시간순</string>
+  <string name="favorite_page_sort_by_title">제목순</string>
+  <string name="favorite_page_no_match">선택한 태그에 해당하는 즐겨찾기가 없습니다</string>
+  <string name="favorite_page_manage_tags">태그 관리</string>
+  <string name="favorite_page_edit_tags">태그</string>
+  <string name="favorite_page_no_tags_yet">아직 태그가 없습니다. 아래에서 만들 수 있습니다.</string>
+  <string name="favorite_page_new_tag">새 태그</string>
+  <string name="favorite_page_add_tag">추가</string>
+  <string name="favorite_page_rename_tag">태그 이름 변경</string>
+  <string name="favorite_page_rename_tag_short">이름 변경</string>
   <string name="favorite_page_title">즐겨찾기</string>
   <string name="favorite_page_untitled_conversation">제목 없는 대화</string>
   <string name="history_page_cancel">취소</string>
