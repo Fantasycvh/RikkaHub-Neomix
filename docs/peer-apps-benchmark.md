@@ -172,4 +172,142 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 
 **LoopGuard 移植提醒**：必须带 SoLab 2.3 的 `ToolCallLoopGuard.forget()` 补丁（失败调用移出指纹窗口，见本文附录）——否则网络恢复后相同参数的合理重试会被误判 `LOOP_DETECTED`。
 
-关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据）。
+## 六、SillyTavern 注入 / 预设评估（2026-09-16，源码级）
+
+**来源**：`<work>\projects\SillyTavern\`（v1.19.0，`06bde939f`；核心 `public/scripts/world-info.js` 6408 行、`openai.js` 7396 行）。
+
+**提问背景**：用户判断「ST 的预设原本好好的，后来都去搞花里胡哨的各种面板」——问 ST 的**注入与预设**部分若借鉴，值不值得。**结论先行：用户这个判断对，而且它恰好划出了分界线——ST 值得抄的恰恰是「不是面板」的那部分（世界书激活质量 + 预设的槽位序），需要避开的正是后来堆上去的那些字段与面板。**
+
+### 6.1 世界书：fork 13 字段 vs ST 35 字段，但差距不在数量
+
+fork 的 `PromptInjection.RegexInjection`（`Assistant.kt:226-240`）共 13 字段：
+`id/name/enabled/priority/position/content/injectDepth/role` + `keywords/useRegex/caseSensitive/scanDepth/constantActive`。
+
+ST 的 `newWorldInfoEntryDefinition`（`world-info.js:4079-4124`）共约 35 字段。**逐项归类后差距收敛为「4 个该抄、一批该避、其余无关」**：
+
+| 类别 | ST 字段 | 判断 |
+|---|---|---|
+| **该抄** | `keysecondary` + `selectiveLogic`（4 模式）、`world_info_budget` + `ignoreBudget`、`scanDepth` 的**多源扫描**（`matchCharacterDescription`/`matchPersonaDescription`/`matchScenario` 等 6 个 flag） | 见 6.2 |
+| **该避** | `sticky`/`cooldown`/`delay`、`probability`/`useProbability`、`group`/`groupWeight`/`groupOverride`/`useGroupScoring`、`vectorized`、`outletName`、`automationId`、`matchWholeWords`、`addMemo`、`position` 的 EM/AN/outlet 三段 | 见 6.4——**这就是用户说的「花里胡哨」** |
+| **无关** | `characterFilterNames`/`characterFilterTags`/`displayIndex`/`uid`/`triggers` 等 ST 内部记账 | 不涉及 |
+
+### 6.2 值得借鉴（按价值排序）
+
+**① 次要关键词 + 选择逻辑（`keysecondary` + `selectiveLogic`）——最推荐，且是「导入保真」问题而非锦上添花**
+
+这是世界书的**核心质量机制**：主键命中后，再用次要键二次收窄。ST 有四种逻辑（`world-info.js:33-38`）：
+`AND_ANY`(0，任一次要键满足) / `NOT_ALL`(1) / `NOT_ANY`(2) / `AND_ALL`(3，全部满足)。
+
+**关键事实：fork 完全没有这个概念，而 ST 的 `selective` 默认是 `true`**（`world-info.js:4089`），
+第 4925 行判据是 `entry.selective && entry.keysecondary.length`——**即 ST 世界里大量条目依赖次要键来抑制误触发**。
+
+⇒ **后果是确定的：fork 导入 ST 世界书时丢弃 `keysecondary`，这些条目会在只命中主键时照常触发（过度注入）**。
+导入者看到的不是「少了个可选项」，而是**同一个世界书在 fork 里比在 ST 里注入更多、更乱的内容**——直接推高 token、稀释 prompt、且难排查（因为看起来「规则都在」）。
+
+**成本**：模型 +2 字段（`keysecondary: List<String>`、`selectiveLogic: 枚举`）、`isTriggered` 改纯函数（主键命中 → 查次要键 → 按 4 模式判定）、UI 加一段次要键编辑 + 逻辑下拉、导入映射补两行。**估：约 1 提交**（含单测：4 种逻辑 × 主/次键命中的真值表）。
+
+**② 关键词的扫描源不止「聊天消息」（ST 的 6 个 `match*` flag）——同一类「导入即行为改变」问题**
+
+fork 的 `extractContextForMatching`（`Assistant.kt:291-298`）**只扫描消息文本**：
+`messages.takeLast(scanDepth).joinToString { it.toText() }`（且调用处先 `filter { role != SYSTEM }`）。
+
+ST 则允许条目声明**额外从哪些非对话内容里找关键词**（`newWorldInfoEntryDefinition`）：
+`matchPersonaDescription`（用户人设）、`matchCharacterDescription`（角色描述）、`matchCharacterPersonality`、
+`matchScenario`、`matchCharacterDepthPrompt`、`matchCreatorNotes`。
+
+⇒ **后果同 ①：条目在 ST 里能被角色描述触发的，在 fork 里永远不触发**（关键词只出现在
+`description`/`scenario` 里而未出现在聊天中时）。这是**漏注入**（与 ① 的过度注入方向相反），
+二者合起来说明「导入 ST 世界书」目前在 fork 中是**行为不等价**的。
+
+fork 的相关内容在角色卡导入时被压进 `systemPrompt`（见 ③），**源码里拿得到**（`assistant.systemPrompt`
+含 Description/Personality/Scenario 段），所以实现上只需把匹配源从「消息列表」扩为「消息列表 + 指定助手字段」，
+**不需要新解析层**。估：约 1 提交（与 ① 可合并同批做，因都改 `isTriggered`/上下文组装）。
+
+**③ 世界书 token 预算（`world_info_budget` + `budget_cap` + 条目 `ignoreBudget`）——fork 现在零预算**
+
+ST 的预算语义（`world-info.js:4736-4743`）：`budget = round(world_info_budget × maxContext / 100)`，
+默认 **25%**，另有绝对值上限 `world_info_budget_cap`（0=不设）；超预算的条目**被丢弃**，
+按 `order` 排序后处理，`ignoreBudget` 的条目豁免。**激活是「竞争预算」的**（第 5024-5040 行）。
+
+**fork 现状：注入侧完全没有预算/裁剪**（`PromptInjectionTransformer.kt` 内检索 token/budget 为零命中，
+只有一处 `takeIf` 是索引判断）。⇒ 世界书条目一旦多起来（或导入一个大型 ST 世界书），
+**全部命中条目无条件进 prompt**，无任何上界。
+
+**本仓已有现成范式可抄**：`memoryInjectBudgetTokens`（`PreferencesStore.kt:701`）就是同一形状
+（token 计 + `Settings` 三件套 + `estimateTokenCount` 复用，见 `design-memory-scoring.md`）。
+**估：约 1 提交**（预算字段 + 按 `priority` 排序截断 + 设置项 + 6 语言）。
+
+**④ 预设的「槽位序」思想——只借思想，不借格式**
+
+ST 预设（`default/content/presets/openai/Default.json`）的骨架是：
+`prompt_order`（**有序槽位**，按 `character_id` 分组）+ `prompts`（identifier → `{name, role, system_prompt, content}`）。
+真正漂亮的地方是 **`chatHistory` 只是这个有序列表里的一个槽位**：
+
+```
+main → worldInfoBefore → charDescription → charPersonality → scenario
+     → worldInfoAfter → dialogueExamples → chatHistory → jailbreak
+```
+
+即「系统提示 / 角色描述 / 世界书 / 聊天历史 / 尾部指令」**是用户可拖拽重排的一维序列**，而非代码里写死的拼装顺序。
+
+**fork 对照**：装配顺序**硬编码**——`before-system 注入 → assistant.systemPrompt（一整条巨串）→ after-system 注入`，
+再接 `TOP_OF_CHAT → 历史 → BOTTOM_OF_CHAT/AT_DEPTH`（`applyInjections`）。
+而角色卡导入（`AssistantImporter.kt:157-196`）更是把 `description`/`personality`/`scenario`/`mes_example`
+**用 `buildString` 压成一条 `systemPrompt` 字符串**——**槽位信息在导入那一步就丢了**，之后无法单独重排或开关。
+
+⇒ **值得借的是「顺序应当是显式的、可重排的」，不值得借 ST 的整个 prompt manager。**
+但要注意：**这与 #1542「统一上下文插件」是同一个问题**，我在 `upstream-analysis.md` 已判「全量重写＝架构级（周级起）、不排期」。
+所以此处**只建议窄义动作**：至少别在角色卡导入时把 4 个字段压成一条不可分的字符串
+（保留为独立部分或独立注入条目），代价很小、且为将来留出重排可能。**不做全量 prompt 管理器。**
+
+### 6.3 顺带发现的现有 ST 导入器缺陷（可立即修，与「借鉴」无关）
+
+核实 `ExportSerializer.kt:166-204` 的 `tryImportSillyTavern`，发现**三处保真问题**：
+
+1. **`useRegex = false` 且注释写错**：第 187 行注释「SillyTavern 格式不支持 useRegex」——**事实相反**。
+   ST 的 key 支持 `/pattern/flags` 写法（`parseRegexFromString`，`world-info.js:2901-2927`：
+   正则匹配优先于其它所有匹配选项，`world-info.js:337-341`）。**该注释是错的**，且导致带正则键的条目
+   被当作**字面量关键词**匹配 → 触发条件整体改变。修法：识别 `/.../flags` 形态并置 `useRegex`。
+2. **位置映射有损**：`mapSillyTavernPosition`（第 197-205 行）把 ST 的 `2`(ANTop) 与 `3`(ANBottom)
+   **都映射为 `TOP_OF_CHAT`**。ST 的 AN 是独立的「作者注释」锚点（非「聊天开头」），二者语义不同 —— 映射后位置含义变了。
+3. **`keysecondary`/`selectiveLogic` 丢弃**：见 6.2 ①，属过度触发。
+
+> 这三条里 1、2 是纯 bug（改映射与解析即可），3 是「要么补字段、要么至少在导入时提示会失真」。
+> **即便最终不借鉴任何 ST 机制，这三条也值得修**——它们让「导入 ST 世界书」这个既有功能的产出与源不一致。
+
+### 6.4 不建议照搬（正是用户说的「花里胡哨」）
+
+| ST 机制 | 为何不抄 |
+|---|---|
+| `sticky` / `cooldown` / `delay` | 需**会话级持久化状态**（ST 存 `chat_metadata.timedWorldInfo`，`world-info.js:508-530`）；fork 的 `Conversation` 无对应 meta 列，且「条目激活持续 N 轮/冷却 M 轮」的跨轮语义与 fork 的**压缩窗口/区域指纹**机制正交、易互坏。**复杂度全在状态机与持久化，收益是极少数场景** |
+| `probability` / `useProbability` | **非确定性激活**——同一输入两次请求结果可能不同，直接破坏前缀缓存、且让「为何这条没生效」无法复现。与 fork 已确立的「前缀稳定」方向相反 |
+| `group` / `groupWeight` / `groupOverride` / `useGroupScoring` | 「同组只取一条（按权重）」——偏创作型玩法，用户基数小，且需再引入权重抽取与组评分 |
+| `vectorized` | 语义检索。**本仓已三方独立结论「不做」**（见 §四、`design-auto-compaction.md` §6.3） |
+| `outletName`（outlet 位置） | 依赖 ST 的扩展/插件生态来消费该锚点；fork 无此体系 |
+| `automationId` | 依赖 ST 的 automation 系统 |
+| `matchWholeWords` / `addMemo` | 边缘开关（整词匹配 / 备忘标记），价值低 |
+| `position` 的 EM/AN 三段 | EM=example messages 锚点、AN=作者注释锚点。fork **无「示例消息区」这一独立区块**（角色卡的 `mes_example` 已并入 systemPrompt），没有可挂靠的锚点 → 抄了也无处可插 |
+
+**这张表就是「ST 后来堆上去的东西」**：它们多数要么需要额外的持久化/生态，要么引入不确定性，
+**共同点是「字段数增长很快、实际用到的很少」**——正是「又大又不好用」的来源。fork 的窄字段集
+（13 个）反而更接近 ST 早期「预设原本好好的」的形态。
+
+### 6.5 另注：ST 已有 `assistant_prefill`，印证 #1918 评估
+
+ST 预设顶部有 `assistant_prefill` 字段（`Default.json`；实现 `openai.js:1325`）——**但它同样只对
+Claude 生效**（`supportsAssistantPrefill = chat_completion_source === CLAUDE`，第 1323 行）。
+这与 `upstream-analysis.md` #1918 节的结论一致：**「末尾 assistant 预填充」是各家 provider 语义
+不一致的能力**（Claude 原生支持、Chat Completions 需 `prefix:true`、Gemini 用 `model` role），
+ST 也是靠「仅对支持的源开放」来回避。⇒ **#1918 的判断得到独立印证，不改结论。**
+
+### 6.6 建议顺序（若动手）
+
+1. **修 6.3 的三个导入缺陷**（① 正则键识别、② 位置映射、③ 次要键丢弃的替代处理）——小、纯正确性、无架构风险；
+2. **补 `keysecondary` + `selectiveLogic` + 多源扫描**（6.2 ①②，可合并同批，都改 `isTriggered`/上下文组装）——世界书质量的核心，且直接消除「导入即行为不等价」；
+3. **补 token 预算**（6.2 ③）——抄 `memoryInjectBudgetTokens` 现成范式，给世界书一个上界；
+4. **角色卡导入不再压平 4 字段**（6.2 ④ 的窄义版）——小改动、为将来留白；
+5. **全部跳过 6.4**；**preset 管理器不做**（= #1542 全量，已判不排期）。
+
+**总估**：第 1 项半天；2、3 各 1 提交；4 半天。**全部落在现有架构内，不动 provider、不动压缩线。**
+
+关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）。
