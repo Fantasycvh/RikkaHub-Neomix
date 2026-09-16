@@ -86,9 +86,20 @@ object CustomJsSearchService : SearchService<SearchServiceOptions.CustomJsOption
         }
     }
 
+    /**
+     * 执行用户配置的脚本。
+     *
+     * **资源防护**（同 app 模块的 `eval_javascript`，见 issue #1903）：脚本是用户手写的不可信输入，
+     * 一次 `new Array(1e9)` 会撑爆 native 堆把**整个 app** 拖崩，深递归也有 native 栈溢出风险。
+     * 故施加内存与栈上限，把它们转成可捕获的 JS 异常（调用方已包 `runCatching`）。
+     *
+     * 本模块不依赖 app，故常量在此就近定义（取值与 app 侧 [JsLimits] 一致）。
+     */
     private fun executeScript(userScript: String, invocation: String): String {
         val context = QuickJSContext.create()
         try {
+            runCatching { context.setMemoryLimit(CUSTOM_JS_MEMORY_LIMIT_BYTES) }
+            runCatching { context.setMaxStackSize(CUSTOM_JS_MAX_STACK_BYTES) }
             context.injectFetch(httpClient)
             context.evaluate(userScript)
 
@@ -98,6 +109,12 @@ object CustomJsSearchService : SearchService<SearchServiceOptions.CustomJsOption
             context.destroy()
         }
     }
+
+    /** native 堆上限：超大分配转成可捕获的 JS 异常，而不是进程 OOM。 */
+    private const val CUSTOM_JS_MEMORY_LIMIT_BYTES: Int = 64 * 1024 * 1024
+
+    /** 栈上限：避免深递归打爆 native 栈。 */
+    private const val CUSTOM_JS_MAX_STACK_BYTES: Int = 256 * 1024
 
     private fun quoteJsString(s: String): String {
         val sb = StringBuilder("\"")
