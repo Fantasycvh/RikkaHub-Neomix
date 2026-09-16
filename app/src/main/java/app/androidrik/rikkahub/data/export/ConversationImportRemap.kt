@@ -18,6 +18,19 @@ import kotlin.uuid.Uuid
  *
  * 同时按新节点序列**重映射并重算压缩检查点**（方案 A，见 [remapCompressionSummaries]）。
  *
+ * **源环境引用一律清空**（`folderId` / `workspaceCwd`）——它们指向**源助手/源设备**的资源，
+ * 目标助手不一定存在对应物：
+ * - `folderId`：文件夹是**按助手归属**的（`FolderEntity.assistantId`），而抽屉默认视图查的是
+ *   `folder_id = ''`（`ConversationDAO.getUnfiledConversationsOfAssistantPaging`）。悬空的
+ *   `folderId` 会让会话**在默认视图看不到、文件夹 chip 也不存在** → 抽屉里彻底消失（只有
+ *   「历史」页还找得到）。清空 = 落入「未归类」，即导入新会话的自然归属。
+ * - `workspaceCwd`：绝对路径在源工作区内。目标助手的 workspace 里若无此路径，
+ *   `WorkspaceManager.executeCommand` 的 `require(workingDir.exists())` 会抛错。
+ *
+ * `modeInjectionIds` / `lorebookIds` 则**不必处理**：注入是按 id 过滤匹配的
+ * （`modeInjections.filter { it.enabled && effectiveIds.contains(it.id) }`），悬空 id 只是匹配不到，
+ * 无副作用（与助手侧 `PreferencesStore` 的清理同效）。
+ *
  * @param targetAssistantId 目标助手（由用户选择；导出文件里的 `assistantId` 一律丢弃——
  *   跨设备必然失效）。
  * @return 可直接落库的新会话。
@@ -37,6 +50,9 @@ fun Conversation.remapForImport(targetAssistantId: Uuid): Conversation {
         id = Uuid.random(),
         assistantId = targetAssistantId,
         messageNodes = newNodeNodes,
+        // 源环境的归属/路径不继承（见上：悬空的 folderId 会让会话在抽屉里消失）
+        folderId = null,
+        workspaceCwd = null,
     )
     return remapped.copy(
         compressionSummaries = remapCompressionSummaries(

@@ -363,4 +363,56 @@ class ConversationImportRemapTest {
         )
         assertTrue("缺少字段时应为空映射", settings.importedSources.isEmpty())
     }
+
+    // ---- 源环境引用必须清空（否则会话在抽屉里消失 / shell 抛错） ----
+
+    @Test
+    fun `source folder is cleared because folders belong to the source assistant`() {
+        // 文件夹按助手归属（FolderEntity.assistantId），而抽屉默认视图只查 folder_id = ''
+        // → 悬空 folderId 会让导入的会话在抽屉里彻底消失
+        val sourceFolder = Uuid.random()
+        val source = conversation().copy(folderId = sourceFolder)
+        val imported = source.remapForImport(targetAssistant)
+        assertNull("源会话的 folderId 不能继承到目标助手", imported.folderId)
+    }
+
+    @Test
+    fun `source working directory is cleared because the path may not exist`() {
+        // workspaceCwd 是源工作区内的绝对路径；目标助手工作区无此路径时
+        // WorkspaceManager.executeCommand 的 require(workingDir.exists()) 会抛错
+        val source = conversation().copy(workspaceCwd = "/workspace/some/deep/dir")
+        val imported = source.remapForImport(targetAssistant)
+        assertNull("源 cwd 不能继承（可能不存在）", imported.workspaceCwd)
+    }
+
+    @Test
+    fun `other conversation metadata is still carried over`() {
+        // 清空只针对"源环境引用"；标题/置顶/建议等业务字段必须保留
+        val source = conversation().copy(
+            title = "带元数据的会话",
+            isPinned = true,
+            chatSuggestions = listOf("继续", "总结"),
+            customSystemPrompt = "你是助手",
+        )
+        val imported = source.remapForImport(targetAssistant)
+        assertEquals("带元数据的会话", imported.title)
+        assertTrue(imported.isPinned)
+        assertEquals(listOf("继续", "总结"), imported.chatSuggestions)
+        assertEquals("你是助手", imported.customSystemPrompt)
+    }
+
+    @Test
+    fun `injection ids are carried over because dangling ids simply do not match`() {
+        // 注入按 id 过滤匹配（filter { it.enabled && effectiveIds.contains(it.id) }），
+        // 悬空 id 只是匹配不到、无副作用，故无需清空
+        val modeId = Uuid.random()
+        val lorebookId = Uuid.random()
+        val source = conversation().copy(
+            modeInjectionIds = setOf(modeId),
+            lorebookIds = setOf(lorebookId),
+        )
+        val imported = source.remapForImport(targetAssistant)
+        assertEquals(setOf(modeId), imported.modeInjectionIds)
+        assertEquals(setOf(lorebookId), imported.lorebookIds)
+    }
 }
