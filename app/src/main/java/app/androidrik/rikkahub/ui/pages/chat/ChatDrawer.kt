@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -168,7 +169,18 @@ fun ChatDrawerContent(
     val filesSearchResults by drawerVm.filesSearchResults.collectAsStateWithLifecycle()
     var filesSearchInput by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(filesPath) { drawerVm.loadWorkspaceFiles() }
+    // 每次进入文件面板都失效并重载：缓存只服务于「面板内目录导航秒开」，
+    // 而 AI 随时可能刚往工作区写过文件，不刷新会让用户看到过期目录。
+    LaunchedEffect(showFilesPanel, boundWorkspaceId) {
+        if (showFilesPanel && boundWorkspaceId != null) {
+            drawerVm.invalidateFilesCache()
+            drawerVm.loadWorkspaceFiles()
+        }
+    }
+    // 搜索防抖 250ms（避免每次按键都跑一遍 BFS 遍历）：
+    // LaunchedEffect 在 key 变化时会取消上一个协程，delay 因此天然实现防抖。
     LaunchedEffect(filesSearchInput) {
+        delay(SEARCH_DEBOUNCE_MS)
         drawerVm.searchWorkspaceFiles(filesSearchInput)
     }
 
@@ -997,6 +1009,9 @@ private fun AssistantItem(
 }
 
 /** 抽屉「会话 / 文件」面板切换器（助手绑定工作区时显示）。 */
+/** 文件面板搜索防抖窗口（避免每次按键触发一次 BFS 遍历）。 */
+private const val SEARCH_DEBOUNCE_MS = 250L
+
 @Composable
 private fun DrawerPanelSwitcher(
     showFiles: Boolean,
