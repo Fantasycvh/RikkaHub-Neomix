@@ -2,7 +2,7 @@
   <img src="docs/icon.png" alt="App Icon" width="100" />
   <h1>RikkaHub Plus</h1>
 
-RikkaHub 2.4.5 的个人定制版 —— 原生 Android LLM 聊天客户端，支持多提供商切换 🤖💬
+RikkaHub 2.4.5为基线的个人定制版 —— 原生 Android LLM 聊天客户端，支持多提供商切换 🤖💬
 
 个人二改版，发到 GitHub 只是为了备份方便和git拉取的便利，没有维护承诺。
 
@@ -16,7 +16,7 @@ RikkaHub 2.4.5 的个人定制版 —— 原生 Android LLM 聊天客户端，�
 
 ## 📥 下载
 
-🔗 [GitHub Releases](https://github.com/androidrik/rikka2-my_feature_open/releases)（正式发布：`v1.0.5`；草稿：`v1.0.6`）
+🔗 [GitHub Releases](https://github.com/androidrik/rikka2-my_feature_open/releases)（正式发布：`v1.0.6`）
 
 > 本仓库为个人测试仓库，Release 提供 **`arm64-v8a` 单架构 APK**。
 
@@ -37,7 +37,7 @@ RikkaHub Plus 是基于开源项目 [RikkaHub](https://github.com/rikkahub/rikka
 | 🔄 **模型拉取反馈增强** | 借鉴 Cherry Studio：填写 Base URL / API Key 后自动拉取提供商模型列表；拉取失败不再静默，显示错误卡片（含原因）+ 重试按钮；底部工具栏新增「获取模型列表」显式刷新；候选模型经搜索/过滤/全选勾选添加 |
 | 🔑 **提供商多 Key** | 每 key 独立输入框 + 启用开关 + 拖拽排序（列表顺序=优先级，首个=首选）；失败转移覆盖 401/403/429、余额耗尽、TPM/RPM 限流（含中转站 SSE 流内错误无状态码形态）——账户级故障自动切下一个 key，仅零输出失败换 key（半截保留草稿不换）；兼容旧单 key 与分隔符多 key |
 | 🛟 **备用模型链（fallback）** | 助手可配置备用模型：主模型整轮失败自动切备用模型重跑；助手级 > 全局默认两级配置，引用失效（模型被删）自动回退全局；有 fallback 时压缩主模型重试预算快速切换 |
-| 💾 **备份恢复兼容** | 兼容上游旧包名（`me.rerere.`）导出的备份：恢复时自动迁移包名（SettingsJsonMigrator V0），S3 / WebDAV / 本地恢复均可用 |
+| 💾 **备份恢复兼容** | 兼容上游原版包名（`me.rerere.`）导出的备份：恢复时自动迁移包名（SettingsJsonMigrator V0），S3 / WebDAV / 本地恢复均可用 |
 | 📂 **远端备份目录区分** | 远端备份默认目录改为 `rikkahub_plus_backups`，与上游备份互不混淆 |
 | 🧹 **移除上游营销功能** | 移除应用内更新检查、赞助入口/捐赠页/启动次数赞助弹窗、导出图片中的 `rikka-ai.com` 品牌水印 |
 | 🧮 **TikZ 图表渲染** | **mupdf路线`$$...$$` 内嵌 + ```tikz 围栏双触发；导出 HTML 内嵌 `<svg>` 矢量；系统提示词引导模型输出闭合 `$$` 格式 |
