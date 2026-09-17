@@ -114,6 +114,7 @@ import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
+import app.androidrik.rikkahub.utils.reorderForDrag
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -186,9 +187,8 @@ private fun PresetListScreen(
         }
     }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        onUpdatePresets(
-            presets.toMutableList().apply { add(to.index, removeAt(from.index)) }
-        )
+        // 用 reorderForDrag：拖到列表末尾时 to.index == size，手写 remove+add 会越界崩溃
+        onUpdatePresets(presets.reorderForDrag(from.index, to.index))
     }
     val toaster = LocalToaster.current
     val importer = rememberImporter(PromptPresetSerializer) { result ->
@@ -444,7 +444,7 @@ private fun PresetDetailScreen(
     // 首次组合捕获的 preset 会过期（详情页首帧可能仍是旧值）。
     val currentPreset by rememberUpdatedState(preset)
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val moved = displayed.toMutableList().apply { add(to.index, removeAt(from.index)) }
+        val moved = displayed.reorderForDrag(from.index, to.index)
         // 拖拽即把新顺序写回 priority（priority 是唯一真相）
         onUpdatePreset(preset.copy(entries = normalizeEntryPriorities(moved)))
     }
@@ -1038,10 +1038,7 @@ private fun LorebookTab(
     val toaster = LocalToaster.current
     val currentLorebooks by rememberUpdatedState(lorebooks)
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newList = lorebooks.toMutableList()
-        val item = newList.removeAt(from.index)
-        newList.add(to.index, item)
-        onUpdate(newList)
+        onUpdate(lorebooks.reorderForDrag(from.index, to.index))
     }
     val editState = useEditState<Lorebook> { edited ->
         val index = lorebooks.indexOfFirst { it.id == edited.id }

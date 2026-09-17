@@ -59,6 +59,7 @@ import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.stroke.MoreVertical
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANTS_IDS
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
@@ -147,9 +148,7 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
             val isFiltering = selectedTagIds.isNotEmpty() || searchQuery.isNotBlank()
             val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
                 if (!isFiltering) {
-                    val newAssistants = settings.assistants.toMutableList().apply {
-                        add(to.index, removeAt(from.index))
-                    }
+                    val newAssistants = settings.assistants.reorderForDrag(from.index, to.index)
                     vm.updateSettings(settings.copy(assistants = newAssistants))
                 }
             }
@@ -267,9 +266,7 @@ private fun AssistantTagsFilterRow(
     if (settings.assistantTags.isNotEmpty()) {
         val tagsListState = rememberLazyListState()
         val tagsReorderableState = rememberReorderableLazyListState(tagsListState) { from, to ->
-            val newTags = settings.assistantTags.toMutableList().apply {
-                add(to.index, removeAt(from.index))
-            }
+            val newTags = settings.assistantTags.reorderForDrag(from.index, to.index)
             vm.updateSettings(settings.copy(assistantTags = newTags))
         }
 

@@ -76,6 +76,7 @@ import app.androidrik.rikkahub.ui.pages.setting.components.ASRProviderConfigure
 import app.androidrik.rikkahub.ui.pages.setting.components.TTSProviderConfigure
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
+import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.tts.provider.TTSProviderSetting
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
@@ -307,9 +308,7 @@ private fun TTSProviderList(
 ) {
     val lazyListState = rememberLazyListState()
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newProviders = settings.ttsProviders.toMutableList().apply {
-            add(to.index, removeAt(from.index))
-        }
+        val newProviders = settings.ttsProviders.reorderForDrag(from.index, to.index)
         onUpdateSettings(settings.copy(ttsProviders = newProviders))
     }
 
@@ -431,9 +430,7 @@ private fun ASRProviderList(
 ) {
     val lazyListState = rememberLazyListState()
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newProviders = settings.asrProviders.toMutableList().apply {
-            add(to.index, removeAt(from.index))
-        }
+        val newProviders = settings.asrProviders.reorderForDrag(from.index, to.index)
         onUpdateSettings(settings.copy(asrProviders = newProviders))
     }
 

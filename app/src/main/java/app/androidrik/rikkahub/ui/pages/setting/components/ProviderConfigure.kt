@@ -42,6 +42,7 @@ import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.data.datastore.DEFAULT_PROVIDERS
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
@@ -578,11 +579,7 @@ fun ProviderApiKeysEditor(
         // 拖拽排序：列表顺序即优先级（首个=首选，失败按序切下一个）
         val lazyListState = rememberLazyListState()
         val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-            val updated = entries.toMutableList().also {
-                val item = it.removeAt(from.index)
-                it.add(to.index, item)
-            }
-            onChange(updated)
+            onChange(entries.reorderForDrag(from.index, to.index))
         }
         LazyColumn(
             state = lazyListState,

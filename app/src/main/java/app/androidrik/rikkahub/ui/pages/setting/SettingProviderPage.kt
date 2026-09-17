@@ -83,6 +83,7 @@ import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConfigure
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.ImageUtils
+import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
@@ -97,9 +98,7 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
     var searchQuery by remember { mutableStateOf("") }
     val lazyListState = rememberLazyListState()
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newProviders = settings.providers.toMutableList().apply {
-            add(to.index, removeAt(from.index))
-        }
+        val newProviders = settings.providers.reorderForDrag(from.index, to.index)
         vm.updateSettings(settings.copy(providers = newProviders))
     }
 
