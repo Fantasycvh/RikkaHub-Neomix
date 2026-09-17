@@ -509,4 +509,56 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
 
 **至此 ST 借鉴清单（6.2 四项 + 6.3 三缺陷 + 6.7 ③⑤）全部清零。**
 
+### 6.11 预设中心化（2026-09-17 第三批：`4a796747` / `b5fcf751` / `e9c0f6ea`）
+
+用户指令：**UI 明说「优先级更高者在前」、支持预设导入、把整个扩展管理建立在注入（预设）之上**；
+世界书暂不重要，之后再做。
+
+**① 预设容器（`4a796747`）——容器化的同时不动下游**
+
+新增 `PromptPreset { id, name, description, enabled, entries }`（`entries` 仍是原 `ModeInjection`）。
+关键手法：`Settings.promptPresets` 是**持久化字段**，而 `modeInjections` 改为**计算属性**
+（`flatMap { it.entries }`）⇒ `PromptInjectionTransformer`、Web API 的 id 校验、web-ui 的勾选列表、
+`ExtensionSelector`、`AssistantExtensionsPage` **全部零改动**。全仓只有 1 处写 `modeInjections`。
+
+持久化用**回退读**而非迁移器：新 key `prompt_presets` 优先，旧 key `mode_injections`
+包成单个预设兜底 ⇒ 老用户原地可用；写入只落新 key。
+
+绑定为**预设级 + 条目级并集**：`Assistant.promptPresetIds`（可空集合 ⇒ 零 DB 迁移）
+与 `modeInjectionIds` 并存，并集后 `distinctBy { id }`（同一 id 走两条路径会注入两次）。
+预设绑定刻意做成**助手级、不随会话覆盖**（表达「这个助手基于哪套方案」，与会话级逐条勾选正交）。
+
+配套 `reconcileEntries()`：扁平编辑写回容器时按 id 归位、**并按新序重排**（否则拖拽顺序不生效）、
+跨预设重复 id 先到先得。
+
+**② 排序语义（`b5fcf751`）——priority 为唯一来源**
+
+原先拼装按 `priority` 降序，而列表展示的是存储顺序 ⇒ 给某条设过优先级后**拖拽即失效**
+（「看起来能拖、实际没变化」）。现改为：列表按 `priority` 降序展示，拖拽后
+`normalizeEntryPriorities()` 把视觉序（top→bottom）写回 `n-1 … 0`
+⇒ **显示顺序 == 生效顺序**恒成立，并在 UI 明说（用户指定的做法）。
+
+**③ 预设列表/详情 + ST 预设导入（`e9c0f6ea`）**
+
+- `PromptPage` 两级：预设列表（拖拽 + 行内开关 + 条目数）→ 详情（条目增删改 + 拖序 + 逐条开关）。
+  详情是**页内二级页**，故返回键用 `BackHandler` 先回列表（`BackButton` 会直接退出整页）。
+- 新增 `PromptPresetSerializer`（native + ST 双分支）。ST 分支按 `prompt_order` 顺序取
+  `prompts` 内容，**跳过空内容的运行时占位槽位**（`chatHistory` / `worldInfoBefore` /
+  `charDescription` …——ST 在请求时填充，fork 无需表达），顺序 → priority 降序。
+- **世界书 tab 暂时隐藏**（`SHOW_LOREBOOK_TABS = false`）：只关 UI 入口，数据/编辑器/
+  导入导出全保留。两处 tab 行改为按 `ExtensionTab.visible` 渲染 ⇒ 隐藏时页面索引自动跟随。
+
+**⚠️ 本轮踩到并修复的真 bug（数据损坏）**：真机导入 ST 预设时，用户既有的 **14 个注入条目
+被覆盖成 1 个**。根因是 `rememberImporter` 用 `remember(serializer)` 缓存 `ImporterState`，
+**首次组合传入的 onResult 被永久捕获**；而 `PromptVM.settings` 初始值是 `Settings.dummy()`
+（只含 1 个默认预设），真实设置晚一两帧才到 ⇒ 回调闭包捕获 dummy 列表，
+「dummy + 新导入」被写回。**修复取结构性方案**：`ImporterState` 改持**回调读取器**
+（`currentOnResult: () -> (Result<T>) -> Unit`）+ `rememberUpdatedState`
+⇒ 所有调用点（含将来新增）自动拿最新回调，不必各自记得防。
+**通用教训：把「回调」交给长生命周期对象时，要传「读取器」而不是「回调本身」——
+尤其是在 `remember(key)` 缓存、而闭包捕获的数据晚于首帧到达的场景。**
+
+数据已用 protobuf 精准 splice 从旧 key 恢复（14 条经解析验证），并加回归测试
+`ImportPreservesExistingDataTest` 锁住「必须基于最新列表而非 dummy 基线」。
+
 关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）。
