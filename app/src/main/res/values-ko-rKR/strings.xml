@@ -1200,6 +1200,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="skills_page_skill_content_label">SKILL.md 콘텐츠</string>
   <string name="skills_page_skill_name">스킬 이름: %s</string>
   <string name="skills_page_title">에이전트 스킬</string>
+  <string name="skills_filter_search_hint">스킬 검색</string>
+  <string name="skills_filter_clear">검색 지우기</string>
+  <string name="skills_filter_category_all">전체</string>
+  <string name="skills_filter_category_uncategorized">미분류</string>
+  <string name="skills_filter_no_result">현재 검색/분류에 맞는 스킬이 없습니다.</string>
   <string name="speech_page_title">말하기</string>
   <string name="speech_tab_asr">음성 인식</string>
   <string name="speech_tab_tts">텍스트 음성 변환</string>

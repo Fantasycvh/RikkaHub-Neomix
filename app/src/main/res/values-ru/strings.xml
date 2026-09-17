@@ -1200,6 +1200,11 @@
   <string name="skills_page_skill_content_label">Содержимое SKILL.md</string>
   <string name="skills_page_skill_name">Название навыка: %s</string>
   <string name="skills_page_title">Навыки агента</string>
+  <string name="skills_filter_search_hint">Поиск навыков</string>
+  <string name="skills_filter_clear">Очистить поиск</string>
+  <string name="skills_filter_category_all">Все</string>
+  <string name="skills_filter_category_uncategorized">Без категории</string>
+  <string name="skills_filter_no_result">Нет навыков, соответствующих поиску или категории.</string>
   <string name="speech_page_title">Речь</string>
   <string name="speech_tab_asr">Распознавание речи</string>
   <string name="speech_tab_tts">Текст в речь</string>

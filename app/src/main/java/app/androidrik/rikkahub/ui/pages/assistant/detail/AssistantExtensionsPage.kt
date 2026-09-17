@@ -16,8 +16,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -27,11 +30,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.data.files.SkillCategoryFilter
+import app.androidrik.rikkahub.data.files.filterSkills
 import app.androidrik.rikkahub.ui.components.ai.ExtensionEmptyState
 import app.androidrik.rikkahub.ui.components.ai.ExtensionPickerNavigation
 import app.androidrik.rikkahub.ui.components.ai.ExtensionTab
 import app.androidrik.rikkahub.ui.components.ai.PresetPickerContent
 import app.androidrik.rikkahub.ui.components.ai.QuickMessagesContent
+import app.androidrik.rikkahub.ui.components.ai.SkillCategoryFilterSaver
+import app.androidrik.rikkahub.ui.components.ai.SkillFilterBar
 import app.androidrik.rikkahub.ui.components.ai.SkillsContent
 import app.androidrik.rikkahub.ui.components.ai.WorldbookPickerContent
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -177,24 +184,34 @@ fun AssistantExtensionsPage(id: String) {
                                 onAction = { navController.navigate(Screen.Skills) },
                             )
                         } else {
-                            Column {
-                                SkillsContent(
-                                    modifier = Modifier.weight(1f),
-                                    skills = skills,
-                                    enabledSkills = assistant.enabledSkills,
-                                    onToggle = { name, checked ->
-                                        val newSkills = if (checked) assistant.enabledSkills + name
-                                        else assistant.enabledSkills - name
-                                        vm.update(assistant.copy(enabledSkills = newSkills))
-                                    },
-                                )
-                                TextButton(
-                                    onClick = { navController.navigate(Screen.Skills) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(stringResource(R.string.assistant_extensions_page_goto_extensions))
-                                }
+                            // #1901：与管理页同源的搜索 + 单分类，避免技能多了以后在面板里翻不到
+                            var skillQuery by rememberSaveable { mutableStateOf("") }
+                            var skillCategory by rememberSaveable(stateSaver = SkillCategoryFilterSaver) {
+                                mutableStateOf<SkillCategoryFilter>(SkillCategoryFilter.All)
                             }
+                            val filteredSkills = remember(skills, skillQuery, skillCategory) {
+                                skills.filterSkills(query = skillQuery, category = skillCategory)
+                            }
+                            SkillsContent(
+                                modifier = Modifier.fillMaxSize(),
+                                skills = filteredSkills,
+                                enabledSkills = assistant.enabledSkills,
+                                onToggle = { name, checked ->
+                                    val newSkills = if (checked) assistant.enabledSkills + name
+                                    else assistant.enabledSkills - name
+                                    vm.update(assistant.copy(enabledSkills = newSkills))
+                                },
+                                onManage = { navController.navigate(Screen.Skills) },
+                                header = {
+                                    SkillFilterBar(
+                                        skills = skills,
+                                        query = skillQuery,
+                                        onQueryChange = { skillQuery = it },
+                                        category = skillCategory,
+                                        onCategoryChange = { skillCategory = it },
+                                    )
+                                },
+                            )
                         }
                     }
                 }

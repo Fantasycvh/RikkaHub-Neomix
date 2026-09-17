@@ -1200,6 +1200,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="skills_page_skill_content_label">SKILL.mdコンテンツ</string>
   <string name="skills_page_skill_name">スキル名: %s</string>
   <string name="skills_page_title">エージェントスキル</string>
+  <string name="skills_filter_search_hint">スキルを検索</string>
+  <string name="skills_filter_clear">検索をクリア</string>
+  <string name="skills_filter_category_all">すべて</string>
+  <string name="skills_filter_category_uncategorized">未分類</string>
+  <string name="skills_filter_no_result">現在の検索・分類に一致するスキルがありません。</string>
   <string name="speech_page_title">スピーチ</string>
   <string name="speech_tab_asr">音声認識</string>
   <string name="speech_tab_tts">テキスト読み上げ</string>

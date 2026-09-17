@@ -58,9 +58,13 @@ import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Puzzle
+import app.androidrik.rikkahub.data.files.SkillCategoryFilter
 import app.androidrik.rikkahub.data.files.SkillFrontmatterParser
 import app.androidrik.rikkahub.data.files.SkillMetadata
+import app.androidrik.rikkahub.data.files.filterSkills
 import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.ui.components.ai.SkillCategoryFilterSaver
+import app.androidrik.rikkahub.ui.components.ai.SkillFilterBar
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.ui.context.LocalNavController
@@ -81,6 +85,14 @@ fun SkillsPage() {
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<SkillMetadata?>(null) }
+    // #1901：搜索 + 单分类（纯前端过滤，不改数据）
+    var query by rememberSaveable { mutableStateOf("") }
+    var categoryFilter by rememberSaveable(stateSaver = SkillCategoryFilterSaver) {
+        mutableStateOf<SkillCategoryFilter>(SkillCategoryFilter.All)
+    }
+    val filteredSkills = remember(skills, query, categoryFilter) {
+        skills.filterSkills(query = query, category = categoryFilter)
+    }
     val fileImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -148,14 +160,35 @@ fun SkillsPage() {
                         )
                     }
                 }
-            }
-
-            items(skills, key = { it.skillDir.absolutePath }) { skill ->
-                SkillCard(
-                    skill = skill,
-                    onClick = { navController.navigate(Screen.SkillDetail(skill.name)) },
-                    onDelete = { deleteTarget = skill },
-                )
+            } else {
+                item {
+                    SkillFilterBar(
+                        skills = skills,
+                        query = query,
+                        onQueryChange = { query = it },
+                        category = categoryFilter,
+                        onCategoryChange = { categoryFilter = it },
+                    )
+                }
+                if (filteredSkills.isEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.skills_filter_no_result),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                        )
+                    }
+                }
+                items(filteredSkills, key = { it.skillDir.absolutePath }) { skill ->
+                    SkillCard(
+                        skill = skill,
+                        onClick = { navController.navigate(Screen.SkillDetail(skill.name)) },
+                        onDelete = { deleteTarget = skill },
+                    )
+                }
             }
         }
     }
@@ -269,6 +302,13 @@ private fun SkillCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                 )
+                if (!skill.category.isNullOrBlank()) {
+                    Text(
+                        text = skill.category,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 if (!skill.compatibility.isNullOrBlank()) {
                     Text(
                         text = skill.compatibility,

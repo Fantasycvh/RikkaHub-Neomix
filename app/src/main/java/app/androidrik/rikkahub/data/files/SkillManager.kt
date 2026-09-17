@@ -196,6 +196,9 @@ class SkillManager(
                 name = name,
                 description = description,
                 compatibility = frontmatter["compatibility"],
+                // #1901：分类是 SKILL.md 里的手写可选字段；纯标量故 `.get` 即可读到
+                // （issue 正文给的块式 `tags:` 列表用 `.get` 会读到 null，故标签不在本次范围）
+                category = frontmatter["category"]?.takeIf { it.isNotBlank() },
                 skillDir = skillDir,
             )
         }.getOrElse {
@@ -203,12 +206,37 @@ class SkillManager(
             null
         }
     }
+
+    /**
+     * 读取技能目录下**全部文件**的原始字节（相对路径 → 内容），供「覆盖前保留既有内容」使用。
+     *
+     * 为什么需要：`saveSkillFilesAtomically` 是**整目录替换**——AI 用 `save_skill` 覆盖同名技能时，
+     * 若只提交 `SKILL.md`，用户原有的附属文件（示例、脚本、模板）会被无声删掉。
+     * 技能目录很小（通常 <1MB），全量读回内存的开销可忽略。
+     *
+     * @return 技能不存在时返回 null（与「存在但目录为空」区分）
+     */
+    fun readSkillFilesBytes(skillName: String): Map<String, ByteArray>? {
+        val skillDir = resolveSkillDir(skillName) ?: return null
+        if (!skillDir.isDirectory) return null
+        val root = skillDir.toPath()
+        val files = LinkedHashMap<String, ByteArray>()
+        skillDir.walkTopDown()
+            .filter { it.isFile }
+            .forEach { file ->
+                val relative = root.relativize(file.toPath()).toString().replace('\\', '/')
+                files[relative] = file.readBytes()
+            }
+        return files
+    }
 }
 
 data class SkillMetadata(
     val name: String,
     val description: String,
     val compatibility: String? = null,
+    /** #1901 单分类：SKILL.md frontmatter 的可选手写字段；只在管理页做组织维度，不进 systemPrompt。 */
+    val category: String? = null,
     val skillDir: File,
 ) {
     val skillFile: File get() = skillDir.resolve("SKILL.md")

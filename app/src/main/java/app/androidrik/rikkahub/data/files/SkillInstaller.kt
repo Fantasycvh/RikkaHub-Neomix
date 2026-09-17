@@ -62,13 +62,24 @@ class SkillInstaller(
         return null
     }
 
-    /** 由 name/description/body 生成完整 SKILL.md（frontmatter + body） */
-    fun buildSkillMarkdown(name: String, description: String, content: String): String {
+    /**
+     * 由 name/description/body 生成完整 SKILL.md（frontmatter + body）。
+     *
+     * [preservedFrontmatterLines] 是**覆盖已有技能时**要原样保留的 frontmatter 行
+     * （不含 name/description，由本函数生成）。见 [saveFromContent] 的说明。
+     */
+    fun buildSkillMarkdown(
+        name: String,
+        description: String,
+        content: String,
+        preservedFrontmatterLines: List<String> = emptyList(),
+    ): String {
         val body = content.trim()
         return buildString {
             append("---\n")
             append("name: $name\n")
             append("description: $description\n")
+            preservedFrontmatterLines.forEach { append("$it\n") }
             append("---\n\n")
             append(body)
             if (!body.endsWith("\n")) append('\n')
@@ -114,16 +125,37 @@ class SkillInstaller(
         }
     }
 
-    /** 由 name/description/content 保存单个 SKILL.md。成功返回 SkillMetadata。 */
+    /**
+     * 由 name/description/content 保存单个 SKILL.md。成功返回 SkillMetadata。
+     *
+     * **覆盖已有同名技能时会保留用户手写内容**（#1901 修复的两处数据丢失）：
+     * 1. `name`/`description` 之外的 frontmatter 键（`category`、`tags`、`compatibility`…）
+     *    ——原实现用模板拼串只写两行，用户手写的分类会被整段抹掉；
+     * 2. 目录里的既有附属文件——`saveSkillFilesAtomically` 是**整目录替换**，只提交
+     *    SKILL.md 会把示例/脚本一并删掉。
+     *
+     * 保留策略是**保守**的：只替换本函数能正确生成的两样（SKILL.md 的 body 与 name/description），
+     * 其余一律原样带回，避免「AI 保存一次经验，用户的技能目录被清空」。
+     */
     override suspend fun saveFromContent(name: String, description: String, content: String): Result<SkillMetadata> =
         withContext(Dispatchers.IO) {
             try {
                 val trimmedName = name.trim()
                 val error = validateSkillContent(trimmedName, description, content)
                 if (error != null) return@withContext Result.failure(IllegalArgumentException(error))
-                val md = buildSkillMarkdown(trimmedName, description, content)
-                val saved = skillManager.saveSkill(trimmedName, md)
-                    ?: return@withContext Result.failure(IllegalStateException("保存失败"))
+                // 同名技能已存在时，取回其 frontmatter 其它键与全部附属文件
+                val existingContent = skillManager.readSkillContent(trimmedName)
+                val preservedFrontmatter = existingContent?.let {
+                    otherFrontmatterEntryLines(it, excludeKeys = setOf("name", "description"))
+                }.orEmpty()
+                val md = buildSkillMarkdown(trimmedName, description, content, preservedFrontmatter)
+                val files = skillManager.readSkillFilesBytes(trimmedName)?.toMutableMap() ?: mutableMapOf()
+                files["SKILL.md"] = md.toByteArray()
+                if (!skillManager.saveSkillFileBytesAtomically(trimmedName, files)) {
+                    return@withContext Result.failure(IllegalStateException("保存失败"))
+                }
+                val saved = skillManager.listSkills().find { it.name == trimmedName }
+                    ?: return@withContext Result.failure(IllegalStateException("保存后未找到技能：$trimmedName"))
                 Result.success(saved)
             } catch (e: Exception) {
                 Result.failure(e)

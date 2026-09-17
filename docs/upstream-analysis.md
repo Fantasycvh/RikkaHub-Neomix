@@ -390,6 +390,30 @@ token，见 [[prompt-size-composition]]）。若把 `category`/`tags` 也塞进�
    共用该组件，管理页 `SkillsPage.kt` 是独立列表。应抽共享筛选逻辑并分别接入管理列表和选择组件；
    只改 `SkillsPage.kt` 会漏掉两个选择入口，只改 `SkillsContent` 也不能覆盖管理页。
 
+#### A+B 实现记录（2026-09-17）
+
+按「只做搜索 + 单分类」落地（新增 16 项单测）：
+
+| 面 | 落点 |
+|---|---|
+| 数据 | `SkillMetadata.category`（`SkillManager.parseSkillFile` 填充；标量字段，`.get` 即可读） |
+| 纯函数 | 新 `data/files/SkillQuery.kt`：`filterSkills(query, category)` + `distinctCategories()` + `SkillCategoryFilter` 密封接口 |
+| frontmatter 保留 | 新 `splitFrontmatterEntries` / `otherFrontmatterEntryLines`（**行级**，保注释与块式列表） |
+| UI | 共享 `SkillsContent.header` 参数 + 新 `SkillFilterBar`（搜索框 + 分类 chips）；管理页、聊天面板、助手页三处接入 |
+| 陷阱 1 修复 | `SkillInstaller.saveFromContent` 覆盖同名技能时保留其它 frontmatter 键**与目录内既有附属文件** |
+
+**实现中三个非显然决定**：
+1. **注释归属下一个键**（YAML 惯例）。这不是细节：若归属上一个键，位于 `category:` 上方的
+   `# 说明` 会被算进上一个键（常是被排除的 `description`）⇒ 覆盖保存时注释连同分类一起消失。
+2. **frontmatter 保留走行级而非 snakeyaml 重序列化**：后者会丢注释、重排键序、改写块式列表——
+   用户手写内容被「顺手格式化」是静默失真。只做行分组、原样搬运。
+3. **分类不进 systemPrompt**（`SkillsTools` 仍只注入 name+description）：要解决的是人的浏览问题，
+   不是模型的检索问题；塞进去是纯 token 负担（见陷阱 2）。
+
+**未做（C，维持暂缓）**：多标签——需要 `getList`、多标签筛选与标签池，「重命名标签 = 批量改文件」，
+收益相对小。**分类筛选是自动从现有技能派生的**（`distinctCategories()`），没有分类管理 UI，
+也不需要——分类就是 SKILL.md 里的手写字段。
+
 ## 同步方式（ff-only，仅本地）
 
 ```

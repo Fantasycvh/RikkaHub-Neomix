@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,8 +23,10 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.files.SkillCategoryFilter
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.files.SkillMetadata
+import app.androidrik.rikkahub.data.files.filterSkills
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.ai.ExtensionEmptyState
@@ -31,6 +34,8 @@ import app.androidrik.rikkahub.ui.components.ai.ExtensionPickerNavigation
 import app.androidrik.rikkahub.ui.components.ai.ExtensionTab
 import app.androidrik.rikkahub.ui.components.ai.PresetPickerContent
 import app.androidrik.rikkahub.ui.components.ai.QuickMessagesContent
+import app.androidrik.rikkahub.ui.components.ai.SkillCategoryFilterSaver
+import app.androidrik.rikkahub.ui.components.ai.SkillFilterBar
 import app.androidrik.rikkahub.ui.components.ai.SkillsContent
 import app.androidrik.rikkahub.ui.components.ai.WorldbookPickerContent
 import org.koin.compose.koinInject
@@ -193,8 +198,16 @@ fun ExtensionSelector(
 
                 ExtensionTab.SKILLS -> {
                     if (skills.isNotEmpty()) {
+                        // #1901：技能多时列表难找，这里加与管理页同源的搜索 + 单分类
+                        var skillQuery by rememberSaveable { mutableStateOf("") }
+                        var skillCategory by rememberSaveable(stateSaver = SkillCategoryFilterSaver) {
+                            mutableStateOf<SkillCategoryFilter>(SkillCategoryFilter.All)
+                        }
+                        val filteredSkills = remember(skills, skillQuery, skillCategory) {
+                            skills.filterSkills(query = skillQuery, category = skillCategory)
+                        }
                         SkillsContent(
-                            skills = skills,
+                            skills = filteredSkills,
                             enabledSkills = assistant.enabledSkills,
                             onToggle = { name, checked ->
                                 val newSkills = if (checked) {
@@ -205,6 +218,15 @@ fun ExtensionSelector(
                                 onUpdate(assistant.copy(enabledSkills = newSkills))
                             },
                             onManage = onNavigateToSkills,
+                            header = {
+                                SkillFilterBar(
+                                    skills = skills,
+                                    query = skillQuery,
+                                    onQueryChange = { skillQuery = it },
+                                    category = skillCategory,
+                                    onCategoryChange = { skillCategory = it },
+                                )
+                            },
                         )
                     } else {
                         ExtensionEmptyState(

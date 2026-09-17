@@ -1293,6 +1293,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="skills_page_skill_content_label">SKILL.md内容</string>
   <string name="skills_page_skill_name">技能名称：%s</string>
   <string name="skills_page_title">代理技能</string>
+  <string name="skills_filter_search_hint">搜索技能</string>
+  <string name="skills_filter_clear">清除搜索</string>
+  <string name="skills_filter_category_all">全部</string>
+  <string name="skills_filter_category_uncategorized">未分类</string>
+  <string name="skills_filter_no_result">没有符合当前搜索或分类的技能。</string>
   <string name="speech_page_title">语音</string>
   <string name="speech_tab_asr">语音识别</string>
   <string name="speech_tab_tts">文字转语音</string>

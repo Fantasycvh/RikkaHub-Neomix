@@ -1243,6 +1243,11 @@
   <string name="skills_page_skill_content_label">SKILL.md內容</string>
   <string name="skills_page_skill_name">技能名稱：%s</string>
   <string name="skills_page_title">代理人技能</string>
+  <string name="skills_filter_search_hint">搜尋技能</string>
+  <string name="skills_filter_clear">清除搜尋</string>
+  <string name="skills_filter_category_all">全部</string>
+  <string name="skills_filter_category_uncategorized">未分類</string>
+  <string name="skills_filter_no_result">沒有符合目前搜尋或分類的技能。</string>
   <string name="speech_page_title">語音</string>
   <string name="speech_tab_asr">語音辨識</string>
   <string name="speech_tab_tts">文字轉語音</string>
