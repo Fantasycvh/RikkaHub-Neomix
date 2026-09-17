@@ -1300,4 +1300,64 @@ class PromptInjectionTransformerTest {
         assertEquals(lastUserIndex - 1, injectedIndex)
     }
     // endregion
+
+    // region 预设绑定（presetEntryIds 并集）
+
+    @Test
+    fun `entry bound via preset takes effect without per-entry binding`() {
+        val injection = createModeInjection(content = "preset entry")
+        val result = transformMessages(
+            messages = listOf(UIMessage.user("hi")),
+            assistant = createAssistant(),                 // 未逐条绑定
+            modeInjections = listOf(injection),
+            lorebooks = emptyList(),
+            presetEntryIds = setOf(injection.id),          // 但属于已绑定预设
+        )
+        assertTrue(getMessageText(result.first()).contains("preset entry"))
+    }
+
+    @Test
+    fun `preset binding is a union with per-entry binding`() {
+        val fromPreset = createModeInjection(content = "from preset")
+        val perEntry = createModeInjection(content = "per entry")
+        val result = transformMessages(
+            messages = listOf(UIMessage.user("hi")),
+            assistant = createAssistant(modeInjectionIds = setOf(perEntry.id)),
+            modeInjections = listOf(fromPreset, perEntry),
+            lorebooks = emptyList(),
+            presetEntryIds = setOf(fromPreset.id),
+        )
+        val system = getMessageText(result.first())
+        assertTrue("preset entry applies", system.contains("from preset"))
+        assertTrue("per-entry binding still applies", system.contains("per entry"))
+    }
+
+    @Test
+    fun `entry bound both ways is injected only once`() {
+        // 同一 id 既在已绑定预设内、又被逐条勾选 —— 必须去重，否则出现重复段落
+        val injection = createModeInjection(content = "once only")
+        val result = transformMessages(
+            messages = listOf(UIMessage.user("hi")),
+            assistant = createAssistant(modeInjectionIds = setOf(injection.id)),
+            modeInjections = listOf(injection),
+            lorebooks = emptyList(),
+            presetEntryIds = setOf(injection.id),
+        )
+        val system = getMessageText(result.first())
+        assertEquals("must appear exactly once", 1, Regex(Regex.escape("once only")).findAll(system).count())
+    }
+
+    @Test
+    fun `disabled entry is not injected even when its preset is bound`() {
+        val injection = createModeInjection(enabled = false, content = "disabled")
+        val result = transformMessages(
+            messages = listOf(UIMessage.user("hi")),
+            assistant = createAssistant(),
+            modeInjections = listOf(injection),
+            lorebooks = emptyList(),
+            presetEntryIds = setOf(injection.id),
+        )
+        assertFalse(getMessageText(result.first()).contains("disabled"))
+    }
+    // endregion
 }

@@ -31,6 +31,14 @@ object PromptInjectionTransformer : InputMessageTransformer {
             conversationModeInjectionIds = ctx.conversationModeInjectionIds,
             conversationLorebookIds = ctx.conversationLorebookIds,
             lorebookBudgetTokens = ctx.settings.lorebookInjectBudgetTokens,
+            // 预设级绑定 → 该预设内全部条目的 id。
+            // **助手级、不随会话覆盖**：预设表达的是「这个助手基于哪套方案」，
+            // 属助手配置，与会话级的逐条勾选是两件事（会话侧也没有预设 id 字段）。
+            presetEntryIds = ctx.settings.promptPresets
+                .filter { it.enabled && ctx.assistant.promptPresetIds.contains(it.id) }
+                .flatMap { it.entries }
+                .map { it.id }
+                .toSet(),
         )
     }
 }
@@ -47,6 +55,8 @@ internal fun transformMessages(
     conversationLorebookIds: Set<Uuid> = emptySet(),
     /** 世界书注入的 token 预算；0 = 不限制（默认，保持旧行为） */
     lorebookBudgetTokens: Int = 0,
+    /** 已绑定预设所含条目的 id（由调用方按「启用的预设 ∩ 助手绑定」算出） */
+    presetEntryIds: Set<Uuid> = emptySet(),
 ): List<UIMessage> {
     // 收集所有需要注入的内容
     val injections = collectInjections(
@@ -57,6 +67,7 @@ internal fun transformMessages(
         conversationModeInjectionIds = conversationModeInjectionIds,
         conversationLorebookIds = conversationLorebookIds,
         lorebookBudgetTokens = lorebookBudgetTokens,
+        presetEntryIds = presetEntryIds,
     )
 
     if (injections.isEmpty()) {
@@ -83,6 +94,7 @@ internal fun collectInjections(
     conversationModeInjectionIds: Set<Uuid> = emptySet(),
     conversationLorebookIds: Set<Uuid> = emptySet(),
     lorebookBudgetTokens: Int = 0,
+    presetEntryIds: Set<Uuid> = emptySet(),
 ): List<PromptInjection> {
     val injections = mutableListOf<PromptInjection>()
     val effectiveModeInjectionIds = if (assistant.allowConversationPromptInjection) {
@@ -97,8 +109,13 @@ internal fun collectInjections(
     }
 
     // 1. 获取关联的 ModeInjection
+    //    生效条件 = 条目自身启用 且（被逐条绑定 **或** 属于已绑定的预设）。
+    //    两者是**并集**：预设提供「一次绑一组」，条目级绑定保留单独勾选能力。
+    //    `distinctBy { id }` 必需：同一 id 同时走两条路径（预设内 + 被单独勾选）
+    //    否则会注入两次——UI 上就会出现重复段落。
     modeInjections
-        .filter { it.enabled && effectiveModeInjectionIds.contains(it.id) }
+        .filter { it.enabled && (effectiveModeInjectionIds.contains(it.id) || presetEntryIds.contains(it.id)) }
+        .distinctBy { it.id }
         .forEach { injections.add(it) }
 
     // 2. 获取关联的 Lorebook 中被触发的 RegexInjection

@@ -98,6 +98,14 @@ data class Assistant(
     val backgroundOpacity: Float = 1.0f, // 背景图不透明度(0~1)
     val useGradientBackground: Boolean = false, // 开启后聊天页使用动态渐变背景
     val modeInjectionIds: Set<Uuid> = emptySet(),      // 关联的模式注入 ID
+    /**
+     * 关联的**预设** id（整包启用）。
+     *
+     * 与 [modeInjectionIds] 并存而非取代：预设是「一次绑定一组」的便捷方式，
+     * 而条目级绑定仍保留（可单独勾选预设外的条目，也可让同一预设在不同助手里
+     * 再单独增删条目）。生效条目 = 两者并集（按 id 去重）。
+     */
+    val promptPresetIds: Set<Uuid> = emptySet(),
     val lorebookIds: Set<Uuid> = emptySet(),            // 关联的 Lorebook ID
     val enabledSkills: Set<String> = emptySet(),        // 启用的 skill 名称列表
     val enableTimeReminder: Boolean = false,            // 时间间隔提醒注入
@@ -506,6 +514,79 @@ data class Lorebook(
     val enabled: Boolean = true,
     val entries: List<PromptInjection.RegexInjection> = emptyList(),
 )
+
+/**
+ * 预设 —— 一组具名的提示词注入条目（对应 SillyTavern 的 Prompt Preset）。
+ *
+ * 为什么需要它：此前注入是**一个扁平的全局列表**，无法表达「多套方案共存/切换」
+ * （导入第二份 ST 预设会与第一份混在一起，且分不出哪些条目属于谁）。
+ * 见 `docs/peer-apps-benchmark.md` §6.2 ④。
+ *
+ * **与 [PromptInjection.ModeInjection] 的关系**：预设是**容器**（分组 + 名称 + 启用），
+ * 条目仍是原本的 `ModeInjection`（位置/优先级/角色/内容都照旧）⇒ 拼装逻辑完全不变。
+ */
+@Serializable
+data class PromptPreset(
+    val id: Uuid = Uuid.random(),
+    val name: String = "",
+    val description: String = "",
+    val enabled: Boolean = true,
+    val entries: List<PromptInjection.ModeInjection> = emptyList(),
+)
+
+/**
+ * 把扁平条目列表包成一个预设（用于兼容旧数据/旧格式）。
+ *
+ * 存量只有一个扁平 `modeInjections` 列表、没有容器概念，读取时按此包装即可，
+ * **无需数据迁移**（写入时才落到新结构）。
+ */
+fun List<PromptInjection.ModeInjection>.asSinglePreset(
+    name: String = "",
+): PromptPreset = PromptPreset(name = name, entries = this)
+
+/**
+ * 把「扁平条目列表」的编辑**归位**到各预设（[PromptPreset] 列表）。
+ *
+ * 用途：仍按扁平列表工作的编辑界面（如旧版注入 tab、未来若有的批量操作）改完之后，
+ * 需要写回容器结构。规则：
+ * - **已有条目**：按 id 归回原所属预设，且**预设内按新扁平列表的顺序重排**
+ *   （否则拖拽调整的顺序不会生效——顺序是用户意图的一部分）；
+ * - **被删条目**：自然消失（不在新列表中即丢弃）；
+ * - **新增条目**（id 不属于任何预设）：追加到**第一个预设**；没有预设时新建一个；
+ * - **跨预设重复 id**：先到先得（只保留第一次出现的那个预设），避免同一注入生效两次。
+ *
+ * 这样「编辑条目」与「保留分组」可以同时成立，不必为了容器化重写所有编辑界面。
+ */
+fun List<PromptPreset>.reconcileEntries(
+    newEntries: List<PromptInjection.ModeInjection>,
+): List<PromptPreset> {
+    val byId = newEntries.associateBy { it.id }
+    // 新的扁平顺序 = 用户调整后的顺序，用它给每个预设内部的条目排序
+    val orderOf = newEntries.withIndex().associate { (index, entry) -> entry.id to index }
+    val claimed = mutableSetOf<Uuid>()
+
+    val rebased = map { preset ->
+        preset.copy(
+            entries = preset.entries
+                .filter { byId.containsKey(it.id) }
+                .sortedBy { orderOf.getValue(it.id) }
+                .mapNotNull { byId[it.id] }
+                // 跨预设去重：一旦被前面的预设认领，后面的就不再重复持有
+                .filter { claimed.add(it.id) }
+        )
+    }
+
+    // 未归属任何预设的（新增）条目 → 追加到第一个预设；无预设则新建一个
+    val orphans = newEntries.filter { it.id !in claimed }
+    if (orphans.isEmpty()) return rebased
+    return if (rebased.isEmpty()) {
+        listOf(PromptPreset(entries = orphans))
+    } else {
+        rebased.toMutableList().apply {
+            this[0] = this[0].copy(entries = this[0].entries + orphans)
+        }
+    }
+}
 
 /**
  * 单个关键词是否在 [context] 中命中（主键与次要键共用同一语义）。

@@ -52,6 +52,8 @@ import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.PromptInjection
+import app.androidrik.rikkahub.data.model.PromptPreset
+import app.androidrik.rikkahub.data.model.asSinglePreset
 import app.androidrik.rikkahub.data.model.QuickMessage
 import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.data.sync.s3.S3Config
@@ -182,6 +184,9 @@ class SettingsStore(
         val LOREBOOK_INJECT_BUDGET_TOKENS = intPreferencesKey("lorebook_inject_budget_tokens")
 
         // 提示词注入
+        /** 预设容器（新结构）。旧 key [MODE_INJECTIONS] 仅作**读取回退**，写入只落这里。 */
+        val PROMPT_PRESETS = stringPreferencesKey("prompt_presets")
+        /** @deprecated 旧扁平结构；仅用于读取回退，勿写入。 */
         val MODE_INJECTIONS = stringPreferencesKey("mode_injections")
         val LOREBOOKS = stringPreferencesKey("lorebooks")
         val QUICK_MESSAGES = stringPreferencesKey("quick_messages")
@@ -302,9 +307,16 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
                 selectedASRProviderId = preferences[SELECTED_ASR_PROVIDER]?.let { Uuid.parse(it) },
-                modeInjections = preferences[MODE_INJECTIONS]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
+                // 预设容器：新 key 优先；**旧 key 作回退**（把旧扁平列表包成一个预设），
+                // 老用户原地可用、无需迁移器。写入只落新 key。
+                promptPresets = preferences[PROMPT_PRESETS]?.let {
+                    JsonInstant.decodeFromString<List<PromptPreset>>(it)
+                } ?: preferences[MODE_INJECTIONS]?.let {
+                    listOf(
+                        JsonInstant.decodeFromString<List<PromptInjection.ModeInjection>>(it)
+                            .asSinglePreset()
+                    )
+                } ?: listOf(DEFAULT_MODE_INJECTIONS.asSinglePreset()),
                 lorebooks = preferences[LOREBOOKS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
@@ -435,7 +447,10 @@ class SettingsStore(
                 favoriteModels = settings.favoriteModels.filter { uuid ->
                     settings.providers.flatMap { it.models }.any { it.id == uuid }
                 },
-                modeInjections = settings.modeInjections.distinctBy { it.id },
+                promptPresets = settings.promptPresets
+                    .distinctBy { it.id }
+                    // 预设内的条目也要去重（同 id 重复会让同一注入生效两次）
+                    .map { preset -> preset.copy(entries = preset.entries.distinctBy { it.id }) },
                 lorebooks = settings.lorebooks.distinctBy { it.id },
                 quickMessages = settings.quickMessages.distinctBy { it.id },
             )
@@ -512,7 +527,7 @@ class SettingsStore(
             settings.selectedASRProviderId?.let {
                 preferences[SELECTED_ASR_PROVIDER] = it.toString()
             } ?: preferences.remove(SELECTED_ASR_PROVIDER)
-            preferences[MODE_INJECTIONS] = JsonInstant.encodeToString(settings.modeInjections)
+            preferences[PROMPT_PRESETS] = JsonInstant.encodeToString(settings.promptPresets)
             preferences[LOREBOOKS] = JsonInstant.encodeToString(settings.lorebooks)
             preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
             preferences[WEB_SERVER_ENABLED] = settings.webServerEnabled
@@ -692,7 +707,12 @@ data class Settings(
     val defaultTTSPlaybackSpeed: Float = 1.0f,
     val asrProviders: List<ASRProviderSetting> = emptyList(),
     val selectedASRProviderId: Uuid? = null,
-    val modeInjections: List<PromptInjection.ModeInjection> = DEFAULT_MODE_INJECTIONS,
+    /**
+     * 预设容器（一组组具名的注入条目）。**这是持久化字段**。
+     *
+     * 默认值把 [DEFAULT_MODE_INJECTIONS]（学习模式）包成一个预设——与旧数据形态等价。
+     */
+    val promptPresets: List<PromptPreset> = listOf(DEFAULT_MODE_INJECTIONS.asSinglePreset()),
     val lorebooks: List<Lorebook> = emptyList(),
     val quickMessages: List<QuickMessage> = emptyList(),
     val webServerEnabled: Boolean = false,
@@ -760,6 +780,16 @@ data class Settings(
      */
     val importedSources: Map<String, ImportSourceRecord> = emptyMap(),
 ) {
+    /**
+     * 全部注入条目的**扁平视图**（预设计算得出，不单独持久化）。
+     *
+     * 刻意做成计算属性而非存储字段：下游（`PromptInjectionTransformer`、Web API 的
+     * id 校验、web-ui 的勾选列表、`ExtensionSelector`）全都按「扁平条目列表」消费，
+     * 这样**改容器结构不需要动它们任何一处**。见 `docs/peer-apps-benchmark.md` §6.2 ④。
+     */
+    val modeInjections: List<PromptInjection.ModeInjection>
+        get() = promptPresets.flatMap { it.entries }
+
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储
         fun dummy() = Settings(init = true)

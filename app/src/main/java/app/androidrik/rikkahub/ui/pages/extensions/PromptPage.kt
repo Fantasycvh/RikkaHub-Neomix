@@ -92,6 +92,7 @@ import app.androidrik.rikkahub.data.export.rememberExporter
 import app.androidrik.rikkahub.data.export.rememberImporter
 import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.Lorebook
+import app.androidrik.rikkahub.data.model.reconcileEntries
 import app.androidrik.rikkahub.data.model.PromptInjection
 import app.androidrik.rikkahub.data.model.SelectiveLogic
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -156,7 +157,11 @@ fun PromptPage(vm: PromptVM = koinViewModel()) {
             when (page) {
                 0 -> ModeInjectionTab(
                     modeInjections = settings.modeInjections,
-                    onUpdate = { vm.updateSettings(settings.copy(modeInjections = it)) }
+                    // 编辑仍按扁平列表进行；写回时**归位到各预设**（保留分组，新增条目追加到首个预设）。
+                    // 批次 3 会把此 tab 换成「预设列表 → 预设详情」，届时改用容器级写回。
+                    onUpdate = {
+                        vm.updateSettings(settings.copy(promptPresets = settings.promptPresets.reconcileEntries(it)))
+                    }
                 )
 
                 1 -> LorebookTab(
