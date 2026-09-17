@@ -1577,4 +1577,6 @@
   <string name="message_partial_failure_regenerate">Regenerate</string>
   <string name="asr_error_not_configured">Speech recognition not configured — set an ASR provider and API key first</string>
   <string name="asr_error_audio_focus">Microphone busy — could not get audio focus</string>
+  <string name="prompt_page_position_end_of_chat">End of request (after all messages)</string>
+  <string name="prompt_page_tail_user_role_hint">Appended as a user message on each model request, including after tool results. This is not assistant prefill.</string>
 </resources>

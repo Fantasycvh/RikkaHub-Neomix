@@ -26,6 +26,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
+import app.androidrik.rikkahub.ui.components.ui.ExtensionPickerNavigation
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
@@ -429,9 +431,17 @@ private fun InjectionQuickConfigSheet(
     val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
     val navController = LocalNavController.current
 
+    val navigation = remember { ExtensionPickerNavigation() }
+    val dismissForManagement = {
+        onDismiss()
+        onDismissAll()
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        // Detail Back belongs to ExtensionSelector; scrim/swipe still dismiss the sheet.
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = !navigation.isDetail),
     ) {
         Column(
             modifier = Modifier
@@ -446,16 +456,21 @@ private fun InjectionQuickConfigSheet(
                 conversation = conversation,
                 onUpdateConversation = onUpdateConversation,
                 modifier = Modifier.weight(1f),
+                navigation = navigation,
                 onNavigateToQuickMessages = {
-                    onDismissAll()
+                    dismissForManagement()
                     navController.navigate(Screen.QuickMessages)
                 },
                 onNavigateToPrompts = {
-                    onDismissAll()
+                    dismissForManagement()
                     navController.navigate(Screen.Prompts)
                 },
+                onNavigateToWorldbooks = {
+                    dismissForManagement()
+                    navController.navigate(Screen.Worldbooks)
+                },
                 onNavigateToSkills = {
-                    onDismissAll()
+                    dismissForManagement()
                     navController.navigate(Screen.Skills)
                 })
 

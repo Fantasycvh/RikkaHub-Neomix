@@ -34,3 +34,11 @@ fun <T> List<T>.reorderForDrag(fromIndex: Int, toIndex: Int): List<T> {
     mutable.add(toIndex.coerceIn(0, mutable.size), item)
     return mutable
 }
+
+/** Resolve item keys instead of lazy-list indices, which include headers and other non-data rows. */
+fun <T> List<T>.reorderForDragByKey(fromKey: Any, toKey: Any, key: (T) -> Any): List<T> {
+    val from = indexOfFirst { key(it) == fromKey }
+    val to = indexOfFirst { key(it) == toKey }
+    if (from < 0 || to < 0 || from == to) return this
+    return reorderForDrag(from, to)
+}

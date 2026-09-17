@@ -70,6 +70,12 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.key
+import app.androidrik.rikkahub.ui.components.ai.SHOW_LOREBOOK_TABS
+import app.androidrik.rikkahub.data.model.entriesForDisplay
+import app.androidrik.rikkahub.data.model.reorderEntries
+import app.androidrik.rikkahub.data.model.updateEntry
+import app.androidrik.rikkahub.utils.reorderForDragByKey
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -122,11 +128,71 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
-fun PromptPage(vm: PromptVM = koinViewModel()) {
+fun PromptPage(vm: PromptVM = koinViewModel(), initialWorldbooks: Boolean = false) {
     val settings by vm.settings.collectAsStateWithLifecycle()
-    // 两级页面在同一 route 内切换（预设列表 ⇄ 预设详情）。
-    // 用 id 字符串保存（Uuid 非 Saveable）；空 = 停在列表。
+    var worldbooks by rememberSaveable { mutableStateOf(initialWorldbooks && SHOW_LOREBOOK_TABS) }
     var openedPresetId by rememberSaveable { mutableStateOf<String?>(null) }
+    var openedBookId by rememberSaveable { mutableStateOf<String?>(null) }
+    val managementBar: @Composable () -> Unit = {
+        if (SHOW_LOREBOOK_TABS) {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = !worldbooks,
+                    onClick = { worldbooks = false },
+                    icon = { Icon(HugeIcons.MagicWand01, null) },
+                    label = { Text(stringResource(R.string.compress_preset_label)) },
+                )
+                NavigationBarItem(
+                    selected = worldbooks,
+                    onClick = { worldbooks = true },
+                    icon = { Icon(HugeIcons.Book01, null) },
+                    label = { Text(stringResource(R.string.extension_selector_tab_lorebooks)) },
+                )
+            }
+        }
+    }
+    if (worldbooks) {
+        val book = settings.lorebooks.find { it.id.toString() == openedBookId }
+        if (book == null) {
+            val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+            Scaffold(
+                topBar = {
+                    LargeFlexibleTopAppBar(
+                        navigationIcon = { BackButton() },
+                        title = { Text(stringResource(R.string.prompt_page_title)) },
+                        scrollBehavior = scrollBehavior,
+                        colors = CustomColors.topBarColors,
+                    )
+                },
+                bottomBar = managementBar,
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                containerColor = CustomColors.topBarColors.containerColor,
+            ) { padding ->
+                LorebookTab(
+                    lorebooks = settings.lorebooks,
+                    onUpdate = { vm.updateSettings(settings.copy(lorebooks = it)) },
+                    budgetTokens = settings.lorebookInjectBudgetTokens,
+                    onBudgetChange = { vm.updateSettings(settings.copy(lorebookInjectBudgetTokens = it)) },
+                    onOpenBook = { openedBookId = it.id.toString() },
+                    contentPadding = padding,
+                )
+            }
+        } else {
+            BackHandler { openedBookId = null }
+            key(book.id) {
+                LorebookDetailScreen(
+                    book = book,
+                    onUpdateBook = { updated ->
+                        vm.updateSettings(settings.copy(lorebooks = settings.lorebooks.map {
+                            if (it.id == updated.id) updated else it
+                        }))
+                    },
+                    onBack = { openedBookId = null },
+                )
+            }
+        }
+        return
+    }
 
     val presets = settings.promptPresets
     val opened = openedPresetId?.let { id -> presets.find { it.id.toString() == id } }
@@ -135,6 +201,7 @@ fun PromptPage(vm: PromptVM = koinViewModel()) {
     if (opened == null) {
         PresetListScreen(
             presets = presets,
+            bottomBar = managementBar,
             onUpdatePresets = { vm.updateSettings(settings.copy(promptPresets = it)) },
             onOpenPreset = { openedPresetId = it.id.toString() },
         )
@@ -167,6 +234,7 @@ private fun PresetListScreen(
     presets: List<PromptPreset>,
     onUpdatePresets: (List<PromptPreset>) -> Unit,
     onOpenPreset: (PromptPreset) -> Unit,
+    bottomBar: @Composable () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var expanded by rememberSaveable { mutableStateOf(true) }
@@ -203,6 +271,7 @@ private fun PresetListScreen(
     }
 
     Scaffold(
+        bottomBar = bottomBar,
         topBar = {
             LargeFlexibleTopAppBar(
                 navigationIcon = { BackButton() },
@@ -281,7 +350,7 @@ private fun PresetListScreen(
                 expanded = expanded,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .offset(y = -ScreenOffset),
+                    .offset(y = -ScreenOffset - innerPadding.calculateBottomPadding()),
                 leadingContent = {
                     IconButton(onClick = { importer.importFromFile() }) {
                         Icon(HugeIcons.FileImport, null)
@@ -836,6 +905,7 @@ private fun ModeInjectionEditSheet(
                         )
                         InjectionRoleSelector(
                             role = injection.role,
+                            position = injection.position,
                             onSelect = { onEdit(injection.copy(role = it)) }
                         )
                     }
@@ -887,7 +957,8 @@ private fun InjectionPosition.usesStandaloneMessage(): Boolean = when (this) {
 
     InjectionPosition.TOP_OF_CHAT,
     InjectionPosition.BOTTOM_OF_CHAT,
-    InjectionPosition.AT_DEPTH -> true
+    InjectionPosition.AT_DEPTH,
+    InjectionPosition.END_OF_CHAT -> true
 }
 
 @Composable
@@ -897,13 +968,19 @@ private fun getPositionLabel(position: InjectionPosition): String = when (positi
     InjectionPosition.TOP_OF_CHAT -> stringResource(R.string.prompt_page_position_top_of_chat)
     InjectionPosition.BOTTOM_OF_CHAT -> stringResource(R.string.prompt_page_position_bottom_of_chat)
     InjectionPosition.AT_DEPTH -> stringResource(R.string.prompt_page_position_at_depth)
+    InjectionPosition.END_OF_CHAT -> stringResource(R.string.prompt_page_position_end_of_chat)
 }
 
 @Composable
 private fun InjectionRoleSelector(
     role: MessageRole,
+    position: InjectionPosition,
     onSelect: (MessageRole) -> Unit
 ) {
+    if (position == InjectionPosition.END_OF_CHAT) {
+        Text(stringResource(R.string.prompt_page_tail_user_role_hint))
+        return
+    }
     Select(
         options = listOf(MessageRole.USER, MessageRole.ASSISTANT),
         selectedOption = role,
@@ -1056,27 +1133,30 @@ private fun LorebookTab(
     onUpdate: (List<Lorebook>) -> Unit,
     budgetTokens: Int,
     onBudgetChange: (Int) -> Unit,
+    onOpenBook: (Lorebook) -> Unit,
+    contentPadding: PaddingValues,
 ) {
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
     val toaster = LocalToaster.current
     val currentLorebooks by rememberUpdatedState(lorebooks)
+    val currentOnUpdate by rememberUpdatedState(onUpdate)
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        onUpdate(lorebooks.reorderForDrag(from.index, to.index))
+        val moved = currentLorebooks.reorderForDragByKey(from.key, to.key) { it.id }
+        if (moved !== currentLorebooks) currentOnUpdate(moved)
     }
     val editState = useEditState<Lorebook> { edited ->
-        val index = lorebooks.indexOfFirst { it.id == edited.id }
-        if (index >= 0) {
-            onUpdate(lorebooks.toMutableList().apply { set(index, edited) })
-        } else {
-            onUpdate(lorebooks + edited)
-        }
+        val existing = currentLorebooks.find { it.id == edited.id }
+        currentOnUpdate(if (existing == null) currentLorebooks + edited else currentLorebooks.map {
+            if (it.id == edited.id) it.copy(name = edited.name, description = edited.description) else it
+        })
     }
+
     val importSuccessMsg = stringResource(R.string.export_import_success)
     val importFailedMsg = stringResource(R.string.export_import_failed)
     val importer = rememberImporter(LorebookSerializer) { result ->
         result.onSuccess { imported ->
-            onUpdate(currentLorebooks + imported)
+            currentOnUpdate(currentLorebooks + imported)
             toaster.show(importSuccessMsg)
         }.onFailure { error ->
             toaster.show(importFailedMsg.format(error.message))
@@ -1092,7 +1172,7 @@ private fun LorebookTab(
                     onExpand = { expanded = true },
                     onCollapse = { expanded = false }
                 ),
-            contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 128.dp),
+            contentPadding = contentPadding + PaddingValues(16.dp) + PaddingValues(bottom = 128.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             state = lazyListState
         ) {
@@ -1139,8 +1219,14 @@ private fun LorebookTab(
                                         scaleY = 1.05f
                                     }
                                 },
+                            onOpen = { onOpenBook(book) },
                             onEdit = { editState.open(book) },
-                            onDelete = { onUpdate(lorebooks - book) }
+                            onToggleEnabled = { enabled ->
+                                currentOnUpdate(currentLorebooks.map {
+                                    if (it.id == book.id) it.copy(enabled = enabled) else it
+                                })
+                            },
+                            onDelete = { currentOnUpdate(currentLorebooks.filterNot { it.id == book.id }) }
                         )
                     }
                 }
@@ -1151,7 +1237,7 @@ private fun LorebookTab(
             expanded = expanded,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = -ScreenOffset),
+                .offset(y = -ScreenOffset - contentPadding.calculateBottomPadding()),
             leadingContent = {
                 IconButton(onClick = { importer.importFromFile() }) {
                     Icon(HugeIcons.FileImport, null)
@@ -1177,7 +1263,7 @@ private fun LorebookTab(
 
     if (editState.isEditing) {
         editState.currentState?.let { state ->
-            LorebookEditSheet(
+            LorebookEditDialog(
                 book = state,
                 onDismiss = { editState.dismiss() },
                 onConfirm = { editState.confirm() },
@@ -1191,6 +1277,8 @@ private fun LorebookTab(
 private fun LorebookCard(
     book: Lorebook,
     modifier: Modifier = Modifier,
+    onOpen: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -1215,7 +1303,7 @@ private fun LorebookCard(
                 }
                 FilledIconButton(onClick = {
                     scope.launch {
-                        onDelete()
+                        showDeleteDialog = true
                         swipeState.reset()
                     }
                 }) {
@@ -1227,6 +1315,7 @@ private fun LorebookCard(
         modifier = modifier
     ) {
         Card(
+            onClick = onOpen,
             colors = CardDefaults.cardColors(
                 containerColor = CustomColors.listItemColors.containerColor
             )
@@ -1275,6 +1364,7 @@ private fun LorebookCard(
                         }
                     }
                 }
+                Switch(checked = book.enabled, onCheckedChange = onToggleEnabled)
                 IconButton(onClick = { showExportDialog = true }) {
                     Icon(HugeIcons.Share03, stringResource(R.string.export_title))
                 }
@@ -1316,157 +1406,260 @@ private fun LorebookCard(
 }
 
 @Composable
-private fun LorebookEditSheet(
+private fun LorebookEditDialog(
     book: Lorebook,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
-    onEdit: (Lorebook) -> Unit
+    onEdit: (Lorebook) -> Unit,
 ) {
-    val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
-    val scope = rememberCoroutineScope()
-    val entryEditState = useEditState<PromptInjection.RegexInjection> { edited ->
-        val index = book.entries.indexOfFirst { it.id == edited.id }
-        if (index >= 0) {
-            onEdit(book.copy(entries = book.entries.toMutableList().apply { set(index, edited) }))
-        } else {
-            onEdit(book.copy(entries = book.entries + edited))
-        }
-    }
-
-    ModalBottomSheet(
+    AlertDialog(
         onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        sheetGesturesEnabled = false,
-        dragHandle = {
-            IconButton(onClick = {
-                scope.launch {
-                    sheetState.hide()
-                    onDismiss()
-                }
-            }) {
-                Icon(HugeIcons.ArrowDown01, null)
-            }
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.95f)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.prompt_page_edit_lorebook),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+        title = { Text(stringResource(R.string.prompt_page_edit_lorebook)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = book.name,
                     onValueChange = { onEdit(book.copy(name = it)) },
                     label = { Text(stringResource(R.string.prompt_page_name)) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
-
                 OutlinedTextField(
                     value = book.description,
                     onValueChange = { onEdit(book.copy(description = it)) },
                     label = { Text(stringResource(R.string.prompt_page_description)) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.prompt_page_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.prompt_page_cancel)) }
+        },
+    )
+}
 
-                FormItem(
-                    label = { Text(stringResource(R.string.prompt_page_enabled)) },
-                    tail = {
-                        Switch(
-                            checked = book.enabled,
-                            onCheckedChange = { onEdit(book.copy(enabled = it)) }
+@Composable
+private fun LorebookDetailScreen(
+    book: Lorebook,
+    onUpdateBook: (Lorebook) -> Unit,
+    onBack: () -> Unit,
+) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var expanded by rememberSaveable { mutableStateOf(true) }
+    val lazyListState = rememberLazyListState()
+    val displayed = remember(book.entries) { book.entriesForDisplay() }
+    val currentBook by rememberUpdatedState(book)
+    val currentOnUpdate by rememberUpdatedState(onUpdateBook)
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        val moved = currentBook.reorderEntries(from.key, to.key)
+        if (moved !== currentBook) currentOnUpdate(moved)
+    }
+    val editState = useEditState<PromptInjection.RegexInjection> { edited ->
+        currentOnUpdate(currentBook.updateEntry(edited))
+    }
+
+    Scaffold(
+        topBar = {
+            LargeFlexibleTopAppBar(
+                // Return to the worldbook list without popping the management route.
+                navigationIcon = {
+                    FilledTonalIconButton(onClick = onBack) {
+                        Icon(HugeIcons.ArrowLeft01, contentDescription = null)
+                    }
+                },
+                title = {
+                    Text(book.name.ifBlank { stringResource(R.string.prompt_page_unnamed_lorebook) })
+                },
+                scrollBehavior = scrollBehavior,
+                colors = CustomColors.topBarColors,
+            )
+        },
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = CustomColors.topBarColors.containerColor,
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .floatingToolbarVerticalNestedScroll(
+                        expanded = expanded,
+                        onExpand = { expanded = true },
+                        onCollapse = { expanded = false }
+                    ),
+                contentPadding = innerPadding + PaddingValues(bottom = 128.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                state = lazyListState,
+            ) {
+                if (book.entries.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillParentMaxHeight(0.8f)
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.prompt_page_entries_count_format, 0),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(R.string.prompt_page_empty_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                } else {
+                    item("orderHint") {
+                        Text(
+                            text = stringResource(R.string.prompt_page_priority_order_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                         )
                     }
-                )
-
-                // 条目列表
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        stringResource(R.string.prompt_page_entries_format, book.entries.size),
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    IconButton(onClick = {
-                        entryEditState.open(PromptInjection.RegexInjection())
-                    }) {
-                        Icon(HugeIcons.Add01, stringResource(R.string.prompt_page_add_entry))
-                    }
-                }
-
-                book.entries.forEach { entry ->
-                    RegexInjectionEntryCard(
-                        entry = entry,
-                        onEdit = { entryEditState.open(entry) },
-                        onDelete = {
-                            onEdit(book.copy(entries = book.entries - entry))
+                    items(displayed, key = { it.id }) { injection ->
+                        ReorderableItem(state = reorderableState, key = injection.id) { isDragging ->
+                            RegexInjectionEntryCard(
+                                entry = injection,
+                                modifier = Modifier
+                                    .longPressDraggableHandle()
+                                    .graphicsLayer {
+                                        if (isDragging) {
+                                            scaleX = 1.05f
+                                            scaleY = 1.05f
+                                        }
+                                    },
+                                onEdit = { editState.open(injection) },
+                                onToggleEnabled = { enabled ->
+                                    currentOnUpdate(
+                                        currentBook.copy(entries = currentBook.entries.map { entry ->
+                                            if (entry.id == injection.id) entry.copy(enabled = enabled) else entry
+                                        })
+                                    )
+                                },
+                                onDelete = {
+                                    currentOnUpdate(currentBook.copy(
+                                        entries = currentBook.entries.filterNot { it.id == injection.id }
+                                    ))
+                                },
+                            )
                         }
-                    )
+                    }
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+            HorizontalFloatingToolbar(
+                expanded = expanded,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = -ScreenOffset),
             ) {
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.prompt_page_cancel))
-                }
-                TextButton(onClick = onConfirm) {
-                    Text(stringResource(R.string.prompt_page_confirm))
+                Button(onClick = { editState.open(PromptInjection.RegexInjection()) }) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(HugeIcons.Add01, null)
+                        AnimatedVisibility(expanded) {
+                            Row {
+                                Spacer(modifier = Modifier.size(8.dp))
+                                Text(stringResource(R.string.prompt_page_add_entry))
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    if (entryEditState.isEditing) {
-        entryEditState.currentState?.let { state ->
+    if (editState.isEditing) {
+        editState.currentState?.let { state ->
             RegexInjectionEditDialog(
                 entry = state,
-                onDismiss = { entryEditState.dismiss() },
-                onConfirm = { entryEditState.confirm() },
-                onEdit = { entryEditState.currentState = it }
+                onDismiss = { editState.dismiss() },
+                onConfirm = { editState.confirm() },
+                onEdit = { editState.currentState = it },
             )
         }
     }
 }
 
+
 @Composable
 private fun RegexInjectionEntryCard(
     entry: PromptInjection.RegexInjection,
+    modifier: Modifier = Modifier,
     onEdit: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+    val swipeState = rememberSwipeToDismissBoxState()
+    val scope = rememberCoroutineScope()
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    SwipeToDismissBox(
+        state = swipeState,
+        backgroundContent = {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { scope.launch { swipeState.reset() } }) {
+                    Icon(HugeIcons.Cancel01, null)
+                }
+                FilledIconButton(onClick = {
+                    scope.launch {
+                        showDeleteDialog = true
+                        swipeState.reset()
+                    }
+                }) {
+                    Icon(HugeIcons.Delete01, stringResource(R.string.prompt_page_delete))
+                }
+            }
+        },
+        enableDismissFromStartToEnd = false,
+        modifier = modifier
+    ) {
+        Card(
+            onClick = onEdit,
+            colors = CardDefaults.cardColors(
+                containerColor = CustomColors.listItemColors.containerColor
+            )
         ) {
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = entry.name.ifEmpty { stringResource(R.string.prompt_page_unnamed_entry) },
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = entry.name.ifEmpty { stringResource(R.string.prompt_page_unnamed_entry) },
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    val enabledLabel = stringResource(R.string.prompt_page_enabled)
+                    Switch(
+                        checked = entry.enabled,
+                        onCheckedChange = onToggleEnabled,
+                        modifier = Modifier.semantics {
+                            contentDescription = "${entry.name}: $enabledLabel"
+                        }
+                    )
+                }
                 if (entry.keywords.isNotEmpty()) {
                     Text(
                         text = stringResource(R.string.prompt_page_keywords_format, entry.keywords.joinToString(", ")),
@@ -1488,23 +1681,54 @@ private fun RegexInjectionEntryCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    Tag(type = TagType.INFO) {
+                        Text(getPositionLabel(entry.position))
+                    }
+                    Tag(type = TagType.DEFAULT) {
+                        Text(stringResource(R.string.prompt_page_priority_format, entry.priority))
+                    }
                     if (!entry.enabled) {
                         Tag(type = TagType.WARNING) {
                             Text(stringResource(R.string.prompt_page_disabled))
                         }
                     }
                 }
-            }
-            IconButton(onClick = onEdit) {
-                Icon(HugeIcons.Tools, stringResource(R.string.prompt_page_edit))
-            }
-            IconButton(onClick = onDelete) {
-                Icon(HugeIcons.Delete01, stringResource(R.string.prompt_page_delete))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    IconButton(onClick = onEdit) {
+                        Icon(HugeIcons.Tools, stringResource(R.string.prompt_page_edit))
+                    }
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(
+                            HugeIcons.Delete01,
+                            stringResource(R.string.prompt_page_delete),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        RikkaConfirmDialog(
+            show = true,
+            title = stringResource(R.string.prompt_page_delete),
+            confirmText = stringResource(R.string.confirm),
+            dismissText = stringResource(R.string.cancel),
+            onConfirm = {
+                showDeleteDialog = false
+                onDelete()
+            },
+            onDismiss = { showDeleteDialog = false },
+            text = { Text(stringResource(R.string.prompt_page_delete_confirm)) },
+        )
     }
 }
 
@@ -1685,6 +1909,7 @@ private fun RegexInjectionEditDialog(
                         )
                         InjectionRoleSelector(
                             role = entry.role,
+                            position = entry.position,
                             onSelect = { onEdit(entry.copy(role = it)) }
                         )
                     }

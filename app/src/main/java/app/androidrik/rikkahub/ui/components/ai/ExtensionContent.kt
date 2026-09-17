@@ -32,15 +32,8 @@ import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.PromptInjection
 import app.androidrik.rikkahub.data.model.QuickMessage
 
-/**
- * 是否在「扩展面板 / 助手详情」显示**世界书** tab。
- *
- * **暂时关闭**（用户决策 2026-09-17）：先把「预设（注入）」这条线做完整，世界书之后再放开。
- * 关闭的只是 UI 入口——**数据、编辑器（`LorebookTab`/`LorebookEditSheet`）与导入导出
- * 全部保留**，把此常量改回 `true` 即可恢复（tab 行按 [ExtensionTab.visible] 渲染，
- * 页面索引自动跟着走，不会错位）。
- */
-internal const val SHOW_LOREBOOK_TABS = false
+/** Shared visibility for worldbook binding tabs and prompt management. */
+internal const val SHOW_LOREBOOK_TABS = true
 
 /**
  * 扩展面板的 tab。两处界面共用（扩展面板 `ExtensionSelector` 与助手详情 `AssistantExtensionsPage`）。

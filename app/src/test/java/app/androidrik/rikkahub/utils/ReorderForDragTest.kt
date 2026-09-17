@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.utils
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 /**
@@ -104,6 +105,29 @@ class ReorderForDragTest {
                 assertEquals("from=$from to=$to content", list.toSet(), result.toSet())
             }
         }
+    }
+
+    // endregion
+
+    // region 世界书条目拖拽（按 key 定位，勿用 lazy 列表原始下标）
+
+    @Test
+    fun `key based reorder resolves display indices across header offsets`() {
+        val keyed = listOf(listOf("header"), listOf("a"), listOf("b"), listOf("c"))
+        val data = keyed.drop(1)
+        // 原始 lazy 下标会带 header 偏移：from=2/to=3 与 key "a"/"c" 不是同一语义
+        assertEquals(
+            listOf(listOf("b"), listOf("c"), listOf("a")),
+            data.reorderForDragByKey(fromKey = "a", toKey = "c") { it[0] },
+        )
+        assertEquals(keyed.drop(1), data.reorderForDragByKey("header", "a") { it[0] })
+    }
+
+    @Test
+    fun `key based reorder ignores stale keys and identical keys`() {
+        assertSame(list, list.reorderForDragByKey("z", "a") { it })
+        assertSame(list, list.reorderForDragByKey("a", "z") { it })
+        assertSame(list, list.reorderForDragByKey("a", "a") { it })
     }
 
     // endregion

@@ -396,6 +396,9 @@ enum class InjectionPosition {
 
     @SerialName("at_depth")
     AT_DEPTH,               // 在指定深度位置插入（从最新消息往前数）
+
+    @SerialName("end_of_chat")
+    END_OF_CHAT,            // 本次请求末尾，以用户消息追加
 }
 
 /**

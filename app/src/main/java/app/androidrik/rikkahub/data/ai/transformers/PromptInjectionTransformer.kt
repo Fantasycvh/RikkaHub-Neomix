@@ -263,6 +263,14 @@ internal fun applyInjections(
         }
     }
 
+    val tailInjections = byPosition[InjectionPosition.END_OF_CHAT]
+    if (!tailInjections.isNullOrEmpty()) {
+        // 尾部不使用 assistant 角色，避免被提供商解释为预填充。
+        result.add(
+            UIMessage.user(tailInjections.joinToString("\n") { it.content }).copy(isSynthetic = true)
+        )
+    }
+
     return result
 }
 

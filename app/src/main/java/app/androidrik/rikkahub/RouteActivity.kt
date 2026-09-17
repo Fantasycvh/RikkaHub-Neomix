@@ -519,6 +519,10 @@ class RouteActivity : ComponentActivity() {
                                 PromptPage()
                             }
 
+                            entry<Screen.Worldbooks> {
+                                PromptPage(initialWorldbooks = true)
+                            }
+
                             entry<Screen.Skills> {
                                 SkillsPage()
                             }
@@ -733,6 +737,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Prompts : Screen
+
+    @Serializable
+    data object Worldbooks : Screen
 
     @Serializable
     data object Skills : Screen

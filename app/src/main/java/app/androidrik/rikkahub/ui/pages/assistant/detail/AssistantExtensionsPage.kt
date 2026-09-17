@@ -148,7 +148,7 @@ fun AssistantExtensionsPage(id: String) {
                             ExtensionEmptyState(
                                 message = stringResource(R.string.assistant_extensions_page_empty_lorebooks),
                                 buttonText = stringResource(R.string.assistant_extensions_page_goto_prompts),
-                                onAction = { navController.navigate(Screen.Prompts) },
+                                onAction = { navController.navigate(Screen.Worldbooks) },
                             )
                         } else {
                             Column {
@@ -163,7 +163,7 @@ fun AssistantExtensionsPage(id: String) {
                                     },
                                 )
                                 TextButton(
-                                    onClick = { navController.navigate(Screen.Prompts) },
+                                    onClick = { navController.navigate(Screen.Worldbooks) },
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
                                     Text(stringResource(R.string.assistant_extensions_page_goto_prompts))
