@@ -725,3 +725,36 @@ fun List<PromptInjection.RegexInjection>.limitByTokenBudget(
     }
     return selected
 }
+
+/**
+ * 按「视觉顺序」重写条目的 `priority`，使**列表顺序成为唯一真相**。
+ *
+ * 背景（`docs/peer-apps-benchmark.md` §6.2 ④）：拼装时 [PromptInjection] 是按
+ * `priority` **降序**应用（`PromptInjectionTransformer` 的 `sortedByDescending { priority }`），
+ * 列表顺序只在同优先级时作为 tiebreaker 生效 ⇒ 出现过「拖了半天却没变化」的现象
+ * （用户给某条设过 priority 后，拖拽对那一条就失效了）。
+ *
+ * 解决方式（用户拍板）：**priority 是唯一来源，列表顺序只是它的可视化**。
+ * 拖拽后调用本函数，把 top→bottom 依次映射为 `n-1, n-2, …, 0`，
+ * 于是「显示顺序 == 生效顺序」恒成立。
+ *
+ * @param orderedEntries 用户拖拽后的**视觉顺序**（第一个 = 最靠前 = 优先级最高）
+ * @return 重写 priority 后的列表（保持传入顺序，便于直接回写）
+ */
+fun normalizeEntryPriorities(
+    orderedEntries: List<PromptInjection.ModeInjection>,
+): List<PromptInjection.ModeInjection> {
+    val top = orderedEntries.size - 1
+    return orderedEntries.mapIndexed { index, entry ->
+        entry.copy(priority = top - index)
+    }
+}
+
+/**
+ * 按 `priority` 降序排列（同优先级时保持原相对顺序，即稳定排序）。
+ *
+ * 供 UI 以「生效顺序」展示列表。**不要**用 `sortedByDescending` 之外的规则，
+ * 否则显示顺序会与实际拼装顺序不一致。
+ */
+fun List<PromptInjection.ModeInjection>.sortedForDisplay(): List<PromptInjection.ModeInjection> =
+    sortedByDescending { it.priority }

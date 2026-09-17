@@ -600,6 +600,7 @@
   <string name="prompt_page_lorebook_budget_label">Бюджет токенов</string>
   <string name="prompt_page_lorebook_budget_unlimited">Без ограничений (0)</string>
   <string name="prompt_page_lorebook_budget_tokens">%1$d токенов</string>
+  <string name="prompt_page_priority_order_hint">Порядок отображения = порядок применения. Перетаскивание перезаписывает приоритет (выше приоритет — раньше).</string>
   <string name="prompt_page_new_keyword">Новое ключевое слово</string>
   <string name="prompt_page_position_after_system">После системного приглашения</string>
   <string name="prompt_page_position_at_depth">На глубине</string>

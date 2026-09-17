@@ -93,6 +93,8 @@ import app.androidrik.rikkahub.data.export.rememberImporter
 import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.reconcileEntries
+import app.androidrik.rikkahub.data.model.normalizeEntryPriorities
+import app.androidrik.rikkahub.data.model.sortedForDisplay
 import app.androidrik.rikkahub.data.model.PromptInjection
 import app.androidrik.rikkahub.data.model.SelectiveLogic
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -186,11 +188,18 @@ private fun ModeInjectionTab(
     val lazyListState = rememberLazyListState()
     val toaster = LocalToaster.current
     val currentModeInjections by rememberUpdatedState(modeInjections)
+
+    // **显示顺序 = 生效顺序**：按 priority 降序展示（与拼装时 sortedByDescending 一致）。
+    // 此前展示用的是存储顺序，而生效看 priority ⇒ 两者不一致时「拖了没变化」。
+    val displayed = remember(modeInjections) { modeInjections.sortedForDisplay() }
+    val currentDisplayed by rememberUpdatedState(displayed)
+
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newList = modeInjections.toMutableList()
-        val item = newList.removeAt(from.index)
-        newList.add(to.index, item)
-        onUpdate(newList)
+        val moved = displayed.toMutableList().apply {
+            add(to.index, removeAt(from.index))
+        }
+        // 拖拽即把新顺序**写回 priority**（priority 是唯一真相，列表顺序只是它的可视化）
+        onUpdate(normalizeEntryPriorities(moved))
     }
     val editState = useEditState<PromptInjection.ModeInjection> { edited ->
         val index = modeInjections.indexOfFirst { it.id == edited.id }
@@ -246,7 +255,15 @@ private fun ModeInjectionTab(
                     }
                 }
             } else {
-                items(modeInjections, key = { it.id }) { injection ->
+                item("orderHint") {
+                    Text(
+                        text = stringResource(R.string.prompt_page_priority_order_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
+                items(displayed, key = { it.id }) { injection ->
                     ReorderableItem(
                         state = reorderableState,
                         key = injection.id

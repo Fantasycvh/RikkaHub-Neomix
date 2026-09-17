@@ -600,6 +600,7 @@
   <string name="prompt_page_lorebook_budget_label">トークン上限</string>
   <string name="prompt_page_lorebook_budget_unlimited">無制限（0）</string>
   <string name="prompt_page_lorebook_budget_tokens">%1$d トークン</string>
+  <string name="prompt_page_priority_order_hint">表示順＝適用順です。ドラッグすると優先度が書き換わります（優先度が高いものが先）。</string>
   <string name="prompt_page_new_keyword">新規キーワード</string>
   <string name="prompt_page_position_after_system">システムプロンプトの後</string>
   <string name="prompt_page_position_at_depth">深度</string>

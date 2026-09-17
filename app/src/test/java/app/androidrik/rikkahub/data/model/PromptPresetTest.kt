@@ -127,4 +127,55 @@ class PromptPresetTest {
     }
 
     // endregion
+
+    // region 排序语义（priority 为唯一来源）
+
+    @Test
+    fun `normalize assigns descending priorities top to bottom`() {
+        val entries = listOf(entry("a"), entry("b"), entry("c"))
+        val result = normalizeEntryPriorities(entries)
+        // 第一个（视觉最靠前）优先级最高
+        assertEquals(listOf(2, 1, 0), result.map { it.priority })
+        // 顺序原样保留，便于直接回写
+        assertEquals(listOf("a", "b", "c"), result.map { it.name })
+    }
+
+    @Test
+    fun `normalize is idempotent`() {
+        val once = normalizeEntryPriorities(listOf(entry("a"), entry("b"), entry("c")))
+        val twice = normalizeEntryPriorities(once)
+        assertEquals(once.map { it.priority }, twice.map { it.priority })
+    }
+
+    @Test
+    fun `normalize handles empty and single lists`() {
+        assertTrue(normalizeEntryPriorities(emptyList()).isEmpty())
+        assertEquals(listOf(0), normalizeEntryPriorities(listOf(entry("only"))).map { it.priority })
+    }
+
+    @Test
+    fun `display order equals applied order after normalize`() {
+        // 这是本轮修复的核心不变量：显示顺序（按 priority 降序）与生效顺序一致
+        val dragged = listOf(entry("c"), entry("a"), entry("b"))
+        val normalized = normalizeEntryPriorities(dragged)
+        assertEquals(listOf("c", "a", "b"), normalized.sortedForDisplay().map { it.name })
+    }
+
+    @Test
+    fun `sortForDisplay is priority descending and stable`() {
+        val low = entry("low").copy(priority = 1)
+        val high = entry("high").copy(priority = 9)
+        val mid1 = entry("mid1").copy(priority = 5)
+        val mid2 = entry("mid2").copy(priority = 5)
+        val result = listOf(low, mid1, high, mid2).sortedForDisplay()
+        // 高优先级在前；同优先级保持原相对顺序
+        assertEquals(listOf("high", "mid1", "mid2", "low"), result.map { it.name })
+    }
+
+    @Test
+    fun `sortForDisplay empty list is safe`() {
+        assertTrue(emptyList<PromptInjection.ModeInjection>().sortedForDisplay().isEmpty())
+    }
+
+    // endregion
 }

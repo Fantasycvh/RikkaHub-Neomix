@@ -639,6 +639,7 @@
   <string name="prompt_page_lorebook_budget_label">Token 预算</string>
   <string name="prompt_page_lorebook_budget_unlimited">不限制（0）</string>
   <string name="prompt_page_lorebook_budget_tokens">%1$d token</string>
+  <string name="prompt_page_priority_order_hint">显示顺序即生效顺序。拖动会重写优先级（优先级高者在前）。</string>
   <string name="prompt_page_new_keyword">新关键词</string>
   <string name="prompt_page_position_after_system">系统提示词后</string>
   <string name="prompt_page_position_at_depth">在深度</string>
