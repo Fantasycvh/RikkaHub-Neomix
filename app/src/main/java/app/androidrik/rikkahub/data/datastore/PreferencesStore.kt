@@ -27,6 +27,7 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.ai.DEFAULT_LOREBOOK_BUDGET_TOKENS
 import app.androidrik.rikkahub.data.ai.DEFAULT_MEMORY_BUDGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT
 import app.androidrik.rikkahub.data.files.DEFAULT_EXPORT_RETENTION_DAYS
@@ -177,6 +178,9 @@ class SettingsStore(
         // 记忆注入预算（token）：注入哪些记忆由打分校准决定，装多少由此预算决定
         val MEMORY_INJECT_BUDGET_TOKENS = intPreferencesKey("memory_inject_budget_tokens")
 
+        // 世界书注入预算（token）：0 = 不限制（默认，保持旧行为）
+        val LOREBOOK_INJECT_BUDGET_TOKENS = intPreferencesKey("lorebook_inject_budget_tokens")
+
         // 提示词注入
         val MODE_INJECTIONS = stringPreferencesKey("mode_injections")
         val LOREBOOKS = stringPreferencesKey("lorebooks")
@@ -314,6 +318,8 @@ class SettingsStore(
                 webServerLocalhostOnly = preferences[WEB_SERVER_LOCALHOST_ONLY] == true,
                 memoryInjectBudgetTokens = preferences[MEMORY_INJECT_BUDGET_TOKENS]
                     ?: DEFAULT_MEMORY_BUDGET_TOKENS,
+                lorebookInjectBudgetTokens = preferences[LOREBOOK_INJECT_BUDGET_TOKENS]
+                    ?: DEFAULT_LOREBOOK_BUDGET_TOKENS,
                 backupReminderConfig = preferences[BACKUP_REMINDER_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
@@ -515,6 +521,7 @@ class SettingsStore(
             preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
             preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
             preferences[MEMORY_INJECT_BUDGET_TOKENS] = settings.memoryInjectBudgetTokens
+            preferences[LOREBOOK_INJECT_BUDGET_TOKENS] = settings.lorebookInjectBudgetTokens
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
             settings.contextLengthOverride?.let {
@@ -699,6 +706,16 @@ data class Settings(
      * 但只影响「入选集合」本身，不会每次请求漂移（输出顺序按 sortKey 固定）。
      */
     val memoryInjectBudgetTokens: Int = DEFAULT_MEMORY_BUDGET_TOKENS,
+    /**
+     * 世界书（Lorebook）注入的 token 预算（**全局**，对齐 ST 的 `world_info_budget`）。
+     *
+     * 0 = 不限制；**默认就是 0**（保持 fork 旧行为）——照搬 ST 的「25% 上下文」会**静默**
+     * 改变用户既有的注入量，那是不可接受的默认值变更，所以由用户显式开启。
+     * 超预算时按 priority 降序裁剪；常驻条目（constantActive）不计预算。
+     *
+     * 见 `docs/peer-apps-benchmark.md` §6.2 ③。
+     */
+    val lorebookInjectBudgetTokens: Int = DEFAULT_LOREBOOK_BUDGET_TOKENS,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     /** 全局代理（provider 未自配时兜底；默认 NONE = 不启用） */
     val globalProxy: GlobalProxySetting = GlobalProxySetting(),

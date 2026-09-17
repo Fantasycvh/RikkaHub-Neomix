@@ -622,6 +622,11 @@
   <string name="prompt_page_secondary_keywords_format">次要：%s</string>
   <string name="prompt_page_match_assistant_prompt">扫描助手人设</string>
   <string name="prompt_page_match_assistant_prompt_desc">关键词同时匹配助手提示词/角色设定，而不只是最近的消息</string>
+  <string name="prompt_page_lorebook_budget">世界书 token 预算</string>
+  <string name="prompt_page_lorebook_budget_desc">限制命中条目可注入的 token 总量。超出时按优先级裁剪；常驻条目不受限制。</string>
+  <string name="prompt_page_lorebook_budget_label">Token 预算</string>
+  <string name="prompt_page_lorebook_budget_unlimited">不限制（0）</string>
+  <string name="prompt_page_lorebook_budget_tokens">%1$d token</string>
   <string name="prompt_page_new_keyword">新关键词</string>
   <string name="prompt_page_position_after_system">系统提示词后</string>
   <string name="prompt_page_position_at_depth">在深度</string>

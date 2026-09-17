@@ -583,6 +583,11 @@
   <string name="prompt_page_secondary_keywords_format">Вторичные: %s</string>
   <string name="prompt_page_match_assistant_prompt">Сканировать промпт ассистента</string>
   <string name="prompt_page_match_assistant_prompt_desc">Искать ключевые слова также в промпте ассистента / карточке персонажа, а не только в последних сообщениях</string>
+  <string name="prompt_page_lorebook_budget">Бюджет токенов World Info</string>
+  <string name="prompt_page_lorebook_budget_desc">Ограничивает суммарный объём токенов от сработавших записей. Лишние отбрасываются по приоритету; постоянно активные не учитываются.</string>
+  <string name="prompt_page_lorebook_budget_label">Бюджет токенов</string>
+  <string name="prompt_page_lorebook_budget_unlimited">Без ограничений (0)</string>
+  <string name="prompt_page_lorebook_budget_tokens">%1$d токенов</string>
   <string name="prompt_page_new_keyword">Новое ключевое слово</string>
   <string name="prompt_page_position_after_system">После системного приглашения</string>
   <string name="prompt_page_position_at_depth">На глубине</string>

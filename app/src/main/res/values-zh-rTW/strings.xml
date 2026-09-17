@@ -620,6 +620,11 @@
   <string name="prompt_page_secondary_keywords_format">次要：%s</string>
   <string name="prompt_page_match_assistant_prompt">掃描助手人設</string>
   <string name="prompt_page_match_assistant_prompt_desc">關鍵詞同時匹配助手提示詞/角色設定，而不只是最近的訊息</string>
+  <string name="prompt_page_lorebook_budget">世界書 token 預算</string>
+  <string name="prompt_page_lorebook_budget_desc">限制命中條目可注入的 token 總量。超出時依優先級裁剪；常駐條目不受限制。</string>
+  <string name="prompt_page_lorebook_budget_label">Token 預算</string>
+  <string name="prompt_page_lorebook_budget_unlimited">不限制（0）</string>
+  <string name="prompt_page_lorebook_budget_tokens">%1$d token</string>
   <string name="prompt_page_new_keyword">新關鍵字</string>
   <string name="prompt_page_position_after_system">系統提示之後</string>
   <string name="prompt_page_position_at_depth">在深度</string>

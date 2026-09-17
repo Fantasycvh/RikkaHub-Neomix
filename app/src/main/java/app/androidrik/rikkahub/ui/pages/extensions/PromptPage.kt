@@ -161,7 +161,11 @@ fun PromptPage(vm: PromptVM = koinViewModel()) {
 
                 1 -> LorebookTab(
                     lorebooks = settings.lorebooks,
-                    onUpdate = { vm.updateSettings(settings.copy(lorebooks = it)) }
+                    onUpdate = { vm.updateSettings(settings.copy(lorebooks = it)) },
+                    budgetTokens = settings.lorebookInjectBudgetTokens,
+                    onBudgetChange = {
+                        vm.updateSettings(settings.copy(lorebookInjectBudgetTokens = it))
+                    },
                 )
             }
         }
@@ -670,12 +674,73 @@ private fun getRoleLabel(role: MessageRole): String = when (role) {
     else -> role.name
 }
 
+/**
+ * 世界书注入的 token 预算设置卡。
+ *
+ * 0 = 不限制（默认，保持旧行为）。作用：命中条目超过预算时按 priority 降序裁剪，
+ * 避免导入大型世界书后**静默**塞满上下文。见 `docs/peer-apps-benchmark.md` §6.2 ③。
+ */
+@Composable
+private fun LorebookBudgetCard(
+    budgetTokens: Int,
+    onBudgetChange: (Int) -> Unit,
+) {
+    var text by remember(budgetTokens) { mutableStateOf(budgetTokens.toString()) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.prompt_page_lorebook_budget),
+                style = MaterialTheme.typography.titleSmallEmphasized,
+            )
+            Text(
+                text = stringResource(R.string.prompt_page_lorebook_budget_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = text,
+                onValueChange = { input ->
+                    text = input
+                    // 空输入 = 0（不限制）；非法输入不落库，避免把设置改成意外值
+                    if (input.isBlank()) {
+                        onBudgetChange(0)
+                    } else {
+                        input.toIntOrNull()?.takeIf { it >= 0 }?.let(onBudgetChange)
+                    }
+                },
+                label = { Text(stringResource(R.string.prompt_page_lorebook_budget_label)) },
+                supportingText = {
+                    Text(
+                        if (budgetTokens <= 0) {
+                            stringResource(R.string.prompt_page_lorebook_budget_unlimited)
+                        } else {
+                            stringResource(R.string.prompt_page_lorebook_budget_tokens, budgetTokens)
+                        }
+                    )
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
 // ==================== Lorebook Tab ====================
 
 @Composable
 private fun LorebookTab(
     lorebooks: List<Lorebook>,
-    onUpdate: (List<Lorebook>) -> Unit
+    onUpdate: (List<Lorebook>) -> Unit,
+    budgetTokens: Int,
+    onBudgetChange: (Int) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
@@ -719,6 +784,12 @@ private fun LorebookTab(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             state = lazyListState
         ) {
+            item("lorebookBudget") {
+                LorebookBudgetCard(
+                    budgetTokens = budgetTokens,
+                    onBudgetChange = onBudgetChange,
+                )
+            }
             if (lorebooks.isEmpty()) {
                 item {
                     Column(

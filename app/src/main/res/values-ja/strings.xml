@@ -583,6 +583,11 @@
   <string name="prompt_page_secondary_keywords_format">セカンダリ: %s</string>
   <string name="prompt_page_match_assistant_prompt">アシスタント設定も走査</string>
   <string name="prompt_page_match_assistant_prompt_desc">キーワードを直近メッセージだけでなくアシスタントのプロンプト/キャラ設定にも照合します</string>
+  <string name="prompt_page_lorebook_budget">ワールド情報のトークン上限</string>
+  <string name="prompt_page_lorebook_budget_desc">ヒットした項目が追加できるトークン量の上限。超過分は優先度順に間引かれます。常時有効な項目は対象外です。</string>
+  <string name="prompt_page_lorebook_budget_label">トークン上限</string>
+  <string name="prompt_page_lorebook_budget_unlimited">無制限（0）</string>
+  <string name="prompt_page_lorebook_budget_tokens">%1$d トークン</string>
   <string name="prompt_page_new_keyword">新規キーワード</string>
   <string name="prompt_page_position_after_system">システムプロンプトの後</string>
   <string name="prompt_page_position_at_depth">深度</string>

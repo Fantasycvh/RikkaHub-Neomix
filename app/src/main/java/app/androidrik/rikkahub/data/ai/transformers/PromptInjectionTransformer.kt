@@ -9,6 +9,8 @@ import app.androidrik.rikkahub.data.model.PromptInjection
 import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.extractContextForMatching
 import app.androidrik.rikkahub.data.model.isTriggered
+import app.androidrik.rikkahub.data.model.limitByTokenBudget
+import app.androidrik.rikkahub.utils.estimateTokens
 import kotlin.uuid.Uuid
 
 /**
@@ -28,6 +30,7 @@ object PromptInjectionTransformer : InputMessageTransformer {
             lorebooks = ctx.settings.lorebooks,
             conversationModeInjectionIds = ctx.conversationModeInjectionIds,
             conversationLorebookIds = ctx.conversationLorebookIds,
+            lorebookBudgetTokens = ctx.settings.lorebookInjectBudgetTokens,
         )
     }
 }
@@ -42,6 +45,8 @@ internal fun transformMessages(
     lorebooks: List<Lorebook>,
     conversationModeInjectionIds: Set<Uuid> = emptySet(),
     conversationLorebookIds: Set<Uuid> = emptySet(),
+    /** 世界书注入的 token 预算；0 = 不限制（默认，保持旧行为） */
+    lorebookBudgetTokens: Int = 0,
 ): List<UIMessage> {
     // 收集所有需要注入的内容
     val injections = collectInjections(
@@ -51,6 +56,7 @@ internal fun transformMessages(
         lorebooks = lorebooks,
         conversationModeInjectionIds = conversationModeInjectionIds,
         conversationLorebookIds = conversationLorebookIds,
+        lorebookBudgetTokens = lorebookBudgetTokens,
     )
 
     if (injections.isEmpty()) {
@@ -76,6 +82,7 @@ internal fun collectInjections(
     lorebooks: List<Lorebook>,
     conversationModeInjectionIds: Set<Uuid> = emptySet(),
     conversationLorebookIds: Set<Uuid> = emptySet(),
+    lorebookBudgetTokens: Int = 0,
 ): List<PromptInjection> {
     val injections = mutableListOf<PromptInjection>()
     val effectiveModeInjectionIds = if (assistant.allowConversationPromptInjection) {
@@ -106,6 +113,9 @@ internal fun collectInjections(
         // 那些是**请求期合成**的易变内容，纳入扫描会让条目随机命中自己或工具描述。
         val assistantPromptText = assistant.systemPrompt
 
+        // 先收集全部命中条目，**再统一按预算裁剪**（而非逐本条裁剪）：
+        // 预算语义是「本次注入总量上限」，需要看到全部候选才能正确取舍。
+        val triggered = mutableListOf<PromptInjection.RegexInjection>()
         enabledLorebooks.forEach { lorebook ->
             lorebook.entries
                 .filter { entry ->
@@ -116,8 +126,15 @@ internal fun collectInjections(
                     )
                     entry.isTriggered(context)
                 }
-                .forEach { injections.add(it) }
+                .forEach { triggered.add(it) }
         }
+        // 预算 <= 0 表示不限制（默认）——limitByTokenBudget 会原样返回
+        injections.addAll(
+            triggered.limitByTokenBudget(
+                budgetTokens = lorebookBudgetTokens,
+                estimate = { estimateTokens(it) },
+            )
+        )
     }
 
     return injections

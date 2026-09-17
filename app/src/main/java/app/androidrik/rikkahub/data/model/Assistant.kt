@@ -398,3 +398,44 @@ fun getTriggeredInjections(
         .filter { it.isTriggered(context) }
         .sortedByDescending { it.priority }
 }
+
+/**
+ * 按 token 预算裁剪已命中的世界书条目（对齐 SillyTavern 的 `world_info_budget`）。
+ *
+ * 为什么需要：fork 此前**没有预算**，命中多少就注入多少——导入一个大型 ST 世界书（或
+ * 关键词设得过宽）会把上下文塞满，且是**静默**的（用户看不出是哪些条目吃掉的）。
+ * ST 默认取上下文的 25% 作为上限。
+ *
+ * 取舍（三处刻意的设计，与 `selectMemoriesForPrompt` 同款思路）：
+ * - **按 priority 降序**取舍（高优先级的条目更该保住），其次按原顺序保持稳定。
+ * - 超预算时**跳过本条并继续**，而不是 `break`：一条超长条目不该把后面的预算全堵死。
+ * - 首条即使超预算也入选（`selected.isNotEmpty()` 守卫），避免「预算极小 → 一条都不注入」
+ *   这种最坏结果——那会让用户以为功能坏了。
+ *
+ * @param budgetTokens token 上限；<= 0 表示**不限制**（保持旧行为）
+ * @return 裁剪后的条目（仍按 priority 降序）
+ */
+fun List<PromptInjection.RegexInjection>.limitByTokenBudget(
+    budgetTokens: Int,
+    estimate: (String) -> Int,
+): List<PromptInjection.RegexInjection> {
+    if (budgetTokens <= 0) return this
+    if (isEmpty()) return this
+
+    val ranked = sortedWith(compareByDescending { it.priority })
+    val selected = mutableListOf<PromptInjection.RegexInjection>()
+    var used = 0
+    for (entry in ranked) {
+        // 常驻条目（constantActive）是用户显式声明的「永远要在」——不计预算、不淘汰。
+        // 若把它们也纳入竞争，「设了预算就再也看不到常驻条目」会是反直觉的结果。
+        if (entry.constantActive) {
+            selected += entry
+            continue
+        }
+        val cost = estimate(entry.content)
+        if (used + cost > budgetTokens && selected.isNotEmpty()) continue
+        selected += entry
+        used += cost
+    }
+    return selected
+}
