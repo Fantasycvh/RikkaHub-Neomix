@@ -441,12 +441,54 @@ ST 也是靠「仅对支持的源开放」来回避。⇒ **#1918 的判断得�
   **诚实损失**：fork 无「作者注释」锚点，故 ANTop/ANBottom/atDepth 三者不再可区分。
 - **单测 11 项**（`SillyTavernKeywordParseTest` 7 + `SillyTavernPositionMapTest` 4）。
 
-**③ 仍待做**（按 6.6）：6.2 ①②（`keysecondary`+`selectiveLogic`+多源扫描，最高价值）、
-6.2 ③（世界书 token 预算）、6.2 ④（角色卡导入不压平 4 字段）、6.7 ⑤（槽位管理器，可与②合并）。
+**③ 六项全部落地（2026-09-17，同日第二批）**
 
-**验证**：`:app:assembleDebug` 通过；新增 24 项单测全绿；全量回归仅剩**基线失败**
-（`workspace` 3 项 PowerShell 环境相关 + `GoogleProviderSchemaTest` + `MarkdownMathParseTest`，
-**均与本次改动无关**，已用 `git stash` 双向核对确认）；真机（`<device>`）装机验证
-**入口可见、页面渲染正常、数据零损失**（install -r，uid/size/upload/skills 全不变）。
+| 批次 | 内容 | 提交 |
+|---|---|---|
+| A | **世界书次要关键词 + 选择逻辑**（`secondaryKeywords` + `SelectiveLogic` 四模式） | `b04cf0af` |
+| B | **关键词多源扫描**（`matchAssistantPrompt`，对应 ST 的 6 个 `match*`） | `51104388` |
+| C | **世界书注入 token 预算**（`limitByTokenBudget`，默认 0 = 不限制） | `494b0143` |
+| D | **角色卡导入保留分区字段**（`card*` 五个可空字段 + 重建按钮） | `a8af0d3c` |
+| — | **修：拒绝非世界书文件**（真机发现的静默失败，见下） | `0fee8e67` |
+
+**A（过度触发）**：`isTriggered` 改为「主键命中 → 有次要键才按逻辑二次判定」；主/次键共用
+`matchesKeyword()`（大小写/正则/坏正则按不命中语义一致）。**次要键为空 = 跳过第 2 步**，
+存量条目零回归。ST 导入侧补 `keysecondary`/`selectiveLogic`/`selective` 三个字段（**必须
+`@SerialName` 对齐小写名**——此前 `ignoreUnknownKeys` 使其**静默丢弃**，这正是过度触发的成因）。
+保真细节：ST 的 `selective=false` 时不做二次判定 ⇒ 次要键整体作废，且**必须在算 `useRegex`
+之前作废**（否则次键的正则会抬起 `useRegex`，连累主键字面量按正则匹配）。
+
+**B（漏注入）**：`extractContextForMatching` 加 `extraTexts`（追加而非替换，`scanDepth` 仍只作用于
+消息）。**刻意用 `assistant.systemPrompt` 而非最终发出的 system 消息**——后者含记忆/工具 schema/
+渲染提示，是请求期合成的易变内容，纳入扫描会让条目随机命中自己或工具描述。ST 的 6 个 `match*`
+在 fork 无对应字段（已压进一条 `systemPrompt`）⇒ **任一为真即并成一个开关**，诚实的近似，
+代价是无法只扫其中某一段。
+
+**C（零预算）**：`limitByTokenBudget()` 按 priority 降序取舍；超预算**跳过本条继续**而非 `break`
+（一条超长条目不该堵死后面）；首条即使超预算也入选（避免「预算极小 → 一条都不注入」）；
+**常驻条目（`constantActive`）不计预算、不淘汰**（用户显式声明「永远要在」的东西被预算淘汰很反直觉）。
+**默认 0 = 不限制**（保持旧行为）——刻意不照搬 ST 的 25%：那会**静默**改变用户既有注入量。
+
+**D（槽位丢失）**：Assistant 加 `cardDescription`/`cardPersonality`/`cardScenario`/
+`cardExampleDialogue`/`cardSystemPrompt` 五个**可空**字段（`@Serializable` ⇒ **零 DB 迁移**）。
+渲染抽成纯函数 `buildCardSystemPrompt()`，**与原内联 `buildString` 逐字节等价**（有特征测试锁死）。
+**权威关系刻意保持单一**：`systemPrompt` 仍是唯一被发送的文本（保持既有行为与自由编辑），
+`card*` 只是「零件」+ 一个显式重建按钮——若让零件参与组装就会出现两个真相源，且用户手改
+`systemPrompt` 后会被静默覆盖。
+
+**⚠️ 真机发现的既有静默失败（`0fee8e67`）**：装机验证时看到设备上两个世界书都是「0 条目」，
+其中「【Tavo酒馆通用】柯尔的妙想_v1.5」实为**用户导入的 ST 预设文件**（不是世界书）。根因：
+`SillyTavernLorebook.entries` 声明为**默认空 map** + `ignoreUnknownKeys = true` ⇒ **任意 JSON
+都能解码成「0 条目的世界书」并静默导入成功**。这比直接失败更糟（用户以为成功了）。改为
+`entries: Map<...>? = null`（无默认值）：缺失该键 = 不是世界书 → 返回 null → 报「格式不支持」。
+**刻意保留「ST 世界书但 0 条目 = 合法」**（空世界书是合法状态）。
+
+**验证**：新增 54 项单测（A 23 / B 10 / C 9 / D 5 / 拒绝 7，含**真值表**与**特征测试**）；
+app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双向核对确认与本次无关）；
+真机 `<device>` 逐项目视验证：预算卡渲染「不限制（0）」、编辑条目弹窗出现**次要关键词**区
++ **匹配逻辑 = 任一次要词命中**、`0 条目` 的世界书确认为静默失败实例；**数据零损失**
+（install -r，uid/size/upload/skills 全不变）。
+
+**仍待做**：6.7 ⑤ 槽位管理器（预览已按序列出各段，加开关即成；可与角色卡字段区合并）。
 
 关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）。
