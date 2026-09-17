@@ -28,6 +28,7 @@ import app.androidrik.rikkahub.data.files.SkillMetadata
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.ai.ExtensionEmptyState
+import app.androidrik.rikkahub.ui.components.ai.ExtensionTab
 import app.androidrik.rikkahub.ui.components.ai.LorebooksContent
 import app.androidrik.rikkahub.ui.components.ai.ModeInjectionsContent
 import app.androidrik.rikkahub.ui.components.ai.QuickMessagesContent
@@ -69,7 +70,9 @@ fun ExtensionSelector(
         assistant.lorebookIds
     }
 
-    val pagerState = rememberPagerState { 4 }
+    // tab 集合由 ExtensionTab.visible 决定（世界书 tab 当前隐藏）——索引自动跟随，不会错位
+    val tabs = ExtensionTab.visible
+    val pagerState = rememberPagerState { tabs.size }
     val scope = rememberCoroutineScope()
 
     Column(
@@ -81,34 +84,13 @@ fun ExtensionSelector(
             modifier = Modifier.fillMaxWidth(),
             edgePadding = 4.dp,
         ) {
-            Tab(
-                selected = pagerState.currentPage == 0,
-                onClick = {
-                    scope.launch { pagerState.animateScrollToPage(0) }
-                },
-                text = { Text(stringResource(R.string.extension_selector_tab_quick_messages)) }
-            )
-            Tab(
-                selected = pagerState.currentPage == 1,
-                onClick = {
-                    scope.launch { pagerState.animateScrollToPage(1) }
-                },
-                text = { Text(stringResource(R.string.extension_selector_tab_mode_injections)) }
-            )
-            Tab(
-                selected = pagerState.currentPage == 2,
-                onClick = {
-                    scope.launch { pagerState.animateScrollToPage(2) }
-                },
-                text = { Text(stringResource(R.string.extension_selector_tab_lorebooks)) }
-            )
-            Tab(
-                selected = pagerState.currentPage == 3,
-                onClick = {
-                    scope.launch { pagerState.animateScrollToPage(3) }
-                },
-                text = { Text(stringResource(R.string.extension_selector_tab_skills)) }
-            )
+            tabs.forEachIndexed { index, tab ->
+                Tab(
+                    selected = pagerState.currentPage == index,
+                    onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                    text = { Text(stringResource(tab.labelRes)) },
+                )
+            }
         }
 
         HorizontalPager(
@@ -117,8 +99,8 @@ fun ExtensionSelector(
                 .fillMaxWidth()
                 .weight(1f)
         ) { page ->
-            when (page) {
-                0 -> {
+            when (tabs[page]) {
+                ExtensionTab.QUICK_MESSAGES -> {
                     if (settings.quickMessages.isNotEmpty()) {
                         QuickMessagesContent(
                             quickMessages = settings.quickMessages,
@@ -142,7 +124,7 @@ fun ExtensionSelector(
                     }
                 }
 
-                1 -> {
+                ExtensionTab.MODE_INJECTIONS -> {
                     if (settings.modeInjections.isNotEmpty()) {
                         ModeInjectionsContent(
                             modeInjections = settings.modeInjections,
@@ -170,7 +152,7 @@ fun ExtensionSelector(
                     }
                 }
 
-                2 -> {
+                ExtensionTab.LOREBOOKS -> {
                     if (settings.lorebooks.isNotEmpty()) {
                         LorebooksContent(
                             lorebooks = settings.lorebooks,
@@ -198,7 +180,7 @@ fun ExtensionSelector(
                     }
                 }
 
-                3 -> {
+                ExtensionTab.SKILLS -> {
                     if (skills.isNotEmpty()) {
                         SkillsContent(
                             skills = skills,

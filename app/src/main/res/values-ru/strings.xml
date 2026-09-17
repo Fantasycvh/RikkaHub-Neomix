@@ -601,6 +601,14 @@
   <string name="prompt_page_lorebook_budget_unlimited">Без ограничений (0)</string>
   <string name="prompt_page_lorebook_budget_tokens">%1$d токенов</string>
   <string name="prompt_page_priority_order_hint">Порядок отображения = порядок применения. Перетаскивание перезаписывает приоритет (выше приоритет — раньше).</string>
+  <string name="prompt_page_preset_empty">Пока нет пресетов</string>
+  <string name="prompt_page_preset_empty_hint">Пресеты группируют разделы промпта. Создайте новый или импортируйте пресет SillyTavern.</string>
+  <string name="prompt_page_add_preset">Новый пресет</string>
+  <string name="prompt_page_preset_drag">Перетащите для порядка пресетов</string>
+  <string name="prompt_page_unnamed_preset">Пресет без названия</string>
+  <string name="prompt_page_preset_entry_count">Разделов: %1$d</string>
+  <string name="prompt_page_edit_preset">Изменить пресет</string>
+  <string name="prompt_page_preset_description">Описание</string>
   <string name="prompt_page_new_keyword">Новое ключевое слово</string>
   <string name="prompt_page_position_after_system">После системного приглашения</string>
   <string name="prompt_page_position_at_depth">На глубине</string>

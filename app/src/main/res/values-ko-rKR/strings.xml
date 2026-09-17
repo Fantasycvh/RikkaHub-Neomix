@@ -601,6 +601,14 @@
   <string name="prompt_page_lorebook_budget_unlimited">제한 없음(0)</string>
   <string name="prompt_page_lorebook_budget_tokens">%1$d 토큰</string>
   <string name="prompt_page_priority_order_hint">표시 순서가 곧 적용 순서입니다. 드래그하면 우선순위가 다시 쓰입니다(우선순위가 높은 것이 먼저).</string>
+  <string name="prompt_page_preset_empty">프리셋이 없습니다</string>
+  <string name="prompt_page_preset_empty_hint">프리셋은 프롬프트 항목을 묶어 관리합니다. 새로 만들거나 SillyTavern 프리셋을 가져오세요.</string>
+  <string name="prompt_page_add_preset">프리셋 만들기</string>
+  <string name="prompt_page_preset_drag">드래그하여 프리셋 순서 변경</string>
+  <string name="prompt_page_unnamed_preset">이름 없는 프리셋</string>
+  <string name="prompt_page_preset_entry_count">%1$d개 항목</string>
+  <string name="prompt_page_edit_preset">프리셋 편집</string>
+  <string name="prompt_page_preset_description">설명</string>
   <string name="prompt_page_new_keyword">새 키워드</string>
   <string name="prompt_page_position_after_system">시스템 프롬프트 이후</string>
   <string name="prompt_page_position_at_depth">심도에서</string>

@@ -640,6 +640,14 @@
   <string name="prompt_page_lorebook_budget_unlimited">不限制（0）</string>
   <string name="prompt_page_lorebook_budget_tokens">%1$d token</string>
   <string name="prompt_page_priority_order_hint">显示顺序即生效顺序。拖动会重写优先级（优先级高者在前）。</string>
+  <string name="prompt_page_preset_empty">还没有预设</string>
+  <string name="prompt_page_preset_empty_hint">预设用于分组管理提示词条目。可新建，或导入 SillyTavern 预设。</string>
+  <string name="prompt_page_add_preset">新建预设</string>
+  <string name="prompt_page_preset_drag">拖动排序预设</string>
+  <string name="prompt_page_unnamed_preset">未命名预设</string>
+  <string name="prompt_page_preset_entry_count">%1$d 个条目</string>
+  <string name="prompt_page_edit_preset">编辑预设</string>
+  <string name="prompt_page_preset_description">描述</string>
   <string name="prompt_page_new_keyword">新关键词</string>
   <string name="prompt_page_position_after_system">系统提示词后</string>
   <string name="prompt_page_position_at_depth">在深度</string>

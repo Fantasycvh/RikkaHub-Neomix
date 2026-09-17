@@ -11,6 +11,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -106,7 +107,19 @@ class ImporterState<T>(
     private val context: Context,
     private val scope: CoroutineScope,
     private val openDocumentLauncher: ManagedActivityResultLauncher<Array<String>, Uri?>,
-    private val onResult: (Result<T>) -> Unit,
+    /**
+     * 取**最新**回调的读取器，而不是回调本身。
+     *
+     * 为什么必须这样：本实例由 `remember(serializer)` 缓存（只按 serializer 作 key），
+     * 因此**首次组合时传入的 onResult 会被永久捕获**。而调用方闭包里的数据会随后变化
+     * （最典型：数据流的初始值是 `Settings.dummy()`，真实设置要晚一两帧才到），
+     * 于是过期的闭包会用「初始 dummy 数据 + 本次导入」覆盖真实数据。
+     *
+     * 真机实测过后果：导入预设时把用户既有的 **14 个注入条目覆盖成了 1 个**。
+     * 用 `rememberUpdatedState` 包一层读取器即从**结构上**消除这一类 bug——
+     * 所有调用点（含将来新增的）都不必自己记得防。
+     */
+    private val currentOnResult: () -> (Result<T>) -> Unit,
 ) {
     fun importFromFile() {
         openDocumentLauncher.launch(arrayOf("*/*"))
@@ -121,7 +134,7 @@ class ImporterState<T>(
                 }
                 serializer.import(context, uri)
             }
-            onResult(result)
+            currentOnResult()(result)
         }
     }
 }
@@ -136,6 +149,9 @@ fun <T> rememberImporter(
 
     var pendingState by remember { mutableStateOf<ImporterState<T>?>(null) }
 
+    // 始终指向最新回调（见 ImporterState.currentOnResult 的说明）
+    val currentOnResult by rememberUpdatedState(onResult)
+
     val openDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -148,7 +164,7 @@ fun <T> rememberImporter(
             context = context,
             scope = scope,
             openDocumentLauncher = openDocumentLauncher,
-            onResult = onResult,
+            currentOnResult = { currentOnResult },
         ).also { pendingState = it }
     }
 

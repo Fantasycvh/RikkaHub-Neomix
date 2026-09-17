@@ -32,6 +32,35 @@ import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.PromptInjection
 import app.androidrik.rikkahub.data.model.QuickMessage
 
+/**
+ * 是否在「扩展面板 / 助手详情」显示**世界书** tab。
+ *
+ * **暂时关闭**（用户决策 2026-09-17）：先把「预设（注入）」这条线做完整，世界书之后再放开。
+ * 关闭的只是 UI 入口——**数据、编辑器（`LorebookTab`/`LorebookEditSheet`）与导入导出
+ * 全部保留**，把此常量改回 `true` 即可恢复（tab 行按 [ExtensionTab.visible] 渲染，
+ * 页面索引自动跟着走，不会错位）。
+ */
+internal const val SHOW_LOREBOOK_TABS = false
+
+/**
+ * 扩展面板的 tab。两处界面共用（扩展面板 `ExtensionSelector` 与助手详情 `AssistantExtensionsPage`）。
+ *
+ * 用枚举 + [visible] 而不是写死 4 个 `Tab`：隐藏某个 tab 时**页面索引自动跟着变**，
+ * 不会出现「tab 少了但 pager 还停在旧下标」这类错位。
+ */
+internal enum class ExtensionTab(val labelRes: Int) {
+    QUICK_MESSAGES(R.string.extension_selector_tab_quick_messages),
+    MODE_INJECTIONS(R.string.extension_selector_tab_mode_injections),
+    LOREBOOKS(R.string.extension_selector_tab_lorebooks),
+    SKILLS(R.string.extension_selector_tab_skills);
+
+    companion object {
+        /** 当前实际渲染的 tab（按顺序） */
+        val visible: List<ExtensionTab>
+            get() = entries.filter { it != LOREBOOKS || SHOW_LOREBOOK_TABS }
+    }
+}
+
 @Composable
 fun ModeInjectionsContent(
     modeInjections: List<PromptInjection.ModeInjection>,

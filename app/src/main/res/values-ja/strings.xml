@@ -601,6 +601,14 @@
   <string name="prompt_page_lorebook_budget_unlimited">無制限（0）</string>
   <string name="prompt_page_lorebook_budget_tokens">%1$d トークン</string>
   <string name="prompt_page_priority_order_hint">表示順＝適用順です。ドラッグすると優先度が書き換わります（優先度が高いものが先）。</string>
+  <string name="prompt_page_preset_empty">プリセットがありません</string>
+  <string name="prompt_page_preset_empty_hint">プリセットはプロンプト項目をまとめて管理します。新規作成するか、SillyTavern プリセットをインポートしてください。</string>
+  <string name="prompt_page_add_preset">プリセットを作成</string>
+  <string name="prompt_page_preset_drag">ドラッグしてプリセットを並べ替え</string>
+  <string name="prompt_page_unnamed_preset">無題のプリセット</string>
+  <string name="prompt_page_preset_entry_count">%1$d 項目</string>
+  <string name="prompt_page_edit_preset">プリセットを編集</string>
+  <string name="prompt_page_preset_description">説明</string>
   <string name="prompt_page_new_keyword">新規キーワード</string>
   <string name="prompt_page_position_after_system">システムプロンプトの後</string>
   <string name="prompt_page_position_at_depth">深度</string>

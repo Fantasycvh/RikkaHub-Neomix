@@ -644,6 +644,14 @@
   <string name="prompt_page_lorebook_budget_unlimited">Unlimited (0)</string>
   <string name="prompt_page_lorebook_budget_tokens">%1$d tokens</string>
   <string name="prompt_page_priority_order_hint">Order shown = order applied. Dragging rewrites priority (higher priority comes first).</string>
+  <string name="prompt_page_preset_empty">No presets yet</string>
+  <string name="prompt_page_preset_empty_hint">Presets group prompt sections. Create one, or import a SillyTavern preset.</string>
+  <string name="prompt_page_add_preset">New preset</string>
+  <string name="prompt_page_preset_drag">Drag to reorder presets</string>
+  <string name="prompt_page_unnamed_preset">Untitled preset</string>
+  <string name="prompt_page_preset_entry_count">%1$d sections</string>
+  <string name="prompt_page_edit_preset">Edit preset</string>
+  <string name="prompt_page_preset_description">Description</string>
   <string name="prompt_page_new_keyword">New Keyword</string>
   <string name="prompt_page_position_after_system">After System Prompt</string>
   <string name="prompt_page_position_at_depth">At Depth</string>

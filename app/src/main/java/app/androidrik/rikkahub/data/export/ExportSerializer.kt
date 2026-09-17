@@ -16,6 +16,14 @@ import app.androidrik.rikkahub.data.model.SelectiveLogic
 import app.androidrik.rikkahub.utils.toLocalString
 import java.time.LocalDateTime
 import kotlin.uuid.Uuid
+import kotlinx.serialization.json.JsonArray
+import app.androidrik.rikkahub.data.model.PromptPreset
+import app.androidrik.rikkahub.data.model.normalizeEntryPriorities
+import app.androidrik.ai.core.MessageRole
+import app.androidrik.rikkahub.utils.jsonPrimitiveOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 
 @Serializable
 data class ExportData(
@@ -120,6 +128,129 @@ object ModeInjectionSerializer : ExportSerializer<PromptInjection.ModeInjection>
                 .copy(id = Uuid.random())
         }.getOrNull()
     }
+}
+
+object PromptPresetSerializer : ExportSerializer<PromptPreset> {
+    override val type = "prompt_preset"
+
+    override fun getExportFileName(data: PromptPreset): String {
+        return "${data.name.ifEmpty { type }}.json"
+    }
+
+    override fun export(data: PromptPreset): ExportData {
+        // 导出时重置条目 id：预设是「可分享的模板」，导入方应得到独立副本
+        return ExportData(
+            type = type,
+            data = ExportSerializer.DefaultJson.encodeToJsonElement(
+                data.copy(entries = data.entries.map { it.copy(id = Uuid.random()) })
+            )
+        )
+    }
+
+    override fun import(context: Context, uri: Uri): Result<PromptPreset> {
+        return runCatching {
+            val json = readUri(context, uri)
+            tryImportNative(json)
+                ?: tryImportSillyTavern(json, getUriFileName(context, uri)?.removeSuffix(".json"))
+                ?: throw IllegalArgumentException("Unsupported format")
+        }
+    }
+
+    private fun tryImportNative(json: String): PromptPreset? {
+        return runCatching {
+            val exportData = ExportSerializer.DefaultJson.decodeFromString(
+                ExportData.serializer(),
+                json
+            )
+            if (exportData.type != type) return null
+            val preset = ExportSerializer.DefaultJson
+                .decodeFromJsonElement<PromptPreset>(exportData.data)
+            // 全部换新 id（预设与其条目），避免与已有预设/条目撞 id
+            preset.copy(
+                id = Uuid.random(),
+                entries = preset.entries.map { it.copy(id = Uuid.random()) },
+            )
+        }.getOrNull()
+    }
+
+    private fun tryImportSillyTavern(json: String, fileName: String?): PromptPreset? =
+        parseSillyTavernPreset(json, fileName)
+
+}
+
+/**
+ * SillyTavern 提示词预设（Prompt Preset）导入。
+ *
+ * ST 预设的结构（`openai.js:377-378`）：顶层 `prompts`（对象数组，各含
+ * `identifier`/`name`/`content`/`role`）+ `prompt_order`（**有序**的 identifier 列表，
+ * 按 `character_id` 分组）。
+ *
+ * **映射策略**：
+ * - 按 `prompt_order` 的顺序遍历（**顺序即优先级**），找 `prompts` 里对应条目；
+ * - **跳过内容为空的条目**：`chatHistory` / `worldInfoBefore|After` / `charDescription` 等
+ *   是 ST 的**运行时占位槽位**（真实内容由 ST 在请求时填充），fork 无法也无需表达
+ *   （fork 的历史消息本就在对话里、角色卡字段另有承载）——若照搬会得到一堆空条目；
+ * - 优先级按位置**降序**赋 `n-1 … 0`，与 UI「显示顺序即生效顺序」一致；
+ * - 位置统一 `AFTER_SYSTEM_PROMPT`（fork 无 ST 那些锚点概念，见 §6.3 位置映射说明）；
+ * - role 沿用 ST 给出的（`system`/`user`/`assistant`，缺省 user）。
+ *
+ * @return 解析成功返回预设；**不是预设文件返回 null**（调用方据此报「格式不支持」）
+ */
+internal fun parseSillyTavernPreset(json: String, fileName: String?): PromptPreset? {
+    return runCatching {
+        val root = ExportSerializer.DefaultJson.parseToJsonElement(json).jsonObject
+        // 必须同时具备 prompts 与 prompt_order —— 否则不是预设文件。
+        // （沿用上次的教训：默认值 + ignoreUnknownKeys 会把「文件不对」变成「空数据」而静默成功。）
+        val prompts = root["prompts"] as? JsonArray ?: return null
+        val order = root["prompt_order"] as? JsonArray ?: return null
+
+        // identifier → 条目定义
+        val byIdentifier = prompts.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val identifier = obj["identifier"]?.jsonPrimitiveOrNull?.contentOrNull
+                ?: return@mapNotNull null
+            identifier to obj
+        }.toMap()
+
+        // prompt_order 可能按 character_id 分组；取**顺序靠前的分组**中出现的 identifier，
+        // 并保持首次出现的次序（同一 identifier 在多组里重复时去重）。
+        val orderedIdentifiers = order
+            .mapNotNull { it as? JsonObject }
+            .flatMap { group ->
+                group["order"]?.let { it as? JsonArray } ?: JsonArray(emptyList())
+            }
+            .mapNotNull { it as? JsonObject }
+            .mapNotNull { it["identifier"]?.jsonPrimitiveOrNull?.contentOrNull }
+
+        val entries = orderedIdentifiers
+            .distinct()
+            .mapNotNull { identifier -> byIdentifier[identifier] }
+            .mapNotNull { obj ->
+                val content = obj["content"]?.jsonPrimitiveOrNull?.contentOrNull?.trim().orEmpty()
+                if (content.isEmpty()) return@mapNotNull null   // 运行时占位槽位，跳过
+                val role = when (obj["role"]?.jsonPrimitiveOrNull?.contentOrNull?.lowercase()) {
+                    "system" -> MessageRole.SYSTEM
+                    "assistant" -> MessageRole.ASSISTANT
+                    else -> MessageRole.USER
+                }
+                PromptInjection.ModeInjection(
+                    id = Uuid.random(),
+                    name = obj["name"]?.jsonPrimitiveOrNull?.contentOrNull
+                        ?: obj["identifier"]?.jsonPrimitiveOrNull?.contentOrNull.orEmpty(),
+                    content = content,
+                    role = role,
+                    position = InjectionPosition.AFTER_SYSTEM_PROMPT,
+                )
+            }
+            // 顺序 → 优先级（降序），使「显示顺序 == 生效顺序」
+            .let { list -> normalizeEntryPriorities(list) }
+
+        PromptPreset(
+            id = Uuid.random(),
+            name = fileName ?: "SillyTavern preset",
+            entries = entries,
+        )
+    }.getOrNull()
 }
 
 object LorebookSerializer : ExportSerializer<Lorebook> {

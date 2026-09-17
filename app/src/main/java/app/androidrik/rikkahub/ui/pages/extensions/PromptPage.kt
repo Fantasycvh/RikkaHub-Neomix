@@ -6,13 +6,16 @@ import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.FileDownload
 import me.rerere.hugeicons.stroke.FileImport
+import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Tools
 import me.rerere.hugeicons.stroke.Share03
+import me.rerere.hugeicons.stroke.DragDropVertical
 import me.rerere.hugeicons.stroke.Delete01
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Cancel01
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +53,7 @@ import androidx.compose.material3.FloatingToolbarDefaults.floatingToolbarVertica
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +82,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -87,11 +92,13 @@ import kotlinx.coroutines.launch
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.export.LorebookSerializer
+import app.androidrik.rikkahub.data.export.PromptPresetSerializer
 import app.androidrik.rikkahub.data.export.ModeInjectionSerializer
 import app.androidrik.rikkahub.data.export.rememberExporter
 import app.androidrik.rikkahub.data.export.rememberImporter
 import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.Lorebook
+import app.androidrik.rikkahub.data.model.PromptPreset
 import app.androidrik.rikkahub.data.model.reconcileEntries
 import app.androidrik.rikkahub.data.model.normalizeEntryPriorities
 import app.androidrik.rikkahub.data.model.sortedForDisplay
@@ -114,9 +121,84 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 @Composable
 fun PromptPage(vm: PromptVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState { 2 }
-    val scope = rememberCoroutineScope()
+    // 两级页面在同一 route 内切换（预设列表 ⇄ 预设详情）。
+    // 用 id 字符串保存（Uuid 非 Saveable）；空 = 停在列表。
+    var openedPresetId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val presets = settings.promptPresets
+    val opened = openedPresetId?.let { id -> presets.find { it.id.toString() == id } }
+
+    // 预设被删除 / 被导入替换后 id 会失效 → 自动回到列表，避免停在空白详情页
+    if (opened == null) {
+        PresetListScreen(
+            presets = presets,
+            onUpdatePresets = { vm.updateSettings(settings.copy(promptPresets = it)) },
+            onOpenPreset = { openedPresetId = it.id.toString() },
+        )
+    } else {
+        // 详情页是**页内**二级页面（同一 route），系统返回键须先回到预设列表，
+        // 否则会直接退出整个「提示词」页（与 WorkspaceDetailPage 同款处理）。
+        BackHandler { openedPresetId = null }
+        PresetDetailScreen(
+            preset = opened,
+            onUpdatePreset = { updated ->
+                vm.updateSettings(
+                    settings.copy(
+                        promptPresets = presets.map { if (it.id == updated.id) updated else it }
+                    )
+                )
+            },
+            onBack = { openedPresetId = null },
+        )
+    }
+}
+
+/**
+ * 预设列表（「扩展管理」里提示词的中心页）。
+ *
+ * 对齐 ST 的 Prompt Manager 组织方式：**多个具名预设**，每个内含一串有序条目；
+ * 打开某个预设进入详情编辑。见 `docs/peer-apps-benchmark.md` §6.7 ⑤。
+ */
+@Composable
+private fun PresetListScreen(
+    presets: List<PromptPreset>,
+    onUpdatePresets: (List<PromptPreset>) -> Unit,
+    onOpenPreset: (PromptPreset) -> Unit,
+) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var expanded by rememberSaveable { mutableStateOf(true) }
+    val lazyListState = rememberLazyListState()
+    val context = LocalContext.current
+    // ⚠️ 必须用 rememberUpdatedState 取「最新」列表：
+    // rememberImporter 内部是 `remember(serializer) { ImporterState(... onResult) }`，
+    // 只按 serializer 缓存 ⇒ 首次组合时传入的 onResult 会被**永久捕获**。
+    // 而 PromptVM.settings 的初始值是 Settings.dummy()（只有一个默认预设）⇒
+    // 若直接闭包捕获 presets，导入时会用「dummy 的 1 个预设 + 新导入」覆盖真实列表
+    // （真机实测：14 个条目被写成 1 个）。
+    // 同页的 ModeInjectionTab/LorebookTab 也用了同一手法（那正是为了防这个坑）。
+    val currentPresets by rememberUpdatedState(presets)
+    val editState = useEditState<PromptPreset> { edited ->
+        val index = presets.indexOfFirst { it.id == edited.id }
+        if (index >= 0) {
+            onUpdatePresets(presets.toMutableList().apply { set(index, edited) })
+        } else {
+            onUpdatePresets(presets + edited)
+        }
+    }
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        onUpdatePresets(
+            presets.toMutableList().apply { add(to.index, removeAt(from.index)) }
+        )
+    }
+    val toaster = LocalToaster.current
+    val importer = rememberImporter(PromptPresetSerializer) { result ->
+        result.onSuccess { imported ->
+            onUpdatePresets(currentPresets + imported)
+            toaster.show(context.getString(R.string.export_import_success))
+        }.onFailure { error ->
+            toaster.show(context.getString(R.string.export_import_failed).format(error.message))
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -127,52 +209,178 @@ fun PromptPage(vm: PromptVM = koinViewModel()) {
                 colors = CustomColors.topBarColors,
             )
         },
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 0,
-                    label = { Text(stringResource(R.string.prompt_page_mode_injection_tab)) },
-                    icon = { Icon(HugeIcons.MagicWand01, null) },
-                    onClick = {
-                        scope.launch { pagerState.animateScrollToPage(0) }
-                    }
-                )
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 1,
-                    label = { Text(stringResource(R.string.prompt_page_lorebook_tab)) },
-                    icon = { Icon(HugeIcons.Book01, null) },
-                    onClick = {
-                        scope.launch { pagerState.animateScrollToPage(1) }
-                    }
-                )
-            }
-        },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-        ) { page ->
-            when (page) {
-                0 -> ModeInjectionTab(
-                    modeInjections = settings.modeInjections,
-                    // 编辑仍按扁平列表进行；写回时**归位到各预设**（保留分组，新增条目追加到首个预设）。
-                    // 批次 3 会把此 tab 换成「预设列表 → 预设详情」，届时改用容器级写回。
-                    onUpdate = {
-                        vm.updateSettings(settings.copy(promptPresets = settings.promptPresets.reconcileEntries(it)))
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .floatingToolbarVerticalNestedScroll(
+                        expanded = expanded,
+                        onExpand = { expanded = true },
+                        onCollapse = { expanded = false }
+                    ),
+                contentPadding = innerPadding + PaddingValues(bottom = 128.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                state = lazyListState,
+            ) {
+                if (presets.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillParentMaxHeight(0.8f)
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.prompt_page_preset_empty),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(R.string.prompt_page_preset_empty_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
                     }
-                )
+                } else {
+                    items(presets, key = { it.id }) { preset ->
+                        ReorderableItem(state = reorderableState, key = preset.id) { isDragging ->
+                            PresetCard(
+                                preset = preset,
+                                modifier = Modifier
+                                    .longPressDraggableHandle()
+                                    .graphicsLayer {
+                                        if (isDragging) {
+                                            scaleX = 1.03f
+                                            scaleY = 1.03f
+                                        }
+                                    },
+                                onOpen = { onOpenPreset(preset) },
+                                onEdit = { editState.open(preset) },
+                                onToggleEnabled = { on ->
+                                    onUpdatePresets(
+                                        presets.map {
+                                            if (it.id == preset.id) it.copy(enabled = on) else it
+                                        }
+                                    )
+                                },
+                                onDelete = { onUpdatePresets(presets - preset) },
+                            )
+                        }
+                    }
+                }
+            }
 
-                1 -> LorebookTab(
-                    lorebooks = settings.lorebooks,
-                    onUpdate = { vm.updateSettings(settings.copy(lorebooks = it)) },
-                    budgetTokens = settings.lorebookInjectBudgetTokens,
-                    onBudgetChange = {
-                        vm.updateSettings(settings.copy(lorebookInjectBudgetTokens = it))
-                    },
+            HorizontalFloatingToolbar(
+                expanded = expanded,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = -ScreenOffset),
+                leadingContent = {
+                    IconButton(onClick = { importer.importFromFile() }) {
+                        Icon(HugeIcons.FileImport, null)
+                    }
+                },
+            ) {
+                Button(onClick = { editState.open(PromptPreset()) }) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(HugeIcons.Add01, null)
+                        AnimatedVisibility(expanded) {
+                            Row {
+                                Spacer(modifier = Modifier.size(8.dp))
+                                Text(stringResource(R.string.prompt_page_add_preset))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (editState.isEditing) {
+        editState.currentState?.let { state ->
+            PresetEditDialog(
+                preset = state,
+                onDismiss = { editState.dismiss() },
+                onEdit = { editState.currentState = it },
+                onConfirm = { editState.confirm() },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PresetCard(
+    preset: PromptPreset,
+    modifier: Modifier = Modifier,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+) {
+    Card(
+        onClick = onOpen,
+        modifier = modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = HugeIcons.DragDropVertical,
+                contentDescription = stringResource(R.string.prompt_page_preset_drag),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = preset.name.ifBlank { stringResource(R.string.prompt_page_unnamed_preset) },
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                )
+                if (preset.description.isNotBlank()) {
+                    Text(
+                        text = preset.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Tag(type = TagType.INFO) {
+                        Text(stringResource(R.string.prompt_page_preset_entry_count, preset.entries.size))
+                    }
+                    if (!preset.enabled) {
+                        Tag(type = TagType.WARNING) {
+                            Text(stringResource(R.string.prompt_page_disabled))
+                        }
+                    }
+                }
+            }
+            // 行内开关：与截图一致（不进详情即可停用整套预设）
+            Switch(checked = preset.enabled, onCheckedChange = onToggleEnabled)
+            IconButton(onClick = onEdit) {
+                Icon(HugeIcons.Tools, stringResource(R.string.prompt_page_edit))
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    HugeIcons.Delete01,
+                    stringResource(R.string.prompt_page_delete),
+                    tint = MaterialTheme.colorScheme.error,
                 )
             }
         }
@@ -180,133 +388,193 @@ fun PromptPage(vm: PromptVM = koinViewModel()) {
 }
 
 @Composable
-private fun ModeInjectionTab(
-    modeInjections: List<PromptInjection.ModeInjection>,
-    onUpdate: (List<PromptInjection.ModeInjection>) -> Unit
+private fun PresetEditDialog(
+    preset: PromptPreset,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    onEdit: (PromptPreset) -> Unit,
 ) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.prompt_page_edit_preset)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = preset.name,
+                    onValueChange = { onEdit(preset.copy(name = it)) },
+                    label = { Text(stringResource(R.string.prompt_page_name)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = preset.description,
+                    onValueChange = { onEdit(preset.copy(description = it)) },
+                    label = { Text(stringResource(R.string.prompt_page_preset_description)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.prompt_page_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.prompt_page_cancel)) }
+        },
+    )
+}
+
+/**
+ * 预设详情：该预设内条目的增删改 + 拖拽排序 + 逐条开关。
+ *
+ * 与 ST 截图的「条目」tab 对齐：一串可拖拽、可开关的条目；**显示顺序即生效顺序**
+ * （顺序通过重写 priority 落实，见 `normalizeEntryPriorities`）。
+ */
+@Composable
+private fun PresetDetailScreen(
+    preset: PromptPreset,
+    onUpdatePreset: (PromptPreset) -> Unit,
+    onBack: () -> Unit,
+) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
-    val toaster = LocalToaster.current
-    val currentModeInjections by rememberUpdatedState(modeInjections)
+    val context = LocalContext.current
 
-    // **显示顺序 = 生效顺序**：按 priority 降序展示（与拼装时 sortedByDescending 一致）。
-    // 此前展示用的是存储顺序，而生效看 priority ⇒ 两者不一致时「拖了没变化」。
-    val displayed = remember(modeInjections) { modeInjections.sortedForDisplay() }
-    val currentDisplayed by rememberUpdatedState(displayed)
-
+    val displayed = remember(preset.entries) { preset.entries.sortedForDisplay() }
+    // 同 PresetListScreen 的理由：rememberImporter 只按 serializer 缓存 onResult，
+    // 首次组合捕获的 preset 会过期（详情页首帧可能仍是旧值）。
+    val currentPreset by rememberUpdatedState(preset)
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val moved = displayed.toMutableList().apply {
-            add(to.index, removeAt(from.index))
-        }
-        // 拖拽即把新顺序**写回 priority**（priority 是唯一真相，列表顺序只是它的可视化）
-        onUpdate(normalizeEntryPriorities(moved))
+        val moved = displayed.toMutableList().apply { add(to.index, removeAt(from.index)) }
+        // 拖拽即把新顺序写回 priority（priority 是唯一真相）
+        onUpdatePreset(preset.copy(entries = normalizeEntryPriorities(moved)))
     }
     val editState = useEditState<PromptInjection.ModeInjection> { edited ->
-        val index = modeInjections.indexOfFirst { it.id == edited.id }
+        val index = preset.entries.indexOfFirst { it.id == edited.id }
         if (index >= 0) {
-            onUpdate(modeInjections.toMutableList().apply { set(index, edited) })
+            onUpdatePreset(
+                preset.copy(entries = preset.entries.toMutableList().apply { set(index, edited) })
+            )
         } else {
-            onUpdate(modeInjections + edited)
+            onUpdatePreset(preset.copy(entries = preset.entries + edited))
         }
     }
-    val importSuccessMsg = stringResource(R.string.export_import_success)
-    val importFailedMsg = stringResource(R.string.export_import_failed)
+    val toaster = LocalToaster.current
     val importer = rememberImporter(ModeInjectionSerializer) { result ->
         result.onSuccess { imported ->
-            onUpdate(currentModeInjections + imported)
-            toaster.show(importSuccessMsg)
+            onUpdatePreset(currentPreset.copy(entries = currentPreset.entries + imported))
+            toaster.show(context.getString(R.string.export_import_success))
         }.onFailure { error ->
-            toaster.show(importFailedMsg.format(error.message))
+            toaster.show(context.getString(R.string.export_import_failed).format(error.message))
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .floatingToolbarVerticalNestedScroll(
-                    expanded = expanded,
-                    onExpand = { expanded = true },
-                    onCollapse = { expanded = false }
-                ),
-            contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 128.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            state = lazyListState
-        ) {
-            if (modeInjections.isEmpty()) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillParentMaxHeight(0.8f)
-                            .fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
+    Scaffold(
+        topBar = {
+            LargeFlexibleTopAppBar(
+                // 详情页的返回是**页内返回**（回到预设列表），不能用 BackButton——
+                // 它就带 navController.popBackStack()，会直接退出整个提示词页。
+                navigationIcon = {
+                    FilledTonalIconButton(onClick = onBack) {
+                        Icon(HugeIcons.ArrowLeft01, contentDescription = null)
+                    }
+                },
+                title = {
+                    Text(preset.name.ifBlank { stringResource(R.string.prompt_page_unnamed_preset) })
+                },
+                scrollBehavior = scrollBehavior,
+                colors = CustomColors.topBarColors,
+            )
+        },
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = CustomColors.topBarColors.containerColor,
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .floatingToolbarVerticalNestedScroll(
+                        expanded = expanded,
+                        onExpand = { expanded = true },
+                        onCollapse = { expanded = false }
+                    ),
+                contentPadding = innerPadding + PaddingValues(bottom = 128.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                state = lazyListState,
+            ) {
+                if (preset.entries.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillParentMaxHeight(0.8f)
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.prompt_page_mode_injection_empty),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(R.string.prompt_page_empty_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                } else {
+                    item("orderHint") {
                         Text(
-                            text = stringResource(R.string.prompt_page_mode_injection_empty),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = stringResource(R.string.prompt_page_empty_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            text = stringResource(R.string.prompt_page_priority_order_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                         )
                     }
-                }
-            } else {
-                item("orderHint") {
-                    Text(
-                        text = stringResource(R.string.prompt_page_priority_order_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                    )
-                }
-                items(displayed, key = { it.id }) { injection ->
-                    ReorderableItem(
-                        state = reorderableState,
-                        key = injection.id
-                    ) { isDragging ->
-                        ModeInjectionCard(
-                            injection = injection,
-                            modifier = Modifier
-                                .longPressDraggableHandle()
-                                .graphicsLayer {
-                                    if (isDragging) {
-                                        scaleX = 1.05f
-                                        scaleY = 1.05f
-                                    }
+                    items(displayed, key = { it.id }) { injection ->
+                        ReorderableItem(state = reorderableState, key = injection.id) { isDragging ->
+                            ModeInjectionCard(
+                                injection = injection,
+                                modifier = Modifier
+                                    .longPressDraggableHandle()
+                                    .graphicsLayer {
+                                        if (isDragging) {
+                                            scaleX = 1.05f
+                                            scaleY = 1.05f
+                                        }
+                                    },
+                                onEdit = { editState.open(injection) },
+                                onDelete = {
+                                    onUpdatePreset(preset.copy(entries = preset.entries - injection))
                                 },
-                            onEdit = { editState.open(injection) },
-                            onDelete = { onUpdate(modeInjections - injection) }
-                        )
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        HorizontalFloatingToolbar(
-            expanded = expanded,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(y = -ScreenOffset),
-            leadingContent = {
-                IconButton(onClick = { importer.importFromFile() }) {
-                    Icon(HugeIcons.FileImport, null)
-                }
-            },
-        ) {
-            Button(onClick = { editState.open(PromptInjection.ModeInjection()) }) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(HugeIcons.Add01, null)
-                    AnimatedVisibility(expanded) {
-                        Row {
-                            Spacer(modifier = Modifier.size(8.dp))
-                            Text(stringResource(R.string.prompt_page_add_mode_injection))
+            HorizontalFloatingToolbar(
+                expanded = expanded,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = -ScreenOffset),
+                leadingContent = {
+                    IconButton(onClick = { importer.importFromFile() }) {
+                        Icon(HugeIcons.FileImport, null)
+                    }
+                },
+            ) {
+                Button(onClick = { editState.open(PromptInjection.ModeInjection()) }) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(HugeIcons.Add01, null)
+                        AnimatedVisibility(expanded) {
+                            Row {
+                                Spacer(modifier = Modifier.size(8.dp))
+                                Text(stringResource(R.string.prompt_page_add_mode_injection))
+                            }
                         }
                     }
                 }
@@ -320,11 +588,12 @@ private fun ModeInjectionTab(
                 injection = state,
                 onDismiss = { editState.dismiss() },
                 onConfirm = { editState.confirm() },
-                onEdit = { editState.currentState = it }
+                onEdit = { editState.currentState = it },
             )
         }
     }
 }
+
 
 @Composable
 private fun ModeInjectionCard(
