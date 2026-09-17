@@ -37,6 +37,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.buildCardSystemPrompt
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -164,34 +165,27 @@ private fun parseCardData(context: Context?, data: JsonObject, background: Strin
     val scenario = data["scenario"]?.jsonPrimitiveOrNull?.contentOrNull
     val example = data["mes_example"]?.jsonPrimitiveOrNull?.contentOrNull
 
-    val prompt = buildString {
-        appendLine("You are roleplaying as $name.")
-        appendLine()
-        if (!system.isNullOrBlank()) {
-            appendLine(system)
-            appendLine()
-        }
-        appendLine("## Description of the character")
-        appendLine(description ?: "Empty")
-        appendLine()
-        appendLine("## Personality of the character")
-        appendLine(personality ?: "Empty")
-        appendLine()
-        appendLine("## Scenario")
-        append(scenario ?: "Empty")
-        if (!example.isNullOrBlank()) {
-            appendLine()
-            appendLine()
-            appendLine("## Example of the dialogue")
-            append(example)
-        }
-    }
+    // 渲染走共享纯函数（与既有内联 buildString 逐字节等价），同时**保留分区零件**——
+    // 此前只留压平后的字符串，槽位信息永久丢失（无法单独查看/编辑）。见 §6.2 ④。
+    val prompt = buildCardSystemPrompt(
+        name = name,
+        cardSystemPrompt = system,
+        description = description,
+        personality = personality,
+        scenario = scenario,
+        exampleDialogue = example,
+    )
 
     return Assistant(
         name = name,
         presetMessages = if (firstMessage != null) listOf(UIMessage.assistant(firstMessage)) else emptyList(),
         systemPrompt = prompt,
-        background = background
+        background = background,
+        cardDescription = description,
+        cardPersonality = personality,
+        cardScenario = scenario,
+        cardExampleDialogue = example,
+        cardSystemPrompt = system,
     )
 }
 

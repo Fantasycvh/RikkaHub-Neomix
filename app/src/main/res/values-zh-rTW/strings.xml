@@ -133,6 +133,14 @@
   <string name="assistant_page_stream_output">串流輸出</string>
   <string name="assistant_page_stream_output_desc">是否啟用訊息的串流輸出</string>
   <string name="assistant_page_strict">嚴謹</string>
+  <string name="assistant_page_card_parts">角色卡欄位</string>
+  <string name="assistant_page_card_parts_desc">從匯入的角色卡保留的原始欄位。實際傳送的是上方的系統提示詞——改完這些後可重新產生。</string>
+  <string name="assistant_page_card_description">角色描述</string>
+  <string name="assistant_page_card_personality">性格</string>
+  <string name="assistant_page_card_scenario">場景</string>
+  <string name="assistant_page_card_example">範例對話</string>
+  <string name="assistant_page_card_system_prompt">卡片系統提示詞</string>
+  <string name="assistant_page_rebuild_prompt">用這些欄位重新產生系統提示詞</string>
   <string name="assistant_page_system_prompt">系統提示詞</string>
   <string name="assistant_page_tab_basic">基本設定</string>
   <string name="assistant_page_tab_extensions">擴充功能</string>

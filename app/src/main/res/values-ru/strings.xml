@@ -131,6 +131,14 @@
   <string name="assistant_page_stream_output">Потоковый вывод</string>
   <string name="assistant_page_stream_output_desc">Включить потоковый вывод сообщений</string>
   <string name="assistant_page_strict">Строгий</string>
+  <string name="assistant_page_card_parts">Поля карточки персонажа</string>
+  <string name="assistant_page_card_parts_desc">Исходные поля, сохранённые из импортированной карточки. Отправляется то, что указано в системном промпте выше — отредактируйте поля и пересоберите его.</string>
+  <string name="assistant_page_card_description">Описание</string>
+  <string name="assistant_page_card_personality">Характер</string>
+  <string name="assistant_page_card_scenario">Сценарий</string>
+  <string name="assistant_page_card_example">Пример диалога</string>
+  <string name="assistant_page_card_system_prompt">Системный промпт карточки</string>
+  <string name="assistant_page_rebuild_prompt">Пересобрать системный промпт из этих полей</string>
   <string name="assistant_page_system_prompt">Системный промпт</string>
   <string name="assistant_page_tab_basic">Основные настройки</string>
   <string name="assistant_page_tab_extensions">Расширения</string>

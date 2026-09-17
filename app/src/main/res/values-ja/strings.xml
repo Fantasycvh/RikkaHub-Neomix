@@ -131,6 +131,14 @@
   <string name="assistant_page_stream_output">ストリーミング出力</string>
   <string name="assistant_page_stream_output_desc">メッセージをストリーミング出力するかどうか</string>
   <string name="assistant_page_strict">厳密</string>
+  <string name="assistant_page_card_parts">キャラクターカードの項目</string>
+  <string name="assistant_page_card_parts_desc">インポートしたカードから保持した元の項目です。実際に送信されるのは上のシステムプロンプトです。編集後に再生成できます。</string>
+  <string name="assistant_page_card_description">キャラクター説明</string>
+  <string name="assistant_page_card_personality">性格</string>
+  <string name="assistant_page_card_scenario">シナリオ</string>
+  <string name="assistant_page_card_example">会話例</string>
+  <string name="assistant_page_card_system_prompt">カードのシステムプロンプト</string>
+  <string name="assistant_page_rebuild_prompt">この項目からシステムプロンプトを再生成</string>
   <string name="assistant_page_system_prompt">システムプロンプト</string>
   <string name="assistant_page_tab_basic">基本設定</string>
   <string name="assistant_page_tab_extensions">拡張機能</string>

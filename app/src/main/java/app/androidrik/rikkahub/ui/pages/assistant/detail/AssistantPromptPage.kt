@@ -7,7 +7,9 @@ import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Refresh03
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -83,6 +86,8 @@ import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TransformerContext
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.hasCardParts
+import app.androidrik.rikkahub.data.model.rebuildSystemPromptFromCardParts
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.AssistantRegex
 import app.androidrik.rikkahub.data.model.Conversation
@@ -209,6 +214,15 @@ private fun AssistantPromptContent(
                     }
                 }
             }
+        }
+
+        // 角色卡分区：导入时保留的原始字段（此前被压成一条不可分的 systemPrompt 而永久丢失）。
+        // 仅作查看/单独编辑的「零件」；实际发送的仍是上面的 System Prompt。
+        if (assistant.hasCardParts) {
+            CardPartsCard(
+                assistant = assistant,
+                onUpdate = onUpdate,
+            )
         }
 
         Card(
@@ -577,6 +591,107 @@ private fun AssistantPromptContent(
             }
         }
     }
+}
+
+@Composable
+private fun CardPartsCard(
+    assistant: Assistant,
+    onUpdate: (Assistant) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+
+    Card(
+        modifier = modifier,
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.assistant_page_card_parts),
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                )
+                Icon(
+                    imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = stringResource(R.string.assistant_page_card_parts_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            AnimatedVisibility(visible = expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CardPartField(
+                        label = stringResource(R.string.assistant_page_card_description),
+                        value = assistant.cardDescription,
+                        onChange = { onUpdate(assistant.copy(cardDescription = it)) },
+                    )
+                    CardPartField(
+                        label = stringResource(R.string.assistant_page_card_personality),
+                        value = assistant.cardPersonality,
+                        onChange = { onUpdate(assistant.copy(cardPersonality = it)) },
+                    )
+                    CardPartField(
+                        label = stringResource(R.string.assistant_page_card_scenario),
+                        value = assistant.cardScenario,
+                        onChange = { onUpdate(assistant.copy(cardScenario = it)) },
+                    )
+                    CardPartField(
+                        label = stringResource(R.string.assistant_page_card_example),
+                        value = assistant.cardExampleDialogue,
+                        onChange = { onUpdate(assistant.copy(cardExampleDialogue = it)) },
+                    )
+                    CardPartField(
+                        label = stringResource(R.string.assistant_page_card_system_prompt),
+                        value = assistant.cardSystemPrompt,
+                        onChange = { onUpdate(assistant.copy(cardSystemPrompt = it)) },
+                    )
+
+                    // 零件 → 发送文本的单向重建：零件是源，systemPrompt 是产物。
+                    // 用户手改 systemPrompt 后想要「回到卡片原文」时用。
+                    TextButton(onClick = { onUpdate(assistant.rebuildSystemPromptFromCardParts()) }) {
+                        Icon(HugeIcons.Refresh03, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.size(8.dp))
+                        Text(stringResource(R.string.assistant_page_rebuild_prompt))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardPartField(
+    label: String,
+    value: String?,
+    onChange: (String) -> Unit,
+) {
+    var text by remember(value) { mutableStateOf(value.orEmpty()) }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = {
+            text = it
+            onChange(it)
+        },
+        label = { Text(label) },
+        minLines = 2,
+        maxLines = 6,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

@@ -23,6 +23,26 @@ data class Assistant(
     val useAssistantAvatar: Boolean = false, // 使用助手头像替代模型头像
     val tags: List<Uuid> = emptyList(),
     val systemPrompt: String = "",
+    /**
+     * 角色卡导入时保留的**分区零件**（SillyTavern 的 character sheet 字段）。
+     *
+     * **为什么保留**：此前导入会把这 4 个字段用 `buildString` **压成一条不可分的
+     * `systemPrompt`**，槽位信息在导入那一步就永久丢失（无法单独查看/编辑/重排）。
+     * 见 `docs/peer-apps-benchmark.md` §6.2 ④。
+     *
+     * **权威关系**：`systemPrompt` 仍是**唯一**被发送的文本（保持既有行为与可自由编辑）；
+     * 这几个字段是「零件」，供查看/单独编辑，并经 [buildCardSystemPrompt] 一键重建
+     * `systemPrompt`。刻意不让它们参与请求组装——否则会出现两个真相源，且用户手改
+     * `systemPrompt` 后会被静默覆盖。
+     *
+     * 全为 null = 非角色卡导入（纯手工助手）。
+     */
+    val cardDescription: String? = null,
+    val cardPersonality: String? = null,
+    val cardScenario: String? = null,
+    val cardExampleDialogue: String? = null,
+    /** 角色卡里显式的 `system_prompt` 字段（与 [systemPrompt] 不同：那是卡片给出的，这是实际发送的）。 */
+    val cardSystemPrompt: String? = null,
     val temperature: Float? = null,
     val topP: Float? = null,
     // 上下文消息条数上限, 超出后阶梯式截断; 0 表示不限制
@@ -92,6 +112,78 @@ data class QuickMessage(
  * 打分 `importance × (0.55 + 0.45 × 时效衰减)` 决定「谁该进上下文」，
  * 而输出顺序仍由 [sortKey] 固定以保住前缀缓存。
  */
+/**
+ * 由角色卡零件渲染出实际发送的 system prompt。
+ *
+ * **与角色卡导入此前的 `buildString` 实现逐字节等价**（含空行与 `Empty` 占位符）——
+ * 这是刻意的：本函数是那次内联拼装的抽取，用来给导入器与「重新生成提示词」按钮共用，
+ * 不引入任何输出变化。若将来要改版式，改这里一处即可（导入侧与手动重建同步生效）。
+ *
+ * 注意：不读 [Assistant.systemPrompt]（那是输出目标而非输入）。
+ */
+fun buildCardSystemPrompt(
+    name: String,
+    cardSystemPrompt: String?,
+    description: String?,
+    personality: String?,
+    scenario: String?,
+    exampleDialogue: String?,
+): String = buildString {
+    appendLine("You are roleplaying as $name.")
+    appendLine()
+    if (!cardSystemPrompt.isNullOrBlank()) {
+        appendLine(cardSystemPrompt)
+        appendLine()
+    }
+    appendLine("## Description of the character")
+    appendLine(description ?: "Empty")
+    appendLine()
+    appendLine("## Personality of the character")
+    appendLine(personality ?: "Empty")
+    appendLine()
+    appendLine("## Scenario")
+    append(scenario ?: "Empty")
+    if (!exampleDialogue.isNullOrBlank()) {
+        appendLine()
+        appendLine()
+        appendLine("## Example of the dialogue")
+        append(exampleDialogue)
+    }
+}
+
+/**
+ * 该助手是否来自角色卡导入（有任一分区零件）。
+ *
+ * 用于决定是否显示「角色卡分区」编辑区——手工创建的助手不该看到一排都是空的卡片字段。
+ */
+val Assistant.hasCardParts: Boolean
+    get() = cardDescription != null ||
+        cardPersonality != null ||
+        cardScenario != null ||
+        cardExampleDialogue != null ||
+        cardSystemPrompt != null
+
+/**
+ * 由本助手的零件重建 `systemPrompt`（供「重新生成提示词」按钮调用）。
+ *
+ * 若没有零件则原样返回（手工助手不应因此被清空提示词）。
+ */
+fun Assistant.rebuildSystemPromptFromCardParts(): Assistant =
+    if (!hasCardParts) {
+        this
+    } else {
+        copy(
+            systemPrompt = buildCardSystemPrompt(
+                name = name,
+                cardSystemPrompt = cardSystemPrompt,
+                description = cardDescription,
+                personality = cardPersonality,
+                scenario = cardScenario,
+                exampleDialogue = cardExampleDialogue,
+            )
+        )
+    }
+
 @Serializable
 data class AssistantMemory(
     val id: String = "",

@@ -133,6 +133,14 @@
   <string name="assistant_page_stream_output">流式输出</string>
   <string name="assistant_page_stream_output_desc">是否启用消息的流式输出</string>
   <string name="assistant_page_strict">严谨</string>
+  <string name="assistant_page_card_parts">角色卡字段</string>
+  <string name="assistant_page_card_parts_desc">从导入的角色卡保留的原始字段。实际发送的是上方的系统提示词——改完这些后可重新生成。</string>
+  <string name="assistant_page_card_description">角色描述</string>
+  <string name="assistant_page_card_personality">性格</string>
+  <string name="assistant_page_card_scenario">场景</string>
+  <string name="assistant_page_card_example">示例对话</string>
+  <string name="assistant_page_card_system_prompt">卡片系统提示词</string>
+  <string name="assistant_page_rebuild_prompt">用这些字段重新生成系统提示词</string>
   <string name="assistant_page_system_prompt">系统提示词</string>
   <string name="assistant_page_tab_basic">基础设定</string>
   <string name="assistant_page_tab_extensions">扩展管理</string>
