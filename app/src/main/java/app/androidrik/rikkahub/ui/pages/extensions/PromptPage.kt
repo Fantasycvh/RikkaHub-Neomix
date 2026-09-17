@@ -84,6 +84,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -544,6 +546,13 @@ private fun PresetDetailScreen(
                                         }
                                     },
                                 onEdit = { editState.open(injection) },
+                                onToggleEnabled = { enabled ->
+                                    onUpdatePreset(
+                                        currentPreset.copy(entries = currentPreset.entries.map { entry ->
+                                            if (entry.id == injection.id) entry.copy(enabled = enabled) else entry
+                                        })
+                                    )
+                                },
                                 onDelete = {
                                     onUpdatePreset(preset.copy(entries = preset.entries - injection))
                                 },
@@ -600,6 +609,7 @@ private fun ModeInjectionCard(
     injection: PromptInjection.ModeInjection,
     modifier: Modifier = Modifier,
     onEdit: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
     val swipeState = rememberSwipeToDismissBoxState()
@@ -639,51 +649,65 @@ private fun ModeInjectionCard(
                 containerColor = CustomColors.listItemColors.containerColor
             )
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = injection.name.ifEmpty { stringResource(R.string.prompt_page_unnamed) },
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Tag(type = TagType.INFO) {
-                            Text(getPositionLabel(injection.position))
+                    val enabledLabel = stringResource(R.string.prompt_page_enabled)
+                    Switch(
+                        checked = injection.enabled,
+                        onCheckedChange = onToggleEnabled,
+                        modifier = Modifier.semantics {
+                            contentDescription = "${injection.name}: $enabledLabel"
                         }
-                        Tag(type = TagType.DEFAULT) {
-                            Text(stringResource(R.string.prompt_page_priority_format, injection.priority))
-                        }
-                        if (!injection.enabled) {
-                            Tag(type = TagType.WARNING) {
-                                Text(stringResource(R.string.prompt_page_disabled))
-                            }
+                    )
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Tag(type = TagType.INFO) {
+                        Text(getPositionLabel(injection.position))
+                    }
+                    Tag(type = TagType.DEFAULT) {
+                        Text(stringResource(R.string.prompt_page_priority_format, injection.priority))
+                    }
+                    if (!injection.enabled) {
+                        Tag(type = TagType.WARNING) {
+                            Text(stringResource(R.string.prompt_page_disabled))
                         }
                     }
                 }
-                IconButton(onClick = { showExportDialog = true }) {
-                    Icon(HugeIcons.Share03, stringResource(R.string.export_title))
-                }
-                IconButton(onClick = onEdit) {
-                    Icon(HugeIcons.Tools, stringResource(R.string.prompt_page_edit))
-                }
-                IconButton(onClick = { showDeleteDialog = true }) {
-                    Icon(
-                        HugeIcons.Delete01,
-                        stringResource(R.string.prompt_page_delete),
-                        tint = MaterialTheme.colorScheme.error
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    IconButton(onClick = { showExportDialog = true }) {
+                        Icon(HugeIcons.Share03, stringResource(R.string.export_title))
+                    }
+                    IconButton(onClick = onEdit) {
+                        Icon(HugeIcons.Tools, stringResource(R.string.prompt_page_edit))
+                    }
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(
+                            HugeIcons.Delete01,
+                            stringResource(R.string.prompt_page_delete),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
         }

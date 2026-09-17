@@ -167,6 +167,27 @@ class PromptInjectionTransformerTest {
     }
 
     @Test
+    fun `preset bound entry can be disabled and enabled without changing its binding`() {
+        val entry = createModeInjection(content = "Preset entry content")
+        val messages = listOf(UIMessage.system("System prompt"), UIMessage.user("Hello"))
+        val assistant = createAssistant()
+        val presetEntryIds = setOf(entry.id)
+
+        fun apply(injection: PromptInjection.ModeInjection) = transformMessages(
+            messages = messages,
+            assistant = assistant,
+            modeInjections = listOf(injection),
+            lorebooks = emptyList(),
+            presetEntryIds = presetEntryIds,
+        )
+
+        val enabled = apply(entry)
+        assertTrue(enabled.any { getMessageText(it).contains(entry.content) })
+        assertEquals(messages, apply(entry.copy(enabled = false)))
+        assertEquals(enabled, apply(entry.copy(enabled = true)))
+    }
+
+    @Test
     fun `unlinked mode injection should not be applied`() {
         val injection = createModeInjection(content = "Should not appear")
 
