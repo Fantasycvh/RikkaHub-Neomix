@@ -165,21 +165,36 @@ object LorebookSerializer : ExportSerializer<Lorebook> {
         }.getOrNull()
     }
 
-    private fun tryImportSillyTavern(json: String, fileName: String?): Lorebook? {
-        return runCatching {
-            val stLorebook = ExportSerializer.DefaultJson.decodeFromString(
-                SillyTavernLorebook.serializer(),
-                json
-            )
-            Lorebook(
-                id = Uuid.random(),
-                name = fileName ?: LocalDateTime.now().toLocalString(),
-                description = "",
-                enabled = true,
-                entries = stLorebook.entries.values.map { it.toRegexInjection() },
-            )
-        }.getOrNull()
-    }
+    private fun tryImportSillyTavern(json: String, fileName: String?): Lorebook? =
+        parseSillyTavernLorebook(json, fileName)
+}
+
+/**
+ * 解析 ST 世界书 JSON（纯函数，便于单测覆盖「拒绝非世界书文件」这一分支）。
+ *
+ * @param fallbackName 文件名（ST 世界书本身不含名称）；null 时用当前时间
+ * @return 解析成功返回 [Lorebook]；**不是世界书文件返回 null**（调用方据此报「格式不支持」）
+ */
+internal fun parseSillyTavernLorebook(json: String, fallbackName: String?): Lorebook? {
+    return runCatching {
+        val stLorebook = ExportSerializer.DefaultJson.decodeFromString(
+            SillyTavernLorebook.serializer(),
+            json
+        )
+        // **必须要求 `entries` 键存在**：`entries` 声明为可空正是为了把
+        // 「ST 世界书但内容为空」与「根本不是世界书」区分开。
+        // 此前 `entries` 默认空 map + `ignoreUnknownKeys = true` ⇒ **任意 JSON 都能解码成
+        // 「0 条目的世界书」并静默导入成功**（用户实测：导入 ST 预设文件会得到一个以该文件
+        // 命名、0 条目的空世界书，且无任何报错——比失败更糟，因为看不出是错的）。
+        val rawEntries = stLorebook.entries ?: return null
+        Lorebook(
+            id = Uuid.random(),
+            name = fallbackName ?: LocalDateTime.now().toLocalString(),
+            description = "",
+            enabled = true,
+            entries = rawEntries.values.map { it.toRegexInjection() },
+        )
+    }.getOrNull()
 }
 
 /**
@@ -301,8 +316,13 @@ private val UNESCAPED_SLASH_REGEX = Regex("""(^|[^\\])/""")
 
 
 @Serializable
-private data class SillyTavernLorebook(
-    val entries: Map<String, SillyTavernEntry> = emptyMap(),
+internal data class SillyTavernLorebook(
+    /**
+     * ST 世界书的条目表。**刻意声明为可空且无默认值**：
+     * 缺失 `entries` 键 = 这不是一个世界书文件（用于与「ST 世界书但 0 条目」区分）。
+     * 默认空 map 会让任意 JSON 都被当作合法的空世界书静默导入。
+     */
+    val entries: Map<String, SillyTavernEntry>? = null,
 )
 
 @Serializable
