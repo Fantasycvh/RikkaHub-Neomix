@@ -1,4 +1,4 @@
-package app.androidrik.rikkahub.ui.components.ui
+package app.androidrik.rikkahub.ui.components.ai
 
 import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.PromptInjection

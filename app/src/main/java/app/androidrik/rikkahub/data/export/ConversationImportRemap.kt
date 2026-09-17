@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.export
 
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
@@ -37,13 +38,28 @@ import kotlin.uuid.Uuid
  */
 fun Conversation.remapForImport(targetAssistantId: Uuid): Conversation {
     val nodeIdMap = mutableMapOf<Uuid, Uuid>()
+    // #1906：引用指向 messageId，而这里**每个消息 id 都要换新** ⇒ 必须先建全量映射
+    // 再改写引用。两遍扫描是必要的：引用可以指向「后面才出现」的消息（前向引用），
+    // 单遍边生成边查表会漏掉这一类。映射覆盖**全部候选**消息（不只是 selectIndex 选中的），
+    // 因为被引用的消息可能正躺在某个未选中的分支里。
+    val messageIdMap = mutableMapOf<Uuid, Uuid>()
+    messageNodes.forEach { node ->
+        node.messages.forEach { message ->
+            messageIdMap[message.id] = Uuid.random()
+        }
+    }
     val newNodeNodes = messageNodes.map { node ->
         val newId = Uuid.random()
         nodeIdMap[node.id] = newId
         node.copy(
             id = newId,
             // 消息 id 也要换（FTS 存 message_id）；toolCallId 等批内引用保持原样即自洽
-            messages = node.messages.map { it.copy(id = Uuid.random()) },
+            messages = node.messages.map { message ->
+                message.copy(
+                    id = messageIdMap.getValue(message.id),
+                    annotations = message.annotations.remapQuotes(messageIdMap),
+                )
+            },
         )
     }
     val remapped = copy(
@@ -61,6 +77,26 @@ fun Conversation.remapForImport(targetAssistantId: Uuid): Conversation {
             nodeIdMap = nodeIdMap,
         ),
     )
+}
+
+/**
+ * #1906：把引用注解里的 `messageId` 换到本次导入的新 id 上。
+ *
+ * 引用只在**所属会话内**解释，所以整会话导入后必须重映射，否则所有引用立刻指向不存在的 id。
+ * （fork 复制走的是另一条路：`forkConversationAtMessage` 保留 message id，无需处理。）
+ *
+ * **查不到就保留原 id**：引用目标可能已被删除/被压缩截断（导出时就不在文件里），
+ * 这类悬空引用不影响展示与发送——快照文本才是发送依据。改写快照内容反而会造假数据。
+ */
+private fun List<UIMessageAnnotation>.remapQuotes(messageIdMap: Map<Uuid, Uuid>): List<UIMessageAnnotation> {
+    if (none { it is UIMessageAnnotation.QuotedMessage }) return this
+    return map { annotation ->
+        if (annotation !is UIMessageAnnotation.QuotedMessage) {
+            annotation
+        } else {
+            annotation.copy(messageId = messageIdMap[annotation.messageId] ?: annotation.messageId)
+        }
+    }
 }
 
 /**

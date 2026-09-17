@@ -275,6 +275,11 @@
   <string name="chat_input_file_read_failed">파일 읽기 실패: %s</string>
   <string name="chat_message_add_favorite">즐겨찌기 추가</string>
   <string name="chat_message_remove_favorite">즐겨찾기 제거</string>
+  <string name="chat_message_quote">인용</string>
+  <string name="chat_message_quote_cancel">인용 취소</string>
+  <string name="chat_message_quote_user">사용자</string>
+  <string name="chat_message_quote_assistant">어시스턴트</string>
+  <string name="chat_message_quote_context">인용된 메시지</string>
   <string name="chat_message_tool_approve">승인</string>
   <string name="chat_message_tool_approve_all">모두 승인</string>
   <string name="chat_message_tool_ask_questions">%d개의 질문</string>
@@ -413,6 +418,14 @@
   <string name="export_to_file">파일로 내보내기</string>
   <string name="export_to_file_desc">JSON 파일로 저장</string>
   <string name="extension_content_manage">관리</string>
+  <string name="extension_picker_selected_format">%1$d/%2$d 선택됨</string>
+  <string name="extension_picker_preset_globally_disabled">프리셋 전역 비활성(개별 바인딩 항목은 유효)</string>
+  <string name="extension_picker_lorebook_globally_disabled">월드북 전역 비활성</string>
+  <string name="extension_picker_lorebook_whole_book_hint">월드북은 통째로 선택됩니다. 아래는 항목의 전역 상태이며 여기서는 읽기 전용입니다. 수정은 관리 페이지에서 하며 이 책을 쓰는 모든 대화에 영향을 줍니다.</string>
+  <string name="extension_picker_manage_lorebook_entries">월드북 항목 관리(전역)</string>
+  <string name="extension_picker_globally_enabled">전역 활성</string>
+  <string name="extension_picker_globally_disabled">전역 비활성</string>
+  <string name="extension_picker_always_active">상시 활성</string>
   <string name="extension_content_unnamed">이름 없음</string>
   <string name="extension_content_unnamed_lorebook">이름 없는 롤북</string>
   <string name="extension_selector_go_to_extensions">확장 기능 관리</string>

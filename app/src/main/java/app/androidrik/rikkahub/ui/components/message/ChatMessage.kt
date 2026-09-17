@@ -100,6 +100,7 @@ import app.androidrik.rikkahub.utils.openUrl
 import app.androidrik.rikkahub.utils.urlDecode
 import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.uuid.Uuid
 
 @Composable
 fun ChatMessage(
@@ -114,6 +115,8 @@ fun ChatMessage(
     onEdit: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
+    onQuote: () -> Unit = {},
+    onQuoteClick: ((Uuid) -> Unit)? = null,
     onUpdate: (MessageNode) -> Unit,
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
@@ -148,6 +151,16 @@ fun ChatMessage(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+
+        // #1906：引用块——显示这条消息发出时引用的历史消息快照（不随原消息后续编辑而变）。
+        // 点击跳转原消息；onQuoteClick 为 null 时（如下拉预览）卡片不可点。
+        message.annotations.filterIsInstance<UIMessageAnnotation.QuotedMessage>()
+            .forEach { quote ->
+                MessageQuoteCard(
+                    quote = quote,
+                    onClick = onQuoteClick?.let { jump -> { jump(quote.messageId) } },
+                )
+            }
 
         if (!message.parts.isEmptyUIMessage()) {
             Row(
@@ -238,6 +251,7 @@ fun ChatMessage(
             onDelete = onDelete,
             onShare = onShare,
             onFork = onFork,
+            onQuote = onQuote,
             model = model,
             onSelectAndCopy = {
                 showSelectCopySheet = true

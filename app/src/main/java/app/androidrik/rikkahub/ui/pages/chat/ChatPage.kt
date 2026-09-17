@@ -69,6 +69,7 @@ import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.toQuotedMessage
 import app.androidrik.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
@@ -431,7 +432,10 @@ private fun ChatPageContent(
                                 messageId = inputState.editingMessage!!,
                             )
                         } else {
-                            vm.handleMessageSend(inputState.getContents())
+                            vm.handleMessageSend(
+                                content = inputState.getContents(),
+                                annotations = inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
+                            )
                             scope.launch {
                                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
                             }
@@ -445,7 +449,11 @@ private fun ChatPageContent(
                                 messageId = inputState.editingMessage!!,
                             )
                         } else {
-                            vm.handleMessageSend(content = inputState.getContents(), answer = false)
+                            vm.handleMessageSend(
+                                content = inputState.getContents(),
+                                answer = false,
+                                annotations = inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
+                            )
                             scope.launch {
                                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
                             }
@@ -455,7 +463,7 @@ private fun ChatPageContent(
                     messageQueue = messageQueueState,
                     onRemoveQueuedMessage = vm::removeQueuedMessage,
                     onBeginEditQueuedMessage = vm::beginEditQueuedMessage,
-                    onFinishEditQueuedMessage = vm::finishEditQueuedMessage,
+                    onFinishEditQueuedMessage = { id, parts -> vm.finishEditQueuedMessage(id, parts) },
                     onResumeMessageQueue = vm::resumeMessageQueue,
                     voiceState = voiceState,
                     onStartVoiceMode = startVoiceMode,
@@ -486,6 +494,10 @@ private fun ChatPageContent(
                     onMoreClick = {
                         showFilesSheet = true
                     },
+                    // #1906：待发引用预览。只在非编辑态显示——编辑历史消息时引用来自
+                    // 该消息自身的注解（ChatService.editMessage 保留），不经过这里。
+                    pendingQuote = inputState.pendingQuote.takeUnless { inputState.isEditing() },
+                    onCancelQuote = { inputState.pendingQuote = null },
                 )
             },
             containerColor = Color.Transparent,
@@ -514,6 +526,12 @@ private fun ChatPageContent(
                 onEdit = {
                     inputState.editingMessage = it.id
                     inputState.setContents(it.parts)
+                },
+                onQuoteMessage = { message ->
+                    // 引用是「下一条新消息」的行为：进入引用即退出编辑态，
+                    // 否则发送会走编辑分支、引用被丢掉。
+                    inputState.editingMessage = null
+                    inputState.pendingQuote = message.toQuotedMessage()
                 },
                 onForkMessage = {
                     scope.launch {

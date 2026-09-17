@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import kotlin.uuid.Uuid
 
@@ -13,6 +14,16 @@ class ChatInputState {
     val textContent = TextFieldState()
     var messageContent by mutableStateOf(listOf<UIMessagePart>())
     var editingMessage by mutableStateOf<Uuid?>(null)
+
+    /**
+     * #1906：输入框待发的引用（引用某条历史消息后，在输入框上方显示预览卡）。
+     *
+     * 与 [editingMessage] 是**两件独立的事**：编辑一条历史消息时，引用来自被编辑消息
+     * 自身的注解（见 `ChatService.editMessage`），不由这里承载；此字段只描述「下一条
+     * 新消息引用谁」。发送或清空输入时置 null。
+     */
+    var pendingQuote by mutableStateOf<UIMessageAnnotation.QuotedMessage?>(null)
+
     private var editingParts: List<UIMessagePart>? = null
     private var editingAttachmentUrls: Set<String> = emptySet()
 
@@ -20,6 +31,7 @@ class ChatInputState {
         textContent.setTextAndPlaceCursorAtEnd("")
         messageContent = emptyList()
         editingMessage = null
+        pendingQuote = null
         editingParts = null
         editingAttachmentUrls = emptySet()
     }

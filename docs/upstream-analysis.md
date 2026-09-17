@@ -121,8 +121,8 @@
 | #1903/#1904 | eval_javascript 缺资源防护 | **已修**（`641b46fe`） |
 | #1912 | 工具审批无法关闭（OPEN） | **fork 不受影响**：前置修复（`55506496` 连续审批丢失、`1f04d2db` /tmp 免审批）**代码等价核对均在 fork**；且上游 2.5.2 也未修此 issue |
 | #1889 | 切换对话时思考过程/消息丢失 | **fork 结构上不受影响**：`ConversationSession` 是引用计数 + idle check，切页只 `release()` 不中断生成 |
-| **#1906** | feat: 聊天消息支持「引用」（QQ 式） | **已评估（2026-09-16，未实现）：体量「小–中」，是本次巡检里性价比最高的一项**。见下节 |
-| **#1901** | feat: Skills 分类 / 标签 / 搜索 | **已评估（2026-09-16，未实现）：搜索最便宜、分类次之、标签最贵；且 issue 正文给的 `tags: [word, document]` 写法在本仓读不出来**（实测）。见下节 |
+| **#1906** | feat: 聊天消息支持「引用」（QQ 式） | **已评估（2026-09-16 初评，2026-09-17 复核修订，未实现）：体量「小–中」，是本次巡检里性价比最高的一项**。见下节 |
+| **#1901** | feat: Skills 分类 / 标签 / 搜索 | **已评估（2026-09-16 初评，2026-09-17 复核修正，未实现）：搜索最便宜、分类次之、标签暂缓；issue 正文给的 `tags: [word, document]` 写法在本仓读不出来**（实测）。见下节 |
 | #1910/#1899/#1905 | OAuth 账号登录 / 远程服务器模式 / 屏幕常亮 | 功能请求，未评估（体量见 issue 本身） |
 
 ### #1918 助手预填充评估（2026-09-16，仅评估未实现）
@@ -190,40 +190,105 @@ part 上会得到一个「本地看得见、模型看不见」的假功能**。�
 1. **注解不在 provider 白名单路径上** ⇒ 不会被 `mapNotNull` 意外吞掉，语义明确。
 2. **已有先例**：`UrlCitation`、`PartialFailure`（#1812）都是注解，且
    `ChatMessage.kt:145`/`:631` 已按注解渲染 UI（`PartialFailureBanner` 就是现成模板）。
-3. **零迁移**：`MessageNodeEntity.messages` 是 `String`（JSON blob，`ConversationRepository.kt:626`
-   `JsonInstant.encodeToString`），而 `JsonInstant` 开了 `ignoreUnknownKeys` ⇒ 加字段不动 DB。
+3. **无需数据库表迁移**：`MessageNodeEntity.messages` 是 JSON 字符串，新版序列化器可读取旧消息。
+   但新增 sealed 注解类型不等于旧版兼容：`ignoreUnknownKeys` 不能保证旧版识别未知类型判别值，
+   因此含引用的新数据不承诺能被旧版应用读取。
 
 **但要「让模型看到引用」仍需一步显式转换**：注解本身也不进请求。最小做法是在
 `preprocessUserInputParts`（`ChatService.kt:535`）或一个 `InputMessageTransformer` 里，把引用
 **展开成文本前缀**（`<quoted author="user">…</quoted>\n\n新内容`）。这与
 `DocumentAsPromptTransformer` 把文档转 `<UploadFile>` 提示词是同一手法，**有现成范式可抄**。
 
-#### 数据形态：存节点 id，不存内容快照（与 issue 建议的差异）
+#### 数据形态：messageId + 内容快照**双存**（2026-09-17 修正：推翻初评「只存 id 不存快照」）
 
-issue 建议存 `content` 前 100 字摘要。**不建议**：那会重蹈本仓
-[[conversation-import-export]] 中「压缩检查点 boundaryNodeId 换 id 后失效」的覆辙——
-引用若只存文本，重新生成/编辑后引用就指向幽灵。**建议存 `nodeId: Uuid` + `messageId: Uuid`，
-渲染时实时解析**；解析不到（原消息被删/被截断）则降级显示为「原消息已不可用」占位。
-`NodeFavoriteRef(conversationId, nodeId)`（`data/model/Favorite.kt:39`）就是这个形状的现成先例。
+初评建议「存 nodeId+messageId、渲染时实时解析、不存快照」，理由是防幽灵。复核发现两个硬缺口：
 
-#### 真难点（都是本仓特有的，不是 UI 活）
+1. **发送侧展开发生在压缩窗口组装之后**（`GenerationHandler.kt:540-609`
+   `buildInternalMessages().transforms()`）——不能假设引用源还在请求窗口里；
+2. 原消息被删/被截断后纯 ID 解析不到 ⇒ 模型什么都看不到。
+
+⇒ **快照必须存**（悬空降级与发送展开的依据）。数据形态：
+`QuotedMessage(messageId, role, content, createdAt)`。ID 仅在所属会话内解释，留给后续定位；
+**固定快照**用于显示与发送，不随原消息编辑而漂移。只采集 Text，不递归引用、不采集思考或工具输出；
+快照上限 8000 个 UTF-16 单元，截断避开代理对，UI 三行摘要与请求展开使用同一份快照。
+快照随消息 JSON 落库但**不进 FTS**（`MessageFtsManager.kt:100` 只索引 parts 里的 Text）。
+A 不提供跨会话选择原文的入口；但**整会话导出再导入仍须保留内部引用**，通过 ID 重映射实现，
+不能把「跨设备」笼统说成必然悬空。源已缺失时保留快照，不伪造引用目标。
+
+#### 真难点（都是本仓特有的，不是 UI 活；2026-09-17 修订）
 
 | # | 难点 | 说明 |
 |---|---|---|
-| 1 | **消息队列不携带注解** | `QueuedMessage(parts, answer, isEditing, reply)`（`MessageQueue.kt:12`）**只有 parts、无注解位**。生成期间点发送走的是入队路径（`sendMessage` → `enqueue`），引用信息会在入队这步**丢掉**。要么给 `QueuedMessage` 加字段，要么把引用编码进 parts（后者又回到「模型可见性」问题）。**这是最容易漏的一处** |
-| 2 | **送达模型要显式展开** | 见上：注解不进请求，须 transformer/预处理展开成文本。且**展开文本会进 FTS 与 token 统计** |
-| 3 | **跨分支/截断引用会悬空** | 引用的是「另一分支」的消息、或被 `limitContext`/压缩检查点截断掉的消息时，`nodeId` 在发送窗口内不存在。需定义降级语义（建议：照常展开文本，仅跳转失效） |
-| 4 | **跳转已有现成件** | `onJumpToMessage(index)` 已存在（`ChatList.kt:145`、`ChatPage.kt:553`），目前供压缩检查点预览用。引用卡片点击复用它能省掉 LazyColumn 定位那一摊 |
+| 1 | **消息队列不携带注解** | `QueuedMessage(parts, answer, isEditing, reply)`（`MessageQueue.kt:12`）**只有 parts、无注解位**。生成期间点发送走的是入队路径（`sendMessage` → `enqueue`），引用信息会在入队这步**丢掉**。**必须 A 批修，不能放 B**——排队场景全程丢引用（初评排 B 是漏了排队场景） |
+| 2 | **送达模型要显式展开** | 注解不进请求，须 InputMessageTransformer 展开成文本前缀（`DocumentAsPromptTransformer` 同手法）。展开只发生在请求副本上 ⇒ **不进 FTS**（初评「会进 FTS」有误）；token 统计仍计入（usage 由 provider 报告）。快照自足，不依赖源消息在窗口内 |
+| 3 | **跨分支/截断引用会悬空** | 引用的是「另一分支」或被 `limitContext`/压缩检查点截断掉的消息时，解析不到。降级语义：照常展开快照文本，仅跳转失效 |
+| 4 | **跳转不能直接复用 onJumpToMessage（2026-09-17 新发现）** | 它按**完整节点列表 index** 滚动（`ChatPage.kt:200-211`），压缩折叠时列表顶部多一行、索引空间不一致（`ChatList.kt:291/357`），且非选中候选定位不到。B 批需先展开被折叠目标再按可见列表算位置 |
 
-#### 建议范围（分批）
+#### 建议范围（2026-09-17 修订）
 
-- **A（小，推荐先做）**：注解模型 + 长按菜单「引用」入口 + 输入框上方引用预览卡 + 发送时
-  展开为文本前缀 + 消息上方引用块渲染（**不做跳转**，只显示引用来源的文本摘要）。
-- **B（中）**：引用块点击跳转原消息（复用 `onJumpToMessage`）+ `QueuedMessage` 携带引用 + 悬空降级。
-- **C（不做）**：存内容快照（会被删/编辑/重生成变成幽灵）、跨设备引用（本仓对话导出已换新 id）。
+- **A（推荐先做）**：注解模型（`QuotedMessage(messageId, role, content)`）+ 长按菜单「引用」入口 +
+  输入框上方引用预览卡（可取消）+ **QueuedMessage 携带** + 发送展开 transformer +
+  消息上方引用块渲染（不跳转）+ **导入 remap 覆盖**。fork 复制**无需改**
+  （`ChatService.kt:1556` 保留 message id，前缀内引用自动存活）；悬空靠快照降级。
+- **B（中）**：引用块点击跳转原消息——需处理压缩偏移与候选定位，不能直接复用 `onJumpToMessage`。
+- **C（不做）**：跨会话选择原文、附件内容引用。整会话导出导入不在此排除范围，内部引用须重映射。
 
-**估**：A 约 1 个提交（UI 3 处 + 模型 1 处 + 展开 1 处 + 6 语言字符串）；B 再加 1 个提交。
+**导入 remap 细节**：`ConversationImportRemap.kt:38` 目前只有 `nodeIdMap`，message id 就地随机生成、
+**无映射表**——须预建 messageId 映射并重写全部候选里的引用；与 `9f1d8105`（remap 漏 folderId）
+同一教训：换 id 的操作要成体系过一遍所有指向外部对象的引用字段。
+
+**估**：A 约 2 个提交（模型+队列+展开 1 个，UI+导入 remap 1 个）；B 再加 1 个。
 **比 #1901 便宜，比 #1918 便宜得多。**
+
+#### A 实现记录（2026-09-17）
+
+已落地 A 的范围（19 项新单测 + 两模块编译通过）：
+
+| 面 | 落点 |
+|---|---|
+| 模型 | `UIMessageAnnotation.QuotedMessage`（ai/ui/UIMessageAnnotation.kt）+ 采集/截断/展开（新 ai/ui/MessageQuote.kt） |
+| 队列 | `QueuedMessage.annotations`（默认空）、`enqueue`/`finishEdit` 均可携带；`ChatService.sendMessage`/`finishEditQueuedMessage` 透传；派发时落到 user message |
+| 请求展开 | 新 `QuoteTransformer`（app data/ai/transformers），已注册进 `ChatService.inputTransformers`——与拼装预览**同一条链**（PromptInspector 也用 `inputTransformers`） |
+| UI | 长按菜单「引用」入口（仅对含文本的消息显示）、输入框上方预览卡（可取消）、消息上方引用块；共享组件 `MessageQuoteCard` 防两处样式漂移 |
+| 导入 | `remapForImport` 预建 messageId 映射并重写引用（覆盖未选中候选与前向引用；悬空保留原 id 与快照） |
+
+**实现中确认的三个判断**：
+1. **编辑保留引用**（`ChatService.editMessage` 取被编辑消息自身的注解）——改文本不等于撤回引用；
+   取 `node.messages.find { it.id == messageId }` 而非 `node.currentMessage`，避免编辑候选时串分支。
+2. **引用入口进入即退出编辑态**（ChatPage `onQuoteMessage`）——否则发送走编辑分支、引用被丢弃。
+3. **待发引用挂 `ChatInputState`，VM 按会话 id 作用域** ⇒ 切会话不串引用。
+
+**未做（留 B）**：引用块点击跳转（需处理压缩偏移与候选定位）；ST 导入不映射 `jailbreak`。
+
+#### B 实现记录（2026-09-17）
+
+引用块点击跳转已落地（`QuoteJumpTargetIndexTest` 5 项单测）：
+
+- **按 messageId 而非下标定位**：压缩折叠时渲染的是 `windowNodes()`（边界之后的尾巴），
+  与「完整节点列表下标」不是一个空间。
+- **两段式跳转**：折叠态找不到目标 ⇒ 先 `showCompressedHistory = true` 展开完整轨迹，
+  由 `visibleNodes` 变化触发 effect 重跑再滚动。
+- **检查点行偏移**：折叠/展开态下检查点行都恒为列表首项，命中下标 +1
+  （抽成纯函数 `List<MessageNode>.quoteJumpTargetIndex(messageId, hasCheckpointRow)` 便于单测）。
+- **未选中候选**：只滚到所在节点，**不自动切 selectIndex**——那会静默改变会话展示分支并
+  影响后续发送，代价远大于收益。
+- 目标已被删除时放弃，不报错。
+
+#### 顺带：助手页扩展管理改为二级（2026-09-17）
+
+用户指出「助手页的扩展管理里预设和世界书仍是平铺」。核实：助手详情页走的是
+`ModeInjectionsContent` / `LorebooksContent`（拍平后的 `Settings.modeInjections`），
+**与对话内扩展面板的两级结构不一致**。
+
+改法：把选择器抽成共享文件 `ui/components/ai/ExtensionPicker.kt`（`ExtensionPickerNavigation`
++ `PresetPickerContent` + `WorldbookPickerContent`），对话面板与助手页**共用同一实现**——
+早前 `ExtensionPickerNavigation` 就放在 `components/ui/ExtensionSelector.kt` 里，是两个调用方
+各写一份的开始，抽出来防漂移（同 [[backup-workspace-files]] 抽共享引擎的理由）。
+
+同时清掉两处技术债：
+1. **硬编码中文改字符串资源**（8 个键 × 6 语言）：原选择器里「已选 / 预设已全局禁用 /
+   世界书按整本选用 / 全局已启用…」都是内联中文字面量。
+2. **删除死代码 `LorebooksContent`**：世界书列表改两级后它不再被任何地方引用。
 
 ### #1901 Skills 分类 / 标签 / 搜索评估（2026-09-16，仅评估未实现）
 
@@ -308,6 +373,22 @@ token，见 [[prompt-size-composition]]）。若把 `category`/`tags` 也塞进�
 **不是同一形态**：技能没有可放标签池的 DB 表，标签只能进 frontmatter 文本，
 **所以「重命名标签」在技能上就是要批量改文件**（收藏那边存 id 才免掉这一步）。
 这也是建议把 C 放掉的一个理由。
+
+#### 2026-09-17 复核修正（三处）
+
+1. **标签成本高估**：初评拿收藏标签（存 `meta_json`、有独立标签池）做对照，得出「标签需要
+   标签池所以贵」。**不成立**——技能标签就是 frontmatter 手写字段 + 文本匹配，不需要标签池。
+   放掉 C 的真实理由修正为：**重命名标签 = 批量改文件**（技能没有可放标签池的 DB 表，标签只能
+   进 frontmatter 文本）+ 收益相对 B 小。
+2. **陷阱 1 加重一层**：`saveSkill` 走 `saveSkillFilesAtomically`（staging → **整目录替换**，
+   `SkillManager.kt:48-55/119-146`）——AI 覆盖同名技能不只抹 frontmatter 元数据，
+   **同名技能的附属文件也会一起丢**；`saveFromContent` 正是复用它。GitHub 导入反而安全
+   （下载原始文件、不重建 frontmatter）。修法同前：`saveFromContent` 改「读原文件 → 保留未知
+   frontmatter 键 → 重写」，或单文件编辑走已有 `saveSkillFile`（只写指定文件）。
+3. **覆盖面精确化**：搜索/筛选的共享组件是 `SkillsContent`（`ExtensionContent.kt:135-166`），
+   聊天扩展面板（`ExtensionSelector.kt:387-401`）和助手扩展页（`AssistantExtensionsPage.kt:175-195`）
+   共用该组件，管理页 `SkillsPage.kt` 是独立列表。应抽共享筛选逻辑并分别接入管理列表和选择组件；
+   只改 `SkillsPage.kt` 会漏掉两个选择入口，只改 `SkillsContent` 也不能覆盖管理页。
 
 ## 同步方式（ff-only，仅本地）
 

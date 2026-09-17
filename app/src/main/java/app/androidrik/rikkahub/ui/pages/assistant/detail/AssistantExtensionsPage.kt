@@ -14,22 +14,26 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.ai.ExtensionEmptyState
+import app.androidrik.rikkahub.ui.components.ai.ExtensionPickerNavigation
 import app.androidrik.rikkahub.ui.components.ai.ExtensionTab
-import app.androidrik.rikkahub.ui.components.ai.LorebooksContent
-import app.androidrik.rikkahub.ui.components.ai.ModeInjectionsContent
+import app.androidrik.rikkahub.ui.components.ai.PresetPickerContent
 import app.androidrik.rikkahub.ui.components.ai.QuickMessagesContent
 import app.androidrik.rikkahub.ui.components.ai.SkillsContent
+import app.androidrik.rikkahub.ui.components.ai.WorldbookPickerContent
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -47,6 +51,11 @@ fun AssistantExtensionsPage(id: String) {
     val scope = rememberCoroutineScope()
     val tabs = ExtensionTab.visible
     val pagerState = rememberPagerState { tabs.size }
+    // 预设/世界书用**两级**选择（容器 → 条目）：与对话内扩展面板同一套组件，
+    // 平铺会把「哪个条目属于哪个预设」的结构丢掉。
+    val pickerNavigation = remember { ExtensionPickerNavigation() }
+    LaunchedEffect(pagerState.currentPage) { pickerNavigation.back() }
+    BackHandler(enabled = pickerNavigation.isDetail) { pickerNavigation.back() }
 
     Scaffold(
         topBar = {
@@ -115,31 +124,25 @@ fun AssistantExtensionsPage(id: String) {
                     }
 
                     ExtensionTab.MODE_INJECTIONS -> {
-                        if (settings.modeInjections.isEmpty()) {
+                        if (settings.promptPresets.isEmpty()) {
                             ExtensionEmptyState(
                                 message = stringResource(R.string.assistant_extensions_page_empty_mode_injections),
                                 buttonText = stringResource(R.string.assistant_extensions_page_goto_prompts),
                                 onAction = { navController.navigate(Screen.Prompts) },
                             )
                         } else {
-                            Column {
-                                ModeInjectionsContent(
-                                    modifier = Modifier.weight(1f),
-                                    modeInjections = settings.modeInjections,
-                                    selectedIds = assistant.modeInjectionIds,
-                                    onToggle = { injId, checked ->
-                                        val newIds = if (checked) assistant.modeInjectionIds + injId
-                                        else assistant.modeInjectionIds - injId
-                                        vm.update(assistant.copy(modeInjectionIds = newIds))
-                                    },
-                                )
-                                TextButton(
-                                    onClick = { navController.navigate(Screen.Prompts) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(stringResource(R.string.assistant_extensions_page_goto_prompts))
-                                }
-                            }
+                            PresetPickerContent(
+                                modifier = Modifier.fillMaxSize(),
+                                presets = settings.promptPresets,
+                                navigation = pickerNavigation,
+                                selectedIds = assistant.modeInjectionIds,
+                                onToggle = { injId, checked ->
+                                    val newIds = if (checked) assistant.modeInjectionIds + injId
+                                    else assistant.modeInjectionIds - injId
+                                    vm.update(assistant.copy(modeInjectionIds = newIds))
+                                },
+                                onManage = { navController.navigate(Screen.Prompts) },
+                            )
                         }
                     }
 
@@ -151,24 +154,18 @@ fun AssistantExtensionsPage(id: String) {
                                 onAction = { navController.navigate(Screen.Worldbooks) },
                             )
                         } else {
-                            Column {
-                                LorebooksContent(
-                                    modifier = Modifier.weight(1f),
-                                    lorebooks = settings.lorebooks,
-                                    selectedIds = assistant.lorebookIds,
-                                    onToggle = { injId, checked ->
-                                        val newIds = if (checked) assistant.lorebookIds + injId
-                                        else assistant.lorebookIds - injId
-                                        vm.update(assistant.copy(lorebookIds = newIds))
-                                    },
-                                )
-                                TextButton(
-                                    onClick = { navController.navigate(Screen.Worldbooks) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(stringResource(R.string.assistant_extensions_page_goto_prompts))
-                                }
-                            }
+                            WorldbookPickerContent(
+                                modifier = Modifier.fillMaxSize(),
+                                lorebooks = settings.lorebooks,
+                                navigation = pickerNavigation,
+                                selectedIds = assistant.lorebookIds,
+                                onToggle = { injId, checked ->
+                                    val newIds = if (checked) assistant.lorebookIds + injId
+                                    else assistant.lorebookIds - injId
+                                    vm.update(assistant.copy(lorebookIds = newIds))
+                                },
+                                onManage = { navController.navigate(Screen.Worldbooks) },
+                            )
                         }
                     }
 

@@ -277,6 +277,11 @@
   <string name="chat_input_file_read_failed">檔案讀取失敗：%s</string>
   <string name="chat_message_add_favorite">加入最愛</string>
   <string name="chat_message_remove_favorite">移除最愛</string>
+  <string name="chat_message_quote">引用</string>
+  <string name="chat_message_quote_cancel">取消引用</string>
+  <string name="chat_message_quote_user">使用者</string>
+  <string name="chat_message_quote_assistant">助理</string>
+  <string name="chat_message_quote_context">引用訊息</string>
   <string name="chat_message_tool_approve">核准</string>
   <string name="chat_message_tool_approve_all">全部核准</string>
   <string name="chat_message_tool_ask_questions">詢問 %d 個問題</string>
@@ -450,6 +455,14 @@
   <string name="export_to_file">匯出至檔案</string>
   <string name="export_to_file_desc">另存為 JSON 檔案</string>
   <string name="extension_content_manage">管理</string>
+  <string name="extension_picker_selected_format">%1$d/%2$d 已選</string>
+  <string name="extension_picker_preset_globally_disabled">預設已全域停用（個別綁定條目仍可生效）</string>
+  <string name="extension_picker_lorebook_globally_disabled">世界書已全域停用</string>
+  <string name="extension_picker_lorebook_whole_book_hint">世界書以整本選用。下方顯示條目的全域啟用狀態；如需修改，請進入管理頁，修改會影響所有使用它的對話。</string>
+  <string name="extension_picker_manage_lorebook_entries">管理世界書條目（全域）</string>
+  <string name="extension_picker_globally_enabled">全域已啟用</string>
+  <string name="extension_picker_globally_disabled">全域已停用</string>
+  <string name="extension_picker_always_active">常駐條目</string>
   <string name="extension_content_unnamed">未命名</string>
   <string name="extension_content_unnamed_lorebook">未命名設定集</string>
   <string name="extension_selector_go_to_extensions">管理擴充功能</string>

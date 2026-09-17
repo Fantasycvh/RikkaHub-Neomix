@@ -92,6 +92,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.roundToInt
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
@@ -116,6 +117,7 @@ import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionContext
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionItem
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionList
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionProvider
+import app.androidrik.rikkahub.ui.components.message.MessageQuoteCard
 import app.androidrik.rikkahub.ui.components.ui.KeepScreenOn
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionRecordAudio
@@ -159,6 +161,8 @@ fun ChatInput(
     voiceState: VoiceSessionState = VoiceSessionState(),
     onStopVoiceMode: () -> Unit = {},
     contextUsage: ContextUsage? = null,
+    pendingQuote: UIMessageAnnotation.QuotedMessage? = null,
+    onCancelQuote: () -> Unit = {},
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -272,6 +276,16 @@ fun ChatInput(
                         onFinishEdit = onFinishEditQueuedMessage,
                         onResume = onResumeMessageQueue,
                     )
+
+                    // #1906：待发引用预览（可取消）。放队列面板之后、输入行之前——
+                    // 它描述的是「下一条要发的消息」，与输入行同属一个语义块。
+                    pendingQuote?.let { quote ->
+                        MessageQuoteCard(
+                            quote = quote,
+                            onCancel = onCancelQuote,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
 
                     if (state.messageContent.isNotEmpty()) {
                         MediaFileInputRow(state = state)

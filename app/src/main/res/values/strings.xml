@@ -279,6 +279,11 @@
   <string name="chat_input_file_read_failed">Failed to read file: %s</string>
   <string name="chat_message_add_favorite">Add Favorite</string>
   <string name="chat_message_remove_favorite">Remove Favorite</string>
+  <string name="chat_message_quote">Quote</string>
+  <string name="chat_message_quote_cancel">Cancel quote</string>
+  <string name="chat_message_quote_user">User</string>
+  <string name="chat_message_quote_assistant">Assistant</string>
+  <string name="chat_message_quote_context">Quoted message</string>
   <string name="chat_message_tool_approve">Approve</string>
   <string name="chat_message_tool_approve_all">Approve all</string>
   <string name="chat_message_tool_ask_questions">Ask %d questions</string>
@@ -452,6 +457,14 @@
   <string name="export_to_file">Export to file</string>
   <string name="export_to_file_desc">Save as JSON file</string>
   <string name="extension_content_manage">Manage</string>
+  <string name="extension_picker_selected_format">%1$d/%2$d selected</string>
+  <string name="extension_picker_preset_globally_disabled">Preset globally disabled (individually bound entries still apply)</string>
+  <string name="extension_picker_lorebook_globally_disabled">Worldbook globally disabled</string>
+  <string name="extension_picker_lorebook_whole_book_hint">Worldbooks are bound as a whole. Entry status below is global and read-only here; edit it on the management page, which affects all conversations using this book.</string>
+  <string name="extension_picker_manage_lorebook_entries">Manage worldbook entries (global)</string>
+  <string name="extension_picker_globally_enabled">Globally enabled</string>
+  <string name="extension_picker_globally_disabled">Globally disabled</string>
+  <string name="extension_picker_always_active">Always active</string>
   <string name="extension_content_unnamed">Unnamed</string>
   <string name="extension_content_unnamed_lorebook">Unnamed Lorebook</string>
   <string name="extension_selector_go_to_extensions">Manage Extensions</string>

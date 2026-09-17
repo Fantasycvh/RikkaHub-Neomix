@@ -120,6 +120,23 @@ private fun glassHazeStyle(): HazeBlurStyle = HazeBlurStyle.Material3 {
 
 private const val ScrollBottomKey = "ScrollBottomKey"
 
+/**
+ * #1906-B：引用块跳转——目标消息在**当前渲染列表**中的下标（已含压缩检查点行的偏移）。
+ *
+ * 两处容易算错的地方，抽出来单测：
+ * - 列表可能是压缩折叠后的 `windowNodes()`（只有边界之后的尾巴），所以按 **messageId** 查找，
+ *   不能用「完整节点列表下标」（两者下标空间不一致）；
+ * - 折叠与展开两种状态下，检查点行都恒为列表第一项 ⇒ 下标要 +1。
+ *
+ * @return 目标所在节点下标；**不在当前可见列表**（在折叠的历史里、在别的分支、或已被删除）
+ *   返回 -1，由调用方决定「先展开再说」还是放弃。
+ */
+internal fun List<MessageNode>.quoteJumpTargetIndex(messageId: Uuid, hasCheckpointRow: Boolean): Int {
+    val index = indexOfFirst { node -> node.messages.any { it.id == messageId } }
+    if (index < 0) return -1
+    return index + if (hasCheckpointRow) 1 else 0
+}
+
 @Composable
 fun ChatList(
     innerPadding: PaddingValues,
@@ -136,6 +153,7 @@ fun ChatList(
     onClearAllErrors: () -> Unit = {},
     onRegenerate: (UIMessage) -> Unit = {},
     onEdit: (UIMessage) -> Unit = {},
+    onQuoteMessage: (UIMessage) -> Unit = {},
     onForkMessage: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
     onUpdateMessage: (MessageNode) -> Unit = {},
@@ -180,6 +198,7 @@ fun ChatList(
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = onRegenerate,
                 onEdit = onEdit,
+                onQuoteMessage = onQuoteMessage,
                 onForkMessage = onForkMessage,
                 onDelete = onDelete,
                 onUpdateMessage = onUpdateMessage,
@@ -212,6 +231,7 @@ private fun ChatListNormal(
     onClearAllErrors: () -> Unit,
     onRegenerate: (UIMessage) -> Unit,
     onEdit: (UIMessage) -> Unit,
+    onQuoteMessage: (UIMessage) -> Unit,
     onForkMessage: (UIMessage) -> Unit,
     onDelete: (UIMessage) -> Unit,
     onUpdateMessage: (MessageNode) -> Unit,
@@ -296,6 +316,36 @@ private fun ChatListNormal(
         conversation.messageNodes
     }
     val lastMessageIndex = visibleNodes.lastIndex
+
+    // #1906-B：引用块点击 → 跳到被引用的原消息。
+    //
+    // 不能直接复用 onJumpToMessage(index)：那个 index 是**完整节点列表**下标，而这里渲染的
+    // 可能是压缩折叠后的 `windowNodes()`（只有边界之后的尾巴），两者下标空间不一致；折叠时
+    // 列表顶部还多一个检查点行。所以按 **messageId** 定位，并处理两种边界：
+    //  1. 目标在折叠的历史里（很常见——引用往往指向更早的消息）⇒ 先展开完整轨迹，
+    //     由 visibleNodes 变化触发本 effect 重跑，再滚动；
+    //  2. 目标在**未选中的候选分支**里 ⇒ 只滚动到所在节点（显示的是当前选中分支）。
+    //     不自动切换 selectIndex：那会静默改变会话展示分支并影响后续发送，代价远大于收益。
+    // 完全找不到（消息已被删除）时放弃，不报错。
+    var pendingQuoteJump by remember(conversation.id) { mutableStateOf<Uuid?>(null) }
+    LaunchedEffect(pendingQuoteJump, visibleNodes, activeCheckpoint) {
+        val targetId = pendingQuoteJump ?: return@LaunchedEffect
+        val index = visibleNodes.quoteJumpTargetIndex(
+            messageId = targetId,
+            hasCheckpointRow = activeCheckpoint != null,
+        )
+        if (index < 0) {
+            // 折叠态找不到 ⇒ 目标很可能在折叠的历史里，先展开完整轨迹再重试
+            if (activeCheckpoint != null && !showCompressedHistory) {
+                showCompressedHistory = true
+                return@LaunchedEffect
+            }
+            pendingQuoteJump = null
+            return@LaunchedEffect
+        }
+        state.animateScrollToItem(index)
+        pendingQuoteJump = null
+    }
 
     Box(
         modifier = Modifier
@@ -395,6 +445,12 @@ private fun ChatListNormal(
                             },
                             onEdit = {
                                 onEdit(node.currentMessage)
+                            },
+                            onQuote = {
+                                onQuoteMessage(node.currentMessage)
+                            },
+                            onQuoteClick = { quotedMessageId ->
+                                pendingQuoteJump = quotedMessageId
                             },
                             onFork = {
                                 onForkMessage(node.currentMessage)

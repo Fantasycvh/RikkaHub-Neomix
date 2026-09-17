@@ -65,6 +65,7 @@ import app.androidrik.rikkahub.data.ai.transformers.OcrTransformer
 import app.androidrik.rikkahub.data.ai.transformers.PlaceholderTransformer
 import app.androidrik.rikkahub.data.ai.transformers.PromptInjectionTransformer
 import app.androidrik.rikkahub.data.ai.transformers.RegexOutputTransformer
+import app.androidrik.rikkahub.data.ai.transformers.QuoteTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.ai.transformers.ThinkTagTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TimeReminderTransformer
@@ -183,6 +184,7 @@ private val inputTransformers by lazy {
         PlaceholderTransformer,
         DocumentAsPromptTransformer,
         OcrTransformer,
+        QuoteTransformer,
     )
 }
 
@@ -372,14 +374,19 @@ class ChatService(
 
     // ---- 发送消息 ----
 
-    fun sendMessage(conversationId: Uuid, content: List<UIMessagePart>, answer: Boolean = true) {
+    fun sendMessage(
+        conversationId: Uuid,
+        content: List<UIMessagePart>,
+        answer: Boolean = true,
+        annotations: List<UIMessageAnnotation> = emptyList(),
+    ) {
         if (content.isEmptyInputMessage()) return
 
         val session = getOrCreateSession(conversationId)
         synchronized(session) {
             // 生成期间不再打断当前轮次——入队，等当前轮次（含待审批工具）结束后自动派发
             if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
-            session.messageQueue.enqueue(content, answer)
+            session.messageQueue.enqueue(content, answer, annotations = annotations)
             dispatchNextQueuedMessage(conversationId)
         }
     }
@@ -417,9 +424,10 @@ class ChatService(
     fun finishEditQueuedMessage(
         conversationId: Uuid,
         messageId: Uuid,
-        parts: List<UIMessagePart>? = null
+        parts: List<UIMessagePart>? = null,
+        annotations: List<UIMessageAnnotation>? = null,
     ) {
-        sessions[conversationId]?.messageQueue?.finishEdit(messageId, parts)
+        sessions[conversationId]?.messageQueue?.finishEdit(messageId, parts, annotations)
             ?.let(::cleanupQueuedAttachments)
         dispatchNextQueuedMessage(conversationId)
     }
@@ -493,6 +501,8 @@ class ChatService(
                     messageNodes = currentConversation.messageNodes + UIMessage(
                         role = MessageRole.USER,
                         parts = processedContent,
+                        // #1906：引用随队列项一起落地成注解（展开成请求文本在 QuoteTransformer）
+                        annotations = queued.annotations,
                     ).toMessageNode(),
                 )
                 saveConversation(conversationId, newConversation)
@@ -1542,6 +1552,9 @@ class ChatService(
                 messages = node.messages + UIMessage(
                     role = node.role,
                     parts = processedParts,
+                    // #1906：编辑保留原引用——引用是这条消息发出去时的语境，改文本不等于撤回引用。
+                    // 取被编辑的那条消息（而非 node.currentMessage）的注解，避免编辑候选时串到别的分支。
+                    annotations = node.messages.find { it.id == messageId }?.annotations.orEmpty(),
                 ),
                 selectIndex = node.messages.size
             )

@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.service
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isEmptyInputMessage
 import app.androidrik.rikkahub.data.model.Conversation
@@ -16,6 +17,8 @@ data class QueuedMessage(
     val isEditing: Boolean = false,
     // 可选内存观察者：语音模式等回复用；null 结果 = 队列项被撤下
     val reply: CompletableDeferred<String?>? = null,
+    // 引用快照：派发时原样落到 user message 的 annotations。
+    val annotations: List<UIMessageAnnotation> = emptyList(),
 )
 
 data class MessageQueueState(
@@ -44,7 +47,12 @@ class MessageQueue {
     val state = mutableState.asStateFlow()
 
     @Synchronized
-    fun enqueue(parts: List<UIMessagePart>, answer: Boolean = true, reply: CompletableDeferred<String?>? = null) {
+    fun enqueue(
+        parts: List<UIMessagePart>,
+        answer: Boolean = true,
+        reply: CompletableDeferred<String?>? = null,
+        annotations: List<UIMessageAnnotation> = emptyList(),
+    ) {
         if (parts.isEmptyInputMessage()) {
             reply?.complete(null)
             return
@@ -54,6 +62,7 @@ class MessageQueue {
                 parts = parts.toList(),
                 answer = answer,
                 reply = reply,
+                annotations = annotations.toList(),
             ),
         )
     }
@@ -86,13 +95,18 @@ class MessageQueue {
     }
 
     @Synchronized
-    fun finishEdit(id: Uuid, parts: List<UIMessagePart>? = null): QueuedMessage? {
+    fun finishEdit(
+        id: Uuid,
+        parts: List<UIMessagePart>? = null,
+        annotations: List<UIMessageAnnotation>? = null,
+    ): QueuedMessage? {
         if (parts != null && parts.isEmptyInputMessage()) return null
         val previous = state.value.messages.find { it.id == id } ?: return null
         mutableState.value = state.value.copy(
             messages = state.value.messages.map {
                 if (it.id == id) it.copy(
                     parts = parts?.toList() ?: it.parts,
+                    annotations = if (parts != null) annotations?.toList() ?: it.annotations else it.annotations,
                     isEditing = false
                 ) else it
             },

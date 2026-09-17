@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isEmptyInputMessage
 import app.androidrik.rikkahub.R
@@ -170,12 +171,18 @@ class ChatVM(
      *
      * @param content 消息内容
      * @param answer 是否触发消息生成，如果为false，则仅添加消息到消息列表中
+     * @param annotations 随消息落库的注解（#1906 引用快照）；
+     *   展开成请求文本由 QuoteTransformer 负责，这里只管携带
      */
-    fun handleMessageSend(content: List<UIMessagePart>,answer: Boolean = true) {
+    fun handleMessageSend(
+        content: List<UIMessagePart>,
+        answer: Boolean = true,
+        annotations: List<UIMessageAnnotation> = emptyList(),
+    ) {
         if (content.isEmptyInputMessage()) return
         analytics.logEvent("ai_send_message", null)
 
-        chatService.sendMessage(_conversationId, content, answer)
+        chatService.sendMessage(_conversationId, content, answer, annotations)
     }
 
     // ---- 消息队列（发送不打断生成：入队等当前轮次结束后自动派发） ----
@@ -191,8 +198,11 @@ class ChatVM(
     fun beginEditQueuedMessage(messageId: Uuid): QueuedMessage? =
         chatService.beginEditQueuedMessage(_conversationId, messageId)
 
-    fun finishEditQueuedMessage(messageId: Uuid, parts: List<UIMessagePart>?) =
-        chatService.finishEditQueuedMessage(_conversationId, messageId, parts)
+    fun finishEditQueuedMessage(
+        messageId: Uuid,
+        parts: List<UIMessagePart>?,
+        annotations: List<UIMessageAnnotation>? = null,
+    ) = chatService.finishEditQueuedMessage(_conversationId, messageId, parts, annotations)
 
     fun resumeMessageQueue() = chatService.resumeMessageQueue(_conversationId)
 

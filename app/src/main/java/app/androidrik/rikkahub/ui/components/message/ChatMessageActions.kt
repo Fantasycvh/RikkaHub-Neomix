@@ -40,6 +40,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.toQuotedMessage
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Delete01
@@ -47,6 +48,7 @@ import me.rerere.hugeicons.stroke.Edit01
 import me.rerere.hugeicons.stroke.FavouriteCircle
 import me.rerere.hugeicons.stroke.GitFork
 import me.rerere.hugeicons.stroke.MoreVertical
+import me.rerere.hugeicons.stroke.QuoteUp
 import me.rerere.hugeicons.stroke.Refresh03
 import me.rerere.hugeicons.stroke.Share04
 import me.rerere.hugeicons.stroke.StopCircle
@@ -232,6 +234,7 @@ fun ChatMessageActionsSheet(
     onShare: () -> Unit,
     onFork: () -> Unit,
     onSelectAndCopy: () -> Unit,
+    onQuote: () -> Unit = {},
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
     onWebViewPreview: () -> Unit,
@@ -301,6 +304,36 @@ fun ChatMessageActionsSheet(
                         )
                         Text(
                             text = stringResource(R.string.render_with_webview),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+            }
+
+            // #1906 引用：只对可引用（有文本）的消息显示
+            val quotable = remember(message) { message.toQuotedMessage() != null }
+            if (quotable) {
+                Card(
+                    onClick = {
+                        onDismissRequest()
+                        onQuote()
+                    },
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.QuoteUp,
+                            contentDescription = null,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.chat_message_quote),
                             style = MaterialTheme.typography.titleMedium,
                         )
                     }

@@ -275,6 +275,11 @@
   <string name="chat_input_file_read_failed">Не удалось прочитать файл: %s</string>
   <string name="chat_message_add_favorite">Добавить в избранное</string>
   <string name="chat_message_remove_favorite">Удалить из избранного</string>
+  <string name="chat_message_quote">Цитировать</string>
+  <string name="chat_message_quote_cancel">Отменить цитирование</string>
+  <string name="chat_message_quote_user">Пользователь</string>
+  <string name="chat_message_quote_assistant">Ассистент</string>
+  <string name="chat_message_quote_context">Цитируемое сообщение</string>
   <string name="chat_message_tool_approve">Одобрить</string>
   <string name="chat_message_tool_approve_all">Одобрить все</string>
   <string name="chat_message_tool_ask_questions">Задать %d вопросов</string>
@@ -413,6 +418,14 @@
   <string name="export_to_file">Экспорт в файл</string>
   <string name="export_to_file_desc">Сохранить как файл JSON</string>
   <string name="extension_content_manage">Управлять</string>
+  <string name="extension_picker_selected_format">Выбрано %1$d/%2$d</string>
+  <string name="extension_picker_preset_globally_disabled">Пресет отключён глобально (отдельные привязки всё ещё действуют)</string>
+  <string name="extension_picker_lorebook_globally_disabled">Мирбук отключён глобально</string>
+  <string name="extension_picker_lorebook_whole_book_hint">Мирбуки выбираются целиком. Ниже — глобальное состояние записей, здесь только для чтения; изменяйте на странице управления, это влияет на все диалоги с этой книгой.</string>
+  <string name="extension_picker_manage_lorebook_entries">Управлять записями мирбука (глобально)</string>
+  <string name="extension_picker_globally_enabled">Включено глобально</string>
+  <string name="extension_picker_globally_disabled">Отключено глобально</string>
+  <string name="extension_picker_always_active">Всегда активно</string>
   <string name="extension_content_unnamed">Без имени</string>
   <string name="extension_content_unnamed_lorebook">Безымянная книга знаний</string>
   <string name="extension_selector_go_to_extensions">Управление расширениями</string>
