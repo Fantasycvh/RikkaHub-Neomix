@@ -1447,5 +1447,22 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="message_partial_failure_regenerate">다시 생성</string>
   <string name="asr_error_not_configured">음성 인식이 설정되지 않음 — ASR 공급자와 API 키를 먼저 설정하세요</string>
   <string name="asr_error_audio_focus">오디오 포커스를 얻을 수 없음 (마이크 사용 중일 수 있음)</string>
+  <string name="prompt_inspect_title">조립된 프롬프트</string>
+  <string name="prompt_inspect_entry_desc">이번에 실제로 전송될 내용을 출처별로 나눠 확인</string>
+  <string name="prompt_inspect_summary">요약</string>
+  <string name="prompt_inspect_segments">구간 수</string>
+  <string name="prompt_inspect_estimated_tokens">예상 토큰</string>
+  <string name="prompt_inspect_message_count_label">메시지 수</string>
+  <string name="prompt_inspect_message_count">기록 %1$d / %2$d</string>
+  <string name="prompt_inspect_context_limit">컴텍스트 상한(개수)</string>
+  <string name="prompt_inspect_synthetic">합성(저장되지 않음)</string>
+  <string name="prompt_inspect_unavailable">조립할 수 없음: 이 어시스턴트에 채팅 모델이 설정되어 있지 않습니다.</string>
+  <string name="prompt_inspect_segment_system">시스템</string>
+  <string name="prompt_inspect_segment_checkpoint">압축 체크포인트</string>
+  <string name="prompt_inspect_segment_injection">주입(월드 정보 / 모드)</string>
+  <string name="prompt_inspect_segment_history">대화 기록</string>
+  <string name="prompt_inspect_cache_title">프롬프트 캐시 안내</string>
+  <string name="prompt_inspect_cache_body">시스템은 위치 0에 있어 매 요청마다 다시 계산됩니다——여기는 약 %1$d 토큰입니다. 그 안의 변동되는 내용(날짜 플레이스홀더, 키워드로 켜지고 꺼지는 월드 정보 항목)은 캐시된 **프리픽스 전체를 무효화**합니다. 변동되는 내용은 시스템 프롬프트 밖으로 빼고, 키워드로 작동하는 월드 정보는 대화 끝에 두는 것을 권장합니다.</string>
+  <string name="prompt_inspect_legend_title">이 페이지에 대하여</string>
+  <string name="prompt_inspect_legend_body">읽기 전용 미리보기입니다. 실제 요청과 동일한 조립 코드를 거친 뒤 출처별로 나눠 표시합니다. 저장하지 않고 요청도 보내지 않습니다. "합성"으로 표시된 내용은 이번 요청에만 존재합니다.</string>
 </resources>
-

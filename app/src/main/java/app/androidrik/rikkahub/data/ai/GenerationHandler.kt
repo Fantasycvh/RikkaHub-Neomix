@@ -36,9 +36,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.handleMessageChunk
-import app.androidrik.ai.ui.limitContext
 import app.androidrik.rikkahub.data.ai.prompts.isCompactionCheckpointPreamble
-import app.androidrik.rikkahub.data.ai.prompts.partitionCheckpointMessages
 import app.androidrik.rikkahub.data.ai.transformers.InputMessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.OutputMessageTransformer
@@ -539,66 +537,18 @@ class GenerationHandler(
         workspaceCwd: String? = null,
         retryBudgetOverride: Int? = null,
     ) {
-        val internalMessages = buildList {
-            val system = buildString {
-                val effectiveSystemPrompt =
-                    if (assistant.allowConversationSystemPrompt && !conversationSystemPrompt.isNullOrBlank()) {
-                        conversationSystemPrompt
-                    } else {
-                        assistant.systemPrompt
-                    }
-                if (effectiveSystemPrompt.isNotBlank()) {
-                    append(effectiveSystemPrompt)
-                }
-
-                // 记忆
-                if (assistant.enableMemory) {
-                    appendLine()
-                    // 预算来自设置（可调）：注入「哪些」由打分校准决定、「装多少」由它决定
-                    append(
-                        buildMemoryPrompt(
-                            memories = memories,
-                            budgetTokens = settings.memoryInjectBudgetTokens,
-                        )
-                    )
-                }
-                // 工具prompt
-                tools.forEach { tool ->
-                    appendLine()
-                    append(tool.systemPrompt(model, messages))
-                }
-                // TikZ 渲染提示（启用时引导模型以闭合 $$...$$ 块输出图表，触发 MathBlock 渲染）。
-                // 注意：必须是原始字符串——普通字符串里 $$ 会被 Kotlin 转义成单个 $，模型将收到错误指令。
-                // 强调「闭合」：只写开头 $$ 漏掉结尾 $$ 的块，客户端不会识别为图表（显示为源码）。
-                if (settings.displaySetting.enableDiagramRendering) {
-                    appendLine()
-                    append(
-                        """For TikZ diagrams, wrap the ENTIRE environment in a CLOSED $$...$$ block: open with $$ immediately before \begin{tikzpicture} (or \begin{tikzcd} or \begin{axis}), and close with $$ immediately after the matching \end{...}. Never omit the closing $$, and never put anything between the closing \end{...} and the closing $$. Example: $$\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}$$. Full TikZ/pgf is supported (positioning, calc, pgfplots, tikz-cd, all standard libraries) with CJK text — do not simplify or avoid advanced syntax. Diagrams render as inline vector graphics. Colors: use color names (blue, red, gray) optionally with opacity (blue!30); do NOT use #hex colors inside options like fill=#4A90D9 — the # is a TeX parameter token and breaks pgf option parsing (renders as source) PGF Math trigonometry: radians MUST use sin(deg(x)) or sin(x*pi/180) — sin(x rad) and sin(x r) are NOT supported and abort rendering."""
-                    )
-                }
-                // 数学公式提示（启用 LaTeX 渲染时）：引导模型用 \(...\) / $...$ 输出公式并触发 jlatexmath。
-                // 注意：定界符内不能有空格（$ x^2 $ 不会被识别为公式）；括号形式 \(x^2\) 更稳妥。
-                if (settings.displaySetting.enableLatexRendering) {
-                    appendLine()
-                    append(
-                        """For math formulas, wrap them in \( ... \) (preferred) or $...$ with NO whitespace immediately after the opening delimiter and before the closing delimiter, e.g. \(x^2 + y^2 = r^2\) or $\frac{a}{b}$ or $\sqrt{x}$. They render as inline math symbols."""
-                    )
-                }
-            }
-            if (system.isNotBlank()) {
-                add(UIMessage.system(prompt = system).copy(isSynthetic = true))
-            }
-            // 发给 provider 的上下文：压缩时 = 检查点合成消息 + 边界后**本步 live** 消息。
-            // 每步对 live `messages` 重算（而非用回合初快照）——否则本回合内工具调用的结果
-            // 进不了上下文，模型会重复调用同一工具。检查点固定在窗口最前
-            // 且不参与 limitContext 截断（limitContext 保留尾部会截掉开头的检查点）。
-            // 注意：回写基线仍是全量 messages（下方 `var messages`），合成消息不会被持久化。
-            // design §4.2 与 limitContext 的两层分工。
-            val (checkpointMessages, restMessages) =
-                (compressionWindow?.applyTo(messages) ?: messages).partitionCheckpointMessages()
-            addAll(checkpointMessages)
-            addAll(restMessages.limitContext(assistant.contextMessageLimit))
-        }.transforms(
+        // 组装发送消息：**与「拼装预览」共用同一个函数**（PromptAssembly.kt）——
+        // 原先此段内联实现，预览只能另写一份、必然漂移。改这里即同时改预览。
+        val internalMessages = buildInternalMessages(
+            assistant = assistant,
+            settings = settings,
+            model = model,
+            messages = messages,
+            memories = memories,
+            tools = tools,
+            conversationSystemPrompt = conversationSystemPrompt,
+            compressionWindow = compressionWindow,
+        ).transforms(
             transformers = transformers,
             context = context,
             model = model,

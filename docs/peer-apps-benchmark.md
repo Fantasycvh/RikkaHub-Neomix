@@ -404,4 +404,49 @@ ST 也是靠「仅对支持的源开放」来回避。⇒ **#1918 的判断得�
 **统一槽位视图可与 6.7 ③ 的预览合并做**（预览天然要按顺序列出各段，加开关即成为「槽位管理器」）——
 **这是把 ③ 和 ⑤ 合并成一次实现的机会**，也是本组建议里性价比最高的组合。
 
+### 6.8 落地记录（2026-09-17）
+
+按 6.6 顺序动手，已完成**第 1 项（6.3 的两个真 bug）**与 **6.7 ③（拼装预览）**：
+
+**① 拼装预览（6.7 ③）——本轮提交**
+
+- **抽取共享组装 `data/ai/PromptAssembly.kt`**：把原先**内联在 `GenerationHandler.generateInternal`**
+  的系统消息组装与发送窗口抽成 `buildSystemPromptText` / `buildSendWindowMessages` / `buildInternalMessages`。
+  **真实请求改调同一函数** ⇒ 预览不可能漂移（这是本次实现的核心手法——若预览另写一份组装，
+  它会随时间与真实请求分叉，比没有预览更糟）。
+- **`data/ai/PromptInspector.kt`**：`inspectPrompt()` 走同一组装 + **同一个 transformer 链**，
+  把结果按来源标注为 `SYSTEM` / `COMPRESSION_CHECKPOINT` / `INJECTION` / `CHAT_HISTORY` 段。
+  **只读**：不落库、不发请求。检查点识别复用 `isCompactionCheckpointPreamble`
+  （**不能只看 `isSynthetic`**——它是 `@Transient`，持久化后丢失，见 ce311156 踩坑）。
+- **入口**：聊天页附件面板（「更多选项」）内，「压缩历史」下方新增「拼装后提示词」。
+  页面显示：概览（分段数 / 估算 token / **历史 N / M** / 上下文上限）+ 缓存提示卡 + 每段来源卡 + 说明卡。
+- **单测 13 项**（`PromptAssemblyTest`）：钉住组装契约（system 在前且标 synthetic、会话级提示词
+  仅在助手允许时覆盖、工具 schema 与记忆仅在启用时注入、上下文截断保留尾部、**检查点不参与截断**、
+  幂等性、**历史计数不含 system/注入**）。
+- **实现中自查出一个真 bug**（真机截图发现）：概览的「消息条数」把**带占位符的 value 串当标签用**，
+  渲染出裸 `%1$d / %2$d`；且原口径把 system 计入历史，空会话显示「1 / 0」。
+  已改为独立 label 键 + 只数历史（空会话 = `0 / 0`）。
+
+**② ST 导入器两处真 bug（6.3 ① ②）**
+
+- **`useRegex` 修正**：删掉错误注释「SillyTavern 格式不支持 useRegex」——ST 的 key **支持**
+  `/pattern/flags`（`parseRegexFromString`，`world-info.js:2901`，且正则**优先于**其它匹配选项）。
+  新增 `parseStKeywords()`：识别该形态 → 置 `useRegex=true` 并去掉包裹（`\/` 还原为 `/`）。
+  **代价已知**：fork 只有一个 `useRegex` 开关，混合列表无法精确表达 ⇒ 整体走正则语义（宁可如此，
+  也不要丢掉正则语义——那会让触发条件整体改变）。同时对齐 ST 的拒绝规则（未转义分隔斜杠不算正则）。
+- **AN 位置映射修正**：原实现把 `ANTop(2)`/`ANBottom(3)` **都**映射为 `TOP_OF_CHAT`，
+  且注释误写为「After Examples」。核实 ST：两者是包在**作者注释**前后（`world-info.js:5270`），
+  而作者注释默认在 **in-chat depth 4**（`authors-note.js:272-273`：DEFAULT_POSITION=1=IN_CHAT、
+  DEFAULT_DEPTH=4）——**不是对话最开头**。改映射为 `AT_DEPTH`（配合 `entry.depth`）。
+  **诚实损失**：fork 无「作者注释」锚点，故 ANTop/ANBottom/atDepth 三者不再可区分。
+- **单测 11 项**（`SillyTavernKeywordParseTest` 7 + `SillyTavernPositionMapTest` 4）。
+
+**③ 仍待做**（按 6.6）：6.2 ①②（`keysecondary`+`selectiveLogic`+多源扫描，最高价值）、
+6.2 ③（世界书 token 预算）、6.2 ④（角色卡导入不压平 4 字段）、6.7 ⑤（槽位管理器，可与②合并）。
+
+**验证**：`:app:assembleDebug` 通过；新增 24 项单测全绿；全量回归仅剩**基线失败**
+（`workspace` 3 项 PowerShell 环境相关 + `GoogleProviderSchemaTest` + `MarkdownMathParseTest`，
+**均与本次改动无关**，已用 `git stash` 双向核对确认）；真机（`<device>`）装机验证
+**入口可见、页面渲染正常、数据零损失**（install -r，uid/size/upload/skills 全不变）。
+
 关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）。

@@ -1521,5 +1521,22 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="message_partial_failure_regenerate">重新生成</string>
   <string name="asr_error_not_configured">未配置语音识别——请先设置 ASR 供应商和 API Key</string>
   <string name="asr_error_audio_focus">无法获取音频焦点（麦克风可能被占用）</string>
+  <string name="prompt_inspect_title">拼装后提示词</string>
+  <string name="prompt_inspect_entry_desc">查看这次实际会发送的内容，并按来源分段</string>
+  <string name="prompt_inspect_summary">概览</string>
+  <string name="prompt_inspect_segments">分段数</string>
+  <string name="prompt_inspect_estimated_tokens">预估 token</string>
+  <string name="prompt_inspect_message_count_label">消息条数</string>
+  <string name="prompt_inspect_message_count">历史 %1$d / %2$d</string>
+  <string name="prompt_inspect_context_limit">上下文条数上限</string>
+  <string name="prompt_inspect_synthetic">合成（不落库）</string>
+  <string name="prompt_inspect_unavailable">无法拼装：该助手未配置对话模型。</string>
+  <string name="prompt_inspect_segment_system">系统提示词</string>
+  <string name="prompt_inspect_segment_checkpoint">压缩检查点</string>
+  <string name="prompt_inspect_segment_injection">注入（世界书 / 模式）</string>
+  <string name="prompt_inspect_segment_history">对话历史</string>
+  <string name="prompt_inspect_cache_title">关于提示词缓存</string>
+  <string name="prompt_inspect_cache_body">系统提示词位于位置 0，每次请求都会重算——这里约 %1$d token。其中任何易变内容（日期占位符、按关键词启停的世界书条目）都会让整段缓存的**前缀失效**。建议把易变内容移出系统提示词，关键词触发的世界书放到对话末尾。</string>
+  <string name="prompt_inspect_legend_title">关于本页</string>
+  <string name="prompt_inspect_legend_body">只读预览：与真实请求走同一条组装代码，再按来源分段。不落库、不发送请求。标记为「合成」的内容仅存在于本次请求。</string>
 </resources>
-

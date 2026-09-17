@@ -103,6 +103,7 @@ import app.androidrik.rikkahub.ui.pages.favorite.FavoritePage
 import app.androidrik.rikkahub.ui.pages.history.HistoryPage
 import app.androidrik.rikkahub.ui.pages.imggen.ImageGenPage
 import app.androidrik.rikkahub.ui.pages.log.LogPage
+import app.androidrik.rikkahub.ui.pages.promptinspect.PromptInspectPage
 import app.androidrik.rikkahub.ui.pages.search.SearchPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingAboutPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesPage
@@ -502,6 +503,10 @@ class RouteActivity : ComponentActivity() {
                                 LogPage()
                             }
 
+                            entry<Screen.PromptInspect> { key ->
+                                PromptInspectPage(conversationId = key.conversationId)
+                            }
+
                             entry<Screen.Extensions> {
                                 ExtensionsPage()
                             }
@@ -715,6 +720,10 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Log : Screen
+
+    /** 拼装后提示词预览（只读，见 docs/peer-apps-benchmark.md §6.7 ③）；带会话 id 故为 data class。 */
+    @Serializable
+    data class PromptInspect(val conversationId: String) : Screen
 
     @Serializable
     data object Extensions : Screen

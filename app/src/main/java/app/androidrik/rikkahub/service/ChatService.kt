@@ -52,6 +52,9 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
+import app.androidrik.rikkahub.data.ai.PromptInspection
+import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
+import app.androidrik.rikkahub.data.ai.inspectPrompt
 import app.androidrik.rikkahub.data.ai.selectMemoriesForPrompt
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
@@ -736,6 +739,58 @@ class ChatService(
         }
 
         session.setJob(job, cancelPrevious = false)
+    }
+
+    // ---- 拼装预览（只读） ----
+
+    /**
+     * 组装一次「这次请求会发什么」的只读预览，按来源分段。
+     *
+     * **不落库、不发请求、不改任何状态**。与真实发送共用 [buildInternalMessages] 与
+     * 同一个 transformer 链、同一套工具装配（[chatToolFactory]），因此预览与实际请求一致
+     * ——避免预览自己另写一套组装而随时间漂移（`docs/peer-apps-benchmark.md` §6.7 ③）。
+     *
+     * 与 [handleMessageComplete] 的差异**仅**在于：不跑自动压缩（预览不产生副作用）、
+     * 不注入重试/回退等生成期逻辑。
+     */
+    suspend fun inspectPromptAssembly(
+        conversationId: Uuid,
+        labels: PromptInspectionLabels,
+    ): PromptInspection? {
+        val settings = settingsStore.settingsFlow.first()
+        val conversation = getConversationFlow(conversationId).value
+        val assistant = settings.getAssistantById(conversation.assistantId)
+            ?: settings.getCurrentAssistant()
+        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+            ?: return null
+
+        val memories = if (assistant.useGlobalMemory) {
+            memoryRepository.getGlobalMemories()
+        } else {
+            memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
+        }
+        val tools = chatToolFactory.createTools(
+            settings = settings,
+            assistant = assistant,
+            model = model,
+            workspaceCwd = conversation.workspaceCwd,
+        )
+
+        return inspectPrompt(
+            context = context,
+            settings = settings,
+            assistant = assistant,
+            model = model,
+            conversation = conversation,
+            memories = memories,
+            tools = tools,
+            inputTransformers = buildList {
+                addAll(inputTransformers)
+                add(templateTransformer)
+                add(workspaceReminderTransformer)
+            },
+            labels = labels,
+        )
     }
 
     // ---- 处理消息补全 ----

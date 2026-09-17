@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.ui.pages.search.SearchVM
 import app.androidrik.rikkahub.ui.pages.history.HistoryVM
 import app.androidrik.rikkahub.ui.pages.stats.StatsVM
 import app.androidrik.rikkahub.ui.pages.imggen.ImgGenVM
+import app.androidrik.rikkahub.ui.pages.promptinspect.PromptInspectVM
 import app.androidrik.rikkahub.ui.pages.extensions.PromptVM
 import app.androidrik.rikkahub.ui.pages.extensions.QuickMessagesVM
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillDetailVM
@@ -61,6 +62,7 @@ val viewModelModule = module {
     }
     viewModelOf(::BackupVM)
     viewModelOf(::ImgGenVM)
+    viewModelOf(::PromptInspectVM)
     viewModelOf(::PromptVM)
     viewModelOf(::QuickMessagesVM)
     viewModelOf(::SkillsVM)

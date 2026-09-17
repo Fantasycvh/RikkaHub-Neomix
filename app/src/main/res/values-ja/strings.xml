@@ -1447,5 +1447,22 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="message_partial_failure_regenerate">再生成</string>
   <string name="asr_error_not_configured">音声認識が未設定です——ASR プロバイダーと API キーを先に設定してください</string>
   <string name="asr_error_audio_focus">オーディオフォーカスを取得できません（マイクが使用中かも）</string>
+  <string name="prompt_inspect_title">組み立て後のプロンプト</string>
+  <string name="prompt_inspect_entry_desc">今回実際に送信される内容を、由来ごとに分割して確認</string>
+  <string name="prompt_inspect_summary">概要</string>
+  <string name="prompt_inspect_segments">セグメント数</string>
+  <string name="prompt_inspect_estimated_tokens">推定トークン</string>
+  <string name="prompt_inspect_message_count_label">メッセージ数</string>
+  <string name="prompt_inspect_message_count">履歴 %1$d / %2$d</string>
+  <string name="prompt_inspect_context_limit">コンテキスト上限（件数）</string>
+  <string name="prompt_inspect_synthetic">合成（保存されない）</string>
+  <string name="prompt_inspect_unavailable">組み立てできません：このアシスタントにチャットモデルが設定されていません。</string>
+  <string name="prompt_inspect_segment_system">システム</string>
+  <string name="prompt_inspect_segment_checkpoint">圧縮チェックポイント</string>
+  <string name="prompt_inspect_segment_injection">注入（ワールド情報 / モード）</string>
+  <string name="prompt_inspect_segment_history">会話履歴</string>
+  <string name="prompt_inspect_cache_title">プロンプトキャッシュについて</string>
+  <string name="prompt_inspect_cache_body">システムは位置 0 にあり毎回再計算されます——ここは約 %1$d トークンです。その中の可変な内容（日付プレースホルダー、キーワードで有効・無効が切り替わるワールド情報）はキャッシュされた**プレフィックス全体を無効化**します。可変な内容はシステムプロンプトの外に出し、キーワード起動のワールド情報は会話の末尾に置くことを推奨します。</string>
+  <string name="prompt_inspect_legend_title">このページについて</string>
+  <string name="prompt_inspect_legend_body">読み取り専用のプレビューです。実際のリクエストと同じ組み立てコードを通し、由来ごとに分割して表示します。保存も送信も行いません。「合成」と表示された内容は今回のリクエストにのみ存在します。</string>
 </resources>
-

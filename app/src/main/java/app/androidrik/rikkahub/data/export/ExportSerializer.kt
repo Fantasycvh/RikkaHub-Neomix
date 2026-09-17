@@ -175,6 +175,9 @@ object LorebookSerializer : ExportSerializer<Lorebook> {
                 description = "",
                 enabled = true,
                 entries = stLorebook.entries.values.map { entry ->
+                    // ST 的 key 可以是 `/pattern/flags` 形式的正则（parseRegexFromString）；
+                    // 此前一律按字面量关键词导入，会让这些条目的触发条件整体改变。
+                    val parsed = parseStKeywords(entry.key)
                     PromptInjection.RegexInjection(
                         id = Uuid.random(),
                         name = entry.comment.orEmpty().ifEmpty { entry.key.firstOrNull().orEmpty() },
@@ -183,8 +186,8 @@ object LorebookSerializer : ExportSerializer<Lorebook> {
                         position = mapSillyTavernPosition(entry.position),
                         injectDepth = entry.depth,
                         content = entry.content,
-                        keywords = entry.key,
-                        useRegex = false, // SillyTavern 格式不支持 useRegex
+                        keywords = parsed.keywords,
+                        useRegex = parsed.useRegex,
                         caseSensitive = entry.caseSensitive ?: false,
                         scanDepth = entry.scanDepth ?: 4,
                         constantActive = entry.constant,
@@ -194,17 +197,85 @@ object LorebookSerializer : ExportSerializer<Lorebook> {
         }.getOrNull()
     }
 
-    private fun mapSillyTavernPosition(position: Int): InjectionPosition {
-        return when (position) {
-            0 -> InjectionPosition.BEFORE_SYSTEM_PROMPT
-            1 -> InjectionPosition.AFTER_SYSTEM_PROMPT
-            2 -> InjectionPosition.TOP_OF_CHAT
-            3 -> InjectionPosition.TOP_OF_CHAT // After Examples -> 聊天历史开头
-            4 -> InjectionPosition.AT_DEPTH    // @Depth 模式
-            else -> InjectionPosition.AFTER_SYSTEM_PROMPT
-        }
+}
+
+/**
+ * 解析 ST 世界书的 `key`（或 `keysecondary`）列表。
+ *
+ * ST 允许两种形态混用（`world-info.js` 的 `parseRegexFromString` + `matchKeys`）：
+ * - 普通字面量关键词
+ * - `/pattern/flags` 形式的正则（**优先于**其它匹配选项）
+ *
+ * fork 的 `RegexInjection` 只有**一个** `useRegex` 开关作用于整个关键词列表，
+ * 无法表达「混合」。因此：只要出现任一正则形态就置 `useRegex = true` **并保留全部关键词**
+ * ——宁可让纯字面量关键词按正则语义匹配（字面量本身在正则里通常等价，除非含元字符），
+ * 也不要丢掉正则语义（后者会让条目的触发条件整体改变，是更严重的失真）。
+ */
+internal fun parseStKeywords(raw: List<String>): ParsedStKeywords {
+    val isRegex = raw.any { isStRegexKeyword(it) }
+    return ParsedStKeywords(
+        // 正则形态去掉 `/.../flags` 包裹与斜杠转义，交给 Regex 语义使用
+        keywords = if (isRegex) raw.map { unwrapStRegexKeyword(it) } else raw,
+        useRegex = isRegex,
+    )
+}
+
+/** `/pattern/flags` 形态判定（对齐 ST `parseRegexFromString` 的前置条件）。 */
+private fun isStRegexKeyword(value: String): Boolean {
+    val match = ST_KEY_REGEX.matchEntire(value.trim()) ?: return false
+    // 未转义的分隔斜杠会让其它正则引擎失败，ST 同样拒绝
+    return !match.groupValues[1].contains(UNESCAPED_SLASH_REGEX)
+}
+
+/** 去掉正则包裹，得到裸 pattern（`\/` 还原为 `/`，对齐 ST 的处理）。 */
+private fun unwrapStRegexKeyword(value: String): String {
+    val match = ST_KEY_REGEX.matchEntire(value.trim()) ?: return value
+    return match.groupValues[1].replace("\\/", "/")
+}
+
+/**
+ * ST 条目位置 → fork [InjectionPosition]。
+ *
+ * ST 的位置（`world_info_position`，`world-info.js:855-864`）：
+ * `before(0)` / `after(1)` / `ANTop(2)` / `ANBottom(3)` / `atDepth(4)` / `EMTop(5)` / `EMBottom(6)` / `outlet(7)`。
+ *
+ * **ANTop/ANBottom 修正（2026-09-17）**：原实现把两者都映射为 `TOP_OF_CHAT`
+ * （且注释写成「After Examples」，与 ST 的 AN 无关）。核实 ST 的 AN 语义：
+ * ANTop/ANBottom 并非「聊天最开头/最末尾」，而是**包在「作者注释」前后**
+ * （`world-info.js:5270` 把两者拼进 `originalAN` 两侧 → `setExtensionPrompt(..., position, depth, ...)`），
+ * 而作者注释默认是 **IN_CHAT + depth 4**（`authors-note.js:273` DEFAULT_POSITION=1=IN_CHAT、
+ * `:272` DEFAULT_DEPTH=4）。即两者实际都落在**对话中、距末尾若干条**处。
+ *
+ * fork 没有「作者注释」这个锚点，无法表达「在注释前/后」；映射到 `TOP_OF_CHAT` 会把内容
+ * 挪到**对话最开头**（与真实位置相反的一端），是比丢信息更糟的失真。故改映射为
+ * [InjectionPosition.AT_DEPTH]（配合 `entry.depth`），位置语义与 ST 默认一致；
+ * 代价是 ANTop/ANBottom/atDepth 三者不再可区分——这是 fork 无 AN 概念下的**诚实损失**。
+ *
+ * `EMTop/EMBottom`（示例消息锚点）与 `outlet` fork 无对应概念，归入 `AFTER_SYSTEM_PROMPT`
+ * （既有行为，未变）。
+ */
+internal fun mapSillyTavernPosition(position: Int): InjectionPosition {
+    return when (position) {
+        0 -> InjectionPosition.BEFORE_SYSTEM_PROMPT
+        1 -> InjectionPosition.AFTER_SYSTEM_PROMPT
+        2, 3 -> InjectionPosition.AT_DEPTH         // ANTop / ANBottom：作者注释前后（默认 in-chat depth 4）
+        4 -> InjectionPosition.AT_DEPTH            // @Depth
+        else -> InjectionPosition.AFTER_SYSTEM_PROMPT
     }
 }
+
+/** [parseStKeywords] 的结果。 */
+internal data class ParsedStKeywords(
+    val keywords: List<String>,
+    val useRegex: Boolean,
+)
+
+/** ST 正则关键词形态：`/pattern/flags`（flags 取值对齐 `parseRegexFromString`）。 */
+private val ST_KEY_REGEX = Regex("""^/([\w\W]+?)/([gimsuy]*)$""")
+
+/** 未转义的分隔斜杠（ST 拒绝这类 pattern，因为别的正则引擎会解析失败）。 */
+private val UNESCAPED_SLASH_REGEX = Regex("""(^|[^\\])/""")
+
 
 @Serializable
 private data class SillyTavernLorebook(

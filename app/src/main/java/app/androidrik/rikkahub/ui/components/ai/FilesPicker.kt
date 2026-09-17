@@ -62,6 +62,7 @@ import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.Package01
+import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings02
 import me.rerere.hugeicons.stroke.Video01
 import app.androidrik.rikkahub.R
@@ -236,6 +237,29 @@ internal fun FilesPicker(
                 .clip(MaterialTheme.shapes.large)
                 .clickable {
                     onShowCompressDialogChange(true)
+                },
+        )
+
+        // 拼装后提示词预览（只读）：显示这次请求实际会发什么、按来源分段。
+        // 与真实请求共用同一条组装与 transformer 链，故不会漂移。
+        ListItem(
+            leadingContent = {
+                Icon(
+                    imageVector = HugeIcons.Search01,
+                    contentDescription = stringResource(R.string.prompt_inspect_title),
+                )
+            },
+            headlineContent = {
+                Text(stringResource(R.string.prompt_inspect_title))
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            modifier = Modifier
+                .clip(MaterialTheme.shapes.large)
+                .clickable {
+                    navController.navigate(Screen.PromptInspect(conversation.id.toString()))
+                    onDismiss()
                 },
         )
 

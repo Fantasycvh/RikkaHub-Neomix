@@ -1447,5 +1447,22 @@
   <string name="message_partial_failure_regenerate">Перегенерировать</string>
   <string name="asr_error_not_configured">Распознавание речи не настроено — сначала укажите провайдера ASR и API-ключ</string>
   <string name="asr_error_audio_focus">Не удалось получить аудиофокус (микрофон, возможно, занят)</string>
+  <string name="prompt_inspect_title">Собранный промпт</string>
+  <string name="prompt_inspect_entry_desc">Посмотреть, что именно будет отправлено, с разбивкой по источникам</string>
+  <string name="prompt_inspect_summary">Сводка</string>
+  <string name="prompt_inspect_segments">Сегментов</string>
+  <string name="prompt_inspect_estimated_tokens">Оценка токенов</string>
+  <string name="prompt_inspect_message_count_label">Сообщений</string>
+  <string name="prompt_inspect_message_count">История %1$d из %2$d</string>
+  <string name="prompt_inspect_context_limit">Лимит контекста (сообщений)</string>
+  <string name="prompt_inspect_synthetic">синтетическое (не сохраняется)</string>
+  <string name="prompt_inspect_unavailable">Не удалось собрать: для этого ассистента не настроена чат-модель.</string>
+  <string name="prompt_inspect_segment_system">Система</string>
+  <string name="prompt_inspect_segment_checkpoint">Точка сжатия</string>
+  <string name="prompt_inspect_segment_injection">Инъекция (World Info / режим)</string>
+  <string name="prompt_inspect_segment_history">История чата</string>
+  <string name="prompt_inspect_cache_title">О кешировании промпта</string>
+  <string name="prompt_inspect_cache_body">Система находится в позиции 0 и пересчитывается при каждом запросе — здесь это около %1$d токенов. Любое изменчивое содержимое внутри (плейсхолдер даты, запись World Info, включающаяся по ключевым словам) делает **недействительным весь кешированный префикс**. Держите изменчивое содержимое вне системного промпта, а World Info по ключевым словам размещайте в конце чата.</string>
+  <string name="prompt_inspect_legend_title">Об этой странице</string>
+  <string name="prompt_inspect_legend_body">Предпросмотр только для чтения: собирается тем же кодом, что и реальный запрос, затем разбивается по источникам. Ничего не сохраняется и не отправляется. Помеченное как синтетическое существует только для этого запроса.</string>
 </resources>
-
