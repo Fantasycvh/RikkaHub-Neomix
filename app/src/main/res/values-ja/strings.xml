@@ -581,6 +581,8 @@
   <string name="prompt_page_secondary_logic_not_any">すべてのセカンダリが不一致</string>
   <string name="prompt_page_secondary_logic_and_all">すべてのセカンダリが一致</string>
   <string name="prompt_page_secondary_keywords_format">セカンダリ: %s</string>
+  <string name="prompt_page_match_assistant_prompt">アシスタント設定も走査</string>
+  <string name="prompt_page_match_assistant_prompt_desc">キーワードを直近メッセージだけでなくアシスタントのプロンプト/キャラ設定にも照合します</string>
   <string name="prompt_page_new_keyword">新規キーワード</string>
   <string name="prompt_page_position_after_system">システムプロンプトの後</string>
   <string name="prompt_page_position_at_depth">深度</string>

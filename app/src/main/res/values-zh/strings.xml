@@ -620,6 +620,8 @@
   <string name="prompt_page_secondary_logic_not_any">所有次要词都未命中</string>
   <string name="prompt_page_secondary_logic_and_all">所有次要词都命中</string>
   <string name="prompt_page_secondary_keywords_format">次要：%s</string>
+  <string name="prompt_page_match_assistant_prompt">扫描助手人设</string>
+  <string name="prompt_page_match_assistant_prompt_desc">关键词同时匹配助手提示词/角色设定，而不只是最近的消息</string>
   <string name="prompt_page_new_keyword">新关键词</string>
   <string name="prompt_page_position_after_system">系统提示词后</string>
   <string name="prompt_page_position_at_depth">在深度</string>

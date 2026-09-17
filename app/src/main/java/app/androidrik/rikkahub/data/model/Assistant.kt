@@ -271,6 +271,22 @@ sealed class PromptInjection {
         val secondaryKeywords: List<String> = emptyList(),
         /** 次要关键词的判定逻辑；仅当 [secondaryKeywords] 非空时生效。 */
         val selectiveLogic: SelectiveLogic = SelectiveLogic.AND_ANY,
+        /**
+         * 额外把**助手的人设文本**（`Assistant.systemPrompt`）纳入关键词扫描范围。
+         *
+         * 对齐 SillyTavern 的 6 个 `match*` 开关（`matchCharacterDescription` /
+         * `matchCharacterPersonality` / `matchScenario` / `matchCharacterDepthPrompt` /
+         * `matchCreatorNotes` / `matchPersonaDescription`，默认均为 false）。
+         *
+         * **为什么并成一个开关**：ST 把这些内容放在 6 个独立字段里，而 fork 在角色卡导入时
+         * 已把它们**压成一条 `systemPrompt`**（`AssistantImporter.kt`）——字段边界已丢失，
+         * 无法还原成 6 个开关。并成一个「扫人设」是**诚实**的近似：
+         * 语义是「关键词出现在角色设定里也算命中」，正是那些 flag 的共同意图。
+         * 代价：无法只扫其中某一段（fork 没有可区分的段）。
+         *
+         * 不开（默认）时行为与旧版一致——只扫最近 N 条对话消息。
+         */
+        val matchAssistantPrompt: Boolean = false,
     ) : PromptInjection()
 }
 
@@ -349,15 +365,22 @@ fun PromptInjection.RegexInjection.isTriggered(context: String): Boolean {
  *
  * @param messages 消息列表
  * @param scanDepth 扫描深度（最近N条消息）
- * @return 拼接的文本内容
+ * @param extraTexts 额外纳入扫描的文本（如助手人设，对齐 ST 的 `match*` 开关）。
+ *   追加在消息文本之后——顺序不影响命中判定（匹配是「包含」语义），
+ *   但保持稳定顺序便于预览/排查对照。
  */
 fun extractContextForMatching(
     messages: List<UIMessage>,
-    scanDepth: Int
+    scanDepth: Int,
+    extraTexts: List<String> = emptyList(),
 ): String {
-    return messages
+    val messageText = messages
         .takeLast(scanDepth)
         .joinToString("\n") { it.toText() }
+    if (extraTexts.isEmpty()) return messageText
+    val extras = extraTexts.filter { it.isNotBlank() }
+    if (extras.isEmpty()) return messageText
+    return (listOf(messageText) + extras).joinToString("\n")
 }
 
 /**

@@ -149,4 +149,33 @@ class SillyTavernImportFidelityTest {
         val entry = SillyTavernEntry(key = listOf("first", "second"), comment = null).toRegexInjection()
         assertEquals("first", entry.name)
     }
+
+    // region 多源扫描（ST 的 6 个 match* 开关）
+
+    @Test
+    fun `no match flags keeps assistant prompt out of scope`() {
+        val entry = SillyTavernEntry(key = listOf("dragon"), content = "x").toRegexInjection()
+        assertFalse("default must stay message-only", entry.matchAssistantPrompt)
+    }
+
+    @Test
+    fun `any match flag enables assistant prompt scanning`() {
+        // fork 无 6 个独立字段（内容已压进 systemPrompt）⇒ 任一 flag 打开即并成一个开关
+        val flags = listOf(
+            SillyTavernEntry(key = listOf("k"), matchPersonaDescription = true),
+            SillyTavernEntry(key = listOf("k"), matchCharacterDescription = true),
+            SillyTavernEntry(key = listOf("k"), matchCharacterPersonality = true),
+            SillyTavernEntry(key = listOf("k"), matchCharacterDepthPrompt = true),
+            SillyTavernEntry(key = listOf("k"), matchScenario = true),
+            SillyTavernEntry(key = listOf("k"), matchCreatorNotes = true),
+        )
+        flags.forEach { st ->
+            assertTrue(
+                "flag on ${st} should enable assistant-prompt scanning",
+                st.toRegexInjection().matchAssistantPrompt,
+            )
+        }
+    }
+
+    // endregion
 }

@@ -211,6 +211,14 @@ internal fun SillyTavernEntry.toRegexInjection(): PromptInjection.RegexInjection
         constantActive = constant,
         secondaryKeywords = effectiveSecondary?.keywords.orEmpty(),
         selectiveLogic = mapSillyTavernSelectiveLogic(selectiveLogic),
+        // ST 的 6 个 match* 开关（角色描述/性格/场景/深度提示/作者注记/用户人设）
+        // 在 fork 里无对应字段（内容已压进 systemPrompt）⇒ 并成一个「扫人设」开关。
+        matchAssistantPrompt = matchCharacterDescription ||
+            matchCharacterPersonality ||
+            matchScenario ||
+            matchCharacterDepthPrompt ||
+            matchCreatorNotes ||
+            matchPersonaDescription,
     )
 }
 
@@ -333,6 +341,19 @@ internal data class SillyTavernEntry(
      * 比在 ST 里更难触发（方向相反的失真）。
      */
     val selective: Boolean = true,
+    // ST 的 match* 扫描源开关（默认全 false）。fork 无对应字段 → 并成一个 matchAssistantPrompt。
+    @SerialName("matchPersonaDescription")
+    val matchPersonaDescription: Boolean = false,
+    @SerialName("matchCharacterDescription")
+    val matchCharacterDescription: Boolean = false,
+    @SerialName("matchCharacterPersonality")
+    val matchCharacterPersonality: Boolean = false,
+    @SerialName("matchCharacterDepthPrompt")
+    val matchCharacterDepthPrompt: Boolean = false,
+    @SerialName("matchScenario")
+    val matchScenario: Boolean = false,
+    @SerialName("matchCreatorNotes")
+    val matchCreatorNotes: Boolean = false,
 )
 
 /**

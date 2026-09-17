@@ -1273,6 +1273,17 @@ private fun RegexInjectionEditDialog(
                     }
                 )
 
+                FormItem(
+                    label = { Text(stringResource(R.string.prompt_page_match_assistant_prompt)) },
+                    description = { Text(stringResource(R.string.prompt_page_match_assistant_prompt_desc)) },
+                    tail = {
+                        Switch(
+                            checked = entry.matchAssistantPrompt,
+                            onCheckedChange = { onEdit(entry.copy(matchAssistantPrompt = it)) }
+                        )
+                    }
+                )
+
                 OutlinedTextField(
                     value = entry.scanDepth.toString(),
                     onValueChange = {
