@@ -489,6 +489,24 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
 + **匹配逻辑 = 任一次要词命中**、`0 条目` 的世界书确认为静默失败实例；**数据零损失**
 （install -r，uid/size/upload/skills 全不变）。
 
-**仍待做**：6.7 ⑤ 槽位管理器（预览已按序列出各段，加开关即成；可与角色卡字段区合并）。
+**④ 槽位管理器已合并落地（2026-09-17，`e9c75dbd`）**——6.7 ⑤ 与 6.2 ④ 合并成一次实现：
+
+角色卡字段区升级为「提示词分段」**槽位视图**，对齐 ST `prompt_order` 的槽位概念：
+
+- 新增 `CardSlot` 枚举（greeting / system_prompt / description / personality / scenario / example）
+  + `Assistant.cardSlotOrder`（**空 = 默认序**，故存量助手自动获得未来新增槽位、无需迁移）
+  + `disabledCardSlots`。
+- `buildCardSystemPrompt` 泛化为「按槽位列表 → 块列表 → `\n\n` 连接」，
+  **与原 `buildString` 逐字节等价**（特征测试锁死）。
+- **「关闭槽位」与「内容为 null」是两件事**，刻意保留区分：null → 渲染 `Empty` 占位符（历史行为），
+  关闭 → 整段不出现。
+- `cardPartsDivergeFromSystemPrompt()`：字段改了但 `systemPrompt` 未重建时给提示——
+  权威仍是 `systemPrompt`，不提示的话用户改完字段发现请求没变会以为坏了。
+- UI 用 `ReorderableColumn`（与本页正则区同款，已解决嵌套滚动）；每槽 = 拖拽手柄 + 序号 +
+  独立开关 + 内容框；开场白只给开关（内容由姓名插值）；关闭的槽位仍可查看内容（灰显）。
+
+**真机验证**：导入测试角色卡后 6 个槽位全部渲染，关闭「场景」后开关灰显且漂移提示出现。
+
+**至此 ST 借鉴清单（6.2 四项 + 6.3 三缺陷 + 6.7 ③⑤）全部清零。**
 
 关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）。
