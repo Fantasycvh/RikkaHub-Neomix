@@ -616,6 +616,14 @@
   <string name="prompt_page_mode_injection_empty">No mode injections</string>
   <string name="prompt_page_mode_injection_tab">Mode Injection</string>
   <string name="prompt_page_name">Name</string>
+  <string name="prompt_page_secondary_keywords_label">Secondary keywords</string>
+  <string name="prompt_page_secondary_logic">Match logic</string>
+  <string name="prompt_page_secondary_logic_desc">Applies only after a primary keyword matches. Leave empty to ignore (legacy behavior).</string>
+  <string name="prompt_page_secondary_logic_and_any">Any secondary matches</string>
+  <string name="prompt_page_secondary_logic_not_all">Any secondary missing</string>
+  <string name="prompt_page_secondary_logic_not_any">No secondary matches</string>
+  <string name="prompt_page_secondary_logic_and_all">All secondary match</string>
+  <string name="prompt_page_secondary_keywords_format">Secondary: %s</string>
   <string name="prompt_page_new_keyword">New Keyword</string>
   <string name="prompt_page_position_after_system">After System Prompt</string>
   <string name="prompt_page_position_at_depth">At Depth</string>

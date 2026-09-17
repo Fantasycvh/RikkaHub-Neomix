@@ -186,6 +186,31 @@ enum class InjectionPosition {
 }
 
 /**
+ * 次要关键词的匹配逻辑（对齐 SillyTavern `world_info_logic`，`world-info.js:33-38`）。
+ *
+ * 世界书的**过度触发**防护：主键命中后，再用次要键二次收窄。缺了它，ST 世界里
+ * 大量「靠次要键抑制误触发」的条目会只凭主键就注入（见 `docs/peer-apps-benchmark.md` §6.2 ①）。
+ */
+@Serializable
+enum class SelectiveLogic {
+    /** 任一 次要键命中即通过（ST 默认，= ST 的 AND_ANY(0)） */
+    @SerialName("and_any")
+    AND_ANY,
+
+    /** 任一 次要键**不**命中即通过（= ST 的 NOT_ALL(1)） */
+    @SerialName("not_all")
+    NOT_ALL,
+
+    /** **全部** 次要键都不命中才通过（= ST 的 NOT_ANY(2)） */
+    @SerialName("not_any")
+    NOT_ANY,
+
+    /** **全部** 次要键都命中才通过（= ST 的 AND_ALL(3)） */
+    @SerialName("and_all")
+    AND_ALL,
+}
+
+/**
  * 提示词注入
  *
  * - ModeInjection: 基于模式开关的注入（如学习模式）
@@ -237,6 +262,15 @@ sealed class PromptInjection {
         val caseSensitive: Boolean = false,        // 大小写敏感
         val scanDepth: Int = 4,                    // 扫描最近N条消息
         val constantActive: Boolean = false,       // 常驻激活（无需匹配）
+        /**
+         * 次要关键词：**主键命中后**用它二次收窄（对齐 ST `keysecondary`）。
+         *
+         * 空 = 不启用二次判定（完全保持旧行为）。非空时按 [selectiveLogic] 判定。
+         * 缺了它，ST 世界里靠次要键抑制误触发的条目会只凭主键就注入。
+         */
+        val secondaryKeywords: List<String> = emptyList(),
+        /** 次要关键词的判定逻辑；仅当 [secondaryKeywords] 非空时生效。 */
+        val selectiveLogic: SelectiveLogic = SelectiveLogic.AND_ANY,
     ) : PromptInjection()
 }
 
@@ -253,7 +287,36 @@ data class Lorebook(
 )
 
 /**
+ * 单个关键词是否在 [context] 中命中（主键与次要键共用同一语义）。
+ *
+ * 正则编译失败按「不命中」处理（与旧实现一致，避免坏正则让条目恒激活）。
+ */
+private fun PromptInjection.RegexInjection.matchesKeyword(context: String, keyword: String): Boolean {
+    return if (useRegex) {
+        try {
+            val options = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+            Regex(keyword, options).containsMatchIn(context)
+        } catch (e: Exception) {
+            false
+        }
+    } else {
+        if (caseSensitive) {
+            context.contains(keyword)
+        } else {
+            context.contains(keyword, ignoreCase = true)
+        }
+    }
+}
+
+/**
  * 检查 RegexInjection 是否被触发
+ *
+ * 判定分两步（对齐 SillyTavern `world-info.js:4920-4970`）：
+ * 1. **主键**（[PromptInjection.RegexInjection.keywords]）任一命中；
+ * 2. 若配了**次要键**（[PromptInjection.RegexInjection.secondaryKeywords]），
+ *    再按 [PromptInjection.RegexInjection.selectiveLogic] 二次收窄。
+ *
+ * **次要键为空 = 跳过第 2 步**，行为与旧版完全一致（故存量条目零回归）。
  *
  * @param context 要扫描的上下文文本
  * @return 是否触发
@@ -263,21 +326,21 @@ fun PromptInjection.RegexInjection.isTriggered(context: String): Boolean {
     if (constantActive) return true
     if (keywords.isEmpty()) return false
 
-    return keywords.any { keyword ->
-        if (useRegex) {
-            try {
-                val options = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
-                Regex(keyword, options).containsMatchIn(context)
-            } catch (e: Exception) {
-                false
-            }
-        } else {
-            if (caseSensitive) {
-                context.contains(keyword)
-            } else {
-                context.contains(keyword, ignoreCase = true)
-            }
-        }
+    if (keywords.none { matchesKeyword(context, it) }) return false
+
+    // 主键已命中：无次要键则直接通过（旧行为）
+    if (secondaryKeywords.isEmpty()) return true
+
+    val matches = secondaryKeywords.map { matchesKeyword(context, it) }
+    return when (selectiveLogic) {
+        // 任一次要键命中即通过（ST 默认）
+        SelectiveLogic.AND_ANY -> matches.any { it }
+        // 任一次要键「不」命中即通过
+        SelectiveLogic.NOT_ALL -> matches.any { !it }
+        // 全部次要键都不命中才通过
+        SelectiveLogic.NOT_ANY -> matches.none { it }
+        // 全部次要键都命中才通过
+        SelectiveLogic.AND_ALL -> matches.all { it }
     }
 }
 

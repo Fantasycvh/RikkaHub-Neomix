@@ -610,6 +610,14 @@
   <string name="prompt_page_mode_injection_empty">無模式注入</string>
   <string name="prompt_page_mode_injection_tab">模式注入</string>
   <string name="prompt_page_name">名稱</string>
+  <string name="prompt_page_secondary_keywords_label">次要關鍵詞</string>
+  <string name="prompt_page_secondary_logic">匹配邏輯</string>
+  <string name="prompt_page_secondary_logic_desc">僅在主關鍵詞命中後生效。留空則不啟用（維持原行為）。</string>
+  <string name="prompt_page_secondary_logic_and_any">任一次要詞命中</string>
+  <string name="prompt_page_secondary_logic_not_all">任一次要詞未命中</string>
+  <string name="prompt_page_secondary_logic_not_any">所有次要詞都未命中</string>
+  <string name="prompt_page_secondary_logic_and_all">所有次要詞都命中</string>
+  <string name="prompt_page_secondary_keywords_format">次要：%s</string>
   <string name="prompt_page_new_keyword">新關鍵字</string>
   <string name="prompt_page_position_after_system">系統提示之後</string>
   <string name="prompt_page_position_at_depth">在深度</string>

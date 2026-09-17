@@ -573,6 +573,14 @@
   <string name="prompt_page_mode_injection_empty">Нет внедрений режима</string>
   <string name="prompt_page_mode_injection_tab">Внедрение режима</string>
   <string name="prompt_page_name">Имя</string>
+  <string name="prompt_page_secondary_keywords_label">Вторичные ключевые слова</string>
+  <string name="prompt_page_secondary_logic">Логика совпадения</string>
+  <string name="prompt_page_secondary_logic_desc">Применяется только после совпадения основного ключевого слова. Оставьте пустым, чтобы отключить (прежнее поведение).</string>
+  <string name="prompt_page_secondary_logic_and_any">Любое вторичное совпало</string>
+  <string name="prompt_page_secondary_logic_not_all">Любое вторичное не совпало</string>
+  <string name="prompt_page_secondary_logic_not_any">Ни одно вторичное не совпало</string>
+  <string name="prompt_page_secondary_logic_and_all">Все вторичные совпали</string>
+  <string name="prompt_page_secondary_keywords_format">Вторичные: %s</string>
   <string name="prompt_page_new_keyword">Новое ключевое слово</string>
   <string name="prompt_page_position_after_system">После системного приглашения</string>
   <string name="prompt_page_position_at_depth">На глубине</string>

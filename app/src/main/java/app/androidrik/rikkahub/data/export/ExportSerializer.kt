@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.export
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -11,6 +12,7 @@ import kotlinx.serialization.json.encodeToJsonElement
 import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.PromptInjection
+import app.androidrik.rikkahub.data.model.SelectiveLogic
 import app.androidrik.rikkahub.utils.toLocalString
 import java.time.LocalDateTime
 import kotlin.uuid.Uuid
@@ -174,29 +176,42 @@ object LorebookSerializer : ExportSerializer<Lorebook> {
                 name = fileName ?: LocalDateTime.now().toLocalString(),
                 description = "",
                 enabled = true,
-                entries = stLorebook.entries.values.map { entry ->
-                    // ST 的 key 可以是 `/pattern/flags` 形式的正则（parseRegexFromString）；
-                    // 此前一律按字面量关键词导入，会让这些条目的触发条件整体改变。
-                    val parsed = parseStKeywords(entry.key)
-                    PromptInjection.RegexInjection(
-                        id = Uuid.random(),
-                        name = entry.comment.orEmpty().ifEmpty { entry.key.firstOrNull().orEmpty() },
-                        enabled = !entry.disable,
-                        priority = entry.order,
-                        position = mapSillyTavernPosition(entry.position),
-                        injectDepth = entry.depth,
-                        content = entry.content,
-                        keywords = parsed.keywords,
-                        useRegex = parsed.useRegex,
-                        caseSensitive = entry.caseSensitive ?: false,
-                        scanDepth = entry.scanDepth ?: 4,
-                        constantActive = entry.constant,
-                    )
-                }
+                entries = stLorebook.entries.values.map { it.toRegexInjection() },
             )
         }.getOrNull()
     }
+}
 
+/**
+ * ST 条目 → fork [PromptInjection.RegexInjection]（**纯函数**，便于单测直接覆盖导入保真）。
+ *
+ * 三处保真要点（缺一即「导入后行为不等价」，见 `docs/peer-apps-benchmark.md` §6.3）：
+ * 1. `key` / `keysecondary` 里的 `/pattern/flags` 都要识别为正则（[parseStKeywords]）；
+ * 2. **保留次要键**——这是 ST 抑制误触发的主要机制，丢弃即过度注入；
+ * 3. `selective: false` 时 ST 不做二次判定（`world-info.js:4925`）⇒ 次要键整体作废，
+ *    且必须在算 `useRegex` 之前作废，否则次要键的正则会连累主键字面量按正则匹配。
+ */
+internal fun SillyTavernEntry.toRegexInjection(): PromptInjection.RegexInjection {
+    val parsedPrimary = parseStKeywords(key)
+    val effectiveSecondary = if (selective) parseStKeywords(keySecondary) else null
+    return PromptInjection.RegexInjection(
+        id = Uuid.random(),
+        name = comment.orEmpty().ifEmpty { key.firstOrNull().orEmpty() },
+        enabled = !disable,
+        priority = order,
+        position = mapSillyTavernPosition(position),
+        injectDepth = depth,
+        content = content,
+        keywords = parsedPrimary.keywords,
+        // useRegex 是**整个条目共用**的开关（fork 限制）：主/次键任一侧出现正则形态都要置位，
+        // 否则次要键里的正则会被当字面量，二次判定结果整体失真。
+        useRegex = parsedPrimary.useRegex || (effectiveSecondary?.useRegex == true),
+        caseSensitive = caseSensitive ?: false,
+        scanDepth = scanDepth ?: 4,
+        constantActive = constant,
+        secondaryKeywords = effectiveSecondary?.keywords.orEmpty(),
+        selectiveLogic = mapSillyTavernSelectiveLogic(selectiveLogic),
+    )
 }
 
 /**
@@ -283,7 +298,7 @@ private data class SillyTavernLorebook(
 )
 
 @Serializable
-private data class SillyTavernEntry(
+internal data class SillyTavernEntry(
     val key: List<String> = emptyList(),
     val content: String = "",
     val comment: String? = null,
@@ -294,4 +309,42 @@ private data class SillyTavernEntry(
     val depth: Int = 4,
     val scanDepth: Int? = null,
     val caseSensitive: Boolean? = null,
+    /**
+     * 次要关键词（ST 的 `keysecondary`）。
+     *
+     * ⚠️ 字段名必须是 `keySecondary`（驼峰）——ST 导出的是 JSON 里的 `keysecondary`，
+     * 靠 `@SerialName` 对齐；`JsonInstant`/`DefaultJson` 开了 `ignoreUnknownKeys`，
+     * 故此前漏读该字段时不会报错、只会**静默丢弃**（这正是过度触发的成因）。
+     */
+    @SerialName("keysecondary")
+    val keySecondary: List<String> = emptyList(),
+    /**
+     * 次键判定逻辑（ST 的 `selectiveLogic`，0/1/2/3）。
+     *
+     * 同样必须 `@SerialName` 对齐小写名。缺省 0 = AND_ANY（与 ST 一致）。
+     */
+    @SerialName("selectiveLogic")
+    val selectiveLogic: Int = 0,
+    /**
+     * 是否启用次要键判定（ST 的 `selective`，默认 true）。
+     *
+     * ST 的判据是 `selective && keysecondary.length`（`world-info.js:4925`）——
+     * 即 `selective: false` 时**即使有次要键也不做二次判定**。漏读它会让这类条目
+     * 比在 ST 里更难触发（方向相反的失真）。
+     */
+    val selective: Boolean = true,
 )
+
+/**
+ * ST 的 `selectiveLogic` 整数 → [SelectiveLogic]。
+ *
+ * 取值来自 ST `world_info_logic`（`world-info.js:33-38`）：
+ * `AND_ANY(0)` / `NOT_ALL(1)` / `NOT_ANY(2)` / `AND_ALL(3)`。
+ * 未知值回退 `AND_ANY`（ST 默认，也是 SAFE 的一侧：不会让条目意外恒不触发）。
+ */
+internal fun mapSillyTavernSelectiveLogic(value: Int): SelectiveLogic = when (value) {
+    1 -> SelectiveLogic.NOT_ALL
+    2 -> SelectiveLogic.NOT_ANY
+    3 -> SelectiveLogic.AND_ALL
+    else -> SelectiveLogic.AND_ANY
+}

@@ -42,6 +42,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FloatingToolbarDefaults.ScreenOffset
 import androidx.compose.material3.FloatingToolbarDefaults.floatingToolbarVerticalNestedScroll
@@ -91,6 +93,7 @@ import app.androidrik.rikkahub.data.export.rememberImporter
 import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.PromptInjection
+import app.androidrik.rikkahub.data.model.SelectiveLogic
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.ExportDialog
 import app.androidrik.rikkahub.ui.components.ui.FormItem
@@ -591,6 +594,75 @@ private fun InjectionRoleSelector(
     )
 }
 
+/** 次要键逻辑的展示文案（对齐 ST `world_info_logic` 的四种语义）。 */
+@Composable
+private fun SelectiveLogic.labelRes(): Int = when (this) {
+    SelectiveLogic.AND_ANY -> R.string.prompt_page_secondary_logic_and_any
+    SelectiveLogic.NOT_ALL -> R.string.prompt_page_secondary_logic_not_all
+    SelectiveLogic.NOT_ANY -> R.string.prompt_page_secondary_logic_not_any
+    SelectiveLogic.AND_ALL -> R.string.prompt_page_secondary_logic_and_all
+}
+
+/**
+ * 关键词列表编辑器（主键与次要键共用，避免两处 UI 漂移）。
+ *
+ * @param title 区块标题（用于区分「关键词」与「次要关键词」）
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KeywordEditor(
+    title: String,
+    keywords: List<String>,
+    onKeywordsChange: (List<String>) -> Unit,
+) {
+    var newKeyword by remember { mutableStateOf("") }
+
+    Text(title, style = MaterialTheme.typography.titleSmall)
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        keywords.forEach { keyword ->
+            InputChip(
+                selected = false,
+                onClick = {},
+                label = { Text(keyword) },
+                trailingIcon = {
+                    IconButton(
+                        onClick = { onKeywordsChange(keywords - keyword) },
+                        modifier = Modifier.size(16.dp)
+                    ) {
+                        Icon(HugeIcons.Cancel01, null, modifier = Modifier.size(12.dp))
+                    }
+                }
+            )
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = newKeyword,
+            onValueChange = { newKeyword = it },
+            label = { Text(stringResource(R.string.prompt_page_new_keyword)) },
+            modifier = Modifier.weight(1f),
+            singleLine = true
+        )
+        IconButton(
+            onClick = {
+                if (newKeyword.isNotBlank()) {
+                    onKeywordsChange(keywords + newKeyword.trim())
+                    newKeyword = ""
+                }
+            }
+        ) {
+            Icon(HugeIcons.Add01, stringResource(R.string.prompt_page_add))
+        }
+    }
+}
+
 @Composable
 private fun getRoleLabel(role: MessageRole): String = when (role) {
     MessageRole.USER -> stringResource(R.string.prompt_page_role_user)
@@ -1021,6 +1093,18 @@ private fun RegexInjectionEntryCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                if (entry.secondaryKeywords.isNotEmpty()) {
+                    Text(
+                        text = stringResource(
+                            R.string.prompt_page_secondary_keywords_format,
+                            entry.secondaryKeywords.joinToString(", "),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -1049,8 +1133,6 @@ private fun RegexInjectionEditDialog(
     onConfirm: () -> Unit,
     onEdit: (PromptInjection.RegexInjection) -> Unit
 ) {
-    var newKeyword by remember { mutableStateOf("") }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.prompt_page_edit_entry)) },
@@ -1111,51 +1193,53 @@ private fun RegexInjectionEditDialog(
                 }
 
                 // 关键词
-                Text(stringResource(R.string.prompt_page_keywords_label), style = MaterialTheme.typography.titleSmall)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    entry.keywords.forEach { keyword ->
-                        InputChip(
-                            selected = false,
-                            onClick = {},
-                            label = { Text(keyword) },
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = {
-                                        onEdit(entry.copy(keywords = entry.keywords - keyword))
-                                    },
-                                    modifier = Modifier.size(16.dp)
+                KeywordEditor(
+                    title = stringResource(R.string.prompt_page_keywords_label),
+                    keywords = entry.keywords,
+                    onKeywordsChange = { onEdit(entry.copy(keywords = it)) },
+                )
+
+                // 次要关键词：主键命中后用它二次收窄，防误触发（对齐 ST keysecondary）
+                KeywordEditor(
+                    title = stringResource(R.string.prompt_page_secondary_keywords_label),
+                    keywords = entry.secondaryKeywords,
+                    onKeywordsChange = { onEdit(entry.copy(secondaryKeywords = it)) },
+                )
+
+                AnimatedVisibility(visible = entry.secondaryKeywords.isNotEmpty()) {
+                    Text(
+                        stringResource(R.string.prompt_page_secondary_logic_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                AnimatedVisibility(visible = entry.secondaryKeywords.isNotEmpty()) {
+                    FormItem(
+                        label = { Text(stringResource(R.string.prompt_page_secondary_logic)) },
+                        tail = {
+                            var expanded by remember { mutableStateOf(false) }
+                            Box {
+                                TextButton(onClick = { expanded = true }) {
+                                    Text(stringResource(entry.selectiveLogic.labelRes()))
+                                }
+                                DropdownMenu(
+                                    expanded = expanded,
+                                    onDismissRequest = { expanded = false },
                                 ) {
-                                    Icon(HugeIcons.Cancel01, null, modifier = Modifier.size(12.dp))
+                                    SelectiveLogic.entries.forEach { logic ->
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(logic.labelRes())) },
+                                            onClick = {
+                                                onEdit(entry.copy(selectiveLogic = logic))
+                                                expanded = false
+                                            },
+                                        )
+                                    }
                                 }
                             }
-                        )
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = newKeyword,
-                        onValueChange = { newKeyword = it },
-                        label = { Text(stringResource(R.string.prompt_page_new_keyword)) },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                    IconButton(
-                        onClick = {
-                            if (newKeyword.isNotBlank()) {
-                                onEdit(entry.copy(keywords = entry.keywords + newKeyword.trim()))
-                                newKeyword = ""
-                            }
                         }
-                    ) {
-                        Icon(HugeIcons.Add01, stringResource(R.string.prompt_page_add))
-                    }
+                    )
                 }
 
                 FormItem(
