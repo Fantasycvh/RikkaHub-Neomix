@@ -408,7 +408,7 @@ ST 也是靠「仅对支持的源开放」来回避。⇒ **#1918 的判断得�
 
 按 6.6 顺序动手，已完成**第 1 项（6.3 的两个真 bug）**与 **6.7 ③（拼装预览）**：
 
-**① 拼装预览（6.7 ③）——本轮提交**
+**① 拼装预览（6.7 ③）——`9e033c9d`**
 
 - **抽取共享组装 `data/ai/PromptAssembly.kt`**：把原先**内联在 `GenerationHandler.generateInternal`**
   的系统消息组装与发送窗口抽成 `buildSystemPromptText` / `buildSendWindowMessages` / `buildInternalMessages`。
