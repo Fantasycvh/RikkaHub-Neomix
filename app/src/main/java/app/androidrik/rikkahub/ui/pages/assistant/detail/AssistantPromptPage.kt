@@ -86,7 +86,11 @@ import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TransformerContext
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.CardSlot
+import app.androidrik.rikkahub.data.model.cardPartsDivergeFromSystemPrompt
+import app.androidrik.rikkahub.data.model.effectiveCardSlotOrder
 import app.androidrik.rikkahub.data.model.hasCardParts
+import app.androidrik.rikkahub.data.model.moveCardSlot
 import app.androidrik.rikkahub.data.model.rebuildSystemPromptFromCardParts
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.AssistantRegex
@@ -600,6 +604,8 @@ private fun CardPartsCard(
     modifier: Modifier = Modifier,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    val diverged = assistant.cardPartsDivergeFromSystemPrompt()
 
     Card(
         modifier = modifier,
@@ -632,37 +638,58 @@ private fun CardPartsCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            // 漂移提示：字段改了但 systemPrompt 还没重建 —— 不提示的话用户会以为改了没生效
+            if (diverged) {
+                Text(
+                    text = stringResource(R.string.assistant_page_card_parts_diverged),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+            }
+
             AnimatedVisibility(visible = expanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CardPartField(
-                        label = stringResource(R.string.assistant_page_card_description),
-                        value = assistant.cardDescription,
-                        onChange = { onUpdate(assistant.copy(cardDescription = it)) },
-                    )
-                    CardPartField(
-                        label = stringResource(R.string.assistant_page_card_personality),
-                        value = assistant.cardPersonality,
-                        onChange = { onUpdate(assistant.copy(cardPersonality = it)) },
-                    )
-                    CardPartField(
-                        label = stringResource(R.string.assistant_page_card_scenario),
-                        value = assistant.cardScenario,
-                        onChange = { onUpdate(assistant.copy(cardScenario = it)) },
-                    )
-                    CardPartField(
-                        label = stringResource(R.string.assistant_page_card_example),
-                        value = assistant.cardExampleDialogue,
-                        onChange = { onUpdate(assistant.copy(cardExampleDialogue = it)) },
-                    )
-                    CardPartField(
-                        label = stringResource(R.string.assistant_page_card_system_prompt),
-                        value = assistant.cardSystemPrompt,
-                        onChange = { onUpdate(assistant.copy(cardSystemPrompt = it)) },
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // 槽位视图：顺序 + 开关 + 内容，对齐 ST 的 prompt_order 槽位概念。
+                    // 用 ReorderableColumn（与本页正则区同款）——该组件已解决嵌套滚动问题。
+                    ReorderableColumn(
+                        list = assistant.effectiveCardSlotOrder,
+                        onSettle = { fromIndex, toIndex ->
+                            onUpdate(assistant.moveCardSlot(fromIndex, toIndex))
+                        },
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) { index, slot, isDragging ->
+                        key(slot) {
+                            ReorderableItem(modifier = Modifier.fillMaxWidth()) {
+                                CardSlotRow(
+                                    slot = slot,
+                                    index = index,
+                                    assistant = assistant,
+                                    onUpdate = onUpdate,
+                                    modifier = Modifier.scale(if (isDragging) 0.95f else 1f),
+                                    dragHandleModifier = Modifier
+                                        .size(40.dp)
+                                        .longPressDraggableHandle(
+                                            enabled = assistant.effectiveCardSlotOrder.size > 1,
+                                            onDragStarted = {
+                                                haptic.performHapticFeedback(
+                                                    HapticFeedbackType.GestureThresholdActivate
+                                                )
+                                            },
+                                            onDragStopped = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                            }
+                                        ),
+                                )
+                            }
+                        }
+                    }
 
                     // 零件 → 发送文本的单向重建：零件是源，systemPrompt 是产物。
                     // 用户手改 systemPrompt 后想要「回到卡片原文」时用。
-                    TextButton(onClick = { onUpdate(assistant.rebuildSystemPromptFromCardParts()) }) {
+                    Button(
+                        onClick = { onUpdate(assistant.rebuildSystemPromptFromCardParts()) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Icon(HugeIcons.Refresh03, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.size(8.dp))
                         Text(stringResource(R.string.assistant_page_rebuild_prompt))
@@ -673,11 +700,135 @@ private fun CardPartsCard(
     }
 }
 
+/** 角色卡槽位的展示名。 */
+@Composable
+private fun CardSlot.label(): String = when (this) {
+    CardSlot.GREETING -> stringResource(R.string.assistant_page_card_slot_greeting)
+    CardSlot.SYSTEM_PROMPT -> stringResource(R.string.assistant_page_card_system_prompt)
+    CardSlot.DESCRIPTION -> stringResource(R.string.assistant_page_card_description)
+    CardSlot.PERSONALITY -> stringResource(R.string.assistant_page_card_personality)
+    CardSlot.SCENARIO -> stringResource(R.string.assistant_page_card_scenario)
+    CardSlot.EXAMPLE -> stringResource(R.string.assistant_page_card_example)
+}
+
+/**
+ * 单个槽位：拖拽手柄 + 开关 + （开关打开时）内容编辑框。
+ *
+ * 开场白（[CardSlot.GREETING]）内容由姓名插值，故只给开关、不给编辑框。
+ */
+@Composable
+private fun CardSlotRow(
+    slot: CardSlot,
+    index: Int,
+    assistant: Assistant,
+    onUpdate: (Assistant) -> Unit,
+    modifier: Modifier = Modifier,
+    dragHandleModifier: Modifier = Modifier,
+) {
+    val enabled = slot !in assistant.disabledCardSlots
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = HugeIcons.DragDropVertical,
+                contentDescription = stringResource(R.string.assistant_page_card_slot_drag),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = dragHandleModifier,
+            )
+            Text(
+                text = "${index + 1}. ${slot.label()}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp),
+            )
+            Switch(
+                checked = enabled,
+                onCheckedChange = { on ->
+                    onUpdate(
+                        assistant.copy(
+                            disabledCardSlots = if (on) {
+                                assistant.disabledCardSlots - slot
+                            } else {
+                                assistant.disabledCardSlots + slot
+                            }
+                        )
+                    )
+                },
+            )
+        }
+
+        // 内容编辑：开场白无独立内容（由姓名生成），其余槽位按类型读写对应字段
+        CardSlotValueField(
+            slot = slot,
+            assistant = assistant,
+            enabled = enabled,
+            onUpdate = onUpdate,
+        )
+    }
+}
+
+/**
+ * 槽位内容编辑框；[CardSlot.GREETING] 渲染为只读说明（内容由姓名插值）。
+ */
+@Composable
+private fun CardSlotValueField(
+    slot: CardSlot,
+    assistant: Assistant,
+    enabled: Boolean,
+    onUpdate: (Assistant) -> Unit,
+) {
+    if (slot == CardSlot.GREETING) {
+        Text(
+            text = stringResource(R.string.assistant_page_card_slot_greeting_value, assistant.name),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+
+    val value = when (slot) {
+        CardSlot.SYSTEM_PROMPT -> assistant.cardSystemPrompt
+        CardSlot.DESCRIPTION -> assistant.cardDescription
+        CardSlot.PERSONALITY -> assistant.cardPersonality
+        CardSlot.SCENARIO -> assistant.cardScenario
+        CardSlot.EXAMPLE -> assistant.cardExampleDialogue
+        CardSlot.GREETING -> null
+    }
+    val onChange: (String) -> Unit = { text ->
+        onUpdate(
+            when (slot) {
+                CardSlot.SYSTEM_PROMPT -> assistant.copy(cardSystemPrompt = text)
+                CardSlot.DESCRIPTION -> assistant.copy(cardDescription = text)
+                CardSlot.PERSONALITY -> assistant.copy(cardPersonality = text)
+                CardSlot.SCENARIO -> assistant.copy(cardScenario = text)
+                CardSlot.EXAMPLE -> assistant.copy(cardExampleDialogue = text)
+                CardSlot.GREETING -> assistant
+            }
+        )
+    }
+
+    // 关掉的槽位不要求编辑；但仍允许查看内容（灰显），避免「关了以后看不到原先写了什么」
+    CardPartField(
+        label = slot.label(),
+        value = value,
+        onChange = onChange,
+        enabled = enabled,
+    )
+}
+
 @Composable
 private fun CardPartField(
     label: String,
     value: String?,
     onChange: (String) -> Unit,
+    enabled: Boolean = true,
 ) {
     var text by remember(value) { mutableStateOf(value.orEmpty()) }
 
@@ -688,6 +839,7 @@ private fun CardPartField(
             onChange(it)
         },
         label = { Text(label) },
+        enabled = enabled,
         minLines = 2,
         maxLines = 6,
         modifier = Modifier.fillMaxWidth(),

@@ -43,6 +43,21 @@ data class Assistant(
     val cardExampleDialogue: String? = null,
     /** 角色卡里显式的 `system_prompt` 字段（与 [systemPrompt] 不同：那是卡片给出的，这是实际发送的）。 */
     val cardSystemPrompt: String? = null,
+    /**
+     * 角色卡各段的**拼装顺序**（对齐 ST `prompt_order` 里 charDescription/scenario/… 的槽位序）。
+     *
+     * **空 = 用 [CardSlot.defaultOrder]**（默认顺序与历史输出一致）。
+     * 之所以用「空表示默认」而不是把默认列表写死在这里：将来新增槽位时，
+     * 存量助手（空列表）能自动获得新槽位，而不必逐个迁移。
+     */
+    val cardSlotOrder: List<CardSlot> = emptyList(),
+    /**
+     * 被用户**关掉**的角色卡段（不参与 [buildCardSystemPrompt] 渲染）。
+     *
+     * 对应 ST 里逐槽位的开关；`null` 内容与「关掉」是两件事：前者会渲染成
+     * `Empty` 占位符（历史行为），后者才是整段不出现。
+     */
+    val disabledCardSlots: Set<CardSlot> = emptySet(),
     val temperature: Float? = null,
     val topP: Float? = null,
     // 上下文消息条数上限, 超出后阶梯式截断; 0 表示不限制
@@ -113,13 +128,98 @@ data class QuickMessage(
  * 而输出顺序仍由 [sortKey] 固定以保住前缀缓存。
  */
 /**
- * 由角色卡零件渲染出实际发送的 system prompt。
+ * 角色卡 system prompt 的**槽位**（对齐 SillyTavern `prompt_order` 里的槽位概念）。
  *
- * **与角色卡导入此前的 `buildString` 实现逐字节等价**（含空行与 `Empty` 占位符）——
- * 这是刻意的：本函数是那次内联拼装的抽取，用来给导入器与「重新生成提示词」按钮共用，
- * 不引入任何输出变化。若将来要改版式，改这里一处即可（导入侧与手动重建同步生效）。
+ * 导入时各段被保留为独立字段，因此可以逐段开关、重排——而不再是压平后不可分的一条字符串。
+ * 见 `docs/peer-apps-benchmark.md` §6.2 ④ / §6.7 ⑤。
+ */
+@Serializable
+enum class CardSlot {
+    /** 开场白 `You are roleplaying as {name}.`（内容由姓名插值，不可编辑） */
+    @SerialName("greeting")
+    GREETING,
+
+    /** 卡片自带 `system_prompt`（无标题；空白则整段不出现） */
+    @SerialName("system_prompt")
+    SYSTEM_PROMPT,
+
+    @SerialName("description")
+    DESCRIPTION,
+
+    @SerialName("personality")
+    PERSONALITY,
+
+    @SerialName("scenario")
+    SCENARIO,
+
+    /** 示例对话（空白则整段不出现） */
+    @SerialName("example")
+    EXAMPLE;
+
+    companion object {
+        /**
+         * 默认槽位顺序——**与历史（压平时代）的输出顺序完全一致**。
+         *
+         * 改它等于改变所有未显式排序的助手的请求内容，务必谨慎（有特征测试锁着）。
+         */
+        val defaultOrder: List<CardSlot> = listOf(
+            GREETING,
+            SYSTEM_PROMPT,
+            DESCRIPTION,
+            PERSONALITY,
+            SCENARIO,
+            EXAMPLE,
+        )
+    }
+}
+
+/**
+ * 单个槽位渲染出的文本块；**null = 该槽位整段不出现**。
+ *
+ * 这是「哪些槽位可以不出现」的唯一真相源：
+ * - [CardSlot.SYSTEM_PROMPT] / [CardSlot.EXAMPLE] 内容空白时整段不出现（历史行为）；
+ * - 其余槽位即使内容为 null 也渲染 `Empty` 占位符（历史行为）。
+ */
+private fun renderCardSlotBlock(slot: CardSlot, name: String, assistant: Assistant): String? =
+    when (slot) {
+        CardSlot.GREETING -> "You are roleplaying as $name."
+        CardSlot.SYSTEM_PROMPT -> assistant.cardSystemPrompt?.takeIf { it.isNotBlank() }
+        CardSlot.DESCRIPTION ->
+            "## Description of the character\n${assistant.cardDescription ?: "Empty"}"
+        CardSlot.PERSONALITY ->
+            "## Personality of the character\n${assistant.cardPersonality ?: "Empty"}"
+        CardSlot.SCENARIO ->
+            "## Scenario\n${assistant.cardScenario ?: "Empty"}"
+        CardSlot.EXAMPLE -> assistant.cardExampleDialogue
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "## Example of the dialogue\n$it" }
+    }
+
+/**
+ * 由角色卡零件渲染出实际发送的 system prompt（**按槽位顺序拼装，段间空行**）。
+ *
+ * **与压平时代的 `buildString` 逐字节等价**（含空行与 `Empty` 占位符）——这是刻意的：
+ * 它是那次内联拼装的泛化（把「写死的顺序」换成 [CardSlot.defaultOrder]），不引入任何输出变化。
+ * 有特征测试锁着这一点；若将来要改版式，改这里一处即可（导入侧与手动重建同步生效）。
  *
  * 注意：不读 [Assistant.systemPrompt]（那是输出目标而非输入）。
+ */
+fun buildCardSystemPrompt(
+    name: String,
+    assistant: Assistant,
+): String {
+    val order = assistant.cardSlotOrder.ifEmpty { CardSlot.defaultOrder }
+    return order
+        // 关掉的槽位不参与；同时过滤掉「空列表漏掉的槽位」——order 里没有的槽位不该出现
+        .filter { it !in assistant.disabledCardSlots }
+        .mapNotNull { renderCardSlotBlock(it, name, assistant) }
+        .joinToString("\n\n")
+}
+
+/**
+ * 便捷重载：直接由散字段渲染（供导入器使用，此时还没有 Assistant 实例）。
+ *
+ * 始终使用 [CardSlot.defaultOrder] 且不关闭任何槽位——导入那一刻的产物与历史完全一致。
  */
 fun buildCardSystemPrompt(
     name: String,
@@ -128,28 +228,17 @@ fun buildCardSystemPrompt(
     personality: String?,
     scenario: String?,
     exampleDialogue: String?,
-): String = buildString {
-    appendLine("You are roleplaying as $name.")
-    appendLine()
-    if (!cardSystemPrompt.isNullOrBlank()) {
-        appendLine(cardSystemPrompt)
-        appendLine()
-    }
-    appendLine("## Description of the character")
-    appendLine(description ?: "Empty")
-    appendLine()
-    appendLine("## Personality of the character")
-    appendLine(personality ?: "Empty")
-    appendLine()
-    appendLine("## Scenario")
-    append(scenario ?: "Empty")
-    if (!exampleDialogue.isNullOrBlank()) {
-        appendLine()
-        appendLine()
-        appendLine("## Example of the dialogue")
-        append(exampleDialogue)
-    }
-}
+): String = buildCardSystemPrompt(
+    name = name,
+    assistant = Assistant(
+        name = name,
+        cardSystemPrompt = cardSystemPrompt,
+        cardDescription = description,
+        cardPersonality = personality,
+        cardScenario = scenario,
+        cardExampleDialogue = exampleDialogue,
+    ),
+)
 
 /**
  * 该助手是否来自角色卡导入（有任一分区零件）。
@@ -166,23 +255,47 @@ val Assistant.hasCardParts: Boolean
 /**
  * 由本助手的零件重建 `systemPrompt`（供「重新生成提示词」按钮调用）。
  *
+ * **走 [buildCardSystemPrompt] 的单参数重载**，因此尊重当前的槽位顺序与开关
+ * （不能退回散字段重载——那会用默认顺序、且无视被关掉的槽位，等于静默丢弃用户的排序）。
+ *
  * 若没有零件则原样返回（手工助手不应因此被清空提示词）。
  */
 fun Assistant.rebuildSystemPromptFromCardParts(): Assistant =
     if (!hasCardParts) {
         this
     } else {
-        copy(
-            systemPrompt = buildCardSystemPrompt(
-                name = name,
-                cardSystemPrompt = cardSystemPrompt,
-                description = cardDescription,
-                personality = cardPersonality,
-                scenario = cardScenario,
-                exampleDialogue = cardExampleDialogue,
-            )
-        )
+        copy(systemPrompt = buildCardSystemPrompt(name = name, assistant = this))
     }
+
+/**
+ * 该段是否与当前 `systemPrompt` 一致（有零件才可判定）。
+ *
+ * 用途：槽位区显示「当前发送的提示词已偏离这些字段」——用户手改过 `systemPrompt` 后，
+ * 字段编辑不会自动生效（权威是 `systemPrompt`），必须显式重建。不提示的话，
+ * 用户改完字段发现请求没变会以为坏了。
+ */
+fun Assistant.cardPartsDivergeFromSystemPrompt(): Boolean =
+    hasCardParts && systemPrompt != buildCardSystemPrompt(name = name, assistant = this)
+
+/**
+ * 当前生效的槽位顺序（空 = [CardSlot.defaultOrder]）。
+ *
+ * 供 UI 渲染与拖拽使用——UI 必须显示**生效后的**列表，否则空 order 时拖拽会从空列表开始。
+ */
+val Assistant.effectiveCardSlotOrder: List<CardSlot>
+    get() = cardSlotOrder.ifEmpty { CardSlot.defaultOrder }
+
+/**
+ * 把 [fromIndex] 的槽位移动到 [toIndex]（纯函数，供拖拽回调与单测使用）。
+ *
+ * 越界索引原样返回（拖拽库偶尔会传入边界值，不该因此丢槽位）。
+ */
+fun Assistant.moveCardSlot(fromIndex: Int, toIndex: Int): Assistant {
+    val current = effectiveCardSlotOrder.toMutableList()
+    if (fromIndex !in current.indices || toIndex !in current.indices || fromIndex == toIndex) return this
+    current.add(toIndex, current.removeAt(fromIndex))
+    return copy(cardSlotOrder = current)
+}
 
 @Serializable
 data class AssistantMemory(
