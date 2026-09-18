@@ -17,6 +17,7 @@ import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +37,13 @@ import app.androidrik.rikkahub.R
  *
  * 抽共享而非各写一份：这类悬浮条的外观与手势细节一旦分叉，会出现「一个页面能点、另一个不能」
  * 的隐性不一致（本仓同类教训见侧栏/工作区详情页的文件列表）。
+ *
+ * ⚠️ **不要依赖环境 `LocalContentColor`**：本条的 `Surface` 用的是一个 `copy(alpha=)` 过的
+ * 颜色，`contentColorFor()` 对它返回 `Unspecified` ⇒ `contentColor` 会**回落到调用点所在
+ * 位置的 `LocalContentColor`**。而 `LocalContentColor` 的根默认值是 `Color.Black`
+ * （Material3 的 `staticCompositionLocalOf { Color.Black }`）——若把本组件放在 `Scaffold`
+ * **之外**（例如页面级 `Box` 里的悬浮层），图标就会变成近黑色，在深色主题下完全看不见
+ * （拼装预览页实测踩到）。故这里**显式指定配色**，不依赖环境。
  *
  * @param scope 点击滚动用的协程作用域（由调用方提供，通常 `rememberCoroutineScope()`）
  * @param state 目标列表状态；「下一项」越界由 `animateScrollToItem` 自行夹取
@@ -59,6 +67,10 @@ fun BoxScope.ScrollJumperBar(
             targetOffsetX = { if (onLeft) -it * 2 else it * 2 },
         )
     ) {
+        // 悬浮条的配色在组件内统一决定，避免各处 Surface 各写一份而漏掉 contentColor
+        val chipColor = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp).copy(alpha = 0.65f)
+        val chipContentColor = MaterialTheme.colorScheme.onSurface
+
         Column(
             modifier = Modifier.padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -69,7 +81,8 @@ fun BoxScope.ScrollJumperBar(
                 Surface(
                     shape = CircleShape,
                     tonalElevation = 4.dp,
-                    color = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp).copy(alpha = 0.65f),
+                    color = chipColor,
+                    contentColor = chipContentColor,
                 ) {
                     Text(
                         text = label,
@@ -83,6 +96,8 @@ fun BoxScope.ScrollJumperBar(
                 icon = HugeIcons.ArrowUpDouble,
                 contentDescription = stringResource(R.string.chat_page_scroll_to_top),
                 onClick = { scope.launch { state.scrollToItem(0) } },
+                color = chipColor,
+                contentColor = chipContentColor,
             )
             JumperButton(
                 icon = HugeIcons.ArrowUp01,
@@ -94,6 +109,8 @@ fun BoxScope.ScrollJumperBar(
                         state.animateScrollToItem((state.firstVisibleItemIndex - 1).coerceAtLeast(0))
                     }
                 },
+                color = chipColor,
+                contentColor = chipContentColor,
             )
             JumperButton(
                 icon = HugeIcons.ArrowDown01,
@@ -103,6 +120,8 @@ fun BoxScope.ScrollJumperBar(
                         state.animateScrollToItem(state.firstVisibleItemIndex + 1)
                     }
                 },
+                color = chipColor,
+                contentColor = chipContentColor,
             )
             JumperButton(
                 icon = HugeIcons.ArrowDownDouble,
@@ -112,6 +131,8 @@ fun BoxScope.ScrollJumperBar(
                         state.scrollToItem(state.layoutInfo.totalItemsCount - 1)
                     }
                 },
+                color = chipColor,
+                contentColor = chipContentColor,
             )
         }
     }
@@ -122,17 +143,23 @@ private fun JumperButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
+    color: Color,
+    contentColor: Color,
 ) {
     Surface(
         onClick = onClick,
         shape = CircleShape,
         tonalElevation = 4.dp,
-        color = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp).copy(alpha = 0.65f),
+        color = color,
+        // 显式给内容色：Surface 对 copy(alpha=) 过的颜色无法推导 contentColor，
+        // 不指定就会回落到调用点的 LocalContentColor（根默认是 Black）——深色下图标变黑不可见
+        contentColor = contentColor,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
             modifier = Modifier.padding(4.dp),
+            tint = contentColor,
         )
     }
 }
