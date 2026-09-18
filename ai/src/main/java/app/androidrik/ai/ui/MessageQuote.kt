@@ -1,6 +1,7 @@
 package app.androidrik.ai.ui
 
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.common.text.truncateSafely
 
 /**
  * #1906：把一条历史消息采集为可引用的快照。
@@ -23,27 +24,13 @@ fun UIMessage.toQuotedMessage(maxChars: Int = DEFAULT_QUOTE_MAX_CHARS): UIMessag
     return UIMessageAnnotation.QuotedMessage(
         messageId = id,
         role = role,
-        content = text.takeSafely(maxChars),
+        content = text.truncateSafely(maxChars),
         createdAt = createdAt,
     )
 }
 
 /** 引用快照上限：足够承载常见段落，又不会让单条引用吃掉可观上下文。 */
 const val DEFAULT_QUOTE_MAX_CHARS = 8_000
-
-/**
- * 安全截断：不切断 UTF-16 代理对。
- *
- * `String.take` 按 Char 计数，恰好切在 emoji/增补平面字符的中间时会留下**孤立的高代理**——
- * 它在显示与序列化时都是无效字符（JSON 里会变成问号或乱码）。回退一个单元即得完整字符。
- */
-internal fun String.takeSafely(maxChars: Int): String {    if (length <= maxChars) return this
-    if (maxChars <= 0) return ""
-    val cut = maxChars
-    val lastKept = this[cut - 1]
-    // 高代理收尾 ⇒ 该对的后半被切掉了，退回一个单元
-    return if (lastKept.isHighSurrogate()) substring(0, cut - 1) else substring(0, cut)
-}
 
 /**
  * 引用块的发送侧展开：把引用快照转成模型可读的文本前缀。

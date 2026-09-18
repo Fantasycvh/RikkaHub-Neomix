@@ -367,6 +367,9 @@
   <string name="chat_page_regenerate_title">Сгенерировать заголовок заново</string>
   <string name="chat_page_save">Сохранить</string>
   <string name="chat_page_scroll_to_bottom">Прокрутить вниз</string>
+  <string name="chat_page_scroll_to_top">В начало</string>
+  <string name="scroll_up_one">Предыдущий</string>
+  <string name="scroll_down_one">Следующий</string>
   <string name="chat_page_search_chats">Поиск чатов</string>
   <string name="chat_page_today">Сегодня</string>
   <string name="chat_page_yesterday">Вчера</string>
@@ -1523,6 +1526,12 @@
   <string name="prompt_inspect_cache_body">Система находится в позиции 0 и пересчитывается при каждом запросе — здесь это около %1$d токенов. Любое изменчивое содержимое внутри (плейсхолдер даты, запись World Info, включающаяся по ключевым словам) делает **недействительным весь кешированный префикс**. Держите изменчивое содержимое вне системного промпта, а World Info по ключевым словам размещайте в конце чата.</string>
   <string name="prompt_inspect_legend_title">Об этой странице</string>
   <string name="prompt_inspect_legend_body">Предпросмотр только для чтения: собирается тем же кодом, что и реальный запрос, затем разбивается по источникам. Ничего не сохраняется и не отправляется. Помеченное как синтетическое существует только для этого запроса.</string>
+  <string name="prompt_inspect_index_title">Оглавление сегментов</string>
+  <string name="prompt_inspect_expand">Показать всё (%1$d симв.)</string>
+  <string name="prompt_inspect_collapse">Свернуть</string>
+  <string name="prompt_inspect_truncated_hint">показано сокращённо; копирование — полностью</string>
+  <string name="prompt_inspect_copy_with_header">Копировать с заголовком</string>
+  <string name="prompt_inspect_copied">Скопировано</string>
   <string name="prompt_page_position_end_of_chat">В конце запроса (после всех сообщений)</string>
   <string name="prompt_page_tail_user_role_hint">Добавляется как сообщение пользователя в каждом запросе к модели, после всех сообщений и результатов инструментов. Это не предзаполнение ответа ассистента.</string>
 </resources>

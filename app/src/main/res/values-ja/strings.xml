@@ -367,6 +367,9 @@
   <string name="chat_page_regenerate_title">タイトルを再生成</string>
   <string name="chat_page_save">保存</string>
   <string name="chat_page_scroll_to_bottom">一番下へスクロール</string>
+  <string name="chat_page_scroll_to_top">先頭へ</string>
+  <string name="scroll_up_one">前の項目</string>
+  <string name="scroll_down_one">次の項目</string>
   <string name="chat_page_search_chats">チャットを検索</string>
   <string name="chat_page_today">今日</string>
   <string name="chat_page_yesterday">昨日</string>
@@ -1523,6 +1526,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_inspect_cache_body">システムは位置 0 にあり毎回再計算されます——ここは約 %1$d トークンです。その中の可変な内容（日付プレースホルダー、キーワードで有効・無効が切り替わるワールド情報）はキャッシュされた**プレフィックス全体を無効化**します。可変な内容はシステムプロンプトの外に出し、キーワード起動のワールド情報は会話の末尾に置くことを推奨します。</string>
   <string name="prompt_inspect_legend_title">このページについて</string>
   <string name="prompt_inspect_legend_body">読み取り専用のプレビューです。実際のリクエストと同じ組み立てコードを通し、由来ごとに分割して表示します。保存も送信も行いません。「合成」と表示された内容は今回のリクエストにのみ存在します。</string>
+  <string name="prompt_inspect_index_title">セグメント目次</string>
+  <string name="prompt_inspect_expand">すべて表示（%1$d 文字）</string>
+  <string name="prompt_inspect_collapse">折りたたむ</string>
+  <string name="prompt_inspect_truncated_hint">表示は省略されています（コピー/共有は全文）</string>
+  <string name="prompt_inspect_copy_with_header">コピー（出典ヘッダ付き）</string>
+  <string name="prompt_inspect_copied">コピーしました</string>
   <string name="prompt_page_position_end_of_chat">リクエストの末尾（すべてのメッセージの後）</string>
   <string name="prompt_page_tail_user_role_hint">モデルへの各リクエストで、ツールの結果を含む全メッセージの後にユーザーメッセージとして追加します。アシスタントのプリフィルではありません。</string>
 </resources>

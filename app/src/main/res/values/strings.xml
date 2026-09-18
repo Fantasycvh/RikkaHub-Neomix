@@ -406,6 +406,9 @@
   <string name="chat_page_regenerate_title">Regenerate title</string>
   <string name="chat_page_save">Save</string>
   <string name="chat_page_scroll_to_bottom">Scroll to bottom</string>
+  <string name="chat_page_scroll_to_top">Scroll to top</string>
+  <string name="scroll_up_one">Previous item</string>
+  <string name="scroll_down_one">Next item</string>
   <string name="chat_page_search_chats">Search Chats</string>
   <string name="chat_page_today">Today</string>
   <string name="chat_page_yesterday">Yesterday</string>
@@ -1541,6 +1544,12 @@
   <string name="prompt_inspect_cache_body">The system block sits at position 0 and is recomputed every request — here it is about %1$d tokens. Anything volatile inside it (a date placeholder, a world-info entry that toggles on keywords) invalidates the whole cached prefix. Keep volatile content out of the system prompt; keyword-triggered world info belongs at the bottom of the chat.</string>
   <string name="prompt_inspect_legend_title">About this page</string>
   <string name="prompt_inspect_legend_body">Read-only preview assembled by the same code path as a real request, then split by source. Nothing is saved and no request is sent. Items marked synthetic exist only for the request.</string>
+  <string name="prompt_inspect_index_title">Segments index</string>
+  <string name="prompt_inspect_expand">Show all (%1$d chars)</string>
+  <string name="prompt_inspect_collapse">Collapse</string>
+  <string name="prompt_inspect_truncated_hint">truncated for display; copy/share always uses the full text</string>
+  <string name="prompt_inspect_copy_with_header">Copy with source header</string>
+  <string name="prompt_inspect_copied">Copied</string>
   <string name="chat_message_tool_recent_chats">View recent chats</string>
   <string name="chat_message_tool_conversation_search">Search history: %1$s</string>
   <string name="assistant_page_local_tools_screen_time_title">Screen Time</string>
