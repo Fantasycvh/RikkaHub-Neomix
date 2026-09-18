@@ -115,6 +115,18 @@ enum class ClaudePromptCacheTtl(val apiValue: String?) {
 data class ApiKeyEntry(
     val key: String,
     val enabled: Boolean = true,
+    /**
+     * 稳定 id：UI 列表的 item key 用它而不是 [key] 的哈希。
+     *
+     * 为什么需要：编辑器（`ProviderApiKeysEditor`）的 LazyColumn 若以内容哈希作 key，
+     * 每敲一个字符 key 就变 ⇒ Compose 视为「旧行销毁 + 新行创建」⇒ 焦点丢失（IME 收起）
+     * + `animateItem` 播放消失/出现动画（界面抖动）——每个字符都抖一次（历史 bug）。
+     *
+     * 兼容性：参与序列化；旧 JSON 缺此字段时用默认随机值 ⇒ 进程内稳定（settings 在内存中
+     * 是同一批对象），首次写回后落盘、此后跨进程也稳定。两个空 key 行也不会 key 冲突
+     * （旧方案 `"".hashCode()` 恒等，添加两个空行会触发 Compose duplicate-key 崩溃）。
+     */
+    val id: String = Uuid.random().toString(),
 ) {
     companion object {
         /** 从旧单 key 字段（空白/逗号分隔）拆出结构化列表 */

@@ -591,11 +591,14 @@ fun ProviderApiKeysEditor(
         ) {
             itemsIndexed(
                 items = entries,
-                key = { _, entry -> entry.key.hashCode() },
+                // item key 必须用**稳定 id**（ApiKeyEntry.id）而非内容哈希：
+                // 用 key.hashCode() 时每敲一个字符 key 就变 → 该行被销毁重建 →
+                // 焦点丢失（IME 收起）+ animateItem 播放动画（抖动）——历史 bug
+                key = { _, entry -> entry.id },
             ) { index, entry ->
                 ReorderableItem(
                     state = reorderableState,
-                    key = entry.key.hashCode(),
+                    key = entry.id,
                 ) { isDragging ->
                     Row(
                         modifier = Modifier
