@@ -171,6 +171,8 @@
   <string name="assistant_page_time_reminder_interval_desc">Insert a reminder when the message gap exceeds this interval. Always remind before the first user message.</string>
   <string name="assistant_page_time_reminder_interval_value">%1$d min</string>
   <string name="assistant_page_title">Assistant Settings</string>
+  <string name="assistant_disabled_badge">Disabled</string>
+  <string name="assistant_picker_empty_all_disabled">All assistants are disabled. Re-enable them on the assistant management page.</string>
   <string name="assistant_page_top_p">Top P</string>
   <string name="assistant_page_top_p_value">Top P: %s</string>
   <string name="assistant_page_top_p_warning">Please don\'t modify this value unless you know what you\'re doing</string>
@@ -763,6 +765,8 @@
   <string name="search_page_title">Search Messages</string>
   <string name="search_page_untitled">Untitled</string>
   <string name="search_picker_title">Search Settings</string>
+  <string name="search_service_disabled_badge">Disabled</string>
+  <string name="search_picker_empty_all_disabled">All search services are disabled. Enable one in the search service settings.</string>
   <string name="select_and_copy">Select and Copy</string>
   <string name="send">Send</string>
   <string name="setting_asr_configure_api_key">API Key</string>

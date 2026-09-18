@@ -112,7 +112,35 @@ data class Assistant(
     val timeReminderIntervalMinutes: Int = 60,          // 时间提醒间隔（分钟，至少 1 分钟）
     val allowConversationSystemPrompt: Boolean = false, // 允许对话单独重写 system prompt
     val allowConversationPromptInjection: Boolean = false, // 允许对话单独绑定提示词注入
+    /**
+     * 助手**归档**开关（false = 已停用）。
+     *
+     * 语义边界（与删除的本质区别）：停用只把助手从**选择器**里藏起来（新建会话选不到），
+     * **既有会话照常可用**——`getCurrentAssistant()` / `getAssistantById` 的解析链不过滤此字段，
+     * 会话绑定、记忆、备份全都不受影响。要彻底移除走删除（会连带删会话与记忆）。
+     *
+     * 场景：角色卡导入膨胀出的助手，不再常用但不想丢数据。`@Serializable` 子对象字段
+     * 随 JSON 自动持久化，旧数据默认 true，无需迁移。
+     */
+    val enabled: Boolean = true,
 )
+
+/**
+ * 助手选择器的**过滤纯函数**（UI 与单测共用）。
+ *
+ * 规则：已停用助手默认隐藏（[showDisabled] = 管理动作场景如导入目标/恢复模式仍显示）；
+ * 标签过滤与其叠加（与关系，标签空集 = 不过滤）。
+ *
+ * 刻意**不**内联进 composable：过滤规则是「停用语义」的落地处，钉进单测
+ * 防止日后有人把「停用」悄悄改成「连解析也挡掉」。
+ */
+fun List<Assistant>.filterForPicker(
+    showDisabled: Boolean = false,
+    selectedTagIds: Set<Uuid> = emptySet(),
+): List<Assistant> = filter { assistant ->
+    (showDisabled || assistant.enabled) &&
+        (selectedTagIds.isEmpty() || assistant.tags.any { it in selectedTagIds })
+}
 
 @Serializable
 data class QuickMessage(

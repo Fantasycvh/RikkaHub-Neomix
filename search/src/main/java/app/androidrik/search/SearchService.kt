@@ -145,6 +145,16 @@ data class ScrapedResultMetadata(
 sealed class SearchServiceOptions {
     abstract val id: Uuid
 
+    /**
+     * 启停开关（false = 已停用/归档）。**每个子类型都作为构造参数声明**（同 [id] 的模式）——
+     * `searchServices` 整体序列化为单 key JSON，故此字段随同一份 JSON 落盘，
+     * 不需要新的 PreferencesStore key；旧 JSON 缺字段时读到默认 true（零迁移）。
+     *
+     * 语义：停用的服务在聊天搜索选择器里隐藏，且选中项被停用时**不注册搜索工具**
+     * （联网搜索整体降级）；管理页恒显，可重新启用。
+     */
+    abstract val enabled: Boolean
+
     /** 兼容旧单 key 字段（部分服务无 key，默认空）。@Transient：子类型覆盖字段各自序列化，避免层级重名 */
     @Transient
     open val apiKey: String = ""
@@ -185,13 +195,15 @@ sealed class SearchServiceOptions {
     @Serializable
     @SerialName("bing_local")
     class BingLocalOptions(
-        override val id: Uuid = Uuid.random()
+        override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
     ) : SearchServiceOptions()
 
     @Serializable
     @SerialName("zhipu")
     data class ZhipuOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
     ) : SearchServiceOptions()
@@ -200,6 +212,7 @@ sealed class SearchServiceOptions {
     @SerialName("doubao")
     data class DoubaoOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
         val mode: DoubaoSearchMode = DoubaoSearchMode.CUSTOM,
@@ -209,6 +222,7 @@ sealed class SearchServiceOptions {
     @SerialName("tavily")
     data class TavilyOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
         val depth: String = "advanced",
@@ -218,6 +232,7 @@ sealed class SearchServiceOptions {
     @SerialName("exa")
     data class ExaOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
     ) : SearchServiceOptions()
@@ -226,6 +241,7 @@ sealed class SearchServiceOptions {
     @SerialName("searxng")
     data class SearXNGOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         val url: String = "",
         val engines: String = "",
         val language: String = "",
@@ -237,6 +253,7 @@ sealed class SearchServiceOptions {
     @SerialName("linkup")
     data class LinkUpOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
         val depth: String = "standard",
@@ -246,6 +263,7 @@ sealed class SearchServiceOptions {
     @SerialName("brave")
     data class BraveOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
     ) : SearchServiceOptions()
@@ -254,6 +272,7 @@ sealed class SearchServiceOptions {
     @SerialName("metaso")
     data class MetasoOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
     ) : SearchServiceOptions()
@@ -262,6 +281,7 @@ sealed class SearchServiceOptions {
     @SerialName("ollama")
     data class OllamaOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
     ) : SearchServiceOptions()
@@ -270,6 +290,7 @@ sealed class SearchServiceOptions {
     @SerialName("perplexity")
     data class PerplexityOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
         val maxTokens: Int? = null,
@@ -280,6 +301,7 @@ sealed class SearchServiceOptions {
     @SerialName("firecrawl")
     data class FirecrawlOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
     ) : SearchServiceOptions()
@@ -288,6 +310,7 @@ sealed class SearchServiceOptions {
     @SerialName("jina")
     data class JinaOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
         val searchUrl: String = "https://s.jina.ai/",
@@ -298,6 +321,7 @@ sealed class SearchServiceOptions {
     @SerialName("bocha")
     data class BochaOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
         val summary: Boolean = true,
@@ -307,6 +331,7 @@ sealed class SearchServiceOptions {
     @SerialName("rikkahub")
     data class RikkaHubOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
         val depth: String = "standard",
@@ -316,6 +341,7 @@ sealed class SearchServiceOptions {
     @SerialName("grok")
     data class GrokOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
         val model: String = "grok-4-1-fast-non-reasoning",
@@ -327,6 +353,7 @@ sealed class SearchServiceOptions {
     @SerialName("tinyfish")
     data class TinyfishOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
     ) : SearchServiceOptions()
@@ -335,6 +362,7 @@ sealed class SearchServiceOptions {
     @SerialName("serper")
     data class SerperOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
     ) : SearchServiceOptions()
@@ -343,6 +371,7 @@ sealed class SearchServiceOptions {
     @SerialName("custom_js")
     data class CustomJsOptions(
         override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
         val name: String = "",
         val searchScript: String = DEFAULT_SEARCH_SCRIPT,
         val scrapeScript: String = "",
@@ -421,7 +450,52 @@ internal suspend fun Call.await(): Response {
 
 // ---------- 搜索多 key（与服务端 provider 侧同款语义） ----------
 
-/** 多 key 统一读取：enabled 过滤后回退旧单 key 字段（与 ProviderSetting.effectiveApiKeys 一致） */
+/**
+ * 启停过滤（**纯函数**，选择器 UI 与单测共用）。
+ *
+ * 返回 (真实索引, 服务) 对：`searchServiceSelected` 是**完整列表的索引**而非 id，
+ * 选择器隐藏停用项后点击回调必须仍回传真实索引，否则会选错服务。
+ */
+fun List<SearchServiceOptions>.enabledServicesWithIndex(): List<Pair<Int, SearchServiceOptions>> =
+    withIndex().filter { it.value.enabled }.map { (index, value) -> index to value }
+
+/** 当前选中项是否可用（存在且未停用）；停用 ⇒ 使用点不注册搜索工具。 */
+fun List<SearchServiceOptions>.isServiceUsable(selectedIndex: Int): Boolean =
+    getOrNull(selectedIndex)?.enabled == true
+
+/**
+ * 返回改了 [enabled] 的副本。
+ *
+ * 分发到各子类型是必要的：`enabled` 是各子类自己的构造参数，密封基类上拿不到统一的 `copy`
+ * （与 [withNextKey] 同因；那边 Bing/SearXNG/CustomJs 无 key 故直接返回 null，这里三者也要改）。
+ */
+fun <T : SearchServiceOptions> T.withEnabled(enabled: Boolean): T {
+    if (this.enabled == enabled) return this
+    @Suppress("UNCHECKED_CAST")
+    return when (this) {
+        is SearchServiceOptions.BingLocalOptions -> SearchServiceOptions.BingLocalOptions(id = id, enabled = enabled)
+        is SearchServiceOptions.SearXNGOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.CustomJsOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.ZhipuOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.DoubaoOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.TavilyOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.ExaOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.LinkUpOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.BraveOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.MetasoOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.OllamaOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.PerplexityOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.FirecrawlOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.JinaOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.BochaOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.RikkaHubOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.GrokOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.TinyfishOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.SerperOptions -> copy(enabled = enabled)
+    } as T
+}
+
+/** 搜索多 key 统一读取：enabled 过滤后回退旧单 key 字段（与 ProviderSetting.effectiveApiKeys 一致） */
 val SearchServiceOptions.effectiveApiKeys: String
     get() {
         val keys = apiKeys.filter { it.enabled }.map { it.key }.filter { it.isNotBlank() }.distinct()

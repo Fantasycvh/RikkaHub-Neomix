@@ -169,6 +169,8 @@
   <string name="assistant_page_time_reminder_interval_desc">메시지 간격이 이 값을 초과하면 알림을 삽입합니다. 첫 번째 사용자 메시지 전에는 항상 삽입됩니다.</string>
   <string name="assistant_page_time_reminder_interval_value">%1$d분</string>
   <string name="assistant_page_title">어시스턴트 설정</string>
+  <string name="assistant_disabled_badge">비활성</string>
+  <string name="assistant_picker_empty_all_disabled">모든 어시스턴트가 비활성화되었습니다. 관리 페이지에서 다시 활성화할 수 있습니다.</string>
   <string name="assistant_page_top_p">Top P</string>
   <string name="assistant_page_top_p_value">Top P: %s</string>
   <string name="assistant_page_top_p_warning">무엇을 하는지 아닌 이상 이 값을 수정하지 마세요</string>
@@ -719,6 +721,8 @@
   <string name="search_page_title">메시지 검색</string>
   <string name="search_page_untitled">제목 없음</string>
   <string name="search_picker_title">검색 설정</string>
+  <string name="search_service_disabled_badge">비활성</string>
+  <string name="search_picker_empty_all_disabled">모든 검색 서비스가 비활성화되었습니다. 설정에서 활성화하세요.</string>
   <string name="select_and_copy">선택 및 복사</string>
   <string name="send">전송</string>
   <string name="setting_asr_configure_api_key">API 키</string>

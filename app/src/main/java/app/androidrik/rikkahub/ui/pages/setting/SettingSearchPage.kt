@@ -29,6 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -62,6 +63,7 @@ import app.androidrik.rikkahub.utils.plus
 import app.androidrik.search.SearchCommonOptions
 import app.androidrik.search.SearchService
 import app.androidrik.search.SearchServiceOptions
+import app.androidrik.search.withEnabled
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -143,6 +145,22 @@ fun SettingSearchPage(vm: SettingVM = koinViewModel()) {
                                     settings.copy(searchServices = newServices)
                                 )
                             }
+                        },
+                        // 停用当前选中项时自动切到第一个启用的服务，避免「选中项不可用」的死状态；
+                        // 全部停用时保持索引（此时搜索工具不注册，联网搜索整体降级，见 SearchTools）
+                        onToggleEnabled = { enabled ->
+                            val newServices = settings.searchServices.map {
+                                if (it.id == service.id) it.withEnabled(enabled) else it
+                            }
+                            val newSelected = if (!enabled && settings.searchServiceSelected == settings.searchServices.indexOf(service)) {
+                                newServices.withIndex().firstOrNull { it.value.enabled }?.index
+                                    ?: settings.searchServiceSelected
+                            } else {
+                                settings.searchServiceSelected
+                            }
+                            vm.updateSettings(
+                                settings.copy(searchServices = newServices, searchServiceSelected = newSelected)
+                            )
                         },
                         canDelete = settings.searchServices.size > 1,
                         modifier = Modifier
@@ -293,6 +311,7 @@ private fun SearchProviderCard(
     service: SearchServiceOptions,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit,
     canDelete: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -324,8 +343,24 @@ private fun SearchProviderCard(
                     text = service.displayName,
                     style = MaterialTheme.typography.titleMedium
                 )
-                SearchAbilityTagLine(options = service)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (!service.enabled) {
+                        // 归档标注：聊天选择器里已隐藏；此处是管理页，仍可编辑/删除/重新启用
+                        Tag(type = TagType.INFO) {
+                            Text(stringResource(R.string.search_service_disabled_badge))
+                        }
+                    }
+                    SearchAbilityTagLine(options = service)
+                }
             }
+
+            Switch(
+                checked = service.enabled,
+                onCheckedChange = onToggleEnabled,
+            )
 
             IconButton(onClick = { showMenu = true }) {
                 Icon(

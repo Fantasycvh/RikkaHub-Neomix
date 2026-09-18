@@ -169,6 +169,8 @@
   <string name="assistant_page_time_reminder_interval_desc">Вставляет напоминание, если пауза между сообщениями превышает интервал. Всегда напоминает перед первым сообщением.</string>
   <string name="assistant_page_time_reminder_interval_value">%1$d мин</string>
   <string name="assistant_page_title">Настройки ассистента</string>
+  <string name="assistant_disabled_badge">Отключён</string>
+  <string name="assistant_picker_empty_all_disabled">Все ассистенты отключены. Включите их повторно на странице управления.</string>
   <string name="assistant_page_top_p">Top P</string>
   <string name="assistant_page_top_p_value">Top P: %s</string>
   <string name="assistant_page_top_p_warning">Пожалуйста, не изменяйте это значение, если не уверены в своих действиях</string>
@@ -719,6 +721,8 @@
   <string name="search_page_title">Поиск сообщений</string>
   <string name="search_page_untitled">Без названия</string>
   <string name="search_picker_title">Поиск настроек</string>
+  <string name="search_service_disabled_badge">Отключён</string>
+  <string name="search_picker_empty_all_disabled">Все поисковые сервисы отключены. Включите один в настройках.</string>
   <string name="select_and_copy">Выделить и скопировать</string>
   <string name="send">Отправить</string>
   <string name="setting_asr_configure_api_key">Ключ API</string>

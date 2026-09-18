@@ -169,6 +169,8 @@
   <string name="assistant_page_time_reminder_interval_desc">メッセージ間隔がこの値を超えるとリマインダーを挿入します。最初のユーザーメッセージの前には常に挿入します。</string>
   <string name="assistant_page_time_reminder_interval_value">%1$d 分</string>
   <string name="assistant_page_title">アシスタント設定</string>
+  <string name="assistant_disabled_badge">無効</string>
+  <string name="assistant_picker_empty_all_disabled">すべてのアシスタントが無効です。管理ページで再度有効化できます。</string>
   <string name="assistant_page_top_p">Top P</string>
   <string name="assistant_page_top_p_value">Top P: %s</string>
   <string name="assistant_page_top_p_warning">何をしているのか理解している場合を除き、この値を変更しないでください</string>
@@ -719,6 +721,8 @@
   <string name="search_page_title">メッセージを検索</string>
   <string name="search_page_untitled">無題</string>
   <string name="search_picker_title">検索設定</string>
+  <string name="search_service_disabled_badge">無効</string>
+  <string name="search_picker_empty_all_disabled">すべての検索サービスが無効です。設定で有効化してください。</string>
   <string name="select_and_copy">選択コピー</string>
   <string name="send">送信</string>
   <string name="setting_asr_configure_api_key">APIキー</string>

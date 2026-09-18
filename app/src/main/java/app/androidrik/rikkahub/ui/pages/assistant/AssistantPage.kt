@@ -35,6 +35,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -214,6 +215,15 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                             },
                             onDelete = {
                                 vm.removeAssistant(assistant)
+                            },
+                            onToggleEnabled = { enabled ->
+                                vm.updateSettings(
+                                    settings.copy(
+                                        assistants = settings.assistants.map {
+                                            if (it.id == assistant.id) it.copy(enabled = enabled) else it
+                                        }
+                                    )
+                                )
                             },
                             modifier = Modifier
                                 .scale(if (isDragging) 0.95f else 1f)
@@ -395,6 +405,7 @@ private fun AssistantItem(
     onEdit: () -> Unit,
     onShowActions: () -> Unit,
     onDelete: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit,
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     Card(
@@ -435,6 +446,12 @@ private fun AssistantItem(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (!assistant.enabled) {
+                        // 归档标注：与切换器隐藏行为对应；此处是管理页，停用助手仍可见可改
+                        Tag(type = TagType.INFO) {
+                            Text(stringResource(R.string.assistant_disabled_badge))
+                        }
+                    }
                     if (assistant.enableMemory) {
                         Tag(type = TagType.SUCCESS) {
                             Text(stringResource(R.string.assistant_page_memory_count, memories.size))
@@ -468,6 +485,11 @@ private fun AssistantItem(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // 启停开关：归档语义（切换器隐藏，数据不动）。管理页恒显全部助手。
+                Switch(
+                    checked = assistant.enabled,
+                    onCheckedChange = onToggleEnabled,
+                )
                 if (assistant.id !in DEFAULT_ASSISTANTS_IDS) {
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(

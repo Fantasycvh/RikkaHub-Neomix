@@ -47,6 +47,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.filterForPicker
 import app.androidrik.rikkahub.ui.components.ui.UIAvatar
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.hooks.rememberAssistantState
@@ -76,6 +77,15 @@ fun AssistantPicker(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                // 当前助手可以是已停用的（停用只影响切换器隐藏，不解除解析）——标注以免「怎么不见了」困惑
+                if (!state.currentAssistant.enabled) {
+                    Text(
+                        text = stringResource(R.string.assistant_disabled_badge),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
 
                 Spacer(Modifier.weight(1f))
 
@@ -115,13 +125,18 @@ fun AssistantPicker(
  * [AssistantPicker]，因为它的 `AssistantState.setSelectAssistant` 会写
  * `settings.assistantId`（改掉用户的当前助手），而导入只是选目标、不该有副作用。
  * 见 `docs/design-conversation-import-export.md` §4.2。
+ *
+ * @param showDisabled 已停用（归档）助手是否显示。主切换器默认**隐藏**；
+ *   恢复模式（SafeMode）与导入目标等**管理动作**场景传 true——归档助手仍可被
+ *   选为导入目标/在恢复模式里查看，只显示「已停用」标注。
  */
 @Composable
 internal fun AssistantPickerSheet(
     settings: Settings,
     currentAssistant: Assistant,
     onAssistantSelected: (Assistant) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    showDisabled: Boolean = false,
 ) {
     val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
     val scope = rememberCoroutineScope()
@@ -130,15 +145,9 @@ internal fun AssistantPickerSheet(
     // 标签过滤状态
     var selectedTagIds by remember { mutableStateOf(emptySet<Uuid>()) }
 
-    // 根据选中的标签过滤助手
-    val filteredAssistants = remember(settings.assistants, selectedTagIds) {
-        if (selectedTagIds.isEmpty()) {
-            settings.assistants
-        } else {
-            settings.assistants.filter { assistant ->
-                assistant.tags.any { tagId -> tagId in selectedTagIds }
-            }
-        }
+    // 根据选中的标签过滤助手（主切换器场景额外隐藏已停用助手）——规则见 [Assistant].filterForPicker
+    val filteredAssistants = remember(settings.assistants, selectedTagIds, showDisabled) {
+        settings.assistants.filterForPicker(showDisabled = showDisabled, selectedTagIds = selectedTagIds)
     }
 
     ModalBottomSheet(
@@ -184,6 +193,18 @@ internal fun AssistantPickerSheet(
 
             // 助手列表
             val navController = LocalNavController.current
+            if (filteredAssistants.isEmpty()) {
+                // 全部助手都已停用（或标签过滤后为空）：给明确空态而不是白板
+                Text(
+                    text = stringResource(R.string.assistant_picker_empty_all_disabled),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -209,8 +230,7 @@ internal fun AssistantPickerSheet(
                                     navController.navigate(Screen.AssistantDetail(assistant.id.toString()))
                                 }
                             }
-                        )
-                    }
+                        )                    }
                 }
             }
         }
@@ -231,6 +251,10 @@ private fun AssistantItem(
                 overflow = TextOverflow.Ellipsis
             )
         },
+        supportingContent = if (!assistant.enabled) {
+            // showDisabled 场景（导入目标/恢复模式）下标注归档状态，避免误选
+            { Text(stringResource(R.string.assistant_disabled_badge)) }
+        } else null,
         leadingContent = {
             UIAvatar(
                 name = assistant.name.ifEmpty { defaultAssistantName },

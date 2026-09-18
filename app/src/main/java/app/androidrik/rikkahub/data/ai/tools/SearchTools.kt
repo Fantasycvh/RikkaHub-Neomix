@@ -14,6 +14,7 @@ import app.androidrik.rikkahub.utils.toLocalString
 import app.androidrik.search.SearchService
 import app.androidrik.search.SearchServiceOptions
 import app.androidrik.search.effectiveApiKeys
+import app.androidrik.search.isServiceUsable
 import app.androidrik.search.splitSearchApiKeys
 import app.androidrik.search.withNextKey
 import app.androidrik.rikkahub.data.ai.isKeySwitchingError
@@ -22,6 +23,11 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 fun createSearchTools(settings: Settings): Set<Tool> {
+    // 停用降级：当前选中的搜索服务被停用 ⇒ 不注册搜索工具（等价于该会话关闭联网搜索），
+    // 而不是让模型调用时才失败。用户重新启用或换选服务后，下一次生成自动恢复。
+    if (!settings.searchServices.isServiceUsable(settings.searchServiceSelected)) {
+        return emptySet()
+    }
     return buildSet {
         add(
             Tool(

@@ -61,6 +61,8 @@ fun ImportTargetAssistantDialog(
                 showPicker = false
             },
             onDismiss = { showPicker = false },
+            // 导入目标是管理动作：已停用（归档）助手仍可作为目标，仅标注显示
+            showDisabled = true,
         )
     }
 

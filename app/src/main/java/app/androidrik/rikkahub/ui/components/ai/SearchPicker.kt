@@ -11,8 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -55,6 +56,7 @@ import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.Navigator
 import app.androidrik.rikkahub.ui.pages.setting.SearchAbilityTagLine
 import app.androidrik.search.SearchServiceOptions
+import app.androidrik.search.enabledServicesWithIndex
 import org.koin.compose.koinInject
 
 @Composable
@@ -235,13 +237,36 @@ private fun AppSearchSettings(
         }
     }
 
+    // 停用的服务在选择器里隐藏。注意回传的是**真实索引**（searchServiceSelected 是完整
+    // 列表的索引、不是 id），故用 enabledServicesWithIndex 而不是裸 withIndex。
+    val visibleServices = remember(settings.searchServices) {
+        settings.searchServices.enabledServicesWithIndex()
+    }
+
     LazyVerticalGrid(
         modifier = modifier.fillMaxSize(),
         columns = GridCells.Adaptive(150.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        itemsIndexed(settings.searchServices) { index, service ->
+        if (visibleServices.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = stringResource(R.string.search_picker_empty_all_disabled),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                )
+            }
+        }
+        // key 用真实索引：服务被停用后可见列表下标会整体前移，用显示下标做 key 会串位
+        items(
+            count = visibleServices.size,
+            key = { visibleServices[it].first },
+        ) { position ->
+            val (index, service) = visibleServices[position]
             val containerColor = animateColorAsState(
                 if (settings.searchServiceSelected == index) {
                     MaterialTheme.colorScheme.primaryContainer

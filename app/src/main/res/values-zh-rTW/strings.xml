@@ -171,6 +171,8 @@
   <string name="assistant_page_time_reminder_interval_desc">訊息間隔超過該值時插入時間提醒；第一條使用者訊息前始終提醒。</string>
   <string name="assistant_page_time_reminder_interval_value">%1$d 分鐘</string>
   <string name="assistant_page_title">助手設定</string>
+  <string name="assistant_disabled_badge">已停用</string>
+  <string name="assistant_picker_empty_all_disabled">所有助手均已停用。可在助手管理頁重新啟用。</string>
   <string name="assistant_page_top_p">Top P</string>
   <string name="assistant_page_top_p_value">Top P: %s</string>
   <string name="assistant_page_top_p_warning">請不要修改此值, 除非你知道自己在做什麼</string>
@@ -756,6 +758,8 @@
   <string name="search_page_title">搜尋訊息</string>
   <string name="search_page_untitled">無標題</string>
   <string name="search_picker_title">搜尋設定</string>
+  <string name="search_service_disabled_badge">已停用</string>
+  <string name="search_picker_empty_all_disabled">所有搜尋服務均已停用。請在搜尋服務設定中啟用。</string>
   <string name="select_and_copy">選擇複製</string>
   <string name="send">發送</string>
   <string name="setting_asr_configure_api_key">API 金鑰</string>
