@@ -561,4 +561,54 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
 数据已用 protobuf 精准 splice 从旧 key 恢复（14 条经解析验证），并加回归测试
 `ImportPreservesExistingDataTest` 锁住「必须基于最新列表而非 dummy 基线」。
 
+### 6.12 拼装预览的浏览体验（2026-09-18，`b57a336c`）+ **待办 Tier 4**
+
+**已完成 Tier 1–3**：
+
+- **Tier 1 定位/跳转**：把 `ChatList` 私有 `MessageJumper` 抽成共享
+  `ui/components/ui/ScrollJumperBar.kt`（顶尖头/上一项/下一项/底尖头 + 可选 `N/M` 进度标签）；
+  预览页加**段落目录卡**（一行一段 `#N · 来源 · token`，点按随机访问）。
+  段落下标 = 概览(0)+缓存提示(1)+目录(2) 之后的第 n 项 ⇒ **n + 3**（三者都是 `item` 槽位，
+  内容为空也占位 ⇒ 偏移是常量）。跳转条沿用聊天页节奏「滚动浮现、静止 1.5s 隐去」，**靠右放**
+  （预览页正文满宽，靠左会叠字）。
+- **Tier 2 长段折叠**（真正解决痛点的一层）：>1200 字符的段默认折叠。
+  **开关必须在卡头**——初版放正文下方，展开 11,027 字符的 system 段后按钮被推到几十屏外、
+  再也点不到（真机实测踩到）。卡面显示截断内容，但**复制/分享始终用完整文本**。
+- **Tier 3 段内操作**：复制内容 / 复制（含来源表头 `#N label [role, ≈tokens]`）/ 分享。
+  **刻意不做**「翻译」「引用」：只读预览里翻译无语义、引用没有可指向的消息对象。
+- 顺带把代理对安全截断提为 `common/text/TextTruncation.kt`（`String.truncateSafely`），
+  ai 的引用快照与预览页折叠共用（原先 ai 模块那份 internal 实现改为调用 common）。
+
+#### ⏳ Tier 4（未做，本次仅记录）——「点注入段 → 跳到产出它的条目」
+
+**价值**：把预览从「只读展示」变成「可归因并可操作」——看到某段世界书/模式注入不合适时直接
+跳到它的编辑处；同时解锁 v1.0.7 发布说明里已宣称、但实现里不存在的**「按条目开关」**。
+
+**规模：中**。两处结构性障碍，缺一不可：
+
+1. **`PromptSegment` 不带来源身份**：现有字段只有 `kind`（4 个粗类）/`label`/`role`/`content`/
+   `isSynthetic`/`tokens`，**没有条目 id** ⇒「这段注入来自世界书第 3 条」当前无从得知。
+2. **逐条身份在合并那一步就丢了**：`PromptInjectionTransformer.createMergedInjectionMessages`
+   把同一 position 的多条注入 `groupBy { role }` 后 `joinToString("\n")` **合成一条消息**
+   ⇒ 三条世界书条目落到预览里就是一段文本，无法再拆。
+   同理 `buildSystemPromptText` 是**单个 `buildString`**，systemPrompt / 记忆 / 每个工具 schema /
+   渲染提示之间没有边界标记 ⇒ 按来源细分也做不到。
+
+**改造要点（含约束）**：
+
+- 注入合并时记录贡献者 id（或改为不合并——需先评估合并本身是否为规避某些端点的行为差异而存在）。
+- `buildSystemPromptText` 从单个 `buildString` 改为「带标签的块列表」（每块一个来源标记）。
+- ⚠️ **约束：组装输出必须逐字节不变**。`PromptAssemblyTest` 已锁住组装契约，且 system 在位置 0
+  ——**任何字节变化都会作废前缀缓存**（见 §6.7 ④ 与 `upstream-analysis.md` 注意点）。重构后
+  要用特征测试比对新旧输出。
+
+#### ⚠️ 顺带确认的发布说明偏差（待处理）
+
+v1.0.7 更新日志写着「新增拼装预览：发送前可查看提示词实际分段与占用，**支持按条目开关**」，
+但**预览页里没有任何开关**（grep `Switch`/`FilterChip`/`onToggle` 全空）。核实：
+对应实现 `e9c75dbd`（提示词分段槽位视图）**完全没碰** `promptinspect` 目录，
+它落在**助手详情页的角色卡字段区** ⇒ 真正「按条目开关」的是角色卡槽位，不是预览页。
+**发布说明把两者说得像一件事，属公开文案的事实性偏差**——要么改文案，要么在 Tier 4 里把
+预览的逐条开关真正做出来。
+
 关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）。
