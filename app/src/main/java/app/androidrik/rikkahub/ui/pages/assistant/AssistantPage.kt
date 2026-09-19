@@ -62,7 +62,6 @@ import me.rerere.hugeicons.stroke.MoreVertical
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.Screen
-import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANTS_IDS
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
@@ -490,14 +489,18 @@ private fun AssistantItem(
                     checked = assistant.enabled,
                     onCheckedChange = onToggleEnabled,
                 )
-                if (assistant.id !in DEFAULT_ASSISTANTS_IDS) {
-                    IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(
-                            imageVector = HugeIcons.Delete01,
-                            contentDescription = stringResource(R.string.assistant_page_delete),
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
+                // 删除对内置助手也开放（墓碑机制保证不复活）；仅保护「最后一个助手」——
+                // 删光会让 getCurrentAssistant 的 first() 兜底崩溃
+                IconButton(
+                    onClick = { showDeleteDialog = true },
+                    enabled = settings.assistants.size > 1,
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Delete01,
+                        contentDescription = stringResource(R.string.assistant_page_delete),
+                        tint = if (settings.assistants.size > 1) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    )
                 }
                 IconButton(
                     onClick = onShowActions

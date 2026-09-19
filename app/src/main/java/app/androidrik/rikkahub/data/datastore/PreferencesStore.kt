@@ -129,6 +129,7 @@ class SettingsStore(
         val RETRY_SETTING = stringPreferencesKey("retry_setting")
         // 已删除的内置提供商（墓碑：默认回填跳过）
         val REMOVED_BUILTIN_PROVIDERS = stringPreferencesKey("removed_builtin_providers")
+        val REMOVED_ASSISTANTS = stringPreferencesKey("removed_assistants")
 
         // 助手
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
@@ -268,6 +269,9 @@ class SettingsStore(
                 removedBuiltInProviderIds = preferences[REMOVED_BUILTIN_PROVIDERS]?.let {
                     JsonInstant.decodeFromString<List<String>>(it).map { raw -> Uuid.parse(raw) }.toSet()
                 } ?: emptySet(),
+                removedAssistantIds = preferences[REMOVED_ASSISTANTS]?.let {
+                    JsonInstant.decodeFromString<List<String>>(it).map { raw -> Uuid.parse(raw) }.toSet()
+                } ?: emptySet(),
                 retrySetting = preferences[RETRY_SETTING]?.let { JsonInstant.decodeFromString(it) }
                     ?: RetrySetting(),
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
@@ -379,11 +383,7 @@ class SettingsStore(
                 } else provider
             }.toMutableList()
             val assistants = it.assistants.ifEmpty { DEFAULT_ASSISTANTS }.toMutableList()
-            DEFAULT_ASSISTANTS.forEach { defaultAssistant ->
-                if (assistants.none { it.id == defaultAssistant.id }) {
-                    assistants.add(defaultAssistant.copy())
-                }
-            }
+            refillDefaultAssistants(assistants, it.removedAssistantIds)
             val ttsProviders = it.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }.toMutableList()
             DEFAULT_TTS_PROVIDERS.forEach { defaultTTSProvider ->
                 if (ttsProviders.none { provider -> provider.id == defaultTTSProvider.id }) {
@@ -503,6 +503,8 @@ class SettingsStore(
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
             preferences[REMOVED_BUILTIN_PROVIDERS] =
                 JsonInstant.encodeToString(settings.removedBuiltInProviderIds.map { it.toString() })
+            preferences[REMOVED_ASSISTANTS] =
+                JsonInstant.encodeToString(settings.removedAssistantIds.map { it.toString() })
             preferences[RETRY_SETTING] = JsonInstant.encodeToString(settings.retrySetting)
 
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
@@ -679,6 +681,8 @@ data class Settings(
     /** 用户显式删除的内置提供商 id（墓碑）——默认回填逻辑跳过这些 */
     val removedBuiltInProviderIds: Set<Uuid> = emptySet(),
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,
+    /** 用户显式删除的内置助手 id（墓碑）——默认回填逻辑跳过这些（与提供商墓碑同款） */
+    val removedAssistantIds: Set<Uuid> = emptySet(),
     val assistantTags: List<Tag> = emptyList(),
 
     /**
@@ -1016,6 +1020,24 @@ private val DEFAULT_TTS_PROVIDERS = listOf(
 )
 
 internal val DEFAULT_ASSISTANTS_IDS = DEFAULT_ASSISTANTS.map { it.id }
+
+/**
+ * 内置助手回填：缺省（首次安装）或用户删掉了某个内置助手时补回。
+ *
+ * **跳过墓碑**（[removedIds]）：用户显式删除过的内置助手不再回填——否则读路径每次
+ * 都把删掉的加回来，等于删不掉（这正是此前内置助手无法删除的机制）。
+ * 与提供商墓碑（`removedBuiltInProviderIds`）同款模式。**纯函数**便于单测。
+ */
+internal fun refillDefaultAssistants(
+    existing: MutableList<Assistant>,
+    removedIds: Set<Uuid>,
+) {
+    DEFAULT_ASSISTANTS.forEach { defaultAssistant ->
+        if (existing.none { it.id == defaultAssistant.id } && defaultAssistant.id !in removedIds) {
+            existing.add(defaultAssistant.copy())
+        }
+    }
+}
 
 val DEFAULT_MODE_INJECTIONS = listOf(
     PromptInjection.ModeInjection(
