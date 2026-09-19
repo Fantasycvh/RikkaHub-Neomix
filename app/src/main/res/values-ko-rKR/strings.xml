@@ -1540,4 +1540,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="prompt_inspect_copied">복사됨</string>
   <string name="prompt_page_position_end_of_chat">요청 끝 (모든 메시지 뒤)</string>
   <string name="prompt_page_tail_user_role_hint">모델에 요청할 때마다 도구 결과를 포함한 모든 메시지 뒤에 사용자 메시지로 추가합니다. 어시스턴트 프리필이 아닙니다.</string>
+  <string name="prompt_page_tail_system_role_hint">요청 맨 끝에 시스템 메시지로 전송됩니다. Claude/Gemini는 상단 시스템만 허용하므로 사용자 메시지로 변환됩니다(캐시 유지).</string>
+  <string name="prompt_page_role_system">시스템</string>
 </resources>

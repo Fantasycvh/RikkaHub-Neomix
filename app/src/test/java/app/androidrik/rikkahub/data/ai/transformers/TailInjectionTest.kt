@@ -49,18 +49,23 @@ class TailInjectionTest {
     }
 
     @Test
-    fun `tail merges in descending priority regardless of stored role`() {
-        val low = tail.copy(priority = 1, content = "Low", role = MessageRole.ASSISTANT)
-        val high = PromptInjection.ModeInjection(
+    fun `tail groups by role - system first, user merged, assistant ignored`() {
+        // #1542 分段式系统提示：尾部按 role 分组（SYSTEM 段在前、USER 段在后）；
+        // ASSISTANT 防御性忽略（防预填充）——取代旧的「无视存储 role 全并 user」行为。
+        val userEntry = tail.copy(priority = 1, content = "Low")
+        val systemEntry = PromptInjection.ModeInjection(
             priority = 8,
             content = "High",
             role = MessageRole.SYSTEM,
             position = InjectionPosition.END_OF_CHAT,
         )
-        val result = apply(emptyList(), listOf(low, high))
-        assertEquals(1, result.size)
-        assertEquals("High\nLow", result.single().text())
-        assertEquals(MessageRole.USER, result.single().role)
+        val assistantEntry = tail.copy(priority = 4, content = "prefill", role = MessageRole.ASSISTANT)
+        val result = apply(emptyList(), listOf(userEntry, systemEntry, assistantEntry))
+        assertEquals(2, result.size)
+        assertEquals(MessageRole.SYSTEM, result[0].role)
+        assertEquals("High", result[0].text())
+        assertEquals(MessageRole.USER, result[1].role)
+        assertEquals("Low", result[1].text())
     }
 
     @Test
@@ -109,4 +114,74 @@ class TailInjectionTest {
         assertEquals(InjectionPosition.AFTER_SYSTEM_PROMPT,
             Json.decodeFromString<PromptInjection.ModeInjection>("{}").position)
     }
+
+    // ---- #1542 分段式系统提示：尾部 SYSTEM 角色 ----
+
+    private fun systemTail(content: String) = PromptInjection.ModeInjection(
+        content = content,
+        position = InjectionPosition.END_OF_CHAT,
+        role = MessageRole.SYSTEM,
+    )
+
+    @Test
+    fun `system tail appends a system message after history`() {
+        val result = apply(
+            messages = listOf(UIMessage.user("q")),
+            entries = listOf(systemTail("尾部系统指令")),
+        )
+        val last = result.last()
+        assertEquals(MessageRole.SYSTEM, last.role)
+        assertTrue(last.isSynthetic)
+        assertEquals("尾部系统指令", last.text())
+        // 前缀不变
+        assertEquals("q", result.first().text())
+    }
+
+    @Test
+    fun `mixed system and user tails emit system first then user`() {
+        val result = apply(
+            messages = listOf(UIMessage.user("q")),
+            entries = listOf(
+                systemTail("SYS-段"),
+                PromptInjection.ModeInjection(
+                    content = "USER-段",
+                    position = InjectionPosition.END_OF_CHAT,
+                ),
+            ),
+        )
+        val roles = result.drop(1).map { it.role }
+        assertEquals(listOf(MessageRole.SYSTEM, MessageRole.USER), roles)
+        assertEquals("SYS-段", result[1].text())
+        assertEquals("USER-段", result[2].text())
+    }
+
+    @Test
+    fun `assistant tail is defensively ignored`() {
+        val result = apply(
+            messages = listOf(UIMessage.user("q")),
+            entries = listOf(
+                PromptInjection.ModeInjection(
+                    content = "prefill",
+                    position = InjectionPosition.END_OF_CHAT,
+                    role = MessageRole.ASSISTANT,
+                ),
+            ),
+        )
+        // 无尾部消息（防预填充）
+        assertEquals(1, result.size)
+    }
+
+    @Test
+    fun `multi step does not accumulate system tail`() {
+        // 与旧 user 尾部同款模拟：live 历史不含尾部注入（transformer 产物不回写），
+        // 每轮从同一 live 重新组装，尾部恰一条 system 消息
+        val history = listOf(UIMessage.user("q"))
+        val entries = listOf(systemTail("SYS"))
+        repeat(3) {
+            val next = apply(history, entries)
+            assertEquals(history, next.dropLast(1))
+            assertEquals(1, next.count { it.role == MessageRole.SYSTEM && it.isSynthetic })
+        }
+    }
+
 }

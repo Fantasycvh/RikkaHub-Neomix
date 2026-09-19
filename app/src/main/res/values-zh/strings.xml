@@ -1614,4 +1614,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="prompt_inspect_copied">已复制</string>
   <string name="prompt_page_position_end_of_chat">轮次尾部（本次请求末尾）</string>
   <string name="prompt_page_tail_user_role_hint">每次请求模型时，以用户消息追加在全部消息（包括工具结果）之后；不是助手预填充。</string>
+  <string name="prompt_page_tail_system_role_hint">以系统消息追加在本次请求最末尾。Claude/Gemini 的接口只接受顶部系统提示，会自动改为用户消息送达（保证缓存有效）。</string>
+  <string name="prompt_page_role_system">系统</string>
 </resources>

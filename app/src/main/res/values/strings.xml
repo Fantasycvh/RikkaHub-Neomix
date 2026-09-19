@@ -1616,4 +1616,6 @@
   <string name="asr_error_audio_focus">Microphone busy — could not get audio focus</string>
   <string name="prompt_page_position_end_of_chat">End of request (after all messages)</string>
   <string name="prompt_page_tail_user_role_hint">Appended as a user message on each model request, including after tool results. This is not assistant prefill.</string>
+  <string name="prompt_page_tail_system_role_hint">Sent as a system message at the very end of the request. On Claude/Gemini it is delivered as a user message (their APIs place system content at the top, which would break prompt caching).</string>
+  <string name="prompt_page_role_system">System</string>
 </resources>

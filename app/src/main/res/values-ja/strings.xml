@@ -1540,4 +1540,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_inspect_copied">コピーしました</string>
   <string name="prompt_page_position_end_of_chat">リクエストの末尾（すべてのメッセージの後）</string>
   <string name="prompt_page_tail_user_role_hint">モデルへの各リクエストで、ツールの結果を含む全メッセージの後にユーザーメッセージとして追加します。アシスタントのプリフィルではありません。</string>
+  <string name="prompt_page_tail_system_role_hint">リクエストの最後にシステムメッセージとして送信します。Claude/Gemini は先頭のシステムのみ受け付けるため、ユーザーメッセージに変換されます（キャッシュ維持）。</string>
+  <string name="prompt_page_role_system">システム</string>
 </resources>

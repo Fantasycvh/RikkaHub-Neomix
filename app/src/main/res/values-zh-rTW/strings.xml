@@ -1596,4 +1596,6 @@
   <string name="prompt_inspect_copied">已複製</string>
   <string name="prompt_page_position_end_of_chat">輪次尾部（本次請求末尾）</string>
   <string name="prompt_page_tail_user_role_hint">每次請求模型時，以使用者訊息附加在全部訊息（包括工具結果）之後；不是助手預填充。</string>
+  <string name="prompt_page_tail_system_role_hint">以系統訊息附加在本次請求最末尾。Claude/Gemini 的介面只接受頂部系統提示，會自動改為使用者訊息送達（保證快取有效）。</string>
+  <string name="prompt_page_role_system">系統</string>
 </resources>

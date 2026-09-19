@@ -265,10 +265,23 @@ internal fun applyInjections(
 
     val tailInjections = byPosition[InjectionPosition.END_OF_CHAT]
     if (!tailInjections.isNullOrEmpty()) {
-        // 尾部不使用 assistant 角色，避免被提供商解释为预填充。
-        result.add(
-            UIMessage.user(tailInjections.joinToString("\n") { it.content }).copy(isSynthetic = true)
-        )
+        // 尾部按 role 分组：USER 合并为尾部 user 消息（原行为）；SYSTEM 合并为尾部
+        // **system 消息**（#1542 分段式系统提示，对齐 ST jailbreak 的尾部 system 语义）。
+        // ASSISTANT 禁止（会被提供商解释为预填充）——UI 不提供该选项，此处防御性忽略。
+        // 顺序：system 段在前、user 段在后（指令先于输入）；各段内容仍按 priority 顺序
+        // 合并。Claude/Gemini 上尾部 system 由 provider 转换层降级为 user（见
+        // ClaudeProvider.buildMessages / GoogleProvider.buildContents）。
+        val byTailRole = tailInjections.groupBy { it.role }
+        byTailRole[MessageRole.SYSTEM]?.let { entries ->
+            result.add(
+                UIMessage.system(entries.joinToString("\n") { it.content }).copy(isSynthetic = true)
+            )
+        }
+        byTailRole[MessageRole.USER]?.let { entries ->
+            result.add(
+                UIMessage.user(entries.joinToString("\n") { it.content }).copy(isSynthetic = true)
+            )
+        }
     }
 
     return result

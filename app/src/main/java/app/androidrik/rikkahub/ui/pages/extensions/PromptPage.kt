@@ -1003,7 +1003,23 @@ private fun InjectionRoleSelector(
     onSelect: (MessageRole) -> Unit
 ) {
     if (position == InjectionPosition.END_OF_CHAT) {
-        Text(stringResource(R.string.prompt_page_tail_user_role_hint))
+        // 尾部支持 USER（原行为）与 SYSTEM（#1542 分段式系统提示）；ASSISTANT 禁止（预填充）
+        Select(
+            options = listOf(MessageRole.USER, MessageRole.SYSTEM),
+            selectedOption = role,
+            onOptionSelected = onSelect,
+            optionToString = { getRoleLabel(it) },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            text = stringResource(
+                if (role == MessageRole.SYSTEM) R.string.prompt_page_tail_system_role_hint
+                else R.string.prompt_page_tail_user_role_hint
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
         return
     }
     Select(
@@ -1088,6 +1104,7 @@ private fun KeywordEditor(
 private fun getRoleLabel(role: MessageRole): String = when (role) {
     MessageRole.USER -> stringResource(R.string.prompt_page_role_user)
     MessageRole.ASSISTANT -> stringResource(R.string.prompt_page_role_assistant)
+    MessageRole.SYSTEM -> stringResource(R.string.prompt_page_role_system)
     else -> role.name
 }
 
