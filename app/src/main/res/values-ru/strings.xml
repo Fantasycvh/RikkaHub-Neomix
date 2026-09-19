@@ -643,6 +643,8 @@
   <string name="prompt_page_cache_migration_hint">%1$d записей до/после системного промпта переписывают его и ломают весь кэш промпта</string>
   <string name="prompt_page_cache_migration_action">Перенести в конец чата</string>
   <string name="prompt_page_cache_migrated">Перенесено записей: %1$d</string>
+  <string name="prompt_page_cache_migration_back_hint">%1$d записей в конце диалога; верните их после системного промпта для системного акцента (кэш будет сброшен).</string>
+  <string name="prompt_page_cache_migration_back_action">Вернуть после системного промпта</string>
   <string name="prompt_page_unnamed">Без имени</string>
   <string name="prompt_page_unnamed_entry">Безымянная запись</string>
   <string name="prompt_page_unnamed_lorebook">Безымянная книга знаний</string>

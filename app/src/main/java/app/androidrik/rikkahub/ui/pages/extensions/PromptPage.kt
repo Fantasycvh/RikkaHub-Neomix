@@ -118,8 +118,8 @@ import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
-import app.androidrik.rikkahub.data.model.countSystemRewritingInjections
-import app.androidrik.rikkahub.data.model.migrateSystemRewritingInjections
+import app.androidrik.rikkahub.data.model.countMigratableInjections
+import app.androidrik.rikkahub.data.model.migrateInjections
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -135,18 +135,19 @@ fun PromptPage(vm: PromptVM = koinViewModel(), initialWorldbooks: Boolean = fals
     var worldbooks by rememberSaveable { mutableStateOf(initialWorldbooks && SHOW_LOREBOOK_TABS) }
     var openedPresetId by rememberSaveable { mutableStateOf<String?>(null) }
     var openedBookId by rememberSaveable { mutableStateOf<String?>(null) }
-    // #1542 复核 Tier A：一键迁移「改写 system 区」的注入条目到对话尾部（缓存止血）。
-    // 无此类条目时卡片自身不渲染；迁移覆盖预设条目与世界书条目（ST 导入的 after 是主要来源）。
+    // #1542 复核 Tier A + 反向：注入位置**双向**批量迁移卡（不做强制）——
+    // 正向：系统区 → 对话末尾（缓存友好）；反向：对话末尾 → 系统提示词后（系统级强调，
+    // 接受缓存代价）。无对应条目时卡片自身不渲染；迁移覆盖预设条目与世界书条目。
     val toaster = LocalToaster.current
     val context = LocalContext.current
     val cacheMigrationCard: @Composable () -> Unit = {
         CacheMigrationCard(
             presets = settings.promptPresets,
             lorebooks = settings.lorebooks,
-            onMigrate = {
-                val count = countSystemRewritingInjections(settings.promptPresets, settings.lorebooks)
+            onMigrate = { direction ->
+                val count = countMigratableInjections(settings.promptPresets, settings.lorebooks, direction)
                 val (newPresets, newLorebooks) =
-                    migrateSystemRewritingInjections(settings.promptPresets, settings.lorebooks)
+                    migrateInjections(settings.promptPresets, settings.lorebooks, direction)
                 vm.updateSettings(settings.copy(promptPresets = newPresets, lorebooks = newLorebooks))
                 toaster.show(context.getString(R.string.prompt_page_cache_migrated, count))
             },

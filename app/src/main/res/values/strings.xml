@@ -686,6 +686,8 @@
   <string name="prompt_page_cache_migration_hint">%1$d entries sit before/after the system prompt, rewriting it and invalidating the whole prompt cache</string>
   <string name="prompt_page_cache_migration_action">Move to end of chat</string>
   <string name="prompt_page_cache_migrated">Moved %1$d entries</string>
+  <string name="prompt_page_cache_migration_back_hint">%1$d entries sit at the end of the chat; move them back to after the system prompt for stronger system-level emphasis.</string>
+  <string name="prompt_page_cache_migration_back_action">Move to after system prompt</string>
   <string name="prompt_page_unnamed">Unnamed</string>
   <string name="prompt_page_unnamed_entry">Unnamed Entry</string>
   <string name="prompt_page_unnamed_lorebook">Unnamed Lorebook</string>

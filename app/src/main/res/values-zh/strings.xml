@@ -682,6 +682,8 @@
   <string name="prompt_page_cache_migration_hint">%1$d 个条目位于「系统提示词前/后」，会改写系统区、作废整段提示词缓存</string>
   <string name="prompt_page_cache_migration_action">一键迁移到对话末尾</string>
   <string name="prompt_page_cache_migrated">已迁移 %1$d 个条目</string>
+  <string name="prompt_page_cache_migration_back_hint">%1$d 个条目位于对话末尾；如需系统级强调，可迁回「系统提示词后」（会作废提示词缓存）。</string>
+  <string name="prompt_page_cache_migration_back_action">迁回「系统提示词后」</string>
   <string name="prompt_page_unnamed">未命名</string>
   <string name="prompt_page_unnamed_entry">未命名条目</string>
   <string name="prompt_page_unnamed_lorebook">未命名世界书</string>

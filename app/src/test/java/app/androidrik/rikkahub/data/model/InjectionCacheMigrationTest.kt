@@ -1,17 +1,15 @@
 package app.androidrik.rikkahub.data.model
 
-import app.androidrik.ai.core.MessageRole
-import app.androidrik.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * #1542 复核 Tier A：一键迁移「改写 system 区」的注入条目（纯函数）。
+ * 注入位置**双向**批量迁移（#1542 Tier A 及其反向）。
  *
- * 迁移的语义边界：**只改 position**（BEFORE/AFTER_SYSTEM_PROMPT → BOTTOM_OF_CHAT），
- * 内容/顺序/启停/优先级一律不动；幂等；覆盖预设条目与世界书条目两个数据源。
+ * 语义边界：**只改 position**，内容/顺序/启停/优先级一律不动；幂等；
+ * 覆盖预设条目与世界书条目两个数据源；方向由调用方选择（不做强制）。
  */
 class InjectionCacheMigrationTest {
 
@@ -37,20 +35,7 @@ class InjectionCacheMigrationTest {
     )
 
     @Test
-    fun `detects system-rewriting entries across presets and lorebooks`() {
-        val presets = listOf(
-            PromptPreset(name = "p", entries = listOf(entry("a", InjectionPosition.BOTTOM_OF_CHAT))),
-        )
-        val lorebooks = listOf(
-            Lorebook(name = "l", entries = listOf(worldEntry("w", InjectionPosition.AFTER_SYSTEM_PROMPT))),
-        )
-        assertTrue(hasSystemRewritingInjections(presets, lorebooks))
-        assertEquals(1, countSystemRewritingInjections(presets, lorebooks))
-        assertFalse(hasSystemRewritingInjections(presets, emptyList()))
-    }
-
-    @Test
-    fun `migration moves only before-after entries to bottom of chat`() {
+    fun `forward direction moves system-area entries to bottom of chat`() {
         val presets = listOf(
             PromptPreset(
                 name = "p",
@@ -62,7 +47,8 @@ class InjectionCacheMigrationTest {
                 ),
             ),
         )
-        val (newPresets, newLorebooks) = migrateSystemRewritingInjections(presets, emptyList())
+        val (newPresets, newLorebooks) =
+            migrateInjections(presets, emptyList(), InjectionMigrationDirection.TO_BOTTOM_OF_CHAT)
         assertEquals(
             listOf(
                 InjectionPosition.BOTTOM_OF_CHAT, // before → 迁移
@@ -79,49 +65,100 @@ class InjectionCacheMigrationTest {
     }
 
     @Test
-    fun `migration covers lorebook entries including disabled ones`() {
+    fun `backward direction moves end-of-chat entries back to after system prompt`() {
+        // 反向：Tier A 正向迁移的产物（或 Learning Mode 种子的现位置）迁回系统区强调
+        val presets = listOf(
+            PromptPreset(
+                name = "p",
+                entries = listOf(
+                    entry("learning", InjectionPosition.BOTTOM_OF_CHAT),
+                    entry("tail", InjectionPosition.END_OF_CHAT),
+                    entry("after", InjectionPosition.AFTER_SYSTEM_PROMPT),
+                ),
+            ),
+        )
+        val (newPresets, newLorebooks) =
+            migrateInjections(presets, emptyList(), InjectionMigrationDirection.TO_AFTER_SYSTEM_PROMPT)
+        assertEquals(
+            listOf(
+                InjectionPosition.AFTER_SYSTEM_PROMPT, // bottom → 迁回系统区
+                InjectionPosition.END_OF_CHAT,         // 尾部不动
+                InjectionPosition.AFTER_SYSTEM_PROMPT, // after 不动（已在目标）
+            ),
+            newPresets.single().entries.map { it.position },
+        )
+        assertTrue(newLorebooks.isEmpty())
+    }
+
+    @Test
+    fun `backward direction covers lorebook entries including disabled ones`() {
         val lorebooks = listOf(
             Lorebook(
                 name = "l",
                 entries = listOf(
-                    worldEntry("st-imported", InjectionPosition.AFTER_SYSTEM_PROMPT).let {
-                        it.copy(enabled = false)
-                    },
+                    worldEntry("st-tail", InjectionPosition.BOTTOM_OF_CHAT).let { it.copy(enabled = false) },
                 ),
             ),
         )
-        val (newPresets, newLorebooks) = migrateSystemRewritingInjections(emptyList(), lorebooks)
+        val (newPresets, newLorebooks) =
+            migrateInjections(emptyList(), lorebooks, InjectionMigrationDirection.TO_AFTER_SYSTEM_PROMPT)
         assertTrue(newPresets.isEmpty())
-        // 禁用条目也迁移：用户日后启用它时不应重新踩缓存坑
-        assertEquals(InjectionPosition.BOTTOM_OF_CHAT, newLorebooks.single().entries.single().position)
+        // 禁用条目也迁移：用户日后启用它时位置已符合其迁移意图
+        assertEquals(InjectionPosition.AFTER_SYSTEM_PROMPT, newLorebooks.single().entries.single().position)
     }
 
     @Test
-    fun `migration is idempotent`() {
-        val presets = listOf(PromptPreset(name = "p", entries = listOf(entry("a", InjectionPosition.AFTER_SYSTEM_PROMPT))))
-        val (p1, l1) = migrateSystemRewritingInjections(presets, emptyList())
-        val (p2, l2) = migrateSystemRewritingInjections(p1, l1)
+    fun `each direction is idempotent`() {
+        val presets = listOf(
+            PromptPreset(
+                name = "p",
+                entries = listOf(
+                    entry("a", InjectionPosition.AFTER_SYSTEM_PROMPT),
+                    entry("b", InjectionPosition.BOTTOM_OF_CHAT),
+                ),
+            ),
+        )
+        val (p1, l1) = migrateInjections(presets, emptyList(), InjectionMigrationDirection.TO_BOTTOM_OF_CHAT)
+        val (p2, l2) = migrateInjections(p1, l1, InjectionMigrationDirection.TO_BOTTOM_OF_CHAT)
         assertEquals(p1, p2)
         assertEquals(l1, l2)
-        assertFalse(hasSystemRewritingInjections(p2, l2))
+        val (p3, l3) = migrateInjections(p2, l2, InjectionMigrationDirection.TO_AFTER_SYSTEM_PROMPT)
+        val (p4, l4) = migrateInjections(p3, l3, InjectionMigrationDirection.TO_AFTER_SYSTEM_PROMPT)
+        assertEquals(p3, p4)
+        assertEquals(l3, l4)
     }
 
     @Test
-    fun `no-op returns the same lists untouched`() {
+    fun `no-op direction returns the same lists untouched`() {
+        // 只在系统区的条目：反向无匹配 → 原列表原样返回
         val presets = listOf(PromptPreset(name = "p", entries = listOf(entry("a", InjectionPosition.TOP_OF_CHAT))))
         val lorebooks = listOf(Lorebook(name = "l"))
-        val (p2, l2) = migrateSystemRewritingInjections(presets, lorebooks)
+        val (p2, l2) = migrateInjections(presets, lorebooks, InjectionMigrationDirection.TO_AFTER_SYSTEM_PROMPT)
         assertEquals(presets, p2)
         assertEquals(lorebooks, l2)
     }
 
     @Test
-    fun `seed learning mode is cache friendly in new installs`() {
-        // 回归锚：DEFAULT_MODE_INJECTIONS 的位置已从 AFTER_SYSTEM_PROMPT 改为 BOTTOM_OF_CHAT
-        // ——该断言防止未来有人改回去（改回去 = 新装用户开箱即破缓存）。
-        assertEquals(
-            InjectionPosition.BOTTOM_OF_CHAT,
-            app.androidrik.rikkahub.data.datastore.DEFAULT_MODE_INJECTIONS.single().position,
+    fun `counts are per direction`() {
+        val presets = listOf(
+            PromptPreset(
+                name = "p",
+                entries = listOf(
+                    entry("a", InjectionPosition.AFTER_SYSTEM_PROMPT),
+                    entry("b", InjectionPosition.BOTTOM_OF_CHAT),
+                ),
+            ),
         )
+        assertEquals(1, countMigratableInjections(presets, emptyList(), InjectionMigrationDirection.TO_BOTTOM_OF_CHAT))
+        assertEquals(1, countMigratableInjections(presets, emptyList(), InjectionMigrationDirection.TO_AFTER_SYSTEM_PROMPT))
+        assertFalse(hasMigratableInjections(emptyList(), emptyList(), InjectionMigrationDirection.TO_BOTTOM_OF_CHAT))
+        assertTrue(hasMigratableInjections(presets, emptyList(), InjectionMigrationDirection.TO_BOTTOM_OF_CHAT))
+    }
+
+    @Test
+    fun `messages without migrations are unaffected`() {
+        val plain = listOf(PromptPreset(name = "p", entries = listOf(entry("a", InjectionPosition.TOP_OF_CHAT))))
+        val result = migrateInjections(plain, emptyList(), InjectionMigrationDirection.TO_BOTTOM_OF_CHAT)
+        assertEquals(plain, result.first)
     }
 }

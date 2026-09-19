@@ -643,6 +643,8 @@
   <string name="prompt_page_cache_migration_hint">%1$d개 항목이 시스템 프롬프트 앞/뒤에 있어 시스템 영역을 재작성하고 프롬프트 캐시를 무효화합니다</string>
   <string name="prompt_page_cache_migration_action">대화 끝으로 일괄 이동</string>
   <string name="prompt_page_cache_migrated">%1$d개 항목을 이동했습니다</string>
+  <string name="prompt_page_cache_migration_back_hint">%1$d개 항목이 대화 끝에 있습니다. 시스템 레벨 강조가 필요하면 「시스템 프롬프트 뒤」로 되돌릴 수 있습니다(캐시 무효화).</string>
+  <string name="prompt_page_cache_migration_back_action">「시스템 프롬프트 뒤」로 되돌리기</string>
   <string name="prompt_page_unnamed">이름 없음</string>
   <string name="prompt_page_unnamed_entry">이름 없는 항목</string>
   <string name="prompt_page_unnamed_lorebook">이름 없는 롤북</string>
