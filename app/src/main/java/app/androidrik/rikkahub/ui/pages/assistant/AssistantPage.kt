@@ -61,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.stroke.MoreVertical
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.utils.reorderForDrag
+import app.androidrik.rikkahub.utils.reorderForDragByKey
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.data.datastore.Settings
@@ -148,7 +149,9 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
             val isFiltering = selectedTagIds.isNotEmpty() || searchQuery.isNotBlank()
             val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
                 if (!isFiltering) {
-                    val newAssistants = settings.assistants.reorderForDrag(from.index, to.index)
+                    // **按 key 映射**：列表首行可能是「仅剩最后一个助手」横幅（非数据行），
+                    // 且 filteredAssistants 与 settings.assistants 未必等长 ⇒ 用下标会错位
+                    val newAssistants = settings.assistants.reorderForDragByKey(from.key, to.key) { it.id }
                     vm.updateSettings(settings.copy(assistants = newAssistants))
                 }
             }

@@ -280,8 +280,10 @@ private fun PresetListScreen(
         }
     }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        // 用 reorderForDrag：拖到列表末尾时 to.index == size，手写 remove+add 会越界崩溃
-        onUpdatePresets(presets.reorderForDrag(from.index, to.index))
+        // **按 key 映射，不要用下标**：from/to.index 是 lazy 列表的**绝对**下标（含头部非数据行），
+        // 而本列表首行可能是「迁移卡」⇒ 用下标会整体错位（拖 A 实际移动了 B）。
+        // 越界（拖到列表末尾）由 reorderForDrag 内部夹取，不会崩。
+        onUpdatePresets(presets.reorderForDragByKey(from.key, to.key) { it.id })
     }
     val toaster = LocalToaster.current
     val importer = rememberImporter(PromptPresetSerializer) { result ->
@@ -541,7 +543,8 @@ private fun PresetDetailScreen(
     // 首次组合捕获的 preset 会过期（详情页首帧可能仍是旧值）。
     val currentPreset by rememberUpdatedState(preset)
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val moved = displayed.reorderForDrag(from.index, to.index)
+        // **按 key 映射**：本列表首行是「顺序提示」（orderHint）非数据行，绝对下标会错位
+        val moved = displayed.reorderForDragByKey(from.key, to.key) { it.id }
         // 拖拽即把新顺序写回 priority（priority 是唯一真相）
         onUpdatePreset(preset.copy(entries = normalizeEntryPriorities(moved)))
     }
