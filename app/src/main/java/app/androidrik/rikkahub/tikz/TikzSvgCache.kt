@@ -23,9 +23,13 @@ object TikzSvgCache {
     private const val DIR = "tikz_cache"
 
     // 渲染链路版本号：引擎（dvisvgm→mupdf）、字体资产（DroidSansFallback→Noto Sans SC）、
-    // wrapDocument（pgfplots 按需加载/every node font/selectfont 包装 zhfont）演进后，
-    // 旧键必须失效。递增此常量即整体重置缓存。
-    private const val CACHE_VERSION = "v5"
+    // wrapDocument（pgfplots 按需加载/every node font/selectfont 包装 zhfont、
+    // 数学宏包 amsmath/amssymb）演进后，旧键必须失效。递增此常量即整体重置缓存。
+    //
+    // v5 → v6：preamble 加 amsmath/amssymb——此前用 amsmath 宏（\dfrac 等）的图**编译失败
+    // 回退源码**故无缓存产物；但加载 amsmath 会微调数学排版间距，已成功的旧 SVG 与新编译
+    // 结果可能逐字节不同。按「改渲染链路必递增」的铁律整体重置，避免新旧混用。
+    private const val CACHE_VERSION = "v6"
     private const val VERSION_MARKER = "tikz_cache_" + CACHE_VERSION
 
     /**

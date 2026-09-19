@@ -500,3 +500,35 @@ TikZ 输入（任意语法）
 - **缓存联动**：裁剪改变渲染输出 → `CACHE_VERSION` 递增 v4→v5（**改渲染输出必递增，否则历史消息命中旧 A4 SVG**——`5b063217` 漏递增的教训）。
 
 **教训沉淀**：①“编译崩溃无报错”→ 查 bundle 字体 pfb 齐全性；②bundle 补文件必须放根路径；③改渲染输出必须递增 CACHE_VERSION；④二分崩溃用 instrumented `BisectTest`（一次装 APK 跑完全部组合）高效。
+
+#### 8.4.11 数学宏包补齐：amsmath / amssymb（2026-09-19）
+
+**症状**：一幅斜抛轨迹图的 TikZ 围栏**编译失败、整段回退为纯源码**（不渲染）。源码特征：节点文本含
+`$\dfrac{v_0^2\sin^2\theta}{2g}$`（顶点标注）。模型自行排查后把 \dfrac 改写成 \frac 重画才渲染成功
+——即它**只能靠失败试错绕过**，因为它无从知道哪些宏可用（用户先看到的是「绕过版」）。
+
+**根因**：`wrapDocument` 的裸片段 preamble 只加载 `tikz` / `preview` / 条件性 `tikz-cd`、`pgfplots`，
+**没有 amsmath**。TikZ 节点文本里的 `$...$` 走 LaTeX 数学模式：`\frac` 是 **LaTeX 内核宏**（可用），
+而 `\dfrac` / `\tfrac` / `\binom` / `\text` / `\operatorname` / `split` 等属 **amsmath 宏**
+——未加载即未定义控制序列 → 编译中止 → TikzJax 回退源码。
+
+> ⚠️ **补 `5a17ab40` 的教训：宏包缺失没有单一症状。** 那次记的是「terminal input forbidden」；
+> 本次是「未定义宏 → 整图编译失败 → 回退源码」。**凡「图变成源码」都应先怀疑 preamble 缺包**，
+> 而不是先怀疑语法或引擎。
+
+**修复**（`TectonicNative.wrapDocument`）：
+- 裸片段 preamble 无条件加 `\usepackage{amsmath}` + `\usepackage{amssymb}`（bundle 已内置两个 .sty，无需补文件）。
+- **不做宏名白名单检测**：amsmath 宏数量大、新宏层出不穷，白名单必然漏，漏一个就重现本 bug；
+  而漏检代价（整图不渲染、模型被迫降级写法）远大于恒定加载的代价（一次解析，图级缓存下可忽略）。
+- 完整 `\documentclass` 文档**仍不注入**（用户自管 preamble，保持既有语义）。
+- `CACHE_VERSION` v5 → v6：加载 amsmath 会微调数学排版间距，旧 SVG 与新编译结果可能不同 →
+  按「改渲染输出必递增」整体重置（同 §8.4.10 教训③）。
+- 系统提示词同步告知「amsmath/amssymb 可用，直接用 \dfrac 等，不必降级成 \frac 写法」
+  ——同 `ec99c43a` 的动机：**告知能力，避免模型自我降级**。
+
+**验证**（真机 + 程序化，不靠肉眼）：把该会话全部 TikZ 块从 DB 抽出，按缓存键算法
+（`sha256("v6:" + trim(code))`）算文件名去比对设备缓存目录 —— **含 \dfrac 的那个块已命中**，
+对应 SVG 35KB 且含矢量路径（正是那张斜抛轨迹图）。编译日志全程无 failed。
+
+**教训沉淀**：⑤「图渲染成源码」先查 preamble 缺宏包；⑥能力边界要写进系统提示词，
+否则模型会用「更保守但更差」的写法自我降级。

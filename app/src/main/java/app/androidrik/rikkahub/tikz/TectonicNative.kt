@@ -132,6 +132,16 @@ object TectonicNative {
                 append("\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\n")
             }
             append("\\usepackage{tikz}\n")
+            // 数学宏包：TikZ node 文本里的 $...$ 走 LaTeX 数学模式，而 \dfrac / \tfrac /
+            // \binom / \text / \operatorname / split 等是 **amsmath 宏**（\frac 才是内核宏）。
+            // 缺 amsmath 时它们报 "Undefined control sequence" → 整图编译中止 → 回退纯源码
+            // （实测：节点里一个 \dfrac 就让整幅斜抛轨迹图变成源码，模型只能改写成 \frac 绕过）。
+            // **无条件加载**（不做宏名白名单检测）：amsmath 宏数量大、新宏层出不穷，白名单必然漏，
+            // 漏一个就重现本 bug；而漏检代价（整图不渲染）远大于恒定加载的代价
+            //（bundle 已内置 amsmath.sty，一次解析开销在图级缓存下可忽略）。
+            // amssymb 顺带覆盖 \mathbb / \mathfrak / \checkmark 等常用符号宏（依赖 amsfonts，亦已内置）。
+            append("\\usepackage{amsmath}\n")
+            append("\\usepackage{amssymb}\n")
             // 裁剪 PDF 到图内容 bbox（preview 包 tightpage）：article 整页(A4 612x792)
             // 不裁会让 SVG 四周大空白、图居中占小块（实测）。preview 纯 TeX 层改页面尺寸，
             // 不依赖外部 pdfcrop（standalone 裁剪需 pdfcrop，设备无此工具故不可行）。

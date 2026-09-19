@@ -130,4 +130,23 @@ class PgfNormalizeTest {
         assertTrue("裸片段不应替换 documentclass（非完整文档）", !wrapped.startsWith("\\documentclass{article}", true) || wrapped.contains("documentclass"))
         assertTrue("替换后代码应含 hex0", wrapped.contains("hex0"))
     }
+
+    @Test
+    fun `bare fragment preamble loads math packages`() {
+        // 回归锚：TikZ node 文本里的 $...$ 走 LaTeX 数学模式，amsmath 宏（dfrac/tfrac/binom/text/operatorname）与 amssymb 宏（mathbb 等）必须可用——缺则整图编译失败回退纯源码
+        // （实测：节点里一个 dfrac 就让斜抛轨迹图变成源码）。
+        val bare = "\\begin{tikzpicture}\n\\node {$\\dfrac{a}{b}$};\n\\end{tikzpicture}"
+        val wrapped = TectonicNative.wrapDocument(bare)
+        assertTrue("preamble 必须加载 amsmath（dfrac 等宏来源）", wrapped.contains("\\usepackage{amsmath}"))
+        assertTrue("preamble 必须加载 amssymb（mathbb 等符号宏）", wrapped.contains("\\usepackage{amssymb}"))
+        assertTrue("静态加载须在 tikz 之后、正文档之前", wrapped.indexOf("{amsmath}") > wrapped.indexOf("{tikz}"))
+    }
+
+    @Test
+    fun `full document preamble is left to the user`() {
+        // 自管 preamble 的完整文档：不注入我们的包（用户负责），只做弧度归一化
+        val doc = "\\documentclass{article}\n\\begin{document}x\\end{document}"
+        val wrapped = TectonicNative.wrapDocument(doc)
+        assertTrue("完整文档不应被注入 amsmath", !wrapped.contains("usepackage{amsmath}"))
+    }
 }
