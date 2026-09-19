@@ -9,6 +9,8 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.prompts.isCompactionCheckpointPreamble
 import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
+import app.androidrik.rikkahub.data.ai.transformers.collectInjections
+import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.ai.transformers.transforms
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
@@ -174,7 +176,49 @@ suspend fun inspectPrompt(
                 )
             )
         } else {
-            systemBlocksToSegments(
+            // #1542 Tier B 修复：BEFORE/AFTER 注入由 PromptInjectionTransformer 在
+            // transformer 链里**合并进 system 本体**，而 buildSystemBlocks 的 base 块
+            // 不含它们——若只用 base 块分段，这部分内容会从预览里消失（实测回归）。
+            // 修复：用与真实链相同的 collectInjections 参数取出系统区注入，
+            // 作为 INJECTION 段插到 base 块前/后（顺序与 applyInjections 的合并一致）。
+            val injections = collectInjections(
+                messages = windowMessages,
+                assistant = assistant,
+                modeInjections = settings.modeInjections,
+                lorebooks = settings.lorebooks,
+                conversationModeInjectionIds = conversation.modeInjectionIds,
+                conversationLorebookIds = conversation.lorebookIds,
+                lorebookBudgetTokens = settings.lorebookInjectBudgetTokens,
+                presetEntryIds = settings.promptPresets
+                    .filter { it.enabled && assistant.promptPresetIds.contains(it.id) }
+                    .flatMap { it.entries }
+                    .map { it.id }
+                    .toSet(),
+            )
+            val byPosition = injections.groupBy { it.position }
+            val beforeSegments = (byPosition[InjectionPosition.BEFORE_SYSTEM_PROMPT] ?: emptyList())
+                .map { entry ->
+                    PromptSegment(
+                        kind = PromptSegmentKind.INJECTION,
+                        label = labels.injection,
+                        role = "system",
+                        content = entry.content,
+                        isSynthetic = true,
+                        tokens = estimateTokens(entry.content),
+                    )
+                }
+            val afterSegments = (byPosition[InjectionPosition.AFTER_SYSTEM_PROMPT] ?: emptyList())
+                .map { entry ->
+                    PromptSegment(
+                        kind = PromptSegmentKind.INJECTION,
+                        label = labels.injection,
+                        role = "system",
+                        content = entry.content,
+                        isSynthetic = true,
+                        tokens = estimateTokens(entry.content),
+                    )
+                }
+            beforeSegments + systemBlocksToSegments(
                 blocks = buildSystemBlocks(
                     assistant = assistant,
                     settings = settings,
@@ -187,7 +231,7 @@ suspend fun inspectPrompt(
                 ),
                 labels = labels,
                 role = message.role.name.lowercase(),
-            )
+            ) + afterSegments
         }
     }
 
