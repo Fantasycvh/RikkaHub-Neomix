@@ -376,13 +376,19 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         promptCaching: Boolean,
         promptCacheTtl: ClaudePromptCacheTtl
     ) = buildJsonArray {
+        // 第一条 system 的内容已进顶层 system 参数（见 generateRequestBody）；
+        // **后续的 system 消息不能丢弃**（如轮次尾部注入的 system 段）——但 Claude 的
+        // messages 不接受 system 角色，且 system 参数在位置 0（动态内容放那里会作废
+        // 整段缓存）⇒ 降级为 user 发送：位置语义保住、缓存保住，仅语气降级。
+        val firstSystem = messages.firstOrNull { it.role == MessageRole.SYSTEM }
         messages
-            .filter { it.isValidToUpload() && it.role != MessageRole.SYSTEM }
+            .filter { it.isValidToUpload() && (it.role != MessageRole.SYSTEM || it === firstSystem) }
             .forEach { message ->
-                if (message.role == MessageRole.ASSISTANT) {
-                    addAssistantMessage(message)
-                } else {
-                    addUserMessage(message)
+                when {
+                    message.role == MessageRole.ASSISTANT -> addAssistantMessage(message)
+                    message === firstSystem -> return@forEach // 已进 system 参数，跳过防重复
+                    message.role == MessageRole.SYSTEM -> addUserMessage(message.copy(role = MessageRole.USER))
+                    else -> addUserMessage(message)
                 }
             }
     }.let { messagesArray ->

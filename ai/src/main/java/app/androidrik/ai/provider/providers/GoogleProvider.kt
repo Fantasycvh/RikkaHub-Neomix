@@ -639,14 +639,22 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
     }
 
     private fun buildContents(messages: List<UIMessage>): JsonArray {
+        // 第一条 system 的内容已进 systemInstruction（见 buildCompletionRequestBody）；
+        // **后续的 system 消息不能丢弃**（如轮次尾部注入的 system 段）——Gemini 的
+        // contents 不接受 "system" 角色，且 systemInstruction 在顶部（动态内容放那里
+        // 会作废缓存前缀）⇒ 降级为 user 发送：位置语义保住，仅语气降级。
+        val firstSystem = messages.firstOrNull { it.role == MessageRole.SYSTEM }
         return buildJsonArray {
             messages
-                .filter { it.role != MessageRole.SYSTEM && it.isValidToUpload() }
+                .filter {
+                    it.isValidToUpload() && (it.role != MessageRole.SYSTEM || it === firstSystem)
+                }
                 .forEach { message ->
-                    if (message.role == MessageRole.ASSISTANT) {
-                        addModelMessage(message)
-                    } else {
-                        addUserMessage(message)
+                    when {
+                        message === firstSystem -> return@forEach // 已进 systemInstruction，跳过防重复
+                        message.role == MessageRole.ASSISTANT -> addModelMessage(message)
+                        message.role == MessageRole.SYSTEM -> addUserMessage(message.copy(role = MessageRole.USER))
+                        else -> addUserMessage(message)
                     }
                 }
         }
