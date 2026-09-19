@@ -1581,6 +1581,9 @@
   <string name="prompt_inspect_segment_checkpoint">壓縮檢查點</string>
   <string name="prompt_inspect_segment_injection">注入（世界書 / 模式）</string>
   <string name="prompt_inspect_segment_history">對話歷史</string>
+  <string name="prompt_inspect_segment_memory">注入的記憶</string>
+  <string name="prompt_inspect_segment_tool_schema">工具 Schema</string>
+  <string name="prompt_inspect_segment_render_hint">渲染提示</string>
   <string name="prompt_inspect_cache_title">關於提示詞快取</string>
   <string name="prompt_inspect_cache_body">系統提示詞位於位置 0，每次請求都會重算——這裡約 %1$d token。其中任何易變內容（日期佔位符、依關鍵詞啟停的世界書條目）都會讓整段快取的**前綴失效**。建議把易變內容移出系統提示詞，關鍵詞觸發的世界書放到對話末尾。</string>
   <string name="prompt_inspect_legend_title">關於本頁</string>

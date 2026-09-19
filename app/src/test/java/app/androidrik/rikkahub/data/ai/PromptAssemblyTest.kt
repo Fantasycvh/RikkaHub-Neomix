@@ -9,6 +9,9 @@ import app.androidrik.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.CardSlot
+import app.androidrik.rikkahub.data.model.buildCardSystemPrompt
+import app.androidrik.rikkahub.data.model.rebuildSystemPromptFromCardParts
 import app.androidrik.rikkahub.data.model.Conversation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,7 +28,13 @@ import org.junit.Test
  */
 class PromptAssemblyTest {
 
-    private val settings = Settings.dummy()
+    // 关掉渲染提示：块断言只关注人设/卡槽区，不受 dummy 设置的提示开关干扰
+    private val settings = Settings.dummy().copy(
+        displaySetting = Settings.dummy().displaySetting.copy(
+            enableDiagramRendering = false,
+            enableLatexRendering = false,
+        ),
+    )
     private val model = Model(modelId = "test-model", displayName = "Test")
 
     private fun assistant(
@@ -49,6 +58,120 @@ class PromptAssemblyTest {
         UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text(text)))
 
     // region buildSystemPromptText
+
+    // ---- #1542 复核 Tier B：未漂移角色卡助手按槽渲染（输出逐字节不变，来源升级为卡槽块） ----
+
+    private fun cardAssistant(
+        systemPrompt: String,
+        allowConversationSystemPrompt: Boolean = false,
+    ) = Assistant(
+        name = "帕斯卡",
+        systemPrompt = systemPrompt,
+        allowConversationSystemPrompt = allowConversationSystemPrompt,
+        cardSystemPrompt = "You are a maid.",
+        cardDescription = "cheerful",
+        cardPersonality = "curious",
+        cardScenario = "a quiet park",
+        cardExampleDialogue = "Hi there!",
+    )
+
+    @Test
+    fun `pristine card assistant renders system from slots with identical bytes`() {
+        val a = cardAssistant(
+            // 未漂移：systemPrompt == 按槽渲染结果（导入时刻的产物）
+            buildCardSystemPrompt(
+                name = "帕斯卡",
+                cardSystemPrompt = "You are a maid.",
+                description = "cheerful",
+                personality = "curious",
+                scenario = "a quiet park",
+                exampleDialogue = "Hi there!",
+            ),
+        )
+        val blocks = buildSystemBlocks(
+            assistant = a, settings = settings, model = model,
+            messages = emptyList(), memories = emptyList(), tools = emptyList(),
+            conversationSystemPrompt = null,
+        )
+        // 来源是**逐槽**的卡槽块（默认顺序、未被关闭的槽）
+        assertEquals(
+            listOf(
+                CardSlot.GREETING,
+                CardSlot.SYSTEM_PROMPT,
+                CardSlot.DESCRIPTION,
+                CardSlot.PERSONALITY,
+                CardSlot.SCENARIO,
+                CardSlot.EXAMPLE,
+            ),
+            blocks.mapNotNull { it.cardSlot },
+        )
+        assertTrue("不应有 PERSONA 整段块（应拆成卡槽块）", blocks.none { it.source == SystemBlockSource.PERSONA })
+        assertTrue(blocks.first().source == SystemBlockSource.CARD_SLOT)
+        // 逐字节等价由下方 buildSystemPromptText 断言（连接逻辑是被测实现的一部分，测试不应自行复刻）
+        assertEquals(a.systemPrompt, buildSystemPromptText(
+            assistant = a, settings = settings, model = model,
+            messages = emptyList(), memories = emptyList(), tools = emptyList(),
+            conversationSystemPrompt = null,
+        ))
+    }
+
+    @Test
+    fun `slot toggle takes effect immediately for pristine card assistants`() {
+        val rendered = buildCardSystemPrompt(
+            name = "帕斯卡",
+            cardSystemPrompt = "You are a maid.",
+            description = "cheerful",
+            personality = "curious",
+            scenario = "a quiet park",
+            exampleDialogue = "Hi there!",
+        )
+        // 关掉 Scenario 槽 + 自动重建（槽位视图回调的语义：改槽即重建，即时生效）
+        val a = cardAssistant(rendered)
+            .copy(disabledCardSlots = setOf(CardSlot.SCENARIO))
+            .rebuildSystemPromptFromCardParts()
+        val text = buildSystemPromptText(
+            assistant = a, settings = settings, model = model,
+            messages = emptyList(), memories = emptyList(), tools = emptyList(),
+            conversationSystemPrompt = null,
+        )
+        assertEquals(
+            buildCardSystemPrompt(name = "帕斯卡", assistant = a),
+            text,
+        )
+        assertTrue("被关闭的槽不应出现", !text.contains("a quiet park"))
+    }
+
+    @Test
+    fun `diverged card assistant keeps the hand-edited system prompt`() {
+        // 漂移（用户手改过）：手改内容优先，整段作为单个 PERSONA 块，不做槽位拆分
+        val a = cardAssistant("手改的自定义人设").copy(disabledCardSlots = setOf(CardSlot.SCENARIO))
+        val blocks = buildSystemBlocks(
+            assistant = a, settings = settings, model = model,
+            messages = emptyList(), memories = emptyList(), tools = emptyList(),
+            conversationSystemPrompt = null,
+        )
+        assertEquals(SystemBlockSource.PERSONA, blocks.first().source)
+        assertEquals("手改的自定义人设", blocks.first().content)
+    }
+
+    @Test
+    fun `conversation override wins over card slots`() {
+        val a = cardAssistant(
+            systemPrompt = buildCardSystemPrompt(
+                name = "帕斯卡",
+                cardSystemPrompt = "You are a maid.",
+                description = "cheerful", personality = "curious",
+                scenario = "s", exampleDialogue = "e",
+            ),
+            allowConversationSystemPrompt = true,
+        )
+        val text = buildSystemPromptText(
+            assistant = a, settings = settings, model = model,
+            messages = emptyList(), memories = emptyList(), tools = emptyList(),
+            conversationSystemPrompt = "会话级人设",
+        )
+        assertEquals("会话级人设", text)
+    }
 
     @Test
     fun `system prompt carries the assistant text`() {
@@ -242,10 +365,17 @@ class PromptAssemblyTest {
 
     @Test
     fun `render hints are appended to the system message`() {
-        // 默认设置下渲染提示开启：它们属于 system 的固定开销，预览必须如实反映
+        // 渲染提示开启时属于 system 的固定开销，预览必须如实反映
+        // （类级 settings 关掉了渲染开关，这里局部开启）
+        val renderOn = settings.copy(
+            displaySetting = settings.displaySetting.copy(
+                enableDiagramRendering = true,
+                enableLatexRendering = true,
+            ),
+        )
         val internal = buildInternalMessages(
             assistant = assistant(systemPrompt = "SYS"),
-            settings = settings,
+            settings = renderOn,
             model = model,
             messages = listOf(userMessage("hi")),
             memories = emptyList(),
@@ -257,6 +387,8 @@ class PromptAssemblyTest {
             .filterIsInstance<UIMessagePart.Text>()
             .joinToString("") { it.text }
         assertTrue("render hints should be part of the system block", systemText.length > "SYS".length)
+        assertTrue(systemText.contains("For TikZ diagrams"))
+        assertTrue(systemText.contains("For math formulas"))
     }
 
     @Test

@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
+import app.androidrik.rikkahub.data.model.CardSlot
 import app.androidrik.rikkahub.service.ChatService
 import kotlin.uuid.Uuid
 
@@ -50,6 +51,18 @@ class PromptInspectVM(
                         checkpoint = context.getString(R.string.prompt_inspect_segment_checkpoint),
                         injection = context.getString(R.string.prompt_inspect_segment_injection),
                         history = context.getString(R.string.prompt_inspect_segment_history),
+                        // #1542 Tier B：system 块化的细分来源标签（槽名复用角色卡槽位视图的既有字符串）
+                        memory = context.getString(R.string.prompt_inspect_segment_memory),
+                        toolSchema = context.getString(R.string.prompt_inspect_segment_tool_schema),
+                        renderHint = context.getString(R.string.prompt_inspect_segment_render_hint),
+                        cardSlotNames = mapOf(
+                            CardSlot.GREETING to context.getString(R.string.assistant_page_card_slot_greeting),
+                            CardSlot.SYSTEM_PROMPT to context.getString(R.string.assistant_page_card_system_prompt),
+                            CardSlot.DESCRIPTION to context.getString(R.string.assistant_page_card_description),
+                            CardSlot.PERSONALITY to context.getString(R.string.assistant_page_card_personality),
+                            CardSlot.SCENARIO to context.getString(R.string.assistant_page_card_scenario),
+                            CardSlot.EXAMPLE to context.getString(R.string.assistant_page_card_example),
+                        ),
                     ),
                 )
             }.getOrNull()

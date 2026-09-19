@@ -215,8 +215,11 @@ enum class CardSlot {
  * 这是「哪些槽位可以不出现」的唯一真相源：
  * - [CardSlot.SYSTEM_PROMPT] / [CardSlot.EXAMPLE] 内容空白时整段不出现（历史行为）；
  * - 其余槽位即使内容为 null 也渲染 `Empty` 占位符（历史行为）。
+ *
+ * internal：拼装预览的 system 块化（`PromptAssembly.buildSystemBlocks`）对未漂移的
+ * 角色卡助手逐槽渲染同一函数——发送内容与 `buildCardSystemPrompt` 逐字节一致。
  */
-private fun renderCardSlotBlock(slot: CardSlot, name: String, assistant: Assistant): String? =
+internal fun renderCardSlotBlock(slot: CardSlot, name: String, assistant: Assistant): String? =
     when (slot) {
         CardSlot.GREETING -> "You are roleplaying as $name."
         CardSlot.SYSTEM_PROMPT -> assistant.cardSystemPrompt?.takeIf { it.isNotBlank() }

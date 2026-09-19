@@ -582,6 +582,31 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
 - 顺带把代理对安全截断提为 `common/text/TextTruncation.kt`（`String.truncateSafely`），
   ai 的引用快照与预览页折叠共用（原先 ai 模块那份 internal 实现改为调用 common）。
 
+#### Tier B 落地记录（2026-09-19，同日推进）
+
+用户拍板推进 Tier B，核心是**system 块化 + 卡槽身份升级**：
+
+- **`buildSystemBlocks`**：system 组装从单个 `buildString` 改为「带来源标记的块列表」
+  （PERSONA / CARD_SLOT / MEMORY / TOOL / DIAGRAM_HINT / MATH_HINT），`buildSystemPromptText`
+  = `joinSystemBlocks(blocks)`（按各块 `separatorAfter` 连接）。**逐字节契约由
+  `PromptAssemblyTest` 17 项锁死**——分隔符是单换行（历史 `appendLine` 行为，含空工具块
+  的孤立换行），**卡槽块之间是双换行**（`buildCardSystemPrompt` 的历史连接符，
+  `separatorAfter` 按相邻卡槽对计算）。
+- **卡槽身份升级（零行为变更）**：未漂移的角色卡助手（`hasCardParts` 且
+  `systemPrompt == buildCardSystemPrompt(...)`）的 system 由**卡槽逐槽渲染**成
+  CARD_SLOT 块——槽位开关/排序**即时生效**（无需点「重新生成提示词」），输出与
+  原 systemPrompt 逐字节相同（「未漂移」的定义即是如此）。漂移（手改过 systemPrompt）
+  → 手改内容优先（整段 PERSONA），漂移提示照旧。**09-17「systemPrompt 唯一发送文本」
+  的约束以「未漂移才走字段」的方式保留了精神（永不静默丢失手改）同时放开了槽位**。
+- **预览归因（Tier 4 的 system 部分完成）**：`PromptInspector` 对 system 消息调
+  `buildSystemBlocks`（与真实请求同参）细分出「开场白/系统提示/描述/性格/场景/示例对话/
+  记忆/工具 Schema/渲染提示」各段；槽名复用角色卡槽位视图的既有六语言字符串。
+  真机实测：原 2 段 → 13 段，目录与正文一致。
+- **实现教训（两处）**：①卡槽间的**双换行分隔**差点被压扁成单换行——块连接不能在
+  测试里手写 join（必与实现漂移），提为 `joinSystemBlocks` 共用；②测试 fixture 的
+  `Assistant` 必须带 `card*` 字段——只给 systemPrompt 会让 `hasCardParts=false`
+  永远走 PERSONA 兜底，表现为「卡槽归因不生效」。
+
 #### ⏳ Tier 4（未做，本次仅记录）——「点注入段 → 跳到产出它的条目」
 
 **价值**：把预览从「只读展示」变成「可归因并可操作」——看到某段世界书/模式注入不合适时直接

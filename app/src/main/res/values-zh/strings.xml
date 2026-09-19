@@ -1599,6 +1599,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="prompt_inspect_segment_checkpoint">压缩检查点</string>
   <string name="prompt_inspect_segment_injection">注入（世界书 / 模式）</string>
   <string name="prompt_inspect_segment_history">对话历史</string>
+  <string name="prompt_inspect_segment_memory">注入的记忆</string>
+  <string name="prompt_inspect_segment_tool_schema">工具 Schema</string>
+  <string name="prompt_inspect_segment_render_hint">渲染提示</string>
   <string name="prompt_inspect_cache_title">关于提示词缓存</string>
   <string name="prompt_inspect_cache_body">系统提示词位于位置 0，每次请求都会重算——这里约 %1$d token。其中任何易变内容（日期占位符、按关键词启停的世界书条目）都会让整段缓存的**前缀失效**。建议把易变内容移出系统提示词，关键词触发的世界书放到对话末尾。</string>
   <string name="prompt_inspect_legend_title">关于本页</string>

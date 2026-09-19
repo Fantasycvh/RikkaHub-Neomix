@@ -1543,6 +1543,9 @@
   <string name="prompt_inspect_segment_checkpoint">Compression checkpoint</string>
   <string name="prompt_inspect_segment_injection">Injected (world info / mode)</string>
   <string name="prompt_inspect_segment_history">Chat history</string>
+  <string name="prompt_inspect_segment_memory">Injected memories</string>
+  <string name="prompt_inspect_segment_tool_schema">Tool schema</string>
+  <string name="prompt_inspect_segment_render_hint">Render hints</string>
   <string name="prompt_inspect_cache_title">Note on prompt caching</string>
   <string name="prompt_inspect_cache_body">The system block sits at position 0 and is recomputed every request — here it is about %1$d tokens. Anything volatile inside it (a date placeholder, a world-info entry that toggles on keywords) invalidates the whole cached prefix. Keep volatile content out of the system prompt; keyword-triggered world info belongs at the bottom of the chat.</string>
   <string name="prompt_inspect_legend_title">About this page</string>

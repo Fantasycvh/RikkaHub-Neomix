@@ -13,6 +13,7 @@ import app.androidrik.rikkahub.data.ai.transformers.transforms
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.CardSlot
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.utils.estimateTokens
 
@@ -30,8 +31,20 @@ import app.androidrik.rikkahub.utils.estimateTokens
 
 /** 预览中一段的可读来源标签。 */
 enum class PromptSegmentKind {
-    /** system 消息正文（systemPrompt + 记忆 + 工具 schema + 渲染提示） */
+    /** system 人设正文（systemPrompt 或会话级覆盖；未拆分的兜底形态） */
     SYSTEM,
+
+    /** #1542 Tier B：角色卡的单个槽位（system 块化的拆分形态） */
+    CARD_SLOT,
+
+    /** 注入的记忆（buildMemoryPrompt 产物） */
+    MEMORY,
+
+    /** 单个工具的 systemPrompt（schema 说明） */
+    TOOL_SCHEMA,
+
+    /** 渲染提示（TikZ / 数学公式引导） */
+    RENDER_HINT,
 
     /** 压缩检查点合成消息（见 `docs/design-auto-compaction.md`） */
     COMPRESSION_CHECKPOINT,
@@ -84,6 +97,12 @@ data class PromptInspectionLabels(
     val checkpoint: String,
     val injection: String,
     val history: String,
+    /** #1542 Tier B：system 块化后的细分来源标签 */
+    val memory: String = "",
+    val toolSchema: String = "",
+    val renderHint: String = "",
+    /** 卡槽块的具体槽名（key = 槽位）。空 map = 卡槽块退化为统一「角色卡」标签 */
+    val cardSlotNames: Map<CardSlot, String> = emptyMap(),
 )
 
 /**
@@ -132,23 +151,44 @@ suspend fun inspectPrompt(
         workspaceCwd = conversation.workspaceCwd,
     )
 
-    val segments = transformed.map { message ->
+    val segments = transformed.flatMap { message ->
         val kind = message.segmentKind()
-        PromptSegment(
-            kind = kind,
-            label = when (kind) {
-                PromptSegmentKind.SYSTEM -> labels.system
-                PromptSegmentKind.COMPRESSION_CHECKPOINT -> labels.checkpoint
-                PromptSegmentKind.INJECTION -> labels.injection
-                PromptSegmentKind.CHAT_HISTORY -> labels.history
-            },
-            role = message.role.name.lowercase(),
-            content = message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text },
-            isSynthetic = message.isSynthetic,
-            tokens = estimateTokens(
-                message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
-            ),
-        )
+        val content = message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+        // #1542 Tier B：system 消息按**块来源**细分（人设/卡槽/记忆/工具 schema/渲染提示），
+        // 与真实请求共用 buildSystemBlocks（同参）⇒ 归因与发送内容一致。
+        // 其余消息（检查点/注入/历史）维持整条一段。
+        if (kind != PromptSegmentKind.SYSTEM) {
+            listOf(
+                PromptSegment(
+                    kind = kind,
+                    label = when (kind) {
+                        PromptSegmentKind.COMPRESSION_CHECKPOINT -> labels.checkpoint
+                        PromptSegmentKind.INJECTION -> labels.injection
+                        PromptSegmentKind.CHAT_HISTORY -> labels.history
+                        else -> labels.system
+                    },
+                    role = message.role.name.lowercase(),
+                    content = content,
+                    isSynthetic = message.isSynthetic,
+                    tokens = estimateTokens(content),
+                )
+            )
+        } else {
+            systemBlocksToSegments(
+                blocks = buildSystemBlocks(
+                    assistant = assistant,
+                    settings = settings,
+                    model = model,
+                    messages = windowMessages,
+                    memories = memories,
+                    tools = tools,
+                    // 与 buildInternalMessages 同参：会话级覆盖口径一致
+                    conversationSystemPrompt = conversation.customSystemPrompt,
+                ),
+                labels = labels,
+                role = message.role.name.lowercase(),
+            )
+        }
     }
 
     return PromptInspection(
@@ -168,6 +208,36 @@ private fun UIMessage.segmentKind(): PromptSegmentKind = when {
     // 非 SYSTEM 的合成消息 = 注入（世界书/模式注入落到对话位置）
     isSynthetic -> PromptSegmentKind.INJECTION
     else -> PromptSegmentKind.CHAT_HISTORY
+}
+
+/**
+ * system 的块列表 → 预览段（**纯函数**，便于 JVM 单测——`inspectPrompt` 本体需要
+ * Android Context 跑 transformer 链）。PERSONA 块保留 SYSTEM kind（兜底形态），
+ * 其余块按来源映射到细分 kind；卡槽块的 label 用调用方传入的本地化槽名。
+ */
+internal fun systemBlocksToSegments(
+    blocks: List<SystemBlock>,
+    labels: PromptInspectionLabels,
+    role: String,
+): List<PromptSegment> = blocks.map { block ->
+    val (kind, label) = when (block.source) {
+        SystemBlockSource.PERSONA -> PromptSegmentKind.SYSTEM to labels.system
+        SystemBlockSource.CARD_SLOT -> PromptSegmentKind.CARD_SLOT to (
+            labels.cardSlotNames[block.cardSlot] ?: labels.system
+            )
+        SystemBlockSource.MEMORY -> PromptSegmentKind.MEMORY to labels.memory
+        SystemBlockSource.TOOL -> PromptSegmentKind.TOOL_SCHEMA to labels.toolSchema
+        SystemBlockSource.DIAGRAM_HINT, SystemBlockSource.MATH_HINT ->
+            PromptSegmentKind.RENDER_HINT to labels.renderHint
+    }
+    PromptSegment(
+        kind = kind,
+        label = label,
+        role = role,
+        content = block.content,
+        isSynthetic = true,
+        tokens = estimateTokens(block.content),
+    )
 }
 
 /**
