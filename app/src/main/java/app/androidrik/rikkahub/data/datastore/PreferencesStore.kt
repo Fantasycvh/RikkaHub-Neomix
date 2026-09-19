@@ -978,6 +978,8 @@ internal val DEFAULT_ASSISTANTS = listOf(
         name = "",
         systemPrompt = ""
     ),
+    // 缓存提示：此种子刻意**不含 {{cur_date}}**——system 在请求位置 0，每日变化的内容
+    // 会让整段前缀缓存每天作废（#1542 复核 Tier A）。需要日期的用户自行添加并接受该代价。
     Assistant(
         id = Uuid.parse("3d47790c-c415-4b90-9388-751128adb0a0"),
         name = "",
@@ -985,7 +987,6 @@ internal val DEFAULT_ASSISTANTS = listOf(
             You are a helpful assistant, called {{char}}, based on model {{model_name}}.
 
             ## Info
-            - Date: {{cur_date}}
             - Locale: {{locale}}
             - Timezone: {{timezone}}
             - Device Info: {{device_info}}
@@ -1020,7 +1021,11 @@ val DEFAULT_MODE_INJECTIONS = listOf(
     PromptInjection.ModeInjection(
         id = Uuid.parse("b87eaf16-f5cd-4ac1-9e4f-b11ae3a61d74"),
         content = LEARNING_MODE_PROMPT,
-        position = InjectionPosition.AFTER_SYSTEM_PROMPT,
+        // 缓存止血（#1542 复核 Tier A）：不用 AFTER_SYSTEM_PROMPT——该位置会**改写 system
+        // 消息本体**（applyInjections 把 before+原文+after 拼回 system），而 system 在请求
+        // 位置 0，一变整段前缀缓存全废。BOTTOM_OF_CHAT 插在对话尾部、前缀稳定。
+        // 只影响新装用户；存量数据的该条目由管理页「一键迁移」覆盖。
+        position = InjectionPosition.BOTTOM_OF_CHAT,
         name = "Learning Mode"
     )
 )

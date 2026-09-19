@@ -682,6 +682,9 @@
   <string name="prompt_page_role_user">User</string>
   <string name="prompt_page_scan_depth">Scan Depth (Messages)</string>
   <string name="prompt_page_title">Prompt Injection</string>
+  <string name="prompt_page_cache_migration_hint">%1$d entries sit before/after the system prompt, rewriting it and invalidating the whole prompt cache</string>
+  <string name="prompt_page_cache_migration_action">Move to end of chat</string>
+  <string name="prompt_page_cache_migrated">Moved %1$d entries</string>
   <string name="prompt_page_unnamed">Unnamed</string>
   <string name="prompt_page_unnamed_entry">Unnamed Entry</string>
   <string name="prompt_page_unnamed_lorebook">Unnamed Lorebook</string>

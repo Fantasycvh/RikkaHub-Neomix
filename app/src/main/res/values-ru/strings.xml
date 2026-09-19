@@ -639,6 +639,9 @@
   <string name="prompt_page_role_user">Пользователь</string>
   <string name="prompt_page_scan_depth">Глубина сканирования (сообщения)</string>
   <string name="prompt_page_title">Внедрение подсказок</string>
+  <string name="prompt_page_cache_migration_hint">%1$d записей до/после системного промпта переписывают его и ломают весь кэш промпта</string>
+  <string name="prompt_page_cache_migration_action">Перенести в конец чата</string>
+  <string name="prompt_page_cache_migrated">Перенесено записей: %1$d</string>
   <string name="prompt_page_unnamed">Без имени</string>
   <string name="prompt_page_unnamed_entry">Безымянная запись</string>
   <string name="prompt_page_unnamed_lorebook">Безымянная книга знаний</string>

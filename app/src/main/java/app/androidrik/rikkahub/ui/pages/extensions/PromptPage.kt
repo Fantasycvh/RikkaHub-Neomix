@@ -118,6 +118,8 @@ import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
+import app.androidrik.rikkahub.data.model.countSystemRewritingInjections
+import app.androidrik.rikkahub.data.model.migrateSystemRewritingInjections
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -133,6 +135,23 @@ fun PromptPage(vm: PromptVM = koinViewModel(), initialWorldbooks: Boolean = fals
     var worldbooks by rememberSaveable { mutableStateOf(initialWorldbooks && SHOW_LOREBOOK_TABS) }
     var openedPresetId by rememberSaveable { mutableStateOf<String?>(null) }
     var openedBookId by rememberSaveable { mutableStateOf<String?>(null) }
+    // #1542 复核 Tier A：一键迁移「改写 system 区」的注入条目到对话尾部（缓存止血）。
+    // 无此类条目时卡片自身不渲染；迁移覆盖预设条目与世界书条目（ST 导入的 after 是主要来源）。
+    val toaster = LocalToaster.current
+    val context = LocalContext.current
+    val cacheMigrationCard: @Composable () -> Unit = {
+        CacheMigrationCard(
+            presets = settings.promptPresets,
+            lorebooks = settings.lorebooks,
+            onMigrate = {
+                val count = countSystemRewritingInjections(settings.promptPresets, settings.lorebooks)
+                val (newPresets, newLorebooks) =
+                    migrateSystemRewritingInjections(settings.promptPresets, settings.lorebooks)
+                vm.updateSettings(settings.copy(promptPresets = newPresets, lorebooks = newLorebooks))
+                toaster.show(context.getString(R.string.prompt_page_cache_migrated, count))
+            },
+        )
+    }
     val managementBar: @Composable () -> Unit = {
         if (SHOW_LOREBOOK_TABS) {
             NavigationBar {
@@ -175,6 +194,7 @@ fun PromptPage(vm: PromptVM = koinViewModel(), initialWorldbooks: Boolean = fals
                     onBudgetChange = { vm.updateSettings(settings.copy(lorebookInjectBudgetTokens = it)) },
                     onOpenBook = { openedBookId = it.id.toString() },
                     contentPadding = padding,
+                    migrationCard = cacheMigrationCard,
                 )
             }
         } else {
@@ -204,6 +224,7 @@ fun PromptPage(vm: PromptVM = koinViewModel(), initialWorldbooks: Boolean = fals
             bottomBar = managementBar,
             onUpdatePresets = { vm.updateSettings(settings.copy(promptPresets = it)) },
             onOpenPreset = { openedPresetId = it.id.toString() },
+            migrationCard = cacheMigrationCard,
         )
     } else {
         // 详情页是**页内**二级页面（同一 route），系统返回键须先回到预设列表，
@@ -235,6 +256,7 @@ private fun PresetListScreen(
     onUpdatePresets: (List<PromptPreset>) -> Unit,
     onOpenPreset: (PromptPreset) -> Unit,
     bottomBar: @Composable () -> Unit,
+    migrationCard: (@Composable () -> Unit)? = null,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var expanded by rememberSaveable { mutableStateOf(true) }
@@ -296,6 +318,9 @@ private fun PresetListScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 state = lazyListState,
             ) {
+                if (migrationCard != null) {
+                    item(key = "cache_migration") { migrationCard() }
+                }
                 if (presets.isEmpty()) {
                     item {
                         Column(
@@ -1135,6 +1160,7 @@ private fun LorebookTab(
     onBudgetChange: (Int) -> Unit,
     onOpenBook: (Lorebook) -> Unit,
     contentPadding: PaddingValues,
+    migrationCard: (@Composable () -> Unit)? = null,
 ) {
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
@@ -1204,6 +1230,9 @@ private fun LorebookTab(
                     }
                 }
             } else {
+                if (migrationCard != null) {
+                    item(key = "cache_migration") { migrationCard() }
+                }
                 items(lorebooks, key = { it.id }) { book ->
                     ReorderableItem(
                         state = reorderableState,

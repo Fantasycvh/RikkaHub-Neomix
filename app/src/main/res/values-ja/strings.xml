@@ -639,6 +639,9 @@
   <string name="prompt_page_role_user">ユーザー</string>
   <string name="prompt_page_scan_depth">スキャン深度（メッセージ）</string>
   <string name="prompt_page_title">プロンプトインジェクション</string>
+  <string name="prompt_page_cache_migration_hint">%1$d 件がシステムプロンプトの前/後にあり、システム領域を書き換えてプロンプトキャッシュを無効化します</string>
+  <string name="prompt_page_cache_migration_action">チャット末尾へ一括移動</string>
+  <string name="prompt_page_cache_migrated">%1$d 件を移動しました</string>
   <string name="prompt_page_unnamed">名前なし</string>
   <string name="prompt_page_unnamed_entry">無題のエントリー</string>
   <string name="prompt_page_unnamed_lorebook">名前なしのルアーブック</string>
