@@ -171,6 +171,7 @@
   <string name="assistant_page_time_reminder_interval_desc">消息间隔超过该值时插入时间提醒；第一条用户消息前始终提醒。</string>
   <string name="assistant_page_time_reminder_interval_value">%1$d 分钟</string>
   <string name="assistant_page_title">助手设置</string>
+  <string name="assistant_page_last_assistant_hint">仅剩最后一个助手——请先新建一个助手，才能安全删除或替换它。</string>
   <string name="assistant_disabled_badge">已停用</string>
   <string name="assistant_picker_empty_all_disabled">所有助手均已停用。可在助手管理页重新启用。</string>
   <string name="assistant_page_top_p">Top P</string>

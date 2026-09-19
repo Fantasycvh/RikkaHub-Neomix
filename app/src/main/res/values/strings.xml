@@ -171,6 +171,7 @@
   <string name="assistant_page_time_reminder_interval_desc">Insert a reminder when the message gap exceeds this interval. Always remind before the first user message.</string>
   <string name="assistant_page_time_reminder_interval_value">%1$d min</string>
   <string name="assistant_page_title">Assistant Settings</string>
+  <string name="assistant_page_last_assistant_hint">Only one assistant left — create a new one first to safely delete or replace it.</string>
   <string name="assistant_disabled_badge">Disabled</string>
   <string name="assistant_picker_empty_all_disabled">All assistants are disabled. Re-enable them on the assistant management page.</string>
   <string name="assistant_page_top_p">Top P</string>

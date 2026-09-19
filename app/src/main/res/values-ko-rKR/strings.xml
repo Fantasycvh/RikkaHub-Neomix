@@ -169,6 +169,7 @@
   <string name="assistant_page_time_reminder_interval_desc">메시지 간격이 이 값을 초과하면 알림을 삽입합니다. 첫 번째 사용자 메시지 전에는 항상 삽입됩니다.</string>
   <string name="assistant_page_time_reminder_interval_value">%1$d분</string>
   <string name="assistant_page_title">어시스턴트 설정</string>
+  <string name="assistant_page_last_assistant_hint">어시스턴트가 하나만 남았습니다. 안전하게 삭제하거나 교체하려면 먼저 새 어시스턴트를 만드세요.</string>
   <string name="assistant_disabled_badge">비활성</string>
   <string name="assistant_picker_empty_all_disabled">모든 어시스턴트가 비활성화되었습니다. 관리 페이지에서 다시 활성화할 수 있습니다.</string>
   <string name="assistant_page_top_p">Top P</string>

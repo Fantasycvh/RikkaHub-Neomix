@@ -194,6 +194,13 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 state = lazyListState,
             ) {
+                // 只剩最后一个助手时常驻提醒：删除按钮此时禁用（删空会让
+                // getCurrentAssistant 的 first() 兜底崩溃），给出路=先新建
+                if (settings.assistants.size == 1) {
+                    item(key = "last_assistant_banner") {
+                        LastAssistantBanner(onCreate = { createState.open(Assistant()) })
+                    }
+                }
                 lazyItems(filteredAssistants, key = { assistant -> assistant.id }) { assistant ->
                     ReorderableItem(
                         state = reorderableState,
@@ -579,6 +586,46 @@ private fun AssistantActionSheet(
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent)
             )
 
+        }
+    }
+}
+
+
+/**
+ * 「仅剩最后一个助手」常驻提示卡（#删除护栏配套）。
+ *
+ * 最后一个助手的删除按钮是禁用的（删空会让 `getCurrentAssistant` 的 `first()` 兜底
+ * 崩溃），禁用本身不解释原因——这张卡补上「为什么 + 出路」：先新建，才能安全删除。
+ * 常驻（非 toast）：这是结构性状态，用户不解决它就一直在。
+ */
+@Composable
+private fun LastAssistantBanner(onCreate: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.assistant_page_last_assistant_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onCreate) {
+                Icon(HugeIcons.Add01, contentDescription = null, modifier = Modifier.size(16.dp))
+                Text(
+                    text = stringResource(R.string.assistant_page_add),
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
         }
     }
 }

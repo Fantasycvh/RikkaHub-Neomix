@@ -169,6 +169,7 @@
   <string name="assistant_page_time_reminder_interval_desc">メッセージ間隔がこの値を超えるとリマインダーを挿入します。最初のユーザーメッセージの前には常に挿入します。</string>
   <string name="assistant_page_time_reminder_interval_value">%1$d 分</string>
   <string name="assistant_page_title">アシスタント設定</string>
+  <string name="assistant_page_last_assistant_hint">アシスタントが1つだけ残っています。安全に削除・置き換えするには、先に新しいアシスタントを作成してください。</string>
   <string name="assistant_disabled_badge">無効</string>
   <string name="assistant_picker_empty_all_disabled">すべてのアシスタントが無効です。管理ページで再度有効化できます。</string>
   <string name="assistant_page_top_p">Top P</string>
