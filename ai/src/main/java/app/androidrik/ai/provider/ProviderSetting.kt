@@ -128,6 +128,19 @@ data class ApiKeyEntry(
      */
     val id: String = Uuid.random().toString(),
 ) {
+    /**
+     * id **不参与** equals/hashCode。
+     *
+     * id 是 UI 列表的稳定锚点，但解析旧数据时它只能取随机默认值——若参与相等性，
+     * 「同一份内容重新解析前后」会被误判为变化，任何依赖 equals 的 diff/缓存/测试
+     * 断言都会被这个随机性污染（GenerationRetryTest 实测踩到：轮转副本与预期列表
+     * key 全同却因 id 不同而不等）。业务身份就是 `key + enabled`。
+     */
+    override fun equals(other: Any?): Boolean =
+        other is ApiKeyEntry && other.key == key && other.enabled == enabled
+
+    override fun hashCode(): Int = 31 * key.hashCode() + enabled.hashCode()
+
     companion object {
         /** 从旧单 key 字段（空白/逗号分隔）拆出结构化列表 */
         fun fromLegacy(legacy: String): List<ApiKeyEntry> =

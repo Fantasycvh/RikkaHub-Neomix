@@ -1527,9 +1527,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="prompt_inspect_legend_title">이 페이지에 대하여</string>
   <string name="prompt_inspect_legend_body">읽기 전용 미리보기입니다. 실제 요청과 동일한 조립 코드를 거친 뒤 출처별로 나눠 표시합니다. 저장하지 않고 요청도 보내지 않습니다. "합성"으로 표시된 내용은 이번 요청에만 존재합니다.</string>
   <string name="prompt_inspect_index_title">세그먼트 목차</string>
-  <string name="prompt_inspect_expand">전체 보기(%1$d자)</string>
+  <string name="prompt_inspect_expand">펼치기</string>
   <string name="prompt_inspect_collapse">접기</string>
-  <string name="prompt_inspect_truncated_hint">표시만 생략됨(복사/공유는 전체)</string>
   <string name="prompt_inspect_copy_with_header">복사(출처 헤더 포함)</string>
   <string name="prompt_inspect_copied">복사됨</string>
   <string name="prompt_page_position_end_of_chat">요청 끝 (모든 메시지 뒤)</string>

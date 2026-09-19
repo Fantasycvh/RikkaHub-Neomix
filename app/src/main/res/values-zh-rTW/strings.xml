@@ -1583,9 +1583,8 @@
   <string name="prompt_inspect_legend_title">關於本頁</string>
   <string name="prompt_inspect_legend_body">唯讀預覽：與真實請求走同一條組裝程式碼，再依來源分段。不落庫、不傳送請求。標記為「合成」的內容僅存在於本次請求。</string>
   <string name="prompt_inspect_index_title">段落目錄</string>
-  <string name="prompt_inspect_expand">展開全部（%1$d 字元）</string>
+  <string name="prompt_inspect_expand">展開</string>
   <string name="prompt_inspect_collapse">收合</string>
-  <string name="prompt_inspect_truncated_hint">僅顯示截斷內容；複製/分享一律為完整文字</string>
   <string name="prompt_inspect_copy_with_header">複製（含來源表頭）</string>
   <string name="prompt_inspect_copied">已複製</string>
   <string name="prompt_page_position_end_of_chat">輪次尾部（本次請求末尾）</string>

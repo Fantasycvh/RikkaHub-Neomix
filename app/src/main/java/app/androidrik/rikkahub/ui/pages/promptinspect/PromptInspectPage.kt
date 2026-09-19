@@ -52,7 +52,6 @@ import app.androidrik.rikkahub.ui.components.ui.ScrollJumperBar
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
-import app.androidrik.common.text.truncateSafely
 import app.androidrik.rikkahub.utils.plus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -205,9 +204,6 @@ private fun shareText(context: android.content.Context, text: String) {
 /** 复制带表头（段号/来源/角色/token），便于贴到论坛或对比工具里时仍能对上来源。 */
 private fun segmentClipboardText(index: Int, segment: PromptSegment): String =
     "#${index + 1} ${segment.label} [${segment.role}, ≈${segment.tokens}]\n\n${segment.content}"
-
-/** 卡面正文的显示上限：长段默认折叠，避免「一张卡滚几十屏」。 */
-private const val COLLAPSED_CHARS = 1_200
 
 @Composable
 private fun SummaryCard(inspection: app.androidrik.rikkahub.data.ai.PromptInspection) {
@@ -375,10 +371,11 @@ private fun SegmentCard(
     onCopyWithHeader: () -> Unit,
     onShare: () -> Unit,
 ) {
-    // 长段默认折叠：段卡可以高到几十屏，全部铺开会让整页无法浏览
-    val isLong = segment.content.length > COLLAPSED_CHARS
-    var expanded by remember(index) { mutableStateOf(false) }
-    val shown = if (isLong && !expanded) segment.content.truncateSafely(COLLAPSED_CHARS) else segment.content
+    // 正文**全文直出、不做自动截断**（2026-09-19 决策）：概览职责已由段落目录卡承担，
+    // 截断只会让「读内容」这个页面主用途多点一步，且 SelectionContainer 选不到未渲染的文本。
+    // 折叠保留为**手动**动作：把整段正文收起、只留卡头——用来把不关心的大段（如工具 schema）
+    // 从浏览路径里挪开。默认全部展开。
+    var folded by remember(index) { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -403,27 +400,23 @@ private fun SegmentCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    // 折叠开关放**卡头**而非正文之下：展开后 11K 字的正文会把下方按钮推到几十屏外，
-                    // 用户就再也找不到「收起」了（实测踩到）。卡头位置两个方向都可达。
-                    if (isLong) {
-                        Surface(
-                            onClick = { expanded = !expanded },
-                            shape = CircleShape,
-                            color = Color.Transparent,
-                        ) {
-                            Icon(
-                                imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
-                                contentDescription = stringResource(
-                                    if (expanded) R.string.prompt_inspect_collapse
-                                    else R.string.prompt_inspect_expand,
-                                    segment.content.length,
-                                ),
-                                modifier = Modifier
-                                    .padding(6.dp)
-                                    .size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                    // 折叠开关放**卡头**：两个方向都可达（正文可长达几十屏，放正文下方会够不着）
+                    Surface(
+                        onClick = { folded = !folded },
+                        shape = CircleShape,
+                        color = Color.Transparent,
+                    ) {
+                        Icon(
+                            imageVector = if (folded) HugeIcons.ArrowDown01 else HugeIcons.ArrowUp01,
+                            contentDescription = stringResource(
+                                if (folded) R.string.prompt_inspect_expand
+                                else R.string.prompt_inspect_collapse
+                            ),
+                            modifier = Modifier
+                                .padding(6.dp)
+                                .size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     // 段级快捷操作：长段无法手动划选（等同于没有），必须给「一键复制」
                     SegmentAction(icon = HugeIcons.Copy01, description = stringResource(R.string.copy), onClick = onCopyContent)
@@ -435,34 +428,28 @@ private fun SegmentCard(
                     SegmentAction(icon = HugeIcons.Share04, description = stringResource(R.string.share), onClick = onShare)
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = segment.role,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                if (segment.isSynthetic) {
+            if (!folded) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = stringResource(R.string.prompt_inspect_synthetic),
+                        text = segment.role,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    if (segment.isSynthetic) {
+                        Text(
+                            text = stringResource(R.string.prompt_inspect_synthetic),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                }
+                SelectionContainer {
+                    Text(
+                        text = segment.content.ifBlank { "—" },
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
-            SelectionContainer {
-                Text(
-                    text = shown.ifBlank { "—" },
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            // 折叠提示留在正文下方（只在截断时出现），开关本身已移到卡头
-            if (isLong && !expanded) {
-                Text(
-                    text = stringResource(R.string.prompt_inspect_truncated_hint),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }

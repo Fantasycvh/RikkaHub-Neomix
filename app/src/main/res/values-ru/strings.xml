@@ -1527,9 +1527,8 @@
   <string name="prompt_inspect_legend_title">Об этой странице</string>
   <string name="prompt_inspect_legend_body">Предпросмотр только для чтения: собирается тем же кодом, что и реальный запрос, затем разбивается по источникам. Ничего не сохраняется и не отправляется. Помеченное как синтетическое существует только для этого запроса.</string>
   <string name="prompt_inspect_index_title">Оглавление сегментов</string>
-  <string name="prompt_inspect_expand">Показать всё (%1$d симв.)</string>
+  <string name="prompt_inspect_expand">Развернуть</string>
   <string name="prompt_inspect_collapse">Свернуть</string>
-  <string name="prompt_inspect_truncated_hint">показано сокращённо; копирование — полностью</string>
   <string name="prompt_inspect_copy_with_header">Копировать с заголовком</string>
   <string name="prompt_inspect_copied">Скопировано</string>
   <string name="prompt_page_position_end_of_chat">В конце запроса (после всех сообщений)</string>

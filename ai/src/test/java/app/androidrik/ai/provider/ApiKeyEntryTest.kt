@@ -59,4 +59,13 @@ class ApiKeyEntryTest {
         val b = ApiKeyEntry("")
         assertNotEquals(a.id, b.id)
     }
+
+    @Test
+    fun `equality ignores the ui anchor id`() {
+        // id 每次解析旧数据重新随机：若参与 equals，「内容未变」会被误判为变化
+        assertEquals(ApiKeyEntry("k1"), ApiKeyEntry("k1"))
+        assertEquals(ApiKeyEntry("k1").copy(key = "k1", enabled = false).let { it }, ApiKeyEntry("k1", enabled = false))
+        assertNotEquals(ApiKeyEntry("k1"), ApiKeyEntry("k2"))
+        assertNotEquals(ApiKeyEntry("k1"), ApiKeyEntry("k1", enabled = false))
+    }
 }

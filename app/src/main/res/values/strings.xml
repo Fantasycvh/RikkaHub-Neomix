@@ -1545,9 +1545,8 @@
   <string name="prompt_inspect_legend_title">About this page</string>
   <string name="prompt_inspect_legend_body">Read-only preview assembled by the same code path as a real request, then split by source. Nothing is saved and no request is sent. Items marked synthetic exist only for the request.</string>
   <string name="prompt_inspect_index_title">Segments index</string>
-  <string name="prompt_inspect_expand">Show all (%1$d chars)</string>
+  <string name="prompt_inspect_expand">Show</string>
   <string name="prompt_inspect_collapse">Collapse</string>
-  <string name="prompt_inspect_truncated_hint">truncated for display; copy/share always uses the full text</string>
   <string name="prompt_inspect_copy_with_header">Copy with source header</string>
   <string name="prompt_inspect_copied">Copied</string>
   <string name="chat_message_tool_recent_chats">View recent chats</string>
