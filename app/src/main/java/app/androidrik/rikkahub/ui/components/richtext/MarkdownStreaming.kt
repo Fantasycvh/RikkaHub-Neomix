@@ -41,7 +41,14 @@ internal fun styleStreamingLine(text: String): AnnotatedString {
     if (text.isEmpty()) return AnnotatedString(text)
     val spans = mutableListOf<Pair<IntRange, SpanStyle>>()
     val codeRanges = STREAM_INLINE_CODE.findAll(text).map { it.range }.toList()
-    codeRanges.forEach { spans.add(it to SpanStyle(fontFamily = FontFamily.Monospace)) }
+    codeRanges.forEach {
+        spans.add(
+            it to SpanStyle(
+                fontFamily = FontFamily.Monospace,
+                fontFeatureSettings = CODE_FONT_FEATURES,
+            )
+        )
+    }
 
     fun overlapsCode(range: IntRange): Boolean =
         codeRanges.any { it.first <= range.last && range.first <= it.last }

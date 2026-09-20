@@ -886,6 +886,7 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
         "code" -> withStyle(
             SpanStyle(
                 fontFamily = JetbrainsMono,
+                fontFeatureSettings = CODE_FONT_FEATURES,
                 fontSize = 0.9.em,
                 color = colorScheme.primary,
             ).merge(cssStyle ?: SpanStyle())
