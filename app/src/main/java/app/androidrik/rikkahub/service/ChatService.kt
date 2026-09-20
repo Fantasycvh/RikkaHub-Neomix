@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -648,7 +649,10 @@ class ChatService(
     ) {
         appScope.launch {
             runCatching {
-                stopGeneration(conversationId)
+                // persistStoppedContent=false：本函数的语义是「回到截断前」，下面的
+                // saveConversation(restored) 才是权威结果；让 stopGeneration 先落一次
+                // 半截内容纯属多余写入。
+                stopGeneration(conversationId, persistStoppedContent = false)
                 val current = getConversationFlow(conversationId).value
                 val restored = current.copy(
                     messageNodes = restoreAfterTruncation(current.messageNodes, plan),
@@ -1398,6 +1402,26 @@ class ChatService(
     }
 
     /**
+     * 切换会话置顶状态。
+     *
+     * 若该会话当前有活跃 session（正在查看或后台生成），**先同步内存态再落库**：
+     * 与 [moveConversationToFolder] 同款理由——`togglePinStatus` 只改数据库的 `is_pinned` 单列，
+     * 而内存里那份 Conversation 仍是旧值；后续任意整对象保存（生成结束 / 改标题 / 保存会话）
+     * 都会用内存里的旧 `isPinned` 把它覆盖回去，表现为**星标静默丢失**。
+     *
+     * 先改内存可确保这段窗口内的整对象保存也带上新值。
+     */
+    suspend fun togglePinStatus(conversationId: Uuid) {
+        val session = sessions[conversationId]
+        // 以「落库后的真实值」为准：DB 是这次切换的唯一真相源，内存要跟它对齐。
+        val newValue = !(conversationRepo.getConversationById(conversationId)?.isPinned ?: false)
+        conversationRepo.updateConversationPinStatus(conversationId, newValue)
+        if (session != null) {
+            updateConversationState(conversationId) { it.copy(isPinned = newValue) }
+        }
+    }
+
+    /**
      * 移动会话到文件夹（folderId 为 null 表示移出到未归类）。
      *
      * 若该会话当前有活跃 session（正在查看或后台生成），先同步内存态再落库：
@@ -1721,13 +1745,48 @@ class ChatService(
     }
 
     // 停止当前会话生成任务（不清理会话缓存）
-    suspend fun stopGeneration(conversationId: Uuid) {
+    //
+    // @param persistStoppedContent 停止后是否把**已生成的部分**落库（默认 true）。
+    //   调用方若紧接着会自己写库（如撤销截断要覆盖成 restored），传 false 免一次多余写入。
+    suspend fun stopGeneration(conversationId: Uuid, persistStoppedContent: Boolean = true) {
         val session = sessions[conversationId] ?: return
         val jobs = synchronized(session) {
             session.cancelJobs()
         }
-        if (jobs.isEmpty()) return
-        jobs.forEach { it.join() }
+        if (jobs.isNotEmpty()) {
+            jobs.forEach { it.join() }
+        }
+        // 注意：不因 jobs 为空而早退——生成可能刚结束而收尾保存尚未落库，
+        // 此时同样需要下面的持久化（见 persistStoppedGeneration 的说明）。
         finishInterruptedPendingTools(conversationId)
+        // 用户主动停止：把**已生成的部分**落库（吸收上游 4a3eefc1 的 finishGeneration 语义）。
+        //
+        // 为什么必需：流式内容只走 updateConversation（**纯内存**），落库点只有两处——
+        // onSuccess（正常完成）与 GenerationPartialFailureException（#1812，重试耗尽且配置门控）。
+        // 取消走的是 onFailure，拿到的 CancellationException 被 addError 直接 return，
+        // 于是**没有任何写库**；而 session 在离开页面 5s 后即被回收，
+        // 再次打开时 initializeConversation 会无条件用 DB 覆盖内存 ⇒ 半截内容静默消失。
+        //
+        // 真机复现（2026-09-20）：生成中途停止，内存里是新的半截内容（屏幕可见），
+        // DB 仍是上一次的旧内容；退到桌面再进入，界面回到旧内容。
+        // 修复后同一操作：DB 里 node 1 的候选数 1→2、select_index 指向新候选，内容保留。
+        //
+        // 必须放在 finishInterruptedPendingTools 之后：那一步把 pending 工具标记为「已取消」，
+        // 若先落库会把未执行工具原样持久化。
+        if (persistStoppedContent) persistStoppedGeneration(conversationId)
+    }
+
+    /**
+     * 把当前内存态落库。
+     *
+     * `NonCancellable`：调用方（UI / undo / web）的 scope 可能同时被取消，
+     * 不能因「取消在飞」把这次写入一并丢掉——那正是本方法要修的问题。
+     */
+    private suspend fun persistStoppedGeneration(conversationId: Uuid) {
+        val conversation = getConversationFlow(conversationId).value
+        withContext(NonCancellable) {
+            runCatching { saveConversation(conversationId, conversation) }
+                .onFailure { Logging.log(TAG, "persistStoppedGeneration failed: $it") }
+        }
     }
 }

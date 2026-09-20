@@ -14,6 +14,7 @@ import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.ConversationRepository
+import app.androidrik.rikkahub.service.ChatService
 import kotlin.uuid.Uuid
 
 private const val TAG = "HistoryVM"
@@ -21,6 +22,7 @@ private const val TAG = "HistoryVM"
 class HistoryVM(
     private val conversationRepo: ConversationRepository,
     private val settingsStore: SettingsStore,
+    private val chatService: ChatService,
 ) : ViewModel() {
     val assistant = settingsStore.settingsFlow
         .map { it.getCurrentAssistant() }
@@ -55,7 +57,9 @@ class HistoryVM(
 
     fun togglePinStatus(conversationId: Uuid) {
         viewModelScope.launch {
-            conversationRepo.togglePinStatus(conversationId)
+            // 走 ChatService 而非 repo：该会话可能有活跃 session（如后台生成中），
+            // 只改 DB 单列会被后续整对象保存用内存里的旧 isPinned 覆盖回去（星标静默丢失）。
+            chatService.togglePinStatus(conversationId)
         }
     }
 

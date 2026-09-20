@@ -334,7 +334,9 @@ class ChatVM(
 
     fun updatePinnedStatus(conversation: Conversation) {
         viewModelScope.launch {
-            conversationRepo.togglePinStatus(conversation.id)
+            // 走 ChatService：本会话必有活跃 session（正在查看），只改 DB 单列会被下一次
+            // 整对象保存（生成结束/改标题）用内存里的旧 isPinned 覆盖回去。
+            chatService.togglePinStatus(conversation.id)
         }
     }
 

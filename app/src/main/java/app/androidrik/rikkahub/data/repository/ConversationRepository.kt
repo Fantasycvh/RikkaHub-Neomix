@@ -486,11 +486,16 @@ class ConversationRepository(
             }
     }
 
-    suspend fun togglePinStatus(conversationId: Uuid) {
-        conversationDAO.updatePinStatus(
-            id = conversationId.toString(),
-            isPinned = !(getConversationById(conversationId)?.isPinned ?: false)
-        )
+    /**
+     * 设置置顶状态（由调用方算好新值并负责同步内存态）。
+     *
+     * 为什么由调用方传值而不在此处「自行取反」：一次切换要同时更新**内存态与数据库**，
+     * 两边必须用同一个新值。若这里取反、调用方再取反，两者读到的基线不同就会分叉
+     * （内存说已置顶、DB 说未置顶，下一次整对象保存即把 DB 覆盖回去）。
+     * 入口在 `ChatService.togglePinStatus`——它持有 session，能同时改内存。
+     */
+    suspend fun updateConversationPinStatus(conversationId: Uuid, isPinned: Boolean) {
+        conversationDAO.updatePinStatus(conversationId.toString(), isPinned)
     }
 
     /**
