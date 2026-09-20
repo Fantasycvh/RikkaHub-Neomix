@@ -578,8 +578,11 @@ class ConversationRepository(
             // 自愈早期压缩 bug 造成的跨节点候选副本（详见 repairCorruptedCandidates）
             nodes.repairCorruptedCandidates()
         }.also { loaded ->
-            // 耗时埋点：打开会话、列表加载都经过这里。若出现可感知延迟（如 >300ms）
-            // 才值得考虑数据层窗口化（design-auto-compaction 附录 A L2）。
+            // 耗时埋点：打开会话、列表加载都经过这里。
+            // 触发窗口化的阈值（2026-09-20 实测修正，design-auto-compaction 附录 A §5.2）：
+            // 驱动因素是**字节量而非节点数**——1024 节点/334KB 只要 232ms，而节点更少（912）
+            // 但 16MB 的要 1706ms。故判据 = 单会话 >1MB 字节量、或此日志 >300ms。
+            // 字节量可直接查：SELECT SUM(LENGTH(messages)) FROM message_node GROUP BY conversation_id
             val ms = (System.nanoTime() - startNs) / 1_000_000
             Log.i(TAG, "loadMessageNodes: ${loaded.size} nodes in ${ms}ms (conv=$conversationId)")
         }
