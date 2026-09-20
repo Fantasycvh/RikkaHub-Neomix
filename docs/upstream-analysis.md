@@ -114,23 +114,23 @@
 
 ### 2026-09-19 新发现：2.5.2 后再 8 提交（`c8853531`..`458c16df`，已 ff-only 同步 master；**其中 2 项已于 09-20 吸收**）
 
-> 剩余 6 项结论仍为「暂不吸收、按需取用」；`7c1629d0`/`458c16df` 为已核实的真缺口、待用户决定是否吸收。
+> 剩余 4 项结论仍为「暂不吸收、按需取用」；`458c16df` 为已核实的真缺口、待用户决定是否吸收。
 
 | 提交 | 内容 | 评估 |
 |---|---|---|
 | `a7850967` | **fix: 修复内联代码连字**（close #1920；`Markdown.kt`/`MarkdownNew.kt`/`SimpleHtmlBlock.kt` 三处加 `fontFeatureSettings = "'calt' 0, 'liga' 0, 'clig' 0"`） | ✅ **已于 2026-09-20 吸收（`083e2c96`），真机验证通过**。当时判定：fork 此前只吸收了 highlight 模块的代码块连字修复（`f26a19f1`，对齐上游 7b92f89e），富文本**内联 code span** 三处均无 fontFeatureSettings。**吸收时略作扩展**：①多覆盖 fork 特有的 `MarkdownStreaming.kt` 流式行内代码（该文件明确要求与最终渲染对齐，不加会「流式有连字、定格后消失」）；②常量收成 `RichTextStyle.CODE_FONT_FEATURES` 单一定义（原 6 处内联字面量正是 #1920 漏一处的成因）；③`highlight` 模块的 `Highlighter` 因独立 Gradle 模块、共享需加依赖边，保留自身副本 |
 | `6e98691c` | **fix: 移除 ChatCompletionsAPI tool 消息多出来的 name 属性**（1 行 + 测试） | ✅ **已于 2026-09-20 吸收（`43b54550`）**。当时判定：fork `ChatCompletionsAPI.kt:538` tool 角色消息仍带 `put("name", tool.toolName)`（`:629` 那处是 tool_calls 内的 `function.name`，合法，不动），部分 OpenAI 兼容端点会拒收顶层 name。**吸收时核对**：其余 provider（Google/Claude/ResponseAPI）的 `name` 站点均为合法位置，不动；fork 测试文件已更名 `ChatCompletionsAPIMessageTest.kt:277`，断言反转为 `containsKey("name")` 为假。ai 模块 30 项全过 |
-| `7c1629d0` | **fix: speed up image crop confirmation**（#1892，`CropLauncher.kt` PNG→JPEG(90)） | **真缺口（2026-09-19 核对），建议吸收**。fork `CropLauncher.kt:71` 仍是 `CompressFormat.PNG`——大图（相机/相册）PNG 编码慢导致确认卡顿。难度：小（5 行 + 注释） |
+| `7c1629d0` | **fix: speed up image crop confirmation**（#1892，`CropLauncher.kt` PNG→JPEG(90)） | ✅ **已于 2026-09-20 吸收（`458fe3a6`）**。当时判定：`CropLauncher.kt:71` 仍是 `CompressFormat.PNG`——`withMaxResultSize(4096,4096)` 允许到 4096²，PNG 编码既慢又占内存即卡顿成因；**反编译 ucrop 2.2.11 确认 JPEG/q90 本就是库默认值**（`UCropActivity.DEFAULT_COMPRESS_FORMAT`/`DEFAULT_COMPRESS_QUALITY`），此前的 PNG 才是在覆盖默认。**吸收时另修一个附带缺陷**：文件名写死 `.jpg` 而编码用 PNG ⇒ 产物错标，**真机实证 `files/upload/` 下 5 个 `.jpg` 全部以 PNG magic 开头**（请求侧不受影响——ai 模块 `encodeBase64` 嗅探文件头、再统一压 JPEG q85）；引入 `CropOutput` 单一真相源使扩展名由格式**派生**，两者不可能再分叉。**已知取舍**：JPEG 无 alpha，透明像素合成成黑色，仅影响本地显示。测试 `CropOutputTest` 6 项 |
 | `458c16df` | **feat: fork 对话标题自动使用原会话标题加序号**（「fork」指分叉会话功能，非仓库 fork；`createForkConversation` +10 行） | **真缺口（2026-09-19 核对），可吸收**。fork `ChatService.kt:153/1596` 的 `createForkConversation` 仍不带 title（分叉出的会话无标题）。上游实现：`getConversationsOfAssistant` 取全量标题集 → `标题(N)` 首个未占用序号。难度：小；注意 fork `ChatService.kt` 重改最重，须手工适配不 cherry-pick |
 | `445341e9` | **fix: restore favorites correctly after undoing deletion**（Fixes #1915） | **不吸收（2026-09-19 核对）：fork 已修（`aa2c9a53`），等价**。fork 侧 `FavoriteVM.removeFavorite/restoreFavorite` 均已改 suspend 保证落库时序、`FavoritePage.kt:284` 已有 `dismissState.reset()`（上游注释「Reset before removal」与 fork 同思路）。此提交反向印证 fork 对 #1915 的诊断正确 |
-| `4a3eefc1` | **fix: preserve conversation state across session switches**（抽取 `ConversationSessionManager` + 失败/取消时持久化部分生成 + 元数据同步，10 文件 +722/-200 + 428 行测试） | **不整包吸收（2026-09-19 定评），仅作参考**。与 fork 自研的三件套（后台保活前台 Service、生成失败自动重试、半截回复 `20d84333`）**正面重叠**，且 fork `ChatService.kt` 已重度定制——整包移植冲突极高、语义会打架。参考价值：①其 `ConversationSessionManager` 的会话复用/订阅回归测试设计；②「元数据编辑与活跃会话同步」这个面 fork 未显式处理，可在自有结构上补。若将来 fork ChatService 再出状态 bug，回来翻此提交 |
+| `4a3eefc1` | **fix: preserve conversation state across session switches**（抽取 `ConversationSessionManager` + 失败/取消时持久化部分生成 + 元数据同步，10 文件 +722/-200 + 428 行测试） | **不整包吸收，但已按面拆取两处真 bug（2026-09-20，`1b41b586`）**。整包移植仍不值得——与 fork 自研三件套（后台保活前台 Service、生成失败自动重试、半截回复 `20d84333`）正面重叠，且 `ChatService.kt` 已重度定制。**但它是三件事捆在一起，其中两件是 fork 真缺、用户可见**：<br>**①「停止生成后内容静默消失」——真机复现并修复**：流式内容只走 `updateConversation`（纯内存），落库点仅 `onSuccess` 与 #1812 的 `GenerationPartialFailureException`（重试耗尽且配置门控）；取消走 `onFailure`，`CancellationException` 被 `addError` 直接 return（`:232`）⇒ **全程零写库**，而 session 离开页面 5s 即回收、`initializeConversation` 会无条件用 DB 覆盖内存。**真机证据**：屏幕显示新半截内容、DB 仍是旧完整内容（logcat 见 `stream reset: CANCEL` + `JobCancellationException`）；退到桌面重进即回到旧内容。修法=`stopGeneration` 末尾用 `NonCancellable` 收尾落库（须在 `finishInterruptedPendingTools` **之后**，否则未执行工具被原样持久化）；修复后 node 候选数 1→2、`select_index` 指向新候选。<br>**②「置顶星标静默丢失」——同族于 fork 已修过的 folderId**：`togglePinStatus` 只改 DB 单列，内存仍旧值，后续整对象保存（`conversationToConversationEntity:403`）把它覆盖回去；`moveConversationToFolder` 的注释（`:1400`）早已写明同一机制，本次推广到漏掉的 `isPinned`。<br>**③未修但已核实**：`initializeConversation` 无条件覆盖内存态，上游的 load-once 守卫**照搬会破坏 web API**（`ConversationRoutes` 7 处依赖它「改 DB→读回」，如 `POST /{id}/injections`），属独立议题 |
 | `64319122` | chore: 移除小马算力默认提供商（`DefaultProviders.kt` -16 行） | **产品决策项（2026-09-19 核对）**：fork `DefaultProviders.kt:164` 仍有小马算力。fork 已有「内置提供商删除墓碑」（`removedBuiltInProviderIds`），删默认项技术上安全（老用户存量不受影响，仅回填跳过）。是否跟进看用户是否想精简默认列表 |
 | `51a33198` | chore: bump haze version | **暂不吸收**：配套 `7ee13f2a` blur/glass 效果；fork 不吸收该特性则无需动 haze |
 
 ### 2026-09-19 同步动作记录
 
 - `git fetch upstream` → `c8853531..458c16df`；本地 master 自 `d47d13a6` **ff-only 快进至 `458c16df`**（补上了 09-16 已评估未同步的 5 提交）。
-- 上述 8 提交全部**仅评估未吸收**；标记「建议吸收」的四个小件（`a7850967` 连字 / `6e98691c` tool name / `7c1629d0` 裁剪 JPEG / `458c16df` 分叉标题）待用户点头后随下批一起做。
+- 上述 8 提交中**四个已吸收**：`a7850967` 连字（`083e2c96`）、`6e98691c` tool name（`43b54550`）、`7c1629d0` 裁剪 JPEG（`458fe3a6`，09-20）、`4a3eefc1` 按面拆取两处真 bug（`1b41b586`，09-20）。**仅剩 `458c16df` 分叉标题**（须手工适配 `ChatService.kt`）等用户决定。
 
 
 ### 2026-09-16 上游 issue 巡检（值得注意的）
