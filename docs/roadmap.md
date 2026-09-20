@@ -402,7 +402,9 @@ data class ApiKeyEntry(
 
 **评估**：Root 强依赖 + 仅 2★，受众窄。子代理 profile 系统思路可留意，但方向未规划。**暂不参考**。
 
-### 3. RikkaHub Turbo（dcs666/rikkahub-turbo，2★）
+### 3. RikkaHub Turbo（`dcs666/rikkahub-pro`，1★）
+
+> **仓库名更正（2026-09-19）**：本节旧称 `dcs666/rikkahub-turbo`——**该 URL 不存在**（API 与网页均硬 404、无重定向；对照已知改名仓 `home-assistant/home-assistant` → `core`、`facebookincubator/create-react-app` → `react/create-react-app` 均保留 301）。实际仓库是 **`dcs666/rikkahub-pro`**：`rikkahub/rikkahub` 的 fork，建于 2026-07-24，含 `perf/rendering-and-streaming` 分支与 `v1.9.x-turbo` 系列 tag（同用户名下另有**非 fork** 的 `rikkahub-pro-old`，07-28 建、08-06 停更）。「turbo」是该二改版的**自称/绰号**（发行 tag 即 `-turbo` 后缀），从未是仓库名——**仓库可达**，下文及 `references/turbo-bugs-audit.md` 中「源仓不可达、diff 无法复核」的表述据此作废。
 
 **定位**：RikkaHub 激进性能实验场——pro 完整镜像 + **渲染/流式极限优化**（带 trade-off）。默认分支 `perf/rendering-and-streaming`。实际是"全量加固 + 性能优化"实验场：**548 commits / 300 文件 / 修复 80+ 真实 bug**（PROGRESS.md 730 行完整记录）。
 
@@ -485,7 +487,7 @@ data class ApiKeyEntry(
 - 2026-08-12：上游 issue 探讨（#857 代理需求确认 / OCR / MCP mTLS 等），增补「四、本地 OCR」与「五、上游 issue 关注清单」。**暂不实现**。
 - 2026-08-12：记录备份互通性已知边界（原版→本 fork 通、本 fork→原版不通）+ 可选根治方向。**暂不处理**。
 - 2026-08-13：调研 4 个 RikkaHub 二改版（agent/root/turbo/plus），记录可吸收点（免 key 搜索+断路器、Hardline 安全底线、技能触发词自动注入、前台保活），增补「七、RikkaHub 二改版调研」。**暂不实现**。
-- 2026-08-13：深挖 rikkahub-turbo `perf/rendering-and-streaming` 分支（PROGRESS.md），记录 R3.2 块级流式渲染 / R2.1 折叠调优 / setJob identity 修复 / #57 Response API 同根因复现 / 增量发送全禁用结论 / 80+ bug 修复清单。**已移植 setJob identity 修复**（ConversationSession.kt，对应 c897647）；R3.2 块级流式渲染为卡顿解药方向，**待实现**。
+- 2026-08-13：深挖 rikkahub-turbo（实为 `dcs666/rikkahub-pro`，见上节更正）`perf/rendering-and-streaming` 分支（PROGRESS.md），记录 R3.2 块级流式渲染 / R2.1 折叠调优 / setJob identity 修复 / #57 Response API 同根因复现 / 增量发送全禁用结论 / 80+ bug 修复清单。**已移植 setJob identity 修复**（ConversationSession.kt，对应 c897647）；R3.2 块级流式渲染为卡顿解药方向，**待实现**。
 - 2026-08-13：调研 rikkahub-math-plus（TikZ 图表渲染管线 + Lean 技能），记录 TikZ 管线架构（检测→preamble 生成→编译→三层缓存）作参考。增补「七」第 5 节。**暂不实现**。
 - 2026-08-13：TikZ 图表自动渲染实现后**真机空白，用户决定暂时放弃**。git revert 4 个 TikZ commit（84152089/beffca60/d32ac40b/d4fcaa26），分支回到无 TikZ 状态。**WebView 内跑 wasm+worker 引擎（tikzjax）在 Android 虚拟 origin 下不可行**，未来重启应走 JVM 渲染或 workspace pdflatex。安全修复版发布 v2.4.5-androidrik.17。
 - 2026-08-13：拉取 turbo `PROGRESS.md` 存档（docs/references/turbo-PROGRESS.md，742 行），并整理**可核查 bug 清单** docs/references/turbo-bugs-audit.md（48+ 项分四类：崩溃 17 / 数据丢失 9 / 资源防护 12 / 功能 15，含 turbo commit + 我们 fork 状态列）。**核查进度：已修 5 项安全**；**C1 coerceIn(0,-1) 崩溃已确认同款待修**（PreferencesStore.kt:387）；D4 删除附件延迟清理、D2 压缩覆盖新消息待核。**先不修复**，待用户决定优先级。

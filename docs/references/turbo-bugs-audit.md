@@ -1,7 +1,8 @@
 # RikkaHub Turbo bug 清单核查表
 
-> 来源：`dcs666/rikkahub-turbo` 分支 `perf/rendering-and-streaming` 的 `PROGRESS.md`
+> 来源：`dcs666/rikkahub-pro` 分支 `perf/rendering-and-streaming` 的 `PROGRESS.md`
 > （存档于本目录 `turbo-PROGRESS.md`，742 行，120+ 轮深度审查，累计修复 48+ 真实 bug）。
+> **仓库名更正（2026-09-19）**：旧记 `dcs666/rikkahub-turbo` **不存在**（硬 404 无重定向）；实际仓库为 `dcs666/rikkahub-pro`（rikkahub 的 fork，`v1.9.x-turbo` 系列 tag），**仓库可达**——下表 F6 等处「源仓不可达、diff 无法复核」的说法据此作废，可按需补核。
 > 用途：**逐条对照我们 fork（app.androidrik.rikkahub）核查是否存在同款 bug**。
 > 状态列：✅ 已修 / ✅ 不存在 / ⚠️ 确认同款待修 / 🔍 待查（未定性）
 
@@ -69,7 +70,7 @@
 | F3 | workspace delete/move "./" 变体可删整个工作区 | 9677cd4 | ✅ 已修 | canonical 对比根目录（已移植） |
 | F4 | file_paths.xml 暴露 filesDir | db26bff | ✅ 已修 | 收窄 upload/ + tool_outputs/（已移植） |
 | F5 | mermaid 导出失败误报成功 + 调试 URI 日志 | fe2109d | ✅ 不存在 | `Export.kt:270-278` onFailure 显示错误 toast + 取消向上传播，不误报成功 |
-| F6 | RouteActivity CRLF 规范化 | 3652fd6 | ✅ 已修 | 2026-09-12 随 `513b784c` 吸收顺手关闭：`handleIntent` 中分享/划词文本 `normalizeNewlines()`（\r\n→\n）；源仓 `dcs666/rikkahub-turbo` 已不可达、diff 无法复核（按语义落地） |
+| F6 | RouteActivity CRLF 规范化 | 3652fd6 | ✅ 已修 | 2026-09-12 随 `513b784c` 吸收顺手关闭：`handleIntent` 中分享/划词文本 `normalizeNewlines()`（\r\n→\n）；按语义落地、未逐字对照原 diff（**注**：当时记为「源仓不可达」有误——仓库实为 `dcs666/rikkahub-pro` 且可达，如日后有疑问可补核） |
 | F7 | extractTar 特殊头顺序（GNU tar 全局头 name 空跳过数据区）+ parsePax 死循环/损坏头崩溃 | d990687 | ✅ 已修 | `a766399f`（parsePax 健壮性）；`RootfsInstaller.kt` 防护齐全——空名全局头跳过数据区（120-123）、LONG_NAME/LONG_LINK/PAX pending 顺序（124-140）、OTHER 数据 skip（161-164）、parsePax length≤0 安全退出（248-267，注释明写 F7）、路径逃逸拒绝（338-348） |
 | F8 | WebDav buildUrl 路径段不编码（文件名含空格/中文/#/?/& → 同步失败） | ea17fb4 | ✅ 已修 | `encodeWebDavPathSegment` 逐段 percent-encode（UTF-8 + %20）+ 3 单测 |
 | F9 | ASR start() 静默失败（焦点被拒/provider 未配置无反馈） | bdae36e | ✅ 已修 | `a766399f`（ASR 静默）；VoiceMode 未配置/无 key/不支持均有文案（configure_asr/configure_key/unsupported_asr），焦点被拒显式 check 抛错（VoiceMode.kt:148），各 provider start 全失败路径 setError→ASRStatus.Error（DashScope/Volcengine 已逐一核对） |
@@ -91,4 +92,4 @@
 - [x] **第三批（v2.4.5-androidrik.24，P0 剩余 + P1 资源防护 + P2）**：C4 / C6 / C7 / C11 / C12 / C13 / C14 / C15 / C16 / D3 / F12 / F14 + R1-R12 全部已修（22 项）+ 10 新单测；C8 核查后确认不存在（已有降级）；D9 按用户指示搁置
 - [x] **2026-09-12**：F6 已修（随 `513b784c` 吸收顺手关闭，见上表）；F7 extractTar/parsePax、F9 ASR 静默失败已修（`a766399f`）。剩余：C17（编译期，无法对照）+ D1 待核
 
-> 记录：2026-08-13 建立，2026-08-14 全量核查定论 + 三批修复（共 32 项）。原始来源 docs/references/turbo-PROGRESS.md（turbo 仓库存档）。
+> 记录：2026-08-13 建立，2026-08-14 全量核查定论 + 三批修复（共 32 项）。原始来源 docs/references/turbo-PROGRESS.md（`dcs666/rikkahub-pro` 仓库存档）。
