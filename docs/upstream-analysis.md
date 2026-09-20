@@ -1,7 +1,7 @@
-# 上游变更分析（综合版，2.4.11 → 2.5.1+，2026-09-12 重写，2026-09-14 复核）
+# 上游变更分析（综合版，2.4.11 → 2.5.2+，2026-09-12 重写，2026-09-19 复核）
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
-> 当前 master 同步点：`a9b35ba2`（2.5.1，2026-09-10 ff-only）。**注：origin 上的 master 镜像已于 2026-09-15 删除，此镜像仅本地保留**。上游其后 **6 提交未同步**（2026-09-14 `git fetch` 发现，见「待吸收」）：`46cacf23`（deepseek-flash，已手工吸收 `e9a39751`）、`2689e753`（AGENTS.md 支持，已手工吸收 `e8e047e5`）、`288a034c`/`bc9d2582`/`d6ba728e`（依赖更新）、`bd936caa`（非聊天请求 session-id 头修复）。
+> 当前 master 同步点：`458c16df`（2.5.2+，2026-09-19 ff-only；此前为 `a9b35ba2` 2.5.1）。**注：origin 上的 master 镜像已于 2026-09-15 删除，此镜像仅本地保留**。`a9b35ba2` 之后上游共 33 提交（至 `458c16df`），逐条评估见下方「2026-09-16」「2026-09-19」两节；评估结论均为**暂不吸收、按需取用**。
 > 决策原则：**等上游稳定后按需吸收**；触及 `GenerationHandler.kt` / `ChatService.kt` / `ChatInput.kt`（fork 重改最重的文件）一律手工适配，不直接 cherry-pick；cherry-pick 需包名适配（`me.rerere.*` → `app.androidrik.*`）。
 > **判定方法（2026-09-12 纠正）**：fork 的"已吸收"以**代码等价核对**为准，**不用 `git merge-base --is-ancestor`**——fork 走手工直套/移植，上游 commit 不是 fork 分支祖先，merge-base 对已吸收项恒判"未吸收"（误报 glm5.3/hy4/kimi k3/deepseek v4.1 flash 等）。核对方式：grep fork 代码中对应定义/注释（如「对齐上游 xxx」）或 diff 等价。
 
@@ -105,12 +105,31 @@
 | 提交 | 内容 | 评估 |
 |---|---|---|
 | `c8853531` | **fix(quickjs): 迁移到 quickjs-kt 并修复资源泄露**（close #1904；含依赖切换 + `search` 模块同改 + 两个新测试） | **部分吸收（2026-09-16，`641b46fe`）——只取防护，不迁引擎**。issue #1903 三点：fork ① 死循环挂起 ❌、② 无内存上限 ❌、③ context 未 destroy ✅（早已有）。**关键发现：fork 现用的 `wang.harlon.quickjs:3.2.3` 本身就提供 `setMemoryLimit`/`setMaxStackSize`** ⇒ ② 两行即可，无需迁依赖；① 该库无中断接口 ⇒ 独立线程 + `join(10s)`（超时路径**不 destroy**，否则 use-after-free）。顺带加固 `search` 的 `CustomJsSearchService`（同一库执行用户手写脚本，同样会拖崩 app）。**真机 instrumented 8/8 验证**（死循环返超时/大分配被拦且进程存活/深递归转 JS 异常）；纯 JVM 单测 10 项 |
-| `5078ce19` | Refresh MiniMax regional and TTS defaults（#1911） | 待评估：仅默认值刷新，看 fork 是否有对应 provider 注册项 |
-| `7ee13f2a` + `9a35e3f2` | **feat: 支持 blur/glass 2 种输入栏效果** + haze 版本升级（13 文件 108+） | 待评估：**与 fork 的输入栏定制（haze/glassHazeState 已用）有重叠**，须先看是否已等价、避免冲突 |
-| `d47d13a6` | **fix: 完善所有语言的重新生成消息确认提示**（6 语言各 1 行） | **已评估待定（2026-09-14）→ 现在更需重评**：fork 的重生成已改为 **scope 对话框**（`ad3543b2`），上游那版文案未必适用；改文案前先看它对的是哪个入口 |
-| `8e304bb1` | **feat: 火山引擎 TTS 支持**（+120 行 provider + 配置 UI + 测试） | **已评估待定（2026-09-14）**：fork 的 TTS 是 `speech` 模块自有实现，需确认是否同构；纯新增 provider，冲突面小 |
+| `5078ce19` | Refresh MiniMax regional and TTS defaults（#1911） | **真缺口（2026-09-19 核对）**：fork `TTSProviderSetting.kt:85` 默认仍是 `speech-2.6-turbo`，上游改 `speech-2.8-hd`（+配置页 placeholder 两行）。难度：小；注意只改默认值，已存 provider 不受影响 |
+| `7ee13f2a` + `9a35e3f2` | **feat: 支持 blur/glass 2 种输入栏效果** + haze 版本升级（13 文件 108+） | **暂不吸收（2026-09-19 核对）**：fork 输入栏（`ChatInput.kt`）已重度自研定制（haze/glassHazeState 已用），上游效果是叠在新 haze API 上的外观选项，且捆绑音效资源（gangguan.mp3）。移植需在 fork 输入栏上重做效果分层，属外观增强非缺陷修复；若用户想要再评估 |
+| `d47d13a6` | **fix: 完善所有语言的重新生成消息确认提示**（6 语言各 1 行） | **不吸收（2026-09-19 定评）**：fork 重生成已改为 **scope 对话框**（`ad3543b2`，含「先导出再继续」等 fork 特有选项），上游文案对应的是其单步确认弹窗，语境不匹配；fork 文案自有一套 |
+| `8e304bb1` | **feat: 火山引擎 TTS 支持**（+120 行 provider + 配置 UI + 测试） | **可吸收（2026-09-19 定评）**：fork `speech` 模块 provider 结构同构（`TTSProviderSetting` 密封类 + provider 实现 + 配置 UI），纯新增不碰既有面。难度：小–中（包名适配 + 配置页接线）。价值取决于用户是否用火山 TTS |
 | `d6ba728e`/`288a034c`/`bc9d2582` | 依赖更新 + 一次 `lib.versions.toml` 误删事故回滚 | 不吸收（同前述判断） |
 | `bd936caa` | 非聊天请求 session id 头 | 不吸收（fork 无 sessionId 概念，见上） |
+
+### 2026-09-19 新发现：2.5.2 后再 8 提交（`c8853531`..`458c16df`，已 ff-only 同步 master，暂不吸收）
+
+| 提交 | 内容 | 评估 |
+|---|---|---|
+| `a7850967` | **fix: 修复内联代码连字**（close #1920；`Markdown.kt`/`MarkdownNew.kt`/`SimpleHtmlBlock.kt` 三处加 `fontFeatureSettings = "'calt' 0, 'liga' 0, 'clig' 0"`） | **真缺口（2026-09-19 核对），建议吸收**。fork 此前只吸收了 highlight 模块的代码块连字修复（`f26a19f1`，对齐上游 7b92f89e），富文本**内联 code span** 三处均无 fontFeatureSettings（fork 全仓仅 `ChatInput.kt:938` 有 `tnum`）。难度：小（三行直套 + 包名适配） |
+| `6e98691c` | **fix: 移除 ChatCompletionsAPI tool 消息多出来的 name 属性**（1 行 + 测试） | **真缺口（2026-09-19 核对），建议吸收**。fork `ChatCompletionsAPI.kt:538` tool 角色消息仍带 `put("name", tool.toolName)`（`:629` 那处是 tool_calls 内的 `function.name`，合法，不动）。部分 OpenAI 兼容端点会拒收 tool 角色消息的顶层 name。难度：一行 |
+| `7c1629d0` | **fix: speed up image crop confirmation**（#1892，`CropLauncher.kt` PNG→JPEG(90)） | **真缺口（2026-09-19 核对），建议吸收**。fork `CropLauncher.kt:71` 仍是 `CompressFormat.PNG`——大图（相机/相册）PNG 编码慢导致确认卡顿。难度：小（5 行 + 注释） |
+| `458c16df` | **feat: fork 对话标题自动使用原会话标题加序号**（「fork」指分叉会话功能，非仓库 fork；`createForkConversation` +10 行） | **真缺口（2026-09-19 核对），可吸收**。fork `ChatService.kt:153/1596` 的 `createForkConversation` 仍不带 title（分叉出的会话无标题）。上游实现：`getConversationsOfAssistant` 取全量标题集 → `标题(N)` 首个未占用序号。难度：小；注意 fork `ChatService.kt` 重改最重，须手工适配不 cherry-pick |
+| `445341e9` | **fix: restore favorites correctly after undoing deletion**（Fixes #1915） | **不吸收（2026-09-19 核对）：fork 已修（`aa2c9a53`），等价**。fork 侧 `FavoriteVM.removeFavorite/restoreFavorite` 均已改 suspend 保证落库时序、`FavoritePage.kt:284` 已有 `dismissState.reset()`（上游注释「Reset before removal」与 fork 同思路）。此提交反向印证 fork 对 #1915 的诊断正确 |
+| `4a3eefc1` | **fix: preserve conversation state across session switches**（抽取 `ConversationSessionManager` + 失败/取消时持久化部分生成 + 元数据同步，10 文件 +722/-200 + 428 行测试） | **不整包吸收（2026-09-19 定评），仅作参考**。与 fork 自研的三件套（后台保活前台 Service、生成失败自动重试、半截回复 `20d84333`）**正面重叠**，且 fork `ChatService.kt` 已重度定制——整包移植冲突极高、语义会打架。参考价值：①其 `ConversationSessionManager` 的会话复用/订阅回归测试设计；②「元数据编辑与活跃会话同步」这个面 fork 未显式处理，可在自有结构上补。若将来 fork ChatService 再出状态 bug，回来翻此提交 |
+| `64319122` | chore: 移除小马算力默认提供商（`DefaultProviders.kt` -16 行） | **产品决策项（2026-09-19 核对）**：fork `DefaultProviders.kt:164` 仍有小马算力。fork 已有「内置提供商删除墓碑」（`removedBuiltInProviderIds`），删默认项技术上安全（老用户存量不受影响，仅回填跳过）。是否跟进看用户是否想精简默认列表 |
+| `51a33198` | chore: bump haze version | **暂不吸收**：配套 `7ee13f2a` blur/glass 效果；fork 不吸收该特性则无需动 haze |
+
+### 2026-09-19 同步动作记录
+
+- `git fetch upstream` → `c8853531..458c16df`；本地 master 自 `d47d13a6` **ff-only 快进至 `458c16df`**（补上了 09-16 已评估未同步的 5 提交）。
+- 上述 8 提交全部**仅评估未吸收**；标记「建议吸收」的四个小件（`a7850967` 连字 / `6e98691c` tool name / `7c1629d0` 裁剪 JPEG / `458c16df` 分叉标题）待用户点头后随下批一起做。
+
 
 ### 2026-09-16 上游 issue 巡检（值得注意的）
 
