@@ -42,4 +42,25 @@ sealed class UIMessageAnnotation {
         val content: String,
         val createdAt: LocalDateTime? = null,
     ) : UIMessageAnnotation()
+
+    /**
+     * 拼装预览 Tier 4：合成注入消息的**来源条目 id**，按内容拼接顺序排列。
+     *
+     * 为什么需要：`PromptInjectionTransformer.applyInjections` 把同一位置的多条注入
+     * `joinToString("\n")` **合并成一条消息**，逐条身份在这一步就丢了——预览里三条世界书条目
+     * 落到一段文本，无法归因、也就无法「点一段跳到产出它的条目」。
+     *
+     * 为什么是**注解而不是改合并方式**：合并本身要保留（它是既有的请求形状，改动会改变
+     * 逐字节输出并可能触碰端点的行为假设）。注解不在 part 白名单路径上 ⇒ 对请求字节
+     * **零影响**，只作为带外身份标记供预览读取（同 [QuotedMessage] 的取舍，见其注释）。
+     *
+     * 只在**非 system 位置**的合并且上（TOP_OF_CHAT / BOTTOM_OF_CHAT / AT_DEPTH / END_OF_CHAT）：
+     * system 区的 BEFORE/AFTER 注入被拼进 system 本体、且中间夹着原有人设正文，
+     * 位置关系无法用一条有序 id 列表表达；那一路由预览侧直接调 `collectInjections` 归因。
+     */
+    @Serializable
+    @SerialName("injection_sources")
+    data class InjectionSources(
+        val entryIds: List<Uuid>,
+    ) : UIMessageAnnotation()
 }

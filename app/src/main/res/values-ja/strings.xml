@@ -1533,6 +1533,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_inspect_segment_render_hint">レンダリングヒント</string>
   <string name="prompt_inspect_cache_title">プロンプトキャッシュについて</string>
   <string name="prompt_inspect_cache_body">システムは位置 0 にあり毎回再計算されます——ここは約 %1$d トークンです。その中の可変な内容（日付プレースホルダー、キーワードで有効・無効が切り替わるワールド情報）はキャッシュされた**プレフィックス全体を無効化**します。可変な内容はシステムプロンプトの外に出し、キーワード起動のワールド情報は会話の末尾に置くことを推奨します。</string>
+  <string name="prompt_inspect_source_format">%1$s · %2$s より</string>
+  <string name="prompt_inspect_source_preset">プリセット</string>
+  <string name="prompt_inspect_source_lorebook">ワールド情報</string>
+  <string name="prompt_inspect_jump_to_entry">この項目へ移動</string>
   <string name="prompt_inspect_legend_title">このページについて</string>
   <string name="prompt_inspect_legend_body">読み取り専用のプレビューです。実際のリクエストと同じ組み立てコードを通し、由来ごとに分割して表示します。保存も送信も行いません。「合成」と表示された内容は今回のリクエストにのみ存在します。</string>
   <string name="prompt_inspect_index_title">セグメント目次</string>

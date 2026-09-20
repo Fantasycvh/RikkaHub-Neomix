@@ -523,6 +523,14 @@ class RouteActivity : ComponentActivity() {
                                 PromptPage(initialWorldbooks = true)
                             }
 
+                            entry<Screen.PromptEntryTarget> { key ->
+                                PromptPage(
+                                    initialWorldbooks = key.lorebook,
+                                    initialContainerId = key.containerId,
+                                    initialEntryId = key.entryId,
+                                )
+                            }
+
                             entry<Screen.Skills> {
                                 SkillsPage()
                             }
@@ -737,6 +745,20 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Prompts : Screen
+
+    /**
+     * Tier 4：从拼装预览的某个注入段跳到**产出它的条目**编辑处。
+     *
+     * 为什么单独一条路由而不是给 [Prompts] 加可空参数：`Screen` 是 Navigation 的类型化路由，
+     * 给既有 route 加参数会改变其签名（影响深链与返回栈恢复）；独立路由让「带目标的跳转」
+     * 与「普通进入」互不干扰，语义也更清楚。
+     */
+    @Serializable
+    data class PromptEntryTarget(
+        val containerId: String,
+        val entryId: String,
+        val lorebook: Boolean,
+    ) : Screen
 
     @Serializable
     data object Worldbooks : Screen

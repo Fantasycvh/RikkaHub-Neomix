@@ -6,11 +6,13 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.prompts.isCompactionCheckpointPreamble
 import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.collectInjections
 import app.androidrik.rikkahub.data.model.InjectionPosition
+import app.androidrik.rikkahub.data.model.PromptInjection
 import app.androidrik.rikkahub.data.ai.transformers.transforms
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
@@ -18,6 +20,7 @@ import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.CardSlot
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.utils.estimateTokens
+import kotlin.uuid.Uuid
 
 /**
  * 拼装预览（只读）：把「这次请求实际会发什么」按**来源**拆开展示。
@@ -64,6 +67,7 @@ enum class PromptSegmentKind {
  * @param label 该段的来源名（如「系统提示词」「对话历史」），由调用方传入本地化文案
  * @param isSynthetic 是否为请求期合成（不落库）——标出以免误以为会写进会话
  * @param tokens token 估算（与记忆注入同一套启发式，见 `ContextLength.kt`）
+ * @param source 该段的来源条目（**仅注入段**有值，Tier 4 归因）；null = 无处可跳
  */
 data class PromptSegment(
     val kind: PromptSegmentKind,
@@ -72,7 +76,25 @@ data class PromptSegment(
     val content: String,
     val isSynthetic: Boolean,
     val tokens: Int,
+    val source: PromptSegmentSource? = null,
 )
+
+/** 注入段的来源条目——「这段是从哪条注入来的」，供预览页跳转到其编辑处。 */
+data class PromptSegmentSource(
+    /** 条目 id（`Uuid` 的字符串形式，跨层传递不引入 ai 模块依赖） */
+    val entryId: String,
+    /** 条目名（可能为空——条目允许无名；UI 侧再兜底显示「未命名」） */
+    val name: String,
+    /** 承载它的容器类型 */
+    val origin: PromptSegmentOrigin,
+    /** 容器 id：预设 id（[PromptSegmentOrigin.PRESET]）或世界书 id（[PromptSegmentOrigin.LOREBOOK]） */
+    val containerId: String,
+    /** 容器名（预设名 / 世界书名），供跳转按钮的提示文案 */
+    val containerName: String,
+)
+
+/** 注入条目的承载容器：两种来源的编辑页不同，UI 据此选跳转目标。 */
+enum class PromptSegmentOrigin { PRESET, LOREBOOK }
 
 /** 拼装预览结果。 */
 data class PromptInspection(
@@ -127,6 +149,25 @@ suspend fun inspectPrompt(
 ): PromptInspection {
     val windowMessages = conversation.currentMessages
 
+    // Tier 4：一次收集（与真实链同参），既用于 system 区插段，也用于把合并注入拆回逐条。
+    val injections = collectInjections(
+        messages = windowMessages,
+        assistant = assistant,
+        modeInjections = settings.modeInjections,
+        lorebooks = settings.lorebooks,
+        conversationModeInjectionIds = conversation.modeInjectionIds,
+        conversationLorebookIds = conversation.lorebookIds,
+        lorebookBudgetTokens = settings.lorebookInjectBudgetTokens,
+        presetEntryIds = settings.promptPresets
+            .filter { it.enabled && assistant.promptPresetIds.contains(it.id) }
+            .flatMap { it.entries }
+            .map { it.id }
+            .toSet(),
+    )
+    val byPosition = injections.groupBy { it.position }
+    val contentById = injections.associate { it.id to it.content }
+    val sourceById = buildSourceById(settings)
+
     // 与真实请求同源：共用 buildInternalMessages（PromptAssembly.kt）
     val internalMessages = buildInternalMessages(
         assistant = assistant,
@@ -158,66 +199,43 @@ suspend fun inspectPrompt(
         val content = message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
         // #1542 Tier B：system 消息按**块来源**细分（人设/卡槽/记忆/工具 schema/渲染提示），
         // 与真实请求共用 buildSystemBlocks（同参）⇒ 归因与发送内容一致。
-        // 其余消息（检查点/注入/历史）维持整条一段。
+        // 其余消息（检查点/注入/历史）维持整条一段（注入段再由 Tier 4 拆回逐条）。
         if (kind != PromptSegmentKind.SYSTEM) {
-            listOf(
-                PromptSegment(
-                    kind = kind,
-                    label = when (kind) {
-                        PromptSegmentKind.COMPRESSION_CHECKPOINT -> labels.checkpoint
-                        PromptSegmentKind.INJECTION -> labels.injection
-                        PromptSegmentKind.CHAT_HISTORY -> labels.history
-                        else -> labels.system
-                    },
-                    role = message.role.name.lowercase(),
-                    content = content,
-                    isSynthetic = message.isSynthetic,
-                    tokens = estimateTokens(content),
-                )
+            val single = PromptSegment(
+                kind = kind,
+                label = when (kind) {
+                    PromptSegmentKind.COMPRESSION_CHECKPOINT -> labels.checkpoint
+                    PromptSegmentKind.INJECTION -> labels.injection
+                    PromptSegmentKind.CHAT_HISTORY -> labels.history
+                    else -> labels.system
+                },
+                role = message.role.name.lowercase(),
+                content = content,
+                isSynthetic = message.isSynthetic,
+                tokens = estimateTokens(content),
             )
+            // Tier 4：合成注入消息是多条 `joinToString("\n")` 的合并体，按贡献者 id 拆回逐条，
+            // 使预览能归因到具体条目（否则三条世界书条目表现为一段文本，无从跳转）。
+            if (kind == PromptSegmentKind.INJECTION) {
+                splitMergedInjectionSegment(
+                    annotations = message.annotations,
+                    fallback = single,
+                    contentById = contentById,
+                    sourceById = sourceById,
+                )
+            } else {
+                listOf(single)
+            }
         } else {
             // #1542 Tier B 修复：BEFORE/AFTER 注入由 PromptInjectionTransformer 在
             // transformer 链里**合并进 system 本体**，而 buildSystemBlocks 的 base 块
             // 不含它们——若只用 base 块分段，这部分内容会从预览里消失（实测回归）。
             // 修复：用与真实链相同的 collectInjections 参数取出系统区注入，
             // 作为 INJECTION 段插到 base 块前/后（顺序与 applyInjections 的合并一致）。
-            val injections = collectInjections(
-                messages = windowMessages,
-                assistant = assistant,
-                modeInjections = settings.modeInjections,
-                lorebooks = settings.lorebooks,
-                conversationModeInjectionIds = conversation.modeInjectionIds,
-                conversationLorebookIds = conversation.lorebookIds,
-                lorebookBudgetTokens = settings.lorebookInjectBudgetTokens,
-                presetEntryIds = settings.promptPresets
-                    .filter { it.enabled && assistant.promptPresetIds.contains(it.id) }
-                    .flatMap { it.entries }
-                    .map { it.id }
-                    .toSet(),
-            )
-            val byPosition = injections.groupBy { it.position }
             val beforeSegments = (byPosition[InjectionPosition.BEFORE_SYSTEM_PROMPT] ?: emptyList())
-                .map { entry ->
-                    PromptSegment(
-                        kind = PromptSegmentKind.INJECTION,
-                        label = labels.injection,
-                        role = "system",
-                        content = entry.content,
-                        isSynthetic = true,
-                        tokens = estimateTokens(entry.content),
-                    )
-                }
+                .map { entry -> injectionSegment(entry, labels.injection, "system", sourceById) }
             val afterSegments = (byPosition[InjectionPosition.AFTER_SYSTEM_PROMPT] ?: emptyList())
-                .map { entry ->
-                    PromptSegment(
-                        kind = PromptSegmentKind.INJECTION,
-                        label = labels.injection,
-                        role = "system",
-                        content = entry.content,
-                        isSynthetic = true,
-                        tokens = estimateTokens(entry.content),
-                    )
-                }
+                .map { entry -> injectionSegment(entry, labels.injection, "system", sourceById) }
             beforeSegments + systemBlocksToSegments(
                 blocks = buildSystemBlocks(
                     assistant = assistant,
@@ -244,6 +262,94 @@ suspend fun inspectPrompt(
         },
         totalMessageCount = windowMessages.size,
     )
+}
+
+/**
+ * 一条注入实体 → 一个预览段（带来源）。
+ *
+ * `kind` 固定为 INJECTION：这里只服务 system 区 BEFORE/AFTER 那一路（非 system 位置
+ * 走 [splitMergedInjectionSegment] 从合并消息里拆）。
+ */
+private fun injectionSegment(
+    entry: PromptInjection,
+    fallbackLabel: String,
+    role: String,
+    sourceById: Map<Uuid, PromptSegmentSource>,
+): PromptSegment = PromptSegment(
+    kind = PromptSegmentKind.INJECTION,
+    label = sourceById[entry.id]?.name?.takeIf { it.isNotBlank() } ?: fallbackLabel,
+    role = role,
+    content = entry.content,
+    isSynthetic = true,
+    tokens = estimateTokens(entry.content),
+    source = sourceById[entry.id],
+)
+
+/**
+ * 把一条合并注入消息按来源注解拆回逐条段（**纯函数**，便于 JVM 单测）。
+ *
+ * 何时不拆：①消息没有来源注解（旧数据或 system 区那一路）；②任一贡献者 id 在当前
+ * 注入集合里查不到内容。**宁可整段显示、不可少显示**——拆的前提是能完整还原，
+ * 半拆会让预览与实际请求内容不符，比不拆更糟（该页存在的意义就是「与自己发出的一致」）。
+ */
+internal fun splitMergedInjectionSegment(
+    annotations: List<UIMessageAnnotation>,
+    fallback: PromptSegment,
+    contentById: Map<Uuid, String>,
+    sourceById: Map<Uuid, PromptSegmentSource>,
+): List<PromptSegment> {
+    val ids = annotations
+        .filterIsInstance<UIMessageAnnotation.InjectionSources>()
+        .flatMap { it.entryIds }
+    if (ids.isEmpty()) return listOf(fallback)
+    val contents = ids.map { contentById[it] ?: return listOf(fallback) }
+    return ids.zip(contents).map { (id, content) ->
+        val source = sourceById[id]
+        fallback.copy(
+            label = source?.name?.takeIf { it.isNotBlank() } ?: fallback.label,
+            content = content,
+            tokens = estimateTokens(content),
+            source = source,
+        )
+    }
+}
+
+/**
+ * 注入条目 id → 来源信息（承载容器 + 条目名）。
+ *
+ * 覆盖面：预设条目（[Settings.promptPresets]，含未启用的——预览只展示启用的那些，
+ * 但映射表多几项无害）与世界书条目（[Settings.lorebooks]）。**同名 id 先见者胜**：
+ * 预设内部本就要求 id 唯一，跨容器重复属异常数据（`reconcileEntries` 已按先到先得处理）。
+ */
+private fun buildSourceById(settings: Settings): Map<Uuid, PromptSegmentSource> {
+    val map = mutableMapOf<Uuid, PromptSegmentSource>()
+    settings.promptPresets.forEach { preset ->
+        preset.entries.forEach { entry ->
+            map.getOrPut(entry.id) {
+                PromptSegmentSource(
+                    entryId = entry.id.toString(),
+                    name = entry.name,
+                    origin = PromptSegmentOrigin.PRESET,
+                    containerId = preset.id.toString(),
+                    containerName = preset.name,
+                )
+            }
+        }
+    }
+    settings.lorebooks.forEach { book ->
+        book.entries.forEach { entry ->
+            map.getOrPut(entry.id) {
+                PromptSegmentSource(
+                    entryId = entry.id.toString(),
+                    name = entry.name,
+                    origin = PromptSegmentOrigin.LOREBOOK,
+                    containerId = book.id.toString(),
+                    containerName = book.name,
+                )
+            }
+        }
+    }
+    return map
 }
 
 private fun UIMessage.segmentKind(): PromptSegmentKind = when {

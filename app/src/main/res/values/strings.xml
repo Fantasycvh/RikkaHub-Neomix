@@ -1551,6 +1551,10 @@
   <string name="prompt_inspect_segment_render_hint">Render hints</string>
   <string name="prompt_inspect_cache_title">Note on prompt caching</string>
   <string name="prompt_inspect_cache_body">The system block sits at position 0 and is recomputed every request — here it is about %1$d tokens. Anything volatile inside it (a date placeholder, a world-info entry that toggles on keywords) invalidates the whole cached prefix. Keep volatile content out of the system prompt; keyword-triggered world info belongs at the bottom of the chat.</string>
+  <string name="prompt_inspect_source_format">From %1$s · %2$s</string>
+  <string name="prompt_inspect_source_preset">Preset</string>
+  <string name="prompt_inspect_source_lorebook">World info</string>
+  <string name="prompt_inspect_jump_to_entry">Go to this entry</string>
   <string name="prompt_inspect_legend_title">About this page</string>
   <string name="prompt_inspect_legend_body">Read-only preview assembled by the same code path as a real request, then split by source. Nothing is saved and no request is sent. Items marked synthetic exist only for the request.</string>
   <string name="prompt_inspect_index_title">Segments index</string>

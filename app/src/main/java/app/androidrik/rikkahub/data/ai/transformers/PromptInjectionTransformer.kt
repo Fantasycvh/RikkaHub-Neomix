@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.ai.transformers
 
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.InjectionPosition
@@ -274,12 +275,18 @@ internal fun applyInjections(
         val byTailRole = tailInjections.groupBy { it.role }
         byTailRole[MessageRole.SYSTEM]?.let { entries ->
             result.add(
-                UIMessage.system(entries.joinToString("\n") { it.content }).copy(isSynthetic = true)
+                UIMessage.system(entries.joinToString("\n") { it.content }).copy(
+                    isSynthetic = true,
+                    annotations = entries.toInjectionSourceAnnotations(),
+                )
             )
         }
         byTailRole[MessageRole.USER]?.let { entries ->
             result.add(
-                UIMessage.user(entries.joinToString("\n") { it.content }).copy(isSynthetic = true)
+                UIMessage.user(entries.joinToString("\n") { it.content }).copy(
+                    isSynthetic = true,
+                    annotations = entries.toInjectionSourceAnnotations(),
+                )
             )
         }
     }
@@ -290,6 +297,9 @@ internal fun applyInjections(
 /**
  * 将同一 role 的注入合并成消息列表
  * 按 role 分组后合并内容，返回合并后的消息列表
+ *
+ * 合并时把**贡献者 id** 记进 [UIMessageAnnotation.InjectionSources]（Tier 4 归因）：
+ * 注解不参与 part→API 转换 ⇒ 请求字节与合并前完全一致，只是让预览能再拆回逐条。
  */
 private fun createMergedInjectionMessages(injections: List<PromptInjection>): List<UIMessage> {
     return injections
@@ -301,9 +311,18 @@ private fun createMergedInjectionMessages(injections: List<PromptInjection>): Li
                 else -> UIMessage.user(mergedContent)
             }.copy(
                 isSynthetic = true,
+                annotations = grouped.toInjectionSourceAnnotations(),
             )
         }
 }
+
+/** 贡献者 id 列表 → 单条来源注解（空列表时返回空，不产生无意义注解）。 */
+private fun List<PromptInjection>.toInjectionSourceAnnotations(): List<UIMessageAnnotation> =
+    if (isEmpty()) {
+        emptyList()
+    } else {
+        listOf(UIMessageAnnotation.InjectionSources(map { it.id }))
+    }
 
 /**
  * 查找安全的插入位置，避免注入到 USER → ASSISTANT(含Tool) 之间

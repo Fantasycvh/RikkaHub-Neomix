@@ -47,8 +47,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.PromptSegment
 import app.androidrik.rikkahub.data.ai.PromptSegmentKind
+import app.androidrik.rikkahub.data.ai.PromptSegmentOrigin
+import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.ScrollJumperBar
+import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
@@ -62,6 +65,7 @@ import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Share04
+import me.rerere.hugeicons.stroke.Tools
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -75,6 +79,7 @@ fun PromptInspectPage(
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val context = LocalContext.current
+    val navController = LocalNavController.current
 
     LaunchedEffect(conversationId) {
         vm.load(conversationId)
@@ -166,6 +171,20 @@ fun PromptInspectPage(
                                 toaster.show(context.getString(R.string.prompt_inspect_copied))
                             },
                             onShare = { shareText(context, segmentClipboardText(index, segment)) },
+                            onJumpToEntry = segment.source?.let { source ->
+                                {
+                                    // Tier 4：跳到产出该段的条目编辑处（预设详情 / 世界书详情）。
+                                    // 用 navigate 而非 popBackStack —— 预览页留在返回栈里，
+                                    // 用户改完条目按返回即回到预览继续看。
+                                    navController.navigate(
+                                        Screen.PromptEntryTarget(
+                                            containerId = source.containerId,
+                                            entryId = source.entryId,
+                                            lorebook = source.origin == PromptSegmentOrigin.LOREBOOK,
+                                        )
+                                    )
+                                }
+                            },
                         )
                     }
                     item { LegendCard() }
@@ -370,6 +389,8 @@ private fun SegmentCard(
     onCopyContent: () -> Unit,
     onCopyWithHeader: () -> Unit,
     onShare: () -> Unit,
+    /** Tier 4：非空 = 该段有可跳转的来源条目 */
+    onJumpToEntry: (() -> Unit)? = null,
 ) {
     // 正文**全文直出、不做自动截断**（2026-09-19 决策）：概览职责已由段落目录卡承担，
     // 截断只会让「读内容」这个页面主用途多点一步，且 SelectionContainer 选不到未渲染的文本。
@@ -440,6 +461,43 @@ private fun SegmentCard(
                             text = stringResource(R.string.prompt_inspect_synthetic),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                }
+                // Tier 4：来源行——「这段是从哪条来的」+ 一键跳到它的编辑处。
+                // 只对注入段出现（system/历史/检查点没有单一可跳的条目）。
+                if (onJumpToEntry != null && segment.source != null) {
+                    val source = segment.source
+                    val originLabel = stringResource(
+                        if (source.origin == PromptSegmentOrigin.LOREBOOK) {
+                            R.string.prompt_inspect_source_lorebook
+                        } else {
+                            R.string.prompt_inspect_source_preset
+                        }
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.prompt_inspect_source_format,
+                                originLabel,
+                                source.containerName.ifBlank {
+                                    stringResource(R.string.prompt_page_unnamed)
+                                },
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        SegmentAction(
+                            icon = HugeIcons.Tools,
+                            description = stringResource(R.string.prompt_inspect_jump_to_entry),
+                            onClick = onJumpToEntry,
                         )
                     }
                 }

@@ -17,6 +17,7 @@ import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Cancel01
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,6 +72,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
 import app.androidrik.rikkahub.ui.components.ai.SHOW_LOREBOOK_TABS
 import app.androidrik.rikkahub.data.model.entriesForDisplay
 import app.androidrik.rikkahub.data.model.reorderEntries
@@ -96,6 +98,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.rikkahub.R
@@ -130,11 +133,22 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
-fun PromptPage(vm: PromptVM = koinViewModel(), initialWorldbooks: Boolean = false) {
+fun PromptPage(
+    vm: PromptVM = koinViewModel(),
+    initialWorldbooks: Boolean = false,
+    /** Tier 4：直接打开该容器（预设 / 世界书 id）的详情，而不是停在列表 */
+    initialContainerId: String? = null,
+    /** Tier 4：进入详情后滚动到并短暂高亮该条目 */
+    initialEntryId: String? = null,
+) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     var worldbooks by rememberSaveable { mutableStateOf(initialWorldbooks && SHOW_LOREBOOK_TABS) }
-    var openedPresetId by rememberSaveable { mutableStateOf<String?>(null) }
-    var openedBookId by rememberSaveable { mutableStateOf<String?>(null) }
+    var openedPresetId by rememberSaveable {
+        mutableStateOf(if (initialWorldbooks) null else initialContainerId)
+    }
+    var openedBookId by rememberSaveable {
+        mutableStateOf(if (initialWorldbooks) initialContainerId else null)
+    }
     // #1542 复核 Tier A + 反向：注入位置**双向**批量迁移卡（不做强制）——
     // 正向：系统区 → 对话末尾（缓存友好）；反向：对话末尾 → 系统提示词后（系统级强调，
     // 接受缓存代价）。无对应条目时卡片自身不渲染；迁移覆盖预设条目与世界书条目。
@@ -209,6 +223,7 @@ fun PromptPage(vm: PromptVM = koinViewModel(), initialWorldbooks: Boolean = fals
                         }))
                     },
                     onBack = { openedBookId = null },
+                    highlightEntryId = initialEntryId,
                 )
             }
         }
@@ -241,9 +256,50 @@ fun PromptPage(vm: PromptVM = koinViewModel(), initialWorldbooks: Boolean = fals
                 )
             },
             onBack = { openedPresetId = null },
+            highlightEntryId = initialEntryId,
         )
     }
 }
+
+/**
+ * Tier 4：从拼装预览跳进条目编辑时，滚动到目标条目并**短暂高亮**。
+ *
+ * 为什么需要高亮而不只是滚动：详情列表可能几十条，滚到某一行后用户仍需自己辨认是哪条；
+ * 高亮直接给出「就是从预览点过来的这条」。高亮在片刻后自动褪去（不改变任何持久状态）。
+ *
+ * 只在**首次**进入时定位（`rememberSaveable` 记录已消费的 id）：否则用户手动往下翻时
+ * 任何重组都会把列表拉回目标条目。
+ *
+ * @param entries 展示顺序的条目列表（与 UI 用同一份，避免按 id 再查一次导致下标错位）
+ * @return 需要高亮的条目 id（`null` = 不高亮）
+ */
+@Composable
+private fun <T : PromptInjection> rememberHighlightedEntry(
+    highlightEntryId: String?,
+    entries: List<T>,
+    onScrollTo: suspend (Int) -> Unit,
+): String? {
+    var pendingId by rememberSaveable(highlightEntryId) { mutableStateOf(highlightEntryId) }
+    var activeId by remember(highlightEntryId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(pendingId, entries) {
+        val target = pendingId ?: return@LaunchedEffect
+        if (entries.isEmpty()) return@LaunchedEffect
+        val index = entries.indexOfFirst { it.id.toString() == target }
+        if (index < 0) {
+            pendingId = null
+            return@LaunchedEffect
+        }
+        onScrollTo(index)
+        activeId = target
+        pendingId = null
+        delay(HIGHLIGHT_DURATION_MS)
+        activeId = null
+    }
+    return activeId
+}
+
+/** 高亮持续时间：够看清是哪一条，又不至于一直抢视觉焦点。 */
+private const val HIGHLIGHT_DURATION_MS = 1600L
 
 /**
  * 预设列表（「扩展管理」里提示词的中心页）。
@@ -532,6 +588,8 @@ private fun PresetDetailScreen(
     preset: PromptPreset,
     onUpdatePreset: (PromptPreset) -> Unit,
     onBack: () -> Unit,
+    /** Tier 4：从预览跳来时滚动到并高亮该条目（null = 普通进入，无高亮） */
+    highlightEntryId: String? = null,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var expanded by rememberSaveable { mutableStateOf(true) }
@@ -539,6 +597,11 @@ private fun PresetDetailScreen(
     val context = LocalContext.current
 
     val displayed = remember(preset.entries) { preset.entries.sortedForDisplay() }
+    // Tier 4：滚动到目标条目（+1 补「顺序提示」那一行）并短暂高亮，让用户一眼看到「就是这条」。
+    // 只在首次进入生效（rememberSaveable 的 id 已消费），后续手动滚动不被拉回。
+    val highlighted = rememberHighlightedEntry(highlightEntryId, displayed) { index ->
+        lazyListState.animateScrollToItem(index + 1)
+    }
     // 同 PresetListScreen 的理由：rememberImporter 只按 serializer 缓存 onResult，
     // 首次组合捕获的 preset 会过期（详情页首帧可能仍是旧值）。
     val currentPreset by rememberUpdatedState(preset)
@@ -643,6 +706,7 @@ private fun PresetDetailScreen(
                                             scaleY = 1.05f
                                         }
                                     },
+                                highlighted = injection.id.toString() == highlighted,
                                 onEdit = { editState.open(injection) },
                                 onToggleEnabled = { enabled ->
                                     onUpdatePreset(
@@ -708,7 +772,9 @@ private fun ModeInjectionCard(
     modifier: Modifier = Modifier,
     onEdit: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    /** Tier 4：从拼装预览跳转来的目标条目——短暂高亮边框以指示「就是这条」 */
+    highlighted: Boolean = false,
 ) {
     val swipeState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
@@ -745,7 +811,12 @@ private fun ModeInjectionCard(
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = CustomColors.listItemColors.containerColor
-            )
+            ),
+            // Tier 4 跳转高亮：用 primary 描边而非改底色——描边不改变内容对比度，
+            // 且与「启用/停用」等既有视觉语义不冲突。
+            border = if (highlighted) {
+                BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            } else null,
         ) {
             Column(
                 modifier = Modifier
@@ -1495,11 +1566,16 @@ private fun LorebookDetailScreen(
     book: Lorebook,
     onUpdateBook: (Lorebook) -> Unit,
     onBack: () -> Unit,
+    /** Tier 4：从预览跳来时滚动到并高亮该条目（null = 普通进入，无高亮） */
+    highlightEntryId: String? = null,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
     val displayed = remember(book.entries) { book.entriesForDisplay() }
+    val highlighted = rememberHighlightedEntry(highlightEntryId, displayed) { index ->
+        lazyListState.animateScrollToItem(index + 1)
+    }
     val currentBook by rememberUpdatedState(book)
     val currentOnUpdate by rememberUpdatedState(onUpdateBook)
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
@@ -1584,6 +1660,7 @@ private fun LorebookDetailScreen(
                                             scaleY = 1.05f
                                         }
                                     },
+                                highlighted = injection.id.toString() == highlighted,
                                 onEdit = { editState.open(injection) },
                                 onToggleEnabled = { enabled ->
                                     currentOnUpdate(
@@ -1646,7 +1723,9 @@ private fun RegexInjectionEntryCard(
     modifier: Modifier = Modifier,
     onEdit: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    /** Tier 4：从拼装预览跳转来的目标条目——短暂高亮边框以指示「就是这条」 */
+    highlighted: Boolean = false,
 ) {
     val swipeState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
@@ -1682,7 +1761,11 @@ private fun RegexInjectionEntryCard(
             onClick = onEdit,
             colors = CardDefaults.cardColors(
                 containerColor = CustomColors.listItemColors.containerColor
-            )
+            ),
+            // Tier 4 跳转高亮（同 ModeInjectionCard 的理由：描边不改变内容对比度）
+            border = if (highlighted) {
+                BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            } else null,
         ) {
             Column(
                 modifier = Modifier

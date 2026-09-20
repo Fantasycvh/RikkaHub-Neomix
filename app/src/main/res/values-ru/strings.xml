@@ -1533,6 +1533,10 @@
   <string name="prompt_inspect_segment_render_hint">Подсказки рендеринга</string>
   <string name="prompt_inspect_cache_title">О кешировании промпта</string>
   <string name="prompt_inspect_cache_body">Система находится в позиции 0 и пересчитывается при каждом запросе — здесь это около %1$d токенов. Любое изменчивое содержимое внутри (плейсхолдер даты, запись World Info, включающаяся по ключевым словам) делает **недействительным весь кешированный префикс**. Держите изменчивое содержимое вне системного промпта, а World Info по ключевым словам размещайте в конце чата.</string>
+  <string name="prompt_inspect_source_format">Из %1$s · %2$s</string>
+  <string name="prompt_inspect_source_preset">пресета</string>
+  <string name="prompt_inspect_source_lorebook">мировой информации</string>
+  <string name="prompt_inspect_jump_to_entry">Перейти к записи</string>
   <string name="prompt_inspect_legend_title">Об этой странице</string>
   <string name="prompt_inspect_legend_body">Предпросмотр только для чтения: собирается тем же кодом, что и реальный запрос, затем разбивается по источникам. Ничего не сохраняется и не отправляется. Помеченное как синтетическое существует только для этого запроса.</string>
   <string name="prompt_inspect_index_title">Оглавление сегментов</string>
