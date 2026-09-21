@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.PromptSegment
 import app.androidrik.rikkahub.data.ai.PromptSegmentKind
+import app.androidrik.rikkahub.data.ai.PromptSegmentLocation
 import app.androidrik.rikkahub.data.ai.PromptSegmentOrigin
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -461,6 +462,15 @@ private fun SegmentCard(
                             text = stringResource(R.string.prompt_inspect_synthetic),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                    // 顶层字段（工具 schema）不属于任何消息——不标出来会被误读成
+                    // 某条 system 消息的一部分（它实际与 `messages` 平级）。
+                    if (segment.location == PromptSegmentLocation.TOP_LEVEL_FIELD) {
+                        Text(
+                            text = stringResource(R.string.prompt_inspect_not_in_messages),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary,
                         )
                     }
                 }

@@ -32,6 +32,32 @@ object ToolSchemaSize {
         providerType: ProviderSetting?,
         json: Json,
     ): Int {
+        val text = runCatching {
+            json.encodeToString(JsonElement.serializer(), wireElement(tool, providerType, json))
+        }.getOrNull() ?: return 0
+        return estimateTextTokens(text)
+    }
+
+    /**
+     * 单个工具**实际下发的 JSON 文本**（已按 provider 形状包装、并做 `ensureArrayItems` 归一化）。
+     *
+     * 与 [estimate] 共用同一份 [wireElement]，故「估算的字节」与「展示的字节」必然一致——
+     * 拼装预览用它渲染 schema 原文，避免两处各自拼 JSON 而漂移。
+     */
+    fun wireJson(
+        tool: Tool,
+        providerType: ProviderSetting?,
+        json: Json,
+    ): String = runCatching {
+        json.encodeToString(JsonElement.serializer(), wireElement(tool, providerType, json))
+    }.getOrElse { "" }
+
+    /** 按 provider 的**实际下发形状**包装工具（估算与展示的唯一真相源）。 */
+    private fun wireElement(
+        tool: Tool,
+        providerType: ProviderSetting?,
+        json: Json,
+    ): JsonElement {
         val schemaElement = runCatching {
             json.encodeToJsonElement(
                 InputSchema.serializer(),
@@ -39,7 +65,7 @@ object ToolSchemaSize {
             )
         }.getOrNull()
 
-        val wireElement = when (providerType) {
+        return when (providerType) {
             is ProviderSetting.Claude -> buildJsonObject {
                 put("name", tool.name)
                 put("description", tool.description)
@@ -71,11 +97,6 @@ object ToolSchemaSize {
                 })
             }
         }
-
-        val text = runCatching { json.encodeToString(JsonElement.serializer(), wireElement) }
-            .getOrNull()
-            ?: return 0
-        return estimateTextTokens(text)
     }
 
     /** 一批工具的 token 估算合计。 */

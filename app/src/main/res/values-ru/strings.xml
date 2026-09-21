@@ -1514,7 +1514,7 @@
   <string name="message_partial_failure_regenerate">Перегенерировать</string>
   <string name="asr_error_not_configured">Распознавание речи не настроено — сначала укажите провайдера ASR и API-ключ</string>
   <string name="asr_error_audio_focus">Не удалось получить аудиофокус (микрофон, возможно, занят)</string>
-  <string name="prompt_inspect_title">Собранный промпт</string>
+  <string name="prompt_inspect_title">Содержимое запроса</string>
   <string name="prompt_inspect_entry_desc">Посмотреть, что именно будет отправлено, с разбивкой по источникам</string>
   <string name="prompt_inspect_summary">Сводка</string>
   <string name="prompt_inspect_segments">Сегментов</string>
@@ -1529,7 +1529,11 @@
   <string name="prompt_inspect_segment_injection">Инъекция (World Info / режим)</string>
   <string name="prompt_inspect_segment_history">История чата</string>
   <string name="prompt_inspect_segment_memory">Встроенная память</string>
-  <string name="prompt_inspect_segment_tool_schema">Схема инструмента</string>
+  <string name="prompt_inspect_segment_tool_guidance">Инструкции по инструментам (в системе)</string>
+  <string name="prompt_inspect_segment_tool_schema">Схема инструментов (%1$d шт., ≈%2$d токенов)</string>
+  <string name="prompt_inspect_not_in_messages">поле верхнего уровня, не в сообщениях</string>
+  <string name="prompt_inspect_attachment_note">[не учтено: изображений %1$d, документов %2$d, аудио %3$d, видео %4$d]</string>
+  <string name="prompt_inspect_segment_tool_result">Вывод инструмента · %1$s</string>
   <string name="prompt_inspect_segment_render_hint">Подсказки рендеринга</string>
   <string name="prompt_inspect_cache_title">О кешировании промпта</string>
   <string name="prompt_inspect_cache_body">Система находится в позиции 0 и пересчитывается при каждом запросе — здесь это около %1$d токенов. Любое изменчивое содержимое внутри (плейсхолдер даты, запись World Info, включающаяся по ключевым словам) делает **недействительным весь кешированный префикс**. Держите изменчивое содержимое вне системного промпта, а World Info по ключевым словам размещайте в конце чата.</string>
@@ -1538,7 +1542,7 @@
   <string name="prompt_inspect_source_lorebook">мировой информации</string>
   <string name="prompt_inspect_jump_to_entry">Перейти к записи</string>
   <string name="prompt_inspect_legend_title">Об этой странице</string>
-  <string name="prompt_inspect_legend_body">Предпросмотр только для чтения: собирается тем же кодом, что и реальный запрос, затем разбивается по источникам. Ничего не сохраняется и не отправляется. Помеченное как синтетическое существует только для этого запроса.</string>
+  <string name="prompt_inspect_legend_body">Предпросмотр только для чтения: собирается тем же кодом, что и реальный запрос, затем разбивается по источникам. Ничего не сохраняется и не отправляется. Помеченное как синтетическое существует только для этого запроса.&#10;&#10;Не учтено на этой странице: размер изображений/документов после кодирования (показано только их количество) и обёртка протокола запроса (структуры role/content, tool_calls и подобные). Токены — эвристика по символам (CJK ≈1.5 символа/токен, остальное ≈4); схема инструментов оценивается отдельно по реальной форме отправки текущего provider.</string>
   <string name="prompt_inspect_index_title">Оглавление сегментов</string>
   <string name="prompt_inspect_expand">Развернуть</string>
   <string name="prompt_inspect_collapse">Свернуть</string>

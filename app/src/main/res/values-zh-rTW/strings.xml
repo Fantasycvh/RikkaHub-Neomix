@@ -1570,7 +1570,7 @@
   <string name="message_partial_failure_regenerate">重新生成</string>
   <string name="asr_error_not_configured">未配置語音辨識——請先設定 ASR 供應商和 API Key</string>
   <string name="asr_error_audio_focus">無法取得音訊焦點（麥克風可能被占用）</string>
-  <string name="prompt_inspect_title">拼裝後提示詞</string>
+  <string name="prompt_inspect_title">請求內容</string>
   <string name="prompt_inspect_entry_desc">查看這次實際會傳送的內容，並依來源分段</string>
   <string name="prompt_inspect_summary">概覽</string>
   <string name="prompt_inspect_segments">分段數</string>
@@ -1585,7 +1585,11 @@
   <string name="prompt_inspect_segment_injection">注入（世界書 / 模式）</string>
   <string name="prompt_inspect_segment_history">對話歷史</string>
   <string name="prompt_inspect_segment_memory">注入的記憶</string>
-  <string name="prompt_inspect_segment_tool_schema">工具 Schema</string>
+  <string name="prompt_inspect_segment_tool_guidance">工具引導（在系統提示詞內）</string>
+  <string name="prompt_inspect_segment_tool_schema">工具 Schema（%1$d 個，≈%2$d token）</string>
+  <string name="prompt_inspect_not_in_messages">請求頂層欄位，不在訊息裡</string>
+  <string name="prompt_inspect_attachment_note">［未計入：圖片 %1$d、文件 %2$d、音訊 %3$d、影片 %4$d］</string>
+  <string name="prompt_inspect_segment_tool_result">工具輸出 · %1$s</string>
   <string name="prompt_inspect_segment_render_hint">渲染提示</string>
   <string name="prompt_inspect_cache_title">關於提示詞快取</string>
   <string name="prompt_inspect_cache_body">系統提示詞位於位置 0，每次請求都會重算——這裡約 %1$d token。其中任何易變內容（日期佔位符、依關鍵詞啟停的世界書條目）都會讓整段快取的**前綴失效**。建議把易變內容移出系統提示詞，關鍵詞觸發的世界書放到對話末尾。</string>
@@ -1594,7 +1598,7 @@
   <string name="prompt_inspect_source_lorebook">世界書</string>
   <string name="prompt_inspect_jump_to_entry">跳轉到該條目</string>
   <string name="prompt_inspect_legend_title">關於本頁</string>
-  <string name="prompt_inspect_legend_body">唯讀預覽：與真實請求走同一條組裝程式碼，再依來源分段。不落庫、不傳送請求。標記為「合成」的內容僅存在於本次請求。</string>
+  <string name="prompt_inspect_legend_body">唯讀預覽：與真實請求走同一條組裝程式碼，再依來源分段。不落庫、不傳送請求。標記為「合成」的內容僅存在於本次請求。&#10;&#10;不計入本頁數字：圖片/文件等附件的編碼體積（僅標註數量）、請求的協定包裝（role/content、tool_calls 等結構）。token 為字元啟發式估算（中文約 1.5 字元/token、其餘約 4 字元/token），工具 Schema 另依當前 provider 的實際下發形狀估算。</string>
   <string name="prompt_inspect_index_title">段落目錄</string>
   <string name="prompt_inspect_expand">展開</string>
   <string name="prompt_inspect_collapse">收合</string>

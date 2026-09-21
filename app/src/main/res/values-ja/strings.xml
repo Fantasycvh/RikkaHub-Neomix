@@ -1514,7 +1514,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="message_partial_failure_regenerate">再生成</string>
   <string name="asr_error_not_configured">音声認識が未設定です——ASR プロバイダーと API キーを先に設定してください</string>
   <string name="asr_error_audio_focus">オーディオフォーカスを取得できません（マイクが使用中かも）</string>
-  <string name="prompt_inspect_title">組み立て後のプロンプト</string>
+  <string name="prompt_inspect_title">リクエスト内容</string>
   <string name="prompt_inspect_entry_desc">今回実際に送信される内容を、由来ごとに分割して確認</string>
   <string name="prompt_inspect_summary">概要</string>
   <string name="prompt_inspect_segments">セグメント数</string>
@@ -1529,7 +1529,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_inspect_segment_injection">注入（ワールド情報 / モード）</string>
   <string name="prompt_inspect_segment_history">会話履歴</string>
   <string name="prompt_inspect_segment_memory">注入されたメモリ</string>
-  <string name="prompt_inspect_segment_tool_schema">ツールスキーマ</string>
+  <string name="prompt_inspect_segment_tool_guidance">ツール誘導（システム内）</string>
+  <string name="prompt_inspect_segment_tool_schema">ツールスキーマ（%1$d 個、≈%2$d トークン）</string>
+  <string name="prompt_inspect_not_in_messages">リクエスト直下のフィールド（メッセージ外）</string>
+  <string name="prompt_inspect_attachment_note">［未集計：画像 %1$d、文書 %2$d、音声 %3$d、動画 %4$d］</string>
+  <string name="prompt_inspect_segment_tool_result">ツール出力 · %1$s</string>
   <string name="prompt_inspect_segment_render_hint">レンダリングヒント</string>
   <string name="prompt_inspect_cache_title">プロンプトキャッシュについて</string>
   <string name="prompt_inspect_cache_body">システムは位置 0 にあり毎回再計算されます——ここは約 %1$d トークンです。その中の可変な内容（日付プレースホルダー、キーワードで有効・無効が切り替わるワールド情報）はキャッシュされた**プレフィックス全体を無効化**します。可変な内容はシステムプロンプトの外に出し、キーワード起動のワールド情報は会話の末尾に置くことを推奨します。</string>
@@ -1538,7 +1542,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_inspect_source_lorebook">ワールド情報</string>
   <string name="prompt_inspect_jump_to_entry">この項目へ移動</string>
   <string name="prompt_inspect_legend_title">このページについて</string>
-  <string name="prompt_inspect_legend_body">読み取り専用のプレビューです。実際のリクエストと同じ組み立てコードを通し、由来ごとに分割して表示します。保存も送信も行いません。「合成」と表示された内容は今回のリクエストにのみ存在します。</string>
+  <string name="prompt_inspect_legend_body">読み取り専用のプレビューです。実際のリクエストと同じ組み立てコードを通し、由来ごとに分割して表示します。保存も送信も行いません。「合成」と表示された内容は今回のリクエストにのみ存在します。&#10;&#10;本ページの数値に含まれないもの：画像・文書など添付のエンコード後サイズ（個数のみ表示）、リクエストのプロトコル包装（role/content、tool_calls などの構造）。token は文字ベースのヒューリスティック（CJK 約 1.5 文字/token、その他約 4 文字/token）で、ツールスキーマは現在の provider の実際の送信形状で別途見積もります。</string>
   <string name="prompt_inspect_index_title">セグメント目次</string>
   <string name="prompt_inspect_expand">展開</string>
   <string name="prompt_inspect_collapse">折りたたむ</string>

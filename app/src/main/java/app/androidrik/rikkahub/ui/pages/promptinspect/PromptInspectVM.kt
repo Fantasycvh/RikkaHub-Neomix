@@ -53,8 +53,11 @@ class PromptInspectVM(
                         history = context.getString(R.string.prompt_inspect_segment_history),
                         // #1542 Tier B：system 块化的细分来源标签（槽名复用角色卡槽位视图的既有字符串）
                         memory = context.getString(R.string.prompt_inspect_segment_memory),
+                        toolGuidance = context.getString(R.string.prompt_inspect_segment_tool_guidance),
                         toolSchema = context.getString(R.string.prompt_inspect_segment_tool_schema),
+                        toolResult = context.getString(R.string.prompt_inspect_segment_tool_result),
                         renderHint = context.getString(R.string.prompt_inspect_segment_render_hint),
+                        attachmentNote = context.getString(R.string.prompt_inspect_attachment_note),
                         cardSlotNames = mapOf(
                             CardSlot.GREETING to context.getString(R.string.assistant_page_card_slot_greeting),
                             CardSlot.SYSTEM_PROMPT to context.getString(R.string.assistant_page_card_system_prompt),

@@ -1532,7 +1532,7 @@
   <string name="log_page_write_to_file">Export to file</string>
   <string name="log_page_write_to_file_desc">Also append logs to files/logs (full request bodies included; survives restarts). Off by default.</string>
   <string name="log_page_clear_file">Clear file</string>
-  <string name="prompt_inspect_title">Assembled prompt</string>
+  <string name="prompt_inspect_title">Request content</string>
   <string name="prompt_inspect_entry_desc">See exactly what will be sent, split by source</string>
   <string name="prompt_inspect_summary">Summary</string>
   <string name="prompt_inspect_segments">Segments</string>
@@ -1547,7 +1547,11 @@
   <string name="prompt_inspect_segment_injection">Injected (world info / mode)</string>
   <string name="prompt_inspect_segment_history">Chat history</string>
   <string name="prompt_inspect_segment_memory">Injected memories</string>
-  <string name="prompt_inspect_segment_tool_schema">Tool schema</string>
+  <string name="prompt_inspect_segment_tool_guidance">Tool guidance (in system)</string>
+  <string name="prompt_inspect_segment_tool_schema">Tool schema (%1$d tools, ≈%2$d tokens)</string>
+  <string name="prompt_inspect_not_in_messages">top-level field, not in messages</string>
+  <string name="prompt_inspect_attachment_note">[not counted: %1$d images, %2$d documents, %3$d audio, %4$d video]</string>
+  <string name="prompt_inspect_segment_tool_result">Tool output · %1$s</string>
   <string name="prompt_inspect_segment_render_hint">Render hints</string>
   <string name="prompt_inspect_cache_title">Note on prompt caching</string>
   <string name="prompt_inspect_cache_body">The system block sits at position 0 and is recomputed every request — here it is about %1$d tokens. Anything volatile inside it (a date placeholder, a world-info entry that toggles on keywords) invalidates the whole cached prefix. Keep volatile content out of the system prompt; keyword-triggered world info belongs at the bottom of the chat.</string>
@@ -1556,7 +1560,7 @@
   <string name="prompt_inspect_source_lorebook">World info</string>
   <string name="prompt_inspect_jump_to_entry">Go to this entry</string>
   <string name="prompt_inspect_legend_title">About this page</string>
-  <string name="prompt_inspect_legend_body">Read-only preview assembled by the same code path as a real request, then split by source. Nothing is saved and no request is sent. Items marked synthetic exist only for the request.</string>
+  <string name="prompt_inspect_legend_body">Read-only preview assembled by the same code path as a real request, then split by source. Nothing is saved and no request is sent. Items marked synthetic exist only for the request.&#10;&#10;Not counted here: the encoded size of images/documents (their count is shown instead), and request protocol wrapping (role/content, tool_calls and similar). Token counts are a character heuristic (~1.5 chars/token for CJK, ~4 for the rest); tool schema is estimated separately from the actual wire shape of the current provider.</string>
   <string name="prompt_inspect_index_title">Segments index</string>
   <string name="prompt_inspect_expand">Show</string>
   <string name="prompt_inspect_collapse">Collapse</string>

@@ -5,12 +5,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.util.ToolSchemaSize
 import app.androidrik.rikkahub.data.ai.prompts.isCompactionCheckpointPreamble
 import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.collectInjections
+import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.PromptInjection
 import app.androidrik.rikkahub.data.ai.transformers.transforms
@@ -19,7 +22,10 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.CardSlot
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.utils.estimateTokens
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlin.uuid.Uuid
 
 /**
@@ -45,7 +51,20 @@ enum class PromptSegmentKind {
     /** 注入的记忆（buildMemoryPrompt 产物） */
     MEMORY,
 
-    /** 单个工具的 systemPrompt（schema 说明） */
+    /**
+     * system 正文内的**工具引导文本**（`tool.systemPrompt()` 产物，如技能清单）。
+     *
+     * ⚠️ 与 [TOOL_SCHEMA] 是两件事：本段**在 system 消息里**，而 [TOOL_SCHEMA] 是请求的
+     * **顶层 `tools` 数组**（`description`+`parameters`）。全仓仅少数工具提供前者。
+     */
+    TOOL_GUIDANCE,
+
+    /**
+     * 请求的顶层 `tools` 数组（实发的 `description` + `parameters`），**不在任何消息里**。
+     *
+     * 见 `docs/peer-apps-benchmark.md` §6.12 末节：这一段此前完全没被预览统计，
+     * 是「预览估算远低于实发」的主因（实测过的场景里 MCP schema ≈33K token）。
+     */
     TOOL_SCHEMA,
 
     /** 渲染提示（TikZ / 数学公式引导） */
@@ -53,6 +72,19 @@ enum class PromptSegmentKind {
 
     /** 压缩检查点合成消息（见 `docs/design-auto-compaction.md`） */
     COMPRESSION_CHECKPOINT,
+
+    /**
+     * 工具输出（`UIMessagePart.Tool.output`）。
+     *
+     * ⚠️ 此前**完全不计**：预览的正文只取顶层 `Text` part，而工具输出是**独立的一类 part**，
+     * 其文本嵌在 `Tool.output` 里。fork 单条工具输出上限 32KB，一次 agent 会话里几十次
+     * 调用即可超过对话正文——是「预览远低于实发」的第二大来源
+     * （`ContextLength.estimateTokenCount` 一直是计入的，故两处口径此前不一致）。
+     *
+     * 在**真实请求**里，工具结果不是拼进 assistant 消息，而是各自成为独立的 `tool` 角色
+     * 消息 ⇒ 这里**每条输出一段**，与实发的消息序列对应。
+     */
+    TOOL_RESULT,
 
     /** 非 SYSTEM 的注入消息（世界书/模式注入落到 TOP_OF_CHAT / BOTTOM_OF_CHAT / AT_DEPTH） */
     INJECTION,
@@ -68,6 +100,8 @@ enum class PromptSegmentKind {
  * @param isSynthetic 是否为请求期合成（不落库）——标出以免误以为会写进会话
  * @param tokens token 估算（与记忆注入同一套启发式，见 `ContextLength.kt`）
  * @param source 该段的来源条目（**仅注入段**有值，Tier 4 归因）；null = 无处可跳
+ * @param location 该段在**请求体**中的位置（消息序列 vs 顶层工具字段）。UI 据此提示
+ *   「不在对话里」，避免把顶层 `tools` 误读成某条消息的一部分。
  */
 data class PromptSegment(
     val kind: PromptSegmentKind,
@@ -77,7 +111,21 @@ data class PromptSegment(
     val isSynthetic: Boolean,
     val tokens: Int,
     val source: PromptSegmentSource? = null,
+    val location: PromptSegmentLocation = PromptSegmentLocation.MESSAGE,
 )
+
+/** 该段在**请求体**里的落点（决定它是否属于对话消息序列）。 */
+enum class PromptSegmentLocation {
+    /** 某条消息的内容（system 正文 / 历史 / 注入消息） */
+    MESSAGE,
+
+    /**
+     * 请求的**顶层字段**，不属于任何消息。
+     *
+     * 目前只有工具 schema（`tools`）——它每条请求都发、但不在 system 消息里。
+     */
+    TOP_LEVEL_FIELD,
+}
 
 /** 注入段的来源条目——「这段是从哪条注入来的」，供预览页跳转到其编辑处。 */
 data class PromptSegmentSource(
@@ -123,8 +171,18 @@ data class PromptInspectionLabels(
     val history: String,
     /** #1542 Tier B：system 块化后的细分来源标签 */
     val memory: String = "",
+    /** system 正文内的工具引导文本（`tool.systemPrompt()`） */
+    val toolGuidance: String = "",
+    /** 请求顶层 `tools` 数组（实发 schema）；支持 `%1$d`（工具数）与 `%2$d`（估算 token） */
     val toolSchema: String = "",
+    /** 工具输出的段名；`%1$s` = 工具名 */
+    val toolResult: String = "",
     val renderHint: String = "",
+    /**
+     * 非文本 part 的占位提示；四个 `%d` 依次为图片/文档/音频/视频数量。
+     * 空串 = 不追加该提示。
+     */
+    val attachmentNote: String = "",
     /** 卡槽块的具体槽名（key = 槽位）。空 map = 卡槽块退化为统一「角色卡」标签 */
     val cardSlotNames: Map<CardSlot, String> = emptyMap(),
 )
@@ -197,7 +255,15 @@ suspend fun inspectPrompt(
     val segments = transformed.flatMap { message ->
         val kind = message.segmentKind()
         val content = message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
-        // #1542 Tier B：system 消息按**块来源**细分（人设/卡槽/记忆/工具 schema/渲染提示），
+        // 非文本 part（图片/文档/音视频）此前**一律计 0**，而实发时它们会经 FileEncoder
+        // 编码进请求（图片→JPEG base64，是一块很实的开销）。这里在段尾追加一行可见占位，
+        // 使「有附件却显示 0」不再被误读成「附件不花钱」——
+        // 精确体积依赖编码参数，本页不猜（见 §6.12 末节）。
+        val attachmentNote = message.attachmentNote(labels)
+        val contentWithNote = if (attachmentNote.isNullOrBlank()) content else {
+            if (content.isBlank()) attachmentNote else "$content\n$attachmentNote"
+        }
+        // #1542 Tier B：system 消息按**块来源**细分（人设/卡槽/记忆/工具引导/渲染提示），
         // 与真实请求共用 buildSystemBlocks（同参）⇒ 归因与发送内容一致。
         // 其余消息（检查点/注入/历史）维持整条一段（注入段再由 Tier 4 拆回逐条）。
         if (kind != PromptSegmentKind.SYSTEM) {
@@ -210,13 +276,14 @@ suspend fun inspectPrompt(
                     else -> labels.system
                 },
                 role = message.role.name.lowercase(),
-                content = content,
+                content = contentWithNote,
                 isSynthetic = message.isSynthetic,
+                // token 只按 Text 段计：占位行是给人看的提示，不冒充被漏算的附件体积
                 tokens = estimateTokens(content),
             )
             // Tier 4：合成注入消息是多条 `joinToString("\n")` 的合并体，按贡献者 id 拆回逐条，
             // 使预览能归因到具体条目（否则三条世界书条目表现为一段文本，无从跳转）。
-            if (kind == PromptSegmentKind.INJECTION) {
+            val own = if (kind == PromptSegmentKind.INJECTION) {
                 splitMergedInjectionSegment(
                     annotations = message.annotations,
                     fallback = single,
@@ -226,6 +293,8 @@ suspend fun inspectPrompt(
             } else {
                 listOf(single)
             }
+            // 工具输出紧随其所属消息之后（实发时它们是独立的 tool 角色消息，故各自成段）。
+            own + toolResultSegments(message, labels)
         } else {
             // #1542 Tier B 修复：BEFORE/AFTER 注入由 PromptInjectionTransformer 在
             // transformer 链里**合并进 system 本体**，而 buildSystemBlocks 的 base 块
@@ -253,15 +322,85 @@ suspend fun inspectPrompt(
         }
     }
 
+    // 请求顶层字段：工具 schema（`tools`）。**不属于任何消息**——与 `messages` 平级、
+    // 每条请求都发。此前完全没被统计，是「预览估算远低于实发」的主因
+    // （实测场景 MCP ≈33K token，见 docs/peer-apps-benchmark.md §6.12 末节）。
+    // 放在段首：它逻辑上先于对话内容被 provider 读取，也提醒用户「对话之外还有内容」。
+    val toolSegment = toolsToSegment(
+        tools = tools,
+        providerType = model.findProvider(settings.providers, checkOverwrite = false),
+        json = JsonInstant,
+        labels = labels,
+    )
+    val allSegments = if (toolSegment == null) segments else listOf(toolSegment) + segments
+
     return PromptInspection(
-        segments = segments,
-        totalTokens = segments.sumOf { it.tokens },
+        segments = allSegments,
+        totalTokens = allSegments.sumOf { it.tokens },
         contextMessageLimit = assistant.contextMessageLimit,
-        sentHistoryCount = segments.count {
-            it.kind == PromptSegmentKind.CHAT_HISTORY || it.kind == PromptSegmentKind.COMPRESSION_CHECKPOINT
+        // 按**消息**计而不是按段计：一条消息现在可能产出多个段（工具 schema / 注入拆条 /
+        // 每条工具输出各一段），按段计会重复统计，且可能超过 totalMessageCount（误导）。
+        sentHistoryCount = transformed.count {
+            it.segmentKind() == PromptSegmentKind.CHAT_HISTORY ||
+                it.segmentKind() == PromptSegmentKind.COMPRESSION_CHECKPOINT
         },
         totalMessageCount = windowMessages.size,
     )
+}
+
+/**
+ * 工具输出 → 预览段（**纯函数**，便于 JVM 单测）。
+ *
+ * 为什么必须单列：`UIMessagePart.Tool.output` 是**独立的一类 part**，其文本嵌在 `output`
+ * 里，而预览此前只取顶层 `Text` ⇒ **整条工具输出计 0**。fork 单条工具输出上限 32KB，
+ * 一次 agent 会话里几十次调用即可超过对话正文（`ContextLength.estimateTokenCount`
+ * 一直是计入的 ⇒ 两处口径此前不一致）。
+ *
+ * 为什么**每条一段**而非合并成一段：在真实请求里工具结果不是拼进 assistant 消息，
+ * 而是各自成为独立的 `tool` 角色消息 ⇒ 一条一段才与实发的消息序列对应。
+ *
+ * 只取 `Text` 子 part，与 [app.androidrik.rikkahub.utils.estimateTokenCount] 同口径
+ * （工具输出里的图片等非文本内容不计，同全页处理）。
+ *
+ * @return 无已执行工具输出时返回空列表（不产生空段）
+ */
+internal fun toolResultSegments(
+    message: UIMessage,
+    labels: PromptInspectionLabels,
+): List<PromptSegment> = message.parts
+    .filterIsInstance<UIMessagePart.Tool>()
+    .filter { it.isExecuted }
+    .mapNotNull { tool ->
+        val text = tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+        // 跳过无文本输出的工具（如仅返回图片）：金额计 0，成段只会制造噪音
+        if (text.isBlank()) return@mapNotNull null
+        PromptSegment(
+            kind = PromptSegmentKind.TOOL_RESULT,
+            label = labels.toolResult.format(tool.toolName),
+            role = "tool",
+            content = text,
+            isSynthetic = message.isSynthetic,
+            tokens = estimateTokens(text),
+        )
+    }
+
+/**
+ * 非文本 part 的可见占位（图片/文档/音视频）。空串 = 无此类 part。
+ *
+ * 为什么需要：这些 part 此前在预览里**一律计 0 token**，而实发时它们会被编码进请求
+ * （图片走 `FileEncoder` 压 JPEG 再 base64）。不给提示的话，「附件显示 0」会被误读成
+ * 「附件不花钱」——那是比数字不准更糟的误导。**本页不猜精确体积**（依赖编码参数与图片内容），
+ * 只如实说明「有几个、未计入」。
+ */
+private fun UIMessage.attachmentNote(labels: PromptInspectionLabels): String? {
+    if (labels.attachmentNote.isEmpty()) return null
+    val images = parts.count { it is UIMessagePart.Image }
+    val documents = parts.count { it is UIMessagePart.Document }
+    val audios = parts.count { it is UIMessagePart.Audio }
+    val videos = parts.count { it is UIMessagePart.Video }
+    val total = images + documents + audios + videos
+    if (total == 0) return null
+    return labels.attachmentNote.format(images, documents, audios, videos)
 }
 
 /**
@@ -369,14 +508,26 @@ internal fun systemBlocksToSegments(
     blocks: List<SystemBlock>,
     labels: PromptInspectionLabels,
     role: String,
-): List<PromptSegment> = blocks.map { block ->
+): List<PromptSegment> = blocks
+    // 跳过**空的工具引导块**：`buildSystemBlocks` 为每个工具各加一个 TOOL 块，而绝大多数
+    // 工具不提供 `systemPrompt`（默认空串）⇒ 实测 13 个工具里有 11 个空块，若照原样成段
+    // 会渲染成一串「工具引导 ≈0」的噪音。
+    //
+    // 注意：这里只影响**预览展示**，不改发送内容——空块在 system 正文里仍贡献一个换行
+    // （逐字节契约见 buildSystemBlocks 的 kdoc，由 PromptAssemblyTest 锁住）。
+    .filterNot { it.source == SystemBlockSource.TOOL && it.content.isBlank() }
+    .map { block ->
     val (kind, label) = when (block.source) {
         SystemBlockSource.PERSONA -> PromptSegmentKind.SYSTEM to labels.system
         SystemBlockSource.CARD_SLOT -> PromptSegmentKind.CARD_SLOT to (
             labels.cardSlotNames[block.cardSlot] ?: labels.system
             )
         SystemBlockSource.MEMORY -> PromptSegmentKind.MEMORY to labels.memory
-        SystemBlockSource.TOOL -> PromptSegmentKind.TOOL_SCHEMA to labels.toolSchema
+        // TOOL 块 = `tool.systemPrompt()` 产物，**在 system 正文里**（引导文本，不是 schema）；
+        // 实发的顶层 tools 数组另由 [toolsToSegment] 成段（见 TOOL_SCHEMA 的注释）。
+        SystemBlockSource.TOOL -> PromptSegmentKind.TOOL_GUIDANCE to (
+            labels.toolGuidance.ifBlank { labels.toolSchema }
+            )
         SystemBlockSource.DIAGRAM_HINT, SystemBlockSource.MATH_HINT ->
             PromptSegmentKind.RENDER_HINT to labels.renderHint
     }
@@ -387,6 +538,43 @@ internal fun systemBlocksToSegments(
         content = block.content,
         isSynthetic = true,
         tokens = estimateTokens(block.content),
+    )
+}
+
+/**
+ * 工具 schema → 单个预览段（**纯函数**，便于 JVM 单测）。
+ *
+ * 这一段**不属于任何消息**：`tools` 是请求体的顶层字段（与 `messages` 平级），
+ * 每条请求都会发。此前预览完全不统计它 ⇒ 实测过的场景（MCP 54 工具 ≈33K token、
+ * 占 4 万总量约 80%）在预览里是 0，这是「预览估算远低于实发」的主因
+ * （`docs/peer-apps-benchmark.md` §6.12 末节）。
+ *
+ * `content` 用**真实下发的 JSON**（经 provider 形状变换与 `ensureArrayItems`），
+ * 使展示与实发同源；token 数由调用方用 [ToolSchemaSize] 的同口径估算传入
+ * （它比字符启发式更准，因为绑定了 provider 的实际包装）。
+ *
+ * @return 无工具时返回 null（不产生空段）
+ */
+internal fun toolsToSegment(
+    tools: List<Tool>,
+    providerType: ProviderSetting?,
+    json: Json,
+    labels: PromptInspectionLabels,
+): PromptSegment? {
+    if (tools.isEmpty()) return null
+    val tokens = ToolSchemaSize.estimate(tools, providerType, json)
+    // 逐条渲染真实 JSON（与 provider 发送前的变换一致），供用户核对 schema 原文
+    val content = tools.joinToString("\n") { tool ->
+        ToolSchemaSize.wireJson(tool, providerType, json)
+    }
+    return PromptSegment(
+        kind = PromptSegmentKind.TOOL_SCHEMA,
+        label = labels.toolSchema.format(tools.size, tokens),
+        role = "tools",
+        content = content,
+        isSynthetic = true,
+        tokens = tokens,
+        location = PromptSegmentLocation.TOP_LEVEL_FIELD,
     )
 }
 

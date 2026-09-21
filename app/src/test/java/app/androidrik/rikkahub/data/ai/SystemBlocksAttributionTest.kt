@@ -35,6 +35,7 @@ class SystemBlocksAttributionTest {
         injection = "注入",
         history = "历史",
         memory = "注入的记忆",
+        toolGuidance = "工具引导",
         toolSchema = "工具 Schema",
         renderHint = "渲染提示",
         cardSlotNames = mapOf(
@@ -139,13 +140,36 @@ class SystemBlocksAttributionTest {
             listOf(
                 PromptSegmentKind.SYSTEM,
                 PromptSegmentKind.MEMORY,
-                PromptSegmentKind.TOOL_SCHEMA,
+                // TOOL 块是 `tool.systemPrompt()`（system 正文内的引导文本）；
+                // 实发的顶层 tools 数组另成一段（PromptSegmentKind.TOOL_SCHEMA），
+                // 见 PromptToolSchemaSegmentTest。
+                PromptSegmentKind.TOOL_GUIDANCE,
                 PromptSegmentKind.RENDER_HINT,
                 PromptSegmentKind.RENDER_HINT,
             ),
             segments.map { it.kind },
         )
-        assertEquals(listOf("系统提示词", "注入的记忆", "工具 Schema", "渲染提示", "渲染提示"), segments.map { it.label })
+        assertEquals(listOf("系统提示词", "注入的记忆", "工具引导", "渲染提示", "渲染提示"), segments.map { it.label })
+    }
+
+    @Test
+    fun `blank tool guidance blocks are skipped as display noise`() {
+        // buildSystemBlocks 为**每个**工具各加一个 TOOL 块，而绝大多数工具不提供
+        // systemPrompt（默认空串）——实测 13 个工具里 11 个是空块。若照原样成段，
+        // 目录会被一串「工具引导 ≈0」淹没。过滤只作用于预览展示，不改发送内容。
+        val blocks = listOf(
+            SystemBlock(SystemBlockSource.PERSONA, content = "p"),
+            SystemBlock(SystemBlockSource.TOOL, content = ""),
+            SystemBlock(SystemBlockSource.TOOL, content = "   "),
+            SystemBlock(SystemBlockSource.TOOL, content = "**Skills**\n<available_skills/>"),
+        )
+        val segments = systemBlocksToSegments(blocks, labels, role = "system")
+        assertEquals(
+            listOf(PromptSegmentKind.SYSTEM, PromptSegmentKind.TOOL_GUIDANCE),
+            segments.map { it.kind },
+        )
+        // 有内容的那个仍保留
+        assertEquals("**Skills**\n<available_skills/>", segments[1].content)
     }
 
     @Test
