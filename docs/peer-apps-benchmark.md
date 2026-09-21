@@ -697,4 +697,51 @@ v1.0.7 更新日志写着「新增拼装预览：发送前可查看提示词实�
 开关，v1.0.7 那句「据此调整」终于名副其实——此前预览只能看、不能改，也就无从「据此调整」。
 文案无需再改（「支持按条目开关」+ 预览可跳转 = 用户能从预览出发完成调整闭环）。
 
+#### 🔍 预览页 token 估算与实发差异：成因分析（2026-09-20 记录，**未修**）
+
+用户反馈「预览页的 token 估算与实际发送差别比较大」。核实后**主因不是估算器不准，而是覆盖面不足**——
+预览数的是「能拆成文本的那些段」，而不是「这次请求实际会发多少」。按影响排序：
+
+**① 工具 schema 在预览里几乎贡献 0 token（最大项）**
+
+预览的 `TOOL_SCHEMA` 段取的是 `tool.systemPrompt()`（`PromptAssembly.kt:149-151`），
+而**实际下发给 provider 的是 `description` + `parameters`（JSON schema），不是 `systemPrompt`**
+——两者是 `Tool` 上彼此独立的字段（`ai/core/Tool.kt:16`，`systemPrompt` 默认 `{ _, _ -> "" }`）。
+
+- 全仓**仅 2 处**工具设了 `systemPrompt`（`SkillsTools.kt` 的技能清单、`TextToSpeechTool.kt`）；
+- **MCP 工具完全不设**（`ChatToolFactory.kt:151-160` 只给 `description`/`parameters`）。
+
+⇒ 实测过的极端场景下（54 个 MCP 工具 ≈33K token，占 4 万总量约 80%，见 `e907d2e4`），
+**这部分在预览里是 0**。这是「差别比较大」的主因，且是**覆盖面**问题而非精度问题。
+
+**② 口径不同：预览只数 `Text` part，占用条含 `Tool`**
+
+- 预览：`message.parts.filterIsInstance<UIMessagePart.Text>()`（`PromptInspector.kt:199`），
+  `totalTokens = segments.sumOf { it.tokens }` ⇒ **图片/文档/音视频 part 一律计 0**
+  （而实发会经 `FileEncoder` 压 JPEG 再 base64）。
+- 占用条：`estimateTokenCount`（`ContextLength.kt:78-84`）**包含 `Tool` part 的输出文本**
+  （fork 工具输出上限 32KB）。**同一份对话，两处 UI 两套口径**。
+
+**③ 估算器是字符启发式，对 schema 恰是最不准的场景**
+
+`estimateTokens` = `cjk/1.5 + other/4`（`ContextLength.kt:113-118`）。散文尚可，但 JSON schema
+以 `{`/`"`/`:`/`type`/`string` 等短 token 与标点为主，真实 tokenizer 密度远高于 4 字符/token
+⇒ **即便把 schema 接进预览，用这个估算器仍会低估**。
+仓里其实已有更准的实现：`ai/util/ToolSchemaSize`（按 provider 实际包装形状，实测误差 3.4%），**预览没复用它**。
+
+**④ 协议包装开销未计入**：每条消息的 `{"role":…,"content":…}`、`tool_calls` 包装、
+`ensureArrayItems` 补的 `items` 等。单项不大，消息/工具多时累积。
+
+**修复建议（性价比排序，待立项）**：
+
+1. **把工具 schema 接进预览**（收益最大，且现成件齐备——直接复用 `ToolSchemaSize.estimate`）。
+   建议**单独加一个「工具 Schema（N 个，≈M token）」段**，而不是塞回 system 块：
+   工具 schema 实际是请求的**顶层 `tools` 字段、不在 system 消息里**，现在预览把它渲染成
+   system 块**本身就是归因错误**。⇒ 这一项顺带修掉一个语义 bug，不只是提精度。
+2. 给非文本 part 可见占位（「含 N 张图片」），避免用户误读为 0。
+3. 估算器复用 `ToolSchemaSize`，或在页面标注「字符启发式估算，工具 schema 除外」。
+4. 协议包装开销**不建议单独做**（相比 ① 量级小）。
+
+**关联**：`e907d2e4`（上下文构成诊断日志，真实构成与 3.4% 精度实测）、§6.12 Tier 4。
+
 关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）。
