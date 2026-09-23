@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.data.model.Conversation
 import java.util.concurrent.atomic.AtomicInteger
@@ -123,6 +125,35 @@ class ConversationSession(
     @Synchronized
     fun cancelJobs(): List<Job> = activeJobs.toList().also { jobs ->
         jobs.asReversed().forEach { it.cancel() }
+    }
+
+    /**
+     * 元数据编辑（置顶 / 移动助手 / 归属文件夹等）的**统一落地原语**。
+     *
+     * 为什么需要：这类编辑只改会话的几个标量字段，但历史上的写法是
+     * 「从 DB 读整对象 → 改字段 → 整对象写回」。对**活跃 session** 而言那会覆盖内存态——
+     * 生成中途切助手/打星标会把已在流式接收的 messageNodes 换成 DB 里的旧快照
+     * （与「停止生成丢内容」同族，见 `docs/upstream-analysis.md` 对 `4a3eefc1` 的评估）。
+     *
+     * 两条不变量：
+     * 1. [update] 作用在**当前内存值**上（而非外部传入的快照）⇒ 在途内容不丢；
+     * 2. [persist] 只写对应列（`updatePinStatus`/`updateConversationAssistant` 等单列 UPDATE），
+     *    不整对象写回 ⇒ 落库侧也不会用旧快照盖掉新内容。
+     *
+     * `mutex` 串行化内存改写与落库：连续编辑（如快速连点置顶）时两次 `persist` 不会交错，
+     * 落库值必然等于最后一次内存值。
+     */
+    private val metadataMutex = Mutex()
+
+    suspend fun updateMetadata(
+        update: (Conversation) -> Conversation,
+        persist: suspend (Conversation) -> Unit,
+    ) {
+        metadataMutex.withLock {
+            val updated = update(state.value)
+            state.value = updated
+            persist(updated)
+        }
     }
 
     private fun scheduleIdleCheck() {

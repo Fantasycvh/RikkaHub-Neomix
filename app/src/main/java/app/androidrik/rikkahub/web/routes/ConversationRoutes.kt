@@ -239,10 +239,13 @@ fun Route.conversationRoutes(
                 throw BadRequestException("Assistant not found")
             }
 
-            val conversation = conversationRepo.getConversationById(uuid)
+            // 存在性检查（会话不存在时返回 404，而非静默成功）
+            conversationRepo.getConversationById(uuid)
                 ?: throw NotFoundException("Conversation not found")
 
-            chatService.saveConversation(uuid, conversation.copy(assistantId = targetAssistantId))
+            // 走统一元数据原语（改内存最新态 + 只写单列 folder_id 一并清空），
+            // 避免旧写法用 DB 整对象快照覆盖活跃 session 的在途内容。
+            chatService.moveConversationToAssistant(uuid, targetAssistantId)
             call.respond(HttpStatusCode.OK, mapOf("status" to "updated"))
         }
 

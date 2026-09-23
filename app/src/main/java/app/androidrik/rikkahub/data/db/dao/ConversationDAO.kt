@@ -81,6 +81,13 @@ interface ConversationDAO {
     @Query("UPDATE conversationentity SET is_pinned = :isPinned WHERE id = :id")
     suspend fun updatePinStatus(id: String, isPinned: Boolean)
 
+    /**
+     * 换助手时**一并清空 folder_id**：文件夹是助手内分组，换了助手后原文件夹在新助手下不可见，
+     * 留着归属会让会话在列表里「消失」。两条列一起更新，避免中间态。
+     */
+    @Query("UPDATE conversationentity SET assistant_id = :assistantId, folder_id = '' WHERE id = :id")
+    suspend fun updateAssistantId(id: String, assistantId: String)
+
     @Query("UPDATE conversationentity SET folder_id = :folderId WHERE id = :id")
     suspend fun updateFolderId(id: String, folderId: String)
 

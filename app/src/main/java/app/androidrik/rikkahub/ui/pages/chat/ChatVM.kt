@@ -342,17 +342,12 @@ class ChatVM(
 
     fun moveConversationToAssistant(conversation: Conversation, targetAssistantId: Uuid) {
         viewModelScope.launch {
-            val conversationFull = conversationRepo.getConversationById(conversation.id) ?: return@launch
-            // 文件夹是助手内分组，切换助手后原文件夹在新助手下不可见，需清空归属避免会话丢失
-            val updatedConversation = conversationFull.copy(
-                assistantId = targetAssistantId,
-                folderId = null,
-            )
+            // 走 ChatService 的统一元数据原语：改的是**内存最新态** + 只写单列。
+            // 旧写法「读 DB 整对象 → 改字段 → saveConversation」会用旧快照覆盖活跃 session，
+            // 生成中途切助手时已在流式接收的内容会被换成 DB 里的旧 messageNodes。
+            chatService.moveConversationToAssistant(conversation.id, targetAssistantId)
             if (conversation.id == _conversationId) {
-                chatService.saveConversation(_conversationId, updatedConversation)
                 settingsStore.updateAssistant(targetAssistantId)
-            } else {
-                conversationRepo.updateConversation(updatedConversation)
             }
         }
     }

@@ -499,6 +499,16 @@ class ConversationRepository(
     }
 
     /**
+     * 单列更新会话归属的助手（并清空 folder_id，见 DAO 注释）。
+     *
+     * 由 `ChatService.moveConversationToAssistant` 经统一元数据原语调用——
+     * 不整对象写回，故不会用旧快照覆盖活跃 session 的在途内容。
+     */
+    suspend fun updateConversationAssistant(conversationId: Uuid, assistantId: Uuid) {
+        conversationDAO.updateAssistantId(conversationId.toString(), assistantId.toString())
+    }
+
+    /**
      * 单列更新会话的文件夹归属，folderId 为 null 表示移出文件夹（未归类）。
      */
     suspend fun updateConversationFolderId(conversationId: Uuid, folderId: Uuid?) {

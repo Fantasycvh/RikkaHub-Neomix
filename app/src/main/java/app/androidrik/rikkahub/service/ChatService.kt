@@ -1402,23 +1402,57 @@ class ChatService(
     }
 
     /**
+     * 元数据编辑的**统一落地入口**（置顶 / 移动助手等）。
+     *
+     * 为什么必须走这里而不是「读 DB → 改字段 → `saveConversation` 整对象写回」：
+     * 后者对**活跃 session** 会用 DB 里的旧快照覆盖内存态 ⇒ 生成中途打星标/切助手
+     * 会把已在流式接收的内容换掉（与「停止生成丢内容」同族，见 `ConversationSession.updateMetadata` 的说明）。
+     *
+     * 三条约束：
+     * - [update] 作用在**当前内存值**上（不接收外部快照）；
+     * - [persist] 只写对应列（单列 UPDATE），不整对象写回；
+     * - 会话**没有活跃 session 时**直接从 DB 读一次作为基线（此时内存态不存在，无覆盖之虞）。
+     */
+    private suspend fun updateConversationMetadata(
+        conversationId: Uuid,
+        update: (Conversation) -> Conversation,
+        persist: suspend (Conversation) -> Unit,
+    ) {
+        val session = sessions[conversationId]
+        if (session == null) {
+            val current = conversationRepo.getConversationById(conversationId) ?: return
+            persist(update(current))
+            return
+        }
+        session.updateMetadata(update, persist)
+    }
+
+    /**
      * 切换会话置顶状态。
      *
-     * 若该会话当前有活跃 session（正在查看或后台生成），**先同步内存态再落库**：
-     * 与 [moveConversationToFolder] 同款理由——`togglePinStatus` 只改数据库的 `is_pinned` 单列，
-     * 而内存里那份 Conversation 仍是旧值；后续任意整对象保存（生成结束 / 改标题 / 保存会话）
-     * 都会用内存里的旧 `isPinned` 把它覆盖回去，表现为**星标静默丢失**。
-     *
-     * 先改内存可确保这段窗口内的整对象保存也带上新值。
+     * 走统一元数据入口：`update` 作用在内存最新态（在途内容不丢），`persist` 只写 `is_pinned` 单列
+     * ——避免历史上「只改 DB 单列、内存仍旧值，随后被整对象保存覆盖回旧值」的星标静默丢失。
      */
     suspend fun togglePinStatus(conversationId: Uuid) {
-        val session = sessions[conversationId]
-        // 以「落库后的真实值」为准：DB 是这次切换的唯一真相源，内存要跟它对齐。
-        val newValue = !(conversationRepo.getConversationById(conversationId)?.isPinned ?: false)
-        conversationRepo.updateConversationPinStatus(conversationId, newValue)
-        if (session != null) {
-            updateConversationState(conversationId) { it.copy(isPinned = newValue) }
-        }
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(isPinned = !it.isPinned) },
+            persist = { conversationRepo.updateConversationPinStatus(conversationId, it.isPinned) },
+        )
+    }
+
+    /**
+     * 把会话移动到另一个助手。
+     *
+     * `folderId = null`：文件夹是**助手内**分组，换了助手后原文件夹在新助手下不可见，
+     * 不清空会让会话在列表里「消失」。两者在同一原语内一次落地（单列 UPDATE 也一并写 folder_id）。
+     */
+    suspend fun moveConversationToAssistant(conversationId: Uuid, assistantId: Uuid) {
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(assistantId = assistantId, folderId = null) },
+            persist = { conversationRepo.updateConversationAssistant(conversationId, it.assistantId) },
+        )
     }
 
     /**
