@@ -49,7 +49,7 @@
 | `aab5026e` | 通知小图标（#1782 状态栏胶囊无图标） | `1e98f69a`（ic_stat_rikkahub 五密度 PNG + NotificationUtil 默认切换） | 2026-09-12 |
 | `4fcb590a` | 测试连接对话框本地化 | `1e98f69a`（标签 string 化 6 语言 5 key + 列宽 64→120dp） | 2026-09-12 |
 | `42b933d8` | debug 启动图标 DEV 角标 | `1e98f69a`（四 drawable + anydpi overlay，debug 变体） | 2026-09-12 |
-| `d3a53e0a` | 图片选择改 PickVisualMedia (#1821 选图落 CR 文件夹而非相册) | `e9c36591`（fork 4 处图片入口；ChatPage 视频/音频保留 GetMultipleContents） | 2026-09-12 |
+| `d3a53e0a` | 图片选择改 PickVisualMedia (#1821 选图落 CR 文件夹而非相册) | ⚠️ **已于 2026-09-21 回退（`af110d7f`）——吸收时漏看了上游两天前的 revert**。原记录：`e9c36591`（fork 4 处图片入口；ChatPage 视频/音频保留 GetMultipleContents），2026-09-12。**事实更正**：上游 `4b36640a`（2026-09-02）已**自行 revert** 该改动，commit 名即「恢复图片选择器的文件浏览入口」、close #1821；且 `merge-base --is-ancestor 4b36640a a9b35ba2` = **YES** ⇒ 上游的最终决定在 09-09 同步点就已进入 fork master，09-12 评估时**只看到这条「fix」标题、没查它是否已被推翻**。回退理由：系统 Photo Picker 只给相册视图、无文件浏览入口，照片多时翻找很慢（用户实证反馈）。**注：此处是来回拉锯的取舍**——#1821 的诉求恰相反（某些 ROM 上 GetContent 落到文件管理器而非相册），故代码里已留注释标明「有意与上游 `d3a53e0a` 相反」，下次同步勿无脑吸收 |
 | `aac6e963` | 统一内置搜索与外挂搜索行为 (#1666)：模型自带 `BuiltInTools.Search` 时不再注册外挂搜索 | `0b562833`（漏吸收补齐，工具注册 + 告警同口径 + 4 单测） | 2026-09-14 |
 | 队列 `66de8b30` / 语音 `a621e277` / ASR `580e05d6` | 消息队列/语音模式/ASR 双向流 | **fork 自研落地**（`3a911f1e`/`6680668d` / `1c499b79`..`27dc690d`） | 2026-09-09/10 |
 
@@ -473,6 +473,8 @@ git checkout imperfect-customization-and-refinement
    - **签名含义**：上游 `createTools(settings, assistant, model, workspaceCwd)` 只覆盖主链路；若要容纳潜在方，需再开维度——**调用者类型**（device-local vs remote/headless，决定是否含设备工具）、**记忆工具的归属**（现由 `GenerationHandler` 装因它持 `memoryRepo`；收进 factory 则 factory 需依赖 `MemoryRepository` 或回调注入）、**统一审批解析层**（`needsApproval` 现每处自定义：记忆按 action 分档 / MCP 透传 / 工作区有 override；不抽层只是把散乱搬家）。
 
 10. **批次「已吸收核心件」不等于零缺口**（2026-09-14 教训）：`aac6e963`（#1666 统一内置/外挂搜索，2026-08-13）落在 fork 分叉点 `2c980642`（2026-08-02）之后的 master 同步范围内，但**特性分支从未移植、批次分析也未记录**——它被 2.4.14 批次的「已吸收核心件」概括吞掉了。**修正做法**：`已吸收核心件` 只表示"该批主线已处理"，不代表逐提交已核；对**`ChatService.kt`/`GenerationHandler.kt` 这类重改文件上的上游修复**（尤其带 `fix(...)` 且关 issue 的）应逐条 grep fork 是否等价，而非按批次概括。本次即由「工具装配方盘点」顺藤摸到。
+
+12. **吸收前先查「这条 fix 是否已被上游自己推翻」**（2026-09-21 教训，`d3a53e0a`/`4b36640a`）：fork 于 2026-09-12 吸收了 `d3a53e0a`（图片选择改 `PickVisualMedia`），而**上游已于 2026-09-02 用 `4b36640a` 自行 revert**（commit 名即「恢复图片选择器的文件浏览入口」，close 同一个 #1821）——且该 revert 在 09-09 的同步点 `a9b35ba2` 里就已是 fork master 的祖先，即**信息一直在手边，只是没查**。判定手法：对候选吸收的提交 `S`，先跑 `git log --oneline <S>..master -- <S改过的文件>` 看其后是否被改动/撤销，或直接 `git log --oneline -S "<特征串>" -- <file>` 看该改动是否被反向提交（`revert:` 前缀或同名 `-` 号）。**注意本仓禁止用 merge-base 判「已吸收」**（手工直套非祖先，恒误报，见注意点 1），但**判「已被上游推翻」正是 merge-base 的合法用法**——`merge-base --is-ancestor <revert提交> <同步点>` 为真即说明推翻早于吸收。同类：`6ba71f89`(03-06 加)→`c03f9d5e`(03-14 撤) 也是一对。
 
 11. **可拖拽列表一律按 key 定位，不要用 lazy 列表下标**（2026-09-19 用户报「拖拽排序异常」）：`rememberReorderableLazyListState` 回调里的 `from.index/to.index` 是 **LazyColumn 的绝对下标，含头部等非数据行**（如预设列表的「迁移卡」、注入列表的「顺序提示 orderHint」）⇒ 用下标映射到数据列表会**整体错位**（拖 A 实际移动了 B）。本仓已有正确工具 `reorderForDragByKey(from.key, to.key) { it.id }`（`CollectionUtils.kt`，其注释与 `ReorderForDragTest` 的「世界书条目拖拽」区都写明了此陷阱）。**规则：新写/改动可拖拽列表一律用 key 版**；另注意 `ModelList`/`SettingProviderDetailPage`/`SettingSearchPage` 三处仍在**手工补偿偏移**（历史写法），改动这些列表时优先一并转为 key 版。
 
