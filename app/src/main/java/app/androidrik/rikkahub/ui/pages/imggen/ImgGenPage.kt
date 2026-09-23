@@ -2,7 +2,6 @@ package app.androidrik.rikkahub.ui.pages.imggen
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -345,8 +344,10 @@ private fun InputBar(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // GetMultipleContents 而非 PickMultipleVisualMedia：保留文件浏览入口
+    // （同 ChatPage 的说明；上游 4b36640a 亦已 revert 回此形态）
     val imagePickerLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { selectedUris ->
+        rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { selectedUris ->
             if (selectedUris.isNotEmpty()) {
                 scope.launch {
                     val paths = selectedUris.mapNotNull { uri ->
@@ -418,9 +419,7 @@ private fun InputBar(
 
             IconButton(
                 onClick = {
-                    imagePickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                    )
+                    imagePickerLauncher.launch("image/*")
                 }
             ) {
                 Icon(

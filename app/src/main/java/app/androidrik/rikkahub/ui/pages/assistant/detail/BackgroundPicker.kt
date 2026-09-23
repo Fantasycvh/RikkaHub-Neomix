@@ -2,7 +2,6 @@ package app.androidrik.rikkahub.ui.pages.assistant.detail
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,8 +43,10 @@ fun BackgroundPicker(
     var showUrlInput by remember { mutableStateOf(false) }
     var urlInput by remember { mutableStateOf("") }
 
+    // GetContent 而非 PickVisualMedia：保留文件浏览入口（同 UIAvatar 的说明——
+    // 系统 Photo Picker 无目录浏览、照片多时翻找慢；上游 4b36640a 亦已 revert 回此形态）
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
+        contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
             val localUris = filesManager.createChatFilesByContents(listOf(it))
@@ -127,9 +128,7 @@ fun BackgroundPicker(
                     Button(
                         onClick = {
                             showPickOption = false
-                            imagePickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
+                            imagePickerLauncher.launch("image/*")
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {

@@ -3,7 +3,6 @@ package app.androidrik.rikkahub.ui.components.ui
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Canvas
@@ -129,8 +128,13 @@ fun UIAvatar(
         freeStyleCropEnabled = false
     )
 
+    // 用 GetContent（ACTION_GET_CONTENT）而非 PickVisualMedia：
+    // 系统 Photo Picker 只给「相册视图」、无文件浏览入口，照片多时翻找很慢；
+    // GetContent 会交给系统/文件管理器，可进目录树。**此处有意与上游 d3a53e0a 相反**——
+    // 上游已于 4b36640a 自行 revert（close #1821），理由即「要保留文件浏览入口」；
+    // 下次同步若再见到该改动，勿无脑吸收。
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
+        contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { selectedUri ->
             val tempFile = File(context.appTempFolder, "avatar_pick_${System.currentTimeMillis()}.jpg")
@@ -233,9 +237,7 @@ fun UIAvatar(
                     Button(
                         onClick = {
                             showPickOption = false
-                            imagePickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
+                            imagePickerLauncher.launch("image/*")
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
