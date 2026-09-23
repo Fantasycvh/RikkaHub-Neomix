@@ -10,6 +10,17 @@ data class Model(
     val displayName: String = "",
     val id: Uuid = Uuid.random(),
     val type: ModelType = ModelType.CHAT,
+    /**
+     * 是否在**选择器**中提供该模型。
+     *
+     * 语义与 [ProviderSetting.enabled] 对齐（同一个取舍）：停用 = **不再出现在模型选择列表**里，
+     * 而**不是**「阻断使用」——已经选中它的助手/会话照旧可用，`Settings.findModelById` 也不看本字段。
+     * 这样停用不会静默改掉用户既有配置（也就不会有「请求究竟发去了哪」的意外）；
+     * 目的只是把不用的模型从长列表里收起来。
+     *
+     * 默认 true + 序列化缺省 ⇒ **旧数据零迁移**（`JsonInstant` 开了 `ignoreUnknownKeys`）。
+     */
+    val enabled: Boolean = true,
     /** 模型上下文窗口大小（token 数），拉取模型列表时解析或注册表内置；null=未知 */
     val contextLength: Int? = null,
     /** 用户对该模型手动指定的上下文窗口（覆盖 [contextLength]），用于「已使用上下文」占用显示 */

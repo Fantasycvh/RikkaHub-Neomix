@@ -82,6 +82,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -715,6 +717,9 @@ private fun ModelList(
                             },
                             onEdit = { editedModel ->
                                 onUpdateProvider(providerSetting.editModel(editedModel))
+                            },
+                            onToggleEnabled = { enabled ->
+                                onUpdateProvider(providerSetting.editModel(item.copy(enabled = enabled)))
                             },
                             parentProvider = providerSetting,
                             modifier = Modifier
@@ -1471,6 +1476,8 @@ private fun ModelCard(
     modifier: Modifier = Modifier,
     onDelete: () -> Unit,
     onEdit: (Model) -> Unit,
+    /** 停用/启用该模型（只影响它是否出现在模型选择器里，见 [Model.enabled]） */
+    onToggleEnabled: (Boolean) -> Unit,
     parentProvider: ProviderSetting
 ) {
     val dialogState = useEditState<Model> {
@@ -1478,7 +1485,10 @@ private fun ModelCard(
     }
     val swipeToDismissBoxState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
-
+    val enabledLabel = stringResource(
+        if (model.enabled) R.string.setting_provider_page_enabled
+        else R.string.setting_provider_page_disabled
+    )
 
     if (dialogState.isEditing) {
         dialogState.currentState?.let { editingModel ->
@@ -1640,8 +1650,23 @@ private fun ModelCard(
                         ModelTypeTag(model = model)
                         ModelModalityTag(model = model)
                         ModelAbilityTag(model = model)
+                        if (!model.enabled) {
+                            Tag(type = TagType.WARNING) {
+                                Text(stringResource(R.string.setting_provider_page_disabled))
+                            }
+                        }
                     }
                 }
+
+                // 启停开关：与「提供商启停」「预设条目启停」同款交互（行内 Switch）。
+                // 语义=仅从选择器收起，不改既有选中项（见 Model.enabled 的说明）。
+                Switch(
+                    checked = model.enabled,
+                    onCheckedChange = onToggleEnabled,
+                    modifier = Modifier.semantics {
+                        contentDescription = "${model.displayName}: $enabledLabel"
+                    },
+                )
 
                 // Edit button
                 IconButton(

@@ -93,6 +93,24 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.uuid.Uuid
 
+/**
+ * 选择器里**应当提供**的模型：类型匹配且未被停用（[Model.enabled]）。
+ *
+ * 抽成独立函数而不是内联在 Composable 里，是为了能上 JVM 单测——Composable 内的过滤条件
+ * 无法直接被测试覆盖，而「停用后就不该再出现在列表里」正是本功能的唯一行为契约。
+ */
+internal fun List<Model>.selectableOf(type: ModelType): List<Model> =
+    filter { it.enabled && it.type == type }
+
+/**
+ * 该 provider 在 [type] 下是否还有**可选**模型。
+ *
+ * 用于决定选择器里是否还要给这个 provider 出一个分组标题：若其模型全被停用，
+ * 只留一个空标题是误导（用户会以为模型丢了）。
+ */
+internal fun ProviderSetting.hasSelectableOf(type: ModelType): Boolean =
+    models.any { it.enabled && it.type == type }
+
 class ModelListState internal constructor(
     modelId: Uuid?,
     providers: List<ProviderSetting>,
@@ -115,7 +133,7 @@ class ModelListState internal constructor(
 
     val filteredProviders: List<ProviderSetting>
         get() = providers.fastFilter { provider ->
-            provider.enabled && provider.models.fastAny { model -> model.type == type }
+            provider.enabled && provider.hasSelectableOf(type)
         }
 
     fun open() {
@@ -306,6 +324,8 @@ private fun ColumnScope.ModelList(
     val favoriteModels = settings.value.favoriteModels.mapNotNull { modelId ->
         val model = settings.value.providers.findModelById(modelId) ?: return@mapNotNull null
         if (model.type != modelType) return@mapNotNull null
+        // 停用的模型同样从收藏区移除：收藏只是「取用捷径」，不该绕过「不再提供」的语义
+        if (!model.enabled) return@mapNotNull null
         val provider = model.findProvider(providers = settings.value.providers, checkOverwrite = false) ?: return@mapNotNull null
         model to provider
     }
@@ -314,15 +334,14 @@ private fun ColumnScope.ModelList(
 
     val typeFilteredModelsByProvider = remember(providers, modelType) {
         providers.associate { provider ->
-            provider.id to provider.models.fastFilter { it.type == modelType }
+            provider.id to provider.models.selectableOf(modelType)
         }
     }
 
     val searchFilteredModelsByProvider = remember(providers, modelType, searchKeywords) {
         providers.associate { provider ->
-            provider.id to provider.models.fastFilter {
-                it.type == modelType && it.displayName.contains(searchKeywords, true)
-            }
+            provider.id to provider.models.selectableOf(modelType)
+                .filter { it.displayName.contains(searchKeywords, true) }
         }
     }
 

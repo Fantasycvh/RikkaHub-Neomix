@@ -64,7 +64,12 @@ fun ProviderConnectionTester(
 
     if (showTestDialog) {
         var model by remember(internalProvider) {
-            mutableStateOf(internalProvider.models.firstOrNull { it.type == ModelType.CHAT })
+            // 优先用**未被停用**的模型来测连通性（停用往往意味着该模型不可用/不想用）；
+            // 若全被停用则退回任意一个，保证「测试连接」始终有东西可测。
+            mutableStateOf(
+                internalProvider.models.firstOrNull { it.type == ModelType.CHAT && it.enabled }
+                    ?: internalProvider.models.firstOrNull { it.type == ModelType.CHAT }
+            )
         }
         var nonStreamingState: UiState<String> by remember { mutableStateOf(UiState.Idle) }
         var streamingState: UiState<String> by remember { mutableStateOf(UiState.Idle) }
