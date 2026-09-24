@@ -152,12 +152,41 @@ internal fun backgroundTextGenerationParams(
     customBody = model.customBodies,
 )
 
+/**
+ * 分叉会话的标题：`源标题(序号)`，取**第一个未被占用**的序号。
+ *
+ * **为什么需要**（上游 `458c16df`）：此前分叉出的会话标题为空，侧栏里一堆「新对话」分不清谁是谁。
+ * 更隐蔽的一层：空标题会让既有自动起名（`generateTitle` 仅在 `title.isBlank()` 时触发）在首条消息后
+ * 把它改成一个**与源会话无关**的名字，「这是从哪条分出来的」这条线索就断了。
+ *
+ * **两处有意与上游不同**（fork 手工适配，见 `docs/upstream-analysis.md`）：
+ * 1. **源标题为空时保持为空**，不生成 `(1)`。上游写法在源标题为空时会产出 `"(1)"`——
+ *    这既没有信息量，又因为「非空」导致自动起名**永远不再修正它**（`shouldGenerate` 要求 isBlank）。
+ *    保持空白才能让自动起名在首条消息后正常命名。
+ * 2. **序号取第一个未占用值**，而不是「已有数量 + 1」。用户删掉某次分叉后再分叉会复用空出的序号，
+ *    避免序号无界增长（与上游 `generateSequence` 的「找第一个空位」语义一致，此处只是把它显式化并加测试）。
+ *
+ * 抽成独立纯函数是为了能上 JVM 单测——Composable/Service 内的内联逻辑测不到，
+ * 而「标题怎么取」正是本功能唯一的行为契约。
+ *
+ * @param existingTitles 该助手下**已有**会话的标题集合（用于避让）
+ */
+internal fun forkConversationTitle(source: Conversation, existingTitles: Set<String>): String {
+    if (source.title.isBlank()) return ""
+    return generateSequence(1) { it + 1 }
+        .map { "${source.title}($it)" }
+        .first { it !in existingTitles }
+}
+
 internal fun createForkConversation(
     source: Conversation,
     messageNodes: List<MessageNode>,
+    /** 该助手下已有会话的标题（避让序号）；默认空集只服务于单测等场景 */
+    existingTitles: Set<String> = emptySet(),
 ): Conversation = Conversation(
     id = Uuid.random(),
     assistantId = source.assistantId,
+    title = forkConversationTitle(source, existingTitles),
     messageNodes = messageNodes,
     customSystemPrompt = source.customSystemPrompt,
     modeInjectionIds = source.modeInjectionIds,
@@ -1692,7 +1721,14 @@ class ChatService(
                 )
             }
 
-        val forkConversation = createForkConversation(currentConversation, copiedNodes)
+        // 标题避让：取该助手下已有会话的标题集合，让分叉标题拿到第一个空出的序号。
+        // 注意作用域是**助手**而非「所有会话」——分叉不改变 assistantId，同助手内唯一即可
+        // （与上游 458c16df 同口径）。
+        val existingTitles = conversationRepo
+            .getConversationsOfAssistant(currentConversation.assistantId)
+            .first()
+            .mapTo(mutableSetOf()) { it.title }
+        val forkConversation = createForkConversation(currentConversation, copiedNodes, existingTitles)
 
         saveConversation(forkConversation.id, forkConversation)
         return forkConversation

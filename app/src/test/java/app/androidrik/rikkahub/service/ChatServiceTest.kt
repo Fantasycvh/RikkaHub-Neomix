@@ -32,8 +32,60 @@ class ChatServiceTest {
         assertEquals(source.assistantId, fork.assistantId)
         assertEquals(source.workspaceCwd, fork.workspaceCwd)
         assertEquals(source.folderId, fork.folderId)
-        assertEquals("", fork.title)
+        // 分叉标题沿用源标题 + 序号（上游 458c16df 的语义）
+        assertEquals("Source conversation(1)", fork.title)
         assertFalse(fork.isPinned)
+    }
+
+    // ---- 分叉标题（`forkConversationTitle`）----
+
+    private fun titledConversation(title: String) = Conversation(
+        assistantId = Uuid.random(),
+        title = title,
+        messageNodes = emptyList(),
+    )
+
+    @Test
+    fun `fork title takes the first unoccupied index`() {
+        val source = titledConversation("Alpha")
+        assertEquals(
+            "Alpha(3)",
+            forkConversationTitle(source, setOf("Alpha(1)", "Alpha(2)")),
+        )
+    }
+
+    @Test
+    fun `fork title reuses an index freed by deletion`() {
+        // 用户删掉 Alpha(2) 后再分叉：应复用空出的 2，而不是一路涨到 3
+        val source = titledConversation("Alpha")
+        assertEquals(
+            "Alpha(2)",
+            forkConversationTitle(source, setOf("Alpha(1)", "Alpha(3)")),
+        )
+    }
+
+    @Test
+    fun `fork title ignores unrelated titles`() {
+        val source = titledConversation("Alpha")
+        assertEquals(
+            "Alpha(1)",
+            forkConversationTitle(source, setOf("Beta(1)", "Gamma", "Alpha 的讨论")),
+        )
+    }
+
+    @Test
+    fun `fork keeps title blank when source has no title`() {
+        // 有意与上游不同：上游在空标题时产出 "(1)"，既无信息量又因「非空」让自动起名
+        // （generateTitle 仅在 title.isBlank() 时触发）永远不再修正它。保持空白才能被正常命名。
+        assertEquals("", forkConversationTitle(titledConversation(""), emptySet()))
+        assertEquals("", forkConversationTitle(titledConversation("   "), setOf("(1)")))
+    }
+
+    @Test
+    fun `fork conversation title follows the same rule through the factory`() {
+        val source = titledConversation("Alpha")
+        val fork = createForkConversation(source, emptyList(), setOf("Alpha(1)"))
+        assertEquals("Alpha(2)", fork.title)
     }
 
     @Test
