@@ -415,6 +415,16 @@ private fun SegmentCard(
                 Text(
                     text = "#${index + 1}  ${segment.label}",
                     style = MaterialTheme.typography.titleSmallEmphasized,
+                    // ⚠️ 必须带 weight：否则超长标题会把右侧的 token 数、折叠开关与三个操作图标
+                    // **整体挤出卡片**——表现为「折叠按钮找不到」（2026-09-24 用户报，由新增的
+                    // 「工具输出 · <工具名>」长标签暴露）。
+                    // fill=false 而非默认 true：标题短时仍让右侧操作靠最右（SpaceBetween 的观感），
+                    // 长时则被限制在可用宽度内、由 maxLines+Ellipsis 收尾，操作区始终可见。
+                    modifier = Modifier.weight(1f, fill = false),
+                    // 留 2 行而非 1 行：工具名这类标识一旦截断就认不出是哪条，
+                    // 宁可换行也不丢信息（真正独占整屏的长内容仍靠折叠开关注册）。
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
