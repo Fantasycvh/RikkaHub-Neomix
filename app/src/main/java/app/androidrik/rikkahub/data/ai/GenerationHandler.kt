@@ -98,6 +98,26 @@ sealed interface GenerationChunk {
     data class Messages(
         val messages: List<UIMessage>
     ) : GenerationChunk
+
+    /**
+     * 需要让用户看到、但**不属于对话内容**的提示（如工具调用失控护栏停止本轮）。
+     *
+     * 为什么不写进消息：提示是给用户看的，写进消息会被持久化、并在下一轮作为上下文发给模型，
+     * 变成「自己教自己」的噪音。走独立 chunk，由上层转成用户可见的提示。
+     */
+    data class Notice(
+        val notice: GenerationNotice,
+    ) : GenerationChunk
+}
+
+/** [GenerationChunk.Notice] 的载荷。 */
+@Serializable
+sealed interface GenerationNotice {
+    /** 同一工具同参数反复调用，已提前结束本轮（见 [ToolCallLoopGuard]）。 */
+    data class ToolLoopStopped(
+        val toolName: String,
+        val repeats: Int,
+    ) : GenerationNotice
 }
 
 class GenerationHandler(
@@ -124,6 +144,11 @@ class GenerationHandler(
         memories: List<AssistantMemory>? = null,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
+        /**
+         * 工具调用失控护栏。由调用方（ChatService）从**会话**上取，使状态跨「审批续跑」累积——
+         * 见 [ToolCallLoopGuard] 类注释里真机实测的原因。默认值只服务于单测等场景。
+         */
+        loopGuard: ToolCallLoopGuard = ToolCallLoopGuard(),
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
@@ -160,6 +185,11 @@ class GenerationHandler(
             targetProviderImpl: Provider<ProviderSetting>,
         ) {
             var messages: List<UIMessage> = messages
+
+            // 本轮的工具调用失控护栏：**由调用方传入**（挂在会话上），跨「审批续跑」累积。
+            // 这里刻意不新建实例——真机实测每次批准都会重新进入 runLoop（step #0 重来），
+            // 自建实例每次都被重置，护栏对审批类工具等于失效。
+            var loopStopped: GenerationNotice.ToolLoopStopped? = null
 
             for (stepIndex in 0 until maxSteps) {
                 Log.i(TAG, "streamText: start step #$stepIndex (${targetModel.id})")
@@ -347,6 +377,25 @@ class GenerationHandler(
                             executedTools += tool.copy(output = priorOutput)
                             return@forEach
                         }
+                        // 护栏记录发生在**发起时**（而非执行成功后）：判定的是「模型反复要什么」，
+                        // 失败时由下方 onFailure 用 forget 撤回（见 ToolCallLoopGuard 约束 2）。
+                        // 注意只在**批内首次**出现时记录：同一响应里的重复下发已被上面的 dedup 收拢，
+                        // 若逐条记录，一次 Gemini 式重复下发就会被算成 2 次、两步即误判。
+                        when (val verdict = loopGuard.record(tool.toolName, signature)) {
+                            is ToolCallLoopGuard.Verdict.Loop -> {
+                                if (loopStopped == null) loopStopped = GenerationNotice.ToolLoopStopped(
+                                    toolName = verdict.toolName,
+                                    repeats = verdict.repeats,
+                                )
+                                Log.w(
+                                    TAG,
+                                    "generateText: tool loop detected (${verdict.toolName} ×${verdict.repeats}, " +
+                                        "failed=${verdict.failed}), will stop this turn after applying results",
+                                )
+                            }
+
+                            ToolCallLoopGuard.Verdict.Continue -> Unit
+                        }
                         runCatching {
                             val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
                                 ?: error("Tool ${tool.toolName} not found")
@@ -365,6 +414,11 @@ class GenerationHandler(
                         }.onFailure {
                             // 取消必须向上传播，否则停止生成会被误报为工具执行错误
                             if (it is CancellationException) throw it
+                            // forget() 补丁：把本次标记为**失败**，使「失败调用」不被算作
+                            // 「成功调用的重复」——网络恢复后用相同参数重试是合理恢复路径。
+                            // 注意本仓**不采用**同源实现的「直接移出窗口」：真机实测那样会让
+                            // 「反复撞同一个必然失败」永远不触发（详见 ToolCallLoopGuard 类注释）。
+                            loopGuard.markFailed(signature)
                             it.printStackTrace()
                             executedTools += tool.copy(
                                 output = listOf(
@@ -412,6 +466,14 @@ class GenerationHandler(
                     )
                 )
             )
+
+            // 护栏命中：结果已全部回填（协议要求每个 toolCallId 都有结果，不能半途丢），
+            // 现在提前结束本轮。**走正常结束路径**而非抛异常——抛异常会让本轮已生成内容
+            // 只停留在内存（onSuccess 才落库），把护栏的「防失控」变成「丢内容」。
+            loopStopped?.let { stopped ->
+                emit(GenerationChunk.Notice(stopped))
+                break
+            }
         }
         }
 

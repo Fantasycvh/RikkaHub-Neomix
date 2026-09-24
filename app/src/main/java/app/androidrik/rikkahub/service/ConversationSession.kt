@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
 import app.androidrik.rikkahub.data.model.Conversation
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.uuid.Uuid
@@ -42,6 +43,17 @@ class ConversationSession(
 
     // 处理状态（如 OCR 识别中）
     val processingStatus = MutableStateFlow<String?>(null)
+
+    /**
+     * 工具调用失控护栏（见 `data/ai/ToolCallLoopGuard.kt`）。
+     *
+     * 放在 session 上而不是 `generateText` 内部：一次「轮」会跨多次 `generateText`——
+     * 工具审批会让循环 break 等用户，点批准后是**新的**调用续跑同一轮（真机实测每次都
+     * 重新 `start step #0`）。挂在 session 上才能跨审批累积，由 ChatService 在
+     * **新一轮用户消息 / 重新生成**时 [ToolCallLoopGuard.reset]。
+     * session 空闲回收时随之丢弃，不会跨轮残留。
+     */
+    val toolLoopGuard = ToolCallLoopGuard()
 
     // 生成任务（内聚在 session 中）
     private val _generationJob = MutableStateFlow<Job?>(null)

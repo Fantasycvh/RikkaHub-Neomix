@@ -51,6 +51,7 @@ import app.androidrik.common.android.Logging
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.GenerationChunk
+import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.PromptInspection
@@ -177,6 +178,17 @@ data class ChatError(
 enum class ChatErrorSolution {
     CheckTitleModelSettings,
 }
+
+/**
+ * 工具调用失控护栏停止本轮（见 `data/ai/ToolCallLoopGuard.kt`）。
+ *
+ * 刻意**不是**「生成失败」：本轮已正常结束、内容照常落库，它只用于把「为什么停了」
+ * 变成一条用户可见提示（[ChatError.title] 给本地化说明，本异常只携带技术细节）。
+ */
+class ToolCallLoopStoppedException(
+    val toolName: String,
+    val repeats: Int,
+) : Exception("$toolName ×$repeats")
 
 private val inputTransformers by lazy {
     listOf(
@@ -509,6 +521,10 @@ class ChatService(
                 saveConversation(conversationId, newConversation)
                 session.submittingMessage = null
 
+                // 新一轮开始（新的用户消息）：重置工具调用护栏。
+                // 这是「轮」的真正边界——工具审批的续跑不走这里，故护栏的历史跨审批保留。
+                session.toolLoopGuard.reset()
+
                 // 开始补全
                 if (answer) {
                     handleMessageComplete(conversationId)
@@ -598,6 +614,10 @@ class ChatService(
     ) {
         val session = getOrCreateSession(conversationId)
         session.getJob()?.cancel()
+
+        // 重新生成 = 用户发起的**新一轮尝试**（往往正是因为上一轮卡住/不满意）：
+        // 护栏历史一并清空，让新尝试从干净的额度开始，避免上一轮的重复记录误伤本次。
+        session.toolLoopGuard.reset()
 
         val job = appScope.launch {
             try {
@@ -910,6 +930,10 @@ class ChatService(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
+                // 护栏取自 session（不是在此处新建）：一次「轮」会跨多次 generateText——
+                // 工具审批让循环 break 等用户，批准后是新的调用续跑同一轮。挂在 session 上才能
+                // 跨审批累积，并在新一轮用户消息/重新生成时由本类 reset（见 ToolCallLoopGuard）。
+                loopGuard = session.toolLoopGuard,
                 // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
                 // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
                 // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
@@ -998,6 +1022,23 @@ class ChatService(
                         chunk.messages.lastOrNull()?.let { lastMessage ->
                             appEventBus.tryEmit(
                                 AppEvent.ChatGenerationUpdate(conversationId, lastMessage, senderName)
+                            )
+                        }
+                    }
+
+                    is GenerationChunk.Notice -> when (val notice = chunk.notice) {
+                        // 工具调用失控：本轮已**正常结束**（内容会照常落库），这里只补一条用户可见提示，
+                        // 让「为什么突然停了」有解释。用 addError 而非写进对话：后者会被持久化并在
+                        // 下一轮当上下文发给模型，变成自己教自己的噪音。
+                        is GenerationNotice.ToolLoopStopped -> {
+                            Log.w(
+                                TAG,
+                                "tool loop stopped: ${notice.toolName} ×${notice.repeats} (conv=$conversationId)",
+                            )
+                            addError(
+                                ToolCallLoopStoppedException(notice.toolName, notice.repeats),
+                                conversationId,
+                                title = context.getString(R.string.chat_tool_loop_title),
                             )
                         }
                     }
