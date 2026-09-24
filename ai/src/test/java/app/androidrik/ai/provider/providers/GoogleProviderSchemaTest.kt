@@ -70,7 +70,6 @@ class GoogleProviderSchemaTest {
         val args = out["properties"]!!.jsonObject["args"]!!.jsonObject
         assertEquals("integer", args["items"]!!.jsonObject["type"]?.jsonPrimitive?.contentOrNull)
     }
-}
 
     @Test
     fun `malformed type node does not crash and list-form type gets items`() {
@@ -102,3 +101,4 @@ class GoogleProviderSchemaTest {
         assertEquals("array", outputs["type"]!!.jsonArray[0].jsonPrimitive.contentOrNull)
         assertNotNull(outputs["items"])
     }
+}
