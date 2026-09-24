@@ -582,6 +582,7 @@
   <string name="prompt_page_constant_active">常に有効</string>
   <string name="prompt_page_constant_active_desc">キーワード一致なしでトリガー</string>
   <string name="prompt_page_delete">削除</string>
+  <string name="prompt_page_delete_preset_confirm">このプリセットを削除しますか？含まれる項目も削除されます。</string>
   <string name="prompt_page_delete_confirm">この項目を削除しますか？</string>
   <string name="prompt_page_description">説明</string>
   <string name="prompt_page_disabled">無効</string>

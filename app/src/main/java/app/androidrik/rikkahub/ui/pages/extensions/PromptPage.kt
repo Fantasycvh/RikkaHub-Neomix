@@ -480,6 +480,8 @@ private fun PresetCard(
     onToggleEnabled: (Boolean) -> Unit,
     onDelete: () -> Unit,
 ) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     Card(
         onClick = onOpen,
         modifier = modifier.fillMaxWidth(),
@@ -531,7 +533,9 @@ private fun PresetCard(
             IconButton(onClick = onEdit) {
                 Icon(HugeIcons.Tools, stringResource(R.string.prompt_page_edit))
             }
-            IconButton(onClick = onDelete) {
+            // 删除先确认：预设是「一组条目」的容器，误删会连带丢掉全部条目
+            // （条目级/世界书条目此前已有确认弹窗，只有预设级是直接删，属遗漏）
+            IconButton(onClick = { showDeleteDialog = true }) {
                 Icon(
                     HugeIcons.Delete01,
                     stringResource(R.string.prompt_page_delete),
@@ -539,6 +543,21 @@ private fun PresetCard(
                 )
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        RikkaConfirmDialog(
+            show = true,
+            title = stringResource(R.string.prompt_page_delete),
+            confirmText = stringResource(R.string.confirm),
+            dismissText = stringResource(R.string.cancel),
+            onConfirm = {
+                showDeleteDialog = false
+                onDelete()
+            },
+            onDismiss = { showDeleteDialog = false },
+            text = { Text(stringResource(R.string.prompt_page_delete_preset_confirm)) },
+        )
     }
 }
 

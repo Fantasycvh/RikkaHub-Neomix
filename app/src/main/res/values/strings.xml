@@ -625,6 +625,7 @@
   <string name="prompt_page_constant_active">Always Active</string>
   <string name="prompt_page_constant_active_desc">Trigger without keyword matching</string>
   <string name="prompt_page_delete">Delete</string>
+  <string name="prompt_page_delete_preset_confirm">Are you sure you want to delete this preset? Its entries will be deleted too.</string>
   <string name="prompt_page_delete_confirm">Are you sure you want to delete this item?</string>
   <string name="prompt_page_description">Description</string>
   <string name="prompt_page_disabled">Disabled</string>

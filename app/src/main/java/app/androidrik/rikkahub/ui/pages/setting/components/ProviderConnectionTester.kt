@@ -4,9 +4,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -58,8 +60,17 @@ fun ProviderConnectionTester(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    IconButton(onClick = { showTestDialog = true }) {
-        Icon(HugeIcons.Connect, null)
+    // 带标签的入口（而非纯图标）：此前只有一个小图标、无任何文字，
+    // 用户普遍不知道这里能测连通性（handoff 待办「测试连接入口可发现性」）。
+    // 顺带修了无障碍：原先 `Icon(..., null)` 连 contentDescription 都没有，读屏软件读不出这是干什么的。
+    TextButton(onClick = { showTestDialog = true }) {
+        Icon(
+            imageVector = HugeIcons.Connect,
+            contentDescription = null, // 按钮文字即标签，避免读屏重复播报
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(stringResource(R.string.setting_provider_page_test_connection))
     }
 
     if (showTestDialog) {

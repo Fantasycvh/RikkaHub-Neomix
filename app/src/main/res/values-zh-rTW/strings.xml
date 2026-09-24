@@ -619,6 +619,7 @@
   <string name="prompt_page_constant_active">持續啟用</string>
   <string name="prompt_page_constant_active_desc">無需關鍵字配對即可觸發</string>
   <string name="prompt_page_delete">刪除</string>
+  <string name="prompt_page_delete_preset_confirm">確定刪除該預設？其中的條目會一併刪除。</string>
   <string name="prompt_page_delete_confirm">確定刪除該條目？</string>
   <string name="prompt_page_description">說明</string>
   <string name="prompt_page_disabled">已停用</string>

@@ -621,6 +621,7 @@
   <string name="prompt_page_constant_active">常驻激活</string>
   <string name="prompt_page_constant_active_desc">无需匹配关键词即触发</string>
   <string name="prompt_page_delete">删除</string>
+  <string name="prompt_page_delete_preset_confirm">确定删除该预设？其中的条目会一并删除。</string>
   <string name="prompt_page_delete_confirm">确定删除该条目？</string>
   <string name="prompt_page_description">描述</string>
   <string name="prompt_page_disabled">已禁用</string>

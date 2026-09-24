@@ -582,6 +582,7 @@
   <string name="prompt_page_constant_active">Всегда активно</string>
   <string name="prompt_page_constant_active_desc">Срабатывание без совпадения ключевых слов</string>
   <string name="prompt_page_delete">Удалить</string>
+  <string name="prompt_page_delete_preset_confirm">Удалить этот пресет? Входящие в него элементы также будут удалены.</string>
   <string name="prompt_page_delete_confirm">Удалить этот элемент?</string>
   <string name="prompt_page_description">Описание</string>
   <string name="prompt_page_disabled">Отключено</string>
