@@ -2,6 +2,7 @@ package app.androidrik.workspace
 
 import com.sun.net.httpserver.HttpServer
 import org.junit.Assert.*
+import org.junit.Assume
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -9,7 +10,7 @@ import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.util.zip.GZIPOutputStream
 
-class ExampleUnitTest {
+class WorkspaceManagerTest {
     @Test
     fun fileOperationsWorkInsideWorkspaceRoot() {
         val root = Files.createTempDirectory("workspace-test").toFile()
@@ -88,6 +89,11 @@ class ExampleUnitTest {
 
     @Test
     fun commandRunsInsideWorkspaceFilesDirectory() {
+        // 这几个用例真的去 spawn shell，需要 POSIX 的 /bin/sh。
+        // Windows 宿主机上 /bin/sh 不存在（本仓是 Android 应用，目标运行时本就是 Linux），
+        // 故此处**跳过而非失败**——否则每次在 Windows 上跑都会留下 3 条假红，
+        // 久了就被当成"基线噪音"无视（本仓真实教训：一个被无视的失败里藏着从未运行的测试）。
+        Assume.assumeTrue("需要 POSIX shell（/bin/sh），Windows 宿主跳过", File("/bin/sh").exists())
         val baseDir = Files.createTempDirectory("workspace-command-test").toFile()
         val manager = WorkspaceManager(baseDir)
         val root = "test-workspace"
@@ -102,6 +108,11 @@ class ExampleUnitTest {
 
     @Test
     fun commandReceivesStdin() {
+        // 这几个用例真的去 spawn shell，需要 POSIX 的 /bin/sh。
+        // Windows 宿主机上 /bin/sh 不存在（本仓是 Android 应用，目标运行时本就是 Linux），
+        // 故此处**跳过而非失败**——否则每次在 Windows 上跑都会留下 3 条假红，
+        // 久了就被当成"基线噪音"无视（本仓真实教训：一个被无视的失败里藏着从未运行的测试）。
+        Assume.assumeTrue("需要 POSIX shell（/bin/sh），Windows 宿主跳过", File("/bin/sh").exists())
         val baseDir = Files.createTempDirectory("workspace-stdin-test").toFile()
         val manager = WorkspaceManager(baseDir)
         val root = "test-workspace"
@@ -135,6 +146,11 @@ class ExampleUnitTest {
 
     @Test
     fun commandOutputIsTruncatedAtLimit() {
+        // 这几个用例真的去 spawn shell，需要 POSIX 的 /bin/sh。
+        // Windows 宿主机上 /bin/sh 不存在（本仓是 Android 应用，目标运行时本就是 Linux），
+        // 故此处**跳过而非失败**——否则每次在 Windows 上跑都会留下 3 条假红，
+        // 久了就被当成"基线噪音"无视（本仓真实教训：一个被无视的失败里藏着从未运行的测试）。
+        Assume.assumeTrue("需要 POSIX shell（/bin/sh），Windows 宿主跳过", File("/bin/sh").exists())
         val baseDir = Files.createTempDirectory("workspace-truncate-test").toFile()
         val manager = WorkspaceManager(baseDir)
         val root = "test-workspace"
