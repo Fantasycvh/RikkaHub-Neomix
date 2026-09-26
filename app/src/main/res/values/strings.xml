@@ -1718,5 +1718,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="subagent_preset_tool_approval_hint">Deny keeps runs unattended. Ask pauses the run and notifies you - no answer within 5 minutes counts as denied.</string>
   <string name="subagent_tool_running_parallel">%1$d subagents are running in parallel</string>
   <string name="agent_run_error_context_budget">Context budget exhausted</string>
+  <string name="workspace_selection_cancel">Cancel selection</string>
+  <string name="workspace_selection_select_all">Select all</string>
 </resources>
 

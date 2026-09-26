@@ -1643,5 +1643,7 @@
   <string name="subagent_preset_tool_approval_hint">«Отклонять автоматически» — запуск идёт без вас. «Спрашивать меня» — запуск приостанавливается и приходит уведомление; отсутствие ответа 5 минут считается отказом.</string>
   <string name="subagent_tool_running_parallel">Параллельно выполняется субагентов: %1$d</string>
   <string name="agent_run_error_context_budget">Контекстный бюджет исчерпан</string>
+  <string name="workspace_selection_cancel">Отменить выбор</string>
+  <string name="workspace_selection_select_all">Выбрать все</string>
 </resources>
 

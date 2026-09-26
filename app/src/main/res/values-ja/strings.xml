@@ -1643,5 +1643,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="subagent_preset_tool_approval_hint">「自動で拒否」は無人でも完走できます。「自分に確認」は実行を一時停止して通知します（5 分間応答がなければ拒否扱い）。</string>
   <string name="subagent_tool_running_parallel">%1$d 個のサブエージェントが並行実行中</string>
   <string name="agent_run_error_context_budget">コンテキスト予算を使い切りました</string>
+  <string name="workspace_selection_cancel">選択を解除</string>
+  <string name="workspace_selection_select_all">すべて選択</string>
 </resources>
 
