@@ -76,6 +76,20 @@ class SubagentPresetTest {
     // ---- 内置预设 ----
 
     @Test
+    fun `tool approval defaults to deny so nothing changes silently`() {
+        // ASK 是"解锁写入类子代理"的那一档，会暂停 run 等通知——默认必须是 DENY，
+        // 否则升级本身就改变了既有预设的行为（用户没点过任何东西却开始被拦）
+        assertEquals(SubagentToolApproval.DENY, preset().toolApproval)
+        DEFAULT_SUBAGENT_PRESETS.forEach { builtIn ->
+            assertEquals(
+                "built-in ${builtIn.name} must stay unattended by default",
+                SubagentToolApproval.DENY,
+                builtIn.toolApproval,
+            )
+        }
+    }
+
+    @Test
     fun `built-in presets are usable out of the box`() {
         assertTrue(DEFAULT_SUBAGENT_PRESETS.isNotEmpty())
         DEFAULT_SUBAGENT_PRESETS.forEach { builtIn ->

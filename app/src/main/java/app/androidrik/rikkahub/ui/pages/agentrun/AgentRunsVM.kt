@@ -90,6 +90,14 @@ class AgentRunDetailVM(
 
     fun cancel(id: Uuid) = runner.cancelRun(id)
 
+    /**
+     * 批准/拒绝一个待批工具（与通知栏按钮同一条队列）。
+     *
+     * @return false = 无人在等（已超时或进程重启过）——调用方应如实提示，而不是假装成功
+     */
+    fun resolveApproval(toolCallId: String, approved: Boolean): Boolean =
+        runner.resolveApproval(toolCallId, approved)
+
     fun delete(id: Uuid) {
         viewModelScope.launch { runner.deleteRun(id) }
     }

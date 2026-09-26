@@ -50,6 +50,7 @@ import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.model.SUBAGENT_NAME_MAX_CHARS
 import app.androidrik.rikkahub.data.model.SUBAGENT_TIMEOUT_SECONDS_RANGE
 import app.androidrik.rikkahub.data.model.SubagentPreset
+import app.androidrik.rikkahub.data.model.SubagentToolApproval
 import app.androidrik.rikkahub.data.model.isSubagentNameAvailable
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
@@ -244,6 +245,11 @@ private fun PresetCard(
             Text(
                 text = listOfNotNull(
                     modelName,
+                    if (preset.toolApproval == SubagentToolApproval.ASK) {
+                        stringResource(R.string.subagent_preset_tool_approval_ask)
+                    } else {
+                        null
+                    },
                     if (preset.enableWebSearch) stringResource(R.string.subagent_preset_web_search) else null,
                     if (preset.workspaceId != null) {
                         stringResource(R.string.subagent_preset_capability_workspace)
@@ -535,6 +541,31 @@ private fun PresetEditorDialog(
                     Switch(
                         checked = edited.requireApproval,
                         onCheckedChange = { edited = edited.copy(requireApproval = it) },
+                    )
+                }
+
+                // 工具级审批（设计 §十一）：这是"解锁写入类子代理"的那一档
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = stringResource(R.string.subagent_preset_tool_approval),
+                        style = MaterialTheme.typography.titleSmallEmphasized,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = edited.toolApproval == SubagentToolApproval.DENY,
+                            onClick = { edited = edited.copy(toolApproval = SubagentToolApproval.DENY) },
+                            label = { Text(stringResource(R.string.subagent_preset_tool_approval_deny)) },
+                        )
+                        FilterChip(
+                            selected = edited.toolApproval == SubagentToolApproval.ASK,
+                            onClick = { edited = edited.copy(toolApproval = SubagentToolApproval.ASK) },
+                            label = { Text(stringResource(R.string.subagent_preset_tool_approval_ask)) },
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.subagent_preset_tool_approval_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 

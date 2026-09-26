@@ -1628,5 +1628,18 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="subagent_tool_running">実行中 · %1$d ステップ · %2$s</string>
   <string name="subagent_tool_elapsed">%1$d 秒</string>
   <string name="agent_run_back_to_conversation">会話に戻る</string>
+  <string name="subagent_approval_title">サブエージェント %1$s が承認を求めています</string>
+  <string name="subagent_approval_approve">承認</string>
+  <string name="subagent_approval_deny">拒否</string>
+  <string name="notification_channel_subagent_approval">サブエージェントの承認</string>
+  <string name="notification_channel_subagent_approval_desc">サブエージェントが実行を求めた、承認が必要なツール</string>
+  <string name="agent_run_status_awaiting_approval">承認待ち</string>
+  <string name="agent_run_approval_title">この実行は承認待ちです</string>
+  <string name="agent_run_approval_hint">サブエージェントがこれらのツールの実行を求めています。承認すると実際の結果で続行し、拒否するとそれらを使わずに続行します。</string>
+  <string name="agent_run_approval_expired">このリクエストはすでに期限切れです</string>
+  <string name="subagent_preset_tool_approval">承認が必要なツール</string>
+  <string name="subagent_preset_tool_approval_deny">自動で拒否</string>
+  <string name="subagent_preset_tool_approval_ask">自分に確認</string>
+  <string name="subagent_preset_tool_approval_hint">「自動で拒否」は無人でも完走できます。「自分に確認」は実行を一時停止して通知します（5 分間応答がなければ拒否扱い）。</string>
 </resources>
 

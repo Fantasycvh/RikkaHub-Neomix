@@ -321,10 +321,18 @@ class GenerationHandler(
                 var hasPendingApproval = false
                 val updatedTools = tools.map { tool ->
                     val toolDef = toolsInternal.find { it.name == tool.toolName }
+                    // 审批判定留一条永远开着的诊断行：审批类问题（"该问却没问" / "不该问却问了"）
+                    // 只看结果无从判断，而这一行同时给出"工具定义在不在、要不要批、当前策略"
+                    val requiresApproval = toolDef?.needsApproval(tool.inputAsJson()) == true
+                    if (requiresApproval) {
+                        Log.i(
+                            TAG,
+                            "approval check: tool=${tool.toolName} state=${tool.approvalState} autoDeny=$autoDenyApproval",
+                        )
+                    }
                     when {
                         // Tool needs approval and state is Auto -> set to Pending
-                        toolDef?.needsApproval(tool.inputAsJson()) == true &&
-                            tool.approvalState is ToolApprovalState.Auto -> {
+                        requiresApproval && tool.approvalState is ToolApprovalState.Auto -> {
                             if (autoDenyApproval) {
                                 // 无头 run：无人可批，等在 Pending 上 = 永远卡死。直接置为
                                 // **策略拒绝**——文本经下方既有的 Denied 通路回给模型

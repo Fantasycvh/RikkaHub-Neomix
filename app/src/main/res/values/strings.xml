@@ -1703,5 +1703,18 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="subagent_tool_running">Running · step %1$d · %2$s</string>
   <string name="subagent_tool_elapsed">%1$d s</string>
   <string name="agent_run_back_to_conversation">Back to conversation</string>
+  <string name="subagent_approval_title">Subagent %1$s needs approval</string>
+  <string name="subagent_approval_approve">Approve</string>
+  <string name="subagent_approval_deny">Deny</string>
+  <string name="notification_channel_subagent_approval">Subagent approvals</string>
+  <string name="notification_channel_subagent_approval_desc">Tools a subagent wants to run that need your approval</string>
+  <string name="agent_run_status_awaiting_approval">Awaiting approval</string>
+  <string name="agent_run_approval_title">This run is waiting for your approval</string>
+  <string name="agent_run_approval_hint">The subagent asked to run these tools. Approve to let it continue with the real result; deny and it will continue without them.</string>
+  <string name="agent_run_approval_expired">This request has already expired</string>
+  <string name="subagent_preset_tool_approval">Tools that need approval</string>
+  <string name="subagent_preset_tool_approval_deny">Deny automatically</string>
+  <string name="subagent_preset_tool_approval_ask">Ask me</string>
+  <string name="subagent_preset_tool_approval_hint">Deny keeps runs unattended. Ask pauses the run and notifies you - no answer within 5 minutes counts as denied.</string>
 </resources>
 

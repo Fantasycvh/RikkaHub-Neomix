@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,7 @@ import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
@@ -67,6 +69,8 @@ fun AgentRunDetailPage(
     val run by vm.observeRun(runId).collectAsStateWithLifecycle(null)
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
+    val toaster = LocalToaster.current
+    val context = LocalContext.current
     var parentConversationId by remember { mutableStateOf<String?>(null) }
     var parentExists by remember { mutableStateOf(false) }
 
@@ -92,7 +96,8 @@ fun AgentRunDetailPage(
                 actions = {
                     // 取消（仅运行中）与删除（随时）
                     if (run?.status == AgentRunEntity.STATUS_RUNNING ||
-                        run?.status == AgentRunEntity.STATUS_PENDING
+                        run?.status == AgentRunEntity.STATUS_PENDING ||
+                        run?.status == AgentRunEntity.STATUS_AWAITING_APPROVAL
                     ) {
                         IconButton(
                             onClick = {
@@ -167,8 +172,87 @@ fun AgentRunDetailPage(
                     }
                 }
                 val messages = decodeTranscript(current.transcript)
+                val pendingApprovals = if (current.status == AgentRunEntity.STATUS_AWAITING_APPROVAL) {
+                    messages.flatMap { it.parts.filterIsInstance<UIMessagePart.Tool>() }
+                        .filter { it.isPending }
+                } else {
+                    emptyList()
+                }
+                if (pendingApprovals.isNotEmpty()) {
+                    item {
+                        ApprovalCard(
+                            tools = pendingApprovals,
+                            onDecide = { toolCallId, approved ->
+                                if (!vm.resolveApproval(toolCallId, approved)) {
+                                    // 无人在等 = 已超时或进程重启（run 其实已经没了）
+                                    toaster.show(context.getString(R.string.agent_run_approval_expired))
+                                }
+                            },
+                        )
+                    }
+                }
                 itemsIndexed(messages) { _, message ->
                     TranscriptMessageCard(message)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 等待批准卡片（设计 §十一）：逐条列出入参 + 批准/拒绝。
+ *
+ * **为什么是逐条而不是"全部批准"**：一批里往往混着不同风险的动作（读一个文件 + 跑一段 shell），
+ * 而"全部批准"会把它们绑成一个决定。通知栏那两个按钮是"批量"（小屏没法逐条），
+ * 详情页这张卡才是精确控制的地方——两者落在同一条队列上。
+ */
+@Composable
+private fun ApprovalCard(
+    tools: List<UIMessagePart.Tool>,
+    onDecide: (toolCallId: String, approved: Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.agent_run_approval_title),
+                style = MaterialTheme.typography.titleSmallEmphasized,
+            )
+            Text(
+                text = stringResource(R.string.agent_run_approval_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            tools.forEach { tool ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = tool.toolName,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
+                        text = tool.input.ifBlank { "{}" },
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { onDecide(tool.toolCallId, true) }) {
+                            Text(stringResource(R.string.subagent_approval_approve))
+                        }
+                        TextButton(onClick = { onDecide(tool.toolCallId, false) }) {
+                            Text(
+                                text = stringResource(R.string.subagent_approval_deny),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -205,7 +289,9 @@ private fun RunHeader(run: AgentRunEntity, onOpenConversation: (() -> Unit)? = n
                     text = statusLabel(run.status),
                     style = MaterialTheme.typography.titleMedium,
                     color = when (run.status) {
-                        AgentRunEntity.STATUS_RUNNING -> MaterialTheme.colorScheme.primary
+                        AgentRunEntity.STATUS_RUNNING,
+                        AgentRunEntity.STATUS_AWAITING_APPROVAL,
+                            -> MaterialTheme.colorScheme.primary
                         AgentRunEntity.STATUS_COMPLETED -> MaterialTheme.colorScheme.tertiary
                         AgentRunEntity.STATUS_FAILED -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.onSurfaceVariant

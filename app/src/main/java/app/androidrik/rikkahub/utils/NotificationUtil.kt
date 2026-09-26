@@ -36,7 +36,22 @@ class NotificationConfig {
 
     // 默认通知效果
     var useDefaults: Boolean = false
+
+    /**
+     * 通知动作按钮（如子代理审批的「批准 / 拒绝」）。
+     *
+     * 之所以做成列表而不是两个固定字段：动作数由业务决定（审批 2 个，将来别的场景可能 1 或 3 个），
+     * 而通知栏最多稳定显示 3 个按钮——由调用方自己保证数量合理。
+     */
+    val actions: MutableList<NotificationAction> = mutableListOf()
 }
+
+/** 一个通知动作按钮。 */
+class NotificationAction(
+    val icon: Int,
+    val title: String,
+    val intent: PendingIntent,
+)
 
 object NotificationUtil {
 
@@ -104,6 +119,10 @@ object NotificationUtil {
 
             if (config.useDefaults) {
                 setDefaults(NotificationCompat.DEFAULT_ALL)
+            }
+
+            config.actions.forEach { action ->
+                addAction(action.icon, action.title, action.intent)
             }
 
             // Android 15+ Live Update 支持

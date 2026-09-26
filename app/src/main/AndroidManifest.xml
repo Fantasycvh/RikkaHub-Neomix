@@ -160,6 +160,14 @@
         android:value="Keep AI chat generation running while the app is in the background" />
     </service>
 
+    <!--
+      子代理审批（设计 §十一）：通知栏「批准 / 拒绝」按钮的落点。
+      exported=false —— 审批是权限动作，不给外部任何入口；Intent 只带 toolCallId 与布尔。
+    -->
+    <receiver
+      android:name=".service.SubagentApprovalReceiver"
+      android:exported="false" />
+
     <provider
       android:name="androidx.core.content.FileProvider"
       android:authorities="${applicationId}.fileprovider"

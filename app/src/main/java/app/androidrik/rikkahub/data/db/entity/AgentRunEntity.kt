@@ -74,6 +74,14 @@ data class AgentRunEntity(
 
         const val STATUS_PENDING = "pending"
         const val STATUS_RUNNING = "running"
+
+        /**
+         * **停在等人批准上**（设计 §十一；仅 `ASK` 策略会出现）。
+         *
+         * 与 RUNNING 分开记的理由：这是 run 的**第三个可观测状态**——用户要能一眼看出
+         * "它不是在慢慢跑，而是在等我"，否则只会觉得卡住。新值不需要迁移（列本身存字符串）。
+         */
+        const val STATUS_AWAITING_APPROVAL = "awaiting_approval"
         const val STATUS_COMPLETED = "completed"
         const val STATUS_FAILED = "failed"
         const val STATUS_CANCELLED = "cancelled"

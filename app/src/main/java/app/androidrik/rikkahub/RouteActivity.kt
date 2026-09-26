@@ -242,7 +242,10 @@ class RouteActivity : ComponentActivity() {
             Intent.ACTION_PROCESS_TEXT -> Screen.ShareHandler(
                 text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty().normalizeNewlines(),
             )
-            else -> intent.getStringExtra("conversationId")?.let { Screen.Chat(it) }
+            // 子代理审批通知点进来 → 运行详情页（那里有入参全文与批准/拒绝卡片）；
+            // 否则沿用会话 id 的老路径
+            else -> intent.getStringExtra("runId")?.let { Screen.AgentRunDetail(it) }
+                ?: intent.getStringExtra("conversationId")?.let { Screen.Chat(it) }
         }
         if (destination != null && backStack.lastOrNull() != destination) {
             backStack.add(destination)

@@ -1684,5 +1684,18 @@
   <string name="subagent_tool_running">進行中 · 第 %1$d 步 · %2$s</string>
   <string name="subagent_tool_elapsed">%1$d 秒</string>
   <string name="agent_run_back_to_conversation">回到對話</string>
+  <string name="subagent_approval_title">子代理 %1$s 需要批准</string>
+  <string name="subagent_approval_approve">批准</string>
+  <string name="subagent_approval_deny">拒絕</string>
+  <string name="notification_channel_subagent_approval">子代理審批</string>
+  <string name="notification_channel_subagent_approval_desc">子代理想呼叫、且需要你批准的工具</string>
+  <string name="agent_run_status_awaiting_approval">等待批准</string>
+  <string name="agent_run_approval_title">這次執行正在等你批准</string>
+  <string name="agent_run_approval_hint">子代理請求呼叫這些工具。批准後它會用真實結果繼續；拒絕則繞過它們繼續。</string>
+  <string name="agent_run_approval_expired">這個請求已經逾時</string>
+  <string name="subagent_preset_tool_approval">需要審批的工具</string>
+  <string name="subagent_preset_tool_approval_deny">直接拒絕</string>
+  <string name="subagent_preset_tool_approval_ask">請我批准</string>
+  <string name="subagent_preset_tool_approval_hint">「直接拒絕」讓執行可以無人值守；「請我批准」會暫停執行並通知你——5 分鐘無回應視為拒絕。</string>
 </resources>
 

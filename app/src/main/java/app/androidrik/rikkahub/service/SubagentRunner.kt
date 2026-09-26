@@ -1,16 +1,27 @@
 package app.androidrik.rikkahub.service
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import androidx.core.app.NotificationCompat
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID
 import app.androidrik.common.android.Logging
+import app.androidrik.rikkahub.data.ai.APPROVAL_TIMEOUT_REASON
 import app.androidrik.rikkahub.data.ai.DenialGuard
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.GenerationNotice
+import app.androidrik.rikkahub.data.ai.SubagentApprovalQueue
 import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
+import app.androidrik.rikkahub.data.ai.USER_DENIED_REASON
+import app.androidrik.rikkahub.data.ai.applyApprovalDecisions
+import app.androidrik.rikkahub.data.ai.approvalRequestSummary
+import app.androidrik.rikkahub.data.ai.pendingApprovalTools
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
@@ -23,9 +34,14 @@ import app.androidrik.rikkahub.data.db.dao.AgentRunDAO
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.SubagentPreset
+import app.androidrik.rikkahub.data.model.SubagentToolApproval
 import app.androidrik.rikkahub.data.model.toRunProfile
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.utils.JsonInstant
+import app.androidrik.rikkahub.utils.NotificationAction
+import app.androidrik.rikkahub.utils.cancelNotification
+import app.androidrik.rikkahub.utils.NotificationUtil
+import app.androidrik.rikkahub.utils.sendNotification
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
@@ -35,6 +51,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.serializer
 import kotlin.coroutines.cancellation.CancellationException
@@ -111,7 +128,9 @@ class SubagentRunner(
         val job = appScope.launch {
             try {
                 agentRunDAO.insertRun(run)
-                executeRun(run, profile, allowedTools, RUN_TIMEOUT_MS)
+                // 运行页手动派发**不给 ASK**：那条路径本来就是用户亲自挑工具/勾信封，
+                // 再回头逐个批准同一批工具是重复确认（且信封就是用户当场点的快照）
+                executeRun(run, profile, allowedTools, RUN_TIMEOUT_MS, SubagentToolApproval.DENY)
             } finally {
                 activeRunId = null
                 activeJob = null
@@ -157,7 +176,13 @@ class SubagentRunner(
         activeRunId = runId
         return try {
             agentRunDAO.insertRun(run)
-            val outcome = executeRun(run, profile, preset.allowedTools, timeoutMillis)
+            val outcome = executeRun(
+                initial = run,
+                profile = profile,
+                allowedTools = preset.allowedTools,
+                timeoutMillis = timeoutMillis,
+                toolApproval = preset.toolApproval,
+            )
             // 状态/失败原因以**落库结果**为准：超时、取消、异常这些路径只有账本知道
             val stored = agentRunDAO.getRun(run.id)
             SubagentRunResult(
@@ -206,6 +231,15 @@ class SubagentRunner(
         )
     }
 
+    /**
+     * 填入一个待批工具的决定（**运行详情页的批准/拒绝按钮**走这里；通知栏按钮走
+     * [SubagentApprovalReceiver]，两者都落到同一个队列）。
+     *
+     * @return true = 确实有 run 在等这个工具（已生效）；false = 无人在等（已超时/进程重启）
+     */
+    fun resolveApproval(toolCallId: String, approved: Boolean): Boolean =
+        SubagentApprovalQueue.resolve(toolCallId, approved)
+
     /** 取消运行中的 run（run 行标记 CANCELLED；已结束的 run 无效果）。 */
     fun cancelRun(id: Uuid) {
         if (activeRunId == id) activeJob?.cancel()
@@ -230,6 +264,8 @@ class SubagentRunner(
         profile: Assistant,
         allowedTools: Set<String>?,
         timeoutMillis: Long,
+        /** 工具级审批策略（预设给；运行页手动派发恒为 [SubagentToolApproval.DENY]）。 */
+        toolApproval: SubagentToolApproval,
     ): RunOutcome? {
         val runId = Uuid.parse(initial.id)
 
@@ -288,73 +324,122 @@ class SubagentRunner(
             )
 
             var currentMessages = listOf(UIMessage.user(initial.goal))
-            var stopNotice: GenerationNotice? = null
 
-            val flow = generationHandler.generateText(
-                settings = settings,
-                model = model,
-                processingStatus = MutableStateFlow(null),
-                messages = currentMessages,
-                compressionWindow = null,
-                inputTransformers = emptyList(),
-                outputTransformers = outputTransformers,
-                assistant = runProfile,
-                memories = emptyList(),
-                tools = tools,
-                // run 自身就是「一轮」的边界：护栏实例建在 run 上，无审批续跑问题
-                loopGuard = ToolCallLoopGuard(),
-                workspaceBudget = WorkspaceTurnBudget(),
-                autoDenyApproval = true,
-                denialGuard = DenialGuard(),
-                conversationSystemPrompt = null,
-                conversationModeInjectionIds = emptySet(),
-                conversationLorebookIds = emptySet(),
-                workspaceCwd = null,
-            )
+            // 护栏实例**建在 run 上、跨"审批续跑"累积**：ASK 策略下每次批准都是一次新的
+            // generateText 调用（与聊天路径的审批续跑同形），建在调用内会每次重置——
+            // LoopGuard 真机踩过这个坑（见 ToolCallLoopGuard 类注释），这里预先避开。
+            val loopGuard = ToolCallLoopGuard()
+            val workspaceBudget = WorkspaceTurnBudget()
+            val denialGuard = DenialGuard()
+            val autoDenyApproval = toolApproval != SubagentToolApproval.ASK
+            // 用 Log.i 而非 Logging.log：策略是排查审批问题的第一现场，要能在 logcat 里直接看到
+            android.util.Log.i(TAG, "run $runId toolApproval=" + if (autoDenyApproval) "DENY" else "ASK")
 
+            var outcome: RunOutcome? = null
             try {
                 withTimeout(timeoutMillis) {
-                    flow.collect { chunk ->
-                        when (chunk) {
-                            is GenerationChunk.Messages -> {
-                                currentMessages = chunk.messages
-                                // 每个 step 落一次轨迹：详情页近实时可见，崩溃也不丢全程
-                                update { it.copy(transcript = newTranscript(currentMessages)) }
-                                // 同一步顺带更新进度（对话内工具卡据此显示"跑到第几步"）
-                                val snapshot = snapshotProgress(currentMessages)
-                                _progress.value = RunProgress(
-                                    runId = initial.id,
-                                    label = initial.profileName,
-                                    status = AgentRunEntity.STATUS_RUNNING,
-                                    steps = snapshot.steps,
-                                    lastTool = snapshot.lastTool,
-                                    startedAt = _progress.value?.startedAt
-                                        ?: System.currentTimeMillis(),
-                                )
-                            }
+                    var approvalRounds = 0
+                    while (true) {
+                        var stopNotice: GenerationNotice? = null
 
-                            is GenerationChunk.Notice -> {
-                                // 护栏停止：flow 会自行 break，这里只把原因映射成 run 的失败细分
-                                stopNotice = chunk.notice
+                        generationHandler.generateText(
+                            settings = settings,
+                            model = model,
+                            processingStatus = MutableStateFlow(null),
+                            messages = currentMessages,
+                            compressionWindow = null,
+                            inputTransformers = emptyList(),
+                            outputTransformers = outputTransformers,
+                            assistant = runProfile,
+                            memories = emptyList(),
+                            tools = tools,
+                            loopGuard = loopGuard,
+                            workspaceBudget = workspaceBudget,
+                            autoDenyApproval = autoDenyApproval,
+                            denialGuard = denialGuard,
+                            conversationSystemPrompt = null,
+                            conversationModeInjectionIds = emptySet(),
+                            conversationLorebookIds = emptySet(),
+                            workspaceCwd = null,
+                        ).collect { chunk ->
+                            when (chunk) {
+                                is GenerationChunk.Messages -> {
+                                    currentMessages = chunk.messages
+                                    // 每个 step 落一次轨迹：详情页近实时可见，崩溃也不丢全程
+                                    update { it.copy(transcript = newTranscript(currentMessages)) }
+                                    // 同一步顺带更新进度（对话内工具卡据此显示"跑到第几步"）
+                                    val snapshot = snapshotProgress(currentMessages)
+                                    _progress.value = RunProgress(
+                                        runId = initial.id,
+                                        label = initial.profileName,
+                                        status = AgentRunEntity.STATUS_RUNNING,
+                                        steps = snapshot.steps,
+                                        lastTool = snapshot.lastTool,
+                                        startedAt = _progress.value?.startedAt
+                                            ?: System.currentTimeMillis(),
+                                    )
+                                }
+
+                                is GenerationChunk.Notice -> {
+                                    // 护栏停止：flow 会自行 break，这里只把原因映射成 run 的失败细分
+                                    stopNotice = chunk.notice
+                                }
                             }
+                        }
+
+                        // 停在"等人批"上（ASK 策略下 needsApproval 工具被置为 Pending）⇒ 去问人，
+                        // 拿到决定后回填消息**再喂回同一个 generateText 续跑**——与聊天路径的
+                        // handleToolApproval 同一手法（canResumeExecution 就是为此设的）。
+                        val pending = pendingApprovalTools(currentMessages)
+                        if (pending.isEmpty()) {
+                            outcome = evaluateCompletion(currentMessages, stopNotice)
+                            break
+                        }
+                        if (approvalRounds >= MAX_APPROVAL_ROUNDS) {
+                            // 防御：正常路径每轮都会把 Pending 全部答完，不该走到这里；
+                            // 真走到说明回填没生效，宁可失败也不要无限问下去
+                            outcome = RunOutcome.Failed(
+                                AgentRunEntity.ERROR_EXCEPTION,
+                                "too many approval rounds (" + approvalRounds + ")",
+                            )
+                            break
+                        }
+                        approvalRounds += 1
+
+                        update { it.copy(status = AgentRunEntity.STATUS_AWAITING_APPROVAL) }
+                        _progress.value = _progress.value?.copy(
+                            status = AgentRunEntity.STATUS_AWAITING_APPROVAL,
+                        )
+                        val decisions = awaitHumanDecision(
+                            runId = initial.id,
+                            label = initial.profileName,
+                            pending = pending,
+                        )
+                        currentMessages = applyApprovalDecisions(currentMessages, decisions)
+                        update {
+                            it.copy(
+                                status = AgentRunEntity.STATUS_RUNNING,
+                                transcript = newTranscript(currentMessages),
+                            )
                         }
                     }
                 }
             } catch (e: TimeoutCancellationException) {
                 withContext(NonCancellable) {
-                    failRun(runId, AgentRunEntity.ERROR_EXCEPTION, "run timeout (${timeoutMillis}ms)")
+                    failRun(runId, AgentRunEntity.ERROR_EXCEPTION, "run timeout (" + timeoutMillis + "ms)")
                 }
                 return null
             } catch (e: CancellationException) {
                 // 用户取消（cancelRun / 中断对话）：withContext(NonCancellable) 保证取消路径能落库
                 withContext(NonCancellable) {
                     finishRun(runId, AgentRunEntity.STATUS_CANCELLED, resultSummary = null, error = null)
+                    cancelApprovalNotification()
                 }
                 throw e
             }
 
-            val outcome = evaluateCompletion(currentMessages, stopNotice)
             when (outcome) {
+                null -> Unit
                 is RunOutcome.Completed -> finishRun(
                     runId, AgentRunEntity.STATUS_COMPLETED,
                     // 摘要列只服务运行**列表**显示，故在这里截断；工具路径拿到的是完整文本
@@ -371,6 +456,123 @@ class SubagentRunner(
             failRun(runId, AgentRunEntity.ERROR_EXCEPTION, "${t.javaClass.simpleName}: ${t.message}")
             return null
         }
+    }
+
+    /**
+     * 等人批准（设计 §十一）：登记 → 弹通知 → 等（有时间上限）→ 回填决定。
+     *
+     * **超时按拒绝处理而**不是**让 run 失败**：run 的预算（`timeoutSeconds`）是给"跑"用的，
+     * 人不在却把整个 run 判死，等于把一次没看见的通知升级成任务失败——
+     * 而拒绝后模型还能继续用别的办法把任务做完（这正是 §9.2 的 denied 语义）。
+     * 超时的措辞与用户手拒**分开**（见 `APPROVAL_TIMEOUT_REASON`）。
+     *
+     * 无通知权限时不弹通知：此时只能靠运行详情页的卡片（前台场景），等待照旧。
+     */
+    private suspend fun awaitHumanDecision(
+        runId: String,
+        label: String,
+        pending: List<UIMessagePart.Tool>,
+    ): Map<String, ToolApprovalState> {
+        val waiters = pending.associate { it.toolCallId to SubagentApprovalQueue.register(it.toolCallId) }
+        postApprovalNotification(runId, label, pending)
+        try {
+            withTimeoutOrNull(APPROVAL_TIMEOUT_MS) {
+                // 逐个 await：各工具的决定互相独立，谁先答谁先回填
+                waiters.values.forEach { it.await() }
+            }
+        } finally {
+            pending.forEach { SubagentApprovalQueue.forget(it.toolCallId) }
+            cancelApprovalNotification()
+        }
+
+        return pending.associate { tool ->
+            val waiter = waiters.getValue(tool.toolCallId)
+            when {
+                !waiter.isCompleted -> tool.toolCallId to ToolApprovalState.Denied(APPROVAL_TIMEOUT_REASON)
+                waiter.getCompleted() -> tool.toolCallId to ToolApprovalState.Approved
+                else -> tool.toolCallId to ToolApprovalState.Denied(USER_DENIED_REASON)
+            }
+        }
+    }
+
+    private fun postApprovalNotification(
+        runId: String,
+        label: String,
+        pending: List<UIMessagePart.Tool>,
+    ) {
+        if (!NotificationUtil.hasNotificationPermission(context)) {
+            Logging.log(TAG, "no notification permission; approval can only be answered in the app")
+            return
+        }
+        runCatching {
+            context.sendNotification(
+                channelId = SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID,
+                notificationId = APPROVAL_NOTIFICATION_ID,
+            ) {
+                title = context.getString(
+                    R.string.subagent_approval_title,
+                    label.ifBlank { context.getString(R.string.subagent_page_title) },
+                )
+                content = pending.joinToString("\n") { approvalRequestSummary(it) }
+                useBigTextStyle = true
+                autoCancel = true
+                useDefaults = true
+                category = NotificationCompat.CATEGORY_REMINDER
+                contentIntent = runDetailPendingIntent(runId)
+                actions += NotificationAction(
+                    icon = R.drawable.ic_stat_rikkahub,
+                    title = context.getString(R.string.subagent_approval_approve),
+                    intent = approvalDecisionIntent(runId, pending, approved = true),
+                )
+                actions += NotificationAction(
+                    icon = R.drawable.ic_stat_rikkahub,
+                    title = context.getString(R.string.subagent_approval_deny),
+                    intent = approvalDecisionIntent(runId, pending, approved = false),
+                )
+            }
+        }.onFailure { Logging.log(TAG, "approval notification failed: $it") }
+    }
+
+    private fun cancelApprovalNotification() {
+        runCatching { context.cancelNotification(APPROVAL_NOTIFICATION_ID) }
+    }
+
+    /** 点通知主体 → 运行详情页（在那里能看到入参全文与轨迹）。 */
+    private fun runDetailPendingIntent(runId: String): PendingIntent {
+        val intent = Intent(context, app.androidrik.rikkahub.RouteActivity::class.java)
+            .putExtra("runId", runId)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        return PendingIntent.getActivity(
+            context,
+            APPROVAL_NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    /**
+     * 通知按钮的 PendingIntent：**显式组件 + exported=false 的 Receiver**。
+     *
+     * requestCode 必须区分（批准所有 / 拒绝所有），否则 `FLAG_UPDATE_CURRENT` 会让后者覆盖前者
+     * （两个按钮变成同一个动作——这是 PendingIntent 的经典坑）。
+     */
+    private fun approvalDecisionIntent(
+        runId: String,
+        pending: List<UIMessagePart.Tool>,
+        approved: Boolean,
+    ): PendingIntent {
+        val intent = Intent(context, SubagentApprovalReceiver::class.java)
+            .putStringArrayListExtra(
+                SubagentApprovalReceiver.EXTRA_TOOL_CALL_IDS,
+                ArrayList(pending.map { it.toolCallId }),
+            )
+            .putExtra(SubagentApprovalReceiver.EXTRA_APPROVED, approved)
+        return PendingIntent.getBroadcast(
+            context,
+            if (approved) APPROVAL_APPROVE_REQUEST_CODE else APPROVAL_DENY_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     private suspend fun finishRun(runId: Uuid, status: String, resultSummary: String?, error: String?) {
@@ -398,6 +600,27 @@ class SubagentRunner(
          * 「模型慢慢磨」——一个挂在 run 上的整体截止时间兜底。
          */
         const val RUN_TIMEOUT_MS = 30 * 60 * 1000L
+
+        /**
+         * 等人批准的时间上限：**5 分钟**。
+         *
+         * 取值理由：审批是"人可能马上要答"的交互，不是异步任务——手机用户要么几秒内看到
+         * 通知，要么已经离开。超时按拒绝处理并让 run 继续（见 `awaitHumanDecision`）；
+         * 想要更长的等待，应该修的是"通知没被看到"，而不是把等待时间拉长。
+         */
+        const val APPROVAL_TIMEOUT_MS = 5 * 60 * 1000L
+
+        /**
+         * 审批轮数上限（防御性）。
+         *
+         * 正常情况下每轮都把 Pending 全部答完，轮数只受模型行为影响；设上限是为了让
+         * "回填没生效"这类自身 bug 表现为**一次失败**，而不是无限问下去。
+         */
+        const val MAX_APPROVAL_ROUNDS = 20
+
+        private const val APPROVAL_NOTIFICATION_ID = 4242
+        private const val APPROVAL_APPROVE_REQUEST_CODE = 4243
+        private const val APPROVAL_DENY_REQUEST_CODE = 4244
 
         private fun newTranscript(messages: List<UIMessage>): String =
             JsonInstant.encodeToString(ListSerializer(serializer<UIMessage>()), messages)

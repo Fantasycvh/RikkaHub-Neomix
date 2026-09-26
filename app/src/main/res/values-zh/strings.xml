@@ -1701,5 +1701,18 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="subagent_tool_running">进行中 · 第 %1$d 步 · %2$s</string>
   <string name="subagent_tool_elapsed">%1$d 秒</string>
   <string name="agent_run_back_to_conversation">回到对话</string>
+  <string name="subagent_approval_title">子代理 %1$s 需要批准</string>
+  <string name="subagent_approval_approve">批准</string>
+  <string name="subagent_approval_deny">拒绝</string>
+  <string name="notification_channel_subagent_approval">子代理审批</string>
+  <string name="notification_channel_subagent_approval_desc">子代理想调用、且需要你批准的工具</string>
+  <string name="agent_run_status_awaiting_approval">等待批准</string>
+  <string name="agent_run_approval_title">这次运行正在等你批准</string>
+  <string name="agent_run_approval_hint">子代理请求调用这些工具。批准后它会用真实结果继续；拒绝则绕过它们继续。</string>
+  <string name="agent_run_approval_expired">这个请求已经超时</string>
+  <string name="subagent_preset_tool_approval">需要审批的工具</string>
+  <string name="subagent_preset_tool_approval_deny">直接拒绝</string>
+  <string name="subagent_preset_tool_approval_ask">请我批准</string>
+  <string name="subagent_preset_tool_approval_hint">「直接拒绝」让运行可以无人值守；「请我批准」会暂停运行并通知你——5 分钟无应答按拒绝处理。</string>
 </resources>
 

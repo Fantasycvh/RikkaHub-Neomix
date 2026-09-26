@@ -1628,5 +1628,18 @@
   <string name="subagent_tool_running">Выполняется · шаг %1$d · %2$s</string>
   <string name="subagent_tool_elapsed">%1$d с</string>
   <string name="agent_run_back_to_conversation">К диалогу</string>
+  <string name="subagent_approval_title">Субагент %1$s запрашивает подтверждение</string>
+  <string name="subagent_approval_approve">Разрешить</string>
+  <string name="subagent_approval_deny">Запретить</string>
+  <string name="notification_channel_subagent_approval">Подтверждения субагентов</string>
+  <string name="notification_channel_subagent_approval_desc">Инструменты, которые субагент хочет запустить и требует вашего подтверждения</string>
+  <string name="agent_run_status_awaiting_approval">Ожидает подтверждения</string>
+  <string name="agent_run_approval_title">Этот запуск ожидает вашего подтверждения</string>
+  <string name="agent_run_approval_hint">Субагент запросил запуск этих инструментов. Разрешите — и он продолжит с настоящим результатом; запретите — и он продолжит без них.</string>
+  <string name="agent_run_approval_expired">Этот запрос уже истёк</string>
+  <string name="subagent_preset_tool_approval">Инструменты, требующие подтверждения</string>
+  <string name="subagent_preset_tool_approval_deny">Отклонять автоматически</string>
+  <string name="subagent_preset_tool_approval_ask">Спрашивать меня</string>
+  <string name="subagent_preset_tool_approval_hint">«Отклонять автоматически» — запуск идёт без вас. «Спрашивать меня» — запуск приостанавливается и приходит уведомление; отсутствие ответа 5 минут считается отказом.</string>
 </resources>
 

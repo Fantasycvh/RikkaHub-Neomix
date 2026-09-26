@@ -88,6 +88,7 @@ fun statusLabel(status: String): String = stringResource(
     when (status) {
         AgentRunEntity.STATUS_PENDING -> R.string.agent_run_status_pending
         AgentRunEntity.STATUS_RUNNING -> R.string.agent_run_status_running
+        AgentRunEntity.STATUS_AWAITING_APPROVAL -> R.string.agent_run_status_awaiting_approval
         AgentRunEntity.STATUS_COMPLETED -> R.string.agent_run_status_completed
         AgentRunEntity.STATUS_FAILED -> R.string.agent_run_status_failed
         else -> R.string.agent_run_status_cancelled
@@ -205,7 +206,10 @@ private fun RunCard(run: AgentRunEntity, onClick: () -> Unit) {
                     text = statusLabel(run.status),
                     style = MaterialTheme.typography.labelSmall,
                     color = when (run.status) {
-                        AgentRunEntity.STATUS_RUNNING -> MaterialTheme.colorScheme.primary
+                        // 等待批准用 primary：它需要用户动作，视觉上要和"后台在跑"区分开
+                        AgentRunEntity.STATUS_RUNNING,
+                        AgentRunEntity.STATUS_AWAITING_APPROVAL,
+                            -> MaterialTheme.colorScheme.primary
                         AgentRunEntity.STATUS_COMPLETED -> MaterialTheme.colorScheme.tertiary
                         AgentRunEntity.STATUS_FAILED -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.onSurfaceVariant

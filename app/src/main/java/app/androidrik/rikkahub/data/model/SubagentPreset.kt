@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import app.androidrik.rikkahub.data.ai.prompts.SUBAGENT_PROMPT_DIGEST
 import app.androidrik.rikkahub.data.ai.prompts.SUBAGENT_PROMPT_RESEARCH
@@ -56,15 +57,40 @@ data class SubagentPreset(
      */
     val allowedTools: Set<String>? = null,
     /**
-     * 派发前是否需要用户批准（对话路径有审批 UI，无头路径一律按策略拒绝）。
+     * 派发前是否需要用户批准（「要不要现在派这个子代理」）。
      * 默认关：信封已经把工具面收窄到预设作者自己配的范围，逐次打断的收益低于打扰。
      */
     val requireApproval: Boolean = false,
+    /**
+     * **工具级**审批策略（「子代理跑起来后，撞上需要审批的工具怎么办」）——设计 §十一。
+     *
+     * 这个是解锁**写入类子代理**的开关：`ASK` 时 run 会**暂停**并弹通知/详情页卡片等人批准，
+     * 批准后按真结果继续跑；`DENY`（默认）保持 Phase 1/2 的形态——直接策略拒绝、模型自行绕开。
+     * 默认取 `DENY` 是"不改变既有行为"的选择；真正要用写入类工具的人会明确打开它。
+     */
+    val toolApproval: SubagentToolApproval = SubagentToolApproval.DENY,
     /** 单次运行超时（秒）；见 [SUBAGENT_TIMEOUT_SECONDS_RANGE]。 */
     val timeoutSeconds: Int = DEFAULT_SUBAGENT_TIMEOUT_SECONDS,
     /** 停用后不出现在派发工具的清单里（历史 run 不受影响）。 */
     val enabled: Boolean = true,
 )
+
+/**
+ * 工具级审批策略（见 [SubagentPreset.toolApproval]）。
+ *
+ * 刻意只有两档，不做"记住本次会话内同意"之类的中间态：那类状态一旦引入，
+ * 就要回答"记多久、跨不跨 run、撤销入口在哪"，而手机上一次 run 本来就是一次性的动作单元。
+ */
+@Serializable
+enum class SubagentToolApproval {
+    /** 需审批的工具**直接策略拒绝**（Phase 1/2 的既有行为，默认）。 */
+    @SerialName("deny")
+    DENY,
+
+    /** **暂停并请我批准**：通知栏两个按钮 + 运行详情页卡片，超时按拒绝处理并继续跑。 */
+    @SerialName("ask")
+    ASK,
+}
 
 /** 预设数量上限（与压缩档同款：防选择器/清单过长）。 */
 const val MAX_SUBAGENT_PRESETS: Int = 20
