@@ -75,6 +75,126 @@ object WorkspaceExportNames {
 }
 
 /**
+ * 目标目录树的**写入抽象**（`T` = 宿主自己的句柄类型：生产是 `DocumentFile`，单测是内存节点）。
+ *
+ * **为什么要这层**：SAF 树写入此前直接写在仓库里、全程依赖 `DocumentFile` ⇒ **一行都测不了**
+ * （JVM 单测里没有 DocumentsProvider，Robolectric 也造不出真实 provider）。
+ * 而这段逻辑恰恰是最需要测的：跳过 vs 失败的分档、同名不覆盖、目录缓存、部分成功。
+ * 把它抽到一个 5 方法的接口上，就能用内存假实现把整条路径跑一遍。
+ *
+ * 接口刻意只暴露"结构操作 + 打开写流"——**不暴露 uri/路径**，因为不同宿主的句柄里能拿到什么
+ * 并不一样（SAF 给的是 uri，内存假实现给的是节点），逻辑不该依赖那个差异。
+ */
+interface ExportTreeWriter<T> {
+    /** 根句柄（用户授权的那个目录）。 */
+    val root: T
+
+    /** 在 [parent] 下按名查找；不存在返回 null。 */
+    fun findChild(parent: T, name: String): T?
+
+    /** 是不是目录（用于判断"同名但不是目录"这种无法继续的情形）。 */
+    fun isDirectory(handle: T): Boolean
+
+    /** 是不是文件（用于判"同名已存在 ⇒ 跳过"）。 */
+    fun isFile(handle: T): Boolean
+
+    /** 建子目录；宿主拒绝时返回 null。 */
+    fun createDirectory(parent: T, name: String): T?
+
+    /** 建文件（[mimeType] 由实现按扩展名决定）；宿主拒绝时返回 null。 */
+    fun createFile(parent: T, name: String): T?
+
+    /** 打开写流；不支持写时返回 null。 */
+    fun openOutputStream(handle: T): OutputStream?
+}
+
+/**
+ * 把条目计划写进目标目录树（**可用内存假实现完整单测**）。
+ *
+ * 三档结果的判定规则（与 `WorkspaceBatchResult` 的语义一一对应）：
+ * - **成功**：建好文件并写完字节；
+ * - **跳过**：目标位置**已有同名文件** ⇒ 不覆盖（覆盖用户既有文件是破坏性的，静默改名又让人找不到）；
+ * - **失败**：父目录建不出来（含"同名但不是目录"）、`createFile`/`openOutputStream` 返回 null、
+ *   或写入过程中抛异常（磁盘满、provider 抽风）。**单项失败不影响其余项**——这正是"逐个导出
+ *   会部分成功"的落地口径。
+ *
+ * 目录句柄带缓存：同一父目录只 find/create 一次（大目录下省掉重复的 children 查询）。
+ */
+fun <T> exportPlanToTree(
+    plan: WorkspaceExportPlan,
+    writer: ExportTreeWriter<T>,
+    onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+): WorkspaceBatchResult {
+    val skippedNames = mutableListOf<String>()
+    val failedNames = mutableListOf<String>()
+    var succeeded = 0
+    val total = plan.fileCount
+    var done = 0
+
+    val dirCache = mutableMapOf("" to writer.root)
+
+    fun ensureDir(segments: List<String>): T? {
+        var current = writer.root
+        var path = ""
+        segments.forEach { segment ->
+            path = if (path.isEmpty()) segment else "$path/$segment"
+            val cached = dirCache[path]
+            if (cached != null) {
+                current = cached
+                return@forEach
+            }
+            val existing = writer.findChild(current, segment)
+            val next = when {
+                existing == null -> writer.createDirectory(current, segment)
+                writer.isDirectory(existing) -> existing
+                else -> null // 同名但不是目录：无法继续
+            } ?: return null
+            dirCache[path] = next
+            current = next
+        }
+        return current
+    }
+
+    plan.entries.forEach { entry ->
+        val segments = entry.entryName.trimEnd('/').split('/').filter { it.isNotEmpty() }
+        if (entry.isDirectory) {
+            if (ensureDir(segments) == null) failedNames += entry.entryName
+            return@forEach
+        }
+        val parent = ensureDir(segments.dropLast(1))
+        if (parent == null) {
+            failedNames += entry.entryName
+            return@forEach
+        }
+        val fileName = segments.last()
+        val existing = writer.findChild(parent, fileName)
+        if (existing != null && writer.isFile(existing)) {
+            skippedNames += entry.entryName
+            return@forEach
+        }
+        runCatching {
+            val created = writer.createFile(parent, fileName) ?: error("createFile returned null")
+            val out = writer.openOutputStream(created) ?: error("openOutputStream returned null")
+            out.use { stream ->
+                File(entry.absolutePath).inputStream().use { input -> input.copyTo(stream) }
+            }
+        }.onSuccess {
+            succeeded += 1
+            done += 1
+            onProgress(done, total)
+        }.onFailure {
+            failedNames += entry.entryName
+        }
+    }
+
+    return WorkspaceBatchResult.ofTree(
+        succeeded = succeeded,
+        skippedNames = skippedNames,
+        failedNames = failedNames,
+    )
+}
+
+/**
  * 批量导出的结果。
  *
  * **为什么要有"跳过"这一档**（而不是只有成功/失败）：逐个导出到目录时会撞上"同名已存在"，

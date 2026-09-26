@@ -12,7 +12,9 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
+import app.androidrik.rikkahub.data.export.ExportTreeWriter
 import app.androidrik.rikkahub.data.export.collectWorkspaceExportPlan
+import app.androidrik.rikkahub.data.export.exportPlanToTree
 import app.androidrik.rikkahub.data.export.writeWorkspaceZip
 import app.androidrik.rikkahub.data.db.dao.WorkspaceDAO
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
@@ -342,11 +344,11 @@ class WorkspaceRepository(
     /**
      * 批量导出到 **SAF 授权目录**（逐个写文件、保留原目录结构）。
      *
+     * 遍历与写入规则都在 `data/export/WorkspaceExport.kt` 的 [exportPlanToTree] 里（writer 抽象，
+     * **可用内存假实现完整单测**）；本层只做两件事：把区域根目录交出去、把 `DocumentFile` 适配成 writer。
+     *
      * 与 zip 的差别不只是"多文件"：这里会出现**部分成功**（写了 7 个、第 8 个失败），
      * 所以要分别计"跳过/失败"并带上名字回给 UI（用户决议 §6.1）。
-     *
-     * 同名已存在 ⇒ **默认跳过不覆盖**（覆盖用户既有文件是破坏性的，静默改名又让人找不到）。
-     * `DocumentFile` 自带 resolver（`fromTreeUri` 时绑定）⇒ 本层不需要 ContentResolver。
      */
     suspend fun exportSelectionToTree(
         id: String,
@@ -371,74 +373,41 @@ class WorkspaceRepository(
             selection = selection,
             basePath = basePath,
         )
-        val skippedNames = skipped.toMutableList()
-        val failedNames = mutableListOf<String>()
-        var succeeded = 0
-        val total = plan.fileCount
-        var done = 0
-
-        // 目录缓存：同一个父目录只 findOrCreate 一次（大目录下省掉重复的 children 查询）
-        val dirCache = mutableMapOf("" to tree)
-
-        fun ensureDir(segments: List<String>): DocumentFile? {
-            var current = tree
-            var path = ""
-            segments.forEach { segment ->
-                path = if (path.isEmpty()) segment else "$path/$segment"
-                val cached = dirCache[path]
-                if (cached != null) {
-                    current = cached
-                    return@forEach
-                }
-                val existing = current.findFile(segment)
-                val next = when {
-                    existing == null -> current.createDirectory(segment)
-                    existing.isDirectory -> existing
-                    else -> null // 同名但不是目录：无法继续，交给调用方记为失败
-                } ?: return null
-                dirCache[path] = next
-                current = next
-            }
-            return current
-        }
-
-        plan.entries.forEach { entry ->
-            val segments = entry.entryName.trimEnd('/').split('/').filter { it.isNotEmpty() }
-            if (entry.isDirectory) {
-                if (ensureDir(segments) == null) failedNames += entry.entryName
-                return@forEach
-            }
-            val parent = ensureDir(segments.dropLast(1))
-            if (parent == null) {
-                failedNames += entry.entryName
-                return@forEach
-            }
-            val fileName = segments.last()
-            if (parent.findFile(fileName)?.isFile == true) {
-                skippedNames += entry.entryName
-                return@forEach
-            }
-            runCatching {
-                val created = parent.createFile(mimeTypeOf(fileName), fileName)
-                    ?: error("createFile returned null")
-                val out = openOutputStream(created.uri) ?: error("openOutputStream returned null")
-                out.use { stream ->
-                    File(entry.absolutePath).inputStream().use { input -> input.copyTo(stream) }
-                }
-            }.onSuccess {
-                succeeded += 1
-                done += 1
-                onProgress(done, total)
-            }.onFailure {
-                failedNames += entry.entryName
-            }
-        }
-
-        WorkspaceBatchResult.ofTree(
-            succeeded = succeeded,
-            skippedNames = skippedNames,
-            failedNames = failedNames,
+        val result = exportPlanToTree(
+            plan = plan,
+            writer = DocumentFileTreeWriter(tree, openOutputStream),
+            onProgress = onProgress,
         )
+        // 遍历期的跳过（不在基目录下 / 选中后被删）与写入期的分档合并汇报
+        result.copy(
+            skipped = result.skipped + skipped.size,
+            skippedNames = result.skippedNames + skipped,
+        )
+    }
+
+    /**
+     * `DocumentFile` → [ExportTreeWriter] 的适配层（生产实现；逻辑在 writer 抽象之外，故不需要单测）。
+     *
+     * mime 由扩展名派生：SAF 的 `createFile` 必须给 mime，未知一律 `application/octet-stream`。
+     */
+    private class DocumentFileTreeWriter(
+        override val root: DocumentFile,
+        private val openOutputStream: (Uri) -> OutputStream?,
+    ) : ExportTreeWriter<DocumentFile> {
+        override fun findChild(parent: DocumentFile, name: String): DocumentFile? = parent.findFile(name)
+
+        override fun isDirectory(handle: DocumentFile): Boolean = handle.isDirectory
+
+        override fun isFile(handle: DocumentFile): Boolean = handle.isFile
+
+        override fun createDirectory(parent: DocumentFile, name: String): DocumentFile? =
+            parent.createDirectory(name)
+
+        override fun createFile(parent: DocumentFile, name: String): DocumentFile? =
+            parent.createFile(mimeTypeOf(name), name)
+
+        override fun openOutputStream(handle: DocumentFile): OutputStream? =
+            openOutputStream(handle.uri)
     }
 
     suspend fun deleteFile(
@@ -508,13 +477,6 @@ class WorkspaceRepository(
         WorkspaceStorageArea.LINUX -> manager.linuxDir(root)
     }
 
-    /** 扩展名 → mime；未知一律 `application/octet-stream`（SAF 的 createFile 需要它）。 */
-    private fun mimeTypeOf(fileName: String): String {
-        val ext = fileName.substringAfterLast('.', "").lowercase()
-        if (ext.isEmpty()) return "application/octet-stream"
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
-    }
-
     private suspend fun cleanupAssistantReferences(workspaceId: String) {
         settingsStore.update { settings ->
             settings.copy(
@@ -553,4 +515,16 @@ class WorkspaceRepository(
         private const val TAG = "WorkspaceRepository"
         private const val MAX_PREVIEW_BYTES = 512L * 1024
     }
+}
+
+/**
+ * 扩展名 → mime；未知一律 `application/octet-stream`（SAF 的 `createFile` 需要它）。
+ *
+ * **文件级而不是类成员**：[WorkspaceRepository.DocumentFileTreeWriter] 是嵌套类，
+ * 拿不到外部类实例的成员（Kotlin 的嵌套类非 inner）——而这个函数本来也不需要实例状态。
+ */
+private fun mimeTypeOf(fileName: String): String {
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    if (ext.isEmpty()) return "application/octet-stream"
+    return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
 }
