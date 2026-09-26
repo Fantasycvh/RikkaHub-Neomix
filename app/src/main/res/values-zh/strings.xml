@@ -956,7 +956,6 @@
   <string name="setting_mcp_page_add_one_to_get_started">添加一个即可开始使用</string>
   <string name="setting_mcp_page_basic_settings">基础设置</string>
   <string name="setting_mcp_page_custom_headers">自定义请求头</string>
-
   <string name="setting_mcp_page_client_cert">客户端证书 (mTLS)</string>
   <string name="setting_mcp_page_client_cert_desc">上传客户端证书以进行双向 TLS 认证（自托管 mTLS 服务）</string>
   <string name="setting_mcp_page_client_cert_enable">启用客户端证书</string>
@@ -1649,7 +1648,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="prompt_inspect_source_lorebook">世界书</string>
   <string name="prompt_inspect_jump_to_entry">跳转到该条目</string>
   <string name="prompt_inspect_legend_title">关于本页</string>
-  <string name="prompt_inspect_legend_body">只读预览：与真实请求走同一条组装代码，再按来源分段。不落库、不发送请求。标记为「合成」的内容仅存在于本次请求。&#10;&#10;不计入本页数字：图片/文档等附件的编码体积（仅标注数量）、请求的协议包装（role/content、tool_calls 等结构）。token 为字符启发式估算（中文约 1.5 字符/token、其余约 4 字符/token），工具 Schema 另按当前 provider 的实际下发形状估算。</string>
+  <string name="prompt_inspect_legend_body">只读预览：与真实请求走同一条组装代码，再按来源分段。不落库、不发送请求。标记为「合成」的内容仅存在于本次请求。
+
+不计入本页数字：图片/文档等附件的编码体积（仅标注数量）、请求的协议包装（role/content、tool_calls 等结构）。token 为字符启发式估算（中文约 1.5 字符/token、其余约 4 字符/token），工具 Schema 另按当前 provider 的实际下发形状估算。</string>
   <string name="prompt_inspect_index_title">段落目录</string>
   <string name="prompt_inspect_expand">展开</string>
   <string name="prompt_inspect_collapse">收起</string>
@@ -1659,4 +1660,42 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="prompt_page_tail_user_role_hint">每次请求模型时，以用户消息追加在全部消息（包括工具结果）之后；不是助手预填充。</string>
   <string name="prompt_page_tail_system_role_hint">以系统消息追加在本次请求最末尾。Claude/Gemini 的接口只接受顶部系统提示，会自动改为用户消息送达（保证缓存有效）。</string>
   <string name="prompt_page_role_system">系统</string>
+  <string name="subagent_page_title">子代理</string>
+  <string name="subagent_page_desc">模型可在对话中按名称调度的「模型 + 提示词」组合</string>
+  <string name="subagent_dispatch_enabled">允许模型在对话中派发子代理</string>
+  <string name="subagent_dispatch_enabled_desc">为每个对话加上 dispatch_subagent 工具。派发会一直占用当前轮次，直到子代理结束。</string>
+  <string name="subagent_presets_empty">还没有子代理</string>
+  <string name="subagent_preset_new">新建子代理</string>
+  <string name="subagent_preset_edit">编辑子代理</string>
+  <string name="subagent_preset_name">调度名</string>
+  <string name="subagent_preset_name_hint">模型调用时传入的名称，例如 research</string>
+  <string name="subagent_preset_name_taken">不能为空、不能过长，也不能与其他子代理重名</string>
+  <string name="subagent_preset_description">描述</string>
+  <string name="subagent_preset_description_hint">会写给模型看，用来决定挑哪一个。说明它擅长什么。</string>
+  <string name="subagent_preset_model">模型</string>
+  <string name="subagent_preset_model_follow">跟随当前对话模型</string>
+  <string name="subagent_preset_prompt">系统提示词</string>
+  <string name="subagent_preset_prompt_hint">只有这段提示词会发给子代理；它看不到对话的系统提示词与注入。</string>
+  <string name="subagent_preset_web_search">联网搜索</string>
+  <string name="subagent_preset_workspace">工作区</string>
+  <string name="subagent_preset_workspace_none">不使用工作区</string>
+  <string name="subagent_preset_capability_workspace">工作区文件</string>
+  <string name="subagent_preset_tools">工具信封</string>
+  <string name="subagent_preset_tools_auto">按能力开关</string>
+  <string name="subagent_preset_tools_explicit">指定工具</string>
+  <string name="subagent_preset_tools_effective">生效工具：%1$d 个</string>
+  <string name="subagent_preset_tools_pure_reasoning">不给工具（纯推理）</string>
+  <string name="subagent_preset_tools_explicit_hint">只装配勾选的工具。其它来源（MCP、技能）的工具必须逐个点名才会生效。</string>
+  <string name="subagent_preset_tools_select_all">全选</string>
+  <string name="subagent_preset_tools_clear">清空</string>
+  <string name="subagent_preset_tools_no_candidates">当前配置下没有可装配的工具</string>
+  <string name="subagent_preset_approval">派发前需要批准</string>
+  <string name="subagent_preset_timeout">超时：%1$d 分钟</string>
+  <string name="subagent_preset_delete">删除子代理</string>
+  <string name="subagent_preset_delete_confirm">确定删除子代理 %1$s？已经跑过的运行记录会保留。</string>
+  <string name="subagent_preset_saved">已保存</string>
+  <string name="subagent_tool_title">子代理：%1$s</string>
+  <string name="agent_run_open_detail">查看运行</string>
+  <string name="agent_run_entry_chat">对话内派发</string>
 </resources>
+

@@ -22,7 +22,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "agent_run")
 data class AgentRunEntity(
     @PrimaryKey @ColumnInfo("id") val id: String,
-    /** 发起方标识（账本列）：Phase 1 恒为 [ENTRY_POINT_SUBAGENT]。 */
+    /** 发起方标识（账本列）：运行页手动派发 = [ENTRY_POINT_SUBAGENT]，对话内工具派发 = [ENTRY_POINT_CHAT]。 */
     @ColumnInfo("entry_point") val entryPoint: String,
     /** 状态机：[STATUS_PENDING] → [STATUS_RUNNING] → 终态之一。 */
     @ColumnInfo("status") val status: String,
@@ -53,7 +53,16 @@ data class AgentRunEntity(
     @ColumnInfo("finished_at") val finishedAt: Long?,
 ) {
     companion object {
+        /** 运行页**手动派发**（选助手当 profile + 勾信封）。 */
         const val ENTRY_POINT_SUBAGENT = "subagent"
+
+        /**
+         * 对话内**工具派发**（模型调 `dispatch_subagent` 按预设调度，设计 §十）。
+         *
+         * 与 [ENTRY_POINT_SUBAGENT] 分开记：两者的信封来源不同（预设 vs 手工勾选），
+         * 排查"子代理为什么碰不到某个工具"时要先看是哪条入口把它派出去的。
+         */
+        const val ENTRY_POINT_CHAT = "chat"
 
         const val STATUS_PENDING = "pending"
         const val STATUS_RUNNING = "running"

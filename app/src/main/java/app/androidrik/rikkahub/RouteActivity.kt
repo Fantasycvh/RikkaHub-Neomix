@@ -93,6 +93,7 @@ import app.androidrik.rikkahub.ui.pages.extensions.ExtensionsPage
 import app.androidrik.rikkahub.ui.pages.extensions.PromptPage
 import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunsPage
 import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunDetailPage
+import app.androidrik.rikkahub.ui.pages.subagent.SubagentPresetsPage
 import app.androidrik.rikkahub.ui.pages.extensions.QuickMessagesPage
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillDetailPage
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillsPage
@@ -545,6 +546,12 @@ class RouteActivity : ComponentActivity() {
                                 AgentRunDetailPage(runId = key.runId)
                             }
 
+                            // 子代理预设（「按名称调度的模型 + 提示词」组合，设计 §十）——
+                            // 与账本列表分开：那是"跑过的记录"，这是"可派的组合"
+                            entry<Screen.SubagentPresets> {
+                                SubagentPresetsPage()
+                            }
+
                             entry<Screen.Workspaces> {
                                 WorkspacePage()
                             }
@@ -783,6 +790,10 @@ sealed interface Screen : NavKey {
     /** 单个 run 的详情（状态 + 轨迹回放）。 */
     @Serializable
     data class AgentRunDetail(val runId: String) : Screen
+
+    /** 子代理预设管理（「按名称调度的模型 + 提示词」组合，设计 §十）。 */
+    @Serializable
+    data object SubagentPresets : Screen
 
 
     @Serializable

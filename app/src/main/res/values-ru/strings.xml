@@ -1575,7 +1575,9 @@
   <string name="prompt_inspect_source_lorebook">мировой информации</string>
   <string name="prompt_inspect_jump_to_entry">Перейти к записи</string>
   <string name="prompt_inspect_legend_title">Об этой странице</string>
-  <string name="prompt_inspect_legend_body">Предпросмотр только для чтения: собирается тем же кодом, что и реальный запрос, затем разбивается по источникам. Ничего не сохраняется и не отправляется. Помеченное как синтетическое существует только для этого запроса.&#10;&#10;Не учтено на этой странице: размер изображений/документов после кодирования (показано только их количество) и обёртка протокола запроса (структуры role/content, tool_calls и подобные). Токены — эвристика по символам (CJK ≈1.5 символа/токен, остальное ≈4); схема инструментов оценивается отдельно по реальной форме отправки текущего provider.</string>
+  <string name="prompt_inspect_legend_body">Предпросмотр только для чтения: собирается тем же кодом, что и реальный запрос, затем разбивается по источникам. Ничего не сохраняется и не отправляется. Помеченное как синтетическое существует только для этого запроса.
+
+Не учтено на этой странице: размер изображений/документов после кодирования (показано только их количество) и обёртка протокола запроса (структуры role/content, tool_calls и подобные). Токены — эвристика по символам (CJK ≈1.5 символа/токен, остальное ≈4); схема инструментов оценивается отдельно по реальной форме отправки текущего provider.</string>
   <string name="prompt_inspect_index_title">Оглавление сегментов</string>
   <string name="prompt_inspect_expand">Развернуть</string>
   <string name="prompt_inspect_collapse">Свернуть</string>
@@ -1585,4 +1587,42 @@
   <string name="prompt_page_tail_user_role_hint">Добавляется как сообщение пользователя в каждом запросе к модели, после всех сообщений и результатов инструментов. Это не предзаполнение ответа ассистента.</string>
   <string name="prompt_page_tail_system_role_hint">Отправляется как системное сообщение в самом конце запроса. Claude/Gemini принимают системный текст только сверху — будет отправлено как сообщение пользователя (сохранение кэша).</string>
   <string name="prompt_page_role_system">Система</string>
+  <string name="subagent_page_title">Субагенты</string>
+  <string name="subagent_page_desc">Комбинации «модель + промпт», которые модель вызывает по имени прямо в диалоге</string>
+  <string name="subagent_dispatch_enabled">Разрешить модели вызывать субагентов в диалоге</string>
+  <string name="subagent_dispatch_enabled_desc">Добавляет инструмент dispatch_subagent во все диалоги. Вызов занимает текущий ход, пока субагент не завершится.</string>
+  <string name="subagent_presets_empty">Субагентов пока нет</string>
+  <string name="subagent_preset_new">Новый субагент</string>
+  <string name="subagent_preset_edit">Изменить субагента</string>
+  <string name="subagent_preset_name">Имя вызова</string>
+  <string name="subagent_preset_name_hint">Имя, которое модель передаёт при вызове, например research</string>
+  <string name="subagent_preset_name_taken">Пустое, слишком длинное или уже занято другим субагентом</string>
+  <string name="subagent_preset_description">Описание</string>
+  <string name="subagent_preset_description_hint">Показывается модели, чтобы она выбрала нужного. Опишите, в чём он хорош.</string>
+  <string name="subagent_preset_model">Модель</string>
+  <string name="subagent_preset_model_follow">Как в текущем диалоге</string>
+  <string name="subagent_preset_prompt">Системный промпт</string>
+  <string name="subagent_preset_prompt_hint">Субагенту отправляется только этот промпт; системный промпт и инъекции диалога ему не видны.</string>
+  <string name="subagent_preset_web_search">Веб-поиск</string>
+  <string name="subagent_preset_workspace">Рабочая область</string>
+  <string name="subagent_preset_workspace_none">Без рабочей области</string>
+  <string name="subagent_preset_capability_workspace">Файлы рабочей области</string>
+  <string name="subagent_preset_tools">Разрешённые инструменты</string>
+  <string name="subagent_preset_tools_auto">По переключателям возможностей</string>
+  <string name="subagent_preset_tools_explicit">Выбрать инструменты</string>
+  <string name="subagent_preset_tools_effective">Действующих инструментов: %1$d</string>
+  <string name="subagent_preset_tools_pure_reasoning">Без инструментов (только рассуждение)</string>
+  <string name="subagent_preset_tools_explicit_hint">Собираются только отмеченные инструменты. Инструменты из других источников (MCP, навыки) нужно указать явно.</string>
+  <string name="subagent_preset_tools_select_all">Выбрать все</string>
+  <string name="subagent_preset_tools_clear">Очистить</string>
+  <string name="subagent_preset_tools_no_candidates">При этой конфигурации инструменты не собираются</string>
+  <string name="subagent_preset_approval">Спрашивать перед вызовом</string>
+  <string name="subagent_preset_timeout">Тайм-аут: %1$d мин</string>
+  <string name="subagent_preset_delete">Удалить субагента</string>
+  <string name="subagent_preset_delete_confirm">Удалить субагента %1$s? Уже выполненные запуски сохранятся.</string>
+  <string name="subagent_preset_saved">Сохранено</string>
+  <string name="subagent_tool_title">Субагент: %1$s</string>
+  <string name="agent_run_open_detail">Открыть запуск</string>
+  <string name="agent_run_entry_chat">из диалога</string>
 </resources>
+

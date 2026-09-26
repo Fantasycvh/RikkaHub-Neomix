@@ -53,6 +53,8 @@ import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.PromptInjection
 import app.androidrik.rikkahub.data.model.PromptPreset
+import app.androidrik.rikkahub.data.model.SubagentPreset
+import app.androidrik.rikkahub.data.model.DEFAULT_SUBAGENT_PRESETS
 import app.androidrik.rikkahub.data.model.asSinglePreset
 import app.androidrik.rikkahub.data.model.QuickMessage
 import app.androidrik.rikkahub.data.model.Tag
@@ -783,6 +785,23 @@ data class Settings(
      * 见 `docs/design-conversation-import-export.md` §十。
      */
     val importedSources: Map<String, ImportSourceRecord> = emptyMap(),
+    /**
+     * **允许对话中的模型调用子代理**（`dispatch_subagent` 工具，设计见
+     * `docs/design-subagent-context.md` §十）。
+     *
+     * **默认关**，三个理由都是可见成本：①每次请求多一份工具 schema + 一份子代理清单
+     * （提示词预算）；②派发是**阻塞**的，模型可以按住本轮对话数分钟；③它是"模型自己决定
+     * 再叫一个模型"，不该由更新替用户打开。开启入口在子代理管理页（与预设配置同一处）。
+     */
+    val enableSubagentDispatch: Boolean = false,
+    /**
+     * 子代理预设：**「按名称调度的模型 + 提示词」组合**列表。
+     *
+     * 默认值即内置三个（检索 / 第二意见 / 要点提炼），存量用户读入即得——**零迁移**
+     * （新字段 + `JsonInstant` 的 `ignoreUnknownKeys`）。内置预设就存在这个列表里，
+     * 用户可改可删；**没有墓碑机制**（与内置提供商不同），删掉不会自动回填。
+     */
+    val subagentPresets: List<SubagentPreset> = DEFAULT_SUBAGENT_PRESETS,
 ) {
     /**
      * 全部注入条目的**扁平视图**（预设计算得出，不单独持久化）。

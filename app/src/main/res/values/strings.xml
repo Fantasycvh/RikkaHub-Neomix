@@ -961,7 +961,6 @@
   <string name="setting_mcp_page_add_one_to_get_started">Add one to get started</string>
   <string name="setting_mcp_page_basic_settings">Basic Settings</string>
   <string name="setting_mcp_page_custom_headers">Custom Headers</string>
-
   <string name="setting_mcp_page_client_cert">Client Certificate (mTLS)</string>
   <string name="setting_mcp_page_client_cert_desc">Upload a client certificate for mutual TLS authentication (self-hosted mTLS servers)</string>
   <string name="setting_mcp_page_client_cert_enable">Enable client certificate</string>
@@ -1593,7 +1592,9 @@
   <string name="prompt_inspect_source_lorebook">World info</string>
   <string name="prompt_inspect_jump_to_entry">Go to this entry</string>
   <string name="prompt_inspect_legend_title">About this page</string>
-  <string name="prompt_inspect_legend_body">Read-only preview assembled by the same code path as a real request, then split by source. Nothing is saved and no request is sent. Items marked synthetic exist only for the request.&#10;&#10;Not counted here: the encoded size of images/documents (their count is shown instead), and request protocol wrapping (role/content, tool_calls and similar). Token counts are a character heuristic (~1.5 chars/token for CJK, ~4 for the rest); tool schema is estimated separately from the actual wire shape of the current provider.</string>
+  <string name="prompt_inspect_legend_body">Read-only preview assembled by the same code path as a real request, then split by source. Nothing is saved and no request is sent. Items marked synthetic exist only for the request.
+
+Not counted here: the encoded size of images/documents (their count is shown instead), and request protocol wrapping (role/content, tool_calls and similar). Token counts are a character heuristic (~1.5 chars/token for CJK, ~4 for the rest); tool schema is estimated separately from the actual wire shape of the current provider.</string>
   <string name="prompt_inspect_index_title">Segments index</string>
   <string name="prompt_inspect_expand">Show</string>
   <string name="prompt_inspect_collapse">Collapse</string>
@@ -1661,4 +1662,42 @@
   <string name="prompt_page_tail_user_role_hint">Appended as a user message on each model request, including after tool results. This is not assistant prefill.</string>
   <string name="prompt_page_tail_system_role_hint">Sent as a system message at the very end of the request. On Claude/Gemini it is delivered as a user message (their APIs place system content at the top, which would break prompt caching).</string>
   <string name="prompt_page_role_system">System</string>
+  <string name="subagent_page_title">Subagents</string>
+  <string name="subagent_page_desc">Named model + prompt combinations the model can dispatch mid-conversation</string>
+  <string name="subagent_dispatch_enabled">Let the model dispatch subagents in chat</string>
+  <string name="subagent_dispatch_enabled_desc">Adds a dispatch_subagent tool to every conversation. A dispatch holds the current turn until the subagent finishes.</string>
+  <string name="subagent_presets_empty">No subagents yet</string>
+  <string name="subagent_preset_new">New subagent</string>
+  <string name="subagent_preset_edit">Edit subagent</string>
+  <string name="subagent_preset_name">Dispatch name</string>
+  <string name="subagent_preset_name_hint">The name the model passes when calling it, for example research</string>
+  <string name="subagent_preset_name_taken">Empty, too long, or already used by another subagent</string>
+  <string name="subagent_preset_description">Description</string>
+  <string name="subagent_preset_description_hint">Shown to the model so it can pick the right one. Say what this subagent is good at.</string>
+  <string name="subagent_preset_model">Model</string>
+  <string name="subagent_preset_model_follow">Follow the current chat model</string>
+  <string name="subagent_preset_prompt">System prompt</string>
+  <string name="subagent_preset_prompt_hint">Only this prompt is sent to the subagent; it never sees the chat system prompt or injections.</string>
+  <string name="subagent_preset_web_search">Web search</string>
+  <string name="subagent_preset_workspace">Workspace</string>
+  <string name="subagent_preset_workspace_none">No workspace</string>
+  <string name="subagent_preset_capability_workspace">Workspace files</string>
+  <string name="subagent_preset_tools">Tool envelope</string>
+  <string name="subagent_preset_tools_auto">Follow the capability switches</string>
+  <string name="subagent_preset_tools_explicit">Choose tools</string>
+  <string name="subagent_preset_tools_effective">Effective tools: %1$d</string>
+  <string name="subagent_preset_tools_pure_reasoning">No tools (reasoning only)</string>
+  <string name="subagent_preset_tools_explicit_hint">Only the tools you tick are assembled. Tools from other sources (MCP, skills) must be named explicitly.</string>
+  <string name="subagent_preset_tools_select_all">Select all</string>
+  <string name="subagent_preset_tools_clear">Clear</string>
+  <string name="subagent_preset_tools_no_candidates">This configuration assembles no tools</string>
+  <string name="subagent_preset_approval">Ask before dispatching</string>
+  <string name="subagent_preset_timeout">Timeout: %1$d min</string>
+  <string name="subagent_preset_delete">Delete subagent</string>
+  <string name="subagent_preset_delete_confirm">Delete subagent %1$s? Runs it already started are kept.</string>
+  <string name="subagent_preset_saved">Saved</string>
+  <string name="subagent_tool_title">Subagent: %1$s</string>
+  <string name="agent_run_open_detail">Open run</string>
+  <string name="agent_run_entry_chat">from chat</string>
 </resources>
+

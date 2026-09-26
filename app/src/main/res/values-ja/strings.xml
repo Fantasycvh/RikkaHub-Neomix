@@ -1575,7 +1575,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_inspect_source_lorebook">ワールド情報</string>
   <string name="prompt_inspect_jump_to_entry">この項目へ移動</string>
   <string name="prompt_inspect_legend_title">このページについて</string>
-  <string name="prompt_inspect_legend_body">読み取り専用のプレビューです。実際のリクエストと同じ組み立てコードを通し、由来ごとに分割して表示します。保存も送信も行いません。「合成」と表示された内容は今回のリクエストにのみ存在します。&#10;&#10;本ページの数値に含まれないもの：画像・文書など添付のエンコード後サイズ（個数のみ表示）、リクエストのプロトコル包装（role/content、tool_calls などの構造）。token は文字ベースのヒューリスティック（CJK 約 1.5 文字/token、その他約 4 文字/token）で、ツールスキーマは現在の provider の実際の送信形状で別途見積もります。</string>
+  <string name="prompt_inspect_legend_body">読み取り専用のプレビューです。実際のリクエストと同じ組み立てコードを通し、由来ごとに分割して表示します。保存も送信も行いません。「合成」と表示された内容は今回のリクエストにのみ存在します。
+
+本ページの数値に含まれないもの：画像・文書など添付のエンコード後サイズ（個数のみ表示）、リクエストのプロトコル包装（role/content、tool_calls などの構造）。token は文字ベースのヒューリスティック（CJK 約 1.5 文字/token、その他約 4 文字/token）で、ツールスキーマは現在の provider の実際の送信形状で別途見積もります。</string>
   <string name="prompt_inspect_index_title">セグメント目次</string>
   <string name="prompt_inspect_expand">展開</string>
   <string name="prompt_inspect_collapse">折りたたむ</string>
@@ -1585,4 +1587,42 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_page_tail_user_role_hint">モデルへの各リクエストで、ツールの結果を含む全メッセージの後にユーザーメッセージとして追加します。アシスタントのプリフィルではありません。</string>
   <string name="prompt_page_tail_system_role_hint">リクエストの最後にシステムメッセージとして送信します。Claude/Gemini は先頭のシステムのみ受け付けるため、ユーザーメッセージに変換されます（キャッシュ維持）。</string>
   <string name="prompt_page_role_system">システム</string>
+  <string name="subagent_page_title">サブエージェント</string>
+  <string name="subagent_page_desc">会話中にモデルが名前で呼び出せる「モデル + プロンプト」の組み合わせ</string>
+  <string name="subagent_dispatch_enabled">会話中にモデルがサブエージェントを呼び出すことを許可</string>
+  <string name="subagent_dispatch_enabled_desc">すべての会話に dispatch_subagent ツールを追加します。呼び出しはサブエージェントが終わるまで現在のターンを占有します。</string>
+  <string name="subagent_presets_empty">サブエージェントはまだありません</string>
+  <string name="subagent_preset_new">サブエージェントを追加</string>
+  <string name="subagent_preset_edit">サブエージェントを編集</string>
+  <string name="subagent_preset_name">呼び出し名</string>
+  <string name="subagent_preset_name_hint">モデルが呼び出すときに渡す名前（例: research）</string>
+  <string name="subagent_preset_name_taken">空・長すぎる・他のサブエージェントと重複のいずれかです</string>
+  <string name="subagent_preset_description">説明</string>
+  <string name="subagent_preset_description_hint">モデルがどれを選ぶか判断するために表示されます。得意なことを書いてください。</string>
+  <string name="subagent_preset_model">モデル</string>
+  <string name="subagent_preset_model_follow">現在の会話のモデルに従う</string>
+  <string name="subagent_preset_prompt">システムプロンプト</string>
+  <string name="subagent_preset_prompt_hint">このプロンプトだけがサブエージェントに送られます。会話のシステムプロンプトや注入は渡りません。</string>
+  <string name="subagent_preset_web_search">ウェブ検索</string>
+  <string name="subagent_preset_workspace">ワークスペース</string>
+  <string name="subagent_preset_workspace_none">ワークスペースを使わない</string>
+  <string name="subagent_preset_capability_workspace">ワークスペースのファイル</string>
+  <string name="subagent_preset_tools">ツールの許可範囲</string>
+  <string name="subagent_preset_tools_auto">ケーパビリティ設定に従う</string>
+  <string name="subagent_preset_tools_explicit">ツールを指定</string>
+  <string name="subagent_preset_tools_effective">有効なツール: %1$d</string>
+  <string name="subagent_preset_tools_pure_reasoning">ツールなし（推論のみ）</string>
+  <string name="subagent_preset_tools_explicit_hint">チェックしたツールだけが組み込まれます。他のソース（MCP・スキル）のツールは個別に指定が必要です。</string>
+  <string name="subagent_preset_tools_select_all">すべて選択</string>
+  <string name="subagent_preset_tools_clear">クリア</string>
+  <string name="subagent_preset_tools_no_candidates">現在の設定では組み込めるツールがありません</string>
+  <string name="subagent_preset_approval">呼び出す前に確認する</string>
+  <string name="subagent_preset_timeout">タイムアウト: %1$d 分</string>
+  <string name="subagent_preset_delete">サブエージェントを削除</string>
+  <string name="subagent_preset_delete_confirm">サブエージェント %1$s を削除しますか？実行済みの記録は保持されます。</string>
+  <string name="subagent_preset_saved">保存しました</string>
+  <string name="subagent_tool_title">サブエージェント: %1$s</string>
+  <string name="agent_run_open_detail">実行を開く</string>
+  <string name="agent_run_entry_chat">会話から呼び出し</string>
 </resources>
+

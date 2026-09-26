@@ -21,6 +21,7 @@ import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Puzzle
+import me.rerere.hugeicons.stroke.Robot01
 import me.rerere.hugeicons.stroke.Rocket01
 import me.rerere.hugeicons.stroke.Zap
 import app.androidrik.rikkahub.Screen
@@ -86,6 +87,12 @@ fun ExtensionsPage() {
                         leadingContent = { Icon(HugeIcons.Rocket01, null) },
                         headlineContent = { Text(stringResource(R.string.agent_runs_title)) },
                         supportingContent = { Text(stringResource(R.string.agent_runs_desc)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SubagentPresets) },
+                        leadingContent = { Icon(HugeIcons.Robot01, null) },
+                        headlineContent = { Text(stringResource(R.string.subagent_page_title)) },
+                        supportingContent = { Text(stringResource(R.string.subagent_page_desc)) },
                     )
                 }
             }

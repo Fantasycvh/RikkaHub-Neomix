@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.Model
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
+import app.androidrik.rikkahub.data.ai.tools.runToolCatalog
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.db.dao.AgentRunDAO
@@ -39,18 +40,24 @@ class AgentRunsVM(
     fun hasActiveRun(): Boolean = runner.hasActiveRun()
 
     /**
-     * 所选 profile 的工具目录（信封候选 = 实际会装配的全部工具）。
-     * 与 run 侧同口径：memory 工具不在目录里（Phase 1 run 禁用记忆，见 §9.4）。
+     * 所选 profile 的工具目录（信封候选 = run 里**实际可用**的全部工具）。
+     *
+     * 与 run 侧同口径：①memory 工具不在目录里（run 禁用记忆，见 §9.4）；
+     * ②`dispatch_subagent` 也在目录外——run 恒定不装配它（禁嵌套，见 `runToolCatalog`），
+     * 列在候选里等于承诺一件不会发生的事。
      */
     suspend fun toolCatalog(profile: Assistant): List<String> {
         val settings = settingsStore.settingsFlow.value
         val model = settings.findModelById(profile.chatModelId ?: settings.chatModelId)
             ?: return emptyList()
-        return chatToolFactory
-            .createTools(settings, profile.copy(enableMemory = false), model, workspaceCwd = null)
-            .map { it.name }
-            .distinct()
-            .sorted()
+        return runToolCatalog(
+            chatToolFactory.createToolSegments(
+                settings,
+                profile.copy(enableMemory = false),
+                model,
+                workspaceCwd = null,
+            )
+        )
     }
 
     /** 派发；串行约束由 Runner 保证，返回 null = 已有活跃 run。 */

@@ -1631,7 +1631,9 @@
   <string name="prompt_inspect_source_lorebook">世界書</string>
   <string name="prompt_inspect_jump_to_entry">跳轉到該條目</string>
   <string name="prompt_inspect_legend_title">關於本頁</string>
-  <string name="prompt_inspect_legend_body">唯讀預覽：與真實請求走同一條組裝程式碼，再依來源分段。不落庫、不傳送請求。標記為「合成」的內容僅存在於本次請求。&#10;&#10;不計入本頁數字：圖片/文件等附件的編碼體積（僅標註數量）、請求的協定包裝（role/content、tool_calls 等結構）。token 為字元啟發式估算（中文約 1.5 字元/token、其餘約 4 字元/token），工具 Schema 另依當前 provider 的實際下發形狀估算。</string>
+  <string name="prompt_inspect_legend_body">唯讀預覽：與真實請求走同一條組裝程式碼，再依來源分段。不落庫、不傳送請求。標記為「合成」的內容僅存在於本次請求。
+
+不計入本頁數字：圖片/文件等附件的編碼體積（僅標註數量）、請求的協定包裝（role/content、tool_calls 等結構）。token 為字元啟發式估算（中文約 1.5 字元/token、其餘約 4 字元/token），工具 Schema 另依當前 provider 的實際下發形狀估算。</string>
   <string name="prompt_inspect_index_title">段落目錄</string>
   <string name="prompt_inspect_expand">展開</string>
   <string name="prompt_inspect_collapse">收合</string>
@@ -1641,4 +1643,42 @@
   <string name="prompt_page_tail_user_role_hint">每次請求模型時，以使用者訊息附加在全部訊息（包括工具結果）之後；不是助手預填充。</string>
   <string name="prompt_page_tail_system_role_hint">以系統訊息附加在本次請求最末尾。Claude/Gemini 的介面只接受頂部系統提示，會自動改為使用者訊息送達（保證快取有效）。</string>
   <string name="prompt_page_role_system">系統</string>
+  <string name="subagent_page_title">子代理</string>
+  <string name="subagent_page_desc">模型可在對話中依名稱調度的「模型 + 提示詞」組合</string>
+  <string name="subagent_dispatch_enabled">允許模型在對話中派發子代理</string>
+  <string name="subagent_dispatch_enabled_desc">為每個對話加上 dispatch_subagent 工具。派發會佔用當前回合，直到子代理結束。</string>
+  <string name="subagent_presets_empty">還沒有子代理</string>
+  <string name="subagent_preset_new">新增子代理</string>
+  <string name="subagent_preset_edit">編輯子代理</string>
+  <string name="subagent_preset_name">調度名</string>
+  <string name="subagent_preset_name_hint">模型呼叫時傳入的名稱，例如 research</string>
+  <string name="subagent_preset_name_taken">不能為空、不能過長，也不能與其他子代理同名</string>
+  <string name="subagent_preset_description">描述</string>
+  <string name="subagent_preset_description_hint">會提供給模型參考，用來決定挑哪一個。說明它擅長什麼。</string>
+  <string name="subagent_preset_model">模型</string>
+  <string name="subagent_preset_model_follow">跟隨當前對話模型</string>
+  <string name="subagent_preset_prompt">系統提示詞</string>
+  <string name="subagent_preset_prompt_hint">只有這段提示詞會傳給子代理；它看不到對話的系統提示詞與注入。</string>
+  <string name="subagent_preset_web_search">聯網搜尋</string>
+  <string name="subagent_preset_workspace">工作區</string>
+  <string name="subagent_preset_workspace_none">不使用工作區</string>
+  <string name="subagent_preset_capability_workspace">工作區檔案</string>
+  <string name="subagent_preset_tools">工具信封</string>
+  <string name="subagent_preset_tools_auto">依能力開關</string>
+  <string name="subagent_preset_tools_explicit">指定工具</string>
+  <string name="subagent_preset_tools_effective">生效工具：%1$d 個</string>
+  <string name="subagent_preset_tools_pure_reasoning">不給工具（純推理）</string>
+  <string name="subagent_preset_tools_explicit_hint">只裝配勾選的工具。其它來源（MCP、技能）的工具必須逐一點名才會生效。</string>
+  <string name="subagent_preset_tools_select_all">全選</string>
+  <string name="subagent_preset_tools_clear">清空</string>
+  <string name="subagent_preset_tools_no_candidates">當前設定下沒有可裝配的工具</string>
+  <string name="subagent_preset_approval">派發前需要批准</string>
+  <string name="subagent_preset_timeout">逾時：%1$d 分鐘</string>
+  <string name="subagent_preset_delete">刪除子代理</string>
+  <string name="subagent_preset_delete_confirm">確定刪除子代理 %1$s？已跑過的執行紀錄會保留。</string>
+  <string name="subagent_preset_saved">已儲存</string>
+  <string name="subagent_tool_title">子代理：%1$s</string>
+  <string name="agent_run_open_detail">檢視執行</string>
+  <string name="agent_run_entry_chat">對話內派發</string>
 </resources>
+

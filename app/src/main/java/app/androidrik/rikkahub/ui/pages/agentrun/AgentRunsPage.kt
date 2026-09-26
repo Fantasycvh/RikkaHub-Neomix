@@ -231,6 +231,12 @@ private fun RunCard(run: AgentRunEntity, onClick: () -> Unit) {
             Text(
                 text = listOfNotNull(
                     run.modelName,
+                    // 发起方（账本列）：对话内工具派发 vs 本页手动派发——排查"这个 run 哪来的"第一眼依据
+                    if (run.entryPoint == AgentRunEntity.ENTRY_POINT_CHAT) {
+                        stringResource(R.string.agent_run_entry_chat)
+                    } else {
+                        null
+                    },
                     formatTime(run.createdAt),
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,

@@ -6,6 +6,7 @@ import com.google.firebase.crashlytics.crashlytics
 import kotlinx.serialization.json.Json
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
+import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.service.ChatNotificationManager
@@ -79,8 +80,15 @@ val appModule = module {
             mcpManager = get(),
             skillManager = get(),
             workspaceRepository = get(),
+            // **延迟解析**：SubagentRunner 依赖本工厂（它要用装配点装配工具），
+            // 直接在此 `get()` 会构成构造环。lambda 体在装配工具时才执行 ⇒ 环断在这里。
+            // 依赖窄接口而非具体 Runner，见下方 single<SubagentDispatcher> 的绑定。
+            subagentDispatcher = { get<SubagentDispatcher>() },
         )
     }
+
+    // 窄接口绑定：解析出的就是同一个 SubagentRunner 单例（不新建实例）
+    single<SubagentDispatcher> { get<SubagentRunner>() }
 
     single {
         ChatService(

@@ -120,11 +120,13 @@ class EvaluateCompletionTest {
     }
 
     @Test
-    fun `summary is capped for the list row`() {
+    fun `summary keeps the full text for the caller`() {
+        // 截断**不在这里**做：对话内派发要把全文回给父模型（设计 §十），
+        // 列表摘要列的截断落在落库那一处（SubagentRunner）。
         val outcome = evaluateCompletion(
             listOf(assistantMessage("x".repeat(5000))),
             stopNotice = null,
         ) as RunOutcome.Completed
-        assertEquals(1000, outcome.summary.length)
+        assertEquals(5000, outcome.summary.length)
     }
 }

@@ -66,23 +66,49 @@ class ChatToolFactory(
     private val mcpManager: McpManager,
     private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
+    /**
+     * 对话内子代理派发器（[SubagentDispatcher] 的**延迟解析**）。
+     *
+     * 为什么是 `() -> SubagentDispatcher?` 而不是直接注入：`SubagentRunner` 依赖本工厂
+     * （它要用装配点装配子代理的工具），本工厂又要给派发工具一个 dispatcher——
+     * 直接互相注入就是构造环（Koin 会报 `NoDefinitionFound` 或栈溢出）。工具侧拿到的只是
+     * 这个 lambda，环断在"调用时才解析"这一步。
+     *
+     * 默认 `{ null }`：没有派发器时子代理段**不装配**（宁可没有工具，也不能出现一个
+     * 一调用就崩的工具）。
+     */
+    private val subagentDispatcher: () -> SubagentDispatcher? = { null },
 ) {
     /**
-     * 装配本次生成的完整工具集。
+     * 装配本次生成的完整工具集（[createToolSegments] 的扁平视图）。
      *
-     * 顺序保持迁移前不变（记忆工具在前，随后搜索/本地/对话/工作区/技能/MCP）——
+     * 顺序保持迁移前不变（记忆工具在前，随后搜索/本地/对话/工作区/技能/子代理/MCP）——
      * Claude 的 `promptCaching` 会把缓存断点打在**最后一个**工具上，顺序变动会移动断点位置。
-     *
-     * 按来源分段收集（而非一段 `addAll` 到底）：末尾要按来源打印 schema 体积，
-     * 那是排查「谁吃掉了上下文」的关键——实测 MCP 服务器可轻易吃掉 3 万 token
-     * （54 个逆向工具的 schema），而记忆注入只有数千，不按来源拆就看不出元凶。
      */
     suspend fun createTools(
         settings: Settings,
         assistant: Assistant,
         model: Model,
         workspaceCwd: String? = null,
-    ): List<Tool> {
+    ): List<Tool> = createToolSegments(settings, assistant, model, workspaceCwd).flatMap { it.tools }
+
+    /**
+     * 按来源**分段**装配工具集。
+     *
+     * 按来源分段收集（而非一段 `addAll` 到底）：末尾要按来源打印 schema 体积，
+     * 那是排查「谁吃掉了上下文」的关键——实测 MCP 服务器可轻易吃掉 3 万 token
+     * （54 个逆向工具的 schema），而记忆注入只有数千，不按来源拆就看不出元凶。
+     *
+     * **段名是给子代理信封用的**（`resolveSubagentEnvelope`）：预设的"能力开关"落到
+     * `search` / `workspace` 两个段名上，其余来源（MCP / 技能安装）只有被**显式点名**
+     * 才进得了子代理的工具集——所以段名不是纯粹的日志分类，改动它会影响信封语义。
+     */
+    internal suspend fun createToolSegments(
+        settings: Settings,
+        assistant: Assistant,
+        model: Model,
+        workspaceCwd: String? = null,
+    ): List<ToolSegment> {
         val segments = mutableListOf<ToolSegment>()
 
         // 记忆工具（原在 GenerationHandler 循环内叠加，现为装配点的一部分）
@@ -137,6 +163,22 @@ class ChatToolFactory(
             )
         }
 
+        // 子代理（对话内派发，设计见 docs/design-subagent-context.md §十）。
+        // 三重门槛：全局开关开 / 至少一个可用预设 / 派发器就绪（延迟解析，见构造参数）。
+        // 预设的 `modelId` 留空语义是「跟随当前对话」，而"当前"只有装配点知道 ⇒ 在这里解析。
+        val subagentPresets = settings.subagentPresets.filter { it.enabled && it.name.isNotBlank() }
+        if (settings.enableSubagentDispatch && subagentPresets.isNotEmpty()) {
+            subagentDispatcher()?.let { dispatcher ->
+                segments += ToolSegment(
+                    "subagent",
+                    createSubagentTools(
+                        presets = subagentPresets.map { it.copy(modelId = it.modelId ?: model.id) },
+                        dispatcher = dispatcher,
+                    ),
+                )
+            }
+        }
+
         // 服务器名/工具名允许含中文等非 ASCII 字符，这里净化为 provider 可接受的
         // function name（^[a-zA-Z0-9_-]{1,64}$），显示层仍用原名。
         // 不同原名可能净化后相同，用 usedNames 保证发给模型的名字唯一。
@@ -161,7 +203,7 @@ class ChatToolFactory(
         mcpToolsByServer.forEach { (source, tools) -> segments += ToolSegment(source, tools) }
 
         logSchemaBreakdown(segments, settings, model)
-        return segments.flatMap { it.tools }
+        return segments
     }
 
     /**
@@ -200,8 +242,6 @@ class ChatToolFactory(
         }
     }
 
-    /** 一段同来源的工具（仅用于日志归因，不影响装配顺序）。 */
-    private data class ToolSegment(val source: String, val tools: List<Tool>)
 
     private suspend fun createWorkspaceToolsIfReady(workspaceId: String?, cwd: String? = null): List<Tool> {
         if (workspaceId.isNullOrBlank()) return emptyList()
@@ -216,3 +256,13 @@ class ChatToolFactory(
         return createWorkspaceTools(workspaceId, workspaceRepository, cwd)
     }
 }
+
+/**
+ * 一段同来源的工具。
+ *
+ * **顶层而非嵌套**：子代理的信封解析（`resolveSubagentEnvelope` / `runToolCatalog`）需要按
+ * 段名判断"这个工具来自哪个开关控制的来源"，那是纯函数、放在工具包顶层；嵌套在
+ * [ChatToolFactory] 里的话，每个签名都得写成 `ChatToolFactory.ToolSegment`，且纯函数测试
+ * 要连带拖上工厂（含 Android 依赖）。段名因此是**对外契约**，见 [createToolSegments]。
+ */
+internal data class ToolSegment(val source: String, val tools: List<Tool>)
