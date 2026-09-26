@@ -1398,6 +1398,16 @@
   <string name="workspace_detail_tool_run_background">Запуск в фоне</string>
   <string name="workspace_detail_tool_task_status">Проверка статуса задачи</string>
   <string name="workspace_detail_tool_kill_task">Завершение задачи</string>
+  <string name="workspace_detail_tasks_title">Фоновые задачи</string>
+  <string name="workspace_detail_tasks_kill">Остановить</string>
+  <string name="workspace_detail_tasks_elapsed">прошло %s</string>
+  <string name="workspace_detail_tasks_remaining">авто-стоп через %s</string>
+  <string name="workspace_detail_tasks_more">ещё %d</string>
+  <string name="workspace_task_status_running">выполняется</string>
+  <string name="workspace_task_status_exited">завершено</string>
+  <string name="workspace_task_status_killed">остановлено</string>
+  <string name="workspace_task_status_timed_out">тайм-аут</string>
+  <string name="workspace_task_status_failed">ошибка запуска</string>
   <string name="workspace_detail_tool_shell">Выполнить команду</string>
   <string name="workspace_detail_install_rootfs_desc">Загрузит tar.gz и распакует в каталог Linux %s.</string>
   <string name="workspace_detail_download_url">URL для скачивания tar.gz</string>

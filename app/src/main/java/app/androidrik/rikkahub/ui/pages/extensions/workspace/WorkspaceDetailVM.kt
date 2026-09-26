@@ -21,6 +21,7 @@ import app.androidrik.workspace.RootfsInstallStage
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceStorageArea
+import app.androidrik.workspace.WorkspaceTaskSnapshot
 
 class WorkspaceDetailVM(
     private val id: String,
@@ -38,6 +39,15 @@ class WorkspaceDetailVM(
 
     private val _installError = MutableStateFlow<String?>(null)
     val installError = _installError.asStateFlow()
+
+    /**
+     * 后台任务（AI 用 `workspace_run_background` 起的命令）。
+     *
+     * 注册表是**进程内内存态**、没有 Flow 可订阅，所以这里靠页面定时 [refreshTasks] 拉取
+     * （有任务 2s、空闲 10s）。任务的存在与输出都不在文件系统之外，页面是用户唯一的「看得见」入口。
+     */
+    private val _tasks = MutableStateFlow<List<WorkspaceTaskSnapshot>>(emptyList())
+    val tasks = _tasks.asStateFlow()
 
     init {
         loadWorkspace()
@@ -73,6 +83,21 @@ class WorkspaceDetailVM(
             )
         }
         refresh()
+    }
+
+    /** 拉取后台任务列表；失败按空处理（内存态查询极少失败，页面不该因此报错）。 */
+    fun refreshTasks() {
+        viewModelScope.launch {
+            _tasks.value = runCatching { repository.listBackgroundTasks(id) }.getOrDefault(emptyList())
+        }
+    }
+
+    /** 终止后台任务；无论结果如何都重新拉一次，让界面立刻反映真实状态。 */
+    fun killTask(taskId: String) {
+        viewModelScope.launch {
+            runCatching { repository.killBackgroundTask(id, taskId) }
+            _tasks.value = runCatching { repository.listBackgroundTasks(id) }.getOrDefault(emptyList())
+        }
     }
 
     fun refresh() {
@@ -394,4 +419,22 @@ sealed interface WorkspaceTerminalEntry {
     data class Command(val command: String) : WorkspaceTerminalEntry
     data class Result(val result: WorkspaceCommandResult) : WorkspaceTerminalEntry
     data class Error(val message: String) : WorkspaceTerminalEntry
+}
+
+/**
+ * 任务时长的紧凑展示（`1h02m` / `5m30s` / `12s`）。
+ *
+ * 纯函数放在 VM 文件里，便于 JVM 单测；界面只负责展示，不做时间计算。**向上取整**：剩余 0.4 秒时
+ * 显示 `1s` 而不是 `0s`——「0 秒后自动终止」会让用户以为已经停了。
+ */
+internal fun formatTaskDuration(millis: Long): String {
+    val totalSeconds = (millis.coerceAtLeast(0L) + 999L) / 1000L
+    val hours = totalSeconds / 3600L
+    val minutes = totalSeconds % 3600L / 60L
+    val seconds = totalSeconds % 60L
+    return when {
+        hours > 0L -> "${hours}h%02dm".format(minutes)
+        minutes > 0L -> "${minutes}m%02ds".format(seconds)
+        else -> "${seconds}s"
+    }
 }

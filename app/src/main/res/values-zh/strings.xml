@@ -1483,6 +1483,16 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_tool_run_background">后台运行</string>
   <string name="workspace_detail_tool_task_status">查询任务状态</string>
   <string name="workspace_detail_tool_kill_task">终止任务</string>
+  <string name="workspace_detail_tasks_title">后台任务</string>
+  <string name="workspace_detail_tasks_kill">终止</string>
+  <string name="workspace_detail_tasks_elapsed">已运行 %s</string>
+  <string name="workspace_detail_tasks_remaining">%s 后自动终止</string>
+  <string name="workspace_detail_tasks_more">另有 %d 个</string>
+  <string name="workspace_task_status_running">运行中</string>
+  <string name="workspace_task_status_exited">已结束</string>
+  <string name="workspace_task_status_killed">已终止</string>
+  <string name="workspace_task_status_timed_out">超时终止</string>
+  <string name="workspace_task_status_failed">启动失败</string>
   <string name="workspace_detail_tool_shell">执行命令</string>
   <string name="workspace_detail_install_rootfs_desc">将下载 tar.gz 并解压到 %s 的 Linux 目录。</string>
   <string name="workspace_detail_download_url">tar.gz 下载链接</string>

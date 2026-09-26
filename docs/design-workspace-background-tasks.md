@@ -7,6 +7,7 @@
 > `app/src/test/.../WorkspaceBackgroundToolApprovalTest.kt`、`ToolCallLoopGuardTest` 轮询豁免 2 项、
 > **真机 instrumented** `app/src/androidTest/.../WorkspaceBackgroundTaskInstrumentedTest.kt`（8 项全绿，
 > 含「完整输出落盘」与「超过时长上限被自动终止且无进程残留」两条）。
+> 可见性 UI 在同一轮补齐（工作空间详情页任务卡片，见 §九之一）——**只做了编译 + 单测验证，未做视觉验证**。
 
 ## 一、要解决的问题
 
@@ -190,12 +191,27 @@ Android 的 `java.lang.Process` **没有公开 pid**（`Process.pid()` 不在 SD
 | 审批默认值三档 + 覆盖优先级 + 未知工具 | `WorkspaceBackgroundToolApprovalTest` |
 | 轮询豁免 / 后台启动不豁免 | `ToolCallLoopGuardTest` |
 
+## 九之一、任务可见性（工作空间详情页）
+
+任务是「任务表在内存、输出在磁盘」的东西：**在此之前用户只能在发起它的那条对话的工具卡片里看到它**
+——切走会话后既看不到手机上正跑着什么，也没有手动终止的入口。这是「AI 能起长任务」这一能力的必要配套，
+否则用户对设备失去可见性与控制权。
+
+实现（`WorkspaceDetailPage` 的「工作空间」页 + `WorkspaceDetailVM`）：
+
+- 注册表是内存态、没有 Flow 可订阅 ⇒ VM 用 `refreshTasks()` 拉取，页面 `LaunchedEffect` 轮询：
+  **有任务在跑 2s、空闲 10s**（代价只是一次 DAO 查询 + 一次内存读）。
+- 卡片列最多 5 条（其余报「另有 N 个」），**运行中的排前面**，每行：命令预览（等宽单行省略）+
+  状态行（本地化状态 · `已运行 5m30s` 或 `8m55s 后自动终止` · 退出码）+ **终止按钮（仅运行中显示）**。
+- 时长格式化抽成纯函数 `formatTaskDuration`（**向上取整**：剩 400ms 显示 `1s` 而不是 `0s`，
+  否则用户以为任务已停），单独 JVM 单测。
+- 完整日志在同一页的文件区 `.tasks/` 目录可见（点前缀只用于与用户文件区分，并未隐藏）。
+
 ## 十、后续（未做）
 
-1. **可见性**：工作空间详情页或终端页展示运行中任务（含 kill 按钮、剩余时长），目前只有工具卡片。
-2. **应用退出时清理**：至少把「已知任务」在 `onTrimMemory`/进程可预测退出点终止；孤儿进程的根治
+1. **应用退出时清理**：至少把「已知任务」在 `onTrimMemory`/进程可预测退出点终止；孤儿进程的根治
    仍需常驻服务（`Application.onTerminate()` 在真机不会被调用，所以这一项只能「尽力而为」）。
-3. **宿主机 shell 变体**（无 rootfs 场景）。
+2. **宿主机 shell 变体**（无 rootfs 场景）。
 
 ### 明确不做（并已在工具描述里写明边界）
 

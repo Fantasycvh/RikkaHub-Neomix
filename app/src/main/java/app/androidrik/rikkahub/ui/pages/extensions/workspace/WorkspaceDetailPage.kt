@@ -54,6 +54,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,12 +62,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
@@ -97,6 +100,8 @@ import app.androidrik.workspace.RootfsInstallProgress
 import app.androidrik.workspace.RootfsInstallStage
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.WorkspaceShellStatus
+import app.androidrik.workspace.WorkspaceTaskSnapshot
+import app.androidrik.workspace.WorkspaceTaskStatus
 import app.androidrik.workspace.WorkspaceStorageArea
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -108,7 +113,17 @@ fun WorkspaceDetailPage(id: String) {
     val state by vm.state.collectAsStateWithLifecycle()
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
+    val tasks by vm.tasks.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState { 2 }
+    // 后台任务的剩余时长需要「现在」这个输入；轮询的每一跳顺带刷新它，避免再挂一个秒级 ticker
+    var tasksNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            vm.refreshTasks()
+            tasksNow = System.currentTimeMillis()
+            delay(if (tasks.any { it.isRunning }) TASKS_POLL_RUNNING_MS else TASKS_POLL_IDLE_MS)
+        }
+    }
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
@@ -383,6 +398,9 @@ fun WorkspaceDetailPage(id: String) {
                 0 -> WorkspaceBasicPage(
                     workspace = state.workspace,
                     installProgress = installProgress,
+                    tasks = tasks,
+                    tasksNow = tasksNow,
+                    onKillTask = vm::killTask,
                     onInstallRootfs = { showInstallDialog = true },
                     onToolApprovalChange = vm::setToolApproval,
                     onShellCompatibilityModeChange = vm::setShellCompatibilityMode,
@@ -676,6 +694,9 @@ fun WorkspaceDetailPage(id: String) {
 private fun WorkspaceBasicPage(
     workspace: WorkspaceEntity?,
     installProgress: RootfsInstallProgress?,
+    tasks: List<WorkspaceTaskSnapshot>,
+    tasksNow: Long,
+    onKillTask: (String) -> Unit,
     onInstallRootfs: () -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
     onShellCompatibilityModeChange: (Boolean) -> Unit,
@@ -779,12 +800,132 @@ private fun WorkspaceBasicPage(
         }
 
         item {
+            WorkspaceTasksCard(tasks = tasks, now = tasksNow, onKill = onKillTask)
+        }
+
+        item {
             WorkspaceToolApprovalCard(
                 workspace = workspace,
                 onToolApprovalChange = onToolApprovalChange,
             )
         }
     }
+}
+
+/** 轮询间隔：有任务在跑时快、空闲时慢（注册表是内存态，代价只是一次 DAO 查询）。 */
+private const val TASKS_POLL_RUNNING_MS = 2_000L
+private const val TASKS_POLL_IDLE_MS = 10_000L
+
+/** 卡片里最多列几个任务；其余只报数量（避免长列表把设置项挤到屏幕外）。 */
+private const val TASKS_MAX_ROWS = 5
+
+/** 命令预览长度。 */
+private const val TASK_COMMAND_PREVIEW_CHARS = 60
+
+/**
+ * 运行中/刚结束的后台任务卡片。
+ *
+ * 为什么需要：后台任务是「任务表在内存、输出在磁盘」的东西，而在此之前用户**只能在发起它的那条
+ * 对话的工具卡片里**看到它——切走会话后既看不到手机上正跑着什么，也没有手动终止的入口。
+ * 这是「AI 能起长任务」这一能力的必要配套（否则用户对设备失去可见性与控制权）。
+ */
+@Composable
+private fun WorkspaceTasksCard(
+    tasks: List<WorkspaceTaskSnapshot>,
+    now: Long,
+    onKill: (String) -> Unit,
+) {
+    if (tasks.isEmpty()) return
+    val ordered = remember(tasks) {
+        tasks.sortedWith(
+            compareByDescending<WorkspaceTaskSnapshot> { it.isRunning }
+                .thenByDescending { it.startedAtMillis },
+        )
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.workspace_detail_tasks_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            ordered.take(TASKS_MAX_ROWS).forEach { task ->
+                WorkspaceTaskRow(task = task, now = now, onKill = onKill)
+            }
+            if (ordered.size > TASKS_MAX_ROWS) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_tasks_more, ordered.size - TASKS_MAX_ROWS),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkspaceTaskRow(
+    task: WorkspaceTaskSnapshot,
+    now: Long,
+    onKill: (String) -> Unit,
+) {
+    val failed = task.status == WorkspaceTaskStatus.FAILED || task.status == WorkspaceTaskStatus.TIMED_OUT
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = task.command
+                    .replace("\n", " ")
+                    .trim()
+                    .let { if (it.length > TASK_COMMAND_PREVIEW_CHARS) it.take(TASK_COMMAND_PREVIEW_CHARS) + "…" else it },
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = taskStatusLine(task, now),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (task.isRunning) {
+            TextButton(onClick = { onKill(task.id) }) {
+                Text(stringResource(R.string.workspace_detail_tasks_kill))
+            }
+        }
+    }
+}
+
+/** 状态行：本地化状态 + 剩余/已用时长 + 退出码（有则显示）。 */
+@Composable
+private fun taskStatusLine(task: WorkspaceTaskSnapshot, now: Long): String {
+    val status = stringResource(
+        when (task.status) {
+            WorkspaceTaskStatus.RUNNING -> R.string.workspace_task_status_running
+            WorkspaceTaskStatus.EXITED -> R.string.workspace_task_status_exited
+            WorkspaceTaskStatus.KILLED -> R.string.workspace_task_status_killed
+            WorkspaceTaskStatus.TIMED_OUT -> R.string.workspace_task_status_timed_out
+            WorkspaceTaskStatus.FAILED -> R.string.workspace_task_status_failed
+        }
+    )
+    val timing = task.remainingMillis(now)
+        ?.let { stringResource(R.string.workspace_detail_tasks_remaining, formatTaskDuration(it)) }
+        ?: stringResource(R.string.workspace_detail_tasks_elapsed, formatTaskDuration(task.durationMillis(now)))
+    val exit = task.exitCode?.let { " \u00b7 exit $it" }.orEmpty()
+    return "$status \u00b7 $timing$exit"
 }
 
 @Composable

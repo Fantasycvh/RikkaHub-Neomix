@@ -1489,6 +1489,16 @@
   <string name="workspace_detail_tool_run_background">Run in Background</string>
   <string name="workspace_detail_tool_task_status">Check Task Status</string>
   <string name="workspace_detail_tool_kill_task">Kill Task</string>
+  <string name="workspace_detail_tasks_title">Background tasks</string>
+  <string name="workspace_detail_tasks_kill">Stop</string>
+  <string name="workspace_detail_tasks_elapsed">%s elapsed</string>
+  <string name="workspace_detail_tasks_remaining">auto-stop in %s</string>
+  <string name="workspace_detail_tasks_more">+%d more</string>
+  <string name="workspace_task_status_running">running</string>
+  <string name="workspace_task_status_exited">finished</string>
+  <string name="workspace_task_status_killed">stopped</string>
+  <string name="workspace_task_status_timed_out">timed out</string>
+  <string name="workspace_task_status_failed">failed to start</string>
   <string name="workspace_detail_tool_shell">Execute Command</string>
   <string name="workspace_detail_install_rootfs_desc">Will download tar.gz and extract to the linux directory of %s.</string>
   <string name="workspace_detail_download_url">tar.gz download URL</string>

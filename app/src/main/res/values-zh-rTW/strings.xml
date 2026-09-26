@@ -1441,6 +1441,16 @@
   <string name="workspace_detail_tool_run_background">背景執行</string>
   <string name="workspace_detail_tool_task_status">查詢任務狀態</string>
   <string name="workspace_detail_tool_kill_task">終止任務</string>
+  <string name="workspace_detail_tasks_title">背景任務</string>
+  <string name="workspace_detail_tasks_kill">終止</string>
+  <string name="workspace_detail_tasks_elapsed">已執行 %s</string>
+  <string name="workspace_detail_tasks_remaining">%s 後自動終止</string>
+  <string name="workspace_detail_tasks_more">另有 %d 個</string>
+  <string name="workspace_task_status_running">執行中</string>
+  <string name="workspace_task_status_exited">已結束</string>
+  <string name="workspace_task_status_killed">已終止</string>
+  <string name="workspace_task_status_timed_out">逾時終止</string>
+  <string name="workspace_task_status_failed">啟動失敗</string>
   <string name="workspace_detail_tool_shell">執行命令</string>
   <string name="workspace_detail_install_rootfs_desc">將下載 tar.gz 並解壓縮到 %s 的 linux 目錄。</string>
   <string name="workspace_detail_download_url">tar.gz 下載網址</string>
