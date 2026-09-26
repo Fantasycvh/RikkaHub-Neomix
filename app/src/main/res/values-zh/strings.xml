@@ -1650,7 +1650,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="prompt_inspect_legend_title">关于本页</string>
   <string name="prompt_inspect_legend_body">只读预览：与真实请求走同一条组装代码，再按来源分段。不落库、不发送请求。标记为「合成」的内容仅存在于本次请求。
 
-不计入本页数字：图片/文档等附件的编码体积（仅标注数量）、请求的协议包装（role/content、tool_calls 等结构）。token 为字符启发式估算（中文约 1.5 字符/token、其余约 4 字符/token），工具 Schema 另按当前 provider 的实际下发形状估算。</string>
+不计入本页数字：图片/文档等附件的编码体积（仅标注数量）、请求的协议包装（role/content、tool_calls 等结构）。token 用真 BPE 分词器（cl100k_base）计数——对 OpenAI 兼容模型是精确值，其它 provider 为近似；启动预热完成前退回字符启发式。工具 Schema 另按当前 provider 的实际下发形状估算。</string>
   <string name="prompt_inspect_index_title">段落目录</string>
   <string name="prompt_inspect_expand">展开</string>
   <string name="prompt_inspect_collapse">收起</string>

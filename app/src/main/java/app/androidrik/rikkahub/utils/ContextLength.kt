@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.utils
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.common.tokenizer.TokenizerRegistry
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Conversation
 import kotlinx.datetime.TimeZone
@@ -71,37 +72,64 @@ fun Conversation.estimateWindowTokens(model: Model?): Int {
 }
 
 /**
- * 本地估算消息 token 数：CJK 字符按 1.5 字符/token，其余按 4 字符/token（粗略，用于无 usage 时的占用判断）。
- * 工具输出纳入估算（fork 工具输出上限 32KB，不纳入会低估 agent 对话占用）。
+ * 消息列表的 token 数（无 usage 时的占用判断口径）。
+ *
+ * **真 tokenizer 优先**：装了 `cl100k_base` 词表就按真 BPE 计数；**未预热/装载失败**时退回字符启发式
+ * （行为不中断，只是精度下降）。工具输出纳入估算（fork 工具输出上限 32KB，不纳入会低估 agent 对话占用）。
  */
 fun estimateTokenCount(messages: List<UIMessage>): Int {
-    var cjk = 0
-    var other = 0
-    for (message in messages) {
-        for (part in message.parts) {
-            val text = when (part) {
+    val texts = messages.flatMap { message ->
+        message.parts.mapNotNull { part ->
+            when (part) {
                 is UIMessagePart.Text -> part.text
                 is UIMessagePart.Tool -> part.output.filterIsInstance<UIMessagePart.Text>()
                     .joinToString("\n") { it.text }
-                else -> continue
+
+                else -> null
             }
-            for (ch in text) {
-                if (isCjk(ch)) cjk++ else other++
-            }
+        }
+    }
+
+    // 真 tokenizer：逐段精确计数后相加（每段本身就是精确值，不存在取整问题）
+    if (TokenizerRegistry.current != null) {
+        return texts.sumOf { estimateTokens(it) }
+    }
+
+    // 兜底：**按整批字符统计**，而不是把逐段启发式相加——后者每段都会被 `toInt()` 向下取整一次，
+    // 100 段就能凭空少算上百 token（正是本功能要治的"系统性偏低"）
+    var cjk = 0
+    var other = 0
+    texts.forEach { text ->
+        for (ch in text) {
+            if (isCjk(ch)) cjk++ else other++
         }
     }
     return tokensFromCounts(cjk, other)
 }
 
 /**
- * 本地估算**纯文本** token 数（与 [estimateTokenCount] 同口径）。
+ * **文本**的 token 数——**全仓估算口径的唯一出口**。
  *
- * 记忆注入的预算截断需要按 token 计（`docs/design-memory-scoring.md` §六），
- * 而记忆是纯字符串、没有 [UIMessage] 包装。共用本函数而非各写一份启发式，
- * 是为了让「记忆预算」与「上下文占用/压缩切分」始终保持同一量纲——
- * 将来若换真 tokenizer，改动面也只有这一处。
+ * 记忆注入的预算截断需要按 token 计（`docs/design-memory-scoring.md` §六），而记忆是纯字符串、
+ * 没有 [UIMessage] 包装；[estimateTokenCount] 也走这里。共用本函数而非各写一份启发式，
+ * 是为了让「记忆预算 / 上下文占用 / 压缩切分 / 子代理预算」始终保持**同一量纲**。
+ *
+ * **两个实现**（2026-09-26 起）：
+ * 1. **真 tokenizer**：`common` 里的字节级 BPE（cl100k_base 词表，456KB gz，与 tiktoken 逐条一致），
+ *    启动时后台预热；
+ * 2. **字符启发式**（本文件下方）：预热完成前/装载失败时的兜底。
+ *
+ * 换真值的原因：用 44 条参考向量比对下来，启发式**系统性偏低**（启发式/真值中位数 0.64，
+ * 区间 0.17–2.0），而调用它的地方全是预算判定——偏低意味着该压的时候不压、该停的时候不停。
  */
 fun estimateTokens(text: String): Int {
+    if (text.isEmpty()) return 0
+    TokenizerRegistry.count(text)?.let { return it }
+    return heuristicTokenCount(text)
+}
+
+/** 字符启发式（CJK 1.5 字符/token、其余 4 字符/token）——真 tokenizer 不可用时的兜底。 */
+fun heuristicTokenCount(text: String): Int {
     var cjk = 0
     var other = 0
     for (ch in text) {

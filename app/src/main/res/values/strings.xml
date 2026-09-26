@@ -1594,7 +1594,7 @@
   <string name="prompt_inspect_legend_title">About this page</string>
   <string name="prompt_inspect_legend_body">Read-only preview assembled by the same code path as a real request, then split by source. Nothing is saved and no request is sent. Items marked synthetic exist only for the request.
 
-Not counted here: the encoded size of images/documents (their count is shown instead), and request protocol wrapping (role/content, tool_calls and similar). Token counts are a character heuristic (~1.5 chars/token for CJK, ~4 for the rest); tool schema is estimated separately from the actual wire shape of the current provider.</string>
+Not counted here: the encoded size of images/documents (their count is shown instead), and request protocol wrapping (role/content, tool_calls and similar). Token counts use a real BPE tokenizer (cl100k_base): exact for OpenAI-compatible models, a close approximation for others - the character heuristic is used only until the vocabulary finishes loading at startup. Tool schema is counted separately from the actual wire shape of the current provider.</string>
   <string name="prompt_inspect_index_title">Segments index</string>
   <string name="prompt_inspect_expand">Show</string>
   <string name="prompt_inspect_collapse">Collapse</string>

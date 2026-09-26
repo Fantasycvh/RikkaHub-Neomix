@@ -11,6 +11,7 @@ import kotlinx.serialization.json.put
 import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.common.tokenizer.TokenizerRegistry
 
 /**
  * 工具 schema 在**实际发给 provider 时**占多少 token（用于排查"谁吃掉了上下文"）。
@@ -120,8 +121,15 @@ object ToolSchemaSize {
     )
 }
 
-/** 与 `ContextLength.estimateTokens` 同口径：CJK 1.5 字符/token，其余 4 字符/token。 */
+/**
+ * schema 文本的 token 数：**真 tokenizer 优先**，不可用（未预热/装载失败）时退回字符启发式
+ * （CJK 1.5 字符/token、其余 4 字符/token）——与 `app` 侧 `ContextLength.estimateTokens` 同一分层：
+ * 真值在 `common` 的 `TokenizerRegistry`，这里只是"取不到就退"的兜底。两处口径必须一致，
+ * 否则"预览说还有空间、run 却撞墙"这类差异无法解释。
+ */
 private fun estimateTextTokens(text: String): Int {
+    if (text.isEmpty()) return 0
+    TokenizerRegistry.count(text)?.let { return it }
     var cjk = 0
     var other = 0
     for (ch in text) {

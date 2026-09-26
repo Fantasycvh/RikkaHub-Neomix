@@ -138,7 +138,9 @@ class ContextLengthTest {
                 UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("hi"))),
             )
         )
-        // 11 + 2 个非 CJK 字符 -> 3 token
+        // 11 + 2 个非 CJK 字符 -> 3 token。
+        // 这条同时钉住兜底路径的**统计层次**：必须按整批字符算，而不是"逐段启发式相加"
+        // （后者每段都向下取整一次，长轨迹会系统性偏低上百 token）。
         assertEquals(3, conversation.estimateWindowTokens(null))
     }
 

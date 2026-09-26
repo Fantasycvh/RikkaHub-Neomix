@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.foundation.ComposeFoundationFlags
 import androidx.compose.runtime.Composer
@@ -45,6 +46,7 @@ import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.androidx.workmanager.koin.workManagerFactory
+import app.androidrik.common.tokenizer.TokenizerRegistry
 import org.koin.core.context.startKoin
 
 private const val TAG = "RikkaHubApp"
@@ -79,6 +81,20 @@ class RikkaHubApp : Application() {
             modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
         }
         this.createNotificationChannel()
+
+        // 真 tokenizer 预热（设计：token 预算精度）。**后台装载、不阻塞启动**：
+        // 预热完成前所有 `estimateTokens` 走字符启发式兜底（行为不中断，只是精度低一点）。
+        // 词表是 456KB gz 的 cl100k_base（Java 资源，见 common/src/main/resources/tokenizer）。
+        get<AppScope>().launch(Dispatchers.Default) {
+            val startedAt = SystemClock.elapsedRealtime()
+            val ok = TokenizerRegistry.installFromClasspath()
+            Log.i(
+                TAG,
+                "tokenizer install ok=$ok vocab=${TokenizerRegistry.current?.vocabSize} " +
+                    "in ${SystemClock.elapsedRealtime() - startedAt}ms",
+            )
+            TokenizerRegistry.lastError?.let { Log.e(TAG, "tokenizer install failed", it) }
+        }
 
         // set cursor window size to 32MB
         DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)

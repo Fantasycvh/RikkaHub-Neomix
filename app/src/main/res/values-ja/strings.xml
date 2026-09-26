@@ -1575,9 +1575,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_inspect_source_lorebook">ワールド情報</string>
   <string name="prompt_inspect_jump_to_entry">この項目へ移動</string>
   <string name="prompt_inspect_legend_title">このページについて</string>
-  <string name="prompt_inspect_legend_body">読み取り専用のプレビューです。実際のリクエストと同じ組み立てコードを通し、由来ごとに分割して表示します。保存も送信も行いません。「合成」と表示された内容は今回のリクエストにのみ存在します。
+  <string name="prompt_inspect_legend_body">読み取り専用のプレビューです。実際のリクエストと同じ組み立てコードを通し、由来ごとに分割して表示しています。保存も送信も行いません。「合成」と付いた項目はこのリクエストだけに存在します。
 
-本ページの数値に含まれないもの：画像・文書など添付のエンコード後サイズ（個数のみ表示）、リクエストのプロトコル包装（role/content、tool_calls などの構造）。token は文字ベースのヒューリスティック（CJK 約 1.5 文字/token、その他約 4 文字/token）で、ツールスキーマは現在の provider の実際の送信形状で別途見積もります。</string>
+このページの数字に含まれないもの：画像・ドキュメントなど添付の符号化サイズ（件数のみ表示）、リクエストのプロトコル包装（role/content、tool_calls など）。token は本物の BPE トークナイザー（cl100k_base）で計数します（OpenAI 互換モデルでは正確、他プロバイダでは近似。起動時の語彙読み込みが終わるまでのみ文字ヒューリスティック）。ツールスキーマは現在の provider の実際の送信形状で別途計数します。</string>
   <string name="prompt_inspect_index_title">セグメント目次</string>
   <string name="prompt_inspect_expand">展開</string>
   <string name="prompt_inspect_collapse">折りたたむ</string>

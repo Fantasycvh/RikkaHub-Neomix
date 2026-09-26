@@ -1633,7 +1633,7 @@
   <string name="prompt_inspect_legend_title">關於本頁</string>
   <string name="prompt_inspect_legend_body">唯讀預覽：與真實請求走同一條組裝程式碼，再依來源分段。不落庫、不傳送請求。標記為「合成」的內容僅存在於本次請求。
 
-不計入本頁數字：圖片/文件等附件的編碼體積（僅標註數量）、請求的協定包裝（role/content、tool_calls 等結構）。token 為字元啟發式估算（中文約 1.5 字元/token、其餘約 4 字元/token），工具 Schema 另依當前 provider 的實際下發形狀估算。</string>
+不計入本頁數字：圖片/文件等附件的編碼體積（僅標註數量）、請求的協定包裝（role/content、tool_calls 等結構）。token 用真 BPE 分詞器（cl100k_base）計數——對 OpenAI 相容模型是精確值，其它 provider 為近似；啟動預熱完成前退回字元啟發式。工具 Schema 另按當前 provider 的實際下發形狀估算。</string>
   <string name="prompt_inspect_index_title">段落目錄</string>
   <string name="prompt_inspect_expand">展開</string>
   <string name="prompt_inspect_collapse">收合</string>
