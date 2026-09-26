@@ -1,6 +1,6 @@
 # 子代理与独立上下文设计稿（讨论稿）
 
-> 状态：**📝 草稿 / 部分落地（2026-09-23 初稿；2026-09-26 §九四项讨论有结论；同日 §十「对话内派发」已落地）。** §九.5 的 Phase 1 已实现，§十 的 dispatch 工具与预设组合也已实现；文中其余条目仍是讨论结论，落地前需重新核实代码现状。
+> 状态：**📝 草稿 / 部分落地（2026-09-23 初稿；2026-09-26 §九四项讨论有结论；同日 §十「对话内派发」、§十一「升级到人的审批」已落地）。** §九.5 的 Phase 1 已实现，§十 的 dispatch 工具与预设组合也已实现；文中其余条目仍是讨论结论，落地前需重新核实代码现状。
 > 背景：用户提出「考虑 opencode / codex / Cherry Studio 式的子代理系统，含独立上下文窗口，并兼顾 Yuihub / rikkahub-agent 等相关二改」，要求先梳理一个初步讨论方案。
 > 一句话结论：**本仓缺的不是「上下文隔离机制」（已是显式入参的函数，近乎免费），而是四件事——①无头审批政策 ②run 生命周期 ③transcript 归属 ④预算/防循环。前三项需产品决策，第四项有硬性前置。**
 > 文档构成：一（本仓已有底座核实）、二（本仓真正的难点）、三（通用方案映射，含图景）、四（移动端界面）、五（落地建议与顺序）、六（风险）、七（待确认）、八（明确不做）、附（信息可信度）。
@@ -382,10 +382,11 @@ Phase 1 已落地（§九）。本节记录**下一步**：把 §9.5 明确推�
 
 ### 10.7 这一步之后仍缺什么（Phase 2 剩余）
 
-- **升级到人的审批**（通知 + run 暂停 + 远程批准）：现在对话内派发仍走「信封外不装配 + `needsApproval` 自动拒」。
 - **并行**（上限 2）、**`ContextBudgetPlanner`**（预算切分精度）。
 - **嵌套**：**用户明确暂不做**（原设计给的是「慎做，深度硬上限 1」）。
 - **transcript 的结构化查询**（按工具过滤）、**导出**。
+
+> 注：「升级到人的审批」已在 §十一 落地，不再属于缺口。
 
 ### 10.8 与 §六 风险清单的对照（这一步的收口情况）
 
@@ -398,6 +399,94 @@ Phase 1 已落地（§九）。本节记录**下一步**：把 §9.5 明确推�
 | 审批绕过 | 信封 + `autoDenyApproval`；`requireApproval` 是**预设作者**可选的加严 |
 | `toolName` 双消费方 | 两处已同步（装配 + 渲染器注册） |
 | 后台旁路契约 | **未触碰**：`backgroundTextGenerationParams` 仍是"无工具"契约 |
+
+
+## 十一、2026-09-26 升级到人的审批（Phase 2 的「写入类子代理」解锁）
+
+§2.1 把它称作「本设计里唯一没有现成答案的部分」。§9.2 把它降级为工程问题并给了 Phase 1 形态
+（信封外不装配 + `needsApproval` 一律策略拒绝）。本节是它的 Phase 2 形态：**暂停去问人**。
+
+### 11.1 形态：预设级 `toolApproval`，默认不变
+
+| 取值 | 行为 |
+|---|---|
+| `DENY`（默认） | 需审批的工具**直接策略拒绝**，模型自行绕开（= §9.2 的 Phase 1 形态） |
+| `ASK` | run **暂停**在 `awaiting_approval`，弹通知 + 详情页卡片等人批准；**超时按拒绝处理并继续跑** |
+
+默认取 `DENY` 的理由：`ASK` 会改变**既有预设的行为**（用户没点过任何东西却开始被拦住），
+而「要不要让人被叫起来」是使用者的决定。这也让这次升级本身是零行为变更的。
+
+**只有 `needsApproval == true` 的工具才会问**。注意本仓这个判定是**两层**的：
+工作区工具已经有**工作区级**的 `tool_approvals` 覆盖表（`resolveWorkspaceToolApproval`），
+预设的 `ASK` 是在它之上「要不要问人」的开关——**工作区把某工具关掉了审批，预设就不会问它**
+（真机验证时正是踩到这一条：测试用的工作区把 `workspace_shell` 的审批显式关成了 false，
+于是 run 直接执行、看起来像「审批没生效」——实际是工具本来就不需要批）。
+
+### 11.2 机制：复用聊天路径的「答复后续跑」
+
+无头 run 的审批**没有新的执行模型**，就是把聊天路径的手法搬进 `executeRun` 的循环里：
+
+```
+while (true) {
+    collect(generateText(messages))                 // ASK 时 handler 把需批工具置 Pending 并 break
+    pending = pendingApprovalTools(messages)        // 扫**全部**消息（只看最后一条会漏 → 表现为「卡住」）
+    if (pending.isEmpty()) break                    // → 走正常完成判定
+    status = awaiting_approval                      // 账本可见「它在等我」，而不是像在慢慢跑
+    decisions = awaitHumanDecision(pending)         // 登记队列 + 弹通知 + 等（上限 5 分钟）
+    messages = applyApprovalDecisions(messages, decisions)   // 回填 Approved / Denied
+    status = running
+}                                                   // 回填后的同一份 messages 再喂回 generateText
+```
+
+四个关键点：
+
+1. **护栏实例提到循环外**（`loopGuard` / `workspaceBudget` / `denialGuard`）：每次批准都是一次
+   新的 `generateText`，建在调用内会每次重置——与聊天路径把护栏挂 `ConversationSession` 同源
+   （LoopGuard 真机踩过的坑，这里预先避开）。
+2. **一条队列、两个入口**：`SubagentApprovalQueue`（进程内静态对象 + `CompletableDeferred`）。
+   通知按钮走 `SubagentApprovalReceiver`（`exported=false` + 显式组件 Intent：审批是**权限动作**，
+   不给外部留入口），详情页卡片走 `SubagentRunner.resolveApproval`。两者落到同一处，
+   所以判定逻辑只有一份。
+   - **为什么进程内静态对象就够**：run 本身不跨进程存活（Phase 1/2 都还没 work-manager 化），
+     队列与 run 的生命周期**同界**。进程被杀后再点旧通知 ⇒ `resolve` 返回 false ⇒ 什么都不做
+     （那次 run 其实也没了），UI 侧如实用「这个请求已经超时」提示，而不是假装成功。
+3. **超时按拒绝、不让 run 失败**：`timeoutSeconds` 是给「跑」用的预算；人不在却把整个 run 判死，
+   等于把一次没看见的通知升级成任务失败。超时的措辞与用户手拒**分开**（`APPROVAL_TIMEOUT_REASON`
+   vs `USER_DENIED_REASON`）：前者要说清「只是没人应答」，否则模型会把一次错过当成永久禁令。
+   两条都延续 §9.2.1 的拒绝文本契约（明说勿重试、勿绕路）。
+4. **同时只等一批**：一轮里 Pending 的工具一起问（一条通知 + 卡片逐条按钮）。
+
+### 11.3 UI 与账本
+
+- 新运行状态 `awaiting_approval`（**新取值不需迁移**，列本身存字符串）；列表/详情按「需要动作」上色。
+- 通知：专用渠道 `subagent_approval`（IMPORTANCE_HIGH，它会阻塞一个正在跑的 run，必须弹得出来），
+  标题「子代理 <名> 需要批准」，正文逐条列 `工具名 + 入参摘要`（换行压平、截断），
+  两个动作「批准 / 拒绝」= **对整批生效**（小屏没法逐条），点通知主体 → 运行详情页
+  （`RouteActivity` 支持 `runId` extra）。
+- 详情页卡片：**逐条**列出工具名 + 入参 + 批准/拒绝——一批里常混着不同风险的动作
+  （读一个文件 + 写一个文件），逐条才是精确控制的地方。
+- 手动派发页的 run 恒为 `DENY`：那条路径本来就是用户当场挑工具/勾信封，再回头逐个批准同一批
+  工具是重复确认。
+
+### 11.4 验证（真机 <device>）
+
+- 预设 `research` + 绑定工作区 + `ASK` ⇒ 派发后 run 停在 `awaiting_approval`；通知栏出现
+  `子代理 research 需要批准`（渠道 `subagent_approval`、2 个动作）；详情页卡片列出
+  `workspace_write_file` + 批准/拒绝。
+- **批准**（详情页卡片）⇒ 用真实结果继续：`/workspace/approval-test.txt` 写入成功、run 记 completed。
+- **批准**（通知动作，run 详情页从未打开过）⇒ 同样以 `approved` 继续并写入成功。
+- **拒绝** ⇒ 模型收到拒绝文本、**绕开该工具继续**，并把「这次被拒绝」如实写进结果（不是静默失败）。
+- 单测：`SubagentApprovalTest` 12 项（队列对上号 / 待批筛选扫全消息 / 回填只碰匹配 part /
+  摘要压平截断）+ 预设默认 `DENY` 的回归。
+- 期间把两处诊断留成**常开日志**：`SubagentRunner: run <id> toolApproval=ASK` 与
+  `GenerationHandler: approval check: tool=… state=… autoDeny=…`——审批类问题（该问没问 /
+  不该问却问）只看结果无从判断，这两行同时给出「工具定义在不在、要不要批、当前策略」。
+
+### 11.5 仍未做（刻意）
+
+- **「本次会话内记住同意」**：一旦引入就要回答「记多久、跨不跨 run、撤销入口在哪」，
+  而手机上一次 run 本来就是一次性的动作单元。
+- **并行**、**`ContextBudgetPlanner`**；**嵌套**按用户要求暂不做。
 
 ## 附：信息可信度说明
 
