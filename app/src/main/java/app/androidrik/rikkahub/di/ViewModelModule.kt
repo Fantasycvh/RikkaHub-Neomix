@@ -9,6 +9,8 @@ import app.androidrik.rikkahub.ui.pages.debug.DebugVM
 import app.androidrik.rikkahub.ui.pages.favorite.FavoriteVM
 import app.androidrik.rikkahub.ui.pages.search.SearchVM
 import app.androidrik.rikkahub.ui.pages.history.HistoryVM
+import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunsVM
+import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunDetailVM
 import app.androidrik.rikkahub.ui.pages.stats.StatsVM
 import app.androidrik.rikkahub.ui.pages.imggen.ImgGenVM
 import app.androidrik.rikkahub.ui.pages.promptinspect.PromptInspectVM
@@ -42,6 +44,8 @@ val viewModelModule = module {
     viewModelOf(::SettingVM)
     viewModelOf(::DebugVM)
     viewModelOf(::HistoryVM)
+    viewModelOf(::AgentRunsVM)
+    viewModelOf(::AgentRunDetailVM)
     viewModelOf(::AssistantVM)
     viewModel<AssistantDetailVM> {
         AssistantDetailVM(

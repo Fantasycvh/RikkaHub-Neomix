@@ -5,6 +5,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.R
+import app.androidrik.common.android.Logging
 import app.androidrik.rikkahub.data.ai.DenialGuard
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationHandler
@@ -18,8 +19,8 @@ import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.db.dao.AgentRunDAO
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.utils.JsonInstant
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
@@ -46,9 +47,11 @@ import kotlin.uuid.Uuid
  * 诚实定位：无父会话集成时它是「独立后台 agent」而非「子代理」——Phase 1 验证的是
  * run 表/账本/入口/观测底座。
  */
+private const val TAG = "SubagentRunner"
+
 class SubagentRunner(
     private val context: Context,
-    private val appScope: CoroutineScope,
+    private val appScope: AppScope,
     private val settingsStore: SettingsStore,
     private val generationHandler: GenerationHandler,
     private val chatToolFactory: ChatToolFactory,
@@ -133,7 +136,14 @@ class SubagentRunner(
         update { it.copy(status = AgentRunEntity.STATUS_RUNNING, startedAt = System.currentTimeMillis()) }
         // run 活跃期间请求前台窗口（fork 已有的后台保活）。**只 start 不 stop**：
         // 该服务归用户的全局偏好所有，run 结束就停会误杀用户开启的保活。
-        KeepAliveService.start(context)
+        // ⚠️ 必须守卫：startForegroundService 要求服务**必须**随后调 startForeground，
+        // 而 KeepAliveService 在「保活开关关」或「通知权限缺失」时会 stopSelf 不进前台
+        // ⇒ 直接拉起必炸 ForegroundServiceDidNotStartInTimeException（真机实测崩溃）。
+        // 仅在服务确实会进前台时拉起；失败也只是失去后台保活，不能崩掉整个 app。
+        if (KeepAliveService.isEnabled(context) && KeepAliveService.canKeepAlive(context)) {
+            runCatching { KeepAliveService.start(context) }
+                .onFailure { Logging.log(TAG, "keep-alive start failed: $it") }
+        }
 
         try {
             val settings = settingsStore.settingsFlow.first()
