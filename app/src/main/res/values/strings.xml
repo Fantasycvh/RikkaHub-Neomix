@@ -1699,5 +1699,9 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="subagent_tool_title">Subagent: %1$s</string>
   <string name="agent_run_open_detail">Open run</string>
   <string name="agent_run_entry_chat">from chat</string>
+  <string name="subagent_tool_starting">Starting subagent…</string>
+  <string name="subagent_tool_running">Running · step %1$d · %2$s</string>
+  <string name="subagent_tool_elapsed">%1$d s</string>
+  <string name="agent_run_back_to_conversation">Back to conversation</string>
 </resources>
 

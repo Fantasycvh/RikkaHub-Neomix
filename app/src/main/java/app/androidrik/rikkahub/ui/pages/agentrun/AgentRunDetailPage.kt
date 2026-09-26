@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
@@ -16,9 +18,14 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -29,13 +36,16 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Delete02
+import me.rerere.hugeicons.stroke.Message02
 import me.rerere.hugeicons.stroke.Stop
 import org.koin.androidx.compose.koinViewModel
 import java.time.Instant
@@ -56,6 +66,16 @@ fun AgentRunDetailPage(
 ) {
     val run by vm.observeRun(runId).collectAsStateWithLifecycle(null)
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val navController = LocalNavController.current
+    var parentConversationId by remember { mutableStateOf<String?>(null) }
+    var parentExists by remember { mutableStateOf(false) }
+
+    // 父会话存在性只在 run 变化时查一次（无外键的纯列 ⇒ 悬空是正常情形，必须判）
+    LaunchedEffect(run?.parentConversationId) {
+        val parent = run?.parentConversationId
+        parentConversationId = parent
+        parentExists = parent != null && vm.parentConversationExists(parent)
+    }
 
     Scaffold(
         topBar = {
@@ -120,7 +140,15 @@ fun AgentRunDetailPage(
                 contentPadding = innerPadding + PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                item { RunHeader(current) }
+                item {
+                    RunHeader(
+                        run = current,
+                        // 只有"确有父会话"时才给入口（对话内派发 + 会话还在）
+                        onOpenConversation = parentConversationId
+                            ?.takeIf { parentExists }
+                            ?.let { parent -> { navController.navigate(Screen.Chat(parent)) } },
+                    )
+                }
                 item {
                     errorLabel(current.error)?.let {
                         Card(
@@ -157,7 +185,7 @@ private fun decodeTranscript(json: String): List<UIMessage> =
     }.getOrDefault(emptyList())
 
 @Composable
-private fun RunHeader(run: AgentRunEntity) {
+private fun RunHeader(run: AgentRunEntity, onOpenConversation: (() -> Unit)? = null) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CustomColors.cardColorsOnSurfaceContainer,
@@ -209,6 +237,15 @@ private fun RunHeader(run: AgentRunEntity) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // 反向入口：run → 派发它的对话。子代理的中间过程不进父上下文，账本是唯一线索，
+            // 所以这条链在两个方向都要能走（对话里的工具卡已有「查看运行」）。
+            onOpenConversation?.let { open ->
+                TextButton(onClick = open, contentPadding = PaddingValues(0.dp)) {
+                    Icon(HugeIcons.Message02, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.agent_run_back_to_conversation))
+                }
+            }
         }
     }
 }

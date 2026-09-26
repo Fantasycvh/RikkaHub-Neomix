@@ -1680,5 +1680,9 @@
   <string name="subagent_tool_title">子代理：%1$s</string>
   <string name="agent_run_open_detail">檢視執行</string>
   <string name="agent_run_entry_chat">對話內派發</string>
+  <string name="subagent_tool_starting">子代理啟動中…</string>
+  <string name="subagent_tool_running">進行中 · 第 %1$d 步 · %2$s</string>
+  <string name="subagent_tool_elapsed">%1$d 秒</string>
+  <string name="agent_run_back_to_conversation">回到對話</string>
 </resources>
 

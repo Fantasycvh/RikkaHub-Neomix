@@ -4,15 +4,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.ai.tools.SUBAGENT_DISPATCH_TOOL_NAME
+import app.androidrik.rikkahub.service.RunProgress
+import app.androidrik.rikkahub.service.SubagentRunner
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.pages.agentrun.errorLabel
 import app.androidrik.rikkahub.ui.pages.agentrun.statusLabel
+import kotlinx.coroutines.delay
+import org.koin.compose.koinInject
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Robot01
 
@@ -37,10 +47,15 @@ object SubagentToolUI : ToolUIRenderer {
     }
 
     override fun hasSummary(context: ToolUIContext): Boolean =
-        context.content.getStringContent("status") != null
+        // 跑的时候也要有摘要——这正是"实时进度"显示的地方（结果 JSON 那时还不存在）
+        context.loading || context.content.getStringContent("status") != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {
+        if (context.loading) {
+            RunningSummary()
+            return
+        }
         val status = context.content.getStringContent("status") ?: return
         val error = context.content.getStringContent("error")
         val label = errorLabel(error) ?: statusLabel(status)
@@ -53,6 +68,36 @@ object SubagentToolUI : ToolUIRenderer {
             } else {
                 MaterialTheme.colorScheme.onPrimaryContainer
             },
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+
+    /**
+     * 运行中的实时进度。
+     *
+     * **数据源是 Runner 的 `progress` 而不是本卡片自己的状态**：子代理的中间过程不进父上下文，
+     * 卡片能拿到的东西只有工具入参——所以"跑到第几步"必须从运行侧读。之所以敢不带 runId 直接订阅，
+     * 是因为**串行闸保证同一时刻至多一个活跃 run**，而这里只在"本次调用尚未返回"时读它。
+     */
+    @Composable
+    private fun RunningSummary() {
+        val runner = koinInject<SubagentRunner>()
+        val progress by runner.progress.collectAsStateWithLifecycle()
+        val elapsedSeconds = rememberElapsedSeconds(progress?.startedAt)
+
+        val detail = buildString {
+            append(stringResource(R.string.subagent_tool_elapsed, elapsedSeconds))
+            progress?.lastTool?.let { append(" · ").append(it) }
+        }
+        Text(
+            text = if (progress == null || progress?.steps == 0) {
+                "${stringResource(R.string.subagent_tool_starting)} · $detail"
+            } else {
+                stringResource(R.string.subagent_tool_running, progress?.steps ?: 0, detail)
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -78,4 +123,23 @@ object SubagentToolUI : ToolUIRenderer {
         }
         DefaultToolPreview(context = context, headerActions = headerActions)
     }
+}
+
+/**
+ * 已运行的秒数（每秒一跳）。
+ *
+ * 只在加载分支里调用：卡片一进结果态就不再走这个 composable，计时器随之取消——
+ * 否则一个展开的旧卡片会永远每秒重组一次。
+ */
+@Composable
+private fun rememberElapsedSeconds(startedAt: Long?): Long {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(startedAt) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+    if (startedAt == null) return 0
+    return ((now - startedAt) / 1000).coerceAtLeast(0)
 }

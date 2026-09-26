@@ -14,6 +14,7 @@ import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.db.dao.AgentRunDAO
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.service.SubagentRunner
 import kotlin.uuid.Uuid
 
@@ -69,6 +70,7 @@ class AgentRunDetailVM(
     settingsStore: SettingsStore,
     private val runner: SubagentRunner,
     private val agentRunDAO: AgentRunDAO,
+    private val conversationRepository: ConversationRepository,
 ) : ViewModel() {
 
     val assistants = settingsStore.settingsFlow
@@ -76,6 +78,15 @@ class AgentRunDetailVM(
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun observeRun(id: String) = agentRunDAO.observeRun(id)
+
+    /**
+     * 父会话是否**还在**（详情页据此决定给不给「回到对话」入口）。
+     *
+     * 必须判存在：父指针是无外键的纯列（见 `AgentRunEntity.parentConversationId`），
+     * 会话被删后 run 仍留在账本里，此时那个 id 是悬空的——直接跳过去会落到一个空会话页。
+     */
+    suspend fun parentConversationExists(id: String): Boolean =
+        runCatching { conversationRepository.existsConversationById(Uuid.parse(id)) }.getOrDefault(false)
 
     fun cancel(id: Uuid) = runner.cancelRun(id)
 

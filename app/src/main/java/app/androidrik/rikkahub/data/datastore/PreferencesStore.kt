@@ -213,6 +213,11 @@ class SettingsStore(
         val COMPRESS_PRESETS = stringPreferencesKey("compress_presets")
         // 导入来源记录（重复导入提示用；见 docs/design-conversation-import-export.md §十）
         val IMPORTED_SOURCES = stringPreferencesKey("imported_sources")
+        // 对话内子代理派发（设计 §十）：开关 + 「按名称调度的模型+提示词」组合列表。
+        // **必须进三件套**——它们是 Settings 的**顶层平铺字段**，不写进 DataStore 就只在内存里活着：
+        // UI 能改、当前进程内生效，**一重启就回到默认值**（正是 2026-09-11 那条教训的形状）。
+        val ENABLE_SUBAGENT_DISPATCH = booleanPreferencesKey("enable_subagent_dispatch")
+        val SUBAGENT_PRESETS = stringPreferencesKey("subagent_presets")
         // 全局代理（两层代理设计的全局兜底层）；结构化 JSON 存储
         val GLOBAL_PROXY = stringPreferencesKey("global_proxy")
         // 日志落盘（Log 页「导出到文件」开关；默认关，避免无谓写盘）
@@ -363,6 +368,10 @@ class SettingsStore(
                 importedSources = preferences[IMPORTED_SOURCES]?.let {
                     JsonInstant.decodeFromString<Map<String, ImportSourceRecord>>(it)
                 } ?: emptyMap(),
+                enableSubagentDispatch = preferences[ENABLE_SUBAGENT_DISPATCH] ?: false,
+                subagentPresets = preferences[SUBAGENT_PRESETS]?.let {
+                    JsonInstant.decodeFromString<List<SubagentPreset>>(it)
+                } ?: DEFAULT_SUBAGENT_PRESETS,
             )
         }
         .map {
@@ -556,6 +565,8 @@ class SettingsStore(
             preferences[LOG_TO_FILE_ENABLED] = settings.logToFileEnabled
             preferences[GLOBAL_PROXY] = JsonInstant.encodeToString(settings.globalProxy)
             preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
+            preferences[ENABLE_SUBAGENT_DISPATCH] = settings.enableSubagentDispatch
+            preferences[SUBAGENT_PRESETS] = JsonInstant.encodeToString(settings.subagentPresets)
         }
     }
 

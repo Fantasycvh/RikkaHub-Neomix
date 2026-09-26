@@ -1624,5 +1624,9 @@
   <string name="subagent_tool_title">Субагент: %1$s</string>
   <string name="agent_run_open_detail">Открыть запуск</string>
   <string name="agent_run_entry_chat">из диалога</string>
+  <string name="subagent_tool_starting">Запуск субагента…</string>
+  <string name="subagent_tool_running">Выполняется · шаг %1$d · %2$s</string>
+  <string name="subagent_tool_elapsed">%1$d с</string>
+  <string name="agent_run_back_to_conversation">К диалогу</string>
 </resources>
 

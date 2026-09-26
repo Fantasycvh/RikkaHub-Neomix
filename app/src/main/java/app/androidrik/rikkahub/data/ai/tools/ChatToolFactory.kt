@@ -90,7 +90,13 @@ class ChatToolFactory(
         assistant: Assistant,
         model: Model,
         workspaceCwd: String? = null,
-    ): List<Tool> = createToolSegments(settings, assistant, model, workspaceCwd).flatMap { it.tools }
+        /**
+         * 本次生成所属的会话 id（可选）。目前只有子代理派发工具用它——账本记下来才能在
+         * 运行详情页给「回到对话」的反向入口。**只有本装配点知道这件事**，所以只能从这里透传。
+         */
+        conversationId: String? = null,
+    ): List<Tool> = createToolSegments(settings, assistant, model, workspaceCwd, conversationId)
+        .flatMap { it.tools }
 
     /**
      * 按来源**分段**装配工具集。
@@ -108,6 +114,7 @@ class ChatToolFactory(
         assistant: Assistant,
         model: Model,
         workspaceCwd: String? = null,
+        conversationId: String? = null,
     ): List<ToolSegment> {
         val segments = mutableListOf<ToolSegment>()
 
@@ -174,6 +181,7 @@ class ChatToolFactory(
                     createSubagentTools(
                         presets = subagentPresets.map { it.copy(modelId = it.modelId ?: model.id) },
                         dispatcher = dispatcher,
+                        parentConversationId = conversationId,
                     ),
                 )
             }

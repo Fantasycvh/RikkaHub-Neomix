@@ -48,6 +48,14 @@ data class AgentRunEntity(
     @ColumnInfo("result_summary") val resultSummary: String?,
     /** 失败/中止原因（人读；status 非 COMPLETED 时的解释）。 */
     @ColumnInfo("error") val error: String?,
+    /**
+     * 派发它的**父会话 id**（仅对话内工具派发有；运行页手动派发为 null）。
+     *
+     * **刻意是纯列、无外键**（设计 §9.1 的边界：父指针不强依赖会话存在）——
+     * 会话被删后这里会残留一个悬空 id，展示层先用 `existsConversationById` 判一下再给入口，
+     * 而不是靠约束去阻止删除、也不是靠级联把 run 一并删掉（run 的账本价值独立于会话）。
+     */
+    @ColumnInfo("parent_conversation_id") val parentConversationId: String? = null,
     @ColumnInfo("created_at") val createdAt: Long,
     @ColumnInfo("started_at") val startedAt: Long?,
     @ColumnInfo("finished_at") val finishedAt: Long?,

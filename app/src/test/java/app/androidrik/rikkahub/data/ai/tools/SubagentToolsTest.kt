@@ -56,13 +56,14 @@ class SubagentToolsTest {
      * 换成显式对象更稳（也让"被测契约是几个参数"在测试里看得见）。
      */
     private fun dispatcher(
-        fn: suspend (SubagentPreset, String, Long) -> SubagentRunResult?,
+        fn: suspend (SubagentPreset, String, Long, String?) -> SubagentRunResult?,
     ) = object : SubagentDispatcher {
         override suspend fun dispatchAndAwait(
             preset: SubagentPreset,
             goal: String,
             timeoutMillis: Long,
-        ): SubagentRunResult? = fn(preset, goal, timeoutMillis)
+            parentConversationId: String?,
+        ): SubagentRunResult? = fn(preset, goal, timeoutMillis, parentConversationId)
     }
 
     private fun args(name: String, goal: String = "summarize this"): JsonObject = buildJsonObject {
@@ -123,14 +124,14 @@ class SubagentToolsTest {
 
     @Test
     fun `no presets means no tool`() {
-        assertTrue(createSubagentTools(emptyList(), dispatcher = dispatcher { _, _, _ -> null }).isEmpty())
+        assertTrue(createSubagentTools(emptyList(), dispatcher = dispatcher { _, _, _, _ -> null }).isEmpty())
     }
 
     @Test
     fun `schema requires name and goal and lists the dispatch names`() {
         val tool = createSubagentTools(
             presets = listOf(preset("research"), preset("digest")),
-            dispatcher = dispatcher { _, _, _ -> null },
+            dispatcher = dispatcher { _, _, _, _ -> null },
         ).single()
 
         assertEquals(SUBAGENT_DISPATCH_TOOL_NAME, tool.name)
@@ -167,7 +168,7 @@ class SubagentToolsTest {
                 preset("research").copy(requireApproval = false),
                 preset("review").copy(requireApproval = true),
             ),
-            dispatcher = dispatcher { _, _, _ -> null },
+            dispatcher = dispatcher { _, _, _, _ -> null },
         ).single()
 
         assertFalse(tool.needsApproval(args("research")))
@@ -183,8 +184,13 @@ class SubagentToolsTest {
         presets: List<SubagentPreset>,
         args: JsonObject,
         dispatcher: SubagentDispatcher,
+        parentConversationId: String? = null,
     ): String = runBlocking {
-        val tool = createSubagentTools(presets, dispatcher).single()
+        val tool = createSubagentTools(
+            presets = presets,
+            dispatcher = dispatcher,
+            parentConversationId = parentConversationId,
+        ).single()
         tool.execute(args).filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
     }
 
@@ -194,7 +200,7 @@ class SubagentToolsTest {
         val output = runTool(
             presets = listOf(preset()),
             args = args("research"),
-            dispatcher = dispatcher { _, goal, timeout ->
+            dispatcher = dispatcher { _, goal, timeout, _ ->
                 assertEquals("summarize this", goal)
                 assertEquals(600_000L, timeout)
                 SubagentRunResult(
@@ -217,7 +223,7 @@ class SubagentToolsTest {
         runTool(
             presets = listOf(preset().copy(timeoutSeconds = 120)),
             args = args("research"),
-            dispatcher = dispatcher { _, _, timeout ->
+            dispatcher = dispatcher { _, _, timeout, _ ->
                 assertEquals(120_000L, timeout)
                 null
             },
@@ -225,11 +231,42 @@ class SubagentToolsTest {
     }
 
     @Test
+    fun `parent conversation id is forwarded to the dispatcher`() {
+        // 账本列 parent_conversation_id 的唯一来源就是装配点透传；
+        // 丢了它，运行详情页的「回到对话」就没有目标（静默退化，不报错）
+        var seen: String? = "unset"
+        runTool(
+            presets = listOf(preset()),
+            args = args("research"),
+            parentConversationId = "conv-42",
+            dispatcher = dispatcher { _, _, _, parent ->
+                seen = parent
+                SubagentRunResult("run-1", "completed", "ok", null)
+            },
+        )
+        assertEquals("conv-42", seen)
+    }
+
+    @Test
+    fun `no parent conversation is forwarded as null`() {
+        var seen: String? = "unset"
+        runTool(
+            presets = listOf(preset()),
+            args = args("research"),
+            dispatcher = dispatcher { _, _, _, parent ->
+                seen = parent
+                SubagentRunResult("run-1", "completed", "ok", null)
+            },
+        )
+        assertNull(seen)
+    }
+
+    @Test
     fun `name lookup ignores case`() {
         val output = runTool(
             presets = listOf(preset("research")),
             args = args("RESEARCH"),
-            dispatcher = dispatcher { _, _, _ -> SubagentRunResult("run-1", "completed", "ok", null) },
+            dispatcher = dispatcher { _, _, _, _ -> SubagentRunResult("run-1", "completed", "ok", null) },
         )
         assertTrue(output.contains("\"status\":\"completed\""))
     }
@@ -239,7 +276,7 @@ class SubagentToolsTest {
         val output = runTool(
             presets = listOf(preset()),
             args = args("research"),
-            dispatcher = dispatcher { _, _, _ -> null },
+            dispatcher = dispatcher { _, _, _, _ -> null },
         )
 
         assertTrue(output.contains("\"status\":\"unavailable\""))
@@ -252,7 +289,7 @@ class SubagentToolsTest {
         val output = runTool(
             presets = listOf(preset()),
             args = args("research"),
-            dispatcher = dispatcher { _, _, _ ->
+            dispatcher = dispatcher { _, _, _, _ ->
                 SubagentRunResult("run-9", "failed", null, "loop_detected: tool=search_web ×3")
             },
         )
@@ -269,7 +306,7 @@ class SubagentToolsTest {
             runTool(
                 presets = listOf(preset("research"), preset("digest")),
                 args = args("reserch"),
-                dispatcher = dispatcher { _, _, _ -> null },
+                dispatcher = dispatcher { _, _, _, _ -> null },
             )
         }.exceptionOrNull()
 
@@ -285,7 +322,7 @@ class SubagentToolsTest {
             runTool(
                 presets = listOf(preset()),
                 args = args("research", goal = "   "),
-                dispatcher = dispatcher { _, _, _ ->
+                dispatcher = dispatcher { _, _, _, _ ->
                     dispatched = true
                     null
                 },

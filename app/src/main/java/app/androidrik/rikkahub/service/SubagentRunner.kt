@@ -30,6 +30,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -68,6 +70,18 @@ class SubagentRunner(
     @Volatile private var activeRunId: Uuid? = null
     @Volatile private var activeJob: Job? = null
 
+    private val _progress = MutableStateFlow<RunProgress?>(null)
+
+    /**
+     * **当前活跃 run 的进度**（对话内工具卡据此显示"跑到第几步"）。
+     *
+     * 为什么可以不带 runId 就让卡片订阅：**串行闸保证同一时刻至多一个 run**，
+     * 而卡片只在"本次工具调用尚未返回"（= loading）时读它 ⇒ 那个时候的活跃 run
+     * 就是它的那一个（手动派发在活跃期间会被串行闸拒掉，不会串台）。
+     * run 结束即置回 null。
+     */
+    val progress: StateFlow<RunProgress?> = _progress.asStateFlow()
+
     /** 同时至多一个活跃 run（Phase 1 串行）。 */
     fun hasActiveRun(): Boolean = activeRunId != null
 
@@ -90,6 +104,7 @@ class SubagentRunner(
             goal = goal,
             allowedTools = allowedTools,
             runId = runId,
+            parentConversationId = null,
         )
 
         activeRunId = runId
@@ -100,6 +115,8 @@ class SubagentRunner(
             } finally {
                 activeRunId = null
                 activeJob = null
+                // 进度只服务"跑的时候看一眼"，结束即清（订阅者据此回到结果态）
+                _progress.value = null
             }
         }
         activeJob = job
@@ -121,6 +138,7 @@ class SubagentRunner(
         preset: SubagentPreset,
         goal: String,
         timeoutMillis: Long,
+        parentConversationId: String?,
     ): SubagentRunResult? {
         if (activeRunId != null) return null
         if (goal.isBlank()) return null
@@ -133,6 +151,7 @@ class SubagentRunner(
             goal = goal,
             allowedTools = preset.allowedTools,
             runId = runId,
+            parentConversationId = parentConversationId,
         )
 
         activeRunId = runId
@@ -149,6 +168,7 @@ class SubagentRunner(
             )
         } finally {
             activeRunId = null
+            _progress.value = null
         }
     }
 
@@ -159,6 +179,7 @@ class SubagentRunner(
         goal: String,
         allowedTools: Set<String>?,
         runId: Uuid,
+        parentConversationId: String?,
     ): AgentRunEntity {
         val settings = settingsStore.settingsFlow.value
         val model = settings.findModelById(profile.chatModelId ?: settings.chatModelId)
@@ -178,6 +199,7 @@ class SubagentRunner(
             transcript = newTranscript(listOf(UIMessage.user(goal))),
             resultSummary = null,
             error = null,
+            parentConversationId = parentConversationId,
             createdAt = System.currentTimeMillis(),
             startedAt = null,
             finishedAt = null,
@@ -217,6 +239,14 @@ class SubagentRunner(
         }
 
         update { it.copy(status = AgentRunEntity.STATUS_RUNNING, startedAt = System.currentTimeMillis()) }
+        _progress.value = RunProgress(
+            runId = initial.id,
+            label = initial.profileName,
+            status = AgentRunEntity.STATUS_RUNNING,
+            steps = 0,
+            lastTool = null,
+            startedAt = System.currentTimeMillis(),
+        )
         // run 活跃期间请求前台窗口（fork 已有的后台保活）。**只 start 不 stop**：
         // 该服务归用户的全局偏好所有，run 结束就停会误杀用户开启的保活。
         // ⚠️ 必须守卫：startForegroundService 要求服务**必须**随后调 startForeground，
@@ -290,6 +320,17 @@ class SubagentRunner(
                                 currentMessages = chunk.messages
                                 // 每个 step 落一次轨迹：详情页近实时可见，崩溃也不丢全程
                                 update { it.copy(transcript = newTranscript(currentMessages)) }
+                                // 同一步顺带更新进度（对话内工具卡据此显示"跑到第几步"）
+                                val snapshot = snapshotProgress(currentMessages)
+                                _progress.value = RunProgress(
+                                    runId = initial.id,
+                                    label = initial.profileName,
+                                    status = AgentRunEntity.STATUS_RUNNING,
+                                    steps = snapshot.steps,
+                                    lastTool = snapshot.lastTool,
+                                    startedAt = _progress.value?.startedAt
+                                        ?: System.currentTimeMillis(),
+                                )
                             }
 
                             is GenerationChunk.Notice -> {
@@ -361,6 +402,38 @@ class SubagentRunner(
         private fun newTranscript(messages: List<UIMessage>): String =
             JsonInstant.encodeToString(ListSerializer(serializer<UIMessage>()), messages)
     }
+}
+
+/**
+ * 当前活跃 run 的进度快照（对话内工具卡的数据源）。
+ *
+ * [label] 是 profile/预设名，[steps] 是**模型步数**（助手消息条数——一步里可以并行下发多个
+ * 工具调用，计成一次更贴近“跑到第几步”的直觉），[lastTool] 是最近一次工具调用的名字。
+ */
+data class RunProgress(
+    val runId: String,
+    val label: String,
+    val status: String,
+    val steps: Int,
+    val lastTool: String?,
+    val startedAt: Long,
+)
+
+/** [snapshotProgress] 的结果（纯数据，便于单测）。 */
+internal data class RunProgressSnapshot(val steps: Int, val lastTool: String?)
+
+/**
+ * 从 run 的实时消息列表里取进度（**纯函数**）。
+ *
+ * 刻意从 `currentMessages` 派生而不是自己记账：轨迹是**多步共享的唯一事实来源**，
+ * 另记一份计数一定会跟它漂移（例：审批续跑、工具结果回填都会重算 messages）。
+ */
+internal fun snapshotProgress(messages: List<UIMessage>): RunProgressSnapshot {
+    val steps = messages.count { it.role == MessageRole.ASSISTANT }
+    val lastTool = messages.asReversed().firstNotNullOfOrNull { message ->
+        message.parts.filterIsInstance<UIMessagePart.Tool>().lastOrNull()?.toolName
+    }
+    return RunProgressSnapshot(steps = steps, lastTool = lastTool)
 }
 
 /** run 的完成判定（**纯函数**，便于 JVM 单测——§9.2.1 ③：空响应不得记成成功）。 */

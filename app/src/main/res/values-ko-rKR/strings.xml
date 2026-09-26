@@ -1624,5 +1624,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="subagent_tool_title">서브에이전트: %1$s</string>
   <string name="agent_run_open_detail">실행 열기</string>
   <string name="agent_run_entry_chat">대화에서 호출</string>
+  <string name="subagent_tool_starting">서브에이전트 시작 중…</string>
+  <string name="subagent_tool_running">진행 중 · %1$d단계 · %2$s</string>
+  <string name="subagent_tool_elapsed">%1$d초</string>
+  <string name="agent_run_back_to_conversation">대화로 돌아가기</string>
 </resources>
 

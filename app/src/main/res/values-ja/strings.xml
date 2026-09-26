@@ -1624,5 +1624,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="subagent_tool_title">サブエージェント: %1$s</string>
   <string name="agent_run_open_detail">実行を開く</string>
   <string name="agent_run_entry_chat">会話から呼び出し</string>
+  <string name="subagent_tool_starting">サブエージェントを起動中…</string>
+  <string name="subagent_tool_running">実行中 · %1$d ステップ · %2$s</string>
+  <string name="subagent_tool_elapsed">%1$d 秒</string>
+  <string name="agent_run_back_to_conversation">会話に戻る</string>
 </resources>
 

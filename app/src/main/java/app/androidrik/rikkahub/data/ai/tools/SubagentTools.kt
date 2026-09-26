@@ -66,6 +66,8 @@ interface SubagentDispatcher {
         preset: SubagentPreset,
         goal: String,
         timeoutMillis: Long,
+        /** 派发它的父会话 id（账本列，供详情页「回到对话」）；非对话入口传 null。 */
+        parentConversationId: String? = null,
     ): SubagentRunResult?
 }
 
@@ -130,6 +132,11 @@ internal fun runToolCatalog(segments: List<ToolSegment>): List<String> =
 fun createSubagentTools(
     presets: List<SubagentPreset>,
     dispatcher: SubagentDispatcher,
+    /**
+     * 父会话 id（由装配点透传：只有 `ChatToolFactory` 知道"这次生成属于哪个会话"）。
+     * 记进账本后，运行详情页才能给「回到对话」这个反向入口。
+     */
+    parentConversationId: String? = null,
 ): List<Tool> {
     if (presets.isEmpty()) return emptyList()
 
@@ -197,6 +204,7 @@ fun createSubagentTools(
                     preset = preset,
                     goal = goal,
                     timeoutMillis = preset.timeoutSeconds * 1000L,
+                    parentConversationId = parentConversationId,
                 )
                 listOf(UIMessagePart.Text(formatSubagentResult(result)))
             },

@@ -46,7 +46,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         CompressionCheckpointEntity::class,
         AgentRunEntity::class,
     ],
-    version = 30,
+    version = 31,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -70,6 +70,8 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 25, to = 26),
         AutoMigration(from = 26, to = 27),
         AutoMigration(from = 29, to = 30),
+        // 30→31：agent_run 加 parent_conversation_id（可空纯列，无外键）
+        AutoMigration(from = 30, to = 31),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)

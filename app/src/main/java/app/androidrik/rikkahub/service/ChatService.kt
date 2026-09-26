@@ -847,6 +847,7 @@ class ChatService(
             assistant = assistant,
             model = model,
             workspaceCwd = conversation.workspaceCwd,
+            conversationId = conversation.id.toString(),
         )
 
         return inspectPrompt(
@@ -1030,6 +1031,7 @@ class ChatService(
                     assistant = assistant,
                     model = model,
                     workspaceCwd = conversation.workspaceCwd,
+                    conversationId = conversationId.toString(),
                 ),
             ).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
