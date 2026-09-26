@@ -62,6 +62,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 
 1. **终端内 URL 点击**（上游 7da69770 中 grep 为 0，直接可摘）：`getColumnAndRow` 定位 → `getLineWrap()` 上下扩展软换行还原长 URL（上限 50 行防全 transcript 遍历）→ 宽字符用 `[0, column]` 文本长度精确换算点击下标 → 尾部标点裁剪（`.,;:!?)]}'"`）→ `ACTION_VIEW` 打开。
 2. **Agent shell 四重预算**：单命令超时（60s）+ 单轮总预算（600s）+ 最大步数（32）+ stdout/stderr 截断（8KB），配 `workspace_run_background / _status / _kill` 三工具 + `TailBuffer` 输出尾缓冲追踪后台进程。上游 3a533a6a 只解决"页面不杀会话"，未约束"Agent 跑命令失控"。
+   - **本仓状态（2026-09-26）**：三工具 + `TailBuffer` **已落地（`b6a5351d`）**；与同源实现不同处：并发上限 4（超限拒绝不排队）、完成即淘汰保留 20、审批分档（run_background/kill 需审批、status 免审批）、LoopGuard 把状态查询加入轮询豁免。单轮字符/步数预算已另落地（`947f92a6` `WorkspaceTurnBudget`，口径=输出字符 + 步数）；**后台任务的时长上限仍未做**（同步 shell 的超时 30s/最大 600s 已有）。详见 `docs/design-workspace-background-tasks.md`。
 3. **Termux 双路线失败归类**：内嵌 terminal 库之外有外部 `RUN_COMMAND Intent` 路线，探测命令 + 枚举失败原因（未安装 / 无权限 / `allow-external-apps` 未开 / 超时）。
 
 ## 三、值得借鉴的机制（源码级验证）
