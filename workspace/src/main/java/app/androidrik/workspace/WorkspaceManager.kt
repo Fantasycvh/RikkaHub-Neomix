@@ -18,12 +18,20 @@ class WorkspaceManager(
     private val backgroundLauncher: WorkspaceTaskLauncher? = null,
     /** 后台任务并发上限（透传给 [WorkspaceTaskRegistry]，便于单测收紧）。 */
     private val maxBackgroundTasks: Int = DEFAULT_MAX_CONCURRENT_TASKS,
+    /** 后台任务最长存活时长；`<= 0` 表示不限制（见 [DEFAULT_MAX_TASK_LIFETIME_MS]）。 */
+    private val maxBackgroundTaskLifetimeMillis: Long = DEFAULT_MAX_TASK_LIFETIME_MS,
 ) {
     private val fileSystem = WorkspaceFileSystem(config)
 
     /** 后台任务表：进程内内存态，见 [WorkspaceTaskRegistry] 的类注释。 */
     private val backgroundTaskRegistry: WorkspaceTaskRegistry? =
-        backgroundLauncher?.let { WorkspaceTaskRegistry(it, maxConcurrent = maxBackgroundTasks) }
+        backgroundLauncher?.let {
+            WorkspaceTaskRegistry(
+                it,
+                maxConcurrent = maxBackgroundTasks,
+                maxLifetimeMillis = maxBackgroundTaskLifetimeMillis,
+            )
+        }
 
     // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
     private val sortedBindMounts = bindMounts.sortedByDescending { it.target.trimEnd('/').length }

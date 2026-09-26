@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.sync.WorkspaceBackupHelper
+import app.androidrik.workspace.DEFAULT_MAX_TASK_LIFETIME_MS
 import app.androidrik.workspace.ProotBackgroundLauncher
 import app.androidrik.workspace.ProotShellRunner
 import app.androidrik.workspace.WorkspaceBindMount
@@ -44,7 +45,10 @@ class WorkspaceBackgroundTaskInstrumentedTest {
     private lateinit var root: String
 
     /** 与 DI（RepositoryModule）同款装配：绑定挂载必须一致，否则 rootfs 内看不到工作区文件区。 */
-    private fun buildManager(maxBackgroundTasks: Int = 4): WorkspaceManager {
+    private fun buildManager(
+        maxBackgroundTasks: Int = 4,
+        maxLifetimeMillis: Long = DEFAULT_MAX_TASK_LIFETIME_MS,
+    ): WorkspaceManager {
         val prootRunner = ProotShellRunner(
             nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
         )
@@ -58,6 +62,7 @@ class WorkspaceBackgroundTaskInstrumentedTest {
             ),
             backgroundLauncher = ProotBackgroundLauncher(prootRunner),
             maxBackgroundTasks = maxBackgroundTasks,
+            maxBackgroundTaskLifetimeMillis = maxLifetimeMillis,
         )
     }
 
@@ -128,6 +133,48 @@ class WorkspaceBackgroundTaskInstrumentedTest {
             Thread.sleep(500)
         }
         assertTrue("kill 之后仍有进程存活：$leftovers", leftovers.isEmpty())
+    }
+
+    /** 端到端④b：完整输出落盘——尾部只有 8KB，日志文件必须是全量（否则「事后回看」是空话）。 */
+    @Test
+    fun fullOutputIsWrittenToWorkspaceLog() {
+        val task = manager.startBackgroundCommand(root, "seq 1 20000")
+        assertNotNull("任务应报告日志路径", task.stdoutLogPath)
+
+        val finished = awaitTerminal(task.id, timeoutMillis = 120_000)
+
+        // 尾部缓冲按容量截断，但日志文件必须是全量：这正是「输出落盘」要解决的问题
+        assertTrue("尾部应已截断（否则这条用例没有意义）", finished.outputTruncated)
+        val logFile = File(context.filesDir, "workspaces/$root/files/.tasks/${task.id}.stdout.log")
+        assertTrue("日志文件不存在: ${logFile.absolutePath}", logFile.isFile)
+        val text = logFile.readText()
+        assertTrue("日志应是全量而非尾部（实际 ${text.length} 字符）", text.length > 100_000)
+        assertTrue("日志应包含最早的行（尾部缓冲里早已丢弃）", text.startsWith("1\n"))
+        assertTrue("日志应包含最后的行", text.trimEnd().endsWith("20000"))
+        assertEquals("20000\n", text.takeLast(6))
+    }
+
+    /** 端到端⑤b：超过时长上限的任务被自动终止（并发上限只管数量，管不了时长）。 */
+    @Test
+    fun lifetimeLimitTerminatesLongRunningTask() {
+        val limited = buildManager(maxLifetimeMillis = 5_000)
+
+        val task = limited.startBackgroundCommand(root, "echo starting; sleep 297")
+        assertEquals(5_000L, task.lifetimeLimitMillis)
+        assertTrue("运行中应报剩余时间", (task.remainingMillis(System.currentTimeMillis()) ?: 0L) > 0L)
+
+        val finished = awaitTerminal(limited, task.id, timeoutMillis = 30_000)
+
+        assertEquals(WorkspaceTaskStatus.TIMED_OUT, finished.status)
+        // 状态翻转不算数：必须真的没有进程残留
+        var leftovers = ""
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            leftovers = psGrep("297")
+            if (leftovers.isEmpty()) break
+            Thread.sleep(500)
+        }
+        assertTrue("到点终止后仍有进程存活：$leftovers", leftovers.isEmpty())
     }
 
     /** 端到端③：并发上限用真任务压到边界，超限拒绝且失败不占名额。 */

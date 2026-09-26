@@ -3,9 +3,10 @@
 > 状态：**已落地并通过真机验证**（2026-09-26）。代码：`workspace/.../WorkspaceBackgroundTasks.kt`（核心）、
 > `workspace/.../ProcessSignals.kt`（进程树终止——**必读，平台绕行方案**）、
 > `workspace/.../ProotShellRunner.kt::start`（预检+启动抽取）、`app/.../data/ai/tools/WorkspaceTools.kt`（三工具）。
-> 测试：`workspace/src/test/.../WorkspaceBackgroundTasksTest.kt`（15 项）+ `ProcessSignalsTest.kt`（11 项）、
+> 测试：`workspace/src/test/.../WorkspaceBackgroundTasksTest.kt`（24 项）+ `ProcessSignalsTest.kt`（11 项）、
 > `app/src/test/.../WorkspaceBackgroundToolApprovalTest.kt`、`ToolCallLoopGuardTest` 轮询豁免 2 项、
-> **真机 instrumented** `app/src/androidTest/.../WorkspaceBackgroundTaskInstrumentedTest.kt`（6 项全绿）。
+> **真机 instrumented** `app/src/androidTest/.../WorkspaceBackgroundTaskInstrumentedTest.kt`（8 项全绿，
+> 含「完整输出落盘」与「超过时长上限被自动终止且无进程残留」两条）。
 
 ## 一、要解决的问题
 
@@ -67,6 +68,7 @@ ProotShellRunner.start()  → Process + 两个采集线程 → TailBuffer(stdout
 | `RUNNING` | 进程已启动、未回收 | kill 只在此状态生效 |
 | `EXITED` | 进程自行结束 | `exitCode` 可能为 0 也可能非 0 |
 | `KILLED` | 收到过 kill 请求后结束 | 与 `EXITED` 分开，避免「用户终止」被当成「命令失败」 |
+| `TIMED_OUT` | 超过任务时长上限（默认 30 分钟）被自动终止 | 与 `KILLED` 再分开：**用户没动手**，模型要能分辨「超时」与「被否决」 |
 | `FAILED` | 未启动成功，或回收时异常 | 原因写在 `stderr`，模型能当场看到 |
 
 - `killRequested` 是独立标记：**只有它决定终态是 KILLED 还是 EXITED**（进程退出码在强杀路径不可靠）。
@@ -88,6 +90,23 @@ ProotShellRunner.start()  → Process + 两个采集线程 → TailBuffer(stdout
 返回给模型的路径上还有第二道闸：`_status` 单流只回 4000 字符（`TASK_TAIL_RETURN_CHARS`），
 避免轮询本身变成上下文消耗的来源。
 
+### 5.1 完整输出落盘（尾部之外的兜底）
+
+只留尾部会让「前后文里的失败原因」凭空消失——长编译的头几条错误、`pip` 早期的依赖冲突都在被丢弃的
+那一段里。所以每个任务**双写**：
+
+- 尾部缓冲 → 给上下文（`_status` 轮询）；
+- `<工作区文件区>/.tasks/<id>.stdout.log` + `.stderr.log` → 给事后回看。
+
+两条路径由同一个 `TaskLogSink` 承担（`append` 同时写尾部与文件、每块 flush），写入失败只降级为
+「没有日志」，绝不影响任务与尾部缓冲。工具结果里带上**rootfs 内可见路径**
+（`/workspace/.tasks/<id>.stdout.log`），模型用 `workspace_read_file` 直接读——所以「完整日志」不需要
+新增任何工具，也不需要把内容塞进上下文。
+
+生命周期与任务表一致：任务被淘汰（保留 20 条）时其日志一并删除；进程重启后任务表已丢，日志按
+**修改时间**淘汰（默认保留 24 小时，每个新任务启动时顺带清一次）。用户也能在工作区文件浏览器里
+看到 `.tasks/` 目录（点前缀只用于和用户文件区分，并不隐藏）。
+
 ## 六、并发上限与淘汰
 
 - **上限 4**（`DEFAULT_MAX_CONCURRENT_TASKS`），超限时**拒绝**而不是排队：排队会让模型面对
@@ -96,6 +115,11 @@ ProotShellRunner.start()  → Process + 两个采集线程 → TailBuffer(stdout
 - **启动失败不占名额**（否则连续几次失败就把工作空间锁死）。
 - 已完成任务保留最多 **20** 条，**在任何任务结束的瞬间**淘汰最旧的已完成任务（只在 `start()` 里淘汰
   会有一段时间超限）。运行中的任务**永不淘汰**。
+- **时长上限 30 分钟**（`DEFAULT_MAX_TASK_LIFETIME_MS`）：并发上限只管数量、管不住时长——模型起 4 个
+  长命令后本轮结束，手机就会一直跑下去。到点由看门狗按**同一条终止路径**（`ProcessSignals` 杀整棵树）
+  终止，状态记 `TIMED_OUT`，工具结果里同时给出 `lifetimeLimitMs` 与运行中的 `expiresInMs`，让模型自己
+  决定「继续等」还是「先干别的」。`<= 0` 表示不限制（仅测试/特殊配置）。
+  选择常量而非设置项，与 LoopGuard 阈值同款取舍（先证明需要再开放配置）。
 
 ## 七、与其它护栏/预算的交互
 
@@ -168,10 +192,13 @@ Android 的 `java.lang.Process` **没有公开 pid**（`Process.pid()` 不在 SD
 
 ## 十、后续（未做）
 
-1. **可见性**：工作空间详情页或终端页展示运行中任务（含 kill 按钮），目前只有工具卡片。
-2. **任务输出落盘**：把完整输出写到工作空间文件（`/workspace/.tasks/<id>.log`），尾部缓冲只作预览；
-   这样「输出被丢弃」就有兜底，也能让模型 `read_file` 看全量。
-3. **stdin / 交互命令**：需要伪终端会话（与终端页复用）。
-4. **应用退出时清理**：至少把「已知任务」在 `onTrimMemory`/进程可预测退出点终止；
-   孤儿进程的根治仍需常驻服务。
-5. **宿主机 shell 变体**（无 rootfs 场景）。
+1. **可见性**：工作空间详情页或终端页展示运行中任务（含 kill 按钮、剩余时长），目前只有工具卡片。
+2. **应用退出时清理**：至少把「已知任务」在 `onTrimMemory`/进程可预测退出点终止；孤儿进程的根治
+   仍需常驻服务（`Application.onTerminate()` 在真机不会被调用，所以这一项只能「尽力而为」）。
+3. **宿主机 shell 变体**（无 rootfs 场景）。
+
+### 明确不做（并已在工具描述里写明边界）
+
+- **后台任务不给 stdin**：交互命令（`apt install` 无 `-y`、`gh auth login`）会读到 EOF 直接失败。
+  需要交互就用同步 `workspace_shell` 或终端页；后台做伪终端等于把终端页复刻一遍，收益不足。
+  三个工具的描述里已显式写明这一点，避免模型走弯路。

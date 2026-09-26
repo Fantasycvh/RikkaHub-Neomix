@@ -850,7 +850,8 @@ private fun TaskStatusLine(status: String, exitCode: Int?) {
         style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
         fontSize = 11.sp,
         color = when {
-            status == "FAILED" -> MaterialTheme.colorScheme.error
+            // TIMED_OUT 也是「没跑完」，与 FAILED 同色：用户需要一眼看出任务没正常结束
+            status == "FAILED" || status == "TIMED_OUT" -> MaterialTheme.colorScheme.error
             ok -> DiffAddedColor
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         },

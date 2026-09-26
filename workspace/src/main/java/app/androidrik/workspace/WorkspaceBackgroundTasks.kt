@@ -1,10 +1,13 @@
 package app.androidrik.workspace
 
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.io.Writer
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 /**
  * 工作空间**后台任务**：让长命令（构建、下载、训练脚本）不再阻塞一轮对话。
@@ -33,6 +36,25 @@ const val DEFAULT_MAX_CONCURRENT_TASKS = 4
 
 /** 已结束任务在内存中保留的条数上限（超出时淘汰最旧的已结束任务）。 */
 const val DEFAULT_MAX_FINISHED_TASKS = 20
+
+/**
+ * 后台任务的默认最长存活时长（30 分钟）。
+ *
+ * **必须有上限**：后台任务刻意没有命令级超时（那是它存在的理由），于是「模型起了 4 个长命令后本轮
+ * 结束」会让手机一直跑下去。并发上限只管数量、不管时长，两者互补。[WorkspaceTaskRegistry] 在
+ * 到点时按同一条终止路径杀整棵树并把状态记为 [WorkspaceTaskStatus.TIMED_OUT]。
+ * `<= 0` 表示不限制（仅测试/特殊配置用）。
+ */
+const val DEFAULT_MAX_TASK_LIFETIME_MS = 30 * 60 * 1000L
+
+/** 超时终止后额外等待回收的时间（收尸用；进程已收到 SIGKILL，通常毫秒级返回）。 */
+private const val TIMED_OUT_REAP_GRACE_MS = 5_000L
+
+/** 不设时长上限时的等待分片（只用一次极长等待怕平台实现把毫秒换算成纳秒溢出）。 */
+private const val UNLIMITED_WAIT_SLICE_MS = 60 * 60 * 1000L
+
+/** 任务日志的保留时长：按修改时间淘汰更旧的文件（任务表重启即丢，日志不该无限堆积）。 */
+const val DEFAULT_TASK_LOG_RETENTION_MS = 24 * 60 * 60 * 1000L
 
 /** 尾部缓冲快照。 */
 data class TailSnapshot(
@@ -102,6 +124,15 @@ fun pumpText(
     stream: InputStream,
     sink: TailBuffer,
     charset: Charset = StandardCharsets.UTF_8,
+) = pumpText(stream, charset) { sink.append(it) }
+
+/**
+ * 同上，但输出交给任意 [sink]（后台任务用它做**双写**：尾部缓冲给上下文，文件给完整日志）。
+ */
+fun pumpText(
+    stream: InputStream,
+    charset: Charset = StandardCharsets.UTF_8,
+    sink: (CharSequence) -> Unit,
 ) {
     try {
         stream.reader(charset).use { reader ->
@@ -109,11 +140,71 @@ fun pumpText(
             while (true) {
                 val read = reader.read(buffer)
                 if (read < 0) break
-                sink.append(buffer.concatToString(0, read))
+                sink(buffer.concatToString(0, read))
             }
         }
     } catch (_: IOException) {
         // 进程被强杀/超时终止导致流关闭，保留已读内容
+    }
+}
+
+/** 任务日志目录（工作区文件区下）。用点前缀是为了和用户文件区分，但仍可在文件浏览器里看到。 */
+const val TASK_LOG_DIR_NAME = ".tasks"
+
+/** 一个任务的完整输出日志（宿主路径）。 */
+data class WorkspaceTaskLogs(val stdout: File, val stderr: File)
+
+fun taskLogDir(filesDir: File): File = File(filesDir, TASK_LOG_DIR_NAME)
+
+fun taskLogsFor(filesDir: File, id: String): WorkspaceTaskLogs = WorkspaceTaskLogs(
+    stdout = File(taskLogDir(filesDir), "$id.stdout.log"),
+    stderr = File(taskLogDir(filesDir), "$id.stderr.log"),
+)
+
+/**
+ * 删除 [retentionMillis] 之前修改过的任务日志，返回删除数量。
+ *
+ * 为什么需要：任务表是内存态（重启即丢），日志却在磁盘上——不清就永远堆着。日志按任务 id 命名，
+ * 任务一旦重启就再也引用不到，所以按**修改时间**淘汰是最简单且不会误删正在写的新日志的做法。
+ */
+fun pruneTaskLogs(filesDir: File, retentionMillis: Long, nowMillis: Long): Int {
+    if (retentionMillis <= 0L) return 0
+    val cutoff = nowMillis - retentionMillis
+    return taskLogDir(filesDir).listFiles().orEmpty().count { file ->
+        file.isFile && file.lastModified() > 0L && file.lastModified() < cutoff && file.delete()
+    }
+}
+
+/**
+ * 双写 sink：尾部缓冲（给上下文/轮询）+ 完整日志文件（给事后回看）。
+ *
+ * 后台任务刻意不让输出进上下文，但**尾部 8KB 之外的内容不该凭空消失**——长编译的失败原因常在早期，
+ * 模型需要时用 `workspace_read_file` 读日志文件即可。写入失败（磁盘满等）只降级为「没有日志」，
+ * 不影响任务本身与尾部缓冲。
+ */
+class TaskLogSink(private val tail: TailBuffer, private val file: File?) {
+    private val writer: Writer? = file?.let { target ->
+        runCatching {
+            target.parentFile?.mkdirs()
+            target.bufferedWriter(StandardCharsets.UTF_8)
+        }.getOrNull()
+    }
+
+    /** 日志是否真的落盘（写不进去时为 false，调用方据此决定要不要把路径告诉模型）。 */
+    val isEnabled: Boolean get() = writer != null
+
+    fun append(text: CharSequence) {
+        tail.append(text)
+        val target = writer ?: return
+        runCatching {
+            target.write(text.toString())
+            // 每块都 flush：任务可能跑很久，用户/模型读日志时不该只看到缓冲里的内容
+            target.flush()
+        }.onFailure { close() }
+    }
+
+    fun close() {
+        runCatching { writer?.close() }
     }
 }
 
@@ -127,6 +218,9 @@ enum class WorkspaceTaskStatus {
 
     /** 被 `workspace_kill_task` 终止。 */
     KILLED,
+
+    /** 超过任务时长上限被自动终止（[WorkspaceTaskSnapshot.lifetimeLimitMillis]）。 */
+    TIMED_OUT,
 
     /** 启动失败或进程无法回收（原因见 [WorkspaceTaskSnapshot.stderr]）。 */
     FAILED,
@@ -147,11 +241,22 @@ data class WorkspaceTaskSnapshot(
     val outputTruncated: Boolean,
     val startedAtMillis: Long,
     val finishedAtMillis: Long?,
+    /** 任务时长上限；`0` 表示不限制。 */
+    val lifetimeLimitMillis: Long = 0L,
+    /** 完整输出的落盘位置（**rootfs 内可见路径**，模型可用 `workspace_read_file` 读）；失败时为 null。 */
+    val stdoutLogPath: String? = null,
+    val stderrLogPath: String? = null,
 ) {
     val isRunning: Boolean get() = status == WorkspaceTaskStatus.RUNNING
 
     /** 运行时长（毫秒）；未结束时按 [nowMillis] 计算。 */
     fun durationMillis(nowMillis: Long): Long = (finishedAtMillis ?: nowMillis) - startedAtMillis
+
+    /** 距被自动终止还剩多少毫秒；不限制时返回 null，已结束时返回 null。 */
+    fun remainingMillis(nowMillis: Long): Long? {
+        if (!isRunning || lifetimeLimitMillis <= 0L) return null
+        return (startedAtMillis + lifetimeLimitMillis - nowMillis).coerceAtLeast(0L)
+    }
 }
 
 /** `workspace_kill_task` 的结果，便于工具层给出精确文案。 */
@@ -168,11 +273,24 @@ enum class WorkspaceKillResult {
 
 /** 已启动的后台进程句柄；真实实现包装 `java.lang.Process`，单测用假实现。 */
 interface WorkspaceBackgroundHandle {
+    /** 完整 stdout 日志的**rootfs 内可见路径**（未落盘时为 null）。 */
+    val stdoutLogPath: String?
+        get() = null
+
+    /** 完整 stderr 日志的 **rootfs 内可见路径**（未落盘时为 null）。 */
+    val stderrLogPath: String?
+        get() = null
+
     /** 强制终止**整棵**进程树（不是只杀直接子进程，否则孙进程会变孤儿继续跑）。 */
     fun kill()
 
-    /** 阻塞直到进程退出并返回退出码；无法回收时抛异常。 */
-    fun awaitExit(): Int
+    /**
+     * 等待退出。
+     *
+     * @param timeoutMillis 最长等待时间；超时返回 null（进程仍在跑）
+     * @return 退出码，或超时时的 null
+     */
+    fun awaitExit(timeoutMillis: Long): Int?
 }
 
 /**
@@ -191,6 +309,7 @@ interface WorkspaceTaskLauncher {
     fun launch(
         context: WorkspaceShellContext,
         marker: String,
+        logs: WorkspaceTaskLogs,
         stdout: TailBuffer,
         stderr: TailBuffer,
     ): WorkspaceBackgroundHandle?
@@ -207,6 +326,9 @@ class WorkspaceTaskRegistry(
     private val maxConcurrent: Int = DEFAULT_MAX_CONCURRENT_TASKS,
     private val maxFinished: Int = DEFAULT_MAX_FINISHED_TASKS,
     val tailChars: Int = DEFAULT_TASK_TAIL_CHARS,
+    /** 任务最长存活时长；`<= 0` 表示不限制。到点按同一条终止路径杀整棵树并记 `TIMED_OUT`。 */
+    val maxLifetimeMillis: Long = DEFAULT_MAX_TASK_LIFETIME_MS,
+    private val logRetentionMillis: Long = DEFAULT_TASK_LOG_RETENTION_MS,
     private val now: () -> Long = System::currentTimeMillis,
     private val newId: () -> String = { UUID.randomUUID().toString().take(8) },
 ) {
@@ -232,6 +354,20 @@ class WorkspaceTaskRegistry(
         /** 是否已下发过 kill（决定回收线程把状态写成 KILLED 还是 EXITED）。 */
         @Volatile
         var killRequested: Boolean = false
+
+        /** 是否由时长看门狗终止（优先于 killRequested：用户没动手，别记成 KILLED）。 */
+        @Volatile
+        var timedOut: Boolean = false
+
+        /** 完整日志的**rootfs 内可见路径**（写盘失败时为 null）。 */
+        @Volatile
+        var stdoutLogPath: String? = null
+
+        @Volatile
+        var stderrLogPath: String? = null
+
+        /** 日志文件的宿主路径，用于淘汰任务时一并删除。 */
+        lateinit var logFiles: WorkspaceTaskLogs
 
         @Volatile
         var handle: WorkspaceBackgroundHandle? = null
@@ -262,13 +398,18 @@ class WorkspaceTaskRegistry(
                 marker = newTaskMarker(id),
                 stdout = TailBuffer(tailChars),
                 stderr = TailBuffer(tailChars),
-            )
+            ).apply {
+                logFiles = taskLogsFor(context.filesDir, id)
+            }
             tasks[id] = entry
         }
 
+        // 过期日志清理放在锁外：只是目录列举 + 删除，不影响任务表；每个新任务顺带清一次即可
+        runCatching { pruneTaskLogs(context.filesDir, logRetentionMillis, now()) }
+
         // 启动在锁外：launch 会做进程创建等重操作，不应占着注册表锁
         val handle = try {
-            launcher.launch(context, entry.marker, entry.stdout, entry.stderr)
+            launcher.launch(context, entry.marker, entry.logFiles, entry.stdout, entry.stderr)
         } catch (e: Exception) {
             entry.stderr.append("启动失败: ${e.javaClass.simpleName}: ${e.message}")
             null
@@ -283,6 +424,8 @@ class WorkspaceTaskRegistry(
         }
 
         entry.handle = handle
+        entry.stdoutLogPath = handle.stdoutLogPath
+        entry.stderrLogPath = handle.stderrLogPath
         // kill 可能在 handle 赋值前就被下发（见 kill()）：这里补一次，避免终止请求丢失
         if (entry.killRequested) handle.kill()
         startReaper(entry, handle)
@@ -332,19 +475,36 @@ class WorkspaceTaskRegistry(
 
     private fun startReaper(entry: Entry, handle: WorkspaceBackgroundHandle) {
         Thread {
-            val code = try {
-                handle.awaitExit()
+            var code: Int? = null
+            try {
+                val limit = maxLifetimeMillis
+                if (limit <= 0L) {
+                    // 不限制：分片等待，避免把超大 timeout 交给平台实现（nanos 溢出风险）
+                    while (code == null) code = handle.awaitExit(UNLIMITED_WAIT_SLICE_MS)
+                } else {
+                    val deadline = entry.startedAtMillis + limit
+                    code = handle.awaitExit((deadline - now()).coerceAtLeast(0L))
+                    if (code == null) {
+                        // 到点仍在跑：按同一条终止路径杀整棵树；状态记 TIMED_OUT（用户没动手）
+                        entry.timedOut = true
+                        handle.kill()
+                        code = handle.awaitExit(TIMED_OUT_REAP_GRACE_MS)
+                    }
+                }
             } catch (_: Throwable) {
-                null
+                code = null
             }
             entry.exitCode = code
-            entry.status = when {
-                // 已被 kill() 置为终态就不再改写（exitCode 仍会补上，供调用方参考）
-                entry.killRequested -> WorkspaceTaskStatus.KILLED
-                code == null -> WorkspaceTaskStatus.FAILED
-                else -> WorkspaceTaskStatus.EXITED
-            }
             if (entry.finishedAtMillis == null) entry.finishedAtMillis = now()
+            // 先写终态的赢（kill() / 看门狗 / 正常退出三选一），回收线程只补 exitCode
+            if (entry.status == WorkspaceTaskStatus.RUNNING) {
+                entry.status = when {
+                    entry.timedOut -> WorkspaceTaskStatus.TIMED_OUT
+                    entry.killRequested -> WorkspaceTaskStatus.KILLED
+                    code == null -> WorkspaceTaskStatus.FAILED
+                    else -> WorkspaceTaskStatus.EXITED
+                }
+            }
             // 结束即淘汰：只在 start() 里淘汰会有一段时间超限（连续完成的旧任务还留着占内存）
             synchronized(lock) { evictFinishedLocked() }
         }.apply {
@@ -361,7 +521,14 @@ class WorkspaceTaskRegistry(
             .sortedBy { it.finishedAtMillis ?: it.startedAtMillis }
         val excess = finished.size - maxFinished
         if (excess > 0) {
-            for (index in 0 until excess) tasks.remove(finished[index].id)
+            for (index in 0 until excess) {
+                val evicted = tasks.remove(finished[index].id) ?: continue
+                // 日志与被淘汰的任务同寿：任务表都不再引用它们了，留着只会占磁盘
+                runCatching {
+                    evicted.logFiles.stdout.delete()
+                    evicted.logFiles.stderr.delete()
+                }
+            }
         }
     }
 
@@ -382,6 +549,9 @@ class WorkspaceTaskRegistry(
             outputTruncated = stdout.truncated || stderr.truncated,
             startedAtMillis = entry.startedAtMillis,
             finishedAtMillis = entry.finishedAtMillis,
+            lifetimeLimitMillis = maxLifetimeMillis.coerceAtLeast(0L),
+            stdoutLogPath = entry.stdoutLogPath,
+            stderrLogPath = entry.stderrLogPath,
         )
     }
 }
@@ -396,6 +566,7 @@ class ProotBackgroundLauncher(private val runner: ProotShellRunner) : WorkspaceT
     override fun launch(
         context: WorkspaceShellContext,
         marker: String,
+        logs: WorkspaceTaskLogs,
         stdout: TailBuffer,
         stderr: TailBuffer,
     ): WorkspaceBackgroundHandle? {
@@ -418,10 +589,20 @@ class ProotBackgroundLauncher(private val runner: ProotShellRunner) : WorkspaceT
             // 进程已提前退出，忽略
         }
 
-        pumpAsync(process.inputStream, stdout, "workspace-task-out")
-        pumpAsync(process.errorStream, stderr, "workspace-task-err")
+        val outSink = TaskLogSink(stdout, logs.stdout)
+        val errSink = TaskLogSink(stderr, logs.stderr)
+        pumpAsync(process.inputStream, outSink, "workspace-task-out")
+        pumpAsync(process.errorStream, errSink, "workspace-task-err")
+
+        // 日志路径以 **rootfs 内可见路径** 上报（模型用 workspace_read_file 读的就是这个路径）；
+        // 写盘失败时给 null，让上层如实告诉模型「没有完整日志」而不是给一个不存在的路径
+        val outPath = if (outSink.isEnabled) guestLogPath(logs.stdout) else null
+        val errPath = if (errSink.isEnabled) guestLogPath(logs.stderr) else null
 
         return object : WorkspaceBackgroundHandle {
+            override val stdoutLogPath: String? = outPath
+            override val stderrLogPath: String? = errPath
+
             override fun kill() {
                 // 必须按 marker 找回整棵进程树再逐个 SIGKILL：实测 destroyForcibly() 对本机 proot
                 // 子进程无效，而只杀 proot 又会让 guest 的子孙变孤儿继续跑（见 ProcessSignals 类注释）
@@ -434,13 +615,23 @@ class ProotBackgroundLauncher(private val runner: ProotShellRunner) : WorkspaceT
                 }
             }
 
-            override fun awaitExit(): Int = process.waitFor()
+            override fun awaitExit(timeoutMillis: Long): Int? =
+                if (process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)) process.exitValue() else null
         }
     }
 
-    private fun pumpAsync(stream: InputStream, sink: TailBuffer, threadName: String) {
+    /** 工作区文件区的宿主路径 → rootfs 内的可见路径（模型/用户在 rootfs 里用的路径）。 */
+    private fun guestLogPath(file: File): String =
+        "${WorkspaceManager.ROOTFS_WORKSPACE_DIR}/${TASK_LOG_DIR_NAME}/${file.name}"
+
+    private fun pumpAsync(stream: InputStream, sink: TaskLogSink, threadName: String) {
         Thread {
-            pumpText(stream, sink)
+            try {
+                pumpText(stream) { sink.append(it) }
+            } finally {
+                // 流到 EOF 就收尾：把日志 flush 落盘，否则最后一块可能留在缓冲里
+                sink.close()
+            }
         }.apply {
             // daemon：即使 proot 孙进程残留 fd 让 read() 永久阻塞，也不阻止 JVM 退出
             isDaemon = true

@@ -20,6 +20,7 @@ import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.WorkspaceKillResult
 import app.androidrik.workspace.WorkspaceManager
+import app.androidrik.workspace.WorkspaceTaskSnapshot
 import app.androidrik.workspace.WorkspaceTaskStatus
 import org.koin.java.KoinJavaComponent.getKoin
 import java.io.ByteArrayOutputStream
@@ -356,6 +357,9 @@ private fun createRunBackgroundTool(
         append("The command keeps running after this answer; its output is NOT included here, so a chatty command cannot flood the context window. ")
         append("Poll workspace_task_status for the tail of stdout/stderr and stop it with workspace_kill_task. ")
         append("Use this for long builds, downloads or training scripts; use workspace_shell when you need the output in this same turn. ")
+        append("Interactive commands are NOT supported (stdin is closed, so anything prompting for input fails immediately) - run those with workspace_shell or the terminal. ")
+        append("A task is stopped automatically when it exceeds its time limit, and the full output is written to ")
+        append("/workspace/.tasks/<taskId>.stdout.log and .stderr.log inside the workspace, so use workspace_read_file if the reported tail is not enough. ")
         append("The workspace files area is mounted at /workspace.")
     },
     parameters = {
@@ -394,6 +398,7 @@ private fun createRunBackgroundTool(
                     put("status", task.status.name)
                     put("command", task.command.abbreviateForContext(COMMAND_PREVIEW_CHARS))
                     if (task.cwd.isNotBlank()) put("cwd", task.cwd)
+                    putBackgroundTaskMeta(task, System.currentTimeMillis())
                     if (task.status == WorkspaceTaskStatus.FAILED) {
                         // 启动失败必须当场把原因给模型：任务从未运行，轮询也不会有新信息
                         put("error", task.stderr.ifBlank { "Task failed to start" })
@@ -472,6 +477,14 @@ private fun createTaskStatusTool(
                     put("stderr", task.stderr.tailForContext(TASK_TAIL_RETURN_CHARS))
                     put("stdoutChars", task.stdoutTotalChars)
                     put("stderrChars", task.stderrTotalChars)
+                    putBackgroundTaskMeta(task, now)
+                    if (task.status == WorkspaceTaskStatus.TIMED_OUT) {
+                        put(
+                            "note",
+                            "The task exceeded its time limit and was terminated. Split the work into " +
+                                "shorter steps, or write incremental results to files as it goes.",
+                        )
+                    }
                     if (task.outputTruncated) {
                         put("outputTruncated", true)
                         put(
@@ -532,6 +545,21 @@ private fun createKillTaskTool(
         )
     },
 )
+
+/**
+ * 后台任务在工具结果里的公共字段：**时限**（还剩多久被自动终止）与**完整日志位置**。
+ *
+ * 两者都是给模型做决策用的：剩余时间决定「继续等」还是「先干别的」，日志路径决定
+ * 「尾部不够用时去哪里读全量」——没有这两个字段时，模型只能盲猜或放弃。
+ */
+private fun JsonObjectBuilder.putBackgroundTaskMeta(task: WorkspaceTaskSnapshot, nowMillis: Long) {
+    if (task.lifetimeLimitMillis > 0L) {
+        put("lifetimeLimitMs", task.lifetimeLimitMillis)
+        task.remainingMillis(nowMillis)?.let { put("expiresInMs", it) }
+    }
+    task.stdoutLogPath?.let { put("stdoutLogPath", it) }
+    task.stderrLogPath?.let { put("stderrLogPath", it) }
+}
 
 /** 列表里的命令预览长度：只需让模型认出是哪个任务。 */
 private const val COMMAND_PREVIEW_CHARS = 200

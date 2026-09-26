@@ -9,6 +9,7 @@ import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.CountDownLatch
@@ -251,6 +252,128 @@ class WorkspaceBackgroundTasksTest {
         assertEquals(WorkspaceTaskStatus.RUNNING, registry.snapshot(other.id)!!.status)
     }
 
+    // ---------- 时长上限（必须有：并发上限只管数量，不管时长） ----------
+
+    @Test
+    fun `task that outlives the lifetime limit is killed and marked timed out`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher, maxLifetimeMillis = 200)
+
+        val task = registry.start(context(command = "sleep 100000"))
+        // 看门狗到点后：先杀进程，再把状态记成 TIMED_OUT（与用户主动 kill 的 KILLED 区分开）
+        val finished = awaitFinished(registry, task.id, timeoutMillis = 5_000)
+
+        assertEquals(WorkspaceTaskStatus.TIMED_OUT, finished.status)
+        assertTrue("到点必须真的杀进程，而不是只改状态", launcher.startedProcesses.single().killed)
+        assertEquals(200L, finished.lifetimeLimitMillis)
+    }
+
+    @Test
+    fun `task finishing before the limit is untouched`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher, maxLifetimeMillis = 60_000)
+        val task = registry.start(context(command = "true"))
+        launcher.startedProcesses.single().finish(0)
+
+        assertEquals(WorkspaceTaskStatus.EXITED, awaitFinished(registry, task.id).status)
+        assertFalse("正常结束的任务不该被看门狗杀", launcher.startedProcesses.single().killed)
+    }
+
+    @Test
+    fun `zero lifetime means unlimited and reports no remaining time`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher, maxLifetimeMillis = 0)
+
+        val task = registry.start(context(command = "sleep 100000"))
+
+        assertEquals(0L, task.lifetimeLimitMillis)
+        assertNull("不限制时限时不该报剩余时间", task.remainingMillis(System.currentTimeMillis()))
+        assertTrue(task.isRunning)
+    }
+
+    @Test
+    fun `remaining time counts down for a limited task`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher, maxLifetimeMillis = 60_000)
+
+        val task = registry.start(context(command = "sleep 100000"))
+        val remaining = task.remainingMillis(task.startedAtMillis + 10_000)
+
+        assertEquals(50_000L, remaining)
+    }
+
+    // ---------- 完整日志落盘 ----------
+
+    @Test
+    fun `log sink writes to both the tail and the file`() {
+        val file = File(tempFolder.root, ".tasks/demo.stdout.log")
+        val tail = TailBuffer(capacityChars = 16)
+        val sink = TaskLogSink(tail, file)
+
+        sink.append("first chunk ")
+        sink.append("second chunk that overflows the tail")
+        sink.close()
+
+        assertTrue(sink.isEnabled)
+        assertEquals(
+            "first chunk second chunk that overflows the tail",
+            file.readText(),
+        )
+        // 尾部缓冲照旧只留尾部：日志是「补回被丢弃内容」的手段，不改变上下文口径
+        assertTrue(tail.snapshot().truncated)
+        assertTrue(tail.snapshot().text.endsWith("the tail"))
+    }
+
+    @Test
+    fun `log sink degrades to tail only when the file cannot be written`() {
+        // 目标是目录 ⇒ 打不开文件：任务本身不能被影响，尾部缓冲照常工作
+        val directory = File(tempFolder.root, "not-a-file").apply { mkdirs() }
+        val tail = TailBuffer()
+        val sink = TaskLogSink(tail, directory)
+
+        assertFalse(sink.isEnabled)
+        sink.append("still buffered")
+        sink.close()
+
+        assertEquals("still buffered", tail.snapshot().text)
+    }
+
+    @Test
+    fun `log sink works without a file`() {
+        val tail = TailBuffer()
+        val sink = TaskLogSink(tail, null)
+
+        assertFalse(sink.isEnabled)
+        sink.append("no file here")
+        sink.close()
+
+        assertEquals("no file here", tail.snapshot().text)
+    }
+
+    @Test
+    fun `old task logs are pruned and fresh ones are kept`() {
+        val dir = taskLogDir(tempFolder.root).apply { mkdirs() }
+        val old = File(dir, "old.stdout.log").apply { writeText("old") }
+        val fresh = File(dir, "fresh.stdout.log").apply { writeText("fresh") }
+        val nowMillis = 1_000_000_000L
+        old.setLastModified(nowMillis - 48 * 60 * 60 * 1000L)
+        fresh.setLastModified(nowMillis - 60 * 1000L)
+
+        val removed = pruneTaskLogs(tempFolder.root, DEFAULT_TASK_LOG_RETENTION_MS, nowMillis)
+
+        assertEquals(1, removed)
+        assertFalse(old.exists())
+        assertTrue(fresh.exists())
+    }
+
+    @Test
+    fun `log file paths are derived from the task id`() {
+        val logs = taskLogsFor(tempFolder.root, "abc123")
+
+        assertEquals(File(taskLogDir(tempFolder.root), "abc123.stdout.log"), logs.stdout)
+        assertEquals(File(taskLogDir(tempFolder.root), "abc123.stderr.log"), logs.stderr)
+    }
+
     // ---------- helpers ----------
 
     private fun context(command: String, root: String = "demo") = WorkspaceShellContext(
@@ -303,10 +426,10 @@ class WorkspaceBackgroundTasksTest {
             done.countDown()
         }
 
-        override fun awaitExit(): Int {
+        override fun awaitExit(timeoutMillis: Long): Int? {
             awaitCalled.countDown()
-            done.await()
-            return exitCode
+            // 真实现是 Process.waitFor(timeout)：超时返回 null，这里同语义（时限看门狗依赖它）
+            return if (done.await(timeoutMillis, TimeUnit.MILLISECONDS)) exitCode else null
         }
     }
 
@@ -322,12 +445,16 @@ class WorkspaceBackgroundTasksTest {
             pending.addLast(stdout to stderr)
         }
 
+        var lastLogs: WorkspaceTaskLogs? = null
+
         override fun launch(
             context: WorkspaceShellContext,
             marker: String,
+            logs: WorkspaceTaskLogs,
             stdout: TailBuffer,
             stderr: TailBuffer,
         ): WorkspaceBackgroundHandle? {
+            lastLogs = logs
             throwOnLaunch?.let { throw it }
             failWith?.let {
                 stderr.append(it)
