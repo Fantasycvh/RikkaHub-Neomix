@@ -1486,6 +1486,9 @@
   <string name="workspace_detail_tool_edit_file">Edit File</string>
   <string name="workspace_detail_tool_delete_file">Delete File</string>
   <string name="workspace_detail_tool_move_file">Move File</string>
+  <string name="workspace_detail_tool_run_background">Run in Background</string>
+  <string name="workspace_detail_tool_task_status">Check Task Status</string>
+  <string name="workspace_detail_tool_kill_task">Kill Task</string>
   <string name="workspace_detail_tool_shell">Execute Command</string>
   <string name="workspace_detail_install_rootfs_desc">Will download tar.gz and extract to the linux directory of %s.</string>
   <string name="workspace_detail_download_url">tar.gz download URL</string>
@@ -1550,6 +1553,11 @@
   <string name="tool_ui_delete_failed">Failed to delete %s</string>
   <string name="tool_ui_move_file">Move file</string>
   <string name="tool_ui_shell">Shell: %s</string>
+  <string name="tool_ui_shell_bg">Background: %s</string>
+  <string name="tool_ui_shell_bg_default">Background command</string>
+  <string name="tool_ui_task_status">Task %s</string>
+  <string name="tool_ui_task_status_list">Background tasks</string>
+  <string name="tool_ui_kill_task">Kill task %s</string>
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>

@@ -1480,6 +1480,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_tool_edit_file">编辑文件</string>
   <string name="workspace_detail_tool_delete_file">删除文件</string>
   <string name="workspace_detail_tool_move_file">移动文件</string>
+  <string name="workspace_detail_tool_run_background">后台运行</string>
+  <string name="workspace_detail_tool_task_status">查询任务状态</string>
+  <string name="workspace_detail_tool_kill_task">终止任务</string>
   <string name="workspace_detail_tool_shell">执行命令</string>
   <string name="workspace_detail_install_rootfs_desc">将下载 tar.gz 并解压到 %s 的 Linux 目录。</string>
   <string name="workspace_detail_download_url">tar.gz 下载链接</string>
@@ -1544,6 +1547,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_delete_failed">删除 %s 失败</string>
   <string name="tool_ui_move_file">移动文件</string>
   <string name="tool_ui_shell">Shell: %s</string>
+  <string name="tool_ui_shell_bg">后台运行: %s</string>
+  <string name="tool_ui_shell_bg_default">后台命令</string>
+  <string name="tool_ui_task_status">任务 %s</string>
+  <string name="tool_ui_task_status_list">后台任务</string>
+  <string name="tool_ui_kill_task">终止任务 %s</string>
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>

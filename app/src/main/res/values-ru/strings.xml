@@ -1395,6 +1395,9 @@
   <string name="workspace_detail_tool_edit_file">Редактировать файл</string>
   <string name="workspace_detail_tool_delete_file">Удалить файл</string>
   <string name="workspace_detail_tool_move_file">Переместить файл</string>
+  <string name="workspace_detail_tool_run_background">Запуск в фоне</string>
+  <string name="workspace_detail_tool_task_status">Проверка статуса задачи</string>
+  <string name="workspace_detail_tool_kill_task">Завершение задачи</string>
   <string name="workspace_detail_tool_shell">Выполнить команду</string>
   <string name="workspace_detail_install_rootfs_desc">Загрузит tar.gz и распакует в каталог Linux %s.</string>
   <string name="workspace_detail_download_url">URL для скачивания tar.gz</string>
@@ -1455,6 +1458,11 @@
   <string name="tool_ui_delete_failed">Не удалось удалить %s</string>
   <string name="tool_ui_move_file">Переместить файл</string>
   <string name="tool_ui_shell">Shell: %s</string>
+  <string name="tool_ui_shell_bg">В фоне: %s</string>
+  <string name="tool_ui_shell_bg_default">Команда в фоне</string>
+  <string name="tool_ui_task_status">Задача %s</string>
+  <string name="tool_ui_task_status_list">Фоновые задачи</string>
+  <string name="tool_ui_kill_task">Завершить задачу %s</string>
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>

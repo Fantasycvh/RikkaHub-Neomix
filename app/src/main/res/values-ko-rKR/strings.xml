@@ -1395,6 +1395,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_tool_edit_file">파일 편집</string>
   <string name="workspace_detail_tool_delete_file">파일 삭제</string>
   <string name="workspace_detail_tool_move_file">파일 이동</string>
+  <string name="workspace_detail_tool_run_background">백그라운드 실행</string>
+  <string name="workspace_detail_tool_task_status">작업 상태 확인</string>
+  <string name="workspace_detail_tool_kill_task">작업 종료</string>
   <string name="workspace_detail_tool_shell">명령 실행</string>
   <string name="workspace_detail_install_rootfs_desc">%s의 linux 디렉터리에 tar.gz를 다운로드하여 압축을 풉니다.</string>
   <string name="workspace_detail_download_url">tar.gz 다운로드 URL</string>
@@ -1455,6 +1458,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="tool_ui_delete_failed">%s 삭제 실패</string>
   <string name="tool_ui_move_file">파일 이동</string>
   <string name="tool_ui_shell">Shell: %s</string>
+  <string name="tool_ui_shell_bg">백그라운드: %s</string>
+  <string name="tool_ui_shell_bg_default">백그라운드 명령</string>
+  <string name="tool_ui_task_status">작업 %s</string>
+  <string name="tool_ui_task_status_list">백그라운드 작업</string>
+  <string name="tool_ui_kill_task">작업 종료 %s</string>
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>

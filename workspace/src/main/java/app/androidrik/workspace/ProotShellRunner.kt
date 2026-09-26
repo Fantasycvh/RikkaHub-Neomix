@@ -2,6 +2,13 @@ package app.androidrik.workspace
 
 import java.io.File
 
+/** [ProotShellRunner.start] 的结果：启动成功或预检失败（失败时携带原因文案）。 */
+sealed interface ProotStart {
+    data class Started(val process: Process) : ProotStart
+
+    data class Failed(val message: String) : ProotStart
+}
+
 data class WorkspaceBindMount(
     val source: File,
     val target: String,
@@ -16,29 +23,39 @@ class ProotShellRunner(
     private val patcher: RootfsPatcher = RootfsPatcher(),
 ) : WorkspaceShellRunner {
     override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult {
-        if (!context.linuxDir.hasUsableRootfs()) {
-            return WorkspaceCommandResult(
+        return when (val started = start(context)) {
+            is ProotStart.Failed -> WorkspaceCommandResult(
                 exitCode = 127,
                 stdout = "",
-                stderr = "Rootfs is not installed",
+                stderr = started.message,
             )
+            is ProotStart.Started -> started.process.readResult(context.timeoutMillis, context.stdin)
+        }
+    }
+
+    /**
+     * 预检 + 启动进程，**不等待**。
+     *
+     * 抽出来是为了让后台任务（`WorkspaceBackgroundTasks.ProotBackgroundLauncher`）复用同一套
+     * 预检与命令行构造：两处若各自拼一遍命令行，早晚会漂移（绑定挂载、兼容模式、PROOT_*
+     * 环境变量都有坑）。
+     *
+     * @return [ProotStart.Started] 为已启动进程；[ProotStart.Failed] 为预检不通过（同 [execute] 的 127 语义）。
+     * @throws java.io.IOException 进程创建失败（`ProcessBuilder.start()` 抛出的异常照旧透传，
+     *   调用方自行决定是回填错误结果还是记为失败任务）
+     */
+    fun start(context: WorkspaceShellContext): ProotStart {
+        if (!context.linuxDir.hasUsableRootfs()) {
+            return ProotStart.Failed("Rootfs is not installed")
         }
 
         val proot = File(nativeLibraryDir, PROOT_EXEC)
         val loader = File(nativeLibraryDir, PROOT_LOADER)
         if (!proot.isFile) {
-            return WorkspaceCommandResult(
-                exitCode = 127,
-                stdout = "",
-                stderr = "proot executable not found: ${proot.absolutePath}",
-            )
+            return ProotStart.Failed("proot executable not found: ${proot.absolutePath}")
         }
         if (!loader.isFile) {
-            return WorkspaceCommandResult(
-                exitCode = 127,
-                stdout = "",
-                stderr = "proot loader not found: ${loader.absolutePath}",
-            )
+            return ProotStart.Failed("proot loader not found: ${loader.absolutePath}")
         }
 
         context.tempDir.mkdirs()
@@ -59,7 +76,7 @@ class ProotShellRunner(
             }
             .start()
 
-        return process.readResult(context.timeoutMillis, context.stdin)
+        return ProotStart.Started(process)
     }
 
     private fun buildCommand(

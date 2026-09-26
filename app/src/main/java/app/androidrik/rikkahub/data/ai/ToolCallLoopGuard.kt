@@ -167,11 +167,14 @@ class ToolCallLoopGuard(
         /**
          * 轮询类工具（同参数重复调用是正常轮询，不参与计数）。
          *
-         * 目前只有取当前时间的工具：它的结果**按定义**每次都在变，模型连问几次时间属正常行为。
-         * 刻意**不**把 `workspace_shell` 之类算进来：同一条命令反复执行且没有新输出，
-         * 正是要拦的失控形态；确实需要轮询构建/下载进度时，模型会带上会变的参数
+         * - `get_time_info`：结果**按定义**每次都在变，模型连问几次时间属正常行为。
+         * - `workspace_task_status`：长任务（构建/下载）的进度查询，同一 `taskId` 反复查是**唯一**
+         *   的正确用法；不豁免的话，第 3 次轮询就会被判成失控循环，把「后台任务」这个功能直接废掉。
+         *
+         * 刻意**不**把 `workspace_shell` / `workspace_run_background` 算进来：同一条命令反复执行
+         * 且没有新输出，正是要拦的失控形态；确实需要轮询构建/下载进度时，模型会带上会变的参数
          * （如 `tail` 不同行数）或用不同命令，不会触发同一签名。
          */
-        val POLLING_EXEMPT_TOOLS = setOf("get_time_info")
+        val POLLING_EXEMPT_TOOLS = setOf("get_time_info", "workspace_task_status")
     }
 }

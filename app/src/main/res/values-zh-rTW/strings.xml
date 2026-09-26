@@ -1438,6 +1438,9 @@
   <string name="workspace_detail_tool_edit_file">編輯檔案</string>
   <string name="workspace_detail_tool_delete_file">刪除檔案</string>
   <string name="workspace_detail_tool_move_file">移動檔案</string>
+  <string name="workspace_detail_tool_run_background">背景執行</string>
+  <string name="workspace_detail_tool_task_status">查詢任務狀態</string>
+  <string name="workspace_detail_tool_kill_task">終止任務</string>
   <string name="workspace_detail_tool_shell">執行命令</string>
   <string name="workspace_detail_install_rootfs_desc">將下載 tar.gz 並解壓縮到 %s 的 linux 目錄。</string>
   <string name="workspace_detail_download_url">tar.gz 下載網址</string>
@@ -1502,6 +1505,11 @@
   <string name="tool_ui_delete_failed">刪除 %s 失敗</string>
   <string name="tool_ui_move_file">移動檔案</string>
   <string name="tool_ui_shell">Shell: %s</string>
+  <string name="tool_ui_shell_bg">背景執行: %s</string>
+  <string name="tool_ui_shell_bg_default">背景命令</string>
+  <string name="tool_ui_task_status">任務 %s</string>
+  <string name="tool_ui_task_status_list">背景任務</string>
+  <string name="tool_ui_kill_task">終止任務 %s</string>
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>

@@ -3,8 +3,10 @@ package app.androidrik.rikkahub.data.ai.tools
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.put
 import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.Tool
@@ -16,11 +18,16 @@ import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.utils.generateUnifiedDiff
 import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceFileEntry
+import app.androidrik.workspace.WorkspaceKillResult
 import app.androidrik.workspace.WorkspaceManager
+import app.androidrik.workspace.WorkspaceTaskStatus
 import org.koin.java.KoinJavaComponent.getKoin
 import java.io.ByteArrayOutputStream
 
 private const val SHELL_TIMEOUT_MAX_SECONDS = 600L
+
+/** 后台任务查询结果里单流返回的最大字符数：尾部缓冲是 8K，再截一道避免轮询把上下文吃掉。 */
+private const val TASK_TAIL_RETURN_CHARS = 4_000
 private const val MAX_READ_FILE_BYTES = 8L * 1024 * 1024
 /** rootfs 写入最大字节数（对齐 WorkspaceFileSystem 的 2MB require） */
 private const val MAX_ROOTFS_WRITE_BYTES = 2 * 1024 * 1024
@@ -31,6 +38,12 @@ val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_edit_file" to false,
     "workspace_present_file" to false,
     "workspace_shell" to true,
+    // 后台命令会持续占用设备资源且模型看不见它的输出，默认要人确认；
+    // 终止同理（终止是破坏性操作，且模型可能误杀别的任务）。
+    // 查询只读、无副作用，默认免审批——否则长任务轮询会变成审批轰炸。
+    "workspace_run_background" to true,
+    "workspace_kill_task" to true,
+    "workspace_task_status" to false,
 )
 
 fun resolveWorkspaceToolApproval(name: String, overrides: Map<String, Boolean>): Boolean =
@@ -53,6 +66,9 @@ suspend fun createWorkspaceTools(
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createPresentFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
+        createRunBackgroundTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
+        createTaskStatusTool(workspaceId, ::needsApproval, workspaceRepository),
+        createKillTaskTool(workspaceId, ::needsApproval, workspaceRepository),
     )
 }
 
@@ -321,6 +337,213 @@ private fun createShellTool(
         )
     },
 )
+
+/**
+ * 后台命令：立即返回任务 id，输出不进本轮上下文。
+ *
+ * 与 `workspace_shell` 的分工写在描述里，因为模型选择哪一个是这个功能的关键：
+ * 短命令要输出 ⇒ shell；长命令/要等很久 ⇒ 后台 + 轮询。
+ */
+private fun createRunBackgroundTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+    defaultCwd: String? = null,
+) = Tool(
+    name = "workspace_run_background",
+    description = buildString {
+        append("Start a shell command in the assistant's bound workspace Rootfs **in the background** and return a task id immediately. ")
+        append("The command keeps running after this answer; its output is NOT included here, so a chatty command cannot flood the context window. ")
+        append("Poll workspace_task_status for the tail of stdout/stderr and stop it with workspace_kill_task. ")
+        append("Use this for long builds, downloads or training scripts; use workspace_shell when you need the output in this same turn. ")
+        append("The workspace files area is mounted at /workspace.")
+    },
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("command", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Shell command to run in the background")
+                })
+                put("cwd", buildJsonObject {
+                    put("type", "string")
+                    put(
+                        "description",
+                        if (!defaultCwd.isNullOrBlank()) {
+                            "Working directory relative to the workspace files root. Defaults to '$defaultCwd'."
+                        } else {
+                            "Working directory relative to the workspace files root. Defaults to root."
+                        }
+                    )
+                })
+            },
+            required = listOf("command"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_run_background") },
+    execute = {
+        val params = it.jsonObject
+        val command = params.string("command") ?: error("command is required")
+        val cwd = (params.string("cwd") ?: defaultCwd.orEmpty())
+            .removePrefix("/workspace/").removePrefix("/workspace")
+        val task = workspaceRepository.startBackgroundCommand(workspaceId, command, cwd)
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("taskId", task.id)
+                    put("status", task.status.name)
+                    put("command", task.command.abbreviateForContext(COMMAND_PREVIEW_CHARS))
+                    if (task.cwd.isNotBlank()) put("cwd", task.cwd)
+                    if (task.status == WorkspaceTaskStatus.FAILED) {
+                        // 启动失败必须当场把原因给模型：任务从未运行，轮询也不会有新信息
+                        put("error", task.stderr.ifBlank { "Task failed to start" })
+                    } else {
+                        put(
+                            "note",
+                            "Running in the background. Poll workspace_task_status(taskId=\"${task.id}\") " +
+                                "for its output tail and exit code.",
+                        )
+                    }
+                }.toString()
+            )
+        )
+    },
+)
+
+/** 后台任务状态：带 taskId 查单个（含输出尾部），不带则列出本工作空间全部任务。 */
+private fun createTaskStatusTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+) = Tool(
+    name = "workspace_task_status",
+    description = "Check background tasks started with workspace_run_background. " +
+        "With taskId: its status, exit code, duration and the tail of stdout/stderr. " +
+        "Without taskId: a summary list of this workspace's tasks. Read-only, so it is safe to poll.",
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("taskId", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Task id from workspace_run_background. Omit to list all tasks.")
+                })
+            },
+            required = emptyList(),
+        )
+    },
+    needsApproval = { needsApproval("workspace_task_status") },
+    execute = {
+        val taskId = it.jsonObject.string("taskId")?.trim().orEmpty()
+        val text = if (taskId.isBlank()) {
+            val now = System.currentTimeMillis()
+            val tasks = workspaceRepository.listBackgroundTasks(workspaceId)
+            buildJsonObject {
+                putJsonArray("tasks") {
+                    tasks.forEach { task ->
+                        addJsonObject {
+                            put("taskId", task.id)
+                            put("status", task.status.name)
+                            task.exitCode?.let { code -> put("exitCode", code) }
+                            put("command", task.command.abbreviateForContext(COMMAND_PREVIEW_CHARS))
+                            put("durationMs", task.durationMillis(now))
+                            put("stdoutChars", task.stdoutTotalChars)
+                            put("stderrChars", task.stderrTotalChars)
+                        }
+                    }
+                }
+                put("running", tasks.count { it.isRunning })
+            }.toString()
+        } else {
+            val task = workspaceRepository.getBackgroundTask(workspaceId, taskId)
+            if (task == null) {
+                buildJsonObject {
+                    put("error", "Unknown taskId: $taskId")
+                    put("note", "Task ids live in memory only: they disappear when the app restarts.")
+                }.toString()
+            } else {
+                val now = System.currentTimeMillis()
+                buildJsonObject {
+                    put("taskId", task.id)
+                    put("status", task.status.name)
+                    task.exitCode?.let { code -> put("exitCode", code) }
+                    put("command", task.command.abbreviateForContext(COMMAND_PREVIEW_CHARS))
+                    put("durationMs", task.durationMillis(now))
+                    put("stdout", task.stdout.tailForContext(TASK_TAIL_RETURN_CHARS))
+                    put("stderr", task.stderr.tailForContext(TASK_TAIL_RETURN_CHARS))
+                    put("stdoutChars", task.stdoutTotalChars)
+                    put("stderrChars", task.stderrTotalChars)
+                    if (task.outputTruncated) {
+                        put("outputTruncated", true)
+                        put(
+                            "note",
+                            "Older output was discarded; only the tail is kept. Write results to files in the " +
+                                "workspace instead of relying on command output.",
+                        )
+                    }
+                }.toString()
+            }
+        }
+        listOf(UIMessagePart.Text(text))
+    },
+)
+
+/** 终止后台任务：`RUNNING` ⇒ 强杀；已结束/未知 id 也有明确文案，避免模型反复重试。 */
+private fun createKillTaskTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+) = Tool(
+    name = "workspace_kill_task",
+    description = "Terminate a running background task started with workspace_run_background.",
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("taskId", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Task id returned by workspace_run_background")
+                })
+            },
+            required = listOf("taskId"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_kill_task") },
+    execute = {
+        val taskId = it.jsonObject.string("taskId")?.trim().orEmpty()
+        if (taskId.isBlank()) error("taskId is required")
+        val result = workspaceRepository.killBackgroundTask(workspaceId, taskId)
+        val message = when (result) {
+            WorkspaceKillResult.KILLED -> "Termination signal sent to $taskId."
+            WorkspaceKillResult.ALREADY_FINISHED -> "$taskId had already finished; nothing to kill."
+            WorkspaceKillResult.NOT_FOUND ->
+                "Unknown taskId: $taskId (task ids live in memory only, and finished tasks expire)"
+        }
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("taskId", taskId)
+                    put("result", result.name)
+                    put("message", message)
+                    workspaceRepository.getBackgroundTask(workspaceId, taskId)?.let { task ->
+                        put("status", task.status.name)
+                        task.exitCode?.let { code -> put("exitCode", code) }
+                    }
+                }.toString()
+            )
+        )
+    },
+)
+
+/** 列表里的命令预览长度：只需让模型认出是哪个任务。 */
+private const val COMMAND_PREVIEW_CHARS = 200
+
+private fun String.abbreviateForContext(maxChars: Int): String {
+    val oneLine = replace("\n", " ").trim()
+    return if (oneLine.length <= maxChars) oneLine else oneLine.take(maxChars) + "…"
+}
+
+/** 尾部缓冲内容本身就以尾部为准，这里只做「单流返回上限」再截一刀。 */
+private fun String.tailForContext(maxChars: Int): String =
+    if (length <= maxChars) this else "…(truncated)…\n" + takeLast(maxChars)
 
 private fun kotlinx.serialization.json.JsonObject.string(name: String): String? =
     this[name]?.jsonPrimitive?.contentOrNull

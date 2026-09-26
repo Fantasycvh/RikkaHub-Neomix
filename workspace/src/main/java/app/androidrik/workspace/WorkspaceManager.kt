@@ -11,8 +11,19 @@ class WorkspaceManager(
     private val config: WorkspaceConfig = WorkspaceConfig(),
     private val shellRunner: WorkspaceShellRunner = HostShellRunner(),
     private val bindMounts: List<WorkspaceBindMount> = emptyList(),
+    /**
+     * 后台任务启动器。为 null 时后台任务工具不可用（`startBackgroundCommand` 抛错），
+     * 用于「只有宿主机 shell、没有 rootfs」的配置。
+     */
+    private val backgroundLauncher: WorkspaceTaskLauncher? = null,
+    /** 后台任务并发上限（透传给 [WorkspaceTaskRegistry]，便于单测收紧）。 */
+    private val maxBackgroundTasks: Int = DEFAULT_MAX_CONCURRENT_TASKS,
 ) {
     private val fileSystem = WorkspaceFileSystem(config)
+
+    /** 后台任务表：进程内内存态，见 [WorkspaceTaskRegistry] 的类注释。 */
+    private val backgroundTaskRegistry: WorkspaceTaskRegistry? =
+        backgroundLauncher?.let { WorkspaceTaskRegistry(it, maxConcurrent = maxBackgroundTasks) }
 
     // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
     private val sortedBindMounts = bindMounts.sortedByDescending { it.target.trimEnd('/').length }
@@ -42,7 +53,11 @@ class WorkspaceManager(
 
     fun hasRootfs(root: String): Boolean = File(linuxDir(root), "bin/sh").isFile
 
-    fun deleteWorkspace(root: String): Boolean = workspaceDir(root).deleteRecursively()
+    fun deleteWorkspace(root: String): Boolean {
+        // 先终止该工作空间的后台任务：否则进程还持有已删除目录里的 cwd/fd，行为不可预期
+        killBackgroundTasks(root)
+        return workspaceDir(root).deleteRecursively()
+    }
 
     fun listFiles(
         root: String,
@@ -206,6 +221,59 @@ class WorkspaceManager(
             )
         )
     }
+
+    /**
+     * 启动一个**后台**命令（不阻塞当前对话轮），返回任务快照。
+     *
+     * 与 [executeCommand] 的差别：无超时（后台任务的定义就是比一轮对话活得久），
+     * 输出不进上下文而是写进尾部缓冲，由 `workspace_task_status` 按需轮询。
+     */
+    fun startBackgroundCommand(
+        root: String,
+        command: String,
+        cwd: String = "",
+        shellCompatibilityMode: Boolean = false,
+    ): WorkspaceTaskSnapshot {
+        require(command.isNotBlank()) { "Command is required" }
+        val registry = requireNotNull(backgroundTaskRegistry) {
+            "Background tasks are not available: no launcher configured (rootfs shell runner missing)"
+        }
+        val workingDir = fileSystem.resolve(filesDir(root), cwd)
+        require(workingDir.exists()) { "Working directory does not exist: $cwd" }
+        require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
+
+        return registry.start(
+            WorkspaceShellContext(
+                root = root,
+                command = command,
+                cwd = cwd,
+                filesDir = filesDir(root),
+                linuxDir = linuxDir(root),
+                tempDir = tempDir(root),
+                workingDir = workingDir,
+                // 后台任务无超时；这里的 timeoutMillis 不被启动器使用
+                timeoutMillis = 0L,
+                stdin = null,
+                bindMounts = bindMounts,
+                shellCompatibilityMode = shellCompatibilityMode,
+            )
+        )
+    }
+
+    /** 后台任务列表；[root] 为 null 时列出所有工作空间的。 */
+    fun backgroundTasks(root: String? = null): List<WorkspaceTaskSnapshot> =
+        backgroundTaskRegistry?.list(root).orEmpty()
+
+    fun backgroundTask(id: String): WorkspaceTaskSnapshot? = backgroundTaskRegistry?.snapshot(id)
+
+    fun killBackgroundTask(id: String): WorkspaceKillResult =
+        backgroundTaskRegistry?.kill(id) ?: WorkspaceKillResult.NOT_FOUND
+
+    /** 终止某工作空间全部运行中的后台任务，返回终止数量。 */
+    fun killBackgroundTasks(root: String): Int = backgroundTaskRegistry?.killAll(root) ?: 0
+
+    /** 是否支持后台任务（DI 配置了启动器）。 */
+    val supportsBackgroundTasks: Boolean get() = backgroundTaskRegistry != null
 
     private fun requireValidRoot(root: String) {
         require(root.matches(ROOT_NAME_REGEX)) {

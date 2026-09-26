@@ -24,8 +24,10 @@ import app.androidrik.workspace.RootfsInstaller
 import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.WorkspaceManager
+import app.androidrik.workspace.WorkspaceKillResult
 import app.androidrik.workspace.WorkspaceShellStatus
 import app.androidrik.workspace.WorkspaceStorageArea
+import app.androidrik.workspace.WorkspaceTaskSnapshot
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -455,6 +457,44 @@ class WorkspaceRepository(
             )
         }
     }
+
+    /**
+     * 启动后台命令（不阻塞对话轮）。任务表在 `WorkspaceManager` 内存里，进程重启即丢失。
+     */
+    suspend fun startBackgroundCommand(
+        id: String,
+        command: String,
+        cwd: String = "",
+    ): WorkspaceTaskSnapshot = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.startBackgroundCommand(
+            workspace.root, command, cwd,
+            shellCompatibilityMode = workspace.shellCompatibilityMode,
+        )
+    }
+
+    /** 该工作空间的后台任务列表（内存态，只含本次进程启动后创建的）。 */
+    suspend fun listBackgroundTasks(id: String): List<WorkspaceTaskSnapshot> = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: return@withContext emptyList()
+        manager.backgroundTasks(workspace.root)
+    }
+
+    suspend fun getBackgroundTask(id: String, taskId: String): WorkspaceTaskSnapshot? =
+        withContext(Dispatchers.IO) {
+            val workspace = dao.getById(id) ?: return@withContext null
+            manager.backgroundTask(taskId)?.takeIf { it.root == workspace.root }
+        }
+
+    suspend fun killBackgroundTask(id: String, taskId: String): WorkspaceKillResult =
+        withContext(Dispatchers.IO) {
+            val workspace = dao.getById(id) ?: return@withContext WorkspaceKillResult.NOT_FOUND
+            // 归属校验：只允许终止本工作空间的任务，避免跨工作空间误杀
+            val task = manager.backgroundTask(taskId)
+                ?: return@withContext WorkspaceKillResult.NOT_FOUND
+            if (task.root != workspace.root) return@withContext WorkspaceKillResult.NOT_FOUND
+            manager.killBackgroundTask(taskId)
+        }
 
     suspend fun delete(id: String): Boolean {
         val workspace = dao.getById(id) ?: return false

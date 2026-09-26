@@ -50,6 +50,9 @@ import me.rerere.hugeicons.stroke.FileAdd
 import me.rerere.hugeicons.stroke.FileEdit
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.FileView
+import me.rerere.hugeicons.stroke.Play
+import me.rerere.hugeicons.stroke.Stop
+import me.rerere.hugeicons.stroke.Task01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
@@ -677,4 +680,179 @@ private fun formatBytes(bytes: Long): String = when {
     bytes >= 1_000_000 -> "%.1fMB".format(bytes / 1_000_000.0)
     bytes >= 1_000 -> "%.1fKB".format(bytes / 1_000.0)
     else -> "$bytes B"
+}
+
+// ---------- 后台任务三件套：workspace_run_background / _task_status / _kill_task ----------
+
+/**
+ * 后台命令**启动**卡片：标题为命令预览，摘要给出任务号与状态（或启动失败原因）。
+ *
+ * 刻意不展示输出：后台任务的输出根本不在启动结果里（这正是它不堵塞上下文的原因），
+ * 卡片只需让用户看清「起了什么、任务号多少」；看输出用状态卡片。
+ */
+object BackgroundRunToolUI : ToolUIRenderer {
+    private const val TITLE_MAX_CHARS = 40
+
+    override val toolName: String = "workspace_run_background"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Play
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val command = context.arguments.getStringContent("command")
+            ?: return stringResource(R.string.tool_ui_shell_bg_default)
+        val preview = command.replace("\n", " ").trim()
+        val truncated = if (preview.length > TITLE_MAX_CHARS) preview.take(TITLE_MAX_CHARS) + "…" else preview
+        return stringResource(R.string.tool_ui_shell_bg, truncated)
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val content = context.content ?: return
+        val error = content.getStringContent("error")
+        val taskId = content.getStringContent("taskId").orEmpty()
+        val status = content.getStringContent("status").orEmpty()
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (!error.isNullOrBlank()) {
+                // 启动失败（rootfs 未装 / proot 缺失）当场可见，不必等用户轮询状态
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            } else {
+                Text(
+                    text = listOf(taskId, status).filter { it.isNotBlank() }.joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    fontSize = 11.sp,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 后台**状态**卡片：带 taskId 时显示状态/退出码与输出尾部，不带时显示任务列表。
+ */
+object TaskStatusToolUI : ToolUIRenderer {
+    private const val SUMMARY_MAX_LINES = 8
+
+    override val toolName: String = "workspace_task_status"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Task01
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val taskId = context.arguments.getStringContent("taskId")?.trim()
+        return if (taskId.isNullOrBlank()) {
+            stringResource(R.string.tool_ui_task_status_list)
+        } else {
+            stringResource(R.string.tool_ui_task_status, taskId)
+        }
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val content = context.content ?: return
+        val error = content.getStringContent("error")
+        if (!error.isNullOrBlank()) {
+            Text(
+                text = error,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            return
+        }
+        val status = content.getStringContent("status")
+        val exitCode = content.int("exitCode")
+        val lines = remember(content) {
+            listOf(content.getStringContent("stdout"), content.getStringContent("stderr"))
+                .filterNot { it.isNullOrBlank() }
+                .joinToString("\n")
+                .trim()
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (status != null) {
+                TaskStatusLine(status = status, exitCode = exitCode)
+            }
+            if (lines.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .shimmer(isLoading = context.loading),
+                ) {
+                    Text(
+                        text = lines.lineSequence().toList().takeLast(SUMMARY_MAX_LINES).joinToString("\n"),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        maxLines = SUMMARY_MAX_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 后台**终止**卡片：标题为任务号，摘要为工具返回的结果说明。
+ */
+object KillTaskToolUI : ToolUIRenderer {
+    override val toolName: String = "workspace_kill_task"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Stop
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val taskId = context.arguments.getStringContent("taskId")?.trim().orEmpty()
+        return if (taskId.isBlank()) {
+            stringResource(R.string.workspace_detail_tool_kill_task)
+        } else {
+            stringResource(R.string.tool_ui_kill_task, taskId)
+        }
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val content = context.content ?: return
+        val message = content.getStringContent("message") ?: return
+        val status = content.getStringContent("status")
+        val exitCode = content.int("exitCode")
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(text = message, style = MaterialTheme.typography.labelSmall)
+            if (status != null) {
+                TaskStatusLine(status = status, exitCode = exitCode)
+            }
+        }
+    }
+}
+
+/**
+ * 后台任务状态行：状态名直接用工具返回的枚举（RUNNING/EXITED/KILLED/FAILED），
+ * 与工具结果里的字面量保持一致——用户看到的和模型看到的就应该是同一个词。
+ */
+@Composable
+private fun TaskStatusLine(status: String, exitCode: Int?) {
+    val ok = status == "EXITED" && exitCode == 0
+    val text = if (exitCode != null) "$status · exit $exitCode" else status
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+        fontSize = 11.sp,
+        color = when {
+            status == "FAILED" -> MaterialTheme.colorScheme.error
+            ok -> DiffAddedColor
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    )
 }

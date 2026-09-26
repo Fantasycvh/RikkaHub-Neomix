@@ -223,6 +223,28 @@ class ToolCallLoopGuardTest {
     }
 
     @Test
+    fun `task status polling is exempt from counting`() {
+        // 后台任务的进度查询：同一个 taskId 反复查是**唯一**的正确用法。
+        // 不豁免的话第 3 次轮询就被判成死循环，等于把「长任务不阻塞对话」这个功能废掉。
+        val guard = ToolCallLoopGuard()
+        val statusSig = "workspace_task_status\u0000{\"taskId\":\"a1b2c3d4\"}"
+        val verdicts = (1..10).map { guard.record("workspace_task_status", statusSig) }
+        assertTrue(
+            "轮询后台任务状态绝不能被判定为失控循环",
+            verdicts.all { it == ToolCallLoopGuard.Verdict.Continue },
+        )
+    }
+
+    @Test
+    fun `background run is not polling-exempt`() {
+        // 与之相对：反复启动同一条后台命令仍是要拦的失控形态
+        val guard = ToolCallLoopGuard()
+        val runSig = "workspace_run_background\u0000{\"command\":\"make\"}"
+        val verdicts = (1..3).map { guard.record("workspace_run_background", runSig) }
+        assertTrue(verdicts.last() is ToolCallLoopGuard.Verdict.Loop)
+    }
+
+    @Test
     fun `exempt tool does not pollute the window for other tools`() {
         val guard = ToolCallLoopGuard(windowSize = 3, successThreshold = 3, failureThreshold = 3)
         guard.record("read_file", sig)
