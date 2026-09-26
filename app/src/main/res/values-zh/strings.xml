@@ -1718,5 +1718,20 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="agent_run_error_context_budget">上下文预算耗尽</string>
   <string name="workspace_selection_cancel">取消选择</string>
   <string name="workspace_selection_select_all">全选</string>
+  <string name="workspace_export_choose_title">导出所选 %1$d 项</string>
+  <string name="workspace_export_option_zip">打包为 zip（一个文件）</string>
+  <string name="workspace_export_option_tree">逐个导出到目录（保留结构）</string>
+  <string name="workspace_export_progress">正在导出 %1$d/%2$d</string>
+  <string name="workspace_export_done_ok">已导出 %1$d 个文件</string>
+  <string name="workspace_export_done_partial">已导出 %1$d 个 · 跳过 %2$d 个 · 失败 %3$d 个</string>
+  <string name="workspace_export_failed">导出失败</string>
+  <string name="workspace_export_large_title">所选项较多</string>
+  <string name="workspace_export_large_message">共 %1$d 个文件 · %2$s。导出可能需要一些时间，继续？</string>
+  <string name="workspace_export_rootfs_title">rootfs 区不支持导出</string>
+  <string name="workspace_export_rootfs_message">rootfs 区不进导出：它可能有数 GB 且含特殊文件；备份里也是同样理由排除了它——需要时重装即可。</string>
+  <string name="workspace_delete_selection_title">删除所选 %1$d 项？</string>
+  <string name="workspace_delete_selection_message">选中的文件夹会连同内容一并删除。</string>
+  <string name="workspace_delete_selection_done">已删除 %1$d 项</string>
+  <string name="workspace_delete_selection_partial">已删除 %1$d 项，%2$d 项失败</string>
 </resources>
 

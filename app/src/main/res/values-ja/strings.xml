@@ -1645,5 +1645,20 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="agent_run_error_context_budget">コンテキスト予算を使い切りました</string>
   <string name="workspace_selection_cancel">選択を解除</string>
   <string name="workspace_selection_select_all">すべて選択</string>
+  <string name="workspace_export_choose_title">選択した %1$d 件を書き出す</string>
+  <string name="workspace_export_option_zip">zip にまとめる（1 ファイル）</string>
+  <string name="workspace_export_option_tree">フォルダへ書き出す（構造を保持）</string>
+  <string name="workspace_export_progress">書き出し中 %1$d/%2$d</string>
+  <string name="workspace_export_done_ok">%1$d 件を書き出しました</string>
+  <string name="workspace_export_done_partial">書き出し %1$d 件 · スキップ %2$d 件 · 失敗 %3$d 件</string>
+  <string name="workspace_export_failed">書き出しに失敗しました</string>
+  <string name="workspace_export_large_title">選択項目が大きいです</string>
+  <string name="workspace_export_large_message">%1$d 件 · %2$s。書き出しに時間がかかる場合があります。続行しますか？</string>
+  <string name="workspace_export_rootfs_title">rootfs は書き出せません</string>
+  <string name="workspace_export_rootfs_message">rootfs は書き出し対象外です。数 GB になることや特殊なファイルを含むことがあり、バックアップでも同じ理由で除外しています。必要なら再インストールしてください。</string>
+  <string name="workspace_delete_selection_title">選択した %1$d 件を削除しますか？</string>
+  <string name="workspace_delete_selection_message">選択したフォルダは中身ごと削除されます。</string>
+  <string name="workspace_delete_selection_done">%1$d 件を削除しました</string>
+  <string name="workspace_delete_selection_partial">%1$d 件を削除、%2$d 件失敗</string>
 </resources>
 

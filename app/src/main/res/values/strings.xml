@@ -1720,5 +1720,20 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="agent_run_error_context_budget">Context budget exhausted</string>
   <string name="workspace_selection_cancel">Cancel selection</string>
   <string name="workspace_selection_select_all">Select all</string>
+  <string name="workspace_export_choose_title">Export %1$d selected items</string>
+  <string name="workspace_export_option_zip">Pack into a zip</string>
+  <string name="workspace_export_option_tree">Export to a folder (keep structure)</string>
+  <string name="workspace_export_progress">Exporting %1$d/%2$d</string>
+  <string name="workspace_export_done_ok">Exported %1$d files</string>
+  <string name="workspace_export_done_partial">Exported %1$d, skipped %2$d, failed %3$d</string>
+  <string name="workspace_export_failed">Export failed</string>
+  <string name="workspace_export_large_title">This selection is large</string>
+  <string name="workspace_export_large_message">%1$d files · %2$s. Exporting may take a while - continue?</string>
+  <string name="workspace_export_rootfs_title">Rootfs cannot be exported</string>
+  <string name="workspace_export_rootfs_message">The rootfs area is excluded from export: it can be many GB and contains special files. It is excluded from backups for the same reason - reinstall it instead.</string>
+  <string name="workspace_delete_selection_title">Delete %1$d selected items?</string>
+  <string name="workspace_delete_selection_message">Folders are deleted together with their contents.</string>
+  <string name="workspace_delete_selection_done">Deleted %1$d items</string>
+  <string name="workspace_delete_selection_partial">Deleted %1$d, %2$d failed</string>
 </resources>
 

@@ -1701,5 +1701,20 @@
   <string name="agent_run_error_context_budget">上下文預算耗盡</string>
   <string name="workspace_selection_cancel">取消選擇</string>
   <string name="workspace_selection_select_all">全選</string>
+  <string name="workspace_export_choose_title">匯出所選 %1$d 項</string>
+  <string name="workspace_export_option_zip">打包為 zip（一個檔案）</string>
+  <string name="workspace_export_option_tree">逐個匯出到目錄（保留結構）</string>
+  <string name="workspace_export_progress">正在匯出 %1$d/%2$d</string>
+  <string name="workspace_export_done_ok">已匯出 %1$d 個檔案</string>
+  <string name="workspace_export_done_partial">已匯出 %1$d 個 · 略過 %2$d 個 · 失敗 %3$d 個</string>
+  <string name="workspace_export_failed">匯出失敗</string>
+  <string name="workspace_export_large_title">所選項較多</string>
+  <string name="workspace_export_large_message">共 %1$d 個檔案 · %2$s。匯出可能需要一些時間，繼續？</string>
+  <string name="workspace_export_rootfs_title">rootfs 區不支援匯出</string>
+  <string name="workspace_export_rootfs_message">rootfs 區不進匯出：它可能有數 GB 且含特殊檔案；備份裡也是同樣理由排除了它——需要時重裝即可。</string>
+  <string name="workspace_delete_selection_title">刪除所選 %1$d 項？</string>
+  <string name="workspace_delete_selection_message">選取的資料夾會連同內容一併刪除。</string>
+  <string name="workspace_delete_selection_done">已刪除 %1$d 項</string>
+  <string name="workspace_delete_selection_partial">已刪除 %1$d 項，%2$d 項失敗</string>
 </resources>
 

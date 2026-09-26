@@ -158,6 +158,9 @@ dependencies {
 
     // Compose
     implementation(libs.androidx.activity.compose)
+    // SAF 目录授权导出（tree URI → 建子目录/写文件）需要它；手写 DocumentsContract 等价逻辑
+    // 在各家 provider 上更容易出静默错误（设计 §6.1）
+    implementation(libs.androidx.documentfile)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)

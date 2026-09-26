@@ -1645,5 +1645,20 @@
   <string name="agent_run_error_context_budget">Контекстный бюджет исчерпан</string>
   <string name="workspace_selection_cancel">Отменить выбор</string>
   <string name="workspace_selection_select_all">Выбрать все</string>
+  <string name="workspace_export_choose_title">Экспорт выбранных элементов: %1$d</string>
+  <string name="workspace_export_option_zip">Упаковать в zip</string>
+  <string name="workspace_export_option_tree">Экспорт в папку (с сохранением структуры)</string>
+  <string name="workspace_export_progress">Экспорт %1$d/%2$d</string>
+  <string name="workspace_export_done_ok">Экспортировано файлов: %1$d</string>
+  <string name="workspace_export_done_partial">Экспортировано %1$d, пропущено %2$d, ошибок %3$d</string>
+  <string name="workspace_export_failed">Не удалось экспортировать</string>
+  <string name="workspace_export_large_title">Выборка большая</string>
+  <string name="workspace_export_large_message">Файлов: %1$d · %2$s. Экспорт может занять время. Продолжить?</string>
+  <string name="workspace_export_rootfs_title">rootfs нельзя экспортировать</string>
+  <string name="workspace_export_rootfs_message">rootfs исключён из экспорта: он может занимать гигабайты и содержит особые файлы. По той же причине он исключён из резервных копий — просто переустановите его.</string>
+  <string name="workspace_delete_selection_title">Удалить выбранные элементы (%1$d)?</string>
+  <string name="workspace_delete_selection_message">Выбранные папки удаляются вместе с содержимым.</string>
+  <string name="workspace_delete_selection_done">Удалено элементов: %1$d</string>
+  <string name="workspace_delete_selection_partial">Удалено %1$d, ошибок %2$d</string>
 </resources>
 

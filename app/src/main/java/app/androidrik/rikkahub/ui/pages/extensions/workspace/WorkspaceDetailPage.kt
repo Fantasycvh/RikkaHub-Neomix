@@ -6,6 +6,16 @@ import android.webkit.MimeTypeMap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.documentfile.provider.DocumentFile
+import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
+import app.androidrik.rikkahub.data.export.WorkspaceExportNames
+import app.androidrik.rikkahub.ui.components.workspace.WorkspaceSelectionToolbar
+import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.utils.fileSizeToString
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,7 +30,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -46,7 +55,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -106,6 +114,7 @@ fun WorkspaceDetailPage(id: String) {
     var showInstallDialog by remember { mutableStateOf(false) }
     var previewImageUri by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val toaster = LocalToaster.current
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -120,6 +129,20 @@ fun WorkspaceDetailPage(id: String) {
         vm.importFile(inputStream, fileName)
     }
     var exportTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
+    // SAF launcher 回调里要用的"这次导哪些"（launcher 不能带参数，只能借状态传递）
+    var pendingExportEntries by remember { mutableStateOf<List<WorkspaceFileEntry>>(emptyList()) }
+
+    // ---- 多选（设计 design-workspace-multiselect-export.md；选择态由页面持有、组件无状态）----
+    var selecting by rememberSaveable { mutableStateOf(false) }
+    var selectedPaths by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var showExportChooser by remember { mutableStateOf(false) }
+    var showDeleteSelectionConfirm by remember { mutableStateOf(false) }
+    var showRootfsExportNotice by remember { mutableStateOf(false) }
+    var pendingExport by remember { mutableStateOf<BatchExportKind?>(null) }
+    var pendingLaunch by remember { mutableStateOf<BatchExportKind?>(null) }
+    var largeExportConfirm by remember { mutableStateOf<Pair<Int, Long>?>(null) }
+    var exportProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    val selectedEntries = state.entries.filter { it.path in selectedPaths }
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*"),
     ) { uri ->
@@ -129,7 +152,144 @@ fun WorkspaceDetailPage(id: String) {
         vm.exportFile(entry, outputStream)
     }
 
-    BackHandler(enabled = pagerState.currentPage == 1 && state.path.isNotBlank()) {
+    fun finishSelection() {
+        selecting = false
+        selectedPaths = emptyList()
+    }
+
+    fun exportResultMessage(result: WorkspaceBatchResult?): String = when {
+        result == null -> context.getString(R.string.workspace_export_failed)
+        result.skipped == 0 && result.failed == 0 ->
+            context.getString(R.string.workspace_export_done_ok, result.succeeded)
+
+        else -> context.getString(
+            R.string.workspace_export_done_partial,
+            result.succeeded,
+            result.skipped,
+            result.failed,
+        )
+    }
+
+    /**
+     * 请求启动某个 SAF 流程。
+     *
+     * **只改状态、不直接调 launcher**：launcher 是后声明的（Kotlin 局部函数不能前向引用），
+     * 而"大目录先确认"的路径需要先决定再启动——用状态把"该启哪个"传下去，
+     * 由 launcher 声明之后的 [LaunchedEffect] 真正启动。
+     */
+    fun launchExport(kind: BatchExportKind) {
+        pendingLaunch = kind
+    }
+
+    /** 开始导出（含"大目录先提示"这一步）。 */
+    fun startExport(entries: List<WorkspaceFileEntry>, kind: BatchExportKind) {
+        if (state.area == WorkspaceStorageArea.LINUX) {
+            // rootfs 不进导出（用户决议 §六.4）：树可能数 GB、含特殊文件，且它在备份里本就排除
+            showRootfsExportNotice = true
+            return
+        }
+        pendingExportEntries = entries
+        // 只有"含文件夹 / 选择很多"时才多走一次树做体量预览——小选择不必付这个成本
+        if (entries.any { it.isDirectory } || entries.size > LARGE_SELECTION_HINT_COUNT) {
+            scope.launch {
+                val preview = vm.previewSelection(entries)
+                if (preview != null && (preview.second > LARGE_EXPORT_BYTES || preview.first > LARGE_EXPORT_FILES)) {
+                    pendingExport = kind
+                    largeExportConfirm = preview
+                } else {
+                    launchExport(kind)
+                }
+            }
+        } else {
+            launchExport(kind)
+        }
+    }
+
+
+
+    /**
+     * 打包导出：`CreateDocument("application/zip")`。
+     *
+     * 与单文件导出的区别只在"写什么"——这里写的是 zip 流；**仍然不落临时文件**。
+     */
+    val zipExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        val entries = pendingExportEntries
+        pendingExport = null
+        pendingExportEntries = emptyList()
+        if (uri == null || entries.isEmpty()) return@rememberLauncherForActivityResult
+        val outputStream = context.contentResolver.openOutputStream(uri)
+        if (outputStream == null) {
+            toaster.show(context.getString(R.string.workspace_export_failed))
+            return@rememberLauncherForActivityResult
+        }
+        exportProgress = 0 to entries.size
+        scope.launch {
+            val result = vm.exportSelectionAsZip(entries, outputStream) { done, total ->
+                exportProgress = done to total
+            }
+            exportProgress = null
+            finishSelection()
+            toaster.show(exportResultMessage(result))
+        }
+    }
+
+    /**
+     * 逐个导出到目录：`OpenDocumentTree`（全仓首次使用该 contract）。
+     *
+     * **刻意不 take persistable permission**：这是一次性写，不需要跨会话保留授权；
+     * 持久化授权反而留下"用户看不见的长期写权限"。
+     */
+    val treeExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        val entries = pendingExportEntries
+        pendingExport = null
+        pendingExportEntries = emptyList()
+        if (uri == null || entries.isEmpty()) return@rememberLauncherForActivityResult
+        val tree = DocumentFile.fromTreeUri(context, uri)
+        if (tree == null) {
+            toaster.show(context.getString(R.string.workspace_export_failed))
+            return@rememberLauncherForActivityResult
+        }
+        exportProgress = 0 to entries.size
+        scope.launch {
+            val result = vm.exportSelectionToTree(
+                entries = entries,
+                tree = tree,
+                openOutputStream = { documentUri -> context.contentResolver.openOutputStream(documentUri) },
+            ) { done, total ->
+                exportProgress = done to total
+            }
+            exportProgress = null
+            finishSelection()
+            toaster.show(exportResultMessage(result))
+        }
+    }
+
+    // 真正启动 SAF 流程（放在两个 launcher 之后：局部函数不能前向引用）
+    LaunchedEffect(pendingLaunch) {
+        when (pendingLaunch) {
+            null -> Unit
+            BatchExportKind.ZIP -> {
+                pendingLaunch = null
+                zipExportLauncher.launch(
+                    WorkspaceExportNames.defaultArchiveName(state.path, System.currentTimeMillis())
+                )
+            }
+
+            BatchExportKind.TREE -> {
+                pendingLaunch = null
+                treeExportLauncher.launch(null)
+            }
+        }
+    }
+
+    // 选择态下返回键先退出选择（用最后注册的 BackHandler 抢占路径返回的语义）
+    BackHandler(enabled = selecting) { finishSelection() }
+
+    BackHandler(enabled = pagerState.currentPage == 1 && state.path.isNotBlank() && !selecting) {
         vm.goUp()
     }
 
@@ -166,6 +326,35 @@ fun WorkspaceDetailPage(id: String) {
             )
         },
         bottomBar = {
+            // 选择态下把底部导航整体换成选择工具条（不留两排、也不让用户切 tab 切丢选择）
+            if (selecting && pagerState.currentPage == 1) {
+                WorkspaceSelectionToolbar(
+                    selectedCount = selectedEntries.size,
+                    visible = true,
+                    onCancel = { finishSelection() },
+                    onSelectAll = {
+                        selectedPaths = if (selectedPaths.size == state.entries.size) {
+                            emptyList()
+                        } else {
+                            state.entries.map { it.path }
+                        }
+                    },
+                    onExport = {
+                        val entries = selectedEntries
+                        if (entries.size == 1 && !entries.first().isDirectory) {
+                            // 单个文件不打包：直接走既有的单文件导出（零新增概念）
+                            showExportChooser = false
+                            exportTarget = entries.first()
+                            exportLauncher.launch(entries.first().name)
+                        } else {
+                            showExportChooser = true
+                        }
+                    },
+                    onDelete = { showDeleteSelectionConfirm = true },
+                    modifier = Modifier
+                        .padding(bottom = 12.dp),
+                )
+            } else {
             NavigationBar {
                 NavigationBarItem(
                     selected = pagerState.currentPage == 0,
@@ -179,6 +368,7 @@ fun WorkspaceDetailPage(id: String) {
                     icon = { Icon(HugeIcons.File02, contentDescription = null) },
                     onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
                 )
+            }
             }
         },
         containerColor = CustomColors.topBarColors.containerColor,
@@ -205,8 +395,37 @@ fun WorkspaceDetailPage(id: String) {
                     loading = state.loading,
                     error = state.error,
                     contentPadding = PaddingValues(),
-                    onSelectArea = vm::selectArea,
-                    onGoUp = vm::goUp,
+                    onSelectArea = { area ->
+                        // 切区等于换了一棵树：清空选择（跨目录/跨区多选不做，见设计 §五.3）
+                        finishSelection()
+                        vm.selectArea(area)
+                    },
+                    onGoUp = {
+                        finishSelection()
+                        vm.goUp()
+                    },
+                    selecting = selecting,
+                    selectedPaths = selectedPaths.toSet(),
+                    onSelectToggle = { entry ->
+                        selectedPaths = if (entry.path in selectedPaths) {
+                            selectedPaths - entry.path
+                        } else {
+                            selectedPaths + entry.path
+                        }
+                    },
+                    onLongPress = { entry ->
+                        // 长按是**快捷入口**：⋮ 菜单里也有等价项（隐藏手势需要可发现性，本仓有过教训）
+                        if (!selecting) {
+                            selecting = true
+                            selectedPaths = listOf(entry.path)
+                        } else {
+                            selectedPaths = if (entry.path in selectedPaths) {
+                                selectedPaths - entry.path
+                            } else {
+                                selectedPaths + entry.path
+                            }
+                        }
+                    },
                     onOpen = { entry ->
                         when {
                             entry.isDirectory -> vm.open(entry)
@@ -273,6 +492,134 @@ fun WorkspaceDetailPage(id: String) {
                 )
             }
         }
+    }
+
+    if (showExportChooser) {
+        AlertDialog(
+            onDismissRequest = { showExportChooser = false },
+            title = { Text(stringResource(R.string.workspace_export_choose_title, selectedEntries.size)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            showExportChooser = false
+                            startExport(selectedEntries, BatchExportKind.ZIP)
+                        },
+                    ) {
+                        Text(stringResource(R.string.workspace_export_option_zip))
+                    }
+                    TextButton(
+                        onClick = {
+                            showExportChooser = false
+                            startExport(selectedEntries, BatchExportKind.TREE)
+                        },
+                    ) {
+                        Text(stringResource(R.string.workspace_export_option_tree))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showExportChooser = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
+
+    largeExportConfirm?.let { (files, bytes) ->
+        AlertDialog(
+            onDismissRequest = { largeExportConfirm = null; pendingExport = null },
+            title = { Text(stringResource(R.string.workspace_export_large_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.workspace_export_large_message,
+                        files,
+                        bytes.fileSizeToString(),
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val kind = pendingExport
+                        largeExportConfirm = null
+                        if (kind != null) launchExport(kind)
+                    },
+                ) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { largeExportConfirm = null; pendingExport = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
+
+    if (showRootfsExportNotice) {
+        AlertDialog(
+            onDismissRequest = { showRootfsExportNotice = false },
+            title = { Text(stringResource(R.string.workspace_export_rootfs_title)) },
+            text = { Text(stringResource(R.string.workspace_export_rootfs_message)) },
+            confirmButton = {
+                TextButton(onClick = { showRootfsExportNotice = false }) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+        )
+    }
+
+    if (showDeleteSelectionConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteSelectionConfirm = false },
+            title = {
+                Text(stringResource(R.string.workspace_delete_selection_title, selectedEntries.size))
+            },
+            text = { Text(stringResource(R.string.workspace_delete_selection_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val entries = selectedEntries
+                        showDeleteSelectionConfirm = false
+                        scope.launch {
+                            val failed = vm.deleteSelection(entries)
+                            finishSelection()
+                            if (failed.isEmpty()) {
+                                toaster.show(
+                                    context.getString(R.string.workspace_delete_selection_done, entries.size)
+                                )
+                            } else {
+                                toaster.show(
+                                    context.getString(
+                                        R.string.workspace_delete_selection_partial,
+                                        entries.size - failed.size,
+                                        failed.size,
+                                    )
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.common_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteSelectionConfirm = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
+
+    exportProgress?.let { (done, total) ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.workspace_export_progress, done, total)) },
+            text = { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) },
+            confirmButton = {},
+        )
     }
 
     state.workspace?.let { workspace ->
@@ -628,6 +975,16 @@ internal fun String.toShellStatusLabel(): String = when (this) {
     WorkspaceShellStatus.BROKEN.name -> stringResource(R.string.workspace_detail_shell_broken)
     else -> lowercase()
 }
+
+/** 批量导出的两种产物（用户决议 §6.1：打包作为**可选项**）。 */
+private enum class BatchExportKind { ZIP, TREE }
+
+/** 超过这两个阈值就先提示（设计 §五.5）：避免用户点完才发现要压几 GB。 */
+private const val LARGE_EXPORT_BYTES = 200L * 1024 * 1024
+private const val LARGE_EXPORT_FILES = 2_000
+
+/** 选择项多于这个数就先做一次体量预览（小选择不付这次遍历成本）。 */
+private const val LARGE_SELECTION_HINT_COUNT = 50
 
 private const val DEFAULT_ROOTFS_URL =
     "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-arm64.tar.gz"

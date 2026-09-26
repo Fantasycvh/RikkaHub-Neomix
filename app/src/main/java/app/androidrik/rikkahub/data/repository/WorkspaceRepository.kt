@@ -1,6 +1,9 @@
 package app.androidrik.rikkahub.data.repository
 
+import android.net.Uri
 import android.util.Log
+import android.webkit.MimeTypeMap
+import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -8,6 +11,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
+import app.androidrik.rikkahub.data.export.collectWorkspaceExportPlan
+import app.androidrik.rikkahub.data.export.writeWorkspaceZip
 import app.androidrik.rikkahub.data.db.dao.WorkspaceDAO
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -19,6 +25,7 @@ import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.WorkspaceShellStatus
 import app.androidrik.workspace.WorkspaceStorageArea
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import kotlin.uuid.Uuid
@@ -283,6 +290,157 @@ class WorkspaceRepository(
         manager.exportRootfsFile(workspace.root, path, outputStream)
     }
 
+    /**
+     * 选中集体量预览（文件数, 总字节）。**只读遍历**，供"导出前先提示"用。
+     */
+    suspend fun previewSelectionSize(
+        id: String,
+        area: WorkspaceStorageArea,
+        basePath: String,
+        selection: List<WorkspaceFileEntry>,
+    ): Pair<Int, Long> = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        val (plan, _) = collectWorkspaceExportPlan(
+            root = areaRootDir(workspace.root, area),
+            selection = selection,
+            basePath = basePath,
+        )
+        plan.fileCount to plan.totalBytes
+    }
+
+    /**
+     * 批量导出为 **zip 单文档**（设计 `design-workspace-multiselect-export.md` §六.1）。
+     *
+     * 遍历与写出都在 `data/export/WorkspaceExport.kt`（纯逻辑 + 流式写出，可单测），
+     * 仓库只负责"把区域根目录交出去"。**不落临时文件**：直接写宿主给的 OutputStream。
+     */
+    suspend fun exportSelectionAsZip(
+        id: String,
+        area: WorkspaceStorageArea,
+        basePath: String,
+        selection: List<WorkspaceFileEntry>,
+        outputStream: OutputStream,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): WorkspaceBatchResult = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        val (plan, skipped) = collectWorkspaceExportPlan(
+            root = areaRootDir(workspace.root, area),
+            selection = selection,
+            basePath = basePath,
+        )
+        val written = writeWorkspaceZip(outputStream, plan, onProgress)
+        WorkspaceBatchResult.ofTree(
+            succeeded = written,
+            skippedNames = skipped,
+            // zip 是"一个文档"：写出即成功；条目级问题只可能出现在遍历期（已计入 skipped）
+            failedNames = emptyList(),
+        )
+    }
+
+    /**
+     * 批量导出到 **SAF 授权目录**（逐个写文件、保留原目录结构）。
+     *
+     * 与 zip 的差别不只是"多文件"：这里会出现**部分成功**（写了 7 个、第 8 个失败），
+     * 所以要分别计"跳过/失败"并带上名字回给 UI（用户决议 §6.1）。
+     *
+     * 同名已存在 ⇒ **默认跳过不覆盖**（覆盖用户既有文件是破坏性的，静默改名又让人找不到）。
+     * `DocumentFile` 自带 resolver（`fromTreeUri` 时绑定）⇒ 本层不需要 ContentResolver。
+     */
+    suspend fun exportSelectionToTree(
+        id: String,
+        area: WorkspaceStorageArea,
+        basePath: String,
+        selection: List<WorkspaceFileEntry>,
+        tree: DocumentFile,
+        /**
+         * 把 SAF 文档写成流的通道。
+         *
+         * **为什么由调用方给**：`DocumentFile` 只有"建/找/删"这些结构操作，**没有写流**的 API
+         * （1.0.x 连 `openOutputStream` 都没有）⇒ 写这一半必须走 `ContentResolver`，
+         * 而仓库层没有 Context。与其把 Context 灌进数据层，不如让页面把这一小段能力传进来。
+         */
+        openOutputStream: (Uri) -> OutputStream?,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): WorkspaceBatchResult = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        val (plan, skipped) = collectWorkspaceExportPlan(
+            root = areaRootDir(workspace.root, area),
+            selection = selection,
+            basePath = basePath,
+        )
+        val skippedNames = skipped.toMutableList()
+        val failedNames = mutableListOf<String>()
+        var succeeded = 0
+        val total = plan.fileCount
+        var done = 0
+
+        // 目录缓存：同一个父目录只 findOrCreate 一次（大目录下省掉重复的 children 查询）
+        val dirCache = mutableMapOf("" to tree)
+
+        fun ensureDir(segments: List<String>): DocumentFile? {
+            var current = tree
+            var path = ""
+            segments.forEach { segment ->
+                path = if (path.isEmpty()) segment else "$path/$segment"
+                val cached = dirCache[path]
+                if (cached != null) {
+                    current = cached
+                    return@forEach
+                }
+                val existing = current.findFile(segment)
+                val next = when {
+                    existing == null -> current.createDirectory(segment)
+                    existing.isDirectory -> existing
+                    else -> null // 同名但不是目录：无法继续，交给调用方记为失败
+                } ?: return null
+                dirCache[path] = next
+                current = next
+            }
+            return current
+        }
+
+        plan.entries.forEach { entry ->
+            val segments = entry.entryName.trimEnd('/').split('/').filter { it.isNotEmpty() }
+            if (entry.isDirectory) {
+                if (ensureDir(segments) == null) failedNames += entry.entryName
+                return@forEach
+            }
+            val parent = ensureDir(segments.dropLast(1))
+            if (parent == null) {
+                failedNames += entry.entryName
+                return@forEach
+            }
+            val fileName = segments.last()
+            if (parent.findFile(fileName)?.isFile == true) {
+                skippedNames += entry.entryName
+                return@forEach
+            }
+            runCatching {
+                val created = parent.createFile(mimeTypeOf(fileName), fileName)
+                    ?: error("createFile returned null")
+                val out = openOutputStream(created.uri) ?: error("openOutputStream returned null")
+                out.use { stream ->
+                    File(entry.absolutePath).inputStream().use { input -> input.copyTo(stream) }
+                }
+            }.onSuccess {
+                succeeded += 1
+                done += 1
+                onProgress(done, total)
+            }.onFailure {
+                failedNames += entry.entryName
+            }
+        }
+
+        WorkspaceBatchResult.ofTree(
+            succeeded = succeeded,
+            skippedNames = skippedNames,
+            failedNames = failedNames,
+        )
+    }
+
     suspend fun deleteFile(
         id: String,
         area: WorkspaceStorageArea,
@@ -337,6 +495,24 @@ class WorkspaceRepository(
         }
         cleanupAssistantReferences(id)
         return true
+    }
+
+    /**
+     * 存储区 → 宿主根目录。
+     *
+     * `WorkspaceManager.areaDir` 是 private，这里按同样的映射重写一份——**只映射两个公开目录**，
+     * 不复制其它语义（少一个需要同步的实现）。
+     */
+    private fun areaRootDir(root: String, area: WorkspaceStorageArea): File = when (area) {
+        WorkspaceStorageArea.FILES -> manager.filesDir(root)
+        WorkspaceStorageArea.LINUX -> manager.linuxDir(root)
+    }
+
+    /** 扩展名 → mime；未知一律 `application/octet-stream`（SAF 的 createFile 需要它）。 */
+    private fun mimeTypeOf(fileName: String): String {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        if (ext.isEmpty()) return "application/octet-stream"
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
     }
 
     private suspend fun cleanupAssistantReferences(workspaceId: String) {

@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -12,6 +14,7 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
+import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.workspace.RootfsInstallProgress
 import app.androidrik.workspace.RootfsInstallStage
@@ -191,6 +194,84 @@ class WorkspaceDetailVM(
             }.onSuccess(onReady)
         }
     }
+
+    /**
+     * 批量删除（多选）。返回**失败项的路径**（空 = 全成功）。
+     *
+     * 逐项删除而不是"一把梭"：单项失败（权限、被占用）不该让其余项也不删——
+     * 与导出那边"部分成功"是同一类现实（用户决议 §6.1）。
+     */
+    suspend fun deleteSelection(entries: List<WorkspaceFileEntry>): List<String> {
+        val area = state.value.area
+        val failed = mutableListOf<String>()
+        entries.forEach { entry ->
+            runCatching {
+                repository.deleteFile(
+                    id = id,
+                    area = area,
+                    path = entry.path,
+                    recursive = entry.isDirectory,
+                )
+            }.onFailure { failed += entry.path }
+        }
+        refresh()
+        return failed
+    }
+
+    /**
+     * 选中集的**体量预览**（走一次遍历，只读）。
+     *
+     * 用途：大目录导出前先告诉用户"这批有多少"（设计 §五.5 的阈值提示），
+     * 而不是点完才发现要压几 GB。**只在选择较大或含文件夹时调用**——小选择没必要多走一次树。
+     */
+    suspend fun previewSelection(
+        entries: List<WorkspaceFileEntry>,
+    ): Pair<Int, Long>? = runCatching {
+        repository.previewSelectionSize(
+            id = id,
+            area = state.value.area,
+            basePath = state.value.path,
+            selection = entries,
+        )
+    }.getOrNull()
+
+    /** 打包为 zip（流式写宿主给的流；返回 null = 失败，异常已落到 state.error）。 */
+    suspend fun exportSelectionAsZip(
+        entries: List<WorkspaceFileEntry>,
+        outputStream: OutputStream,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): WorkspaceBatchResult? = runCatching {
+        repository.exportSelectionAsZip(
+            id = id,
+            area = state.value.area,
+            basePath = state.value.path,
+            selection = entries,
+            outputStream = outputStream,
+            onProgress = onProgress,
+        )
+    }.onFailure { error ->
+        _state.update { it.copy(error = error.message ?: "导出失败") }
+    }.getOrNull()
+
+    /** 逐个导出到 SAF 授权目录（保留原目录结构）。 */
+    suspend fun exportSelectionToTree(
+        entries: List<WorkspaceFileEntry>,
+        tree: DocumentFile,
+        openOutputStream: (Uri) -> OutputStream?,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): WorkspaceBatchResult? = runCatching {
+        repository.exportSelectionToTree(
+            id = id,
+            area = state.value.area,
+            basePath = state.value.path,
+            selection = entries,
+            tree = tree,
+            openOutputStream = openOutputStream,
+            onProgress = onProgress,
+        )
+    }.onFailure { error ->
+        _state.update { it.copy(error = error.message ?: "导出失败") }
+    }.getOrNull()
 
     fun setToolApproval(toolName: String, needsApproval: Boolean) {
         viewModelScope.launch {
