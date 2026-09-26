@@ -1,9 +1,11 @@
 # 工作空间后台任务三件套（design-workspace-background-tasks）
 
-> 状态：**已落地**（v1，2026-09-26）。代码：`workspace/.../WorkspaceBackgroundTasks.kt`（核心）、
+> 状态：**已落地并通过真机验证**（2026-09-26）。代码：`workspace/.../WorkspaceBackgroundTasks.kt`（核心）、
+> `workspace/.../ProcessSignals.kt`（进程树终止——**必读，平台绕行方案**）、
 > `workspace/.../ProotShellRunner.kt::start`（预检+启动抽取）、`app/.../data/ai/tools/WorkspaceTools.kt`（三工具）。
-> 测试：`workspace/src/test/.../WorkspaceBackgroundTasksTest.kt`（15 项）、
-> `app/src/test/.../WorkspaceBackgroundToolApprovalTest.kt`、`ToolCallLoopGuardTest` 轮询豁免 2 项。
+> 测试：`workspace/src/test/.../WorkspaceBackgroundTasksTest.kt`（15 项）+ `ProcessSignalsTest.kt`（11 项）、
+> `app/src/test/.../WorkspaceBackgroundToolApprovalTest.kt`、`ToolCallLoopGuardTest` 轮询豁免 2 项、
+> **真机 instrumented** `app/src/androidTest/.../WorkspaceBackgroundTaskInstrumentedTest.kt`（6 项全绿）。
 
 ## 一、要解决的问题
 
@@ -111,6 +113,34 @@ ProotShellRunner.start()  → Process + 两个采集线程 → TailBuffer(stdout
   | `workspace_task_status` | **免审批** | 纯只读；否则长任务轮询会变成审批轰炸 |
 
   工作空间级 `tool_approvals` 覆盖仍然优先（用户可以关掉后台运行的审批，也可以给状态查询开审批）。
+
+## 七之一、终止必须自己发信号（真机实测结论，2026-09-26 修订）
+
+**最初实现用 `Process.destroyForcibly()`，在真机上完全无效**——后台任务卡在 `RUNNING`、`waitFor()`
+永不返回。真机（小米 8 / Android 14）实测证据：
+
+| 场景 | 结果 |
+|---|---|
+| `Process.destroyForcibly()`（proot 子进程） | kill 后 20s，`ps` 里 proot/bash/sleep **全都还在** |
+| `Process.destroy()`（SIGTERM，同样目标） | 20s 后仍在 |
+| `Os.kill(pid, SIGKILL)`（同形状目标、自己发信号） | **立刻死亡** ✓ |
+| `pkill -9 -f <标记>`（toybox） | 有效（`pkill -f` 按 `/proc/<pid>/cmdline` 匹配） |
+| 只杀直接子进程（不杀子孙） | 子进程变孤儿（PPID=1）**继续跑**，`sleep` 实测存活 |
+
+因此终止路径改为（`workspace/ProcessSignals.kt`）：
+
+1. 每条命令启动时带一个**唯一标记** `rikkahub-task-<id>`（进 argv 的 `$0` 槽位，也用于同步 shell）；
+2. 终止时在 `/proc` 里**只在自己的后代子树内**按标记找回进程树根（防误杀同 uid 的无关进程）；
+3. 读 `/proc/<pid>/stat` 的父子关系，**自底向上** `Os.kill(pid, SIGKILL)`——顺序不能反，先杀父进程
+   会让子孙变孤儿、之后再也定位不到；
+4. 同时**立即**把任务状态置为 `KILLED`（信号已下发即算终态），回收线程随后只补 `exitCode`——
+   这样即便平台在回收上磨蹭，调用方也不会看到「永远 RUNNING」。
+
+Android 的 `java.lang.Process` **没有公开 pid**（`Process.pid()` 不在 SDK API 里，编译期不可用），
+所以「标记 → `/proc` 反查 pid」不是绕远路，而是唯一可行解。
+
+**顺带修掉一个既有缺陷**：同步 `workspace_shell` 的超时/取消路径原本也是 `destroyForcibly()`，
+即「工具报超时、命令继续在设备上跑」。现在同一条终止路径（标记 + 杀树）也被 `readResult` 使用。
 
 ## 八、诚实声明的边界（写清以免误用）
 

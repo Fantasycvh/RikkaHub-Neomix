@@ -324,6 +324,7 @@ class WorkspaceBackgroundTasksTest {
 
         override fun launch(
             context: WorkspaceShellContext,
+            marker: String,
             stdout: TailBuffer,
             stderr: TailBuffer,
         ): WorkspaceBackgroundHandle? {

@@ -2,6 +2,9 @@ package app.androidrik.workspace
 
 import java.io.File
 
+/** guest 脚本的默认 `$0`（历史值，保持兼容）。 */
+private const val DEFAULT_ARGV_TAG = "rikkahub"
+
 /** [ProotShellRunner.start] 的结果：启动成功或预检失败（失败时携带原因文案）。 */
 sealed interface ProotStart {
     data class Started(val process: Process) : ProotStart
@@ -23,13 +26,16 @@ class ProotShellRunner(
     private val patcher: RootfsPatcher = RootfsPatcher(),
 ) : WorkspaceShellRunner {
     override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult {
-        return when (val started = start(context)) {
+        // 唯一进程树标记：超时/取消时靠它在 /proc 里找回进程树（destroyForcibly 在真机无效）
+        val marker = newTaskMarker("shell")
+        return when (val started = start(context, marker)) {
             is ProotStart.Failed -> WorkspaceCommandResult(
                 exitCode = 127,
                 stdout = "",
                 stderr = started.message,
             )
-            is ProotStart.Started -> started.process.readResult(context.timeoutMillis, context.stdin)
+            is ProotStart.Started ->
+                started.process.readResult(context.timeoutMillis, context.stdin, marker)
         }
     }
 
@@ -44,7 +50,7 @@ class ProotShellRunner(
      * @throws java.io.IOException 进程创建失败（`ProcessBuilder.start()` 抛出的异常照旧透传，
      *   调用方自行决定是回填错误结果还是记为失败任务）
      */
-    fun start(context: WorkspaceShellContext): ProotStart {
+    fun start(context: WorkspaceShellContext, argvTag: String = DEFAULT_ARGV_TAG): ProotStart {
         if (!context.linuxDir.hasUsableRootfs()) {
             return ProotStart.Failed("Rootfs is not installed")
         }
@@ -60,7 +66,7 @@ class ProotShellRunner(
 
         context.tempDir.mkdirs()
         patcher.patch(context.linuxDir)
-        val process = ProcessBuilder(buildCommand(context, proot))
+        val process = ProcessBuilder(buildCommand(context, proot, argvTag))
             .directory(context.filesDir)
             .redirectErrorStream(false)
             .apply {
@@ -82,6 +88,7 @@ class ProotShellRunner(
     private fun buildCommand(
         context: WorkspaceShellContext,
         proot: File,
+        argvTag: String = DEFAULT_ARGV_TAG,
     ): List<String> {
         // Shell 兼容模式（PROOT_NO_SECCOMP 纯 ptrace）：初始 cwd 移到 rootfs 内部 /root——
         // getcwd 在绑定挂载点（/workspace）反向解析返回 ENOSYS，bash 启动即报
@@ -136,7 +143,8 @@ class ProotShellRunner(
             "-c",
             // 命令通过位置参数传入, 避免任何转义; eval "$2" 对命令文本只求值一次, 等价于 bash -c "$cmd"
             cdCommand,
-            "rikkahub",
+            // 该槽位是 guest 脚本的 $0：默认 "rikkahub"，后台任务传入唯一标记以便终止时在 /proc 里定位
+            argvTag,
             context.prootCwd(),
             context.command,
         )

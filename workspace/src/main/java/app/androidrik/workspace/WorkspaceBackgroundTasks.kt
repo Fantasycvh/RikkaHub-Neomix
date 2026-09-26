@@ -168,7 +168,7 @@ enum class WorkspaceKillResult {
 
 /** 已启动的后台进程句柄；真实实现包装 `java.lang.Process`，单测用假实现。 */
 interface WorkspaceBackgroundHandle {
-    /** 强制终止进程树。 */
+    /** 强制终止**整棵**进程树（不是只杀直接子进程，否则孙进程会变孤儿继续跑）。 */
     fun kill()
 
     /** 阻塞直到进程退出并返回退出码；无法回收时抛异常。 */
@@ -184,8 +184,13 @@ interface WorkspaceBackgroundHandle {
  * 而不是收到一个不透明的异常。
  */
 interface WorkspaceTaskLauncher {
+    /**
+     * @param marker 该任务的唯一进程树标记（进 argv 的 `$0` 槽位）。终止时靠它在 `/proc` 里定位
+     *   整棵进程树——`Process.destroyForcibly()` 在 Android 上无效，见 [ProcessSignals] 的类注释。
+     */
     fun launch(
         context: WorkspaceShellContext,
+        marker: String,
         stdout: TailBuffer,
         stderr: TailBuffer,
     ): WorkspaceBackgroundHandle?
@@ -211,6 +216,7 @@ class WorkspaceTaskRegistry(
         val command: String,
         val cwd: String,
         val startedAtMillis: Long,
+        val marker: String,
         val stdout: TailBuffer,
         val stderr: TailBuffer,
     ) {
@@ -253,6 +259,7 @@ class WorkspaceTaskRegistry(
                 command = context.command,
                 cwd = context.cwd,
                 startedAtMillis = now(),
+                marker = newTaskMarker(id),
                 stdout = TailBuffer(tailChars),
                 stderr = TailBuffer(tailChars),
             )
@@ -261,7 +268,7 @@ class WorkspaceTaskRegistry(
 
         // 启动在锁外：launch 会做进程创建等重操作，不应占着注册表锁
         val handle = try {
-            launcher.launch(context, entry.stdout, entry.stderr)
+            launcher.launch(context, entry.marker, entry.stdout, entry.stderr)
         } catch (e: Exception) {
             entry.stderr.append("启动失败: ${e.javaClass.simpleName}: ${e.message}")
             null
@@ -306,6 +313,13 @@ class WorkspaceTaskRegistry(
         entry.killRequested = true
         // handle 可能尚未赋值（launch 在注册表锁外执行）：此时终止请求由 start() 收尾下发
         entry.handle?.kill()
+        // 状态**立即**置终态：信号已经发出，把「已下发终止」当作终态上报，避免调用方轮询等一个
+        // 可能永远不会返回的 waitFor（真机实测的教训）。回收线程随后只补 exitCode。
+        if (entry.status == WorkspaceTaskStatus.RUNNING) {
+            entry.status = WorkspaceTaskStatus.KILLED
+            entry.finishedAtMillis = now()
+            synchronized(lock) { evictFinishedLocked() }
+        }
         return WorkspaceKillResult.KILLED
     }
 
@@ -324,12 +338,13 @@ class WorkspaceTaskRegistry(
                 null
             }
             entry.exitCode = code
-            entry.finishedAtMillis = now()
             entry.status = when {
+                // 已被 kill() 置为终态就不再改写（exitCode 仍会补上，供调用方参考）
                 entry.killRequested -> WorkspaceTaskStatus.KILLED
                 code == null -> WorkspaceTaskStatus.FAILED
                 else -> WorkspaceTaskStatus.EXITED
             }
+            if (entry.finishedAtMillis == null) entry.finishedAtMillis = now()
             // 结束即淘汰：只在 start() 里淘汰会有一段时间超限（连续完成的旧任务还留着占内存）
             synchronized(lock) { evictFinishedLocked() }
         }.apply {
@@ -380,11 +395,12 @@ class WorkspaceTaskRegistry(
 class ProotBackgroundLauncher(private val runner: ProotShellRunner) : WorkspaceTaskLauncher {
     override fun launch(
         context: WorkspaceShellContext,
+        marker: String,
         stdout: TailBuffer,
         stderr: TailBuffer,
     ): WorkspaceBackgroundHandle? {
         val started = try {
-            runner.start(context)
+            runner.start(context, marker)
         } catch (e: Exception) {
             stderr.append("启动失败: ${e.javaClass.simpleName}: ${e.message}")
             return null
@@ -407,7 +423,15 @@ class ProotBackgroundLauncher(private val runner: ProotShellRunner) : WorkspaceT
 
         return object : WorkspaceBackgroundHandle {
             override fun kill() {
-                process.destroyForcibly()
+                // 必须按 marker 找回整棵进程树再逐个 SIGKILL：实测 destroyForcibly() 对本机 proot
+                // 子进程无效，而只杀 proot 又会让 guest 的子孙变孤儿继续跑（见 ProcessSignals 类注释）
+                val killed = runCatching {
+                    killProcessTreeByMarker(RealProcFs, currentPid(), marker)
+                }.getOrDefault(0)
+                if (killed == 0) {
+                    // 进程表没找到（命令已自行结束/读 /proc 失败）：退回平台常规做法
+                    process.destroyForcibly()
+                }
             }
 
             override fun awaitExit(): Int = process.waitFor()

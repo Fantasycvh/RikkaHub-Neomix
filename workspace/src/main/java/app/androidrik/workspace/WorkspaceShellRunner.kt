@@ -26,11 +26,13 @@ data class WorkspaceShellContext(
 
 class HostShellRunner : WorkspaceShellRunner {
     override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult {
-        val process = ProcessBuilder(defaultShell(), "-c", context.command)
+        // 唯一进程树标记：超时/取消时靠它在 /proc 里找回进程树（见 ProcessSignals 的类注释）
+        val marker = newTaskMarker("shell")
+        val process = ProcessBuilder(defaultShell(), "-c", context.command, marker)
             .directory(context.workingDir)
             .redirectErrorStream(false)
             .start()
-        return process.readResult(context.timeoutMillis, context.stdin)
+        return process.readResult(context.timeoutMillis, context.stdin, marker)
     }
 
     private fun defaultShell(): String =
@@ -40,7 +42,11 @@ class HostShellRunner : WorkspaceShellRunner {
 // 单个流保留的最大字符数, 防止命令疯狂输出导致 OOM 或撑爆 LLM 上下文
 const val MAX_OUTPUT_CHARS = 128 * 1024
 
-fun Process.readResult(timeoutMillis: Long, stdin: ByteArray? = null): WorkspaceCommandResult {
+fun Process.readResult(
+    timeoutMillis: Long,
+    stdin: ByteArray? = null,
+    marker: String? = null,
+): WorkspaceCommandResult {
     val stdout = StreamCollector(inputStream)
     val stderr = StreamCollector(errorStream)
     val stdinWriter = stdin?.let { bytes -> StreamWriter(outputStream, bytes) }
@@ -56,7 +62,7 @@ fun Process.readResult(timeoutMillis: Long, stdin: ByteArray? = null): Workspace
     try {
         val finished = waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
         if (!finished) {
-            destroyForcibly()
+            terminateTree(marker) { destroyForcibly() }
         }
         stdinWriter?.join(1_000)
         stdout.join(1_000)
@@ -70,13 +76,32 @@ fun Process.readResult(timeoutMillis: Long, stdin: ByteArray? = null): Workspace
         )
     } catch (e: InterruptedException) {
         // 调用方线程被中断（如协程取消时的 runInterruptible），杀掉进程避免命令继续执行
-        destroyForcibly()
+        terminateTree(marker) { destroyForcibly() }
         // 进程被杀后 stdout/stderr 会关闭, 这里 join 回收两个采集线程, 避免每次取消泄漏一对线程
         stdinWriter?.join(1_000)
         stdout.join(1_000)
         stderr.join(1_000)
         throw e
     }
+}
+
+/**
+ * 终止命令的整棵进程树。
+ *
+ * **平台事实（真机实测，见 [ProcessSignals]）**：`Process.destroyForcibly()` 对 PRoot 子进程与
+ * 「有子进程的 shell」无效——超时/取消后命令会继续在设备上跑，`waitFor()` 也永不返回。
+ * 因此这里走「按标记在 /proc 找回 pid → 自底向上 SIGKILL」；[fallback] 只是兜底（进程表读不到时
+ * 仍按平台的常规做法试一次）。
+ */
+private fun Process.terminateTree(marker: String?, fallback: () -> Unit) {
+    val killed = if (marker.isNullOrBlank()) {
+        0
+    } else {
+        runCatching { killProcessTreeByMarker(RealProcFs, currentPid(), marker) }.getOrDefault(0)
+    }
+    fallback()
+    if (killed == 0) return
+    android.util.Log.i("WorkspaceShellRunner", "killed $killed process(es) for marker=$marker")
 }
 
 private class StreamWriter(
