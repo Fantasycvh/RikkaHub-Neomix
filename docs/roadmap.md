@@ -652,3 +652,9 @@ data class ApiKeyEntry(
   - **批量删除** + **rootfs 区不进导出**（弹说明：可能数 GB、含特殊文件，备份里同样理由排除，需要时重装）+ 大目录先确认（超 200MB / 2000 项；含文件夹或 >50 项才做体量预览，小选择不付这次遍历成本）。
   - **验证**：单测 +9（含 **zip 字节级往返与磁盘内容一致**），全量 **1314 项 0 失败 3 跳过**；真机（<device>）走通 长按→选择态→全选→打包 zip→系统保存→**拉回校验 5 条目 / 大小一致 / 无损坏**，测试产物已删；**未验证**：逐个导出到目录的 SAF 树写入（无单测）、批量删除、rootfs 说明弹窗。
 
+- 2026-09-26：**真 tokenizer 落地（Kotlin BPE / cl100k_base；`25141095` 引擎 + `05c34f69` 接线）**——设计稿 `docs/design-tokenizer.md`。**动机是量化的**：全仓 token 估算此前是字符启发式（CJK 1.5 字符/token、其余 4 字符/token），而调用它的地方**全是预算判定**（占用条 / 自动压缩触发 / 记忆注入预算 / 子代理上下文预算 / PromptInspect 逐段）；用 44 条样本对 tiktoken 0.13.0 真值比对：**启发式/真值中位数 0.64、区间 0.17–2.0** ⇒ 系统性偏低＝该压不压、该停不停。
+  - **实现**：`common` 里的字节级 BPE（tiktoken 同款算法：预分词正则 → UTF-8 字节 → GPT-2 bytes_to_unicode → 按 rank 合并相邻对及其全部出现）。词表=官方 rank 表 1.68MB → 紧凑二进制 744KB → **gzip 456KB**，放 `common/src/main/resources/tokenizer/`（**Java 资源而非 assets**：Android 与 JVM 单测都按 classpath 读，不需要 Context/AssetManager）。`TokenizerRegistry` 是唯一入口：**后台预热**（真机 1389ms），**未就绪/失败即返回 null ⇒ 调用方退回启发式**（行为不中断）+ 512 条有界缓存。接线只在两处出口：`app` 的 `estimateTokens/estimateTokenCount`、`ai` 的 `ToolSchemaSize`。
+  - **两个只有真机才暴露的坑**：①**Android 的 `Pattern` 不支持 `UNICODE_CHARACTER_CLASS`**（桌面 JVM 支持）⇒ 单测全绿、真机 `ExceptionInInitializerError`；解法=把 `\s` 展开成显式 Unicode 空白集、`\S` 写成 `[^WS]`，**去掉该 flag 后 44 条向量仍逐条一致**（等价性由此证明）。②**aapt2 对资源里未转义的单引号**报 `Invalid unicode escape sequence`（韩文 legend 中招）⇒ `\'`；另 Kotlin 转义表无 `\f`（用 `\u000c`）。③「安装成功」不能靠外层 `runCatching{}.isSuccess`（内层失败不抛会被误报 ok，首版日志 `ok=true vocab=null`）。
+  - **实测**：批量 **114K 字符 49ms**（首版 180ms；优化=片段级缓存 + 最长 token 剪枝）；常驻内存 **+12MB**（生产不保留解码表，保留再多 +14MB）；真机数值对照=预览页 `预估 token ≈ 8126` vs 该会话 API 回传 prompt tokens **8.5K**（偏差 ~5%，换之前启发式约低 35%）。
+  - **验证**：44 条 tiktoken 参考向量逐条一致 + encode/count 长度一致 + decode 往返 + 词表大小 + 缓存幂等 + 内存量级；全量 **1322 项 0 失败**。**后续**（未做）：o200k_base 与各家自有分词（cl100k 对 OpenAI 兼容是精确、对其它是近似）、按模型选编码、低内存 `release()` 调用点。
+
