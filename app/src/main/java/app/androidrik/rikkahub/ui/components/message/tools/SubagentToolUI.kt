@@ -53,7 +53,7 @@ object SubagentToolUI : ToolUIRenderer {
     @Composable
     override fun Summary(context: ToolUIContext) {
         if (context.loading) {
-            RunningSummary()
+            RunningSummary(context)
             return
         }
         val status = context.content.getStringContent("status") ?: return
@@ -77,24 +77,44 @@ object SubagentToolUI : ToolUIRenderer {
      * 运行中的实时进度。
      *
      * **数据源是 Runner 的 `progress` 而不是本卡片自己的状态**：子代理的中间过程不进父上下文，
-     * 卡片能拿到的东西只有工具入参——所以"跑到第几步"必须从运行侧读。之所以敢不带 runId 直接订阅，
-     * 是因为**串行闸保证同一时刻至多一个活跃 run**，而这里只在"本次调用尚未返回"时读它。
+     * 卡片能拿到的东西只有工具入参——所以"跑到第几步"必须从运行侧读。
+     *
+     * **并行上限 2 之后不能再说"活跃的就是我这一个"**：卡片按 **(预设名, 任务目标)** 认领，
+     * 两者都在它的入参里（runner 侧把同一对值写进 `RunProgress`），无需给卡片额外接线。
+     * 认领不到时：只有一条就退回那一条（某些 provider 会规整 goal 文本），
+     * 多条则只显示聚合态——**宁可少说，也不要把别人的步数当成自己的**。
      */
     @Composable
-    private fun RunningSummary() {
+    private fun RunningSummary(context: ToolUIContext) {
         val runner = koinInject<SubagentRunner>()
-        val progress by runner.progress.collectAsStateWithLifecycle()
-        val elapsedSeconds = rememberElapsedSeconds(progress?.startedAt)
+        val progressList by runner.progress.collectAsStateWithLifecycle()
+        val presets = progressList
+        val name = context.arguments.getStringContent("name").orEmpty()
+        val goal = context.arguments.getStringContent("goal").orEmpty()
+        val mine = presets.firstOrNull { it.label == name && it.goal == goal }
+            ?: presets.singleOrNull()
+        val elapsedSeconds = rememberElapsedSeconds(mine?.startedAt)
+
+        if (mine == null && presets.size > 1) {
+            Text(
+                text = stringResource(R.string.subagent_tool_running_parallel, presets.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            return
+        }
 
         val detail = buildString {
             append(stringResource(R.string.subagent_tool_elapsed, elapsedSeconds))
-            progress?.lastTool?.let { append(" · ").append(it) }
+            mine?.lastTool?.let { append(" · ").append(it) }
         }
         Text(
-            text = if (progress == null || progress?.steps == 0) {
+            text = if (mine == null || mine.steps == 0) {
                 "${stringResource(R.string.subagent_tool_starting)} · $detail"
             } else {
-                stringResource(R.string.subagent_tool_running, progress?.steps ?: 0, detail)
+                stringResource(R.string.subagent_tool_running, mine.steps, detail)
             },
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onPrimaryContainer,

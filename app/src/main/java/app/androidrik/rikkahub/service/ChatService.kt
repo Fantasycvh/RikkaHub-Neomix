@@ -1110,6 +1110,22 @@ class ChatService(
                                 title = context.getString(R.string.chat_workspace_budget_title),
                             )
                         }
+                        is GenerationNotice.ContextBudgetExhausted -> {
+                            // 上下文预算守卫只由无头 run 传入（聊天路径有压缩 + 条数上限兜底），
+                            // 这个分支同样只为 when 穷尽，防御性记录。
+                            Log.w(
+                                TAG,
+                                "context budget exhausted: ${notice.usedTokens}/${notice.windowTokens} tokens " +
+                                    "(conv=$conversationId)",
+                            )
+                            addError(
+                                IllegalStateException(
+                                    "Context budget exhausted (${notice.usedTokens}/${notice.windowTokens})"
+                                ),
+                                conversationId,
+                                title = context.getString(R.string.agent_run_error_context_budget),
+                            )
+                        }
                     }
                 }
             }

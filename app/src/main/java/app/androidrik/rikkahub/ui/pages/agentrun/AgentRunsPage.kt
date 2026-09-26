@@ -75,6 +75,7 @@ fun errorLabel(error: String?): String? {
         AgentRunEntity.ERROR_NO_MODEL -> R.string.agent_run_error_no_model
         AgentRunEntity.ERROR_LOOP_DETECTED -> R.string.agent_run_error_loop
         AgentRunEntity.ERROR_BUDGET_EXHAUSTED -> R.string.agent_run_error_budget
+        AgentRunEntity.ERROR_CONTEXT_BUDGET -> R.string.agent_run_error_context_budget
         AgentRunEntity.ERROR_PERMISSION_DENIED -> R.string.agent_run_error_denied
         AgentRunEntity.ERROR_MODEL_GAVE_UP -> R.string.agent_run_error_gave_up
         else -> R.string.agent_run_error_exception
@@ -115,8 +116,10 @@ fun AgentRunsPage(vm: AgentRunsVM = koinViewModel()) {
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    if (vm.hasActiveRun()) {
-                        toaster.show(context.getString(R.string.agent_run_dispatch_busy))
+                    if (!vm.canStartRun()) {
+                        toaster.show(
+                            context.getString(R.string.agent_run_dispatch_busy, vm.activeRunCount())
+                        )
                     } else {
                         showDispatch = true
                     }

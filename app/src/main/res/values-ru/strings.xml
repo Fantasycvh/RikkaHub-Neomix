@@ -312,7 +312,7 @@
   <string name="agent_runs_desc">Запуск фоновых задач агента и отслеживание</string>
   <string name="agent_runs_empty">Запусков пока нет</string>
   <string name="agent_run_dispatch_title">Новый запуск</string>
-  <string name="agent_run_dispatch_busy">Запуск уже выполняется</string>
+  <string name="agent_run_dispatch_busy">Уже выполняется запусков: %1$d (лимит 2)</string>
   <string name="agent_run_dispatch_profile">Профиль</string>
   <string name="agent_run_dispatch_goal">Цель</string>
   <string name="agent_run_dispatch_goal_hint">Опишите, что должен сделать агент…</string>
@@ -1641,5 +1641,7 @@
   <string name="subagent_preset_tool_approval_deny">Отклонять автоматически</string>
   <string name="subagent_preset_tool_approval_ask">Спрашивать меня</string>
   <string name="subagent_preset_tool_approval_hint">«Отклонять автоматически» — запуск идёт без вас. «Спрашивать меня» — запуск приостанавливается и приходит уведомление; отсутствие ответа 5 минут считается отказом.</string>
+  <string name="subagent_tool_running_parallel">Параллельно выполняется субагентов: %1$d</string>
+  <string name="agent_run_error_context_budget">Контекстный бюджет исчерпан</string>
 </resources>
 

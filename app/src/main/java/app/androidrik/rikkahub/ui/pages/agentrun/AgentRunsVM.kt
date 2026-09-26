@@ -38,7 +38,11 @@ class AgentRunsVM(
         .map { it.assistants }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun hasActiveRun(): Boolean = runner.hasActiveRun()
+    /** 还能不能再开一个 run（并行上限 2；满了只提示，不排队）。 */
+    fun canStartRun(): Boolean = runner.canStartRun()
+
+    /** 当前活跃 run 数（提示文案里带上，让"为什么不能开"可解释）。 */
+    fun activeRunCount(): Int = runner.activeRunCount()
 
     /**
      * 所选 profile 的工具目录（信封候选 = run 里**实际可用**的全部工具）。

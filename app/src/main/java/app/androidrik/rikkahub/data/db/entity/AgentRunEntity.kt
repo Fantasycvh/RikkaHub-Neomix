@@ -90,6 +90,14 @@ data class AgentRunEntity(
         const val ERROR_NO_MODEL = "no_model"
         const val ERROR_LOOP_DETECTED = "loop_detected"
         const val ERROR_BUDGET_EXHAUSTED = "budget_exhausted"
+
+        /**
+         * 上下文预算耗尽（设计 §十二）：轨迹把窗口吃到剩下的不够产出一轮回答。
+         *
+         * 与 [ERROR_BUDGET_EXHAUSTED]（workspace 工具输出体量）分开记：两者防的不是同一件事，
+         * 排查时看细分就能知道该调哪个预算。
+         */
+        const val ERROR_CONTEXT_BUDGET = "context_budget"
         const val ERROR_PERMISSION_DENIED = "permission_denied"
         const val ERROR_MODEL_GAVE_UP = "model_gave_up"
         const val ERROR_EXCEPTION = "exception"

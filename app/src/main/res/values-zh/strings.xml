@@ -351,7 +351,7 @@
   <string name="agent_runs_desc">派发无头 agent 运行并跟踪进度</string>
   <string name="agent_runs_empty">暂无运行记录</string>
   <string name="agent_run_dispatch_title">新建运行</string>
-  <string name="agent_run_dispatch_busy">已有运行中的任务</string>
+  <string name="agent_run_dispatch_busy">已有 %1$d 个运行在进行中（上限 2）</string>
   <string name="agent_run_dispatch_profile">执行身份</string>
   <string name="agent_run_dispatch_goal">任务目标</string>
   <string name="agent_run_dispatch_goal_hint">描述要让 agent 做什么……</string>
@@ -1714,5 +1714,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="subagent_preset_tool_approval_deny">直接拒绝</string>
   <string name="subagent_preset_tool_approval_ask">请我批准</string>
   <string name="subagent_preset_tool_approval_hint">「直接拒绝」让运行可以无人值守；「请我批准」会暂停运行并通知你——5 分钟无应答按拒绝处理。</string>
+  <string name="subagent_tool_running_parallel">%1$d 个子代理正在并行运行</string>
+  <string name="agent_run_error_context_budget">上下文预算耗尽</string>
 </resources>
 

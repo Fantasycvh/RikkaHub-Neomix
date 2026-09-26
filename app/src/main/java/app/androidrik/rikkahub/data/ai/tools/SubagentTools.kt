@@ -256,7 +256,7 @@ internal fun formatSubagentResult(result: SubagentRunResult?): String {
             put("status", JsonPrimitive(SUBAGENT_STATUS_UNAVAILABLE))
             put(
                 "error",
-                JsonPrimitive("Another agent run is already in progress (runs are serialized)."),
+                JsonPrimitive("The run limit is reached (at most 2 runs at a time, and they do not queue)."),
             )
             put(
                 "note",

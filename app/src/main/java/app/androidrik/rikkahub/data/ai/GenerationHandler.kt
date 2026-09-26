@@ -53,7 +53,9 @@ import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.ai.util.ToolSchemaSize
 import app.androidrik.rikkahub.utils.applyPlaceholders
+import app.androidrik.rikkahub.utils.estimateTokens
 import java.util.Locale
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -137,6 +139,18 @@ sealed interface GenerationNotice {
     data class TooManyDenials(
         val denials: Int,
     ) : GenerationNotice
+
+    /**
+     * 上下文预算耗尽（设计 §十二）：轨迹把窗口吃到"剩下的不够产出一轮回答"，
+     * 优雅停止本轮（已产生的工具结果照常回填）。
+     *
+     * 与 [WorkspaceBudgetExhausted] 的区别：那个计「工具输出堆了多少」，
+     * 这个计「窗口还剩多少」——前者是成本/体量，后者是硬墙（撞上去 provider 直接报错）。
+     */
+    data class ContextBudgetExhausted(
+        val usedTokens: Int,
+        val windowTokens: Int,
+    ) : GenerationNotice
 }
 
 /** 无头 run 的策略拒绝文本（拒绝文本契约 §9.2.1：策略终态、明说勿重试）。 */
@@ -187,6 +201,12 @@ class GenerationHandler(
         autoDenyApproval: Boolean = false,
         /** 重复拒绝护栏（仅无头 run 传入；见 [DenialGuard] 类注释的覆盖盲区说明）。 */
         denialGuard: DenialGuard? = null,
+        /**
+         * 上下文预算守卫（仅无头 run 传入；见 [ContextBudgetGuard]）。
+         *
+         * 聊天路径不传：它有自动压缩 + `contextMessageLimit` 兜底，再叠一层硬停会改变既有行为。
+         */
+        contextGuard: ContextBudgetGuard? = null,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
@@ -230,6 +250,19 @@ class GenerationHandler(
             // 护栏停止提示（三个来源共用、先到先得）：同签名循环 / workspace 预算耗尽 /
             // 重复拒绝达阈值。设一次，本批结果回填后停本轮（优雅停止）。
             var stopNotice: GenerationNotice? = null
+
+            // 上下文预算的固定开销（system 正文 + 工具 schema）：每轮不变量，故只算一次。
+            // 有 usage 锚点时它会被忽略（锚点已包含这些），只在第一步无锚点时才起作用。
+            // 用 `tools` 而不是循环内的 `toolsInternal`：后者就是 `buildList { addAll(tools) }`。
+            val overheadTokens = if (contextGuard == null) {
+                0
+            } else {
+                runCatching {
+                    val providerType = targetModel.findProvider(settings.providers, checkOverwrite = false)
+                    estimateTokens(assistant.systemPrompt) +
+                        ToolSchemaSize.estimate(tools, providerType, json)
+                }.getOrDefault(0)
+            }
 
             for (stepIndex in 0 until maxSteps) {
                 Log.i(TAG, "streamText: start step #$stepIndex (${targetModel.id})")
@@ -467,6 +500,23 @@ class GenerationHandler(
                             }
 
                             ToolCallLoopGuard.Verdict.Continue -> Unit
+                        }
+                        // 上下文预算：**执行前**判定（与另外两个护栏不同）——撞满窗口是硬墙，
+                        // provider 会直接报错，先停能保住已经攒到的结果
+                        if (contextGuard != null && stopNotice == null) {
+                            val budget = contextGuard.evaluate(messages, overheadTokens)
+                            Log.i(TAG, "generateText: context budget ${budget.describe()}")
+                            if (budget.verdict is ContextBudget.Verdict.Exhausted) {
+                                Log.w(
+                                    TAG,
+                                    "generateText: context budget exhausted (${budget.describe()}), " +
+                                        "will stop this turn before executing ${tool.toolName}",
+                                )
+                                stopNotice = GenerationNotice.ContextBudgetExhausted(
+                                    usedTokens = budget.usedTokens,
+                                    windowTokens = budget.windowTokens,
+                                )
+                            }
                         }
                         runCatching {
                             val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
