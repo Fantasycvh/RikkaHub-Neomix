@@ -1,0 +1,182 @@
+{
+ "encoding": "cl100k_base",
+ "vectors": [
+  {
+   "text": "",
+   "count": 0
+  },
+  {
+   "text": " ",
+   "count": 1
+  },
+  {
+   "text": "  ",
+   "count": 1
+  },
+  {
+   "text": "\t",
+   "count": 1
+  },
+  {
+   "text": "\n",
+   "count": 1
+  },
+  {
+   "text": "\r\n",
+   "count": 1
+  },
+  {
+   "text": "　",
+   "count": 1
+  },
+  {
+   "text": " ",
+   "count": 1
+  },
+  {
+   "text": "hello",
+   "count": 1
+  },
+  {
+   "text": "hello world",
+   "count": 2
+  },
+  {
+   "text": " Hello",
+   "count": 1
+  },
+  {
+   "text": "Hello, world!",
+   "count": 4
+  },
+  {
+   "text": "tiktoken is great!",
+   "count": 6
+  },
+  {
+   "text": "don't",
+   "count": 2
+  },
+  {
+   "text": "we'll",
+   "count": 2
+  },
+  {
+   "text": "I'S",
+   "count": 2
+  },
+  {
+   "text": "1234567",
+   "count": 3
+  },
+  {
+   "text": "3.14159",
+   "count": 4
+  },
+  {
+   "text": "0x1F",
+   "count": 4
+  },
+  {
+   "text": "2026-09-26",
+   "count": 6
+  },
+  {
+   "text": "你好",
+   "count": 2
+  },
+  {
+   "text": "你好，世界",
+   "count": 6
+  },
+  {
+   "text": "这是一个中文句子，用于测试分词器。",
+   "count": 17
+  },
+  {
+   "text": "混合 mixed 中英 text 123 123",
+   "count": 11
+  },
+  {
+   "text": "🚀🎉",
+   "count": 6
+  },
+  {
+   "text": "emoji 👍🏽 test",
+   "count": 7
+  },
+  {
+   "text": "café",
+   "count": 2
+  },
+  {
+   "text": "naïve",
+   "count": 3
+  },
+  {
+   "text": "​zero-width",
+   "count": 3
+  },
+  {
+   "text": "def f(x):\n    return x + 1\n",
+   "count": 11
+  },
+  {
+   "text": "    indented",
+   "count": 3
+  },
+  {
+   "text": "a\n\n\nb",
+   "count": 3
+  },
+  {
+   "text": "https://example.com/path?q=1&r=2",
+   "count": 11
+  },
+  {
+   "text": "<|endoftext|>",
+   "count": 7
+  },
+  {
+   "text": "\n literal backslash n",
+   "count": 5
+  },
+  {
+   "text": "한국어 텍스트",
+   "count": 7
+  },
+  {
+   "text": "日本語のテキストです。",
+   "count": 10
+  },
+  {
+   "text": "Русский текст",
+   "count": 5
+  },
+  {
+   "text": "العربية",
+   "count": 5
+  },
+  {
+   "text": "                                                                                                                                                                                                                                                                                                            ",
+   "count": 3
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "count": 125
+  },
+  {
+   "text": "中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文",
+   "count": 600
+  },
+  {
+   "text": "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. ",
+   "count": 201
+  },
+  {
+   "text": "系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\n系统提示：你是一个助手。\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\nYou are a helpful assistant.\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n    indented_code(1, 2)\n",
+   "count": 1040,
+   "scenario": "bulk"
+  }
+ ]
+}
