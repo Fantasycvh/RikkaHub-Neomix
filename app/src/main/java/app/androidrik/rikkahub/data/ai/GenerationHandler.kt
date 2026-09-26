@@ -118,6 +118,17 @@ sealed interface GenerationNotice {
         val toolName: String,
         val repeats: Int,
     ) : GenerationNotice
+
+    /**
+     * workspace（rootfs）工具的单轮总预算耗尽，已提前结束本轮（见 [WorkspaceTurnBudget]）。
+     * 堵的是 LoopGuard 防不住的形态：每步换参数的 workspace 调用，累计输出/步数无上限。
+     */
+    data class WorkspaceBudgetExhausted(
+        val usedChars: Long,
+        val budgetChars: Long,
+        val steps: Int,
+        val by: WorkspaceTurnBudget.ExceedReason,
+    ) : GenerationNotice
 }
 
 class GenerationHandler(
@@ -149,6 +160,12 @@ class GenerationHandler(
          * 见 [ToolCallLoopGuard] 类注释里真机实测的原因。默认值只服务于单测等场景。
          */
         loopGuard: ToolCallLoopGuard = ToolCallLoopGuard(),
+        /**
+         * workspace（rootfs）工具的**单轮总预算**。挂载理由与 [loopGuard] 同款（跨审批累积、
+         * 新一轮重置），堵的是 LoopGuard 防不住的形态——每步换参数的 workspace 调用。
+         * 见 [WorkspaceTurnBudget] 类注释。默认值只服务于单测等场景。
+         */
+        workspaceBudget: WorkspaceTurnBudget = WorkspaceTurnBudget(),
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
@@ -190,6 +207,8 @@ class GenerationHandler(
             // 这里刻意不新建实例——真机实测每次批准都会重新进入 runLoop（step #0 重来），
             // 自建实例每次都被重置，护栏对审批类工具等于失效。
             var loopStopped: GenerationNotice.ToolLoopStopped? = null
+            // workspace 单轮预算的超限提示（与 loopStopped 同款：设一次，结果回填后停本轮）
+            var budgetExceeded: GenerationNotice.WorkspaceBudgetExhausted? = null
 
             for (stepIndex in 0 until maxSteps) {
                 Log.i(TAG, "streamText: start step #$stepIndex (${targetModel.id})")
@@ -411,6 +430,29 @@ class GenerationHandler(
                             val output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
                             executedSignature[signature] = output
                             executedTools += tool.copy(output = output)
+                            // workspace 单轮预算：**执行并截断后**计费——计的是「实际进入上下文」
+                            // 的字符数（截断掉的部分写进了 tool_outputs 文件、不进上下文）。
+                            // 执行前拒绝会让本调用的结果变成合成错误文本，与 LoopGuard 的
+                            // 「优雅停止」不一致；此处超限只设提示，本批结果照常回填后停本轮。
+                            if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
+                                val chars = output.filterIsInstance<UIMessagePart.Text>().sumOf { it.text.length }
+                                val verdict = workspaceBudget.record(chars)
+                                if (verdict is WorkspaceTurnBudget.Verdict.Exceeded && budgetExceeded == null) {
+                                    Log.w(
+                                        TAG,
+                                        "generateText: workspace budget exceeded " +
+                                            "(${verdict.usedChars}/${verdict.budgetChars} chars, " +
+                                            "${verdict.steps} steps, by=${verdict.by}), " +
+                                            "will stop this turn after applying results",
+                                    )
+                                    budgetExceeded = GenerationNotice.WorkspaceBudgetExhausted(
+                                        usedChars = verdict.usedChars,
+                                        budgetChars = verdict.budgetChars,
+                                        steps = verdict.steps,
+                                        by = verdict.by,
+                                    )
+                                }
+                            }
                         }.onFailure {
                             // 取消必须向上传播，否则停止生成会被误报为工具执行错误
                             if (it is CancellationException) throw it
@@ -420,18 +462,22 @@ class GenerationHandler(
                             // 「反复撞同一个必然失败」永远不触发（详见 ToolCallLoopGuard 类注释）。
                             loopGuard.markFailed(signature)
                             it.printStackTrace()
+                            // 失败调用的错误文本（含堆栈）同样进入上下文 ⇒ 同样计费——否则
+                            // 「每步换参数、每次都失败」的 shell 调用既不占输出预算也不占步数。
+                            // 判定结果此处不设提示（成功路径统一负责），只记账。
+                            val errorText = buildString {
+                                append("[${it.javaClass.name}] ${it.message}")
+                                append("\n${it.stackTraceToString()}")
+                            }
+                            if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
+                                workspaceBudget.record(errorText.length)
+                            }
                             executedTools += tool.copy(
                                 output = listOf(
                                     UIMessagePart.Text(
                                         json.encodeToString(
                                             buildJsonObject {
-                                                put(
-                                                    "error",
-                                                    JsonPrimitive(buildString {
-                                                        append("[${it.javaClass.name}] ${it.message}")
-                                                        append("\n${it.stackTraceToString()}")
-                                                    })
-                                                )
+                                                put("error", JsonPrimitive(errorText))
                                             }
                                         )
                                     )
@@ -467,10 +513,11 @@ class GenerationHandler(
                 )
             )
 
-            // 护栏命中：结果已全部回填（协议要求每个 toolCallId 都有结果，不能半途丢），
-            // 现在提前结束本轮。**走正常结束路径**而非抛异常——抛异常会让本轮已生成内容
-            // 只停留在内存（onSuccess 才落库），把护栏的「防失控」变成「丢内容」。
-            loopStopped?.let { stopped ->
+            // 护栏命中（同签名循环 或 workspace 预算耗尽）：结果已全部回填（协议要求每个
+            // toolCallId 都有结果，不能半途丢），现在提前结束本轮。**走正常结束路径**而非抛
+            // 异常——抛异常会让本轮已生成内容只停留在内存（onSuccess 才落库），把护栏的
+            // 「防失控」变成「丢内容」。
+            (budgetExceeded ?: loopStopped)?.let { stopped ->
                 emit(GenerationChunk.Notice(stopped))
                 break
             }

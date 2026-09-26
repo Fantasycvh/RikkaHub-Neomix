@@ -57,6 +57,7 @@ import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
 import app.androidrik.rikkahub.data.ai.inspectPrompt
+import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.ai.selectMemoriesForPrompt
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
@@ -218,6 +219,13 @@ class ToolCallLoopStoppedException(
     val toolName: String,
     val repeats: Int,
 ) : Exception("$toolName ×$repeats")
+
+class WorkspaceBudgetExhaustedException(
+    val usedChars: Long,
+    val budgetChars: Long,
+    val steps: Int,
+    val by: WorkspaceTurnBudget.ExceedReason,
+) : Exception("workspace budget: $usedChars/$budgetChars chars, $steps steps")
 
 private val inputTransformers by lazy {
     listOf(
@@ -553,6 +561,7 @@ class ChatService(
                 // 新一轮开始（新的用户消息）：重置工具调用护栏。
                 // 这是「轮」的真正边界——工具审批的续跑不走这里，故护栏的历史跨审批保留。
                 session.toolLoopGuard.reset()
+                session.workspaceTurnBudget.reset()
 
                 // 开始补全
                 if (answer) {
@@ -647,6 +656,7 @@ class ChatService(
         // 重新生成 = 用户发起的**新一轮尝试**（往往正是因为上一轮卡住/不满意）：
         // 护栏历史一并清空，让新尝试从干净的额度开始，避免上一轮的重复记录误伤本次。
         session.toolLoopGuard.reset()
+        session.workspaceTurnBudget.reset()
 
         val job = appScope.launch {
             try {
@@ -963,6 +973,7 @@ class ChatService(
                 // 工具审批让循环 break 等用户，批准后是新的调用续跑同一轮。挂在 session 上才能
                 // 跨审批累积，并在新一轮用户消息/重新生成时由本类 reset（见 ToolCallLoopGuard）。
                 loopGuard = session.toolLoopGuard,
+                workspaceBudget = session.workspaceTurnBudget,
                 // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
                 // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
                 // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
@@ -1068,6 +1079,23 @@ class ChatService(
                                 ToolCallLoopStoppedException(notice.toolName, notice.repeats),
                                 conversationId,
                                 title = context.getString(R.string.chat_tool_loop_title),
+                            )
+                        }
+                        is GenerationNotice.WorkspaceBudgetExhausted -> {
+                            Log.w(
+                                TAG,
+                                "workspace budget exhausted: ${notice.usedChars}/${notice.budgetChars} chars, " +
+                                    "${notice.steps} steps (conv=$conversationId)",
+                            )
+                            addError(
+                                WorkspaceBudgetExhaustedException(
+                                    usedChars = notice.usedChars,
+                                    budgetChars = notice.budgetChars,
+                                    steps = notice.steps,
+                                    by = notice.by,
+                                ),
+                                conversationId,
+                                title = context.getString(R.string.chat_workspace_budget_title),
                             )
                         }
                     }

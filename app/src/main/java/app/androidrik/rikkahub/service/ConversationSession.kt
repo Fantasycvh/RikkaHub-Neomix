@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
+import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.model.Conversation
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.uuid.Uuid
@@ -54,6 +55,15 @@ class ConversationSession(
      * session 空闲回收时随之丢弃，不会跨轮残留。
      */
     val toolLoopGuard = ToolCallLoopGuard()
+
+    /**
+     * workspace（rootfs）工具的**单轮总预算**（见 `data/ai/WorkspaceTurnBudget.kt`）。
+     *
+     * 与 [toolLoopGuard] 同款挂载理由与重置时机：堵的是 LoopGuard 防不住的形态
+     * （每步换参数的 workspace 调用，累计输出/步数无上限）。挂在 session 上跨审批续跑
+     * 累积，由 ChatService 在**新一轮用户消息 / 重新生成**时 reset。
+     */
+    val workspaceTurnBudget = WorkspaceTurnBudget()
 
     // 生成任务（内聚在 session 中）
     private val _generationJob = MutableStateFlow<Job?>(null)
