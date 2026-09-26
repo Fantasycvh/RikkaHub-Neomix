@@ -1,0 +1,264 @@
+package app.androidrik.rikkahub.ui.pages.agentrun
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
+import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
+import app.androidrik.rikkahub.ui.theme.CustomColors
+import app.androidrik.rikkahub.utils.plus
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Delete02
+import me.rerere.hugeicons.stroke.Stop
+import org.koin.androidx.compose.koinViewModel
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private val DetailTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+
+private fun formatDetailTime(ts: Long?): String =
+    ts?.let {
+        DetailTimeFormatter.format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()))
+    } ?: "—"
+
+@Composable
+fun AgentRunDetailPage(
+    runId: String,
+    vm: AgentRunDetailVM = koinViewModel(),
+) {
+    val run by vm.observeRun(runId).collectAsStateWithLifecycle(null)
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
+    Scaffold(
+        topBar = {
+            LargeFlexibleTopAppBar(
+                title = {
+                    Text(
+                        text = run?.profileName?.ifBlank { null }
+                            ?: stringResource(R.string.agent_runs_title),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                navigationIcon = { BackButton() },
+                actions = {
+                    // 取消（仅运行中）与删除（随时）
+                    if (run?.status == AgentRunEntity.STATUS_RUNNING ||
+                        run?.status == AgentRunEntity.STATUS_PENDING
+                    ) {
+                        IconButton(
+                            onClick = {
+                                run?.id?.let { vm.cancel(kotlin.uuid.Uuid.parse(it)) }
+                            },
+                        ) {
+                            Icon(
+                                HugeIcons.Stop,
+                                contentDescription = stringResource(R.string.agent_run_cancel),
+                            )
+                        }
+                    }
+                    run?.let { r ->
+                        IconButton(onClick = { vm.delete(kotlin.uuid.Uuid.parse(r.id)) }) {
+                            Icon(
+                                HugeIcons.Delete02,
+                                contentDescription = stringResource(R.string.agent_run_delete),
+                            )
+                        }
+                    }
+                },
+                colors = CustomColors.topBarColors,
+            )
+        },
+        containerColor = CustomColors.topBarColors.containerColor,
+    ) { innerPadding ->
+        val current = run
+        if (current == null) {
+            // 已删除或尚未加载
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = stringResource(R.string.agent_runs_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = innerPadding + PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item { RunHeader(current) }
+                item {
+                    errorLabel(current.error)?.let {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CustomColors.cardColorsOnSurfaceContainer,
+                        ) {
+                            Text(
+                                text = it,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+                val messages = decodeTranscript(current.transcript)
+                itemsIndexed(messages) { _, message ->
+                    TranscriptMessageCard(message)
+                }
+            }
+        }
+    }
+}
+
+/** 解码轨迹 JSON；坏数据（旧版本/手工改动）降级为空列表而非崩溃。 */
+private fun decodeTranscript(json: String): List<UIMessage> =
+    runCatching {
+        app.androidrik.rikkahub.utils.JsonInstant.decodeFromString(
+            kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<UIMessage>()),
+            json,
+        )
+    }.getOrDefault(emptyList())
+
+@Composable
+private fun RunHeader(run: AgentRunEntity) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = statusLabel(run.status),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = when (run.status) {
+                        AgentRunEntity.STATUS_RUNNING -> MaterialTheme.colorScheme.primary
+                        AgentRunEntity.STATUS_COMPLETED -> MaterialTheme.colorScheme.tertiary
+                        AgentRunEntity.STATUS_FAILED -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                Text(
+                    text = formatDetailTime(run.createdAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            run.resultSummary?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = stringResource(R.string.agent_run_field_result),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Text(
+                text = listOfNotNull(
+                    run.modelName,
+                    formatDetailTime(run.startedAt),
+                    formatDetailTime(run.finishedAt),
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TranscriptMessageCard(message: UIMessage) {
+    val roleLabel = when (message.role) {
+        MessageRole.USER -> stringResource(R.string.agent_run_role_user)
+        MessageRole.ASSISTANT -> stringResource(R.string.agent_run_role_assistant)
+        MessageRole.SYSTEM -> stringResource(R.string.agent_run_role_system)
+        else -> stringResource(R.string.agent_run_role_tool)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = roleLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            message.parts.forEach { part ->
+                when (part) {
+                    is UIMessagePart.Text -> MarkdownBlock(part.text)
+                    is UIMessagePart.Tool -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = "⚙ ${part.toolName}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (part.isExecuted) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                },
+                            )
+                        }
+                    }
+
+                    else -> Unit
+                }
+            }
+        }
+    }
+}

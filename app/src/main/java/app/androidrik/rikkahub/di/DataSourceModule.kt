@@ -159,6 +159,10 @@ val dataSourceModule = module {
     }
 
     single {
+        get<AppDatabase>().agentRunDao()
+    }
+
+    single {
         MessageFtsManager(get())
     }
 

@@ -238,7 +238,7 @@ private val inputTransformers by lazy {
     )
 }
 
-private val outputTransformers by lazy {
+internal val outputTransformers by lazy {
     listOf(
         ThinkTagTransformer,
         Base64ImageToLocalFileTransformer,
@@ -1077,6 +1077,16 @@ class ChatService(
                             )
                             addError(
                                 ToolCallLoopStoppedException(notice.toolName, notice.repeats),
+                                conversationId,
+                                title = context.getString(R.string.chat_tool_loop_title),
+                            )
+                        }
+                        is GenerationNotice.TooManyDenials -> {
+                            // 聊天路径不会产生（denialGuard 只由无头 run 传入）；
+                            // 分支仅为 when 穷尽，防御性记录。
+                            Log.w(TAG, "too many denials: ${notice.denials} (conv=$conversationId)")
+                            addError(
+                                IllegalStateException("Too many tool denials (${notice.denials})"),
                                 conversationId,
                                 title = context.getString(R.string.chat_tool_loop_title),
                             )

@@ -129,7 +129,20 @@ sealed interface GenerationNotice {
         val steps: Int,
         val by: WorkspaceTurnBudget.ExceedReason,
     ) : GenerationNotice
+
+    /**
+     * 无头 run 的重复拒绝达阈值（见 [DenialGuard]）——模型被策略拒绝后换着方式反复撞，
+     * 继续跑只会到空响应；提前结束，run 以 `failed(permission_denied)` 收尾。
+     */
+    data class TooManyDenials(
+        val denials: Int,
+    ) : GenerationNotice
 }
+
+/** 无头 run 的策略拒绝文本（拒绝文本契约 §9.2.1：策略终态、明说勿重试）。 */
+const val HEADLESS_DENIAL_REASON =
+    "Not permitted in this run by its capability envelope. " +
+        "Do not retry this tool; proceed without it or finish."
 
 class GenerationHandler(
     private val context: Context,
@@ -166,6 +179,14 @@ class GenerationHandler(
          * 见 [WorkspaceTurnBudget] 类注释。默认值只服务于单测等场景。
          */
         workspaceBudget: WorkspaceTurnBudget = WorkspaceTurnBudget(),
+        /**
+         * 无头 run 的**自动拒绝**：`needsApproval=true` 的工具不进入「等用户」状态，
+         * 而是直接置为策略拒绝（文本经既有 Denied 通路回给模型，见 §9.2.1）。
+         * 配合 [denialGuard] 使用（聊天路径两个都走默认值，行为不变）。
+         */
+        autoDenyApproval: Boolean = false,
+        /** 重复拒绝护栏（仅无头 run 传入；见 [DenialGuard] 类注释的覆盖盲区说明）。 */
+        denialGuard: DenialGuard? = null,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
@@ -206,9 +227,9 @@ class GenerationHandler(
             // 本轮的工具调用失控护栏：**由调用方传入**（挂在会话上），跨「审批续跑」累积。
             // 这里刻意不新建实例——真机实测每次批准都会重新进入 runLoop（step #0 重来），
             // 自建实例每次都被重置，护栏对审批类工具等于失效。
-            var loopStopped: GenerationNotice.ToolLoopStopped? = null
-            // workspace 单轮预算的超限提示（与 loopStopped 同款：设一次，结果回填后停本轮）
-            var budgetExceeded: GenerationNotice.WorkspaceBudgetExhausted? = null
+            // 护栏停止提示（三个来源共用、先到先得）：同签名循环 / workspace 预算耗尽 /
+            // 重复拒绝达阈值。设一次，本批结果回填后停本轮（优雅停止）。
+            var stopNotice: GenerationNotice? = null
 
             for (stepIndex in 0 until maxSteps) {
                 Log.i(TAG, "streamText: start step #$stepIndex (${targetModel.id})")
@@ -304,8 +325,19 @@ class GenerationHandler(
                         // Tool needs approval and state is Auto -> set to Pending
                         toolDef?.needsApproval(tool.inputAsJson()) == true &&
                             tool.approvalState is ToolApprovalState.Auto -> {
-                            hasPendingApproval = true
-                            tool.copy(approvalState = ToolApprovalState.Pending)
+                            if (autoDenyApproval) {
+                                // 无头 run：无人可批，等在 Pending 上 = 永远卡死。直接置为
+                                // **策略拒绝**——文本经下方既有的 Denied 通路回给模型
+                                // （"Do not retry" 的措辞是 §9.2.1 的拒绝文本契约）。
+                                tool.copy(
+                                    approvalState = ToolApprovalState.Denied(
+                                        reason = HEADLESS_DENIAL_REASON
+                                    )
+                                )
+                            } else {
+                                hasPendingApproval = true
+                                tool.copy(approvalState = ToolApprovalState.Pending)
+                            }
                         }
                         // State is Pending -> keep waiting
                         tool.approvalState is ToolApprovalState.Pending -> {
@@ -355,8 +387,21 @@ class GenerationHandler(
             toolsToProcess.forEach { tool ->
                 when (tool.approvalState) {
                     is ToolApprovalState.Denied -> {
-                        // Tool was denied by user
                         val reason = (tool.approvalState as ToolApprovalState.Denied).reason
+                        // 重复拒绝护栏（仅无头 run 传入）：**不按签名**计数——换参数/换工具
+                        // 的连续拒绝是 LoopGuard 的盲区（§9.2.1）。超限 → 优雅停止，
+                        // run 以 failed(permission_denied) 收尾而非「正常完成」。
+                        if (denialGuard != null) {
+                            val verdict = denialGuard.record()
+                            if (verdict is DenialGuard.Verdict.Exceeded && stopNotice == null) {
+                                Log.w(
+                                    TAG,
+                                    "generateText: too many denials (${verdict.denials}), " +
+                                        "will stop this turn after applying results",
+                                )
+                                stopNotice = GenerationNotice.TooManyDenials(verdict.denials)
+                            }
+                        }
                         executedTools += tool.copy(
                             output = listOf(
                                 UIMessagePart.Text(
@@ -364,7 +409,7 @@ class GenerationHandler(
                                         buildJsonObject {
                                             put(
                                                 "error",
-                                                JsonPrimitive("Tool execution denied by user. Reason: ${reason.ifBlank { "No reason provided" }}")
+                                                JsonPrimitive("Tool execution denied. Reason: ${reason.ifBlank { "No reason provided" }}")
                                             )
                                         }
                                     )
@@ -402,7 +447,7 @@ class GenerationHandler(
                         // 若逐条记录，一次 Gemini 式重复下发就会被算成 2 次、两步即误判。
                         when (val verdict = loopGuard.record(tool.toolName, signature)) {
                             is ToolCallLoopGuard.Verdict.Loop -> {
-                                if (loopStopped == null) loopStopped = GenerationNotice.ToolLoopStopped(
+                                if (stopNotice == null) stopNotice = GenerationNotice.ToolLoopStopped(
                                     toolName = verdict.toolName,
                                     repeats = verdict.repeats,
                                 )
@@ -437,7 +482,7 @@ class GenerationHandler(
                             if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
                                 val chars = output.filterIsInstance<UIMessagePart.Text>().sumOf { it.text.length }
                                 val verdict = workspaceBudget.record(chars)
-                                if (verdict is WorkspaceTurnBudget.Verdict.Exceeded && budgetExceeded == null) {
+                                if (verdict is WorkspaceTurnBudget.Verdict.Exceeded && stopNotice == null) {
                                     Log.w(
                                         TAG,
                                         "generateText: workspace budget exceeded " +
@@ -445,7 +490,7 @@ class GenerationHandler(
                                             "${verdict.steps} steps, by=${verdict.by}), " +
                                             "will stop this turn after applying results",
                                     )
-                                    budgetExceeded = GenerationNotice.WorkspaceBudgetExhausted(
+                                    stopNotice = GenerationNotice.WorkspaceBudgetExhausted(
                                         usedChars = verdict.usedChars,
                                         budgetChars = verdict.budgetChars,
                                         steps = verdict.steps,
@@ -517,7 +562,7 @@ class GenerationHandler(
             // toolCallId 都有结果，不能半途丢），现在提前结束本轮。**走正常结束路径**而非抛
             // 异常——抛异常会让本轮已生成内容只停留在内存（onSuccess 才落库），把护栏的
             // 「防失控」变成「丢内容」。
-            (budgetExceeded ?: loopStopped)?.let { stopped ->
+            stopNotice?.let { stopped ->
                 emit(GenerationChunk.Notice(stopped))
                 break
             }

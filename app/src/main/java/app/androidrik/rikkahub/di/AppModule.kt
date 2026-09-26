@@ -10,6 +10,7 @@ import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.service.ChatNotificationManager
 import app.androidrik.rikkahub.service.ChatService
+import app.androidrik.rikkahub.service.SubagentRunner
 import app.androidrik.rikkahub.utils.EmojiData
 import app.androidrik.rikkahub.utils.EmojiUtils
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -97,6 +98,17 @@ val appModule = module {
             filesManager = get(),
             workspaceRepository = get(),
             folderRepository = get()
+        )
+    }
+
+    single {
+        SubagentRunner(
+            context = get(),
+            appScope = get(),
+            settingsStore = get(),
+            generationHandler = get(),
+            chatToolFactory = get(),
+            agentRunDAO = get(),
         )
     }
 

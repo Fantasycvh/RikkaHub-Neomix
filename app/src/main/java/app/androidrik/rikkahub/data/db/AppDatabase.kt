@@ -6,6 +6,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import app.androidrik.ai.core.TokenUsage
+import app.androidrik.rikkahub.data.db.dao.AgentRunDAO
 import app.androidrik.rikkahub.data.db.dao.CompressionCheckpointDAO
 import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
@@ -16,6 +17,7 @@ import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
 import app.androidrik.rikkahub.data.db.dao.WorkspaceDAO
 import app.androidrik.rikkahub.data.db.entity.CompressionCheckpointEntity
+import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.data.db.entity.ConversationEntity
 import app.androidrik.rikkahub.data.db.entity.FavoriteEntity
 import app.androidrik.rikkahub.data.db.entity.FolderEntity
@@ -42,8 +44,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         WorkspaceEntity::class,
         FolderEntity::class,
         CompressionCheckpointEntity::class,
+        AgentRunEntity::class,
     ],
-    version = 29,
+    version = 30,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -66,6 +69,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 24, to = 25),
         AutoMigration(from = 25, to = 26),
         AutoMigration(from = 26, to = 27),
+        AutoMigration(from = 29, to = 30),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -87,6 +91,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDAO
 
     abstract fun compressionCheckpointDao(): CompressionCheckpointDAO
+
+    abstract fun agentRunDao(): AgentRunDAO
 }
 
 object TokenUsageConverter {

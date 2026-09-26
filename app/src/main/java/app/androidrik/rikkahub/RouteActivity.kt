@@ -91,6 +91,8 @@ import app.androidrik.rikkahub.ui.pages.chat.ChatPage
 import app.androidrik.rikkahub.ui.pages.debug.DebugPage
 import app.androidrik.rikkahub.ui.pages.extensions.ExtensionsPage
 import app.androidrik.rikkahub.ui.pages.extensions.PromptPage
+import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunsPage
+import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunDetailPage
 import app.androidrik.rikkahub.ui.pages.extensions.QuickMessagesPage
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillDetailPage
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillsPage
@@ -535,6 +537,14 @@ class RouteActivity : ComponentActivity() {
                                 SkillsPage()
                             }
 
+                            entry<Screen.AgentRuns> {
+                                AgentRunsPage()
+                            }
+
+                            entry<Screen.AgentRunDetail> { key ->
+                                AgentRunDetailPage(runId = key.runId)
+                            }
+
                             entry<Screen.Workspaces> {
                                 WorkspacePage()
                             }
@@ -765,6 +775,15 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Skills : Screen
+
+    /** 无头 agent run 的账本列表（设计见 docs/design-subagent-context.md §9.3/9.4）。 */
+    @Serializable
+    data object AgentRuns : Screen
+
+    /** 单个 run 的详情（状态 + 轨迹回放）。 */
+    @Serializable
+    data class AgentRunDetail(val runId: String) : Screen
+
 
     @Serializable
     data object Workspaces : Screen
