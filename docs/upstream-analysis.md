@@ -114,7 +114,7 @@
 
 ### 2026-09-28 同步：2.5.2 → 2.5.5（`458c16df` → `00c8d53a`，36 提交）
 
-master 已 ff-only 快进至 `00c8d53a`。按价值分类（**均未吸收**）：
+master 已 ff-only 快进至 `00c8d53a`。按价值分类（吸收进度见各节，A 类前两批 `24dcdcce`+`47d5d81c`、C 类 chart_display 已吸收）：
 
 #### A. 真缺口，建议吸收（按价值）
 
@@ -140,7 +140,7 @@ master 已 ff-only 快进至 `00c8d53a`。按价值分类（**均未吸收**）�
 
 | 提交 | 规模 | 备注 |
 |---|---|---|
-| `00c8d53a` chart_display 本地工具 | 大（工具 252 + ChartCard/Plot/Scale ~760 + 渲染） | 在聊天中画折线/柱/散点图；纯新增。**与 fork 的 TikZ/Mermaid 渲染链是并列能力**，需评估是否重复投入 |
+| `00c8d53a` chart_display 本地工具 | 大（工具 252 + ChartCard/Plot/Scale ~760 + 渲染） | 在聊天中画折线/柱/散点图；纯新增。**与 fork 的 TikZ/Mermaid 渲染链是并列能力**，需评估是否重复投入 → **已于 2026-09-29 吸收**（工具+ChartSpec/Scale/Plot/Card/Table 五组件+ChatMessageCot `ChartBlock` 分组+Export 渲染+设置页开关，单测 11 项；**适配点=hugeicons 1.3 无 `Table` 图标，用 `GridTable` 代替**） |
 | `3b346748`+`7f17dcc8` 内置技能 + skill-creator | 中（BuiltinSkills 87 + SkillManager 改造 + 内置 skill-creator 技能） | 内置技能与 fork 的 `enabledSkills` 体系需对齐；元数据转义/限长是防御性修补 |
 | `233e095a`+`7508eee9`+`598b4efa` 阿拉伯语 + RTL | 大（6→7 语言 + 全仓方向图标 + locale-tui 术语表） | fork 目前 6 语言；RTL 涉及全仓 UI 方向性。**若非阿语用户则不值** |
 | `b9c0d3b7` 数据恢复页（从聊天记录恢复助手） | 中 | fork 已有助手墓碑（`5de1ffa9`），此页是另一种恢复路径 |
@@ -161,7 +161,7 @@ master 已 ff-only 快进至 `00c8d53a`。按价值分类（**均未吸收**）�
   `ResponseToolCallIdResolver` 按流创建；测试 6 项，且验证过去掉修复即失败）、
   `9f02586d` 技能保存（`writeFileAtomically` 顶层函数；测试 5 项）。
 - **不做 1 项**：`54aa8114` 收藏侧滑（用户决定，已有可点击删除按钮）。
-- **剩余**：C 类新增功能（chart_display / 内置技能 skill-creator / 阿语 RTL / 数据恢复页 /
+- **剩余**：C 类新增功能（~~chart_display~~ 已于 2026-09-29 吸收 / 内置技能 skill-creator / 阿语 RTL / 数据恢复页 /
   图片生成快捷方式 / mimo v2.6+step-5 注册），按需另排。
 
 ### 2026-09-19 新发现：2.5.2 后再 8 提交（`c8853531`..`458c16df`，已 ff-only 同步 master；**其中 2 项已于 09-20 吸收**）

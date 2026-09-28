@@ -1678,5 +1678,13 @@
   <string name="workspace_delete_selection_message">Выбранные папки удаляются вместе с содержимым.</string>
   <string name="workspace_delete_selection_done">Удалено элементов: %1$d</string>
   <string name="workspace_delete_selection_partial">Удалено %1$d, ошибок %2$d</string>
+  <string name="assistant_page_local_tools_chart_display_title">Отображение диаграмм</string>
+  <string name="assistant_page_local_tools_chart_display_desc">Разрешить ИИ отображать линейные, столбчатые и точечные диаграммы</string>
+  <string name="chat_message_tool_chart_display">Показать диаграмму</string>
+  <string name="chat_message_tool_chart_display_with_title">Показать диаграмму: %1$s</string>
+  <string name="chart_mode_chart">Диаграмма</string>
+  <string name="chart_mode_table">Таблица</string>
+  <string name="chart_series">Ряд</string>
+  <string name="chart_series_name">Ряд %1$d</string>
 </resources>
 

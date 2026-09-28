@@ -98,6 +98,8 @@ import app.androidrik.rikkahub.tikz.TikzSvgCache
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.BitmapComposer
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThought
+import app.androidrik.rikkahub.ui.components.charts.ChartCard
+import app.androidrik.rikkahub.ui.components.charts.ChartSpec
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThoughtScope
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalSettings
@@ -1189,6 +1191,11 @@ private fun ExportedChatMessage(
                                 }
                             }
                         }
+                    }
+
+                    is MessagePartBlock.ChartBlock -> {
+                        val spec = remember(block.tool.input) { ChartSpec.fromJson(block.tool.inputAsJson()) }
+                        spec?.let { ChartCard(spec = it) }
                     }
 
                     is MessagePartBlock.ContentBlock -> {

@@ -1753,5 +1753,13 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="workspace_delete_selection_message">Folders are deleted together with their contents.</string>
   <string name="workspace_delete_selection_done">Deleted %1$d items</string>
   <string name="workspace_delete_selection_partial">Deleted %1$d, %2$d failed</string>
+  <string name="assistant_page_local_tools_chart_display_title">Chart Display</string>
+  <string name="assistant_page_local_tools_chart_display_desc">Let the AI display line, bar, and scatter charts</string>
+  <string name="chat_message_tool_chart_display">Display chart</string>
+  <string name="chat_message_tool_chart_display_with_title">Display chart: %1$s</string>
+  <string name="chart_mode_chart">Chart</string>
+  <string name="chart_mode_table">Table</string>
+  <string name="chart_series">Series</string>
+  <string name="chart_series_name">Series %1$d</string>
 </resources>
 

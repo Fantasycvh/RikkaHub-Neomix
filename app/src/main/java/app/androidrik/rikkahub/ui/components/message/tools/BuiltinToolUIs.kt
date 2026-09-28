@@ -52,6 +52,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import app.androidrik.common.http.jsonObjectOrNull
 import app.androidrik.highlight.CodeHighlightText
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ChartColumn
+import me.rerere.hugeicons.stroke.ChartLineData01
+import me.rerere.hugeicons.stroke.ChartScatter
 import me.rerere.hugeicons.stroke.Clipboard
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Eraser
@@ -590,6 +593,27 @@ object CalendarCreateToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String {
         val eventTitle = context.arguments.getStringContent("title") ?: ""
         return stringResource(R.string.chat_message_tool_calendar_create, eventTitle)
+    }
+}
+
+object ChartDisplayToolUI : ToolUIRenderer {
+    override val toolName: String = "chart_display"
+
+    override fun icon(context: ToolUIContext): ImageVector =
+        when (context.arguments.getStringContent("style")) {
+            "bar" -> HugeIcons.ChartColumn
+            "scatter" -> HugeIcons.ChartScatter
+            else -> HugeIcons.ChartLineData01
+        }
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val chartTitle = context.arguments.getStringContent("title")
+        return if (chartTitle.isNullOrBlank()) {
+            stringResource(R.string.chat_message_tool_chart_display)
+        } else {
+            stringResource(R.string.chat_message_tool_chart_display_with_title, chartTitle)
+        }
     }
 }
 

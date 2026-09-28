@@ -1678,5 +1678,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_delete_selection_message">選択したフォルダは中身ごと削除されます。</string>
   <string name="workspace_delete_selection_done">%1$d 件を削除しました</string>
   <string name="workspace_delete_selection_partial">%1$d 件を削除、%2$d 件失敗</string>
+  <string name="assistant_page_local_tools_chart_display_title">チャート表示</string>
+  <string name="assistant_page_local_tools_chart_display_desc">AIに折れ線グラフ、棒グラフ、散布図を表示させる</string>
+  <string name="chat_message_tool_chart_display">グラフを表示</string>
+  <string name="chat_message_tool_chart_display_with_title">グラフを表示: %1$s</string>
+  <string name="chart_mode_chart">チャート</string>
+  <string name="chart_mode_table">表</string>
+  <string name="chart_series">系列</string>
+  <string name="chart_series_name">系列 %1$d</string>
 </resources>
 

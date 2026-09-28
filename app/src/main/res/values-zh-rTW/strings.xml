@@ -1734,5 +1734,13 @@
   <string name="workspace_delete_selection_message">選取的資料夾會連同內容一併刪除。</string>
   <string name="workspace_delete_selection_done">已刪除 %1$d 項</string>
   <string name="workspace_delete_selection_partial">已刪除 %1$d 項，%2$d 項失敗</string>
+  <string name="assistant_page_local_tools_chart_display_title">圖表顯示</string>
+  <string name="assistant_page_local_tools_chart_display_desc">讓 AI 顯示折線圖、長條圖和散佈圖</string>
+  <string name="chat_message_tool_chart_display">顯示圖表</string>
+  <string name="chat_message_tool_chart_display_with_title">顯示圖表：%1$s</string>
+  <string name="chart_mode_chart">圖表</string>
+  <string name="chart_mode_table">表格</string>
+  <string name="chart_series">數列</string>
+  <string name="chart_series_name">數列 %1$d</string>
 </resources>
 

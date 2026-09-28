@@ -1,7 +1,13 @@
 package app.androidrik.rikkahub.ui.components.message
 
 import androidx.compose.ui.util.fastForEachIndexed
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.utils.JsonInstant
+
+internal const val CHART_DISPLAY_TOOL_NAME = "chart_display"
 
 /**
  * 思考步骤类型，用于分组 Reasoning 和 Tool
@@ -22,11 +28,16 @@ sealed interface ThinkingStep {
 sealed interface MessagePartBlock {
     data class ThinkingBlock(val steps: List<ThinkingStep>) : MessagePartBlock
     data class ContentBlock(val part: UIMessagePart, val index: Int) : MessagePartBlock
+
+    /** 成功执行的 chart_display 工具调用, 在正文中以图表卡片展示 */
+    data class ChartBlock(val tool: UIMessagePart.Tool, val index: Int) : MessagePartBlock
 }
 
 /**
  * 将 parts 分组成 ThinkingBlock 和 ContentBlock
  * 连续的 Reasoning 和 Tool 会被分组到一个 ThinkingBlock 中
+ * 成功执行的 chart_display 原地替换为 ChartBlock (会切断所在的 ThinkingBlock);
+ * 生成中或失败的调用仍作为普通 ToolStep 展示
  */
 fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
     val result = mutableListOf<MessagePartBlock>()
@@ -46,7 +57,12 @@ fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
             }
 
             is UIMessagePart.Tool -> {
-                currentThinkingSteps.add(ThinkingStep.ToolStep(part))
+                if (part.isSuccessfulChartDisplay()) {
+                    flushThinkingSteps()
+                    result.add(MessagePartBlock.ChartBlock(part, index))
+                } else {
+                    currentThinkingSteps.add(ThinkingStep.ToolStep(part))
+                }
             }
 
             else -> {
@@ -57,4 +73,11 @@ fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
     }
     flushThinkingSteps()
     return result
+}
+
+private fun UIMessagePart.Tool.isSuccessfulChartDisplay(): Boolean {
+    if (toolName != CHART_DISPLAY_TOOL_NAME || !isExecuted) return false
+    val outputText = output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+    val result = runCatching { JsonInstant.parseToJsonElement(outputText) }.getOrNull() as? JsonObject
+    return (result?.get("success") as? JsonPrimitive)?.booleanOrNull == true
 }

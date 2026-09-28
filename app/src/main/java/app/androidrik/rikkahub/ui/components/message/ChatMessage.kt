@@ -88,6 +88,8 @@ import app.androidrik.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import app.androidrik.rikkahub.ui.components.richtext.buildMarkdownPreviewHtml
 import app.androidrik.rikkahub.ui.components.webview.WebViewContentCache
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThought
+import app.androidrik.rikkahub.ui.components.charts.ChartCard
+import app.androidrik.rikkahub.ui.components.charts.ChartSpec
 import app.androidrik.rikkahub.ui.components.ui.Favicon
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.modifier.shimmer
@@ -383,6 +385,11 @@ private fun MessagePartsBlock(
                         }
                     }
                 }
+            }
+
+            is MessagePartBlock.ChartBlock -> key(block.index) {
+                val spec = remember(block.tool.input) { ChartSpec.fromJson(block.tool.inputAsJson()) }
+                spec?.let { ChartCard(spec = it) }
             }
 
             is MessagePartBlock.ContentBlock -> key(block.index) {
