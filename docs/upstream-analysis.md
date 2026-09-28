@@ -120,14 +120,14 @@ master 已 ff-only 快进至 `00c8d53a`。按价值分类（**均未吸收**）�
 
 | 提交 | 内容 | fork 现状 / 吸收要点 |
 |---|---|---|
-| `70b382f5` | **fix(settings): 读取失败时设置被意外重置为默认值** | **最高价值**。fork `PreferencesStore.kt:234` 正是 `catch { if (IOException) emit(emptyPreferences()) }` ⇒ **读失败即拿空 Preferences 当用户数据**，随后任何 update 会把默认值写回、抹掉全部设置。上游改三件：①`retryWhen`（IO 错指数退避重试 N 次，仍失败**向上抛**，绝不回退空值）②`ReplaceFileCorruptionHandler`（真损坏才重建，且**先把原文件备份为 `.corrupt-<ts>`**）③`incrementLaunchCount` 改**单 key 原子 edit**（原为读整份快照再写回）。注意 fork 的 `settingsFlowRaw` 有既有注释「勿动」（MCP 并发丢工具根因相关），改前需看那段上下文 |
-| `5ac149b9` | **fix(openai): Responses API 工具参数事件缺 `item_id` 时回退到 `call_id`/`output_index`**（#1948） | **中转站场景真缺口**。fork `ResponseAPI.kt` 内联解码处仍是 `error("item_id not found")` **硬失败**（`:697`、`:766` 等）。上游抽出独立 `ResponseApiStreamDecoder` 并加：`itemIdOrCallId()` 回退 + `outputIndex` 映射表 + `resolveToolCallId`。**fork 是内联实现、结构不同 ⇒ 须手工适配**（不能 cherry-pick） |
-| `ed3569c7` | **fix(workspace): 文件编辑器不再把全文存进 saved state，修大文件切后台崩溃**（#1953） | fork `WorkspaceFileEditorPage` 用 `rememberTextFieldState()`（全文进 Bundle）⇒ 大文件切后台 `TransactionTooLargeException`。改 `remember(id, area, path) { TextFieldState() }`（内容本就由 LaunchedEffect 从磁盘加载）。**同提交也修了 `SkillDetailPage` 的 `rememberSaveable`→`remember`** |
-| `9f02586d` | **fix(skills): 保存失败不再崩溃 + GitHub 导入按字节保存（防二进制损坏）** | fork `SkillManager`/`SkillsVM` 需核（技能是本仓活跃面）。要点：保存失败返回 Result 而非抛；导入走字节流而非 String（避免二进制被当文本解码损坏） |
-| `8b696c0c` | **fix(mcp): 忽略名称为空的自定义请求头**（#1949，报 "name is empty"） | fork `McpSessionRegistry.resolvedHeaders()` 无过滤 ⇒ 设置页留空 header 会让 MCP 连接报错。一行：`filter { it.first.isNotBlank() }` |
-| `54aa8114` | **fix(favorite): 收藏页侧滑删除失效** | fork `FavoritePage:281` 用 `dismissState.currentValue`；上游指出**该值动画中途会翻到最近锚点 → LaunchedEffect 重启并在 onDelete 前被取消**，改 `settledValue`。fork 有 `key(item.id)`+`reset()`（`aa2c9a53`）但未改此值 ⇒ **很可能仍失效，建议真机先复现** |
-| `324b337b` | **fix: 避免代码块行号被复制** | fork `HighlightCodeBlock` 行号未包 `DisableSelection` ⇒ 选中代码会带上行号。小改 |
-| `4391d5a5` | **fix(google): 过滤工具参数中不兼容的 `propertyNames`** | fork `GoogleProvider` 的剥离清单缺 `propertyNames`（Gemini 会拒）。**连带**：`ai/util/ToolSchemaSize.GOOGLE_STRIPPED_SCHEMA_KEYS` 是同一清单的副本，两处都要加 |
+| ~~`70b382f5`~~ | **fix(settings): 读取失败时设置被意外重置为默认值** | ✅ **2026-09-28 已吸收（`24dcdcce`）**。fork `PreferencesStore.kt:234` 正是 `catch { if (IOException) emit(emptyPreferences()) }` ⇒ **读失败即拿空 Preferences 当用户数据**，随后任何 update 会把默认值写回、抹掉全部设置。上游改三件：①`retryWhen`（IO 错指数退避重试 N 次，仍失败**向上抛**，绝不回退空值）②`ReplaceFileCorruptionHandler`（真损坏才重建，且**先把原文件备份为 `.corrupt-<ts>`**）③`incrementLaunchCount` 改**单 key 原子 edit**（原为读整份快照再写回）。注意 fork 的 `settingsFlowRaw` 有既有注释「勿动」（MCP 并发丢工具根因相关），改前需看那段上下文 |
+| ~~`5ac149b9`~~ | **fix(openai): Responses API 工具参数事件缺 `item_id` 时回退到 `call_id`/`output_index`**（#1948） | ✅ **2026-09-28 已吸收（`47d5d81c`，按 fork 内联结构重写为 `ResponseToolCallIdResolver`）**。**并发现本仓原先就是错的**：`buildMessages` 回传用 `put("call_id", tool.toolCallId)`，而流式路径用 `item.id`（`fc_xxx`）⇒ 回传的 call_id 不符协议。原评估：**中转站场景真缺口**。fork `ResponseAPI.kt` 内联解码处仍是 `error("item_id not found")` **硬失败**（`:697`、`:766` 等）。上游抽出独立 `ResponseApiStreamDecoder` 并加：`itemIdOrCallId()` 回退 + `outputIndex` 映射表 + `resolveToolCallId`。**fork 是内联实现、结构不同 ⇒ 须手工适配**（不能 cherry-pick） |
+| ~~`ed3569c7`~~ | **fix(workspace): 文件编辑器不再把全文存进 saved state，修大文件切后台崩溃**（#1953） | ✅ **2026-09-28 已吸收（`24dcdcce`）**。 fork `WorkspaceFileEditorPage` 用 `rememberTextFieldState()`（全文进 Bundle）⇒ 大文件切后台 `TransactionTooLargeException`。改 `remember(id, area, path) { TextFieldState() }`（内容本就由 LaunchedEffect 从磁盘加载）。**同提交也修了 `SkillDetailPage` 的 `rememberSaveable`→`remember`** |
+| ~~`9f02586d`~~ | **fix(skills): 保存失败不再崩溃 + GitHub 导入按字节保存（防二进制损坏）** | ✅ **2026-09-28 已吸收（`47d5d81c`）**：`saveSkillFile` 改临时文件+rename（失败返 false 不抛）。**上游另一半本仓已具备**——`SkillsVM` 导入路径早就是字节下载（`b4e82baf` 自研）。要点：保存失败返回 Result 而非抛；导入走字节流而非 String（避免二进制被当文本解码损坏） |
+| ~~`8b696c0c`~~ | **fix(mcp): 忽略名称为空的自定义请求头**（#1949，报 "name is empty"） | ✅ **2026-09-28 已吸收（`24dcdcce`）**。 fork `McpSessionRegistry.resolvedHeaders()` 无过滤 ⇒ 设置页留空 header 会让 MCP 连接报错。一行：`filter { it.first.isNotBlank() }` |
+| ~~`54aa8114`~~ | **fix(favorite): 收藏页侧滑删除失效** | ❌ **2026-09-28 决定不做**（用户）：已有可点击的删除按钮（`FavoritePage:355` `IconButton(onClick = onDelete)`），侧滑只是冗余手势，失效不影响功能。 fork `FavoritePage:281` 用 `dismissState.currentValue`；上游指出**该值动画中途会翻到最近锚点 → LaunchedEffect 重启并在 onDelete 前被取消**，改 `settledValue`。fork 有 `key(item.id)`+`reset()`（`aa2c9a53`）但未改此值 ⇒ **很可能仍失效，建议真机先复现** |
+| ~~`324b337b`~~ | **fix: 避免代码块行号被复制** | ✅ **2026-09-28 已吸收（`24dcdcce`，两处行号渲染都包 `DisableSelection`）**。 fork `HighlightCodeBlock` 行号未包 `DisableSelection` ⇒ 选中代码会带上行号。小改 |
+| ~~`4391d5a5`~~ | **fix(google): 过滤工具参数中不兼容的 `propertyNames`** | ✅ **2026-09-28 已吸收（`24dcdcce`，两处同源清单一起加）**。 fork `GoogleProvider` 的剥离清单缺 `propertyNames`（Gemini 会拒）。**连带**：`ai/util/ToolSchemaSize.GOOGLE_STRIPPED_SCHEMA_KEYS` 是同一清单的副本，两处都要加 |
 
 #### B. 已重叠 / 无此问题（不吸收）
 
@@ -151,10 +151,18 @@ master 已 ff-only 快进至 `00c8d53a`。按价值分类（**均未吸收**）�
 
 版本 bump（2.5.3/2.5.4/2.5.5，版本号体系与本仓无关）、依赖升级（`426ede84`/`44236d7b`）、`280a039c` 统一 LF 换行、混元配置、DashScope reasoning 参数、chat completions 关闭思考传 none。
 
-#### 推荐吸收顺序
+#### 吸收进度（2026-09-28）
 
-**第一批（共约半天，都是小改）**：`70b382f5` 设置重置（**最严重，先做**）→ `ed3569c7` 编辑器崩溃 → `8b696c0c` MCP header → `324b337b` 行号 → `4391d5a5` propertyNames（**两处清单**）。
-**第二批（各需手工适配）**：`5ac149b9` Responses 解码回退（内联结构不同）、`9f02586d` 技能保存、`54aa8114` 收藏侧滑（**先真机复现再改**）。
+- **第一批 5 项已吸收**（`24dcdcce`）：`70b382f5` 设置重置（配 `SettingsStoreResilienceTest` 5 项：
+  重试策略纯函数 + 真损坏⇒备份原文件且库可用 + 正常写入不产备份）、`ed3569c7` 编辑器 saved state、
+  `8b696c0c` MCP 空 header、`324b337b` 行号不可选、`4391d5a5` propertyNames（两处清单）。
+  真机：连续启动 `incrementLaunchCount: 1250 → 1251`，设置文件未重建、界面配置完好。
+- **第二批 2 项已吸收**（`47d5d81c`）：`5ac149b9` Responses toolCallId 归一（新
+  `ResponseToolCallIdResolver` 按流创建；测试 6 项，且验证过去掉修复即失败）、
+  `9f02586d` 技能保存（`writeFileAtomically` 顶层函数；测试 5 项）。
+- **不做 1 项**：`54aa8114` 收藏侧滑（用户决定，已有可点击删除按钮）。
+- **剩余**：C 类新增功能（chart_display / 内置技能 skill-creator / 阿语 RTL / 数据恢复页 /
+  图片生成快捷方式 / mimo v2.6+step-5 注册），按需另排。
 
 ### 2026-09-19 新发现：2.5.2 后再 8 提交（`c8853531`..`458c16df`，已 ff-only 同步 master；**其中 2 项已于 09-20 吸收**）
 
