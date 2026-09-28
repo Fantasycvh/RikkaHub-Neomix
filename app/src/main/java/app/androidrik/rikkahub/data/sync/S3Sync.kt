@@ -54,7 +54,7 @@ class S3Sync(
             val client = getS3Client(config)
             val key = "rikkahub_plus_backups/${file.name}"
 
-            client.putObject(
+            client.uploadObject(
                 key = key,
                 file = file,
                 contentType = "application/zip",

@@ -407,11 +407,51 @@ internal class BackupArchiveEngine(
     }
 
     private fun addFileToZip(zipOut: ZipOutputStream, file: File, entryName: String, onBytes: (Long) -> Unit = {}) {
+        val entry = prepareZipEntry(file, entryName)
         FileInputStream(file).use { fis ->
-            zipOut.putNextEntry(ZipEntry(entryName))
+            zipOut.putNextEntry(entry)
             // 边拷贝边上报：单个大文件（85MB DB / 2.8GB 克隆）内部也要推进，否则进度条会冻住
             copyReporting(fis, zipOut, onBytes)
             zipOut.closeEntry()
+        }
+    }
+
+    /**
+     * 按可压缩性准备条目（大文件加固 P0，设计稿 §九）：
+     * 头部采样判定为不可压缩（git pack / 图片 / 视频等）→ `STORED` 原样拷贝，
+     * **DEFLATE 的单核 CPU 成本归零**（实测 24 MB/s × 2.8GB ≈ 数分钟白烧）。
+     *
+     * Java API 要求 STORED 条目在 `putNextEntry` 前预置 size/crc ⇒ 一次 CRC 预读。
+     * 该预读是纯顺序读（无 DEFLATE CPU），远比「1 次读 + 压缩」便宜；进度只按写入
+     * 遍计（预读不报，避免双倍计数）。
+     */
+    private fun prepareZipEntry(file: File, entryName: String): ZipEntry {
+        val entry = ZipEntry(entryName)
+        if (file.length() < BackupZipStrategy.SAMPLE_SIZE) return entry
+        val sample = FileInputStream(file).use { input ->
+            val buf = ByteArray(BackupZipStrategy.SAMPLE_SIZE)
+            val read = input.read(buf)
+            if (read <= 0) null else buf.copyOf(read)
+        } ?: return entry
+        if (!BackupZipStrategy.shouldStoreUncompressed(sample)) return entry
+
+        val crc = java.util.zip.CRC32()
+        var size = 0L
+        FileInputStream(file).use { input ->
+            val buf = ByteArray(256 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n <= 0) break
+                crc.update(buf, 0, n)
+                size += n
+            }
+        }
+        Log.i(TAG, "prepareZipEntry: $entryName stored uncompressed (${size} bytes, incompressible)")
+        return entry.apply {
+            method = ZipEntry.STORED
+            this.size = size
+            compressedSize = size
+            this.crc = crc.value
         }
     }
 
