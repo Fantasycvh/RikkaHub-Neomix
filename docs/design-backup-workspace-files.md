@@ -159,7 +159,7 @@ workspace_files/<root>/<相对路径>
 **顺带清理**：移除死开关 `DisplaySetting.showUpdates`（fork 无更新检查实现，该开关无消费方；上游对应字段
 `updateCheckDisabledUntilEpochMillis` 语义相反，导入时本就丢弃）——UI + 字段 + 6 语言字符串一并删除。
 
-## 九、大文件备份加固（2026-09-13 评估定稿，**暂不实现**）
+## 九、大文件备份加固（~~2026-09-13 评估定稿，暂不实现~~ **P0 三项已落地 `8edfe25c`，2026-09-26**）
 
 **触发**：用户指出「其他设备上导出时可能有 **2.8GB** 量级的数据」（工作区里难以再次获取的仓库克隆等）。
 当前实现按中小体积设计，2.8GB 下会暴露若干问题。以下按收益排序，**均与是否引入 Rust 无关**
@@ -184,6 +184,19 @@ workspace_files/<root>/<相对路径>
 
 **结论**：先做 P0 两项即可把该量级从「可能失败/极慢」变为「可用」；P1/P2 为体验完善。本项与工作区备份功能解耦，
 可独立排期。
+
+**✅ 落地记录（2026-09-26，`8edfe25c`）**：
+- **STORED（P0）**：`BackupZipStrategy.shouldStoreUncompressed` = **头部 64KB 采样**（Deflater 同库同级别压一遍，
+  比率 ≥0.98 判不可压缩）——采样而非扩展名表（覆盖 git pack/sqlite/未知二进制）。引擎 `prepareZipEntry`：
+  STORED 需 Java API 预置 size/crc ⇒ 一次 CRC 顺序预读（无 DEFLATE CPU，远比压缩便宜），进度只按写入遍计。
+  **引擎级改动，WebDAV/S3 双受益**；恢复侧零改动（`BackupZipStrategyTest` 的 zip 往返钉住向后兼容）。
+- **S3 分片（P0）+ 单遍哈希（P1）**：`S3Client.uploadObject` 按大小分发——≤8MB 走既有单 PUT（哈希瞬时），
+  ＞8MB 走 multipart（initiate/PUT part/complete/abort 四 API；**每片 8MB 读入内存即算哈希签名 ⇒
+  全文件预读空窗结构性消失**，P1 由此解决）；单分片失败重传一次再 abort；片 8MB ≥ 规范 5MiB 下限，
+  2.8GB ≈ 350 片；签名器零改动。
+- **待真机验证**：需真实 S3 环境（分片对 R2/MinIO 等兼容端限制更严正是本项动机）。
+- **未做**：P1 zip 直传网络（省 5.6GB 磁盘往返）；P2 ZIP64（Java 自动处理，兼容端风险待观察）；
+  时长上限类不在本设计范围。
 
 ### 9.1 空间预检 + 字节级进度（2026-09-14 定稿，**先落实此项**）
 
