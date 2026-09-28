@@ -71,6 +71,7 @@ import app.androidrik.rikkahub.data.ai.transformers.RegexOutputTransformer
 import app.androidrik.rikkahub.data.ai.transformers.QuoteTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.ai.transformers.ThinkTagTransformer
+import app.androidrik.rikkahub.data.ai.transformers.TavernMacroTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TimeReminderTransformer
 import app.androidrik.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import app.androidrik.rikkahub.data.event.AppEvent
@@ -231,6 +232,7 @@ private val inputTransformers by lazy {
     listOf(
         TimeReminderTransformer,
         PromptInjectionTransformer,
+        TavernMacroTransformer,
         PlaceholderTransformer,
         DocumentAsPromptTransformer,
         OcrTransformer,
