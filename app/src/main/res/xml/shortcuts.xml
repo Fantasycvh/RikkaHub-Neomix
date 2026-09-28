@@ -22,4 +22,14 @@
             android:action="app.androidrik.rikkahub.action.TRANSLATE"
             android:targetClass="app.androidrik.rikkahub.RouteActivity" />
     </shortcut>
+    <shortcut
+        android:shortcutId="image_gen"
+        android:enabled="true"
+        android:icon="@drawable/ic_image_generation"
+        android:shortcutShortLabel="@string/imggen_page_title"
+        android:shortcutLongLabel="@string/imggen_page_title">
+        <intent
+            android:action="app.androidrik.rikkahub.action.IMAGE_GEN"
+            android:targetClass="app.androidrik.rikkahub.RouteActivity" />
+    </shortcut>
 </shortcuts>

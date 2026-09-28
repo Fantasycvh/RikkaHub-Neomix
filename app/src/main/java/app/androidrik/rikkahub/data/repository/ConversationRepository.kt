@@ -312,6 +312,17 @@ class ConversationRepository(
         return conversationDAO.countAll()
     }
 
+    /**
+     * 聊天记录中引用的助手 id → 对话数（数据恢复页用）。
+     *
+     * 解析失败的 id 直接跳过（脏数据不该让整张统计表崩掉）。
+     */
+    suspend fun countConversationsByAssistant(): Map<Uuid, Int> {
+        return conversationDAO.countByAssistant().mapNotNull { row ->
+            runCatching { Uuid.parse(row.assistantId) }.getOrNull()?.let { it to row.count }
+        }.toMap()
+    }
+
     suspend fun insertConversation(conversation: Conversation) {
         database.withTransaction {
             conversationDAO.insert(

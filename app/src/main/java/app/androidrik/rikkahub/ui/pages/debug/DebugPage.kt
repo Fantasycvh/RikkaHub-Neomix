@@ -59,6 +59,7 @@ import org.koin.androidx.compose.koinViewModel
 import kotlin.random.Random
 import kotlin.random.nextInt
 import kotlin.uuid.Uuid
+import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANTS_IDS
 
 @Composable
 fun DebugPage(vm: DebugVM = koinViewModel()) {
@@ -76,7 +77,7 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
             )
         }
     ) { contentPadding ->
-        val state = rememberPagerState { 3 }
+        val state = rememberPagerState { 4 }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -118,6 +119,17 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                         Text("Logging")
                     }
                 )
+                Tab(
+                    selected = state.currentPage == 3,
+                    onClick = {
+                        scope.launch {
+                            state.animateScrollToPage(3)
+                        }
+                    },
+                    text = {
+                        Text("Recovery")
+                    }
+                )
             }
             HorizontalPager(
                 state = state,
@@ -129,7 +141,87 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                     0 -> MainPage(vm)
                     1 -> ColorsPage()
                     2 -> Box {}
+                    3 -> RecoveryPage(vm)
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 数据恢复：把「聊天记录里引用了、但设置里已不存在」的助手补回来
+ * （上游 `b9c0d3b7` 的页面，本仓按墓碑机制做了分类处理，见 [DebugVM.recoverAssistantsFromConversations]）。
+ *
+ * 对话列表是按助手过滤的（`getConversationsOfAssistant`），助手没了那些对话就**完全不可见**，
+ * 因此这里做的是「让旧对话重新可见」，不是「找回助手配置」——除内置助手外配置不可恢复。
+ */
+@Composable
+private fun RecoveryPage(vm: DebugVM) {
+    val settings = LocalSettings.current
+    val toaster = LocalToaster.current
+    val scope = rememberCoroutineScope()
+    val conversationAssistants by vm.conversationAssistants.collectAsStateWithLifecycle()
+    val existingIds = settings.assistants.map { it.id }.toSet()
+    val missing = conversationAssistants
+        ?.filterKeys { it !in existingIds }
+        ?.entries
+        ?.sortedByDescending { it.value }
+    var recovering by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .padding(8.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            "扫描聊天记录中引用的助手，为设置里缺失的助手补齐，使对应聊天记录重新可见。" +
+                "内置助手会恢复为原始配置；其余助手只能建同名占位（原配置不可恢复）。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text("Assistants in settings: ${settings.assistants.size}")
+        Text("Assistants referenced by chats: ${conversationAssistants?.size?.toString() ?: "..."}")
+        Text("Missing: ${missing?.size?.toString() ?: "..."}")
+        missing?.forEach { (id, count) ->
+            val kind = if (id in DEFAULT_ASSISTANTS_IDS) "built-in" else "custom"
+            Text(
+                "$id ($count chats, $kind)",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = JetbrainsMono,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { vm.scanConversationAssistants() }) {
+                Text("Rescan")
+            }
+            Button(
+                enabled = !recovering && !settings.init && !missing.isNullOrEmpty(),
+                onClick = {
+                    recovering = true
+                    scope.launch {
+                        runCatching { vm.recoverAssistantsFromConversations() }
+                            .onSuccess { result ->
+                                when {
+                                    result == null -> toaster.show("Settings not loaded yet", type = ToastType.Error)
+                                    result.placeholders == 0 && result.builtInRestored == 0 ->
+                                        toaster.show("Nothing to recover")
+                                    else -> toaster.show(
+                                        "Recovered ${result.placeholders} placeholder(s) + " +
+                                            "${result.builtInRestored} built-in(s); " +
+                                            "${result.conversations} chat(s) visible again",
+                                        type = ToastType.Success,
+                                    )
+                                }
+                            }
+                            .onFailure {
+                                toaster.show("Recovery failed: ${it.message}", type = ToastType.Error)
+                            }
+                        recovering = false
+                    }
+                }
+            ) {
+                Text("Recover")
             }
         }
     }

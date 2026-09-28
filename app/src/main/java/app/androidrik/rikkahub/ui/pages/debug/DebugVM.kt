@@ -11,9 +11,11 @@ import kotlinx.coroutines.launch
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANTS_IDS
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.repository.ConversationRepository
@@ -33,14 +35,68 @@ class DebugVM(
     private val _conversationCount = MutableStateFlow<Int?>(null)
     val conversationCount: StateFlow<Int?> = _conversationCount.asStateFlow()
 
+    /** 聊天记录中引用的助手 id → 对话数（null = 尚未扫描）。 */
+    private val _conversationAssistants = MutableStateFlow<Map<Uuid, Int>?>(null)
+    val conversationAssistants: StateFlow<Map<Uuid, Int>?> = _conversationAssistants.asStateFlow()
+
     init {
         refreshConversationCount()
+        scanConversationAssistants()
     }
 
     fun refreshConversationCount() {
         viewModelScope.launch {
             _conversationCount.value = conversationRepository.countConversations()
         }
+    }
+
+    fun scanConversationAssistants() {
+        viewModelScope.launch {
+            _conversationAssistants.value = conversationRepository.countConversationsByAssistant()
+        }
+    }
+
+    /**
+     * 为「聊天记录引用了、但设置里已不存在」的助手补齐助手，使这些对话重新可见
+     * （对话列表按助手过滤，没有对应助手就完全看不到）。
+     *
+     * **两类缺失分开处理**（上游 `b9c0d3b7` 只造占位；本仓多一类）：
+     * - **内置助手 id**：缺失只可能是因为用户删过它（fork 的墓碑机制 `removedAssistantIds`
+     *   会阻止回填）。这类**清掉墓碑**即可让读路径把内置助手的**真身**带回来（含系统提示、
+     *   模型等完整配置）——比造一个「Recovered assistant N」占位好得多，而且占位会占住
+     *   该 id、永久挡住真身回填。
+     * - **其余 id**：无从得知原配置，只能造占位助手（上游行为）。
+     *
+     * @return 恢复结果；`settings` 尚未加载时返回 null
+     */
+    suspend fun recoverAssistantsFromConversations(): AssistantRecoveryResult? {
+        val settings = settingsStore.settingsFlow.value
+        if (settings.init) return null
+
+        val byAssistant = conversationRepository.countConversationsByAssistant()
+        _conversationAssistants.value = byAssistant
+
+        val existingIds = settings.assistants.map { it.id }.toSet()
+        val missing = byAssistant.filterKeys { it !in existingIds }
+        if (missing.isEmpty()) return AssistantRecoveryResult(0, 0, 0)
+
+        val plan = planAssistantRecovery(missing.keys)
+        val placeholders = plan.placeholderIds.mapIndexed { index, id ->
+            Assistant(id = id, name = "Recovered assistant ${index + 1}")
+        }
+
+        settingsStore.update(
+            settings.copy(
+                assistants = settings.assistants + placeholders,
+                // 清墓碑 ⇒ 下一次读取时 refillDefaultAssistants 把内置助手原样补回
+                removedAssistantIds = settings.removedAssistantIds - plan.builtInIds,
+            )
+        )
+        return AssistantRecoveryResult(
+            placeholders = placeholders.size,
+            builtInRestored = plan.builtInIds.size,
+            conversations = missing.values.sum(),
+        )
     }
 
     fun updateSettings(settings: Settings) {
@@ -139,4 +195,43 @@ class DebugVM(
         val body = List(wordCount) { fragments.random() }.joinToString(" ")
         return "$prefix#${index + 1}: $body"
     }
+}
+
+/**
+ * 数据恢复结果（[DebugVM.recoverAssistantsFromConversations]）。
+ *
+ * @param placeholders 新建的占位助手数（原配置不可考）
+ * @param builtInRestored 清墓碑后由内置助手回填恢复的数量（配置完整）
+ * @param conversations 因此重新可见的对话数
+ */
+data class AssistantRecoveryResult(
+    val placeholders: Int,
+    val builtInRestored: Int,
+    val conversations: Int,
+)
+
+/**
+ * 恢复方案：把「聊天记录引用了但设置里缺失」的助手 id 分成两拨。
+ *
+ * - [builtInIds]：内置助手的 id——**清墓碑让它自己回填**（真身带完整配置回来）
+ * - [placeholderIds]：其余 id——原配置不可考，只能建占位
+ *
+ * 关键不变量：**内置 id 绝不出现在 [placeholderIds] 里**。若给内置 id 建了占位，
+ * 那个占位会占住该 id，`refillDefaultAssistants` 见「已存在」便不再补真身 ⇒ 用户永久
+ * 拿到一个空壳「Recovered assistant」。纯函数便于单测钉住这一点。
+ */
+internal data class AssistantRecoveryPlan(
+    val placeholderIds: List<Uuid>,
+    val builtInIds: Set<Uuid>,
+)
+
+internal fun planAssistantRecovery(
+    missingIds: Collection<Uuid>,
+    builtInIds: Collection<Uuid> = DEFAULT_ASSISTANTS_IDS,
+): AssistantRecoveryPlan {
+    val builtIn: Set<Uuid> = missingIds.filter { it in builtInIds }.toSet()
+    return AssistantRecoveryPlan(
+        placeholderIds = missingIds.filter { it !in builtInIds },
+        builtInIds = builtIn,
+    )
 }

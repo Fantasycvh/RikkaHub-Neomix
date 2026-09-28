@@ -97,6 +97,16 @@ interface ConversationDAO {
     @Query("SELECT COUNT(*) FROM conversationentity")
     suspend fun countAll(): Int
 
+    /**
+     * 按助手分组统计对话数（数据恢复页用，见 `DebugPage` 的 Recovery）。
+     *
+     * 用途：找出「聊天记录里引用了、但设置里已不存在」的助手 id —— 这些对话在按助手
+     * 过滤的列表（`getConversationsOfAssistant`）里**完全不可见**（无对应助手可选中），
+     * 需要为其补一个助手才能重新看到。
+     */
+    @Query("SELECT assistant_id AS assistantId, COUNT(*) AS count FROM conversationentity GROUP BY assistant_id")
+    suspend fun countByAssistant(): List<AssistantConversationCount>
+
     @Query(
         "SELECT strftime('%Y-%m-%d', create_at/1000, 'unixepoch', 'localtime') AS day, " +
             "COUNT(*) AS count " +
@@ -108,3 +118,5 @@ interface ConversationDAO {
 }
 
 data class ConversationDayCount(val day: String, val count: Int)
+
+data class AssistantConversationCount(val assistantId: String, val count: Int)
