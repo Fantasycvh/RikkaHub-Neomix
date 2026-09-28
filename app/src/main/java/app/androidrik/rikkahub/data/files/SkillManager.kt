@@ -101,12 +101,22 @@ class SkillManager(
 
     fun getSkillDir(skillName: String): File? = resolveSkillDir(skillName)
 
+    /**
+     * 保存单个技能文件（技能详情页的编辑器走这里）。
+     *
+     * 上游 `9f02586d`：原实现直接 `target.writeText(content)`，**IO 失败（mkdtemp 不成、
+     * 磁盘写满、路径异常）会抛异常**——调用方 `SkillDetailVM.saveFile` 在 IO 协程里没有
+     * try/catch，异常直接冒到 viewModelScope ⇒ **保存失败 = 应用崩溃**；而且写到一半失败
+     * 会留下半截文件（原内容已毁）。
+     *
+     * 改成「同目录临时文件 + rename」：写失败时原文件完好，异常转成返回 false 由 UI 提示。
+     * **与上游的一处差异**：这里检查 `renameTo` 的返回值（上游忽略）——该调用本就是为了
+     * 把「保存失败」如实报出去，忽略返回值会让失败静默成功。
+     */
     fun saveSkillFile(skillName: String, relativePath: String, content: String): Boolean {
         val skillDir = resolveSkillDir(skillName) ?: return false
         val target = SkillPaths.resolveSkillFile(skillDir, relativePath) ?: return false
-        target.parentFile?.mkdirs()
-        target.writeText(content)
-        return true
+        return writeFileAtomically(target, content)
     }
 
     fun saveSkillFilesAtomically(skillName: String, files: Map<String, String>): Boolean {

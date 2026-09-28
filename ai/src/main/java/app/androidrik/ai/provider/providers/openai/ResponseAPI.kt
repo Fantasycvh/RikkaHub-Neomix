@@ -141,6 +141,10 @@ class ResponseAPI(
 
         Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
 
+        // 每次流一个：把 item.id / output_index 归一到规范 toolCallId（= 回传时用的 call_id）。
+        // 必须按流创建——ResponseAPI 是进程级共享实例（见 ResponseToolCallIdResolver 注释）。
+        val toolCallIdResolver = ResponseToolCallIdResolver()
+
         val listener = object : EventSourceListener() {
             override fun onEvent(
                 eventSource: EventSource,
@@ -155,7 +159,7 @@ class ResponseAPI(
                 Log.d(TAG, "onEvent: $id/$type $data")
                 val json = json.parseToJsonElement(data).jsonObjectOrNull
                 if (json != null) {
-                    val chunk = parseResponseDelta(json)
+                    val chunk = parseResponseDelta(json, toolCallIdResolver)
                     if (chunk != null) {
                         trySend(chunk).onFailure { e ->
                             Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
@@ -519,7 +523,16 @@ class ResponseAPI(
         })
     }
 
-    private fun parseResponseDelta(jsonObject: JsonObject): MessageChunk? {
+    /**
+     * 解析一条流式事件。
+     *
+     * [toolCallIdResolver] 由调用方**按流**创建并贯穿同一流的所有事件（见其类注释）。
+     * 可见性放宽到 internal 以便单测直接驱动事件序列。
+     */
+    internal fun parseResponseDelta(
+        jsonObject: JsonObject,
+        toolCallIdResolver: ResponseToolCallIdResolver = ResponseToolCallIdResolver(),
+    ): MessageChunk? {
         val chunkType = jsonObject["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
 
         when (chunkType) {
@@ -568,7 +581,16 @@ class ResponseAPI(
             "response.output_item.added" -> {
                 val item = jsonObject["item"]?.jsonObject ?: error("chunk item not found")
                 val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
+                // item.id 规范上可缺（function_call 只有 call_id 必填），故回退到 call_id；
+                // 再登记「item.id / output_index → 规范 id」，供后续 arguments 事件回查
+                val id = item["id"]?.jsonPrimitive?.contentOrNull
+                    ?: item["call_id"]?.jsonPrimitive?.contentOrNull
+                    ?: error("chunk id not found")
+                val canonicalId = toolCallIdResolver.registerItem(
+                    itemId = id,
+                    callId = item["call_id"]?.jsonPrimitive?.contentOrNull,
+                    outputIndex = jsonObject["output_index"]?.jsonPrimitive?.intOrNull,
+                )
                 if (type == "function_call") {
                     return MessageChunk(
                         id = id,
@@ -581,7 +603,9 @@ class ResponseAPI(
                                     role = MessageRole.ASSISTANT,
                                     parts = listOf(
                                         UIMessagePart.Tool(
-                                            toolCallId = id,
+                                            // 用规范 id（call_id 优先）：同一流内所有事件一致，
+                                            // 且 next-round 请求回传的 call_id 正是它
+                                            toolCallId = canonicalId,
                                             toolName = item["name"]?.jsonPrimitive?.content ?: "",
                                             input = item["arguments"]?.jsonPrimitive?.content
                                                 ?: "",
@@ -693,8 +717,8 @@ class ResponseAPI(
             }
 
             "response.function_call_arguments.done" -> {
-                val toolCallId =
-                    jsonObject["item_id"]?.jsonPrimitive?.content ?: error("item_id not found")
+                // 兼容网关可能只带 call_id 或 output_index（#1948），统一经 resolver 归一
+                val toolCallId = toolCallIdResolver.resolveArgumentsId(jsonObject)
                 val arguments =
                     jsonObject["arguments"]?.jsonPrimitive?.content ?: error("arguments not found")
                 return MessageChunk(
