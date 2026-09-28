@@ -1,7 +1,7 @@
 # 上游变更分析（综合版，2.4.11 → 2.5.2+，2026-09-12 重写，2026-09-19 复核）
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
-> 当前 master 同步点：`458c16df`（2.5.2+，2026-09-19 ff-only；此前为 `a9b35ba2` 2.5.1）。**注：origin 上的 master 镜像已于 2026-09-15 删除，此镜像仅本地保留**。`a9b35ba2` 之后上游共 33 提交（至 `458c16df`），逐条评估见下方「2026-09-16」「2026-09-19」两节；评估结论均为**暂不吸收、按需取用**。
+> 当前 master 同步点：**`00c8d53a`（2.5.5，2026-09-28 ff-only）**；此前 `458c16df`（2.5.2+，09-19）。**注：origin 上的 master 镜像已于 2026-09-15 删除，此镜像仅本地保留**。`a9b35ba2` 之后上游共 33 提交（至 `458c16df`），逐条评估见下方「2026-09-16」「2026-09-19」两节；评估结论均为**暂不吸收、按需取用**。
 > 决策原则：**等上游稳定后按需吸收**；触及 `GenerationHandler.kt` / `ChatService.kt` / `ChatInput.kt`（fork 重改最重的文件）一律手工适配，不直接 cherry-pick；cherry-pick 需包名适配（`me.rerere.*` → `app.androidrik.*`）。
 > **判定方法（2026-09-12 纠正）**：fork 的"已吸收"以**代码等价核对**为准，**不用 `git merge-base --is-ancestor`**——fork 走手工直套/移植，上游 commit 不是 fork 分支祖先，merge-base 对已吸收项恒判"未吸收"（误报 glm5.3/hy4/kimi k3/deepseek v4.1 flash 等）。核对方式：grep fork 代码中对应定义/注释（如「对齐上游 xxx」）或 diff 等价。
 
@@ -111,6 +111,50 @@
 | `8e304bb1` | **feat: 火山引擎 TTS 支持**（+120 行 provider + 配置 UI + 测试） | **可吸收（2026-09-19 定评）**：fork `speech` 模块 provider 结构同构（`TTSProviderSetting` 密封类 + provider 实现 + 配置 UI），纯新增不碰既有面。难度：小–中（包名适配 + 配置页接线）。价值取决于用户是否用火山 TTS |
 | `d6ba728e`/`288a034c`/`bc9d2582` | 依赖更新 + 一次 `lib.versions.toml` 误删事故回滚 | 不吸收（同前述判断） |
 | `bd936caa` | 非聊天请求 session id 头 | 不吸收（fork 无 sessionId 概念，见上） |
+
+### 2026-09-28 同步：2.5.2 → 2.5.5（`458c16df` → `00c8d53a`，36 提交）
+
+master 已 ff-only 快进至 `00c8d53a`。按价值分类（**均未吸收**）：
+
+#### A. 真缺口，建议吸收（按价值）
+
+| 提交 | 内容 | fork 现状 / 吸收要点 |
+|---|---|---|
+| `70b382f5` | **fix(settings): 读取失败时设置被意外重置为默认值** | **最高价值**。fork `PreferencesStore.kt:234` 正是 `catch { if (IOException) emit(emptyPreferences()) }` ⇒ **读失败即拿空 Preferences 当用户数据**，随后任何 update 会把默认值写回、抹掉全部设置。上游改三件：①`retryWhen`（IO 错指数退避重试 N 次，仍失败**向上抛**，绝不回退空值）②`ReplaceFileCorruptionHandler`（真损坏才重建，且**先把原文件备份为 `.corrupt-<ts>`**）③`incrementLaunchCount` 改**单 key 原子 edit**（原为读整份快照再写回）。注意 fork 的 `settingsFlowRaw` 有既有注释「勿动」（MCP 并发丢工具根因相关），改前需看那段上下文 |
+| `5ac149b9` | **fix(openai): Responses API 工具参数事件缺 `item_id` 时回退到 `call_id`/`output_index`**（#1948） | **中转站场景真缺口**。fork `ResponseAPI.kt` 内联解码处仍是 `error("item_id not found")` **硬失败**（`:697`、`:766` 等）。上游抽出独立 `ResponseApiStreamDecoder` 并加：`itemIdOrCallId()` 回退 + `outputIndex` 映射表 + `resolveToolCallId`。**fork 是内联实现、结构不同 ⇒ 须手工适配**（不能 cherry-pick） |
+| `ed3569c7` | **fix(workspace): 文件编辑器不再把全文存进 saved state，修大文件切后台崩溃**（#1953） | fork `WorkspaceFileEditorPage` 用 `rememberTextFieldState()`（全文进 Bundle）⇒ 大文件切后台 `TransactionTooLargeException`。改 `remember(id, area, path) { TextFieldState() }`（内容本就由 LaunchedEffect 从磁盘加载）。**同提交也修了 `SkillDetailPage` 的 `rememberSaveable`→`remember`** |
+| `9f02586d` | **fix(skills): 保存失败不再崩溃 + GitHub 导入按字节保存（防二进制损坏）** | fork `SkillManager`/`SkillsVM` 需核（技能是本仓活跃面）。要点：保存失败返回 Result 而非抛；导入走字节流而非 String（避免二进制被当文本解码损坏） |
+| `8b696c0c` | **fix(mcp): 忽略名称为空的自定义请求头**（#1949，报 "name is empty"） | fork `McpSessionRegistry.resolvedHeaders()` 无过滤 ⇒ 设置页留空 header 会让 MCP 连接报错。一行：`filter { it.first.isNotBlank() }` |
+| `54aa8114` | **fix(favorite): 收藏页侧滑删除失效** | fork `FavoritePage:281` 用 `dismissState.currentValue`；上游指出**该值动画中途会翻到最近锚点 → LaunchedEffect 重启并在 onDelete 前被取消**，改 `settledValue`。fork 有 `key(item.id)`+`reset()`（`aa2c9a53`）但未改此值 ⇒ **很可能仍失效，建议真机先复现** |
+| `324b337b` | **fix: 避免代码块行号被复制** | fork `HighlightCodeBlock` 行号未包 `DisableSelection` ⇒ 选中代码会带上行号。小改 |
+| `4391d5a5` | **fix(google): 过滤工具参数中不兼容的 `propertyNames`** | fork `GoogleProvider` 的剥离清单缺 `propertyNames`（Gemini 会拒）。**连带**：`ai/util/ToolSchemaSize.GOOGLE_STRIPPED_SCHEMA_KEYS` 是同一清单的副本，两处都要加 |
+
+#### B. 已重叠 / 无此问题（不吸收）
+
+- `21448350` 工作区长按多选导出——**fork 已自研**（`7d8e4592`/`26e9fa29`，两种产物+批量删除，比上游更完整）
+- `f099cd40` 技能页按名称/描述搜索——**fork 已做**（`b4e82baf`，#1901）
+- `2cf09d2a` 思考步骤图标黑底（#1946）——fork `ChainOfThought` **未用** `CompositingStrategy.Offscreen`+`BlendMode.Clear`（上游根因），结构上无此 bug
+- `42517943` docs「不再接受 PR」——仓库策略变化，与本仓无关（**但对 fork 有影响：今后同步只剩维护者直推**）
+
+#### C. 新功能（按需，非缺陷）
+
+| 提交 | 规模 | 备注 |
+|---|---|---|
+| `00c8d53a` chart_display 本地工具 | 大（工具 252 + ChartCard/Plot/Scale ~760 + 渲染） | 在聊天中画折线/柱/散点图；纯新增。**与 fork 的 TikZ/Mermaid 渲染链是并列能力**，需评估是否重复投入 |
+| `3b346748`+`7f17dcc8` 内置技能 + skill-creator | 中（BuiltinSkills 87 + SkillManager 改造 + 内置 skill-creator 技能） | 内置技能与 fork 的 `enabledSkills` 体系需对齐；元数据转义/限长是防御性修补 |
+| `233e095a`+`7508eee9`+`598b4efa` 阿拉伯语 + RTL | 大（6→7 语言 + 全仓方向图标 + locale-tui 术语表） | fork 目前 6 语言；RTL 涉及全仓 UI 方向性。**若非阿语用户则不值** |
+| `b9c0d3b7` 数据恢复页（从聊天记录恢复助手） | 中 | fork 已有助手墓碑（`5de1ffa9`），此页是另一种恢复路径 |
+| `eaa003ad` 图片生成快捷方式 / `53f224b1` ExpressivePopup / `db1ce811` 搜索选择器 MD3 分段 | 小–中 | 体验增强 |
+| `068103dd` mimo v2.6 注册 / `c3d6867c` step-5 | 小 | fork 有 mimo v2/v2.5，缺 v2.6 与 step-5；按需补注册 |
+
+#### D. chore / 环境（不跟）
+
+版本 bump（2.5.3/2.5.4/2.5.5，版本号体系与本仓无关）、依赖升级（`426ede84`/`44236d7b`）、`280a039c` 统一 LF 换行、混元配置、DashScope reasoning 参数、chat completions 关闭思考传 none。
+
+#### 推荐吸收顺序
+
+**第一批（共约半天，都是小改）**：`70b382f5` 设置重置（**最严重，先做**）→ `ed3569c7` 编辑器崩溃 → `8b696c0c` MCP header → `324b337b` 行号 → `4391d5a5` propertyNames（**两处清单**）。
+**第二批（各需手工适配）**：`5ac149b9` Responses 解码回退（内联结构不同）、`9f02586d` 技能保存、`54aa8114` 收藏侧滑（**先真机复现再改**）。
 
 ### 2026-09-19 新发现：2.5.2 后再 8 提交（`c8853531`..`458c16df`，已 ff-only 同步 master；**其中 2 项已于 09-20 吸收**）
 
