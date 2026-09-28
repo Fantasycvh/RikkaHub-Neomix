@@ -117,6 +117,7 @@ object ToolSchemaSize {
         "exclusiveMinimum",
         "format",
         "additionalProperties",
+        "propertyNames",
         "enum",
     )
 }

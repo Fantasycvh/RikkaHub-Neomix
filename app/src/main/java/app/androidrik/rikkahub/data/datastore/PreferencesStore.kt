@@ -2,25 +2,33 @@ package app.androidrik.rikkahub.data.datastore
 
 import android.content.Context
 import android.util.Log
+import androidx.datastore.core.CorruptionException
+import androidx.datastore.core.DataStore
 import androidx.datastore.core.IOException
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.SharedPreferencesMigration
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.preferences.preferencesDataStoreFile
 import io.pebbletemplates.pebble.PebbleEngine
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.provider.Model
@@ -72,16 +80,49 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "PreferencesStore"
 
-private val Context.settingsStore by preferencesDataStore(
-    name = "settings",
-    produceMigrations = { context ->
-        listOf(
+/** 读取失败的重试上限（退避 100ms × 2^n）；超限后向上抛，绝不回退空配置。 */
+private const val READ_MAX_RETRIES = 3
+
+/**
+ * 读取失败是否应重试（纯函数，便于单测钉住契约）。
+ *
+ * - 瞬时 IO 错误：重试到 [READ_MAX_RETRIES] 为止
+ * - `CorruptionException`（文件真损坏）：**不重试**，交给 corruptionHandler 走备份+重建
+ * - 其余异常：不重试，直接向上抛
+ *
+ * 关键不变量：**任何失败都不允许退化成「用户数据是空的」**——空 Preferences 会被
+ * `update()` 当成用户数据整份写回，抹掉全部设置（上游 `70b382f5` 修的正是这条）。
+ */
+internal fun shouldRetrySettingsRead(cause: Throwable, attempt: Long): Boolean =
+    cause is IOException && cause !is CorruptionException && attempt < READ_MAX_RETRIES
+
+/**
+ * 打开设置 DataStore（[file] 由调用方给出，便于 JVM 单测用临时文件驱动）。
+ *
+ * 相比 `preferencesDataStore` 委托，这里显式传 `corruptionHandler`——**文件真的损坏无法解析**时
+ * 才能重建为空，且**先把原文件另存一份**（`.corrupt-<ts>`）供排查/人工抢救。
+ * 这正是上游 `70b382f5` 的核心：把「文件损坏」与「瞬时读取失败」分开处理，
+ * 后者由 [SettingsStore.settingsFlowRaw] 的重试负责。
+ */
+internal fun createSettingsDataStore(file: File): DataStore<Preferences> {
+    return PreferenceDataStoreFactory.create(
+        corruptionHandler = ReplaceFileCorruptionHandler { exception ->
+            Log.e(TAG, "Settings datastore corrupted, resetting", exception)
+            runCatching {
+                file.copyTo(File(file.parentFile, "${file.name}.corrupt-${System.currentTimeMillis()}"))
+            }.onFailure {
+                Log.e(TAG, "Failed to back up corrupted settings file", it)
+            }
+            emptyPreferences()
+        },
+        migrations = listOf(
             PreferenceStoreV1Migration(),
             PreferenceStoreV2Migration(),
             PreferenceStoreV3Migration()
-        )
-    }
-)
+        ),
+        produceFile = { file },
+    )
+}
 
 class SettingsStore(
     context: Context,
@@ -228,16 +269,22 @@ class SettingsStore(
 
     }
 
-    private val dataStore = context.settingsStore
+    private val dataStore = createSettingsDataStore(context.preferencesDataStoreFile("settings"))
 
+    // 读取失败**绝不能**回退为空配置：空 Preferences 随后会被 update() 当成用户数据写回，
+    // 把全部设置抹成默认值（上游 70b382f5 修的就是这个，用户表现为「升级后设置全丢」）。
+    // 瞬时 IO 错误退避重试，仍失败则向上抛；文件损坏由 corruptionHandler 单独兜底。
+    // 注意：勿把 Mutex 插进本流链（turbo 曾如此导致 205 个编译错误）——retryWhen 无锁语义，安全。
     val settingsFlowRaw = dataStore.data
-        .catch { exception ->
-            if (exception is IOException) {
-                emit(emptyPreferences())
-            } else {
-                throw exception
+        .retryWhen { cause, attempt ->
+            val shouldRetry = shouldRetrySettingsRead(cause, attempt)
+            if (shouldRetry) {
+                Log.w(TAG, "Failed to read settings, retrying (${attempt + 1}/$READ_MAX_RETRIES)", cause)
+                delay((100L shl attempt.toInt()).milliseconds)
             }
-        }.map { preferences ->
+            shouldRetry
+        }
+        .map { preferences ->
             Settings(
                 favoriteModels = preferences[FAVORITE_MODELS]?.let {
                     JsonInstant.decodeFromString(it)
@@ -473,6 +520,25 @@ class SettingsStore(
     val settingsFlow = settingsFlowRaw
         .distinctUntilChanged()
         .toMutableStateFlow(scope, Settings.dummy())
+
+    /**
+     * 启动次数 +1，**只原子地改一个 key**。
+     *
+     * 不能用 `update(settingsFlowRaw.first().copy(launchCount = …))`：那会读整份快照再写回
+     * 全部 key——启动时机极早（`Application.onCreate`），此时读链若尚未产出真实数据
+     * （或曾因读失败而给出空配置），整份写回就把用户设置抹成默认值（上游 `70b382f5`）。
+     * `edit` 是 DataStore 的原子读-改-写，只碰这一个 key，与其余设置无关。
+     *
+     * @return 自增后的启动次数（供日志）
+     */
+    suspend fun incrementLaunchCount(): Int {
+        var count = 0
+        dataStore.edit { preferences ->
+            count = (preferences[LAUNCH_COUNT] ?: 0) + 1
+            preferences[LAUNCH_COUNT] = count
+        }
+        return count
+    }
 
     suspend fun update(settings: Settings) {
         if(settings.init) {

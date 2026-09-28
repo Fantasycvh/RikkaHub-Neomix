@@ -454,6 +454,10 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                                                     "exclusiveMinimum",
                                                     "format",
                                                     "additionalProperties",
+                                                    // propertyNames 是 JSON Schema 2020-12 关键字，
+                                                    // Gemini 的 function declaration 不接受（上游 4391d5a5）。
+                                                    // 注意：ai/util/ToolSchemaSize 有一份同源清单（估算用），改这里要一并改。
+                                                    "propertyNames",
                                                     "enum",
                                                 )
                                             )

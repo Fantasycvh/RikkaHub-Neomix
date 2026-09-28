@@ -317,7 +317,9 @@ private fun EditFileDialog(
     onDismiss: () -> Unit,
     onConfirm: (content: String) -> Unit,
 ) {
-    var content by rememberSaveable(skillFile.relativePath) { mutableStateOf(initialContent) }
+    // 同 WorkspaceFileEditorPage：编辑器内容不进 saved state Bundle（大文件切后台会
+    // TransactionTooLargeException），对话框关闭即丢弃草稿（上游 ed3569c7）。
+    var content by remember(skillFile.relativePath) { mutableStateOf(initialContent) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -503,7 +503,9 @@ private fun hasSameConnectionParameters(
 ): Boolean = left != null && right != null && left.connectionKey() == right.connectionKey()
 
 private fun McpServerConfig.resolvedHeaders(): List<Pair<String, String>> {
-    val base = commonOptions.headers
+    // 设置页「添加请求头」后未填写会留下**空名称**，OkHttp 直接抛 "name is empty"，
+    // 表现为整个 MCP 服务器连不上（上游 8b696c0c / #1949）。空名称条目本就无意义，丢弃。
+    val base = commonOptions.headers.filter { it.first.isNotBlank() }
     val token = commonOptions.oauth?.takeIf { it.enabled }?.accessToken
     val hasAuthorization = base.any { it.first.equals("Authorization", ignoreCase = true) }
     return if (!token.isNullOrBlank() && !hasAuthorization) {

@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalTextStyle
@@ -60,7 +60,10 @@ fun WorkspaceFileEditorPage(
     val supportsPreview = extension in setOf("html", "htm", "svg")
     var showPreview by rememberSaveable(id, area, path) { mutableStateOf(supportsPreview) }
 
-    val textState = rememberTextFieldState()
+    // 不能用 rememberTextFieldState()：它把**全文**写进 saved state Bundle，编辑大文件时
+    // 切后台会抛 TransactionTooLargeException（上游 ed3569c7 / #1953 修的就是这个）。
+    // 内容本就由下面的 LaunchedEffect 从磁盘加载，无需 saveable。
+    val textState = remember(id, area, path) { TextFieldState() }
     var loading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }

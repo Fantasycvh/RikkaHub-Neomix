@@ -141,10 +141,11 @@ class RikkaHubApp : Application() {
     private fun incrementLaunchCount() {
         get<AppScope>().launch {
             runCatching {
-                val store = get<SettingsStore>()
-                val current = store.settingsFlowRaw.first()
-                store.update(current.copy(launchCount = current.launchCount + 1))
-                Log.i(TAG, "incrementLaunchCount: ${store.settingsFlowRaw.first().launchCount}")
+                // 只原子改 launch_count 单键：原实现「读整份快照 → copy → update() 整份写回」
+                // 在启动时机极早、读链尚未产出真实数据时会把默认值当用户数据写回，
+                // 抹掉全部设置（上游 70b382f5 修的正是这条路径）。
+                val count = get<SettingsStore>().incrementLaunchCount()
+                Log.i(TAG, "incrementLaunchCount: $count")
             }.onFailure {
                 Log.e(TAG, "incrementLaunchCount failed", it)
             }
