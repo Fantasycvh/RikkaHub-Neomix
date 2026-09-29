@@ -1686,5 +1686,34 @@
   <string name="chart_mode_table">Таблица</string>
   <string name="chart_series">Ряд</string>
   <string name="chart_series_name">Ряд %1$d</string>
+  <string name="setting_page_kb">Базы знаний</string>
+  <string name="setting_page_kb_desc">Управление базами знаний для RAG-поиска</string>
+  <string name="setting_page_kb_title">Базы знаний</string>
+  <string name="setting_page_kb_add">Новая база знаний</string>
+  <string name="setting_page_kb_name">Название</string>
+  <string name="setting_page_kb_empty_hint">Баз знаний пока нет. Создайте, импортируйте документы, проиндексируйте моделью эмбеддингов и привяжите к ассистенту.</string>
+  <string name="setting_page_kb_doc_count">Документов: %1$d</string>
+  <string name="setting_page_kb_settings">Настройки</string>
+  <string name="setting_page_kb_embedding_model">Модель эмбеддингов</string>
+  <string name="setting_page_kb_embedding_model_desc">Выберите модель эмбеддингов у OpenAI-совместимого провайдера</string>
+  <string name="setting_page_kb_model_not_set">Не задано</string>
+  <string name="setting_page_kb_pick_model">Выберите модель эмбеддингов</string>
+  <string name="setting_page_kb_no_models">Нет доступных моделей. Сначала добавьте модель эмбеддингов у провайдера</string>
+  <string name="setting_page_kb_top_k">Кол-во результатов</string>
+  <string name="setting_page_kb_threshold">Порог схожести</string>
+  <string name="setting_page_kb_dimensions">Размерность</string>
+  <string name="setting_page_kb_dimensions_desc">Необязательно; работает только для моделей с параметром dimensions (напр. text-embedding-3)</string>
+  <string name="setting_page_kb_documents">Документы</string>
+  <string name="setting_page_kb_import">Импорт</string>
+  <string name="setting_page_kb_no_documents">Документов пока нет. Импортируйте txt/md/pdf/docx/pptx/epub и нажмите значок обновления для индексации.</string>
+  <string name="setting_page_kb_indexed">Проиндексировано · %1$d чанков</string>
+  <string name="setting_page_kb_not_indexed">Не проиндексировано</string>
+  <string name="setting_page_kb_index_failed">Ошибка индексации</string>
+  <string name="setting_page_kb_reindex">Индексировать/перестроить</string>
+  <string name="assistant_page_tab_knowledge_base">Базы знаний</string>
+  <string name="assistant_detail_kb_desc">Привяжите базы знаний для поиска ИИ</string>
+  <string name="assistant_kb_hint">Привязанные базы знаний доступны ИИ через инструмент search_knowledge_base; пока модель не выполнит поиск, в промпт ничего не внедряется.</string>
+  <string name="assistant_kb_manage_hint">Базы знаний управляются в «Настройки → Базы знаний».</string>
+  <string name="assistant_kb_manage">Управление</string>
 </resources>
 

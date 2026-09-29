@@ -65,6 +65,7 @@ class ChatToolFactory(
     private val localTools: LocalTools,
     private val mcpManager: McpManager,
     private val skillManager: SkillManager,
+    private val ragRepository: app.androidrik.rikkahub.data.rag.RagRepository,
     private val workspaceRepository: WorkspaceRepository,
     /**
      * 对话内子代理派发器（[SubagentDispatcher] 的**延迟解析**）。
@@ -168,6 +169,17 @@ class ChatToolFactory(
                     allSkills = skillManager.listSkills(),
                 ),
             )
+        }
+
+        // 知识库检索（RAG-as-tool）：助手绑定了至少一个知识库才装配；单工具跨库检索。
+        if (assistant.enabledKnowledgeBaseIds.isNotEmpty()) {
+            val knowledgeBases = ragRepository.getKnowledgeBases(assistant.enabledKnowledgeBaseIds)
+            if (knowledgeBases.isNotEmpty()) {
+                segments += ToolSegment(
+                    "knowledge",
+                    listOf(createKnowledgeBaseTool(ragRepository, knowledgeBases)),
+                )
+            }
         }
 
         // 子代理（对话内派发，设计见 docs/design-subagent-context.md §十）。

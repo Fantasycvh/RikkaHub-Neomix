@@ -1686,5 +1686,34 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="chart_mode_table">表</string>
   <string name="chart_series">系列</string>
   <string name="chart_series_name">系列 %1$d</string>
+  <string name="setting_page_kb">ナレッジベース</string>
+  <string name="setting_page_kb_desc">RAG 検索用ナレッジベースを管理</string>
+  <string name="setting_page_kb_title">ナレッジベース</string>
+  <string name="setting_page_kb_add">ナレッジベースを作成</string>
+  <string name="setting_page_kb_name">名前</string>
+  <string name="setting_page_kb_empty_hint">ナレッジベースはまだありません。作成してドキュメントをインポートし、埋め込みモデルでインデックスを作成してからアシスタントにバインドしてください。</string>
+  <string name="setting_page_kb_doc_count">%1$d 件のドキュメント</string>
+  <string name="setting_page_kb_settings">設定</string>
+  <string name="setting_page_kb_embedding_model">埋め込みモデル</string>
+  <string name="setting_page_kb_embedding_model_desc">OpenAI 互換プロバイダーの埋め込みモデルを選択してください</string>
+  <string name="setting_page_kb_model_not_set">未設定</string>
+  <string name="setting_page_kb_pick_model">埋め込みモデルを選択</string>
+  <string name="setting_page_kb_no_models">利用可能なモデルがありません。先にプロバイダーで埋め込みモデルを追加してください</string>
+  <string name="setting_page_kb_top_k">返却件数</string>
+  <string name="setting_page_kb_threshold">類似度しきい値</string>
+  <string name="setting_page_kb_dimensions">ベクトル次元</string>
+  <string name="setting_page_kb_dimensions_desc">省略可。dimensions パラメータ対応モデルのみ有効（例：text-embedding-3）</string>
+  <string name="setting_page_kb_documents">ドキュメント</string>
+  <string name="setting_page_kb_import">インポート</string>
+  <string name="setting_page_kb_no_documents">ドキュメントはまだありません。txt/md/pdf/docx/pptx/epub をインポートし、更新アイコンでインデックスを作成してください。</string>
+  <string name="setting_page_kb_indexed">インデックス済み · %1$d チャンク</string>
+  <string name="setting_page_kb_not_indexed">未インデックス</string>
+  <string name="setting_page_kb_index_failed">インデックス失敗</string>
+  <string name="setting_page_kb_reindex">インデックス/再構築</string>
+  <string name="assistant_page_tab_knowledge_base">ナレッジベース</string>
+  <string name="assistant_detail_kb_desc">ナレッジベースをバインドして AI に検索させる</string>
+  <string name="assistant_kb_hint">バインドされたナレッジベースは search_knowledge_base ツールで AI が必要時に検索します。モデルが検索しない限りプロンプトには何も注入されません。</string>
+  <string name="assistant_kb_manage_hint">ナレッジベースは「設定 → ナレッジベース」で管理します。</string>
+  <string name="assistant_kb_manage">管理へ</string>
 </resources>
 

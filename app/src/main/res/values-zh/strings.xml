@@ -1759,5 +1759,34 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="chart_mode_table">表格</string>
   <string name="chart_series">系列</string>
   <string name="chart_series_name">系列 %1$d</string>
+  <string name="setting_page_kb">知识库</string>
+  <string name="setting_page_kb_desc">管理用于 RAG 检索的知识库</string>
+  <string name="setting_page_kb_title">知识库</string>
+  <string name="setting_page_kb_add">新建知识库</string>
+  <string name="setting_page_kb_name">名称</string>
+  <string name="setting_page_kb_empty_hint">还没有知识库。新建一个，导入文档并用嵌入模型建立索引，再绑定到助手即可使用。</string>
+  <string name="setting_page_kb_doc_count">%1$d 个文档</string>
+  <string name="setting_page_kb_settings">设置</string>
+  <string name="setting_page_kb_embedding_model">嵌入模型</string>
+  <string name="setting_page_kb_embedding_model_desc">需选择 OpenAI 兼容提供商下的嵌入模型</string>
+  <string name="setting_page_kb_model_not_set">未设置</string>
+  <string name="setting_page_kb_pick_model">选择嵌入模型</string>
+  <string name="setting_page_kb_no_models">没有可用模型，请先在提供商中添加嵌入模型</string>
+  <string name="setting_page_kb_top_k">返回条数</string>
+  <string name="setting_page_kb_threshold">相似度阈值</string>
+  <string name="setting_page_kb_dimensions">向量维度</string>
+  <string name="setting_page_kb_dimensions_desc">可选；仅支持 dimensions 参数的模型有效（如 text-embedding-3）</string>
+  <string name="setting_page_kb_documents">文档</string>
+  <string name="setting_page_kb_import">导入</string>
+  <string name="setting_page_kb_no_documents">还没有文档。导入 txt/md/pdf/docx/pptx/epub 文件后，点右侧刷新图标建立索引。</string>
+  <string name="setting_page_kb_indexed">已索引 · %1$d 块</string>
+  <string name="setting_page_kb_not_indexed">未索引</string>
+  <string name="setting_page_kb_index_failed">索引失败</string>
+  <string name="setting_page_kb_reindex">索引/重建索引</string>
+  <string name="assistant_page_tab_knowledge_base">知识库</string>
+  <string name="assistant_detail_kb_desc">绑定知识库供 AI 检索</string>
+  <string name="assistant_kb_hint">绑定的知识库通过 search_knowledge_base 工具供 AI 按需检索；模型不检索时不会向提示词注入任何内容。</string>
+  <string name="assistant_kb_manage_hint">知识库在「设置 → 知识库」中管理。</string>
+  <string name="assistant_kb_manage">去管理</string>
 </resources>
 

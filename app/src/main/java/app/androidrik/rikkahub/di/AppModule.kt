@@ -79,6 +79,7 @@ val appModule = module {
             localTools = get(),
             mcpManager = get(),
             skillManager = get(),
+            ragRepository = get(),
             workspaceRepository = get(),
             // **延迟解析**：SubagentRunner 依赖本工厂（它要用装配点装配工具），
             // 直接在此 `get()` 会构成构造环。lambda 体在装配工具时才执行 ⇒ 环断在这里。

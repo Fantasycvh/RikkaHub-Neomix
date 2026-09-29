@@ -1761,5 +1761,34 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="chart_mode_table">Table</string>
   <string name="chart_series">Series</string>
   <string name="chart_series_name">Series %1$d</string>
+  <string name="setting_page_kb">Knowledge Bases</string>
+  <string name="setting_page_kb_desc">Manage knowledge bases for RAG retrieval</string>
+  <string name="setting_page_kb_title">Knowledge Bases</string>
+  <string name="setting_page_kb_add">New knowledge base</string>
+  <string name="setting_page_kb_name">Name</string>
+  <string name="setting_page_kb_empty_hint">No knowledge bases yet. Create one, import documents, index them with an embedding model, then bind it to an assistant.</string>
+  <string name="setting_page_kb_doc_count">%1$d documents</string>
+  <string name="setting_page_kb_settings">Settings</string>
+  <string name="setting_page_kb_embedding_model">Embedding model</string>
+  <string name="setting_page_kb_embedding_model_desc">Must be an embedding model on an OpenAI-compatible provider</string>
+  <string name="setting_page_kb_model_not_set">Not set</string>
+  <string name="setting_page_kb_pick_model">Pick embedding model</string>
+  <string name="setting_page_kb_no_models">No models found. Add a provider with an embedding model first.</string>
+  <string name="setting_page_kb_top_k">Top K</string>
+  <string name="setting_page_kb_threshold">Similarity threshold</string>
+  <string name="setting_page_kb_dimensions">Dimensions</string>
+  <string name="setting_page_kb_dimensions_desc">Optional; only for models that support the dimensions parameter (e.g. text-embedding-3)</string>
+  <string name="setting_page_kb_documents">Documents</string>
+  <string name="setting_page_kb_import">Import</string>
+  <string name="setting_page_kb_no_documents">No documents yet. Import txt/md/pdf/docx/pptx/epub files, then tap the refresh icon to index.</string>
+  <string name="setting_page_kb_indexed">Indexed - %1$d chunks</string>
+  <string name="setting_page_kb_not_indexed">Not indexed</string>
+  <string name="setting_page_kb_index_failed">Index failed</string>
+  <string name="setting_page_kb_reindex">Index / rebuild index</string>
+  <string name="assistant_page_tab_knowledge_base">Knowledge Bases</string>
+  <string name="assistant_detail_kb_desc">Bind knowledge bases for AI retrieval</string>
+  <string name="assistant_kb_hint">Bound knowledge bases are available to the AI via the search_knowledge_base tool; nothing is injected into the prompt until the model searches.</string>
+  <string name="assistant_kb_manage_hint">Knowledge bases are managed in Settings.</string>
+  <string name="assistant_kb_manage">Manage</string>
 </resources>
 

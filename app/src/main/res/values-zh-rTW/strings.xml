@@ -1742,5 +1742,34 @@
   <string name="chart_mode_table">表格</string>
   <string name="chart_series">數列</string>
   <string name="chart_series_name">數列 %1$d</string>
+  <string name="setting_page_kb">知識庫</string>
+  <string name="setting_page_kb_desc">管理用於 RAG 檢索的知識庫</string>
+  <string name="setting_page_kb_title">知識庫</string>
+  <string name="setting_page_kb_add">新建知識庫</string>
+  <string name="setting_page_kb_name">名稱</string>
+  <string name="setting_page_kb_empty_hint">還沒有知識庫。新建一個，匯入文件並用嵌入模型建立索引，再綁定到助手即可使用。</string>
+  <string name="setting_page_kb_doc_count">%1$d 個文件</string>
+  <string name="setting_page_kb_settings">設定</string>
+  <string name="setting_page_kb_embedding_model">嵌入模型</string>
+  <string name="setting_page_kb_embedding_model_desc">需選擇 OpenAI 相容提供商下的嵌入模型</string>
+  <string name="setting_page_kb_model_not_set">未設定</string>
+  <string name="setting_page_kb_pick_model">選擇嵌入模型</string>
+  <string name="setting_page_kb_no_models">沒有可用模型，請先在提供商中新增嵌入模型</string>
+  <string name="setting_page_kb_top_k">返回條數</string>
+  <string name="setting_page_kb_threshold">相似度閾值</string>
+  <string name="setting_page_kb_dimensions">向量維度</string>
+  <string name="setting_page_kb_dimensions_desc">可選；僅支援 dimensions 參數的模型有效（如 text-embedding-3）</string>
+  <string name="setting_page_kb_documents">文件</string>
+  <string name="setting_page_kb_import">匯入</string>
+  <string name="setting_page_kb_no_documents">還沒有文件。匯入 txt/md/pdf/docx/pptx/epub 文件後，點右側重新整理圖示建立索引。</string>
+  <string name="setting_page_kb_indexed">已索引 · %1$d 塊</string>
+  <string name="setting_page_kb_not_indexed">未索引</string>
+  <string name="setting_page_kb_index_failed">索引失敗</string>
+  <string name="setting_page_kb_reindex">索引/重建索引</string>
+  <string name="assistant_page_tab_knowledge_base">知識庫</string>
+  <string name="assistant_detail_kb_desc">綁定知識庫供 AI 檢索</string>
+  <string name="assistant_kb_hint">綁定的知識庫透過 search_knowledge_base 工具供 AI 按需檢索；模型不檢索時不會向提示詞注入任何內容。</string>
+  <string name="assistant_kb_manage_hint">知識庫在「設定 → 知識庫」中管理。</string>
+  <string name="assistant_kb_manage">去管理</string>
 </resources>
 

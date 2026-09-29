@@ -80,6 +80,7 @@ import app.androidrik.rikkahub.ui.hooks.rememberCustomTtsState
 import app.androidrik.rikkahub.ui.pages.assistant.AssistantPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantBasicPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantDetailPage
+import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantKnowledgeBasePage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantExtensionsPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantLocalToolPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantMcpPage
@@ -118,6 +119,8 @@ import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNetworkPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingFilesPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingMcpPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingKnowledgeBaseDetailPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingKnowledgeBasePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingModelPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingProviderDetailPage
@@ -487,6 +490,19 @@ class RouteActivity : ComponentActivity() {
                                 SettingSearchDetailPage(id)
                             }
 
+                            entry<Screen.SettingKnowledgeBase> {
+                                SettingKnowledgeBasePage()
+                            }
+
+                            entry<Screen.SettingKnowledgeBaseDetail> { key ->
+                                SettingKnowledgeBaseDetailPage(key.kbId)
+                            }
+
+                            entry<Screen.AssistantKnowledgeBase> { key ->
+                                val id = Uuid.parse(key.assistantId)
+                                AssistantKnowledgeBasePage(id)
+                            }
+
                             entry<Screen.SettingSpeech> {
                                 SettingSpeechPage()
                             }
@@ -733,6 +749,17 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingSearch : Screen
+
+    /** 知识库管理（RAG-as-tool）：列表 + 详情（编辑/文档/索引） */
+    @Serializable
+    data object SettingKnowledgeBase : Screen
+
+    @Serializable
+    data class SettingKnowledgeBaseDetail(val kbId: String) : Screen
+
+    /** 助手绑定知识库（决定 search_knowledge_base 工具检索哪些库） */
+    @Serializable
+    data class AssistantKnowledgeBase(val assistantId: String) : Screen
 
     @Serializable
     data class SettingSearchDetail(val serviceId: String) : Screen

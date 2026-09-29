@@ -1686,5 +1686,34 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="chart_mode_table">표</string>
   <string name="chart_series">계열</string>
   <string name="chart_series_name">계열 %1$d</string>
+  <string name="setting_page_kb">지식 베이스</string>
+  <string name="setting_page_kb_desc">RAG 검색용 지식 베이스 관리</string>
+  <string name="setting_page_kb_title">지식 베이스</string>
+  <string name="setting_page_kb_add">새 지식 베이스</string>
+  <string name="setting_page_kb_name">이름</string>
+  <string name="setting_page_kb_empty_hint">아직 지식 베이스가 없습니다. 하나 만들고 문서를 가져온 뒤 임베딩 모델로 인덱싱하고 어시스턴트에 바인딩하세요.</string>
+  <string name="setting_page_kb_doc_count">문서 %1$d개</string>
+  <string name="setting_page_kb_settings">설정</string>
+  <string name="setting_page_kb_embedding_model">임베딩 모델</string>
+  <string name="setting_page_kb_embedding_model_desc">OpenAI 호환 제공자의 임베딩 모델을 선택해야 합니다</string>
+  <string name="setting_page_kb_model_not_set">설정 안 됨</string>
+  <string name="setting_page_kb_pick_model">임베딩 모델 선택</string>
+  <string name="setting_page_kb_no_models">사용 가능한 모델이 없습니다. 먼저 제공자에서 임베딩 모델을 추가하세요</string>
+  <string name="setting_page_kb_top_k">반환 개수</string>
+  <string name="setting_page_kb_threshold">유사도 임계값</string>
+  <string name="setting_page_kb_dimensions">벡터 차원</string>
+  <string name="setting_page_kb_dimensions_desc">선택 사항. dimensions 매개변수를 지원하는 모델에만 유효 (예: text-embedding-3)</string>
+  <string name="setting_page_kb_documents">문서</string>
+  <string name="setting_page_kb_import">가져오기</string>
+  <string name="setting_page_kb_no_documents">문서가 없습니다. txt/md/pdf/docx/pptx/epub 파일을 가져온 뒤 새로 고침 아이콘으로 인덱싱하세요.</string>
+  <string name="setting_page_kb_indexed">인덱싱됨 · %1$d 청크</string>
+  <string name="setting_page_kb_not_indexed">인덱싱 안 됨</string>
+  <string name="setting_page_kb_index_failed">인덱싱 실패</string>
+  <string name="setting_page_kb_reindex">인덱싱/재구축</string>
+  <string name="assistant_page_tab_knowledge_base">지식 베이스</string>
+  <string name="assistant_detail_kb_desc">지식 베이스를 바인딩하여 AI가 검색</string>
+  <string name="assistant_kb_hint">바인딩된 지식 베이스는 search_knowledge_base 도구로 AI가 필요할 때 검색합니다. 모델이 검색하지 않으면 프롬프트에 아무것도 주입되지 않습니다.</string>
+  <string name="assistant_kb_manage_hint">지식 베이스는「설정 → 지식 베이스」에서 관리합니다.</string>
+  <string name="assistant_kb_manage">관리</string>
 </resources>
 

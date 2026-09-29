@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.di
 
 import app.androidrik.rikkahub.ui.pages.assistant.AssistantVM
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantDetailVM
+import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantKnowledgeBaseVM
 import app.androidrik.rikkahub.ui.pages.backup.BackupVM
 import app.androidrik.rikkahub.ui.pages.chat.ChatDrawerVM
 import app.androidrik.rikkahub.ui.pages.chat.ChatVM
@@ -21,6 +22,8 @@ import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillDetailVM
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillsVM
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceDetailVM
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceVM
+import app.androidrik.rikkahub.ui.pages.setting.KnowledgeBaseDetailVM
+import app.androidrik.rikkahub.ui.pages.setting.KnowledgeBasesVM
 import app.androidrik.rikkahub.ui.pages.setting.SettingVM
 import app.androidrik.rikkahub.ui.pages.share.handler.ShareHandlerVM
 import app.androidrik.rikkahub.ui.pages.translator.TranslatorVM
@@ -43,12 +46,27 @@ val viewModelModule = module {
     }
     viewModelOf(::ChatDrawerVM)
     viewModelOf(::SettingVM)
+    viewModelOf(::KnowledgeBasesVM)
+    viewModel<KnowledgeBaseDetailVM> { params ->
+        KnowledgeBaseDetailVM(
+            kbId = params.get(),
+            ragRepository = get(),
+            settingsStore = get(),
+        )
+    }
     viewModelOf(::DebugVM)
     viewModelOf(::HistoryVM)
     viewModelOf(::AgentRunsVM)
     viewModelOf(::AgentRunDetailVM)
     viewModelOf(::SubagentPresetsVM)
     viewModelOf(::AssistantVM)
+    viewModel<AssistantKnowledgeBaseVM> { params ->
+        AssistantKnowledgeBaseVM(
+            assistantId = params.get(),
+            settingsStore = get(),
+            ragRepository = get(),
+        )
+    }
     viewModel<AssistantDetailVM> {
         AssistantDetailVM(
             id = it.get(),

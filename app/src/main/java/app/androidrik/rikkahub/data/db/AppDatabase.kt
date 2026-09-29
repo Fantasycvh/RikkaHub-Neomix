@@ -12,6 +12,7 @@ import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
 import app.androidrik.rikkahub.data.db.dao.FolderDAO
 import app.androidrik.rikkahub.data.db.dao.GenMediaDAO
+import app.androidrik.rikkahub.data.db.dao.KnowledgeBaseDAO
 import app.androidrik.rikkahub.data.db.dao.ManagedFileDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
@@ -22,6 +23,9 @@ import app.androidrik.rikkahub.data.db.entity.ConversationEntity
 import app.androidrik.rikkahub.data.db.entity.FavoriteEntity
 import app.androidrik.rikkahub.data.db.entity.FolderEntity
 import app.androidrik.rikkahub.data.db.entity.GenMediaEntity
+import app.androidrik.rikkahub.data.db.entity.KnowledgeBaseDocumentEntity
+import app.androidrik.rikkahub.data.db.entity.KnowledgeBaseEntity
+import app.androidrik.rikkahub.data.db.entity.KnowledgeEmbeddingEntity
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
@@ -45,8 +49,11 @@ import app.androidrik.rikkahub.utils.JsonInstant
         FolderEntity::class,
         CompressionCheckpointEntity::class,
         AgentRunEntity::class,
+        KnowledgeBaseEntity::class,
+        KnowledgeBaseDocumentEntity::class,
+        KnowledgeEmbeddingEntity::class,
     ],
-    version = 31,
+    version = 32,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -72,6 +79,8 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 29, to = 30),
         // 30→31：agent_run 加 parent_conversation_id（可空纯列，无外键）
         AutoMigration(from = 30, to = 31),
+        // 31→32：知识库三表（纯新增，RAG-as-tool）
+        AutoMigration(from = 31, to = 32),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -95,6 +104,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun compressionCheckpointDao(): CompressionCheckpointDAO
 
     abstract fun agentRunDao(): AgentRunDAO
+
+    abstract fun knowledgeBaseDao(): KnowledgeBaseDAO
 }
 
 object TokenUsageConverter {

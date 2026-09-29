@@ -19,6 +19,7 @@ import app.androidrik.rikkahub.data.ai.RequestLoggingInterceptor
 import app.androidrik.rikkahub.data.ai.transformers.AssistantTemplateLoader
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
+import app.androidrik.rikkahub.data.rag.RagRepository
 import app.androidrik.rikkahub.data.api.RikkaHubAPI
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.AppScope
@@ -128,6 +129,20 @@ val dataSourceModule = module {
 
     single {
         get<AppDatabase>().memoryDao()
+    }
+
+    single {
+        get<AppDatabase>().knowledgeBaseDao()
+    }
+
+    single {
+        RagRepository(
+            context = get(),
+            dao = get(),
+            settingsStore = get(),
+            providerManager = get(),
+            json = get(),
+        )
     }
 
     single {
