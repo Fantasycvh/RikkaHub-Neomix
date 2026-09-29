@@ -246,7 +246,8 @@ class RagRepository(
 
     private fun resolveEmbeddingModel(kb: KnowledgeBaseEntity): Pair<Model, app.androidrik.ai.provider.ProviderSetting>? {
         if (kb.embeddingModelId.isBlank()) return null
-        val modelId = runCatching { java.util.UUID.fromString(kb.embeddingModelId) }.getOrNull() ?: return null
+        // Model.id 是 kotlin.uuid.Uuid——必须用 Uuid.parse，java.util.UUID 与其 == 永远为 false
+        val modelId = runCatching { kotlin.uuid.Uuid.parse(kb.embeddingModelId) }.getOrNull() ?: return null
         val settings = settingsStore.settingsFlow.value
         val model = settings.providers.flatMap { it.models }.firstOrNull { it.id == modelId } ?: return null
         val providerSetting = model.findProvider(settings.providers, checkOverwrite = false) ?: return null
