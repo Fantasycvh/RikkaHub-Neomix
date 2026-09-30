@@ -16,6 +16,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,6 +53,7 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.ui.components.ui.ExpressivePopup
 import app.androidrik.rikkahub.ui.theme.extendColors
 import app.androidrik.rikkahub.utils.toLocalString
 import java.time.LocalDate
@@ -292,9 +294,10 @@ private fun ConversationItem(
                         }
                 )
             }
-            DropdownMenu(
+            ExpressivePopup(
                 expanded = showDropdownMenu,
                 onDismissRequest = { showDropdownMenu = false },
+                contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 DropdownMenuItem(
                     text = {
