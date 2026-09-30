@@ -1718,5 +1718,23 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="tool_ui_dry_run_hint">미리보기는 디스크의 현재 내용 기준으로 계산됨 (dry run)</string>
   <string name="tool_ui_dry_run_fallback">인수 기반 참조 diff</string>
   <string name="tool_ui_write_overwrite">기존 파일을 덮어씁니다</string>
+  <string name="setting_page_guardrails_title">가드레일 및 예산</string>
+  <string name="setting_page_guardrails_loop_guard">루프 가드 감도</string>
+  <string name="setting_page_guardrails_loop_guard_desc">AI가 같은 인수로 같은 도구를 반복 호출할 때의 허용도</string>
+  <string name="guard_sensitivity_strict">엄격</string>
+  <string name="guard_sensitivity_standard">표준</string>
+  <string name="guard_sensitivity_loose">관대</string>
+  <string name="setting_page_guardrails_turn_budget_chars">워크스페이스 턴당 출력 예산</string>
+  <string name="setting_page_guardrails_turn_budget_chars_desc">한 턴 내 워크스페이스 도구가 컨텍스트에 쓸 수 있는 총 문자 수</string>
+  <string name="setting_page_guardrails_unit_kchars">천 자</string>
+  <string name="setting_page_guardrails_turn_budget_steps">워크스페이스 턴당 최대 단계</string>
+  <string name="setting_page_guardrails_turn_budget_steps_desc">한 턴 내 워크스페이스 도구 호출 상한</string>
+  <string name="setting_page_guardrails_unit_steps">단계</string>
+  <string name="setting_page_guardrails_subagent_concurrency">서브에이전트 동시 실행 수</string>
+  <string name="setting_page_guardrails_subagent_concurrency_desc">동시에 실행 가능한 서브에이전트 작업 수 상한</string>
+  <string name="setting_page_guardrails_unit_runs">개</string>
+  <string name="setting_page_guardrails_task_duration">백그라운드 작업 시간 제한</string>
+  <string name="setting_page_guardrails_task_duration_desc">이 시간을 초과한 백그라운드 작업은 자동 종료됩니다</string>
+  <string name="setting_page_guardrails_unit_minutes">분</string>
 </resources>
 

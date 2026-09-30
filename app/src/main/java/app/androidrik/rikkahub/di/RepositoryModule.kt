@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.di
 
+import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.sync.WorkspaceBackupHelper
 import android.content.Context
 import app.androidrik.rikkahub.data.files.FileFolders
@@ -70,6 +71,10 @@ val repositoryModule = module {
                 ),
             ),
             backgroundLauncher = ProotBackgroundLauncher(prootRunner),
+            // 后台任务时长上限可配（Tier 1）：此单例首次注入发生在首次会话/工作区使用时，
+            // DataStore 已加载完毕（dummy 值 = Settings 默认值 30，即使真提前读也回落到原行为）
+            maxBackgroundTaskLifetimeMillis =
+                get<SettingsStore>().settingsFlow.value.workspaceTaskMaxDurationMinutes * 60_000L,
         )
     }
 

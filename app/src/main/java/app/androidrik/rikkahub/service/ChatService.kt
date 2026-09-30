@@ -54,6 +54,7 @@ import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
+import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
 import app.androidrik.rikkahub.data.ai.inspectPrompt
@@ -316,6 +317,9 @@ class ChatService(
                     assistantId = settings.getCurrentAssistant().id
                 ),
                 scope = appScope,
+                loopGuardSensitivity = parseLoopGuardSensitivity(settings.loopGuardSensitivity),
+                turnBudgetChars = settings.workspaceTurnBudgetChars,
+                turnBudgetSteps = settings.workspaceTurnMaxSteps,
                 onIdle = { removeSession(it) },
                 onGenerationFinished = { sessionId, cause ->
                     val session = sessions[sessionId]

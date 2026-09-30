@@ -1793,5 +1793,23 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="tool_ui_dry_run_hint">Preview computed from the file on disk (dry run)</string>
   <string name="tool_ui_dry_run_fallback">reference diff from arguments</string>
   <string name="tool_ui_write_overwrite">Overwrites existing file</string>
+  <string name="setting_page_guardrails_title">Guardrails &amp; Budgets</string>
+  <string name="setting_page_guardrails_loop_guard">Loop guard sensitivity</string>
+  <string name="setting_page_guardrails_loop_guard_desc">Tolerance for the AI repeating the same tool call with the same arguments</string>
+  <string name="guard_sensitivity_strict">Strict</string>
+  <string name="guard_sensitivity_standard">Standard</string>
+  <string name="guard_sensitivity_loose">Loose</string>
+  <string name="setting_page_guardrails_turn_budget_chars">Workspace per-turn output budget</string>
+  <string name="setting_page_guardrails_turn_budget_chars_desc">Total output characters workspace tools may add to the context in one turn</string>
+  <string name="setting_page_guardrails_unit_kchars">K chars</string>
+  <string name="setting_page_guardrails_turn_budget_steps">Workspace per-turn max steps</string>
+  <string name="setting_page_guardrails_turn_budget_steps_desc">Max workspace tool calls in one turn</string>
+  <string name="setting_page_guardrails_unit_steps">steps</string>
+  <string name="setting_page_guardrails_subagent_concurrency">Subagent concurrency</string>
+  <string name="setting_page_guardrails_subagent_concurrency_desc">Max simultaneously running subagent tasks</string>
+  <string name="setting_page_guardrails_unit_runs">runs</string>
+  <string name="setting_page_guardrails_task_duration">Background task time limit</string>
+  <string name="setting_page_guardrails_task_duration_desc">Background tasks are stopped after this many minutes</string>
+  <string name="setting_page_guardrails_unit_minutes">min</string>
 </resources>
 

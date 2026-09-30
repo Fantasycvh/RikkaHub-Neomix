@@ -1791,5 +1791,23 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_dry_run_hint">预览基于磁盘当前内容计算（dry run）</string>
   <string name="tool_ui_dry_run_fallback">基于入参的参考 diff</string>
   <string name="tool_ui_write_overwrite">将覆盖现有文件</string>
+  <string name="setting_page_guardrails_title">护栏与预算</string>
+  <string name="setting_page_guardrails_loop_guard">失控护栏灵敏度</string>
+  <string name="setting_page_guardrails_loop_guard_desc">AI 用相同参数反复调用同一工具时的容忍度</string>
+  <string name="guard_sensitivity_strict">严格</string>
+  <string name="guard_sensitivity_standard">标准</string>
+  <string name="guard_sensitivity_loose">宽松</string>
+  <string name="setting_page_guardrails_turn_budget_chars">工作区单轮输出预算</string>
+  <string name="setting_page_guardrails_turn_budget_chars_desc">一轮对话内工作区工具累计可写入上下文的字符数</string>
+  <string name="setting_page_guardrails_unit_kchars">千字符</string>
+  <string name="setting_page_guardrails_turn_budget_steps">工作区单轮步数上限</string>
+  <string name="setting_page_guardrails_turn_budget_steps_desc">一轮对话内工作区工具调用次数上限</string>
+  <string name="setting_page_guardrails_unit_steps">步</string>
+  <string name="setting_page_guardrails_subagent_concurrency">子代理并行上限</string>
+  <string name="setting_page_guardrails_subagent_concurrency_desc">同时运行的子代理任务数上限</string>
+  <string name="setting_page_guardrails_unit_runs">个</string>
+  <string name="setting_page_guardrails_task_duration">后台任务时长上限</string>
+  <string name="setting_page_guardrails_task_duration_desc">后台任务超过该时长后会被自动终止</string>
+  <string name="setting_page_guardrails_unit_minutes">分钟</string>
 </resources>
 

@@ -1718,5 +1718,23 @@
   <string name="tool_ui_dry_run_hint">Предпросмотр рассчитан по текущему содержимому на диске (dry run)</string>
   <string name="tool_ui_dry_run_fallback">референсный diff из аргументов</string>
   <string name="tool_ui_write_overwrite">Перезапишет существующий файл</string>
+  <string name="setting_page_guardrails_title">Ограничения и бюджеты</string>
+  <string name="setting_page_guardrails_loop_guard">Чувствительность защиты от циклов</string>
+  <string name="setting_page_guardrails_loop_guard_desc">Допустимость повторных вызовов ИИ одного инструмента с теми же аргументами</string>
+  <string name="guard_sensitivity_strict">Строго</string>
+  <string name="guard_sensitivity_standard">Стандарт</string>
+  <string name="guard_sensitivity_loose">Свободно</string>
+  <string name="setting_page_guardrails_turn_budget_chars">Бюджет вывода за ход (рабочая область)</string>
+  <string name="setting_page_guardrails_turn_budget_chars_desc">Суммарное число символов, которые инструменты рабочей области могут добавить за один ход</string>
+  <string name="setting_page_guardrails_unit_kchars">тыс. знаков</string>
+  <string name="setting_page_guardrails_turn_budget_steps">Макс. шагов за ход</string>
+  <string name="setting_page_guardrails_turn_budget_steps_desc">Предел вызовов инструментов рабочей области за один ход</string>
+  <string name="setting_page_guardrails_unit_steps">шагов</string>
+  <string name="setting_page_guardrails_subagent_concurrency">Параллельные субагенты</string>
+  <string name="setting_page_guardrails_subagent_concurrency_desc">Макс. число одновременно выполняемых задач субагентов</string>
+  <string name="setting_page_guardrails_unit_runs">шт.</string>
+  <string name="setting_page_guardrails_task_duration">Лимит времени фоновых задач</string>
+  <string name="setting_page_guardrails_task_duration_desc">Фоновые задачи автоматически останавливаются по истечении этого времени</string>
+  <string name="setting_page_guardrails_unit_minutes">мин</string>
 </resources>
 

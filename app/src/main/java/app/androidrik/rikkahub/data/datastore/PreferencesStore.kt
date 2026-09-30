@@ -246,6 +246,12 @@ class SettingsStore(
 
         // 自动压缩（超过阈值时把早期历史摘要为检查点，design-auto-compaction Phase 2）
         val AUTO_COMPRESS_ENABLED = booleanPreferencesKey("auto_compress_enabled")
+        // peer ⑤ Tier 1 可配置化：护栏与预算（写死常量的可配置化）
+        val LOOP_GUARD_SENSITIVITY = stringPreferencesKey("loop_guard_sensitivity")
+        val WORKSPACE_TURN_BUDGET_CHARS = intPreferencesKey("workspace_turn_budget_chars")
+        val WORKSPACE_TURN_MAX_STEPS = intPreferencesKey("workspace_turn_max_steps")
+        val SUBAGENT_MAX_CONCURRENT_RUNS = intPreferencesKey("subagent_max_concurrent_runs")
+        val WORKSPACE_TASK_MAX_DURATION_MINUTES = intPreferencesKey("workspace_task_max_duration_minutes")
         val AUTO_COMPRESS_THRESHOLD_PERCENT = intPreferencesKey("auto_compress_threshold_percent")
         val AUTO_COMPRESS_RETAIN_PERCENT = intPreferencesKey("auto_compress_retain_percent")
         val EXPORT_RETENTION_DAYS = intPreferencesKey("export_retention_days")
@@ -400,6 +406,16 @@ class SettingsStore(
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
                 contextLengthOverride = preferences[CONTEXT_LENGTH_OVERRIDE],
                 autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
+                loopGuardSensitivity = preferences[LOOP_GUARD_SENSITIVITY]
+                    ?: app.androidrik.rikkahub.data.ai.LoopGuardSensitivity.STANDARD.name,
+                workspaceTurnBudgetChars = (preferences[WORKSPACE_TURN_BUDGET_CHARS]
+                    ?: DEFAULT_WORKSPACE_TURN_BUDGET_CHARS).coerceIn(32_000, 2_000_000),
+                workspaceTurnMaxSteps = (preferences[WORKSPACE_TURN_MAX_STEPS]
+                    ?: DEFAULT_WORKSPACE_TURN_MAX_STEPS).coerceIn(8, 512),
+                subagentMaxConcurrentRuns = (preferences[SUBAGENT_MAX_CONCURRENT_RUNS]
+                    ?: DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS).coerceIn(1, 8),
+                workspaceTaskMaxDurationMinutes = (preferences[WORKSPACE_TASK_MAX_DURATION_MINUTES]
+                    ?: DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES).coerceIn(5, 1440),
                 logToFileEnabled = preferences[LOG_TO_FILE_ENABLED] ?: false,
                 globalProxy = preferences[GLOBAL_PROXY]?.let {
                     JsonInstant.decodeFromString<GlobalProxySetting>(it)
@@ -626,6 +642,11 @@ class SettingsStore(
                 preferences[CONTEXT_LENGTH_OVERRIDE] = it
             } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
             preferences[AUTO_COMPRESS_ENABLED] = settings.autoCompressEnabled
+            preferences[LOOP_GUARD_SENSITIVITY] = settings.loopGuardSensitivity
+            preferences[WORKSPACE_TURN_BUDGET_CHARS] = settings.workspaceTurnBudgetChars
+            preferences[WORKSPACE_TURN_MAX_STEPS] = settings.workspaceTurnMaxSteps
+            preferences[SUBAGENT_MAX_CONCURRENT_RUNS] = settings.subagentMaxConcurrentRuns
+            preferences[WORKSPACE_TASK_MAX_DURATION_MINUTES] = settings.workspaceTaskMaxDurationMinutes
             preferences[AUTO_COMPRESS_THRESHOLD_PERCENT] = settings.autoCompressThresholdPercent
             preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
             preferences[EXPORT_RETENTION_DAYS] = settings.exportRetentionDays
@@ -832,6 +853,16 @@ data class Settings(
     val contextLengthOverride: Int? = null,
     /** 自动压缩：占用超过阈值时自动把早期历史摘要为检查点（默认关，保持行为可预期） */
     val autoCompressEnabled: Boolean = false,
+    /** LoopGuard 灵敏度档位（strict/standard/loose），见 [app.androidrik.rikkahub.data.ai.guardThresholds] */
+    val loopGuardSensitivity: String = "STANDARD",
+    /** workspace_* 工具单轮输出预算（字符数），见 [DEFAULT_WORKSPACE_TURN_BUDGET_CHARS] */
+    val workspaceTurnBudgetChars: Int = DEFAULT_WORKSPACE_TURN_BUDGET_CHARS,
+    /** workspace_* 工具单轮步数上限，见 [DEFAULT_WORKSPACE_TURN_MAX_STEPS] */
+    val workspaceTurnMaxSteps: Int = DEFAULT_WORKSPACE_TURN_MAX_STEPS,
+    /** 子代理并行运行上限（满了拒绝新派发） */
+    val subagentMaxConcurrentRuns: Int = DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS,
+    /** 后台任务最长存活分钟数（到点杀进程树记 TIMED_OUT） */
+    val workspaceTaskMaxDurationMinutes: Int = DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES,
     /** 日志落盘到 files/logs（默认关）：取回完整请求体等 logcat 截断看不到的内容 */
     val logToFileEnabled: Boolean = false,
     /** 记录 HTTP 请求日志（默认关）：与落盘开关独立，但落盘要有内容需它同时开启 */
@@ -1159,3 +1190,9 @@ val DEFAULT_MODE_INJECTIONS = listOf(
  * 默认全备更符合「防止数据丢失」的意图（嫌大可取消勾选）。
  */
 val DEFAULT_BACKUP_ITEMS: List<BackupItem> = BackupItem.entries.toList()
+
+// ---- 护栏与预算的默认值（与原写死常量一致；可配置化不改变默认行为） ----
+const val DEFAULT_WORKSPACE_TURN_BUDGET_CHARS = 256 * 1024
+const val DEFAULT_WORKSPACE_TURN_MAX_STEPS = 64
+const val DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS = 2
+const val DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES = 30

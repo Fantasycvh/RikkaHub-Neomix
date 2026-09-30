@@ -1718,5 +1718,23 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="tool_ui_dry_run_hint">プレビューはディスク上の現在内容から計算（dry run）</string>
   <string name="tool_ui_dry_run_fallback">引数に基づく参考 diff</string>
   <string name="tool_ui_write_overwrite">既存ファイルを上書きします</string>
+  <string name="setting_page_guardrails_title">ガードレールと予算</string>
+  <string name="setting_page_guardrails_loop_guard">ループガード感度</string>
+  <string name="setting_page_guardrails_loop_guard_desc">同じ引数で同じツールを繰り返し呼び出す際の許容度</string>
+  <string name="guard_sensitivity_strict">厳格</string>
+  <string name="guard_sensitivity_standard">標準</string>
+  <string name="guard_sensitivity_loose">寛容</string>
+  <string name="setting_page_guardrails_turn_budget_chars">ワークスペース 1 ターン出力予算</string>
+  <string name="setting_page_guardrails_turn_budget_chars_desc">1 ターン内でワークスペースツールがコンテキストに書き込める合計文字数</string>
+  <string name="setting_page_guardrails_unit_kchars">千文字</string>
+  <string name="setting_page_guardrails_turn_budget_steps">ワークスペース 1 ターン最大ステップ数</string>
+  <string name="setting_page_guardrails_turn_budget_steps_desc">1 ターン内のワークスペースツール呼び出し上限</string>
+  <string name="setting_page_guardrails_unit_steps">ステップ</string>
+  <string name="setting_page_guardrails_subagent_concurrency">サブエージェント並行数</string>
+  <string name="setting_page_guardrails_subagent_concurrency_desc">同時に実行できるサブエージェントタスクの上限</string>
+  <string name="setting_page_guardrails_unit_runs">件</string>
+  <string name="setting_page_guardrails_task_duration">バックグラウンドタスク制限時間</string>
+  <string name="setting_page_guardrails_task_duration_desc">この時間を超えたバックグラウンドタスクは自動停止されます</string>
+  <string name="setting_page_guardrails_unit_minutes">分</string>
 </resources>
 

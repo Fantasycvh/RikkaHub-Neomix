@@ -89,8 +89,14 @@ class SubagentRunner(
     private val chatToolFactory: ChatToolFactory,
     private val agentRunDAO: AgentRunDAO,
 ) : SubagentDispatcher {
-    /** 并发闸（上限 2，设计 §十二）：满了就拒绝启动，不排队。 */
-    private val gate = ConcurrentRunGate()
+    /**
+     * 并发闸：上限可配（设置 → 通用 → 护栏与预算）。lazy 而非构造期读取——
+     * runner 是 Koin 单例，构造时 DataStore 可能还没加载完（settingsFlow.value 是
+     * 全默认值的 dummy），首次派发时读取则必然已加载。
+     */
+    private val gate by lazy {
+        ConcurrentRunGate(settingsStore.settingsFlow.value.subagentMaxConcurrentRuns)
+    }
 
     /** runId → 它所在的协程 Job（取消用；两条入口都登记，这样才能"只取消这一个 run"）。 */
     private val activeJobs = ConcurrentHashMap<Uuid, Job>()

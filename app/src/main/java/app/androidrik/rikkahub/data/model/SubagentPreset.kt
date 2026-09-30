@@ -107,7 +107,7 @@ const val SUBAGENT_NAME_MAX_CHARS: Int = 40
 const val DEFAULT_SUBAGENT_TIMEOUT_SECONDS: Int = 600
 
 /** 超时钳制范围：30 秒（再短基本跑不完一轮工具调用）～30 分钟（与手工路径的硬上限对齐）。 */
-val SUBAGENT_TIMEOUT_SECONDS_RANGE: IntRange = 30..1800
+val SUBAGENT_TIMEOUT_SECONDS_RANGE: IntRange = 30..7200
 
 /**
  * 内置预设的 **id 是固定的**（不是 `Uuid.random()`）。

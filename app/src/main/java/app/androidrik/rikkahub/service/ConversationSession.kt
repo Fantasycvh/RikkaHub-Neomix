@@ -13,7 +13,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import app.androidrik.rikkahub.data.ai.LoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
+import app.androidrik.rikkahub.data.ai.guardThresholds
+import app.androidrik.rikkahub.data.datastore.DEFAULT_WORKSPACE_TURN_BUDGET_CHARS
+import app.androidrik.rikkahub.data.datastore.DEFAULT_WORKSPACE_TURN_MAX_STEPS
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.model.Conversation
 import java.util.concurrent.atomic.AtomicInteger
@@ -28,6 +32,11 @@ class ConversationSession(
     private val scope: CoroutineScope,
     private val onIdle: (Uuid) -> Unit,
     private val onGenerationFinished: (Uuid, Throwable?) -> Unit = { _, _ -> },
+    /** LoopGuard 灵敏度档位（设置 → 通用 → 护栏与预算）；标准档 = 原写死行为 */
+    loopGuardSensitivity: LoopGuardSensitivity = LoopGuardSensitivity.STANDARD,
+    /** workspace_* 单轮输出预算（字符）与步数上限 */
+    turnBudgetChars: Int = DEFAULT_WORKSPACE_TURN_BUDGET_CHARS,
+    turnBudgetSteps: Int = DEFAULT_WORKSPACE_TURN_MAX_STEPS,
 ) {
     // 待发消息队列（生成期间入队，当前轮次结束后自动派发）
     val messageQueue = MessageQueue()
@@ -54,7 +63,13 @@ class ConversationSession(
      * **新一轮用户消息 / 重新生成**时 [ToolCallLoopGuard.reset]。
      * session 空闲回收时随之丢弃，不会跨轮残留。
      */
-    val toolLoopGuard = ToolCallLoopGuard()
+    val toolLoopGuard = loopGuardSensitivity.guardThresholds().let { (window, success, failure) ->
+        ToolCallLoopGuard(
+            windowSize = window,
+            successThreshold = success,
+            failureThreshold = failure,
+        )
+    }
 
     /**
      * workspace（rootfs）工具的**单轮总预算**（见 `data/ai/WorkspaceTurnBudget.kt`）。
@@ -63,7 +78,10 @@ class ConversationSession(
      * （每步换参数的 workspace 调用，累计输出/步数无上限）。挂在 session 上跨审批续跑
      * 累积，由 ChatService 在**新一轮用户消息 / 重新生成**时 reset。
      */
-    val workspaceTurnBudget = WorkspaceTurnBudget()
+    val workspaceTurnBudget = WorkspaceTurnBudget(
+        outputBudgetChars = turnBudgetChars,
+        maxSteps = turnBudgetSteps,
+    )
 
     // 生成任务（内聚在 session 中）
     private val _generationJob = MutableStateFlow<Job?>(null)

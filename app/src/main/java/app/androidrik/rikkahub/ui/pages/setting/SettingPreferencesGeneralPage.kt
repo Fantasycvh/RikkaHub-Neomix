@@ -35,6 +35,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.ai.provider.RetrySetting
+import androidx.compose.material3.FilterChip
+import app.androidrik.rikkahub.data.ai.LoopGuardSensitivity
+import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
+import app.androidrik.rikkahub.ui.components.ui.OutlinedNumberInput
+import androidx.compose.foundation.layout.width
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.service.KeepAliveService
@@ -462,7 +467,119 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                     )
                 }
             }
+
+            item {
+                GuardrailsSettingGroup()
+            }
         }
+    }
+}
+
+/**
+ * 护栏与预算设置分组（peer ⑤ Tier 1 可配置化）：把此前写死的护栏/预算常量暴露为设置项。
+ *
+ * - LoopGuard 三档制（刻意不做自由数字：调松 = 防失控失效，档位收窄可表达空间）
+ * - workspace 单轮预算（字符/步数）、子代理并行上限、后台任务时长上限：全局数值
+ *
+ * 修改即时写入 Settings；护栏对象在**会话创建时**读值（进行中的会话保持旧档，新会话生效），
+ * 后台任务时长在 WorkspaceManager 单例创建时读值（应用启动后首次使用工作区即生效）。
+ */
+@Composable
+private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val sensitivity = parseLoopGuardSensitivity(settings.loopGuardSensitivity)
+
+    CardGroup(
+        modifier = Modifier.padding(horizontal = 8.dp),
+        title = { Text(stringResource(R.string.setting_page_guardrails_title)) },
+    ) {
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_guardrails_loop_guard)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_guardrails_loop_guard_desc)) },
+            trailingContent = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LoopGuardSensitivity.entries.forEach { level ->
+                        FilterChip(
+                            selected = sensitivity == level,
+                            onClick = {
+                                vm.updateSettings(settings.copy(loopGuardSensitivity = level.name))
+                            },
+                            label = {
+                                Text(
+                                    when (level) {
+                                        LoopGuardSensitivity.STRICT -> stringResource(R.string.guard_sensitivity_strict)
+                                        LoopGuardSensitivity.STANDARD -> stringResource(R.string.guard_sensitivity_standard)
+                                        LoopGuardSensitivity.LOOSE -> stringResource(R.string.guard_sensitivity_loose)
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                        )
+                    }
+                }
+            },
+        )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_guardrails_turn_budget_chars)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_guardrails_turn_budget_chars_desc)) },
+            trailingContent = {
+                OutlinedNumberInput(
+                    value = settings.workspaceTurnBudgetChars / 1024,
+                    onValueChange = {
+                        vm.updateSettings(
+                            settings.copy(workspaceTurnBudgetChars = (it * 1024).coerceAtLeast(32_768))
+                        )
+                    },
+                    label = stringResource(R.string.setting_page_guardrails_unit_kchars),
+                    modifier = Modifier.width(96.dp),
+                )
+            },
+        )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_guardrails_turn_budget_steps)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_guardrails_turn_budget_steps_desc)) },
+            trailingContent = {
+                OutlinedNumberInput(
+                    value = settings.workspaceTurnMaxSteps,
+                    onValueChange = {
+                        vm.updateSettings(settings.copy(workspaceTurnMaxSteps = it))
+                    },
+                    label = stringResource(R.string.setting_page_guardrails_unit_steps),
+                    modifier = Modifier.width(96.dp),
+                )
+            },
+        )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_guardrails_subagent_concurrency)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_guardrails_subagent_concurrency_desc)) },
+            trailingContent = {
+                OutlinedNumberInput(
+                    value = settings.subagentMaxConcurrentRuns,
+                    onValueChange = {
+                        vm.updateSettings(settings.copy(subagentMaxConcurrentRuns = it))
+                    },
+                    label = stringResource(R.string.setting_page_guardrails_unit_runs),
+                    modifier = Modifier.width(96.dp),
+                )
+            },
+        )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_guardrails_task_duration)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_guardrails_task_duration_desc)) },
+            trailingContent = {
+                OutlinedNumberInput(
+                    value = settings.workspaceTaskMaxDurationMinutes,
+                    onValueChange = {
+                        vm.updateSettings(settings.copy(workspaceTaskMaxDurationMinutes = it))
+                    },
+                    label = stringResource(R.string.setting_page_guardrails_unit_minutes),
+                    modifier = Modifier.width(96.dp),
+                )
+            },
+        )
     }
 }
 

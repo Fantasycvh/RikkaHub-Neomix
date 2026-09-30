@@ -1774,5 +1774,23 @@
   <string name="tool_ui_dry_run_hint">預覽基於磁碟目前內容計算（dry run）</string>
   <string name="tool_ui_dry_run_fallback">基於入參的參考 diff</string>
   <string name="tool_ui_write_overwrite">將覆蓋現有檔案</string>
+  <string name="setting_page_guardrails_title">護欄與預算</string>
+  <string name="setting_page_guardrails_loop_guard">失控護欄靈敏度</string>
+  <string name="setting_page_guardrails_loop_guard_desc">AI 用相同參數反覆呼叫同一工具時的容忍度</string>
+  <string name="guard_sensitivity_strict">嚴格</string>
+  <string name="guard_sensitivity_standard">標準</string>
+  <string name="guard_sensitivity_loose">寬鬆</string>
+  <string name="setting_page_guardrails_turn_budget_chars">工作區單輪輸出預算</string>
+  <string name="setting_page_guardrails_turn_budget_chars_desc">一輪對話內工作區工具累計可寫入上下文的字元數</string>
+  <string name="setting_page_guardrails_unit_kchars">千字元</string>
+  <string name="setting_page_guardrails_turn_budget_steps">工作區單輪步數上限</string>
+  <string name="setting_page_guardrails_turn_budget_steps_desc">一輪對話內工作區工具呼叫次數上限</string>
+  <string name="setting_page_guardrails_unit_steps">步</string>
+  <string name="setting_page_guardrails_subagent_concurrency">子代理並行上限</string>
+  <string name="setting_page_guardrails_subagent_concurrency_desc">同時執行的子代理任務數上限</string>
+  <string name="setting_page_guardrails_unit_runs">個</string>
+  <string name="setting_page_guardrails_task_duration">背景任務時長上限</string>
+  <string name="setting_page_guardrails_task_duration_desc">背景任務超過該時長後會被自動終止</string>
+  <string name="setting_page_guardrails_unit_minutes">分鐘</string>
 </resources>
 

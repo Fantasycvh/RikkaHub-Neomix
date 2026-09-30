@@ -1,6 +1,40 @@
 package app.androidrik.rikkahub.data.ai
 
 /**
+ * LoopGuard 灵敏度三档（peer ⑤ 可配置化）：映射到 [ToolCallLoopGuard] 的三参。
+ *
+ * **刻意只做档位、不做自由数字**：调松 = 防失控护栏失效，自由输入会让「防失控」
+ * 名存实亡；三档把可表达空间收窄在安全范围内（宽松档也只是「多容忍几轮重试」，
+ * 窗口与优雅停止语义不变）。
+ */
+enum class LoopGuardSensitivity {
+    /** 严格：成功 2 / 失败 3——最快止损，适合省 token 优先 */
+    STRICT,
+
+    /** 标准：成功 3 / 失败 4（默认，与原写死行为一致） */
+    STANDARD,
+
+    /** 宽松：成功 6 / 失败 8——给长重试链留空间（如不稳定的远端工具） */
+    LOOSE,
+}
+
+/** 档位 → (窗口, 成功阈值, 失败阈值)；窗口三档一致（覆盖交替循环形态） */
+fun LoopGuardSensitivity.guardThresholds(): Triple<Int, Int, Int> = when (this) {
+    LoopGuardSensitivity.STRICT -> Triple(12, 2, 3)
+    LoopGuardSensitivity.STANDARD -> Triple(
+        ToolCallLoopGuard.DEFAULT_WINDOW_SIZE,
+        ToolCallLoopGuard.DEFAULT_SUCCESS_THRESHOLD,
+        ToolCallLoopGuard.DEFAULT_FAILURE_THRESHOLD,
+    )
+    LoopGuardSensitivity.LOOSE -> Triple(12, 6, 8)
+}
+
+/** 宽松解析设置里存的档位名（未知值回退标准档） */
+fun parseLoopGuardSensitivity(name: String?): LoopGuardSensitivity =
+    name?.let { runCatching { LoopGuardSensitivity.valueOf(it) }.getOrNull() }
+        ?: LoopGuardSensitivity.STANDARD
+
+/**
  * 工具调用失控护栏（LoopGuard）。
  *
  * **要解决的问题**：模型有时会卡在「同一工具 + 同一参数」反复调用——每次都不产生新信息，
