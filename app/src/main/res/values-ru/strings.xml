@@ -1715,5 +1715,8 @@
   <string name="assistant_kb_hint">Привязанные базы знаний доступны ИИ через инструмент search_knowledge_base; пока модель не выполнит поиск, в промпт ничего не внедряется.</string>
   <string name="assistant_kb_manage_hint">Базы знаний управляются в «Настройки → Базы знаний».</string>
   <string name="assistant_kb_manage">Управление</string>
+  <string name="tool_ui_dry_run_hint">Предпросмотр рассчитан по текущему содержимому на диске (dry run)</string>
+  <string name="tool_ui_dry_run_fallback">референсный diff из аргументов</string>
+  <string name="tool_ui_write_overwrite">Перезапишет существующий файл</string>
 </resources>
 

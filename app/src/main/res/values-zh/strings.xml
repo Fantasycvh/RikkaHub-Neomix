@@ -1788,5 +1788,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="assistant_kb_hint">绑定的知识库通过 search_knowledge_base 工具供 AI 按需检索；模型不检索时不会向提示词注入任何内容。</string>
   <string name="assistant_kb_manage_hint">知识库在「设置 → 知识库」中管理。</string>
   <string name="assistant_kb_manage">去管理</string>
+  <string name="tool_ui_dry_run_hint">预览基于磁盘当前内容计算（dry run）</string>
+  <string name="tool_ui_dry_run_fallback">基于入参的参考 diff</string>
+  <string name="tool_ui_write_overwrite">将覆盖现有文件</string>
 </resources>
 

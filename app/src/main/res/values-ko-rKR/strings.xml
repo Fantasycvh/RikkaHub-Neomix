@@ -1715,5 +1715,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="assistant_kb_hint">바인딩된 지식 베이스는 search_knowledge_base 도구로 AI가 필요할 때 검색합니다. 모델이 검색하지 않으면 프롬프트에 아무것도 주입되지 않습니다.</string>
   <string name="assistant_kb_manage_hint">지식 베이스는「설정 → 지식 베이스」에서 관리합니다.</string>
   <string name="assistant_kb_manage">관리</string>
+  <string name="tool_ui_dry_run_hint">미리보기는 디스크의 현재 내용 기준으로 계산됨 (dry run)</string>
+  <string name="tool_ui_dry_run_fallback">인수 기반 참조 diff</string>
+  <string name="tool_ui_write_overwrite">기존 파일을 덮어씁니다</string>
 </resources>
 

@@ -1715,5 +1715,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="assistant_kb_hint">バインドされたナレッジベースは search_knowledge_base ツールで AI が必要時に検索します。モデルが検索しない限りプロンプトには何も注入されません。</string>
   <string name="assistant_kb_manage_hint">ナレッジベースは「設定 → ナレッジベース」で管理します。</string>
   <string name="assistant_kb_manage">管理へ</string>
+  <string name="tool_ui_dry_run_hint">プレビューはディスク上の現在内容から計算（dry run）</string>
+  <string name="tool_ui_dry_run_fallback">引数に基づく参考 diff</string>
+  <string name="tool_ui_write_overwrite">既存ファイルを上書きします</string>
 </resources>
 

@@ -22,6 +22,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -55,6 +57,7 @@ import me.rerere.hugeicons.stroke.Stop
 import me.rerere.hugeicons.stroke.Task01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.data.ai.tools.replaceText
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.ui.components.richtext.DiffAddedColor
 import app.androidrik.rikkahub.ui.components.richtext.DiffRemovedColor
@@ -69,8 +72,19 @@ import app.androidrik.workspace.WorkspaceStorageArea
 import org.koin.compose.koinInject
 import java.io.File
 
+/** 审批期 dry-run 的磁盘文件读取结果：Unavailable = 文件不存在或读不到（按新文件处理） */
+private sealed interface ExistingFileState {
+    data class Exists(val text: String) : ExistingFileState
+    data object Unavailable : ExistingFileState
+}
+
 /**
  * 工作空间编辑文件: 摘要显示增删统计与精简 diff, 详情为完整 diff view
+ *
+ * 审批期 dry-run（peer ⑤②）：未执行时读取**磁盘当前内容**，跑与执行完全相同的
+ * [replaceText] 替换链，展示「真实现有内容 vs 替换后」的 diff——而不是模型声称的
+ * old_text vs new_text（模型幻觉时那份 diff 是假的）。读不到文件或替换链失配时
+ * 回退入参 diff 并如实标注。
  */
 object EditFileToolUI : ToolUIRenderer {
     private const val SUMMARY_MAX_LINES = 10
@@ -89,7 +103,7 @@ object EditFileToolUI : ToolUIRenderer {
      * 执行后读取输出部件 metadata 中的全文件 diff;
      * 未执行 (如等待审批) 时基于入参的 old_text/new_text 片段生成预览 diff
      */
-    private fun diffOf(context: ToolUIContext): String? {
+    private fun argsDiffOf(context: ToolUIContext): String? {
         if (context.tool.isExecuted) {
             return context.tool.output.firstOrNull()?.metadataAs<DiffMetadata>()?.diff
         }
@@ -99,11 +113,52 @@ object EditFileToolUI : ToolUIRenderer {
         return generateUnifiedDiff(oldText, newText, path)
     }
 
-    override fun hasSummary(context: ToolUIContext): Boolean = diffOf(context) != null
+    /** 未执行时的 dry-run diff：磁盘现状 → replaceText → 真实 diff；null = 回退入参 diff */
+    @Composable
+    private fun dryRunDiffOf(context: ToolUIContext): String? {
+        if (context.tool.isExecuted) return null
+        val path = context.arguments.getStringContent("path") ?: return null
+        val oldText = context.arguments.getStringContent("old_text") ?: return null
+        val newText = context.arguments.getStringContent("new_text") ?: return null
+        val replaceAll = context.arguments.jsonObjectOrNull?.get("replace_all")?.jsonPrimitiveOrNull?.booleanOrNull ?: false
+        val workspaceId = context.workspaceId ?: return null
+        val workspaceRepository: WorkspaceRepository = koinInject()
+        val existingState by produceState<ExistingFileState?>(
+            initialValue = null,
+            context.tool.toolCallId, path,
+        ) {
+            value = try {
+                ExistingFileState.Exists(workspaceRepository.readText(workspaceId, path))
+            } catch (_: Exception) {
+                ExistingFileState.Unavailable
+            }
+        }
+        val existing = existingState ?: return null
+        if (existing !is ExistingFileState.Exists) return null
+        val dryRun = remember(existing.text, oldText, newText, replaceAll) {
+            runCatching { replaceText(existing.text, oldText, newText, replaceAll) }.getOrNull()
+        }
+        return remember(existing.text, dryRun, path) {
+            dryRun?.let { generateUnifiedDiff(existing.text, it.updated, path) }
+        }
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        dryRunDiffOfUsable(context) || argsDiffOf(context) != null
+
+    /** hasSummary 不是 composable——dry-run 可用性近似为「未执行且有完整入参」（Summary 内再异步判定） */
+    private fun dryRunDiffOfUsable(context: ToolUIContext): Boolean =
+        !context.tool.isExecuted &&
+            context.workspaceId != null &&
+            context.arguments.getStringContent("path") != null &&
+            context.arguments.getStringContent("old_text") != null &&
+            context.arguments.getStringContent("new_text") != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        val diff = remember(context) { diffOf(context) } ?: return
+        val dryRun = dryRunDiffOf(context)
+        val diff = dryRun ?: argsDiffOf(context) ?: return
+        val showFallbackTag = dryRun == null && !context.tool.isExecuted
         val stats = remember(diff) { parseDiffStats(diff) }
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -119,6 +174,13 @@ object EditFileToolUI : ToolUIRenderer {
                 style = MaterialTheme.typography.labelSmall,
                 color = DiffRemovedColor,
             )
+            if (showFallbackTag) {
+                Text(
+                    text = stringResource(R.string.tool_ui_dry_run_fallback),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         DiffView(
             diff = diff,
@@ -130,7 +192,7 @@ object EditFileToolUI : ToolUIRenderer {
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
-        val diff = remember(context) { diffOf(context) }
+        val diff = dryRunDiffOf(context) ?: argsDiffOf(context)
         if (diff == null) {
             DefaultToolPreview(context = context)
             return
@@ -164,6 +226,13 @@ object EditFileToolUI : ToolUIRenderer {
                     text = "-${stats.deletions}",
                     style = MaterialTheme.typography.labelMedium,
                     color = DiffRemovedColor,
+                )
+            }
+            if (!context.tool.isExecuted && context.workspaceId != null) {
+                Text(
+                    text = stringResource(R.string.tool_ui_dry_run_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             DiffView(
@@ -217,6 +286,10 @@ object ReadFileToolUI : ToolUIRenderer {
 
 /**
  * 工作空间写入文件: 内容取自入参 (未执行也可预览), 摘要为内容首部, 详情为完整内容
+ *
+ * 审批期 dry-run（peer ⑤②）：写入是**整文件覆盖**，只看新内容看不到会被覆盖掉什么。
+ * 未执行且目标文件已存在时，显示「磁盘现有内容 vs 写入内容」的 diff 并标注覆盖；
+ * 文件不存在（或读不到）时按新文件展示原内容预览。
  */
 object WriteFileToolUI : ToolUIRenderer {
     override val toolName: String = "workspace_write_file"
@@ -234,14 +307,74 @@ object WriteFileToolUI : ToolUIRenderer {
 
     override fun hasSummary(context: ToolUIContext): Boolean = textOf(context) != null
 
+    /** 未执行时读取磁盘现有内容；null = 已执行 / 无 workspace / 读取中 / 读不到 */
+    @Composable
+    private fun existingContentOf(context: ToolUIContext): String? {
+        if (context.tool.isExecuted) return null
+        val path = context.arguments.getStringContent("path") ?: return null
+        val workspaceId = context.workspaceId ?: return null
+        val workspaceRepository: WorkspaceRepository = koinInject()
+        val existingState by produceState<ExistingFileState?>(
+            initialValue = null,
+            context.tool.toolCallId, path,
+        ) {
+            value = try {
+                ExistingFileState.Exists(workspaceRepository.readText(workspaceId, path))
+            } catch (_: Exception) {
+                ExistingFileState.Unavailable
+            }
+        }
+        val state = existingState ?: return null
+        return (state as? ExistingFileState.Exists)?.text
+    }
+
     @Composable
     override fun Summary(context: ToolUIContext) {
         val text = remember(context) { textOf(context) } ?: return
-        FileContentSummary(
-            text = text,
-            path = context.arguments.getStringContent("path"),
-            loading = context.loading,
-        )
+        val existing = existingContentOf(context)
+        val path = context.arguments.getStringContent("path")
+        if (existing != null && path != null) {
+            val current = existing
+            // 覆盖已有文件：diff 是审批决策的关键信息；内容完全相同则无 diff，按新内容预览
+            val diff = remember(current, text, path) { generateUnifiedDiff(current, text, path) }
+            if (diff != null) {
+                val stats = remember(diff) { parseDiffStats(diff) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.tool_ui_write_overwrite),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        text = "+${stats.additions}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = DiffAddedColor,
+                    )
+                    Text(
+                        text = "-${stats.deletions}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = DiffRemovedColor,
+                    )
+                }
+                DiffView(
+                    diff = diff,
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = FILE_SUMMARY_MAX_LINES,
+                    showFileHeader = false,
+                )
+            } else {
+                FileContentSummary(text = text, path = path, loading = context.loading)
+            }
+        } else {
+            FileContentSummary(
+                text = text,
+                path = path,
+                loading = context.loading,
+            )
+        }
     }
 
     @Composable
@@ -251,7 +384,60 @@ object WriteFileToolUI : ToolUIRenderer {
             DefaultToolPreview(context = context)
             return
         }
-        FileContentPreview(path = context.arguments.getStringContent("path"), code = text)
+        val existing = existingContentOf(context)
+        val path = context.arguments.getStringContent("path")
+        if (existing != null && path != null) {
+            val current = existing
+            // 覆盖已有文件: 现有内容 vs 写入内容的完整 diff；内容相同则回退内容预览
+            val diff = remember(current, text, path) { generateUnifiedDiff(current, text, path) }
+            if (diff == null) {
+                FileContentPreview(path = path, code = text)
+                return
+            }
+            val stats = remember(diff) { parseDiffStats(diff) }
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight(0.8f)
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = path ?: toolName,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = stringResource(R.string.tool_ui_write_overwrite),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        text = "+${stats.additions}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = DiffAddedColor,
+                    )
+                    Text(
+                        text = "-${stats.deletions}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = DiffRemovedColor,
+                    )
+                }
+                DiffView(
+                    diff = diff,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            FileContentPreview(path = path, code = text)
+        }
     }
 }
 

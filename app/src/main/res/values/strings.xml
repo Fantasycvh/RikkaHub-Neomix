@@ -1790,5 +1790,8 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="assistant_kb_hint">Bound knowledge bases are available to the AI via the search_knowledge_base tool; nothing is injected into the prompt until the model searches.</string>
   <string name="assistant_kb_manage_hint">Knowledge bases are managed in Settings.</string>
   <string name="assistant_kb_manage">Manage</string>
+  <string name="tool_ui_dry_run_hint">Preview computed from the file on disk (dry run)</string>
+  <string name="tool_ui_dry_run_fallback">reference diff from arguments</string>
+  <string name="tool_ui_write_overwrite">Overwrites existing file</string>
 </resources>
 

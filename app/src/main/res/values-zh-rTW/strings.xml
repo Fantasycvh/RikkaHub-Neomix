@@ -1771,5 +1771,8 @@
   <string name="assistant_kb_hint">綁定的知識庫透過 search_knowledge_base 工具供 AI 按需檢索；模型不檢索時不會向提示詞注入任何內容。</string>
   <string name="assistant_kb_manage_hint">知識庫在「設定 → 知識庫」中管理。</string>
   <string name="assistant_kb_manage">去管理</string>
+  <string name="tool_ui_dry_run_hint">預覽基於磁碟目前內容計算（dry run）</string>
+  <string name="tool_ui_dry_run_fallback">基於入參的參考 diff</string>
+  <string name="tool_ui_write_overwrite">將覆蓋現有檔案</string>
 </resources>
 

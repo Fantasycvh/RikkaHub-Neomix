@@ -367,14 +367,18 @@ class SettingsStore(
                 selectedASRProviderId = preferences[SELECTED_ASR_PROVIDER]?.let { Uuid.parse(it) },
                 // 预设容器：新 key 优先；**旧 key 作回退**（把旧扁平列表包成一个预设），
                 // 老用户原地可用、无需迁移器。写入只落新 key。
-                promptPresets = preferences[PROMPT_PRESETS]?.let {
-                    JsonInstant.decodeFromString<List<PromptPreset>>(it)
-                } ?: preferences[MODE_INJECTIONS]?.let {
-                    listOf(
-                        JsonInstant.decodeFromString<List<PromptInjection.ModeInjection>>(it)
-                            .asSinglePreset()
-                    )
-                } ?: listOf(DEFAULT_MODE_INJECTIONS.asSinglePreset()),
+                // 解码后跑种子迁移（peer ⑤①）：内置条目的未改动旧副本自动升级到最新版。
+                promptPresets = run {
+                    val decodedPresets = preferences[PROMPT_PRESETS]?.let {
+                        JsonInstant.decodeFromString<List<PromptPreset>>(it)
+                    } ?: preferences[MODE_INJECTIONS]?.let {
+                        listOf(
+                            JsonInstant.decodeFromString<List<PromptInjection.ModeInjection>>(it)
+                                .asSinglePreset()
+                        )
+                    } ?: listOf(DEFAULT_MODE_INJECTIONS.asSinglePreset())
+                    migrateSeedPresetEntries(decodedPresets) ?: decodedPresets
+                },
                 lorebooks = preferences[LOREBOOKS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
