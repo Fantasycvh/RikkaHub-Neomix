@@ -137,15 +137,15 @@ master 已 ff-only 快进至 `4e4bfa62`（同步于 10-02）。**核心事件：
 | `620e38cc` **JsonTree 弹窗长按崩溃（#1977）** | BottomSheet 在独立窗口，沿用外层 `SelectionRegistrar` 长按抛 hierarchy 异常 → sheet 内自包一层 `SelectionContainer` | ✅ **已吸收 `799522f2`（2026-10-02）**：fork 同样中招（`LogPage.kt:458` 在 `:384` 的 `SelectionContainer` 内），改法与上游逐字等价；未修版真机复现 FATAL、修复版长按正常 |
 | `2d5c51bd` 复制过大请求体剪贴板闪退（#1980） | 复制按钮 try/catch `TransactionTooLargeException` + toast | **fork 已覆盖**：fork `LogPage` 请求体走 `JsonTree` 展示（无复制按钮，原崩溃路径不存在）；fork 的 `ContextUtil.writeClipboardText` 本就 `runCatching` + toast（RuntimeException 子类全兜住） |
 | `4e4bfa62` **OpenAI 图片生成自定义分辨率被误丢弃（#1978）** | Grok 判断改解析 host（`x.ai` 及子域名，防中转域名 `xxx-max.ai` 误判）+ `size=auto` 不写入请求体 | ✅ **已吸收（2026-10-02）**：判定抽成纯函数 `isXaiHost`/`shouldSendImageSize`（+7 单测），fork 另把「auto 不写」同规则用于 `/images/edits`（上游未改）；真机请求体实测三例 |
-| `3443dd45` 注册 Claude Opus/Sonnet 5.5，移除 Claude 3 | 5.5 两条注册（`notTokens` 排除 4 代、1M context）+ 删 3.5/3.7 | **建议吸收注册（小）**：fork 注册表仍有 3.5/3.7（删不删随意——fork 有提供商墓碑哲学，注册项不伤人）；5.5 补上。注意 fork 注册表是重改区，手工加两条 |
-| `3a9ae690` 注册 Gemini 4，推理参数用 `thinkingLevel` | GEMINI_4 注册 + GoogleProvider 推理参数按模型切换 `thinkingLevel`/`thinkingBudget` | **中（半适配）**：注册条目可直套；`thinkingLevel` 是 fork 没有的 Model 概念（grep 零命中），要么引入字段、要么先只加注册不加参数切换。GEMINI_4 的 `tokens("gemini","4")` 会吞掉 `gemini-4*` 全系命名，与 fork 现有 GEMINI_3 系列匹配顺序需核对 |
+| `3443dd45` 注册 Claude Opus/Sonnet 5.5，移除 Claude 3 | 5.5 两条注册（`notTokens` 排除 4 代、1M context）+ 删 3.5/3.7 | ✅ **已吸收（2026-10-02，`5a25a42a`）**：5.5 两条已注册（IN/ABILITY/1M context 三层断言）；**有意保留** 3.5/3.7——删掉会让 `claude-3.5-sonnet` 转投 `CLAUDE_SONNET_5` 并凭空拿到 1M 上下文，保留时更具体的 3.5 条目按匹配度取胜。另顺带补上此前漏吸收的 `aa487c8c`（Claude 5 两条） |
+| `3a9ae690` 注册 Gemini 4，推理参数用 `thinkingLevel` | GEMINI_4 注册 + GoogleProvider 推理参数按模型切换 `thinkingLevel`/`thinkingBudget` | ✅ **已吸收（2026-10-02，`5a25a42a`）**：GEMINI_4 进 GEMINI_SERIES 与 ALL_MODELS；GoogleProvider 抽出 `useThinkingLevel = 3 系列 ∪ GEMINI_4` 后两处分支改用它——**这里 fork 与上游本就同形**（fork 早已有 `GEMINI_3_SERIES` 的 thinkingLevel 分支，只是没有 GEMINI_4），所以「thinkingLevel 是 fork 没有的 Model 概念」一说被证伪：它指上游 **Model 字段**层面的推理参数切换，与本次请求体分支无关，本项无需引入新概念。`tokens("gemini","4")` 的吞噬面已用测试钉住（`04` 之类两位数 token 不算 4） |
 | `7a53065a` OAuth 回调改 `localhost`（#1972，WAF 拦 IPv4 403） | redirect URI 主机 127.0.0.1 → localhost，回调服务器仍绑 127.0.0.1 | **不适用**：fork MCP OAuth 用自定义 scheme `rikkahub://mcp-oauth-callback`（无 loopback 服务器），请求体不含 IPv4 主机 |
 | `4ba5d79f` + `b8e0fec4` MCP OAuth 增强（#1979） | 受保护资源元数据缺失回退 origin + 首次 401 触发 OAuth；CIMD 文档作 client_id | **暂缓（中）**：fork `McpOAuthCoordinator:138` 已有 protectedResource 发现，回退逻辑与 CIMD 是增量增强；fork OAuth 实现已与上游分叉（自定义 scheme），手工适配成本 > 收益，等有真实服务器撞上再说 |
 | `2cd62ad2` **Gemini Interactions API** | 新 API 面（576+289 行 API/解码器 + 499 行测试）：store=false 无状态、thought 签名按新 key 回传、支持搜索/URL context/图片输出 | **暂缓（大）**：fork `GoogleProvider` 是重度定制区（工具捆绑/内联重实现），叠加 1400+ 行新 API 面手工适配成本高；仅当上游 generateContent 路线被 Google 弃用时才值得立项 |
 | `282b85f2` 复制助手可同时复制记忆 | `copyAssistant(assistant, copyMemories)` + `MemoryRepository.copyMemories` + AssistantPage UI | **可选（小–中）**：fork `AssistantVM:89` 无此参数。有价值（fork 记忆体系重度使用），要点=Room 侧按 fromAssistantId 批量 INSERT，UI 加确认项 |
 | `9435b8a2` / `447bb7e8` | skills 文档更新 / 版本 bump 2.5.6 | 不跟（master 同步已带入 .agents 文档；版本号体系无关） |
 
-**吸收优先级**：~~`620e38cc`~~（已吸收 `799522f2`）→ ~~`4e4bfa62`~~（**已吸收**）→ `3443dd45`/`3a9ae690` 注册条目（半小时，thinkingLevel 参数切换可拆出去）→ `282b85f2`（可选）→ `654a5e1f` 头去重语义（可选）→ `2cd62ad2`/`#1979`（暂缓）。
+**吸收优先级**：~~`620e38cc`~~（已吸收 `799522f2`）→ ~~`4e4bfa62`~~（**已吸收**）→ ~~`3443dd45`/`3a9ae690`~~（**已吸收**）→ `282b85f2`（可选）→ `654a5e1f` 头去重语义（可选）→ `2cd62ad2`/`#1979`（暂缓）。
 
 ### 2026-09-28 同步：2.5.2 → 2.5.5（`458c16df` → `00c8d53a`，36 提交）
 
