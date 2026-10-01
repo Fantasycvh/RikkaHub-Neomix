@@ -51,6 +51,10 @@ class MemoryRepositoryTest {
             return id.toLong()
         }
 
+        override suspend fun insertMemories(memories: List<MemoryEntity>) {
+            memories.forEach { rows.add(it.copy(id = nextId++)) }
+        }
+
         override suspend fun updateMemory(memory: MemoryEntity) {
             val i = rows.indexOfFirst { it.id == memory.id }
             if (i >= 0) rows[i] = memory
@@ -253,5 +257,58 @@ class MemoryRepositoryTest {
             "high-importance memory was evicted by low-importance newcomers",
             remaining.any { it.content == "important identity" },
         )
+    }
+
+    // ---- copyMemories（复制助手时整批搬运记忆，上游 282b85f2） ----
+
+    @Test
+    fun `copyMemories 搬运内容与重要度，并给出全新的对外 id 与写入时刻`() = runBlocking {
+        repo.addMemory("src", "likes tea", importance = 0.9f, now = 1_000L)
+        repo.addMemory("src", "works in the morning", importance = 0.3f, now = 1_000L)
+
+        val copied = repo.copyMemories("src", "dst", now = 5_000L)
+
+        assertEquals(2, copied)
+        val dstMemories = repo.getMemoriesOfAssistant("dst")
+        assertEquals(listOf("likes tea", "works in the morning"), dstMemories.map { it.content })
+        assertEquals(listOf(0.9f, 0.3f), dstMemories.map { it.importance })
+        // updatedAt 取当下：沿用旧时间会让复制来的记忆一上来就被算成陈旧而沉底
+        assertTrue("updatedAt 应为复制时刻", dstMemories.all { it.updatedAt == 5_000L })
+        // 对外 opaque id 必须全新：两个助手共用同一个 token 会让审批/删除指到别人那条
+        val srcIds = repo.getMemoriesOfAssistant("src").map { it.id }.toSet()
+        assertTrue("copied ids must differ from source", dstMemories.none { it.id in srcIds })
+    }
+
+    @Test
+    fun `copyMemories 后删副本的一条不会动到源助手`() = runBlocking {
+        repo.addMemory("src", "shared fact")
+        repo.copyMemories("src", "dst")
+
+        val copiedId = repo.getMemoriesOfAssistant("dst").single().id
+        repo.deleteMemory(copiedId)
+
+        assertEquals(0, repo.getMemoriesOfAssistant("dst").size)
+        assertEquals("源助手必须原样保留", 1, repo.getMemoriesOfAssistant("src").size)
+    }
+
+    @Test
+    fun `copyMemories 对空源或自身复制是 no-op`() = runBlocking {
+        assertEquals(0, repo.copyMemories("empty", "dst"))
+
+        repo.addMemory("src", "only one")
+        assertEquals(0, repo.copyMemories("src", "src"))
+        assertEquals(1, repo.getMemoriesOfAssistant("src").size)
+        assertEquals(0, repo.getMemoriesOfAssistant("dst").size)
+    }
+
+    @Test
+    fun `copyMemories 同样受 200 条上限约束`() = runBlocking {
+        // 源侧本身不会超过上限，但复制实现必须复用同一条裁剪路径（同一不变式只有一处实现）
+        val now = 1_000_000L
+        repeat(MemoryRepository.MAX_MEMORY_COUNT) { i ->
+            repo.addMemory("src", "note $i", importance = 0.5f, now = now)
+        }
+        repo.copyMemories("src", "dst", now = now)
+        assertEquals(MemoryRepository.MAX_MEMORY_COUNT, repo.getMemoriesOfAssistant("dst").size)
     }
 }

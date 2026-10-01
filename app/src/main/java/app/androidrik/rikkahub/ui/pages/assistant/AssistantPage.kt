@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -54,6 +56,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
@@ -101,6 +104,9 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
     var selectedTagIds by remember { mutableStateOf(emptySet<Uuid>()) }
     // 操作菜单状态
     var actionSheetAssistant by remember { mutableStateOf<Assistant?>(null) }
+    // 待复制的助手（仅在有独立记忆时才需要问「要不要一并复制」）+ 勾选状态
+    var cloneTarget by remember { mutableStateOf<Assistant?>(null) }
+    var cloneWithMemories by remember { mutableStateOf(false) }
 
     // 根据搜索关键词和选中的标签过滤助手
     val filteredAssistants = remember(settings.assistants, selectedTagIds, searchQuery) {
@@ -263,14 +269,54 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
 
     // 操作菜单 Bottom Sheet
     actionSheetAssistant?.let { assistant ->
+        // 该助手自己的记忆条数决定「要不要问」——所以这里必须真的订阅它那份（全局记忆时是共享库）
+        val memories by vm.getMemories(assistant).collectAsStateWithLifecycle(
+            initialValue = emptyList(),
+        )
         AssistantActionSheet(
             assistant = assistant,
             onDismiss = { actionSheetAssistant = null },
             onCopy = {
-                vm.copyAssistant(assistant)
+                // 走全局记忆的助手没有「自己的记忆」可带（副本本来就读同一个库），直接复制；
+                // 没有任何记忆时也没有可问的，同样直接复制（上游 282b85f2 的同一取舍）
+                if (!assistant.useGlobalMemory && memories.isNotEmpty()) {
+                    cloneWithMemories = false // 默认不勾：复制记忆是更大的动作，得用户主动选
+                    cloneTarget = assistant
+                } else {
+                    vm.copyAssistant(assistant)
+                }
                 actionSheetAssistant = null
             }
         )
+    }
+
+    RikkaConfirmDialog(
+        show = cloneTarget != null,
+        title = stringResource(R.string.assistant_page_clone),
+        confirmText = stringResource(R.string.confirm),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            cloneTarget?.let { vm.copyAssistant(it, copyMemories = cloneWithMemories) }
+            cloneTarget = null
+        },
+        onDismiss = { cloneTarget = null },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = cloneWithMemories,
+                    role = Role.Checkbox,
+                    onValueChange = { cloneWithMemories = it },
+                ),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // onCheckedChange = null：点击整行即可切换，Checkbox 自身不再单独响应，
+            // 否则一行上会有两个可点区域（语义重复，无障碍读屏也会念两遍）
+            Checkbox(checked = cloneWithMemories, onCheckedChange = null)
+            Text(stringResource(R.string.assistant_page_clone_with_memories))
+        }
     }
 }
 

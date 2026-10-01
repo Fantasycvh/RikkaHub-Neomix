@@ -86,7 +86,13 @@ class AssistantVM(
         }
     }
 
-    fun copyAssistant(assistant: Assistant) {
+    /**
+     * 复制助手。
+     *
+     * @param copyMemories 是否把它**独立的**记忆一并复制到副本（上游 `282b85f2`）；
+     *   走全局记忆的助手无所谓「它的记忆」，调用方此时传 false。
+     */
+    fun copyAssistant(assistant: Assistant, copyMemories: Boolean = false) {
         viewModelScope.launch {
             val settings = settings.value
             val copiedAssistant = assistant.copy(
@@ -99,6 +105,14 @@ class AssistantVM(
                     assistants = settings.assistants.plus(copiedAssistant)
                 )
             )
+            if (copyMemories) {
+                // 先落助手再搬记忆：顺序反了会留下「记忆的 owner 还不存在」的中间态，
+                // 而记忆页按助手过滤查询，中间态下这些行是查不到的孤儿。
+                memoryRepository.copyMemories(
+                    fromAssistantId = assistant.id.toString(),
+                    toAssistantId = copiedAssistant.id.toString(),
+                )
+            }
         }
     }
 

@@ -62,6 +62,7 @@
   <string name="assistant_page_chat_model">Модель чата</string>
   <string name="assistant_page_chat_model_desc">Установить модель чата по умолчанию для ассистента. Если не задано, будет использована глобальная модель чата по умолчанию</string>
   <string name="assistant_page_clone">Клонировать</string>
+  <string name="assistant_page_clone_with_memories">Также копировать память</string>
   <string name="assistant_page_confirm">Подтвердить</string>
   <string name="assistant_page_creative">Творческий</string>
   <string name="assistant_page_current_assistant">Текущий ассистент</string>

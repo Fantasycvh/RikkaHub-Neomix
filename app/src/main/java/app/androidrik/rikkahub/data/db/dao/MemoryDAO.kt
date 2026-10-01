@@ -39,6 +39,10 @@ interface MemoryDAO {
     @Insert
     suspend fun insertMemory(memory: MemoryEntity): Long
 
+    /** 批量插入（复制助手时整批搬运记忆，上游 `282b85f2`）。 */
+    @Insert
+    suspend fun insertMemories(memories: List<MemoryEntity>)
+
     @Update
     suspend fun updateMemory(memory: MemoryEntity)
 

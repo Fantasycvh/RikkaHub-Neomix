@@ -155,22 +155,67 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
             updatedAt = now,
         )
         val insertedId = memoryDAO.insertMemory(newMemory).toInt()
-        // 200 条上限：超限按**分数最低**淘汰，防记忆无限膨胀（turbo 06baee4）。
-        // 改用分数（而非旧的「最旧」）：与入选口径一致——否则一条「重要但很久没改」的
-        // 记忆会被新写入的次要记忆挤掉，与打分校准的意图相悖。
-        val all = memoryDAO.getMemoriesOfAssistant(assistantId)
-        if (all.size > MAX_MEMORY_COUNT) {
-            val excess = all.size - MAX_MEMORY_COUNT
-            val victims = all
-                .sortedWith(
-                    compareBy<MemoryEntity> { memoryScoreBucket(it.toModel(), now) }
-                        .thenBy { it.id } // 同桶内先淘汰更旧的，保证确定性
-                )
-                .take(excess)
-            victims.forEach { memoryDAO.deleteMemory(it.id) }
-            Log.i(TAG, "addMemory: evicted $excess lowest-score memory(ies) over $MAX_MEMORY_COUNT cap")
-        }
+        enforceMaxCount(assistantId, now)
         return newMemory.copy(id = insertedId).toModel()
+    }
+
+    /**
+     * 把一个助手的独立记忆整批复制到另一个助手（「复制助手时同时复制记忆」，上游 `282b85f2`）。
+     *
+     * **不复用 [addMemory]**：那是「逐条内容去重 + 逐条淘汰 + 幂等」的单条写入路径，
+     * 复制是**批量**语义（源侧内容本就互不相同，逐条插入还会反复触发 200 条上限扫描）。
+     * 但三条不变式照搬：
+     * - **新的 publicId**：对外 opaque id 不能两个助手共用——否则审批卡片/删除会指到别人那条；
+     * - **保留 importance**：它是记忆自身的属性，注入打分靠它，丢了就退化成纯时效衰减；
+     * - **updatedAt 取当下**：时效衰减的时间基准；沿用源时间会让复制来的记忆一上来就被当成陈旧。
+     *
+     * @return 实际复制条数（源助手没有独立记忆时为 0）。
+     */
+    suspend fun copyMemories(
+        fromAssistantId: String,
+        toAssistantId: String,
+        now: Long = System.currentTimeMillis(),
+    ): Int {
+        if (fromAssistantId == toAssistantId) return 0
+        val memories = memoryDAO.getMemoriesOfAssistant(fromAssistantId)
+        if (memories.isEmpty()) return 0
+
+        val usedIds = mutableSetOf<String>()
+        val copies = memories.map { memory ->
+            var publicId = generatePublicId()
+            // generatePublicId 只查库，查不到本次批次内刚生成的 id ⇒ 这里补一道批内去重
+            while (!usedIds.add(publicId)) publicId = generatePublicId()
+            MemoryEntity(
+                assistantId = toAssistantId,
+                content = memory.content,
+                publicId = publicId,
+                importance = memory.importance,
+                updatedAt = now,
+            )
+        }
+        memoryDAO.insertMemories(copies)
+        enforceMaxCount(toAssistantId, now)
+        Log.i(TAG, "copyMemories: copied ${copies.size} memory(ies) from $fromAssistantId to $toAssistantId")
+        return copies.size
+    }
+
+    /**
+     * 200 条上限：超限按**分数最低**淘汰，防记忆无限膨胀（turbo 06baee4）。
+     * 用分数（而非旧的「最旧」）：与入选口径一致——否则一条「重要但很久没改」的记忆
+     * 会被新写入的次要记忆挤掉，与打分校准的意图相悖。
+     */
+    private suspend fun enforceMaxCount(assistantId: String, now: Long) {
+        val all = memoryDAO.getMemoriesOfAssistant(assistantId)
+        if (all.size <= MAX_MEMORY_COUNT) return
+        val excess = all.size - MAX_MEMORY_COUNT
+        val victims = all
+            .sortedWith(
+                compareBy<MemoryEntity> { memoryScoreBucket(it.toModel(), now) }
+                    .thenBy { it.id } // 同桶内先淘汰更旧的，保证确定性
+            )
+            .take(excess)
+        victims.forEach { memoryDAO.deleteMemory(it.id) }
+        Log.i(TAG, "evicted $excess lowest-score memory(ies) over $MAX_MEMORY_COUNT cap")
     }
 
     /** 按对外 opaque id 删除（id 兼容旧的自增编号引用）。 */

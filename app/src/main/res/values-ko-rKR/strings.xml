@@ -62,6 +62,7 @@
   <string name="assistant_page_chat_model">채팅 모델</string>
   <string name="assistant_page_chat_model_desc">어시스턴트의 기본 채팅 모델 설정. 미설정 시 전역 기본 채팅 모델 사용</string>
   <string name="assistant_page_clone">복제</string>
+  <string name="assistant_page_clone_with_memories">기억도 함께 복사</string>
   <string name="assistant_page_confirm">확인</string>
   <string name="assistant_page_creative">창의적</string>
   <string name="assistant_page_current_assistant">현재 어시스턴트</string>

@@ -62,6 +62,7 @@
   <string name="assistant_page_chat_model">チャットモデル</string>
   <string name="assistant_page_chat_model_desc">アシスタントのデフォルトチャットモデルを設定します。設定しない場合は、グローバルデフォルトチャットモデルが使用されます</string>
   <string name="assistant_page_clone">複製</string>
+  <string name="assistant_page_clone_with_memories">記憶もコピー</string>
   <string name="assistant_page_confirm">確認</string>
   <string name="assistant_page_creative">創造的</string>
   <string name="assistant_page_current_assistant">現在のアシスタント</string>

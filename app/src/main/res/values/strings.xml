@@ -64,6 +64,7 @@
   <string name="assistant_page_fallback_model">Fallback model</string>
   <string name="assistant_page_fallback_model_desc">Used when the primary model fails after retries (e.g. provider outage). Leave empty to disable</string>
   <string name="assistant_page_clone">Clone</string>
+  <string name="assistant_page_clone_with_memories">Also copy memories</string>
   <string name="assistant_page_confirm">Confirm</string>
   <string name="assistant_page_creative">Creative</string>
   <string name="assistant_page_current_assistant">Current Assistant</string>
