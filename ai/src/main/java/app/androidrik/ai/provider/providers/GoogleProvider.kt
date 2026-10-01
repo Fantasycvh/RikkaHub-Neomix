@@ -132,7 +132,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 request = Request.Builder()
                     .url(url)
                     .get()
-                    .applyCustomHeaders(providerSetting.customHeaders)
+                    .applyCustomHeaders(providerSetting)
                     .build()
             )
             val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
@@ -184,12 +184,11 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             providerSetting = providerSetting,
             request = Request.Builder()
                 .url(url)
-                .headers(params.customHeaders.toHeaders())
-                .post(
+                    .post(
                     json.encodeToString(requestBody).toRequestBody("application/json".toMediaType())
                 )
                 .configureReferHeaders(providerSetting.baseUrl)
-                .applyCustomHeaders(providerSetting.customHeaders)
+                .applyCustomHeaders(providerSetting, params.customHeaders)
                 .build()
         )
 
@@ -241,12 +240,11 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             providerSetting = providerSetting,
             request = Request.Builder()
                 .url(url)
-                .headers(params.customHeaders.toHeaders())
-                .post(
+                    .post(
                     json.encodeToString(requestBody).toRequestBody("application/json".toMediaType())
                 )
                 .configureReferHeaders(providerSetting.baseUrl)
-                .applyCustomHeaders(providerSetting.customHeaders)
+                .applyCustomHeaders(providerSetting, params.customHeaders)
                 .build()
         )
 

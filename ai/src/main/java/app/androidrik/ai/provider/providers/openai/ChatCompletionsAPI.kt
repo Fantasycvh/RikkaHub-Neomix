@@ -92,11 +92,10 @@ class ChatCompletionsAPI(
 
         val request = Request.Builder()
             .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
-            .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}")
             .configureReferHeaders(providerSetting.baseUrl)
-            .applyCustomHeaders(providerSetting.customHeaders)
+            .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
         Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
@@ -151,12 +150,11 @@ class ChatCompletionsAPI(
 
         val request = Request.Builder()
             .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
-            .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}")
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
-            .applyCustomHeaders(providerSetting.customHeaders)
+            .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
         Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")

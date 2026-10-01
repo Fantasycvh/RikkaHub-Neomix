@@ -89,7 +89,6 @@ class ResponseAPI(
         )
         val request = Request.Builder()
             .url(apiEndpoint(providerSetting.baseUrl, providerSetting.responsesPath))
-            .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(
                 "Authorization",
@@ -97,7 +96,7 @@ class ResponseAPI(
             )
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
-            .applyCustomHeaders(providerSetting.customHeaders)
+            .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
         Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
@@ -129,14 +128,13 @@ class ResponseAPI(
         )
         val request = Request.Builder()
             .url(apiEndpoint(providerSetting.baseUrl, providerSetting.responsesPath))
-            .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(
                 "Authorization",
                 "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}"
             )
             .configureReferHeaders(providerSetting.baseUrl)
-            .applyCustomHeaders(providerSetting.customHeaders)
+            .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
         Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")

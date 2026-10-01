@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import app.androidrik.ai.provider.CustomBody
 import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.ai.provider.ProviderSetting
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
@@ -21,8 +22,33 @@ fun List<CustomHeader>.toHeaders(): Headers {
     }.build()
 }
 
-fun Request.Builder.applyCustomHeaders(headers: List<CustomHeader>): Request.Builder {
-    headers.filter { it.name.isNotBlank() }.forEach { addHeader(it.name, it.value) }
+/**
+ * 合并「提供商级」与「请求级（助手/模型）」自定义请求头：**提供商级优先级最低**，
+ * 被同名的请求级覆盖，且同名只保留一个值（上游 `654a5e1f` 的语义）。
+ */
+fun ProviderSetting.mergeCustomHeaders(requestHeaders: List<CustomHeader> = emptyList()): Headers {
+    val requestNames = requestHeaders.map { it.name.lowercase() }
+    return (customHeaders.filterNot { it.name.lowercase() in requestNames } + requestHeaders).toHeaders()
+}
+
+/**
+ * 应用自定义请求头（提供商级 ∪ 请求级，见 [mergeCustomHeaders]）。
+ *
+ * **刻意用 `header()`（覆盖）而不是 `addHeader()`（追加）**：同名头在链路上出现两次时，
+ * 服务端取哪一个是不确定的（不少中转站直接判为非法请求）。覆盖语义保证每个名字只有一个值，
+ * 且自定义头能显式盖掉已设置的同名内置头（`Authorization`/`Content-Type`/`x-api-key` 等）——
+ * 用户既然写了这个头，意图就是「按我的来」。
+ *
+ * ⚠️ 因此调用方必须把它放在请求构建的**最后一步**（`.build()` 之前）：内置头在它之前设置才可能被盖掉。
+ */
+fun Request.Builder.applyCustomHeaders(
+    providerSetting: ProviderSetting,
+    requestHeaders: List<CustomHeader> = emptyList(),
+): Request.Builder {
+    val merged = providerSetting.mergeCustomHeaders(requestHeaders)
+    for (index in 0 until merged.size) {
+        header(merged.name(index), merged.value(index))
+    }
     return this
 }
 

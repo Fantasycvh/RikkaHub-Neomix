@@ -88,7 +88,7 @@ class OpenAIProvider(
                 .url("${providerSetting.baseUrl}/models")
                 .addHeader("Authorization", "Bearer $key")
                 .get()
-                .applyCustomHeaders(providerSetting.customHeaders)
+                .applyCustomHeaders(providerSetting)
                 .build()
 
             val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
@@ -123,7 +123,7 @@ class OpenAIProvider(
                 .url(url)
                 .addHeader("Authorization", "Bearer $key")
                 .get()
-                .applyCustomHeaders(providerSetting.customHeaders)
+                .applyCustomHeaders(providerSetting)
                 .build()
             val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
             if (!response.isSuccessful) {
@@ -150,7 +150,7 @@ class OpenAIProvider(
                             .url(url)
                             .addHeader("Authorization", "Bearer $key")
                             .get()
-                            .applyCustomHeaders(providerSetting.customHeaders)
+                            .applyCustomHeaders(providerSetting)
                             .build()
                         val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
                         if (!response.isSuccessful) {
@@ -244,11 +244,10 @@ class OpenAIProvider(
 
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/embeddings")
-            .headers(params.customHeaders.toHeaders())
             .addHeader("Authorization", "Bearer $key")
             .addHeader("Content-Type", "application/json")
             .post(requestBody.toRequestBody("application/json".toMediaType()))
-            .applyCustomHeaders(providerSetting.customHeaders)
+            .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
         val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
@@ -305,12 +304,11 @@ class OpenAIProvider(
 
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/images/generations")
-            .headers(params.customHeaders.toHeaders())
             .addHeader("Authorization", "Bearer $key")
             .addHeader("Content-Type", "application/json")
             .post(requestBody.toRequestBody("application/json".toMediaType()))
             .configureReferHeaders(providerSetting.baseUrl)
-            .applyCustomHeaders(providerSetting.customHeaders)
+            .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
         val items = withContext(Dispatchers.IO) {
@@ -373,11 +371,10 @@ class OpenAIProvider(
 
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/images/edits")
-            .headers(params.customHeaders.toHeaders())
             .addHeader("Authorization", "Bearer $key")
             .post(bodyBuilder.build())
             .configureReferHeaders(providerSetting.baseUrl)
-            .applyCustomHeaders(providerSetting.customHeaders)
+            .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
         val items = withContext(Dispatchers.IO) {

@@ -55,6 +55,8 @@ dependencies {
 
     // tests
     testImplementation(libs.junit)
+    // 只在测试里起本地服务端：验证「真实请求链路上的请求头」而不必碰真机配置
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
