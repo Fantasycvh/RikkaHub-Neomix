@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -66,15 +67,24 @@ fun JsonTree(
             onDismissRequest = { selectedString = null },
             sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
         ) {
-            Text(
-                text = content,
-                fontFamily = JetbrainsMono,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                style = MaterialTheme.typography.bodySmall
-            )
+            // **必须自包一层 SelectionContainer**（上游 620e38cc / #1977）：
+            // ModalBottomSheet 在**独立窗口**里，若沿用调用方的 SelectionRegistrar，
+            // 长按时会跨窗口换算坐标并抛
+            // `IllegalArgumentException: layouts are not part of the same hierarchy` ⇒ 闪退。
+            // 触发条件=本组件被渲染在某个 SelectionContainer 内（典型：LogPage 的请求日志详情
+            // 整块包在 SelectionContainer 里），点字符串打开本 sheet 后长按即崩。
+            // 自包之后既不再崩，sheet 内的文本也仍可选择复制。
+            SelectionContainer {
+                Text(
+                    text = content,
+                    fontFamily = JetbrainsMono,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
         }
     }
 }
