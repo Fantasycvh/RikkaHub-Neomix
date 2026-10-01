@@ -715,3 +715,12 @@ data class ApiKeyEntry(
   - **注意生效时机**：注册表只在**拉取/新增模型**时灌入 `inputModalities`/`outputModalities`/`abilities`（`SettingProviderDetailPage` 三处 `MODEL_*` 消费点），**不会回改已存模型的字段**——所以已有模型要等下一次刷新列表/重新添加才会拿到新元数据。
   - **验证**：`ModelRegistryTest` +1 项（10 项；逐条钉住视觉输入与工具/推理，并确认更短的同名条目没被顺带带上视觉，如 `deepseek-v4-flash` 仍是纯文本、`mimo-v2` 仍无视觉）；新增 `AIIconMatcherTest` 3 项（muse 系走 Meta 图标、既有 Meta 匹配不变、`muse` 不误伤其它名字）；app 1133（+3）/ ai 207（+1）单测 0 失败。
   - **留档的教训**：`git merge-base --is-ancestor` 只能说明「提交在历史里」，**不能说明 fork 的文件真的含它**（fork 的注册表是手工重改区，同步时会整段漏掉某个文件）。判断「吸收没有」必须以**代码等价性**为准；这次用「定义名全量比对」把注册表这一类缺口一次扫干净。
+
+- 2026-10-02：**可选 ④ 两项一并落地：复制助手带记忆（`27b35815`）＋ 请求头同名去重语义（`a3394e7a`）**——上游同步待吸收清单的最后两项，至此 10-02 同步（15 提交）里**可吸收项全部落地**。
+  - **①复制助手可同时复制记忆（上游 `282b85f2` / #1958）**：助手有独立记忆时，点「复制」先弹确认框、可勾「同时复制记忆」（**默认不勾**——复制记忆是更大的动作，得用户主动选）；走全局记忆的助手没有「自己的记忆」可带，没有记忆时也没有可问的，两种情况都直接复制。
+    - **fork 与上游的差异全在落库细节**（照抄上游会写出坏数据）：①**新的 publicId**——对外 opaque id 不能两个助手共用，否则审批卡片/删除会指到别人那条；②**保留 importance**——它是记忆自身的属性，注入打分靠它，丢了就退化成纯时效衰减；③**updatedAt 取当下**——时效衰减的时间基准，沿用源时间会让复制来的记忆一上来就被当成陈旧而沉底。另外把 200 条上限的淘汰抽成 `enforceMaxCount`，与 `addMemory` 共用一份实现（同一不变式只有一处）。**不复用 `addMemory`**：那是逐条去重+逐条淘汰的单条路径，复制是批量语义。
+    - **验证**：`MemoryRepositoryTest` +4（共 21 项）；**真机走通完整链路**——复制「日常和学习」并勾选 → 副本「日常和学习 (Clone)」拿到 1 条记忆，content/importance 与源一致、`public_id` 不同（`224ec479` vs `15a484cb`）、`updated_at` 为复制时刻；**删除副本后其记忆随之消失**（记忆总条数回到 54），源助手那条始终未动。
+  - **②自定义请求头不再产生同名重复（上游 `654a5e1f` 的语义）**：fork 本就有「提供商级自定义头」字段与 UI，缺的是**应用方式**——请求级头用 `.headers()` 铺一遍、提供商级头再逐条 `addHeader()` 追加，于是同名头在 wire 上出现两个值，而服务端取哪个是不确定的（不少中转站直接判非法请求）。
+    - **改法**：新增 `ProviderSetting.mergeCustomHeaders(requestHeaders)`（提供商级优先级最低、被同名请求级覆盖、大小写不敏感、空名丢弃）+ 单一应用入口 `applyCustomHeaders(providerSetting, requestHeaders)`（用 `header()` **覆盖**而非 `addHeader()` 追加 ⇒ 每个名字只剩一个值，且自定义头能显式盖掉内置的 `Authorization`/`Content-Type`/`x-api-key`）；**19 个调用点统一改造**，带 params 的传 `params.customHeaders`、模型列表/余额这类无 params 的只传 provider；**旧的双参数入口直接删除**——留着就还有第二条追加语义的路径可走。
+    - **验证分两层**：`RequestHeadersTest` 5 项钉住合并/覆盖语义；另新增 **`ChatCompletionsAPIHeaderTest`（MockWebServer）**——起本地服务端走**真实请求链路** `ChatCompletionsAPI.generateText`，断言 wire 上 `Authorization` 只剩自定义那一个值、同名 `X-Dup` 由请求级胜出、两边独有的头都在。**为什么值得为它加测试依赖**（ai 模块 `mockwebserver3-junit4`，仅 `testImplementation`）：本次改的正是 19 个调用点的**接线**，纯函数单测证明不了「接对了」；一开始试过真机验证（给某个提供商临时加头、看请求日志），但那条路子又慢又脆——设备上唯一带自定义头的提供商域名不通、请求根本到不了网络拦截器，且在用户配置里来回改本身有风险，于是换成 MockWebServer：**真实代码路径 + 确定性 + 零设备配置改动**。真机配置已确认恢复原样（该提供商只剩它原有的 `User-Agent`）。
+  - **验证汇总**：app 1137 / ai 213 单测 0 失败；两个功能都在真机验证过（记忆复制走完整 UI 链路；请求头用 MockWebServer 覆盖真实链路，设备侧只做了配置还原）。

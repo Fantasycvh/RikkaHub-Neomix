@@ -133,7 +133,7 @@ master 已 ff-only 快进至 `4e4bfa62`（同步于 10-02）。**核心事件：
 |---|---|---|
 | `cf79246b` **MCP `$defs`/`$ref` 内联展开（#1974）** | 新 `McpToolSchema.kt`（89 行）+ 153 行测试：任意 `#/` JSON Pointer（含 `#/definitions`）、循环引用回自身处只保留 `type`、同级键覆盖、只沿 schema 关键字遍历（literal 数据不动） | **已先行落地（`95fe3e5b`），无需吸收**。fork 的 `McpSchemaRefs.kt` 与之等价（同级键优先/环检测/宽松降级全有）；两点边缘差异：上游对循环引用保留 `type`（fork 降级 `{}`）、上游支持任意 `#/` 指针（fork 仅 `#/$defs/`）。均为极端场景，fork 版已真机验证，不回吸 |
 | `d5f0039b` **生成标题找不到快速模型给错误提示（#1975）** | 两处静默 `return@runCatching` → `throw IllegalStateException`（新文案） | **已先行落地且更优（`95fe3e5b` 同批）**：fork 版本地化文案 + `addConfigErrorOnce` 错误卡 + 返回 `started` 让调用方补 toast（上游只弹错误卡） |
-| `654a5e1f` 提供商自定义请求头（#1952） | `ProviderSetting.customHeaders` + 高级设置 tab + `Request.kt` `mergeCustomHeaders`（**提供商头优先级最低，被助手/模型同名头覆盖**）+ 49 行测试 | **fork 已有全套**（字段 + ProviderDetailPage 高级设置 tab + 各 provider `applyCustomHeaders`）。**一处语义差异可小吸收**：fork 用 `addHeader` 追加，助手/模型与提供商同名头会**重复发送**（服务器行为未定）；上游是 filter 去重 + 请求级覆盖。中转站对重复头（尤其 authorization）敏感时才值得做 |
+| `654a5e1f` 提供商自定义请求头（#1952） | `ProviderSetting.customHeaders` + 高级设置 tab + `Request.kt` `mergeCustomHeaders`（**提供商头优先级最低，被助手/模型同名头覆盖**）+ 49 行测试 | ✅ **已吸收（2026-10-02，`a3394e7a`）**：fork 本就有字段与 UI，本次只吸收**去重语义**——新增 `mergeCustomHeaders` + 单一应用入口 `applyCustomHeaders(providerSetting, requestHeaders)`（覆盖语义），19 个调用点统一改造，旧的追加式入口删除。另加 MockWebServer 真实链路测试 |
 | `620e38cc` **JsonTree 弹窗长按崩溃（#1977）** | BottomSheet 在独立窗口，沿用外层 `SelectionRegistrar` 长按抛 hierarchy 异常 → sheet 内自包一层 `SelectionContainer` | ✅ **已吸收 `799522f2`（2026-10-02）**：fork 同样中招（`LogPage.kt:458` 在 `:384` 的 `SelectionContainer` 内），改法与上游逐字等价；未修版真机复现 FATAL、修复版长按正常 |
 | `2d5c51bd` 复制过大请求体剪贴板闪退（#1980） | 复制按钮 try/catch `TransactionTooLargeException` + toast | **fork 已覆盖**：fork `LogPage` 请求体走 `JsonTree` 展示（无复制按钮，原崩溃路径不存在）；fork 的 `ContextUtil.writeClipboardText` 本就 `runCatching` + toast（RuntimeException 子类全兜住） |
 | `4e4bfa62` **OpenAI 图片生成自定义分辨率被误丢弃（#1978）** | Grok 判断改解析 host（`x.ai` 及子域名，防中转域名 `xxx-max.ai` 误判）+ `size=auto` 不写入请求体 | ✅ **已吸收（2026-10-02）**：判定抽成纯函数 `isXaiHost`/`shouldSendImageSize`（+7 单测），fork 另把「auto 不写」同规则用于 `/images/edits`（上游未改）；真机请求体实测三例 |
@@ -142,10 +142,10 @@ master 已 ff-only 快进至 `4e4bfa62`（同步于 10-02）。**核心事件：
 | `7a53065a` OAuth 回调改 `localhost`（#1972，WAF 拦 IPv4 403） | redirect URI 主机 127.0.0.1 → localhost，回调服务器仍绑 127.0.0.1 | **不适用**：fork MCP OAuth 用自定义 scheme `rikkahub://mcp-oauth-callback`（无 loopback 服务器），请求体不含 IPv4 主机 |
 | `4ba5d79f` + `b8e0fec4` MCP OAuth 增强（#1979） | 受保护资源元数据缺失回退 origin + 首次 401 触发 OAuth；CIMD 文档作 client_id | **暂缓（中）**：fork `McpOAuthCoordinator:138` 已有 protectedResource 发现，回退逻辑与 CIMD 是增量增强；fork OAuth 实现已与上游分叉（自定义 scheme），手工适配成本 > 收益，等有真实服务器撞上再说 |
 | `2cd62ad2` **Gemini Interactions API** | 新 API 面（576+289 行 API/解码器 + 499 行测试）：store=false 无状态、thought 签名按新 key 回传、支持搜索/URL context/图片输出 | **暂缓（大）**：fork `GoogleProvider` 是重度定制区（工具捆绑/内联重实现），叠加 1400+ 行新 API 面手工适配成本高；仅当上游 generateContent 路线被 Google 弃用时才值得立项 |
-| `282b85f2` 复制助手可同时复制记忆 | `copyAssistant(assistant, copyMemories)` + `MemoryRepository.copyMemories` + AssistantPage UI | **可选（小–中）**：fork `AssistantVM:89` 无此参数。有价值（fork 记忆体系重度使用），要点=Room 侧按 fromAssistantId 批量 INSERT，UI 加确认项 |
+| `282b85f2` 复制助手可同时复制记忆 | `copyAssistant(assistant, copyMemories)` + `MemoryRepository.copyMemories` + AssistantPage UI | ✅ **已吸收（2026-10-02，`27b35815`）**：fork 照做了 UI 与接口；落库细节按 fork 的记忆表改造（**新的 publicId、保留 importance、updatedAt 取当下**，上游只搬 content 会写出坏数据：共用 token 会让审批指错行、丢重要度会让打分退化成纯时效）。+4 单测 + 真机验证 |
 | `9435b8a2` / `447bb7e8` | skills 文档更新 / 版本 bump 2.5.6 | 不跟（master 同步已带入 .agents 文档；版本号体系无关） |
 
-**吸收优先级**：~~`620e38cc`~~（已吸收 `799522f2`）→ ~~`4e4bfa62`~~（**已吸收**）→ ~~`3443dd45`/`3a9ae690`~~（**已吸收**）→ `282b85f2`（可选）→ `654a5e1f` 头去重语义（可选）→ `2cd62ad2`/`#1979`（暂缓）。
+**吸收优先级**：~~`620e38cc`~~（已吸收 `799522f2`）→ ~~`4e4bfa62`~~（**已吸收**）→ ~~`3443dd45`/`3a9ae690`~~（**已吸收**）→ ~~`282b85f2`~~（**已吸收**）→ ~~`654a5e1f` 头去重语义~~（**已吸收**）→ `2cd62ad2`/`#1979`（暂缓）。
 
 ### 2026-09-28 同步：2.5.2 → 2.5.5（`458c16df` → `00c8d53a`，36 提交）
 
