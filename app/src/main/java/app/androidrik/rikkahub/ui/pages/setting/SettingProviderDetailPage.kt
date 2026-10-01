@@ -103,6 +103,7 @@ import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderProxy
+import app.androidrik.ai.provider.providerTypeDisplayName
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.registry.ModelRegistry
@@ -1642,8 +1643,10 @@ private fun ModelCard(
                         if (model.providerOverwrite != null) {
                             Tag(type = TagType.INFO) {
                                 Text(
-                                    model.providerOverwrite?.javaClass?.simpleName ?: model.providerOverwrite?.name
-                                    ?: "ProviderOverwrite"
+                                    // 显示 API 格式名而非混淆类名（同上：release 下 simpleName = it9/ft9）
+                                    model.providerOverwrite?.providerTypeDisplayName
+                                        ?: model.providerOverwrite?.name
+                                        ?: "ProviderOverwrite"
                                 )
                             }
                         }

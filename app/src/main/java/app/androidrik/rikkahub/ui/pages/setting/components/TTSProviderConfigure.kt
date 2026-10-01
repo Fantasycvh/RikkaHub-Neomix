@@ -65,7 +65,8 @@ fun TTSProviderConfigure(
                         TTSProviderSetting.ElevenLabs::class -> "ElevenLabs"
                         TTSProviderSetting.FishAudio::class -> "Fish Audio"
                         TTSProviderSetting.Step::class -> "Step"
-                        else -> providerClass.simpleName ?: "Unknown"
+                        // 兜底也不再回落 `simpleName`（release 下是 R8 混淆短名）
+                        else -> "Unknown"
                     }
                 },
                 onOptionSelected = { providerClass ->

@@ -71,15 +71,17 @@ fun ProviderConfigure(
     ) {
         if (!provider.builtIn) {
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                ProviderSetting.Types.forEachIndexed { index, type ->
+                ProviderSetting.Types.forEachIndexed { index, option ->
                     SegmentedButton(
                         shape = SegmentedButtonDefaults.itemShape(
                             index = index,
                             count = ProviderSetting.Types.size
                         ),
-                        label = { Text(type.simpleName ?: "") },
-                        selected = provider::class == type,
-                        onClick = { onEdit(provider.convertTo(type)) }
+                        // 用显式展示名而非 `KClass.simpleName`：后者在 release 下是 R8
+                        // 混淆后的短名（it9/ft9/bt9），只有正式版会暴露——见 ProviderSetting.Types
+                        label = { Text(option.displayName) },
+                        selected = provider::class == option.type,
+                        onClick = { onEdit(provider.convertTo(option.type)) }
                     )
                 }
             }

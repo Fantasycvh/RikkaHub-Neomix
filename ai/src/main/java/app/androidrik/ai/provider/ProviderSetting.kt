@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlin.reflect.KClass
 import kotlin.uuid.Uuid
 
 /**
@@ -426,12 +427,41 @@ sealed class ProviderSetting {
     }
 
     companion object {
-        val Types by lazy {
+        /**
+         * 提供商**类型**（= API 格式）及其**展示名**。
+         *
+         * **展示名必须显式写死，绝不能用 `KClass.simpleName`**：release 构建经 R8 混淆后
+         * `ProviderSetting$OpenAI` → `it9`、`$Google` → `ft9`、`$Claude` → `bt9`
+         * （见 `app/build/outputs/mapping/release/mapping.txt`），于是正式版里类型选择器
+         * 显示的是 "it9"/"ft9" 这种短名，而 debug 不混淆、看着完全正常——**只在正式版暴露**。
+         * 把展示名写进本列表，等于新增类型时强制补齐它的展示名。
+         */
+        val Types: List<ProviderType> by lazy {
             listOf(
-                OpenAI::class,
-                Google::class,
-                Claude::class,
+                ProviderType(OpenAI::class, "OpenAI"),
+                ProviderType(Google::class, "Google"),
+                ProviderType(Claude::class, "Claude"),
             )
         }
     }
 }
+
+/**
+ * 提供商类型（API 格式）描述符：类 + 展示名。
+ *
+ * @param type 用于类型切换（[ProviderConfigure] 的 SegmentedButton）
+ * @param displayName **用户可见**的名称，见 [ProviderSetting.Types] 的注释（勿用类名）
+ */
+data class ProviderType(
+    val type: KClass<out ProviderSetting>,
+    val displayName: String,
+)
+
+/**
+ * 实例 → 类型展示名（唯一来源是 [ProviderSetting.Types]，避免两处各写一份漂移）。
+ *
+ * 典型用途：模型详情页的 provider-override 标签——那里同样不能显示混淆类名。
+ */
+val ProviderSetting.providerTypeDisplayName: String
+    get() = ProviderSetting.Types.firstOrNull { it.type == this::class }?.displayName ?: "Unknown"
+
