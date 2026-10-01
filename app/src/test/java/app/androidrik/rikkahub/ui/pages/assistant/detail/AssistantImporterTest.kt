@@ -15,6 +15,60 @@ class AssistantImporterTest {
     private fun parse(raw: String) =
         parseAssistantFromJson(context = null, json = Json.parseToJsonElement(raw).jsonObject, background = null)
 
+    // ---- #1942：从**文本**导入（对话内 JSON 代码块入口）----
+    //
+    // 该入口只比 parseAssistantFromJson 多一层「文本 → JsonObject」，
+    // 所以这里钉的是那层的行为：合法 JSON 照常解析、不合法给可读错误、
+    // 解析层既有的友好指引（预设误认等）对文本入口自动生效。
+
+    @Test
+    fun `文本入口可解析 v2 卡`() {
+        val assistant = parseAssistantFromJsonText(
+            context = null,
+            jsonText = """
+                {
+                  "spec": "chara_card_v2",
+                  "data": { "name": "文本入口卡", "description": "desc" }
+                }
+            """.trimIndent(),
+        )
+
+        assertEquals("文本入口卡", assistant.name)
+        assertTrue(assistant.hasCardParts)
+    }
+
+    @Test
+    fun `文本入口对不合法 JSON 给出可读错误而非序列化异常`() {
+        val error = runCatching {
+            parseAssistantFromJsonText(context = null, jsonText = "{ 这不是合法 JSON ")
+        }.exceptionOrNull()
+
+        assertTrue(error != null)
+        // context = null 时回落到英文兜底串；关键是**不是** kotlinx 的 SerializationException
+        assertTrue(
+            "unexpected: ${error!!.javaClass.name} / ${error.message}",
+            error.message?.contains("Invalid JSON") == true,
+        )
+    }
+
+    @Test
+    fun `文本入口对合法但非角色卡的 JSON 沿用解析层的指引`() {
+        // 酒馆预设文件（prompts + prompt_order）——解析层的「这是预设不是角色卡」指引
+        // 对文本入口同样生效（这正是共用 parseAssistantFromJson 的收益）
+        val error = runCatching {
+            parseAssistantFromJsonText(
+                context = null,
+                jsonText = """{"prompts":[],"prompt_order":[]}""",
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error != null)
+        assertTrue(
+            "unexpected: ${error!!.message}",
+            error.message?.contains("preset") == true,
+        )
+    }
+
     @Test
     fun `v1 老卡（无 spec 顶层即字段）可导入`() {
         val assistant = parse(

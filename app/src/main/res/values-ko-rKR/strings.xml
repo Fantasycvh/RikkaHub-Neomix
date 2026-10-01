@@ -1743,5 +1743,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_asr_page_disabled_badge">사용 안 함</string>
   <string name="setting_tts_page_disabled_badge">사용 안 함</string>
   <string name="setting_tts_page_fallback_kept">시스템 TTS는 대체 수단으로 항상 사용됩니다</string>
+  <string name="code_block_add_assistant">어시스턴트로 추가</string>
+  <string name="code_block_add_assistant_success">어시스턴트 추가됨: %1$s</string>
+  <string name="assistant_importer_invalid_json">JSON이 올바르지 않습니다: 이 코드 블록을 캐릭터 카드로 해석할 수 없습니다</string>
 </resources>
 

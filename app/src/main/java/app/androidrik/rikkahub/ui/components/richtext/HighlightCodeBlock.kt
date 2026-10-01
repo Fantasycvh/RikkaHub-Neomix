@@ -1,5 +1,11 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
+import org.koin.compose.koinInject
+import app.androidrik.rikkahub.ui.pages.assistant.detail.importAssistantFromJsonText
+import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.data.datastore.SettingsStore
+import com.dokar.sonner.ToastType
+import me.rerere.hugeicons.stroke.AiUser
 import android.content.ClipData
 import android.net.Uri
 import androidx.activity.compose.ManagedActivityResultLauncher
@@ -426,6 +432,49 @@ private fun HighlightCodeActions(
         ) {
             val iconSize = 16.dp
             val iconTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+
+            // #1942：JSON 代码块 → 一步设为助手（免去「存文件再走文件选择器导入」）。
+            // 门控两条：①只认 json 围栏（AI 写角色卡的常见形态；对任意块挂一个可能失败的
+            // 按钮会更差）②**代码块必须已闭合**——流式输出中 JSON 尚不完整，点了必然解析失败。
+            // 误报由解析层兜底：非角色卡会给出「这是预设文件」「缺少 spec」等可读指引。
+            if (completeCodeBlock && language.lowercase() == "json") {
+                val toaster = LocalToaster.current
+                val settingsStore = koinInject<SettingsStore>()
+                Icon(
+                    imageVector = HugeIcons.AiUser,
+                    contentDescription = stringResource(id = R.string.code_block_add_assistant),
+                    tint = iconTint,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .onClick {
+                            scope.launch {
+                                runCatching {
+                                    importAssistantFromJsonText(
+                                        context = context,
+                                        settingsStore = settingsStore,
+                                        jsonText = code,
+                                    )
+                                }.onSuccess { assistant ->
+                                    toaster.show(
+                                        message = context.getString(
+                                            R.string.code_block_add_assistant_success,
+                                            assistant.name,
+                                        ),
+                                        type = ToastType.Success,
+                                    )
+                                }.onFailure { error ->
+                                    toaster.show(
+                                        message = error.message
+                                            ?: context.getString(R.string.assistant_importer_import_failed),
+                                        type = ToastType.Error,
+                                    )
+                                }
+                            }
+                        }
+                        .padding(4.dp)
+                        .size(iconSize)
+                )
+            }
 
             Icon(
                 imageVector = HugeIcons.Download04,

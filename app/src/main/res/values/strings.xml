@@ -1818,5 +1818,8 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_asr_page_disabled_badge">Disabled</string>
   <string name="setting_tts_page_disabled_badge">Disabled</string>
   <string name="setting_tts_page_fallback_kept">System TTS stays enabled as the fallback</string>
+  <string name="code_block_add_assistant">Set as assistant</string>
+  <string name="code_block_add_assistant_success">Added assistant: %1$s</string>
+  <string name="assistant_importer_invalid_json">Invalid JSON: cannot parse this code block as a character card</string>
 </resources>
 

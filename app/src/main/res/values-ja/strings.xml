@@ -1743,5 +1743,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_asr_page_disabled_badge">無効</string>
   <string name="setting_tts_page_disabled_badge">無効</string>
   <string name="setting_tts_page_fallback_kept">システム TTS はフォールバックとして有効のままになります</string>
+  <string name="code_block_add_assistant">アシスタントとして追加</string>
+  <string name="code_block_add_assistant_success">アシスタントを追加しました：%1$s</string>
+  <string name="assistant_importer_invalid_json">JSON が不正です：このコードブロックをキャラクターカードとして解析できません</string>
 </resources>
 

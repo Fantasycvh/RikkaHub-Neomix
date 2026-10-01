@@ -1743,5 +1743,8 @@
   <string name="setting_asr_page_disabled_badge">Отключено</string>
   <string name="setting_tts_page_disabled_badge">Отключено</string>
   <string name="setting_tts_page_fallback_kept">Системный TTS остаётся включённым как запасной вариант</string>
+  <string name="code_block_add_assistant">Сделать ассистентом</string>
+  <string name="code_block_add_assistant_success">Ассистент добавлен: %1$s</string>
+  <string name="assistant_importer_invalid_json">Некорректный JSON: не удалось разобрать блок как карточку персонажа</string>
 </resources>
 

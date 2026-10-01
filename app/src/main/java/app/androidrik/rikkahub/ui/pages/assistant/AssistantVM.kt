@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANTS_IDS
 import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.ui.pages.assistant.detail.appendAssistant
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Assistant
@@ -33,12 +34,8 @@ class AssistantVM(
 
     fun addAssistant(assistant: Assistant) {
         viewModelScope.launch {
-            val settings = settings.value
-            settingsStore.update(
-                settings.copy(
-                    assistants = settings.assistants.plus(assistant)
-                )
-            )
+            // 落库走唯一实现（与对话内 JSON 代码块导入共用），避免两处各写一遍追加逻辑
+            settingsStore.appendAssistant(assistant)
         }
     }
 

@@ -39,6 +39,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.buildCardSystemPrompt
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.utils.ImageUtils
@@ -258,6 +259,50 @@ internal fun parseAssistantFromJson(
     return parser.parse(context = context, json = json, background = background)
 }
 
+/**
+ * 从**文本**解析助手（#1942：对话内 JSON 代码块；将来剪贴板导入也走这里）。
+ *
+ * 与文件导入共用 [parseAssistantFromJson]，只是入口不同——**解析规则只有一处**，
+ * 所以「酒馆预设文件不是角色卡」「缺 spec」「未知 spec」这些友好指引对新入口自动生效。
+ *
+ * 只额外负责一件事：把「JSON 本身不合法」也转成可读错误（文件导入原先是直接抛
+ * SerializationException，文案不可读）。
+ */
+internal fun parseAssistantFromJsonText(context: Context?, jsonText: String): Assistant {
+    val json = runCatching {
+        Json.parseToJsonElement(jsonText).jsonObject
+    }.getOrElse {
+        error(context?.getString(R.string.assistant_importer_invalid_json) ?: "Invalid JSON")
+    }
+    return parseAssistantFromJson(context = context, json = json, background = null)
+}
+
+/**
+ * 追加一个助手到设置（**唯一实现**：助手页导入与对话内代码块导入共用）。
+ *
+ * 抽出来是为了避免两处各写一遍 `assistants + assistant`——将来若要加去重/排序/刷新，
+ * 只改这里一处。
+ */
+internal suspend fun SettingsStore.appendAssistant(assistant: Assistant) {
+    update { settings -> settings.copy(assistants = settings.assistants + assistant) }
+}
+
+/**
+ * 从文本导入助手并落库（非助手页场景的一站式入口，如对话内 JSON 代码块）。
+ *
+ * 不需要 ViewModel：落库走 [SettingsStore.update] 的一次原子写。失败时抛异常，
+ * 异常文案已是本地化可读内容（见 [parseAssistantFromJsonText] 与其调用的解析层）。
+ */
+internal suspend fun importAssistantFromJsonText(
+    context: Context,
+    settingsStore: SettingsStore,
+    jsonText: String,
+): Assistant {
+    val assistant = parseAssistantFromJsonText(context, jsonText)
+    settingsStore.appendAssistant(assistant)
+    return assistant
+}
+
 // endregion
 
 private suspend fun importAssistantFromUri(
@@ -290,8 +335,14 @@ private suspend fun importAssistantFromUri(
                 else -> error(context.getString(R.string.assistant_importer_unsupported_file_type, mime ?: "unknown"))
             }
         }
-        val json = Json.parseToJsonElement(jsonString).jsonObject
-        val assistant = parseAssistantFromJson(context = context, json = json, background = backgroundStr)
+        val assistant = if (backgroundStr == null) {
+            // 纯 JSON 文本：与对话内代码块走同一条文本入口（解析规则单点）
+            parseAssistantFromJsonText(context = context, jsonText = jsonString)
+        } else {
+            // PNG 卡：背景图已在上面落盘，需把 background 交给解析层
+            val json = Json.parseToJsonElement(jsonString).jsonObject
+            parseAssistantFromJson(context = context, json = json, background = backgroundStr)
+        }
         onImport(assistant)
     } catch (exception: Exception) {
         exception.printStackTrace()
