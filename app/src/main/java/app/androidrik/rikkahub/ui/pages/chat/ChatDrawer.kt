@@ -312,8 +312,17 @@ fun ChatDrawerContent(
                 onClick = {
                     navigateToChatPage(navController, it.id)
                 },
-                onRegenerateTitle = {
-                    vm.generateTitle(it, true)
+                onRegenerateTitle = { conversation ->
+                    // #1975：标题模型没配好时服务会报错误卡（带「检查标题模型设置」跳转），
+                    // 但错误卡渲染在聊天页、此刻被抽屉挡着 ⇒ 这里补一条即时 toast。
+                    scope.launch {
+                        if (!vm.regenerateTitle(conversation, force = true)) {
+                            toaster.show(
+                                context.getString(R.string.error_title_model_unconfigured),
+                                type = ToastType.Warning,
+                            )
+                        }
+                    }
                 },
                 onDelete = {
                     scope.launch {

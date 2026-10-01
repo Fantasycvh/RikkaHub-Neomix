@@ -13,6 +13,7 @@ import kotlin.uuid.Uuid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatServiceTest {
@@ -144,6 +145,47 @@ class ChatServiceTest {
         // fork 的有意差异优先：源标题为空时保持空白（让自动起名能正常接管）
         assertEquals("", forkConversationTitle(titledConversation(""), emptySet()))
         assertEquals("", forkConversationTitle(titledConversation("   "), setOf("(1)")))
+    }
+
+    // ---- #1975「配置缺失」提示的防刷屏契约 ----
+
+    private fun errorFor(conversationId: Uuid?, solution: ChatErrorSolution?) = ChatError(
+        error = IllegalStateException("boom"),
+        conversationId = conversationId,
+        solution = solution,
+    )
+
+    @Test
+    fun `config error is reported once per conversation`() {
+        val conv = Uuid.random()
+        val existing = listOf(errorFor(conv, ChatErrorSolution.CheckTitleModelSettings))
+
+        // 同一会话同类提示已存在 ⇒ 不再重复报（标题与建议共用同一 solution，
+        // 故一轮里标题先报、建议被去重，不会刷屏）
+        assertFalse(shouldReportConfigError(existing, conv, ChatErrorSolution.CheckTitleModelSettings))
+        // 用户点掉后（列表里没有了）⇒ 恢复提醒
+        assertTrue(shouldReportConfigError(emptyList(), conv, ChatErrorSolution.CheckTitleModelSettings))
+    }
+
+    @Test
+    fun `config error is not suppressed across conversations`() {
+        val convA = Uuid.random()
+        val convB = Uuid.random()
+        val existing = listOf(errorFor(convA, ChatErrorSolution.CheckTitleModelSettings))
+
+        // 另一个会话首次遇到同样问题 ⇒ 仍然提示（只抑制「同一会话重复」）
+        assertTrue(shouldReportConfigError(existing, convB, ChatErrorSolution.CheckTitleModelSettings))
+        // 没有会话归属的错误（如全局错误）不抑制任何会话
+        val globalError = listOf(errorFor(null, ChatErrorSolution.CheckTitleModelSettings))
+        assertTrue(shouldReportConfigError(globalError, convA, ChatErrorSolution.CheckTitleModelSettings))
+    }
+
+    @Test
+    fun `config error ignores other error kinds in the same conversation`() {
+        val conv = Uuid.random()
+        // 同会话的「生成失败」错误（无 solution）不该让配置提示被吃掉
+        val existing = listOf(errorFor(conv, null))
+        assertTrue(shouldReportConfigError(existing, conv, ChatErrorSolution.CheckTitleModelSettings))
     }
 
     @Test

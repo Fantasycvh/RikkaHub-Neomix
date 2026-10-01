@@ -1738,5 +1738,7 @@
   <string name="setting_page_guardrails_unit_minutes">мин</string>
   <string name="close">Закрыть</string>
   <string name="skills_page_builtin_badge">Встроенный</string>
+  <string name="error_title_model_unconfigured">Модель для заголовков не настроена</string>
+  <string name="error_title_model_unconfigured_desc">Укажите модель заголовков или быструю модель в «Настройки → Модели» и повторите</string>
 </resources>
 

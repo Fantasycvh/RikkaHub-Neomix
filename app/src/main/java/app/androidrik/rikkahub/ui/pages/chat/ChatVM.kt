@@ -358,9 +358,19 @@ class ChatVM(
 
     fun generateTitle(conversation: Conversation, force: Boolean = false) {
         viewModelScope.launch {
-            val conversationFull = conversationRepo.getConversationById(conversation.id) ?: return@launch
-            chatService.generateTitle(_conversationId, conversationFull, force)
+            regenerateTitle(conversation, force)
         }
+    }
+
+    /**
+     * 生成标题的**可等待**版本：返回 false = 标题模型没配好（服务已上报错误卡）。
+     *
+     * 抽屉路径需要立即反馈（错误卡在聊天页、被抽屉挡着），故让调用方拿到结果自己补 toast。
+     * 前置条件判定只有服务里一处，这里不做任何重复判断（防两处真相源漂移）。
+     */
+    suspend fun regenerateTitle(conversation: Conversation, force: Boolean = false): Boolean {
+        val conversationFull = conversationRepo.getConversationById(conversation.id) ?: return true
+        return chatService.generateTitle(_conversationId, conversationFull, force)
     }
 
     fun generateSuggestion(conversation: Conversation) {

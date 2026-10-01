@@ -225,6 +225,18 @@ enum class ChatErrorSolution {
 }
 
 /**
+ * 该不该再报一条「配置缺失」错误（#1975 的防刷屏契约，抽成纯函数以便单测）。
+ *
+ * 规则：**同一会话 + 同一 [solution] 只报一次**。用户点掉后（列表里没有了）自然恢复上报。
+ * 跨会话不抑制——每个会话各提示一次是合理的（用户可能在新会话里才注意到）。
+ */
+internal fun shouldReportConfigError(
+    existing: List<ChatError>,
+    conversationId: Uuid,
+    solution: ChatErrorSolution,
+): Boolean = existing.none { it.conversationId == conversationId && it.solution == solution }
+
+/**
  * 工具调用失控护栏停止本轮（见 `data/ai/ToolCallLoopGuard.kt`）。
  *
  * 刻意**不是**「生成失败」：本轮已正常结束、内容照常落库，它只用于把「为什么停了」
@@ -303,6 +315,26 @@ class ChatService(
 
     fun dismissError(id: Uuid) {
         _errors.update { list -> list.filter { it.id != id } }
+    }
+
+    /**
+     * 「配置缺失」类提示的**去重**上报（#1975）。
+     *
+     * 为什么必须去重：标题与建议生成在**每轮生成后**都会尝试一次，模型没配好时不去重就会
+     * 每轮弹一张错误卡把用户刷屏（真问题反而被淹没）。同一会话内同一 [solution] 只报一次；
+     * 用户点掉后（列表里已无该条）下次仍会重新提醒。
+     *
+     * 顺带解决「标题与建议同时失败」的重复：两者共用同一个 [ChatErrorSolution]，
+     * 故一轮对话最多出一张卡。
+     */
+    private fun addConfigErrorOnce(
+        conversationId: Uuid,
+        error: Throwable,
+        title: String,
+        solution: ChatErrorSolution,
+    ) {
+        if (!shouldReportConfigError(_errors.value, conversationId, solution)) return
+        addError(error = error, conversationId = conversationId, title = title, solution = solution)
     }
 
     fun clearAllErrors() {
@@ -1296,19 +1328,53 @@ class ChatService(
         conversationId: Uuid,
         conversation: Conversation,
         force: Boolean = false
-    ) {
+    ): Boolean {
         val shouldGenerate = when {
             force -> true
             conversation.title.isBlank() -> true
             else -> false
         }
-        if (!shouldGenerate) return
+        if (!shouldGenerate) return true
 
+        // 「模型没配好」必须**给出反馈**（#1975）：此前这两处是静默 `return`，用户点
+        // 「重新生成标题」后「app 没有任何动静」。返回 false 让调用方能再补一条即时 toast
+        // （抽屉路径下错误卡被抽屉挡住，见 ChatDrawer 的 onRegenerateTitle）。
+        var started = false
         runCatching {
             val settings = settingsStore.settingsFlow.first()
-            val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId) ?: return
-            val provider = model.findProvider(settings.providers) ?: return
+            val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId)
+            if (model == null) {
+                Log.w(
+                    TAG,
+                    "generateTitle: no title model (titleModelId=${settings.titleModelId}, " +
+                        "fastModelId=${settings.fastModelId}); 提示用户去配置",
+                )
+                addConfigErrorOnce(
+                    conversationId = conversationId,
+                    // 消息用**本地化**的可操作说明；技术细节（哪个 id 缺失）已在上面 Log.w
+                    error = IllegalStateException(
+                        context.getString(R.string.error_title_model_unconfigured_desc),
+                    ),
+                    title = context.getString(R.string.error_title_model_unconfigured),
+                    solution = ChatErrorSolution.CheckTitleModelSettings,
+                )
+                return@runCatching
+            }
+            val provider = model.findProvider(settings.providers)
+            if (provider == null) {
+                Log.w(TAG, "generateTitle: model ${model.id} has no provider; 提示用户去配置")
+                addConfigErrorOnce(
+                    conversationId = conversationId,
+                    error = IllegalStateException(
+                        context.getString(R.string.error_title_model_unconfigured_desc),
+                    ),
+                    title = context.getString(R.string.error_title_model_unconfigured),
+                    solution = ChatErrorSolution.CheckTitleModelSettings,
+                )
+                return@runCatching
+            }
 
+            started = true
             val providerHandler = providerManager.getProviderByType(provider)
             val result = providerHandler.generateText(
                 providerSetting = provider,
@@ -1339,6 +1405,7 @@ class ChatService(
                 solution = ChatErrorSolution.CheckTitleModelSettings,
             )
         }
+        return started
     }
 
     // ---- 生成建议 ----
@@ -1347,8 +1414,35 @@ class ChatService(
         runCatching {
             val settings = settingsStore.settingsFlow.first()
             if (!settings.enableSuggestion) return
-            val model = settings.findModelById(settings.suggestionModelId, fallback = settings.fastModelId) ?: return
-            val provider = model.findProvider(settings.providers) ?: return
+            val model = settings.findModelById(settings.suggestionModelId, fallback = settings.fastModelId)
+            if (model == null) {
+                // 与标题共用同一个 ChatErrorSolution ⇒ addConfigErrorOnce 会把两者的提示
+                // 合成一张卡（同一轮里标题先报，这里就被去重掉），不会因为「建议每轮都试」
+                // 而把用户刷屏（#1975）。
+                Log.w(TAG, "generateSuggestion: no suggestion model; 已按去重规则提示用户")
+                addConfigErrorOnce(
+                    conversationId = conversationId,
+                    error = IllegalStateException(
+                        context.getString(R.string.error_title_model_unconfigured_desc),
+                    ),
+                    title = context.getString(R.string.error_title_model_unconfigured),
+                    solution = ChatErrorSolution.CheckTitleModelSettings,
+                )
+                return@runCatching
+            }
+            val provider = model.findProvider(settings.providers)
+            if (provider == null) {
+                Log.w(TAG, "generateSuggestion: model ${model.id} has no provider; 已按去重规则提示用户")
+                addConfigErrorOnce(
+                    conversationId = conversationId,
+                    error = IllegalStateException(
+                        context.getString(R.string.error_title_model_unconfigured_desc),
+                    ),
+                    title = context.getString(R.string.error_title_model_unconfigured),
+                    solution = ChatErrorSolution.CheckTitleModelSettings,
+                )
+                return@runCatching
+            }
 
             sessions[conversationId]?.let { session ->
                 updateConversation(

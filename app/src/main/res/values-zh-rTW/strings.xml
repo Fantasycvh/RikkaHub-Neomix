@@ -1794,5 +1794,7 @@
   <string name="setting_page_guardrails_unit_minutes">分鐘</string>
   <string name="close">關閉</string>
   <string name="skills_page_builtin_badge">內建</string>
+  <string name="error_title_model_unconfigured">未設定標題模型</string>
+  <string name="error_title_model_unconfigured_desc">請在「設定 → 模型」中設定標題模型或快速模型後重試</string>
 </resources>
 

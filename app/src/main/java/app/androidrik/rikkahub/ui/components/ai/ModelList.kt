@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.components.ai
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -53,6 +54,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastFilter
@@ -67,6 +69,8 @@ import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.ProviderSetting
 import me.rerere.hugeicons.HugeIcons
+import app.androidrik.rikkahub.ui.hooks.rememberSharedPreferenceString
+import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Brain02
 import me.rerere.hugeicons.stroke.Cancel01
@@ -332,6 +336,21 @@ private fun ColumnScope.ModelList(
 
     var searchKeywords by remember { mutableStateOf("") }
 
+    // 折叠的供应商（持久化到 SharedPreferences）；**搜索时一律展开**——搜索是「找模型」，
+    // 把命中项藏在折叠组里等于搜不到（上游 b2525e7b）。
+    var collapsedProvidersPref by rememberSharedPreferenceString("model_list_collapsed_providers", "")
+    val collapsedProviders = remember(collapsedProvidersPref) {
+        collapsedProvidersPref.orEmpty().split(",").filter { it.isNotBlank() }.toSet()
+    }
+    fun isCollapsed(provider: ProviderSetting): Boolean =
+        searchKeywords.isBlank() && provider.id.toString() in collapsedProviders
+
+    fun toggleCollapsed(provider: ProviderSetting) {
+        val id = provider.id.toString()
+        collapsedProvidersPref = (if (id in collapsedProviders) collapsedProviders - id else collapsedProviders + id)
+            .joinToString(",")
+    }
+
     val typeFilteredModelsByProvider = remember(providers, modelType) {
         providers.associate { provider ->
             provider.id to provider.models.selectableOf(modelType)
@@ -345,8 +364,18 @@ private fun ColumnScope.ModelList(
         }
     }
 
+    // 折叠只影响**渲染与定位**，不改 item 数量以外的任何东西；
+    // 供应商 Badge 条（providerPositions）与列表 items 都必须读这一份，否则折叠后位置错位。
+    val visibleModelsByProvider = remember(providers, searchFilteredModelsByProvider, collapsedProviders, searchKeywords) {
+        providers.associate { provider ->
+            provider.id to if (isCollapsed(provider)) emptyList() else searchFilteredModelsByProvider[provider.id].orEmpty()
+        }
+    }
+
     // 计算当前选中模型的位置
-    val selectedModelPosition = remember(currentModel, favoriteModels, providers, typeFilteredModelsByProvider) {
+    val selectedModelPosition = remember(
+        currentModel, favoriteModels, providers, typeFilteredModelsByProvider, collapsedProviders,
+    ) {
         if (currentModel == null) return@remember 0
 
         var position = 0
@@ -377,11 +406,15 @@ private fun ColumnScope.ModelList(
             position += 1 // provider header
             val models = typeFilteredModelsByProvider[provider.id].orEmpty()
             val modelIndex = models.indexOfFirst { it.id == currentModel }
+            val collapsed = isCollapsed(provider)
             if (modelIndex >= 0) {
+                // 选中项所在的组被折叠时，定位到该组表头（折叠态下这就是它「在」的位置）
+                if (collapsed) return@remember position - 1
                 position += modelIndex
                 return@remember position
             }
-            position += models.size
+            // 折叠组不贡献模型行
+            if (!collapsed) position += models.size
         }
 
         0
@@ -419,7 +452,7 @@ private fun ColumnScope.ModelList(
     }
     val haptic = LocalHapticFeedback.current
 
-    val providerPositions = remember(providers, favoriteModels, searchFilteredModelsByProvider) {
+    val providerPositions = remember(providers, favoriteModels, visibleModelsByProvider) {
         var currentIndex = 0
         if (providers.isEmpty()) {
             currentIndex = 1 // no providers item
@@ -432,7 +465,8 @@ private fun ColumnScope.ModelList(
         providers.map { provider ->
             val position = currentIndex
             currentIndex += 1 // provider header
-            currentIndex += searchFilteredModelsByProvider[provider.id].orEmpty().size
+            // 折叠组不占行，否则 Badge 点击跳转会落到错误位置
+            currentIndex += visibleModelsByProvider[provider.id].orEmpty().size
             provider.id to position
         }.toMap()
     }
@@ -555,13 +589,25 @@ private fun ColumnScope.ModelList(
         }
 
         providers.fastForEach { providerSetting ->
+            val collapsed = isCollapsed(providerSetting)
             stickyHeader(key = "header:${providerSetting.id}") {
                 Row(
                     modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable { toggleCollapsed(providerSetting) }
                         .padding(horizontal = 8.dp)
                         .padding(bottom = 4.dp, top = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    Icon(
+                        imageVector = if (collapsed) HugeIcons.ArrowRight01 else HugeIcons.ArrowDown01,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+
                     Text(
                         text = providerSetting.name,
                         style = MaterialTheme.typography.labelMedium,
@@ -579,7 +625,7 @@ private fun ColumnScope.ModelList(
             }
 
             items(
-                items = searchFilteredModelsByProvider[providerSetting.id].orEmpty(),
+                items = visibleModelsByProvider[providerSetting.id].orEmpty(),
                 key = { it.id }
             ) { model ->
                 val favorite = settings.value.favoriteModels.contains(model.id)
