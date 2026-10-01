@@ -691,3 +691,11 @@ data class ApiKeyEntry(
   - **修法**（与上游同一处、逐字等价）：sheet 内自包一层 `SelectionContainer`；文本仍可选中复制。
   - **验证**（按「先复现后确认」的老规矩）：①未修版真机走上述路径长按 → `FATAL EXCEPTION ... layouts are not part of the same hierarchy` + 进程死亡；②修复版同路径长按 → 无任何异常、进程存活、`glm-4.5-air` 上出现选中手柄；③app 1130 / ai 193 单测 0 失败。
   - **同类排查（结论：本仓仅此一处）**：静态扫「既含 `SelectionContainer` 又含窗口组件（`ModalBottomSheet`/`Popup`/`Dialog`）的文件」命中 6 个——`ChatMessageCopySheet`（已自包，正确范式）、`FavoritePage`、`SettingMcpPage`、`WebViewPage`、`LogPage`（本次）、`ChatMessage`；其中 sheet 与 SelectionContainer 的**嵌套关系是经调用图才成立的**（`JsonTree` 自己持有 sheet），纯括号匹配扫描命中 0 处 ⇒ 这类 bug 只能靠「谁在 SelectionContainer 里被调用」来判断，本仓再无第二例。
+
+- 2026-10-02：**修复「OpenAI 图片生成自定义分辨率被静默丢弃」（上游 `4e4bfa62` / #1978，`bae735da`）**——上游同步待吸收清单第 ② 项。对用中转站的用户是真缺口。
+  - **根因**：`OpenAIProvider.generateImage` 用 `providerSetting.baseUrl.contains("x.ai", ignoreCase = true)` 判断「是不是 Grok 端点」，而 Grok 不接受 `size` 参数（判为 Grok 就**静默丢掉分辨率**）。`contains` 是在**整串 URL** 上找子串：凡是域名里含 `x.ai` 的都中招——`https://api.xxx-max.ai/v1`（`max.ai` 里含 `x.ai`）这类中转域名很常见，用户设的分辨率就这么没了（不报错、不提示）。
+  - **修法**（与上游同一处，语义一致）：Grok 判断改为**解析 host**——只认 `x.ai` 本身及其子域名（`host == "x.ai" || host.endsWith(".x.ai")`），解析失败一律按「不是 Grok」处理（宁可多发一个参数让服务端报错，也不静默丢用户明确设定的值）；另按上游把 `size == "auto"` 也改成不写进请求体（服务端默认就是 auto，显式写反而会让只接受具体尺寸的服务端 400）。
+  - **fork 比上游多改一处（有意）**：上游只改了生成路径，`/images/edits`（`editImage`）仍无条件写 `size`——默认值恰是 `auto`，于是 dall-e-2 这类只接受 `256x256/512x512/1024x1024` 的编辑接口必然 400。fork 让编辑路径复用同一条「auto 不写」规则（仍不做 Grok 判断：编辑走的是用户显式指定尺寸，且 fork 无上游那套 host 语义依据）。
+  - **可测性**：判定逻辑抽成纯函数 `isXaiHost(baseUrl)` / `shouldSendImageSize(size, isGrok)`（`OpenAiImageSize.kt`）——原先是内联在 flow 里的两行表达式，正是这种「看起来对」的条件最容易长期错着。
+  - **验证**：①`OpenAiImageSizeTest` 7 项（x.ai 及子域名命中；`api.xxx-max.ai` / `relay.max.ai` / 路径里含 `x.ai` / `api.x.ai.evil.com` / 非 URL 一律不命中；`auto` 大小写不敏感地不写；具体尺寸写入；Grok 上任何尺寸都不写）②**真机请求体实测**（`[特价]gpt-image-2-1k` 与 `gemini-3.1-flash-image` 两条：选 `1024x1024` → `generateImage: {...,"size":"1024x1024"}`；选 `auto` → `{...,"n":1}` 无 size；`grok-imagine-image-2.0` → 无 size）。**未观察到**「带 size 的 200 成功响应」：当时可用渠道只有 Grok 那条（其余 503），但**请求体本身就是本 bug 的可观测面**（旧逻辑是「body 里根本没有 size」）。③app 1130 / ai 193（+7）单测 0 失败。
+  - **顺带**：真机验证时选过图片生成模型，事后已把它改回原值（`[特价]gpt-image-2-1k`），为此临时启用的 Rinkoai 提供商也已重新停用，测试生成的图片已从相册删除。
