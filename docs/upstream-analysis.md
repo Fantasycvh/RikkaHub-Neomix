@@ -118,7 +118,7 @@ master 已 ff-only 快进至 `b2d73a65`（同步于 09-30）。逐条评估：
 
 | 提交 | 内容 | 结论 |
 |---|---|---|
-| `95fed05e` fork 对话标题序号递增 | fork 出的会话标题 `Chat(1)` 再 fork 会变成 `Chat(1)(1)`——解析已有 `(N)` 后缀递增而不是叠加 | **真缺口，建议吸收（小，<0.5h）**。fork 的 `forkConversationTitle(source: Conversation, …)`（`ChatService.kt:177`，自研实现）有同样缺陷；上游修复是纯函数 + 5 项单测，改 fork 版签名（传 `source.title`）即可 |
+| `95fed05e` fork 对话标题序号递增 | fork 出的会话标题 `Chat(1)` 再 fork 会变成 `Chat(1)(1)`——解析已有 `(N)` 后缀递增而不是叠加 | ✅ **2026-10-01 已吸收（`95fe3e5b`），真机验证通过**（三代连续分叉得 `rag测试(1)/(2)/(3)`，无 `(1)(1)`）。fork 版保留两处有意差异（空标题仍保持空、序号取首个未占用值）；单测 +5 项 |
 | `d21265cb` MCP SDK 切 rikkahub fork `0.15.0-rikka.2` | `io.modelcontextprotocol:kotlin-sdk` → `com.github.rikkahub.mcp-kotlin-sdk:kotlin-sdk-client`（上游自己的 fork 版） | **暂缓**。fork 还在 `0.14.0` 原版（artifact 名也不同），跨 `0.14→0.15-fork` 两级跳；上游 fork SDK 的变更内容未核（需看 rikkahub/mcp-kotlin-sdk 仓库），且 fork 的 `McpManager`/`McpStatus` 是重改区。等有具体 SDK 层 bug 或功能需求时再一次性升级 |
 | `b2525e7b` 模型列表按供应商折叠 | 点供应商标题折叠/展开，状态存 SharedPreferences（`rememberSharedPreferenceString`，fork 已有该 hook），搜索时自动全展开；定位/偏移计算跟着 visible 列表走 | **建议吸收（手工适配，半天内）**。fork `ModelList.kt`（858 行）已重度分叉（手工偏移补偿、收藏区），但折叠不改 item 数量、只把参与定位的列表换成 visible 版，与既有偏移逻辑正交。注意教训 11：不改 item 结构就不涉及 key/index 问题 |
 | `b2d73a65` 导出对话支持不含思考过程 | `ExportOptions.includeReasoning` 开关（Markdown/图片生效）+ 修 Markdown 导出思考过程多行拼一行 + 修图片导出无论成败都提示成功 + 修 `indexOf` O(n²)；**Export.kt 改名 ConversationExport.kt** | **建议吸收功能、不跟改名（手工适配，中）**。fork 的 `Export.kt` 是重改区（导出留存/SAF 真落地/原子写，534a5eef），逐块移植；改名不跟（fork 无同构历史，churn 无收益）。上游顺手修的三个 bug 需先核对 fork 是否同样存在（多行拼接疑似同样存在，fork :610 直接 `lines()` 处理路径需复核） |
