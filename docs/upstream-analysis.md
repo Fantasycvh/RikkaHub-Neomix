@@ -1,7 +1,7 @@
 # 上游变更分析（综合版，2.4.11 → 2.5.2+，2026-09-12 重写，2026-09-19 复核）
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
-> 当前 master 同步点：**`00c8d53a`（2.5.5，2026-09-28 ff-only）**；此前 `458c16df`（2.5.2+，09-19）。**注：origin 上的 master 镜像已于 2026-09-15 删除，此镜像仅本地保留**。`a9b35ba2` 之后上游共 33 提交（至 `458c16df`），逐条评估见下方「2026-09-16」「2026-09-19」两节；评估结论均为**暂不吸收、按需取用**。
+> 当前 master 同步点：**`b2d73a65`（2026-09-30 ff-only）**；此前 `00c8d53a`（2.5.5，09-28）、`458c16df`（2.5.2+，09-19）。**注：origin 上的 master 镜像已于 2026-09-15 删除，此镜像仅本地保留**。`a9b35ba2` 之后上游共 33 提交（至 `458c16df`），逐条评估见下方「2026-09-16」「2026-09-19」两节；评估结论均为**暂不吸收、按需取用**。
 > 决策原则：**等上游稳定后按需吸收**；触及 `GenerationHandler.kt` / `ChatService.kt` / `ChatInput.kt`（fork 重改最重的文件）一律手工适配，不直接 cherry-pick；cherry-pick 需包名适配（`me.rerere.*` → `app.androidrik.*`）。
 > **判定方法（2026-09-12 纠正）**：fork 的"已吸收"以**代码等价核对**为准，**不用 `git merge-base --is-ancestor`**——fork 走手工直套/移植，上游 commit 不是 fork 分支祖先，merge-base 对已吸收项恒判"未吸收"（误报 glm5.3/hy4/kimi k3/deepseek v4.1 flash 等）。核对方式：grep fork 代码中对应定义/注释（如「对齐上游 xxx」）或 diff 等价。
 
@@ -111,6 +111,19 @@
 | `8e304bb1` | **feat: 火山引擎 TTS 支持**（+120 行 provider + 配置 UI + 测试） | **可吸收（2026-09-19 定评）**：fork `speech` 模块 provider 结构同构（`TTSProviderSetting` 密封类 + provider 实现 + 配置 UI），纯新增不碰既有面。难度：小–中（包名适配 + 配置页接线）。价值取决于用户是否用火山 TTS |
 | `d6ba728e`/`288a034c`/`bc9d2582` | 依赖更新 + 一次 `lib.versions.toml` 误删事故回滚 | 不吸收（同前述判断） |
 | `bd936caa` | 非聊天请求 session id 头 | 不吸收（fork 无 sessionId 概念，见上） |
+
+### 2026-09-30 同步：2.5.5 后 4 提交（`00c8d53a` → `b2d73a65`）
+
+master 已 ff-only 快进至 `b2d73a65`（同步于 09-30）。逐条评估：
+
+| 提交 | 内容 | 结论 |
+|---|---|---|
+| `95fed05e` fork 对话标题序号递增 | fork 出的会话标题 `Chat(1)` 再 fork 会变成 `Chat(1)(1)`——解析已有 `(N)` 后缀递增而不是叠加 | **真缺口，建议吸收（小，<0.5h）**。fork 的 `forkConversationTitle(source: Conversation, …)`（`ChatService.kt:177`，自研实现）有同样缺陷；上游修复是纯函数 + 5 项单测，改 fork 版签名（传 `source.title`）即可 |
+| `d21265cb` MCP SDK 切 rikkahub fork `0.15.0-rikka.2` | `io.modelcontextprotocol:kotlin-sdk` → `com.github.rikkahub.mcp-kotlin-sdk:kotlin-sdk-client`（上游自己的 fork 版） | **暂缓**。fork 还在 `0.14.0` 原版（artifact 名也不同），跨 `0.14→0.15-fork` 两级跳；上游 fork SDK 的变更内容未核（需看 rikkahub/mcp-kotlin-sdk 仓库），且 fork 的 `McpManager`/`McpStatus` 是重改区。等有具体 SDK 层 bug 或功能需求时再一次性升级 |
+| `b2525e7b` 模型列表按供应商折叠 | 点供应商标题折叠/展开，状态存 SharedPreferences（`rememberSharedPreferenceString`，fork 已有该 hook），搜索时自动全展开；定位/偏移计算跟着 visible 列表走 | **建议吸收（手工适配，半天内）**。fork `ModelList.kt`（858 行）已重度分叉（手工偏移补偿、收藏区），但折叠不改 item 数量、只把参与定位的列表换成 visible 版，与既有偏移逻辑正交。注意教训 11：不改 item 结构就不涉及 key/index 问题 |
+| `b2d73a65` 导出对话支持不含思考过程 | `ExportOptions.includeReasoning` 开关（Markdown/图片生效）+ 修 Markdown 导出思考过程多行拼一行 + 修图片导出无论成败都提示成功 + 修 `indexOf` O(n²)；**Export.kt 改名 ConversationExport.kt** | **建议吸收功能、不跟改名（手工适配，中）**。fork 的 `Export.kt` 是重改区（导出留存/SAF 真落地/原子写，534a5eef），逐块移植；改名不跟（fork 无同构历史，churn 无收益）。上游顺手修的三个 bug 需先核对 fork 是否同样存在（多行拼接疑似同样存在，fork :610 直接 `lines()` 处理路径需复核） |
+
+**吸收优先级**：`95fed05e`（顺手修真 bug）→ `b2525e7b`（好功能）→ `b2d73a65`（三修一功能）；`d21265cb` 暂缓。
 
 ### 2026-09-28 同步：2.5.2 → 2.5.5（`458c16df` → `00c8d53a`，36 提交）
 
