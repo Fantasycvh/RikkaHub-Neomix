@@ -155,6 +155,9 @@ internal fun backgroundTextGenerationParams(
     customBody = model.customBodies,
 )
 
+/** 标题尾部的 `(序号)` 后缀。 */
+private val forkTitleSuffixRegex = Regex("""\((\d+)\)$""")
+
 /**
  * 分叉会话的标题：`源标题(序号)`，取**第一个未被占用**的序号。
  *
@@ -162,12 +165,18 @@ internal fun backgroundTextGenerationParams(
  * 更隐蔽的一层：空标题会让既有自动起名（`generateTitle` 仅在 `title.isBlank()` 时触发）在首条消息后
  * 把它改成一个**与源会话无关**的名字，「这是从哪条分出来的」这条线索就断了。
  *
- * **两处有意与上游不同**（fork 手工适配，见 `docs/upstream-analysis.md`）：
+ * **三处有意与上游不同**（fork 手工适配，见 `docs/upstream-analysis.md`）：
  * 1. **源标题为空时保持为空**，不生成 `(1)`。上游写法在源标题为空时会产出 `"(1)"`——
  *    这既没有信息量，又因为「非空」导致自动起名**永远不再修正它**（`shouldGenerate` 要求 isBlank）。
  *    保持空白才能让自动起名在首条消息后正常命名。
  * 2. **序号取第一个未占用值**，而不是「已有数量 + 1」。用户删掉某次分叉后再分叉会复用空出的序号，
  *    避免序号无界增长（与上游 `generateSequence` 的「找第一个空位」语义一致，此处只是把它显式化并加测试）。
+ * 3. **入参是 [Conversation] 而非标题字符串**（上文本地化差异，保留下沉）。
+ *
+ * **已有序号递增而非叠加**（上游 `95fed05e` / #1961，本仓同款缺陷）：源标题本身就带 `(N)` 时
+ * （对 `Chat(1)` 再分叉），旧写法产出 `Chat(1)(1)`、再分叉成 `Chat(1)(1)(1)`。
+ * 现在先剥掉尾部的 `(N)` 作为基名、从 `N+1` 起找空位 ⇒ `Chat(2)`、`Chat(3)`……
+ * 非数字后缀（`Chat(abc)`）不算序号，仍走「基名 + 新序号」路径（`Chat(abc)(1)`）。
  *
  * 抽成独立纯函数是为了能上 JVM 单测——Composable/Service 内的内联逻辑测不到，
  * 而「标题怎么取」正是本功能唯一的行为契约。
@@ -176,8 +185,12 @@ internal fun backgroundTextGenerationParams(
  */
 internal fun forkConversationTitle(source: Conversation, existingTitles: Set<String>): String {
     if (source.title.isBlank()) return ""
-    return generateSequence(1) { it + 1 }
-        .map { "${source.title}($it)" }
+    val suffix = forkTitleSuffixRegex.find(source.title)
+    val baseTitle = suffix?.let { source.title.removeRange(it.range) } ?: source.title
+    // 源标题已带 (N) 时从 N+1 起编号，避免叠加成 xxx(1)(1)
+    val start = suffix?.groupValues?.get(1)?.toIntOrNull()?.plus(1) ?: 1
+    return generateSequence(start) { it + 1 }
+        .map { "$baseTitle($it)" }
         .first { it !in existingTitles }
 }
 

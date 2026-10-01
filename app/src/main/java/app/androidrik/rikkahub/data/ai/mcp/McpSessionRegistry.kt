@@ -530,5 +530,29 @@ private fun mergeTools(storedTools: List<McpTool>, serverTools: List<Tool>): Lis
     }
 }
 
-private fun ToolSchema.toSchema(): InputSchema =
-    InputSchema.Obj(properties = properties ?: JsonObject(emptyMap()), required = required)
+/**
+ * SDK 的 `ToolSchema` → 本仓 [InputSchema]。
+ *
+ * **`$defs` 必须在此就地展开**（#1974 / #1968）：`InputSchema.Obj` 装不下 `$defs`，
+ * 直接丢会让 schema 里的 `$ref` 悬空，provider 以
+ * `Pointer '/$defs/...' does not exist` **拒绝整个请求**（连普通对话都发不出去）。
+ * 展开逻辑与失败姿态见 [inlineSchemaRefs]。
+ *
+ * `internal` 而非 `private`：这条接缝正是出过错的地方，用真实 [ToolSchema] 做集成测试
+ * （见 `McpSchemaRefsTest`），单测纯函数无法覆盖「转换这一步有没有真的调用展开」。
+ */
+internal fun ToolSchema.toSchema(): InputSchema {
+    val inlined = inlineSchemaRefs(properties = properties, defs = defs)
+    if (inlined.resolvedCount > 0) {
+        Log.i(TAG, "toSchema: inlined ${inlined.resolvedCount} ref(s) from \$defs")
+    }
+    if (inlined.unresolvedRefs.isNotEmpty()) {
+        // 宽松降级（悬空引用变 {}）而非拒绝请求——记一条便于定位服务器 schema 问题
+        Log.w(
+            TAG,
+            "toSchema: ${inlined.unresolvedRefs.size} unresolvable ref(s) degraded to {}: " +
+                inlined.unresolvedRefs.distinct().take(5).joinToString(", "),
+        )
+    }
+    return InputSchema.Obj(properties = inlined.schema, required = required)
+}

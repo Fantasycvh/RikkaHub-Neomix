@@ -88,6 +88,64 @@ class ChatServiceTest {
         assertEquals("Alpha(2)", fork.title)
     }
 
+    // ---- 已有序号递增而非叠加（上游 95fed05e / #1961）----
+
+    @Test
+    fun `fork increments existing numeric suffix instead of stacking`() {
+        assertEquals(
+            "Alpha(2)",
+            forkConversationTitle(titledConversation("Alpha(1)"), emptySet()),
+        )
+        // 已占用 2、3 时顺延到 4
+        assertEquals(
+            "Alpha(4)",
+            forkConversationTitle(titledConversation("Alpha(1)"), setOf("Alpha(2)", "Alpha(3)")),
+        )
+        // 对 Alpha(2) 再分叉：从 3 起，不产出 Alpha(2)(1)
+        assertEquals(
+            "Alpha(3)",
+            forkConversationTitle(titledConversation("Alpha(2)"), setOf("Alpha(1)", "Alpha(2)")),
+        )
+    }
+
+    @Test
+    fun `fork treats non-numeric suffix as part of the base title`() {
+        assertEquals(
+            "Alpha(abc)(1)",
+            forkConversationTitle(titledConversation("Alpha(abc)"), emptySet()),
+        )
+    }
+
+    @Test
+    fun `fork ignores a suffix that is not at the end`() {
+        // 中间的 (1) 属于基名的一部分，只有**尾部**数字后缀才算序号
+        assertEquals(
+            "Alpha(1) 的讨论(1)",
+            forkConversationTitle(titledConversation("Alpha(1) 的讨论"), emptySet()),
+        )
+    }
+
+    @Test
+    fun `fork never stacks suffixes across three generations`() {
+        // 模拟连续分叉：Alpha → Alpha(1) → 对它再分叉
+        val first = createForkConversation(titledConversation("Alpha"), emptyList(), emptySet())
+        assertEquals("Alpha(1)", first.title)
+
+        val second = createForkConversation(first, emptyList(), setOf(first.title))
+        assertEquals("Alpha(2)", second.title)
+        assertFalse(second.title.contains("(1)(1)"))
+
+        val third = createForkConversation(second, emptyList(), setOf(first.title, second.title))
+        assertEquals("Alpha(3)", third.title)
+    }
+
+    @Test
+    fun `blank source title still wins over suffix handling`() {
+        // fork 的有意差异优先：源标题为空时保持空白（让自动起名能正常接管）
+        assertEquals("", forkConversationTitle(titledConversation(""), emptySet()))
+        assertEquals("", forkConversationTitle(titledConversation("   "), setOf("(1)")))
+    }
+
     @Test
     fun `background generation params include model custom request configuration`() {
         val headers = listOf(CustomHeader(name = "X-Gateway-Token", value = "test-token"))
