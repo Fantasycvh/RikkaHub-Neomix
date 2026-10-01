@@ -9,6 +9,17 @@ sealed class TTSProviderSetting {
     abstract val id: Uuid
     abstract val name: String
 
+    /**
+     * 是否启用（**默认 true**，旧 JSON 缺字段时读默认值 ⇒ 零迁移）。
+     *
+     * 语义与 ASR / 搜索服务一致：停用是「临时别用它」而非「删除配置」——API key 与参数都留着。
+     * 停用后 [app.androidrik.rikkahub.data.datastore.getSelectedTTSProvider] 会跳过它。
+     *
+     * **例外：系统 TTS 是兜底**——它不需要 API key（走设备引擎），是唯一「永远可用」的选项，
+     * 故不允许停用到一个启用的都不剩：`ensureFallbackTtsEnabled` 会在无人启用时把它拉回来。
+     */
+    abstract val enabled: Boolean
+
     abstract fun copyProvider(
         id: Uuid = this.id,
         name: String = this.name,
@@ -19,6 +30,7 @@ sealed class TTSProviderSetting {
     data class OpenAI(
         override var id: Uuid = Uuid.random(),
         override var name: String = "OpenAI TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.openai.com/v1",
         val model: String = "gpt-4o-mini-tts",
@@ -40,6 +52,7 @@ sealed class TTSProviderSetting {
     data class Gemini(
         override var id: Uuid = Uuid.random(),
         override var name: String = "Gemini TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
         val model: String = "gemini-2.5-flash-preview-tts",
@@ -61,6 +74,7 @@ sealed class TTSProviderSetting {
     data class SystemTTS(
         override var id: Uuid = Uuid.random(),
         override var name: String = "System TTS",
+        override var enabled: Boolean = true,
         val speechRate: Float = 1.0f,
         val pitch: Float = 1.0f,
     ) : TTSProviderSetting() {
@@ -80,6 +94,7 @@ sealed class TTSProviderSetting {
     data class MiniMax(
         override var id: Uuid = Uuid.random(),
         override var name: String = "MiniMax TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.minimaxi.com/v1",
         val model: String = "speech-2.6-turbo",
@@ -102,6 +117,7 @@ sealed class TTSProviderSetting {
     data class Qwen(
         override var id: Uuid = Uuid.random(),
         override var name: String = "Qwen TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://dashscope.aliyuncs.com/api/v1",
         val model: String = "qwen3-tts-flash",
@@ -124,6 +140,7 @@ sealed class TTSProviderSetting {
     data class Groq(
         override var id: Uuid = Uuid.random(),
         override var name: String = "Groq TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.groq.com/openai/v1",
         val model: String = "canopylabs/orpheus-v1-english",
@@ -145,6 +162,7 @@ sealed class TTSProviderSetting {
     data class XAI(
         override var id: Uuid = Uuid.random(),
         override var name: String = "xAI TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.x.ai/v1",
         val voiceId: String = "eve",
@@ -167,6 +185,7 @@ sealed class TTSProviderSetting {
     data class MiMo(
         override var id: Uuid = Uuid.random(),
         override var name: String = "MiMo TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.xiaomimimo.com/v1",
         val model: String = "mimo-v2.5-tts",
@@ -188,6 +207,7 @@ sealed class TTSProviderSetting {
     data class ElevenLabs(
         override var id: Uuid = Uuid.random(),
         override var name: String = "ElevenLabs TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.elevenlabs.io",
         val model: String = "eleven_multilingual_v2",
@@ -226,6 +246,7 @@ sealed class TTSProviderSetting {
     data class Step(
         override var id: Uuid = Uuid.random(),
         override var name: String = "Step TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.stepfun.com",
         // step-tts-mini | step-tts-vivid | stepaudio-2.5-tts | step-tts-2
@@ -259,6 +280,7 @@ sealed class TTSProviderSetting {
     data class FishAudio(
         override var id: Uuid = Uuid.random(),
         override var name: String = "Fish Audio TTS",
+        override var enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.fish.audio",
         val model: String = "s2.1-pro",
@@ -299,4 +321,28 @@ sealed class TTSProviderSetting {
             )
         }
     }
+}
+
+/**
+ * 返回改了 [enabled] 的副本。
+ *
+ * 必须分发到各子类型：`enabled` 是各子类自己的构造参数，密封基类上拿不到统一的 `copy`
+ * （与 `ASRProviderSetting.withEnabled` / `SearchServiceOptions.withEnabled` 同因）。
+ */
+fun <T : TTSProviderSetting> T.withEnabled(enabled: Boolean): T {
+    if (this.enabled == enabled) return this
+    @Suppress("UNCHECKED_CAST")
+    return when (this) {
+        is TTSProviderSetting.OpenAI -> copy(enabled = enabled)
+        is TTSProviderSetting.Gemini -> copy(enabled = enabled)
+        is TTSProviderSetting.SystemTTS -> copy(enabled = enabled)
+        is TTSProviderSetting.MiniMax -> copy(enabled = enabled)
+        is TTSProviderSetting.Qwen -> copy(enabled = enabled)
+        is TTSProviderSetting.Groq -> copy(enabled = enabled)
+        is TTSProviderSetting.XAI -> copy(enabled = enabled)
+        is TTSProviderSetting.MiMo -> copy(enabled = enabled)
+        is TTSProviderSetting.ElevenLabs -> copy(enabled = enabled)
+        is TTSProviderSetting.Step -> copy(enabled = enabled)
+        is TTSProviderSetting.FishAudio -> copy(enabled = enabled)
+    } as T
 }

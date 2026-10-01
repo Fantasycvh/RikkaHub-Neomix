@@ -1797,5 +1797,7 @@
   <string name="error_title_model_unconfigured">未設定標題模型</string>
   <string name="error_title_model_unconfigured_desc">請在「設定 → 模型」中設定標題模型或快速模型後重試</string>
   <string name="setting_asr_page_disabled_badge">已停用</string>
+  <string name="setting_tts_page_disabled_badge">已停用</string>
+  <string name="setting_tts_page_fallback_kept">系統 TTS 作為兜底會保持啟用</string>
 </resources>
 

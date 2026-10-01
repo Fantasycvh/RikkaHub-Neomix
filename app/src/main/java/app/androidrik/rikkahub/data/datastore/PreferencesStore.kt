@@ -74,6 +74,7 @@ import app.androidrik.rikkahub.utils.toMutableStateFlow
 import app.androidrik.search.SearchCommonOptions
 import app.androidrik.search.SearchServiceOptions
 import app.androidrik.tts.provider.TTSProviderSetting
+import app.androidrik.tts.provider.withEnabled
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import kotlin.uuid.Uuid
@@ -207,6 +208,8 @@ class SettingsStore(
 
         // TTS
         val TTS_PROVIDERS = stringPreferencesKey("tts_providers")
+        // 内置 TTS 提供商墓碑（用户显式删除过的不再回填；与聊天提供商同款）
+        val REMOVED_TTS_PROVIDERS = stringPreferencesKey("removed_tts_providers")
         val SELECTED_TTS_PROVIDER = stringPreferencesKey("selected_tts_provider")
         val DEFAULT_TTS_PLAYBACK_SPEED = floatPreferencesKey("default_tts_playback_speed")
 
@@ -327,6 +330,9 @@ class SettingsStore(
                 } ?: emptyList(),
                 providers = JsonInstant.decodeFromString(preferences[PROVIDERS] ?: "[]"),
                 removedBuiltInProviderIds = preferences[REMOVED_BUILTIN_PROVIDERS]?.let {
+                    JsonInstant.decodeFromString<List<String>>(it).map { raw -> Uuid.parse(raw) }.toSet()
+                } ?: emptySet(),
+                removedTtsProviderIds = preferences[REMOVED_TTS_PROVIDERS]?.let {
                     JsonInstant.decodeFromString<List<String>>(it).map { raw -> Uuid.parse(raw) }.toSet()
                 } ?: emptySet(),
                 removedAssistantIds = preferences[REMOVED_ASSISTANTS]?.let {
@@ -462,16 +468,16 @@ class SettingsStore(
             }.toMutableList()
             val assistants = it.assistants.ifEmpty { DEFAULT_ASSISTANTS }.toMutableList()
             refillDefaultAssistants(assistants, it.removedAssistantIds)
-            val ttsProviders = it.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }.toMutableList()
-            DEFAULT_TTS_PROVIDERS.forEach { defaultTTSProvider ->
-                if (ttsProviders.none { provider -> provider.id == defaultTTSProvider.id }) {
-                    ttsProviders.add(defaultTTSProvider.copyProvider())
-                }
-            }
+            // 内置 TTS 提供商回填（墓碑感知）——注意**不能再写 `ifEmpty { DEFAULT }`**：
+            // 用户把内置项全删光后列表本就为空，那样会整体复活，删除等于没生效。
+            val ttsProviders = it.ttsProviders.toMutableList()
+            refillDefaultTtsProviders(ttsProviders, it.removedTtsProviderIds)
+            // 系统 TTS 兜底：不允许「一个启用的都不剩」
+            val normalizedTtsProviders = ttsProviders.ensureFallbackTtsEnabled()
             it.copy(
                 providers = providers,
                 assistants = assistants,
-                ttsProviders = ttsProviders,
+                ttsProviders = normalizedTtsProviders,
             )
         }
         .map { settings ->
@@ -602,6 +608,8 @@ class SettingsStore(
                 JsonInstant.encodeToString(settings.removedBuiltInProviderIds.map { it.toString() })
             preferences[REMOVED_ASSISTANTS] =
                 JsonInstant.encodeToString(settings.removedAssistantIds.map { it.toString() })
+            preferences[REMOVED_TTS_PROVIDERS] =
+                JsonInstant.encodeToString(settings.removedTtsProviderIds.map { it.toString() })
             preferences[RETRY_SETTING] = JsonInstant.encodeToString(settings.retrySetting)
 
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
@@ -787,6 +795,14 @@ data class Settings(
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,
     /** 用户显式删除的内置助手 id（墓碑）——默认回填逻辑跳过这些（与提供商墓碑同款） */
     val removedAssistantIds: Set<Uuid> = emptySet(),
+    /**
+     * 已删除的**内置 TTS 提供商** id（墓碑）。
+     *
+     * 为什么需要：内置 TTS 提供商原本由读路径无条件回填（缺了就补），导致**删不掉**——
+     * 与内置助手/内置聊天提供商曾经的问题同款。记下墓碑后回填逻辑跳过它们，
+     * 删除才真的生效。与 `removedBuiltInProviderIds` / `removedAssistantIds` 同一模式。
+     */
+    val removedTtsProviderIds: Set<Uuid> = emptySet(),
     val assistantTags: List<Tag> = emptyList(),
 
     /**
@@ -1075,9 +1091,14 @@ fun Settings.getQuickMessagesOfAssistant(assistant: Assistant) =
     quickMessages.filter { it.id in assistant.quickMessageIds }
 
 fun Settings.getSelectedTTSProvider(): TTSProviderSetting? {
-    return selectedTTSProviderId?.let { id ->
-        ttsProviders.find { it.id == id }
-    } ?: ttsProviders.firstOrNull()
+    // 停用的提供商不参与选择（见 TTSProviderSetting.enabled）。
+    // 与 ASR 同款取舍：**选中项被停用时不静默回退**到别的提供商——用户既然关了它，
+    // 就不该悄悄改用另一个可能计费的提供商，而是返回 null 让 TTS 侧如实置「不可用」。
+    // 注：「一个启用的都不剩」在读路径已被 ensureFallbackTtsEnabled 拦掉（系统 TTS 兜底），
+    // 只有用户把系统 TTS 也删掉时才可能真的没有可用项。
+    val selected = selectedTTSProviderId?.let { id -> ttsProviders.find { it.id == id } }
+    if (selected != null) return selected.takeIf { it.enabled }
+    return ttsProviders.firstOrNull { it.enabled }
 }
 
 fun Settings.getSelectedASRProvider(): ASRProviderSetting? {
@@ -1171,6 +1192,43 @@ internal fun refillDefaultAssistants(
         if (existing.none { it.id == defaultAssistant.id } && defaultAssistant.id !in removedIds) {
             existing.add(defaultAssistant.copy())
         }
+    }
+}
+
+/**
+ * 内置 TTS 提供商回填（**纯函数**，与 [refillDefaultAssistants] 同款模式）：
+ * 缺了的内置项补回来，**但跳过墓碑**——用户显式删除过的内置项不再回填，
+ * 否则读路径每次把删掉的加回来，等于删不掉。
+ */
+internal fun refillDefaultTtsProviders(
+    existing: MutableList<TTSProviderSetting>,
+    removedIds: Set<Uuid>,
+) {
+    DEFAULT_TTS_PROVIDERS.forEach { defaultProvider ->
+        if (existing.none { it.id == defaultProvider.id } && defaultProvider.id !in removedIds) {
+            existing.add(defaultProvider.copyProvider())
+        }
+    }
+}
+
+/** 该 id 是否属于内置 TTS 提供商（删除时需要记墓碑，否则读路径会补回来）。 */
+internal fun isBuiltInTtsProvider(id: Uuid): Boolean =
+    DEFAULT_TTS_PROVIDERS.any { it.id == id }
+
+/**
+ * 系统 TTS 兜底不变式（**纯函数**）：列表里**一个启用的都没有**时，把系统 TTS 拉回启用。
+ *
+ * 为什么单给它这个待遇：系统 TTS 走设备引擎、不需要 API key 与网络，是唯一「永远可用」的
+ * 选项。允许用户把最后一个也停掉，会让朗读按钮与语音模式直接失效且无人解释原因。
+ * 系统 TTS 自身已被删除（墓碑）时不做任何事——那种情况下确实没有兜底可用，
+ * 由 `getSelectedTTSProvider()` 返回 null 让 UI 如实置「不可用」。
+ */
+internal fun List<TTSProviderSetting>.ensureFallbackTtsEnabled(): List<TTSProviderSetting> {
+    if (any { it.enabled }) return this
+    val fallbackIndex = indexOfFirst { it.id == DEFAULT_SYSTEM_TTS_ID }
+    if (fallbackIndex < 0) return this
+    return mapIndexed { index, provider ->
+        if (index == fallbackIndex) provider.withEnabled(true) else provider
     }
 }
 

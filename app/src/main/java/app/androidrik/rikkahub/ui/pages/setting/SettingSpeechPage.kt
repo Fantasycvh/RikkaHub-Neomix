@@ -61,6 +61,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -68,6 +69,8 @@ import app.androidrik.rikkahub.R
 import app.androidrik.asr.ASRProviderSetting
 import app.androidrik.asr.withEnabled
 import app.androidrik.rikkahub.data.datastore.DEFAULT_SYSTEM_TTS_ID
+import app.androidrik.rikkahub.data.datastore.ensureFallbackTtsEnabled
+import app.androidrik.rikkahub.data.datastore.isBuiltInTtsProvider
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
@@ -76,10 +79,12 @@ import app.androidrik.rikkahub.ui.components.ui.TagType
 import app.androidrik.rikkahub.ui.context.LocalTTSState
 import app.androidrik.rikkahub.ui.pages.setting.components.ASRProviderConfigure
 import app.androidrik.rikkahub.ui.pages.setting.components.TTSProviderConfigure
+import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.tts.provider.TTSProviderSetting
+import app.androidrik.tts.provider.withEnabled
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -309,6 +314,8 @@ private fun TTSProviderList(
     modifier: Modifier = Modifier
 ) {
     val lazyListState = rememberLazyListState()
+    val context = LocalContext.current
+    val toaster = LocalToaster.current
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         val newProviders = settings.ttsProviders.reorderForDrag(from.index, to.index)
         onUpdateSettings(settings.copy(ttsProviders = newProviders))
@@ -356,17 +363,52 @@ private fun TTSProviderList(
                     onSelect = {
                         onUpdateSettings(settings.copy(selectedTTSProviderId = provider.id))
                     },
+                    // 停用是「临时别用它」而非删除配置。**系统 TTS 是兜底**：不允许停用到
+                    // 一个启用的都不剩，故先应用不变式，被拉回时提示原因（见 ensureFallbackTtsEnabled）。
+                    onToggleEnabled = { enabled ->
+                        val toggled = settings.ttsProviders.map {
+                            if (it.id == provider.id) it.withEnabled(enabled) else it
+                        }
+                        val normalized = toggled.ensureFallbackTtsEnabled()
+                        if (!enabled && normalized != toggled) {
+                            toaster.show(context.getString(R.string.setting_tts_page_fallback_kept))
+                        }
+                        // 停用当前选中项时自动切到第一个仍启用的（避免「选中项不可用」死状态；
+                        // 与 SettingSearchPage.onToggleEnabled 同款）
+                        val newSelectedId =
+                            if (!enabled && settings.selectedTTSProviderId == provider.id) {
+                                normalized.firstOrNull { it.enabled && it.id != provider.id }?.id
+                                    ?: settings.selectedTTSProviderId
+                            } else {
+                                settings.selectedTTSProviderId
+                            }
+                        onUpdateSettings(
+                            settings.copy(
+                                ttsProviders = normalized,
+                                selectedTTSProviderId = newSelectedId,
+                            )
+                        )
+                    },
                     onEdit = {
                         onEdit(provider)
                     },
                     onDelete = {
                         val newProviders = settings.ttsProviders - provider
-                        val newSelectedId =
-                            if (settings.selectedTTSProviderId == provider.id) DEFAULT_SYSTEM_TTS_ID else settings.selectedTTSProviderId
+                        val newSelectedId = if (settings.selectedTTSProviderId == provider.id) {
+                            newProviders.firstOrNull { it.enabled }?.id ?: DEFAULT_SYSTEM_TTS_ID
+                        } else {
+                            settings.selectedTTSProviderId
+                        }
                         onUpdateSettings(
                             settings.copy(
-                                ttsProviders = newProviders,
-                                selectedTTSProviderId = newSelectedId
+                                ttsProviders = newProviders.ensureFallbackTtsEnabled(),
+                                selectedTTSProviderId = newSelectedId,
+                                // 内置项删除记墓碑（否则读路径会把它原样补回来 = 删不掉）
+                                removedTtsProviderIds = if (isBuiltInTtsProvider(provider.id)) {
+                                    settings.removedTtsProviderIds + provider.id
+                                } else {
+                                    settings.removedTtsProviderIds
+                                },
                             )
                         )
                     }
@@ -720,6 +762,7 @@ private fun TTSProviderItem(
     isSelected: Boolean = false,
     dragHandle: @Composable () -> Unit,
     onSelect: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit = {},
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -802,7 +845,18 @@ private fun TTSProviderItem(
                     }
                 }
 
+                if (!provider.enabled) {
+                    Tag(type = TagType.DEFAULT) {
+                        Text(stringResource(R.string.setting_tts_page_disabled_badge))
+                    }
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
+
+                Switch(
+                    checked = provider.enabled,
+                    onCheckedChange = onToggleEnabled,
+                )
 
                 // TTS测试播放按钮
                 if (isSelected && isAvailable) {

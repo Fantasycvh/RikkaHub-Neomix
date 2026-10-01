@@ -1741,5 +1741,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="error_title_model_unconfigured">タイトルモデルが未設定です</string>
   <string name="error_title_model_unconfigured_desc">「設定 → モデル」でタイトルモデルまたは高速モデルを設定してから再試行してください</string>
   <string name="setting_asr_page_disabled_badge">無効</string>
+  <string name="setting_tts_page_disabled_badge">無効</string>
+  <string name="setting_tts_page_fallback_kept">システム TTS はフォールバックとして有効のままになります</string>
 </resources>
 

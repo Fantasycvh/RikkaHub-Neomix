@@ -1741,5 +1741,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="error_title_model_unconfigured">제목 모델이 설정되지 않았습니다</string>
   <string name="error_title_model_unconfigured_desc">설정 → 모델에서 제목 모델 또는 빠른 모델을 설정한 뒤 다시 시도하세요</string>
   <string name="setting_asr_page_disabled_badge">사용 안 함</string>
+  <string name="setting_tts_page_disabled_badge">사용 안 함</string>
+  <string name="setting_tts_page_fallback_kept">시스템 TTS는 대체 수단으로 항상 사용됩니다</string>
 </resources>
 

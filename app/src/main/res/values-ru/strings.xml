@@ -1741,5 +1741,7 @@
   <string name="error_title_model_unconfigured">Модель для заголовков не настроена</string>
   <string name="error_title_model_unconfigured_desc">Укажите модель заголовков или быструю модель в «Настройки → Модели» и повторите</string>
   <string name="setting_asr_page_disabled_badge">Отключено</string>
+  <string name="setting_tts_page_disabled_badge">Отключено</string>
+  <string name="setting_tts_page_fallback_kept">Системный TTS остаётся включённым как запасной вариант</string>
 </resources>
 
