@@ -167,6 +167,13 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    /** Gemini 4（上游 `3a9ae690`）：推理参数与 3 系列同走 `thinkingLevel`，见 GoogleProvider */
+    val GEMINI_4 = defineModel {
+        tokens("gemini", "4")
+        visionInput()
+        toolReasoningAbility()
+    }
+
     val GEMINI_FLASH_LATEST = defineModel {
         exact("gemini-flash-latest")
         visionInput()
@@ -188,7 +195,7 @@ object ModelRegistry {
     }
 
     val GEMINI_SERIES = defineGroup {
-        add(GEMINI_20_FLASH, GEMINI_2_5_FLASH, GEMINI_2_5_PRO, GEMINI_3_SERIES, GEMINI_LATEST)
+        add(GEMINI_20_FLASH, GEMINI_2_5_FLASH, GEMINI_2_5_PRO, GEMINI_3_SERIES, GEMINI_4, GEMINI_LATEST)
     }
 
     private val CLAUDE_SONNET_3_5 = defineModel {
@@ -239,6 +246,44 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    /**
+     * Claude 5 / 5.5（上游 `aa487c8c` 的 5 与 `3443dd45` 的 5.5；fork 此前漏吸收 5 这一批）。
+     *
+     * `notTokens("claude", …, "4")` 是关键：`claude-sonnet-4-5` 这类 id 同时含 `sonnet` 与 `5`，
+     * 不排除 4 代就会被判成 5 代、凭空多出 1M 上下文。
+     */
+    private val CLAUDE_SONNET_5 = defineModel {
+        tokens("claude", "sonnet", "5")
+        notTokens("claude", "sonnet", "4")
+        visionInput()
+        toolReasoningAbility()
+        contextLength(1.m)
+    }
+
+    private val CLAUDE_OPUS_5 = defineModel {
+        tokens("claude", "opus", "5")
+        notTokens("claude", "opus", "4")
+        visionInput()
+        toolReasoningAbility()
+        contextLength(1.m)
+    }
+
+    private val CLAUDE_SONNET_5_5 = defineModel {
+        tokens("claude", "sonnet", "5", "5")
+        notTokens("claude", "sonnet", "4")
+        visionInput()
+        toolReasoningAbility()
+        contextLength(1.m)
+    }
+
+    private val CLAUDE_OPUS_5_5 = defineModel {
+        tokens("claude", "opus", "5", "5")
+        notTokens("claude", "opus", "4")
+        visionInput()
+        toolReasoningAbility()
+        contextLength(1.m)
+    }
+
     val CLAUDE_SERIES = defineGroup {
         add(
             CLAUDE_SONNET_3_5,
@@ -248,7 +293,11 @@ object ModelRegistry {
             CLAUDE_SONNET_4_6,
             CLAUDE_OPUS_4_6,
             CLAUDE_OPUS_4_7,
-            CLAUDE_OPUS_4_8
+            CLAUDE_OPUS_4_8,
+            CLAUDE_SONNET_5,
+            CLAUDE_OPUS_5,
+            CLAUDE_SONNET_5_5,
+            CLAUDE_OPUS_5_5
         )
     }
 
@@ -585,6 +634,7 @@ object ModelRegistry {
         GEMINI_3_1_PRO_PREVIEW_CUSTOMTOOLS,
         GEMINI_3_1_FLASH_IMAGE,
         GEMINI_3_5,
+        GEMINI_4,
         GEMINI_FLASH_LATEST,
         GEMINI_PRO_LATEST,
         CLAUDE_SONNET_3_5,
@@ -595,6 +645,10 @@ object ModelRegistry {
         CLAUDE_OPUS_4_6,
         CLAUDE_OPUS_4_7,
         CLAUDE_OPUS_4_8,
+        CLAUDE_SONNET_5,
+        CLAUDE_OPUS_5,
+        CLAUDE_SONNET_5_5,
+        CLAUDE_OPUS_5_5,
         DEEPSEEK_V3_MODEL,
         DEEPSEEK_CHAT,
         DEEPSEEK_R1_MODEL,
@@ -667,6 +721,16 @@ object ModelRegistry {
             if (ModelAbility.TOOL in abilities) add(ModelAbility.TOOL)
             if (ModelAbility.REASONING in abilities) add(ModelAbility.REASONING)
         }
+    }
+
+    /**
+     * 注册表声明的上下文长度（未声明 = null）。与上游同名访问器一致。
+     *
+     * fork 此前只写了 `contextLength(...)` 声明却没有读取口（如 DeepSeek V4 全系），
+     * 于是那些值既用不上也测不了；补上后「5 代 1M / 4 代不误判」这类声明才有断言可钉。
+     */
+    val MODEL_CONTEXT_LENGTH = ModelData { modelId ->
+        resolveModels(modelId).firstNotNullOfOrNull { it.contextLength }
     }
 
     private fun resolveModels(modelId: String): List<ModelDefinition> {
