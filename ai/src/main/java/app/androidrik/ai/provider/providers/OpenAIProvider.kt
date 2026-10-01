@@ -289,10 +289,12 @@ class OpenAIProvider(
                 put("prompt", params.prompt)
                 put("n", params.numOfImages)
                 
-                val isGrok = providerSetting.baseUrl.contains("x.ai", ignoreCase = true) || 
+                // Grok 判断改为解析 host（上游 4e4bfa62 / #1978）：旧写法在整串 URL 上找 "x.ai"，
+                // 会把 https://api.xxx-max.ai/v1 这类中转域名误判成 Grok，静默丢掉自定义分辨率。
+                val isGrok = isXaiHost(providerSetting.baseUrl) ||
                     params.model.modelId.contains("grok", ignoreCase = true)
-                
-                if (params.size.isNotBlank() && !isGrok) {
+
+                if (shouldSendImageSize(params.size, isGrok)) {
                     put("size", params.size)
                 }
             }
@@ -339,7 +341,9 @@ class OpenAIProvider(
             .addFormDataPart("model", params.model.modelId)
             .addFormDataPart("prompt", params.prompt)
             .addFormDataPart("n", params.numOfImages.toString())
-        if (params.size.isNotBlank()) {
+        // 同 generateImage：默认的 "auto" 不写进请求体（上游只改了生成路径，编辑路径同病同治，
+        // 否则 dall-e-2 这类只接受具体尺寸的编辑接口会因为 "auto" 直接 400）
+        if (shouldSendImageSize(params.size, isGrok = false)) {
             bodyBuilder.addFormDataPart("size", params.size)
         }
 
