@@ -167,7 +167,18 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
-    /** Gemini 4（上游 `3a9ae690`）：推理参数与 3 系列同走 `thinkingLevel`，见 GoogleProvider */
+    /**
+     * Gemini 4（上游 `3a9ae690`）：推理参数与 3 系列同走 `thinkingLevel`，见 GoogleProvider。
+     *
+     * **刻意用泛化的代际写法 `tokens("gemini", "4")`**（而不是像 3 系列那样枚举 `pro`/`flash`）：
+     * 一条就覆盖 4 系列任意命名——`gemini-4-pro`、`gemini-4.5-flash`、`gemini-4-flash-lite`、
+     * 带日期后缀的各种 id 都命中（token 是子序列匹配）。**新代际照这个形状加一条即可**。
+     * 3 系列仍枚举式是因为它是在泛化写法成为惯例之前定的、且**已冻结**（不会有下一个 3.x id），
+     * 所以不必回头补泛化条目——别把它当成遗漏去「修」。
+     *
+     * 这条泛化写法成立的前提是** id 里带代际数字**：像 `gemini-omni-flash-preview` 这种不带数字的
+     * 命名族（官方文档里已有这类名字）不会被兜住，仍需在注册表**点名一条**。
+     */
     val GEMINI_4 = defineModel {
         tokens("gemini", "4")
         visionInput()

@@ -56,6 +56,12 @@ class ModelRegistryTest {
         assertTrue(ModelRegistry.GEMINI_4.match("gemini-4-pro"))
         assertTrue(ModelRegistry.GEMINI_4.match("gemini-4-flash-preview"))
         assertTrue(ModelRegistry.GEMINI_SERIES.match("gemini-4-pro"))
+        // 泛化代际写法要能兜住 4 系列的任意命名（不必逐条加注册表）：
+        // major.minor、lite 变体、带日期后缀的 id 都命中
+        assertTrue(ModelRegistry.GEMINI_4.match("gemini-4.5-flash"))
+        assertTrue(ModelRegistry.GEMINI_4.match("gemini-4-flash-lite"))
+        assertTrue(ModelRegistry.GEMINI_4.match("gemini-4-pro-20260101"))
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("gemini-4.5-flash"))
         assertFalse(ModelRegistry.GEMINI_4.match("gemini-3-pro"))
         // "04" 是独立 token，不能被当成 4
         assertFalse(ModelRegistry.GEMINI_4.match("gemini-2.5-flash-preview-04-17"))
