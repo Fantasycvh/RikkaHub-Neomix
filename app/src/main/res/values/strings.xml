@@ -1811,5 +1811,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_page_guardrails_task_duration">Background task time limit</string>
   <string name="setting_page_guardrails_task_duration_desc">Background tasks are stopped after this many minutes</string>
   <string name="setting_page_guardrails_unit_minutes">min</string>
+  <string name="close">Close</string>
+  <string name="skills_page_builtin_badge">Built-in</string>
 </resources>
 

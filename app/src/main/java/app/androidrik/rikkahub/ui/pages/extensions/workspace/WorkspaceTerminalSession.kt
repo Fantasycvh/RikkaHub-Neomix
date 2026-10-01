@@ -34,6 +34,7 @@ internal fun createWorkspaceTerminalSession(
     val linuxDir = File(workspaceDir, "linux")
     val tempDir = File(workspaceDir, "tmp")
     val skillsDir = File(appContext.filesDir, FileFolders.SKILLS).apply { mkdirs() }
+    val builtinSkillsDir = File(appContext.filesDir, FileFolders.BUILTIN_SKILLS).apply { mkdirs() }
     val nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir)
     val proot = File(nativeLibraryDir, "libproot_exec.so")
     val loader = File(nativeLibraryDir, "libproot_loader.so")
@@ -55,6 +56,8 @@ internal fun createWorkspaceTerminalSession(
         "${filesDir.absolutePath}:$WORKSPACE_DIR",
         "-b",
         "${skillsDir.absolutePath}:$SKILLS_DIR",
+        "-b",
+        "${builtinSkillsDir.absolutePath}:$BUILTIN_SKILLS_DIR",
     )
     listOf("/dev", "/proc", "/sys").forEach { path ->
         if (File(path).exists()) {
@@ -322,6 +325,7 @@ internal class WorkspaceTerminalViewClient(
 
 private const val WORKSPACE_DIR = "/workspace"
 private const val SKILLS_DIR = "/skills"
+private const val BUILTIN_SKILLS_DIR = "/builtin_skills"
 
 // 一个 URL 最多还原跨越的软换行行数(向上/向下各算), 足够覆盖任意真实 URL
 private const val URL_MAX_WRAP_ROWS = 50

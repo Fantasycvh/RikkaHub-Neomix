@@ -1736,5 +1736,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_page_guardrails_task_duration">バックグラウンドタスク制限時間</string>
   <string name="setting_page_guardrails_task_duration_desc">この時間を超えたバックグラウンドタスクは自動停止されます</string>
   <string name="setting_page_guardrails_unit_minutes">分</string>
+  <string name="close">閉じる</string>
+  <string name="skills_page_builtin_badge">内蔵</string>
 </resources>
 

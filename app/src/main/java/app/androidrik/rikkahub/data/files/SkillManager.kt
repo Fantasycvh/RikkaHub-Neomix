@@ -15,20 +15,64 @@ class SkillManager(
         private const val TAG = "SkillManager"
     }
 
+    private val builtinLock = Any()
+
+    @Volatile
+    private var builtinExtracted = false
+
     fun getSkillsDir(): File {
         val dir = context.filesDir.resolve(FileFolders.SKILLS)
         if (!dir.exists()) dir.mkdirs()
         return dir
     }
 
-    fun listSkills(): List<SkillMetadata> {
-        val skillsDir = getSkillsDir()
-        return skillsDir.listFiles()
-            ?.filter { it.isDirectory }
+    fun getBuiltinSkillsDir(): File {
+        val dir = context.filesDir.resolve(FileFolders.BUILTIN_SKILLS)
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    /**
+     * 确保内置技能已从 assets 解压到 [getBuiltinSkillsDir]，每个进程只检查一次。
+     * （吸收上游 `3b346748`；解压失败仅记日志——内置技能缺失不该让应用不可用。）
+     */
+    fun ensureBuiltinSkillsExtracted() {
+        if (builtinExtracted) return
+        synchronized(builtinLock) {
+            if (builtinExtracted) return
+            runCatching {
+                BuiltinSkills.extractIfNeeded(context, getBuiltinSkillsDir())
+            }.onFailure {
+                Log.w(TAG, "ensureBuiltinSkillsExtracted: Failed to extract builtin skills", it)
+            }
+            builtinExtracted = true
+        }
+    }
+
+    /**
+     * 列出所有可用技能：用户技能 + 内置技能，同名时用户技能覆盖内置技能
+     * （覆盖项仍可编辑/删除——删掉用户副本后内置技能重新生效）。
+     */
+    fun listSkills(): List<SkillMetadata> = mergeWithBuiltinSkills(
+        local = listSkillsIn(getSkillsDir(), builtin = false),
+        builtin = listBuiltinSkills(),
+    )
+
+    fun findSkill(name: String): SkillMetadata? = listSkills().firstOrNull { it.name == name }
+
+    private fun listBuiltinSkills(): List<SkillMetadata> {
+        ensureBuiltinSkillsExtracted()
+        return listSkillsIn(getBuiltinSkillsDir(), builtin = true)
+    }
+
+    private fun listSkillsIn(root: File, builtin: Boolean): List<SkillMetadata> {
+        return root.listFiles()
+            // 跳过隐藏目录（原子写入的 staging/backup 残留形如 .name.staging.N.tmp）
+            ?.filter { it.isDirectory && !it.name.startsWith(".") }
             ?.mapNotNull { dir ->
                 val skillFile = dir.resolve("SKILL.md")
                 if (!skillFile.exists()) return@mapNotNull null
-                parseSkillFile(skillFile, dir)
+                parseSkillFile(skillFile, dir, builtin)
             }
             ?: emptyList()
     }
@@ -57,8 +101,11 @@ class SkillManager(
 
     suspend fun deleteSkill(name: String): Boolean = withContext(Dispatchers.IO) {
         val skillDir = resolveSkillDir(name) ?: return@withContext false
+        // 目录不存在时 deleteRecursively 也返回 true，需提前拦截，避免误清理（内置技能的）启用状态
+        if (!skillDir.exists()) return@withContext false
         val deleted = skillDir.deleteRecursively()
-        if (deleted) {
+        // 删除的是覆盖内置技能的同名用户技能时，内置技能会重新生效，保留启用状态
+        if (deleted && listBuiltinSkills().none { it.name == name }) {
             settingsStore.update { settings ->
                 settings.copy(
                     assistants = settings.assistants.map { assistant ->
@@ -196,7 +243,7 @@ class SkillManager(
         return null
     }
 
-    private fun parseSkillFile(skillFile: File, skillDir: File): SkillMetadata? {
+    private fun parseSkillFile(skillFile: File, skillDir: File, builtin: Boolean = false): SkillMetadata? {
         return runCatching {
             val content = skillFile.readText()
             val frontmatter = SkillFrontmatterParser.parse(content)
@@ -210,6 +257,7 @@ class SkillManager(
                 // （issue 正文给的块式 `tags:` 列表用 `.get` 会读到 null，故标签不在本次范围）
                 category = frontmatter["category"]?.takeIf { it.isNotBlank() },
                 skillDir = skillDir,
+                builtin = builtin,
             )
         }.getOrElse {
             Log.w(TAG, "parseSkillFile: Failed to parse ${skillFile.absolutePath}", it)
@@ -248,6 +296,8 @@ data class SkillMetadata(
     /** #1901 单分类：SKILL.md frontmatter 的可选手写字段；只在管理页做组织维度，不进 systemPrompt。 */
     val category: String? = null,
     val skillDir: File,
+    /** 内置技能：随 APK 发布解压到 filesDir/builtin_skills，只读、不可删除/编辑 */
+    val builtin: Boolean = false,
 ) {
     val skillFile: File get() = skillDir.resolve("SKILL.md")
 }

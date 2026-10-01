@@ -1792,5 +1792,7 @@
   <string name="setting_page_guardrails_task_duration">背景任務時長上限</string>
   <string name="setting_page_guardrails_task_duration_desc">背景任務超過該時長後會被自動終止</string>
   <string name="setting_page_guardrails_unit_minutes">分鐘</string>
+  <string name="close">關閉</string>
+  <string name="skills_page_builtin_badge">內建</string>
 </resources>
 

@@ -1809,5 +1809,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_guardrails_task_duration">后台任务时长上限</string>
   <string name="setting_page_guardrails_task_duration_desc">后台任务超过该时长后会被自动终止</string>
   <string name="setting_page_guardrails_unit_minutes">分钟</string>
+  <string name="close">关闭</string>
+  <string name="skills_page_builtin_badge">内置</string>
 </resources>
 

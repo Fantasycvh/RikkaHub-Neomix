@@ -1736,5 +1736,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_page_guardrails_task_duration">백그라운드 작업 시간 제한</string>
   <string name="setting_page_guardrails_task_duration_desc">이 시간을 초과한 백그라운드 작업은 자동 종료됩니다</string>
   <string name="setting_page_guardrails_unit_minutes">분</string>
+  <string name="close">닫기</string>
+  <string name="skills_page_builtin_badge">내장</string>
 </resources>
 

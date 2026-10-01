@@ -35,6 +35,7 @@ import app.androidrik.rikkahub.di.dataSourceModule
 import app.androidrik.rikkahub.di.repositoryModule
 import app.androidrik.rikkahub.di.viewModelModule
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.service.WebServerService
 import app.androidrik.rikkahub.service.KeepAliveService
@@ -125,6 +126,9 @@ class RikkaHubApp : Application() {
 
         // sync upload files to DB
         syncManagedFiles()
+
+        // Extract builtin skills from assets after install/update (上游 3b346748)
+        extractBuiltinSkills()
 
         // Start WebServer if enabled in settings
         startWebServerIfEnabled()
@@ -231,6 +235,12 @@ class RikkaHubApp : Application() {
                     dir.deleteRecursively()
                 }
             }
+        }
+    }
+
+    private fun extractBuiltinSkills() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            get<SkillManager>().ensureBuiltinSkillsExtracted()
         }
     }
 
