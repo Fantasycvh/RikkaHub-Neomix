@@ -134,7 +134,7 @@ master 已 ff-only 快进至 `4e4bfa62`（同步于 10-02）。**核心事件：
 | `cf79246b` **MCP `$defs`/`$ref` 内联展开（#1974）** | 新 `McpToolSchema.kt`（89 行）+ 153 行测试：任意 `#/` JSON Pointer（含 `#/definitions`）、循环引用回自身处只保留 `type`、同级键覆盖、只沿 schema 关键字遍历（literal 数据不动） | **已先行落地（`95fe3e5b`），无需吸收**。fork 的 `McpSchemaRefs.kt` 与之等价（同级键优先/环检测/宽松降级全有）；两点边缘差异：上游对循环引用保留 `type`（fork 降级 `{}`）、上游支持任意 `#/` 指针（fork 仅 `#/$defs/`）。均为极端场景，fork 版已真机验证，不回吸 |
 | `d5f0039b` **生成标题找不到快速模型给错误提示（#1975）** | 两处静默 `return@runCatching` → `throw IllegalStateException`（新文案） | **已先行落地且更优（`95fe3e5b` 同批）**：fork 版本地化文案 + `addConfigErrorOnce` 错误卡 + 返回 `started` 让调用方补 toast（上游只弹错误卡） |
 | `654a5e1f` 提供商自定义请求头（#1952） | `ProviderSetting.customHeaders` + 高级设置 tab + `Request.kt` `mergeCustomHeaders`（**提供商头优先级最低，被助手/模型同名头覆盖**）+ 49 行测试 | **fork 已有全套**（字段 + ProviderDetailPage 高级设置 tab + 各 provider `applyCustomHeaders`）。**一处语义差异可小吸收**：fork 用 `addHeader` 追加，助手/模型与提供商同名头会**重复发送**（服务器行为未定）；上游是 filter 去重 + 请求级覆盖。中转站对重复头（尤其 authorization）敏感时才值得做 |
-| `620e38cc` **JsonTree 弹窗长按崩溃（#1977）** | BottomSheet 在独立窗口，沿用外层 `SelectionRegistrar` 长按抛 hierarchy 异常 → sheet 内自包一层 `SelectionContainer` | ✅ **建议吸收（小，真 bug 在 fork 存在）**：fork `LogPage.kt:458` 的 `JsonTree` 调用点在 `:384` 的 `SelectionContainer` 内，`JsonTree.kt:69` sheet 内 Text 无包裹——同样的长按崩溃 |
+| `620e38cc` **JsonTree 弹窗长按崩溃（#1977）** | BottomSheet 在独立窗口，沿用外层 `SelectionRegistrar` 长按抛 hierarchy 异常 → sheet 内自包一层 `SelectionContainer` | ✅ **已吸收 `799522f2`（2026-10-02）**：fork 同样中招（`LogPage.kt:458` 在 `:384` 的 `SelectionContainer` 内），改法与上游逐字等价；未修版真机复现 FATAL、修复版长按正常 |
 | `2d5c51bd` 复制过大请求体剪贴板闪退（#1980） | 复制按钮 try/catch `TransactionTooLargeException` + toast | **fork 已覆盖**：fork `LogPage` 请求体走 `JsonTree` 展示（无复制按钮，原崩溃路径不存在）；fork 的 `ContextUtil.writeClipboardText` 本就 `runCatching` + toast（RuntimeException 子类全兜住） |
 | `4e4bfa62` **OpenAI 图片生成自定义分辨率被误丢弃（#1978）** | Grok 判断改解析 host（`x.ai` 及子域名，防中转域名 `xxx-max.ai` 误判）+ `size=auto` 不写入请求体 | ✅ **建议吸收（小）**：fork `OpenAIProvider.kt:292` 仍是旧逻辑（`baseUrl.contains("x.ai")` + 无 auto 检查）——中转站用户自定义分辨率会被静默丢弃 |
 | `3443dd45` 注册 Claude Opus/Sonnet 5.5，移除 Claude 3 | 5.5 两条注册（`notTokens` 排除 4 代、1M context）+ 删 3.5/3.7 | **建议吸收注册（小）**：fork 注册表仍有 3.5/3.7（删不删随意——fork 有提供商墓碑哲学，注册项不伤人）；5.5 补上。注意 fork 注册表是重改区，手工加两条 |
@@ -145,7 +145,7 @@ master 已 ff-only 快进至 `4e4bfa62`（同步于 10-02）。**核心事件：
 | `282b85f2` 复制助手可同时复制记忆 | `copyAssistant(assistant, copyMemories)` + `MemoryRepository.copyMemories` + AssistantPage UI | **可选（小–中）**：fork `AssistantVM:89` 无此参数。有价值（fork 记忆体系重度使用），要点=Room 侧按 fromAssistantId 批量 INSERT，UI 加确认项 |
 | `9435b8a2` / `447bb7e8` | skills 文档更新 / 版本 bump 2.5.6 | 不跟（master 同步已带入 .agents 文档；版本号体系无关） |
 
-**吸收优先级**：`620e38cc`（真崩溃，几分钟）→ `4e4bfa62`（中转站用户真缺口，十几分钟）→ `3443dd45`/`3a9ae690` 注册条目（半小时，thinkingLevel 参数切换可拆出去）→ `282b85f2`（可选）→ `654a5e1f` 头去重语义（可选）→ `2cd62ad2`/`#1979`（暂缓）。
+**吸收优先级**：~~`620e38cc`~~（**已于 `799522f2` 吸收**）→ `4e4bfa62`（中转站用户真缺口，十几分钟）→ `3443dd45`/`3a9ae690` 注册条目（半小时，thinkingLevel 参数切换可拆出去）→ `282b85f2`（可选）→ `654a5e1f` 头去重语义（可选）→ `2cd62ad2`/`#1979`（暂缓）。
 
 ### 2026-09-28 同步：2.5.2 → 2.5.5（`458c16df` → `00c8d53a`，36 提交）
 
