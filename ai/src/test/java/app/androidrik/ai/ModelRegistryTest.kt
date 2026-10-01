@@ -146,4 +146,42 @@ class ModelRegistryTest {
             ModelRegistry.MODEL_ABILITIES.getData("deepseek-v4-pro")
         )
     }
+
+    /**
+     * 上游四条注册提交（`f167a855` deepseek-v4-flash-vision-exp / `04d6c4ea` muse-spark+glimmer /
+     * `c3d6867c` step-5 / `068103dd` mimo v2.6）在 fork 同步区间**之内**，但 fork 注册表当时没跟上。
+     *
+     * 这不是化妆品：fork 缺条目时这些 id 会退回默认值（只 TEXT、无工具/推理）——
+     * 例如 `deepseek-v4-flash-vision-exp` 明明能收图，界面却连图片入口都不给。
+     */
+    @Test
+    fun testLateRegistryEntriesArePresent() {
+        val visionInput = listOf(Modality.TEXT, Modality.IMAGE)
+        val toolReasoning = listOf(ModelAbility.TOOL, ModelAbility.REASONING)
+
+        // 视觉版比同名非视觉版更具体 ⇒ 由它取胜，且拿到视觉输入
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("deepseek-v4-flash-vision-exp"))
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("DeepSeek-V4-Flash-Vision-Exp"))
+        assertEquals(toolReasoning, ModelRegistry.MODEL_ABILITIES.getData("deepseek-v4-flash-vision-exp"))
+        // 非视觉版不能被顺带带上视觉
+        assertEquals(listOf(Modality.TEXT), ModelRegistry.MODEL_INPUT_MODALITIES.getData("deepseek-v4-flash"))
+
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("muse-spark"))
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("muse-spark-1.3-contributor"))
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("muse-glimmer-30b"))
+        assertEquals(toolReasoning, ModelRegistry.MODEL_ABILITIES.getData("muse-glimmer-30b"))
+
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("step-5"))
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("step-5-preview"))
+        assertEquals(toolReasoning, ModelRegistry.MODEL_ABILITIES.getData("step-5"))
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("step-3"))
+
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("mimo-v2.6"))
+        assertEquals(toolReasoning, ModelRegistry.MODEL_ABILITIES.getData("mimo-v2.6"))
+        // 2.5 代不能被 2.6 抢走（token 顺序匹配：mimo→v→2→5 命中的是 V2_5 条目）
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("mimo-v2.5"))
+        assertEquals(toolReasoning, ModelRegistry.MODEL_ABILITIES.getData("mimo-v2.5"))
+        // 更短的 V2 条目没有视觉，只作为兜底
+        assertEquals(listOf(Modality.TEXT), ModelRegistry.MODEL_INPUT_MODALITIES.getData("mimo-v2"))
+    }
 }

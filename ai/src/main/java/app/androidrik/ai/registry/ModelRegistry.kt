@@ -344,6 +344,13 @@ object ModelRegistry {
         contextLength(1.m)
     }
 
+    /** 上游 `f167a855`（fork 此前漏吸收）：同名视觉版，token 更长 ⇒ 优先于 DEEPSEEK_V4_FLASH 取胜 */
+    private val DEEPSEEK_V4_FLASH_VISION_EXP = defineModel {
+        tokens("deepseek", "v", "4", "flash", "vision", "exp")
+        visionInput()
+        toolReasoningAbility()
+    }
+
     private val DEEPSEEK_V4_PRO = defineModel {
         tokens("deepseek", "v", "4", "pro")
         toolReasoningAbility()
@@ -485,6 +492,13 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    /** 上游 `c3d6867c`（fork 此前漏吸收） */
+    private val STEP_5 = defineModel {
+        tokens("step", "5")
+        visionInput()
+        toolReasoningAbility()
+    }
+
     private val INTERN_S1 = defineModel {
         tokens("intern", "s", "1")
         visionInput()
@@ -575,6 +589,13 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    /** 上游 `068103dd`（fork 此前漏吸收） */
+    private val XIAOMI_MIMO_V2_6 = defineModel {
+        tokens("mimo", "v", "2", "6")
+        visionInput()
+        toolReasoningAbility()
+    }
+
     private val XIAOMI_MIMO_V3 = defineModel {
         tokens("mimo", "v", "3")
         visionInput()
@@ -605,6 +626,19 @@ object ModelRegistry {
 
     val QWEN_MT = defineModel {
         tokens("qwen", "mt")
+    }
+
+    /** 上游 `04d6c4ea`（fork 此前漏吸收；同名提交还把 `muse` 加进 Meta 图标匹配） */
+    private val MUSE_SPARK = defineModel {
+        tokens("muse", "spark")
+        visionInput()
+        toolReasoningAbility()
+    }
+
+    private val MUSE_GLIMMER = defineModel {
+        tokens("muse", "glimmer")
+        visionInput()
+        toolReasoningAbility()
     }
 
     private val ALL_MODELS = listOf(
@@ -655,6 +689,7 @@ object ModelRegistry {
         DEEPSEEK_REASONER,
         DEEPSEEK_FLASH,
         DEEPSEEK_V4_FLASH,
+        DEEPSEEK_V4_FLASH_VISION_EXP,
         DEEPSEEK_V4_1_FLASH,
         DEEPSEEK_V4_PRO,
         DEEPSEEK_V3_1,
@@ -680,6 +715,7 @@ object ModelRegistry {
         KIMI_K3_ALIAS,
         STEP_3,
         STEP_3_7_FLASH,
+        STEP_5,
         INTERN_S1,
         GLM_4_5,
         GLM_4_6,
@@ -697,11 +733,14 @@ object ModelRegistry {
         XIAOMI_MIMO_V2_PRO,
         XIAOMI_MIMO_V2_5,
         XIAOMI_MIMO_V2_5_PRO,
+        XIAOMI_MIMO_V2_6,
         XIAOMI_MIMO_V3,
         XIAOMI_MIMO_V3_PRO,
         HY3,
         HY4,
         LONGCAT_2,
+        MUSE_SPARK,
+        MUSE_GLIMMER,
         QWEN_MT
     )
 
