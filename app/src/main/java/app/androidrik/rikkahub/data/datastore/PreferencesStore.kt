@@ -1081,9 +1081,13 @@ fun Settings.getSelectedTTSProvider(): TTSProviderSetting? {
 }
 
 fun Settings.getSelectedASRProvider(): ASRProviderSetting? {
-    return selectedASRProviderId?.let { id ->
-        asrProviders.find { it.id == id }
-    } ?: asrProviders.firstOrNull()
+    // 停用的提供商不参与选择（见 ASRProviderSetting.enabled）。
+    // **选中项被停用时不静默回退**到别的提供商——用户既然关了它，就不该悄悄改用另一个
+    // 可能计费的提供商；返回 null 让消费路径如实提示「请配置语音识别」
+    // （听写 asr_error_not_configured / 语音模式 chat_page_voice_configure_asr）。
+    val selected = selectedASRProviderId?.let { id -> asrProviders.find { it.id == id } }
+    if (selected != null) return selected.takeIf { it.enabled }
+    return asrProviders.firstOrNull { it.enabled }
 }
 
 fun Model.findProvider(providers: List<ProviderSetting>, checkOverwrite: Boolean = true): ProviderSetting? {

@@ -1813,5 +1813,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="skills_page_builtin_badge">内置</string>
   <string name="error_title_model_unconfigured">未配置标题模型</string>
   <string name="error_title_model_unconfigured_desc">请在「设置 → 模型」中配置标题模型或快速模型后重试</string>
+  <string name="setting_asr_page_disabled_badge">已停用</string>
 </resources>
 

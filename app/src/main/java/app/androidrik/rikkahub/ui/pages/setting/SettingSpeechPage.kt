@@ -41,6 +41,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -65,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.asr.ASRProviderSetting
+import app.androidrik.asr.withEnabled
 import app.androidrik.rikkahub.data.datastore.DEFAULT_SYSTEM_TTS_ID
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -476,6 +478,26 @@ private fun ASRProviderList(
                     onSelect = {
                         onUpdateSettings(settings.copy(selectedASRProviderId = provider.id))
                     },
+                    // 停用是「临时别用它」而非删除配置：API key 与参数都留着，随时可再启用。
+                    // 语义对齐搜索服务（SettingSearchPage 的 onToggleEnabled）：
+                    // 停用**当前选中项**时自动切到第一个仍启用的提供商，避免「选中项不可用」而死；
+                    // 若全部停用则保留原 id（此时语音侧会如实提示「请配置 ASR」）。
+                    onToggleEnabled = { enabled ->
+                        val newProviders = settings.asrProviders.map {
+                            if (it.id == provider.id) it.withEnabled(enabled) else it
+                        }
+                        val newSelectedId = if (!enabled && settings.selectedASRProviderId == provider.id) {
+                            newProviders.firstOrNull { it.enabled }?.id ?: settings.selectedASRProviderId
+                        } else {
+                            settings.selectedASRProviderId
+                        }
+                        onUpdateSettings(
+                            settings.copy(
+                                asrProviders = newProviders,
+                                selectedASRProviderId = newSelectedId,
+                            )
+                        )
+                    },
                     onEdit = {
                         onEdit(provider)
                     },
@@ -848,6 +870,7 @@ private fun ASRProviderItem(
     isSelected: Boolean = false,
     dragHandle: @Composable () -> Unit,
     onSelect: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit = {},
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -920,7 +943,18 @@ private fun ASRProviderItem(
                     }
                 }
 
+                if (!provider.enabled) {
+                    Tag(type = TagType.DEFAULT) {
+                        Text(stringResource(R.string.setting_asr_page_disabled_badge))
+                    }
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
+
+                Switch(
+                    checked = provider.enabled,
+                    onCheckedChange = onToggleEnabled,
+                )
 
                 IconButton(
                     onClick = { showDropdownMenu = true }

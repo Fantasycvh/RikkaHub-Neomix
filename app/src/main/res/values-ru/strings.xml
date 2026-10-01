@@ -1740,5 +1740,6 @@
   <string name="skills_page_builtin_badge">Встроенный</string>
   <string name="error_title_model_unconfigured">Модель для заголовков не настроена</string>
   <string name="error_title_model_unconfigured_desc">Укажите модель заголовков или быструю модель в «Настройки → Модели» и повторите</string>
+  <string name="setting_asr_page_disabled_badge">Отключено</string>
 </resources>
 

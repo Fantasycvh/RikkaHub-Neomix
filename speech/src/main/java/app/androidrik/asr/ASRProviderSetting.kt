@@ -11,6 +11,18 @@ sealed class ASRProviderSetting {
     abstract val id: Uuid
     abstract val name: String
 
+    /**
+     * 是否启用（**默认 true**，旧 JSON 缺字段时读默认值 ⇒ 零迁移）。
+     *
+     * 语义对齐搜索服务（`SearchService.enabled`）：停用是「临时别用它」而非「删除配置」——
+     * API key 与参数都留着，随时可再启用。停用后 [app.androidrik.rikkahub.data.datastore.getSelectedASRProvider]
+     * 会跳过它，两条消费路径如实提示「请配置语音识别」（听写 `asr_error_not_configured`、
+     * 语音模式 `chat_page_voice_configure_asr`），**不做静默回退**到别的提供商
+     * （用户既然关掉它，就不该悄悄改用另一个可能计费的提供商）。
+     * 管理页恒显，便于重新启用。
+     */
+    abstract val enabled: Boolean
+
     abstract fun copyProvider(
         id: Uuid = this.id,
         name: String = this.name,
@@ -21,6 +33,7 @@ sealed class ASRProviderSetting {
     data class OpenAIRealtime(
         override val id: Uuid = Uuid.random(),
         override val name: String = "OpenAI Realtime ASR",
+        override val enabled: Boolean = true,
         val apiKey: String = "",
         val websocketUrl: String = "wss://api.openai.com/v1/realtime?intent=transcription",
         val model: String = "gpt-4o-transcribe",
@@ -47,6 +60,7 @@ sealed class ASRProviderSetting {
     data class DashScope(
         override val id: Uuid = Uuid.random(),
         override val name: String = "DashScope ASR",
+        override val enabled: Boolean = true,
         val apiKey: String = "",
         val websocketUrl: String = "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
         val model: String = "qwen3-asr-flash-realtime",
@@ -71,6 +85,7 @@ sealed class ASRProviderSetting {
     data class Volcengine(
         override val id: Uuid = Uuid.random(),
         override val name: String = "Volcengine ASR",
+        override val enabled: Boolean = true,
         val apiKey: String = "",
         val websocketUrl: String = VOLCENGINE_ASR_WEBSOCKET_URL,
         val resourceId: String = "volc.seedasr.sauc.duration",
@@ -105,6 +120,7 @@ sealed class ASRProviderSetting {
     data class MiMo(
         override val id: Uuid = Uuid.random(),
         override val name: String = "MiMo ASR",
+        override val enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.xiaomimimo.com/v1",
         val model: String = "mimo-v2.5-asr",
@@ -147,6 +163,7 @@ sealed class ASRProviderSetting {
     data class Step(
         override val id: Uuid = Uuid.random(),
         override val name: String = "Step ASR",
+        override val enabled: Boolean = true,
         val apiKey: String = "",
         val baseUrl: String = "https://api.stepfun.com",
         val model: String = "stepaudio-2.5-asr",
@@ -189,3 +206,21 @@ sealed class ASRProviderSetting {
 /** 描述的是我们适配器，而非厂商全部 API。 */
 val ASRProviderSetting.supportsServerVadVoiceMode: Boolean
     get() = this is ASRProviderSetting.OpenAIRealtime || this is ASRProviderSetting.DashScope || this is ASRProviderSetting.Volcengine
+
+/**
+ * 返回改了 [enabled] 的副本。
+ *
+ * 必须分发到各子类型：`enabled` 是各子类自己的构造参数，密封基类上拿不到统一的 `copy`
+ * （与 `SearchServiceOptions.withEnabled` 同因）。
+ */
+fun <T : ASRProviderSetting> T.withEnabled(enabled: Boolean): T {
+    if (this.enabled == enabled) return this
+    @Suppress("UNCHECKED_CAST")
+    return when (this) {
+        is ASRProviderSetting.OpenAIRealtime -> copy(enabled = enabled)
+        is ASRProviderSetting.DashScope -> copy(enabled = enabled)
+        is ASRProviderSetting.Volcengine -> copy(enabled = enabled)
+        is ASRProviderSetting.MiMo -> copy(enabled = enabled)
+        is ASRProviderSetting.Step -> copy(enabled = enabled)
+    } as T
+}

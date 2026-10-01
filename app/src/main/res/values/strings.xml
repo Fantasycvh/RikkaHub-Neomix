@@ -1815,5 +1815,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="skills_page_builtin_badge">Built-in</string>
   <string name="error_title_model_unconfigured">Title model not configured</string>
   <string name="error_title_model_unconfigured_desc">Set a title model or a fast model in Settings → Models, then try again</string>
+  <string name="setting_asr_page_disabled_badge">Disabled</string>
 </resources>
 
