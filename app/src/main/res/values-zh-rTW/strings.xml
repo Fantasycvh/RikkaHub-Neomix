@@ -886,6 +886,8 @@
   <string name="setting_display_page_show_message_jumper_desc">在捲動聊天列表時，在右側顯示快速跳轉按鈕</string>
   <string name="setting_display_page_show_message_jumper_title">消息導航按鈕</string>
   <string name="setting_display_page_show_model_name_desc">是否在聊天消息中顯示模型名稱</string>
+  <string name="setting_display_page_show_generation_source_title">顯示生成來源</string>
+  <string name="setting_display_page_show_generation_source_desc">在 AI 回覆末尾顯示「路由 · 模型」（來自訊息快照；舊訊息可能無此資訊）</string>
   <string name="setting_display_page_show_model_name_title">顯示模型名稱</string>
   <string name="setting_display_page_show_thinking_content_desc">是否在生成時預設展開並顯示思考過程</string>
   <string name="setting_display_page_show_thinking_content_title">顯示思考內容</string>

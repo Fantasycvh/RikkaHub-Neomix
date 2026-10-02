@@ -925,6 +925,8 @@
   <string name="setting_display_page_show_message_jumper_desc">Display quick jump buttons on the right when scrolling the chat list</string>
   <string name="setting_display_page_show_message_jumper_title">Show Message Jumper</string>
   <string name="setting_display_page_show_model_name_desc">Whether to display model names in chat messages</string>
+  <string name="setting_display_page_show_generation_source_title">Show generation source</string>
+  <string name="setting_display_page_show_generation_source_desc">Show "route · model" at the end of each AI reply (from saved snapshots; older messages may not have it)</string>
   <string name="setting_display_page_show_model_name_title">Show Model Name</string>
   <string name="setting_display_page_show_thinking_content_desc">Whether to expand and show the thinking process by default during generation</string>
   <string name="setting_display_page_show_thinking_content_title">Show Thinking Content</string>

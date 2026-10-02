@@ -197,6 +197,18 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                     item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_show_generation_source_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_display_page_show_generation_source_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.showGenerationSource,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(showGenerationSource = it))
+                                }
+                            )
+                        },
+                    )
+                    item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_show_datetime_in_message_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_show_datetime_in_message_desc)) },
                         trailingContent = {

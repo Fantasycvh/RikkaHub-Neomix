@@ -849,6 +849,8 @@
   <string name="setting_display_page_show_message_jumper_desc">채팅 목록을 스크롤할 때 오른쪽에 빠른 점프 버튼 표시</string>
   <string name="setting_display_page_show_message_jumper_title">메시지 점프 버튼 표시</string>
   <string name="setting_display_page_show_model_name_desc">채팅 메시지에 모델 이름을 표시할지 여부</string>
+  <string name="setting_display_page_show_generation_source_title">생성 출처 표시</string>
+  <string name="setting_display_page_show_generation_source_desc">AI 답변 끝에 "라우트 · 모델"을 표시합니다(메시지 스냅샷 기준; 이전 메시지에는 없을 수 있음)</string>
   <string name="setting_display_page_show_model_name_title">모델 이름 표시</string>
   <string name="setting_display_page_show_thinking_content_desc">생성 중 기본적으로 사고 과정을 펼쳐서 표시할지 여부</string>
   <string name="setting_display_page_show_thinking_content_title">생각 내용 표시</string>

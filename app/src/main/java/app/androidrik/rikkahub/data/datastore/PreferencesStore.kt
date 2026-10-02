@@ -976,6 +976,13 @@ data class DisplaySetting(
     val showDateTimeInMessage: Boolean = false,
     val showTokenUsage: Boolean = true,
     /**
+     * 消息末尾 NerdLine 显示「路由 · 模型」生成来源（#1805）。数据来自 UIMessage 的
+     * modelNameSnapshot/providerNameSnapshot 双快照（存名不存 id，删模型/重建不悬空）；
+     * 旧消息无快照时该条不显示。默认关（与头部 showModelName 信息量不同：这里是
+     * 路由归因，供多中转核对与成本/质量定位）。
+     */
+    val showGenerationSource: Boolean = false,
+    /**
      * 输入栏的上下文占用指示器形态：false = 细条 + 百分比（默认），true = 圆环 + 整数百分比。
      *
      * 两种形态只是**展示**不同：数值来源、警戒阈值（`CONTEXT_USAGE_WARNING_RATIO`）、点击行为

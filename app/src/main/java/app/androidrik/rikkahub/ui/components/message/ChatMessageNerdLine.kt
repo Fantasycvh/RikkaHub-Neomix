@@ -20,6 +20,7 @@ import kotlinx.datetime.toJavaLocalDateTime
 import app.androidrik.ai.ui.UIMessage
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Clock02
+import me.rerere.hugeicons.stroke.Cpu
 import me.rerere.hugeicons.stroke.Download04
 import me.rerere.hugeicons.stroke.Upload02
 import me.rerere.hugeicons.stroke.Zap
@@ -115,6 +116,28 @@ fun ChatMessageNerdLine(
                             },
                             content = {
                                 Text(text = "${seconds}s")
+                            }
+                        )
+                    }
+                }
+                // 生成来源「路由 · 模型」（#1805）：来自消息落盘的双快照（存名不存 id，
+                // 删模型/重建不悬空）；旧消息无快照时不显示。供多中转核对与成本/质量归因。
+                if (settings.showGenerationSource) {
+                    val source = listOfNotNull(
+                        message.providerNameSnapshot?.takeIf { it.isNotBlank() },
+                        message.modelNameSnapshot?.takeIf { it.isNotBlank() },
+                    ).joinToString(" · ")
+                    if (source.isNotEmpty()) {
+                        StatsItem(
+                            icon = {
+                                Icon(
+                                    imageVector = HugeIcons.Cpu,
+                                    contentDescription = "Source",
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            },
+                            content = {
+                                Text(text = source)
                             }
                         )
                     }

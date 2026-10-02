@@ -849,6 +849,8 @@
   <string name="setting_display_page_show_message_jumper_desc">Отображать кнопки быстрого перехода справа при прокрутке списка чатов</string>
   <string name="setting_display_page_show_message_jumper_title">Показывать переходчик к сообщению</string>
   <string name="setting_display_page_show_model_name_desc">Отображать ли названия моделей в сообщениях чата</string>
+  <string name="setting_display_page_show_generation_source_title">Показывать источник генерации</string>
+  <string name="setting_display_page_show_generation_source_desc">Показывать «маршрут · модель» в конце каждого ответа AI (из снимков сообщения; в старых сообщениях может отсутствовать)</string>
   <string name="setting_display_page_show_model_name_title">Показывать название модели</string>
   <string name="setting_display_page_show_thinking_content_desc">Расширять и показывать процесс мышления по умолчанию во время генерации</string>
   <string name="setting_display_page_show_thinking_content_title">Показывать содержание размышлений</string>

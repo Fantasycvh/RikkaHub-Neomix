@@ -849,6 +849,8 @@
   <string name="setting_display_page_show_message_jumper_desc">チャットリストをスクロールすると、右側にクイックジャンプボタンが表示されます。</string>
   <string name="setting_display_page_show_message_jumper_title">メッセージナビゲーションボタン</string>
   <string name="setting_display_page_show_model_name_desc">チャットメッセージにモデル名を表示するかどうか</string>
+  <string name="setting_display_page_show_generation_source_title">生成元を表示</string>
+  <string name="setting_display_page_show_generation_source_desc">AI 回復の末尾に「ルート · モデル」を表示します（メッセージスナップショットから；古いメッセージにはない場合があります）</string>
   <string name="setting_display_page_show_model_name_title">モデル名を表示</string>
   <string name="setting_display_page_show_thinking_content_desc">生成中に思考プロセスをデフォルトで展開して表示するかどうか</string>
   <string name="setting_display_page_show_thinking_content_title">思考内容を表示</string>
