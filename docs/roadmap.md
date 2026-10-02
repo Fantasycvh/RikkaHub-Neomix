@@ -632,6 +632,9 @@ data class ApiKeyEntry(
   全仓同类调用点核查：其余（ContextBudgetPlanner/CompressionPlanner/ChatService 自动压缩）
   均在后台协程，组合期只剩新异步路径。**教训：真 tokenizer 落地时只看了精度与预热，
   「每次全量重算 × 高频重组」的成本组合是装机后才暴露的第三类问题。**
+- 2026-10-02 晚：**v1.0.20 (282) 已转正为 Latest**（`gh release edit --draft=false --latest`；发布后
+  `git ls-remote` 核对 tag → `f26c5ad5` = bump 提交 = 资产构建点**三方对齐**，本版无 tag/资产错位问题——
+  target 在建草稿时就钉住了）。digest `sha256:75af9a8a…` 发布前后一致；README 改「正式发布：v1.0.20」（无草稿）。
 - 2026-10-02：**v1.0.20 (282) 草稿**——bump `f26c5ad5`（**先 push 再构建**，target 钉 bump 完整 SHA）→
   清 outputs → release 构建 → aapt 核实 `versionCode=282`/`1.0.20`/仅 arm64 → **release 装机冒烟零 FATAL**
   （tokenizer `ok=true vocab=100256 in 1086ms`）→ draft（release id `401868486`）+ upload
