@@ -1747,5 +1747,28 @@
   <string name="code_block_add_assistant">Сделать ассистентом</string>
   <string name="code_block_add_assistant_success">Ассистент добавлен: %1$s</string>
   <string name="assistant_importer_invalid_json">Некорректный JSON: не удалось разобрать блок как карточку персонажа</string>
+  <string name="context_capacity_title">Ёмкость контекста</string>
+  <string name="context_capacity_status_ok">Места достаточно</string>
+  <string name="context_capacity_status_warning">Почти заполнено</string>
+  <string name="context_capacity_remaining_label">Осталось до лимита</string>
+  <string name="context_capacity_used_label">Занято</string>
+  <string name="context_capacity_window_label">Лимит модели</string>
+  <string name="context_capacity_tokens_unit">Tokens</string>
+  <string name="context_capacity_estimate_rounds">Хватит примерно на %1$d реплик (медиана %2$s Tokens)</string>
+  <string name="context_capacity_estimate_insufficient">Слишком мало истории для прогноза (меньше %1$d реплик)</string>
+  <string name="context_capacity_breakdown_title">Из чего состоит контекст</string>
+  <string name="context_capacity_breakdown_history">Актуальная история</string>
+  <string name="context_capacity_breakdown_count">%1$d из %2$d сообщений</string>
+  <string name="context_capacity_breakdown_system_memory">Системный промпт и память</string>
+  <string name="context_capacity_breakdown_itemized">Инструменты и чекпоинты</string>
+  <string name="context_capacity_breakdown_tool_schema">Схемы инструментов (не в диалоге)</string>
+  <string name="context_capacity_breakdown_tool_result">Вывод инструментов</string>
+  <string name="context_capacity_breakdown_checkpoint">Чекпоинт сжатия</string>
+  <string name="context_capacity_breakdown_total">Итого</string>
+  <string name="context_capacity_compress">Сжать контекст</string>
+  <string name="context_capacity_confirm">Готово</string>
+  <string name="context_capacity_loading">Измеряем следующий запрос…</string>
+  <string name="context_capacity_titlebar_readout">%1$s/%2$s (осталось %3$s)</string>
+  <string name="context_capacity_local_floor_hint">Учтены постоянные затраты (системный промпт, схемы инструментов), которые сервер ещё не посчитал — калибровка после первого ответа.</string>
 </resources>
 

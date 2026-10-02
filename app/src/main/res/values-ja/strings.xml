@@ -1747,5 +1747,28 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="code_block_add_assistant">アシスタントとして追加</string>
   <string name="code_block_add_assistant_success">アシスタントを追加しました：%1$s</string>
   <string name="assistant_importer_invalid_json">JSON が不正です：このコードブロックをキャラクターカードとして解析できません</string>
+  <string name="context_capacity_title">会話コンテキスト容量</string>
+  <string name="context_capacity_status_ok">余裕あり</string>
+  <string name="context_capacity_status_warning">ほぼ満杯</string>
+  <string name="context_capacity_remaining_label">満杯まで残り</string>
+  <string name="context_capacity_used_label">使用中</string>
+  <string name="context_capacity_window_label">モデル上限</string>
+  <string name="context_capacity_tokens_unit">Tokens</string>
+  <string name="context_capacity_estimate_rounds">あと約 %1$d 往復分（1往復の中央値 %2$s Tokens）</string>
+  <string name="context_capacity_estimate_insufficient">履歴が少なすぎて予測できません（%1$d 往復未満）</string>
+  <string name="context_capacity_breakdown_title">コンテキストの内訳</string>
+  <string name="context_capacity_breakdown_history">有効な履歴</string>
+  <string name="context_capacity_breakdown_count">%1$d / %2$d 件</string>
+  <string name="context_capacity_breakdown_system_memory">システム設定と記憶</string>
+  <string name="context_capacity_breakdown_itemized">ツールとチェックポイント</string>
+  <string name="context_capacity_breakdown_tool_schema">ツール schema（会話には含まれない）</string>
+  <string name="context_capacity_breakdown_tool_result">ツール出力</string>
+  <string name="context_capacity_breakdown_checkpoint">圧縮チェックポイント</string>
+  <string name="context_capacity_breakdown_total">合計</string>
+  <string name="context_capacity_compress">コンテキストを圧縮</string>
+  <string name="context_capacity_confirm">完了</string>
+  <string name="context_capacity_loading">次のリクエストを計測中…</string>
+  <string name="context_capacity_titlebar_readout">%1$s/%2$s（残り %3$s）</string>
+  <string name="context_capacity_local_floor_hint">サーバー未計測の固定費（システムプロンプト・ツール schema）を含みます。次の返信後に自動補正されます。</string>
 </resources>
 

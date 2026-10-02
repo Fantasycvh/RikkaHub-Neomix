@@ -42,6 +42,8 @@ import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FavoriteRepository
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.ChatService
+import app.androidrik.rikkahub.data.ai.PromptInspection
+import app.androidrik.rikkahub.ui.pages.promptinspect.buildPromptInspectionLabels
 import app.androidrik.rikkahub.service.MessageQueueState
 import app.androidrik.rikkahub.service.QueuedMessage
 import app.androidrik.rikkahub.ui.hooks.writeStringPreference
@@ -253,6 +255,17 @@ class ChatVM(
                 }
         }
     }
+
+    /**
+     * 只读地组装一次「这次请求会发什么」，供上下文容量面板做组成明细与轮数预测。
+     *
+     * 与真实发送**同源**（[ChatService.inspectPromptAssembly]：共用 PromptAssembly 与同一个
+     * transformer 链、同一套工具装配），因此面板里的分段与实际发出的请求一致；不落库、不发请求。
+     */
+    suspend fun inspectPromptAssembly(): PromptInspection? = chatService.inspectPromptAssembly(
+        conversationId = _conversationId,
+        labels = buildPromptInspectionLabels(context),
+    )
 
     suspend fun forkMessage(message: UIMessage): Conversation {
         return chatService.forkConversationAtMessage(_conversationId, message.id)

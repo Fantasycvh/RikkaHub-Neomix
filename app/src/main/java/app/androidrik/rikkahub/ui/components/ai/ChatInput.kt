@@ -161,6 +161,7 @@ fun ChatInput(
     voiceState: VoiceSessionState = VoiceSessionState(),
     onStopVoiceMode: () -> Unit = {},
     contextUsage: ContextUsage? = null,
+    onShowContextSheet: () -> Unit = {},
     pendingQuote: UIMessageAnnotation.QuotedMessage? = null,
     onCancelQuote: () -> Unit = {},
 ) {
@@ -362,6 +363,7 @@ fun ChatInput(
                                 ContextUsageBarButton(
                                     usedTokens = usage.usedTokens,
                                     windowTokens = usage.windowTokens,
+                                    onClick = onShowContextSheet,
                                 )
                             }
 
@@ -865,15 +867,17 @@ data class ContextUsage(
 )
 
 /**
- * 已使用上下文占用：细进度条 + 右侧百分比；点击弹出具体用量。
- * 达到窗口 80%（CONTEXT_USAGE_WARNING_RATIO）变红警告。
+ * 已使用上下文占用：细进度条 + 右侧百分比；**点击打开上下文容量面板**。
+ * 达到窗口 80%（CONTEXT_USAGE_WARNING_RATIO）变红警告——阈值与面板、标题旁读数共用同一常量。
+ *
+ * 这里刻意**只给状态不给数字**（数字读数在标题旁），四处入口分工见 `docs/roadmap.md` 同日条目。
  */
 @Composable
 private fun ContextUsageBarButton(
     usedTokens: Int,
     windowTokens: Int,
+    onClick: () -> Unit,
 ) {
-    var showPopup by remember { mutableStateOf(false) }
     val fraction = if (windowTokens > 0) {
         (usedTokens.toFloat() / windowTokens).coerceIn(0f, 1f)
     } else {
@@ -904,7 +908,7 @@ private fun ContextUsageBarButton(
             modifier = Modifier
                 .height(32.dp)
                 .clip(RoundedCornerShape(percent = 50))
-                .clickable { showPopup = true }
+                .clickable { onClick() }
                 .padding(horizontal = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -945,18 +949,4 @@ private fun ContextUsageBarButton(
         }
     }
 
-    DropdownMenu(
-        expanded = showPopup,
-        onDismissRequest = { showPopup = false },
-    ) {
-        Text(
-            text = stringResource(
-                R.string.chat_context_usage_tooltip,
-                formatContextLength(usedTokens),
-                formatContextLength(windowTokens),
-            ),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
 }

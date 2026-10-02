@@ -1803,5 +1803,28 @@
   <string name="code_block_add_assistant">設為助手</string>
   <string name="code_block_add_assistant_success">已新增助手：%1$s</string>
   <string name="assistant_importer_invalid_json">JSON 不合法：無法將該程式碼區塊解析為角色卡</string>
+  <string name="context_capacity_title">對話上下文容量</string>
+  <string name="context_capacity_status_ok">空間充裕</string>
+  <string name="context_capacity_status_warning">空間吃緊</string>
+  <string name="context_capacity_remaining_label">距離吃滿還剩</string>
+  <string name="context_capacity_used_label">目前佔用</string>
+  <string name="context_capacity_window_label">模型上下文上限</string>
+  <string name="context_capacity_tokens_unit">Tokens</string>
+  <string name="context_capacity_estimate_rounds">預計還可容納約 %1$d 輪對話（每輪中位數 %2$s Tokens）</string>
+  <string name="context_capacity_estimate_insufficient">歷史樣本不足（少於 %1$d 輪），暫不預測</string>
+  <string name="context_capacity_breakdown_title">上下文組成明細</string>
+  <string name="context_capacity_breakdown_history">有效歷史訊息</string>
+  <string name="context_capacity_breakdown_count">%1$d 則 / 共 %2$d 則</string>
+  <string name="context_capacity_breakdown_system_memory">系統設定與記憶</string>
+  <string name="context_capacity_breakdown_itemized">工具與檢查點</string>
+  <string name="context_capacity_breakdown_tool_schema">工具 schema（不在對話中）</string>
+  <string name="context_capacity_breakdown_tool_result">工具輸出</string>
+  <string name="context_capacity_breakdown_checkpoint">壓縮檢查點</string>
+  <string name="context_capacity_breakdown_total">合計</string>
+  <string name="context_capacity_compress">壓縮上下文</string>
+  <string name="context_capacity_confirm">確認</string>
+  <string name="context_capacity_loading">正在測量這次請求…</string>
+  <string name="context_capacity_titlebar_readout">%1$s/%2$s（餘 %3$s）</string>
+  <string name="context_capacity_local_floor_hint">已計入伺服器尚未統計的固定開銷（系統提示、工具 schema），首次回覆後會自動校正。</string>
 </resources>
 

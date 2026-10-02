@@ -1,5 +1,20 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
+import app.androidrik.rikkahub.ui.components.ai.CompressContextDialog
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import app.androidrik.rikkahub.utils.formatContextLength
+import app.androidrik.rikkahub.utils.computeContextCapacity
+import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
+import app.androidrik.rikkahub.utils.ContextCapacity
+import androidx.compose.runtime.produceState
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -338,6 +353,23 @@ private fun ChatPageContent(
     val assistant = setting.getCurrentAssistant()
     var showFilesSheet by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
+    // 上下文容量面板 + 压缩参数对话框（压缩入口在面板里，参数界面与 + 菜单共用同一个）
+    var showContextSheet by remember { mutableStateOf(false) }
+    var showCompressDialog by remember { mutableStateOf(false) }
+    // 上下文占用**只算一份**：标题旁读数、输入栏指示器、容量面板共用同一个来源，
+    // 否则三处各算一次，同一屏可能出现两个不一致的数（2026-10-02 决定，见 docs/roadmap.md）
+    // 与（将来）自动压缩触发判断同源：usage 优先 + 本地估算兜底
+    val contextUsage = remember(
+        conversation,
+        currentChatModel,
+        setting.contextLengthOverride,
+    ) {
+        ContextUsage(
+            usedTokens = conversation.estimateWindowTokens(currentChatModel),
+            windowTokens = currentChatModel?.effectiveContextLength(setting.contextLengthOverride)
+                ?: DEFAULT_CONTEXT_LENGTH,
+        )
+    }
     // 重生成 scope 选择：非空时显示 RegenerateScopeDialog（仅当有下游时才需要选/确认）
     var regenerateScopeFor by remember { mutableStateOf<UIMessage?>(null) }
     // 「导出后继续」：导出下游消息的 sheet；关闭后执行 scope B
@@ -367,6 +399,7 @@ private fun ChatPageContent(
                 TopBar(
                     settings = setting,
                     conversation = conversation,
+                    contextUsage = contextUsage,
                     bigScreen = bigScreen,
                     drawerState = drawerState,
                     previewMode = previewMode,
@@ -393,15 +426,8 @@ private fun ChatPageContent(
                     settings = setting,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
-                    contextUsage = run {
-                        // 与（将来）自动压缩触发判断同源：usage 优先 + 本地估算兜底
-                        val estimated = conversation.estimateWindowTokens(currentChatModel)
-                        ContextUsage(
-                            usedTokens = estimated,
-                            windowTokens = currentChatModel?.effectiveContextLength(setting.contextLengthOverride)
-                                ?: DEFAULT_CONTEXT_LENGTH,
-                        )
-                    },
+                    contextUsage = contextUsage,
+                    onShowContextSheet = { showContextSheet = true },
                     onCancelClick = {
                         vm.stopGeneration()
                     },
@@ -593,6 +619,34 @@ private fun ChatPageContent(
             )
         }
 
+        if (showContextSheet) {
+            ChatContextCapacitySheet(
+                vm = vm,
+                assistantName = assistant.name,
+                modelName = currentChatModel?.displayName.orEmpty(),
+                contextUsage = contextUsage,
+                onCompress = {
+                    showContextSheet = false
+                    showCompressDialog = true
+                },
+                onDismiss = { showContextSheet = false },
+            )
+        }
+
+        // 压缩参数对话框：入口有两个（+ 菜单与容量面板），故渲染在页面级
+        if (showCompressDialog) {
+            CompressContextDialog(
+                onDismiss = { showCompressDialog = false },
+                onConfirm = { additionalPrompt, targetTokens, retainRatio ->
+                    vm.handleCompressContext(additionalPrompt, targetTokens, retainRatio)
+                },
+                // 初值取当前设置（与 + 菜单里的入口同一约定）
+                initialRetainPercent = setting.autoCompressRetainPercent,
+                initialTargetTokens = setting.autoCompressTargetTokens,
+                customPresets = setting.compressPresets,
+            )
+        }
+
         if (showFilesSheet) {
             ChatFilesPickerSheet(
                 inputState = inputState,
@@ -600,6 +654,7 @@ private fun ChatPageContent(
                 conversation = conversation,
                 assistant = assistant,
                 vm = vm,
+                onRequestCompress = { showCompressDialog = true },
                 onDismiss = { showFilesSheet = false },
             )
         }
@@ -650,6 +705,90 @@ private fun ChatPageContent(
     }
 }
 
+/**
+ * 标题旁的上下文占用读数：状态点 + `已用/上限（余 X）`。
+ *
+ * 与输入栏指示器**分工**：这里给精确数字、那里只给状态（2026-10-02 决定）。
+ * 颜色落在状态点、常态浅蓝，达共用的警戒阈值（[CONTEXT_USAGE_WARNING_RATIO]）才切红。
+ * 读数不可省略（左侧助手/模型名可省略）。
+ */
+@Composable
+private fun ContextUsageReadout(
+    usedTokens: Int,
+    windowTokens: Int,
+) {
+    val fraction = if (windowTokens > 0) (usedTokens.toFloat() / windowTokens).coerceIn(0f, 1f) else 0f
+    val isWarning = windowTokens > 0 && fraction >= CONTEXT_USAGE_WARNING_RATIO
+    val remaining = (windowTokens - usedTokens).coerceAtLeast(0)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(start = 6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(if (isWarning) MaterialTheme.colorScheme.error else ContextStatusDotNormal),
+        )
+        Spacer(Modifier.size(4.dp))
+        Text(
+            text = stringResource(
+                R.string.context_capacity_titlebar_readout,
+                formatContextLength(usedTokens),
+                formatContextLength(windowTokens),
+                formatContextLength(remaining),
+            ),
+            maxLines = 1,
+            color = if (isWarning) MaterialTheme.colorScheme.error else LocalContentColor.current.copy(0.65f),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+        )
+    }
+}
+
+/**
+ * 容量面板的外壳：**打开时只读组装一次**（跑一遍与真实请求同源的 transformer 链），
+ * 再交给 [ContextCapacitySheet] 渲染。不落库、不发请求。
+ */
+@Composable
+private fun ChatContextCapacitySheet(
+    vm: ChatVM,
+    assistantName: String,
+    modelName: String,
+    contextUsage: ContextUsage,
+    onCompress: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val capacity by produceState<ContextCapacity?>(initialValue = null, vm) {
+        val inspection = runCatching { vm.inspectPromptAssembly() }.getOrNull()
+        value = inspection?.let {
+            computeContextCapacity(
+                usedTokens = contextUsage.usedTokens,
+                windowTokens = contextUsage.windowTokens,
+                segments = it.segments,
+                sentHistoryCount = it.sentHistoryCount,
+                totalMessageCount = it.totalMessageCount,
+                localTotalTokens = it.totalTokens,
+            )
+        }
+    }
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+    )
+    ModalBottomSheet(
+        sheetState = sheetState,
+        onDismissRequest = onDismiss,
+    ) {
+        ContextCapacitySheet(
+            assistantName = assistantName,
+            modelName = modelName,
+            capacity = capacity,
+            onCompress = onCompress,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
 @Composable
 private fun ChatFilesPickerSheet(
     inputState: ChatInputState,
@@ -657,17 +796,16 @@ private fun ChatFilesPickerSheet(
     conversation: Conversation,
     assistant: Assistant,
     vm: ChatVM,
+    onRequestCompress: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
     val filesManager: FilesManager = koinInject()
     var showInjectionSheet by remember { mutableStateOf(false) }
-    var showCompressDialog by remember { mutableStateOf(false) }
 
     fun dismissAll() {
         showInjectionSheet = false
-        showCompressDialog = false
         onDismiss()
     }
 
@@ -824,8 +962,9 @@ private fun ChatFilesPickerSheet(
             state = inputState,
             assistant = assistant,
             mcpManager = vm.mcpManager,
-            onCompressContext = { additionalPrompt, targetTokens, retainRatio ->
-                vm.handleCompressContext(additionalPrompt, targetTokens, retainRatio)
+            onRequestCompress = {
+                // 压缩参数对话框由页面级渲染（容量面板的「压缩上下文」也要用它）
+                onRequestCompress()
             },
             onUpdateAssistant = {
                 vm.updateSettings(
@@ -846,8 +985,6 @@ private fun ChatFilesPickerSheet(
             },
             showInjectionSheet = showInjectionSheet,
             onShowInjectionSheetChange = { showInjectionSheet = it },
-            showCompressDialog = showCompressDialog,
-            onShowCompressDialogChange = { showCompressDialog = it },
             onDismiss = { dismissAll() },
             onTakePic = onLaunchCamera,
             onPickImage = { imagePickerLauncher.launch("image/*") },
@@ -867,6 +1004,7 @@ private fun glassHazeStyle(): HazeBlurStyle = HazeBlurStyle.Material3 {
 private fun TopBar(
     settings: Settings,
     conversation: Conversation,
+    contextUsage: ContextUsage,
     drawerState: DrawerState,
     bigScreen: Boolean,
     previewMode: Boolean,
@@ -925,15 +1063,23 @@ private fun TopBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (model != null && provider != null) {
-                        Text(
-                            text = "${assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }} / ${model.displayName} (${provider.name})",
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 1,
-                            color = LocalContentColor.current.copy(0.65f),
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 8.sp,
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }} / ${model.displayName} (${provider.name})",
+                                overflow = TextOverflow.Ellipsis,
+                                maxLines = 1,
+                                // 助手/模型可省略，右侧占用读数是精确读数、不可省略
+                                modifier = Modifier.weight(1f, fill = false),
+                                color = LocalContentColor.current.copy(0.65f),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 8.sp,
+                                )
                             )
-                        )
+                            ContextUsageReadout(
+                                usedTokens = contextUsage.usedTokens,
+                                windowTokens = contextUsage.windowTokens,
+                            )
+                        }
                     }
                 }
             }

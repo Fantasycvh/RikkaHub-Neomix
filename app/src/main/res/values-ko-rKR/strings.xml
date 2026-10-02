@@ -1747,5 +1747,28 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="code_block_add_assistant">어시스턴트로 추가</string>
   <string name="code_block_add_assistant_success">어시스턴트 추가됨: %1$s</string>
   <string name="assistant_importer_invalid_json">JSON이 올바르지 않습니다: 이 코드 블록을 캐릭터 카드로 해석할 수 없습니다</string>
+  <string name="context_capacity_title">대화 컨텍스트 용량</string>
+  <string name="context_capacity_status_ok">여유 있음</string>
+  <string name="context_capacity_status_warning">거의 가득 참</string>
+  <string name="context_capacity_remaining_label">가득까지 남음</string>
+  <string name="context_capacity_used_label">현재 사용</string>
+  <string name="context_capacity_window_label">모델 한도</string>
+  <string name="context_capacity_tokens_unit">Tokens</string>
+  <string name="context_capacity_estimate_rounds">약 %1$d턴 더 가능 (턴당 중앙값 %2$s Tokens)</string>
+  <string name="context_capacity_estimate_insufficient">기록이 부족해 예측하지 않습니다 (%1$d턴 미만)</string>
+  <string name="context_capacity_breakdown_title">컨텍스트 구성</string>
+  <string name="context_capacity_breakdown_history">유효 기록</string>
+  <string name="context_capacity_breakdown_count">%1$d / %2$d개</string>
+  <string name="context_capacity_breakdown_system_memory">시스템 설정 및 기억</string>
+  <string name="context_capacity_breakdown_itemized">도구 및 체크포인트</string>
+  <string name="context_capacity_breakdown_tool_schema">도구 schema (대화에 없음)</string>
+  <string name="context_capacity_breakdown_tool_result">도구 출력</string>
+  <string name="context_capacity_breakdown_checkpoint">압축 체크포인트</string>
+  <string name="context_capacity_breakdown_total">합계</string>
+  <string name="context_capacity_compress">컨텍스트 압축</string>
+  <string name="context_capacity_confirm">확인</string>
+  <string name="context_capacity_loading">이번 요청을 계산하는 중…</string>
+  <string name="context_capacity_titlebar_readout">%1$s/%2$s (남은 %3$s)</string>
+  <string name="context_capacity_local_floor_hint">서버가 아직 집계하지 않은 고정 비용(시스템 프롬프트, 도구 schema)을 포함합니다. 다음 응답 후 자동 보정됩니다.</string>
 </resources>
 

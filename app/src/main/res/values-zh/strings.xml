@@ -1820,5 +1820,28 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="code_block_add_assistant">设为助手</string>
   <string name="code_block_add_assistant_success">已添加助手：%1$s</string>
   <string name="assistant_importer_invalid_json">JSON 不合法：无法把该代码块解析为角色卡</string>
+  <string name="context_capacity_title">会话上下文容量</string>
+  <string name="context_capacity_status_ok">空间充裕</string>
+  <string name="context_capacity_status_warning">空间紧张</string>
+  <string name="context_capacity_remaining_label">距离吃满还剩</string>
+  <string name="context_capacity_used_label">当前占用</string>
+  <string name="context_capacity_window_label">模型上下文上限</string>
+  <string name="context_capacity_tokens_unit">Tokens</string>
+  <string name="context_capacity_estimate_rounds">预计还可容纳约 %1$d 轮对话（每轮中位数 %2$s Tokens）</string>
+  <string name="context_capacity_estimate_insufficient">历史样本不足（少于 %1$d 轮），暂不预测</string>
+  <string name="context_capacity_breakdown_title">上下文组成明细</string>
+  <string name="context_capacity_breakdown_history">有效历史消息</string>
+  <string name="context_capacity_breakdown_count">%1$d 条 / 共 %2$d 条</string>
+  <string name="context_capacity_breakdown_system_memory">系统设定与记忆</string>
+  <string name="context_capacity_breakdown_itemized">工具与检查点</string>
+  <string name="context_capacity_breakdown_tool_schema">工具 schema（不在对话中）</string>
+  <string name="context_capacity_breakdown_tool_result">工具输出</string>
+  <string name="context_capacity_breakdown_checkpoint">压缩检查点</string>
+  <string name="context_capacity_breakdown_total">合计</string>
+  <string name="context_capacity_compress">压缩上下文</string>
+  <string name="context_capacity_confirm">确认</string>
+  <string name="context_capacity_loading">正在测量这次请求…</string>
+  <string name="context_capacity_titlebar_readout">%1$s/%2$s（余 %3$s）</string>
+  <string name="context_capacity_local_floor_hint">已计入服务端尚未统计的固定开销（系统提示、工具 schema），首次回复后会自动校准。</string>
 </resources>
 

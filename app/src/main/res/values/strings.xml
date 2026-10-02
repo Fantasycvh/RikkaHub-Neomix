@@ -1822,5 +1822,28 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="code_block_add_assistant">Set as assistant</string>
   <string name="code_block_add_assistant_success">Added assistant: %1$s</string>
   <string name="assistant_importer_invalid_json">Invalid JSON: cannot parse this code block as a character card</string>
+  <string name="context_capacity_title">Context capacity</string>
+  <string name="context_capacity_status_ok">Plenty of room</string>
+  <string name="context_capacity_status_warning">Nearly full</string>
+  <string name="context_capacity_remaining_label">Left before full</string>
+  <string name="context_capacity_used_label">In use</string>
+  <string name="context_capacity_window_label">Model window</string>
+  <string name="context_capacity_tokens_unit">Tokens</string>
+  <string name="context_capacity_estimate_rounds">Room for about %1$d more rounds (median %2$s Tokens/round)</string>
+  <string name="context_capacity_estimate_insufficient">Not enough history to project (fewer than %1$d rounds)</string>
+  <string name="context_capacity_breakdown_title">What makes up the context</string>
+  <string name="context_capacity_breakdown_history">Effective history</string>
+  <string name="context_capacity_breakdown_count">%1$d of %2$d messages</string>
+  <string name="context_capacity_breakdown_system_memory">System prompt &amp; memories</string>
+  <string name="context_capacity_breakdown_itemized">Tools &amp; checkpoints</string>
+  <string name="context_capacity_breakdown_tool_schema">Tool schemas (not in the conversation)</string>
+  <string name="context_capacity_breakdown_tool_result">Tool outputs</string>
+  <string name="context_capacity_breakdown_checkpoint">Compression checkpoint</string>
+  <string name="context_capacity_breakdown_total">Total</string>
+  <string name="context_capacity_compress">Compress context</string>
+  <string name="context_capacity_confirm">Done</string>
+  <string name="context_capacity_loading">Measuring the next request…</string>
+  <string name="context_capacity_titlebar_readout">%1$s/%2$s (%3$s left)</string>
+  <string name="context_capacity_local_floor_hint">Includes fixed overhead (system prompt, tool schemas) that the server hasn\'t counted yet — calibrated after the next reply.</string>
 </resources>
 

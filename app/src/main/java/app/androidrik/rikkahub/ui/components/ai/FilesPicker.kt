@@ -51,7 +51,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Job
 import app.androidrik.ai.provider.ProviderSetting
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Camera01
@@ -93,13 +92,12 @@ internal fun FilesPicker(
     assistant: Assistant,
     state: ChatInputState,
     mcpManager: McpManager,
-    onCompressContext: (additionalPrompt: String, targetTokens: Int, retainRatio: Double) -> Job,
+    /** 请求打开压缩参数对话框（对话框本身由 ChatPage 渲染：容量面板也要用它）。 */
+    onRequestCompress: () -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
     onUpdateConversation: (Conversation) -> Unit,
     showInjectionSheet: Boolean,
     onShowInjectionSheetChange: (Boolean) -> Unit,
-    showCompressDialog: Boolean,
-    onShowCompressDialogChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     onTakePic: () -> Unit,
     onPickImage: () -> Unit,
@@ -237,7 +235,7 @@ internal fun FilesPicker(
             modifier = Modifier
                 .clip(MaterialTheme.shapes.large)
                 .clickable {
-                    onShowCompressDialogChange(true)
+                    onRequestCompress()
                 },
         )
 
@@ -313,22 +311,6 @@ internal fun FilesPicker(
         )
     }
 
-    // Compress Context Dialog
-    if (showCompressDialog) {
-        CompressContextDialog(
-            onDismiss = {
-                onShowCompressDialogChange(false)
-                onDismiss()
-            },
-            onConfirm = { additionalPrompt, targetTokens, retainRatio ->
-                onCompressContext(additionalPrompt, targetTokens, retainRatio)
-            },
-            // 初值取当前设置（此前硬编码 2000/40，每次打开都重置）
-            initialRetainPercent = settings.autoCompressRetainPercent,
-            initialTargetTokens = settings.autoCompressTargetTokens,
-            customPresets = settings.compressPresets,
-        )
-    }
 }
 
 @Composable
