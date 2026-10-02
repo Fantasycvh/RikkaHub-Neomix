@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.utils.computeContextCapacity
 import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
 import app.androidrik.rikkahub.utils.ContextCapacity
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
@@ -78,6 +79,7 @@ import dev.chrisbanes.haze.blur.material3.Material3
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.Model
@@ -152,6 +154,38 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     val errors by vm.errors.collectAsStateWithLifecycle()
     val voiceState by vm.voiceSession.state.collectAsStateWithLifecycle()
     val startVoiceMode = rememberVoiceModeStarter(vm, setting)
+
+    // 上下文占用**只算一份**：标题旁读数、输入栏指示器、容量面板共用同一个来源（2026-10-02 决定）。
+    // **计算必须离开主线程**（ANR 实测 2026-10-02，trace：main 线程 97s CPU 全在
+    // ByteLevelBpe）：真 tokenizer 全窗分词 + 流式期间每个 chunk 都触发重组，在组合期
+    // 同步算会被打满。这里 300ms 节流 + Default 线程计算 + latest-wins（慢计算被新
+    // 实例取代即取消）；首帧 0/上限，首个计算 ≤300ms 后到达。
+    val contextUsage by produceState(
+        initialValue = ContextUsage(
+            usedTokens = 0,
+            windowTokens = currentChatModel?.effectiveContextLength(setting.contextLengthOverride)
+                ?: DEFAULT_CONTEXT_LENGTH,
+        ),
+        currentChatModel,
+        setting.contextLengthOverride,
+    ) {
+        var lastComputedAt = 0L
+        var job: Job? = null
+        snapshotFlow { conversation }.collect { convo ->
+            val now = System.currentTimeMillis()
+            if (now - lastComputedAt < 300) return@collect
+            lastComputedAt = now
+            job?.cancel()
+            job = launch(Dispatchers.Default) {
+                val usedTokens = convo.estimateWindowTokens(currentChatModel)
+                value = ContextUsage(
+                    usedTokens = usedTokens,
+                    windowTokens = currentChatModel?.effectiveContextLength(setting.contextLengthOverride)
+                        ?: DEFAULT_CONTEXT_LENGTH,
+                )
+            }
+        }
+    }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
@@ -245,6 +279,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     processingStatus = processingStatus,
                     setting = setting,
                     conversation = conversation,
+                    contextUsage = contextUsage,
                     drawerState = drawerState,
                     navController = navController,
                     vm = vm,
@@ -280,6 +315,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     processingStatus = processingStatus,
                     setting = setting,
                     conversation = conversation,
+                    contextUsage = contextUsage,
                     drawerState = drawerState,
                     navController = navController,
                     vm = vm,
@@ -310,6 +346,7 @@ private fun ChatPageContent(
     setting: Settings,
     bigScreen: Boolean,
     conversation: Conversation,
+    contextUsage: ContextUsage,
     drawerState: DrawerState,
     navController: Navigator,
     vm: ChatVM,
@@ -356,20 +393,6 @@ private fun ChatPageContent(
     // 上下文容量面板 + 压缩参数对话框（压缩入口在面板里，参数界面与 + 菜单共用同一个）
     var showContextSheet by remember { mutableStateOf(false) }
     var showCompressDialog by remember { mutableStateOf(false) }
-    // 上下文占用**只算一份**：标题旁读数、输入栏指示器、容量面板共用同一个来源，
-    // 否则三处各算一次，同一屏可能出现两个不一致的数（2026-10-02 决定，见 docs/roadmap.md）
-    // 与（将来）自动压缩触发判断同源：usage 优先 + 本地估算兜底
-    val contextUsage = remember(
-        conversation,
-        currentChatModel,
-        setting.contextLengthOverride,
-    ) {
-        ContextUsage(
-            usedTokens = conversation.estimateWindowTokens(currentChatModel),
-            windowTokens = currentChatModel?.effectiveContextLength(setting.contextLengthOverride)
-                ?: DEFAULT_CONTEXT_LENGTH,
-        )
-    }
     // 重生成 scope 选择：非空时显示 RegenerateScopeDialog（仅当有下游时才需要选/确认）
     var regenerateScopeFor by remember { mutableStateOf<UIMessage?>(null) }
     // 「导出后继续」：导出下游消息的 sheet；关闭后执行 scope B
