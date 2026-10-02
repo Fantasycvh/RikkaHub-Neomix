@@ -154,6 +154,27 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 > **2026-09-15 补充：第 1 项已实现（`69453f5e`）+ 设计落盘 → `docs/design-memory-scoring.md`**（含与本仓代码/真实数据的逐条核对、tokenizer 可替换性分析、回收站的两个坑）。
 > **重要更正**：核对后问题重心不是「换排序」而是「全量注入需砍到预算」——本仓两个上限（60 条 / 100K 字符）在实测数据（54 条 / 60K 字符）下**都没触发**，即当前把全部记忆约 4 万 token 塞进 system prompt；且 Yuihub 的 1800 **字符**预算会把 54 条砍到 7 条，**不可照搬**（已定为 token 计、起步 5K–10K）。
 
+## 四.5、Yuihub 2.5.5 → 2.5.7 增量评估（2026-10-02，09-23 后约 45 提交）
+
+**直接可吸收（小件，均 fork 核实存在同款缺口）**：
+
+| 项 | Yuihub 提交 | fork 现状与要点 |
+|---|---|---|
+| **备份 DB 快照改 VACUUM INTO** | `47e7dfaf` | fork `addDatabaseToZip` 是**热拷 db/wal/shm 三件套**（无读事务）——备份瞬间有写入即可能拷到不一致状态/半页（09-15 的 WAL 修复只治了**恢复方向**）。VACUUM INTO=单读事务一致性快照；**必须带回退**（fork minSdk 26 < SQLite 3.27 不支持该语句，老设备回退热拷）。~1h |
+| **write/edit 二进制误写防护** | `8a3a37ac` ISSUE-08 | fork `WorkspaceTools:582` 用有损 `toString(UTF-8)` 解码后写回——非文本文件被静默写坏。U+FFFD 检测 → 按二进制拒绝引导走 shell。~30min |
+| **工具参数解析加宽松重试层** | `0eaf2057` | 与 fork #1985 修复（`ToolArgumentsJson`）**互补不重叠**：Yuihub=strict 失败后 lenient 重试（治未引号 key/尾随逗号），fork=取第一个完整 JSON 值（治双对象拼接）。可串成三层 strict→lenient→首值提取。~30min |
+| **workspace rootfs 补 ca-certificates** | `8a3a37ac` | ubuntu-base 裸镜像无 CA 证书 → 容器内 curl https 全挂（000 静默）。fork RootfsPatcher 有字体/数学补丁、证书未见处理（待真机核实），有 Android 系统证书库离线兜底方案可抄 |
+
+**对照项（架构对撞，维持自研不跟）**：
+- **子代理独立子会话**（`52a679d5`/`30783483`/`b7e75fb2`/`06738520`）：Yuihub 把子代理做成真实子会话落库（`parent_conversation_id`）+ 抽屉会话树 + `Semaphore(4)` 真并行。fork 设计稿早已论证过「复用 Conversation 表=12 列表查询/3 聚合漏过滤即静默泄漏」的风险而选独立 `agent_run` 表——**Yuihub 10-02 还在修子代理缺陷（终态/工具越权/edit 缩进），反向验证了我们的选择**。可观测性 UI（抽屉会话树）是好想法，fork 已有 run 详情页等价物，暂不跟。
+- **空回复补救**（`8a3a37ac`）：多步操作后模型只输出思考无正文无工具调用 → 注入一次性恢复提示重试（不进对话历史）。fork 子代理有空响应守卫、主循环无此处理——**候选小件**（先核实现状）。
+
+**功能灵感（大，未立项按需）**：
+- **定时任务/自动化**（`2906828e`+`65525df9`+`e585d82b`+`191f5a8d`，~2300 行）：助手级 ScheduledTask（WorkManager 调度）+ **AI 可在对话中管理本助手的定时任务**（工具化）+ 完成悬浮通知 + 按助手过滤。fork 的时间提醒只是会话内提醒，这是真调度执行（=助手 cron agent）。大功能。
+- **todo_write 计划工具 + 计划细条**（`ab107549` + 5 版 UI 迭代：正文渲染→顶栏入口→输入栏常驻细条+滚动淡化+不再渲染正文）：长任务过程可见。迭代史本身说明 UI 形态难定。
+- **models.dev 目录匹配**（`ecaca331`，~1000 行含 fixture 测试）：按 modelId 自动补全 contextLength/能力/图标——可作 fork 手工 ModelRegistry 的兜底源。
+- **附件注入「封面先行」+ 放开类型白名单**（`bee1dd38`）、**workspace 写入冲突检测 mtime**（`f91d3b16`，与 edit_file dry-run 互补的 TOCTOU 维度）、**release 体积 31.7→23.1MB 清理**（`7b8c918a`，其手段=砍功能，fork 未评估）。
+
 ## 五、落地顺序建议
 
 > **落地状态（2026-10-02 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；② 的 **ContextBudgetPlanner 已落地**（`c221be9a`），终端 URL 点击仍待做；③ LoopGuard/AgentRun 账本 **已落地**（`2452f665`/`f7d0c8e4`）；④ WifiLock **已落地**（`ee1c9736`）+ LoopGuard 已落地；⑤ 的 seed 迁移 + dry-run 审批 **已落地**（`23d42929`），**schema 三档缩水版仍待排期**；⑥⑦⑧ 见 §三 与 handoff §三（⑦ 记忆打分已落地 `69453f5e`，⑧ 记忆提取管道未立项）。
