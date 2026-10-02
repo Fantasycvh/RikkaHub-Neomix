@@ -730,3 +730,12 @@ data class ApiKeyEntry(
   - **流程**：清 `app/release/` 与 `app/build/outputs/apk/release/` 旧产物 → bump `f9c3244e`（280→281、1.0.18→1.0.19）→ **push**（避免转正时 tag 落在未推送历史）→ release 构建（**5m20s**，391 tasks）→ aapt2 核实 `versionCode=281` / `1.0.19` / **仅 `arm64-v8a`**（**77,566,347 字节**）→ **release 装机冒烟零 FATAL**，且顺带在**发布产物体内**验证了头号修复：提供商页的类型选择器显示 `Google / Claude / OpenAI`（不是 it9/ft9/bt9）→ 建 draft（`--title "v1.0.19 (281)"` + 双语说明）→ 上传资产 → **字节级校验：服务端 digest `sha256:27cfe223…` == 本地 sha256**（走 `gh api … /releases/<id>` 的 digest 字段，未下载）→ README 标记更新为「正式发布 `v1.0.17` ｜ 草稿 `v1.0.19`」。
   - **两个这次踩到、值得记住的 gh 细节**：①`gh release create --target` **只接受完整 40 位 SHA**（短 SHA 报 `target_commitish is invalid`）——而 target 必须钉住，因为 **draft 状态下 git tag 还没创建**（web URL 是 `untagged-…`），tag 会在转正发布时按这个 target 创建；②**`gh api` 上传资产会 404**——资产上传走的是 `uploads.github.com`，而 `gh api` 打的是 `api.github.com`；用 `gh release upload <tag> <file>`（它能按 tag 找到 draft）或直接打 `upload_url` 才行。
   - **待用户转正**：draft 已就绪（release id `401444983`，target `f9c3244e`）。另注：仓库里还留着更早的 `v1.0.7 (264)` draft（一直没发布），要不要清理由用户决定。
+
+- 2026-10-02：**两个草稿一起转正（v1.0.19 (281) + 历史遗留的 v1.0.7 (264)）**——用户「二者都正式发布」。
+  - **`v1.0.19 (281)`**：`--draft` 建好后直接发布，tag `v1.0.19` 落在 bump 提交 `f9c3244e`（正确），并显式 `--latest` 保证 GitHub 的 Latest 徽标指向它；资产 digest `sha256:27cfe223…` 与本地一致（上一轮已验）。
+  - **`v1.0.7 (264)`（2026-09-17 建的 draft，一直没发布）**：它暴露了 **draft 的 target 写成分支名的坑**，三步才修好，值得完整记住：
+    1. **发布前先改 target**：它的 `target_commitish` 是分支名 `imperfect-customization-and-refinement`，draft 状态下不建 tag，发布时才解析分支 ⇒ **tag 会落在当时的**分支头**（等于把 1.0.7 标到最新代码上）。核对时间线后定位到真正的构建提交：bump `7bb951f2`（16:25:42 CST）之后、下一条 `d690176f`（16:38:10）之前，而 release 创建时间正是 `08:33:58Z = 16:33:58 CST`，落在这两者之间 ⇒ APK 就是 `7bb951f2` 的构建。先 `PATCH target_commitish=<sha>` 再发布。
+    2. **发布后 tag 仍然没建**：`git ls-remote` 里没有 `refs/tags/v1.0.7`，而 release 的 `tag_name` 被记成了合成的 **`untagged-31c160…`**（所以 `gh release view v1.0.7` / `releases/tags/v1.0.7` 都 404）。补法=自己建并推送真 tag（`git tag v1.0.7 7bb951f2 && git push origin v1.0.7`；沿用既有轻量 tag 风格）。
+    3. **把 release 指回真 tag**：`PATCH releases/<id> -f tag_name=v1.0.7`，之后 `releases/tags/v1.0.7` 能解析、`gh release list` 正常显示。
+  - **收尾核实**：`v1.0.19 (281)` = Latest ✓、tag → `f9c3244e` ✓、资产 digest 一致 ✓；`v1.0.7 (264)` = 已发布 ✓、tag → `7bb951f2` ✓、资产 76,654,451 字节（digest `sha256:4a5011ed…`）、原始双语更新日志完好（1417 字符）✓。README 标记更新为「正式发布：`v1.0.19`」（本轮没有新草稿，故去掉草稿段）。
+  - **教训**：以后建 draft 一律 `--target <完整 40 位 SHA>`——**分支名 target 在 draft 语义下是定时炸弹**（发布时才解析，且会让 tag 名变成 `untagged-…`）。
