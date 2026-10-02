@@ -632,6 +632,13 @@ data class ApiKeyEntry(
   全仓同类调用点核查：其余（ContextBudgetPlanner/CompressionPlanner/ChatService 自动压缩）
   均在后台协程，组合期只剩新异步路径。**教训：真 tokenizer 落地时只看了精度与预热，
   「每次全量重算 × 高频重组」的成本组合是装机后才暴露的第三类问题。**
+- 2026-10-02：**v1.0.20 (282) 草稿**——bump `f26c5ad5`（**先 push 再构建**，target 钉 bump 完整 SHA）→
+  清 outputs → release 构建 → aapt 核实 `versionCode=282`/`1.0.20`/仅 arm64 → **release 装机冒烟零 FATAL**
+  （tokenizer `ok=true vocab=100256 in 1086ms`）→ draft（release id `401868486`）+ upload
+  **77,601,467 字节** → digest `sha256:75af9a8a…` 与本地一致 → README「正式 v1.0.19 ｜ 草稿 v1.0.20」。
+  **本版内容（自 281 资产 6 项用户可见）**：①上下文容量面板（+标题旁读数、细条/圆环切换）②三项小件
+  （加载守卫/fastModelId 清除/promptPresetIds 整绑）③#1985 双 JSON 修复性解析 ④#1662 贴底错乱两半同修
+  ⑤#1805 显示生成来源 ⑥ANR 修复（占用估算挪出主线程）。验证状态：全部经真机验证（本版 bug 即真机发现）。
 - 2026-10-02：**三项小件落地（`944d5de6`/`d588527e`/`54448cda`，2026-10-02 真机验证全部通过**——①守卫在生成中离开再回到会话场景验证；②清除入口 + 标题模型错误卡实际弹出（设备本就未配置快速模型）；③整绑开关注入生效。测试遗留消息已由用户手动清理）**：
   ①**initializeConversation 加载守卫**——生成中（`session.isGenerating`）跳过 DB 覆盖内存：流式内容只走
   updateConversation 纯内存，web 路由的消息/编辑/分叉/删除/分支切换等 7 个入口与重开会话页此前都会无条件
