@@ -800,6 +800,17 @@ system 里仍贡献换行的逐字节契约由 `PromptAssemblyTest` 锁着）；
 
 **结论**：我们排期 schema 三档缩水版时，此仓库是唯一见过的完整参考实现（含测试与 benchmark），设计要点可直接对照，省一轮设计踩坑。
 
+**7.1.1 源码级补注（2026-10-02，本地 `F:uild\projects\senera` 已克隆，`Source/AgentSystem/ToolSearch/` 40 文件）**：
+
+- **修正一处远程评估的误读**：`ToolLoad/ToolUnload` 只作用于 **BAML 规划链路**的 exposure snapshot。**native 工具链路更激进**——动态工具**从不进 provider schema**，模型经固定 `ToolCall(toolName, contractRevision, args)` 桥调用（`ToolDescribe` 拿到 TS-like 视图后），provider schema 恒为「Bootstrap 工具 + ToolSearch/Describe/ToolCall」。fork 全部走 native tool calling ⇒ 对应形态=**schema 恒不增长，元工具桥是唯一入口**（比我们「三档加载」设想更彻底）。
+- **ToolSearch 不做 top-K 截断**：返回**全部**合资格动态工具、确定性排序——命中项带 evidence，未命中项压缩为 name/title/summary/零分，让模型可发现而不塞 schema。
+- **lexical-first，远程层默认全关**：BM25 精确召回 + `fuzzysort` 只对**工具名/能力 ID/标题/别名**做容错（不扫长描述、无硬编码同义词）；embedding 召回仅在**词法召回为空**时启用；远程 rerank 只在有限召回集上跑。默认值（`AgentDefaultCatalog.ts:141`）：Fuzzy{Enabled:true, MinScore:0.25, CandidateLimit:8}、Embedding{Enabled:false}、Rerank{Enabled:false, CandidateLimit:24}、Ranking{RrfK:60, MmrLambda:0.72, MmrCandidateScoreRatio:0.92, **MaxResults:6**}、记忆反馈{MaxEpisodes:5000, **HalfLifeDays:30**（使用证据按 30 天半衰衰减）, Expansion:Fallback 模式 MinConfidence:0.8/MinEvidence:3}。
+- **缓存身份内容寻址**：目录身份=文档 stable ID + revision + 完整 semanticText 的规范哈希；embedding 身份=（模型, docId, SHA-256(semanticText)）哈希 ⇒ **生产者忘 bump revision 也不会脏缓存**；LRU 有界。这对我们的 Claude 缓存断点顾虑是更稳的形态：失效由内容变化触发而非标签。
+- **已确认能力复用（argument reuse）**：每 durable session + logicalCacheScope 保存有界证据，**仅只读/无副作用/免审批工具**可自动复用旧参数（写状态/联网/审批类只留诊断不复放）；复用前按目录身份+契约 digest 重校验；显式参数恒优先。证据不因索引刷新清除 ⇒ 稳定前缀缓存。fork 的 MCP 检索类工具（search_web 等）将来可借鉴此形态。
+- **安全与排序分离**：审批/OPA/资源投影在执行期强制，搜索排序不得复制安全策略——与 fork DenialGuard 同哲学，写设计稿时值得引用为原则。
+- **MCP `tools/list_changed`**：经 SDK 协商处理，按 server 事务性替换 + 失效索引；非法更新保留旧目录。
+- 学习（episode）是**可观测旁路**：每条 episode 终态=learned/skipped/failed，**不改变主任务结果**；歧义多 Skill 归因直接跳过而非复制到每个 Skill。
+
 ### 7.2 工具结果 → Artifact/证据投影（次优先）
 
 工具执行结果发布为完整 **Artifact**（带完整性 receipt），回写给模型的只是声明式 **Observation v3 投影**（摘要+事实+URI）；历史轮的大输出沉淀为证据投影，需要原文时用 artifact 工具按 URI 取回；Pi 压缩删旧消息但留隐藏索引，每请求只在剩余 token 预算内注入「最近且尚未可见」的 URI。
