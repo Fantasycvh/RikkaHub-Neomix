@@ -13,6 +13,21 @@ class ToolArgumentsJsonTest {
     private val json = Json
 
     @Test
+    fun `lenient retry recovers unquoted keys`() {
+        val r = parseToolArguments("""{a:1, b:"x"}""", json)
+        assertEquals(true, r.lenient)
+        assertEquals(0, r.trailingChars)
+        assertEquals(1, r.args.jsonObject["a"]!!.jsonPrimitive.content.toInt())
+    }
+
+    @Test
+    fun `strict parse never sets lenient flag`() {
+        val r = parseToolArguments("""{"a":1}""", json)
+        assertEquals(false, r.lenient)
+        assertEquals(0, r.trailingChars)
+    }
+
+    @Test
     fun `single object parses strictly with no trailing`() {
         val r = parseToolArguments("""{"query":"Tavily API","max_results":2}""", json)
         assertEquals(0, r.trailingChars)

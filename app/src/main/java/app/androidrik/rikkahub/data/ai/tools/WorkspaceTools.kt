@@ -579,7 +579,23 @@ private fun kotlinx.serialization.json.JsonObject.string(name: String): String? 
 private suspend fun WorkspaceRepository.readTextInRootfs(
     workspaceId: String,
     path: String,
-): String = readRootfsBuffer(workspaceId, path).toString(Charsets.UTF_8.name())
+): String {
+    val text = readRootfsBuffer(workspaceId, path).toString(Charsets.UTF_8.name())
+    requireNotBinary(path, text)
+    return text
+}
+
+/**
+ * U+FFFD 是 UTF-8 **有损解码**的产物：非文本字节被静默替换为 U+FFFD 后，
+ * 「解码 → replaceText → 写回」会把损坏内容当原文写回、把整个文件写坏
+ * （Yuihub `8a3a37ac` ISSUE-08 同源问题）。真实文本里出现 U+FFFD 的概率极低，
+ * 检测到即按二进制拒绝，引导模型走 shell 处理。read_file 与 edit_file 共用本守卫。
+ */
+private fun requireNotBinary(path: String, text: String) {
+    require('�' !in text) {
+        "File looks like a binary file (invalid UTF-8): $path. Use shell commands instead."
+    }
+}
 
 /**
  * 按 Rootfs 内绝对路径读入内存。路径映射交给 WorkspaceManager, 由它统一处理

@@ -349,10 +349,37 @@ internal class BackupArchiveEngine(
     private fun addDatabaseToZip(zipOut: ZipOutputStream, onBytes: (Long) -> Unit) {
         val dbFile = context.getDatabasePath("rikka_hub")
         if (!dbFile.exists()) return
-        addFileToZip(zipOut, dbFile, "rikka_hub.db", onBytes)
-        listOf("rikka_hub-wal", "rikka_hub-shm").forEach { name ->
-            val f = File(dbFile.parentFile, name)
-            if (f.exists()) addFileToZip(zipOut, f, name, onBytes)
+
+        // 一致性快照（Yuihub `47e7dfaf` 对照）：VACUUM INTO 在**单个读事务**里导出，
+        // 天然包含已提交的 WAL 内容——比热拷 db/wal/shm 三件套稳（拷贝期间写入不可见，
+        // 且可能拷到半页）。09-15 的 WAL 修复只治了恢复方向，备份方向的一致性由此补齐。
+        // VACUUM INTO 需要 SQLite 3.27+（API 30+）；minSdk 26 的老设备或异常时回退热拷，
+        // 恢复路径两种形态都已处理（db-only 时恢复前会清陈旧 -wal/-shm）。
+        val snapshot = File(context.cacheDir, "backup_db_snapshot.db")
+        snapshot.delete() // VACUUM INTO 要求目标文件不存在
+        val vacuumed = runCatching {
+            appDatabase.openHelper.writableDatabase.execSQL(
+                "VACUUM main INTO ?",
+                arrayOf(snapshot.absolutePath),
+            )
+            snapshot.exists() && snapshot.length() > 0
+        }.onFailure {
+            Log.w(TAG, "addDatabaseToZip: VACUUM INTO failed, falling back to file copy", it)
+        }.getOrDefault(false)
+
+        try {
+            if (vacuumed) {
+                Log.i(TAG, "addDatabaseToZip: consistent snapshot via VACUUM INTO (${snapshot.length()} bytes)")
+                addFileToZip(zipOut, snapshot, "rikka_hub.db", onBytes)
+            } else {
+                addFileToZip(zipOut, dbFile, "rikka_hub.db", onBytes)
+                listOf("rikka_hub-wal", "rikka_hub-shm").forEach { name ->
+                    val f = File(dbFile.parentFile, name)
+                    if (f.exists()) addFileToZip(zipOut, f, name, onBytes)
+                }
+            }
+        } finally {
+            snapshot.delete()
         }
     }
 

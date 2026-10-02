@@ -523,14 +523,14 @@ class GenerationHandler(
                                 ?: error("Tool ${tool.toolName} not found")
                             val args = try {
                                 val parsed = parseToolArguments(tool.input.ifBlank { "{}" }, json)
-                                if (parsed.trailingChars > 0) {
-                                    // #1985 防御：参数串里混入了尾随内容（实测形态=两个完整 JSON
-                                    // 对象拼接），已取第一个完整值恢复执行；记 warning 便于定位
-                                    // 是哪家中转/模型的流拼接问题
+                                if (parsed.trailingChars > 0 || parsed.lenient) {
+                                    // 降级修复命中（#1985 双拼接 / Yuihub `0eaf2057` 同源的宽松
+                                    // 兜底）：已恢复执行；记 warning 便于定位是哪家中转/模型的流
+                                    // 拼接或畸形输出问题
                                     Log.w(
                                         TAG,
-                                        "Tool args for ${tool.toolName} had ${parsed.trailingChars} " +
-                                            "trailing chars after first JSON value; using the first"
+                                        "Tool args for ${tool.toolName} repaired" +
+                                            "(lenient=${parsed.lenient}, trailingChars=${parsed.trailingChars})"
                                     )
                                 }
                                 parsed.args

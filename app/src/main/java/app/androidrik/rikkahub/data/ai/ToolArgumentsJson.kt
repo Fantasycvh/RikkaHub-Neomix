@@ -14,28 +14,53 @@ import kotlinx.serialization.json.JsonElement
  * 忽略尾随内容（尾随长度由调用方记 warning，便于定位是哪家中转/模型的拼接问题）。
  */
 
-/** 解析结果：[args] 为参数本体；[trailingChars] > 0 表示发生了修复（忽略了这么多尾随字符）。 */
-internal data class ToolArgumentsParse(val args: JsonElement, val trailingChars: Int = 0)
+/** 解析结果：[lenient]/[trailingChars] 任一非默认即表示发生过降级修复，调用方应记 warning。 */
+internal data class ToolArgumentsParse(
+    val args: JsonElement,
+    /** > 0 = 双 JSON 拼接等场景，取第一个完整值后忽略了这么多尾随字符 */
+    val trailingChars: Int = 0,
+    /** true = 宽松模式兜底（未引号 key/值等；Yuihub `0eaf2057` 同源） */
+    val lenient: Boolean = false,
+)
 
 /**
- * 解析工具参数：先严格解析；失败时取 [input] 中第一个完整 JSON 值重试，
- * 仍失败则抛出**原始异常**（错误信息保持真相，不因修复尝试而失真）。
+ * 解析工具参数，三层降级（严格 → 宽松 → 首值提取），全部失败抛**原始异常**
+ * （错误信息保持真相，不因修复尝试而失真）：
+ *
+ * 1. **严格解析**：常规路径，绝大多数输入到此为止；
+ * 2. **宽松重试**（`isLenient`）：容忍未加引号的 key/值等畸形（Yuihub `0eaf2057`）；
+ * 3. **首值提取**（#1985）：双 JSON 对象拼接等场景，取第一个完整 JSON 值重新解析。
  */
 internal fun parseToolArguments(input: String, json: Json): ToolArgumentsParse {
     try {
         return ToolArgumentsParse(json.parseToJsonElement(input))
-    } catch (first: Throwable) {
+    } catch (strictError: Throwable) {
         // Throwable 而非 Exception：深嵌套工具输入可能抛 StackOverflowError（Error）
-        val bounds = firstJsonValueBounds(input) ?: throw first
-        val prefix = input.substring(bounds.first, bounds.last + 1)
-        val repaired = try {
-            json.parseToJsonElement(prefix)
+        try {
+            return ToolArgumentsParse(lenientJson.parseToJsonElement(input), lenient = true)
         } catch (_: Throwable) {
-            throw first
+            val bounds = firstJsonValueBounds(input) ?: throw strictError
+            val prefix = input.substring(bounds.first, bounds.last + 1)
+            val repaired = try {
+                json.parseToJsonElement(prefix)
+            } catch (_: Throwable) {
+                try {
+                    lenientJson.parseToJsonElement(prefix)
+                } catch (_: Throwable) {
+                    throw strictError
+                }
+            }
+            return ToolArgumentsParse(
+                args = repaired,
+                trailingChars = input.length - (bounds.last + 1),
+                lenient = true,
+            )
         }
-        return ToolArgumentsParse(args = repaired, trailingChars = input.length - (bounds.last + 1))
     }
 }
+
+/** 宽松模式（未引号 key/值等）；仅作严格解析失败后的兜底，绝不用于常规路径。 */
+private val lenientJson = Json { isLenient = true; ignoreUnknownKeys = true }
 
 /**
  * 扫描 [input] 中**第一个完整 JSON 值**（对象或数组）的字符区间；结构不完整或

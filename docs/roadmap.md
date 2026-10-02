@@ -642,6 +642,15 @@ data class ApiKeyEntry(
   **本版内容（自 281 资产 6 项用户可见）**：①上下文容量面板（+标题旁读数、细条/圆环切换）②三项小件
   （加载守卫/fastModelId 清除/promptPresetIds 整绑）③#1985 双 JSON 修复性解析 ④#1662 贴底错乱两半同修
   ⑤#1805 显示生成来源 ⑥ANR 修复（占用估算挪出主线程）。验证状态：全部经真机验证（本版 bug 即真机发现）。
+- 2026-10-02：**Yuihub 对照三小件落地（peer-apps-benchmark §四.5 评估 → 实施）**：
+  ①**备份 DB 快照改 VACUUM INTO**（`BackupArchiveEngine.addDatabaseToZip`）——单读事务一致性
+  快照补齐**备份方向**的一致性缺口（09-15 WAL 修复只治恢复方向；热拷期间写入不可见/可能半页），
+  SQLite 3.27+（API 30）可用、老设备/异常**回退热拷三件套**，恢复路径两种形态本就兼容；
+  ②**workspace 读写二进制防护**——`readTextInRootfs` 检测 U+FFFD（有损解码标记）即按二进制拒绝，
+  防「解码→replaceText→写回」把非文本文件静默写坏（read_file/edit_file 共用单汇合点）；
+  ③**工具参数解析三层降级**——`parseToolArguments` 严格→宽松（未引号 key，lenient 标志位）→
+  首值提取（#1985 双拼接），全部失败如实重抛原始错误，GenerationHandler 统一记 repaired warning。
+  单测 +2（lenient 用例）共 1160+ 全绿。
 - 2026-10-02：**三项小件落地（`944d5de6`/`d588527e`/`54448cda`，2026-10-02 真机验证全部通过**——①守卫在生成中离开再回到会话场景验证；②清除入口 + 标题模型错误卡实际弹出（设备本就未配置快速模型）；③整绑开关注入生效。测试遗留消息已由用户手动清理）**：
   ①**initializeConversation 加载守卫**——生成中（`session.isGenerating`）跳过 DB 覆盖内存：流式内容只走
   updateConversation 纯内存，web 路由的消息/编辑/分叉/删除/分支切换等 7 个入口与重开会话页此前都会无条件
