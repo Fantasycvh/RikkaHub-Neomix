@@ -522,7 +522,18 @@ class GenerationHandler(
                             val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
                                 ?: error("Tool ${tool.toolName} not found")
                             val args = try {
-                                json.parseToJsonElement(tool.input.ifBlank { "{}" })
+                                val parsed = parseToolArguments(tool.input.ifBlank { "{}" }, json)
+                                if (parsed.trailingChars > 0) {
+                                    // #1985 防御：参数串里混入了尾随内容（实测形态=两个完整 JSON
+                                    // 对象拼接），已取第一个完整值恢复执行；记 warning 便于定位
+                                    // 是哪家中转/模型的流拼接问题
+                                    Log.w(
+                                        TAG,
+                                        "Tool args for ${tool.toolName} had ${parsed.trailingChars} " +
+                                            "trailing chars after first JSON value; using the first"
+                                    )
+                                }
+                                parsed.args
                             } catch (t: Throwable) {
                                 // Throwable：深嵌套工具输入抛 StackOverflowError（Error），runCatching 捕不到
                                 error("Invalid tool arguments JSON for ${tool.toolName}: ${t.message}")
