@@ -302,7 +302,8 @@ class SettingsStore(
                     ?: DEFAULT_AUTO_MODEL_ID,
                 fallbackChatModelId = preferences[FALLBACK_CHAT_MODEL]?.let { Uuid.parse(it) },
                 fastModelId = preferences[FAST_MODEL]?.let { Uuid.parse(it) }
-                    ?: DEFAULT_AUTO_MODEL_ID,
+                    // 旧版本「未配置」会落成 AUTO 哨兵（无清除入口时代的默认值），视为未配置
+                    ?.takeIf { it != DEFAULT_AUTO_MODEL_ID },
                 titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) },
                 translateModeId = preferences[TRANSLATE_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
@@ -584,7 +585,9 @@ class SettingsStore(
             settings.fallbackChatModelId?.let {
                 preferences[FALLBACK_CHAT_MODEL] = it.toString()
             } ?: preferences.remove(FALLBACK_CHAT_MODEL)
-            preferences[FAST_MODEL] = settings.fastModelId.toString()
+            settings.fastModelId?.let {
+                preferences[FAST_MODEL] = it.toString()
+            } ?: preferences.remove(FAST_MODEL)
             settings.titleModelId?.let {
                 preferences[TITLE_MODEL] = it.toString()
             } ?: preferences.remove(TITLE_MODEL)
@@ -773,7 +776,7 @@ data class Settings(
     val favoriteModels: List<Uuid> = emptyList(),
     val chatModelId: Uuid = Uuid.random(),
     val fallbackChatModelId: Uuid? = null, // 主模型整轮失败后切换的备用模型（助手未配 fallback 时生效）
-    val fastModelId: Uuid = Uuid.random(),
+    val fastModelId: Uuid? = null, // 快速模型（标题/建议等后台任务的兜底）；null = 未配置
     val titleModelId: Uuid? = null,
     val imageGenerationModelId: Uuid = Uuid.random(),
     val titlePrompt: String = DEFAULT_TITLE_PROMPT,

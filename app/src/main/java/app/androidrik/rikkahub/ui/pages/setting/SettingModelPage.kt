@@ -155,6 +155,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 modelId = settings.fastModelId,
                 providers = settings.providers,
                 onSelect = { vm.updateSettings(settings.copy(fastModelId = it.id)) },
+                onClear = { vm.updateSettings(settings.copy(fastModelId = null)) },
             )
         }
         item {
