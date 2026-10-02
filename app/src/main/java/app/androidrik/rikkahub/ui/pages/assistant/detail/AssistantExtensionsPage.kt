@@ -149,6 +149,13 @@ fun AssistantExtensionsPage(id: String) {
                                     vm.update(assistant.copy(modeInjectionIds = newIds))
                                 },
                                 onManage = { navController.navigate(Screen.Prompts) },
+                                // 本页固定助手作用域 ⇒ 预设级整绑开关始终可用
+                                selectedPresetIds = assistant.promptPresetIds,
+                                onTogglePreset = { presetId, checked ->
+                                    val newIds = if (checked) assistant.promptPresetIds + presetId
+                                    else assistant.promptPresetIds - presetId
+                                    vm.update(assistant.copy(promptPresetIds = newIds))
+                                },
                             )
                         }
                     }

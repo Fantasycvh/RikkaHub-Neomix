@@ -498,6 +498,8 @@
   <string name="extension_content_manage">Manage</string>
   <string name="extension_picker_selected_format">%1$d/%2$d selected</string>
   <string name="extension_picker_preset_globally_disabled">Preset globally disabled (individually bound entries still apply)</string>
+  <string name="extension_picker_preset_bind_hint">The switch binds the whole preset: all its entries apply to this assistant. Open a preset to pick individual entries.</string>
+  <string name="extension_picker_preset_bound_all">Whole preset bound — all entries are in effect (union with per-entry picks)</string>
   <string name="extension_picker_lorebook_globally_disabled">Worldbook globally disabled</string>
   <string name="extension_picker_lorebook_whole_book_hint">Worldbooks are bound as a whole. Entry status below is global and read-only here; edit it on the management page, which affects all conversations using this book.</string>
   <string name="extension_picker_manage_lorebook_entries">Manage worldbook entries (global)</string>

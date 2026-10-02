@@ -496,6 +496,8 @@
   <string name="extension_content_manage">管理</string>
   <string name="extension_picker_selected_format">%1$d/%2$d 已選</string>
   <string name="extension_picker_preset_globally_disabled">預設已全域停用（個別綁定條目仍可生效）</string>
+  <string name="extension_picker_preset_bind_hint">開關綁定整個預設：其全部條目對該助手生效；進入預設可單獨勾選條目。</string>
+  <string name="extension_picker_preset_bound_all">整個預設已綁定，全部條目生效（與單獨勾選為並集）</string>
   <string name="extension_picker_lorebook_globally_disabled">世界書已全域停用</string>
   <string name="extension_picker_lorebook_whole_book_hint">世界書以整本選用。下方顯示條目的全域啟用狀態；如需修改，請進入管理頁，修改會影響所有使用它的對話。</string>
   <string name="extension_picker_manage_lorebook_entries">管理世界書條目（全域）</string>

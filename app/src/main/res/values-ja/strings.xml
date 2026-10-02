@@ -459,6 +459,8 @@
   <string name="extension_content_manage">管理</string>
   <string name="extension_picker_selected_format">%1$d/%2$d 選択済み</string>
   <string name="extension_picker_preset_globally_disabled">プリセットは全体で無効（個別に紐付けた項目は有効）</string>
+  <string name="extension_picker_preset_bind_hint">スイッチでプリセット全体をバインドします：すべてのエントリがこのアシスタントに適用されます。プリセットを開くと個別に選択できます。</string>
+  <string name="extension_picker_preset_bound_all">プリセット全体がバインドされ、すべてのエントリが有効です（個別選択と併用可）</string>
   <string name="extension_picker_lorebook_globally_disabled">ワールドブックは全体で無効</string>
   <string name="extension_picker_lorebook_whole_book_hint">ワールドブックは本単位で選択します。以下は項目の全体状態で、ここでは読み取り専用です。変更は管理ページで行い、この本を使うすべての会話に影響します。</string>
   <string name="extension_picker_manage_lorebook_entries">ワールドブック項目を管理（全体）</string>

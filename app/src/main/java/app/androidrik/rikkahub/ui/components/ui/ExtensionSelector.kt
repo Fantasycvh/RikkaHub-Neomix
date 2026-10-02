@@ -157,6 +157,16 @@ fun ExtensionSelector(
                                 }
                             },
                             onManage = onNavigateToPrompts,
+                            // 预设级绑定是**助手专属**（不随会话覆盖）：会话作用域传 null 隐藏开关
+                            selectedPresetIds = if (useConversationInjections) null else assistant.promptPresetIds,
+                            onTogglePreset = if (useConversationInjections) null else { id, checked ->
+                                val newIds = if (checked) {
+                                    assistant.promptPresetIds + id
+                                } else {
+                                    assistant.promptPresetIds - id
+                                }
+                                onUpdate(assistant.copy(promptPresetIds = newIds))
+                            },
                         )
                     } else {
                         ExtensionEmptyState(

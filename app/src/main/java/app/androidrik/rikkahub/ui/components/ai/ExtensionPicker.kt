@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,6 +35,8 @@ import kotlin.uuid.Uuid
  *
  * 为什么两级：容器（预设/世界书）及其条目是**两个不同的绑定单位**——
  * - 预设：绑定到**条目**（`modeInjectionIds` 是条目 id 集合），所以详情里逐条开关；
+ *   另有**整绑**（`promptPresetIds` 是预设 id 集合，助手专属、不随会话覆盖）= 容器页开关，
+ *   全部条目生效，与条目级勾选是**并集**；
  * - 世界书：绑定到**整本**（`lorebookIds` 是世界书 id 集合），所以详情里条目只读展示。
  *
  * 一级平铺会把「哪个条目属于哪个预设」这层结构丢掉，用户看到几十个孤立条目无法定位。
@@ -94,9 +97,22 @@ internal fun PresetPickerContent(
     onToggle: (Uuid, Boolean) -> Unit,
     onManage: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 预设级绑定（`promptPresetIds`，**助手专属**、不随会话覆盖）：null = 隐藏整绑开关（会话作用域） */
+    selectedPresetIds: Set<Uuid>? = null,
+    onTogglePreset: ((Uuid, Boolean) -> Unit)? = null,
 ) {
     when (val page = navigation.presets(presets)) {
         is ExtensionPickerPage.Containers -> LazyColumn(modifier = modifier) {
+            if (onTogglePreset != null) {
+                item(key = "preset-bind-hint") {
+                    Text(
+                        text = stringResource(R.string.extension_picker_preset_bind_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+            }
             items(page.items, key = { it.id }) { preset ->
                 ListItem(
                     headlineContent = {
@@ -118,7 +134,18 @@ internal fun PresetPickerContent(
                             }
                         }
                     },
-                    trailingContent = { Text("›") },
+                    trailingContent = {
+                        // 整绑开关 = promptPresetIds（全部条目对该助手生效，与条目级勾选是并集）。
+                        // 行点击仍进入详情逐条勾选；会话作用域（onTogglePreset == null）不显示。
+                        if (onTogglePreset != null) {
+                            Switch(
+                                checked = preset.id in selectedPresetIds.orEmpty(),
+                                onCheckedChange = { onTogglePreset(preset.id, it) },
+                            )
+                        } else {
+                            Text("›")
+                        }
+                    },
                     modifier = Modifier.clickable { navigation.openPreset(preset.id) },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
@@ -132,6 +159,14 @@ internal fun PresetPickerContent(
                 preset.name.ifBlank { stringResource(R.string.prompt_page_unnamed_preset) },
                 navigation::back,
             )
+            if (preset.id in selectedPresetIds.orEmpty()) {
+                Text(
+                    text = stringResource(R.string.extension_picker_preset_bound_all),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+            }
             if (preset.entries.isEmpty()) {
                 ExtensionEmptyState(
                     message = stringResource(R.string.prompt_page_mode_injection_empty),

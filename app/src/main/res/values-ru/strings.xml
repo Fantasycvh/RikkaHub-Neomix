@@ -459,6 +459,8 @@
   <string name="extension_content_manage">Управлять</string>
   <string name="extension_picker_selected_format">Выбрано %1$d/%2$d</string>
   <string name="extension_picker_preset_globally_disabled">Пресет отключён глобально (отдельные привязки всё ещё действуют)</string>
+  <string name="extension_picker_preset_bind_hint">Переключатель привязывает весь пресет: все его записи применяются к этому ассистенту. Откройте пресет, чтобы выбрать записи по отдельности.</string>
+  <string name="extension_picker_preset_bound_all">Привязан весь пресет — действуют все записи (объединение с отдельным выбором)</string>
   <string name="extension_picker_lorebook_globally_disabled">Мирбук отключён глобально</string>
   <string name="extension_picker_lorebook_whole_book_hint">Мирбуки выбираются целиком. Ниже — глобальное состояние записей, здесь только для чтения; изменяйте на странице управления, это влияет на все диалоги с этой книгой.</string>
   <string name="extension_picker_manage_lorebook_entries">Управлять записями мирбука (глобально)</string>
