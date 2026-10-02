@@ -783,3 +783,33 @@ system 里仍贡献换行的逐字节契约由 `PromptAssemblyTest` 锁着）；
 **关联**：`e907d2e4`（上下文构成诊断日志，真实构成与 3.4% 精度实测）、§6.12 Tier 4。
 
 关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）。
+
+## 七、senera 评估（2026-10-02，仅远端仓库调研，本地无源码）
+
+**仓库**：[yuanplussfive/senera](https://github.com/yuanplussfive/senera)（⭐14，TypeScript strict，Node 24，Web 工作台 + Electron 桌面 + Docker/gVisor 沙箱；自述「可观测、可校验、可扩展的 Agent 工作台」；内核=Pi Coding Agent 会话与多步工具循环）。~3250 文件的大系统，架构层面对移动端聊天 fork 不可移植，但有三个机制值得精读。
+
+### 7.1 动态工具检索/元工具协议（最有价值——peer⑤③ schema 三档缩水版的成熟参考实现）
+
+`sensem/ToolSearch` 模块（30+ 文件 + 9 个行为测试 + 独立 benchmark）正是我们 09-26 设想的「MCP 轻量化 + 元工具」的成品形态：
+
+- **工具分加载模式**：`ToolLoadingModes.Dynamic`（不进上下文）vs `Always`（核心工具常驻）。fork 对应=内置工具常驻、MCP 工具全部 Dynamic。
+- **四个元工具**：`ToolSearch(query)`（检索）→ `ToolDescribe(tools≤12)`（看 schema）→ `ToolLoad(tools≤12)`（加载进本轮上下文）→ `ToolUnload(tools)`（卸载）。工具注册表对模型暴露的只有这 4 个 + Always 工具 ⇒ **上下文占用从「全部工具 schema」变为「常驻子集 + 4 个元工具」**，正是 MCP 33K 问题的解。
+- **排序管线**：BM25/RRF/MMR 三段 + 能力索引（由工具名+描述+schema 构建文档）+ **SQLite 记忆反馈**（EpisodeScorer：历史使用证据提升排序——用得多的工具排名靠前）。fork 若做：BM25 在 Kotlin 里可用 SQLite FTS 或手写倒排；记忆反馈可从 agent_run/工具执行历史取材。
+- **catalogRevision**：工具目录版本号贯穿 Search/Describe/Load 参数——**mid-run 工具集变化可检测**，这直接回应我们 09-26 评估的最大顾虑「mid-run 换 schema 作废 Claude 前缀缓存」（至少可感知、可决策）。
+- **会话级缓存 + Retain/Replace 策略**：已加载工具集跨轮保持（Retain=默认保留，Replace=整体替换）⇒ 前缀缓存只在真正换集时失效。
+
+**结论**：我们排期 schema 三档缩水版时，此仓库是唯一见过的完整参考实现（含测试与 benchmark），设计要点可直接对照，省一轮设计踩坑。
+
+### 7.2 工具结果 → Artifact/证据投影（次优先）
+
+工具执行结果发布为完整 **Artifact**（带完整性 receipt），回写给模型的只是声明式 **Observation v3 投影**（摘要+事实+URI）；历史轮的大输出沉淀为证据投影，需要原文时用 artifact 工具按 URI 取回；Pi 压缩删旧消息但留隐藏索引，每请求只在剩余 token 预算内注入「最近且尚未可见」的 URI。
+
+fork 现状对照：我们已有**文件版近似**（tool_outputs 落盘 + 32KB 截断 + 4KB 预览 + workspace_read_file 取回 + 压缩检查点），形态不同、思想同源。差距在「投影」是结构化摘要而非字符截断——但结构化摘要要么靠模板（信息损失可控性差）要么靠 LLM 再加工（每步多一次调用）。**暂不跟**，等 L2 上下文预算立项时一并评估。
+
+### 7.3 其他值得记的（小）
+
+- **宿主生成工具调用 ID + 依赖投影**：并行工具调用时 call_id 由宿主生成（`call_xxx`）、工具间依赖由宿主侧校验投影——不押在模型自己编 ID 上。与我们 ResponseAPI toolCallId 归一（`47d5d81c`）同主题的更激进形态；fork 目前工具串行、子代理并行由宿主管，暂无消费点。
+- **CallTools 动作协议**（FinalAnswer/AskUser/CallTools 三分 + CallTools 先出自然语言预回复再规划参数）：「边说边做」的 UX；fork 流式本就支持文本与工具交错，元工具落地时若做「先检索后调用」的提示词工程可参考其动作拆分。
+- **执行目标合同**：工具注册时声明网络能力/工作区权限/资源语义/artifact 策略；沙箱不可用 → **明确拒绝该执行目标而非悄悄改本机执行**——与 fork DenialGuard 同哲学，可用于将来 workspace 工具分级。
+- **BAML 双链路**（native tool calling / BAML 结构化规划二选一并显式声明，运行中不静默切换）：让不支持工具调用的普通模型获得同等的结构化工具语义。Kotlin 侧无可直接移植的 BAML 运行时，成本大，仅记录思想。
+- **Skill 发布前工具引用校验**：SkillManage 创建/更新时验证引用的工具已注册（防悬空）；fork 技能体系无工具引用概念（allowedTools 已删），不适用。
