@@ -62,7 +62,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 
 1. **终端内 URL 点击**（上游 7da69770 中 grep 为 0，直接可摘）：`getColumnAndRow` 定位 → `getLineWrap()` 上下扩展软换行还原长 URL（上限 50 行防全 transcript 遍历）→ 宽字符用 `[0, column]` 文本长度精确换算点击下标 → 尾部标点裁剪（`.,;:!?)]}'"`）→ `ACTION_VIEW` 打开。
 2. **Agent shell 四重预算**：单命令超时（60s）+ 单轮总预算（600s）+ 最大步数（32）+ stdout/stderr 截断（8KB），配 `workspace_run_background / _status / _kill` 三工具 + `TailBuffer` 输出尾缓冲追踪后台进程。上游 3a533a6a 只解决"页面不杀会话"，未约束"Agent 跑命令失控"。
-   - **本仓状态（2026-09-26）**：三工具 + `TailBuffer` **已落地（`b6a5351d`）**；与同源实现不同处：并发上限 4（超限拒绝不排队）、完成即淘汰保留 20、审批分档（run_background/kill 需审批、status 免审批）、LoopGuard 把状态查询加入轮询豁免。单轮字符/步数预算已另落地（`947f92a6` `WorkspaceTurnBudget`，口径=输出字符 + 步数）；**后台任务的时长上限仍未做**（同步 shell 的超时 30s/最大 600s 已有）。详见 `docs/design-workspace-background-tasks.md`。
+   - **本仓状态（2026-09-26）**：三工具 + `TailBuffer` **已落地（`b6a5351d`）**；与同源实现不同处：并发上限 4（超限拒绝不排队）、完成即淘汰保留 20、审批分档（run_background/kill 需审批、status 免审批）、LoopGuard 把状态查询加入轮询豁免。单轮字符/步数预算已另落地（`947f92a6` `WorkspaceTurnBudget`，口径=输出字符 + 步数）；**后台任务时长上限已落地**（09-26 收尾，30 分钟看门狗 + `TIMED_OUT` 状态 + 完整输出落盘 `.tasks/`）。详见 `docs/design-workspace-background-tasks.md`。
 3. **Termux 双路线失败归类**：内嵌 terminal 库之外有外部 `RUN_COMMAND Intent` 路线，探测命令 + 枚举失败原因（未安装 / 无权限 / `allow-external-apps` 未开 / 超时）。
 
 ## 三、值得借鉴的机制（源码级验证）
@@ -89,7 +89,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
    - **WifiLock(low-latency)**：Wi-Fi radio 省电后"进程活着但入站 SYN 收不到、工具全部超时"——我们保活只做了 wake lock，这是增量。
    - `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` 用法可照抄；"引擎死了但通知还在"检测思路与我们 onTaskRemoved 重断言一致。
 6. **MCP server（host 模式）**：双协议兼容（Streamable HTTP + HTTP+SSE）、token 可选鉴权、工具定义与聊天内**单一来源**（含 loop guard/审批/截断全复用）、写工具共享 1 条串行门 + 读工具 2 条门 + 挂死熔断 2 分钟冷却（事故教训注释：native 挂死 = MCP 永久不可用）、重型工具 taskId 异步 + `mcp_task_status` 轮询。RikkaHub 已有 Ktor web 模块，是现成地基。
-7. **世界书 seed 三重迁移**：版本号 key + 内容 sha256 表（识别用户手里的旧条目）+ staleMarkers（旧文本片段匹配后仅替换种子内容、**保留用户开关状态**）。我们 fork 的 prompt injection/lorebook 体系几乎无缝可套。
+7. **世界书 seed 三重迁移**：~~版本号 key + 内容 sha256 表~~ **✅ 已落地（`23d42929`，09-30）**——实现比原设想更简：固定 entryId 定位（省掉 sha256 表）+ (内容,位置) 历史指纹识别未改动旧副本 + 保留用户开关状态 + 已删不复活（`SeedMigration.kt` 接 PreferencesStore 读路径；现注册 Learning Mode v2，世界书留泛化点）。
 8. **Blutter 隔离 runner 模式**：`isolatedProcess="true"` Service（98 行）+ AIDL + ParcelFileDescriptor 零拷贝传 fd，每作业一进程用完即弃（native segfault 不伤主进程）；四级降级版本匹配（exact_engine → exact_snapshot → exact_dart → minor fallback）并把匹配证据返回给 AI；大索引 jsonl.gz 流式解析（O(1) 内存），教训注释：全量载 List 直接 OOM。
 9. **记忆管线**（Kelivo 系，~6000 行，模块边界干净）：Gatekeeper → Extract → Smart Add → Distiller 四段式，水位线 + 窗口推进；**gatekeeper malformed 不推进水位线**（宁重跑不漏记）；Smart Add 的 MERGE/CONFLICT 目标必须在本地检索候选集内（堵 LLM 幻觉 id）；旧会话只注入 summary 不注入原文。
 10. 小件：政策文本常量单一来源（Agent 系统提示与 MCP 工具描述共用同一份，防漂移）；规则字典 JSON + 用户规则页 + 远程订阅源；PROCESS_TEXT 全局划词进 AI。
@@ -156,17 +156,17 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 
 ## 五、落地顺序建议
 
-> **落地状态（2026-09-14 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；④ 的 **WifiLock 已落地**（`ee1c9736`，KeepAliveService 持 `WIFI_MODE_FULL_HIGH_PERF`）；②⑤③⑥ 仍待动手（② 的 ContextBudgetPlanner 与终端 URL 点击待做；⑥ MCP host 前置=AI 后台任务三件套）。
+> **落地状态（2026-10-02 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；② 的 **ContextBudgetPlanner 已落地**（`c221be9a`），终端 URL 点击仍待做；③ LoopGuard/AgentRun 账本 **已落地**（`2452f665`/`f7d0c8e4`）；④ WifiLock **已落地**（`ee1c9736`）+ LoopGuard 已落地；⑤ 的 seed 迁移 + dry-run 审批 **已落地**（`23d42929`），**schema 三档缩水版仍待排期**；⑥⑦⑧ 见 §三 与 handoff §三（⑦ 记忆打分已落地 `69453f5e`，⑧ 记忆提取管道未立项）。
 
 | # | 来源 | 内容 | 成本 |
 |---|---|---|---|
 | 1 | 上游 `3a533a6a` | 终端多 Tab 会话管理 | ~~低~~ ✅ **已落地**（`fbfcde5e`） |
-| 2 | rikkahub-agent | 终端 URL 点击（单文件）、ContextBudgetPlanner（152 行 + 测试） | 低 |
-| 3 | rikkahub-agent | LoopGuard、工具审批模型、AgentRun 账本（等有 Cron/后台入口） | 中 |
-| 4 | SoLab | 保活补强（**WifiLock ✅ 已落地 `ee1c9736`** + specialUse 决策依据）、ToolCallLoopGuard、工具结果外置 + 反翻页 | 低-中 |
-| 5 | SoLab | 世界书 seed 三重迁移、previewToken 审批、schema 三档加载 | 中 |
+| 2 | rikkahub-agent | 终端 URL 点击（单文件）、~~ContextBudgetPlanner~~ ✅ 已落地（`c221be9a`） | 低（剩 URL 点击） |
+| 3 | rikkahub-agent | ~~LoopGuard~~ ✅（`2452f665`）、~~AgentRun 账本~~ ✅（`f7d0c8e4`）、工具审批模型（部分已落地） | ~~中~~ 基本收口 |
+| 4 | SoLab | 保活补强（**WifiLock ✅ `ee1c9736`** + specialUse 决策依据）、~~ToolCallLoopGuard~~ ✅（`2452f665`）、工具结果外置 + 反翻页（部分由 .tasks/ 落盘替代） | ~~低-中~~ 基本收口 |
+| 5 | SoLab | ~~世界书 seed 三重迁移、previewToken 审批~~ ✅（`23d42929`）、**schema 三档加载（缩水版）仍待排期** | 中（剩 schema） |
 | 6 | SoLab | MCP host 模式（手机当桌面 AI 工具箱） | 高，按需；**一旦立项即成为第 4 个工具装配方**（远程调用者需设备工具子集、复用审批/loop guard，见 `upstream-analysis.md`「注意点」第 9 条装配方盘点） |
-| 7 | Yuihub | **记忆打分校准 + 字符预算**（替掉 `take(60)` 全量注入，含 DAO `ORDER BY`） | 低（**推荐先做**，见 §四） |
+| 7 | Yuihub | ~~记忆打分校准 + 字符预算~~ ✅ 已落地（`69453f5e`，真机验证） | ~~低~~ 完成 |
 | 8 | Yuihub | 记忆提取管道 + 整理器（须接受「每轮多一次 LLM 调用」） | 中-高 |
 
 **记忆机制结论（Yuihub，详见 §四）**：值得借鉴的是**检索与写入的组织方式**（打分校准 / 提取管道 / 整理器），**不是语义向量**——Yuihub 上线语义检索后第二天整套删除（`a8c33b2d` → `fbd15331`），构成「记忆语义检索不做」的独立二次印证（与 `design-auto-compaction.md` §6.3 成本结论一致）。
