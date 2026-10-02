@@ -36,7 +36,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
+import androidx.compose.runtime.snapshotFlow
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
@@ -96,7 +98,6 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
         if (loading) {
             if (!state.expandState.expanded && settings.displaySetting.showThinkingContent)
                 state.expandState = ReasoningCardState.Preview
-            scrollState.animateScrollTo(scrollState.maxValue)
         } else {
             if (state.expandState.expanded) {
                 state.expandState = if (settings.displaySetting.autoCloseThinking)
@@ -104,6 +105,21 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
                 else
                     ReasoningCardState.Expanded
             }
+        }
+    }
+
+    // 贴底跟随**布局**变化而非文本变化（#1662）：思考内容经 MarkdownBlock 异步解析
+    // （mapLatest → flowOn(Default) → setData），「文本增长」与「布局增长」差一拍——
+    // 在文本变化回调里读 scrollState.maxValue 拿到的是旧布局值，会滚到新文本的中间。
+    // maxValue 只在布局完成后更新，跟随它即永远贴住真底部。maxValue==0（未布局或
+    // Expanded 态无滚动容器）时不动作。
+    LaunchedEffect(scrollState, loading) {
+        if (loading) {
+            snapshotFlow { scrollState.maxValue }
+                .distinctUntilChanged()
+                .collect { max ->
+                    if (max > 0) scrollState.animateScrollTo(max)
+                }
         }
     }
 

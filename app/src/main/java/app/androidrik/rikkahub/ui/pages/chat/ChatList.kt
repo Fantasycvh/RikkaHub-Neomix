@@ -350,14 +350,19 @@ private fun ChatListNormal(
     ) {
         // 自动滚动到底部
         if (settings.displaySetting.enableAutoScroll) {
+            // 贴底闩锁（#1662）：生成中内容增长会把视口「顶离」底部——布局增长瞬间
+            // isAtBottom() 判 false ⇒ 老逻辑错失贴底请求，此后每帧检查依然 false，
+            // 视口永远停在中间。闩锁只在**用户拖动**时更新（拖动中贴底=true、离开=false），
+            // 非拖动帧只要闩锁在就持续请求贴底；用户上滑 = 明确放手，不再跟随。
+            // requestScrollToItem 是瞬时重定位，不会置 isScrollInProgress，无自锁风险。
+            var stickToBottom by remember { mutableStateOf(true) }
             LaunchedEffect(state) {
                 snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
-                    // println("is bottom = ${visibleItemsInfo.isAtBottom()}, scroll = ${state.isScrollInProgress}, can_scroll = ${state.canScrollForward}, loading = $loading")
-                    if (!state.isScrollInProgress && loadingState) {
-                        if (visibleItemsInfo.isAtBottom()) {
-                            state.requestScrollToItem(conversationUpdated.messageNodes.lastIndex + 10)
-                            // Log.i(TAG, "ChatList: scroll to ${conversationUpdated.messageNodes.lastIndex}")
-                        }
+                    if (state.isScrollInProgress) {
+                        stickToBottom = visibleItemsInfo.isAtBottom()
+                    } else if (loadingState && stickToBottom) {
+                        state.requestScrollToItem(conversationUpdated.messageNodes.lastIndex + 10)
+                        // Log.i(TAG, "ChatList: scroll to ${conversationUpdated.messageNodes.lastIndex}")
                     }
                 }
             }
