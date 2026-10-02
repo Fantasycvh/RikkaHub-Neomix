@@ -1770,5 +1770,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="context_capacity_loading">次のリクエストを計測中…</string>
   <string name="context_capacity_titlebar_readout">%1$s/%2$s（残り %3$s）</string>
   <string name="context_capacity_local_floor_hint">サーバー未計測の固定費（システムプロンプト・ツール schema）を含みます。次の返信後に自動補正されます。</string>
+  <string name="setting_preferences_general_ring_context_indicator_title">コンテキスト使用量をリングで表示</string>
+  <string name="setting_preferences_general_ring_context_indicator_desc">入力欄のコンテキスト使用量をリング表示にし、パーセントを輪の中に表示します（既定はバー + パーセント）。</string>
 </resources>
 

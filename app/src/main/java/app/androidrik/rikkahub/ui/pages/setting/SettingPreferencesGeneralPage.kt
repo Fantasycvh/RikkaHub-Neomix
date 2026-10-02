@@ -202,6 +202,18 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                     item(
+                        headlineContent = { Text(stringResource(R.string.setting_preferences_general_ring_context_indicator_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_preferences_general_ring_context_indicator_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.useRingContextIndicator,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(useRingContextIndicator = it))
+                                }
+                            )
+                        },
+                    )
+                    item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_desc)) },
                         trailingContent = {

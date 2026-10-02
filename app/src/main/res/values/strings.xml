@@ -1845,5 +1845,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="context_capacity_loading">Measuring the next request…</string>
   <string name="context_capacity_titlebar_readout">%1$s/%2$s (%3$s left)</string>
   <string name="context_capacity_local_floor_hint">Includes fixed overhead (system prompt, tool schemas) that the server hasn\'t counted yet — calibrated after the next reply.</string>
+  <string name="setting_preferences_general_ring_context_indicator_title">Ring indicator for context usage</string>
+  <string name="setting_preferences_general_ring_context_indicator_desc">Show the composer\'s context usage as a ring with the percentage inside instead of a bar.</string>
 </resources>
 

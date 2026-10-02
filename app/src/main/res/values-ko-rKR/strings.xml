@@ -1770,5 +1770,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="context_capacity_loading">이번 요청을 계산하는 중…</string>
   <string name="context_capacity_titlebar_readout">%1$s/%2$s (남은 %3$s)</string>
   <string name="context_capacity_local_floor_hint">서버가 아직 집계하지 않은 고정 비용(시스템 프롬프트, 도구 schema)을 포함합니다. 다음 응답 후 자동 보정됩니다.</string>
+  <string name="setting_preferences_general_ring_context_indicator_title">컨텍스트 사용량을 링으로 표시</string>
+  <string name="setting_preferences_general_ring_context_indicator_desc">입력줄의 컨텍스트 사용량을 링으로 표시하고 퍼센트를 안쪽에 넣습니다 (기본은 막대 + 퍼센트).</string>
 </resources>
 

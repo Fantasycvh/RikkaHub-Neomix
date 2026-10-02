@@ -1770,5 +1770,7 @@
   <string name="context_capacity_loading">Измеряем следующий запрос…</string>
   <string name="context_capacity_titlebar_readout">%1$s/%2$s (осталось %3$s)</string>
   <string name="context_capacity_local_floor_hint">Учтены постоянные затраты (системный промпт, схемы инструментов), которые сервер ещё не посчитал — калибровка после первого ответа.</string>
+  <string name="setting_preferences_general_ring_context_indicator_title">Показывать контекст в виде кольца</string>
+  <string name="setting_preferences_general_ring_context_indicator_desc">Индикатор контекста в строке ввода — кольцо с процентом внутри вместо полосы.</string>
 </resources>
 

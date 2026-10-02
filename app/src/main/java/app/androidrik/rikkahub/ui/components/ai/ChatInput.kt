@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.ui.components.ai
 
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -363,6 +366,8 @@ fun ChatInput(
                                 ContextUsageBarButton(
                                     usedTokens = usage.usedTokens,
                                     windowTokens = usage.windowTokens,
+                                    // 形态可切换（偏好设置 → 通用）；数值来源与阈值两种形态共用
+                                    useRing = settings.displaySetting.useRingContextIndicator,
                                     onClick = onShowContextSheet,
                                 )
                             }
@@ -876,6 +881,7 @@ data class ContextUsage(
 private fun ContextUsageBarButton(
     usedTokens: Int,
     windowTokens: Int,
+    useRing: Boolean,
     onClick: () -> Unit,
 ) {
     val fraction = if (windowTokens > 0) {
@@ -898,10 +904,10 @@ private fun ContextUsageBarButton(
         label = "contextUsageFraction",
     )
 
-    // 外层容器高度与推理强度（ReasoningButton ~40dp）对齐，进度条在容器内垂直居中，
-    // 避免在 Top 对齐的 horizontalScroll 行里贴顶偏高
+    // 外层容器高度必须与相邻图标按钮（IconButton 默认 48dp）**一致**：这一行是 Top 对齐的，
+    // 各 item 的「中心」由各自高度决定 —— 40dp 容器会比 48dp 的邻居高约 4dp（实测 12px 偏差）。
     Box(
-        modifier = Modifier.height(40.dp),
+        modifier = Modifier.height(48.dp),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -912,40 +918,81 @@ private fun ContextUsageBarButton(
                 .padding(horizontal = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Canvas(modifier = Modifier.size(width = 34.dp, height = 5.dp)) {
-                    val radius = size.height / 2f
-                    drawRoundRect(
-                        color = trackColor,
-                        cornerRadius = CornerRadius(radius),
-                    )
-                    if (animatedFraction > 0f) {
-                        drawRoundRect(
-                        color = barColor,
-                        size = Size(
-                            width = (size.width * animatedFraction).coerceAtLeast(size.height),
-                            height = size.height,
+            if (useRing) {
+                // 圆环形态：百分比放在环内（空间紧，只给整数；精确数值在标题旁读数与面板里）
+                Box(contentAlignment = Alignment.Center) {
+                    Canvas(modifier = Modifier.size(24.dp)) {
+                        val stroke = 3.dp.toPx()
+                        val inset = stroke / 2f
+                        drawArc(
+                            color = trackColor,
+                            startAngle = -90f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            topLeft = Offset(inset, inset),
+                            size = Size(size.width - stroke, size.height - stroke),
+                            style = Stroke(width = stroke, cap = StrokeCap.Round),
+                        )
+                        if (animatedFraction > 0f) {
+                            drawArc(
+                                color = barColor,
+                                startAngle = -90f,
+                                sweepAngle = 360f * animatedFraction,
+                                useCenter = false,
+                                topLeft = Offset(inset, inset),
+                                size = Size(size.width - stroke, size.height - stroke),
+                                style = Stroke(width = stroke, cap = StrokeCap.Round),
+                            )
+                        }
+                    }
+                    Text(
+                        text = percent.toString(),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.sp,
+                            lineHeight = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFeatureSettings = "tnum",
                         ),
-                        cornerRadius = CornerRadius(radius),
+                        color = textColor,
+                        maxLines = 1,
+                    )
+                }
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Canvas(modifier = Modifier.size(width = 34.dp, height = 5.dp)) {
+                        val radius = size.height / 2f
+                        drawRoundRect(
+                            color = trackColor,
+                            cornerRadius = CornerRadius(radius),
+                        )
+                        if (animatedFraction > 0f) {
+                            drawRoundRect(
+                                color = barColor,
+                                size = Size(
+                                    width = (size.width * animatedFraction).coerceAtLeast(size.height),
+                                    height = size.height,
+                                ),
+                                cornerRadius = CornerRadius(radius),
+                            )
+                        }
+                    }
+                    Text(
+                        text = "$percent%",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.5.sp,
+                            lineHeight = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFeatureSettings = "tnum",
+                        ),
+                        color = textColor,
+                        maxLines = 1,
+                        modifier = Modifier.widthIn(min = 28.dp),
                     )
                 }
             }
-            Text(
-                text = "$percent%",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.5.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFeatureSettings = "tnum",
-                ),
-                color = textColor,
-                maxLines = 1,
-                modifier = Modifier.widthIn(min = 28.dp),
-            )
-        }
         }
     }
 
