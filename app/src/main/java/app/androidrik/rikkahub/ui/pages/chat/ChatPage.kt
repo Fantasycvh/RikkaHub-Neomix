@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
+import app.androidrik.rikkahub.ui.components.message.PlanBar
+import app.androidrik.rikkahub.data.ai.tools.local.latestTodoPlan
 import app.androidrik.rikkahub.ui.components.ai.CompressContextDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.padding
@@ -410,6 +412,10 @@ private fun ChatPageContent(
         }.orEmpty()
     }
 
+    // 计划条（todo_write）：当前分支里最后一次 todo_write 调用的参数即当前清单，
+    // 消息正文不再渲染计划卡（借鉴 Yuihub 最终形态），输入栏上方的 PlanBar 是唯一展示面
+    val planTodos = remember(conversation) { latestTodoPlan(conversation) }
+
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
     Surface(
@@ -443,6 +449,8 @@ private fun ChatPageContent(
                 )
             },
             bottomBar = {
+                Column {
+                PlanBar(todos = planTodos)
                 ChatInput(
                     state = inputState,
                     loading = loadingJob != null,
@@ -547,6 +555,7 @@ private fun ChatPageContent(
                     pendingQuote = inputState.pendingQuote.takeUnless { inputState.isEditing() },
                     onCancelQuote = { inputState.pendingQuote = null },
                 )
+                }
             },
             containerColor = Color.Transparent,
         ) { innerPadding ->

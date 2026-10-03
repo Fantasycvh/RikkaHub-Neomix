@@ -642,6 +642,15 @@ data class ApiKeyEntry(
   **本版内容（自 281 资产 6 项用户可见）**：①上下文容量面板（+标题旁读数、细条/圆环切换）②三项小件
   （加载守卫/fastModelId 清除/promptPresetIds 整绑）③#1985 双 JSON 修复性解析 ④#1662 贴底错乱两半同修
   ⑤#1805 显示生成来源 ⑥ANR 修复（占用估算挪出主线程）。验证状态：全部经真机验证（本版 bug 即真机发现）。
+- 2026-10-02：**todo_write 计划工具 + 计划细条（借鉴 Yuihub `ab107549`+5 版 UI 迭代终态）**——
+  ①`TodoTools.kt`：`todo_write` 本地工具（纯函数无副作用，最新一次调用的参数即当前清单）；
+  ②**PlanBar 常驻输入栏上方**（方案 E 终态）：收起一行=「当前步骤+进度+LinearProgress」、点击展开
+  完整清单、全部完成切完成态，无计划不渲染；**计划不渲染进消息正文/导出**（Yuihub 踩坑结论直接采纳）；
+  ③派生=`latestTodoPlan(conversation)` 扫当前分支最后一次调用（畸形输入容错）；
+  ④门控=`LocalToolOption.TodoPlan` 按助手开关（fork 惯例，Yuihub 是无条件注册）；
+  ⑤`TodoWriteToolUI` 折叠一行+展开摘要（正文详情让位给 PlanBar）。单测 7 项。
+  **踩坑**：bottomBar 加 Column 时括号插错位（首跑编译错），Script 写回遗漏致测试文件半更新——
+  两处都是「编辑脚本命中锚点与实际结构不符」的变体，多行结构改动后必须整段重读。
 - 2026-10-02：**#1974 极端场景对齐上游 `cf79246b`（`McpSchemaRefs.kt` 重写）**——①**循环引用
   就地截断为 `{"type": ...}`** 而非 `{}`（保留类型约束，模型仍知参数形状；截断计入 resolved）；
   ②**任意 `#/` 文档内指针可解析**（根文档=type+properties+$defs，不再限于 `#/$defs/`——覆盖

@@ -1,5 +1,9 @@
 package app.androidrik.rikkahub.ui.components.message.tools
 
+import app.androidrik.rikkahub.data.ai.tools.local.parseTodoPlanArgs
+import app.androidrik.rikkahub.data.ai.tools.local.TODO_STATUS_IN_PROGRESS
+import app.androidrik.rikkahub.data.ai.tools.local.TODO_STATUS_COMPLETED
+import me.rerere.hugeicons.stroke.CheckList
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -290,6 +294,39 @@ object ScrapeWebToolUI : ToolUIRenderer {
 /**
  * 获取时间信息
  */
+/**
+ * todo_write：折叠态只显示一行「任务计划」标题，展开摘要给进度计数。
+ * 完整清单的唯一展示面是输入栏上方的 PlanBar（借鉴 Yuihub 最终形态，
+ * 计划不再渲染进消息正文/导出）。
+ */
+object TodoWriteToolUI : ToolUIRenderer {
+    override val toolName: String = "todo_write"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.CheckList
+
+    @Composable
+    override fun title(context: ToolUIContext): String =
+        stringResource(R.string.chat_message_todo_title)
+
+    override fun hasSummary(context: ToolUIContext): Boolean = true
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val todos = remember(context.arguments.toString()) {
+            parseTodoPlanArgs(context.arguments.toString()).orEmpty()
+        }
+        if (todos.isNotEmpty()) {
+            val completed = todos.count { it.status == TODO_STATUS_COMPLETED }
+            val inProgress = todos.count { it.status == TODO_STATUS_IN_PROGRESS }
+            Text(
+                text = stringResource(R.string.plan_bar_summary, completed, inProgress, todos.size),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 object GetTimeInfoToolUI : ToolUIRenderer {
     override val toolName: String = "get_time_info"
 

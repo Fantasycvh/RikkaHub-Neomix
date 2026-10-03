@@ -240,6 +240,20 @@ private fun AssistantLocalToolContent(
                     )
                 }
             )
+            item(
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_todo_plan_title))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_todo_plan_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.localTools.contains(LocalToolOption.TodoPlan),
+                        onCheckedChange = { toggleLocalTool(LocalToolOption.TodoPlan, it) }
+                    )
+                }
+            )
         }
     }
 }

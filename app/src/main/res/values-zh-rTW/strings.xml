@@ -89,7 +89,13 @@
   <string name="assistant_page_local_tools_clipboard_title">剪貼簿</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">使用 QuickJS 引擎執行 JavaScript 代碼，進行計算和腳本處理</string>
   <string name="assistant_page_local_tools_javascript_engine_title">JavaScript 引擎</string>
-  <string name="assistant_page_local_tools_time_info_desc">從裝置取得目前日期、星期、時間與時區資訊</string>
+
+  <string name="assistant_page_local_tools_todo_plan_title">任務計劃 (todo_write)</string>
+  <string name="assistant_page_local_tools_todo_plan_desc">讓模型把多步任務拆成顯式清單並持續更新進度；輸入欄上方顯示計劃條</string>
+  <string name="plan_bar_progress">已完成 %1$d/%2$d</string>
+  <string name="chat_message_todo_all_done">全部完成</string>
+  <string name="chat_message_todo_title">任務計劃</string>
+  <string name="plan_bar_summary">計劃：完成 %1$d · 進行中 %2$d · 共 %3$d</string>  <string name="assistant_page_local_tools_time_info_desc">從裝置取得目前日期、星期、時間與時區資訊</string>
   <string name="assistant_page_local_tools_time_info_title">時間資訊</string>
   <string name="assistant_page_local_tools_tts_desc">讓 AI 使用您所選的 TTS 服務為您朗讀文字</string>
   <string name="assistant_page_local_tools_tts_title">文字轉語音</string>

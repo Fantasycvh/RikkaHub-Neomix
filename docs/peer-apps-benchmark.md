@@ -171,7 +171,7 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 
 **功能灵感（大，未立项按需）**：
 - **定时任务/自动化**（`2906828e`+`65525df9`+`e585d82b`+`191f5a8d`，~2300 行）：助手级 ScheduledTask（WorkManager 调度）+ **AI 可在对话中管理本助手的定时任务**（工具化）+ 完成悬浮通知 + 按助手过滤。fork 的时间提醒只是会话内提醒，这是真调度执行（=助手 cron agent）。大功能。
-- **todo_write 计划工具 + 计划细条**（`ab107549` + 5 版 UI 迭代：正文渲染→顶栏入口→输入栏常驻细条+滚动淡化+不再渲染正文）：长任务过程可见。迭代史本身说明 UI 形态难定。
+- ~~**todo_write 计划工具 + 计划细条**~~ **✅ 已落地（2026-10-02，方案 E 终态：PlanBar 输入栏上方常驻、正文不渲染、按助手门控 TodoPlan）**，单测 7 项。
 - **models.dev 目录匹配**（`ecaca331`，~1000 行含 fixture 测试）：按 modelId 自动补全 contextLength/能力/图标——可作 fork 手工 ModelRegistry 的兜底源。
 - **附件注入「封面先行」+ 放开类型白名单**（`bee1dd38`）、**workspace 写入冲突检测 mtime**（`f91d3b16`，与 edit_file dry-run 互补的 TOCTOU 维度）、**release 体积 31.7→23.1MB 清理**（`7b8c918a`，其手段=砍功能，fork 未评估）。
 

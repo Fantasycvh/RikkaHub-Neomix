@@ -30,6 +30,8 @@ class LocalTools(
 
     val chartDisplayTool by lazy { buildChartDisplayTool() }
 
+    val todoWriteTool by lazy { buildTodoWriteTool() }
+
     fun getTools(options: List<LocalToolOption>): List<Tool> {
         val tools = mutableListOf<Tool>()
         if (options.contains(LocalToolOption.JavascriptEngine)) {
@@ -56,6 +58,9 @@ class LocalTools(
         }
         if (options.contains(LocalToolOption.ChartDisplay)) {
             tools.add(chartDisplayTool)
+        }
+        if (options.contains(LocalToolOption.TodoPlan)) {
+            tools.add(todoWriteTool)
         }
         return tools
     }

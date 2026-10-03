@@ -87,7 +87,13 @@
   <string name="assistant_page_local_tools_clipboard_title">クリップボード</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">QuickJSエンジンでJavaScriptコードを実行し、計算とスクリプト処理を行います</string>
   <string name="assistant_page_local_tools_javascript_engine_title">JavaScriptエンジン</string>
-  <string name="assistant_page_local_tools_time_info_desc">デバイスから現在の日付、曜日、時刻、タイムゾーン情報を取得</string>
+
+  <string name="assistant_page_local_tools_todo_plan_title">タスク計画 (todo_write)</string>
+  <string name="assistant_page_local_tools_todo_plan_desc">モデルが複数ステップの作業を明示的なチェックリストに分解し進捗を更新します。入力欄の上に計画バーを表示</string>
+  <string name="plan_bar_progress">%1$d/%2$d 完了</string>
+  <string name="chat_message_todo_all_done">すべて完了</string>
+  <string name="chat_message_todo_title">タスク計画</string>
+  <string name="plan_bar_summary">計画：完了 %1$d · 進行中 %2$d · 計 %3$d</string>  <string name="assistant_page_local_tools_time_info_desc">デバイスから現在の日付、曜日、時刻、タイムゾーン情報を取得</string>
   <string name="assistant_page_local_tools_time_info_title">時刻情報</string>
   <string name="assistant_page_local_tools_tts_desc">AIが選択したTTSサービスを使ってテキストを読み上げます</string>
   <string name="assistant_page_local_tools_tts_title">テキスト読み上げ</string>

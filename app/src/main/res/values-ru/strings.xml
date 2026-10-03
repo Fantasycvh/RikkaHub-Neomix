@@ -87,7 +87,13 @@
   <string name="assistant_page_local_tools_clipboard_title">Буфер обмена</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">Выполнение кода JavaScript с помощью движка QuickJS для вычислений и сценариев</string>
   <string name="assistant_page_local_tools_javascript_engine_title">Движок JavaScript</string>
-  <string name="assistant_page_local_tools_time_info_desc">Получить текущую дату, день недели, время и часовой пояс с устройства</string>
+
+  <string name="assistant_page_local_tools_todo_plan_title">План задач (todo_write)</string>
+  <string name="assistant_page_local_tools_todo_plan_desc">Модель разбивает многошаговую работу на явный чек-лист и обновляет прогресс; над полем ввода показывается план</string>
+  <string name="plan_bar_progress">Выполнено %1$d/%2$d</string>
+  <string name="chat_message_todo_all_done">Всё сделано</string>
+  <string name="chat_message_todo_title">План задач</string>
+  <string name="plan_bar_summary">План: готово %1$d · в работе %2$d · всего %3$d</string>  <string name="assistant_page_local_tools_time_info_desc">Получить текущую дату, день недели, время и часовой пояс с устройства</string>
   <string name="assistant_page_local_tools_time_info_title">Информация о времени</string>
   <string name="assistant_page_local_tools_tts_desc">Позвольте ИИ озвучить текст с помощью выбранного вами сервиса TTS</string>
   <string name="assistant_page_local_tools_tts_title">Преобразование текста в речь</string>
