@@ -21,6 +21,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -509,7 +510,7 @@ class ResponseAPIMessageTest {
             )
         )
 
-        val items = api.buildMessages(listOf(assistantMessage), backfillToolReasoning = true)
+        val items = api.buildMessages(listOf(assistantMessage), reasoningTextRequired = true)
         // 注意首项是正文内容项（无 type 字段），占位 reasoning 必须排在 function_call **之前**
         assertEquals(
             listOf(null, "reasoning", "function_call", "function_call_output"),
@@ -537,11 +538,62 @@ class ResponseAPIMessageTest {
                 createExecutedTool("call_1", "search", """{"query": "x"}""", "ok"),
             )
         )
-        val items = api.buildMessages(listOf(assistantMessage), backfillToolReasoning = true)
+        val items = api.buildMessages(listOf(assistantMessage), reasoningTextRequired = true)
         val reasoningItem = items.first { it.jsonObject["type"]?.jsonPrimitive?.content == "reasoning" }
         val reasoningText = reasoningItem.jsonObject["content"]!!.jsonArray[0]
             .jsonObject["text"]!!.jsonPrimitive.content
         assertEquals("think first", reasoningText)
+    }
+
+    /**
+     * 加密推理**也必须**带非空 `content[].reasoning_text`（DeepSeek Responses 实测：
+     * 只有 encrypted_content 时 400「The `reasoning_text` … must be passed back」）；
+     * 但不能因此回放明文——占位文本即可满足结构校验。
+     */
+    @Test
+    fun `encrypted reasoning gets a non-empty placeholder content when host requires it`() {
+        val assistantMessage = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(
+                    reasoning = "plaintext reasoning",
+                    metadata = OpenAIReasoningMetadata(
+                        reasoningId = "rs_1",
+                        encryptedContent = "encrypted",
+                    ).toMetadata(),
+                ),
+                createExecutedTool("call_1", "search", """{"query": "x"}""", "ok"),
+            )
+        )
+
+        val item = api.buildMessages(listOf(assistantMessage), reasoningTextRequired = true)
+            .first { it.jsonObject["type"]?.jsonPrimitive?.content == "reasoning" }.jsonObject
+
+        assertEquals("encrypted", item["encrypted_content"]?.jsonPrimitive?.content)
+        val contentText = item["content"]!!.jsonArray[0].jsonObject["text"]!!.jsonPrimitive.content
+        assertTrue("占位必须非空（该 API 拒绝空文本）", contentText.isNotEmpty())
+        assertNotEquals("加密时不得回放明文推理", "plaintext reasoning", contentText)
+    }
+
+    @Test
+    fun `encrypted reasoning stays encrypted-only on hosts that do not require reasoning_text`() {
+        val item = invokeBuildMessages(listOf(
+            UIMessage(
+                role = MessageRole.ASSISTANT,
+                parts = listOf(
+                    UIMessagePart.Reasoning(
+                        reasoning = "plaintext reasoning",
+                        metadata = OpenAIReasoningMetadata(
+                            reasoningId = "rs_1",
+                            encryptedContent = "encrypted",
+                        ).toMetadata(),
+                    )
+                ),
+            )
+        )).single().jsonObject
+
+        assertEquals("encrypted", item["encrypted_content"]?.jsonPrimitive?.content)
+        assertFalse("未验证的 host 不塞占位 content", item.containsKey("content"))
     }
 
     private fun createExecutedTool(

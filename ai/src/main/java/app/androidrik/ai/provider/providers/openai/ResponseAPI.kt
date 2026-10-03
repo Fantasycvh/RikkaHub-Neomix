@@ -236,7 +236,7 @@ class ResponseAPI(
             // messages
             // 见 requiresToolReasoningBackfill：思考模式下带 tool_call 的 assistant 消息缺 reasoning item
             // 会被网关直接拒（DeepSeek Responses / opencode 实测：400「reasoning_text must be passed back」）
-            put("input", buildMessages(messages, requiresToolReasoningBackfill(host, params.model)))
+            put("input", buildMessages(messages, isKnownReasoningTextValidator(host)))
 
             // reasoning
             if (params.model.abilities.contains(ModelAbility.REASONING)) {
@@ -304,13 +304,13 @@ class ResponseAPI(
 
     internal fun buildMessages(
         messages: List<UIMessage>,
-        backfillToolReasoning: Boolean = false,
+        reasoningTextRequired: Boolean = false,
     ) = buildJsonArray {
         messages
             .filter { it.isValidToUpload() && it.role != MessageRole.SYSTEM }
             .forEach { message ->
                 if (message.role == MessageRole.ASSISTANT) {
-                    addAssistantItems(message, backfillToolReasoning)
+                    addAssistantItems(message, reasoningTextRequired)
                 } else {
                     addUserItems(message)
                 }
@@ -319,7 +319,7 @@ class ResponseAPI(
 
     private fun JsonArrayBuilder.addAssistantItems(
         message: UIMessage,
-        backfillToolReasoning: Boolean = false,
+        reasoningTextRequired: Boolean = false,
     ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
@@ -355,6 +355,7 @@ class ResponseAPI(
                                     text = part.reasoning,
                                     id = reasoningMetadata?.reasoningId,
                                     encryptedContent = reasoningMetadata?.encryptedContent,
+                                    reasoningTextRequired = reasoningTextRequired,
                                 )
                                 reasoningEmitted = true
                             }
@@ -391,7 +392,7 @@ class ResponseAPI(
                         //    该 API 拒绝空文本，非空即可、id 可选。
                         // ② 同一轮第二个及以后的 function_call 前补插 reasoning item（issue #1690）。
                         val reasoningToEmit: String? = when {
-                            !reasoningEmitted && backfillToolReasoning -> REASONING_BACKFILL_PLACEHOLDER
+                            !reasoningEmitted && reasoningTextRequired -> REASONING_BACKFILL_PLACEHOLDER
                             toolEmittedSinceReasoning -> lastReasoningText
                             else -> null
                         }
@@ -402,6 +403,7 @@ class ResponseAPI(
                                 id = if (isBackfill) null else lastReasoningId,
                                 // 与主 reasoning item 一致：已加密时不回放明文 content/summary（#1719）
                                 encryptedContent = if (isBackfill) null else lastEncryptedContent,
+                                reasoningTextRequired = reasoningTextRequired,
                             )
                             reasoningEmitted = true
                             toolEmittedSinceReasoning = false
@@ -470,21 +472,29 @@ class ResponseAPI(
         text: String,
         id: String?,
         encryptedContent: String?,
+        reasoningTextRequired: Boolean,
     ) {
         add(buildJsonObject {
             put("type", "reasoning")
             id?.let { put("id", it) }
-            if (encryptedContent == null) {
+            // `content[].reasoning_text` 是规范**必填**字段——**即使推理已加密也必须给非空文本**：
+            // DeepSeek Responses 实测，只有 encrypted_content 而缺 reasoning_text 会 400
+            // 「The `reasoning_text` in the thinking mode must be passed back to the API」。
+            // 加密时按 #1719 **不回放明文**，改用占位文本满足结构校验（不泄漏推理内容）。
+            // 非校验 host（如 OpenAI 官方）保持原样：加密时只回 encrypted_content，不塞未经
+            // 验证的字段组合。
+            if (encryptedContent == null || reasoningTextRequired) {
+                val contentText = if (encryptedContent == null) text else REASONING_BACKFILL_PLACEHOLDER
                 put("content", buildJsonArray {
                     add(buildJsonObject {
                         put("type", "reasoning_text")
-                        put("text", text)
+                        put("text", contentText)
                     })
                 })
                 put("summary", buildJsonArray {
                     add(buildJsonObject {
                         put("type", "summary_text")
-                        put("text", text)
+                        put("text", contentText)
                     })
                 })
             }
