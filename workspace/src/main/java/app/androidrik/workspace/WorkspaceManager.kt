@@ -160,6 +160,13 @@ class WorkspaceManager(
     fun rootfsFileSize(root: String, path: String): Long =
         resolveRootfsFile(root, path).also { it.requireReadableFile(path) }.length()
 
+    /** Rootfs 内文件的最后修改时间（毫秒）；不存在或不是文件时返回 null（写入冲突检测用） */
+    fun rootfsFileMtime(root: String, path: String): Long? {
+        val file = resolveRootfsFile(root, path)
+        if (!file.exists() || !file.isFile) return null
+        return file.lastModified()
+    }
+
     fun exportRootfsFile(root: String, path: String, outputStream: OutputStream) {
         val file = resolveRootfsFile(root, path)
         file.requireReadableFile(path)
