@@ -131,7 +131,7 @@ master 已 ff-only 快进至 `4e4bfa62`（同步于 10-02）。**核心事件：
 
 | 提交 | 内容 | 结论 |
 |---|---|---|
-| `cf79246b` **MCP `$defs`/`$ref` 内联展开（#1974）** | 新 `McpToolSchema.kt`（89 行）+ 153 行测试：任意 `#/` JSON Pointer（含 `#/definitions`）、循环引用回自身处只保留 `type`、同级键覆盖、只沿 schema 关键字遍历（literal 数据不动） | **已先行落地（`95fe3e5b`），无需吸收**。fork 的 `McpSchemaRefs.kt` 与之等价（同级键优先/环检测/宽松降级全有）；两点边缘差异：上游对循环引用保留 `type`（fork 降级 `{}`）、上游支持任意 `#/` 指针（fork 仅 `#/$defs/`）。均为极端场景，fork 版已真机验证，不回吸 |
+| `cf79246b` **MCP `$defs`/`$ref` 内联展开（#1974）** | 新 `McpToolSchema.kt`（89 行）+ 153 行测试：任意 `#/` JSON Pointer（含 `#/definitions`）、循环引用回自身处只保留 `type`、同级键覆盖、只沿 schema 关键字遍历（literal 数据不动） | **已先行落地（`95fe3e5b`），极端场景已于 2026-10-02 回吸收敛（`651815b7`）**：循环引用截断保留 `type`、任意 `#/` 文档内指针解析（根文档=type+properties+$defs）、无 $defs 有 $ref 不再早退；常规路径零开销早退保留。单测 20 项 |
 | `d5f0039b` **生成标题找不到快速模型给错误提示（#1975）** | 两处静默 `return@runCatching` → `throw IllegalStateException`（新文案） | **已先行落地且更优（`95fe3e5b` 同批）**：fork 版本地化文案 + `addConfigErrorOnce` 错误卡 + 返回 `started` 让调用方补 toast（上游只弹错误卡） |
 | `654a5e1f` 提供商自定义请求头（#1952） | `ProviderSetting.customHeaders` + 高级设置 tab + `Request.kt` `mergeCustomHeaders`（**提供商头优先级最低，被助手/模型同名头覆盖**）+ 49 行测试 | ✅ **已吸收（2026-10-02，`a3394e7a`）**：fork 本就有字段与 UI，本次只吸收**去重语义**——新增 `mergeCustomHeaders` + 单一应用入口 `applyCustomHeaders(providerSetting, requestHeaders)`（覆盖语义），19 个调用点统一改造，旧的追加式入口删除。另加 MockWebServer 真实链路测试 |
 | `620e38cc` **JsonTree 弹窗长按崩溃（#1977）** | BottomSheet 在独立窗口，沿用外层 `SelectionRegistrar` 长按抛 hierarchy 异常 → sheet 内自包一层 `SelectionContainer` | ✅ **已吸收 `799522f2`（2026-10-02）**：fork 同样中招（`LogPage.kt:458` 在 `:384` 的 `SelectionContainer` 内），改法与上游逐字等价；未修版真机复现 FATAL、修复版长按正常 |
