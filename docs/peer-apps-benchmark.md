@@ -824,3 +824,38 @@ fork 现状对照：我们已有**文件版近似**（tool_outputs 落盘 + 32KB
 - **执行目标合同**：工具注册时声明网络能力/工作区权限/资源语义/artifact 策略；沙箱不可用 → **明确拒绝该执行目标而非悄悄改本机执行**——与 fork DenialGuard 同哲学，可用于将来 workspace 工具分级。
 - **BAML 双链路**（native tool calling / BAML 结构化规划二选一并显式声明，运行中不静默切换）：让不支持工具调用的普通模型获得同等的结构化工具语义。Kotlin 侧无可直接移植的 BAML 运行时，成本大，仅记录思想。
 - **Skill 发布前工具引用校验**：SkillManage 创建/更新时验证引用的工具已注册（防悬空）；fork 技能体系无工具引用概念（allowedTools 已删），不适用。
+
+### 7.4 分层上下文与上下文策略（2026-10-02 追加；与上游 #972 同题）
+
+7.1～7.3 只覆盖了工具检索/Artifact/杂项。本节补的是**分层上下文与上下文策略**——因为上游 **#972（无限上下文和分层记忆重构）** 的三问（无限上下文 / 分层记忆 / **懒加载消息**）与 senera 这套机制是同一道题，而 senera 是目前见过**唯一把三件事都落地**的实现。源码位置：`Source/AgentSystem/Prompt/`（上下文编译器）、`TemporalMemory/`（时间摘要）、`Continuity/`（按需展开）、`Memory/`（artifact 投影）。
+
+**分层上下文（`Prompt/`，源码级）**
+
+- **11 层**：`kernel / persona / profile / lore / facts / graph / world / scene / memory / workflow / task`（`AgentPromptContextLayerTypes.ts`），每层带 manifest：`source`（runtime/preset/profile/continuity/request）、`stability`（**stable / turn / event**）、`included`。
+- **3 档 + revision 身份**：`stable / context / volatile`，每档一个 revision；定义里写明用途——**区分「可复用的会话上下文」与「必须每轮重建的数据」**。
+- **核心手法=稳定前缀与易变状态分离**：stable 档（kernel + 人设 + voice 示例 + 执行环境）**跨会话逐字节一致**；turn 档持久化为**一条隐藏的、仅追加的 `senera.turn_context` 消息，紧跟在所属用户消息之后**（旧快照留作历史证据，最新者权威）⇒ **provider 前缀保持字节稳定**，同时状态变化对模型可见。
+- **渲染即校验**：`AgentPromptContextWireRenderer` 让每个块**声明允许的无损编码**（同类数组走 TOON、异构状态留 JSON），**严格解码后与源值比对，回环失败直接报错**（不降级成散文）；每块用**当前模型的 tokenizer** 计量。
+- **只缓存稳定档**：`AgentPromptTierRenderCache`——"reuses rendered stable prompt tiers while keeping volatile turn data out of the cache"；cache scope 是宿主侧标识，**不作为指令**给模型。
+
+**上下文策略（记忆/连续性/证据）**
+
+- **TemporalMemory**：digest **层级 = `segment → day → month`**，状态机 `open/pending/sealed/failed/stale`；每条带 `summary / topics / openLoops / uri / childCount`，成员按 `ordinal` 归并 `episode|digest` ⇒ **时间维度的摘要树 + 可寻址 URI**。
+- **Continuity 的按需展开**：`AgentContinuityEpisodeWindow` 用 `before/after` 做邻域展开——**模型选范围，宿主保序/分组/来源完整性**；再叠事实与条件求值（authority policy / condition evaluator / entity alias）。本质是**回传派生状态而非原始消息体**。
+- **证据句柄**：工具结果发布为 artifact（带 receipt），给模型的只是投影 + URI，且投影时剥掉内部路由字段（宿主路径、manifest 等）。
+
+**对上上游 #972 的映射**（#972 = re-ovo 2026-03-16 自记备忘、label enhancement、**至今零实现**）
+
+| #972 的三问 | senera 的答案 | 我们的位置 |
+|---|---|---|
+| 分层记忆 | 11 层 + 3 档 + 时间摘要树 | 记忆有「显式可编辑 + 衰减打分 + 预算截断」，但是**单层**（无时间维度层级） |
+| 无限上下文 | 摘要层级 + 追加式 turn_context + 字节稳定前缀（不是真无限，而是**可寻址的压缩历史 + 按需回取证据**） | 已有压缩检查点（token 驱动、区域指纹失效）——同一问题的另一条路线 |
+| 懒加载消息 | ①不回传原始消息体，只回传派生状态 + 句柄 ②episode 窗口按需邻域展开 | 已有文件版近似（`tool_outputs` 落盘 + 截断 + `workspace_read_file` 回取） |
+
+**对我们的借鉴（按性价比，2026-10-02）**
+
+- **P1（值得做，半天~1 天）：易变状态搬出 system 块 + 隐藏追加式「轮次上下文」。** 我们的 system 块里混着**每轮会变**的内容（记忆注入段 `MEMORY`、注入条目段、渲染提示），于是「记忆刚更新」那一轮会**从 system 起整段前缀失效**——而隐式前缀缓存（OpenAI/Gemini 自动缓存）只看前缀**逐字节**是否相同。senera 的做法在我们这边**有现成先例**：压缩检查点本身就是「合成消息 + 前导标记」的追加式实现，照它加一层轮次上下文合成消息即可。**不依赖 #1971**（该字段已因主力端点 New API 不透传而搁置；隐式缓存不需要它）。**验证前置**：先在真机量「记忆变化前/后」的 cached 比例（消息尾部已显示 `X tokens (Y cached, Z%)`）——**若现状命中率本就很高，收益只在「易变项变动的那一轮」**，要拿数据说话再决定做不做。风险=把一部分 system 内容改成消息角色可能影响遵循度，需 A/B 与真机。
+- **P2（小纪律，随时可做）**：①给拼装预览/容量面板的分段加 **stability 分组**（stable/turn/event）——正是刚落的「上下文组成明细」的自然延伸，一眼看出「哪些内容每轮都在变、因而不利缓存」；②把「投影必须无损回环校验、失败即报错」借到我们已有投影的两处（工具结果投影、拼装预览分段）。
+- **P3（只记账、不排期）：时间维度摘要树**（segment/day/month）。价值是「很久以前仍能粗粒度召回」，但我们是**显式可编辑记忆**、senera 是**自动派生**——哲学不同，引入等于新增一类「日记/时间线」产品面（摘要作业、存储、召回、UI）。等「长期陪伴/时间线回溯」出现真实需求再评估。
+- **维持现状**：证据句柄/artifact 投影我们已有文件版近似（见 §7.2）；TOON 那类表格化编码对我们意义有限（易变块不大）。
+
+**一句话结论**：senera 这套里**唯一值得现在动手的是「稳定前缀不被易变状态污染」**（且必须先量 cached 比例再定），其余两条是小纪律，第四类（时间摘要树）与我们的记忆哲学不同、只记账；#972 若上游真立项，本节映射表可直接当设计输入。
