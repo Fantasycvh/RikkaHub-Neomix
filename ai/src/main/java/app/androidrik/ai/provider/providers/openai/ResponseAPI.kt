@@ -234,7 +234,9 @@ class ResponseAPI(
             }
 
             // messages
-            put("input", buildMessages(messages))
+            // 见 requiresToolReasoningBackfill：思考模式下带 tool_call 的 assistant 消息缺 reasoning item
+            // 会被网关直接拒（DeepSeek Responses / opencode 实测：400「reasoning_text must be passed back」）
+            put("input", buildMessages(messages, requiresToolReasoningBackfill(host, params.model)))
 
             // reasoning
             if (params.model.abilities.contains(ModelAbility.REASONING)) {
@@ -300,19 +302,25 @@ class ResponseAPI(
         }.mergeCustomBody(params.customBody)
     }
 
-    internal fun buildMessages(messages: List<UIMessage>) = buildJsonArray {
+    internal fun buildMessages(
+        messages: List<UIMessage>,
+        backfillToolReasoning: Boolean = false,
+    ) = buildJsonArray {
         messages
             .filter { it.isValidToUpload() && it.role != MessageRole.SYSTEM }
             .forEach { message ->
                 if (message.role == MessageRole.ASSISTANT) {
-                    addAssistantItems(message)
+                    addAssistantItems(message, backfillToolReasoning)
                 } else {
                     addUserItems(message)
                 }
             }
     }
 
-    private fun JsonArrayBuilder.addAssistantItems(message: UIMessage) {
+    private fun JsonArrayBuilder.addAssistantItems(
+        message: UIMessage,
+        backfillToolReasoning: Boolean = false,
+    ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
 
@@ -322,6 +330,8 @@ class ResponseAPI(
         var lastReasoningId: String? = null
         var lastEncryptedContent: String? = null
         var toolEmittedSinceReasoning = false
+        // 本条 assistant 消息是否已输出过 reasoning item（供「历史里根本没有思维链」的回填判定）
+        var reasoningEmitted = false
 
         for (group in groups) {
             when (group) {
@@ -341,32 +351,12 @@ class ResponseAPI(
                                 lastEncryptedContent = reasoningMetadata?.encryptedContent
                                 toolEmittedSinceReasoning = false
                                 // 输出 reasoning item（content 为规范必填字段，summary 为摘要）
-                                val encryptedContent = reasoningMetadata?.encryptedContent
-                                add(buildJsonObject {
-                                    put("type", "reasoning")
-                                    reasoningMetadata?.reasoningId?.let {
-                                        put("id", it)
-                                    }
-                                    // 若推理内容已加密（encryptedContent 存在），只回传 encrypted_content，
-                                    // 不回放明文 content/summary——避免把历史明文推理重放回上下文（上游 #1719）
-                                    if (encryptedContent == null) {
-                                        put("content", buildJsonArray {
-                                            add(buildJsonObject {
-                                                put("type", "reasoning_text")
-                                                put("text", part.reasoning)
-                                            })
-                                        })
-                                        put("summary", buildJsonArray {
-                                            add(buildJsonObject {
-                                                put("type", "summary_text")
-                                                put("text", part.reasoning)
-                                            })
-                                        })
-                                    }
-                                    encryptedContent?.let {
-                                        put("encrypted_content", it)
-                                    }
-                                })
+                                addReasoningItem(
+                                    text = part.reasoning,
+                                    id = reasoningMetadata?.reasoningId,
+                                    encryptedContent = reasoningMetadata?.encryptedContent,
+                                )
+                                reasoningEmitted = true
                             }
 
                             is UIMessagePart.Image -> {
@@ -395,29 +385,25 @@ class ResponseAPI(
 
                     // 输出 function_call + function_call_output
                     group.tools.forEach { tool ->
-                        // 同一轮第二个及以后的 function_call 前补插 reasoning item（issue #1690）
-                        if (toolEmittedSinceReasoning && lastReasoningText != null) {
-                            val text = lastReasoningText!!
-                            add(buildJsonObject {
-                                put("type", "reasoning")
-                                lastReasoningId?.let { put("id", it) }
+                        // ① 这条 assistant 消息**根本没有思维链**可回放（开启思考前的旧消息 / 上游只给加密推理 /
+                        //    用户关了「回传历史思考过程」/ 消息被编辑过）⇒ 网关以「reasoning_text must be passed
+                        //    back」直接 400（DeepSeek Responses 实测）。先补**占位** reasoning item：
+                        //    该 API 拒绝空文本，非空即可、id 可选。
+                        // ② 同一轮第二个及以后的 function_call 前补插 reasoning item（issue #1690）。
+                        val reasoningToEmit: String? = when {
+                            !reasoningEmitted && backfillToolReasoning -> REASONING_BACKFILL_PLACEHOLDER
+                            toolEmittedSinceReasoning -> lastReasoningText
+                            else -> null
+                        }
+                        if (reasoningToEmit != null) {
+                            val isBackfill = !reasoningEmitted
+                            addReasoningItem(
+                                text = reasoningToEmit,
+                                id = if (isBackfill) null else lastReasoningId,
                                 // 与主 reasoning item 一致：已加密时不回放明文 content/summary（#1719）
-                                if (lastEncryptedContent == null) {
-                                    put("content", buildJsonArray {
-                                        add(buildJsonObject {
-                                            put("type", "reasoning_text")
-                                            put("text", text)
-                                        })
-                                    })
-                                    put("summary", buildJsonArray {
-                                        add(buildJsonObject {
-                                            put("type", "summary_text")
-                                            put("text", text)
-                                        })
-                                    })
-                                }
-                                lastEncryptedContent?.let { put("encrypted_content", it) }
-                            })
+                                encryptedContent = if (isBackfill) null else lastEncryptedContent,
+                            )
+                            reasoningEmitted = true
                             toolEmittedSinceReasoning = false
                         }
                         add(buildJsonObject {
@@ -472,6 +458,38 @@ class ResponseAPI(
         if (contentBuffer.isNotEmpty()) {
             addContentItem(MessageRole.ASSISTANT, contentBuffer)
         }
+    }
+
+    /**
+     * 发射一个 reasoning item。
+     *
+     * `content[].reasoning_text` 是该 API 的**规范必填**字段（`summary` 为摘要）；若推理内容已加密
+     * （`encrypted_content` 存在）则**只回传密文、不回放明文**，避免把历史明文推理重放回上下文（上游 #1719）。
+     */
+    private fun JsonArrayBuilder.addReasoningItem(
+        text: String,
+        id: String?,
+        encryptedContent: String?,
+    ) {
+        add(buildJsonObject {
+            put("type", "reasoning")
+            id?.let { put("id", it) }
+            if (encryptedContent == null) {
+                put("content", buildJsonArray {
+                    add(buildJsonObject {
+                        put("type", "reasoning_text")
+                        put("text", text)
+                    })
+                })
+                put("summary", buildJsonArray {
+                    add(buildJsonObject {
+                        put("type", "summary_text")
+                        put("text", text)
+                    })
+                })
+            }
+            encryptedContent?.let { put("encrypted_content", it) }
+        })
     }
 
     private fun JsonArrayBuilder.addUserItems(message: UIMessage) {

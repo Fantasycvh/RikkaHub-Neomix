@@ -276,6 +276,8 @@ class ChatCompletionsAPI(
                     messages = messages,
                     includeHistoryReasoning = providerSetting.includeHistoryReasoning,
                     supportInputModalities = params.model.inputModalities,
+                    // 见 requiresToolReasoningBackfill：网关要求「思考模式 + 带 tool_calls」的消息必须回传思维链
+                    backfillToolReasoning = requiresToolReasoningBackfill(host, params.model),
                 )
             )
 
@@ -478,6 +480,7 @@ class ChatCompletionsAPI(
         messages: List<UIMessage>,
         includeHistoryReasoning: Boolean = true,
         supportInputModalities: List<Modality> = listOf(Modality.TEXT, Modality.IMAGE),
+        backfillToolReasoning: Boolean = false,
     ) = buildJsonArray {
         val filteredMessages = messages.filter { it.isValidToUpload() }
 
@@ -487,6 +490,7 @@ class ChatCompletionsAPI(
                     message = message,
                     includeReasoning = includeHistoryReasoning,
                     supportInputModalities = supportInputModalities,
+                    backfillToolReasoning = backfillToolReasoning,
                 )
             } else {
                 addNonAssistantMessage(message)
@@ -498,6 +502,7 @@ class ChatCompletionsAPI(
         message: UIMessage,
         includeReasoning: Boolean,
         supportInputModalities: List<Modality>,
+        backfillToolReasoning: Boolean = false,
     ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
@@ -522,7 +527,8 @@ class ChatCompletionsAPI(
                     buildAssistantMessageJson(
                         contentParts = contentBuffer,
                         tools = group.tools,
-                        reasoningPart = reasoningPart
+                        reasoningPart = reasoningPart,
+                        backfillToolReasoning = backfillToolReasoning,
                     )?.let { assistantMessage ->
                         add(assistantMessage)
                     }
@@ -546,7 +552,8 @@ class ChatCompletionsAPI(
             buildAssistantMessageJson(
                 contentParts = contentBuffer,
                 tools = emptyList(),
-                reasoningPart = reasoningPart
+                reasoningPart = reasoningPart,
+                backfillToolReasoning = backfillToolReasoning,
             )?.let { assistantMessage ->
                 add(assistantMessage)
             }
@@ -556,7 +563,8 @@ class ChatCompletionsAPI(
     private fun buildAssistantMessageJson(
         contentParts: List<UIMessagePart>,
         tools: List<UIMessagePart.Tool>,
-        reasoningPart: UIMessagePart.Reasoning?
+        reasoningPart: UIMessagePart.Reasoning?,
+        backfillToolReasoning: Boolean = false,
     ): JsonObject? {
         val hasUsableContent = contentParts.any { part ->
             when (part) {
@@ -576,6 +584,12 @@ class ChatCompletionsAPI(
             // reasoning_content
             if (hasReasoning) {
                 put("reasoning_content", reasoningPart.reasoning)
+            } else if (tools.isNotEmpty() && backfillToolReasoning) {
+                // 网关的结构性校验：思考模式下带 tool_calls 的消息必须回传思维链，
+                // 而这条历史里没有可回传的（旧消息 / 只给加密推理 / 用户关了回传 / 编辑过）⇒
+                // 回填**空串**（空串被接受；省略字段会让整个请求 400）。
+                // 见 requiresToolReasoningBackfill 的实测矩阵与触发场景。
+                put("reasoning_content", "")
             }
 
             // content

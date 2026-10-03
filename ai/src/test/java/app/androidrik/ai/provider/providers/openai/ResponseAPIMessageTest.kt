@@ -493,6 +493,57 @@ class ResponseAPIMessageTest {
         assertEquals("chain of thought", textPart["text"]?.jsonPrimitive?.content)
     }
 
+    /**
+     * 网关结构性校验（实测 DeepSeek Responses）：思考模式下**每个工具调用轮次前必须有 reasoning item**，
+     * 历史里没有思维链时（旧消息 / 只给加密推理 / 用户关了回传 / 编辑过）直接 400
+     * 「The `reasoning_text` in the thinking mode must be passed back to the API」。
+     * 这里钉住：回填的占位 item 必须**非空**（该 API 拒绝空文本）、排在 function_call 之前、且默认关闭。
+     */
+    @Test
+    fun `tool call without reasoning gets a non-empty placeholder reasoning item when backfill enabled`() {
+        val assistantMessage = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Text("calling the tool"),
+                createExecutedTool("call_1", "search", """{"query": "x"}""", "ok"),
+            )
+        )
+
+        val items = api.buildMessages(listOf(assistantMessage), backfillToolReasoning = true)
+        // 注意首项是正文内容项（无 type 字段），占位 reasoning 必须排在 function_call **之前**
+        assertEquals(
+            listOf(null, "reasoning", "function_call", "function_call_output"),
+            items.map { it.jsonObject["type"]?.jsonPrimitive?.content },
+        )
+        val reasoningItem = items.first { it.jsonObject["type"]?.jsonPrimitive?.content == "reasoning" }
+        val reasoningText = reasoningItem.jsonObject["content"]!!.jsonArray[0]
+            .jsonObject["text"]!!.jsonPrimitive.content
+        assertTrue("占位文本必须非空（该 API 拒绝空文本）", reasoningText.isNotEmpty())
+
+        // 门槛未命中（非思考模型）时保持既有行为：不插 reasoning item
+        val plain = api.buildMessages(listOf(assistantMessage))
+        assertEquals(
+            listOf(null, "function_call", "function_call_output"),
+            plain.map { it.jsonObject["type"]?.jsonPrimitive?.content },
+        )
+    }
+
+    @Test
+    fun `existing reasoning is reused instead of a placeholder`() {
+        val assistantMessage = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(reasoning = "think first"),
+                createExecutedTool("call_1", "search", """{"query": "x"}""", "ok"),
+            )
+        )
+        val items = api.buildMessages(listOf(assistantMessage), backfillToolReasoning = true)
+        val reasoningItem = items.first { it.jsonObject["type"]?.jsonPrimitive?.content == "reasoning" }
+        val reasoningText = reasoningItem.jsonObject["content"]!!.jsonArray[0]
+            .jsonObject["text"]!!.jsonPrimitive.content
+        assertEquals("think first", reasoningText)
+    }
+
     private fun createExecutedTool(
         callId: String,
         name: String,

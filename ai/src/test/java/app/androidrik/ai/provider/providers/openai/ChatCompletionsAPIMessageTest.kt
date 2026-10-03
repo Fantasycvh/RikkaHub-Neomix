@@ -22,6 +22,7 @@ import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -43,20 +44,23 @@ class ChatCompletionsAPIMessageTest {
     // Helper to invoke private buildMessages method via reflection
     private fun invokeBuildMessages(
         messages: List<UIMessage>,
-        includeHistoryReasoning: Boolean = true
+        includeHistoryReasoning: Boolean = true,
+        backfillToolReasoning: Boolean = false,
     ): JsonArray {
         val method = ChatCompletionsAPI::class.java.getDeclaredMethod(
             "buildMessages",
             List::class.java,
             Boolean::class.javaPrimitiveType,
-            List::class.java
+            List::class.java,
+            Boolean::class.javaPrimitiveType,
         )
         method.isAccessible = true
         return method.invoke(
             api,
             messages,
             includeHistoryReasoning,
-            listOf(Modality.TEXT, Modality.IMAGE)
+            listOf(Modality.TEXT, Modality.IMAGE),
+            backfillToolReasoning,
         ) as JsonArray
     }
 
@@ -395,6 +399,47 @@ class ChatCompletionsAPIMessageTest {
     }
 
     // ==================== Helper Functions ====================
+
+    /**
+     * 网关结构性校验：思考模式下带 `tool_calls` 的 assistant 消息**必须回传思维链**，
+     * 历史里没有可回传的（开启思考前的旧消息 / 上游只给加密推理 / 用户关了回传 / 编辑过）时，
+     * 省略字段会让**整个请求**被 400 拒掉（实测：DeepSeek Responses 与 opencode zen）。
+     * 这里钉住「回填空串」与「非思考模型不凭空多字段」两侧。
+     */
+    @Test
+    fun `tool message without reasoning gets empty reasoning_content only when backfill enabled`() {
+        val assistantMessage = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Text("I'll search for that"),
+                createExecutedTool("call_1", "search", """{"query": "x"}""", "result"),
+            )
+        )
+        val messages = listOf(UIMessage.user("hi"), assistantMessage)
+
+        val backfilled = invokeBuildMessages(messages, backfillToolReasoning = true)
+            .first { it.jsonObject["role"]?.jsonPrimitive?.content == "assistant" }
+        assertEquals("", backfilled.jsonObject["reasoning_content"]?.jsonPrimitive?.content)
+
+        // 默认（门槛未命中：非思考模型）不新增该字段——避免给不认识它的服务端凭空送字段
+        val plain = invokeBuildMessages(messages)
+            .first { it.jsonObject["role"]?.jsonPrimitive?.content == "assistant" }
+        assertNull(plain.jsonObject["reasoning_content"])
+    }
+
+    @Test
+    fun `real reasoning is never replaced by the empty backfill`() {
+        val assistantMessage = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(reasoning = "deep thought"),
+                createExecutedTool("call_1", "search", """{"query": "x"}""", "result"),
+            )
+        )
+        val msg = invokeBuildMessages(listOf(UIMessage.user("hi"), assistantMessage), backfillToolReasoning = true)
+            .first { it.jsonObject["role"]?.jsonPrimitive?.content == "assistant" }
+        assertEquals("deep thought", msg.jsonObject["reasoning_content"]?.jsonPrimitive?.content)
+    }
 
     private fun createExecutedTool(
         callId: String,
