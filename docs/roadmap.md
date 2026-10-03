@@ -642,6 +642,13 @@ data class ApiKeyEntry(
   **本版内容（自 281 资产 6 项用户可见）**：①上下文容量面板（+标题旁读数、细条/圆环切换）②三项小件
   （加载守卫/fastModelId 清除/promptPresetIds 整绑）③#1985 双 JSON 修复性解析 ④#1662 贴底错乱两半同修
   ⑤#1805 显示生成来源 ⑥ANR 修复（占用估算挪出主线程）。验证状态：全部经真机验证（本版 bug 即真机发现）。
+- 2026-10-02：**#1974 极端场景对齐上游 `cf79246b`（`McpSchemaRefs.kt` 重写）**——①**循环引用
+  就地截断为 `{"type": ...}`** 而非 `{}`（保留类型约束，模型仍知参数形状；截断计入 resolved）；
+  ②**任意 `#/` 文档内指针可解析**（根文档=type+properties+$defs，不再限于 `#/$defs/`——覆盖
+  `#/properties/x` 自引用与旧式 `#/definitions/`），无 $defs 但有 $ref 时不再整体早退；
+  ③常规路径零开销保留（无 defs 且无 $ref 字符串即直返）。**实现坑**：根文档键名误用 `$ref`
+  当 `$defs`（首跑 12 测试红，根因=常量复用），拆 `REF_KEY`/`DEFS_KEY` 后修复。单测 20 项
+  （+4：properties 指针/旧式 definitions/非 defs 循环保 type/根指针 miss）。
 - 2026-10-02：**Yuihub 对照三小件落地（peer-apps-benchmark §四.5 评估 → 实施）**：
   ①**备份 DB 快照改 VACUUM INTO**（`BackupArchiveEngine.addDatabaseToZip`）——单读事务一致性
   快照补齐**备份方向**的一致性缺口（09-15 WAL 修复只治恢复方向；热拷期间写入不可见/可能半页），

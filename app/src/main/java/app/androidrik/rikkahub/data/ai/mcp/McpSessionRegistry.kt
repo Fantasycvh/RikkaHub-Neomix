@@ -542,7 +542,7 @@ private fun mergeTools(storedTools: List<McpTool>, serverTools: List<Tool>): Lis
  * （见 `McpSchemaRefsTest`），单测纯函数无法覆盖「转换这一步有没有真的调用展开」。
  */
 internal fun ToolSchema.toSchema(): InputSchema {
-    val inlined = inlineSchemaRefs(properties = properties, defs = defs)
+    val inlined = inlineSchemaRefs(properties = properties, defs = defs, rootType = type)
     if (inlined.resolvedCount > 0) {
         Log.i(TAG, "toSchema: inlined ${inlined.resolvedCount} ref(s) from \$defs")
     }

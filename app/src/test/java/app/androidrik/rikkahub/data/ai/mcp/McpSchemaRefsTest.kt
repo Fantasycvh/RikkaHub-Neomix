@@ -100,22 +100,22 @@ class McpSchemaRefsTest {
     }
 
     @Test
-    fun `recursive ref is truncated to permissive schema instead of looping forever`() {
-        // 自引用（树/链表形态的 schema）：不能无限展开，降级为 {} 并如实记录
+    fun `recursive ref is truncated to type only instead of looping forever`() {
+        // 自引用（树/链表形态的 schema）：不能无限展开，循环处截断为目标的 type（保留类型约束）
         val result = inline(
             properties = """{"node":{"${'$'}ref":"#/${'$'}defs/Node"}}""",
             defs = """{"Node":{"type":"object","properties":{"name":{"type":"string"},"next":{"${'$'}ref":"#/${'$'}defs/Node"}}}}""",
         )
 
-        // 第一层展开成功，第二层（自引用）降级
-        assertEquals(1, result.resolvedCount)
-        assertEquals(1, result.unresolvedRefs.size)
+        // 第一层展开 + 循环截断都算解析成功
+        assertEquals(2, result.resolvedCount)
+        assertEquals(0, result.unresolvedRefs.size)
         val node = result.schema.getValue("node").jsonObject
         assertEquals("string", node.getValue("properties").jsonObject
             .getValue("name").jsonObject.getValue("type").jsonPrimitive.content)
-        // 循环处为空对象（= 接受任意值），而不是残留 $ref 或整段丢失
+        // 循环处保留 type（上游 cf79246b 同款），而不是空对象或残留 $ref
         assertEquals(
-            emptyMap<String, kotlinx.serialization.json.JsonElement>(),
+            mapOf("type" to kotlinx.serialization.json.JsonPrimitive("object")),
             node.getValue("properties").jsonObject.getValue("next").jsonObject,
         )
         assertTrue(!result.schema.toString().contains("\$ref"))
@@ -132,7 +132,7 @@ class McpSchemaRefsTest {
         )
 
         assertTrue(result.resolvedCount >= 2)
-        assertTrue(result.unresolvedRefs.isNotEmpty())
+        assertEquals(0, result.unresolvedRefs.size)
         assertTrue(!result.schema.toString().contains("\$ref"))
     }
 
@@ -153,7 +153,8 @@ class McpSchemaRefsTest {
     }
 
     @Test
-    fun `non defs pointer degrades and is reported`() {
+    fun `root pointer that misses degrades and is reported`() {
+        // 根文档（type+properties+$defs）里不存在该指针 ⇒ 宽松降级
         val result = inline(
             properties = """{"y":{"${'$'}ref":"#/properties/other"}}""",
             defs = """{"Other":{"type":"string"}}""",
@@ -165,6 +166,47 @@ class McpSchemaRefsTest {
             emptyMap<String, kotlinx.serialization.json.JsonElement>(),
             result.schema.getValue("y").jsonObject,
         )
+    }
+
+    @Test
+    fun `root properties pointer resolves without defs`() {
+        // 任意 #/ 指针（对齐上游 cf79246b）：#/properties/... 在无 $defs 时也可解析
+        val result = inline(
+            properties = """{"a":{"type":"string"},"b":{"${'$'}ref":"#/properties/a"}}""",
+            defs = null,
+        )
+
+        assertEquals(1, result.resolvedCount)
+        assertEquals(0, result.unresolvedRefs.size)
+        assertEquals("string", result.schema.getValue("b").jsonObject.getValue("type").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `legacy definitions pointer resolves`() {
+        // 旧式 #/definitions/... 写法（根文档没有该键时降级，有 $defs 的服务器不受影响）
+        val result = inline(
+            properties = """{"x":{"${'$'}ref":"#/definitions/Legacy"}}""",
+            defs = """{"Legacy":{"type":"integer"}}""",
+        )
+
+        // 根文档里只放了 $defs 键 ⇒ #/definitions/ 不存在 ⇒ 宽松降级（如实记录）
+        assertEquals(0, result.resolvedCount)
+        assertEquals(listOf("#/definitions/Legacy"), result.unresolvedRefs)
+    }
+
+    @Test
+    fun `recursive ref via properties pointer keeps type`() {
+        // 非 $defs 指针的循环引用同样截断为 type
+        val result = inline(
+            properties = """{"node":{"type":"object","properties":{"next":{"${'$'}ref":"#/properties/node"}}}}""",
+            defs = null,
+        )
+
+        assertEquals(2, result.resolvedCount)
+        assertEquals(0, result.unresolvedRefs.size)
+        val next = result.schema.getValue("node").jsonObject
+            .getValue("properties").jsonObject.getValue("next").jsonObject
+        assertEquals("object", next.getValue("type").jsonPrimitive.content)
     }
 
     @Test
@@ -181,16 +223,17 @@ class McpSchemaRefsTest {
     }
 
     @Test
-    fun `no defs means early return and zero diagnostics`() {
+    fun `no defs still attempts root pointer resolution`() {
+        // 无 $defs 但 properties 里有 $ref：不再整体早退，构建根文档解析
+        // （#/​$defs/X 指向不存在的定义 ⇒ 宽松降级并如实记录）
         val result = inline(
-            properties = """{"a":{"type":"string"},"${'$'}ref":{"${'$'}ref":"#/${'$'}defs/X"}}""",
+            properties = """{"a":{"type":"string"},"r":{"${'$'}ref":"#/${'$'}defs/X"}}""",
             defs = null,
         )
 
         assertEquals(0, result.resolvedCount)
-        assertTrue(result.unresolvedRefs.isEmpty())
-        // 没有 $defs 时原样返回（不猜、不改写）
-        assertTrue(result.schema.containsKey("\$ref"))
+        assertEquals(listOf("#/\$defs/X"), result.unresolvedRefs)
+        assertTrue(!result.schema.toString().contains("\$ref"))
     }
 
     @Test
