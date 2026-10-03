@@ -283,6 +283,16 @@ class WorkspaceRepository(
         manager.rootfsFileSize(workspace.root, path)
     }
 
+    /** Rootfs 内文件的最后修改时间（毫秒）；不存在或不是文件时返回 null（写入冲突检测用） */
+    suspend fun rootfsFileMtime(
+        id: String,
+        path: String,
+    ): Long? = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.rootfsFileMtime(workspace.root, path)
+    }
+
     /** 按 Rootfs 内绝对路径导出文件内容, 支持 /workspace、bind mount 与 Rootfs 内部路径 */
     suspend fun exportRootfsFile(
         id: String,

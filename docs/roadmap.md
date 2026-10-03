@@ -642,6 +642,16 @@ data class ApiKeyEntry(
   **本版内容（自 281 资产 6 项用户可见）**：①上下文容量面板（+标题旁读数、细条/圆环切换）②三项小件
   （加载守卫/fastModelId 清除/promptPresetIds 整绑）③#1985 双 JSON 修复性解析 ④#1662 贴底错乱两半同修
   ⑤#1805 显示生成来源 ⑥ANR 修复（占用估算挪出主线程）。验证状态：全部经真机验证（本版 bug 即真机发现）。
+- 2026-10-02：**空回复补救 + workspace 写入冲突检测（Yuihub `8a3a37ac`/`f91d3b16` 对照吸收）**：
+  ①**空回复补救**（`GenerationHandler` + `PromptAssembly.buildInternalMessages`）——多步操作后模型
+  只输出思考、无可见正文也无工具调用时，注入一次性 `<recovery_note>` 到**下一次请求的系统提示**
+  要求补出可见回答（不写入对话历史、拼装预览不受影响），仅重试一次；②**写入冲突检测**——
+  `write_file` 新增 `expectedMtimeMs`/`force` 参数：调用方声明的 mtime 落后于磁盘时以
+  `WRITE_CONFLICT` 拒绝（防子代理并行/编辑器同时开时的双写静默覆盖），`read_file` 输出补 `mtime`
+  形成读写闭环（Yuihub 只做了 write 侧，read 侧 mtime 是本仓增强）；底层新增
+  `WorkspaceManager/Repository.rootfsFileMtime`。**教训**：跨行字符串注入用 python 拼接会把
+  `
+` 展开成真实换行——多行 Kotlin 字符串编辑一律用 Edit 工具，别用脚本。
 - 2026-10-02：**todo_write 计划工具 + 计划细条（借鉴 Yuihub `ab107549`+5 版 UI 迭代终态）**——
   ①`TodoTools.kt`：`todo_write` 本地工具（纯函数无副作用，最新一次调用的参数即当前清单）；
   ②**PlanBar 常驻输入栏上方**（方案 E 终态）：收起一行=「当前步骤+进度+LinearProgress」、点击展开

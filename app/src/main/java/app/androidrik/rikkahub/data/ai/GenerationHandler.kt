@@ -63,6 +63,14 @@ import kotlin.uuid.Uuid
 private const val TAG = "GenerationHandler"
 private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
+
+/**
+ * 空回复补救提示：模型只输出思考、无可见正文也无工具调用时，向随后一次请求追加此提示
+ * 要求补出可见回答。仅重试一次；不写入对话历史（Yuihub `8a3a37ac` 同源）。
+ */
+private const val VISIBLE_ANSWER_RECOVERY_HINT =
+    "Your previous response produced no visible output for the user (reasoning only). " +
+        "Provide your visible answer now."
 /** 翻译输入最大字符数：超长翻译文本曾 API 413 */
 private const val MAX_TRANSLATE_CHARS = 200_000
 
@@ -264,6 +272,12 @@ class GenerationHandler(
                 }.getOrDefault(0)
             }
 
+            // 空回复补救（Yuihub `8a3a37ac` 同源）：多步操作后模型可能只输出思考、
+            // 无可见正文也无工具调用——直接结束会让用户看到「思考完就不回复」。
+            // 只重试一次；恢复提示只作用于下一次请求的系统提示，不写入对话历史。
+            var visibleAnswerRecovered = false
+            var pendingRecoveryHint: String? = null
+
             for (stepIndex in 0 until maxSteps) {
                 Log.i(TAG, "streamText: start step #$stepIndex (${targetModel.id})")
 
@@ -288,6 +302,7 @@ class GenerationHandler(
                     settings = settings,
                     messages = messages,
                     compressionWindow = compressionWindow,
+                    recoveryHint = pendingRecoveryHint,
                     onUpdateMessages = {
                         messages = it.transforms(
                             transformers = outputTransformers,
@@ -346,6 +361,18 @@ class GenerationHandler(
 
                 val tools = messages.last().getTools().filter { !it.isExecuted }
                 if (tools.isEmpty()) {
+                    // 空回复补救：最后一次请求只产出思考、无可见正文也无工具调用时，
+                    // 注入一次性恢复提示再请求一轮（见循环前的注释）
+                    val hasVisibleOutput = messages.lastOrNull()?.parts.orEmpty().any { part ->
+                        (part is UIMessagePart.Text && part.text.isNotBlank()) ||
+                            part is UIMessagePart.Image
+                    }
+                    if (!hasVisibleOutput && !visibleAnswerRecovered) {
+                        visibleAnswerRecovered = true
+                        pendingRecoveryHint = VISIBLE_ANSWER_RECOVERY_HINT
+                        Log.i(TAG, "streamText: empty visible reply, requesting visible answer once")
+                        continue
+                    }
                     // no tool calls, break
                     break
                 }
@@ -759,6 +786,8 @@ class GenerationHandler(
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
         retryBudgetOverride: Int? = null,
+        /** 空回复补救提示（只作用于本请求系统提示，不进入对话历史） */
+        recoveryHint: String? = null,
     ) {
         // 组装发送消息：**与「拼装预览」共用同一个函数**（PromptAssembly.kt）——
         // 原先此段内联实现，预览只能另写一份、必然漂移。改这里即同时改预览。
@@ -771,6 +800,7 @@ class GenerationHandler(
             tools = tools,
             conversationSystemPrompt = conversationSystemPrompt,
             compressionWindow = compressionWindow,
+            recoveryHint = recoveryHint,
         ).transforms(
             transformers = transformers,
             context = context,

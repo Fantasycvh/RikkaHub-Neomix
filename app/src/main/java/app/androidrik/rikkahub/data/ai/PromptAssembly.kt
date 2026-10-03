@@ -251,8 +251,10 @@ internal fun buildInternalMessages(
     tools: List<Tool>,
     conversationSystemPrompt: String?,
     compressionWindow: Conversation.CompressionWindow?,
+    /** 空回复补救提示（一次性）：追加到系统提示尾部，不进入对话历史、拼装预览不受影响 */
+    recoveryHint: String? = null,
 ): List<UIMessage> {
-    val system = buildSystemPromptText(
+    val baseSystem = buildSystemPromptText(
         assistant = assistant,
         settings = settings,
         model = model,
@@ -261,6 +263,13 @@ internal fun buildInternalMessages(
         tools = tools,
         conversationSystemPrompt = conversationSystemPrompt,
     )
+    // 恢复提示追加在系统提示末尾：不写入对话历史（仅本次请求存在，随后消失）
+    val system = if (recoveryHint.isNullOrBlank()) {
+        baseSystem
+    } else {
+        val separator = if (baseSystem.isBlank()) "" else "\n\n"
+        baseSystem + separator + "<recovery_note>\n" + recoveryHint + "\n</recovery_note>"
+    }
     return buildList {
         if (system.isNotBlank()) {
             add(UIMessage.system(prompt = system).copy(isSynthetic = true))

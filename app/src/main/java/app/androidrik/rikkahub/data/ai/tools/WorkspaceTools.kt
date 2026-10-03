@@ -111,6 +111,9 @@ private fun createReadFileTool(
                     buildJsonObject {
                         put("path", path)
                         put("text", text)
+                        // mtime 供后续 write_file 的 expectedMtimeMs 做冲突检测（读写闭环）
+                        runCatching { workspaceRepository.rootfsFileMtime(workspaceId, path) }.getOrNull()
+                            ?.let { put("mtime", it) }
                     }.toString()
                 )
             )
@@ -127,6 +130,8 @@ private fun createWriteFileTool(
     description = """
         Write a UTF-8 text file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
         Use /workspace for the workspace files area.
+        Concurrency guard: if the file changed on disk since the mtime you pass in `expectedMtimeMs` (e.g. another session wrote it),
+        the write is rejected with WRITE_CONFLICT unless you set force=true; pass force=true to overwrite deliberately.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -140,6 +145,14 @@ private fun createWriteFileTool(
                     put("type", "boolean")
                     put("description", "Whether to overwrite an existing file. Defaults to true.")
                 })
+                put("expectedMtimeMs", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "Optional: mtime (ms) you believe the file currently has (from a previous read/write result). Write is rejected if it changed meanwhile.")
+                })
+                put("force", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "Deliberately overwrite despite a detected conflict. Defaults to false.")
+                })
             },
             required = listOf("path", "text"),
         )
@@ -150,6 +163,23 @@ private fun createWriteFileTool(
         val path = params.absolutePath("path")
         val text = params.string("text") ?: error("text is required")
         val overwrite = params["overwrite"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true
+        val expectedMtime = params["expectedMtimeMs"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+        val force = params["force"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
+
+        // 写冲突检测（Yuihub `f91d3b16` 同源）：调用方给了 expectedMtimeMs 且磁盘文件比它新
+        // ⇒ 有其它会话/编辑器写过；未显式 force 时拒绝并给出双方时间戳，避免并发双写
+        // 静默 last-writer-wins（子代理并行/用户同时开编辑器场景的兜底）
+        if (expectedMtime != null && !force) {
+            val currentMtime = runCatching {
+                workspaceRepository.rootfsFileMtime(workspaceId, path)
+            }.getOrNull()
+            if (currentMtime != null && currentMtime > expectedMtime) {
+                error(
+                    "WRITE_CONFLICT: $path was modified by another session (disk mtime=$currentMtime, " +
+                        "your expectedMtimeMs=$expectedMtime). Re-read the file and merge, or pass force=true to overwrite deliberately."
+                )
+            }
+        }
         val entry = workspaceRepository.writeTextInRootfs(workspaceId, path, text, overwrite)
         listOf(UIMessagePart.Text(entry.toJson().toString()))
     },
