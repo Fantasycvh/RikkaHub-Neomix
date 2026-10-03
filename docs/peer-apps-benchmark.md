@@ -167,13 +167,13 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 
 **对照项（架构对撞，维持自研不跟）**：
 - **子代理独立子会话**（`52a679d5`/`30783483`/`b7e75fb2`/`06738520`）：Yuihub 把子代理做成真实子会话落库（`parent_conversation_id`）+ 抽屉会话树 + `Semaphore(4)` 真并行。fork 设计稿早已论证过「复用 Conversation 表=12 列表查询/3 聚合漏过滤即静默泄漏」的风险而选独立 `agent_run` 表——**Yuihub 10-02 还在修子代理缺陷（终态/工具越权/edit 缩进），反向验证了我们的选择**。可观测性 UI（抽屉会话树）是好想法，fork 已有 run 详情页等价物，暂不跟。
-- **空回复补救**（`8a3a37ac`）：多步操作后模型只输出思考无正文无工具调用 → 注入一次性恢复提示重试（不进对话历史）。fork 子代理有空响应守卫、主循环无此处理——**候选小件**（先核实现状）。
+- ~~**空回复补救**~~ **✅ 已落地（2026-10-02，主循环同款机制：一次性 recovery_note 进系统提示不进历史）**。
 
 **功能灵感（大，未立项按需）**：
 - **定时任务/自动化**（`2906828e`+`65525df9`+`e585d82b`+`191f5a8d`，~2300 行）：助手级 ScheduledTask（WorkManager 调度）+ **AI 可在对话中管理本助手的定时任务**（工具化）+ 完成悬浮通知 + 按助手过滤。fork 的时间提醒只是会话内提醒，这是真调度执行（=助手 cron agent）。大功能。
 - ~~**todo_write 计划工具 + 计划细条**~~ **✅ 已落地（2026-10-02，方案 E 终态：PlanBar 输入栏上方常驻、正文不渲染、按助手门控 TodoPlan）**，单测 7 项。
 - **models.dev 目录匹配**（`ecaca331`，~1000 行含 fixture 测试）：按 modelId 自动补全 contextLength/能力/图标——可作 fork 手工 ModelRegistry 的兜底源。
-- **附件注入「封面先行」+ 放开类型白名单**（`bee1dd38`）、**workspace 写入冲突检测 mtime**（`f91d3b16`，与 edit_file dry-run 互补的 TOCTOU 维度）、**release 体积 31.7→23.1MB 清理**（`7b8c918a`，其手段=砍功能，fork 未评估）。
+- **附件注入「封面先行」+ 放开类型白名单**（`bee1dd38`）、**workspace 写入冲突检测 mtime**（`f91d3b16`，与 edit_file dry-run 互补的 TOCTOU 维度）→ **✅ 已落地（2026-10-02，write_file expectedMtimeMs/force + read_file 输出 mtime 闭环）**、**release 体积 31.7→23.1MB 清理**（`7b8c918a`，其手段=砍功能，fork 未评估）。
 
 ## 五、落地顺序建议
 
