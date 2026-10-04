@@ -132,8 +132,8 @@ internal class BackupArchiveEngine(
             }
         }
         if (BackupItem.FILES in items) {
-            // 不含 tool_outputs：会话级临时产物，启动即被 cleanupToolOutputs 清空（见 BackupItem 注释）
-            listOf(FileFolders.UPLOAD, FileFolders.FONTS, FileFolders.SKILLS)
+            // 目录清单统一由 BACKED_UP_FILE_FOLDERS 驱动（见其注释），三处共用不再手列
+            BACKED_UP_FILE_FOLDERS
                 .forEach { inputs += File(context.filesDir, it) }
         }
         if (BackupItem.WORKSPACE_FILES in items) {
@@ -229,6 +229,9 @@ internal class BackupArchiveEngine(
                             else -> {
                                 if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.UPLOAD}/")) {
                                     restoreFlatEntry(zipIn, zipEntry.name, FileFolders.UPLOAD)
+                                } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.IMAGES}/")) {
+                                    // images（imggen 产物）此前不进备份——旧备份无此条目自然跳过
+                                    restoreFlatEntry(zipIn, zipEntry.name, FileFolders.IMAGES)
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.SKILLS}/")) {
                                     restoreSkillEntry(zipIn, zipEntry.name)
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.FONTS}/")) {
@@ -314,6 +317,26 @@ internal class BackupArchiveEngine(
         }
         val preparedMain = prepared.getValue("rikka_hub.db")
 
+        // 0) 换库前校验暂存主库完整性（Yuihub `34f1a976` 隐患 2 同源）：打开即自动回放 WAL，
+        //    不过则中止——此时现库尚未关闭，中止即安全回退（旧格式/外来改包备份的兜底）
+        runCatching {
+            val db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                stagedMain.absolutePath,
+                null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+            )
+            val result = db.rawQuery("PRAGMA integrity_check", null).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else "unknown"
+            }
+            db.close()
+            if (!result.equals("ok", ignoreCase = true)) {
+                throw IllegalStateException("integrity_check: $result")
+            }
+            Log.i(TAG, "applyStagedDatabaseFiles: staged db integrity check ok")
+        }.onFailure {
+            throw Exception("Backup database failed integrity check: ${it.message}")
+        }
+
         try {
             // 2) 释放连接；失败则中止（继续覆盖可能得到「新旧混杂」的损坏库）
             try {
@@ -384,7 +407,7 @@ internal class BackupArchiveEngine(
     }
 
     /**
-     * files/upload、files/skills、files/fonts。
+     * files 下由 [BACKED_UP_FILE_FOLDERS] 声明的用户数据目录（upload/images/fonts 平铺 + skills 递归）。
      *
      * **不含 tool_outputs**（2026-09-15 决策，选项①）：它是会话级临时产物——[cleanupToolOutputs]
      * 在每次启动时清空该目录，恢复流程末尾必然重启，刚恢复的文件立刻又被删；打包它只是徒增
@@ -392,31 +415,28 @@ internal class BackupArchiveEngine(
      * 预览（`TOOL_OUTPUT_PREVIEW_CHARS`）兜底。
      */
     private fun addAppFilesToZip(zipOut: ZipOutputStream, onBytes: (Long) -> Unit) {
-        // upload / fonts 是平铺文件（非递归）
-        listOf(FileFolders.UPLOAD, FileFolders.FONTS).forEach { folder ->
+        BACKED_UP_FILE_FOLDERS.forEach { folder ->
             val dir = File(context.filesDir, folder)
-            if (dir.isDirectory) {
-                Log.i(TAG, "prepareBackupFile: packing $folder (${dir.absolutePath})")
+            if (!dir.isDirectory) {
+                Log.w(TAG, "prepareBackupFile: $folder does not exist")
+                return@forEach
+            }
+            Log.i(TAG, "prepareBackupFile: packing $folder (${dir.absolutePath})")
+            if (folder == FileFolders.SKILLS) {
+                // skills 含子目录 -> 递归
+                addDirectoryToZip(
+                    zipOut = zipOut,
+                    rootDir = dir,
+                    currentDir = dir,
+                    entryPrefix = "${FileFolders.SKILLS}/",
+                    onBytes = onBytes,
+                )
+            } else {
+                // 其余为平铺文件（非递归）
                 dir.listFiles()?.forEach { file ->
                     if (file.isFile) addFileToZip(zipOut, file, "$folder/${file.name}", onBytes)
                 }
-            } else {
-                Log.w(TAG, "prepareBackupFile: $folder does not exist")
             }
-        }
-        // skills 含子目录 -> 递归
-        val skillsDir = File(context.filesDir, FileFolders.SKILLS)
-        if (skillsDir.isDirectory) {
-            Log.i(TAG, "prepareBackupFile: packing skills (${skillsDir.absolutePath})")
-            addDirectoryToZip(
-                zipOut = zipOut,
-                rootDir = skillsDir,
-                currentDir = skillsDir,
-                entryPrefix = "${FileFolders.SKILLS}/",
-                onBytes = onBytes,
-            )
-        } else {
-            Log.w(TAG, "prepareBackupFile: skills does not exist")
         }
     }
 

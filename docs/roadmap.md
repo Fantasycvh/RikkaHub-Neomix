@@ -840,6 +840,14 @@ data class ApiKeyEntry(
   强推（对已发布 release/资产无影响，实测确认）。**结论：发布后 `ls-remote` 核对 tag 指向是必做
   收尾动作，PATCH target 不等于 tag 会落在那里**。最终 tag=`51119dc0` 与 284 资产三方对齐 ✓。
   README 改「正式发布：v1.0.21」（无草稿）。
+- 2026-10-04：**备份加固批次（Yuihub `34f1a976`/`3eddec42` 对照吸收，§四.6）**：
+  ①**生成的图片进备份**——`filesDir/images`（imggen 产物）此前不在 FILES 内，恢复后图库全裂；
+  新增 `FileFolders.IMAGES`，打包/恢复/空间预检三处同步（旧备份无此条目自然跳过）。
+  ②**目录清单常量化 + 覆盖护栏**——`BACKED_UP_FILE_FOLDERS` 统一驱动打包/恢复/预检三处
+  （此前各自手列，新增目录漏一处即静默不备份）；`BackupCoverageTest` 3 项断言清单与 FileFolders
+  全集一一对应 + 豁免目录（builtin_skills/tool_outputs/logs/exports）带理由且不重叠。
+  ③**staged 主库 integrity_check**——换库前打开暂存库（自动回放 WAL）跑 `PRAGMA integrity_check`，
+  不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
 - 2026-10-04：**v1.0.21 草稿资产重建（283→284，版本名不变）**——bump `51119dc0`（**先 push**）→
   清 outputs → release 构建 → aapt 核实 `versionCode=284`/`1.0.21`/arm64 → release 装机冒烟零 FATAL
   （tokenizer `ok=true vocab=100256 in 1219ms`）→ 资产替换 + PATCH target=`51119dc0`（**v1.0.17 教训

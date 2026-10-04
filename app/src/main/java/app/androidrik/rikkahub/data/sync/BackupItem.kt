@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.sync
 
+import app.androidrik.rikkahub.data.files.FileFolders
 import kotlinx.serialization.Serializable
 
 /**
@@ -29,3 +30,32 @@ enum class BackupItem {
     /** 工作区文件区（下层目录：每个工作区的 files 区；不含 rootfs） */
     WORKSPACE_FILES,
 }
+
+/**
+ * `FILES` 项覆盖的**用户数据目录**清单（打包 / 恢复 / 空间预检三处由它统一驱动）。
+ *
+ * 此前三处各自手列目录（Yuihub `3eddec42` 指出的同款问题）：新增目录漏改一处
+ * 就是「静默不备份」。护栏测试 `BackupCoverageTest` 断言本清单与 [FileFolders]
+ * 声明的全集一一对应——新增目录只改 FileFolders 就会让测试红，强制显式决策
+ * 「进备份还是豁免」。
+ */
+internal val BACKED_UP_FILE_FOLDERS: List<String> = listOf(
+    FileFolders.UPLOAD,   // 聊天附件（图片/文档/音频等，含 AI 生成的图片附件）
+    FileFolders.IMAGES,   // imggen 产物（此前不在备份内，恢复后图片全裂——Yuihub `34f1a976` 同款缺口）
+    FileFolders.FONTS,    // 用户字体
+    FileFolders.SKILLS,   // 用户技能（含子目录，递归打包）
+)
+
+/**
+ * [FileFolders] 里**有意豁免**的目录（护栏测试会逐一断言豁免理由仍成立）：
+ * - `builtin_skills`：内置技能，启动时从 assets 解压重建；
+ * - `tool_outputs`：会话级临时产物，启动即清（见 [BackupItem.FILES] 注释）；
+ * - `logs`：诊断日志，可再生；
+ * - `exports`：导出留存区（带 TTL 的可再生副本，源对话已在 DATABASE 里）。
+ */
+internal val EXCLUDED_FILE_FOLDERS: Map<String, String> = mapOf(
+    FileFolders.BUILTIN_SKILLS to "启动时从 assets 解压重建",
+    FileFolders.TOOL_OUTPUTS to "会话级临时产物，启动即清",
+    FileFolders.LOGS to "诊断日志，可再生",
+    FileFolders.EXPORTS to "导出留存区，源对话在 DATABASE 内",
+)
