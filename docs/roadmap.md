@@ -848,6 +848,8 @@ data class ApiKeyEntry(
   全集一一对应 + 豁免目录（builtin_skills/tool_outputs/logs/exports）带理由且不重叠。
   ③**staged 主库 integrity_check**——换库前打开暂存库（自动回放 WAL）跑 `PRAGMA integrity_check`，
   不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
+  **2026-10-04 真机验证通过（用户确认，日志取证）**：备份→恢复全链 `images/` 4 张逐条 Restored
+  （含中文/特殊字符文件名）、`staged db integrity check ok`、`completed` 无异常。
 - 2026-10-04：**v1.0.21 草稿资产重建（283→284，版本名不变）**——bump `51119dc0`（**先 push**）→
   清 outputs → release 构建 → aapt 核实 `versionCode=284`/`1.0.21`/arm64 → release 装机冒烟零 FATAL
   （tokenizer `ok=true vocab=100256 in 1219ms`）→ 资产替换 + PATCH target=`51119dc0`（**v1.0.17 教训

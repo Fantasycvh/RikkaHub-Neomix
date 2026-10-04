@@ -177,7 +177,7 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 
 ## 四.6、Yuihub 备份体系对照（2026-10-04，`36b719ef`/`34f1a976`/`3eddec42`/`47e7dfaf`）
 
-**真缺口（fork 核实）——✅ ①②③ 已于 2026-10-04 落地（真机验证待用户）**：
+**真缺口（fork 核实）——✅ ①②③ 已于 2026-10-04 落地并真机验证通过（日志取证：images 恢复/integrity ok/completed）**：
 1. **生成的图片不进备份**——fork `BackupItem.FILES` 只含 UPLOAD/FONTS/SKILLS，而
    `FilesManager.getImagesDir()` = `filesDir/images`（生成图片落这里）⇒ 恢复后消息图片全裂
    （与 Yuihub 修的「DB 记录还在文件丢了」同款）。修法=FileFolders.IMAGES + 打包/恢复/预检三处。
