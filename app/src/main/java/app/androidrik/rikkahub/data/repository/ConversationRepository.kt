@@ -26,6 +26,12 @@ import app.androidrik.rikkahub.data.db.entity.CompressionCheckpointEntity
 import app.androidrik.rikkahub.data.db.entity.ConversationEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.model.decideTierMove
+import app.androidrik.rikkahub.data.model.TierMoveAction
+import app.androidrik.rikkahub.data.model.planOrderWrite
+import app.androidrik.rikkahub.data.model.OrderWrite
+import app.androidrik.rikkahub.data.model.OrderPlacement
+import app.androidrik.rikkahub.data.model.ConversationOrdering
 import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.repairCorruptedCandidates
 import app.androidrik.rikkahub.data.model.Conversation
@@ -327,12 +333,89 @@ class ConversationRepository(
 
     suspend fun insertConversation(conversation: Conversation) {
         database.withTransaction {
-            conversationDAO.insert(
-                conversationToConversationEntity(conversation)
-            )
+            val entity = conversationToConversationEntity(conversation)
+            // 自定义顺序：新会话落在**所在档位的最前**（设计稿 §一.1）。
+            // 自动模式（该档无位置值）不需要任何写入——新会话的 update_at 最新，本来就排最前；
+            // 只有该档已物化时才需要分配 min-STEP（否则它会因 null 沉到已排序项之后）。
+            val pinned = conversation.isPinned
+            val sortOrder = if (conversationDAO.isSortOrderMaterialized(
+                    conversation.assistantId.toString(),
+                    pinned,
+                )
+            ) {
+                ConversationOrdering.topSlot(
+                    conversationDAO.getSortOrders(conversation.assistantId.toString(), pinned)
+                )
+            } else {
+                null
+            }
+            conversationDAO.insert(entity.copy(sortOrder = sortOrder))
             saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
         }
         messageFtsManager.indexConversation(conversation)
+    }
+
+    /** 某档是否已进入自定义顺序（UI 与写入决策共用的判定）。 */
+    suspend fun isTierMaterialized(assistantId: Uuid, pinned: Boolean): Boolean =
+        conversationDAO.isSortOrderMaterialized(assistantId.toString(), pinned)
+
+    /** 观察某档是否已进入自定义顺序（UI：隐藏日期分组头 / 显示「恢复默认顺序」）。 */
+    fun observeTierMaterialized(assistantId: Uuid, pinned: Boolean): Flow<Boolean> =
+        conversationDAO.observeTierMaterialized(assistantId.toString(), pinned)
+
+    /**
+     * 提交一次手工排序（「编辑顺序」模式松手时调用）——`sort_order` 的**唯一**业务写入口。
+     *
+     * 两条路径（设计稿 §二/§三.5）：
+     * - **常规**：只把被拖动那条写到前后邻居的中值（1 行写入）；
+     * - **首次物化 / 间距耗尽**：整档按目标顺序重排（行数 = 该档会话数，一次事务）。
+     *   归一化只在**提交时**发生，绝不在拖拽过程中改数据。
+     *
+     * @param orderedIds 该档**全部**会话的目标顺序（UI 手上就是完整列表）
+     * @param movedId 被拖动的那条；null（或档内无位置值）⇒ 走整档物化
+     */
+    suspend fun applyManualOrder(
+        assistantId: Uuid,
+        pinned: Boolean,
+        orderedIds: List<String>,
+        movedId: String?,
+    ) {
+        if (orderedIds.isEmpty()) return
+        database.withTransaction {
+            val currentValues = conversationDAO.getTierOrderRows(assistantId.toString(), pinned)
+                .associate { it.id to it.sortOrder }
+
+            val write: OrderWrite = if (currentValues.isEmpty() || movedId == null) {
+                // 该档还没进过自定义顺序：按目标顺序一次性物化（用户看到的列表顺序不变，
+                // 只是内部开始有可插入的编号空间）；同时也覆盖「间距耗尽」的整档重排
+                OrderWrite.Renormalize(orderedIds, ConversationOrdering.materialize(orderedIds.size))
+            } else {
+                val from = orderedIds.indexOf(movedId)
+                val prev = orderedIds.getOrNull(from - 1)?.let(currentValues::get)
+                val next = orderedIds.getOrNull(from + 1)?.let(currentValues::get)
+                val placement = when {
+                    from <= 0 -> OrderPlacement.Top
+                    prev != null && next != null && prev < next -> OrderPlacement.Between(prev, next)
+                    // 邻居值缺失（理论上不会：整档已物化）⇒ 退化为最前；下次拖拽即整档归一化
+                    else -> OrderPlacement.Top
+                }
+                planOrderWrite(movedId, placement, currentValues.values.toList(), orderedIds)
+            }
+
+            when (write) {
+                is OrderWrite.Single -> conversationDAO.updateSortOrder(write.conversationId, write.sortOrder)
+                is OrderWrite.Renormalize -> write.orderedIds.forEachIndexed { index, id ->
+                    conversationDAO.updateSortOrder(id, write.values[index])
+                }
+            }
+        }
+    }
+
+    /**
+     * 「恢复默认顺序」：清空该档全部位置值 ⇒ 回到按 `update_at` 的自动模式（设计稿 §一.7）。
+     */
+    suspend fun resetTierOrder(assistantId: Uuid, pinned: Boolean) {
+        conversationDAO.clearSortOrder(assistantId.toString(), pinned)
     }
 
     suspend fun updateConversation(conversation: Conversation) {
@@ -574,7 +657,42 @@ class ConversationRepository(
      * 入口在 `ChatService.togglePinStatus`——它持有 session，能同时改内存。
      */
     suspend fun updateConversationPinStatus(conversationId: Uuid, isPinned: Boolean) {
-        conversationDAO.updatePinStatus(conversationId.toString(), isPinned)
+        database.withTransaction {
+            conversationDAO.updatePinStatus(conversationId.toString(), isPinned)
+
+            // 档位变动时的位置值一致性（设计稿 §一.6 + ConversationOrdering.decideTierMove）：
+            // 「保留原值」只覆盖「两边都已物化」；源无值/目标自动等组合各有规则，
+            // 不处理就会出现**档内混用 null 与非 null**（局部顺序无法解释）。
+            val assistantId = conversationDAO.getAssistantIdOf(conversationId.toString()) ?: return@withTransaction
+            val action = decideTierMove(
+                hasValue = conversationDAO.getSortOrder(conversationId.toString()) != null,
+                destinationMaterialized = conversationDAO.isSortOrderMaterialized(assistantId, isPinned),
+            )
+            when (action) {
+                TierMoveAction.NOTHING, TierMoveAction.KEEP_VALUE -> Unit
+
+                // 目标档还是自动模式：先按现状物化，再让这条带着原值进来
+                // （位次由该值决定，通常是新档的最前——正是置顶想要的观感）
+                TierMoveAction.MATERIALIZE_THEN_KEEP -> materializeTier(assistantId, isPinned)
+
+                // 源从未有过位置值（null 会沉到已排序项之后）⇒ 物化目标档并给它档位最前
+                TierMoveAction.MATERIALIZE_AND_PLACE_TOP -> {
+                    materializeTier(assistantId, isPinned)
+                    conversationDAO.updateSortOrder(
+                        conversationId.toString(),
+                        ConversationOrdering.topSlot(conversationDAO.getSortOrders(assistantId, isPinned)),
+                    )
+                }
+            }
+        }
+    }
+
+    /** 按当前显示顺序把某档整档物化为 1000 步长序列（已有的值会被覆盖为规范序列）。 */
+    private suspend fun materializeTier(assistantId: String, pinned: Boolean) {
+        val ids = conversationDAO.getTierIds(assistantId, pinned)
+        ConversationOrdering.materialize(ids.size).forEachIndexed { index, value ->
+            conversationDAO.updateSortOrder(ids[index], value)
+        }
     }
 
     /**

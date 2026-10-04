@@ -26,6 +26,12 @@ import app.androidrik.rikkahub.data.repository.LightConversationEntity
 const val CONVERSATION_ORDER_BY =
     "is_pinned DESC, (sort_order IS NULL) ASC, sort_order ASC, update_at DESC, id ASC"
 
+/** 「档内 id → 位置值」投影（自定义顺序的拖拽提交用，见 ConversationOrdering）。 */
+data class TierOrderRow(
+    val id: String,
+    val sortOrder: Long,
+)
+
 @Dao
 interface ConversationDAO {
     @Query("SELECT * FROM conversationentity ORDER BY $CONVERSATION_ORDER_BY")
@@ -140,6 +146,35 @@ interface ConversationDAO {
     )
     suspend fun getSortOrders(assistantId: String, isPinned: Boolean): List<Long>
 
+    /** 单个会话的位置值（档位变动决策用）。 */
+    @Query("SELECT sort_order FROM conversationentity WHERE id = :id")
+    suspend fun getSortOrder(id: String): Long?
+
+    /** 会话所属助手（档位编号空间按「助手 + 置顶」分组，见 CONVERSATION_ORDER_BY 注释）。 */
+    @Query("SELECT assistant_id FROM conversationentity WHERE id = :id")
+    suspend fun getAssistantIdOf(id: String): String?
+
+    /** 某档的会话 id（按当前显示顺序）——首次物化/归一化时按它生成位置值。 */
+    @Query(
+        "SELECT id FROM conversationentity WHERE assistant_id = :assistantId AND is_pinned = :isPinned " +
+            "ORDER BY $CONVERSATION_ORDER_BY"
+    )
+    suspend fun getTierIds(assistantId: String, isPinned: Boolean): List<String>
+
+    /** 某档的 id → 位置值（拖拽提交时算中值用；只含已物化的行）。 */
+    @Query(
+        "SELECT id, sort_order AS sortOrder FROM conversationentity " +
+            "WHERE assistant_id = :assistantId AND is_pinned = :isPinned AND sort_order IS NOT NULL"
+    )
+    suspend fun getTierOrderRows(assistantId: String, isPinned: Boolean): List<TierOrderRow>
+
+    /** 观察某档是否已进入自定义顺序（UI 据此决定是否隐藏日期分组头、显示「恢复默认顺序」）。 */
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM conversationentity " +
+            "WHERE assistant_id = :assistantId AND is_pinned = :isPinned AND sort_order IS NOT NULL)"
+    )
+    fun observeTierMaterialized(assistantId: String, isPinned: Boolean): Flow<Boolean>
+
     /** 该档是否已进入自定义顺序（存在位置值 = 已物化）。 */
     @Query(
         "SELECT EXISTS(SELECT 1 FROM conversationentity " +
@@ -158,6 +193,7 @@ interface ConversationDAO {
 
     @Query("DELETE FROM conversationentity")
     suspend fun deleteAll()
+
 
     @Query("SELECT * FROM conversationentity WHERE is_pinned = 1 ORDER BY $CONVERSATION_ORDER_BY")
     fun getPinnedConversations(): Flow<List<ConversationEntity>>
