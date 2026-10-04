@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.finishReasoning
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.InstantSerializer
 import app.androidrik.rikkahub.data.ai.prompts.buildCompactionCheckpointText
@@ -265,9 +266,37 @@ data class MessageNode(
     }
 }
 
+/**
+ * 把**流式中途**的节点标记为「未完成」，用于落库半截内容（流式检查点 / 用户停止）。
+ *
+ * 解决两个只有「进程被杀后重开」才会暴露的问题（曾实测：强杀后重开，半截内容在，但既没有
+ * 「不完整」提示也没法接着写）：
+ * 1. `finishIncomplete` 原本只在流**正常收尾**时写入，进程被杀时那一行永远不会执行 ⇒
+ *    恢复出来的半截消息看起来像一条正常完成的回复。标记后横幅会提示并提供「继续生成」。
+ * 2. 未结束的推理块 `finishedAt == null` ⇒ 思考卡片按「进行中」渲染（计时器每 50ms 自增），
+ *    在一条已死的消息上永远走表。用 [finishReasoning] 收尾。
+ *
+ * **只标记当前选中的候选**（`selectIndex`）：同一节点的其它候选是历史版本，可能本已正常完成，
+ * 一并标记会伪造「它也被截断了」。
+ *
+ * 调用方约定：只用于**写库的那份副本**。内存态不要带上这个标记——内存态由流收尾的
+ * `markLastFinish` 写真实结束状态，若内存也标脏，正常结束前 UI 就会弹横幅。
+ */
+fun Conversation.markGeneratingNodeIncomplete(nodeIndex: Int): Conversation {
+    val node = messageNodes.getOrNull(nodeIndex) ?: return this
+    val activeIndex = node.selectIndex
+    val active = node.messages.getOrNull(activeIndex) ?: return this
+    if (active.role != MessageRole.ASSISTANT) return this
+    val markedNode = node.copy(
+        messages = node.messages.toMutableList().also {
+            it[activeIndex] = active.finishReasoning().copy(finishIncomplete = true)
+        }
+    )
+    return copy(messageNodes = messageNodes.toMutableList().also { it[nodeIndex] = markedNode })
+}
+
 fun UIMessage.toMessageNode(): MessageNode {
-    return MessageNode(
-        messages = listOf(this),
+    return MessageNode(        messages = listOf(this),
         selectIndex = 0
     )
 }

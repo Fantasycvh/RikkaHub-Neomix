@@ -98,6 +98,7 @@ import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
+import app.androidrik.rikkahub.data.model.markGeneratingNodeIncomplete
 import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.service.QueuedMessage
@@ -1187,10 +1188,14 @@ class ChatService(
                         val now = System.currentTimeMillis()
                         if (now - lastCheckpointAt >= STREAM_CHECKPOINT_INTERVAL_MS) {
                             lastCheckpointAt = now
+                            val nodeIndex = chunk.messages.lastIndex
                             runCatching {
+                                // 写库的那份副本标记「未完成」：进程被杀时流收尾那行永远不会执行，
+                                // 不标记则恢复出来的半截内容看起来像正常完成的回复（见该函数注释）。
+                                // 内存态不标——它由流收尾的 markLastFinish 写真实状态。
                                 conversationRepo.checkpointGeneratingNode(
-                                    conversation = updatedConversation,
-                                    nodeIndex = chunk.messages.lastIndex,
+                                    conversation = updatedConversation.markGeneratingNodeIncomplete(nodeIndex),
+                                    nodeIndex = nodeIndex,
                                 )
                             }.onFailure { Log.w(TAG, "stream checkpoint failed", it) }
                         }
@@ -2150,8 +2155,19 @@ class ChatService(
     private suspend fun persistStoppedGeneration(conversationId: Uuid) {
         val conversation = getConversationFlow(conversationId).value
         withContext(NonCancellable) {
-            runCatching { saveConversation(conversationId, conversation) }
-                .onFailure { Logging.log(TAG, "persistStoppedGeneration failed: $it") }
+            runCatching {
+                // 收尾未结束的推理块（与正常完成的 onCompletion 一致）：用户停止时推理块常常
+                // 还带 finishedAt=null，落库后重进会话，思考卡片会按「进行中」渲染并在一条
+                // 已死的消息上永远走计时器（每 50ms 自增）。
+                saveConversation(
+                    conversationId,
+                    conversation.copy(
+                        messageNodes = conversation.messageNodes.map { node ->
+                            node.copy(messages = node.messages.map { it.finishReasoning() })
+                        },
+                    ),
+                )
+            }.onFailure { Logging.log(TAG, "persistStoppedGeneration failed: $it") }
         }
     }
 }
