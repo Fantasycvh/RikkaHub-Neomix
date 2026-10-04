@@ -20,6 +20,7 @@ import app.androidrik.ai.ui.toMetadata
 import app.androidrik.ai.ui.UIMessagePart
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -437,6 +438,32 @@ class ResponseAPIMessageTest {
             parameters = { InputSchema.Obj(properties = JsonObject(emptyMap())) },
             execute = { emptyList() }
         )
+    }
+
+    @Test
+    fun `re-emitted reasoning items carry no id to avoid duplicate rs ids`() {
+        // 同一轮多个 function_call 时的补插副本不带 id：复用原 rs_ id 会让同一请求出现
+        // 重复 item id（OpenAI 官方可能按唯一性拒绝）；主 reasoning item 保留 id。
+        val assistantMessage = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(
+                    reasoning = "thinking...",
+                    metadata = app.androidrik.ai.ui.OpenAIReasoningMetadata(reasoningId = "rs_1").toMetadata()
+                ),
+                createExecutedTool("call_1", "search_web", """{"q": "a"}""", "result a"),
+                createExecutedTool("call_2", "search_web", """{"q": "b"}""", "result b"),
+                UIMessagePart.Text("Done")
+            )
+        )
+        val input = invokeBuildMessages(listOf(assistantMessage))
+
+        val reasoningItems = input
+            .filterIsInstance<JsonObject>()
+            .filter { it["type"]?.jsonPrimitive?.content == "reasoning" }
+        assertEquals(2, reasoningItems.size)
+        assertEquals("rs_1", reasoningItems[0]["id"]?.jsonPrimitive?.content)
+        assertNull(reasoningItems[1]["id"])
     }
 
     @Test

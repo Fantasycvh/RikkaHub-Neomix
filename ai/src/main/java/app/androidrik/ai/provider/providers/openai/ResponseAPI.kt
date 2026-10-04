@@ -404,7 +404,10 @@ class ResponseAPI(
                             val isBackfill = !reasoningEmitted
                             addReasoningItem(
                                 text = reasoningToEmit,
-                                id = if (isBackfill) null else lastReasoningId,
+                                // 补插副本（回填/同轮第二个及以后的 function_call 前）一律**不带 id**：
+                                // 复用原 rs_ id 会让同一请求出现重复 item id（OpenAI 官方可能按
+                                // 唯一性拒绝），而已知校验网关（DeepSeek/opencode）本就 id 可选
+                                id = null,
                                 // 与主 reasoning item 一致：已加密时不回放明文 content/summary（#1719）
                                 encryptedContent = if (isBackfill) null else lastEncryptedContent,
                                 reasoningTextRequired = reasoningTextRequired,
