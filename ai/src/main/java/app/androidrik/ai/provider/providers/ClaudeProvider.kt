@@ -506,10 +506,24 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             }
         }
 
-        is UIMessagePart.Reasoning -> buildJsonObject {
-            put("type", "thinking")
-            put("thinking", reasoning)
-            metadataAs<ClaudeReasoningMetadata>()?.signature?.let { put("signature", it) }
+        is UIMessagePart.Reasoning -> {
+            val meta = metadataAs<ClaudeReasoningMetadata>()
+            when {
+                // redacted_thinking 原样回传（内容不可见，只有 data）
+                meta?.redactedData != null -> buildJsonObject {
+                    put("type", "redacted_thinking")
+                    put("data", meta.redactedData)
+                }
+                // 无签名的思考块一律不回传（跨供应商历史/导入/旧消息——Anthropic 会以
+                // Invalid signature 拒整请求；省略对旧轮次安全，最后一条工具循环轮的
+                // 思考来自本仓流式解析、必带签名）
+                meta?.signature == null -> null
+                else -> buildJsonObject {
+                    put("type", "thinking")
+                    put("thinking", reasoning)
+                    put("signature", meta.signature)
+                }
+            }
         }
 
         else -> null
@@ -562,8 +576,19 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 }
 
                 "redacted_thinking" -> {
+                    // redacted_thinking（安全策略触发的加密推理）：必须保留并原样回传，
+                    // 丢弃会让下一轮请求缺 thinking 块 → Anthropic 400
+                    // 「Expected thinking or redacted_thinking, but found tool_use」。
+                    // 内容本仓不可见（reasoning 留空），回传走 metadata.redactedData。
                     val data = block["data"]?.jsonPrimitiveOrNull?.contentOrNull
-                    println(data)
+                    if (!data.isNullOrBlank()) {
+                        parts.add(
+                            UIMessagePart.Reasoning(
+                                reasoning = "",
+                                metadata = ClaudeReasoningMetadata(redactedData = data).toMetadata()
+                            )
+                        )
+                    }
                 }
 
                 "tool_use" -> {

@@ -8,6 +8,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.toMetadata
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -148,11 +149,72 @@ class ClaudeProviderMessageTest {
     }
 
     @Test
+    fun `redacted thinking is preserved and echoed as redacted_thinking`() {
+        val message = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(
+                    reasoning = "",
+                    metadata = app.androidrik.ai.ui.ClaudeReasoningMetadata(redactedData = "EVM-data-123").toMetadata()
+                ),
+                createExecutedTool("call_1", "search", """{"q":"x"}""", "result")
+            )
+        )
+
+        val content = invokeBuildMessages(listOf(message))
+        val blocks = content[0].jsonObject["content"]!!.jsonArray
+        val types = blocks.map { it.jsonObject["type"]?.jsonPrimitive?.content }
+        assertTrue("redacted_thinking should be echoed", types.contains("redacted_thinking"))
+        val redacted = blocks.first { it.jsonObject["type"]?.jsonPrimitive?.content == "redacted_thinking" }.jsonObject
+        assertEquals("EVM-data-123", redacted["data"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `unsigned reasoning is dropped to avoid invalid signature rejection`() {
+        // 跨供应商历史（GPT 的推理 parts）/ 导入 / 旧消息：无 Claude 签名 ⇒ 回传会被
+        // 「Invalid signature」拒绝 ⇒ 直接不回传（省略对旧轮次安全）
+        val message = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(reasoning = "thinking from another provider"),
+                UIMessagePart.Text("answer")
+            )
+        )
+
+        val content = invokeBuildMessages(listOf(message))
+        val blocks = content[0].jsonObject["content"]!!.jsonArray
+        assertTrue(blocks.none { it.jsonObject["type"]?.jsonPrimitive?.content == "thinking" })
+        assertTrue(blocks.any { it.jsonObject["type"]?.jsonPrimitive?.content == "text" })
+    }
+
+    @Test
+    fun `signed reasoning keeps its thinking block and signature`() {
+        val message = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(
+                    reasoning = "reasoned",
+                    metadata = app.androidrik.ai.ui.ClaudeReasoningMetadata(signature = "sig-abc").toMetadata()
+                ),
+                UIMessagePart.Text("answer")
+            )
+        )
+
+        val content = invokeBuildMessages(listOf(message))
+        val blocks = content[0].jsonObject["content"]!!.jsonArray
+        val thinking = blocks.first { it.jsonObject["type"]?.jsonPrimitive?.content == "thinking" }.jsonObject
+        assertEquals("sig-abc", thinking["signature"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun `thinking blocks should be included in assistant content`() {
         val assistantMessage = UIMessage(
             role = MessageRole.ASSISTANT,
             parts = listOf(
-                UIMessagePart.Reasoning(reasoning = "Let me think about this..."),
+                UIMessagePart.Reasoning(
+                    reasoning = "Let me think about this...",
+                    metadata = app.androidrik.ai.ui.ClaudeReasoningMetadata(signature = "sig-test").toMetadata()
+                ),
                 UIMessagePart.Text("Here is my response")
             )
         )

@@ -26,6 +26,13 @@ sealed interface PartMetadata
 @Serializable
 data class ClaudeReasoningMetadata(
     val signature: String? = null,
+    /**
+     * `redacted_thinking` 块的加密数据（本仓不可见其内容）：回传时必须原样以
+     * `{"type":"redacted_thinking","data":...}` 发回，否则 Anthropic 以
+     * 「Expected thinking or redacted_thinking, but found tool_use」拒绝整请求。
+     * 与 [signature] 互斥（一个 thinking 块要么带签名明文、要么是 redacted 数据）。
+     */
+    val redactedData: String? = null,
 ) : PartMetadata
 
 /**
