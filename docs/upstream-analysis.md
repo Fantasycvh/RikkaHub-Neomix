@@ -166,6 +166,15 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 
 **吸收优先级**：`85af5b91`（小，OpenRouter 图片用户真故障）→ `298e2771` 的提示告知小件 → Alpine 本体按需。
 
+#### 2026-10-04 独立复核（覆盖审计，两条更正 + 两条新增）
+
+逐条代码级复核上述两提交在 fork 的覆盖情况，结论有三处需要修正/补充：
+
+1. **①两处确认存在**（与上述一致）：`OpenAIProvider.kt:373` 无条件打 `/images/edits`；`ImgGenVM.kt:293`（临时预览）与 `:308`（相册落盘）都裸拼 `modelName`，而记录写的是 `"images/${imageFile.name}"`（只剩最后一段）⇒ 含 `/` 的模型名（OpenRouter `vendor/model`）产物落在 `images/<ts>_<vendor>/` 子目录、记录指向不存在的 `images/<model>_<i>.png`。吸收可行性：fork 已有 `mergeCustomBody`（`ai/util/Request.kt:79`）、`imageMediaType()`（`OpenAIProvider:434`）、`parseImageResponse`（`:391`）、`ImageEditParams.images` ⇒ 机械移植，含上游的旧记录读取兼容。
+2. **新增（备份交互，上游没这层）**：我们的 `images/` **是平铺打包**（`addAppFilesToZip` 只对 `skills` 递归）⇒ 那些 legacy 子目录文件**根本不进备份**。故「补上旧记录读取兼容」之后还要决定：**递归打包 `images/`**（跨设备恢复能救回老图）还是**明确丢弃**（记录已裂、救回也无入口）。不递归就必须在 `BackupCoverageTest` 旁记一笔「已知不备份形态」，避免下次又当成漏打包。
+3. **更正（把 ② 里一项从「Alpine」降级为「与发行版无关」）**：tar 根条目 `./` 的处理**不是** Alpine 专属。fork 的 `RootfsInstaller.normalizeTarPath` 对 `./` 会走到 `require(isNotBlank)` **抛异常**，且它是在 **`readTarHeader` 内部**被调用的——调用点那句 `if (header.name.isBlank()) { continue }` 位于其后，属**死代码**（异常先抛出）⇒ 任何含 `./` 条目的 tarball 安装直接失败（`Rootfs entry path is blank` → 状态 BROKEN）。而 fork 的 rootfs 安装对话框**允许用户粘贴任意 URL**（`WorkspaceDetailPage:1077` 可编辑，默认值只是预置 ubuntu），用 `tar -C dir -czf out.tar.gz .` 自制的 tarball **默认带 `./`** ⇒ 与待办「自托管预装 rootfs」正是同一条路。上游修法（返回空串、调用方跳过）与发行版无关，**建议独立吸收（极小，改 1 个函数 + 调用点断言）**；注意它有测试影响面：`RootfsInstallerTest` 目前无该行为断言，吸收时补一条「根条目被跳过而非报错」。
+4. **更正（并行评估的一处措辞）**：「fork 的 workspace 提示同样基于 bash/apt 假设」**不准确**——fork 的 `buildWorkspacePrompt` 与 `workspace_shell` 工具描述**都没有** bash/apt 字样（grep 为空），只是**不告知**环境细节；真正硬编码 bash 的是**代码两处**：`ProotShellRunner.kt:141` 与 `WorkspaceTerminalSession.kt:77-78`。故上游提示件对 fork 的价值是「**补充信息**（模型少猜）」，而非「修正错误假设」；而只要将来支持非 ubuntu rootfs（用户自制/Alpine），那两处硬编码 + `hasRootfs` 的 `bin/sh` **isFile** 判定（绝对软链在宿主机视角解析不到 ⇒ 误判未安装，上游 `hasRootfsEntry` 已修）就会一起显形，宜与 rootfs 支持同批处理。
+
 ### 2026-10-03 同步：`2267943a` → `a6dbb8cd`（1 提交，#1990 图表工具）
 
 | 提交 | 内容 | 结论 |
