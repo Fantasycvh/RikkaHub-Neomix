@@ -902,6 +902,24 @@ data class ApiKeyEntry(
   不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
   **2026-10-04 真机验证通过（用户确认，日志取证）**：备份→恢复全链 `images/` 4 张逐条 Restored
   （含中文/特殊字符文件名）、`staged db integrity check ok`、`completed` 无异常。
+- 2026-10-04 深夜：**发布草稿 v1.0.23 (286)**——用户「把 v1.0.23 的 bump + notes 草稿准备好（构建、装机冒烟、上传 draft 全流程）」。
+  **流程**：bump `b555e671`（286 / 1.0.23，**先 push**）→ 清 `app/build/outputs/apk/release/*.apk` 与 `app/release/*.apk`
+  → release 构建（**4m20s**，396 tasks，arm64 **77,654,423 字节**）→ aapt2 核实 `versionCode=286` / `1.0.23` /
+  **仅 arm64-v8a** → release 装机冒烟（install Success、**零 FATAL**、`tokenizer install ok=true vocab=100256 in 665ms`、
+  进程存活，且 release 包抽屉里能看到新的「排序」入口）→ 本地 sha256 `7253fb02…` → 建 draft（`--target`
+  钉 bump 完整 SHA `b555e6713c5ea01df64416186e789b55caf7e537`，title `v1.0.23 (286)`，双语 notes）→ 上传资产
+  `RikkaHub.Plus-1.0.23-arm64-v8a.apk` → **字节级校验：服务端 digest `sha256:7253fb02…` == 本地 sha256**（读 digest 字段，未下载）
+  → 独立 GET 复核：`tag=v1.0.23`（**未落入 v1.0.7 / `df0d1069` 的 `untagged-…` 坑**）、`target` 正确、`draft=true`。
+  release id **403074610**（draft）。README 改为「正式 `v1.0.21` ｜ 草稿 `v1.0.23`」。
+  **本版内容（自 v1.0.22 资产 `63fd79dd` 起 = 7 个提交）**：会话列表自定义顺序全套（批 1 schema/排序单点、批 2 档内读写、
+  批 3a 行内时间+隐藏日期头+置顶提醒、批 3b 编辑顺序模式）＋ 该功能真机抓出的三处修复（分页二次收集崩溃、
+  锚点差一位/末尾落点、空拖写库）＋ 搜索与 AI「最近对话」保持时间序 ＋「恢复默认顺序」清两档。
+  notes 里**同时并入 v1.0.22 未发布的内容**（10 条），以便直接从正式版 v1.0.21 升级的用户不漏内容；
+  若改为先转正 v1.0.22，则需把 23 的 notes 精简为只写自定义顺序增量。
+  **备注**：v1.0.22 (285) 草稿（id `403044967`）**保留**未动。
+  **本轮环境坑（记一次）**：`bash scripts/build.sh` 会把 `GRADLE_USER_HOME` 设成 `/d/...` 形式，而本机 Git Bash 对
+  native 进程的环境变量路径转换不稳定——release 构建时 wrapper 一度去**联网下载已存在的** gradle 发行版（超时失败）。
+  绕法：直接 `GRADLE_USER_HOME='<gradle-home>/gradle' ./gradlew …`（Windows 形式），构建即刻正常。
 - 2026-10-04 深夜（续）：**自定义顺序收尾批次——搜索/AI 工具不跟随自定义顺序 + 复位清两档**——用户拍板
   「搜索结果保持时间顺序」，并在手动验证中发现复位清不干净置顶档：
   ①**新增第二条排序子句** `CONVERSATION_ORDER_BY_TIME`（`is_pinned DESC, update_at DESC, id ASC`，**不含
