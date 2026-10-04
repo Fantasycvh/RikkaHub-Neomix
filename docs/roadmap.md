@@ -914,9 +914,15 @@ data class ApiKeyEntry(
   **本版内容（自 v1.0.22 资产 `63fd79dd` 起 = 7 个提交）**：会话列表自定义顺序全套（批 1 schema/排序单点、批 2 档内读写、
   批 3a 行内时间+隐藏日期头+置顶提醒、批 3b 编辑顺序模式）＋ 该功能真机抓出的三处修复（分页二次收集崩溃、
   锚点差一位/末尾落点、空拖写库）＋ 搜索与 AI「最近对话」保持时间序 ＋「恢复默认顺序」清两档。
-  notes 里**同时并入 v1.0.22 未发布的内容**（10 条），以便直接从正式版 v1.0.21 升级的用户不漏内容；
-  若改为先转正 v1.0.22，则需把 23 的 notes 精简为只写自定义顺序增量。
-  **备注**：v1.0.22 (285) 草稿（id `403044967`）**保留**未动。
+  notes 范围：**用户决定「先转正 v1.0.22、再转正 v1.0.23」⇒ 23 的 notes 只写自定义顺序增量**
+  （初版曾把 22 未发布的 10 条一并并入，已按此精简）；改 notes 后独立 GET 复核 `tag=v1.0.23` 仍在
+  ——`gh` 打印的 `https://…/releases/tag/untagged-bac802…` 只是**草稿的显示 slug**，`tag_name` 字段没变；
+  资产 size/digest 也未变。
+  **两个新认知（本轮实证）**：①**草稿阶段 `git/ref/tags/v1.0.23` 还不存在**（404）——draft 的 tag 由 GitHub
+  在**转正时**按 `target_commitish` 创建，所以"转正前先建 tag"不是必需动作；②`gh release create <tag>` 建草稿时
+  `tag_name` 从创建那刻就是正确的（`untagged-…` 只出现在它回显的 URL 里），与 v1.0.7/`df0d1069` 那次的
+  「notes 编辑把 `tag_name` 打回合成名」不是同一现象，但**仍然照旧流程走**：改完 notes 一律独立 GET 复核。
+  **备注**：v1.0.22 (285) 草稿（id `403044967`，target `63fd79dd…`）**保留**，等用户先转正它。
   **本轮环境坑（记一次）**：`bash scripts/build.sh` 会把 `GRADLE_USER_HOME` 设成 `/d/...` 形式，而本机 Git Bash 对
   native 进程的环境变量路径转换不稳定——release 构建时 wrapper 一度去**联网下载已存在的** gradle 发行版（超时失败）。
   绕法：直接 `GRADLE_USER_HOME='<gradle-home>/gradle' ./gradlew …`（Windows 形式），构建即刻正常。
