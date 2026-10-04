@@ -602,7 +602,9 @@
   <string name="photo">사진</string>
   <string name="pin_chat">채팅 고정</string>
   <string name="pinned_chats">고정된 채팅</string>
-  <string name="placeholder_battery_level">배터리 잔량</string>
+
+  <string name="conversation_pin_keeps_order">고정했습니다(목록에서의 위치는 그대로 유지)</string>
+  <string name="conversation_unpin_restores_position">고정을 해제했습니다(원래 위치로 돌아갑니다)</string>  <string name="placeholder_battery_level">배터리 잔량</string>
   <string name="placeholder_char">어시스턴트명</string>
   <string name="placeholder_current_date">날짜</string>
   <string name="placeholder_device_info">기기 정보</string>

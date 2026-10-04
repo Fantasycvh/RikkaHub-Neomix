@@ -161,6 +161,14 @@ interface ConversationDAO {
     )
     suspend fun getTierIds(assistantId: String, isPinned: Boolean): List<String>
 
+    /** 「编辑顺序」模式的非分页轻量列表（不含消息；拖拽需要完整顺序，见仓库同名方法注释）。 */
+    @Query(
+        "SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, " +
+            "update_at as updateAt, folder_id as folderId, last_message_at as lastMessageAt " +
+            "FROM conversationentity WHERE assistant_id = :assistantId ORDER BY $CONVERSATION_ORDER_BY"
+    )
+    fun getLightConversationsOfAssistant(assistantId: String): Flow<List<LightConversationEntity>>
+
     /** 某档的 id → 位置值（拖拽提交时算中值用；只含已物化的行）。 */
     @Query(
         "SELECT id, sort_order AS sortOrder FROM conversationentity " +

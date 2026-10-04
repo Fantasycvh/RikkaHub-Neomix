@@ -56,6 +56,8 @@ import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.ui.ExpressivePopup
 import app.androidrik.rikkahub.ui.theme.extendColors
 import app.androidrik.rikkahub.utils.toLocalString
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.uuid.Uuid
@@ -156,6 +158,8 @@ fun ColumnScope.ConversationList(
                 is ConversationListItem.Item -> {
                     ConversationItem(
                         conversation = item.conversation,
+                        // 行内「最近活跃」：末尾消息 createdAt；旧数据无此列时退回 updateAt
+                        lastActiveAt = item.conversation.lastMessageAt ?: item.conversation.updateAt,
                         selected = item.conversation.id == current.id,
                         loading = item.conversation.id in conversationJobs,
                         onClick = onClick,
@@ -174,6 +178,25 @@ fun ColumnScope.ConversationList(
                 }
             }
         }
+    }
+}
+
+/**
+ * 会话行的「最近活跃」标签：**今天给时刻（HH:mm）**，更早给日期（昨天 / 9月13日）。
+ *
+ * 为什么不做成纯函数 + 单测：文案依赖 `stringResource`（与本页日期头同一套词），
+ * 拆成纯函数反而要在调用方再拼一次；数据侧（`lastMessageAt`）的语义已有单测覆盖。
+ */
+@Composable
+private fun lastActiveLabel(at: Instant): String {
+    val zone = ZoneId.systemDefault()
+    val dateTime = at.atZone(zone)
+    val today = LocalDate.now(zone)
+    val date = dateTime.toLocalDate()
+    return when (date) {
+        today -> dateTime.format(DateTimeFormatter.ofPattern("HH:mm"))
+        today.minusDays(1) -> stringResource(R.string.chat_page_yesterday)
+        else -> date.toLocalString(date.year != today.year)
     }
 }
 
@@ -228,6 +251,7 @@ private fun PinnedHeader(
 @Composable
 private fun ConversationItem(
     conversation: Conversation,
+    lastActiveAt: Instant,
     selected: Boolean,
     loading: Boolean,
     modifier: Modifier = Modifier,
@@ -273,6 +297,16 @@ private fun ConversationItem(
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.weight(1f))
+
+            // 「最近活跃」时间（设计稿 §一.3）：自定义顺序下 update_at 不再决定顺序，
+            // 这行小字补偿"最近聊过哪条"的信息；自动顺序下只是把已有信息显式化。
+            Text(
+                text = lastActiveLabel(lastActiveAt),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 8.dp)
+            )
 
             // 置顶图标
             AnimatedVisibility(conversation.isPinned) {

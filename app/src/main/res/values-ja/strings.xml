@@ -602,7 +602,9 @@
   <string name="photo">写真</string>
   <string name="pin_chat">チャットをピン留め</string>
   <string name="pinned_chats">固定チャット</string>
-  <string name="placeholder_battery_level">バッテリー残量</string>
+
+  <string name="conversation_pin_keeps_order">ピン留めしました（並び順の位置はそのまま）</string>
+  <string name="conversation_unpin_restores_position">ピン留めを解除しました（元の位置に戻ります）</string>  <string name="placeholder_battery_level">バッテリー残量</string>
   <string name="placeholder_char">アシスタント名</string>
   <string name="placeholder_current_date">日付</string>
   <string name="placeholder_device_info">デバイス情報</string>

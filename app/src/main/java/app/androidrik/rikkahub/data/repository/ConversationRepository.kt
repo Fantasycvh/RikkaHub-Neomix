@@ -364,42 +364,56 @@ class ConversationRepository(
         conversationDAO.observeTierMaterialized(assistantId.toString(), pinned)
 
     /**
+     * 「编辑顺序」模式的**非分页**列表：该助手全部会话（轻量投影，不含消息），按当前显示顺序。
+     *
+     * 为什么编辑模式不分页：拖拽需要一个**完整且稳定**的顺序（分页只加载已滚动到的部分，
+     * 缺项时算出的兄弟节点是错的）。会话数在此量级（几十~几百）下，一次性加载代价可接受。
+     */
+    fun getLightConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> =
+        conversationDAO.getLightConversationsOfAssistant(assistantId.toString())
+            .map { entities -> entities.map(::conversationSummaryToConversation) }
+
+    /**
      * 提交一次手工排序（「编辑顺序」模式松手时调用）——`sort_order` 的**唯一**业务写入口。
      *
-     * 两条路径（设计稿 §二/§三.5）：
-     * - **常规**：只把被拖动那条写到前后邻居的中值（1 行写入）；
-     * - **首次物化 / 间距耗尽**：整档按目标顺序重排（行数 = 该档会话数，一次事务）。
-     *   归一化只在**提交时**发生，绝不在拖拽过程中改数据。
-     *
-     * @param orderedIds 该档**全部**会话的目标顺序（UI 手上就是完整列表）
-     * @param movedId 被拖动的那条；null（或档内无位置值）⇒ 走整档物化
+     * 入参是「被拖项 + 它的新邻居」而**不是整表**：抽屉列表是分页的，未滚到底时全量 id 并不完整，
+     * 而邻居一定是已加载的项（分页安全）。整档写入只在必要时发生：
+     * - **常规**：只把被拖那条写到前后邻居的中值（1 行）；
+     * - **首次物化 / 间距耗尽**：由仓库读该档完整顺序后按目标位次整档重排
+     *   （归一化只在**提交时**发生，绝不在拖拽过程中改数据）。
      */
     suspend fun applyManualOrder(
         assistantId: Uuid,
         pinned: Boolean,
-        orderedIds: List<String>,
-        movedId: String?,
+        movedId: String,
+        beforeId: String?,
+        afterId: String?,
     ) {
-        if (orderedIds.isEmpty()) return
         database.withTransaction {
+            val tierIds = conversationDAO.getTierIds(assistantId.toString(), pinned)
+            if (movedId !in tierIds) return@withTransaction
             val currentValues = conversationDAO.getTierOrderRows(assistantId.toString(), pinned)
                 .associate { it.id to it.sortOrder }
 
-            val write: OrderWrite = if (currentValues.isEmpty() || movedId == null) {
-                // 该档还没进过自定义顺序：按目标顺序一次性物化（用户看到的列表顺序不变，
-                // 只是内部开始有可插入的编号空间）；同时也覆盖「间距耗尽」的整档重排
-                OrderWrite.Renormalize(orderedIds, ConversationOrdering.materialize(orderedIds.size))
+            // 目标顺序：把 movedId 从原位置摘出、插到 afterId 之后（beforeId 仅作校验用）
+            val desired = tierIds.toMutableList().also { it.remove(movedId) }
+            val anchorIndex = afterId?.let { desired.indexOf(it) } ?: -1
+            desired.add(if (anchorIndex >= 0) anchorIndex + 1 else 0, movedId)
+
+            val write: OrderWrite = if (currentValues.isEmpty()) {
+                // 该档还没进过自定义顺序：按目标顺序一次性物化（顺带覆盖「间距耗尽」的整档重排）
+                OrderWrite.Renormalize(desired, ConversationOrdering.materialize(desired.size))
             } else {
-                val from = orderedIds.indexOf(movedId)
-                val prev = orderedIds.getOrNull(from - 1)?.let(currentValues::get)
-                val next = orderedIds.getOrNull(from + 1)?.let(currentValues::get)
+                val from = desired.indexOf(movedId)
+                val prev = desired.getOrNull(from - 1)?.let(currentValues::get)
+                val next = desired.getOrNull(from + 1)?.let(currentValues::get)
                 val placement = when {
                     from <= 0 -> OrderPlacement.Top
                     prev != null && next != null && prev < next -> OrderPlacement.Between(prev, next)
-                    // 邻居值缺失（理论上不会：整档已物化）⇒ 退化为最前；下次拖拽即整档归一化
+                    // 邻居无位置值（该档刚从自动模式转入）⇒ 退化为最前；下次拖拽即整档归一化
                     else -> OrderPlacement.Top
                 }
-                planOrderWrite(movedId, placement, currentValues.values.toList(), orderedIds)
+                planOrderWrite(movedId, placement, currentValues.values.toList(), desired)
             }
 
             when (write) {

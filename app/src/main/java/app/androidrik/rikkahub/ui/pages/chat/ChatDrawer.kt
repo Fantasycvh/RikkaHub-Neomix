@@ -119,6 +119,8 @@ fun ChatDrawerContent(
     val conversations = drawerVm.conversations.collectAsLazyPagingItems()
     val folders by drawerVm.folders.collectAsStateWithLifecycle()
     val selectedFolderId by drawerVm.selectedFolderId.collectAsStateWithLifecycle()
+    // 自定义顺序是否生效（未置顶档已有位置值）——决定置顶提示文案与「恢复默认顺序」可用性
+    val customOrderActive by drawerVm.customOrderActive.collectAsStateWithLifecycle()
     val conversationListState = rememberLazyListState(
         initialFirstVisibleItemIndex = drawerVm.scrollIndex,
         initialFirstVisibleItemScrollOffset = drawerVm.scrollOffset,
@@ -334,7 +336,19 @@ fun ChatDrawerContent(
                     }
                 },
                 onPin = {
+                    val willPin = !it.isPinned
                     vm.updatePinnedStatus(it)
+                    // 置顶**保留原 sortOrder**（设计稿 §一.6）：用户既不惊讶于"置顶后没跑到
+                    // 最前"，也知道取消置顶会回到原位置。只在自定义顺序生效时提示——
+                    // 自动模式下置顶行为与历史一致，多一句反而干扰。
+                    if (customOrderActive) {
+                        toaster.show(
+                            context.getString(
+                                if (willPin) R.string.conversation_pin_keeps_order
+                                else R.string.conversation_unpin_restores_position
+                            )
+                        )
+                    }
                 },
                 onMoveToAssistant = {
                     conversationToMove = it

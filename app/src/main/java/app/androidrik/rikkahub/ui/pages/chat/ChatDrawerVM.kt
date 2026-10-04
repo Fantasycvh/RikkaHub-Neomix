@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.chat
 import android.app.Application
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import android.util.Log
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
@@ -39,7 +40,7 @@ import kotlin.uuid.Uuid
 class ChatDrawerVM(
     private val context: Application,
     private val settingsStore: SettingsStore,
-    conversationRepo: ConversationRepository,
+    private val conversationRepo: ConversationRepository,
     private val folderRepo: FolderRepository,
     private val chatService: ChatService,
     private val workspaceRepo: WorkspaceRepository,
@@ -59,6 +60,14 @@ class ChatDrawerVM(
         .flatMapLatest { folderRepo.getFoldersOfAssistant(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /**
+     * 该助手是否已进入**自定义顺序**（非置顶档存在位置值）——UI 据此隐藏日期分组头
+     * （顺序由用户定义后，按日期分组已无意义）并决定「恢复默认顺序」是否可用。
+     */
+    val customOrderActive: StateFlow<Boolean> = assistantIdFlow
+        .flatMapLatest { conversationRepo.observeTierMaterialized(it, pinned = false) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     val conversations: Flow<PagingData<ConversationListItem>> =
         combine(assistantIdFlow, _selectedFolderId) { assistantId, folderId ->
             assistantId to folderId
@@ -70,14 +79,21 @@ class ChatDrawerVM(
                     conversationRepo.getConversationsOfFolderPaging(folderId)
                 }
             }
-            .map { pagingData ->
+            // 与「是否自定义顺序」组合：标志变化要重算分隔头（分页数据本身不变）
+            .combine(customOrderActive) { pagingData, customOrder -> pagingData to customOrder }
+            .map { (pagingData, customOrder) ->
                 pagingData
                     .map { ConversationListItem.Item(it) }
                     .insertSeparators<ConversationListItem.Item, ConversationListItem> { before, after ->
+                        // 自定义顺序下**不插日期分组头**：顺序由用户定义，按日期分组只会
+                        // 把同一档切成无意义的段落（置顶头仍保留——它标记的是档位，不是日期）
+                        val wantDateHeader = !customOrder
                         when {
                             before == null && after is ConversationListItem.Item -> {
                                 if (after.conversation.isPinned) {
                                     ConversationListItem.PinnedHeader
+                                } else if (!wantDateHeader) {
+                                    null
                                 } else {
                                     val afterDate = after.conversation.updateAt
                                         .atZone(ZoneId.systemDefault())
@@ -91,14 +107,18 @@ class ChatDrawerVM(
 
                             before is ConversationListItem.Item && after is ConversationListItem.Item -> {
                                 if (before.conversation.isPinned && !after.conversation.isPinned) {
-                                    val afterDate = after.conversation.updateAt
-                                        .atZone(ZoneId.systemDefault())
-                                        .toLocalDate()
-                                    ConversationListItem.DateHeader(
-                                        date = afterDate,
-                                        label = getDateLabel(afterDate)
-                                    )
-                                } else if (!after.conversation.isPinned) {
+                                    if (!wantDateHeader) {
+                                        null
+                                    } else {
+                                        val afterDate = after.conversation.updateAt
+                                            .atZone(ZoneId.systemDefault())
+                                            .toLocalDate()
+                                        ConversationListItem.DateHeader(
+                                            date = afterDate,
+                                            label = getDateLabel(afterDate)
+                                        )
+                                    }
+                                } else if (!after.conversation.isPinned && wantDateHeader) {
                                     val beforeDate = before.conversation.updateAt
                                         .atZone(ZoneId.systemDefault())
                                         .toLocalDate()
@@ -141,6 +161,35 @@ class ChatDrawerVM(
     fun saveScrollPosition(index: Int, offset: Int) {
         savedStateHandle["scrollIndex"] = index
         savedStateHandle["scrollOffset"] = offset
+    }
+
+    /**
+     * 提交一次拖拽（「编辑顺序」模式）。
+     *
+     * 只传**被拖项与它的新邻居**而非整表：抽屉列表是分页的，全量 id 在未滚到底时并不完整，
+     * 而邻居一定是已加载的项。归一化/首次物化的整档写入由仓库按需完成（见 applyManualOrder）。
+     */
+    fun applyManualOrder(conversationId: Uuid, pinned: Boolean, beforeId: Uuid?, afterId: Uuid?) {
+        viewModelScope.launch {
+            val assistantId = assistantIdFlow.first()
+            runCatching {
+                conversationRepo.applyManualOrder(
+                    assistantId = assistantId,
+                    pinned = pinned,
+                    movedId = conversationId.toString(),
+                    beforeId = beforeId?.toString(),
+                    afterId = afterId?.toString(),
+                )
+            }.onFailure { Log.w("ChatDrawerVM", "applyManualOrder failed", it) }
+        }
+    }
+
+    /** 恢复默认顺序：清空非置顶档的位置值 ⇒ 回到按更新时间（设计稿 §一.7）。 */
+    fun resetCustomOrder() {
+        viewModelScope.launch {
+            runCatching { conversationRepo.resetTierOrder(assistantIdFlow.first(), pinned = false) }
+                .onFailure { Log.w("ChatDrawerVM", "resetCustomOrder failed", it) }
+        }
     }
 
     fun selectFolder(folderId: Uuid?) {

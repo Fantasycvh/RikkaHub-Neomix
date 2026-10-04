@@ -645,7 +645,9 @@
   <string name="photo">Photo</string>
   <string name="pin_chat">Pin the Chat</string>
   <string name="pinned_chats">Pinned Chats</string>
-  <string name="placeholder_battery_level">Battery Level</string>
+
+  <string name="conversation_pin_keeps_order">Pinned — its position in the list is kept</string>
+  <string name="conversation_unpin_restores_position">Unpinned — back to its previous position</string>  <string name="placeholder_battery_level">Battery Level</string>
   <string name="placeholder_char">Assistant Name</string>
   <string name="placeholder_current_date">Date</string>
   <string name="placeholder_device_info">Device Info</string>
