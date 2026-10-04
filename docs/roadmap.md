@@ -840,6 +840,15 @@ data class ApiKeyEntry(
   强推（对已发布 release/资产无影响，实测确认）。**结论：发布后 `ls-remote` 核对 tag 指向是必做
   收尾动作，PATCH target 不等于 tag 会落在那里**。最终 tag=`51119dc0` 与 284 资产三方对齐 ✓。
   README 改「正式发布：v1.0.21」（无草稿）。
+- 2026-10-04 深夜：**上游 #1991 两现象 + #1976 兜底落地**——①现象 B（编辑 AI 消息 → 新分支元信息全空）：
+  `editMessage` 新建分支继承 `modelId`/`modelNameSnapshot`/`providerNameSnapshot`/`createdAt`，
+  刻意不继承 `usage`/`finishReason`/`finishIncomplete`（描述被替换的那次生成，继承会把手改误报成模型产出）；
+  ②现象 A（删 Provider 后历史消息模型名/图标消失）：`ChatMessageAvatar` 以「快照也算身份」渲染，
+  图标 seed 与名称活模型优先、快照兜底——**缺口只在头部**（尾部 NerdLine 早已用快照，是 #1805 那次
+  「头部纯模型名 / 尾部带路由归因」分工留下的缝）；③#1976：相册裁剪前 temp 拷贝失败的回退不再把
+  `content://` 交给 UCrop（Android 11 media-store URI 无读授权 → 库内 SecurityException 崩溃，
+  catch 不到），改为不裁剪 + 提示。单测 +3（继承规则三例）。**真机验证待用户**：
+  编辑 AI 消息后切到新分支看头部；开启「跳过裁剪」关掉后选相册图。
 - 2026-10-04 深夜：**备份打包事故与修复（我引入，用户真机抓到）**——`bd8a2568`（images 改递归）把判据改成
   `in RECURSIVE_FILE_FOLDERS` 时，`addDirectoryToZip` 的 `entryPrefix` 漏改、仍是硬编码 `skills/`
   ⇒ 新递归目录 images 被打成 `skills/...`：**图片既不在 images/ 下（记录找不到），恢复还会解进
