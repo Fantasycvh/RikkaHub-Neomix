@@ -429,10 +429,19 @@ class ConversationRepository(
     }
 
     /**
-     * 「恢复默认顺序」：清空该档全部位置值 ⇒ 回到按 `update_at` 的自动模式（设计稿 §一.7）。
+     * 「恢复默认顺序」：清空该助手**两档**（置顶 + 未置顶）的全部位置值 ⇒ 回到按 `update_at`
+     * 的自动模式（设计稿 §一.7）。
+     *
+     * 为什么必须清两档：编辑模式里**两档都能拖**（置顶档也有自己的编号空间），只清未置顶档会
+     * 留下"清不干净"的手工顺序——用户拖过的置顶档仍按旧值排，而对话框文案承诺的是
+     * 「列表回到按更新时间的排序」。用户 2026-10-04 手动验证时正是先拖了置顶档才暴露这点。
+     * 两条 `clearSortOrder` 放在同一事务里，避免出现"一档清了、另一档没清"的中间态。
      */
-    suspend fun resetTierOrder(assistantId: Uuid, pinned: Boolean) {
-        conversationDAO.clearSortOrder(assistantId.toString(), pinned)
+    suspend fun resetTierOrder(assistantId: Uuid) {
+        database.withTransaction {
+            conversationDAO.clearSortOrder(assistantId.toString(), isPinned = false)
+            conversationDAO.clearSortOrder(assistantId.toString(), isPinned = true)
+        }
     }
 
     suspend fun updateConversation(conversation: Conversation) {

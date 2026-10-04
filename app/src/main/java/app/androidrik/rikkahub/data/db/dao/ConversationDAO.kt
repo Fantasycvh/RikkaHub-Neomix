@@ -26,6 +26,21 @@ import app.androidrik.rikkahub.data.repository.LightConversationEntity
 const val CONVERSATION_ORDER_BY =
     "is_pinned DESC, (sort_order IS NULL) ASC, sort_order ASC, update_at DESC, id ASC"
 
+/**
+ * **按时间**的排序子句：置顶档在前、档内按 `update_at DESC`，**完全忽略 `sort_order`**。
+ *
+ * 为什么需要第二条子句（用户 2026-10-04 拍板）：自定义顺序只定义「列表长什么样」，
+ * 有两处**按时间才有意义**、必须不受它影响：
+ * - **AI「最近对话」工具**（`getRecentConversationsOfAssistant`）——设计稿 §一.8：模型问"最近聊了什么"，
+ *   答案必须是最近的，而不是用户摆过的位置；
+ * - **搜索结果**（`searchConversations*`）——搜索是"按相关性/时间找东西"，跟随自定义顺序会让
+ *   同一关键词的结果顺序随拖拽变化，反而更难找。
+ *
+ * 语义与改造前**逐字一致**（`is_pinned DESC, update_at DESC`），只多一个 `id ASC` 兜底
+ * 保证分页 LIMIT/OFFSET 的确定性（与 [CONVERSATION_ORDER_BY] 同理）。
+ */
+const val CONVERSATION_ORDER_BY_TIME = "is_pinned DESC, update_at DESC, id ASC"
+
 /** 「档内 id → 位置值」投影（自定义顺序的拖拽提交用，见 ConversationOrdering）。 */
 data class TierOrderRow(
     val id: String,
@@ -52,19 +67,19 @@ interface ConversationDAO {
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, last_message_at as lastMessageAt FROM conversationentity WHERE folder_id = :folderId ORDER BY $CONVERSATION_ORDER_BY")
     fun getConversationsOfFolderPaging(folderId: String): PagingSource<Int, LightConversationEntity>
 
-    @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId ORDER BY $CONVERSATION_ORDER_BY LIMIT :limit")
+    @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId ORDER BY $CONVERSATION_ORDER_BY_TIME LIMIT :limit")
     suspend fun getRecentConversationsOfAssistant(assistantId: String, limit: Int): List<ConversationEntity>
 
-    @Query("SELECT * FROM conversationentity WHERE title LIKE '%' || :searchText || '%' ORDER BY $CONVERSATION_ORDER_BY")
+    @Query("SELECT * FROM conversationentity WHERE title LIKE '%' || :searchText || '%' ORDER BY $CONVERSATION_ORDER_BY_TIME")
     fun searchConversations(searchText: String): Flow<List<ConversationEntity>>
 
-    @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, last_message_at as lastMessageAt FROM conversationentity WHERE title LIKE '%' || :searchText || '%' ORDER BY $CONVERSATION_ORDER_BY")
+    @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, last_message_at as lastMessageAt FROM conversationentity WHERE title LIKE '%' || :searchText || '%' ORDER BY $CONVERSATION_ORDER_BY_TIME")
     fun searchConversationsPaging(searchText: String): PagingSource<Int, LightConversationEntity>
 
-    @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId AND title LIKE '%' || :searchText || '%' ORDER BY $CONVERSATION_ORDER_BY")
+    @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId AND title LIKE '%' || :searchText || '%' ORDER BY $CONVERSATION_ORDER_BY_TIME")
     fun searchConversationsOfAssistant(assistantId: String, searchText: String): Flow<List<ConversationEntity>>
 
-    @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, last_message_at as lastMessageAt FROM conversationentity WHERE assistant_id = :assistantId AND title LIKE '%' || :searchText || '%' ORDER BY $CONVERSATION_ORDER_BY")
+    @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, last_message_at as lastMessageAt FROM conversationentity WHERE assistant_id = :assistantId AND title LIKE '%' || :searchText || '%' ORDER BY $CONVERSATION_ORDER_BY_TIME")
     fun searchConversationsOfAssistantPaging(assistantId: String, searchText: String): PagingSource<Int, LightConversationEntity>
 
     @Query("SELECT * FROM conversationentity WHERE id = :id")

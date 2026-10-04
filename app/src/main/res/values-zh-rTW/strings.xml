@@ -648,7 +648,9 @@
   <string name="conversation_order_reset">恢復預設順序</string>
   <string name="conversation_order_hint">長按拖動調整順序；置頂與未置頂分兩檔，只能在本檔內調整。置頂不會改變檔內位置，取消置頂會回到原位置。</string>
   <string name="conversation_order_reset_confirm_title">恢復預設順序？</string>
-  <string name="conversation_order_reset_confirm_desc">手動調整的順序會被清空，列表回到按更新時間的排序。此操作無法撤銷。</string>  <string name="conversation_unpin_restores_position">已取消置頂（回到原位置）</string>  <string name="placeholder_battery_level">電池電量</string>
+  <string name="conversation_order_reset_confirm_desc">置頂與未置頂兩檔的手動順序都會被清空，清單回到按更新時間的排序。此操作無法復原。</string>
+  <string name="conversation_unpin_restores_position">已取消置頂（回到原位置）</string>
+  <string name="placeholder_battery_level">電池電量</string>
   <string name="placeholder_char">助手名稱</string>
   <string name="placeholder_current_date">日期</string>
   <string name="placeholder_device_info">設備資訊</string>

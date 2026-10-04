@@ -207,7 +207,7 @@ class ChatDrawerVM(
     /** 恢复默认顺序：清空非置顶档的位置值 ⇒ 回到按更新时间（设计稿 §一.7）。 */
     fun resetCustomOrder() {
         viewModelScope.launch {
-            runCatching { conversationRepo.resetTierOrder(assistantIdFlow.first(), pinned = false) }
+            runCatching { conversationRepo.resetTierOrder(assistantIdFlow.first()) }
                 .onFailure { Log.w("ChatDrawerVM", "resetCustomOrder failed", it) }
         }
     }

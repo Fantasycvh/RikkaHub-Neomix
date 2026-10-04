@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -91,12 +92,52 @@ class ConversationSchemaGuardsTest {
         val allowMarker = "guard-allow: order-helper"
         val violations = codeLines(daoSource())
             .filter { it.contains("ORDER BY") }
-            .filterNot { it.contains("\$CONVERSATION_ORDER_BY") || it.contains(allowMarker) }
+            .filterNot {
+                it.contains("\$CONVERSATION_ORDER_BY") ||
+                    it.contains("\$CONVERSATION_ORDER_BY_TIME") ||
+                    it.contains(allowMarker)
+            }
         assertTrue(
             "发现绕过单点排序常量的查询：$violations" +
                 "（加自定义顺序时漏改这类旁路会让不同界面顺序不一致；确属辅助查询请加 $allowMarker 标注）",
             violations.isEmpty(),
         )
+    }
+
+    @Test
+    fun `time-ordered clause never follows the custom order`() {
+        val source = daoSource()
+        // ①语义：这条子句不得出现 sort_order，否则「按时间」会随拖拽漂移
+        val clause = source.substringAfter("const val CONVERSATION_ORDER_BY_TIME =").substringBefore("\n\n")
+        val clauseCode = clause.lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
+        assertTrue(
+            "CONVERSATION_ORDER_BY_TIME 不得引用 sort_order（AI 最近对话 / 搜索结果必须与自定义顺序无关）：$clauseCode",
+            !clauseCode.contains("sort_order"),
+        )
+        // ②用途：只允许 AI「最近对话」与搜索这几条查询用它
+        // （`@Query` 注解与 `fun` 声明分处两行，所以按行号向后看几行取函数名）
+        val allowed = setOf(
+            "getRecentConversationsOfAssistant",
+            "searchConversations",
+            "searchConversationsPaging",
+            "searchConversationsOfAssistant",
+            "searchConversationsOfAssistantPaging",
+        )
+        val lines = codeLines(source)
+        val users = lines.indices
+            .filter { lines[it].contains("\$CONVERSATION_ORDER_BY_TIME") }
+            .map { i ->
+                (i..minOf(i + 3, lines.lastIndex))
+                    .firstNotNullOfOrNull { j ->
+                        Regex("""fun (\w+)\(""").find(lines[j])?.groupValues?.get(1)
+                    }
+            }
+        assertEquals(
+            "按时间排序的查询只能是 AI 最近对话 / 搜索：$users",
+            allowed,
+            users.toSet(),
+        )
+        assertEquals("每条按时间查询各一处，不多不少", allowed.size, users.size)
     }
 
     @Test
