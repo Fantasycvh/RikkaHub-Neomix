@@ -840,7 +840,16 @@ data class ApiKeyEntry(
   强推（对已发布 release/资产无影响，实测确认）。**结论：发布后 `ls-remote` 核对 tag 指向是必做
   收尾动作，PATCH target 不等于 tag 会落在那里**。最终 tag=`51119dc0` 与 284 资产三方对齐 ✓。
   README 改「正式发布：v1.0.21」（无草稿）。
-- 2026-10-04：**压缩/半截/续写批次（B/C/D 三项，§四.7 评估的直接落地）**——
+- 2026-10-04 深夜：**备份打包事故与修复（我引入，用户真机抓到）**——`bd8a2568`（images 改递归）把判据改成
+  `in RECURSIVE_FILE_FOLDERS` 时，`addDirectoryToZip` 的 `entryPrefix` 漏改、仍是硬编码 `skills/`
+  ⇒ 新递归目录 images 被打成 `skills/...`：**图片既不在 images/ 下（记录找不到），恢复还会解进
+  files/skills/**。用户 21:00 那份 WebDAV 备份实测：`images/` 条目 0、`skills/` 下多出 4 个 .png；
+  对照 20:03（修复前 release，平铺）与 21:10（修复后）两份均为 `images/` 4 条、skills 无 png。
+  **修复**（`32083641`）：前缀一律由目录名派生，并抽 `appFilesPackingPlan()` 可测；
+  **加固**（`f6b38d35`）：把打包实现抽成只依赖 `filesDir` 的顶层 `packAppFiles`，加**真实 zip
+  端到端测试**（断言每个目录落在自己的前缀下、遗留子目录 `images/<ts>_<vendor>/` 保留层级、
+  非技能文件不得出现在 `skills/` 下）——事故之所以只能靠真机发现，正是因为这层当时测不到。
+  **教训**：改「目录 → 前缀」这类映射时，映射两侧必须同源（由数据派生），且要在能直测产物的层级写测试。- 2026-10-04：**压缩/半截/续写批次（B/C/D 三项，§四.7 评估的直接落地）**——
   ①**B 显式结束 vs 裸断流**（`7973da13`）：四个 provider 在显式结束处发 `terminalChunk()`，
   `onClosed` 不发 ⇒ 「流结束了但没见到标记」= 裸断流；消息新增 `finishReason`/`finishIncomplete`
   持久化字段（此前整轮被当成功，中转断流静默吞掉）。
