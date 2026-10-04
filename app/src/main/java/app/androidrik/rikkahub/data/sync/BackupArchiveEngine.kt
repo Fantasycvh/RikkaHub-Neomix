@@ -393,12 +393,12 @@ internal class BackupArchiveEngine(
         try {
             if (vacuumed) {
                 Log.i(TAG, "addDatabaseToZip: consistent snapshot via VACUUM INTO (${snapshot.length()} bytes)")
-                addFileToZip(zipOut, snapshot, "rikka_hub.db", onBytes)
+                addFileToZip(zipOut, snapshot, "rikka_hub.db", onBytes, ::backupLog)
             } else {
-                addFileToZip(zipOut, dbFile, "rikka_hub.db", onBytes)
+                addFileToZip(zipOut, dbFile, "rikka_hub.db", onBytes, ::backupLog)
                 listOf("rikka_hub-wal", "rikka_hub-shm").forEach { name ->
                     val f = File(dbFile.parentFile, name)
-                    if (f.exists()) addFileToZip(zipOut, f, name, onBytes)
+                    if (f.exists()) addFileToZip(zipOut, f, name, onBytes, ::backupLog)
                 }
             }
         } finally {
@@ -415,31 +415,14 @@ internal class BackupArchiveEngine(
      * 预览（`TOOL_OUTPUT_PREVIEW_CHARS`）兜底。
      */
     private fun addAppFilesToZip(zipOut: ZipOutputStream, onBytes: (Long) -> Unit) {
-        appFilesPackingPlan().forEach { packing ->
-            val dir = File(context.filesDir, packing.folder)
-            if (!dir.isDirectory) {
-                Log.w(TAG, "prepareBackupFile: ${packing.folder} does not exist")
-                return@forEach
-            }
-            Log.i(TAG, "prepareBackupFile: packing ${packing.folder} (${dir.absolutePath})")
-            if (packing.recursive) {
-                addDirectoryToZip(
-                    zipOut = zipOut,
-                    rootDir = dir,
-                    currentDir = dir,
-                    // 前缀必须由**本目录**派生（2026-10-04 修：曾硬编码 skills/，
-                    // 使新增的递归目录（images）被打成 skills/ 前缀——图片既没进 images/，
-                    // 恢复时还会被解到 files/skills/）
-                    entryPrefix = packing.entryPrefix,
-                    onBytes = onBytes,
-                )
-            } else {
-                // 平铺文件（非递归）
-                dir.listFiles()?.forEach { file ->
-                    if (file.isFile) addFileToZip(zipOut, file, "${packing.entryPrefix}${file.name}", onBytes)
-                }
-            }
-        }
+        // 打包实现移到顶层 packAppFiles（可注入 filesDir ⇒ 能被 JVM 测试覆盖，
+        // 见 AppFilesPacking.kt 顶部记录的真机事故）
+        packAppFiles(
+            filesDir = context.filesDir,
+            zipOut = zipOut,
+            onBytes = onBytes,
+            onLog = { message -> Log.i(TAG, message) },
+        )
     }
 
     private fun addVirtualFileToZip(
@@ -455,71 +438,9 @@ internal class BackupArchiveEngine(
         onBytes(bytes.size.toLong())
     }
 
-    private fun addFileToZip(zipOut: ZipOutputStream, file: File, entryName: String, onBytes: (Long) -> Unit = {}) {
-        val entry = prepareZipEntry(file, entryName)
-        FileInputStream(file).use { fis ->
-            zipOut.putNextEntry(entry)
-            // 边拷贝边上报：单个大文件（85MB DB / 2.8GB 克隆）内部也要推进，否则进度条会冻住
-            copyReporting(fis, zipOut, onBytes)
-            zipOut.closeEntry()
-        }
-    }
+    /** 打包实现的日志出口（顶层函数不依赖 android.util.Log，由引擎统一接线）。 */
+    private fun backupLog(message: String) = Log.i(TAG, message)
 
-    /**
-     * 按可压缩性准备条目（大文件加固 P0，设计稿 §九）：
-     * 头部采样判定为不可压缩（git pack / 图片 / 视频等）→ `STORED` 原样拷贝，
-     * **DEFLATE 的单核 CPU 成本归零**（实测 24 MB/s × 2.8GB ≈ 数分钟白烧）。
-     *
-     * Java API 要求 STORED 条目在 `putNextEntry` 前预置 size/crc ⇒ 一次 CRC 预读。
-     * 该预读是纯顺序读（无 DEFLATE CPU），远比「1 次读 + 压缩」便宜；进度只按写入
-     * 遍计（预读不报，避免双倍计数）。
-     */
-    private fun prepareZipEntry(file: File, entryName: String): ZipEntry {
-        val entry = ZipEntry(entryName)
-        if (file.length() < BackupZipStrategy.SAMPLE_SIZE) return entry
-        val sample = FileInputStream(file).use { input ->
-            val buf = ByteArray(BackupZipStrategy.SAMPLE_SIZE)
-            val read = input.read(buf)
-            if (read <= 0) null else buf.copyOf(read)
-        } ?: return entry
-        if (!BackupZipStrategy.shouldStoreUncompressed(sample)) return entry
-
-        val crc = java.util.zip.CRC32()
-        var size = 0L
-        FileInputStream(file).use { input ->
-            val buf = ByteArray(256 * 1024)
-            while (true) {
-                val n = input.read(buf)
-                if (n <= 0) break
-                crc.update(buf, 0, n)
-                size += n
-            }
-        }
-        Log.i(TAG, "prepareZipEntry: $entryName stored uncompressed (${size} bytes, incompressible)")
-        return entry.apply {
-            method = ZipEntry.STORED
-            this.size = size
-            compressedSize = size
-            this.crc = crc.value
-        }
-    }
-
-    private fun addDirectoryToZip(
-        zipOut: ZipOutputStream,
-        rootDir: File,
-        currentDir: File,
-        entryPrefix: String,
-        onBytes: (Long) -> Unit,
-    ) {
-        currentDir.listFiles()?.forEach { file ->
-            if (file.isDirectory) {
-                addDirectoryToZip(zipOut, rootDir, file, entryPrefix, onBytes)
-            } else if (file.isFile) {
-                val relativePath = file.relativeTo(rootDir).invariantSeparatorsPath
-                addFileToZip(zipOut, file, "$entryPrefix$relativePath", onBytes)
-            }
-        }
-    }
 
     // ---- 恢复辅助（严格对齐原 S3Sync/WebDavSync 行为）----
 
