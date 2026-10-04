@@ -335,16 +335,24 @@ class RootfsInstaller(
         setExecutable(mode and 0b001_000_000 != 0, false)
     }
 
+    /**
+     * tar 条目路径规范化：去绝对前缀、丢弃空段与 `.` 段，产出 rootfs 内的相对路径。
+     *
+     * **根目录条目规范化后是空串**（GNU tar 的标准输出里就是 `./`；`tar -C dir -czf x.tar.gz .`
+     * 这种最常规的自制 rootfs 打包默认带它）——**空串在此不报错，由调用方跳过**。
+     * 旧实现用 `require(isNotBlank)` 抛异常，而它是在 [readTarHeader] 内部被调用的，调用点那句
+     * `if (header.name.isBlank()) continue` 位于其后 ⇒ 那句话是**死代码**，含 `./` 的 tarball
+     * 直接安装失败（`Rootfs entry path is blank`）。对齐上游 `298e2771` 的修法，与发行版无关。
+     */
     private fun normalizeTarPath(path: String): String {
-        val normalized = path
+        require(!path.contains('\u0000')) { "Rootfs entry path contains invalid character" }
+        val segments = path
             .replace('\\', '/')
             .trim()
-            .trimStart('/')
-            .removePrefix("./")
-        require(normalized.isNotBlank()) { "Rootfs entry path is blank" }
-        require(!normalized.contains('\u0000')) { "Rootfs entry path contains invalid character" }
-        require(normalized.split('/').none { it == ".." }) { "Rootfs entry escapes target directory: $path" }
-        return normalized
+            .split('/')
+            .filter { it.isNotEmpty() && it != "." }
+        require(segments.none { it == ".." }) { "Rootfs entry escapes target directory: $path" }
+        return segments.joinToString("/")
     }
 
     private fun ByteArray.string(offset: Int, length: Int): String {

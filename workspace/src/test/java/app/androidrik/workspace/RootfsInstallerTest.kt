@@ -50,6 +50,25 @@ class RootfsInstallerTest {
         assertEquals("content", File(target, "dir/file.txt").readText())
     }
 
+    @Test
+    fun `extract tolerates root directory entry instead of failing the whole install`() {
+        // GNU tar 的标准输出（tar -C dir -czf x.tar.gz .）开头就是 "./" 根条目。
+        // 旧实现在 readTarHeader 内对「规范化后为空」require(isNotBlank) 抛异常 ⇒ 自制 rootfs
+        // 全部安装失败；正确行为是跳过该条目、继续解压（对齐上游 298e2771）。
+        val archive = tmp.newFile("rootfs.tar.gz")
+        GZIPOutputStream(archive.outputStream()).use { out ->
+            out.writeTarEntry("./", '5', ByteArray(0))
+            out.writeTarEntry("./etc/", '5', ByteArray(0))
+            out.writeTarEntry("./etc/os-release", '0', "PRETTY_NAME=Alpine Linux\n".toByteArray())
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+
+        val target = tmp.newFolder("out")
+        createInstaller().extractTar(archive, target) {}
+
+        assertEquals("PRETTY_NAME=Alpine Linux\n", File(target, "etc/os-release").readText())
+    }
+
     private fun createInstaller() = RootfsInstaller(WorkspaceManager(tmp.newFolder()))
 
     private fun OutputStream.writeTarEntry(name: String, type: Char, data: ByteArray) {
