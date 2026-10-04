@@ -361,6 +361,18 @@ class ResponseAPIMessageTest {
     }
 
     @Test
+    fun `function tools should disable strict mode so optional fields stay optional`() {
+        // #1990：Response API 不传 strict 时默认按严格模式处理，可选字段全变必填
+        val requestBody = invokeBuildRequestBody(
+            providerSetting = ProviderSetting.OpenAI(baseUrl = "https://api.openai.com/v1"),
+            params = createToolParams(tools = listOf(createFunctionTool("get_weather")))
+        )
+
+        val tool = requestBody["tools"]!!.jsonArray[0].jsonObject
+        assertEquals("false", tool["strict"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun `function tools and built-in tools should coexist in the same tools array`() {
         val requestBody = invokeBuildRequestBody(
             providerSetting = ProviderSetting.OpenAI(baseUrl = "https://api.openai.com/v1"),
