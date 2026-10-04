@@ -840,6 +840,12 @@ data class ApiKeyEntry(
   强推（对已发布 release/资产无影响，实测确认）。**结论：发布后 `ls-remote` 核对 tag 指向是必做
   收尾动作，PATCH target 不等于 tag 会落在那里**。最终 tag=`51119dc0` 与 284 资产三方对齐 ✓。
   README 改「正式发布：v1.0.21」（无草稿）。
+- 2026-10-04 深夜：**会话列表「自定义顺序」设计定稿（上游 #1995 的延伸，先不实现）**——产品决策五项由用户
+  拍板：①新会话**顶部最前** ②**置顶=第一档、非置顶=第二档，档内任意**（两套并存不合并）③行内显示**最近活跃时间**
+  补偿 ④拖拽走**「编辑顺序」模式**（进入后长按即拖、退出即锁定；长按已被会话菜单占用）⑤位置编码用**整数大间距
+  1000 步长 + 取中值 + 耗尽整段归一化**（定点、无精度零头、耗尽时机可预测）。设计稿
+  `docs/design-conversation-manual-order.md`（含 5 处实现前待定项与 11 处 ORDER BY 的收敛要求、
+  已验证「Room 允许 ORDER BY 绑定参数且兼容 PagingSource」这一成本前提）。估时 1.5–2 天，排期另定。
 - 2026-10-04 深夜：**上游 #1991 两现象 + #1976 兜底落地**——①现象 B（编辑 AI 消息 → 新分支元信息全空）：
   `editMessage` 新建分支继承 `modelId`/`modelNameSnapshot`/`providerNameSnapshot`/`createdAt`，
   刻意不继承 `usage`/`finishReason`/`finishIncomplete`（描述被替换的那次生成，继承会把手改误报成模型产出）；
