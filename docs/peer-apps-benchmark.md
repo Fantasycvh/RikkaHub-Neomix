@@ -201,6 +201,29 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 `93f9e7f0` 检查点落库+统一未完成检测+自动续写——与 #1812/队列同域）；`0502e45d` 工具间过程解说
 并入思考折叠（UX 细节可借鉴）；`a045cbf9` 工具结果统一 JSON 契约（senera Observation 投影的轻量版）。
 
+## 四.7、Yuihub 压缩/半截/续写批次深评（2026-10-04，先不吸收）
+
+对照对象：`542a6762`（自动压缩开关+/压缩）、`499be973`（显式结束 vs 裸断流）、`93f9e7f0`（检查点落库+统一未完成检测+自动续写）、`3a721242`（手动压缩交互）。
+
+**结论：压缩批次无吸收点；真正值钱的是 499be973/93f9e7f0 揭示的 fork 三个缺口。**
+
+### A. 压缩批次——平级，无借鉴
+fork 09-13 的 harness 式自动压缩更早更全（检查点式/轨迹只追加/区域指纹失效/参数配置档/阈值与保留比可配）；手动压缩有配置档与「无可压缩」区分提示。Yuihub 是同域的简化实现。
+
+### B. **静默截断缺口（fork 实锤存在，最重要）**
+Yuihub `499be973`：只有收到**显式终止**（[DONE]/message_stop/response.completed）才算正常结束；连接提前关闭（裸 EOF——中转断流常态）标记 `UIMessage.finishIncomplete`，另加 `isOutputLimitTruncation()` 统一 length/MAX_TOKENS/max_output_tokens。
+**fork 现状（实测）**：所有 SSE provider 的 `onClosed → close()` **无异常正常收尾** ⇒ 裸断流被当正常结束——#1812 不触发（只接异常）、无横幅、无草稿、用户看到戛然而止的回答。且 UIMessage 不持久化 finishReason ⇒ 连「撞输出上限」都无法与正常结束区分。
+吸收方向：decoder 加 explicitEnd（四 provider SSE 监听记录显式结束，onClosed 无 explicitEnd ⇒ 标 incomplete）→ 上游先做「未完成」提示（省），自动续写另议。**中等工作量，跨 ai 模块四 provider。**
+
+### C. 检查点落库——fork 已知崩溃丢失缺口的现成方案
+fork 流式期间只走纯内存、落库点仅轮次结束/取消收尾（1b41b586 分析确认）⇒ **崩溃/杀进程丢半截内容**（#1812 只覆盖失败路径）。Yuihub 方案=onCheckpoint 回调（每 chunk 合并后，视觉转换后消息）+ 调用方节流 upsert **只动正在生成的节点**（不删其它）+ 崩溃后重进可见断点。fork 落地注意：①节流间隔（ANR 刚修，落库频率须节制）②与 #1812 的 NonCancellable 收尾合流 ③复用 updateMetadata/updateConversation 原语。
+
+### D. 自动续写——与 #1812 哲学冲突，建议拆开
+Yuihub：截断（length）与裸 EOF 注入续写提示（**复用我们刚落的 pendingRecoveryHint 通道**），上限 3 次，续写追加同一条消息 + `mergeTrailingAssistantTextParts`（防续写新建 Text part 导致 markdown 块空行——这个坑值得直接抄）。
+fork #1812 的既定哲学=「保留草稿 + 用户手动重试」（成本控制权在用户）。两者不互斥：**裸 EOF（网关问题非模型选择）自动续写合理；length 截断自动续写烧费风险高（长文可连烧 3 轮），宜提示+手动或可配置**。四分类提示（length/content_filter/裸 EOF/只思考）可补充我们刚落的空回复补救（当前只覆盖「只思考」）。
+
+**建议优先级**：B（静默截断，真缺口）> C（崩溃丢失，已知缺口有现成方案）> D（续写，跟 B/C 捆绑决策）。合计约 1–1.5 天。
+
 ## 五、落地顺序建议
 
 > **落地状态（2026-10-02 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；② 的 **ContextBudgetPlanner 已落地**（`c221be9a`），终端 URL 点击仍待做；③ LoopGuard/AgentRun 账本 **已落地**（`2452f665`/`f7d0c8e4`）；④ WifiLock **已落地**（`ee1c9736`）+ LoopGuard 已落地；⑤ 的 seed 迁移 + dry-run 审批 **已落地**（`23d42929`），**schema 三档缩水版仍待排期**；⑥⑦⑧ 见 §三 与 handoff §三（⑦ 记忆打分已落地 `69453f5e`，⑧ 记忆提取管道未立项）。
