@@ -305,6 +305,7 @@ fun ChatDrawerContent(
 
                 ConversationList(
                 current = current,
+                showLastActive = customOrderActive,
                 conversations = conversations,
                 conversationJobs = conversationJobs.keys,
                 listState = conversationListState,

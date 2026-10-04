@@ -82,6 +82,13 @@ fun ColumnScope.ConversationList(
     conversations: LazyPagingItems<ConversationListItem>,
     conversationJobs: Collection<Uuid>,
     listState: LazyListState,
+    /**
+     * 是否在行内显示「最近活跃」时间。
+     *
+     * 只在**自定义顺序**下为 true：那时日期分组头已被隐藏，这行小字是补偿；
+     * 自动模式下日期头已经把时间说清楚了，行内再显示一遍是重复噪音（真机截图确认）。
+     */
+    showLastActive: Boolean = false,
     modifier: Modifier = Modifier,
     onClick: (Conversation) -> Unit = {},
     onDelete: (Conversation) -> Unit = {},
@@ -159,7 +166,8 @@ fun ColumnScope.ConversationList(
                     ConversationItem(
                         conversation = item.conversation,
                         // 行内「最近活跃」：末尾消息 createdAt；旧数据无此列时退回 updateAt
-                        lastActiveAt = item.conversation.lastMessageAt ?: item.conversation.updateAt,
+                        lastActiveAt = (item.conversation.lastMessageAt ?: item.conversation.updateAt)
+                            .takeIf { showLastActive },
                         selected = item.conversation.id == current.id,
                         loading = item.conversation.id in conversationJobs,
                         onClick = onClick,
@@ -251,7 +259,7 @@ private fun PinnedHeader(
 @Composable
 private fun ConversationItem(
     conversation: Conversation,
-    lastActiveAt: Instant,
+    lastActiveAt: Instant?,
     selected: Boolean,
     loading: Boolean,
     modifier: Modifier = Modifier,
@@ -298,15 +306,17 @@ private fun ConversationItem(
             )
             Spacer(Modifier.weight(1f))
 
-            // 「最近活跃」时间（设计稿 §一.3）：自定义顺序下 update_at 不再决定顺序，
-            // 这行小字补偿"最近聊过哪条"的信息；自动顺序下只是把已有信息显式化。
-            Text(
-                text = lastActiveLabel(lastActiveAt),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 8.dp)
-            )
+            // 「最近活跃」时间（设计稿 §一.3）：仅自定义顺序下显示——那时日期分组头被隐藏，
+            // 这行小字补偿"最近聊过哪条"；自动模式下日期头已表达同样信息，行内重复是噪音。
+            if (lastActiveAt != null) {
+                Text(
+                    text = lastActiveLabel(lastActiveAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
 
             // 置顶图标
             AnimatedVisibility(conversation.isPinned) {
