@@ -175,6 +175,32 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 - **models.dev 目录匹配**（`ecaca331`，~1000 行含 fixture 测试）：按 modelId 自动补全 contextLength/能力/图标——可作 fork 手工 ModelRegistry 的兜底源。
 - **附件注入「封面先行」+ 放开类型白名单**（`bee1dd38`）、**workspace 写入冲突检测 mtime**（`f91d3b16`，与 edit_file dry-run 互补的 TOCTOU 维度）→ **✅ 已落地（2026-10-02，write_file expectedMtimeMs/force + read_file 输出 mtime 闭环）**、**release 体积 31.7→23.1MB 清理**（`7b8c918a`，其手段=砍功能，fork 未评估）。
 
+## 四.6、Yuihub 备份体系对照（2026-10-04，`36b719ef`/`34f1a976`/`3eddec42`/`47e7dfaf`）
+
+**真缺口（fork 核实）**：
+1. **生成的图片不进备份**——fork `BackupItem.FILES` 只含 UPLOAD/FONTS/SKILLS，而
+   `FilesManager.getImagesDir()` = `filesDir/images`（生成图片落这里）⇒ 恢复后消息图片全裂
+   （与 Yuihub 修的「DB 记录还在文件丢了」同款）。修法=FileFolders.IMAGES + 打包/恢复/预检三处。
+2. **目录清单三处手列**——`collectBackupInputs` / `addAppFilesToZip` / restore 分支各自枚举目录，
+   新增目录漏一处即静默不备份。抄 `BACKED_UP_FILE_FOLDERS` 常量 + CoverageTest（断言与 FileFolders
+   声明一一对应，漂移即测试红）。1+2 可合并一批。
+3. **staged DB 缺 integrity_check**——swap 前对暂存主库跑 `PRAGMA integrity_check`，不过则中止
+   （旧格式/外来备份兜底）。~30min。
+
+**已有/不吸收**：
+- 旧格式备份残留 WAL 清理、tool_outputs zip-slip canonicalPath 边界校验——fork 均已有（09-15 修复 + restoreFlatEntry 现行实现）。
+- **PendingRestoreStore（恢复续传）**：完整解「恢复中被杀→半途库」。fork 暴露面更小（重命名原子换入、
+  失败保留旧库；.restore-tmp 留 dbDir 不碍 Room），残余窗口=清 sidecar 与 moveIntoPlace 之间被杀丢
+  最近未 checkpoint 尾部——**可选低优先**，重构面大（启动期检测要在 startKoin 之前）。
+- **RikkaHubImporter 列名交集搬运**：Yuihub 因 schema 分叉（上游≤25/其 36）才需要；fork 是上游迁移链
+  超集，文件级替换+Room 迁移本就工作——不适用。
+- **自动备份**（默认关/WorkManager/仅留最新一份 auto_backup/）：功能方向可取，中等工作量，按需立项。
+
+**其他新提交简评（10-03/04）**：压缩批次（`542a6762` 开关+/压缩 手动压缩——fork 09-13 已有；
+`499be973` 区分显式结束与裸断流、统一输出截断检测——与我们半截草稿/tool 截断同域可细看；
+`93f9e7f0` 检查点落库+统一未完成检测+自动续写——与 #1812/队列同域）；`0502e45d` 工具间过程解说
+并入思考折叠（UX 细节可借鉴）；`a045cbf9` 工具结果统一 JSON 契约（senera Observation 投影的轻量版）。
+
 ## 五、落地顺序建议
 
 > **落地状态（2026-10-02 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；② 的 **ContextBudgetPlanner 已落地**（`c221be9a`），终端 URL 点击仍待做；③ LoopGuard/AgentRun 账本 **已落地**（`2452f665`/`f7d0c8e4`）；④ WifiLock **已落地**（`ee1c9736`）+ LoopGuard 已落地；⑤ 的 seed 迁移 + dry-run 审批 **已落地**（`23d42929`），**schema 三档缩水版仍待排期**；⑥⑦⑧ 见 §三 与 handoff §三（⑦ 记忆打分已落地 `69453f5e`，⑧ 记忆提取管道未立项）。
