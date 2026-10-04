@@ -902,6 +902,29 @@ data class ApiKeyEntry(
   不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
   **2026-10-04 真机验证通过（用户确认，日志取证）**：备份→恢复全链 `images/` 4 张逐条 Restored
   （含中文/特殊字符文件名）、`staged db integrity check ok`、`completed` 无异常。
+- 2026-10-04 深夜：**会话「自定义顺序」批 3b 落地 + 真机抓到并修掉三个缺陷**——批 1（schema + 排序单点
+  `CONVERSATION_ORDER_BY`）/ 批 2（档内位置值读写 + 档位变动决策表）/ 批 3a（行内最近活跃时间 + 自定义顺序下
+  隐藏日期分组头 + 置顶提醒）之后，批 3b 补齐「编辑顺序」模式：`EditConversationOrderList.kt`（进入后长按即拖、
+  头部 编辑顺序 / 恢复默认顺序 / 完成 + 「置顶不改档内位置」常驻说明、**列表镜像当前视图**即未归类或选中文件夹、
+  档内拖动、松手才落库）、抽屉入口与复位确认框（`ChatDrawer.kt`）。**真机（小米 8 / A14，adb 驱动 + 拉库核对
+  `sort_order`）抓到三个缺陷，全部修掉**：
+  ①**首次拖动必崩**——`combine(customOrderActive)` 用**同一个** PagingData 重新包一层
+  ⇒ `PageFetcherSnapshot.pageEventFlow` 二次收集（`IllegalStateException: Attempt to collect twice from
+  pageEventFlow`；**与漏 `cachedIn` 无关**，它一直在末尾）；改为把标志并入 `flatMapLatest` 的 key
+  （变化即新建 Pager = 新快照），并加 `PagingFlowGuardsTest` 钉住「包装 PagingData 只能出现在创建 Pager 的
+  `flatMapLatest` 内」。**危险面**：标志 false→true 是每个自定义顺序用户第一次拖动的必经路径。
+  ②**拖动总是差一位 / 拖到最末跳到最前**——`applyManualOrder` 把 `afterId` 当「插在它之后」，而它的语义是
+  「拖完后应**排在移动项之后**」⇒ 必须插到它**前**面；`next == null`（末尾）此前归到 `Top`，现在归 `Bottom`。
+  两段逻辑下沉为纯函数 `desiredTierOrder` / `placementOf` 并加单测（`ConversationOrderingTest` +6）。
+  ③**空拖白写整档**——`onDragStopped` 无条件落库，长按未挪动也会把整档物化一次；改为比对拖动起点快照，
+  只有顺序真的变了才写（`onMove` 原用 `it.id.toString() == from.key` 定位——`Uuid` **对象**永不等于字符串，
+  换成 Lazy 列表下标）。加 `EditOrderMoveGuardsTest`（含 `computeReorder` 的档内/越界/原地判定）。
+  **验证**：app 单测 **1226** 全绿；真机 rank1→rank0、rank31→rank32（值 `1033000` = 末尾追加）**精确落位**、
+  复位回自动顺序并恢复日期头、**两档编号空间互不干扰**（用户手动验证：未置顶档复位成 0 行时置顶档仍保留自己的
+  6 个值），全流程零 FATAL。
+  **教训**：`PagingData` 的「单次可收集」是硬约束——任何非分页信号（排序标志、筛选开关）都只能作为
+  **Pager 的 key** 参与，不能对已有 PagingData 再套一层；同理，`from.key` 是 **LazyList 的 key 对象**而不是字符串，
+  比较前必须换成同类型（这里直接用下标）。两者都不是编译期能发现的错。
 - 2026-10-04：**v1.0.21 草稿资产重建（283→284，版本名不变）**——bump `51119dc0`（**先 push**）→
   清 outputs → release 构建 → aapt 核实 `versionCode=284`/`1.0.21`/arm64 → release 装机冒烟零 FATAL
   （tokenizer `ok=true vocab=100256 in 1219ms`）→ 资产替换 + PATCH target=`51119dc0`（**v1.0.17 教训

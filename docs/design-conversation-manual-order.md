@@ -65,3 +65,28 @@
 - 估时：**1.5–2 天**（含迁移、排序中心化、拖拽模式、归一化与护栏测试、真机验证）。
 - 主要风险不在代码，而在**语义**：顺序由用户掌控后，"新消息把会话顶上来"这一默认直觉消失 ⇒ 靠 §一.1（新会话顶部最前）+ §一.3（行内末尾消息时间）两处补偿；「恢复默认顺序」是兜底退路。
 - 交互风险：长按已用于会话菜单（`ExpressivePopup`：置顶 / 重新生成标题）⇒ 拖拽必须走「编辑顺序」模式，**不能**直接绑长按，否则两者冲突（这是 §一.4 的由来）。
+
+## 七、落地回填（批 1–3b 已实现 + 真机教训）
+
+落地顺序与 §五一致：批 1 schema（DB 32→33，`AutoMigration`）+ 排序单点 `CONVERSATION_ORDER_BY`（13 处收敛，
+`ConversationSchemaGuardsTest` 护栏）；批 2 档内位置值读写 + 档位变动决策表；批 3a 行内最近活跃时间 + 自定义顺序下
+隐藏日期分组头 + 置顶提醒；批 3b「编辑顺序」模式 + 抽屉入口 + 复位。真机（小米 8 / A14）驱动验证时踩到并修正了
+下列**实现约束**，它们比设计稿里写的更硬：
+
+1. **`PagingData` 只能被收集一次**——「是否自定义顺序」这个非分页标志**必须**作为 `flatMapLatest` 的 key 参与，
+   变化时新建 Pager（新 `PagingSource`／新快照）。写成 `flatMapLatest{ Pager }.combine(flag).map{ 再包一层 separators }`
+   会对同一个 `PagingData` 二次收集 `pageEventFlow` ⇒ 首次拖动（标志 false→true，**每个用户必经**）当帧崩溃
+   `IllegalStateException: Attempt to collect twice from pageEventFlow`。护栏：`PagingFlowGuardsTest`。
+2. **`afterId` 的语义是「拖完后应排在移动项之后」**⇒ 插回时插到它**前面**（写反会让每次拖动整体差一位）；
+   只有 `beforeId` 时插到它**后面**；拖到档位最末必须落 `OrderPlacement.Bottom`（写成 `Top` 会拿到最前的位置值、
+   松手跳到首位）。锚点与落点都下沉为纯函数 `desiredTierOrder` / `placementOf`，由 `ConversationOrderingTest` 钉住。
+3. **空拖不写库**：`onDragStopped` 必须比对「拖动起点的顺序快照」，只有真的换位才落库；否则长按即把整档物化一次
+   （真机表现为「没换位但 33 行都有了 `sort_order`」）。同时 `onMove` 要用 Lazy 列表**下标**定位——
+   `from.key` 是 `Uuid` **对象**，与 `it.id.toString()` 永不相等（换位会静默失效）。护栏：`EditOrderMoveGuardsTest`。
+4. **编辑模式列表镜像当前视图**：非分页轻量查询带 `folder_id` 条件（空串 = 未归类），否则用户在文件夹里点
+   「编辑顺序」会看到另一批会话；非分页是拖拽的硬需求（分页缺项时算出的邻居是错的）。
+5. **行内时间要兜底**：`last_message_at` 是本次新增列，历史会话全是 NULL ⇒ UI 用 `lastMessageAt ?: updateAt`，
+   且只在自定义顺序下显示（自动模式已有日期头，重复显示是噪音——真机截图确认）。
+6. 真机验证口径：`adb` 手势必须**先长按再缓移**（`input draganddrop` / 快速 `motionevent` 都触发不了长按拖拽，
+   `input swipe x y1 y2 <≥3000ms>` 这种前 500ms 位移小于触摸阈值的慢速滑动才有效）；核对结果直接拉
+   `rikka_hub`（注意库名不是 `rikkahub.db`，且要一并拉 `-wal`）比对 `sort_order` 与 `update_at` 的秩差。
