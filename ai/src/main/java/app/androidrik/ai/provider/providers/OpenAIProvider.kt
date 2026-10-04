@@ -6,6 +6,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.putJsonObject
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -42,6 +46,7 @@ import app.androidrik.common.http.jsonObjectOrNull
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MultipartBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -53,6 +58,59 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 private const val TAG = "OpenAIProvider"
+
+/**
+ * 该 baseUrl 是否指向 OpenRouter。
+ *
+ * 为什么按 **host 精确相等**判定（而不是 contains/后缀）：后缀匹配会把
+ * `openrouter.ai.evil.com`、`notopenrouter.ai` 一并命中，而前缀匹配会漏掉带端口的写法
+ * （`toHttpUrlOrNull().host` 本身已剥掉端口）。与上游 `85af5b91` 的判定一致。
+ */
+/**
+ * 图片文件的 MIME：仅按扩展名推断（三家图片接口都只接受这几类）。
+ * 顶层 internal：既供 provider 内的 multipart 上传用，也供 [buildOpenRouterEditBody] 拼 data URL 用。
+ */
+internal fun File.imageMediaType(): String = when (extension.lowercase()) {
+    "jpg", "jpeg" -> "image/jpeg"
+    "webp" -> "image/webp"
+    else -> "image/png"
+}
+
+internal fun isOpenRouter(baseUrl: String): Boolean =
+    baseUrl.toHttpUrlOrNull()?.host?.lowercase() == "openrouter.ai"
+
+/**
+ * OpenRouter 图片编辑的请求体：走生成端点，参考图以 base64 data URL 放进 `input_references`。
+ *
+ * 抽成独立函数便于单测（MockWebServer 无法伪装 host，无法从 wire 侧覆盖该分支）。
+ */
+internal fun buildOpenRouterEditBody(
+    params: ImageEditParams,
+    json: Json = Json,
+): JsonObject = buildJsonObject {
+    put("model", params.model.modelId)
+    put("prompt", params.prompt)
+    put("n", params.numOfImages)
+    // 与生成/编辑两条既有路径同约定：`auto` 不写进请求体
+    if (shouldSendImageSize(params.size, isGrok = false)) {
+        put("size", params.size)
+    }
+    putJsonArray("input_references") {
+        params.images.forEach { path ->
+            val imageFile = File(path)
+            require(imageFile.exists()) { "Image file does not exist: $path" }
+            addJsonObject {
+                put("type", "image_url")
+                putJsonObject("image_url") {
+                    put(
+                        "url",
+                        "data:${imageFile.imageMediaType()};base64," + Base64.encode(imageFile.readBytes()),
+                    )
+                }
+            }
+        }
+    }
+}.mergeCustomBody(params.customBody)
 
 /**
  * New API 的管理接口（/api/...）挂在站点根路径，不在 OpenAI 兼容的 /v1 下。
@@ -334,6 +392,14 @@ class OpenAIProvider(
         }
 
         val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
+
+        // OpenRouter 没有 /images/edits（打过去必 404）：参考图改由生成接口的
+        // `input_references`（base64 data URL）传入 —— 对齐上游 `85af5b91`（#1993）。
+        if (isOpenRouter(providerSetting.baseUrl)) {
+            editImageWithInputReferences(providerSetting, params, key).forEach { emit(it) }
+            return@flow
+        }
+
         val bodyBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("model", params.model.modelId)
@@ -388,6 +454,37 @@ class OpenAIProvider(
         items.forEach { emit(it) }
     }
 
+    /**
+     * OpenRouter 的图片编辑：走 `/images/generations` + `input_references`（上游 `85af5b91` / #1993）。
+     *
+     * 为什么不是 multipart：OpenRouter 只实现生成端点，参考图以 **base64 data URL** 数组随 JSON 传入。
+     * 尺寸沿用「auto 不写进请求体」的既有约定（与生成/编辑两条路径一致）。
+     */
+    private suspend fun editImageWithInputReferences(
+        providerSetting: ProviderSetting.OpenAI,
+        params: ImageEditParams,
+        key: String,
+    ): List<ImageGenerationItem> {
+        val requestBody = json.encodeToString(JsonObject.serializer(), buildOpenRouterEditBody(params = params, json = json))
+
+        val request = Request.Builder()
+            .url("${providerSetting.baseUrl}/images/generations")
+            .addHeader("Authorization", "Bearer $key")
+            .addHeader("Content-Type", "application/json")
+            .post(requestBody.toRequestBody("application/json".toMediaType()))
+            .configureReferHeaders(providerSetting.baseUrl)
+            .applyCustomHeaders(providerSetting, params.customHeaders)
+            .build()
+
+        return withContext(Dispatchers.IO) {
+            val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
+            if (!response.isSuccessful) {
+                error("Failed to edit image: ${response.code} ${response.body?.string()}")
+            }
+            parseImageResponse(response.body.string())
+        }
+    }
+
     private suspend fun parseImageResponse(bodyStr: String): List<ImageGenerationItem> {
         val body = json.parseToJsonElement(bodyStr).jsonObject
         val defaultFormat = body["output_format"]?.jsonPrimitive?.contentOrNull ?: "png"
@@ -429,12 +526,6 @@ class OpenAIProvider(
             data = base64,
             mimeType = mimeType
         )
-    }
-
-    private fun File.imageMediaType(): String = when (extension.lowercase()) {
-        "jpg", "jpeg" -> "image/jpeg"
-        "webp" -> "image/webp"
-        else -> "image/png"
     }
 
     private fun String.toImageMimeType(): String = when (lowercase()) {

@@ -46,7 +46,16 @@ data class GeneratedImage(
 
 private fun GenMediaEntity.toGeneratedImage(filesManager: FilesManager): GeneratedImage {
     val imagesDir = filesManager.getImagesDir()
-    val fullPath = File(imagesDir, this.path.removePrefix("images/")).absolutePath
+    val name = this.path.removePrefix("images/")
+    val file = File(imagesDir, name)
+    // 旧版本把含 "/" 的模型名（OpenRouter 的 `vendor/model`）直接拼进文件名 ⇒ 文件实际落在
+    // 子目录 `images/<时间戳>_<vendor>/<name>`，而记录只存了最后一段。此处按旧形态回退查找，
+    // 让这些老图重新可见（对齐上游 `85af5b91`；写入侧已改为先清洗，见 [toFileNamePart]）。
+    val fullPath = if (file.exists() || '/' !in modelId) {
+        file.absolutePath
+    } else {
+        File(imagesDir, "${createAt}_${modelId.substringBeforeLast('/')}/$name").absolutePath
+    }
 
     return GeneratedImage(
         id = this.id,
@@ -56,6 +65,13 @@ private fun GenMediaEntity.toGeneratedImage(filesManager: FilesManager): Generat
         model = this.modelId
     )
 }
+
+/**
+ * 文件名安全化：模型名可能含 `/`（OpenRouter 的 `vendor/model`）等**路径分隔与保留字符**，
+ * 直接拼进文件名会让产物落进子目录（而记录只存文件名 ⇒ 图裂）。
+ * 对齐上游 `85af5b91` 的字符集。
+ */
+private fun String.toFileNamePart(): String = replace(Regex("""[\\/:*?"<>|]"""), "_")
 
 class ImgGenVM(
     context: Application,
@@ -290,7 +306,7 @@ class ImgGenVM(
         index: Int,
     ): File {
         val timestamp = System.currentTimeMillis()
-        val imageFile = File(getApplication<Application>().appTempFolder, "imggen_${timestamp}_${modelName}_$index.png")
+        val imageFile = File(getApplication<Application>().appTempFolder, "imggen_${timestamp}_${modelName.toFileNamePart()}_$index.png")
         return filesManager.createImageFileFromBase64(item.data, imageFile.absolutePath)
     }
 
@@ -305,7 +321,9 @@ class ImgGenVM(
         val imagesDir = filesManager.getImagesDir()
 
         val timestamp = System.currentTimeMillis()
-        val filename = "${timestamp}_${modelName}_$index.png"
+        // 清洗模型名：含 "/" 时（OpenRouter `vendor/model`）裸拼会让文件落进子目录，而记录只存
+        // 文件名 ⇒ 图裂（上游 `85af5b91` / #1993）
+        val filename = "${timestamp}_${modelName.toFileNamePart()}_$index.png"
         val imageFile = File(imagesDir, filename)
 
         val createdFile = filesManager.createImageFileFromBase64(item.data, imageFile.absolutePath)
