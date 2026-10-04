@@ -348,8 +348,47 @@ class ConversationRepository(
         messageFtsManager.indexConversation(conversation)
     }
 
-    suspend fun deleteConversation(conversation: Conversation, deleteFiles: Boolean = true) {
-        // 获取完整的 Conversation（包含 messageNodes）以正确清理文件
+    /**
+     * 流式生成期间的**检查点落库**：只 upsert 正在生成的那**一个节点**，使进程被杀/崩溃后
+     * 重进会话仍能看到断点前的输出（此前流式内容只存在于内存，见 [saveMessageNodes] 的落库点）。
+     *
+     * 为什么不是复用 [updateConversation] / [saveMessageNodes]：
+     * - 后两者按「公共前缀」增量保存，需要先把**整会话所有节点**序列化一遍求签名。检查点每 2 秒
+     *   一次，长会话下这个代价远超收益；这里只序列化末尾一个节点、只写一行。
+     * - **不写 FTS 索引**：索引是整会话重建，每 2 秒重建一次不可接受；库内节点已最新，索引在
+     *   下一次正常保存（轮次结束）时补齐。进程若恰在生成中被杀，该会话暂不参与搜索，
+     *   下次任意交互即恢复——可接受的取舍。
+     *
+     * 语义约束（调用方保证）：[nodeIndex] 是**正在生成的那个节点**在 `conversation.messageNodes`
+     * 中的索引——它等于本次流回写的 `chunk.messages.lastIndex`（`updateCurrentMessages` 按索引映射），
+     * **不能假定它是 `messageNodes.lastIndex`**：`THIS_ONLY` scope 的重生成只改动中间节点，
+     * 其后仍有下游节点。节点 id 与已落库行一致（节点原地 `copy`）⇒ `@Insert(REPLACE)` 按主键
+     * 覆盖即 upsert，不需要前缀比对。
+     *
+     * 会话行尚不存在时（首条消息生成中）整会话落库——否则节点外键指向不存在的会话。
+     */
+    suspend fun checkpointGeneratingNode(conversation: Conversation, nodeIndex: Int) {
+        val node = conversation.messageNodes.getOrNull(nodeIndex) ?: return
+        database.withTransaction {
+            if (!conversationDAO.existsById(conversation.id.toString())) {
+                conversationDAO.insert(conversationToConversationEntity(conversation))
+                // 新会话：全部节点一并写入（只写变动节点会缺历史节点）
+                saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
+                return@withTransaction
+            }
+            messageNodeDAO.insert(
+                MessageNodeEntity(
+                    id = node.id.toString(),
+                    conversationId = conversation.id.toString(),
+                    nodeIndex = nodeIndex,
+                    messages = JsonInstant.encodeToString(node.messages),
+                    selectIndex = node.selectIndex,
+                )
+            )
+        }
+    }
+
+    suspend fun deleteConversation(conversation: Conversation, deleteFiles: Boolean = true) {        // 获取完整的 Conversation（包含 messageNodes）以正确清理文件
         val fullConversation = if (conversation.messageNodes.isEmpty()) {
             getConversationById(conversation.id) ?: conversation
         } else {

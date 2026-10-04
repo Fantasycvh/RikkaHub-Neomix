@@ -129,6 +129,15 @@ private const val TAG = "ChatService"
 private const val MAX_USER_INPUT_CHARS = 200_000
 
 /**
+ * 流式生成检查点的最小落库间隔。
+ *
+ * 为什么不每个 chunk 都落库：一个 chunk 一次事务在高速流（>50 chunk/s）下会把 IO 打满，
+ * 也是 ANR 风险（与上下文占用估算那次同类的「高频 × 单次成本」乘积问题）。2 秒是
+ * 「崩溃最多丢 2 秒内容」与「写放大可忽略」的折中。
+ */
+private const val STREAM_CHECKPOINT_INTERVAL_MS = 2_000L
+
+/**
  * 将压缩结果合并到最新会话状态，而不是用压缩开始时的快照整体覆盖。
  *
  * compressConversation 要跑多个 LLM 请求（长对话可达数十秒~数分钟），期间用户可能继续
@@ -997,6 +1006,9 @@ class ChatService(
         // 模型自带内置搜索时不注册外挂搜索（上游 #1666）：工具注册与「工具不可用」告警同口径
         val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
 
+        // 流式检查点节流时间戳（见 STREAM_CHECKPOINT_INTERVAL_MS）
+        var lastCheckpointAt = 0L
+
         runCatching {
 
             // reset suggestions
@@ -1119,6 +1131,20 @@ class ChatService(
                         val updatedConversation = getConversationFlow(conversationId).value
                             .updateCurrentMessages(chunk.messages)
                         updateConversation(conversationId, updatedConversation)
+
+                        // 流式检查点：节流落库（崩溃/被杀时不丢断点前的内容）。
+                        // 索引取本次回写的末位消息（= 生成中的那个节点，见 checkpointGeneratingNode）。
+                        // 失败只记日志——检查点是尽力而为的兜底，不能反过来打断生成。
+                        val now = System.currentTimeMillis()
+                        if (now - lastCheckpointAt >= STREAM_CHECKPOINT_INTERVAL_MS) {
+                            lastCheckpointAt = now
+                            runCatching {
+                                conversationRepo.checkpointGeneratingNode(
+                                    conversation = updatedConversation,
+                                    nodeIndex = chunk.messages.lastIndex,
+                                )
+                            }.onFailure { Log.w(TAG, "stream checkpoint failed", it) }
+                        }
 
                         // 通知等边缘副作用由 ChatNotificationManager 消费；
                         // tryEmit 不挂起，事件丢失只影响单次通知更新，不能反压生成链
