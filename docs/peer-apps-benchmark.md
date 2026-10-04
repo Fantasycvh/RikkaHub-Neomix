@@ -215,7 +215,7 @@ Yuihub `499be973`：只有收到**显式终止**（[DONE]/message_stop/response.
 **fork 现状（实测）**：所有 SSE provider 的 `onClosed → close()` **无异常正常收尾** ⇒ 裸断流被当正常结束——#1812 不触发（只接异常）、无横幅、无草稿、用户看到戛然而止的回答。且 UIMessage 不持久化 finishReason ⇒ 连「撞输出上限」都无法与正常结束区分。
 吸收方向：decoder 加 explicitEnd（四 provider SSE 监听记录显式结束，onClosed 无 explicitEnd ⇒ 标 incomplete）→ 上游先做「未完成」提示（省），自动续写另议。**中等工作量，跨 ai 模块四 provider。**
 
-### C. 检查点落库——fork 已知崩溃丢失缺口的现成方案
+### C. 检查点落库——✅ 已落地（2026-10-04/05 B/C/D 批次：流式 2s 检查点/finishIncomplete/自动续写，见 roadmap）
 fork 流式期间只走纯内存、落库点仅轮次结束/取消收尾（1b41b586 分析确认）⇒ **崩溃/杀进程丢半截内容**（#1812 只覆盖失败路径）。Yuihub 方案=onCheckpoint 回调（每 chunk 合并后，视觉转换后消息）+ 调用方节流 upsert **只动正在生成的节点**（不删其它）+ 崩溃后重进可见断点。fork 落地注意：①节流间隔（ANR 刚修，落库频率须节制）②与 #1812 的 NonCancellable 收尾合流 ③复用 updateMetadata/updateConversation 原语。
 
 ### D. 自动续写——与 #1812 哲学冲突，建议拆开
