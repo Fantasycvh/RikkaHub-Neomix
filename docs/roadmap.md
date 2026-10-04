@@ -832,6 +832,14 @@ data class ApiKeyEntry(
 
   - **✅ P1 收益实测（2026-10-02 真机，同一会话 `glm-4.5-air`/智谱）**：稳态 **99–100%**（6.4K/6.4K → 6.5K/6.4K → 6.6K/6.6K）；**写入一条记忆后 72%**（6.9K 中 5.0K 命中）；下一轮恢复 **99%**（7.0K/6.9K）。**失效范围＝记忆块之后的一切**（由缓存量 5.0K ≈ 工具 schema 4.3K + 人设 0.6K 反推序列 `工具 → 人设 → 记忆 → 引导 → 历史`）⇒ 记忆一变，**其后整段历史重算**；本次历史仅 ~1.9K 故只掉 28%。**放大规律（推断）**：失效量 ≈ 历史长度 ⇒ 5 万 token 会话里一次记忆写入≈5 万 token 重算，而记忆是模型主动写的（成本按 会话长度 × 写入次数）。**做法精确化**＝把记忆注入从 system 块挪到历史之后（尾部合成消息，照压缩检查点先例）；**未做**长会话实测。附带发现：工具 schema（最大固定块）在可变部分之前长期保住，且人设+工具跨会话命中（首轮即 100%）。
 
+- 2026-10-04：**v1.0.21 草稿资产重建（283→284，版本名不变）**——bump `51119dc0`（**先 push**）→
+  清 outputs → release 构建 → aapt 核实 `versionCode=284`/`1.0.21`/arm64 → release 装机冒烟零 FATAL
+  （tokenizer `ok=true vocab=100256 in 1219ms`）→ 资产替换 + PATCH target=`51119dc0`（**v1.0.17 教训
+  直接执行**：同 tag 原地重建必须同步钉 target）→ **df0d1069 的坑现场复现**：GET 发现 tag_name 已是
+  `untagged-98fdca…`（notes 编辑重置），PATCH 回 `v1.0.21` 并独立 GET 复核。资产 **77,614,131 字节**、
+  digest `sha256:e43044a4…` 与本地一致。**本版内容增量（自 283 资产）**：strict=false（#1990 chart_display）、
+  空回复补救+写入冲突检测、Claude 思考链加固（redacted_thinking/无签名丢弃）、Response API 补插去 id、
+  rootfsFileMtime 漏提交补交。
 - 2026-10-03：**发布草稿 v1.0.21 (283)**——用户「发一版新草稿」。**起止范围**：上一版资产 `v1.0.20 (282)` 建于 bump `f26c5ad5`，其后落地的**用户可见改动 4 项**即本版内容：①**计划（todo_write）工具 + 输入栏上方计划细条**（`91c1d844`：AI 可列多步清单并逐步推进，细条可展开，计划不渲染进正文/导出）②**空回复补救 + workspace 写入冲突检测**（`446a40c8`：只思考不回复时注入一次性 `<recovery_note>` 重试；`write_file` 的 `expectedMtimeMs/force` 防并行双写静默覆盖）③**备份 VACUUM INTO 快照 + 二进制误写防护 + 工具参数三层降级**（`29a9cae0`）④**MCP schema 展开的极端场景对齐上游**（`651815b7`：循环引用截断保留 type + 任意 `#/` 指针）。
   - **发布前拦到一个真问题：HEAD 编译不过**——`446a40c8` 只提交了调用方（`WorkspaceRepository.rootfsFileMtime`、`WorkspaceTools` 两处），**漏提交实现**（`WorkspaceManager.rootfsFileMtime`）。它在工作区里以「未提交的 7 行」存在，看起来像别人的 WIP，实际是已提交功能缺的那一半（`git show HEAD:…WorkspaceManager.kt | grep -c rootfsFileMtime` = 0）。已由 `3a7c4075` 补上（先验 `:workspace:compileDebugKotlin :app:compileDebugKotlin` 通过再提交）。**教训**：发布前应把「HEAD 能否编译」当成前置检查项，而不是默认工作区能编就等于提交能编。
   - **流程**：清 `app/release/` 与 `app/build/outputs/apk/release/` 旧产物 → bump `0d120ab6`（282→283、1.0.20→1.0.21）→ **push** → release 构建（**5m19s**，396 tasks）→ aapt2 核实 `versionCode=283` / `1.0.21` / **仅 arm64-v8a**（**77,614,119 字节**）→ **release 装机冒烟零 FATAL**（进程存活）→ 建 draft（`--target` 钉 bump 完整 SHA `0d120ab6432e1b977a0916c9d7360e98452d6956`，title `v1.0.21 (283)`，双语 6 条说明）→ 上传资产 → **字节级校验：服务端 digest `sha256:ff4d604e…` == 本地 sha256**（走 `gh api … /releases/<id>` 的 digest，未下载）→ README 改为「正式 `v1.0.20` ｜ 草稿 `v1.0.21`」。release id `402279711`（draft）。**待用户转正**。
