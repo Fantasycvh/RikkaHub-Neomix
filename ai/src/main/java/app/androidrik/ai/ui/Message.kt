@@ -34,6 +34,23 @@ data class UIMessage(
     val providerNameSnapshot: String? = null,
     val usage: TokenUsage? = null,
     val translation: String? = null,
+    /**
+     * 本轮输出的 `finish_reason`（provider 原样值，如 `stop` / `length` / `MAX_TOKENS` /
+     * `content_filter` / `SAFETY`）。`"unknown"` 是 chat/completions 侧「字段缺失」的既有占位，
+     * 一律归一成 null（见 [GenerationHandler][app.androidrik.rikkahub.data.ai.GenerationHandler]）。
+     *
+     * 持久化（`MessageNodeEntity.messages` 是 JSON blob、反序列化开了 ignoreUnknownKeys，
+     * 新增字段带默认值 ⇒ 零迁移）：用户看到的「这条回复为什么被截断」在重启后仍可解释。
+     */
+    val finishReason: String? = null,
+    /**
+     * **裸断流**标记：本轮流**没有**收到显式结束标记就关流了（网关/中转提前切连接），
+     * 内容多半不完整。与 [finishReason] 正交——后者是 provider 表态，前者是「provider 根本没表态」。
+     *
+     * 语义是「**最后一次**流的结束状态」：续写成功后会被覆写回 false，故不需要额外的注解来
+     * 清除提示（详见 `docs/peer-apps-benchmark.md` §四.7）。
+     */
+    val finishIncomplete: Boolean = false,
     // 请求期间生成的内部消息；该标记仅在内存中使用
     @Transient
     val isSynthetic: Boolean = false,
@@ -688,12 +705,61 @@ fun <T> List<T>.migrateToolNodes(
     return result
 }
 
+/**
+ * 输出是否因 **token 上限**被截断（「模型说到一半被上限掐断」，非网关断流）。
+ *
+ * 三家 provider 各自命名 + 常见中转别名：OpenAI chat/completions 用 `length`，
+ * Anthropic 用 `max_tokens`，Responses API 用 `max_output_tokens`，Google 用 `MAX_TOKENS`，
+ * 部分兼容层写作 `token_limit`。统一在此判定，避免各调用点各写一份字符串比较而漂移。
+ */
+fun isOutputLimitTruncation(finishReason: String?): Boolean = when (finishReason?.lowercase()) {
+    "length", "max_tokens", "max_output_tokens", "token_limit" -> true
+    else -> false
+}
+
+/**
+ * 输出是否被**内容安全策略**掐断（OpenAI `content_filter`、Anthropic `refusal`、
+ * Google `SAFETY` / `PROHIBITED_CONTENT` / `RECITATION` / `BLOCKLIST` / `SPII`）。
+ *
+ * 语义上与 [isOutputLimitTruncation] 不同：**续写通常无意义**（同一内容会再次被拦），
+ * 故 UI 只提示不提供「继续生成」。
+ */
+fun isContentFilterTruncation(finishReason: String?): Boolean = when (finishReason?.uppercase()) {
+    "CONTENT_FILTER", "REFUSAL", "SAFETY", "PROHIBITED_CONTENT", "RECITATION", "BLOCKLIST", "SPII" -> true
+    else -> false
+}
+
 @Serializable
 data class MessageChunk(
     val id: String,
     val model: String,
     val choices: List<UIMessageChoice>,
     val usage: TokenUsage? = null,
+    /**
+     * **显式结束**标记：provider 明确告知本轮输出已完结（`[DONE]` / `message_stop` /
+     * `response.completed` / 带 `finishReason` 的末块）。
+     *
+     * 为什么需要：各家 SSE 的「正常结束」与「连接被提前关闭」在**流层面无法区分**——
+     * 两者都只是 `close()`，下游一律当成功收尾。中转站断流（裸 EOF）因此被静默吞掉：
+     * 用户看到戛然而止的回答，既没有提示也无法自动续写（见 [UIMessage.finishIncomplete]）。
+     *
+     * 约定：`explicitEnd = true` 的 chunk 只作标记用，`choices` 为空、`id`/`model` 无意义，
+     * 消费方（[handleMessageChunk]）对空 choices 原样返回、不产生副作用。
+     */
+    val explicitEnd: Boolean = false,
+)
+
+/**
+ * 流终止标记：唯一的 `explicitEnd = true` 空 chunk。
+ *
+ * provider 在**显式结束**处发送它，随后关流；`onClosed`（无显式结束）则不发 ⇒ 消费方
+ * 据「流结束了但没见到标记」判定裸断流。见 [MessageChunk.explicitEnd]。
+ */
+fun terminalChunk(): MessageChunk = MessageChunk(
+    id = "",
+    model = "",
+    choices = emptyList(),
+    explicitEnd = true,
 )
 
 @Serializable

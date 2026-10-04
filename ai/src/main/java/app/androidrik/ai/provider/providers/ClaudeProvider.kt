@@ -37,6 +37,7 @@ import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.ai.ui.terminalChunk
 import app.androidrik.ai.ui.ImageGenerationItem
 import app.androidrik.ai.ui.MessageChunk
 import app.androidrik.ai.ui.UIMessage
@@ -227,6 +228,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 when (type) {
                     "message_stop" -> {
                         Log.d(TAG, "Stream ended")
+                        trySend(terminalChunk())
                         close()
                     }
 

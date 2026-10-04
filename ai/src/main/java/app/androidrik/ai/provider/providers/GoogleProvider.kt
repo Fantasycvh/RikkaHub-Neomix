@@ -42,6 +42,7 @@ import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.providers.vertex.ServiceAccountTokenProvider
 import app.androidrik.ai.registry.ModelRegistry
+import app.androidrik.ai.ui.terminalChunk
 import app.androidrik.ai.ui.GoogleThoughtMetadata
 import app.androidrik.ai.ui.MessageChunk
 import app.androidrik.ai.ui.ServerToolStatus
@@ -301,6 +302,15 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
 
                     trySend(messageChunk).onFailure { e ->
                         Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                    }
+
+                    // Gemini 的流没有独立终止事件：带 finishReason 的末块即「显式结束」
+                    // （STOP / MAX_TOKENS / SAFETY 等）。缺它而连接关闭 = 裸断流，
+                    // 下游据「没见到标记」判定（见 MessageChunk.explicitEnd）。
+                    if (messageChunk.choices.any { !it.finishReason.isNullOrBlank() }) {
+                        trySend(terminalChunk()).onFailure { e ->
+                            Log.w(TAG, "onEvent: terminal marker dropped (${e?.message})")
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()

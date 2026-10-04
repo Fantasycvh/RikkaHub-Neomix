@@ -38,6 +38,7 @@ import app.androidrik.ai.provider.providers.PartGroup
 import app.androidrik.ai.util.ensureArrayItems
 import app.androidrik.ai.provider.providers.groupPartsByToolBoundary
 import app.androidrik.ai.registry.ModelRegistry
+import app.androidrik.ai.ui.terminalChunk
 import app.androidrik.ai.ui.MessageChunk
 import app.androidrik.ai.ui.OpenAIReasoningMetadata
 import app.androidrik.ai.ui.UIMessage
@@ -151,6 +152,7 @@ class ResponseAPI(
                 data: String
             ) {
                 if (data == "[DONE]") {
+                    trySend(terminalChunk())
                     close()
                     return
                 }
@@ -165,6 +167,7 @@ class ResponseAPI(
                     }
                 }
                 if (type == "response.completed") {
+                    trySend(terminalChunk())
                     close()
                 }
             }

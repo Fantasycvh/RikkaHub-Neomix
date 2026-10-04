@@ -41,6 +41,7 @@ import app.androidrik.ai.provider.providers.PartGroup
 import app.androidrik.ai.util.ensureArrayItems
 import app.androidrik.ai.provider.providers.groupPartsByToolBoundary
 import app.androidrik.ai.registry.ModelRegistry
+import app.androidrik.ai.ui.terminalChunk
 import app.androidrik.ai.ui.MessageChunk
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
@@ -171,6 +172,8 @@ class ChatCompletionsAPI(
             ) {
                 if (data == "[DONE]") {
                     println("[onEvent] (done) 结束流: $data")
+                    // 显式结束标记：下游据此区分「正常收尾」与「裸断流」（见 MessageChunk.explicitEnd）
+                    trySend(terminalChunk())
                     close()
                     return
                 }

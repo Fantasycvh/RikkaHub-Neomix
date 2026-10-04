@@ -839,18 +839,30 @@ class GenerationHandler(
             ) { provider ->
                 // 快照：流中途失败时回滚已输出的部分内容，重试从干净状态重新生成
                 val snapshot = messages
+                // 流结束语义（见 MessageChunk.explicitEnd）：本次流是否见到 provider 的显式结束标记。
+                // 没有 = 裸断流（网关/中转提前切连接）——此前与「正常收尾」无法区分，整轮被当成功。
+                var sawExplicitEnd = false
+                var finishReason: String? = null
                 try {
                     providerImpl.streamText(
                         providerSetting = provider,
                         messages = internalMessages,
                         params = params
-                    ).collect {
+                    ).collect { chunk ->
+                        if (chunk.explicitEnd) {
+                            sawExplicitEnd = true
+                            return@collect
+                        }
+                        // "unknown" 是 chat/completions 解析层「字段缺失」的占位，归一成 null
+                        chunk.choices.firstOrNull()?.finishReason
+                            ?.takeIf { it.isNotBlank() && it != "unknown" }
+                            ?.let { finishReason = it }
                         messages = messages.handleMessageChunk(
-                            chunk = it,
+                            chunk = chunk,
                             model = model,
                             providerName = provider.name,
                         )
-                        it.usage?.let { usage ->
+                        chunk.usage?.let { usage ->
                             messages = messages.mapIndexed { index, message ->
                                 if (index == messages.lastIndex) {
                                     message.copy(usage = message.usage.merge(usage))
@@ -861,6 +873,17 @@ class GenerationHandler(
                         }
                         onUpdateMessages(messages)
                     }
+                    // 流正常收尾：把「结束状态」写到末尾助手消息上（裸断流也会走到这里，
+                    // 区别只在 sawExplicitEnd）。续写成功会再次覆写，故不需要额外的清除逻辑。
+                    messages = messages.markLastFinish(finishReason, incomplete = !sawExplicitEnd)
+                    if (!sawExplicitEnd) {
+                        Log.w(
+                            TAG,
+                            "stream ended without explicit terminator (bare EOF)" +
+                                " — content may be truncated (finishReason=$finishReason)"
+                        )
+                    }
+                    onUpdateMessages(messages)
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
                     val plan = provider.retryOption ?: settings.retrySetting
@@ -906,6 +929,12 @@ class GenerationHandler(
                             }
                         }
                     }
+                    // 非流式：整包返回（要么完整要么抛错）⇒ 不存在裸断流，只记 finish_reason
+                    messages = messages.markLastFinish(
+                        reason = chunk.choices.firstOrNull()?.finishReason
+                            ?.takeIf { it.isNotBlank() && it != "unknown" },
+                        incomplete = false,
+                    )
                     onUpdateMessages(messages)
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
@@ -915,6 +944,18 @@ class GenerationHandler(
                 }
             }
         }
+    }
+
+    /**
+     * 把本次流的结束状态写到**末尾助手消息**上（见 [UIMessage.finishReason] / [UIMessage.finishIncomplete]）。
+     *
+     * 只动末尾一条：流式期间新增的输出永远落在末尾助手消息（同角色 chunk 追加），
+     * 与 [UIMessage.finishIncomplete] 的「最后一次流的结束状态」语义一致。
+     */
+    private fun List<UIMessage>.markLastFinish(reason: String?, incomplete: Boolean): List<UIMessage> {
+        val last = lastOrNull() ?: return this
+        if (last.role != MessageRole.ASSISTANT) return this
+        return dropLast(1) + last.copy(finishReason = reason, finishIncomplete = incomplete)
     }
 
     private fun maybeTruncateToolOutput(
