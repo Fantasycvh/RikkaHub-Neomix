@@ -902,6 +902,11 @@ data class ApiKeyEntry(
   不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
   **2026-10-04 真机验证通过（用户确认，日志取证）**：备份→恢复全链 `images/` 4 张逐条 Restored
   （含中文/特殊字符文件名）、`staged db integrity check ok`、`completed` 无异常。
+- 2026-10-05 晚：**v1.0.22 (285) 与 v1.0.23 (286) 一并转正**（用户「二者均正式发布」）——
+  22 先发（`--draft=false` 不带 latest）、23 后发（`--draft=false --latest`）；**发布后 `ls-remote`
+  核对双双精确落位**（22→`63fd79dd`、23→`b555e671`，各自 bump 提交，零错位——draft 创建时钉 target
+  + 中途未动 tag 的场景下发布路径已完全可靠）。Latest=`v1.0.23`；仓库无草稿；README 改「正式发布：
+  `v1.0.23`」。
 - 2026-10-04 深夜：**发布草稿 v1.0.23 (286)**——用户「把 v1.0.23 的 bump + notes 草稿准备好（构建、装机冒烟、上传 draft 全流程）」。
   **流程**：bump `b555e671`（286 / 1.0.23，**先 push**）→ 清 `app/build/outputs/apk/release/*.apk` 与 `app/release/*.apk`
   → release 构建（**4m20s**，396 tasks，arm64 **77,654,423 字节**）→ aapt2 核实 `versionCode=286` / `1.0.23` /
