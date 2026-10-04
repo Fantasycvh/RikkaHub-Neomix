@@ -32,6 +32,15 @@ data class Conversation(
     val createAt: Instant = Instant.now(),
     @Serializable(with = InstantSerializer::class)
     val updateAt: Instant = Instant.now(),
+    /**
+     * **末尾消息的 `createdAt`**（列表行内「最近活跃」显示用；见
+     * `docs/design-conversation-manual-order.md` §一.3）。
+     *
+     * 与 [updateAt] 的区别：后者会被改标题/置顶/重新生成等**非消息动作**刷新，
+     * 用它当"最近活跃"会撒谎。旧数据为 null，UI 回退 [updateAt]。
+     */
+    @Serializable(with = InstantSerializer::class)
+    val lastMessageAt: Instant? = null,
     val customSystemPrompt: String? = null,
     val modeInjectionIds: Set<Uuid> = emptySet(),
     val lorebookIds: Set<Uuid> = emptySet(),

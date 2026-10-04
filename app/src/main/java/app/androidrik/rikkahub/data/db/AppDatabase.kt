@@ -53,7 +53,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         KnowledgeBaseDocumentEntity::class,
         KnowledgeEmbeddingEntity::class,
     ],
-    version = 32,
+    version = 33,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -81,6 +81,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 30, to = 31),
         // 31→32：知识库三表（纯新增，RAG-as-tool）
         AutoMigration(from = 31, to = 32),
+        // 会话列表自定义顺序 + 行内「末尾消息时间」（见 docs/design-conversation-manual-order.md）：
+        // 两个**可空**新列 ⇒ AutoMigration 无需 spec（无 notNull 默认值问题）
+        AutoMigration(from = 32, to = 33),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)

@@ -7,6 +7,8 @@ import androidx.paging.PagingData
 import androidx.paging.PagingSource
 import androidx.paging.map
 import androidx.room.withTransaction
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.TimeZone
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -335,9 +337,25 @@ class ConversationRepository(
 
     suspend fun updateConversation(conversation: Conversation) {
         database.withTransaction {
-            conversationDAO.update(
-                conversationToConversationEntity(conversation)
-            )
+            // 目标列 UPDATE（不是全行）——见 ConversationDAO.updateMetadata 的注释：
+            // 全行覆盖会把 sort_order 写回内存态的旧值，把刚拖好的顺序改回去。
+            conversationToConversationEntity(conversation).let { entity ->
+                conversationDAO.updateMetadata(
+                    id = entity.id,
+                    assistantId = entity.assistantId,
+                    title = entity.title,
+                    createAt = entity.createAt,
+                    updateAt = entity.updateAt,
+                    chatSuggestions = entity.chatSuggestions,
+                    isPinned = entity.isPinned,
+                    customSystemPrompt = entity.customSystemPrompt,
+                    modeInjectionIds = entity.modeInjectionIds,
+                    lorebookIds = entity.lorebookIds,
+                    workspaceCwd = entity.workspaceCwd,
+                    folderId = entity.folderId,
+                    lastMessageAt = entity.lastMessageAt,
+                )
+            }
             // 增量保存（不再删全表重插；见 saveMessageNodes）。
             // **保护**：messageNodes 为空时不动节点——避免误传「轻量 Conversation」
             // （如 conversationSummaryToConversation 产物）导致整会话节点被清空（不可逆）。
@@ -456,6 +474,16 @@ class ConversationRepository(
             lorebookIds = JsonInstant.encodeToString(conversation.lorebookIds),
             workspaceCwd = conversation.workspaceCwd ?: "",
             folderId = conversation.folderId?.toString() ?: "",
+            // 行内「最近活跃」= 末尾消息的 createdAt。消息在内存里（本映射点的入参就带 messageNodes）
+            // 时按实际算；元信息保存（轻量 Conversation 无消息）时返回 null，
+            // 由 DAO 的 COALESCE 保留库里原值（见 updateMetadata 注释）。
+            lastMessageAt = conversation.messageNodes.lastOrNull()
+                ?.let { node -> node.messages.getOrNull(node.selectIndex) ?: node.messages.lastOrNull() }
+                ?.createdAt
+                // UIMessage.createdAt 是 kotlinx.datetime.LocalDateTime（无时区）
+                // ⇒ 按设备时区换算成毫秒（与压缩检查点等处同一惯用法）
+                ?.toInstant(TimeZone.currentSystemDefault())
+                ?.toEpochMilliseconds(),
         )
     }
 
@@ -471,6 +499,7 @@ class ConversationRepository(
             compressionSummaries = compressionSummaries,
             createAt = Instant.ofEpochMilli(conversationEntity.createAt),
             updateAt = Instant.ofEpochMilli(conversationEntity.updateAt),
+            lastMessageAt = conversationEntity.lastMessageAt?.let(Instant::ofEpochMilli),
             assistantId = Uuid.parse(conversationEntity.assistantId),
             chatSuggestions = JsonInstant.decodeFromString(conversationEntity.chatSuggestions),
             isPinned = conversationEntity.isPinned,
@@ -576,6 +605,7 @@ class ConversationRepository(
             isPinned = entity.isPinned,
             createAt = Instant.ofEpochMilli(entity.createAt),
             updateAt = Instant.ofEpochMilli(entity.updateAt),
+            lastMessageAt = entity.lastMessageAt?.let(Instant::ofEpochMilli),
             messageNodes = emptyList(),
             folderId = entity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
         )
@@ -711,6 +741,8 @@ data class LightConversationEntity(
     val createAt: Long,
     val updateAt: Long,
     val folderId: String = "",
+    /** 末尾消息的 createdAt（毫秒）；旧数据为 null，UI 回退 `updateAt`（见 ConversationEntity 注释） */
+    val lastMessageAt: Long? = null,
 )
 
 data class ConversationPageResult(
