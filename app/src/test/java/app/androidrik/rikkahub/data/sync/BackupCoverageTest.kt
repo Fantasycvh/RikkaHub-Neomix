@@ -45,4 +45,18 @@ class BackupCoverageTest {
             assertTrue("豁免目录 $folder 缺少理由说明", reason.isNotBlank())
         }
     }
+
+    @Test
+    fun `recursive classification only covers backed up folders`() {
+        val unknown = RECURSIVE_FILE_FOLDERS - BACKED_UP_FILE_FOLDERS.toSet()
+        assertTrue("递归清单里有未进备份的目录: $unknown", unknown.isEmpty())
+    }
+
+    @Test
+    fun `images must stay recursive to preserve legacy subdirectory files`() {
+        // 2026-10-04 之前含 "/" 的模型名让产物落进 images/<ts>_<vendor>/ 子目录。
+        // 平铺打包会**静默跳过**这些文件 ⇒ 读取侧虽已做旧形态回退查找（ImgGenVM），
+        // 换设备恢复后仍会丢图。这条测试防止将来有人把它改回平铺。
+        assertTrue(FileFolders.IMAGES in RECURSIVE_FILE_FOLDERS)
+    }
 }

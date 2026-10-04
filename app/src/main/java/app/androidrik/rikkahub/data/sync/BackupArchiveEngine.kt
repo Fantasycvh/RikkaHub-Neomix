@@ -407,7 +407,7 @@ internal class BackupArchiveEngine(
     }
 
     /**
-     * files 下由 [BACKED_UP_FILE_FOLDERS] 声明的用户数据目录（upload/images/fonts 平铺 + skills 递归）。
+     * files 下由 [BACKED_UP_FILE_FOLDERS] 声明的用户数据目录（平铺：upload/fonts；递归：skills/images）。
      *
      * **不含 tool_outputs**（2026-09-15 决策，选项①）：它是会话级临时产物——[cleanupToolOutputs]
      * 在每次启动时清空该目录，恢复流程末尾必然重启，刚恢复的文件立刻又被删；打包它只是徒增
@@ -422,8 +422,7 @@ internal class BackupArchiveEngine(
                 return@forEach
             }
             Log.i(TAG, "prepareBackupFile: packing $folder (${dir.absolutePath})")
-            if (folder == FileFolders.SKILLS) {
-                // skills 含子目录 -> 递归
+            if (folder in RECURSIVE_FILE_FOLDERS) {
                 addDirectoryToZip(
                     zipOut = zipOut,
                     rootDir = dir,

@@ -47,6 +47,21 @@ internal val BACKED_UP_FILE_FOLDERS: List<String> = listOf(
 )
 
 /**
+ * [BACKED_UP_FILE_FOLDERS] 里需要**递归**打包的目录（其余按平铺文件打包）。
+ *
+ * - `skills`：每个技能一个子目录（`<skill>/SKILL.md` + 附属文件）；
+ * - `images`：**正常情况下是平铺的**，但 2026-10-04 之前的版本会把含 `/` 的模型名
+ *   （OpenRouter 的 `vendor/model`）裸拼进文件名 ⇒ 产物落在 `images/<ts>_<vendor>/` 子目录里。
+ *   这些文件此前既裂（记录只存文件名、找不到）又**不进备份**（平铺打包会跳过子目录）；
+ *   读取侧已按旧形态回退查找（见 `ImgGenVM.toGeneratedImage`），故一并递归打包，
+ *   让它们能在**换设备恢复后**同样被找回。
+ */
+internal val RECURSIVE_FILE_FOLDERS: Set<String> = setOf(
+    FileFolders.SKILLS,
+    FileFolders.IMAGES,
+)
+
+/**
  * [FileFolders] 里**有意豁免**的目录（护栏测试会逐一断言豁免理由仍成立）：
  * - `builtin_skills`：内置技能，启动时从 assets 解压重建；
  * - `tool_outputs`：会话级临时产物，启动即清（见 [BackupItem.FILES] 注释）；
