@@ -234,6 +234,24 @@ fork #1812 的既定哲学=「保留草稿 + 用户手动重试」（成本控�
 
 **与 Yuihub 的差异（刻意保留）**：Yuihub 对 length 截断也自动续写（上限 3）；fork 保持 #1812 的「成本控制权在用户」取舍——length 默认只提示 + 手动继续。另：Yuihub 的 `mergeTrailingAssistantTextParts`（续写新建 Text part 在正文多出空行）在 fork 不需要——fork 的同角色 chunk 追加规则会把续写文本拼进最后一个 Text part。
 
+## 八、华灯（rikkahub-sillytavern-android）评估（2026-10-05，本地源码调研）
+
+**仓库**：[MiaoWuNYA/rikkahub-sillytavern-android](https://github.com/MiaoWuNYA/rikkahub-sillytavern-android)「华灯」——RikkaHub 深度定制分支，**2150+ 提交**（最近合入上游 2.5.6），定位「通用聊天 + 安卓酒馆兼容」双路线（AGPL）。`DIVERGENCE.md` 是公开的**合并手册**（冲突分组/已回退项/工作流）——重度 fork 的工程实践范本，值得借鉴其形式。我们 09-17 的 ST 借鉴批次（槽位/世界书官方语义等）与之同源同域。
+
+**高价值借鉴候选（按价值）**：
+
+1. **前缀分叉诊断（`PromptDebugCache` + 诊断页）**——缓存每次生成实际发送的完整消息列表（按对话隔离、LRU 8 组、含上一次+本次），诊断页**定位上一轮与本次请求的第一条分叉消息并估算可命中前缀 tokens**，把「缓存为什么断在 6.7k 不再涨」变成可观察事实；另有 redaction 机制（插件注入内容在调试页遮蔽，防提取入口）。与拼装预览互补：我们做的是**单次请求逐段归因**（Tier1-4），他们做的是**跨请求差分定位**——对缓存线（#1542/PR #1630 的命中率追踪）是直接升级，小–中工作量。
+2. **Jev 智能决策架构**（`data/ai/jev/`）——小模型（TypeSafe System One）路由层：记忆筛选 + 主模型快问快答。精髓在**契约设计**：`JevResult{Ok/Uncertain/Failed}` + 置信度阈值 + **Uncertain/Failed 一律静默回退原逻辑**（隐形决策层，判不出不得影响对话/弹错误）。我们 fastModel 已做标题/建议，该模式可平移（标题质量校验、记忆门控二次确认等）。中。
+3. **R8 sealed 序列化 keep 家族 + SerializationKeepTest（5 项防回归）**——他们 release 实测「打开助手设置页闪退：Serializer for subclass LocalToolOption$ShowImage not found」。**触发模式=子类只被解码路径引用、无直接代码引用** ⇒ R8 判不可达删除。**fork 暴露面分析**：我们 `LocalToolOption` 全部子类在 `LocalTools.getTools`/开关页有直接引用 ⇒ 可达、安全（dex 层混淆改名后 grep 不可靠，按可达性分析）；但「新增 LocalToolOption/任何 @Serializable sealed 子类时必须有直接代码引用」应记为教训，或抄他们的 keep 规则 + 防回归测试（继承链 keep/不带 allowshrinking/$serializer+Companion 保留/通配符覆盖）。
+4. **群聊**（GroupChatPage +1167 行 + GroupSpeakerSelector 说话人选择器）——多助手群聊，方向级大特性，fork 完全没有。产品决策问题非技术问题。
+5. **宏引擎 2.0**（879 行，60+ 官方宏）+ **MVU 逐楼快照**（状态栏/世界书按楼显示）+ 斜杠命令——深酒馆兼容域。我们 09-17 吸收的是 ST 最小语义集（宏运行时/世界书/槽位）；60+ 官方宏与 MVU 变量系统是更深一层，受众=酒馆重度用户，按需。
+6. **三层记忆/滚动压缩**（CrossWindowMemory/FixedMemorySection/MemoryEmbeddingService/VectorStoreCache）——与语义检索三方差评（不做）结论对照：他们的 RAG 记忆加了**相关性下限**（`d31c52ed5`，防低相关注入）——这个阈值思想对我们记忆注入通用。
+7. **过程性小件**：工具描述去动态日期 + 按模式分叉（`b2748ade5`，与我们 cur_date 破缓存同源）；memory_tool 描述瘦身 844 字符（`390eb225d`）；世界书预算不裁角色卡条目（`d31c52ed5`）；卡片正则三连锁修复（HTML 卡渲染，`5fdb74bc0`）；Office 结构化读写（`342adadd9`，我们 document 模块只读）。
+
+**不适用**：逆向工具链（已移除，APK 109→100MB 的路线）；Chaquopy Python 桥（我们 eval_javascript/MCP/Workspace 已覆盖且不做 Python）；离线 OCR（我们评估过不做）。
+
+**建议优先级**：前缀分叉诊断（缓存线直接升级）> Jev 契约模式（架构级小改造）> R8 keep 家族（防回归测试形式）> 其余按需。前两项合计约 1 天。
+
 ## 五、落地顺序建议
 
 > **落地状态（2026-10-02 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；② 的 **ContextBudgetPlanner 已落地**（`c221be9a`），终端 URL 点击仍待做；③ LoopGuard/AgentRun 账本 **已落地**（`2452f665`/`f7d0c8e4`）；④ WifiLock **已落地**（`ee1c9736`）+ LoopGuard 已落地；⑤ 的 seed 迁移 + dry-run 审批 **已落地**（`23d42929`），**schema 三档缩水版仍待排期**；⑥⑦⑧ 见 §三 与 handoff §三（⑦ 记忆打分已落地 `69453f5e`，⑧ 记忆提取管道未立项）。
