@@ -840,6 +840,16 @@ data class ApiKeyEntry(
   强推（对已发布 release/资产无影响，实测确认）。**结论：发布后 `ls-remote` 核对 tag 指向是必做
   收尾动作，PATCH target 不等于 tag 会落在那里**。最终 tag=`51119dc0` 与 284 资产三方对齐 ✓。
   README 改「正式发布：v1.0.21」（无草稿）。
+- 2026-10-04 深夜：**v1.0.22 (285) 草稿**——bump `63fd79dd`（先 push）→ 清 outputs → release 构建 →
+  aapt 核实 `versionCode=285`/`1.0.22`/仅 arm64 → **release 装机冒烟零 FATAL**（tokenizer `ok=true
+  vocab=100256 in 244ms`，versionCode=285）→ draft `--target 63fd79dd…`（完整 40 位 SHA）→ 上传
+  **77,634,503 字节** → 服务端 digest `sha256:4a843a7e…` 与本地一致 → **GET 复核 tag_name = `v1.0.22`
+  （未被重置为 untagged-）**、target = bump ✓。**本版内容（自 284 资产 28 提交，用户可见 10 项）**：
+  ①裸断流识别 + 自动续写/manual 继续（B/D）②流式检查点（C，崩溃不丢内容）③备份加固（图片进备份 /
+  目录清单护栏 / 库完整性校验）④备份打包前缀修复（图片回到 images/）⑤imggen：OpenRouter 编辑不再 404 +
+  模型名含斜杠不再丢图 ⑥自制 rootfs tarball 安装不再失败 ⑦workspace 提示告知 shell/发行版 + 无 bash 回退
+  ⑧#1991 两现象（编辑分支保留模型信息 / 删 Provider 后历史消息仍有模型名与图标）⑨#1976 相册裁剪兜底
+  ⑩images 递归打包。README 改「正式发布 v1.0.21 ｜ 草稿 v1.0.22」。
 - 2026-10-04 深夜：**会话列表「自定义顺序」设计定稿（上游 #1995 的延伸，先不实现）**——产品决策五项由用户
   拍板并确认：①新会话**顶部最前** ②**置顶=第一档、非置顶=第二档，档内任意**（两套并存不合并）
   ③行内显示**最近活跃时间 = 末尾消息 `createdAt`**（不用 update_at）④拖拽走**「编辑顺序」模式**
