@@ -844,6 +844,17 @@ data class ApiKeyEntry(
   - **教训**：①「历史里缺某字段」这类**历史数据形态**的坑，只有在"旧数据 + 新校验"组合下才暴露，靠新会话测试永远测不到；②同一个错误文本在不同网关会以不同字段名出现（`reasoning_content` vs `reasoning_text`），**看到哪个字段名就知道走的是哪条请求路径**——这次的 `reasoning_text` 直接指向 Responses 路径，省掉一轮猜测。
   - **同日：把修复并进 v1.0.21 (283) 草稿资产（不 bump 版本）**——用户「替换资产（不需要 bump）」。做法：用含修复的 release 包（`versionCode=283`、**77,615,091 字节**、digest `sha256:e5941b50…`）`gh release upload --clobber` 覆盖草稿里那份旧资产（旧：77,614,119 / `ff4d604e…`）；**同时把草稿的 `target_commitish` 从 `0d120ab6`（bump 提交）改到 `6050de6d`（含修复的 HEAD）**——否则转正时 tag 会指向不含该修复的提交、与资产不符。更新日志补一条修复说明（中英各一）。**注意**：这意味着版本号 283 对应两份不同内容的历史（线上资产已被替换，旧包不再可得），后续若要再发必须 bump。
 
+- 2026-10-03：**思维链回传契约的同类触发点审计（思维链 400 两半修复之后）**——发现并修复三个：
+  ①**Claude `redacted_thinking` 被直接丢弃（真 bug，`8046d267`）**——`ClaudeProvider.kt:564` 解析时
+  整块扔掉（残留 `println` 调试），历史只剩 tool_use ⇒ 下一轮 Anthropic 400「Expected thinking or
+  redacted_thinking, but found tool_use」同类失败；现保留为 Reasoning part（`ClaudeReasoningMetadata
+  .redactedData` 新字段，可空零迁移）并原样回传。②**无签名思考块不回传（`8046d267`）**——跨供应商
+  历史/导入的推理没有 Claude 签名，回传即「Invalid signature」拒整请求；省略对旧轮次安全。③**Response
+  API 同轮补插副本不再复用 `rs_` id（`c309c615`）**——同一请求重复 item id 可能被 OpenAI 官方按唯一性
+  拒绝；补插一律 id=null（已知网关 id 可选），主 item 保留。**确认覆盖/低风险**：ChatCompletions 两处
+  构造点、压缩按消息粒度不拆 reasoning+tool_calls、子代理同路径；Gemini thoughtSignature 缺失时通常
+  自行重思考（低风险仅记录）；已知 host 集合外的中转站代理 DeepSeek Responses 仍是 by-design 盲区。
+  顺带修掉遗留测试（无签名推理构造改带签名——行为变化是本次修复的目的）。
 - 2026-10-03：**同一 400 的「第二半」修复（`13de6813`）——机制更正：「有 reasoning item，但缺 `content[].reasoning_text`」**。用户报「另一台设备上还是报错」。该设备的**发布版请求日志**（root 直读 `files/logs/rikkahub-logs.txt`，未打印请求体、副本已删）给出结构摘要：同一 host/模型（`api.deepseek.com/responses`、`deepseek-flash`、UA `RikkaHub-Android/1.0.21`），失败请求 `types=[正文, 'reasoning', 'function_call', 'function_call_output']`，**`reasoning#1: textLens=[] head='' encrypted=True`**。
   - **更正上文（`a39af462` / `6050de6d`）**：那一条记录写的是「历史里**没有** reasoning item」；实测这台设备是「**有** item，只是只有 `encrypted_content`、缺规范必填的 `content[].reasoning_text`」——正是 #1719「加密时不回放明文」的直接后果（我们为了不泄漏推理内容而把这个**必填**字段整个省掉了）。两半互补，缺一不可：①完全没有 item ⇒ 补占位 item（第一半）；②只有加密内容 ⇒ 补**非空**占位文本（第二半）。
   - **修法**：`ResponseAPI` 抽出的 `addReasoningItem` 增加 `reasoningTextRequired`——加密时写入**非空占位**（该 API **拒绝空文本**、非空即可、id 可选），仍不回放明文；Responses 路径门槛改用 `isKnownReasoningTextValidator(host)`（`opencode.ai` / `deepseek.com`，两者都有实测来源）。
