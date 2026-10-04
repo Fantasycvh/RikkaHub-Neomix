@@ -1,7 +1,7 @@
 # 上游变更分析（综合版，2.4.11 → 2.5.6+，2026-09-12 重写，2026-10-02 复核）
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
-> 当前 master 同步点：**`a6dbb8cd`（2026-10-03 ff-only，#1990 Response API strict 修复）**；此前 `2267943a`（10-02 二次，mediagen/S3 两提交）、`4e4bfa62`（10-02，2.5.6+）、`b2d73a65`（09-30）、`00c8d53a`（2.5.5，09-28）、`458c16df`（2.5.2+，09-19）。此前 `4e4bfa62`（10-02，2.5.6+）、`b2d73a65`（09-30）、`00c8d53a`（2.5.5，09-28）、`458c16df`（2.5.2+，09-19）。**注：origin 上的 master 镜像已于 2026-09-15 删除，此镜像仅本地保留**。`a9b35ba2` 之后上游共 33 提交（至 `458c16df`），逐条评估见下方「2026-09-16」「2026-09-19」两节；评估结论均为**暂不吸收、按需取用**。
+> 当前 master 同步点：**`85af5b91`（2026-10-04 ff-only，#1993 imggen 修复 + #1994 Alpine rootfs）**；此前 `a6dbb8cd`（10-03）、`2267943a`（10-02 二次，mediagen/S3 两提交）、`4e4bfa62`（10-02，2.5.6+）、`b2d73a65`（09-30）、`00c8d53a`（2.5.5，09-28）、`458c16df`（2.5.2+，09-19）。此前 `2267943a`（10-02 二次，mediagen/S3 两提交）、`4e4bfa62`（10-02，2.5.6+）、`b2d73a65`（09-30）、`00c8d53a`（2.5.5，09-28）、`458c16df`（2.5.2+，09-19）。此前 `4e4bfa62`（10-02，2.5.6+）、`b2d73a65`（09-30）、`00c8d53a`（2.5.5，09-28）、`458c16df`（2.5.2+，09-19）。**注：origin 上的 master 镜像已于 2026-09-15 删除，此镜像仅本地保留**。`a9b35ba2` 之后上游共 33 提交（至 `458c16df`），逐条评估见下方「2026-09-16」「2026-09-19」两节；评估结论均为**暂不吸收、按需取用**。
 > 决策原则：**等上游稳定后按需吸收**；触及 `GenerationHandler.kt` / `ChatService.kt` / `ChatInput.kt`（fork 重改最重的文件）一律手工适配，不直接 cherry-pick；cherry-pick 需包名适配（`me.rerere.*` → `app.androidrik.*`）。
 > **判定方法（2026-09-12 纠正）**：fork 的"已吸收"以**代码等价核对**为准，**不用 `git merge-base --is-ancestor`**——fork 走手工直套/移植，上游 commit 不是 fork 分支祖先，merge-base 对已吸收项恒判"未吸收"（误报 glm5.3/hy4/kimi k3/deepseek v4.1 flash 等）。核对方式：grep fork 代码中对应定义/注释（如「对齐上游 xxx」）或 diff 等价。
 
@@ -155,6 +155,16 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 |---|---|---|
 | `a26d1d55` **videogen → mediagen 重构（图像+视频统一）** | 模块改名 + 统一 `MediaGeneration*` 请求/任务/供应商接口；setting 改**厂商级**（只存凭据+models，模型带 kind 图像/视频）；新增 OpenAI 图像生成/编辑、火山 Seedream、阿里万相/千问适配器（同步接口直返终态任务）；阿里换带业务空间 ID 的新域名（新增 workspaceId）；`MediaGenerationManager.generate` 统一同步/异步轮询两链路；按厂商分包 + ~900 行单测 | **暂不吸收（维持 `96fbe7e3` 判定，且上游仍未接线）**。fork 无 videogen 无存量冲突，但**上游 app 至今零消费点**（`git grep mediagen 2267943a -- app/src` 只有 build.gradle 模块引用；4e4bfa62 同样无 videogen 消费）⇒ 现阶段吸收=死代码。fork 图像生成走 `OpenAIProvider.generateImages`（imggen 页），视频生成无功能。**重新立项的条件**：想要「厂商级媒体生成」（火山 Seedream/阿里万相这类 chat provider 之外的渠道）或上游把 mediagen 接进 UI 时再评估；届时注意 fork 的 per-provider 代理/key 轮换体系与其厂商级 setting 的关系。阿里的新域名/workspaceId 变更随模块走，fork 无直连阿里媒体生成，单独不适用 |
 | `2267943a` 的 S3 部分：**presignGetUrl 带签名临时下载地址** | `AwsSignatureV4.presignGetUrl`（查询参数签名、只签 host、1s–7 天）+ `S3Client.presignGetUrl(key, expires)` + 顺手把主机/路径计算抽成 `requestHost`/`canonicalUri` 公用函数 + 106 行测试（AWS 文档示例值校验签名） | **可吸收（小，~80 行 + 测试），消费点暂缺**。fork 的 `data/sync/s3/` 三文件与上游同源；逐行 diff 核实：fork 内联的 host/canonicalUri 计算（含 pathStyle 与 host 已含 bucket 两分支）与上游新抽的 helper **功能等价**，fork 的 `S3Client` 另有分片上传/进度回调等扩展（上游无）⇒ 吸收 = ①先做无行为变化的 host/路径提取重构 ②加 presignGetUrl（fork 签名实现支持 queryParams，改造小）③测试直套。**现实用途**：备份文件生成临时分享链接（桶保持私有）；mediagen 的产物分享场景 fork 不存在。可选吸收，等有 UI 入口再做也行 |
+
+### 2026-10-04 同步：`a6dbb8cd` → `85af5b91`（2 提交，先不吸收）
+
+| 提交 | 内容 | 结论 |
+|---|---|---|
+| `85af5b91` **imggen：OpenRouter 图片编辑 404 + 模型名含斜杠图片丢失（#1993）** | ①OpenRouter 无 `/images/edits`，编辑改走 `/images/generations` + `input_references`（base64 data URL）；②模型名含 `/`（OpenRouter `vendor/model`）拼进文件名变子目录而记录只存最后一段 → 新增 `toFileNamePart()` 清洗 + 旧记录兼容读取（+100 行测试） | **建议吸收（小，fork 两处同款核实）**：fork `OpenAIProvider:373` 同样打 `/images/edits`（OpenRouter 用户编辑必 404）；fork `ImgGenVM:293/:308` 文件名构造同款（`${modelName}` 裸拼）——OpenRouter 模型名的 imggen 产物已裂（落 images/ 子目录、记录找不到）。吸收=三处：编辑分支 + `toFileNamePart` 清洗 + 旧记录兼容 |
+| `298e2771` **Alpine rootfs 支持** | tar 根目录 `./` 规范化空串跳过；`/bin/sh` 软链 busybox 也算 rootfs 可用；无 bash 回退 `/bin/sh`（工具执行与终端共用）；系统提示告知实际 shell 与发行版（os-release） | **暂缓/按需**。fork rootfs 路线=ubuntu 预装（RootfsPatcher 补字体/数学）；Alpine 是新发行版能力，与 rootfs 改进待办①「自托管预装 rootfs」方向重叠。**其中「系统提示告知实际 shell/发行版」对 fork 独立成立**（fork 的提示同样基于 bash/apt 假设），可单独摘 |
+| 分支 `feat/mediagen` | 新增 `4f25be81`（适配器能力声明 + 视频接口 count 只收 1） | mediagen 仍在演进（app 仍零消费），维持暂缓观察 |
+
+**吸收优先级**：`85af5b91`（小，OpenRouter 图片用户真故障）→ `298e2771` 的提示告知小件 → Alpine 本体按需。
 
 ### 2026-10-03 同步：`2267943a` → `a6dbb8cd`（1 提交，#1990 图表工具）
 
