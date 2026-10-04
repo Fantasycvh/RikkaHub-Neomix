@@ -224,6 +224,16 @@ fork #1812 的既定哲学=「保留草稿 + 用户手动重试」（成本控�
 
 **建议优先级**：B（静默截断，真缺口）> C（崩溃丢失，已知缺口有现成方案）> D（续写，跟 B/C 捆绑决策）。合计约 1–1.5 天。
 
+### ✅ 2026-10-04 落地（B/C/D 三项，分三批提交）
+
+| 批 | 提交 | 内容 |
+|---|---|---|
+| B | `7973da13` | `MessageChunk.explicitEnd` + `terminalChunk()`：四个 provider 在显式结束处发标记（`[DONE]`/`message_stop`/`response.completed`/Google 带 finishReason 末块），`onClosed` 不发 ⇒ 裸断流可判定；`UIMessage.finishReason`/`finishIncomplete`（JSON blob 零迁移，语义=最后一次流的结束状态）；`isOutputLimitTruncation`/`isContentFilterTruncation` 纯函数统一三家命名 |
+| C | `20091990` | `ConversationRepository.checkpointGeneratingNode(conversation, nodeIndex)`：只序列化并 upsert 一个节点（不按前缀比对全会话、不重建 FTS——索引在轮次结束的正常保存时补齐）；ChatService 每 2 秒节流调用，失败只记日志。**nodeIndex 取 `chunk.messages.lastIndex` 而非 messageNodes.lastIndex**：THIS_ONLY 重生成只改动中间节点 |
+| D | 本批 | `ContinuationPolicy.autoContinueHintFor` 纯函数：裸断流**恒**自动续写、撞输出上限**默认只提示**（`RetrySetting.autoContinueOnLengthTruncation` 可开）、两类共用上限 3 次；续写走已有的一次性提示通道追加到同一条消息；`ChatService.continueMessage` + 消息不完整横幅三档（内容拦截不给续写按钮）+ 设置开关 + 6 语言 |
+
+**与 Yuihub 的差异（刻意保留）**：Yuihub 对 length 截断也自动续写（上限 3）；fork 保持 #1812 的「成本控制权在用户」取舍——length 默认只提示 + 手动继续。另：Yuihub 的 `mergeTrailingAssistantTextParts`（续写新建 Text part 在正文多出空行）在 fork 不需要——fork 的同角色 chunk 追加规则会把续写文本拼进最后一个 Text part。
+
 ## 五、落地顺序建议
 
 > **落地状态（2026-10-02 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；② 的 **ContextBudgetPlanner 已落地**（`c221be9a`），终端 URL 点击仍待做；③ LoopGuard/AgentRun 账本 **已落地**（`2452f665`/`f7d0c8e4`）；④ WifiLock **已落地**（`ee1c9736`）+ LoopGuard 已落地；⑤ 的 seed 迁移 + dry-run 审批 **已落地**（`23d42929`），**schema 三档缩水版仍待排期**；⑥⑦⑧ 见 §三 与 handoff §三（⑦ 记忆打分已落地 `69453f5e`，⑧ 记忆提取管道未立项）。
