@@ -94,6 +94,41 @@ enum class PromptSegmentKind {
 }
 
 /**
+ * 分段的**缓存稳定性**分组（华灯借鉴）：一眼看出「哪些内容每轮都在变、因而不利缓存」。
+ * 前缀缓存从第一个 token 连续匹配，任何每轮变化的内容都会从它的位置开始作废整段缓存。
+ */
+enum class PromptSegmentStability {
+    /** 跨轮一致（配置级变化才变）：system 人设/角色卡槽位/工具引导/工具 schema/渲染提示/记忆 */
+    STABLE,
+
+    /** 事件驱动：出现或消失时改写一次前缀，之后稳定（压缩检查点/条件触发的注入） */
+    EVENT,
+
+    /** 每轮都在变（不利缓存）：对话历史/工具输出 */
+    TURN,
+}
+
+/** 段类型 → 稳定性分组。 */
+val PromptSegmentKind.stability: PromptSegmentStability
+    get() = when (this) {
+        PromptSegmentKind.SYSTEM,
+        PromptSegmentKind.CARD_SLOT,
+        PromptSegmentKind.TOOL_GUIDANCE,
+        PromptSegmentKind.TOOL_SCHEMA,
+        PromptSegmentKind.RENDER_HINT,
+        PromptSegmentKind.MEMORY,
+             -> PromptSegmentStability.STABLE
+
+        PromptSegmentKind.COMPRESSION_CHECKPOINT,
+        PromptSegmentKind.INJECTION,
+             -> PromptSegmentStability.EVENT
+
+        PromptSegmentKind.CHAT_HISTORY,
+        PromptSegmentKind.TOOL_RESULT,
+             -> PromptSegmentStability.TURN
+    }
+
+/**
  * 预览中的一段。
  *
  * @param label 该段的来源名（如「系统提示词」「对话历史」），由调用方传入本地化文案
@@ -112,6 +147,8 @@ data class PromptSegment(
     val tokens: Int,
     val source: PromptSegmentSource? = null,
     val location: PromptSegmentLocation = PromptSegmentLocation.MESSAGE,
+    /** 缓存稳定性分组（由 [kind] 派生，默认即可） */
+    val stability: PromptSegmentStability = kind.stability,
 )
 
 /** 该段在**请求体**里的落点（决定它是否属于对话消息序列）。 */
@@ -266,7 +303,7 @@ suspend fun inspectPrompt(
         // #1542 Tier B：system 消息按**块来源**细分（人设/卡槽/记忆/工具引导/渲染提示），
         // 与真实请求共用 buildSystemBlocks（同参）⇒ 归因与发送内容一致。
         // 其余消息（检查点/注入/历史）维持整条一段（注入段再由 Tier 4 拆回逐条）。
-        if (kind != PromptSegmentKind.SYSTEM) {
+        val messageSegments: List<PromptSegment> = if (kind != PromptSegmentKind.SYSTEM) {
             val single = PromptSegment(
                 kind = kind,
                 label = when (kind) {
@@ -320,6 +357,13 @@ suspend fun inspectPrompt(
                 role = message.role.name.lowercase(),
             ) + afterSegments
         }
+        // 投影无损校验（华灯投影原则）：每条实发消息必须产出至少一段——空段意味着
+        // 预览**静默丢失**该消息（实测过 buildSystemBlocks 漏 BEFORE/AFTER 注入的回归形态）。
+        // 失败即报错，绝不静默降级。
+        require(messageSegments.isNotEmpty()) {
+            "Prompt projection lost a message (kind=$kind, role=${message.role.name}, id=${message.id})"
+        }
+        messageSegments
     }
 
     // 请求顶层字段：工具 schema（`tools`）。**不属于任何消息**——与 `messages` 平级、

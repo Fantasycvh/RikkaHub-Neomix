@@ -1613,7 +1613,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="prompt_inspect_segment_tool_schema">도구 스키마(%1$d개, ≈%2$d 토큰)</string>
   <string name="prompt_inspect_not_in_messages">요청 최상위 필드(메시지 아님)</string>
   <string name="prompt_inspect_attachment_note">[미포함: 이미지 %1$d, 문서 %2$d, 오디오 %3$d, 동영상 %4$d]</string>
-  <string name="prompt_inspect_segment_tool_result">도구 출력 · %1$s</string>
+  <string name="prompt_inspect_segment_tool_result">도구 출력 · %1$s</string>  <string name="prompt_inspect_stability">캐시 안정성(안정 / 이벤트 / 매 턴 변화)</string>
+  <string name="prompt_inspect_stability_values">≈%1$d 안정 · %2$d 이벤트 · %3$d 매 턴 변화 tokens</string>
+
   <string name="prompt_inspect_segment_render_hint">렌더링 힌트</string>  <string name="prompt_debug_title">접두사 분기 진단</string>
   <string name="prompt_debug_no_previous">마지막 요청과 비교</string>
   <string name="prompt_debug_identical">이전 요청 기록 없음(이번 턴 첫 요청 후 다시 열기)</string>

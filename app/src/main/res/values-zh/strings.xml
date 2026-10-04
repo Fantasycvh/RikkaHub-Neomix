@@ -1686,7 +1686,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="prompt_inspect_segment_tool_schema">工具 Schema（%1$d 个，≈%2$d token）</string>
   <string name="prompt_inspect_not_in_messages">请求顶层字段，不在消息里</string>
   <string name="prompt_inspect_attachment_note">［未计入：图片 %1$d、文档 %2$d、音频 %3$d、视频 %4$d］</string>
-  <string name="prompt_inspect_segment_tool_result">工具输出 · %1$s</string>
+  <string name="prompt_inspect_segment_tool_result">工具输出 · %1$s</string>  <string name="prompt_inspect_stability">缓存稳定性（稳定 / 事件 / 每轮变化）</string>
+  <string name="prompt_inspect_stability_values">≈%1$d 稳定 · %2$d 事件 · %3$d 每轮变化 tokens</string>
+
   <string name="prompt_inspect_segment_render_hint">渲染提示</string>  <string name="prompt_debug_title">前缀分叉诊断</string>
   <string name="prompt_debug_no_previous">与上次请求对比</string>
   <string name="prompt_debug_identical">暂无上次请求记录（本轮首次请求后再打开）</string>

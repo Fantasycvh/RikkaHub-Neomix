@@ -902,6 +902,17 @@ data class ApiKeyEntry(
   不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
   **2026-10-04 真机验证通过（用户确认，日志取证）**：备份→恢复全链 `images/` 4 张逐条 Restored
   （含中文/特殊字符文件名）、`staged db integrity check ok`、`completed` 无异常。
+- 2026-10-05 深夜：**华灯 P2 四小件落地（§八 评估的直接吸收）**——
+  ①**分段 stability 分组**（stable/turn/event）：`PromptSegmentStability` + `kind.stability` 派生，
+  拼装预览 SummaryCard 新增「≈X 稳定 · Y 事件 · Z 每轮变化 tokens」一行——一眼看出「哪些内容
+  每轮都在变、因而不利缓存」（MEMORY/渲染提示归 stable；检查点/条件注入归 event；历史/工具输出
+  归 turn）；②**投影无损回环校验**：工具输出截断的外部全文写后**读回比对**（磁盘满/静默截断当场
+  报错，绝不让「预览说存了、文件却是残的」）；拼装预览分段加**逐消息非空 require**（空段=预览
+  静默丢消息，失败即报错——实测过 buildSystemBlocks 漏 BEFORE/AFTER 的回归形态）；③**工具描述
+  动态日期排查**：全仓 grep 核实工具描述零动态日期（{{cur_date}} 种子已除、时间由 get_time_info
+  动态取），且新落的前缀分叉诊断让未来的日期搅动可见；④**记忆注入相关性下限**——
+  `MIN_MEMORY_INJECTION_SCORE=0.2`（原始分数非分桶：分桶四舍五入会让 0.11 分进位绕过下限），
+  默认 importance 0.6 全老化也有 0.33 不触线，刻意标低且老化的记忆自然沉底。单测 +5。
 - 2026-10-05 深夜：**前缀分叉诊断落地（华灯 §八.1 借鉴）**——①`PromptDebugCache`：按会话缓存
   每次生成**实际发送**的完整消息列表（LRU 8 组，保留上一次+本次；工具循环每步都算一次请求），
   数据在 `generateInternal` 组装完成后记录（`debugKey`=conversationId，ChatService 传入）；

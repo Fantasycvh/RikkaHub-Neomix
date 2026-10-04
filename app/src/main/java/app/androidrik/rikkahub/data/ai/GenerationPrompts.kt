@@ -48,6 +48,15 @@ private const val PER_ENTRY_OVERHEAD_TOKENS = 8
 private const val SCORE_BUCKET_SIZE = 0.1f
 
 /**
+ * 记忆注入的**相关性下限**（原始分数）：[memoryScore] 低于此值的记忆不注入
+ * （华灯 RAG 相关性下限的阈值思想——低相关注入是纯 token 税）。
+ * 取 0.2：默认 importance 0.6 的记忆全老化也有 0.33 不会触线；刻意标低重要度
+ * （≤0.36）且老化的记忆自然沉底。**用原始分数而非分桶**——分桶是四舍五入，
+ * 0.11 分会被进位到桶 1 绕过下限，精确比较才符合「低相关不注入」的本意。
+ */
+private const val MIN_MEMORY_INJECTION_SCORE = 0.2f
+
+/**
  * 构建记忆注入提示词。
  *
  * 选谁进 = [selectMemoriesForPrompt]（打分校准 + token 预算截断）；
@@ -105,6 +114,11 @@ internal fun selectMemoriesForPrompt(
     val selected = mutableListOf<AssistantMemory>()
     var used = 0
     for (memory in ranked) {
+        // 相关性下限（华灯 RAG 相关性下限的阈值思想）：打分低于下限的记忆**不注入**——
+        // 低重要度且已老化的记忆挤进上下文是纯 token 税。注意与「排序分桶」的分工：
+        // 分桶只影响先后，本下限决定去留。默认 importance=0.6 的记忆永不触线
+        // （全老化也有 0.33）；刻意标低重要度（≤0.36）且老化的记忆才会沉底。
+        if (memoryScore(memory, now) < MIN_MEMORY_INJECTION_SCORE) continue
         val cost = estimateTokens(memory.content) + PER_ENTRY_OVERHEAD_TOKENS
         // 超预算时**跳过本条并继续**（不是 break）：一条长记忆不该把后续预算全堵死，
         // 后面的小记忆仍应有机会入选。`selected.isNotEmpty()` 让首条即使超预算也入选，

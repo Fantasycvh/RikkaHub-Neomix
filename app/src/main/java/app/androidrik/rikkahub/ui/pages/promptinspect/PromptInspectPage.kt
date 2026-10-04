@@ -4,6 +4,7 @@ import me.rerere.hugeicons.stroke.GitCompare
 import app.androidrik.rikkahub.data.ai.diagnosePrefixDivergence
 import app.androidrik.rikkahub.data.ai.PromptDebugCache
 import app.androidrik.rikkahub.data.ai.PrefixDivergence
+import app.androidrik.rikkahub.data.ai.PromptSegmentStability
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.produceState
@@ -269,6 +270,19 @@ private fun SummaryCard(inspection: app.androidrik.rikkahub.data.ai.PromptInspec
                     value = inspection.contextMessageLimit.toString(),
                 )
             }
+            // 缓存稳定性分组（stable/turn/event）：一眼看出「哪些内容每轮都在变」
+            val byStability = inspection.segments.groupBy { it.stability }
+            fun tokensOf(s: PromptSegmentStability) =
+                byStability[s]?.sumOf { it.tokens } ?: 0
+            MetaRow(
+                label = stringResource(R.string.prompt_inspect_stability),
+                value = stringResource(
+                    R.string.prompt_inspect_stability_values,
+                    tokensOf(PromptSegmentStability.STABLE),
+                    tokensOf(PromptSegmentStability.EVENT),
+                    tokensOf(PromptSegmentStability.TURN),
+                ),
+            )
         }
     }
 }

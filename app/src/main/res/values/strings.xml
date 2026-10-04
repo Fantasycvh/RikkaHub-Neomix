@@ -1623,7 +1623,9 @@
   <string name="prompt_inspect_segment_tool_schema">Tool schema (%1$d tools, ≈%2$d tokens)</string>
   <string name="prompt_inspect_not_in_messages">top-level field, not in messages</string>
   <string name="prompt_inspect_attachment_note">[not counted: %1$d images, %2$d documents, %3$d audio, %4$d video]</string>
-  <string name="prompt_inspect_segment_tool_result">Tool output · %1$s</string>
+  <string name="prompt_inspect_segment_tool_result">Tool output · %1$s</string>  <string name="prompt_inspect_stability">Cache stability (stable / event / turn)</string>
+  <string name="prompt_inspect_stability_values">≈%1$d stable · %2$d event · %3$d per-turn tokens</string>
+
   <string name="prompt_inspect_segment_render_hint">Render hints</string>  <string name="prompt_debug_title">Prefix divergence</string>
   <string name="prompt_debug_no_previous">Compare with last request</string>
   <string name="prompt_debug_identical">No previous request recorded yet (open again after this turn starts)</string>

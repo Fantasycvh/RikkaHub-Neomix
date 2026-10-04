@@ -1613,7 +1613,9 @@
   <string name="prompt_inspect_segment_tool_schema">Схема инструментов (%1$d шт., ≈%2$d токенов)</string>
   <string name="prompt_inspect_not_in_messages">поле верхнего уровня, не в сообщениях</string>
   <string name="prompt_inspect_attachment_note">[не учтено: изображений %1$d, документов %2$d, аудио %3$d, видео %4$d]</string>
-  <string name="prompt_inspect_segment_tool_result">Вывод инструмента · %1$s</string>
+  <string name="prompt_inspect_segment_tool_result">Вывод инструмента · %1$s</string>  <string name="prompt_inspect_stability">Стабильность кэша (стабильные / события / каждый ход)</string>
+  <string name="prompt_inspect_stability_values">≈%1$d стабильных · %2$d события · %3$d каждый ход токенов</string>
+
   <string name="prompt_inspect_segment_render_hint">Подсказки рендеринга</string>  <string name="prompt_debug_title">Диагностика расхождения префикса</string>
   <string name="prompt_debug_no_previous">Сравнить с прошлым запросом</string>
   <string name="prompt_debug_identical">Прошлый запрос не записан (откройте снова после первого запроса этого хода)</string>

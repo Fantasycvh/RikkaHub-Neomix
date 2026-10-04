@@ -1669,7 +1669,9 @@
   <string name="prompt_inspect_segment_tool_schema">工具 Schema（%1$d 個，≈%2$d token）</string>
   <string name="prompt_inspect_not_in_messages">請求頂層欄位，不在訊息裡</string>
   <string name="prompt_inspect_attachment_note">［未計入：圖片 %1$d、文件 %2$d、音訊 %3$d、影片 %4$d］</string>
-  <string name="prompt_inspect_segment_tool_result">工具輸出 · %1$s</string>
+  <string name="prompt_inspect_segment_tool_result">工具輸出 · %1$s</string>  <string name="prompt_inspect_stability">快取穩定性（穩定 / 事件 / 每輪變化）</string>
+  <string name="prompt_inspect_stability_values">≈%1$d 穩定 · %2$d 事件 · %3$d 每輪變化 tokens</string>
+
   <string name="prompt_inspect_segment_render_hint">渲染提示</string>  <string name="prompt_debug_title">前綴分叉診斷</string>
   <string name="prompt_debug_no_previous">與上次請求對比</string>
   <string name="prompt_debug_identical">暫無上次請求記錄（本輪首次請求後再打開）</string>

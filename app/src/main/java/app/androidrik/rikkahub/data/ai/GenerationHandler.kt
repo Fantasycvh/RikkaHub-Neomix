@@ -1037,7 +1037,13 @@ class GenerationHandler(
         val safeFileName = toolCallId.replace(Regex("[^A-Za-z0-9_-]"), "_")
         val fileName = "$safeFileName.txt"
         val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() }
-        File(outputDir, fileName).writeText(fullText)
+        val outputFile = File(outputDir, fileName)
+        outputFile.writeText(fullText)
+        // 投影无损回环校验（华灯投影原则）：外部全文是模型恢复上下文的**唯一**来源，
+        // 写坏（磁盘满/静默截断）必须当场报错——绝不能让「预览说存了、文件却是残的」。
+        require(outputFile.readText() == fullText) {
+            "Tool output projection write failed (lossless check): ${'$'}fileName"
+        }
 
         return listOf(
             UIMessagePart.Text(

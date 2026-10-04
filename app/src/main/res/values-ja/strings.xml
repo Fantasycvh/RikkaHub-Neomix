@@ -1613,7 +1613,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_inspect_segment_tool_schema">ツールスキーマ（%1$d 個、≈%2$d トークン）</string>
   <string name="prompt_inspect_not_in_messages">リクエスト直下のフィールド（メッセージ外）</string>
   <string name="prompt_inspect_attachment_note">［未集計：画像 %1$d、文書 %2$d、音声 %3$d、動画 %4$d］</string>
-  <string name="prompt_inspect_segment_tool_result">ツール出力 · %1$s</string>
+  <string name="prompt_inspect_segment_tool_result">ツール出力 · %1$s</string>  <string name="prompt_inspect_stability">キャッシュ安定性（安定 / イベント / 毎ターン変化）</string>
+  <string name="prompt_inspect_stability_values">≈%1$d 安定 · %2$d イベント · %3$d 毎ターン変化 tokens</string>
+
   <string name="prompt_inspect_segment_render_hint">レンダリングヒント</string>  <string name="prompt_debug_title">プレフィックス分岐診断</string>
   <string name="prompt_debug_no_previous">前回のリクエストと比較</string>
   <string name="prompt_debug_identical">前回のリクエスト記録なし（今ターンの最初のリクエスト後に再度開いてください）</string>
