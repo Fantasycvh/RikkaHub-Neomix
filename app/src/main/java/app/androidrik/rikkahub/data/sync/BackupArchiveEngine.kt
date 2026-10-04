@@ -415,25 +415,28 @@ internal class BackupArchiveEngine(
      * 预览（`TOOL_OUTPUT_PREVIEW_CHARS`）兜底。
      */
     private fun addAppFilesToZip(zipOut: ZipOutputStream, onBytes: (Long) -> Unit) {
-        BACKED_UP_FILE_FOLDERS.forEach { folder ->
-            val dir = File(context.filesDir, folder)
+        appFilesPackingPlan().forEach { packing ->
+            val dir = File(context.filesDir, packing.folder)
             if (!dir.isDirectory) {
-                Log.w(TAG, "prepareBackupFile: $folder does not exist")
+                Log.w(TAG, "prepareBackupFile: ${packing.folder} does not exist")
                 return@forEach
             }
-            Log.i(TAG, "prepareBackupFile: packing $folder (${dir.absolutePath})")
-            if (folder in RECURSIVE_FILE_FOLDERS) {
+            Log.i(TAG, "prepareBackupFile: packing ${packing.folder} (${dir.absolutePath})")
+            if (packing.recursive) {
                 addDirectoryToZip(
                     zipOut = zipOut,
                     rootDir = dir,
                     currentDir = dir,
-                    entryPrefix = "${FileFolders.SKILLS}/",
+                    // 前缀必须由**本目录**派生（2026-10-04 修：曾硬编码 skills/，
+                    // 使新增的递归目录（images）被打成 skills/ 前缀——图片既没进 images/，
+                    // 恢复时还会被解到 files/skills/）
+                    entryPrefix = packing.entryPrefix,
                     onBytes = onBytes,
                 )
             } else {
-                // 其余为平铺文件（非递归）
+                // 平铺文件（非递归）
                 dir.listFiles()?.forEach { file ->
-                    if (file.isFile) addFileToZip(zipOut, file, "$folder/${file.name}", onBytes)
+                    if (file.isFile) addFileToZip(zipOut, file, "${packing.entryPrefix}${file.name}", onBytes)
                 }
             }
         }

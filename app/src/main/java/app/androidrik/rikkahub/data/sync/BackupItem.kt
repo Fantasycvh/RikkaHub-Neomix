@@ -61,6 +61,33 @@ internal val RECURSIVE_FILE_FOLDERS: Set<String> = setOf(
     FileFolders.IMAGES,
 )
 
+/** 一个目录的打包方式：递归或平铺，以及 zip 内的条目前缀。 */
+internal data class AppFolderPacking(
+    val folder: String,
+    val recursive: Boolean,
+    val entryPrefix: String,
+)
+
+/**
+ * FILES 备份的**打包计划**：把「哪些目录、是否递归、前缀是什么」变成一份可测数据。
+ *
+ * 抽出来的直接原因是一次真机事故（2026-10-04）：判断条件从 `== SKILLS` 改成
+ * `in RECURSIVE_FILE_FOLDERS` 时，`entryPrefix` 忘了同步改、仍是硬编码的 `skills/`
+ * ⇒ 新增的递归目录（images）被打成 `skills/...`：图片既不在 `images/` 下（记录找不到），
+ * 恢复时还会被解到 `files/skills/`。前缀**由目录名派生**是这里的硬约束，
+ * 用测试钉住比靠人眼可靠。
+ */
+internal fun appFilesPackingPlan(
+    folders: List<String> = BACKED_UP_FILE_FOLDERS,
+    recursiveFolders: Set<String> = RECURSIVE_FILE_FOLDERS,
+): List<AppFolderPacking> = folders.map { folder ->
+    AppFolderPacking(
+        folder = folder,
+        recursive = folder in recursiveFolders,
+        entryPrefix = "$folder/",
+    )
+}
+
 /**
  * [FileFolders] 里**有意豁免**的目录（护栏测试会逐一断言豁免理由仍成立）：
  * - `builtin_skills`：内置技能，启动时从 assets 解压重建；

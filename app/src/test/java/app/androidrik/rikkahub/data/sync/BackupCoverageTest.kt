@@ -53,6 +53,29 @@ class BackupCoverageTest {
     }
 
     @Test
+    fun `entry prefix is always derived from the folder name`() {
+        // 事故护栏（2026-10-04 真机）：判据从 `== skills` 改成 `in RECURSIVE_FILE_FOLDERS` 时，
+        // entryPrefix 曾漏改而硬编码 skills/ ⇒ 生成的图片被打成 `skills/...`（图片既不在
+        // images/ 下、恢复又会被解进 files/skills/）。这里对**每一个**目录钉住前缀来源。
+        appFilesPackingPlan().forEach { packing ->
+            assertEquals(
+                "条目前缀必须由目录名派生（曾把 images 打成 skills/ 前缀）",
+                "${packing.folder}/",
+                packing.entryPrefix,
+            )
+        }
+    }
+
+    @Test
+    fun `images is packed recursively while upload and fonts stay flat`() {
+        val plan = appFilesPackingPlan().associateBy { it.folder }
+        assertEquals(true, plan.getValue(FileFolders.IMAGES).recursive)
+        assertEquals(true, plan.getValue(FileFolders.SKILLS).recursive)
+        assertEquals(false, plan.getValue(FileFolders.UPLOAD).recursive)
+        assertEquals(false, plan.getValue(FileFolders.FONTS).recursive)
+    }
+
+    @Test
     fun `images must stay recursive to preserve legacy subdirectory files`() {
         // 2026-10-04 之前含 "/" 的模型名让产物落进 images/<ts>_<vendor>/ 子目录。
         // 平铺打包会**静默跳过**这些文件 ⇒ 读取侧虽已做旧形态回退查找（ImgGenVM），
