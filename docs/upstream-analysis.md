@@ -166,6 +166,17 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 
 **吸收优先级**：`85af5b91`（小，OpenRouter 图片用户真故障）→ `298e2771` 的提示告知小件 → Alpine 本体按需。
 
+**✅ 2026-10-04 落地（按上述审计顺序，四批）**：
+
+| 批 | 提交 | 内容 |
+|---|---|---|
+| ③ | `17440542` | tar 根条目 `./` 不再让整次 rootfs 安装失败（**与发行版无关**：`tar -C dir -czf x.tar.gz .` 默认带它，而安装对话框允许用户粘任意 URL）|
+| ① | `cfbaa0aa` | OpenRouter 编辑走 `/images/generations` + `input_references`（host 精确相等判定）；模型名含 `/` 的产物文件名清洗 + 旧记录读取兼容（`toFileNamePart`，覆盖临时预览与相册落盘两处）|
+| ② | `bd8a2568` | `images/` 改**递归**打包（`RECURSIVE_FILE_FOLDERS`），让遗留子目录里的老图换设备恢复后也能找回 |
+| ④ | `83965968` | 系统提示告知实际 shell（新增 `rootfsShellFor`，无 bash 回退 `/bin/sh`，工具执行与终端页共用）+ 发行版（`os-release`，`parseOsReleaseName` 净化控制字符/截断/容错键空格）|
+
+**仍未吸收（按需）**：Alpine 本体（`hasRootfs` 对绝对软链 `bin/sh` 的判定、Alpine 专属解包细节）——与「自托管预装 rootfs」同批；届时 `hasRootfs`/`hasUsableRootfs` 的两处同名判定可与 `rootfsShellFor` 一并收敛。
+
 #### 2026-10-04 独立复核（覆盖审计，两条更正 + 两条新增）
 
 逐条代码级复核上述两提交在 fork 的覆盖情况，结论有三处需要修正/补充：
