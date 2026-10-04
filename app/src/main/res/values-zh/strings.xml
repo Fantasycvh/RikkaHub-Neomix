@@ -1649,6 +1649,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成中断，已保留部分内容</string>
 
+  <string name="chat_image_crop_unavailable">无法准备裁剪所需的图片副本，已按原图添加（未裁剪）</string>
   <string name="message_incomplete_output_stream_cut">流式连接中断，内容可能不完整</string>
   <string name="message_incomplete_output_limit">已达输出上限，内容被截断</string>
   <string name="message_incomplete_output_filtered">输出被内容安全策略截断</string>

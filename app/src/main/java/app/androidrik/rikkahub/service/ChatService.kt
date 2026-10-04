@@ -1935,14 +1935,29 @@ class ChatService(
             }
             edited = true
 
+            // 被编辑的那条（而非 node.currentMessage——编辑候选时别串到别的分支）
+            val editedSource = node.messages.find { it.id == messageId }
+            val editedMessage = UIMessage(
+                role = node.role,
+                parts = processedParts,
+                annotations = editedSource?.annotations.orEmpty(),
+            ).let { base ->
+                // #1991 现象 B：编辑只改**内容**，不改**来源**——新分支必须继承「谁生成的」，
+                // 否则切到该分支时模型名/图标全空（上游实测，fork 同款）。
+                // 刻意**不继承** usage / finishedAt：它们描述的是被替换掉的那次生成，
+                // 套在用户手改后的文本上会把「手动编辑」误报成模型产出。
+                editedSource?.let { source ->
+                    base.copy(
+                        modelId = source.modelId,
+                        modelNameSnapshot = source.modelNameSnapshot,
+                        providerNameSnapshot = source.providerNameSnapshot,
+                        createdAt = source.createdAt,
+                    )
+                } ?: base
+            }
+
             node.copy(
-                messages = node.messages + UIMessage(
-                    role = node.role,
-                    parts = processedParts,
-                    // #1906：编辑保留原引用——引用是这条消息发出去时的语境，改文本不等于撤回引用。
-                    // 取被编辑的那条消息（而非 node.currentMessage）的注解，避免编辑候选时串到别的分支。
-                    annotations = node.messages.find { it.id == messageId }?.annotations.orEmpty(),
-                ),
+                messages = node.messages + editedMessage,
                 selectIndex = node.messages.size
             )
         }

@@ -1576,6 +1576,7 @@
   <string name="notification_keep_alive_stop">Стоп</string>
   <string name="message_partial_failure_banner">Генерация прервана — часть ответа сохранена</string>
 
+  <string name="chat_image_crop_unavailable">Не удалось подготовить изображение для обрезки; добавлено без обрезки</string>
   <string name="message_incomplete_output_stream_cut">Соединение потока прервано — содержимое может быть неполным</string>
   <string name="message_incomplete_output_limit">Достигнут лимит вывода — содержимое обрезано</string>
   <string name="message_incomplete_output_filtered">Вывод прерван фильтром содержимого</string>

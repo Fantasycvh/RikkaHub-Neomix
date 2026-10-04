@@ -62,7 +62,13 @@ fun ChatMessageAssistantAvatar(
     val settings = LocalSettings.current
     val showIcon = settings.displaySetting.showModelIcon
     val useAssistantAvatar = assistant?.useAssistantAvatar == true
-    if (message.role == MessageRole.ASSISTANT && (model != null || useAssistantAvatar)) {
+    // 模型/提供商被删除后 `model` 查不到，但消息上**存着当时的名称快照**（#1991 现象 A：
+    // 此前整块头部被跳过 ⇒ 历史对话里「谁生成的」直接消失）。有快照就按快照显示：
+    // 图标是 `AutoAIIcon(name)` 按名字生成的，快照同样能喂进去。
+    val snapshotName = message.modelNameSnapshot?.takeIf { it.isNotBlank() }
+    val iconSeed = model?.modelId ?: snapshotName
+    val displayName = model?.displayName ?: snapshotName
+    if (message.role == MessageRole.ASSISTANT && (iconSeed != null || useAssistantAvatar)) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -90,10 +96,10 @@ fun ChatMessageAssistantAvatar(
                         )
                     }
                 }
-            } else if (model != null) {
+            } else if (iconSeed != null) {
                 if (showIcon) {
                     AutoAIIcon(
-                        name = model.modelId,
+                        name = iconSeed,
                         modifier = Modifier.size(28.dp),
                         loading = loading
                     )
@@ -103,9 +109,9 @@ fun ChatMessageAssistantAvatar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    if (settings.displaySetting.showModelName) {
+                    if (settings.displaySetting.showModelName && displayName != null) {
                         Text(
-                            text = model.displayName,
+                            text = displayName,
                             style = MaterialTheme.typography.labelLargeEmphasized,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,

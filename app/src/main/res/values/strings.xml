@@ -1687,6 +1687,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="notification_keep_alive_stop">Stop</string>
   <string name="message_partial_failure_banner">Generation interrupted — partial content kept</string>
 
+  <string name="chat_image_crop_unavailable">Could not prepare the image for cropping; added it without cropping</string>
   <string name="message_incomplete_output_stream_cut">Stream was cut off — content may be incomplete</string>
   <string name="message_incomplete_output_limit">Reached the output limit — content was truncated</string>
   <string name="message_incomplete_output_filtered">Output was cut off by a content filter</string>

@@ -1632,6 +1632,7 @@
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成中斷，已保留部分內容</string>
 
+  <string name="chat_image_crop_unavailable">無法準備裁剪所需的圖片副本，已按原圖新增（未裁剪）</string>
   <string name="message_incomplete_output_stream_cut">串流連線中斷，內容可能不完整</string>
   <string name="message_incomplete_output_limit">已達輸出上限，內容被截斷</string>
   <string name="message_incomplete_output_filtered">輸出被內容安全策略截斷</string>

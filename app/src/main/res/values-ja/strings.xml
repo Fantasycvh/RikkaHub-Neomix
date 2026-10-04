@@ -1576,6 +1576,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成が中断されました — 部分的な内容を保持</string>
 
+  <string name="chat_image_crop_unavailable">トリミング用の画像を準備できなかったため、元の画像のまま追加しました</string>
   <string name="message_incomplete_output_stream_cut">ストリーム接続が中断されました（内容が不完全な可能性）</string>
   <string name="message_incomplete_output_limit">出力上限に達したため内容が打ち切られました</string>
   <string name="message_incomplete_output_filtered">コンテンツポリシーにより出力が打ち切られました</string>

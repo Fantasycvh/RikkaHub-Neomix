@@ -926,8 +926,20 @@ private fun ChatFilesPickerSheet(
                         preCropTempFile = tempFile
                         launchImageCrop(tempFile.toUri())
                     }.onFailure {
-                        Log.e("ImagePickButton", "Failed to copy image to temp, falling back", it)
-                        launchImageCrop(selectedUris.first())
+                        // 拷贝失败时**不能**把原始 URI 交给 UCrop（上游 #1976：系统相册返回的
+                        // media-store URI 在 Android 11 上可能无有效读授权，UCrop 的
+                        // BitmapLoadTask 会直接抛 SecurityException 崩溃——异常发生在库内，
+                        // 我们这边 catch 不到）。降级为「不裁剪、按原图添加」并明确告知，
+                        // 与「跳过裁剪」开关的行为一致。
+                        Log.e("ImagePickButton", "Failed to copy image to temp, adding without crop", it)
+                        preCropTempFile?.delete()
+                        preCropTempFile = null
+                        inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
+                        toaster.show(
+                            message = context.getString(R.string.chat_image_crop_unavailable),
+                            type = ToastType.Warning,
+                        )
+                        dismissAll()
                     }
                 } else {
                     inputState.addImages(filesManager.createChatFilesByContents(selectedUris))

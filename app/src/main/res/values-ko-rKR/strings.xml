@@ -1576,6 +1576,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="notification_keep_alive_stop">중지</string>
   <string name="message_partial_failure_banner">생성이 중단됨 — 일부 내용이 유지됨</string>
 
+  <string name="chat_image_crop_unavailable">자르기에 필요한 이미지를 준비하지 못해 원본 그대로 추가했습니다</string>
   <string name="message_incomplete_output_stream_cut">스트림 연결이 끊어졌습니다 — 내용이 불완전할 수 있습니다</string>
   <string name="message_incomplete_output_limit">출력 한도에 도달해 내용이 잘렸습니다</string>
   <string name="message_incomplete_output_filtered">콘텐츠 정책으로 출력이 차단되었습니다</string>
