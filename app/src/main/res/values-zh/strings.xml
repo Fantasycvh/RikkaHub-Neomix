@@ -643,7 +643,14 @@
   <string name="pinned_chats">置顶聊天</string>
 
   <string name="conversation_pin_keeps_order">已置顶（保持原有顺序位置）</string>
-  <string name="conversation_unpin_restores_position">已取消置顶（回到原位置）</string>  <string name="placeholder_battery_level">电池电量</string>
+
+  <string name="conversation_order_entry">排序</string>
+  <string name="conversation_order_editing">编辑顺序</string>
+  <string name="conversation_order_done">完成</string>
+  <string name="conversation_order_reset">恢复默认顺序</string>
+  <string name="conversation_order_hint">长按拖动调整顺序；置顶与未置顶分两档，只能在本档内调整。置顶不会改变档内位置，取消置顶会回到原位置。</string>
+  <string name="conversation_order_reset_confirm_title">恢复默认顺序？</string>
+  <string name="conversation_order_reset_confirm_desc">手工调整的顺序会被清空，列表回到按更新时间的排序。此操作不可撤销。</string>  <string name="conversation_unpin_restores_position">已取消置顶（回到原位置）</string>  <string name="placeholder_battery_level">电池电量</string>
   <string name="placeholder_char">助手名称</string>
   <string name="placeholder_current_date">日期</string>
   <string name="placeholder_device_info">设备信息</string>

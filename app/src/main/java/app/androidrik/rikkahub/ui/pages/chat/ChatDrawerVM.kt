@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.Folder
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FolderRepository
@@ -68,46 +69,49 @@ class ChatDrawerVM(
         .flatMapLatest { conversationRepo.observeTierMaterialized(it, pinned = false) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    val conversations: Flow<PagingData<ConversationListItem>> =
-        combine(assistantIdFlow, _selectedFolderId) { assistantId, folderId ->
-            assistantId to folderId
-        }
+    /**
+     * 「编辑顺序」模式的数据源：**非分页**轻量列表（镜像当前视图：未归类或选中的文件夹）。
+     *
+     * 为什么编辑模式不分页：拖拽需要一个完整且稳定的顺序——分页只加载已滚动到的部分，
+     * 缺项时算出的邻居是错的（见仓库 applyManualOrder 的注释）。
+     */
+    val editableConversations: Flow<List<Conversation>> =
+        combine(assistantIdFlow, _selectedFolderId) { assistantId, folderId -> assistantId to folderId }
             .flatMapLatest { (assistantId, folderId) ->
-                if (folderId == null) {
+                conversationRepo.getLightConversationsForOrdering(assistantId, folderId)
+            }
+
+    val conversations: Flow<PagingData<ConversationListItem>> =
+        // 「是否自定义顺序」决定要不要插日期分组头，因此它也是**分页数据的输入**，
+        // 必须与助手/文件夹同层进 flatMapLatest。
+        //
+        // 不要在分页流之后用 `combine(customOrderActive)` 换标志：PagingData 只能被收集一次，
+        // combine 会把**同一个** PagingData 再包一层（pagingData.map{}.insertSeparators{}），
+        // 底层 PageFetcherSnapshot.pageEventFlow 因此被二次收集 ⇒
+        // `IllegalStateException: Attempt to collect twice from pageEventFlow`。
+        // 真机事故（2026-10-04）：某档首次落值（标志 false→true）当帧崩溃——自定义顺序用户必踩。
+        // 放进 flatMapLatest 后，标志变化会新建 Pager（新 PagingSource／新快照），合法且顺序正确。
+        combine(assistantIdFlow, _selectedFolderId, customOrderActive) { assistantId, folderId, customOrder ->
+            Triple(assistantId, folderId, customOrder)
+        }
+            .flatMapLatest { (assistantId, folderId, customOrder) ->
+                val paging = if (folderId == null) {
                     conversationRepo.getUnfiledConversationsOfAssistantPaging(assistantId)
                 } else {
                     conversationRepo.getConversationsOfFolderPaging(folderId)
                 }
-            }
-            // 与「是否自定义顺序」组合：标志变化要重算分隔头（分页数据本身不变）
-            .combine(customOrderActive) { pagingData, customOrder -> pagingData to customOrder }
-            .map { (pagingData, customOrder) ->
-                pagingData
-                    .map { ConversationListItem.Item(it) }
-                    .insertSeparators<ConversationListItem.Item, ConversationListItem> { before, after ->
-                        // 自定义顺序下**不插日期分组头**：顺序由用户定义，按日期分组只会
-                        // 把同一档切成无意义的段落（置顶头仍保留——它标记的是档位，不是日期）
-                        val wantDateHeader = !customOrder
-                        when {
-                            before == null && after is ConversationListItem.Item -> {
-                                if (after.conversation.isPinned) {
-                                    ConversationListItem.PinnedHeader
-                                } else if (!wantDateHeader) {
-                                    null
-                                } else {
-                                    val afterDate = after.conversation.updateAt
-                                        .atZone(ZoneId.systemDefault())
-                                        .toLocalDate()
-                                    ConversationListItem.DateHeader(
-                                        date = afterDate,
-                                        label = getDateLabel(afterDate)
-                                    )
-                                }
-                            }
-
-                            before is ConversationListItem.Item && after is ConversationListItem.Item -> {
-                                if (before.conversation.isPinned && !after.conversation.isPinned) {
-                                    if (!wantDateHeader) {
+                paging.map { pagingData ->
+                    pagingData
+                        .map { ConversationListItem.Item(it) }
+                        .insertSeparators<ConversationListItem.Item, ConversationListItem> { before, after ->
+                            // 自定义顺序下**不插日期分组头**：顺序由用户定义，按日期分组只会
+                            // 把同一档切成无意义的段落（置顶头仍保留——它标记的是档位，不是日期）
+                            val wantDateHeader = !customOrder
+                            when {
+                                before == null && after is ConversationListItem.Item -> {
+                                    if (after.conversation.isPinned) {
+                                        ConversationListItem.PinnedHeader
+                                    } else if (!wantDateHeader) {
                                         null
                                     } else {
                                         val afterDate = after.conversation.updateAt
@@ -118,30 +122,46 @@ class ChatDrawerVM(
                                             label = getDateLabel(afterDate)
                                         )
                                     }
-                                } else if (!after.conversation.isPinned && wantDateHeader) {
-                                    val beforeDate = before.conversation.updateAt
-                                        .atZone(ZoneId.systemDefault())
-                                        .toLocalDate()
-                                    val afterDate = after.conversation.updateAt
-                                        .atZone(ZoneId.systemDefault())
-                                        .toLocalDate()
+                                }
 
-                                    if (beforeDate != afterDate) {
-                                        ConversationListItem.DateHeader(
-                                            date = afterDate,
-                                            label = getDateLabel(afterDate)
-                                        )
+                                before is ConversationListItem.Item && after is ConversationListItem.Item -> {
+                                    if (before.conversation.isPinned && !after.conversation.isPinned) {
+                                        if (!wantDateHeader) {
+                                            null
+                                        } else {
+                                            val afterDate = after.conversation.updateAt
+                                                .atZone(ZoneId.systemDefault())
+                                                .toLocalDate()
+                                            ConversationListItem.DateHeader(
+                                                date = afterDate,
+                                                label = getDateLabel(afterDate)
+                                            )
+                                        }
+                                    } else if (!after.conversation.isPinned && wantDateHeader) {
+                                        val beforeDate = before.conversation.updateAt
+                                            .atZone(ZoneId.systemDefault())
+                                            .toLocalDate()
+                                        val afterDate = after.conversation.updateAt
+                                            .atZone(ZoneId.systemDefault())
+                                            .toLocalDate()
+
+                                        if (beforeDate != afterDate) {
+                                            ConversationListItem.DateHeader(
+                                                date = afterDate,
+                                                label = getDateLabel(afterDate)
+                                            )
+                                        } else {
+                                            null
+                                        }
                                     } else {
                                         null
                                     }
-                                } else {
-                                    null
                                 }
-                            }
 
-                            else -> null
+                                else -> null
+                            }
                         }
-                    }
+                }
             }
             .cachedIn(viewModelScope)
 

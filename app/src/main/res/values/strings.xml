@@ -647,7 +647,14 @@
   <string name="pinned_chats">Pinned Chats</string>
 
   <string name="conversation_pin_keeps_order">Pinned — its position in the list is kept</string>
-  <string name="conversation_unpin_restores_position">Unpinned — back to its previous position</string>  <string name="placeholder_battery_level">Battery Level</string>
+
+  <string name="conversation_order_entry">Order</string>
+  <string name="conversation_order_editing">Editing order</string>
+  <string name="conversation_order_done">Done</string>
+  <string name="conversation_order_reset">Reset order</string>
+  <string name="conversation_order_hint">Long-press and drag to reorder. Pinned and unpinned are separate tiers; you can only reorder within a tier. Pinning keeps its current position, and unpinning restores it.</string>
+  <string name="conversation_order_reset_confirm_title">Reset to default order?</string>
+  <string name="conversation_order_reset_confirm_desc">The manual order will be cleared and the list returns to sorting by last update. This cannot be undone.</string>  <string name="conversation_unpin_restores_position">Unpinned — back to its previous position</string>  <string name="placeholder_battery_level">Battery Level</string>
   <string name="placeholder_char">Assistant Name</string>
   <string name="placeholder_current_date">Date</string>
   <string name="placeholder_device_info">Device Info</string>

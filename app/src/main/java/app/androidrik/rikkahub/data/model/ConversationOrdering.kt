@@ -75,6 +75,54 @@ sealed interface OrderPlacement {
     data class Bottom(val last: Long) : OrderPlacement
 }
 
+/**
+ * 把 [movedId] 按邻居锚点插回档内顺序（纯函数）。
+ *
+ * 锚点语义是**易错点**（真机实测把两处都写反过，表现为"拖动生效但总是差一位"）：
+ * [afterId] 指「拖完之后应排在移动项**之后**」的那条 ⇒ 移动项要插到**它前面**；
+ * [beforeId] 相反，插到它**后面**。两者都为 null（或都不在本档内）时插到末尾。
+ */
+fun desiredTierOrder(
+    tierIds: List<String>,
+    movedId: String,
+    beforeId: String?,
+    afterId: String?,
+): List<String> {
+    val desired = tierIds.filterNot { it == movedId }.toMutableList()
+    val anchorIndex = when {
+        afterId != null -> desired.indexOf(afterId).takeIf { it >= 0 }
+        beforeId != null -> desired.indexOf(beforeId).takeIf { it >= 0 }?.plus(1)
+        else -> null
+    } ?: desired.size
+    desired.add(anchorIndex.coerceIn(0, desired.size), movedId)
+    return desired
+}
+
+/**
+ * 由目标顺序 + 现有位置值推出落点（纯函数）。
+ *
+ * 「落在档位最末」必须是 [OrderPlacement.Bottom]：早期把 `next == null` 归到 [OrderPlacement.Top]，
+ * 于是拖到列表底部的会话会拿到"整档最前"的位置值，松手后跳到首位。
+ */
+fun placementOf(
+    desired: List<String>,
+    movedId: String,
+    existingValues: Map<String, Long>,
+): OrderPlacement {
+    val from = desired.indexOf(movedId)
+    if (from <= 0) return OrderPlacement.Top
+    val prev = desired.getOrNull(from - 1)?.let(existingValues::get)
+    val next = desired.getOrNull(from + 1)?.let(existingValues::get)
+    return when {
+        // 上方邻居没有位置值（档位只被半物化）⇒ 退化为最前，下次拖拽顺带整档归一化
+        prev == null -> OrderPlacement.Top
+        next == null -> OrderPlacement.Bottom(prev)
+        prev < next -> OrderPlacement.Between(prev, next)
+        // 邻居值顺序异常（理论不该出现）⇒ 放到 prev 之后，至少不动别人的相对顺序
+        else -> OrderPlacement.Bottom(prev)
+    }
+}
+
 /** 一次拖拽要写库的结果：要么只写一行（[Single]），要么整档重排（[Renormalize]）。 */
 sealed interface OrderWrite {
     /** 只更新一条会话的位置值（常规路径，最省）。 */

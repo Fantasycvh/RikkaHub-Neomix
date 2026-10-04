@@ -604,7 +604,14 @@
   <string name="pinned_chats">Закреплённые чаты</string>
 
   <string name="conversation_pin_keeps_order">Закреплено — позиция в списке сохранена</string>
-  <string name="conversation_unpin_restores_position">Закрепление снято — возврат на прежнее место</string>  <string name="placeholder_battery_level">Уровень заряда</string>
+
+  <string name="conversation_order_entry">Порядок</string>
+  <string name="conversation_order_editing">Изменение порядка</string>
+  <string name="conversation_order_done">Готово</string>
+  <string name="conversation_order_reset">Сбросить порядок</string>
+  <string name="conversation_order_hint">Нажмите и удерживайте, чтобы перетащить. Закреплённые и обычные — отдельные группы, порядок меняется только внутри группы. Закрепление не меняет позицию, снятие возвращает её.</string>
+  <string name="conversation_order_reset_confirm_title">Сбросить порядок?</string>
+  <string name="conversation_order_reset_confirm_desc">Ручной порядок будет сброшен, список вернётся к сортировке по времени обновления. Отменить нельзя.</string>  <string name="conversation_unpin_restores_position">Закрепление снято — возврат на прежнее место</string>  <string name="placeholder_battery_level">Уровень заряда</string>
   <string name="placeholder_char">Имя ассистента</string>
   <string name="placeholder_current_date">Дата</string>
   <string name="placeholder_device_info">Информация об устройстве</string>

@@ -30,7 +30,8 @@ import app.androidrik.rikkahub.data.model.decideTierMove
 import app.androidrik.rikkahub.data.model.TierMoveAction
 import app.androidrik.rikkahub.data.model.planOrderWrite
 import app.androidrik.rikkahub.data.model.OrderWrite
-import app.androidrik.rikkahub.data.model.OrderPlacement
+import app.androidrik.rikkahub.data.model.desiredTierOrder
+import app.androidrik.rikkahub.data.model.placementOf
 import app.androidrik.rikkahub.data.model.ConversationOrdering
 import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.repairCorruptedCandidates
@@ -369,9 +370,14 @@ class ConversationRepository(
      * 为什么编辑模式不分页：拖拽需要一个**完整且稳定**的顺序（分页只加载已滚动到的部分，
      * 缺项时算出的兄弟节点是错的）。会话数在此量级（几十~几百）下，一次性加载代价可接受。
      */
-    fun getLightConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> =
-        conversationDAO.getLightConversationsOfAssistant(assistantId.toString())
-            .map { entities -> entities.map(::conversationSummaryToConversation) }
+    fun getLightConversationsForOrdering(
+        assistantId: Uuid,
+        folderId: Uuid?,
+    ): Flow<List<Conversation>> =
+        conversationDAO.getLightConversationsForOrdering(
+            assistantId.toString(),
+            folderId?.toString() ?: "",
+        ).map { entities -> entities.map(::conversationSummaryToConversation) }
 
     /**
      * 提交一次手工排序（「编辑顺序」模式松手时调用）——`sort_order` 的**唯一**业务写入口。
@@ -395,25 +401,22 @@ class ConversationRepository(
             val currentValues = conversationDAO.getTierOrderRows(assistantId.toString(), pinned)
                 .associate { it.id to it.sortOrder }
 
-            // 目标顺序：把 movedId 从原位置摘出、插到 afterId 之后（beforeId 仅作校验用）
-            val desired = tierIds.toMutableList().also { it.remove(movedId) }
-            val anchorIndex = afterId?.let { desired.indexOf(it) } ?: -1
-            desired.add(if (anchorIndex >= 0) anchorIndex + 1 else 0, movedId)
+            // 目标顺序：把 movedId 摘出后按邻居信息插回。锚点语义与落点换算都下沉到
+            // ConversationOrdering 的纯函数（desiredTierOrder / placementOf），单测钉住了
+            // 两个真机踩过的错：afterId 必须插在它**前**面（否则整体差一位）、
+            // 末尾落点必须是 Bottom（否则拖到最底会跳到最前）。
+            val desired = desiredTierOrder(tierIds, movedId, beforeId, afterId)
 
             val write: OrderWrite = if (currentValues.isEmpty()) {
                 // 该档还没进过自定义顺序：按目标顺序一次性物化（顺带覆盖「间距耗尽」的整档重排）
                 OrderWrite.Renormalize(desired, ConversationOrdering.materialize(desired.size))
             } else {
-                val from = desired.indexOf(movedId)
-                val prev = desired.getOrNull(from - 1)?.let(currentValues::get)
-                val next = desired.getOrNull(from + 1)?.let(currentValues::get)
-                val placement = when {
-                    from <= 0 -> OrderPlacement.Top
-                    prev != null && next != null && prev < next -> OrderPlacement.Between(prev, next)
-                    // 邻居无位置值（该档刚从自动模式转入）⇒ 退化为最前；下次拖拽即整档归一化
-                    else -> OrderPlacement.Top
-                }
-                planOrderWrite(movedId, placement, currentValues.values.toList(), desired)
+                planOrderWrite(
+                    movedId,
+                    placementOf(desired, movedId, currentValues),
+                    currentValues.values.toList(),
+                    desired,
+                )
             }
 
             when (write) {

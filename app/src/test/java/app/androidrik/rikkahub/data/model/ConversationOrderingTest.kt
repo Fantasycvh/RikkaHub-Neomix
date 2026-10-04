@@ -128,4 +128,89 @@ class ConversationOrderingTest {
             decideTierMove(hasValue = false, destinationMaterialized = false),
         )
     }
+
+    // ---- 拖拽落点：锚点插回 + 落点换算（真机差一位 / 拖到底跳最前的根因） ----
+
+    @Test
+    fun `afterId 锚点插在它前面`() {
+        // afterId = 「拖完后应排在移动项之后」的那条 ⇒ 移动项必须插到它前面。
+        // 反向实现（插到它后面）会让每次拖动整体差一位——真机实测就是这个症状。
+        assertEquals(
+            listOf("a", "x", "b", "c"),
+            desiredTierOrder(listOf("a", "x", "b", "c"), movedId = "x", beforeId = "a", afterId = "b"),
+        )
+        // 往上拖两位：b 与 c 之间 ⇒ 插到 c 前面
+        assertEquals(
+            listOf("a", "b", "x", "c", "d"),
+            desiredTierOrder(listOf("a", "b", "c", "x", "d"), movedId = "x", beforeId = "b", afterId = "c"),
+        )
+    }
+
+    @Test
+    fun `只有 beforeId 时插在它后面`() {
+        // 拖到最末：没有后继项，只有 beforeId
+        assertEquals(
+            listOf("a", "b", "x"),
+            desiredTierOrder(listOf("a", "x", "b"), movedId = "x", beforeId = "b", afterId = null),
+        )
+        assertEquals(
+            listOf("a", "b", "c", "x"),
+            desiredTierOrder(listOf("a", "b", "x", "c"), movedId = "x", beforeId = "c", afterId = null),
+        )
+    }
+
+    @Test
+    fun `锚点缺失或都为空时插到末尾`() {
+        assertEquals(
+            listOf("a", "b", "x"),
+            desiredTierOrder(listOf("a", "b", "x"), movedId = "x", beforeId = null, afterId = null),
+        )
+        // 锚点不在本档（例如跨档拖动被拒后的残留信息）⇒ 不猜，落到末尾
+        assertEquals(
+            listOf("a", "b", "x"),
+            desiredTierOrder(listOf("a", "b", "x"), movedId = "x", beforeId = "zzz", afterId = null),
+        )
+    }
+
+    @Test
+    fun `落点换算区分顶中底`() {
+        val values = mapOf(
+            "a" to 1_000_000L,
+            "b" to 1_001_000L,
+            "c" to 1_002_000L,
+        )
+        // 最前
+        assertEquals(
+            OrderPlacement.Top,
+            placementOf(listOf("x", "a", "b", "c"), "x", values),
+        )
+        // 中间 ⇒ Between（写中值）
+        assertEquals(
+            OrderPlacement.Between(1_000_000L, 1_001_000L),
+            placementOf(listOf("a", "x", "b", "c"), "x", values),
+        )
+        // 最末 ⇒ Bottom；早期误判成 Top，拖到最底的会话会跳到首位
+        assertEquals(
+            OrderPlacement.Bottom(1_002_000L),
+            placementOf(listOf("a", "b", "c", "x"), "x", values),
+        )
+    }
+
+    @Test
+    fun `拖到末尾只写一行且值大于当前最大值`() {
+        val ids = listOf("a", "b", "c", "x")
+        val values = mapOf("a" to 1_000_000L, "b" to 1_001_000L, "c" to 1_002_000L)
+        val write = planOrderWrite("x", placementOf(ids, "x", values), values.values.toList(), ids)
+        assertEquals(OrderWrite.Single("x", 1_003_000L), write)
+    }
+
+    @Test
+    fun `上方邻居无位置值时退化为最前`() {
+        // 档位半物化（只有部分行有值）时不能算出中值，退化到 Top，下次拖拽整档归一化
+        val values = mapOf("b" to 1_001_000L)
+        assertEquals(
+            OrderPlacement.Top,
+            placementOf(listOf("a", "x", "b", "c"), "x", values),
+        )
+    }
 }

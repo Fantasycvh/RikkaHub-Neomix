@@ -59,6 +59,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowUpDown
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.File01
@@ -121,6 +122,10 @@ fun ChatDrawerContent(
     val selectedFolderId by drawerVm.selectedFolderId.collectAsStateWithLifecycle()
     // 自定义顺序是否生效（未置顶档已有位置值）——决定置顶提示文案与「恢复默认顺序」可用性
     val customOrderActive by drawerVm.customOrderActive.collectAsStateWithLifecycle()
+    // 「编辑顺序」模式（设计稿 §一.4）：进入后长按即拖、退出即锁定；不持久化（每次进来都是浏览态）
+    var editOrderMode by rememberSaveable { mutableStateOf(false) }
+    var showResetOrderDialog by rememberSaveable { mutableStateOf(false) }
+    val editableConversations by drawerVm.editableConversations.collectAsStateWithLifecycle(initialValue = emptyList())
     val conversationListState = rememberLazyListState(
         initialFirstVisibleItemIndex = drawerVm.scrollIndex,
         initialFirstVisibleItemScrollOffset = drawerVm.scrollOffset,
@@ -294,6 +299,25 @@ fun ChatDrawerContent(
                     modifier = Modifier.weight(1f),
                 )
             } else {
+                // 「排序」入口（设计稿 §四.1）：会话面板顶部，与文件夹条同层
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { editOrderMode = !editOrderMode }) {
+                        Icon(
+                            imageVector = HugeIcons.ArrowUpDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.size(4.dp))
+                        Text(stringResource(R.string.conversation_order_entry))
+                    }
+                }
+
                 FolderBar(
                     folders = folders,
                     selectedFolderId = selectedFolderId,
@@ -303,7 +327,19 @@ fun ChatDrawerContent(
                     onDelete = { folderToDelete = it },
                 )
 
-                ConversationList(
+                if (editOrderMode) {
+                    EditConversationOrderList(
+                        conversations = editableConversations,
+                        onPersistMove = { movedId, pinned, beforeId, afterId ->
+                            drawerVm.applyManualOrder(movedId, pinned, beforeId, afterId)
+                        },
+                        onExit = { editOrderMode = false },
+                        onResetOrder = { showResetOrderDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    )
+                } else ConversationList(
                 current = current,
                 showLastActive = customOrderActive,
                 conversations = conversations,
@@ -489,6 +525,28 @@ fun ChatDrawerContent(
                 )
             }
         }
+    }
+
+    // 「恢复默认顺序」确认（破坏性且不可撤销：清空该档手工顺序 ⇒ 回到按更新时间）
+    if (showResetOrderDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetOrderDialog = false },
+            title = { Text(stringResource(R.string.conversation_order_reset_confirm_title)) },
+            text = { Text(stringResource(R.string.conversation_order_reset_confirm_desc)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    drawerVm.resetCustomOrder()
+                    showResetOrderDialog = false
+                }) {
+                    Text(stringResource(R.string.conversation_order_reset))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetOrderDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 
     // 昵称编辑对话框

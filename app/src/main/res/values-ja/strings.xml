@@ -604,7 +604,14 @@
   <string name="pinned_chats">固定チャット</string>
 
   <string name="conversation_pin_keeps_order">ピン留めしました（並び順の位置はそのまま）</string>
-  <string name="conversation_unpin_restores_position">ピン留めを解除しました（元の位置に戻ります）</string>  <string name="placeholder_battery_level">バッテリー残量</string>
+
+  <string name="conversation_order_entry">並び順</string>
+  <string name="conversation_order_editing">並び順を編集</string>
+  <string name="conversation_order_done">完了</string>
+  <string name="conversation_order_reset">既定の順序に戻す</string>
+  <string name="conversation_order_hint">長押ししてドラッグで並べ替えます。ピン留めと通常は別のグループで、グループ内のみ並べ替えできます。ピン留めしてもグループ内の位置は変わらず、解除すると元の位置に戻ります。</string>
+  <string name="conversation_order_reset_confirm_title">既定の順序に戻しますか？</string>
+  <string name="conversation_order_reset_confirm_desc">手動で並べた順序は消去され、更新時刻順に戻ります。元に戻せません。</string>  <string name="conversation_unpin_restores_position">ピン留めを解除しました（元の位置に戻ります）</string>  <string name="placeholder_battery_level">バッテリー残量</string>
   <string name="placeholder_char">アシスタント名</string>
   <string name="placeholder_current_date">日付</string>
   <string name="placeholder_device_info">デバイス情報</string>
