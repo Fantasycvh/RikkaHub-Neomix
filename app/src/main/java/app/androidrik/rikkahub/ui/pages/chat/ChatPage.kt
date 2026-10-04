@@ -580,6 +580,10 @@ private fun ChatPageContent(
                         doRegenerate(message, ChatService.RegenerateScope.THIS_ONLY)
                     }
                 },
+                onContinue = {
+                    // 续写是「同一条消息往下写」，无下游语义问题（只作用于末条）
+                    vm.continueMessage()
+                },
                 onEdit = {
                     inputState.editingMessage = it.id
                     inputState.setContents(it.parts)

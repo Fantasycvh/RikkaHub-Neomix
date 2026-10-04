@@ -149,6 +149,8 @@ fun ChatList(
     onDismissError: (Uuid) -> Unit = {},
     onClearAllErrors: () -> Unit = {},
     onRegenerate: (UIMessage) -> Unit = {},
+    /** 手动「继续生成」：把被截断的末条消息接着写下去（本批：裸断流/撞上限时可用） */
+    onContinue: (UIMessage) -> Unit = {},
     onEdit: (UIMessage) -> Unit = {},
     onQuoteMessage: (UIMessage) -> Unit = {},
     onForkMessage: (UIMessage) -> Unit = {},
@@ -194,6 +196,7 @@ fun ChatList(
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = onRegenerate,
+                onContinue = onContinue,
                 onEdit = onEdit,
                 onQuoteMessage = onQuoteMessage,
                 onForkMessage = onForkMessage,
@@ -227,6 +230,7 @@ private fun ChatListNormal(
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
     onRegenerate: (UIMessage) -> Unit,
+    onContinue: (UIMessage) -> Unit,
     onEdit: (UIMessage) -> Unit,
     onQuoteMessage: (UIMessage) -> Unit,
     onForkMessage: (UIMessage) -> Unit,
@@ -444,6 +448,9 @@ private fun ChatListNormal(
                             loading = loading && index == lastMessageIndex,
                             onRegenerate = {
                                 onRegenerate(node.currentMessage)
+                            },
+                            onContinue = {
+                                onContinue(node.currentMessage)
                             },
                             onEdit = {
                                 onEdit(node.currentMessage)

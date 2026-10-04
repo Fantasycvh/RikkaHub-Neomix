@@ -66,6 +66,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.ui.isContentFilterTruncation
+import app.androidrik.ai.ui.isOutputLimitTruncation
 import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
@@ -115,6 +117,8 @@ fun ChatMessage(
     onFork: () -> Unit,
     onRegenerate: () -> Unit,
     onEdit: () -> Unit,
+    /** 手动「继续生成」：把被截断的消息接着写下去（仅末条消息显示该按钮）。 */
+    onContinue: () -> Unit = {},
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onQuote: () -> Unit = {},
@@ -152,6 +156,30 @@ fun ChatMessage(
                 onRegenerate = onRegenerate,
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+
+        // 输出不完整提示（本批）：只挂在**末条**消息上——只有它还能「接着写」。
+        // 三档成因分开表述（成本/可续性不同）：裸断流与撞上限可续写，内容拦截不提供续写按钮。
+        if (lastMessage && message.role == MessageRole.ASSISTANT) {
+            when {
+                message.finishIncomplete -> IncompleteOutputBanner(
+                    text = stringResource(R.string.message_incomplete_output_stream_cut),
+                    onContinue = onContinue,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                isOutputLimitTruncation(message.finishReason) -> IncompleteOutputBanner(
+                    text = stringResource(R.string.message_incomplete_output_limit),
+                    onContinue = onContinue,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                isContentFilterTruncation(message.finishReason) -> IncompleteOutputBanner(
+                    text = stringResource(R.string.message_incomplete_output_filtered),
+                    onContinue = null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
 
         // #1906：引用块——显示这条消息发出时引用的历史消息快照（不随原消息后续编辑而变）。
@@ -746,6 +774,46 @@ private fun PartialFailureBanner(
     }
 }
 
+
+/**
+ * 输出不完整横幅（本批）：裸断流 / 撞输出上限 / 内容拦截三种成因共用一套外观，文案由调用方给。
+ *
+ * 与 [PartialFailureBanner] 的区别：后者是「生成**失败**留下的草稿」（#1812 异常路径），
+ * 这里是「生成**正常收尾但内容不完整**」——不会自动重发，用户可选择接着写（续写追加到同一条消息，
+ * 不新建候选，故按钮文案是「继续生成」而非「重新生成」）。
+ */
+@Composable
+private fun IncompleteOutputBanner(
+    text: String,
+    onContinue: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.weight(1f),
+            )
+            if (onContinue != null) {
+                TextButton(onClick = onContinue) {
+                    Text(stringResource(R.string.message_incomplete_output_continue))
+                }
+            }
+        }
+    }
+}
 
 /** 渲染前保护：超长消息文本截断，避免 Compose 测量高度溢出 Int.MAX（vet 图极长空白消息曾触发） */
 private const val MAX_RENDER_TEXT_LENGTH = 1_100_000

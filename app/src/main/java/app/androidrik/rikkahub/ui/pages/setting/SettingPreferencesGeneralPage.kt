@@ -399,6 +399,20 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             },
                         )
                         item(
+                            headlineContent = { Text(stringResource(R.string.setting_retry_auto_continue_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_retry_auto_continue_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = retrySetting.autoContinueOnLengthTruncation,
+                                    onCheckedChange = { auto ->
+                                        updateRetrySetting(
+                                            retrySetting.copy(autoContinueOnLengthTruncation = auto)
+                                        )
+                                    }
+                                )
+                            },
+                        )
+                        item(
                             headlineContent = { Text(stringResource(R.string.setting_retry_partial_chars_title)) },
                             supportingContent = {
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

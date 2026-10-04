@@ -1613,7 +1613,9 @@
   <string name="setting_retry_after_partial_title">半截後自動重試</string>
   <string name="setting_retry_after_partial_desc">半截輸出後仍整輪重試；開啟時上方「保留半截草稿」不生效</string>
   <string name="setting_retry_partial_chars_title">半截字數門檻</string>
-  <string name="setting_retry_partial_chars_desc">可見文字 ≥ 該值視為已產生有效輸出（reasoning 不計，下限 1）</string>
+
+  <string name="setting_retry_auto_continue_title">撞輸出上限時自動續寫</string>
+  <string name="setting_retry_auto_continue_desc">回覆達到輸出上限後自動接著寫（關閉時只提示並提供「繼續生成」按鈕）。串流中斷不受此開關影響，恆自動續寫</string>  <string name="setting_retry_partial_chars_desc">可見文字 ≥ 該值視為已產生有效輸出（reasoning 不計，下限 1）</string>
   <string name="setting_retry_partial_chars_applied">目前生效：%1$d</string>
   <string name="generation_retry_waiting">生成失敗，%1$d/%2$d 次重試，%3$d 秒後進行</string>
   <string name="chat_server_tool_running">正在執行內建工具 %1$s…</string>
@@ -1629,7 +1631,11 @@
   <string name="notification_keep_alive_running">背景常駐執行中</string>
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成中斷，已保留部分內容</string>
-  <string name="message_partial_failure_regenerate">重新生成</string>
+
+  <string name="message_incomplete_output_stream_cut">串流連線中斷，內容可能不完整</string>
+  <string name="message_incomplete_output_limit">已達輸出上限，內容被截斷</string>
+  <string name="message_incomplete_output_filtered">輸出被內容安全策略截斷</string>
+  <string name="message_incomplete_output_continue">繼續生成</string>  <string name="message_partial_failure_regenerate">重新生成</string>
   <string name="asr_error_not_configured">未配置語音辨識——請先設定 ASR 供應商和 API Key</string>
   <string name="asr_error_audio_focus">無法取得音訊焦點（麥克風可能被占用）</string>
   <string name="prompt_inspect_title">請求內容</string>

@@ -83,6 +83,16 @@ data class RetrySetting(
     val retryAfterPartial: Boolean = false,
     /** #1812：半截输出判定阈值——过滤 reasoning 后可见 Text 字符数 ≥ 该值视为「已产生有效输出」 */
     val partialOutputMinChars: Int = 50,
+    /**
+     * 撞输出上限（`finishReason=length` 等）时**自动续写**（默认关）。
+     *
+     * 为什么默认关：续写要重发整个上下文，用户可能只想要一段就停——连烧多轮的成本应由用户
+     * 显式同意（这是 #1812「成本控制权在用户」的一贯取舍）。关闭时 UI 仍会提示「已达输出上限」
+     * 并提供手动「继续生成」。
+     *
+     * 裸断流（网关提前关流，非模型本意）不受本开关约束，恒自动续写（上限 3 次）。
+     */
+    val autoContinueOnLengthTruncation: Boolean = false,
 ) {
     companion object {
         val DEFAULT_DELAYS_SECONDS = listOf(2, 2, 2, 2, 2, 5, 10, 20, 60, 120)

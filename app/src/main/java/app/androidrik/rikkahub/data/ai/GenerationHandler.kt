@@ -32,6 +32,7 @@ import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.registry.ModelRegistry
+import app.androidrik.ai.ui.isOutputLimitTruncation
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.ToolApprovalState
@@ -68,6 +69,21 @@ private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
  * 空回复补救提示：模型只输出思考、无可见正文也无工具调用时，向随后一次请求追加此提示
  * 要求补出可见回答。仅重试一次；不写入对话历史（Yuihub `8a3a37ac` 同源）。
  */
+/**
+ * 续写提示（裸断流）：网关/中转在没发终止标记的情况下提前关流。与 [CONTINUE_TRUNCATED_HINT]
+ * 语义相同（从停处接着写、不重复、不重新开头），分开只为让日志/诊断能区分成因。
+ */
+internal const val CONTINUE_INCOMPLETE_HINT =
+    "Your previous response ended unexpectedly in the middle (the stream was cut off before a " +
+        "proper stop signal). Continue exactly from where it stopped, without repeating any text " +
+        "you already produced and without restarting or adding a preamble."
+
+/** 续写提示（撞输出上限）：模型被 max_tokens 掐断，语义同上。 */
+internal const val CONTINUE_TRUNCATED_HINT =
+    "Your previous response was cut off because it reached the output token limit. Continue " +
+        "exactly from where it stopped, without repeating any text you already produced and " +
+        "without restarting or adding a preamble."
+
 private const val VISIBLE_ANSWER_RECOVERY_HINT =
     "Your previous response produced no visible output for the user (reasoning only). " +
         "Provide your visible answer now."
@@ -220,6 +236,11 @@ class GenerationHandler(
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
+        /**
+         * 首轮的「续写/补救提示」（只进本请求的系统提示、不写入对话历史）。
+         * 手动「继续生成」用它把被截断的消息接着写下去（见 [CONTINUE_INCOMPLETE_HINT]）。
+         */
+        initialRecoveryHint: String? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -276,7 +297,8 @@ class GenerationHandler(
             // 无可见正文也无工具调用——直接结束会让用户看到「思考完就不回复」。
             // 只重试一次；恢复提示只作用于下一次请求的系统提示，不写入对话历史。
             var visibleAnswerRecovered = false
-            var pendingRecoveryHint: String? = null
+            var pendingRecoveryHint: String? = initialRecoveryHint
+            var autoContinuations = 0
 
             for (stepIndex in 0 until maxSteps) {
                 Log.i(TAG, "streamText: start step #$stepIndex (${targetModel.id})")
@@ -361,9 +383,10 @@ class GenerationHandler(
 
                 val tools = messages.last().getTools().filter { !it.isExecuted }
                 if (tools.isEmpty()) {
+                    val last = messages.lastOrNull()
                     // 空回复补救：最后一次请求只产出思考、无可见正文也无工具调用时，
                     // 注入一次性恢复提示再请求一轮（见循环前的注释）
-                    val hasVisibleOutput = messages.lastOrNull()?.parts.orEmpty().any { part ->
+                    val hasVisibleOutput = last?.parts.orEmpty().any { part ->
                         (part is UIMessagePart.Text && part.text.isNotBlank()) ||
                             part is UIMessagePart.Image
                     }
@@ -371,6 +394,34 @@ class GenerationHandler(
                         visibleAnswerRecovered = true
                         pendingRecoveryHint = VISIBLE_ANSWER_RECOVERY_HINT
                         Log.i(TAG, "streamText: empty visible reply, requesting visible answer once")
+                        continue
+                    }
+                    // 续写（本批新增，见 docs/peer-apps-benchmark.md §四.7 D）：输出不完整时
+                    // 就地从停处接着写，续写追加到**同一条助手消息**（不新建候选、不重发全轮）。
+                    //
+                    // 两类成因的策略不同（成本权衡）：
+                    // - 裸断流（finishIncomplete）：网关/中转提前切连接，**非模型本意** ⇒ 自动续写。
+                    //   每次续写都要重发整个上下文，故设上限（CONTINUE_LIMIT）防「中转一直切、
+                    //   一直重发」的烧费。
+                    // - 撞输出上限（finishReason=length 等）：模型确实写满了配额，续写多半是
+                    //   用户想要的长文；但连烧 3 轮的成本由用户承担 ⇒ **默认只提示、由用户手动继续**
+                    //   （设置里可开自动，见 RetrySetting.autoContinueOnLengthTruncation）。
+                    val continueHint = autoContinueHintFor(
+                        finishIncomplete = last?.finishIncomplete == true,
+                        finishReason = last?.finishReason,
+                        autoContinueOnLengthTruncation =
+                            (provider.retryOption ?: settings.retrySetting).autoContinueOnLengthTruncation,
+                        alreadyContinued = autoContinuations,
+                    )
+                    if (continueHint != null && autoContinuations < CONTINUE_LIMIT) {
+                        autoContinuations++
+                        pendingRecoveryHint = continueHint
+                        Log.i(
+                            TAG,
+                            "streamText: incomplete output (incomplete=${last?.finishIncomplete}, " +
+                                "finishReason=${last?.finishReason}), auto-continuing " +
+                                "($autoContinuations/$CONTINUE_LIMIT)"
+                        )
                         continue
                     }
                     // no tool calls, break

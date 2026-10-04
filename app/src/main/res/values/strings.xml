@@ -1668,7 +1668,9 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_retry_after_partial_title">Retry after partial output</string>
   <string name="setting_retry_after_partial_desc">Retry the full round even after partial output; disables the keep-partial switch above</string>
   <string name="setting_retry_partial_chars_title">Partial output threshold (chars)</string>
-  <string name="setting_retry_partial_chars_desc">Visible text ≥ this value counts as valid output; reasoning does not count; floor is 1</string>
+
+  <string name="setting_retry_auto_continue_title">Auto-continue when output hits the limit</string>
+  <string name="setting_retry_auto_continue_desc">Keep writing automatically after a reply reaches the output token limit (off: you get a hint and a manual Continue button). Stream cut-offs always auto-continue.</string>  <string name="setting_retry_partial_chars_desc">Visible text ≥ this value counts as valid output; reasoning does not count; floor is 1</string>
   <string name="setting_retry_partial_chars_applied">Applied: %1$d</string>
   <string name="generation_retry_waiting">Generation failed, retry %1$d/%2$d in %3$d s</string>
   <string name="chat_server_tool_running">Running built-in tool %1$s…</string>
@@ -1684,7 +1686,11 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="notification_keep_alive_running">Keep alive active</string>
   <string name="notification_keep_alive_stop">Stop</string>
   <string name="message_partial_failure_banner">Generation interrupted — partial content kept</string>
-  <string name="message_partial_failure_regenerate">Regenerate</string>
+
+  <string name="message_incomplete_output_stream_cut">Stream was cut off — content may be incomplete</string>
+  <string name="message_incomplete_output_limit">Reached the output limit — content was truncated</string>
+  <string name="message_incomplete_output_filtered">Output was cut off by a content filter</string>
+  <string name="message_incomplete_output_continue">Continue</string>  <string name="message_partial_failure_regenerate">Regenerate</string>
   <string name="asr_error_not_configured">Speech recognition not configured — set an ASR provider and API key first</string>
   <string name="asr_error_audio_focus">Microphone busy — could not get audio focus</string>
   <string name="prompt_page_position_end_of_chat">End of request (after all messages)</string>

@@ -39,6 +39,7 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.ai.ui.isOutputLimitTruncation
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
@@ -50,6 +51,8 @@ import app.androidrik.ai.ui.isEmptyInputMessage
 import app.androidrik.common.android.Logging
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.CONTINUE_TRUNCATED_HINT
+import app.androidrik.rikkahub.data.ai.CONTINUE_INCOMPLETE_HINT
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
@@ -764,6 +767,49 @@ class ChatService(
     }
 
     /**
+     * 手动「继续生成」：把一条**输出不完整**的助手消息接着写下去。
+     *
+     * 与 [regenerateAtMessage] 的区别（为什么不能复用它）：重生成是「重开一个候选」，会把原内容
+     * 丢到候选列表里；续写是「同一条消息往下写」——基线取到那条消息为止（末尾就是它），
+     * 流式新增文本由 `handleMessageChunk` 按同角色追加规则拼进**同一条**消息。
+     *
+     * 提示词按结束状态选（与自动续写同一套判定）：裸断流用 [CONTINUE_INCOMPLETE_HINT]，
+     * 撞输出上限用 [CONTINUE_TRUNCATED_HINT]。
+     */
+    fun continueMessage(conversationId: Uuid) {
+        val session = getOrCreateSession(conversationId)
+        session.getJob()?.cancel()
+
+        val job = appScope.launch {
+            try {
+                val conversation = session.state.value
+                val last = conversation.currentMessages.lastOrNull()
+                if (last == null || last.role != MessageRole.ASSISTANT) {
+                    throw IllegalStateException("No assistant message to continue")
+                }
+                // 续写是用户发起的**新一轮尝试**（与重生成同理）：护栏额度重置
+                session.toolLoopGuard.reset()
+                session.workspaceTurnBudget.reset()
+
+                handleMessageComplete(
+                    conversationId,
+                    initialRecoveryHint = if (isOutputLimitTruncation(last.finishReason)) {
+                        CONTINUE_TRUNCATED_HINT
+                    } else {
+                        CONTINUE_INCOMPLETE_HINT
+                    },
+                )
+                _generationDoneFlow.emit(conversationId)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                addError(e, conversationId, title = context.getString(R.string.error_title_regenerate_message))
+            }
+        }
+
+        session.setJob(job)
+    }
+
+    /**
      * 撤销一次 [RegenerateScope.INCLUDE_FOLLOWING] 的截断（snackbar 撤销）。
      *
      * 步骤：**先取消在飞生成并等待结束**（避免还原后又追加），再 `take(sizeAfterTruncation)`
@@ -989,7 +1035,9 @@ class ChatService(
 
     private suspend fun handleMessageComplete(
         conversationId: Uuid,
-        messageRange: ClosedRange<Int>? = null
+        messageRange: ClosedRange<Int>? = null,
+        /** 首轮续写/补救提示（手动「继续生成」用；见 [continueMessage]） */
+        initialRecoveryHint: String? = null,
     ) {
         val settings = settingsStore.settingsFlow.first()
         val initialConversation = getConversationFlow(conversationId).value
@@ -1106,6 +1154,7 @@ class ChatService(
                     workspaceCwd = conversation.workspaceCwd,
                     conversationId = conversationId.toString(),
                 ),
+                initialRecoveryHint = initialRecoveryHint,
             ).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(

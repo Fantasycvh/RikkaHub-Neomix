@@ -1559,7 +1559,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_retry_title">失敗時の自動リトライ</string>
   <string name="setting_retry_desc">プロバイダーのエラー（ネットワーク異常、レート制限、サーバーエラー）時に設定した間隔で自動リトライします</string>
   <string name="setting_retry_delays_title">リトライ間隔シーケンス</string>
-  <string name="setting_retry_delays_desc">カンマ区切りの秒数。長さがリトライ回数になります。例: 2,2,2,2,2,5,10,20,60,120 = 最初の5回は2秒ごと、その後5s→10s→20s→60s→120s</string>
+
+  <string name="setting_retry_auto_continue_title">出力上限で自動続行</string>
+  <string name="setting_retry_auto_continue_desc">返信が出力上限に達したとき自動で書き続けます（オフの場合はヒントと「続きを生成」ボタンのみ）。ストリーム切断時は常に自動続行します</string>  <string name="setting_retry_delays_desc">カンマ区切りの秒数。長さがリトライ回数になります。例: 2,2,2,2,2,5,10,20,60,120 = 最初の5回は2秒ごと、その後5s→10s→20s→60s→120s</string>
   <string name="setting_retry_delays_invalid">無効な形式：カンマ区切りの非負整数を入力してください</string>
   <string name="generation_retry_waiting">生成に失敗しました。%2$d 回中 %1$d 回目のリトライを %3$d 秒後に実行</string>
   <string name="setting_provider_page_retry_override">リトライ設定をカスタマイズ</string>
@@ -1573,7 +1575,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="notification_keep_alive_running">バックグラウンド保持中</string>
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成が中断されました — 部分的な内容を保持</string>
-  <string name="message_partial_failure_regenerate">再生成</string>
+
+  <string name="message_incomplete_output_stream_cut">ストリーム接続が中断されました（内容が不完全な可能性）</string>
+  <string name="message_incomplete_output_limit">出力上限に達したため内容が打ち切られました</string>
+  <string name="message_incomplete_output_filtered">コンテンツポリシーにより出力が打ち切られました</string>
+  <string name="message_incomplete_output_continue">続きを生成</string>  <string name="message_partial_failure_regenerate">再生成</string>
   <string name="asr_error_not_configured">音声認識が未設定です——ASR プロバイダーと API キーを先に設定してください</string>
   <string name="asr_error_audio_focus">オーディオフォーカスを取得できません（マイクが使用中かも）</string>
   <string name="prompt_inspect_title">リクエスト内容</string>

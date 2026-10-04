@@ -1559,7 +1559,9 @@
   <string name="setting_retry_title">Автоповтор при сбое</string>
   <string name="setting_retry_desc">Автоматически повторять при ошибке провайдера (сеть, лимиты, ошибки сервера) по заданной последовательности интервалов</string>
   <string name="setting_retry_delays_title">Последовательность интервалов</string>
-  <string name="setting_retry_delays_desc">Секунды через запятую; длина = число повторов. Пример: 2,2,2,2,2,5,10,20,60,120 = первые 5 повторов каждые 2 с, затем 5с,10с,20с,60с,120с</string>
+
+  <string name="setting_retry_auto_continue_title">Автоматически продолжать при достижении лимита</string>
+  <string name="setting_retry_auto_continue_desc">Продолжать писать автоматически после достижения лимита вывода (выкл.: только подсказка и кнопка «Продолжить»). Обрыв потока продолжается автоматически всегда</string>  <string name="setting_retry_delays_desc">Секунды через запятую; длина = число повторов. Пример: 2,2,2,2,2,5,10,20,60,120 = первые 5 повторов каждые 2 с, затем 5с,10с,20с,60с,120с</string>
   <string name="setting_retry_delays_invalid">Неверный формат: введите неотрицательные целые числа через запятую</string>
   <string name="generation_retry_waiting">Ошибка генерации, повтор %1$d/%2$d через %3$d с</string>
   <string name="setting_provider_page_retry_override">Свои настройки повтора</string>
@@ -1573,7 +1575,11 @@
   <string name="notification_keep_alive_running">Фоновая активность включена</string>
   <string name="notification_keep_alive_stop">Стоп</string>
   <string name="message_partial_failure_banner">Генерация прервана — часть ответа сохранена</string>
-  <string name="message_partial_failure_regenerate">Перегенерировать</string>
+
+  <string name="message_incomplete_output_stream_cut">Соединение потока прервано — содержимое может быть неполным</string>
+  <string name="message_incomplete_output_limit">Достигнут лимит вывода — содержимое обрезано</string>
+  <string name="message_incomplete_output_filtered">Вывод прерван фильтром содержимого</string>
+  <string name="message_incomplete_output_continue">Продолжить</string>  <string name="message_partial_failure_regenerate">Перегенерировать</string>
   <string name="asr_error_not_configured">Распознавание речи не настроено — сначала укажите провайдера ASR и API-ключ</string>
   <string name="asr_error_audio_focus">Не удалось получить аудиофокус (микрофон, возможно, занят)</string>
   <string name="prompt_inspect_title">Содержимое запроса</string>

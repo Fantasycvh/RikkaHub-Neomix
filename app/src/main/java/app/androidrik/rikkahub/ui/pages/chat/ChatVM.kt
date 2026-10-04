@@ -327,6 +327,11 @@ class ChatVM(
         }
     }
 
+    /** 手动「继续生成」：把被截断的末条助手消息接着写下去（见 ChatService.continueMessage）。 */
+    fun continueMessage() {
+        chatService.continueMessage(_conversationId)
+    }
+
     fun saveConversationAsync() {
         viewModelScope.launch {
             chatService.saveConversation(_conversationId, conversation.value)

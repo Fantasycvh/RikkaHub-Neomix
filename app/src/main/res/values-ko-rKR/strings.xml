@@ -1559,7 +1559,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_retry_title">실패 시 자동 재시도</string>
   <string name="setting_retry_desc">공급자 오류(네트워크 문제, 요청 제한, 서버 오류) 발생 시 설정된 간격에 따라 자동으로 재시도합니다</string>
   <string name="setting_retry_delays_title">재시도 간격 시퀀스</string>
-  <string name="setting_retry_delays_desc">쉼표로 구분된 초 단위 값이며 길이가 재시도 횟수입니다. 예: 2,2,2,2,2,5,10,20,60,120 = 처음 5회는 2초 간격, 이후 5s,10s,20s,60s,120s</string>
+
+  <string name="setting_retry_auto_continue_title">출력 한도 도달 시 자동 이어쓰기</string>
+  <string name="setting_retry_auto_continue_desc">답변이 출력 한도에 도달하면 자동으로 계속 씁니다(끄면 안내와 "이어서 생성" 버튼만 제공). 스트림 중단은 이 설정과 무관하게 항상 자동 이어쓰기합니다</string>  <string name="setting_retry_delays_desc">쉼표로 구분된 초 단위 값이며 길이가 재시도 횟수입니다. 예: 2,2,2,2,2,5,10,20,60,120 = 처음 5회는 2초 간격, 이후 5s,10s,20s,60s,120s</string>
   <string name="setting_retry_delays_invalid">잘못된 형식입니다: 쉼표로 구분된 음수가 아닌 정수를 입력하세요</string>
   <string name="generation_retry_waiting">생성 실패, %2$d회 중 %1$d번째 재시도, %3$d초 후 진행</string>
   <string name="setting_provider_page_retry_override">재시도 설정 사용자 지정</string>
@@ -1573,7 +1575,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="notification_keep_alive_running">백그라운드 유지 중</string>
   <string name="notification_keep_alive_stop">중지</string>
   <string name="message_partial_failure_banner">생성이 중단됨 — 일부 내용이 유지됨</string>
-  <string name="message_partial_failure_regenerate">다시 생성</string>
+
+  <string name="message_incomplete_output_stream_cut">스트림 연결이 끊어졌습니다 — 내용이 불완전할 수 있습니다</string>
+  <string name="message_incomplete_output_limit">출력 한도에 도달해 내용이 잘렸습니다</string>
+  <string name="message_incomplete_output_filtered">콘텐츠 정책으로 출력이 차단되었습니다</string>
+  <string name="message_incomplete_output_continue">이어서 생성</string>  <string name="message_partial_failure_regenerate">다시 생성</string>
   <string name="asr_error_not_configured">음성 인식이 설정되지 않음 — ASR 공급자와 API 키를 먼저 설정하세요</string>
   <string name="asr_error_audio_focus">오디오 포커스를 얻을 수 없음 (마이크 사용 중일 수 있음)</string>
   <string name="prompt_inspect_title">요청 내용</string>

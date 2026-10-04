@@ -1630,7 +1630,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_retry_after_partial_title">半截后自动重试</string>
   <string name="setting_retry_after_partial_desc">半截输出后仍整轮重试；开启时上方「保留半截草稿」不生效</string>
   <string name="setting_retry_partial_chars_title">半截字数阈值</string>
-  <string name="setting_retry_partial_chars_desc">可见文本 ≥ 该值视为已产生有效输出（reasoning 不计，下限 1）</string>
+
+  <string name="setting_retry_auto_continue_title">撞输出上限时自动续写</string>
+  <string name="setting_retry_auto_continue_desc">回复达到输出上限后自动接着写（关闭时只提示并提供「继续生成」按钮）。流式中断不受此开关影响，恒自动续写</string>  <string name="setting_retry_partial_chars_desc">可见文本 ≥ 该值视为已产生有效输出（reasoning 不计，下限 1）</string>
   <string name="setting_retry_partial_chars_applied">当前生效：%1$d</string>
   <string name="generation_retry_waiting">生成失败，%1$d/%2$d 次重试，%3$d 秒后进行</string>
   <string name="chat_server_tool_running">正在执行内置工具 %1$s…</string>
@@ -1646,7 +1648,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="notification_keep_alive_running">后台保活运行中</string>
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成中断，已保留部分内容</string>
-  <string name="message_partial_failure_regenerate">重新生成</string>
+
+  <string name="message_incomplete_output_stream_cut">流式连接中断，内容可能不完整</string>
+  <string name="message_incomplete_output_limit">已达输出上限，内容被截断</string>
+  <string name="message_incomplete_output_filtered">输出被内容安全策略截断</string>
+  <string name="message_incomplete_output_continue">继续生成</string>  <string name="message_partial_failure_regenerate">重新生成</string>
   <string name="asr_error_not_configured">未配置语音识别——请先设置 ASR 供应商和 API Key</string>
   <string name="asr_error_audio_focus">无法获取音频焦点（麦克风可能被占用）</string>
   <string name="prompt_inspect_title">请求内容</string>
