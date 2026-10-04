@@ -167,6 +167,15 @@ class WorkspaceManager(
         return file.lastModified()
     }
 
+    /**
+     * Rootfs 内**实际可用**的 shell：优先 `/bin/bash`，缺失时回退 `/bin/sh`。
+     *
+     * 为什么需要：`/bin/bash` 此前硬编码在两处执行点（工具执行与终端页）⇒ 没有 bash 的 rootfs
+     * （自制精简 rootfs、Alpine 等）shell 工具直接失败。系统提示里告知的 shell 也必须取这里，
+     * 否则会「说的和跑的不是一个」（对齐上游 `298e2771`）。
+     */
+    fun rootfsShell(root: String): String = rootfsShellFor(linuxDir(root))
+
     fun exportRootfsFile(root: String, path: String, outputStream: OutputStream) {
         val file = resolveRootfsFile(root, path)
         file.requireReadableFile(path)
@@ -315,6 +324,14 @@ class WorkspaceManager(
     }
 
     companion object {
+        /**
+         * 由 Rootfs 目录判定的可用 shell。**public**：`app` 模块的终端页手上只有 linuxDir，
+         * 与 [ProotShellRunner] 共用这一处判定才不会「终端说的 shell ≠ 实际启动的 shell」。
+         * 判定只看文件是否存在，不解析软链——与既有 [hasRootfs] 同口径。
+         */
+        fun rootfsShellFor(linuxDir: File): String =
+            if (File(linuxDir, "bin/bash").isFile) "/bin/bash" else "/bin/sh"
+
         private const val FILES_DIR = "files"
         private const val LINUX_DIR = "linux"
         private const val TEMP_DIR = "tmp"

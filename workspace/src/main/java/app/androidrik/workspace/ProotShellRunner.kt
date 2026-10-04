@@ -138,7 +138,8 @@ class ProotShellRunner(
             "CI=true",
             "NO_COLOR=1",
             "PAGER=cat",
-            "/bin/bash",
+            // 无 bash 的 rootfs 回退 /bin/sh（对齐上游 298e2771）；脚本体只用 cd/eval，两种 shell 都成立
+            WorkspaceManager.rootfsShellFor(context.linuxDir),
             "-l",
             "-c",
             // 命令通过位置参数传入, 避免任何转义; eval "$2" 对命令文本只求值一次, 等价于 bash -c "$cmd"

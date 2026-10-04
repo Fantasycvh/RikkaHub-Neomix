@@ -18,6 +18,7 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import app.androidrik.rikkahub.data.files.FileFolders
+import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.RootfsPatchOptions
 import app.androidrik.workspace.RootfsPatcher
 import java.io.File
@@ -32,6 +33,8 @@ internal fun createWorkspaceTerminalSession(
     val workspaceDir = File(File(appContext.filesDir, "workspaces"), root)
     val filesDir = File(workspaceDir, "files")
     val linuxDir = File(workspaceDir, "linux")
+    // 实际可用的 shell（无 bash 回退 /bin/sh）：args 与 SHELL 环境变量都取它，避免说的与跑的不一致
+    val shell = WorkspaceManager.rootfsShellFor(linuxDir)
     val tempDir = File(workspaceDir, "tmp")
     val skillsDir = File(appContext.filesDir, FileFolders.SKILLS).apply { mkdirs() }
     val builtinSkillsDir = File(appContext.filesDir, FileFolders.BUILTIN_SKILLS).apply { mkdirs() }
@@ -74,8 +77,9 @@ internal fun createWorkspaceTerminalSession(
         "LANG=C.UTF-8",
         "LC_ALL=C.UTF-8",
         "USER=root",
-        "SHELL=/bin/bash",
-        "/bin/bash",
+        // 告知与实际启动的一致：无 bash 的 rootfs 回退 /bin/sh（对齐上游 298e2771）
+        "SHELL=$shell",
+        shell,
     )
 
     val env = mutableListOf(

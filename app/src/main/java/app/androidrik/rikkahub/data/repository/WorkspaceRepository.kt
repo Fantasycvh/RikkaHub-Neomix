@@ -283,6 +283,17 @@ class WorkspaceRepository(
         manager.rootfsFileSize(workspace.root, path)
     }
 
+    /**
+     * Rootfs 内**实际可用**的 shell（`/bin/bash` 或回退 `/bin/sh`）。
+     *
+     * 系统提示与执行点共用它：模型按提示里的 shell 写命令，若这里与实际启动的不一致，
+     * 命令会以「提示说 bash、实际起的是 sh」的方式莫名其妙地失败。
+     */
+    suspend fun rootfsShell(id: String): String = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.rootfsShell(workspace.root)
+    }
+
     /** Rootfs 内文件的最后修改时间（毫秒）；不存在或不是文件时返回 null（写入冲突检测用） */
     suspend fun rootfsFileMtime(
         id: String,

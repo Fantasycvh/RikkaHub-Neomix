@@ -30,8 +30,12 @@ class WorkspaceReminderTransformer(
         // 与 ChatToolFactory.createWorkspaceToolsIfReady 保持一致: 仅在 shell 就绪时注入
         if (workspace.shellStatus != WorkspaceShellStatus.READY.name) return messages
 
-        val prompt = buildWorkspacePrompt(workspace, ctx.workspaceCwd) +
-            buildAgentsPrompt(workspaceId, ctx.workspaceCwd)
+        val prompt = buildWorkspacePrompt(
+            workspace = workspace,
+            shell = workspaceRepository.rootfsShell(workspaceId),
+            distro = readDistroName(workspaceId),
+            cwd = ctx.workspaceCwd,
+        ) + buildAgentsPrompt(workspaceId, ctx.workspaceCwd)
 
         // 追加到第一条 system 消息; 若不存在则插入一条
         val systemIndex = messages.indexOfFirst { it.role == MessageRole.SYSTEM }
@@ -57,20 +61,7 @@ class WorkspaceReminderTransformer(
             workingDirectory.resolve("AGENTS.md").toString(),
         )
         val instructions = paths.mapNotNull { path ->
-            try {
-                val size = workspaceRepository.rootfsFileSize(workspaceId, path)
-                require(size <= MAX_AGENTS_BYTES) { "AGENTS.md exceeds $MAX_AGENTS_BYTES bytes" }
-                val content = ByteArrayOutputStream().use { output ->
-                    workspaceRepository.exportRootfsFile(workspaceId, path, output)
-                    output.toString(Charsets.UTF_8.name())
-                }
-                content.takeIf { it.isNotBlank() }?.let { path to it }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.d("WorkspaceReminder", "Skipping workspace instructions: $path", e)
-                null
-            }
+            readRootfsText(workspaceId, path, MAX_AGENTS_BYTES)?.let { path to it }
         }
         if (instructions.isEmpty()) return ""
         return buildString {
@@ -87,14 +78,84 @@ class WorkspaceReminderTransformer(
         }
     }
 
+    /**
+     * 从 Rootfs 的 `os-release` 读发行版名（对齐上游 `298e2771`）。
+     *
+     * 为什么值得告诉模型：提示词本身**不含** bash/apt 字样，于是模型只能**猜**——它会按最常见
+     * 的 Ubuntu + apt 写命令。遇到非 Debian 系的 Rootfs（用户自制的精简/Alpine 等）时，
+     * `apt-get` 一律失败。告知实际发行版能把这轮试错省掉。
+     */
+    private suspend fun readDistroName(workspaceId: String): String? =
+        OS_RELEASE_PATHS.firstNotNullOfOrNull { path ->
+            readRootfsText(workspaceId, path, MAX_OS_RELEASE_BYTES)?.let(::parseOsReleaseName)
+        }
+
+    /** 读 Rootfs 内文本文件；不存在、过大或不可读一律返回 null（提示词其余部分不受影响）。 */
+    private suspend fun readRootfsText(workspaceId: String, path: String, maxBytes: Long): String? =
+        try {
+            val size = workspaceRepository.rootfsFileSize(workspaceId, path)
+            require(size <= maxBytes) { "$path exceeds $maxBytes bytes" }
+            val content = ByteArrayOutputStream().use { output ->
+                workspaceRepository.exportRootfsFile(workspaceId, path, output)
+                output.toString(Charsets.UTF_8.name())
+            }
+            content.takeIf { it.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.d("WorkspaceReminder", "Skipping workspace file: $path", e)
+            null
+        }
+
     private companion object {
         const val MAX_AGENTS_BYTES = 64L * 1024
+        const val MAX_OS_RELEASE_BYTES = 16L * 1024
+        val OS_RELEASE_PATHS = listOf("/etc/os-release", "/usr/lib/os-release")
     }
 }
 
-private fun buildWorkspacePrompt(workspace: WorkspaceEntity, cwd: String? = null): String = buildString {
+/** 发行版名长度上限：内容取自 Rootfs 内的文件，拼进系统提示前必须设界。 */
+private const val MAX_DISTRO_NAME_LENGTH = 80
+
+/**
+ * 从 `os-release` 内容解析发行版名：优先 `PRETTY_NAME`，其次 `NAME` + `VERSION_ID`。
+ *
+ * 内容来自 Rootfs 内的文件（**外部可写**）⇒ 拼进系统提示前去掉控制字符并截断长度，
+ * 避免被塞进换行/转义把提示词结构搅乱。
+ */
+internal fun parseOsReleaseName(content: String): String? {
+    val values = content.lineSequence()
+        .map { it.trim() }
+        .filter { !it.startsWith("#") && it.indexOf('=') > 0 }
+        .associate { line ->
+            // 键**也** trim：真实 os-release 写作 PRETTY_NAME="..."（无空格），但用户可手改
+            // Rootfs 里的这个文件，`PRETTY_NAME = "..."` 这种写法不该解析不出（上游未 trim 键）
+            // 值两侧的引号：`removeSurrounding` 处理成对引号；末尾 `trim` 兜住「值被换行截断、
+            // 引号不成对」的情形（否则会把一个孤引号拼进系统提示）
+            line.substringBefore('=').trim() to line.substringAfter('=')
+                .trim()
+                .removeSurrounding("\"")
+                .removeSurrounding("'")
+                .trim('"', '\'')
+        }
+    val name = values["PRETTY_NAME"]?.takeIf { it.isNotBlank() }
+        ?: listOfNotNull(values["NAME"], values["VERSION_ID"]).joinToString(" ")
+    return name.filterNot { it.isISOControl() }.trim().take(MAX_DISTRO_NAME_LENGTH).ifBlank { null }
+}
+
+private fun buildWorkspacePrompt(
+    workspace: WorkspaceEntity,
+    shell: String,
+    distro: String?,
+    cwd: String? = null,
+): String = buildString {
     appendLine("<workspace>")
     appendLine("You have access to a persistent Linux workspace named \"${workspace.name}\", running in a sandboxed proot rootfs environment.")
+    // 告知实际的 shell 与发行版：模型默认会按 Ubuntu + bash + apt 猜，遇到别的发行版就一路试错
+    appendLine("- Shell: `$shell`. Commands run as root inside the Rootfs.")
+    if (distro != null) {
+        appendLine("- Distribution: $distro. Use that distribution's package manager and tools; do not assume another one.")
+    }
     appendLine("- The workspace files area is mounted at `/workspace`. Use it as your working directory; files written there persist across turns of this conversation.")
     appendLine("- All paths passed to workspace tools must be absolute and inside the Rootfs (for example `/workspace/notes.md`).")
     appendLine("- Available tools:")
