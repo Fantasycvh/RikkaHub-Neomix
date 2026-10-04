@@ -902,6 +902,16 @@ data class ApiKeyEntry(
   不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
   **2026-10-04 真机验证通过（用户确认，日志取证）**：备份→恢复全链 `images/` 4 张逐条 Restored
   （含中文/特殊字符文件名）、`staged db integrity check ok`、`completed` 无异常。
+- 2026-10-05 深夜：**前缀分叉诊断落地（华灯 §八.1 借鉴）**——①`PromptDebugCache`：按会话缓存
+  每次生成**实际发送**的完整消息列表（LRU 8 组，保留上一次+本次；工具循环每步都算一次请求），
+  数据在 `generateInternal` 组装完成后记录（`debugKey`=conversationId，ChatService 传入）；
+  ②`diagnosePrefixDivergence` 纯函数：定位两条请求的第一条分叉消息（role+parts 全量签名比对）+
+  可命中前缀 token 估算；③**拼装预览页新增「与上次请求对比」卡片**（视图打开时 Default 线程计算）：
+  「前缀一致 N 条 ≈ M tokens 可命中（上次 X 条/本次 Y 条）+ 分叉于第 K 条：预览」。与拼装预览互补
+  （单次归因 vs 跨请求差分）。单测 5 项。**踩坑再现**：python 脚本拼 Kotlin 字符串又把 
+ 展开成
+  真实换行 + 插入锚点吞掉既有 @Composable——多行/注解敏感的 UI 代码编辑已两次踩同一坑，
+  一律改用 Edit 工具。
 - 2026-10-05 晚：**v1.0.22 (285) 与 v1.0.23 (286) 一并转正**（用户「二者均正式发布」）——
   22 先发（`--draft=false` 不带 latest）、23 后发（`--draft=false --latest`）；**发布后 `ls-remote`
   核对双双精确落位**（22→`63fd79dd`、23→`b555e671`，各自 bump 提交，零错位——draft 创建时钉 target

@@ -1,5 +1,12 @@
 package app.androidrik.rikkahub.ui.pages.promptinspect
 
+import me.rerere.hugeicons.stroke.GitCompare
+import app.androidrik.rikkahub.data.ai.diagnosePrefixDivergence
+import app.androidrik.rikkahub.data.ai.PromptDebugCache
+import app.androidrik.rikkahub.data.ai.PrefixDivergence
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.produceState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -152,6 +159,7 @@ fun PromptInspectPage(
                 ) {
                     item { SummaryCard(inspection) }
                     item { PrefixCacheHint(inspection) }
+                    item { DivergenceDiagnosisCard(conversationId) }
                     item { SegmentIndexCard(inspection, segmentOffset) {
                         scope.launch { listState.animateScrollToItem(it) }
                     } }
@@ -330,6 +338,66 @@ private fun SegmentIndexCard(
  * 前缀缓存提示：system 在位置 0，**任何随会话变化的内容出现在 system 里都会让整段缓存失效**。
  * 这里只在「system 中存在非 systemPrompt 来源的易变内容」时给出解释性提醒。
  */
+/**
+ * 前缀分叉诊断卡（借鉴华灯 PromptDebugCache，§八.1）：对比上次与本次实际请求，
+ * 定位第一条分叉消息并给出可命中前缀的 token 估算。数据来自 PromptDebugCache
+ * （生成时以 conversationId 为键记录），视图打开时在后台线程计算。
+ */
+@Composable
+private fun DivergenceDiagnosisCard(conversationId: String) {
+    val diagnosis by produceState(
+        initialValue = null as PrefixDivergence?,
+        conversationId,
+    ) {
+        value = withContext(Dispatchers.Default) {
+            PromptDebugCache.latest(conversationId)?.let { (current, previous) ->
+                previous?.let { diagnosePrefixDivergence(previous, current) }
+            }
+        }
+    }
+    // 尚无上次请求时占位一行，保持页面结构稳定
+    val text = when {
+        diagnosis == null -> stringResource(R.string.prompt_debug_no_previous)
+        else -> {
+            val d = diagnosis!!
+            if (d.divergedMessagePreview == null) {
+                stringResource(R.string.prompt_debug_identical)
+            } else {
+                stringResource(
+                    R.string.prompt_debug_summary,
+                    d.commonPrefixMessages, d.commonPrefixTokens, d.previousSize, d.currentSize,
+                ) + "\n" + stringResource(R.string.prompt_debug_diverged_at, d.divergedMessagePreview)
+            }
+        }
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = HugeIcons.GitCompare,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(R.string.prompt_debug_title),
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                )
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun PrefixCacheHint(inspection: app.androidrik.rikkahub.data.ai.PromptInspection) {
     val system = inspection.segments.firstOrNull { it.kind == PromptSegmentKind.SYSTEM } ?: return

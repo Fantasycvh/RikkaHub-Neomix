@@ -1687,7 +1687,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="prompt_inspect_not_in_messages">请求顶层字段，不在消息里</string>
   <string name="prompt_inspect_attachment_note">［未计入：图片 %1$d、文档 %2$d、音频 %3$d、视频 %4$d］</string>
   <string name="prompt_inspect_segment_tool_result">工具输出 · %1$s</string>
-  <string name="prompt_inspect_segment_render_hint">渲染提示</string>
+  <string name="prompt_inspect_segment_render_hint">渲染提示</string>  <string name="prompt_debug_title">前缀分叉诊断</string>
+  <string name="prompt_debug_no_previous">与上次请求对比</string>
+  <string name="prompt_debug_identical">暂无上次请求记录（本轮首次请求后再打开）</string>
+  <string name="prompt_debug_summary">前缀一致 %1$d 条 ≈ %2$d tokens 可命中（上次 %3$d 条 / 本次 %4$d 条）</string>
+  <string name="prompt_debug_diverged_at">分叉于第 %1$d 条：%2$s</string>
+
   <string name="prompt_inspect_cache_title">关于提示词缓存</string>
   <string name="prompt_inspect_cache_body">系统提示词位于位置 0，每次请求都会重算——这里约 %1$d token。其中任何易变内容（日期占位符、按关键词启停的世界书条目）都会让整段缓存的**前缀失效**。建议把易变内容移出系统提示词，关键词触发的世界书放到对话末尾。</string>
   <string name="prompt_inspect_source_format">来自%1$s · %2$s</string>

@@ -1624,7 +1624,12 @@
   <string name="prompt_inspect_not_in_messages">top-level field, not in messages</string>
   <string name="prompt_inspect_attachment_note">[not counted: %1$d images, %2$d documents, %3$d audio, %4$d video]</string>
   <string name="prompt_inspect_segment_tool_result">Tool output · %1$s</string>
-  <string name="prompt_inspect_segment_render_hint">Render hints</string>
+  <string name="prompt_inspect_segment_render_hint">Render hints</string>  <string name="prompt_debug_title">Prefix divergence</string>
+  <string name="prompt_debug_no_previous">Compare with last request</string>
+  <string name="prompt_debug_identical">No previous request recorded yet (open again after this turn starts)</string>
+  <string name="prompt_debug_summary">First %1$d messages identical ≈ %2$d tokens cacheable (prev %3$d / current %4$d)</string>
+  <string name="prompt_debug_diverged_at">Diverged at message #%1$d: %2$s</string>
+
   <string name="prompt_inspect_cache_title">Note on prompt caching</string>
   <string name="prompt_inspect_cache_body">The system block sits at position 0 and is recomputed every request — here it is about %1$d tokens. Anything volatile inside it (a date placeholder, a world-info entry that toggles on keywords) invalidates the whole cached prefix. Keep volatile content out of the system prompt; keyword-triggered world info belongs at the bottom of the chat.</string>
   <string name="prompt_inspect_source_format">From %1$s · %2$s</string>

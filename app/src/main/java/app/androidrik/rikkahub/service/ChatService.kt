@@ -1091,6 +1091,7 @@ class ChatService(
             generationHandler.generateText(
                 settings = settings,
                 model = model,
+                debugKey = conversationId.toString(),
                 processingStatus = session.processingStatus,
                 // 护栏取自 session（不是在此处新建）：一次「轮」会跨多次 generateText——
                 // 工具审批让循环 break 等用户，批准后是新的调用续跑同一轮。挂在 session 上才能

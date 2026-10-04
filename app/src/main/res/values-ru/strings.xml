@@ -1614,7 +1614,12 @@
   <string name="prompt_inspect_not_in_messages">поле верхнего уровня, не в сообщениях</string>
   <string name="prompt_inspect_attachment_note">[не учтено: изображений %1$d, документов %2$d, аудио %3$d, видео %4$d]</string>
   <string name="prompt_inspect_segment_tool_result">Вывод инструмента · %1$s</string>
-  <string name="prompt_inspect_segment_render_hint">Подсказки рендеринга</string>
+  <string name="prompt_inspect_segment_render_hint">Подсказки рендеринга</string>  <string name="prompt_debug_title">Диагностика расхождения префикса</string>
+  <string name="prompt_debug_no_previous">Сравнить с прошлым запросом</string>
+  <string name="prompt_debug_identical">Прошлый запрос не записан (откройте снова после первого запроса этого хода)</string>
+  <string name="prompt_debug_summary">Первые %1$d сообщений совпадают ≈ %2$d токенов кэшируется (прошлый %3$d / текущий %4$d)</string>
+  <string name="prompt_debug_diverged_at">Расхождение на сообщении №%1$d: %2$s</string>
+
   <string name="prompt_inspect_cache_title">О кешировании промпта</string>
   <string name="prompt_inspect_cache_body">Система находится в позиции 0 и пересчитывается при каждом запросе — здесь это около %1$d токенов. Любое изменчивое содержимое внутри (плейсхолдер даты, запись World Info, включающаяся по ключевым словам) делает **недействительным весь кешированный префикс**. Держите изменчивое содержимое вне системного промпта, а World Info по ключевым словам размещайте в конце чата.</string>
   <string name="prompt_inspect_source_format">Из %1$s · %2$s</string>

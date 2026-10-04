@@ -1614,7 +1614,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_inspect_not_in_messages">リクエスト直下のフィールド（メッセージ外）</string>
   <string name="prompt_inspect_attachment_note">［未集計：画像 %1$d、文書 %2$d、音声 %3$d、動画 %4$d］</string>
   <string name="prompt_inspect_segment_tool_result">ツール出力 · %1$s</string>
-  <string name="prompt_inspect_segment_render_hint">レンダリングヒント</string>
+  <string name="prompt_inspect_segment_render_hint">レンダリングヒント</string>  <string name="prompt_debug_title">プレフィックス分岐診断</string>
+  <string name="prompt_debug_no_previous">前回のリクエストと比較</string>
+  <string name="prompt_debug_identical">前回のリクエスト記録なし（今ターンの最初のリクエスト後に再度開いてください）</string>
+  <string name="prompt_debug_summary">先頭 %1$d 件が一致 ≈ 約 %2$d tokens ヒット可（前回 %3$d / 今回 %4$d 件）</string>
+  <string name="prompt_debug_diverged_at">%1$d 件目で分岐：%2$s</string>
+
   <string name="prompt_inspect_cache_title">プロンプトキャッシュについて</string>
   <string name="prompt_inspect_cache_body">システムは位置 0 にあり毎回再計算されます——ここは約 %1$d トークンです。その中の可変な内容（日付プレースホルダー、キーワードで有効・無効が切り替わるワールド情報）はキャッシュされた**プレフィックス全体を無効化**します。可変な内容はシステムプロンプトの外に出し、キーワード起動のワールド情報は会話の末尾に置くことを推奨します。</string>
   <string name="prompt_inspect_source_format">%1$s · %2$s より</string>

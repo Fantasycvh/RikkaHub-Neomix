@@ -211,6 +211,8 @@ class GenerationHandler(
          * 见 [ToolCallLoopGuard] 类注释里真机实测的原因。默认值只服务于单测等场景。
          */
         loopGuard: ToolCallLoopGuard = ToolCallLoopGuard(),
+        /** 前缀分叉诊断的会话键（聊天路径传 conversationId；工具循环每一步都会记录） */
+        debugKey: String? = null,
         /**
          * workspace（rootfs）工具的**单轮总预算**。挂载理由与 [loopGuard] 同款（跨审批累积、
          * 新一轮重置），堵的是 LoopGuard 防不住的形态——每步换参数的 workspace 调用。
@@ -325,6 +327,7 @@ class GenerationHandler(
                     messages = messages,
                     compressionWindow = compressionWindow,
                     recoveryHint = pendingRecoveryHint,
+                    debugKey = debugKey,
                     onUpdateMessages = {
                         messages = it.transforms(
                             transformers = outputTransformers,
@@ -839,6 +842,7 @@ class GenerationHandler(
         retryBudgetOverride: Int? = null,
         /** 空回复补救提示（只作用于本请求系统提示，不进入对话历史） */
         recoveryHint: String? = null,
+        debugKey: String? = null,
     ) {
         // 组装发送消息：**与「拼装预览」共用同一个函数**（PromptAssembly.kt）——
         // 原先此段内联实现，预览只能另写一份、必然漂移。改这里即同时改预览。
@@ -852,7 +856,10 @@ class GenerationHandler(
             conversationSystemPrompt = conversationSystemPrompt,
             compressionWindow = compressionWindow,
             recoveryHint = recoveryHint,
-        ).transforms(
+        )
+        // 前缀分叉诊断：缓存实际发送的消息列表（上一次 vs 本次差分，见 PromptDebugCache）
+        debugKey?.let { PromptDebugCache.record(it, internalMessages) }
+        internalMessages.transforms(
             transformers = transformers,
             context = context,
             model = model,

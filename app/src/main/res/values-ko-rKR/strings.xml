@@ -1614,7 +1614,12 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="prompt_inspect_not_in_messages">요청 최상위 필드(메시지 아님)</string>
   <string name="prompt_inspect_attachment_note">[미포함: 이미지 %1$d, 문서 %2$d, 오디오 %3$d, 동영상 %4$d]</string>
   <string name="prompt_inspect_segment_tool_result">도구 출력 · %1$s</string>
-  <string name="prompt_inspect_segment_render_hint">렌더링 힌트</string>
+  <string name="prompt_inspect_segment_render_hint">렌더링 힌트</string>  <string name="prompt_debug_title">접두사 분기 진단</string>
+  <string name="prompt_debug_no_previous">마지막 요청과 비교</string>
+  <string name="prompt_debug_identical">이전 요청 기록 없음(이번 턴 첫 요청 후 다시 열기)</string>
+  <string name="prompt_debug_summary">앞의 %1$d개 일치 ≈ %2$d tokens 캐시 가능(이전 %3$d / 현재 %4$d개)</string>
+  <string name="prompt_debug_diverged_at">%1$d번째에서 분기: %2$s</string>
+
   <string name="prompt_inspect_cache_title">프롬프트 캐시 안내</string>
   <string name="prompt_inspect_cache_body">시스템은 위치 0에 있어 매 요청마다 다시 계산됩니다——여기는 약 %1$d 토큰입니다. 그 안의 변동되는 내용(날짜 플레이스홀더, 키워드로 켜지고 꺼지는 월드 정보 항목)은 캐시된 **프리픽스 전체를 무효화**합니다. 변동되는 내용은 시스템 프롬프트 밖으로 빼고, 키워드로 작동하는 월드 정보는 대화 끝에 두는 것을 권장합니다.</string>
   <string name="prompt_inspect_source_format">%1$s · %2$s에서</string>
