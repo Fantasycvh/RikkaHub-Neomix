@@ -1047,6 +1047,24 @@ data class ApiKeyEntry(
   - **资产再替换（用户选「不 bump」，与上次同口径）**：用含**两半**修复的 release 包覆盖 v1.0.21 (283) 草稿资产（`versionCode=283` / `1.0.21` / 仅 arm64-v8a / **77,613,623** 字节 / digest `sha256:d0916d0c…`；上一份为 77,615,091 / `e5941b50…`），并再次把 `target_commitish` 移到含修复的 HEAD。**283 至此对应三份不同内容**（旧包均不可得）⇒ 下一次发布**必须** bump。
   - **本次新踩的发布坑（草稿的 tag 名会被 notes 编辑重置）**：把草稿 `tag_name` 从合成名 `untagged-36326328…` PATCH 成 `v1.0.21` 后，**只改 `body` 的 PATCH 又把它打回了另一个合成名** `untagged-7977464d…`（新建 tag `v1.0.21` 指向 `1011f09f` 已 push，仍被重置 ⇒ 与 tag 存不存在无关，是「PATCH 未带 `tag_name` 时服务端重新推导占位名」）。⇒ **正确顺序：先改 notes，最后 PATCH `tag_name`**；且改完必须**独立 GET 复核**（不能只看 PATCH 的响应）。否则转正时又会出现 `untagged-…`（同 v1.0.7 的坑）。
   - **教训**：「缺字段」类问题的取证不能停在「有没有这个 item」，要看到 **item 内部的字段**——`textLens=[] encrypted=True` 这一行（而不是「没有 reasoning」）才是破案点；也再次印证：错误文本里的字段名（`reasoning_content` vs `reasoning_text`）直接指示走的是哪条请求路径。
+- 2026-10-05：**README 定制功能部分按「与上游一致即移除」重写**——用户要求：与上游一致的功能从「定制功能」移出，并更新其他节表述。
+  - **判定方法（可复用）**：对每一项做**两侧代码级标记比对**（`git grep -lI` 在 fork 工作树与 `upstream/master` 各查一次），
+    而非凭印象。关键补充：`git grep` 匹配的是**内容不是文件名**——首轮把 `McpToolSchema` 当模式查上游得到 0，实际上游
+    `cf79246b` 新增的该文件里没有这个字面量；**结论要靠「文件是否存在」+「符号是否存在」两种查法交叉验证**
+    （`git ls-tree` 看文件、`git grep` 看符号），否则会得出相反结论。
+  - **移除（与上游一致 ⇒ 并入「核心功能（继承上游）」）6 项**：消息队列（两侧各自实现）、终端多 Tab（吸收自 `3a533a6a`）、
+    内置技能（吸收自 `7f17dcc8`）、`chart_display`（吸收自 `00c8d53a`）、ExpressivePopup（移植自 `53f224b1`）、模型列表折叠
+    （上游 `ModelList.kt` 同款分组）；另**从 MCP 行中删掉 `$defs` 展开与 OAuth 两子句**（上游 `cf79246b` 自修 + 上游有
+    `McpOAuthCoordinator/DiscoveryClient`），并把「生成自动重试」独立行**并入半截保留行**（上游有 `enableAutoRetry`，
+    本分支增量只剩「按失败类型分流 + fallback 时压缩重试预算」）。
+  - **据实收紧的表述**：收藏/Token 统计改为「基础继承上游 + 本分支增量」（上游有 `FavoriteDAO` 与 `StatsVM`，标签/管理页/双口径/按模型是本分支增量）；
+    ST 行去掉「动态宏」（与上游提示词变量重叠），改称「SillyTavern 深化」只列官方语义世界书/预设导入/角色卡 V1/注入迁移；
+    备份行补上后期新增的两项（生成的图片纳入备份、换库前完整性校验）。
+  - **其他节更新**：项目简介改为「同步点 `85af5b91`（上游 2.5.6，2026-10-04）+ 独立版本 1.0.x（当前 1.0.24/287）+ 上游不接受 PR」；
+    核心功能（继承上游）补齐上述 6 项与图像生成/语音/备份恢复/收藏分享统计/MCP OAuth；Markdown 行去掉 **TikZ**（那是本分支特性，非继承）；
+    后续规划标「本地 OCR 暂缓」并新增「工具协议瘦身（schema 按需加载）」评估中；构建指南补 `scripts/build.sh` 用法、
+    并把 JDK 表述精确为「JDK 21（构建验证版本；字节码目标 17）」；分支结构补 `git fetch upstream master:master` 免切工作树的快进手法。
+  - **顺手**：修掉表格单元里的三反引号围栏（`tikz`，会破坏表格渲染），并做了表格列数自检（8 张表 0 处不一致）。
 - 2026-10-05：**v1.0.24 (287) 转正为 Latest**——`gh release edit --draft=false --latest`；发布后
   `git ls-remote --tags` 核对：**tag 精确落在 `cda7c3df`**（= 资产构建所据的代码提交 = draft 里钉的 target），
   **无需 `tag -f` 纠正**（前几次「tag 落在早前值」的坑本次未复现——draft 阶段 PATCH 到正确 target 后
