@@ -70,6 +70,7 @@ import app.androidrik.rikkahub.ui.context.LocalASRState
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalSharedTransitionScope
+import app.androidrik.rikkahub.ui.context.repairIfEmpty
 import app.androidrik.rikkahub.ui.context.LocalTTSState
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.context.Navigator
@@ -299,7 +300,19 @@ class RouteActivity : ComponentActivity() {
             }
         )
 
-        val backStack = rememberNavBackStack(startScreen)
+        // 空 backstack 防线（2026-10-05 真机崩溃修复）：
+        // nav3 的 `NavDisplay` 在重组时对空栈直接 `require(backStack.isNotEmpty())`
+        // ⇒ IllegalArgumentException("NavDisplay backstack cannot be empty")；
+        // 更糟的是**崩溃现场会被写进 saved state**，Activity 重建时 `rememberNavBackStack`
+        // 原样还原空栈 ⇒ 崩溃循环（实测 3 秒内连崩两次，直到系统 Force finishing）。
+        // 成因是返回手势的重复派发：nav3 内部按
+        // `repeat(entries.size - currentScene.previousEntries.size) { onBack() }` 补投，
+        // 手势状态过期时计数会多出一次，把根页也弹掉（1.1.5/1.2.0 同此数学，见 NavDisplay.kt）。
+        // 因此在**进入 NavDisplay 组合之前**同步修复（只在为空时写一次，幂等、不会反复触发重组）：
+        // 已经是空栈的存量用户（崩溃过、saved state 里躺着空列表）也能自愈，否则每次开屏都崩。
+        val backStack = rememberNavBackStack(startScreen).also { stack ->
+            stack.repairIfEmpty(startScreen)
+        }
         SideEffect {
             this@RouteActivity.navStack = backStack
             while (pendingIntents.isNotEmpty()) {
@@ -337,7 +350,15 @@ class RouteActivity : ComponentActivity() {
                             rememberViewModelStoreNavEntryDecorator(),
                         ),
                         modifier = Modifier.fillMaxSize(),
-                        onBack = { backStack.removeLastOrNull() },
+                        // 空栈防线之第二道（首选防线）：只在栈内还有页面时才 pop。
+                        // nav3 会按 `entries.size - previousEntries.size` 重复派发 onBack 来
+                        // 对齐差值，手势状态过期时可能多投一次；不守卫的话这一次会把根页也弹掉
+                        // ⇒ 空栈 ⇒ NavDisplay 抛异常（见上面 rememberNavBackStack 处的注释）。
+                        // 根页返回维持系统默认语义 = 退出应用（此前由 back 处理器自行 finish）。
+                        onBack = {
+                            if (backStack.size > 1) backStack.removeLastOrNull()
+                            else finish()
+                        },
                         transitionSpec = {
                             if (backStack.size == 1) fadeIn() togetherWith fadeOut()
                             else {
