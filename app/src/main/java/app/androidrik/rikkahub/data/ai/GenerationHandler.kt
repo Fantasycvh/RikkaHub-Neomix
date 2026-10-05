@@ -858,7 +858,7 @@ class GenerationHandler(
             recoveryHint = recoveryHint,
         )
         // 前缀分叉诊断：缓存实际发送的消息列表（上一次 vs 本次差分，见 PromptDebugCache）
-        debugKey?.let { PromptDebugCache.record(it, internalMessages) }
+        debugKey?.let { PromptDebugState.recordRequest(it, internalMessages) }
         internalMessages.transforms(
             transformers = transformers,
             context = context,

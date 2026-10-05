@@ -902,6 +902,13 @@ data class ApiKeyEntry(
   不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
   **2026-10-04 真机验证通过（用户确认，日志取证）**：备份→恢复全链 `images/` 4 张逐条 Restored
   （含中文/特殊字符文件名）、`staged db integrity check ok`、`completed` 无异常。
+- 2026-10-05 深夜：**折叠状态持久化落地（方案 A+B）**——①`PromptDebugState` facade
+  （`PromptDebugCache.kt` 更名）：两个独立 store——请求历史 LRU 8（`recordRequest/latestRequest`）
+  + 段折叠状态小表（`foldState/setFolded`，LRU 8 会话），淘汰各自独立；②`SegmentCard` 加
+  `debugKey`（conversationId）参数，折叠改 `rememberSaveable(index){ store 初值 }` + 切换时写回
+  store——**跨导航存活（store）+ 进程死亡恢复（saveable）双源**。顺带踩了一次 58fb7519 同款：
+  脚本追加测试落在类外（InvalidTestClassError）——rstrip 把类尾当文件尾，测试文件已全量重写。
+  单测 6 项（诊断 4 + 折叠往返/隔离 1 + 记录 1）。
 - 2026-10-05 深夜：**拼装预览折叠状态持久化——方案定稿（A+B）**：折叠状态此前是
   `remember(index)` 纯组合内记忆，导航返回即重置。方案=①**会话级内存存档**
   `PromptDebugState`（facade：内部**两个独立 store**——请求历史 LRU 8 + 折叠状态小表，

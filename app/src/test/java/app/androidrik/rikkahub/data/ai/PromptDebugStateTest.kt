@@ -5,9 +5,10 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PromptDebugCacheTest {
+class PromptDebugStateTest {
 
     private fun msg(text: String, role: MessageRole = MessageRole.USER) =
         UIMessage(role = role, parts = listOf(UIMessagePart.Text(text)))
@@ -62,10 +63,19 @@ class PromptDebugCacheTest {
     @Test
     fun `record keeps previous and current`() {
         val key = "test-key"
-        PromptDebugCache.record(key, listOf(msg("first")))
-        PromptDebugCache.record(key, listOf(msg("first"), msg("second", MessageRole.ASSISTANT)))
-        val (current, previous) = PromptDebugCache.latest(key)!!
+        PromptDebugState.recordRequest(key, listOf(msg("first")))
+        PromptDebugState.recordRequest(key, listOf(msg("first"), msg("second", MessageRole.ASSISTANT)))
+        val (current, previous) = PromptDebugState.latestRequest(key)!!
         assertEquals(2, current.size)
         assertEquals(1, previous!!.size)
+    }
+
+    @Test
+    fun `fold state round trips per conversation and is independent`() {
+        PromptDebugState.setFolded("conv-a", 3, true)
+        PromptDebugState.setFolded("conv-a", 1, false)
+        assertTrue(PromptDebugState.foldState("conv-a", 3))
+        assertEquals(false, PromptDebugState.foldState("conv-a", 1))
+        assertEquals(false, PromptDebugState.foldState("conv-b", 3))
     }
 }

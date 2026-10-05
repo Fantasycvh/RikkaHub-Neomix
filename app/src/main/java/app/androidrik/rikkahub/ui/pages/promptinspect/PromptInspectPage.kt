@@ -2,7 +2,7 @@ package app.androidrik.rikkahub.ui.pages.promptinspect
 
 import me.rerere.hugeicons.stroke.GitCompare
 import app.androidrik.rikkahub.data.ai.diagnosePrefixDivergence
-import app.androidrik.rikkahub.data.ai.PromptDebugCache
+import app.androidrik.rikkahub.data.ai.PromptDebugState
 import app.androidrik.rikkahub.data.ai.PrefixDivergence
 import app.androidrik.rikkahub.data.ai.PromptSegmentStability
 import kotlinx.coroutines.withContext
@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -172,6 +173,7 @@ fun PromptInspectPage(
                         SegmentCard(
                             index = index,
                             segment = segment,
+                            debugKey = conversationId,
                             onCopyContent = {
                                 copyToClipboard(context, segment.content)
                                 toaster.show(context.getString(R.string.prompt_inspect_copied))
@@ -364,7 +366,7 @@ private fun DivergenceDiagnosisCard(conversationId: String) {
         conversationId,
     ) {
         value = withContext(Dispatchers.Default) {
-            PromptDebugCache.latest(conversationId)?.let { (current, previous) ->
+            PromptDebugState.latestRequest(conversationId)?.let { (current, previous) ->
                 previous?.let { diagnosePrefixDivergence(previous, current) }
             }
         }
@@ -469,6 +471,7 @@ private fun MetaRow(label: String, value: String) {
 private fun SegmentCard(
     index: Int,
     segment: PromptSegment,
+    debugKey: String,
     onCopyContent: () -> Unit,
     onCopyWithHeader: () -> Unit,
     onShare: () -> Unit,
@@ -479,7 +482,9 @@ private fun SegmentCard(
     // 截断只会让「读内容」这个页面主用途多点一步，且 SelectionContainer 选不到未渲染的文本。
     // 折叠保留为**手动**动作：把整段正文收起、只留卡头——用来把不关心的大段（如工具 schema）
     // 从浏览路径里挪开。默认全部展开。
-    var folded by remember(index) { mutableStateOf(false) }
+    // 折叠状态双源持久化（方案 A+B）：store 跨导航存活；rememberSaveable 叠加进程死亡恢复
+    // （初值同源自 store，两不打架）。键=段下标：同会话不变轮次间稳定，消息增删后错位属已知边界。
+    var folded by rememberSaveable(index) { mutableStateOf(PromptDebugState.foldState(debugKey, index)) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -516,7 +521,10 @@ private fun SegmentCard(
                     )
                     // 折叠开关放**卡头**：两个方向都可达（正文可长达几十屏，放正文下方会够不着）
                     Surface(
-                        onClick = { folded = !folded },
+                        onClick = {
+                            folded = !folded
+                            PromptDebugState.setFolded(debugKey, index, folded)
+                        },
                         shape = CircleShape,
                         color = Color.Transparent,
                     ) {

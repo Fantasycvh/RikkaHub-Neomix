@@ -5,7 +5,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.utils.estimateTokenCount
 
 /**
- * 前缀分叉诊断的数据层（借鉴华灯 `PromptDebugCache`，见 peer-apps-benchmark §八.1）。
+ * 调试状态（借鉴华灯 `PromptDebugCache`，见 peer-apps-benchmark §八.1）。
  *
  * 缓存每次生成**实际发送**给模型的完整消息列表（按会话隔离，保留上一次与本次）：
  * 前缀缓存从第一个 token 起连续匹配，缓存长度停在某个值不再增长 ⇒ 该位置存在
@@ -14,34 +14,60 @@ import app.androidrik.rikkahub.utils.estimateTokenCount
  *
  * 与拼装预览（PromptInspector，单次请求逐段归因）互补：本层做**跨请求差分**。
  * 调试用内存缓存，进程被杀即失效，无需持久化。
+ *
+ * **facade 结构**：按「会话调试现场」组织两个**独立淘汰**的 store——请求历史（大块、
+ * 每生成步写、可丢，LRU）与段折叠状态（小、UI 偶发写、首帧同步读）。**不共享一个
+ * LRU**：折叠读发生在组合/滚动期（高频），若刷新同一 recency 会把大块请求列表钉在
+ * 内存（淘汰语义被污染）。跨导航存活由 store 保证；进程死亡由调用方的
+ * `rememberSaveable` 叠加恢复（初值同源自 store，两不打架）。
  */
-object PromptDebugCache {
+object PromptDebugState {
+    // ---- store 1：请求历史（大块、每生成步写、可丢）——LRU 8，recency 只被写/显式读刷新 ----
+
     private data class DebugEntry(
         val current: List<UIMessage>,
         val previous: List<UIMessage>?,
     )
 
     /** 每条 entry 保存两份完整请求（含工具输出），不设上限会随会话数无限增长 */
-    private const val MAX_ENTRIES = 8
+    private const val MAX_REQUEST_ENTRIES = 8
 
-    // LinkedHashMap accessOrder + synchronized 实现 LRU；并发调用仅来自生成与诊断页
-    private val cache = object : LinkedHashMap<String, DebugEntry>(16, 0.75f, true) {
+    private val requests = object : LinkedHashMap<String, DebugEntry>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DebugEntry>): Boolean =
-            size > MAX_ENTRIES
+            size > MAX_REQUEST_ENTRIES
     }
 
     /** 记录一次实际请求（工具循环的每一步都算一次请求；分叉诊断对步进同样成立）。 */
     @Synchronized
-    fun record(key: String, messages: List<UIMessage>) {
+    fun recordRequest(key: String, messages: List<UIMessage>) {
         if (messages.isEmpty()) return
-        val old = cache[key]
-        cache[key] = DebugEntry(messages, old?.current)
+        val old = requests[key]
+        requests[key] = DebugEntry(messages, old?.current)
     }
 
     /** 返回 (本次, 上一次)；上一次为 null 表示该会话只记录到一次请求。 */
     @Synchronized
-    fun latest(key: String): Pair<List<UIMessage>, List<UIMessage>?>? =
-        cache[key]?.let { it.current to it.previous }
+    fun latestRequest(key: String): Pair<List<UIMessage>, List<UIMessage>?>? =
+        requests[key]?.let { it.current to it.previous }
+
+    // ---- store 2：段折叠状态（小、UI 偶发写、首帧同步读）——独立小表，不与请求 LRU 共享 recency ----
+
+    private const val MAX_FOLD_ENTRIES = 8
+
+    private val foldStates = object : LinkedHashMap<String, MutableMap<Int, Boolean>>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MutableMap<Int, Boolean>>): Boolean =
+            size > MAX_FOLD_ENTRIES
+    }
+
+    /** 段折叠初值（组合期同步读）；缺省 false = 展开（2026-09-19 决策：折叠为手动动作）。 */
+    @Synchronized
+    fun foldState(key: String, segmentIndex: Int): Boolean =
+        foldStates[key]?.get(segmentIndex) ?: false
+
+    @Synchronized
+    fun setFolded(key: String, segmentIndex: Int, folded: Boolean) {
+        foldStates.getOrPut(key) { mutableMapOf() }[segmentIndex] = folded
+    }
 }
 
 /** 诊断结果：前缀一致段 + 分叉点信息。 */
