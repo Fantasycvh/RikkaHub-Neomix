@@ -902,6 +902,13 @@ data class ApiKeyEntry(
   不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
   **2026-10-04 真机验证通过（用户确认，日志取证）**：备份→恢复全链 `images/` 4 张逐条 Restored
   （含中文/特殊字符文件名）、`staged db integrity check ok`、`completed` 无异常。
+- 2026-10-05 深夜：**拼装预览折叠状态持久化——方案定稿（A+B）**：折叠状态此前是
+  `remember(index)` 纯组合内记忆，导航返回即重置。方案=①**会话级内存存档**
+  `PromptDebugState`（facade：内部**两个独立 store**——请求历史 LRU 8 + 折叠状态小表，
+  各自独立淘汰）；②`rememberSaveable` 叠加（进程死亡恢复；初值来自 store，两源同源不打架）。
+  **为什么不合并成一个 LRU（评估结论）**：fold 读发生在组合/滚动期（高频），会刷新 recency
+  把大块请求列表「钉」在内存——两种读写节奏塞一个 LRU 会污染淘汰语义。**货架用文件级组织
+  实现，淘汰各自独立**。折叠键=段下标（调试视图可接受，消息增删后会错位属已知边界）。
 - 2026-10-05 深夜：**华灯 P2 四小件落地（§八 评估的直接吸收）**——
   ①**分段 stability 分组**（stable/turn/event）：`PromptSegmentStability` + `kind.stability` 派生，
   拼装预览 SummaryCard 新增「≈X 稳定 · Y 事件 · Z 每轮变化 tokens」一行——一眼看出「哪些内容
