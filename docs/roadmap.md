@@ -2,7 +2,7 @@
 
 > 记录 RikkaHub Plus 的后续规划方向 + 逐日落地日志。
 > **状态说明（2026-09-14 修订）**：本文档混合「已落地」与「规划中」两类内容——各章节标题/状态行标注实时状态，
-> **不要以「均为规划」理解本篇**；最完整的逐日落地记录见「八、状态记录」。当前版本 **v1.0.19 (281) 为 Latest**（2026-10-02 转正，当前无草稿）。
+> **不要以「均为规划」理解本篇**；最完整的逐日落地记录见「八、状态记录」。当前版本 **v1.0.23 (286) 为 Latest**（2026-10-05 转正），**v1.0.24 (287) 草稿待转正**（其资产早于 10-05 的 nav3 空栈崩溃修复，转正前需重建）。
 
 ---
 
@@ -1047,3 +1047,23 @@ data class ApiKeyEntry(
   - **资产再替换（用户选「不 bump」，与上次同口径）**：用含**两半**修复的 release 包覆盖 v1.0.21 (283) 草稿资产（`versionCode=283` / `1.0.21` / 仅 arm64-v8a / **77,613,623** 字节 / digest `sha256:d0916d0c…`；上一份为 77,615,091 / `e5941b50…`），并再次把 `target_commitish` 移到含修复的 HEAD。**283 至此对应三份不同内容**（旧包均不可得）⇒ 下一次发布**必须** bump。
   - **本次新踩的发布坑（草稿的 tag 名会被 notes 编辑重置）**：把草稿 `tag_name` 从合成名 `untagged-36326328…` PATCH 成 `v1.0.21` 后，**只改 `body` 的 PATCH 又把它打回了另一个合成名** `untagged-7977464d…`（新建 tag `v1.0.21` 指向 `1011f09f` 已 push，仍被重置 ⇒ 与 tag 存不存在无关，是「PATCH 未带 `tag_name` 时服务端重新推导占位名」）。⇒ **正确顺序：先改 notes，最后 PATCH `tag_name`**；且改完必须**独立 GET 复核**（不能只看 PATCH 的响应）。否则转正时又会出现 `untagged-…`（同 v1.0.7 的坑）。
   - **教训**：「缺字段」类问题的取证不能停在「有没有这个 item」，要看到 **item 内部的字段**——`textLens=[] encrypted=True` 这一行（而不是「没有 reasoning」）才是破案点；也再次印证：错误文本里的字段名（`reasoning_content` vs `reasoning_text`）直接指示走的是哪条请求路径。
+- 2026-10-05：**修「空 backstack 导致 NavDisplay 崩溃且崩溃循环」（真机实测，用户报错）**——现象：
+  `IllegalArgumentException: NavDisplay backstack cannot be empty`（`NavDisplay.kt:361` 的 `require(isNotEmpty())`），
+  **3 秒内连崩两次**，直到系统 Force finishing；崩溃后 fork 的 `SafeModeActivity` 接管（CrashHandler 按设计工作）。
+  - **根因两条**：①nav3 用 `repeat(entries.size - currentScene.previousEntries.size) { onBack() }` 补投返回事件对齐差值，
+    **手势状态过期时计数多出一次** ⇒ 把根页也弹掉 ⇒ 栈空（1.1.5 与 1.2.0 同此数学，见两份 NavDisplay.kt 源码比对）；
+    ②**崩溃现场被写进 saved state**：Activity 重建时 `rememberNavBackStack` 原样还原空栈 ⇒ **崩溃循环**（这解释了「连崩两次」）。
+  - **修法（双防线 + 对齐上游）**：①`RouteActivity` 的 `onBack` 加 `size > 1` 守卫，根页返回维持系统语义 `finish()`
+    （nav3 自带的默认实现同样不守卫——上游也是同样的裸 `removeLastOrNull()`，等于上游同样有此隐患）；
+    ②进入 `NavDisplay` 组合**之前** `repairIfEmpty(startScreen)` 补回根页（幂等；抽成 `NavContext.kt` 的扩展函数便于单测），
+    让「saved state 里已经躺着空列表」的存量用户自愈；③nav3 `1.1.5 → 1.2.0` 对齐上游——1.2.0 把返回事件改为**派发时经
+    `sceneState` 读实时场景**（1.1.5 用组合期捕获的局部变量），减少过期计数，是成因 ① 的上游侧收敛。
+  - **顺带清理**：移除 `adaptive-navigation3`（全仓零调用点，且声明版本是 `1.0.0-SNAPSHOT`——仓库未配快照源、实际由
+    `adaptive-layout` 传递带入 1.3.0-rc01）；解析核实 material3 仍 `1.5.0-alpha25`、compose 仍 BOM 的 `1.12.0-beta01`
+    （nav3 1.2.0 只要求 runtime 1.10.0，未拉高任何传递依赖）。
+  - **验证（真机，debug + release 双包）**：启动零 FATAL；目标页压栈 + 连续快按返回 ×3 无崩溃；系统「不保留活动」
+    （`always_finish_activities=1`）下的**销毁/重建恢复**——截图取证**恢复到 2 层栈的目标页**（不是根页、无崩溃），
+    返回正确弹回聊天页、根页返回正常退出；全程 `NavDisplay backstack` / `FATAL EXCEPTION` 计数为 0。单测 +3
+    （`BackStackRepairTest`：空栈补根页 / 非空不动 / 幂等）。
+  - **教训**：`require(isNotEmpty())` 类不变量在**恢复路径**上会被历史坏状态反复触发——「不清洗 saved state 的输入，
+    就会把一次性崩溃升级成开屏崩溃循环」；而恢复/重建类 bug 必须用「不保留活动」或进程死亡来测，正常点按永远碰不到。
