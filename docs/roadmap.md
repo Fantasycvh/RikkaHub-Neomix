@@ -902,6 +902,13 @@ data class ApiKeyEntry(
   不过则中止（此时现库未关、安全回退），防旧格式/外来改包备份写坏。
   **2026-10-04 真机验证通过（用户确认，日志取证）**：备份→恢复全链 `images/` 4 张逐条 Restored
   （含中文/特殊字符文件名）、`staged db integrity check ok`、`completed` 无异常。
+- 2026-10-05 深夜：**v1.0.24 (287) 草稿**——bump `10a6a0e0`（先 push）→ 清 outputs → release 构建 →
+  aapt 核实 `versionCode=287`/`1.0.24`/arm64 → release 装机冒烟零 FATAL（tokenizer
+  `ok=true vocab=100256 in 665ms`；旧 FATAL 为前次会话残留、按时间过滤排除）→ draft
+  （release id `403274771`，target 钉 bump，**tag_name 未被重置**）→ 上传 **77,661,547 字节** →
+  digest `sha256:68e42c63…` 与本地一致 → README「正式 v1.0.23 ｜ 草稿 v1.0.24」。
+  **本版内容（自 286 资产 3 项）**：①前缀分叉诊断 ②华灯 P2 四小件（stability 分组/无损回环
+  校验/记忆相关性下限/日期排查）③拼装预览折叠状态持久化。
 - 2026-10-05 深夜：**折叠状态持久化落地（方案 A+B）**——①`PromptDebugState` facade
   （`PromptDebugCache.kt` 更名）：两个独立 store——请求历史 LRU 8（`recordRequest/latestRequest`）
   + 段折叠状态小表（`foldState/setFolded`，LRU 8 会话），淘汰各自独立；②`SegmentCard` 加
