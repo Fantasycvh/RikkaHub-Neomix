@@ -946,7 +946,7 @@ fork 现状对照：我们已有**文件版近似**（tool_outputs 落盘 + 32KB
 4. **群聊**（GroupChatPage +1167 行 + GroupSpeakerSelector 说话人选择器）——多助手群聊，方向级大特性，fork 完全没有。产品决策问题非技术问题。
 5. **宏引擎 2.0**（879 行，60+ 官方宏）+ **MVU 逐楼快照**（状态栏/世界书按楼显示）+ 斜杠命令——深酒馆兼容域。我们 09-17 吸收的是 ST 最小语义集（宏运行时/世界书/槽位）；60+ 官方宏与 MVU 变量系统是更深一层，受众=酒馆重度用户，按需。
 6. **三层记忆/滚动压缩**（CrossWindowMemory/FixedMemorySection/MemoryEmbeddingService/VectorStoreCache）——与语义检索三方差评（不做）结论对照：他们的 RAG 记忆加了**相关性下限**（`d31c52ed5`，防低相关注入）——这个阈值思想对我们记忆注入通用。
-7. **过程性小件**：工具描述去动态日期 + 按模式分叉（`b2748ade5`，与我们 cur_date 破缓存同源）；memory_tool 描述瘦身 844 字符（`390eb225d`）；世界书预算不裁角色卡条目（`d31c52ed5`）；卡片正则三连锁修复（HTML 卡渲染，`5fdb74bc0`）；Office 结构化读写（`342adadd9`，我们 document 模块只读）。
+7. **过程性小件**：工具描述去动态日期 + 按模式分叉（`b2748ade5`，与我们 cur_date 破缓存同源——已排查，fork 工具描述零动态日期 ✓）；memory_tool 描述瘦身 844 字符（`390eb225d`）；~~世界书预算不裁角色卡条目~~（`d31c52ed5`，**深评不吸收，2026-10-05**：fork 默认预算 0=不限制本就不裁，且卡内嵌世界书根本未导入（character_book 是 V2/V3 导入器的既有缺口）——它是「补 character_book 导入」立项时的**必带附属件**）；~~卡片正则三连锁修复~~（`5fdb74bc0`，**深评不吸收**：fork 不导入卡自带 `regex_scripts`，没有执行路径——但该提交是将来做卡正则时的**现成实现规格**：Kotlin vs JS 引擎三坑〔`${}` 当组引用抛异常 / `groups[name]` 对不存在组抛异常非 null / 反斜杠折叠毁正则字面量〕+ safeNamedGroup 降级 + StringBuilder 重载陷阱，全部有真实 157KB 卡测试背书）；Office 结构化读写（`342adadd9`，我们 document 模块只读）。
 
 **不适用**：逆向工具链（已移除，APK 109→100MB 的路线）；Chaquopy Python 桥（我们 eval_javascript/MCP/Workspace 已覆盖且不做 Python）；离线 OCR（我们评估过不做）。
 
