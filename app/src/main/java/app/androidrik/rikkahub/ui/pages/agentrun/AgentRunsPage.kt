@@ -170,7 +170,10 @@ fun AgentRunsPage(vm: AgentRunsVM = koinViewModel()) {
             onDispatch = { profile, goal, tools ->
                 val id = vm.dispatch(profile, goal, tools)
                 if (id == null) {
-                    toaster.show(context.getString(R.string.agent_run_dispatch_busy))
+                    // 必须带活跃数：无参调用不做格式化，会把 `%1$d` 字面显示给用户
+                    toaster.show(
+                        context.getString(R.string.agent_run_dispatch_busy, vm.activeRunCount())
+                    )
                 } else {
                     showDispatch = false
                 }

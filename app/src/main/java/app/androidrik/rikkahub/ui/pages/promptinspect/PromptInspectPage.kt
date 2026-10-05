@@ -382,7 +382,15 @@ private fun DivergenceDiagnosisCard(conversationId: String) {
                 stringResource(
                     R.string.prompt_debug_summary,
                     d.commonPrefixMessages, d.commonPrefixTokens, d.previousSize, d.currentSize,
-                ) + "\n" + stringResource(R.string.prompt_debug_diverged_at, d.divergedMessagePreview)
+                ) + "\n" + stringResource(
+                    R.string.prompt_debug_diverged_at,
+                    // 1-based 序号：与上一行「前缀一致 N 条」连贯（分叉的就是第 N+1 条）。
+                    // ⚠️ 这里必须补上第一个 `%1$d` 实参——此前只传了 preview 字符串，
+                    // `%1$d` 收到 String ⇒ 真机 IllegalFormatConversionException「d != java.lang.String」
+                    // 并整页崩溃（`StringFormatArgsGuardTest` 现已把这类调用钉住）。
+                    d.commonPrefixMessages + 1,
+                    d.divergedMessagePreview,
+                )
             }
         }
     }
