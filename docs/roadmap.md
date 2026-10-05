@@ -1047,6 +1047,20 @@ data class ApiKeyEntry(
   - **资产再替换（用户选「不 bump」，与上次同口径）**：用含**两半**修复的 release 包覆盖 v1.0.21 (283) 草稿资产（`versionCode=283` / `1.0.21` / 仅 arm64-v8a / **77,613,623** 字节 / digest `sha256:d0916d0c…`；上一份为 77,615,091 / `e5941b50…`），并再次把 `target_commitish` 移到含修复的 HEAD。**283 至此对应三份不同内容**（旧包均不可得）⇒ 下一次发布**必须** bump。
   - **本次新踩的发布坑（草稿的 tag 名会被 notes 编辑重置）**：把草稿 `tag_name` 从合成名 `untagged-36326328…` PATCH 成 `v1.0.21` 后，**只改 `body` 的 PATCH 又把它打回了另一个合成名** `untagged-7977464d…`（新建 tag `v1.0.21` 指向 `1011f09f` 已 push，仍被重置 ⇒ 与 tag 存不存在无关，是「PATCH 未带 `tag_name` 时服务端重新推导占位名」）。⇒ **正确顺序：先改 notes，最后 PATCH `tag_name`**；且改完必须**独立 GET 复核**（不能只看 PATCH 的响应）。否则转正时又会出现 `untagged-…`（同 v1.0.7 的坑）。
   - **教训**：「缺字段」类问题的取证不能停在「有没有这个 item」，要看到 **item 内部的字段**——`textLens=[] encrypted=True` 这一行（而不是「没有 reasoning」）才是破案点；也再次印证：错误文本里的字段名（`reasoning_content` vs `reasoning_text`）直接指示走的是哪条请求路径。
+- 2026-10-05：**v1.0.24 (287) 草稿资产再替换（用户选「不 bump」，与 v1.0.21 同口径）**——把含 nav3
+  空栈崩溃修复的 release 包覆盖草稿资产：**77,615,547 → 77,665,526 字节**，digest
+  `sha256:68e42c63…` → **`ec0077f2…`**（与本地逐字节一致），`target_commitish` 从 bump `10a6a0e0`
+  移到含修复的 HEAD `ec5b3870`；notes 首条补上崩溃修复（中英双语）。
+  - **按教训定的执行顺序**（`df0d1069`）实际走通：**先替换资产 → 再 `gh release edit --notes-file`
+    → 最后 PATCH `tag_name`+`target` → 独立 GET 复核**——复核 tag_name 仍为 `v1.0.24`
+    （**未被重置成 `untagged-…`**）。**注意：这个顺序只在「替换资产发生在改 notes 之前」时安全**；
+    任何在 notes 编辑之后的 PATCH 都必须显式带上 `tag_name`。
+  - **包内容核实手段（可复用）**：`app/build/outputs/mapping/release/mapping.txt` 里查新符号
+    （本次 `grep repairIfEmpty` 命中 `NavContextKt.repairIfEmpty`）⇒ 证明「重打的包确实含新代码」，
+    比单看体积/digest 更硬（体积只说明「不同」，说明不了「含哪次改动」）。
+  - **287 至此对应两份不同内容**（旧包不可得）⇒ **下一次发布必须 bump versionCode**（同 v1.0.21 的
+    283 局面）。转正时按老规矩：发布后 `git ls-remote --tags` 复核 tag 落点，错位则 `tag -f` 纠正
+    （tag 由 target 创建的路径此前实测会落在早前值上）。
 - 2026-10-05：**修「空 backstack 导致 NavDisplay 崩溃且崩溃循环」（真机实测，用户报错）**——现象：
   `IllegalArgumentException: NavDisplay backstack cannot be empty`（`NavDisplay.kt:361` 的 `require(isNotEmpty())`），
   **3 秒内连崩两次**，直到系统 Force finishing；崩溃后 fork 的 `SafeModeActivity` 接管（CrashHandler 按设计工作）。
