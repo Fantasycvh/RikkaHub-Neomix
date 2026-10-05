@@ -859,7 +859,7 @@ system 里仍贡献换行的逐字节契约由 `PromptAssemblyTest` 锁着）；
 
 **结论**：我们排期 schema 三档缩水版时，此仓库是唯一见过的完整参考实现（含测试与 benchmark），设计要点可直接对照，省一轮设计踩坑。
 
-**7.1.1 源码级补注（2026-10-02，本地 `F:uild\projects\senera` 已克隆，`Source/AgentSystem/ToolSearch/` 40 文件）**：
+**7.1.1 源码级补注（2026-10-02，本地 `<work>\projects\senera` 已克隆，`Source/AgentSystem/ToolSearch/` 40 文件）**：
 
 - **修正一处远程评估的误读**：`ToolLoad/ToolUnload` 只作用于 **BAML 规划链路**的 exposure snapshot。**native 工具链路更激进**——动态工具**从不进 provider schema**，模型经固定 `ToolCall(toolName, contractRevision, args)` 桥调用（`ToolDescribe` 拿到 TS-like 视图后），provider schema 恒为「Bootstrap 工具 + ToolSearch/Describe/ToolCall」。fork 全部走 native tool calling ⇒ 对应形态=**schema 恒不增长，元工具桥是唯一入口**（比我们「三档加载」设想更彻底）。
 - **ToolSearch 不做 top-K 截断**：返回**全部**合资格动态工具、确定性排序——命中项带 evidence，未命中项压缩为 name/title/summary/零分，让模型可发现而不塞 schema。
