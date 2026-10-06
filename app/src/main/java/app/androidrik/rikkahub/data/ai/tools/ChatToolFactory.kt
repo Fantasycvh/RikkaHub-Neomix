@@ -122,6 +122,13 @@ class ChatToolFactory(
         model: Model,
         workspaceCwd: String? = null,
         conversationId: String? = null,
+        /**
+         * 调用方**显式点名**的工具名（子代理信封）。折叠档中被点名的工具会**提升回原生档**：
+         * 折叠把工具从 `segments` 里摘掉，而子代理的信封是**按名求交集**的
+         * （`resolveSubagentEnvelope`），不提升就会出现「预设里点了名、run 里却静默没有」——
+         * 宁可多花那一个工具的 schema，也不能让显式配置静默失效。
+         */
+        explicitlyAllowedToolNames: Set<String> = emptySet(),
     ): List<ToolSegment> {
         val segments = mutableListOf<ToolSegment>()
 
@@ -245,17 +252,18 @@ class ChatToolFactory(
         }
         val dynamicLoading = settings.mcpDynamicSchemaLoading
         val split = splitMcpToolsBySchemaSize(mcpEntries)
+        // 显式点名的折叠工具提升回原生：信封按名求交集，摘掉即静默失效（见参数注释）
+        val (promoted, collapsed) = promoteExplicitlyAllowed(split.collapsed, explicitlyAllowedToolNames)
 
         // 原生档：按服务器成段（与既有行为一致）
-        split.native
+        (split.native + promoted)
             .groupBy { it.serverName }
             .forEach { (serverName, entries) ->
                 segments += ToolSegment("mcp:$serverName", entries.map { it.nativeTool })
             }
 
         // 折叠档：get_tool_map（有什么、参数长什么样）+ mcp_tool_call（桥，JSON 串传参）
-        if (dynamicLoading && split.collapsed.isNotEmpty()) {
-            val collapsed = split.collapsed
+        if (dynamicLoading && collapsed.isNotEmpty()) {
             segments += ToolSegment(
                 "mcp-dynamic",
                 listOf(

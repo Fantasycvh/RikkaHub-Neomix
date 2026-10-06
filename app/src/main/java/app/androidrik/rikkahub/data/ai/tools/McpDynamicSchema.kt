@@ -120,3 +120,19 @@ internal fun resolveCollapsedEntry(
     collapsed: List<McpToolEntry>,
     functionName: String,
 ): McpToolEntry? = collapsed.firstOrNull { it.functionName == functionName }
+
+/**
+ * 把**调用方显式点名**的折叠档工具提升回原生档（子代理信封场景）。
+ *
+ * 折叠只服务 token 预算，不能改信封语义：`resolveSubagentEnvelope` 按名求交集，折叠摘掉的
+ * 工具会让「预设里点了名」的配置**静默失效**。点名即提升——多花那一个工具的 schema，
+ * 换「显式配置永不静默失效」。
+ *
+ * @return (提升回原生的, 仍留折叠档的)
+ */
+internal fun promoteExplicitlyAllowed(
+    collapsed: List<McpToolEntry>,
+    explicitlyAllowedToolNames: Set<String>,
+): Pair<List<McpToolEntry>, List<McpToolEntry>> =
+    collapsed.partition { it.functionName in explicitlyAllowedToolNames }
+
