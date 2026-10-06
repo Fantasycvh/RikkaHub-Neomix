@@ -953,12 +953,14 @@ data class ApiKeyEntry(
   **工具链教训（重要）**：本机 `python3` 是 **Microsoft Store 存根**（退出码 49、无输出、不执行），
   三个 heredoc 因此**静默未落盘**而未察觉（heredoc 后未用 `&&` 串联，后续命令照跑掩盖了失败）。
   **规则：脚本一律用 `python`；多条命令必须 `&&` 串联；改完必须 grep 验证落盘**。
+  **2026-10-06 真机验证通过（用户确认）**。
 - 2026-10-05 深夜：**「参考历史聊天记录」第三层落地（`read_conversation`，§三 同名评估）**——
   工具族漏斗补全：`recent_chats`（标题索引）→ `conversation_search`（片段，**补传 message_id 寻址键**）
   → `read_conversation`（按锚点取回 ±N 条完整消息，默认 6/上限 20）。纯函数
   `buildConversationReadPayload`：锚点缺失回退会话开头+note、单条 8K 截断 + 总量 24K 预算
   （防连续拉取撑爆上下文）、工具/图片/文档渲染占位。peer⑤③ schema 三档的**零纠缠练手场**
-  （分层+寻址键+上限纪律先在此验证）。单测 4 项。**2026-10-06 真机验证通过（用户确认）**。
+  （分层+寻址键+上限纪律先在此验证）。单测 4 项。**2026-10-06 真机验证通过（用户确认）**——
+  三项真机确认：①`images/` 备份恢复 ②`read_conversation` 第三层 ③MCP schema 分层加载。
 - 2026-10-05 深夜：**前缀分叉诊断落地（华灯 §八.1 借鉴）**——①`PromptDebugCache`：按会话缓存
   每次生成**实际发送**的完整消息列表（LRU 8 组，保留上一次+本次；工具循环每步都算一次请求），
   数据在 `generateInternal` 组装完成后记录（`debugKey`=conversationId，ChatService 传入）；
