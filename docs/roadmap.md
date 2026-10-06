@@ -473,6 +473,28 @@ data class ApiKeyEntry(
 - **与我们机制的交互（风险点）**：我们的 `ProcessSignals` 按**唯一标记 + `/proc` 反查进程树**做超时/取消杀进程，后台任务另有一套进程生命周期——常驻会话会让「杀进程」语义变复杂（杀哪棵子树、会话是否重建）。**中风险，建议单独设计后再动**。
 - **价值**：中；**成本**：中。
 
+  **待实施的设计约束（2026-10-06 勘察后记录，勿草率动手）**：现执行路径是「一次性进程」——
+  `ProotShellRunner.execute` 每命令 `start()` 一个新 proot 并 `readResult(timeout, stdin, marker)`；
+  改成常驻会话需要同时处理五件事：
+  1. **命令与输出的定界**：常驻 `proot bash` 只给一对 stdin/stdout，必须自己下发哨兵标记 +
+     解析到哨兵为止；而**现状是 stdout/stderr 分离管道**（`redirectErrorStream(false)`），
+     会话化后两流会在同一管道里交错 ⇒ 要么给 stderr 单独重定向到文件再读，要么接受合并
+     （会改变 `WorkspaceCommandResult.stderr` 的既有语义与错误文案）。
+  2. **stdin 一次性路径会冲突**：`writeTextInRootfs` 等把内容从 stdin 灌给 `cat > file`
+     （二进制安全）；常驻会话的 stdin 已用于下命令 ⇒ 这些调用必须走**独立进程**（即会话池
+     只服务「纯文本命令」这一子集，其余保持一次性进程）。
+  3. **与 `ProcessSignals` 杀进程语义耦合**：超时/取消靠「唯一标记 + `/proc` 反查进程树 +
+     自底向上 SIGKILL」。常驻会话意味着**杀一棵会话子树后该会话必须作废并重建**，且
+     `readResult` 的 `marker` 现在是每命令唯一 —— 会话化后标记要挂在**会话**上，杀完
+     还要把池里那条记录摘掉（否则下一条命令会写进已死的 stdin）。
+  4. **淘汰只能挑空闲会话**：turbo 踩过的坑（`removeEldestEntry` 内同步 `destroy()` 会阻塞
+     所有工作区最长 600s）必须复现规避——手动扫描 + 只淘汰空闲 + 全忙时允许池暂时超限。
+  5. **后台任务不受影响**：`ProotBackgroundLauncher` 直接复用 `start()` 走独立进程，与池无关
+     （确认过路径），但 `workspace_kill_task` 的「找进程树」逻辑要与会话池共存。
+  另需验证：会话内 `cwd` 的维持（现状每命令显式传 `cwd`，会话化后要 `cd` 或继续显式前置）、
+  工作区被删除/重装 rootfs 时会话失效、以及冷启动收益的实测（turbo 报 ~1s/命令）。
+  **收益**：多步会话里 N 条命令省 N×~1s；**风险**：中（上述 5 点任一处理不当代价都高于收益）。
+
 **P2 —— 同轮多工具并行执行（turbo `115ca09`）**：
 - **turbo 做法**：同轮 Auto/Approved 工具 `coroutineScope + async`（Semaphore 4），结果按调用顺序挂回；超时与错误消化统一进 `executeToolSafely`。
 - **为什么不能直接抄（本轮最重要的判断）**：我们工具循环里**护栏是有序且有状态的**——`loopGuard.record()` 按出现顺序累积窗口（失败时 `forget`）、`executedSignature` 去重表批内共享、`contextGuard.evaluate()` 是**逐调用、执行前**判定、`WorkspaceTurnBudget` 按「实际进入上下文」的字符累加、`denialGuard` 按序计数。并行化会打乱这五者的顺序语义（预算判定与结果累加不再一一对应、LoopGuard 窗口顺序失去意义）。**turbo 的分支早于我们这些护栏**，所以他们能直接并行。
