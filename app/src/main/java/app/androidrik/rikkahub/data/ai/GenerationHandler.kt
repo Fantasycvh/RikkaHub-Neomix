@@ -67,6 +67,9 @@ private const val TAG = "GenerationHandler"
 private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 
+// 搜索结果的体积由用户设置的结果数决定，且结果列表 UI 与引用跳转都依赖完整的 JSON 结构，不参与截断
+private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web")
+
 /**
  * 空回复补救提示：模型只输出思考、无可见正文也无工具调用时，向随后一次请求追加此提示
  * 要求补出可见回答。仅重试一次；不写入对话历史（Yuihub `8a3a37ac` 同源）。
@@ -624,7 +627,7 @@ class GenerationHandler(
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
                             val result = executeToolWithTimeout(toolDef, args) { toolDef.execute(it) }
                             val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
-                            val output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
+                            val output = maybeTruncateToolOutput(tool, result, hasShellAccess)
                             executedSignature[signature] = output
                             executedTools += tool.copy(output = output)
                             // workspace 单轮预算：**执行并截断后**计费——计的是「实际进入上下文」
@@ -1027,10 +1030,13 @@ class GenerationHandler(
     }
 
     private fun maybeTruncateToolOutput(
-        toolCallId: String,
+        tool: UIMessagePart.Tool,
         output: List<UIMessagePart>,
         hasShellAccess: Boolean,
     ): List<UIMessagePart> {
+        if (tool.toolName in TOOLS_WITHOUT_OUTPUT_TRUNCATION) return output
+
+        val toolCallId = tool.toolCallId
         val textParts = output.filterIsInstance<UIMessagePart.Text>()
         val nonTextParts = output.filter { it !is UIMessagePart.Text }
         val totalChars = textParts.sumOf { it.text.length }

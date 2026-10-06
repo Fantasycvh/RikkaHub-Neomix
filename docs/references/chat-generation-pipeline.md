@@ -175,6 +175,9 @@ Pending ──── 用户操作 ────► Approved → 执行工具
 - 完整输出写入 `filesDir/tool_outputs/{toolCallId}.txt`
 - 消息中附带 shell 读取指令提示
 
+`search_web` 不参与截断：结果体积由用户设置的结果数决定，且结果列表 UI 与引用跳转依赖完整的 JSON。
+工具输出不是合法 JSON 时，详情渲染回退 `DefaultToolPreview` 展示原文（吸收自上游 c211c0d44，#2000）。
+
 ---
 
 ## 阶段五：会话生命周期管理

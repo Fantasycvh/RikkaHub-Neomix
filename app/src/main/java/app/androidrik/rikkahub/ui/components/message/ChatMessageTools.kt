@@ -51,6 +51,7 @@ import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.ui.components.message.tools.DefaultToolPreview
 import app.androidrik.rikkahub.ui.components.message.tools.ToolUIContext
 import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRegistry
 import app.androidrik.rikkahub.ui.components.richtext.ZoomableAsyncImage
@@ -77,19 +78,24 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     }
 
     val renderer = remember(tool.toolName) { ToolUIRegistry.resolve(tool.toolName) }
+    val outputJson = remember(tool) {
+        if (tool.isExecuted) {
+            runCatching {
+                JsonInstant.parseToJsonElement(
+                    tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+                )
+            }.getOrNull()
+        } else {
+            null
+        }
+    }
+    // 输出不是 JSON (例如超长被截断后只剩文本预览) 时, 定制渲染器读不到任何字段, 详情改用默认渲染展示原文
+    val outputUnparsable = tool.isExecuted && outputJson == null
     val context = remember(tool, loading, workspaceId) {
         ToolUIContext(
             tool = tool,
             arguments = tool.inputAsJson(),
-            content = if (tool.isExecuted) {
-                runCatching {
-                    JsonInstant.parseToJsonElement(
-                        tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
-                    )
-                }.getOrElse { JsonObject(emptyMap()) }
-            } else {
-                null
-            },
+            content = if (tool.isExecuted) outputJson ?: JsonObject(emptyMap()) else null,
             loading = loading,
             workspaceId = workspaceId,
         )
@@ -229,10 +235,14 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
             ),
             onDismissRequest = { showResult = false },
             content = {
-                renderer.Preview(
-                    context = context,
-                    onDismissRequest = { showResult = false },
-                )
+                if (outputUnparsable) {
+                    DefaultToolPreview(context = context)
+                } else {
+                    renderer.Preview(
+                        context = context,
+                        onDismissRequest = { showResult = false },
+                    )
+                }
             },
         )
     }
