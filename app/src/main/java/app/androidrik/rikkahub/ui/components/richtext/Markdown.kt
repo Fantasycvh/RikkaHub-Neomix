@@ -131,9 +131,13 @@ private val LATEX_BLOCK_LINE_BREAK_REGEX = Regex("""[ \t]*\r?\n[ \t]*""")
 
 // 预处理markdown内容
 private fun preProcess(content: String): String {
+    // 先补裸块级环境的 $$ 定界符并归一环境名：必须早于 $ / \[ \] 改写，
+    // 否则已带定界符的环境会被二次包裹成 $$ $$ ... $$ $$（见 LatexEnvironments）。
+    val normalized = LatexEnvironments.normalize(content)
+
     // 先找出所有代码块的位置
     val codeBlocks = mutableListOf<IntRange>()
-    CODE_BLOCK_REGEX.findAll(content).forEach { match ->
+    CODE_BLOCK_REGEX.findAll(normalized).forEach { match ->
         codeBlocks.add(match.range)
     }
 
@@ -143,7 +147,7 @@ private fun preProcess(content: String): String {
     }
 
     // 替换行内公式 \( ... \) 到 $ ... $，但跳过代码块内的内容
-    var result = INLINE_LATEX_REGEX.replace(content) { matchResult ->
+    var result = INLINE_LATEX_REGEX.replace(normalized) { matchResult ->
         if (isInCodeBlock(matchResult.range.first)) {
             matchResult.value // 保持原样
         } else {

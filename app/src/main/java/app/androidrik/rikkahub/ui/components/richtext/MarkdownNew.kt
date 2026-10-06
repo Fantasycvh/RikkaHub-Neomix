@@ -91,11 +91,15 @@ private val BLOCK_LATEX_REGEX = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MAT
 private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
 
 private fun preProcess(content: String): String {
+    // 先补裸块级环境的 $$ 定界符并归一环境名：必须早于 $ / \[ \] 改写，
+    // 否则已带定界符的环境会被二次包裹成 $$ $$ ... $$ $$（见 LatexEnvironments）。
+    val normalized = LatexEnvironments.normalize(content)
+
     val codeBlocks = mutableListOf<IntRange>()
-    CODE_BLOCK_REGEX.findAll(content).forEach { codeBlocks.add(it.range) }
+    CODE_BLOCK_REGEX.findAll(normalized).forEach { codeBlocks.add(it.range) }
     fun isInCodeBlock(pos: Int) = codeBlocks.any { pos in it }
 
-    var result = INLINE_LATEX_REGEX.replace(content) { m ->
+    var result = INLINE_LATEX_REGEX.replace(normalized) { m ->
         if (isInCodeBlock(m.range.first)) m.value else "$" + m.groupValues[1] + "$"
     }
     result = BLOCK_LATEX_REGEX.replace(result) { m ->

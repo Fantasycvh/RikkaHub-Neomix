@@ -12,6 +12,7 @@ import { getCodePreviewLanguage } from "~/components/workbench/code-preview-lang
 import { useOptionalWorkbench } from "~/components/workbench/workbench-context";
 import { useSettingsStore } from "~/stores";
 import { MARKDOWN_SANITIZE_SCHEMA } from "./sanitize-schema";
+import { normalizeLatexEnvironments } from "./latex-environments";
 import { CodeBlock } from "./code-block";
 import "katex/dist/katex.min.css";
 // mhchem 扩展: 支持 \ce{} 等化学公式语法
@@ -27,11 +28,15 @@ const CODE_BLOCK_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
 
 // Preprocess markdown content
 function preProcess(content: string): string {
+  // 先补裸块级环境的 $$ 定界符并归一环境名：必须早于 $ / \[ \] 改写，
+  // 否则已带定界符的环境会被二次包裹成 $$ $$ ... $$ $$（见 latex-environments.ts）。
+  const normalized = normalizeLatexEnvironments(content);
+
   // Find all code block positions
   const codeBlocks: { start: number; end: number }[] = [];
   let match;
   const codeBlockRegex = new RegExp(CODE_BLOCK_REGEX.source, "g");
-  while ((match = codeBlockRegex.exec(content)) !== null) {
+  while ((match = codeBlockRegex.exec(normalized)) !== null) {
     codeBlocks.push({ start: match.index, end: match.index + match[0].length });
   }
 
@@ -41,7 +46,7 @@ function preProcess(content: string): string {
   };
 
   // Replace inline formulas \( ... \) to $ ... $, skip code blocks
-  let result = content.replace(
+  let result = normalized.replace(
     new RegExp(INLINE_LATEX_REGEX.source, "g"),
     (match, group1, offset) => {
       if (isInCodeBlock(offset)) {
