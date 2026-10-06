@@ -435,6 +435,35 @@ class PromptInjectionTransformerTest {
     }
     // endregion
 
+    @Test
+    fun `system role injection keeps system role at mid positions`() {
+        // ③-3b（2026-10-06 修）：中部位置的 system 注入此前被 createMergedInjectionMessages 的
+        // `else -> user` 悄悄降级，与条目上选的角色不符。现在 role 一律照抄配置；
+        // 能否承载交给 provider 层（OpenAI chat 原样发 system；Claude/Gemini/Responses 降级为
+        // user 并加 <system-reminder> 包裹）。
+        val injectionId = Uuid.random()
+        val injection = createModeInjection(
+            id = injectionId,
+            position = InjectionPosition.TOP_OF_CHAT,
+            content = "系统级指令",
+            role = MessageRole.SYSTEM,
+        )
+
+        val result = transformMessages(
+            messages = listOf(
+                UIMessage.system("System prompt"),
+                UIMessage.user("Hello"),
+            ),
+            assistant = createAssistant(modeInjectionIds = setOf(injectionId)),
+            modeInjections = listOf(injection),
+            lorebooks = emptyList(),
+        )
+
+        val injected = result.first { it.isSynthetic }
+        assertEquals(MessageRole.SYSTEM, injected.role)
+        assertEquals("系统级指令", getMessageText(injected))
+    }
+
     // region TOP_OF_CHAT tests
     @Test
     fun `mode injection with TOP_OF_CHAT should insert before first user message`() {

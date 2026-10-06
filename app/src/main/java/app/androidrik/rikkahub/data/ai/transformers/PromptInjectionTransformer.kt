@@ -300,6 +300,12 @@ internal fun applyInjections(
  *
  * 合并时把**贡献者 id** 记进 [UIMessageAnnotation.InjectionSources]（Tier 4 归因）：
  * 注解不参与 part→API 转换 ⇒ 请求字节与合并前完全一致，只是让预览能再拆回逐条。
+ *
+ * **role 一律照抄条目的配置**（含 `SYSTEM`）：中部位置的 system 注入此前被这里 `else -> user` 悄悄降级，
+ * 与用户在条目上选的「角色」不符（③-3b，2026-10-06 修）。能否承载由 **provider 层**决定：OpenAI
+ * chat/completions 原样发 `system`；Claude/Gemini/Responses 不能承载中部 system ⇒ 降级为 user 并
+ * 加 `<system-reminder>` 标记包裹（见 `ProviderMessageUtils.asDowngradedSystemMessage`），
+ * 使内容失去 role 后仍能自证是系统指令，而不是被读成「用户说过的话」。
  */
 private fun createMergedInjectionMessages(injections: List<PromptInjection>): List<UIMessage> {
     return injections
@@ -308,6 +314,7 @@ private fun createMergedInjectionMessages(injections: List<PromptInjection>): Li
             val mergedContent = grouped.joinToString("\n") { it.content }
             when (role) {
                 MessageRole.ASSISTANT -> UIMessage.assistant(mergedContent)
+                MessageRole.SYSTEM -> UIMessage.system(mergedContent)
                 else -> UIMessage.user(mergedContent)
             }.copy(
                 isSynthetic = true,

@@ -391,7 +391,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 when {
                     message.role == MessageRole.ASSISTANT -> addAssistantMessage(message)
                     message === firstSystem -> return@forEach // 已进 system 参数，跳过防重复
-                    message.role == MessageRole.SYSTEM -> addUserMessage(message.copy(role = MessageRole.USER))
+                    message.role == MessageRole.SYSTEM -> addUserMessage(message.asDowngradedSystemMessage())
                     else -> addUserMessage(message)
                 }
             }

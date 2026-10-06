@@ -29,6 +29,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
+import app.androidrik.ai.provider.providers.asDowngradedSystemMessage
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
@@ -329,7 +330,7 @@ class ResponseAPI(
             .forEach { message ->
                 when {
                     message === firstSystem -> Unit // 已进 instructions，跳过防重复
-                    message.role == MessageRole.SYSTEM -> addUserItems(message.copy(role = MessageRole.USER))
+                    message.role == MessageRole.SYSTEM -> addUserItems(message.asDowngradedSystemMessage())
                     message.role == MessageRole.ASSISTANT -> addAssistantItems(message, reasoningTextRequired)
                     else -> addUserItems(message)
                 }

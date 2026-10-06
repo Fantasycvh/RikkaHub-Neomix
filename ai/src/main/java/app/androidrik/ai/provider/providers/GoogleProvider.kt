@@ -672,7 +672,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     when {
                         message === firstSystem -> return@forEach // 已进 systemInstruction，跳过防重复
                         message.role == MessageRole.ASSISTANT -> addModelMessage(message)
-                        message.role == MessageRole.SYSTEM -> addUserMessage(message.copy(role = MessageRole.USER))
+                        message.role == MessageRole.SYSTEM -> addUserMessage(message.asDowngradedSystemMessage())
                         else -> addUserMessage(message)
                     }
                 }

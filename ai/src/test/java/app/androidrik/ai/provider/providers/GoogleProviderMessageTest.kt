@@ -448,6 +448,8 @@ class GoogleProviderMessageTest {
         assertFalse("首条 system 只应进 systemInstruction: $json", json.contains("系统提示本体"))
         assertTrue("后续 system 内容不得丢失: $json", json.contains("尾部 system 注入"))
         assertTrue("后续 system 应以 user 角色送达: $json", json.contains("\"role\":\"user\""))
+        // ③-3b：降级为 user 时必须加标记包裹（失去 role 后仍能自证是系统指令）
+        assertTrue("降级后应带 <system-reminder> 包裹: $json", json.contains("<system-reminder>"))
     }
 
 }
