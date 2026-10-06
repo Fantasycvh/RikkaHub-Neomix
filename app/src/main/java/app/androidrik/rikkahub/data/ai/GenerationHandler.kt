@@ -4,7 +4,9 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
@@ -620,7 +622,7 @@ class GenerationHandler(
                                 error("Invalid tool arguments JSON for ${tool.toolName}: ${t.message}")
                             }
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
-                            val result = toolDef.execute(args)
+                            val result = executeToolWithTimeout(toolDef, args) { toolDef.execute(it) }
                             val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
                             val output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
                             executedSignature[signature] = output
@@ -1288,4 +1290,33 @@ private fun findHttpStatusCode(message: String?): Int? {
     if (prefixed != null) return prefixed
     // 回退：形如 ": 429"、">502"、"#401" 的独立三位数（覆盖中转站 HTML 错误页正文与搜索服务 "#${code}" 形态）
     return Regex("""[\s:>(#](\d{3})\b""").find(message)?.groupValues?.get(1)?.toIntOrNull()
+}
+
+/**
+ * 用工具自带的**外层上限**包一层 [withTimeout]（见 [Tool.executionTimeoutMillis]）。
+ *
+ * `null` = 工具自管超时（如 `dispatch_subagent` 阻塞等整轮子代理、`workspace_shell` 自带
+ * 命令超时与进程树杀法），外层不介入。
+ *
+ * **超时转成普通异常而不是让 [TimeoutCancellationException] 逃出去**：后者**是**
+ * `CancellationException` 的子类，而工具执行的 `onFailure` 里对 `CancellationException`
+ * 一律**原样上抛**（那是「用户停止生成」的语义，必须传播）——若直接放行，超时会被误当成
+ * 用户停止：既没有可见的错误输出给模型，也不会被 LoopGuard 记成失败。故这里主动换成
+ * `IllegalStateException`，走「工具执行失败」的既有通路（错误文本回填上下文 + 记失败）。
+ */
+internal suspend fun executeToolWithTimeout(
+    tool: Tool,
+    args: JsonElement,
+    block: suspend (JsonElement) -> List<UIMessagePart>,
+): List<UIMessagePart> {
+    val limit = tool.executionTimeoutMillis ?: return block(args)
+    return try {
+        withTimeout(limit) { block(args) }
+    } catch (e: TimeoutCancellationException) {
+        throw IllegalStateException(
+            "Tool ${tool.name} timed out after ${limit / 1000}s without returning a result. " +
+                "Narrow the request, pass a smaller timeout if the tool supports one, or retry.",
+            e,
+        )
+    }
 }

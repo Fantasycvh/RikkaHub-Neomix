@@ -183,6 +183,9 @@ fun createSubagentTools(
                 )
             },
             // 审批由预设作者按组合决定（默认关：信封已把工具面收窄到他自己配的范围）
+            // 阻塞式等待整轮子代理（预设超时可达 7200s），且 SubagentRunner 自带看门狗与
+            // 超时收尾 ⇒ 外层不介入（见 Tool.executionTimeoutMillis 注释）
+            executionTimeoutMillis = null,
             needsApproval = { args ->
                 val requested = args.jsonObject["name"]?.jsonPrimitive?.content
                 presets.firstOrNull { it.name.equals(requested, ignoreCase = true) }?.requireApproval == true

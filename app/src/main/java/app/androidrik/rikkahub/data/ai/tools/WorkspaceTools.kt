@@ -27,6 +27,15 @@ import java.io.ByteArrayOutputStream
 
 private const val SHELL_TIMEOUT_MAX_SECONDS = 600L
 
+/**
+ * shell 工具的**外层**执行上限 = 命令上限（[SHELL_TIMEOUT_MAX_SECONDS]）+ 本次缓冲。
+ *
+ * 工具自带命令超时与进程树杀法（见 ProcessSignals），外层这层只兜「runner 自身卡死」
+ * 这类不会正常返回的形态；缓冲是给进程树回收与输出读取留的余量——**必须大于命令上限**，
+ * 否则正常的长命令会被外层误杀。
+ */
+private const val SHELL_TIMEOUT_BUFFER_MS = 15_000L
+
 /** 后台任务查询结果里单流返回的最大字符数：尾部缓冲是 8K，再截一道避免轮询把上下文吃掉。 */
 private const val TASK_TAIL_RETURN_CHARS = 4_000
 private const val MAX_READ_FILE_BYTES = 8L * 1024 * 1024
@@ -344,6 +353,7 @@ private fun createShellTool(
             required = listOf("command"),
         )
     },
+    executionTimeoutMillis = SHELL_TIMEOUT_MAX_SECONDS * 1_000L + SHELL_TIMEOUT_BUFFER_MS,
     needsApproval = { needsApproval("workspace_shell") },
     execute = {
         val params = it.jsonObject

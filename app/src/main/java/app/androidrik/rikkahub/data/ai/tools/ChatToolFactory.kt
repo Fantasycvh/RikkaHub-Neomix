@@ -221,6 +221,9 @@ class ChatToolFactory(
         // provider schema，由 `get_tool_map` + `mcp_tool_call` 两个元工具替代——
         // provider schema 恒定（缓存断点不动），token 成本从 33K 级降到 O(小工具数)。
         // 开关关 / 无折叠档时零行为变化（全部原生）。
+        // MCP 工具的外层上限给得比默认宽：MCP 服务端可能是 LLM 驱动的重型服务（检索/分析），
+        // 60s 会误杀正常工作。它防的是「服务端不响应时无限悬挂」。
+        val mcpTimeoutMillis = 180_000L
         val usedToolNames = mutableSetOf<String>()
         val providerTypeForMcp = model.findProvider(settings.providers, checkOverwrite = false)
         val mcpEntries = mcpManager.getAllAvailableTools().map { (serverId, serverName, tool) ->
@@ -234,6 +237,7 @@ class ChatToolFactory(
                 description = tool.description ?: "",
                 parameters = { tool.inputSchema },
                 needsApproval = { tool.needsApproval },
+                executionTimeoutMillis = mcpTimeoutMillis,
                 execute = { mcpManager.callTool(serverId, tool.name, it.jsonObject) },
             )
             McpToolEntry(
@@ -305,6 +309,7 @@ class ChatToolFactory(
                                 required = listOf("name", "arguments"),
                             )
                         },
+                        executionTimeoutMillis = mcpTimeoutMillis,
                         // 审批跟随被调用的底层工具（折叠不能变成审批绕行）
                         needsApproval = { args ->
                             resolveCollapsedEntry(collapsed, args.getStringContent("name").orEmpty())

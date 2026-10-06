@@ -449,11 +449,22 @@ data class ApiKeyEntry(
 - **配套教训（他们踩过）**：`1c44fe92`——`package.json` 声明了依赖但 `pnpm-lock.yaml` 的 **importers 段**未注册 ⇒ CI `ERR_PNPM_OUTDATED_LOCKFILE` 挂（packages 段有传递依赖不算）。我们仓 `rehype-sanitize` 已在 lock 的 packages 段（传递依赖），**仍须补 importers 段**。
 - **成本**：小（一个依赖 + 插件配置 + 白名单定制）；**风险**：低（只动 web-ui 渲染，Android 端不受影响）。
 
-**P1 —— 工具级执行超时缺失（我们没有；turbo `116a160`）**：
+**P1 —— 工具级执行超时缺失（我们没有；turbo `116a160`）——✅ 2026-10-06 已落地**：
 - **现状**：`GenerationHandler.kt:623` 的 `toolDef.execute(args)` 是**裸调用，无任何超时包装**。MCP 服务器卡住、网络工具悬挂时整轮一直停着（用户仍可点停止取消协程 ⇒ 属「可恢复」而非死锁，但体验与失败语义都差）。
 - **turbo 修法**：`executeToolSafely()` 统一包装——`workspace_shell` 用「命令 timeout + 15s 缓冲」、其余 60s；`TimeoutCancellationException` 转成**工具错误输出**（模型可据此自我纠正），`CancellationException` 照旧传播（用户停止仍取消全部在飞工具）。
 - **我们的约束（不能照抄「60s 一刀切」）**：① `dispatch_subagent` 是**有意阻塞**的（run 可跑到 `timeoutSeconds`，Tier-1 配置化后上限 **7200s**）——一刀切会把子代理派发全部杀掉；② `workspace_shell` 自带命令超时；③ `workspace_run_background` 立即返回（长跑在后台任务里，不受影响）。**结论：须做成「工具自带超时声明 + 默认值」**。
 - **成本**：小–中；**价值**：中–高。
+
+  **落地记录（2026-10-06）**：`Tool.executionTimeoutMillis`（默认 60s，`null`=工具自管）+
+  `executeToolWithTimeout`（`GenerationHandler.kt` 顶层 internal，可单测）。**关键实现点**：
+  `TimeoutCancellationException` **是** `CancellationException` 子类，而工具执行失败的
+  `onFailure` 对 `CancellationException` 一律原样上抛（那是「用户停止生成」的语义，必须传播）
+  ⇒ 包装层必须把它换成 `IllegalStateException`，否则超时会被误认成用户停止（既无错误输出给
+  模型、也不被 LoopGuard 记成失败）。**三类显式声明**：`workspace_shell` = 命令上限 600s + 15s
+  缓冲（**必须大于命令上限**，否则正常长命令被误杀）；`dispatch_subagent` = `null`（阻塞等整轮
+  子代理，预设可达 7200s，runner 自带看门狗）；MCP 原生工具 + `mcp_tool_call` 桥 = 180s
+  （服务端可能是 LLM 驱动的重型服务）。单测 4 项（超时转普通失败 / 限内通过 / null 不介入 /
+  外层取消仍传播）。**注**：`eval_javascript` 本就有 10s 工作线程超时（自管），无需声明。
 
 **P1 —— 每 workspace 常驻 shell 会话池（我们没有；turbo `6077ce4`）**：
 - **现状**：`workspace/ProotShellRunner.kt`（172 行）**无会话复用**——每条 `workspace_shell` 重新起 proot + bash，冷启动约 1s；多步会话 20 条命令 ≈ 白花 20s。
