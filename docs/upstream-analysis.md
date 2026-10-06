@@ -168,12 +168,12 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | **配置固定会话** | `b64beeef6` 会话开始后把模型/思考级别/搜索固定在会话上 | 产品语义决策（防 #1995 列表跳动同族的「配置漂移」）；与 fork「每次装配取当前设置」不同。观察 |
 | **imggen 废弃** | `1c8c3fd37` 图片生成页显示废弃警告，推荐媒体创作 | 官方路线确认：imggen → 媒体创作（mediagen）。fork 的 imggen+mediagen 决策窗口继续开着 |
 | **主题** | `db81bb6c0` 自定义主题用 2025 色彩规范 + 更新 material-color-utilities | 我们 submodule 同仓（fetch 已见 main 5b3618b 更新）；主题域按需 |
-| **重构/性能** | `7c0113173` 通用组件下沉 ui 模块 + `d1c81bf99` LocalSettings 改 compositionLocalOf | **`d1c81bf99` fork 同款实锤**（我们也是 `staticCompositionLocalOf` ⇒ 设置一变整树重组）——性能修复小而实，建议吸收；组件下沉是结构重构不跟 |
-| **修复** | `c211c0d44` **搜索结果不再被工具输出截断（#2000）** + `97060dd51` 输入栏渐变遮罩 | **`c211c0d44` fork 同款实锤**：fork `maybeTruncateToolOutput` 对所有工具一刀切，`search_web` 结果超 32K 同样截断成非法 JSON（结果列表 {}、引用失效、模型只见前几条）。**建议吸收（小）**：豁免集合 `TOOLS_WITHOUT_OUTPUT_TRUNCATION` + 详情渲染回退；渐变遮罩小 UI 按需 |
+| **重构/性能** | `7c0113173` 通用组件下沉 ui 模块 + `d1c81bf99` LocalSettings 改 compositionLocalOf | **`d1c81bf99` fork 同款实锤**（我们也是 `staticCompositionLocalOf` ⇒ 设置一变整树重组）——性能修复小而实，**已吸收 `c1e700968`**；组件下沉是结构重构不跟 |
+| **修复** | `c211c0d44` **搜索结果不再被工具输出截断（#2000）** + `97060dd51` 输入栏渐变遮罩 | **`c211c0d44` fork 同款实锤**：fork `maybeTruncateToolOutput` 对所有工具一刀切，`search_web` 结果超 32K 同样截断成非法 JSON（结果列表 {}、引用失效、模型只见前几条）。**已吸收 `d9c429dec`**：豁免集合 `TOOLS_WITHOUT_OUTPUT_TRUNCATION` + 详情渲染回退；渐变遮罩小 UI 按需 |
 
 **新 issue**：#2125 手动编辑聊天标题——**双方都有**（fork TopBar onUpdateTitle；上游 master 同样有完整编辑流含「先聊天再编辑」守卫，报告人是没发现入口）——平级，非 fork 领先（2026-10-06 更正：初评误判为 fork 领先，未对照上游代码）；#2124 透字（导航栏/输入法间隙，UI 细节，fork 待复现）；#2123 Agent toolcall 唤起图片生成（与上游 mediagen 接线配套的本地工具——fork 若走 mediagen 路线时同类需求=「imggen 工具化」，灵感级）；#1997 向量化归档+按需召回（closed；与压缩新语义相关，观察）；#1998 思考强度 UI（被 `80c6b07d` 落地）。
 
-**吸收优先级**：`c211c0d44` 搜索截断（同款实锤，小）→ `d1c81bf99` LocalSettings 性能（小）→ 其余按需。
+**吸收优先级**：`c211c0d44` 搜索截断 ✅ `d9c429dec` → `d1c81bf99` LocalSettings 性能 ✅ `c1e700968` → 其余按需。
 
 ### 2026-10-06 同步：`85af5b91` → `645a5d88`（3 提交）+ issue 灌水事件
 
