@@ -1500,3 +1500,34 @@ data class ApiKeyEntry(
   - **⚠️ 遗留（未做）**：中部 system 在个别 OpenAI 兼容网关上可能被拒（用户可选规避：把条目角色改回 user）；
     「降级包裹」目前只覆盖 Claude/Gemini/Responses 三家，新增 provider 若引入同类降级需照抄
     `asDowngradedSystemMessage()`。
+- 2026-10-06：**③-3b 真机端到端验证通过 + 补上「中部位置没有 system 可选」的可用性缺口（`85f8e541`）；
+  ②③ 三步全线闭环**。
+  - **② 前后对照（同一助手、同一会话，chat/completions）**：22:59（289，未设系统模板）`[0] system` = 14323
+    字符**裸文本**；23:14（290，设 `<|{{ role }}|>`+换行+`{{ message }}`）= **14334** 字符、以 `<|system|>`
+    开头。差值 **11 = `"<|system|>\n"` 的长度** ⇒ 干净可量化。Responses 路径上 `instructions` 同样带
+    `<|system|>`，且 `user`/`assistant` 每条都带各自角色包装 ⇒ **形态一致达成**。
+  - **③-3b 端到端（23:35:09，`api.deepseek.com/responses`）**：把「研究报告撰写」（`bottom_of_chat`）角色
+    改成 **system** 后，报文 `input[15]` = **`role: user`**（Responses 不能承载中部 system ⇒ 降级），
+    内容 `<system-reminder>\n<|system|>\n## 角色 (Persona)…\n</system-reminder>`：
+    ① 开/闭标记各 **1** 次（无重复包裹、幂等有效）；② 包裹在**最外层**、里面是 ② 的系统模板产物
+    （`<|system|>`）⇒ **分层顺序与设计一致**；③ 同请求 `instructions` 仍带 `<|system|>`。
+  - **发现的可用性缺口（已修）**：`InjectionRoleSelector` 只在 `END_OF_CHAT` 给 `[USER, SYSTEM]`，**其余位置
+    只给 `[USER, ASSISTANT]`** ⇒ **`system` 根本选不到**，3b 虽已实现却无从配置/验证（我先前「把角色改成
+    system」的指示在 UI 上不成立）。修法：中部位置放开 `[USER, ASSISTANT, SYSTEM]` + 每个角色一句说明；
+    **`BEFORE/AFTER_SYSTEM_PROMPT` 干脆去掉选择器**（该位置角色本就不参与判断，内容一律并进 system 正文，
+    留着只会误导）；`END_OF_CHAT` 维持原样。
+  - **assistant 角色按用户拍板降级为 user**：依据是本次日志的 A/B——`role=user` 时模型把注入读成「**你贴的**
+    那段内容」；`role=assistant` 时它等价于「模型自己说过要变成 Perplexity」（预填充语义），模型直接拒绝
+    「这个我不会照做」。两种角色都**无法**被当成系统指令接受 ⇒ 正好印证 ③ 的必要性（`system` 才是正确载体）。
+    降级后内容不丢、也不再冒充模型发言；尾部位置仍是**更狠的忽略**（两处口径写进 KDoc）。
+  - **踩坑**：新加韩文串用了 ASCII 单引号 ⇒ aapt2 `Invalid unicode escape sequence in string`（与既有教训
+    同源：Android 资源里的单引号必须转义或用弯引号）。改用 `‘…’` 通过。
+  - **验证**：`PromptInjectionTransformerTest` 新增 1 例（中部 assistant 角色按 user 送达）+ 既有注入/尾部用例
+    全绿；`:app:testDebugUnitTest` **1291 例**。资产：重建 290（`2a1e1c8a…`，77,693,038 B）→ 装机冒烟
+    （零 FATAL、会话 249 不变）→ 替换草稿资产 → `--title "v1.0.25 (290)"` + notes 两条各补一句（角色选项
+    此前中部选不到 / assistant 不再冒充模型发言）→ **PATCH `target_commitish`=85f8e541 后 tag_name 第四次
+    被重置**（补 PATCH 回 `v1.0.25`）→ 独立 GET 复核：`draft=true` / `name=v1.0.25 (290)` /
+    `tag_name=v1.0.25` / `target=85f8e541…` / digest 与本地逐字符相同。
+  - **仍未验的一条分支**：中部 system 走 OpenAI **chat/completions**（智谱等）时应原样发**独立 `role: system`
+    消息、不加包裹**——本次只在 Responses 上验过；该分支由单测覆盖，但真机没跑（顺带可确认个别网关是否拒绝
+    非首位 system）。
