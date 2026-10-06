@@ -433,6 +433,53 @@ data class ApiKeyEntry(
 
 **评估**：turbo 的 **R3.2 块级流式渲染** + **c897647 setJob（已移植）** 最值得吸收；修复清单可作我们 fork 的 bug 审计对照表。
 
+#### 2026-10-06 增量评估（仓库已停更；本轮深挖 `perf/rendering-and-streaming` 分支）
+
+> **仓库现状**：`master` 停在 2026-08-12，但**真正的工作分支 `perf/rendering-and-streaming` 领先 master 78 提交**（tip `63da3f0d`，2026-08-13，v1.9.20-turbo）。**该仓库已停更约两个月**。本轮把该分支上早于/晚于我们 08-13 存档的内容全部过了一遍——**遗留可吸收项 6 条，其中 1 条是 P0 安全缺口**。
+
+**已吸收 / 已确认无需动作**（避免重复评估）：
+- **R3.x 块级结构化流式渲染——我们已有**（`Markdown.kt` 的 `splitStreamingBlocks` + 行内格式闭合可见 + 后台预热解析；我们比 turbo 更进一层——块计算本身也移出主线程）。**陈旧记账更正**：本文件上文与 handoff 中「R3.2 待实现」的表述已过时。
+- **48 项 bug 审计**（`references/turbo-bugs-audit.md`）：32 项已修，仅剩 C17（编译期无法对照）+ D1（待复核）。
+- 已移植：`c897647` setJob identity、`db26bff` file_paths 收窄、`f0aa1481` 请求日志 header 脱敏、`a766399f` extractTar/parsePax + ASR 静默失败、`3652fd6` normalizeNewlines。
+
+**P0 —— web-ui markdown XSS（真缺口，建议立即修）**：
+- **现状（本轮实证）**：`web-ui/app/components/markdown/markdown.tsx:116` 用 **`rehypeRaw` 渲染 LLM 原始 HTML 但未接 `rehype-sanitize`**；同一行的 `rehypeKatex` 还开着 **`trust: true`**（KaTeX 的 `\href` 等命令因此不再受协议白名单限制）。而 `web-ui/app/services/api.ts:39/109` 把 **JWT 存在 `localStorage`**。
+- **攻击链**：模型读到不可信内容（我们有 `scrape_web`/`search_web` ⇒ 提示词注入面）或用户导入含 HTML 的会话/备份 ⇒ 回复里的 `<img src=x onerror=…>` 在 web UI 执行 ⇒ **读走 localStorage 里的 JWT ⇒ 拿到内嵌 web 服务器（`web` 模块）的完整 API 权限**；`<a href="javascript:…">` 点击亦可执行。
+- **turbo 修法（可照抄）**：`37ca61b7` 接入 `rehype-sanitize` 默认白名单（禁 script/iframe/object/form/meta/link + `javascript:` 协议），**并定制保留 `className`（katex 体系 / citation-badge / `language-*`）与 `style`（katex strut 行高）**——否则公式与代码高亮会被一起洗掉。
+- **配套教训（他们踩过）**：`1c44fe92`——`package.json` 声明了依赖但 `pnpm-lock.yaml` 的 **importers 段**未注册 ⇒ CI `ERR_PNPM_OUTDATED_LOCKFILE` 挂（packages 段有传递依赖不算）。我们仓 `rehype-sanitize` 已在 lock 的 packages 段（传递依赖），**仍须补 importers 段**。
+- **成本**：小（一个依赖 + 插件配置 + 白名单定制）；**风险**：低（只动 web-ui 渲染，Android 端不受影响）。
+
+**P1 —— 工具级执行超时缺失（我们没有；turbo `116a160`）**：
+- **现状**：`GenerationHandler.kt:623` 的 `toolDef.execute(args)` 是**裸调用，无任何超时包装**。MCP 服务器卡住、网络工具悬挂时整轮一直停着（用户仍可点停止取消协程 ⇒ 属「可恢复」而非死锁，但体验与失败语义都差）。
+- **turbo 修法**：`executeToolSafely()` 统一包装——`workspace_shell` 用「命令 timeout + 15s 缓冲」、其余 60s；`TimeoutCancellationException` 转成**工具错误输出**（模型可据此自我纠正），`CancellationException` 照旧传播（用户停止仍取消全部在飞工具）。
+- **我们的约束（不能照抄「60s 一刀切」）**：① `dispatch_subagent` 是**有意阻塞**的（run 可跑到 `timeoutSeconds`，Tier-1 配置化后上限 **7200s**）——一刀切会把子代理派发全部杀掉；② `workspace_shell` 自带命令超时；③ `workspace_run_background` 立即返回（长跑在后台任务里，不受影响）。**结论：须做成「工具自带超时声明 + 默认值」**。
+- **成本**：小–中；**价值**：中–高。
+
+**P1 —— 每 workspace 常驻 shell 会话池（我们没有；turbo `6077ce4`）**：
+- **现状**：`workspace/ProotShellRunner.kt`（172 行）**无会话复用**——每条 `workspace_shell` 重新起 proot + bash，冷启动约 1s；多步会话 20 条命令 ≈ 白花 20s。
+- **turbo 修法**：按 `linuxDir` 的 **LRU 会话池（上限 3）**——切工作区不再销毁会话；**锁粒度从一把全局锁降为「每工作区一把」**（跨工作区命令并行、同工作区仍串行）；淘汰只挑空闲会话。
+- **他们踩过的坑（必须带上）**：`removeEldestEntry` 内同步 `destroy()`，若被淘汰会话有命令在跑，会**阻塞所有工作区的 shell**（全局头阻塞最长 600s）⇒ 改为手动扫描、只淘汰空闲、全忙时允许池暂时超限。
+- **与我们机制的交互（风险点）**：我们的 `ProcessSignals` 按**唯一标记 + `/proc` 反查进程树**做超时/取消杀进程，后台任务另有一套进程生命周期——常驻会话会让「杀进程」语义变复杂（杀哪棵子树、会话是否重建）。**中风险，建议单独设计后再动**。
+- **价值**：中；**成本**：中。
+
+**P2 —— 同轮多工具并行执行（turbo `115ca09`）**：
+- **turbo 做法**：同轮 Auto/Approved 工具 `coroutineScope + async`（Semaphore 4），结果按调用顺序挂回；超时与错误消化统一进 `executeToolSafely`。
+- **为什么不能直接抄（本轮最重要的判断）**：我们工具循环里**护栏是有序且有状态的**——`loopGuard.record()` 按出现顺序累积窗口（失败时 `forget`）、`executedSignature` 去重表批内共享、`contextGuard.evaluate()` 是**逐调用、执行前**判定、`WorkspaceTurnBudget` 按「实际进入上下文」的字符累加、`denialGuard` 按序计数。并行化会打乱这五者的顺序语义（预算判定与结果累加不再一一对应、LoopGuard 窗口顺序失去意义）。**turbo 的分支早于我们这些护栏**，所以他们能直接并行。
+- **若要做**：需重设计护栏交互（「先按序一次性记录护栏 → 再并行执行 → 结果按序回填 → 预算统一结算」），并接受他们如实记录的取舍——**同轮写同一文件的 lost update**（我们额外有 `expectedMtimeMs` 冲突检测，正好兜住这条）。
+- **价值**：中；**成本/风险**：中–高（护栏语义）。
+
+**P3 小件**：
+- **生成打断的可见标记（`2945c612`）**：我们 `persistStoppedGeneration` 保留半截内容（#1812），但**用户看不到「这条被打断了」**；turbo 追加可见标记 + **上传/导出时过滤该标记**（防标记污染数据）。小、用户可见。
+- **日志页实时刷新（`71f78ef2`）**：turbo 给 `Logging` 加**监听器订阅**（`CopyOnWriteArrayList`、锁外通知；common 无 coroutines 依赖故不用 Flow），页面 `DisposableEffect` 注册/注销。我们的 `LogPage` 是进入时一次性快照——看新日志得退出重进。小。
+- **webhook 强制签名认证（`6137b3a7`）**：未配 token 直接 403（turbo 原先未配就不校验）。我们**目前没有 webhook**；将来做任务/定时 webhook 时带上这条默认安全。
+- **provider 兼容小件**（Console Go 的 `input items` 强制 id / assistant 字符串 content / 内置工具补 `name` / 仅 UrlContext 时不发空 `tools`）：面向特定上游，与我们无关；但 `10ccc7d5`「**同一消息内多 item id 唯一化（msg/rsn/img + 自增序号）**」与我们 `c309c615`（补插 reasoning 去 `rs_` id）**同域**，将来再遇重复 id 报错时其「前缀+序号」是可参考的通用化写法。
+
+**方法论（非代码，可复用）**：
+- **极致优化专项**：死代码清理两轮（`-763` 行、删 3 文件）+ 两个大函数拆分（ChatDrawerContent 577→220、SettingTasksPage 551→160），手法是 **Strangler Fig**（先建新文件、逐块搬移、旧壳变薄）。
+- **「提取块 7 项自查标准」**（机械拆分/搬移代码后必查）：① 注释平衡（`/**` : `*/`）② 尾部孤儿注解/`@Composable` ③ 括号平衡（剥离模板字符串后）④ `export` 前缀（python 提取必丢）⑤ 重复声明（header 与 block 边界不得重叠）⑥ **`@Composable` 注解完整性（从函数名开始提取会丢上一行注解）** ⑦ `private` 顶层跨文件可见性（提取后必须 `internal`）。做类似拆分时可当 checklist。
+- **CI 纪律**：他们连续多轮 CI 红的教训与我们**已独立收敛同一批规则**（编辑后 grep 核对新增符号、同文件编辑严格串行、CI 失败要拉**全量** `e:` 行而非只看头部）——互证有效。
+
+
 ### 4. RikkaHub Plus（heikeyangle-code/rikkahub-plus，2★，与我们同名不同方向）
 
 **定位**：酒馆（SillyTavern）增强 + 命理排盘。角色卡 22 字段无损、世界书官方语义全对齐、宏引擎 2.0、21 斜杠命令、群聊、前台服务保活、技能系统。
