@@ -1723,6 +1723,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="prompt_page_position_end_of_chat">End of request (after all messages)</string>
   <string name="prompt_page_tail_user_role_hint">Appended as a user message on each model request, including after tool results. This is not assistant prefill.</string>
   <string name="prompt_page_tail_system_role_hint">Sent as a system message at the very end of the request. On Claude/Gemini it is delivered as a user message (their APIs place system content at the top, which would break prompt caching).</string>
+  <string name="prompt_page_mid_system_role_hint">Sent as a system message at that position. Providers that cannot carry a mid-conversation system role (Claude / Gemini / Responses) deliver it as a user message wrapped in <system-reminder>…</system-reminder>, so it is not mistaken for user speech.</string>
+  <string name="prompt_page_mid_assistant_role_hint">Delivered as a user message: an assistant-role injection makes the model read the text as something it said itself (prefill), which in practice makes it refuse or contradict itself.</string>
+  <string name="prompt_page_mid_user_role_hint">Injected as a user message at that position. The model may read it as something the user said.</string>
+  <string name="prompt_page_system_prompt_position_role_note">At this position the content is merged into the system prompt body — it is always system-level, so there is no role to pick.</string>
   <string name="prompt_page_role_system">System</string>
   <string name="subagent_page_title">Subagents</string>
   <string name="subagent_page_desc">Named model + prompt combinations the model can dispatch mid-conversation</string>

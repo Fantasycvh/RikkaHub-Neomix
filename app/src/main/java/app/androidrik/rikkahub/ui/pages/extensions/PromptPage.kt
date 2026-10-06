@@ -1096,6 +1096,18 @@ private fun InjectionRoleSelector(
     position: InjectionPosition,
     onSelect: (MessageRole) -> Unit
 ) {
+    if (position == InjectionPosition.BEFORE_SYSTEM_PROMPT ||
+        position == InjectionPosition.AFTER_SYSTEM_PROMPT
+    ) {
+        // 这两个位置的内容**一律合并进系统提示正文**（见 applyInjections），角色不参与任何判断
+        // ⇒ 给一个无效的选择器只会误导（用户会以为选了 assistant 就以助手身份发送）。
+        Text(
+            text = stringResource(R.string.prompt_page_system_prompt_position_role_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
     if (position == InjectionPosition.END_OF_CHAT) {
         // 尾部支持 USER（原行为）与 SYSTEM（#1542 分段式系统提示）；ASSISTANT 禁止（预填充）
         Select(
@@ -1116,12 +1128,26 @@ private fun InjectionRoleSelector(
         )
         return
     }
+    // 中部位置（TOP_OF_CHAT / BOTTOM_OF_CHAT / AT_DEPTH）：三种角色都放开。
+    // SYSTEM 此前缺席（只有尾部给过）⇒ 注入器即便支持也无从配置（③-3b 的可用性缺口）。
     Select(
-        options = listOf(MessageRole.USER, MessageRole.ASSISTANT),
+        options = listOf(MessageRole.USER, MessageRole.ASSISTANT, MessageRole.SYSTEM),
         selectedOption = role,
         onOptionSelected = onSelect,
         optionToString = { getRoleLabel(it) },
         modifier = Modifier.fillMaxWidth()
+    )
+    Text(
+        text = stringResource(
+            when {
+                role == MessageRole.SYSTEM -> R.string.prompt_page_mid_system_role_hint
+                role == MessageRole.ASSISTANT -> R.string.prompt_page_mid_assistant_role_hint
+                else -> R.string.prompt_page_mid_user_role_hint
+            }
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp),
     )
 }
 

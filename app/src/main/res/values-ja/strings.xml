@@ -1648,6 +1648,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="prompt_page_position_end_of_chat">リクエストの末尾（すべてのメッセージの後）</string>
   <string name="prompt_page_tail_user_role_hint">モデルへの各リクエストで、ツールの結果を含む全メッセージの後にユーザーメッセージとして追加します。アシスタントのプリフィルではありません。</string>
   <string name="prompt_page_tail_system_role_hint">リクエストの最後にシステムメッセージとして送信します。Claude/Gemini は先頭のシステムのみ受け付けるため、ユーザーメッセージに変換されます（キャッシュ維持）。</string>
+  <string name="prompt_page_mid_system_role_hint">その位置にシステムメッセージとして挿入します。中部の system を扱えない API（Claude / Gemini / Responses）ではユーザーメッセージとして送信し、<system-reminder>…</system-reminder> で包みます（ユーザーの発言と誤読されないように）。</string>
+  <string name="prompt_page_mid_assistant_role_hint">実際には**ユーザーメッセージ**として送信されます：アシスタントロールだとモデルが「自分の発言」と読んでしまい（プリフィル）、拒否や矛盾を招きます。</string>
+  <string name="prompt_page_mid_user_role_hint">その位置にユーザーメッセージとして挿入します。モデルは「ユーザーの発言」と読む可能性があります。</string>
+  <string name="prompt_page_system_prompt_position_role_note">この位置の内容はシステムプロンプト本文に統合されます——常にシステム相当なので、ロールの選択は不要です。</string>
   <string name="prompt_page_role_system">システム</string>
   <string name="subagent_page_title">サブエージェント</string>
   <string name="subagent_page_desc">会話中にモデルが名前で呼び出せる「モデル + プロンプト」の組み合わせ</string>

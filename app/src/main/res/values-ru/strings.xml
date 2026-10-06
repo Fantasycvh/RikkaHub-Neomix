@@ -1648,6 +1648,10 @@
   <string name="prompt_page_position_end_of_chat">В конце запроса (после всех сообщений)</string>
   <string name="prompt_page_tail_user_role_hint">Добавляется как сообщение пользователя в каждом запросе к модели, после всех сообщений и результатов инструментов. Это не предзаполнение ответа ассистента.</string>
   <string name="prompt_page_tail_system_role_hint">Отправляется как системное сообщение в самом конце запроса. Claude/Gemini принимают системный текст только сверху — будет отправлено как сообщение пользователя (сохранение кэша).</string>
+  <string name="prompt_page_mid_system_role_hint">Отправляется как системное сообщение в этой позиции. API, не поддерживающие system в середине диалога (Claude / Gemini / Responses), доставляют его как сообщение пользователя, обёрнутое в <system-reminder>…</system-reminder>, чтобы его не приняли за реплику пользователя.</string>
+  <string name="prompt_page_mid_assistant_role_hint">Фактически отправляется как **сообщение пользователя**: роль assistant заставляет модель прочитать текст как собственные слова (prefill) — на практике это вызывает отказ или противоречие.</string>
+  <string name="prompt_page_mid_user_role_hint">Вставляется как сообщение пользователя в этой позиции. Модель может прочитать это как сказанное пользователем.</string>
+  <string name="prompt_page_system_prompt_position_role_note">В этой позиции содержимое объединяется с телом системного промпта — это всегда системный уровень, выбирать роль не нужно.</string>
   <string name="prompt_page_role_system">Система</string>
   <string name="subagent_page_title">Субагенты</string>
   <string name="subagent_page_desc">Комбинации «модель + промпт», которые модель вызывает по имени прямо в диалоге</string>

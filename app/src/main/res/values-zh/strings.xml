@@ -1721,6 +1721,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="prompt_page_position_end_of_chat">轮次尾部（本次请求末尾）</string>
   <string name="prompt_page_tail_user_role_hint">每次请求模型时，以用户消息追加在全部消息（包括工具结果）之后；不是助手预填充。</string>
   <string name="prompt_page_tail_system_role_hint">以系统消息追加在本次请求最末尾。Claude/Gemini 的接口只接受顶部系统提示，会自动改为用户消息送达（保证缓存有效）。</string>
+  <string name="prompt_page_mid_system_role_hint">以系统消息插入该位置。不能承载「中部 system」的接口（Claude / Gemini / Responses）会改为用户消息送达、并包一层 <system-reminder>…</system-reminder>，以免被当成用户发言。</string>
+  <string name="prompt_page_mid_assistant_role_hint">实际按**用户消息**送达：助手角色会让模型把这段内容读成「自己说过的话」（预填充），实测会引发拒绝或自相矛盾。</string>
+  <string name="prompt_page_mid_user_role_hint">以用户消息插入该位置。模型可能把它读成「用户说过的话」。</string>
+  <string name="prompt_page_system_prompt_position_role_note">该位置的内容会合并进系统提示正文——本身就是系统级内容，无需选择角色。</string>
   <string name="prompt_page_role_system">系统</string>
   <string name="subagent_page_title">子代理</string>
   <string name="subagent_page_desc">模型可在对话中按名称调度的「模型 + 提示词」组合</string>

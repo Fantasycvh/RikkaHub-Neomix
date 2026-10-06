@@ -1704,6 +1704,10 @@
   <string name="prompt_page_position_end_of_chat">輪次尾部（本次請求末尾）</string>
   <string name="prompt_page_tail_user_role_hint">每次請求模型時，以使用者訊息附加在全部訊息（包括工具結果）之後；不是助手預填充。</string>
   <string name="prompt_page_tail_system_role_hint">以系統訊息附加在本次請求最末尾。Claude/Gemini 的介面只接受頂部系統提示，會自動改為使用者訊息送達（保證快取有效）。</string>
+  <string name="prompt_page_mid_system_role_hint">以系統訊息插入該位置。不能承載「中部 system」的介面（Claude / Gemini / Responses）會改以使用者訊息送出、並包一層 <system-reminder>…</system-reminder>，以免被當成使用者發言。</string>
+  <string name="prompt_page_mid_assistant_role_hint">實際按**使用者訊息**送出：助手角色會讓模型把這段內容讀成「自己說過的話」（預填充），實測會引發拒絕或自相矛盾。</string>
+  <string name="prompt_page_mid_user_role_hint">以使用者訊息插入該位置。模型可能把它讀成「使用者說過的話」。</string>
+  <string name="prompt_page_system_prompt_position_role_note">該位置的內容會合併進系統提示本文——本身就是系統級內容，無需選擇角色。</string>
   <string name="prompt_page_role_system">系統</string>
   <string name="subagent_page_title">子代理</string>
   <string name="subagent_page_desc">模型可在對話中依名稱調度的「模型 + 提示詞」組合</string>

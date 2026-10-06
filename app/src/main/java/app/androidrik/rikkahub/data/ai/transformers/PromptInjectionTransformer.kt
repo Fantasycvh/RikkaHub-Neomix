@@ -301,11 +301,14 @@ internal fun applyInjections(
  * 合并时把**贡献者 id** 记进 [UIMessageAnnotation.InjectionSources]（Tier 4 归因）：
  * 注解不参与 part→API 转换 ⇒ 请求字节与合并前完全一致，只是让预览能再拆回逐条。
  *
- * **role 一律照抄条目的配置**（含 `SYSTEM`）：中部位置的 system 注入此前被这里 `else -> user` 悄悄降级，
- * 与用户在条目上选的「角色」不符（③-3b，2026-10-06 修）。能否承载由 **provider 层**决定：OpenAI
- * chat/completions 原样发 `system`；Claude/Gemini/Responses 不能承载中部 system ⇒ 降级为 user 并
- * 加 `<system-reminder>` 标记包裹（见 `ProviderMessageUtils.asDowngradedSystemMessage`），
- * 使内容失去 role 后仍能自证是系统指令，而不是被读成「用户说过的话」。
+ * **role 的处理**（③，2026-10-06）：
+ * - `SYSTEM` 照抄配置（此前被 `else -> user` 悄悄降级）；能否承载由 **provider 层**决定：OpenAI
+ *   chat/completions 原样发 `system`；Claude/Gemini/Responses 不能承载中部 system ⇒ 降级为 user 并加
+ *   `<system-reminder>` 标记包裹（见 `ProviderMessageUtils.asDowngradedSystemMessage`）。
+ * - `ASSISTANT` **降级为 user** 送达：助手角色会让这段内容以「模型自己说过的话」出现在上下文里
+ *   （预填充语义），实测引发模型拒绝/自相矛盾——2026-10-06 真机：`role=assistant` 的人设注入让模型
+ *   回复「你贴的那段内容是想让我切换成另一个身份……这个我不会照做」。降级后内容不丢、也不再冒充模型发言。
+ *   （**尾部位置**的处置更狠，见 `applyInjections` 的 END_OF_CHAT 分支：直接忽略 assistant 条目。）
  */
 private fun createMergedInjectionMessages(injections: List<PromptInjection>): List<UIMessage> {
     return injections
@@ -313,7 +316,6 @@ private fun createMergedInjectionMessages(injections: List<PromptInjection>): Li
         .map { (role, grouped) ->
             val mergedContent = grouped.joinToString("\n") { it.content }
             when (role) {
-                MessageRole.ASSISTANT -> UIMessage.assistant(mergedContent)
                 MessageRole.SYSTEM -> UIMessage.system(mergedContent)
                 else -> UIMessage.user(mergedContent)
             }.copy(

@@ -1648,6 +1648,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="prompt_page_position_end_of_chat">요청 끝 (모든 메시지 뒤)</string>
   <string name="prompt_page_tail_user_role_hint">모델에 요청할 때마다 도구 결과를 포함한 모든 메시지 뒤에 사용자 메시지로 추가합니다. 어시스턴트 프리필이 아닙니다.</string>
   <string name="prompt_page_tail_system_role_hint">요청 맨 끝에 시스템 메시지로 전송됩니다. Claude/Gemini는 상단 시스템만 허용하므로 사용자 메시지로 변환됩니다(캐시 유지).</string>
+  <string name="prompt_page_mid_system_role_hint">해당 위치에 시스템 메시지로 삽입됩니다. 중간 system을 지원하지 않는 API(Claude / Gemini / Responses)는 사용자 메시지로 전송하고 <system-reminder>…</system-reminder>로 감쌉니다(사용자 발언으로 오해되지 않도록).</string>
+  <string name="prompt_page_mid_assistant_role_hint">실제로는 **사용자 메시지**로 전송됩니다: 어시스턴트 역할이면 모델이 이 내용을 ‘자기가 한 말’로 읽어(프리필) 거부하거나 모순됩니다.</string>
+  <string name="prompt_page_mid_user_role_hint">해당 위치에 사용자 메시지로 삽입됩니다. 모델이 ‘사용자가 한 말’로 읽을 수 있습니다.</string>
+  <string name="prompt_page_system_prompt_position_role_note">이 위치의 내용은 시스템 프롬프트 본문에 합쳐집니다 — 항상 시스템 수준이므로 역할을 고를 필요가 없습니다.</string>
   <string name="prompt_page_role_system">시스템</string>
   <string name="subagent_page_title">서브에이전트</string>
   <string name="subagent_page_desc">대화 중 모델이 이름으로 호출할 수 있는 「모델 + 프롬프트」 조합</string>

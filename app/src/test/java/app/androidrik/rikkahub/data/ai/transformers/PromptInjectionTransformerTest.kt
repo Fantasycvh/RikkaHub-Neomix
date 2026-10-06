@@ -464,6 +464,34 @@ class PromptInjectionTransformerTest {
         assertEquals("系统级指令", getMessageText(injected))
     }
 
+    @Test
+    fun `assistant role injection at mid positions is delivered as user`() {
+        // 2026-10-06 真机：role=assistant 的人设注入会以「模型自己说过的话」出现在上下文里（预填充语义），
+        // 模型回复「你贴的那段内容是想让我切换成另一个身份……这个我不会照做」。故中部位置降级为 user：
+        // 内容不丢、也不再冒充模型发言。（尾部位置更狠：直接忽略 assistant 条目，见 TailInjectionTest。）
+        val injectionId = Uuid.random()
+        val injection = createModeInjection(
+            id = injectionId,
+            position = InjectionPosition.BOTTOM_OF_CHAT,
+            content = "人设注入",
+            role = MessageRole.ASSISTANT,
+        )
+
+        val result = transformMessages(
+            messages = listOf(
+                UIMessage.system("System prompt"),
+                UIMessage.user("Hello"),
+            ),
+            assistant = createAssistant(modeInjectionIds = setOf(injectionId)),
+            modeInjections = listOf(injection),
+            lorebooks = emptyList(),
+        )
+
+        val injected = result.first { it.isSynthetic }
+        assertEquals(MessageRole.USER, injected.role)
+        assertEquals("人设注入", getMessageText(injected))
+    }
+
     // region TOP_OF_CHAT tests
     @Test
     fun `mode injection with TOP_OF_CHAT should insert before first user message`() {
