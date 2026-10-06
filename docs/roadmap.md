@@ -1528,6 +1528,15 @@ data class ApiKeyEntry(
     此前中部选不到 / assistant 不再冒充模型发言）→ **PATCH `target_commitish`=85f8e541 后 tag_name 第四次
     被重置**（补 PATCH 回 `v1.0.25`）→ 独立 GET 复核：`draft=true` / `name=v1.0.25 (290)` /
     `tag_name=v1.0.25` / `target=85f8e541…` / digest 与本地逐字符相同。
-  - **仍未验的一条分支**：中部 system 走 OpenAI **chat/completions**（智谱等）时应原样发**独立 `role: system`
-    消息、不加包裹**——本次只在 Responses 上验过；该分支由单测覆盖，但真机没跑（顺带可确认个别网关是否拒绝
-    非首位 system）。
+  - **✅ 三条分支全部真机验完（23:40:59 补上最后一条，智谱 chat/completions）**：同一助手、同一条注入
+    （`bottom_of_chat` + `role=system`），`POST open.bigmodel.cn/.../chat/completions` → **200 / 1611ms**，
+    13 条消息 —— `[0] system` 10901 字符（合并后的系统提示，带 `<|system|>`）与 **`[11] system`** 3443 字符
+    是**两条不同的消息**（`[11]` 前 80 字符 = `<|system|>` + 换行 + `## 角色 (Persona)…`）⇒ **原样发独立
+    `role: system` 消息、不加包裹、`<system-reminder>` 计数 0**，与设计完全一致；且**智谱接受「非首位
+    system」**（我先前标的网关风险在该家未出现）。全日志状态码：200×24、404×1（那条 openrouter 不存在
+    的模型）。⇒ **能承载则原样 system（chat/completions）／不能承载则降级 user + 标记包裹
+    （Claude/Gemini/Responses）**：chat/completions 与 Responses 已真机验证，Claude/Gemini 由单测覆盖
+    （本机无该家密钥）。
+  - **⚠️ 收尾提醒**：本轮 `python -c "…"` 里**未转义的反引号被 bash 当命令替换**，把上面这段的首版文字吃掉了
+    几个词（已用 Edit 工具修复）——**含反引号的文本一律用 Write 脚本文件或 Edit 工具落盘**，这是本会话第二次
+    踩同源坑（第一次是 python 里的 `\n` 展开成真实换行）。
