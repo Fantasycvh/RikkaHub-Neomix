@@ -1334,3 +1334,42 @@ data class ApiKeyEntry(
     LaTeX 归一化标记（`alignedat`+`semilogaxis`）与 rehype 清洗链 ⇒ 本版两项 web 侧修复确实在包里。
   - README 标注改为「正式发布：`v1.0.24` ｜ 草稿：`v1.0.25`」（沿用 `a28bea52^` 的既有格式）。**待用户
     GitHub 检查后转正**；转正后按老规矩 `git ls-remote --tags` 复核 tag 落点。
+- 2026-10-06：**严重回归修复——输入处理链的产物被丢弃（`9c8796f3`）**，并据此**重建 v1.0.25 草稿资产为
+  289**（`7871e597`）。**这条是本轮最重要的发现，起因是排查「注入为什么不好使」时顺手核对代码。**
+  - **事故形态**（`7e29e7f6c`「前缀分叉诊断」改造引入，**已随 v1.0.24 (287) 发布**）：
+
+    ```kotlin
+    val internalMessages = buildInternalMessages(...)
+    internalMessages.transforms(transformers = transformers, ...)  // ← 裸语句，产物被丢弃
+    providerImpl.streamText(messages = internalMessages, ...)      // ← 发的是「未处理」列表
+    ```
+
+    改造前是**单表达式** `val internalMessages = buildInternalMessages(...).transforms(...)`（赋值在）；
+    为了插一行 `debugKey?.let { …recordRequest(it, internalMessages) }` 而把它拆成两条语句时，**赋值丢了**。
+  - **影响面**：整条**输入 transformer 链**的产物不再进入请求 —— 时间提醒、模式注入/世界书/预设条目
+    （`PromptInjectionTransformer`）、ST 动态宏、占位符、文档转提示、OCR、引用展开、助手消息模板、
+    workspace 提醒。**全部静默失效**：类型合法、无异常、无日志。
+  - **为什么长期没被发现（关键教训）**：拼装预览 `PromptInspector` 是**另一份**实现，写的是
+    `val transformed = internalMessages.transforms(...)`（正确赋值）⇒ **预览里注入段落都在、实发请求里
+    一个没有**。历史上一批「注入归因/跳转/Tier 4」验证全部是对**预览**做的，自然全绿。
+    ⇒ **对「同一条链的两个实现」，必须核对两边是否都把结果用上了**；只验一侧等于没验。
+  - **修法**：接住返回值（`val requestMessages = …`）+ 两处 provider 调用改用它；并把前缀分叉诊断的记录点
+    从「变换前」挪到「变换后」（它缓存的本就该是**实际发送**的列表，否则单次请求差分比错了对象）。
+  - **守卫（已反向验证有效）**：新增源码级 `RequestMessagePipelineGuardTest`（无需 Robolectric，沿用
+    `StringFormatArgsGuardTest` 的做法）钉两条不变量：① 不许把 `.transforms(...)` 写成裸语句（**识别实参
+    位置**，否则 `emit(GenerationChunk.Messages(\n messages.transforms(` 会误报——我第一版就误报了，
+    靠「上一非空行是否以 `(` 结尾」区分）；② `GenerationHandler` 里不许把未处理的 `internalMessages`
+    直接塞进 `messages =`。**把事故形态注回去实测两条断言都失败**，证明守卫真能拦。
+    另外修好后两处 provider 调用引用 `requestMessages` ⇒「删掉赋值」还会**直接编译失败**，双保险。
+  - **重建资产（288 → 289，versionName 保持 1.0.25）**：288 已上传过、用户可能已下载 ⇒ **不能原地换包**
+    （否则又一个「同一 versionCode = 两份内容」，正是 287 踩过的坑）。流程：清 outputs → release 构建
+    （4m？实为一次通过）→ aapt2 核实 `289`/`1.0.25`/仅 `arm64-v8a`（77,677,614 B，sha256 `0e99f8e5…`）
+    → 装机冒烟（零 FATAL、会话 248 不变、`tokenizer install ok vocab=100256`）→ **同一后台作业内
+    `delete-asset` + `upload`**（避免「草稿无资产」窗口）→ `gh release edit --title "v1.0.25 (289)"` →
+    PATCH `target_commitish`=7871e597…。
+  - **实测到「PATCH 会把 tag_name 重置成 untagged」**：改 notes + PATCH target 之后 `tag_name` 变成
+    `untagged-30a84cd4…`（与 `df0d1069` 记录一致，且比「表现不稳定」更进一步——**这次确实重置了**），
+    按老规矩补一次 `PATCH tag_name=v1.0.25` 即恢复。**收尾独立 GET 复核**：`draft=true`、`name=v1.0.25 (289)`、
+    `tag_name=v1.0.25`、`target=7871e597…`（= bump = 分支 HEAD）、资产 digest `0e99f8e5…` 与本地逐字符相同。
+  - **另记一条网络事实**：本轮 `gh api` 多次 `dial tcp 20.205.243.168:443 … failed to respond`（PATCH/GET
+    都中过），**重试即可**；因此收尾的 digest/tag 复核必须写成「带重试的循环」，不能一次不成就下结论。
