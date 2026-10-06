@@ -859,9 +859,15 @@ class GenerationHandler(
             compressionWindow = compressionWindow,
             recoveryHint = recoveryHint,
         )
-        // 前缀分叉诊断：缓存实际发送的消息列表（上一次 vs 本次差分，见 PromptDebugCache）
-        debugKey?.let { PromptDebugState.recordRequest(it, internalMessages) }
-        internalMessages.transforms(
+        // 输入处理链（时间提醒 / 模式注入 / 世界书 / ST 宏 / 占位符 / 文档转提示 / OCR / 引用 /
+        // 助手模板 / workspace 提醒）：**返回值必须接住**——它才是真正发给 provider 的列表。
+        //
+        // 2026-10-06 修复：此处曾写成裸语句 `internalMessages.transforms(...)`（`7e29e7f6c` 改造
+        // 前缀分叉诊断时把赋值丢了），链的产物被丢弃、请求发的是**未处理**列表，而拼装预览
+        // （`PromptInspector` 那一份有 `val transformed =`）照常显示注入 ⇒「预览里有、实发里没有」，
+        // 注入 / 时间提醒 / 引用展开 / OCR / 文档转提示全部静默失效。
+        // 守卫测试：`RequestMessagePipelineGuardTest`（源码扫描，防止再次丢赋值）。
+        val requestMessages = internalMessages.transforms(
             transformers = transformers,
             context = context,
             model = model,
@@ -872,6 +878,8 @@ class GenerationHandler(
             processingStatus = processingStatus,
             workspaceCwd = workspaceCwd,
         )
+        // 前缀分叉诊断：缓存**实际发送**的消息列表（即处理链之后的那份，单次请求差分才有意义）
+        debugKey?.let { PromptDebugState.recordRequest(it, requestMessages) }
 
         var messages: List<UIMessage> = messages
         val params = TextGenerationParams(
@@ -906,7 +914,7 @@ class GenerationHandler(
                 try {
                     providerImpl.streamText(
                         providerSetting = provider,
-                        messages = internalMessages,
+                        messages = requestMessages,
                         params = params
                     ).collect { chunk ->
                         if (chunk.explicitEnd) {
@@ -970,7 +978,7 @@ class GenerationHandler(
                 try {
                     val chunk = providerImpl.generateText(
                         providerSetting = provider,
-                        messages = internalMessages,
+                        messages = requestMessages,
                         params = params,
                     )
                     messages = messages.handleMessageChunk(
