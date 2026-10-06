@@ -93,3 +93,16 @@
 - [x] **2026-09-12**：F6 已修（随 `513b784c` 吸收顺手关闭，见上表）；F7 extractTar/parsePax、F9 ASR 静默失败已修（`a766399f`）。剩余：C17（编译期，无法对照）+ D1 待核
 
 > 记录：2026-08-13 建立，2026-08-14 全量核查定论 + 三批修复（共 32 项）。原始来源 docs/references/turbo-PROGRESS.md（`dcs666/rikkahub-pro` 仓库存档）。
+
+---
+
+## 附：2026-10-06 增量评估结论（详见 `docs/roadmap.md` §七.3 同名小节）
+
+本轮深挖 `perf/rendering-and-streaming` 分支（领先 master 78 提交，tip `63da3f0d` / v1.9.20-turbo，**仓库已停更约两月**）：
+
+- **R3.x 块级流式渲染：我们已有**（`Markdown.kt` `splitStreamingBlocks`，且块计算已移出主线程）——本表遗留的「待实现」表述作废。
+- **P0 真缺口：web-ui markdown XSS**——`rehypeRaw` 无 `rehype-sanitize` + `rehypeKatex trust:true` + JWT 在 `localStorage` ⇒ 模型输出可执行脚本读走 JWT。修法照抄 `37ca61b7`（含 className/style 白名单定制），注意 `1c44fe92` 的 lockfile importers 段教训。
+- **P1 工具级执行超时缺失**（`116a160`）：我们 `toolDef.execute()` 裸调用；但须按工具声明超时（`dispatch_subagent` 故意阻塞至 7200s）。
+- **P1 每 workspace 常驻 shell 会话池**（`6077ce4`）：我们无会话复用（每命令 ~1s 冷启动）；与 `ProcessSignals`/后台任务交互需先设计。
+- **P2 同轮多工具并行**（`115ca09`）：**与我们五个有序护栏冲突**，不可直接抄。
+- **P3**：生成打断可见标记（`2945c612`）、日志页实时刷新（`71f78ef2`）、webhook 强制签名（`6137b3a7`）。
