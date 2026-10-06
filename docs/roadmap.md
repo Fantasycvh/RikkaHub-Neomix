@@ -1280,3 +1280,35 @@ data class ApiKeyEntry(
     （`BackStackRepairTest`：空栈补根页 / 非空不动 / 幂等）。
   - **教训**：`require(isNotEmpty())` 类不变量在**恢复路径**上会被历史坏状态反复触发——「不清洗 saved state 的输入，
     就会把一次性崩溃升级成开屏崩溃循环」；而恢复/重建类 bug 必须用「不保留活动」或进程死亡来测，正常点按永远碰不到。
+- 2026-10-06：**修「多重公式对齐」渲染成源码（`4839e347`）**——用户报会话 `Tikz中文支持` 里该条目两端
+  （App + Web）都渲染成一行源码、`\\` 被吃成 `\`，初判为「KaTeX 不支持 align」+「某处把 `\\` 折叠了」。
+  - **两条假设都成立，但都不是真因**。逐字节核对存储原文（`/api/conversations/{id}` → `messages[61]`）后发现：
+    该条是**裸环境** `\begin{align}…\end{align}`，**没有任何数学定界符**——相邻的分段函数/复杂条件概率
+    都规矩地写了 `\[…\]`，只有它漏了。没有定界符就压根不进数学渲染器，被当普通段落文本：
+    markdown 把 `\\` 当转义吃成 `\`、软换行折叠成空格、`&`/`\,` 被转义。**这正是 App 与 Web「表现完全一致」
+    的原因**——跟两端各自的渲染器（jlatexmath / KaTeX）无关；若真是 KaTeX 的 align 限制，App 侧不可能表现相同。
+  - **实测澄清三件事（可复用）**：①数学模式内 `\\` 完好（行内 `$\begin{aligned} a &= b \\ c &= d\end{aligned}$`
+    正确产出 2 行 mtable，KaTeX annotation 里 `\\` 原样保留）；②`$$` 必须**独占一行**——`$$\begin{align}` 同行时
+    remark-math 会把数学节点从 `\begin` 之后才开始（`$$\n…\n$$` 才对）；③环境支持矩阵——KaTeX 0.16 的
+    `align/align*/gather/gather*/alignat/alignat*/equation/split/CD` **仅 display 模式可用**（行内直接报
+    `can be used only in display mode`），`multline/multline*/flalign` **完全不支持**，而
+    `aligned/alignedat/gathered/cases/dcases/rcases/array/矩阵家族` 两模式皆可；jlatexmath 1.5 预定义环境含
+    `array/align/aligned/flalign/alignat/alignedat/multline/gather/gathered`（解 aar 从 class 常量读的）。
+  - **修法**：新增 `LatexEnvironments`（App `richtext/LatexEnvironments.kt` + Web `markdown/latex-environments.ts`
+    两份等价实现），接入 App 两处 `preProcess` 与 Web `preProcess` 的**最前面**：①裸块级环境补独占一行的 `$$`，
+    **保留列表项缩进**（缩进丢了数学块会脱离列表项）；②环境名归一为两端都认的等价物（`align→aligned`、
+    `gather→gathered`、`alignat→alignedat`、`equation/flalign/multline→aligned/gathered`），
+    `tikzpicture/tikzcd/axis` 只补定界符**不改名**（要原样交给 TikZ 编译器）；③保护代码块与已带
+    `$$`/`\[…\]`/`\(…\)`/`$…$` 的区间，避免二次包裹成 `$$ $$ … $$ $$`；④流式中途未闭合时不补定界符。
+  - **验证**：单测 `LatexEnvironmentsTest` 17 例；Web 侧 28 项断言脚本（`pnpm run test:latex`，与 Kotlin 行为对齐）；
+    `:app:testDebugUnitTest` 全量 **1279 例全绿**；该会话 15 个文本 part 新旧链路回归扫描 **katex 正常块 18→19、
+    katex-error 13→13、无新增错误**（13 个 error 全是 KaTeX 本就渲染不了的 TikZ 块，App 走 Tectonic）；
+    App 实机（Xiaomi 8 / A14）三重对齐出 **3 行**正确公式；Web 实机抓真实页面 DOM：该段为 `katex-display`
+    含 **3 个 `<mtr>`**、无 `katex-error`、无裸 `\begin{align}`、整页残留裸环境 **0**。
+  - **教训一（方法）**：**用户给的复现假设要验证，不能照着改**。若只做「align→aligned」单点改写，既修不好
+    （根因是「没进数学模式」），又会在两端留下不一致。**先取原始数据（存储原文逐字节 repr）再定因**，
+    比在渲染链路上试错快得多。
+  - **教训二（自坑）**：第一轮"复现"用的是**合成字符串**——在 JS 源码字面量里写 `\\` 到运行时只剩一个
+    反斜杠，于是"看到"了一个并不存在的「`\\` 被吞」症状（该临时脚本已删，写法无法回头复核，但
+    **真实存储文本喂同一条管线后 `\\` 完好无损**，已足以定论）；差点据此去改渲染链路。**复现必须用真实输入；
+    合成输入要 programmatically 断言其运行时字节（`JSON.stringify`/`ascii()` repr），而不是肉眼看源码字面量。**
