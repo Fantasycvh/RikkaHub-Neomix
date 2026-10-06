@@ -1446,3 +1446,36 @@ data class ApiKeyEntry(
     被 `filter { role != SYSTEM }` 整条丢弃**；Claude/Google 把中部 SYSTEM `copy(role = USER)` 降级；
     注入器内部 `createMergedInjectionMessages` 的 `else -> user` 会把 TOP/BOTTOM/AT_DEPTH 的 system 注入降级
     （仅 `END_OF_CHAT` 保留 SYSTEM）。
+- 2026-10-06：**②③ 按「② → 3a → 3b」三步推进（用户拍板路线）；②、3a 已落地**（`f0296567` / `c865e5af`，
+  bump `6b5b225c` 290 已装机冒烟）。
+  - **② `systemMessageTemplate`（`f0296567`）**：合成消息（system 本体 / 注入 / 提醒 / 检查点）新增**独立**
+    模板字段（默认 `""` = 不套用 ⇒ **零行为变化**）；设了才渲染。安全性靠两条构造性保证：
+    ① 该模板上下文**只有 `{{ role }}`/`{{ message }}`，刻意不给 `{{ time }}/{{ date }}`** ⇒ 渲染结果与请求
+    时刻无关、system 前缀稳定（用户误写 `{{ time }}` 时 Pebble 非严格模式渲染为空串，同样稳定）；
+    ② **缺 `{{ message }}` 按未设置处理**（回退不套用）——刻意与 `messageTemplate` 不对称：那边漏写只丢这一条，
+    这边漏写会让**整段 system 提示 + 全部注入**渲染成空后照样发出（最难的静默失败）。
+    顺带把**接线本身**抽成纯函数（`applyTemplates`/`usableSystemTemplate`/`syntheticTemplateContext`）以便
+    JVM 单测覆盖（真实 Pebble 引擎，无需 Robolectric）；助手页加编辑框 + 缺 `{{message}}` 红字 +
+    **设了模板时把合成样本加入实时预览**（治「预览只跑非合成样本」盲区）。6 语言串 ×4。
+  - **3a 发现真 bug（`c865e5af`）**：给 ResponseAPI 补回归测试时**测试直接失败**，回头核对发现我照抄的
+    Claude/Google 过滤条件是**死代码陷阱**——
+
+    ```kotlin
+    .filter { it.isValidToUpload() && (it.role != SYSTEM || it === firstSystem) }   // ← 非首条 system 在此被滤掉
+    .forEach { when { message.role == SYSTEM -> addUserMessage(message.copy(role = USER)) /* 永不执行 */ } }
+    ```
+
+    非首条 system 在 `filter` 就被排除（两个条件都 false）⇒ **SYSTEM→user 降级分支永远到不了**，三家
+    （Claude / Google / Responses）实际行为与注释声明的「后续 system 不能丢弃 ⇒ 降级为 user」**完全相反**：
+    尾部 system 注入（`END_OF_CHAT`+role=system、压缩检查点）**被静默丢弃**；只有 OpenAI
+    **chat/completions** 路径（`role.name.lowercase()` 原样透传）不受影响。
+    **修法**：三处过滤条件统一改为「保留全部可上传消息」，首条跳过交给 `when` 分支。三个 provider 各加一条
+    同款回归测试（断言首条不进 messages/contents/input、尾部 system 文本**必须出现**且以 `role=user` 出现）：
+    **修正前三条全红，修正后全绿**（`:ai:testDebugUnitTest` 242 例、`:app:testDebugUnitTest` **1289 例**）。
+  - **⚠️ 纠正此前判断**：我曾据注释判定 Claude/Google 是「有意降级、有注释说明」，只有 Responses 在静默丢弃；
+    实测是**三处同款死代码**。**教训：注释声明的行为必须用测试钉住**——`filter` + `when` 组合最易出现
+    「分支永远到不了」，而注释会把死代码说得像正常设计。
+  - **3b 待办**：中部 system 语义（`createMergedInjectionMessages` 的 `else -> user` 让 TOP/BOTTOM/AT_DEPTH
+    的 system 注入在**注入器内部**就降级）+ 逐 provider 映射；需先拍板「降级时是否加标记包裹」
+    （如 `<system-reminder>…</system-reminder>`，与既有 `<recovery_note>` 同风格），再单独一轮逐家真机验证。
+  - **收尾计划**：3b 落地后**重建同一个 290**（草稿未发布，同号重建无歧义）→ 替换 v1.0.25 草稿资产 → 真机端到端。
