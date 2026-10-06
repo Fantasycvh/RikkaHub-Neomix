@@ -196,6 +196,7 @@ class SettingsStore(
 
         // MCP
         val MCP_SERVERS = stringPreferencesKey("mcp_servers")
+        val MCP_DYNAMIC_SCHEMA_LOADING = booleanPreferencesKey("mcp_dynamic_schema_loading")
 
         // WebDAV
         val WEBDAV_CONFIG = stringPreferencesKey("webdav_config")
@@ -359,6 +360,7 @@ class SettingsStore(
                 mcpServers = preferences[MCP_SERVERS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
+                mcpDynamicSchemaLoading = preferences[MCP_DYNAMIC_SCHEMA_LOADING] != false,
                 webDavConfig = preferences[WEBDAV_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: WebDavConfig(),
@@ -625,6 +627,7 @@ class SettingsStore(
             preferences[SEARCH_SELECTED] = sanitizeSearchServiceSelected(settings.searchServiceSelected, settings.searchServices.size)
 
             preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
+            preferences[MCP_DYNAMIC_SCHEMA_LOADING] = settings.mcpDynamicSchemaLoading
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
             preferences[BACKUP_ITEMS] = JsonInstant.encodeToString(settings.backupItems)
@@ -818,6 +821,12 @@ data class Settings(
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
     val searchServiceSelected: Int = 0,
+    /**
+     * MCP schema 动态分层加载（peer⑤③ 缩水版）：单工具 schema 超过阈值的重型工具不进
+     * provider schema，由 `get_tool_map` + `mcp_tool_call` 元工具替代（provider schema 恒定，
+     * token 成本 O(小工具数)）。默认开；弱模型走桥传参质量差时可关（关=全部原生 schema）。
+     */
+    val mcpDynamicSchemaLoading: Boolean = true,
     val mcpServers: List<McpServerConfig> = emptyList(),
     val webDavConfig: WebDavConfig = WebDavConfig(),
     val s3Config: S3Config = S3Config(),

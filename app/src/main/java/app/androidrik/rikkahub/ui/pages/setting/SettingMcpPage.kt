@@ -106,6 +106,7 @@ import app.androidrik.rikkahub.data.ai.mcp.displayText
 import app.androidrik.rikkahub.data.ai.mcp.McpTool
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.FormItem
+import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.Switch
 import app.androidrik.rikkahub.ui.components.ui.SwitchSize
 import app.androidrik.rikkahub.ui.components.ui.Tag
@@ -203,6 +204,31 @@ fun SettingMcpPage(vm: SettingVM = koinViewModel()) {
                     bottom = innerPadding.calculateBottomPadding() + 16.dp,
                 )
             ) {
+                // 动态分层加载总开关（peer⑤③ 缩水版）：重型 MCP schema 折叠为元工具
+                item(key = "mcp-dynamic-toggle") {
+                    CardGroup {
+                        item(
+                            headlineContent = {
+                                Text(stringResource(R.string.setting_mcp_page_dynamic_schema_title))
+                            },
+                            supportingContent = {
+                                Text(stringResource(R.string.setting_mcp_page_dynamic_schema_desc))
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = settings.mcpDynamicSchemaLoading,
+                                    onCheckedChange = { checked ->
+                                        scope.launch {
+                                            vm.updateSettings(
+                                                settings.copy(mcpDynamicSchemaLoading = checked)
+                                            )
+                                        }
+                                    }
+                                )
+                            },
+                        )
+                    }
+                }
                 items(mcpConfigs, key = { it.id }) { mcpConfig ->
                     McpServerItem(
                         item = mcpConfig,

@@ -931,6 +931,8 @@
   <string name="setting_mcp_page_streamable_http_url_placeholder">https://example.com/mcp</string>
   <string name="setting_mcp_page_title">MCP</string>
   <string name="setting_mcp_page_tools">Инструменты</string>
+  <string name="setting_mcp_page_dynamic_schema_title">Динамическая загрузка MCP-схем</string>
+  <string name="setting_mcp_page_dynamic_schema_desc">Инструменты со схемой больше порога заменяются мета-инструментами get_tool_map + mcp_tool_call; малые остаются нативными. Отключите, если модель плохо работает с мостом</string>
   <string name="setting_mcp_page_tools_unavailable_message">Невозможно просмотреть список инструментов при добавлении MCP-сервера, пожалуйста, проверьте после добавления</string>
   <string name="setting_mcp_page_transport_type">Тип транспорта</string>
   <string name="setting_mcp_page_transport_type_desc">Выберите тип транспортного протокола для MCP-сервера</string>

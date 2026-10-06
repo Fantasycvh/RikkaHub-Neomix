@@ -934,6 +934,18 @@ data class ApiKeyEntry(
   动态取），且新落的前缀分叉诊断让未来的日期搅动可见；④**记忆注入相关性下限**——
   `MIN_MEMORY_INJECTION_SCORE=0.2`（原始分数非分桶：分桶四舍五入会让 0.11 分进位绕过下限），
   默认 importance 0.6 全老化也有 0.33 不触线，刻意标低且老化的记忆自然沉底。单测 +5。
+- 2026-10-06：**peer⑤③ 缩水版落地（MCP schema 动态分层加载）**——两档：
+  **原生档**（schema ≤600 tokens 照旧全量进 schema，小服务器零行为变化）+ **折叠档**
+  （重型工具不进 schema，由 `get_tool_map`〔名称/服务器/描述截断 200 字符/params_hint
+  12 个「名:型」对/needs_approval〕+ `mcp_tool_call(name, arguments JSON 串)` 桥替代——
+  桥执行走**原有** mcpManager.callTool 链，寻址=净化名→原名，审批**跟随底层工具**
+  〔折叠不得变成审批绕行〕）。`McpDynamicSchema.kt` 纯函数 + 单测 6 项；设置开关
+  `mcpDynamicSchemaLoading`（默认开，MCP 设置页顶部 CardGroup，三件套齐）；LoopGuard
+  豁免 `get_tool_map`（只读地图查询）。**provider schema 恒定 ⇒ Claude 缓存断点不动**。
+  顺带修存量红：ConversationSchemaGuardsTest 的 daoSource() 未做 CRLF 归一化
+  （substringBefore("\n\n") 在 CRLF 文件上吃穿到文件尾）——HEAD 存量、非本批引入。
+  **踩坑记录**：python 拼 Kotlin 字符串的 \n 展开坑第三次命中（本批用 Edit 工具修复）。
+  真机验证=大 MCP 服务器场景看 schema 体积日志（logSchemaBreakdown）+ 模型走桥调用成功。
 - 2026-10-05 深夜：**「参考历史聊天记录」第三层落地（`read_conversation`，§三 同名评估）**——
   工具族漏斗补全：`recent_chats`（标题索引）→ `conversation_search`（片段，**补传 message_id 寻址键**）
   → `read_conversation`（按锚点取回 ±N 条完整消息，默认 6/上限 20）。纯函数

@@ -32,6 +32,9 @@ class ConversationSchemaGuardsTest {
         "src/main/java/app/androidrik/rikkahub/data/db/dao/ConversationDAO.kt",
         "app/src/main/java/app/androidrik/rikkahub/data/db/dao/ConversationDAO.kt",
     ).readText()
+        // CRLF 归一化：文件在 autocrlf=true 的机器上是 CRLF，而子句截取用
+        // substringBefore("\n\n") 分界——不归一化会一路吃穿到文件末尾的 sort_order
+        .replace("\r\n", "\n")
 
     /** 当前（最高版本）schema JSON 里会话表的列名。 */
     private fun conversationColumns(): Set<String> {

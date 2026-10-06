@@ -209,6 +209,11 @@ class ToolCallLoopGuard(
          * 且没有新输出，正是要拦的失控形态；确实需要轮询构建/下载进度时，模型会带上会变的参数
          * （如 `tail` 不同行数）或用不同命令，不会触发同一签名。
          */
-        val POLLING_EXEMPT_TOOLS = setOf("get_time_info", "workspace_task_status")
+        val POLLING_EXEMPT_TOOLS = setOf(
+            "get_time_info",
+            "workspace_task_status",
+            // peer⑤③ 缩水版元工具：只读地图查询，同参重复调用是合法的「先查再调」节奏
+            "get_tool_map",
+        )
     }
 }

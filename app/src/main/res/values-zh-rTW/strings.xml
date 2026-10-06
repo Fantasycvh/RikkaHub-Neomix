@@ -968,6 +968,8 @@
   <string name="setting_mcp_page_streamable_http_url_placeholder">https://example.com/mcp</string>
   <string name="setting_mcp_page_title">MCP</string>
   <string name="setting_mcp_page_tools">工具</string>
+  <string name="setting_mcp_page_dynamic_schema_title">MCP schema 動態分層載入</string>
+  <string name="setting_mcp_page_dynamic_schema_desc">schema 超過體積閾值的重型工具改由 get_tool_map + mcp_tool_call 元工具調用，小工具保留原生 schema；模型走橋傳參表現差時可關（關=全部原生）</string>
   <string name="setting_mcp_page_tools_unavailable_message">添加MCP Server時無法查看工具列表，請添加完後再來查看</string>
   <string name="setting_mcp_page_transport_type">傳輸類型</string>
   <string name="setting_mcp_page_transport_type_desc">選擇MCP伺服器的傳輸協定類型</string>

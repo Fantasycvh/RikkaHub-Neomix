@@ -931,6 +931,8 @@
   <string name="setting_mcp_page_streamable_http_url_placeholder">https://example.com/mcp</string>
   <string name="setting_mcp_page_title">MCP</string>
   <string name="setting_mcp_page_tools">도구</string>
+  <string name="setting_mcp_page_dynamic_schema_title">MCP schema 동적 계층 로딩</string>
+  <string name="setting_mcp_page_dynamic_schema_desc">스키마가 임계값을 초과하는 도구는 get_tool_map + mcp_tool_call 메타 도구로 대체하고, 작은 도구는 네이티브 schema 유지. 모델이 브리지 전달에 어려움을 겪으면 끄기</string>
   <string name="setting_mcp_page_tools_unavailable_message">MCP 서버 추가 시 도구 목록 확인 불가. 추가 후 다시 확인하세요</string>
   <string name="setting_mcp_page_transport_type">전송 유형</string>
   <string name="setting_mcp_page_transport_type_desc">MCP 서버의 전송 프로토콜 유형 선택</string>

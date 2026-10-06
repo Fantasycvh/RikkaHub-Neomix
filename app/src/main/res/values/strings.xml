@@ -1017,6 +1017,8 @@
   <string name="setting_mcp_page_streamable_http_url_placeholder">https://example.com/mcp</string>
   <string name="setting_mcp_page_title">MCP</string>
   <string name="setting_mcp_page_tools">Tools</string>
+  <string name="setting_mcp_page_dynamic_schema_title">Dynamic MCP schema loading</string>
+  <string name="setting_mcp_page_dynamic_schema_desc">Tools whose schema exceeds a size threshold are replaced by `get_tool_map` + `mcp_tool_call` meta-tools; small tools keep native schemas. Turn off if a model struggles with the bridge</string>
   <string name="setting_mcp_page_tools_unavailable_message">Cannot view tool list when adding MCP Server, please check back after adding</string>
   <string name="setting_mcp_page_transport_type">Transport Type</string>
   <string name="setting_mcp_page_transport_type_desc">Select the transport protocol type for the MCP server</string>

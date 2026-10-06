@@ -1,5 +1,11 @@
 package app.androidrik.rikkahub.data.ai.tools
 
+import kotlin.uuid.Uuid
+import app.androidrik.rikkahub.ui.components.message.tools.getStringContent
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.buildJsonObject
+import app.androidrik.ai.core.InputSchema
+import app.androidrik.ai.ui.UIMessagePart
 import android.util.Log
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -203,24 +209,125 @@ class ChatToolFactory(
         // function name（^[a-zA-Z0-9_-]{1,64}$），显示层仍用原名。
         // 不同原名可能净化后相同，用 usedNames 保证发给模型的名字唯一。
         // **按服务器分别成段**：MCP 往往是最重的一块，按服务器拆分才能看出是哪一个。
+        //
+        // **动态分层加载**（peer⑤③ 缩水版）：单工具 schema 超过阈值的重型工具不再进
+        // provider schema，由 `get_tool_map` + `mcp_tool_call` 两个元工具替代——
+        // provider schema 恒定（缓存断点不动），token 成本从 33K 级降到 O(小工具数)。
+        // 开关关 / 无折叠档时零行为变化（全部原生）。
         val usedToolNames = mutableSetOf<String>()
-        val mcpToolsByServer = linkedMapOf<String, MutableList<Tool>>()
-        mcpManager.getAllAvailableTools().forEach { (serverId, serverName, tool) ->
-            mcpToolsByServer.getOrPut("mcp:$serverName") { mutableListOf() } += Tool(
-                name = McpNameSanitizer.buildUniqueFunctionName(
-                    serverName = serverName,
-                    toolName = tool.name,
-                    used = usedToolNames,
-                ),
+        val providerTypeForMcp = model.findProvider(settings.providers, checkOverwrite = false)
+        val mcpEntries = mcpManager.getAllAvailableTools().map { (serverId, serverName, tool) ->
+            val functionName = McpNameSanitizer.buildUniqueFunctionName(
+                serverName = serverName,
+                toolName = tool.name,
+                used = usedToolNames,
+            )
+            val nativeTool = Tool(
+                name = functionName,
                 description = tool.description ?: "",
                 parameters = { tool.inputSchema },
                 needsApproval = { tool.needsApproval },
-                execute = {
-                    mcpManager.callTool(serverId, tool.name, it.jsonObject)
-                },
+                execute = { mcpManager.callTool(serverId, tool.name, it.jsonObject) },
+            )
+            McpToolEntry(
+                serverId = serverId.toString(),
+                serverName = serverName,
+                functionName = functionName,
+                originalToolName = tool.name,
+                description = tool.description ?: "",
+                paramsHint = buildParamsHint(
+                    (tool.inputSchema as? app.androidrik.ai.core.InputSchema.Obj)?.properties
+                ),
+                needsApproval = tool.needsApproval,
+                schemaTokens = ToolSchemaSize.estimate(nativeTool, providerTypeForMcp, json),
+                nativeTool = nativeTool,
             )
         }
-        mcpToolsByServer.forEach { (source, tools) -> segments += ToolSegment(source, tools) }
+        val dynamicLoading = settings.mcpDynamicSchemaLoading
+        val split = splitMcpToolsBySchemaSize(mcpEntries)
+
+        // 原生档：按服务器成段（与既有行为一致）
+        split.native
+            .groupBy { it.serverName }
+            .forEach { (serverName, entries) ->
+                segments += ToolSegment("mcp:$serverName", entries.map { it.nativeTool })
+            }
+
+        // 折叠档：get_tool_map（有什么、参数长什么样）+ mcp_tool_call（桥，JSON 串传参）
+        if (dynamicLoading && split.collapsed.isNotEmpty()) {
+            val collapsed = split.collapsed
+            segments += ToolSegment(
+                "mcp-dynamic",
+                listOf(
+                    Tool(
+                        name = "get_tool_map",
+                        description = """
+                            List the heavy MCP tools whose full schemas are not loaded into this request.
+                            Each entry gives the tool name, server, description and a compact params hint.
+                            Call `mcp_tool_call` with a name from this map to execute one.
+                        """.trimIndent(),
+                        parameters = { InputSchema.Obj(properties = buildJsonObject { }) },
+                        needsApproval = { false },
+                        execute = {
+                            listOf(
+                                UIMessagePart.Text(buildToolMapPayload(collapsed))
+                            )
+                        },
+                    ),
+                    Tool(
+                        name = "mcp_tool_call",
+                        description = """
+                            Execute an MCP tool by name with JSON-encoded arguments.
+                            Use `get_tool_map` first to learn the available tools and their params hint.
+                            `arguments` must be a JSON object string matching the tool's params hint
+                            (e.g. "{\"query\": "rikkahub"}").
+                        """.trimIndent(),
+                        parameters = {
+                            InputSchema.Obj(
+                                properties = buildJsonObject {
+                                    put("name", buildJsonObject {
+                                        put("type", "string")
+                                        put("description", "Tool name from `get_tool_map`")
+                                    })
+                                    put("arguments", buildJsonObject {
+                                        put("type", "string")
+                                        put("description", "JSON object string with the tool's arguments")
+                                    })
+                                },
+                                required = listOf("name", "arguments"),
+                            )
+                        },
+                        // 审批跟随被调用的底层工具（折叠不能变成审批绕行）
+                        needsApproval = { args ->
+                            resolveCollapsedEntry(collapsed, args.getStringContent("name").orEmpty())
+                                ?.needsApproval == true
+                        },
+                        execute = { args ->
+                            val name = args.getStringContent("name")
+                                ?: error("name is required")
+                            val entry = resolveCollapsedEntry(collapsed, name)
+                                ?: error(
+                                    "Unknown MCP tool: $name. Available: " +
+                                        collapsed.joinToString(", ") { it.functionName }
+                                )
+                            val argumentsText = args.getStringContent("arguments")
+                                ?: error("arguments is required")
+                            val arguments = runCatching {
+                                Json.parseToJsonElement(argumentsText).jsonObject
+                            }.getOrElse {
+                                error("arguments must be a valid JSON object string: ${it.message}")
+                            }
+                            mcpManager.callTool(
+                                Uuid.parse(entry.serverId),
+                                // 桥按净化名寻址，执行回 MCP 协议原名
+                                entry.originalToolName,
+                                arguments,
+                            )
+                        },
+                    ),
+                ),
+            )
+        }
 
         logSchemaBreakdown(segments, settings, model)
         return segments

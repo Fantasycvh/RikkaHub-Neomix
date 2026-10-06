@@ -931,6 +931,8 @@
   <string name="setting_mcp_page_streamable_http_url_placeholder">https://example.com/mcp</string>
   <string name="setting_mcp_page_title">MCP</string>
   <string name="setting_mcp_page_tools">ツール</string>
+  <string name="setting_mcp_page_dynamic_schema_title">MCP schema 動的階層ロード</string>
+  <string name="setting_mcp_page_dynamic_schema_desc">スキーマが閾値を超えるツールは get_tool_map + mcp_tool_call メタツールに置き換え、小さいツールはネイティブ schema のまま。モデルがブリッジで苦戦する場合はオフ</string>
   <string name="setting_mcp_page_tools_unavailable_message">MCPサーバー追加時にはツールリストを表示できません。追加完了後に再度確認してください</string>
   <string name="setting_mcp_page_transport_type">転送タイプ</string>
   <string name="setting_mcp_page_transport_type_desc">MCPサーバーの転送プロトコルタイプを選択</string>
