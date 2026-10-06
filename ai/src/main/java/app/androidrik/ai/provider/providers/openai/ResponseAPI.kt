@@ -313,13 +313,25 @@ class ResponseAPI(
         messages: List<UIMessage>,
         reasoningTextRequired: Boolean = false,
     ) = buildJsonArray {
+        // Responses API 的 `system` 只出现在顶层 `instructions`（见 buildRequestBody：取**第一条**
+        // system 的文本），`input` 不接受 system 角色。**但后续的 system 消息不能丢弃**——轮次尾部
+        // 注入的 system 段、压缩检查点等都会落在这里。此处对齐 ClaudeProvider / GoogleProvider 的
+        // 声明做法：除已进 instructions 的第一条外，其余 system 降级为 user 发送（位置语义保住、
+        // 缓存保住，仅语气降级）。
+        //
+        // ⚠️ 过滤条件必须是「保留全部可上传消息」，**不能**写成
+        // `it.role != SYSTEM || it === firstSystem`：那样非首条 system 会在进入 `when` 之前就被滤掉，
+        // 下面的 SYSTEM→user 降级分支成了**死代码**、内容被静默丢弃（2026-10-06 单测实测；Claude/
+        // Google 两处同款写法同样如此，一并修正）。首条的跳过由 `when` 里的分支负责。
+        val firstSystem = messages.firstOrNull { it.role == MessageRole.SYSTEM }
         messages
-            .filter { it.isValidToUpload() && it.role != MessageRole.SYSTEM }
+            .filter { it.isValidToUpload() }
             .forEach { message ->
-                if (message.role == MessageRole.ASSISTANT) {
-                    addAssistantItems(message, reasoningTextRequired)
-                } else {
-                    addUserItems(message)
+                when {
+                    message === firstSystem -> Unit // 已进 instructions，跳过防重复
+                    message.role == MessageRole.SYSTEM -> addUserItems(message.copy(role = MessageRole.USER))
+                    message.role == MessageRole.ASSISTANT -> addAssistantItems(message, reasoningTextRequired)
+                    else -> addUserItems(message)
                 }
             }
     }

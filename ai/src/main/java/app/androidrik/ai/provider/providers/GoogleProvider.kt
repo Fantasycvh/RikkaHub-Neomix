@@ -660,12 +660,14 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         // **后续的 system 消息不能丢弃**（如轮次尾部注入的 system 段）——Gemini 的
         // contents 不接受 "system" 角色，且 systemInstruction 在顶部（动态内容放那里
         // 会作废缓存前缀）⇒ 降级为 user 发送：位置语义保住，仅语气降级。
+        // ⚠️ 过滤条件必须是「保留全部可上传消息」：曾写成
+        // `it.role != SYSTEM || it === firstSystem`，非首条 system 会在进入 `when` 之前被滤掉 ⇒
+        // 下面的 SYSTEM→user 降级分支成了**死代码**、后续 system 被**静默丢弃**（与上面声明的
+        // 「不能丢弃」相反；2026-10-06 单测实测并修正，ClaudeProvider/ResponseAPI 两处同款一并改）。
         val firstSystem = messages.firstOrNull { it.role == MessageRole.SYSTEM }
         return buildJsonArray {
             messages
-                .filter {
-                    it.isValidToUpload() && (it.role != MessageRole.SYSTEM || it === firstSystem)
-                }
+                .filter { it.isValidToUpload() }
                 .forEach { message ->
                     when {
                         message === firstSystem -> return@forEach // 已进 systemInstruction，跳过防重复

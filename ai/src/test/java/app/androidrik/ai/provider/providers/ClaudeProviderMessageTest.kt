@@ -11,6 +11,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.toMetadata
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -427,4 +428,24 @@ class ClaudeProviderMessageTest {
             output = listOf(UIMessagePart.Text(output))
         )
     }
+
+    // ---- system 角色：首条进顶层 system，后续**不得静默丢弃**（2026-10-06 修死分支）----
+
+    @Test
+    fun `subsequent system messages are downgraded to user instead of dropped`() {
+        // 轮次尾部注入的 system 段。旧过滤条件 `role != SYSTEM || it === firstSystem` 会在进入
+        // when 之前就滤掉它 ⇒ 下面的降级分支是死代码、内容静默消失。修正后应降级为 user 送达。
+        val messages = listOf(
+            UIMessage.system("系统提示本体"),
+            UIMessage.user("你好"),
+            UIMessage.system("尾部 system 注入"),
+        )
+
+        val json = invokeBuildMessages(messages).toString()
+
+        assertFalse("首条 system 只应进顶层 system 参数: $json", json.contains("系统提示本体"))
+        assertTrue("后续 system 内容不得丢失: $json", json.contains("尾部 system 注入"))
+        assertTrue("后续 system 应以 user 角色送达: $json", json.contains("\"role\":\"user\""))
+    }
+
 }

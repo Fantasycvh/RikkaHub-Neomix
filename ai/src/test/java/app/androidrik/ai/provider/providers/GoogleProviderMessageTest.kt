@@ -9,6 +9,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -430,4 +431,23 @@ class GoogleProviderMessageTest {
             output = listOf(UIMessagePart.Text(output))
         )
     }
+
+    // ---- system 角色：首条进 systemInstruction，后续**不得静默丢弃**（2026-10-06 修死分支）----
+
+    @Test
+    fun `subsequent system messages are downgraded to user instead of dropped`() {
+        // 同 ClaudeProvider：旧过滤条件让降级分支成为死代码，尾部 system 注入被静默丢弃。
+        val messages = listOf(
+            UIMessage.system("系统提示本体"),
+            UIMessage.user("你好"),
+            UIMessage.system("尾部 system 注入"),
+        )
+
+        val json = invokeBuildContents(messages).toString()
+
+        assertFalse("首条 system 只应进 systemInstruction: $json", json.contains("系统提示本体"))
+        assertTrue("后续 system 内容不得丢失: $json", json.contains("尾部 system 注入"))
+        assertTrue("后续 system 应以 user 角色送达: $json", json.contains("\"role\":\"user\""))
+    }
+
 }

@@ -697,4 +697,53 @@ class ResponseAPIMessageTest {
         assertFalse(reasoningItem.containsKey("encrypted_content"))
     }
 
+
+    // ---- system 角色：第一条进 instructions，后续**不得静默丢弃**（2026-10-06 修）----
+
+    private fun itemTexts(json: JsonArray): List<String> =
+        json.map { item ->
+            val obj = item.jsonObject
+            val role = obj["role"]?.jsonPrimitive?.content ?: "?"
+            val content = obj["content"]
+            "$role:${content?.toString() ?: ""}"
+        }
+
+    @Test
+    fun `subsequent system messages are downgraded to user instead of dropped`() {
+        // 轮次尾部注入的 system 段（PromptInjectionTransformer 的 END_OF_CHAT system 分支）
+        // 会作为独立 system 消息进入这里。旧实现 filter 掉 ⇒ 内容凭空消失；
+        // 现在对齐 Claude/Google 的做法：降级为 user 送达（位置语义保住，仅语气降级）。
+        val messages = listOf(
+            UIMessage.system("系统提示本体"),
+            UIMessage.user("你好"),
+            UIMessage.system("尾部 system 注入"),
+        )
+
+        val items = invokeBuildMessages(messages)
+        val texts = itemTexts(items)
+
+        // 第一条 system 已进顶层 instructions ⇒ 不应在 input 里重复出现
+        assertFalse("第一条 system 不应进 input: $texts", texts.any { it.contains("系统提示本体") })
+        // 后续 system 的内容**必须**留在 input 里（降级为 user）
+        assertTrue("后续 system 内容不得丢失: $texts", texts.any { it.contains("尾部 system 注入") })
+        assertTrue(
+            "后续 system 应以 user 角色送达: $texts",
+            texts.any { it.startsWith("user:") && it.contains("尾部 system 注入") },
+        )
+    }
+
+    @Test
+    fun `messages without system are unaffected`() {
+        val messages = listOf(
+            UIMessage.user("a"),
+            UIMessage.assistant("b"),
+        )
+
+        val items = invokeBuildMessages(messages)
+
+        assertEquals(2, items.size)
+        assertTrue(itemTexts(items).any { it.startsWith("user:") && it.contains("a") })
+        assertTrue(itemTexts(items).any { it.startsWith("assistant:") && it.contains("b") })
+    }
+
 }
