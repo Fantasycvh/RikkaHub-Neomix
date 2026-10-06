@@ -1373,3 +1373,19 @@ data class ApiKeyEntry(
     `tag_name=v1.0.25`、`target=7871e597…`（= bump = 分支 HEAD）、资产 digest `0e99f8e5…` 与本地逐字符相同。
   - **另记一条网络事实**：本轮 `gh api` 多次 `dial tcp 20.205.243.168:443 … failed to respond`（PATCH/GET
     都中过），**重试即可**；因此收尾的 digest/tag 复核必须写成「带重试的循环」，不能一次不成就下结论。
+  - **✅ 真机端到端验证（用户实测 + 落盘日志，2026-10-06 21:59，release 289）**：用户用默认助手绑定一条注入
+    （内容以「你是我的专属私人全能助手…」开头）发了一句 `test`，从**落盘完整报文**
+    （`/data/data/<pkg>/files/logs/rikkahub-logs.txt`，须在设置里打开「导出到文件」；logcat 有 4KB 截断，
+    40K 级请求体根本看不到，故必须读这个文件）核对：
+    - `POST https://open.bigmodel.cn/api/paas/v4/chat/completions` → **200 / 367ms**，`glm-4.5-air`，
+      `stream=true`、`tools=3`；**只有 2 条消息**：`role=system`（2744 字符）+ `role=user`（`test`）。
+    - system 正文**以注入内容开头**（8 条规则完整、只出现 **1 次**），空行之后才是助手本体提示
+      （`You are a helpful assistant, called assistant, based on model glm-4.5-air.` + `## Hint` +
+      Subagents + TikZ/公式渲染提示）⇒ **注入以 `system` 身份、在配置位置（BEFORE_SYSTEM_PROMPT=前插）、
+      完整地进入了真实请求**，修复端到端成立。
+    - 同一批日志另有一条**与注入无关**的失败：21:58:35 `POST openrouter.ai` → **404
+      `No endpoints found for stealth/space-bunny-alpha`**（该模型在 OpenRouter 不存在）；该请求里注入同样齐全，
+      说明失败与注入链路无关。末尾两条 `api.rinko.ai` 200 是标题/建议生成等附带请求。
+    - **验证边界**：报文里看不到 `isSynthetic`（`@Transient`，且注解不进 wire），故第②条「模板免检」只能靠读
+      `TemplateTransformer` 代码判断，不能从日志证实；本次只绑了 1 条注入，故第④条「同位置多条排序」
+      也无从验证（需绑 ≥2 条同 position 的注入再发一次）。
