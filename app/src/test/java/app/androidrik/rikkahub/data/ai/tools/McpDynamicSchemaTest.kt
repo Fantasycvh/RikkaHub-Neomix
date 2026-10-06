@@ -88,6 +88,25 @@ class McpDynamicSchemaTest {
     }
 
     @Test
+    fun `explicitly allowed tools are promoted out of the collapsed tier`() {
+        // 折叠只服务 token 预算，不能改信封语义：点名即提升（防静默失效）
+        val collapsed = listOf(entry("heavy_a", 900), entry("heavy_b", 800), entry("heavy_c", 700))
+        val (promoted, remaining) =
+            promoteExplicitlyAllowed(collapsed, setOf("heavy_a", "heavy_c", "unrelated"))
+
+        assertEquals(listOf("heavy_a", "heavy_c"), promoted.map { it.functionName })
+        assertEquals(listOf("heavy_b"), remaining.map { it.functionName })
+    }
+
+    @Test
+    fun `nothing is promoted without explicit names`() {
+        val collapsed = listOf(entry("heavy_a", 900))
+        val (promoted, remaining) = promoteExplicitlyAllowed(collapsed, emptySet())
+        assertTrue(promoted.isEmpty())
+        assertEquals(1, remaining.size)
+    }
+
+    @Test
     fun `resolve finds by sanitized function name`() {
         val collapsed = listOf(entry("srv_search_web", 900))
         assertEquals("srv_search_web", resolveCollapsedEntry(collapsed, "srv_search_web")!!.functionName)

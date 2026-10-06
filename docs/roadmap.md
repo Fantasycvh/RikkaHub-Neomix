@@ -946,6 +946,13 @@ data class ApiKeyEntry(
   （substringBefore("\n\n") 在 CRLF 文件上吃穿到文件尾）——HEAD 存量、非本批引入。
   **踩坑记录**：python 拼 Kotlin 字符串的 \n 展开坑第三次命中（本批用 Edit 工具修复）。
   真机验证=大 MCP 服务器场景看 schema 体积日志（logSchemaBreakdown）+ 模型走桥调用成功。
+  **收尾加固（同批）**：复查发现折叠会**静默破坏子代理信封**——信封按名求交集，折叠把工具从
+  segments 摘掉 ⇒ 「预设里点了名、run 里却没有」。修法=`createToolSegments` 新增
+  `explicitlyAllowedToolNames`，点名者**提升回原生档**（纯函数 `promoteExplicitlyAllowed` +
+  单测 2 项）：折叠只服务 token 预算，不得改信封语义。SubagentRunner 传 `allowedTools.orEmpty()`。
+  **工具链教训（重要）**：本机 `python3` 是 **Microsoft Store 存根**（退出码 49、无输出、不执行），
+  三个 heredoc 因此**静默未落盘**而未察觉（heredoc 后未用 `&&` 串联，后续命令照跑掩盖了失败）。
+  **规则：脚本一律用 `python`；多条命令必须 `&&` 串联；改完必须 grep 验证落盘**。
 - 2026-10-05 深夜：**「参考历史聊天记录」第三层落地（`read_conversation`，§三 同名评估）**——
   工具族漏斗补全：`recent_chats`（标题索引）→ `conversation_search`（片段，**补传 message_id 寻址键**）
   → `read_conversation`（按锚点取回 ±N 条完整消息，默认 6/上限 20）。纯函数

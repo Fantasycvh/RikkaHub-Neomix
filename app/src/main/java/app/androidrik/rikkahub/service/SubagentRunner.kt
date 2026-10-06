@@ -352,7 +352,15 @@ class SubagentRunner(
 
             // 分段装配（不是扁平列表）：信封的 `null` 语义（"按能力开关"）要知道工具的**来源**，
             // 否则 MCP / 技能安装这些无条件装配的来源会顺着 `null` 静默流进来。
-            val segments = chatToolFactory.createToolSegments(settings, runProfile, model, workspaceCwd = null)
+            // explicitlyAllowedToolNames：信封显式点名的工具不得被 MCP schema 折叠静默摘掉
+            // （折叠只服务 token 预算，不能改信封语义——见 createToolSegments 参数注释）
+            val segments = chatToolFactory.createToolSegments(
+                settings,
+                runProfile,
+                model,
+                workspaceCwd = null,
+                explicitlyAllowedToolNames = allowedTools.orEmpty(),
+            )
             val envelope = resolveSubagentEnvelope(segments, allowedTools)
             val tools = segments.flatMap { it.tools }.filter { it.name in envelope }
             update {
