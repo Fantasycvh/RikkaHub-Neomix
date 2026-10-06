@@ -6,10 +6,12 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import { cn } from "~/lib/utils";
 import { getCodePreviewLanguage } from "~/components/workbench/code-preview-language";
 import { useOptionalWorkbench } from "~/components/workbench/workbench-context";
 import { useSettingsStore } from "~/stores";
+import { MARKDOWN_SANITIZE_SCHEMA } from "./sanitize-schema";
 import { CodeBlock } from "./code-block";
 import "katex/dist/katex.min.css";
 // mhchem 扩展: 支持 \ce{} 等化学公式语法
@@ -21,6 +23,7 @@ import "streamdown/styles.css";
 const INLINE_LATEX_REGEX = /\\\((.+?)\\\)/g;
 const BLOCK_LATEX_REGEX = /\\\[(.+?)\\\]/gs;
 const CODE_BLOCK_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
+
 
 // Preprocess markdown content
 function preProcess(content: string): string {
@@ -113,7 +116,12 @@ export default function Markdown({
     <div className={cn("markdown", className)}>
       <Streamdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { trust: true, strict: false }], rehypeRaw]}
+        rehypePlugins={[
+          [rehypeKatex, { trust: true, strict: false }],
+          rehypeRaw,
+          // 必须**排在最后**：清洗的是 rehypeRaw 解析出来的真实元素（见 schema 注释）
+          [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA],
+        ]}
         plugins={{ cjk: cjk }}
         animated={{ animation: "fadeIn", sep: 'word', duration: 150 }}
         isAnimating={isAnimating}

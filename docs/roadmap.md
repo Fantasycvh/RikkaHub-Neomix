@@ -442,7 +442,7 @@ data class ApiKeyEntry(
 - **48 项 bug 审计**（`references/turbo-bugs-audit.md`）：32 项已修，仅剩 C17（编译期无法对照）+ D1（待复核）。
 - 已移植：`c897647` setJob identity、`db26bff` file_paths 收窄、`f0aa1481` 请求日志 header 脱敏、`a766399f` extractTar/parsePax + ASR 静默失败、`3652fd6` normalizeNewlines。
 
-**P0 —— web-ui markdown XSS（真缺口，建议立即修）**：
+**P0 —— web-ui markdown XSS（真缺口）——✅ 2026-10-06 已修（见下「落地记录」）**：
 - **现状（本轮实证）**：`web-ui/app/components/markdown/markdown.tsx:116` 用 **`rehypeRaw` 渲染 LLM 原始 HTML 但未接 `rehype-sanitize`**；同一行的 `rehypeKatex` 还开着 **`trust: true`**（KaTeX 的 `\href` 等命令因此不再受协议白名单限制）。而 `web-ui/app/services/api.ts:39/109` 把 **JWT 存在 `localStorage`**。
 - **攻击链**：模型读到不可信内容（我们有 `scrape_web`/`search_web` ⇒ 提示词注入面）或用户导入含 HTML 的会话/备份 ⇒ 回复里的 `<img src=x onerror=…>` 在 web UI 执行 ⇒ **读走 localStorage 里的 JWT ⇒ 拿到内嵌 web 服务器（`web` 模块）的完整 API 权限**；`<a href="javascript:…">` 点击亦可执行。
 - **turbo 修法（可照抄）**：`37ca61b7` 接入 `rehype-sanitize` 默认白名单（禁 script/iframe/object/form/meta/link + `javascript:` 协议），**并定制保留 `className`（katex 体系 / citation-badge / `language-*`）与 `style`（katex strut 行高）**——否则公式与代码高亮会被一起洗掉。
@@ -473,6 +473,26 @@ data class ApiKeyEntry(
 - **日志页实时刷新（`71f78ef2`）**：turbo 给 `Logging` 加**监听器订阅**（`CopyOnWriteArrayList`、锁外通知；common 无 coroutines 依赖故不用 Flow），页面 `DisposableEffect` 注册/注销。我们的 `LogPage` 是进入时一次性快照——看新日志得退出重进。小。
 - **webhook 强制签名认证（`6137b3a7`）**：未配 token 直接 403（turbo 原先未配就不校验）。我们**目前没有 webhook**；将来做任务/定时 webhook 时带上这条默认安全。
 - **provider 兼容小件**（Console Go 的 `input items` 强制 id / assistant 字符串 content / 内置工具补 `name` / 仅 UrlContext 时不发空 `tools`）：面向特定上游，与我们无关；但 `10ccc7d5`「**同一消息内多 item id 唯一化（msg/rsn/img + 自增序号）**」与我们 `c309c615`（补插 reasoning 去 `rs_` id）**同域**，将来再遇重复 id 报错时其「前缀+序号」是可参考的通用化写法。
+
+**P0 落地记录（2026-10-06）**：
+- **根因比评估时更深一层**：不只是「`rehypeRaw` 没接 sanitize」——Streamdown 内部**默认**就带
+  `[raw, sanitize, harden]` 三件套（`gn = Object.values(xt)`），但它的默认值**只在未传
+  `rehypePlugins` prop 时生效**；我们传了自定义列表 ⇒ **整个默认三件套被替换掉**，等于亲手关掉了
+  它自带的防护。教训：**覆盖第三方组件的插件/中间件 prop 时，必须确认默认链是否被整体替换**。
+- 修法：显式 `[rehypeKatex, …, rehypeRaw, [rehypeSanitize, schema]]`（sanitize 必须**排在最后**，
+  清的是 raw 解析出的真实元素）；白名单抽为 `web-ui/app/components/markdown/sanitize-schema.ts`
+  便于复用与审阅。
+- **两处比 turbo 版本更严**：① `style` 只放开 `span`/`td`/`th`（KaTeX 实际用到的那三类），
+  而非 `"*"` 全放开——少掉整页遮罩式钓鱼（`position:fixed;inset:0`）的注入面；
+  ② 显式补 **MathML 标签**（默认 schema 不含 ⇒ KaTeX 的 `<math>` 子树会被展开成裸文本，
+  原始 TeX 变成可见内容）。刻意**不加 SVG**。
+- **验证方式（真实流水线，非静态推断）**：临时脚本用与组件完全相同的 unified 链跑
+  **8 类 XSS 载荷 + 5 项功能回归**，全 PASS——img onerror / `a javascript:` / raw a javascript: /
+  script / iframe / svg onload / form / `data:` img src 全部中和（并打印「清洗前 `onerror` 确实
+  存活」以证明漏洞真实存在）；KaTeX `.katex` 类 + 内联 style + MathML 存活、`language-kotlin`
+  存活（CodeBlock 依赖）、`<details>` 等既有 raw HTML 能力保留。脚本验证后删除。
+- 依赖：`pnpm install --lockfile-only` 让 pnpm 自动写 **importers 段**（避开 turbo `1c44fe92`
+  的 `ERR_PNPM_OUTDATED_LOCKFILE` 坑）；`pnpm run typecheck` + `pnpm run build` 通过。
 
 **方法论（非代码，可复用）**：
 - **极致优化专项**：死代码清理两轮（`-763` 行、删 3 文件）+ 两个大函数拆分（ChatDrawerContent 577→220、SettingTasksPage 551→160），手法是 **Strangler Fig**（先建新文件、逐块搬移、旧壳变薄）。
