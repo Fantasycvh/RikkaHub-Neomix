@@ -1389,3 +1389,28 @@ data class ApiKeyEntry(
     - **验证边界**：报文里看不到 `isSynthetic`（`@Transient`，且注解不进 wire），故第②条「模板免检」只能靠读
       `TemplateTransformer` 代码判断，不能从日志证实；本次只绑了 1 条注入，故第④条「同位置多条排序」
       也无从验证（需绑 ≥2 条同 position 的注入再发一次）。
+  - **✅ 第④条（同位置多条排序）实测通过（2026-10-06 22:04，release 289）**：用户再绑两条后发送，落盘报文
+    的 system 正文（14323 字符）**逐段与预设内嵌条目逐字吻合**：
+    | 段 | 来源条目 | enabled | position | priority | 长度 | 请求内区间 |
+    |---|---|---|---|---|---|---|
+    | 1 | 助手 | ✔ | `before_system_prompt` | 0 | 341 | `[0,342)` |
+    | 2 | 助手本体 systemPrompt(261) + 生成的 Subagents/TikZ/数学提示 | — | — | — | 2403 | `[342,2745)` |
+    | 3 | 整合式学习教练 | ✔ | `after_system_prompt` | **4** | 8145 | `[2745,10891)` |
+    | 4 | 研究报告撰写 | ✔ | `after_system_prompt` | **3** | 3434 | `[10891,14323)` |
+
+    ① 三条各出现 **1 次**（无重复注入）、长度与条目逐字吻合（无截断）、非 system 消息干净；②
+    `enabled=false` 的「学习教练」(8042) **未**出现 ⇒ 条目开关有效；③ 两条新绑的按 `after_system_prompt`
+    落在本体之后，**priority 4 在前、3 在后 = 优先级大者在前**（`sortedByDescending`），
+    **原版「数值小的排前面 / 大数被排到最后」的方向问题在我们这里不存在**。
+  - **顺带纠出一个数据模型事实（我一开始被它误导）**：生效的注入条目是**预设内嵌副本**
+    （新结构 `promptPresets[].entries`）；datastore 里独立的旧 key `mode_injections`（本机 14 条）
+    **只作读取回退、不参与生效**（`PreferencesStore.kt:235-238` 注释即如此写）。两者同 id 却可以有
+    **不同的 `enabled`/`position`**——旧副本里「助手」是 `top_of_chat`+`enabled=false`，而预设副本是
+    `before_system_prompt`+`enabled=true`，实发报文证明生效的是**后者**。
+    **推论（待核）**：web 侧 `promptPresets[].entries` 的 `enabled` 与真实生效状态**不一致**
+    （SSE 里「助手/研究报告撰写」显示 false、「整合式学习教练」显示 true），若网页版注入页要展示/修改
+    这些字段，取值来源需要核对到位——否则又是一个「UI 显示与实发不一致」。
+  - **顺带记下数据取证手法**：`files/datastore/settings.preferences_pb` **不是 protobuf 而是
+    「protobuf 外壳 + JSON 字符串」**（直接 `decode('utf-8')` 后 `json.JSONDecoder().raw_decode` 即可，
+    旧 key 与预设数组都能这样抠出来）；比对「报文里的块」与「设置里的条目」用**内容首行 + 长度**做指纹，
+    比看名字可靠（本机存在同名/前缀相同的条目，如 `学习教练` 是 `整合式学习教练` 的前缀）。
