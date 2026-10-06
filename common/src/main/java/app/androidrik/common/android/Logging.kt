@@ -104,6 +104,18 @@ object Logging {
         }
     }
 
+    // ---- 实时订阅（日志页用）----
+    // common 模块**没有 coroutines 依赖**（对齐 turbo 的取舍）：故用回调列表而非 Flow。
+    // CopyOnWriteArrayList：写少读多，且遍历时不加锁 ⇒ 回调里再打日志也不会自锁。
+    // 通知在 recentLogs 的锁**外**执行（见 addLog），避免第三方回调持锁期间卡住日志写入。
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    /** 注册「有新日志」回调；返回反注册器（调用方负责在生命周期结束时调用，如 DisposableEffect）。 */
+    fun addListener(listener: () -> Unit): () -> Unit {
+        listeners.add(listener)
+        return { listeners.remove(listener) }
+    }
+
     private fun addLog(entry: LogEntry) {
         synchronized(recentLogs) {
             recentLogs.add(0, entry)
@@ -112,6 +124,8 @@ object Logging {
             }
         }
         appendToFileIfEnabled(entry)
+        // 通知放锁外：回调方通常会 getRecentLogs()（自己要加锁），在锁内回调会与它相互等待
+        listeners.forEach { it() }
     }
 
     /**

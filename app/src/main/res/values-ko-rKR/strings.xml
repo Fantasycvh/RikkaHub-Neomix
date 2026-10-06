@@ -92,6 +92,8 @@
   <string name="assistant_page_local_tools_todo_plan_desc">모델이 여러 단계 작업을 명시적인 체크리스트로 나누고 진행 상황을 갱신합니다. 입력창 위에 계획 바 표시</string>
   <string name="plan_bar_progress">%1$d/%2$d 완료</string>
   <string name="chat_message_todo_all_done">모두 완료</string>
+  <string name="chat_generation_interrupted_notice">
+⚠️ 생성이 중단되었습니다. 이 답변은 불완전합니다.</string>
   <string name="chat_message_todo_title">작업 계획</string>
   <string name="plan_bar_summary">계획: 완료 %1$d · 진행 중 %2$d · 총 %3$d</string>  <string name="assistant_page_local_tools_time_info_desc">기기에서 현재 날짜, 요일, 시간, 시간대 정보 가져오기</string>
   <string name="assistant_page_local_tools_time_info_title">시간 정보</string>

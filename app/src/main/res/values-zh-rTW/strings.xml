@@ -94,6 +94,8 @@
   <string name="assistant_page_local_tools_todo_plan_desc">讓模型把多步任務拆成顯式清單並持續更新進度；輸入欄上方顯示計劃條</string>
   <string name="plan_bar_progress">已完成 %1$d/%2$d</string>
   <string name="chat_message_todo_all_done">全部完成</string>
+  <string name="chat_generation_interrupted_notice">
+⚠️ 生成被打斷，此回覆不完整。</string>
   <string name="chat_message_todo_title">任務計劃</string>
   <string name="plan_bar_summary">計劃：完成 %1$d · 進行中 %2$d · 共 %3$d</string>  <string name="assistant_page_local_tools_time_info_desc">從裝置取得目前日期、星期、時間與時區資訊</string>
   <string name="assistant_page_local_tools_time_info_title">時間資訊</string>

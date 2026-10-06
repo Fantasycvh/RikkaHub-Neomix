@@ -94,6 +94,8 @@
   <string name="assistant_page_local_tools_todo_plan_desc">让模型把多步任务拆成显式清单并持续更新进度；输入栏上方显示计划条</string>
   <string name="plan_bar_progress">已完成 %1$d/%2$d</string>
   <string name="chat_message_todo_all_done">全部完成</string>
+  <string name="chat_generation_interrupted_notice">
+⚠️ 生成被打断，此回复不完整。</string>
   <string name="chat_message_todo_title">任务计划</string>
   <string name="plan_bar_summary">计划：完成 %1$d · 进行中 %2$d · 共 %3$d</string>  <string name="assistant_page_local_tools_time_info_desc">从设备获取当前日期、星期、时间和时区信息</string>
   <string name="assistant_page_local_tools_time_info_title">时间信息</string>

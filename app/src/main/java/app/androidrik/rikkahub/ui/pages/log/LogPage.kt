@@ -27,6 +27,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberBottomSheetState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +62,12 @@ import java.util.Locale
 @Composable
 fun LogPage() {
     var logs by remember { mutableStateOf(Logging.getRecentLogs()) }
+    // 实时刷新：此前是「进入页面的一次性快照」，新日志要退出重进才可见——排查时正需要
+    // 边操作边看。订阅在 DisposableEffect 里反注册，页面离开即断开（不留悬挂回调）。
+    DisposableEffect(Unit) {
+        val unsubscribe = Logging.addListener { logs = Logging.getRecentLogs() }
+        onDispose { unsubscribe() }
+    }
     var requestLoggingEnabled by remember { mutableStateOf(Logging.isRequestLoggingEnabled()) }
     var fileLoggingEnabled by remember { mutableStateOf(Logging.isFileLoggingEnabled()) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()

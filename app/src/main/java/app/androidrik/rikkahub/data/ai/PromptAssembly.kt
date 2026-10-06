@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.ai
 
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.ui.withoutUiNotices
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.ai.prompts.partitionCheckpointMessages
 import app.androidrik.ai.ui.limitContext
@@ -280,6 +281,10 @@ internal fun buildInternalMessages(
                 compressionWindow = compressionWindow,
                 contextMessageLimit = assistant.contextMessageLimit,
             )
+                // UI 专用提示（生成打断/截断警示）**只给用户看**：回传会让模型以为用户说过
+                // 那句话并可能模仿着往下写。此处是**唯一装配点**——四个 provider 都从这里取消息，
+                // 故只需过滤一次（见 UiNotice.kt 的说明）。
+                .map { it.withoutUiNotices() }
         )
     }
 }

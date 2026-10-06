@@ -94,6 +94,8 @@
   <string name="assistant_page_local_tools_todo_plan_desc">Let the model break multi-step work into an explicit checklist and keep progress current; a plan strip shows progress above the input bar</string>
   <string name="plan_bar_progress">%1$d/%2$d completed</string>
   <string name="chat_message_todo_all_done">All done</string>
+  <string name="chat_generation_interrupted_notice">
+⚠️ Generation was interrupted — this reply is incomplete.</string>
   <string name="chat_message_todo_title">Task plan</string>
   <string name="plan_bar_summary">Plan: %1$d done · %2$d in progress · %3$d total</string>  <string name="assistant_page_local_tools_time_info_desc">Get current date, weekday, time, and timezone info from the device</string>
   <string name="assistant_page_local_tools_time_info_title">Time Info</string>

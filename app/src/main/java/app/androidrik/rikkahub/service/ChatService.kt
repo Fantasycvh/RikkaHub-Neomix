@@ -39,6 +39,7 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.ai.ui.appendInterruptionNotice
 import app.androidrik.ai.ui.isOutputLimitTruncation
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessage
@@ -2168,6 +2169,27 @@ class ChatService(
      * `NonCancellable`：调用方（UI / undo / web）的 scope 可能同时被取消，
      * 不能因「取消在飞」把这次写入一并丢掉——那正是本方法要修的问题。
      */
+    /**
+     * 给「被打断的那条消息」追加可见提示（见 [appendInterruptionNotice]）。
+     *
+     * **替换选中分支而不再追加一条消息**：`MessageNode.messages` 是**同节点的多个候选分支**
+     * （重新生成产生），push 一条新消息会凭空多出一个分支；正确做法是把 `selectIndex` 指向的
+     * 那条原地替换成「原文 + 提示」。
+     */
+    private fun messageNodesWithInterruptionNotice(
+        nodes: List<MessageNode>,
+    ): List<MessageNode> {
+        val lastIndex = nodes.lastIndex
+        if (lastIndex < 0) return nodes
+        val node = nodes[lastIndex]
+        val selected = node.messages.getOrNull(node.selectIndex) ?: return nodes
+        val (updated, appended) = listOf(selected)
+            .appendInterruptionNotice(context.getString(R.string.chat_generation_interrupted_notice))
+        if (!appended) return nodes
+        val newMessages = node.messages.toMutableList().also { it[node.selectIndex] = updated.first() }
+        return nodes.toMutableList().also { it[lastIndex] = node.copy(messages = newMessages) }
+    }
+
     private suspend fun persistStoppedGeneration(conversationId: Uuid) {
         val conversation = getConversationFlow(conversationId).value
         withContext(NonCancellable) {
@@ -2175,10 +2197,14 @@ class ChatService(
                 // 收尾未结束的推理块（与正常完成的 onCompletion 一致）：用户停止时推理块常常
                 // 还带 finishedAt=null，落库后重进会话，思考卡片会按「进行中」渲染并在一条
                 // 已死的消息上永远走计时器（每 50ms 自增）。
+                // 生成被打断：给半截回复追加**可见**提示（幂等）——否则回看时那段戛然而止的
+                // 回复看起来就像「卡住了」，用户无从判断是模型抽风、网络断了还是自己点了停止。
+                // 提示带 uiNotice 元数据 ⇒ 发请求前会被过滤掉，不污染模型上下文。
+                val withNotice = messageNodesWithInterruptionNotice(conversation.messageNodes)
                 saveConversation(
                     conversationId,
                     conversation.copy(
-                        messageNodes = conversation.messageNodes.map { node ->
+                        messageNodes = withNotice.map { node ->
                             node.copy(messages = node.messages.map { it.finishReasoning() })
                         },
                     ),
