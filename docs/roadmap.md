@@ -1312,3 +1312,25 @@ data class ApiKeyEntry(
     反斜杠，于是"看到"了一个并不存在的「`\\` 被吞」症状（该临时脚本已删，写法无法回头复核，但
     **真实存储文本喂同一条管线后 `\\` 完好无损**，已足以定论）；差点据此去改渲染链路。**复现必须用真实输入；
     合成输入要 programmatically 断言其运行时字节（`JSON.stringify`/`ascii()` repr），而不是肉眼看源码字面量。**
+- 2026-10-06：**v1.0.25 (288) 草稿已建（含 APK 资产，release 已装机冒烟）**——Latest 仍 = **v1.0.24 (287)**
+  （`cda7c3df`，77,666,210 B）；新草稿 = **v1.0.25 (288)**，release id `404257117`。
+  - **触发**：上一版资产对应 **287**（同一 versionCode 下被替换过三次内容），故本次**必须 bump**（记在
+    `f1156377`）。`287 → 288`、versionName `1.0.24 → 1.0.25`（已发布版本之后起**新版本号**，非同名重建，
+    与 09-28 v1.0.16 同口径）。bump `305c805b`，**先 push 再构建**（转正 tag 按远端分支 HEAD 建的坑）。
+  - **范围 = `cda7c3df`（287 资产的构建点）之后的 6 项代码提交**（其余为 docs）：
+    `read_conversation` 第三层（`ee173643`）、MCP schema 动态分层加载（`c00176f5`）+ 折叠不再破坏子代理信封
+    （`02727f1c`/`d1b63d0b`）、web-ui markdown XSS 修复（`3c7cd569`，安全）、工具级执行超时（`2e4b4ced`）、
+    生成打断可见标记 + 日志页实时刷新（`b6faa877`）、裸 LaTeX 环境补齐定界符（`4839e347`）。
+  - **流程与数字**：清 `app/build/outputs/apk/release/*.apk` + `app/release/*.apk` → release 构建
+    **4m40s**（81 executed，配置缓存复用）→ aapt2 核实 `versionCode=288` / `1.0.25` / **仅 `arm64-v8a`**
+    （77,678,270 B，sha256 `bb42e57d…`）→ **release 装机冒烟（287→288 覆盖升级）**：零 FATAL、会话数
+    **248 不变**、`tokenizer install ok=true vocab=100256 in 521ms`（R8 未破坏词表资源）、MCP 两服务器
+    28+49 工具照常同步 → `gh release create --draft --target 305c805b…`（**完整 40 位 SHA**）+ 分步
+    `gh release upload` → **服务端 digest `sha256:bb42e57d…` 与本地逐字符相同**（无需下载 77MB）。
+  - **收尾复核**：`releases?per_page=6` 按 id 查到该草稿 `draft=true`、`tag_name=v1.0.25`、
+    `target_commitish=305c805b…`（与本地 bump 一致）、资产 `state` 正常；`releases/tags/v1.0.25`
+    返回 404 属**草稿预期**（tag ref 发布前不建），**不要据此判资产坏**——判据是 API 的 digest。
+  - **包内容核实（不只看体积）**：release APK 内 `static/assets/mermaid-GHXKKRXX-BmsWkaLc.js` 同时含
+    LaTeX 归一化标记（`alignedat`+`semilogaxis`）与 rehype 清洗链 ⇒ 本版两项 web 侧修复确实在包里。
+  - README 标注改为「正式发布：`v1.0.24` ｜ 草稿：`v1.0.25`」（沿用 `a28bea52^` 的既有格式）。**待用户
+    GitHub 检查后转正**；转正后按老规矩 `git ls-remote --tags` 复核 tag 落点。
