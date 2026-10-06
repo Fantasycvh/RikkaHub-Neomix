@@ -1479,3 +1479,24 @@ data class ApiKeyEntry(
     的 system 注入在**注入器内部**就降级）+ 逐 provider 映射；需先拍板「降级时是否加标记包裹」
     （如 `<system-reminder>…</system-reminder>`，与既有 `<recovery_note>` 同风格），再单独一轮逐家真机验证。
   - **收尾计划**：3b 落地后**重建同一个 290**（草稿未发布，同号重建无歧义）→ 替换 v1.0.25 草稿资产 → 真机端到端。
+- 2026-10-06：**③-3b 落地（`8d8397fe`）+ 草稿资产替换为 290 —— ②③ 三步全部完成**。
+  - **注入器照抄配置角色**：`createMergedInjectionMessages` 增加 `MessageRole.SYSTEM -> UIMessage.system(...)`；
+    此前 `else -> user` 让 TOP_OF_CHAT / BOTTOM_OF_CHAT / AT_DEPTH 的 system 注入**在注入器内部**就降级，
+    与条目上选的角色不符。**能否承载改由 provider 层按各自 API 能力决定**。
+  - **provider 三种承载**：OpenAI **chat/completions** `role.name.lowercase()` 原样透传（中部 system 直接发、
+    不做标记）；**Claude / Gemini / Responses** 不能承载中部 system ⇒ 降级 user + `<system-reminder>` 包裹
+    （新增 `UIMessage.asDowngradedSystemMessage()`：只包 Text part、**幂等**、与既有 `<recovery_note>` 同风格）。
+  - **验证**：`DowngradedSystemMessageTest` 3 例（包裹形态 / 非文本 part 不动 / 幂等）+ 注入器 1 例
+    （system 角色的 TOP 注入保留 SYSTEM）+ 三个 provider 各 1 条包裹断言；`:app:testDebugUnitTest` **1290 例**、
+    `:ai:testDebugUnitTest` **245 例** 全绿。
+  - **资产**：重建同一个 290（`0cae82f9…`，77,686,378 B）→ 装机冒烟（零 FATAL、会话 249 不变）→ 草稿
+    `delete-asset`+`upload`（同作业避免空窗）→ `--title "v1.0.25 (290)"` + notes 补两条（系统内容模板 /
+    system 角色注入不再被丢或裸降级）→ **PATCH `target_commitish`=8d8397fe 后 `tag_name` 果然又被重置成
+    `untagged-7507564b…`**（第三次实测该行为），按老规矩补 PATCH 回 `v1.0.25` → 独立 GET 复核
+    `draft=true` / `name=v1.0.25 (290)` / `tag_name=v1.0.25` / `target=8d8397fe…` / digest 与本地逐字符相同。
+  - **用户可验**：① 助手页设「系统内容模板」= `<|{{ role }}|>` + 换行 + `{{ message }}` ⇒ 报文里 system 段
+    应变成 `<|system|>` 开头（留空则保持裸文本）；② 把某注入条目的角色设为 **system**、位置设为
+    TOP_OF_CHAT/AT_DEPTH ⇒ 报文里应出现**独立的 `role: system` 消息**（此前会被注入器降级成 user）。
+  - **⚠️ 遗留（未做）**：中部 system 在个别 OpenAI 兼容网关上可能被拒（用户可选规避：把条目角色改回 user）；
+    「降级包裹」目前只覆盖 Claude/Gemini/Responses 三家，新增 provider 若引入同类降级需照抄
+    `asDowngradedSystemMessage()`。
