@@ -361,6 +361,61 @@ private fun AssistantPromptContent(
                     })
                 }
             )
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(stringResource(R.string.assistant_page_system_message_template))
+                        Spacer(Modifier.weight(1f))
+                        IconButton(
+                            onClick = {
+                                onUpdate(assistant.copy(systemMessageTemplate = ""))
+                            },
+                            enabled = assistant.systemMessageTemplate.isNotEmpty(),
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.Refresh03,
+                                contentDescription = null,
+                            )
+                        }
+                    }
+                },
+                content = {
+                    val missingMessage = assistant.systemMessageTemplate.isNotBlank() &&
+                        "{{ message }}" !in assistant.systemMessageTemplate
+                    OutlinedTextField(
+                        value = assistant.systemMessageTemplate,
+                        onValueChange = {
+                            onUpdate(
+                                assistant.copy(
+                                    systemMessageTemplate = it
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 10,
+                        isError = missingMessage,
+                        supportingText = if (missingMessage) {
+                            { Text(stringResource(R.string.assistant_page_system_message_template_missing_message)) }
+                        } else null,
+                        placeholder = {
+                            Text("<|{{ role }}|>\n{{ message }}")
+                        },
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 12.sp,
+                            fontFamily = JetbrainsMono,
+                            lineHeight = 16.sp
+                        )
+                    )
+                },
+                description = {
+                    Text(stringResource(R.string.assistant_page_system_message_template_desc))
+                    Text(stringResource(R.string.assistant_page_system_message_template_variables))
+                }
+            )
             Column(
                 modifier = Modifier
                     .padding(8.dp)
@@ -373,10 +428,15 @@ private fun AssistantPromptContent(
                     text = stringResource(R.string.assistant_page_template_preview),
                     style = MaterialTheme.typography.titleSmall
                 )
-                val rawMessages = listOf(
-                    UIMessage.user("你好啊"),
-                    UIMessage.assistant("你好，有什么我可以帮你的吗？"),
-                )
+                val rawMessages = buildList {
+                    add(UIMessage.user("你好啊"))
+                    add(UIMessage.assistant("你好，有什么我可以帮你的吗？"))
+                    // 设了「系统内容模板」时把**合成**样本也放进预览：否则用户看不到该模板的效果，
+                    // 也无从发现「system 与注入默认不走任何模板」这件事（预览盲区）。
+                    if (assistant.systemMessageTemplate.isNotBlank()) {
+                        add(UIMessage.system("（系统提示与注入内容示例）").copy(isSynthetic = true))
+                    }
+                }
                 val preview by produceState<UiState<List<UIMessage>>>(
                     UiState.Success(rawMessages),
                     assistant

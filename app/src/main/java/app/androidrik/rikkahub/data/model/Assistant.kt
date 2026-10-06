@@ -83,6 +83,20 @@ data class Assistant(
     val memoryCreateApproval: Boolean = false,
     val enableRecentChatsReference: Boolean = false,
     val messageTemplate: String = "{{ message }}",
+    /**
+     * 合成内容（system 提示本体 / 提示词注入 / 时间与工作区提醒 / 压缩检查点）的**独立**模板。
+     *
+     * **默认空 = 不套用**（保持既有行为）：合成消息带 `isSynthetic` 标记，默认被
+     * `TemplateTransformer` 跳过——这是上游 #1790 的取舍，因为 [messageTemplate] 会把
+     * `{{time}}/{{date}}` 渲染进每条消息，而合成消息的 `createdAt` 就是**本次请求时间**，
+     * 让它们参与渲染会让 system 前缀每次请求都变、prompt 缓存必破。
+     *
+     * 本字段是给「希望 system/注入内容在线上也与会话轮次形态一致」的用户的 opt-in：它的渲染
+     * 上下文**刻意只提供 `{{ message }}` 与 `{{ role }}`，不提供 `{{time}}/{{date}}`** —— 由构造
+     * 保证渲染结果与请求时刻无关，从而在拿到形态一致性时不牺牲缓存稳定性。模板缺 `{{ message }}`
+     * 时按未设置处理（回退不套用），避免整段 system 提示被渲染成空。
+     */
+    val systemMessageTemplate: String = "",
     val presetMessages: List<UIMessage> = emptyList(),
     val quickMessageIds: Set<Uuid> = emptySet(),
     val regexes: List<AssistantRegex> = emptyList(),

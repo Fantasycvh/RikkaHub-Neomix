@@ -118,6 +118,10 @@
   <string name="assistant_page_message_template">聊天内容模板</string>
   <string name="assistant_page_message_template_desc">控制聊天消息在发送给LLM之前的内容格式，通常不需要修改</string>
   <string name="assistant_page_message_template_missing_message">模板不包含 {{ message }}，用户消息将不会被发送</string>
+  <string name="assistant_page_system_message_template">系统内容模板</string>
+  <string name="assistant_page_system_message_template_desc">只作用于合成内容（系统提示、提示词注入、时间/工作区提醒、压缩检查点）。留空表示保持现状。</string>
+  <string name="assistant_page_system_message_template_variables">变量: 角色 {{ role }}、内容 {{ message }}（刻意不提供时间/日期——否则系统提示前缀每次请求都会变、破坏缓存）</string>
+  <string name="assistant_page_system_message_template_missing_message">模板不包含 {{ message }}，将被忽略（系统内容原样发送）</string>
   <string name="assistant_page_name">助手名称</string>
   <string name="assistant_page_preset_messages">预设聊天消息</string>
   <string name="assistant_page_preset_messages_desc">设置对话初始消息</string>

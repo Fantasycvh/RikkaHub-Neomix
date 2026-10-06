@@ -116,6 +116,10 @@
   <string name="assistant_page_message_template">Шаблон содержимого сообщения</string>
   <string name="assistant_page_message_template_desc">Управляет форматом содержимого сообщений чата перед отправкой в LLM, обычно изменять не требуется</string>
   <string name="assistant_page_message_template_missing_message">Шаблон не содержит {{ message }}, сообщения пользователя не будут отправлены</string>
+  <string name="assistant_page_system_message_template">Шаблон системного содержимого</string>
+  <string name="assistant_page_system_message_template_desc">Применяется только к синтетическому содержимому (системный промпт, инъекции промптов, напоминания о времени/рабочей области, точка сжатия). Оставьте пустым, чтобы сохранить текущее поведение.</string>
+  <string name="assistant_page_system_message_template_variables">Переменные: роль {{ role }}, содержимое {{ message }} (время и дата намеренно недоступны — иначе префикс системного промпта менялся бы при каждом запросе и ломал кэш)</string>
+  <string name="assistant_page_system_message_template_missing_message">Шаблон не содержит {{ message }}, поэтому он игнорируется (системное содержимое отправляется как есть)</string>
   <string name="assistant_page_name">Имя ассистента</string>
   <string name="assistant_page_preset_messages">Предустановленные сообщения чата</string>
   <string name="assistant_page_preset_messages_desc">Установить начальные сообщения разговора</string>

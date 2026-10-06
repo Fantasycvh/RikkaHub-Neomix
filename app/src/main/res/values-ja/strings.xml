@@ -116,6 +116,10 @@
   <string name="assistant_page_message_template">チャットコンテンツテンプレート</string>
   <string name="assistant_page_message_template_desc">チャットメッセージがLLMに送信される前のコンテンツ形式を制御します。通常は変更する必要がありません</string>
   <string name="assistant_page_message_template_missing_message">テンプレートに{{ message }}が含まれていないため、ユーザーのメッセージは送信されません</string>
+  <string name="assistant_page_system_message_template">システム内容テンプレート</string>
+  <string name="assistant_page_system_message_template_desc">合成コンテンツ（システムプロンプト、プロンプト注入、時刻/ワークスペースのリマインダー、圧縮チェックポイント）にのみ適用されます。空欄のままにすると現在の動作を維持します。</string>
+  <string name="assistant_page_system_message_template_variables">変数: ロール {{ role }}、内容 {{ message }}（時刻/日付は意図的に未提供——毎回変わるとシステムプロンプトの前綴が不安定になりキャッシュが壊れるため）</string>
+  <string name="assistant_page_system_message_template_missing_message">テンプレートに{{ message }}が含まれていないため無視されます（システム内容はそのまま送信されます）</string>
   <string name="assistant_page_name">アシスタント名</string>
   <string name="assistant_page_preset_messages">プリセットチャットメッセージ</string>
   <string name="assistant_page_preset_messages_desc">初期会話メッセージを設定</string>

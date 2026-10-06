@@ -118,6 +118,10 @@
   <string name="assistant_page_message_template">Message Content Template</string>
   <string name="assistant_page_message_template_desc">Controls the content format of chat messages before being sent to the LLM, usually no need to modify</string>
   <string name="assistant_page_message_template_missing_message">Template does not contain {{ message }}, user messages will not be sent</string>
+  <string name="assistant_page_system_message_template">System content template</string>
+  <string name="assistant_page_system_message_template_desc">Applies only to synthetic content (system prompt, prompt injections, time/workspace reminders, compression checkpoint). Leave empty to keep the current behavior.</string>
+  <string name="assistant_page_system_message_template_variables">Variables: role {{ role }}, content {{ message }} (time/date are intentionally unavailable — they would change the system-prompt prefix on every request and break the prompt cache)</string>
+  <string name="assistant_page_system_message_template_missing_message">Template does not contain {{ message }}, so it is ignored and system content is sent as is</string>
   <string name="assistant_page_name">Assistant Name</string>
   <string name="assistant_page_preset_messages">Preset Chat Messages</string>
   <string name="assistant_page_preset_messages_desc">Set initial conversation messages</string>
