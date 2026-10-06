@@ -1414,3 +1414,35 @@ data class ApiKeyEntry(
     「protobuf 外壳 + JSON 字符串」**（直接 `decode('utf-8')` 后 `json.JSONDecoder().raw_decode` 即可，
     旧 key 与预设数组都能这样抠出来）；比对「报文里的块」与「设置里的条目」用**内容首行 + 长度**做指纹，
     比看名字可靠（本机存在同名/前缀相同的条目，如 `学习教练` 是 `整合式学习教练` 的前缀）。
+- 2026-10-06：**②「免检标签」定案（代码 + 真机实测双向确认）**——原版分析称「注入消息打 `isSynthetic`
+  后被模板组件跳过 ⇒ 内容没走正常流程、模型能看出不对劲」。我们这边**机制成立，但性质与方向相反**。
+  - **代码侧（穷举）**：全仓 `isSynthetic` 读点只有 4 处，**只有 1 处影响请求内容** ——
+    `TemplateTransformer.kt:28` `if (message.isSynthetic) return@map message`；其余为
+    `CompressPrompt:81`（检查点识别，且文件里明确写「判据只用文本前导语、**不能依赖该字段**」，因它是
+    `@Transient`）+ `PromptInspector`×3 / `PromptInspectPage:568`（预览与 UI 显示）。
+    `Placeholder`/`TavernMacro`/`Quote`/`Ocr`/`DocumentAsPrompt` **都不看该标记** ⇒ 「没走正常流程」在我们这儿
+    只等于「没走**消息模板**这一步」。
+  - **来源**：`6bbcacb6`「fix: 合成消息不参与消息模板（吸收上游 `942d0d28` / #1790）」，动机写在提交信息里：
+    **时间戳稳定、保 prompt 缓存**（模板会把 `{{time}}/{{date}}` 渲染进每条消息，而合成消息的 `createdAt`
+    就是本次请求时间 ⇒ 让它们参与渲染会让 system 前缀每请求都变）。⇒ 是**故意的缓存保护**，不是缺陷。
+  - **打标范围比「注入」更大**：`PromptAssembly:276`（**system 提示本体，每次请求都打**）、
+    `PromptInjectionTransformer`×4、`TimeReminder`、`WorkspaceReminder`、压缩检查点（`Conversation:189`）。
+  - **实测（22:24:47，release 289，用户把某助手模板改成 `<|{{ role }}|>\n{{ message }}` 后发一条）**：
+    报文 6 条消息 —— `[0] system` 14323 字符**无 `<|system|>` 包装**（仍是注入原文，A 在最前、研究报告在末尾），
+    而 `[1] user`=`<|user|>\n test`、`[2] assistant`=`<|assistant|>\n…`、`[3] user`=`<|user|>\n 你能做什么`、
+    `[4] assistant`=`<|assistant|>\n…`、`[5] user`=`<|user|>\n 如何提高专注力` **全部带包装**。
+    **该模板是无条件包装（无 `{% if %}` 守卫，已从 datastore 取值核对）** ⇒ system 段的裸形态**只能**由
+    synthetic 跳过解释，②**实测坐实**。（附带第三次印证注入生效：`[4]` 的回复自称「我是一个苏格拉底式认知教练」。）
+  - **默认无感 + 反证「跳过≠不处理」**：默认模板 `{{ message }}` 恒等 ⇒ 跳过与不跳过等价（本机历史上所有
+    助手的模板去重后只有 1 个值 `{{ message }}`，本次才出现第 2 个）。而 `PlaceholderTransformer` 不看该标记 ⇒
+    system 里的 `{{char}}/{{model_name}}` 照常替换（实测：助手 systemPrompt 写的是
+    `called {{char}}, based on model {{model_name}}`，报文里已是 `called assistant, based on model glm-4.5-air`）。
+  - **遗留边界（上游取舍，非我们回归）**：模板一旦承担**必要转换**（给每条消息加角色标记、转义、裁剪），
+    system 与注入就**不带**这些转换 ⇒ 同一份报文里两种形态并存（本次实测即如此）。默认恒等模板无此问题。
+    若要消除：可选「合成消息也渲染、但只用**确定性的** createdAt（而非请求时间）」或另设 system/注入专用包装；
+    但那是**偏离上游**的改动，需先确认是否值得。UI 的模板实时预览用的是**非合成**示例消息 ⇒ 看不到这个盲区。
+  - **③（角色降级）按用户要求稍后单独处理**：已掌握的证据是 — OpenAI chat/completions 走
+    `role.name.lowercase()` ⇒ SYSTEM 保留 ✔；**Responses API 只取第一条 system 进 `instructions`、其余 system
+    被 `filter { role != SYSTEM }` 整条丢弃**；Claude/Google 把中部 SYSTEM `copy(role = USER)` 降级；
+    注入器内部 `createMergedInjectionMessages` 的 `else -> user` 会把 TOP/BOTTOM/AT_DEPTH 的 system 注入降级
+    （仅 `END_OF_CHAT` 保留 SYSTEM）。
