@@ -502,8 +502,8 @@ data class ApiKeyEntry(
 - **价值**：中；**成本/风险**：中–高（护栏语义）。
 
 **P3 小件**：
-- **生成打断的可见标记（`2945c612`）**：我们 `persistStoppedGeneration` 保留半截内容（#1812），但**用户看不到「这条被打断了」**；turbo 追加可见标记 + **上传/导出时过滤该标记**（防标记污染数据）。小、用户可见。
-- **日志页实时刷新（`71f78ef2`）**：turbo 给 `Logging` 加**监听器订阅**（`CopyOnWriteArrayList`、锁外通知；common 无 coroutines 依赖故不用 Flow），页面 `DisposableEffect` 注册/注销。我们的 `LogPage` 是进入时一次性快照——看新日志得退出重进。小。
+- **生成打断的可见标记（`2945c612`）**：我们 `persistStoppedGeneration` 保留半截内容（#1812），但**用户看不到「这条被打断了」**；turbo 追加可见标记 + **上传/导出时过滤该标记**（防标记污染数据）。小、用户可见。（**✅ 2026-10-06 已落地**：`appendInterruptionNotice` 幂等追加可见提示；零输出不打标、末尾非助手不打标。**两处比 turbo 更省**：① 提示带 `uiNotice` 元数据、在 `buildInternalMessages` **唯一装配点**过滤（四 provider 都从这里取消息）——turbo 改了 4 个 provider builder；② 落库**保留**提示 ⇒ 导出/备份能看到当时发生了什么（turbo 上传时过滤掉）。另：替换**选中分支**而非 push 新消息，避免凭空多一个候选分支。）
+- **日志页实时刷新（`71f78ef2`）**：turbo 给 `Logging` 加**监听器订阅**（`CopyOnWriteArrayList`、锁外通知；common 无 coroutines 依赖故不用 Flow），页面 `DisposableEffect` 注册/注销。我们的 `LogPage` 是进入时一次性快照——看新日志得退出重进。小。（**✅ 2026-10-06 已落地**：`Logging.addListener` + `LogPage` 的 `DisposableEffect` 订阅/反注册。**锁外通知**是要点——回调方自身 `getRecentLogs()` 要加锁，锁内回调会互等；common 无 coroutines 依赖故用回调而非 Flow。）
 - **webhook 强制签名认证（`6137b3a7`）**：未配 token 直接 403（turbo 原先未配就不校验）。我们**目前没有 webhook**；将来做任务/定时 webhook 时带上这条默认安全。
 - **provider 兼容小件**（Console Go 的 `input items` 强制 id / assistant 字符串 content / 内置工具补 `name` / 仅 UrlContext 时不发空 `tools`）：面向特定上游，与我们无关；但 `10ccc7d5`「**同一消息内多 item id 唯一化（msg/rsn/img + 自增序号）**」与我们 `c309c615`（补插 reasoning 去 `rs_` id）**同域**，将来再遇重复 id 报错时其「前缀+序号」是可参考的通用化写法。
 
