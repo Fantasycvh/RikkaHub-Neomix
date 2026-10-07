@@ -301,7 +301,9 @@
   <string name="chat_message_quote_assistant">Assistant</string>
   <string name="chat_message_quote_context">Quoted message</string>
   <string name="chat_message_tool_approve">Approve</string>
-  <string name="chat_message_tool_approve_all">Approve all</string>
+    <string name="chat_message_reasoning_edit">Edit reasoning</string>
+  <string name="chat_message_reasoning_edit_save">Save</string>
+<string name="chat_message_tool_approve_all">Approve all</string>
   <string name="chat_message_tool_ask_questions">Ask %d questions</string>
   <string name="chat_message_tool_call_generic">Called tool %1$s</string>
   <string name="chat_message_tool_call_label">Called tool %1$s</string>

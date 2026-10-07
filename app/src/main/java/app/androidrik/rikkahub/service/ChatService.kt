@@ -251,6 +251,46 @@ internal fun shouldReportConfigError(
 ): Boolean = existing.none { it.conversationId == conversationId && it.solution == solution }
 
 /**
+ * 「编辑思考过程」的**纯函数核**（#1929）：按 messageId + Reasoning part 的创建时刻
+ * 原地替换推理文本，不新建分支、其余 part 与消息字段（含 createdAt/finishedAt）一个不动。
+ *
+ * 目标消息或 Reasoning part 不存在时返回 null（= 无操作），由调用方区分「没找到」
+ * 与「改好了」。**纯函数**便于 JVM 单测。
+ */
+internal fun updateMessageReasoningInNodes(
+    nodes: List<MessageNode>,
+    messageId: Uuid,
+    reasoningCreatedAt: kotlin.time.Instant,
+    reasoningText: String,
+): List<MessageNode>? {
+    var edited = false
+    val updated = nodes.map { node ->
+        if (node.messages.none { it.id == messageId }) {
+            node
+        } else {
+            node.copy(messages = node.messages.map { msg ->
+                if (msg.id != messageId) {
+                    msg
+                } else {
+                    var touched = false
+                    val newParts = msg.parts.map { part ->
+                        if (part is UIMessagePart.Reasoning && part.createdAt == reasoningCreatedAt) {
+                            touched = true
+                            part.copy(reasoning = reasoningText)
+                        } else {
+                            part
+                        }
+                    }
+                    if (touched) edited = true
+                    msg.copy(parts = newParts)
+                }
+            })
+        }
+    }
+    return if (edited) updated else null
+}
+
+/**
  * 工具调用失控护栏停止本轮（见 `data/ai/ToolCallLoopGuard.kt`）。
  *
  * 刻意**不是**「生成失败」：本轮已正常结束、内容照常落库，它只用于把「为什么停了」
@@ -2129,6 +2169,37 @@ class ChatService(
         }
 
         updateConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+    }
+
+    /**
+     * #1929 编辑思考过程：按 messageId + Reasoning part 的创建时刻**原地**替换推理文本。
+     *
+     * 刻意**不复用** [editMessage]——它有三个对「只改推理」而言错误的副作用：新建分支、
+     * 跑 USER 作用域预处理（正则）、按 [MAX_USER_INPUT_CHARS] 截断（助手长推理会被悄悄剪短）。
+     * 这里（照 `updateTranslationField` 模板）：
+     * - **原地改**：分支结构与 `selectIndex` 不动；
+     * - 只替换目标 Reasoning part 的文本，**createdAt/finishedAt 保留**（“思考了 X 秒”不失真）；
+     * - 其余 part 一个不动；
+     * - 目标消息/part 找不到时是**无操作**（不是错误——界面与数据并发变化时的兜底）。
+     *
+     * 代价（有意识接受）：编辑会改动已发送历史的某个前缀 ⇒ 该处之后的 prompt cache
+     * 失效。用户主动动作、可接受。
+     */
+    suspend fun updateMessageReasoning(
+        conversationId: Uuid,
+        messageId: Uuid,
+        reasoningCreatedAt: kotlin.time.Instant,
+        reasoningText: String,
+    ) {
+        val currentConversation = getConversationFlow(conversationId).value
+        val updatedNodes = updateMessageReasoningInNodes(
+            nodes = currentConversation.messageNodes,
+            messageId = messageId,
+            reasoningCreatedAt = reasoningCreatedAt,
+            reasoningText = reasoningText,
+        ) ?: return
+        updateConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+        saveConversation(conversationId, getConversationFlow(conversationId).value)
     }
 
     // 停止当前会话生成任务（不清理会话缓存）

@@ -297,7 +297,9 @@
   <string name="chat_message_quote_assistant">アシスタント</string>
   <string name="chat_message_quote_context">引用メッセージ</string>
   <string name="chat_message_tool_approve">承認</string>
-  <string name="chat_message_tool_approve_all">すべて承認</string>
+    <string name="chat_message_reasoning_edit">思考プロセスを編集</string>
+  <string name="chat_message_reasoning_edit_save">保存</string>
+<string name="chat_message_tool_approve_all">すべて承認</string>
   <string name="chat_message_tool_ask_questions">%d 件の質問</string>
   <string name="chat_message_tool_call_generic">ツール %1$s を呼び出しました</string>
   <string name="chat_message_tool_call_label">ツール %1$s を呼び出しました</string>

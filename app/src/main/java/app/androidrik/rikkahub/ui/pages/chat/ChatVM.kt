@@ -219,6 +219,12 @@ class ChatVM(
         }
     }
 
+    fun updateMessageReasoning(messageId: Uuid, reasoningCreatedAt: kotlin.time.Instant, text: String) {
+        viewModelScope.launch {
+            chatService.updateMessageReasoning(_conversationId, messageId, reasoningCreatedAt, text)
+        }
+    }
+
     fun handleCompressContext(additionalPrompt: String, targetTokens: Int, retainRatio: Double): Job {
         return viewModelScope.launch {
             // 检查点式压缩：切分由 token 驱动的保留比例决定（对齐 design-auto-compaction §4.1）

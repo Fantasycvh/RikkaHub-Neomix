@@ -7,18 +7,31 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -26,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Size
@@ -34,6 +48,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -42,6 +57,7 @@ import androidx.compose.runtime.snapshotFlow
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Edit02
 import me.rerere.hugeicons.stroke.Idea01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.model.Assistant
@@ -50,6 +66,7 @@ import app.androidrik.rikkahub.data.model.replaceRegexes
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThoughtScope
 import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.modifier.onClick
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.utils.extractThinkingTitle
 import kotlin.time.Clock
@@ -214,6 +231,8 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
     assistant: Assistant?,
     fadeHeight: Float = 64f,
     collapsedAdaptiveWidth: Boolean = false,
+    /** #1929 编辑思考过程的入口回调；null = 不显示编辑入口（无消息上下文的场景） */
+    onEditRequest: (() -> Unit)? = null,
 ) {
     val (state, loading) = rememberReasoningState(reasoning)
     val thinkingTitle = reasoning.reasoning.extractThinkingTitle()
@@ -247,14 +266,14 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
             }
         },
         extra = {
-            if (showThinkingTitle && state.duration > 0.seconds) {
-                Text(
-                    text = state.duration.toString(DurationUnit.SECONDS, 1),
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = chatFontFamily),
-                    color = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.shimmer(isLoading = loading),
-                )
-            }
+            RowOfExtra(
+                durationText = if (showThinkingTitle && state.duration > 0.seconds) {
+                    state.duration.toString(DurationUnit.SECONDS, 1)
+                } else null,
+                showEdit = !loading && onEditRequest != null,
+                onEditRequest = onEditRequest,
+                chatFontFamily = chatFontFamily,
+            )
         },
         collapsedAdaptiveWidth = collapsedAdaptiveWidth,
         contentVisible = state.expandState != ReasoningCardState.Collapsed,
@@ -271,6 +290,106 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
     )
 }
 
+
+/**
+ * #1929 编辑思考过程的整屏编辑器（形态照 `TextArea.FullScreenTextEditor`）。
+ *
+ * **编辑内容不进 saved state**（`remember` 而非 `rememberSaveable`）——推理动辄上万字，
+ * 进 saved state 会在切后台时 TransactionTooLargeException 崩溃；进程死亡丢编辑是可接受的。
+ */
+@Composable
+internal fun ReasoningEditDialog(
+    initialText: String,
+    onDismissRequest: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var editingText by remember(initialText) { mutableStateOf(initialText) }
+    BasicAlertDialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Bottom,
+        ) {
+            Surface(
+                modifier = Modifier
+                    .widthIn(max = 800.dp)
+                    .fillMaxHeight(0.9f),
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .fillMaxSize(),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row {
+                        TextButton(onClick = onDismissRequest) {
+                            Text(stringResource(android.R.string.cancel))
+                        }
+                        TextButton(
+                            onClick = { onConfirm(editingText) },
+                        ) {
+                            Text(stringResource(R.string.chat_message_reasoning_edit_save))
+                        }
+                    }
+                    TextField(
+                        value = editingText,
+                        onValueChange = { editingText = it },
+                        modifier = Modifier
+                            .imePadding()
+                            .fillMaxSize(),
+                        shape = RoundedCornerShape(16.dp),
+                        placeholder = {
+                            Text(stringResource(R.string.chat_message_reasoning_edit))
+                        },
+                        colors = TextFieldDefaults.colors().copy(
+                            unfocusedIndicatorColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowOfExtra(
+    durationText: String?,
+    showEdit: Boolean,
+    onEditRequest: (() -> Unit)?,
+    chatFontFamily: FontFamily?,
+) {
+    if (durationText == null && !showEdit) return
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (durationText != null) {
+            Text(
+                text = durationText,
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = chatFontFamily),
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.shimmer(isLoading = false),
+            )
+        }
+        if (showEdit) {
+            // #1929：编辑思考过程。只放表头不放消息 ⋮ 菜单——那里已有「编辑」指代
+            // 整条消息，两个"编辑"并排会歧义；流式生成中不显示（会被后续 chunk 覆盖）。
+            Icon(
+                imageVector = HugeIcons.Edit02,
+                contentDescription = stringResource(R.string.chat_message_reasoning_edit),
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .size(14.dp)
+                    .onClick(onClick = onEditRequest ?: {}),
+                tint = MaterialTheme.colorScheme.secondary,
+            )
+        }
+    }
+}
 
 @Composable
 private fun ReasoningTitle(title: String) {

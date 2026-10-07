@@ -301,7 +301,9 @@
   <string name="chat_message_quote_assistant">助手</string>
   <string name="chat_message_quote_context">引用消息</string>
   <string name="chat_message_tool_approve">批准</string>
-  <string name="chat_message_tool_approve_all">全部批准</string>
+    <string name="chat_message_reasoning_edit">编辑思考过程</string>
+  <string name="chat_message_reasoning_edit_save">保存</string>
+<string name="chat_message_tool_approve_all">全部批准</string>
   <string name="chat_message_tool_ask_questions">询问 %d 个问题</string>
   <string name="chat_message_tool_call_generic">调用工具 %1$s</string>
   <string name="chat_message_tool_call_label">调用工具 %1$s</string>

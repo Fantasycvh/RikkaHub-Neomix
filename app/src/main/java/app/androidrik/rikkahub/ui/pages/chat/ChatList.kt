@@ -89,6 +89,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.getAssistantById
@@ -163,6 +164,7 @@ fun ChatList(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onApproveAll: (() -> Unit)? = null,
+    onEditReasoning: ((messageId: Uuid, reasoning: UIMessagePart.Reasoning, text: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
 ) {
@@ -209,6 +211,7 @@ fun ChatList(
                 onToolApproval = onToolApproval,
                 onToolAnswer = onToolAnswer,
                 onApproveAll = onApproveAll,
+                onEditReasoning = onEditReasoning,
                 onToggleFavorite = onToggleFavorite,
                 onConversationSystemPromptChange = onConversationSystemPromptChange,
             )
@@ -243,6 +246,7 @@ private fun ChatListNormal(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onApproveAll: (() -> Unit)? = null,
+    onEditReasoning: ((messageId: Uuid, reasoning: UIMessagePart.Reasoning, text: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
 ) {
@@ -485,6 +489,7 @@ private fun ChatListNormal(
                             onToolApproval = onToolApproval,
                             onToolAnswer = onToolAnswer,
                             onApproveAll = onApproveAll,
+                            onEditReasoning = onEditReasoning,
                             lastMessage = index == lastMessageIndex,
                         )
                     }

@@ -299,7 +299,9 @@
   <string name="chat_message_quote_assistant">助理</string>
   <string name="chat_message_quote_context">引用訊息</string>
   <string name="chat_message_tool_approve">核准</string>
-  <string name="chat_message_tool_approve_all">全部核准</string>
+    <string name="chat_message_reasoning_edit">編輯思考過程</string>
+  <string name="chat_message_reasoning_edit_save">儲存</string>
+<string name="chat_message_tool_approve_all">全部核准</string>
   <string name="chat_message_tool_ask_questions">詢問 %d 個問題</string>
   <string name="chat_message_tool_call_generic">調用工具 %1$s</string>
   <string name="chat_message_tool_call_label">調用工具 %1$s</string>

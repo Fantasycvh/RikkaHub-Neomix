@@ -131,6 +131,8 @@ fun ChatMessage(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onApproveAll: (() -> Unit)? = null,
+    /** #1929 编辑思考过程（原地改推理文本）；null = 不显示编辑入口 */
+    onEditReasoning: ((messageId: Uuid, reasoning: UIMessagePart.Reasoning, text: String) -> Unit)? = null,
 ) {
     val message = node.messages[node.selectIndex]
     val settings = LocalSettings.current.displaySetting
@@ -142,6 +144,9 @@ fun ChatMessage(
     )
     var showActionsSheet by remember { mutableStateOf(false) }
     var showSelectCopySheet by remember { mutableStateOf(false) }
+    // #1929 正在编辑的推理 part。**remember 而非 rememberSaveable**：编辑器内容不进
+    // saved state（大文本切后台 TransactionTooLargeException，上游 ed3569c7 同款）。
+    var editingReasoning by remember { mutableStateOf<UIMessagePart.Reasoning?>(null) }
     val navController = LocalNavController.current
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
@@ -226,6 +231,9 @@ fun ChatMessage(
                 onToolAnswer = onToolAnswer,
                 onApproveAll = onApproveAll,
                 onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
+                onReasoningEditRequest = if (onEditReasoning != null) {
+                    { editingReasoning = it }
+                } else null,
             )
 
             message.translation?.let { translation ->
@@ -317,6 +325,18 @@ fun ChatMessage(
             }
         )
     }
+
+    if (editingReasoning != null) {
+        val target = editingReasoning!!
+        ReasoningEditDialog(
+            initialText = target.reasoning,
+            onDismissRequest = { editingReasoning = null },
+            onConfirm = { text ->
+                editingReasoning = null
+                onEditReasoning?.invoke(message.id, target, text)
+            },
+        )
+    }
 }
 
 @OptIn(FlowPreview::class)
@@ -332,6 +352,7 @@ private fun MessagePartsBlock(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onApproveAll: (() -> Unit)? = null,
     onUserMessageClick: (() -> Unit)? = null,
+    onReasoningEditRequest: ((UIMessagePart.Reasoning) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
@@ -394,6 +415,9 @@ private fun MessagePartsBlock(
                                         model = model,
                                         assistant = assistant,
                                         collapsedAdaptiveWidth = isReasoningOnlyBlock,
+                                        onEditRequest = onReasoningEditRequest?.let { cb ->
+                                            { cb(step.reasoning) }
+                                        },
                                     )
                                 }
                             }

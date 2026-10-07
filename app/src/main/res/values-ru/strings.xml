@@ -297,7 +297,9 @@
   <string name="chat_message_quote_assistant">Ассистент</string>
   <string name="chat_message_quote_context">Цитируемое сообщение</string>
   <string name="chat_message_tool_approve">Одобрить</string>
-  <string name="chat_message_tool_approve_all">Одобрить все</string>
+    <string name="chat_message_reasoning_edit">Изменить рассуждения</string>
+  <string name="chat_message_reasoning_edit_save">Сохранить</string>
+<string name="chat_message_tool_approve_all">Одобрить все</string>
   <string name="chat_message_tool_ask_questions">Задать %d вопросов</string>
   <string name="chat_message_tool_call_generic">Вызван инструмент %1$s</string>
   <string name="chat_message_tool_call_label">Вызван инструмент %1$s</string>

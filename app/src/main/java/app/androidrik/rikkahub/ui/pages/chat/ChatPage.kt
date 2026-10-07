@@ -645,6 +645,9 @@ private fun ChatPageContent(
                 onApproveAll = {
                     vm.handleApproveAllPending()
                 },
+                onEditReasoning = { messageId, reasoning, text ->
+                    vm.updateMessageReasoning(messageId, reasoning.createdAt, text)
+                },
                 onToggleFavorite = { node ->
                     vm.toggleMessageFavorite(node)
                 },
