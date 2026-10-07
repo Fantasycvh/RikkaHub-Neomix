@@ -1,6 +1,7 @@
 package app.androidrik.ai.provider
 
 import androidx.compose.runtime.Composable
+import app.androidrik.common.settings.Enableable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -184,9 +185,9 @@ val ProviderSetting.effectiveApiKeys: String
     }
 
 @Serializable
-sealed class ProviderSetting {
-    abstract val id: Uuid
-    abstract val enabled: Boolean
+sealed class ProviderSetting : Enableable {
+    abstract override val id: Uuid
+    abstract override val enabled: Boolean
     abstract val name: String
     abstract val models: List<Model>
     abstract val proxy: ProviderProxy

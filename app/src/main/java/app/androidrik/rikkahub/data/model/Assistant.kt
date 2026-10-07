@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import app.androidrik.common.settings.Enableable
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.CustomBody
 import app.androidrik.ai.provider.CustomHeader
@@ -15,7 +16,7 @@ import kotlin.uuid.Uuid
 
 @Serializable
 data class Assistant(
-    val id: Uuid = Uuid.random(),
+    override val id: Uuid = Uuid.random(),
     val chatModelId: Uuid? = null, // 如果为null, 使用全局默认模型
     val fallbackChatModelId: Uuid? = null, // 主模型重试耗尽后切换的备用模型（跨 provider 轻量降级）
     val name: String = "",
@@ -141,8 +142,8 @@ data class Assistant(
      * 场景：角色卡导入膨胀出的助手，不再常用但不想丢数据。`@Serializable` 子对象字段
      * 随 JSON 自动持久化，旧数据默认 true，无需迁移。
      */
-    val enabled: Boolean = true,
-)
+    override val enabled: Boolean = true,
+) : Enableable
 
 /**
  * 助手选择器的**过滤纯函数**（UI 与单测共用）。

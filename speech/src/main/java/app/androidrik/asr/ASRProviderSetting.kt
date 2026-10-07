@@ -1,5 +1,6 @@
 package app.androidrik.asr
 
+import app.androidrik.common.settings.Enableable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
@@ -7,8 +8,8 @@ import kotlin.uuid.Uuid
 const val VOLCENGINE_ASR_WEBSOCKET_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
 
 @Serializable
-sealed class ASRProviderSetting {
-    abstract val id: Uuid
+sealed class ASRProviderSetting : Enableable {
+    abstract override val id: Uuid
     abstract val name: String
 
     /**
@@ -21,7 +22,7 @@ sealed class ASRProviderSetting {
      * （用户既然关掉它，就不该悄悄改用另一个可能计费的提供商）。
      * 管理页恒显，便于重新启用。
      */
-    abstract val enabled: Boolean
+    abstract override val enabled: Boolean
 
     abstract fun copyProvider(
         id: Uuid = this.id,

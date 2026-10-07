@@ -2,6 +2,7 @@ package app.androidrik.search
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import app.androidrik.common.settings.Enableable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -142,8 +143,8 @@ data class ScrapedResultMetadata(
 )
 
 @Serializable
-sealed class SearchServiceOptions {
-    abstract val id: Uuid
+sealed class SearchServiceOptions : Enableable {
+    abstract override val id: Uuid
 
     /**
      * 启停开关（false = 已停用/归档）。**每个子类型都作为构造参数声明**（同 [id] 的模式）——
@@ -153,7 +154,7 @@ sealed class SearchServiceOptions {
      * 语义：停用的服务在聊天搜索选择器里隐藏，且选中项被停用时**不注册搜索工具**
      * （联网搜索整体降级）；管理页恒显，可重新启用。
      */
-    abstract val enabled: Boolean
+    abstract override val enabled: Boolean
 
     /** 兼容旧单 key 字段（部分服务无 key，默认空）。@Transient：子类型覆盖字段各自序列化，避免层级重名 */
     @Transient

@@ -1,12 +1,13 @@
 package app.androidrik.tts.provider
 
+import app.androidrik.common.settings.Enableable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
 @Serializable
-sealed class TTSProviderSetting {
-    abstract val id: Uuid
+sealed class TTSProviderSetting : Enableable {
+    abstract override val id: Uuid
     abstract val name: String
 
     /**
@@ -18,7 +19,7 @@ sealed class TTSProviderSetting {
      * **例外：系统 TTS 是兜底**——它不需要 API key（走设备引擎），是唯一「永远可用」的选项，
      * 故不允许停用到一个启用的都不剩：`ensureFallbackTtsEnabled` 会在无人启用时把它拉回来。
      */
-    abstract val enabled: Boolean
+    abstract override val enabled: Boolean
 
     abstract fun copyProvider(
         id: Uuid = this.id,
