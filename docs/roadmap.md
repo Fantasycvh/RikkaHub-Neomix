@@ -1557,10 +1557,36 @@ data class ApiKeyEntry(
     再补一句」用 Jaccard 会被新内容稀释、读成进展）；**调用内熔断**（连续 N 个相同 delta → 从内部结束该流、产出
     终态错误码走正常错误路径，**并先排一条纠正措辞**；且**刻意不做模型 fallback/自动重试**——「静默地给一个已退化
     的模型重新计费，比循环本身更糟」）。判据口径见 `upstream-analysis.md` 注意点 13/15。
-  - **⚠️ 疑似缺陷（优先核实）**：`#1929` 原地编辑推理 × **带签名块回传**——`ClaudeProvider.kt:515` 把带签名的
-    thinking 回传（文本取 `reasoning` 当前值 + 存储的 `signature`），而官方规则是「修改过的块会被拒」⇒ 编辑一条
-    带签名的推理后，下一请求可能 `Invalid signature` 拒整请求；Google `thoughtSignature` 同构。**修法候选**：编辑时
-    清签名元数据（该块从此不再回传）或禁用这类块的编辑入口。详见 `upstream-analysis.md` 注意点 14。
+  - **✅ 已核实（2026-10-08，机制层面确证）**：`#1929` 原地编辑推理 × 带签名块回传**成立**，且比原先判断的面更大。
+    **实测证据**（临时单测经既有反射缝调 provider 私有 `buildMessages`，断言通过后临时文件已删；原始 stdout 见
+    `ai/build/test-results/…/TmpClaudeEditHazardTest.xml`）：
+    - Claude：`original.copy(reasoning = "EDITED_REASONING")` 后发出的块 = **`{"type":"thinking","thinking":"EDITED_REASONING",
+      "signature":"sig-ORIGINAL"}`**——**改过的文本配原签名**；同一断言证明 `metadata` 在 `copy` 后原样保留
+      （签名存活的原因），且 `UIMessagePart.Reasoning.metadata` 是**可序列化字段**（非 `@Transient`）⇒ 跨重启/DB 往返仍带签名。
+    - OpenAI 兼容 chat/completions：默认 `ProviderSetting.includeHistoryReasoning = true` ⇒ 发出的 assistant =
+      **`{"role":"assistant","reasoning_content":"EDITED_REASONING","content":"answer"}`**——**编辑后的推理被原样回传**。
+      `ResponseAPI` 同理（`lastReasoningText = part.reasoning`）⇒ **改名默认路径也吃这个改动**（缓存失效之外，还有讨论串
+      那条「污染 reasoning_content 会诱发随机输出/循环」的风险面）。
+    - Gemini：**无此问题**——`GoogleProvider.toGooglePart()` 对 `Reasoning` 落到 `else -> null`（请求侧不构造 thinking
+      文本），签名/`thoughtSignature` 挂的是**草稿图 Image 与 functionCall 工具块**，`#1929` 不碰它们。
+    - 完整性：全仓「写推理文本」只有两处——`RegexOutputTransformer`（走 `visualTransform`，**仅显示、不改消息**，不进请求）
+      与 `ChatService.kt:279`（即 `#1929`）⇒ **用户可驱动的持久化改写只有编辑入口这一条路**。
+    - **未做（设备当时未连接，`adb devices` 为空）**：真机核验用户库里是否真存在带签名的推理块。接上设备后跑
+      `sqlite3 rikka_hub.db "SELECT COUNT(*) FROM message_node WHERE messages LIKE '%signature%'"`（另查
+      `%redactedData%`、`%thoughtSignature%`）即可判定「风险是否活跃」，并据此决定修复优先级：若库里有 Claude 直接
+      API/转发签名的推理块 ⇒ 用户点一次编辑就会命中下面的 400。
+    - **触发条件**：①provider 为 Claude（直连或转发签名的中转）且模型开着 extended thinking ⇒ 存量里有带签名块；
+      ②用户在推理块表头点编辑并确认（`ChatMessageReasoning.kt:273` 的入口**只判 `!loading && onEditRequest != null`**，
+      **不看元数据**）；③下一次请求带上该消息 ⇒ Anthropic 拒**修改过的块**（本仓自己那条单测名即
+      `unsigned reasoning is dropped to avoid invalid signature rejection`，同族错误）。
+    - **影响**：Claude 路径 = **硬失败**（整请求被拒，且编辑已落库、无「撤销」入口 ⇒ 用户需自己再改回或删分支）；
+      OpenAI 路径 = **静默改动历史**（prompt cache 从该点作废 + 上面那条退化风险）；Gemini 无影响。
+    - **修法候选（未实施，等拍板）**：**A**（推荐）编辑**带签名**的块时**同时清掉签名元数据**（该块从此不回传；对已完成轮次
+      安全，因为无签名块本就被丢弃）+ 对「**带未执行工具**的助手消息」**不提供编辑入口**（那种窗口里丢 thinking 块会撞
+      Anthropic 另一条 400「Expected thinking or redacted_thinking, but found tool_use」）+ 修正两处过期注释
+      （`ChatCompletionsAPI.kt:592` / `ResponseAPI.kt:410` 把「消息被编辑过」列为「没有可回传的」，而编辑后推理文本非空
+      ⇒ 前提已不成立）；**B** 只禁掉带签名块的编辑入口（最保守，Claude 用户失去该功能）；**C** 仅加警示文案。
+      详见 `upstream-analysis.md` 注意点 14。
   - **agentd 可借项**（详见 `peer-apps-benchmark.md` 第九节）：经验记忆 `(state, action, discounted_return)` +
     **每条记忆的信用记账**（→ 给记忆 V2 的第二个理由：渐进披露天然产出**读取遥测**，能回答「这条记忆到底有没有
     起作用」，而「全塞或截断」回答不了）；委员会（**条件触发** + 异议单独成块 + 成员权重=历史胜率）；能力探针与
