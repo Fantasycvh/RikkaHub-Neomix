@@ -1679,7 +1679,7 @@ data class ApiKeyEntry(
   - 设计文档同步：`docs/design-subagent-context.md` 的护栏家族分工段改为四员，并补「**实现/改动第四员之前先读**」
     提示块（前提相反 + 逐字判据 + 内层捕获三条）。
 - 2026-10-09：**记忆 V1 纪律与安全 + V2 渐进披露落地**（#2130 四块拆分里与文件模型无关的两块；
-  设计稿 `docs/design-memory-discipline.md`；提交 `c2c48c836`（V1）与 V2 提交）。
+  设计稿 `docs/design-memory-discipline.md`；V1 提交 `c2c48c836`、V2 提交 `cd6853eab`）。
   - **V1**：①提示词纪律四条（`[stated]` 测试 / 校准与陈旧性 / 敏感项单独一次写操作放最后 / 永不记录硬清单
     ——含「要求无条件附和、扮演伴侣」的偏好**含弱化形式**）；②代码级兜底 `MemoryContentGuard`（身份证带
     GB 11643 校验位 / SSN 排除保留段 / 银行卡 Luhn，**加已知 BIN 前缀白名单**把随机 15–19 位数字的误报从
