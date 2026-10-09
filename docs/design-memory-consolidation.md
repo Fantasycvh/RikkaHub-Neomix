@@ -374,6 +374,46 @@ I/MemoryConsolidator: consolidated f4e707b6-…: applied=0 proposals=0
 - 「应用后写入」与 toast 并存时的观感（本次 `applied=0`，toast 文案是「应用 0 条，建议 2 条」）；
 - 建议列表在人眼里的可读性（`describe()` 只给动作 · 目标 · 内容摘要，是否够用）；
 
+## 8.6 真机 ANR 调查（2026-10-09，**未结案**）
+
+用户在真机上连续遇到「无响应」（22:04–22:07），系统 ANR 文件里的主线程栈：
+
+```
+main (Runnable)
+ at java.lang.StringUTF16.newString / StringBuilder.toString
+ at ByteLevelBpe.encodePiece(ByteLevelBpe.kt:133)
+ at TokenizerRegistry.count → estimateTokens(ContextLength.kt:127)
+ at selectMemoriesForPrompt(GenerationPrompts.kt:237)
+ at ChatService.handleMessageComplete(ChatService.kt:1208)
+```
+
+**已经排除的**（都做了实测，不是推理）：
+
+- **tokenizer 本身不快不慢是够用的**：新增 `TokenizerPerformanceTest`（:common）实测
+  4K 中文字符 1–2 ms、**64K 中文字符 4 ms**、64K ASCII 14 ms；
+- **用户的数据不大**：`memoryentity` 全部记忆合计 **55,752 字符**、最长 3,646 字符 ⇒ 记忆注入的计数就是毫秒级。
+
+所以 5 秒的锅**不是** token 计数本身，而栈顶那一帧只是快照碰巧停在的地方。
+
+**已经改掉的（无争议的两处）**：
+
+1. `ChatService` 里那段记忆注入的计数**只是写一条日志**，却跑在主线程上 ⇒ 丢到
+   `appScope.launch(Dispatchers.Default)`（为写日志拿输入响应当代价，不值）；
+2. **做梦自己的调度器不许在主线程**：`AppScope` 是 `Dispatchers.Main`（`RikkaHubApp.kt:399`），
+   而整理要跑模型循环、切轮次、数 token ⇒ DI 里换成
+   `CoroutineScope(get<AppScope>().coroutineContext + Dispatchers.Default)`（Job 仍挂 AppScope），
+   运行时的四个收集也显式用 `Dispatchers.Default`。
+
+**这次加上的仪表**（为了"下一次复现直接点名"）：
+
+- `ChatService` 准备阶段分段计时：`turn prep phases on <thread>: pre=…ms compress=…ms memories=…ms tools=…ms`；
+- 逐块处理：超过 200 ms 的块记 `slow chunk <类型> took …ms on <thread>`（长回复/带附件的回复里，
+  真正吃主线程的往往是某一块）；
+- 另加 `TokenizerPerformanceTest`（3 项）作为性能护栏。
+
+**结论待补**：等用户在真机上复现一次（触发那条路径即可），用上面的日志点名是哪一段吃掉了主线程，
+再针对性修（若是 `compress`/`tools`/某一块，各自的修法不同）。
+
 ## 9. 未做（下一批）
 
 ### 9.1 提案形态：定为 B（2026-10-09 拍板）

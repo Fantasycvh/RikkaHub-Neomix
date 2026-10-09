@@ -10,6 +10,8 @@ import io.ktor.http.HttpHeaders
 import io.pebbletemplates.pebble.PebbleEngine
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import io.requery.android.database.sqlite.SQLiteCustomExtension
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import app.androidrik.ai.provider.ProviderManager
@@ -354,7 +356,10 @@ val dataSourceModule = module {
     single {
         val foreground: AppForegroundState = get()
         MemoryConsolidationScheduler(
-            scope = get<AppScope>(),
+            // **必须是后台调度器**：AppScope 是 Dispatchers.Main，而整理要跑模型循环、
+            // 切轮次、数 token——放主线程等于拿输入响应当代价（同 AppScope 的那批主线程账单）。
+            // 只换 dispatcher，Job 仍挂在 AppScope 上（进程级生命周期不变）。
+            scope = CoroutineScope(get<AppScope>().coroutineContext + Dispatchers.Default),
             worker = get(),
             isAppVisible = { foreground.isForeground },
         )

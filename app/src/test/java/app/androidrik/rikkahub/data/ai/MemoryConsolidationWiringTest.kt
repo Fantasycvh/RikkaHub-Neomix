@@ -121,6 +121,36 @@ class MemoryConsolidationWiringTest {
     }
 
     @Test
+    fun `no dream work is scheduled on the main thread`() {
+        val di = read("app/androidrik/rikkahub/di/DataSourceModule.kt")
+        val runtime = read("app/androidrik/rikkahub/data/ai/MemoryConsolidationRuntime.kt")
+
+        assertTrue(
+            "调度器必须显式换成后台 dispatcher：AppScope 是 Dispatchers.Main，" +
+                "整理要跑模型循环与 token 计数，放主线程就是 ANR",
+            di.contains("CoroutineScope(get<AppScope>().coroutineContext + Dispatchers.Default)"),
+        )
+        assertFalse(
+            "运行时的收集不许再裸用 AppScope（= Main）",
+            runtime.contains("appScope.launch {"),
+        )
+    }
+
+    @Test
+    fun `the chat path does not count tokens on the main thread for a log line`() {
+        val chat = read("app/androidrik/rikkahub/service/ChatService.kt")
+
+        assertTrue(
+            "记忆注入的计数日志必须丢到后台（它是纯日志，主线程数 token 会让输入卡住）",
+            chat.contains("appScope.launch(Dispatchers.Default) {"),
+        )
+        assertTrue(
+            "主线程分段计时要在场：下次卡顿才能直接点名是哪一段",
+            chat.contains("turn prep phases on ") && chat.contains("slow chunk "),
+        )
+    }
+
+    @Test
     fun `the dream does not hijack the user keep-alive switch`() {
         val source = read("app/androidrik/rikkahub/data/ai/MemoryConsolidationRuntime.kt") +
             read("app/androidrik/rikkahub/di/DataSourceModule.kt")

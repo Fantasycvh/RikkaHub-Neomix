@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.service
 
 import android.app.Application
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
@@ -1124,6 +1125,12 @@ class ChatService(
         // 流式检查点节流时间戳（见 STREAM_CHECKPOINT_INTERVAL_MS）
         var lastCheckpointAt = 0L
 
+        // 主线程分段计时（诊断 ANR 用）：AppScope 是 Dispatchers.Main，这条链路上的准备阶段
+        // （读设置 / 载记忆 / 装工具 / 组装上下文）与逐块处理**都在主线程**。
+        // 真机上出过一次 5 秒无响应，而现场只能说明"在数 token"（实测毫秒级），
+        // 所以把各段耗时打进日志，让下一次复现能直接点名谁吃掉了主线程。
+        val prepStartedAt = SystemClock.elapsedRealtime()
+
         runCatching {
 
             // reset suggestions
@@ -1146,14 +1153,43 @@ class ChatService(
             // 自动压缩（design §4.2 两层分工）：占用达阈值时先把早期历史摘要为检查点，
             // 再按发送窗口组装上下文。失败静默（不影响本次发送，limitContext 仍作兜底）。
             // 重生成历史消息时跳过（走完整轨迹，压缩不改变重生成语义）。
+            val autoCompressAt = SystemClock.elapsedRealtime()
             if (messageRange == null) {
                 maybeAutoCompress(conversationId, settings, model)
             }
 
             val conversation = getConversationFlow(conversationId).value
+            val afterCompressAt = SystemClock.elapsedRealtime()
 
             // start generating
             val session = getOrCreateSession(conversationId)
+            val memoriesAt = SystemClock.elapsedRealtime()
+            // 提到局部变量只为一件事：**分段计时**（AppScope=Main，这一段全在主线程上）
+            val loadedMemories = if (conversation.memoryDisabled) {
+                // 隐身对话：不加载记忆（注入侧另有 memoryDisabled 门控，这里省掉一次查询）
+                emptyList()
+            } else if (assistant.useGlobalMemory) {
+                memoryRepository.getGlobalMemories()
+            } else {
+                memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
+            }
+            val loadedMemoriesAt = SystemClock.elapsedRealtime()
+            val assembledTools = chatToolFactory.createTools(
+                settings = settings,
+                assistant = assistant,
+                model = model,
+                workspaceCwd = conversation.workspaceCwd,
+                conversationId = conversationId.toString(),
+                memoryDisabled = conversation.memoryDisabled,
+            )
+            Log.i(
+                TAG,
+                "turn prep phases on ${Thread.currentThread().name}: " +
+                    "pre=${memoriesAt - prepStartedAt}ms " +
+                    "compress=${afterCompressAt - autoCompressAt}ms " +
+                    "memories=${loadedMemoriesAt - memoriesAt}ms " +
+                    "tools=${SystemClock.elapsedRealtime() - loadedMemoriesAt}ms",
+            )
             generationHandler.generateText(
                 settings = settings,
                 model = model,
@@ -1192,27 +1228,25 @@ class ChatService(
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
                 memoryDisabled = conversation.memoryDisabled,
-                memories = if (conversation.memoryDisabled) {
-                    // 隐身对话：不加载记忆（注入侧另有 memoryDisabled 门控，这里省掉一次查询）
-                    emptyList()
-                } else if (assistant.useGlobalMemory) {
-                    memoryRepository.getGlobalMemories()
-                } else {
-                    memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
-                }.also { loaded ->
+                memories = loadedMemories.also { loaded ->
                     // 每回合一条：注入条数与实际占用（按当前预算选出后的结果）。
                     // 与工具 schema 日志配套——两者是「固定开销」的两大项，合起来看才知道
                     // 上下文被谁吃掉（实测 MCP schema 可达 3 万余 token，远超记忆注入）。
                     // 用 Log.i 而非 Logging.log()：见 ChatToolFactory.logSchemaBreakdown 的说明。
-                    runCatching {
-                        val selected = selectMemoriesForPrompt(loaded, settings.memoryInjectBudgetTokens)
-                        val used = selected.sumOf { estimateTokens(it.content) }
-                        Log.i(
-                            TAG,
-                            "memory inject: ${selected.size}/${loaded.size} memories ≈${used} tokens " +
-                                "(budget=${settings.memoryInjectBudgetTokens})",
-                        )
-                    }.onFailure { Log.w(TAG, "memory inject log failed", it) }
+                    //
+                    // **丢到后台线程**：AppScope 是 Dispatchers.Main，而这段是**纯日志**——
+                    // 让主线程为了写一条日志去数 token，是拿输入响应当代价（真机上撞出过 ANR）。
+                    appScope.launch(Dispatchers.Default) {
+                        runCatching {
+                            val selected = selectMemoriesForPrompt(loaded, settings.memoryInjectBudgetTokens)
+                            val used = selected.sumOf { estimateTokens(it.content) }
+                            Log.i(
+                                TAG,
+                                "memory inject: ${selected.size}/${loaded.size} memories ≈${used} tokens " +
+                                    "(budget=${settings.memoryInjectBudgetTokens})",
+                            )
+                        }.onFailure { Log.w(TAG, "memory inject log failed", it) }
+                    }
                 },
                 inputTransformers = buildList {
                     addAll(inputTransformers)
@@ -1220,15 +1254,9 @@ class ChatService(
                     add(workspaceReminderTransformer)
                 },
                 outputTransformers = outputTransformers,
-                // 工具装配集中到 ChatToolFactory（记忆 + 搜索 + 本地 + 对话 + 工作区 + 技能 + MCP）
-                tools = chatToolFactory.createTools(
-                    settings = settings,
-                    assistant = assistant,
-                    model = model,
-                    workspaceCwd = conversation.workspaceCwd,
-                    conversationId = conversationId.toString(),
-                    memoryDisabled = conversation.memoryDisabled,
-                ),
+                // 工具装配集中到 ChatToolFactory（记忆 + 搜索 + 本地 + 对话 + 工作区 + 技能 + MCP）；
+                // 已在上面取好并计时（assembledTools）
+                tools = assembledTools,
                 initialRecoveryHint = initialRecoveryHint,
             ).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
@@ -1250,6 +1278,10 @@ class ChatService(
                     )
                 )
             }.collect { chunk ->
+                // 逐块处理也在主线程（AppScope=Main）：把最慢的一块记下来，
+                // 长回复/带附件的回复里真正吃主线程的往往是某一块（模板、附件搬运、落库）。
+                val chunkStartedAt = SystemClock.elapsedRealtime()
+                try {
                 when (chunk) {
                     is GenerationChunk.Messages -> {
                         val updatedConversation = getConversationFlow(conversationId).value
@@ -1359,6 +1391,16 @@ class ChatService(
                                 title = context.getString(R.string.agent_run_error_context_budget),
                             )
                         }
+                    }
+                }
+                } finally {
+                    val took = SystemClock.elapsedRealtime() - chunkStartedAt
+                    if (took > 200) {
+                        Log.w(
+                            TAG,
+                            "slow chunk ${chunk::class.simpleName} took ${took}ms on " +
+                                "${Thread.currentThread().name} (conv=$conversationId)",
+                        )
                     }
                 }
             }

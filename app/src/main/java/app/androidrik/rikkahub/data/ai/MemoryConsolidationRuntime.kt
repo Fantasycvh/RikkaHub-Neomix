@@ -8,6 +8,7 @@ import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.AppScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -94,7 +95,7 @@ class MemoryConsolidationRuntime(
             }
         )
 
-        appScope.launch {
+        appScope.launch(Dispatchers.Default) {
             appEventBus.events.collect { event ->
                 if (event is AppEvent.ChatGenerationEnded) {
                     runCatching { trigger.onGenerationEnded(event.conversationId) }
@@ -102,11 +103,11 @@ class MemoryConsolidationRuntime(
                 }
             }
         }
-        appScope.launch {
+        appScope.launch(Dispatchers.Default) {
             runCatching { trigger.resumePending() }
                 .onFailure { Log.w(TAG, "startup resume failed", it) }
         }
-        appScope.launch {
+        appScope.launch(Dispatchers.Default) {
             // 自动整理的结果**只在这里**变成用户可见的一次性提示（手动整理的结果落在记忆页状态里）
             scheduler.automaticRuns.collect { run ->
                 if (run.changedMemories == 0 && run.proposals.isEmpty()) return@collect
