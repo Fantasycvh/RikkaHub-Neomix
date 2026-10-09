@@ -139,9 +139,12 @@ interface MemoryConsolidationWorker {
 | `memoryModifyApproval` / `memoryCreateApproval` | 默认拦改、放行新增 | **做梦是后台 agent 写记忆，必须尊重它**：审批开着 ⇒ 做梦**只做不动库的分析**（产出降级为待办/提案，不改记忆库）；审批关着 ⇒ 全自动改库。否则用户的审批设置会被架空成「只在对话里有效」的半截开关——那正是本仓评估上游 #2130 时列的阻塞④，不能自己再犯一遍 |
 | `Assistant.memoryConsolidationSince`（新，默认 0 = 关） | 已落地（V3-b1） | 只控制**自动**整理（手动不受它约束，见 §7.1）；同时是「只对开启之后负责」的基线 |
 
-审批开着时的「提案」形态**先不做一套新 UI**：worker 把变更集写进运行结果与日志、在会话外不发通知、
-记忆页只在有提案时显示一行「有 N 条建议（审批开着时不自动应用）」。若用起来发现用户想逐条勾选，
-再升级为待办区（V4 之后再评）。
+审批开着时的「提案」形态**定为 B（2026-10-09 拍板，见 §9 的对比）**：**会话内一次性通知 + 记忆页列出
+本次整理的建议**，不做提案表、不做一键应用。建议只活在进程内（调度器的
+`statusOf(memoryId).lastRun.proposals`），重启即失；用户要按建议改，走记忆页已有的编辑能力。
+为什么不上来就做「落库 + 逐条批准」：那需要先设计好**成组**（合并 = `edit` + `delete`，逐条批准下
+「批准 delete、忽略 edit」会直接丢内容）与**过期**（提案期间目标被改/被删需要前置条件）两件事，
+而这两条得看过真实提案才好定。
 
 ### 7.3 成本护栏（**已随 V3-b2 落地**，与护栏家族同款：优雅停止 + 结果照常回填 + 诊断日志）
 
@@ -263,9 +266,10 @@ debug 包（`app.androidrik.rikkahub.debug`，用户真实库）升级安装并�
 **两条与文档不同的实现修正**（§7.3 已就地更新）：离线/无模型改成"不发请求但记成失败换退避"；
 频次上限取 **6 小时**（不是"每天 1 次"的举例），且为此给 `findPending` 加了 `manual` 参数。
 
-**⚠️ 仍不接线，且有一处阻塞**：提案目前只落在运行结果与日志里、**没有持久化**，也没有"逐条批准"的
-界面。也就是说**审批开着的用户此刻不该被接上自动触发**——否则等于白烧一次模型调用。V3-b3 必须先补
-「提案持久化 + 应用入口」，再接线（见 §9）。
+**⚠️ 本批不接线**（这一句原来写的是"前置阻塞：提案没持久化之前别接自动触发"，**2026-10-09 更正**）：
+事实性内容在聊天当下就由 `memory_tool` 写入了（V1/V2 的纪律管着），做梦的增量价值是**整理**
+（去重/合并/纠类/校准重要度）。所以丢掉一批建议的损失是「**整理收益延后**」，不是内容丢失——
+它是体验缺口而非数据缺口，B 形态（§7.2 + §9）下可以先接线。接线本身留给 V3-b3。
 
 **验证**（:app **1412 → 1437**）：
 
@@ -286,18 +290,34 @@ debug 包（`app.androidrik.rikkahub.debug`，用户真实库）升级安装并�
 
 ## 9. 未做（下一批）
 
-- **提案的持久化与应用入口**（V3-b3 的**前置**）：现在提案只落在运行结果与日志里，重启即失。
-  审批开着（`memoryModifyApproval` 默认就是开的）的用户，用起来的体验会是「后台花了钱、只在当场
-  看了一眼建议」——所以**在补上「落库 + 逐条批准/丢弃」之前不要接自动触发**。
-  落地形态：一张 `memory_consolidation_proposal` 表（记 `memory_id` / `action` / `target_id` / 载荷 /
-  时间）+ 记忆页的待办区（勾选应用 = 回放成一次 `memory_tool` 调用）；
-- **V3-b3 接线**：Koin 单例（`MemoryConsolidationScheduler` + `MemoryConsolidator` + 两个 lambda：
-  `{ memoryRepository.getMemoriesOfAssistant(it) }` 与 `{ conversationRepository.getConversationById(it) }`）
-  + 四个钩子（轮末 `ChatService` 生成结束处 / 切后台 `RikkaHubApp` 生命周期 / 离开对话 导航离页 /
-  启动补漏 `RikkaHubApp.onCreate`）+ 前台服务（复用 `KeepAliveService`）+ 记忆页「整理一下」与状态
-  （`statusOf` / `automaticRuns` 两个流已按"设置页与一次性提示"的需要留好）；
-- **真机验证**（V3-b3 之后）：一次真实整理的观感（日志里的 applied/proposals 计数、水位推进、
-  自动触发间隔是否体感合适），以及「审批开着 ⇒ 只提案」这条路径端到端。
+### 9.1 提案形态：定为 B（2026-10-09 拍板）
+
+**B = 会话内一次性通知 + 记忆页列出本次整理的建议**（不做提案表、不做一键应用）：
+建议只活在进程内（`statusOf(memoryId).lastRun.proposals`），重启即失；要看要改就在记忆页当场看、
+按现有编辑能力自己改。**只提案那一轮的水位照旧推进**（不重复分析 = 不重复花钱）。
+
+为什么不上来就做 **A = 落库 + 逐条批准**：它把正确性责任从人挪到了代码，必须先解决两件硬事——
+① **成组**：合并类建议天然是 `edit` + `delete` 一对，逐条批准下「批准 delete、忽略 edit」= **内容丢失**；
+② **过期**：提案期间目标记录被改/被删时，一键应用会覆盖用户的手改，需要存前置条件（`updatedAt`／内容比对）
+并定义过期行为。这两条**看过真实提案才好定**（建议里合并占多大比例、动作是否低风险），
+而 B 正好用来先验证最大的未知：prompt/agent 的输出质量。
+
+将来若真实数据表明建议量大、值得批量应用，再升级为 **A′**（落库 + 每轮「全部应用/全部忽略」，
+整轮原子应用 ⇒ 半状态问题消失）或 **A**（逐条 + 成组 + 前置条件）。**不要**在没有真实数据时直接做 A。
+
+### 9.2 接线（V3-b3）
+
+- **Koin 单例**：`MemoryConsolidationScheduler` + `MemoryConsolidator`（两个 lambda：
+  `{ memoryRepository.getMemoriesOfAssistant(it) }`、`{ conversationRepository.getConversationById(it) }`）
+  + `MemoryConsolidationGenerationAgent`（`GenerationHandler` + `MemoryRepository` + `Json`）；
+- **四个钩子**：轮末（`ChatService` 生成结束处）/ 切后台（`RikkaHubApp` 生命周期）/ 离开对话
+  （导航离页）/ 启动补漏（`RikkaHubApp.onCreate`）；
+- **前台服务**：复用 `KeepAliveService` 实现 `MemoryDreamKeepAlive`；
+- **UI**：会话内一次性通知（走 `automaticRuns`）+ 记忆页的「整理一下」按钮与状态
+  （`statusOf`：待整理轮数 / 进行中 / 上次结果 + 本次建议列表）；
+- **真机验证**：一次真实整理的观感（日志里的 applied/proposals、水位推进、自动触发间隔是否体感合适），
+  以及「审批开着 ⇒ 只提案」这条路径端到端。
+
 - **V4 Markdown 文件库**：等上游 #2130 合并/稳定后再评。
 
 相关：`docs/design-memory-discipline.md`（V1 纪律 / V2 渐进披露 / §4.6 信用记账）、
