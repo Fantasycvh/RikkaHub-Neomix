@@ -1824,6 +1824,19 @@ data class ApiKeyEntry(
     **同时更正上一批记的一句过重判断**：原写「提案没持久化前不该接自动触发（否则白烧一次调用）」——
     事实性内容在聊天当下已由 `memory_tool` 写入，丢掉建议的损失是**整理收益延后**、不是内容丢失，
     属体验缺口而非数据缺口，B 形态下可以先接线。设计稿 §7.2/§8.3/§9.1。
+- 2026-10-09：**发布 v1.0.26 (292) 草稿**（`113b3188c` + tag `v1.0.26`，草稿资产
+  `RikkaHub.Plus-1.0.26-arm64-v8a.apk`，距上一版 `v1.0.25 (291)` 共 **34 个提交**）。
+  - 内容：记忆三块（V1 纪律与安全 / V2 渐进披露与读取遥测 / V3 做梦整理）+ 信用记账 +
+    移除「附和/压制批评/扮演伴侣」纪律 + 护栏家族第四员（思考退化）+ 编辑思考过程（#1929 与签名警示）+
+    启停/墓碑抽象化 + 主线程 token 计数与做梦任务搬离主线程（ANR 调查）+ 建议黏性修复；
+  - 核验：`aapt` ⇒ versionCode **292** / versionName **1.0.26** / native-code `arm64-v8a`；
+    `apksigner` 证书 SHA-256 `0658ecdc…3c9277` 与 `local.properties` 指向的 keystore 一致
+    ⇒ 可原地覆盖升级 291；草稿资产已上传（77,751,334 字节）；
+  - 草稿里留了一节**已知问题**（偶发「无响应」调查未结案，带日志判据），发布前可删。
+  - 踩坑：`scripts/build.sh` 里 `export GRADLE_USER_HOME=<gradle-home>/gradle` 是 **POSIX 路径**，
+    Windows 的 JVM 认不出来 ⇒ 被当成空缓存去下载 gradle-9.5.0-bin 而超时（缓存其实在全的）。
+    本次改用 `./gradlew :app:assembleRelease --max-workers=2` 直接出包（环境里的 `GRADLE_USER_HOME`
+    本就是 `<gradle-home>`），5m55s 成功。
 - 2026-10-09（同日第七刀，**V3-b3**）：**做梦接上线了**——开关从「看得见但不工作」变成真的会跑。
   - **Koin 6 个单例**（进度表 DAO / 数据面 / 整理 agent / worker / 调度器 / 运行时）+ **三个钩子**
     （轮末 `AppEvent.ChatGenerationEnded` / 切后台 `ProcessLifecycleOwner.onStop` / 启动补漏
