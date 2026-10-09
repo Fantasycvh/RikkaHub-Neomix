@@ -13,6 +13,7 @@ import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.util.ToolSchemaSize
+import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.mcp.McpNameSanitizer
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
@@ -147,11 +148,7 @@ class ChatToolFactory(
         // **会话级「不使用记忆」时不装配**（隐身对话，见 docs/design-memory-discipline.md §4.4）：
         // 开关要能拦住「这次对话碰我的记忆库」，否则模型仍可 memory_read 逐条读回来、开关等于装饰。
         if (assistant.enableMemory && !memoryDisabled) {
-            val memoryAssistantId = if (assistant.useGlobalMemory) {
-                MemoryRepository.GLOBAL_MEMORY_ID
-            } else {
-                assistant.id.toString()
-            }
+            val memoryAssistantId = assistant.memoryId()
             segments += ToolSegment(
                 "memory",
                 buildMemoryTools(

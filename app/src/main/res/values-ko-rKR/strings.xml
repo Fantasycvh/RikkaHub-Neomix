@@ -116,6 +116,8 @@
   <string name="assistant_page_memory_modify_approval_desc">활성화하면 AI가 기존 기억을 편집하거나 삭제하기 전에 확인을 요청합니다. 새 기억 추가는 항상 확인 없이 기록됩니다.</string>
   <string name="assistant_page_memory_create_approval">기억 생성 승인</string>
   <string name="assistant_page_memory_create_approval_desc">활성화하면 AI가 새 기억을 추가하기 전에도 확인을 요청합니다. 기본값은 꺼짐(새 기억은 바로 기록됨)입니다.</string>
+  <string name="assistant_page_memory_consolidation">유휴 시 기억 정리(드림)</string>
+  <string name="assistant_page_memory_consolidation_desc">대화가 유휴 상태가 되면 모델을 한 번 호출해 새로 이야기한 내용을 중복 제거해 기억 라이브러리에 병합합니다. 이 기능을 켠 시점 이후의 새 내용만 처리합니다. 모델 할당량을 사용합니다.</string>
   <string name="assistant_page_message_template">메시지 내용 템플릿</string>
   <string name="assistant_page_message_template_desc">LLM에 전송되기 전 채팅 메시지 형식을 제어. 일반적으로 수정할 필요 없음</string>
   <string name="assistant_page_message_template_missing_message">템플릿에 {{ message }}가 없어 사용자 메시지가 전송되지 않습니다</string>

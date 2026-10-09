@@ -341,6 +341,29 @@ private fun AssistantMemoryContent(
                 }
             )
             item(
+                headlineContent = { Text(stringResource(R.string.assistant_page_memory_consolidation)) },
+                supportingContent = {
+                    Text(
+                        text = stringResource(R.string.assistant_page_memory_consolidation_desc),
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        // 开 = 记下开启时刻（它同时是「只对之后的新内容负责」的基线，见
+                        // docs/design-memory-consolidation.md §7）；关 = 0
+                        checked = assistant.memoryConsolidationSince > 0L,
+                        onCheckedChange = { checked ->
+                            onUpdateAssistant(
+                                assistant.copy(
+                                    memoryConsolidationSince = if (checked) System.currentTimeMillis() else 0L
+                                )
+                            )
+                        },
+                        enabled = assistant.enableMemory
+                    )
+                }
+            )
+            item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_recent_chats)) },
                 supportingContent = {
                     Text(

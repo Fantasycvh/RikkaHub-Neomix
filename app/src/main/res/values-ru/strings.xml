@@ -116,6 +116,8 @@
   <string name="assistant_page_memory_modify_approval_desc">Если включено, ИИ должен получить ваше подтверждение перед изменением или удалением существующей памяти. Добавление новых записей всегда выполняется без подтверждения.</string>
   <string name="assistant_page_memory_create_approval">Подтверждение создания памяти</string>
   <string name="assistant_page_memory_create_approval_desc">Если включено, ИИ также должен получить ваше подтверждение перед добавлением новой памяти. По умолчанию выключено (новые записи сохраняются сразу).</string>
+  <string name="assistant_page_memory_consolidation">Упорядочивание памяти в простое (сон)</string>
+  <string name="assistant_page_memory_consolidation_desc">Когда чат переходит в простой, модель вызывается один раз, чтобы объединить и убрать дубликаты нового содержимого в библиотеке памяти. Обрабатывается только содержимое новее момента включения. Расходует лимит модели.</string>
   <string name="assistant_page_message_template">Шаблон содержимого сообщения</string>
   <string name="assistant_page_message_template_desc">Управляет форматом содержимого сообщений чата перед отправкой в LLM, обычно изменять не требуется</string>
   <string name="assistant_page_message_template_missing_message">Шаблон не содержит {{ message }}, сообщения пользователя не будут отправлены</string>

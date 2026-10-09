@@ -82,6 +82,18 @@ data class Assistant(
      * 与 [memoryModifyApproval] 相互独立（可只拦新增、不拦修改）。
      */
     val memoryCreateApproval: Boolean = false,
+    /**
+     * **空闲后整理记忆（做梦，V3）**：`0` = 关；`> 0` = 开启时刻（epoch millis）。
+     *
+     * 用一个时间戳而不是 `Boolean`：它**同时是基线**——做梦只对「开启之后的新轮次」负责。
+     * 否则刚拨开开关就会把几百个历史会话一次性灌进整理队列（用户没要求的后台模型花费）；
+     * 关了再开以新的时刻为准（关闭期间的内容不补算）。想要历史被整理，走**手动整理**
+     * （不受基线与开关限制）。见 `docs/design-memory-consolidation.md` §7。
+     *
+     * **默认关**：做梦是额外的一次后台模型调用，属于「会在用户没看着的时候花钱」的自动行为，
+     * 本仓对这类功能一贯要求显式开启。
+     */
+    val memoryConsolidationSince: Long = 0L,
     val enableRecentChatsReference: Boolean = false,
     val messageTemplate: String = "{{ message }}",
     /**

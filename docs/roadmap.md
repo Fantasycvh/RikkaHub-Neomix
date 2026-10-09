@@ -1757,10 +1757,36 @@ data class ApiKeyEntry(
     否则 `memoryModifyApproval` 会被架空成「只在对话里有效」的半截开关——正是本仓评估上游 #2130 的阻塞④。
     三条成本护栏：单次整理步数上限（自动 ≤16 / 手动 ≤32）、每库每日自动频次上限、**离线或无可用模型时跳过
     且不记成失败**。**不加全局总闸**（等做梦/定时任务/自动备份这类后台自动化多起来再统一收口）。
-    代价与位置：零 DB 迁移（助手是 DataStore 里的 JSON，缺字段反序列化即默认），UI 落
-    `AssistantMemoryPage`（与 `enableMemory`/`memoryModifyApproval` 同组）+ 记忆页「整理一下」；
-    **与 worker 同批落地**——现在只加字段就是一个能拨但没作用的开关。
+    代价与位置：**零 DB 迁移**（助手是 DataStore 里的 JSON，缺字段反序列化即默认），UI 落
+    `AssistantMemoryPage`（与 `enableMemory`/`memoryModifyApproval` 同组）；**编码用时间戳而不是
+    `Boolean`**（`memoryConsolidationSince`：0 = 关，> 0 = 开启时刻）——它**同时是基线**，否则刚拨开开关
+    就会把该助手几百个历史会话一次性灌进整理队列（用户没要求的后台花费）；关掉再开以新时刻为准，
+    想整理历史走手动整理。
   - **契约随之收窄**（同日）：`pendingOf` 与 `memoryIdsWithUpdates` 是**自动**整理的判据（隐身对话、
     停用助手、没开记忆、做梦开关为关 ⇒ 一律返回 null）；**`findPending` 不判任何开关**——它回答
     「库里还有没有没整理的轮次」，手动整理走的正是这条路径。
+- 2026-10-09（同日第五刀，**V3-b1**）：**做梦的进度表 + 非 LLM 四条 + 助手级开关落地**（仍不接线）。
+  - **进度表**：`memory_consolidation(conversation_id PK, consolidated_at)`，挂会话 **CASCADE 外键**
+    （会话删了进度跟着走；孤儿行会让"恢复备份后又出现同一 id"拿旧进度当基线、静默漏轮次）；
+    **DB 34 → 35**，纯新增表（AutoMigration，无回填——没有进度行就等于用开启时刻当基线）。
+  - **数据面**（`MemoryConsolidationRepository`）：实现契约里与模型无关的四条（`pendingOf` /
+    `memoryIdsWithUpdates` / `findPending` / `markConsolidated`）；**刻意不实现
+    `MemoryConsolidationWorker` 接口**（`consolidate` 属下一批——半实现的接口比不实现更容易让人以为
+    已经能整理了）。门控/基线/轮数都是纯函数（`data/ai/MemoryConsolidation.kt`），顺手把
+    `Assistant.memoryId()` 的两处重复写法（`ChatToolFactory` 与 `AssistantDetailVM`）收成一处。
+  - **两个实现细节**：①`message_node` 表**没有时间戳**（时间在消息 JSON 里）⇒ **粗筛走 SQL**
+    （`COALESCE(last_message_at, update_at)` 与基线比较，`last_message_at` 由末尾消息的 createdAt 维护、
+    改标题不会刷新）、**精算走内存**（"节点里有没有基线之后的消息"）；精算为 0 的候选**不写进度行**
+    （写了就把没整理的内容标记成整理过了）。②全局库 `__global__` 被多个助手共用时，基线取参与助手中
+    **最晚**的开启时刻（保守方向：宁可少整理，不许多花钱）。
+  - **助手级开关字段 + UI**已落地（默认关、`enabled = assistant.enableMemory` 从属、6 语言 2 条文案）。
+    **⚠️ 诚实边界：开关已可见、判据已生效，但拨动后暂时没有可观察效果**——触发者（四个钩子）与
+    `consolidate` 都在下一批。
+  - 验证：`MemoryConsolidationPolicyTest` 7 项（门控矩阵 / 基线取大 / 轮数边界 / 一轮多条消息只算一轮 /
+    空节点不炸 / 全局库 id / **老 JSON 缺键落到默认关**）+ `MemoryConsolidationRepositoryTest` 12 项
+    （四道门控各自生效 / 只数开启之后的轮次 / 进度顶过基线 / 共享库跨助手合并且基线取最晚 /
+    粗筛命中但精算为 0 被丢弃且不写进度 / 限流与"新内容优先" / 未知库不查库 / 标记已整理后不再待整理）；
+    :app **1393 → 1412**、:ai 252 全绿。真机迁移冒烟见下条。
+  - 设计稿 `docs/design-memory-consolidation.md` §8.1；下一批 V3-b2（worker/提示词/审批降级/成本护栏）
+    与 V3-b3（Koin + 四钩子 + 前台服务 + 记忆页「整理一下」与状态）。
 

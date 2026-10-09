@@ -116,6 +116,8 @@
   <string name="assistant_page_memory_modify_approval_desc">有効にすると、AI が既存の記憶を編集・削除する前に確認を求めます。新しい記憶の追加は常に確認なしで記録されます。</string>
   <string name="assistant_page_memory_create_approval">記憶の追加承認</string>
   <string name="assistant_page_memory_create_approval_desc">有効にすると、AI が新しい記憶を追加する前にも確認を求めます。既定ではオフ（新しい記憶はそのまま記録されます）。</string>
+  <string name="assistant_page_memory_consolidation">アイドル時に記憶を整理（ドリーム）</string>
+  <string name="assistant_page_memory_consolidation_desc">会話がアイドル状態になると、モデルを一度呼び出して新しく話した内容を重複排除して記憶ライブラリに統合します。オンにした時点より新しい内容だけが対象です。モデルの利用枠を消費します。</string>
   <string name="assistant_page_message_template">チャットコンテンツテンプレート</string>
   <string name="assistant_page_message_template_desc">チャットメッセージがLLMに送信される前のコンテンツ形式を制御します。通常は変更する必要がありません</string>
   <string name="assistant_page_message_template_missing_message">テンプレートに{{ message }}が含まれていないため、ユーザーのメッセージは送信されません</string>

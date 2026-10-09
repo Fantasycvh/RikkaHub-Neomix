@@ -118,6 +118,8 @@
   <string name="assistant_page_memory_modify_approval_desc">启用后，AI 修改或删除已有记忆前需要你确认；新增记忆始终直接记录、不打断。</string>
   <string name="assistant_page_memory_create_approval">记忆创建审批</string>
   <string name="assistant_page_memory_create_approval_desc">启用后，AI 新增记忆前也需要你确认。默认关闭（新增记忆直接记录）。</string>
+  <string name="assistant_page_memory_consolidation">空闲后整理记忆（做梦）</string>
+  <string name="assistant_page_memory_consolidation_desc">对话空闲后调用一次模型，把新聊到的内容去重、合并进记忆库。只处理开启之后的新内容（更早的历史不会自动整理）。会消耗模型额度。</string>
   <string name="assistant_page_message_template">聊天内容模板</string>
   <string name="assistant_page_message_template_desc">控制聊天消息在发送给LLM之前的内容格式，通常不需要修改</string>
   <string name="assistant_page_message_template_missing_message">模板不包含 {{ message }}，用户消息将不会被发送</string>

@@ -4,8 +4,9 @@
 > `upstream-analysis.md` 2026-10-08 节）。该块**与文件模型无关**：`MemoryConsolidationScheduler`
 > 只认 `memoryId` + `MemoryConsolidationWorker` 接口，所以可以先落到本仓的记录模型上。
 >
-> 现状：**框架已落地（2026-10-09）**——调度策略 + 接口契约 + 保活抽象 + 21 项虚拟时间测试；
-> worker 实现、进度表、接线与 UI 见 §9（下一批）；**助手级启停与成本护栏的决策已定**（§7）。
+> 现状（2026-10-09）：**框架已落地**——调度策略 + 接口契约 + 保活抽象 + 22 项虚拟时间测试（§8）；
+> **V3-b1 已落地**（§8.1）：进度表 + 非 LLM 四条数据面 + 助手级开关字段与 UI（DB 34 → 35）；
+> worker 实现（`consolidate`）与接线见 §9——**本批故意一处都没接**（没有触发者，也就没有可跑的整理）。
 
 ## 1. 要解决什么
 
@@ -105,18 +106,24 @@ interface MemoryConsolidationWorker {
 | 默认值提到 `companion object` | `DEFAULT_IDLE_DELAY = 2.minutes`、`DEFAULT_MAX_PENDING_TURNS = 6`（与上游取值一致，便于将来对照） |
 | **不移植** `MemoryDreamForegroundService` | 本批不接线；本仓已有 `KeepAliveService` 可复用，保活接口（`fun interface` + 空句柄默认）已经留好 |
 
-## 7. 助手级启停与成本护栏（**决策已定**，随 worker 批次落地）
+## 7. 助手级启停与成本护栏（**决策已定**；字段与 UI 已随 V3-b1 落地）
 
 做梦与注入**不是一类成本**：注入只是同一次请求里多几千 token（被动、不额外花钱），做梦是**额外的一次
 后台模型调用**（多步、在用户没看着的时候发）。所以启停与限额必须是一等公民，而不是"有了再说"。
 
-### 7.1 开关放在助手级（三条决策，2026-10-09 拍板）
+### 7.1 开关放在助手级（三条决策 + 编码方式，2026-10-09）
 
 | 决策 | 取值 | 为什么 |
 |---|---|---|
-| 粒度 | **助手级**（`Assistant` 加一个开关字段） | 记忆本身是助手级的（`memoryId` = `assistantId`，含 `__global__`），开关粒度应与"被影响的单位"一致；花费也记在助手头上 |
-| 默认值 | **默认关**（显式开启） | 「会在没看着的时候花钱/发请求」的自动行为，本仓一贯显式开启（世界书预算、记忆提取管道「须配开关」）。**代价要认**：默认关 ⇒ 功能对多数用户静默闲置，所以**手动入口必须同时存在**（记忆页「整理一下」+ 开启时的说明文案：空闲后会调一次模型整理记忆库） |
+| 粒度 | **助手级**（`Assistant.memoryConsolidationSince`） | 记忆本身是助手级的（`memoryId` = `assistantId`，含 `__global__`），开关粒度应与"被影响的单位"一致；花费也记在助手头上 |
+| 默认值 | **默认关**（显式开启） | 「会在没看着的时候花钱/发请求」的自动行为，本仓一贯显式开启（世界书预算、记忆提取管道「须配开关」）。**代价要认**：默认关 ⇒ 功能对多数用户静默闲置，所以**手动入口必须同时存在**（记忆页「整理一下」，见 §4 的契约收窄） |
 | 手动整理 | **开关关掉后仍可用**（手动绕过开关） | 开关管的是**自动化**；用户显式点击即主动授权（与审批语义同源：显式动作放行）。对应契约里 `findPending` 不判开关（§4） |
+| 编码方式 | **时间戳而不是 `Boolean`**：`0` = 关，`> 0` = 开启时刻 | 它**同时是基线**（见下）。两个字段（开关 + 基线）会漂移，一个字段只有一个事实 |
+
+**为什么需要"开启时刻"这个基线**：做梦只对「开启之后的新轮次」负责。若没有它，刚拨开开关就会把该助手
+**几百个历史会话一次性灌进整理队列**——用户没要求的后台模型花费，而且会把新内容挤到后面。关掉再开以新的
+时刻为准（关闭期间的内容不补算）；想整理历史走**手动整理**（不受基线与开关约束）。全局库（`__global__`）
+被多个助手共用时，基线取参与助手中**最晚**的开启时刻（保守方向：宁可少整理，不许多花钱）。
 
 **不加全局总闸**（全局「禁用一切后台自动化」）：助手级已经能表达"这个助手别整理"，再加一层会让
 「为什么它没整理」变成一个要看两处的问题。等本仓的**后台自动化**多起来（做梦 / 定时任务 / 自动备份），
@@ -130,7 +137,7 @@ interface MemoryConsolidationWorker {
 | `Assistant.enableMemory`（默认 false） | 有 | 关 ⇒ 没有记忆可整理 ⇒ 不整理（天然前提，不重复开关） |
 | `Conversation.memoryDisabled`（隐身对话） | 有 | 该对话的轮次不进整理（已在 §4 契约里） |
 | `memoryModifyApproval` / `memoryCreateApproval` | 默认拦改、放行新增 | **做梦是后台 agent 写记忆，必须尊重它**：审批开着 ⇒ 做梦**只做不动库的分析**（产出降级为待办/提案，不改记忆库）；审批关着 ⇒ 全自动改库。否则用户的审批设置会被架空成「只在对话里有效」的半截开关——那正是本仓评估上游 #2130 时列的阻塞④，不能自己再犯一遍 |
-| `Assistant.<做梦开关>`（新，默认 false） | — | 只控制**自动**整理（手动不受它约束，见 §7.1） |
+| `Assistant.memoryConsolidationSince`（新，默认 0 = 关） | 已落地（V3-b1） | 只控制**自动**整理（手动不受它约束，见 §7.1）；同时是「只对开启之后负责」的基线 |
 
 审批开着时的「提案」形态**先不做一套新 UI**：worker 把变更集写进运行结果与日志、在会话外不发通知、
 记忆页只在有提案时显示一行「有 N 条建议（审批开着时不自动应用）」。若用起来发现用户想逐条勾选，
@@ -145,14 +152,16 @@ interface MemoryConsolidationWorker {
   但"现在没网"不是失败，把它记成失败会让记忆库被莫名挂起；
 - 框架层已有：失败不自动重试、同库单飞、取消不算失败、保活失败不构成功能失败。
 
-### 7.4 落地成本与位置
+### 7.4 落地成本与位置（**已随 V3-b1 落地**）
 
-- `Assistant.<新字段>: Boolean = false` ⇒ **零 DB 迁移**（助手是 DataStore 里的 JSON，
+- `Assistant.memoryConsolidationSince: Long = 0L` ⇒ **零 DB 迁移**（助手是 DataStore 里的 JSON，
   `Settings.assistants`；缺字段反序列化即默认。与 `Conversation.memoryDisabled` 不同——那个在 Room
-  表里所以加了列）；
-- UI：助手详情 → **`AssistantMemoryPage`**（`enableMemory` / `memoryModifyApproval` 那几个开关的同组，
-  从属关系 `enabled = assistant.enableMemory` 现成）+ 记忆页的「整理一下」入口；6 语言文案；
-- **与 worker 同批落地**：现在只加字段 = 一个能拨但没作用的开关，比没有更糟（用户会以为它在工作）。
+  表里所以加了列），并有单测钉住「老 JSON 缺这个键必须落到 0」；
+- 归属：**助手详情 → `AssistantMemoryPage`**，与 `enableMemory` / `memoryModifyApproval` 同组，
+  从属关系 `enabled = assistant.enableMemory` 现成；6 语言文案各 2 条；
+- **⚠️ 当前状态：开关已可见、判据已生效，但拨动后暂时没有可观察效果**——自动整理要等四个钩子接线
+  （V3-b3），`consolidate` 要等 V3-b2。这是拆批的诚实边界：字段与门控是"活"的（有单测与真实消费者），
+  只是还没有触发者。若在接线前不想让它出现在 UI 里，把这一项从 `AssistantMemoryPage` 摘掉即可（无副作用）。
 
 ## 8. 验收面
 
@@ -174,24 +183,55 @@ interface MemoryConsolidationWorker {
 **新增测试依赖**：`kotlinx-coroutines-test`（版本跟 `kotlin-coroutines-core` 走）。这是本仓第一次用它，
 代价是一个 test-only 依赖；收益是上面这些关于「时间」的断言可以写成确定的。
 
+## 8.1 V3-b1 已落地（2026-10-09）：进度表 + 非 LLM 四条 + 助手级开关
+
+**做了什么**
+
+- **进度表**：`memory_consolidation(conversation_id PK, consolidated_at)`，挂 `ConversationEntity`
+  **CASCADE 外键**（会话删了进度跟着走——孤儿行会让"恢复备份后又出现同一 id"拿旧进度当基线、静默漏轮次）；
+  **DB 34 → 35 纯新增表**（AutoMigration，无回填：没有进度行就等于用开关开启时刻当基线）；
+- **数据面**（`MemoryConsolidationRepository`）：实现契约里与模型无关的四条——`pendingOf` /
+  `memoryIdsWithUpdates` / `findPending` / `markConsolidated`。**刻意不实现 `MemoryConsolidationWorker`
+  接口**：`consolidate` 属下一批，半实现的接口比不实现更容易让人以为"已经能整理了"；
+- **纯策略**（`data/ai/MemoryConsolidation.kt`）：门控三道闸、基线 = `max(开启时刻, 进度)`、
+  轮数计数、记忆库 id 解析。顺手消掉一处重复：`Assistant.memoryId()` 原先在 `ChatToolFactory`
+  与 `AssistantDetailVM` 各写一遍（全局记忆分支），现在有唯一定义；
+- **助手级开关字段 + UI**（见 §7）。
+
+**两个实现细节值得记**
+
+- **轮数怎么数**：`message_node` 表**没有时间戳**（时间在消息 JSON 里），所以精确轮数只能在内存里数；
+  于是"粗筛走 SQL、精算走内存"——SQL 只按 `COALESCE(last_message_at, update_at)` 与基线过滤，
+  精算按"节点里有没有基线之后的消息"，为 0 的候选**不写进度行**（写了就把没整理的内容标记成整理过了）。
+  `last_message_at` 由保存路径从末尾消息的 `createdAt` 维护（改标题不会刷新它），所以粗筛几乎不误报；
+- **全局库的基线取"最晚开启"**：`__global__` 被多个助手共用，若取最早，某个助手刚拨开开关就会给整库
+  倒灌历史——保守方向是宁可少整理。
+
+**验证**（:app **1393 → 1412**）：`MemoryConsolidationPolicyTest` 7 项（门控矩阵 / 基线取大 / 轮数边界 /
+一轮多条消息只算一轮 / 空节点不炸 / 全局库 id / **老 JSON 缺键落到默认关**）+
+`MemoryConsolidationRepositoryTest` 12 项（四道门控各自生效 / 只数开启之后的轮次 / 进度顶过基线 /
+共享库跨助手合并且基线取最晚 / 粗筛命中但精算为 0 被丢弃且不写进度 / 限流与"新内容优先" /
+未知库不查库 / 标记已整理后不再待整理）。真机冒烟见 §8.2。
+
+**仍未接线**（诚实边界）：没有触发者（四个钩子）也没有 `consolidate`，所以**拨动开关暂时没有可观察效果**。
+
+## 8.2 真机迁移冒烟（V3-b1）
+
+留档：debug 包升级安装后 `PRAGMA user_version` 34 → **35**、新表 `memory_consolidation` 建出且带
+CASCADE 外键、既有数据零丢失（250 个会话 / 54 条记忆）、启动零 FATAL。见 roadmap 同日条目。
+
 ## 9. 未做（下一批）
 
-**决策已定、实现待做**（§7）：`Assistant` 的「空闲后整理记忆」开关（默认关）+ `AssistantMemoryPage`
-的开关与「整理一下」入口 + 审批开着时的「只分析不改库」降级 + 三条成本护栏（步数 / 每库每日自动频次 /
-离线跳过）——都要 worker 先存在才有意义。
-
-- **V3-b worker**（`MemoryConsolidator`）：吃「上次整理后新增的轮次」，对本仓记录做去重 / 合并 / 纠类 / 退场，
-  并用 `read_count` + `importance` 对照校准（上一批把读数接进打分只是「当下口径」，整理才是「事后复核」）；
-  含提示词、轮次切分/分批、幂等、`changedMemories` 统计；以及**自动整理的开关注入口**
-  （`pendingOf` / `memoryIdsWithUpdates`：隐身对话、停用助手、没开记忆、做梦开关为关 ⇒ null，见 §4/§7）。
-- **V3-c 进度表**：上游把进度单独成表（`memory_consolidation(conversation_id, consolidated_at)`）而不是
-  放在 `ConversationEntity` 上——因为**对话每次保存都会整行重写，会把进度冲掉**。本仓同理，落地时
-  DB 34 → 35（纯 `CREATE TABLE`）。
-- **接线**：Koin 单例 + 轮末（`ChatService` 生成结束处）/ 切后台（`RikkaHubApp` 生命周期）/ 离开对话
-  （导航离页）/ 启动补漏（`RikkaHubApp.onCreate`）四个钩子 + 前台服务（复用 `KeepAliveService`）。
-  本批**一处都不接**：worker 未实现 ⇒ 没有可跑的整理，接了也只有空转。
-- **UI**：记忆页的「整理」按钮 + 状态（上游有 `MemoryConsolidationText`/`MemoryFilePage` 一整套）；
-  本仓的 `statusOf` / `automaticRuns` 两个流已经按「设置页与一次性提示」的需要留好。
+- **V3-b2 worker**（`MemoryConsolidator`）：吃「上次整理后新增的轮次」，对本仓记录做去重 / 合并 / 纠类 /
+  退场，并用 `read_count` + `importance` 对照校准（信用记账那批把读数接进打分只是「当下口径」，
+  整理才是「事后复核」）；含整理提示词、轮次切分/分批、幂等、`changedMemories` 统计；
+  **审批开着 ⇒ 只做不动库的分析**（§7.2）；三条成本护栏（步数 / 每库每日自动频次 / 离线跳过，§7.3）。
+  它同时是 `MemoryConsolidationWorker` 接口的实现者（四条数据面直接复用本批的 repository）。
+- **V3-b3 接线**：Koin 单例 + 轮末（`ChatService` 生成结束处）/ 切后台（`RikkaHubApp` 生命周期）/
+  离开对话（导航离页）/ 启动补漏（`RikkaHubApp.onCreate`）四个钩子 + 前台服务（复用 `KeepAliveService`）
+  + 记忆页的「整理一下」入口与状态（`statusOf` / `automaticRuns` 两个流已按"设置页与一次性提示"的需要留好）。
+  **本批一处都不接**：`consolidate` 不存在 ⇒ 接了只有空转（还会每 2 分钟失败一次）。
+- **V4 Markdown 文件库**：等上游 #2130 合并/稳定后再评。
 
 相关：`docs/design-memory-discipline.md`（V1 纪律 / V2 渐进披露 / §4.6 信用记账）、
 `docs/design-memory-scoring.md`（打分口径）、`upstream-analysis.md` 2026-10-08 节（#2130 评估与四块拆分）。
