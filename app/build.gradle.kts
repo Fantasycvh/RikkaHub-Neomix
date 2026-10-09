@@ -312,6 +312,9 @@ dependencies {
 
     // tests
     testImplementation(libs.junit)
+    // 虚拟时间测试（调度器的空闲计时/取消/保活，见 MemoryConsolidationSchedulerTest）：
+    // 用真实时间测定时器既慢又不稳，runTest 的 advanceTimeBy 可以精确推到「2 分钟之后」
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

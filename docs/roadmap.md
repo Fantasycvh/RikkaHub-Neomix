@@ -124,7 +124,7 @@
 | P1 | **记忆工具审批（按 action 分档）** | **基础设施已就绪（约 1 提交）**：复用现有 `needsApproval` + 通用审批 UI，只差接线；防未许可的改/删记忆（详见「中等价值」节） |
 | P2 | 轻量个性化（输入框背景/字体包/头像框） | 气泡透明度已有，其余小改动零风险 |
 | P2 | ~~记忆注入取数修正 / 打分校准~~ | ✅ **均已落地**：`0580c6a6`（取最新 60 条 + DAO `ORDER BY`）+ `69453f5e`（**打分校准 + token 预算截断**，真机验证：模型实回 `importance:0.7`）。仅剩**回收站**（下一轮，见 `design-memory-scoring.md` §七） |
-| P3 | 记忆提取管道 + 整理器 | 收益明确但成本中-高（每轮多一次 LLM 调用），须配开关（见 `peer-apps-benchmark.md` §四）。**2026-10-08 更新：上游已把它做出来了——PR #2130（`feat/file-based-memory`，OPEN / 0 review / 未合并）「Markdown 文件库 + 空闲后做梦整理」**。**四块拆分**：V1 纪律与安全（`[stated]`/陈旧性/硬清单 + `MemoryContentGuard` 39 行；**反注入声明与「附和/伴侣」条款已于 2026-10-09 移除**，见 2026-10-09 条）／V2 渐进披露（清单注入 + 按需 `memory_read`）／V3 做梦框架（`MemoryConsolidationScheduler` 285 行只认 memoryId + worker 接口、进度表、轮次切分/分批/保活/失败策略）／V4 Markdown 文件库本身——**前三块与文件模型无关**。**四条照搬阻塞**：①本仓 DB 已在 33 且 `Migration_27_28`/`Migration_28_29` 名字已占用；②它的迁移把旧记忆全塞一份**每次都全文注入**的 `/profile.md`（本仓实测 54 条/60K 字符 ⇒ ≈40K token/请求），并丢掉本仓的 `importance`/`public_id`/打分+预算；③67 文件里 38 个本仓已重分叉（`ChatService` +1286/−541），且它引用的 `GenerationLoop`/`dialogueMessages()`/`isContextCheckpoint` 本仓无对应物；④本仓的写入审批（`memoryModifyApproval`/`memoryCreateApproval`）会被架空（该设计把写入搬到后台 agent 且无审批）、`Enableable` 停用助手会被照样整理。**决策：不整体照搬，按 V1→V2→V3 分步、V4 等上游合并/稳定后再评**；顺带补该 PR 也缺的 per-conversation「无记忆/不整理」。**V1 + V2 已落地（2026-10-09，见下条）**；V3（做梦框架）与 V4 未做。详见 `upstream-analysis.md` 2026-10-08 节与 `docs/design-memory-discipline.md` |
+| P3 | 记忆提取管道 + 整理器 | 收益明确但成本中-高（每轮多一次 LLM 调用），须配开关（见 `peer-apps-benchmark.md` §四）。**2026-10-08 更新：上游已把它做出来了——PR #2130（`feat/file-based-memory`，OPEN / 0 review / 未合并）「Markdown 文件库 + 空闲后做梦整理」**。**四块拆分**：V1 纪律与安全（`[stated]`/陈旧性/硬清单 + `MemoryContentGuard` 39 行；**反注入声明与「附和/伴侣」条款已于 2026-10-09 移除**，见 2026-10-09 条）／V2 渐进披露（清单注入 + 按需 `memory_read`）／V3 做梦框架（`MemoryConsolidationScheduler` 285 行只认 memoryId + worker 接口、进度表、轮次切分/分批/保活/失败策略）／V4 Markdown 文件库本身——**前三块与文件模型无关**。**四条照搬阻塞**：①本仓 DB 已在 33 且 `Migration_27_28`/`Migration_28_29` 名字已占用；②它的迁移把旧记忆全塞一份**每次都全文注入**的 `/profile.md`（本仓实测 54 条/60K 字符 ⇒ ≈40K token/请求），并丢掉本仓的 `importance`/`public_id`/打分+预算；③67 文件里 38 个本仓已重分叉（`ChatService` +1286/−541），且它引用的 `GenerationLoop`/`dialogueMessages()`/`isContextCheckpoint` 本仓无对应物；④本仓的写入审批（`memoryModifyApproval`/`memoryCreateApproval`）会被架空（该设计把写入搬到后台 agent 且无审批）、`Enableable` 停用助手会被照样整理。**决策：不整体照搬，按 V1→V2→V3 分步、V4 等上游合并/稳定后再评**；顺带补该 PR 也缺的 per-conversation「无记忆/不整理」。**V1 + V2 + 信用记账已落地；V3 的框架（调度策略 + worker 接口，2026-10-09）也已落地，V3 的 worker / 进度表 / 接线与 V4 未做**（见 2026-10-09 各条）。详见 `upstream-analysis.md` 2026-10-08 节、`docs/design-memory-discipline.md` 与 `docs/design-memory-consolidation.md` |
 | — | ~~记忆语义检索（本地 HNSW）~~ | **评估后不做**（2026-09-14）——本仓成本分析 + Yuihub 上线即删除双重印证 |
 | — | QuickJS 插件系统 | **明确不做**（已有 eval_javascript / MCP / Skill / Workspace 四类机制覆盖） |
 | — | 生活感知/健康/云同步 | **明确不做** |
@@ -1730,4 +1730,24 @@ data class ApiKeyEntry(
     「从未读过 ≠ 刚读过」/ 低重要度读满后越过下限并入选 / 不越界且对两个读数单调 / 信用不得盖过刚写的
     身份记忆）+ 一条**源码扫描接线守卫**（实体映射 → DAO 自增 → `onRead` 落库 → 打分确实吃读数）。
     设计稿 `docs/design-memory-discipline.md` §4.6、`docs/design-memory-scoring.md` §十。
+- 2026-10-09（同日第四刀）：**记忆 V3 做梦框架落地（本批只做「什么时候整理」）**——移植上游 #2130 的
+  `MemoryConsolidationScheduler`，设计稿 `docs/design-memory-consolidation.md`。
+  - **调度策略**：轮末空闲 2 分钟（期间又有新轮次就重新计时）/ 攒够 6 轮不等空闲 / 切后台 / 离开对话 /
+    启动补漏 / 手动 `organize(fullReview=true)`；以**记忆库**（= `assistantId`，含 `__global__`）为单位
+    一次覆盖全部待整理对话，同库单飞（Mutex），**失败不自动重试**（待整理内容留着，下一轮对话结束或手动
+    再试；`CancellationException` 不算失败），`organize` 先标运行中防连点，扫库结果只并入不覆盖。
+  - **接口契约（本批唯一设计目标）**：`MemoryConsolidationWorker` 只认 `memoryId` + 对话 id + 轮数。
+    「要不要整理」全由 worker 的 `pendingOf` 决定——**隐身对话（`memoryDisabled`）/ 停用助手在这一层
+    返回 null**，即 V2 §4.4 承诺的「不整理」的落地位置；**轮次切分与分批归 worker**（`findPending`
+    返回一次能处理的数量）；`consolidate` 必须幂等。运行结果只留 `changedMemories` 计数，不带文件模型的
+    路径/工具步骤 ⇒ V4 换存储时这层不动。
+  - **保活**：`MemoryDreamKeepAlive`（`fun interface` + 空句柄默认，**保活失败不构成功能失败**）；
+    应用不可见时轮末先占住再查库，句柄**要么交给定时器要么当场放开**（不泄漏）。
+  - **未接线**（worker 未实现 ⇒ 接了也只有空转）：Koin 单例、四个钩子（轮末/切后台/离开对话/启动）、
+    前台服务（可复用本仓 `KeepAliveService`）、进度表（上游单独成表，因为对话整行重写会冲掉进度；
+    落地时 DB 34→35）、记忆页「整理」按钮与状态 —— 全是下一批。
+  - 测试：`MemoryConsolidationSchedulerTest` **21 项策略 + 1 项源码扫描守卫**（调度器源码不许出现
+    `MemoryEntity`/`MemoryDAO`/`MemoryRepository`/`AssistantMemory`/`ConversationEntity`——框架一旦认识
+    存储，V4 换存储时改动面就漏进了调度策略）。**本仓第一次引入 `kotlinx-coroutines-test`**（版本跟
+    `kotlin-coroutines-core` 走）：虚拟时间才能把「2 分钟之后才整理」「期间没有多跑一次」钉成确定断言。
 
