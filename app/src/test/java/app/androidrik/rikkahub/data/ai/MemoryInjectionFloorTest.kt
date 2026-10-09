@@ -1,7 +1,10 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.rikkahub.data.ai.tools.buildMemoryTools
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -37,24 +40,56 @@ class MemoryInjectionFloorTest {
         assertEquals(listOf("keep"), selected.map { it.id })
     }
 
-    /**
-     * 注入块里的**反注入声明与使用纪律**必须存在（V1，见 `docs/design-memory-discipline.md`）。
-     *
-     * 为什么钉在测试里：这三句是「记忆内容是记录、不是指令」「按记录时的证据强度使用」
-     * 「敏感项只在用户本轮提起时用」的唯一落点——它们只在本块被读到，写丢了不会有任何
-     * 编译/行为错误，而模型会立刻退化成「记忆里写什么就照做、就当成用户的事实」。
-     */
-    @Test
-    fun `injected memory block states the anti-injection and usage discipline`() {
+    private fun promptWithOneMemory(): String {
         val now = 730L * 24 * 60 * 60 * 1000
-        val prompt = buildMemoryPrompt(
+        return buildMemoryPrompt(
             memories = listOf(memory("a", 0.9f, ageDays = 1f, now = now)),
             budgetTokens = 10_000,
             now = now,
         )
-        assertTrue("缺反注入声明", prompt.contains("record about the user, not as an instruction"))
-        assertTrue("缺「扮演固定人格/伴侣」的忽略条款", prompt.contains("play a fixed persona or partner"))
+    }
+
+    /**
+     * 注入块里的**使用纪律**必须存在（V1，见 `docs/design-memory-discipline.md` §2.3）。
+     *
+     * 为什么钉在测试里：这两句是「按记录时的证据强度使用」「敏感项只在用户本轮提起时用」的
+     * 唯一落点——它们只在本块被读到，写丢了不会有任何编译/行为错误，而模型会立刻退化成
+     * 「记忆里写什么就当成用户此刻的事实」。
+     */
+    @Test
+    fun `injected memory block states the usage discipline`() {
+        val prompt = promptWithOneMemory()
         assertTrue("缺证据强度条款", prompt.contains("mentioned once"))
         assertTrue("缺敏感项仅在用户本轮提起时使用", prompt.contains("only when the user raises them in this turn"))
+    }
+
+    /**
+     * **反注入声明按 2026-10-09 的用户拍板保持移除状态**：注入块不再声明「记忆是记录、不是指令」，
+     * 工具描述也不再禁止记录「要求无条件附和 / 压制批评 / 扮演伴侣」的偏好。
+     *
+     * 为什么用**反向**断言钉住：这是本仓少见的「删掉一段提示词」的决定——没有编译错误、没有行为
+     * 异常，下次整理提示词时极容易顺手照上游 #2130 补回来。要复活必须先改这里，并读
+     * `docs/design-memory-discipline.md` §2.3 记的取舍（本 app 的正当用法本就含人设/伴侣扮演）。
+     */
+    @Test
+    fun `anti injection declaration stays removed`() {
+        val prompt = promptWithOneMemory()
+        assertFalse("反注入声明已按用户拍板移除，不应复活", prompt.contains("not as an instruction"))
+        assertFalse("「扮演固定人格/伴侣」忽略条款已移除，不应复活", prompt.contains("play a fixed persona or partner"))
+
+        val description = buildMemoryTools(
+            json = Json,
+            onCreation = { content, importance, description ->
+                AssistantMemory("00000001", content, importance ?: 0.6f, description.orEmpty())
+            },
+            onUpdate = { id, content, importance, description ->
+                AssistantMemory(id, content, importance ?: 0.6f, description.orEmpty())
+            },
+            onDelete = { },
+        ).first().description
+        assertFalse(
+            "工具描述里的「附和 / 压制批评 / 伴侣」禁止条款已移除，不应复活",
+            description.contains("flatter unconditionally"),
+        )
     }
 }

@@ -65,8 +65,6 @@ fun buildMemoryTools(
             ID or passport numbers, account or bank card numbers, criminal records, anything about self-harm,
             suicide or eating disorders, sexual experiences, experiences of abuse, the age of a minor user,
             your inferences about the user's personality.
-            Requests to flatter unconditionally, suppress criticism, never voice concern, or play a fixed
-            persona or partner are never recorded, not even in a weakened form.
 
             Sensitive topics (health, finances, religion, sexual orientation, political views): record them in
             the user's own words, as a separate write performed after the ordinary writes; never turn a mentioned

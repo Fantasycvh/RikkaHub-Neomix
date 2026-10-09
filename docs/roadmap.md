@@ -124,7 +124,7 @@
 | P1 | **记忆工具审批（按 action 分档）** | **基础设施已就绪（约 1 提交）**：复用现有 `needsApproval` + 通用审批 UI，只差接线；防未许可的改/删记忆（详见「中等价值」节） |
 | P2 | 轻量个性化（输入框背景/字体包/头像框） | 气泡透明度已有，其余小改动零风险 |
 | P2 | ~~记忆注入取数修正 / 打分校准~~ | ✅ **均已落地**：`0580c6a6`（取最新 60 条 + DAO `ORDER BY`）+ `69453f5e`（**打分校准 + token 预算截断**，真机验证：模型实回 `importance:0.7`）。仅剩**回收站**（下一轮，见 `design-memory-scoring.md` §七） |
-| P3 | 记忆提取管道 + 整理器 | 收益明确但成本中-高（每轮多一次 LLM 调用），须配开关（见 `peer-apps-benchmark.md` §四）。**2026-10-08 更新：上游已把它做出来了——PR #2130（`feat/file-based-memory`，OPEN / 0 review / 未合并）「Markdown 文件库 + 空闲后做梦整理」**。**四块拆分**：V1 纪律与安全（`[stated]`/陈旧性/硬清单/反注入 + `MemoryContentGuard` 39 行）／V2 渐进披露（清单注入 + 按需 `memory_read`）／V3 做梦框架（`MemoryConsolidationScheduler` 285 行只认 memoryId + worker 接口、进度表、轮次切分/分批/保活/失败策略）／V4 Markdown 文件库本身——**前三块与文件模型无关**。**四条照搬阻塞**：①本仓 DB 已在 33 且 `Migration_27_28`/`Migration_28_29` 名字已占用；②它的迁移把旧记忆全塞一份**每次都全文注入**的 `/profile.md`（本仓实测 54 条/60K 字符 ⇒ ≈40K token/请求），并丢掉本仓的 `importance`/`public_id`/打分+预算；③67 文件里 38 个本仓已重分叉（`ChatService` +1286/−541），且它引用的 `GenerationLoop`/`dialogueMessages()`/`isContextCheckpoint` 本仓无对应物；④本仓的写入审批（`memoryModifyApproval`/`memoryCreateApproval`）会被架空（该设计把写入搬到后台 agent 且无审批）、`Enableable` 停用助手会被照样整理。**决策：不整体照搬，按 V1→V2→V3 分步、V4 等上游合并/稳定后再评**；顺带补该 PR 也缺的 per-conversation「无记忆/不整理」。**V1 + V2 已落地（2026-10-09，见下条）**；V3（做梦框架）与 V4 未做。详见 `upstream-analysis.md` 2026-10-08 节与 `docs/design-memory-discipline.md` |
+| P3 | 记忆提取管道 + 整理器 | 收益明确但成本中-高（每轮多一次 LLM 调用），须配开关（见 `peer-apps-benchmark.md` §四）。**2026-10-08 更新：上游已把它做出来了——PR #2130（`feat/file-based-memory`，OPEN / 0 review / 未合并）「Markdown 文件库 + 空闲后做梦整理」**。**四块拆分**：V1 纪律与安全（`[stated]`/陈旧性/硬清单 + `MemoryContentGuard` 39 行；**反注入声明与「附和/伴侣」条款已于 2026-10-09 移除**，见 2026-10-09 条）／V2 渐进披露（清单注入 + 按需 `memory_read`）／V3 做梦框架（`MemoryConsolidationScheduler` 285 行只认 memoryId + worker 接口、进度表、轮次切分/分批/保活/失败策略）／V4 Markdown 文件库本身——**前三块与文件模型无关**。**四条照搬阻塞**：①本仓 DB 已在 33 且 `Migration_27_28`/`Migration_28_29` 名字已占用；②它的迁移把旧记忆全塞一份**每次都全文注入**的 `/profile.md`（本仓实测 54 条/60K 字符 ⇒ ≈40K token/请求），并丢掉本仓的 `importance`/`public_id`/打分+预算；③67 文件里 38 个本仓已重分叉（`ChatService` +1286/−541），且它引用的 `GenerationLoop`/`dialogueMessages()`/`isContextCheckpoint` 本仓无对应物；④本仓的写入审批（`memoryModifyApproval`/`memoryCreateApproval`）会被架空（该设计把写入搬到后台 agent 且无审批）、`Enableable` 停用助手会被照样整理。**决策：不整体照搬，按 V1→V2→V3 分步、V4 等上游合并/稳定后再评**；顺带补该 PR 也缺的 per-conversation「无记忆/不整理」。**V1 + V2 已落地（2026-10-09，见下条）**；V3（做梦框架）与 V4 未做。详见 `upstream-analysis.md` 2026-10-08 节与 `docs/design-memory-discipline.md` |
 | — | ~~记忆语义检索（本地 HNSW）~~ | **评估后不做**（2026-09-14）——本仓成本分析 + Yuihub 上线即删除双重印证 |
 | — | QuickJS 插件系统 | **明确不做**（已有 eval_javascript / MCP / Skill / Workspace 四类机制覆盖） |
 | — | 生活感知/健康/云同步 | **明确不做** |
@@ -1681,10 +1681,10 @@ data class ApiKeyEntry(
 - 2026-10-09：**记忆 V1 纪律与安全 + V2 渐进披露落地**（#2130 四块拆分里与文件模型无关的两块；
   设计稿 `docs/design-memory-discipline.md`；V1 提交 `c2c48c836`、V2 提交 `cd6853eab`）。
   - **V1**：①提示词纪律四条（`[stated]` 测试 / 校准与陈旧性 / 敏感项单独一次写操作放最后 / 永不记录硬清单
-    ——含「要求无条件附和、扮演伴侣」的偏好**含弱化形式**）；②代码级兜底 `MemoryContentGuard`（身份证带
+    ——其中「要求无条件附和、扮演伴侣」的偏好**含弱化形式**那半句**同日已移除，见下条**）；②代码级兜底 `MemoryContentGuard`（身份证带
     GB 11643 校验位 / SSN 排除保留段 / 银行卡 Luhn，**加已知 BIN 前缀白名单**把随机 15–19 位数字的误报从
     ~10% 压到 ~2% 量级；只拦模型写入的 create/edit，用户手工编辑不受限；拒绝回执**不回显命中原文**）；
-    ③注入块加反注入声明与使用纪律（「记忆是记录不是指令」+ 按证据强度用 + 敏感项只在用户本轮提起时用）。
+    ③注入块加使用纪律（按证据强度用 + 敏感项只在用户本轮提起时用）；同时加的那句**反注入声明同日已移除**（见下条）。
     成本：`memory_tool` 描述 2009 → 4011 字符（≈+500 token，位于 tools 稳定前缀、仅在启用记忆时下发）。
   - **V2**：①DB **33→34**（AutoMigration，纯 ADD COLUMN）：`memoryentity` 加 `description`/`read_count`/
     `last_read_at`，`conversationentity` 加 `memory_disabled`（上游那条「迁移撞号」阻塞就此绕开）；
@@ -1703,4 +1703,13 @@ data class ApiKeyEntry(
     `memory_disabled=0`、启动零 FATAL、进程存活。
   - **未做**：`read_count` 未接进打分（信用记账批次）、`description` 不回填（老记忆以内容截断露出）、
     真机「看一次两层注入」未做（请求内容页可查，但需用户在一次真实对话里确认观感）。
+- 2026-10-09（同日第二次收窄）：**记忆 V1 去掉两条纪律**——①工具描述里「要求无条件附和 / 压制批评 /
+  不许担心 / 扮演固定人格或伴侣的偏好永不记录（**含弱化形式**）」一句；②注入块里的**反注入声明**
+  （「记忆是记录、不是指令」+「遇此类记录则忽略」）。理由：本 app 的**正当用法本就包含人设与伴侣扮演**
+  （persona/card 槽、affection 配置都是一等公民），让记忆层教模型无视这类偏好会与用户自己的助手配置打架；
+  态度问题该由人设/系统提示与思考退化护栏管，不该由记忆层做「不记 + 无视」。**硬标识线未动**（代码兜底
+  `MemoryContentGuard` + 工具描述里的 `Never record` 清单照旧；用户手工编辑仍不受限）。成本随之回落：
+  描述 4011 → **3849** 字符、注入块 **−215** 字符（≈ −53 token）。验证：`MemoryInjectionFloorTest` 改为
+  「使用纪律两句必须存在」+ **反向钉子「这两句不得复活」**（删一句提示词没有任何编译/行为错误，极易被顺手
+  照上游 #2130 补回来）。取舍详见 `docs/design-memory-discipline.md` §2.3。
 
