@@ -217,8 +217,17 @@ interface MemoryConsolidationWorker {
 
 ## 8.2 真机迁移冒烟（V3-b1）
 
-留档：debug 包升级安装后 `PRAGMA user_version` 34 → **35**、新表 `memory_consolidation` 建出且带
-CASCADE 外键、既有数据零丢失（250 个会话 / 54 条记忆）、启动零 FATAL。见 roadmap 同日条目。
+debug 包（`app.androidrik.rikkahub.debug`，用户真实库）升级安装并启动后实测：
+
+- `PRAGMA user_version` 34 → **35**；
+- 新表建出且带外键：
+  `CREATE TABLE memory_consolidation (conversation_id TEXT NOT NULL, consolidated_at INTEGER NOT NULL,
+  PRIMARY KEY(conversation_id), FOREIGN KEY(conversation_id) REFERENCES ConversationEntity(id) ON DELETE CASCADE)`；
+- **既有数据零丢失**：记忆 **54 → 54**、会话 250 条不变；进度表 0 行（符合预期：`consolidate` 未实现，
+  没有任何东西写过进度）；
+- 启动与交互零 `FATAL`；新字段已随设置落盘（DataStore 里能看到 `memoryConsolidationSince`，值 0 = 关）。
+- **未在真机验证的部分**：开关的观感与"拨动后确实没有行为"（需要人点一下；本批没有触发者，
+  拨动本来就不该有可观察效果）。
 
 ## 9. 未做（下一批）
 
