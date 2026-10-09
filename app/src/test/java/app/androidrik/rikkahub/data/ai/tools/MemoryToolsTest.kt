@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import org.junit.Assert.assertEquals
@@ -153,5 +154,67 @@ class MemoryToolsTest {
             }
         )
         assertEquals(listOf(Triple("a3f1c09e", "prefers coffee", 0.4f)), updated)
+    }
+
+    // ---- 代码级兜底拦截（V1）：命中敏感标识时不得落库 ----
+
+    @Test
+    fun `create with a bank card number is refused and never reaches the repository`() = runBlocking {
+        val result = executingTool().execute(
+            buildJsonObject {
+                put("action", "create")
+                put("content", "银行卡号 4111 1111 1111 1111")
+                put("importance", 0.9)
+            }
+        )
+        assertEquals("仓库不得收到被拦的写入", emptyList<Pair<String, Float?>>(), created)
+        val text = result.single().let { (it as UIMessagePart.Text).text }
+        assertTrue("回执要说明没存", text.contains("\"stored\":false"))
+        assertTrue("回执要给出类别", text.contains("a bank card number"))
+        assertTrue("回执要明说别重试", text.contains("Do not retry"))
+        assertFalse("回执不得回显命中的原文", text.contains("4111"))
+    }
+
+    @Test
+    fun `edit with a national id number is refused and never reaches the repository`() = runBlocking {
+        val result = executingTool().execute(
+            buildJsonObject {
+                put("action", "edit")
+                put("id", "a3f1c09e")
+                put("content", "身份证 11010519491231002X")
+            }
+        )
+        assertEquals("仓库不得收到被拦的修改", emptyList<Triple<String, String, Float?>>(), updated)
+        val text = result.single().let { (it as UIMessagePart.Text).text }
+        assertTrue(text.contains("an ID number"))
+        assertFalse(text.contains("110105"))
+    }
+
+    @Test
+    fun `ordinary content still goes through`() = runBlocking {
+        executingTool().execute(
+            buildJsonObject {
+                put("action", "create")
+                put("content", "用户偏好简洁回复")
+            }
+        )
+        assertEquals(listOf("用户偏好简洁回复" to null), created)
+    }
+
+    @Test
+    fun `delete is not affected by the guard`() = runBlocking {
+        // delete 没有内容可泄漏，不该因为守卫而改变行为
+        val deleted = mutableListOf<String>()
+        val tool = buildMemoryTools(
+            json = json,
+            onCreation = { content, importance -> AssistantMemory("00000001", content, importance ?: 0.6f) },
+            onUpdate = { id, content, importance -> AssistantMemory(id, content, importance ?: 0.6f) },
+            onDelete = { deleted += it },
+        ).first { it.name == "memory_tool" }
+        tool.execute(buildJsonObject {
+            put("action", "delete")
+            put("id", "7bd20f45")
+        })
+        assertEquals(listOf("7bd20f45"), deleted)
     }
 }

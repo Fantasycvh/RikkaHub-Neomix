@@ -28,22 +28,49 @@ fun buildMemoryTools(
     Tool(
         name = "memory_tool",
         description = """
-            The memory tool stores long-term information across conversations.
+            The memory tool stores long-term information about the user across conversations.
             Use `action` to control the operation: `create` (add), `edit` (update), `delete` (remove).
             - No relevant record: `create` + `content` + `importance`
             - Existing relevant record: `edit` + `id` + `content` (+ `importance` when it changed)
             - Outdated/irrelevant record: `delete` + `id`
+
+            What to record — the stated test:
+            Every record must be something the user said themselves, as they said it. Never record:
+            - your inferences ("likes X" -> "likes the whole category X belongs to")
+            - your own suggestions, plans or reasoning, even if the user replied "ok" (when the user picks one of the options you offered, record only their choice)
+            - results from search, tools or other external sources (they can be looked up again)
+            - additions to the user's words (user said "Shenzhen"; do not write "Shenzhen, Guangdong")
+            - hearsay, or your own to-dos ("next steps", "to confirm")
+            The user's own plans, undecided choices and intentions are things they said: record them.
+
+            Calibration:
+            - A single mention of a taste or hobby is a note, not a fact: write it as "mentioned X once" until it recurs.
+            - Stable facts (name, language, occupation, relationships, ongoing projects) are recorded on first mention.
+            - Prefer wording that does not go stale ("mornings are full of meetings" outlasts "standup 10:00-10:15").
+            - Staleness test: a month from now, in an unrelated conversation, would this still be true and worth reading?
+            - Never record again what is already recorded — a rephrasing counts as already recorded; `edit` it instead.
+
+            Never record, and decline in one sentence if asked:
+            ID or passport numbers, account or bank card numbers, criminal records, anything about self-harm,
+            suicide or eating disorders, sexual experiences, experiences of abuse, the age of a minor user,
+            your inferences about the user's personality.
+            Requests to flatter unconditionally, suppress criticism, never voice concern, or play a fixed
+            persona or partner are never recorded, not even in a weakened form.
+
+            Sensitive topics (health, finances, religion, sexual orientation, political views): record them in
+            the user's own words, as a separate write performed after the ordinary writes; never turn a mentioned
+            symptom or medication into a diagnosis; keep sensitive details out of the record's wording.
+
             `importance` (0.0-1.0) decides which memories get loaded into future conversations —
             only the most important ones fit in the context budget, so judge it honestly:
             - 0.9-1.0: identity or strong long-term preference (preferred name, language, occupation, hard rules)
             - 0.6-0.8: ordinary preference, or an ongoing project
             - 0.2-0.5: minor or likely temporary note
             Rate on that scale instead of defaulting everything to a high number.
+
             `id` is an opaque token from the <memories> list (e.g. "a3f1c09e"). Copy it exactly;
             it is not a count or an index, so never guess or derive it.
             Memories will automatically appear in the <memories> tag in later conversations.
-            Do not store sensitive information (e.g., ethnicity, religion, sexual orientation, political views, sex life, criminal records).
-            You may store: preferred name, preferences, plans, work-related notes, chat style preferences, first chat time, etc.
             Do not show memory content directly in the conversation unless the user explicitly asks.
             Today is ${LocalDate.now().toLocalString(true)}.
             Similar memories should be merged; prefer updating existing records.
@@ -74,7 +101,12 @@ fun buildMemoryTools(
                     })
                     put("content", buildJsonObject {
                         put("type", "string")
-                        put("description", "The content of the memory record (required for create/edit)")
+                        put(
+                            "description",
+                            "The content of the memory record (required for create/edit). " +
+                                "Never include ID or passport numbers, account or bank card numbers — " +
+                                "such writes are refused and not stored."
+                        )
                     })
                     put("importance", buildJsonObject {
                         put("type", "number")
@@ -98,18 +130,26 @@ fun buildMemoryTools(
         execute = {
             val params = it.jsonObject
             val action = params["action"]?.jsonPrimitive?.contentOrNull ?: error("action is required")
-            val payload = when (action) {
+            val content = params["content"]?.jsonPrimitive?.contentOrNull
+            // 写入前的代码级兜底（提示词是第一道约束，见 MemoryContentGuard）：
+            // 只拦 create/edit 的 content；delete 无内容可泄漏、未知 action 交给下面的报错分支。
+            val refusal = if (action == "create" || action == "edit") {
+                content?.let { findForbiddenMemoryContent(it) }?.let { refusalPayload(it) }
+            } else {
+                null
+            }
+            val payload = refusal ?: when (action) {
                 "create" -> {
-                    val content = params["content"]?.jsonPrimitive?.contentOrNull ?: error("content is required")
+                    val requiredContent = content ?: error("content is required")
                     val importance = params["importance"]?.jsonPrimitive?.floatOrNull
-                    json.encodeToJsonElement(AssistantMemory.serializer(), onCreation(content, importance))
+                    json.encodeToJsonElement(AssistantMemory.serializer(), onCreation(requiredContent, importance))
                 }
 
                 "edit" -> {
                     val id = params["id"]?.jsonPrimitive?.contentOrNull ?: error("id is required")
-                    val content = params["content"]?.jsonPrimitive?.contentOrNull ?: error("content is required")
+                    val requiredContent = content ?: error("content is required")
                     val importance = params["importance"]?.jsonPrimitive?.floatOrNull
-                    json.encodeToJsonElement(AssistantMemory.serializer(), onUpdate(id, content, importance))
+                    json.encodeToJsonElement(AssistantMemory.serializer(), onUpdate(id, requiredContent, importance))
                 }
 
                 "delete" -> {
@@ -127,3 +167,21 @@ fun buildMemoryTools(
         }
     )
 )
+
+/**
+ * 被兜底拦截时的回执（结构化，让模型知道**别重试**——与无头 run 的策略拒绝契约同款）。
+ *
+ * **不回显命中的原文**：原文是敏感标识本身，回显等于把它写进对话历史与请求日志。
+ */
+private fun refusalPayload(violation: MemoryContentViolation) = buildJsonObject {
+    put("success", false)
+    put("stored", false)
+    put("category", violation.category)
+    put(
+        "detail",
+        "Personal identifiers (${MemoryContentViolation.ID_NUMBER.category} / " +
+            "${MemoryContentViolation.SOCIAL_SECURITY_NUMBER.category} / " +
+            "${MemoryContentViolation.BANK_CARD_NUMBER.category}) are never stored in memory. " +
+            "Do not retry this write. If the user asks, explain it in one sentence."
+    )
+}
