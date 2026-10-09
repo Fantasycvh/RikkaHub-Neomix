@@ -364,6 +364,18 @@ class ChatVM(
         }
     }
 
+    /**
+     * 切换会话级「不使用记忆」（隐身对话）。
+     *
+     * 走 ChatService 的统一元数据原语（同 [updatePinnedStatus] 的理由）：只改 DB 单列会被
+     * 下一次整对象保存用内存里的旧值覆盖回去。
+     */
+    fun setMemoryDisabled(conversation: Conversation, disabled: Boolean) {
+        viewModelScope.launch {
+            chatService.setConversationMemoryDisabled(conversation.id, disabled)
+        }
+    }
+
     fun moveConversationToAssistant(conversation: Conversation, targetAssistantId: Uuid) {
         viewModelScope.launch {
             // 走 ChatService 的统一元数据原语：改的是**内存最新态** + 只写单列。

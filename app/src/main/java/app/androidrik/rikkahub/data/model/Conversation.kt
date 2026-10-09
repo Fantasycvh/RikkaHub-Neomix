@@ -48,6 +48,15 @@ data class Conversation(
     val workspaceCwd: String? = null,
     // 所属文件夹（助手内分组），null 表示未归入任何文件夹
     val folderId: Uuid? = null,
+    /**
+     * **本对话不使用记忆**（隐身对话；见 `docs/design-memory-discipline.md` §4.4）。
+     *
+     * 语义（V2 批次）：**不注入记忆（含清单层）+ 不提供记忆工具**——开关要真能拦住「这次对话
+     * 碰我的记忆库」，否则工具仍可逐条读回来、开关等于装饰。「不整理」留给 V3 的做梦框架。
+     *
+     * 默认 false = 现行为；缺字段反序列化也是 false ⇒ 无需数据回填。
+     */
+    val memoryDisabled: Boolean = false,
     @Transient
     val newConversation: Boolean = false
 ) {

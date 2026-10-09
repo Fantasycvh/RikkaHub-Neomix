@@ -53,4 +53,11 @@ data class ConversationEntity(
     val workspaceCwd: String = "",
     @ColumnInfo("folder_id", defaultValue = "")
     val folderId: String = "",
+    /**
+     * **本对话不使用记忆**（隐身对话；见 `docs/design-memory-discipline.md` §4.4）。
+     *
+     * 默认 false = 现行为（缺字段反序列化也是 false ⇒ 无需数据回填）。
+     */
+    @ColumnInfo("memory_disabled", defaultValue = "0")
+    val memoryDisabled: Boolean = false,
 )

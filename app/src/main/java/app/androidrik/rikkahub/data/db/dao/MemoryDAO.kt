@@ -46,6 +46,15 @@ interface MemoryDAO {
     @Update
     suspend fun updateMemory(memory: MemoryEntity)
 
+    /**
+     * 遥测：记一次 `memory_read`（读计数 +1、刷新最近读取时间）。
+     *
+     * 用 SQL 自增而非「读出实体→改→写回」：后者在并发读（模型一步里连读多条）时会丢计数。
+     * **`updated_at` 不动**——读取不是修改，动它会平白刷新时效衰减（等于「读一次就变新」）。
+     */
+    @Query("UPDATE memoryentity SET read_count = read_count + 1, last_read_at = :now WHERE id = :id")
+    suspend fun recordRead(id: Int, now: Long)
+
     @Query("DELETE FROM memoryentity WHERE id = :id")
     suspend fun deleteMemory(id: Int)
 

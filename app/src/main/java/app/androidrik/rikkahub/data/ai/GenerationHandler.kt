@@ -233,6 +233,12 @@ class GenerationHandler(
         outputTransformers: List<OutputMessageTransformer> = emptyList(),
         assistant: Assistant,
         memories: List<AssistantMemory>? = null,
+        /**
+         * 会话级「不使用记忆」（隐身对话，见 `docs/design-memory-discipline.md` §4.4）：
+         * 为真时**不注入记忆块**、且工具装配侧**不装配记忆工具**（两者是同一件事的两半）。
+         * 由 ChatService 从 `Conversation.memoryDisabled` 传入；无头 run 恒为 false。
+         */
+        memoryDisabled: Boolean = false,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
         /**
@@ -363,6 +369,7 @@ class GenerationHandler(
                     messages = messages,
                     compressionWindow = compressionWindow,
                     recoveryHint = pendingRecoveryHint,
+                    memoryDisabled = memoryDisabled,
                     debugKey = debugKey,
                     onUpdateMessages = {
                         messages = it.transforms(
@@ -916,6 +923,8 @@ class GenerationHandler(
         degenerationGuard: ThinkingDegenerationGuard? = null,
         /** 空回复补救提示（只作用于本请求系统提示，不进入对话历史） */
         recoveryHint: String? = null,
+        /** 会话级「不使用记忆」：为真时不注入记忆块（工具侧已在装配点处理） */
+        memoryDisabled: Boolean = false,
         debugKey: String? = null,
     ) {
         // 组装发送消息：**与「拼装预览」共用同一个函数**（PromptAssembly.kt）——
@@ -930,6 +939,7 @@ class GenerationHandler(
             conversationSystemPrompt = conversationSystemPrompt,
             compressionWindow = compressionWindow,
             recoveryHint = recoveryHint,
+            memoryDisabled = memoryDisabled,
         )
         // 输入处理链（时间提醒 / 模式注入 / 世界书 / ST 宏 / 占位符 / 文档转提示 / OCR / 引用 /
         // 助手模板 / workspace 提醒）：**返回值必须接住**——它才是真正发给 provider 的列表。

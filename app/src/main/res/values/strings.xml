@@ -103,6 +103,9 @@
   <string name="assistant_page_local_tools_tts_title">Text to Speech</string>
   <string name="assistant_page_manage_memory_title">Manage Memory</string>
   <string name="assistant_page_memory_importance">Importance</string>
+  <string name="assistant_page_memory_description_label">Topic</string>
+  <string name="assistant_page_memory_description_hint">One short line on what this record is about; it is what future chats see when the record does not fit the full-text budget.</string>
+  <string name="assistant_page_memory_read_count">Read %1$d time(s) · last %2$s</string>
   <string name="assistant_page_max_tokens">Max Tokens</string>
   <string name="assistant_page_max_tokens_desc">Maximum number of tokens to generate. Leave empty for no limit.</string>
   <string name="assistant_page_max_tokens_limit">Limit: %d tokens</string>
@@ -395,6 +398,9 @@
   <string name="agent_run_error_exception">Run failed with an error</string>
   <string name="chat_tool_loop_title">Repeated tool call - turn ended</string>
   <string name="chat_workspace_budget_title">Workspace tool budget reached - turn ended</string>
+  <string name="chat_memory_disabled_toggle">Do not use memories in this chat</string>
+  <string name="chat_memory_disabled_toast_on">Memories are off in this chat</string>
+  <string name="chat_memory_disabled_toast_off">Memories are back on in this chat</string>
   <string name="chat_thinking_loop_title">Reasoning went in circles - turn ended</string>
   <string name="chat_page_check_title_model_settings">Check title model settings</string>
   <string name="chat_page_clear_all_errors">Clear all</string>

@@ -352,6 +352,8 @@ suspend fun inspectPrompt(
                     tools = tools,
                     // 与 buildInternalMessages 同参：会话级覆盖口径一致
                     conversationSystemPrompt = conversation.customSystemPrompt,
+                    // 会话级「不使用记忆」同样要作用到预览——预览与实际不一致是本仓明确防的坑
+                    memoryDisabled = conversation.memoryDisabled,
                 ),
                 labels = labels,
                 role = message.role.name.lowercase(),

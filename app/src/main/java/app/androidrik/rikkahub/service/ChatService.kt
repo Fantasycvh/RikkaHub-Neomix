@@ -1016,7 +1016,10 @@ class ChatService(
         val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
             ?: return null
 
-        val memories = if (assistant.useGlobalMemory) {
+        val memories = if (conversation.memoryDisabled) {
+            // 与实发一致：隐身对话不加载记忆（预览也要显示「没有记忆段」）
+            emptyList()
+        } else if (assistant.useGlobalMemory) {
             memoryRepository.getGlobalMemories()
         } else {
             memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
@@ -1027,6 +1030,7 @@ class ChatService(
             model = model,
             workspaceCwd = conversation.workspaceCwd,
             conversationId = conversation.id.toString(),
+            memoryDisabled = conversation.memoryDisabled,
         )
 
         return inspectPrompt(
@@ -1187,7 +1191,11 @@ class ChatService(
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
-                memories = if (assistant.useGlobalMemory) {
+                memoryDisabled = conversation.memoryDisabled,
+                memories = if (conversation.memoryDisabled) {
+                    // 隐身对话：不加载记忆（注入侧另有 memoryDisabled 门控，这里省掉一次查询）
+                    emptyList()
+                } else if (assistant.useGlobalMemory) {
                     memoryRepository.getGlobalMemories()
                 } else {
                     memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
@@ -1219,6 +1227,7 @@ class ChatService(
                     model = model,
                     workspaceCwd = conversation.workspaceCwd,
                     conversationId = conversationId.toString(),
+                    memoryDisabled = conversation.memoryDisabled,
                 ),
                 initialRecoveryHint = initialRecoveryHint,
             ).onCompletion {
@@ -1850,6 +1859,20 @@ class ChatService(
             conversationId = conversationId,
             update = { it.copy(isPinned = !it.isPinned) },
             persist = { conversationRepo.updateConversationPinStatus(conversationId, it.isPinned) },
+        )
+    }
+
+    /**
+     * 切换会话级「不使用记忆」（隐身对话；见 `docs/design-memory-discipline.md` §4.4）。
+     *
+     * 与 [togglePinStatus] 同款：内存态与库各写一次、用同一个新值。
+     * 生效面 = **不注入记忆（含清单层）+ 不装配记忆工具**（下一次请求起）。
+     */
+    suspend fun setConversationMemoryDisabled(conversationId: Uuid, disabled: Boolean) {
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(memoryDisabled = disabled) },
+            persist = { conversationRepo.updateConversationMemoryDisabled(conversationId, disabled) },
         )
     }
 

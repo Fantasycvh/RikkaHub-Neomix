@@ -71,6 +71,12 @@ class MemoryRepositoryTest {
         override suspend fun deleteMemoriesOfAssistant(assistantId: String) {
             rows.removeAll { it.assistantId == assistantId }
         }
+
+        // 与 Room 实现同语义：SQL 自增（不是「读出来 +1 写回」），且不动 updated_at
+        override suspend fun recordRead(id: Int, now: Long) {
+            val i = rows.indexOfFirst { it.id == id }
+            if (i >= 0) rows[i] = rows[i].copy(readCount = rows[i].readCount + 1, lastReadAt = now)
+        }
     }
 
     private val dao = FakeMemoryDAO()
@@ -310,5 +316,73 @@ class MemoryRepositoryTest {
         }
         repo.copyMemories("src", "dst", now = now)
         assertEquals(MemoryRepository.MAX_MEMORY_COUNT, repo.getMemoriesOfAssistant("dst").size)
+    }
+
+    // ---- V2：主题词与读取遥测 ----
+
+    @Test
+    fun `description is stored and returned, and truncated at the max length`() = runBlocking {
+        val long = "x".repeat(MemoryRepository.MAX_DESCRIPTION_LENGTH + 50)
+        val created = repo.addMemory("a", "content", description = "  topics about food  ")
+        assertEquals("topics about food", created.description)
+        assertEquals("topics about food", repo.getMemoriesOfAssistant("a").single().description)
+
+        val truncated = repo.addMemory("a", "another", description = long)
+        assertEquals(MemoryRepository.MAX_DESCRIPTION_LENGTH, truncated.description.length)
+    }
+
+    @Test
+    fun `description is optional and defaults to empty`() = runBlocking {
+        val created = repo.addMemory("a", "no description here")
+        assertEquals("", created.description)
+    }
+
+    @Test
+    fun `updateContent keeps the old description when none is passed`() = runBlocking {
+        val created = repo.addMemory("a", "content", description = "old topic")
+        val updated = repo.updateContent(created.id, "new content")
+        assertEquals("old topic", updated.description)
+        assertEquals("new content", updated.content)
+
+        val replaced = repo.updateContent(created.id, "newer", description = "new topic")
+        assertEquals("new topic", replaced.description)
+    }
+
+    @Test
+    fun `duplicate create backfills a missing description instead of dropping it`() = runBlocking {
+        // 工具循环里模型重发同一内容但补了主题词：复用记录时顺手补上，不能白丢
+        val first = repo.addMemory("a", "same content")
+        assertEquals("", first.description)
+        val second = repo.addMemory("a", "same content", description = "backfilled")
+        assertEquals(first.id, second.id)
+        assertEquals("backfilled", second.description)
+    }
+
+    @Test
+    fun `readMemory bumps the read telemetry and leaves updated_at alone`() = runBlocking {
+        val created = repo.addMemory("a", "content", now = 1_000L)
+        assertEquals(0, created.readCount)
+
+        val read1 = repo.readMemory(created.id, now = 2_000L)!!
+        assertEquals(1, read1.readCount)
+        assertEquals(2_000L, read1.lastReadAt)
+        // 读取不是修改：updated_at 不动（否则时效衰减被平白刷新，等于「读一次就变新」）
+        assertEquals(1_000L, read1.updatedAt)
+
+        val read2 = repo.readMemory(created.id, now = 3_000L)!!
+        assertEquals(2, read2.readCount)
+        assertEquals(3_000L, read2.lastReadAt)
+    }
+
+    @Test
+    fun `readMemory returns null and records nothing for an unknown id`() = runBlocking {
+        assertNull(repo.readMemory("deadbeef", now = 2_000L))
+    }
+
+    @Test
+    fun `copyMemories carries the description`() = runBlocking {
+        repo.addMemory("src", "content", description = "topic")
+        repo.copyMemories("src", "dst")
+        assertEquals("topic", repo.getMemoriesOfAssistant("dst").single().description)
     }
 }

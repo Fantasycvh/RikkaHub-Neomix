@@ -15,13 +15,19 @@ import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.utils.toLocalString
+import java.time.Instant
 import java.time.LocalDate
 
 fun buildMemoryTools(
     json: Json,
-    onCreation: suspend (String, Float?) -> AssistantMemory,
-    onUpdate: suspend (String, String, Float?) -> AssistantMemory,
+    onCreation: suspend (String, Float?, String?) -> AssistantMemory,
+    onUpdate: suspend (String, String, Float?, String?) -> AssistantMemory,
     onDelete: suspend (String) -> Unit,
+    /**
+     * 读取一条记忆的全文（**渐进披露**：清单层只给一行主题，模型按需取全文）。
+     * 实现里要**顺带记一次读取遥测**（见 `MemoryRepository.readMemory`）；读不到返回 null。
+     */
+    onRead: suspend (String) -> AssistantMemory? = { null },
     /** 修改/删除记忆需审批（按 action 名判定；create 始终放行——见 Assistant.memoryModifyApproval） */
     needsApproval: (action: String) -> Boolean = { false },
 ): List<Tool> = listOf(
@@ -29,10 +35,15 @@ fun buildMemoryTools(
         name = "memory_tool",
         description = """
             The memory tool stores long-term information about the user across conversations.
-            Use `action` to control the operation: `create` (add), `edit` (update), `delete` (remove).
-            - No relevant record: `create` + `content` + `importance`
-            - Existing relevant record: `edit` + `id` + `content` (+ `importance` when it changed)
+            Use `action` to control the operation: `create` (add), `edit` (update), `delete` (remove),
+            `read` (load the full text of one record by `id`).
+            - No relevant record: `create` + `content` + `importance` + `description`
+            - Existing relevant record: `edit` + `id` + `content` (+ `importance` / `description` when they changed)
             - Outdated/irrelevant record: `delete` + `id`
+            - A record appears in the memory index but you need its full text: `read` + `id`
+            The memory index lists the records that did not fit the full-text budget; its description is
+            only a hint. Before answering a question about a person, project or plan that the index covers,
+            read the record instead of guessing from its description.
 
             What to record — the stated test:
             Every record must be something the user said themselves, as they said it. Never record:
@@ -76,8 +87,9 @@ fun buildMemoryTools(
             Similar memories should be merged; prefer updating existing records.
 
             Examples:
-            {"action":"create","content":"User prefers brief replies and is more active on weekends.","importance":0.7}
+            {"action":"create","content":"User prefers brief replies and is more active on weekends.","description":"reply style and activity pattern","importance":0.7}
             {"action":"edit","id":"a3f1c09e","content":"User’s preferred name updated to “A-Xing”, prefers Chinese replies.","importance":0.95}
+            {"action":"read","id":"a3f1c09e"}
             {"action":"delete","id":"7bd20f45"}
         """.trimIndent(),
         parameters = {
@@ -91,13 +103,14 @@ fun buildMemoryTools(
                                 add("create")
                                 add("edit")
                                 add("delete")
+                                add("read")
                             }
                         )
-                        put("description", "Operation to perform: create, edit, or delete")
+                        put("description", "Operation to perform: create, edit, delete, or read")
                     })
                     put("id", buildJsonObject {
                         put("type", "string")
-                        put("description", "Opaque memory id token (required for edit/delete); copy it exactly from the memories list")
+                        put("description", "Opaque memory id token (required for edit/delete/read); copy it exactly from the memories list or index")
                     })
                     put("content", buildJsonObject {
                         put("type", "string")
@@ -106,6 +119,16 @@ fun buildMemoryTools(
                             "The content of the memory record (required for create/edit). " +
                                 "Never include ID or passport numbers, account or bank card numbers — " +
                                 "such writes are refused and not stored."
+                        )
+                    })
+                    put("description", buildJsonObject {
+                        put("type", "string")
+                        put(
+                            "description",
+                            "Optional but recommended: one short line (under 150 characters) on what this " +
+                                "record is about, naming the people, projects and places most likely to be asked " +
+                                "about later. It is what future conversations see when the record does not fit the " +
+                                "full-text budget, so make it specific. Keep sensitive details out of it."
                         )
                     })
                     put("importance", buildJsonObject {
@@ -142,14 +165,22 @@ fun buildMemoryTools(
                 "create" -> {
                     val requiredContent = content ?: error("content is required")
                     val importance = params["importance"]?.jsonPrimitive?.floatOrNull
-                    json.encodeToJsonElement(AssistantMemory.serializer(), onCreation(requiredContent, importance))
+                    val description = params["description"]?.jsonPrimitive?.contentOrNull
+                    json.encodeToJsonElement(
+                        AssistantMemory.serializer(),
+                        onCreation(requiredContent, importance, description),
+                    )
                 }
 
                 "edit" -> {
                     val id = params["id"]?.jsonPrimitive?.contentOrNull ?: error("id is required")
                     val requiredContent = content ?: error("content is required")
                     val importance = params["importance"]?.jsonPrimitive?.floatOrNull
-                    json.encodeToJsonElement(AssistantMemory.serializer(), onUpdate(id, requiredContent, importance))
+                    val description = params["description"]?.jsonPrimitive?.contentOrNull
+                    json.encodeToJsonElement(
+                        AssistantMemory.serializer(),
+                        onUpdate(id, requiredContent, importance, description),
+                    )
                 }
 
                 "delete" -> {
@@ -161,7 +192,22 @@ fun buildMemoryTools(
                     }
                 }
 
-                else -> error("unknown action: $action, must be one of [create, edit, delete]")
+                // 渐进披露的读取侧：清单层只给一行主题，模型据此取全文。
+                // 回执里带上 description/updated，让模型知道这条记录有多新（用于陈旧性判断）。
+                "read" -> {
+                    val id = params["id"]?.jsonPrimitive?.contentOrNull ?: error("id is required")
+                    val memory = onRead(id) ?: error("Memory record $id not found")
+                    buildJsonObject {
+                        put("id", memory.id)
+                        put("content", memory.content)
+                        if (memory.description.isNotBlank()) put("description", memory.description)
+                        if (memory.updatedAt > 0L) {
+                            put("updated", Instant.ofEpochMilli(memory.updatedAt).toString())
+                        }
+                    }
+                }
+
+                else -> error("unknown action: $action, must be one of [create, edit, delete, read]")
             }
             listOf(UIMessagePart.Text(payload.toString()))
         }

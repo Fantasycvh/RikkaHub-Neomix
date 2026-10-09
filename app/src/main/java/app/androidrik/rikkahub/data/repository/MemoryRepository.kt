@@ -19,6 +19,14 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         const val MAX_MEMORY_COUNT = 200
 
         /**
+         * 主题词（`description`）的最大长度：与上游提示词里的「150 字符以内」对齐。
+         *
+         * 它是清单行的固定成本：一条记忆的清单行 ≈ 8(id) + 150(主题) + 10(日期) 字符，
+         * 200 条上限下最坏 ≈ 3.4 万字符（而清单预算只有 8K token 的 1/4）。
+         */
+        const val MAX_DESCRIPTION_LENGTH = 150
+
+        /**
          * 对外 opaque id 的字符集与长度：8 位小写十六进制（32 bit）。
          *
          * 为什么够用：字面是随机 token，模型无法从它推断记忆条数（根治上游 #1830 的
@@ -35,8 +43,11 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         id = publicId.ifBlank { id.toString() }, // 极端情况（空串）按自增 id 兜底，保证 id 始终可用
         content = content,
         importance = importance,
+        description = description,
         sortKey = id,
         updatedAt = updatedAt,
+        readCount = readCount,
+        lastReadAt = lastReadAt,
     )
 
     /**
@@ -90,18 +101,21 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
      * **同时刷新 `updatedAt`**：它是时效衰减的时间基准，不刷新就等于「改了没用」——
      * 刚维护过的记忆仍按旧时间被算成陈旧，最后被淘汰。
      *
-     * [importance] 为 null 时保留原值（模型只说改内容、不该顺手把重要度重置掉）。
+     * [importance] 为 null 时保留原值（模型只说改内容、不该顺手把重要度重置掉）；
+     * [description] 同理为 null 时保留原值。
      */
     suspend fun updateContent(
         id: String,
         content: String,
         importance: Float? = null,
+        description: String? = null,
         now: Long = System.currentTimeMillis(),
     ): AssistantMemory {
         val old = requireNotNull(findEntityByPublicId(id)) { "Memory record $id not found" }
         val newMemory = old.copy(
             content = content,
             importance = importance?.coerceIn(0f, 1f) ?: old.importance,
+            description = description?.let { normalizeDescription(it) } ?: old.description,
             updatedAt = now,
         )
         memoryDAO.updateMemory(newMemory)
@@ -136,6 +150,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         assistantId: String,
         content: String,
         importance: Float? = null,
+        description: String? = null,
         now: Long = System.currentTimeMillis(),
     ): AssistantMemory {
         val normalized = content.trim()
@@ -144,6 +159,12 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
             .firstOrNull { it.content.trim() == normalized }
             ?.let { existing ->
                 Log.i(TAG, "addMemory: duplicate content, reuse #${existing.publicId}")
+                // 内容没变但模型补了主题词时顺手补上（只在原本为空时补，不清空既有 description）
+                if (!description.isNullOrBlank() && existing.description.isBlank()) {
+                    val withDescription = existing.copy(description = normalizeDescription(description))
+                    memoryDAO.updateMemory(withDescription)
+                    return withDescription.toModel()
+                }
                 return existing.toModel()
             }
 
@@ -152,11 +173,24 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
             content = normalized,
             publicId = generatePublicId(),
             importance = importance?.coerceIn(0f, 1f) ?: MemoryEntity.DEFAULT_IMPORTANCE,
+            description = description?.let { normalizeDescription(it) } ?: "",
             updatedAt = now,
         )
         val insertedId = memoryDAO.insertMemory(newMemory).toInt()
         enforceMaxCount(assistantId, now)
         return newMemory.copy(id = insertedId).toModel()
+    }
+
+    /**
+     * 按对外 opaque id 取全文 **并记一次读取遥测**（`memory_read` 的唯一入口）。
+     *
+     * 遥测与取数合在一个方法里：分开写的话调用方漏一处就静默没有读数（而读数一旦缺失，
+     * 「这条记忆到底有没有起作用」就永远答不了）。读不到时返回 null、不计数。
+     */
+    suspend fun readMemory(id: String, now: Long = System.currentTimeMillis()): AssistantMemory? {
+        val entity = findEntityByPublicId(id) ?: return null
+        memoryDAO.recordRead(entity.id, now)
+        return entity.copy(readCount = entity.readCount + 1, lastReadAt = now).toModel()
     }
 
     /**
@@ -190,6 +224,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
                 content = memory.content,
                 publicId = publicId,
                 importance = memory.importance,
+                description = memory.description,
                 updatedAt = now,
             )
         }
@@ -230,4 +265,12 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         val numericId = id.toIntOrNull() ?: return null
         return memoryDAO.getMemoryById(numericId)
     }
+
+    /**
+     * 主题词的规范化：去空白、**截断到 [MAX_DESCRIPTION_LENGTH]**。
+     *
+     * 截断而非拒绝：主题词是「清单行」的显示字段，过长只是挤占索引预算（每行都是固定成本），
+     * 没必要因此让整条记忆写入失败。
+     */
+    private fun normalizeDescription(raw: String): String = raw.trim().take(MAX_DESCRIPTION_LENGTH)
 }

@@ -39,6 +39,16 @@ class MemoryToolApprovalTest {
         assertTrue(memoryToolNeedsApproval(assistant(modifyApproval = false, createApproval = true), "create"))
     }
 
+    // ---- read（V2 渐进披露：只读，恒不拦） ----
+
+    @Test
+    fun `read never requires approval, even with every switch on`() {
+        // 只读没有可被否决的副作用（与 workspace_task_status 免审批同款）；
+        // 若落进 else 兜底，渐进披露的每次按需读取都会变成一次审批轰炸
+        assertFalse(memoryToolNeedsApproval(assistant(modifyApproval = true, createApproval = true), "read"))
+        assertFalse(memoryToolNeedsApproval(assistant(modifyApproval = false, createApproval = false), "read"))
+    }
+
     // ---- edit / delete（既有开关，默认开） ----
 
     @Test

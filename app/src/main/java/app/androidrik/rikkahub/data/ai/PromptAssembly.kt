@@ -94,6 +94,13 @@ internal fun buildSystemBlocks(
     memories: List<AssistantMemory>,
     tools: List<Tool>,
     conversationSystemPrompt: String?,
+    /**
+     * 会话级「不使用记忆」（隐身对话）：为真时**整个记忆块都不出现**。
+     *
+     * 为什么不是「传空列表」：那样仍会渲染出记忆块的外壳（标题 + 纪律 + 空数组 + 清单标题），
+     * 等于告诉模型「这里有记忆系统，只是空的」——与「这次对话不碰记忆库」的语义不符。
+     */
+    memoryDisabled: Boolean = false,
 ): List<SystemBlock> {
     val blocks = mutableListOf<SystemBlock>()
 
@@ -135,8 +142,8 @@ internal fun buildSystemBlocks(
         )
     }
 
-    // 记忆
-    if (assistant.enableMemory) {
+    // 记忆（会话级「不使用记忆」时整块不发）
+    if (assistant.enableMemory && !memoryDisabled) {
         // 预算来自设置（可调）：注入「哪些」由打分校准决定、「装多少」由它决定
         blocks += SystemBlock(
             SystemBlockSource.MEMORY,
@@ -202,6 +209,7 @@ internal fun buildSystemPromptText(
     memories: List<AssistantMemory>,
     tools: List<Tool>,
     conversationSystemPrompt: String?,
+    memoryDisabled: Boolean = false,
 ): String = joinSystemBlocks(
     buildSystemBlocks(
         assistant = assistant,
@@ -211,6 +219,7 @@ internal fun buildSystemPromptText(
         memories = memories,
         tools = tools,
         conversationSystemPrompt = conversationSystemPrompt,
+        memoryDisabled = memoryDisabled,
     )
 )
 
@@ -254,6 +263,8 @@ internal fun buildInternalMessages(
     compressionWindow: Conversation.CompressionWindow?,
     /** 空回复补救提示（一次性）：追加到系统提示尾部，不进入对话历史、拼装预览不受影响 */
     recoveryHint: String? = null,
+    /** 会话级「不使用记忆」（隐身对话）：为真时不注入记忆块，见 [buildSystemBlocks] */
+    memoryDisabled: Boolean = false,
 ): List<UIMessage> {
     val baseSystem = buildSystemPromptText(
         assistant = assistant,
@@ -263,6 +274,7 @@ internal fun buildInternalMessages(
         memories = memories,
         tools = tools,
         conversationSystemPrompt = conversationSystemPrompt,
+        memoryDisabled = memoryDisabled,
     )
     // 恢复提示追加在系统提示末尾：不写入对话历史（仅本次请求存在，随后消失）
     val system = if (recoveryHint.isNullOrBlank()) {

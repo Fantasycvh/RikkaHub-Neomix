@@ -6,6 +6,8 @@ import kotlinx.serialization.json.put
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.utils.JsonInstantPretty
 import app.androidrik.rikkahub.utils.estimateTokens
+import java.time.Instant
+import java.time.ZoneId
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.ln
@@ -57,17 +59,39 @@ private const val SCORE_BUCKET_SIZE = 0.1f
 private const val MIN_MEMORY_INJECTION_SCORE = 0.2f
 
 /**
+ * 清单层占注入预算的比例（默认 1/4）。
+ *
+ * 口径由用户拍板：**总预算不变、拆成「全文层 + 清单层」**。为什么给清单 1/4 就够：
+ * 清单每行只有 `id ｜ 主题 ｜ 更新日`（≈20–60 token），2K 能装下几十条；而全文层要装
+ * 完整内容，必须占大头。**代价说明**：全文层从 8K 降到 6K ⇒ 入选集合会比改造前略小，
+ * 换来的是「预算外条目不再静默消失」（见 `docs/design-memory-discipline.md` §4.2）。
+ */
+private const val MEMORY_INDEX_BUDGET_RATIO = 0.25f
+
+/** 清单行里主题词缺省（模型没写 description）时的内容截断长度。 */
+private const val MEMORY_INDEX_FALLBACK_CHARS = 80
+
+/**
  * 构建记忆注入提示词。
  *
- * 选谁进 = [selectMemoriesForPrompt]（打分校准 + token 预算截断）；
- * 输出顺序另按 `sortKey` 稳定排列（理由见该函数注释）。
+ * **两层渐进披露**（V2）：
+ * - **全文层** = [selectMemoriesForPrompt]（打分校准 + 预算截断），占预算 3/4；
+ * - **清单层** = 其余记忆每行 `id ｜ 主题 ｜ 更新日`，占预算 1/4，模型据此决定要不要
+ *   `memory_tool action=read` 取全文。
+ *
+ * 两层**不重叠**；入选集合各自按 `sortKey`（写入先后）渲染 ⇒ 只要集合不变，前缀字节稳定。
  */
 internal fun buildMemoryPrompt(
     memories: List<AssistantMemory>,
     budgetTokens: Int = DEFAULT_MEMORY_BUDGET_TOKENS,
     now: Long = System.currentTimeMillis(),
 ): String {
-    val selected = selectMemoriesForPrompt(memories, budgetTokens, now)
+    val fullTextBudget = (budgetTokens * (1f - MEMORY_INDEX_BUDGET_RATIO)).toInt()
+    val indexBudget = (budgetTokens * MEMORY_INDEX_BUDGET_RATIO).toInt()
+    val selected = selectMemoriesForPrompt(memories, fullTextBudget, now)
+    val selectedIds = selected.mapTo(mutableSetOf()) { it.id }
+    val indexed = selectMemoriesForIndex(memories, selectedIds, indexBudget, now)
+
     return buildString {
         appendLine()
         append("**Memories**")
@@ -100,7 +124,61 @@ internal fun buildMemoryPrompt(
         }
         append(JsonInstantPretty.encodeToString(json))
         appendLine()
+
+        if (indexed.isNotEmpty()) {
+            appendLine()
+            append("**Memory index** (topics not included above; description is only a hint — ")
+            append("call `memory_tool` with `action:\"read\"` and the id to load the full text)")
+            appendLine()
+            indexed.forEach { memory -> appendLine(indexLine(memory)) }
+        }
     }
+}
+
+/**
+ * 选进**清单层**的记忆：全文层之外、按 `sortKey` 升序取到预算为止。
+ *
+ * 为什么按 `sortKey`（而不是按分数）选：分数随时间连续衰减，用它选会让**清单集合**每过几天
+ * 就换一批（前缀抖动）；按写入先后选则「集合只随增删而变」。取舍是清单偏向老记忆，但新记忆
+ * 本来就更容易进全文层（新鲜 ⇒ 分数高）。
+ *
+ * **不套用 [MIN_MEMORY_INJECTION_SCORE] 下限**：下限的用意是「低相关全文不进上下文」，而清单
+ * 一行的成本极小；若在清单层也套下限，被淘汰的记忆又会**静默消失**——正是本层要根治的事。
+ */
+internal fun selectMemoriesForIndex(
+    memories: List<AssistantMemory>,
+    excludedIds: Set<String>,
+    budgetTokens: Int,
+    now: Long = System.currentTimeMillis(),
+): List<AssistantMemory> {
+    if (memories.isEmpty() || budgetTokens <= 0) return emptyList()
+    val result = mutableListOf<AssistantMemory>()
+    var used = 0
+    memories.sortedBy { it.sortKey }.forEach { memory ->
+        if (memory.id in excludedIds) return@forEach
+        val cost = estimateTokens(indexLine(memory)) + PER_ENTRY_OVERHEAD_TOKENS / 2
+        if (used + cost > budgetTokens && result.isNotEmpty()) return@forEach
+        result += memory
+        used += cost
+    }
+    return result
+}
+
+/** 清单行：`id ｜ 主题（缺省=内容截断） ｜ 更新日`。 */
+private fun indexLine(memory: AssistantMemory): String {
+    val description = memory.description.ifBlank {
+        memory.content.trim().take(MEMORY_INDEX_FALLBACK_CHARS)
+    }
+    return "- ${memory.id} | ${description.replace('\n', ' ')} | ${memory.indexDate()}"
+}
+
+/** 更新日（`yyyy-MM-dd`，本地时区）；时间未知（0）时不显示日期，避免给出假信息。 */
+private fun AssistantMemory.indexDate(): String {
+    if (updatedAt <= 0L) return "date unknown"
+    return Instant.ofEpochMilli(updatedAt)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDate()
+        .toString()
 }
 
 /**

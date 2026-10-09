@@ -101,6 +101,9 @@
   <string name="assistant_page_local_tools_tts_title">テキスト読み上げ</string>
   <string name="assistant_page_manage_memory_title">記憶を管理</string>
   <string name="assistant_page_memory_importance">重要度</string>
+  <string name="assistant_page_memory_description_label">トピック</string>
+  <string name="assistant_page_memory_description_hint">この記録が何についてかを一行で。全文の予算に収まらないとき、後の会話が見るのはこの行です。</string>
+  <string name="assistant_page_memory_read_count">%1$d 回読み取り · 最近 %2$s</string>
   <string name="assistant_page_max_tokens">最大トークン数</string>
   <string name="assistant_page_max_tokens_desc">生成する最大トークン数。空白にすると制限なし。</string>
   <string name="assistant_page_max_tokens_limit">制限：%d トークン</string>
@@ -356,6 +359,9 @@
   <string name="agent_run_error_exception">実行中にエラーが発生</string>
   <string name="chat_tool_loop_title">同じツール呼び出しの繰り返しで終了</string>
   <string name="chat_workspace_budget_title">ワークスペースツールの上限に達したため終了</string>
+  <string name="chat_memory_disabled_toggle">この会話ではメモリを使わない</string>
+  <string name="chat_memory_disabled_toast_on">この会話ではメモリを使いません</string>
+  <string name="chat_memory_disabled_toast_off">この会話でメモリを再び使います</string>
   <string name="chat_thinking_loop_title">思考が繰り返しになったため終了</string>
   <string name="chat_page_check_title_model_settings">タイトルモデル設定を確認</string>
   <string name="chat_page_clear_all_errors">すべてクリア</string>

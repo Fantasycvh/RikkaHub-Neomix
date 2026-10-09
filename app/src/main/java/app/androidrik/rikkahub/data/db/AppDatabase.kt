@@ -53,7 +53,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         KnowledgeBaseDocumentEntity::class,
         KnowledgeEmbeddingEntity::class,
     ],
-    version = 33,
+    version = 34,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -84,6 +84,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 会话列表自定义顺序 + 行内「末尾消息时间」（见 docs/design-conversation-manual-order.md）：
         // 两个**可空**新列 ⇒ AutoMigration 无需 spec（无 notNull 默认值问题）
         AutoMigration(from = 32, to = 33),
+        // 记忆渐进披露 V2 + 会话级「不使用记忆」开关（见 docs/design-memory-discipline.md §4）：
+        // memoryentity 加 description/read_count/last_read_at、conversations 加 memory_disabled，
+        // 全部 NOT NULL + DEFAULT（description 不回填——空串=模型没写过，渲染时用内容截断兜底）
+        AutoMigration(from = 33, to = 34),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)

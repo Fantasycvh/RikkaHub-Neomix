@@ -395,6 +395,17 @@ fun ChatDrawerContent(
                     conversationToMoveFolder = it
                     showMoveToFolderSheet = true
                 },
+                onToggleMemory = {
+                    val willDisable = !it.memoryDisabled
+                    vm.setMemoryDisabled(it, willDisable)
+                    // 菜单项关掉后看不出状态，故补一句即时反馈（与置顶提示同款）
+                    toaster.show(
+                        context.getString(
+                            if (willDisable) R.string.chat_memory_disabled_toast_on
+                            else R.string.chat_memory_disabled_toast_off
+                        )
+                    )
+                },
                 onShare = {
                     // 列表项是轻量摘要（messageNodes 为空），导出前加载完整 conversation
                     scope.launch {

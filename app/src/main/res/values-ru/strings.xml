@@ -101,6 +101,9 @@
   <string name="assistant_page_local_tools_tts_title">Преобразование текста в речь</string>
   <string name="assistant_page_manage_memory_title">Управление памятью</string>
   <string name="assistant_page_memory_importance">Важность</string>
+  <string name="assistant_page_memory_description_label">Тема</string>
+  <string name="assistant_page_memory_description_hint">Одна строка о том, чему посвящена запись; именно её увидят будущие чаты, если запись не влезает в бюджет полного текста.</string>
+  <string name="assistant_page_memory_read_count">Прочитано %1$d раз · последний раз %2$s</string>
   <string name="assistant_page_max_tokens">Макс. токенов</string>
   <string name="assistant_page_max_tokens_desc">Максимальное количество токенов для генерации. Оставьте пустым, чтобы не ограничивать.</string>
   <string name="assistant_page_max_tokens_limit">Ограничение: %d токенов</string>
@@ -356,6 +359,9 @@
   <string name="agent_run_error_exception">Ошибка при выполнении</string>
   <string name="chat_tool_loop_title">Повтор вызова инструмента — ход завершён</string>
   <string name="chat_workspace_budget_title">Лимит инструментов рабочей области — ход завершён</string>
+  <string name="chat_memory_disabled_toggle">Не использовать память в этом чате</string>
+  <string name="chat_memory_disabled_toast_on">Память в этом чате отключена</string>
+  <string name="chat_memory_disabled_toast_off">Память в этом чате снова включена</string>
   <string name="chat_thinking_loop_title">Рассуждение зациклилось — ход завершён</string>
   <string name="chat_page_check_title_model_settings">Проверьте настройки модели заголовков</string>
   <string name="chat_page_clear_all_errors">Очистить всё</string>

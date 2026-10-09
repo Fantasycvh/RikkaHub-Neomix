@@ -46,6 +46,28 @@ data class MemoryEntity(
      */
     @ColumnInfo("updated_at", defaultValue = "0")
     val updatedAt: Long = 0L,
+    /**
+     * **这条记忆讲什么**（模型写入时给，≤150 字符；用户可在记忆页改）。
+     *
+     * 用途=**清单层**（渐进披露，见 `docs/design-memory-discipline.md` §4.2）：全文注入有 token
+     * 预算，预算外的记忆此前**静默不可见**；现在它们以「id ｜ description ｜ 更新日」一行出现在
+     * 注入块里，模型据此决定要不要 `memory_tool action=read` 取全文。
+     *
+     * **空串 = 没写过**（不做事后回填）：渲染清单行时用内容截断兜底，不把派生文本伪装成作者写的。
+     */
+    @ColumnInfo("description", defaultValue = "")
+    val description: String = "",
+    /**
+     * 遥测：这条被 `memory_read` 取过几次（V2 只落库 + 在记忆页显示，**不参与打分**）。
+     *
+     * 为什么值得记：它回答「这条记忆到底有没有起作用」——「全塞或截断」都回答不了。
+     * 将来接进打分/信用记账（agentd 借鉴）时，这是唯一可校准的依据。
+     */
+    @ColumnInfo("read_count", defaultValue = "0")
+    val readCount: Int = 0,
+    /** 遥测：最近一次被 `memory_read` 取走的时间（epoch millis；0 = 从未读过）。 */
+    @ColumnInfo("last_read_at", defaultValue = "0")
+    val lastReadAt: Long = 0L,
 ) {
     companion object {
         /** 缺省重要度（普通偏好档，见 [importance]）。 */

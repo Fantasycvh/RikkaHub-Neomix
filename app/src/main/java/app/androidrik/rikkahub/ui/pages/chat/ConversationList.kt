@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.CheckmarkCircle02
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Forward02
 import me.rerere.hugeicons.stroke.Pin
@@ -96,7 +97,9 @@ fun ColumnScope.ConversationList(
     onPin: (Conversation) -> Unit = {},
     onMoveToAssistant: (Conversation) -> Unit = {},
     onMoveToFolder: (Conversation) -> Unit = {},
-    onShare: (Conversation) -> Unit = {}
+    onShare: (Conversation) -> Unit = {},
+    /** 会话级「不使用记忆」（隐身对话）开关，见 docs/design-memory-discipline.md §4.4 */
+    onToggleMemory: (Conversation) -> Unit = {},
 ) {
     var hasScrolledToCurrent by remember(current.id) { mutableStateOf(false) }
 
@@ -177,6 +180,7 @@ fun ColumnScope.ConversationList(
                         onMoveToAssistant = onMoveToAssistant,
                         onMoveToFolder = onMoveToFolder,
                         onShare = onShare,
+                        onToggleMemory = onToggleMemory,
                         modifier = Modifier.animateItem()
                     )
                 }
@@ -269,6 +273,8 @@ private fun ConversationItem(
     onMoveToAssistant: (Conversation) -> Unit = {},
     onMoveToFolder: (Conversation) -> Unit = {},
     onShare: (Conversation) -> Unit = {},
+    /** 会话级「不使用记忆」（隐身对话）开关，见 docs/design-memory-discipline.md §4.4 */
+    onToggleMemory: (Conversation) -> Unit = {},
     onClick: (Conversation) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -400,6 +406,23 @@ private fun ConversationItem(
                     }
                 )
 
+                DropdownMenuItem(
+                    // 勾选态用图标前缀表达，避免再引入一件 ExpressivePopup 的选中样式
+                    leadingIcon = {
+                        if (conversation.memoryDisabled) {
+                            Icon(HugeIcons.CheckmarkCircle02, null)
+                        }
+                    },
+                    text = {
+                        Text(
+                            stringResource(R.string.chat_memory_disabled_toggle)
+                        )
+                    },
+                    onClick = {
+                        onToggleMemory(conversation)
+                        showDropdownMenu = false
+                    }
+                )
                 DropdownMenuItem(
                     text = {
                         Text(stringResource(R.string.chat_page_share_conversation))

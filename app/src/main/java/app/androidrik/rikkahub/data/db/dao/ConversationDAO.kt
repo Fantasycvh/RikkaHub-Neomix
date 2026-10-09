@@ -122,6 +122,7 @@ interface ConversationDAO {
             lorebook_ids = :lorebookIds,
             workspace_cwd = :workspaceCwd,
             folder_id = :folderId,
+            memory_disabled = :memoryDisabled,
             last_message_at = COALESCE(:lastMessageAt, last_message_at)
         WHERE id = :id
         """
@@ -140,7 +141,19 @@ interface ConversationDAO {
         workspaceCwd: String,
         folderId: String,
         lastMessageAt: Long?,
+        /**
+         * 会话级「不使用记忆」（隐身对话）。**这里用直接赋值**（不像 last_message_at 那样 COALESCE）
+         * ——它是用户开关，false 本身就是有效值，不能让「没传」把它吞掉。
+         */
+        memoryDisabled: Boolean,
     )
+
+    /**
+     * 会话级「不使用记忆」的唯一写入点（与 [updatePinStatus] 同款：调用方算好新值、
+     * 并负责同步内存态，两边用同一个值以免分叉）。
+     */
+    @Query("UPDATE conversationentity SET memory_disabled = :disabled WHERE id = :id")
+    suspend fun updateMemoryDisabled(id: String, disabled: Boolean)
 
     /** 自定义顺序：**唯一**的位置值写入点（见 [CONVERSATION_ORDER_BY] 与设计稿 §三.1）。 */
     @Query("UPDATE conversationentity SET sort_order = :sortOrder WHERE id = :id")

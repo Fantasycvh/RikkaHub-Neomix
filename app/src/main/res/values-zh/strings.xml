@@ -103,6 +103,9 @@
   <string name="assistant_page_local_tools_tts_title">文字转语音</string>
   <string name="assistant_page_manage_memory_title">管理记忆</string>
   <string name="assistant_page_memory_importance">重要度</string>
+  <string name="assistant_page_memory_description_label">主题</string>
+  <string name="assistant_page_memory_description_hint">一行说明这条记忆讲什么；全文预算装不下时，后续对话看到的就是它。</string>
+  <string name="assistant_page_memory_read_count">被读取 %1$d 次 · 最近 %2$s</string>
   <string name="assistant_page_max_tokens">最大Token数</string>
   <string name="assistant_page_max_tokens_desc">最大生成Token数量。留空表示无限制。</string>
   <string name="assistant_page_max_tokens_limit">限制：%d 个Token</string>
@@ -395,6 +398,9 @@
   <string name="agent_run_error_exception">运行出错</string>
   <string name="chat_tool_loop_title">工具调用重复，已结束本轮</string>
   <string name="chat_workspace_budget_title">工作区工具用量已达上限，已结束本轮</string>
+  <string name="chat_memory_disabled_toggle">本对话不使用记忆</string>
+  <string name="chat_memory_disabled_toast_on">本对话已不使用记忆</string>
+  <string name="chat_memory_disabled_toast_off">本对话已恢复使用记忆</string>
   <string name="chat_thinking_loop_title">思考陷入重复，已结束本轮</string>
   <string name="chat_page_check_title_model_settings">检查标题模型设置</string>
   <string name="chat_page_clear_all_errors">清除全部</string>

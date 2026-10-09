@@ -365,11 +365,24 @@ data class AssistantMemory(
      * 模型可据此确认自己填了什么。
      */
     val importance: Float = 0.6f,
+    /**
+     * **这条记忆讲什么**（≤150 字符）。序列化：工具结果回显，模型能确认自己写的主题词。
+     *
+     * 它是**清单层**的主体（见 `docs/design-memory-discipline.md` §4.2）——全文注入预算外的
+     * 记忆以这一行露出，模型据此决定是否 `memory_read` 取全文。空串 = 没写过。
+     */
+    val description: String = "",
     @Transient
     val sortKey: Int = 0,
     /** 最近修改时间（epoch millis），时效衰减基准。**不序列化**——对模型是噪声，仅内部打分用。 */
     @Transient
     val updatedAt: Long = 0L,
+    /** 遥测：被 `memory_read` 取过几次。**不序列化**——对模型没用，也不该影响它的判断。 */
+    @Transient
+    val readCount: Int = 0,
+    /** 遥测：最近一次被读取的时间（epoch millis；0 = 从未）。 */
+    @Transient
+    val lastReadAt: Long = 0L,
 )
 
 @Serializable

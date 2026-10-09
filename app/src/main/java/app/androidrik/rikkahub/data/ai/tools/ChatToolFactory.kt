@@ -51,6 +51,9 @@ internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boo
 internal fun memoryToolNeedsApproval(assistant: Assistant, action: String): Boolean = when (action) {
     "create" -> assistant.memoryCreateApproval
     "edit", "delete" -> assistant.memoryModifyApproval
+    // **读不拦**：只读操作没有可被否决的副作用（与 workspace_task_status 免审批同款）。
+    // 必须显式列出——落进 else 兜底会让渐进披露的每次 memory_read 都变成一次审批轰炸。
+    "read" -> false
     else -> assistant.memoryModifyApproval
 }
 
@@ -102,7 +105,9 @@ class ChatToolFactory(
          * 运行详情页给「回到对话」的反向入口。**只有本装配点知道这件事**，所以只能从这里透传。
          */
         conversationId: String? = null,
-    ): List<Tool> = createToolSegments(settings, assistant, model, workspaceCwd, conversationId)
+        /** 会话级「不使用记忆」（隐身对话）：为真时不装配记忆工具，见 [createToolSegments] */
+        memoryDisabled: Boolean = false,
+    ): List<Tool> = createToolSegments(settings, assistant, model, workspaceCwd, conversationId, memoryDisabled = memoryDisabled)
         .flatMap { it.tools }
 
     /**
@@ -129,11 +134,19 @@ class ChatToolFactory(
          * 宁可多花那一个工具的 schema，也不能让显式配置静默失效。
          */
         explicitlyAllowedToolNames: Set<String> = emptySet(),
+        /**
+         * 会话级「不使用记忆」（隐身对话；见 `docs/design-memory-discipline.md` §4.4）。
+         * 为真时**不装配记忆工具**——它和「不注入记忆」是同一件事的两半：只关注入的话，
+         * 模型仍可 `memory_read` 把记忆逐条读回来，开关等于装饰。
+         */
+        memoryDisabled: Boolean = false,
     ): List<ToolSegment> {
         val segments = mutableListOf<ToolSegment>()
 
         // 记忆工具（原在 GenerationHandler 循环内叠加，现为装配点的一部分）
-        if (assistant.enableMemory) {
+        // **会话级「不使用记忆」时不装配**（隐身对话，见 docs/design-memory-discipline.md §4.4）：
+        // 开关要能拦住「这次对话碰我的记忆库」，否则模型仍可 memory_read 逐条读回来、开关等于装饰。
+        if (assistant.enableMemory && !memoryDisabled) {
             val memoryAssistantId = if (assistant.useGlobalMemory) {
                 MemoryRepository.GLOBAL_MEMORY_ID
             } else {
@@ -143,14 +156,16 @@ class ChatToolFactory(
                 "memory",
                 buildMemoryTools(
                     json = json,
-                    onCreation = { content, importance ->
-                        memoryRepository.addMemory(memoryAssistantId, content, importance)
+                    onCreation = { content, importance, description ->
+                        memoryRepository.addMemory(memoryAssistantId, content, importance, description)
                     },
-                    onUpdate = { id, content, importance ->
-                        memoryRepository.updateContent(id, content, importance)
+                    onUpdate = { id, content, importance, description ->
+                        memoryRepository.updateContent(id, content, importance, description)
                     },
                     onDelete = { id -> memoryRepository.deleteMemory(id) },
-                    // 分档审批：create 默认放行（可选开关）、edit/delete 默认拦截——见 memoryToolNeedsApproval
+                    // 读取顺带记一次遥测（渐进披露的清单层靠它反馈「这条到底有没有用」）
+                    onRead = { id -> memoryRepository.readMemory(id) },
+                    // 分档审批：create 默认放行（可选开关）、edit/delete 默认拦截、read 不拦
                     needsApproval = { action -> memoryToolNeedsApproval(assistant, action) },
                 ),
             )

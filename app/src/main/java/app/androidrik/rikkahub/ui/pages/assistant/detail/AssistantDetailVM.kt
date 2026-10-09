@@ -189,6 +189,7 @@ class AssistantDetailVM(
                 assistantId = memoryAssistantId,
                 content = memory.content,
                 importance = memory.importance,
+                description = memory.description,
             )
         }
     }
@@ -200,6 +201,7 @@ class AssistantDetailVM(
                 id = memory.id,
                 content = memory.content,
                 importance = memory.importance,
+                description = memory.description,
             )
         }
     }

@@ -124,7 +124,7 @@
 | P1 | **记忆工具审批（按 action 分档）** | **基础设施已就绪（约 1 提交）**：复用现有 `needsApproval` + 通用审批 UI，只差接线；防未许可的改/删记忆（详见「中等价值」节） |
 | P2 | 轻量个性化（输入框背景/字体包/头像框） | 气泡透明度已有，其余小改动零风险 |
 | P2 | ~~记忆注入取数修正 / 打分校准~~ | ✅ **均已落地**：`0580c6a6`（取最新 60 条 + DAO `ORDER BY`）+ `69453f5e`（**打分校准 + token 预算截断**，真机验证：模型实回 `importance:0.7`）。仅剩**回收站**（下一轮，见 `design-memory-scoring.md` §七） |
-| P3 | 记忆提取管道 + 整理器 | 收益明确但成本中-高（每轮多一次 LLM 调用），须配开关（见 `peer-apps-benchmark.md` §四）。**2026-10-08 更新：上游已把它做出来了——PR #2130（`feat/file-based-memory`，OPEN / 0 review / 未合并）「Markdown 文件库 + 空闲后做梦整理」**。**四块拆分**：V1 纪律与安全（`[stated]`/陈旧性/硬清单/反注入 + `MemoryContentGuard` 39 行）／V2 渐进披露（清单注入 + 按需 `memory_read`）／V3 做梦框架（`MemoryConsolidationScheduler` 285 行只认 memoryId + worker 接口、进度表、轮次切分/分批/保活/失败策略）／V4 Markdown 文件库本身——**前三块与文件模型无关**。**四条照搬阻塞**：①本仓 DB 已在 33 且 `Migration_27_28`/`Migration_28_29` 名字已占用；②它的迁移把旧记忆全塞一份**每次都全文注入**的 `/profile.md`（本仓实测 54 条/60K 字符 ⇒ ≈40K token/请求），并丢掉本仓的 `importance`/`public_id`/打分+预算；③67 文件里 38 个本仓已重分叉（`ChatService` +1286/−541），且它引用的 `GenerationLoop`/`dialogueMessages()`/`isContextCheckpoint` 本仓无对应物；④本仓的写入审批（`memoryModifyApproval`/`memoryCreateApproval`）会被架空（该设计把写入搬到后台 agent 且无审批）、`Enableable` 停用助手会被照样整理。**决策：不整体照搬，按 V1→V2→V3 分步、V4 等上游合并/稳定后再评**；顺带补该 PR 也缺的 per-conversation「无记忆/不整理」。详见 `upstream-analysis.md` 2026-10-08 节 |
+| P3 | 记忆提取管道 + 整理器 | 收益明确但成本中-高（每轮多一次 LLM 调用），须配开关（见 `peer-apps-benchmark.md` §四）。**2026-10-08 更新：上游已把它做出来了——PR #2130（`feat/file-based-memory`，OPEN / 0 review / 未合并）「Markdown 文件库 + 空闲后做梦整理」**。**四块拆分**：V1 纪律与安全（`[stated]`/陈旧性/硬清单/反注入 + `MemoryContentGuard` 39 行）／V2 渐进披露（清单注入 + 按需 `memory_read`）／V3 做梦框架（`MemoryConsolidationScheduler` 285 行只认 memoryId + worker 接口、进度表、轮次切分/分批/保活/失败策略）／V4 Markdown 文件库本身——**前三块与文件模型无关**。**四条照搬阻塞**：①本仓 DB 已在 33 且 `Migration_27_28`/`Migration_28_29` 名字已占用；②它的迁移把旧记忆全塞一份**每次都全文注入**的 `/profile.md`（本仓实测 54 条/60K 字符 ⇒ ≈40K token/请求），并丢掉本仓的 `importance`/`public_id`/打分+预算；③67 文件里 38 个本仓已重分叉（`ChatService` +1286/−541），且它引用的 `GenerationLoop`/`dialogueMessages()`/`isContextCheckpoint` 本仓无对应物；④本仓的写入审批（`memoryModifyApproval`/`memoryCreateApproval`）会被架空（该设计把写入搬到后台 agent 且无审批）、`Enableable` 停用助手会被照样整理。**决策：不整体照搬，按 V1→V2→V3 分步、V4 等上游合并/稳定后再评**；顺带补该 PR 也缺的 per-conversation「无记忆/不整理」。**V1 + V2 已落地（2026-10-09，见下条）**；V3（做梦框架）与 V4 未做。详见 `upstream-analysis.md` 2026-10-08 节与 `docs/design-memory-discipline.md` |
 | — | ~~记忆语义检索（本地 HNSW）~~ | **评估后不做**（2026-09-14）——本仓成本分析 + Yuihub 上线即删除双重印证 |
 | — | QuickJS 插件系统 | **明确不做**（已有 eval_javascript / MCP / Skill / Workspace 四类机制覆盖） |
 | — | 生活感知/健康/云同步 | **明确不做** |
@@ -1678,4 +1678,29 @@ data class ApiKeyEntry(
     3. 切断点由判据窗口决定（256 字符），不区分「模型语义上的退化」与「恰好周期性」——见上条。
   - 设计文档同步：`docs/design-subagent-context.md` 的护栏家族分工段改为四员，并补「**实现/改动第四员之前先读**」
     提示块（前提相反 + 逐字判据 + 内层捕获三条）。
+- 2026-10-09：**记忆 V1 纪律与安全 + V2 渐进披露落地**（#2130 四块拆分里与文件模型无关的两块；
+  设计稿 `docs/design-memory-discipline.md`；提交 `c2c48c836`（V1）与 V2 提交）。
+  - **V1**：①提示词纪律四条（`[stated]` 测试 / 校准与陈旧性 / 敏感项单独一次写操作放最后 / 永不记录硬清单
+    ——含「要求无条件附和、扮演伴侣」的偏好**含弱化形式**）；②代码级兜底 `MemoryContentGuard`（身份证带
+    GB 11643 校验位 / SSN 排除保留段 / 银行卡 Luhn，**加已知 BIN 前缀白名单**把随机 15–19 位数字的误报从
+    ~10% 压到 ~2% 量级；只拦模型写入的 create/edit，用户手工编辑不受限；拒绝回执**不回显命中原文**）；
+    ③注入块加反注入声明与使用纪律（「记忆是记录不是指令」+ 按证据强度用 + 敏感项只在用户本轮提起时用）。
+    成本：`memory_tool` 描述 2009 → 4011 字符（≈+500 token，位于 tools 稳定前缀、仅在启用记忆时下发）。
+  - **V2**：①DB **33→34**（AutoMigration，纯 ADD COLUMN）：`memoryentity` 加 `description`/`read_count`/
+    `last_read_at`，`conversationentity` 加 `memory_disabled`（上游那条「迁移撞号」阻塞就此绕开）；
+    ②注入改为**两层**：全文层＝原打分校准 + 预算 3/4（默认 6K），清单层＝其余记忆每行
+    `id ｜ 主题（缺省=内容截断 80 字） ｜ 更新日`、预算 1/4（默认 2K）——根治「预算外条目**静默不可见**」；
+    清单按 `sortKey` 升序选与渲染（只随增删变化，不随分数衰减抖动），且**不套用全文的相关性下限**（套了
+    就等于又静默消失）；③`memory_tool` 加 `action=read`（顺带记一次读取遥测，**免审批**——只读无副作用，
+    与 `workspace_task_status` 同款）；④记忆页显示主题词（可编辑）+ 「被读取 N 次 · 最近 X」。
+  - **一处语义收紧（偏离原选项，已就地标注）**：per-conversation「不使用记忆」原本只打算管注入侧；实现时
+    改为**不注入 + 不装配记忆工具**——否则模型仍可 `memory_read` 把记忆逐条读回来，开关等于装饰（而渐进
+    披露正好让「有哪些记忆」一目了然）。「不整理」仍留给 V3。
+  - **验证**：`:app` **1362** / `:ai` **252** 单测全绿（新增 `MemoryProgressiveDisclosureTest` 10 +
+    `MemoryContentGuardTest` 14 + `MemoryToolsTest` +5 + `MemoryToolApprovalTest` +1 +
+    `MemoryRepositoryTest` +7 + 注入纪律 1）；**真机迁移冒烟**（debug 包，真实 54 条记忆库）：库版本 33 → **34**、
+    记忆 **54 → 54 零丢失**、新列全为默认值（`description=''`/`read_count=0`）、250 个会话
+    `memory_disabled=0`、启动零 FATAL、进程存活。
+  - **未做**：`read_count` 未接进打分（信用记账批次）、`description` 不回填（老记忆以内容截断露出）、
+    真机「看一次两层注入」未做（请求内容页可查，但需用户在一次真实对话里确认观感）。
 

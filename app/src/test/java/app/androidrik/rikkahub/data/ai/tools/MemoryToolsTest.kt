@@ -32,9 +32,11 @@ class MemoryToolsTest {
         createApproval: Boolean = false,
     ) = buildMemoryTools(
         json = json,
-        onCreation = { content, importance -> AssistantMemory("00000001", content, importance ?: 0.6f) },
-        onUpdate = { id, content, importance ->
-            AssistantMemory(id, content, importance ?: 0.6f)
+        onCreation = { content, importance, description ->
+            AssistantMemory("00000001", content, importance ?: 0.6f, description.orEmpty())
+        },
+        onUpdate = { id, content, importance, description ->
+            AssistantMemory(id, content, importance ?: 0.6f, description.orEmpty())
         },
         onDelete = { },
         needsApproval = { action ->
@@ -105,18 +107,26 @@ class MemoryToolsTest {
 
     private val created = mutableListOf<Pair<String, Float?>>()
     private val updated = mutableListOf<Triple<String, String, Float?>>()
+    private val createdDescriptions = mutableListOf<String?>()
+    private val updatedDescriptions = mutableListOf<String?>()
+
+    /** onRead 的返回值（单元素容器：让 lambda 能按 id 判断命中） */
+    private val readResult = mutableListOf<AssistantMemory?>()
 
     private fun executingTool() = buildMemoryTools(
         json = json,
-        onCreation = { content, importance ->
+        onCreation = { content, importance, description ->
             created += content to importance
-            AssistantMemory("00000001", content, importance ?: 0.6f)
+            createdDescriptions += description
+            AssistantMemory("00000001", content, importance ?: 0.6f, description.orEmpty())
         },
-        onUpdate = { id, content, importance ->
+        onUpdate = { id, content, importance, description ->
             updated += Triple(id, content, importance)
-            AssistantMemory(id, content, importance ?: 0.6f)
+            updatedDescriptions += description
+            AssistantMemory(id, content, importance ?: 0.6f, description.orEmpty())
         },
         onDelete = { },
+        onRead = { id -> readResult.firstOrNull()?.takeIf { it.id == id } },
     ).first { it.name == "memory_tool" }
 
     @Test
@@ -207,8 +217,12 @@ class MemoryToolsTest {
         val deleted = mutableListOf<String>()
         val tool = buildMemoryTools(
             json = json,
-            onCreation = { content, importance -> AssistantMemory("00000001", content, importance ?: 0.6f) },
-            onUpdate = { id, content, importance -> AssistantMemory(id, content, importance ?: 0.6f) },
+            onCreation = { content, importance, description ->
+                AssistantMemory("00000001", content, importance ?: 0.6f, description.orEmpty())
+            },
+            onUpdate = { id, content, importance, description ->
+                AssistantMemory(id, content, importance ?: 0.6f, description.orEmpty())
+            },
             onDelete = { deleted += it },
         ).first { it.name == "memory_tool" }
         tool.execute(buildJsonObject {
@@ -216,5 +230,74 @@ class MemoryToolsTest {
             put("id", "7bd20f45")
         })
         assertEquals(listOf("7bd20f45"), deleted)
+    }
+
+    // ---- V2：主题词与按需读取（渐进披露） ----
+
+    @Test
+    fun `description is passed through on create and edit`() = runBlocking {
+        val tool = executingTool()
+        tool.execute(buildJsonObject {
+            put("action", "create")
+            put("content", "likes tea")
+            put("description", "food preferences")
+        })
+        tool.execute(buildJsonObject {
+            put("action", "edit")
+            put("id", "a3f1c09e")
+            put("content", "prefers coffee")
+            put("description", "drink preferences")
+        })
+        assertEquals(listOf("food preferences"), createdDescriptions)
+        assertEquals(listOf("drink preferences"), updatedDescriptions)
+    }
+
+    @Test
+    fun `absent description is passed as null so the repository decides`() = runBlocking {
+        executingTool().execute(buildJsonObject {
+            put("action", "create")
+            put("content", "likes tea")
+        })
+        assertEquals(listOf<String?>(null), createdDescriptions)
+    }
+
+    @Test
+    fun `read returns the full text and marks the record as read`() = runBlocking {
+        readResult += AssistantMemory(
+            id = "a3f1c09e",
+            content = "full text of the record",
+            description = "topic line",
+            updatedAt = 1_700_000_000_000L,
+        )
+        val result = executingTool().execute(buildJsonObject {
+            put("action", "read")
+            put("id", "a3f1c09e")
+        })
+        val text = result.single().let { (it as UIMessagePart.Text).text }
+        assertTrue(text.contains("full text of the record"))
+        assertTrue(text.contains("topic line"))
+        assertTrue("回执要带上更新时间，模型才能判断新旧", text.contains("2023-11-14"))
+    }
+
+    @Test
+    fun `read of an unknown id fails loudly instead of returning empty content`() = runBlocking {
+        readResult.clear()
+        val failure = runCatching {
+            executingTool().execute(buildJsonObject {
+                put("action", "read")
+                put("id", "ffffffff")
+            })
+        }.exceptionOrNull()
+        assertTrue("读不到应报错（模型才知道 id 是错的）", failure != null)
+        assertTrue(failure!!.message!!.contains("not found"))
+    }
+
+    @Test
+    fun `schema exposes description and the read action`() {
+        val schema = memoryTool().parameters().toString()
+        assertTrue("schema 必须暴露 description，否则模型看不到该参数", schema.contains("description"))
+        assertTrue("action 枚举必须有 read", schema.contains("read"))
+        // 描述里要说明清单与按需读取的关系，否则模型会把清单行当事实来源
+        assertTrue(memoryTool().description.contains("memory index"))
     }
 }

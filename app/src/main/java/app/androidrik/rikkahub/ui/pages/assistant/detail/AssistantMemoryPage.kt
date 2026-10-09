@@ -49,6 +49,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import java.time.Instant
+import java.time.ZoneId
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
@@ -184,6 +186,20 @@ private fun AssistantMemoryContent(
                         },
                         minLines = 2,
                         maxLines = 8
+                    )
+                    // 主题词（清单行主体）：预算外的记忆只以这一行露出，故可在此补/改。
+                    // 留空=不写清单主题（渲染时用内容截断兜底），不是错误状态。
+                    TextField(
+                        value = memory.description,
+                        onValueChange = { update(memory.copy(description = it)) },
+                        label = {
+                            Text(stringResource(R.string.assistant_page_memory_description_label))
+                        },
+                        supportingText = {
+                            Text(stringResource(R.string.assistant_page_memory_description_hint))
+                        },
+                        minLines = 1,
+                        maxLines = 3
                     )
                     // 重要度：决定该记忆在预算内能否进上下文（模型写入时给初值，用户可在此覆盖）。
                     // 注入预算有限，故这个值直接影响「谁会出现在后续对话里」。
@@ -486,6 +502,16 @@ private fun MemoryItem(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // 主题词（渐进披露的清单行主体）：模型没写就不占位置，不拿内容截断冒充
+                if (memory.description.isNotBlank()) {
+                    Text(
+                        text = memory.description,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     text = memory.content,
 
@@ -493,6 +519,24 @@ private fun MemoryItem(
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
                 )
+                // 读取遥测：让「这条记忆到底有没有起作用」可见（V2 只显示，不参与打分）。
+                // 从未被读过就不显示——零读数是常态，不必占一行。
+                if (memory.readCount > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.assistant_page_memory_read_count,
+                            memory.readCount,
+                            memory.lastReadAt.takeIf { it > 0L }?.let {
+                                Instant.ofEpochMilli(it)
+                                    .atZone(ZoneId.systemDefault())
+                                    .toLocalDate()
+                                    .toString()
+                            } ?: "-",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             IconButton(
                 onClick = { onEditMemory(memory) }

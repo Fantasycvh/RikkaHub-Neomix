@@ -463,6 +463,7 @@ class ConversationRepository(
                     workspaceCwd = entity.workspaceCwd,
                     folderId = entity.folderId,
                     lastMessageAt = entity.lastMessageAt,
+                    memoryDisabled = entity.memoryDisabled,
                 )
             }
             // 增量保存（不再删全表重插；见 saveMessageNodes）。
@@ -583,6 +584,7 @@ class ConversationRepository(
             lorebookIds = JsonInstant.encodeToString(conversation.lorebookIds),
             workspaceCwd = conversation.workspaceCwd ?: "",
             folderId = conversation.folderId?.toString() ?: "",
+            memoryDisabled = conversation.memoryDisabled,
             // 行内「最近活跃」= 末尾消息的 createdAt。消息在内存里（本映射点的入参就带 messageNodes）
             // 时按实际算；元信息保存（轻量 Conversation 无消息）时返回 null，
             // 由 DAO 的 COALESCE 保留库里原值（见 updateMetadata 注释）。
@@ -617,6 +619,7 @@ class ConversationRepository(
             lorebookIds = JsonInstant.decodeFromString(conversationEntity.lorebookIds),
             workspaceCwd = conversationEntity.workspaceCwd.ifEmpty { null },
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
+            memoryDisabled = conversationEntity.memoryDisabled,
         )
     }
 
@@ -739,6 +742,16 @@ class ConversationRepository(
             id = conversationId.toString(),
             folderId = folderId?.toString() ?: ""
         )
+    }
+
+    /**
+     * 设置会话级「不使用记忆」（隐身对话；设计见 `docs/design-memory-discipline.md` §4.4）。
+     *
+     * 与 [updateConversationPinStatus] 同款：**调用方算好新值并同步内存态**，两边用同一个值。
+     * 入口在 `ChatService.setConversationMemoryDisabled`——它持有 session，能同时改内存。
+     */
+    suspend fun updateConversationMemoryDisabled(conversationId: Uuid, disabled: Boolean) {
+        conversationDAO.updateMemoryDisabled(conversationId.toString(), disabled)
     }
 
     private fun conversationSummaryToConversation(entity: LightConversationEntity): Conversation {
