@@ -5,6 +5,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import org.junit.Assert.assertEquals
@@ -299,5 +300,116 @@ class MemoryToolsTest {
         assertTrue("action 枚举必须有 read", schema.contains("read"))
         // 描述里要说明清单与按需读取的关系，否则模型会把清单行当事实来源
         assertTrue(memoryTool().description.contains("memory index"))
+    }
+
+    // ---- 只提案模式（做梦在审批开着时的形态，见 docs/design-memory-consolidation.md §7.2）----
+
+    private val proposals = mutableListOf<MemoryConsolidationProposal>()
+
+    /** 与 [executingTool] 同一个工具，只是带上 proposalSink：写入改记成建议 */
+    private fun proposingTool() = buildMemoryTools(
+        json = json,
+        onCreation = { content, importance, description ->
+            created += content to importance
+            AssistantMemory("00000001", content, importance ?: 0.6f, description.orEmpty())
+        },
+        onUpdate = { id, content, importance, description ->
+            updated += Triple(id, content, importance)
+            AssistantMemory(id, content, importance ?: 0.6f, description.orEmpty())
+        },
+        onDelete = { },
+        onRead = { id -> readResult.firstOrNull()?.takeIf { it.id == id } },
+        proposalSink = { proposals += it },
+    ).first { it.name == "memory_tool" }
+
+    private fun textOf(result: List<UIMessagePart>) =
+        result.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text }
+
+    @Test
+    fun `proposal mode records create without touching the repository`() = runBlocking {
+        created.clear()
+        updated.clear()
+        proposals.clear()
+
+        val payload = textOf(
+            proposingTool().execute(
+                buildJsonObject {
+                    put("action", "create")
+                    put("content", "喜欢短回复")
+                    put("importance", 0.7)
+                    put("description", "回复风格")
+                }
+            )
+        )
+
+        assertTrue("仓库一次都不许被调用", created.isEmpty())
+        assertEquals(
+            listOf(MemoryConsolidationProposal("create", null, "喜欢短回复", 0.7f, "回复风格")),
+            proposals,
+        )
+        assertTrue(
+            "回执必须说清「没落库」：否则模型以为写成功了、也可能反复重试",
+            payload.contains("\"applied\":false") && payload.contains("\"proposal\":true"),
+        )
+    }
+
+    @Test
+    fun `proposal mode records edit and delete with their target`() = runBlocking {
+        updated.clear()
+        proposals.clear()
+
+        proposingTool().execute(
+            buildJsonObject {
+                put("action", "edit")
+                put("id", "a3f1c09e")
+                put("content", "合并后的内容")
+            }
+        )
+        proposingTool().execute(buildJsonObject {
+            put("action", "delete")
+            put("id", "7bd20f45")
+        })
+
+        assertTrue("编辑不许落库", updated.isEmpty())
+        assertEquals(
+            listOf(
+                MemoryConsolidationProposal("edit", "a3f1c09e", "合并后的内容", null, null),
+                MemoryConsolidationProposal("delete", "7bd20f45"),
+            ),
+            proposals,
+        )
+    }
+
+    @Test
+    fun `proposal mode leaves read alone`() = runBlocking {
+        readResult.clear()
+        readResult += AssistantMemory(id = "a3f1c09e", content = "常读的那条")
+
+        val payload = textOf(proposingTool().execute(buildJsonObject {
+            put("action", "read")
+            put("id", "a3f1c09e")
+        }))
+
+        assertTrue("只提案说的是写入，读取照常", payload.contains("常读的那条"))
+        assertTrue("读不产生建议", proposals.isEmpty())
+    }
+
+    @Test
+    fun `the content guard still wins over proposal mode`() = runBlocking {
+        created.clear()
+        proposals.clear()
+
+        val payload = textOf(
+            proposingTool().execute(
+                buildJsonObject {
+                    put("action", "create")
+                    // 身份证号会过 GB 11643 校验位
+                    put("content", "身份证 11010519491231002X")
+                }
+            )
+        )
+
+        assertTrue("硬标识连建议都不该留下（提示词 + 兜底是两回事）", proposals.isEmpty())
+        assertTrue(payload.contains("Do not retry"))
     }
 }

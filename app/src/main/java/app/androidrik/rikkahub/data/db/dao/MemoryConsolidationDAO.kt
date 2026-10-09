@@ -30,6 +30,22 @@ interface MemoryConsolidationDAO {
     suspend fun deleteProgress(conversationId: String)
 
     /**
+     * 该助手最近一次整理**完成**的时间（名下所有会话里最新的 `consolidated_at`）。
+     *
+     * 用作「自动整理频次上限」的**近似**：整理按库跑，一次 run 会给它处理的每个会话写进度，
+     * 所以库级的 max ≈ 上次 run 的时间。近似而不是专门记库级状态，省一张表（见设计稿 §7.3）；
+     * 代价是「一次什么都没改的 run」不会推进它——那本来也不需要限流（没花钱）。
+     */
+    @Query(
+        """
+        SELECT MAX(p.consolidated_at) FROM ConversationEntity c
+        INNER JOIN memory_consolidation p ON p.conversation_id = c.id
+        WHERE c.assistant_id = :assistantId
+        """
+    )
+    suspend fun getLastConsolidatedAt(assistantId: String): Long?
+
+    /**
      * 该助手下**可能有新内容**的会话 id（按最近活跃倒序，最多 [limit] 条）。
      *
      * 三个条件缺一不可：

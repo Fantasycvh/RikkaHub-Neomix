@@ -28,8 +28,10 @@ class MemoryConsolidationRepository(
     /** 当前设置里的助手列表：只有它知道「助手启用 / 记忆开关 / 做梦开关 / 全局记忆」 */
     private val assistants: suspend () -> List<Assistant>,
     /** 载入完整会话（数轮次要消息时间）：生产接 `ConversationRepository::getConversationById` */
-    private val loadConversation: suspend (Uuid) -> Conversation?,
+    private val conversationLoader: suspend (Uuid) -> Conversation?,
     private val limitPerRun: Int = DEFAULT_LIMIT_PER_RUN,
+    /** 判定「自动整理间隔」用的时钟；测试注入固定时刻，生产用真实时间 */
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
     companion object {
         /**
@@ -39,6 +41,18 @@ class MemoryConsolidationRepository(
          * 而没处理完的部分下次扫库还会被捞出来（调度器每次整理后都会重扫）。
          */
         const val DEFAULT_LIMIT_PER_RUN = 8
+
+        /**
+         * **自动**整理同一记忆库的最小间隔。
+         *
+         * 为什么必须有：`onTurnFinished` 的规则是「一轮结束 + 空闲 2 分钟」就整理——不设间隔的话，
+         * 活跃会话会变成**每 2 分钟一次后台模型调用**（一轮对话就够触发）。6 小时把上限压到
+         * 每库每天 ≤4 次，同时保证「今天聊的，今晚就被整理」。
+         *
+         * **只约束自动路径**：`pendingOf` / `memoryIdsWithUpdates` / 自动的 `findPending` 判它，
+         * 手动整理的 `findPending(manual = true)` 不判（用户显式点击即授权）。见设计稿 §7.3。
+         */
+        const val MIN_AUTO_INTERVAL_MS = 6L * 60 * 60 * 1000
     }
 
     /**
@@ -50,19 +64,23 @@ class MemoryConsolidationRepository(
      */
     suspend fun pendingOf(conversation: Conversation): PendingMemoryConversation? {
         val assistant = assistants().firstOrNull { it.id == conversation.assistantId } ?: return null
-        return pendingOf(conversation, assistant)
+        if (!autoIntervalElapsed(listOf(assistant))) return null
+        return pendingOfIgnoringInterval(conversation, assistant)
     }
 
-    private suspend fun pendingOf(
+    /**
+     * 门控的第二层（**不含**自动频次上限）。
+     *
+     * 为什么拆开：上限只约束**自动**路径，而手动整理（`organize`）走的是 `findPending(manual = true)`
+     * → 也会调用本函数。把上限留在公共点会让「手动整理」被静默挡住——正是契约里明确要避免的那件事。
+     */
+    private suspend fun pendingOfIgnoringInterval(
         conversation: Conversation,
         assistant: Assistant,
     ): PendingMemoryConversation? {
         if (!assistant.memoryConsolidationEnabled()) return null
         if (conversation.memoryDisabled) return null
-        val baseline = memoryConsolidationBaseline(
-            consolidationSince = assistant.memoryConsolidationSince,
-            consolidatedAt = consolidationDAO.getConsolidatedAt(conversation.id.toString()) ?: 0L,
-        )
+        val baseline = baselineOf(conversation, assistant)
         val turns = unconsolidatedTurns(conversation, baseline)
         return if (turns > 0) {
             PendingMemoryConversation(conversation.id, assistant.memoryId(), turns)
@@ -72,6 +90,30 @@ class MemoryConsolidationRepository(
     }
 
     /**
+     * 按 id 载入完整会话（worker 要把新轮次拼成正文）。
+     *
+     * 暴露在仓库里而不是让 worker 直接依赖 `ConversationRepository`：worker 的策略要能用 JVM 单测
+     * 钉死，而 `ConversationRepository` 是个构造很重的具体类、在单测里造不出来。
+     */
+    suspend fun loadConversation(id: Uuid): Conversation? = conversationLoader(id)
+
+    /**
+     * 该会话的整理基线：`max(助手开关的开启时刻, 该会话的整理进度)`（见 `memoryConsolidationBaseline`）。
+     *
+     * 公开给 worker：它要把水位推进到「最后一条带进模型的消息时间」，得先知道从哪儿算起。
+     */
+    suspend fun baselineOf(conversation: Conversation): Long {
+        val assistant = assistants().firstOrNull { it.id == conversation.assistantId } ?: return 0L
+        return baselineOf(conversation, assistant)
+    }
+
+    private suspend fun baselineOf(conversation: Conversation, assistant: Assistant): Long =
+        memoryConsolidationBaseline(
+            consolidationSince = assistant.memoryConsolidationSince,
+            consolidatedAt = consolidationDAO.getConsolidatedAt(conversation.id.toString()) ?: 0L,
+        )
+
+    /**
      * 可能有新内容的记忆库（**粗筛**：只按会话的末尾消息时间，不保证真有新轮次）。
      *
      * 应用启动补漏用：进程被杀前没整理完的会话靠它捞回来。
@@ -79,6 +121,7 @@ class MemoryConsolidationRepository(
     suspend fun memoryIdsWithUpdates(): List<String> =
         participantsByStore()
             .filter { (_, participants) ->
+                if (!autoIntervalElapsed(participants)) return@filter false
                 val baseline = storeBaseline(participants)
                 participants.any { assistant ->
                     consolidationDAO.getCandidateConversationIds(assistant.id.toString(), baseline, 1)
@@ -95,10 +138,12 @@ class MemoryConsolidationRepository(
      * 但迁移/恢复旧库会让它撒谎），真正算数的是消息时间；精算为 0 的会话直接丢掉，不写进度行
      * （写了就把还没整理的内容标记成整理过了）。
      */
-    suspend fun findPending(memoryId: String): List<PendingMemoryConversation> {
+    suspend fun findPending(memoryId: String, manual: Boolean = false): List<PendingMemoryConversation> {
         val assistants = assistants()
         val participants = assistants.filter { it.memoryConsolidationEnabled() && it.memoryId() == memoryId }
         if (participants.isEmpty()) return emptyList()
+        // 自动路径服从频次上限；手动整理（用户点了「整理一下」）不判
+        if (!manual && !autoIntervalElapsed(participants)) return emptyList()
         val baseline = storeBaseline(participants)
         val byId = assistants.associateBy { it.id }
         return participants
@@ -107,22 +152,39 @@ class MemoryConsolidationRepository(
             }
             .distinct()
             .mapNotNull { id ->
-                val conversation = Uuid.parseOrNull(id)?.let { loadConversation(it) } ?: return@mapNotNull null
+                val conversation = Uuid.parseOrNull(id)?.let { conversationLoader(it) } ?: return@mapNotNull null
                 val assistant = byId[conversation.assistantId] ?: return@mapNotNull null
-                pendingOf(conversation, assistant)
+                pendingOfIgnoringInterval(conversation, assistant)
             }
             .take(limitPerRun)
     }
 
     /**
-     * 把 [conversation] 现有内容都算作已整理。
-     *
-     * 两个调用场景：分叉（复制过来的轮次由原对话负责整理）、以及每次整理完成后推进进度。
+     * 把 [conversation] 现有内容都算作已整理（分叉时用）。
      */
-    suspend fun markConsolidated(conversation: Conversation, now: Long = System.currentTimeMillis()) {
+    suspend fun markConsolidated(conversation: Conversation, now: Long = System.currentTimeMillis()) =
+        markConsolidated(conversation.id, now)
+
+    /**
+     * 把会话的进度推进到 [watermark]（epoch millis）。
+     *
+     * 整理 agent 用的是这个重载：它推进的是「最后一条**真正带进模型**的消息时间」，而不是 `now`——
+     * 用 `now` 会把没装进这一轮预算、或期间刚产生的新消息一起标记成整理过了（静默漏掉）。
+     */
+    suspend fun markConsolidated(conversationId: Uuid, watermark: Long) {
         consolidationDAO.upsertProgress(
-            MemoryConsolidationEntity(conversationId = conversation.id.toString(), consolidatedAt = now),
+            MemoryConsolidationEntity(conversationId = conversationId.toString(), consolidatedAt = watermark),
         )
+    }
+
+    /**
+     * 自动路径的频次上限是否已过（按库算：参与助手里最近一次整理完成的时间）。
+     *
+     * 从没整理过 ⇒ 允许（第一次总要跑）；否则要隔 [MIN_AUTO_INTERVAL_MS]。
+     */
+    private suspend fun autoIntervalElapsed(participants: List<Assistant>): Boolean {
+        val last = participants.maxOf { consolidationDAO.getLastConsolidatedAt(it.id.toString()) ?: 0L }
+        return last <= 0L || now() - last >= MIN_AUTO_INTERVAL_MS
     }
 
     /**

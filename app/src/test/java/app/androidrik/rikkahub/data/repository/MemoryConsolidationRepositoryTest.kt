@@ -63,6 +63,12 @@ class MemoryConsolidationRepositoryTest {
             progress.remove(conversationId)
         }
 
+        /** 等价于 SQL 的 `MAX(consolidated_at)` over 该助手的会话：频次上限的近似口径 */
+        override suspend fun getLastConsolidatedAt(assistantId: String): Long? =
+            lastActivity[assistantId].orEmpty().keys
+                .mapNotNull { progress[it] }
+                .maxOrNull()
+
         override suspend fun getCandidateConversationIds(
             assistantId: String,
             baseline: Long,
@@ -84,11 +90,13 @@ class MemoryConsolidationRepositoryTest {
     private fun repository(
         assistants: List<Assistant>,
         limitPerRun: Int = MemoryConsolidationRepository.DEFAULT_LIMIT_PER_RUN,
+        now: Long = millis(23),
     ) = MemoryConsolidationRepository(
         consolidationDAO = dao,
         assistants = { assistants },
-        loadConversation = { id -> conversations[id] },
+        conversationLoader = { id -> conversations[id] },
         limitPerRun = limitPerRun,
+        now = { now },
     )
 
     private fun assistant(
@@ -279,5 +287,40 @@ class MemoryConsolidationRepositoryTest {
         val assistant = assistant()
         assertTrue(repository(listOf(assistant)).findPending("nobody").isEmpty())
         assertTrue("不认识这个库时一次库都不查", dao.queriedBaselines.isEmpty())
+    }
+
+    // ---- 自动频次上限（每库 6 小时；手动整理不受约束，见设计稿 §7.3）----
+
+    @Test
+    fun `auto paths stay quiet inside the minimum interval while manual ignores it`() = runBlocking {
+        val assistant = assistant(since = millis(0))
+        // 第 9 轮还没整理（进度停在第 8 小时），而「现在」是第 9 小时 ⇒ 间隔只过了 1 小时
+        val conversation = conversation(assistant, 9)
+        remember(assistant, conversation, lastActivityAt = millis(9))
+        dao.progress[conversation.id.toString()] = millis(8)
+
+        val repository = repository(listOf(assistant), now = millis(9))
+        assertNull("间隔内不再自动排新活（否则活跃会话每 2 分钟烧一次模型）", repository.pendingOf(conversation))
+        assertTrue("启动补漏也不排", repository.memoryIdsWithUpdates().isEmpty())
+        assertTrue("自动扫库为空（这条路径不判的话限流形同虚设）", repository.findPending(assistant.id.toString()).isEmpty())
+        assertEquals(
+            "手动整理不受频次上限约束（用户显式点击即授权）",
+            1,
+            repository.findPending(assistant.id.toString(), manual = true).size,
+        )
+    }
+
+    @Test
+    fun `auto paths resume after the interval has passed`() = runBlocking {
+        val assistant = assistant(since = millis(0))
+        val conversation = conversation(assistant, 9)
+        remember(assistant, conversation, lastActivityAt = millis(9))
+        // 上次整理在第 1 小时，距「现在」8 小时 > 6 小时
+        dao.progress[conversation.id.toString()] = millis(1)
+
+        val repository = repository(listOf(assistant), now = millis(9))
+        assertEquals(1, repository.pendingOf(conversation)?.turns)
+        assertEquals(listOf(assistant.id.toString()), repository.memoryIdsWithUpdates())
+        assertEquals(1, repository.findPending(assistant.id.toString()).size)
     }
 }

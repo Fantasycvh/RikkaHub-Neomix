@@ -143,13 +143,21 @@ interface MemoryConsolidationWorker {
 记忆页只在有提案时显示一行「有 N 条建议（审批开着时不自动应用）」。若用起来发现用户想逐条勾选，
 再升级为待办区（V4 之后再评）。
 
-### 7.3 成本护栏（与护栏家族同款：优雅停止 + 结果照常回填 + 诊断日志）
+### 7.3 成本护栏（**已随 V3-b2 落地**，与护栏家族同款：优雅停止 + 结果照常回填 + 诊断日志）
 
-- **单次整理最大步数**：自动 ≤ 16 步 / 手动 ≤ 32 步（上游取值）——后台 agent 跑飞比对话里更难看；
-- **每库自动频次上限**：例如自动整理每库每天最多 1 次（手动不限）——否则「聊两句就整理一次」= 每轮
-  多一次后台调用，成本与耗电都不可接受；
-- **离线 / 无可用模型时直接跳过**（不记成 `failed`）：框架的「失败不自动重试」是为了防重打模型，
-  但"现在没网"不是失败，把它记成失败会让记忆库被莫名挂起；
+- **单次整理最大步数**：自动 ≤ **16** 步 / 手动 ≤ **32** 步（`MemoryConsolidator.MAX_AUTO_STEPS` /
+  `MAX_MANUAL_STEPS`；上游同款）——后台 agent 跑飞比对话里更难看，而用户显式手动的整理允许更彻底；
+- **每库自动频次上限 = 6 小时**（`MIN_AUTO_INTERVAL_MS`）：`onTurnFinished` 的规则是「一轮结束 + 空闲
+  2 分钟」就整理，不设间隔的话**活跃会话会变成每 2 分钟一次后台模型调用**（一轮对话就够触发）。
+  6 小时把上限压到每库每天 ≤4 次，同时保证「今天聊的，今晚被整理」。
+  **只约束自动路径**：`pendingOf` / `memoryIdsWithUpdates` / 自动的 `findPending` 判它，
+  `findPending(manual = true)`（用户点「整理一下」）不判——为此契约多了一个 `manual` 参数
+  （§4 已记），否则调度器整理后的自动重扫会绕过限流；
+- **离线 / 无可用模型：不发请求，但记成一次失败**（换退避）。实现时改了原计划（原来是"跳过且不记失败"）：
+  返回 `null`（= 没可做的事）会让调度器**每 2 分钟重扫同一批内容**空转；记成失败则拿到现成的退避
+  （`failed` ⇒ 不再自动重试，直到下一轮对话结束或用户手动触发），而**水位没推进 ⇒ 内容不丢**；
+- **水位只推进到「真正带进模型」的位置**（`transcript.consumed` 而不是请求里的 `conversationIds`）：
+  否则没装进这一轮预算的轮次会被标记成整理过，静默丢失；
 - 框架层已有：失败不自动重试、同库单飞、取消不算失败、保活失败不构成功能失败。
 
 ### 7.4 落地成本与位置（**已随 V3-b1 落地**）
@@ -229,17 +237,67 @@ debug 包（`app.androidrik.rikkahub.debug`，用户真实库）升级安装并�
 - **未在真机验证的部分**：开关的观感与"拨动后确实没有行为"（需要人点一下；本批没有触发者，
   拨动本来就不该有可观察效果）。
 
+## 8.3 V3-b2 已落地（2026-10-09）：worker + 整理 agent + 审批降级
+
+**做了什么**
+
+- **`MemoryConsolidator`**（实现 `MemoryConsolidationWorker`）：四条数据面委托给 V3-b1 的仓库，
+  自己只做「需要模型」的那一件事——切轮次 → 给库现状 → 解析模型 → 调 agent → 推进水位 → 组装运行结果；
+- **`MemoryConsolidationAgent` 抽象**：策略层（切多少、推进到哪、审批怎么降级、失败怎么办）全部
+  可用 JVM 单测钉死；生产实现 `MemoryConsolidationGenerationAgent` 只剩「建消息 → 调 `generateText`
+  → 数改动」三件事（它依赖 Android，由源码扫描守卫兜住，见 §8.3 末尾）；
+- **输入侧**（`MemoryConsolidationPrompts.kt`，纯函数）：
+  - 正文切分：只取基线之后的轮次、按 token 预算装（默认 6K）、**装不下的会话不推进水位**、
+    单轮超预算时只要这一轮还什么都没装下就带上（防饥饿）、非文本折叠成 `[image]`/`[file: x.pdf]`；
+  - **校准表**：`id ｜ importance ｜ reads ｜ 主题`——这是「事后复核」职责的输入。**刻意不进聊天注入**
+    （V2 用 `@Transient` 挡掉是对的：聊天模型看到「这条被读过 7 次」会把它当权威），只给整理 agent；
+  - 库现状**复用** `buildMemoryPrompt`（两层披露、换更小预算 4K），不另造一套视图；
+- **审批降级（只提案模式）**：库的任一参与助手开着 `memoryModifyApproval` / `memoryCreateApproval`
+  ⇒ 整轮只提案。做法是在**工具层**加一个 `proposalSink`：`create`/`edit`/`delete` 不动库、把结构化建议
+  交给它、回执 `applied:false` 并说明「已记录为建议，别重试」。为什么不靠既有审批机制拦：
+  那套是**交互**的（挂起等用户点），后台整理没有用户可等；而"直接拒绝"会丢掉模型原本想改的内容。
+  **代码级兜底优先于提案**：命中身份证/卡号的写入连建议都不留（测试钉住）；
+- **模型选择**：优先全局「快速模型」（`Settings.fastModelId`，它本来就是给标题/建议这类后台任务用的），
+  没配再回落到助手的聊天模型；做梦用**临时 profile**（不带用户的人设/世界书/记忆注入）。
+
+**两条与文档不同的实现修正**（§7.3 已就地更新）：离线/无模型改成"不发请求但记成失败换退避"；
+频次上限取 **6 小时**（不是"每天 1 次"的举例），且为此给 `findPending` 加了 `manual` 参数。
+
+**⚠️ 仍不接线，且有一处阻塞**：提案目前只落在运行结果与日志里、**没有持久化**，也没有"逐条批准"的
+界面。也就是说**审批开着的用户此刻不该被接上自动触发**——否则等于白烧一次模型调用。V3-b3 必须先补
+「提案持久化 + 应用入口」，再接线（见 §9）。
+
+**验证**（:app **1412 → 1437**）：
+
+- `MemoryConsolidationPromptsTest` 7 项：只取基线之后 / 装不下就不推进水位 / 单轮超预算不饥饿 /
+  预算耗尽后只计数 / 无正文轮次也跨过水位（否则每 2 分钟被扫）/ 附件折叠、URL 不进正文 / 校准表
+  （`never read`、`read Nx`、空库不发）；
+- `MemoryConsolidatorTest` 9 项：无模型 ⇒ **一次请求都不发**且记失败 / 自动 16 步 / 手动 32 步 /
+  审批开着 ⇒ `proposeOnly` 且提案透传 / **水位只推进带进模型的会话** / agent 失败 ⇒ 水位不动 /
+  幂等（重复调用不再请求）/ 无正文 ⇒ 不发请求但推进水位 / 未知库不参与；
+- `MemoryToolsTest` +4：只提案模式下 create/edit/delete 不动库并回传结构化建议、`read` 照常、
+  **兜底优先于提案**；
+- `MemoryConsolidationRepositoryTest` +2：间隔内自动路径静默（`pendingOf`/`memoryIdsWithUpdates`/自动
+  `findPending` 三者都判）、**手动路径不受约束**；间隔过后恢复；
+- `MemoryConsolidationSchedulerTest` +1：`organize` 必须带 `manual = true`，而整理后的自动重扫不带；
+- `MemoryConsolidationWiringTest` 2 项（源码扫描）：提案 sink 真的接在工具上、提案模式在系统提示里
+  有说明、做梦用临时 profile、读取记遥测、护栏停止当失败；水位只用 `transcript.consumed` 推进、
+  无模型记失败、两个步数常量存在。
+
 ## 9. 未做（下一批）
 
-- **V3-b2 worker**（`MemoryConsolidator`）：吃「上次整理后新增的轮次」，对本仓记录做去重 / 合并 / 纠类 /
-  退场，并用 `read_count` + `importance` 对照校准（信用记账那批把读数接进打分只是「当下口径」，
-  整理才是「事后复核」）；含整理提示词、轮次切分/分批、幂等、`changedMemories` 统计；
-  **审批开着 ⇒ 只做不动库的分析**（§7.2）；三条成本护栏（步数 / 每库每日自动频次 / 离线跳过，§7.3）。
-  它同时是 `MemoryConsolidationWorker` 接口的实现者（四条数据面直接复用本批的 repository）。
-- **V3-b3 接线**：Koin 单例 + 轮末（`ChatService` 生成结束处）/ 切后台（`RikkaHubApp` 生命周期）/
-  离开对话（导航离页）/ 启动补漏（`RikkaHubApp.onCreate`）四个钩子 + 前台服务（复用 `KeepAliveService`）
-  + 记忆页的「整理一下」入口与状态（`statusOf` / `automaticRuns` 两个流已按"设置页与一次性提示"的需要留好）。
-  **本批一处都不接**：`consolidate` 不存在 ⇒ 接了只有空转（还会每 2 分钟失败一次）。
+- **提案的持久化与应用入口**（V3-b3 的**前置**）：现在提案只落在运行结果与日志里，重启即失。
+  审批开着（`memoryModifyApproval` 默认就是开的）的用户，用起来的体验会是「后台花了钱、只在当场
+  看了一眼建议」——所以**在补上「落库 + 逐条批准/丢弃」之前不要接自动触发**。
+  落地形态：一张 `memory_consolidation_proposal` 表（记 `memory_id` / `action` / `target_id` / 载荷 /
+  时间）+ 记忆页的待办区（勾选应用 = 回放成一次 `memory_tool` 调用）；
+- **V3-b3 接线**：Koin 单例（`MemoryConsolidationScheduler` + `MemoryConsolidator` + 两个 lambda：
+  `{ memoryRepository.getMemoriesOfAssistant(it) }` 与 `{ conversationRepository.getConversationById(it) }`）
+  + 四个钩子（轮末 `ChatService` 生成结束处 / 切后台 `RikkaHubApp` 生命周期 / 离开对话 导航离页 /
+  启动补漏 `RikkaHubApp.onCreate`）+ 前台服务（复用 `KeepAliveService`）+ 记忆页「整理一下」与状态
+  （`statusOf` / `automaticRuns` 两个流已按"设置页与一次性提示"的需要留好）；
+- **真机验证**（V3-b3 之后）：一次真实整理的观感（日志里的 applied/proposals 计数、水位推进、
+  自动触发间隔是否体感合适），以及「审批开着 ⇒ 只提案」这条路径端到端。
 - **V4 Markdown 文件库**：等上游 #2130 合并/稳定后再评。
 
 相关：`docs/design-memory-discipline.md`（V1 纪律 / V2 渐进披露 / §4.6 信用记账）、

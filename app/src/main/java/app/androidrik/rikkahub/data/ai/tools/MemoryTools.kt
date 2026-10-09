@@ -13,6 +13,7 @@ import kotlinx.serialization.json.put
 import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.utils.toLocalString
 import java.time.Instant
@@ -28,6 +29,16 @@ fun buildMemoryTools(
      * 实现里要**顺带记一次读取遥测**（见 `MemoryRepository.readMemory`）；读不到返回 null。
      */
     onRead: suspend (String) -> AssistantMemory? = { null },
+    /**
+     * **只提案模式**（做梦在审批开着时的形态，见 `docs/design-memory-consolidation.md` §7.2）：
+     * 非 null 时 `create` / `edit` / `delete` 都**不动库**，而是把「本该如何改」交给它，
+     * 并回执 `applied:false`。
+     *
+     * 为什么在工具层做，而不是靠 `needsApproval` 拦：审批机制是**交互**的（挂起等用户点），
+     * 后台整理没有用户可等；而「直接拒绝」又会丢掉模型原本想改的内容。这里既不挂起也不丢弃。
+     * `read` 不受影响（只读）。
+     */
+    proposalSink: ((MemoryConsolidationProposal) -> Unit)? = null,
     /** 修改/删除记忆需审批（按 action 名判定；create 始终放行——见 Assistant.memoryModifyApproval） */
     needsApproval: (action: String) -> Boolean = { false },
 ): List<Tool> = listOf(
@@ -164,10 +175,15 @@ fun buildMemoryTools(
                     val requiredContent = content ?: error("content is required")
                     val importance = params["importance"]?.jsonPrimitive?.floatOrNull
                     val description = params["description"]?.jsonPrimitive?.contentOrNull
-                    json.encodeToJsonElement(
-                        AssistantMemory.serializer(),
-                        onCreation(requiredContent, importance, description),
-                    )
+                    if (proposalSink != null) {
+                        proposalSink(MemoryConsolidationProposal("create", null, requiredContent, importance, description))
+                        proposalPayload()
+                    } else {
+                        json.encodeToJsonElement(
+                            AssistantMemory.serializer(),
+                            onCreation(requiredContent, importance, description),
+                        )
+                    }
                 }
 
                 "edit" -> {
@@ -175,18 +191,28 @@ fun buildMemoryTools(
                     val requiredContent = content ?: error("content is required")
                     val importance = params["importance"]?.jsonPrimitive?.floatOrNull
                     val description = params["description"]?.jsonPrimitive?.contentOrNull
-                    json.encodeToJsonElement(
-                        AssistantMemory.serializer(),
-                        onUpdate(id, requiredContent, importance, description),
-                    )
+                    if (proposalSink != null) {
+                        proposalSink(MemoryConsolidationProposal("edit", id, requiredContent, importance, description))
+                        proposalPayload()
+                    } else {
+                        json.encodeToJsonElement(
+                            AssistantMemory.serializer(),
+                            onUpdate(id, requiredContent, importance, description),
+                        )
+                    }
                 }
 
                 "delete" -> {
                     val id = params["id"]?.jsonPrimitive?.contentOrNull ?: error("id is required")
-                    onDelete(id)
-                    buildJsonObject {
-                        put("success", true)
-                        put("id", id)
+                    if (proposalSink != null) {
+                        proposalSink(MemoryConsolidationProposal("delete", targetId = id))
+                        proposalPayload()
+                    } else {
+                        onDelete(id)
+                        buildJsonObject {
+                            put("success", true)
+                            put("id", id)
+                        }
                     }
                 }
 
@@ -211,6 +237,20 @@ fun buildMemoryTools(
         }
     )
 )
+
+/**
+ * 只提案模式的回执：明确告诉模型「记下了，但没落库」，免得它以为写失败了又重试。
+ */
+private fun proposalPayload() = buildJsonObject {
+    put("success", true)
+    put("applied", false)
+    put("proposal", true)
+    put(
+        "detail",
+        "Recorded as a suggestion for the user to review. Nothing was stored or changed; " +
+            "do not repeat this call."
+    )
+}
 
 /**
  * 被兜底拦截时的回执（结构化，让模型知道**别重试**——与无头 run 的策略拒绝契约同款）。

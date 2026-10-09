@@ -1791,4 +1791,30 @@ data class ApiKeyEntry(
     落盘为 0（关）。提交 `7f9fe5521`。
   - 设计稿 `docs/design-memory-consolidation.md` §8.1；下一批 V3-b2（worker/提示词/审批降级/成本护栏）
     与 V3-b3（Koin + 四钩子 + 前台服务 + 记忆页「整理一下」与状态）。
+- 2026-10-09（同日第六刀，**V3-b2**）：**做梦的 worker 落地**（整理 agent + 输入切分 + 审批降级 + 成本护栏）。
+  - `MemoryConsolidator` 实现 `MemoryConsolidationWorker`：四条数据面委托 V3-b1 的仓库，自己只做
+    「需要模型」的那一件事（切轮次 → 给库现状 → 解析模型 → 调 agent → 推进水位 → 组装运行结果）；
+  - **`MemoryConsolidationAgent` 抽象**把「策略」与「一次模型调用」分开：策略（切多少、水位推到哪、
+    审批怎么降级、失败怎么办）全部能用 JVM 单测钉死；生产实现只剩「建消息 → 调 `generateText` → 数改动」，
+    由**源码扫描守卫**兜住（提案 sink 真接上了 / 提案模式在系统提示里有说明 / 临时 profile 不带人设与记忆注入 /
+    读取记遥测 / 护栏停止当失败 / 水位只用 `transcript.consumed` 推进）；
+  - **输入侧**（纯函数）：正文只取基线之后的轮次、按 6K token 预算装、**装不下的会话不推进水位**、
+    单轮超预算时不饥饿、非文本折叠成 `[image]`/`[file: x.pdf]`；**校准表**（id｜importance｜reads｜主题）
+    **只给整理 agent**（聊天注入看不到读数是 V2 的刻意设计）；库现状复用 `buildMemoryPrompt`（4K、两层披露）；
+  - **审批降级**：任一写入审批开着 ⇒ 整轮**只提案不改库**。做法在工具层（`proposalSink`）：写入不动库、
+    回传结构化建议、回执 `applied:false`「别重试」——不靠既有审批机制拦，因为那套是**交互**的
+    （后台没有用户可等），而直接拒绝会丢掉模型想改的内容。**代码级兜底优先于提案**（身份证/卡号连建议都不留）；
+  - **模型**优先全局「快速模型」（`Settings.fastModelId` 本来就是给标题/建议这类后台任务的），
+    回落助手的聊天模型；做梦用临时 profile（不带人设/世界书/记忆注入）；
+  - **两条与文档不同的实现修正**（设计稿 §7.3 已就地改）：①离线/无可用模型 ⇒ **不发请求但记成失败换退避**
+    （返回 `null`「没可做的事」会让调度器每 2 分钟重扫空转；记失败拿到现成退避，而水位没推进 ⇒ 内容不丢）；
+    ②自动频次上限取 **6 小时**（不是"每天 1 次"的举例）——`onTurnFinished` 的规则是「一轮结束 + 空闲 2 分钟」，
+    不设间隔的话活跃会话会每 2 分钟烧一次模型；为此契约给 `findPending` 加了 `manual` 参数
+    （手动整理不受约束，而整理后的自动重扫要受，否则限流形同虚设）；
+  - 验证：**+25 项**（`:app` **1412 → 1437**、:ai 252 全绿）：`MemoryConsolidationPromptsTest` 7 /
+    `MemoryConsolidatorTest` 9 / `MemoryToolsTest` +4 / `MemoryConsolidationRepositoryTest` +2 /
+    `MemoryConsolidationSchedulerTest` +1 / `MemoryConsolidationWiringTest` 2（源码扫描）。
+  - **本批仍不接线**，且设计稿 §9 记了**前置阻塞**：提案只落在运行结果与日志里、没有持久化与批准入口
+    ⇒ **在 V3-b3 补上「落库 + 逐条批准」之前不要接自动触发**（审批默认就是开的，否则等于白烧一次调用）。
+    下一批 V3-b3 = 提案持久化 + Koin + 四钩子 + 前台服务 + 记忆页「整理一下」与状态 + 真机验证。
 

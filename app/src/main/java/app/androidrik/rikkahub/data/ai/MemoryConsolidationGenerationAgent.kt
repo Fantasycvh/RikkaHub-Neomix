@@ -1,0 +1,111 @@
+package app.androidrik.rikkahub.data.ai
+
+import android.util.Log
+import app.androidrik.ai.ui.UIMessage
+import app.androidrik.rikkahub.data.ai.tools.buildMemoryTools
+import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.repository.MemoryRepository
+import kotlinx.serialization.json.Json
+import kotlin.uuid.Uuid
+
+/**
+ * 做梦（V3）的生产实现：**建消息 → 调 `generateText` → 数改动**。
+ *
+ * 所有策略（切多少轮、水位推进到哪、审批怎么降级、步数上限）都在 [MemoryConsolidator]；
+ * 这里只把 [MemoryConsolidationRequest] 翻译成一次工具循环调用。刻意做得薄，是因为它依赖 Android
+ * （`GenerationHandler`），很难进 JVM 单测——薄到只剩接线时，用一条源码扫描守卫就能钉住。
+ *
+ * 三条刻意的选择：
+ * - **工具就是聊天那个 `memory_tool`**（同一份描述与 schema）：记忆的写入纪律只有一处真相，
+ *   后台整理不该有第二套「什么能记」的规则；只提案模式下同一个工具把写入改记成建议（见 `proposalSink`）；
+ * - **临时 profile 而不是用户的助手**：做梦要的是模型配置，不是人设。带上用户的人设/注入/世界书
+ *   既贵又可能把整理任务带偏；`enableMemory = false` 顺带避免在整理调用里再叠一层聊天式记忆注入
+ *   （库现状由我们自己显式给）；
+ * - **护栏停止当作失败**：已落库的改动算数，但这轮没走完 ⇒ 抛异常让调度器退回重试（水位不推进、
+ *   内容不丢），而不是当成「整理完了」把内容永久跳过。
+ */
+class MemoryConsolidationGenerationAgent(
+    private val generationHandler: GenerationHandler,
+    private val memoryRepository: MemoryRepository,
+    private val json: Json,
+) : MemoryConsolidationAgent {
+
+    companion object {
+        private const val TAG = "MemoryConsolidator"
+    }
+
+    override suspend fun run(request: MemoryConsolidationRequest): MemoryConsolidationOutcome {
+        var applied = 0
+        val proposals = mutableListOf<MemoryConsolidationProposal>()
+        val tools = buildMemoryTools(
+            json = json,
+            onCreation = { content, importance, description ->
+                memoryRepository.addMemory(request.memoryId, content, importance, description).also { applied++ }
+            },
+            onUpdate = { id, content, importance, description ->
+                memoryRepository.updateContent(id, content, importance, description).also { applied++ }
+            },
+            onDelete = { id ->
+                memoryRepository.deleteMemory(id)
+                applied++
+            },
+            // 读取照常记遥测：整理 agent 的读取同样是「这条真的被用到」的证据
+            onRead = { id -> memoryRepository.readMemory(id) },
+            proposalSink = if (request.proposeOnly) { proposal -> proposals += proposal } else null,
+        )
+
+        val systemPrompt = if (request.proposeOnly) {
+            MEMORY_CONSOLIDATION_SYSTEM_PROMPT + "\n\n" + MEMORY_CONSOLIDATION_PROPOSAL_NOTE
+        } else {
+            MEMORY_CONSOLIDATION_SYSTEM_PROMPT
+        }
+        val profile = Assistant(
+            id = Uuid.random(),
+            name = "memory-consolidator",
+            systemPrompt = systemPrompt,
+            enableMemory = false,
+            streamOutput = false,
+        )
+
+        var notice: GenerationNotice? = null
+        generationHandler.generateText(
+            settings = request.settings,
+            model = request.model,
+            messages = listOf(UIMessage.user(buildUserMessage(request))),
+            assistant = profile,
+            memories = emptyList(),
+            tools = tools,
+            maxSteps = request.maxSteps,
+            conversationSystemPrompt = null,
+            conversationModeInjectionIds = emptySet(),
+            conversationLorebookIds = emptySet(),
+            workspaceCwd = null,
+        ).collect { chunk ->
+            when (chunk) {
+                is GenerationChunk.Notice -> notice = chunk.notice
+                else -> Unit
+            }
+        }
+
+        notice?.let { stopped ->
+            Log.w(TAG, "consolidation stopped by guard: $stopped")
+            throw IllegalStateException("memory consolidation stopped by guard: $stopped")
+        }
+        Log.i(TAG, "consolidated ${request.memoryId}: applied=$applied proposals=${proposals.size}")
+        return MemoryConsolidationOutcome(appliedChanges = applied, proposals = proposals)
+    }
+
+    /** 三段：库现状（含渐进披露的清单层）→ 校准表 → 新轮次。 */
+    private fun buildUserMessage(request: MemoryConsolidationRequest): String = buildString {
+        appendLine("**Library** (change it only through `memory_tool`)")
+        appendLine(request.libraryPrompt)
+        if (request.calibrationTable.isNotBlank()) {
+            appendLine()
+            appendLine("**Calibration** (id | importance | reads | topic)")
+            appendLine(request.calibrationTable)
+        }
+        appendLine()
+        appendLine("**New turns** (not reviewed before)")
+        appendLine(request.transcript)
+    }
+}

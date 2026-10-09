@@ -45,10 +45,32 @@ data class MemoryConsolidationRun(
     /** 是否顺带把整个记忆库清理了一遍（用户手动整理） */
     val fullReview: Boolean,
     val changedMemories: Int = 0,
+    /**
+     * 审批开着时攒下的**待办**（这一轮只分析、没动库）。
+     *
+     * 为什么跟着运行结果走而不是写库：本批没有能「应用建议」的界面，写库只会留下无处可点的数据。
+     * 持久化 + 审批入口是 V3-b3 的事——**在那之前不要接自动触发**（否则等于白烧一次模型调用）。
+     */
+    val proposals: List<MemoryConsolidationProposal> = emptyList(),
     val error: String? = null,
 ) {
     val hasChanges: Boolean get() = changedMemories > 0
 }
+
+/**
+ * 一条「本该如何改」的建议（审批开着时做梦的产出）。
+ *
+ * 结构化而不是一行文字：将来的「逐条批准」界面要能直接回放成一次工具调用（action + 目标 + 载荷）。
+ */
+data class MemoryConsolidationProposal(
+    /** `create` / `edit` / `delete` */
+    val action: String,
+    /** `edit` / `delete` 的目标记录 id；`create` 为 null */
+    val targetId: String? = null,
+    val content: String = "",
+    val importance: Float? = null,
+    val description: String? = null,
+)
 
 /** 某个记忆库的整理状态（状态面板/设置页只读它）。 */
 data class MemoryConsolidationStatus(
@@ -67,7 +89,9 @@ data class MemoryConsolidationStatus(
  * 2. [pendingOf] 是**唯一的「要不要整理」判据**：隐身对话（`Conversation.memoryDisabled`）、
  *    停用的助手、没开记忆的助手都必须在这里返回 null。「不整理」的语义在这层落地，调度器不重复判断。
  * 3. [findPending] 返回**一次整理能处理的数量**——轮次切分与分批由 worker 定（框架不猜一次能塞多少
- *    上下文），没处理完的部分下次再被 [findPending] 捞出来即可。
+ *    上下文），没处理完的部分下次再被 [findPending] 捞出来即可。[findPending] 的 `manual` 参数
+ *    用来区分「用户手动整理」与「调度器自动补扫」：自动路径要服从频次上限（否则活跃会话会变成
+ *    「聊两句就后台整理一次」），手动路径不受约束。
  * 4. [consolidate] 没可做的事返回 null、**失败抛异常**（调度器记成 `error` 并停止自动重试，见
  *    [MemoryConsolidationScheduler.run]）。整理必须**幂等**：同 [conversationIds] 重复调用不该重复动作。
  */
@@ -78,9 +102,14 @@ interface MemoryConsolidationWorker {
     /** 可能有对话没整理完的记忆库。只按更新时间**粗筛**，不保证真有新的轮次 */
     suspend fun memoryIdsWithUpdates(): List<String>
 
-    /** 记忆库 [memoryId] 下还有轮次没整理的对话，最多返回一次整理能处理的数量 */
-    suspend fun findPending(memoryId: String): List<PendingMemoryConversation>
-
+    /**
+     * 记忆库 [memoryId] 下还有轮次没整理的对话，最多返回一次整理能处理的数量。
+     *
+     * [manual] 区分这条路径是不是**用户手动整理**（`organize`）：自动路径要服从「每库自动频次上限」
+     * （否则活跃会话会变成「聊两句就后台整理一次」），手动路径不受它约束——用户显式点击即授权。
+     * 调度器每次整理成功后也会重扫（自动路径），所以这个区分不能省，否则限流形同虚设。
+     */
+    suspend fun findPending(memoryId: String, manual: Boolean = false): List<PendingMemoryConversation>
     /** 把 [conversation] 现有的内容都算作整理过；之后新增的轮次才会被整理（分叉时用） */
     suspend fun markConsolidated(conversation: Conversation)
 
@@ -212,7 +241,8 @@ class MemoryConsolidationScheduler(
             var started = false
             try {
                 // 进程重启后内存里的待整理列表可能是空的，把数据库里的也算上
-                mergePending(memoryId, worker.findPending(memoryId))
+                // （manual = true：手动整理不受自动频次上限约束）
+                mergePending(memoryId, worker.findPending(memoryId, manual = true))
                 started = true
                 run(memoryId, fullReview = true)
             } finally {

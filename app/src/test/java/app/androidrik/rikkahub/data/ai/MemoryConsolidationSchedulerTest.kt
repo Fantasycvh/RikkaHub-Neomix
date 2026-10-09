@@ -51,6 +51,9 @@ class MemoryConsolidationSchedulerTest {
         /** 查数据库卡在这里（测「重新扫库期间又有轮次结束」） */
         var scanGate: CompletableDeferred<Unit>? = null
 
+        /** 每次扫库是不是「手动整理」路径（频次上限只约束自动路径，见 findPending 契约） */
+        val manualScans = mutableListOf<Boolean>()
+
         private fun item(id: Uuid, turns: Int) = PendingMemoryConversation(id, memoryIdOf[id] ?: memoryId, turns)
 
         override suspend fun pendingOf(conversation: Conversation) =
@@ -59,8 +62,9 @@ class MemoryConsolidationSchedulerTest {
         override suspend fun memoryIdsWithUpdates() =
             pending.map { (id, turns) -> item(id, turns).memoryId }.distinct()
 
-        override suspend fun findPending(memoryId: String): List<PendingMemoryConversation> {
+        override suspend fun findPending(memoryId: String, manual: Boolean): List<PendingMemoryConversation> {
             val found = pending.map { (id, turns) -> item(id, turns) }.filter { it.memoryId == memoryId }
+            manualScans += manual
             scanGate?.await()
             return found
         }
@@ -436,6 +440,21 @@ class MemoryConsolidationSchedulerTest {
         runCurrent()
 
         assertEquals(listOf(Call(setOf(chat.id), fullReview = true)), worker.calls)
+    }
+
+    @Test
+    fun `manual organize tells the worker this scan is manual`() = runTest {
+        val scheduler = scheduler()
+
+        scheduler.organize(memoryId)
+        runCurrent()
+
+        assertTrue("手动整理必须带 manual 标记（频次上限只约束自动路径）", worker.manualScans.first())
+        assertFalse(
+            "整理之后的自动重扫不是手动路径（它要受频次上限约束，否则限流形同虚设）",
+            worker.manualScans.last(),
+        )
+        assertTrue(worker.manualScans.size >= 2)
     }
 
     @Test
