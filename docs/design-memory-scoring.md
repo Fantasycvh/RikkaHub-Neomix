@@ -169,7 +169,7 @@ return (cjk / 1.5 + other / 4.0).toInt()   // CJK 1.5 字符/token，其余 4 �
 1. **DB 28→29**：`MemoryEntity` 加 `importance`（默认 0.6）+ `updatedAt`（默认 0 或 `createdAt`）；（回收站轮再加 `deleted_at`）。参照 `Migration_27_28` 的纯 `ALTER TABLE ADD COLUMN` 手法。
 2. **`updatedAt` 必须随 edit 更新**——否则改过的记忆仍按旧时间衰减。
 3. **`estimateTokenCount` 抽 `String` 重载**，与既有 `List<UIMessage>` 版共用口径。
-4. **打分函数**：`importance × (0.55 + 0.45 × exp(-ln2 × age / 30天))`，`age` 基于 `updatedAt ?: createdAt`；分档量化后桶内按 id 排。
+4. **打分函数**：`importance × (0.55 + 0.45 × exp(-ln2 × age / 30天))`，`age` 基于 `updatedAt ?: createdAt`；分档量化后桶内按 id 排。**（2026-10-09 追加读取信用这一项，见 §九末尾——`importance` 换成「有效重要度」、时效换成「活跃度」，零读数时与上式逐位一致）**
 5. **预算截断**：超预算时**跳过该条并继续**（`continue` 而非 `break`），否则一条长记忆会堵死后续预算；注意防「第一条就超预算 → 返回空」（条件加 `selected.isNotEmpty()`）。**此细节照抄 Yuihub**——本仓最长 3646 字符，在 8K 预算下差异明显。
 6. **工具 schema**：`importance` 参数 + 分档描述（create/edit 都支持）。
 7. **用户可覆盖**：记忆页编辑对话框加 importance 字段。
@@ -201,5 +201,32 @@ return (cjk / 1.5 + other / 4.0).toInt()   // CJK 1.5 字符/token，其余 4 �
 **已知但已决定不处理**：
 
 - **`sqlite-vector` 残骸**——决策 #6 保留不动，但它确实是死声明（Maven Central 查无此物）。
+
+## 十、追加：读取信用（信用记账，2026-10-09 落地）
+
+V2 渐进披露让「清单 + 按需 `read`」成为第二条读取通道，于是**读数**第一次可当信号用：读得多 =
+这条真的在用。本批把它接进打分（不是改写成 `importance`，两者分开存以备 V3 整理校准）：
+
+```
+credit            = ln(1 + min(readCount, 8)) / ln(9)          // [0,1]，对数饱和
+effectiveWeight   = importance + (1 − importance) × credit × 0.5
+activity          = max(decay(updatedAt), decay(lastReadAt))   // 半衰期同为 30 天
+memoryScore       = effectiveWeight × (0.55 + 0.45 × activity)
+```
+
+三条与本文既有结论直接相关的取舍：
+
+1. **零读数 ⇒ 与本文 §四/§八 的老公式逐位一致**（信用 0 + 读取衰减 0 退化成原式）。所以旧数据的
+   注入行为一个字没变，**没有迁移、没有回填**（`read_count = 0` 就是「没读过」这一事实）；
+2. **时效从「多久没改」改为「多久没被碰过」**——它不再惩罚「重要但很久没改」的记忆（§四 的承重墙
+   意图不变，反而被强化：`importance` 仍是声明，读数只是行为证据，最多补一半，0.2 → 0.6 封顶）；
+3. **`last_read_at = 0` 与 `updated_at = 0` 语义相反**：前者是「从未读过」这种确定信息（按 0 算，
+   否则所有老记忆永久免于衰减），后者是「未知」（按不衰减算，沿用 §实现记录 的原意）。
+
+副作用面（有意为之）：相关性下限与 200 条淘汰（§七 提到的 `enforceMaxCount`）都用同一个
+`memoryScore` ⇒ 被反复读过的记忆同时免于沉底与被淘汰。**分档量化（§五）不受影响**：它只管排序
+先后，且读数只在用户真的 `read` 时才变，前缀抖动频率没有提高。
+
+详见 `docs/design-memory-discipline.md` §4.6（含「清单层点选 ⇒ 升分」的自我强化回路评估）。
 
 相关：`peer-apps-benchmark.md` §四（Yuihub 评估原文）、`design-auto-compaction.md`（前缀稳定性约束）、`roadmap.md`「一、中等价值」（注入缺陷修复记录）。

@@ -27,6 +27,27 @@ const val DEFAULT_LOREBOOK_BUDGET_TOKENS = 0
 private const val RECENCY_HALF_LIFE_MS = 30L * 24 * 60 * 60 * 1000
 
 /**
+ * **信用记账**（读数 → 打分）的两个旋钮，2026-10-09 接入；取舍见 `docs/design-memory-discipline.md` §4.6。
+ */
+
+/**
+ * 读数饱和点：读满这么多次即得满额信用。
+ *
+ * 为什么是 8：区分的是「清单里瞟了一眼」与「这条被反复用到」；再往上加次数不构成新证据，
+ * 对数曲线会把增量压平（见 [memoryReadCredit]）。
+ */
+private const val READ_CREDIT_SATURATION_READS = 8
+
+/**
+ * 信用最多把重要度往 1.0 方向补多少**比例**：`importance + (1 − importance) × credit × 0.5`。
+ *
+ * 取 0.5 的含义：反复被读的记忆最多「升半档到一档」——`importance` 0.2 的记忆读满信用等效 0.6
+ * （= 默认档），但仍到不了 0.9 那类身份信息的位置。上限的必要性：读数是**间接**证据
+ * （渐进披露的清单层会让人更容易点到某条记忆），不能让它盖过用户的显式声明。
+ */
+private const val READ_CREDIT_CONFIDENCE_GAIN = 0.5f
+
+/**
  * 每条除正文外的固定开销估算（opaque id + JSON 键名与标点）。
  *
  * 计入它有两个作用：①预算更贴近真实占用（否则漏算 id 与脚手架）；②给「每条至少花
@@ -55,6 +76,9 @@ private const val SCORE_BUCKET_SIZE = 0.1f
  * 取 0.2：默认 importance 0.6 的记忆全老化也有 0.33 不会触线；刻意标低重要度
  * （≤0.36）且老化的记忆自然沉底。**用原始分数而非分桶**——分桶是四舍五入，
  * 0.11 分会被进位到桶 1 绕过下限，精确比较才符合「低相关不注入」的本意。
+ *
+ * 反向路径（2026-10-09 信用记账）：被**反复读取**的低重要度记忆会被读数信用抬回线上——
+ * 读数是「这条真的在用」的行为证据，不是噪声（见 [memoryScore]）。
  */
 private const val MIN_MEMORY_INJECTION_SCORE = 0.2f
 
@@ -222,22 +246,61 @@ internal fun selectMemoriesForPrompt(
 }
 
 /**
- * 记忆打分：`importance × (0.55 + 0.45 × 时效衰减)`，值域 [0, 1]。
+ * 记忆打分：`有效重要度 × (0.55 + 0.45 × 活跃度)`，值域 [0, 1]。
  *
- * 时效衰减半衰期 30 天；`updatedAt <= 0`（未知，如迁移回填前的旧数据）视为**不衰减**——
- * 宁可让它按 importance 参与排序，也不要因缺时间戳被当成「极旧」而静默沉底。
+ * 四个因子，来自两个输入：
+ * - **有效重要度** = `importance + (1 − importance) × 读取信用 × 0.5`——读数是「这条真的有用」的
+ *   **行为证据**（信用记账，2026-10-09 接入），把模型/用户**声明**的分数往 1.0 方向补最多一半。
+ *   声明与读数分开存（`importance` vs `read_count`/`last_read_at`），打分时合成只是当下口径；
+ *   两者对照校准是 V3 整理器的事。
+ * - **活跃度** = `max(写入衰减, 读取衰减)`——时效衰减不再只问「多久没改」，而是「多久没被碰过」：
+ *   一条被反复读取的老记忆不会仅因为「很久没改」就被判陈旧。
  *
- * 两个因子的分工：importance 让「重要但久未触碰」的记忆留在上下文（身份/强偏好）；
- * 衰减让「次要且过期」的记忆自然退出。
+ * 分工不变：importance 让「重要但久未触碰」的记忆留在上下文（身份/强偏好）；衰减让「次要且过期」
+ * 的记忆自然退出。**零读数的记忆打分与接入前逐位一致**（信用 0、读取衰减 0 ⇒ 退化成原公式），
+ * 所以这次接入不改动既有数据的注入行为，只有真被 `memory_tool action=read` 取过的记录才会移动。
+ *
+ * 不知道时间戳的语义**两侧不同**（[recencyFactor] 的 `unknownIsFresh`）：写入时间未知（迁移前的
+ * 旧数据）视为不衰减，读取时间未知（从未读过）则是**确定信息**、按 0 算——否则所有老记忆都会因为
+ * 「没读过」而免于衰减。
+ *
+ * 下游两处共用本函数：注入入选与相关性下限（[selectMemoriesForPrompt]）、超限淘汰
+ * （`MemoryRepository.enforceMaxCount`）——同一口径，避免「注入认为重要、淘汰认为次要」。
  */
 internal fun memoryScore(memory: AssistantMemory, now: Long): Float {
-    val recency = if (memory.updatedAt <= 0L) {
-        1f
-    } else {
-        val age = (now - memory.updatedAt).coerceAtLeast(0L)
-        exp(-ln(2.0) * age / RECENCY_HALF_LIFE_MS).toFloat()
-    }
-    return memory.importance.coerceIn(0f, 1f) * (0.55f + 0.45f * recency)
+    val importance = memory.importance.coerceIn(0f, 1f)
+    val credit = memoryReadCredit(memory.readCount)
+    val effectiveImportance = importance + (1f - importance) * credit * READ_CREDIT_CONFIDENCE_GAIN
+    val activity = maxOf(
+        recencyFactor(memory.updatedAt, now, unknownIsFresh = true),
+        recencyFactor(memory.lastReadAt, now, unknownIsFresh = false),
+    )
+    return effectiveImportance * (0.55f + 0.45f * activity)
+}
+
+/**
+ * 时效衰减因子（半衰期 30 天）。
+ *
+ * [unknownIsFresh] 决定「时间戳为 0」的语义——两个来源的「0」含义**相反**：写入时间为 0 是
+ * 「未知」（迁移前的旧数据，宁可让它按 importance 参与排序，也不要因缺时间戳被当成极旧而静默沉底）；
+ * 读取时间为 0 是「从未读过」这种**确定信息**，当成「刚读过」会让所有老记忆永久免于衰减。
+ */
+private fun recencyFactor(timestamp: Long, now: Long, unknownIsFresh: Boolean): Float {
+    if (timestamp <= 0L) return if (unknownIsFresh) 1f else 0f
+    val age = (now - timestamp).coerceAtLeast(0L)
+    return exp(-ln(2.0) * age / RECENCY_HALF_LIFE_MS).toFloat()
+}
+
+/**
+ * 读取信用：`readCount` **对数饱和**到 [0,1]（读满 [READ_CREDIT_SATURATION_READS] 次得满额）。
+ *
+ * 为什么对数而非线性：第一次读取就该有反馈（≈0.31），但「读两次 = 半信」不成立——真正要区分的是
+ * 「清单里瞟了一眼」与「这条被反复用到」，饱和曲线把第 8 次以后的增量压平，避免高频条目无限涨分。
+ */
+internal fun memoryReadCredit(readCount: Int): Float {
+    if (readCount <= 0) return 0f
+    val capped = readCount.coerceAtMost(READ_CREDIT_SATURATION_READS)
+    return (ln(1.0 + capped) / ln(1.0 + READ_CREDIT_SATURATION_READS)).toFloat().coerceIn(0f, 1f)
 }
 
 /** 量化到 [SCORE_BUCKET_SIZE] 一档的桶号（排序用，取整策略见该常量注释）。 */
