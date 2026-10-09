@@ -1695,7 +1695,7 @@ data class ApiKeyEntry(
     与 `workspace_task_status` 同款）；④记忆页显示主题词（可编辑）+ 「被读取 N 次 · 最近 X」。
   - **一处语义收紧（偏离原选项，已就地标注）**：per-conversation「不使用记忆」原本只打算管注入侧；实现时
     改为**不注入 + 不装配记忆工具**——否则模型仍可 `memory_read` 把记忆逐条读回来，开关等于装饰（而渐进
-    披露正好让「有哪些记忆」一目了然）。「不整理」仍留给 V3。
+    披露正好让「有哪些记忆」一目了然）。「不整理」的落地点见 2026-10-09 第四刀（V3 的 `pendingOf` 契约）。
   - **验证**：`:app` **1362** / `:ai` **252** 单测全绿（新增 `MemoryProgressiveDisclosureTest` 10 +
     `MemoryContentGuardTest` 14 + `MemoryToolsTest` +5 + `MemoryToolApprovalTest` +1 +
     `MemoryRepositoryTest` +7 + 注入纪律 1）；**真机迁移冒烟**（debug 包，真实 54 条记忆库）：库版本 33 → **34**、
@@ -1711,7 +1711,7 @@ data class ApiKeyEntry(
   `MemoryContentGuard` + 工具描述里的 `Never record` 清单照旧；用户手工编辑仍不受限）。成本随之回落：
   描述 4011 → **3849** 字符、注入块 **−215** 字符（≈ −53 token）。验证：`MemoryInjectionFloorTest` 改为
   「使用纪律两句必须存在」+ **反向钉子「这两句不得复活」**（删一句提示词没有任何编译/行为错误，极易被顺手
-  照上游 #2130 补回来）。取舍详见 `docs/design-memory-discipline.md` §2.3。
+  照上游 #2130 补回来）。取舍详见 `docs/design-memory-discipline.md` §2.3。提交 `d5fcb618d`。
 - 2026-10-09（同日第三刀）：**信用记账——读取遥测接进打分**（V2 §4.5 刻意留的「下一批」；口径是
   「读数**只抬分、不降分，且抬幅有上限**」，不许盖过用户/模型显式声明的 `importance`）。
   - `credit = ln(1 + min(readCount, 8)) / ln(9)`（对数饱和：第 1 次读 ≈0.31、8 次满额、再读不涨）；
@@ -1729,9 +1729,9 @@ data class ApiKeyEntry(
   - 验证：`MemoryReadCreditTest` 8 项（零读数逐位回归 / 信用饱和单调 / 最近读取刷新衰减 /
     「从未读过 ≠ 刚读过」/ 低重要度读满后越过下限并入选 / 不越界且对两个读数单调 / 信用不得盖过刚写的
     身份记忆）+ 一条**源码扫描接线守卫**（实体映射 → DAO 自增 → `onRead` 落库 → 打分确实吃读数）。
-    设计稿 `docs/design-memory-discipline.md` §4.6、`docs/design-memory-scoring.md` §十。
+    设计稿 `docs/design-memory-discipline.md` §4.6、`docs/design-memory-scoring.md` §十。提交 `f6e14175d`。
 - 2026-10-09（同日第四刀）：**记忆 V3 做梦框架落地（本批只做「什么时候整理」）**——移植上游 #2130 的
-  `MemoryConsolidationScheduler`，设计稿 `docs/design-memory-consolidation.md`。
+  `MemoryConsolidationScheduler`，设计稿 `docs/design-memory-consolidation.md`；提交 `9740ed397`。
   - **调度策略**：轮末空闲 2 分钟（期间又有新轮次就重新计时）/ 攒够 6 轮不等空闲 / 切后台 / 离开对话 /
     启动补漏 / 手动 `organize(fullReview=true)`；以**记忆库**（= `assistantId`，含 `__global__`）为单位
     一次覆盖全部待整理对话，同库单飞（Mutex），**失败不自动重试**（待整理内容留着，下一轮对话结束或手动

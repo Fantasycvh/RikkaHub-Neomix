@@ -151,7 +151,9 @@ JCB 3528-3589 / Discover 6011/644-649/65 / Diners 300-305/36/38/39）后，随�
 
 为什么不是「只关注入」：记忆工具是这次对话**另一条读取记忆的通道**——只关注入的话，模型仍可
 `memory_tool action=read` 把记忆逐条读回来，开关等于装饰（渐进披露还正好让「有哪些记忆」变得
-一目了然）。而「能写不能读」是更怪的状态，所以一并去掉记忆工具。**「不整理」仍留给 V3**。
+一目了然）。而「能写不能读」是更怪的状态，所以一并去掉记忆工具。**「不整理」**的落地点已就位：V3 框架把
+它写进 `MemoryConsolidationWorker.pendingOf` 的契约（隐身对话在这一层返回 null，见
+`docs/design-memory-consolidation.md` §4；worker 实现与测试在下一批）。
 
 - `Conversation.memoryDisabled: Boolean = false` + `conversationentity.memory_disabled`（默认 false =
   现行为；缺字段反序列化即 false ⇒ 无需回填）；
