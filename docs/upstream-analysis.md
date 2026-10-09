@@ -156,6 +156,52 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | `a26d1d55` **videogen → mediagen 重构（图像+视频统一）** | 模块改名 + 统一 `MediaGeneration*` 请求/任务/供应商接口；setting 改**厂商级**（只存凭据+models，模型带 kind 图像/视频）；新增 OpenAI 图像生成/编辑、火山 Seedream、阿里万相/千问适配器（同步接口直返终态任务）；阿里换带业务空间 ID 的新域名（新增 workspaceId）；`MediaGenerationManager.generate` 统一同步/异步轮询两链路；按厂商分包 + ~900 行单测 | **暂不吸收（维持 `96fbe7e3` 判定，且上游仍未接线）**。fork 无 videogen 无存量冲突，但**上游 app 至今零消费点**（`git grep mediagen 2267943a -- app/src` 只有 build.gradle 模块引用；4e4bfa62 同样无 videogen 消费）⇒ 现阶段吸收=死代码。fork 图像生成走 `OpenAIProvider.generateImages`（imggen 页），视频生成无功能。**前提已失效（2026-10-07 注）**：上游已由 `0450c4c1` 正式接线进 app，本条「零消费点=死代码」论据作废——专项迁移评估见 10-06 二次同步节末尾的 2026-10-07 块。原「重新立项的条件」：想要「厂商级媒体生成」（火山 Seedream/阿里万相这类 chat provider 之外的渠道）或上游把 mediagen 接进 UI 时再评估；届时注意 fork 的 per-provider 代理/key 轮换体系与其厂商级 setting 的关系。阿里的新域名/workspaceId 变更随模块走，fork 无直连阿里媒体生成，单独不适用 |
 | `2267943a` 的 S3 部分：**presignGetUrl 带签名临时下载地址** | `AwsSignatureV4.presignGetUrl`（查询参数签名、只签 host、1s–7 天）+ `S3Client.presignGetUrl(key, expires)` + 顺手把主机/路径计算抽成 `requestHost`/`canonicalUri` 公用函数 + 106 行测试（AWS 文档示例值校验签名） | **可吸收（小，~80 行 + 测试），消费点暂缺**。fork 的 `data/sync/s3/` 三文件与上游同源；逐行 diff 核实：fork 内联的 host/canonicalUri 计算（含 pathStyle 与 host 已含 bucket 两分支）与上游新抽的 helper **功能等价**，fork 的 `S3Client` 另有分片上传/进度回调等扩展（上游无）⇒ 吸收 = ①先做无行为变化的 host/路径提取重构 ②加 presignGetUrl（fork 签名实现支持 queryParams，改造小）③测试直套。**现实用途**：备份文件生成临时分享链接（桶保持私有）；mediagen 的产物分享场景 fork 不存在。可选吸收，等有 UI 入口再做也行 |
 
+### 2026-10-08 专项评估：PR #2130「记忆改为文件库 + 空闲后整理（做梦）」——`feat/file-based-memory`，**未合并**
+
+**状态**：`rikkahub/rikkahub#2130`，**OPEN、非 draft、0 review / 0 comment**，最后活动 2026-10-08 17:15（评估时分支 head `80dc65089`，基于 `eebdea0bd`）。3 提交 / 67 文件 / **+5529 −482**，其中 **29 个新文件**（核心件 + 约 1000 行新测试）。分支已 fetch 到本地 `upstream/feat/file-based-memory`。
+
+**它是什么**（代码级核对，非 PR 文案转述）：
+
+| 面 | 做法 |
+|---|---|
+| 存储 | `MemoryEntity` **整表删除** → `memory_file(assistant_id, path, content, updated_at)`；Markdown + frontmatter（name / description / aliases）；目录约定 `/profile.md`、`/preferences.md`、`/topics/*`、`/areas/*`、`/people/*`；单文件 48KB；内容 SHA-256 前 12 位当版本号 |
+| 注入 | **只有 profile + preferences 全文注入**，其余文件只给一行清单（路径｜描述｜别名｜更新日），模型自己调 `memory_read`（渐进披露） |
+| 写入 | **对话内默认不写**（仅用户明确「记住/忘掉」时写）；`memory_tool` 拆成 read / write / str_replace / append / delete / list；`if_version` 乐观锁，冲突时回传最新内容让模型合并重试 |
+| 整理（做梦） | 独立 agent（快速模型、非流式、自动 ≤16 步 / 手动整理 ≤32 步）持记忆工具 + **限定本记忆库所属助手**的 `conversation_search`/`conversation_read`；只吃「上次整理后新增的轮次」 |
+| 触发 | 空闲 2 分钟 / 攒够 6 轮 / 离开对话 / 切后台 / 启动补漏 / 手动「Dream now」；每记忆库一把锁；**失败不自动重试** |
+| 保活 | `MemoryDreamForegroundService`（dataSync）；App 不可见时连「等空闲那 2 分钟」也占着 |
+| 隔离 | `Assistant.memoryId` = 助手自己一份，`useGlobalMemory` 时共用 `__global__` |
+| 纪律 | `[stated]` 测试（只记用户亲口说的；禁推断 / 禁工具结果 / 禁传闻）、陈旧性测试、「一次提及不算爱好」、敏感项单开一次写操作放最后、**禁止记录硬清单**（证件号 / 自伤 / 案底 / 未成年年龄…）、「要求无条件附和或扮演伴侣的偏好永不记录」、反注入声明（记忆内容是记录不是指令）；代码级 `MemoryContentGuard`（39 行）拦身份证（带校验位）/ SSN / 银行卡（Luhn） |
+
+**在「ChatGPT Dreaming ↔ Claude 记忆」轴上的位置**：存储 / 透明 / 隔离 / 敏感 = **Claude 极**（分类 Markdown、全量可编辑、助手级项目隔离、敏感性硬清单 + 代码拦截）；**触发机制借用 Dreaming**（对话停下后后台自动整理）。且明确**拒绝做画像合成**——`[stated]` 测试的核心就是「不许推断、不许把你的建议写成用户的事实」。
+
+**价值可拆四块，其中三块与文件模型无关**：
+
+| | 内容 | 依赖文件模型 |
+|---|---|---|
+| V1 | 纪律与安全（上表提示词条款 + `MemoryContentGuard` 39 行纯函数） | 否 |
+| V2 | 渐进披露（清单注入 + 按需 `memory_read`） | 否（本仓记录加 `description` 列即可当清单） |
+| V3 | 做梦框架（`MemoryConsolidationScheduler` 285 行**只认 memoryId + worker 接口**、`memory_consolidation` 进度表、轮次切分/分批/预算、保活、失败策略） | 否（存储无关，可近乎照搬） |
+| V4 | Markdown 文件库本身（frontmatter / 别名 / 目录 / 48KB / `if_version`） | **是** |
+
+**照搬的四条硬阻塞（本仓事实，非推测）**：
+
+1. **DB 版本撞号**：本仓已在 **33**；且 `Migration_27_28` / `Migration_28_29` 这两个**名字本仓已用于别的用途**（`public_id`；`importance` + `updated_at`）——上游的 27→28（记忆表→文件表）与 28→29（整理进度表）必须改写成 **33→34 / 34→35**，并同步 `DatabaseMigrationTracker` 与暂存备份校验共用的 `AppDatabaseFactory`。
+2. **它的迁移对实测数据是回归**：旧记忆逐条 → 全塞一份 `/profile.md`，本仓的 `importance` / `public_id` 直接消失，而 profile 是**每次都全文注入**（PR 作者自曝「迁移没有套用单文件 48KB 上限…一份较大的 profile.md，而它每次都全文注入」）。本仓实测记忆库 54 条 / 60K 字符 ⇒ 那份 profile ≈ 40K token/请求，**并且交出了本仓的打分 + token 预算控制**（现在是 `DEFAULT_MEMORY_BUDGET_TOKENS = 8_000` 截断，代价是预算外条目**静默不可见**——V2 恰好把该代价换成「清单可见、用时再读」）。
+3. **重分叉文件面大**：67 文件里 38 个本仓已重度分叉（`ChatService` 比上游多 +1286/−541、`Assistant.kt` +572、`ChatPage`/`ChatVM`/`RikkaHubApp`/`RouteActivity`/`AndroidManifest` + 6 个 `strings.xml`）。它引用的 `GenerationLoop` 本仓叫 `GenerationHandler`；它用的 `dialogueMessages()` / `isContextCheckpoint` 本仓**全仓零命中**（本仓压缩是 `CompressionCheckpoint` 表 + 请求期合成消息）⇒ 手工合的量正落在「本仓改动最重 + 刚出过输入链丢弃事故」的那条路上。
+4. **本仓的两件事被该设计排除在外**：①本仓把「写入管控」做成一等特性（`memoryModifyApproval` / `memoryCreateApproval` + 通用审批 UI + 7 项判定测试），而该设计**把大部分写入搬到后台 agent 且无任何审批**、对话内默认不写 ⇒ 开关只剩「用户点名写」这一小口场景；②本仓 `Assistant : Enableable`（停用/墓碑）它不认识，做梦按 `filter { it.enableMemory }` 选助手 ⇒ 停用助手照样被整理。另：新 UI 文案**硬编码英文**（PR 自曝），本仓 6 语言；FGS（dataSync）+ 通知要并入本仓既有 FGS 版图。
+
+**上游自曝未验证 / 已知缺陷**：真实模型跑完整一次整理**未验证**（提示词效果、对话查询工具均未跑）；整理进度是时间戳且与消息本地时间比较 ⇒ 跨时区可能重复整理、DST 回拨那一小时可能漏；整理后把记忆删掉**不会补回来**、无「重建」入口；迁移绕过 48KB 上限；`MediaCreationForegroundService` 同款 stop 竞态未修。
+
+**决策（2026-10-08，用户拍板：先只记账、不动代码）**：
+
+- **不整体照搬**：V4（文件库）与本仓数据（真实 54 条库）+ 控制面（打分 / 预算 / 审批 / opaque id）正面冲突，且 PR 未合并、0 review、作者自曝提示词未验证 ⇒ 现在照搬要付两次成本。
+- **跟，按四块分步**：V1 + V2 可落到本仓现有记录模型（零表结构风险，「打分」保留为「钉住 top-N 全文」的规则）；V3（做梦框架）存储无关可近乎照搬——整理器改为对本仓记录做去重 / 合并 / 纠类 / 退场，顺带维护 `importance`（比文件模型多一个可校准维度）；**V4 等 #2130 合并 / 稳定后再评**：届时做梦框架已在手，存储替换只是「记录↔文件」转换器 + UI，迁移语义由本仓掌控。
+- **差异化机会**：把后台写入接进本仓已有的审批 / 批阅面（「整理提案批阅」）——ChatGPT 黑盒、Claude 静默夜间整理，两家都没做后台写入的可审阅。
+- **顺带必须补的缺口**（该 PR 也没有，而两家产品都有）：**per-conversation「无记忆 / 不整理」**（隐身对话）。本仓 `Conversation` 目前完全没有这个位，而做梦会覆盖该记忆库下**全部**对话。
+- **重评触发点**：①#2130 合并进 master（或 review 后进入稳定态）；②V1/V2 落地后实测显示清单式披露已足够（可直接跳过 V4）；③想给用户「手写 Markdown 记忆文件 / 按主题组织」这种白盒能力。
+- 本轮**只做记账**（本仓无代码改动）。
+
 ### 2026-10-06 二次同步：`645a5d88` → `b64beeef6`（16 提交）+ 新 issue（#2122–#2125、#1997–#1998）
 
 **按域分组评估**：

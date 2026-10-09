@@ -2,7 +2,7 @@
 
 > 记录 RikkaHub Plus 的后续规划方向 + 逐日落地日志。
 > **状态说明（2026-09-14 修订）**：本文档混合「已落地」与「规划中」两类内容——各章节标题/状态行标注实时状态，
-> **不要以「均为规划」理解本篇**；最完整的逐日落地记录见「八、状态记录」。当前版本 **v1.0.24 (287) 为 Latest**（2026-10-05 转正，tag→`cda7c3df`；**仓库无草稿**）。
+> **不要以「均为规划」理解本篇**；最完整的逐日落地记录见「八、状态记录」。当前版本 **v1.0.25 (291) 为 Latest**（2026-10-07 11:56 UTC 转正，tag `v1.0.25`→`e58973be2`，资产 `RikkaHub.Plus-1.0.25-arm64-v8a.apk` 77,693,118 B；**仓库无草稿**）。**291 之后另有 5 个未发布提交**（`4d3375e29` imggen→mediagen 专项评估、`91677fcf4` 启停/墓碑抽象化、`13d24f544` 编辑思考过程 #1929 及其记账）⇒ **下次发版 ≥ 292**。（2026-10-08 更正：此行此前停留在 v1.0.24 (287)。）
 
 ---
 
@@ -124,7 +124,7 @@
 | P1 | **记忆工具审批（按 action 分档）** | **基础设施已就绪（约 1 提交）**：复用现有 `needsApproval` + 通用审批 UI，只差接线；防未许可的改/删记忆（详见「中等价值」节） |
 | P2 | 轻量个性化（输入框背景/字体包/头像框） | 气泡透明度已有，其余小改动零风险 |
 | P2 | ~~记忆注入取数修正 / 打分校准~~ | ✅ **均已落地**：`0580c6a6`（取最新 60 条 + DAO `ORDER BY`）+ `69453f5e`（**打分校准 + token 预算截断**，真机验证：模型实回 `importance:0.7`）。仅剩**回收站**（下一轮，见 `design-memory-scoring.md` §七） |
-| P3 | 记忆提取管道 + 整理器 | 收益明确但成本中-高（每轮多一次 LLM 调用），须配开关（见 `peer-apps-benchmark.md` §四） |
+| P3 | 记忆提取管道 + 整理器 | 收益明确但成本中-高（每轮多一次 LLM 调用），须配开关（见 `peer-apps-benchmark.md` §四）。**2026-10-08 更新：上游已把它做出来了——PR #2130（`feat/file-based-memory`，OPEN / 0 review / 未合并）「Markdown 文件库 + 空闲后做梦整理」**。**四块拆分**：V1 纪律与安全（`[stated]`/陈旧性/硬清单/反注入 + `MemoryContentGuard` 39 行）／V2 渐进披露（清单注入 + 按需 `memory_read`）／V3 做梦框架（`MemoryConsolidationScheduler` 285 行只认 memoryId + worker 接口、进度表、轮次切分/分批/保活/失败策略）／V4 Markdown 文件库本身——**前三块与文件模型无关**。**四条照搬阻塞**：①本仓 DB 已在 33 且 `Migration_27_28`/`Migration_28_29` 名字已占用；②它的迁移把旧记忆全塞一份**每次都全文注入**的 `/profile.md`（本仓实测 54 条/60K 字符 ⇒ ≈40K token/请求），并丢掉本仓的 `importance`/`public_id`/打分+预算；③67 文件里 38 个本仓已重分叉（`ChatService` +1286/−541），且它引用的 `GenerationLoop`/`dialogueMessages()`/`isContextCheckpoint` 本仓无对应物；④本仓的写入审批（`memoryModifyApproval`/`memoryCreateApproval`）会被架空（该设计把写入搬到后台 agent 且无审批）、`Enableable` 停用助手会被照样整理。**决策：不整体照搬，按 V1→V2→V3 分步、V4 等上游合并/稳定后再评**；顺带补该 PR 也缺的 per-conversation「无记忆/不整理」。详见 `upstream-analysis.md` 2026-10-08 节 |
 | — | ~~记忆语义检索（本地 HNSW）~~ | **评估后不做**（2026-09-14）——本仓成本分析 + Yuihub 上线即删除双重印证 |
 | — | QuickJS 插件系统 | **明确不做**（已有 eval_javascript / MCP / Skill / Workspace 四类机制覆盖） |
 | — | 生活感知/健康/云同步 | **明确不做** |
