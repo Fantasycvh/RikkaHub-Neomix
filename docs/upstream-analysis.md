@@ -698,6 +698,10 @@ git checkout imperfect-customization-and-refinement
 
 11. **可拖拽列表一律按 key 定位，不要用 lazy 列表下标**（2026-09-19 用户报「拖拽排序异常」）：`rememberReorderableLazyListState` 回调里的 `from.index/to.index` 是 **LazyColumn 的绝对下标，含头部等非数据行**（如预设列表的「迁移卡」、注入列表的「顺序提示 orderHint」）⇒ 用下标映射到数据列表会**整体错位**（拖 A 实际移动了 B）。本仓已有正确工具 `reorderForDragByKey(from.key, to.key) { it.id }`（`CollectionUtils.kt`，其注释与 `ReorderForDragTest` 的「世界书条目拖拽」区都写明了此陷阱）。**规则：新写/改动可拖拽列表一律用 key 版**；另注意 `ModelList`/`SettingProviderDetailPage`/`SettingSearchPage` 三处仍在**手工补偿偏移**（历史写法），改动这些列表时优先一并转为 key 版。
 
+13. **护栏/熔断类动作必须 fail-open**（2026-10-08，来源：社区 Cordis 插件 `@argszero/cordis-plugin-thinking-loop-guard` 的 v0.1.10 事故）：该插件（DSH 上的「思考退化熔断」）在 v0.1.10 之前注入的提示用了 session format v4 已废弃的 `source.kind = 'plugin'`，写入被**逐行**拒绝 ⇒ **整个回合失败**——README 原话是「本该结束循环的那个守卫，把回合结束了」。**规则**：移植/新增护栏时，护栏自身的失败路径不得改变主流程的产出（本仓三个护栏均为「优雅停止 + 结果照常回填 + 诊断日志」形态，保持；新增护栏照此口径）。
+14. **不要改写「带签名」的模型产出块**（2026-10-08，来源：DSH discussion #5976 讨论串 + Anthropic 官方 replay 规则）：Claude 的 `thinking` / Gemini 的 `thoughtSignature` **必须原样回传**，官方规则明写「修改过的块会被拒（rejects *modified* blocks）」。**本仓落点**：`ClaudeProvider.kt:515` 把**带签名**的 thinking 块回传（文本取 `reasoning` 当前值 + 存储的 `signature`，无签名的才丢弃），而 `#1929 编辑思考过程`（`13d24f544`）允许原地改推理文本 ⇒ 编辑一条带签名的推理后，下一次请求会发出「改过的文本 + 原签名」，`Invalid signature` 拒整请求的风险（Google 侧同构）。**规则**：凡实现「原地编辑模型产出」类功能，必须同时处置签名元数据（清签名使其不再回传，或禁用该入口）。**待核实**（见 `roadmap.md` 2026-10-08 节）。同讨论串另有独立实测：「往 `reasoning_content` 里塞垃圾文本会稳定诱发随机输出/循环行为」——所以「会回传的产出被改写」这件事本身要评估退化风险。
+15. **重复度类判据用「逐字周期」，不用低熵比值**（2026-10-08，来源：同上插件的标定数据）：对同一批文本，覆盖率/低熵类指标对退化样本读数 **0.92–0.99**，而对合法内容——40 行 markdown 表格 **0.72**、60 行日志 **0.76**、生成 CSS **0.82**、JSON dump **0.84**——**只差 0.06**，不足以作为截断用户输出的边界；而**逐字周期在所有这些合法样本上恒为 0**。**规则**：本仓将来做输出熔断/去重（或移植护栏）时，判据取「尾部是否为周期 ≤N 字符的**精确**重复、跨度 ≥M 字符」，且周期须含 ≥2 个不同字符（否则长 `====` 分隔线被误杀）。附带共识（讨论串两人独立提出）：**时长不是有效特征**——正常长推理同样长时间没有文本输出，纯时间阈值必然误伤。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design-partial-failure-draft.md)

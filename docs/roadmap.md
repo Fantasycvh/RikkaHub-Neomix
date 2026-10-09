@@ -1540,3 +1540,33 @@ data class ApiKeyEntry(
   - **⚠️ 收尾提醒**：本轮 `python -c "…"` 里**未转义的反引号被 bash 当命令替换**，把上面这段的首版文字吃掉了
     几个词（已用 Edit 工具修复）——**含反引号的文本一律用 Write 脚本文件或 Edit 工具落盘**，这是本会话第二次
     踩同源坑（第一次是 python 里的 `\n` 展开成真实换行）。
+- 2026-10-08：**三条外部材料的评估（DSH #5976「思考退化循环」/ Cordis `thinking-loop-guard` 插件 / `hue913/agentd`）
+  = 发现本仓护栏家族的一个真空格 + 一条疑似已存在的签名缺陷**。本轮**只记账、未动代码**（用户拍板）。
+  来源：[discussions/5976](https://github.com/deepseek-ai/deepseek-harness/discussions/5976)、
+  [argszero/cordis-plugin-thinking-loop-guard](https://github.com/argszero/cordis-plugin-thinking-loop-guard)、
+  [hue913/agentd](https://github.com/hue913/agentd)。
+  - **真空格（护栏家族第四格是空的）**：#5976 的形态 = 回合内**零工具调用、零正文**，只输出推理且陷入低熵自重复，
+    **无任何自动熔断**，只能人工中止。本仓四个判据的前提全部落空——`ToolCallLoopGuard`（同工具同参数）/
+    `WorkspaceTurnBudget`（workspace 输出与步数）/`DenialGuard`（按 run 计策略拒绝）**都以「有工具调用或拒绝事件」
+    为前提**；「空回复补救」（`GenerationHandler.kt:303/395`）只在那次调用**已结束**后生效，且只重试一次。⇒
+    ①**单次调用不结束时我们没有任何墙**：`readTimeout=10min`（`DataSourceModule.kt:219/280`）是**每次 socket 读取**
+    的超时，推理 delta 不断到达即不断重置 ⇒ **永不触发**；`maxSteps`（聊天路径 64，`ConversationSession.kt:83`）是
+    **步数**，不结束的调用根本走不到下一步。②跨步空转则被补救一次后继续烧推理直到 64 步。
+  - **可借的判定**（都在我们能力圈内、可与护栏家族同款做成纯函数 + JVM 单测）：三层形态（reasoning-only／
+    **跨调用 restated-material**／intra-call 自重复）；跨调用相似度用 **containment 而非 Jaccard**（「复述上一步
+    再补一句」用 Jaccard 会被新内容稀释、读成进展）；**调用内熔断**（连续 N 个相同 delta → 从内部结束该流、产出
+    终态错误码走正常错误路径，**并先排一条纠正措辞**；且**刻意不做模型 fallback/自动重试**——「静默地给一个已退化
+    的模型重新计费，比循环本身更糟」）。判据口径见 `upstream-analysis.md` 注意点 13/15。
+  - **⚠️ 疑似缺陷（优先核实）**：`#1929` 原地编辑推理 × **带签名块回传**——`ClaudeProvider.kt:515` 把带签名的
+    thinking 回传（文本取 `reasoning` 当前值 + 存储的 `signature`），而官方规则是「修改过的块会被拒」⇒ 编辑一条
+    带签名的推理后，下一请求可能 `Invalid signature` 拒整请求；Google `thoughtSignature` 同构。**修法候选**：编辑时
+    清签名元数据（该块从此不再回传）或禁用这类块的编辑入口。详见 `upstream-analysis.md` 注意点 14。
+  - **agentd 可借项**（详见 `peer-apps-benchmark.md` 第九节）：经验记忆 `(state, action, discounted_return)` +
+    **每条记忆的信用记账**（→ 给记忆 V2 的第二个理由：渐进披露天然产出**读取遥测**，能回答「这条记忆到底有没有
+    起作用」，而「全塞或截断」回答不了）；委员会（**条件触发** + 异议单独成块 + 成员权重=历史胜率）；能力探针与
+    三档解码（缺 key 大声弃权）；审批卡补「为什么要你批」的理由行；**记忆导出为人类可读 Markdown + 幂等导入 +
+    来源告警**（正对我们「对话导出不含记忆库、只能整库备份迁移」的已知缺口）。
+  - **待办（均未立项，按优先级）**：①核实 #1929 × 签名推理块（可能真 bug，最优先）；②护栏家族第四员「调用内
+    逐字周期熔断」；③经验记忆/信用记账与记忆 V2 合并评估；④危险工具审批卡补理由行；⑤记忆导出 Markdown。
+  - **限定与未验证**：本仓**未实测**是否真出现该退化形态（该形态依赖模型侧退化）；agentd 的 ops 套件数字
+    （1.1/40 → 14.4/40）来自**合成噪声模型**，web 套件仅 +0.08 且有一个 seed 为负——引用时必须带此限定。
