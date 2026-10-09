@@ -301,6 +301,7 @@
   <string name="chat_message_tool_approve">核准</string>
     <string name="chat_message_reasoning_edit">編輯思考過程</string>
   <string name="chat_message_reasoning_edit_save">儲存</string>
+  <string name="chat_message_reasoning_edit_signed_warning">該思考區塊由供應商簽章：只有原樣回傳才會被接受，編輯後下一次請求可能被拒絕。</string>
 <string name="chat_message_tool_approve_all">全部核准</string>
   <string name="chat_message_tool_ask_questions">詢問 %d 個問題</string>
   <string name="chat_message_tool_call_generic">調用工具 %1$s</string>

@@ -407,9 +407,11 @@ class ResponseAPI(
                     // 输出 function_call + function_call_output
                     group.tools.forEach { tool ->
                         // ① 这条 assistant 消息**根本没有思维链**可回放（开启思考前的旧消息 / 上游只给加密推理 /
-                        //    用户关了「回传历史思考过程」/ 消息被编辑过）⇒ 网关以「reasoning_text must be passed
+                        //    用户关了「回传历史思考过程」/ 推理被**删空**）⇒ 网关以「reasoning_text must be passed
                         //    back」直接 400（DeepSeek Responses 实测）。先补**占位** reasoning item：
                         //    该 API 拒绝空文本，非空即可、id 可选。
+                        //    ⚠️「编辑过」**不算**：`#1929` 编辑后文本非空 ⇒ 走 lastReasoningText 分支，
+                        //    把用户改写过的文本当 reasoning 回传（2026-10-09 核实）。
                         // ② 同一轮第二个及以后的 function_call 前补插 reasoning item（issue #1690）。
                         val reasoningToEmit: String? = when {
                             !reasoningEmitted && reasoningTextRequired -> REASONING_BACKFILL_PLACEHOLDER

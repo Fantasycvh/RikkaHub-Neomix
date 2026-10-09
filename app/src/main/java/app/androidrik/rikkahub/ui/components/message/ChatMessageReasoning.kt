@@ -296,10 +296,16 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
  *
  * **编辑内容不进 saved state**（`remember` 而非 `rememberSaveable`）——推理动辄上万字，
  * 进 saved state 会在切后台时 TransactionTooLargeException 崩溃；进程死亡丢编辑是可接受的。
+ *
+ * [providerSigned] 为真时多显示一行警示：这类块（Claude 签名 thinking / `redacted_thinking`、Gemini
+ * `thoughtSignature`）**必须原样回传**，编辑后可能被上游拒（见 `isProviderSigned`）。**行为不变**，
+ * 只是知情提示。
  */
 @Composable
 internal fun ReasoningEditDialog(
     initialText: String,
+    /** 该推理块由上游签名/加密（Claude thinking signature / Gemini thoughtSignature）⇒ 显示警示 */
+    providerSigned: Boolean = false,
     onDismissRequest: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
@@ -334,6 +340,18 @@ internal fun ReasoningEditDialog(
                         ) {
                             Text(stringResource(R.string.chat_message_reasoning_edit_save))
                         }
+                    }
+                    if (providerSigned) {
+                        // 上游规则：带签名/加密的块必须原样回传，修改过的块会被拒。
+                        // 这里只提示、不改变行为（#1929 编辑能力保留）。
+                        Text(
+                            text = stringResource(R.string.chat_message_reasoning_edit_signed_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp),
+                        )
                     }
                     TextField(
                         value = editingText,

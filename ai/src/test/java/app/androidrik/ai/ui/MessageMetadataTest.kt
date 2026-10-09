@@ -9,6 +9,7 @@ import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -141,5 +142,51 @@ class MessageMetadataTest {
             metadata = DiffMetadata(diff = diff).toMetadata(),
         )
         assertEquals(diff, part.metadataAs<DiffMetadata>()?.diff)
+    }
+
+    // ===== 签名判据（#1929 编辑入口的警示条件）=====
+
+    @Test
+    fun `claude signature counts as provider signed`() {
+        val part = reasoningWith(ClaudeReasoningMetadata(signature = "sig-abc").toMetadata())
+        assertTrue(part.isProviderSigned())
+    }
+
+    @Test
+    fun `claude redacted data counts as provider signed`() {
+        val part = reasoningWith(ClaudeReasoningMetadata(redactedData = "enc==").toMetadata())
+        assertTrue(part.isProviderSigned())
+    }
+
+    @Test
+    fun `legacy signature json counts as provider signed`() {
+        val part = reasoningWith(buildJsonObject { put("signature", "sig-abc") })
+        assertTrue(part.isProviderSigned())
+    }
+
+    @Test
+    fun `google thought signature counts as provider signed`() {
+        val part = reasoningWith(GoogleThoughtMetadata(thoughtSignature = "ts-1").toMetadata())
+        assertTrue(part.isProviderSigned())
+    }
+
+    @Test
+    fun `openai reasoning metadata is not signed`() {
+        // Responses 的 reasoning_id / encrypted_content 不参与签名校验 —— 编辑它不会被上游拒，
+        // 但它照样会随请求回传（includeHistoryReasoning 默认 true），故不属本判据。
+        val part = reasoningWith(
+            OpenAIReasoningMetadata(reasoningId = "rs_1", encryptedContent = "enc").toMetadata()
+        )
+        assertFalse(part.isProviderSigned())
+    }
+
+    @Test
+    fun `plain reasoning without metadata is not signed`() {
+        assertFalse(reasoningWith(null).isProviderSigned())
+    }
+
+    @Test
+    fun `empty claude metadata is not signed`() {
+        assertFalse(reasoningWith(ClaudeReasoningMetadata().toMetadata()).isProviderSigned())
     }
 }

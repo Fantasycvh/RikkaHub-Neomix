@@ -589,9 +589,12 @@ class ChatCompletionsAPI(
                 put("reasoning_content", reasoningPart.reasoning)
             } else if (tools.isNotEmpty() && backfillToolReasoning) {
                 // 网关的结构性校验：思考模式下带 tool_calls 的消息必须回传思维链，
-                // 而这条历史里没有可回传的（旧消息 / 只给加密推理 / 用户关了回传 / 编辑过）⇒
+                // 而这条历史里没有可回传的（旧消息 / 只给加密推理 / 用户关了回传 / 推理被**删空**）⇒
                 // 回填**空串**（空串被接受；省略字段会让整个请求 400）。
                 // 见 requiresToolReasoningBackfill 的实测矩阵与触发场景。
+                // ⚠️ 注意「编辑过」**不算**没有可回传的：`#1929` 编辑后文本非空 ⇒ 走上面分支，
+                // 把**用户改写过的文本**当 `reasoning_content` 回传（2026-10-09 核实；早前注释曾把它
+                // 列为回填情形，前提不成立）。
                 put("reasoning_content", "")
             }
 

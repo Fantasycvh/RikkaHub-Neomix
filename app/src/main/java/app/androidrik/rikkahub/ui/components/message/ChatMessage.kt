@@ -72,6 +72,7 @@ import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.isProviderSigned
 import app.androidrik.ai.ui.isEmptyUIMessage
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.File02
@@ -330,6 +331,7 @@ fun ChatMessage(
         val target = editingReasoning!!
         ReasoningEditDialog(
             initialText = target.reasoning,
+            providerSigned = target.isProviderSigned(),
             onDismissRequest = { editingReasoning = null },
             onConfirm = { text ->
                 editingReasoning = null

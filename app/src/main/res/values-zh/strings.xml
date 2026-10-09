@@ -303,6 +303,7 @@
   <string name="chat_message_tool_approve">批准</string>
     <string name="chat_message_reasoning_edit">编辑思考过程</string>
   <string name="chat_message_reasoning_edit_save">保存</string>
+  <string name="chat_message_reasoning_edit_signed_warning">该思考块由提供商签名：只有原样回传才会被接受，编辑后下一次请求可能被拒绝。</string>
 <string name="chat_message_tool_approve_all">全部批准</string>
   <string name="chat_message_tool_ask_questions">询问 %d 个问题</string>
   <string name="chat_message_tool_call_generic">调用工具 %1$s</string>

@@ -299,6 +299,7 @@
   <string name="chat_message_tool_approve">承認</string>
     <string name="chat_message_reasoning_edit">思考プロセスを編集</string>
   <string name="chat_message_reasoning_edit_save">保存</string>
+  <string name="chat_message_reasoning_edit_signed_warning">この思考ブロックはプロバイダーの署名付きです。そのまま送り返す場合のみ受け付けられるため、編集すると次のリクエストが拒否される可能性があります。</string>
 <string name="chat_message_tool_approve_all">すべて承認</string>
   <string name="chat_message_tool_ask_questions">%d 件の質問</string>
   <string name="chat_message_tool_call_generic">ツール %1$s を呼び出しました</string>
