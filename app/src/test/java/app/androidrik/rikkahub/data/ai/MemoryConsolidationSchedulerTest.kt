@@ -499,6 +499,27 @@ class MemoryConsolidationSchedulerTest {
         )
     }
 
+    // ---- 建议在界面上的那一行（决策 B：不落库、不一键应用，只列出来给用户自己改）----
+
+    @Test
+    fun `a proposal is described by action target and content`() {
+        assertEquals("create · 喜欢短回复", MemoryConsolidationProposal("create", content = "喜欢短回复").describe())
+        assertEquals(
+            "edit · a3f1c09e → 合并后的内容",
+            MemoryConsolidationProposal("edit", "a3f1c09e", "合并后的内容").describe(),
+        )
+        assertEquals("delete · 7bd20f45", MemoryConsolidationProposal("delete", "7bd20f45").describe())
+    }
+
+    @Test
+    fun `a long proposal content is truncated on one line`() {
+        val described = MemoryConsolidationProposal("create", content = "换\n行".repeat(60)).describe(maxContent = 10)
+
+        assertFalse("多行内容要压成一行（列表里不该被一段正文撑开）", described.contains('\n'))
+        assertTrue(described.startsWith("create · "))
+        assertTrue("要有省略号，用户才知道这不是全文", described.endsWith("…"))
+    }
+
     private fun srcRoot(): File {
         val candidates = listOf(File("src/main/java"), File("app/src/main/java"))
         return candidates.firstOrNull { it.isDirectory }

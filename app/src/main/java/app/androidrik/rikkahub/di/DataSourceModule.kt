@@ -10,8 +10,19 @@ import io.ktor.http.HttpHeaders
 import io.pebbletemplates.pebble.PebbleEngine
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import io.requery.android.database.sqlite.SQLiteCustomExtension
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import app.androidrik.ai.provider.ProviderManager
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationAgent
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationGenerationAgent
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationScheduler
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationTrigger
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationWorker
+import app.androidrik.rikkahub.data.ai.MemoryConsolidator
+import app.androidrik.rikkahub.data.ai.AppForegroundState
+import app.androidrik.rikkahub.data.repository.ConversationRepository
+import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.common.http.AcceptLanguageBuilder
 import app.androidrik.rikkahub.BuildConfig
 import app.androidrik.rikkahub.data.ai.AIRequestInterceptor
@@ -129,6 +140,10 @@ val dataSourceModule = module {
 
     single {
         get<AppDatabase>().memoryDao()
+    }
+
+    single {
+        get<AppDatabase>().memoryConsolidationDao()
     }
 
     single {
@@ -306,5 +321,60 @@ val dataSourceModule = module {
 
     single<RikkaHubAPI> {
         get<Retrofit>().create(RikkaHubAPI::class.java)
+    }
+
+    // ---- 做梦（V3）：整理 agent / worker / 触发器 / 运行时 ----
+    // 全部是 single：同一记忆库不许并发跑两次（调度器内部还有 Mutex，这里是第二道）。
+
+    // 同样必须绑定到接口：worker 要的是 MemoryConsolidationAgent
+    single<MemoryConsolidationAgent> {
+        MemoryConsolidationGenerationAgent(
+            generationHandler = get(),
+            memoryRepository = get(),
+            json = get(),
+        )
+    }
+
+    // 必须显式绑定到**接口**：调度器要的是 MemoryConsolidationWorker，
+    // 按具体类型注册时 Koin 只认 MemoryConsolidator，`get()` 会抛 NoDefinitionFound——
+    // 真机才发现（源码扫描守卫看不出这种绑定缺失）
+    single<MemoryConsolidationWorker> {
+        val memoryRepository: MemoryRepository = get()
+        val settingsStore: SettingsStore = get()
+        MemoryConsolidator(
+            repository = get(),
+            memories = { memoryId -> memoryRepository.getMemoriesOfAssistant(memoryId) },
+            agent = get(),
+            settings = { settingsStore.settingsFlow.first() },
+        )
+    }
+
+    single { AppForegroundState() }
+
+    single {
+        val foreground: AppForegroundState = get()
+        MemoryConsolidationScheduler(
+            scope = get<AppScope>(),
+            worker = get(),
+            isAppVisible = { foreground.isForeground },
+        )
+    }
+
+    single {
+        val conversationRepository: ConversationRepository = get()
+        MemoryConsolidationTrigger(
+            scheduler = get(),
+            conversations = { id -> conversationRepository.getConversationById(id) },
+        )
+    }
+
+    single {
+        MemoryConsolidationRuntime(
+            trigger = get(),
+            scheduler = get(),
+            foreground = get(),
+            appEventBus = get(),
+            appScope = get<AppScope>(),
+        )
     }
 }

@@ -288,6 +288,44 @@ debug 包（`app.androidrik.rikkahub.debug`，用户真实库）升级安装并�
   有说明、做梦用临时 profile、读取记遥测、护栏停止当失败；水位只用 `transcript.consumed` 推进、
   无模型记失败、两个步数常量存在。
 
+## 8.4 V3-b3 已落地（2026-10-09）：接线 + 状态/建议呈现
+
+**接了什么**
+
+- **Koin 6 个单例**：进度表 DAO / 数据面 `MemoryConsolidationRepository` / 整理 agent / worker /
+  调度器 / 运行时；worker 与 agent **必须显式绑定到接口**（`single<MemoryConsolidationWorker>`、
+  `single<MemoryConsolidationAgent>`）；
+- **三个钩子 + 一次通知**（`MemoryConsolidationRuntime`，在 `RikkaHubApp.onCreate` 里 `start()`）：
+  - 轮末：`AppEvent.ChatGenerationEnded`（`ChatService` 在生成结束时发，成功/失败/取消都算）；
+  - 切后台：`ProcessLifecycleOwner.onStop` ⇒ `scheduler.onAppHidden()`；
+  - 启动补漏：`start()` ⇒ `trigger.resumePending()`；
+  - 自动整理**有产出**时发 `AppEvent.MemoryConsolidationFinished`，`RouteActivity` 弹一次 toast
+    （什么都没改是常见结果，每次都弹就成了噪音）；
+- **「离开对话」不接**：`ChatPage` 没有可靠的离页信号（只有一个抽屉的 `BackHandler`），而它的收益只是
+  把「等空闲 2 分钟」提前成「立刻」——轮末计时与切后台已经覆盖这条路径。要接得动导航层，留作可选优化；
+- **保活留空实现**（`MemoryDreamKeepAlive` 默认 no-op）：`KeepAliveService` 是**用户自己的开关**
+  （常驻通知 + 电池白名单），拿它给后台整理续命会把用户没开的功能悄悄打开；独立前台服务要新渠道 +
+  manifest + 生命周期，值得单独一刀。退化的代价可接受：切后台时立刻开始跑，进程若被冻结则这一轮不算完成
+  ——**水位不推进、内容不丢**，下次再来；
+- **UI（决策 B）**：记忆页开关下面新增「整理一下」条目 —— 状态（待整理 N 轮 / 正在整理 / 上次结果）
+  + **本次建议列表**（`describe()`：动作 · 目标 · 内容摘要）+ 手动整理按钮（不受自动频次上限约束）。
+
+**真机踩到的坑（值得记下来）**：第一次装上去**启动就崩了**——`single { MemoryConsolidator(...) }`
+只按**具体类型**注册，而调度器要的是 `MemoryConsolidationWorker` 接口，Koin 抛
+`NoDefinitionFoundException`；同一类问题还有整理 agent 与进度表 DAO，三处一路崩到底。
+它们**全在源码扫描守卫的盲区**：守卫只能看到「注册了」，看不出「绑定到哪个类型」。
+结论：这类问题今后以**真机启动冒烟**为准（守卫里已补「必须绑定到接口」的断言，但那只是能扫到的那部分）。
+
+**验证**：`:app` **1437 → 1445**（+8：触发器链路 3 / 建议描述 2 / 接线守卫 +3）；:ai 252 不变，全绿。
+真机：debug 包重装后启动零 `FATAL`、零 Koin 错误；一次真实整理的观测见 §8.5。
+
+## 8.5 一次真实整理的观测（待补：需要真机点两下）
+
+自动路径要「开关打开 + 有一轮新对话 + 空闲 2 分钟（或攒够 6 轮）」，手动路径要用户在记忆页点一下。
+这两步都需要人手，因此本节的数字留到用户操作后回填：日志里的 `MemoryConsolidator: consolidate(...)`
+与 `consolidated <库>: applied=… proposals=…`、`memory_consolidation` 表的进度行、
+以及记忆页上「本次建议」的实际观感。
+
 ## 9. 未做（下一批）
 
 ### 9.1 提案形态：定为 B（2026-10-09 拍板）
@@ -305,18 +343,13 @@ debug 包（`app.androidrik.rikkahub.debug`，用户真实库）升级安装并�
 将来若真实数据表明建议量大、值得批量应用，再升级为 **A′**（落库 + 每轮「全部应用/全部忽略」，
 整轮原子应用 ⇒ 半状态问题消失）或 **A**（逐条 + 成组 + 前置条件）。**不要**在没有真实数据时直接做 A。
 
-### 9.2 接线（V3-b3）
+### 9.2 V3-b3 剩下的小尾巴（接线主体已落地，见 §8.4）
 
-- **Koin 单例**：`MemoryConsolidationScheduler` + `MemoryConsolidator`（两个 lambda：
-  `{ memoryRepository.getMemoriesOfAssistant(it) }`、`{ conversationRepository.getConversationById(it) }`）
-  + `MemoryConsolidationGenerationAgent`（`GenerationHandler` + `MemoryRepository` + `Json`）；
-- **四个钩子**：轮末（`ChatService` 生成结束处）/ 切后台（`RikkaHubApp` 生命周期）/ 离开对话
-  （导航离页）/ 启动补漏（`RikkaHubApp.onCreate`）；
-- **前台服务**：复用 `KeepAliveService` 实现 `MemoryDreamKeepAlive`；
-- **UI**：会话内一次性通知（走 `automaticRuns`）+ 记忆页的「整理一下」按钮与状态
-  （`statusOf`：待整理轮数 / 进行中 / 上次结果 + 本次建议列表）；
-- **真机验证**：一次真实整理的观感（日志里的 applied/proposals、水位推进、自动触发间隔是否体感合适），
-  以及「审批开着 ⇒ 只提案」这条路径端到端。
+- **真机验证一次真实整理**（§8.5 待回填）：需要用户在真机上点两下（开开关 + 发一条消息或点「整理一下」）；
+- **「离开对话」钩子**：要动导航层（`ChatPage` 没有可靠离页信号），收益只是把「等 2 分钟」提前；
+- **前台服务保活**（独立服务，不复用用户自己的 `KeepAliveService`）：影响「后台跑到一半被冻结」的概率，
+  不影响正确性；
+- **提案的落库与一键应用**：见 §9.1 的条件（等真实建议的形态数据）。
 
 - **V4 Markdown 文件库**：等上游 #2130 合并/稳定后再评。
 

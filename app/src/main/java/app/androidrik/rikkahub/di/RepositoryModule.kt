@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.data.repository.FavoriteRepository
 import app.androidrik.rikkahub.data.repository.FolderRepository
 import app.androidrik.rikkahub.data.repository.FilesRepository
 import app.androidrik.rikkahub.data.repository.GenMediaRepository
+import app.androidrik.rikkahub.data.repository.MemoryConsolidationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.workspace.ProotBackgroundLauncher
@@ -18,6 +19,7 @@ import app.androidrik.workspace.ProotShellRunner
 import app.androidrik.workspace.RootfsInstaller
 import app.androidrik.workspace.WorkspaceBindMount
 import app.androidrik.workspace.WorkspaceManager
+import kotlinx.coroutines.flow.first
 import org.koin.dsl.module
 import java.io.File
 
@@ -96,5 +98,21 @@ val repositoryModule = module {
 
     single {
         SkillManager(get(), get())
+    }
+
+    /**
+     * 做梦（V3）的数据面：门控、基线与进度都在这里（见 `docs/design-memory-consolidation.md` §3）。
+     *
+     * 两个 lambda 是刻意的：助手列表与「按 id 载会话」都按需取，避免把整个 Settings / Conversation
+     * 仓库拖进构造，也让这一层在 JVM 单测里能替换成假数据。
+     */
+    single {
+        val settingsStore: SettingsStore = get()
+        val conversationRepository: ConversationRepository = get()
+        MemoryConsolidationRepository(
+            consolidationDAO = get(),
+            assistants = { settingsStore.settingsFlow.first().assistants },
+            conversationLoader = { id -> conversationRepository.getConversationById(id) },
+        )
     }
 }

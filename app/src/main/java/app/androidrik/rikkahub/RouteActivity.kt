@@ -284,6 +284,14 @@ class RouteActivity : ComponentActivity() {
                     is AppEvent.McpOAuthCallback -> Unit // 由 McpManager 消费
                     is AppEvent.ChatGenerationUpdate -> Unit // 由 ChatNotificationManager 消费
                     is AppEvent.ChatGenerationEnded -> Unit // 由 ChatNotificationManager 消费
+                    // 做梦（V3）整理完成的一次性提示：只在**真的改了东西或攒下建议**时才会来
+                    is AppEvent.MemoryConsolidationFinished -> toastState.show(
+                        getString(
+                            R.string.chat_memory_consolidated_toast,
+                            event.applied,
+                            event.proposals,
+                        )
+                    )
                 }
             }
         }

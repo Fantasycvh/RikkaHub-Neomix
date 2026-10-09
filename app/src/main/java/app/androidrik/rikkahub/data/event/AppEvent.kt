@@ -30,4 +30,15 @@ sealed class AppEvent {
         val senderName: String,
         val contentPreview: String?,
     ) : AppEvent()
+
+    /**
+     * 做梦（V3）自动整理完成，且**确实有产出**（改了记录或攒下了建议）。
+     *
+     * 由 `MemoryConsolidationRuntime` 在调度器的 `automaticRuns` 上转发：只在有内容时发——
+     * 每次后台整理都弹一下就成了噪音（"什么都没改"是最常见的结果）。手动整理的产出走记忆页的状态。
+     */
+    data class MemoryConsolidationFinished(
+        val applied: Int,
+        val proposals: Int,
+    ) : AppEvent()
 }

@@ -120,6 +120,14 @@
   <string name="assistant_page_memory_create_approval_desc">啟用後，AI 新增記憶前也需要你確認。預設關閉（新增記憶直接記錄）。</string>
   <string name="assistant_page_memory_consolidation">閒置後整理記憶（做夢）</string>
   <string name="assistant_page_memory_consolidation_desc">對話閒置後呼叫一次模型，把新聊到的內容去重、合併進記憶庫。只處理開啟之後的新內容（更早的歷史不會自動整理）。會消耗模型額度。</string>
+  <string name="assistant_page_memory_consolidate_now">整理一下</string>
+  <string name="assistant_page_memory_consolidate_action">整理</string>
+  <string name="assistant_page_memory_consolidation_pending">還有 %1$d 輪未整理</string>
+  <string name="assistant_page_memory_consolidation_running">正在整理…</string>
+  <string name="assistant_page_memory_consolidation_last">上次整理：套用 %1$d 條，建議 %2$d 條</string>
+  <string name="assistant_page_memory_consolidation_never">還沒有整理過</string>
+  <string name="assistant_page_memory_consolidation_proposals">本次建議（審批開啟時不會自動套用，想採納請在上方手動修改）：</string>
+  <string name="chat_memory_consolidated_toast">記憶整理完成：套用 %1$d 條，建議 %2$d 條</string>
   <string name="assistant_page_message_template">聊天內容模板</string>
   <string name="assistant_page_message_template_desc">控制聊天訊息在發送給LLM之前的內容格式，通常不需要修改</string>
   <string name="assistant_page_message_template_missing_message">範本未包含 {{ message }}，使用者訊息將不會被傳送</string>

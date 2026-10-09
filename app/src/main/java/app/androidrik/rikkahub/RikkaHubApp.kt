@@ -34,6 +34,7 @@ import app.androidrik.rikkahub.di.appModule
 import app.androidrik.rikkahub.di.dataSourceModule
 import app.androidrik.rikkahub.di.repositoryModule
 import app.androidrik.rikkahub.di.viewModelModule
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
@@ -82,6 +83,11 @@ class RikkaHubApp : Application() {
             modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
         }
         this.createNotificationChannel()
+
+        // 做梦（V3）：接上触发面（轮末 / 切后台 / 启动补漏）。**主线程调用**——
+        // ProcessLifecycleOwner 要求在主线程注册观察者（与 ChatNotificationManager 同款）。
+        // 整理本身仍然只在设置里那个助手级开关开着时才跑（门控在 scheduler 的 worker 契约里）。
+        get<MemoryConsolidationRuntime>().start()
 
         // 真 tokenizer 预热（设计：token 预算精度）。**后台装载、不阻塞启动**：
         // 预热完成前所有 `estimateTokens` 走字符启发式兜底（行为不中断，只是精度低一点）。

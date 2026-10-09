@@ -72,6 +72,23 @@ data class MemoryConsolidationProposal(
     val description: String? = null,
 )
 
+/**
+ * 建议在记忆页上的一行（**纯函数**：判据不藏在 Composable 里，好单测）。
+ *
+ * 只给「动作 + 目标 + 内容摘要」：用户要按它改，得知道改哪条、改成什么；
+ * 详细字段（importance/description）不铺在这里——记忆页上每条的编辑入口本来就有。
+ */
+fun MemoryConsolidationProposal.describe(maxContent: Int = 60): String {
+    val content = content.replace('\n', ' ').trim()
+    val preview = if (content.length > maxContent) content.take(maxContent) + "…" else content
+    return when (action) {
+        "create" -> "create · $preview"
+        "edit" -> "edit · ${targetId.orEmpty()} → $preview"
+        "delete" -> "delete · ${targetId.orEmpty()}"
+        else -> "$action · $preview"
+    }
+}
+
 /** 某个记忆库的整理状态（状态面板/设置页只读它）。 */
 data class MemoryConsolidationStatus(
     val pendingTurns: Int = 0,

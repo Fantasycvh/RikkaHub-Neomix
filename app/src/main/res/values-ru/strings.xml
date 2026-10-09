@@ -118,6 +118,14 @@
   <string name="assistant_page_memory_create_approval_desc">Если включено, ИИ также должен получить ваше подтверждение перед добавлением новой памяти. По умолчанию выключено (новые записи сохраняются сразу).</string>
   <string name="assistant_page_memory_consolidation">Упорядочивание памяти в простое (сон)</string>
   <string name="assistant_page_memory_consolidation_desc">Когда чат переходит в простой, модель вызывается один раз, чтобы объединить и убрать дубликаты нового содержимого в библиотеке памяти. Обрабатывается только содержимое новее момента включения. Расходует лимит модели.</string>
+  <string name="assistant_page_memory_consolidate_now">Упорядочить сейчас</string>
+  <string name="assistant_page_memory_consolidate_action">Упорядочить</string>
+  <string name="assistant_page_memory_consolidation_pending">Не упорядочено реплик: %1$d</string>
+  <string name="assistant_page_memory_consolidation_running">Упорядочивание…</string>
+  <string name="assistant_page_memory_consolidation_last">Прошлый раз: применено %1$d, предложений %2$d</string>
+  <string name="assistant_page_memory_consolidation_never">Ещё не упорядочивалось</string>
+  <string name="assistant_page_memory_consolidation_proposals">Предложения этого запуска (при включённом подтверждении не применяются автоматически; чтобы принять, измените запись выше):</string>
+  <string name="chat_memory_consolidated_toast">Память упорядочена: применено %1$d, предложений %2$d</string>
   <string name="assistant_page_message_template">Шаблон содержимого сообщения</string>
   <string name="assistant_page_message_template_desc">Управляет форматом содержимого сообщений чата перед отправкой в LLM, обычно изменять не требуется</string>
   <string name="assistant_page_message_template_missing_message">Шаблон не содержит {{ message }}, сообщения пользователя не будут отправлены</string>

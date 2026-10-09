@@ -120,6 +120,14 @@
   <string name="assistant_page_memory_create_approval_desc">When enabled, the AI must get your confirmation before adding a new memory. Off by default (new memories are recorded directly).</string>
   <string name="assistant_page_memory_consolidation">Tidy memories when idle</string>
   <string name="assistant_page_memory_consolidation_desc">When a chat goes idle, calls the model once to merge and de-duplicate what was newly said into the memory library. Only content newer than the moment you turn this on is processed. Uses your model quota.</string>
+  <string name="assistant_page_memory_consolidate_now">Tidy now</string>
+  <string name="assistant_page_memory_consolidate_action">Tidy</string>
+  <string name="assistant_page_memory_consolidation_pending">%1$d turns not tidied yet</string>
+  <string name="assistant_page_memory_consolidation_running">Tidying…</string>
+  <string name="assistant_page_memory_consolidation_last">Last run: %1$d applied, %2$d suggestions</string>
+  <string name="assistant_page_memory_consolidation_never">Not tidied yet</string>
+  <string name="assistant_page_memory_consolidation_proposals">Suggestions from this run (not applied automatically while approval is on; change them above if you agree):</string>
+  <string name="chat_memory_consolidated_toast">Memory tidied: %1$d applied, %2$d suggestions</string>
   <string name="assistant_page_message_template">Message Content Template</string>
   <string name="assistant_page_message_template_desc">Controls the content format of chat messages before being sent to the LLM, usually no need to modify</string>
   <string name="assistant_page_message_template_missing_message">Template does not contain {{ message }}, user messages will not be sent</string>

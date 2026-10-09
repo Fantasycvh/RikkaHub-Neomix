@@ -17,6 +17,9 @@ import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationScheduler
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
+import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.files.SkillMetadata
@@ -37,6 +40,8 @@ class AssistantDetailVM(
     private val filesManager: FilesManager,
     private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
+    /** 做梦（V3）：状态流与手动整理入口（见 docs/design-memory-consolidation.md §9.2） */
+    private val consolidationScheduler: MemoryConsolidationScheduler,
 ) : ViewModel() {
     private val assistantId = Uuid.parse(id)
 
@@ -78,6 +83,26 @@ class AssistantDetailVM(
         .stateIn(
             scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
         )
+
+    /**
+     * 做梦（V3）的状态：待整理轮数 / 是否在跑 / 上次结果（含**本次建议**，见决策 B）。
+     *
+     * 跟着当前助手的记忆库走（全局库与助手库是两套进度），与 [memories] 同款按 flatMapLatest 切换。
+     */
+    val consolidationStatus: StateFlow<MemoryConsolidationStatus> = assistant
+        .flatMapLatest { current ->
+            consolidationScheduler.statusOf(current.memoryId())
+        }
+        .stateIn(
+            scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = MemoryConsolidationStatus()
+        )
+
+    /** 手动「整理一下」：不受自动频次上限约束（用户显式点击即授权），也顺带做一遍全库复核 */
+    fun organizeMemory() {
+        viewModelScope.launch {
+            consolidationScheduler.organize(assistant.value.memoryId())
+        }
+    }
 
     val providers = settingsStore
         .settingsFlow

@@ -47,6 +47,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
+import androidx.compose.material3.CircularProgressIndicator
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
+import app.androidrik.rikkahub.data.ai.describe
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import java.time.Instant
@@ -77,6 +80,8 @@ fun AssistantMemoryPage(id: String) {
     )
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val memories by vm.memories.collectAsStateWithLifecycle()
+    // 做梦（V3）的状态：待整理轮数 / 进行中 / 上次结果（含本次建议）
+    val consolidationStatus by vm.consolidationStatus.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -102,7 +107,9 @@ fun AssistantMemoryPage(id: String) {
             onUpdateAssistant = { vm.update(it) },
             onDeleteMemory = { vm.deleteMemory(it) },
             onAddMemory = { vm.addMemory(it) },
-            onUpdateMemory = { vm.updateMemory(it) }
+            onUpdateMemory = { vm.updateMemory(it) },
+            consolidationStatus = consolidationStatus,
+            onOrganize = { vm.organizeMemory() },
         )
     }
 }
@@ -116,6 +123,9 @@ private fun AssistantMemoryContent(
     onAddMemory: (AssistantMemory) -> Unit,
     onUpdateMemory: (AssistantMemory) -> Unit,
     onDeleteMemory: (AssistantMemory) -> Unit,
+    /** 做梦（V3）的状态与手动整理入口（在顶层收集后传进来：CardGroup 的 DSL 不是 composable 作用域） */
+    consolidationStatus: MemoryConsolidationStatus,
+    onOrganize: () -> Unit,
 ) {
     val memoryDialogState = useEditState<AssistantMemory> {
         if (it.id.isEmpty()) {   // 空 id = 新建（原为 id == 0）
@@ -363,6 +373,63 @@ private fun AssistantMemoryContent(
                     )
                 }
             )
+            // 做梦（V3）的「整理一下」+ 状态 + 本次建议。
+            // 建议**只活在进程内**（决策 B：不落库、不做一键应用），重启即失；要按它改就在下面手动改。
+            if (assistant.memoryConsolidationSince > 0L) {
+                val lastRun = consolidationStatus.lastRun
+                item(
+                    headlineContent = { Text(stringResource(R.string.assistant_page_memory_consolidate_now)) },
+                    supportingContent = {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = when {
+                                    consolidationStatus.running ->
+                                        stringResource(R.string.assistant_page_memory_consolidation_running)
+
+                                    consolidationStatus.pendingTurns > 0 -> stringResource(
+                                        R.string.assistant_page_memory_consolidation_pending,
+                                        consolidationStatus.pendingTurns,
+                                    )
+
+                                    lastRun != null -> stringResource(
+                                        R.string.assistant_page_memory_consolidation_last,
+                                        lastRun.changedMemories,
+                                        lastRun.proposals.size,
+                                    )
+
+                                    else -> stringResource(R.string.assistant_page_memory_consolidation_never)
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            lastRun?.error?.let { error ->
+                                Text(text = error, style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (lastRun != null && lastRun.proposals.isNotEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.assistant_page_memory_consolidation_proposals),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                lastRun.proposals.forEach { proposal ->
+                                    Text(
+                                        text = proposal.describe(),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    trailingContent = {
+                        if (consolidationStatus.running) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        } else {
+                            TextButton(onClick = onOrganize) {
+                                Text(stringResource(R.string.assistant_page_memory_consolidate_action))
+                            }
+                        }
+                    }
+                )
+            }
             item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_recent_chats)) },
                 supportingContent = {
