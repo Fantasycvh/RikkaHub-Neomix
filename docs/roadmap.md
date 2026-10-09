@@ -1571,10 +1571,27 @@ data class ApiKeyEntry(
       文本），签名/`thoughtSignature` 挂的是**草稿图 Image 与 functionCall 工具块**，`#1929` 不碰它们。
     - 完整性：全仓「写推理文本」只有两处——`RegexOutputTransformer`（走 `visualTransform`，**仅显示、不改消息**，不进请求）
       与 `ChatService.kt:279`（即 `#1929`）⇒ **用户可驱动的持久化改写只有编辑入口这一条路**。
-    - **未做（设备当时未连接，`adb devices` 为空）**：真机核验用户库里是否真存在带签名的推理块。接上设备后跑
-      `sqlite3 rikka_hub.db "SELECT COUNT(*) FROM message_node WHERE messages LIKE '%signature%'"`（另查
-      `%redactedData%`、`%thoughtSignature%`）即可判定「风险是否活跃」，并据此决定修复优先级：若库里有 Claude 直接
-      API/转发签名的推理块 ⇒ 用户点一次编辑就会命中下面的 400。
+    - **✅ 真机已核（2026-10-09，设备恢复连接；`su` 可读 release 库 111MB，整拷 `rikka_hub`+`-wal`+`-shm` 后本地解析）**：
+      **结论 = 风险未激活（0 命中）**。全库 7542 条消息 / **4638 个推理 part**：metadata 含 `signature` 的 **0**、
+      `redactedData` **0**、`thoughtSignature` **0**；推理 part 的 metadata 形状只有三种——`null`（多数）、
+      `{reasoning_id}`（197）、`{encrypted_content,reasoning_id}`（244，grok-4.6）——**全是 OpenAI 兼容族（Responses 等）
+      的形态，没有任何一家用签名**。另：设置里确有**原生 claude 供应商**（"玩转ai(test"，2 个模型 `claude-opus-4-6`/
+      `claude-opus-5-5`），但库里来自它们的消息仅 15 条、**推理 part 0 个** ⇒ 至今没有一次 Claude 思考轮次落库。
+      ⇒ **当前不存在「可编辑的带签名块」，用户点编辑也命不中 400**。
+      **⚠️ 查法更正（本次实测踩到）**：`LIKE '%signature%'` **不能**当判据——它命中 47 条、**全部是误报**（web 搜索结果的
+      `x-signature=` 查询串、APK 相关文本里的 `libsolab_signature`/`getSigningCertificates`）。正确判据是**解析 part 再看
+      `metadata` 键**（取 `message_node.messages` → 逐 part → 看 `type=="reasoning"` 的 metadata 有无
+      `signature`/`redactedData`）。本机复现脚本留在会话里，未入库。
+    - **Anthropic 侧现状（2026-10-09 用户告知 + 官方文档核对）**：Anthropic **不再返回原始思维链**——Fable 5 / Opus 4.7 /
+      4.8 上 `thinking.display` **默认 `omitted`（thinking 文本为空）**，要拿内容需显式 `display:"summarized"`（拿到的是
+      **摘要**而非原始 CoT）。**本仓已在新形态上**：`ClaudeProvider.kt:323-348` 对带 `REASONING` 能力的模型发
+      `{type:"adaptive","display":"summarized"}`（非 AUTO 档另加 `output_config.effort`），并注释了
+      「`type=enabled`+`budget_tokens` 在 Opus 4.7+ 已不支持」⇒ **Claude 用户的推理卡显示的是摘要**。含义：
+      ①`#1929` 对 Claude 的价值是「编辑一段摘要」而非原文；②危险面依旧存在、只是**存量里没有**（一旦走原生 Claude +
+      思考，摘要块**仍带签名** ⇒ 编辑即命中「修改过的块被拒」）；③**空文本但带签名**的块（omitted 的产物）按 replay
+      规则**必须原样回传**——本仓 `toContentBlock()` 对 `signature != null` 发 `thinking:""`+签名，符合规范、无需改。
+      （另记一条未验证项：库里有 6 条 `claude-opus-4-6` 消息 ⇒ 该模型请求成功过，但**不代表当时发了 thinking 参数**，
+      故「4.6 是否接受 `display` 字段」仍未判定。）
     - **触发条件**：①provider 为 Claude（直连或转发签名的中转）且模型开着 extended thinking ⇒ 存量里有带签名块；
       ②用户在推理块表头点编辑并确认（`ChatMessageReasoning.kt:273` 的入口**只判 `!loading && onEditRequest != null`**，
       **不看元数据**）；③下一次请求带上该消息 ⇒ Anthropic 拒**修改过的块**（本仓自己那条单测名即
@@ -1587,7 +1604,9 @@ data class ApiKeyEntry(
       （`ChatCompletionsAPI.kt:592` / `ResponseAPI.kt:410` 把「消息被编辑过」列为「没有可回传的」，而编辑后推理文本非空
       ⇒ 前提已不成立）；**B** 只禁掉带签名块的编辑入口（最保守，Claude 用户失去该功能）；**C** 仅加警示文案。
       详见 `upstream-analysis.md` 注意点 14。
-      **用户 2026-10-08 拍板：先不动代码**——等设备接上、查清用户库里是否真有带签名块（上一条的命令）再定修法优先级。
+      **决策轨迹**：用户 2026-10-08 拍板「先不动代码，等真机确认」；**2026-10-09 真机确认结果 = 存量 0 命中、风险未激活**
+      ⇒ 优先级维持**低**（不阻塞任何已发布版本）；**观察触发点**：开始用原生 Claude 供应商 + 开思考（届时库里会出现
+      带签名的摘要块），或将来把推理编辑扩展到「会回传」的路径时，按 A 落修。
   - **agentd 可借项**（详见 `peer-apps-benchmark.md` 第九节）：经验记忆 `(state, action, discounted_return)` +
     **每条记忆的信用记账**（→ 给记忆 V2 的第二个理由：渐进披露天然产出**读取遥测**，能回答「这条记忆到底有没有
     起作用」，而「全塞或截断」回答不了）；委员会（**条件触发** + 异议单独成块 + 成员权重=历史胜率）；能力探针与
