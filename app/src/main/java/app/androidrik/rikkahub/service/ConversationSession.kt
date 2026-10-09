@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.data.ai.LoopGuardSensitivity
+import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
 import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
 import app.androidrik.rikkahub.data.ai.guardThresholds
 import app.androidrik.rikkahub.data.datastore.DEFAULT_WORKSPACE_TURN_BUDGET_CHARS
@@ -82,6 +83,16 @@ class ConversationSession(
         outputBudgetChars = turnBudgetChars,
         maxSteps = turnBudgetSteps,
     )
+
+    /**
+     * **思考退化护栏**（护栏家族第四员，见 `data/ai/ThinkingDegenerationGuard.kt`）。
+     *
+     * 与 [toolLoopGuard] 同款挂载理由与重置时机：一次「轮」跨多次 generateText（审批续跑），
+     * 「连续几次纯思考空转」必须在同一轮内累计才有意义；新一轮用户消息 / 重新生成时 reset。
+     * 堵的是家族前三员的前提都落空时的形态：**零工具调用的退化**（纯思考空转 / 复述上一步 /
+     * 单次调用内逐字重复）——那次调用不结束的话，`maxSteps` 根本走不到下一步。
+     */
+    val thinkingGuard = ThinkingDegenerationGuard()
 
     // 生成任务（内聚在 session 中）
     private val _generationJob = MutableStateFlow<Job?>(null)

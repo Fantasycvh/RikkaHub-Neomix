@@ -356,6 +356,7 @@
   <string name="agent_run_error_exception">実行中にエラーが発生</string>
   <string name="chat_tool_loop_title">同じツール呼び出しの繰り返しで終了</string>
   <string name="chat_workspace_budget_title">ワークスペースツールの上限に達したため終了</string>
+  <string name="chat_thinking_loop_title">思考が繰り返しになったため終了</string>
   <string name="chat_page_check_title_model_settings">タイトルモデル設定を確認</string>
   <string name="chat_page_clear_all_errors">すべてクリア</string>
   <string name="chat_page_compress_additional_prompt">追加指示（オプション）</string>

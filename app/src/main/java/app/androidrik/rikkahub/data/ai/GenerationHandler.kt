@@ -180,12 +180,36 @@ sealed interface GenerationNotice {
         val usedTokens: Int,
         val windowTokens: Int,
     ) : GenerationNotice
+
+    /**
+     * **思考退化**（零工具调用的失控形态）——连续纯思考/复述上一步，或单次调用内逐字重复，
+     * 已提前结束本轮（见 [ThinkingDegenerationGuard]）。
+     *
+     * @param cutRule 调用内断流命中的规则；null = 只是调用边界上的计数达阈值
+     * @param repeated 断流时的重复次数（相同 delta 次数）或周期长度
+     */
+    data class ThinkingDegenerationStopped(
+        val stalledCalls: Int,
+        val restated: Boolean,
+        val cutRule: ThinkingDegenerationGuard.Rule?,
+        val repeated: Int,
+    ) : GenerationNotice
 }
 
 /** 无头 run 的策略拒绝文本（拒绝文本契约 §9.2.1：策略终态、明说勿重试）。 */
 const val HEADLESS_DENIAL_REASON =
     "Not permitted in this run by its capability envelope. " +
         "Do not retry this tool; proceed without it or finish."
+
+/**
+ * 思考退化护栏的**调用内断流信号**（内部用，不当错误）。
+ *
+ * 为什么用异常：`Flow.collect` 没有「优雅停下」的返回通道——抛出会沿链取消上游
+ * （provider 的 SSE 连接随之关闭，不再继续计费）；而它在**紧挨 collect 的内层**被捕获，
+ * 因此不会走到外层失败处理：不回滚快照、不触发重试/fallback、不记成错误。
+ * 内容照常保留，停止提示由步骤循环发出（[GenerationNotice.ThinkingDegenerationStopped]）。
+ */
+private object ThinkingDegenerationCut : Exception("thinking degeneration: stream cut by guard")
 
 class GenerationHandler(
     private val context: Context,
@@ -216,6 +240,13 @@ class GenerationHandler(
          * 见 [ToolCallLoopGuard] 类注释里真机实测的原因。默认值只服务于单测等场景。
          */
         loopGuard: ToolCallLoopGuard = ToolCallLoopGuard(),
+        /**
+         * **思考退化护栏**（护栏家族第四员，见 [ThinkingDegenerationGuard]）。默认**开启**——
+         * 堵的是前三员的前提都落空时的形态：零工具调用的退化（纯思考空转 / 复述上一步 /
+         * 单次调用内逐字重复）。挂载理由与 [loopGuard] 同款（挂会话、跨审批续跑累积、
+         * 新一轮重置）；调用内断流由本类在流消费处执行。
+         */
+        thinkingGuard: ThinkingDegenerationGuard = ThinkingDegenerationGuard(),
         /** 前缀分叉诊断的会话键（聊天路径传 conversationId；工具循环每一步都会记录） */
         debugKey: String? = null,
         /**
@@ -361,6 +392,7 @@ class GenerationHandler(
                     memories = memories ?: emptyList(),
                     stream = assistant.streamOutput,
                     processingStatus = processingStatus,
+                    degenerationGuard = thinkingGuard,
                     conversationSystemPrompt = conversationSystemPrompt,
                     conversationModeInjectionIds = conversationModeInjectionIds,
                     conversationLorebookIds = conversationLorebookIds,
@@ -389,8 +421,43 @@ class GenerationHandler(
                 )
                 emit(GenerationChunk.Messages(messages))
 
+                // 思考退化护栏（家族第四员）：调用内已断流，或本步属于「纯思考 / 复述上一步」的连续计数
+                // 达阈值 ⇒ 记停止提示。**先于**空回复补救与续写判定生效——两者都会再发一次请求，
+                // 而对一个已经退化的模型续跑只是重复计费（社区插件的同款取舍：不做 fallback/不自动重试）。
+                if (stopNotice == null) {
+                    val cut = thinkingGuard.takeCut()
+                    val lastAssistant = messages.lastOrNull()?.takeIf { it.role == MessageRole.ASSISTANT }
+                    val callVerdict = lastAssistant?.let {
+                        thinkingGuard.onCallFinished(
+                            reasoning = it.reasoningText(),
+                            hasVisibleText = it.hasVisibleTextOutput(),
+                            hasToolCalls = it.hasToolCalls(),
+                        )
+                    }
+                    val stalled = callVerdict as? ThinkingDegenerationGuard.Verdict.Stalled
+                    if (cut != null || stalled != null) {
+                        Log.w(
+                            TAG,
+                            "streamText: thinking degeneration " +
+                                "(cut=${cut?.rule}/${cut?.repeated}, stalled=${stalled?.stalledCalls}, " +
+                                "restated=${stalled?.restated}), stopping this turn",
+                        )
+                        stopNotice = GenerationNotice.ThinkingDegenerationStopped(
+                            stalledCalls = stalled?.stalledCalls ?: thinkingGuard.stalledCallCount,
+                            restated = stalled?.restated == true,
+                            cutRule = cut?.rule,
+                            repeated = cut?.repeated ?: 0,
+                        )
+                    }
+                }
+
                 val tools = messages.last().getTools().filter { !it.isExecuted }
                 if (tools.isEmpty()) {
+                    // 思考退化：不补救、不续写，直接停本轮（提示已备好）
+                    stopNotice?.let { stopped ->
+                        emit(GenerationChunk.Notice(stopped))
+                        break
+                    }
                     val last = messages.lastOrNull()
                     // 空回复补救：最后一次请求只产出思考、无可见正文也无工具调用时，
                     // 注入一次性恢复提示再请求一轮（见循环前的注释）
@@ -845,6 +912,8 @@ class GenerationHandler(
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
         retryBudgetOverride: Int? = null,
+        /** 思考退化护栏：流消费处用它做**调用内断流**（null = 不启用） */
+        degenerationGuard: ThinkingDegenerationGuard? = null,
         /** 空回复补救提示（只作用于本请求系统提示，不进入对话历史） */
         recoveryHint: String? = null,
         debugKey: String? = null,
@@ -914,35 +983,53 @@ class GenerationHandler(
                 // 没有 = 裸断流（网关/中转提前切连接）——此前与「正常收尾」无法区分，整轮被当成功。
                 var sawExplicitEnd = false
                 var finishReason: String? = null
+                // 思考退化护栏：调用内逐字重复 ⇒ 从内部中止本次流（抛出沿链取消上游 SSE 连接），
+                // 已生成内容照常保留，由步骤循环收尾（见 [ThinkingDegenerationGuard]）。
+                degenerationGuard?.onCallStarted()
                 try {
-                    providerImpl.streamText(
-                        providerSetting = provider,
-                        messages = requestMessages,
-                        params = params
-                    ).collect { chunk ->
-                        if (chunk.explicitEnd) {
-                            sawExplicitEnd = true
-                            return@collect
-                        }
-                        // "unknown" 是 chat/completions 解析层「字段缺失」的占位，归一成 null
-                        chunk.choices.firstOrNull()?.finishReason
-                            ?.takeIf { it.isNotBlank() && it != "unknown" }
-                            ?.let { finishReason = it }
-                        messages = messages.handleMessageChunk(
-                            chunk = chunk,
-                            model = model,
-                            providerName = provider.name,
-                        )
-                        chunk.usage?.let { usage ->
-                            messages = messages.mapIndexed { index, message ->
-                                if (index == messages.lastIndex) {
-                                    message.copy(usage = message.usage.merge(usage))
-                                } else {
-                                    message
+                    try {
+                        providerImpl.streamText(
+                            providerSetting = provider,
+                            messages = requestMessages,
+                            params = params
+                        ).collect { chunk ->
+                            if (chunk.explicitEnd) {
+                                sawExplicitEnd = true
+                                return@collect
+                            }
+                            // "unknown" 是 chat/completions 解析层「字段缺失」的占位，归一成 null
+                            chunk.choices.firstOrNull()?.finishReason
+                                ?.takeIf { it.isNotBlank() && it != "unknown" }
+                                ?.let { finishReason = it }
+                            messages = messages.handleMessageChunk(
+                                chunk = chunk,
+                                model = model,
+                                providerName = provider.name,
+                            )
+                            chunk.usage?.let { usage ->
+                                messages = messages.mapIndexed { index, message ->
+                                    if (index == messages.lastIndex) {
+                                        message.copy(usage = message.usage.merge(usage))
+                                    } else {
+                                        message
+                                    }
                                 }
                             }
+                            onUpdateMessages(messages)
+                            // 判定放在**本条已并入 messages 且已回调之后**：断流不丢已生成内容
+                            val deltaVerdict = degenerationGuard?.onDelta(chunk.choices.firstOrNull()?.delta)
+                            if (deltaVerdict is ThinkingDegenerationGuard.Verdict.Repeating) {
+                                Log.w(
+                                    TAG,
+                                    "generateInternal: thinking degeneration (${deltaVerdict.rule}, " +
+                                        "repeated=${deltaVerdict.repeated}), cutting this call",
+                                )
+                                throw ThinkingDegenerationCut
+                            }
                         }
-                        onUpdateMessages(messages)
+                    } catch (e: ThinkingDegenerationCut) {
+                        // 护栏主动断流：不是失败——不回滚快照、不重试、不 fallback，
+                        // 与另外三个护栏的「优雅停止」同款（停止提示由步骤循环发出）
                     }
                     // 流正常收尾：把「结束状态」写到末尾助手消息上（裸断流也会走到这里，
                     // 区别只在 sawExplicitEnd）。续写成功会再次覆写，故不需要额外的清除逻辑。

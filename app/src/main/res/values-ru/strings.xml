@@ -356,6 +356,7 @@
   <string name="agent_run_error_exception">Ошибка при выполнении</string>
   <string name="chat_tool_loop_title">Повтор вызова инструмента — ход завершён</string>
   <string name="chat_workspace_budget_title">Лимит инструментов рабочей области — ход завершён</string>
+  <string name="chat_thinking_loop_title">Рассуждение зациклилось — ход завершён</string>
   <string name="chat_page_check_title_model_settings">Проверьте настройки модели заголовков</string>
   <string name="chat_page_clear_all_errors">Очистить всё</string>
   <string name="chat_page_compress_additional_prompt">Дополнительные инструкции (по желанию)</string>

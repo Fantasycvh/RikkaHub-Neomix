@@ -64,6 +64,7 @@ import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
 import app.androidrik.rikkahub.data.ai.inspectPrompt
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.ai.selectMemoriesForPrompt
+import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.ai.tools.shouldUseExternalWebSearch
@@ -300,6 +301,23 @@ class ToolCallLoopStoppedException(
     val toolName: String,
     val repeats: Int,
 ) : Exception("$toolName ×$repeats")
+
+/**
+ * **思考退化护栏**停止本轮（见 `data/ai/ThinkingDegenerationGuard.kt`）——零工具调用的退化形态：
+ * 连续纯思考/复述上一步，或单次调用内逐字重复（已断流）。
+ *
+ * 与 [ToolCallLoopStoppedException] 同款：刻意**不是**「生成失败」，本轮已正常结束、
+ * 已生成内容照常落库，它只用于把「为什么停了」变成一条用户可见提示。
+ */
+class ThinkingDegenerationStoppedException(
+    val stalledCalls: Int,
+    val restated: Boolean,
+    val cutRule: ThinkingDegenerationGuard.Rule?,
+    val repeated: Int,
+) : Exception(
+    "thinking degeneration: stalled=$stalledCalls restated=$restated " +
+        "cut=${cutRule ?: "none"} repeated=$repeated"
+)
 
 class WorkspaceBudgetExhaustedException(
     val usedChars: Long,
@@ -677,6 +695,7 @@ class ChatService(
                 // 这是「轮」的真正边界——工具审批的续跑不走这里，故护栏的历史跨审批保留。
                 session.toolLoopGuard.reset()
                 session.workspaceTurnBudget.reset()
+                session.thinkingGuard.reset()
 
                 // 开始补全
                 if (answer) {
@@ -772,6 +791,7 @@ class ChatService(
         // 护栏历史一并清空，让新尝试从干净的额度开始，避免上一轮的重复记录误伤本次。
         session.toolLoopGuard.reset()
         session.workspaceTurnBudget.reset()
+        session.thinkingGuard.reset()
 
         val job = appScope.launch {
             try {
@@ -832,6 +852,7 @@ class ChatService(
                 // 续写是用户发起的**新一轮尝试**（与重生成同理）：护栏额度重置
                 session.toolLoopGuard.reset()
                 session.workspaceTurnBudget.reset()
+                session.thinkingGuard.reset()
 
                 handleMessageComplete(
                     conversationId,
@@ -1139,6 +1160,8 @@ class ChatService(
                 // 跨审批累积，并在新一轮用户消息/重新生成时由本类 reset（见 ToolCallLoopGuard）。
                 loopGuard = session.toolLoopGuard,
                 workspaceBudget = session.workspaceTurnBudget,
+                // 思考退化护栏（家族第四员）：同上取 session 上的实例，跨审批续跑累积
+                thinkingGuard = session.thinkingGuard,
                 // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
                 // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
                 // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
@@ -1291,6 +1314,24 @@ class ChatService(
                                 ),
                                 conversationId,
                                 title = context.getString(R.string.chat_workspace_budget_title),
+                            )
+                        }
+                        is GenerationNotice.ThinkingDegenerationStopped -> {
+                            Log.w(
+                                TAG,
+                                "thinking degeneration stopped: stalled=${notice.stalledCalls} " +
+                                    "restated=${notice.restated} cut=${notice.cutRule}/${notice.repeated} " +
+                                    "(conv=$conversationId)",
+                            )
+                            addError(
+                                ThinkingDegenerationStoppedException(
+                                    stalledCalls = notice.stalledCalls,
+                                    restated = notice.restated,
+                                    cutRule = notice.cutRule,
+                                    repeated = notice.repeated,
+                                ),
+                                conversationId,
+                                title = context.getString(R.string.chat_thinking_loop_title),
                             )
                         }
                         is GenerationNotice.ContextBudgetExhausted -> {

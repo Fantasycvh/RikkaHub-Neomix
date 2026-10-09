@@ -19,6 +19,7 @@ import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.SubagentApprovalQueue
+import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
 import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
 import app.androidrik.rikkahub.data.ai.USER_DENIED_REASON
 import app.androidrik.rikkahub.data.ai.applyApprovalDecisions
@@ -384,6 +385,8 @@ class SubagentRunner(
             val loopGuard = ToolCallLoopGuard()
             val workspaceBudget = WorkspaceTurnBudget()
             val denialGuard = DenialGuard()
+            // 思考退化护栏（家族第四员）：与上面三个同款，**建在 run 上**跨审批续跑累积
+            val thinkingGuard = ThinkingDegenerationGuard()
             // 上下文预算（设计 §十二）：run 的轨迹单调增长，而它既无压缩也无 contextMessageLimit
             // ⇒ 必须有自己的刹车，否则撞满窗口时 provider 直接报错、整轮白跑
             val contextGuard = ContextBudgetGuard(
@@ -413,6 +416,7 @@ class SubagentRunner(
                             tools = tools,
                             loopGuard = loopGuard,
                             workspaceBudget = workspaceBudget,
+                            thinkingGuard = thinkingGuard,
                             autoDenyApproval = autoDenyApproval,
                             denialGuard = denialGuard,
                             contextGuard = contextGuard,
@@ -751,6 +755,14 @@ internal fun evaluateCompletion(
             )
         is GenerationNotice.TooManyDenials ->
             return RunOutcome.Failed(AgentRunEntity.ERROR_PERMISSION_DENIED, "${stopNotice.denials} denials")
+        is GenerationNotice.ThinkingDegenerationStopped ->
+            // 思考退化（零工具调用的空转/自重复）：无头场景同样是**静默失败**——继续跑只会烧
+            // token 到空响应，故记成 model_gave_up（与「模型空转结束」判定同族）
+            return RunOutcome.Failed(
+                AgentRunEntity.ERROR_MODEL_GAVE_UP,
+                "thinking degeneration: stalled=${stopNotice.stalledCalls} restated=${stopNotice.restated} " +
+                    "cut=${stopNotice.cutRule ?: "none"}/${stopNotice.repeated}",
+            )
         is GenerationNotice.ContextBudgetExhausted ->
             return RunOutcome.Failed(
                 AgentRunEntity.ERROR_CONTEXT_BUDGET,

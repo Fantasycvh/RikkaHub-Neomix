@@ -395,6 +395,7 @@
   <string name="agent_run_error_exception">Run failed with an error</string>
   <string name="chat_tool_loop_title">Repeated tool call - turn ended</string>
   <string name="chat_workspace_budget_title">Workspace tool budget reached - turn ended</string>
+  <string name="chat_thinking_loop_title">Reasoning went in circles - turn ended</string>
   <string name="chat_page_check_title_model_settings">Check title model settings</string>
   <string name="chat_page_clear_all_errors">Clear all</string>
   <string name="chat_page_compress_additional_prompt">Additional Instructions (Optional)</string>

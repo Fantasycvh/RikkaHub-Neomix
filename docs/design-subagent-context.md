@@ -538,8 +538,22 @@ while (true) {
 - 账本新增失败细分 `context_budget`，与 `budget_exhausted`（workspace 工具输出体量）分开记——
   两者防的不是同一件事，排查时看细分就知道该调哪个预算。
 
-**三个护栏家族的分工**：`ToolCallLoopGuard` 防"反复撞同一个"，`WorkspaceTurnBudget` 防"工具输出堆成山"，
-`ContextBudgetPlanner` 防"窗口被轨迹吃满"。互补，不重叠。
+**护栏家族的分工（四员；第四员 2026-10-09 落地）**：`ToolCallLoopGuard` 防"反复撞同一个"，
+`WorkspaceTurnBudget` 防"工具输出堆成山"，`ContextBudgetPlanner` 防"窗口被轨迹吃满"，
+**`ThinkingDegenerationGuard` 防"零工具调用的退化"**（`data/ai/ThinkingDegenerationGuard.kt`：
+纯思考空转 / 复述上一步 / 单次调用内逐字重复）。互补，不重叠。
+
+> **⚠️ 实现/改动第四员之前先读这段**（它是唯一前提与前三员**相反**的护栏）：
+> 前三员都以「**有工具调用或拒绝事件**」为前提，而退化形态恰恰是「一次调用里零工具、零正文，
+> 而且那次调用根本不会结束」——此时 `maxSteps` 是**步数**（走不到下一步）、`readTimeout` 会被
+> 持续到达的 delta 不断重置（永不触发），没有任何既有护栏会响。判据一律用**逐字精确**判据
+> （相同 delta 计数 / 尾部逐字周期），**不要用低熵比值**：实测覆盖率类指标对退化样本读数
+> 0.92–0.99，而对合法内容（markdown 表格 0.72 / 日志 0.76 / 生成 CSS 0.82 / JSON dump 0.84）
+> **只差 0.06**，不足以作为截断用户输出的边界；逐字周期在这些合法样本上恒为 0，且**周期须含
+> ≥2 个不同字符**（否则长 `====` / `────` 分隔线被误杀）。另：调用内断流必须走「内层捕获、
+> 不回滚快照、不重试、不 fallback」的路径（`GenerationHandler` 的 `ThinkingDegenerationCut`），
+> 否则护栏的「防失控」会变成「丢内容」或「给已退化的模型重新计费」。三形态来源与标定数据见
+> `docs/roadmap.md` 2026-10-08/09 两节 + `docs/upstream-analysis.md` 注意点 15。
 
 ### 12.3 验证状态（诚实记账）
 

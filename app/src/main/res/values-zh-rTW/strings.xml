@@ -393,6 +393,7 @@
   <string name="agent_run_error_exception">執行發生錯誤</string>
   <string name="chat_tool_loop_title">工具呼叫重複，已結束本輪</string>
   <string name="chat_workspace_budget_title">工作區工具用量已達上限，已結束本輪</string>
+  <string name="chat_thinking_loop_title">思考陷入重複，已結束本輪</string>
   <string name="chat_page_check_title_model_settings">檢查標題模型設定</string>
   <string name="chat_page_clear_all_errors">清除全部</string>
   <string name="chat_page_compress_additional_prompt">額外指示（選填）</string>
