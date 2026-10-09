@@ -124,7 +124,7 @@
   <string name="assistant_page_memory_consolidation_running">정리 중…</string>
   <string name="assistant_page_memory_consolidation_last">지난 정리: 적용 %1$d건, 제안 %2$d건</string>
   <string name="assistant_page_memory_consolidation_never">아직 정리한 적이 없습니다</string>
-  <string name="assistant_page_memory_consolidation_proposals">이번 제안(승인이 켜져 있으면 자동 적용되지 않습니다. 반영하려면 위에서 직접 수정하세요):</string>
+  <string name="assistant_page_memory_consolidation_proposals">%1$s 정리에서 나온 제안(승인이 켜져 있으면 자동 적용되지 않습니다. 반영하려면 위에서 직접 수정하세요):</string>
   <string name="chat_memory_consolidated_toast">메모리 정리 완료: 적용 %1$d건, 제안 %2$d건</string>
   <string name="assistant_page_message_template">메시지 내용 템플릿</string>
   <string name="assistant_page_message_template_desc">LLM에 전송되기 전 채팅 메시지 형식을 제어. 일반적으로 수정할 필요 없음</string>

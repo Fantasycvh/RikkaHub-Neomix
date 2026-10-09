@@ -126,7 +126,7 @@
   <string name="assistant_page_memory_consolidation_running">Tidying…</string>
   <string name="assistant_page_memory_consolidation_last">Last run: %1$d applied, %2$d suggestions</string>
   <string name="assistant_page_memory_consolidation_never">Not tidied yet</string>
-  <string name="assistant_page_memory_consolidation_proposals">Suggestions from this run (not applied automatically while approval is on; change them above if you agree):</string>
+  <string name="assistant_page_memory_consolidation_proposals">Suggestions from the run at %1$s (not applied automatically while approval is on; change them above if you agree):</string>
   <string name="chat_memory_consolidated_toast">Memory tidied: %1$d applied, %2$d suggestions</string>
   <string name="assistant_page_message_template">Message Content Template</string>
   <string name="assistant_page_message_template_desc">Controls the content format of chat messages before being sent to the LLM, usually no need to modify</string>

@@ -124,7 +124,7 @@
   <string name="assistant_page_memory_consolidation_running">整理中…</string>
   <string name="assistant_page_memory_consolidation_last">前回の整理：適用 %1$d 件、提案 %2$d 件</string>
   <string name="assistant_page_memory_consolidation_never">まだ整理していません</string>
-  <string name="assistant_page_memory_consolidation_proposals">今回の提案（承認が有効な間は自動適用されません。採用する場合は上で手動で変更してください）：</string>
+  <string name="assistant_page_memory_consolidation_proposals">%1$s の整理で出た提案（承認が有効な間は自動適用されません。採用する場合は上で手動で変更してください）：</string>
   <string name="chat_memory_consolidated_toast">メモリの整理が完了しました：適用 %1$d 件、提案 %2$d 件</string>
   <string name="assistant_page_message_template">チャットコンテンツテンプレート</string>
   <string name="assistant_page_message_template_desc">チャットメッセージがLLMに送信される前のコンテンツ形式を制御します。通常は変更する必要がありません</string>

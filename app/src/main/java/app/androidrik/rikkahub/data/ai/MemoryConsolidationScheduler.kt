@@ -94,6 +94,17 @@ data class MemoryConsolidationStatus(
     val pendingTurns: Int = 0,
     val running: Boolean = false,
     val lastRun: MemoryConsolidationRun? = null,
+    /**
+     * **最近一次有产出的建议**（决策 B：只在进程内，不落库、不一键应用）。
+     *
+     * 为什么不直接用 `lastRun.proposals`：随后任何一次「什么都没改」的整理都会把它冲掉。
+     * 真机第一次观测就撞上了——自动整理提出 2 条建议，用户 24 秒后点了「整理一下」（空跑），
+     * 建议列表当场变空，那两条再也没机会被看到。所以建议要比 `lastRun` 更「黏」：
+     * **只有下一次真的又提出建议才替换它**；进程重启即失（这是决策 B 接受的范围）。
+     */
+    val suggestions: List<MemoryConsolidationProposal> = emptyList(),
+    /** 上面那批建议产生的时间：界面要说明它们来自哪一轮，免得被当成「现在的库」 */
+    val suggestionsAt: Long = 0L,
 )
 
 /**
@@ -320,7 +331,20 @@ class MemoryConsolidationScheduler(
                 }
             } finally {
                 hold.close()
-                updateStatus(memoryId) { it.copy(running = false, lastRun = run ?: it.lastRun) }
+                // 建议「黏」在状态里：这次什么都没提，也**不覆盖**上一次的建议（见 MemoryConsolidationStatus）
+                updateStatus(memoryId) {
+                    val finished = run ?: it.lastRun
+                    if (run != null && run.proposals.isNotEmpty()) {
+                        it.copy(
+                            running = false,
+                            lastRun = finished,
+                            suggestions = run.proposals,
+                            suggestionsAt = run.finishedAt,
+                        )
+                    } else {
+                        it.copy(running = false, lastRun = finished)
+                    }
+                }
             }
             run
         }

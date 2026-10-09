@@ -54,6 +54,12 @@ class MemoryConsolidationSchedulerTest {
         /** 每次扫库是不是「手动整理」路径（频次上限只约束自动路径，见 findPending 契约） */
         val manualScans = mutableListOf<Boolean>()
 
+        /** 下一次整理提出什么建议（测「建议比 lastRun 更黏」） */
+        var proposals: List<MemoryConsolidationProposal> = emptyList()
+
+        /** 运行结束时间（真实实现是 now()；测试默认 0） */
+        var finishedAt: Long = 0
+
         private fun item(id: Uuid, turns: Int) = PendingMemoryConversation(id, memoryIdOf[id] ?: memoryId, turns)
 
         override suspend fun pendingOf(conversation: Conversation) =
@@ -84,10 +90,11 @@ class MemoryConsolidationSchedulerTest {
             conversationIds.forEach { pending.remove(it) }
             return MemoryConsolidationRun(
                 memoryId = memoryId,
-                finishedAt = 0,
+                finishedAt = finishedAt,
                 conversationIds = conversationIds,
                 fullReview = fullReview,
                 changedMemories = 1,
+                proposals = proposals,
             )
         }
     }
@@ -497,6 +504,48 @@ class MemoryConsolidationSchedulerTest {
             "手动整理的入口必须只按 memoryId 寻址",
             source.contains("fun organize(memoryId: String)"),
         )
+    }
+
+    @Test
+    fun `suggestions survive a later run that proposes nothing`() = runTest {
+        val scheduler = scheduler()
+        worker.pending[chat.id] = 1
+        worker.proposals = listOf(MemoryConsolidationProposal("edit", "aaa", "合并后的内容"))
+        scheduler.organize(memoryId)
+        runCurrent()
+
+        // 第二次：又有待整理的轮次（所以真的又跑了一次），但这次什么都没提
+        worker.pending[chat.id] = 2
+        worker.proposals = emptyList()
+        scheduler.organize(memoryId)
+        runCurrent()
+
+        assertEquals(2, worker.calls.size)
+        assertEquals(
+            "第二次什么都没提，但它不许把上一次的建议冲掉（真机第一次观测就撞上了这个）",
+            1,
+            scheduler.statusOf(memoryId).first().suggestions.size,
+        )
+    }
+
+    @Test
+    fun `a newer proposal replaces the older one`() = runTest {
+        val scheduler = scheduler()
+        worker.pending[chat.id] = 1
+        worker.proposals = listOf(MemoryConsolidationProposal("edit", "aaa", "旧建议"))
+        scheduler.organize(memoryId)
+        runCurrent()
+
+        worker.pending[chat.id] = 2
+        worker.proposals = listOf(MemoryConsolidationProposal("delete", "bbb"))
+        worker.finishedAt = 1_791_553_504_654
+        scheduler.organize(memoryId)
+        runCurrent()
+
+        val status = scheduler.statusOf(memoryId).first()
+        assertEquals(1, status.suggestions.size)
+        assertEquals("delete", status.suggestions.single().action)
+        assertTrue("要记下这批建议的时间（界面据此说明它们来自哪一轮）", status.suggestionsAt > 0L)
     }
 
     // ---- 建议在界面上的那一行（决策 B：不落库、不一键应用，只列出来给用户自己改）----

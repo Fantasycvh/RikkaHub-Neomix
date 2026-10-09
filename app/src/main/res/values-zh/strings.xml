@@ -126,7 +126,7 @@
   <string name="assistant_page_memory_consolidation_running">正在整理…</string>
   <string name="assistant_page_memory_consolidation_last">上次整理：应用 %1$d 条，建议 %2$d 条</string>
   <string name="assistant_page_memory_consolidation_never">还没有整理过</string>
-  <string name="assistant_page_memory_consolidation_proposals">本次建议（审批开着时不自动应用，想采纳就在上面手动改）：</string>
+  <string name="assistant_page_memory_consolidation_proposals">%1$s 那次整理的建议（审批开着时不自动应用，想采纳就在上面手动改）：</string>
   <string name="chat_memory_consolidated_toast">记忆整理完成：应用 %1$d 条，建议 %2$d 条</string>
   <string name="assistant_page_message_template">聊天内容模板</string>
   <string name="assistant_page_message_template_desc">控制聊天消息在发送给LLM之前的内容格式，通常不需要修改</string>

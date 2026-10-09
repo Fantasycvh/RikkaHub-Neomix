@@ -124,7 +124,7 @@
   <string name="assistant_page_memory_consolidation_running">Упорядочивание…</string>
   <string name="assistant_page_memory_consolidation_last">Прошлый раз: применено %1$d, предложений %2$d</string>
   <string name="assistant_page_memory_consolidation_never">Ещё не упорядочивалось</string>
-  <string name="assistant_page_memory_consolidation_proposals">Предложения этого запуска (при включённом подтверждении не применяются автоматически; чтобы принять, измените запись выше):</string>
+  <string name="assistant_page_memory_consolidation_proposals">Предложения из запуска %1$s (при включённом подтверждении не применяются автоматически; чтобы принять, измените запись выше):</string>
   <string name="chat_memory_consolidated_toast">Память упорядочена: применено %1$d, предложений %2$d</string>
   <string name="assistant_page_message_template">Шаблон содержимого сообщения</string>
   <string name="assistant_page_message_template_desc">Управляет форматом содержимого сообщений чата перед отправкой в LLM, обычно изменять не требуется</string>

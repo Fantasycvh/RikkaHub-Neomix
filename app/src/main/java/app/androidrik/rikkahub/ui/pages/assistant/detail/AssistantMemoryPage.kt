@@ -48,6 +48,7 @@ import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import androidx.compose.material3.CircularProgressIndicator
+import app.androidrik.rikkahub.utils.toLocalDateTime
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
 import app.androidrik.rikkahub.data.ai.describe
 import app.androidrik.rikkahub.data.model.Assistant
@@ -377,6 +378,8 @@ private fun AssistantMemoryContent(
             // 建议**只活在进程内**（决策 B：不落库、不做一键应用），重启即失；要按它改就在下面手动改。
             if (assistant.memoryConsolidationSince > 0L) {
                 val lastRun = consolidationStatus.lastRun
+                // 建议「黏」在状态里（见 MemoryConsolidationStatus）：随后的空跑不会把它冲掉
+                val suggestions = consolidationStatus.suggestions
                 item(
                     headlineContent = { Text(stringResource(R.string.assistant_page_memory_consolidate_now)) },
                     supportingContent = {
@@ -404,12 +407,15 @@ private fun AssistantMemoryContent(
                             lastRun?.error?.let { error ->
                                 Text(text = error, style = MaterialTheme.typography.bodySmall)
                             }
-                            if (lastRun != null && lastRun.proposals.isNotEmpty()) {
+                            if (suggestions.isNotEmpty()) {
                                 Text(
-                                    text = stringResource(R.string.assistant_page_memory_consolidation_proposals),
+                                    text = stringResource(
+                                        R.string.assistant_page_memory_consolidation_proposals,
+                                        Instant.ofEpochMilli(consolidationStatus.suggestionsAt).toLocalDateTime(),
+                                    ),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
-                                lastRun.proposals.forEach { proposal ->
+                                suggestions.forEach { proposal ->
                                     Text(
                                         text = proposal.describe(),
                                         style = MaterialTheme.typography.bodySmall,
