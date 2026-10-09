@@ -1604,6 +1604,12 @@ data class ApiKeyEntry(
       （`ChatCompletionsAPI.kt:592` / `ResponseAPI.kt:410` 把「消息被编辑过」列为「没有可回传的」，而编辑后推理文本非空
       ⇒ 前提已不成立）；**B** 只禁掉带签名块的编辑入口（最保守，Claude 用户失去该功能）；**C** 仅加警示文案。
       详见 `upstream-analysis.md` 注意点 14。
+      **✅ 收法已落地（2026-10-09，`b6e9b528`，警示版）**：新增纯判据 `UIMessagePart.Reasoning.isProviderSigned()`
+      （Claude signature/redactedData 或 Gemini thoughtSignature；OpenAI 的 `reasoning_id`/`encrypted_content`
+      **不算**）+ 编辑器 `providerSigned` 为真时显示一行 error 色警示（**不改行为**，6 语言新增
+      `chat_message_reasoning_edit_signed_warning`）+ 修正 `ChatCompletionsAPI`/`ResponseAPI` 两处失效注释。
+      验证：`:ai:testDebugUnitTest` **252** 项、`:app:testDebugUnitTest` **1295** 项全绿（`MessageMetadataTest`
+      12→19，新增 7 项签名判据）。**未真机跑该分支**——库内不存在带签名块 ⇒ 判据 true 分支当前无真机样本可渲染。
       **决策轨迹**：用户 2026-10-08 拍板「先不动代码，等真机确认」；**2026-10-09 真机确认结果 = 存量 0 命中、风险未激活**
       ⇒ 优先级维持**低**（不阻塞任何已发布版本）；**观察触发点**：开始用原生 Claude 供应商 + 开思考（届时库里会出现
       带签名的摘要块），或将来把推理编辑扩展到「会回传」的路径时，按 A 落修。
