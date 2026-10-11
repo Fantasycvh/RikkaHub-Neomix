@@ -1005,6 +1005,8 @@
   <string name="setting_model_page_title">모델 설정</string>
   <string name="setting_model_page_title_model">제목 요약 모델</string>
   <string name="setting_model_page_title_model_desc">대화 제목을 요약하는 모델. 설정되지 않으면 빠른 모델을 사용합니다</string>
+  <string name="setting_model_page_enable_auto_title">제목 자동 생성</string>
+  <string name="setting_model_page_enable_auto_title_desc">새 대화의 첫 턴 이후 제목을 자동으로 붙입니다(아래 제목 모델 사용, 미설정 시 빠른 모델). 꺼도 대화 목록에서 제목 다시 생성은 사용할 수 있습니다.</string>
   <string name="setting_model_page_translate_model">번역 모델</string>
   <string name="setting_model_page_translate_model_desc">번역 기능에 사용되는 모델</string>
   <string name="setting_model_page_translate_prompt_vars">변수: 원문: {source_text}, 대상 언어: {target_lang}</string>

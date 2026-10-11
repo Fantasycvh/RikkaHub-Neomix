@@ -65,6 +65,7 @@ import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
 import app.androidrik.rikkahub.data.ai.inspectPrompt
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.ai.selectMemoriesForPrompt
+import app.androidrik.rikkahub.data.ai.shouldGenerateTitle
 import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
@@ -1553,11 +1554,15 @@ class ChatService(
         conversation: Conversation,
         force: Boolean = false
     ): Boolean {
-        val shouldGenerate = when {
-            force -> true
-            conversation.title.isBlank() -> true
-            else -> false
-        }
+        // 开关关着时不生成自动标题（判定是纯函数，见 TitleGenerationPolicy）。
+        // runCatching + 默认 true：读设置失败时保持"照旧尝试"的老行为，不让读盘抖动改变语义。
+        val autoTitleEnabled = runCatching { settingsStore.settingsFlow.first().enableAutoTitle }
+            .getOrDefault(true)
+        val shouldGenerate = shouldGenerateTitle(
+            force = force,
+            autoEnabled = autoTitleEnabled,
+            currentTitle = conversation.title,
+        )
         if (!shouldGenerate) return true
 
         // 「模型没配好」必须**给出反馈**（#1975）：此前这两处是静默 `return`，用户点

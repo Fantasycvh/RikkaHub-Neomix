@@ -158,6 +158,15 @@ class SettingsStore(
         val TITLE_MODEL = stringPreferencesKey("title_model")
         val TRANSLATE_MODEL = stringPreferencesKey("translate_model")
         val ENABLE_SUGGESTION = booleanPreferencesKey("enable_suggestion")
+
+        /**
+         * 自动生成标题（默认开）。
+         *
+         * 为什么需要这个开关：标题模型解析是 `titleModelId` → **回落 `fastModelId`**，
+         * 所以想「关掉自动标题」在今天做不到——清空标题模型会回落到快速模型，
+         * 把快速模型也清空会连带影响其它后台任务（建议、记忆整理）。
+         */
+        val ENABLE_AUTO_TITLE = booleanPreferencesKey("enable_auto_title")
         val SUGGESTION_MODEL = stringPreferencesKey("suggestion_model")
         val IMAGE_GENERATION_MODEL = stringPreferencesKey("image_generation_model")
         val TITLE_PROMPT = stringPreferencesKey("title_prompt")
@@ -312,6 +321,8 @@ class SettingsStore(
                 translateModeId = preferences[TRANSLATE_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
                 enableSuggestion = preferences[ENABLE_SUGGESTION] != false,
+                // 缺键 = 开（老数据零变化）
+                enableAutoTitle = preferences[ENABLE_AUTO_TITLE] != false,
                 suggestionModelId = preferences[SUGGESTION_MODEL]?.let { Uuid.parse(it) },
                 imageGenerationModelId = preferences[IMAGE_GENERATION_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
                 titlePrompt = preferences[TITLE_PROMPT] ?: DEFAULT_TITLE_PROMPT,
@@ -594,6 +605,7 @@ class SettingsStore(
             } ?: preferences.remove(TITLE_MODEL)
             preferences[TRANSLATE_MODEL] = settings.translateModeId.toString()
             preferences[ENABLE_SUGGESTION] = settings.enableSuggestion
+            preferences[ENABLE_AUTO_TITLE] = settings.enableAutoTitle
             settings.suggestionModelId?.let {
                 preferences[SUGGESTION_MODEL] = it.toString()
             } ?: preferences.remove(SUGGESTION_MODEL)
@@ -783,6 +795,14 @@ data class Settings(
     val translatePrompt: String = DEFAULT_TRANSLATION_PROMPT,
     val translateThinkingBudget: Int = 0,
     val enableSuggestion: Boolean = true,
+
+    /**
+     * 自动生成标题（新对话第一轮之后）。
+     *
+     * 只关**自动**：会话列表/抽屉里的「重新生成标题」仍然可用（`force = true`）——
+     * 与记忆整理的「整理一下」同一条原则：开关管的是后台自动行为，不是用户显式动作。
+     */
+    val enableAutoTitle: Boolean = true,
     val suggestionModelId: Uuid? = null,
     val suggestionPrompt: String = DEFAULT_SUGGESTION_PROMPT,
     val ocrModelId: Uuid = Uuid.random(),

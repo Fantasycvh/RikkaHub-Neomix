@@ -159,14 +159,38 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
             )
         }
         item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_title_model),
-                description = stringResource(R.string.setting_model_page_title_model_desc),
-                modelId = settings.titleModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(titleModelId = it.id)) },
-                onClear = { vm.updateSettings(settings.copy(titleModelId = null)) },
-            )
+            // 自动标题开关 + 标题模型：与下面「建议模型」同形（关掉时隐藏模型选择器）。
+            // 开关只关**自动**：会话列表/抽屉里的「重新生成标题」不受影响（force = true）。
+            Column {
+                CardGroup(title = { Text(stringResource(R.string.setting_model_page_title_model)) }) {
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_model_page_enable_auto_title)) },
+                        supportingContent = {
+                            Text(stringResource(R.string.setting_model_page_enable_auto_title_desc))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = settings.enableAutoTitle,
+                                onCheckedChange = {
+                                    vm.updateSettings(settings.copy(enableAutoTitle = it))
+                                },
+                            )
+                        },
+                    )
+                    if (settings.enableAutoTitle) {
+                        item {
+                            ModelSettingItem(
+                                title = stringResource(R.string.setting_model_page_title_model),
+                                description = stringResource(R.string.setting_model_page_title_model_desc),
+                                modelId = settings.titleModelId,
+                                providers = settings.providers,
+                                onSelect = { vm.updateSettings(settings.copy(titleModelId = it.id)) },
+                                onClear = { vm.updateSettings(settings.copy(titleModelId = null)) },
+                            )
+                        }
+                    }
+                }
+            }
         }
         item {
             SuggestionModelSettingItem(

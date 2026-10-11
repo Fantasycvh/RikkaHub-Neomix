@@ -1005,6 +1005,8 @@
   <string name="setting_model_page_title">モデル設定</string>
   <string name="setting_model_page_title_model">タイトル要約モデル</string>
   <string name="setting_model_page_title_model_desc">会話タイトルを要約するモデル。設定されていない場合は高速モデルを使用します</string>
+  <string name="setting_model_page_enable_auto_title">タイトルを自動生成</string>
+  <string name="setting_model_page_enable_auto_title_desc">新しい会話の最初のターン後に自動でタイトルを付けます（下のタイトルモデルを使用、未設定なら高速モデル）。オフにしても会話一覧から「タイトルを再生成」は使えます。</string>
   <string name="setting_model_page_translate_model">翻訳モデル</string>
   <string name="setting_model_page_translate_model_desc">翻訳機能に使用されるモデル</string>
   <string name="setting_model_page_translate_prompt_vars">変数: 原文テキスト: {source_text}, 対象言語: {target_lang}</string>

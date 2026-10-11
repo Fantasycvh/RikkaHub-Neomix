@@ -1044,6 +1044,8 @@
   <string name="setting_model_page_title">模型設定</string>
   <string name="setting_model_page_title_model">標題摘要模型</string>
   <string name="setting_model_page_title_model_desc">用於總結對話標題的模型。未設置時使用快速模型</string>
+  <string name="setting_model_page_enable_auto_title">自動產生標題</string>
+  <string name="setting_model_page_enable_auto_title_desc">新對話的第一輪之後自動取一個標題（使用下方的標題模型，未設定時使用快速模型）。關閉後仍可在對話清單中手動「重新產生標題」。</string>
   <string name="setting_model_page_translate_model">翻譯模型</string>
   <string name="setting_model_page_translate_model_desc">用於翻譯功能的模型</string>
   <string name="setting_model_page_translate_prompt_vars">變數: 原始文字: {source_text}, 目標語言: {target_lang}</string>

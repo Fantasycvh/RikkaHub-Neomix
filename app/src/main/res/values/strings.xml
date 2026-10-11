@@ -1096,6 +1096,8 @@
   <string name="setting_model_page_title">Model Settings</string>
   <string name="setting_model_page_title_model">Title Summary Model</string>
   <string name="setting_model_page_title_model_desc">Model used to summarize conversation titles. If not set, uses the fast model</string>
+  <string name="setting_model_page_enable_auto_title">Generate titles automatically</string>
+  <string name="setting_model_page_enable_auto_title_desc">Names a new chat automatically after its first turn (uses the title model below; falls back to the fast model when unset). Turning this off still leaves "Regenerate title" available in the conversation list.</string>
   <string name="setting_model_page_translate_model">Translation Model</string>
   <string name="setting_model_page_translate_model_desc">The model used for translation features</string>
   <string name="setting_model_page_translate_prompt_vars">Variables: Source text: {source_text}, Target language: {target_lang}</string>
