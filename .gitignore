@@ -11,3 +11,6 @@ local.properties
 .cursor
 .history
 .kotlinscripts/guard-mock/server.log
+
+# ZCode 会话/工具生成，不属于仓库内容
+.zcodeignore
