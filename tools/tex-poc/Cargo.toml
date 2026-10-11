@@ -1,0 +1,19 @@
+[package]
+name = "tex-poc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+flate2 = "1"
+jni = "0.21"
+tar = "0.4"
+# Android 交叉编译关闭默认特性：避开 reqwest→openssl（POC 全离线，无网络需求）
+tectonic = { version = "0.17.0", default-features = false }
+tectonic_bundles = { version = "0.4", default-features = false }
+
+[lib]
+name = "tex_poc"
+crate-type = ["rlib", "cdylib"]
+
+[profile.release]
+opt-level = 2

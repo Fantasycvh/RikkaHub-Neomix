@@ -270,7 +270,7 @@ const pdf = engine.pdf();
 
 #### 8.4.1 第 1 步 POC 结果（2026-08-28，已完成 ✅）
 
-POC crate：`<work>\projects\tectonic-poc\`（WSL 内构建于 `~/tex-poc`）。
+POC crate：`tools/tex-poc\`（WSL 内构建于 `~/tex-poc`）。
 
 **已验证结论：**
 
@@ -460,7 +460,7 @@ TikZ 输入（任意语法）
 - `lib.rs tex_compile`：main.log 里取首条 `! ` 行拼 `TeX error: <detail>`（XeTeX 致命错时 session.run 先返回 "unrecoverable error"，但 main.log 仍有 `! ` 详细行，优先取它）；
 - `TectonicNative.lastErrorText()`：隔离进程的错误文本经 `lastIsolatedError` 缓存回主进程（此前只读主进程 native 槽，隔离编译失败拿到的是空值）。现在编译失败 `lastErrorText()` 直接给出 `TeX error: Illegal parameter number in definition of \tikz@temp.`，提示词同步加了 `#hex` 禁用说明（GenerationHandler.kt）。
 
-复现脚本（`<work>\projects\tectonic-poc\`）：`hex_host_matrix.sh`（宿主 TeX v1-v5 矩阵）、`hex_variants.py`（真机 v1-v5 隔离）、`test_hexop.tex`/`test_hexvariants.tex`（设备 CLI 复现）。
+复现脚本（`tools/tex-poc\`）：`hex_host_matrix.sh`（宿主 TeX v1-v5 矩阵）、`hex_variants.py`（真机 v1-v5 隔离）、`test_hexop.tex`/`test_hexvariants.tex`（设备 CLI 复现）。
 
 
 #### 8.4.9 dvisvgm 文字悬空真相 + 路线切换 mupdf SVG 桥（2026-09-07/08）

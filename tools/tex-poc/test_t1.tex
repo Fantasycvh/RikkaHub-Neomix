@@ -1,0 +1,17 @@
+\documentclass{article}
+\def\pgfsysdriver{pgfsys-dvisvgm.def}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}
+\pagestyle{empty}
+\font\zhfont="[droidsans.ttf]"
+\let\tikzoldnormalfont\normalfont
+\renewcommand{\normalfont}{\tikzoldnormalfont\zhfont}
+\renewcommand{\rmfamily}{\zhfont}
+\renewcommand{\sffamily}{\zhfont}
+\begin{document}
+\begin{tikzpicture}
+\node (a) {A};
+\node[right=of a] (b) {B};
+\draw[->] (a) -- (b);
+\end{tikzpicture}
+\end{document}

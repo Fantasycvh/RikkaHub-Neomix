@@ -1,0 +1,15 @@
+\documentclass{article}
+\def\pgfsysdriver{pgfsys-dvisvgm.def}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}
+\pagestyle{empty}
+\font\zhfont="[droidsans.ttf]"
+\let\tikzoldnormalfont\normalfont
+\renewcommand{\normalfont}{\tikzoldnormalfont\zhfont}
+\begin{document}
+\begin{tikzpicture}
+\node[draw, fill=#4A90D9!30] (a) {A};
+\node[draw, fill=#E85D75!40, right=of a] (b) {B};
+\draw[->, #4A90D9!60] (a) -- (b);
+\end{tikzpicture}
+\end{document}

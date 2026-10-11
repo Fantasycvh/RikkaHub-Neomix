@@ -1,0 +1,14 @@
+\documentclass{article}
+\usepackage{tikz}
+\pagestyle{empty}
+\font\zhfont="[simhei.ttf]"
+\begin{document}
+\begin{tikzpicture}
+  \node[draw, circle] (a) at (0,0) {\zhfont 开始};
+  \node[draw, rectangle] (b) at (3,1) {\zhfont 处理数据};
+  \node[draw] (c) at (3,-1) {\zhfont 结束};
+  \draw[->, thick] (a) -- (b) node[midway, above] {\zhfont 提交};
+  \draw[->, dashed] (a) -- (c) node[midway, left] {\zhfont 取消};
+  \draw[->] (b) -- (c);
+\end{tikzpicture}
+\end{document}
