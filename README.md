@@ -138,6 +138,9 @@
 
 0. **初始化子模块**（首次克隆必须）：`git submodule update --init --recursive`
    —— `material3` 模块依赖 `material-color-utilities`，不初始化会报 `Unresolved reference 'dynamiccolor'`
+0b. **安装 web-ui 依赖**（首次）：`cd web-ui && pnpm install`
+   —— 构建时 `:web:buildWebUi` 会执行 `pnpm run build` 并把产物写进 `web/src/main/resources/static`（约 13 MB，已 gitignore）。
+   只想快速验证编译可加 `-x :web:buildWebUi` 跳过；此时 APK 内不含 Web 访问静态资源。
 1. `local.properties`（**仓库根目录**，不入版本控制）：
    ```properties
    sdk.dir=<Android SDK 路径>
