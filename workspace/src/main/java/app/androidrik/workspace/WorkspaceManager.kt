@@ -161,15 +161,24 @@ class WorkspaceManager(
         resolveRootfsFile(root, path).also { it.requireReadableFile(path) }.length()
 
     /**
+     * 取工作区内文件的**真实 File**（已校验存在/可读、内核伪文件系统已拒绝）。
+     *
+     * 只给"需要真实文件路径的解析器"用（PDF 等原生解析器都吃 `File`）：调用方只读，不得移动/删除。
+     */
+    fun resolveReadableRootfsFile(root: String, path: String): File {
+        val file = resolveRootfsFile(root, path)
+        file.requireReadableFile(path)
+        return file
+    }
+
+    /**
      * 按行窗口读取（**流式**）：只把窗口内的行进内存。
      *
      * 为什么要单独一条路径：整文件读受「单次读取上限」约束，而窗口读的意义正是**读大文件的局部**
      * ——上限管的是「一次把多少内容交给模型」，不该管「能不能翻到一个大文件的第一万行」。
      *
-     * 行分隔符统一按 `
-` 归一（`readLine` 会吃掉 `
-` 的 ``）：模型拿到的是归一化后的行，
-     * 逐行拼接回去时不会带上 ``。
+     * 行分隔符统一按 `\n` 归一（`readLine` 会吃掉 `\r\n` 的 `\r`）：模型拿到的是归一化后的行，
+     * 逐行拼接回去时不会带上 `\r`。
      *
      * @param startLine 1 基起始行；超过文件行数 ⇒ 返回空窗口
      * @param limit 最多返回的行数
