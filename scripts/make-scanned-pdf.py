@@ -89,4 +89,4 @@ def build_pdf(path: str, pages: int = 2) -> None:
 
 
 if __name__ == "__main__":
-    build_pdf("F:/tmp/scan-no-text-layer.pdf")
+    build_pdf("<tmp>/scan-no-text-layer.pdf")
