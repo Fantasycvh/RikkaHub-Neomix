@@ -1859,8 +1859,16 @@ data class ApiKeyEntry(
     - epub：`{"format":"epub","unit":"chapter","text":"[OEBPS/Text/cover.xhtml]…"}` ✔；
     - 自动标题开关：`settings.preferences_pb` 里 `enable_auto_title` 存在且值为 bool（`12 02 08 00`）
       ⇒ 读写链路通（用户实测"启停"通过）；
-    - **pptx：未在库里找到回执**（工作区里确实有 `附件2：《商业（项目）计划书》参考目录.pptx`，
-      也有 3 条节点提到 pptx + `workspace_read_file`）⇒ 待确认它是真读过、还是模型列了文件却没读。
+    - pptx：**用户实测可正常读取**（但我在 DB 里没能隔离出回执原文——含该文件名的节点里那条
+      `firstUnit` 属于 551 页那本 PDF，`附件2…pptx` 只出现在一次 `ls -la` 输出里 ⇒ 这一条的
+      证据等级低于上面三条，按用户实测记录）；
+    - 扫描版 PDF（`notice` 路径）：**样本由我自己构造**，见下。
+  - **扫描版样本（构造的）**：2026-10-09 造了 `scan-no-text-layer.pdf`（2 页、每页只有一个
+    `/Subtype /Image` 的 XObject，**没有 `/Font`、没有 `BT` 文本对象** ⇒ 抽不出文本），生成脚本
+    `scripts/make-scanned-pdf.py`（只用标准库，不依赖 MuPDF）。已放入 debug 包工作区
+    `/workspace/scan-no-text-layer.pdf`（owner 与权限已对齐 app uid）等待实测：预期回执 `text` 为空、
+    带 `notice`（"No extractable text …scanned…"）、`truncated` 视是否还有后续单元而定。
+    构造件的意义：真实扫描件样本不好找，而 notice 这条路径不测就等于没写。
   - ⚠️ **已知限制：能"抽出来"不等于抽对了**。551 页那份《心理统计学》抽出的文本里夹着乱码
     （`心理统计学l胪霞殴J`——字体缺 ToUnicode CMap 的典型症状），而现有判据只看"是否全空"，
     对这种**部分乱码**给不出任何提示：模型会拿着乱码当原文推理。要处理得引入更细的判据
