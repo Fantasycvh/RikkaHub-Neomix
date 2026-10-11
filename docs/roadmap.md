@@ -1923,6 +1923,22 @@ Page 2:","firstUnit":1,"lastUnit":2,
   - 验证：`:app` **1449 → 1454**（策略 3 + 接线守卫 2）、`:ai` 252、`:common` 42，全绿。
     接线守卫扫源码钉住 key/读/写/UI 四处（这类开关的失效方式是静默的：拨了开关重启后又变回来）。
   - ⚠️ 这一项**不在**已建的 `v1.0.26 (292)` 草稿里（草稿构建于 `113b3188c`），进下一次发布（293）。
+- 2026-10-09：**草稿资产换新 → `v1.0.26 (293)`**（versionCode 292 → 293，versionName 保持 `1.0.26`）。
+  本次进入资产的内容：自动标题全局开关、`read_file` 行窗口（offset/limit）+ 每工作区读取上限、
+  `read_file` 文档抽取（pdf/docx/pptx/epub）、扫描版 PDF 的 notice 修复（构造样本实测抓到）。
+  - 顺序按 handoff 第 8/9 条走：**换资产 → 改 notes/title → PATCH `tag_name`+`target_commitish` → 独立 GET 复核**。
+    实测再次命中那条坑：`gh release edit --notes-file` 之后 `tag_name` 被服务端打回 `untagged-…`
+    （URL 变成 `…/releases/tag/untagged-3731700202b458b5964d`），PATCH 后才回到 `v1.0.26`。
+  - **tag `v1.0.26` 已 `-f` 移到 293 的提交**（`94d5c3869` → `f732b2691`）：草稿代表 293，tag 必须跟着；
+    发布前的 tag 移动是安全的（草稿未公开）。
+  - 构建与核实：`./gradlew :app:assembleRelease --max-workers=2`（5m45s，勿用 `scripts/build.sh`——它的
+    POSIX `GRADLE_USER_HOME` 在 Windows JVM 上解析不了，会去下 gradle 然后超时）；`aapt dump badging` ⇒
+    `versionCode=293 / versionName=1.0.26 / native-code=arm64-v8a`；`apksigner` 证书 SHA-256
+    `0658ecdc…3c9277` 与既有 keystore 一致；独立 GET 的资产 `digest` 与本地 APK sha256
+    (`6c6058cb…2856`) 一致 ⇒ 上传的确实是本次构建。
+  - 真机冒烟（release 包原地升级 292 → 293）：零 FATAL、DB **35 → 36**（工作区读取上限那次迁移在 release
+    库上也跑了）、记忆 54→54、会话 249→249、新列默认 `8388608`。
+  - 发布与否仍待用户决定（`gh release edit v1.0.26 --draft=false --latest`；tag 已指向该提交）。
 - 2026-10-09：**发布 v1.0.26 (292) 草稿**（`113b3188c` + tag `v1.0.26`，草稿资产
   `RikkaHub.Plus-1.0.26-arm64-v8a.apk`，距上一版 `v1.0.25 (291)` 共 **34 个提交**）。
   - 内容：记忆三块（V1 纪律与安全 / V2 渐进披露与读取遥测 / V3 做梦整理）+ 信用记账 +
