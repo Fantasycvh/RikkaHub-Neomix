@@ -136,6 +136,8 @@
 
 步骤：
 
+0. **初始化子模块**（首次克隆必须）：`git submodule update --init --recursive`
+   —— `material3` 模块依赖 `material-color-utilities`，不初始化会报 `Unresolved reference 'dynamiccolor'`
 1. `local.properties`（**仓库根目录**，不入版本控制）：
    ```properties
    sdk.dir=<Android SDK 路径>
