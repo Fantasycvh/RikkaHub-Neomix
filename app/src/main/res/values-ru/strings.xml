@@ -1443,6 +1443,8 @@
   <string name="workspace_detail_tool_approval_desc">Если включено, перед вызовом этого инструмента ИИ требуется подтверждение пользователя.</string>
   <string name="workspace_detail_tool_list_files">Список файлов</string>
   <string name="workspace_detail_tool_read_file">Читать файл</string>
+  <string name="workspace_detail_max_read_bytes">Лимит одного чтения</string>
+  <string name="workspace_detail_max_read_bytes_desc">Действует на чтение файла целиком и на чтение изображений. Чтение окна через offset/limit выполняется потоково и этим лимитом не ограничено.</string>
   <string name="workspace_detail_tool_write_file">Записать файл</string>
   <string name="workspace_detail_tool_edit_file">Редактировать файл</string>
   <string name="workspace_detail_tool_delete_file">Удалить файл</string>

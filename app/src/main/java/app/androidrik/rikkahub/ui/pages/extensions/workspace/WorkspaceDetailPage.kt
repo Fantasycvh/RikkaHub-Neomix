@@ -85,8 +85,10 @@ import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
+import androidx.compose.foundation.layout.FlowRow
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.FilterChip
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.ImagePreviewDialog
@@ -403,6 +405,7 @@ fun WorkspaceDetailPage(id: String) {
                     onKillTask = vm::killTask,
                     onInstallRootfs = { showInstallDialog = true },
                     onToolApprovalChange = vm::setToolApproval,
+                    onMaxReadBytesChange = vm::setMaxReadFileBytes,
                     onShellCompatibilityModeChange = vm::setShellCompatibilityMode,
                 )
 
@@ -699,6 +702,7 @@ private fun WorkspaceBasicPage(
     onKillTask: (String) -> Unit,
     onInstallRootfs: () -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
+    onMaxReadBytesChange: (Long) -> Unit,
     onShellCompatibilityModeChange: (Boolean) -> Unit,
 ) {
     val shellStatus = workspace?.shellStatus
@@ -807,6 +811,7 @@ private fun WorkspaceBasicPage(
             WorkspaceToolApprovalCard(
                 workspace = workspace,
                 onToolApprovalChange = onToolApprovalChange,
+                onMaxReadBytesChange = onMaxReadBytesChange,
             )
         }
     }
@@ -928,10 +933,14 @@ private fun taskStatusLine(task: WorkspaceTaskSnapshot, now: Long): String {
     return "$status \u00b7 $timing$exit"
 }
 
+/** 读取上限的可选档位（MB）；默认 8MB 与迁移前一致 */
+private val MAX_READ_BYTES_CHOICES_MB = listOf(8, 16, 32, 64, 128)
+
 @Composable
 private fun WorkspaceToolApprovalCard(
     workspace: WorkspaceEntity?,
     onToolApprovalChange: (String, Boolean) -> Unit,
+    onMaxReadBytesChange: (Long) -> Unit,
 ) {
     val overrides = workspace?.toolApprovalOverrides().orEmpty()
 
@@ -955,6 +964,31 @@ private fun WorkspaceToolApprovalCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            // 单次读取上限：只影响"整文件读"与图片读；窗口读（offset/limit）不受它约束
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_max_read_bytes),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(R.string.workspace_detail_max_read_bytes_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // FlowRow：窄屏上 5 个档位会挤出去（与模型页的标签排布同款）
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MAX_READ_BYTES_CHOICES_MB.forEach { mb ->
+                        val bytes = mb * 1024L * 1024L
+                        FilterChip(
+                            selected = (workspace?.maxReadFileBytes ?: WorkspaceEntity.DEFAULT_MAX_READ_FILE_BYTES) == bytes,
+                            onClick = { onMaxReadBytesChange(bytes) },
+                            label = { Text("${mb}MB") },
+                            enabled = workspace != null,
+                        )
+                    }
+                }
             }
 
             workspaceToolApprovalItems().forEach { (toolName, label) ->

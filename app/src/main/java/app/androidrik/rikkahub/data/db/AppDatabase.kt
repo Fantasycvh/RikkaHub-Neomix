@@ -56,7 +56,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         KnowledgeEmbeddingEntity::class,
         MemoryConsolidationEntity::class,
     ],
-    version = 35,
+    version = 36,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -94,6 +94,8 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 记忆做梦（V3）的整理进度表：纯新增表（CASCADE 外键挂会话），无回填
         // （没有进度行 = 用做梦开关的开启时刻当基线，见 docs/design-memory-consolidation.md §7）
         AutoMigration(from = 34, to = 35),
+        // 工作区新增「单次读取上限」（max_read_file_bytes，默认 8MB = 迁移前的硬编码值）
+        AutoMigration(from = 35, to = 36),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)

@@ -1443,6 +1443,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_tool_approval_desc">활성화되면 AI가 이 도구를 호출하기 전에 사용자 확인이 필요합니다.</string>
   <string name="workspace_detail_tool_list_files">파일 목록</string>
   <string name="workspace_detail_tool_read_file">파일 읽기</string>
+  <string name="workspace_detail_max_read_bytes">단일 읽기 상한</string>
+  <string name="workspace_detail_max_read_bytes_desc">전체 파일 읽기와 이미지 읽기에 적용됩니다. offset/limit로 읽는 창은 스트리밍이라 이 상한의 영향을 받지 않습니다.</string>
   <string name="workspace_detail_tool_write_file">파일 쓰기</string>
   <string name="workspace_detail_tool_edit_file">파일 편집</string>
   <string name="workspace_detail_tool_delete_file">파일 삭제</string>

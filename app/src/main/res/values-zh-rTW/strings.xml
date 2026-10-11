@@ -1486,6 +1486,8 @@
   <string name="workspace_detail_tool_approval_desc">啟用後，AI 調用此工具前需要用戶確認。</string>
   <string name="workspace_detail_tool_list_files">列出檔案</string>
   <string name="workspace_detail_tool_read_file">讀取檔案</string>
+  <string name="workspace_detail_max_read_bytes">單次讀取上限</string>
+  <string name="workspace_detail_max_read_bytes_desc">對「整檔讀取」與圖片讀取生效；用 offset/limit 讀取視窗是串流的，不受這個上限限制。</string>
   <string name="workspace_detail_tool_write_file">寫入檔案</string>
   <string name="workspace_detail_tool_edit_file">編輯檔案</string>
   <string name="workspace_detail_tool_delete_file">刪除檔案</string>

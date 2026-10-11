@@ -4,6 +4,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.putJsonArray
@@ -38,7 +39,14 @@ private const val SHELL_TIMEOUT_BUFFER_MS = 15_000L
 
 /** 后台任务查询结果里单流返回的最大字符数：尾部缓冲是 8K，再截一道避免轮询把上下文吃掉。 */
 private const val TASK_TAIL_RETURN_CHARS = 4_000
-private const val MAX_READ_FILE_BYTES = 8L * 1024 * 1024
+/**
+ * 单次读取上限的**默认值**：工作区可覆盖（`WorkspaceEntity.maxReadFileBytes`，工作区设置页可调）。
+ * 保持 8MB 与迁移前一致 ⇒ 老工作区行为零变化。
+ */
+private const val DEFAULT_MAX_READ_FILE_BYTES = 8L * 1024 * 1024
+
+/** 窗口读取的硬上限（行）：挡住 `limit=10_000_000` 这类请求（字节上限另算） */
+internal const val MAX_READ_LINES = 20_000
 /** rootfs 写入最大字节数（对齐 WorkspaceFileSystem 的 2MB require） */
 private const val MAX_ROOTFS_WRITE_BYTES = 2 * 1024 * 1024
 
@@ -65,13 +73,16 @@ suspend fun createWorkspaceTools(
     cwd: String? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
-    val approvalOverrides = workspaceRepository.getById(workspaceId)?.toolApprovalOverrides().orEmpty()
+    val workspace = workspaceRepository.getById(workspaceId)
+    val approvalOverrides = workspace?.toolApprovalOverrides().orEmpty()
+    // 单次读取上限按工作区取（非正值/读不到时回落到默认 8MB）
+    val maxReadBytes = workspace?.maxReadFileBytes?.takeIf { it > 0 } ?: DEFAULT_MAX_READ_FILE_BYTES
     fun needsApproval(name: String) = resolveWorkspaceToolApproval(name, approvalOverrides)
 
     val shellCwd = cwd?.removePrefix("/workspace/")?.removePrefix("/workspace")
 
     return listOf(
-        createReadFileTool(workspaceId, ::needsApproval, workspaceRepository),
+        createReadFileTool(workspaceId, ::needsApproval, workspaceRepository, maxReadBytes),
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createPresentFileTool(workspaceId, ::needsApproval, workspaceRepository),
@@ -93,6 +104,7 @@ private fun createReadFileTool(
     workspaceId: String,
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
+    maxReadBytes: Long,
 ) = Tool(
     name = "workspace_read_file",
     description = """
@@ -104,6 +116,22 @@ private fun createReadFileTool(
         InputSchema.Obj(
             properties = buildJsonObject {
                 putPathProperty(required = true)
+                put("offset", buildJsonObject {
+                    put("type", "integer")
+                    put(
+                        "description",
+                        "1-based first line to return (text files only). Use with limit to read a window " +
+                            "from a large file; the window is streamed and is not bound by the single-read limit."
+                    )
+                })
+                put("limit", buildJsonObject {
+                    put("type", "integer")
+                    put(
+                        "description",
+                        "Maximum number of lines to return (text files only, max $MAX_READ_LINES). " +
+                            "Without offset it reads from line 1."
+                    )
+                })
             },
             required = listOf("path"),
         )
@@ -111,21 +139,56 @@ private fun createReadFileTool(
     needsApproval = { needsApproval("workspace_read_file") },
     execute = {
         val path = it.jsonObject.absolutePath("path")
-        if (path.isImagePath()) {
-            workspaceRepository.readImageInRootfs(workspaceId, path)
-        } else {
-            val text = workspaceRepository.readTextInRootfs(workspaceId, path)
-            listOf(
-                UIMessagePart.Text(
-                    buildJsonObject {
-                        put("path", path)
-                        put("text", text)
-                        // mtime 供后续 write_file 的 expectedMtimeMs 做冲突检测（读写闭环）
-                        runCatching { workspaceRepository.rootfsFileMtime(workspaceId, path) }.getOrNull()
-                            ?.let { put("mtime", it) }
-                    }.toString()
+        val window = normalizeReadWindow(
+            offset = it.jsonObject["offset"]?.jsonPrimitive?.intOrNull,
+            limit = it.jsonObject["limit"]?.jsonPrimitive?.intOrNull,
+        )
+        when {
+            // 图片没有行概念：明确拒绝，别让模型以为能"翻页"
+            path.isImagePath() && window != null ->
+                error("offset/limit apply to text files only: $path")
+
+            path.isImagePath() -> workspaceRepository.readImageInRootfs(workspaceId, path, maxReadBytes)
+
+            window != null -> {
+                val read = workspaceRepository.readRootfsLineWindow(
+                    workspaceId, path, window.startLine, window.limit,
                 )
-            )
+                val result = buildWindowResult(
+                    window, read.lines, read.moreLines,
+                    // 窗口自身的字节上限：Int 足够（>2GB 的窗口没有意义）
+                    maxBytes = maxReadBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                )
+                requireNotBinary(path, result.text)
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("path", path)
+                            put("text", result.text)
+                            put("startLine", result.startLine)
+                            put("endLine", result.endLine)
+                            put("truncated", result.truncated)
+                            runCatching { workspaceRepository.rootfsFileMtime(workspaceId, path) }.getOrNull()
+                                ?.let { put("mtime", it) }
+                        }.toString()
+                    )
+                )
+            }
+
+            else -> {
+                val text = workspaceRepository.readTextInRootfs(workspaceId, path, maxReadBytes)
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("path", path)
+                            put("text", text)
+                            // mtime 供后续 write_file 的 expectedMtimeMs 做冲突检测（读写闭环）
+                            runCatching { workspaceRepository.rootfsFileMtime(workspaceId, path) }.getOrNull()
+                                ?.let { put("mtime", it) }
+                        }.toString()
+                    )
+                )
+            }
         }
     },
 )
@@ -619,8 +682,9 @@ private fun kotlinx.serialization.json.JsonObject.string(name: String): String? 
 private suspend fun WorkspaceRepository.readTextInRootfs(
     workspaceId: String,
     path: String,
+    maxBytes: Long = DEFAULT_MAX_READ_FILE_BYTES,
 ): String {
-    val text = readRootfsBuffer(workspaceId, path).toString(Charsets.UTF_8.name())
+    val text = readRootfsBuffer(workspaceId, path, maxBytes).toString(Charsets.UTF_8.name())
     requireNotBinary(path, text)
     return text
 }
@@ -644,10 +708,12 @@ private fun requireNotBinary(path: String, text: String) {
 private suspend fun WorkspaceRepository.readRootfsBuffer(
     workspaceId: String,
     path: String,
+    maxBytes: Long,
 ): ByteArrayOutputStream {
     val size = rootfsFileSize(workspaceId, path)
-    require(size <= MAX_READ_FILE_BYTES) {
-        "File is too large to read: $path (${size / 1024 / 1024}MB, max ${MAX_READ_FILE_BYTES / 1024 / 1024}MB). Use shell commands like head, tail, or grep to read parts of it."
+    require(size <= maxBytes) {
+        "File is too large to read: $path (${size / 1024 / 1024}MB, max ${maxBytes / 1024 / 1024}MB). " +
+            "Read a window instead with offset/limit, or use shell commands like head, tail, or grep."
     }
     return ByteArrayOutputStream(size.toInt()).also { exportRootfsFile(workspaceId, path, it) }
 }
@@ -655,8 +721,9 @@ private suspend fun WorkspaceRepository.readRootfsBuffer(
 private suspend fun WorkspaceRepository.readImageInRootfs(
     workspaceId: String,
     path: String,
+    maxBytes: Long,
 ): List<UIMessagePart> {
-    val bytes = readRootfsBuffer(workspaceId, path).toByteArray()
+    val bytes = readRootfsBuffer(workspaceId, path, maxBytes).toByteArray()
 
     val filesManager = getKoin().get<FilesManager>()
     val uris = filesManager.createChatFilesByByteArrays(listOf(bytes))

@@ -23,6 +23,7 @@ import app.androidrik.workspace.RootfsInstallProgress
 import app.androidrik.workspace.RootfsInstaller
 import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceFileEntry
+import app.androidrik.workspace.RootfsLineWindow
 import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.WorkspaceKillResult
 import app.androidrik.workspace.WorkspaceShellStatus
@@ -106,6 +107,19 @@ class WorkspaceRepository(
     suspend fun isNameTaken(name: String, excludeId: String?): Boolean {
         val target = name.trim()
         return dao.getAll().any { it.id != excludeId && it.name.trim() == target }
+    }
+
+    /** 设置工作区的单次读取上限（字节）；非正值忽略（用 `DEFAULT_MAX_READ_FILE_BYTES`） */
+    suspend fun setMaxReadFileBytes(id: String, bytes: Long): Boolean {
+        val workspace = dao.getById(id) ?: return false
+        if (bytes <= 0) return false
+        dao.upsert(
+            workspace.copy(
+                maxReadFileBytes = bytes,
+                updatedAt = System.currentTimeMillis(),
+            )
+        )
+        return true
     }
 
     suspend fun setToolApproval(id: String, toolName: String, needsApproval: Boolean): Boolean {
@@ -281,6 +295,23 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.ensureWorkspace(workspace.root)
         manager.rootfsFileSize(workspace.root, path)
+    }
+
+    /**
+     * 按行窗口读取 Rootfs 内文件（流式，见 `WorkspaceManager.readRootfsLineWindow`）。
+     *
+     * **不受工作区的单次读取上限约束**：这条路径正是为了读大文件的局部而定，上限只作用于
+     * 窗口自身的字节数（在工具层按上限裁）。
+     */
+    suspend fun readRootfsLineWindow(
+        id: String,
+        path: String,
+        startLine: Long,
+        limit: Int,
+    ): RootfsLineWindow = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.readRootfsLineWindow(workspace.root, path, startLine, limit)
     }
 
     /**

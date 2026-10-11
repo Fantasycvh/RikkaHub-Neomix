@@ -1534,6 +1534,8 @@
   <string name="workspace_detail_tool_approval_desc">When enabled, user confirmation is required before AI calls this tool</string>
   <string name="workspace_detail_tool_list_files">List Files</string>
   <string name="workspace_detail_tool_read_file">Read File</string>
+  <string name="workspace_detail_max_read_bytes">Single-read limit</string>
+  <string name="workspace_detail_max_read_bytes_desc">Applies to whole-file and image reads. Reading a window with offset/limit is streamed and not affected.</string>
   <string name="workspace_detail_tool_write_file">Write File</string>
   <string name="workspace_detail_tool_edit_file">Edit File</string>
   <string name="workspace_detail_tool_delete_file">Delete File</string>

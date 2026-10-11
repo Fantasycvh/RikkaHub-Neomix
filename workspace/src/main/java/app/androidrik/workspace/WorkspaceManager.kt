@@ -160,6 +160,43 @@ class WorkspaceManager(
     fun rootfsFileSize(root: String, path: String): Long =
         resolveRootfsFile(root, path).also { it.requireReadableFile(path) }.length()
 
+    /**
+     * 按行窗口读取（**流式**）：只把窗口内的行进内存。
+     *
+     * 为什么要单独一条路径：整文件读受「单次读取上限」约束，而窗口读的意义正是**读大文件的局部**
+     * ——上限管的是「一次把多少内容交给模型」，不该管「能不能翻到一个大文件的第一万行」。
+     *
+     * 行分隔符统一按 `
+` 归一（`readLine` 会吃掉 `
+` 的 ``）：模型拿到的是归一化后的行，
+     * 逐行拼接回去时不会带上 ``。
+     *
+     * @param startLine 1 基起始行；超过文件行数 ⇒ 返回空窗口
+     * @param limit 最多返回的行数
+     */
+    fun readRootfsLineWindow(
+        root: String,
+        path: String,
+        startLine: Long,
+        limit: Int,
+    ): RootfsLineWindow {
+        val file = resolveRootfsFile(root, path)
+        file.requireReadableFile(path)
+        val lines = ArrayList<String>(limit.coerceAtMost(4096))
+        file.bufferedReader(Charsets.UTF_8).use { reader ->
+            var skipped = 0L
+            while (skipped < startLine - 1) {
+                if (reader.readLine() == null) break
+                skipped++
+            }
+            while (lines.size < limit) {
+                lines += reader.readLine() ?: break
+            }
+            // 再探一行判断窗口之后还有没有内容（这一行不返回，只用来置 truncated）
+            return RootfsLineWindow(lines = lines, moreLines = reader.readLine() != null)
+        }
+    }
+
     /** Rootfs 内文件的最后修改时间（毫秒）；不存在或不是文件时返回 null（写入冲突检测用） */
     fun rootfsFileMtime(root: String, path: String): Long? {
         val file = resolveRootfsFile(root, path)
@@ -351,4 +388,15 @@ class WorkspaceManager(
 data class RootfsLocation(
     val rootDir: File,
     val relativePath: String,
+)
+
+/**
+ * 行窗口读取的结果。
+ *
+ * [moreLines] 表示**窗口之后还有内容**：让模型知道"这不是文件末尾"，能决定要不要继续翻
+ * （比返回总行数便宜得多——总行数要把整个文件读一遍）。
+ */
+data class RootfsLineWindow(
+    val lines: List<String>,
+    val moreLines: Boolean,
 )

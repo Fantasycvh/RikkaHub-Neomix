@@ -298,6 +298,15 @@ class WorkspaceDetailVM(
         _state.update { it.copy(error = error.message ?: "导出失败") }
     }.getOrNull()
 
+    /** 单次读取上限（字节）。窗口读（offset/limit）不受它约束，所以调大它只是为了"整文件读大文件"。 */
+    fun setMaxReadFileBytes(bytes: Long) {
+        viewModelScope.launch {
+            val workspace = state.value.workspace ?: return@launch
+            repository.setMaxReadFileBytes(workspace.id, bytes)
+            loadWorkspace()
+        }
+    }
+
     fun setToolApproval(toolName: String, needsApproval: Boolean) {
         viewModelScope.launch {
             val workspace = state.value.workspace ?: return@launch
