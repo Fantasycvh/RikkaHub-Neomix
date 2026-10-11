@@ -31,8 +31,8 @@ case "${1:-}" in
     if [ -n "$APK" ]; then
       VERSION="$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)"
       mkdir -p app/release
-      cp "$APK" "app/release/RikkaHub Plus-$VERSION-arm64-v8a.apk"
-      echo "APK ready: app/release/RikkaHub Plus-$VERSION-arm64-v8a.apk"
+      cp "$APK" "app/release/Neomix-$VERSION-arm64-v8a.apk"
+      echo "APK ready: app/release/Neomix-$VERSION-arm64-v8a.apk"
     else
       echo "warning: arm64 release APK not found" >&2
     fi
