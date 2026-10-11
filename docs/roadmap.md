@@ -1851,7 +1851,21 @@ data class ApiKeyEntry(
     "totalUnits":154,"truncated":false}`——即：按扩展名识别 ✔、按页抽（`Page N:` 前缀）✔、MuPDF 真实总页数
     154 ✔、**分页真被用起来**（先 1–10 页并如实报 truncated，再跳到 143–154 页到末尾报 false）✔、
     回执形状与设计一致 ✔；
-  - ⚠️ **PDF 仍然无法在 JVM 验证**：`PdfParser` 走 MuPDF 原生库，JVM 单测跑不了（所以它是唯一没有
+  - **真机验证清单**（2026-10-09，用户实测 + 我从 debug 包 DB 读到回执原文；`message_node`）：
+    - pdf：`154` 页那份连读两次 ⇒ `pages 1..10 / totalUnits 154 / truncated true` 与
+      `pages 143..154 / truncated false`；`551` 页那份 `limit=5` ⇒ `pages 1..5 / totalUnits 551` ✔
+      （按页抽、真实总页数、分页参数、`truncated` 语义全部成立）；
+    - docx：`{"format":"docx","unit":"block",…}` ✔；
+    - epub：`{"format":"epub","unit":"chapter","text":"[OEBPS/Text/cover.xhtml]…"}` ✔；
+    - 自动标题开关：`settings.preferences_pb` 里 `enable_auto_title` 存在且值为 bool（`12 02 08 00`）
+      ⇒ 读写链路通（用户实测"启停"通过）；
+    - **pptx：未在库里找到回执**（工作区里确实有 `附件2：《商业（项目）计划书》参考目录.pptx`，
+      也有 3 条节点提到 pptx + `workspace_read_file`）⇒ 待确认它是真读过、还是模型列了文件却没读。
+  - ⚠️ **已知限制：能"抽出来"不等于抽对了**。551 页那份《心理统计学》抽出的文本里夹着乱码
+    （`心理统计学l胪霞殴J`——字体缺 ToUnicode CMap 的典型症状），而现有判据只看"是否全空"，
+    对这种**部分乱码**给不出任何提示：模型会拿着乱码当原文推理。要处理得引入更细的判据
+    （替换字符比例、CJK 异常比等），本批未做；
+  - ⚠️ **PDF 仍然无法在 JVM 验证**：`PdfParser` 走 MuPDF 原生库，JVM 单测跑不了（所以它仍是唯一没有
     自动化测试覆盖的格式；DOCX/PPTX/EPUB 与它只差原生调用那一层，其余是同一套已被 JVM 覆盖的代码）；
   - ⚠️ 本项**不在** `v1.0.26 (292)` 草稿内（草稿构建于 `113b3188c`），进下一次发布（293）；
   - 真机冒烟：debug 包启动零 FATAL、`user_version` 36、工作区 2→2、会话 251。
