@@ -15,7 +15,12 @@ import app.androidrik.ai.ui.DiffMetadata
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.toMetadata
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.document.DocumentFormat
+import app.androidrik.document.DocumentReader
+import app.androidrik.document.DocumentSlice
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.utils.generateUnifiedDiff
 import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceFileEntry
@@ -47,6 +52,9 @@ private const val DEFAULT_MAX_READ_FILE_BYTES = 8L * 1024 * 1024
 
 /** 窗口读取的硬上限（行）：挡住 `limit=10_000_000` 这类请求（字节上限另算） */
 internal const val MAX_READ_LINES = 20_000
+
+/** 文档单次读取的单元上限（页/张/章/块）：一页几千字，50 页就可能顶到字符上限 */
+internal const val MAX_DOC_UNITS_PER_READ = 50
 /** rootfs 写入最大字节数（对齐 WorkspaceFileSystem 的 2MB require） */
 private const val MAX_ROOTFS_WRITE_BYTES = 2 * 1024 * 1024
 
@@ -110,7 +118,13 @@ private fun createReadFileTool(
     description = """
         Read a file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
         Use /workspace for the workspace files area.
-        Supports UTF-8 text files and image files (png, jpg, jpeg, gif, webp, bmp, svg, heic, heif, avif, ico).
+        Supports UTF-8 text files, image files (png, jpg, jpeg, gif, webp, bmp, svg, heic, heif, avif, ico)
+        and documents (pdf, docx, pptx, epub).
+        For text files offset (1-based first line) and limit (max lines) read a window; the window is streamed,
+        so files larger than the single-read limit can still be read this way.
+        For documents offset/limit mean units: pdf pages, pptx slides, epub chapters, docx blocks of 100
+        paragraphs (docx has no real pagination); the extracted text comes back with firstUnit/lastUnit/totalUnits
+        so you can page through it.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -120,16 +134,17 @@ private fun createReadFileTool(
                     put("type", "integer")
                     put(
                         "description",
-                        "1-based first line to return (text files only). Use with limit to read a window " +
-                            "from a large file; the window is streamed and is not bound by the single-read limit."
+                        "1-based first unit to return: a text line for text files, a page/slide/chapter/block " +
+                            "for documents (pdf/docx/pptx/epub). Read a window from a large file without " +
+                            "loading all of it."
                     )
                 })
                 put("limit", buildJsonObject {
                     put("type", "integer")
                     put(
                         "description",
-                        "Maximum number of lines to return (text files only, max $MAX_READ_LINES). " +
-                            "Without offset it reads from line 1."
+                        "Maximum number of units to return (text files: lines, max $MAX_READ_LINES; " +
+                            "documents: max $MAX_DOC_UNITS_PER_READ). Without offset it reads from the first unit."
                     )
                 })
             },
@@ -144,11 +159,41 @@ private fun createReadFileTool(
             limit = it.jsonObject["limit"]?.jsonPrimitive?.intOrNull,
         )
         when {
-            // 图片没有行概念：明确拒绝，别让模型以为能"翻页"
+            // 图片没有行/单元概念：明确拒绝，别让模型以为能"翻页"
             path.isImagePath() && window != null ->
-                error("offset/limit apply to text files only: $path")
+                error("offset/limit do not apply to images: $path")
 
             path.isImagePath() -> workspaceRepository.readImageInRootfs(workspaceId, path, maxReadBytes)
+
+            // 文档：offset/limit 是"单元"（页/张/章/块），默认读前 DEFAULT_DOC_UNITS_PER_READ 个单元
+            DocumentFormat.of(path) != null -> {
+                val format = DocumentFormat.of(path)!!
+                val startUnit = window?.startLine?.toInt() ?: 1
+                val unitCount = (window?.limit ?: DEFAULT_DOC_UNITS_PER_READ)
+                    .coerceAtMost(MAX_DOC_UNITS_PER_READ)
+                val slice = readDocument(workspaceRepository, workspaceId, path, startUnit, unitCount)
+                val result = buildDocumentResult(
+                    text = slice.text,
+                    firstUnit = slice.firstUnit,
+                    lastUnit = slice.lastUnit,
+                    totalUnits = slice.totalUnits,
+                )
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("path", path)
+                            put("format", format.name.lowercase())
+                            put("unit", format.unitLabel)
+                            put("text", result.text)
+                            put("firstUnit", result.firstUnit)
+                            put("lastUnit", result.lastUnit)
+                            if (result.totalUnits >= 0) put("totalUnits", result.totalUnits)
+                            put("truncated", result.truncated)
+                            result.notice?.let { put("notice", it) }
+                        }.toString()
+                    )
+                )
+            }
 
             window != null -> {
                 val read = workspaceRepository.readRootfsLineWindow(
@@ -716,6 +761,32 @@ private suspend fun WorkspaceRepository.readRootfsBuffer(
             "Read a window instead with offset/limit, or use shell commands like head, tail, or grep."
     }
     return ByteArrayOutputStream(size.toInt()).also { exportRootfsFile(workspaceId, path, it) }
+}
+
+/**
+ * 文档抽文本。
+ *
+ * 同步的原生/XML 解析放 IO 上（PDF 是 MuPDF 原生调用，几百页是秒级），失败**抛异常**并带上原因
+ * ——模型据此知道"这份文件读不了"，而不是收到一段空文本（旧 `parse()` 把错误当字符串返回，
+ * 这条路径特意不复用它，见 `DocumentReader` 的说明）。
+ */
+private suspend fun readDocument(
+    workspaceRepository: WorkspaceRepository,
+    workspaceId: String,
+    path: String,
+    startUnit: Int,
+    unitCount: Int,
+): DocumentSlice {
+    val file = workspaceRepository.rootfsReadableFile(workspaceId, path)
+    return withContext(Dispatchers.IO) {
+        runCatching { DocumentReader.read(file, path, startUnit, unitCount) }
+            .getOrElse { error ->
+                error(
+                    "Failed to extract text from $path (${DocumentFormat.of(path)?.name?.lowercase()}): " +
+                        "${error.message ?: error::class.simpleName}"
+                )
+            }
+    }
 }
 
 private suspend fun WorkspaceRepository.readImageInRootfs(

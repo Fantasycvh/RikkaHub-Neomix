@@ -98,12 +98,23 @@ object EpubParser {
         return manifest to spine
     }
 
-    private fun parseXhtml(inputStream: InputStream): String {
+    /** 旧接口的行为：解析失败当"没有内容"（附件路径保持原样） */
+    private fun parseXhtml(inputStream: InputStream): String = parseXhtmlOrNull(inputStream).orEmpty()
+
+    /**
+     * 抽一节正文；**解析失败返回 null**（而不是空串）。
+     *
+     * 分离出来的原因：旧实现把失败静默成空串，"这一节是空的"和"这一节读不了"就分不出来了——
+     * 附件路径无所谓，但工具层要把真实原因告诉模型（空 ≠ 失败）。
+     */
+    private fun parseXhtmlOrNull(inputStream: InputStream): String? {
         return try {
             val factory = XmlPullParserFactory.newInstance()
             factory.isNamespaceAware = false
             val parser = factory.newPullParser()
-            parser.setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+            // 关掉 DOCDECL 处理只是加固：**有的实现不支持这个 feature 并抛异常**
+            // （JVM 上的 XmlPull 实现就是如此）。为此把整篇文档作废不划算，所以失败就跳过。
+            runCatching { parser.setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false) }
             parser.setInput(inputStream, "UTF-8")
 
             val result = StringBuilder()
@@ -225,7 +236,60 @@ object EpubParser {
                 .replace(Regex("\n{3,}"), "\n\n")
                 .trim()
         } catch (e: Exception) {
-            ""
+            null
+        }
+    }
+
+    /** 可读章节数（spine 里 mediaType 含 html 的条目） */
+    fun sectionCount(file: File): Int = ZipFile(file).use { zip -> readableSections(zip).size }
+
+    /**
+     * 只抽第 [startSection] 章起、最多 [sectionCount] 章（1 基，只数**可读章节**）。
+     *
+     * 与 `parse` 的差别：`parse` 出于"给附件用"的考虑会把抽不出的章节跳过（返回串也可能是一句错误
+     * 文案）；这里则明确区分"没有这一章"（空片段）与"读不了这本书"（抛异常），因为工具层要把
+     * 这两种情况如实告诉模型。
+     */
+    fun parseSections(file: File, startSection: Int, sectionCount: Int): DocumentSlice {
+        ZipFile(file).use { zip ->
+            val sections = readableSections(zip)
+            val total = sections.size
+            val start = startSection.coerceAtLeast(1)
+            if (start > total) return DocumentSlice("", start, start - 1, total)
+            val end = (start + sectionCount - 1).coerceAtMost(total)
+
+            val result = StringBuilder()
+            for (index in (start - 1)..(end - 1)) {
+                val (label, entry) = sections[index]
+                val content = zip.getInputStream(entry).use { parseXhtmlOrNull(it) }
+                    ?: throw IllegalStateException("Unable to parse section: $label")
+                if (content.isNotBlank()) {
+                    result.append("[").append(label).append("]\n")
+                    result.append(content)
+                    result.append("\n\n")
+                }
+            }
+            return DocumentSlice(
+                text = result.toString().trim(),
+                firstUnit = start,
+                lastUnit = end,
+                totalUnits = total,
+            )
+        }
+    }
+
+    /** spine 顺序里的可读章节（[label] 用条目名，便于模型引用） */
+    private fun readableSections(zip: ZipFile): List<Pair<String, java.util.zip.ZipEntry>> {
+        val opfPath = findOpfPath(zip) ?: throw IllegalStateException("Unable to find OPF file in EPUB")
+        val opfDir = opfPath.substringBeforeLast('/', "")
+        val opfEntry = zip.getEntry(opfPath) ?: throw IllegalStateException("Unable to read OPF file in EPUB")
+        val (manifest, spine) = zip.getInputStream(opfEntry).use { parseOpf(it) }
+        return spine.mapNotNull { itemId ->
+            val item = manifest[itemId] ?: return@mapNotNull null
+            if (!item.mediaType.contains("html")) return@mapNotNull null
+            val itemPath = if (opfDir.isEmpty()) item.href else "$opfDir/${item.href}"
+            val entry = zip.getEntry(itemPath) ?: return@mapNotNull null
+            entry.name to entry
         }
     }
 }

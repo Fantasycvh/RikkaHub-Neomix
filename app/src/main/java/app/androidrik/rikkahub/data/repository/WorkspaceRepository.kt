@@ -298,6 +298,16 @@ class WorkspaceRepository(
     }
 
     /**
+     * 取 Rootfs 内文件的真实路径（给 PDF 等需要 `File` 的解析器；解析本身在调用方做，
+     * 这样 workspace 模块不必认识文档格式）。
+     */
+    suspend fun rootfsReadableFile(id: String, path: String): File = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.resolveReadableRootfsFile(workspace.root, path)
+    }
+
+    /**
      * 按行窗口读取 Rootfs 内文件（流式，见 `WorkspaceManager.readRootfsLineWindow`）。
      *
      * **不受工作区的单次读取上限约束**：这条路径正是为了读大文件的局部而定，上限只作用于

@@ -58,23 +58,82 @@ internal fun buildWindowResult(
     moreLines: Boolean,
     maxBytes: Int,
 ): ReadWindowResult {
+    // 裁剪口径与文档抽取共用一处（trimLinesToBytes），避免两条路径各写一份"按整行裁"的规则后走偏
+    val trimmed = trimLinesToBytes(lines, maxBytes)
+    val bytes = trimmed.lines.sumOf { it.toByteArray(Charsets.UTF_8).size } +
+        (trimmed.lines.size - 1).coerceAtLeast(0)
+    return ReadWindowResult(
+        text = trimmed.lines.joinToString("\n"),
+        startLine = window.startLine,
+        endLine = window.startLine + trimmed.lines.size - 1,
+        truncated = trimmed.trimmed || moreLines,
+        bytes = bytes,
+    )
+}
+
+/** 文档不给 offset/limit 时默认读前多少个单元（页/张/章/块） */
+internal const val DEFAULT_DOC_UNITS_PER_READ = 10
+
+/** 单次文档抽取返回的字符上限（比文本窗口保守：抽取结果通常更"密"） */
+internal const val MAX_DOC_CHARS_PER_READ = 100_000
+
+/** 文档抽取的返回结果（单元号 1 基、含端点；空片段时 `lastUnit = firstUnit - 1`） */
+internal data class DocumentReadResult(
+    val text: String,
+    val firstUnit: Int,
+    val lastUnit: Int,
+    /** -1 = 未知（DOCX 无真实分页）；0 = 空文档 */
+    val totalUnits: Int,
+    /** 还有更多单元没读，或返回文本被字符上限裁过 */
+    val truncated: Boolean,
+    /** 抽不出文本时的说明（扫描版 PDF 之类），供工具层原样告诉模型 */
+    val notice: String?,
+)
+
+/**
+ * 把抽取结果裁成"能交给模型的一页"。
+ *
+ * 两条判据与文本窗口一致：按**整行**裁（不切半行）、至少保留一行；`truncated` 要么是单元没读完，
+ * 要么是字符被裁——两者对模型的意义一样："还有东西没给你"。
+ *
+ * 空文本单独给 [DocumentReadResult.notice]：**返回空串而不解释是最糟的**（模型会以为文件是空的），
+ * 而扫描版 PDF 恰恰很常见。
+ */
+internal fun buildDocumentResult(
+    text: String,
+    firstUnit: Int,
+    lastUnit: Int,
+    totalUnits: Int,
+    maxBytes: Int = MAX_DOC_CHARS_PER_READ,
+): DocumentReadResult {
+    val trimmed = trimLinesToBytes(text.lines(), maxBytes)
+    val moreUnits = totalUnits > 0 && lastUnit < totalUnits
+    return DocumentReadResult(
+        text = trimmed.lines.joinToString("\n"),
+        firstUnit = firstUnit,
+        lastUnit = lastUnit,
+        totalUnits = totalUnits,
+        truncated = trimmed.trimmed || moreUnits,
+        notice = if (text.isBlank()) {
+            "No extractable text in units $firstUnit..${lastUnit.coerceAtLeast(firstUnit)}. " +
+                "The document may be a scanned image without a text layer, or empty."
+        } else {
+            null
+        },
+    )
+}
+
+/** 按字节上限裁剪行集合：返回保留的行与"是否被裁" */
+internal data class TrimmedLines(val lines: List<String>, val trimmed: Boolean)
+
+internal fun trimLinesToBytes(lines: List<String>, maxBytes: Int): TrimmedLines {
     val kept = mutableListOf<String>()
     var bytes = 0
-    var byteLimited = false
     for (line in lines) {
         val cost = line.toByteArray(Charsets.UTF_8).size + if (kept.isEmpty()) 0 else 1
-        if (kept.isNotEmpty() && bytes + cost > maxBytes) {
-            byteLimited = true
-            break
-        }
+        if (kept.isNotEmpty() && bytes + cost > maxBytes) return TrimmedLines(kept, true)
         kept += line
         bytes += cost
     }
-    return ReadWindowResult(
-        text = kept.joinToString("\n"),
-        startLine = window.startLine,
-        endLine = window.startLine + kept.size - 1,
-        truncated = byteLimited || moreLines,
-        bytes = bytes,
-    )
+    return TrimmedLines(kept, false)
 }

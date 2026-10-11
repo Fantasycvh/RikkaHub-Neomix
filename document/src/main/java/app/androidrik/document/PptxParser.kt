@@ -20,11 +20,7 @@ object PptxParser {
                 val slides = mutableListOf<SlideContent>()
 
                 // Find all slide XML files and sort them by number
-                val slideEntries = zipFile.entries().toList()
-                    .filter { it.name.matches(Regex("ppt/slides/slide\\d+\\.xml")) }
-                    .sortedBy { entry ->
-                        entry.name.substringAfter("slide").substringBefore(".xml").toIntOrNull() ?: 0
-                    }
+                val slideEntries = slideEntries(zipFile)
 
                 if (slideEntries.isEmpty()) {
                     return "No slides found in PPTX file"
@@ -450,4 +446,54 @@ object PptxParser {
             }
         }
     }
+
+    /** 幻灯片总数（按 `ppt/slides/slideN.xml` 计数） */
+    fun slideCount(file: File): Int = ZipFile(file).use { zip ->
+        slideEntries(zip).size
+    }
+
+    /**
+     * 只抽第 [startSlide] 张起、最多 [slideCount] 张（1 基）。
+     *
+     * 只读被请求的那几张幻灯片对应的 zip 条目——大 PPTX 里"只看第 3 张"不该解压全文。
+     */
+    fun parseSlides(file: File, startSlide: Int, slideCount: Int): DocumentSlice {
+        ZipFile(file).use { zip ->
+            val entries = slideEntries(zip)
+            val total = entries.size
+            val start = startSlide.coerceAtLeast(1)
+            if (start > total) return DocumentSlice("", start, start - 1, total)
+            val end = (start + slideCount - 1).coerceAtMost(total)
+
+            val slides = (start..end).map { number ->
+                val entry = entries[number - 1]
+                val content = zip.getInputStream(entry).use { parseSlideXml(it) }
+                if (content.startsWith("Error parsing slide XML")) {
+                    throw IllegalStateException("$content (${entry.name})")
+                }
+                val notesEntry = zip.getEntry("ppt/notesSlides/notesSlide$number.xml")
+                val notes = notesEntry?.let { zip.getInputStream(it).use { stream -> parseNotesXml(stream) } }.orEmpty()
+                SlideContent(slideNumber = number, content = content, notes = notes)
+            }
+            return DocumentSlice(
+                text = formatOutput(slides).trim(),
+                firstUnit = start,
+                lastUnit = end,
+                totalUnits = total,
+            )
+        }
+    }
+
+    /**
+     * 幻灯片条目，按**文件名里的编号**排序。
+     *
+     * 注意取编号要用 `substringAfterLast("slide")`：用 `substringAfter("slide")` 会先命中目录名
+     * "**slide**s/" ⇒ 每个条目都解析成 0、排序等于没排（幻灯片顺序就跟着 zip 条目顺序走了），
+     * 而 zip 里 `slide2.xml` 排在 `slide10.xml` 后面这类情况很常见。
+     */
+    private fun slideEntries(zip: ZipFile): List<ZipEntry> = zip.entries().toList()
+        .filter { it.name.matches(Regex("ppt/slides/slide\\d+\\.xml")) }
+        .sortedBy { entry ->
+            entry.name.substringAfterLast("slide").substringBefore(".xml").toIntOrNull() ?: Int.MAX_VALUE
+        }
 }

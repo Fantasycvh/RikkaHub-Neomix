@@ -346,4 +346,36 @@ object DocxParser {
 
         return ParagraphProperties(listInfo = listInfo, headingLevel = headingLevel)
     }
+
+    /**
+     * 抽第 [startBlock] 块起、最多 [blockCount] 块（1 基）。
+     *
+     * DOCX **没有真实分页**（分页是排版时才算的），所以这里按"每 [DocumentReader.DOCX_PARAGRAPHS_PER_BLOCK]
+     * 段一块"合成分块：让"翻页"可用，而不是假装它有页号——`totalUnits` 因此返回 -1（未知）。
+     * 段落切分按空行（与 `processParagraph` 的输出约定一致）。
+     */
+    fun parseBlocks(file: File, startBlock: Int, blockCount: Int): DocumentSlice {
+        val text = parse(file)
+        if (text.startsWith("Error parsing DOCX file")) {
+            throw IllegalStateException(text)
+        }
+        if (text.startsWith("Unable to find document content")) {
+            throw IllegalStateException(text)
+        }
+        val paragraphs = text.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
+        val perBlock = DocumentReader.DOCX_PARAGRAPHS_PER_BLOCK
+        val totalBlocks = (paragraphs.size + perBlock - 1) / perBlock
+        val start = startBlock.coerceAtLeast(1)
+        if (paragraphs.isEmpty() || start > totalBlocks) {
+            return DocumentSlice("", start, start - 1, -1)
+        }
+        val end = (start + blockCount - 1).coerceAtMost(totalBlocks)
+        val slice = paragraphs.subList((start - 1) * perBlock, (end * perBlock).coerceAtMost(paragraphs.size))
+        return DocumentSlice(
+            text = slice.joinToString("\n\n"),
+            firstUnit = start,
+            lastUnit = end,
+            totalUnits = -1,
+        )
+    }
 }

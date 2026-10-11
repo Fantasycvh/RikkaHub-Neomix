@@ -1824,6 +1824,30 @@ data class ApiKeyEntry(
     **同时更正上一批记的一句过重判断**：原写「提案没持久化前不该接自动触发（否则白烧一次调用）」——
     事实性内容在聊天当下已由 `memory_tool` 写入，丢掉建议的损失是**整理收益延后**、不是内容丢失，
     属体验缺口而非数据缺口，B 形态下可以先接线。设计稿 §7.2/§8.3/§9.1。
+- 2026-10-09：**`workspace_read_file` 支持文档抽取（pdf / docx / pptx / epub），分页复用 offset/limit**。
+  - 单元口径：**pdf = 页、pptx = 幻灯片、epub = 章节、docx = 100 段一块**（docx 没有真实分页，不假装有：
+    `totalUnits` 报 -1 未知）。这样"读第 20–40 页"与文本文件"读第 20–40 行"是同一组参数、同一套心智；
+  - `document` 模块新增结构化 API（`DocumentText.kt` + 各解析器的 `parsePages` / `parseSlides` /
+    `parseSections` / `parseBlocks`）：**失败抛异常**，与旧 `parse(): String`"把错误当文本返回"分开——
+    工具层必须能区分"文档是空的"与"读不了"，前者给 notice、后者给报错。按单元抽也真省成本：
+    只读被请求的那几张幻灯片 / 那几页 PDF（MuPDF 是原生解析，几百页是秒级）；
+  - 上限与默认值：不给 offset/limit 时读前 **10** 个单元，单次最多 **50** 个单元，返回文本字符上限 **100k**
+    （按整行裁，与文本窗口共用 `trimLinesToBytes`）；空抽取必带 `notice`（"可能是扫描版、没有文本层"）；
+  - 顺带修掉两个**既有缺陷**（都影响聊天附件路径，不只是新工具）：
+    1. `PptxParser` 用 `substringAfter("slide")` 取幻灯片编号，命中的是目录名 "**slide**s/" ⇒ 每个条目都
+       解析成 0、排序等于没排，"Slide N" 的编号跟着 zip 条目顺序走；改用 `substringAfterLast("slide")`；
+    2. `EpubParser.parseXhtml` 把异常静默成空串 ⇒ "这一节读不了"和"这一节是空的"分不出来（JVM 上实测
+       `setFeature(FEATURE_PROCESS_DOCDECL)` 抛异常就会让整本书抽成空）；改为 `parseXhtmlOrNull`
+       （失败返回 null，按单元抽时抛异常），`setFeature` 失败只跳过、不作废整篇文档；
+  - 验证：`:app` **1465 → 1474**、`:document` **0 → 9**、`:workspace` 66、`:ai` 252、`:common` 42，全绿。
+    文档模块此前**没有测试**，本批加 `kxml2`（仅 testImplementation）作为 JVM 上的 XmlPull 实现，
+    用真实 zip 夹具测 DOCX 分块边界、PPTX 按号取张（含 slide2/slide10 的数字序 vs 字符串序）、
+    EPUB spine 顺序与缺 OPF 报错；app 侧测结果拼装（空抽取必带说明、两种截断来源、按整行裁字节）；
+    UI 侧钉"文档格式不得被归为 TEXT"（否则点开会用文本编辑器打开二进制）；
+  - ⚠️ **PDF 抽取未在 JVM 验证**：`PdfParser` 走 MuPDF 原生库，JVM 单测跑不了（真机路径未端到端验证过，
+    因为需要模型真正调用工具；DOCX/PPTX/EPUB 与 PDF 只差原生调用那一层，其余同一套 JVM 已测代码）；
+  - ⚠️ 本项**不在** `v1.0.26 (292)` 草稿内（草稿构建于 `113b3188c`），进下一次发布（293）；
+  - 真机冒烟：debug 包启动零 FATAL、`user_version` 36、工作区 2→2、会话 251。
 - 2026-10-09：**`workspace_read_file` 支持行窗口（offset/limit）+ 单次读取上限按工作区可配**。
   - **窗口读**（`offset` 1 基起始行 / `limit` 行数，上限 20000 行）：走 `WorkspaceManager.readRootfsLineWindow`
     ——真实文件的**行流**，只把窗口内的行进内存 ⇒ **比上限大的文件也能读窗口**（这正是它的意义：读一个
