@@ -53,21 +53,16 @@ object PptxParser {
     }
 
     private fun formatOutput(slides: List<SlideContent>): String {
-        val result = StringBuilder()
-
-        slides.forEach { slide ->
-            result.append("## Slide ${slide.slideNumber}\n\n")
-            result.append(slide.content)
-
-            if (slide.notes.isNotBlank()) {
-                result.append("\n### Speaker Notes\n\n")
-                result.append(slide.notes)
+        // 同 PDF 的处理：整份幻灯片都没有正文/备注时返回空串（例如只有图片的 PPTX），
+        // 否则 "## Slide N" 页头会让上层以为抽到了内容。
+        val units = slides.map { slide ->
+            val body = buildString {
+                append(slide.content)
+                if (slide.notes.isNotBlank()) append("\n### Speaker Notes\n\n").append(slide.notes)
             }
-
-            result.append("\n")
+            "## Slide ${slide.slideNumber}" to body
         }
-
-        return result.toString().trim()
+        return assembleUnitText(units)
     }
 
     private fun parseSlideXml(inputStream: InputStream): String {

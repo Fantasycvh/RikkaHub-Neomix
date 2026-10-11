@@ -80,3 +80,20 @@ object DocumentReader {
         null -> -1
     }
 }
+
+/**
+ * 把"带标签的单元"拼成抽取文本，并处理**全空**的情形。
+ *
+ * 为什么必须在这里处理：给每个单元加标题（`Page 1:` / `## Slide 1`）之后，即使**一个字的文本都没抽到**，
+ * 拼出来的串也非空。上层据此判断"这份文档有内容"⇒ **扫描版 PDF 的提示就被吞掉了**（真机上实测到：
+ * 纯图像 PDF 的回执是 `"text":"Page 1:\n\nPage 2:"`，看着有内容、其实没有文本层）。
+ * 所以判据是"**所有单元正文都为空**"⇒ 返回空串，让上层如实说"抽不出文本"。
+ *
+ * @param units 单元标签与正文（PDF 用页码、PPTX 用幻灯片号）
+ */
+internal fun assembleUnitText(units: List<Pair<String, String>>): String {
+    if (units.all { it.second.isBlank() }) return ""
+    return units.joinToString("\n") { (label, body) ->
+        if (body.isBlank()) label else "$label\n$body"
+    }.trim()
+}

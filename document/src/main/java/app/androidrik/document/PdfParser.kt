@@ -36,15 +36,12 @@ object PdfParser {
             return DocumentSlice("", start, start - 1, total)
         }
         val end = (start + pageCount - 1).coerceAtMost(total)
-        val result = StringBuilder()
-        for (page in start..end) {
-            val text = document.loadPage(page - 1).toStructuredText().asText()
-            result.append("Page ").append(page).append(":\n")
-            result.append(text)
-            result.appendLine()
+        val pages = (start..end).map { page ->
+            "Page $page:" to document.loadPage(page - 1).toStructuredText().asText()
         }
         return DocumentSlice(
-            text = result.toString().trim(),
+            // 全页无文本 ⇒ 空串（扫描版）：否则只有页头的串会看着"有内容"，把工具层的 notice 吞掉
+            text = assembleUnitText(pages),
             firstUnit = start,
             lastUnit = end,
             totalUnits = total,

@@ -1869,6 +1869,19 @@ data class ApiKeyEntry(
     `/workspace/scan-no-text-layer.pdf`（owner 与权限已对齐 app uid）等待实测：预期回执 `text` 为空、
     带 `notice`（"No extractable text …scanned…"）、`truncated` 视是否还有后续单元而定。
     构造件的意义：真实扫描件样本不好找，而 notice 这条路径不测就等于没写。
+    **实测结果：notice 没触发 —— 抓到一个真 bug（已修）**。回执是
+    `{"format":"pdf","unit":"page","text":"Page 1:
+
+Page 2:","firstUnit":1,"lastUnit":2,
+    "totalUnits":2,"truncated":false}`：`totalUnits` 对，但"抽不出文本"被我**自己的页头**（`Page N:`）
+    变成了"有内容" ⇒ 上层判据（`text.isBlank()`）不成立 ⇒ 该说的那句话被吞掉，模型会以为这两页就是空的
+    （而不是"可能是扫描件"）。
+    修法：把"组装带标签的单元文本"抽成 `DocumentReader` 侧的纯函数 `assembleUnitText`，判据改成
+    **所有单元正文都为空 ⇒ 返回空串**（丢掉页头），PDF 与 PPTX 共用（PPTX 的 `## Slide N` 是同源问题：
+    整份只有图片的 PPTX 也会变成"有内容"）；混排情形（部分页是扫描页）仍然保留页头，这样模型知道缺哪页。
+    回归测试 3 条（`:document` 9 → 12）：全空 ⇒ 空串、混排 ⇒ 保留页头、纯图片 PPTX ⇒ 空。
+    ⚠️ 这类 bug 的教训：**JVM 测试全绿也没用**——它取决于"真机上抽出来到底是什么"，只有拿真样本走一遍
+    才发现；而 PDF 恰好是唯一不能在 JVM 测的格式。
   - ⚠️ **已知限制：能"抽出来"不等于抽对了**。551 页那份《心理统计学》抽出的文本里夹着乱码
     （`心理统计学l胪霞殴J`——字体缺 ToUnicode CMap 的典型症状），而现有判据只看"是否全空"，
     对这种**部分乱码**给不出任何提示：模型会拿着乱码当原文推理。要处理得引入更细的判据

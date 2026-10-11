@@ -191,4 +191,43 @@ class DocumentReaderTest {
         }
         return file
     }
+
+    // ---------- 全空即空（真机上实测到的 bug 的回归测试） ----------
+
+    @Test
+    fun `all-blank units produce an empty text instead of a header-only string`() {
+        // 真机现象：纯图像 PDF 的回执是 "Page 1:\n\nPage 2:" —— 看着有内容，其实一个字的文本都没有，
+        // 于是工具层不发 notice，用户/模型都不知道这是扫描件。
+        val empty = assembleUnitText(listOf("Page 1:" to "", "Page 2:" to "   \n "))
+
+        assertEquals("", empty)
+    }
+
+    @Test
+    fun `a partially textless document keeps its page markers`() {
+        // 只有部分是扫描页时（混排）不能丢页头：模型得知道"第 2 页没有文本"
+        val mixed = assembleUnitText(listOf("Page 1:" to "hello", "Page 2:" to ""))
+
+        assertTrue(mixed.contains("Page 1:"))
+        assertTrue(mixed.contains("hello"))
+        assertTrue("没有文本的页也要点名（否则模型不知道缺哪页）", mixed.contains("Page 2:"))
+    }
+
+    @Test
+    fun `an image-only pptx reads as empty too`() {
+        // 纯图片幻灯片：PPTX 与 PDF 是同源问题（"## Slide N" 页头）
+        val file = pptxSlides(mapOf(1 to "", 2 to ""))
+
+        assertTrue(PptxParser.parseSlides(file, startSlide = 1, slideCount = 5).text.isBlank())
+    }
+
+    private fun pptxSlides(slides: Map<Int, String>): File {
+        val entries = slides.entries.associate { (number, text) ->
+            "ppt/slides/slide$number.xml" to
+                """<?xml version="1.0" encoding="UTF-8"?><p:sld xmlns:a="a" xmlns:p="p"><p:cSld>""" +
+                (if (text.isBlank()) "<p:pic/>" else "<p:sp><p:txBody><a:p><a:r><a:t>$text</a:t></a:r></a:p></p:txBody></p:sp>") +
+                "</p:cSld></p:sld>"
+        }
+        return zip("image-only.pptx", entries)
+    }
 }
