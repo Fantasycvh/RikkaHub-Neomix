@@ -1,10 +1,8 @@
 name: Daily Build
 
 on:
-  # 每天 UTC 18:00 触发（北京时间次日 02:00），可按需修改
-  schedule:
-    - cron: '0 18 * * *'
-  # 也支持手动触发
+  # 自动触发（原每日 UTC 18:00 定时）已禁用：本仓暂不发预编译包，
+  # 且签名 / google-services 的 repo secrets 尚未配置。需要时在 Actions 页面手动运行。
   workflow_dispatch:
 
 jobs:

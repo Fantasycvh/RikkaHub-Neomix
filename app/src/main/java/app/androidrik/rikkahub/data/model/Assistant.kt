@@ -29,7 +29,7 @@ data class Assistant(
      *
      * **为什么保留**：此前导入会把这 4 个字段用 `buildString` **压成一条不可分的
      * `systemPrompt`**，槽位信息在导入那一步就永久丢失（无法单独查看/编辑/重排）。
-     * 见 `docs/peer-apps-benchmark.md` §6.2 ④。
+     * 见 私有仓记录·前期调研 §6.2 ④。
      *
      * **权威关系**：`systemPrompt` 仍是**唯一**被发送的文本（保持既有行为与可自由编辑）；
      * 这几个字段是「零件」，供查看/单独编辑，并经 [buildCardSystemPrompt] 一键重建
@@ -199,7 +199,7 @@ data class QuickMessage(
  * 角色卡 system prompt 的**槽位**（对齐 SillyTavern `prompt_order` 里的槽位概念）。
  *
  * 导入时各段被保留为独立字段，因此可以逐段开关、重排——而不再是压平后不可分的一条字符串。
- * 见 `docs/peer-apps-benchmark.md` §6.2 ④ / §6.7 ⑤。
+ * 见 私有仓记录·前期调研 §6.2 ④ / §6.7 ⑤。
  */
 @Serializable
 enum class CardSlot {
@@ -481,7 +481,7 @@ enum class InjectionPosition {
  * 次要关键词的匹配逻辑（对齐 SillyTavern `world_info_logic`，`world-info.js:33-38`）。
  *
  * 世界书的**过度触发**防护：主键命中后，再用次要键二次收窄。缺了它，ST 世界里
- * 大量「靠次要键抑制误触发」的条目会只凭主键就注入（见 `docs/peer-apps-benchmark.md` §6.2 ①）。
+ * 大量「靠次要键抑制误触发」的条目会只凭主键就注入（见 私有仓记录·前期调研 §6.2 ①）。
  */
 @Serializable
 enum class SelectiveLogic {
@@ -599,7 +599,7 @@ data class Lorebook(
  *
  * 为什么需要它：此前注入是**一个扁平的全局列表**，无法表达「多套方案共存/切换」
  * （导入第二份 ST 预设会与第一份混在一起，且分不出哪些条目属于谁）。
- * 见 `docs/peer-apps-benchmark.md` §6.2 ④。
+ * 见 私有仓记录·前期调研 §6.2 ④。
  *
  * **与 [PromptInjection.ModeInjection] 的关系**：预设是**容器**（分组 + 名称 + 启用），
  * 条目仍是原本的 `ModeInjection`（位置/优先级/角色/内容都照旧）⇒ 拼装逻辑完全不变。
@@ -808,7 +808,7 @@ fun List<PromptInjection.RegexInjection>.limitByTokenBudget(
 /**
  * 按「视觉顺序」重写条目的 `priority`，使**列表顺序成为唯一真相**。
  *
- * 背景（`docs/peer-apps-benchmark.md` §6.2 ④）：拼装时 [PromptInjection] 是按
+ * 背景（私有仓记录·前期调研 §6.2 ④）：拼装时 [PromptInjection] 是按
  * `priority` **降序**应用（`PromptInjectionTransformer` 的 `sortedByDescending { priority }`），
  * 列表顺序只在同优先级时作为 tiebreaker 生效 ⇒ 出现过「拖了半天却没变化」的现象
  * （用户给某条设过 priority 后，拖拽对那一条就失效了）。

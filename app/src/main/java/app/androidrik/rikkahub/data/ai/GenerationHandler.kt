@@ -478,7 +478,7 @@ class GenerationHandler(
                         Log.i(TAG, "streamText: empty visible reply, requesting visible answer once")
                         continue
                     }
-                    // 续写（本批新增，见 docs/peer-apps-benchmark.md §四.7 D）：输出不完整时
+                    // 续写（本批新增，见 私有仓记录·前期调研 §四.7 D）：输出不完整时
                     // 就地从停处接着写，续写追加到**同一条助手消息**（不新建候选、不重发全轮）。
                     //
                     // 两类成因的策略不同（成本权衡）：

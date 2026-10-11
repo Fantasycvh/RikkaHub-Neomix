@@ -42,7 +42,7 @@ fun parseLoopGuardSensitivity(name: String?): LoopGuardSensitivity =
  * 一直在调同一个东西、最后什么也没说」。本护栏在**同一签名于滑动窗口内重复达阈值**时给出
  * 停止判定，让这一轮提前、可见地结束，而不是闷跑到步数上限。
  *
- * 出处：`docs/peer-apps-benchmark.md` 附录 + `docs/handoff-2026-09-04.md` 待办
+ * 出处：私有仓记录·前期调研 附录 + 私有仓记录·交接 待办
  * 「LoopGuard + forget 补丁」。三条约束照搬自同源实现，改之前先读那份文档：
  *
  * 1. **用滑动窗口，不用「连续相同」**：模型常在一次响应里下发多条并行调用

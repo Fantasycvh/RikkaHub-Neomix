@@ -885,7 +885,7 @@ data class Settings(
      * 改变用户既有的注入量，那是不可接受的默认值变更，所以由用户显式开启。
      * 超预算时按 priority 降序裁剪；常驻条目（constantActive）不计预算。
      *
-     * 见 `docs/peer-apps-benchmark.md` §6.2 ③。
+     * 见 私有仓记录·前期调研 §6.2 ③。
      */
     val lorebookInjectBudgetTokens: Int = DEFAULT_LOREBOOK_BUDGET_TOKENS,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
@@ -964,7 +964,7 @@ data class Settings(
      *
      * 刻意做成计算属性而非存储字段：下游（`PromptInjectionTransformer`、Web API 的
      * id 校验、web-ui 的勾选列表、`ExtensionSelector`）全都按「扁平条目列表」消费，
-     * 这样**改容器结构不需要动它们任何一处**。见 `docs/peer-apps-benchmark.md` §6.2 ④。
+     * 这样**改容器结构不需要动它们任何一处**。见 私有仓记录·前期调研 §6.2 ④。
      */
     val modeInjections: List<PromptInjection.ModeInjection>
         get() = promptPresets.flatMap { it.entries }

@@ -35,7 +35,7 @@ Updates:
   其中架构用 Gradle splits 的 ABI 名（arm64-v8a）；发布前将构建产物复制到 `app/release/` 并按此重命名
 - release标题使用版本号, 描述使用更新日志
 - **tag 名带 `v` 前缀**（如 `v1.0.5`）——近期各版本（v1.0.0 起）均如此，保持一致
-- 命令固定带 `-R androidrik/rikka2-my_feature_open`（gh 默认指向上游时不会误发到上游）
+- 命令固定带 `-R Fantasycvh/RikkaHub-Neomix`（gh 默认指向上游时不会误发到上游）
 - **创建分两步**（`gh release create <tag> <apk>` 一次性传 76MB 资产偶发挂起、asset 为空）：
   1. `gh release create <tag> --draft --title "v<ver> (<code>)" --notes-file <绝对路径>`
   2. `gh release upload <tag> "app/release/Neomix-<ver>-arm64-v8a.apk"`

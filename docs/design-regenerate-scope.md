@@ -170,7 +170,7 @@ node.copy(messages = node.messages + UIMessage(role = node.role, parts = process
   判定；用户分支 `subList` 截断后 `boundaryNodeId` 指向的节点消失即失效；
   `CompressionWindowTest` 已有 `regenerating a node within area invalidates checkpoint` 用例
   （构造新候选 + 切 `selectIndex` → 断言失效）。
-- **⚠️ 三处文档过时**：`handoff-2026-09-04.md:74`、`roadmap.md:556/558` 仍写
+- **⚠️ 三处文档过时**：私有仓记录·交接:74`、私有仓记录·规划:556/558` 仍写
   「已知限制：重新生成边界内消息未触发失效（影响微妙）」——该限制写于**指纹校验之前**，
   `bbba9ba8` 已覆盖，属**假限制**，会误导后续排查，应清理。
 - **会话列表膨胀有界**：同一截断点重复操作时下游已空，无需再截断。

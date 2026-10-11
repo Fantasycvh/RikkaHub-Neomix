@@ -1,4 +1,4 @@
-# RikkaHub Plus 应用图标 · 风格描述与生成指南
+# RikkaHub Neomix 应用图标 · 风格描述与生成指南
 
 > 用于外部 AI 生图工具（Midjourney / SD / 即梦 / DALL·E 等）生成应用图标的风格基准。
 > 生成稿需满足 Android adaptive icon 工程约束（见第三节），否则需后处理。
@@ -7,7 +7,7 @@
 
 ## 一、项目定位（生成时的语义锚点）
 
-- **产品**：RikkaHub Plus —— 原生 Android LLM 聊天客户端（fork 自 RikkaHub）
+- **产品**：RikkaHub Neomix —— 原生 Android LLM 聊天客户端（fork 自 RikkaHub）
 - **核心**：多提供商 AI 对话（OpenAI / Claude / Google 兼容接口）、Material You 设计、Workspace 沙箱、MCP 扩展、隐私优先
 - **气质关键词**：AI 对话 · 智能核心 · 现代简洁 · 科技感 · 沉稳不花哨 · 原生质感
 - **应传达**：一眼看出是"AI 助手 / 对话"类应用，而非游戏或工具

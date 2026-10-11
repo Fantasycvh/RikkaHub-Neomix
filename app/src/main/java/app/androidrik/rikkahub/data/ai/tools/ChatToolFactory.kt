@@ -63,7 +63,7 @@ internal fun memoryToolNeedsApproval(assistant: Assistant, action: String): Bool
  *
  * 迁移自 `ChatService` 的内联 `buildList` 与 `GenerationHandler` 内叠加的记忆工具——
  * 原先装配分散在两处（记忆工具在生成循环内层），集中后新增装配方（MCP host、
- * Agent/工作流入口等）只需改这里。见 `docs/upstream-analysis.md`「注意点」第 9 条。
+ * Agent/工作流入口等）只需改这里。见 私有仓记录·上游分析「注意点」第 9 条。
  *
  * 与上游的差异：MCP 工具名沿用 fork 的 [McpNameSanitizer] **净化去重**，而非上游的
  * `InvalidMcpServerNamesException` 抛错——前者允许中文等非 ASCII 服务器名（有用户可见收益）。

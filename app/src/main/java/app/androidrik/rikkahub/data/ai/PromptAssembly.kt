@@ -19,7 +19,7 @@ import app.androidrik.rikkahub.data.model.renderCardSlotBlock
 /**
  * 发送给 provider 的消息组装——**真实请求与「拼装预览」的唯一共同来源**。
  *
- * 背景（`docs/peer-apps-benchmark.md` §6.7 ③）：原先这段组装内联在
+ * 背景（私有仓记录·前期调研 §6.7 ③）：原先这段组装内联在
  * [GenerationHandler.generateInternal] 里，任何「预览」只能另写一份，而两份实现必然漂移
  * ——预览会显示一个与真实请求不同的东西，比没有预览更糟（社区讨论里 Tavo 的
  * 「实际拼装后提示词」正是这个价值点）。
@@ -197,7 +197,7 @@ internal fun joinSystemBlocks(blocks: List<SystemBlock>): String {
  * 组装 system 消息正文。
  *
  * 顺序即前缀缓存的稳定性来源：**任何一段内容变化都会作废整段前缀缓存**（system 在位置 0）。
- * 调用方改动此处顺序前请先读 `docs/peer-apps-benchmark.md` §6.7 ④。
+ * 调用方改动此处顺序前请先读 私有仓记录·前期调研 §6.7 ④。
  *
  * 实现为 [buildSystemBlocks] 经 [joinSystemBlocks] 的连接（逐字节契约见其 kdoc）。
  */

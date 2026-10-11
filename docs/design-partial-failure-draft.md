@@ -1,7 +1,7 @@
 # 设计：生成失败时保留半截回复为可见草稿（#1812 对策）
 
 > 状态：**已实现，真机验证通过（3/3，2026-09-06 闭环）**（2026-09-04 实现；同批吸收 B1 空 tool schema `e8293d35` / B3 workspace stdin EOF `b62d29d1`）。半截阈值已可配置化：`RetrySetting.partialOutputMinChars`（默认 50，`e8e9d4e5`）。真机确认：①切对话回来生成内容不丢（#1820 缓解生效）；②断网/飞行模式零输出自动重试照旧；③弱网断流后「生成中断」横幅可见、半截内容保留。验证主体完成，项状态从『待真机测试』转为『已验证』
-> **2026-10-04 扩展（半截/中断主题的第二批，见 `peer-apps-benchmark.md` §四.7）**：本设计只覆盖**异常路径**（失败重试耗尽），
+> **2026-10-04 扩展（半截/中断主题的第二批，见 私有仓记录·前期调研 §四.7）**：本设计只覆盖**异常路径**（失败重试耗尽），
 > 三处相邻缺口当时未治，现已补齐：①**裸断流**（网关提前关流、无异常）此前被当正常收尾 ⇒ 现
 > `MessageChunk.explicitEnd` 区分显式结束，`UIMessage.finishIncomplete/finishReason` 落地（`7973da13`）；
 > ②**崩溃丢失**（流式内容纯内存，也是本设计「问题解剖」第 1 条的直接后果）⇒ 流式检查点每 2 秒落库
@@ -79,4 +79,4 @@ catch `GenerationPartialFailureException` 时：
 2. 第 2 层：ChatService 落草稿 + 立即持久化（复用 MessageNode 候选机制）；
 3. 第 3 层 A：注解横幅 UI（重试走现有 regenerate）。
 
-关联：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，含 `41353567` 关闭开关评估）、[peer-apps-benchmark.md](peer-apps-benchmark.md)（rikkahub-agent isUiNotice 参考）。
+关联：私有仓记录·上游分析（上游综合分析，含 `41353567` 关闭开关评估）、私有仓记录·前期调研（rikkahub-agent isUiNotice 参考）。

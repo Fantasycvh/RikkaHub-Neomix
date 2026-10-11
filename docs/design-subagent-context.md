@@ -21,7 +21,7 @@
 
 ### 1.1 三处需要改动的装配点（已核实）
 
-若子代理成为新的生成发起方，它会撞上本仓**集中式工具装配**的设计——这一点**已有预判**，见 `docs/upstream-analysis.md` 注意点 9「工具装配方盘点」：
+若子代理成为新的生成发起方，它会撞上本仓**集中式工具装配**的设计——这一点**已有预判**，见 私有仓记录·上游分析 注意点 9「工具装配方盘点」：
 
 - **`ChatToolFactory.createTools`（唯一装配点）**：搜索 / 本地工具 8 类 / 最近对话 / 工作区 / 技能安装 / 已启用技能 / MCP 动态循环。
 - **`GenerationHandler.generateInternal`＝第二装配点**：在传入 `tools` 之上再叠 `buildMemoryTools`（含按 action 分档的 `needsApproval`）。
@@ -71,11 +71,11 @@
 
 ⇒ 复发面是 **15 处**（12 列表 + 3 聚合），且**每一处的失败都是静默的**。
 
-按本仓教训（「应选让错误不可能发生的形状」，见 `docs/upstream-analysis.md` 注意点），此风险需在 §七.1 拍板时正面权衡。
+按本仓教训（「应选让错误不可能发生的形状」，见 私有仓记录·上游分析 注意点），此风险需在 §七.1 拍板时正面权衡。
 
 ### 2.4 预算与防循环（~~有硬性前置~~ **前置已满足 2026-09-26**）
 
-**~~`LoopGuard` 与 `ContextBudgetPlanner` 目前都未实现~~**。**LoopGuard 已落地**（`2452f665`：同签名窗口/双阈值/优雅停止）且 **rootfs 单轮总预算也已落地**（`947f92a6`：`WorkspaceTurnBudget`，workspace_* 输出字符 + 步数双上限、256K chars/64 步）——**子代理的刹车已齐**（见 `docs/handoff-2026-09-04.md`）。
+**~~`LoopGuard` 与 `ContextBudgetPlanner` 目前都未实现~~**。**LoopGuard 已落地**（`2452f665`：同签名窗口/双阈值/优雅停止）且 **rootfs 单轮总预算也已落地**（`947f92a6`：`WorkspaceTurnBudget`，workspace_* 输出字符 + 步数双上限、256K chars/64 步）——**子代理的刹车已齐**（见 私有仓记录·交接）。
 
 ⇒ 剩余待做只有 `ContextBudgetPlanner`（usage 锚点估算，peer ②）——它影响的是**预算切分的精度**（子代理该分多少），不是有无刹车；可在 Phase 2（多 profile / 并行）前补，不阻塞 Phase 1 串行单 run。子代理运行实例自建 `ToolCallLoopGuard` + `WorkspaceTurnBudget`（run 自身就是「一轮」的边界，无需挂 ConversationSession）。
 
@@ -377,7 +377,7 @@ Phase 1 已落地（§九）。本节记录**下一步**：把 §9.5 明确推�
 **期间修掉一处真缺陷（同批提交）**：`enableSubagentDispatch` / `subagentPresets` 是 Settings
 **顶层平铺字段**，上一轮漏了 PreferencesStore 三件套 ⇒ 只在内存里活着、**重启即回默认 false**、
 装配条件静默不成立。发现路径=先看装配日志的**段列表**（没有 `subagent` 段）→ 查条件依赖的设置值
-→ 拉 `settings.preferences_pb` 发现 key 根本不在文件里。详见 `docs/handoff-2026-09-04.md` 与记忆
+→ 拉 `settings.preferences_pb` 发现 key 根本不在文件里。详见 私有仓记录·交接 与记忆
 `settings-persistence-trio`。**教训**：开关型顶层字段必须做一次「改 → 杀进程 → 重启 → 看效果」。
 
 ### 10.7 这一步之后仍缺什么（Phase 2 剩余）
@@ -553,7 +553,7 @@ while (true) {
 > ≥2 个不同字符**（否则长 `====` / `────` 分隔线被误杀）。另：调用内断流必须走「内层捕获、
 > 不回滚快照、不重试、不 fallback」的路径（`GenerationHandler` 的 `ThinkingDegenerationCut`），
 > 否则护栏的「防失控」会变成「丢内容」或「给已退化的模型重新计费」。三形态来源与标定数据见
-> `docs/roadmap.md` 2026-10-08/09 两节 + `docs/upstream-analysis.md` 注意点 15。
+> 私有仓记录·规划 2026-10-08/09 两节 + 私有仓记录·上游分析 注意点 15。
 
 ### 12.3 验证状态（诚实记账）
 
@@ -573,6 +573,6 @@ while (true) {
 ## 附：信息可信度说明
 
 - **本仓事实**：均经代码核实，含行号引用。
-- **rikkahub-agent**：来自**我们自己的笔记**（`docs/peer-apps-benchmark.md` §一：`subagent/` = `SubAgentProfile`/`Request`/`Run` 三层 + `maxTrips` + `timeout` 双限制；`docs/roadmap.md:398-403`：5 内置 profile + 嵌套 + 并行派发 + 进度可视化；`data/agentrun/` 五入口共用账本）。**属二手**（读其源码树所得），比通用框架具体，但未逐行核对。
+- **rikkahub-agent**：来自**我们自己的笔记**（私有仓记录·前期调研 §一：`subagent/` = `SubAgentProfile`/`Request`/`Run` 三层 + `maxTrips` + `timeout` 双限制；私有仓记录·规划:398-403`：5 内置 profile + 嵌套 + 并行派发 + 进度可视化；`data/agentrun/` 五入口共用账本）。**属二手**（读其源码树所得），比通用框架具体，但未逐行核对。
 - **opencode / codex / Cherry Studio**：**本文未引用其实现细节**——我没有核实过它们各自的子代理实现，只知其通用形态（父派任务、独立上下文、结构化回传）。相关论述一律停留在「通用方案」层面，以免编造。若需具体借鉴，需先实地核查。
 - **与既有 backlog 的竞争关系**（诚实评估）：本仓待办里已有终端 ③⑤⑦⑧、rootfs 四项改进、LoopGuard + forget、ContextBudgetPlanner、备份 P0 等**用户直接可见**的项。子代理在本仓属「锦上添花」而非「填坑」——若与之竞争排期，**优先级应低于上述各项**。

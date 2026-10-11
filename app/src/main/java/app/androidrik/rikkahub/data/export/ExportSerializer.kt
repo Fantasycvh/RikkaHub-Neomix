@@ -331,7 +331,7 @@ internal fun parseSillyTavernLorebook(json: String, fallbackName: String?): Lore
 /**
  * ST 条目 → fork [PromptInjection.RegexInjection]（**纯函数**，便于单测直接覆盖导入保真）。
  *
- * 三处保真要点（缺一即「导入后行为不等价」，见 `docs/peer-apps-benchmark.md` §6.3）：
+ * 三处保真要点（缺一即「导入后行为不等价」，见 私有仓记录·前期调研 §6.3）：
  * 1. `key` / `keysecondary` 里的 `/pattern/flags` 都要识别为正则（[parseStKeywords]）；
  * 2. **保留次要键**——这是 ST 抑制误触发的主要机制，丢弃即过度注入；
  * 3. `selective: false` 时 ST 不做二次判定（`world-info.js:4925`）⇒ 次要键整体作废，

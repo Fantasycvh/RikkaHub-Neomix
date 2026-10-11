@@ -156,15 +156,15 @@ fun SettingAboutPage() {
                         modifier = Modifier.padding(horizontal = 8.dp),
                     ) {
                         item(
-                            onClick = { context.openUrl("https://github.com/androidrik/rikka2-my_feature_open") },
+                            onClick = { context.openUrl("https://github.com/Fantasycvh/RikkaHub-Neomix") },
                             leadingContent = { Icon(HugeIcons.Github, null) },
-                            supportingContent = { Text("https://github.com/androidrik/rikka2-my_feature_open") },
+                            supportingContent = { Text("https://github.com/Fantasycvh/RikkaHub-Neomix") },
                             headlineContent = { Text(stringResource(R.string.about_page_github)) },
                         )
                         item(
-                            onClick = { context.openUrl("https://github.com/androidrik/rikka2-my_feature_open/blob/master/LICENSE") },
+                            onClick = { context.openUrl("https://github.com/Fantasycvh/RikkaHub-Neomix/blob/master/LICENSE") },
                             leadingContent = { Icon(HugeIcons.File02, null) },
-                            supportingContent = { Text("https://github.com/androidrik/rikka2-my_feature_open/blob/master/LICENSE") },
+                            supportingContent = { Text("https://github.com/Fantasycvh/RikkaHub-Neomix/blob/master/LICENSE") },
                             headlineContent = { Text(stringResource(R.string.about_page_license)) },
                         )
                     }

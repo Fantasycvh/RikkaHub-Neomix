@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * 角色卡**槽位**视图的行为测试（顺序 / 开关 / 重建 / 漂移判定）。
  *
- * 动机（`docs/peer-apps-benchmark.md` §6.7 ⑤）：ST 的 `prompt_order` 把
+ * 动机（私有仓记录·前期调研 §6.7 ⑤）：ST 的 `prompt_order` 把
  * charDescription/scenario/… 当作**可单独开关、可重排的槽位**；fork 导入时曾把它们
  * 压成一条不可分的字符串，槽位信息当场丢失。本文件锁住「现在可以开关与重排」。
  *

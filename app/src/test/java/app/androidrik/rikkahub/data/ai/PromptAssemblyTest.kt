@@ -24,7 +24,7 @@ import org.junit.Test
  * 重点不是「能拼出东西」，而是**预览与真实请求不可漂移**：`PromptInspector` 调用
  * [buildInternalMessages]，`GenerationHandler` 也调用它——这些用例把该函数的契约钉住，
  * 一旦有人改真实路径的组装顺序/内容而没同步预览，这里会红。
- * 见 `docs/peer-apps-benchmark.md` §6.7 ③。
+ * 见 私有仓记录·前期调研 §6.7 ③。
  */
 class PromptAssemblyTest {
 

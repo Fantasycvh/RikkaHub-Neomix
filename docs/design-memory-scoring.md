@@ -1,7 +1,7 @@
 # 记忆注入打分校准 + 预算截断（设计稿）
 
 > 状态：**已实现（`69453f5e`），真机验证通过**（2026-09-15，六项决策见 §二）。
-> 来源：Yuihub 记忆机制借鉴评估（`peer-apps-benchmark.md` §四）+ 与本仓代码/真实数据的逐条核对。
+> 来源：Yuihub 记忆机制借鉴评估（私有仓记录·前期调研 §四）+ 与本仓代码/真实数据的逐条核对。
 > 前序：`0580c6a6` 修了 `take(60)` 取最旧的缺陷（改取最新 60 条 + DAO 显式 `ORDER BY`）；本设计是它的下一步——从「取最新」升级为「取最该取」。
 >
 > **实现结果**：DB 28→29 迁移 56 行全回填、app 无崩溃；**模型实际回 `{"action":"create","content":"...","importance":0.7}`**——读了 schema 并给出合理档位（非默认 0.6、非堆高的 0.9），§四末「最大不确定项」初步解消。单测 466 项仅 `MarkdownMathParseTest` 既有失败（stash 双向验证确认与本次无关）。
@@ -229,4 +229,4 @@ memoryScore       = effectiveWeight × (0.55 + 0.45 × activity)
 
 详见 `docs/design-memory-discipline.md` §4.6（含「清单层点选 ⇒ 升分」的自我强化回路评估）。
 
-相关：`peer-apps-benchmark.md` §四（Yuihub 评估原文）、`design-auto-compaction.md`（前缀稳定性约束）、`roadmap.md`「一、中等价值」（注入缺陷修复记录）。
+相关：私有仓记录·前期调研 §四（Yuihub 评估原文）、`design-auto-compaction.md`（前缀稳定性约束）、私有仓记录·规划「一、中等价值」（注入缺陷修复记录）。

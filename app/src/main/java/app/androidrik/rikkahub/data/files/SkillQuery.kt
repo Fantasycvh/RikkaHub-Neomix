@@ -5,7 +5,7 @@ package app.androidrik.rikkahub.data.files
  *
  * 只有两个维度：搜索词（名称 + 描述）与单个分类。**不做多标签**——标签在 SKILL.md 里
  * 是手写字段、没有可放标签池的 DB 表，重命名标签就要批量改文件，收益不划算
- * （评估见 `docs/upstream-analysis.md` §#1901）。
+ * （评估见 私有仓记录·上游分析 §#1901）。
  */
 sealed interface SkillCategoryFilter {
     /** 不按分类过滤。 */

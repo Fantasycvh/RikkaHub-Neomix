@@ -1,7 +1,7 @@
 # 记忆 V3：做梦（整理）框架
 
 > 来源：上游 PR #2130「记忆改为文件库 + 空闲后整理（做梦）」四块拆分里的**第三块**（评估见
-> `upstream-analysis.md` 2026-10-08 节）。该块**与文件模型无关**：`MemoryConsolidationScheduler`
+> 私有仓记录·上游分析 2026-10-08 节）。该块**与文件模型无关**：`MemoryConsolidationScheduler`
 > 只认 `memoryId` + `MemoryConsolidationWorker` 接口，所以可以先落到本仓的记录模型上。
 >
 > 现状（2026-10-09）：**框架已落地**——调度策略 + 接口契约 + 保活抽象 + 22 项虚拟时间测试（§8）；
@@ -455,4 +455,4 @@ main (Runnable)
 - **V4 Markdown 文件库**：等上游 #2130 合并/稳定后再评。
 
 相关：`docs/design-memory-discipline.md`（V1 纪律 / V2 渐进披露 / §4.6 信用记账）、
-`docs/design-memory-scoring.md`（打分口径）、`upstream-analysis.md` 2026-10-08 节（#2130 评估与四块拆分）。
+`docs/design-memory-scoring.md`（打分口径）、私有仓记录·上游分析 2026-10-08 节（#2130 评估与四块拆分）。

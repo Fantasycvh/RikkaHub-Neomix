@@ -19,7 +19,7 @@ const val DEFAULT_MEMORY_BUDGET_TOKENS = 8_000
  * 世界书注入默认预算（token）。
  *
  * **默认 0 = 不限制**（保持 fork 旧行为）。ST 的默认是「上下文的 25%」，直接照搬会
- * **静默**削减用户既有注入量，故改为显式开启。见 `docs/peer-apps-benchmark.md` §6.2 ③。
+ * **静默**削减用户既有注入量，故改为显式开启。见 私有仓记录·前期调研 §6.2 ③。
  */
 const val DEFAULT_LOREBOOK_BUDGET_TOKENS = 0
 
