@@ -1938,7 +1938,11 @@ Page 2:","firstUnit":1,"lastUnit":2,
     (`6c6058cb…2856`) 一致 ⇒ 上传的确实是本次构建。
   - 真机冒烟（release 包原地升级 292 → 293）：零 FATAL、DB **35 → 36**（工作区读取上限那次迁移在 release
     库上也跑了）、记忆 54→54、会话 249→249、新列默认 `8388608`。
-  - 发布与否仍待用户决定（`gh release edit v1.0.26 --draft=false --latest`；tag 已指向该提交）。
+  - 发布与否仍待用户决定（`gh release edit v1.0.26 --draft=false --latest`）。
+  - ⚠️ **转正前必须再对一次 tag 落点**：本仓约定 tag 指向"转正那一刻的分支 HEAD"，而草稿阶段每推一个提交
+    （哪怕是文档）都会让 tag 落后一格 ⇒ 转正时先 `git tag -f v1.0.26 HEAD && git push -f origin v1.0.26`，
+    再发布，最后 `git ls-remote --tags origin v1.0.26` 与 `git rev-parse HEAD` 比对（这是唯一可信的收尾核对，
+    第 9 条）。
 - 2026-10-09：**发布 v1.0.26 (292) 草稿**（`113b3188c` + tag `v1.0.26`，草稿资产
   `RikkaHub.Plus-1.0.26-arm64-v8a.apk`，距上一版 `v1.0.25 (291)` 共 **34 个提交**）。
   - 内容：记忆三块（V1 纪律与安全 / V2 渐进披露与读取遥测 / V3 做梦整理）+ 信用记账 +
