@@ -1844,8 +1844,15 @@ data class ApiKeyEntry(
     用真实 zip 夹具测 DOCX 分块边界、PPTX 按号取张（含 slide2/slide10 的数字序 vs 字符串序）、
     EPUB spine 顺序与缺 OPF 报错；app 侧测结果拼装（空抽取必带说明、两种截断来源、按整行裁字节）；
     UI 侧钉"文档格式不得被归为 TEXT"（否则点开会用文本编辑器打开二进制）；
-  - ⚠️ **PDF 抽取未在 JVM 验证**：`PdfParser` 走 MuPDF 原生库，JVM 单测跑不了（真机路径未端到端验证过，
-    因为需要模型真正调用工具；DOCX/PPTX/EPUB 与 PDF 只差原生调用那一层，其余同一套 JVM 已测代码）；
+  - **PDF 已在真机端到端验证**（2026-10-09，用户实测 + 从 debug 包 DB 读到的工具回执原文，`message_node`）：
+    对一份 **154 页**的 PDF（`/workspace/Anthropic-Detecting-and-countering-091026.pdf`）连续两次调用，
+    回执分别是 `{"format":"pdf","unit":"page","text":"Page 1:…","firstUnit":1,"lastUnit":10,
+    "totalUnits":154,"truncated":true}` 与 `{"…","text":"Page 143…","firstUnit":143,"lastUnit":154,
+    "totalUnits":154,"truncated":false}`——即：按扩展名识别 ✔、按页抽（`Page N:` 前缀）✔、MuPDF 真实总页数
+    154 ✔、**分页真被用起来**（先 1–10 页并如实报 truncated，再跳到 143–154 页到末尾报 false）✔、
+    回执形状与设计一致 ✔；
+  - ⚠️ **PDF 仍然无法在 JVM 验证**：`PdfParser` 走 MuPDF 原生库，JVM 单测跑不了（所以它是唯一没有
+    自动化测试覆盖的格式；DOCX/PPTX/EPUB 与它只差原生调用那一层，其余是同一套已被 JVM 覆盖的代码）；
   - ⚠️ 本项**不在** `v1.0.26 (292)` 草稿内（草稿构建于 `113b3188c`），进下一次发布（293）；
   - 真机冒烟：debug 包启动零 FATAL、`user_version` 36、工作区 2→2、会话 251。
 - 2026-10-09：**`workspace_read_file` 支持行窗口（offset/limit）+ 单次读取上限按工作区可配**。
