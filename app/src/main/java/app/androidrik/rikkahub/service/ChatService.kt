@@ -42,6 +42,7 @@ import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.ui.appendInterruptionNotice
 import app.androidrik.ai.ui.isOutputLimitTruncation
+import app.androidrik.ai.ui.isProviderSigned
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
@@ -277,7 +278,12 @@ internal fun updateMessageReasoningInNodes(
                 } else {
                     var touched = false
                     val newParts = msg.parts.map { part ->
-                        if (part is UIMessagePart.Reasoning && part.createdAt == reasoningCreatedAt) {
+                        if (part is UIMessagePart.Reasoning &&
+                            part.createdAt == reasoningCreatedAt &&
+                            // Claude 签名 thinking / Gemini thoughtSignature：必须原样回传，编辑会被上游拒绝
+                            // ⇒ 纯函数核直接拒绝（无操作）；UI 侧编辑入口同时置灰（2026-10-12 由「只警告」改为「禁用」）。
+                            !part.isProviderSigned()
+                        ) {
                             touched = true
                             part.copy(reasoning = reasoningText)
                         } else {

@@ -66,7 +66,9 @@ import app.androidrik.rikkahub.data.model.replaceRegexes
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThoughtScope
 import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.modifier.onClick
+import com.dokar.sonner.ToastType
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.utils.extractThinkingTitle
 import kotlin.time.Clock
@@ -233,6 +235,11 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
     collapsedAdaptiveWidth: Boolean = false,
     /** #1929 编辑思考过程的入口回调；null = 不显示编辑入口（无消息上下文的场景） */
     onEditRequest: (() -> Unit)? = null,
+    /**
+     * 禁用编辑入口（置灰 + 点击给出原因）：Claude 签名 `thinking` / `redacted_thinking` 与
+     * Gemini `thoughtSignature` 必须**原样回传**，改过会被上游拒绝（判据 = `isProviderSigned()`）。
+     */
+    editDisabled: Boolean = false,
 ) {
     val (state, loading) = rememberReasoningState(reasoning)
     val thinkingTitle = reasoning.reasoning.extractThinkingTitle()
@@ -272,6 +279,7 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
                 } else null,
                 showEdit = !loading && onEditRequest != null,
                 onEditRequest = onEditRequest,
+                editDisabled = editDisabled,
                 chatFontFamily = chatFontFamily,
             )
         },
@@ -381,6 +389,7 @@ private fun RowOfExtra(
     durationText: String?,
     showEdit: Boolean,
     onEditRequest: (() -> Unit)?,
+    editDisabled: Boolean = false,
     chatFontFamily: FontFamily?,
 ) {
     if (durationText == null && !showEdit) return
@@ -394,6 +403,8 @@ private fun RowOfExtra(
             )
         }
         if (showEdit) {
+            val toaster = LocalToaster.current
+            val editDisabledHint = stringResource(R.string.chat_message_reasoning_edit_disabled_signed)
             // #1929：编辑思考过程。只放表头不放消息 ⋮ 菜单——那里已有「编辑」指代
             // 整条消息，两个"编辑"并排会歧义；流式生成中不显示（会被后续 chunk 覆盖）。
             Icon(
@@ -402,8 +413,21 @@ private fun RowOfExtra(
                 modifier = Modifier
                     .padding(start = 6.dp)
                     .size(14.dp)
-                    .onClick(onClick = onEditRequest ?: {}),
-                tint = MaterialTheme.colorScheme.secondary,
+                    .onClick(
+                        onClick = {
+                            if (editDisabled) {
+                                // 签名块禁用编辑：只解释原因，不打开编辑器
+                                toaster.show(message = editDisabledHint, type = ToastType.Warning)
+                            } else {
+                                onEditRequest?.invoke()
+                            }
+                        }
+                    ),
+                tint = if (editDisabled) {
+                    MaterialTheme.colorScheme.outline
+                } else {
+                    MaterialTheme.colorScheme.secondary
+                }
             )
         }
     }

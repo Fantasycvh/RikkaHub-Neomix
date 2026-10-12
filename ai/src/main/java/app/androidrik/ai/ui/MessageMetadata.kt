@@ -85,8 +85,9 @@ inline fun <reified T : PartMetadata> T.toMetadata(): JsonObject =
  * 该推理块是否由**上游签名/加密**：Claude 的 `thinking` signature / `redacted_thinking` 数据，或 Gemini 的
  * `thoughtSignature`。
  *
- * 用途：上游规则是「**必须原样回传，修改过的块会被拒**」⇒ 界面在编辑这类块时要提示用户
- * 「改了下一次请求可能被拒绝」（#1929 的编辑入口对来源不敏感，见 `ChatMessageReasoning.kt`）。
+ * 用途：上游规则是「**必须原样回传，修改过的块会被拒**」⇒ 对这类块**禁用编辑**
+ * （2026-10-12 起：`ChatMessageReasoning` 的编辑入口置灰并给出原因；
+ * `updateMessageReasoningInNodes` 的纯函数核也直接拒绝改写）。
  *
  * 注意与「会回传」不等价：OpenAI 兼容路径没有签名概念，但编辑后的推理同样会以 `reasoning_content`
  * 回传（`includeHistoryReasoning` 默认 true）——那是另一类影响（前缀缓存 / 内容污染），不在本判据范围内。

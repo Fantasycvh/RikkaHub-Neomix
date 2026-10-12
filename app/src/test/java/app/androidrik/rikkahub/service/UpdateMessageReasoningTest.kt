@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.service
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.toMetadata
 import app.androidrik.rikkahub.data.model.MessageNode
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -35,6 +36,28 @@ class UpdateMessageReasoningTest {
     )
 
     private fun nodeOf(vararg messages: UIMessage) = MessageNode(messages = messages.toList())
+
+    @Test
+    fun `refuses to edit provider-signed reasoning`() {
+        // Claude 签名 thinking / Gemini thoughtSignature：上游要求原样回传 ⇒ 纯函数核必须拒绝
+        val signed = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(
+                    reasoning = "signed reasoning",
+                    createdAt = t0,
+                    finishedAt = t1,
+                    metadata = app.androidrik.ai.ui.ClaudeReasoningMetadata(signature = "sig-abc").toMetadata(),
+                ),
+                UIMessagePart.Text("answer"),
+            ),
+        )
+        val node = nodeOf(signed)
+        assertNull(
+            "签名块的编辑必须被拒绝（无操作 = null）",
+            updateMessageReasoningInNodes(listOf(node), signed.id, t0, "edited"),
+        )
+    }
 
     @Test
     fun `replaces only target reasoning text in place`() {

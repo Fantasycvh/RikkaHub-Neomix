@@ -420,6 +420,8 @@ private fun MessagePartsBlock(
                                         onEditRequest = onReasoningEditRequest?.let { cb ->
                                             { cb(step.reasoning) }
                                         },
+                                        // 签名块（Claude thinking / Gemini thoughtSignature）禁用编辑
+                                        editDisabled = step.reasoning.isProviderSigned(),
                                     )
                                 }
                             }
