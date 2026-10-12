@@ -1,6 +1,6 @@
 # 对话导入导出（自家格式往返）设计稿
 
-> 状态：**阶段 1+2 均已实现**（2026-09-16；阶段 1 `0f8c289d`，阶段 2 `c4a02ef5`）。
+> 状态：**阶段 1+2 均已实现**（2026-09-16；阶段 1 `0f8c289d`，阶段 2 `c4a02ef5`）。 **本仓真机往返验证通过（含附件 zip：导出→导入，附件按内容哈希条目往返）**（2026-10-12，用户确认）。
 > 真机端到端验证通过（导出 8 附件/0 缺失、sha256 全一致；导入 8/8 恢复、全换新名、内容哈希一致）。
 > 代码见 `ConversationSerializer` / `ConversationArchive` / `ExportAttachment` / `ConversationImportRemap` /
 > `ConversationImportConfirmDialog`；单测 `ConversationImportRemapTest` 23 项）。
