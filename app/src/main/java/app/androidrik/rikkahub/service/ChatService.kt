@@ -538,7 +538,7 @@ class ChatService(
         val session = getOrCreateSession(conversationId) // 确保 session 存在
         val conversation = conversationRepo.getConversationById(conversationId)
         if (session.isGenerating) {
-            // **加载守卫**（4701da2f 同族）：生成中的会话内存态比 DB 新——流式内容只走
+            // **加载守卫**（b1273a72 同族）：生成中的会话内存态比 DB 新——流式内容只走
             // updateConversation 纯内存，落库点仅在轮次结束/取消收尾。此时无条件用 DB
             // 覆盖内存会把半截内容静默抹掉（web 路由的消息/编辑/分叉/删除/分支切换等
             // 入口、以及重开会话页都会走到这里）。只保证 session 存在与「当前助手」

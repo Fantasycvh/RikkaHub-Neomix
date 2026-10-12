@@ -1,10 +1,10 @@
 # 对话导入导出（自家格式往返）设计稿
 
-> 状态：**阶段 1+2 均已实现**（2026-09-16；阶段 1 `0f8c289d`，阶段 2 `c4a02ef5`）。 **本仓真机往返验证通过（含附件 zip：导出→导入，附件按内容哈希条目往返）**（2026-10-12，用户确认）。
+> 状态：**阶段 1+2 均已实现**（2026-09-16；阶段 1 `8d383199`，阶段 2 `ccdbb9c7`）。 **本仓真机往返验证通过（含附件 zip：导出→导入，附件按内容哈希条目往返）**（2026-10-12，用户确认）。
 > 真机端到端验证通过（导出 8 附件/0 缺失、sha256 全一致；导入 8/8 恢复、全换新名、内容哈希一致）。
 > 代码见 `ConversationSerializer` / `ConversationArchive` / `ExportAttachment` / `ConversationImportRemap` /
 > `ConversationImportConfirmDialog`；单测 `ConversationImportRemapTest` 23 项）。
-> 统一导入器（Chatbox/CherryStudio + 助手选择）：**已实现 `5a561afa`**（§八，含实测更正：
+> 统一导入器（Chatbox/CherryStudio + 助手选择）：**已实现 `d81da13f`**（§八，含实测更正：
 > Cherry Studio 不导入会话，故只统一外围、保持 providers-only）。
 > 用户决定：**①导入即换新 id（不覆盖）②第一阶段不导出附件，第二阶段改走 zip 原字节（原定 base64 内联已否决）③导入时允许用户选择目标助手**。
 > 关联：`design-backup-workspace-files.md`（整库备份）、`design-favorite-management.md`（同批评估）。
@@ -201,7 +201,7 @@ object ConversationSerializer : ExportSerializer<Conversation> {
 | 助手不存在 | 一律以用户选择为准（§4.4） |
 | FTS 重建 | `MessageFtsManager.indexConversation` |
 
-### 阶段 2（中）：**zip 容器 + 附件原字节** ✅ 已实现 `c4a02ef5`
+### 阶段 2（中）：**zip 容器 + 附件原字节** ✅ 已实现 `ccdbb9c7`
 
 > **决策（2026-09-16）**：容器**始终为 zip**（无裸 JSON 分支），附件走**原字节条目**。
 > **不做 base64 内联**——原稿写的理由是"体积膨胀 33%"，但实核发现更严重的问题（见 §六「阶段 2 的关键约束」）。
@@ -294,7 +294,7 @@ data class ExportFileEntry(
 8. **幂等性**：换新 id 后**重复导入会得到多份副本**（这是决策 1 的直接后果，符合"导入即新建"语义）——
    需在 UI 文案里说清"每次导入都是新副本"。
 
-## 八、统一三种导入器 + 补助手选择 ✅ 已实现 `5a561afa`
+## 八、统一三种导入器 + 补助手选择 ✅ 已实现 `d81da13f`
 
 > **实现时 recon 推翻了本节的一个前提**：**Cherry Studio 导入器根本不导入会话**
 > （全文 0 处 `Conversation` 引用，只读 `data.json` → `llm.providers`；UI 文案本就写"提供商配置"）。

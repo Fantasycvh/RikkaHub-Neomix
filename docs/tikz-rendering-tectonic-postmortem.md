@@ -237,7 +237,7 @@ const pdf = engine.pdf();
 
 - `app/src/main/java/app/androidrik/rikkahub/tikz/TikzRenderer.kt`（~1200 行）：**纯 Kotlin TikZ 子集解析器**，TikZ 源码 → SVG 字符串。覆盖 MVP 子集：`node/coordinate/draw/circle/rectangle/grid/arc/plot/cycle`、`to[bend]`、`.. controls ..`、极坐标/命名坐标/锚点、三种箭头、`fill/thick/dashed/rounded corners`、`tikzcd` 交换图，中文文本原样输出。
 - `ui/components/richtext/TikzJax.kt`（文件名为历史遗留）：TikzRenderer → SVG → AndroidSVG → Picture → Compose Canvas **纯矢量**绘制；无 WebView/wasm/JS；SVG 字符串同时作为导出产物。
-- 防线内建：`MAX_SVG_PIXELS = 20_000`、`MAX_PLOT_ABS = 5_000`（对应第五节崩溃问题的修复，commit `cf5dde6e`/`89819b96`）。
+- 防线内建：`MAX_SVG_PIXELS = 20_000`、`MAX_PLOT_ABS = 5_000`（对应第五节崩溃问题的修复，commit `cc5d8497`/`643f8adc`）。
 
 **四个原始痛点的满足情况**：中文 ✅、矢量 ✅、离线 ✅、同步零依赖 ✅。短板是**覆盖面**——子集之外的语法直接渲染失败，而 AI 输出常踩：positioning 库（`right=of A`）、`\tikzset`/`foreach`/`scope`/`fit`/矩阵、pgfplots（`\begin{axis}`，轴刻度计算必须真 TeX 引擎）、node 文本内 LaTeX 数学（当前 `<text>` escapeXml 直出，观感最差）。
 
@@ -264,7 +264,7 @@ const pdf = engine.pdf();
 
 1. **失败埋点**：TikzRenderer 失败路径按原因分类记录（positioning/foreach/axis/语法其他），用真实失败分布决定 A 路线的扩展优先级。
 2. **node 文本接 jlatexmath**：数学公式是当前观感最差的短板（LaTeX 源码直出）。
-3. **内置系统提示引导**：引导模型输出受支持子集（如 positioning 改显式坐标）——同类先例 `23996bfb`（LaTeX 定界符提示）。
+3. **内置系统提示引导**：引导模型输出受支持子集（如 positioning 改显式坐标）——同类先例 `43982df0`（LaTeX 定界符提示）。
 
 ### 8.4 决策与方案 B 实施草案
 
@@ -303,7 +303,7 @@ POC crate：`tools/tex-poc\`（WSL 内构建于 `~/tex-poc`）。
 
 #### 8.4.2 第 2 步 app 集成结果（2026-08-29，已完成 ✅）
 
-commit `097fcdea`。**instrumented test 3 项全部通过（<device> 真机）**：
+commit `959f50fb`。**instrumented test 3 项全部通过（<device> 真机）**：
 
 | 验证项 | 结果 |
 |---|---|
@@ -320,7 +320,7 @@ commit `097fcdea`。**instrumented test 3 项全部通过（<device> 真机）**
 
 真机耗时（<device> / 骁龙 845）：format 首建后每次编译 **~3.6s**（bundle 加载 0.37s + 编译 ~3s）；下一次优化方向是 bundle 进程常驻与 isolatedProcess 隔离。
 
-#### 8.4.3 扩展 bundle + 字体替换（2026-08-29，已完成 ✅，commit `d8c2a9a3`）
+#### 8.4.3 扩展 bundle + 字体替换（2026-08-29，已完成 ✅，commit `67a3493a`）
 
 真机（<device>）暴露关键缺口后补全：
 
@@ -341,7 +341,7 @@ ormalfont` 重定义为 Droid Sans Fallback 使全文默认可渲染中文（POC
 
 **下载路线的决策反转**：本节期间曾实现按需下载（公开资源仓库 [rikkahub-resources](https://github.com/androidrik/rikkahub-resources) Release v1 + jsDelivr + 2 镜像 4 候选源 + TikzAssets 下载器，WSL 匿名下载校验通过），**按决策回退，改为全部内置 APK**——资源仓库保留作未来 bundle 升级路径（manifest 结构已验证可用）。当时遗留的坑（复用价值）：宿主 dev 包污染 pkg-config、build script 缓存、cargo-ndk v4 panic、AGP 拒绝版本化 .so 文件名（patchelf 改 NEEDED）、adb MSYS 路径转换。
 
-#### 8.4.4 第 3 步 dvisvgm 矢量路径（2026-08-29，POC 完成 ✅，commit `180efcd2`）
+#### 8.4.4 第 3 步 dvisvgm 矢量路径（2026-08-29，POC 完成 ✅，commit `3c8aa088`）
 
 **已验证**（真机 <device>，app 内全链路）：
 
@@ -365,7 +365,7 @@ ormalfont` 重定义为 Droid Sans Fallback 使全文默认可渲染中文（POC
 
 **已知限制（产品化阻断项）**：dvisvgm 与 tectonic 同进程共存，C++ 静态单例/流状态互污染——dvisvgm 运行后 tectonic 的 xdvipdfmx 后续编译失败（`ttbc_output_close` SIGABRT 或 unrecoverable error；version-script 符号隔离不解决）。临时缓解：`TectonicNative.dvisvgmUsed` 进程内单次限制。**根治方案 = isolatedProcess 隔离编译进程（第 4 步）**。
 
-#### 8.4.5 第 4 步 双私有进程隔离（2026-08-29，完成 ✅，commit `1186def7`）
+#### 8.4.5 第 4 步 双私有进程隔离（2026-08-29，完成 ✅，commit `dfbfe222`）
 
 **根治互污染**：TexCompileService（tectonic，`:texcompile` 进程）+ SvgConvertService（dvisvgm，`:svgconvert` 进程），Messenger 协议（MSG_RUN/MSG_RESULT），`IsoServiceClient` bindService+CountDownLatch 同步封装。native 崩溃只杀对应子进程。
 
@@ -386,7 +386,7 @@ ormalfont` 重定义为 Droid Sans Fallback 使全文默认可渲染中文（POC
 2. **isolatedProcess 的 makeApplication 链路仍有问题**（handleCreateService 阶段 `getApplicationContext` on null）→ 放弃 isolatedProcess，改普通私有进程 `android:process=":texcompile"`（同 UID，Application 正常，隔离目标——防 native 崩溃拖垮主进程——不受影响；安全沙箱非本步目标）。
 3. **Service 构造阶段 base context 未 attach**：`Messenger(IncomingHandler(this))` 写在字段初始化 → IncomingHandler 构造里 `applicationContext` NPE（反复崩溃的直接根因）→ messenger 懒初始化到 `onCreate`，Handler 提为文件级类。
 
-#### 8.4.6 移除第①级子集渲染（2026-08-29，commit `13469e1e`）
+#### 8.4.6 移除第①级子集渲染（2026-08-29，commit `6cc1c98c`）
 
 **决策**：TikzJax 统一走 native 引擎（XDV→dvisvgm SVG 矢量 → PDF 位图 → 源码），TikzRenderer 从渲染链移除（文件与单测保留，可随时接回）。
 
@@ -408,13 +408,13 @@ ormalfont` 重定义为 Droid Sans Fallback 使全文默认可渲染中文（POC
 
 | 提交 | 内容 |
 |---|---|
-| `8fec89eb` | 删除第①级遗留代码（TikzRenderer/TikzTelemetry/MathExpr + 4 单测；恢复从历史 `cd7631c6` 取回）；Export.kt（HTML 导出）TikZ 改走 native 同链路（suspend + 占位收集统一编译，失败还原为围栏源码） |
-| `bb3bfcaa` | **SVG 落盘缓存**（TikzSvgCache）：sha256(trim(code)) 内容寻址，原子写；TeX 确定性输出已验证，同源码必同产物。TikzJax/Export 共用。历史消息秒开 |
-| `5870fafe` | tikzcd 支持：bundle v3（+tikz-cd.sty，CTAN）+ wrapDocument 检测自动加载。**经验：宏包缺失症状 = terminal input forbidden** |
-| `02ab2149` | 超长消息/思考部分渲染修复：HeightClamp 语义反转（测量约束原样传递，仅结果异常巨大时 clamp）——旧固定 10000dp 会把 >20 屏的正常内容静默裁剪 |
-| `42b24965` | 短思考后整屏空白：思考卡片 MarkdownBlock 误用 fillMaxSize（LazyColumn item 内=填满视口）→ fillMaxWidth |
-| `5b35179b` | 系统提示词：告知全语法支持（避免模型自我降级）+ axis 示例 |
-| `934b8f82`+`b78969a4` | versionCode 239 / versionName 2.4.10.15 草稿 + release notes；GitHub Release `v2.4.10.15-build239` |
+| `f658a479` | 删除第①级遗留代码（TikzRenderer/TikzTelemetry/MathExpr + 4 单测；恢复从历史 `28afa91d` 取回）；Export.kt（HTML 导出）TikZ 改走 native 同链路（suspend + 占位收集统一编译，失败还原为围栏源码） |
+| `c9c1e8af` | **SVG 落盘缓存**（TikzSvgCache）：sha256(trim(code)) 内容寻址，原子写；TeX 确定性输出已验证，同源码必同产物。TikzJax/Export 共用。历史消息秒开 |
+| `fcbfb203` | tikzcd 支持：bundle v3（+tikz-cd.sty，CTAN）+ wrapDocument 检测自动加载。**经验：宏包缺失症状 = terminal input forbidden** |
+| `42cb919e` | 超长消息/思考部分渲染修复：HeightClamp 语义反转（测量约束原样传递，仅结果异常巨大时 clamp）——旧固定 10000dp 会把 >20 屏的正常内容静默裁剪 |
+| `5c03a1f5` | 短思考后整屏空白：思考卡片 MarkdownBlock 误用 fillMaxSize（LazyColumn item 内=填满视口）→ fillMaxWidth |
+| `9ab8cc95` | 系统提示词：告知全语法支持（避免模型自我降级）+ axis 示例 |
+| `719497eb`+`b161bf81` | versionCode 239 / versionName 2.4.10.15 草稿 + release notes；GitHub Release `v2.4.10.15-build239` |
 
 **最终架构**（全仓库唯一 TikZ 路径）：
 
@@ -475,7 +475,7 @@ TikZ 输入（任意语法）
    - 补 CM pfb 无济于事：tectonic bundle v3 的默认文本字体是 **Latin Modern**，XDV 记录 OT 名 `lmroman10-regular`（不是 cmr10）——assets 只随包 7 个 CM pfb 时 dvisvgm 按名找不到。
    - 补 LM **Type1 pfb** 也错：pfb 是 OT1 编码（TeX 字形索引），与 XDV 的 **OpenType glyph id** 错配 → 轮廓"转出但内容全错"。
 3. **正确路线 = mupdf SVG 桥（已实现，取代 dvisvgm）**：tectonic 编译 PDF（必内嵌字体）→ `MupdfSvgBridge.pdfToSvg` 用 mupdf `FZ_SVG_TEXT_AS_PATH(0)`（非默认 TEXT_AS_TEXT）→ mupdf 从 PDF 内嵌字形直接提取轮廓输出 `<path>`——**中英文都渲染、与字体文件查找完全无关**。旧文本态（TEXT_AS_TEXT 输出 `<text>`，AndroidSVG 渲不了中文 glyph）是根因之一。
-   - 相关提交：`676e3dd9`（TEXT_AS_PATH + MathInline 补 TikZ 分发）、`d2efaf48`（cache v3）、`d3642ecf`（fence/complete/弧度归一化）、`8aa66c24`（selectfont 追 zhfont）、`fc44592e`（cache v4 自动清空）、fork 会话补提交 `46b88dac`（MarkdownMathParseTest 取证）。
+   - 相关提交：`933df9bb`（TEXT_AS_PATH + MathInline 补 TikZ 分发）、`d102e55f`（cache v3）、`06de6e70`（fence/complete/弧度归一化）、`37eac95e`（selectfont 追 zhfont）、`d2cbeeb3`（cache v4 自动清空）、fork 会话补提交 `58262cc5`（MarkdownMathParseTest 取证）。
 4. **现状**：SVG 矢量路径 = mupdf 桥（arm64-v8a；x86_64 自动落 PDF 位图链）；PDF 位图保留为降级。`wrapDocument` 已按 format 条件注入 dvisvgm driver 的版本一并废弃（PDF 用默认 dvipdfm 驱动）。
 
 **排障工具链资产**（8.4.9 起可复用）：真机 root + run-as/`su` 拉缓存与 XDV、adb logcat TAG 过滤、SoLab MCP（`zhou.solab` :8800，so 字符串逆向——此轮靠它确认 dvisvgm 选项集）、CTAN 资产下载（amsfonts.zip / lm.zip）。
@@ -485,21 +485,21 @@ TikZ 输入（任意语法）
 #### 8.4.10 文字链收官 + SVG 裁剪 + #hex 运行时归一化（2026-09-08）
 
 **A. 文字链三连修复（全部真机验证）**
-1. **`\selectfont` 包装 `\zhfont`（`8aa66c24`）**：`\small`/`\textbf`/`\footnotesize` 等字号/字重切换都经 `\selectfont` 按默认族（cmr/lmroman）重设字体族 → 中文缺字形整行丢（转生图 `\textbf{前世}` 粗体标题空实锤）。修复：`\let\zholdselectfont\selectfont` + `\renewcommand{\selectfont}{\zholdselectfont\zhfont}`（末尾强制回 droidsans）；**勿改单个 `\small` 等命令**（破坏 tikz `font=` 选项展开）。
-2. **bundle 缺数学字号 pfb → xdvipdfmx `ttbc_output_close` SIGABRT（`cde1265a`）**：`\footnotesize $x$`（8pt 数学）需 cmmi8/lmmi8/lmsy8 等 pfb，bundle 只有 tfm 无 pfb → **崩溃无 TeX 报错文本、非 Missing、非语法**，直接退化源码。修复：从 WSL TeX 提取 **CM**（cmmi8/9/12/5/6、cmsy8/9/5/6、cmr6/8/9/12/17）与 **LM**（lmmi8/9/12/5/6、lmsy8/9/5/6、lmex10、lmmib5/7）pfb 入 bundle **tar 根路径**（kpse 直查）。**今后“编译崩溃无报错”第一反应查 bundle 字体 pfb 齐全性**（脚本比对 tfm 全集 vs pfb 全集）。
-3. **完整 `\documentclass` #hex 盲区（`8347b881`）**：wrapDocument 先判 documentclass → 完整文档只做弧度归一化、**不碰 #hex**（用户自管 preamble，避免替换后无定义的 Undefined color）；裸片段才做 #hex 替换+注入。
+1. **`\selectfont` 包装 `\zhfont`（`37eac95e`）**：`\small`/`\textbf`/`\footnotesize` 等字号/字重切换都经 `\selectfont` 按默认族（cmr/lmroman）重设字体族 → 中文缺字形整行丢（转生图 `\textbf{前世}` 粗体标题空实锤）。修复：`\let\zholdselectfont\selectfont` + `\renewcommand{\selectfont}{\zholdselectfont\zhfont}`（末尾强制回 droidsans）；**勿改单个 `\small` 等命令**（破坏 tikz `font=` 选项展开）。
+2. **bundle 缺数学字号 pfb → xdvipdfmx `ttbc_output_close` SIGABRT（`1b72119a`）**：`\footnotesize $x$`（8pt 数学）需 cmmi8/lmmi8/lmsy8 等 pfb，bundle 只有 tfm 无 pfb → **崩溃无 TeX 报错文本、非 Missing、非语法**，直接退化源码。修复：从 WSL TeX 提取 **CM**（cmmi8/9/12/5/6、cmsy8/9/5/6、cmr6/8/9/12/17）与 **LM**（lmmi8/9/12/5/6、lmsy8/9/5/6、lmex10、lmmib5/7）pfb 入 bundle **tar 根路径**（kpse 直查）。**今后“编译崩溃无报错”第一反应查 bundle 字体 pfb 齐全性**（脚本比对 tfm 全集 vs pfb 全集）。
+3. **完整 `\documentclass` #hex 盲区（`1a54db3c`）**：wrapDocument 先判 documentclass → 完整文档只做弧度归一化、**不碰 #hex**（用户自管 preamble，避免替换后无定义的 Undefined color）；裸片段才做 #hex 替换+注入。
 
-**B. #hex 运行时归一化（`d3642ecf` 起，`2a7d4fbf` 扩展）**
+**B. #hex 运行时归一化（`06de6e70` 起，`164c6512` 扩展）**
 - 方案：`normalizeHexColors` 把 options 内 `#hex` 替换为 `\definecolor{hexN}{HTML}{RRGGBB}`（xcolor HTML 命名）+ 引用名，保留 `!NN` 后缀（`hex0!30`）。
 - 范围：6 位 `#RRGGBB`、3 位 `#RGB` 按位展开（`#f80`→`ff8800`）、8 位 alpha 取前 6、**仅 `[...]` 选项上下文替换**（逐字符扫描，避免 node 文本内 #hex 误伤）；完整文档不碰（见 A3）。
 - 真机：D 图（`#4A90D9`/`#E85D75`/`#7ED321`/`#F5A623`）通过。
 - **残留盲区**（低频，未处理）：多层 `!30!50`（第二段应为颜色名）、`hexN` 命名冲突、8 位 alpha 的 alpha 语义（pgf 本身不支持）。
 
-**C. SVG 裁剪到图 bbox（`8ed6fbef`，v2.4.10.22）**
+**C. SVG 裁剪到图 bbox（`3e62def5`，v2.4.10.22）**
 - 问题：wrapDocument 用 `article` 整页（612×792pt），PDF→SVG 后四周大空白、图居中占小块。
 - **方案取舍**：math-plus 用 `standalone[border]`，但其 bbox 裁剪依赖外部 `pdfcrop`（设备 tectonic 无此工具）→ **方案 B 在设备上伪可行**，否决。改用 **preview.sty + tightpage**（纯 TeX 层改 `\pdfpagewidth/height`，WSL 验证裁出 58×58pt / 171×185pt）。
 - **实现**：bundle 根路径补 `preview.sty`/`prtightpage.def`/`prauctex.cfg`（**kpse stub 只按文件名直查根目录——首次放 `tex/latex/preview/` 子目录导致 `preview.sty not found`，是上次“全渲染失效”的根因，已修**）；wrapDocument 注入 `\usepackage[active,tightpage]{preview}` + `\PreviewEnvironment{tikzpicture}`/`{tikzcd}`。
-- **缓存联动**：裁剪改变渲染输出 → `CACHE_VERSION` 递增 v4→v5（**改渲染输出必递增，否则历史消息命中旧 A4 SVG**——`8aa66c24` 漏递增的教训）。
+- **缓存联动**：裁剪改变渲染输出 → `CACHE_VERSION` 递增 v4→v5（**改渲染输出必递增，否则历史消息命中旧 A4 SVG**——`37eac95e` 漏递增的教训）。
 
 **教训沉淀**：①“编译崩溃无报错”→ 查 bundle 字体 pfb 齐全性；②bundle 补文件必须放根路径；③改渲染输出必须递增 CACHE_VERSION；④二分崩溃用 instrumented `BisectTest`（一次装 APK 跑完全部组合）高效。
 
@@ -514,7 +514,7 @@ TikZ 输入（任意语法）
 而 `\dfrac` / `\tfrac` / `\binom` / `\text` / `\operatorname` / `split` 等属 **amsmath 宏**
 ——未加载即未定义控制序列 → 编译中止 → TikzJax 回退源码。
 
-> ⚠️ **补 `5870fafe` 的教训：宏包缺失没有单一症状。** 那次记的是「terminal input forbidden」；
+> ⚠️ **补 `fcbfb203` 的教训：宏包缺失没有单一症状。** 那次记的是「terminal input forbidden」；
 > 本次是「未定义宏 → 整图编译失败 → 回退源码」。**凡「图变成源码」都应先怀疑 preamble 缺包**，
 > 而不是先怀疑语法或引擎。
 
@@ -526,7 +526,7 @@ TikZ 输入（任意语法）
 - `CACHE_VERSION` v5 → v6：加载 amsmath 会微调数学排版间距，旧 SVG 与新编译结果可能不同 →
   按「改渲染输出必递增」整体重置（同 §8.4.10 教训③）。
 - 系统提示词同步告知「amsmath/amssymb 可用，直接用 \dfrac 等，不必降级成 \frac 写法」
-  ——同 `5b35179b` 的动机：**告知能力，避免模型自我降级**。
+  ——同 `9ab8cc95` 的动机：**告知能力，避免模型自我降级**。
 
 **验证**（真机 + 程序化，不靠肉眼）：把该会话全部 TikZ 块从 DB 抽出，按缓存键算法
 （`sha256("v6:" + trim(code))`）算文件名去比对设备缓存目录 —— **含 \dfrac 的那个块已命中**，

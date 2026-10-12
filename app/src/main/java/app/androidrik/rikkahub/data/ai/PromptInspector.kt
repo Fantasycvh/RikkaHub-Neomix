@@ -629,7 +629,7 @@ internal fun toolsToSegment(
  *
  * 复用 [isCompactionCheckpointPreamble]（生产者与判定同源的既有约定），而不是只看
  * `isSynthetic`——后者是 `@Transient`，持久化后会丢失（历史踩坑见
- * `docs/design/design-auto-compaction.md` 的 0e3d7424）。
+ * `docs/design/design-auto-compaction.md` 的 15142509）。
  */
 private val UIMessage.isCompactionCheckpoint: Boolean
     get() = isSynthetic &&

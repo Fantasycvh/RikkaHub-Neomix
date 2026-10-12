@@ -1,7 +1,7 @@
 # 工作区文件备份（B 方案）设计稿
 
-> 状态：**已实现并真机验证**（2026-09-13）。**大文件加固 P0 已落地（`bcd125e5`，09-26：STORED 采样判定 + S3 分片 8MB/片 + 单遍哈希结构性解决；真机 S3 大文件实测待用户），见 §九。**
-> 实现提交：`1e89465c`（统一 BackupItem 枚举 + 辅助）、`a4ea0479`（抽 BackupArchiveEngine）、`93abe53d`（UI selector 抽取 + 修恢复路径 bug + 安全加固）。
+> 状态：**已实现并真机验证**（2026-09-13）。**大文件加固 P0 已落地（`04f229ed`，09-26：STORED 采样判定 + S3 分片 8MB/片 + 单遍哈希结构性解决；真机 S3 大文件实测待用户），见 §九。**
+> 实现提交：`c6c5d32f`（统一 BackupItem 枚举 + 辅助）、`2f6cfa2d`（抽 BackupArchiveEngine）、`d55dec30`（UI selector 抽取 + 修恢复路径 bug + 安全加固）。
 > **真机验证**：本地导出含 `workspace_files/<root>/...` 5 条目（与设备工作区 5 文件一致），rootfs 未包含（体积 71MB 未见 30MB rootfs）；settings/database/upload/skills 各项未受影响。
 > 需求来源：用户指出备份**不含工作区**，导致跨设备迁移时工作区里的数据会丢失——「其他设备上会有一些难以再次找到的数据（被下架仓库的克隆等），一旦忘记导出就会丢失内容」。
 
@@ -34,7 +34,7 @@ workspaces/<root>/
 
 「工作区文件仍在」的错觉来源：工作区文件**发送到对话**时会被复制进 `files/upload`（在备份范围内），所以那份副本还在。但**工作区本体**（以及从未发送过的工作区文件）会丢。
 
-另注：`files/tool_outputs`（工具输出外置目录，`FileFolders` 有定义）曾于 2026-09-13 纳入备份（`a4ea0479`），**后于 2026-09-15 决定移除**（会话级临时产物、恢复后必被启动清理删除，见 §6 第 2 条）——故当前 FILES 打包内容为 upload/skills/fonts 三项。
+另注：`files/tool_outputs`（工具输出外置目录，`FileFolders` 有定义）曾于 2026-09-13 纳入备份（`2f6cfa2d`），**后于 2026-09-15 决定移除**（会话级临时产物、恢复后必被启动清理删除，见 §6 第 2 条）——故当前 FILES 打包内容为 upload/skills/fonts 三项。
 
 ## 二、目标与范围
 
@@ -113,8 +113,8 @@ workspace_files/<root>/<相对路径>
 
 1. ~~本地备份/导出是否是第三份实现~~ **已核实：不是**。`BackupVM` 的本地导出直接复用
    `webDavSync.prepareBackupFile`（`BackupVM.kt:86`）——因此**只需改 S3Sync + WebDavSync 两处**，本地导出自动获益。
-2. ~~**`files/tool_outputs` 未纳入备份**~~ **已解决（2026-09-13 `a4ea0479`）**：打包（`addAppFilesToZip` 的 `UPLOAD/FONTS/TOOL_OUTPUTS` 平铺遍历）与恢复（`restoreFlatEntry` 分支）都已覆盖，本地/WebDAV/S3 三入口共用同一 engine。原始判断里唯一的行动项（「FILES 分支加一个目录遍历」）已落地，**无需再改**。
-   **但核查时发现一个更实质的问题（未处理，待决策）**：`RikkaHubApp.cleanupToolOutputs()` 在**每次 App 启动**时无条件 `deleteRecursively()` 整个 `files/tool_outputs`（承自 `86125b60` 包名迁移，非新引入）。由此：
+2. ~~**`files/tool_outputs` 未纳入备份**~~ **已解决（2026-09-13 `2f6cfa2d`）**：打包（`addAppFilesToZip` 的 `UPLOAD/FONTS/TOOL_OUTPUTS` 平铺遍历）与恢复（`restoreFlatEntry` 分支）都已覆盖，本地/WebDAV/S3 三入口共用同一 engine。原始判断里唯一的行动项（「FILES 分支加一个目录遍历」）已落地，**无需再改**。
+   **但核查时发现一个更实质的问题（未处理，待决策）**：`RikkaHubApp.cleanupToolOutputs()` 在**每次 App 启动**时无条件 `deleteRecursively()` 整个 `files/tool_outputs`（承自 `be533724` 包名迁移，非新引入）。由此：
    - **默认备份流程下，备份 tool_outputs 实际无效**——恢复会弹「重启应用」（`exitProcess(0)`，`BackupDialog`），而重启的 `onCreate` 立刻把刚恢复的文件删掉；默认备份含 DATABASE，故必然走到这一步。
    - **「附件无法打开」的根因是 cleanup，不是备份遗漏**——任何一次重启后，历史消息里的 `/tool_outputs/<toolCallId>.txt` 引用都会悬空。
    - **影响有界**：截断消息把输出**前 4KB 内联**在消息正文里（`TOOL_OUTPUT_PREVIEW_CHARS`，随消息落库、在备份范围内），丢的是「重新读取完整输出（>32KB 部分）」，不是内容本身。
@@ -124,7 +124,7 @@ workspace_files/<root>/<相对路径>
 4. **备份体积与进度反馈** —— 工作区文件可能很大；是否需要在打包时显示进度/体积预估？建议首版先在 UI 提示「工作区文件可能较大」，不做进度条。
 5. **是否可选「包含 rootfs」** —— 本方案排除 rootfs。若将来有用户希望连 rootfs 一起备份（离线迁移且无法联网重装），可加第三档选项；当前不做。
 
-## 七、后续增强（2026-09-13 已落地，`6d4778ae`）
+## 七、后续增强（2026-09-13 已落地，`c7ace4be`）
 
 **① 备份内容全局化**：新增 `Settings.backupItems`（三件套），删除 `S3Config.items`/`WebDavConfig.items` ——
 三处（WebDAV/S3/本地）读写同一来源，本地 tab 也获得选择器。**默认全部三项**（旧默认 DATABASE+FILES 是
@@ -159,7 +159,7 @@ workspace_files/<root>/<相对路径>
 **顺带清理**：移除死开关 `DisplaySetting.showUpdates`（fork 无更新检查实现，该开关无消费方；上游对应字段
 `updateCheckDisabledUntilEpochMillis` 语义相反，导入时本就丢弃）——UI + 字段 + 6 语言字符串一并删除。
 
-## 九、大文件备份加固（~~2026-09-13 评估定稿，暂不实现~~ **P0 三项已落地 `bcd125e5`，2026-09-26**）
+## 九、大文件备份加固（~~2026-09-13 评估定稿，暂不实现~~ **P0 三项已落地 `04f229ed`，2026-09-26**）
 
 **触发**：用户指出「其他设备上导出时可能有 **2.8GB** 量级的数据」（工作区里难以再次获取的仓库克隆等）。
 当前实现按中小体积设计，2.8GB 下会暴露若干问题。以下按收益排序，**均与是否引入 Rust 无关**
@@ -185,7 +185,7 @@ workspace_files/<root>/<相对路径>
 **结论**：先做 P0 两项即可把该量级从「可能失败/极慢」变为「可用」；P1/P2 为体验完善。本项与工作区备份功能解耦，
 可独立排期。
 
-**✅ 落地记录（2026-09-26，`bcd125e5`）**：
+**✅ 落地记录（2026-09-26，`04f229ed`）**：
 - **STORED（P0）**：`BackupZipStrategy.shouldStoreUncompressed` = **头部 64KB 采样**（Deflater 同库同级别压一遍，
   比率 ≥0.98 判不可压缩）——采样而非扩展名表（覆盖 git pack/sqlite/未知二进制）。引擎 `prepareZipEntry`：
   STORED 需 Java API 预置 size/crc ⇒ 一次 CRC 顺序预读（无 DEFLATE CPU，远比压缩便宜），进度只按写入遍计。
@@ -304,7 +304,7 @@ P2 中的这一项被提前，理由：**纯新增、不改备份格式、向后
 
 **结论：DB 重排 ≈ 中-高且不值得**（治不了本 → 上游 wontfix 合理）。若确在意，三条路：①**显示层连续序号**（UI `forEachIndexed`，不动 DB，~0.5h，零迁移零破坏，即报告者最低诉求；但模型侧仍收原始 id）；②**稳定 opaque id**（uuid/短哈希，同时根治「空洞难看」+「不泄漏条数」且永不需要重排；难度中：DB 迁移加列 + 工具 schema + 提示词 + UI，须验证模型能否稳定用 uuid 做 edit/delete 目标）；③**DB 重排——不做**。
 
-**fork 现状（已演进）**：方案 ②「稳定 opaque id」**已于 2026-09-14 落地**（`8775d051`）——
+**fork 现状（已演进）**：方案 ②「稳定 opaque id」**已于 2026-09-14 落地**（`f16087d7`）——
 - `MemoryEntity.public_id`（8 位小写十六进制，32 bit 随机）；DB **27→28**（`ALTER TABLE` + `lower(hex(randomblob(4)))` 就地回填，纯 SQL）
 - `AssistantMemory.id: Int → String`（对外 token）；加 `@Transient sortKey`（自增主键）仅用于注入选「最新 60 条」，不参与序列化
 - 仓库按 token 查/改/删；**兼容历史消息里的旧自增编号引用**（token 查不到时按 id 回退）

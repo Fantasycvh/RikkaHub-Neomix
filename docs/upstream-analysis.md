@@ -17,7 +17,7 @@
 | 2.5.0（16 提交） | `b153028d`..`12ee935e` | — | 终端 Tab 标题、审批修复、**消息队列/语音/ASR（fork 自研落地）** | 核心功能已吸收/自研 |
 | 2.5.0 后批（20 提交） | `12ee935e`..`6e0aa7d4` | 2026-09-09 | workspace 预览/Shell 兼容、时间提醒间隔、多选、工具详情/回执、模型注册 | 大半已吸收（见清单） |
 | 2.5.1（3 提交） | `6e0aa7d4`..`a9b35ba2` | 2026-09-10 | DEV badge、翻译快捷方式 + RouteActivity 统一导航 | 已吸收（见清单） |
-| 2.5.1 后（2 提交） | `a9b35ba2`..`2689e753` | 2026-09-11+ | deepseek-flash 注册、AGENTS.md 支持 | 均已吸收（`e9a39751`/`e8e047e5`） |
+| 2.5.1 后（2 提交） | `a9b35ba2`..`2689e753` | 2026-09-11+ | deepseek-flash 注册、AGENTS.md 支持 | 均已吸收（`e46b4d69`/`6961a054`） |
 | **2.5.1 后再 4 提交** | `2689e753`..`bd936caa` | 2026-09-13 | 依赖更新（Gradle/lib.versions）、非聊天请求 session-id 头修复 | **未同步**（2026-09-14 fetch 发现，见「待吸收」） |
 
 ## 已吸收（合并清单，**含 2026-09 全量**）
@@ -25,55 +25,55 @@
 | 提交 | 内容 | 吸收提交 | 备注 |
 |---|---|---|---|
 | 2.4.8-2.4.10 批（约 13 个） | R8 keep/jlatexmath、Imggen override、流式 null 容错、reasoning max、加密推理、DashScope ASR、SAF、.agc、豆包搜索、句首大写、正则排序 | 分批 | 2026-08 |
-| `e8293d35` / `b62d29d1` | 空 tool schema 归一化 / workspace stdin EOF | `758a252d` | 2026-09-04 |
-| `942d0d28` / `6c6a8458` | 合成消息不参与模板 / fork 会话继承 folder+cwd | `6bbcacb6` / `77abbd89` | 2026-09-06 |
-| `3a533a6a` | 终端多 Tab + 后台底座 | `fbfcde5e` | 2026-09-03 |
+| `e8293d35` / `b62d29d1` | 空 tool schema 归一化 / workspace stdin EOF | `739e0867` | 2026-09-04 |
+| `942d0d28` / `6c6a8458` | 合成消息不参与模板 / fork 会话继承 folder+cwd | `afe8027f` / `a44004ff` | 2026-09-06 |
+| `3a533a6a` | 终端多 Tab + 后台底座 | `86cd6a70` | 2026-09-03 |
 | `104040df` + `1d86b3c1` | 终端 Tab 动态标题 + 手势/尺寸修复 | fork 移植 | 2026-09 |
-| `5736c05e` | 代码块导出截断模式 | `e2f6b836` | 2026-09-05 |
-| 1c09d5cd 等 5 提交 | TikZ mupdf SVG 桥（TEXT_AS_PATH）+ 缓存 | fork 会话 | 2026-09-08 |
-| `85402745` / `54030ec4` | think 标签锚定 / Skill SnakeYAML | `c3385e63` / `3b482036` | 2026-09-08 |
+| `5736c05e` | 代码块导出截断模式 | `c1aeed69` | 2026-09-05 |
+| 933df9bb 等 5 提交 | TikZ mupdf SVG 桥（TEXT_AS_PATH）+ 缓存 | fork 会话 | 2026-09-08 |
+| `85402745` / `54030ec4` | think 标签锚定 / Skill SnakeYAML | `34f1f57d` / `a1e263bd` | 2026-09-08 |
 | `55506496` | 连续工具审批丢失 + 取消状态修复 | 09-08 批 | 2026-09-08 |
 | `5902feab` / `ab8b6cc8` / `a61d116d` | 纯图片消息 / provider IO 调度 / 自定义 response API | 09-08 批 | 2026-09-08 |
-| `e9b98a4b` | qwen tts 音色列表 | `89b00455` | 2026-09-09 |
-| `a8f8c3a1` | Exa 新鲜度证据 | `446f5a82` | 2026-09-09 |
-| `5403bc96` + `2f05019b` | TTS 合成自动重试 + 错误分类 | `ec398672` | 2026-09-09 |
-| `9851d037` + `f7869e35` | Gemini 工具共存 + 混合错误修复（捆绑） | `366a8de7` + `7c77c483`（fork 内联架构重实现） | 2026-09-09 |
-| `77a58c2c` / `dee88dca` / `ab07ac1f` / `6e0aa7d4` | 统计 JSON 兜底 / edit_file 安全 cast / DeepSeek V4.1 Flash / 工具详情前置可开 | `4cbdb104`（B 批直套） | 2026-09-09 |
-| 模型注册组（glm5.3 `5b58c957` / hy4 `86c85236`+`5b890d22` / kimi k3 / qwen3.8 `0826a3b9` / deepseek v4.1 flash / kimi icon `979cd169`） | 模型数据 | 早于 fork（直套）+ 本次缺口 `c73f8972`/`46cacf23`→`e9a39751` | 代码等价核对（2026-09-12） |
-| `fcb04126` / `3d75f83f` | web ask_user 多选 / 模型弹窗标签堆叠 | `c468f0ba` | 2026-09-11 |
-| `5b4d7895` | 自定义时间提醒间隔 | `772cd77e` | 2026-09-11，真机通过 |
-| `a7ee362f` | 系统栏图标色退出恢复 | `e9a39751` | 2026-09-12，真机通过 |
-| `1a1e672e` | 模型/提供商名支持空格（保存去尾） | `bb92f489` | 2026-09-12，真机通过 |
-| `513b784c` | 翻译快捷方式 + RouteActivity 统一 Intent 导航 | `58a64d8d` | 2026-09-12，真机通过（四路径冷/热） |
+| `e9b98a4b` | qwen tts 音色列表 | `2f518c70` | 2026-09-09 |
+| `a8f8c3a1` | Exa 新鲜度证据 | `8123a1ef` | 2026-09-09 |
+| `5403bc96` + `2f05019b` | TTS 合成自动重试 + 错误分类 | `cdb937d8` | 2026-09-09 |
+| `9851d037` + `f7869e35` | Gemini 工具共存 + 混合错误修复（捆绑） | `61db6106` + `220d0f15`（fork 内联架构重实现） | 2026-09-09 |
+| `77a58c2c` / `dee88dca` / `ab07ac1f` / `6e0aa7d4` | 统计 JSON 兜底 / edit_file 安全 cast / DeepSeek V4.1 Flash / 工具详情前置可开 | `b99a2e39`（B 批直套） | 2026-09-09 |
+| 模型注册组（glm5.3 `5b58c957` / hy4 `86c85236`+`5b890d22` / kimi k3 / qwen3.8 `0826a3b9` / deepseek v4.1 flash / kimi icon `979cd169`） | 模型数据 | 早于 fork（直套）+ 本次缺口 `c73f8972`/`46cacf23`→`e46b4d69` | 代码等价核对（2026-09-12） |
+| `fcb04126` / `3d75f83f` | web ask_user 多选 / 模型弹窗标签堆叠 | `70d3470b` | 2026-09-11 |
+| `5b4d7895` | 自定义时间提醒间隔 | `aaad9563` | 2026-09-11，真机通过 |
+| `a7ee362f` | 系统栏图标色退出恢复 | `e46b4d69` | 2026-09-12，真机通过 |
+| `1a1e672e` | 模型/提供商名支持空格（保存去尾） | `7f0034d7` | 2026-09-12，真机通过 |
+| `513b784c` | 翻译快捷方式 + RouteActivity 统一 Intent 导航 | `d2738268` | 2026-09-12，真机通过（四路径冷/热） |
 | `321443d8` | tool-only 消息操作按钮可见 (#1689) | `321443d8` 补齐（`isEmptyUIMessage` 补 `ServerTool -> false` + 单测） | 2026-09-12 |
-| `2689e753` | Workspace 读取 AGENTS.md 注入工作区指令 | `e8e047e5` | 2026-09-12 |
-| `7b92f89e` | 禁用代码块连字 (#1623) | `f26a19f1`（fork 核对为真缺口，grep 零命中 fontFeatureSettings） | 2026-09-12 |
-| `aab5026e` | 通知小图标（#1782 状态栏胶囊无图标） | `1e98f69a`（ic_stat_rikkahub 五密度 PNG + NotificationUtil 默认切换） | 2026-09-12 |
-| `4fcb590a` | 测试连接对话框本地化 | `1e98f69a`（标签 string 化 6 语言 5 key + 列宽 64→120dp） | 2026-09-12 |
-| `42b933d8` | debug 启动图标 DEV 角标 | `1e98f69a`（四 drawable + anydpi overlay，debug 变体） | 2026-09-12 |
-| `d3a53e0a` | 图片选择改 PickVisualMedia (#1821 选图落 CR 文件夹而非相册) | ⚠️ **已于 2026-09-21 回退（`af110d7f`）——吸收时漏看了上游两天前的 revert**。原记录：`e9c36591`（fork 4 处图片入口；ChatPage 视频/音频保留 GetMultipleContents），2026-09-12。**事实更正**：上游 `4b36640a`（2026-09-02）已**自行 revert** 该改动，commit 名即「恢复图片选择器的文件浏览入口」、close #1821；且 `merge-base --is-ancestor 4b36640a a9b35ba2` = **YES** ⇒ 上游的最终决定在 09-09 同步点就已进入 fork master，09-12 评估时**只看到这条「fix」标题、没查它是否已被推翻**。回退理由：系统 Photo Picker 只给相册视图、无文件浏览入口，照片多时翻找很慢（用户实证反馈）。**注：此处是来回拉锯的取舍**——#1821 的诉求恰相反（某些 ROM 上 GetContent 落到文件管理器而非相册），故代码里已留注释标明「有意与上游 `d3a53e0a` 相反」，下次同步勿无脑吸收 |
-| `aac6e963` | 统一内置搜索与外挂搜索行为 (#1666)：模型自带 `BuiltInTools.Search` 时不再注册外挂搜索 | `0b562833`（漏吸收补齐，工具注册 + 告警同口径 + 4 单测） | 2026-09-14 |
-| 队列 `66de8b30` / 语音 `a621e277` / ASR `580e05d6` | 消息队列/语音模式/ASR 双向流 | **fork 自研落地**（`3a911f1e`/`6680668d` / `1c499b79`..`27dc690d`） | 2026-09-09/10 |
+| `2689e753` | Workspace 读取 AGENTS.md 注入工作区指令 | `6961a054` | 2026-09-12 |
+| `7b92f89e` | 禁用代码块连字 (#1623) | `a3c26f5f`（fork 核对为真缺口，grep 零命中 fontFeatureSettings） | 2026-09-12 |
+| `aab5026e` | 通知小图标（#1782 状态栏胶囊无图标） | `3f80d936`（ic_stat_rikkahub 五密度 PNG + NotificationUtil 默认切换） | 2026-09-12 |
+| `4fcb590a` | 测试连接对话框本地化 | `3f80d936`（标签 string 化 6 语言 5 key + 列宽 64→120dp） | 2026-09-12 |
+| `42b933d8` | debug 启动图标 DEV 角标 | `3f80d936`（四 drawable + anydpi overlay，debug 变体） | 2026-09-12 |
+| `d3a53e0a` | 图片选择改 PickVisualMedia (#1821 选图落 CR 文件夹而非相册) | ⚠️ **已于 2026-09-21 回退（`aa3c2ee7`）——吸收时漏看了上游两天前的 revert**。原记录：`20ffccf6`（fork 4 处图片入口；ChatPage 视频/音频保留 GetMultipleContents），2026-09-12。**事实更正**：上游 `4b36640a`（2026-09-02）已**自行 revert** 该改动，commit 名即「恢复图片选择器的文件浏览入口」、close #1821；且 `merge-base --is-ancestor 4b36640a a9b35ba2` = **YES** ⇒ 上游的最终决定在 09-09 同步点就已进入 fork master，09-12 评估时**只看到这条「fix」标题、没查它是否已被推翻**。回退理由：系统 Photo Picker 只给相册视图、无文件浏览入口，照片多时翻找很慢（用户实证反馈）。**注：此处是来回拉锯的取舍**——#1821 的诉求恰相反（某些 ROM 上 GetContent 落到文件管理器而非相册），故代码里已留注释标明「有意与上游 `d3a53e0a` 相反」，下次同步勿无脑吸收 |
+| `aac6e963` | 统一内置搜索与外挂搜索行为 (#1666)：模型自带 `BuiltInTools.Search` 时不再注册外挂搜索 | `fb5254b9`（漏吸收补齐，工具注册 + 告警同口径 + 4 单测） | 2026-09-14 |
+| 队列 `66de8b30` / 语音 `a621e277` / ASR `580e05d6` | 消息队列/语音模式/ASR 双向流 | **fork 自研落地**（`23e530cc`/`2adfc50e` / `fa8243ec`..`f016b517`） | 2026-09-09/10 |
 
 ## 已放弃 / 不跟
 
 | 提交 | 内容 | 原因 |
 |---|---|---|
 | `986b9c39`+`3509406b` | 全局代理页 | 与 per-provider ProviderProxy 设计冲突（2026-09-08 决策） |
-| `9365c297` | 移除独立标题/建议模型配置 | 保留独立配置（`710ba2c3`） |
+| `9365c297` | 移除独立标题/建议模型配置 | 保留独立配置（`1c709cb8`） |
 | `c62f1eb1` | 生成期临时 FGS | 与自有 KeepAliveService 重叠 |
 | `c16fe44f`+`41353567` | 固定 3 次重试 + 开关 | 自有 RetrySetting 是超集 |
 | `fa0305ba`+`daae3749` | IME 修复 | UX 动画优化非 bug，ChatInput 定制深 |
-| `05a85a09` | ask_user 自定义文本 | **已自有**（AskUserTool 描述明示支持自由文本，`c1924f13` 复核） |
-| `097cdb90` | ChatToolFactory 重构 | ~~不跟~~ **2026-09-14 已落地（`3893912f`，fork 适配）**：原判「零功能收益，除非出现第二个工具装配方」——**第二个装配方早已存在**（`GenerationHandler` 叠记忆工具），且用户明确要求重构，故实现。新增 `ChatToolFactory.createTools(settings, assistant, model, workspaceCwd)` 为**唯一装配点**（记忆+搜索+本地+对话+工作区+技能+MCP，顺序保持迁移前不变）；`GenerationHandler` 只透传 tools、去掉 `memoryRepo`；`ChatService` 以 `chatToolFactory` 取代 `localTools`/`skillManager`。**与上游差异（有意保留）**：MCP 名沿用 fork `McpNameSanitizer` 净化去重，而非上游 `InvalidMcpServerNamesException` 抛错——前者允许中文等非 ASCII 服务器名。同时把此前单独摘的 `shouldUseExternalWebSearch`（`0b562833`）迁入工厂包。**装配方盘点见下「注意点」第 9 条** |
+| `05a85a09` | ask_user 自定义文本 | **已自有**（AskUserTool 描述明示支持自由文本，`29ff1f41` 复核） |
+| `097cdb90` | ChatToolFactory 重构 | ~~不跟~~ **2026-09-14 已落地（`4f7feea6`，fork 适配）**：原判「零功能收益，除非出现第二个工具装配方」——**第二个装配方早已存在**（`GenerationHandler` 叠记忆工具），且用户明确要求重构，故实现。新增 `ChatToolFactory.createTools(settings, assistant, model, workspaceCwd)` 为**唯一装配点**（记忆+搜索+本地+对话+工作区+技能+MCP，顺序保持迁移前不变）；`GenerationHandler` 只透传 tools、去掉 `memoryRepo`；`ChatService` 以 `chatToolFactory` 取代 `localTools`/`skillManager`。**与上游差异（有意保留）**：MCP 名沿用 fork `McpNameSanitizer` 净化去重，而非上游 `InvalidMcpServerNamesException` 抛错——前者允许中文等非 ASCII 服务器名。同时把此前单独摘的 `shouldUseExternalWebSearch`（`fb5254b9`）迁入工厂包。**装配方盘点见下「注意点」第 9 条** |
 | `b6df5f04` / `96fbe7e3` / `0533acde` | OAuth 重构 / videogen / 移除默认提供商 | 无实益：OAuth 抽包是纯结构搬迁（fork 功能已等价，且已吸收其后的 `8ea375a9` cloudflare 匹配 + `c49be6fe` 令牌刷新）；videogen 上游未接进 App（模块自 8/24 初始化后零提交，吸进来是死代码）；移除的是上游自家 rikka-ai.com 内置提供商 |
 | `ef94834a` | MCP kotlin-sdk 换 client-only | 完整包 server 侧是 MCP host（⑥）依赖，待 ⑥ 立项时处理 |
 | `7714f2bc` | chatbox v2 导入 | 按需 |
-| `08c2648b` | 移除记忆 id 显示（close #1830） | **仍不吸收，但动机已被更好的方案取代（2026-09-14 `e416e7d4`）**：该提交是单文件删 5 行的纯展示层改动，且对其自身目的是**半截修复**——`buildMemoryPrompt` 仍 `put("id", memory.id)`、工具 schema/示例仍暴露**自增编号**，故 duzhaokun123 的第一条理由「避免助手乱猜测记忆数量」未被修复（只治了「用户看着难受」）。**fork 改走 opaque id**：`MemoryEntity.public_id`（8 位十六进制随机）+ `AssistantMemory.id` 改 String + DB 27→28 + 工具 schema/提示词/UI 同步，**同时根治「空洞难看」与「泄漏条数」且永不需要重排**，并兼容历史消息里的旧编号引用。**本仓仍显示 `#` 前缀 id**（现为 token）——保留可见性以支撑审批核对「改/删的是哪条」。详见 `design-backup-workspace-files.md` §10.1 |
+| `08c2648b` | 移除记忆 id 显示（close #1830） | **仍不吸收，但动机已被更好的方案取代（2026-09-14 `f16087d7`）**：该提交是单文件删 5 行的纯展示层改动，且对其自身目的是**半截修复**——`buildMemoryPrompt` 仍 `put("id", memory.id)`、工具 schema/示例仍暴露**自增编号**，故 duzhaokun123 的第一条理由「避免助手乱猜测记忆数量」未被修复（只治了「用户看着难受」）。**fork 改走 opaque id**：`MemoryEntity.public_id`（8 位十六进制随机）+ `AssistantMemory.id` 改 String + DB 27→28 + 工具 schema/提示词/UI 同步，**同时根治「空洞难看」与「泄漏条数」且永不需要重排**，并兼容历史消息里的旧编号引用。**本仓仍显示 `#` 前缀 id**（现为 token）——保留可见性以支撑审批核对「改/删的是哪条」。详见 `design-backup-workspace-files.md` §10.1 |
 
 ## 待吸收（现状真存量，按优先级）
 
-> **2026-09-12 清仓**：第一批全部清空（`aab5026e`/`4fcb590a` 吸收、`74397a32` 放弃）；第二批仅剩搁置项；**第三批三个大改项也全部落地并真机验证通过**（`7038e981`→b2434dce、`03246406`→e419085f、`3896b6d6`→78b3fbf9，详见 roadmap）。待吸收剩余零。
+> **2026-09-12 清仓**：第一批全部清空（`aab5026e`/`4fcb590a` 吸收、`74397a32` 放弃）；第二批仅剩搁置项；**第三批三个大改项也全部落地并真机验证通过**（`7038e981`→4bc0c483、`03246406`→c768fcc3、`3896b6d6`→5b9b6162，详见 roadmap）。待吸收剩余零。
 
 ### 第二批（值得吸收，需适配/手工合）
 
@@ -85,8 +85,8 @@
 
 | 提交 | 内容 | 备注 |
 |---|---|---|
-| ~~`7038e981` / `03246406`~~ | workspace HTML 预览 / Shell 兼容模式+DB 迁移 | **已吸收（2026-09-12）**：b2434dce（SVG 路由+预览/源码切换+WebView 隔离加载）、e419085f（DB 24→25 + shell_compatibility_mode + PROOT_NO_SECCOMP + 详情页开关 + 6 语言）；Shell 兼容模式在 KernelSU/proot 5.1.0 下有 getcwd/chdir ENOSYS 固有限制（默认 seccomp 模式正常，详见 roadmap） |
-| ~~`3896b6d6`~~ | Imggen 长按多选 | **已吸收（2026-09-12）**：78b3fbf9（长按多选+批量删除，适配 fork `GeneratedImage.id` 为 Int；另有 a18a3193 修点击穿透/全选去重，SVG 列表缩略图见 roadmap） |
+| ~~`7038e981` / `03246406`~~ | workspace HTML 预览 / Shell 兼容模式+DB 迁移 | **已吸收（2026-09-12）**：4bc0c483（SVG 路由+预览/源码切换+WebView 隔离加载）、c768fcc3（DB 24→25 + shell_compatibility_mode + PROOT_NO_SECCOMP + 详情页开关 + 6 语言）；Shell 兼容模式在 KernelSU/proot 5.1.0 下有 getcwd/chdir ENOSYS 固有限制（默认 seccomp 模式正常，详见 roadmap） |
+| ~~`3896b6d6`~~ | Imggen 长按多选 | **已吸收（2026-09-12）**：5b9b6162（长按多选+批量删除，适配 fork `GeneratedImage.id` 为 Int；另有 24351576 修点击穿透/全选去重，SVG 列表缩略图见 roadmap） |
 | ~~`45275025` / `019c46ae`~~ 上下文限制文案 / /skills 免审批 | **已放弃（2026-09-12）**：用户决策——fork 该页/该白名单自有定制，不跟 |
 
 ### 2026-09-14 新发现：2.5.1 后再 4 提交（未同步）
@@ -106,10 +106,10 @@
 
 | 提交 | 内容 | 评估 |
 |---|---|---|
-| `c8853531` | **fix(quickjs): 迁移到 quickjs-kt 并修复资源泄露**（close #1904；含依赖切换 + `search` 模块同改 + 两个新测试） | **部分吸收（2026-09-16，`641b46fe`）——只取防护，不迁引擎**。issue #1903 三点：fork ① 死循环挂起 ❌、② 无内存上限 ❌、③ context 未 destroy ✅（早已有）。**关键发现：fork 现用的 `wang.harlon.quickjs:3.2.3` 本身就提供 `setMemoryLimit`/`setMaxStackSize`** ⇒ ② 两行即可，无需迁依赖；① 该库无中断接口 ⇒ 独立线程 + `join(10s)`（超时路径**不 destroy**，否则 use-after-free）。顺带加固 `search` 的 `CustomJsSearchService`（同一库执行用户手写脚本，同样会拖崩 app）。**真机 instrumented 8/8 验证**（死循环返超时/大分配被拦且进程存活/深递归转 JS 异常）；纯 JVM 单测 10 项 |
+| `c8853531` | **fix(quickjs): 迁移到 quickjs-kt 并修复资源泄露**（close #1904；含依赖切换 + `search` 模块同改 + 两个新测试） | **部分吸收（2026-09-16，`54a635b1`）——只取防护，不迁引擎**。issue #1903 三点：fork ① 死循环挂起 ❌、② 无内存上限 ❌、③ context 未 destroy ✅（早已有）。**关键发现：fork 现用的 `wang.harlon.quickjs:3.2.3` 本身就提供 `setMemoryLimit`/`setMaxStackSize`** ⇒ ② 两行即可，无需迁依赖；① 该库无中断接口 ⇒ 独立线程 + `join(10s)`（超时路径**不 destroy**，否则 use-after-free）。顺带加固 `search` 的 `CustomJsSearchService`（同一库执行用户手写脚本，同样会拖崩 app）。**真机 instrumented 8/8 验证**（死循环返超时/大分配被拦且进程存活/深递归转 JS 异常）；纯 JVM 单测 10 项 |
 | `5078ce19` | Refresh MiniMax regional and TTS defaults（#1911） | **真缺口（2026-09-19 核对）**：fork `TTSProviderSetting.kt:85` 默认仍是 `speech-2.6-turbo`，上游改 `speech-2.8-hd`（+配置页 placeholder 两行）。难度：小；注意只改默认值，已存 provider 不受影响 |
 | `7ee13f2a` + `9a35e3f2` | **feat: 支持 blur/glass 2 种输入栏效果** + haze 版本升级（13 文件 108+） | **暂不吸收（2026-09-19 核对）**：fork 输入栏（`ChatInput.kt`）已重度自研定制（haze/glassHazeState 已用），上游效果是叠在新 haze API 上的外观选项，且捆绑音效资源（gangguan.mp3）。移植需在 fork 输入栏上重做效果分层，属外观增强非缺陷修复；若用户想要再评估 |
-| `d47d13a6` | **fix: 完善所有语言的重新生成消息确认提示**（6 语言各 1 行） | **不吸收（2026-09-19 定评）**：fork 重生成已改为 **scope 对话框**（`ad3543b2`，含「先导出再继续」等 fork 特有选项），上游文案对应的是其单步确认弹窗，语境不匹配；fork 文案自有一套 |
+| `d47d13a6` | **fix: 完善所有语言的重新生成消息确认提示**（6 语言各 1 行） | **不吸收（2026-09-19 定评）**：fork 重生成已改为 **scope 对话框**（`6c9564db`，含「先导出再继续」等 fork 特有选项），上游文案对应的是其单步确认弹窗，语境不匹配；fork 文案自有一套 |
 | `8e304bb1` | **feat: 火山引擎 TTS 支持**（+120 行 provider + 配置 UI + 测试） | **可吸收（2026-09-19 定评）**：fork `speech` 模块 provider 结构同构（`TTSProviderSetting` 密封类 + provider 实现 + 配置 UI），纯新增不碰既有面。难度：小–中（包名适配 + 配置页接线）。价值取决于用户是否用火山 TTS |
 | `d6ba728e`/`288a034c`/`bc9d2582` | 依赖更新 + 一次 `lib.versions.toml` 误删事故回滚 | 不吸收（同前述判断） |
 | `bd936caa` | 非聊天请求 session id 头 | 不吸收（fork 无 sessionId 概念，见上） |
@@ -120,10 +120,10 @@ master 已 ff-only 快进至 `b2d73a65`（同步于 09-30）。逐条评估：
 
 | 提交 | 内容 | 结论 |
 |---|---|---|
-| `95fed05e` fork 对话标题序号递增 | fork 出的会话标题 `Chat(1)` 再 fork 会变成 `Chat(1)(1)`——解析已有 `(N)` 后缀递增而不是叠加 | ✅ **2026-10-01 已吸收（`95fe3e5b`），真机验证通过**（三代连续分叉得 `rag测试(1)/(2)/(3)`，无 `(1)(1)`）。fork 版保留两处有意差异（空标题仍保持空、序号取首个未占用值）；单测 +5 项 |
+| `95fed05e` fork 对话标题序号递增 | fork 出的会话标题 `Chat(1)` 再 fork 会变成 `Chat(1)(1)`——解析已有 `(N)` 后缀递增而不是叠加 | ✅ **2026-10-01 已吸收（`5b47f34d`），真机验证通过**（三代连续分叉得 `rag测试(1)/(2)/(3)`，无 `(1)(1)`）。fork 版保留两处有意差异（空标题仍保持空、序号取首个未占用值）；单测 +5 项 |
 | `d21265cb` MCP SDK 切 rikkahub fork `0.15.0-rikka.2` | `io.modelcontextprotocol:kotlin-sdk` → `com.github.rikkahub.mcp-kotlin-sdk:kotlin-sdk-client`（上游自己的 fork 版） | **暂缓**。fork 还在 `0.14.0` 原版（artifact 名也不同），跨 `0.14→0.15-fork` 两级跳；上游 fork SDK 的变更内容未核（需看 rikkahub/mcp-kotlin-sdk 仓库），且 fork 的 `McpManager`/`McpStatus` 是重改区。等有具体 SDK 层 bug 或功能需求时再一次性升级 |
-| `b2525e7b` 模型列表按供应商折叠 | 点供应商标题折叠/展开，状态存 SharedPreferences，搜索时自动全展开；定位/偏移计算跟着 visible 列表走 | ✅ **2026-10-01 已吸收（`30a6b8e5`），真机验证通过**（折叠/展开、搜索自动展开、落盘持久化）。**fork 多出两处上游没有的联动必须一起改**：底部供应商 Badge 条的 `providerPositions` 与初始定位 `selectedModelPosition` 都要改用 visible 列表，否则折叠后 Badge 点击跳转错位 |
-| `b2d73a65` 导出对话支持不含思考过程 | `ExportOptions.includeReasoning` 开关（Markdown/图片生效）+ 修 Markdown 导出思考过程多行拼一行 + 修图片导出无论成败都提示成功 + 修 `indexOf` O(n²)；**Export.kt 改名 ConversationExport.kt** | **建议吸收功能、不跟改名（手工适配，中）**。fork 的 `Export.kt` 是重改区（导出留存/SAF 真落地/原子写，534a5eef），逐块移植；改名不跟（fork 无同构历史，churn 无收益）。上游顺手修的三个 bug 需先核对 fork 是否同样存在（多行拼接疑似同样存在，fork :610 直接 `lines()` 处理路径需复核） |
+| `b2525e7b` 模型列表按供应商折叠 | 点供应商标题折叠/展开，状态存 SharedPreferences，搜索时自动全展开；定位/偏移计算跟着 visible 列表走 | ✅ **2026-10-01 已吸收（`f1f8458d`），真机验证通过**（折叠/展开、搜索自动展开、落盘持久化）。**fork 多出两处上游没有的联动必须一起改**：底部供应商 Badge 条的 `providerPositions` 与初始定位 `selectedModelPosition` 都要改用 visible 列表，否则折叠后 Badge 点击跳转错位 |
+| `b2d73a65` 导出对话支持不含思考过程 | `ExportOptions.includeReasoning` 开关（Markdown/图片生效）+ 修 Markdown 导出思考过程多行拼一行 + 修图片导出无论成败都提示成功 + 修 `indexOf` O(n²)；**Export.kt 改名 ConversationExport.kt** | **建议吸收功能、不跟改名（手工适配，中）**。fork 的 `Export.kt` 是重改区（导出留存/SAF 真落地/原子写，6160af12），逐块移植；改名不跟（fork 无同构历史，churn 无收益）。上游顺手修的三个 bug 需先核对 fork 是否同样存在（多行拼接疑似同样存在，fork :610 直接 `lines()` 处理路径需复核） |
 
 **吸收优先级**：`95fed05e`（顺手修真 bug）→ `b2525e7b`（好功能）→ `b2d73a65`（三修一功能）；`d21265cb` 暂缓。
 
@@ -133,18 +133,18 @@ master 已 ff-only 快进至 `4e4bfa62`（同步于 10-02）。**核心事件：
 
 | 提交 | 内容 | 结论 |
 |---|---|---|
-| `cf79246b` **MCP `$defs`/`$ref` 内联展开（#1974）** | 新 `McpToolSchema.kt`（89 行）+ 153 行测试：任意 `#/` JSON Pointer（含 `#/definitions`）、循环引用回自身处只保留 `type`、同级键覆盖、只沿 schema 关键字遍历（literal 数据不动） | **已先行落地（`95fe3e5b`），极端场景已于 2026-10-02 回吸收敛（`651815b7`）**：循环引用截断保留 `type`、任意 `#/` 文档内指针解析（根文档=type+properties+$defs）、无 $defs 有 $ref 不再早退；常规路径零开销早退保留。单测 20 项 |
-| `d5f0039b` **生成标题找不到快速模型给错误提示（#1975）** | 两处静默 `return@runCatching` → `throw IllegalStateException`（新文案） | **已先行落地且更优（`95fe3e5b` 同批）**：fork 版本地化文案 + `addConfigErrorOnce` 错误卡 + 返回 `started` 让调用方补 toast（上游只弹错误卡） |
-| `654a5e1f` 提供商自定义请求头（#1952） | `ProviderSetting.customHeaders` + 高级设置 tab + `Request.kt` `mergeCustomHeaders`（**提供商头优先级最低，被助手/模型同名头覆盖**）+ 49 行测试 | ✅ **已吸收（2026-10-02，`a3394e7a`）**：fork 本就有字段与 UI，本次只吸收**去重语义**——新增 `mergeCustomHeaders` + 单一应用入口 `applyCustomHeaders(providerSetting, requestHeaders)`（覆盖语义），19 个调用点统一改造，旧的追加式入口删除。另加 MockWebServer 真实链路测试 |
+| `cf79246b` **MCP `$defs`/`$ref` 内联展开（#1974）** | 新 `McpToolSchema.kt`（89 行）+ 153 行测试：任意 `#/` JSON Pointer（含 `#/definitions`）、循环引用回自身处只保留 `type`、同级键覆盖、只沿 schema 关键字遍历（literal 数据不动） | **已先行落地（`5b47f34d`），极端场景已于 2026-10-02 回吸收敛（`57b16d93`）**：循环引用截断保留 `type`、任意 `#/` 文档内指针解析（根文档=type+properties+$defs）、无 $defs 有 $ref 不再早退；常规路径零开销早退保留。单测 20 项 |
+| `d5f0039b` **生成标题找不到快速模型给错误提示（#1975）** | 两处静默 `return@runCatching` → `throw IllegalStateException`（新文案） | **已先行落地且更优（`5b47f34d` 同批）**：fork 版本地化文案 + `addConfigErrorOnce` 错误卡 + 返回 `started` 让调用方补 toast（上游只弹错误卡） |
+| `654a5e1f` 提供商自定义请求头（#1952） | `ProviderSetting.customHeaders` + 高级设置 tab + `Request.kt` `mergeCustomHeaders`（**提供商头优先级最低，被助手/模型同名头覆盖**）+ 49 行测试 | ✅ **已吸收（2026-10-02，`92074f15`）**：fork 本就有字段与 UI，本次只吸收**去重语义**——新增 `mergeCustomHeaders` + 单一应用入口 `applyCustomHeaders(providerSetting, requestHeaders)`（覆盖语义），19 个调用点统一改造，旧的追加式入口删除。另加 MockWebServer 真实链路测试 |
 | `620e38cc` **JsonTree 弹窗长按崩溃（#1977）** | BottomSheet 在独立窗口，沿用外层 `SelectionRegistrar` 长按抛 hierarchy 异常 → sheet 内自包一层 `SelectionContainer` | ✅ **已吸收 `799522f2`（2026-10-02）**：fork 同样中招（`LogPage.kt:458` 在 `:384` 的 `SelectionContainer` 内），改法与上游逐字等价；未修版真机复现 FATAL、修复版长按正常 |
 | `2d5c51bd` 复制过大请求体剪贴板闪退（#1980） | 复制按钮 try/catch `TransactionTooLargeException` + toast | **fork 已覆盖**：fork `LogPage` 请求体走 `JsonTree` 展示（无复制按钮，原崩溃路径不存在）；fork 的 `ContextUtil.writeClipboardText` 本就 `runCatching` + toast（RuntimeException 子类全兜住） |
 | `4e4bfa62` **OpenAI 图片生成自定义分辨率被误丢弃（#1978）** | Grok 判断改解析 host（`x.ai` 及子域名，防中转域名 `xxx-max.ai` 误判）+ `size=auto` 不写入请求体 | ✅ **已吸收（2026-10-02）**：判定抽成纯函数 `isXaiHost`/`shouldSendImageSize`（+7 单测），fork 另把「auto 不写」同规则用于 `/images/edits`（上游未改）；真机请求体实测三例 |
-| `3443dd45` 注册 Claude Opus/Sonnet 5.5，移除 Claude 3 | 5.5 两条注册（`notTokens` 排除 4 代、1M context）+ 删 3.5/3.7 | ✅ **已吸收（2026-10-02，`5a25a42a`）**：5.5 两条已注册（IN/ABILITY/1M context 三层断言）；**有意保留** 3.5/3.7——删掉会让 `claude-3.5-sonnet` 转投 `CLAUDE_SONNET_5` 并凭空拿到 1M 上下文，保留时更具体的 3.5 条目按匹配度取胜。另顺带补上此前漏吸收的 `aa487c8c`（Claude 5 两条） |
-| `3a9ae690` 注册 Gemini 4，推理参数用 `thinkingLevel` | GEMINI_4 注册 + GoogleProvider 推理参数按模型切换 `thinkingLevel`/`thinkingBudget` | ✅ **已吸收（2026-10-02，`5a25a42a`）**：GEMINI_4 进 GEMINI_SERIES 与 ALL_MODELS；GoogleProvider 抽出 `useThinkingLevel = 3 系列 ∪ GEMINI_4` 后两处分支改用它——**这里 fork 与上游本就同形**（fork 早已有 `GEMINI_3_SERIES` 的 thinkingLevel 分支，只是没有 GEMINI_4），所以「thinkingLevel 是 fork 没有的 Model 概念」一说**完全不成立**（2026-10-02 复核明确）：上游全仓 grep 只有两类 `thinkingLevel` —— generateContent 请求体字段（fork 早已有）与 Interactions 请求体的 `thinking_level`（属 `2cd62ad2`，随它一起来），**上游从来就没有 Model 层面的这个概念**，本项无需引入任何新东西。`tokens("gemini","4")` 的吞噬面已用测试钉住（`04` 之类两位数 token 不算 4） |
+| `3443dd45` 注册 Claude Opus/Sonnet 5.5，移除 Claude 3 | 5.5 两条注册（`notTokens` 排除 4 代、1M context）+ 删 3.5/3.7 | ✅ **已吸收（2026-10-02，`1df7cc44`）**：5.5 两条已注册（IN/ABILITY/1M context 三层断言）；**有意保留** 3.5/3.7——删掉会让 `claude-3.5-sonnet` 转投 `CLAUDE_SONNET_5` 并凭空拿到 1M 上下文，保留时更具体的 3.5 条目按匹配度取胜。另顺带补上此前漏吸收的 `aa487c8c`（Claude 5 两条） |
+| `3a9ae690` 注册 Gemini 4，推理参数用 `thinkingLevel` | GEMINI_4 注册 + GoogleProvider 推理参数按模型切换 `thinkingLevel`/`thinkingBudget` | ✅ **已吸收（2026-10-02，`1df7cc44`）**：GEMINI_4 进 GEMINI_SERIES 与 ALL_MODELS；GoogleProvider 抽出 `useThinkingLevel = 3 系列 ∪ GEMINI_4` 后两处分支改用它——**这里 fork 与上游本就同形**（fork 早已有 `GEMINI_3_SERIES` 的 thinkingLevel 分支，只是没有 GEMINI_4），所以「thinkingLevel 是 fork 没有的 Model 概念」一说**完全不成立**（2026-10-02 复核明确）：上游全仓 grep 只有两类 `thinkingLevel` —— generateContent 请求体字段（fork 早已有）与 Interactions 请求体的 `thinking_level`（属 `2cd62ad2`，随它一起来），**上游从来就没有 Model 层面的这个概念**，本项无需引入任何新东西。`tokens("gemini","4")` 的吞噬面已用测试钉住（`04` 之类两位数 token 不算 4） |
 | `7a53065a` OAuth 回调改 `localhost`（#1972，WAF 拦 IPv4 403） | redirect URI 主机 127.0.0.1 → localhost，回调服务器仍绑 127.0.0.1 | **不适用**：fork MCP OAuth 用自定义 scheme `rikkahub://mcp-oauth-callback`（无 loopback 服务器），请求体不含 IPv4 主机 |
 | `4ba5d79f` + `b8e0fec4` MCP OAuth 增强（#1979） | 受保护资源元数据缺失回退 origin + 首次 401 触发 OAuth；CIMD 文档作 client_id | **暂缓（中）**：fork `McpOAuthCoordinator:138` 已有 protectedResource 发现，回退逻辑与 CIMD 是增量增强；fork OAuth 实现已与上游分叉（自定义 scheme），手工适配成本 > 收益，等有真实服务器撞上再说 |
 | `2cd62ad2` **Gemini Interactions API (Beta)** | 新 API 面（576+289 行 API/解码器 + 499 行测试）：`store=false` 无状态、thought/function_call 签名按**新 key** 回传、支持搜索/URL context/图片输出、`thinking_level`（无 budget） | **暂缓（大）——但触发条件已明确（2026-10-02 复核）**。**为什么不现在做**：①上游自己是**开关 + 默认关闭 + Beta**（`useInteractionsApi`，Vertex 下不生效）；②fork 的 Gemini 流量基本走 OpenAI 兼容中转 ⇒ 中转不转发 `/interactions` 时该开关对本仓用户等于不可用，**前置条件是「有直连 Google 的 key」**；③fork `GoogleProvider`（855 行）是重定制区，新路径等于**同一套语义维护两份**，且上游首次接入就漏了三处本仓已有/必需的东西——**提供商级自定义头没带**（只 `.headers(params.customHeaders)`）、`sessionId`/`configureSessionHeaders` fork 根本没有这个字段、`ensureArrayItems` 是 fork 独有的 schema 净化（不加则带数组无 items 的工具 schema 在新路径上直接 400）；另有 `safety_settings` 在新 API 上不可用（上游 commit 明说，而 generateContent 路径两边都发）。**什么时候值得立项（命中任一）**：T1 需要**只有新 API 才有**的能力（Deep Research 的 `background=true` + 轮询、托管 Agent/沙箱、视频生成、Google 侧 file search/maps grounding/flex-priority）；T2 拿到直连 Gemini Developer API key 并确实要用；T3 `generateContent` 被弃用或目标模型只在 `/interactions` 提供（Google 已把新文档集中到 `/interactions` 且 2.5 及更早标为 legacy，这是「不得不做」信号）；T4 Beta 摘帽、breaking change 进入平稳期后再接（返工风险最低）。**立项时顺手要做的三件事**：把我们统一的 `applyCustomHeaders(providerSetting, params.customHeaders)` 用在 `buildRequest`、把 `ensureArrayItems()` 补进函数工具的 parameters、并决定 `safety_settings` 的处置（要么在开关打开时提示「安全设置仅 generateContent 生效」，要么隐藏该项）。 |
-| `282b85f2` 复制助手可同时复制记忆 | `copyAssistant(assistant, copyMemories)` + `MemoryRepository.copyMemories` + AssistantPage UI | ✅ **已吸收（2026-10-02，`27b35815`）**：fork 照做了 UI 与接口；落库细节按 fork 的记忆表改造（**新的 publicId、保留 importance、updatedAt 取当下**，上游只搬 content 会写出坏数据：共用 token 会让审批指错行、丢重要度会让打分退化成纯时效）。+4 单测 + 真机验证 |
+| `282b85f2` 复制助手可同时复制记忆 | `copyAssistant(assistant, copyMemories)` + `MemoryRepository.copyMemories` + AssistantPage UI | ✅ **已吸收（2026-10-02，`9e476287`）**：fork 照做了 UI 与接口；落库细节按 fork 的记忆表改造（**新的 publicId、保留 importance、updatedAt 取当下**，上游只搬 content 会写出坏数据：共用 token 会让审批指错行、丢重要度会让打分退化成纯时效）。+4 单测 + 真机验证 |
 | `9435b8a2` / `447bb7e8` | skills 文档更新 / 版本 bump 2.5.6 | 不跟（master 同步已带入 .agents 文档；版本号体系无关） |
 
 **吸收优先级**：~~`620e38cc`~~（已吸收 `799522f2`）→ ~~`4e4bfa62`~~（**已吸收**）→ ~~`3443dd45`/`3a9ae690`~~（**已吸收**）→ ~~`282b85f2`~~（**已吸收**）→ ~~`654a5e1f` 头去重语义~~（**已吸收**）→ `2cd62ad2`/`#1979`（暂缓）。
@@ -225,12 +225,12 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 - **决策**：**触发点立项**——①用户需要视频生成（Seedance/万相/海螺任一）或用上厂商直连 key ⇒ 迁移一步到位（顺带解决 imggen 废弃）；②继续以中转站图像为主 ⇒ 维持现状用到上游真删。上游 `feat/media-gen` 与 master 同内容，短期无再大动迹象，不必怕「等一等过时」。
 | **imggen 废弃** | `1c8c3fd37` 图片生成页显示废弃警告，推荐媒体创作 | 官方路线确认：imggen → 媒体创作（mediagen）。**专项迁移评估见下方 2026-10-07 块** |
 | **主题** | `db81bb6c0` 自定义主题用 2025 色彩规范 + 更新 material-color-utilities | 我们 submodule 同仓（fetch 已见 main 5b3618b 更新）；主题域按需 |
-| **重构/性能** | `7c0113173` 通用组件下沉 ui 模块 + `d1c81bf99` LocalSettings 改 compositionLocalOf | **`d1c81bf99` fork 同款实锤**（我们也是 `staticCompositionLocalOf` ⇒ 设置一变整树重组）——性能修复小而实，**已吸收 `c1e700968`**；组件下沉是结构重构不跟 |
-| **修复** | `c211c0d44` **搜索结果不再被工具输出截断（#2000）** + `97060dd51` 输入栏渐变遮罩 | **`c211c0d44` fork 同款实锤**：fork `maybeTruncateToolOutput` 对所有工具一刀切，`search_web` 结果超 32K 同样截断成非法 JSON（结果列表 {}、引用失效、模型只见前几条）。**已吸收 `d9c429dec`**：豁免集合 `TOOLS_WITHOUT_OUTPUT_TRUNCATION` + 详情渲染回退；渐变遮罩小 UI 按需 |
+| **重构/性能** | `7c0113173` 通用组件下沉 ui 模块 + `d1c81bf99` LocalSettings 改 compositionLocalOf | **`d1c81bf99` fork 同款实锤**（我们也是 `staticCompositionLocalOf` ⇒ 设置一变整树重组）——性能修复小而实，**已吸收 `f5b8839c2`**；组件下沉是结构重构不跟 |
+| **修复** | `c211c0d44` **搜索结果不再被工具输出截断（#2000）** + `97060dd51` 输入栏渐变遮罩 | **`c211c0d44` fork 同款实锤**：fork `maybeTruncateToolOutput` 对所有工具一刀切，`search_web` 结果超 32K 同样截断成非法 JSON（结果列表 {}、引用失效、模型只见前几条）。**已吸收 `8e5c367a9`**：豁免集合 `TOOLS_WITHOUT_OUTPUT_TRUNCATION` + 详情渲染回退；渐变遮罩小 UI 按需 |
 
 **新 issue**：#2125 手动编辑聊天标题——**双方都有**（fork TopBar onUpdateTitle；上游 master 同样有完整编辑流含「先聊天再编辑」守卫，报告人是没发现入口）——平级，非 fork 领先（2026-10-06 更正：初评误判为 fork 领先，未对照上游代码）；#2124 透字（导航栏/输入法间隙，UI 细节，fork 待复现）；#2123 Agent toolcall 唤起图片生成（与上游 mediagen 接线配套的本地工具——fork 若走 mediagen 路线时同类需求=「imggen 工具化」，灵感级）；#1997 向量化归档+按需召回（closed；与压缩新语义相关，观察）；#1998 思考强度 UI（被 `80c6b07d` 落地）。
 
-**吸收优先级**：`c211c0d44` 搜索截断 ✅ `d9c429dec` → `d1c81bf99` LocalSettings 性能 ✅ `c1e700968` → 其余按需。
+**吸收优先级**：`c211c0d44` 搜索截断 ✅ `8e5c367a9` → `d1c81bf99` LocalSettings 性能 ✅ `f5b8839c2` → 其余按需。
 
 ### 2026-10-06 同步：`85af5b91` → `645a5d88`（3 提交）+ issue 灌水事件
 
@@ -260,10 +260,10 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 
 | 批 | 提交 | 内容 |
 |---|---|---|
-| ③ | `17440542` | tar 根条目 `./` 不再让整次 rootfs 安装失败（**与发行版无关**：`tar -C dir -czf x.tar.gz .` 默认带它，而安装对话框允许用户粘任意 URL）|
-| ① | `cfbaa0aa` | OpenRouter 编辑走 `/images/generations` + `input_references`（host 精确相等判定）；模型名含 `/` 的产物文件名清洗 + 旧记录读取兼容（`toFileNamePart`，覆盖临时预览与相册落盘两处）|
-| ② | `bd8a2568` | `images/` 改**递归**打包（`RECURSIVE_FILE_FOLDERS`），让遗留子目录里的老图换设备恢复后也能找回 |
-| ④ | `83965968` | 系统提示告知实际 shell（新增 `rootfsShellFor`，无 bash 回退 `/bin/sh`，工具执行与终端页共用）+ 发行版（`os-release`，`parseOsReleaseName` 净化控制字符/截断/容错键空格）|
+| ③ | `18dd5b90` | tar 根条目 `./` 不再让整次 rootfs 安装失败（**与发行版无关**：`tar -C dir -czf x.tar.gz .` 默认带它，而安装对话框允许用户粘任意 URL）|
+| ① | `46c74eea` | OpenRouter 编辑走 `/images/generations` + `input_references`（host 精确相等判定）；模型名含 `/` 的产物文件名清洗 + 旧记录读取兼容（`toFileNamePart`，覆盖临时预览与相册落盘两处）|
+| ② | `34234c23` | `images/` 改**递归**打包（`RECURSIVE_FILE_FOLDERS`），让遗留子目录里的老图换设备恢复后也能找回 |
+| ④ | `d50711fa` | 系统提示告知实际 shell（新增 `rootfsShellFor`，无 bash 回退 `/bin/sh`，工具执行与终端页共用）+ 发行版（`os-release`，`parseOsReleaseName` 净化控制字符/截断/容错键空格）|
 
 **仍未吸收（按需）**：Alpine 本体（`hasRootfs` 对绝对软链 `bin/sh` 的判定、Alpine 专属解包细节）——与「自托管预装 rootfs」同批；届时 `hasRootfs`/`hasUsableRootfs` 的两处同名判定可与 `rootfsShellFor` 一并收敛。
 
@@ -284,25 +284,25 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 
 ### 2026-09-28 同步：2.5.2 → 2.5.5（`458c16df` → `00c8d53a`，36 提交）
 
-master 已 ff-only 快进至 `00c8d53a`。按价值分类（吸收进度见各节，A 类前两批 `24dcdcce`+`47d5d81c`、C 类 chart_display 已吸收）：
+master 已 ff-only 快进至 `00c8d53a`。按价值分类（吸收进度见各节，A 类前两批 `b22ad061`+`3f54240f`、C 类 chart_display 已吸收）：
 
 #### A. 真缺口，建议吸收（按价值）
 
 | 提交 | 内容 | fork 现状 / 吸收要点 |
 |---|---|---|
-| ~~`70b382f5`~~ | **fix(settings): 读取失败时设置被意外重置为默认值** | ✅ **2026-09-28 已吸收（`24dcdcce`）**。fork `PreferencesStore.kt:234` 正是 `catch { if (IOException) emit(emptyPreferences()) }` ⇒ **读失败即拿空 Preferences 当用户数据**，随后任何 update 会把默认值写回、抹掉全部设置。上游改三件：①`retryWhen`（IO 错指数退避重试 N 次，仍失败**向上抛**，绝不回退空值）②`ReplaceFileCorruptionHandler`（真损坏才重建，且**先把原文件备份为 `.corrupt-<ts>`**）③`incrementLaunchCount` 改**单 key 原子 edit**（原为读整份快照再写回）。注意 fork 的 `settingsFlowRaw` 有既有注释「勿动」（MCP 并发丢工具根因相关），改前需看那段上下文 |
-| ~~`5ac149b9`~~ | **fix(openai): Responses API 工具参数事件缺 `item_id` 时回退到 `call_id`/`output_index`**（#1948） | ✅ **2026-09-28 已吸收（`47d5d81c`，按 fork 内联结构重写为 `ResponseToolCallIdResolver`）**。**并发现本仓原先就是错的**：`buildMessages` 回传用 `put("call_id", tool.toolCallId)`，而流式路径用 `item.id`（`fc_xxx`）⇒ 回传的 call_id 不符协议。原评估：**中转站场景真缺口**。fork `ResponseAPI.kt` 内联解码处仍是 `error("item_id not found")` **硬失败**（`:697`、`:766` 等）。上游抽出独立 `ResponseApiStreamDecoder` 并加：`itemIdOrCallId()` 回退 + `outputIndex` 映射表 + `resolveToolCallId`。**fork 是内联实现、结构不同 ⇒ 须手工适配**（不能 cherry-pick） |
-| ~~`ed3569c7`~~ | **fix(workspace): 文件编辑器不再把全文存进 saved state，修大文件切后台崩溃**（#1953） | ✅ **2026-09-28 已吸收（`24dcdcce`）**。 fork `WorkspaceFileEditorPage` 用 `rememberTextFieldState()`（全文进 Bundle）⇒ 大文件切后台 `TransactionTooLargeException`。改 `remember(id, area, path) { TextFieldState() }`（内容本就由 LaunchedEffect 从磁盘加载）。**同提交也修了 `SkillDetailPage` 的 `rememberSaveable`→`remember`** |
-| ~~`9f02586d`~~ | **fix(skills): 保存失败不再崩溃 + GitHub 导入按字节保存（防二进制损坏）** | ✅ **2026-09-28 已吸收（`47d5d81c`）**：`saveSkillFile` 改临时文件+rename（失败返 false 不抛）。**上游另一半本仓已具备**——`SkillsVM` 导入路径早就是字节下载（`b4e82baf` 自研）。要点：保存失败返回 Result 而非抛；导入走字节流而非 String（避免二进制被当文本解码损坏） |
-| ~~`8b696c0c`~~ | **fix(mcp): 忽略名称为空的自定义请求头**（#1949，报 "name is empty"） | ✅ **2026-09-28 已吸收（`24dcdcce`）**。 fork `McpSessionRegistry.resolvedHeaders()` 无过滤 ⇒ 设置页留空 header 会让 MCP 连接报错。一行：`filter { it.first.isNotBlank() }` |
-| ~~`54aa8114`~~ | **fix(favorite): 收藏页侧滑删除失效** | ❌ **2026-09-28 决定不做**（用户）：已有可点击的删除按钮（`FavoritePage:355` `IconButton(onClick = onDelete)`），侧滑只是冗余手势，失效不影响功能。 fork `FavoritePage:281` 用 `dismissState.currentValue`；上游指出**该值动画中途会翻到最近锚点 → LaunchedEffect 重启并在 onDelete 前被取消**，改 `settledValue`。fork 有 `key(item.id)`+`reset()`（`aa2c9a53`）但未改此值 ⇒ **很可能仍失效，建议真机先复现** |
-| ~~`324b337b`~~ | **fix: 避免代码块行号被复制** | ✅ **2026-09-28 已吸收（`24dcdcce`，两处行号渲染都包 `DisableSelection`）**。 fork `HighlightCodeBlock` 行号未包 `DisableSelection` ⇒ 选中代码会带上行号。小改 |
-| ~~`4391d5a5`~~ | **fix(google): 过滤工具参数中不兼容的 `propertyNames`** | ✅ **2026-09-28 已吸收（`24dcdcce`，两处同源清单一起加）**。 fork `GoogleProvider` 的剥离清单缺 `propertyNames`（Gemini 会拒）。**连带**：`ai/util/ToolSchemaSize.GOOGLE_STRIPPED_SCHEMA_KEYS` 是同一清单的副本，两处都要加 |
+| ~~`70b382f5`~~ | **fix(settings): 读取失败时设置被意外重置为默认值** | ✅ **2026-09-28 已吸收（`b22ad061`）**。fork `PreferencesStore.kt:234` 正是 `catch { if (IOException) emit(emptyPreferences()) }` ⇒ **读失败即拿空 Preferences 当用户数据**，随后任何 update 会把默认值写回、抹掉全部设置。上游改三件：①`retryWhen`（IO 错指数退避重试 N 次，仍失败**向上抛**，绝不回退空值）②`ReplaceFileCorruptionHandler`（真损坏才重建，且**先把原文件备份为 `.corrupt-<ts>`**）③`incrementLaunchCount` 改**单 key 原子 edit**（原为读整份快照再写回）。注意 fork 的 `settingsFlowRaw` 有既有注释「勿动」（MCP 并发丢工具根因相关），改前需看那段上下文 |
+| ~~`5ac149b9`~~ | **fix(openai): Responses API 工具参数事件缺 `item_id` 时回退到 `call_id`/`output_index`**（#1948） | ✅ **2026-09-28 已吸收（`3f54240f`，按 fork 内联结构重写为 `ResponseToolCallIdResolver`）**。**并发现本仓原先就是错的**：`buildMessages` 回传用 `put("call_id", tool.toolCallId)`，而流式路径用 `item.id`（`fc_xxx`）⇒ 回传的 call_id 不符协议。原评估：**中转站场景真缺口**。fork `ResponseAPI.kt` 内联解码处仍是 `error("item_id not found")` **硬失败**（`:697`、`:766` 等）。上游抽出独立 `ResponseApiStreamDecoder` 并加：`itemIdOrCallId()` 回退 + `outputIndex` 映射表 + `resolveToolCallId`。**fork 是内联实现、结构不同 ⇒ 须手工适配**（不能 cherry-pick） |
+| ~~`ed3569c7`~~ | **fix(workspace): 文件编辑器不再把全文存进 saved state，修大文件切后台崩溃**（#1953） | ✅ **2026-09-28 已吸收（`b22ad061`）**。 fork `WorkspaceFileEditorPage` 用 `rememberTextFieldState()`（全文进 Bundle）⇒ 大文件切后台 `TransactionTooLargeException`。改 `remember(id, area, path) { TextFieldState() }`（内容本就由 LaunchedEffect 从磁盘加载）。**同提交也修了 `SkillDetailPage` 的 `rememberSaveable`→`remember`** |
+| ~~`9f02586d`~~ | **fix(skills): 保存失败不再崩溃 + GitHub 导入按字节保存（防二进制损坏）** | ✅ **2026-09-28 已吸收（`3f54240f`）**：`saveSkillFile` 改临时文件+rename（失败返 false 不抛）。**上游另一半本仓已具备**——`SkillsVM` 导入路径早就是字节下载（`1fa0a76d` 自研）。要点：保存失败返回 Result 而非抛；导入走字节流而非 String（避免二进制被当文本解码损坏） |
+| ~~`8b696c0c`~~ | **fix(mcp): 忽略名称为空的自定义请求头**（#1949，报 "name is empty"） | ✅ **2026-09-28 已吸收（`b22ad061`）**。 fork `McpSessionRegistry.resolvedHeaders()` 无过滤 ⇒ 设置页留空 header 会让 MCP 连接报错。一行：`filter { it.first.isNotBlank() }` |
+| ~~`54aa8114`~~ | **fix(favorite): 收藏页侧滑删除失效** | ❌ **2026-09-28 决定不做**（用户）：已有可点击的删除按钮（`FavoritePage:355` `IconButton(onClick = onDelete)`），侧滑只是冗余手势，失效不影响功能。 fork `FavoritePage:281` 用 `dismissState.currentValue`；上游指出**该值动画中途会翻到最近锚点 → LaunchedEffect 重启并在 onDelete 前被取消**，改 `settledValue`。fork 有 `key(item.id)`+`reset()`（`bb48b375`）但未改此值 ⇒ **很可能仍失效，建议真机先复现** |
+| ~~`324b337b`~~ | **fix: 避免代码块行号被复制** | ✅ **2026-09-28 已吸收（`b22ad061`，两处行号渲染都包 `DisableSelection`）**。 fork `HighlightCodeBlock` 行号未包 `DisableSelection` ⇒ 选中代码会带上行号。小改 |
+| ~~`4391d5a5`~~ | **fix(google): 过滤工具参数中不兼容的 `propertyNames`** | ✅ **2026-09-28 已吸收（`b22ad061`，两处同源清单一起加）**。 fork `GoogleProvider` 的剥离清单缺 `propertyNames`（Gemini 会拒）。**连带**：`ai/util/ToolSchemaSize.GOOGLE_STRIPPED_SCHEMA_KEYS` 是同一清单的副本，两处都要加 |
 
 #### B. 已重叠 / 无此问题（不吸收）
 
-- `21448350` 工作区长按多选导出——**fork 已自研**（`7d8e4592`/`26e9fa29`，两种产物+批量删除，比上游更完整）
-- `f099cd40` 技能页按名称/描述搜索——**fork 已做**（`b4e82baf`，#1901）
+- `21448350` 工作区长按多选导出——**fork 已自研**（`73ba6c21`/`ed31779b`，两种产物+批量删除，比上游更完整）
+- `f099cd40` 技能页按名称/描述搜索——**fork 已做**（`1fa0a76d`，#1901）
 - `2cf09d2a` 思考步骤图标黑底（#1946）——fork `ChainOfThought` **未用** `CompositingStrategy.Offscreen`+`BlendMode.Clear`（上游根因），结构上无此 bug
 - `42517943` docs「不再接受 PR」——仓库策略变化，与本仓无关（**但对 fork 有影响：今后同步只剩维护者直推**）
 
@@ -311,9 +311,9 @@ master 已 ff-only 快进至 `00c8d53a`。按价值分类（吸收进度见各�
 | 提交 | 规模 | 备注 |
 |---|---|---|
 | `00c8d53a` chart_display 本地工具 | 大（工具 252 + ChartCard/Plot/Scale ~760 + 渲染） | 在聊天中画折线/柱/散点图；纯新增。**与 fork 的 TikZ/Mermaid 渲染链是并列能力**，需评估是否重复投入 → **已于 2026-09-29 吸收**（工具+ChartSpec/Scale/Plot/Card/Table 五组件+ChatMessageCot `ChartBlock` 分组+Export 渲染+设置页开关，单测 11 项；**适配点=hugeicons 1.3 无 `Table` 图标，用 `GridTable` 代替**） |
-| `3b346748`+`7f17dcc8` 内置技能 + skill-creator | 中（BuiltinSkills 87 + SkillManager 改造 + 内置 skill-creator 技能） | 内置技能与 fork 的 `enabledSkills` 体系需对齐；元数据转义/限长是防御性修补 → **已于 2026-09-30 吸收（`7f649e00`），真机验证通过**（启动解压/列表徽标/详情只读；单测转义+合并+assets 合法性；上游 SkillFile 重构同步吸收；fork 保留 category/save_skill 原子写等自研增强） |
+| `3b346748`+`7f17dcc8` 内置技能 + skill-creator | 中（BuiltinSkills 87 + SkillManager 改造 + 内置 skill-creator 技能） | 内置技能与 fork 的 `enabledSkills` 体系需对齐；元数据转义/限长是防御性修补 → **已于 2026-09-30 吸收（`cda504b0`），真机验证通过**（启动解压/列表徽标/详情只读；单测转义+合并+assets 合法性；上游 SkillFile 重构同步吸收；fork 保留 category/save_skill 原子写等自研增强） |
 | `233e095a`+`7508eee9`+`598b4efa` 阿拉伯语 + RTL | 大（6→7 语言 + 全仓方向图标 + locale-tui 术语表） | fork 目前 6 语言；RTL 涉及全仓 UI 方向性。**若非阿语用户则不值** |
-| `b9c0d3b7` 数据恢复页（从聊天记录恢复助手） | 中 | fork 已有助手墓碑（`5de1ffa9`），此页是另一种恢复路径 |
+| `b9c0d3b7` 数据恢复页（从聊天记录恢复助手） | 中 | fork 已有助手墓碑（`6222ca87`），此页是另一种恢复路径 |
 | `eaa003ad` 图片生成快捷方式 / `53f224b1` ExpressivePopup / `db1ce811` 搜索选择器 MD3 分段 | 小–中 | 体验增强 |
 | `068103dd` mimo v2.6 注册 / `c3d6867c` step-5 | 小 | fork 有 mimo v2/v2.5，缺 v2.6 与 step-5；按需补注册 |
 
@@ -323,11 +323,11 @@ master 已 ff-only 快进至 `00c8d53a`。按价值分类（吸收进度见各�
 
 #### 吸收进度（2026-09-28）
 
-- **第一批 5 项已吸收**（`24dcdcce`）：`70b382f5` 设置重置（配 `SettingsStoreResilienceTest` 5 项：
+- **第一批 5 项已吸收**（`b22ad061`）：`70b382f5` 设置重置（配 `SettingsStoreResilienceTest` 5 项：
   重试策略纯函数 + 真损坏⇒备份原文件且库可用 + 正常写入不产备份）、`ed3569c7` 编辑器 saved state、
   `8b696c0c` MCP 空 header、`324b337b` 行号不可选、`4391d5a5` propertyNames（两处清单）。
   真机：连续启动 `incrementLaunchCount: 1250 → 1251`，设置文件未重建、界面配置完好。
-- **第二批 2 项已吸收**（`47d5d81c`）：`5ac149b9` Responses toolCallId 归一（新
+- **第二批 2 项已吸收**（`3f54240f`）：`5ac149b9` Responses toolCallId 归一（新
   `ResponseToolCallIdResolver` 按流创建；测试 6 项，且验证过去掉修复即失败）、
   `9f02586d` 技能保存（`writeFileAtomically` 顶层函数；测试 5 项）。
 - **不做 1 项**：`54aa8114` 收藏侧滑（用户决定，已有可点击删除按钮）。
@@ -336,32 +336,32 @@ master 已 ff-only 快进至 `00c8d53a`。按价值分类（吸收进度见各�
 
 ### 2026-09-19 新发现：2.5.2 后再 8 提交（`c8853531`..`458c16df`，已 ff-only 同步 master；**其中 2 项已于 09-20 吸收**）
 
-> 剩余 3 项结论仍为「暂不吸收、按需取用」（`64319122` 小马算力=产品决策、`51a33198` haze、`8e304bb1` Volcano TTS 可选）；~~`458c16df` 待决定~~ → **已于 2026-09-24 吸收（`78048454`）**，本批**全部收口**。
+> 剩余 3 项结论仍为「暂不吸收、按需取用」（`64319122` 小马算力=产品决策、`51a33198` haze、`8e304bb1` Volcano TTS 可选）；~~`458c16df` 待决定~~ → **已于 2026-09-24 吸收（`4cd1fb0b`）**，本批**全部收口**。
 
 | 提交 | 内容 | 评估 |
 |---|---|---|
-| `a7850967` | **fix: 修复内联代码连字**（close #1920；`Markdown.kt`/`MarkdownNew.kt`/`SimpleHtmlBlock.kt` 三处加 `fontFeatureSettings = "'calt' 0, 'liga' 0, 'clig' 0"`） | ✅ **已于 2026-09-20 吸收（`083e2c96`），真机验证通过**。当时判定：fork 此前只吸收了 highlight 模块的代码块连字修复（`f26a19f1`，对齐上游 7b92f89e），富文本**内联 code span** 三处均无 fontFeatureSettings。**吸收时略作扩展**：①多覆盖 fork 特有的 `MarkdownStreaming.kt` 流式行内代码（该文件明确要求与最终渲染对齐，不加会「流式有连字、定格后消失」）；②常量收成 `RichTextStyle.CODE_FONT_FEATURES` 单一定义（原 6 处内联字面量正是 #1920 漏一处的成因）；③`highlight` 模块的 `Highlighter` 因独立 Gradle 模块、共享需加依赖边，保留自身副本 |
-| `6e98691c` | **fix: 移除 ChatCompletionsAPI tool 消息多出来的 name 属性**（1 行 + 测试） | ✅ **已于 2026-09-20 吸收（`43b54550`）**。当时判定：fork `ChatCompletionsAPI.kt:538` tool 角色消息仍带 `put("name", tool.toolName)`（`:629` 那处是 tool_calls 内的 `function.name`，合法，不动），部分 OpenAI 兼容端点会拒收顶层 name。**吸收时核对**：其余 provider（Google/Claude/ResponseAPI）的 `name` 站点均为合法位置，不动；fork 测试文件已更名 `ChatCompletionsAPIMessageTest.kt:277`，断言反转为 `containsKey("name")` 为假。ai 模块 30 项全过 |
-| `7c1629d0` | **fix: speed up image crop confirmation**（#1892，`CropLauncher.kt` PNG→JPEG(90)） | ✅ **已于 2026-09-20 吸收（`458fe3a6`）**。当时判定：`CropLauncher.kt:71` 仍是 `CompressFormat.PNG`——`withMaxResultSize(4096,4096)` 允许到 4096²，PNG 编码既慢又占内存即卡顿成因；**反编译 ucrop 2.2.11 确认 JPEG/q90 本就是库默认值**（`UCropActivity.DEFAULT_COMPRESS_FORMAT`/`DEFAULT_COMPRESS_QUALITY`），此前的 PNG 才是在覆盖默认。**吸收时另修一个附带缺陷**：文件名写死 `.jpg` 而编码用 PNG ⇒ 产物错标，**真机实证 `files/upload/` 下 5 个 `.jpg` 全部以 PNG magic 开头**（请求侧不受影响——ai 模块 `encodeBase64` 嗅探文件头、再统一压 JPEG q85）；引入 `CropOutput` 单一真相源使扩展名由格式**派生**，两者不可能再分叉。**已知取舍**：JPEG 无 alpha，透明像素合成成黑色，仅影响本地显示。测试 `CropOutputTest` 6 项 |
-| `458c16df` | **feat: fork 对话标题自动使用原会话标题加序号**（「fork」指分叉会话功能，非仓库 fork；`createForkConversation` +10 行） | ✅ **已于 2026-09-24 吸收（`78048454`，真机验证）**。当时判定为真缺口：fork 的 `createForkConversation` 不带 title ⇒ 分叉会话标题为空，侧栏里分不清谁是谁；**更隐蔽的一层**——空标题会让既有自动起名（`generateTitle` 仅在 `title.isBlank()` 时触发）在首条消息后把它改成与源会话**无关**的名字，「从哪分出来的」线索就断了。**按语义手工落地未 cherry-pick**（fork `ChatService.kt` 重度定制，`forkConversationAtMessage` 位置结构均不同），并抽成纯函数 `forkConversationTitle(...)` 上单测。**两处有意与上游不同**：①**源标题为空时保持为空、不生成 `(1)`**——上游写法在空标题源上产出 `"(1)"`，既无信息量又因「非空」让自动起名**永不修正它**；②**序号取第一个未占用值**（而非「已有数量+1」），删除某次分叉后再分叉会复用空出的序号，避免无界增长。避让作用域=同助手（同上游口径）。测试 5 项新增（取空位/复用序号/忽略无关标题/空标题保持/工厂一致） |
-| `445341e9` | **fix: restore favorites correctly after undoing deletion**（Fixes #1915） | **不吸收（2026-09-19 核对）：fork 已修（`aa2c9a53`），等价**。fork 侧 `FavoriteVM.removeFavorite/restoreFavorite` 均已改 suspend 保证落库时序、`FavoritePage.kt:284` 已有 `dismissState.reset()`（上游注释「Reset before removal」与 fork 同思路）。此提交反向印证 fork 对 #1915 的诊断正确 |
-| `4a3eefc1` | **fix: preserve conversation state across session switches**（抽取 `ConversationSessionManager` + 失败/取消时持久化部分生成 + 元数据同步，10 文件 +722/-200 + 428 行测试） | **不整包吸收，但已按面拆取两处真 bug（2026-09-20，`1b41b586`）**。整包移植仍不值得——与 fork 自研三件套（后台保活前台 Service、生成失败自动重试、半截回复 `20d84333`）正面重叠，且 `ChatService.kt` 已重度定制。**但它是三件事捆在一起，其中两件是 fork 真缺、用户可见**：<br>**①「停止生成后内容静默消失」——真机复现并修复**：流式内容只走 `updateConversation`（纯内存），落库点仅 `onSuccess` 与 #1812 的 `GenerationPartialFailureException`（重试耗尽且配置门控）；取消走 `onFailure`，`CancellationException` 被 `addError` 直接 return（`:232`）⇒ **全程零写库**，而 session 离开页面 5s 即回收、`initializeConversation` 会无条件用 DB 覆盖内存。**真机证据**：屏幕显示新半截内容、DB 仍是旧完整内容（logcat 见 `stream reset: CANCEL` + `JobCancellationException`）；退到桌面重进即回到旧内容。修法=`stopGeneration` 末尾用 `NonCancellable` 收尾落库（须在 `finishInterruptedPendingTools` **之后**，否则未执行工具被原样持久化）；修复后 node 候选数 1→2、`select_index` 指向新候选。<br>**②「置顶星标静默丢失」——同族于 fork 已修过的 folderId**：`togglePinStatus` 只改 DB 单列，内存仍旧值，后续整对象保存（`conversationToConversationEntity:403`）把它覆盖回去；`moveConversationToFolder` 的注释（`:1400`）早已写明同一机制，本次推广到漏掉的 `isPinned`。<br>**③④「生成中切助手覆盖在途内容」+「web pin/move 同病」——2026-09-23 已修（`6ec84d93`）**：`ChatVM.moveConversationToAssistant` 传 `saveConversation` 的是**从 DB 读的整对象**，而其内部首件事即无条件覆盖内存态 ⇒ 给正在生成的会话切助手，在途 messageNodes 被旧快照换掉（与 ① **同族**：都是「用旧整对象覆盖活跃 session 的内存态」）。**web 路由 `POST /{id}/pin`、`POST /{id}/move` 走同一问题路径**——`1b41b586` 修 pin 时只改了 UI 两处、**漏了 web**（本项目自查发现）。做法=引入统一原语 `ConversationSession.updateMetadata(update, persist)`（mutex 串行化；`update` 作用在**当前内存值**、`persist` 只写对应列）+ `ChatService.updateConversationMetadata`（无 session 时从 DB 读一次作基线）；四个入口（ChatVM×2、web×2）改走它；DAO 加 `updateAssistantId`（`assistant_id`+`folder_id` 一次更新避免中间态）。**仍未移植上游 114 行 `ConversationSessionManager`**（纯重构、与 fork 手写版等价，`ChatService.kt` 是 fork 改动最重的文件）。测试 `ConversationSessionMetadataTest` 5 项（核心=元数据编辑后内存 messageNodes 一个都不变）。<br>**⑤仍未做**：`initializeConversation` 无条件覆盖内存态，上游的 load-once 守卫**照搬会破坏 web API**（`ConversationRoutes` 7 处依赖它「改 DB→读回」，如 `POST /{id}/injections`）——上游能安全加是因为**同时**把那些路由改成 `updateMetadata` 直改内存，两者配套、不能只取一半。本次已把 pin/move 两处改掉，剩余 5 处属独立议题 |
+| `a7850967` | **fix: 修复内联代码连字**（close #1920；`Markdown.kt`/`MarkdownNew.kt`/`SimpleHtmlBlock.kt` 三处加 `fontFeatureSettings = "'calt' 0, 'liga' 0, 'clig' 0"`） | ✅ **已于 2026-09-20 吸收（`d80ce5a6`），真机验证通过**。当时判定：fork 此前只吸收了 highlight 模块的代码块连字修复（`a3c26f5f`，对齐上游 7b92f89e），富文本**内联 code span** 三处均无 fontFeatureSettings。**吸收时略作扩展**：①多覆盖 fork 特有的 `MarkdownStreaming.kt` 流式行内代码（该文件明确要求与最终渲染对齐，不加会「流式有连字、定格后消失」）；②常量收成 `RichTextStyle.CODE_FONT_FEATURES` 单一定义（原 6 处内联字面量正是 #1920 漏一处的成因）；③`highlight` 模块的 `Highlighter` 因独立 Gradle 模块、共享需加依赖边，保留自身副本 |
+| `6e98691c` | **fix: 移除 ChatCompletionsAPI tool 消息多出来的 name 属性**（1 行 + 测试） | ✅ **已于 2026-09-20 吸收（`321ea78e`）**。当时判定：fork `ChatCompletionsAPI.kt:538` tool 角色消息仍带 `put("name", tool.toolName)`（`:629` 那处是 tool_calls 内的 `function.name`，合法，不动），部分 OpenAI 兼容端点会拒收顶层 name。**吸收时核对**：其余 provider（Google/Claude/ResponseAPI）的 `name` 站点均为合法位置，不动；fork 测试文件已更名 `ChatCompletionsAPIMessageTest.kt:277`，断言反转为 `containsKey("name")` 为假。ai 模块 30 项全过 |
+| `7c1629d0` | **fix: speed up image crop confirmation**（#1892，`CropLauncher.kt` PNG→JPEG(90)） | ✅ **已于 2026-09-20 吸收（`0605eab3`）**。当时判定：`CropLauncher.kt:71` 仍是 `CompressFormat.PNG`——`withMaxResultSize(4096,4096)` 允许到 4096²，PNG 编码既慢又占内存即卡顿成因；**反编译 ucrop 2.2.11 确认 JPEG/q90 本就是库默认值**（`UCropActivity.DEFAULT_COMPRESS_FORMAT`/`DEFAULT_COMPRESS_QUALITY`），此前的 PNG 才是在覆盖默认。**吸收时另修一个附带缺陷**：文件名写死 `.jpg` 而编码用 PNG ⇒ 产物错标，**真机实证 `files/upload/` 下 5 个 `.jpg` 全部以 PNG magic 开头**（请求侧不受影响——ai 模块 `encodeBase64` 嗅探文件头、再统一压 JPEG q85）；引入 `CropOutput` 单一真相源使扩展名由格式**派生**，两者不可能再分叉。**已知取舍**：JPEG 无 alpha，透明像素合成成黑色，仅影响本地显示。测试 `CropOutputTest` 6 项 |
+| `458c16df` | **feat: fork 对话标题自动使用原会话标题加序号**（「fork」指分叉会话功能，非仓库 fork；`createForkConversation` +10 行） | ✅ **已于 2026-09-24 吸收（`4cd1fb0b`，真机验证）**。当时判定为真缺口：fork 的 `createForkConversation` 不带 title ⇒ 分叉会话标题为空，侧栏里分不清谁是谁；**更隐蔽的一层**——空标题会让既有自动起名（`generateTitle` 仅在 `title.isBlank()` 时触发）在首条消息后把它改成与源会话**无关**的名字，「从哪分出来的」线索就断了。**按语义手工落地未 cherry-pick**（fork `ChatService.kt` 重度定制，`forkConversationAtMessage` 位置结构均不同），并抽成纯函数 `forkConversationTitle(...)` 上单测。**两处有意与上游不同**：①**源标题为空时保持为空、不生成 `(1)`**——上游写法在空标题源上产出 `"(1)"`，既无信息量又因「非空」让自动起名**永不修正它**；②**序号取第一个未占用值**（而非「已有数量+1」），删除某次分叉后再分叉会复用空出的序号，避免无界增长。避让作用域=同助手（同上游口径）。测试 5 项新增（取空位/复用序号/忽略无关标题/空标题保持/工厂一致） |
+| `445341e9` | **fix: restore favorites correctly after undoing deletion**（Fixes #1915） | **不吸收（2026-09-19 核对）：fork 已修（`bb48b375`），等价**。fork 侧 `FavoriteVM.removeFavorite/restoreFavorite` 均已改 suspend 保证落库时序、`FavoritePage.kt:284` 已有 `dismissState.reset()`（上游注释「Reset before removal」与 fork 同思路）。此提交反向印证 fork 对 #1915 的诊断正确 |
+| `4a3eefc1` | **fix: preserve conversation state across session switches**（抽取 `ConversationSessionManager` + 失败/取消时持久化部分生成 + 元数据同步，10 文件 +722/-200 + 428 行测试） | **不整包吸收，但已按面拆取两处真 bug（2026-09-20，`b1273a72`）**。整包移植仍不值得——与 fork 自研三件套（后台保活前台 Service、生成失败自动重试、半截回复 `bf562d9e`）正面重叠，且 `ChatService.kt` 已重度定制。**但它是三件事捆在一起，其中两件是 fork 真缺、用户可见**：<br>**①「停止生成后内容静默消失」——真机复现并修复**：流式内容只走 `updateConversation`（纯内存），落库点仅 `onSuccess` 与 #1812 的 `GenerationPartialFailureException`（重试耗尽且配置门控）；取消走 `onFailure`，`CancellationException` 被 `addError` 直接 return（`:232`）⇒ **全程零写库**，而 session 离开页面 5s 即回收、`initializeConversation` 会无条件用 DB 覆盖内存。**真机证据**：屏幕显示新半截内容、DB 仍是旧完整内容（logcat 见 `stream reset: CANCEL` + `JobCancellationException`）；退到桌面重进即回到旧内容。修法=`stopGeneration` 末尾用 `NonCancellable` 收尾落库（须在 `finishInterruptedPendingTools` **之后**，否则未执行工具被原样持久化）；修复后 node 候选数 1→2、`select_index` 指向新候选。<br>**②「置顶星标静默丢失」——同族于 fork 已修过的 folderId**：`togglePinStatus` 只改 DB 单列，内存仍旧值，后续整对象保存（`conversationToConversationEntity:403`）把它覆盖回去；`moveConversationToFolder` 的注释（`:1400`）早已写明同一机制，本次推广到漏掉的 `isPinned`。<br>**③④「生成中切助手覆盖在途内容」+「web pin/move 同病」——2026-09-23 已修（`d34770c4`）**：`ChatVM.moveConversationToAssistant` 传 `saveConversation` 的是**从 DB 读的整对象**，而其内部首件事即无条件覆盖内存态 ⇒ 给正在生成的会话切助手，在途 messageNodes 被旧快照换掉（与 ① **同族**：都是「用旧整对象覆盖活跃 session 的内存态」）。**web 路由 `POST /{id}/pin`、`POST /{id}/move` 走同一问题路径**——`b1273a72` 修 pin 时只改了 UI 两处、**漏了 web**（本项目自查发现）。做法=引入统一原语 `ConversationSession.updateMetadata(update, persist)`（mutex 串行化；`update` 作用在**当前内存值**、`persist` 只写对应列）+ `ChatService.updateConversationMetadata`（无 session 时从 DB 读一次作基线）；四个入口（ChatVM×2、web×2）改走它；DAO 加 `updateAssistantId`（`assistant_id`+`folder_id` 一次更新避免中间态）。**仍未移植上游 114 行 `ConversationSessionManager`**（纯重构、与 fork 手写版等价，`ChatService.kt` 是 fork 改动最重的文件）。测试 `ConversationSessionMetadataTest` 5 项（核心=元数据编辑后内存 messageNodes 一个都不变）。<br>**⑤仍未做**：`initializeConversation` 无条件覆盖内存态，上游的 load-once 守卫**照搬会破坏 web API**（`ConversationRoutes` 7 处依赖它「改 DB→读回」，如 `POST /{id}/injections`）——上游能安全加是因为**同时**把那些路由改成 `updateMetadata` 直改内存，两者配套、不能只取一半。本次已把 pin/move 两处改掉，剩余 5 处属独立议题 |
 | `64319122` | chore: 移除小马算力默认提供商（`DefaultProviders.kt` -16 行） | **产品决策项（2026-09-19 核对）**：fork `DefaultProviders.kt:164` 仍有小马算力。fork 已有「内置提供商删除墓碑」（`removedBuiltInProviderIds`），删默认项技术上安全（老用户存量不受影响，仅回填跳过）。是否跟进看用户是否想精简默认列表 |
 | `51a33198` | chore: bump haze version | **暂不吸收**：配套 `7ee13f2a` blur/glass 效果；fork 不吸收该特性则无需动 haze |
 
 ### 2026-09-19 同步动作记录
 
 - `git fetch upstream` → `c8853531..458c16df`；本地 master 自 `d47d13a6` **ff-only 快进至 `458c16df`**（补上了 09-16 已评估未同步的 5 提交）。
-- 上述 8 提交中**四个已吸收**：`a7850967` 连字（`083e2c96`）、`6e98691c` tool name（`43b54550`）、`7c1629d0` 裁剪 JPEG（`458fe3a6`，09-20）、`4a3eefc1` 按面拆取两处真 bug（`1b41b586`，09-20）。**仅剩 `458c16df` 分叉标题**（须手工适配 `ChatService.kt`）等用户决定。
+- 上述 8 提交中**四个已吸收**：`a7850967` 连字（`d80ce5a6`）、`6e98691c` tool name（`321ea78e`）、`7c1629d0` 裁剪 JPEG（`0605eab3`，09-20）、`4a3eefc1` 按面拆取两处真 bug（`b1273a72`，09-20）。**仅剩 `458c16df` 分叉标题**（须手工适配 `ChatService.kt`）等用户决定。
 
 
 ### 2026-09-16 上游 issue 巡检（值得注意的）
 
 | issue | 内容 | 与 fork 的关系 |
 |---|---|---|
-| **#1915** | bug: 收藏页删除时撤销失效（OPEN，0 评论，报于 2.5.2） | **fork 已修**（`aa2c9a53`）：这正是 fork 设计稿 §1.4 缺陷 A —— `removeFavorite`/`restoreFavorite` 是 fire-and-forget ⇒ `upsert` 可能先于 `delete` 落库、撤销被覆盖。**该 issue 的「补充」段引用的就是 fork 的分析**。**可考虑回馈上游**（需先比对两侧 `FavoriteVM` 结构） |
+| **#1915** | bug: 收藏页删除时撤销失效（OPEN，0 评论，报于 2.5.2） | **fork 已修**（`bb48b375`）：这正是 fork 设计稿 §1.4 缺陷 A —— `removeFavorite`/`restoreFavorite` 是 fire-and-forget ⇒ `upsert` 可能先于 `delete` 落库、撤销被覆盖。**该 issue 的「补充」段引用的就是 fork 的分析**。**可考虑回馈上游**（需先比对两侧 `FavoriteVM` 结构） |
 | **#1918** | bug: 助手消息预填充不生效（OPEN；用户带完整抓包） | **已评估（2026-09-16）：不是 bug，是「注入模型不含末尾位置」的结构限制**。详见下节 |
-| #1903/#1904 | eval_javascript 缺资源防护 | **已修**（`641b46fe`） |
+| #1903/#1904 | eval_javascript 缺资源防护 | **已修**（`54a635b1`） |
 | #1912 | 工具审批无法关闭（OPEN） | **fork 不受影响**：前置修复（`55506496` 连续审批丢失、`1f04d2db` /tmp 免审批）**代码等价核对均在 fork**；且上游 2.5.2 也未修此 issue |
 | #1889 | 切换对话时思考过程/消息丢失 | **fork 结构上不受影响**：`ConversationSession` 是引用计数 + idle check，切页只 `release()` 不中断生成 |
 | **#1906** | feat: 聊天消息支持「引用」（QQ 式） | **已评估（2026-09-16 初评，2026-09-17 复核修订，未实现）：体量「小–中」，是本次巡检里性价比最高的一项**。见下节 |
@@ -477,7 +477,7 @@ A 不提供跨会话选择原文的入口；但**整会话导出再导入仍须�
 - **C（不做）**：跨会话选择原文、附件内容引用。整会话导出导入不在此排除范围，内部引用须重映射。
 
 **导入 remap 细节**：`ConversationImportRemap.kt:38` 目前只有 `nodeIdMap`，message id 就地随机生成、
-**无映射表**——须预建 messageId 映射并重写全部候选里的引用；与 `9f1d8105`（remap 漏 folderId）
+**无映射表**——须预建 messageId 映射并重写全部候选里的引用；与 `c6b9c627`（remap 漏 folderId）
 同一教训：换 id 的操作要成体系过一遍所有指向外部对象的引用字段。
 
 **估**：A 约 2 个提交（模型+队列+展开 1 个，UI+导入 remap 1 个）；B 再加 1 个。
@@ -687,7 +687,7 @@ git checkout master
      - **C. 「删除注入、重写插件架构」＝正式放弃**：fork 的 `PromptInjection` **已经就是** #1542 想要的「上下文插件」接口（content+enabled+priority+position，容器化后预设/世界书条目同构）；「删除」= 丢弃近一个月建成的 PromptPage(1944行)/两级选择器/ST双格式导入/预算/排序/预览生态，换来的模型与现状几乎同构。缓存诉求与「删除注入」无关——改写 system 的是 `AFTER_SYSTEM_PROMPT` 默认位置而非注入模型本身，A 已解。上游该 issue 仍 OPEN、零评论、无关联 PR（查至 2.5.2 后）。**#1542 在 fork 语境下视为已被 A+模型统一实质性回应，议题关闭（C 部分不再评估）。**
      - A 的落地提交：见 git log「缓存止血」相关（种子位置/cur_date/一键迁移三件）。
 
-9. **工具装配方盘点**（2026-09-14；**同日已重构落地 `3893912f`**，见「已放弃」表 `097cdb90`）：**重构后 = 单一装配点 `ChatToolFactory.createTools`**（原先的两处——`ChatService` 内联 buildList + `GenerationHandler` 内层叠记忆工具——已合并）。以下盘点保留为**新增装配方的接入指南**：
+9. **工具装配方盘点**（2026-09-14；**同日已重构落地 `4f7feea6`**，见「已放弃」表 `097cdb90`）：**重构后 = 单一装配点 `ChatToolFactory.createTools`**（原先的两处——`ChatService` 内联 buildList + `GenerationHandler` 内层叠记忆工具——已合并）。以下盘点保留为**新增装配方的接入指南**：
    - **重构后的装配方**：①**`ChatToolFactory.createTools`（唯一装配点）**＝主工具集——搜索（`enableWebSearch` 条件）/ 本地工具 8 类 / 最近对话（条件）/ 工作区（`createWorkspaceToolsIfReady`，需 shellStatus READY）/ 技能安装（恒注册）/ 已启用技能（条件）/ **MCP 动态循环**（含 `McpNameSanitizer.buildUniqueFunctionName` 去重净化）；②**`GenerationHandler.generateInternal`（`GenerationHandler.kt:138`）＝第二个装配点**——在传入 `tools` 之上再叠 `buildMemoryTools`（含 `needsApproval` 按 action 分档回调），这是 fork 特有、上游 factory 设计时未考虑的形态；③`ProviderConnectionTester`（`:179`）独立假工具 `get_current_time`（连通性测试）；④`LocalTools.getTools`＝按 `LocalToolOption` 的**子装配**（js/time/clipboard/tts/askUser/screenTime/calendar×2）；⑤`Model.tools`/`BuiltInTools`（`ai/.../Model.kt:47`）＝**provider 侧**能力标志（Search/UrlContext/ImageGeneration），非 Kotlin `Tool` 但与装配逻辑耦合（见上条 web search 条件）。
    - **潜在的装配方（未来立项会变成第 4/5 个入口）**：**MCP host 模式**（远程调用者需设备工具**子集**、复用审批/loop guard，见 `peer-apps-benchmark.md` SoLab ⑥）；**Agent/工作流/定时任务入口**（借鉴清单 Cron/workflow/subagent/Telegram，每入口都是独立生成发起方 + 需"无头会话"审批策略）；**Web API 聊天**（`ConversationRoutes` 现委托 ChatService、**尚不是装配方**，但 web 端一旦需要与手机不同的工具集即成为装配方——这是最可能打破"集中式"设计的压力点）。
    - **必须明确排除在 factory 之外的后台旁路**：标题 / 建议 / 压缩 / OCR / 翻译全部走 `backgroundTextGenerationParams`（`ChatService.kt:139`，**刻意不含 tools**）↔ 重构须保住这个"无工具"契约。
@@ -701,7 +701,7 @@ git checkout master
 11. **可拖拽列表一律按 key 定位，不要用 lazy 列表下标**（2026-09-19 用户报「拖拽排序异常」）：`rememberReorderableLazyListState` 回调里的 `from.index/to.index` 是 **LazyColumn 的绝对下标，含头部等非数据行**（如预设列表的「迁移卡」、注入列表的「顺序提示 orderHint」）⇒ 用下标映射到数据列表会**整体错位**（拖 A 实际移动了 B）。本仓已有正确工具 `reorderForDragByKey(from.key, to.key) { it.id }`（`CollectionUtils.kt`，其注释与 `ReorderForDragTest` 的「世界书条目拖拽」区都写明了此陷阱）。**规则：新写/改动可拖拽列表一律用 key 版**；另注意 `ModelList`/`SettingProviderDetailPage`/`SettingSearchPage` 三处仍在**手工补偿偏移**（历史写法），改动这些列表时优先一并转为 key 版。
 
 13. **护栏/熔断类动作必须 fail-open**（2026-10-08，来源：社区 Cordis 插件 `@argszero/cordis-plugin-thinking-loop-guard` 的 v0.1.10 事故）：该插件（DSH 上的「思考退化熔断」）在 v0.1.10 之前注入的提示用了 session format v4 已废弃的 `source.kind = 'plugin'`，写入被**逐行**拒绝 ⇒ **整个回合失败**——README 原话是「本该结束循环的那个守卫，把回合结束了」。**规则**：移植/新增护栏时，护栏自身的失败路径不得改变主流程的产出（本仓三个护栏均为「优雅停止 + 结果照常回填 + 诊断日志」形态，保持；新增护栏照此口径）。
-14. **不要改写「带签名」的模型产出块**（2026-10-08，来源：DSH discussion #5976 讨论串 + Anthropic 官方 replay 规则；**当日已实测核实**）：Claude 的 `thinking` / Gemini 的 `thoughtSignature` **必须原样回传**，官方规则明写「修改过的块会被拒（rejects *modified* blocks）」。**本仓落点**：`ClaudeProvider.kt:515` 把**带签名**的 thinking 块回传（文本取 `reasoning` 当前值 + 存储的 `signature`，无签名的才丢弃），而 `#1929 编辑思考过程`（`13d24f544`）允许原地改推理文本 ⇒ 编辑一条带签名的推理后，请求里发出的就是**「改过的文本 + 原签名」**。**核实结论**：临时单测经既有反射缝取 `buildMessages` 产物实测，Claude 发出 `{"type":"thinking","thinking":"EDITED_REASONING","signature":"sig-ORIGINAL"}`（元数据为可序列化字段，跨 DB 往返存活）；**OpenAI 兼容路径同样中招**（`includeHistoryReasoning` 默认 true ⇒ 发出 `reasoning_content:"EDITED_REASONING"`）；**Gemini 无此问题**（`toGooglePart()` 对 Reasoning 返回 null，签名挂在草稿图/functionCall 块上）。**规则**：凡实现「原地编辑模型产出」类功能，必须同时处置签名元数据（清签名使其不再回传）；若该块属于**未完成工具循环**，则不能清（丢 thinking 块会撞 Anthropic 另一条 400），只能**不给编辑入口**。同时修正「编辑过 ⇒ 没有可回传的思维链」这一**已失效前提**——`ChatCompletionsAPI.kt:592`、`ResponseAPI.kt:410` 两处注释把「消息被编辑过」列为回填占位的情形，而编辑后推理文本非空 ⇒ 该情形实际会**回传被编辑的文本**。同讨论串另有独立实测：「往 `reasoning_content` 里塞垃圾文本会稳定诱发随机输出/循环行为」——所以「会回传的产出被改写」这件事本身要评估退化风险。**修法候选与触发条件见 `roadmap.md` 2026-10-08 节。** **2026-10-09 真机核实（风险未激活）**：整拷真机库解析，**4638 个推理 part 里 `signature`/`redactedData`/`thoughtSignature` 全为 0**；`LIKE '%signature%'` 的 47 条命中**全是误报**（搜索 URL 的 `x-signature=` 查询串、APK 文本里的签名工具串）⇒ **该判据不可用，必须解析 part 再看 `metadata` 键**。另核到：Anthropic **已不再返回原始思维链**（4.7+/Fable 5 上 `display` 默认 `omitted`，要内容须显式 `display:"summarized"` 且拿到的是**摘要**）；本仓 `ClaudeProvider` 已发 `adaptive`+`display:"summarized"` ⇒ Claude 侧可被编辑的是**带签名的摘要块**，危险面同族、只是存量里尚未出现。
+14. **不要改写「带签名」的模型产出块**（2026-10-08，来源：DSH discussion #5976 讨论串 + Anthropic 官方 replay 规则；**当日已实测核实**）：Claude 的 `thinking` / Gemini 的 `thoughtSignature` **必须原样回传**，官方规则明写「修改过的块会被拒（rejects *modified* blocks）」。**本仓落点**：`ClaudeProvider.kt:515` 把**带签名**的 thinking 块回传（文本取 `reasoning` 当前值 + 存储的 `signature`，无签名的才丢弃），而 `#1929 编辑思考过程`（`3a1a98712`）允许原地改推理文本 ⇒ 编辑一条带签名的推理后，请求里发出的就是**「改过的文本 + 原签名」**。**核实结论**：临时单测经既有反射缝取 `buildMessages` 产物实测，Claude 发出 `{"type":"thinking","thinking":"EDITED_REASONING","signature":"sig-ORIGINAL"}`（元数据为可序列化字段，跨 DB 往返存活）；**OpenAI 兼容路径同样中招**（`includeHistoryReasoning` 默认 true ⇒ 发出 `reasoning_content:"EDITED_REASONING"`）；**Gemini 无此问题**（`toGooglePart()` 对 Reasoning 返回 null，签名挂在草稿图/functionCall 块上）。**规则**：凡实现「原地编辑模型产出」类功能，必须同时处置签名元数据（清签名使其不再回传）；若该块属于**未完成工具循环**，则不能清（丢 thinking 块会撞 Anthropic 另一条 400），只能**不给编辑入口**。同时修正「编辑过 ⇒ 没有可回传的思维链」这一**已失效前提**——`ChatCompletionsAPI.kt:592`、`ResponseAPI.kt:410` 两处注释把「消息被编辑过」列为回填占位的情形，而编辑后推理文本非空 ⇒ 该情形实际会**回传被编辑的文本**。同讨论串另有独立实测：「往 `reasoning_content` 里塞垃圾文本会稳定诱发随机输出/循环行为」——所以「会回传的产出被改写」这件事本身要评估退化风险。**修法候选与触发条件见 `roadmap.md` 2026-10-08 节。** **2026-10-09 真机核实（风险未激活）**：整拷真机库解析，**4638 个推理 part 里 `signature`/`redactedData`/`thoughtSignature` 全为 0**；`LIKE '%signature%'` 的 47 条命中**全是误报**（搜索 URL 的 `x-signature=` 查询串、APK 文本里的签名工具串）⇒ **该判据不可用，必须解析 part 再看 `metadata` 键**。另核到：Anthropic **已不再返回原始思维链**（4.7+/Fable 5 上 `display` 默认 `omitted`，要内容须显式 `display:"summarized"` 且拿到的是**摘要**）；本仓 `ClaudeProvider` 已发 `adaptive`+`display:"summarized"` ⇒ Claude 侧可被编辑的是**带签名的摘要块**，危险面同族、只是存量里尚未出现。
 15. **重复度类判据用「逐字周期」，不用低熵比值**（2026-10-08，来源：同上插件的标定数据）：对同一批文本，覆盖率/低熵类指标对退化样本读数 **0.92–0.99**，而对合法内容——40 行 markdown 表格 **0.72**、60 行日志 **0.76**、生成 CSS **0.82**、JSON dump **0.84**——**只差 0.06**，不足以作为截断用户输出的边界；而**逐字周期在所有这些合法样本上恒为 0**。**规则**：本仓将来做输出熔断/去重（或移植护栏）时，判据取「尾部是否为周期 ≤N 字符的**精确**重复、跨度 ≥M 字符」，且周期须含 ≥2 个不同字符（否则长 `====` 分隔线被误杀）。附带共识（讨论串两人独立提出）：**时长不是有效特征**——正常长推理同样长时间没有文本输出，纯时间阈值必然误伤。
 
 ## 关联

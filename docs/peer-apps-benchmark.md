@@ -64,7 +64,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 
 1. **终端内 URL 点击**（上游 7da69770 中 grep 为 0，直接可摘）：`getColumnAndRow` 定位 → `getLineWrap()` 上下扩展软换行还原长 URL（上限 50 行防全 transcript 遍历）→ 宽字符用 `[0, column]` 文本长度精确换算点击下标 → 尾部标点裁剪（`.,;:!?)]}'"`）→ `ACTION_VIEW` 打开。
 2. **Agent shell 四重预算**：单命令超时（60s）+ 单轮总预算（600s）+ 最大步数（32）+ stdout/stderr 截断（8KB），配 `workspace_run_background / _status / _kill` 三工具 + `TailBuffer` 输出尾缓冲追踪后台进程。上游 3a533a6a 只解决"页面不杀会话"，未约束"Agent 跑命令失控"。
-   - **本仓状态（2026-09-26）**：三工具 + `TailBuffer` **已落地（`b6a5351d`）**；与同源实现不同处：并发上限 4（超限拒绝不排队）、完成即淘汰保留 20、审批分档（run_background/kill 需审批、status 免审批）、LoopGuard 把状态查询加入轮询豁免。单轮字符/步数预算已另落地（`947f92a6` `WorkspaceTurnBudget`，口径=输出字符 + 步数）；**后台任务时长上限已落地**（09-26 收尾，30 分钟看门狗 + `TIMED_OUT` 状态 + 完整输出落盘 `.tasks/`）。详见 `design/design-workspace-background-tasks.md`。
+   - **本仓状态（2026-09-26）**：三工具 + `TailBuffer` **已落地（`7207a1a2`）**；与同源实现不同处：并发上限 4（超限拒绝不排队）、完成即淘汰保留 20、审批分档（run_background/kill 需审批、status 免审批）、LoopGuard 把状态查询加入轮询豁免。单轮字符/步数预算已另落地（`4a91f932` `WorkspaceTurnBudget`，口径=输出字符 + 步数）；**后台任务时长上限已落地**（09-26 收尾，30 分钟看门狗 + `TIMED_OUT` 状态 + 完整输出落盘 `.tasks/`）。详见 `design/design-workspace-background-tasks.md`。
 3. **Termux 双路线失败归类**：内嵌 terminal 库之外有外部 `RUN_COMMAND Intent` 路线，探测命令 + 枚举失败原因（未安装 / 无权限 / `allow-external-apps` 未开 / 超时）。
 
 ## 三、值得借鉴的机制（源码级验证）
@@ -91,7 +91,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
    - **WifiLock(low-latency)**：Wi-Fi radio 省电后"进程活着但入站 SYN 收不到、工具全部超时"——我们保活只做了 wake lock，这是增量。
    - `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` 用法可照抄；"引擎死了但通知还在"检测思路与我们 onTaskRemoved 重断言一致。
 6. **MCP server（host 模式）**：双协议兼容（Streamable HTTP + HTTP+SSE）、token 可选鉴权、工具定义与聊天内**单一来源**（含 loop guard/审批/截断全复用）、写工具共享 1 条串行门 + 读工具 2 条门 + 挂死熔断 2 分钟冷却（事故教训注释：native 挂死 = MCP 永久不可用）、重型工具 taskId 异步 + `mcp_task_status` 轮询。RikkaHub 已有 Ktor web 模块，是现成地基。
-7. **世界书 seed 三重迁移**：~~版本号 key + 内容 sha256 表~~ **✅ 已落地（`23d42929`，09-30）**——实现比原设想更简：固定 entryId 定位（省掉 sha256 表）+ (内容,位置) 历史指纹识别未改动旧副本 + 保留用户开关状态 + 已删不复活（`SeedMigration.kt` 接 PreferencesStore 读路径；现注册 Learning Mode v2，世界书留泛化点）。
+7. **世界书 seed 三重迁移**：~~版本号 key + 内容 sha256 表~~ **✅ 已落地（`2d30c528`，09-30）**——实现比原设想更简：固定 entryId 定位（省掉 sha256 表）+ (内容,位置) 历史指纹识别未改动旧副本 + 保留用户开关状态 + 已删不复活（`SeedMigration.kt` 接 PreferencesStore 读路径；现注册 Learning Mode v2，世界书留泛化点）。
 8. **Blutter 隔离 runner 模式**：`isolatedProcess="true"` Service（98 行）+ AIDL + ParcelFileDescriptor 零拷贝传 fd，每作业一进程用完即弃（native segfault 不伤主进程）；四级降级版本匹配（exact_engine → exact_snapshot → exact_dart → minor fallback）并把匹配证据返回给 AI；大索引 jsonl.gz 流式解析（O(1) 内存），教训注释：全量载 List 直接 OOM。
 9. **记忆管线**（Kelivo 系，~6000 行，模块边界干净）：Gatekeeper → Extract → Smart Add → Distiller 四段式，水位线 + 窗口推进；**gatekeeper malformed 不推进水位线**（宁重跑不漏记）；Smart Add 的 MERGE/CONFLICT 目标必须在本地检索候选集内（堵 LLM 幻觉 id）；旧会话只注入 summary 不注入原文。
 10. 小件：政策文本常量单一来源（Agent 系统提示与 MCP 工具描述共用同一份，防漂移）；规则字典 JSON + 用户规则页 + 远程订阅源；PROCESS_TEXT 全局划词进 AI。
@@ -153,7 +153,7 @@ Yuihub 把记忆从「每次请求临时拼进 system」改为**持久化的合�
 3. **整理器随提取管道一起上**（无提取则无膨胀压力，单独做意义不大）；
 4. **语义向量：不做**（三方独立结论一致）；**记忆快照：暂不做**，等压缩窗口真需统一时再议。
 
-> **2026-09-15 补充：第 1 项已实现（`69453f5e`）+ 设计落盘 → `design/design-memory-scoring.md`**（含与本仓代码/真实数据的逐条核对、tokenizer 可替换性分析、回收站的两个坑）。
+> **2026-09-15 补充：第 1 项已实现（`91d88551`）+ 设计落盘 → `design/design-memory-scoring.md`**（含与本仓代码/真实数据的逐条核对、tokenizer 可替换性分析、回收站的两个坑）。
 > **重要更正**：核对后问题重心不是「换排序」而是「全量注入需砍到预算」——本仓两个上限（60 条 / 100K 字符）在实测数据（54 条 / 60K 字符）下**都没触发**，即当前把全部记忆约 4 万 token 塞进 system prompt；且 Yuihub 的 1800 **字符**预算会把 54 条砍到 7 条，**不可照搬**（已定为 token 计、起步 5K–10K）。
 
 ## 四.5、Yuihub 2.5.5 → 2.5.7 增量评估（2026-10-02，09-23 后约 45 提交）
@@ -218,7 +218,7 @@ Yuihub `499be973`：只有收到**显式终止**（[DONE]/message_stop/response.
 吸收方向：decoder 加 explicitEnd（四 provider SSE 监听记录显式结束，onClosed 无 explicitEnd ⇒ 标 incomplete）→ 上游先做「未完成」提示（省），自动续写另议。**中等工作量，跨 ai 模块四 provider。**
 
 ### C. 检查点落库——✅ 已落地（2026-10-04/05 B/C/D 批次：流式 2s 检查点/finishIncomplete/自动续写，见 roadmap）
-fork 流式期间只走纯内存、落库点仅轮次结束/取消收尾（1b41b586 分析确认）⇒ **崩溃/杀进程丢半截内容**（#1812 只覆盖失败路径）。Yuihub 方案=onCheckpoint 回调（每 chunk 合并后，视觉转换后消息）+ 调用方节流 upsert **只动正在生成的节点**（不删其它）+ 崩溃后重进可见断点。fork 落地注意：①节流间隔（ANR 刚修，落库频率须节制）②与 #1812 的 NonCancellable 收尾合流 ③复用 updateMetadata/updateConversation 原语。
+fork 流式期间只走纯内存、落库点仅轮次结束/取消收尾（b1273a72 分析确认）⇒ **崩溃/杀进程丢半截内容**（#1812 只覆盖失败路径）。Yuihub 方案=onCheckpoint 回调（每 chunk 合并后，视觉转换后消息）+ 调用方节流 upsert **只动正在生成的节点**（不删其它）+ 崩溃后重进可见断点。fork 落地注意：①节流间隔（ANR 刚修，落库频率须节制）②与 #1812 的 NonCancellable 收尾合流 ③复用 updateMetadata/updateConversation 原语。
 
 ### D. 自动续写——与 #1812 哲学冲突，建议拆开
 Yuihub：截断（length）与裸 EOF 注入续写提示（**复用我们刚落的 pendingRecoveryHint 通道**），上限 3 次，续写追加同一条消息 + `mergeTrailingAssistantTextParts`（防续写新建 Text part 导致 markdown 块空行——这个坑值得直接抄）。
@@ -230,25 +230,25 @@ fork #1812 的既定哲学=「保留草稿 + 用户手动重试」（成本控�
 
 | 批 | 提交 | 内容 |
 |---|---|---|
-| B | `7973da13` | `MessageChunk.explicitEnd` + `terminalChunk()`：四个 provider 在显式结束处发标记（`[DONE]`/`message_stop`/`response.completed`/Google 带 finishReason 末块），`onClosed` 不发 ⇒ 裸断流可判定；`UIMessage.finishReason`/`finishIncomplete`（JSON blob 零迁移，语义=最后一次流的结束状态）；`isOutputLimitTruncation`/`isContentFilterTruncation` 纯函数统一三家命名 |
-| C | `20091990` | `ConversationRepository.checkpointGeneratingNode(conversation, nodeIndex)`：只序列化并 upsert 一个节点（不按前缀比对全会话、不重建 FTS——索引在轮次结束的正常保存时补齐）；ChatService 每 2 秒节流调用，失败只记日志。**nodeIndex 取 `chunk.messages.lastIndex` 而非 messageNodes.lastIndex**：THIS_ONLY 重生成只改动中间节点 |
+| B | `9d5774ee` | `MessageChunk.explicitEnd` + `terminalChunk()`：四个 provider 在显式结束处发标记（`[DONE]`/`message_stop`/`response.completed`/Google 带 finishReason 末块），`onClosed` 不发 ⇒ 裸断流可判定；`UIMessage.finishReason`/`finishIncomplete`（JSON blob 零迁移，语义=最后一次流的结束状态）；`isOutputLimitTruncation`/`isContentFilterTruncation` 纯函数统一三家命名 |
+| C | `457c102d` | `ConversationRepository.checkpointGeneratingNode(conversation, nodeIndex)`：只序列化并 upsert 一个节点（不按前缀比对全会话、不重建 FTS——索引在轮次结束的正常保存时补齐）；ChatService 每 2 秒节流调用，失败只记日志。**nodeIndex 取 `chunk.messages.lastIndex` 而非 messageNodes.lastIndex**：THIS_ONLY 重生成只改动中间节点 |
 | D | 本批 | `ContinuationPolicy.autoContinueHintFor` 纯函数：裸断流**恒**自动续写、撞输出上限**默认只提示**（`RetrySetting.autoContinueOnLengthTruncation` 可开）、两类共用上限 3 次；续写走已有的一次性提示通道追加到同一条消息；`ChatService.continueMessage` + 消息不完整横幅三档（内容拦截不给续写按钮）+ 设置开关 + 6 语言 |
 
 **与 Yuihub 的差异（刻意保留）**：Yuihub 对 length 截断也自动续写（上限 3）；fork 保持 #1812 的「成本控制权在用户」取舍——length 默认只提示 + 手动继续。另：Yuihub 的 `mergeTrailingAssistantTextParts`（续写新建 Text part 在正文多出空行）在 fork 不需要——fork 的同角色 chunk 追加规则会把续写文本拼进最后一个 Text part。
 
 ## 五、落地顺序建议
 
-> **落地状态（2026-10-02 复核）**：① 终端多 Tab **已落地**（`fbfcde5e`）；② 的 **ContextBudgetPlanner 已落地**（`c221be9a`），终端 URL 点击仍待做；③ LoopGuard/AgentRun 账本 **已落地**（`2452f665`/`f7d0c8e4`）；④ WifiLock **已落地**（`ee1c9736`）+ LoopGuard 已落地；⑤ 的 seed 迁移 + dry-run 审批 **已落地**（`23d42929`），**schema 三档缩水版仍待排期**；⑥⑦⑧ 见 §三 与 handoff §三（⑦ 记忆打分已落地 `69453f5e`，⑧ 记忆提取管道未立项）。
+> **落地状态（2026-10-02 复核）**：① 终端多 Tab **已落地**（`86cd6a70`）；② 的 **ContextBudgetPlanner 已落地**（`f821181c`），终端 URL 点击仍待做；③ LoopGuard/AgentRun 账本 **已落地**（`15a4dc8c`/`4adcda07`）；④ WifiLock **已落地**（`935f8b97`）+ LoopGuard 已落地；⑤ 的 seed 迁移 + dry-run 审批 **已落地**（`2d30c528`），**schema 三档缩水版仍待排期**；⑥⑦⑧ 见 §三 与 handoff §三（⑦ 记忆打分已落地 `91d88551`，⑧ 记忆提取管道未立项）。
 
 | # | 来源 | 内容 | 成本 |
 |---|---|---|---|
-| 1 | 上游 `3a533a6a` | 终端多 Tab 会话管理 | ~~低~~ ✅ **已落地**（`fbfcde5e`） |
-| 2 | rikkahub-agent | 终端 URL 点击（单文件）、~~ContextBudgetPlanner~~ ✅ 已落地（`c221be9a`） | 低（剩 URL 点击） |
-| 3 | rikkahub-agent | ~~LoopGuard~~ ✅（`2452f665`）、~~AgentRun 账本~~ ✅（`f7d0c8e4`）、工具审批模型（部分已落地） | ~~中~~ 基本收口 |
-| 4 | SoLab | 保活补强（**WifiLock ✅ `ee1c9736`** + specialUse 决策依据）、~~ToolCallLoopGuard~~ ✅（`2452f665`）、工具结果外置 + 反翻页（部分由 .tasks/ 落盘替代） | ~~低-中~~ 基本收口 |
-| 5 | SoLab | ~~世界书 seed 三重迁移、previewToken 审批~~ ✅（`23d42929`）、**schema 三档加载（缩水版）仍待排期** | 中（剩 schema） |
+| 1 | 上游 `3a533a6a` | 终端多 Tab 会话管理 | ~~低~~ ✅ **已落地**（`86cd6a70`） |
+| 2 | rikkahub-agent | 终端 URL 点击（单文件）、~~ContextBudgetPlanner~~ ✅ 已落地（`f821181c`） | 低（剩 URL 点击） |
+| 3 | rikkahub-agent | ~~LoopGuard~~ ✅（`15a4dc8c`）、~~AgentRun 账本~~ ✅（`4adcda07`）、工具审批模型（部分已落地） | ~~中~~ 基本收口 |
+| 4 | SoLab | 保活补强（**WifiLock ✅ `935f8b97`** + specialUse 决策依据）、~~ToolCallLoopGuard~~ ✅（`15a4dc8c`）、工具结果外置 + 反翻页（部分由 .tasks/ 落盘替代） | ~~低-中~~ 基本收口 |
+| 5 | SoLab | ~~世界书 seed 三重迁移、previewToken 审批~~ ✅（`2d30c528`）、**schema 三档加载（缩水版）仍待排期** | 中（剩 schema） |
 | 6 | SoLab | MCP host 模式（手机当桌面 AI 工具箱） | 高，按需；**一旦立项即成为第 4 个工具装配方**（远程调用者需设备工具子集、复用审批/loop guard，见 `upstream-analysis.md`「注意点」第 9 条装配方盘点） |
-| 7 | Yuihub | ~~记忆打分校准 + 字符预算~~ ✅ 已落地（`69453f5e`，真机验证） | ~~低~~ 完成 |
+| 7 | Yuihub | ~~记忆打分校准 + 字符预算~~ ✅ 已落地（`91d88551`，真机验证） | ~~低~~ 完成 |
 | 8 | Yuihub | 记忆提取管道 + 整理器（须接受「每轮多一次 LLM 调用」） | 中-高 |
 
 **记忆机制结论（Yuihub，详见 §四）**：值得借鉴的是**检索与写入的组织方式**（打分校准 / 提取管道 / 整理器），**不是语义向量**——Yuihub 上线语义检索后第二天整套删除（`a8c33b2d` → `fbd15331`），构成「记忆语义检索不做」的独立二次印证（与 `design-auto-compaction.md` §6.3 成本结论一致）。
@@ -477,8 +477,8 @@ ST 也是靠「仅对支持的源开放」来回避。⇒ **#1918 的判断得�
 - **「逐条开关」fork 已具备**：每条 `ModeInjection`/`RegexInjection` 自带 `enabled` 字段
   （`Assistant.kt:485`/`:501`，基类 `:470`），UI 上就是每条注入的开关——**截图里那种「一堆可开关的提示项」，
   fork 用模式注入就能表达**；
-  （**2026-09-19 细化**：条目开关有两套语义——改全局 `enabled`（预设详情页，`5bbf9ca3`）与
-  改本助手绑定（选择器详情，`66a699da`），二者是「与」关系；见 §6.11 ④。）
+  （**2026-09-19 细化**：条目开关有两套语义——改全局 `enabled`（预设详情页，`97aed655`）与
+  改本助手绑定（选择器详情，`d44e90f3`），二者是「与」关系；见 §6.11 ④。）
 - **缺的是「结构槽位」**：ST 的 `prompt_order` 里 `charDescription`/`charPersonality`/`scenario`/
   `dialogueExamples`/`chatHistory` 是**可单独开关与重排的槽位**；fork 这四项被角色卡导入
   **压成一条 `systemPrompt` 字符串**（`AssistantImporter.kt:167-195`）→ **无法单独开关，也无法重排**；
@@ -493,7 +493,7 @@ ST 也是靠「仅对支持的源开放」来回避。⇒ **#1918 的判断得�
 
 按 6.6 顺序动手，已完成**第 1 项（6.3 的两个真 bug）**与 **6.7 ③（拼装预览）**：
 
-**① 拼装预览（6.7 ③）——`9e033c9d`**
+**① 拼装预览（6.7 ③）——`f879a222`**
 
 - **抽取共享组装 `data/ai/PromptAssembly.kt`**：把原先**内联在 `GenerationHandler.generateInternal`**
   的系统消息组装与发送窗口抽成 `buildSystemPromptText` / `buildSendWindowMessages` / `buildInternalMessages`。
@@ -502,7 +502,7 @@ ST 也是靠「仅对支持的源开放」来回避。⇒ **#1918 的判断得�
 - **`data/ai/PromptInspector.kt`**：`inspectPrompt()` 走同一组装 + **同一个 transformer 链**，
   把结果按来源标注为 `SYSTEM` / `COMPRESSION_CHECKPOINT` / `INJECTION` / `CHAT_HISTORY` 段。
   **只读**：不落库、不发请求。检查点识别复用 `isCompactionCheckpointPreamble`
-  （**不能只看 `isSynthetic`**——它是 `@Transient`，持久化后丢失，见 ce311156 踩坑）。
+  （**不能只看 `isSynthetic`**——它是 `@Transient`，持久化后丢失，见 15142509 踩坑）。
 - **入口**：聊天页附件面板（「更多选项」）内，「压缩历史」下方新增「拼装后提示词」。
   页面显示：概览（分段数 / 估算 token / **历史 N / M** / 上下文上限）+ 缓存提示卡 + 每段来源卡 + 说明卡。
 - **单测 13 项**（`PromptAssemblyTest`）：钉住组装契约（system 在前且标 synthetic、会话级提示词
@@ -530,11 +530,11 @@ ST 也是靠「仅对支持的源开放」来回避。⇒ **#1918 的判断得�
 
 | 批次 | 内容 | 提交 |
 |---|---|---|
-| A | **世界书次要关键词 + 选择逻辑**（`secondaryKeywords` + `SelectiveLogic` 四模式） | `b04cf0af` |
-| B | **关键词多源扫描**（`matchAssistantPrompt`，对应 ST 的 6 个 `match*`） | `51104388` |
-| C | **世界书注入 token 预算**（`limitByTokenBudget`，默认 0 = 不限制） | `494b0143` |
-| D | **角色卡导入保留分区字段**（`card*` 五个可空字段 + 重建按钮） | `a8af0d3c` |
-| — | **修：拒绝非世界书文件**（真机发现的静默失败，见下） | `a0f5c4f2` |
+| A | **世界书次要关键词 + 选择逻辑**（`secondaryKeywords` + `SelectiveLogic` 四模式） | `672f4e83` |
+| B | **关键词多源扫描**（`matchAssistantPrompt`，对应 ST 的 6 个 `match*`） | `67844bcb` |
+| C | **世界书注入 token 预算**（`limitByTokenBudget`，默认 0 = 不限制） | `2325a327` |
+| D | **角色卡导入保留分区字段**（`card*` 五个可空字段 + 重建按钮） | `c4bbd2d5` |
+| — | **修：拒绝非世界书文件**（真机发现的静默失败，见下） | `7f8fa46b` |
 
 **A（过度触发）**：`isTriggered` 改为「主键命中 → 有次要键才按逻辑二次判定」；主/次键共用
 `matchesKeyword()`（大小写/正则/坏正则按不命中语义一致）。**次要键为空 = 跳过第 2 步**，
@@ -561,7 +561,7 @@ ST 也是靠「仅对支持的源开放」来回避。⇒ **#1918 的判断得�
 `card*` 只是「零件」+ 一个显式重建按钮——若让零件参与组装就会出现两个真相源，且用户手改
 `systemPrompt` 后会被静默覆盖。
 
-**⚠️ 真机发现的既有静默失败（`a0f5c4f2`）**：装机验证时看到设备上两个世界书都是「0 条目」，
+**⚠️ 真机发现的既有静默失败（`7f8fa46b`）**：装机验证时看到设备上两个世界书都是「0 条目」，
 其中「【Tavo酒馆通用】柯尔的妙想_v1.5」实为**用户导入的 ST 预设文件**（不是世界书）。根因：
 `SillyTavernLorebook.entries` 声明为**默认空 map** + `ignoreUnknownKeys = true` ⇒ **任意 JSON
 都能解码成「0 条目的世界书」并静默导入成功**。这比直接失败更糟（用户以为成功了）。改为
@@ -574,7 +574,7 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
 + **匹配逻辑 = 任一次要词命中**、`0 条目` 的世界书确认为静默失败实例；**数据零损失**
 （install -r，uid/size/upload/skills 全不变）。
 
-**④ 槽位管理器已合并落地（2026-09-17，`e9c75dbd`）**——6.7 ⑤ 与 6.2 ④ 合并成一次实现：
+**④ 槽位管理器已合并落地（2026-09-17，`d2400452`）**——6.7 ⑤ 与 6.2 ④ 合并成一次实现：
 
 角色卡字段区升级为「提示词分段」**槽位视图**，对齐 ST `prompt_order` 的槽位概念：
 
@@ -594,12 +594,12 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
 
 **至此 ST 借鉴清单（6.2 四项 + 6.3 三缺陷 + 6.7 ③⑤）全部清零。**
 
-### 6.11 预设中心化（2026-09-17 第三批：`4a796747` / `b5fcf751` / `e9c0f6ea`）
+### 6.11 预设中心化（2026-09-17 第三批：`d0f15e97` / `f2f6f50e` / `1395270a`）
 
 用户指令：**UI 明说「优先级更高者在前」、支持预设导入、把整个扩展管理建立在注入（预设）之上**；
 世界书暂不重要，之后再做。
 
-**① 预设容器（`4a796747`）——容器化的同时不动下游**
+**① 预设容器（`d0f15e97`）——容器化的同时不动下游**
 
 新增 `PromptPreset { id, name, description, enabled, entries }`（`entries` 仍是原 `ModeInjection`）。
 关键手法：`Settings.promptPresets` 是**持久化字段**，而 `modeInjections` 改为**计算属性**
@@ -616,14 +616,14 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
 配套 `reconcileEntries()`：扁平编辑写回容器时按 id 归位、**并按新序重排**（否则拖拽顺序不生效）、
 跨预设重复 id 先到先得。
 
-**② 排序语义（`b5fcf751`）——priority 为唯一来源**
+**② 排序语义（`f2f6f50e`）——priority 为唯一来源**
 
 原先拼装按 `priority` 降序，而列表展示的是存储顺序 ⇒ 给某条设过优先级后**拖拽即失效**
 （「看起来能拖、实际没变化」）。现改为：列表按 `priority` 降序展示，拖拽后
 `normalizeEntryPriorities()` 把视觉序（top→bottom）写回 `n-1 … 0`
 ⇒ **显示顺序 == 生效顺序**恒成立，并在 UI 明说（用户指定的做法）。
 
-**③ 预设列表/详情 + ST 预设导入（`e9c0f6ea`）**
+**③ 预设列表/详情 + ST 预设导入（`1395270a`）**
 
 - `PromptPage` 两级：预设列表（拖拽 + 行内开关 + 条目数）→ 详情（条目增删改 + 拖序 + 逐条开关）。
   详情是**页内二级页**，故返回键用 `BackHandler` 先回列表（`BackButton` 会直接退出整页）。
@@ -653,9 +653,9 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
 
 | 开关 | 位置 | 改的是 | 提交 |
 |---|---|---|---|
-| 预设级（整包停用） | `PromptPage` 预设列表**行内** | `PromptPreset.enabled`——**全局**字段 | `e9c0f6ea` |
-| 条目级（改全局启用状态） | `PromptPage` 预设**详情**每张卡片 | `ModeInjection.enabled`（`entry.copy(enabled=…)`） | `5bbf9ca3` |
-| 条目级（改本助手的绑定） | `ExtensionPicker` 预设详情（对话内扩展面板 + 助手详情页共用） | 绑定 id 集合（`modeInjectionIds` / 会话级 `modeInjectionIds`），**绝不碰全局 `enabled`** | `66a699da` |
+| 预设级（整包停用） | `PromptPage` 预设列表**行内** | `PromptPreset.enabled`——**全局**字段 | `1395270a` |
+| 条目级（改全局启用状态） | `PromptPage` 预设**详情**每张卡片 | `ModeInjection.enabled`（`entry.copy(enabled=…)`） | `97aed655` |
+| 条目级（改本助手的绑定） | `ExtensionPicker` 预设详情（对话内扩展面板 + 助手详情页共用） | 绑定 id 集合（`modeInjectionIds` / 会话级 `modeInjectionIds`），**绝不碰全局 `enabled`** | `d44e90f3` |
 
 - 生效判定唯一落点是 `PromptInjectionTransformer.collectInjections`：
   `entry.enabled && (effectiveModeInjectionIds.contains(id) || presetEntryIds.contains(id))`
@@ -670,7 +670,7 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
   与世界书容器行 `book.id in selectedIds` 的 Switch 同款写法——**成本很低**。
   注意「助手级绑定不随会话覆盖」是既有设计意图（表达「这个助手基于哪套方案」，与会话级逐条勾选正交）。
 
-### 6.12 拼装预览的浏览体验（2026-09-18，`b57a336c`）+ **待办 Tier 4**
+### 6.12 拼装预览的浏览体验（2026-09-18，`1235a841`）+ **待办 Tier 4**
 
 **已完成 Tier 1–3**：
 
@@ -680,7 +680,7 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
   段落下标 = 概览(0)+缓存提示(1)+目录(2) 之后的第 n 项 ⇒ **n + 3**（三者都是 `item` 槽位，
   内容为空也占位 ⇒ 偏移是常量）。跳转条沿用聊天页节奏「滚动浮现、静止 1.5s 隐去」，**靠右放**
   （预览页正文满宽，靠左会叠字）。
-- **Tier 2 长段折叠 → 手动收纳（2026-09-19 修订，`8f001b5d`）**：初版是「>1200 字符默认
+- **Tier 2 长段折叠 → 手动收纳（2026-09-19 修订，`41ede01d`）**：初版是「>1200 字符默认
   截断 + 卡头展开」（卡头教训：开关放正文下方，展开 11K 字的 system 段后按钮被推到几十屏外
   再也点不到——真机实测踩到）。用户随后决策**去掉自动截断**：概览职责已由目录卡承担，
   截断让「读内容」多点一步且 SelectionContainer 选不到未渲染文本；折叠保留为**手动**动作
@@ -716,12 +716,12 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
   `Assistant` 必须带 `card*` 字段——只给 systemPrompt 会让 `hasCardParts=false`
   永远走 PERSONA 兜底，表现为「卡槽归因不生效」。
 
-#### ✅ Tier 4（已落地，`16b26619`）——「点注入段 → 跳到产出它的条目」
+#### ✅ Tier 4（已落地，`9c18ee07`）——「点注入段 → 跳到产出它的条目」
 
 **价值**：把预览从「只读展示」变成「可归因并可操作」——看到某段世界书/模式注入不合适时直接
 跳到它的编辑处。
 
-**⚠️ 2026-09-19 更正（保留）**：「按条目开关」**早已存在**（`5bbf9ca3`，预设详情卡片行内 Switch；
+**⚠️ 2026-09-19 更正（保留）**：「按条目开关」**早已存在**（`97aed655`，预设详情卡片行内 Switch；
 选择器侧另有绑定开关，见 §6.11 ④ 的开关层级表）。故 Tier 4 不承担「解锁某能力」的职责，
 真缺口只有「从预览跳回条目」。
 
@@ -769,18 +769,18 @@ app 模块 662 项仅剩基线 `MarkdownMathParseTest` 失败（`git stash` 双�
 #### ⚠️ 发布说明偏差（已消解）
 
 v1.0.7 更新日志写着「新增拼装预览：发送前可查看提示词实际分段与占用，**支持按条目开关**」，
-而**预览页里没有任何开关**。核实：对应实现 `e9c75dbd`（提示词分段槽位视图）**完全没碰**
+而**预览页里没有任何开关**。核实：对应实现 `d2400452`（提示词分段槽位视图）**完全没碰**
 `promptinspect` 目录，它落在**助手详情页的角色卡字段区**。
 
-**2026-09-19 补充（偏差收窄）**：①「按条目开关」作为**能力确实存在**（`5bbf9ca3` 预设详情 +
-`66a699da` 选择器绑定，见 §6.11 ④），只是都不在预览页；②「预览页无开关」这个具体表述
+**2026-09-19 补充（偏差收窄）**：①「按条目开关」作为**能力确实存在**（`97aed655` 预设详情 +
+`d44e90f3` 选择器绑定，见 §6.11 ④），只是都不在预览页；②「预览页无开关」这个具体表述
 仍成立。
 
 **2026-09-20 结案**：Tier 4 已把预览变成**可操作面**（跳转到条目编辑处），配合既有的条目级
 开关，v1.0.7 那句「据此调整」终于名副其实——此前预览只能看、不能改，也就无从「据此调整」。
 文案无需再改（「支持按条目开关」+ 预览可跳转 = 用户能从预览出发完成调整闭环）。
 
-#### ✅ 预览页 token 估算偏低的成因分析与修复（2026-09-20 分析 → 2026-09-21 落地 `d160647f`）
+#### ✅ 预览页 token 估算偏低的成因分析与修复（2026-09-20 分析 → 2026-09-21 落地 `8f44c34b`）
 
 用户反馈「预览页的 token 估算与实际发送差别比较大」。核实后**主因不是估算器不准，而是覆盖面不足**——
 预览数的是「能拆成文本的那些段」，而不是「这次请求实际会发多少」。按影响排序：
@@ -794,7 +794,7 @@ v1.0.7 更新日志写着「新增拼装预览：发送前可查看提示词实�
 - 全仓**仅 2 处**工具设了 `systemPrompt`（`SkillsTools.kt` 的技能清单、`TextToSpeechTool.kt`）；
 - **MCP 工具完全不设**（`ChatToolFactory.kt:151-160` 只给 `description`/`parameters`）。
 
-⇒ 实测过的极端场景下（54 个 MCP 工具 ≈33K token，占 4 万总量约 80%，见 `e907d2e4`），
+⇒ 实测过的极端场景下（54 个 MCP 工具 ≈33K token，占 4 万总量约 80%，见 `701361d8`），
 **这部分在预览里是 0**。这是「差别比较大」的主因，且是**覆盖面**问题而非精度问题。
 
 **② 口径不同：预览只数 `Text` part，占用条含 `Tool`**
@@ -815,7 +815,7 @@ v1.0.7 更新日志写着「新增拼装预览：发送前可查看提示词实�
 **④ 协议包装开销未计入**：每条消息的 `{"role":…,"content":…}`、`tool_calls` 包装、
 `ensureArrayItems` 补的 `items` 等。单项不大，消息/工具多时累积。
 
-**已落地（`d160647f`，真机验证）**：
+**已落地（`8f44c34b`，真机验证）**：
 
 1. **工具 schema 独立成段**（原建议的 ①，收益最大）：新增 `TOOL_SCHEMA` kind（与
    `TOOL_GUIDANCE` 区分——后者是 system 正文内的引导文本，此前两者混用同名枚举）。
@@ -841,7 +841,7 @@ system 里仍贡献换行的逐字节契约由 `PromptAssemblyTest` 锁着）；
 **测试**：`PromptToolSchemaSegmentTest` 7 项 + `PromptToolResultSegmentTest` 7 项 +
 `SystemBlocksAttributionTest` 修枚举改名回归并钉住空块过滤。全量 860 项仅既有基线失败。
 
-**关联**：`e907d2e4`（上下文构成诊断日志，真实构成与 3.4% 精度实测）、§6.12 Tier 4。
+**关联**：`701361d8`（上下文构成诊断日志，真实构成与 3.4% 精度实测）、§6.12 Tier 4。
 
 关联文档：[upstream-analysis.md](upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](design/design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）。
 
@@ -880,7 +880,7 @@ fork 现状对照：我们已有**文件版近似**（tool_outputs 落盘 + 32KB
 
 ### 7.3 其他值得记的（小）
 
-- **宿主生成工具调用 ID + 依赖投影**：并行工具调用时 call_id 由宿主生成（`call_xxx`）、工具间依赖由宿主侧校验投影——不押在模型自己编 ID 上。与我们 ResponseAPI toolCallId 归一（`47d5d81c`）同主题的更激进形态；fork 目前工具串行、子代理并行由宿主管，暂无消费点。
+- **宿主生成工具调用 ID + 依赖投影**：并行工具调用时 call_id 由宿主生成（`call_xxx`）、工具间依赖由宿主侧校验投影——不押在模型自己编 ID 上。与我们 ResponseAPI toolCallId 归一（`3f54240f`）同主题的更激进形态；fork 目前工具串行、子代理并行由宿主管，暂无消费点。
 - **CallTools 动作协议**（FinalAnswer/AskUser/CallTools 三分 + CallTools 先出自然语言预回复再规划参数）：「边说边做」的 UX；fork 流式本就支持文本与工具交错，元工具落地时若做「先检索后调用」的提示词工程可参考其动作拆分。
 - **执行目标合同**：工具注册时声明网络能力/工作区权限/资源语义/artifact 策略；沙箱不可用 → **明确拒绝该执行目标而非悄悄改本机执行**——与 fork DenialGuard 同哲学，可用于将来 workspace 工具分级。
 - **BAML 双链路**（native tool calling / BAML 结构化规划二选一并显式声明，运行中不静默切换）：让不支持工具调用的普通模型获得同等的结构化工具语义。Kotlin 侧无可直接移植的 BAML 运行时，成本大，仅记录思想。

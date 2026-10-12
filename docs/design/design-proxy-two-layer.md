@@ -1,6 +1,6 @@
 # 两层代理设计（per-provider 为主 + 可选全局兜底）
 
-> 状态：**已实现**（2026-09-13，3 提交 `ea591254`/`644a7b2d`/`039e9f89`）——**待用户真机验证**（SOCKS5/HTTP 需真实代理服务器）。
+> 状态：**已实现**（2026-09-13，3 提交 `ff9a572c`/`7de9a814`/`30e69e20`）——**待用户真机验证**（SOCKS5/HTTP 需真实代理服务器）。
 > 背景：fork 现有 per-provider `ProviderProxy`（仅 HTTP）与上游全局代理页（986b9c39，HTTP/SOCKS5）对比后确定的融合方案——保留 per-provider 为主设计，补 SOCKS5 缺口，加全局兜底层覆盖非 chat 链路。上游全局代理页本身维持「已放弃」（与本设计不冲突：不吸收其 UI/模型，只借鉴 ProxySelector/Authenticator 机制）。
 > 实现备注：`RikkaProxyAuthenticator` 用**全局单例 + 多源查表**（关键点是 JVM `Authenticator.setDefault` 只允许一个，provider 覆盖同名 key），映射表随 `settingsFlowRaw` 热更新；`configureClientWithProxy` 的 `None` 分支为 `proxy(Proxy.NO_PROXY)` 显式屏蔽，`Inherit` 分支返回原 client 实例（据此判别是否走全局）。
 
@@ -85,9 +85,9 @@ OkHttp 的 `proxyAuthenticator` 不覆盖 SOCKS（SOCKS 认证在 socket 层）�
 
 ## 七、实现拆分（3 个提交）
 
-1. ~~**ai 模块**：`ProviderProxy` +Inherit/Socks5 + Http 认证条件修正；`ProxyUtils` 矩阵化（Inherit→this / None→NO_PROXY）+ 单测（纯 JVM 可测）~~ → `ea591254`（8 项单测）
-2. ~~**app 全局层**：`GlobalProxySetting` + PreferencesStore 三件套 + DI 共享 client（ProxySelector/Authenticator/热切换）+ JVM `RikkaProxyAuthenticator` 映射表~~ → `644a7b2d`（`ProxyEndpoints`/`SettingsProxy` + 10 项单测）
-3. ~~**UI + 文案**：网络设置页 + 提供商代理 tab 扩选项 + 6 语言~~ → `039e9f89`（真机渲染已验证）
+1. ~~**ai 模块**：`ProviderProxy` +Inherit/Socks5 + Http 认证条件修正；`ProxyUtils` 矩阵化（Inherit→this / None→NO_PROXY）+ 单测（纯 JVM 可测）~~ → `ff9a572c`（8 项单测）
+2. ~~**app 全局层**：`GlobalProxySetting` + PreferencesStore 三件套 + DI 共享 client（ProxySelector/Authenticator/热切换）+ JVM `RikkaProxyAuthenticator` 映射表~~ → `7de9a814`（`ProxyEndpoints`/`SettingsProxy` + 10 项单测）
+3. ~~**UI + 文案**：网络设置页 + 提供商代理 tab 扩选项 + 6 语言~~ → `30e69e20`（真机渲染已验证）
 
 ## 八、风险与核查项
 

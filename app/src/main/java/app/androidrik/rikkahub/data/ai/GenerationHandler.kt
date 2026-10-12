@@ -944,7 +944,7 @@ class GenerationHandler(
         // 输入处理链（时间提醒 / 模式注入 / 世界书 / ST 宏 / 占位符 / 文档转提示 / OCR / 引用 /
         // 助手模板 / workspace 提醒）：**返回值必须接住**——它才是真正发给 provider 的列表。
         //
-        // 2026-10-06 修复：此处曾写成裸语句 `internalMessages.transforms(...)`（`5591f3d0e` 改造
+        // 2026-10-06 修复：此处曾写成裸语句 `internalMessages.transforms(...)`（`d63f649d2` 改造
         // 前缀分叉诊断时把赋值丢了），链的产物被丢弃、请求发的是**未处理**列表，而拼装预览
         // （`PromptInspector` 那一份有 `val transformed =`）照常显示注入 ⇒「预览里有、实发里没有」，
         // 注入 / 时间提醒 / 引用展开 / OCR / 文档转提示全部静默失效。
