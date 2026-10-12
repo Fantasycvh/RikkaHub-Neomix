@@ -18,8 +18,8 @@
    600s 上限砍掉，要么模型只能反复跑 `tail` 看进度，每一步都在烧 token。
 2. **输出极大的命令**——`MAX_OUTPUT_CHARS = 128KB` 的头部截断结果直接进上下文，一次就能把窗口吃掉。
 
-出处：私有仓记录·前期调研 §二.2（rikkahub-agent 的 `workspace_run_background` /
-`_status` / `_kill` 三工具 + `TailBuffer`），落地清单见 私有仓记录·规划 2026-09-10 条目 ④
+出处：`docs/peer-apps-benchmark.md` §二.2（rikkahub-agent 的 `workspace_run_background` /
+`_status` / `_kill` 三工具 + `TailBuffer`），落地清单见 `docs/roadmap.md` 2026-09-10 条目 ④
 「AI 后台任务三件套——长任务不阻塞对话」。
 
 ## 二、目标与非目标

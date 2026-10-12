@@ -12,7 +12,7 @@ import java.io.File
  * 工作区备份的安全边界（zip 路径映射 / root 名校验 / zip-slip 防护）。
  *
  * 备份文件是**外部输入**（可能被篡改或损坏），恢复路径必须严格校验，
- * 否则可逃逸写入 app 私有目录之外。见 docs/design-backup-workspace-files.md §3.3。
+ * 否则可逃逸写入 app 私有目录之外。见 docs/design/design-backup-workspace-files.md §3.3。
  */
 class WorkspaceBackupHelperTest {
 

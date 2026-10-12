@@ -17,7 +17,7 @@ import app.androidrik.rikkahub.service.ChatService
 
 /**
  * 重生成的 scope 选择（**不按消息角色区分**——用户编辑后既可能想"只修正这一段"，
- * 也可能想"从这里重做"；见 `docs/design-regenerate-scope.md` §一/§三）。
+ * 也可能想"从这里重做"；见 `docs/design/design-regenerate-scope.md` §一/§三）。
  *
  * - **仅本条与对应回复**（[ChatService.RegenerateScope.THIS_ONLY]）：非破坏，直接执行。
  * - **含后续所有对话**（[ChatService.RegenerateScope.INCLUDE_FOLLOWING]）：破坏性，

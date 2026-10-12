@@ -10,7 +10,7 @@ internal const val REASONING_BACKFILL_PLACEHOLDER = "…"
  * 「思考模式下，带 `tool_calls` 的 assistant 消息**必须回传思维链**」——部分 OpenAI 兼容网关的
  * **结构性校验**（与内容无关，只看字段在不在）。
  *
- * 证据（私有仓记录·进度 Bug #56，对 opencode `zen/go/v1` 的 curl 实测）：
+ * 证据（内部进度记录（未随本仓发布） Bug #56，对 opencode `zen/go/v1` 的 curl 实测）：
  * - chat/completions：带 tool_calls 的 assistant 消息缺 `reasoning_content` → 400
  *   「reasoning_content must be passed back」（**空串可接受**）
  * - responses：缺 reasoning item → 400「reasoning_text must be passed back」

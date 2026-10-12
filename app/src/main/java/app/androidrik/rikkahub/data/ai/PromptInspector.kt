@@ -31,7 +31,7 @@ import kotlin.uuid.Uuid
 /**
  * 拼装预览（只读）：把「这次请求实际会发什么」按**来源**拆开展示。
  *
- * 动机见 私有仓记录·前期调研 §6.7 ③：社区里被明确称赞的能力是「给出实际拼装后的提示词，
+ * 动机见 `docs/peer-apps-benchmark.md` §6.7 ③：社区里被明确称赞的能力是「给出实际拼装后的提示词，
  * 用来优化预设」。本仓此前唯一可见途径是 `LogPage` 里的原始 HTTP JSON——需先开两个开关、
  * 是 provider 协议形状（看不出哪段来自哪）、且必须真发一次请求才能看。
  *
@@ -62,7 +62,7 @@ enum class PromptSegmentKind {
     /**
      * 请求的顶层 `tools` 数组（实发的 `description` + `parameters`），**不在任何消息里**。
      *
-     * 见 私有仓记录·前期调研 §6.12 末节：这一段此前完全没被预览统计，
+     * 见 `docs/peer-apps-benchmark.md` §6.12 末节：这一段此前完全没被预览统计，
      * 是「预览估算远低于实发」的主因（实测过的场景里 MCP schema ≈33K token）。
      */
     TOOL_SCHEMA,
@@ -70,7 +70,7 @@ enum class PromptSegmentKind {
     /** 渲染提示（TikZ / 数学公式引导） */
     RENDER_HINT,
 
-    /** 压缩检查点合成消息（见 `docs/design-auto-compaction.md`） */
+    /** 压缩检查点合成消息（见 `docs/design/design-auto-compaction.md`） */
     COMPRESSION_CHECKPOINT,
 
     /**
@@ -370,7 +370,7 @@ suspend fun inspectPrompt(
 
     // 请求顶层字段：工具 schema（`tools`）。**不属于任何消息**——与 `messages` 平级、
     // 每条请求都发。此前完全没被统计，是「预览估算远低于实发」的主因
-    // （实测场景 MCP ≈33K token，见 私有仓记录·前期调研 §6.12 末节）。
+    // （实测场景 MCP ≈33K token，见 `docs/peer-apps-benchmark.md` §6.12 末节）。
     // 放在段首：它逻辑上先于对话内容被 provider 读取，也提醒用户「对话之外还有内容」。
     val toolSegment = toolsToSegment(
         tools = tools,
@@ -593,7 +593,7 @@ internal fun systemBlocksToSegments(
  * 这一段**不属于任何消息**：`tools` 是请求体的顶层字段（与 `messages` 平级），
  * 每条请求都会发。此前预览完全不统计它 ⇒ 实测过的场景（MCP 54 工具 ≈33K token、
  * 占 4 万总量约 80%）在预览里是 0，这是「预览估算远低于实发」的主因
- * （私有仓记录·前期调研 §6.12 末节）。
+ * （`docs/peer-apps-benchmark.md` §6.12 末节）。
  *
  * `content` 用**真实下发的 JSON**（经 provider 形状变换与 `ensureArrayItems`），
  * 使展示与实发同源；token 数由调用方用 [ToolSchemaSize] 的同口径估算传入
@@ -629,7 +629,7 @@ internal fun toolsToSegment(
  *
  * 复用 [isCompactionCheckpointPreamble]（生产者与判定同源的既有约定），而不是只看
  * `isSynthetic`——后者是 `@Transient`，持久化后会丢失（历史踩坑见
- * `docs/design-auto-compaction.md` 的 ce311156）。
+ * `docs/design/design-auto-compaction.md` 的 0e3d7424）。
  */
 private val UIMessage.isCompactionCheckpoint: Boolean
     get() = isSynthetic &&

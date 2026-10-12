@@ -124,7 +124,7 @@ fun AssistantPicker(
  * 提为 internal 以便**导入流程**复用（"导入到哪个助手"）——那里**不能**用外层
  * [AssistantPicker]，因为它的 `AssistantState.setSelectAssistant` 会写
  * `settings.assistantId`（改掉用户的当前助手），而导入只是选目标、不该有副作用。
- * 见 `docs/design-conversation-import-export.md` §4.2。
+ * 见 `docs/design/design-conversation-import-export.md` §4.2。
  *
  * @param showDisabled 已停用（归档）助手是否显示。主切换器默认**隐藏**；
  *   恢复模式（SafeMode）与导入目标等**管理动作**场景传 true——归档助手仍可被

@@ -274,7 +274,7 @@ class SettingsStore(
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
         // 自定义压缩配置档（用户命名、可增改删；单 key 存 JSON 列表，与 modeInjections 同款）
         val COMPRESS_PRESETS = stringPreferencesKey("compress_presets")
-        // 导入来源记录（重复导入提示用；见 docs/design-conversation-import-export.md §十）
+        // 导入来源记录（重复导入提示用；见 docs/design/design-conversation-import-export.md §十）
         val IMPORTED_SOURCES = stringPreferencesKey("imported_sources")
         // 对话内子代理派发（设计 §十）：开关 + 「按名称调度的模型+提示词」组合列表。
         // **必须进三件套**——它们是 Settings 的**顶层平铺字段**，不写进 DataStore 就只在内存里活着：
@@ -874,7 +874,7 @@ data class Settings(
     val webServerLocalhostOnly: Boolean = false,
     /**
      * 记忆注入预算（token）。注入**哪些**记忆由打分校准决定，**装多少**由此预算决定——
-     * 见 `docs/design-memory-scoring.md`。改它会改变 system prompt 前缀，
+     * 见 `docs/design/design-memory-scoring.md`。改它会改变 system prompt 前缀，
      * 但只影响「入选集合」本身，不会每次请求漂移（输出顺序按 sortKey 固定）。
      */
     val memoryInjectBudgetTokens: Int = DEFAULT_MEMORY_BUDGET_TOKENS,
@@ -885,7 +885,7 @@ data class Settings(
      * 改变用户既有的注入量，那是不可接受的默认值变更，所以由用户显式开启。
      * 超预算时按 priority 降序裁剪；常驻条目（constantActive）不计预算。
      *
-     * 见 私有仓记录·前期调研 §6.2 ③。
+     * 见 `docs/peer-apps-benchmark.md` §6.2 ③。
      */
     val lorebookInjectBudgetTokens: Int = DEFAULT_LOREBOOK_BUDGET_TOKENS,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
@@ -919,7 +919,7 @@ data class Settings(
     /**
      * 导出留存区的保留天数（`files/exports` 的 TTL）。**0 = 不自动清理**。
      *
-     * 启动时按此清理过期导出（见 `docs/design-export-retention.md` §4.3）。
+     * 启动时按此清理过期导出（见 `docs/design/design-export-retention.md` §4.3）。
      */
     val exportRetentionDays: Int = DEFAULT_EXPORT_RETENTION_DAYS,
     /** 摘要目标 token（默认 2000） */
@@ -929,7 +929,7 @@ data class Settings(
      *
      * **不是真相源**：真正决定压缩行为的是上面三个数值，档只是「一键填入保留比例 + 摘要目标」
      * 的快捷方式，故删档不改变行为。内置档是常量、不入此列表。
-     * 见 `docs/design-compress-presets.md`。
+     * 见 `docs/design/design-compress-presets.md`。
      */
     val compressPresets: List<CompressPreset> = emptyList(),
     /**
@@ -938,12 +938,12 @@ data class Settings(
      * 用途：**重复导入提示**（同一文件再次导入时告知"已于 x 导入过"）。
      * 之所以放在这里而不是 `ConversationEntity` 加列：零迁移，且它本质是**用户级的来源记录**
      * 而非会话属性（导入总换新 id，故来源与会话不是一对一）。
-     * 见 `docs/design-conversation-import-export.md` §十。
+     * 见 `docs/design/design-conversation-import-export.md` §十。
      */
     val importedSources: Map<String, ImportSourceRecord> = emptyMap(),
     /**
      * **允许对话中的模型调用子代理**（`dispatch_subagent` 工具，设计见
-     * `docs/design-subagent-context.md` §十）。
+     * `docs/design/design-subagent-context.md` §十）。
      *
      * **默认关**，三个理由都是可见成本：①每次请求多一份工具 schema + 一份子代理清单
      * （提示词预算）；②派发是**阻塞**的，模型可以按住本轮对话数分钟；③它是"模型自己决定
@@ -964,7 +964,7 @@ data class Settings(
      *
      * 刻意做成计算属性而非存储字段：下游（`PromptInjectionTransformer`、Web API 的
      * id 校验、web-ui 的勾选列表、`ExtensionSelector`）全都按「扁平条目列表」消费，
-     * 这样**改容器结构不需要动它们任何一处**。见 私有仓记录·前期调研 §6.2 ④。
+     * 这样**改容器结构不需要动它们任何一处**。见 `docs/peer-apps-benchmark.md` §6.2 ④。
      */
     val modeInjections: List<PromptInjection.ModeInjection>
         get() = promptPresets.flatMap { it.entries }
@@ -1068,7 +1068,7 @@ enum class ProxyType { NONE, HTTP, SOCKS5 }
 /**
  * 全局代理设置（两层代理设计的「全局兜底层」）。
  *
- * 覆盖面（已盘点，见 docs/design-proxy-two-layer.md §四）：
+ * 覆盖面（已盘点，见 docs/design/design-proxy-two-layer.md §四）：
  * - AI chat：provider 未自配（`ProviderProxy.Inherit`）时走这里；
  * - **只有走 DI 共享 client 的链路才受益**——搜索（`SearchService.init` 注入共享 client）、
  *   ASR（`koinInject<OkHttpClient>`）在列；TTS / MCP 各自 `OkHttpClient.Builder()` 自建、

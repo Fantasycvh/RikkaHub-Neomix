@@ -12,7 +12,7 @@ import kotlinx.datetime.toInstant
  *
  * 为什么单独成文件、为什么是纯函数：这三条判据决定的是**会自动花钱的后台行为**，必须能被逐条钉死；
  * 散在仓库层与 UI 的 `if` 里的话，「为什么它没整理」会变成一个要看三处才能回答的问题
- * （见 `docs/design-memory-consolidation.md` §7）。
+ * （见 `docs/design/design-memory-consolidation.md` §7）。
  */
 
 /** 一个助手的记忆库 id：开了「使用全局记忆」时是共享库，否则是助手自己一份。 */

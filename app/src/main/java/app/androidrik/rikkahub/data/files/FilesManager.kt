@@ -87,7 +87,7 @@ class FilesManager(
      * 为什么不能用 [saveManagedFromBytes]（它直接 `writeBytes` 到最终名）：导出会复用同名
      * （如 JSON 的 `"$safeTitle.json"`），若"先删旧再写新"，写入中途失败会**毁掉前一份**。
      * 本方法写临时文件再原子 rename，故中途失败只会留下可被清理的临时文件，最终名始终完好
-     * （见 `docs/design-export-retention.md` §4.2）。
+     * （见 `docs/design/design-export-retention.md` §4.2）。
      *
      * 目标名仍是 UUID（`managed_files.relative_path` 有 UNIQUE 索引，不能同名覆盖），
      * 人类可读名存 `displayName`。
@@ -587,7 +587,7 @@ object FileFolders {
      * 导出留存区（AI/用户导出的对话文件副本；经「设置 → 文件管理」可见、可再分享）。
      *
      * 与 `tool_outputs`（会话级临时产物、启动即清）不同：本目录是**用户想留的产物**，
-     * 故按 TTL 清理而非启动清空。见 `docs/design-export-retention.md`。
+     * 故按 TTL 清理而非启动清空。见 `docs/design/design-export-retention.md`。
      */
     const val EXPORTS = "exports"
 }

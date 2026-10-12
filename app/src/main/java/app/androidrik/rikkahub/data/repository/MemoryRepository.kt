@@ -143,7 +143,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
      * 这里做去重而非"每个 step 重新注入记忆列表"：后者会让 system prompt 每步变化，
      * 反而打掉前缀缓存（见 design-auto-compaction 的前缀稳定性约束）。
      *
-     * [importance] 由模型在工具调用时给（见 `docs/design-memory-scoring.md` §四）；
+     * [importance] 由模型在工具调用时给（见 `docs/design/design-memory-scoring.md` §四）；
      * 缺失/越界时回落到 [MemoryEntity.DEFAULT_IMPORTANCE]。
      */
     suspend fun addMemory(

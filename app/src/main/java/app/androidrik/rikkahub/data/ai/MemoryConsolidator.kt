@@ -107,7 +107,7 @@ class MemoryConsolidator(
                 transcript = transcript.text,
                 maxSteps = if (fullReview) MAX_MANUAL_STEPS else MAX_AUTO_STEPS,
                 // 审批开着（任一相关开关）⇒ 整轮只提案：后台没有用户可等，而"直接拒绝"会丢掉
-                // 模型原本想改的内容（见 docs/design-memory-consolidation.md §7.2）
+                // 模型原本想改的内容（见 docs/design/design-memory-consolidation.md §7.2）
                 proposeOnly = participants.any { it.memoryModifyApproval || it.memoryCreateApproval },
             )
         )

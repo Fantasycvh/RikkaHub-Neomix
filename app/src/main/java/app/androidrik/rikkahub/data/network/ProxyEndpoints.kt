@@ -5,7 +5,7 @@ import app.androidrik.rikkahub.data.datastore.GlobalProxySetting
 import app.androidrik.rikkahub.data.datastore.ProxyType
 
 /**
- * 两层代理（`docs/design-proxy-two-layer.md`）的**共享工具**——不依赖 SettingsStore，
+ * 两层代理（`docs/design/design-proxy-two-layer.md`）的**共享工具**——不依赖 SettingsStore，
  * 纯函数 + 数据结构，便于单测。
  */
 

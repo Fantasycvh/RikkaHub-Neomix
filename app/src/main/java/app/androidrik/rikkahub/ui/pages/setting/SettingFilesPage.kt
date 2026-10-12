@@ -85,7 +85,7 @@ fun SettingFilesPage(
     val settingsStore: SettingsStore = koinInject()
     val settings = LocalSettings.current
     // 导出留存区与附件一起管：它是「用户想留的产物」，同样需要可见/可删/可再分享
-    // （见 docs/design-export-retention.md §4.4）
+    // （见 docs/design/design-export-retention.md §4.4）
     val folders = remember { listOf(FileFolders.UPLOAD, FileFolders.EXPORTS) }
 
     // 预先获取字符串资源

@@ -48,7 +48,7 @@ data class UIMessage(
      * 内容多半不完整。与 [finishReason] 正交——后者是 provider 表态，前者是「provider 根本没表态」。
      *
      * 语义是「**最后一次**流的结束状态」：续写成功后会被覆写回 false，故不需要额外的注解来
-     * 清除提示（详见 私有仓记录·前期调研 §四.7）。
+     * 清除提示（详见 `docs/peer-apps-benchmark.md` §四.7）。
      */
     val finishIncomplete: Boolean = false,
     // 请求期间生成的内部消息；该标记仅在内存中使用

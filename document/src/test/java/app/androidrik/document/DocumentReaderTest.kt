@@ -18,7 +18,7 @@ import java.util.zip.ZipOutputStream
  * 表现是"模型拿到第 2 章的内容却以为是第 1 章"——它能读、能答，只是答案对应错了页，用户很难发现。
  *
  * **PDF 不在这里测**：`PdfParser` 走 MuPDF 的 native 库（Android 侧才有），JVM 单测跑不了；
- * 它只在真机路径上验证（见 私有仓记录·规划）。所以这里至少钉住"扩展名判定"这条不含 native 的逻辑。
+ * 它只在真机路径上验证（见 `docs/roadmap.md`）。所以这里至少钉住"扩展名判定"这条不含 native 的逻辑。
  */
 class DocumentReaderTest {
 

@@ -8,7 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * 两层代理的应用层纯逻辑（`docs/design-proxy-two-layer.md`）：
+ * 两层代理的应用层纯逻辑（`docs/design/design-proxy-two-layer.md`）：
  * 全局设置/ provider 自配 → 端点映射，以及多源 SOCKS5 凭据查表。
  */
 class ProxyEndpointsTest {

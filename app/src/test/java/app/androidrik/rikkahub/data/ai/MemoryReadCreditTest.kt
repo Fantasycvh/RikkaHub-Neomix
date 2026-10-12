@@ -9,7 +9,7 @@ import kotlin.math.exp
 import kotlin.math.ln
 
 /**
- * **信用记账**（读取遥测 → 打分）的纯函数测试，见 `docs/design-memory-discipline.md` §4.6。
+ * **信用记账**（读取遥测 → 打分）的纯函数测试，见 `docs/design/design-memory-discipline.md` §4.6。
  *
  * 要守住的三件事：
  * 1. **零读数 = 完全等于接入前的公式**（逐位）——接入不得改变既有数据的注入行为；

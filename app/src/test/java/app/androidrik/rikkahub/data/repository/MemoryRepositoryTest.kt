@@ -178,7 +178,7 @@ class MemoryRepositoryTest {
         assertEquals("x", repo.getMemoriesOfAssistant("a").first().content)
     }
 
-    // ---- importance / updatedAt（打分校准的输入，见 design-memory-scoring.md） ----
+    // ---- importance / updatedAt（打分校准的输入，见 docs/design/design-memory-scoring.md） ----
 
     @Test
     fun `addMemory stores provided importance`() = runBlocking {

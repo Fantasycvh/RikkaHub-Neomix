@@ -1,6 +1,6 @@
 # 重生成语义：scope 可选 + 撤销（设计稿）
 
-> 状态：**已实现（`ad3543b2`），真机验证通过**（2026-09-15）。决策见 §三。
+> 状态：**已实现（`54e4187a`），真机验证通过**（2026-09-15）。决策见 §三。
 > **实现结果**：`RegenerateScope{THIS_ONLY, INCLUDE_FOLLOWING}`（不按角色）+ 仅 B 确认（含「先导出再继续」）+ 截断后「已移除 N 条 · 撤销」；纯函数抽到 `data/model/RegeneratePlan`（单测 14 项 + 检查点交叉 1 项）；死参数 `regenerateAssistantMsg` 已清。默认 scope 仍为 INCLUDE_FOLLOWING，web/API 调用方行为不变。
 > **§五 的冲突处理**：实现取「撤销覆盖已生成」——`undoRegenerateTruncation` 先 `stopGeneration` 再 `take(截断后长度)` 拼回尾巴（截断后新产生的回复与 #1812 半截草稿一并撤掉 = 回到截断前）；**用户已手动验证通过**。
 > 关联：`design-auto-compaction.md`（检查点失效）、`design-compress-presets.md`（同为压缩线）。
@@ -106,8 +106,8 @@ node.copy(messages = node.messages + UIMessage(role = node.role, parts = process
 
 ### 6.1 关键事实：导出的落点是临时文件 + 分享面板，启动即清
 
-> **2026-09-16 后续（已实施）**：本节描述的「启动即清 + 取消也放行破坏操作」**已修复**（`534a5eef`，
-> 见 `docs/design-export-retention.md`）：(b) 侧改 SAF `CreateDocument` 真落地（取消＝中止移除）、
+> **2026-09-16 后续（已实施）**：本节描述的「启动即清 + 取消也放行破坏操作」**已修复**（`0081f472`，
+> 见 `export-retention.md`）：(b) 侧改 SAF `CreateDocument` 真落地（取消＝中止移除）、
 > 引入 `files/exports` 留存区 + TTL + 导出管理入口。**另发现本节未提及的一个破坏性 bug**：
 > `onDismissRequest()` 会清掉 `exportThenRegenerateFor`，而 `onExported` 读它来续作 scope B——
 > 原实现顺序反了 ⇒ **「先导出再继续」的移除从未执行过**（功能是死的；已修正顺序）。
@@ -166,13 +166,13 @@ node.copy(messages = node.messages + UIMessage(role = node.role, parts = process
 
 ## 七、其它已核实的事实
 
-- **检查点失效已自动覆盖**：区域指纹（`bbba9ba8`）按「区域内节点 id + 选中消息 id」的 SHA-256
+- **检查点失效已自动覆盖**：区域指纹（`c09082f9`）按「区域内节点 id + 选中消息 id」的 SHA-256
   判定；用户分支 `subList` 截断后 `boundaryNodeId` 指向的节点消失即失效；
   `CompressionWindowTest` 已有 `regenerating a node within area invalidates checkpoint` 用例
   （构造新候选 + 切 `selectIndex` → 断言失效）。
-- **⚠️ 三处文档过时**：私有仓记录·交接:74`、私有仓记录·规划:556/558` 仍写
+- **⚠️ 三处文档过时**：`docs/handoff-2026-09-04.md`:74`、`docs/roadmap.md`:556/558` 仍写
   「已知限制：重新生成边界内消息未触发失效（影响微妙）」——该限制写于**指纹校验之前**，
-  `bbba9ba8` 已覆盖，属**假限制**，会误导后续排查，应清理。
+  `c09082f9` 已覆盖，属**假限制**，会误导后续排查，应清理。
 - **会话列表膨胀有界**：同一截断点重复操作时下游已空，无需再截断。
 - **`saveMessageNodes` 用公共前缀 diff**（`ConversationRepository.kt:602-624`）：
   截断（缩短）走 `deleteFromIndex`；还原（变长/变化）走插入——故"还原"是 DB 层支持的。

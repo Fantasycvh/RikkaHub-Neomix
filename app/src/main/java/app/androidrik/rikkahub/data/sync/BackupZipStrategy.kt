@@ -3,7 +3,7 @@ package app.androidrik.rikkahub.data.sync
 import java.util.zip.Deflater
 
 /**
- * 备份 zip 的**压缩策略**（大文件加固 P0，设计见 `docs/design-backup-workspace-files.md` §九）。
+ * 备份 zip 的**压缩策略**（大文件加固 P0，设计见 `docs/design/design-backup-workspace-files.md` §九）。
  *
  * **要解决的问题**：对已压缩/不可压缩数据（git pack、图片、视频、pdf）跑 DEFLATE 纯属浪费——
  * 实测比率 1.000x 仍以 24 MB/s 烧单核，2.8GB 下 ≈ 数分钟白烧。判定为不可压缩的条目改用

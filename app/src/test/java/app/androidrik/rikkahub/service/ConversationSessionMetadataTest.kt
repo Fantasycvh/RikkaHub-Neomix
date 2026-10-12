@@ -17,7 +17,7 @@ import kotlin.uuid.Uuid
 /**
  * 元数据编辑的统一落地原语（`ConversationSession.updateMetadata`）。
  *
- * 背景（私有仓记录·上游分析 对 `4a3eefc1` 的评估）：置顶/移动助手这类只改标量字段的
+ * 背景（`docs/upstream-analysis.md` 对 `4a3eefc1` 的评估）：置顶/移动助手这类只改标量字段的
  * 编辑，历史写法是「从 DB 读整对象 → 改字段 → 整对象写回」，对**活跃 session** 会用旧快照
  * 覆盖内存态 ⇒ 生成中途切助手/打星标会把已在流式接收的 messageNodes 换掉
  * （与「停止生成丢内容」同族）。

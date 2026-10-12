@@ -49,7 +49,7 @@ data class MemoryEntity(
     /**
      * **这条记忆讲什么**（模型写入时给，≤150 字符；用户可在记忆页改）。
      *
-     * 用途=**清单层**（渐进披露，见 `docs/design-memory-discipline.md` §4.2）：全文注入有 token
+     * 用途=**清单层**（渐进披露，见 `docs/design/design-memory-discipline.md` §4.2）：全文注入有 token
      * 预算，预算外的记忆此前**静默不可见**；现在它们以「id ｜ description ｜ 更新日」一行出现在
      * 注入块里，模型据此决定要不要 `memory_tool action=read` 取全文。
      *

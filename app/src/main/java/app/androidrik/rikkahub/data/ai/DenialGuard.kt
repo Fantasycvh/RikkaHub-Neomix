@@ -2,7 +2,7 @@ package app.androidrik.rikkahub.data.ai
 
 /**
  * 无头 run 的**重复拒绝护栏**（护栏家族第三员；设计见
- * `docs/design-subagent-context.md` §9.2.1）。
+ * `docs/design/design-subagent-context.md` §9.2.1）。
  *
  * **要解决的问题**：能力信封拒绝后，模型可能**换参数/换工具继续撞**，连续多次后放弃填
  * 内容、以空响应结束（API 无回传自然终止）。这个循环 [ToolCallLoopGuard] 拦不住——

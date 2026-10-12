@@ -64,7 +64,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.Uuid
 
 /**
- * 无头 agent run 的**独立后台入口**（设计见 `docs/design-subagent-context.md` §9.4）。
+ * 无头 agent run 的**独立后台入口**（设计见 `docs/design/design-subagent-context.md` §9.4）。
  *
  * **为什么另开入口而不挂 ChatService**：①`backgroundTextGenerationParams` 的「无工具」
  * 后台旁路契约不可破坏（§六.7）——子代理需要工具，只能另开；②不碰

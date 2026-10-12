@@ -4,7 +4,7 @@ package app.androidrik.rikkahub.data.ai.prompts
  * 检查点前导语：请求期构造检查点合成消息时注入开头，告知续接模型把摘要当既有背景、
  * 不复述不承认（对齐 deepseek-harness compaction-basic）。
  *
- * 设计见 `docs/design-auto-compaction.md` §2.2 ②：检查点替换 + prior 合并。
+ * 设计见 `docs/design/design-auto-compaction.md` §2.2 ②：检查点替换 + prior 合并。
  * 不落库为消息节点——仅在 [app.androidrik.rikkahub.data.ai.GenerationHandler] 组装发送
  * 窗口时与摘要正文拼成合成消息。
  *

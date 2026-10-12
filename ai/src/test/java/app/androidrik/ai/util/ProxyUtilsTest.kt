@@ -11,7 +11,7 @@ import org.junit.Test
 import java.net.Proxy
 
 /**
- * 两层代理的 per-provider 语义与 JSON 兼容（见 `docs/design-proxy-two-layer.md`）。
+ * 两层代理的 per-provider 语义与 JSON 兼容（见 `docs/design/design-proxy-two-layer.md`）。
  *
  * 纯 JVM 可测：代理类型/地址是 OkHttp 的公开属性，不需真实网络。
  */

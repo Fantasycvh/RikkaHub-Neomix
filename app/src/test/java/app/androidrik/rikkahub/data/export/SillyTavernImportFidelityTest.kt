@@ -10,7 +10,7 @@ import org.junit.Test
 /**
  * ST 世界书 → fork 条目转换的**保真**测试（端到端：从 ST JSON 结构出发）。
  *
- * 核心动机（私有仓记录·前期调研 §6.2 ①）：fork 此前**丢弃 `keysecondary`**，
+ * 核心动机（`docs/peer-apps-benchmark.md` §6.2 ①）：fork 此前**丢弃 `keysecondary`**，
  * 而 ST 的 `selective` 默认 true、大量条目靠次要键抑制误触发 ⇒ **导入后过度注入**
  * （同一世界书在 fork 里注入更多更乱的内容，且难排查——看起来「规则都在」）。
  *

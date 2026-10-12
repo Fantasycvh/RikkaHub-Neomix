@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * ST 世界书导入的保真测试。
  *
- * 背景（私有仓记录·前期调研 §六 6.3）：原实现有一处**事实性错误**——
+ * 背景（`docs/peer-apps-benchmark.md` §六 6.3）：原实现有一处**事实性错误**——
  * 注释断言「SillyTavern 格式不支持 useRegex」并硬写 `useRegex = false`，而 ST 的 key
  * 支持 `/pattern/flags`（`parseRegexFromString`，`world-info.js:2901`，且正则**优先于**
  * 其它匹配选项）。这会让带正则键的条目按**字面量**匹配 → 触发条件整体改变。
@@ -70,7 +70,7 @@ class SillyTavernKeywordParseTest {
 /**
  * ST 位置映射的保真测试。
  *
- * 修正记录（私有仓记录·前期调研 §六 6.3）：原实现把 `ANTop(2)` 与 `ANBottom(3)`
+ * 修正记录（`docs/peer-apps-benchmark.md` §六 6.3）：原实现把 `ANTop(2)` 与 `ANBottom(3)`
  * **都**映射为 `TOP_OF_CHAT`。核实 ST：两者是包在**作者注释**前后（`world-info.js:5270`），
  * 而作者注释默认在 **in-chat depth 4**（`authors-note.js:272-273`）——不是「对话最开头」。
  * 映射到 `TOP_OF_CHAT` 会把内容挪到与真实位置相反的一端。

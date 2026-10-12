@@ -14,7 +14,7 @@ import java.io.IOException
 import java.io.OutputStream
 
 /**
- * **SAF 目录树导出的写入规则**（设计 `design-workspace-multiselect-export.md` §6.1）。
+ * **SAF 目录树导出的写入规则**（设计 `docs/design/design-workspace-multiselect-export.md` §6.1）。
  *
  * 这条路径此前是"一行都测不了"的：逻辑直接写在仓库里、全程依赖 `DocumentFile`，
  * 而 JVM 单测没有 DocumentsProvider（Robolectric 也造不出真 provider）。

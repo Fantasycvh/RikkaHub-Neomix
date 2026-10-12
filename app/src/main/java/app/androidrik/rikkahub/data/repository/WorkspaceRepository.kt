@@ -376,7 +376,7 @@ class WorkspaceRepository(
     }
 
     /**
-     * 批量导出为 **zip 单文档**（设计 `design-workspace-multiselect-export.md` §六.1）。
+     * 批量导出为 **zip 单文档**（设计 `docs/design/design-workspace-multiselect-export.md` §六.1）。
      *
      * 遍历与写出都在 `data/export/WorkspaceExport.kt`（纯逻辑 + 流式写出，可单测），
      * 仓库只负责"把区域根目录交出去"。**不落临时文件**：直接写宿主给的 OutputStream。

@@ -8,7 +8,7 @@ import kotlin.uuid.Uuid
 /**
  * 压缩检查点的领域模型（对应 [app.androidrik.rikkahub.data.db.entity.CompressionCheckpointEntity]）。
  *
- * 设计见 `docs/design-auto-compaction.md` §4.1 三边界对齐 + §4.4 独立表方案：
+ * 设计见 `docs/design/design-auto-compaction.md` §4.1 三边界对齐 + §4.4 独立表方案：
  * - **轨迹只追加**：压缩时只往 compression_checkpoint 表追加一行，不删改 message_node
  * - **请求期组装**：发送时用检查点合成消息替换 boundaryNodeId 之前的早期历史
  * - **失效判定**：boundaryNodeId 不存在（被 regenerate 截断/分支删除）时检查点失效，回退全量

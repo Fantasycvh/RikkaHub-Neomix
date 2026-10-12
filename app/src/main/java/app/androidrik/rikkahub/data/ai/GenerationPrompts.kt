@@ -19,7 +19,7 @@ const val DEFAULT_MEMORY_BUDGET_TOKENS = 8_000
  * 世界书注入默认预算（token）。
  *
  * **默认 0 = 不限制**（保持 fork 旧行为）。ST 的默认是「上下文的 25%」，直接照搬会
- * **静默**削减用户既有注入量，故改为显式开启。见 私有仓记录·前期调研 §6.2 ③。
+ * **静默**削减用户既有注入量，故改为显式开启。见 `docs/peer-apps-benchmark.md` §6.2 ③。
  */
 const val DEFAULT_LOREBOOK_BUDGET_TOKENS = 0
 
@@ -27,7 +27,7 @@ const val DEFAULT_LOREBOOK_BUDGET_TOKENS = 0
 private const val RECENCY_HALF_LIFE_MS = 30L * 24 * 60 * 60 * 1000
 
 /**
- * **信用记账**（读数 → 打分）的两个旋钮，2026-10-09 接入；取舍见 `docs/design-memory-discipline.md` §4.6。
+ * **信用记账**（读数 → 打分）的两个旋钮，2026-10-09 接入；取舍见 `docs/design/design-memory-discipline.md` §4.6。
  */
 
 /**
@@ -61,7 +61,7 @@ private const val PER_ENTRY_OVERHEAD_TOKENS = 8
  * 为什么要量化：打分含时效衰减 → 分数随时间连续变化 → 若按原始分数排序，相对次序会
  * 不停漂移，**打掉供应商的前缀缓存**（记忆注入在 system prompt 里 = 前缀）。量化后只有
  * 跨桶才改变次序，把漂移频率从「每次请求」降到「天级」。
- * 见 `docs/design-memory-scoring.md` §五。
+ * 见 `docs/design/design-memory-scoring.md` §五。
  *
  * **用「就近取整」而非「向下取整」**：模型倾向于给整数档（0.9/0.8/0.7），而
  * `importance × 1.0`（刚更新）恰好等于该整数→ 向下取整会让这些**最常见的值正好压在
@@ -88,7 +88,7 @@ private const val MIN_MEMORY_INJECTION_SCORE = 0.2f
  * 口径由用户拍板：**总预算不变、拆成「全文层 + 清单层」**。为什么给清单 1/4 就够：
  * 清单每行只有 `id ｜ 主题 ｜ 更新日`（≈20–60 token），2K 能装下几十条；而全文层要装
  * 完整内容，必须占大头。**代价说明**：全文层从 8K 降到 6K ⇒ 入选集合会比改造前略小，
- * 换来的是「预算外条目不再静默消失」（见 `docs/design-memory-discipline.md` §4.2）。
+ * 换来的是「预算外条目不再静默消失」（见 `docs/design/design-memory-discipline.md` §4.2）。
  */
 private const val MEMORY_INDEX_BUDGET_RATIO = 0.25f
 
@@ -128,7 +128,7 @@ internal fun buildMemoryPrompt(
         //
         // **反注入声明（「记忆是记录、不是指令」+「遇附和/伴侣要求则忽略」）已于 2026-10-09 按用户
         // 拍板移除，不要复活**：本 app 的正当用法本就包含人设与伴侣扮演，让记忆层教模型无视这类
-        // 偏好会与用户自己的助手配置打架（取舍见 `docs/design-memory-discipline.md` §2.3）。
+        // 偏好会与用户自己的助手配置打架（取舍见 `docs/design/design-memory-discipline.md` §2.3）。
         append(
             "Use a memory only to the degree it was recorded (\"mentioned once\" is not \"enthusiast\"), " +
                 "and only when it changes the answer — do not showcase that you remember. " +

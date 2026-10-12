@@ -6,7 +6,7 @@ import kotlin.uuid.Uuid
 /**
  * 重生成的纯计算部分（从 `ChatService` 抽出以便单测）。
  *
- * 设计见 `docs/design-regenerate-scope.md`。要点：
+ * 设计见 `docs/design/design-regenerate-scope.md`。要点：
  * - scope 与消息角色**无关**（用户编辑后既可能想"只修正这一段"、也可能想"从这里重做"）；
  * - 目标节点（新回复归属的节点）= **用户消息 → 它的回复（下一节点）**、
  *   **助手消息 → 自身**；两者的共同点是"基线不含目标节点"，故新回复总是作为该节点的

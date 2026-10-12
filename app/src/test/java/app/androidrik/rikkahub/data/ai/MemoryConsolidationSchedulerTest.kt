@@ -20,7 +20,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 /**
- * 做梦框架（V3）的调度策略测试，见 `docs/design-memory-consolidation.md`。
+ * 做梦框架（V3）的调度策略测试，见 `docs/design/design-memory-consolidation.md`。
  *
  * **为什么必须用虚拟时间**（`runTest` + `advanceTimeBy`）：被测的全是「什么时候该整理」——
  * 空闲 2 分钟后、攒够轮数就不等、切后台/离开对话立刻开始、失败后不再自动重试、一次只跑一个。

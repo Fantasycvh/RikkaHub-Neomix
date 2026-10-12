@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 流结束语义（私有仓记录·前期调研 §四.7 B）：
+ * 流结束语义（`docs/peer-apps-benchmark.md` §四.7 B）：
  * - [isOutputLimitTruncation]：撞 token 上限（模型被掐断，续写有意义）
  * - [isContentFilterTruncation]：被内容安全策略掐断（续写无意义）
  * - [terminalChunk] / [MessageChunk.explicitEnd]：区分「显式结束」与「裸断流」

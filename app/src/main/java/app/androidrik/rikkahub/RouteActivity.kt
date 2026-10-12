@@ -811,7 +811,7 @@ sealed interface Screen : NavKey {
     @Serializable
     data object Log : Screen
 
-    /** 拼装后提示词预览（只读，见 私有仓记录·前期调研 §6.7 ③）；带会话 id 故为 data class。 */
+    /** 拼装后提示词预览（只读，见 `docs/peer-apps-benchmark.md` §6.7 ③）；带会话 id 故为 data class。 */
     @Serializable
     data class PromptInspect(val conversationId: String) : Screen
 
@@ -844,7 +844,7 @@ sealed interface Screen : NavKey {
     @Serializable
     data object Skills : Screen
 
-    /** 无头 agent run 的账本列表（设计见 docs/design-subagent-context.md §9.3/9.4）。 */
+    /** 无头 agent run 的账本列表（设计见 docs/design/design-subagent-context.md §9.3/9.4）。 */
     @Serializable
     data object AgentRuns : Screen
 

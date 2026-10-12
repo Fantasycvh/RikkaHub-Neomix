@@ -12,7 +12,7 @@ import java.util.zip.ZipOutputStream
 /**
  * 空间预检的纯文件逻辑（[BackupSpaceCheck]）与进度模型（[BackupProgress]/[ProgressThrottle]）。
  *
- * 对应设计见 `docs/design-backup-workspace-files.md` §9.1。修复动机：数 GB 备份跑到一半失败
+ * 对应设计见 `docs/design/design-backup-workspace-files.md` §9.1。修复动机：数 GB 备份跑到一半失败
  * 代价过大，需在开始前用「保守估值」拦下。
  */
 class BackupSpaceCheckTest {

@@ -101,7 +101,7 @@ val repositoryModule = module {
     }
 
     /**
-     * 做梦（V3）的数据面：门控、基线与进度都在这里（见 `docs/design-memory-consolidation.md` §3）。
+     * 做梦（V3）的数据面：门控、基线与进度都在这里（见 `docs/design/design-memory-consolidation.md` §3）。
      *
      * 两个 lambda 是刻意的：助手列表与「按 id 载会话」都按需取，避免把整个 Settings / Conversation
      * 仓库拖进构造，也让这一层在 JVM 单测里能替换成假数据。

@@ -1,7 +1,7 @@
 # 记忆纪律与渐进披露（V1 / V2 均已落地）
 
 > 来源：上游 PR #2130「记忆改为文件库 + 空闲后整理（做梦）」的四块拆分（评估见
-> 私有仓记录·上游分析 2026-10-08 节）。该 PR 未合并、0 review、作者自曝提示词未验证，
+> `docs/upstream-analysis.md` 2026-10-08 节）。该 PR 未合并、0 review、作者自曝提示词未验证，
 > 故**不整体照搬**；但其中**与文件模型无关的两块**在本仓现有记录模型上可直接落地：
 >
 > - **V1 纪律与安全**（本文 §2）——提示词条款 + 代码级兜底，与存储无关
@@ -153,7 +153,7 @@ JCB 3528-3589 / Discover 6011/644-649/65 / Diners 300-305/36/38/39）后，随�
 `memory_tool action=read` 把记忆逐条读回来，开关等于装饰（渐进披露还正好让「有哪些记忆」变得
 一目了然）。而「能写不能读」是更怪的状态，所以一并去掉记忆工具。**「不整理」**的落地点已就位：V3 框架把
 它写进 `MemoryConsolidationWorker.pendingOf` 的契约（隐身对话在这一层返回 null，见
-`docs/design-memory-consolidation.md` §4；worker 实现与测试在下一批）。
+`memory-consolidation.md` §4；worker 实现与测试在下一批）。
 
 - `Conversation.memoryDisabled: Boolean = false` + `conversationentity.memory_disabled`（默认 false =
   现行为；缺字段反序列化即 false ⇒ 无需回填）；

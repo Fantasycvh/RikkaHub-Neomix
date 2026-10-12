@@ -39,7 +39,7 @@ data class ExportData(
      *
      * 它随文件固定不变（导入不会改写它），故导入侧可用「该文件是否导入过」来提示重复——
      * 这是必要的，因为导入**总是换新 id**（决策 1），原有的 `existsConversationById` 判据
-     * 在换 id 后永不命中（见 `docs/design-conversation-import-export.md` §十）。
+     * 在换 id 后永不命中（见 `docs/design/design-conversation-import-export.md` §十）。
      *
      * 可空：旧版导出文件没有该字段 → 无法判定 → **跳过检测**（不是"重复"）。
      */
@@ -48,7 +48,7 @@ data class ExportData(
      * **附件清单**（阶段 2）：zip 内 `attachments/` 条目与 part URL 的关联。
      *
      * 空列表 = 无附件（阶段 1 的裸 JSON 也反序列化为此）→ 导入侧跳过附件处理。
-     * 见 `docs/design-conversation-import-export.md` §六 阶段 2。
+     * 见 `docs/design/design-conversation-import-export.md` §六 阶段 2。
      */
     val files: List<ExportFileEntry> = emptyList(),
 )
@@ -331,7 +331,7 @@ internal fun parseSillyTavernLorebook(json: String, fallbackName: String?): Lore
 /**
  * ST 条目 → fork [PromptInjection.RegexInjection]（**纯函数**，便于单测直接覆盖导入保真）。
  *
- * 三处保真要点（缺一即「导入后行为不等价」，见 私有仓记录·前期调研 §6.3）：
+ * 三处保真要点（缺一即「导入后行为不等价」，见 `docs/peer-apps-benchmark.md` §6.3）：
  * 1. `key` / `keysecondary` 里的 `/pattern/flags` 都要识别为正则（[parseStKeywords]）；
  * 2. **保留次要键**——这是 ST 抑制误触发的主要机制，丢弃即过度注入；
  * 3. `selective: false` 时 ST 不做二次判定（`world-info.js:4925`）⇒ 次要键整体作废，

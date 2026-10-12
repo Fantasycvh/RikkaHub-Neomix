@@ -11,7 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.util.zip.ZipInputStream
 
 /**
- * 工作区批量导出（设计见 `docs/design-workspace-multiselect-export.md`）。
+ * 工作区批量导出（设计见 `docs/design/design-workspace-multiselect-export.md`）。
  *
  * 重点钉住四组契约（错了都会静默出错）：
  * ① **条目名拒绝逃逸**（`..` / 绝对路径）而不是"尽力修正"——写方向的 zip-slip；

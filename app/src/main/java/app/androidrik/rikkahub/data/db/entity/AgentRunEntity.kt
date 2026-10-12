@@ -5,7 +5,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * 无头 agent run 的**账本行**（设计见 `docs/design-subagent-context.md` §9.1/9.3）。
+ * 无头 agent run 的**账本行**（设计见 `docs/design/design-subagent-context.md` §9.1/9.3）。
  *
  * **为什么是独立表而不是复用 `ConversationEntity`**：run 的轨迹是**线性**的（无重生成分支、
  * 无用户编辑），`message_node` 的分支机制全是死重；run 也不需要 Conversation 的元数据丛林

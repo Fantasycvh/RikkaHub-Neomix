@@ -7,7 +7,7 @@ import org.junit.Test
 import kotlin.math.abs
 
 /**
- * 记忆注入的打分校准 + token 预算截断（`docs/design-memory-scoring.md`）。
+ * 记忆注入的打分校准 + token 预算截断（`docs/design/design-memory-scoring.md`）。
  *
  * 设计要点：选择由 `importance × 时效衰减` 打分 + 预算决定；**输出顺序按 sortKey 稳定**，
  * 以免 system prompt 前缀每次请求漂移、打掉供应商缓存。

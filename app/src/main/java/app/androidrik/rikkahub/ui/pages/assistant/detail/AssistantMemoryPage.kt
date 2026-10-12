@@ -361,7 +361,7 @@ private fun AssistantMemoryContent(
                 trailingContent = {
                     Switch(
                         // 开 = 记下开启时刻（它同时是「只对之后的新内容负责」的基线，见
-                        // docs/design-memory-consolidation.md §7）；关 = 0
+                        // docs/design/design-memory-consolidation.md §7）；关 = 0
                         checked = assistant.memoryConsolidationSince > 0L,
                         onCheckedChange = { checked ->
                             onUpdateAssistant(

@@ -10,7 +10,7 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 /**
- * 重生成的纯计算（`docs/design-regenerate-scope.md`）。
+ * 重生成的纯计算（`docs/design/design-regenerate-scope.md`）。
  *
  * 核心语义：**scope 与消息角色无关**——用户编辑后既可能想"只修正这一段"（THIS_ONLY）、
  * 也可能想"从这里重做"（INCLUDE_FOLLOWING），两种需求都正当，故不再按角色分派。

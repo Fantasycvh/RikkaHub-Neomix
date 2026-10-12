@@ -10,7 +10,7 @@ import java.util.zip.ZipOutputStream
 /**
  * 工作区文件备份的共享逻辑（S3Sync 与 WebDavSync 复用，避免两套实现各自踩坑）。
  *
- * 设计见 `docs/design-backup-workspace-files.md`：
+ * 设计见 `docs/design/design-backup-workspace-files.md`：
  * - 只备份工作区**文件区**（每个工作区的 files 子目录），**排除 rootfs（linux）与 tmp**
  * - zip 内路径：workspace_files/ + root + / + 相对路径
  * - **不含 rootfs**：rootfs 可用「安装 rootfs」重装，含则备份体积至少 +30MB/工作区

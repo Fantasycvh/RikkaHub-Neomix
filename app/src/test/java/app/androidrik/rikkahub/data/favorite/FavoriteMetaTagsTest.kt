@@ -10,7 +10,7 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 /**
- * 收藏标签的**编解码与兼容性**（`docs/design-favorite-management.md` §五）。
+ * 收藏标签的**编解码与兼容性**（`docs/design/design-favorite-management.md` §五）。
  *
  * 两个必须钉住的性质：
  * 1. **旧行无 `tags`/`tagIds` 字段要能解析**（零迁移的前提）；

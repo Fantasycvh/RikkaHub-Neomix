@@ -11,7 +11,7 @@ private const val TAG = "Migration_28_29"
  * 28 → 29：记忆表新增 `importance`（重要度）与 `updated_at`（最近修改时间）。
  *
  * 背景：注入策略从「取最新 N 条」升级为「打分校准 + 预算截断」
- * （`importance × (0.55 + 0.45 × 时效衰减)`，见 `docs/design-memory-scoring.md`）。
+ * （`importance × (0.55 + 0.45 × 时效衰减)`，见 `docs/design/design-memory-scoring.md`）。
  * 打分需要两个新字段：重要度（谁更该被记住）与时间基准（衰减多久了）。
  *
  * 存量行回填策略：

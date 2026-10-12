@@ -63,7 +63,7 @@ internal fun memoryToolNeedsApproval(assistant: Assistant, action: String): Bool
  *
  * 迁移自 `ChatService` 的内联 `buildList` 与 `GenerationHandler` 内叠加的记忆工具——
  * 原先装配分散在两处（记忆工具在生成循环内层），集中后新增装配方（MCP host、
- * Agent/工作流入口等）只需改这里。见 私有仓记录·上游分析「注意点」第 9 条。
+ * Agent/工作流入口等）只需改这里。见 `docs/upstream-analysis.md`「注意点」第 9 条。
  *
  * 与上游的差异：MCP 工具名沿用 fork 的 [McpNameSanitizer] **净化去重**，而非上游的
  * `InvalidMcpServerNamesException` 抛错——前者允许中文等非 ASCII 服务器名（有用户可见收益）。
@@ -136,7 +136,7 @@ class ChatToolFactory(
          */
         explicitlyAllowedToolNames: Set<String> = emptySet(),
         /**
-         * 会话级「不使用记忆」（隐身对话；见 `docs/design-memory-discipline.md` §4.4）。
+         * 会话级「不使用记忆」（隐身对话；见 `docs/design/design-memory-discipline.md` §4.4）。
          * 为真时**不装配记忆工具**——它和「不注入记忆」是同一件事的两半：只关注入的话，
          * 模型仍可 `memory_read` 把记忆逐条读回来，开关等于装饰。
          */
@@ -145,7 +145,7 @@ class ChatToolFactory(
         val segments = mutableListOf<ToolSegment>()
 
         // 记忆工具（原在 GenerationHandler 循环内叠加，现为装配点的一部分）
-        // **会话级「不使用记忆」时不装配**（隐身对话，见 docs/design-memory-discipline.md §4.4）：
+        // **会话级「不使用记忆」时不装配**（隐身对话，见 docs/design/design-memory-discipline.md §4.4）：
         // 开关要能拦住「这次对话碰我的记忆库」，否则模型仍可 memory_read 逐条读回来、开关等于装饰。
         if (assistant.enableMemory && !memoryDisabled) {
             val memoryAssistantId = assistant.memoryId()
@@ -207,7 +207,7 @@ class ChatToolFactory(
             }
         }
 
-        // 子代理（对话内派发，设计见 docs/design-subagent-context.md §十）。
+        // 子代理（对话内派发，设计见 docs/design/design-subagent-context.md §十）。
         // 三重门槛：全局开关开 / 至少一个可用预设 / 派发器就绪（延迟解析，见构造参数）。
         // 预设的 `modelId` 留空语义是「跟随当前对话」，而"当前"只有装配点知道 ⇒ 在这里解析。
         val subagentPresets = settings.subagentPresets.filter { it.enabled && it.name.isNotBlank() }

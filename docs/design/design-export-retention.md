@@ -1,6 +1,6 @@
 # 导出文件留存与「真落地」设计稿
 
-> 状态：**已实现**（2026-09-16，`534a5eef`）。真机验证：导出的 JSON 落在 `files/exports` 且已登记
+> 状态：**已实现**（2026-09-16，`0081f472`）。真机验证：导出的 JSON 落在 `files/exports` 且已登记
 > `managed_files`、`cache/temp` 不再产生导出残留；TTL 清理实测（植入 30 天前文件 → 冷启动 →
 > 被清、当日文件保留、`.tmp-` 残留被清，日志 `removed 1 expired export(s) (retention=7d)`）。
 > 单测 `ExportRetentionTest` 10 项；全量 536 项仅基线失败。

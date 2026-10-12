@@ -11,7 +11,7 @@ import java.util.zip.ZipFile
  * 采用「阶段 + 字节」模型：每个阶段内部单调递增；跨阶段由阶段序号决定先后。
  * 不确定性体现在 [totalBytes]（如 chunked 下载拿不到 contentLength）——此时 UI 退化为不确定态。
  *
- * 设计见 `docs/design-backup-workspace-files.md` §9.1。
+ * 设计见 `docs/design/design-backup-workspace-files.md` §9.1。
  */
 enum class BackupPhase {
     /** 打包：读取源文件写入 zip */

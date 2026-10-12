@@ -875,7 +875,7 @@ data class ContextUsage(
  * 已使用上下文占用：细进度条 + 右侧百分比；**点击打开上下文容量面板**。
  * 达到窗口 80%（CONTEXT_USAGE_WARNING_RATIO）变红警告——阈值与面板、标题旁读数共用同一常量。
  *
- * 这里刻意**只给状态不给数字**（数字读数在标题旁），四处入口分工见 私有仓记录·规划 同日条目。
+ * 这里刻意**只给状态不给数字**（数字读数在标题旁），四处入口分工见 `docs/roadmap.md` 同日条目。
  */
 @Composable
 private fun ContextUsageBarButton(

@@ -5,7 +5,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * 续写策略（私有仓记录·前期调研 §四.7 D）：裸断流恒自动续写、撞输出上限默认只提示、
+ * 续写策略（`docs/peer-apps-benchmark.md` §四.7 D）：裸断流恒自动续写、撞输出上限默认只提示、
  * 两类共用同一上限。策略错配的代价是**烧费**（该停不停）或**用户看不到续写**（该续不续），
  * 故用测试固定优先级与上限边界。
  */

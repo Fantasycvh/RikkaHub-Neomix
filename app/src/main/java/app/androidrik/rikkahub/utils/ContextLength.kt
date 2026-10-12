@@ -110,7 +110,7 @@ fun estimateTokenCount(messages: List<UIMessage>): Int {
 /**
  * **文本**的 token 数——**全仓估算口径的唯一出口**。
  *
- * 记忆注入的预算截断需要按 token 计（`docs/design-memory-scoring.md` §六），而记忆是纯字符串、
+ * 记忆注入的预算截断需要按 token 计（`docs/design/design-memory-scoring.md` §六），而记忆是纯字符串、
  * 没有 [UIMessage] 包装；[estimateTokenCount] 也走这里。共用本函数而非各写一份启发式，
  * 是为了让「记忆预算 / 上下文占用 / 压缩切分 / 子代理预算」始终保持**同一量纲**。
  *

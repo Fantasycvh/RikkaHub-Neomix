@@ -23,7 +23,7 @@ enum class BackupItem {
      * **不含 files/tool_outputs**（2026-09-15 决策，选项①）：它是**会话级临时产物**，
      * `RikkaHubApp.cleanupToolOutputs()` 每次启动无条件清空该目录——恢复流程末尾必然重启，
      * 打包进去也会立刻被删，只徒增 zip 体积。历史消息中的 `/tool_outputs/<id>.txt` 引用
-     * 本就可能悬空，截断消息已内联前 4KB 预览兜底（见 `design-backup-workspace-files.md` §六）。
+     * 本就可能悬空，截断消息已内联前 4KB 预览兜底（见 `docs/design/design-backup-workspace-files.md` §六）。
      */
     FILES,
 

@@ -40,7 +40,7 @@ class AssistantDetailVM(
     private val filesManager: FilesManager,
     private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
-    /** 做梦（V3）：状态流与手动整理入口（见 docs/design-memory-consolidation.md §9.2） */
+    /** 做梦（V3）：状态流与手动整理入口（见 docs/design/design-memory-consolidation.md §9.2） */
     private val consolidationScheduler: MemoryConsolidationScheduler,
 ) : ViewModel() {
     private val assistantId = Uuid.parse(id)

@@ -22,7 +22,7 @@ import org.junit.Test
  *
  * 注：`TemplateTransformer.transform` 本身依赖 Android `Context`（`TransformerContext`），
  * 故这里只覆盖上述纯逻辑 + 真实 Pebble 渲染；**接线（合成消息走该模板、非合成仍走原模板）由真机
- * 报文验证**（见 私有仓记录·规划 2026-10-06 条目）。
+ * 报文验证**（见 `docs/roadmap.md` 2026-10-06 条目）。
  */
 class SystemMessageTemplateTest {
 

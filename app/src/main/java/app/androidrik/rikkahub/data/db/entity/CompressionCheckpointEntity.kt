@@ -11,7 +11,7 @@ import androidx.room.PrimaryKey
  * 落库为此表的一行。
  *
  * - **轨迹只追加**：不删改 message_node，只追加一行 checkpoint；请求组装时用检查点合成消息替换
- *   边界前的历史（见 design-auto-compaction.md §4.1 三边界对齐）。
+ *   边界前的历史（见 docs/design/design-auto-compaction.md §4.1 三边界对齐）。
  * - **boundary_node_id**：压缩时保留窗口的起点节点 id；若该节点被 regenerate 截断/分支删除，
  *   检查点自动失效，回退全量发送。
  * - 一个会话可能有多行（多次压缩），取最后一行（最新边界）为 active。

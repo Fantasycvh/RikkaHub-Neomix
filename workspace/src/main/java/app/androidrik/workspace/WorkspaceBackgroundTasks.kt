@@ -12,9 +12,9 @@ import java.util.concurrent.TimeUnit
 /**
  * 工作空间**后台任务**：让长命令（构建、下载、训练脚本）不再阻塞一轮对话。
  *
- * 出处：私有仓记录·前期调研 的 `workspace_run_background` /
+ * 出处：`docs/peer-apps-benchmark.md` 的 `workspace_run_background` /
  * `workspace_task_status` / `workspace_kill_task` 三件套 + `TailBuffer`，以及
- * 私有仓记录·规划 工作空间条目 ④「长任务不阻塞对话」。
+ * `docs/roadmap.md` 工作空间条目 ④「长任务不阻塞对话」。
  *
  * 设计要点（与同步 `workspace_shell` 的差别）：
  *

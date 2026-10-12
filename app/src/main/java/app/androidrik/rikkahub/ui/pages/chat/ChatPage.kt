@@ -372,7 +372,7 @@ private fun ChatPageContent(
      *
      * 撤销用现有 toaster（sonner）的 action 能力，**不需要替换页面 scaffold**。
      * 撤销覆盖范围含"已开始生成"——[app.androidrik.rikkahub.service.ChatService.undoRegenerateTruncation]
-     * 会先取消在飞生成再还原（见 `docs/design-regenerate-scope.md` §五）。
+     * 会先取消在飞生成再还原（见 `docs/design/design-regenerate-scope.md` §五）。
      */
     fun doRegenerate(message: UIMessage, regenerateScope: ChatService.RegenerateScope) {
         vm.regenerateAtMessage(message, regenerateScope) { truncation ->
@@ -713,7 +713,7 @@ private fun ChatPageContent(
                     ?: conversation.currentMessages,
                 // 「先导出再继续」= 破坏性操作前的留存，故要求**真落地**（SAF 另存）。
                 // 只有用户真正选定位置并写盘成功才续作 scope B；取消另存 = 不续作
-                // （内容已在留存区，见 docs/design-export-retention.md §二 决策 1）。
+                // （内容已在留存区，见 docs/design/design-export-retention.md §二 决策 1）。
                 saveToDocument = exportThenRegenerateFor != null,
                 onExported = {
                     exportThenRegenerateFor?.let { pending ->

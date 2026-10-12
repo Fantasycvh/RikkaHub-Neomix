@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
  * 「**什么时候**压」（自动压缩专属的触发策略），而这两个值回答「**压成什么样**」
  * （方案本身，自动/手动两条路径通用）。手动压缩的触发本就是用户自己的判断
  * （觉得长/快满了才点），阈值在手动路径上根本不构成一个参数。
- * 见 `docs/design-compress-presets.md` §四。
+ * 见 `docs/design/design-compress-presets.md` §四。
  *
  * **档不是真相源**：真正决定压缩行为的是 `Settings.autoCompressRetainPercent` /
  * `autoCompressTargetTokens` 这两个数值，档只是「一键填入这两个值」的快捷方式。

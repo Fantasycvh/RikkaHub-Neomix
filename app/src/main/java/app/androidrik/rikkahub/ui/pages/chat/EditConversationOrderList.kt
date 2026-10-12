@@ -43,7 +43,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.model.Conversation
 
 /**
- * 「编辑顺序」模式（设计稿 `docs/design-conversation-manual-order.md` §四）。
+ * 「编辑顺序」模式（设计稿 `docs/design/design-conversation-manual-order.md` §四）。
  *
  * 交互与约束：
  * - **长按即拖**（不常驻拖拽手柄）：会话行的长按在浏览态用于弹出菜单，所以拖拽只在

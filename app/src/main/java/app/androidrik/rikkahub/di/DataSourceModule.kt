@@ -213,7 +213,7 @@ val dataSourceModule = module {
         val acceptLang = AcceptLanguageBuilder.fromAndroid(get())
             .build()
 
-        // 两层代理的全局层（docs/design-proxy-two-layer.md §二）：
+        // 两层代理的全局层（docs/design/design-proxy-two-layer.md §二）：
         // 只装在共享 client 上——ai 模块对全局设置零感知（provider 选 Inherit 即不配置）。
         val socksRegistry = SocksCredentialRegistry()
         runCatching {

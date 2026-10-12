@@ -11,7 +11,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 无头 run 的重复拒绝护栏 + 完成判定（设计见 `docs/design-subagent-context.md` §9.2.1）。
+ * 无头 run 的重复拒绝护栏 + 完成判定（设计见 `docs/design/design-subagent-context.md` §9.2.1）。
  *
  * 漏洞背景：模型被信封拒绝后**换参数/换工具继续撞**，连续多次后放弃填内容、以空响应结束。
  * 该循环 LoopGuard（只认同签名）与 WorkspaceTurnBudget（只计 workspace_*）都拦不住，

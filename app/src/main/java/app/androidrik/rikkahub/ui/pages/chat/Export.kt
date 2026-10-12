@@ -145,7 +145,7 @@ fun ChatExportSheet(
      *
      * **语义（2026-09-16 修正）**：此前的含义是"分享面板弹出来了"，而分享面板**没有结果回调**，
      * 用户随手取消也照样触发 → 会在"没保存任何东西"时放行破坏性操作（见
-     * `docs/design-export-retention.md` §1.2 ①）。现在 [saveToDocument] = true 时，
+     * `docs/design/design-export-retention.md` §1.2 ①）。现在 [saveToDocument] = true 时，
      * 只有**用户真正选定位置且写盘成功**才回调；取消另存**不**回调（= 不继续移除）。
      */
     onExported: (() -> Unit)? = null,
@@ -324,7 +324,7 @@ fun ChatExportSheet(
                 HorizontalDivider()
 
                 // JSON（可导入）：自家格式往返——Markdown/HTML/PNG 三种只出不能回填，
-                // 这个格式可被「备份页 → 导入」读回（见 docs/design-conversation-import-export.md）。
+                // 这个格式可被「备份页 → 导入」读回（见 docs/design/design-conversation-import-export.md）。
                 // **有意忽略「包含全部版本」开关**：往返格式必须原样保留分支/编辑历史，
                 // 否则导入回来的会话会缺候选（该开关只影响 Markdown/HTML 等只读导出）。
                 OutlinedCard(
@@ -501,7 +501,7 @@ fun ChatExportSheet(
  * 导出为**可导入的自家归档**（zip：`conversation.json` + `attachments/`）。
  *
  * 与 Markdown/HTML/PNG 不同：那三种只出不能回填。**始终 zip**（阶段 2 决策——本功能未发布，
- * 无裸 JSON 的历史包袱），见 `docs/design-conversation-import-export.md` §六 阶段 2。
+ * 无裸 JSON 的历史包袱），见 `docs/design/design-conversation-import-export.md` §六 阶段 2。
  *
  * 落点 = **留存区 `files/exports`**（原子写入），随后由调用方分享或另存。
  * 文件名清洗非法字符（用字符列表而非正则，避免转义歧义）。
@@ -560,7 +560,7 @@ private data class ExportedFile(
  *
  * **为什么不用 `saveManagedFromBytes`**：后者直接写最终名；导出会复用同名（JSON 按标题命名），
  * "先删旧再写新"在中途失败时会毁掉前一份。[FilesManager.saveExportAtomically] 改为
- * "写临时文件 + rename"，故最终名始终完好。见 `docs/design-export-retention.md` §4.2。
+ * "写临时文件 + rename"，故最终名始终完好。见 `docs/design/design-export-retention.md` §4.2。
  */
 private suspend fun writeExportBytes(
     displayName: String,

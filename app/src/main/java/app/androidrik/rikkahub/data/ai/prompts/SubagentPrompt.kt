@@ -1,7 +1,7 @@
 package app.androidrik.rikkahub.data.ai.prompts
 
 /**
- * 内置子代理预设的**系统提示词**（设计见 `docs/design-subagent-context.md` §十）。
+ * 内置子代理预设的**系统提示词**（设计见 `docs/design/design-subagent-context.md` §十）。
  *
  * **为什么用英文**：与本仓其它默认提示词（`DEFAULT_TITLE_PROMPT` / `DEFAULT_SUGGESTION_PROMPT` …）
  * 一致——系统提示词是给模型看的指令，与被调度对话的语言无关，英文的指令遵循最稳。

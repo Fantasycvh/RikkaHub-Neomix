@@ -195,7 +195,7 @@ class RikkaHubApp : Application() {
      * 清理导出留存区（`files/exports`）中已过期的文件。
      *
      * 与 [deleteTempFiles] 的"清空"不同：留存区是**用户想留的产物**，按 TTL 清理
-     * （`Settings.exportRetentionDays`，0 = 不清理）。见 `docs/design-export-retention.md` §4.3。
+     * （`Settings.exportRetentionDays`，0 = 不清理）。见 `docs/design/design-export-retention.md` §4.3。
      *
      * **必须读 `settingsFlowRaw.first()`** 而不是 `settingsFlow.value`——后者在 DataStore
      * 尚未加载时是 `Settings.dummy()`（全默认），会静默用默认值而非用户设置

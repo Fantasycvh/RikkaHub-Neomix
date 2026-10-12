@@ -234,7 +234,7 @@ class GenerationHandler(
         assistant: Assistant,
         memories: List<AssistantMemory>? = null,
         /**
-         * 会话级「不使用记忆」（隐身对话，见 `docs/design-memory-discipline.md` §4.4）：
+         * 会话级「不使用记忆」（隐身对话，见 `docs/design/design-memory-discipline.md` §4.4）：
          * 为真时**不注入记忆块**、且工具装配侧**不装配记忆工具**（两者是同一件事的两半）。
          * 由 ChatService 从 `Conversation.memoryDisabled` 传入；无头 run 恒为 false。
          */
@@ -478,7 +478,7 @@ class GenerationHandler(
                         Log.i(TAG, "streamText: empty visible reply, requesting visible answer once")
                         continue
                     }
-                    // 续写（本批新增，见 私有仓记录·前期调研 §四.7 D）：输出不完整时
+                    // 续写（本批新增，见 `docs/peer-apps-benchmark.md` §四.7 D）：输出不完整时
                     // 就地从停处接着写，续写追加到**同一条助手消息**（不新建候选、不重发全轮）。
                     //
                     // 两类成因的策略不同（成本权衡）：
@@ -944,7 +944,7 @@ class GenerationHandler(
         // 输入处理链（时间提醒 / 模式注入 / 世界书 / ST 宏 / 占位符 / 文档转提示 / OCR / 引用 /
         // 助手模板 / workspace 提醒）：**返回值必须接住**——它才是真正发给 provider 的列表。
         //
-        // 2026-10-06 修复：此处曾写成裸语句 `internalMessages.transforms(...)`（`7e29e7f6c` 改造
+        // 2026-10-06 修复：此处曾写成裸语句 `internalMessages.transforms(...)`（`5591f3d0e` 改造
         // 前缀分叉诊断时把赋值丢了），链的产物被丢弃、请求发的是**未处理**列表，而拼装预览
         // （`PromptInspector` 那一份有 `val transformed =`）照常显示注入 ⇒「预览里有、实发里没有」，
         // 注入 / 时间提醒 / 引用展开 / OCR / 文档转提示全部静默失效。

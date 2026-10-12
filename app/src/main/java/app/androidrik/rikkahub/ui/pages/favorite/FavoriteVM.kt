@@ -101,7 +101,7 @@ class FavoriteVM(
      * **`suspend` 而非 fire-and-forget**：原先内部 `viewModelScope.launch` 立刻返回，
      * 于是「删除还没落库就弹撤销」——用户点撤销时 `upsert(REPLACE)` 可能**先于** delete 落库，
      * **撤销反被删除覆盖**。挂起后调用方能保证「先删完、再弹 snackbar」。
-     * 见 `docs/design-favorite-management.md` §1.4 缺陷 A（与 regenerate 撤销同族的
+     * 见 `docs/design/design-favorite-management.md` §1.4 缺陷 A（与 regenerate 撤销同族的
      * 「动作不等结果、却立刻依赖结果」）。
      */
     suspend fun removeFavorite(refKey: String) {

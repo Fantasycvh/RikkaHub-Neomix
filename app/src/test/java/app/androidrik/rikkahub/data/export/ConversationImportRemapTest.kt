@@ -18,7 +18,7 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 /**
- * 导入会话的 id 重映射与压缩检查点迁移（`docs/design-conversation-import-export.md` §三/§5.1）。
+ * 导入会话的 id 重映射与压缩检查点迁移（`docs/design/design-conversation-import-export.md` §三/§5.1）。
  *
  * 两条铁律：
  * - **id 全换**：会话/节点/消息都换（FTS 存 node_id 与 message_id），但 **toolCallId 不换**

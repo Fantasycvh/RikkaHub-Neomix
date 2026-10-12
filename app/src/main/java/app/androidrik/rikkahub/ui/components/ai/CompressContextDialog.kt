@@ -43,7 +43,7 @@ fun CompressContextDialog(
      * 初值：来自当前压缩设置（而不是每次重置为固定值）。
      *
      * 手动压缩**只暴露保留比例与摘要目标**——触发时机由用户自己判断（觉得长/快满了才点），
-     * 故没有阈值参数。见 `docs/design-compress-presets.md` §四。
+     * 故没有阈值参数。见 `docs/design/design-compress-presets.md` §四。
      */
     initialRetainPercent: Int = 40,
     initialTargetTokens: Int = 2000,

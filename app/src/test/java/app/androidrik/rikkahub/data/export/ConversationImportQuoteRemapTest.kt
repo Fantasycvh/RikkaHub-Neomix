@@ -17,7 +17,7 @@ import kotlin.uuid.Uuid
  *
  * 导入语义是「新建而非覆盖」，所有 message id 都会换新——引用若不同步改写，导入后
  * **每一条引用都指向不存在的 id**（UI 上引用卡片还在显示快照，但定位全失效）。
- * 这是 `9f1d8105`（remap 漏清 folderId）同一类错误：换 id 的操作要成体系过一遍
+ * 这是 `dc919e07`（remap 漏清 folderId）同一类错误：换 id 的操作要成体系过一遍
  * 所有指向外部对象的引用字段。
  */
 class ConversationImportQuoteRemapTest {

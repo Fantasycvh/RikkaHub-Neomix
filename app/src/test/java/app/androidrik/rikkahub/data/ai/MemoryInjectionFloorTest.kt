@@ -50,7 +50,7 @@ class MemoryInjectionFloorTest {
     }
 
     /**
-     * 注入块里的**使用纪律**必须存在（V1，见 `docs/design-memory-discipline.md` §2.3）。
+     * 注入块里的**使用纪律**必须存在（V1，见 `docs/design/design-memory-discipline.md` §2.3）。
      *
      * 为什么钉在测试里：这两句是「按记录时的证据强度使用」「敏感项只在用户本轮提起时用」的
      * 唯一落点——它们只在本块被读到，写丢了不会有任何编译/行为错误，而模型会立刻退化成
@@ -69,7 +69,7 @@ class MemoryInjectionFloorTest {
      *
      * 为什么用**反向**断言钉住：这是本仓少见的「删掉一段提示词」的决定——没有编译错误、没有行为
      * 异常，下次整理提示词时极容易顺手照上游 #2130 补回来。要复活必须先改这里，并读
-     * `docs/design-memory-discipline.md` §2.3 记的取舍（本 app 的正当用法本就含人设/伴侣扮演）。
+     * `docs/design/design-memory-discipline.md` §2.3 记的取舍（本 app 的正当用法本就含人设/伴侣扮演）。
      */
     @Test
     fun `anti injection declaration stays removed`() {

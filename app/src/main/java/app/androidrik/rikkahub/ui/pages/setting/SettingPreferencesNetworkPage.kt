@@ -38,7 +38,7 @@ import app.androidrik.rikkahub.ui.theme.CustomColors
 import org.koin.androidx.compose.koinViewModel
 
 /**
- * 设置 → 偏好 → 网络：全局代理（两层代理设计的「全局兜底层」，见 `docs/design-proxy-two-layer.md` §五）。
+ * 设置 → 偏好 → 网络：全局代理（两层代理设计的「全局兜底层」，见 `docs/design/design-proxy-two-layer.md` §五）。
  *
  * 说明：provider 未自配代理时（默认「跟随全局」）走这里；**只有共享 client 的链路受益**——
  * 搜索与 ASR 会跟随，TTS/MCP/S3/WebDAV 不受影响（各用自建 client，见设计 §四）。

@@ -8,7 +8,7 @@ import app.androidrik.rikkahub.data.datastore.Settings
  *
  * 存进去的都是算好的东西：库现状（两层披露 + 预算）、校准表、切好的轮次、步数上限、
  * 以及「这轮要不要改库」。agent 只负责一次模型调用，不负责任何决策——决策全在
- * `MemoryConsolidator` 与 `docs/design-memory-consolidation.md` 记的口径里。
+ * `MemoryConsolidator` 与 `docs/design/design-memory-consolidation.md` 记的口径里。
  */
 data class MemoryConsolidationRequest(
     val settings: Settings,

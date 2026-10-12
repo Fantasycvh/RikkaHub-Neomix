@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * 世界书次要关键词（ST `keysecondary` + `selectiveLogic`）的触发真值表。
  *
- * 动机（私有仓记录·前期调研 §6.2 ①）：fork 此前**没有**次要键概念，而 ST 的
+ * 动机（`docs/peer-apps-benchmark.md` §6.2 ①）：fork 此前**没有**次要键概念，而 ST 的
  * `selective` 默认 true、大量条目靠次要键抑制误触发 ⇒ 导入 ST 世界书后会**过度注入**。
  * 本文件把四种逻辑的语义钉死，并守住「次要键为空 = 老行为」这条零回归底线。
  */

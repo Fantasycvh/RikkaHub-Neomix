@@ -62,8 +62,8 @@ import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Share08
 
 /**
- * 工作区文件浏览的**共享组件**（设计见 `docs/design-side-file-panel.md` §四、
- * `docs/design-workspace-multiselect-export.md` §六.1）。
+ * 工作区文件浏览的**共享组件**（设计见 `docs/design/design-side-file-panel.md` §四、
+ * `docs/design/design-workspace-multiselect-export.md` §六.1）。
  *
  * **为什么要抽**：详情页与（将来）聊天侧边栏会渲染同一份文件列表；复制一份 UI 两处必然漂移
  * （本仓同类教训：`BackupItem` 枚举统一、`BackupArchiveEngine` 抽取、`ChatToolFactory` 集中装配）。

@@ -9,7 +9,7 @@ import kotlin.uuid.Uuid
 /**
  * 导入一个导出的会话时，把它的 id **全部换新**并重映射内部引用。
  *
- * 为什么必须换：导入语义是「**新建**而非覆盖」（`docs/design-conversation-import-export.md` 决策 1）——
+ * 为什么必须换：导入语义是「**新建**而非覆盖」（`docs/design/design-conversation-import-export.md` 决策 1）——
  * 沿用原 id 会覆盖本机同 id 会话（数据丢失）。换新 id 后同一文件可反复导入（每次得到新副本）。
  *
  * 换新的对象（依据见设计稿 §三）：

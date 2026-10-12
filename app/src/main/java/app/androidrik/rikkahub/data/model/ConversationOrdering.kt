@@ -1,7 +1,7 @@
 package app.androidrik.rikkahub.data.model
 
 /**
- * 会话自定义顺序的**位置值编码**（设计稿 `docs/design-conversation-manual-order.md` §二）。
+ * 会话自定义顺序的**位置值编码**（设计稿 `docs/design/design-conversation-manual-order.md` §二）。
  *
  * 为什么是「整数大间距」而不是浮点：定点写回、无精度零头、日志/备份里可读；
  * 代价只有「间距耗尽」，而它的触发时机完全可预测（同一间隙连续取中值约 10 次）。

@@ -302,7 +302,7 @@ class MemoryToolsTest {
         assertTrue(memoryTool().description.contains("memory index"))
     }
 
-    // ---- 只提案模式（做梦在审批开着时的形态，见 docs/design-memory-consolidation.md §7.2）----
+    // ---- 只提案模式（做梦在审批开着时的形态，见 docs/design/design-memory-consolidation.md §7.2）----
 
     private val proposals = mutableListOf<MemoryConsolidationProposal>()
 

@@ -182,7 +182,7 @@ private val forkTitleSuffixRegex = Regex("""\((\d+)\)$""")
  * 更隐蔽的一层：空标题会让既有自动起名（`generateTitle` 仅在 `title.isBlank()` 时触发）在首条消息后
  * 把它改成一个**与源会话无关**的名字，「这是从哪条分出来的」这条线索就断了。
  *
- * **三处有意与上游不同**（fork 手工适配，见 私有仓记录·上游分析）：
+ * **三处有意与上游不同**（fork 手工适配，见 `docs/upstream-analysis.md`）：
  * 1. **源标题为空时保持为空**，不生成 `(1)`。上游写法在源标题为空时会产出 `"(1)"`——
  *    这既没有信息量，又因为「非空」导致自动起名**永远不再修正它**（`shouldGenerate` 要求 isBlank）。
  *    保持空白才能让自动起名在首条消息后正常命名。
@@ -532,7 +532,7 @@ class ChatService(
         val session = getOrCreateSession(conversationId) // 确保 session 存在
         val conversation = conversationRepo.getConversationById(conversationId)
         if (session.isGenerating) {
-            // **加载守卫**（1b41b586 同族）：生成中的会话内存态比 DB 新——流式内容只走
+            // **加载守卫**（4701da2f 同族）：生成中的会话内存态比 DB 新——流式内容只走
             // updateConversation 纯内存，落库点仅在轮次结束/取消收尾。此时无条件用 DB
             // 覆盖内存会把半截内容静默抹掉（web 路由的消息/编辑/分叉/删除/分支切换等
             // 入口、以及重开会话页都会走到这里）。只保证 session 存在与「当前助手」
@@ -758,7 +758,7 @@ class ChatService(
 
     /**
      * 重生成的作用范围（与消息角色**无关**——用户编辑后既可能想"只修正这一段"，
-     * 也可能想"从这里重做"，见 `docs/design-regenerate-scope.md` §一/§三）。
+     * 也可能想"从这里重做"，见 `docs/design/design-regenerate-scope.md` §一/§三）。
      */
     enum class RegenerateScope {
         /** 仅本条与对应回复：不删下游。**非破坏**，无需确认。 */
@@ -1002,7 +1002,7 @@ class ChatService(
      *
      * **不落库、不发请求、不改任何状态**。与真实发送共用 [buildInternalMessages] 与
      * 同一个 transformer 链、同一套工具装配（[chatToolFactory]），因此预览与实际请求一致
-     * ——避免预览自己另写一套组装而随时间漂移（私有仓记录·前期调研 §6.7 ③）。
+     * ——避免预览自己另写一套组装而随时间漂移（`docs/peer-apps-benchmark.md` §6.7 ③）。
      *
      * 与 [handleMessageComplete] 的差异**仅**在于：不跑自动压缩（预览不产生副作用）、
      * 不注入重试/回退等生成期逻辑。
@@ -1910,7 +1910,7 @@ class ChatService(
     }
 
     /**
-     * 切换会话级「不使用记忆」（隐身对话；见 `docs/design-memory-discipline.md` §4.4）。
+     * 切换会话级「不使用记忆」（隐身对话；见 `docs/design/design-memory-discipline.md` §4.4）。
      *
      * 与 [togglePinStatus] 同款：内存态与库各写一次、用同一个新值。
      * 生效面 = **不注入记忆（含清单层）+ 不装配记忆工具**（下一次请求起）。

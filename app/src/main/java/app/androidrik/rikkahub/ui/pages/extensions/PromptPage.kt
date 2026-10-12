@@ -305,7 +305,7 @@ private const val HIGHLIGHT_DURATION_MS = 1600L
  * 预设列表（「扩展管理」里提示词的中心页）。
  *
  * 对齐 ST 的 Prompt Manager 组织方式：**多个具名预设**，每个内含一串有序条目；
- * 打开某个预设进入详情编辑。见 私有仓记录·前期调研 §6.7 ⑤。
+ * 打开某个预设进入详情编辑。见 `docs/peer-apps-benchmark.md` §6.7 ⑤。
  */
 @Composable
 private fun PresetListScreen(
@@ -1232,7 +1232,7 @@ private fun getRoleLabel(role: MessageRole): String = when (role) {
  * 世界书注入的 token 预算设置卡。
  *
  * 0 = 不限制（默认，保持旧行为）。作用：命中条目超过预算时按 priority 降序裁剪，
- * 避免导入大型世界书后**静默**塞满上下文。见 私有仓记录·前期调研 §6.2 ③。
+ * 避免导入大型世界书后**静默**塞满上下文。见 `docs/peer-apps-benchmark.md` §6.2 ③。
  */
 @Composable
 private fun LorebookBudgetCard(

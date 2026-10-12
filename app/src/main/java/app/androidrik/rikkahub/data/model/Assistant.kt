@@ -29,7 +29,7 @@ data class Assistant(
      *
      * **为什么保留**：此前导入会把这 4 个字段用 `buildString` **压成一条不可分的
      * `systemPrompt`**，槽位信息在导入那一步就永久丢失（无法单独查看/编辑/重排）。
-     * 见 私有仓记录·前期调研 §6.2 ④。
+     * 见 `docs/peer-apps-benchmark.md` §6.2 ④。
      *
      * **权威关系**：`systemPrompt` 仍是**唯一**被发送的文本（保持既有行为与可自由编辑）；
      * 这几个字段是「零件」，供查看/单独编辑，并经 [buildCardSystemPrompt] 一键重建
@@ -88,7 +88,7 @@ data class Assistant(
      * 用一个时间戳而不是 `Boolean`：它**同时是基线**——做梦只对「开启之后的新轮次」负责。
      * 否则刚拨开开关就会把几百个历史会话一次性灌进整理队列（用户没要求的后台模型花费）；
      * 关了再开以新的时刻为准（关闭期间的内容不补算）。想要历史被整理，走**手动整理**
-     * （不受基线与开关限制）。见 `docs/design-memory-consolidation.md` §7。
+     * （不受基线与开关限制）。见 `docs/design/design-memory-consolidation.md` §7。
      *
      * **默认关**：做梦是额外的一次后台模型调用，属于「会在用户没看着的时候花钱」的自动行为，
      * 本仓对这类功能一贯要求显式开启。
@@ -191,7 +191,7 @@ data class QuickMessage(
  * [sortKey] 是内部排序键（自增主键），**不参与序列化**——用于注入时的稳定输出顺序
  * （与记忆页展示一致），并保证行为不依赖调用方列表顺序。
  *
- * [importance]/[updatedAt] 服务于**注入打分校准**（`docs/design-memory-scoring.md`）：
+ * [importance]/[updatedAt] 服务于**注入打分校准**（`docs/design/design-memory-scoring.md`）：
  * 打分 `importance × (0.55 + 0.45 × 时效衰减)` 决定「谁该进上下文」，
  * 而输出顺序仍由 [sortKey] 固定以保住前缀缓存。
  */
@@ -199,7 +199,7 @@ data class QuickMessage(
  * 角色卡 system prompt 的**槽位**（对齐 SillyTavern `prompt_order` 里的槽位概念）。
  *
  * 导入时各段被保留为独立字段，因此可以逐段开关、重排——而不再是压平后不可分的一条字符串。
- * 见 私有仓记录·前期调研 §6.2 ④ / §6.7 ⑤。
+ * 见 `docs/peer-apps-benchmark.md` §6.2 ④ / §6.7 ⑤。
  */
 @Serializable
 enum class CardSlot {
@@ -380,7 +380,7 @@ data class AssistantMemory(
     /**
      * **这条记忆讲什么**（≤150 字符）。序列化：工具结果回显，模型能确认自己写的主题词。
      *
-     * 它是**清单层**的主体（见 `docs/design-memory-discipline.md` §4.2）——全文注入预算外的
+     * 它是**清单层**的主体（见 `docs/design/design-memory-discipline.md` §4.2）——全文注入预算外的
      * 记忆以这一行露出，模型据此决定是否 `memory_read` 取全文。空串 = 没写过。
      */
     val description: String = "",
@@ -481,7 +481,7 @@ enum class InjectionPosition {
  * 次要关键词的匹配逻辑（对齐 SillyTavern `world_info_logic`，`world-info.js:33-38`）。
  *
  * 世界书的**过度触发**防护：主键命中后，再用次要键二次收窄。缺了它，ST 世界里
- * 大量「靠次要键抑制误触发」的条目会只凭主键就注入（见 私有仓记录·前期调研 §6.2 ①）。
+ * 大量「靠次要键抑制误触发」的条目会只凭主键就注入（见 `docs/peer-apps-benchmark.md` §6.2 ①）。
  */
 @Serializable
 enum class SelectiveLogic {
@@ -599,7 +599,7 @@ data class Lorebook(
  *
  * 为什么需要它：此前注入是**一个扁平的全局列表**，无法表达「多套方案共存/切换」
  * （导入第二份 ST 预设会与第一份混在一起，且分不出哪些条目属于谁）。
- * 见 私有仓记录·前期调研 §6.2 ④。
+ * 见 `docs/peer-apps-benchmark.md` §6.2 ④。
  *
  * **与 [PromptInjection.ModeInjection] 的关系**：预设是**容器**（分组 + 名称 + 启用），
  * 条目仍是原本的 `ModeInjection`（位置/优先级/角色/内容都照旧）⇒ 拼装逻辑完全不变。
@@ -808,7 +808,7 @@ fun List<PromptInjection.RegexInjection>.limitByTokenBudget(
 /**
  * 按「视觉顺序」重写条目的 `priority`，使**列表顺序成为唯一真相**。
  *
- * 背景（私有仓记录·前期调研 §6.2 ④）：拼装时 [PromptInjection] 是按
+ * 背景（`docs/peer-apps-benchmark.md` §6.2 ④）：拼装时 [PromptInjection] 是按
  * `priority` **降序**应用（`PromptInjectionTransformer` 的 `sortedByDescending { priority }`），
  * 列表顺序只在同优先级时作为 tiebreaker 生效 ⇒ 出现过「拖了半天却没变化」的现象
  * （用户给某条设过 priority 后，拖拽对那一条就失效了）。

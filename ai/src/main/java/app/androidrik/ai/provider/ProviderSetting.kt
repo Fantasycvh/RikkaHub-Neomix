@@ -11,7 +11,7 @@ import kotlin.uuid.Uuid
 /**
  * 单个提供商的代理配置。
  *
- * 语义（两层代理设计，见 `docs/design-proxy-two-layer.md`）：
+ * 语义（两层代理设计，见 `docs/design/design-proxy-two-layer.md`）：
  * - [Inherit]：跟随全局代理设置（**新 provider 的默认值**；app 层不动 client，由共享 client 的
  *   ProxySelector 决定走向）——ai 模块无需知道全局设置是否存在。
  * - [None]：**显式直连**（即使 app 配了全局代理也不走）。语义由旧「无代理」收窄而来。

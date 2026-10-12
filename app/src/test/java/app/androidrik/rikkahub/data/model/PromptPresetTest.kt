@@ -8,7 +8,7 @@ import kotlin.uuid.Uuid
 /**
  * 预设容器（`PromptPreset`）与扁平视图的等价性测试。
  *
- * 动机（私有仓记录·前期调研 §6.2 ④）：把注入从「一个扁平全局列表」升级为
+ * 动机（`docs/peer-apps-benchmark.md` §6.2 ④）：把注入从「一个扁平全局列表」升级为
  * 「多个具名预设」，但**下游全部按扁平列表消费**（transformer / Web API / web-ui / 选择器）
  * ⇒ 容器必须能无损投影回扁平列表，否则 web-ui 与 Web API 会静默失配。
  */

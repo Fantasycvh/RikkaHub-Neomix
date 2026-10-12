@@ -149,7 +149,7 @@ fun WorkspaceDetailPage(id: String) {
     // SAF launcher 回调里要用的"这次导哪些"（launcher 不能带参数，只能借状态传递）
     var pendingExportEntries by remember { mutableStateOf<List<WorkspaceFileEntry>>(emptyList()) }
 
-    // ---- 多选（设计 design-workspace-multiselect-export.md；选择态由页面持有、组件无状态）----
+    // ---- 多选（设计 docs/design/design-workspace-multiselect-export.md；选择态由页面持有、组件无状态）----
     var selecting by rememberSaveable { mutableStateOf(false) }
     var selectedPaths by rememberSaveable { mutableStateOf(listOf<String>()) }
     var showExportChooser by remember { mutableStateOf(false) }

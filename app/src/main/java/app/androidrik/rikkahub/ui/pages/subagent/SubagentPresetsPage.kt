@@ -67,7 +67,7 @@ import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
 /**
- * 子代理预设管理页（设计见 `docs/design-subagent-context.md` §十）。
+ * 子代理预设管理页（设计见 `docs/design/design-subagent-context.md` §十）。
  *
  * 一页只回答两件事：**要不要让模型在对话里派子代理**（顶部开关），以及**有哪些组合可选**
  * （下方列表 + 编辑对话框）。刻意不做成助手设置里的一个 tab：预设是全局配置，

@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 导出留存区 TTL 的纯函数判定（`docs/design-export-retention.md` §4.3）。
+ * 导出留存区 TTL 的纯函数判定（`docs/design/design-export-retention.md` §4.3）。
  *
  * 清理是启动时的破坏性动作且难以从 UI 观察，故边界值在此钉死。
  */

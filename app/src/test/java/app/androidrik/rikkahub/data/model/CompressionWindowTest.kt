@@ -195,7 +195,7 @@ class CompressionWindowTest {
     @Test
     fun `scope B truncation invalidates checkpoint and undo restores it`() {
         // 交叉用例：重生成 scope B（截断下游）后检查点必须失效；撤销还原后应重新有效
-        // （指纹是纯函数 → 失效可逆，见 design-regenerate-scope.md §七）
+        // （指纹是纯函数 → 失效可逆，见 docs/design/design-regenerate-scope.md §七）
         val nodes = listOf(node("a"), node("b"), node("c"), node("d"))
         val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 2)
         assertNotNull("前置：检查点应有效", conversation.activeCompression())

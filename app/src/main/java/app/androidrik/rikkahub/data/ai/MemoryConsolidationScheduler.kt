@@ -155,7 +155,7 @@ fun interface MemoryDreamKeepAlive {
 
 /**
  * 决定什么时候整理记忆（**做梦框架**，V3；移植上游 #2130 的 `MemoryConsolidationScheduler`，
- * 见 `docs/design-memory-consolidation.md`）。
+ * 见 `docs/design/design-memory-consolidation.md`）。
  *
  * 触发面（五个入口，都只做「什么时候」，不做「整理什么」）：
  * - **轮末空闲**：[onTurnFinished] 后等 [idleDelay]（应用不可见时先占住保活，否则进程可能在

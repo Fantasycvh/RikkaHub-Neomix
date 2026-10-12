@@ -10,7 +10,7 @@ import app.androidrik.rikkahub.utils.JsonInstantPretty
 /**
  * 单会话导出/导入（**自家格式**，非 Markdown/HTML/PNG 三形态——那三种只出不能回填）。
  *
- * 设计见 `docs/design-conversation-import-export.md`：
+ * 设计见 `docs/design/design-conversation-import-export.md`：
  * - 导出携带 `sourceId`（导出时的会话 id）作为**重复导入检测的幂等锚点**；
  * - 导入**总是换新 id**（[Conversation.remapForImport]），故同一文件可反复导入、每次得新副本；
  * - 导出文件**不存 `assistantId`**（跨设备必失效），目标助手由用户导入时选择（UI 层）。
@@ -22,7 +22,7 @@ object ConversationSerializer : ExportSerializer<Conversation> {
     override val type: String = "conversation"
 
     override fun export(data: Conversation): ExportData = ExportData(
-        version = 2,  // 阶段 2：容器为 zip 且携带附件清单（见 docs/design-conversation-import-export.md §六）
+        version = 2,  // 阶段 2：容器为 zip 且携带附件清单（见 docs/design/design-conversation-import-export.md §六）
         type = type,
         data = JsonInstant.encodeToJsonElement(Conversation.serializer(), data),
         exportedAt = System.currentTimeMillis(),

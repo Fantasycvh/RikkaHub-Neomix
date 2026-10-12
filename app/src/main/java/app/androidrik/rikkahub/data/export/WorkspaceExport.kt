@@ -7,7 +7,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * 工作区批量导出（设计见 `docs/design-workspace-multiselect-export.md`）。
+ * 工作区批量导出（设计见 `docs/design/design-workspace-multiselect-export.md`）。
  *
  * 分三层，**纯逻辑与 IO 分开**，因为这里的错误几乎都是"静默错"：
  *

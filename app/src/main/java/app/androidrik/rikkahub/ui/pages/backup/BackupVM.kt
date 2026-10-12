@@ -155,7 +155,7 @@ class BackupVM(
      *
      * 分两步是为了**重复导入检测**：先解析拿到 `sourceId`，与 `settings.importedSources` 比对，
      * 命中则由 UI 弹确认；用户确认后才调 [commitConversationImport]。
-     * 见 `docs/design-conversation-import-export.md` §十。
+     * 见 `docs/design/design-conversation-import-export.md` §十。
      *
      * **在 IO 线程执行**（读文件 + 解 zip + 解码 JSON 都是重活；调用方是 Compose 的
      * `rememberCoroutineScope()`，不切线程会卡主线程 → ANR）。

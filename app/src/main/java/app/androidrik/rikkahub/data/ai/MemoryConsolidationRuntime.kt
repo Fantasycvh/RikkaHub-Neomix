@@ -52,7 +52,7 @@ class MemoryConsolidationTrigger(
 /**
  * 做梦的 Android 粘合层：三个钩子 + 一次通知。
  *
- * 触发面（`docs/design-memory-consolidation.md` §9.2）：
+ * 触发面（`docs/design/design-memory-consolidation.md` §9.2）：
  * - **轮末**：`ChatGenerationEnded`（应用自己的事件总线，`ChatService` 在生成结束时发）；
  * - **切后台**：`ProcessLifecycleOwner.onStop` ⇒ `onAppHidden`（后台的空闲计时不一定走得完，
  *   有待整理的就立刻开始）；

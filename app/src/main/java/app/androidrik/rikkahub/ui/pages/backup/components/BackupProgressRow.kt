@@ -19,7 +19,7 @@ import app.androidrik.rikkahub.utils.fileSizeToString
  * 备份/恢复进度行：确定进度时显示「已完成/总量 · 百分比」，总量未知时显示不确定进度条。
  *
  * **刻意只用数字与百分比**（`1.2 GB / 2.8 GB · 43%`），不引入阶段文案与 6 语言资源——
- * 阶段名对判断「是否卡死」价值有限，而数字已足够（见 `docs/design-backup-workspace-files.md` §9.1）。
+ * 阶段名对判断「是否卡死」价值有限，而数字已足够（见 `docs/design/design-backup-workspace-files.md` §9.1）。
  *
  * @param progress null 时不渲染（无进行中任务）
  */

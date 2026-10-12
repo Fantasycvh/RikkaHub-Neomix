@@ -31,7 +31,7 @@ import java.util.zip.ZipOutputStream
  *
  * 参数化为 `items: Collection<BackupItem>` 而非整个 config，从而与传输层解耦（S3/WebDav 通用）。
  *
- * 设计见 `docs/design-backup-workspace-files.md`。
+ * 设计见 `docs/design/design-backup-workspace-files.md`。
  */
 internal class BackupArchiveEngine(
     private val settingsStore: SettingsStore,

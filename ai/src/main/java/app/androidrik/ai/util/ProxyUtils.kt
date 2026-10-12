@@ -12,7 +12,7 @@ import java.net.Proxy
 private const val TAG = "ProxyUtils"
 
 /**
- * 按 [ProviderProxy] 语义给 client 配置代理（两层代理设计，见 `docs/design-proxy-two-layer.md` §二）。
+ * 按 [ProviderProxy] 语义给 client 配置代理（两层代理设计，见 `docs/design/design-proxy-two-layer.md` §二）。
  *
  * | 配置 | 行为 |
  * |---|---|

@@ -23,7 +23,7 @@ data class Conversation(
     /**
      * 压缩检查点列表（末行 = 最新边界 = active）。从 compression_checkpoint 表按需加载注入，
      * 不存入 conversations 表（与 messageNodes 同模式——独立表管理，避免污染元数据列）。
-     * 默认空 = 未压缩。设计见 [CompressionSummary] 与 `docs/design-auto-compaction.md` §4.4。
+     * 默认空 = 未压缩。设计见 [CompressionSummary] 与 `docs/design/design-auto-compaction.md` §4.4。
      */
     val compressionSummaries: List<CompressionSummary> = emptyList(),
     val chatSuggestions: List<String> = emptyList(),
@@ -34,7 +34,7 @@ data class Conversation(
     val updateAt: Instant = Instant.now(),
     /**
      * **末尾消息的 `createdAt`**（列表行内「最近活跃」显示用；见
-     * `docs/design-conversation-manual-order.md` §一.3）。
+     * `docs/design/design-conversation-manual-order.md` §一.3）。
      *
      * 与 [updateAt] 的区别：后者会被改标题/置顶/重新生成等**非消息动作**刷新，
      * 用它当"最近活跃"会撒谎。旧数据为 null，UI 回退 [updateAt]。
@@ -49,7 +49,7 @@ data class Conversation(
     // 所属文件夹（助手内分组），null 表示未归入任何文件夹
     val folderId: Uuid? = null,
     /**
-     * **本对话不使用记忆**（隐身对话；见 `docs/design-memory-discipline.md` §4.4）。
+     * **本对话不使用记忆**（隐身对话；见 `docs/design/design-memory-discipline.md` §4.4）。
      *
      * 语义（V2 批次）：**不注入记忆（含清单层）+ 不提供记忆工具**——开关要真能拦住「这次对话
      * 碰我的记忆库」，否则工具仍可逐条读回来、开关等于装饰。「不整理」留给 V3 的做梦框架。
@@ -116,7 +116,7 @@ data class Conversation(
         )
     }
 
-    // ---- 压缩检查点（设计见 docs/design-auto-compaction.md §4.1 三边界对齐）----
+    // ---- 压缩检查点（设计见 docs/design/design-auto-compaction.md §4.1 三边界对齐）----
 
     /**
      * 当前生效的压缩检查点（末行 = 最新边界 = active）。

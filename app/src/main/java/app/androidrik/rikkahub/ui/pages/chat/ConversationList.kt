@@ -98,7 +98,7 @@ fun ColumnScope.ConversationList(
     onMoveToAssistant: (Conversation) -> Unit = {},
     onMoveToFolder: (Conversation) -> Unit = {},
     onShare: (Conversation) -> Unit = {},
-    /** 会话级「不使用记忆」（隐身对话）开关，见 docs/design-memory-discipline.md §4.4 */
+    /** 会话级「不使用记忆」（隐身对话）开关，见 docs/design/design-memory-discipline.md §4.4 */
     onToggleMemory: (Conversation) -> Unit = {},
 ) {
     var hasScrolledToCurrent by remember(current.id) { mutableStateOf(false) }
@@ -273,7 +273,7 @@ private fun ConversationItem(
     onMoveToAssistant: (Conversation) -> Unit = {},
     onMoveToFolder: (Conversation) -> Unit = {},
     onShare: (Conversation) -> Unit = {},
-    /** 会话级「不使用记忆」（隐身对话）开关，见 docs/design-memory-discipline.md §4.4 */
+    /** 会话级「不使用记忆」（隐身对话）开关，见 docs/design/design-memory-discipline.md §4.4 */
     onToggleMemory: (Conversation) -> Unit = {},
     onClick: (Conversation) -> Unit
 ) {

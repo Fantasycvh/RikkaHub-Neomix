@@ -23,7 +23,7 @@ data class ConversationEntity(
     @ColumnInfo("is_pinned", defaultValue = "0")
     val isPinned: Boolean,
     /**
-     * 自定义顺序的位置值（见 `docs/design-conversation-manual-order.md`）。
+     * 自定义顺序的位置值（见 `docs/design/design-conversation-manual-order.md`）。
      *
      * **null = 该会话从未进入自定义顺序**。档位（置顶/非置顶）分两个独立编号空间：
      * 档内「全 null」= 自动模式（按 `update_at`，即历史行为）；一旦需要（首次拖拽 /
@@ -54,7 +54,7 @@ data class ConversationEntity(
     @ColumnInfo("folder_id", defaultValue = "")
     val folderId: String = "",
     /**
-     * **本对话不使用记忆**（隐身对话；见 `docs/design-memory-discipline.md` §4.4）。
+     * **本对话不使用记忆**（隐身对话；见 `docs/design/design-memory-discipline.md` §4.4）。
      *
      * 默认 false = 现行为（缺字段反序列化也是 false ⇒ 无需数据回填）。
      */

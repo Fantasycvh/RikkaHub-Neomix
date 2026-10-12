@@ -9,7 +9,7 @@ import kotlin.uuid.Uuid
 
 /**
  * 子代理预设 —— 一个**「按名称调度的模型 + 提示词」组合**（设计见
- * `docs/design-subagent-context.md` §十）。
+ * `docs/design/design-subagent-context.md` §十）。
  *
  * 对话里的模型通过 `dispatch_subagent(name = "…", goal = "…")` 按 [name] 调度其中之一；
  * 被调度的一方在**自己的上下文**里跑（独立 `messages` + 自己的 system prompt + 受限工具集），

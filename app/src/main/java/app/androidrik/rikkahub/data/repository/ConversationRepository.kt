@@ -623,7 +623,7 @@ class ConversationRepository(
         )
     }
 
-    // ---- 压缩检查点读写（设计见 docs/design-auto-compaction.md §4.4 独立表方案）----
+    // ---- 压缩检查点读写（设计见 docs/design/design-auto-compaction.md §4.4 独立表方案）----
 
     /** 加载会话的全部检查点（末行 = 最新边界 = active） */
     suspend fun getCompressionCheckpoints(conversationId: Uuid): List<CompressionSummary> =
@@ -745,7 +745,7 @@ class ConversationRepository(
     }
 
     /**
-     * 设置会话级「不使用记忆」（隐身对话；设计见 `docs/design-memory-discipline.md` §4.4）。
+     * 设置会话级「不使用记忆」（隐身对话；设计见 `docs/design/design-memory-discipline.md` §4.4）。
      *
      * 与 [updateConversationPinStatus] 同款：**调用方算好新值并同步内存态**，两边用同一个值。
      * 入口在 `ChatService.setConversationMemoryDisabled`——它持有 session，能同时改内存。

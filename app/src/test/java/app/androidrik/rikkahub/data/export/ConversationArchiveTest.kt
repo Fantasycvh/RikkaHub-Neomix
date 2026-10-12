@@ -17,7 +17,7 @@ import kotlin.uuid.Uuid
  * 阶段 2（zip 容器 + 附件原字节）的纯逻辑：清单生成、URL 收集与递归改写、
  * 扩展名推断、完整性校验、zip 往返。
  *
- * 见 `docs/design-conversation-import-export.md` §六 阶段 2。
+ * 见 `docs/design/design-conversation-import-export.md` §六 阶段 2。
  */
 class ConversationArchiveTest {
 

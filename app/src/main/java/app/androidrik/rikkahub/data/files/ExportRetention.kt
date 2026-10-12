@@ -1,6 +1,6 @@
 package app.androidrik.rikkahub.data.files
 
-/** 导出留存区的默认保留天数。见 `docs/design-export-retention.md` §4.3。 */
+/** 导出留存区的默认保留天数。见 `docs/design/design-export-retention.md` §4.3。 */
 const val DEFAULT_EXPORT_RETENTION_DAYS: Int = 7
 
 /** 「不自动清理」的取值（用户在设置里关掉 TTL）。 */

@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * 压缩配置档的纯函数（匹配 / 重名校验 / 钳制）。
  *
- * 设计约束（`docs/design-compress-presets.md`）：真相源是**数值**，档只是填充快捷方式，
+ * 设计约束（`docs/design/design-compress-presets.md`）：真相源是**数值**，档只是填充快捷方式，
  * 故「当前档位」由数值反推而非存选中态——改一个数字就应变成「自定义」。
  */
 class CompressPresetTest {
