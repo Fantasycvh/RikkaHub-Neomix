@@ -15,6 +15,15 @@ import org.junit.Test
  */
 class ToolReasoningBackfillTest {
 
+    /**
+     * 学习到的东西是**进程级**的（设计如此：不写盘、重启即失）。同进程里跑多个用例时
+     * 会互相污染（本类就有用例断言「学之前不回填」），所以每条用例前清一次。
+     */
+    @org.junit.Before
+    fun resetLearnedHosts() {
+        resetLearnedReasoningTextValidatorsForTest()
+    }
+
     private fun model(vararg abilities: ModelAbility) = Model(
         modelId = "test-model",
         abilities = abilities.toList(),
@@ -50,5 +59,73 @@ class ToolReasoningBackfillTest {
         // 历史仍带着思考轮次的 tool_calls）⇒ 已知会校验的 host 一律回填。
         assertTrue(requiresToolReasoningBackfill("api.deepseek.com", model(ModelAbility.TOOL)))
         assertTrue(requiresToolReasoningBackfill("api.opencode.ai", model(ModelAbility.TOOL)))
+    }
+
+    // ---- 从错误自学习（2026-10-13 用户拍板）----
+
+    @Test
+    fun `识别真机上那条结构校验的 400`() {
+        // 2026-10-13 真机原文（记忆整理时被网关拒掉的那条）
+        val real = "Failed to get response: 400 {\"error\":{\"message\":\"The `reasoning_content` " +
+            "in the thinking mode must be passed back to the API. (request_id: 312a342b-...)\"," +
+            "\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"invalid_request_error\"}}"
+
+        assertTrue("这就是要自学习的签名", isReasoningBackfillError(real))
+    }
+
+    @Test
+    fun `别的 400 不能误判（否则一次无关错误会永久改变该 host）`() {
+        assertFalse(isReasoningBackfillError(null))
+        assertFalse(isReasoningBackfillError(""))
+        // 只 400、没有签名
+        assertFalse(isReasoningBackfillError("Failed to get response: 400 Bad Request"))
+        // 上下文超限
+        assertFalse(
+            isReasoningBackfillError(
+                "400 {\"error\":{\"message\":\"This model's maximum context length is 128000 tokens\"}}",
+            ),
+        )
+        // 提到 reasoning_content 但不是「回传」这条（例如模型不支持该字段）
+        assertFalse(
+            isReasoningBackfillError(
+                "400 {\"error\":{\"message\":\"Unsupported parameter: reasoning_content\"}}",
+            ),
+        )
+        // 提到 passed back 但不是 reasoning_content（Responses 路径那条 reasoning_text 不在此列）
+        assertFalse(
+            isReasoningBackfillError(
+                "400 {\"error\":{\"message\":\"The `reasoning_text` in the thinking mode must be passed back\"}}",
+            ),
+        )
+    }
+
+    @Test
+    fun `学到之后该 host 就一律回填（即便 host 未知、模型也不标能力）`() {
+        val host = "relay.example.com"
+        val plainModel = model(ModelAbility.TOOL)
+
+        assertFalse("学之前：host 未知、模型非思考 ⇒ 不回填", requiresToolReasoningBackfill(host, plainModel))
+        assertFalse(isKnownReasoningTextValidator(host))
+
+        learnReasoningTextValidator(host)
+
+        assertTrue(
+            "撞过一次该签名之后必须回填，否则每次都要再花一次 400",
+            requiresToolReasoningBackfill(host, plainModel),
+        )
+        // 只影响这一个 host，不能连带放宽别的网关
+        assertFalse(requiresToolReasoningBackfill("other.example.com", plainModel))
+        // 静态名单语义不变
+        assertFalse(isKnownReasoningTextValidator(host))
+    }
+
+    @Test
+    fun `学习是幂等且忽略空 host`() {
+        learnReasoningTextValidator("relay.example.com")
+        learnReasoningTextValidator("relay.example.com")
+        learnReasoningTextValidator("")
+
+        assertTrue(requiresToolReasoningBackfill("relay.example.com", model()))
+        assertFalse("空串不该被记成一个 host", requiresToolReasoningBackfill("", model()))
     }
 }

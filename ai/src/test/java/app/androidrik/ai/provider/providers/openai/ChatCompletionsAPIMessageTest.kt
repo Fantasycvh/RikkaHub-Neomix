@@ -441,6 +441,43 @@ class ChatCompletionsAPIMessageTest {
         assertEquals("deep thought", msg.jsonObject["reasoning_content"]?.jsonPrimitive?.content)
     }
 
+    /**
+     * **2026-10-13 真机回归**：回填不能只管「带 tool_calls 的 assistant」。
+     *
+     * 现场是一份 17KB 的做梦（记忆整理）报文被 `api.deepseek.com` 拒成 400
+     * 「The `reasoning_content` in the thinking mode must be passed back」。在设备上原样重放定位到：
+     * 带 tool_calls 的那条**已经有** `reasoning_content`，真正缺字段的是**最后那条普通的总结性
+     * assistant 消息**（无 tool_calls）。同一命令下：给它补上（**空串即可**）→ 200；删掉带 tool_calls
+     * 那条的字段 → 仍 400；`thinking:disabled` → 200。
+     * 即：**思考模式下每条 assistant 消息都要有该字段**。
+     *
+     * 这条用例用一个「既没有 reasoning、也没有 tool_calls」的纯文本 assistant 消息钉住这个形态——
+     * 它正是原先判据 `tools.isNotEmpty() && backfill` 会漏掉的那种。
+     */
+    @Test
+    fun `plain assistant message without reasoning also gets the backfill`() {
+        val messages = listOf(
+            UIMessage.user("hi"),
+            UIMessage(
+                role = MessageRole.ASSISTANT,
+                parts = listOf(UIMessagePart.Text("nothing to review")),
+            ),
+        )
+
+        val assistant = invokeBuildMessages(messages, backfillToolReasoning = true)
+            .first { it.jsonObject["role"]?.jsonPrimitive?.content == "assistant" }
+        assertEquals(
+            "无 tool_calls 的普通 assistant 也必须回填（DeepSeek 思考模式逐条校验）",
+            "",
+            assistant.jsonObject["reasoning_content"]?.jsonPrimitive?.content,
+        )
+
+        // 门槛未命中时不新增字段（不给不认识它的服务端凭空送字段）
+        val plain = invokeBuildMessages(messages)
+            .first { it.jsonObject["role"]?.jsonPrimitive?.content == "assistant" }
+        assertNull(plain.jsonObject["reasoning_content"])
+    }
+
     private fun createExecutedTool(
         callId: String,
         name: String,

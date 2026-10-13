@@ -154,6 +154,33 @@ interface MemoryConsolidationWorker {
 > **注意这不改变决策 B 的边界**：仍然没有提案表、没有一键应用，「成组 / 过期」两件事照样待设计——
 > 本次只把 B 里「看到内容」这一步补通。（一键采纳另议。）
 
+> **⚠️ 2026-10-13 同日另一个真机问题：整理整轮失败，错误是网关的思维链结构校验。**
+> 现场：记忆页显示「上次整理：应用 0 条，建议 0 条」+ 红字
+> `400 The reasoning_content in the thinking mode must be passed back to the API.`
+> ——「0 条」不是空跑而是**整个请求被网关拒了**（那条建议是更早一次成功运行留下的，
+> 正是上面「建议要比 lastRun 更黏」的设计在起作用）。
+>
+> **根因（在设备上用应用自己的落盘日志 + 原样重放定位，非推测）**：
+> 应用把完整报文写在 `files/logs/rikkahub-logs.txt`（「请求日志 + 落盘日志」两个开关），
+> 从中取出那次 17KB 的做梦请求，再用同一把 key 在设备上 `curl` 重放，得到实测矩阵：
+>
+> | 变体 | thinking | 结果 |
+> |---|---|---|
+> | 原报文：带 tool_calls 的那条**已有** reasoning_content，末条**普通** assistant 缺字段 | enabled | **400** |
+> | 给末条补上（**空串也行**、占位「…」也行） | enabled | **200** |
+> | 删掉带 tool_calls 那条的字段 | enabled | **400** |
+> | 删掉末条普通 assistant | enabled | **200** |
+> | `thinking:{"type":"disabled"}` | enabled | **200** |
+>
+> 即：**DeepSeek 在思考模式下要求「每条 assistant 消息」都有 `reasoning_content`**（不只带工具调用的），
+> 而本仓的 `ToolReasoningBackfill` 只在 `tools.isNotEmpty()` 时回填 ⇒ **漏掉了最后那条普通的
+> 总结性 assistant 消息** ⇒ 整轮 400。做梦是多步工具调用，最后必然带一条普通总结消息，所以必现。
+>
+> **修法**：回填判据去掉 `tools.isNotEmpty()`（对所有 assistant 消息回填；是否整体回填仍由
+> host/模型门槛决定）。另加：**从错误自学习**——撞到该签名的 400 就记住这个 host 并**同请求重发一次**
+> （覆盖白名单外的、也会校验的第三方中转网关；判据用 `reasoning_content` + `passed back` 两个特征串，
+> 不单看 400，免得一次无关错误永久改变该 host 的行为）。
+
 ### 7.3 成本护栏（**已随 V3-b2 落地**，与护栏家族同款：优雅停止 + 结果照常回填 + 诊断日志）
 
 - **单次整理最大步数**：自动 ≤ **16** 步 / 手动 ≤ **32** 步（`MemoryConsolidator.MAX_AUTO_STEPS` /

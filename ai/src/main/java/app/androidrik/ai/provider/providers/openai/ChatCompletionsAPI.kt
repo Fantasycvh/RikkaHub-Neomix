@@ -142,26 +142,63 @@ class ChatCompletionsAPI(
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): Flow<MessageChunk> = callbackFlow {
-        val requestBody = buildChatCompletionRequest(
-            messages = messages,
-            params = params,
-            providerSetting = providerSetting,
-            stream = true,
-        )
+        val host = providerSetting.baseUrl.toHttpUrl().host
 
-        val request = Request.Builder()
-            .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
-            .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}")
-            .addHeader("Content-Type", "application/json")
-            .configureReferHeaders(providerSetting.baseUrl)
-            .applyCustomHeaders(providerSetting, params.customHeaders)
-            .build()
+        // 从错误自学习（2026-10-13 用户拍板）：先按静态判定发一次；若网关回
+        // 「思考模式必须回传思维链」的结构校验（见 ToolReasoningBackfill），
+        // 就记住这个 host 并把**同一次请求**带着回填补发一遍 —— 用户拿到的是一次成功回复，
+        // 而下次起该 host 直接走回填，不再多花一次 400。
+        //
+        // 为什么在这儿重试而不是交给上游 GenerationHandler：上游拿不到「host 需要回填」这个信息，
+        // 且它重试会先把错误报给用户。这里 400 是**无副作用的纯结构校验失败**（请求没被处理），
+        // 重发安全。只重发一次（`retriedWithBackfill` 门控），不会循环。
+        var retriedWithBackfill = false
+        // 本次尝试是否会带回填。**必须在 learn 之前算出来**：学习会改变
+        // requiresToolReasoningBackfill 的结果，若每次都重算，重发时就会误以为
+        // 「本来就回填了」而不再重发（自己把自己锁死）。
+        val attemptWillBackfill = requiresToolReasoningBackfill(host, params.model)
 
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
+        // 事件源可被替换：结构校验失败时按带回填的请求重建一个（见 retryWithBackfillIfStructural）。
+        // 工厂与代理配置不变，只有请求体不同。用 lateinit 是因为 listener 要先建、而 listener
+        // 里的重试逻辑又需要它 —— 两者互相引用，只能这样打破循环。
+        lateinit var newEventSource: (Request) -> EventSource
 
-        // just for debugging response body
-        // println(client.newCall(request).await().body?.string())
+        fun buildRequest(): Request {
+            val requestBody = buildChatCompletionRequest(
+                messages = messages,
+                params = params,
+                providerSetting = providerSetting,
+                stream = true,
+            )
+            return Request.Builder()
+                .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
+                .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+                .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}")
+                .addHeader("Content-Type", "application/json")
+                .configureReferHeaders(providerSetting.baseUrl)
+                .applyCustomHeaders(providerSetting, params.customHeaders)
+                .build()
+        }
+
+        /** 按错误签名决定是否带着回填再发一次。返回 true = 已重发。 */
+        fun retryWithBackfillIfStructural(exception: Throwable?): Boolean {
+            if (retriedWithBackfill || attemptWillBackfill) return false
+            if (!isReasoningBackfillError(exception?.message)) return false
+            // 先学、后重发：learnReasoningTextValidator 会让重发那次的
+            // buildChatCompletionRequest 自动带上 reasoning_content。
+            learnReasoningTextValidator(host)
+            retriedWithBackfill = true
+            Log.i(TAG, "streamText: host=$host requires reasoning_content backfill, resending once")
+            return try {
+                newEventSource(buildRequest())
+                true
+            } catch (e: Throwable) {
+                // 重发也没建立起事件源：如实上报。这里必须自己吞掉——本函数跑在 OkHttp 的
+                // 回调线程上，往外抛既没人接、又会让这次生成悬着不结束（调用方等不到 close）。
+                Log.w(TAG, "streamText: resend with reasoning backfill failed", e)
+                false
+            }
+        }
 
         val listener = object : EventSourceListener() {
             override fun onEvent(
@@ -245,7 +282,10 @@ class ChatCompletionsAPI(
                     e.printStackTrace()
                     exception = e
                 } finally {
-                    close(exception)
+                    // 结构校验失败 ⇒ 带着回填重发一次（此时**不**关闭流，调用方看不到这次失败）
+                    if (!retryWithBackfillIfStructural(exception)) {
+                        close(exception)
+                    }
                 }
             }
 
@@ -254,7 +294,23 @@ class ChatCompletionsAPI(
             }
         }
 
-        val eventSource = EventSources.createFactory(client.configureClientWithProxy(providerSetting.proxy)).newEventSource(request, listener)
+        // 事件源可被替换：结构校验失败时按带回填的请求重建一个（见 retryWithBackfillIfStructural）。
+        // 工厂与代理配置不变，只有请求体不同。
+        val factory = EventSources.createFactory(client.configureClientWithProxy(providerSetting.proxy))
+        newEventSource = { req -> factory.newEventSource(req, listener) }
+
+        val request = buildRequest()
+        Log.i(TAG, "streamText: ${json.encodeToString(request.body)}")
+
+        val eventSource = try {
+            newEventSource(request)
+        } catch (e: Throwable) {
+            // 同步失败（未能建立事件源）走的是另一条路径，onFailure 不会被调用：
+            // 这里同样给一次自学习机会，否则这类网关永远学不到。
+            if (!retryWithBackfillIfStructural(e)) throw e
+            // 重发成功：让下面拿到新的 eventSource。重发是同步注册，失败会抛。
+            factory.newEventSource(buildRequest(), listener)
+        }
 
         awaitClose {
             println("[awaitClose] 关闭eventSource ")
@@ -280,7 +336,7 @@ class ChatCompletionsAPI(
                     includeHistoryReasoning = providerSetting.includeHistoryReasoning,
                     supportInputModalities = params.model.inputModalities,
                     // 见 requiresToolReasoningBackfill：网关要求「思考模式 + 带 tool_calls」的消息必须回传思维链
-                    backfillToolReasoning = requiresToolReasoningBackfill(host, params.model),
+                    backfillReasoning = requiresToolReasoningBackfill(host, params.model),
                 )
             )
 
@@ -483,7 +539,7 @@ class ChatCompletionsAPI(
         messages: List<UIMessage>,
         includeHistoryReasoning: Boolean = true,
         supportInputModalities: List<Modality> = listOf(Modality.TEXT, Modality.IMAGE),
-        backfillToolReasoning: Boolean = false,
+        backfillReasoning: Boolean = false,
     ) = buildJsonArray {
         val filteredMessages = messages.filter { it.isValidToUpload() }
 
@@ -493,7 +549,7 @@ class ChatCompletionsAPI(
                     message = message,
                     includeReasoning = includeHistoryReasoning,
                     supportInputModalities = supportInputModalities,
-                    backfillToolReasoning = backfillToolReasoning,
+                    backfillReasoning = backfillReasoning,
                 )
             } else {
                 addNonAssistantMessage(message)
@@ -505,7 +561,7 @@ class ChatCompletionsAPI(
         message: UIMessage,
         includeReasoning: Boolean,
         supportInputModalities: List<Modality>,
-        backfillToolReasoning: Boolean = false,
+        backfillReasoning: Boolean = false,
     ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
@@ -531,7 +587,7 @@ class ChatCompletionsAPI(
                         contentParts = contentBuffer,
                         tools = group.tools,
                         reasoningPart = reasoningPart,
-                        backfillToolReasoning = backfillToolReasoning,
+                        backfillReasoning = backfillReasoning,
                     )?.let { assistantMessage ->
                         add(assistantMessage)
                     }
@@ -556,7 +612,7 @@ class ChatCompletionsAPI(
                 contentParts = contentBuffer,
                 tools = emptyList(),
                 reasoningPart = reasoningPart,
-                backfillToolReasoning = backfillToolReasoning,
+                backfillReasoning = backfillReasoning,
             )?.let { assistantMessage ->
                 add(assistantMessage)
             }
@@ -567,7 +623,7 @@ class ChatCompletionsAPI(
         contentParts: List<UIMessagePart>,
         tools: List<UIMessagePart.Tool>,
         reasoningPart: UIMessagePart.Reasoning?,
-        backfillToolReasoning: Boolean = false,
+        backfillReasoning: Boolean = false,
     ): JsonObject? {
         val hasUsableContent = contentParts.any { part ->
             when (part) {
@@ -587,12 +643,25 @@ class ChatCompletionsAPI(
             // reasoning_content
             if (hasReasoning) {
                 put("reasoning_content", reasoningPart.reasoning)
-            } else if (tools.isNotEmpty() && backfillToolReasoning) {
-                // 网关的结构性校验：思考模式下带 tool_calls 的消息必须回传思维链，
-                // 而这条历史里没有可回传的（旧消息 / 只给加密推理 / 用户关了回传 / 推理被**删空**）⇒
-                // 回填**空串**（空串被接受；省略字段会让整个请求 400）。
-                // 见 requiresToolReasoningBackfill 的实测矩阵与触发场景。
-                // ⚠️ 注意「编辑过」**不算**没有可回传的：`#1929` 编辑后文本非空 ⇒ 走上面分支，
+            } else if (backfillReasoning) {
+                // 网关的结构性校验：**思考模式下每条 assistant 消息都必须回传思维链**，
+                // 而这条没有可回传的（旧消息 / 只给加密推理 / 用户关了回传 / 推理被删空）⇒
+                // 回填**空串**。空串被接受（2026-10-13 对 api.deepseek.com 实测：
+                // 空串与占位都 200，省略字段则 400）。
+                //
+                // ⚠️ 判据里**不能**再要求 `tools.isNotEmpty()`——原先只给带 tool_calls 的 assistant
+                // 消息回填，于是「最后那条普通总结性 assistant 消息」漏了，DeepSeek 报
+                // 「reasoning_content must be passed back」。真机定位过程（2026-10-13，同一份 17KB
+                // 报文在设备上重放）：
+                //   - 原报文（thinking=enabled，末条普通 assistant 缺字段）→ 400
+                //   - 给末条补上（哪怕是空串）→ **200**
+                //   - 删掉带 tool_calls 那条的字段 → 仍 400（说明校验不限于工具消息）
+                //   - thinking=disabled → 200（校验只在思考模式生效）
+                //   - 删掉末条 assistant → 200
+                // 故这里对**所有** assistant 消息回填；是否回填整体仍由 host/模型门槛决定
+                // （见 requiresToolReasoningBackfill），不会波及不认识的网关。
+                //
+                // ⚠️ 另注意「编辑过」**不算**没有可回传的：`#1929` 编辑后文本非空 ⇒ 走上面分支，
                 // 把**用户改写过的文本**当 `reasoning_content` 回传（2026-10-09 核实；早前注释曾把它
                 // 列为回填情形，前提不成立）。
                 put("reasoning_content", "")
