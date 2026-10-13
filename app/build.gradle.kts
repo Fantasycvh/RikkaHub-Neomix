@@ -81,6 +81,12 @@ android {
             optimization {
                 enable = true
             }
+            // kotlinx.serialization 的 keep 规则（见 app/proguard-rules.pro 顶部的事故说明：
+            // release 缺了它，流式落库检查点会因序列化器丢失而失败，debug 不暴露）。
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
