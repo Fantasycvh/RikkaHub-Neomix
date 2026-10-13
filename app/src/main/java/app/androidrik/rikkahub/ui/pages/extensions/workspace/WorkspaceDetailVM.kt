@@ -176,12 +176,16 @@ class WorkspaceDetailVM(
     /**
      * 把当前区域下的文件导出到 cacheDir 的临时文件, 完成后回调 [onReady].
      * 供分享 / 图片预览 / 交给系统应用打开等复用 (它们都需要一个 FileProvider 可访问的真实 File).
+     *
+     * 文件名走 [workspaceCacheFileName]（**按路径**而不是只按 `entry.name`）：工作区是目录树，
+     * 不同子目录下的同名文件曾落到同一个 cache 路径互相覆盖——表现是 #2126「预览第二张同名图片
+     * 看到的是第一张的内容」（Coil 以绝对路径为缓存键，路径没变就直接命中上次的字节）。
      */
     fun exportToCacheFile(entry: WorkspaceFileEntry, cacheDir: File, onReady: (File) -> Unit) {
         viewModelScope.launch {
             runCatching {
                 val dir = File(cacheDir, "workspace_share").apply { mkdirs() }
-                val file = File(dir, entry.name)
+                val file = File(dir, workspaceCacheFileName(entry.path))
                 file.outputStream().use { output ->
                     repository.exportFile(
                         id = id,
@@ -205,8 +209,8 @@ class WorkspaceDetailVM(
         viewModelScope.launch {
             runCatching {
                 dir.mkdirs()
-                // 同名文件在不同子目录会碰撞, 用路径替换分隔符保证唯一
-                val file = File(dir, entry.path.trim('/').replace('/', '_'))
+                // 同名文件在不同子目录会碰撞, 用路径替换分隔符保证唯一（判据与 exportToCacheFile 共用）
+                val file = File(dir, workspaceCacheFileName(entry.path))
                 file.outputStream().use { output ->
                     repository.exportFile(
                         id = id,
