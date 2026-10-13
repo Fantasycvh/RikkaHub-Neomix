@@ -2197,4 +2197,22 @@ Page 2:","firstUnit":1,"lastUnit":2,
     两者不混淆。
   - **顺带发现（未改，仅记录）**：`values-ko-rKR` 里 `chat_message_add_favorite` 是 `즐겨찌기`，
     正确拼写应为 `즐겨찾기`；属既有错别字、与本次改动无关。
+- 2026-10-13（同日第八刀）：**补齐「队列内重排」（A 方向后半）**。用户「继续，完成这部分后构建 release」。
+  - 与插队**正交**：不想等就打断（`sendInterrupting`），只想插到下一条就**置顶**（本次）。
+  - `MessageQueue.moveToFront(id)`：把第一条匹配项挪到队首，其余**保持原有相对顺序**
+    （不是排序、也不是反转）。已在队首或找不到 id ⇒ 空操作并返回 `false`——
+    UI 靠这个返回值把按钮显示成「下一条」并**置灰**，避免点了没反应。
+  - `ChatService.moveQueuedMessageToFront`：只改顺序、**不打断当前轮次**；**不清理附件**
+    （消息仍在队列里被引用着，这点与 `remove` 不同）；但仍调一次 `dispatchNextQueuedMessage`
+    ——置顶的常见场景恰恰是「队列没在跑」（上一轮刚结束、或队列被某条卡住），得靠它推起来。
+  - **不变量（测试钉住）**：置顶**不得隐式恢复暂停的队列**——与 `enqueue` / 编辑同一约束，
+    这是本仓在「暂停」语义上反复守的一条。
+  - UI：面板每行多一个「下一条发 / 下一条」按钮；**编辑中的项不许置顶**（与编辑/撤销同一保护）。
+    新增 `chat_message_queue_move_to_front` / `_at_front` 六语言。
+  - **顺带发现（未改，仅记录）**：`values-ja` / `values-ko-rKR` / `values-ru` **完全没有**
+    `chat_message_queue_*` 这组 key（`values` / `values-zh` / `values-zh-rTW` 有），
+    即队列面板在这三种语言下**整体回落英文**；同样这三份也缺 `send` 之外的 `chat_message_queue_*`
+    同类项。属既有缺口、本次未扩大范围。
+  - 验证：`MessageQueueTest` **17 项**（+4：置顶后成为下一条且其余保持相对顺序、队首是空操作可置灰、
+    未知 id 空操作、暂停态不被静默解除）；`:app` 全量 **1499 项 0 失败 0 跳过**。
 
