@@ -1,6 +1,8 @@
-# 上游变更分析（综合版，2.4.11 → 2.5.6+，2026-09-12 重写，2026-10-02 复核）
+# 上游变更分析（综合版，2.4.11 → 2.5.6+，2026-09-12 重写，2026-10-13 复核）
 
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**尚未发版**（当前 `1.0.26 (293)`；本仓不发预编译包，CI 自动发版已禁用）。
+
+> **同步点（2026-10-13 更新）**：逐条评估已跟进到上游 **`05b655bb`（2026-10-13 的 master HEAD）**，上游版本仍是 **`2.5.6`**（那之后的 26 提交尚未发版）。最新一节见下方「2026-10-13 同步」。
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
 > **本仓实际**：基线 = 上游 `2c980642`（RikkaHub `2.4.5`）；其后上游各版本（`2.4.6` → `2.5.x`）的修复/功能
@@ -158,9 +160,97 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | `a26d1d55` **videogen → mediagen 重构（图像+视频统一）** | 模块改名 + 统一 `MediaGeneration*` 请求/任务/供应商接口；setting 改**厂商级**（只存凭据+models，模型带 kind 图像/视频）；新增 OpenAI 图像生成/编辑、火山 Seedream、阿里万相/千问适配器（同步接口直返终态任务）；阿里换带业务空间 ID 的新域名（新增 workspaceId）；`MediaGenerationManager.generate` 统一同步/异步轮询两链路；按厂商分包 + ~900 行单测 | **暂不吸收（维持 `96fbe7e3` 判定，且上游仍未接线）**。fork 无 videogen 无存量冲突，但**上游 app 至今零消费点**（`git grep mediagen 2267943a -- app/src` 只有 build.gradle 模块引用；4e4bfa62 同样无 videogen 消费）⇒ 现阶段吸收=死代码。fork 图像生成走 `OpenAIProvider.generateImages`（imggen 页），视频生成无功能。**前提已失效（2026-10-07 注）**：上游已由 `0450c4c1` 正式接线进 app，本条「零消费点=死代码」论据作废——专项迁移评估见 10-06 二次同步节末尾的 2026-10-07 块。原「重新立项的条件」：想要「厂商级媒体生成」（火山 Seedream/阿里万相这类 chat provider 之外的渠道）或上游把 mediagen 接进 UI 时再评估；届时注意 fork 的 per-provider 代理/key 轮换体系与其厂商级 setting 的关系。阿里的新域名/workspaceId 变更随模块走，fork 无直连阿里媒体生成，单独不适用 |
 | `2267943a` 的 S3 部分：**presignGetUrl 带签名临时下载地址** | `AwsSignatureV4.presignGetUrl`（查询参数签名、只签 host、1s–7 天）+ `S3Client.presignGetUrl(key, expires)` + 顺手把主机/路径计算抽成 `requestHost`/`canonicalUri` 公用函数 + 106 行测试（AWS 文档示例值校验签名） | **可吸收（小，~80 行 + 测试），消费点暂缺**。fork 的 `data/sync/s3/` 三文件与上游同源；逐行 diff 核实：fork 内联的 host/canonicalUri 计算（含 pathStyle 与 host 已含 bucket 两分支）与上游新抽的 helper **功能等价**，fork 的 `S3Client` 另有分片上传/进度回调等扩展（上游无）⇒ 吸收 = ①先做无行为变化的 host/路径提取重构 ②加 presignGetUrl（fork 签名实现支持 queryParams，改造小）③测试直套。**现实用途**：备份文件生成临时分享链接（桶保持私有）；mediagen 的产物分享场景 fork 不存在。可选吸收，等有 UI 入口再做也行 |
 
-### 2026-10-08 专项评估：PR #2130「记忆改为文件库 + 空闲后整理（做梦）」——`feat/file-based-memory`，**未合并**
+### 2026-10-13 同步：`b64beeef6` → `05b655bb`（26 提交）+ 新 issue #2126–#2150（22 条）
 
-**状态**：`rikkahub/rikkahub#2130`，**OPEN、非 draft、0 review / 0 comment**，最后活动 2026-10-08 17:15（评估时分支 head `80dc65089`，基于 `eebdea0bd`）。3 提交 / 67 文件 / **+5529 −482**，其中 **29 个新文件**（核心件 + 约 1000 行新测试）。分支已 fetch 到本地 `upstream/feat/file-based-memory`。
+> **范围**：上次评估收在 `b64beeef6`（10-06 23:49）。其后的增量 = **26 提交**（10-07 → 10-13）
+> + **issue #2126–#2150 共 22 条**（另 #2122–#2125 属上一批，已评）。
+> **上游版本仍是 `2.5.6`（versionCode 191）**——这 26 提交**尚未发版**，全在 master 上。
+> 核查方式：每条先看 diff，再去 fork 里用符号/行为核实是否同款、是否已领先。
+
+**一句话结论**：本批**没有「上游自修的 fork 同款 bug」可以零成本收紧**（与 #1974/#1975 那两批不同），
+真正值得动手的只有 **1 个小修复**（连接测试推理等级，`ebbcf6377`）+ **1 个构建健壮性修复**（daemon JVM，`9f5b5b8ea`）；
+其余是 **MD3 Expressive UI 大批**（维持不跟）、**上游自己的记忆库重写**（方向级、与本仓已落地体系冲突）、
+**Markdown 收敛重构**（上游删掉的两套并行实现 fork 同样存在，但吸收需带上 fork 的流式/公式定制）——都属「知道就好，不跟」。
+
+#### A. 建议吸收（小，立即可做）
+
+| 提交 | 内容 | fork 核实 | 结论 |
+|---|---|---|---|
+| `ebbcf6377` **连接测试推理等级改 AUTO**（#2141） | 三处 `TextGenerationParams` 显式加 `reasoningLevel = ReasoningLevel.AUTO`，「与聊天默认行为一致，不再显式关闭推理」 | **fork 同款，且更严重**：`ProviderConnectionTester.kt:150/168/193`（非流式/流式/工具三个测试）都**没传** `reasoningLevel` ⇒ 吃 `TextGenerationParams.reasoningLevel` 的默认值 `OFF`（`ai/.../Provider.kt:63`）。GLM-5.3 系列**不接受关闭思考**，连接测试直接报 1210 | **吸收（一行 ×3）**。理由：连接测试是用户自检配置的唯一入口，误报「配置错误」直接误导；fork 的 `backgroundTextGenerationParams`（`ChatService.kt:166`）本就默认 `AUTO`，这里**反而是个漏网**。**注意保留 fork 差异**：fork 该组件是「图标 + 测试连接」`TextButton`（`51e1fdd3`）——只加参数，别照搬整文件覆盖 |
+| `9f5b5b8ea` **移除 Gradle Daemon JVM 配置与 foojay 插件** | 删 `gradle/gradle-daemon-jvm.properties`，移除 `foojay-resolver-convention`（文件里写死的 foojay 下载地址已失效，没装 JBR 21 的机器构建直接失败） | **fork 同款且逐字节相同**：fork 的 `gradle/gradle-daemon-jvm.properties` 与上游删除前那份**内容一致**（`toolchainVendor=JETBRAINS` / `toolchainVersion=21` / 同一批 foojay id）；`settings.gradle.kts:25` 仍挂 foojay 插件；`.github/workflows/daily-build.yml:48-49` 用 **Temurin 17**，正是「daemon 要 JBR 21、CI 装的是 17 → 去 foojay 下载」的失败组合 | **建议吸收（构建健壮性）**。fork **本机构建一直成功**是因为 JBR 21 daemon 已在本机缓存（与上游作者当初同况）⇒ **属潜伏故障**：新机器/CI 手动触发 daily-build 会撞。fork「不发预编译包、请自行构建」（README）⇒ 构建可复现性对外部用户是真实问题。**注**：属私有开发仓时期的构建环境修复（本仓 docs 记为「10-05 之后」的一批）——本条只做核实，未动手 |
+
+#### B. 核实后「不跟」或「按需触发」
+
+| 提交 | 内容 | fork 核实 | 结论 |
+|---|---|---|---|
+| `c907608bc` **MCP SDK 0.15.0-rikka.4**（#2132/#2138/#2140/#2146/#2150） | 修「非标准工具 schema（根 `type` 为 `["object","null"]`）导致**整个 tools/list 解析失败**」；`ToolSchema.type` 由 `String` 变 `JsonElement?` | fork 是 `mcp = "0.14.0"`（`gradle/libs.versions.toml:53`），且坐标是**官方 Maven Central** `io.modelcontextprotocol:kotlin-sdk`；上游已换成 **JitPack 个人 fork** `com.github.rikkahub.mcp-kotlin-sdk:kotlin-sdk-client`（`settings.gradle.kts` 两方都已声明 jitpack 仓库）。**fork 确实同款崩溃——已在字节码层证实**：解包 `kotlin-sdk-core-jvm-0.14.0.jar` 后 `javap` 显示 `ToolSchema` 的 `type` 字段是 **`java.lang.String`**，其 `$serializer` 对该字段调的是 **`decodeStringElement`** ⇒ 服务端发 `"type": ["object","null"]` 时抛 `JsonDecodingException`（Expected JsonPrimitive, but had JsonArray）。**且没有隔离**：`McpSessionRegistry.mergeTools()`（`:518-530`）里的 `toSchema()` 调用**不在任何 per-tool/`runCatching` 内**（该文件唯一 `runCatching` 在 `:428` 关客户端处）⇒ 单个工具的非标准 schema 会掀掉**该服务器整个工具列表**，与上游报告一致。fork 自研的 `McpSchemaRefs.kt` 展开 `$defs`/`$ref`（`inlineSchemaRefs(rootType: String?)`，`McpSchemaRefs.kt:63-74`）与**本条修复不同轴**（一个治悬空 `$ref`，一个治 `type` 联合数组），**修不了这条** | **按需/单独立项**：需要接 modern-era 或 GitHub MCP 这类非标准 schema 服务端时再立项。**别顺手升**——①核心是「**跟不跟 JitPack 个人 fork**」的供应链决策（0.14.0 来自官方 Maven Central，上游改用了上游作者的个人 fork）②0.14→0.15 有一代 API 变化（`ToolSchema.type` 类型变更即其一）③须把自研 `$defs` 展开与 fork 的 schema 守卫一起回归 |
+| `c9a159a5c` **记忆改文件库 Markdown + 对话后自动整理（#2130，已合并）** | 上游把记忆从 Room 表改为**按文件组织的 Markdown 记忆库**：`MemoryEntity` **整表删除** → `memory_file(assistant_id, path, content, updated_at)`；DB **27→28**（迁移里 `DROP TABLE IF EXISTS MemoryEntity`，旧记忆逐条拼进 `/profile.md`）→ **28→29** 加 `memory_consolidation` 表；新增 6 个工具（`memory_read/write/str_replace/append/delete/list`）替换原单一 `memory_tool`；70 文件 +6076/−489 | **fork 已自研等价体系（且是上游合并前版本的超集）**，另有三处硬阻塞：<br>**① 撞号（已坐实）**：fork 的 `Migration_27_28`（= 加 `public_id`）与 `Migration_28_29`（= 加 `importance`/`updated_at`）**已占用上游那两个类名与编号**，内容完全不同；fork DB 已是 **36**（`AppDatabase.kt:59`，迁移注册 `di/DataSourceModule.kt:77`，fork 无上游的 `AppDatabaseFactory.kt`）⇒ 照搬必须重写成 36→37 + 改名。<br>**② 迁移对上真机 54 条库是回归**：上游把旧记忆**无上限**塞进单个 `/profile.md`，**丢弃 `importance`/`public_id`**（这两者是 fork 打分与审批寻址的基础）。<br>**③ 上游零审批、且不认识 `Enableable`/会话级 `memoryDisabled`**：`c9a159a5c:MemoryConsolidator.kt` grep `Approval` 为空 ⇒ **10-08 评估的阻塞④（做梦必须尊重写入审批、否则 `memoryModifyApproval` 被架空）在最终合并版依然成立**。<br>**会丢/需自行移植的 fork 独有能力（11 项）**：importance 打分、read_count/last_read_at 遥测、读取信用进打分、两层渐进披露、记忆创建/修改双审批、`public_id` opaque id、200 条按分淘汰、提案（决策 B）、`description` 列、会话级 `memoryDisabled`、更严的内容兜底（`MemoryContentGuard` 104 行含 BIN 白名单 vs 上游 39 行纯 Luhn ⇒ **fork 领先**）。消费面 `AssistantMemory` **71 处 / 15 文件**，V4 还会连带改到 fork 的 skills（`SkillFrontmatterParser` 上游加了 `compose()`，fork 无） | **不跟（方向级）**，理由与 10-08 评估一致（四条硬阻塞**全部仍然成立**）。**「V4 换存储不用动调度器」经代码核实成立**：`MemoryConsolidationScheduler.kt:3-24` import 零存储类型、worker 接口只认 `memoryId`/`conversationIds`/`fullReview`，且 fork 自建的源码扫描守卫（`MemoryConsolidationSchedulerTest.kt:492-507`，**非抄自上游**——上游无此测试）会拦住回退。**但要写清边界**：守卫只扫 Scheduler.kt，真正要改的是 **worker + repository + UI**（`MemoryConsolidator.kt:31-38` 用的是 lambda 而非仓库；`MemoryConsolidation.kt` 仅引一个常量）。<br>**与 10-08 评估的差异**（评估时 head `80dc65089` → 合并版 `89c4c7731`，27 文件 +692/−152）：加了 frontmatter `title` + 编辑页拆「标题/摘要/别名/正文」+ `SkillFrontmatterParser.compose()`；`MemoryConsolidationRun` 去 `steps`/去 `conversationIds`、加 `duration`；**删掉 `automaticRuns`**（fork 保留了它并接进 `AppEvent.MemoryConsolidationFinished` → 侧栏/页面提示）；聊天页「记忆已更新」toast 改为侧边栏「做梦中…」；补齐 7 语言本地化（修掉了评估里「文案硬编码」那条）；自动整理步数 16→32。**触发点**：确认要「记忆可被用户直接当 Markdown 编辑/迁移」这一**存储形态**收益时，再把上游文件库当 V4 后端立项 |
+| `942e09453` **为 SnakeYAML 补 `java.beans` R8 放行** | 因记忆库开始调 `Yaml.dump()`，SnakeYAML 的 JavaBean 内省变可达，R8 缺 `java.beans.*` 而 minify 失败 | fork **同款依赖**（`snakeyaml = "2.6"`，`app/build.gradle.kts:241`），但只用 `Yaml(SafeConstructor(options)).load()`（`SkillFrontmatterParser.kt:46`）、**全仓零 `dump()`** ⇒ JavaBean 内省不可达 ⇒ **当前 release 构建不失败**（与实测一致）；fork 的 `keepRules/rikkahub.keep` 已有 `-dontwarn java.beans.ConstructorProperties/Transient`，缺的正是上游补的 5 条 | **不跟进，但记账**：**它是「吸收 c9a159a5c 文件库」的前置件**——一旦跟记忆库（或任何用 `Yaml.dump()` 的代码）进来，必须同批补这 5 条 `-dontwarn`，否则 release minify 直接失败。属「知道就不会踩」型 |
+| `c04365d6f` **Markdown 收敛到 `ui` 模块一套（业务无关组件）** | 新建 `ui` 模块的 Markdown（Markdown→HTML→Jsoup→不可变节点树，8 个新文件），插槽接代码高亮/图片/公式/表格；`Markdown.kt` **+145/−1071** 削成适配层；**删除 `MarkdownNew.kt`(1490 行) 与 `SimpleHtmlBlock.kt`(689 行)**；`DataTable` 移 ui | **fork 的技术债同款，但实为 5 条并行实现**（子代理逐处核实）：① `Markdown.kt:266 MarkdownBlock`（`:233 parseMarkdown`、`:376-395` 按 `hasHtml` 分派）② `MarkdownNew.kt:128`（HTML→Jsoup，被 `Markdown.kt:377` 调）③ `SimpleHtmlBlock.kt:45`（被 `Markdown.kt:761` 调）④ **fork 独有流式降级**：`Markdown.kt:272 streaming` + `:292-375` + `MarkdownParseCache`(LRU30) + `MarkdownStreaming.kt:95 splitStreamingBlocks`（调用方 `ChatMessage.kt:470/489/501`）⑤ `MarkdownWeb.kt:15`（预览用 WebView）。**三个硬缺口**：fork **没有 `:ui` 模块**（`settings.gradle.kts` 无 `:ui`，上游 ui 模块还带 `androidx.ink` 而 fork catalog 无 ink）；**删 `MarkdownNew.kt` 直接断编译**（`ui/pages/chat/Export.kt:94` import `generateMarkdownHtml`，用于 `:809/882/903`，上游对应实现已改）；**上游 ui `parseMarkdown` 不暴露 preprocessor**，而 fork 的 `LatexEnvironments.normalize` 必须跑在其内部 `normalizeLatexDelimiters` 之前（现挂 `Markdown.kt:136`/`MarkdownNew.kt:96`），且**流式降级在上游新组件里没有任何挂钩**（而被整体重写的正是 `Markdown.kt:292-375` 那段） | **暂不吸收，单独立项**（机制对、代价与冲突大）：吸收需①抽一个精简 `ui` 模块 ②把 fork 的流式/公式/TikZ 全部改写成上游「插槽」形态——上游是「**整篇转 HTML 再解析**」，fork 是「**流式按块分类 + 已渲染块跳过重组**」，属**两种架构**（后者正是 fork 治卡顿的成果）。**另注**：`highlight` 耦合**不是**障碍（`HighlightCodeBlock.kt:64-67,119` 可挂上游 `codeBlock` 插槽），TikZ 上游**零覆盖**（`git grep -i tikz c04365d6f` 零匹配）⇒ fork 在渲染链上整体领先。**触发点**：真要治「5 套并行」的维护成本时单独立项，别夹带 |
+| `4a7a39c47` **删模型/编辑消息后仍显示模型名**（#2144/#1991） | 消息上加 `ModelSnapshot(modelId, displayName)` 快照，`snapshotModel()` 在查不到模型时还原展示用 `Model` | **fork 已等价领先**：`UIMessage.modelNameSnapshot`/`providerNameSnapshot`（`ai/.../Message.kt:33-34`）+ 保存时写入（`:282-283`）+ **编辑消息继承**（`ChatService.kt:2111`）+ 头像以快照兜底 | **零动作**。差异只在形态（fork 存两个扁平 string；上游存 `ModelSnapshot` 对象 + `snapshotModel()`），**功能覆盖相同**（fork 还多存 provider 名）。fork 版已真机验证（#1991 两条现象均修） |
+| `0966502c` `4a70dd13` `39b986db` `9c599ec6` `4c1a668f` `3ff1a7b6` `cb66ba9e` `e2de6b8c` **MD3 Expressive 大批（8 提交）** | 设置页/关于页/偏好+扩展页/提示词注入页/服务商列表与详情页/默认模型页/助手列表与配置页/助手记忆页 全部改 MD3 Expressive 风格；聊天页标题栏改渐变遮罩透明样式；助手记忆页拆「管理记忆/设置」双 tab | **MD3 Expressive 整页照搬：维持不跟**（同 `db1ce811`/`80c6b07d` 结论：需先升 composeBom + material3 alpha，全 app 回归面）。fork 的 UI 是重度定制区（上下文容量面板、拼装预览、记忆页「整理一下」、**测试连接按钮**、玻璃三开关），整页照搬=覆盖 fork 功能。**记忆页 `e2de6b8cd` 尤其不能 patch**：fork 的 `AssistantMemoryPage.kt`（652 行，单一 `AssistantMemoryContent`）在 `:270-530` 内塞了 `CardGroup{11 项}` + 做梦「整理一下」`:377-438` + description `:601-610` + read_count `:618-635` + 审批双开关 `:312-353`，上游的 `PagerTabs + HorizontalPager` 双 tab 要**整体重写这段**⇒ 与「整页照搬」同罪。**⚠️ 一处更正（子代理核实）**：per-conversation「不使用记忆」**不在本页**——它在 `ConversationList.kt:409-425` + `ChatDrawer.kt:398-408` + `ChatVM.kt:368` + `ConversationDAO.kt:152-155`（来自 fork `e7efd306a`） | **整页不跟**，但两个可单独摘的小件：<br>**① `cb66ba9ed` 渐变遮罩顶栏（唯一推荐吸收的 UI 件）**：+26/−6、无依赖变化。fork **已有**透明顶栏（`ChatPage.kt:1082`）但**无**渐变遮罩（`drawWithCache` 全仓仅 `ChatMessageReasoning.kt:177`）；真吸收点是把上游的 `drawWithCache` 与 fork 已是同一节点的 `hazeBlur`（`ChatPage.kt:1076-1081`）**同挂**，并重排 `ChatList.kt:395`（外框 top padding）与 `:410`（LazyColumn `contentPadding`）的语义——fork 那层 Box 同时承载 `enableGlassTheme` 的玻璃兄弟层，**保留则双份留白、删掉则玻璃层变全屏且 scrim `+24.dp` 过冲段会盖住玻璃层与 `AssistantBackground`**（`ChatPage.kt:425`）⇒ 需手改 3 处、**最终观感未核实**（fork 的 `ContextUsageReadout` 在 `:1129`，不被覆盖）。<br>**② `PagerTabs.kt`（108 行新文件）**：通用 tab（`targetPage` 避免跨页跳转时按钮依次闪过 + 滑动后 `bringIntoView`）。fork 的等价物是内联 `SecondaryScrollableTabRow`（`ExtensionSelector.kt:95-108`）与 `SecondaryTabRow`（`AssistantExtensionsPage.kt:84-95`）⇒ **低风险去重**，但需改接口以容纳 fork `ExtensionTab`（`ExtensionContent.kt:55-66`，`labelRes` + `visible`、**无 icon**），上游 `ExtensionTab : PagerTab` 的迁移**套不上**。等哪次动该区域时顺手摘 |
+| `0f34229ae` **输入框玻璃效果按主题选明暗** | 修「系统浅色 + 应用深色时发白」 | **N/A（子代理核实：缺陷与代码路径在 fork 均不存在）**：fork 的输入框只用 `hazeBlur`（`ChatInput.kt:251`，import `dev.chrisbanes.haze.blur.hazeBlur`），`hazeGlass` / `GlassStyle` / `whitePoint` / `BackgroundEffectType` 四个标识符**逐个 grep 全空**、无 `ChatInputHaze.kt`；依赖是 haze **2.0.0-alpha05**（`libs.versions.toml:60`），而上游该提交建立在 haze **2.0.1 + haze-glass(-material3)** 的 GLASS 背景特效上（`libs.versions.toml:56`，fork 的 catalog **无 haze-glass 条目**） | **不吸收（N/A）**：它修的是 fork 不存在的那条渲染路径；其基座 `7ee13f2af` 已被本文件判「暂不吸收」。**注**：fork 的玻璃三开关（`enableBlurEffect`/`enableGlassTheme`/`enableTopBarBlur`）走的是 haze-blur 路线，与上游 haze-glass 路线**不同物种**，不存在「同款待修」 |
+| `535e25e80` **mediagen 预设模型换代** | `gpt-image-2` → `gpt-image-2.5-sunburst`/`-flare`、`qwen-image-3.0`、`doubao-seedance-2-5-260628` 等 | 改的是上游 **mediagen**（多厂商独立 provider 体系）；fork 走的是**自家 imggen**（复用 chat provider，模型来自注册表/用户手填） | **不适用**：fork 无 mediagen 轨道（迁移评估见 2026-10-07 专项块，触发点立项）。fork 的 imggen 模型由用户选 chat provider 的模型，**无内置图片模型名单需要换代** |
+| `c907608bc` 之外的 MCP 相关 issue（#2132/#2138/#2139/#2140/#2146/#2150） | 均为同一根因族（非标准 schema / modern-era） | 见上 `c907608bc` 行 | 同一决策，不重复 |
+| `4dbf303f8` `3462d9ee1` `735ade8a8` `640496127` **设置层重构与性能（4 提交）** | ①修改设置一律基于**最新值**（不再写回界面手里的快照）②写入以内存为准，修「快速输入/拖动 slider 丢更新」③`PreferencesStore.kt` 按职责拆文件 ④**设置解码移出主线程** + `launchCount` 拆成独立流（只有它变化时不重新解码设置）+ `BingLocalOptions` 改 data class（否则每次解码出的实例互不相等 ⇒ 任何一次写入都让读设置的界面重组） | **fork 同款，且被 fork 的改动放大**（逐项核实）：<br>① **解码/映射在主线程**——`SettingsStore` 用 `AppScope`（`RikkaHubApp.kt:399-402` = `Dispatchers.Main`）收集 `settingsFlowRaw`（`PreferencesStore.kt:300-309` 的 Preferences→Settings 逐字段映射）+ `settingsFlow`（`:496-559` 的 `distinctBy` 规整），**两段 `map` 都无 `flowOn`**（全文件零 `flowOn`）⇒ 冷启动与每次设置变化时在主线程跑。<br>② **fork 的映射比上游更重**：`settingsFlow` 里对 providers/assistants/modeInjections/lorebooks/quickMessages/promptPresets 逐个 `distinctBy`（`:504-550`）——这是 fork 自己的「悬空引用过滤」定制。<br>③ **`launchCount` 仍在 Settings 快照内**（`:895` 字段、`:423` 读、`:662` 写）——虽然 fork 的 `incrementLaunchCount()`（`:575`）已经很聪明地只 `edit` 一个 key，但该 key 变化仍会让 `settingsFlowRaw` 重新**整份解码**（无值级 diff）。<br>④ **`BingLocalOptions` 不是 data class**（`search/.../SearchService.kt:198`）⇒ 与上游同款等值坑，`distinctUntilChanged()` 挡不住。<br>**未核实**：③④ 各自在真机上的实际重组量（需 profiler/实测） | **建议吸收（按收益排序）**：<br>**(a) 补 `flowOn`（最便宜、收益最大）**——给 `settingsFlowRaw`/`settingsFlow` 的映射链加后台调度器，把「两次全量 map + 多个 distinctBy」移出主线程。**注意**：须确认 `toMutableStateFlow` 的收集端不受影响（`CoroutineUtils.kt:16` 用传入 scope 直接 `collect`，`flowOn` 会改变上游映射的执行线程而非收集线程，语义安全）。<br>**(b) `BingLocalOptions` 改 data class**——一行 `data`，消一类静默重组。<br>**(c) `launchCount` 拆出 Settings**——改动面较大（三件套 + 备份 JSON 兼容 + `SettingsJsonMigrator`），且 fork 已用「只 edit 一个 key」缓解了**写**侧；**收益只剩「避免一次整份重解码」**，建议排在 (a)(b) 之后单独评估。<br>**(d) 按职责拆 `PreferencesStore.kt`**：纯结构重构，fork 该文件 1307 行且含多处定制（种子迁移/键归一化/墓碑），**不跟**（冲突面大、无行为收益）。<br>**冲突风险**：fork 的 `Settings` 是重度定制区（新增字段远多于上游）⇒ **不要照搬上游补丁**，(a)(b) 按 fork 现状手工落。fork 的 `settingsFlowRaw` 注释已明确警示「勿把 Mutex 插进本流链」（turbo 前车之鉴），改动时守住该约束 |
+| `9f5b5b8ea` `3ae5c1612` `3c1580ea6` `eebdea0bd` **构建/CI/文档/依赖** | 上表已列 daemon JVM 与 CI；其余为 AGENTS.md 设计语言改 MD3 Expressive、deps 更新 | 文档类不适用；`3c1580ea6` update deps 需单独看是否有 fork 关心的依赖 | **D 类（不跟）** |
+| `35fbf61d5` **会话列表按创建时间排序**（#1995） | 加 `ConversationSortOrder{UPDATE_TIME,CREATE_TIME}` + `DisplaySetting.conversationSortOrder` + DAO 布尔 `sortByCreateTime` + `ChatDrawer` 排序按钮 | fork 已实现**更强**的「自定义手动顺序」（`design/design-conversation-manual-order.md`，随 v1.0.23 发布）：`ConversationDAO` 排序常量 + `ConversationEntity.sortOrder` + `ConversationOrdering.kt` + `applyManualOrder` + `ChatDrawerVM` + 自己的排序/编辑顺序入口。**类型零交集但同一调用点被双方改写**（DAO 分页 / 仓库 / VM / FolderBar 同区域）⇒ cherry-pick 必冲突；强植 DAO 的 `CASE WHEN` 会**当场触发 fork 自己的护栏** `ConversationSchemaGuardsTest.kt:93-108`（任何 `ORDER BY` 必须用两个常量或 `guard-allow: order-helper`） | **零动作（fork 已领先）**。**⚠️ 一处更正（子代理核实，勿再沿用旧说法）**：fork 的「自定义手动顺序」**不含「按创建时间」这个显式维度**——设计稿 §一.7 恰恰写明**时间档排序已不再提供**（退路是「恢复默认顺序」= 回 `update_at`），§一.8 规定 AI 最近对话**保持按时间**、§七.7 规定搜索**刻意不跟随**自定义顺序。正确表述是：**fork 走的是另一条更强的路（手动顺序），#1995 的诉求不必再吸收**；不要写成「fork 的排序维度已含创建时间视角」 |
+
+#### C. 新 issue 分诊（#2126–#2150，22 条）
+
+**fork 已覆盖 / 已领先（无动作）**
+
+| issue | 内容 | fork 现状 |
+|---|---|---|
+| #2141 | GLM-5.3 连接测试报「该模型始终思考」 | **fork 同款**，修复见上表 `ebbcf6377`（本批唯一建议动手的 bug） |
+| #2144 | 聊天记录模型名消失 | fork 已修（快照体系，见上表 `4a7a39c47` 行） |
+| #2135 | 想要「自动生成标题」开关 | **fork 已领先**：`enableAutoTitle`（`0d7bf5c3`，10-11，默认开 + 手动重生成不受影响） |
+| #1995 / #2133（排序与文件夹） | 会话排序、新建会话不进当前文件夹 | fork 已落自定义顺序（v1.0.23）；#2133 需单独核实 fork 的文件夹归属逻辑 |
+| #1997 | 向量化归档 + 按需召回 | **上游 closed 不做**；fork 走「RAG 知识库工具（`ff73e402`）+ 自动压缩检查点」另一条路 |
+| #2145 | 后台会话回复完成提醒 | **fork 已有**：`ChatNotificationManager`（生成完成通知 + Live Update 进度通知，订阅 `AppEventBus`）——报告人未发现 |
+| #2136 | 日志增强：响应体捕获 / 载荷过滤 / 自动换行 | **fork 大部分已有**：请求日志落盘（`files/logs`）+ 敏感头脱敏 + `JsonTree` 结构化查看 + LogPage 实时刷新（`ce1e45c5`） |
+| #2125 / #2124 | 手动编辑聊天标题 / 透字 | 上游已闭环（`upstream-analysis` 10-06 批已评：编辑标题双方都有；#2124 属 UI 细节） |
+
+**值得单独看的（fork 真缺口或有价值）**
+
+| issue | 内容 | 评估 |
+|---|---|---|
+| #2127 | **清理历史文件时误删助手自定义头像** | **fork 同款，值得修**：fork 的头像经 `filesManager.createChatFilesByContents()` 落进 `files/upload/`，而「设置→存储管理」的清理走 `FilesManager.deleteAll(folder)` → **整目录 `deleteRecursively()`**（`FilesManager.kt:468`，调用点 `SettingFilesPage.kt:186`）⇒ 头像文件与聊天附件同处一个目录、同一次清理即被删，而助手里的 `Avatar.Image` 引用变悬空。**修法方向**：头像应落独立目录（或清理时排除被引用的头像文件）。与 fork 的「备份把 tool_outputs 移出」同族思路 |
+| #2126 | **工作区同名图片预览显示旧内容** | **待核实（疑同款）**：fork 工作区图片预览传绝对路径给 Coil（`WorkspaceDetailPage.kt:465` 注释「传绝对路径而非 content:// URI」）——若缓存键是文件名/相对路径而非绝对路径，同名不同目录即串图。需真机复现确认 |
+| #2142 | 模型不输出被系统打断后，再发请求发不出去 | **待核实**：fork 有半截保留/重试分流/fallback（`design-partial-failure-draft.md` 已闭环 3/3）+ 流式 2s 检查点，可能已免疫；报告细节不足，等复现 |
+| #2137 | 第三方 OpenAI 兼容接口流式偶发 `JsonNull is not a JsonObject` | **待核实**：fork 有 `ensureArrayItems`/`ToolArgumentsJson` 一类的畸形 JSON 归一化先例（`3cce721f`/`f05c9a14`/`#1985`），但不含这条具体形态 |
+| #2129 | 终端开启后要前台服务 | 灵感级：fork 的 `KeepAliveService` 是**用户自己的开关**（常驻通知 + 电池白名单），与「终端专用前台服务」取舍不同（见 `design-workspace-background-tasks.md` 边界声明）。需产品决策，不是抄实现 |
+| #2128 | 工作区文件菜单加「复制文件路径」 | **小缺口**：fork 的 workspace 文件卡片菜单无该项（终端里的 `file://` 点击已会 toast 复制路径，`WorkspaceTerminalSession.kt:352`）。小 UI，可随手加 |
+| #2134 | 供应商自定义分组 | **closed / 未实现**：fork 的模型列表已有「按供应商分组」折叠（README「模型列表折叠」继承上游），但**供应商本身自定义分组/文件夹**没有。按需 |
+| #2123 | 允许 Agent 用 toolcall 唤起图片生成 | 灵感级：fork 的 imggen 是**用户手动**入口；上游是与其 mediagen 接线配套的本地工具。fork 若做=「imggen 工具化」，须走工具审批 + LoopGuard（生成类工具）。按需 |
+| #2143 | 添加照片无反应 | closed，信息不足；fork 的图片选择已改 `PickVisualMedia`（#1821）、裁剪有兜底（#1976）⇒ 大概率已覆盖 |
+| #2150 / #2139 / #2138 / #2140 / #2146 | MCP modern-era / 非标准 schema 一族 | 与 `c907608bc` 同一决策（见上表） |
+| #2132 / #2131 / #2122 / #2147 | MCP 联合数组 / 聊天内容消失 / 虚拟按键 / 关于页 UI | #2131 与 #1992 同族（fork 三层防护大概率免疫）；#2122 虚拟按键属 fork 已高度定制的 UI 区；#2147 小 UI |
+
+**分诊结论**：22 条里 **8 条 fork 已覆盖或领先**、**1 条（#2141）确认同款需修**、
+**1 条（#2127 头像被清理）确认同款值得修**、3 条待复现核实（#2126/#2142/#2137）、
+其余为按需/灵感/不适用。**没有「上游已修而 fork 未修」的免费车**。
+
+#### D. 本批吸收优先级（结论）
+
+| 顺序 | 项 | 判定 | 成本 |
+|---|---|---|---|
+| 1 | `ebbcf6377` **连接测试推理等级改 AUTO**（#2141） | **吸收**——fork 同款且更严重（三个测试入口全吃 `OFF` 默认值），GLM-5.3 系列直接报 1210 | 一行 ×3 |
+| 2 | **#2127 头像被清理时误删** | **建议修**——fork 同款（头像与聊天附件同处 `files/upload/`，`deleteAll` 整目录递归删）；属用户数据丢失，优先级高于普通 UI 件 | 小（独立目录或清理时排除被引用头像） |
+| 3 | `9f5b5b8ea` **移除 daemon JVM / foojay** | **建议吸收**——fork 文件与上游删除前**逐字节相同**，属潜伏构建故障（本机有 JBR 21 缓存故未暴露） | 删 1 文件 + 1 行插件 |
+| 4 | `640496127` 设置层性能（补 `flowOn` + `BingLocalOptions` 改 data class） | **建议吸收前两项**——fork 的映射链确在主线程（`AppScope` = Main）且比上游更重（多组 `distinctBy`）；`launchCount` 拆分收益较小、排序靠后 | 小–中 |
+| 5 | `cb66ba9ed` 渐变遮罩顶栏 | **可吸收（需手改 3 处）**——fork 已有透明顶栏、无渐变；但同一节点已被 `hazeBlur` 占用，`ChatList` 两处 top padding 语义要重排，**最终观感未核实** | 小（+26/−6 起） |
+| 6 | `PagerTabs.kt`（从 `e2de6b8cd` 单独摘） | 顺手项——消 fork 两处内联 tab 的重复，需改接口适配 fork 的 `ExtensionTab` | 小 |
+| — | `c907608bc` MCP SDK 升级（#2132/#2138/#2139/#2140/#2146/#2150） | **按需/单独立项**——见上表；核心是「跟不跟 JitPack 个人 fork」的供应链决策 | 中（含 0.14→0.15 适配） |
+| — | `c9a159a5c` 文件库记忆、`c04365d6f` Markdown 收敛、其余 MD3 Expressive 整页、`35fbf61d5`、`0f34229ae`、`4a7a39c47`、`535e25e80` | **不跟**（理由逐条见上表；其中 `4a7a39c47`/`35fbf61d5` 是 **fork 已领先**，`0f34229ae` 是 N/A，`535e25e80` 不适用） | — |
+
+### 2026-10-08 专项评估：PR #2130「记忆改为文件库 + 空闲后整理（做梦）」——**✅ 已于 2026-10-11 合并（`c9a159a5c`）**
+
+> **⚠️ 本节是「合并前」的评估存档（2026-10-08 时点）**。该 PR **已于 2026-10-11 以 squash 提交 `c9a159a5c` 合并进上游 master**，
+> 最终版与本节的四条硬阻塞结论见上方 **「2026-10-13 同步」节的 `c9a159a5c` 行**（含最终版差异、DB 撞号与迁移回归的核实）。
+> 下文保留作**决策依据**（它把「为什么不能照搬」逐条论证过）。
+
+**状态（评估时点）**：`rikkahub/rikkahub#2130`，**当时 OPEN、非 draft、0 review / 0 comment**，最后活动 2026-10-08 17:15（评估时分支 head `80dc65089`，基于 `eebdea0bd`）。3 提交 / 67 文件 / **+5529 −482**，其中 **29 个新文件**（核心件 + 约 1000 行新测试）。分支已 fetch 到本地 `upstream/feat/file-based-memory`。
 
 **它是什么**（代码级核对，非 PR 文案转述）：
 

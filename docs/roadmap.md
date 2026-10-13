@@ -1999,4 +1999,42 @@ Page 2:","firstUnit":1,"lastUnit":2,
     界面标出建议来自哪一轮；**单测补 2 条**（空跑不许冲掉 / 新建议替换旧的）。教训：这种形态真正的风险
     不是「没存下来」，而是**被后一次运行悄悄冲掉**——只有按真实顺序在真机上点过才会暴露。§8.5.2/§8.5.3。
   - 验证：`:app` **1445 → 1447**、:ai 252，全绿；重装后启动零 FATAL、零 Koin 错误。
+- 2026-10-13：**上游增量评估（26 提交 + 22 issue）——逐条核实，无欠账**。用户「评估一下上次评估后新的上游提交与 issue」。
+  本仓工作区此前**无 upstream remote**，本次新增 `upstream`（`https://github.com/rikkahub/rikkahub`，只 fetch 不推送）；
+  上次评估收在 `b64beeef6`（10-06 23:49），增量 = **26 提交（10-07 → 10-13）+ issue #2126–#2150（22 条）**；上游版本仍是 **`2.5.6`**（这 26 提交尚未发版）。逐条明细见 `docs/upstream-analysis.md`「2026-10-13 同步」节。
+  - **建议吸收 4 项（按优先级）**：①**`ebbcf6377` 连接测试推理等级改 AUTO**（#2141）——fork **同款且更严重**：
+    `ProviderConnectionTester.kt:150/168/193` 三处都没传 `reasoningLevel` ⇒ 吃默认值 `OFF`（`Provider.kt:63`），
+    GLM-5.3 系列**不接受关闭思考**，连接测试直接报 1210（用户唯一的自检入口给假结论）；fork 的
+    `backgroundTextGenerationParams` 本就默认 `AUTO`，此处是**漏网**。②**#2127 清理历史文件误删助手头像**——fork 同款：
+    头像经 `createChatFilesByContents()` 落进 `files/upload/`，而清理走 `deleteAll(folder)` → **整目录 `deleteRecursively()`**
+    （`FilesManager.kt:468`，调用点 `SettingFilesPage.kt:186`）⇒ 头像与聊天附件同目录、同一次清理即被删。③**`9f5b5b8ea`
+    移除 daemon JVM + foojay 插件**（构建健壮性）：fork 的 `gradle/gradle-daemon-jvm.properties` 与上游删除前那份
+    **逐字节相同**、`settings.gradle.kts:25` 仍挂 foojay、`.github/workflows/daily-build.yml:48-49` 用 Temurin 17
+    ⇒ 正是「daemon 要 JBR 21、CI 装 17、去 foojay 下载而该地址已失效」的失败组合；本机一直成功只因 JBR 21 已缓存
+    （上游作者当初同况）⇒ **潜伏故障**，与 README「不发预编译包、请自行构建」冲突。④**`640496127` 设置层性能**——
+    fork 的映射链确在主线程（`SettingsStore` 用 `AppScope` = `Dispatchers.Main` 收集，`PreferencesStore.kt:300-309` +
+    `:496-559` 两段 `map` **全文件零 `flowOn`**），且比上游更重（多组 `distinctBy`）；**只跟两小件**（补 `flowOn`
+    + `BingLocalOptions` 改 data class），`launchCount` 拆分收益小、按职责拆文件不跟。
+  - **明确不跟**：`c9a159a5c` 记忆文件库（#2130，**10-11 已合并**）——与 fork 4 月-10 月的「做梦」四批正面冲突，
+    且有**三条硬阻塞**（fork 已占 `Migration_27_28`/`28_29` 类名与编号、DB 已是 36 ⇒ 须重写 36→37；迁移把旧记忆
+    无上限塞进 `/profile.md` 且**丢弃 `importance`/`public_id`**，对真机 54 条库是回归；**上游零审批**且不认识
+    `Enableable`/会话级 `memoryDisabled` ⇒ 10-08 评估的阻塞④在最终版依然成立）；`c04365d6f` Markdown 收敛
+    （fork 实为 **5 条并行实现**，且删除点会断 `Export.kt` 编译、上游新组件**无 preprocessor 钩子也无流式降级钩子**）；
+    其余 MD3 Expressive 整页（8 提交，同 `db1ce811` 结论）；`35fbf61d5` 创建时间排序与 `0f34229ae` 玻璃明暗
+    （**fork 已领先 / N/A**）。
+  - **MCP SDK 那条已核实到字节码层**：`c907608bc` 修的是「工具 schema 根 `type` 为 `["object","null"]` ⇒ 整个
+    tools/list 解析失败」。解包 fork 实际依赖的 `kotlin-sdk-core-jvm-0.14.0.jar`，`javap` 显示 `ToolSchema.type`
+    是 **`java.lang.String`**、其 `$serializer` 对该字段调 **`decodeStringElement`** ⇒ 遇联合数组必抛
+    `Expected JsonPrimitive, but had JsonArray`；且 `McpSessionRegistry.mergeTools()`（`:518-530`）里的 `toSchema()`
+    **不在任何 per-tool/`runCatching` 内**（该文件唯一 `runCatching` 在 `:428` 关客户端处）⇒ 单个工具的非标准 schema
+    会掀掉该服务器整个工具列表。**按需立项**（核心是「跟不跟上游作者的 JitPack 个人 fork」的供应链决策，
+    0.14→0.15 还有一代 API 变化）。
+  - **issue 分诊**：22 条里 8 条 fork 已覆盖或领先（如 #2145 后台完成提醒——fork 早有 `ChatNotificationManager`；
+    #2135 自动标题开关——fork `0d7bf5c3` 已领先）、1 条确认同款需修（#2141）、1 条确认同款值得修（#2127）、
+    3 条待真机复现（#2126 同名图片串图/#2142 续发发不出/#2137 `JsonNull is not a JsonObject`）、其余按需/灵感/不适用。
+    **没有「上游已修而 fork 未修」的免费车**。
+  - **文档改动**：`upstream-analysis.md` 新增「2026-10-13 同步」节（85 行，含 A/B/C/D 四块）+ 头部同步点改 `05b655bb`
+    + 10-08 节标注 #2130 已合并；`handoff` §五 同步点表述更正；`README.md` 补同步点并把 #1906 的措辞改准
+    （**上游 2026-10-01 以「AI 看不到引用、本质都是文本」closed as wontfix，不是「尚未实现」**）；
+    `docs/README.md` 新鲜度表同步更新。**本次只评估、未吸收任何上游代码**。
 
