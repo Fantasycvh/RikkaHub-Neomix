@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.ProviderManager
@@ -140,6 +141,11 @@ fun ProviderConnectionTester(
                         if (model == null) return@TextButton
                         val provider = providerManager.getProviderByType(internalProvider)
                         resetStates()
+                        // ⚠️ 三个测试都必须显式传 `reasoningLevel = AUTO`，别删（上游 #2141）。
+                        // `TextGenerationParams.reasoningLevel` 的默认值是 **OFF**（Provider.kt），而 OFF 会被
+                        // provider 翻成「显式关闭思考」——GLM-5.3 这类**始终思考**的模型直接拒绝（错误码 1210），
+                        // 于是连接测试报错、用户以为自己的配置有问题。测试的语义是「与聊天默认行为一致」，
+                        // 所以取 AUTO（与 `backgroundTextGenerationParams` 的默认值同款）。
                         scope.launch {
                             launch {
                                 runCatching {
@@ -150,7 +156,8 @@ fun ProviderConnectionTester(
                                         params = TextGenerationParams(
                                             model = model!!,
                                             customHeaders = model!!.customHeaders,
-                                            customBody = model!!.customBodies
+                                            customBody = model!!.customBodies,
+                                            reasoningLevel = ReasoningLevel.AUTO
                                         )
                                     )
                                     val text = chunk.choices.firstOrNull()?.message?.parts
@@ -168,7 +175,8 @@ fun ProviderConnectionTester(
                                         params = TextGenerationParams(
                                             model = model!!,
                                             customHeaders = model!!.customHeaders,
-                                            customBody = model!!.customBodies
+                                            customBody = model!!.customBodies,
+                                            reasoningLevel = ReasoningLevel.AUTO
                                         )
                                     )
                                     flow.collect { chunk ->
@@ -194,7 +202,8 @@ fun ProviderConnectionTester(
                                             model = model!!,
                                             tools = listOf(testTool),
                                             customHeaders = model!!.customHeaders,
-                                            customBody = model!!.customBodies
+                                            customBody = model!!.customBodies,
+                                            reasoningLevel = ReasoningLevel.AUTO
                                         )
                                     )
                                     val message = chunk.choices.firstOrNull()?.message

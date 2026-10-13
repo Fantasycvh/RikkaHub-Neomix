@@ -2037,4 +2037,25 @@ Page 2:","firstUnit":1,"lastUnit":2,
     + 10-08 节标注 #2130 已合并；`handoff` §五 同步点表述更正；`README.md` 补同步点并把 #1906 的措辞改准
     （**上游 2026-10-01 以「AI 看不到引用、本质都是文本」closed as wontfix，不是「尚未实现」**）；
     `docs/README.md` 新鲜度表同步更新。**本次只评估、未吸收任何上游代码**。
+- 2026-10-13（同日第二刀）：**吸收 `ebbcf6377`——连接测试不再显式关闭思考（#2141）**。用户「先只修 #2141 连接测试等级」。
+  - **缺陷**：`ProviderConnectionTester.kt` 的三个测试入口（非流式 / 流式 / 工具调用）构造 `TextGenerationParams` 时
+    **都没传 `reasoningLevel`** ⇒ 吃默认值 **`OFF`**（`ai/.../Provider.kt:63`）。`OFF` 在 `ChatCompletionsAPI.kt:319`
+    被翻成 `effort:"none"`（= **显式关闭思考**）⇒ GLM-5.3 / GLM-5.3-Flash / FlashX 这类**始终思考**的模型
+    直接拒绝并回 1210「该模型始终思考，不支持关闭思考」，界面显示连接失败，而用户的 key / URL / 模型名**全是对的**。
+    这条尤其误导，因为「测试连接」正是用户自检配置的**唯一入口**（fork 还专门在 `51e1fdd3` 把它从纯图标做成
+    「图标 + 测试连接」文字按钮以提高可发现性）。
+  - **修法**：照上游 `ebbcf6377`，三处各显式加 `reasoningLevel = ReasoningLevel.AUTO`——语义是「与聊天默认行为一致」，
+    与 fork 自己的 `backgroundTextGenerationParams(model, reasoningLevel = AUTO)`（`ChatService.kt:166`）同款默认值；
+    这本来就是那里的一处**漏网**。**只加参数**，未照搬上游整文件（fork 该组件是定制过的 `TextButton` 形态）。
+    顺手加了一段「别删」注释，写清默认值 OFF → `effort:"none"` → 1210 的因果链。
+  - **配套守卫** `ProviderConnectionTesterReasoningTest`（**源码扫描**型，与 `ThinkingDegenerationWiringTest`/
+    `MemoryConsolidationWiringTest` 同款做法）：① `TextGenerationParams(` 构造点数 **== ** `reasoningLevel = ReasoningLevel.AUTO`
+    出现次数（取**等量**而非「至少一个」——将来若加第四个测试入口，等量断言会逼着新入口也带上它；
+    另加 `paramsCount >= 3` 防扫描路径失效退化成 `assertEquals(0, 0)` 假绿）；② 钉住三个入口（`nonStreamingState`/
+    `streamingState`/`toolsState`）都还在，防文件被移走后计数双零假绿。**之所以用源码扫描**：该组件是 `@Composable`
+    且依赖 Koin/真实网络，JVM 单测够不着；而这条改动的失效形态**没有任何编译或运行时报错**——少传一个参数只是
+    悄悄退回 `OFF`，只有拿「始终思考」的模型去连才暴露。
+  - **验证**：`ProviderConnectionTesterReasoningTest` 2 项**真跑非跳过**（`skipped=0`）；**并用「撤回一处 AUTO」实测该守卫会红**
+    （2 tests / 1 failed，确认捕获）后恢复；`:app:testDebugUnitTest` 全量 **1479 项 0 失败 0 跳过**。
+  - **真机待验**：用一个「始终思考」的模型（GLM-5.3 系）点「测试连接」应不再报 1210——本机无该 provider 凭据，需用户侧确认。
 

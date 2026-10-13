@@ -176,7 +176,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 
 | 提交 | 内容 | fork 核实 | 结论 |
 |---|---|---|---|
-| `ebbcf6377` **连接测试推理等级改 AUTO**（#2141） | 三处 `TextGenerationParams` 显式加 `reasoningLevel = ReasoningLevel.AUTO`，「与聊天默认行为一致，不再显式关闭推理」 | **fork 同款，且更严重**：`ProviderConnectionTester.kt:150/168/193`（非流式/流式/工具三个测试）都**没传** `reasoningLevel` ⇒ 吃 `TextGenerationParams.reasoningLevel` 的默认值 `OFF`（`ai/.../Provider.kt:63`）。GLM-5.3 系列**不接受关闭思考**，连接测试直接报 1210 | **吸收（一行 ×3）**。理由：连接测试是用户自检配置的唯一入口，误报「配置错误」直接误导；fork 的 `backgroundTextGenerationParams`（`ChatService.kt:166`）本就默认 `AUTO`，这里**反而是个漏网**。**注意保留 fork 差异**：fork 该组件是「图标 + 测试连接」`TextButton`（`51e1fdd3`）——只加参数，别照搬整文件覆盖 |
+| ✅ `ebbcf6377` **连接测试推理等级改 AUTO**（#2141） | 三处 `TextGenerationParams` 显式加 `reasoningLevel = ReasoningLevel.AUTO`，「与聊天默认行为一致，不再显式关闭推理」 | **fork 同款，且更严重**：`ProviderConnectionTester.kt:150/168/193`（非流式/流式/工具三个测试）都**没传** `reasoningLevel` ⇒ 吃 `TextGenerationParams.reasoningLevel` 的默认值 `OFF`（`ai/.../Provider.kt:63`）。`OFF` 在 `ChatCompletionsAPI.kt:319` 被翻成 `effort:"none"` ⇒ GLM-5.3 这类**始终思考**的模型直接拒绝（1210）。且 fork 的 `backgroundTextGenerationParams`（`ChatService.kt:166`）本就默认 `AUTO` ⇒ 此处是**漏网** | ✅ **已吸收**：三处各加一行 `reasoningLevel = ReasoningLevel.AUTO` + 一段「别删」注释（说明默认值是 OFF、1210 的因果）。**保留了 fork 差异**（仍是「图标 + 测试连接」`TextButton`，只加参数、未照搬整个文件）。**配套守卫** `ProviderConnectionTesterReasoningTest`（源码扫描，2 项：构造点数 == `AUTO` 数；并钉住三个入口仍在，防文件被移走后计数双零假绿）——已用**撤回一处 AUTO** 的方式实测该守卫会红。`:app` 全量 **1479 项 0 失败**。**真机待验**：用一个「始终思考」的模型（GLM-5.3 系）点「测试连接」应不再报 1210 |
 | `9f5b5b8ea` **移除 Gradle Daemon JVM 配置与 foojay 插件** | 删 `gradle/gradle-daemon-jvm.properties`，移除 `foojay-resolver-convention`（文件里写死的 foojay 下载地址已失效，没装 JBR 21 的机器构建直接失败） | **fork 同款且逐字节相同**：fork 的 `gradle/gradle-daemon-jvm.properties` 与上游删除前那份**内容一致**（`toolchainVendor=JETBRAINS` / `toolchainVersion=21` / 同一批 foojay id）；`settings.gradle.kts:25` 仍挂 foojay 插件；`.github/workflows/daily-build.yml:48-49` 用 **Temurin 17**，正是「daemon 要 JBR 21、CI 装的是 17 → 去 foojay 下载」的失败组合 | **建议吸收（构建健壮性）**。fork **本机构建一直成功**是因为 JBR 21 daemon 已在本机缓存（与上游作者当初同况）⇒ **属潜伏故障**：新机器/CI 手动触发 daily-build 会撞。fork「不发预编译包、请自行构建」（README）⇒ 构建可复现性对外部用户是真实问题。**注**：属私有开发仓时期的构建环境修复（本仓 docs 记为「10-05 之后」的一批）——本条只做核实，未动手 |
 
 #### B. 核实后「不跟」或「按需触发」
@@ -235,7 +235,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 
 | 顺序 | 项 | 判定 | 成本 |
 |---|---|---|---|
-| 1 | `ebbcf6377` **连接测试推理等级改 AUTO**（#2141） | **吸收**——fork 同款且更严重（三个测试入口全吃 `OFF` 默认值），GLM-5.3 系列直接报 1210 | 一行 ×3 |
+| 1 | ✅ `ebbcf6377` **连接测试推理等级改 AUTO**（#2141） | **已吸收**——fork 同款且更严重（三个测试入口全吃 `OFF` 默认值 ⇒ `effort:"none"`），GLM-5.3 系列直接报 1210；配套源码守卫已实测可红 | 一行 ×3 + 2 项守卫 |
 | 2 | **#2127 头像被清理时误删** | **建议修**——fork 同款（头像与聊天附件同处 `files/upload/`，`deleteAll` 整目录递归删）；属用户数据丢失，优先级高于普通 UI 件 | 小（独立目录或清理时排除被引用头像） |
 | 3 | `9f5b5b8ea` **移除 daemon JVM / foojay** | **建议吸收**——fork 文件与上游删除前**逐字节相同**，属潜伏构建故障（本机有 JBR 21 缓存故未暴露） | 删 1 文件 + 1 行插件 |
 | 4 | `640496127` 设置层性能（补 `flowOn` + `BingLocalOptions` 改 data class） | **建议吸收前两项**——fork 的映射链确在主线程（`AppScope` = Main）且比上游更重（多组 `distinctBy`）；`launchCount` 拆分收益较小、排序靠后 | 小–中 |
