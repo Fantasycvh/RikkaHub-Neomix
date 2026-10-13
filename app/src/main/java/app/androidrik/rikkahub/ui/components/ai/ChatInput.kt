@@ -155,6 +155,14 @@ fun ChatInput(
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
+    /**
+     * **插队发送**：打断当前生成轮次，立刻发这条（用户 2026-10-13 拍板的语义）。
+     *
+     * 只在与 [onSendClick] 语义分岔时才显示入口——即「生成中 + 输入框非空」：
+     * 此时点普通发送是**排队等**，点这里是**让当前轮次让路**。不显示确认弹窗（用户明确），
+     * 半截回复会作为可编辑候选留在会话里，不是真丢。
+     */
+    onInterruptSendClick: () -> Unit = {},
     messageQueue: MessageQueueState = MessageQueueState(),
     onRemoveQueuedMessage: (Uuid) -> Unit = {},
     onBeginEditQueuedMessage: (Uuid) -> QueuedMessage? = { null },
@@ -406,6 +414,31 @@ fun ChatInput(
                                     }
                                 }
                             )
+                        }
+
+                        // 插队发送：只在「生成中 + 输入框非空」时出现——此时它与普通发送语义不同
+                        // （普通发送是排队等，这个是打断并立刻发）。不用长按承载：长按已被
+                        // 「发送但不触发回复」占用，且这是个破坏性动作，值得一个看得见的按钮。
+                        // 不做二次确认（用户明确）：半截会落成可编辑候选，不是真丢。
+                        AnimatedVisibility(
+                            visible = loading && !state.isEmpty() && !asrState.isRecording,
+                            enter = fadeIn() + scaleIn(),
+                            exit = fadeOut() + scaleOut(),
+                        ) {
+                            ActionIconButton(
+                                onClick = {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
+                                    onInterruptSendClick()
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = HugeIcons.Zap,
+                                    contentDescription = stringResource(R.string.chat_interrupt_and_send),
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                         }
 
                         AnimatedVisibility(

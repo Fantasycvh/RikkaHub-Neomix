@@ -187,6 +187,24 @@ class ChatVM(
         chatService.sendMessage(_conversationId, content, answer, annotations)
     }
 
+    /**
+     * **插队发送**：打断当前生成轮次，立刻发这条（用户 2026-10-13 拍板的语义）。
+     *
+     * 与 [handleMessageSend] 的区别只在「当前有轮次在跑」时才有意义：
+     * 那边是排队等它跑完，这边是让当前轮次让路（半截落草稿、待审批工具默认拒绝）。
+     * 没有东西可打断时自然退化成普通发送。
+     */
+    fun handleMessageSendInterrupting(
+        content: List<UIMessagePart>,
+        answer: Boolean = true,
+        annotations: List<UIMessageAnnotation> = emptyList(),
+    ) {
+        if (content.isEmptyInputMessage()) return
+        analytics.logEvent("ai_send_message_interrupting", null)
+
+        chatService.sendInterrupting(_conversationId, content, answer, annotations)
+    }
+
     // ---- 消息队列（发送不打断生成：入队等当前轮次结束后自动派发） ----
 
     val messageQueue: StateFlow<MessageQueueState> = chatService.getMessageQueueFlow(_conversationId)

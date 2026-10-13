@@ -2162,4 +2162,39 @@ Page 2:","firstUnit":1,"lastUnit":2,
     改 `MessageQueue` 加重排原语 + 面板按钮，**不动发送链路**，代价小）；**B 真插队**（生成中点「立即发送」→
     停当前回复立刻发，需改 `dispatchNextQueuedMessage` 的 gating、与 `stopGeneration`/半截保留/待审批工具的交互，
     代价中–大且属产品决策）。
+- 2026-10-13（同日第七刀）：**实现「插队发送」（真插队 B 方向）——用户拍板了三个取舍**。
+  用户在第六刀基础上直接定下：**① 两条打断路径都写 `Denied`，理由各自区分（用户取消 / 插队发送）；
+  ② 草稿不回输入框；③ 暂不做二次确认**；UI 入口选**独立入口**（不动单击/长按的既有语义）。
+  - **关键发现：不需要新造机制**。用户点「停止」跑的那套（`stopGeneration(persistStoppedContent = true)`
+    → `finishInterruptedPendingTools` → `persistStoppedGeneration`）**正好就是要的全部**：
+    半截落库在 `:2345-2359` 早有真机复现记录与说明，待审批工具的收尾也已在 `cancelToolByUser` 里。
+    所以「插队」= **`stopGeneration(reason = QueueJumped)` + 正常入队 + 派发**，队列本体（`MessageQueue`）
+    **一行没改**——它依旧只看队首，插队是「先把当前轮次停掉」而不是「把队列项挪到前面」。
+  - **打断必须在入队之前完成**：`dispatchNextQueuedMessage` 会检查 `getJob() != null` 与 pending 工具，
+    先入队就会因为闸门没放开而派发失败。故 `sendInterrupting` 是 `appScope.launch { stopGeneration(...) }`
+    之后**再** `synchronized(session) { enqueue; dispatch }`。
+  - **有意偏离历史行为的一处**：`cancelToolByUser` 原先**不写** `approvalState`（注释理由：「cancel 后
+    output 非空 ⇒ 不会误标成拒绝待处理」）。那确实避免误标，代价是**审批卡片静默消失**，用户看不出
+    工具是被拒绝还是从未被请求。按用户决定现在明确写 `Denied(reason)`，理由**区分来源**——
+    新增 `InterruptReason { UserCancelled, QueueJumped }`（`ChatService.kt` 顶层，给卡片看的中文理由
+    与给模型看的英文 error 串各一份）。三个调用点：UI 停止 / web 路由 → 默认 `UserCancelled`；
+    撤销截断那条传 `false` 且不该标拒绝，同样走默认；插队 → `QueueJumped`。
+  - **UI**：`ChatInput` 新增 `onInterruptSendClick`，只在**生成中 + 输入框非空 + 未在录音**时显示
+    一个 `HugeIcons.Zap`（error 色）按钮；**没有用长按承载**，因为长按已被「发送但不触发回复」占用，
+    且这是破坏性动作、值得一个看得见的入口。编辑态下不显示（编辑历史消息与打断当前轮次是两件事）。
+    新增字符串 `chat_interrupt_and_send` 六语言（en/zh/zh-rTW/ja/ko/ru）。
+  - **测试**：`InterruptSemanticsTest` **4 项**——两个理由非空且互不相同；复刻「收尾 pending 工具」
+    变换后的状态契约（已 `Denied` + 不再 pending + 闸门放开，但 `canResumeExecution` 仍假，
+    即没有「再批准一次去执行」的余地）；理由能穿过 `finishPendingTools`；外加一条**源码守卫**
+    钉住 `cancelToolByUser` 确实写 `Denied`、`stopGeneration` 确实有 reason 参数、插队确实标
+    `QueueJumped`、插队确实复用 `stopGeneration`。**做了反证**：临时删掉那行 `Denied`，守卫
+    4 项中红 1 项（证明它不是恒真）；恢复后全绿。测试里**如实写明局限**：它复刻的是变换本身、
+    不能证明服务的私有方法被正确调用，所以另配源码守卫；真正的端到端仍需真机。
+  - 验证：`:app` 全量 **1495 项 0 失败 0 跳过**（+4）；`compileDebugKotlin` 通过。
+  - **真机待验**：①生成中点那个 ⚡ 按钮 → 当前回复**立刻停在半截**、该半截作为可编辑候选留在会话里、
+    新消息马上发出；②若当时正卡在工具审批，那张卡片应显示**已拒绝 + 「插队发送，本轮让路，未执行该工具」**；
+    ③点「停止」的卡片理由应显示「已取消本轮生成，未执行该工具」；④输入框为空时的按钮仍是红色停止键，
+    两者不混淆。
+  - **顺带发现（未改，仅记录）**：`values-ko-rKR` 里 `chat_message_add_favorite` 是 `즐겨찌기`，
+    正确拼写应为 `즐겨찾기`；属既有错别字、与本次改动无关。
 

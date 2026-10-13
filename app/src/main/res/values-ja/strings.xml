@@ -302,6 +302,7 @@
   <string name="chat_context_usage_tooltip">使用中コンテキスト：%1$s / %2$s</string>
   <string name="chat_input_unsupported_file_type">サポートされていないファイルタイプ: %s</string>
   <string name="chat_input_file_read_failed">ファイルの読み取りに失敗しました: %s</string>
+  <string name="chat_interrupt_and_send">割り込み送信</string>
   <string name="chat_message_add_favorite">お気に入りに追加</string>
   <string name="chat_message_remove_favorite">お気に入りから削除</string>
   <string name="chat_message_quote">引用</string>

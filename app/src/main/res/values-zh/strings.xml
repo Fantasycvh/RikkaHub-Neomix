@@ -306,6 +306,7 @@
   <string name="chat_context_usage_tooltip">已用上下文：%1$s / %2$s</string>
   <string name="chat_input_unsupported_file_type">不支持的文件类型：%s</string>
   <string name="chat_input_file_read_failed">文件读取失败：%s</string>
+  <string name="chat_interrupt_and_send">插队发送</string>
   <string name="chat_message_add_favorite">添加收藏</string>
   <string name="chat_message_remove_favorite">取消收藏</string>
   <string name="chat_message_quote">引用</string>

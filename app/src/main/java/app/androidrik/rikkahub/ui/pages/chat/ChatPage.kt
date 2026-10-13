@@ -516,6 +516,18 @@ private fun ChatPageContent(
                         }
                         inputState.clearInput()
                     },
+                    // 插队发送：打断当前生成、立刻发这条（半截落成可编辑候选、待审批工具默认拒绝）。
+                    // 编辑态下不提供——编辑历史消息与「打断当前轮次」是两件事，混在一起语义不清。
+                    onInterruptSendClick = {
+                        vm.handleMessageSendInterrupting(
+                            content = inputState.getContents(),
+                            annotations = inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
+                        )
+                        scope.launch {
+                            chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                        }
+                        inputState.clearInput()
+                    },
                     messageQueue = messageQueueState,
                     onRemoveQueuedMessage = vm::removeQueuedMessage,
                     onBeginEditQueuedMessage = vm::beginEditQueuedMessage,

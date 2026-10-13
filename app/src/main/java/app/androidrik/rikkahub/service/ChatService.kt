@@ -134,6 +134,39 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "ChatService"
 
+/**
+ * 打断当前轮次的**来源**（2026-10-13 用户拍板：两条路径都写 `Denied`，只是理由要能区分）。
+ *
+ * 为什么要区分：两种打断对用户的含义不同——「点停止」是**我主动不要这轮了**；
+ * 「插队发送」是**我要先说这句、这轮让路**。审批卡片上写清是哪一种，
+ * 用户回看时才知道那个未执行的工具是被自己取消的、还是被插队顺带拒掉的。
+ *
+ * 理由是给**人**看的（落到 `ToolApprovalState.Denied.reason`、在卡片上显示），故直接给文案；
+ * 工具结果里的 error 串是给**模型**看的（英文、与既有 `cancelled` 形态一致）。
+ *
+ * 可见性是 `public` 而非 `internal`：它出现在 [ChatService.stopGeneration] 的签名上，
+ * 而后者是 public（跨包被 UI / web 路由调用）——Kotlin 不允许 public 函数暴露 internal 类型。
+ * 语义上它仍只是聊天打断流程的参数，不打算给外部随意构造。
+ */
+enum class InterruptReason(
+    /** 显示在审批卡片上的理由（人看） */
+    val approvalReason: String,
+    /** 写进工具结果的错误串（模型看） */
+    val toolOutputError: String,
+) {
+    /** 用户主动点「停止」 */
+    UserCancelled(
+        approvalReason = "已取消本轮生成，未执行该工具",
+        toolOutputError = "Generation cancelled by user before tool execution completed.",
+    ),
+
+    /** 用户在有内容生成时直接发送新消息（插队），当前轮次让路 */
+    QueueJumped(
+        approvalReason = "插队发送，本轮让路，未执行该工具",
+        toolOutputError = "Generation interrupted by a newer user message before tool execution completed.",
+    ),
+}
+
 /** 用户消息单点最大字符数：超长消息存库膨胀 + 上下文爆表 + API 413 */
 private const val MAX_USER_INPUT_CHARS = 200_000
 
@@ -565,6 +598,50 @@ class ChatService(
 
     // ---- 发送消息 ----
 
+    /**
+     * **插队发送**：打断当前轮次，立刻发这条。
+     *
+     * ## 语义（2026-10-13 用户拍板）
+     *
+     * 与 [sendMessage] 相反——那里是「生成期间不打断、只排队」。这里三件事一次做完：
+     * 1. **打断当前轮次**：复用 [stopGeneration]（`reason = QueueJumped`），它已经是用户点
+     *    「停止」时跑的同一套（取消 jobs → join → 收尾待审批 → **半截落库**）；
+     * 2. **待审批工具默认拒绝**：`finishInterruptedPendingTools` 会把未执行的那些写成
+     *    `Denied("插队发送，本轮让路，未执行该工具")` 并把审批闸门放开（否则
+     *    `dispatchNextQueuedMessage` 会因 pending 工具挡着而发不出去）；
+     * 3. **半截回复落草稿**：即 [persistStoppedGeneration] 的既有行为——半截作为该节点的
+     *    可编辑候选留在会话里，**不回填输入框**（用户明确要求；否则会和这条插队消息打架）。
+     *
+     * **不做二次确认**（用户明确）：半截会落库、并非真丢，与「停止」保持一致；
+     * 没有可打断的东西时它自然退化成一次普通入队。
+     *
+     * 打断必须**在入队之前完成**：`dispatchNextQueuedMessage` 会检查 `getJob() != null` 与
+     * pending 工具，先入队就会因为闸门还没放开而派发失败。
+     */
+    fun sendInterrupting(
+        conversationId: Uuid,
+        content: List<UIMessagePart>,
+        answer: Boolean = true,
+        annotations: List<UIMessageAnnotation> = emptyList(),
+    ) {
+        if (content.isEmptyInputMessage()) return
+
+        val session = getOrCreateSession(conversationId)
+        appScope.launch {
+            // 先打断（含半截落库与待审批收尾），完成后再入队派发
+            stopGeneration(
+                conversationId = conversationId,
+                persistStoppedContent = true,
+                reason = InterruptReason.QueueJumped,
+            )
+            synchronized(session) {
+                if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
+                session.messageQueue.enqueue(content, answer, annotations = annotations)
+                dispatchNextQueuedMessage(conversationId)
+            }
+        }
+    }
+
     fun sendMessage(
         conversationId: Uuid,
         content: List<UIMessagePart>,
@@ -575,15 +652,13 @@ class ChatService(
 
         val session = getOrCreateSession(conversationId)
         synchronized(session) {
-            // 生成期间不再打断当前轮次——入队，等当前轮次（含待审批工具）结束后自动派发
+            // 生成期间不打断当前轮次——入队，等当前轮次（含待审批工具）结束后自动派发
             //
-            // **这是有意的产品语义，不是缺失（2026-10-13 明确留档）**：所谓「插队」有两层，
-            // 本仓两层都没做，且属于**未立项**：
-            //   ① 队列内重排（把某条挪到队首）——`MessageQueue` 只有追加语义、面板也只给编辑/撤销；
-            //   ② 真插队（停掉当前回复、立刻发这条）——就是下面这个 gating + `dispatchNextQueuedMessage`
-            //      里 `getJob() != null` 直接 return 造成的，**要翻它得先定**「半截回复（finishIncomplete）
-            //      与待审批工具怎么办」，不是加个按钮的事。
-            // 用户 2026-10-13 表示 ①② 稍后一起议，故此处只注明、不改行为。
+            // **这是「普通发送」的有意语义**（2026-10-13 留档）：想打断当前轮次立刻发，走
+            // [sendInterrupting]（生成中 + 输入框非空时 UI 会多给一个「插队发送」入口）。
+            // 两条路径分开而不是让这条路自己判断，是因为「排队等」和「打断」对用户的含义不同，
+            // 不该由「当时有没有在生成」这种状态悄悄替用户决定。
+            // 队列内重排（把某条挪到队首）仍未做，属未立项。
             if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
             session.messageQueue.enqueue(content, answer, annotations = annotations)
             dispatchNextQueuedMessage(conversationId)
@@ -687,7 +762,10 @@ class ChatService(
         val previousAssistantIds = session.state.value.currentMessages.map { it.id }.toSet()
         val job = appScope.launch {
             try {
-                finishInterruptedPendingTools(conversationId)
+                // 派发新消息前的兜底收尾：正常情况下闸门（getJob() != null / pending 工具）已经保证
+                // 不该有残留 pending，这里防的是「gate 检查之后、派发之前」新出现的。
+                // 用默认理由（UserCancelled）——这类残留不是插队造成的。
+                finishInterruptedPendingTools(conversationId, InterruptReason.UserCancelled)
 
                 val currentConversation = session.state.value
                 val settings = settingsStore.settingsFlow.first()
@@ -1530,23 +1608,43 @@ class ChatService(
         updateConversation(conversationId, conversation.copy(messageNodes = messagesNodes))
     }
 
-    private fun cancelToolByUser(tool: UIMessagePart.Tool): UIMessagePart.Tool {
+    /**
+     * 把一个**尚未执行**的工具收尾成「被用户打断」。
+     *
+     * ## 为什么同时写 `output` 与 `approvalState = Denied`
+     *
+     * 两者各管一件事，缺一不可：
+     * - `output` 非空 ⇒ `isExecuted = true`、`isPending = false` ⇒ **审批闸门放开**
+     *   （`canResumeToolExecution()` 对 `Pending` 为假），后续消息才发得出去；
+     * - `approvalState = Denied(reason)` ⇒ 审批卡片显示成「已拒绝 + 理由」。
+     *
+     * **与历史行为的差异（2026-10-13 用户拍板）**：原先这里不写 `Denied`，注释理由是
+     * 「cancel 后 output 非空 ⇒ 不会误标成拒绝待处理」——那确实避免了误标，代价是**卡片静默消失**、
+     * 用户看不出这个工具是被拒绝还是从未被请求。现在明确写 `Denied` 并带上**区分来源**的理由
+     * （用户取消 / 插队发送），因为在「插队」这个新路径上，「我这个工具到底怎么了」是需要回答的问题。
+     */
+    private fun cancelToolByUser(
+        tool: UIMessagePart.Tool,
+        reason: InterruptReason,
+    ): UIMessagePart.Tool {
         return tool.copy(
             output = listOf(
                 UIMessagePart.Text(
-                    """{"status":"cancelled","error":"Generation cancelled by user before tool execution completed."}"""
+                    """{"status":"cancelled","error":"${reason.toolOutputError}"}"""
                 )
             ),
-            // 不再标 Denied：cancel 后 output 非空 → isExecuted=true → isPending=false
-            //（isPending = !isExecuted && Pending），取消状态不会误标成"拒绝待处理"。
+            approvalState = ToolApprovalState.Denied(reason = reason.approvalReason),
         )
     }
 
-    private suspend fun finishInterruptedPendingTools(conversationId: Uuid) {
+    private suspend fun finishInterruptedPendingTools(
+        conversationId: Uuid,
+        reason: InterruptReason,
+    ) {
         val currentConversation = getConversationFlow(conversationId).value
         val lastNode = currentConversation.messageNodes.lastOrNull() ?: return
         val lastMessage = lastNode.currentMessage
-        val updatedMessage = lastMessage.finishPendingTools(::cancelToolByUser)
+        val updatedMessage = lastMessage.finishPendingTools { tool -> cancelToolByUser(tool, reason) }
         if (updatedMessage == lastMessage) {
             return
         }
@@ -2331,7 +2429,15 @@ class ChatService(
     //
     // @param persistStoppedContent 停止后是否把**已生成的部分**落库（默认 true）。
     //   调用方若紧接着会自己写库（如撤销截断要覆盖成 restored），传 false 免一次多余写入。
-    suspend fun stopGeneration(conversationId: Uuid, persistStoppedContent: Boolean = true) {
+    // @param reason 谁打断了这一轮（2026-10-13 用户拍板：**两条路径都写 `Denied`**，只是理由不同）。
+    //   默认 `UserCancelled` 保持「点停止」的既有语义；插队发送走 `QueueJumped`。
+    //   ⚠️ 注意这与历史行为**有意不同**：`cancelToolByUser` 原先注释写明「不再标 Denied」，
+    //   结果是审批卡片静默收掉、只留 `status:"cancelled"` 的工具结果；现在会显示成「已拒绝 + 理由」。
+    suspend fun stopGeneration(
+        conversationId: Uuid,
+        persistStoppedContent: Boolean = true,
+        reason: InterruptReason = InterruptReason.UserCancelled,
+    ) {
         val session = sessions[conversationId] ?: return
         val jobs = synchronized(session) {
             session.cancelJobs()
@@ -2341,7 +2447,7 @@ class ChatService(
         }
         // 注意：不因 jobs 为空而早退——生成可能刚结束而收尾保存尚未落库，
         // 此时同样需要下面的持久化（见 persistStoppedGeneration 的说明）。
-        finishInterruptedPendingTools(conversationId)
+        finishInterruptedPendingTools(conversationId, reason)
         // 用户主动停止：把**已生成的部分**落库（吸收上游 4a3eefc1 的 finishGeneration 语义）。
         //
         // 为什么必需：流式内容只走 updateConversation（**纯内存**），落库点只有两处——

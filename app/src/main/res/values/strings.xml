@@ -306,6 +306,7 @@
   <string name="chat_context_usage_tooltip">Context used: %1$s / %2$s</string>
   <string name="chat_input_unsupported_file_type">Unsupported file type: %s</string>
   <string name="chat_input_file_read_failed">Failed to read file: %s</string>
+  <string name="chat_interrupt_and_send">Interrupt and send</string>
   <string name="chat_message_add_favorite">Add Favorite</string>
   <string name="chat_message_remove_favorite">Remove Favorite</string>
   <string name="chat_message_quote">Quote</string>
