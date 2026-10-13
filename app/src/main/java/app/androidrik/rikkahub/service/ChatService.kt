@@ -576,6 +576,14 @@ class ChatService(
         val session = getOrCreateSession(conversationId)
         synchronized(session) {
             // 生成期间不再打断当前轮次——入队，等当前轮次（含待审批工具）结束后自动派发
+            //
+            // **这是有意的产品语义，不是缺失（2026-10-13 明确留档）**：所谓「插队」有两层，
+            // 本仓两层都没做，且属于**未立项**：
+            //   ① 队列内重排（把某条挪到队首）——`MessageQueue` 只有追加语义、面板也只给编辑/撤销；
+            //   ② 真插队（停掉当前回复、立刻发这条）——就是下面这个 gating + `dispatchNextQueuedMessage`
+            //      里 `getJob() != null` 直接 return 造成的，**要翻它得先定**「半截回复（finishIncomplete）
+            //      与待审批工具怎么办」，不是加个按钮的事。
+            // 用户 2026-10-13 表示 ①② 稍后一起议，故此处只注明、不改行为。
             if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
             session.messageQueue.enqueue(content, answer, annotations = annotations)
             dispatchNextQueuedMessage(conversationId)
