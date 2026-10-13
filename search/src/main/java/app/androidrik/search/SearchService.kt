@@ -193,9 +193,17 @@ sealed class SearchServiceOptions : Enableable {
         )
     }
 
+    /**
+     * Bing 本地搜索（无参数）。
+     *
+     * **必须是 `data class`**（上游 `640496127` 的同类修正）：普通 `class` 用的是**引用相等**，
+     * 于是每次从设置 JSON 解码出来的实例都互不相等 ⇒ `Settings` 的 `distinctUntilChanged()`
+     * 挡不住它，**任何一次设置写入都会让「读设置」的界面整树重组**（一次拖动 slider 触发多次）。
+     * 无可变字段、没有别的语义，改 `data` 只影响相等性。
+     */
     @Serializable
     @SerialName("bing_local")
-    class BingLocalOptions(
+    data class BingLocalOptions(
         override val id: Uuid = Uuid.random(),
         override val enabled: Boolean = true,
     ) : SearchServiceOptions()

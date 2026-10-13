@@ -20,8 +20,10 @@ import androidx.datastore.preferences.preferencesDataStoreFile
 import app.androidrik.common.settings.refillBuiltIns
 import app.androidrik.common.settings.resolveSelected
 import io.pebbletemplates.pebble.PebbleEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.retryWhen
@@ -555,6 +557,21 @@ class SettingsStore(
         .onEach {
             get<PebbleEngine>().templateCache.invalidateAll()
         }
+        // 把上面**两段 map**（Preferences→Settings 的逐字段解码/JSON 反序列化 + 内置回填 +
+        // 对 providers/assistants/注入/预设等逐个 `distinctBy` 规整）移出主线程。
+        //
+        // 为什么需要：`SettingsStore` 的 scope 是 `AppScope` = **Dispatchers.Main**，
+        // `settingsFlow` 用 `toMutableStateFlow(scope, …)` 在里面 `collect`（见 CoroutineUtils）
+        // ⇒ 不指定 dispatcher 时**整条上游映射链都在主线程跑**，冷启动与每次设置变化都要付一次。
+        // fork 的映射比上游更重（多组 distinctBy 是 fork 自己的悬空引用过滤定制）。
+        //
+        // 放这里（而不是每条流各加）：`settingsFlowRaw` 的所有消费者（`settingsFlow` 的收集、
+        // 各处的 `settingsFlowRaw.first()`、两处独立 `collect`）都只是**接收**映射结果，
+        // 把上游计算移到 Default 不改变它们的语义；`settingsFlow` 自己的
+        // `distinctUntilChanged()` 与 `MutableStateFlow.value =` 仍在收集方上下文执行。
+        //
+        // ⚠️ 数据流的既有约束别破：**勿把 Mutex 插进本流链**（turbo 前车之鉴，见上方注释）。
+        .flowOn(Dispatchers.Default)
 
     val settingsFlow = settingsFlowRaw
         .distinctUntilChanged()
