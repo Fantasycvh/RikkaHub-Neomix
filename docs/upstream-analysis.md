@@ -215,7 +215,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 
 | issue | 内容 | 评估 |
 |---|---|---|
-| #2127 | **清理历史文件时误删助手自定义头像** | **fork 同款，值得修**：fork 的头像经 `filesManager.createChatFilesByContents()` 落进 `files/upload/`，而「设置→存储管理」的清理走 `FilesManager.deleteAll(folder)` → **整目录 `deleteRecursively()`**（`FilesManager.kt:468`，调用点 `SettingFilesPage.kt:186`）⇒ 头像文件与聊天附件同处一个目录、同一次清理即被删，而助手里的 `Avatar.Image` 引用变悬空。**修法方向**：头像应落独立目录（或清理时排除被引用的头像文件）。与 fork 的「备份把 tool_outputs 移出」同族思路 |
+| #2127 | **清理历史文件时误删助手自定义头像** | ✅ **已修（本仓同日，见 roadmap 2026-10-13 第三刀）**：fork 同款确认——头像经 `filesManager.createChatFilesByContents()` 落进 `files/upload/`，而「设置→存储管理」的清理走 `FilesManager.deleteAll(folder)` → **整目录 `deleteRecursively()`**（调用点 `SettingFilesPage.kt:186`）⇒ 头像与聊天附件同处一个目录、同一次清理即被删，助手里的 `Avatar.Image` 引用变悬空。**修法（用户拍板「头像独立目录」）**：新增 `FileFolders.AVATARS` + `FilesManager.createAvatarImage()`，`UIAvatar` 改走它；存量由 `AvatarMigration` 在启动时搬迁（先落盘后改引用、失败保持原状）+ `avatars/` 一并进备份。**注**：上游本 issue 仍 OPEN，未修 |
 | #2126 | **工作区同名图片预览显示旧内容** | **待核实（疑同款）**：fork 工作区图片预览传绝对路径给 Coil（`WorkspaceDetailPage.kt:465` 注释「传绝对路径而非 content:// URI」）——若缓存键是文件名/相对路径而非绝对路径，同名不同目录即串图。需真机复现确认 |
 | #2142 | 模型不输出被系统打断后，再发请求发不出去 | **待核实**：fork 有半截保留/重试分流/fallback（`design-partial-failure-draft.md` 已闭环 3/3）+ 流式 2s 检查点，可能已免疫；报告细节不足，等复现 |
 | #2137 | 第三方 OpenAI 兼容接口流式偶发 `JsonNull is not a JsonObject` | **待核实**：fork 有 `ensureArrayItems`/`ToolArgumentsJson` 一类的畸形 JSON 归一化先例（`3cce721f`/`f05c9a14`/`#1985`），但不含这条具体形态 |
@@ -227,8 +227,8 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | #2150 / #2139 / #2138 / #2140 / #2146 | MCP modern-era / 非标准 schema 一族 | 与 `c907608bc` 同一决策（见上表） |
 | #2132 / #2131 / #2122 / #2147 | MCP 联合数组 / 聊天内容消失 / 虚拟按键 / 关于页 UI | #2131 与 #1992 同族（fork 三层防护大概率免疫）；#2122 虚拟按键属 fork 已高度定制的 UI 区；#2147 小 UI |
 
-**分诊结论**：22 条里 **8 条 fork 已覆盖或领先**、**1 条（#2141）确认同款需修**、
-**1 条（#2127 头像被清理）确认同款值得修**、3 条待复现核实（#2126/#2142/#2137）、
+**分诊结论**：22 条里 **8 条 fork 已覆盖或领先**、**2 条确认同款且均已修**（#2141 连接测试 → 本仓同日第一刀；
+**#2127 头像被清理误删** → 同日第三刀）、3 条待复现核实（#2126/#2142/#2137）、
 其余为按需/灵感/不适用。**没有「上游已修而 fork 未修」的免费车**。
 
 #### D. 本批吸收优先级（结论）
@@ -236,7 +236,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | 顺序 | 项 | 判定 | 成本 |
 |---|---|---|---|
 | 1 | ✅ `ebbcf6377` **连接测试推理等级改 AUTO**（#2141） | **已吸收**——fork 同款且更严重（三个测试入口全吃 `OFF` 默认值 ⇒ `effort:"none"`），GLM-5.3 系列直接报 1210；配套源码守卫已实测可红 | 一行 ×3 + 2 项守卫 |
-| 2 | **#2127 头像被清理时误删** | **建议修**——fork 同款（头像与聊天附件同处 `files/upload/`，`deleteAll` 整目录递归删）；属用户数据丢失，优先级高于普通 UI 件 | 小（独立目录或清理时排除被引用头像） |
+| 2 | ✅ **#2127 头像被清理时误删** | **已修**——fork 同款（头像与聊天附件同处 `files/upload/`，`deleteAll` 整目录递归删）；新增 `FileFolders.AVATARS` + `createAvatarImage()` + `AvatarMigration` 存量搬迁 + 备份覆盖 | 小（1 新文件 + 5 处接线 + 6 项守卫） |
 | 3 | `9f5b5b8ea` **移除 daemon JVM / foojay** | **建议吸收**——fork 文件与上游删除前**逐字节相同**，属潜伏构建故障（本机有 JBR 21 缓存故未暴露） | 删 1 文件 + 1 行插件 |
 | 4 | `640496127` 设置层性能（补 `flowOn` + `BingLocalOptions` 改 data class） | **建议吸收前两项**——fork 的映射链确在主线程（`AppScope` = Main）且比上游更重（多组 `distinctBy`）；`launchCount` 拆分收益较小、排序靠后 | 小–中 |
 | 5 | `cb66ba9ed` 渐变遮罩顶栏 | **可吸收（需手改 3 处）**——fork 已有透明顶栏、无渐变；但同一节点已被 `hazeBlur` 占用，`ChatList` 两处 top padding 语义要重排，**最终观感未核实** | 小（+26/−6 起） |

@@ -42,6 +42,7 @@ enum class BackupItem {
 internal val BACKED_UP_FILE_FOLDERS: List<String> = listOf(
     FileFolders.UPLOAD,   // 聊天附件（图片/文档/音频等，含 AI 生成的图片附件）
     FileFolders.IMAGES,   // imggen 产物（此前不在备份内，恢复后图片全裂——Yuihub `34f1a976` 同款缺口）
+    FileFolders.AVATARS,  // 助手头像 + 用户头像（2026-10-13 从 upload/ 独立出来，见 #2127）
     FileFolders.FONTS,    // 用户字体
     FileFolders.SKILLS,   // 用户技能（含子目录，递归打包）
 )

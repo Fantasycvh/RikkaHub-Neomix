@@ -36,6 +36,7 @@ import app.androidrik.rikkahub.di.repositoryModule
 import app.androidrik.rikkahub.di.viewModelModule
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.files.AvatarMigration
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.service.WebServerService
@@ -132,6 +133,10 @@ class RikkaHubApp : Application() {
 
         // sync upload files to DB
         syncManagedFiles()
+
+        // 把老版本遗留在 upload/ 的头像搬进 avatars/（上游 #2127 的存量部分）。
+        // 必须早于用户去点「存储管理 → 清理聊天文件」，否则那些头像仍会被删掉。
+        migrateLegacyAvatars()
 
         // Extract builtin skills from assets after install/update (上游 3b346748)
         extractBuiltinSkills()
@@ -254,8 +259,29 @@ class RikkaHubApp : Application() {
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
                 get<FilesManager>().syncFolder()
+                // avatars 目录同样对账：搬迁（或用户直接放文件）后 managed_files 要跟上
+                get<FilesManager>().syncFolder(FileFolders.AVATARS)
             }.onFailure {
                 Log.e(TAG, "syncManagedFiles failed", it)
+            }
+        }
+    }
+
+    /**
+     * 把老版本留在 `upload/` 的头像搬进 `avatars/` 并改写引用（上游 #2127 的存量部分）。
+     *
+     * 幂等且静默失败：没有可搬的就直接返回，单个头像搬不动就保持原状（引用不改）。
+     */
+    private fun migrateLegacyAvatars() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                AvatarMigration.migrate(
+                    context = this@RikkaHubApp,
+                    repository = get(),
+                    settingsStore = get(),
+                )
+            }.onFailure {
+                Log.e(TAG, "migrateLegacyAvatars failed", it)
             }
         }
     }

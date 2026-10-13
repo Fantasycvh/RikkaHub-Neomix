@@ -19,6 +19,7 @@ class BackupCoverageTest {
         val declared = setOf(
             FileFolders.UPLOAD,
             FileFolders.IMAGES,
+            FileFolders.AVATARS,
             FileFolders.SKILLS,
             FileFolders.BUILTIN_SKILLS,
             FileFolders.FONTS,

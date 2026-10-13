@@ -2058,4 +2058,36 @@ Page 2:","firstUnit":1,"lastUnit":2,
   - **验证**：`ProviderConnectionTesterReasoningTest` 2 项**真跑非跳过**（`skipped=0`）；**并用「撤回一处 AUTO」实测该守卫会红**
     （2 tests / 1 failed，确认捕获）后恢复；`:app:testDebugUnitTest` 全量 **1479 项 0 失败 0 跳过**。
   - **真机待验**：用一个「始终思考」的模型（GLM-5.3 系）点「测试连接」应不再报 1210——本机无该 provider 凭据，需用户侧确认。
+- 2026-10-13（同日第三刀）：**头像独立出聊天附件目录——修「清理历史文件误删助手头像」（#2127）**。用户拍板「前者」（头像落独立目录）。
+  - **缺陷**：头像经 `createChatFilesByContents` 落进 **`files/upload/`**（与聊天附件同一个 `ManagedFileEntity` 体系），
+    而「设置 → 存储管理 → 文件管理」里对 `upload` 的「清理」走 `FilesManager.deleteAll(folder)`
+    ⇒ **整目录 `deleteRecursively()`**（`FilesManager.kt`，调用点 `SettingFilesPage.kt:186`）⇒
+    用户主动配置、且**正被助手引用**的头像被当成「历史文件」一并删掉，助手头像当场变空。
+    头像（持久配置）与聊天附件（可清历史）是两类东西，目录分开后「清理聊天文件」在语义上不可能碰到头像。
+  - **落地**：①`FileFolders.AVATARS = "avatars"`；②`FilesManager.createAvatarImage(uri)`——与 `createChatFilesByContents`
+    同形但落 `avatars/`（**单独方法而非给原方法加 `folder` 参数**：两条路径生命周期语义不同，调用点不该随手切换）；
+    ③`UIAvatar.saveAvatarImage` 改走它（失败保持原头像，与改动前同样静默、不新增文案）；
+    ④**存量搬迁 `AvatarMigration`**——老版本头像在 `upload/` 且引用指向那里，不搬则本次修复对存量用户不成立。
+  - **搬迁的顺序是刻意设计的**（参考本仓既有的备份包名迁移 / 世界书种子三重迁移）：**先落盘、后改引用**，
+    且每步「失败就保持原状」（头像引用悬空远比占点空间糟）。目标已存在 ⇒ 视为上次半途成功、只清旧副本；
+    移动失败 ⇒ 原封不动；移动成功 ⇒ **先改 `managed_files` 再改引用**——这个方向即使中间崩溃，
+    留下的也只是启动对账（`syncFolder`）会清掉的无害孤儿记录。
+  - **一个真 bug 在写测试时被抓出来（平台相关，值得记）**：判据最初用 `Uri.parse(url).toFile()` 取 `File.path`
+    再 `indexOf("/upload/")`。**纯 JVM 单测里 `android.net.Uri` 是 stub（`Uri.parse` 直接返回 null）** ⇒ 6 项测试全 NPE；
+    改用 `java.net.URI` 后测试虽绿，但**在 Windows 上 `File.path` 是反斜杠** ⇒ `indexOf("/upload/")` 恒为 -1、
+    单测在开发机红而在真机（Android/Linux）绿。**最终解**：处理的是 **URL 字符串**（永远正斜杠）⇒
+    **判据与改写一律在 URL 上做**（`url.indexOf("/upload/")` 后换段），只在真正要动文件时把 URL 转成 `File`。
+    这条与「JVM 测不了 MuPDF」同族：**能在单测里钉住的判据，就别让它依赖平台相关的表示**。
+  - **配套**：`avatars/` 进备份（`BACKED_UP_FILE_FOLDERS` + `BackupArchiveEngine` 恢复分支）——**漏了就是恢复后头像全裂**；
+    `BackupCoverageTest` 的目录全集清单同步补上（该护栏会强制显式决策「进备份还是豁免」）。
+    旧备份里头像在 `upload/` 下，恢复后由启动搬迁接手 ⇒ 新旧备份都能恢复出头像。
+    另外 `syncManagedFiles` 补对 `avatars` 目录对账。
+  - **一处健壮性修正**：迁移最初读 `settingsFlow.value`，而它在 DataStore 首次产出前是 `Settings.dummy()`
+    （助手列表为空）⇒ 计划恒空、**迁移被静默跳过**，且这次启动里用户随后去点清理，头像照旧被删。
+    改为 `settingsFlowRaw.first()`（挂起等待真实设置）。
+  - **验证**：`AvatarMigrationPlanTest` **6 项**（助手头像/用户头像各一、幂等、**判据窄化**「images/ 与
+    tool_outputs/ 不许被搬」、外链与 Emoji/Dummy 不动、同一文件被多处引用只产一条映射）真跑非跳过；
+    `BackupCoverageTest` 7 项通过；`:app` 全量 **1485 项 0 失败 0 跳过**。
+  - **真机待验**：①`upload/` 下有老头像时，启动后应出现在 `avatars/`、助手头像正常显示、`upload/` 里那份消失；
+    ②再点「存储管理 → 清理聊天文件」，助手头像**不被删**。
 

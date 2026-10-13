@@ -232,6 +232,11 @@ internal class BackupArchiveEngine(
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.IMAGES}/")) {
                                     // images（imggen 产物）此前不进备份——旧备份无此条目自然跳过
                                     restoreFlatEntry(zipIn, zipEntry.name, FileFolders.IMAGES)
+                                } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.AVATARS}/")) {
+                                    // avatars（助手/用户头像）2026-10-13 从 upload/ 独立出来（#2127）；
+                                    // **旧备份里头像在 upload/ 下**，由上面那条分支照常恢复到 upload/，
+                                    // 再于下次启动被 AvatarMigration 搬进 avatars/ ⇒ 新旧备份都能恢复出头像
+                                    restoreFlatEntry(zipIn, zipEntry.name, FileFolders.AVATARS)
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.SKILLS}/")) {
                                     restoreSkillEntry(zipIn, zipEntry.name)
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.FONTS}/")) {

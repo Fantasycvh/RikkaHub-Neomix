@@ -20,6 +20,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.common.android.Logging
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.data.repository.FilesRepository
 import app.androidrik.rikkahub.utils.exportImage
@@ -32,6 +33,7 @@ class FilesManager(
     private val context: Context,
     private val repository: FilesRepository,
     private val appScope: AppScope,
+    private val settingsStore: SettingsStore,
 ) {
     companion object {
         private const val TAG = "FilesManager"
@@ -154,6 +156,52 @@ class FilesManager(
 
     fun getFile(entity: ManagedFileEntity): File =
         File(context.filesDir, entity.relativePath)
+
+    /**
+     * 保存一张**头像**图片（助手头像 / 用户头像），落 [FileFolders.AVATARS]。
+     *
+     * 与 [createChatFilesByContents] 的唯一区别就是目录——头像不能进 `upload/`，
+     * 否则「清理聊天文件」的整目录删除会连它一起删掉（上游 issue #2127）。
+     * 单独一个方法而不是给原方法加 `folder` 参数：两条路径的**生命周期语义不同**
+     * （头像=持久配置，聊天文件=可清历史），调用点也不该随手切换。
+     *
+     * @return 落盘后的 `file://` Uri；失败返回 null（调用方保持原头像不变）。
+     */
+    fun createAvatarImage(uri: Uri): Uri? {
+        val dir = context.filesDir.resolve(FileFolders.AVATARS)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return runCatching {
+            val sourceName = getFileNameFromUri(uri) ?: uri.lastPathSegment ?: "avatar"
+            val sourceMime = getFileMimeType(uri)
+            val fileName = buildUuidFileName(displayName = sourceName, mimeType = sourceMime)
+            val file = dir.resolve(fileName)
+            if (!file.exists()) {
+                file.createNewFile()
+            }
+            val inputStream = context.contentResolver.openInputStream(uri)
+                ?: error("Failed to open input stream for $uri")
+            inputStream.use { input ->
+                file.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            trackManagedFile(
+                folder = FileFolders.AVATARS,
+                file = file,
+                displayName = sourceName,
+                mimeType = sourceMime ?: guessMimeType(file, sourceName),
+            )
+            file.toUri()
+        }.onFailure {
+            Log.e(TAG, "createAvatarImage: Failed to save avatar from $uri", it)
+            Logging.log(
+                TAG,
+                "createAvatarImage: Failed to save avatar from $uri ${it.message} | ${it.stackTraceToString()}",
+            )
+        }.getOrNull()
+    }
 
     fun createChatFilesByContents(uris: List<Uri>): List<Uri> {
         val newUris = mutableListOf<Uri>()
@@ -582,6 +630,21 @@ object FileFolders {
     const val FONTS = "fonts"
     const val TOOL_OUTPUTS = "tool_outputs"
     const val LOGS = "logs"
+
+    /**
+     * 用户配置的头像（助手头像 + 用户头像）。
+     *
+     * **为什么单独一个目录**（2026-10-13，上游 issue #2127）：此前头像经
+     * [FilesManager.createChatFilesByContents] 落进 [UPLOAD]，而「设置 → 存储管理 → 文件管理」
+     * 里对 `upload` 的「清理」走 [FilesManager.deleteAll] ⇒ **整目录 `deleteRecursively()`**，
+     * 于是用户主动配置、且**正被助手引用**的头像被当成「历史文件」一并删掉，助手头像当场变空。
+     * 头像与聊天附件是两类东西（前者是持久配置、后者是可清历史），目录分开后
+     * 「清理聊天文件」在语义上就不可能碰到头像。
+     *
+     * **存量兼容**：老版本的头像文件仍在 `upload/` 下、引用也指向那里，由
+     * `AvatarMigration` 在启动时搬进本目录并改写引用（搬不动的留在原处并打日志）。
+     */
+    const val AVATARS = "avatars"
 
     /**
      * 导出留存区（AI/用户导出的对话文件副本；经「设置 → 文件管理」可见、可再分享）。
