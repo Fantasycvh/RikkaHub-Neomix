@@ -49,7 +49,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import androidx.compose.material3.CircularProgressIndicator
 import app.androidrik.rikkahub.utils.toLocalDateTime
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
+import app.androidrik.rikkahub.data.ai.detailContent
+import app.androidrik.rikkahub.data.ai.detailTitle
 import app.androidrik.rikkahub.data.ai.describe
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
@@ -138,6 +141,57 @@ private fun AssistantMemoryContent(
     var pendingDeleteMemory by remember { mutableStateOf<AssistantMemory?>(null) }
     var showTimeReminderIntervalDialog by remember(assistant.id) { mutableStateOf(false) }
     var timeReminderIntervalInput by remember(assistant.id) { mutableStateOf("") }
+    // 被点开看详情的建议。按建议本身（而不是 id——它没有 id）记住，弹层只读。
+    var detailProposal by remember(assistant.id) {
+        mutableStateOf<MemoryConsolidationProposal?>(null)
+    }
+
+    detailProposal?.let { proposal ->
+        AlertDialog(
+            onDismissRequest = { detailProposal = null },
+            title = { Text(proposal.detailTitle()) },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    // 全文，不截断——这正是这个弹层存在的理由
+                    Text(text = proposal.detailContent())
+                    proposal.importance?.let { importance ->
+                        Text(
+                            text = stringResource(
+                                R.string.assistant_page_memory_consolidation_detail_importance,
+                                importance,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    proposal.description?.takeIf { it.isNotBlank() }?.let { description ->
+                        Text(
+                            text = stringResource(
+                                R.string.assistant_page_memory_consolidation_detail_description,
+                                description,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    // 说明「这条为什么没进库」——避免再被读成一次失败的写入
+                    Text(
+                        text = stringResource(R.string.assistant_page_memory_consolidation_detail_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { detailProposal = null }) {
+                    Text(stringResource(R.string.close))
+                }
+            },
+        )
+    }
 
     if (showTimeReminderIntervalDialog) {
         val interval = timeReminderIntervalInput.toIntOrNull()?.takeIf { it > 0 }
@@ -416,10 +470,18 @@ private fun AssistantMemoryContent(
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                                 suggestions.forEach { proposal ->
+                                    // 可点开看**完整原文**：列表这行是 `describe()` 的 60 字摘要，
+                                    // 而「照建议手动改」必须先看得到内容（真机反馈：#建议被截断）。
+                                    // 用 Text 的 clickable 而不是外层包一层：保持与相邻行同样的左边距，
+                                    // 且不给弹层目标加一个会挡住长按选择的父级手势。
                                     Text(
                                         text = proposal.describe(),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { detailProposal = proposal }
+                                            .padding(vertical = 4.dp),
                                     )
                                 }
                             }

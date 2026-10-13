@@ -569,6 +569,46 @@ class MemoryConsolidationSchedulerTest {
         assertTrue("要有省略号，用户才知道这不是全文", described.endsWith("…"))
     }
 
+    // ---- 详情弹层：完整原文（真机反馈「建议被截断」）----
+
+    @Test
+    fun `detail shows the full content that the one line summary cut off`() {
+        // 比默认 60 字上限长得多，且含多行
+        val long = ("第一条很长的记忆内容，需要完整看到才能照着改。" + "\n").repeat(8)
+        val proposal = MemoryConsolidationProposal("create", content = long)
+
+        val summary = proposal.describe()
+        assertTrue("列表摘要确实被截了（这是它存在的理由）", summary.endsWith("…"))
+
+        val detail = proposal.detailContent()
+        assertTrue(
+            "详情必须是**不截断**的原文：看不到内容就没法「照建议手动改」，那正是决策 B 的流程",
+            detail.length > summary.length,
+        )
+        assertFalse("详情里不许出现省略号", detail.contains("…"))
+        assertTrue("原文内容要一字不少（这里用总长守着丢字）", detail.length >= long.trim().length - 2)
+    }
+
+    @Test
+    fun `detail content is trimmed but keeps its line breaks`() {
+        val proposal = MemoryConsolidationProposal("edit", "a3f1c09e", "第一行\n第二行")
+
+        assertEquals(
+            "只去首尾空白；**不**像摘要那样把换行压成空格——详情里应当保留原始段落",
+            "第一行\n第二行",
+            proposal.detailContent(),
+        )
+    }
+
+    @Test
+    fun `detail title names the action and its target without dangling arrows`() {
+        assertEquals("create", MemoryConsolidationProposal("create", content = "x").detailTitle())
+        assertEquals("edit · a3f1c09e", MemoryConsolidationProposal("edit", "a3f1c09e", "x").detailTitle())
+        assertEquals("delete · 7bd20f45", MemoryConsolidationProposal("delete", "7bd20f45").detailTitle())
+        // create 没有目标 id：不许拼出「create · 」这种悬空分隔符
+        assertFalse(MemoryConsolidationProposal("create", content = "x").detailTitle().endsWith("·"))
+    }
+
     private fun srcRoot(): File {
         val candidates = listOf(File("src/main/java"), File("app/src/main/java"))
         return candidates.firstOrNull { it.isDirectory }

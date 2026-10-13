@@ -89,6 +89,34 @@ fun MemoryConsolidationProposal.describe(maxContent: Int = 60): String {
     }
 }
 
+/**
+ * 建议的**完整原文**（详情弹层用；`describe` 是列表里的一行摘要）。
+ *
+ * ## 为什么必须有这个
+ *
+ * [describe] 默认把内容截到 60 字加「…」，而列表里那几行之前是**纯 Text、不可点也不可展开**——
+ * 于是 ≥60 字的建议**永远看不到**。这跟设计稿的原意直接冲突：`§7.2` 决策 B 说的是
+ * 「不自动应用，**用户照建议手动改**」，可看不到内容就没法照做（真机反馈）。
+ *
+ * 所以 `describe` 留作列表摘要（保留密度），**全文由这里给**，由 UI 的详情弹层展示。
+ * `content` 原样返回（只做 trim，不再截断）：这是「原文」，任何折叠都会让这个函数失去意义。
+ */
+fun MemoryConsolidationProposal.detailContent(): String = content.trim()
+
+/**
+ * 建议详情弹层的**标题**：说清「做什么动作、针对哪条」。
+ *
+ * 动作名保持英文（`create`/`edit`/`delete`）：它与 `describe()` 里的行首标签、以及工具
+ * 调用里的 action 名一致，翻译会让「这一条到底对应哪个工具动作」变得不可对照。
+ * 目标 id 为空（`create`）时不拼出 `→ ` 这样的悬空箭头。
+ */
+fun MemoryConsolidationProposal.detailTitle(): String = when (action) {
+    "create" -> "create"
+    "edit" -> "edit · ${targetId.orEmpty()}"
+    "delete" -> "delete · ${targetId.orEmpty()}"
+    else -> action
+}
+
 /** 某个记忆库的整理状态（状态面板/设置页只读它）。 */
 data class MemoryConsolidationStatus(
     val pendingTurns: Int = 0,
