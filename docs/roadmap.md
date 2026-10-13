@@ -2090,4 +2090,34 @@ Page 2:","firstUnit":1,"lastUnit":2,
     `BackupCoverageTest` 7 项通过；`:app` 全量 **1485 项 0 失败 0 跳过**。
   - **真机待验**：①`upload/` 下有老头像时，启动后应出现在 `avatars/`、助手头像正常显示、`upload/` 里那份消失；
     ②再点「存储管理 → 清理聊天文件」，助手头像**不被删**。
+- 2026-10-13（同日第四刀）：**设置层两小件落地；构建层 daemon JVM / foojay 核实成立但暂不动手（附实测证据）**。用户「继续这两件」。
+  - **①设置解码链移出主线程（`640496127` 的 (a)）**：`SettingsStore` 的 scope 是 `AppScope` = **`Dispatchers.Main`**，
+    而 `settingsFlow` 用 `toMutableStateFlow(scope, …)` 在该 scope 里 `collect` ⇒ 不指定 dispatcher 时
+    **整条上游映射链都在主线程跑**（Preferences→Settings 逐字段解码 + 内置回填 + 对 providers/assistants/
+    注入/预设逐个 `distinctBy`，后者是 fork 自己的定制、比上游更重）。修法是在 `settingsFlowRaw` **链尾**加
+    `.flowOn(Dispatchers.Default)`：放链尾而非每条流各加，因为它的所有消费者只是接收映射结果；
+    `settingsFlow` 自己的 `distinctUntilChanged()` 与 `MutableStateFlow.value =` 仍在收集方（Main）执行
+    ——**映射在后台、状态更新在主**，正是要的。**未采纳**同批的 `launchCount` 拆分与按职责拆文件（改动面大、收益小）。
+  - **②`BingLocalOptions` 改 `data class`**（`640496127` 的 (b)）：普通 `class` 用引用相等 ⇒ 每次从设置 JSON
+    解码出的实例互不相等 ⇒ `Settings` 的 `distinctUntilChanged()` 挡不住，**任何一次设置写入都让「读设置」的
+    界面整树重组**（拖一次 slider 触发多次）。无可变字段、无别的语义，改 `data` 只影响相等性。
+  - **配套测试**：`SearchOptionsEqualityTest`（search，3 项：同内容相等 + hashCode 一致、**任一字段不同必须不相等**
+    ——防有人把 `equals` 写成恒真让去重吞掉真实变化、默认实例与同 id 实例相等）；`SettingsThreadingWiringTest`
+    （app，1 项：源码扫描钉住 `flowOn` 那一行 + 流链代码里不许出现 Mutex/withLock）。**守卫写法的一个坑**：
+    只扫区段会**误报**——源码里恰好有一条「勿把 Mutex 插进本流链」的**注释**，必须先剥注释再断言（第一版就是这么挂的）。
+    **局限如实写明**：它只证明接线在，不能证明运行时真换了线程（那需要真机 profiler 或 Robolectric，本模块没有那依赖）。
+    验证：`:app` **1486** 项、`:search` **17** 项，0 失败 0 跳过。
+  - **③构建层：`9f5b5b8ea`（删 `gradle/gradle-daemon-jvm.properties` + 移除 foojay 插件）——核实成立，但实测不可直接采纳**。
+    fork 那份文件与上游删除前**逐字节相同**（`toolchainVendor=JETBRAINS`/`toolchainVersion=21` + 已失效的 foojay 下载 id），
+    `settings.gradle.kts` 仍挂 foojay，CI（`daily-build.yml:48-49`）用 **Temurin 17** ⇒ 正是上游踩的「daemon 要 JBR 21、
+    机器只有别的 JDK、去 foojay 下载而地址失效」的失败组合；fork 本机构建一直成功只因 **JBR 21 已缓存**，属潜伏故障。
+    **但删掉该文件后 Gradle 改用 `JAVA_HOME` 的 Temurin 21.0.12（原为缓存的 JBR 21.0.10），
+    `SettingsStoreResilienceTest` 立刻确定性红 2 项**（`Unable to rename settings.preferences_pb.tmp … multiple instances
+    of DataStore` + `CorruptionException`）。**做了完整 bisect 排除本批代码改动**：只删该文件即复现（**连跑 3 次全红**）、
+    恢复文件即绿（**基线连跑 3 次全绿**）、只删 foojay 插件不红 ⇒ 那是**测试自身跨 JVM 不稳**，被「钉死 JBR」这个配置
+    掩盖着（根因方向：DataStore 实例未随测试结束释放、Windows 文件句柄未及时关闭——测试没 cancel 自己的 scope，
+    上游 `FileStorage.kt:114` 的重命名因此失败）。
+    **决策：本批只还原构建层、不动它**（`git checkout` 回基线），把证据留档；**采纳前置**=先让该测试在 Temurin/JAVA_HOME
+    的 JDK 下稳（修测试的 store 生命周期，而不是把 JVM 钉回 JBR）。本机是唯一验证环境，不在本仓盲改 CI/JDK 配置。
+    **教训**：上游的构建环境修复**不是「改配置即可」**——它会换掉跑测试的 JVM，把「被钉死环境掩盖的测试不稳」翻出来。
 
