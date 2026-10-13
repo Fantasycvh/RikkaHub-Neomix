@@ -115,45 +115,31 @@ object AvatarMigration {
         plan.forEach { (oldUrl, newUrl) ->
             runCatching {
                 val source = resolveInFilesDir(filesDir, oldUrl)
+                    ?: return@runCatching Log.w(TAG, "migrate: cannot resolve $oldUrl, skip")
+                if (!source.isFile) {
+                    return@runCatching Log.w(TAG, "migrate: source missing ${source.path}, skip")
+                }
                 val target = resolveInFilesDir(filesDir, newUrl)
                     ?: return@runCatching Log.w(TAG, "migrate: cannot resolve target for $oldUrl, skip")
 
                 if (!avatarsDir.exists()) {
                     avatarsDir.mkdirs()
                 }
-
-                // ⚠️ 把内容搬到 target，但**这一步失败不算致命**——只要引用不被改写，旧文件仍在原处、
-                // 头像照旧能显示。反过来才是灾难。
-                val moved = when {
-                    target.isFile -> {
-                        // 内容已在目标位。**这里不能删旧副本**（历史版本就是在此处删的）——引用此刻
-                        // 仍指向旧路径，删了源文件而后续改写引用又失败的话，引用当场悬空，表现就是
-                        // 「助手头像突然显示不出来」（2026-10-13 真机事故）。旧副本留到引用改写成功
-                        // 之后再由下面的第③步清理。
-                        //
-                        // 注意这一分支**也包含「源已不存在」**（source 为 null 或非文件）：那正是
-                        // 上述事故留下的现场——文件已搬到 avatars/，引用却还指着 upload/。若把它当
-                        // 「源缺失 ⇒ 跳过」，这个状态就永远修不回来（plan 每轮都产出、每轮都被跳过）。
-                        // 判据是「目标内容在位」，与源在不在无关。
-                        true
+                if (target.exists()) {
+                    // 上次半途成功过：内容已在位，清掉旧副本即可
+                    if (!source.delete()) {
+                        return@runCatching Log.w(TAG, "migrate: target exists but old copy not deleted: ${source.path}")
                     }
-                    source == null || !source.isFile -> {
-                        Log.w(TAG, "migrate: both source and target missing for $oldUrl, keep reference")
-                        false
-                    }
-                    else -> source.renameTo(target).also { ok ->
-                        if (!ok) Log.w(TAG, "migrate: rename failed ${source.path} -> ${target.path}")
-                    }
+                } else if (!source.renameTo(target)) {
+                    // 同一 filesDir 内的 rename 正常应成功；失败就保持原状（引用不改）
+                    return@runCatching Log.w(TAG, "migrate: rename failed ${source.path} -> ${target.path}, keep original")
                 }
 
-                if (moved) {
-                    applied += Applied(
-                        oldUrl = oldUrl,
-                        newUrl = newUrl,
-                        // source 可能为 null（上次已搬走）或刚被 rename 掉；File.name 只是字符串，可靠
-                        oldRelativePath = "$LEGACY_FOLDER/${source?.name ?: uriLastSegment(oldUrl)}",
-                    )
-                }
+                applied += Applied(
+                    oldUrl = oldUrl,
+                    newUrl = newUrl,
+                    oldRelativePath = "$LEGACY_FOLDER/${source.name}",
+                )
             }.onFailure {
                 Log.e(TAG, "migrate: failed for $oldUrl", it)
                 Logging.log(TAG, "migrate: failed for $oldUrl ${it.message} | ${it.stackTraceToString()}")
@@ -186,42 +172,22 @@ object AvatarMigration {
         }
 
         // ② 再改写引用（最后一步：只有文件确实到位了才会走到这里）
-        //
-        // ⚠️ **必须走 settingsStore.rewriteAvatarReferences（dataStore.edit 定点改写），不能用
-        // `update { }`**：`update(Settings)` 有 `if (settings.init) return` 守卫，而本迁移在启动极早期
-        // 运行、`settingsFlow.value` 当时仍是 `Settings.dummy()`（init = true）⇒ 改写会被静默丢弃。
-        // 2026-10-13 真机实证：5 个头像都搬了，引用一条没改，头像因此全部悬空显示不出来。
         val urlMap = applied.associate { it.oldUrl to it.newUrl }
-        settingsStore.rewriteAvatarReferences(urlMap)
-
-        // ③ **引用改完之后**才清掉旧副本。扫磁盘而不是按 applied 逐条删：即使某个 target 早就存在
-        // （上次半途成功、这次走 target.isFile 分支），旧副本也要在这里被收掉，否则 upload/ 里
-        // 会长期留着与头像一模一样的重复文件（白占空间，且下次「清理聊天文件」会把它当附件删掉——
-        // 虽然此时已经无害）。
-        var cleaned = 0
-        applied.forEach { item ->
-            runCatching {
-                val source = resolveInFilesDir(filesDir, item.oldUrl)
-                if (source != null && source.isFile && source.delete()) cleaned++
-            }
+        settingsStore.update { settings ->
+            settings.copy(
+                assistants = settings.assistants.map { assistant ->
+                    val img = assistant.avatar as? Avatar.Image ?: return@map assistant
+                    urlMap[img.url]?.let { assistant.copy(avatar = Avatar.Image(it)) } ?: assistant
+                },
+                displaySetting = settings.displaySetting.let { display ->
+                    val img = display.userAvatar as? Avatar.Image ?: return@let display
+                    urlMap[img.url]?.let { display.copy(userAvatar = Avatar.Image(it)) } ?: display
+                },
+            )
         }
 
-        Log.i(
-            TAG,
-            "migrate: moved ${applied.size} avatar(s) from $LEGACY_FOLDER/ to ${FileFolders.AVATARS}/" +
-                " (cleaned $cleaned legacy copy/ies)",
-        )
+        Log.i(TAG, "migrate: moved ${applied.size} avatar(s) from $LEGACY_FOLDER/ to ${FileFolders.AVATARS}/")
     }
-
-    /**
-     * 从一个 `file://` URL 里取出最后一段文件名。
-     *
-     * 只在「源文件已经不在、需要清 `managed_files` 里的旧记录」时用作兜底：那种情况下我们
-     * 拿不到 `File.name`，但仍需要拼出 `upload/<name>` 这个**相对路径**去删记录。
-     * 一律在 URL 字符串上切（正斜杠），不经过 `File`（Windows 上是反斜杠，见上方注释）。
-     */
-    private fun uriLastSegment(url: String): String =
-        url.substringAfterLast('/').substringBefore('?').substringBefore('#')
 
     /**
      * 把一个 `file://` URL 解析成 `filesDir` 内的文件；**越界（不在 filesDir 下）返回 null**。

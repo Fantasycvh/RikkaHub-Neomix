@@ -706,59 +706,6 @@ class SettingsStore(
         }
     }
 
-    /**
-     * **定点改写头像引用**（`file://` 旧地址 → 新地址），不动整份 `Settings`。
-     *
-     * ## 为什么不能用 `update { }`
-     *
-     * `update(Settings)` 开头有一道守卫：`if (settings.init) return`（不许把 `Settings.dummy()`
-     * 写回）。而头像迁移（[app.androidrik.rikkahub.data.files.AvatarMigration]）在**启动极早期**运行，
-     * 此时 `settingsFlow.value` 仍是 `Settings.dummy()`（`init = true`）⇒ 走 `update { }` 的改写会被
-     * **静默丢弃**（只留一行 "Cannot update dummy settings" 日志）。
-     *
-     * 真机实证（2026-10-13）：迁移把 5 个头像从 `upload/` 搬到了 `avatars/`，但引用一条都没改，
-     * 于是头像引用全部悬空、助手头像显示不出来。诊断日志当时打出 `init=true` 才定位到这条。
-     *
-     * 这里改用 `dataStore.edit`（**原子读-改-写**，与 [incrementLaunchCount] 同一思路）：
-     * 只碰 `assistants` 与 `display_setting` 两个键，且**以盘上的当前值为基准**做替换，
-     * 因此既不依赖 `settingsFlow` 是否已就绪，也不会把别的设置覆盖成旧值。
-     *
-     * 与增量更新（[updateIncremental]）的分工：那个走整份 `Settings` 快照、有守卫；
-     * 这个只做字符串级替换，专门服务「读链未就绪但必须落盘」的迁移场景。
-     */
-    suspend fun rewriteAvatarReferences(urlMap: Map<String, String>) {
-        if (urlMap.isEmpty()) return
-        updateMutex.withLock {
-            dataStore.edit { preferences ->
-                // 助手头像
-                preferences[ASSISTANTS]?.let { raw ->
-                    runCatching {
-                        val assistants = JsonInstant.decodeFromString<List<Assistant>>(raw)
-                        val rewritten = assistants.map { assistant ->
-                            val img = assistant.avatar as? Avatar.Image ?: return@map assistant
-                            urlMap[img.url]?.let { assistant.copy(avatar = Avatar.Image(it)) } ?: assistant
-                        }
-                        if (rewritten != assistants) {
-                            preferences[ASSISTANTS] = JsonInstant.encodeToString(rewritten)
-                        }
-                    }.onFailure { Log.w(TAG, "rewriteAvatarReferences: assistants parse failed", it) }
-                }
-                // 用户头像
-                preferences[DISPLAY_SETTING]?.let { raw ->
-                    runCatching {
-                        val display = JsonInstant.decodeFromString<DisplaySetting>(raw)
-                        val img = display.userAvatar as? Avatar.Image
-                        val newUrl = img?.let { urlMap[it.url] }
-                        if (newUrl != null) {
-                            preferences[DISPLAY_SETTING] =
-                                JsonInstant.encodeToString(display.copy(userAvatar = Avatar.Image(newUrl)))
-                        }
-                    }.onFailure { Log.w(TAG, "rewriteAvatarReferences: displaySetting parse failed", it) }
-                }
-            }
-        }
-    }
-
     suspend fun updateAssistant(assistantId: Uuid) {
         dataStore.edit { preferences ->
             preferences[SELECT_ASSISTANT] = assistantId.toString()
