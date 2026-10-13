@@ -163,16 +163,31 @@ class ChatCompletionsAPI(
         // 里的重试逻辑又需要它 —— 两者互相引用，只能这样打破循环。
         lateinit var newEventSource: (Request) -> EventSource
 
+        /**
+         * 最近一次 [buildRequest] 生成的请求体 JSON 字符串，仅供日志使用。
+         *
+         * 之所以另存一份而不是事后从 `request.body` 里读：`RequestBody` 没有序列化器，
+         * `json.encodeToString(request.body)` 会抛 `Serializer for class 'RequestBody' is not found`。
+         * 真机事故（2026-10-13）：这条日志写在成功路径上，导致**每次流式请求都失败**。
+         */
+        var lastRequestBodyJson: String? = null
+
         fun buildRequest(): Request {
-            val requestBody = buildChatCompletionRequest(
+            // ⚠️ `JsonObject` 必须先落到**显式类型的局部变量**再 encodeToString。
+            // 不能把它内联进 `.post(json.encodeToString(buildChatCompletionRequest(...))...)`：
+            // `.post()` 有接受 `RequestBody` 的重载，Kotlin 会把 `encodeToString` 的**期望类型**
+            // 推断成 `RequestBody` ⇒ 报同一条错。
+            val requestBody: JsonObject = buildChatCompletionRequest(
                 messages = messages,
                 params = params,
                 providerSetting = providerSetting,
                 stream = true,
             )
+            val bodyJson = json.encodeToString(requestBody)
+            lastRequestBodyJson = bodyJson
             return Request.Builder()
                 .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
-                .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+                .post(bodyJson.toRequestBody("application/json".toMediaType()))
                 .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}")
                 .addHeader("Content-Type", "application/json")
                 .configureReferHeaders(providerSetting.baseUrl)
@@ -300,7 +315,12 @@ class ChatCompletionsAPI(
         newEventSource = { req -> factory.newEventSource(req, listener) }
 
         val request = buildRequest()
-        Log.i(TAG, "streamText: ${json.encodeToString(request.body)}")
+        // ⚠️ **不要**写 `json.encodeToString(request.body)`：`request.body` 的类型是
+        // `okhttp3.RequestBody`，`encodeToString` 会去给它找序列化器并抛
+        // `Serializer for class 'RequestBody' is not found` —— 而这是**成功路径上的日志**，
+        // 于是每一次流式请求都会当场失败。要打请求体就在构建处把字符串带出来（见 buildRequest 的
+        // lastRequestBodyJson）。
+        Log.i(TAG, "streamText: ${lastRequestBodyJson ?: "<unavailable>"}")
 
         val eventSource = try {
             newEventSource(request)
