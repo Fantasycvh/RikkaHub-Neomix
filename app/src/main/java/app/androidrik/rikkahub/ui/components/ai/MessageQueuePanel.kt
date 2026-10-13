@@ -45,6 +45,8 @@ internal fun MessageQueuePanel(
     onBeginEdit: (Uuid) -> QueuedMessage?,
     onFinishEdit: (Uuid, List<UIMessagePart>?) -> Unit,
     onResume: () -> Unit,
+    /** 把某条挪到队首（下一条就发它）；只改队列顺序，不打断当前轮次。 */
+    onMoveToFront: (Uuid) -> Unit = {},
 ) {
     var editing by remember { mutableStateOf<QueuedMessage?>(null) }
     if (state.messages.isNotEmpty()) {
@@ -101,6 +103,19 @@ internal fun MessageQueuePanel(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            // 置顶 = 下一条就发它。已在队首（index == 0）时置灰并改文案，
+                            // 避免点了没反应。编辑中的项不许置顶（与编辑/撤销同一保护）。
+                            TextButton(
+                                enabled = !message.isEditing && index > 0,
+                                onClick = { onMoveToFront(message.id) },
+                            ) {
+                                Text(
+                                    stringResource(
+                                        if (index == 0) R.string.chat_message_queue_at_front
+                                        else R.string.chat_message_queue_move_to_front
+                                    )
+                                )
+                            }
                             TextButton(
                                 enabled = !message.isEditing,
                                 onClick = { editing = onBeginEdit(message.id) },

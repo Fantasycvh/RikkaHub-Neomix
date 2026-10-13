@@ -361,6 +361,8 @@
   <string name="chat_message_queue_pending">待發送：%1$d 條</string>
   <string name="chat_message_queue_paused">佇列已暫停 · %1$d 條</string>
   <string name="chat_message_queue_resume">繼續發送</string>
+  <string name="chat_message_queue_move_to_front">下一則傳送</string>
+  <string name="chat_message_queue_at_front">下一則</string>
   <string name="chat_message_queue_edit">編輯</string>
   <string name="chat_message_queue_editing">編輯中…</string>
   <string name="chat_message_queue_remove">撤銷</string>

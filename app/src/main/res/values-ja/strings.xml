@@ -303,6 +303,8 @@
   <string name="chat_input_unsupported_file_type">サポートされていないファイルタイプ: %s</string>
   <string name="chat_input_file_read_failed">ファイルの読み取りに失敗しました: %s</string>
   <string name="chat_interrupt_and_send">割り込み送信</string>
+  <string name="chat_message_queue_move_to_front">次に送信</string>
+  <string name="chat_message_queue_at_front">次</string>
   <string name="chat_message_add_favorite">お気に入りに追加</string>
   <string name="chat_message_remove_favorite">お気に入りから削除</string>
   <string name="chat_message_quote">引用</string>

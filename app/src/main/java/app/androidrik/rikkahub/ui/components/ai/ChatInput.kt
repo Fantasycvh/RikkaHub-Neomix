@@ -167,6 +167,8 @@ fun ChatInput(
     onRemoveQueuedMessage: (Uuid) -> Unit = {},
     onBeginEditQueuedMessage: (Uuid) -> QueuedMessage? = { null },
     onFinishEditQueuedMessage: (Uuid, List<UIMessagePart>?) -> Unit = { _, _ -> },
+    /** 把某条待发消息置顶（下一条就发它）；只改顺序，不打断当前轮次。 */
+    onMoveQueuedMessageToFront: (Uuid) -> Unit = {},
     onResumeMessageQueue: () -> Unit = {},
     onStartVoiceMode: (() -> Unit)? = null,
     voiceState: VoiceSessionState = VoiceSessionState(),
@@ -287,6 +289,7 @@ fun ChatInput(
                         onBeginEdit = onBeginEditQueuedMessage,
                         onFinishEdit = onFinishEditQueuedMessage,
                         onResume = onResumeMessageQueue,
+                        onMoveToFront = onMoveQueuedMessageToFront,
                     )
 
                     // #1906：待发引用预览（可取消）。放队列面板之后、输入行之前——

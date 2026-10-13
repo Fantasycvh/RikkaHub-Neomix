@@ -178,4 +178,63 @@ class MessageQueueTest {
         assertNull(first.takeNext())
         assertEquals(text("second"), second.takeNext()!!.parts)
     }
+
+    // ---- 置顶（下一条就发它） ----
+
+    @Test
+    fun `moving a later message to front makes it the next dispatched`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("first"))
+        queue.enqueue(text("second"))
+        queue.enqueue(text("third"))
+        val third = queue.state.value.messages.last().id
+
+        assertTrue("本条不在队首，应真的发生移动", queue.moveToFront(third))
+
+        assertEquals(third, queue.state.value.messages.first().id)
+        assertEquals(text("third"), queue.takeNext()!!.parts)
+        // 其余保持原有相对顺序（不是排序、也不是反转）
+        assertEquals(text("first"), queue.takeNext()!!.parts)
+        assertEquals(text("second"), queue.takeNext()!!.parts)
+    }
+
+    @Test
+    fun `moving the head to front is a no-op so the UI can grey the button out`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("first"))
+        queue.enqueue(text("second"))
+        val head = queue.state.value.messages.first().id
+
+        assertFalse("已在队首 ⇒ 无需移动，UI 靠这个返回值显示成「下一条」并置灰", queue.moveToFront(head))
+        assertEquals(head, queue.state.value.messages.first().id)
+        assertEquals(text("first"), queue.takeNext()!!.parts)
+    }
+
+    @Test
+    fun `moving an unknown id is a no-op and preserves the queue`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("first"))
+        queue.enqueue(text("second"))
+
+        assertFalse(queue.moveToFront(kotlin.uuid.Uuid.random()))
+        assertEquals(2, queue.state.value.messages.size)
+        assertEquals(text("first"), queue.takeNext()!!.parts)
+    }
+
+    @Test
+    fun `moving to front does not silently resume a paused queue`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("first"))
+        queue.enqueue(text("second"))
+        val second = queue.state.value.messages.last().id
+        queue.pause()
+
+        queue.moveToFront(second)
+
+        // 置顶只改顺序：暂停态不许被静默解除（与 enqueue / 编辑同一约束）
+        assertTrue("置顶不得隐式恢复队列", queue.state.value.paused)
+        assertNull(queue.takeNext())
+        queue.resume()
+        assertEquals("恢复后先发被置顶的那条", text("second"), queue.takeNext()!!.parts)
+    }
 }

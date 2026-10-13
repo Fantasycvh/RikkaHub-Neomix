@@ -364,6 +364,8 @@
   <string name="chat_message_queue_pending">Pending: %1$d message(s)</string>
   <string name="chat_message_queue_paused">Queue paused · %1$d message(s)</string>
   <string name="chat_message_queue_resume">Resume</string>
+  <string name="chat_message_queue_move_to_front">Send next</string>
+  <string name="chat_message_queue_at_front">Next</string>
   <string name="chat_message_queue_edit">Edit</string>
   <string name="chat_message_queue_editing">Editing…</string>
   <string name="chat_message_queue_remove">Remove</string>

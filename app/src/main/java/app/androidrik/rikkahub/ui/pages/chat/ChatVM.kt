@@ -226,6 +226,10 @@ class ChatVM(
 
     fun resumeMessageQueue() = chatService.resumeMessageQueue(_conversationId)
 
+    /** 把某条待发消息置顶（下一条就发它）；只改顺序，不打断当前轮次。 */
+    fun moveQueuedMessageToFront(messageId: Uuid) =
+        chatService.moveQueuedMessageToFront(_conversationId, messageId)
+
     fun stopVoiceMode() = voiceSession.stop()
 
     fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {

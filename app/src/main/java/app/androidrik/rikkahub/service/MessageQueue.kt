@@ -105,6 +105,34 @@ class MessageQueue {
         return removed
     }
 
+    /**
+     * 把某条挪到**队首**（面板上的「置顶」）——即「下一条就发它」。
+     *
+     * 与 [ChatService.sendInterrupting] 的区别：那是**打断当前轮次**；这个只改队列顺序，
+     * 当前轮次照常跑完。两者正交互补：不想等就打断，只想插到下一条就置顶。
+     *
+     * 顺序取 [MessageQueueState.messages] 里**第一条匹配 id** 的项（id 由 `Uuid.random()` 生成，
+     * 同一队列内不会重复）。已在队首时为空操作、返回 `false`——UI 靠它把按钮显示成「取消置顶」。
+     *
+     * **不碰 `isEditing`**：置顶是改顺序，不是改内容。但要注意编辑队首会挡住整个队列
+     * （见 [takeNext]），所以把一条**正在编辑中**的项置顶会连带卡住队列——这与既有行为一致，
+     * 不是本次新引入的。
+     *
+     * @return 是否真的发生了移动（false = 未找到该项或已在队首）
+     */
+    @Synchronized
+    fun moveToFront(id: Uuid): Boolean {
+        val current = state.value.messages
+        val index = current.indexOfFirst { it.id == id }
+        if (index <= 0) return false
+        val reordered = buildList {
+            add(current[index])
+            current.forEachIndexed { i, message -> if (i != index) add(message) }
+        }
+        mutableState.value = state.value.copy(messages = reordered)
+        return true
+    }
+
     @Synchronized
     fun beginEdit(id: Uuid): QueuedMessage? {
         val message = state.value.messages.find { it.id == id && !it.isEditing } ?: return null

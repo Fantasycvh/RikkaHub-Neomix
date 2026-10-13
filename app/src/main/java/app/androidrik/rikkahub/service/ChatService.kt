@@ -695,6 +695,19 @@ class ChatService(
     fun beginEditQueuedMessage(conversationId: Uuid, messageId: Uuid): QueuedMessage? =
         sessions[conversationId]?.messageQueue?.beginEdit(messageId)
 
+    /**
+     * 把某条待发消息**置顶**（下一条就发它）。只改队列顺序，**不打断**当前轮次——
+     * 想立刻发走 [sendInterrupting]。
+     *
+     * 没派发失败也要调一次 `dispatchNextQueuedMessage`：置顶的常见场景正是「队列还没在跑」
+     * （比如上一轮刚结束、队列因某条卡住而停），这时得靠它把队列重新推起来。
+     * 与 [removeQueuedMessage] 不同，这里**不清理附件**——消息只是换了位置，仍被队列引用着。
+     */
+    fun moveQueuedMessageToFront(conversationId: Uuid, messageId: Uuid) {
+        sessions[conversationId]?.messageQueue?.moveToFront(messageId)
+        dispatchNextQueuedMessage(conversationId)
+    }
+
     fun finishEditQueuedMessage(
         conversationId: Uuid,
         messageId: Uuid,
