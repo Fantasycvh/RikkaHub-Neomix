@@ -2,7 +2,7 @@
 
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**尚未发版**（当前 `1.0.26 (293)`；本仓不发预编译包，CI 自动发版已禁用）。
 
-> **同步点（2026-10-13 更新）**：逐条评估已跟进到上游 **`05b655bb`（2026-10-13 的 master HEAD）**，上游版本仍是 **`2.5.6`**（那之后的 26 提交尚未发版）。最新一节见下方「2026-10-13 同步」。
+> **同步点（2026-10-14 更新）**：逐条评估已跟进到上游 **`b8d309e66`（2026-10-14 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-14 同步」；再前一节为「2026-10-13 同步」。
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
 > **本仓实际**：基线 = 上游 `2c980642`（RikkaHub `2.4.5`）；其后上游各版本（`2.4.6` → `2.5.x`）的修复/功能
@@ -159,6 +159,45 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 |---|---|---|
 | `a26d1d55` **videogen → mediagen 重构（图像+视频统一）** | 模块改名 + 统一 `MediaGeneration*` 请求/任务/供应商接口；setting 改**厂商级**（只存凭据+models，模型带 kind 图像/视频）；新增 OpenAI 图像生成/编辑、火山 Seedream、阿里万相/千问适配器（同步接口直返终态任务）；阿里换带业务空间 ID 的新域名（新增 workspaceId）；`MediaGenerationManager.generate` 统一同步/异步轮询两链路；按厂商分包 + ~900 行单测 | **暂不吸收（维持 `96fbe7e3` 判定，且上游仍未接线）**。fork 无 videogen 无存量冲突，但**上游 app 至今零消费点**（`git grep mediagen 2267943a -- app/src` 只有 build.gradle 模块引用；4e4bfa62 同样无 videogen 消费）⇒ 现阶段吸收=死代码。fork 图像生成走 `OpenAIProvider.generateImages`（imggen 页），视频生成无功能。**前提已失效（2026-10-07 注）**：上游已由 `0450c4c1` 正式接线进 app，本条「零消费点=死代码」论据作废——专项迁移评估见 10-06 二次同步节末尾的 2026-10-07 块。原「重新立项的条件」：想要「厂商级媒体生成」（火山 Seedream/阿里万相这类 chat provider 之外的渠道）或上游把 mediagen 接进 UI 时再评估；届时注意 fork 的 per-provider 代理/key 轮换体系与其厂商级 setting 的关系。阿里的新域名/workspaceId 变更随模块走，fork 无直连阿里媒体生成，单独不适用 |
 | `2267943a` 的 S3 部分：**presignGetUrl 带签名临时下载地址** | `AwsSignatureV4.presignGetUrl`（查询参数签名、只签 host、1s–7 天）+ `S3Client.presignGetUrl(key, expires)` + 顺手把主机/路径计算抽成 `requestHost`/`canonicalUri` 公用函数 + 106 行测试（AWS 文档示例值校验签名） | **可吸收（小，~80 行 + 测试），消费点暂缺**。fork 的 `data/sync/s3/` 三文件与上游同源；逐行 diff 核实：fork 内联的 host/canonicalUri 计算（含 pathStyle 与 host 已含 bucket 两分支）与上游新抽的 helper **功能等价**，fork 的 `S3Client` 另有分片上传/进度回调等扩展（上游无）⇒ 吸收 = ①先做无行为变化的 host/路径提取重构 ②加 presignGetUrl（fork 签名实现支持 queryParams，改造小）③测试直套。**现实用途**：备份文件生成临时分享链接（桶保持私有）；mediagen 的产物分享场景 fork 不存在。可选吸收，等有 UI 入口再做也行 |
+
+### 2026-10-14 同步：`05b655bb` → `b8d309e66`（15 提交，上游版本仍未发版）
+
+> 上游 10-13 23:26 至 10-14 18:48 的 15 个提交，以**功能与 MD3 Expressive 改造**为主，bug 类仅 3 个。
+> 与本批直接相关的新 issue 只有 **#2151**（消息节点加载吞协程取消 ⇒ 事务内无限循环）与 **#2128**（复制 RootFS 路径）。
+
+**一句话结论**：本批**有一个「上游自修的 fork 同款 bug」可以零成本收紧**（`923ad3d91` 的 #2151，fork 逐字同款缺陷），
+外加两个小项（复制路径、toast 阻断输入）；其余是 **MD3 Expressive 大改**（各页 200–900 行重写）与
+**架构级改动**（MCP 配置改独立详情页并引入 `PagerTabs`），按本仓「保持自有实现」的一贯取舍**不跟**。
+
+#### A. 建议吸收（小，立即可做）
+
+| 提交 | 内容 | fork 核实 | 结论 |
+|---|---|---|---|
+| ✅ **`923ad3d91` 加载消息节点不再吞协程取消**（#2151） | `loadMessageNodes` 的分页循环里，`CancellationException` 是 `IllegalStateException` 的**子类**，而 catch 顺序把 `IllegalStateException` 写在前面 ⇒ 协程被取消时落到 `offset += pageSize; continue` ⇒ **在 `withTransaction` 里无限循环**（事务不释放）。修法=在 `IllegalStateException` **之前**补 `catch (e: CancellationException) { throw e }`（仅 4 行） | **fork 逐字同款缺陷**：`ConversationRepository.kt` 的 `loadMessageNodes` 同样是 `while (true)` + `catch (SQLiteBlobTooBigException)` + `catch (IllegalStateException)`，**没有** `CancellationException` 分支（该函数内零命中）。触发面=节点分页读取期间被取消（切会话/退出/超时） | **建议吸收**：补 catch + 注释说明「子类顺序」这个坑。4 行、零接口变动 |
+| ✅ **`927fdd51f` 工作区文件菜单「复制路径」**（#2128） | 菜单新增一项，复制 **RootFS 内的绝对路径**（`FILES` → `WorkspaceManager.ROOTFS_WORKSPACE_DIR + "/" + path`；`LINUX` → `"/" + path`），Android 13+ 由系统弹复制提示 | **fork 适用且很便宜**：fork 有同一页 `WorkspaceDetailPage.kt`（用 `DropdownMenu`/`DropdownMenuItem`，而非上游新抽的 `ItemActionMenu`）与现成工具 `utils.writeClipboardText`（`ClipboardTool.kt:59` 已在用）；`rootfsPath` 需要的 `WorkspaceManager.ROOTFS_WORKSPACE_DIR` fork 也有。**零命中=确实没做** | **建议吸收**：按 fork 的 `DropdownMenuItem` 形态加一项 + 1 个新字符串（6 语言）。价值=让用户把路径直接喂给 AI 工具/终端 |
+
+#### B. 核实后「不跟」或「按需触发」
+
+| 提交 | 内容 | fork 核实 | 结论 |
+|---|---|---|---|
+| ⚠️ `2e572c204` **聊天页标题栏遮罩不再盖住背景图/动态渐变** | 原来顶栏盖一层 `MaterialTheme.colorScheme.background` 的渐变 scrim，助手开了背景图时顶部成一条色带；改为**消息列表自己在顶部渐隐**（`Modifier.topFadingEdge`：`CompositingStrategy.Offscreen` + `drawRect(brush, blendMode = DstIn)`），露出真实背景 | **fork 适用（确实支持背景图）**：`Assistant.background`/`backgroundOpacity` 存在，`ChatPage.kt:425` 用 `AssistantBackground`。但 fork 顶栏是**自己的形态**：`enableTopBarBlur` 开关 + Haze 模糊（`ChatPage.kt:1090`），**不是**上游那种纯色渐变 scrim ⇒ **不构成「上游修的 bug fork 也有」** | **待视觉确认**：开背景图 + 开/关顶栏模糊，看顶部是否出现色带。若观感确实裂，再按 fork 的 Haze 形态单独修（**不照搬** `topFadingEdge`，fork 这条路径是模糊不是 scrim） |
+| ⚠️ `4061537da` **用自实现 Toaster 替换 sonner**（修「toast 显示期间阻断输入」） | sonner 在 Android 上用**全屏 Popup 盖住页面再手动转发触摸** ⇒ toast 显示时输入框、手势、弹窗内点击都异常。新 Toaster 直接画在根布局最上层、不拦截 toast 以外的触摸 | **fork 仍是 sonner 0.4.0**（`libs.versions.toml:49`、`app/build.gradle.kts:266`），但**坐标不同**：fork 用 `io.github.dokar3:sonner`。是否与上游 `com.dokar.sonner` 同源同 bug **未核实** | **按需触发（先核实再定）**：若本机能体验「toast 在时点不动输入框」，才值得做；否则**不动**（上游那版是 ~10 文件替换 + 删依赖 + 新组件，中改动） |
+| `7e2ec76c2` **`PagerTab` label 改 Composable getter + 调试页改用 `PagerTabs`** | 为 `b8d309e66` 的 MCP 独立详情页铺路 | fork `PagerTab` **零命中** ⇒ 该抽象在 fork 不存在 | **不跟**（无消费者） |
+| `b8d309e66` **MCP 服务器配置改独立详情页 + `PagerTabs`** | 底部弹窗 → 独立页（基础设置 / 工具两 tab），`SettingMcpDetailPage.kt` 782 行新增 | fork 的 MCP 配置仍是**自有形态**（已有独立 `SettingMcpPage` 体系与 MCP 工具分层加载） | **不跟**：属「换配置页形态」的 UX 取舍、不是修复；要做应按 fork 现形态设计，不照搬 782 行 |
+| `660571449` **侧边栏搜索入口并入「聊天历史」一行（行尾）** | `ChatDrawer.kt`，+45/-26 | fork 抽屉是**自有布局**（含 fork 特有入口） | **不跟**：纯 UX 取舍 |
+| `93f231149` **翻译页 MD3 Expressive + 新增翻译历史** | 新增 `TranslationHistoryDAO` + Room **迁移 30** + 设置项 | fork 有**翻译能力**但不是上游那个翻译页；且 fork 的 DB 版本线**已与上游分叉**（fork 到 35+），**上游的 30.json 不能照搬** | **不跟**（会与 fork 的迁移线冲突；翻译历史若要，须按 fork 自己的版本号新写迁移） |
+| `06d59cc8c` / `c72fa6853` / `68826514d` **工作区/技能/快捷消息页、备份页/文件管理页、媒体/语音设置页改 MD3 Expressive** | 五批页面**大重写**（`WorkspaceDetailPage` 898 行、`SettingSpeechPage` 813 行、`S3Tab` 489 行…） | fork 这些页面是**自有实现且已有定制**（工作区多选导出、备份留存区、S3 分片等）。照搬=把 fork 定制全部推平 | **不跟**：这是**全仓 UX 改版工程**、不是修复；若要跟进须作为**独立设计任务**按 fork 页面逐个重建，逐条 cherry-pick 不可行 |
+| `f6e3e49a4` **新增「自动生成对话标题」开关** | 关闭后对话结束不再自动生成标题 | **fork 早已具备**：`Settings.enableAutoTitle`（`PreferencesStore.kt:875`，默认 true）+ UI 开关（`SettingModelPage.kt:173`）+ 消费点（`ChatService.kt:1684`） | **不跟（已具备）** |
+| `b69331473` **Markdown 引号内文字高亮开关** / `a6abed3be` **搜索引用角标暗色可读性** | 新增 `quoteHighlight` 开关；角标改实色背景 + 中等字重 | fork **零命中** `quoteHighlight`（含字符串），且 fork 的 Markdown/高亮链是**自有流式/公式定制**（`HighlightCodeBlock` 等） | **不跟**：属功能偏好项、非缺陷；fork 渲染链不宜为它改结构 |
+| `c94237eaa` **移除 Lucide 图标依赖** | 全仓改用别的图标源 | fork **仍在用 Lucide**（`ExtensionContent.kt:33-35`，`libs.versions.toml:144`） | **不跟**（前提不成立：换图标源是独立工程） |
+
+#### C. 分诊小结
+
+- **本批可立即做**：`923ad3d91`（#2151，4 行，**真 bug**）+ `927fdd51f`（复制路径，小功能）。
+- **待用户决策**：`4061537da`（sonner 阻断输入——需先确认坐标差异下是否同源同 bug）。
+- **待真机视觉确认**：`2e572c204`（标题栏与背景图/顶栏模糊的关系，fork 形态不同）。
+- **明确不跟**：MD3 Expressive 五批大改（独立设计任务）、翻译历史（迁移线冲突）、MCP 配置页改版（自有形态）、
+  PagerTabs/Lucide/引号高亮/抽屉布局（前提不成立或无消费者）。**已具备**：自动标题开关。
 
 ### 2026-10-13 同步：`b64beeef6` → `05b655bb`（26 提交）+ 新 issue #2126–#2150（22 条）
 

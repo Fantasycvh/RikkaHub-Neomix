@@ -2285,3 +2285,35 @@ Page 2:","firstUnit":1,"lastUnit":2,
     本仓目前安全只是因为 `LocalToolOption` 等子类恰好都有直接引用。
   - **待办**：补 keep 规则（`@Serializable` 类 + `$$serializer` + 多态子类）+ 若干防回归断言，然后真机复验。
 
+
+- 2026-10-14：**上游增量评估（15 提交 + 新 issue #2151/#2128）——「同步并评估」**。用户「同步并评估一下上游的新提交」。
+  同步点 `05b655bb`（10-13）→ **`b8d309e66`（10-14 18:48）**，上游版本仍是 **`2.5.6`**（本批未发版）。
+  15 个提交**以功能与 MD3 Expressive 改造为主，bug 类仅 3 个**。逐条明细见 `docs/upstream-analysis.md`「2026-10-14 同步」节。
+  - **一句话结论**：**有一个「上游自修的 fork 同款 bug」可零成本收紧**（这是本批最大价值），外加一个小功能；
+    其余是**全仓 UX 改版工程**与**架构级改动**，按本仓「保持自有实现」的取舍不跟。
+  - **建议吸收（未做，待用户定）**：
+    ①**`923ad3d91` 加载消息节点不再吞协程取消（#2151）**——`CancellationException` 是 `IllegalStateException`
+    的**子类**，而 catch 顺序把后者写在前 ⇒ 协程被取消时落到 `offset += pageSize; continue` ⇒
+    **在 `withTransaction` 里无限循环、事务不释放**。**fork 逐字同款**：`ConversationRepository.loadMessageNodes`
+    的 `while (true)` 同样只有 `SQLiteBlobTooBigException` / `IllegalStateException` 两个 catch，
+    该函数内 `CancellationException` 零命中。修法 4 行（在子类之前补 `catch + throw`）。
+    ②**`927fdd51f` 工作区文件菜单「复制路径」（#2128）**——复制 **RootFS 内绝对路径**（`FILES` 前缀
+    `WorkspaceManager.ROOTFS_WORKSPACE_DIR`、`LINUX` 用 `/path`），方便直接喂给 AI 工具/终端。
+    fork 适用且便宜：同页存在（用的是 `DropdownMenu` 而非上游新抽的 `ItemActionMenu`）、
+    `utils.writeClipboardText` 已在用、`ROOTFS_WORKSPACE_DIR` 已有 ⇒ 加一个菜单项 + 1 个字符串（6 语言）。
+  - **待决/待验**：①`4061537da` **sonner 阻断输入**——toast 显示期间输入框/手势/弹窗点击异常
+    （sonner 用全屏 Popup 盖页面再转发触摸）；fork 仍是 sonner 0.4.0，但**坐标不同**
+    （fork 是 `io.github.dokar3:sonner`）⇒ **同源同 bug 未核实**，先确认能否复现再定（上游那版是中改动）。
+    ②`2e572c204` 标题栏遮罩盖住背景图——**fork 确实支持背景图**（`Assistant.background` +
+    `ChatPage.kt:425` `AssistantBackground`），但 fork 顶栏是自己的 `enableTopBarBlur` + Haze 形态、
+    **不是**上游那种纯色渐变 scrim ⇒ 不属于「上游修了 fork 也有」，**待真机视觉确认**后再按 fork 形态处理。
+  - **明确不跟（附核实依据）**：`06d59cc8c`/`c72fa6853`/`68826514d` 五批 **MD3 Expressive 大改**
+    （`WorkspaceDetailPage` 898 行、`SettingSpeechPage` 813 行、`S3Tab` 489 行；fork 这些页面是自有实现
+    且带定制，照搬=推平，属**独立设计任务**）；`b8d309e66`+`7e2ec76c2` MCP 配置改独立详情页 + `PagerTabs`
+    （fork 无 `PagerTab` 抽象、MCP 配置是自有形态）；`93f231149` 翻译页改版 + 翻译历史（新增 Room **迁移 30**，
+    而 fork 迁移线**已与上游分叉**到 35+，不能照搬）；`660571449` 侧边栏搜索并入历史行（纯 UX 取舍）；
+    `b69331473`/`a6abed3be` 引号高亮与角标（fork 零命中，渲染链是自有定制）；`c94237eaa` 移除 Lucide
+    （fork **仍在用** Lucide）。
+  - **已具备**：`f6e3e49a4`「自动生成对话标题」开关——fork 早有 `Settings.enableAutoTitle`（默认 true）
+    + 设置页开关 + 消费点。
+  - **issue 覆盖**：上一节已评估到 #2150；本批新增里与本批相关的只有 **#2151**（见 ①）与 **#2128**（见 ②），**无遗漏**。
