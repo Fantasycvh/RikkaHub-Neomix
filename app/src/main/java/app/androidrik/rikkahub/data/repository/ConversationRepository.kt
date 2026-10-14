@@ -9,6 +9,7 @@ import androidx.paging.map
 import androidx.room.withTransaction
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.TimeZone
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -791,6 +792,12 @@ class ConversationRepository(
                     e.printStackTrace()
                     offset += pageSize
                     continue
+                } catch (e: CancellationException) {
+                    // ⚠️ 必须排在 IllegalStateException **之前**：CancellationException 是它的子类，
+                    // 顺序反了就会被下面那个 catch 吞掉，于是协程取消后继续往下读，
+                    // **在本事务里无限循环**（事务永不释放、消息加载永不返回）。
+                    // 吸收上游 923ad3d91（Fixes #2151），此处保持同样语义。
+                    throw e
                 } catch (e: IllegalStateException) {
                     e.printStackTrace()
                     offset += pageSize
