@@ -2333,7 +2333,11 @@ Page 2:","firstUnit":1,"lastUnit":2,
     （FILES → `/workspace/<相对>`、LINUX → `/<相对>`），**目录也给**；Android 13+ 由系统提示、低版本自弹 Toast。
     **未照搬上游形态**：上游把菜单抽成 `ItemActionMenu`，fork 用原生 `DropdownMenu`，故按 fork 现形态加一个
     可选 `onCopyPath` 参数（`null` 则该宿主不显示），`area` 随之穿过 `WorkspaceFileBrowser` →
-    `WorkspaceFileCard`。新增 2 个字符串 × 6 语言。**真机待验**：文件与目录菜单都应有该项，且复制结果与终端一致。
+    `WorkspaceFileCard`。新增 2 个字符串 × 6 语言。
+    ✅ **真机验证通过（2026-10-14）**：目录行菜单里出现「复制路径」（目录只有「复制路径 / 删除」，符合预期——
+    目录本来就不给导出/分享）；点击后在输入框内粘贴得到 `/workspace/bili-api-collect-recovered`，
+    与 FILES → `/workspace/<相对>` 的预期一致。**验证手法备注**：第三方应用读剪贴板在 Android 13+ 会被拦
+    （日志 `Denying clipboard access ... not in focus`），故改为「在应用内粘贴」取证。
   - 验证：`:ai` 259 / `:app` **1506** / `:search` 17，0 失败 0 跳过。
   - **本批仍未做（待定）**：`4061537da` sonner 阻断输入（fork 坐标不同、是否同源未核实）、
     `2e572c204` 标题栏遮罩（待真机视觉确认）。
