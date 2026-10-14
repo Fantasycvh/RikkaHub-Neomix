@@ -2088,8 +2088,10 @@ Page 2:","firstUnit":1,"lastUnit":2,
   - **验证**：`AvatarMigrationPlanTest` **6 项**（助手头像/用户头像各一、幂等、**判据窄化**「images/ 与
     tool_outputs/ 不许被搬」、外链与 Emoji/Dummy 不动、同一文件被多处引用只产一条映射）真跑非跳过；
     `BackupCoverageTest` 7 项通过；`:app` 全量 **1485 项 0 失败 0 跳过**。
-  - **真机待验**：①`upload/` 下有老头像时，启动后应出现在 `avatars/`、助手头像正常显示、`upload/` 里那份消失；
-    ②再点「存储管理 → 清理聊天文件」，助手头像**不被删**。
+  - **真机验证通过（2026-10-13，用户确认）**：①`upload/` 下的老头像启动后出现在 `avatars/`、
+    助手头像正常显示、`upload/` 里那份消失；②点「存储管理 → 清理聊天文件」后头像**未被删**。
+    ⚠️ **注意首次装机时踩的坑已由同日第十一刀修掉**：这次迁移最初**只搬文件、不改引用**
+    （`update { }` 被 `init` 守卫静默丢弃），表现为「头像突然显示不出来」——详见第十一刀。
 - 2026-10-13（同日第四刀）：**设置层两小件落地；构建层 daemon JVM / foojay 核实成立但暂不动手（附实测证据）**。用户「继续这两件」。
   - **①设置解码链移出主线程（`640496127` 的 (a)）**：`SettingsStore` 的 scope 是 `AppScope` = **`Dispatchers.Main`**，
     而 `settingsFlow` 用 `toMutableStateFlow(scope, …)` 在该 scope 里 `collect` ⇒ 不指定 dispatcher 时
@@ -2215,4 +2217,71 @@ Page 2:","firstUnit":1,"lastUnit":2,
     同类项。属既有缺口、本次未扩大范围。
   - 验证：`MessageQueueTest` **17 项**（+4：置顶后成为下一条且其余保持相对顺序、队首是空操作可置灰、
     未知 id 空操作、暂停态不被静默解除）；`:app` 全量 **1499 项 0 失败 0 跳过**。
+- 2026-10-13（同日第九刀）：**修记忆整理整轮 400——思考模式下「每条 assistant」都要有 `reasoning_content`（`c7ff737e4`）**。
+  用户报「记忆页显示应用 0 条 / 建议 0 条 + 400 `The reasoning_content in the thinking mode must be passed back`」。
+  - **「0 条」不是空跑而是整轮被拒**（那条建议是更早一次成功运行留下的，正是「建议比 lastRun 更黏」的设计在起作用）。
+  - **定位方式值得记**：应用自己把完整报文写在 `files/logs/rikkahub-logs.txt`（「请求日志 + 落盘日志」两开关，
+    代码注释写明就是为了绕开 logcat 的 ~4KB 截断）；从那里取出那次 17KB 的做梦请求，**在设备上用同一把 key
+    `curl` 原样重放**，得到实测矩阵（同一命令只换报文）：
+    | 变体 | thinking | 结果 |
+    |---|---|---|
+    | 原报文：带 tool_calls 那条**已有** `reasoning_content`，末条**普通** assistant 缺字段 | enabled | **400** |
+    | 给末条补上（**空串即可**、占位也行） | enabled | **200** |
+    | 删掉带 tool_calls 那条的字段 | enabled | **400** |
+    | 删掉末条普通 assistant | enabled | **200** |
+    | `thinking:{"type":"disabled"}` | enabled | **200** |
+  - **结论**：DeepSeek 思考模式要求**每条 assistant 消息**都有该字段（不只带工具调用的）；本仓回填判据
+    `tools.isNotEmpty() && backfill` 漏掉了最后那条普通的总结性 assistant —— 而做梦是多步工具调用、最后必然
+    带一条普通总结 ⇒ **必现**。修法=判据去掉 `tools.isNotEmpty()`（整体是否回填仍由 host/模型门槛决定）；
+    参数 `backfillToolReasoning` 改名 `backfillReasoning`（前缀已不准确）。
+  - **这条同时更正了当时的一个错误归因**：先前以为「host 不在白名单」，实际 `api.deepseek.com` **本来就在**
+    `isKnownReasoningTextValidator` 里、回填一直在生效 —— 所以「从错误自学习」对它不会生效。该机制仍保留，
+    服务白名单外、也会校验的第三方中转网关；判据用 `reasoning_content` + `passed back` 两个特征串（不单看 400），
+    且重发失败不许把异常抛进 OkHttp 回调线程（否则这次生成悬着不结束）。
+  - 测试：`ChatCompletionsAPIMessageTest` +1（无 tool_calls 的普通 assistant 也要回填；**做了反证**：把判据改回
+    `tools.isNotEmpty()` 后该用例红）；`ToolReasoningBackfillTest` +4（真机报文原文、以及「上下文超限 /
+    Unsupported parameter / `reasoning_text`」都不能误判）。`:ai` 257 / `:app` 1502，0 失败 0 跳过。
+  - **真机验证通过（2026-10-13，用户确认）**：记忆页「整理一下」不再报 400，能正常产出「应用 N 条」。
+- 2026-10-13（同日第十刀）：**修「每次流式生成都当场失败」——请求体日志把 `RequestBody` 交给了 kotlinx（`383080ad6`）**。
+  现象：`ChatService: handleMessageComplete` 报 `Serializer for class 'RequestBody' is not found`
+  （混淆包里是 `bga`/`aga`，mapping 还原 = `okhttp3.RequestBody`），**每次生成都失败**而非偶发。
+  - **根因是排查用的日志本身**：`streamText` 里 `json.encodeToString(request.body)` —— `request.body` 的类型
+    **就是** `okhttp3.RequestBody`，且这行在**成功路径**上。同类第二形态=把 `buildChatCompletionRequest(...)`
+    **内联**进 `.post(...)`：`.post()` 有接受 `RequestBody` 的重载 ⇒ Kotlin 把 `encodeToString` 的**期望类型**
+    推断成 `RequestBody`（`ai` 模块覆盖本仓绝大多数 OpenAI 兼容网关，故影响全部对话）。
+  - **一段值得记住的弯路**：最初把它当成 **R8 keep 规则**问题（上游 `de3399ba3` 确实删光了混淆规则、见下条），
+    加过 keep 又开过 `-dontobfuscate`，还提交了两次 —— **均是误诊，已回退**（`62d62e253`/`4a6e1637f`）。
+    `-dontobfuscate` 唯一的实际价值是让类名显示成 `RequestBody` 而不是 `aga`，真凶才因此暴露。教训：
+    「找不到序列化器」要先问**谁在序列化这个东西**，而不是先调混淆配置。
+  - 修法：请求体 JSON 字符串在 `buildRequest()` 里带出来（`lastRequestBodyJson`），日志用它、不再从
+    `request.body` 反序列化。测试 `ChatCompletionsRequestBodySerializationTest` 2 项（禁 `encodeToString(*.body)`、
+    禁把 `build*` 内联进 `.post()`；**第一版判据过宽**、把原有安全的 `.post(json.encodeToString(requestBody))`
+    误判成红，已收窄）。`:ai` 259 / `:app` 1504，0 失败 0 跳过。
+  - **真机验证**：修复前报错停在 23:23:17；修复后三次请求全部 **200**（`open.bigmodel.cn` 2018ms、
+    `api.deepseek.com` ×2），此后无该报错。
+- 2026-10-13（同日第十一刀）：**头像迁移改写引用被 `init` 守卫静默丢弃（`383080ad6` 内）——修「助手头像显示不出来」**。
+  用户报「新的报错 + 助手头像不能正常显示」。**文件搬了、引用没改**：`avatars/` 有 5 个文件、`upload/` 里那份
+  已不在，但设置里的引用**仍全部指向 `upload/`** ⇒ 引用悬空。
+  - **根因（诊断日志 `init=true` 才定位到）**：`SettingsStore.update(Settings)` 开头有
+    `if (settings.init) { Log.w("Cannot update dummy settings"); return }`，而迁移在**启动极早期**运行、
+    `settingsFlow.value` 当时仍是 `Settings.dummy()`（`init = true`）⇒ 走 `update { }` 的改写被**静默丢弃**
+    （迁移照旧打出 `moved 5`，所以只从日志看是「成功」的）。
+  - 修法：新增 `SettingsStore.rewriteAvatarReferences(urlMap)`，用 **`dataStore.edit` 定点原子改写**
+    （只碰 `assistants` / `display_setting` 两键、以盘上当前值为基准），不依赖 `settingsFlow` 是否就绪。
+  - 同时修**顺序**：原先「先 rename 掉源文件、之后再改引用」，一旦引用那步失败，源文件已不在而引用还指着它
+    ⇒ 当场悬空（正是本次事故形态）。现改为**先确保目标文件在位 → 改引用 → 最后才清旧副本**；并且
+    「源已不在但目标已在」也要进入改写列表（否则用户设备上这种已悬空的状态**永远修不回来**）。
+  - 测试 `AvatarReferenceRewriteWiringTest` 2 项（源码守卫：必须走 `dataStore.edit`、迁移里禁出现
+    `settingsStore.update {`）。**真机验证通过（2026-10-13，用户确认）**：引用已指向 `files/avatars/…`、助手头像正常显示。
+- 2026-10-13（同日盘点）：**R8 keep 规则整族缺失——已核实、未修，登记为待办**。
+  上游 `de3399ba3`「简化 keep rules」删掉了**所有**模块的 proguard 规则文件（`ai/proguard-rules.pro` 与
+  `app/proguard-rules.pro` 删除、`ai/consumer-rules.pro` 清成 0 字节），**且各模块 build.gradle.kts 均不再引用
+  规则文件**——实测 `grep -n "proguardFiles" app/build.gradle.kts` 零命中，全仓只剩 `document/consumer-rules.pro`。
+  被删的规则里包含 `-keep @kotlinx.serialization.Serializable class * {*;}`、`-keepattributes SourceFile,LineNumberTable`
+  与 `-dontobfuscate`。
+  - **本次未修，且与第十刀的报错无关**（那条已证实是 `RequestBody` 误用；加 keep / 开 `-dontobfuscate` 都没解决它，
+    是误诊）。但**风险是真实的、只是尚未暴露**：这正是「华灯剩余候选 ①：R8 sealed 序列化 keep 家族 +
+    `SerializationKeepTest`」——华灯 release 实测过「子类只被解码路径引用 ⇒ R8 判不可达删除 ⇒ 打开设置页闪退」。
+    本仓目前安全只是因为 `LocalToolOption` 等子类恰好都有直接引用。
+  - **待办**：补 keep 规则（`@Serializable` 类 + `$$serializer` + 多态子类）+ 若干防回归断言，然后真机复验。
 
