@@ -139,9 +139,9 @@
 | **Yuihub** | [xiaoyuili/Yuihub](https://github.com/xiaoyuili/Yuihub) | 借鉴最多的一家：记忆打分校准 + 字符预算、被动提取管道的组织方式、整理器（先落库再删源 / 幂等）、工具结果投影无损回环校验。**其「记忆语义检索上线一天即整套删除」也被本仓引为「不做语义检索」的独立佐证** |
 | **SillyTavern** | [SillyTavern/SillyTavern](https://github.com/SillyTavern/SillyTavern) | 世界书/提示词注入与预设体系（Tier A/B 系列落地）、ST 宏运行时移植；其余按需 |
 | **华灯**（rikkahub-sillytavern-android） | [MiaoWuNYA/rikkahub-sillytavern-android](https://github.com/MiaoWuNYA/rikkahub-sillytavern-android) | 工具输出「投影无损回环校验」原则、R8 序列化 keep 纪律等（另有一项 Jev 契约仍待评估） |
-| **SoLab** | 见下方备注（基于 Kelivo 二次开发，MT 论坛分发） | 世界书 seed 三重迁移、工具调用失控护栏（LoopGuard + forget）的理念 |
+| **SoLab** | [MT 论坛开源帖](https://bbs.binmt.cc/forum.php?mod=viewthread&tid=171659)（基于 Kelivo 二次开发；仓库地址见该帖） | 世界书 seed 三重迁移、工具调用失控护栏（LoopGuard + forget）的理念 |
 | **senera** | [yuanplussfive/senera](https://github.com/yuanplussfive/senera) | MCP 工具 schema 动态分层加载（元工具桥、内容寻址缓存）的成熟参考实现 |
-| **MineChat** | 见下方备注 | RAG-as-tool 知识库检索移植、输入侧正则与动态宏（st 宏运行时） |
+| **MineChat** | [Mr060805/MineChat](https://github.com/Mr060805/MineChat) | RAG-as-tool 知识库检索移植、输入侧正则与动态宏（st 宏运行时） |
 | **agentd** | [hue913/agentd](https://github.com/hue913/agentd) | 经验记忆 + 信用记账（已接进记忆打分） |
 | **rikkahub-pro**（Turbo） | [dcs666/rikkahub-pro](https://github.com/dcs666/rikkahub-pro) | R3.2 块级流式渲染、`setJob` 修复；其 80+ bug 清单被本仓用作 bug 审计对照表 |
 | **RikkaHub Math+** | [test27818/rikkahub-math-plus](https://github.com/test27818/rikkahub-math-plus) | TikZ 渲染管线架构（检测 → preamble 生成 → 编译 → 三层缓存）与 `standalone[border]` 裁剪留白的作法 |
@@ -151,8 +151,8 @@
 **仅作设计参考、未采用其实现细节的**：`opencode` / `codex` / `Cherry Studio` —— 子代理与独立上下文设计稿只借其**思路**，
 其实现细节本仓**未核实、也未抄**（见 [`docs/design/design-subagent-context.md`](docs/design/design-subagent-context.md)）。
 
-> **备注（两个无法直接给链接的）**：`SoLab` 与 `MineChat` 的来源是本地拿到的源码包 / 论坛分发版本，**本仓没有可靠公开仓库地址**，
-> 故只按项目名致谢、不伪造链接。若作者愿意提供正式链接，欢迎提 issue 或 PR 补上。
+> **备注**：`SoLab` 的源码在 **MT 论坛**开源（上表已给帖链接），**没有 GitHub 仓库**，故不伪造 GitHub 链接。
+> 若作者愿意提供正式仓库地址，欢迎提 issue 或 PR 补上。
 >
 > 以上项目各有其许可与版权；本仓仅在**思路与实现参考**层面借鉴并自行重写，未直接复制其代码；对上游 RikkaHub 则保留原
 > `LICENSE` 与出处（见下方 License）。
