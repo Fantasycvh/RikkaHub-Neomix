@@ -9,17 +9,21 @@
 
 > ⚠️ **非官方 fork**：与上游 [rikkahub/rikkahub](https://github.com/rikkahub/rikkahub) **无从属关系**，上游不处理本项目的问题；
 > 本项目由个人维护，代理、S3、MLTS等部分功能未经测试，**不承诺及时响应**。AGPL-3.0 许可，保留上游 `LICENSE` 与出处。
+> **本仓有意不接 issue**，反馈请走 [💬 Discussions](https://github.com/Fantasycvh/RikkaHub-Neomix/discussions)（详见下方「与上游的关系 → 反馈渠道」）。
 > 应用显示名 **Neomix**（仓库名 `RikkaHub-Neomix`），包名 `app.androidrik.rikkahub`。
 
 ## 📌 与上游的关系
 
 - **基线**：上游 `2c980642`（`2.4.5` 一线）。本仓历史 = **上游真实提交（哈希未变）** + 本项目的定制提交。
 - **跟进方式**：不整体合并上游；按需人工评估后**选择性吸收**（关键修复 / 低成本高价值功能），提交信息中标注来源。
-  逐条评估记录见 [`docs/upstream-analysis.md`](docs/upstream-analysis.md)（**当前已跟进到上游 `05b655bb`，2026-10-13，无欠账**）。
+  逐条评估记录见 [`docs/upstream-analysis.md`](docs/upstream-analysis.md)（**当前已跟进到上游 `b8d309e66`，2026-10-14，无欠账**）。
 - **发布前重写**：本项目在私有仓迭代，公开前对**包名**与**提交身份**做了重写，因此历史短哈希与私有仓不同——
   文档中出现的旧短哈希无法在本仓定位，请用提交信息关键词检索（见 [`docs/README.md`](docs/README.md)）。
 - **不回推上游**：上游明确不接受 PR，故本项目改动不回推。
 - **本仓不提供预编译包**：请自行构建（见下）；CI 自动发版已禁用。
+- **反馈渠道**：本仓**有意不接 issue**（GitHub 里 issue 功能是关的）。使用问题、功能想法、以及「上游是否也有该问题」的确认，请到
+  [💬 Discussions](https://github.com/Fantasycvh/RikkaHub-Neomix/discussions) 讨论。
+  **属于上游 RikkaHub 本身的 bug / 功能，请提到 [上游仓库](https://github.com/rikkahub/rikkahub/issues)**——本项目是非官方 fork，与上游无从属关系，上游也不处理本仓的问题。
 
 ## ✨ 本项目定制功能
 

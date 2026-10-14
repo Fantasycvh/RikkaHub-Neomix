@@ -1,1 +1,21 @@
+# Issue 模板配置。
+#
+# 本仓**有意不接 issue**（GitHub 仓库设置里 has_issues = false），反馈统一走 Discussions。
+# 保留本文件是为了两件事：
+#   1. 万一将来放开 issue，模板入口与「先去 Discussions」的引导已经就位，不用临时补；
+#   2. 明确关掉空白 issue（继承自上游，语义不变）。
+#
+# ⚠️ 改动前请先看 README「与上游的关系 → 反馈渠道」：本仓是**非官方 fork**，
+#    关于上游 RikkaHub 本身的 bug/功能，请去上游仓库提，不要提到这里。
 blank_issues_enabled: false
+
+contact_links:
+  - name: 💬 讨论 / 提问 / 想法（推荐）
+    url: https://github.com/Fantasycvh/RikkaHub-Neomix/discussions
+    about: 本仓不接 issue。使用问题、功能想法、以及「上游是否也有该问题」的确认，都在这里讨论。
+  - name: 🐛 上游 RikkaHub 的问题请提给上游
+    url: https://github.com/rikkahub/rikkahub/issues
+    about: 本项目是非官方 fork，与上游无从属关系。若问题在上游版本同样存在，请提到上游仓库。
+  - name: 📖 本仓文档（构建 / 设计 / 逐条评估记录）
+    url: https://github.com/Fantasycvh/RikkaHub-Neomix/tree/master/docs
+    about: 构建指南见 README；设计稿与上游逐条评估记录在 docs/ 下。
