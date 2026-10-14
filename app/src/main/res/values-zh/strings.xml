@@ -1522,6 +1522,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_will_delete">将删除 %s.</string>
   <string name="workspace_detail_installing">安装中</string>
   <string name="workspace_detail_reinstall_rootfs">重新安装 Rootfs</string>
+  <string name="workspace_detail_copy_path">复制路径</string>
+  <string name="workspace_detail_path_copied">路径已复制</string>
   <string name="workspace_detail_install_rootfs">安装 Rootfs</string>
   <string name="workspace_detail_workspace_info">工作区</string>
   <string name="workspace_detail_name">名称</string>

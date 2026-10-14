@@ -1,8 +1,10 @@
 package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
 import android.content.Intent
+import android.os.Build
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,7 +16,9 @@ import androidx.documentfile.provider.DocumentFile
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
 import app.androidrik.rikkahub.data.export.WorkspaceExportNames
 import app.androidrik.rikkahub.ui.components.workspace.WorkspaceSelectionToolbar
+import app.androidrik.rikkahub.ui.components.workspace.rootfsPath
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.utils.writeClipboardText
 import app.androidrik.rikkahub.utils.fileSizeToString
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -509,6 +513,17 @@ fun WorkspaceDetailPage(id: String) {
                     },
                     onExportToDir = { entry, dir, onReady ->
                         vm.exportToCacheDir(entry, dir, onReady)
+                    },
+                    onCopyPath = { absolutePath ->
+                        context.writeClipboardText(absolutePath)
+                        // Android 13 起系统自己会弹「已复制」提示，低版本才需要自己提示
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.workspace_detail_path_copied),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                     },
                 )
             }

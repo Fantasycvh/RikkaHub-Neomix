@@ -49,10 +49,12 @@ import app.androidrik.rikkahub.ui.components.ui.Tooltip
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.fileSizeToString
 import app.androidrik.workspace.WorkspaceFileEntry
+import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.WorkspaceStorageArea
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.CursorPointer01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.File02
@@ -100,6 +102,8 @@ fun WorkspaceFileBrowser(
     onSelectArea: (WorkspaceStorageArea) -> Unit = {},
     onShare: ((WorkspaceFileEntry) -> Unit)? = null,
     onExportToDir: ((WorkspaceFileEntry, File, (File) -> Unit) -> Unit)? = null,
+    // 复制「Rootfs 内绝对路径」；不给则菜单里不显示该项（吸收上游 927fdd51f / #2128）。
+    onCopyPath: ((String) -> Unit)? = null,
     selecting: Boolean = false,
     selectedPaths: Set<String> = emptySet(),
     onSelectToggle: (WorkspaceFileEntry) -> Unit = {},
@@ -149,6 +153,8 @@ fun WorkspaceFileBrowser(
                 onExport = { onExport(entry) },
                 onShare = onShare?.let { { it(entry) } },
                 onExportToDir = onExportToDir,
+                area = area,
+                onCopyPath = onCopyPath,
             )
         }
     }
@@ -274,6 +280,9 @@ fun WorkspaceFileCard(
     onLongPress: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onExportToDir: ((WorkspaceFileEntry, File, (File) -> Unit) -> Unit)? = null,
+    // 「复制 Rootfs 内绝对路径」需要知道当前区（FILES 挂 /workspace、LINUX 是根）
+    area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
+    onCopyPath: ((String) -> Unit)? = null,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -406,6 +415,23 @@ fun WorkspaceFileCard(
                                     )
                                 }
                             }
+                            // 复制 Rootfs 内的绝对路径（吸收上游 927fdd51f / #2128）。
+                            // 目录也给：路径正是喂给 AI 工具/终端时最常用的形态。
+                            onCopyPath?.let { copyPath ->
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.workspace_detail_copy_path)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = HugeIcons.Copy01,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        copyPath(entry.rootfsPath(area))
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = {
                                     Text(
@@ -454,6 +480,17 @@ fun EmptyDirectoryState(compact: Boolean = false) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/**
+ * 「Rootfs 内的绝对路径」——复制出去正好能直接喂给 AI 工具与终端（吸收上游 `927fdd51f` / #2128）。
+ *
+ * FILES 区在 Rootfs 里挂载于 [WorkspaceManager.ROOTFS_WORKSPACE_DIR]（`/workspace`）；
+ * LINUX 区本身就是 Rootfs 根，故直接用 `/` + 相对路径。
+ */
+internal fun WorkspaceFileEntry.rootfsPath(area: WorkspaceStorageArea): String = when (area) {
+    WorkspaceStorageArea.FILES -> "${WorkspaceManager.ROOTFS_WORKSPACE_DIR}/$path"
+    WorkspaceStorageArea.LINUX -> "/$path"
 }
 
 @Composable

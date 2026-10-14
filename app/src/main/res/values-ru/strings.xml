@@ -1436,6 +1436,8 @@
   <string name="workspace_detail_will_delete">Будет удалено %s.</string>
   <string name="workspace_detail_installing">Установка</string>
   <string name="workspace_detail_reinstall_rootfs">Переустановить Rootfs</string>
+  <string name="workspace_detail_copy_path">Копировать путь</string>
+  <string name="workspace_detail_path_copied">Путь скопирован</string>
   <string name="workspace_detail_install_rootfs">Установить Rootfs</string>
   <string name="workspace_detail_workspace_info">Рабочее пространство</string>
   <string name="workspace_detail_name">Имя</string>

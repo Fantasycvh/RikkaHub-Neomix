@@ -1436,6 +1436,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_detail_will_delete">%s を削除します。</string>
   <string name="workspace_detail_installing">インストール中</string>
   <string name="workspace_detail_reinstall_rootfs">Rootfs 再インストール</string>
+  <string name="workspace_detail_copy_path">パスをコピー</string>
+  <string name="workspace_detail_path_copied">パスをコピーしました</string>
   <string name="workspace_detail_install_rootfs">Rootfs をインストール</string>
   <string name="workspace_detail_workspace_info">ワークスペース</string>
   <string name="workspace_detail_name">名前</string>

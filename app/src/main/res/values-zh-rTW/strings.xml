@@ -1479,6 +1479,8 @@
   <string name="workspace_detail_will_delete">將刪除 %s。</string>
   <string name="workspace_detail_installing">安裝中</string>
   <string name="workspace_detail_reinstall_rootfs">重新安裝 Rootfs</string>
+  <string name="workspace_detail_copy_path">複製路徑</string>
+  <string name="workspace_detail_path_copied">路徑已複製</string>
   <string name="workspace_detail_install_rootfs">安裝 Rootfs</string>
   <string name="workspace_detail_workspace_info">工作區</string>
   <string name="workspace_detail_name">名稱</string>

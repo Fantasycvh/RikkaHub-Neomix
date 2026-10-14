@@ -1,0 +1,28 @@
+feat(workspace): 文件菜单新增「复制路径」——复制 Rootfs 内绝对路径（吸收上游 927fdd51f / #2128）
+
+用户常要把工作区文件的路径喂给 AI 工具（workspace_read_file 等）或终端，此前只能手抄。
+菜单新增一项，复制**Rootfs 内的绝对路径**：
+
+- FILES 区 → \`/workspace/<相对路径>\`（即 \`WorkspaceManager.ROOTFS_WORKSPACE_DIR\`）
+- LINUX 区 → \`/<相对路径>\`（该区本身就在 Rootfs 根）
+
+**目录也给**（路径对目录同样有意义，且 AI 工具/终端正是按路径工作）。
+Android 13 起系统自带「已复制」提示，故只在更低版本自己弹 Toast。
+
+## 实现取舍（未照搬上游形态）
+
+上游把菜单抽成了 \`ItemActionMenu\`/\`ItemAction\`，fork 这一页用的是原生
+\`DropdownMenu\`/\`DropdownMenuItem\` ⇒ **按 fork 现形态接线**，只加一个 \`onCopyPath\`
+可选参数（\`null\` 则该宿主不显示此项，例如侧边栏等不提供该能力的宿主）。
+
+参数需要穿过 \`WorkspaceFileBrowser\` → \`WorkspaceFileCard\` 两层，故 \`area\` 也随之传入
+\`WorkspaceFileCard\`（默认 FILES，保持既有调用方零改动）。
+
+## 其它
+
+- 新增 \`workspace_detail_copy_path\` / \`workspace_detail_path_copied\` **六语言**
+  （en/zh/zh-rTW/ja/ko/ru）。
+- 纯 UI 增项，无迁移、无设置项。
+
+\`:app\` 全量 1506 项 0 失败。**真机待验**：文件与目录的菜单里都应出现「复制路径」，
+复制结果应与终端里 \`pwd\` 得到的一致。

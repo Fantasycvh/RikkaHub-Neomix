@@ -1436,6 +1436,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_will_delete">%s을(를) 삭제합니다.</string>
   <string name="workspace_detail_installing">설치 중</string>
   <string name="workspace_detail_reinstall_rootfs">Rootfs 재설치</string>
+  <string name="workspace_detail_copy_path">경로 복사</string>
+  <string name="workspace_detail_path_copied">경로를 복사했습니다</string>
   <string name="workspace_detail_install_rootfs">Rootfs 설치</string>
   <string name="workspace_detail_workspace_info">작업 공간</string>
   <string name="workspace_detail_name">이름</string>

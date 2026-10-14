@@ -1528,6 +1528,8 @@
   <string name="workspace_detail_will_delete">Will delete %s.</string>
   <string name="workspace_detail_installing">Installing</string>
   <string name="workspace_detail_reinstall_rootfs">Reinstall Rootfs</string>
+  <string name="workspace_detail_copy_path">Copy Path</string>
+  <string name="workspace_detail_path_copied">Path copied</string>
   <string name="workspace_detail_install_rootfs">Install Rootfs</string>
   <string name="workspace_detail_workspace_info">Workspace</string>
   <string name="workspace_detail_name">Name</string>
