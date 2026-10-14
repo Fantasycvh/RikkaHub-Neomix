@@ -955,10 +955,25 @@ fork 现状对照：我们已有**文件版近似**（tool_outputs 落盘 + 32KB
 5. **宏引擎 2.0**（879 行，60+ 官方宏）+ **MVU 逐楼快照**（状态栏/世界书按楼显示）+ 斜杠命令——深酒馆兼容域。我们 09-17 吸收的是 ST 最小语义集（宏运行时/世界书/槽位）；60+ 官方宏与 MVU 变量系统是更深一层，受众=酒馆重度用户，按需。
 6. **三层记忆/滚动压缩**（CrossWindowMemory/FixedMemorySection/MemoryEmbeddingService/VectorStoreCache）——与语义检索三方差评（不做）结论对照：他们的 RAG 记忆加了**相关性下限**（`d31c52ed5`，防低相关注入）——这个阈值思想对我们记忆注入通用。
 7. **过程性小件**：工具描述去动态日期 + 按模式分叉（`b2748ade5`，与我们 cur_date 破缓存同源——已排查，fork 工具描述零动态日期 ✓）；memory_tool 描述瘦身 844 字符（`390eb225d`）；~~世界书预算不裁角色卡条目~~（`d31c52ed5`，**深评不吸收，2026-10-05**：fork 默认预算 0=不限制本就不裁，且卡内嵌世界书根本未导入（character_book 是 V2/V3 导入器的既有缺口）——它是「补 character_book 导入」立项时的**必带附属件**）；~~卡片正则三连锁修复~~（`5fdb74bc0`，**深评不吸收**：fork 不导入卡自带 `regex_scripts`，没有执行路径——但该提交是将来做卡正则时的**现成实现规格**：Kotlin vs JS 引擎三坑〔`${}` 当组引用抛异常 / `groups[name]` 对不存在组抛异常非 null / 反斜杠折叠毁正则字面量〕+ safeNamedGroup 降级 + StringBuilder 重载陷阱，全部有真实 157KB 卡测试背书）；Office 结构化读写（`342adadd9`，我们 document 模块只读）。
-
+8. **允许数据库降级重建**（2026-10-14 用户备忘，**候选未立项**）——目的是让「版本回退」不再把应用打死。
+   触发场景很现实：①同一台设备上 release 与 debug 交替安装；②**在本仓与华灯之间来回装**
+   （两者**同名库** `rikka_hub`，而**华灯 DB 版本 30 vs 本仓 36** ⇒ 从本仓装回华灯就是一次降级）。
+   **本仓现状**（`app/src/main/java/app/androidrik/rikkahub/di/DataSourceModule.kt:75` 的
+   `Room.databaseBuilder(context, AppDatabase::class.java, "rikka_hub")`）：**没有**任何
+   `fallbackToDestructiveMigration`（全仓 `grep` 零命中）⇒ 打开版本更高的库文件时 Room 抛
+   `IllegalStateException`（`Room cannot verify the data integrity` / 找不到 `迁移 新→旧`），
+   **应用起不来**。注意：**数据本身没坏**，只是打不开，所以这是「可用性」问题而非「数据丢失」问题。
+   标准做法二选一：`.fallbackToDestructiveMigration(dropAllTables = true)`，或注册 `Migration(新, 旧)`
+   显式 `DROP` 后重建。**代价必须写明：会清空数据库**（对话/记忆/助手配置全丢）⇒ 要么只在 debug 构建启用，
+   要么在有明确提示的前提下由用户确认；**不要在生产 release 上悄悄打开**。
+   > **⚠️ 未定位到华灯的实现（勿当作已核实）**：本机华灯克隆（`<work>/rikkahub-sillytavern-android`，
+   > `huadeng` 分支 `4dcd60603`）里，`data/db/AppDatabaseFactory.kt` 与 `di/DataSourceModule.kt` 的主库
+   > builder **与本仓逐字同源**、都不含 `fallbackToDestructiveMigration`，全仓 `grep` 亦零命中。
+   > 故**该机制在华灯里的确切位置未核实**（可能在其更新版本/其它分支，或指认本身有偏差）。
+   > 动手前请补齐出处；本仓若做，按上面的「代价」条款自行定范围即可，不必等它。
 **不适用**：逆向工具链（已移除，APK 109→100MB 的路线）；Chaquopy Python 桥（我们 eval_javascript/MCP/Workspace 已覆盖且不做 Python）；离线 OCR（我们评估过不做）。
 
-**建议优先级**：前缀分叉诊断（缓存线直接升级）> Jev 契约模式（架构级小改造）> R8 keep 家族（防回归测试形式）> 其余按需。前两项合计约 1 天。
+**建议优先级**：前缀分叉诊断（缓存线直接升级）> Jev 契约模式（架构级小改造）> R8 keep 家族（防回归测试形式）> 其余按需（含第 8 项「数据库降级重建」：实现很小，但**有清库代价**，须先定启用范围）。前两项合计约 1 天。
 
 ## 九、agentd（hue913/agentd）评估（2026-10-08，仅远端 README + 自带评测数字调研）
 
