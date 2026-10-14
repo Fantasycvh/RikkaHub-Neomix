@@ -127,6 +127,36 @@
 - ☁️ 备份与恢复（S3 / WebDAV / 本地）/ ⭐ 消息收藏 / 📤 分享 / 📊 统计
 - 💌 SillyTavern 角色卡导入
 
+## 🙏 借鉴与参考的应用 / 项目
+
+本仓的功能大量吸收了同类优秀项目的做法。**只在「核实过源码或文档、并确实据其改进自己实现」时才列在这里**；
+每条都注明「借鉴了什么」，评估过程与逐条结论见 [`docs/peer-apps-benchmark.md`](docs/peer-apps-benchmark.md)。
+致谢以下项目及其作者（排名大致按借鉴程度）。
+
+| 项目 | 来源 | 借鉴了什么 |
+|---|---|---|
+| **RikkaHub** | [rikkahub/rikkahub](https://github.com/rikkahub/rikkahub) | 本仓的上游基线；上游修复与功能按需**人工逐条评估后选择性吸收**（不做 ff-only 同步，改动不回推上游） |
+| **Yuihub** | [xiaoyuili/Yuihub](https://github.com/xiaoyuili/Yuihub) | 借鉴最多的一家：记忆打分校准 + 字符预算、被动提取管道的组织方式、整理器（先落库再删源 / 幂等）、工具结果投影无损回环校验。**其「记忆语义检索上线一天即整套删除」也被本仓引为「不做语义检索」的独立佐证** |
+| **SillyTavern** | [SillyTavern/SillyTavern](https://github.com/SillyTavern/SillyTavern) | 世界书/提示词注入与预设体系（Tier A/B 系列落地）、ST 宏运行时移植；其余按需 |
+| **华灯**（rikkahub-sillytavern-android） | [MiaoWuNYA/rikkahub-sillytavern-android](https://github.com/MiaoWuNYA/rikkahub-sillytavern-android) | 工具输出「投影无损回环校验」原则、R8 序列化 keep 纪律等（另有一项 Jev 契约仍待评估） |
+| **SoLab** | 见下方备注（基于 Kelivo 二次开发，MT 论坛分发） | 世界书 seed 三重迁移、工具调用失控护栏（LoopGuard + forget）的理念 |
+| **senera** | [yuanplussfive/senera](https://github.com/yuanplussfive/senera) | MCP 工具 schema 动态分层加载（元工具桥、内容寻址缓存）的成熟参考实现 |
+| **MineChat** | 见下方备注 | RAG-as-tool 知识库检索移植、输入侧正则与动态宏（st 宏运行时） |
+| **agentd** | [hue913/agentd](https://github.com/hue913/agentd) | 经验记忆 + 信用记账（已接进记忆打分） |
+| **rikkahub-pro**（Turbo） | [dcs666/rikkahub-pro](https://github.com/dcs666/rikkahub-pro) | R3.2 块级流式渲染、`setJob` 修复；其 80+ bug 清单被本仓用作 bug 审计对照表 |
+| **RikkaHub Math+** | [test27818/rikkahub-math-plus](https://github.com/test27818/rikkahub-math-plus) | TikZ 渲染管线架构（检测 → preamble 生成 → 编译 → 三层缓存）与 `standalone[border]` 裁剪留白的作法 |
+| **橘瓣 OrangeChat** | [watermio123-droid/orangechat](https://github.com/watermio123-droid/orangechat) | 同为 RikkaHub 系的深度定制，做过逐项借鉴评估（QuickJS 插件系统评估后**确定不做**） |
+| **rikkahub-agent** | [ExTV/rikkahub-agent](https://github.com/ExTV/rikkahub-agent) | Agent 化的同类探索（与上游 `3a533a6a` 一并做过终端/工具链分析） |
+
+**仅作设计参考、未采用其实现细节的**：`opencode` / `codex` / `Cherry Studio` —— 子代理与独立上下文设计稿只借其**思路**，
+其实现细节本仓**未核实、也未抄**（见 [`docs/design/design-subagent-context.md`](docs/design/design-subagent-context.md)）。
+
+> **备注（两个无法直接给链接的）**：`SoLab` 与 `MineChat` 的来源是本地拿到的源码包 / 论坛分发版本，**本仓没有可靠公开仓库地址**，
+> 故只按项目名致谢、不伪造链接。若作者愿意提供正式链接，欢迎提 issue 或 PR 补上。
+>
+> 以上项目各有其许可与版权；本仓仅在**思路与实现参考**层面借鉴并自行重写，未直接复制其代码；对上游 RikkaHub 则保留原
+> `LICENSE` 与出处（见下方 License）。
+
 ## 🧱 原生库（预编译签入）
 
 `app/src/main/jniLibs/arm64-v8a/` 下的 `.so` **手工签入，Gradle 不参与编译**：
