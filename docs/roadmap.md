@@ -2317,3 +2317,23 @@ Page 2:","firstUnit":1,"lastUnit":2,
   - **已具备**：`f6e3e49a4`「自动生成对话标题」开关——fork 早有 `Settings.enableAutoTitle`（默认 true）
     + 设置页开关 + 消费点。
   - **issue 覆盖**：上一节已评估到 #2150；本批新增里与本批相关的只有 **#2151**（见 ①）与 **#2128**（见 ②），**无遗漏**。
+
+- 2026-10-14（同日第二刀）：**吸收本批评估的两个推荐项**（用户「嗯」= 同意动手）。
+  - **①`923ad3d91` 消息节点加载吞协程取消（#2151）——已吸收（`a943233f9`）**。`CancellationException`
+    是 `IllegalStateException` 的**子类**，而 catch 顺序把后者写在前 ⇒ 协程被取消时落进它执行
+    `offset += pageSize; continue` ⇒ **在 `withTransaction` 里无限循环**（事务永不释放）。
+    在子类之前补 `catch (e: CancellationException) { throw e }`，并写明「子类顺序」这个坑。
+    **测试** `LoadMessageNodesCancellationTest` 2 项（源码级：分支必须存在、必须排在
+    `IllegalStateException` 之前、分支内只 `throw e`、不许 `continue`/`offset += pageSize`）。
+    **做了反证**：把 catch 类型换掉（等价该分支不存在）后 2 项全红、恢复后全绿。
+    ⚠️ 守卫**必须先剥注释再断言**——第一版没剥，被本函数自己注释里的 `continue` 字样误红（本仓老坑）。
+    另记一条操作教训：反证后用 `git checkout --` 恢复时**把未提交的修复一起回退了**（该文件当时只有这一处改动），
+    已重新应用；以后反证前先提交或先 stash。
+  - **②`927fdd51f` 工作区菜单「复制路径」（#2128）——已吸收（`0c733c2ac`）**。复制 Rootfs 内绝对路径
+    （FILES → `/workspace/<相对>`、LINUX → `/<相对>`），**目录也给**；Android 13+ 由系统提示、低版本自弹 Toast。
+    **未照搬上游形态**：上游把菜单抽成 `ItemActionMenu`，fork 用原生 `DropdownMenu`，故按 fork 现形态加一个
+    可选 `onCopyPath` 参数（`null` 则该宿主不显示），`area` 随之穿过 `WorkspaceFileBrowser` →
+    `WorkspaceFileCard`。新增 2 个字符串 × 6 语言。**真机待验**：文件与目录菜单都应有该项，且复制结果与终端一致。
+  - 验证：`:ai` 259 / `:app` **1506** / `:search` 17，0 失败 0 跳过。
+  - **本批仍未做（待定）**：`4061537da` sonner 阻断输入（fork 坐标不同、是否同源未核实）、
+    `2e572c204` 标题栏遮罩（待真机视觉确认）。
