@@ -24,6 +24,8 @@
 - **反馈渠道**：本仓**有意不接 issue**（GitHub 里 issue 功能是关的）。使用问题、功能想法、以及「上游是否也有该问题」的确认，请到
   [💬 Discussions](https://github.com/Fantasycvh/RikkaHub-Neomix/discussions) 讨论。
   **属于上游 RikkaHub 本身的 bug / 功能，请提到 [上游仓库](https://github.com/rikkahub/rikkahub/issues)**——本项目是非官方 fork，与上游无从属关系，上游也不处理本仓的问题。
+- **Pull Request**：本仓**不整体合并上游、也不回推上游**，PR 只接受「**小、可验证、带测试**」的改动。
+  动手前请先读 [`CONTRIBUTING.md`](CONTRIBUTING.md)，PR 模板会自动带出自查清单。
 
 ## ✨ 本项目定制功能
 
