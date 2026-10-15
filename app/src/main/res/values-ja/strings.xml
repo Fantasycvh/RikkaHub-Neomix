@@ -1854,5 +1854,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="context_capacity_local_floor_hint">サーバー未計測の固定費（システムプロンプト・ツール schema）を含みます。次の返信後に自動補正されます。</string>
   <string name="setting_preferences_general_ring_context_indicator_title">コンテキスト使用量をリングで表示</string>
   <string name="setting_preferences_general_ring_context_indicator_desc">入力欄のコンテキスト使用量をリング表示にし、パーセントを輪の中に表示します（既定はバー + パーセント）。</string>
+  <string name="assistant_page_memory_freeze">アンカーを固定</string>
+  <string name="assistant_page_memory_freeze_desc">アンカーは会話の開始時に一度だけ固定されます。アンカーを変更したあとにここを押すと、現在のアンカー集合がこのアシスタントのすべての会話に適用されます（各会話のプロンプトキャッシュは一度だけ再構築されます）。</string>
+  <string name="assistant_page_memory_freeze_action">固定</string>
+  <string name="assistant_page_memory_freeze_done">%1$d 件の会話に固定しました</string>
 </resources>
 

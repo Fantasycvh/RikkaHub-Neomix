@@ -179,13 +179,15 @@ interface ConversationDAO {
     suspend fun updateFrozenAnchors(id: String, frozen: String?)
 
     /**
-     * 一次性重写**某助手全部会话**的锚点快照 —— 记忆页「固化为锚点」的手动刷新点。
+     * 一次性重写**某助手全部会话**的锚点集合 —— 记忆页「固化记忆」的手动刷新点。
      *
      * 为什么会是「全部会话」：锚点挂在助手的记忆库上，而记忆页没有「当前会话」这个上下文；
      * 用户固化一条锚点时的意图是「以后都算数」，因此所有会话一起换档。
+     *
+     * @return 受影响的会话数（用来告诉用户这次固化的作用面有多大）
      */
     @Query("UPDATE conversationentity SET frozen_anchors = :frozen WHERE assistant_id = :assistantId")
-    suspend fun updateFrozenAnchorsOfAssistant(assistantId: String, frozen: String?)
+    suspend fun updateFrozenAnchorsOfAssistant(assistantId: String, frozen: String?): Int
 
     /** 自定义顺序：**唯一**的位置值写入点（见 [CONVERSATION_ORDER_BY] 与设计稿 §三.1）。 */
     @Query("UPDATE conversationentity SET sort_order = :sortOrder WHERE id = :id")

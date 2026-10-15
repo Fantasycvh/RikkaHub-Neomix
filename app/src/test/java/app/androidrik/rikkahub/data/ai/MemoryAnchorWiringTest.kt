@@ -128,6 +128,28 @@ class MemoryAnchorWiringTest {
     }
 
     /**
+     * **新建记忆时那个「固化为锚点」开关不能是死的**。
+     *
+     * `addMemory`（仓储层）按纪律**不接受** `isAnchor` 参数（AI 不得自填锚点），
+     * 而记忆页的新建与编辑共用同一个对话框、锚点开关也照常显示 ⇒ 新建路径必须**自己补一次**
+     * `setAnchor`。不补的形态是：用户打开开关、保存，开关被**静默丢弃**，界面看起来一切正常
+     * —— 这是真实发生过的一版 bug。
+     */
+    @Test
+    fun `creating a memory keeps the anchor flag chosen in the dialog`() {
+        val vm = source("app/androidrik/rikkahub/ui/pages/assistant/detail/AssistantDetailVM.kt")
+        val start = vm.indexOf("fun addMemory(")
+        assertTrue("找不到 AssistantDetailVM.addMemory", start >= 0)
+        val newline = '\n'
+        val body = vm.substring(start).substringBefore("$newline    }")
+        assertTrue(
+            "新建记忆必须自己补 setAnchor：仓储层的 addMemory 不接受 isAnchor（反自填纪律），" +
+                "不补就会把新建对话框里的锚点开关静默丢掉",
+            body.contains("setAnchor("),
+        )
+    }
+
+    /**
      * **拼装预览必须与实发同参**（本仓明确防的坑）。
      *
      * 实测过的回归形态：尾部记忆块加进来时，预览这份 `buildInternalMessages` 调用漏传了

@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -56,6 +57,7 @@ import app.androidrik.rikkahub.data.ai.detailTitle
 import app.androidrik.rikkahub.data.ai.describe
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -87,6 +89,9 @@ fun AssistantMemoryPage(id: String) {
     // 做梦（V3）的状态：待整理轮数 / 进行中 / 上次结果（含本次建议）
     val consolidationStatus by vm.consolidationStatus.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
 
     Scaffold(
         topBar = {
@@ -114,6 +119,16 @@ fun AssistantMemoryPage(id: String) {
             onUpdateMemory = { vm.updateMemory(it) },
             consolidationStatus = consolidationStatus,
             onOrganize = { vm.organizeMemory() },
+            // 手动固化：动作本身没有可见结果（只影响后续请求的 system 块），
+            // 所以用一条带会话数的提示给「作用面」反馈。
+            onFreezeAnchors = {
+                scope.launch {
+                    val count = vm.freezeMemoryAnchors()
+                    toaster.show(
+                        message = context.getString(R.string.assistant_page_memory_freeze_done, count)
+                    )
+                }
+            },
         )
     }
 }
@@ -130,6 +145,7 @@ private fun AssistantMemoryContent(
     /** 做梦（V3）的状态与手动整理入口（在顶层收集后传进来：CardGroup 的 DSL 不是 composable 作用域） */
     consolidationStatus: MemoryConsolidationStatus,
     onOrganize: () -> Unit,
+    onFreezeAnchors: () -> Unit,
 ) {
     val memoryDialogState = useEditState<AssistantMemory> {
         if (it.id.isEmpty()) {   // 空 id = 新建（原为 id == 0）
@@ -452,6 +468,23 @@ private fun AssistantMemoryContent(
                     )
                 }
             )
+            // L1 锚点集合的手动固化（设计稿 §5 的手动刷新点）。
+            // 会话只在**开始时**冻结一次锚点；此后新固化的锚点不会挤进已有会话。
+            // 一个明确的入口是必要的：光靠"保存记忆时顺带刷新"用户看不见这个行为，
+            // 也无从表达「我现在就要让已有会话采纳当前锚点」。
+            if (assistant.enableMemory) {
+                item(
+                    headlineContent = { Text(stringResource(R.string.assistant_page_memory_freeze)) },
+                    supportingContent = {
+                        Text(stringResource(R.string.assistant_page_memory_freeze_desc))
+                    },
+                    trailingContent = {
+                        TextButton(onClick = onFreezeAnchors) {
+                            Text(stringResource(R.string.assistant_page_memory_freeze_action))
+                        }
+                    }
+                )
+            }
             // 做梦（V3）的「整理一下」+ 状态 + 本次建议。
             // 建议**只活在进程内**（决策 B：不落库、不做一键应用），重启即失；要按它改就在下面手动改。
             if (assistant.memoryConsolidationSince > 0L) {

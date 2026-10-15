@@ -2102,10 +2102,12 @@ class ChatService(
      *
      * 顺序不能反：先写库的话，这中间任何一次整对象保存都会用内存里的旧值把库盖回去。
      * 代价 = 该助手每个会话**一次**前缀失效（这正是 §5 让用户显式按下的那个按钮）。
+     *
+     * @return 更新到的会话数（UI 用它给用户一个"作用面"的反馈——否则这个按钮看起来什么也没做）
      */
-    suspend fun refreshFrozenAnchorsForAssistant(assistantId: Uuid) {
+    suspend fun refreshFrozenAnchorsForAssistant(assistantId: Uuid): Int {
         val settings = settingsStore.settingsFlow.first()
-        val assistant = settings.getAssistantById(assistantId) ?: return
+        val assistant = settings.getAssistantById(assistantId) ?: return 0
         // 与 [handleMessageComplete] 同一口径：全局记忆助手看全局库
         val memories = if (assistant.useGlobalMemory) {
             memoryRepository.getGlobalMemories()
@@ -2120,7 +2122,7 @@ class ChatService(
                 persist = { conversationRepo.updateConversationFrozenAnchors(conversationId, frozen) },
             )
         }
-        conversationRepo.updateFrozenAnchorsForAssistant(assistantId, frozen)
+        return conversationRepo.updateFrozenAnchorsForAssistant(assistantId, frozen)
     }
 
     /**

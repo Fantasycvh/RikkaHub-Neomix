@@ -772,9 +772,8 @@ class ConversationRepository(
      *
      * 用户改的是助手的锚点集合，而记忆页没有「当前会话」上下文 ⇒ 该助手所有会话一起换档。
      */
-    suspend fun updateFrozenAnchorsForAssistant(assistantId: Uuid, frozen: String?) {
+    suspend fun updateFrozenAnchorsForAssistant(assistantId: Uuid, frozen: String?): Int =
         conversationDAO.updateFrozenAnchorsOfAssistant(assistantId.toString(), frozen)
-    }
 
     private fun conversationSummaryToConversation(entity: LightConversationEntity): Conversation {
         return Conversation(

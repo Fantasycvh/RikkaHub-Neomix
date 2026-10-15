@@ -1910,5 +1910,9 @@
   <string name="context_capacity_local_floor_hint">已計入伺服器尚未統計的固定開銷（系統提示、工具 schema），首次回覆後會自動校正。</string>
   <string name="setting_preferences_general_ring_context_indicator_title">上下文佔用改用圓環顯示</string>
   <string name="setting_preferences_general_ring_context_indicator_desc">輸入列的上下文佔用改為圓環、百分比顯示在環內（預設是細條 + 百分比）。</string>
+  <string name="assistant_page_memory_freeze">固化記憶</string>
+  <string name="assistant_page_memory_freeze_desc">每個會話在開始時凍結一次錨點。改過錨點後按這裡，把目前錨點集合套用到該助手的全部會話（每個會話的前綴快取會重建一次）。</string>
+  <string name="assistant_page_memory_freeze_action">固化</string>
+  <string name="assistant_page_memory_freeze_done">已固化到 %1$d 個會話</string>
 </resources>
 

@@ -215,14 +215,34 @@ class AssistantDetailVM(
 
     fun addMemory(memory: AssistantMemory) {
         viewModelScope.launch {
-            memoryRepository.addMemory(
+            val added = memoryRepository.addMemory(
                 assistantId = assistant.value.memoryId(),
                 content = memory.content,
                 importance = memory.importance,
                 description = memory.description,
             )
+            // 新建对话框里那个「固化为锚点」开关：`addMemory` **按纪律不接受**这个参数
+            // （见 MemoryRepository.setAnchor 的注释：AI 不得自填锚点），所以在这里补一次。
+            //
+            // 不补的话，用户新建一条记忆、打开开关、保存 ⇒ 开关被**静默丢弃**，
+            // 既没固化成锚点、也没触发刷新，而界面看起来一切正常（曾经的真实 bug）。
+            if (memory.isAnchor && !added.isAnchor) {
+                memoryRepository.setAnchor(id = added.id, isAnchor = true)
+                chatService.refreshFrozenAnchorsForAssistant(assistantId)
+            }
         }
     }
+
+    /**
+     * 手动「固化记忆」：把当前锚点集合重新写进该助手的**全部会话**（设计稿 §5 的手动刷新点）。
+     *
+     * 为什么需要一个明确的按钮，而不是只让它当保存的副作用：会话只在**开始时**冻结一次，
+     * 之后改锚点只会顺带刷新，用户既看不见、也无从表达「我现在就要让已有会话采纳」。
+     *
+     * @return 更新到的会话数（调用方拿去 toast —— 这个动作本身没有任何可见结果，没有反馈
+     *   就会看起来像没生效）
+     */
+    suspend fun freezeMemoryAnchors(): Int = chatService.refreshFrozenAnchorsForAssistant(assistantId)
 
     fun updateMemory(memory: AssistantMemory) {
         viewModelScope.launch {

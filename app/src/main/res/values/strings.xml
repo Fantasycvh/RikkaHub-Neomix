@@ -89,7 +89,6 @@
   <string name="assistant_page_local_tools_clipboard_title">Clipboard</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">Execute JavaScript code with QuickJS engine for calculations and scripting</string>
   <string name="assistant_page_local_tools_javascript_engine_title">JavaScript Engine</string>
-
   <string name="assistant_page_local_tools_todo_plan_title">Task plan (todo_write)</string>
   <string name="assistant_page_local_tools_todo_plan_desc">Let the model break multi-step work into an explicit checklist and keep progress current; a plan strip shows progress above the input bar</string>
   <string name="plan_bar_progress">%1$d/%2$d completed</string>
@@ -97,7 +96,8 @@
   <string name="chat_generation_interrupted_notice">
 ⚠️ Generation was interrupted — this reply is incomplete.</string>
   <string name="chat_message_todo_title">Task plan</string>
-  <string name="plan_bar_summary">Plan: %1$d done · %2$d in progress · %3$d total</string>  <string name="assistant_page_local_tools_time_info_desc">Get current date, weekday, time, and timezone info from the device</string>
+  <string name="plan_bar_summary">Plan: %1$d done · %2$d in progress · %3$d total</string>
+  <string name="assistant_page_local_tools_time_info_desc">Get current date, weekday, time, and timezone info from the device</string>
   <string name="assistant_page_local_tools_time_info_title">Time Info</string>
   <string name="assistant_page_local_tools_tts_desc">Let the AI read text aloud to you using your selected TTS service</string>
   <string name="assistant_page_local_tools_tts_title">Text to Speech</string>
@@ -320,11 +320,11 @@
   <string name="chat_message_quote_assistant">Assistant</string>
   <string name="chat_message_quote_context">Quoted message</string>
   <string name="chat_message_tool_approve">Approve</string>
-    <string name="chat_message_reasoning_edit">Edit reasoning</string>
+  <string name="chat_message_reasoning_edit">Edit reasoning</string>
   <string name="chat_message_reasoning_edit_save">Save</string>
   <string name="chat_message_reasoning_edit_signed_warning">This reasoning block is signed by the provider. Only an unchanged block is accepted when sent back, so editing it may make the next request be rejected.</string>
   <string name="chat_message_reasoning_edit_disabled_signed">Editing is disabled: this reasoning block is provider-signed (Claude thinking / Gemini thought signature) and must be sent back unchanged.</string>
-<string name="chat_message_tool_approve_all">Approve all</string>
+  <string name="chat_message_tool_approve_all">Approve all</string>
   <string name="chat_message_tool_ask_questions">Ask %d questions</string>
   <string name="chat_message_tool_call_generic">Called tool %1$s</string>
   <string name="chat_message_tool_call_label">Called tool %1$s</string>
@@ -680,9 +680,7 @@
   <string name="photo">Photo</string>
   <string name="pin_chat">Pin the Chat</string>
   <string name="pinned_chats">Pinned Chats</string>
-
   <string name="conversation_pin_keeps_order">Pinned — its position in the list is kept</string>
-
   <string name="conversation_order_entry">Order</string>
   <string name="conversation_order_editing">Editing order</string>
   <string name="conversation_order_done">Done</string>
@@ -1666,15 +1664,15 @@
   <string name="prompt_inspect_segment_tool_schema">Tool schema (%1$d tools, ≈%2$d tokens)</string>
   <string name="prompt_inspect_not_in_messages">top-level field, not in messages</string>
   <string name="prompt_inspect_attachment_note">[not counted: %1$d images, %2$d documents, %3$d audio, %4$d video]</string>
-  <string name="prompt_inspect_segment_tool_result">Tool output · %1$s</string>  <string name="prompt_inspect_stability">Cache stability (stable / event / turn)</string>
+  <string name="prompt_inspect_segment_tool_result">Tool output · %1$s</string>
+  <string name="prompt_inspect_stability">Cache stability (stable / event / turn)</string>
   <string name="prompt_inspect_stability_values">≈%1$d stable · %2$d event · %3$d per-turn tokens</string>
-
-  <string name="prompt_inspect_segment_render_hint">Render hints</string>  <string name="prompt_debug_title">Prefix divergence</string>
+  <string name="prompt_inspect_segment_render_hint">Render hints</string>
+  <string name="prompt_debug_title">Prefix divergence</string>
   <string name="prompt_debug_no_previous">Compare with last request</string>
   <string name="prompt_debug_identical">No previous request recorded yet (open again after this turn starts)</string>
   <string name="prompt_debug_summary">First %1$d messages identical ≈ %2$d tokens cacheable (prev %3$d / current %4$d)</string>
   <string name="prompt_debug_diverged_at">Diverged at message #%1$d: %2$s</string>
-
   <string name="prompt_inspect_cache_title">Note on prompt caching</string>
   <string name="prompt_inspect_cache_body">The system block sits at position 0 and is recomputed every request — here it is about %1$d tokens. Anything volatile inside it (a date placeholder, a world-info entry that toggles on keywords) invalidates the whole cached prefix. Keep volatile content out of the system prompt; keyword-triggered world info belongs at the bottom of the chat.</string>
   <string name="prompt_inspect_source_format">From %1$s · %2$s</string>
@@ -1729,9 +1727,9 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_retry_after_partial_title">Retry after partial output</string>
   <string name="setting_retry_after_partial_desc">Retry the full round even after partial output; disables the keep-partial switch above</string>
   <string name="setting_retry_partial_chars_title">Partial output threshold (chars)</string>
-
   <string name="setting_retry_auto_continue_title">Auto-continue when output hits the limit</string>
-  <string name="setting_retry_auto_continue_desc">Keep writing automatically after a reply reaches the output token limit (off: you get a hint and a manual Continue button). Stream cut-offs always auto-continue.</string>  <string name="setting_retry_partial_chars_desc">Visible text ≥ this value counts as valid output; reasoning does not count; floor is 1</string>
+  <string name="setting_retry_auto_continue_desc">Keep writing automatically after a reply reaches the output token limit (off: you get a hint and a manual Continue button). Stream cut-offs always auto-continue.</string>
+  <string name="setting_retry_partial_chars_desc">Visible text ≥ this value counts as valid output; reasoning does not count; floor is 1</string>
   <string name="setting_retry_partial_chars_applied">Applied: %1$d</string>
   <string name="generation_retry_waiting">Generation failed, retry %1$d/%2$d in %3$d s</string>
   <string name="chat_server_tool_running">Running built-in tool %1$s…</string>
@@ -1747,12 +1745,12 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="notification_keep_alive_running">Keep alive active</string>
   <string name="notification_keep_alive_stop">Stop</string>
   <string name="message_partial_failure_banner">Generation interrupted — partial content kept</string>
-
   <string name="chat_image_crop_unavailable">Could not prepare the image for cropping; added it without cropping</string>
   <string name="message_incomplete_output_stream_cut">Stream was cut off — content may be incomplete</string>
   <string name="message_incomplete_output_limit">Reached the output limit — content was truncated</string>
   <string name="message_incomplete_output_filtered">Output was cut off by a content filter</string>
-  <string name="message_incomplete_output_continue">Continue</string>  <string name="message_partial_failure_regenerate">Regenerate</string>
+  <string name="message_incomplete_output_continue">Continue</string>
+  <string name="message_partial_failure_regenerate">Regenerate</string>
   <string name="asr_error_not_configured">Speech recognition not configured — set an ASR provider and API key first</string>
   <string name="asr_error_audio_focus">Microphone busy — could not get audio focus</string>
   <string name="prompt_page_position_end_of_chat">End of request (after all messages)</string>
@@ -1930,5 +1928,9 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="context_capacity_local_floor_hint">Includes fixed overhead (system prompt, tool schemas) that the server hasn\'t counted yet — calibrated after the next reply.</string>
   <string name="setting_preferences_general_ring_context_indicator_title">Ring indicator for context usage</string>
   <string name="setting_preferences_general_ring_context_indicator_desc">Show the composer\'s context usage as a ring with the percentage inside instead of a bar.</string>
+  <string name="assistant_page_memory_freeze">Freeze memory anchors</string>
+  <string name="assistant_page_memory_freeze_desc">Anchors are frozen per chat when it starts. Press here to apply the current anchor set to every chat of this assistant. Each chat rebuilds its prompt cache once.</string>
+  <string name="assistant_page_memory_freeze_action">Freeze</string>
+  <string name="assistant_page_memory_freeze_done">Frozen into %1$d chats</string>
 </resources>
 

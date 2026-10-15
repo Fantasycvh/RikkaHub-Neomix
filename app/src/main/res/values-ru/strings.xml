@@ -1854,5 +1854,9 @@
   <string name="context_capacity_local_floor_hint">Учтены постоянные затраты (системный промпт, схемы инструментов), которые сервер ещё не посчитал — калибровка после первого ответа.</string>
   <string name="setting_preferences_general_ring_context_indicator_title">Показывать контекст в виде кольца</string>
   <string name="setting_preferences_general_ring_context_indicator_desc">Индикатор контекста в строке ввода — кольцо с процентом внутри вместо полосы.</string>
+  <string name="assistant_page_memory_freeze">Зафиксировать якоря</string>
+  <string name="assistant_page_memory_freeze_desc">Якоря фиксируются один раз при запуске чата. Нажмите здесь, чтобы применить текущий набор якорей ко всем чатам этого ассистента; кэш промпта каждого чата будет перестроен один раз.</string>
+  <string name="assistant_page_memory_freeze_action">Зафиксировать</string>
+  <string name="assistant_page_memory_freeze_done">Зафиксировано в чатах: %1$d</string>
 </resources>
 
