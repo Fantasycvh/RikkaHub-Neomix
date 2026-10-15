@@ -1273,7 +1273,7 @@ bigeye 选择了「依赖查询的召回」（换来精度，代价是每轮现�
 后果是：一条被标为低重要度、或久未更新且已老化的行为准则（如「回答前先验证」），会**静默消失**，
 恰恰在需要它的时候不在场。bigeye 的做法（权威级 + 确定性排序 + 组内去重）可以移植为本仓的
 「**必注入**」名单，且**不需要引入 embedding**——它本来就走非语义通道。
-这条即便本仓永远不上语义检索也成立，是本次评估里**唯一无条件推荐**的一条。
+这条即便本仓永远不上语义检索也成立，是本次评估里**唯一无条件推荐**的一条。**精读后进一步证实**：它也是 bigeye 这三条相关机制里**唯一真正通电**的一条 —— 实体加成 `ENTITY_BONUS=1.5` 因无人传 `query_entities` 而生产恒为 1.0，因果扩散首句即 `if not query_entities: return []` 属死代码（详见 §11.2 分组 D）。
 
 **② 相关性硬门槛的「减法思想」已有、但可更彻底**
 本仓已有下限筛除，方向一致（注释也写明借自华灯 RAG 相关性下限）。bigeye 更进一步的是**明确写下
@@ -1296,3 +1296,253 @@ bigeye 选择了「依赖查询的召回」（换来精度，代价是每轮现�
   为「文件切片 → 晶体 → 派生晶体」的长链溯源设计，体量与定位都超出本仓记忆模块，
   **不建议跟进**；其「派生关系可溯源」的思想与本仓知识库（文档 → 分块 → 向量）有重叠，可择日单独比对。
 - **无 License ⚠️**（同 §十一 C）：**不得复制其代码**，以上均为思路层面，实现须自行重写。
+
+### 11.2 逐模块精读（2026-10-14，16 文件 / 8410 行，本地克隆 `e0f0b2d`）
+
+§11.1 是**跨模块结论**（数据模型、召回链路、与本仓对照）。本节是**逐模块清单**，供回查函数名与行号。
+
+**方法与诚实边界**：8410 行由 5 路并行精读完成（分工见下表），**每条结论都带 `文件:行号`**。
+其中以下几条我自己**回查过源码并复现**（其余为精读结论，未逐条复核）：`fragment_store` 的六因子/硬门槛/
+`best_sim` 作用域/去重吞数据、`file_crystal_store` 的 `last_hash_verified_at=now` 与金字塔阈值、
+`knowledge_pages` 的 list-绑-TEXT 崩溃（本机 sqlite3 复现）、行数实测。
+
+#### 分组 A：碎片核心（`fragment_store.py` 1724 + `vec_index.py` 182）
+
+**`fragment_store.py`** —— 自传体碎片的存储与检索核心，49 个函数，四表
+（`memory_fragments` 35 列 / `memory_archive` / `memory_links` / `memory_reflection_log`，schema 62-149）。
+关键函数：`add` 282、`recall` 439、`recall_guaranteed` 508、`_fetch_candidates` 547、`rebuild_index` 585、
+`_five_factor_score` 609、`_mmr_select` 648、`_fetch_causal_neighbors` 688、`recall_archive` 758、
+`move_to_archive` 813、`move_to_core` 841、`prune` 860、`_anchors` 892、`_effective_weight` 937（死代码）、
+`reinforce` 942、`update_cmn_fields` 961、`promote_to_authority` 1002、`link_cores_to_knowledge` 1006、
+`link_materials` 1113、`find_story_by_topic` 1139、`update_story` 1209、`find_similar_knowledge` 1268、
+`update_observation` 1306、`bump_observation` 1372、`mark_contradiction` 1400、`link_stories` 1425、
+`get_story_chain` 1449、`get_unconsolidated_cores` 1480、`count_unconsolidated_cores` 1501、
+`get_by_hash` 1514、`edit` 1529、`stats` 1558、`get_chain` 1607、`get_graph` 1653。
+
+**`vec_index.py`** —— `sqlite-vec` 的薄封装（12 个定义），扩展缺失时由调用方回退全表扫。
+`load_vec_ext` 46、`_get_conn` 91、`ensure_table` 104、`insert` 126、`delete` 141、`query` 152。
+作者最有用的踩坑记录（97-98）：
+
+> sqlite-vec 是连接级扩展：每次新连接都必须重新 load，只在第一次加载会导致后续连接 `no such module: vec0`
+
+#### 分组 B：记忆整理 / 反思（`reflection_loop.py` 1406 + `reflection.py` 256）
+
+*（本组读数回报后补全。）*
+
+#### 分组 C：分层摘要与消息向量（`summary_tree.py` 446 + `msg_vectors.py` 245 + `file_slicer.py` 265 + `embedder.py` 366）
+
+**`summary_tree.py`** —— RAPTOR 式「月→季→年」递归摘要树 + Merkle 增量短路。`add_leaf` 142、
+`_recompute_upward` 302、`_maybe_promote_to_parent_layer` 357。常量 `MAX_LAYER=2`(54)、
+`PROMOTE_THRESHOLD=3`(55)、父摘要硬上限 `[:2000]`(390)。
+- **实测全链路**（本机跑通）：喂 2025-01/02/03 → 自动建 `2025-Q1 [1,2,3]`；3 个季度后立即生成
+  `2025` 年度节点；`stats={monthly:9,quarterly:3,yearly:1}`，跨年不串。
+- ⚠️ **但它的 embedding 列从 Insert 到合并始终是 `'[]'`** ⇒ **这棵树不依赖语义检索**，
+  与 README「只压缩 ✗」的自我批判正相反讽。
+- ⚠️ **`_layers_below(period, layer)` 与调用点参数语义错配**（101-113 vs 371）：函数期望「子层」、
+  调用传 `parent_lyr`；父层=1 时返回月份，而 SQL 绑定 `[node["layer"]]=0`（376）⇒ **凑巧对上**。
+  实测两条晋级路径都跑通，但属巧合，任何后续改动会静默错配。
+- ⚠️ **唯一调用点 `task/reflection.py:263-265` 没传 `llm_prompt_fn`** ⇒ 月度叶子只是 `"\n"` 拼接；
+  「压缩」只发生在父层，而父层是 `sibling_texts[:2000]` **硬截断且无告警**。
+- 作者原话（325-327，全文最值得抄的一条注释）：`LIKE` 单独用会命中子串（`id=5` 命中 `[15,25]`），
+  只能当粗筛，再用 Python 精确比对。
+
+**`msg_vectors.py`** —— 给 `role='user'` 消息建向量缓存，跨话题召回「用户别处说过的原话」。
+`index_user_message` 85、`_load_cache` 108、`recall_related_dialogs` 130、`recall_with_context` 182。
+- 作者的容量论证（109）：`2039 条 × 512 dim ≈ 4MB，可接受` —— 先算内存账再选暴力方案的范例。
+- 表是 KV（`user_msg_vectors(message_id PK, vec BLOB, ts)`），**无维度列、无外键、无级联**。
+- 实测（本机 TF-IDF 后端）：相关句 0.6472 / 无关句 0.0769，**与默认阈值 0.30 同量纲**。
+- 🔴 **与本仓方向相反**：它在 `db.py:700-703` 的**写消息热路径上同步 embed**，且在 ONNX 路径全程持
+  `_onnx_infer_lock`（`embedder.py:99-108`）⇒ 每条用户消息串行一次推理。
+
+**`file_slicer.py`** —— 按类型分派切片：代码按顶层定义边界（14 条行首正则，64-80）、文档按标题/空行、
+其他定长 `2000 + 200 重叠`。常量 `DEFAULT_SLICE_SIZE`/`DEFAULT_OVERLAP`/`CODE_MAX_SLICE=4000`/
+`DOC_MIN_SLICE=200`（30-33）。
+- 实测：5000 字符 → `(0,2000)(1800,3800)(3600,5000)`，重叠恰 200；**但单标题文档因
+  `len(matches)>=2` 不成立而整体落到 generic**（实测 `[(0,'<chunk 0>',0,529)]`）。
+- 🔴 **`index` 是位置序号却被下游当「内容同一性」**：文件开头插一个函数 → 后续 index 全平移 →
+  `cmn_retriever:435-460` **误报「内容变了」并重置 decay**。
+- 作者自标质量（62-63）：`# 简化版：匹配行首的 def/class/…` —— 实测 java 正则**匹配不上
+  `public void foo(`** 这种最常见写法。
+
+**`embedder.py`** —— 全项目 embedding 唯一入口，四级链 + 结果缓存 + 余弦 + 零向量降级。
+- **实际链条**：`0.ONNX(BGE-small-zh, 512)` → `1.哈希 TF-IDF(512)` → `2.Ollama(768)` → `3.OpenAI(1536)`。
+  ⚠️ **docstring（5-10）写的编号与实现整体不符**，且 `_st_embed`/`_load_st_model` **根本不在链上**。
+- 🔴 **维度割裂事故（作者识别了、只修了一半）**：两处原话互证 —— 75-76「静默 fallback 到 TFIDF(256)
+  会导致维度割裂（**历史根因之一**）」+ 123「= 512，对齐向量表/零向量维度，**避免 fallback 后余弦恒 0**」。
+  但 Ollama 是 768、OpenAI 是 1536 且 model 硬编码（262-268），而 `cosine_sim` 长度不等
+  **直接返回 0.0**（348-349）⇒ 这些向量写进库后**永久无法召回且零报错**；`embed()` 出口**无维度校验**。
+- 🟠 **IDF 子系统是死代码**：`_tfidf_add_document`（183-192）全项目零调用 ⇒ `idf` 恒 1.0，
+  注释承诺的「IDF bonus for rare terms」是空话；`cache_stats`/`clear_cache` 亦零调用。
+- ✅ **最有价值的一条（`:11`）**：`Backend 0 guarantees memory recall works without any external
+  dependencies.` + `:335` 的降级语义 `zero vector → memory system degrades to anchor-only` ——
+  **「降级不消失」**：没有可用模型时应退回纯本地、零依赖、亚毫秒的哈希 TF-IDF（512 维 float32
+  仅 2KB/条），而不是让召回整体失效。
+- 作者实测结论（91-92 / 38）：HuggingFace tokenizers 的 `encode()` **不是线程安全**的，
+  故用 `_onnx_infer_lock` 串行化推理（cache 命中不加锁）。
+- 离线教训（209-210）：`# 网络差时这些检查每次超时 20s×重试，会阻塞服务启动数分钟。`
+#### 分组 B：记忆整理 / 反思（`reflection_loop.py` 1406 + `reflection.py` 256）
+
+**`reflection_loop.py`** —— 「反思回路」：**无调度、纯批处理**，一次 `run()` 顺序跑 **11 步**
+（backfill_entities → extract_file_thoughts → build_weak_associations → emerge_meta_crystals →
+prune_entropy → detect_gaps → promote_authority → link_knowledge_cores → narrative_consolidation →
+build_story_weak_assocs → consolidate_observations，115-171，每步独立 try/except 只记 errors）。
+关键函数：`build_weak_associations` 179、`emerge_meta_crystals` 252、`prune_entropy` 379、
+`detect_gaps` 416、`promote_authority` 462、`link_knowledge_cores` 515、`narrative_consolidation` 548、
+`consolidate_observations` 754、`build_story_weak_assocs` 960、`extract_file_thoughts` 1104、
+`backfill_entities` 1266。
+
+**触发与调度（跨文件取证）**：本文件**自身无任何触发器**。6 个入口中只有一个是自动的 ——
+`server.py:7686-7713` 的 `_lightweight_narrative`（每次 `/api/chat` 收尾起 daemon 线程），门控为
+**「距上次 ≥7200s 且 `count_unconsolidated_cores() >= 30`」**，且只跑 `narrative_consolidation()`。
+作者原话（server.py:7681-7685，整段注释）记录了**为什么把自动反思关掉**：
+
+> 2026-08-17 已禁用：自动反思产出的碎片平时不加载，**对行为零约束**，且每次对话后烧 LLM 调用；
+> 行为修正改由重要事项第 12 条承担，需要时手动调 reflect 工具/API
+
+- **阈值全部按自身 embedding 维度标定，且注释说明了为什么不能照抄**：弱关联 0.65
+  （「256 维 embedding 区分度有限，**0.75 太严**」32）、元晶 0.65（「**0.80 太严**」36）、
+  故事聚类 0.72（41）、故事弱关联 0.70（46）。
+- ✅ **元晶降权防霸榜**（328-335）：元晶 `importance` **刻意从 7.0 降到 5.0**，注释
+  「不靠加成霸榜」。这是一条**给派生/聚合记忆的纪律**。
+- ✅ **每动作独立配额**：20 边 / 5 元晶 / 3 故事 / 10 文件思考 / 30 观察 / 50 实体 ——
+  保证每类动作都有机会、也都各有天花板。
+- ✅ **先时间分桶再 O(n²) 聚类**（575-581）：`BUCKET_SECONDS = 24*3600`，注释记下了教训 ——
+  原全局混窗口会把相隔数天的碎片配成「**横跨数天的杂烩故事**」。
+- ✅ **长事务禁忌**（1189）：`conn.close()  # ← 关键：查完就关，不持 conn 调 LLM`。
+- ✅ **组向量均值匹配聚合体**（652-653）：用簇内 embedding 均值去匹配 story，而不是用 topic 短文本，
+  理由是「同维度对同维度」。
+- 🔴 **`update/merge/contradict` 缺 `target_id` 时 → skipped 但素材仍被标 `dirty=0`**（886-897）——
+  **静默丢弃**，本组最实质的数据损失风险。
+- 🔴 `PRUNE_STALE_DAYS = 30`（51）**代码中从未引用**（死常量），「30 天未验证的边降权」功能不存在。
+- ⚠️ **元晶与文件思考未指定 `layer` ⇒ 默认 `core`**（331-340、1236-1245），会回流进弱关联/故事/观察管线。
+- ⚠️ 弱关联**单向建边**（233-241）⇒ 对端仍被判定「孤立」、每轮重选重建；且建边前不查重，
+  跨运行重复插入靠 `prune_entropy` 擦屁股。
+- ⚠️ `promote_authority` 的「多源印证」SQL 与注释不符（493-503）：注释说用 `entity_ids`，实际用
+  `text LIKE`，且统计**含自身** ⇒ 「≥3」实际只有 2 个外部来源，还是 O(N²) 扫描。
+- ⚠️ `consolidate_observations` 解析失败默认 `create`（928-931），与注释宣称的「有相似观察→merge」不符。
+- ⚠️ 一次全跑最坏 LLM 调用 ≈ 10+5+3+30 = **48 次**，叠加 embed 上百次；
+  **真正的护栏只有调用方的 5 分钟节流**。
+
+**`reflection.py`** —— 「深度反思 agent」（手动/工具触发）：把各话题最近 15 条消息拼成**一个大 prompt**
+交 LLM，按 `<<<碎片记忆>>>` / `<<<因果>>>` 成对分隔符切分落库（`source=deep`/`causal`），随后自动跑一次
+`reflection_loop.run()`。`trigger_deep_integration` 110、`_run_deep_integration` 125、`_store_fragments` 210、
+`_format_messages` 224。
+- ✅ **checkpoint 增量 + 「纯机械判断不改 prompt」原则**（139）：`msgs[-1]["id"] <= last_id` 就跳过，
+  输入不变则输出质量不变 —— 这是**便宜且正确的增量游标**。
+- ✅ 提示词外置（`data/reflection_prompt.txt`）+ 内置 fallback（37-45），热改无需重启。
+- 🔴 **反面教材（本组最该记的一条）**：`_llm_prompt` 异常时返回 `""`（92-94），
+  而 checkpoint **在失败路径上照样推进**（156 → 186）⇒ **这些消息永远不会再被反思**。
+  **「失败绝不能推进增量游标」** —— 这是可以直接写进本仓纪律的一条。
+- 🔴 `any(v for k, v in report.items() ...)` 因 `observations_consolidated` 是非空 dict **恒为真**，
+  守卫失效（176）。
+- ⚠️ **`msgs` 升序 + 超预算 `break` ⇒ 只包含最旧 2-3 条，最新消息反而看不到**（226-236），
+  与「回顾刚才的对话」的意图冲突。
+- ⚠️ 全话题混进一个 prompt 且落库 `topic_id=None` ⇒ **话题信息永久丢失**；两源共用同一 `ts`，
+  因果句与碎片句相似度 >0.85 时被 dedup 成同一条，**causal 语义丢失**。
+- ⚠️ `<<<因果>>>` 的提示词示例无闭合但解析要求成对（26-27 vs 157）⇒ 因果静默丢失。
+- ⚠️ 提示词文件可被整文件替换而**解析器写死**（40-42 vs 156-157）⇒ 自定义格式即 0 条且无告警。
+
+#### 分组 D：实体与关系（`entity_store.py` 250 + `relation_store.py` 398 + `extractor.py` 225 + `knowledge_pages.py` 583）
+
+**⚠️ 本组最重要的结论是「通电率」——三条机制里只有一条真的在生产路径上。**
+
+| 机制 | 公式/实现 | 是否通电 |
+|---|---|---|
+| 实体加成 `ENTITY_BONUS = 1.5`（44、625-631） | 需要调用方传 `query_entities`（439） | ❌ **恒为 1.0**：唯一传入点是调试接口 `server.py:5318`；真实注入路径 `server.py:6612` 只传 `recall_ctx/threshold/top_k/current_topic`。佐证：`EntityStore.search_by_embedding` 全项目零调用 ⇒ **「消息→实体」这一步从未实现** |
+| 因果扩散（688-756） | 第一句就是 `if not query_entities: return []`（697） | ❌ **死代码**；且 SQL 是 `subject IN OR object IN`（709-716）**方向不可区分** ⇒ 提到「结果」会召回「原因」的**逆因果** |
+| 权威/保底召回 `recall_guaranteed`（508-546） | `layer='knowledge' AND authority_level>=1`，`ORDER BY weight*importance`，`cap=2`，家族去重 `cos>0.70` | ✅ **唯一完整落地**：受控提拔（965-971 禁止 AI 自填）、**真接到注入**（`server.py:6654-6657`），注入层另有 `authority_bonus 1.5`（6637） |
+
+**最严重的 5 个实证缺陷**：
+
+1. 🔴 **`knowledge_pages.py:200/215-218` 把 list 绑给 TEXT 列** —— `content = obs_texts`（list），
+   注释 201 承诺的「LLM 不可用时用原文拼接」**从未实现**（应是 `"\n".join`）。
+   **本机 sqlite3 复现**：`ProgrammingError: Error binding parameter 1: type 'list' is not supported`。
+   无参 `KnowledgePageStore()` 成文必崩。
+2. 🔴 **`extractor.py:28-30` 先绑定 `api_key`/`base_url` 局部变量，44 才调 `_try_load_config`（只改 dict）**，
+   48/53 用的是**过期局部变量** ⇒ `model_config.json` 里的凭证**永远不生效**，
+   请求以空 Bearer 发出，**抽取全部静默返回空**。
+3. 🔴 **`entity_store.py:105-110` upsert 不重置 `status`，而 `reactivate`（230）全项目零调用**，
+   检索一律 `status='active'` ⇒ 180 天未提及的实体被 `deactivate_stale` 后**永久退出召回集且不可恢复**。
+4. 🔴 **`entity_store.py:159-161` `get_or_create` 命中即返回**，不递增 `mention_count`、不更新 `last_seen`、
+   不写 `aliases`，而 `task/reflection.py:320/348/464` 是实体主写入路径 ⇒ 热度与活跃时间失真，
+   连锁导致**误停用**。
+5. 🔴 **`relation_store.py:150-155` 顶替键只有 `(subject_id, predicate)`** ⇒ 多值谓词被误顶替
+   （「养猫」被「养狗」顶掉），且**重复提及同一事实也产生 `superseded` 垃圾行**（无幂等路径）。
+
+**其他成组发现**：`MAX_OBS_PER_PAGE=12`（47-48）零引用且与 167「不截断」注释矛盾；
+`RELATION_CONFIDENCE_MIN=0.5`/`CAUSAL_CONFIDENCE_MIN=0.7`（27-28）零引用而 `task/reflection.py:373-374`
+硬编码同值；`relation_store.py:53` 的 `embedding` 列**只写不读**；`max_hop` 参数（208）在 SQL 中未使用；
+`aliases` 只写不查；`knowledge_pages` 零向量护栏失效（141 只判 `not emb`，对比
+`fragment_store.py:452` 有 `all(v==0)` 的正确写法）；`extractor.py:145/172` 无 markdown 围栏剥离
+（同仓 `knowledge_pages.py:489` 已有正则）；`text[:3000]` 丢弃长对话尾部（143/170）。
+
+#### 分组 E：材料侧记忆（`file_crystal_store.py` 1123 + `cmn_retriever.py` 582 + `cmn_viz.py` 358）
+
+**`file_crystal_store.py`** —— 材料侧记忆全生命周期：切片 → 算 hash → 可选 LLM「三问压缩」→ 金字塔分层与血统
+→ 以 hash 为准检失效。31 个函数。`build_file_crystals` 225、**`build_slices_only` 316（无 LLM 版）**、
+`get_file_status` 430、`get_thoughts_for_path` 511（血统桥）、`detect_hash_changes` 587、`recall` 668、
+`build_pyramid` 817、`drill_down` 945、`drill_up` 962、`get_pyramid` 979、`read_top_layer` 1018、
+`propagate_stale_upward` 1056。常量 `MAX_PYRAMID_LAYERS=5`(813)、`DEFAULT_PACK_SIZE=4`(814)、
+`TOP_LAYER_TOKEN_BUDGET=5000`(815)。
+- ✅ **`build_slices_only` 的三阶段拆分**（340/371/400/404），作者原话：
+  「阶段 1：查重 + 算 embedding（**不持写锁**，避免 embed 耗时阻塞其他写入）」→「查完就关，不持锁调 embed」
+  →「**先提交主事务，释放写锁**」→「阶段 3：更新 vec_index（**commit 之后**，避免跨连接死锁）」。
+  配套立场：**「vec 索引可随时 rebuild，失败只影响 KNN 加速，不影响主数据写入」** ——
+  把派生索引定位为**可重建的缓存**。
+- ✅ **作者把 hash 主动划出「晶体」范畴**（320-322）：
+
+  > 切片+hash 是基础设施（定位+变化检测），**不是晶体**；真正的晶体（理解/结论）由 AI 思考产生，
+  > 存在 `memory_fragments` 表；`raw_source_id` 桥将自传晶体指向切片
+
+- 🔴 **`recall()` 的 KNN 分支绕过 `status` 过滤**（684-691 vs 712-713），且 **KNN 路径无相似度下限**
+  而 fallback 路径有 `sim > 0.1`（706）⇒ 两路结果语义不可比。
+- 🔴 **`recall` 硬编码 `layer=0`**（698）⇒ **金字塔上层永不参与召回**，`build_pyramid` 的产物
+  只能靠 `read_top_layer`/`drill_*` 使用，「压缩上下文」的设计意图**未在召回路径兑现**。
+- ⚠️ `len(pack) < 2` 时 `continue`（872-874）⇒ 这些晶体**永远没有 parent（孤儿）**；
+  上层 `crystal_parent_id` 又硬写 NULL（905）⇒ **中间层也成了「根」**。
+- ⚠️ 查重限定 `status='active'`（259-263）⇒ 同 hash 的 stale 晶体不复用，文件改了又改回会重复插入整套。
+- ⚠️ `get_pyramid` 的 `build_node`（1003-1004）双层线性扫 ⇒ **O(N²)**。
+
+**`cmn_retriever.py`** —— CMN 统一检索**门面**（自己不做向量计算）：聚合自传/文件/消息三路 + 关系边走边扩展。
+`retrieve` 78、`walk_edges` 215、`_get_neighbors` 244、`_expand_via_edges` 294、`_enrich_with_decay` 335、
+`_compute_file_decay` 361、`refresh_decay_all` 376、`verify_hash` 410、`_verify_file_crystal` 421、
+`_verify_self_crystal` 476、`stats` 521。
+- 🔴 **三路结果从不归一化**，只按「**消息 > 自传 > 文件**」的顺位拼接（消息靠 `insert(0)` 抢名额，125-129），
+  `top_k` 截断语义含混。
+- 🔴 **`_enrich_with_decay` 判别缺陷**（335-359）：`_compute_file_decay` 读 `last_hash_verified_at`，
+  碎片行没有该键 ⇒ `.get()` 返回 None ⇒ **decay = 0.3**，随后被打上
+  `_decay_reason = "长时间未验证 hash"` ⇒ **自传晶体被误报 decay 警告**，且 0.3 写回 dict 影响下游。
+- ⚠️ `refresh_decay_all` **只覆盖 file_crystals**（388）⇒ 自传记忆永不衰减；
+  而 docstring（8-10）宣称自传 decay 由「被多少新晶体引用/否定过」驱动 —— **注释与实现不符**。
+- ⚠️ `stats()` 的 `self_authority` 无 `dirty=1` 而 `self_total` 有（529-534）⇒ **分子可能大于分母**。
+- ⚠️ `m["id"] = m.get("message_id")`（128）与碎片/文件 id 空间**可能数值撞车** ⇒ 去重时误删碎片命中。
+- ⚠️ `walk_edges` 对每个邻居 `get_by_id` 新建连接（236-240）⇒ **N+1 查询 × hops**。
+
+**`cmn_viz.py`** —— 把 CMN 数据构造成 **X6 图 JSON**（纯读、无 LLM、无向量），
+`build_network_graph` 27、`build_relations_graph` 182、`get_pyramid_tree` 286、`pyramid_to_x6` 292、
+`list_indexed_files` 337。**价值是人肉调参与 debug**（作者的阈值就是这么调出来的）。
+- 🔴🔴 **这张图最容易骗人**：节点查询是 `ORDER BY layer DESC, slice_index LIMIT 100`（52-58）
+  ⇒ **优先取金字塔高层，layer 0 切片被挤出**；而所有边都要求两端都在节点集内（111/126/148），
+  父子不齐即 `continue` **且无提示** ⇒ 规模稍大的库退化成「一堆孤立节点」。
+- 🔴 **`crystal_parent_id` 有三种 id 形态**（`str(knowledge_id)`、story id、`fc_*`），而 self 节点加了
+  `frag_` 前缀 ⇒ **只有 `fc_*` 能命中** `node_ids`，**derive 边多数画不出来** ⇒
+  **不能据这张图认为「bigeye 没有血统」** —— 血统在数据层（`link_cores_to_knowledge`）是真实写入的。
+- ⚠️ `build_relations_graph` 不过滤 `valid_to IS NULL`（194/211）⇒ 已被取代的事实照样上色。
+
+#### 关于 `hash` 校验机制（跨文件完整链条，本组最高价值的一条）
+
+| 阶段 | 位置 | 行为 |
+|---|---|---|
+| 算法 | `file_crystal_store.py:139-141`；`fragment_store.py:386-388` | `sha256(utf-8)[:16]`（64bit）；文件用**切片原文**，自传用 `text` |
+| 写「验证时间」 | **289 / 397** | ⚠️ **INSERT 时 = 建设时间，不是真验证** |
+| 被动校验① | `get_file_status:467-484` | read_file 时重切比对；**只报告不落库** |
+| 被动校验② | `detect_hash_changes:597-652` | 比对后把旧晶体置 `stale` |
+| 主动校验 | `_verify_file_crystal:421-474` | 一致 → `decay=1.0`；不一致 → **`stale` + `decay=0.0`** |
+| 自传校验 | `_verify_self_crystal:476-517` | 不一致 → **只 `decay=0.5`，不置 stale** |
+| 向上传播 | `propagate_stale_upward:1056` | 沿 parent 链全部置 stale（**只改 status**） |
+| decay 衰减 | `_compute_file_decay:361-372` / `refresh_decay_all:376` | `0.5**(age/30)`，下限 0.1，从未验证=0.3；**仅 file_crystals** |
+
+**诚实的结论：没有后台定时扫描。** `refresh_decay_all` 只重算数字、**不重读文件**。真正读盘校验只有两处：
+①再次 `read_file` 同一路径 ②显式调 `/api/cmn/verify`（`server.py:5515-5523`）。
+所以「原文变了但没人读」期间 stale 标记**不会自动出现，但 decay 会随时间下降** ——
+**这才是 decay 存在的真正意义：用时间代替扫描，近似表达「可能已过期」**。
