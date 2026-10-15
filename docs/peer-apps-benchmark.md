@@ -1476,6 +1476,13 @@ build_story_weak_assocs → consolidate_observations，115-171，每步独立 tr
 `fragment_store.py:452` 有 `all(v==0)` 的正确写法）；`extractor.py:145/172` 无 markdown 围栏剥离
 （同仓 `knowledge_pages.py:489` 已有正则）；`text[:3000]` 丢弃长对话尾部（143/170）。
 
+**量纲可直接对齐（落地时最省事的一点）**：bigeye 的 `importance` 同为 **1–10**
+（`extractor.py:197-199` 的锚点提示词、`fragment_store.py:641` 除以 10），且它用的是**乘性结构**
+（`fragment_store.py:644` 六因子连乘）—— 所以 `ENTITY_BONUS=1.5` 这类 bonus 可以**直接再乘到本仓的
+`effectiveImportance × (0.55 + 0.45×activity)` 上，不破坏量纲**。但必须**补上 bigeye 缺的那一步**：
+把「用户消息 → 实体名匹配」接在注入前（纯名字精确/前缀匹配即可，不要依赖向量），
+否则会复刻它「公式就绪、输入恒空」的装饰性代码。
+
 #### 分组 E：材料侧记忆（`file_crystal_store.py` 1123 + `cmn_retriever.py` 582 + `cmn_viz.py` 358）
 
 **`file_crystal_store.py`** —— 材料侧记忆全生命周期：切片 → 算 hash → 可选 LLM「三问压缩」→ 金字塔分层与血统
