@@ -334,6 +334,18 @@ private fun BreakdownCard(
                 tokens = capacity.historyTokens,
                 used = used,
             )
+            // 尾部记忆（L2 工作集 + L3 索引）：单开一行，好让「system 里的 L0/L1」与
+            // 「尾部的 L2/L3」分开可见 —— 两者位置不同、缓存行为完全不同
+            // （尾部怎么变都不影响前缀）。见 design-memory-injection-tiering.md
+            if (capacity.memoryTailTokens > 0) {
+                BreakdownRow(
+                    icon = HugeIcons.Database02,
+                    title = stringResource(R.string.context_capacity_breakdown_memory_tail),
+                    detail = null,
+                    tokens = capacity.memoryTailTokens,
+                    used = used,
+                )
+            }
             BreakdownRow(
                 icon = HugeIcons.Database02,
                 title = stringResource(R.string.context_capacity_breakdown_system_memory),

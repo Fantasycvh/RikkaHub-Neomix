@@ -1914,6 +1914,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="context_capacity_breakdown_title">上下文组成明细</string>
   <string name="context_capacity_breakdown_history">有效历史消息</string>
   <string name="context_capacity_breakdown_count">%1$d 条 / 共 %2$d 条</string>
+  <string name="context_capacity_breakdown_memory_tail">尾部记忆（对话末尾）</string>
   <string name="context_capacity_breakdown_system_memory">系统设定与记忆</string>
   <string name="context_capacity_breakdown_itemized">工具与检查点</string>
   <string name="context_capacity_breakdown_tool_schema">工具 schema（不在对话中）</string>

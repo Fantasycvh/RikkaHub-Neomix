@@ -1916,6 +1916,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="context_capacity_breakdown_title">What makes up the context</string>
   <string name="context_capacity_breakdown_history">Effective history</string>
   <string name="context_capacity_breakdown_count">%1$d of %2$d messages</string>
+  <string name="context_capacity_breakdown_memory_tail">Memories at end of prompt</string>
   <string name="context_capacity_breakdown_system_memory">System prompt &amp; memories</string>
   <string name="context_capacity_breakdown_itemized">Tools &amp; checkpoints</string>
   <string name="context_capacity_breakdown_tool_schema">Tool schemas (not in the conversation)</string>

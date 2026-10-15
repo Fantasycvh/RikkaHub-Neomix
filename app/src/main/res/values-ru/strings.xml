@@ -100,6 +100,8 @@
   <string name="assistant_page_local_tools_tts_desc">Позвольте ИИ озвучить текст с помощью выбранного вами сервиса TTS</string>
   <string name="assistant_page_local_tools_tts_title">Преобразование текста в речь</string>
   <string name="assistant_page_manage_memory_title">Управление памятью</string>
+  <string name="assistant_page_memory_anchor">Закрепить как якорь</string>
+  <string name="assistant_page_memory_anchor_hint">Всегда в контексте с весом уровня system. Изменение сбрасывает весь кэш префикса.</string>
   <string name="assistant_page_memory_importance">Важность</string>
   <string name="assistant_page_memory_description_label">Тема</string>
   <string name="assistant_page_memory_description_hint">Одна строка о том, чему посвящена запись; именно её увидят будущие чаты, если запись не влезает в бюджет полного текста.</string>
@@ -1838,6 +1840,7 @@
   <string name="context_capacity_breakdown_title">Из чего состоит контекст</string>
   <string name="context_capacity_breakdown_history">Актуальная история</string>
   <string name="context_capacity_breakdown_count">%1$d из %2$d сообщений</string>
+  <string name="context_capacity_breakdown_memory_tail">Память в конце запроса</string>
   <string name="context_capacity_breakdown_system_memory">Системный промпт и память</string>
   <string name="context_capacity_breakdown_itemized">Инструменты и чекпоинты</string>
   <string name="context_capacity_breakdown_tool_schema">Схемы инструментов (не в диалоге)</string>

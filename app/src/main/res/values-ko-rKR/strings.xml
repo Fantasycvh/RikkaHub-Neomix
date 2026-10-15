@@ -100,6 +100,8 @@
   <string name="assistant_page_local_tools_tts_desc">AI가 선택한 TTS 서비스를 사용해 텍스트를 음성으로 읽어줍니다</string>
   <string name="assistant_page_local_tools_tts_title">텍스트 음성 변환</string>
   <string name="assistant_page_manage_memory_title">기억 관리</string>
+  <string name="assistant_page_memory_anchor">앵커로 고정</string>
+  <string name="assistant_page_memory_anchor_hint">항상 컨텍스트에 상주하며 system 수준 가중치를 갖습니다. 변경하면 전체 프리픽스 캐시가 무효화됩니다.</string>
   <string name="assistant_page_memory_importance">중요도</string>
   <string name="assistant_page_memory_description_label">주제</string>
   <string name="assistant_page_memory_description_hint">이 기록이 무엇에 관한 것인지 한 줄로. 전체 텍스트 예산에 들어가지 않을 때 이후 대화가 보는 줄입니다.</string>
@@ -1838,6 +1840,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="context_capacity_breakdown_title">컨텍스트 구성</string>
   <string name="context_capacity_breakdown_history">유효 기록</string>
   <string name="context_capacity_breakdown_count">%1$d / %2$d개</string>
+  <string name="context_capacity_breakdown_memory_tail">프롬프트 끝의 메모리</string>
   <string name="context_capacity_breakdown_system_memory">시스템 설정 및 기억</string>
   <string name="context_capacity_breakdown_itemized">도구 및 체크포인트</string>
   <string name="context_capacity_breakdown_tool_schema">도구 schema (대화에 없음)</string>

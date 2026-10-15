@@ -102,6 +102,8 @@
   <string name="assistant_page_local_tools_tts_desc">讓 AI 使用您所選的 TTS 服務為您朗讀文字</string>
   <string name="assistant_page_local_tools_tts_title">文字轉語音</string>
   <string name="assistant_page_manage_memory_title">管理記憶</string>
+  <string name="assistant_page_memory_anchor">固化為錨點</string>
+  <string name="assistant_page_memory_anchor_hint">常駐上下文並獲得 system 級權重；改動它會讓整個前綴快取失效。</string>
   <string name="assistant_page_memory_importance">重要度</string>
   <string name="assistant_page_memory_description_label">主題</string>
   <string name="assistant_page_memory_description_hint">一行說明這條記憶講什麼；全文預算裝不下時，後續對話看到的就是它。</string>
@@ -1894,6 +1896,7 @@
   <string name="context_capacity_breakdown_title">上下文組成明細</string>
   <string name="context_capacity_breakdown_history">有效歷史訊息</string>
   <string name="context_capacity_breakdown_count">%1$d 則 / 共 %2$d 則</string>
+  <string name="context_capacity_breakdown_memory_tail">尾部記憶（對話末尾）</string>
   <string name="context_capacity_breakdown_system_memory">系統設定與記憶</string>
   <string name="context_capacity_breakdown_itemized">工具與檢查點</string>
   <string name="context_capacity_breakdown_tool_schema">工具 schema（不在對話中）</string>

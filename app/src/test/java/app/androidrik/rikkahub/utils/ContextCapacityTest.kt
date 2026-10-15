@@ -197,4 +197,30 @@ class ContextCapacityTest {
         assertEquals(20_000, anchored.usedTokens)
         assertEquals(false, anchored.usesLocalFloor)
     }
+    @Test
+    fun `memory tail is itemized and excluded from the system remainder`() {
+        val segments = listOf(
+            user(1_000),
+            seg(PromptSegmentKind.MEMORY, 300), // L0 纪律 + L1 锚点：在 system
+            seg(PromptSegmentKind.MEMORY_TAIL, 700), // L2 工作集 + L3 索引：在对话尾部
+        )
+        val capacity = computeContextCapacity(
+            usedTokens = 2_000,
+            windowTokens = 100_000,
+            segments = segments,
+            sentHistoryCount = 1,
+            totalMessageCount = 1,
+        )
+        assertEquals(700, capacity.memoryTailTokens)
+        // 差值行必须**扣掉**尾部记忆：否则尾部记忆被算两次，
+        // 「各项相加恒等于总占用」这条面板不变式就破了
+        assertEquals(2_000 - 1_000 - 700, capacity.systemMemoryTokens)
+        // 不变式本体
+        assertEquals(
+            capacity.usedTokens,
+            capacity.historyTokens + capacity.toolSchemaTokens + capacity.toolResultTokens +
+                capacity.checkpointTokens + capacity.memoryTailTokens + capacity.systemMemoryTokens,
+        )
+    }
+
 }

@@ -31,7 +31,17 @@ data class ContextCapacity(
     val toolSchemaTokens: Int,
     val toolResultTokens: Int,
     val checkpointTokens: Int,
-    /** 系统设定与记忆 = 总占用 − 单列项合计（差值法，见类注释）。 */
+    /**
+     * **尾部记忆**（[PromptSegmentKind.MEMORY_TAIL] 合计）：L2 工作集 + L3 索引，
+     * 追加在对话末尾的合成消息。
+     *
+     * 刻意**单开一行**而不是并进 [systemMemoryTokens]：这两块现在位置不同、缓存行为
+     * 完全不同 —— system 里的 L0/L1 改动会让前缀从位置 0 起全断，尾部这块怎么变都不影响。
+     * 分开显示才看得出"记忆到底占了多少、为什么缓存没掉"。
+     * 见 `docs/design/design-memory-injection-tiering.md`。
+     */
+    val memoryTailTokens: Int,
+    /** 系统设定与锚点 = 总占用 − 单列项合计（差值法，见类注释）。 */
     val systemMemoryTokens: Int,
     /** 本次发送的历史条数（压缩检查点计 1 条）；与 [totalMessageCount] 对比可见裁剪量。 */
     val sentHistoryCount: Int,
@@ -69,12 +79,15 @@ fun computeContextCapacity(
     val toolSchemaTokens = segments.sumOf { if (it.kind == PromptSegmentKind.TOOL_SCHEMA) it.tokens else 0 }
     val toolResultTokens = segments.sumOf { if (it.kind == PromptSegmentKind.TOOL_RESULT) it.tokens else 0 }
     val checkpointTokens = segments.sumOf { if (it.kind == PromptSegmentKind.COMPRESSION_CHECKPOINT) it.tokens else 0 }
+    // 尾部记忆单列：**必须从下面的差值里扣除**，否则各项相加不再等于总占用（破坏面板的
+    // 「各项相加恒等于总占用」不变式）
+    val memoryTailTokens = segments.sumOf { if (it.kind == PromptSegmentKind.MEMORY_TAIL) it.tokens else 0 }
 
     val itemizedSum = historyTokens + toolSchemaTokens + toolResultTokens + checkpointTokens
     // 总占用取「服务端锚点」与「本地已知总量」的较大者：usage 缺失（首次回复前）时，
     // 本地口径才知道系统提示/注入/工具 schema 这些固定开销，否则明细会超过合计。
     val effectiveUsed = maxOf(usedTokens, localTotalTokens)
-    val systemMemoryTokens = (effectiveUsed - itemizedSum).coerceAtLeast(0)
+    val systemMemoryTokens = (effectiveUsed - itemizedSum - memoryTailTokens).coerceAtLeast(0)
 
     val fraction = if (windowTokens > 0) (effectiveUsed.toFloat() / windowTokens).coerceIn(0f, 1f) else 0f
     val perRound = perRoundTokens(history)
@@ -92,6 +105,7 @@ fun computeContextCapacity(
         toolSchemaTokens = toolSchemaTokens,
         toolResultTokens = toolResultTokens,
         checkpointTokens = checkpointTokens,
+        memoryTailTokens = memoryTailTokens,
         systemMemoryTokens = systemMemoryTokens,
         sentHistoryCount = sentHistoryCount,
         totalMessageCount = totalMessageCount,
