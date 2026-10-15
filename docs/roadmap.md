@@ -2367,3 +2367,21 @@ Page 2:","firstUnit":1,"lastUnit":2,
   动态段追加到最新用户消息、更新 `PromptAssemblyTest` 逐字节契约，**不动打分与选取**）→ 第 2 步 L1（加
   `is_anchor` + 迁移 + 提拔纪律 + 「固化记忆」入口 + 会话开始冻结）。两步各自带单测与真机复测（同款方法给对照数字）。
   **本轮只出设计稿，未改代码。**
+
+- 2026-10-15 晚：**记忆注入第 1 步落地（L0 + L2 + L3）——记忆数据移出 system、注入对话尾部**。承接同日设计稿。
+  ①**代码**：`GenerationPrompts.buildMemoryPrompt` 拆成 **`buildMemoryDisciplinePrompt()`（L0 静态纪律，留在 system）**
+  与 **`buildMemoryDataPrompt()`（L2 工作集 + L3 索引，动态数据）**；`PromptAssembly.buildSystemBlocks` 的
+  `SystemBlockSource.MEMORY` 改为只发 L0；`buildInternalMessages` 在**对话尾部**追加一条**合成 USER 消息**
+  （`.copy(isSynthetic = true)`，照压缩检查点同款做法——`partitionCheckpointMessages` 正是判
+  `isSynthetic && role == USER`），带可识别前导 `MEMORY_TAIL_PREAMBLE`。会话级「不使用记忆」时**两层都不发**
+  （保持原语义）。`MemoryConsolidator` 的 `libraryPrompt` 改用 `buildMemoryDataPrompt`（整理器要的是数据本身）。
+  ②**测试**：契约测试改写为 `memory data never enters system - only the L0 discipline does`（断言 system 含
+  `**Memories**` 但**不含**记忆数据；数据在**最后一条**合成 USER 消息里、且前面没有任何一条含数据）+
+  `memory is not injected at all when the assistant disables it`；两个断言纪律文本的旧用例改指
+  `buildMemoryDisciplinePrompt`，并**反向**钉住「纪律不该出现在尾部数据块里」（否则每次写入都会改写 system）。
+  ③**证伪**：把 `buildMemoryDataPrompt(...)` 拼回 system ⇒ `PromptAssemblyTest` **精确变红**（仅该用例），
+  还原后全绿。④**全量**：`./gradlew testDebugUnitTest -x :web:buildWebUi` **BUILD SUCCESSFUL**（全模块）。
+  ⑤**已知待收尾**（第 2 步一并处理）：`ContextCapacitySheet` 的「系统设定与记忆」是**差值法**算的，记忆数据
+  挪到尾部后会落进「有效历史消息」侧——**标签不再准确**；`PromptInspector` 也还没给尾部记忆块单独分段归因。
+  ⑥**真机待验**：用 2026-10-15 那套同款方法复测命中率，预期「写一次记忆 = 全量失效」消失（记忆写入不再改变
+  system）。**L1 锚点（system 层小配额 + 会话开始冻结 + 手动「固化记忆」）未做。**

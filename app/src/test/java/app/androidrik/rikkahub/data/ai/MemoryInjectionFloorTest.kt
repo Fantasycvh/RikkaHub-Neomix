@@ -42,7 +42,7 @@ class MemoryInjectionFloorTest {
 
     private fun promptWithOneMemory(): String {
         val now = 730L * 24 * 60 * 60 * 1000
-        return buildMemoryPrompt(
+        return buildMemoryDataPrompt(
             memories = listOf(memory("a", 0.9f, ageDays = 1f, now = now)),
             budgetTokens = 10_000,
             now = now,
@@ -58,9 +58,13 @@ class MemoryInjectionFloorTest {
      */
     @Test
     fun `injected memory block states the usage discipline`() {
-        val prompt = promptWithOneMemory()
-        assertTrue("缺证据强度条款", prompt.contains("mentioned once"))
-        assertTrue("缺敏感项仅在用户本轮提起时使用", prompt.contains("only when the user raises them in this turn"))
+        // 纪律在 **L0**（system 层，恒定），与记忆数据**分离** —— 这正是缓存收益的来源：
+        // 数据每次写入都会变，而纪律逐字节不变，故 system 不会因写入而失配。
+        val discipline = buildMemoryDisciplinePrompt()
+        assertTrue("缺证据强度条款", discipline.contains("mentioned once"))
+        assertTrue("缺敏感项仅在用户本轮提起时使用", discipline.contains("only when the user raises them in this turn"))
+        // 数据块里**不应**再含纪律（否则每次写入都会改写它 ⇒ system 失配）
+        assertFalse("纪律不该出现在尾部数据块里", promptWithOneMemory().contains("mentioned once"))
     }
 
     /**

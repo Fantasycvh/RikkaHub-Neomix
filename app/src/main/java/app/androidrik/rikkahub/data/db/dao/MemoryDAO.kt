@@ -11,7 +11,7 @@ import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 interface MemoryDAO {
     // 显式 ORDER BY：此前依赖 SQLite 未定义的行扫描顺序（实际等于 rowid 升序），语义脆弱。
     // 这里保持升序（= 原 de-facto 行为，记忆页展示顺序不变）；
-    // 「注入哪些记忆」的新旧取舍由 buildMemoryPrompt 按 sortKey 自行选取，不依赖本处顺序。
+    // 「注入哪些记忆」的新旧取舍由 buildMemoryDataPrompt 按 sortKey 自行选取，不依赖本处顺序。
     @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId ORDER BY id ASC")
     fun getMemoriesOfAssistantFlow(assistantId: String): Flow<List<MemoryEntity>>
 

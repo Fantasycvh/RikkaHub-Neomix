@@ -147,10 +147,7 @@ internal fun buildSystemBlocks(
         // 预算来自设置（可调）：注入「哪些」由打分校准决定、「装多少」由它决定
         blocks += SystemBlock(
             SystemBlockSource.MEMORY,
-            content = buildMemoryPrompt(
-                memories = memories,
-                budgetTokens = settings.memoryInjectBudgetTokens,
-            ),
+            content = buildMemoryDisciplinePrompt(),
         )
     }
     // 工具prompt
@@ -298,5 +295,18 @@ internal fun buildInternalMessages(
                 // 故只需过滤一次（见 UiNotice.kt 的说明）。
                 .map { it.withoutUiNotices() }
         )
+        // L2+L3：记忆数据追加到**对话尾部**（合成 USER 消息，不落库）。
+        // 照压缩检查点同款做法（`partitionCheckpointMessages` 判 `isSynthetic && role == USER`）。
+        // **为什么在尾部**：本块每次记忆写入都会变；若留在 system，则整条 system 失配 ⇒
+        // 前缀从位置 0 起全断（真机实测命中率 98% → 0%，设计稿 §2）。放尾部则不影响前缀。
+        if (assistant.enableMemory && !memoryDisabled) {
+            val memoryData = buildMemoryDataPrompt(
+                memories = memories,
+                budgetTokens = settings.memoryInjectBudgetTokens,
+            )
+            if (memoryData.isNotBlank()) {
+                add(UIMessage.user(prompt = memoryData).copy(isSynthetic = true))
+            }
+        }
     }
 }

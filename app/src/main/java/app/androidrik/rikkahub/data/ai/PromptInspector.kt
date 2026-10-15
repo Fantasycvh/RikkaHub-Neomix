@@ -48,7 +48,7 @@ enum class PromptSegmentKind {
     /** #1542 Tier B：角色卡的单个槽位（system 块化的拆分形态） */
     CARD_SLOT,
 
-    /** 注入的记忆（buildMemoryPrompt 产物） */
+    /** 注入的记忆（buildMemoryDisciplinePrompt + buildMemoryDataPrompt 产物） */
     MEMORY,
 
     /**

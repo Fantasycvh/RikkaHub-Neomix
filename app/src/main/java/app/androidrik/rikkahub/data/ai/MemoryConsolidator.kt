@@ -102,7 +102,7 @@ class MemoryConsolidator(
                 settings = settings,
                 model = model,
                 memoryId = memoryId,
-                libraryPrompt = buildMemoryPrompt(library, DEFAULT_LIBRARY_TOKENS, now()),
+                libraryPrompt = buildMemoryDataPrompt(library, DEFAULT_LIBRARY_TOKENS, now()),
                 calibrationTable = buildMemoryCalibrationTable(library),
                 transcript = transcript.text,
                 maxSteps = if (fullReview) MAX_MANUAL_STEPS else MAX_AUTO_STEPS,

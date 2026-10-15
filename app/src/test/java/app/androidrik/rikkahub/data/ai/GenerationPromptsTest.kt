@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.ai
 
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -160,22 +161,26 @@ class GenerationPromptsTest {
 
     @Test
     fun `build memory prompt emits opaque token as id not sequential number`() {
-        val prompt = buildMemoryPrompt(listOf(memory(seq = 7, content = "hello")))
+        val prompt = buildMemoryDataPrompt(listOf(memory(seq = 7, content = "hello")))
         assertTrue(prompt.contains("\"id\": \"tok7\""))
     }
 
     @Test
     fun `build memory prompt respects token budget`() {
         val memories = (1..60).map { memory(it, content = "x".repeat(10_000)) }
-        val prompt = buildMemoryPrompt(memories, budgetTokens = 8_000)
+        val prompt = buildMemoryDataPrompt(memories, budgetTokens = 8_000)
         // 旧实现按 100K 字符注入（60×10K = 600K 字符 → 巨大 prompt）；现在受 token 预算约束
         assertTrue("prompt too large: ${prompt.length}", prompt.length < 60_000)
     }
 
     @Test
     fun `build memory prompt with empty memories produces header only`() {
-        val prompt = buildMemoryPrompt(emptyList())
-        assertTrue(prompt.contains("**Memories**"))
+        // L0 纪律层在 system（恒定），与数据分离
+        assertTrue(buildMemoryDisciplinePrompt().contains("**Memories**"))
+        // L2+L3 数据层：无记忆时只剩前导标记 + 空数组，不渲染清单标题
+        val data = buildMemoryDataPrompt(emptyList())
+        assertTrue(data.startsWith(MEMORY_TAIL_PREAMBLE))
+        assertFalse("空记忆不应渲染清单标题", data.contains("**Memory index**"))
     }
 
     // ===== 边界 =====

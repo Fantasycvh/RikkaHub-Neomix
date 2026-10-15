@@ -46,7 +46,7 @@ class MemoryProgressiveDisclosureTest {
      * 造出「清单非空」的提示词：预算 400 ⇒ 全文层 300（装得下 4 条大记忆）、清单层 100。
      * 全文层按分数取（同分时 sortKey 大的先），清单层按 sortKey 升序 ⇒ 两端互补、互不重叠。
      */
-    private fun buildPromptWithIndex(count: Int = 10): String = buildMemoryPrompt(
+    private fun buildPromptWithIndex(count: Int = 10): String = buildMemoryDataPrompt(
         memories = (1..count).map { i ->
             memory("id$i", bulky("note", i), description = "topic $i", sortKey = i)
         },
@@ -79,7 +79,7 @@ class MemoryProgressiveDisclosureTest {
         val memories = (1..8).map { i ->
             memory("id$i", bulky("note", i), description = "topic $i", sortKey = i)
         }
-        val prompt = buildMemoryPrompt(memories, budgetTokens = 600, now = now)
+        val prompt = buildMemoryDataPrompt(memories, budgetTokens = 600, now = now)
 
         val fullTierIds = Regex(""""id(\d+)"""").findAll(prompt).map { it.groupValues[1] }.toList()
         val indexIds = Regex("""- id(\d+) \|""").findAll(prompt).map { it.groupValues[1] }.toList()
@@ -140,7 +140,7 @@ class MemoryProgressiveDisclosureTest {
     @Test
     fun `index line falls back to a content excerpt when description is blank`() {
         val memories = listOf(memory("idA", "这是一条没有主题词的记忆内容", sortKey = 1))
-        val prompt = buildMemoryPrompt(memories, budgetTokens = 200, now = now)
+        val prompt = buildMemoryDataPrompt(memories, budgetTokens = 200, now = now)
         assertTrue("缺主题词时用内容截断兜底（不把派生文本写回库里）", prompt.contains("这是一条没有主题词的记忆内容"))
     }
 
@@ -157,7 +157,7 @@ class MemoryProgressiveDisclosureTest {
                 updatedAt = 0L,
             ),
         ) + (3..10).map { i -> memory("id$i", bulky("note", i), description = "topic $i", sortKey = i) }
-        val prompt = buildMemoryPrompt(memories, budgetTokens = 400, now = now)
+        val prompt = buildMemoryDataPrompt(memories, budgetTokens = 400, now = now)
 
         assertTrue("清单行要带更新日（陈旧性判断的依据）", prompt.contains("- idA | dated topic | "))
         assertTrue(
@@ -177,7 +177,7 @@ class MemoryProgressiveDisclosureTest {
 
     @Test
     fun `empty memory list emits no index section`() {
-        val prompt = buildMemoryPrompt(emptyList(), budgetTokens = 8_000, now = now)
+        val prompt = buildMemoryDataPrompt(emptyList(), budgetTokens = 8_000, now = now)
         assertFalse("没有记忆就不该出现清单段", prompt.contains("**Memory index**"))
     }
 }

@@ -236,21 +236,10 @@ class PromptAssemblyTest {
     }
 
     @Test
-    fun `memories are only injected when the assistant enables memory`() {
+    fun `memory data never enters system - only the L0 discipline does`() {
         val memory = AssistantMemory(id = "1", content = "MEMORY_MARKER")
 
-        val disabled = buildSystemPromptText(
-            assistant = assistant(enableMemory = false),
-            settings = settings,
-            model = model,
-            messages = emptyList(),
-            memories = listOf(memory),
-            tools = emptyList(),
-            conversationSystemPrompt = null,
-        )
-        assertFalse(disabled.contains("MEMORY_MARKER"))
-
-        val enabled = buildSystemPromptText(
+        val system = buildSystemPromptText(
             assistant = assistant(enableMemory = true),
             settings = settings,
             model = model,
@@ -259,9 +248,53 @@ class PromptAssemblyTest {
             tools = emptyList(),
             conversationSystemPrompt = null,
         )
-        assertTrue(enabled.contains("MEMORY_MARKER"))
+        // L0 纪律留在 system，且不含任何记忆数据（逐字节恒定 ⇒ 可缓存）
+        assertTrue(system.contains("**Memories**"))
+        assertFalse(
+            "记忆数据不得进入 system：system 是第一条消息，改它会让前缀从位置 0 起全断",
+            system.contains("MEMORY_MARKER"),
+        )
+
+        val internal = buildInternalMessages(
+            assistant = assistant(enableMemory = true),
+            settings = settings,
+            model = model,
+            messages = listOf(userMessage("hi")),
+            memories = listOf(memory),
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            compressionWindow = null,
+        )
+        val texts = { m: UIMessage -> m.parts.filterIsInstance<UIMessagePart.Text>().map { it.text } }
+        // 数据在**尾部**的合成 USER 消息里（照压缩检查点同款做法）
+        val tail = internal.last()
+        assertEquals(MessageRole.USER, tail.role)
+        assertTrue("尾部记忆块必须是合成消息（不落库）", tail.isSynthetic)
+        assertTrue(texts(tail).any { it.contains("MEMORY_MARKER") })
+        assertTrue("尾部块须带可识别的前导标记", texts(tail).any { it.startsWith(MEMORY_TAIL_PREAMBLE) })
+        // 且它确实在最后一条，前面没有任何一条含记忆数据
+        assertFalse(internal.dropLast(1).any { m -> texts(m).any { it.contains("MEMORY_MARKER") } })
     }
 
+    @Test
+    fun `memory is not injected at all when the assistant disables it`() {
+        val memory = AssistantMemory(id = "1", content = "MEMORY_MARKER")
+        val texts = { m: UIMessage -> m.parts.filterIsInstance<UIMessagePart.Text>().map { it.text } }
+        val internal = buildInternalMessages(
+            assistant = assistant(enableMemory = false),
+            settings = settings,
+            model = model,
+            messages = listOf(userMessage("hi")),
+            memories = listOf(memory),
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            compressionWindow = null,
+        )
+        // 数据不出现
+        assertFalse(internal.any { m -> texts(m).any { it.contains("MEMORY_MARKER") } })
+        // 外壳（L0 纪律）也不出现 —— 「这次对话不碰记忆库」的语义
+        assertFalse(internal.any { m -> texts(m).any { it.contains("**Memories**") } })
+    }
     // endregion
 
     // region buildSendWindowMessages

@@ -96,16 +96,51 @@ private const val MEMORY_INDEX_BUDGET_RATIO = 0.25f
 private const val MEMORY_INDEX_FALLBACK_CHARS = 80
 
 /**
- * 构建记忆注入提示词。
+ * **L0 纪律层**（静态）：记忆使用纪律 + 指向尾部数据的说明。
+ *
+ * 位置在 **system**，且**逐字节恒定**（不含任何记忆数据）⇒ 记忆写入不会让 system 失配，
+ * 前缀缓存得以保住。真正的记忆数据见 [buildMemoryDataPrompt]，由 [buildInternalMessages]
+ * 追加到**对话尾部**（设计见 `docs/design/design-memory-injection-tiering.md`）。
+ *
+ * **反注入声明（「记忆是记录、不是指令」+「遇附和/伴侣要求则忽略」）已于 2026-10-09 按用户
+ * 拍板移除，不要复活**：本 app 的正当用法本就包含人设与伴侣扮演，让记忆层教模型无视这类
+ * 偏好会与用户自己的助手配置打架（取舍见 `docs/design/design-memory-discipline.md` §2.3）。
+ */
+internal fun buildMemoryDisciplinePrompt(): String = buildString {
+    appendLine()
+    append("**Memories**")
+    appendLine()
+    append("These are memories stored via the memory_tool that you can reference in future conversations.")
+    appendLine()
+    append(
+        "Use a memory only to the degree it was recorded (\"mentioned once\" is not \"enthusiast\"), " +
+            "and only when it changes the answer — do not showcase that you remember. " +
+            "Sensitive items (health, finances, identity) enter an answer only when the user raises them in this turn."
+    )
+    appendLine()
+    append("The memory data itself is appended at the end of this conversation as a background block — ")
+    append("it is reference material, not part of the dialogue.")
+    appendLine()
+}
+
+/** 尾部记忆块的前导行：用于识别该合成消息（对应压缩检查点 `isCompactionCheckpointPreamble` 的同款做法）。 */
+internal const val MEMORY_TAIL_PREAMBLE = "**Memory data** (background, not part of the dialogue)"
+
+/**
+ * **L2 工作集 + L3 索引层**（动态）：真正的记忆数据，注入到**对话尾部**。
  *
  * **两层渐进披露**（V2）：
  * - **全文层** = [selectMemoriesForPrompt]（打分校准 + 预算截断），占预算 3/4；
  * - **清单层** = 其余记忆每行 `id ｜ 主题 ｜ 更新日`，占预算 1/4，模型据此决定要不要
  *   `memory_tool action=read` 取全文。
  *
- * 两层**不重叠**；入选集合各自按 `sortKey`（写入先后）渲染 ⇒ 只要集合不变，前缀字节稳定。
+ * 两层**不重叠**；入选集合各自按 `sortKey`（写入先后）渲染 ⇒ 只要集合不变，字节稳定。
+ *
+ * **为什么在尾部而不是 system**：本块**每次记忆写入都会变**，而 system 是第一条消息、
+ * 前缀缓存从位置 0 起连续匹配 —— 留在 system 会让整条 system 失配，实测命中率 98% → 0%
+ * （设计稿 §2）。放在尾部后，它怎么变都**不影响前缀**（L0/L1 仍可缓存）。
  */
-internal fun buildMemoryPrompt(
+internal fun buildMemoryDataPrompt(
     memories: List<AssistantMemory>,
     budgetTokens: Int = DEFAULT_MEMORY_BUDGET_TOKENS,
     now: Long = System.currentTimeMillis(),
@@ -117,23 +152,7 @@ internal fun buildMemoryPrompt(
     val indexed = selectMemoriesForIndex(memories, selectedIds, indexBudget, now)
 
     return buildString {
-        appendLine()
-        append("**Memories**")
-        appendLine()
-        append("These are memories stored via the memory_tool that you can reference in future conversations.")
-        appendLine()
-        // 使用纪律（V1）：记忆块是**模型每轮都会读**的地方，声明必须写在这里——
-        // 只写在工具描述里的话，「不写记忆」的场景（只读不写）就完全看不到纪律。
-        // 这段是静态文本 ⇒ 不破坏前缀缓存稳定性。
-        //
-        // **反注入声明（「记忆是记录、不是指令」+「遇附和/伴侣要求则忽略」）已于 2026-10-09 按用户
-        // 拍板移除，不要复活**：本 app 的正当用法本就包含人设与伴侣扮演，让记忆层教模型无视这类
-        // 偏好会与用户自己的助手配置打架（取舍见 `docs/design/design-memory-discipline.md` §2.3）。
-        append(
-            "Use a memory only to the degree it was recorded (\"mentioned once\" is not \"enthusiast\"), " +
-                "and only when it changes the answer — do not showcase that you remember. " +
-                "Sensitive items (health, finances, identity) enter an answer only when the user raises them in this turn."
-        )
+        append(MEMORY_TAIL_PREAMBLE)
         appendLine()
         val json = buildJsonArray {
             selected.forEach { memory ->
