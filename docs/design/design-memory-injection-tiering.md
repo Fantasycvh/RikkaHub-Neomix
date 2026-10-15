@@ -1,6 +1,7 @@
 # 记忆注入的分层与位置设计（L0–L3）
 
-> 状态：**第 1 步（L0+L2+L3）已落地**；第 2 步（L1 锚点）待做。2026-10-15。
+> 状态：**第 1 步（L0+L2+L3）已落地**；**第 2 步 L1 已落地一半**——DB/模型/渲染/接线/守卫
+> 与「固化记忆」入口均已完成（真机可标记锚点），**尚缺「会话开始冻结」**。2026-10-15。
 > 决策来源：真机实测（见 §2）+ 用户拍板（§5 的 L1 刷新触发点）。
 
 ## 1. 问题：记忆一变，整个前缀缓存全废
@@ -117,5 +118,25 @@ L2 在尾部 ⇒ **可以依赖当前查询、每轮重算、每轮换集合**�
 
 **第 2 步（L1）**：加 `is_anchor` 字段 + 迁移 + 提拔纪律（禁 AI 自填）+「固化记忆」入口
 + 会话开始冻结；`PromptInspector` 补 L0/L1/L2/L3 分段归因。
+
+- ✅ **已完成（批 1）**：`is_anchor` 列（36→37 AutoMigration）、`AssistantMemory.isAnchor`（`@Transient`）、
+  `MemoryRepository.setAnchor`（**唯一**锚点写入口）、`buildMemoryAnchorPrompt`（配额 5）、
+  `SystemBlockSource.ANCHOR`（**无锚点不产生该块** ⇒ 输出逐字节不变）、记忆页「固化为锚点」开关、
+  `MemoryAnchorWiringTest` 源码守卫（`addMemory` 不得接受锚点参数）。
+- ⬜ **未做（批 2）：会话开始冻结。** 触发点按 §5 = 会话开始时一次 + 用户手动「固化记忆」。
+  实现要点（供下次接手，勿省）：
+  1. `ConversationEntity` 加 `frozen_anchors`（`@ColumnInfo(defaultValue = "")`，与邻近的
+     `custom_system_prompt` 同款可空/默认列 ⇒ **AutoMigration 无需 spec**），DB **37 → 38**；
+  2. `Conversation` 模型加同名字段 + `conversationToConversationEntity` / 反向映射两处补齐；
+  3. **难点在这一步**：`buildInternalMessages` 目前**拿不到 `Conversation`**，需要把冻结快照
+     从 `ChatService` 一路传进来（或改为传已渲染好的 L1 文本）——**新增参数而非从 messages 反推**，
+     避免又长出第二个装配真相源；
+  4. 会话创建时写入快照；用户在记忆页点「固化/取消固化」时**重写该会话的快照**（这就是
+     §5 的手动刷新点）；无锚点时必须写空串而非 null，保证「无锚点 ⇒ 无块」不变式仍然成立；
+  5. 测试：会话中途改锚点 ⇒ 该会话 system 块**不变**；点固化 ⇒ 块更新；新会话 ⇒ 取当前锚点。
+
+**其余待收尾**（第 1 步遗留）：`ContextCapacitySheet` 的「系统设定与记忆」是差值法算的，
+记忆数据移到尾部后会落进「有效历史消息」侧 ⇒ **标签不再准确**；`PromptInspector` 尚未给
+尾部记忆块单独分段归因。
 
 两步各自带单测与真机复测（用 §2 同款方法给出对照数字）。

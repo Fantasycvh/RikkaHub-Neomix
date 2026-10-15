@@ -2385,3 +2385,23 @@ Page 2:","firstUnit":1,"lastUnit":2,
   挪到尾部后会落进「有效历史消息」侧——**标签不再准确**；`PromptInspector` 也还没给尾部记忆块单独分段归因。
   ⑥**真机待验**：用 2026-10-15 那套同款方法复测命中率，预期「写一次记忆 = 全量失效」消失（记忆写入不再改变
   system）。**L1 锚点（system 层小配额 + 会话开始冻结 + 手动「固化记忆」）未做。**
+
+- 2026-10-15 深夜：**L1 锚点批 1 落地（固化记忆入口）**。承接同日设计稿与第 1 步。①**DB**：`MemoryEntity`
+  加 `is_anchor`（NOT NULL + DEFAULT 0，存量全 false ⇒ 行为不变），DB **36 → 37** AutoMigration（含导出的
+  `37.json` schema）；`AssistantMemory` 加 `isAnchor` 且为 **`@Transient` 不序列化**——**模型不该看到或
+  设置锚点标志**，否则它会把自己写的记忆全标成锚点、system 块立刻失去稳定性。②**纪律**：
+  `MemoryRepository.setAnchor` 是**唯一**锚点写入口，而 `addMemory`（模型写入路径）**根本没有这个参数**
+  ⇒ 从构造上保证 AI 无法自填（照抄 bigeye `fragment_store.py:965-971` 白名单 + `tools/memory_tools.py:64`）；
+  `setAnchor` 刻意**不改 `updatedAt`**（固化是标注而非改写内容，改它会重置时效衰减 = 「固化一下老记忆
+  反而变新」）。③**渲染**：`buildMemoryAnchorPrompt`（配额 5、importance 降序、同分按 `sortKey` 保稳定序）；
+  `SystemBlockSource.ANCHOR` 块**只在有锚点时产生** ⇒ 无锚点时输出**逐字节不变**（既有契约测试与缓存行为
+  都不受影响）；`PromptInspector` 的 ANCHOR 复用「记忆」归因（刻意不新增分段种类，避免牵动 6 个 locale）。
+  ④**入口**：记忆编辑对话框加「固化为锚点」开关（说明：常驻上下文 + system 级权重，改动会让整个前缀
+  缓存失效）；字符串补 values(en) + values-zh，**其余 4 个 locale 待补**。⑤**守卫测试**：新增
+  `MemoryAnchorWiringTest`（源码扫描）钉住三条——`setAnchor` 存在、`addMemory` **不得**接受 `isAnchor`
+  参数、`isAnchor` 必须是 `@Transient`。**证伪**：给 `addMemory` 加锚点参数 ⇒ 守卫**精确变红**（仅该用例），
+  还原后全量 `testDebugUnitTest` **BUILD SUCCESSFUL**。⑥**批 2（会话开始冻结）未做**，已把实现要点
+  （DB 37→38、映射两处、**`buildInternalMessages` 拿不到 Conversation 是主要难点**、创建时写入 + 固化时
+  重写、无锚点须写空串）逐条记进设计稿 §8，供下次接手。⑦两项第 1 步遗留仍在：`ContextCapacitySheet`
+  分段标签（记忆移到尾部后不再准确）、`PromptInspector` 尾部记忆块归因。**真机待验**：固化一条锚点后
+  看 system 是否出现 `**Anchors**`，以及**不动锚点时写入普通记忆应不再冲掉前缀缓存**。
