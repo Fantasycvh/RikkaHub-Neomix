@@ -228,7 +228,6 @@ class AssistantDetailVM(
             // 既没固化成锚点、也没触发刷新，而界面看起来一切正常（曾经的真实 bug）。
             if (memory.isAnchor && !added.isAnchor) {
                 memoryRepository.setAnchor(id = added.id, isAnchor = true)
-                chatService.refreshFrozenAnchorsForAssistant(assistantId)
             }
         }
     }
@@ -254,14 +253,11 @@ class AssistantDetailVM(
                 description = memory.description,
             )
             // L1 锚点单独走 setAnchor（**不改 updatedAt**）：固化是标注、不是改写内容
-            val anchorFlipped = memoryRepository.setAnchor(id = memory.id, isAnchor = memory.isAnchor)
-            // L1 快照刷新（设计稿 §5 的手动触发点）。三种情况要刷：
-            // ① 刚固化；② 刚取消固化（锚点集合变小）；③ 改的这条**本来就是锚点**
-            //    （内容/重要度变了，锚点块文本随之变）。
-            // 改一条非锚点记忆的内容**不刷**——那会让该助手每个会话白丢一次前缀缓存。
-            if (anchorFlipped || memory.isAnchor) {
-                chatService.refreshFrozenAnchorsForAssistant(assistantId)
-            }
+            memoryRepository.setAnchor(id = memory.id, isAnchor = memory.isAnchor)
+            // **刻意不刷新任何已有会话**（设计稿 §5，2026-10-16 用户决定）：
+            // 改锚点若顺带刷新，就等于「点一下开关、该助手所有会话的缓存被静默作废」，
+            // 而那正是这套分层要消灭的东西。改锚点只影响**新会话**；已有会话要采纳，
+            // 必须有人显式按下两个入口之一——会话菜单「本对话固化记忆」或记忆页「固化记忆」。
         }
     }
 

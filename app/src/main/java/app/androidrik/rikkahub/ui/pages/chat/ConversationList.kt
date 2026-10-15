@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Anchor
 import me.rerere.hugeicons.stroke.CheckmarkCircle02
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Forward02
@@ -100,6 +101,11 @@ fun ColumnScope.ConversationList(
     onShare: (Conversation) -> Unit = {},
     /** 会话级「不使用记忆」（隐身对话）开关，见 docs/design/design-memory-discipline.md §4.4 */
     onToggleMemory: (Conversation) -> Unit = {},
+    /**
+     * 会话级「固化记忆」：让这一条会话立刻采纳当前锚点集合
+     * （`docs/design/design-memory-injection-tiering.md` §5）。
+     */
+    onFreezeMemory: (Conversation) -> Unit = {},
 ) {
     var hasScrolledToCurrent by remember(current.id) { mutableStateOf(false) }
 
@@ -275,6 +281,11 @@ private fun ConversationItem(
     onShare: (Conversation) -> Unit = {},
     /** 会话级「不使用记忆」（隐身对话）开关，见 docs/design/design-memory-discipline.md §4.4 */
     onToggleMemory: (Conversation) -> Unit = {},
+    /**
+     * 会话级「固化记忆」：让这一条会话立刻采纳当前锚点集合
+     * （`docs/design/design-memory-injection-tiering.md` §5）。
+     */
+    onFreezeMemory: (Conversation) -> Unit = {},
     onClick: (Conversation) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -423,6 +434,25 @@ private fun ConversationItem(
                         showDropdownMenu = false
                     }
                 )
+
+                // 会话级「固化记忆」：只在**本对话仍使用记忆**时才出现 —— 关掉记忆的会话
+                // 根本不产生锚点块，按了也没有意义。
+                // 与助手指级入口（记忆页「固化记忆」）的分工见 ChatService.freezeAnchorsForConversation。
+                if (!conversation.memoryDisabled) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(stringResource(R.string.chat_memory_freeze_action))
+                        },
+                        onClick = {
+                            onFreezeMemory(conversation)
+                            showDropdownMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(HugeIcons.Anchor, null)
+                        }
+                    )
+                }
+
                 DropdownMenuItem(
                     text = {
                         Text(stringResource(R.string.chat_page_share_conversation))

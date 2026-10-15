@@ -150,6 +150,60 @@ class MemoryAnchorWiringTest {
     }
 
     /**
+     * **改锚点不得静默刷新已有会话**（设计稿 §5，2026-10-16 用户决定"两个入口都显式"）。
+     *
+     * 曾经的做法是「保存记忆时顺带刷新该助手全部会话」。它的形态是：用户在记忆页点一下
+     * 「固化为锚点」，该助手**所有**会话的缓存被静默作废 —— 而那正是这套分层设计要消灭的
+     * 东西。改锚点现在只影响**新会话**；已有会话要采纳，必须显式按下两个入口之一。
+     */
+    @Test
+    fun `editing an anchor never silently refreshes existing chats`() {
+        val vm = source("app/androidrik/rikkahub/ui/pages/assistant/detail/AssistantDetailVM.kt")
+        // 用 0x0A.toChar() 而不是字符字面量转义：本文件由脚本批量生成，转义容易被吃掉
+        val newline = 0x0A.toChar()
+        for (fn in listOf("fun addMemory(", "fun updateMemory(")) {
+            val start = vm.indexOf(fn)
+            assertTrue("找不到 $fn", start >= 0)
+            val body = vm.substring(start).substringBefore("$newline    }")
+            assertFalse(
+                "$fn 不得顺带刷新已有会话：点一下锚点开关就把该助手所有会话的缓存静默作废，" +
+                    "正是分层设计要消灭的形态",
+                body.contains("refreshFrozenAnchors"),
+            )
+        }
+        // 但助手指级入口必须还在（记忆页那个显式按钮）
+        assertTrue(
+            "记忆页的助手指级「固化记忆」入口不见了",
+            vm.contains("suspend fun freezeMemoryAnchors("),
+        )
+    }
+
+    /**
+     * **会话级入口的接线**：会话菜单 → ChatVM → ChatService。
+     *
+     * 两个入口都显式是用户的选择（B）：会话级只让选中的那一条付一次前缀失效，
+     * 助手指级一次改完所有。少任何一环，菜单里就会出现一个按了没反应的项。
+     */
+    @Test
+    fun `conversation level freeze is wired from the chat menu`() {
+        val list = source("app/androidrik/rikkahub/ui/pages/chat/ConversationList.kt")
+        assertTrue(
+            "会话菜单缺少「本对话固化记忆」项",
+            list.contains("R.string.chat_memory_freeze_action"),
+        )
+        assertTrue(
+            "菜单项必须回调 onFreezeMemory（否则按了没反应）",
+            list.contains("onFreezeMemory(conversation)"),
+        )
+
+        val vm = source("app/androidrik/rikkahub/ui/pages/chat/ChatVM.kt")
+        assertTrue(
+            "ChatVM 未接到 ChatService.freezeAnchorsForConversation",
+            vm.contains("chatService.freezeAnchorsForConversation("),
+        )
+    }
+
+    /**
      * **拼装预览必须与实发同参**（本仓明确防的坑）。
      *
      * 实测过的回归形态：尾部记忆块加进来时，预览这份 `buildInternalMessages` 调用漏传了

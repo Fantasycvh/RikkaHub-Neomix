@@ -406,6 +406,16 @@ fun ChatDrawerContent(
                         )
                     )
                 },
+                onFreezeMemory = {
+                    // 会话级固化：只让这一条会话采纳当前锚点集合（见 docs/design/
+                    // design-memory-injection-tiering.md §5）。动作没有可见结果，故给作用面反馈。
+                    scope.launch {
+                        val count = vm.freezeMemoryAnchors(it)
+                        toaster.show(
+                            message = context.getString(R.string.chat_memory_freeze_toast, count)
+                        )
+                    }
+                },
                 onShare = {
                     // 列表项是轻量摘要（messageNodes 为空），导出前加载完整 conversation
                     scope.launch {

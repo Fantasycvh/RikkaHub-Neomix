@@ -101,7 +101,7 @@
   <string name="assistant_page_local_tools_tts_title">텍스트 음성 변환</string>
   <string name="assistant_page_manage_memory_title">기억 관리</string>
   <string name="assistant_page_memory_anchor">앵커로 고정</string>
-  <string name="assistant_page_memory_anchor_hint">항상 컨텍스트에 상주하며 system 수준 가중치를 갖습니다. 변경하면 전체 프리픽스 캐시가 무효화됩니다.</string>
+  <string name="assistant_page_memory_anchor_hint">항상 컨텍스트에 상주하며 system 수준 가중치를 갖습니다. 새 대화에만 적용되며, 기존 대화에 반영하려면 대화 메뉴에서 「이 대화에서 앵커 고정」을 누르세요.</string>
   <string name="assistant_page_memory_importance">중요도</string>
   <string name="assistant_page_memory_description_label">주제</string>
   <string name="assistant_page_memory_description_hint">이 기록이 무엇에 관한 것인지 한 줄로. 전체 텍스트 예산에 들어가지 않을 때 이후 대화가 보는 줄입니다.</string>
@@ -1858,5 +1858,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="assistant_page_memory_freeze_desc">앵커는 대화가 시작될 때 한 번만 고정됩니다. 앵커를 바꾼 뒤 여기를 누르면 현재 앵커 집합이 이 어시스턴트의 모든 대화에 적용됩니다(각 대화의 프롬프트 캐시는 한 번 다시 만들어집니다).</string>
   <string name="assistant_page_memory_freeze_action">고정</string>
   <string name="assistant_page_memory_freeze_done">%1$d개 대화에 고정했습니다</string>
+  <string name="chat_memory_freeze_action">이 대화에서 앵커 고정</string>
+  <string name="chat_memory_freeze_toast">이 대화에서 앵커 %1$d개를 고정했습니다</string>
 </resources>
 

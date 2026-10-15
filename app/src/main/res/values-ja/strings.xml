@@ -101,7 +101,7 @@
   <string name="assistant_page_local_tools_tts_title">テキスト読み上げ</string>
   <string name="assistant_page_manage_memory_title">記憶を管理</string>
   <string name="assistant_page_memory_anchor">アンカーとして固定</string>
-  <string name="assistant_page_memory_anchor_hint">常にコンテキストに常駐し system 級の重みを持つ。変更するとプレフィックスのキャッシュが全て無効になる。</string>
+  <string name="assistant_page_memory_anchor_hint">常にコンテキストに常駐し system 級の重みを持つ。新規の会話にのみ適用され、既存の会話で反映するには会話メニューの「この会話でアンカーを固定」を押します。</string>
   <string name="assistant_page_memory_importance">重要度</string>
   <string name="assistant_page_memory_description_label">トピック</string>
   <string name="assistant_page_memory_description_hint">この記録が何についてかを一行で。全文の予算に収まらないとき、後の会話が見るのはこの行です。</string>
@@ -1858,5 +1858,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="assistant_page_memory_freeze_desc">アンカーは会話の開始時に一度だけ固定されます。アンカーを変更したあとにここを押すと、現在のアンカー集合がこのアシスタントのすべての会話に適用されます（各会話のプロンプトキャッシュは一度だけ再構築されます）。</string>
   <string name="assistant_page_memory_freeze_action">固定</string>
   <string name="assistant_page_memory_freeze_done">%1$d 件の会話に固定しました</string>
+  <string name="chat_memory_freeze_action">この会話でアンカーを固定</string>
+  <string name="chat_memory_freeze_toast">この会話で %1$d 件のアンカーを固定しました</string>
 </resources>
 

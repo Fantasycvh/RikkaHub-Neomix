@@ -1276,10 +1276,9 @@ class ChatService(
             val loadedMemories = if (conversation.memoryDisabled) {
                 // 隐身对话：不加载记忆（注入侧另有 memoryDisabled 门控，这里省掉一次查询）
                 emptyList()
-            } else if (assistant.useGlobalMemory) {
-                memoryRepository.getGlobalMemories()
             } else {
-                memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
+                // 与两个手动固化入口共用同一口径（见 currentMemoriesFor）
+                currentMemoriesFor(assistant)
             }
             val loadedMemoriesAt = SystemClock.elapsedRealtime()
             val assembledTools = chatToolFactory.createTools(
@@ -2090,10 +2089,16 @@ class ChatService(
     }
 
     /**
-     * **L1 锚点集合：手动刷新点**（设计稿 §5 的第二个触发点）——记忆页「固化为锚点」后调用。
+     * **L1 锚点集合：助手指级的手动刷新点** —— 记忆页的「固化记忆」按钮。
      *
-     * 为什么是「该助手的全部会话」而不是某一个：锚点挂在助手的记忆库上，而记忆页没有
-     * 「当前会话」这个上下文；用户固化一条锚点的意图是「以后都算数」。
+     * 作用域 = 该助手的**全部会话**，一条批量 UPDATE 换档（+ 同步活跃 session 的内存态）。
+     * 与 [freezeAnchorsForConversation]（会话级）是**两个都显式**的入口，分工：
+     * 这里一次改完所有，代价是该助手每条会话下次回来各吃一次前缀 miss；
+     * 那里只让你选中的那一条付代价。
+     *
+     * **改锚点本身不再顺带刷新任何已有会话**（这一点是刻意的）：静默地作废一批会话的
+     * 前缀缓存，正是这套分层设计要消灭的东西。改锚点只影响**新会话**——它们开始时按
+     * 当时的集合冻结；已有会话要采纳就得有人**按下**这两个按钮之一。
      *
      * 两件事必须**一起**做，否则会分叉成「库已换档、内存态仍旧」：
      * 1. 先同步**活跃 session** 的内存态（沿用 [moveConversationToFolder] 的教训：只改库，
@@ -2101,20 +2106,13 @@ class ChatService(
      * 2. 再一条批量 UPDATE 覆盖没有活跃 session 的会话。
      *
      * 顺序不能反：先写库的话，这中间任何一次整对象保存都会用内存里的旧值把库盖回去。
-     * 代价 = 该助手每个会话**一次**前缀失效（这正是 §5 让用户显式按下的那个按钮）。
      *
      * @return 更新到的会话数（UI 用它给用户一个"作用面"的反馈——否则这个按钮看起来什么也没做）
      */
     suspend fun refreshFrozenAnchorsForAssistant(assistantId: Uuid): Int {
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(assistantId) ?: return 0
-        // 与 [handleMessageComplete] 同一口径：全局记忆助手看全局库
-        val memories = if (assistant.useGlobalMemory) {
-            memoryRepository.getGlobalMemories()
-        } else {
-            memoryRepository.getMemoriesOfAssistant(assistantId.toString())
-        }
-        val frozen = anchorIdsOf(memories).joinToString(",")
+        val frozen = anchorIdsOf(currentMemoriesFor(assistant)).joinToString(",")
         sessions.forEach { (conversationId, session) ->
             if (session.state.value.assistantId != assistantId) return@forEach
             session.updateMetadata(
@@ -2124,6 +2122,46 @@ class ChatService(
         }
         return conversationRepo.updateFrozenAnchorsForAssistant(assistantId, frozen)
     }
+
+    /**
+     * **L1 锚点集合：会话级的手动刷新点** —— 会话菜单的「本对话固化记忆」。
+     *
+     * 只让**这一条**会话采纳当前锚点集合：一次单列 UPDATE + 同步该会话的内存态。
+     * 代价被限制在「你主动选中的那一条」上——这是与 [refreshFrozenAnchorsForAssistant]
+     * 的关键差别（后者让该助手每条会话在下次回来时各吃一次前缀 miss，而那往往是冷启动、
+     * 最需要命中的时刻）。
+     *
+     * @param assistantId 该会话所属助手（调用方从会话上取；本方法不自己去查会话，
+     *   避免为了拿一个字段而把 session 建起来）
+     * @return 固化进去的**锚点条数**（给用户的作用面反馈；0 = 该会话此后不含锚点块）
+     */
+    suspend fun freezeAnchorsForConversation(conversationId: Uuid, assistantId: Uuid): Int {
+        val settings = settingsStore.settingsFlow.first()
+        val assistant = settings.getAssistantById(assistantId) ?: return 0
+        val ids = anchorIdsOf(currentMemoriesFor(assistant))
+        val frozen = ids.joinToString(",")
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(frozenAnchors = frozen) },
+            persist = { conversationRepo.updateConversationFrozenAnchors(conversationId, frozen) },
+        )
+        return ids.size
+    }
+
+    /**
+     * 该助手锚点层的记忆来源（全局记忆助手看全局库）。
+     *
+     * **三处调用点共用它**：会话开始冻结（[handleMessageComplete]）、会话级固化
+     * （[freezeAnchorsForConversation]）、助手指级固化（[refreshFrozenAnchorsForAssistant]）。
+     * 抽出来是为了让「同一口径」是**结构上**成立的——否则同一个助手在不同入口下可能固化出
+     * 不同的集合，而且是静默的。
+     */
+    private suspend fun currentMemoriesFor(assistant: Assistant): List<AssistantMemory> =
+        if (assistant.useGlobalMemory) {
+            memoryRepository.getGlobalMemories()
+        } else {
+            memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
+        }
 
     /**
      * 把会话移动到另一个助手。

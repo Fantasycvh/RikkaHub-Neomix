@@ -145,18 +145,16 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
      * 刻意**不更新 `updatedAt`**：固化是「标注」而不是「改写内容」。更新它会重置时效衰减，
      * 等于「固化一下反而让老记忆变新」，与锚点"长期稳定"的定位正好相反。
      *
-     * @return 锚点**是否真的发生了翻转**。调用方（记忆页保存）据此决定要不要刷新各会话的
-     *   L1 快照——不翻转且本条不是锚点时无需刷新，否则会白白废掉该助手每个会话的前缀缓存
-     *   （大上下文下这是实打实的钱和首字延迟，见设计稿 §2 的实测）。
+     * 值没变时**直接早退**，不写库：调用方（记忆页保存）每次编辑都会调到这里，而绝大多数
+     * 编辑与锚点无关。
      */
     suspend fun setAnchor(
         id: String,
         isAnchor: Boolean,
-    ): Boolean {
-        val old = findEntityByPublicId(id) ?: return false
-        if (old.isAnchor == isAnchor) return false
+    ) {
+        val old = findEntityByPublicId(id) ?: return
+        if (old.isAnchor == isAnchor) return
         memoryDAO.updateMemory(old.copy(isAnchor = isAnchor))
-        return true
     }
 
     /**

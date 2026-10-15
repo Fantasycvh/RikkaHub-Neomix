@@ -101,7 +101,7 @@
   <string name="assistant_page_local_tools_tts_title">Преобразование текста в речь</string>
   <string name="assistant_page_manage_memory_title">Управление памятью</string>
   <string name="assistant_page_memory_anchor">Закрепить как якорь</string>
-  <string name="assistant_page_memory_anchor_hint">Всегда в контексте с весом уровня system. Изменение сбрасывает весь кэш префикса.</string>
+  <string name="assistant_page_memory_anchor_hint">Всегда в контексте с весом уровня system. Применяется только к новым чатам; чтобы применить в существующем чате, нажмите «Зафиксировать якоря в этом чате» в его меню.</string>
   <string name="assistant_page_memory_importance">Важность</string>
   <string name="assistant_page_memory_description_label">Тема</string>
   <string name="assistant_page_memory_description_hint">Одна строка о том, чему посвящена запись; именно её увидят будущие чаты, если запись не влезает в бюджет полного текста.</string>
@@ -1858,5 +1858,7 @@
   <string name="assistant_page_memory_freeze_desc">Якоря фиксируются один раз при запуске чата. Нажмите здесь, чтобы применить текущий набор якорей ко всем чатам этого ассистента; кэш промпта каждого чата будет перестроен один раз.</string>
   <string name="assistant_page_memory_freeze_action">Зафиксировать</string>
   <string name="assistant_page_memory_freeze_done">Зафиксировано в чатах: %1$d</string>
+  <string name="chat_memory_freeze_action">Зафиксировать якоря в этом чате</string>
+  <string name="chat_memory_freeze_toast">Зафиксировано якорей в этом чате: %1$d</string>
 </resources>
 

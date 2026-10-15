@@ -103,7 +103,7 @@
   <string name="assistant_page_local_tools_tts_title">Text to Speech</string>
   <string name="assistant_page_manage_memory_title">Manage Memory</string>
   <string name="assistant_page_memory_anchor">Pin as anchor</string>
-  <string name="assistant_page_memory_anchor_hint">Always in context, with system-level weight. Costs a full prompt-cache reset when changed.</string>
+  <string name="assistant_page_memory_anchor_hint">Always in context, with system-level weight. Applies to new chats; freeze memory in an existing chat to adopt it there.</string>
   <string name="assistant_page_memory_importance">Importance</string>
   <string name="assistant_page_memory_description_label">Topic</string>
   <string name="assistant_page_memory_description_hint">One short line on what this record is about; it is what future chats see when the record does not fit the full-text budget.</string>
@@ -1932,5 +1932,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="assistant_page_memory_freeze_desc">Anchors are frozen per chat when it starts. Press here to apply the current anchor set to every chat of this assistant. Each chat rebuilds its prompt cache once.</string>
   <string name="assistant_page_memory_freeze_action">Freeze</string>
   <string name="assistant_page_memory_freeze_done">Frozen into %1$d chats</string>
+  <string name="chat_memory_freeze_action">Freeze memory in this chat</string>
+  <string name="chat_memory_freeze_toast">Frozen %1$d anchors in this chat</string>
 </resources>
 

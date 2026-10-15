@@ -398,6 +398,17 @@ class ChatVM(
         }
     }
 
+    /**
+     * 会话级「固化记忆」：让**这一条**会话立刻采纳当前的锚点集合（设计稿 §5）。
+     *
+     * 与记忆页的助手指级入口分工：这里只让选中的这一条付出一次前缀失效，那里一次改完
+     * 该助手的所有会话。两者都是**显式**动作 —— 改锚点本身不会再顺带刷新任何已有会话。
+     *
+     * @return 固化进去的锚点条数（调用方拿去 toast：这个动作没有可见结果，没反馈就像没生效）
+     */
+    suspend fun freezeMemoryAnchors(conversation: Conversation): Int =
+        chatService.freezeAnchorsForConversation(conversation.id, conversation.assistantId)
+
     fun moveConversationToAssistant(conversation: Conversation, targetAssistantId: Uuid) {
         viewModelScope.launch {
             // 走 ChatService 的统一元数据原语：改的是**内存最新态** + 只写单列。

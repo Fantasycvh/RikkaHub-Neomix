@@ -103,7 +103,7 @@
   <string name="assistant_page_local_tools_tts_title">文字轉語音</string>
   <string name="assistant_page_manage_memory_title">管理記憶</string>
   <string name="assistant_page_memory_anchor">固化為錨點</string>
-  <string name="assistant_page_memory_anchor_hint">常駐上下文並獲得 system 級權重；改動它會讓整個前綴快取失效。</string>
+  <string name="assistant_page_memory_anchor_hint">常駐上下文並獲得 system 級權重。只對新建的會話生效；已有會話要在會話選單裡按「本對話固化記憶」才會採用。</string>
   <string name="assistant_page_memory_importance">重要度</string>
   <string name="assistant_page_memory_description_label">主題</string>
   <string name="assistant_page_memory_description_hint">一行說明這條記憶講什麼；全文預算裝不下時，後續對話看到的就是它。</string>
@@ -1914,5 +1914,7 @@
   <string name="assistant_page_memory_freeze_desc">每個會話在開始時凍結一次錨點。改過錨點後按這裡，把目前錨點集合套用到該助手的全部會話（每個會話的前綴快取會重建一次）。</string>
   <string name="assistant_page_memory_freeze_action">固化</string>
   <string name="assistant_page_memory_freeze_done">已固化到 %1$d 個會話</string>
+  <string name="chat_memory_freeze_action">本對話固化記憶</string>
+  <string name="chat_memory_freeze_toast">已在本對話固化 %1$d 條錨點</string>
 </resources>
 
