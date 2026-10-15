@@ -63,6 +63,7 @@ import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
+import app.androidrik.rikkahub.data.ai.anchorIdsOf
 import app.androidrik.rikkahub.data.ai.inspectPrompt
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.ai.selectMemoriesForPrompt
@@ -110,6 +111,7 @@ import app.androidrik.rikkahub.service.QueuedMessage
 import app.androidrik.rikkahub.service.MessageQueueState
 import app.androidrik.rikkahub.data.model.localFileUrls
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.TruncationPlan
@@ -1296,6 +1298,11 @@ class ChatService(
                     "memories=${loadedMemoriesAt - memoriesAt}ms " +
                     "tools=${SystemClock.elapsedRealtime() - loadedMemoriesAt}ms",
             )
+            // L1 锚点：**会话开始冻结一次**（设计稿 §5）。首次生成时把当前锚点渲染成快照落库，
+            // 此后本会话内锚点怎么改都不再漂移（手动刷新点 = 记忆页的「固化为锚点」，
+            // 见 refreshFrozenAnchorsForAssistant）。为什么值得这么做：L1 在 system（位置 0），
+            // 它一变其后整段前缀全部重算——真机实测命中率 98% → 0%（设计稿 §2）。
+            val frozenAnchorIds = ensureFrozenAnchors(conversationId, conversation, loadedMemories)
             generationHandler.generateText(
                 settings = settings,
                 model = model,
@@ -1334,6 +1341,7 @@ class ChatService(
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
                 memoryDisabled = conversation.memoryDisabled,
+                frozenAnchorIds = frozenAnchorIds,
                 memories = loadedMemories.also { loaded ->
                     // 每回合一条：注入条数与实际占用（按当前预算选出后的结果）。
                     // 与工具 schema 日志配套——两者是「固定开销」的两大项，合起来看才知道
@@ -2049,6 +2057,73 @@ class ChatService(
     }
 
     /**
+     * **L1 锚点集合：会话开始冻结**（`docs/design/design-memory-injection-tiering.md` §5）。
+     *
+     * 已冻结（非 null）⇒ 原样返回，本会话内不再漂移；未冻结（null）⇒ 记下当前的锚点 id、
+     * 落库并返回。调用点在首次生成之前（[handleMessageComplete]），因此**首次请求就用到的
+     * 集合**与写进库的是同一份。
+     *
+     * 为什么值得冻结：L1 在 system（位置 0），它一变、其后整段前缀全部重算——真机实测
+     * 命中率 98% → 0%（设计稿 §2）。冻结把这份代价从「每次改锚点」压到「每个会话一次」。
+     *
+     * **冻的是 id 集合、不是渲染好的文本**（`Conversation.frozenAnchors` 的注释里有完整理由）：
+     * 记忆库有做梦整理与上限淘汰两条**自动**删除路径，冻文本会让已删的记忆永远留在 system 里。
+     *
+     * 为什么没有锚点也要写 `""` 而不是留 null：`null` 是「未冻结」的**有效取值**，留 null 会让
+     * 下一轮再冻一次（每轮重算）且语义上永远"没冻过"。空串 = 已冻结且当时无锚点
+     * ⇒ 不产生 system 块（不变式：无锚点 ⇒ 无块），输出与加 L1 之前逐字节一致。
+     */
+    private suspend fun ensureFrozenAnchors(
+        conversationId: Uuid,
+        conversation: Conversation,
+        memories: List<AssistantMemory>,
+    ): Set<String> {
+        conversation.frozenAnchorIds?.let { return it }
+        val ids = anchorIdsOf(memories)
+        val frozen = ids.joinToString(",")
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(frozenAnchors = frozen) },
+            persist = { conversationRepo.updateConversationFrozenAnchors(conversationId, frozen) },
+        )
+        return ids.toSet()
+    }
+
+    /**
+     * **L1 锚点集合：手动刷新点**（设计稿 §5 的第二个触发点）——记忆页「固化为锚点」后调用。
+     *
+     * 为什么是「该助手的全部会话」而不是某一个：锚点挂在助手的记忆库上，而记忆页没有
+     * 「当前会话」这个上下文；用户固化一条锚点的意图是「以后都算数」。
+     *
+     * 两件事必须**一起**做，否则会分叉成「库已换档、内存态仍旧」：
+     * 1. 先同步**活跃 session** 的内存态（沿用 [moveConversationToFolder] 的教训：只改库，
+     *    内存里那份 `Conversation` 仍是旧快照，预览读的就是它）；
+     * 2. 再一条批量 UPDATE 覆盖没有活跃 session 的会话。
+     *
+     * 顺序不能反：先写库的话，这中间任何一次整对象保存都会用内存里的旧值把库盖回去。
+     * 代价 = 该助手每个会话**一次**前缀失效（这正是 §5 让用户显式按下的那个按钮）。
+     */
+    suspend fun refreshFrozenAnchorsForAssistant(assistantId: Uuid) {
+        val settings = settingsStore.settingsFlow.first()
+        val assistant = settings.getAssistantById(assistantId) ?: return
+        // 与 [handleMessageComplete] 同一口径：全局记忆助手看全局库
+        val memories = if (assistant.useGlobalMemory) {
+            memoryRepository.getGlobalMemories()
+        } else {
+            memoryRepository.getMemoriesOfAssistant(assistantId.toString())
+        }
+        val frozen = anchorIdsOf(memories).joinToString(",")
+        sessions.forEach { (conversationId, session) ->
+            if (session.state.value.assistantId != assistantId) return@forEach
+            session.updateMetadata(
+                update = { it.copy(frozenAnchors = frozen) },
+                persist = { conversationRepo.updateConversationFrozenAnchors(conversationId, frozen) },
+            )
+        }
+        conversationRepo.updateFrozenAnchorsForAssistant(assistantId, frozen)
+    }
+
+    /**
      * 把会话移动到另一个助手。
      *
      * `folderId = null`：文件夹是**助手内**分组，换了助手后原文件夹在新助手下不可见，
@@ -2057,9 +2132,13 @@ class ChatService(
     suspend fun moveConversationToAssistant(conversationId: Uuid, assistantId: Uuid) {
         updateConversationMetadata(
             conversationId = conversationId,
-            update = { it.copy(assistantId = assistantId, folderId = null) },
+            // 换助手 ⇒ 锚点来源换了人：一并清空冻结快照，下一次生成按**新助手**的锚点重新冻结。
+            // 不清空就会把上一个助手的锚点继续当成本会话的「既定事实」（跨助手串味）。
+            update = { it.copy(assistantId = assistantId, folderId = null, frozenAnchors = null) },
             persist = { conversationRepo.updateConversationAssistant(conversationId, it.assistantId) },
         )
+        // 冻结快照单独清（同一原语：内存态上面已置 null，库侧单列补齐）
+        conversationRepo.updateConversationFrozenAnchors(conversationId, null)
     }
 
     /**

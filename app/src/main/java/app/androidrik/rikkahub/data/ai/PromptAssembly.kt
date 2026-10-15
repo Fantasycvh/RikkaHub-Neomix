@@ -107,11 +107,14 @@ internal fun buildSystemBlocks(
      */
     memoryDisabled: Boolean = false,
     /**
-     * **冻结的锚点快照**：非 null 时**以它为准**，不再用 [memories] 实时渲染。
-     * `null` = 未冻结（实时渲染，行为与改动前一致）。
-     * 见 `docs/design/design-memory-injection-tiering.md`。
+     * **冻结的锚点 id 集合**（`null` = 未冻结）：非 null 时只渲染这些锚点。
+     *
+     * 冻结的是**集合**，文本仍按 [memories] 实时渲染 —— 于是「删掉一条锚点」立刻消失、
+     * 「改写一条锚点」立刻生效，而新固化的锚点不会挤进本会话（要生效走记忆页手动刷新）。
+     * 空集 = 冻结那一刻没有锚点 ⇒ 不产生该块（不变式：无锚点 ⇒ 无块）。
+     * 见 `docs/design/design-memory-injection-tiering.md` §5。
      */
-    frozenAnchorText: String? = null,
+    frozenAnchorIds: Set<String>? = null,
 ): List<SystemBlock> {
     val blocks = mutableListOf<SystemBlock>()
 
@@ -157,8 +160,8 @@ internal fun buildSystemBlocks(
     if (assistant.enableMemory && !memoryDisabled) {
         // L1 锚点：**只在有锚点时才产生该块** ⇒ 无锚点时输出逐字节不变
         // （见 docs/design/design-memory-injection-tiering.md）
-        // 冻结优先：非 null 时以快照为准（"" = 冻结时无锚点 ⇒ 不产生块，不变式仍成立）
-        val anchorText = frozenAnchorText ?: buildMemoryAnchorPrompt(memories)
+        // 冻结优先：非 null 时先按冻结集合过滤（空集 ⇒ 无锚点 ⇒ 不产生块，不变式仍成立）
+        val anchorText = buildMemoryAnchorPrompt(memories, frozenIds = frozenAnchorIds)
         if (anchorText.isNotBlank()) {
             blocks += SystemBlock(SystemBlockSource.ANCHOR, content = anchorText)
         }
@@ -224,8 +227,8 @@ internal fun buildSystemPromptText(
     tools: List<Tool>,
     conversationSystemPrompt: String?,
     memoryDisabled: Boolean = false,
-    /** 冻结的锚点快照：非 null 时以它为准（见 [buildSystemBlocks] 同名参数）。 */
-    frozenAnchorText: String? = null,
+    /** 冻结的锚点 id 集合：非 null 时只渲染这些锚点（见 [buildSystemBlocks] 同名参数）。 */
+    frozenAnchorIds: Set<String>? = null,
 ): String = joinSystemBlocks(
     buildSystemBlocks(
         assistant = assistant,
@@ -236,7 +239,7 @@ internal fun buildSystemPromptText(
         tools = tools,
         conversationSystemPrompt = conversationSystemPrompt,
         memoryDisabled = memoryDisabled,
-        frozenAnchorText = frozenAnchorText,
+        frozenAnchorIds = frozenAnchorIds,
     )
 )
 
@@ -282,8 +285,8 @@ internal fun buildInternalMessages(
     recoveryHint: String? = null,
     /** 会话级「不使用记忆」（隐身对话）：为真时不注入记忆块，见 [buildSystemBlocks] */
     memoryDisabled: Boolean = false,
-    /** 冻结的锚点快照：来自 `Conversation.frozenAnchors`（null = 未冻结）。 */
-    frozenAnchorText: String? = null,
+    /** 冻结的锚点 id 集合：来自 `Conversation.frozenAnchorIds`（null = 未冻结）。 */
+    frozenAnchorIds: Set<String>? = null,
 ): List<UIMessage> {
     val baseSystem = buildSystemPromptText(
         assistant = assistant,
@@ -294,7 +297,7 @@ internal fun buildInternalMessages(
         tools = tools,
         conversationSystemPrompt = conversationSystemPrompt,
         memoryDisabled = memoryDisabled,
-        frozenAnchorText = frozenAnchorText,
+        frozenAnchorIds = frozenAnchorIds,
     )
     // 恢复提示追加在系统提示末尾：不写入对话历史（仅本次请求存在，随后消失）
     val system = if (recoveryHint.isNullOrBlank()) {

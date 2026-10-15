@@ -239,6 +239,15 @@ class GenerationHandler(
          * 由 ChatService 从 `Conversation.memoryDisabled` 传入；无头 run 恒为 false。
          */
         memoryDisabled: Boolean = false,
+        /**
+         * **L1 冻结的锚点 id 集合**（`docs/design/design-memory-injection-tiering.md` §5）：
+         * 非 null 时只渲染这些锚点（文本仍按 [memories] 实时取）。由 ChatService 从
+         * `Conversation.frozenAnchorIds` 传入 —— **本类刻意不去读会话**（它拿不到
+         * Conversation，也不该为此长出第二个装配真相源）。
+         *
+         * 传 null = 未冻结 ⇒ 实时渲染，与改动前逐字节一致。
+         */
+        frozenAnchorIds: Set<String>? = null,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
         /**
@@ -370,6 +379,7 @@ class GenerationHandler(
                     compressionWindow = compressionWindow,
                     recoveryHint = pendingRecoveryHint,
                     memoryDisabled = memoryDisabled,
+                    frozenAnchorIds = frozenAnchorIds,
                     debugKey = debugKey,
                     onUpdateMessages = {
                         messages = it.transforms(
@@ -925,6 +935,8 @@ class GenerationHandler(
         recoveryHint: String? = null,
         /** 会话级「不使用记忆」：为真时不注入记忆块（工具侧已在装配点处理） */
         memoryDisabled: Boolean = false,
+        /** L1 冻结的锚点 id 集合：非 null 时只渲染这些锚点（见 [generateText] 同名参数）。 */
+        frozenAnchorIds: Set<String>? = null,
         debugKey: String? = null,
     ) {
         // 组装发送消息：**与「拼装预览」共用同一个函数**（PromptAssembly.kt）——
@@ -940,6 +952,7 @@ class GenerationHandler(
             compressionWindow = compressionWindow,
             recoveryHint = recoveryHint,
             memoryDisabled = memoryDisabled,
+            frozenAnchorIds = frozenAnchorIds,
         )
         // 输入处理链（时间提醒 / 模式注入 / 世界书 / ST 宏 / 占位符 / 文档转提示 / OCR / 引用 /
         // 助手模板 / workspace 提醒）：**返回值必须接住**——它才是真正发给 provider 的列表。

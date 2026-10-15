@@ -465,7 +465,6 @@ class ConversationRepository(
                     folderId = entity.folderId,
                     lastMessageAt = entity.lastMessageAt,
                     memoryDisabled = entity.memoryDisabled,
-                    frozenAnchors = entity.frozenAnchors,
                 )
             }
             // 增量保存（不再删全表重插；见 saveMessageNodes）。
@@ -756,6 +755,25 @@ class ConversationRepository(
      */
     suspend fun updateConversationMemoryDisabled(conversationId: Uuid, disabled: Boolean) {
         conversationDAO.updateMemoryDisabled(conversationId.toString(), disabled)
+    }
+
+    /**
+     * L1 锚点快照的**单会话**写入点（会话开始冻结；见 `ConversationDAO.updateFrozenAnchors`）。
+     *
+     * 只写 `frozen_anchors` 一列 —— 不走 [updateConversation]，否则会把调用方手里的
+     * 旧快照（尤其是刚冻结之前的 `null`）一并写回其他列。
+     */
+    suspend fun updateConversationFrozenAnchors(conversationId: Uuid, frozen: String?) {
+        conversationDAO.updateFrozenAnchors(conversationId.toString(), frozen)
+    }
+
+    /**
+     * L1 锚点快照的**按助手批量**写入点（记忆页「固化为锚点」的手动刷新；见设计稿 §5）。
+     *
+     * 用户改的是助手的锚点集合，而记忆页没有「当前会话」上下文 ⇒ 该助手所有会话一起换档。
+     */
+    suspend fun updateFrozenAnchorsForAssistant(assistantId: Uuid, frozen: String?) {
+        conversationDAO.updateFrozenAnchorsOfAssistant(assistantId.toString(), frozen)
     }
 
     private fun conversationSummaryToConversation(entity: LightConversationEntity): Conversation {

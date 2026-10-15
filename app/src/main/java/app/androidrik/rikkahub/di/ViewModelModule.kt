@@ -76,6 +76,7 @@ val viewModelModule = module {
             skillManager = get(),
             workspaceRepository = get(),
             consolidationScheduler = get(),
+            chatService = get(),
         )
     }
     viewModelOf(::TranslatorVM)

@@ -71,4 +71,81 @@ class MemoryAnchorWiringTest {
             lastAnnotation.startsWith("@Transient"),
         )
     }
+
+    // ---- 冻结快照的接线（设计稿 §5：会话开始冻结 + 记忆页手动刷新） ----
+
+    /**
+     * **冻结了却没传给装配** —— 最容易出的错：写库、日志都对，请求里还是实时锚点。
+     *
+     * 这条链路（ChatService → GenerationHandler → buildInternalMessages）跨三个文件、
+     * 且 ChatService 需要 Android Context 才能跑起来，行为测试够不着，故用源码扫描。
+     */
+    @Test
+    fun `conversation start freezes the anchors and passes the snapshot into generation`() {
+        val service = source("app/androidrik/rikkahub/service/ChatService.kt")
+        val callIdx = service.indexOf("val frozenAnchorIds = ensureFrozenAnchors(")
+        assertTrue("会话开始必须冻结锚点快照（ensureFrozenAnchors）", callIdx >= 0)
+
+        // 冻结必须发生在 generateText **之前**（否则首次请求用的是实时锚点，与库里的快照相差一轮）
+        val generateIdx = service.indexOf("generationHandler.generateText(", callIdx)
+        assertTrue("冻结必须紧邻 generateText 调用之前", generateIdx > callIdx)
+
+        // 且渲染出的快照必须真的传进去
+        val call = service.substring(generateIdx).substringBefore(".onCompletion {")
+        assertTrue(
+            "generateText 必须收到 frozenAnchorIds —— 只在库里冻结、不传给装配等于没冻",
+            call.contains("frozenAnchorIds = frozenAnchorIds"),
+        )
+    }
+
+    /**
+     * **手动刷新点**的两个要求：① 真被记忆页调用；② 先同步内存态再批量落库。
+     *
+     * ②的反例（先写库）会留下「库已换档、内存态仍旧」的窗口：此刻任意一次整对象保存或
+     * 拼装预览都还在用旧快照（`moveConversationToFolder` 的注释记着同一条教训）。
+     */
+    @Test
+    fun `manual refresh is called by the memory page and syncs memory before the database`() {
+        val vm = source("app/androidrik/rikkahub/ui/pages/assistant/detail/AssistantDetailVM.kt")
+        assertTrue(
+            "记忆页固化锚点后必须刷新各会话的 L1 快照，否则用户改了锚点当前会话毫无变化",
+            vm.contains("chatService.refreshFrozenAnchorsForAssistant("),
+        )
+
+        val service = source("app/androidrik/rikkahub/service/ChatService.kt")
+        val start = service.indexOf("suspend fun refreshFrozenAnchorsForAssistant(")
+        assertTrue("找不到 refreshFrozenAnchorsForAssistant", start >= 0)
+        val body = service.substring(start).substringBefore("\n    /**")
+
+        val sessionSyncIdx = body.indexOf("session.updateMetadata(")
+        val bulkWriteIdx = body.indexOf("updateFrozenAnchorsForAssistant(")
+        assertTrue("刷新点必须同步活跃 session 的内存态", sessionSyncIdx >= 0)
+        assertTrue("刷新点必须批量落库（覆盖没有活跃 session 的会话）", bulkWriteIdx >= 0)
+        assertTrue(
+            "必须先同步内存态、再批量落库：反过来会留下「库已换档、内存态仍旧」的窗口",
+            sessionSyncIdx < bulkWriteIdx,
+        )
+    }
+
+    /**
+     * **拼装预览必须与实发同参**（本仓明确防的坑）。
+     *
+     * 实测过的回归形态：尾部记忆块加进来时，预览这份 `buildInternalMessages` 调用漏传了
+     * `memoryDisabled` ⇒ 隐身对话的预览凭空多出一段尾部记忆块，而实发里没有。
+     */
+    @Test
+    fun `preview passes the same memory flags as the real request`() {
+        val inspector = source("app/androidrik/rikkahub/data/ai/PromptInspector.kt")
+        val callIdx = inspector.indexOf("val internalMessages = buildInternalMessages(")
+        assertTrue("找不到预览侧的 buildInternalMessages 调用", callIdx >= 0)
+        val call = inspector.substring(callIdx).substringBefore("\n    )")
+        assertTrue(
+            "预览漏传 memoryDisabled ⇒ 隐身对话的预览多出尾部记忆块（实发里没有）",
+            call.contains("memoryDisabled = conversation.memoryDisabled"),
+        )
+        assertTrue(
+            "预览漏传 frozenAnchorIds ⇒ 锚点归因按实时集合算，与实发不一致",
+            call.contains("frozenAnchorIds = conversation.frozenAnchorIds"),
+        )
+    }
 }

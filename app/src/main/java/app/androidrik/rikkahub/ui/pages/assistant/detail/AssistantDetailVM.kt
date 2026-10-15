@@ -29,6 +29,7 @@ import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.rikkahub.service.ChatService
 import kotlin.uuid.Uuid
 
 private const val TAG = "AssistantDetailVM"
@@ -42,6 +43,14 @@ class AssistantDetailVM(
     private val workspaceRepository: WorkspaceRepository,
     /** 做梦（V3）：状态流与手动整理入口（见 docs/design/design-memory-consolidation.md §9.2） */
     private val consolidationScheduler: MemoryConsolidationScheduler,
+    /**
+     * L1 锚点快照的刷新入口（`docs/design/design-memory-injection-tiering.md` §5）。
+     *
+     * 快照的权威态在**会话**上（`Conversation.frozenAnchors`），而会话内存态由 ChatService 的
+     * session 持有——记忆页只改库是改不动它的（拼装预览读的正是那份内存态）。所以固化之后
+     * 必须回到 ChatService 走一次「先同步内存、再批量落库」。
+     */
+    private val chatService: ChatService,
 ) : ViewModel() {
     private val assistantId = Uuid.parse(id)
 
@@ -225,7 +234,14 @@ class AssistantDetailVM(
                 description = memory.description,
             )
             // L1 锚点单独走 setAnchor（**不改 updatedAt**）：固化是标注、不是改写内容
-            memoryRepository.setAnchor(id = memory.id, isAnchor = memory.isAnchor)
+            val anchorFlipped = memoryRepository.setAnchor(id = memory.id, isAnchor = memory.isAnchor)
+            // L1 快照刷新（设计稿 §5 的手动触发点）。三种情况要刷：
+            // ① 刚固化；② 刚取消固化（锚点集合变小）；③ 改的这条**本来就是锚点**
+            //    （内容/重要度变了，锚点块文本随之变）。
+            // 改一条非锚点记忆的内容**不刷**——那会让该助手每个会话白丢一次前缀缓存。
+            if (anchorFlipped || memory.isAnchor) {
+                chatService.refreshFrozenAnchorsForAssistant(assistantId)
+            }
         }
     }
 

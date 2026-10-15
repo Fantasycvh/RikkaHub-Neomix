@@ -107,6 +107,10 @@ interface ConversationDAO {
      *
      * `last_message_at` 用 `COALESCE(:lastMessageAt, last_message_at)`：元信息保存
      * （置顶/改标题/换文件夹）传 null（无消息可算）时**保留原值**，不会把行内时间抹掉。
+     *
+     * `frozen_anchors` 与 `sort_order` 同款**不在本清单内**（见 [updateFrozenAnchors]）：
+     * 它由会话开始冻结 / 记忆页固化两处专用语句写，而那两处都可能发生在调用方手里的
+     * 内存快照之后 ⇒ 放进这里就有「拿旧快照把刚冻结的值写回 null」的静默回退。
      */
     @Query(
         """
@@ -123,7 +127,6 @@ interface ConversationDAO {
             workspace_cwd = :workspaceCwd,
             folder_id = :folderId,
             memory_disabled = :memoryDisabled,
-            frozen_anchors = :frozenAnchors,
             last_message_at = COALESCE(:lastMessageAt, last_message_at)
         WHERE id = :id
         """
@@ -147,11 +150,6 @@ interface ConversationDAO {
          * ——它是用户开关，false 本身就是有效值，不能让「没传」把它吞掉。
          */
         memoryDisabled: Boolean,
-        /**
-         * 冻结的锚点快照。**直接赋值**（与 [memoryDisabled] 同理）：`null` 是有效值
-         * （= 未冻结），不能让 COALESCE 把「显式写 null」吞掉。
-         */
-        frozenAnchors: String?,
     )
 
     /**
@@ -160,6 +158,34 @@ interface ConversationDAO {
      */
     @Query("UPDATE conversationentity SET memory_disabled = :disabled WHERE id = :id")
     suspend fun updateMemoryDisabled(id: String, disabled: Boolean)
+
+    /**
+     * **L1 锚点快照**（`docs/design/design-memory-injection-tiering.md` §5）的两个专用写入点。
+     *
+     * 为什么单列写、不走 [updateMetadata]（与 `sort_order` 同一条教训）：
+     * 快照在**会话开始那一刻**（`ChatService` 首次生成前）与**用户点「固化为锚点」那一刻**
+     * 写入，而这两处之后调用方手里的 `Conversation` 可能还是写之前的旧副本；一旦允许
+     * 整对象/元信息保存带回该列，就会把刚冻好的值**静默写回 null** ⇒ 锚点每轮重算、
+     * L1 的缓存收益归零。
+     *
+     * 三态语义（与 `Conversation.frozenAnchors` 一致）：
+     * - `null` = 未冻结（下次生成时冻结）；
+     * - `""`  = 冻结，且当时没有锚点 ⇒ **不产生 system 块**（不变式：无锚点 ⇒ 无块）；
+     * - 其他 = 冻结的锚点文本，逐字节稳定。
+     *
+     * **不用 COALESCE**：`null` 是有效取值，不能被「没传」吞掉。
+     */
+    @Query("UPDATE conversationentity SET frozen_anchors = :frozen WHERE id = :id")
+    suspend fun updateFrozenAnchors(id: String, frozen: String?)
+
+    /**
+     * 一次性重写**某助手全部会话**的锚点快照 —— 记忆页「固化为锚点」的手动刷新点。
+     *
+     * 为什么会是「全部会话」：锚点挂在助手的记忆库上，而记忆页没有「当前会话」这个上下文；
+     * 用户固化一条锚点时的意图是「以后都算数」，因此所有会话一起换档。
+     */
+    @Query("UPDATE conversationentity SET frozen_anchors = :frozen WHERE assistant_id = :assistantId")
+    suspend fun updateFrozenAnchorsOfAssistant(assistantId: String, frozen: String?)
 
     /** 自定义顺序：**唯一**的位置值写入点（见 [CONVERSATION_ORDER_BY] 与设计稿 §三.1）。 */
     @Query("UPDATE conversationentity SET sort_order = :sortOrder WHERE id = :id")

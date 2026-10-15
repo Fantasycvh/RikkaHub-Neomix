@@ -285,6 +285,13 @@ suspend fun inspectPrompt(
         tools = tools,
         conversationSystemPrompt = conversation.customSystemPrompt,
         compressionWindow = conversation.compressionWindow(),
+        // 会话级「不使用记忆」：实发路径传了它（尾部记忆块整段跳过），预览必须同参 ——
+        // 漏传会让隐身对话的预览凭空多出一段尾部记忆块（下方 system 块那份一直是对的，
+        // 只有这一处漏了；回归守卫见 MemoryAnchorWiringTest「preview passes the same
+        // memory flags as the real request」）。
+        memoryDisabled = conversation.memoryDisabled,
+        // L1 冻结的锚点集合：同上，必须与实发同参（空集 = 冻结且无锚点 ⇒ 不产生锚点块）
+        frozenAnchorIds = conversation.frozenAnchorIds,
     )
 
     // 与真实请求同一个 transformer 链。processingStatus 传一次性 StateFlow：
@@ -367,6 +374,8 @@ suspend fun inspectPrompt(
                     conversationSystemPrompt = conversation.customSystemPrompt,
                     // 会话级「不使用记忆」同样要作用到预览——预览与实际不一致是本仓明确防的坑
                     memoryDisabled = conversation.memoryDisabled,
+                    // L1 冻结的锚点集合：非 null 时只渲染会话冻结的那几条（与实发同参）
+                    frozenAnchorIds = conversation.frozenAnchorIds,
                 ),
                 labels = labels,
                 role = message.role.name.lowercase(),

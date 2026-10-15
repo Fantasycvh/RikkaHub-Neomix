@@ -345,6 +345,145 @@ class PromptAssemblyTest {
         assertEquals("", buildMemoryAnchorPrompt(emptyList()))
         assertEquals("", buildMemoryAnchorPrompt(listOf(AssistantMemory(id = "1", content = "x"))))
     }
+
+    // region L1 冻结集合（会话开始冻结 / 记忆页手动刷新；设计稿 §5）
+
+    @Test
+    fun `frozen anchor set wins over newly pinned anchors`() {
+        // 会话开始时冻的是 OLD（id="0"）；此后用户又固化了一条 NEW（id="1"）。
+        // 本会话必须继续只渲染 OLD —— 这正是冻结的意义（system 不变 ⇒ 前缀缓存不失效）。
+        val memories = listOf(
+            AssistantMemory(id = "0", content = "OLD_ANCHOR", isAnchor = true),
+            AssistantMemory(id = "1", content = "NEW_ANCHOR", isAnchor = true),
+        )
+        val system = buildSystemPromptText(
+            assistant = assistant(enableMemory = true),
+            settings = settings,
+            model = model,
+            messages = emptyList(),
+            memories = memories,
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            frozenAnchorIds = setOf("0"),
+        )
+        assertTrue(system.contains("OLD_ANCHOR"))
+        assertFalse("冻结后新固化的锚点不得挤进本会话", system.contains("NEW_ANCHOR"))
+    }
+
+    @Test
+    fun `frozen null means live rendering`() {
+        val memories = listOf(AssistantMemory(id = "1", content = "LIVE_ANCHOR", isAnchor = true))
+        val system = buildSystemPromptText(
+            assistant = assistant(enableMemory = true),
+            settings = settings,
+            model = model,
+            messages = emptyList(),
+            memories = memories,
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            frozenAnchorIds = null,
+        )
+        assertTrue("未冻结（null）时必须实时渲染，行为与加 L1 之前一致", system.contains("LIVE_ANCHOR"))
+    }
+
+    @Test
+    fun `empty frozen set suppresses the anchor block entirely`() {
+        // 空集 = 冻结那一刻没有锚点。此后即使用户固化了锚点，本会话也**不产生** Anchors 块
+        // ——「无锚点 ⇒ 无块」的不变式在冻结态同样成立（否则空块也会改变 system 字节）。
+        val memories = listOf(AssistantMemory(id = "1", content = "LATER_ANCHOR", isAnchor = true))
+        val system = buildSystemPromptText(
+            assistant = assistant(enableMemory = true),
+            settings = settings,
+            model = model,
+            messages = emptyList(),
+            memories = memories,
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            frozenAnchorIds = emptySet(),
+        )
+        assertFalse(system.contains("**Anchors**"))
+        assertFalse(system.contains("LATER_ANCHOR"))
+        // L0 纪律照常在（冻结的是锚点层，不是整个记忆子系统）
+        assertTrue(system.contains("**Memories**"))
+    }
+
+    /**
+     * **为什么冻 id 而不是冻渲染好的文本** —— 这条用例就是那个理由的可执行版本。
+     *
+     * 记忆库有两条**自动**删除路径（做梦整理 `MemoryConsolidationGenerationAgent`、
+     * 200 条上限淘汰 `MemoryRepository.enforceMaxCount`），它们都不会去刷新各会话的快照。
+     * 若快照存的是文本，删掉的锚点会**永远**留在 system 里：既忘不掉，也改不动。
+     */
+    @Test
+    fun `deleted anchor disappears and edited anchor takes effect`() {
+        fun systemOf(memories: List<AssistantMemory>): String = buildSystemPromptText(
+            assistant = assistant(enableMemory = true),
+            settings = settings,
+            model = model,
+            messages = emptyList(),
+            memories = memories,
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            frozenAnchorIds = setOf("0", "1"),
+        )
+
+        val both = listOf(
+            AssistantMemory(id = "0", content = "DOOMED_ANCHOR", isAnchor = true),
+            AssistantMemory(id = "1", content = "KEPT_ANCHOR", isAnchor = true),
+        )
+        // ① 删掉 id="0"（模拟做梦整理 / 上限淘汰把它删了）
+        val afterDelete = systemOf(both.drop(1))
+        assertFalse("已删除的锚点必须立刻从 system 消失（冻的是集合，不是文本）", afterDelete.contains("DOOMED_ANCHOR"))
+        assertTrue(afterDelete.contains("KEPT_ANCHOR"))
+
+        // ② 改写 id="1" 的内容（模拟用户在记忆页改了锚点文本）
+        val afterEdit = systemOf(
+            listOf(AssistantMemory(id = "1", content = "REWRITTEN_ANCHOR", isAnchor = true))
+        )
+        assertTrue("锚点文本改写必须立刻生效", afterEdit.contains("REWRITTEN_ANCHOR"))
+        assertFalse(afterEdit.contains("KEPT_ANCHOR"))
+    }
+
+    @Test
+    fun `frozen set does not disturb the tail memory data - it stays live`() {
+        // 冻结只作用于 L1（system）。尾部 L2/L3 是「每次写入都会变」的那一层，
+        // 它必须继续按实时记忆渲染——冻结它会毁掉尾部注入的全部意义。
+        val memories = listOf(AssistantMemory(id = "1", content = "TAIL_MARKER", isAnchor = true))
+        val internal = buildInternalMessages(
+            assistant = assistant(enableMemory = true),
+            settings = settings,
+            model = model,
+            messages = listOf(userMessage("hi")),
+            memories = memories,
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            compressionWindow = null,
+            frozenAnchorIds = emptySet(),
+        )
+        val texts = { m: UIMessage -> m.parts.filterIsInstance<UIMessagePart.Text>().map { it.text } }
+        assertTrue(
+            "尾部记忆数据必须照旧实时渲染",
+            texts(internal.last()).any { it.contains("TAIL_MARKER") },
+        )
+        assertFalse(
+            "冻结了锚点层 ⇒ system 里不应出现这条记忆的文本",
+            texts(internal.first()).any { it.contains("TAIL_MARKER") },
+        )
+    }
+
+    @Test
+    fun `anchorIdsOf mirrors what an unfrozen render would show`() {
+        // 冻结那一刻的集合必须与同一批记忆的实时渲染一致，否则会出现
+        // 「冻结前显示 5 条、冻结后只剩 3 条」的自相矛盾瞬间。
+        val many = (1..8).map { i ->
+            AssistantMemory(id = "$i", content = "ANCHOR_$i", isAnchor = true, importance = i / 10f)
+        } + AssistantMemory(id = "9", content = "PLAIN", isAnchor = false)
+
+        assertEquals(listOf("8", "7", "6", "5", "4"), anchorIdsOf(many))
+        assertEquals(emptyList<String>(), anchorIdsOf(listOf(AssistantMemory(id = "1", content = "x"))))
+    }
+
+    // endregion
     // endregion
 
     // region buildSendWindowMessages

@@ -5,6 +5,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -74,7 +75,10 @@ class ConversationSchemaGuardsTest {
         // 白名单（各有明确理由，改动时必须同步这里的注释）：
         // - nodes：实体列已废弃（消息在 message_node 表），保存路径恒写 "[]"
         // - sort_order：**只**由 updateSortOrder / clearSortOrder 写（设计稿 §三.1）
-        val exempt = setOf("nodes", "sort_order")
+        // - frozen_anchors：**只**由 updateFrozenAnchors / updateFrozenAnchorsOfAssistant 写
+        //   （L1 锚点快照；理由同 sort_order —— 它在「会话开始冻结」与「记忆页固化」两处
+        //   写库，而那两处之后调用方手里的 Conversation 可能仍是旧副本，放进这里会被写回 null）
+        val exempt = setOf("nodes", "sort_order", "frozen_anchors")
 
         val sql = daoSource()
             .substringAfter("UPDATE conversationentity SET", "")
@@ -149,6 +153,40 @@ class ConversationSchemaGuardsTest {
         assertTrue(
             "sort_order 的写入点必须唯一（updateSortOrder / clearSortOrder），实际发现：$writers",
             writers.size == 2,
+        )
+    }
+
+    /**
+     * L1 锚点快照的写入点护栏（同 `sort_order` 那条）。
+     *
+     * 若 `frozen_anchors` 出现在 [ConversationDAO.updateMetadata] 的列清单里，一次普通保存
+     * （用调用方手里的旧 `Conversation`）就能把刚冻好的值写回 `null` ⇒ 锚点每轮重算、
+     * L1 的缓存收益归零，而且是**静默**的。
+     *
+     * **只数 `SET frozen_anchors` 抓不到这个形态**（`updateMetadata` 的 SET 后面跟的是
+     * `assistant_id`，字面量对不上）——2026-10-16 用注入式反证实测：把该列加回列清单，
+     * 只数写入点的版本**依然全绿**。所以这里显式断言列清单里没有它。
+     */
+    @Test
+    fun `frozen_anchors is written only by the dedicated statements`() {
+        val source = daoSource()
+        // ① 通用元信息保存的列清单里不得出现它（决定性断言）
+        val metadataSql = source
+            .substringAfter("UPDATE conversationentity SET", "")
+            .substringBefore("WHERE id = :id")
+        assertTrue("没能定位 updateMetadata 的 SQL（护栏失效，需修测试）", metadataSql.isNotBlank())
+        assertFalse(
+            "updateMetadata 不得写 frozen_anchors：调用方手里的旧 Conversation 会把刚冻好的值" +
+                "写回 null，锚点每轮重算、L1 的缓存收益归零（同 sort_order 的理由）",
+            metadataSql.contains("frozen_anchors"),
+        )
+        // ② 专用写入点恰好两个：单会话冻结 + 按助手批量刷新
+        val writers = codeLines(source).filter { it.contains("SET frozen_anchors") }
+        assertEquals(
+            "frozen_anchors 的写入点只能是 updateFrozenAnchors / updateFrozenAnchorsOfAssistant，" +
+                "实际发现：$writers",
+            2,
+            writers.size,
         )
     }
 }

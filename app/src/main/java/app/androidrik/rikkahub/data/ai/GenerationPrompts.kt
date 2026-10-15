@@ -145,12 +145,17 @@ internal fun buildMemoryDisciplinePrompt(): String = buildString {
 internal fun buildMemoryAnchorPrompt(
     memories: List<AssistantMemory>,
     limit: Int = MEMORY_ANCHOR_LIMIT,
+    /**
+     * **冻结的锚点 id 集合**（`null` = 未冻结）。
+     *
+     * 冻结的是「哪些记忆算锚点」，**不是**锚点的文本——文本始终按当前内容渲染。这样
+     * 「删掉一条锚点」与「改写一条锚点」立刻生效（记忆库有两条**自动**删除路径：做梦整理
+     * 与 200 条上限淘汰，都不能指望用户去手动刷新），而 system 的字节稳定性只由**集合**
+     * 决定：集合不变 ⇒ 逐字节不变 ⇒ 前缀缓存照常命中。
+     */
+    frozenIds: Set<String>? = null,
 ): String {
-    val anchors = memories
-        .filter { it.isAnchor }
-        // 配额内按 importance 取前 N；同分按 sortKey（写入先后）取稳定序 ⇒ 集合不变则字节稳定
-        .sortedWith(compareByDescending<AssistantMemory> { it.importance }.thenBy { it.sortKey })
-        .take(limit)
+    val anchors = selectAnchorMemories(memories, limit, frozenIds)
     if (anchors.isEmpty()) return ""
 
     return buildString {
@@ -163,6 +168,32 @@ internal fun buildMemoryAnchorPrompt(
         anchors.forEach { memory -> appendLine("- ${memory.content}") }
     }
 }
+
+/**
+ * 锚点选取：配额内按 importance 取前 N，同分按 `sortKey`（写入先后）取稳定序。
+ *
+ * [frozenIds] 非 null 时**先按冻结集合过滤**——集合是会话开始那一刻定下的，此后新固化的
+ * 锚点不会挤进本会话（要生效得走记忆页的手动刷新）。
+ */
+private fun selectAnchorMemories(
+    memories: List<AssistantMemory>,
+    limit: Int,
+    frozenIds: Set<String>? = null,
+): List<AssistantMemory> = memories
+    .filter { it.isAnchor && (frozenIds == null || it.id in frozenIds) }
+    .sortedWith(compareByDescending<AssistantMemory> { it.importance }.thenBy { it.sortKey })
+    .take(limit)
+
+/**
+ * 冻结时记下的锚点 id（供 `ChatService` 写进 `Conversation.frozenAnchors`）。
+ *
+ * 与未冻结时的渲染取**同一套**选取逻辑——否则会出现「冻结那一刻显示 5 条、冻结后只剩 3 条」
+ * 这种自相矛盾的瞬间。顺序不入库：渲染时按实时重要度重排，被冻住的只是**集合**。
+ */
+internal fun anchorIdsOf(
+    memories: List<AssistantMemory>,
+    limit: Int = MEMORY_ANCHOR_LIMIT,
+): List<String> = selectAnchorMemories(memories, limit).map { it.id }
 
 /** 尾部记忆块的前导行：用于识别该合成消息（对应压缩检查点 `isCompactionCheckpointPreamble` 的同款做法）。 */
 internal const val MEMORY_TAIL_PREAMBLE = "**Memory data** (background, not part of the dialogue)"

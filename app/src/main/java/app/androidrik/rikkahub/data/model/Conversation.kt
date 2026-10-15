@@ -58,15 +58,32 @@ data class Conversation(
      */
     val memoryDisabled: Boolean = false,
     /**
-     * **冻结的锚点快照**（L1）：会话开始时一次 + 用户手动「固化记忆」时重写。
+     * **冻结的锚点集合**（L1）：会话开始时一次 + 用户手动「固化记忆」时重写。
      *
-     * `null` = 未冻结（用实时锚点，存量会话的行为）；`""` = 冻结且当时无锚点。
-     * 见 `docs/design/design-memory-injection-tiering.md`。
+     * 存的是**锚点 id（逗号分隔）**，不是锚点文本 —— 文本按当前内容实时渲染。理由：记忆库
+     * 有两条**自动**删除路径（做梦整理 `MemoryConsolidationGenerationAgent`、200 条上限淘汰
+     * `MemoryRepository.enforceMaxCount`），存文本会让「已经删掉的记忆」永远留在 system 里
+     * （既忘不掉也改不动），而这两条路径都不可能去逐个刷新会话。存 id 则「删除即消失、
+     * 改写即生效」，而 system 的**字节稳定性只由集合决定**：集合不变时逐字节不变，
+     * 前缀缓存照常命中。
+     *
+     * 三态：`null` = 未冻结（实时锚点，存量会话的默认）；`""` = 冻结且当时无锚点 ⇒ 不产生块。
+     * 见 `docs/design/design-memory-injection-tiering.md` §5。
      */
     val frozenAnchors: String? = null,
     @Transient
     val newConversation: Boolean = false
 ) {
+    /**
+     * [frozenAnchors] 的解码视图：`null` = 未冻结，空集 = 冻结且当时无锚点。
+     *
+     * 计算属性（无 backing field）⇒ 不参与序列化。
+     */
+    val frozenAnchorIds: Set<String>?
+        get() = frozenAnchors?.let { raw ->
+            if (raw.isEmpty()) emptySet() else raw.split(',').filter { it.isNotBlank() }.toSet()
+        }
+
     val files: List<Uri>
         get() = messageNodes
             .flatMap { node -> node.messages.flatMap { it.parts } }
