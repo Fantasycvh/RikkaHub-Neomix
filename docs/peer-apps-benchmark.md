@@ -1155,10 +1155,7 @@ M2 上下文增速、M3 记忆存量与平均权重、M4 任务纪律（心智�
 
 §十一当时只做了远端粗看、并留了「记忆网络尚未深读」的尾巴。本节补齐，**只评记忆机制**。
 
-**规模**：`memory/` 16 个模块、约 **7000 行**。核心 `fragment_store.py`（1561 行）、`reflection_loop.py`（1226）、
-`file_crystal_store.py`（966）、`knowledge_pages.py`（520）、`cmn_retriever.py`（513）、`summary_tree.py`（391）、
-`relation_store.py`（360）、`embedder.py`（317）、`entity_store.py`（225）、`reflection.py`（213）、`msg_vectors.py`（213）、
-`extractor.py`（190）、`vec_index.py`（162）、`file_slicer.py`（225）。
+**规模**（`find memory -name "*.py" | wc -l` 实测）：**16 个模块、8410 行**。（初稿此处写「约 7000 行」是 PowerShell `Measure-Object -Line` 计行偏低的误差，已更正。）\n`fragment_store.py`（1724 行）、`reflection_loop.py`（1406）、`file_crystal_store.py`（1123）、`knowledge_pages.py`（583）、`cmn_retriever.py`（582）、`summary_tree.py`（446）、`relation_store.py`（398）、`embedder.py`（366）、`cmn_viz.py`（358）、`file_slicer.py`（265）、`reflection.py`（256）、`entity_store.py`（250）、`msg_vectors.py`（245）、`extractor.py`（225）、`vec_index.py`（182）、`__init__.py`（1）。\n\n以下旧的数列残留一并更正：
 
 #### A. 数据模型（`memory_fragments` 一张宽表 + 三张边表）
 
@@ -1230,6 +1227,26 @@ MMR_LAMBDA = 0.7
 **⑥ 钉住（pin）与永不过期**
 
 `IMPORTANCE_PIN_THRESHOLD = 7.0`：重要度 ≥ 7 的碎片**永不参与衰减**、也不会被下沉到 archive。
+
+#### A2. 深读复核（2026-10-14，逐条回查代码后的更正）
+
+逐行精读后，**两条要下调措辞、两条要强调**，避免后续照抄错误结论：
+
+- **下调**：`file_crystal_store.py:843` 的 `while current_layer < MAX_PYRAMID_LAYERS` **不是写错**，
+  它是层数上限；真正的问题是 `TOP_LAYER_TOKEN_BUDGET = 5000` 字符的预算**对 layer 0 也适用**（855），
+  而 layer 0 摘要总长通常远低于 5000 ⇒ 循环**第一次判断就 break**，金字塔对普通文件基本不触发。
+  性质是「阈值使机制近乎不激活」，**不是「条件写错」**。
+- **下调**：`fragment_store.py:348` 的 `best_id, best_sim = None, 0.0` 虽在 `if layer == "core":` 分支内，
+  但**当前无调用点触发**（唯一暴露 `parent_id` 的 `remember` 工具用默认 `layer="core"`；`reflection_loop`
+  的三处 `link_type` 走 `link_stories()`、不经过 `add()`）⇒ 它是**潜伏缺陷 + 死代码**，不能写成「会崩」。
+- **强调（决定是否值得抄）**：`file_crystal_store.py:289` 在 INSERT 时把 `last_hash_verified_at`
+  **直接绑成 `now`** —— 全新晶体**从未校验过文件，却已被记为「已验证」**。于是 `_compute_file_decay`
+  对刚建的内容给出**虚假的 freshness**。**要抄 hash 校验，必须先改掉这一行**（留 NULL，或把字段拆成
+  `createdAt` / `lastVerifiedAt`）。
+- **强调（真丢数据）**：`fragment_store.add()` 的去重把软删除行也算候选（344-346 含
+  `dirty=0 AND created_at > now-3600`），命中后只 UPDATE 权重、**不把 `dirty` 置回 1**，再
+  `return best_id`（371）⇒ 调用方拿到一个**不可见**的 id，新记忆**静默丢失**。这是本轮唯一确认的
+  「静默丢用户记忆」级缺陷。
 
 #### C. 与本仓记忆机制的对照（结论性）
 
