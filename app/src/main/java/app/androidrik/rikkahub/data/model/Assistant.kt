@@ -384,6 +384,15 @@ data class AssistantMemory(
      * 记忆以这一行露出，模型据此决定是否 `memory_read` 取全文。空串 = 没写过。
      */
     val description: String = "",
+    /**
+     * **L1 锚点**：进 system 层「Anchors」块（获得 system 级权重）。
+     *
+     * **不序列化** —— 与 [importance]/[description] 不同，这个标志**绝不能让模型看到或设置**
+     * （否则它会把自己写的记忆全标成锚点，system 块立刻失去稳定性）。只能由用户「固化」
+     * 或整理器提拔。见 `docs/design/design-memory-injection-tiering.md`。
+     */
+    @Transient
+    val isAnchor: Boolean = false,
     @Transient
     val sortKey: Int = 0,
     /** 最近修改时间（epoch millis），时效衰减基准。**不序列化**——对模型是噪声，仅内部打分用。 */

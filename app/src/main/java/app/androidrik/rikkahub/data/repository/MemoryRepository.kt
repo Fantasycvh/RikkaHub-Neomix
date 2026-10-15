@@ -48,6 +48,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         updatedAt = updatedAt,
         readCount = readCount,
         lastReadAt = lastReadAt,
+        isAnchor = isAnchor,
     )
 
     /**
@@ -222,6 +223,8 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
             MemoryEntity(
                 assistantId = toAssistantId,
                 content = memory.content,
+                // 锚点是「这条记忆对该助手是身份级」的属性，复制不改变内容语义 ⇒ 保留
+                isAnchor = memory.isAnchor,
                 publicId = publicId,
                 importance = memory.importance,
                 description = memory.description,

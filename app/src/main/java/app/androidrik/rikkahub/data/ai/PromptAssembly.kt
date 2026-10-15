@@ -62,6 +62,11 @@ internal enum class SystemBlockSource {
 
     MEMORY,
 
+    /**
+     * L1 锚点（进 system）。**无锚点时不产生该块** —— 见 [buildMemoryAnchorPrompt]。
+     */
+    ANCHOR,
+
     /** 单个工具的 systemPrompt */
     TOOL,
 
@@ -144,7 +149,12 @@ internal fun buildSystemBlocks(
 
     // 记忆（会话级「不使用记忆」时整块不发）
     if (assistant.enableMemory && !memoryDisabled) {
-        // 预算来自设置（可调）：注入「哪些」由打分校准决定、「装多少」由它决定
+        // L1 锚点：**只在有锚点时才产生该块** ⇒ 无锚点时输出逐字节不变
+        // （见 docs/design/design-memory-injection-tiering.md）
+        val anchorText = buildMemoryAnchorPrompt(memories)
+        if (anchorText.isNotBlank()) {
+            blocks += SystemBlock(SystemBlockSource.ANCHOR, content = anchorText)
+        }
         blocks += SystemBlock(
             SystemBlockSource.MEMORY,
             content = buildMemoryDisciplinePrompt(),

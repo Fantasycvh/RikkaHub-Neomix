@@ -96,6 +96,12 @@ private const val MEMORY_INDEX_BUDGET_RATIO = 0.25f
 private const val MEMORY_INDEX_FALLBACK_CHARS = 80
 
 /**
+ * **L1 锚点配额**（条）。刻意很小 —— 本层在 system，改动一次其后全部重算，
+ * 所以它换来的不是"多注入记忆"而是"这几条永远在最稳的位置且永远在缓存里"。
+ */
+private const val MEMORY_ANCHOR_LIMIT = 5
+
+/**
  * **L0 纪律层**（静态）：记忆使用纪律 + 指向尾部数据的说明。
  *
  * 位置在 **system**，且**逐字节恒定**（不含任何记忆数据）⇒ 记忆写入不会让 system 失配，
@@ -121,6 +127,41 @@ internal fun buildMemoryDisciplinePrompt(): String = buildString {
     append("The memory data itself is appended at the end of this conversation as a background block — ")
     append("it is reference material, not part of the dialogue.")
     appendLine()
+}
+
+/**
+ * **L1 锚点层**（静态，进 system）：身份/权威类记忆，获得 system 级权重。
+ *
+ * **与 L2/L3 的差异是"稳定"而不是"重要"**：本层在 system，而 system 是第一条消息、
+ * 前缀缓存从位置 0 起连续匹配 —— 改它一次其后全部重算（真机实测命中率 98% → 0%）。
+ * 所以本层**配额极小**（[MEMORY_ANCHOR_LIMIT]）且**只由用户/整理器固化**（AI 不得自填，
+ * 见 `MemoryRepository.addMemory` 没有该参数），使它在会话期间几乎不变。
+ *
+ * **无锚点时返回空串**，调用方据此**不产生该块** ⇒ 输出与改动前逐字节一致，
+ * 既有契约测试与缓存行为都不受影响。
+ *
+ * 设计见 `docs/design/design-memory-injection-tiering.md`。
+ */
+internal fun buildMemoryAnchorPrompt(
+    memories: List<AssistantMemory>,
+    limit: Int = MEMORY_ANCHOR_LIMIT,
+): String {
+    val anchors = memories
+        .filter { it.isAnchor }
+        // 配额内按 importance 取前 N；同分按 sortKey（写入先后）取稳定序 ⇒ 集合不变则字节稳定
+        .sortedWith(compareByDescending<AssistantMemory> { it.importance }.thenBy { it.sortKey })
+        .take(limit)
+    if (anchors.isEmpty()) return ""
+
+    return buildString {
+        appendLine()
+        append("**Anchors**")
+        appendLine()
+        append("Standing facts that always apply. Treat them as settled background ")
+        append("unless the user says otherwise in this turn.")
+        appendLine()
+        anchors.forEach { memory -> appendLine("- ${memory.content}") }
+    }
 }
 
 /** 尾部记忆块的前导行：用于识别该合成消息（对应压缩检查点 `isCompactionCheckpointPreamble` 的同款做法）。 */

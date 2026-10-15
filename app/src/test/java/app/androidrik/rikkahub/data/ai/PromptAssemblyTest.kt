@@ -295,6 +295,56 @@ class PromptAssemblyTest {
         // 外壳（L0 纪律）也不出现 —— 「这次对话不碰记忆库」的语义
         assertFalse(internal.any { m -> texts(m).any { it.contains("**Memories**") } })
     }
+
+    @Test
+    fun `L1 anchors go into system and are absent when nothing is anchored`() {
+        val plain = AssistantMemory(id = "1", content = "PLAIN_MEMORY")
+        val anchored = AssistantMemory(id = "2", content = "ANCHOR_MARKER", isAnchor = true)
+
+        fun systemOf(memories: List<AssistantMemory>): String = buildSystemPromptText(
+            assistant = assistant(enableMemory = true),
+            settings = settings,
+            model = model,
+            messages = emptyList(),
+            memories = memories,
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+        )
+
+        // 无锚点 ⇒ **不产生 Anchors 块**：输出与改动前逐字节一致，缓存行为不变
+        val noAnchor = systemOf(listOf(plain))
+        assertFalse("无锚点不该产生 Anchors 块", noAnchor.contains("**Anchors**"))
+        assertFalse(noAnchor.contains("ANCHOR_MARKER"))
+
+        // 有锚点 ⇒ 进 system —— 这正是 L1 的意义（拿到 system 级权重）
+        val withAnchor = systemOf(listOf(plain, anchored))
+        assertTrue(withAnchor.contains("**Anchors**"))
+        assertTrue(withAnchor.contains("ANCHOR_MARKER"))
+
+        // 且普通记忆的数据**仍不在** system（它在尾部）：锚点是例外、不是把数据搬回来
+        assertFalse("锚点外的记忆数据不得进 system", withAnchor.contains("PLAIN_MEMORY"))
+    }
+
+    @Test
+    fun `anchor block is capped to the quota and ordered by importance`() {
+        val many = (1..8).map { i ->
+            AssistantMemory(id = "$i", content = "ANCHOR_$i", isAnchor = true, importance = i / 10f)
+        }
+        val block = buildMemoryAnchorPrompt(many)
+        // 配额 5 ⇒ 只有 importance 最高的 5 条（8..4）
+        assertTrue(block.contains("ANCHOR_8"))
+        assertTrue(block.contains("ANCHOR_4"))
+        assertFalse("超配额的不应出现", block.contains("ANCHOR_3"))
+        assertFalse(block.contains("ANCHOR_1"))
+        // 降序（同等重要度时按写入先后，保证集合不变则字节稳定）
+        assertTrue(block.indexOf("ANCHOR_8") < block.indexOf("ANCHOR_4"))
+    }
+
+    @Test
+    fun `anchor prompt is empty without anchors`() {
+        assertEquals("", buildMemoryAnchorPrompt(emptyList()))
+        assertEquals("", buildMemoryAnchorPrompt(listOf(AssistantMemory(id = "1", content = "x"))))
+    }
     // endregion
 
     // region buildSendWindowMessages

@@ -569,6 +569,11 @@ internal fun systemBlocksToSegments(
             labels.cardSlotNames[block.cardSlot] ?: labels.system
             )
         SystemBlockSource.MEMORY -> PromptSegmentKind.MEMORY to labels.memory
+        // L1 锚点与 L0 纪律同属「记忆」归因：刻意**复用**而非新增分段种类，
+        // 避免为一个分段牵动 6 个 locale 的字符串。
+        // ⚠️ L2/L3 记忆**数据**已移到**对话尾部**，不再由本函数（system 分段）覆盖 ——
+        // 见 docs/design/design-memory-injection-tiering.md。
+        SystemBlockSource.ANCHOR -> PromptSegmentKind.MEMORY to labels.memory
         // TOOL 块 = `tool.systemPrompt()` 产物，**在 system 正文里**（引导文本，不是 schema）；
         // 实发的顶层 tools 数组另由 [toolsToSegment] 成段（见 TOOL_SCHEMA 的注释）。
         SystemBlockSource.TOOL -> PromptSegmentKind.TOOL_GUIDANCE to (

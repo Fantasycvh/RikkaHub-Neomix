@@ -68,6 +68,20 @@ data class MemoryEntity(
     /** 遥测：最近一次被 `memory_read` 取走的时间（epoch millis；0 = 从未读过）。 */
     @ColumnInfo("last_read_at", defaultValue = "0")
     val lastReadAt: Long = 0L,
+    /**
+     * **L1 锚点**：为真时这条记忆进 system 层的「Anchors」块，获得 system 级权重。
+     *
+     * **禁止 AI 自填**（照抄 bigeye 的安全约束，见 `peer-apps-benchmark.md` §11.2 分组 D：
+     * `fragment_store.py:965-971` 的白名单 + `tools/memory_tools.py:64`）——
+     * 只能由**用户手动「固化」**或整理器提拔。实现上的保证是：写入路径
+     * [app.androidrik.rikkahub.data.repository.MemoryRepository.addMemory] **根本没有这个参数**。
+     *
+     * **入选依据是"稳定"而不是"重要"**：本层在 system，而 system 是第一条消息、前缀缓存
+     * 从位置 0 起连续匹配 —— 改它一次其后全部重算（实测命中率 98% → 0%）。故配额极小、
+     * 且只由人固化。见 `docs/design/design-memory-injection-tiering.md`。
+     */
+    @ColumnInfo("is_anchor", defaultValue = "0")
+    val isAnchor: Boolean = false,
 ) {
     companion object {
         /** 缺省重要度（普通偏好档，见 [importance]）。 */

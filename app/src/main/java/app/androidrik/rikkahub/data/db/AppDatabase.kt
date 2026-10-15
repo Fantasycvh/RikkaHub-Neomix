@@ -56,7 +56,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         KnowledgeEmbeddingEntity::class,
         MemoryConsolidationEntity::class,
     ],
-    version = 36,
+    version = 37,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -96,6 +96,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 34, to = 35),
         // 工作区新增「单次读取上限」（max_read_file_bytes，默认 8MB = 迁移前的硬编码值）
         AutoMigration(from = 35, to = 36),
+        // 36→37：记忆 L1 锚点（is_anchor，NOT NULL + DEFAULT 0，存量全部为 false ⇒ 行为不变）
+        // 见 docs/design/design-memory-injection-tiering.md
+        AutoMigration(from = 36, to = 37),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
