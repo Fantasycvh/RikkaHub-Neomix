@@ -1143,10 +1143,139 @@ M2 上下文增速、M3 记忆存量与平均权重、M4 任务纪律（心智�
 - **守护进程（`guardian.py`）**：健康探测每 5s、最大重启 5 次、冷却 60s，服务与控制平面分端口（8765/9891）。
   本仓是 Android 单进程 App，无此类长时运行服务进程可守（WorkManager 负责重试即可）。
 - **记忆网络/反思回路**（最大单文件 76KB）：体量远超本仓记忆模块，且定位不同（它解决「无限上下文」，本仓解决
-  「日常对话 + 选择性记忆」），**不建议整体跟进**；但可单独看它的「摘要树」与「分片带权重」两个具体做法（尚未深读，需时再调研）。
+  「日常对话 + 选择性记忆」），**不建议整体跟进**；其中三项（保底通道 / 钉住豁免 / 批次成本记账）值得吸收 —— **已于 §11.1 完成深评**（本地克隆 `e0f0b2d`）。
 
 ### D. 建议
 
 **按价值排序**：① 循环守卫增加「探索/落地」维度（与现有签名查重并存，改动小、可单测）> ② 声明式规则表
 （工程改造量大一些，但让守卫可检视、可调参）> ③ 指标化诊断（成本最低，作为调试面板）。
 前两项相加约半天，且**均需自行实现、不可抄代码**（无 License）。
+
+### 11.1 记忆机制深评（2026-10-14，本地克隆 `F:\build\projects\bigeye`，commit `e0f0b2d`）
+
+§十一当时只做了远端粗看、并留了「记忆网络尚未深读」的尾巴。本节补齐，**只评记忆机制**。
+
+**规模**：`memory/` 16 个模块、约 **7000 行**。核心 `fragment_store.py`（1561 行）、`reflection_loop.py`（1226）、
+`file_crystal_store.py`（966）、`knowledge_pages.py`（520）、`cmn_retriever.py`（513）、`summary_tree.py`（391）、
+`relation_store.py`（360）、`embedder.py`（317）、`entity_store.py`（225）、`reflection.py`（213）、`msg_vectors.py`（213）、
+`extractor.py`（190）、`vec_index.py`（162）、`file_slicer.py`（225）。
+
+#### A. 数据模型（`memory_fragments` 一张宽表 + 三张边表）
+
+| 表 | 用途 |
+|---|---|
+| `memory_fragments` | 记忆主体。除正文/时间/embedding 外有 **weight、importance、layer、entity_ids、epistemic、authority_level、confidence_decay、node_type、crystal_parent_id、raw_source_id、summary_hash、raw_count、dirty** 等 20+ 列 |
+| `memory_archive` | 衰减下沉区（`move_to_archive` 单向落档，可 `move_to_core` 捞回） |
+| `memory_links` | 碎片间边（`link_type` + `weight`，含 causal 因果边） |
+| `memory_reflection_log` | 反思批次日志：`input_chars / output_fragments / cost_usd` —— **把「整理成本」当一等数据记录** |
+
+几个字段值得单独指出：
+- `epistemic`（`experience` / `world` / `opinion`）—— **按「知识来源性质」分类**，不是按主题；
+- `layer`（`core` / `archive` / …）—— 分层而非单一池；
+- `authority_level`（0 普通 / 1 权威）—— 权威知识走**保底召回**（见 B③）；
+- `raw_count` + `weight` —— 同一件事被反复观察到会累加，参与打分；
+- `confidence_decay` + `last_hash_verified_at` —— 置信度带**可验证衰减**；
+- `node_type`（`self` 自传晶体 / `file` 文件晶体）—— 自传记忆与文件记忆**同表**，靠类型分流。
+
+#### B. 召回链路（`recall()`：候选 → 硬门槛 → 六因子 → MMR → 因果扩散）
+
+**① 六因子相乘 + 一个「硬门槛」（本节最值得看的部分）**
+
+```
+score = recency × relevance × importance × weight × entity_bonus × topic_bonus
+recency = max(0.5^(age_days/30), 0.3)          # 半衰期 30 天，有地板
+importance = importance/10                      # 1–10 → 0.1–1.0
+weight = weight × (1 + 0.1×min(raw_count,10))   # 复现次数加成
+entity_bonus = 1.5（命中查询实体）              # ENTITY_BONUS
+topic_bonus = 1.2 同任务 / 0.85 他任务 / 1.0 无归属
+MMR_LAMBDA = 0.7
+```
+
+关键在**打分之前**还有一道 `RELEVANCE_HARD_FLOOR = 0.30`：余弦相似度低于它的候选**直接淘汰**。
+其注释把动机写得很具体（原文）：
+
+> 这是防「元晶体霸榜」的关键——元晶体因结构化文本 embedding 跟任何查询都有点相似（0.1–0.3），
+> 但实际不相关，靠 importance=7/weight=3 综合分顶上来。
+
+也就是说：**「重要性」不能把「不相关」救回来**。这条与 §十一 B③ 记的 `attention_metrics` 无关，是纯召回纪律。
+
+**② topic_bonus 的非对称设计带算术论证**
+
+同任务 ×1.2、他任务 ×0.85、无归属 ×1.0，且注释给出了边界验证：
+`1.5 × 0.85 = 1.275 > 1.0` —— **实体强证据的跨任务碎片仍高于无实体命中者，不误伤真相关**。
+不是拍脑袋的系数，而是先算过最坏情况再定值。该设计源自一次真实串台事故（注释：2026-09-04 串台修复）。
+
+**③ MMR 多样性（λ=0.7），且用「真 cosine」而非综合分**
+
+`_mmr_select` 明确用 `_relevance`（真余弦）算重复度，注释说明理由：综合分里含 importance/weight，
+拿它做去重会让「同类高重要度碎片」互相压制、又让「不同类但同分」的混进来。
+另有字段清晰化处理：检索结果同时给出 `relevance`（真余弦）与 `score`（综合分），并**显式删掉一个
+曾误导下游的旧字段 `similarity`**。
+
+**④ 因果扩散（一跳，置信度 ≥ 0.8）**
+
+召回的碎片若命中查询实体，就顺着 `memory_links` 的 causal 边找对端实体、把对端碎片补进来
+（最多 3 条，额外预算 `top_k + 2`，再按 id 去重）。即**不只召回「像的」，还召回「因此的」**。
+
+**⑤ 保底召回 `recall_guaranteed`（对「永远该在场」的记忆给确定性通道）**
+
+选 `layer=knowledge 且 authority_level ≥ 1` 的行为准则类记忆，按 `weight × importance` 排序、
+候选间用余弦去重。原文动机（这是本条最有价值的地方）：
+
+> 这类「永远该在场」的教训（如回复风格、验证纪律）**不能赌语义召回**——用户间接表达时
+> （如「你明白了吗」暗示啰嗦）向量相似度过不了硬门槛。
+
+即：**语义召回的硬门槛会误杀「用户没明说但应该在场」的记忆，所以必须给权威记忆一条绕过语义的确定性通道。**
+
+**⑥ 钉住（pin）与永不过期**
+
+`IMPORTANCE_PIN_THRESHOLD = 7.0`：重要度 ≥ 7 的碎片**永不参与衰减**、也不会被下沉到 archive。
+
+#### C. 与本仓记忆机制的对照（结论性）
+
+| 维度 | 本仓（`GenerationPrompts.memoryScore`） | bigeye（`fragment_store`） |
+|---|---|---|
+| 是否依赖当前查询 | **否**——注入与查询无关 | **是**——每轮按 `context_text` 现算 |
+| 打分因子 | `effectiveImportance × (0.55 + 0.45×activity)`；importance 与**读取信用**（readCount 对数饱和）合成，activity 取「写入时效/最近读取」二者较大值 | `recency × relevance × importance × weight × entity × topic`（六因子相乘） |
+| relevance 的地位 | **没有这一维**（记忆注入不做语义检索） | **是乘数因子，且有 0.30 硬门槛** |
+| 读取反馈 | `readCount` 对数饱和 → 抬升 effectiveImportance（**读得多 ⇒ 更重要**） | `recall_count`/`last_recalled` 只记录，另有 `reinforce()` 显式加权 |
+| 多样性 | 无 MMR（按分数分桶 + sortKey 排序） | MMR λ=0.7 |
+| 时间衰减 | 半衰期 30 天，**且区分「时间戳未知」两侧语义**（写入未知=不衰减；读取未知=按 0） | 半衰期 30 天 + 地板 0.3，重要度 ≥7 钉住免衰减 |
+| 「永远该在场」 | **无显式保底通道**；靠 importance 高 + `MIN_MEMORY_INJECTION_SCORE = 0.2f` 下限筛除 | 有 `recall_guaranteed` 确定性通道 |
+| 提示词缓存稳定性 | **显式设计**：入选后按 `sortKey` 输出而非分数序，避免前缀每轮漂移废缓存 | 未见等价处理 |
+
+**两边各有对方没有的东西**：本仓的「读取信用」与「sortKey 稳定前缀」是 bigeye 没有的；
+bigeye 的「relevance 硬门槛」「保底通道」「MMR」「分层 + 权威级」是本仓没有的。
+**这不是谁抄谁，而是两种取舍**：本仓选择了「不依赖查询的注入」（换来缓存稳定与实现简单），
+bigeye 选择了「依赖查询的召回」（换来精度，代价是每轮现算 + 前缀漂移风险）。
+
+#### D. 值得本仓吸收的（按价值，均可独立于「是否上语义检索」而成立）
+
+**① 「永远该在场」的保底通道（最值得）**
+本仓现在只有「打分低于下限就**不**注入」这条**减法**（`MIN_MEMORY_INJECTION_SCORE`），没有**保底加法**。
+后果是：一条被标为低重要度、或久未更新且已老化的行为准则（如「回答前先验证」），会**静默消失**，
+恰恰在需要它的时候不在场。bigeye 的做法（权威级 + 确定性排序 + 组内去重）可以移植为本仓的
+「**必注入**」名单，且**不需要引入 embedding**——它本来就走非语义通道。
+这条即便本仓永远不上语义检索也成立，是本次评估里**唯一无条件推荐**的一条。
+
+**② 相关性硬门槛的「减法思想」已有、但可更彻底**
+本仓已有下限筛除，方向一致（注释也写明借自华灯 RAG 相关性下限）。bigeye 更进一步的是**明确写下
+「重要性不能把不相关救回来」这条纪律**——本仓若将来上语义检索，这条应先立。
+
+**③ 衰减的「钉住」豁免**
+本仓对「时间戳未知」做了双侧语义处理（比 bigeye 更细），但**没有「高重要度免衰减」**。
+`IMPORTANCE_PIN_THRESHOLD` 是个便宜且直观的补充（配合 ① 使用更佳）。
+
+**④ `memory_reflection_log` 的成本记账**
+把整理批次的 `input_chars / output_fragments / cost_usd` 落表。本仓已有记忆整理（「做梦」四批）与
+成本护栏，但**未把批次成本落库成可查数据**——这与「为什么没发」的可解释性是同一主张（见 §十一 B④）。
+
+#### E. 不适用 / 不建议跟进
+
+- **六因子相乘本身**：其 relevence 维依赖「每轮对全库算余弦」，本仓记忆注入刻意不做语义检索
+  （见 `KnowledgeBaseEntity.kt` 注释：「与已否决的『注入时语义检索』不同物种」），故**该结构不适用**；
+  可借的是 ①③ 这类**不依赖 relevance 的部分**。
+- **CMN 晶体网络**（`file_crystal_store` 966 行 + `crystal_parent_id`「思维血统」+ `raw_source_id` 溯源）：
+  为「文件切片 → 晶体 → 派生晶体」的长链溯源设计，体量与定位都超出本仓记忆模块，
+  **不建议跟进**；其「派生关系可溯源」的思想与本仓知识库（文档 → 分块 → 向量）有重叠，可择日单独比对。
+- **无 License ⚠️**（同 §十一 C）：**不得复制其代码**，以上均为思路层面，实现须自行重写。
