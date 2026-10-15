@@ -57,6 +57,13 @@ data class Conversation(
      * 默认 false = 现行为；缺字段反序列化也是 false ⇒ 无需数据回填。
      */
     val memoryDisabled: Boolean = false,
+    /**
+     * **冻结的锚点快照**（L1）：会话开始时一次 + 用户手动「固化记忆」时重写。
+     *
+     * `null` = 未冻结（用实时锚点，存量会话的行为）；`""` = 冻结且当时无锚点。
+     * 见 `docs/design/design-memory-injection-tiering.md`。
+     */
+    val frozenAnchors: String? = null,
     @Transient
     val newConversation: Boolean = false
 ) {

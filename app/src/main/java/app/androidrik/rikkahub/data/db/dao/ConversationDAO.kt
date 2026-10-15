@@ -123,6 +123,7 @@ interface ConversationDAO {
             workspace_cwd = :workspaceCwd,
             folder_id = :folderId,
             memory_disabled = :memoryDisabled,
+            frozen_anchors = :frozenAnchors,
             last_message_at = COALESCE(:lastMessageAt, last_message_at)
         WHERE id = :id
         """
@@ -146,6 +147,11 @@ interface ConversationDAO {
          * ——它是用户开关，false 本身就是有效值，不能让「没传」把它吞掉。
          */
         memoryDisabled: Boolean,
+        /**
+         * 冻结的锚点快照。**直接赋值**（与 [memoryDisabled] 同理）：`null` 是有效值
+         * （= 未冻结），不能让 COALESCE 把「显式写 null」吞掉。
+         */
+        frozenAnchors: String?,
     )
 
     /**

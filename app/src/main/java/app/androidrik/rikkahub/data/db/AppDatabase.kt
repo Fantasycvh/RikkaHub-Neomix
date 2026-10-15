@@ -56,7 +56,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         KnowledgeEmbeddingEntity::class,
         MemoryConsolidationEntity::class,
     ],
-    version = 37,
+    version = 38,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -99,6 +99,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 36→37：记忆 L1 锚点（is_anchor，NOT NULL + DEFAULT 0，存量全部为 false ⇒ 行为不变）
         // 见 docs/design/design-memory-injection-tiering.md
         AutoMigration(from = 36, to = 37),
+        // 37→38：会话级锚点冻结快照（可空纯列 ⇒ 无需 spec）。
+        // 存量会话为 null = 未冻结（用实时锚点），行为与改动前一致。
+        // 见 docs/design/design-memory-injection-tiering.md
+        AutoMigration(from = 37, to = 38),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)

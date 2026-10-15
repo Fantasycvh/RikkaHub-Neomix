@@ -60,4 +60,20 @@ data class ConversationEntity(
      */
     @ColumnInfo("memory_disabled", defaultValue = "0")
     val memoryDisabled: Boolean = false,
+    /**
+     * **冻结的锚点快照**（L1，会话开始时一次 + 用户手动「固化记忆」时重写）。
+     *
+     * 为什么需要冻结：L1 在 **system** 层，而 system 是第一条消息、前缀缓存从位置 0 起
+     * 连续匹配 —— 改它一次，其后**全部重算**（真机实测命中率 98% → 0%）。冻结把这件事
+     * 变成**显式且可预期**：会话内不再因锚点集合/内容的变动而被动失效。
+     *
+     * 三态：
+     * - `null` = **未冻结**（本次升级前的存量会话）⇒ 用实时锚点，行为与改动前一致；
+     * - `""`   = 已冻结、且当时**没有锚点** ⇒ 不产生 Anchors 块（保持"无锚点 ⇒ 无块"不变式）；
+     * - 其他   = 冻结的渲染文本。
+     *
+     * 见 `docs/design/design-memory-injection-tiering.md`。
+     */
+    @ColumnInfo("frozen_anchors")
+    val frozenAnchors: String? = null,
 )

@@ -106,6 +106,12 @@ internal fun buildSystemBlocks(
      * 等于告诉模型「这里有记忆系统，只是空的」——与「这次对话不碰记忆库」的语义不符。
      */
     memoryDisabled: Boolean = false,
+    /**
+     * **冻结的锚点快照**：非 null 时**以它为准**，不再用 [memories] 实时渲染。
+     * `null` = 未冻结（实时渲染，行为与改动前一致）。
+     * 见 `docs/design/design-memory-injection-tiering.md`。
+     */
+    frozenAnchorText: String? = null,
 ): List<SystemBlock> {
     val blocks = mutableListOf<SystemBlock>()
 
@@ -151,7 +157,8 @@ internal fun buildSystemBlocks(
     if (assistant.enableMemory && !memoryDisabled) {
         // L1 锚点：**只在有锚点时才产生该块** ⇒ 无锚点时输出逐字节不变
         // （见 docs/design/design-memory-injection-tiering.md）
-        val anchorText = buildMemoryAnchorPrompt(memories)
+        // 冻结优先：非 null 时以快照为准（"" = 冻结时无锚点 ⇒ 不产生块，不变式仍成立）
+        val anchorText = frozenAnchorText ?: buildMemoryAnchorPrompt(memories)
         if (anchorText.isNotBlank()) {
             blocks += SystemBlock(SystemBlockSource.ANCHOR, content = anchorText)
         }
@@ -217,6 +224,8 @@ internal fun buildSystemPromptText(
     tools: List<Tool>,
     conversationSystemPrompt: String?,
     memoryDisabled: Boolean = false,
+    /** 冻结的锚点快照：非 null 时以它为准（见 [buildSystemBlocks] 同名参数）。 */
+    frozenAnchorText: String? = null,
 ): String = joinSystemBlocks(
     buildSystemBlocks(
         assistant = assistant,
@@ -227,6 +236,7 @@ internal fun buildSystemPromptText(
         tools = tools,
         conversationSystemPrompt = conversationSystemPrompt,
         memoryDisabled = memoryDisabled,
+        frozenAnchorText = frozenAnchorText,
     )
 )
 
@@ -272,6 +282,8 @@ internal fun buildInternalMessages(
     recoveryHint: String? = null,
     /** 会话级「不使用记忆」（隐身对话）：为真时不注入记忆块，见 [buildSystemBlocks] */
     memoryDisabled: Boolean = false,
+    /** 冻结的锚点快照：来自 `Conversation.frozenAnchors`（null = 未冻结）。 */
+    frozenAnchorText: String? = null,
 ): List<UIMessage> {
     val baseSystem = buildSystemPromptText(
         assistant = assistant,
@@ -282,6 +294,7 @@ internal fun buildInternalMessages(
         tools = tools,
         conversationSystemPrompt = conversationSystemPrompt,
         memoryDisabled = memoryDisabled,
+        frozenAnchorText = frozenAnchorText,
     )
     // 恢复提示追加在系统提示末尾：不写入对话历史（仅本次请求存在，随后消失）
     val system = if (recoveryHint.isNullOrBlank()) {
