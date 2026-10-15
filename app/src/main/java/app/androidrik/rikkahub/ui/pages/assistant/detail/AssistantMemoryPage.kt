@@ -289,6 +289,30 @@ private fun AssistantMemoryContent(
                             valueRange = 0f..1f,
                         )
                     }
+                    // L1 固化：进 system 层的「Anchors」块 —— 换来 system 级权重，
+                    // 但代价是**改动它会让整个前缀缓存失效**（system 在位置 0，改动即全断，
+                    // 实测命中率 98% → 0%）。故配额仅 5 条、且只由用户在此手动固化。
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.assistant_page_memory_anchor),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            Text(
+                                text = stringResource(R.string.assistant_page_memory_anchor_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = memory.isAnchor,
+                            onCheckedChange = { update(memory.copy(isAnchor = it)) },
+                        )
+                    }
                 }
             },
             confirmButton = {

@@ -102,6 +102,8 @@
   <string name="assistant_page_local_tools_tts_desc">Let the AI read text aloud to you using your selected TTS service</string>
   <string name="assistant_page_local_tools_tts_title">Text to Speech</string>
   <string name="assistant_page_manage_memory_title">Manage Memory</string>
+  <string name="assistant_page_memory_anchor">Pin as anchor</string>
+  <string name="assistant_page_memory_anchor_hint">Always in context, with system-level weight. Costs a full prompt-cache reset when changed.</string>
   <string name="assistant_page_memory_importance">Importance</string>
   <string name="assistant_page_memory_description_label">Topic</string>
   <string name="assistant_page_memory_description_hint">One short line on what this record is about; it is what future chats see when the record does not fit the full-text budget.</string>

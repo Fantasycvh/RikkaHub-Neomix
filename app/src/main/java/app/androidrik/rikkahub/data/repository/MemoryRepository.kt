@@ -136,6 +136,26 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     }
 
     /**
+     * **固化 / 取消固化**（L1 锚点）。
+     *
+     * **只有用户能走这条路**：[addMemory]（模型的写入路径）**没有这个参数**，故 AI 无法自填
+     * ——这是从构造上保证的纪律（照抄 bigeye `fragment_store.py:965-971` 的白名单 +
+     * `tools/memory_tools.py:64`，见 `docs/design/design-memory-injection-tiering.md`）。
+     *
+     * 刻意**不更新 `updatedAt`**：固化是「标注」而不是「改写内容」。更新它会重置时效衰减，
+     * 等于「固化一下反而让老记忆变新」，与锚点"长期稳定"的定位正好相反。
+     */
+    suspend fun setAnchor(
+        id: String,
+        isAnchor: Boolean,
+    ): AssistantMemory? {
+        val old = findEntityByPublicId(id) ?: return null
+        val newMemory = old.copy(isAnchor = isAnchor)
+        memoryDAO.updateMemory(newMemory)
+        return newMemory.toModel()
+    }
+
+    /**
      * 新增记忆。**同内容幂等**——已存在完全相同的内容时直接返回既有记录、不重复插入。
      *
      * 为什么需要：一轮生成里注入模型的 `<memories>` 是**生成开始时的快照**（`ChatService` 取一次），

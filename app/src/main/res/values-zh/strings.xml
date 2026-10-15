@@ -102,6 +102,8 @@
   <string name="assistant_page_local_tools_tts_desc">让AI使用您所选的TTS服务为您朗读文本</string>
   <string name="assistant_page_local_tools_tts_title">文字转语音</string>
   <string name="assistant_page_manage_memory_title">管理记忆</string>
+  <string name="assistant_page_memory_anchor">固化为锚点</string>
+  <string name="assistant_page_memory_anchor_hint">常驻上下文并获得 system 级权重；改动它会让整个前缀缓存失效。</string>
   <string name="assistant_page_memory_importance">重要度</string>
   <string name="assistant_page_memory_description_label">主题</string>
   <string name="assistant_page_memory_description_hint">一行说明这条记忆讲什么；全文预算装不下时，后续对话看到的就是它。</string>

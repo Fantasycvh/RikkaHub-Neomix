@@ -224,6 +224,8 @@ class AssistantDetailVM(
                 importance = memory.importance,
                 description = memory.description,
             )
+            // L1 锚点单独走 setAnchor（**不改 updatedAt**）：固化是标注、不是改写内容
+            memoryRepository.setAnchor(id = memory.id, isAnchor = memory.isAnchor)
         }
     }
 
