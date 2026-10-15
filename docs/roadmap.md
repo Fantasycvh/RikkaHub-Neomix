@@ -2405,3 +2405,47 @@ Page 2:","firstUnit":1,"lastUnit":2,
   重写、无锚点须写空串）逐条记进设计稿 §8，供下次接手。⑦两项第 1 步遗留仍在：`ContextCapacitySheet`
   分段标签（记忆移到尾部后不再准确）、`PromptInspector` 尾部记忆块归因。**真机待验**：固化一条锚点后
   看 system 是否出现 `**Anchors**`，以及**不动锚点时写入普通记忆应不再冲掉前缀缓存**。
+
+- 2026-10-16：**L1 锚点批 2 落地（会话开始冻结 + 手动固化刷新）——锚点层的前缀缓存收益闭环**。
+  承接同日设计稿 §8 的交接要点与批 1。**第 1 段（机制层，零行为变更，`8967fc8bf`）**：
+  `ConversationEntity` 加 `frozen_anchors`（可空纯列 ⇒ AutoMigration 无需 spec），DB **37 → 38**
+  （含导出的 `38.json`）；`Conversation.frozenAnchors` + 实体↔模型**三处映射**补齐；
+  `buildSystemBlocks` / `buildSystemPromptText` / `buildInternalMessages` 加冻结参数（默认 null
+  ⇒ 实时渲染，输出与改动前逐字节一致）。同批清理误提交的临时脚本 `_b2a.py`（`60ac949dc`）——
+  教训：`python x.py && rm -f x.py` 在脚本断言失败时**不会**执行 `rm`，脚本被一路提交进去。
+  **第 2 段（本次）**：
+  ①**穿透**：`ChatService` → `GenerationHandler.generateText` → `generateInternal` →
+  `buildInternalMessages` 全程新增参数，**不从 messages 反推**（避免长出第二个装配真相源）。
+  ②**会话开始冻结**：`ChatService.ensureFrozenAnchors` 在首次生成**之前**落库快照，因此首次请求
+  用的就是写进库的那一份；无锚点写 `""` 而非留 null（null 是「未冻结」的有效取值，留 null 会每轮
+  重冻一次且语义上永远没冻过）。
+  ③**手动刷新**：`ChatService.refreshFrozenAnchorsForAssistant`——**先同步活跃 session 的内存态、
+  再一条批量 UPDATE**（顺序反了会留下「库已换档、内存态仍旧」的窗口，同 `moveConversationToFolder`
+  记下的教训）。入口接在记忆页 `AssistantDetailVM.updateMemory`，且**只在「锚点翻转 || 本条本来
+  就是锚点」时调用**（为此把 `MemoryRepository.setAnchor` 的返回改成「是否真的翻转」）——改一条
+  非锚点记忆的内容不该白废该助手每个会话的前缀缓存，大上下文下那是实打实的钱与首字延迟。
+  ④**换助手即清空**：`moveConversationToAssistant` 一并置 null，否则上一个助手的锚点跨助手串味。
+  ⑤**写入点唯一**：`frozen_anchors` **移出** `updateMetadata` 的列清单，改由两条专用单列语句写
+  （与 `sort_order` 同款）；留在列清单里会被调用方手里的旧 `Conversation` **静默写回 null**。
+  ⑥**顺带修掉第 1 步的一个真实回归**：`PromptInspector` 的 `buildInternalMessages` 调用漏传
+  `memoryDisabled` ⇒ 隐身对话的拼装预览凭空空出一段尾部记忆块（实发里没有）——预览与实发不一致
+  正是本仓明确防的坑，已补参并加守卫。
+  ⑦**设计修正（重要，见设计稿 §5.1）**：原计划冻**渲染好的文本**，实施时改为冻**锚点 id 集合**、
+  文本按当前内容实时渲染。理由是记忆库有**两条自动删除路径**——做梦整理
+  （`MemoryConsolidationGenerationAgent.deleteMemory`）与 200 条上限淘汰
+  （`MemoryRepository.enforceMaxCount`，**锚点并不在豁免名单里**）——它们都不会去逐个刷新会话；
+  冻文本的话，一条被删掉的锚点会**永远**留在 system 里：既忘不掉（模型继续看到它），也改不动
+  （用户改内容也不生效）。存 id 则「删除即消失、改写即生效」，而 system 的**字节稳定性只由集合
+  决定**（集合不变 ⇒ 逐字节不变）。这也更贴近 §5 的原意：用户按「固化记忆」表达的是"哪几条算数"，
+  不是"把当时的措辞也钉死"。
+  ⑧**测试与证伪**：`PromptAssemblyTest` 新增冻结集合语义 6 条（含「新固化不挤进本会话 / 空集不产生
+  块 / 删掉立刻消失 / 改写立刻生效 / 尾部仍实时 / `anchorIdsOf` 与未冻结渲染同源」）；
+  `MemoryAnchorWiringTest` 新增 4 条源码守卫（冻结→透传、手动刷新的**顺序**、预览同参、
+  `setAnchor` 仍是唯一写入口）；`ConversationSchemaGuardsTest` 加豁免 + 显式断言。**三次注入式反证**
+  各精确变红：忽略冻结集合 ⇒ 3 条红；`generateText` 漏传 ⇒ 目标用例红；把列加回 `updateMetadata`
+  ⇒ 列清单断言红。**第一次写的护栏是无效的**——只数 `SET frozen_anchors` 抓不到「加回列清单」这个
+  形态（SQL 里 `SET` 后面跟的是 `assistant_id`），反证时**依然全绿**；补上决定性的"不得出现在列清单
+  里"断言后才真正变红（这条教训已写进测试注释）。全量 `testDebugUnitTest` **1524 项 0 失败**。
+  **真机待验**：①新会话首轮后 system 出现 `**Anchors**` 且此后改锚点**不再**改变该会话（前缀缓存
+  命中率不再掉到 0）；②记忆页固化一条锚点 ⇒ 各会话次日首轮生效；③删掉一条锚点 ⇒ 立刻从 system
+  消失。

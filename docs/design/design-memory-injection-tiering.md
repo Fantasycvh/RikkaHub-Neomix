@@ -93,6 +93,29 @@ L2 在尾部 ⇒ **可以依赖当前查询、每轮重算、每轮换集合**�
 - **L1 刷新触发点 = 会话开始时一次 + 用户手动「固化记忆」**（不做每 N 轮自动刷新）。
   理由：把失效频率变成**显式且可预期**的 —— 每个会话至多一次自动失效，其余由用户主动触发。
 
+### 5.1 冻的是「集合」，不是「文本」（实施中修正，2026-10-16）
+
+原计划把 L1 渲染好的**文本**冻进会话（§8 第 2 步的"或改为传已渲染好的 L1 文本"）。
+实施时改成冻**锚点 id 集合**、文本按当前内容实时渲染。触发修正是记忆库里的
+**两条自动删除路径**：
+
+- `MemoryConsolidationGenerationAgent`（做梦整理）会 `deleteMemory`；
+- `MemoryRepository.enforceMaxCount`（200 条上限）按分数淘汰，**锚点并不在豁免名单里**。
+
+这两条都不会去逐个刷新会话。冻文本的话，一条被删掉的锚点会**永远**留在 system 里
+——既忘不掉（模型继续看到它），也改不动（用户改内容也不生效）。而存 id 则：
+
+| | 冻文本 | 冻 id 集合（现方案） |
+|---|---|---|
+| 新固化一条锚点 | 不影响本会话 ✓ | 不影响本会话 ✓ |
+| 删掉一条锚点 | **永远留在 system** ✗ | 立刻消失 ✓ |
+| 改写锚点内容 | **不生效** ✗ | 立刻生效 ✓ |
+| system 字节稳定性 | 集合与文本都不变才稳定 | **只由集合决定** |
+
+「改写立刻生效」看着像削弱了冻结，其实是回到 §5 的原意：用户按「固化记忆」按钮表达的是
+**"以后哪几条算数"**，而不是"顺便把当时的措辞也钉死"。被冻住的是集合 ⇒ 新固化/取消固化
+不会悄悄冲掉所有会话的前缀缓存，这正是 §5 要买的东西。
+
 ## 6. 数据模型改动
 
 1. `is_anchor: Boolean`（或 `authority_level: Int`）—— L1 入选依据。
@@ -135,8 +158,41 @@ L2 在尾部 ⇒ **可以依赖当前查询、每轮重算、每轮换集合**�
      §5 的手动刷新点）；无锚点时必须写空串而非 null，保证「无锚点 ⇒ 无块」不变式仍然成立；
   5. 测试：会话中途改锚点 ⇒ 该会话 system 块**不变**；点固化 ⇒ 块更新；新会话 ⇒ 取当前锚点。
 
-**其余待收尾**（第 1 步遗留）：`ContextCapacitySheet` 的「系统设定与记忆」是差值法算的，
-记忆数据移到尾部后会落进「有效历史消息」侧 ⇒ **标签不再准确**；`PromptInspector` 尚未给
-尾部记忆块单独分段归因。
+**其余待收尾**（第 1 步遗留）—— ✅ **均已收尾**（`7f32ef1da` / `5c7dc47dd`）：
+`PromptInspector` 已给尾部记忆块单独分段归因（`PromptSegmentKind.MEMORY_TAIL`，
+按 `MEMORY_TAIL_PREAMBLE` 识别）；`ContextCapacitySheet` 已为尾部记忆**单开一行**
+（`ContextCapacity.memoryTailTokens`，从系统记忆里做减法以保持分段和不变），
+6 个 locale 补齐。
+
+### 8.1 批 2 实施记录（2026-10-16）
+
+- ✅ **第 1 段（机制层，`8967fc8bf`）**：`frozen_anchors` 列 + DB 37→38 AutoMigration、
+  模型字段与三处映射、`buildSystemBlocks`/`buildSystemPromptText`/`buildInternalMessages`
+  的 `frozenAnchorIds` 参数（默认 null ⇒ 行为零变更）。
+- ✅ **第 2 段（接线，本次）**：
+  1. **穿透**：`ChatService` → `GenerationHandler.generateText` → `generateInternal`
+     → `buildInternalMessages`，全程新增参数、不从 messages 反推。
+  2. **会话开始冻结**：`ChatService.ensureFrozenAnchors` 在首次生成**之前**写下锚点 id 集合
+     （见 §5.1：冻 id 不冻文本）；无锚点写 `""` 而非留 null，保证不变式。
+  3. **手动刷新**：`ChatService.refreshFrozenAnchorsForAssistant` —— **先同步活跃 session 的
+     内存态、再一条批量 UPDATE**（顺序反了会留下「库已换档、内存态仍旧」的窗口，
+     同 `moveConversationToFolder` 的教训）。由记忆页 `AssistantDetailVM.updateMemory` 调用，
+     且只在「锚点翻转 || 本条本来就是锚点」时调用——改一条非锚点记忆的内容不该白废
+     该助手每个会话的前缀缓存。
+  4. **换助手即清空**：`moveConversationToAssistant` 一并置 `frozenAnchors = null`，
+     否则上一个助手的锚点会跨助手串味。
+  5. **写入点唯一**：`frozen_anchors` **移出** `updateMetadata` 的列清单，改由两条专用
+     单列语句写（与 `sort_order` 同款）。理由：冻结发生在「会话开始」与「记忆页固化」两处，
+     而那两处之后调用方手里的 `Conversation` 可能还是旧副本 ⇒ 留在列清单里会被
+     **静默写回 null**。护栏：`ConversationSchemaGuardsTest`（豁免名单 + 显式断言列清单
+     里没有它）。**注**：只数 `SET frozen_anchors` 抓不到这个形态——注入式反证实测过，
+     只数写入点的版本在该扰动下**依然全绿**，故补了决定性的"不得出现在列清单里"断言。
+  6. **顺带修掉第 1 步的一个真实回归**：`PromptInspector` 的 `buildInternalMessages` 调用
+     漏传 `memoryDisabled` ⇒ 隐身对话的拼装预览会凭空多出一段尾部记忆块（实发里没有）。
+     守卫：`MemoryAnchorWiringTest`「preview passes the same memory flags as the real request」。
+  7. **测试**：`PromptAssemblyTest` 新增冻结集合语义 6 条（含「删掉锚点立刻消失 / 改写立刻
+     生效」——§5.1 那个设计决策的可执行版本）；`MemoryAnchorWiringTest` 新增 4 条源码守卫
+     （冻结→透传、手动刷新的顺序、预览同参、`setAnchor` 仍是唯一写入口）。
+- ⬜ **仍未做**：真机复测冻结行为（§2 同款方法）；`relevance` 维度（§3.2 已解锁，未实施）。
 
 两步各自带单测与真机复测（用 §2 同款方法给出对照数字）。
