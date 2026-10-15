@@ -52,6 +52,15 @@ enum class PromptSegmentKind {
     MEMORY,
 
     /**
+     * **尾部记忆块**（L2 工作集 + L3 索引）：`buildInternalMessages` 追加在对话末尾的
+     * 合成 USER 消息。单列一段而不并入 [INJECTION] —— 它是本仓唯一「每次写入都会变、
+     * 却**不影响前缀缓存**」的块（因为它不在 system 里），归因上必须能看见它，
+     * 否则「记忆到底占了多少、为什么缓存没掉」都无从观察。
+     * 见 `docs/design/design-memory-injection-tiering.md`。
+     */
+    MEMORY_TAIL,
+
+    /**
      * system 正文内的**工具引导文本**（`tool.systemPrompt()` 产物，如技能清单）。
      *
      * ⚠️ 与 [TOOL_SCHEMA] 是两件事：本段**在 system 消息里**，而 [TOOL_SCHEMA] 是请求的
@@ -125,6 +134,9 @@ val PromptSegmentKind.stability: PromptSegmentStability
 
         PromptSegmentKind.CHAT_HISTORY,
         PromptSegmentKind.TOOL_RESULT,
+        // 尾部记忆数据每次写入都变 ⇒ 归 TURN。但它**不影响前缀**（不在 system 里），
+        // 这是本仓唯一「每轮可变却不破坏缓存」的块 —— 分组只表达"会变"，不代表会失效。
+        PromptSegmentKind.MEMORY_TAIL,
              -> PromptSegmentStability.TURN
     }
 
@@ -309,6 +321,7 @@ suspend fun inspectPrompt(
                 label = when (kind) {
                     PromptSegmentKind.COMPRESSION_CHECKPOINT -> labels.checkpoint
                     PromptSegmentKind.INJECTION -> labels.injection
+                    PromptSegmentKind.MEMORY_TAIL -> labels.memory
                     PromptSegmentKind.CHAT_HISTORY -> labels.history
                     else -> labels.system
                 },
@@ -540,10 +553,23 @@ private fun buildSourceById(settings: Settings): Map<Uuid, PromptSegmentSource> 
 private fun UIMessage.segmentKind(): PromptSegmentKind = when {
     role == MessageRole.SYSTEM -> PromptSegmentKind.SYSTEM
     isCompactionCheckpoint -> PromptSegmentKind.COMPRESSION_CHECKPOINT
+    // L2+L3 记忆数据（尾部合成 USER 消息，带 MEMORY_TAIL_PREAMBLE 前导）
+    isMemoryTail -> PromptSegmentKind.MEMORY_TAIL
     // 非 SYSTEM 的合成消息 = 注入（世界书/模式注入落到对话位置）
     isSynthetic -> PromptSegmentKind.INJECTION
     else -> PromptSegmentKind.CHAT_HISTORY
 }
+
+/**
+ * 尾部记忆块：合成 USER 消息 + 前导标记。
+ *
+ * 判据对齐 [isCompactionCheckpoint] 的同款做法（也是"合成 USER + 前导"）——
+ * 两者靠各自的前导串区分，不会互相误判。
+ */
+private val UIMessage.isMemoryTail: Boolean
+    get() = isSynthetic &&
+        role == MessageRole.USER &&
+        parts.any { it is UIMessagePart.Text && it.text.startsWith(MEMORY_TAIL_PREAMBLE) }
 
 /**
  * system 的块列表 → 预览段（**纯函数**，便于 JVM 单测——`inspectPrompt` 本体需要
