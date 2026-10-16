@@ -358,7 +358,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | **重构/性能** | `7c0113173` 通用组件下沉 ui 模块 + `d1c81bf99` LocalSettings 改 compositionLocalOf | **`d1c81bf99` fork 同款实锤**（我们也是 `staticCompositionLocalOf` ⇒ 设置一变整树重组）——性能修复小而实，**已吸收 `f5b8839c2`**；组件下沉是结构重构不跟 |
 | **修复** | `c211c0d44` **搜索结果不再被工具输出截断（#2000）** + `97060dd51` 输入栏渐变遮罩 | **`c211c0d44` fork 同款实锤**：fork `maybeTruncateToolOutput` 对所有工具一刀切，`search_web` 结果超 32K 同样截断成非法 JSON（结果列表 {}、引用失效、模型只见前几条）。**已吸收 `8e5c367a9`**：豁免集合 `TOOLS_WITHOUT_OUTPUT_TRUNCATION` + 详情渲染回退；渐变遮罩小 UI 按需 |
 
-**新 issue**：#2125 手动编辑聊天标题——**双方都有**（fork TopBar onUpdateTitle；上游 master 同样有完整编辑流含「先聊天再编辑」守卫，报告人是没发现入口）——平级，非 fork 领先（2026-10-06 更正：初评误判为 fork 领先，未对照上游代码）；#2124 透字（导航栏/输入法间隙，UI 细节，fork 待复现）；#2123 Agent toolcall 唤起图片生成（与上游 mediagen 接线配套的本地工具——fork 若走 mediagen 路线时同类需求=「imggen 工具化」，灵感级）；#1997 向量化归档+按需召回（closed；与压缩新语义相关，观察）；#1998 思考强度 UI（被 `80c6b07d` 落地）。
+**新 issue**：#2125 手动编辑聊天标题——**双方都有**（fork TopBar onUpdateTitle；上游 master 同样有完整编辑流含「先聊天再编辑」守卫，报告人是没发现入口）——平级，非 fork 领先（2026-10-06 更正：初评误判为 fork 领先，未对照上游代码）；#2124 透字（导航栏/输入法间隙，UI 细节，fork 待复现）；#2123 Agent toolcall 唤起图片生成——**已升格为专项评估（2026-10-16，见下方同名小节）：结论更正为「与 mediagen 可解耦、值得立项做最小可用」**，不再是"灵感级/配套"；#1997 向量化归档+按需召回（closed；与压缩新语义相关，观察）；#1998 思考强度 UI（被 `80c6b07d` 落地）。
 
 **吸收优先级**：`c211c0d44` 搜索截断 ✅ `8e5c367a9` → `d1c81bf99` LocalSettings 性能 ✅ `f5b8839c2` → 其余按需。
 
@@ -786,6 +786,64 @@ token，见 [[prompt-size-composition]]）。若把 `category`/`tags` 也塞进�
 **未做（C，维持暂缓）**：多标签——需要 `getList`、多标签筛选与标签池，「重命名标签 = 批量改文件」，
 收益相对小。**分类筛选是自动从现有技能派生的**（`distinctCategories()`），没有分类管理 UI，
 也不需要——分类就是 SKILL.md 里的手写字段。
+
+### #2123 助手生图工具评估（2026-10-16，源码级对照 fork）
+
+**issue（open，2026-10-06，`enhancement`，4 评论）**：[#2123](https://github.com/rikkahub/rikkahub/issues/2123)
+「允许 Agent 使用 toolcall 唤起图片生成模型生图」。诉求：**不做新页面**，只加一个**本地工具**；
+参数按 `MediaGenerationRequest`（可填字段从 `capabilities(IMAGE)` 取）；参考图由 Agent 从对话里的图
+自选；**生成结果进消息流、tool result 不回灌图片**。
+
+**评论串暴露的真问题（比正文更重要）**：
+
+| 人 | 话 | 读法 |
+|---|---|---|
+| jingkarqi（contributor） | 「自己写一个 skills 让 agent 运行不更好」 | 第一反应是"别做原生" |
+| YiJieqwq（作者） | 「我也有 py 写的 cli harness，但问题统一为**'没办法在聊天界面直接显示图片'**」 | **卡点是交付，不是生成** |
+| Huangjiang-a11y | 「其实是可以的，不过就是有点难」 | 能绕，但绕法不划算 |
+| YiJieqwq | 「干脆创个 repo 放图片得了(」 | 绕到最后＝外链托管——正是本仓该避免的 |
+
+⇒ 这是一条「**生成早就能做、缺的是宿主把它显示出来**」的需求。对 fork 是好消息：它要的那一半
+（消息流显示）我们已经具备。
+
+**fork 现状逐项对照**：
+
+| 环节 | 有/无 | 证据 |
+|---|---|---|
+| 生图调用链 | ✅ | `ImageGenerationParams`/`ImageEditParams` + `ProviderManager.getProviderByType(...).generateImage(...)`（`ui/pages/imggen/ImgGenVM.kt:154-180`），**复用 chat provider 体系**（一个中转站 key 即可用） |
+| 产物落库/落盘 | ✅ | `GenMediaRepository`/`GenMediaEntity` + `FilesManager` |
+| 消息流能装图片 | ✅ | `UIMessagePart.Image`（`ai/src/main/java/app/androidrik/ai/ui/UIMessagePart.kt:58`） |
+| 工具注册点 | ✅ | `data/ai/tools/ChatToolFactory.kt`（`memory_tool`/`search_web`/`dispatch_subagent` 同处，且已有 `TOOLS_WITHOUT_OUTPUT_TRUNCATION` 这类**按工具策略**的先例） |
+| **模型可调生图** | ❌ | `data/ai/` 对生图类型**零引用** |
+| `capabilities(IMAGE)` 等价物 | ❌（且非必需） | `ModelAbility` 只有 `{TOOL, REASONING}`（`ai/src/main/java/app/androidrik/ai/provider/Model.kt:51`）；图片相关的是输入模态 `Modality.IMAGE` 与提供商内置工具 `BuiltInTools.ImageGeneration`。issue 要的"按能力探测字段"我们没有对应物 |
+
+**关键判断：本条与 mediagen 迁移「可以解耦」——更正 10-06 的"配套/灵感级"定位。**
+10-06 把它记成「与上游 mediagen 接线配套的本地工具」，隐含"要等 mediagen 才能做"。源码级核对后：
+**图像路径不依赖迁移** —— fork 的 imggen 已经用 chat provider 打通（`OpenAIProvider.generateImages`），
+工具只是把这套**已经能用**的能力暴露给模型。mediagen 真正的增量是①视频 ②**能力声明矩阵**
+（`MediaGenerationCapabilities`，UI 按接口实际支持动态展示参数）。② 的缺失正是 issue 里
+`capabilities(IMAGE)` 那句的来源，但**它不是前置**：`ImageGenerationParams` 已经把
+prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 mediagen 时再让工具跟随能力矩阵。
+
+**成本分两档**：
+
+- **最小可用（建议先做）**：一个本地工具（参数 ≈ prompt + size + 数量 + 参考图）+ 产物作为
+  `UIMessagePart.Image` 落进助手消息 + **tool result 只回"已生成 n 张，见消息流"**（与 issue 一致）。
+- **完整**：能力矩阵驱动字段、图生图/编辑、会话内挑参考图、视频（＝那时才需要 mediagen）。
+
+**风险 / 实施设计必须先定的三件事**：
+
+1. **产物图下一轮算不算上下文**（最重要）。`UIMessagePart.Image` 进消息流后，下一轮请求会把它当
+   输入模态**再发一遍**（OpenAI 兼容的 image_url/data URI），一张图动辄上千 token。
+   issue 只说了"tool result 不回灌"，**没说消息流里那张图后算不算上下文** —— 需在装配侧决定
+   （要么只落库展示、装配时过滤，手法同 fork 的 `withoutUiNotices()`；要么按普通输入图参与，更"原生"但贵）。
+2. **配额与自主性**：生图按张计费，模型可能自主连生 ⇒ 要张数/频次上限（可循 fork 工具审批与信封的先例）。
+3. **provider 能力不齐**：中转站未必代理 images 接口 ⇒ 工具要对"当前提供商不支持"给出干净失败，
+   不能让模型反复试。
+
+**决策建议：立项做"最小可用"。** ①它填的正是 issue 里所有人共同卡住的那一半，而这一半我们已有；
+②不依赖 mediagen，不受 10-07「触发点立项」约束；③成本小（一个工具 + 一条渲染/过滤路径）。
+**只有想要视频/厂商直连/能力矩阵时，才需要动 mediagen 路线**（10-07 的触发点结论不变）。
 
 ## 同步方式（ff-only，仅本地）
 
