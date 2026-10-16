@@ -146,6 +146,14 @@ fun ChatInput(
     hazeState: HazeState,
     enableSearch: Boolean,
     onToggleSearch: (Boolean) -> Unit,
+    /**
+     * 本对话是否「不使用记忆」（隐身模式）。用于会话内记忆入口的状态显示
+     * （见 `MemoryButton` 与 docs/design/design-memory-injection-tiering.md §8.3）。
+     */
+    memoryDisabled: Boolean = false,
+    onToggleMemoryDisabled: (Boolean) -> Unit = {},
+    /** 会话级「固化记忆」：本对话采纳当前锚点集合 */
+    onFreezeMemory: () -> Unit = {},
     modifier: Modifier = Modifier,
     completionProviders: List<ChatCompletionProvider> = emptyList(),
     onUpdateChatModel: (Model) -> Unit,
@@ -380,6 +388,28 @@ fun ChatInput(
                                     // 形态可切换（偏好设置 → 通用）；数值来源与阈值两种形态共用
                                     useRing = settings.displaySetting.useRingContextIndicator,
                                     onClick = onShowContextSheet,
+                                )
+                            }
+
+                            // 记忆（会话内入口）：**排在上下文占用读数的右侧** —— 两者回答的是
+                            // 同一个问题的两半（"已经用了多少" / "记忆这块用不用、要不要冻结"），
+                            // 摆在一起读起来才连得上。状态做在图标上，点开是两行选择器
+                            // （隐身开关 / 固化本对话）。助手不用记忆时不占位。
+                            if (assistant.enableMemory) {
+                                // 两条文案都在 composable 作用域先取好：toast 的文案取决于**切换后**的
+                                // 值，而 stringResource 不能在回调里调用
+                                val memoryOffMsg = stringResource(R.string.chat_memory_disabled_toast_on)
+                                val memoryOnMsg = stringResource(R.string.chat_memory_disabled_toast_off)
+                                MemoryButton(
+                                    memoryDisabled = memoryDisabled,
+                                    onToggleMemoryDisabled = { disabled ->
+                                        onToggleMemoryDisabled(disabled)
+                                        toaster.show(
+                                            message = if (disabled) memoryOffMsg else memoryOnMsg,
+                                            duration = 1.seconds,
+                                        )
+                                    },
+                                    onFreezeMemory = onFreezeMemory,
                                 )
                             }
 

@@ -204,6 +204,42 @@ class MemoryAnchorWiringTest {
     }
 
     /**
+     * **会话内的记忆入口**必须同时给出「隐身」与「固化」，且隐身状态做在图标上。
+     *
+     * 缺任何一半，这个按钮就退化成半成品：只有隐身开关 ⇒ 固化又回到抽屉菜单里两次点击；
+     * 只有固化 ⇒ 用户看不出这个对话当前碰不碰记忆库（而"隐身"最需要的就是一眼可见）。
+     */
+    @Test
+    fun `in-chat memory entry offers both incognito and freeze`() {
+        val button = source("app/androidrik/rikkahub/ui/components/ai/MemoryPicker.kt")
+        assertTrue(
+            "会话内入口缺少隐身开关",
+            button.contains("R.string.chat_memory_disabled_toggle"),
+        )
+        assertTrue(
+            "会话内入口缺少固化动作",
+            button.contains("R.string.chat_memory_freeze_action"),
+        )
+        assertTrue(
+            "隐身在状态上要一眼可见：图标本身必须换成 Incognito",
+            button.contains("HugeIcons.Incognito"),
+        )
+
+        val input = source("app/androidrik/rikkahub/ui/components/ai/ChatInput.kt")
+        assertTrue("ChatInput 的图标行未接入 MemoryButton", input.contains("MemoryButton("))
+
+        val page = source("app/androidrik/rikkahub/ui/pages/chat/ChatPage.kt")
+        assertTrue(
+            "ChatPage 未把本对话的记忆状态喂给入口",
+            page.contains("memoryDisabled = conversation.memoryDisabled"),
+        )
+        assertTrue(
+            "ChatPage 未接固化回调（按钮会点了没反应）",
+            page.contains("vm.freezeMemoryAnchors(conversation)"),
+        )
+    }
+
+    /**
      * **拼装预览必须与实发同参**（本仓明确防的坑）。
      *
      * 实测过的回归形态：尾部记忆块加进来时，预览这份 `buildInternalMessages` 调用漏传了

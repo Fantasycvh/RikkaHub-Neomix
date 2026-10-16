@@ -477,6 +477,21 @@ private fun ChatPageContent(
                             )
                         )
                     },
+                    // 会话内记忆入口（docs/design/design-memory-injection-tiering.md §8.3）。
+                    // 与抽屉菜单里的同名项是**同一套语义**，只是作用对象固定为"当前这条会话"。
+                    memoryDisabled = conversation.memoryDisabled,
+                    onToggleMemoryDisabled = { disabled ->
+                        vm.setMemoryDisabled(conversation, disabled)
+                    },
+                    onFreezeMemory = {
+                        // 固化要拿返回值才知道作用面（几条锚点），所以 toast 放在这里而不是按钮里
+                        scope.launch {
+                            val count = vm.freezeMemoryAnchors(conversation)
+                            toaster.show(
+                                message = context.getString(R.string.chat_memory_freeze_toast, count)
+                            )
+                        }
+                    },
                     onSendClick = {
                         if (currentChatModel == null) {
                             toaster.show("请先选择模型", type = ToastType.Error)
