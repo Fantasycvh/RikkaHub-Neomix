@@ -2599,3 +2599,32 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   把方法连同**三个坑**（建提供商时 App 会自己拉 `/v1/models`；按钮标签互为子串必须精确匹配；
   键盘弹出会让表单平移、硬坐标必打偏）与**三处清理项**（临时提供商 / `Assistant.chatModelId`
   ——模型选择器写的是助手字段不是全局 / 测试会话）一并写进 handoff §四「假上游复现法」。
+
+- 2026-10-16 续七：**workspace rootfs 补 CA 证书（Yuihub 剩余小件 ①，`8a3a37ac` 借鉴）**。按待办原文的要求
+  「先真机核实是否真缺」走了三步，每一步都留了证据：
+  **① 核实（真缺）**：设备上那套已安装的 rootfs 里 `etc/ssl` **目录根本不存在**，`etc/ssl/certs` 与
+  `ca-certificates.crt` 自然也零命中（`curl`/`wget`/`openssl`/`python3` 同样不在裸镜像里，只有
+  `apt-get`/`dpkg`/`perl`）。
+  **② 复现症状**：设备有 root ⇒ 直接 `chroot` 进 rootfs（比复刻 proot 命令行忠实得多）跑
+  `apt-get update`（临时指向 https 源）：`Certificate verification failed: The certificate is NOT trusted …
+  W: No system certificates available. Try installing ca-certificates.` —— **这就是待办里写的那个坑**，
+  只是受害者不一定非是 curl（本仓裸镜像里没 curl，而 apt 自己就是一个真实的 TLS 客户端）。
+  **③ 实现 + 对照**：`RootfsPatcher` 新增 `ensureCaCertificates`，复用 **Android 系统证书库**离线生成
+  `etc/ssl/certs/ca-certificates.crt`（Debian/Ubuntu 系 curl/openssl/git 的默认信任链）**并**把每张证书按
+  Android 原有 `<hash>.0` 名拷进 `etc/ssl/certs`（两条路径都要有，不同调用方查不同地方）。同一条 chroot
+  命令重跑：`Get:1 https://ports.ubuntu.com/… InRelease [256 kB]` / `Fetched 1632 kB in 11s` ✓。
+  **两处与参考实现的有意偏差（都写进了代码注释）**：①本仓 patch 是**每次会话启动**都跑（`ProotShellRunner.start`
+  第 68 行，无 Yuihub 那种「已打过标记就短路」的机制）⇒ **既有 rootfs 天然自愈**，不需要额外迁移；
+  ②正因如此，把它的「bundle 非空即短路」改成「**内容变了才写**」—— 否则证书库永远停在第一次生成的快照，
+  Android 侧更新 CA 后 rootfs 仍信旧库，而这类失效恰恰是**静默**的；按内容比对既保幂等也不把读成本变写成本。
+  这条偏差顺带被真机验到：装新包后旧 bundle（含重复）与新内容不同 ⇒ 被正确重写。
+  **真机验出一个缺陷（离线抄也没抄到的部分）**：第一次跑出来 bundle 里 **290 个 BEGIN CERTIFICATE、1.5MB**
+  —— `CA_SOURCE_DIRS` 里 `/system/etc/security/cacerts` 与 `/apex/com.android.conscrypt/cacerts` 在
+  Android 14+ 上是**同一批 145 张**，被读了兩遍；文件拷贝那步有 `exists()` 挡着（目录正好 145 个 `.0`），
+  **bundle 追加那步没有去重**，而我代码注释里还写着"去重自然完成"，是错的。按文件名跨来源去重后
+  ⇒ **145 张 / 758KB**。测试 9 项（缺证书时生成、`<hash>.0` 副本、非证书/非 `.0` 跳过、
+  内容没变不重写、系统库新增证书要跟上、同名跨来源只进一次且先到先得、一张都没有不造空 bundle、
+  源目录不存在忽略、证书步骤不干扰其它 patch 步骤）；**四处注入式反证各精确变红**
+  （拿掉内容比对 ⇒ 1 红；改成「非空即短路」⇒ 1 红；拿掉 PEM 标记校验 ⇒ 2 红；拿掉「一张都没有就返回」⇒ 1 红），
+  其中「同名跨来源去重」那条是**先加测试看到红、再补实现转绿**（等于自带反证）。
+  全模块 2055 项 0 失败，已出包装机并在真机上验完整条链。
