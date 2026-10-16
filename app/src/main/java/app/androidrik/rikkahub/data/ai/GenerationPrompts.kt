@@ -216,10 +216,15 @@ internal fun buildMemoryDataPrompt(
     memories: List<AssistantMemory>,
     budgetTokens: Int = DEFAULT_MEMORY_BUDGET_TOKENS,
     now: Long = System.currentTimeMillis(),
+    /**
+     * 本轮查询文本（见 [memoryQueryOf]）。非 null 时选取会带上**相关性维度**，
+     * 因此本块的入选集合**每轮可能不同** —— 这正是把记忆放到尾部换来的自由（设计稿 §3.2）。
+     */
+    query: String? = null,
 ): String {
     val fullTextBudget = (budgetTokens * (1f - MEMORY_INDEX_BUDGET_RATIO)).toInt()
     val indexBudget = (budgetTokens * MEMORY_INDEX_BUDGET_RATIO).toInt()
-    val selected = selectMemoriesForPrompt(memories, fullTextBudget, now)
+    val selected = selectMemoriesForPrompt(memories, fullTextBudget, now, query)
     val selectedIds = selected.mapTo(mutableSetOf()) { it.id }
     val indexed = selectMemoriesForIndex(memories, selectedIds, indexBudget, now)
 
@@ -309,22 +314,42 @@ internal fun selectMemoriesForPrompt(
     memories: List<AssistantMemory>,
     budgetTokens: Int = DEFAULT_MEMORY_BUDGET_TOKENS,
     now: Long = System.currentTimeMillis(),
+    /**
+     * 本轮查询文本（通常是发送窗口里最后一条真实用户消息；见 [memoryQueryOf]）。
+     *
+     * **默认 null = 不带相关性** ⇒ 打分与排序与改动前**逐位一致**（既有调用点与测试因此不受影响）。
+     * 非 null 时给每条记忆乘上 `1 + RELEVANCE_BOOST × 相关性`（只抬不压，见 [memoryRelevance]）。
+     */
+    query: String? = null,
 ): List<AssistantMemory> {
     if (memories.isEmpty()) return emptyList()
 
-    val ranked = memories.sortedWith(
-        compareByDescending<AssistantMemory> { memoryScoreBucket(it, now) }
-            .thenByDescending { it.sortKey }
-    )
+    // 相关性：查询只分词一次（逐条记忆里重复分词是纯浪费）
+    val memoryQuery = memoryQueryTokens(query)
+    val boostOf = { memory: AssistantMemory ->
+        1f + RELEVANCE_BOOST * memoryQuery.relevanceOf(memory)
+    }
+
+    // **刻意不走 memoryScoreBucket**：分桶是给「system 时代分数连续漂移打掉前缀缓存」用的，
+    // 而 L2 已经不在前缀里。套了分桶反而有害——同一桶内按写入先后排，相关性不到一档就白算。
+    val ranked = memories
+        .map { it to memoryScore(it, now) * boostOf(it) }
+        .sortedWith(
+            compareByDescending<Pair<AssistantMemory, Float>> { it.second }
+                .thenByDescending { it.first.sortKey }
+        )
 
     val selected = mutableListOf<AssistantMemory>()
     var used = 0
-    for (memory in ranked) {
+    for ((memory, injectionScore) in ranked) {
         // 相关性下限（华灯 RAG 相关性下限的阈值思想）：打分低于下限的记忆**不注入**——
         // 低重要度且已老化的记忆挤进上下文是纯 token 税。注意与「排序分桶」的分工：
         // 分桶只影响先后，本下限决定去留。默认 importance=0.6 的记忆永不触线
         // （全老化也有 0.33）；刻意标低重要度（≤0.36）且老化的记忆才会沉底。
-        if (memoryScore(memory, now) < MIN_MEMORY_INJECTION_SCORE) continue
+        //
+        // 这里用**带相关性增益的分数**比较：于是一条"重要度被标低、但本轮查询确实在讲它"
+        // 的记忆可以被相关性救回线上（这正是 §3.2 想要的效果之一）。
+        if (injectionScore < MIN_MEMORY_INJECTION_SCORE) continue
         val cost = estimateTokens(memory.content) + PER_ENTRY_OVERHEAD_TOKENS
         // 超预算时**跳过本条并继续**（不是 break）：一条长记忆不该把后续预算全堵死，
         // 后面的小记忆仍应有机会入选。`selected.isNotEmpty()` 让首条即使超预算也入选，

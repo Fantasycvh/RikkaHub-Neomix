@@ -66,6 +66,7 @@ import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
 import app.androidrik.rikkahub.data.ai.anchorIdsOf
 import app.androidrik.rikkahub.data.ai.inspectPrompt
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
+import app.androidrik.rikkahub.data.ai.memoryQueryOf
 import app.androidrik.rikkahub.data.ai.selectMemoriesForPrompt
 import app.androidrik.rikkahub.data.ai.shouldGenerateTitle
 import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
@@ -1302,6 +1303,19 @@ class ChatService(
             // 见 refreshFrozenAnchorsForAssistant）。为什么值得这么做：L1 在 system（位置 0），
             // 它一变其后整段前缀全部重算——真机实测命中率 98% → 0%（设计稿 §2）。
             val frozenAnchorIds = ensureFrozenAnchors(conversationId, conversation, loadedMemories)
+            // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
+            // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
+            // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
+            // 提成局部变量还有第二个用途：下面那条注入日志要按**同一份消息**推出相关性查询，
+            // 否则日志报的入选集合与实际注入的不是同一个（日志会撒谎，而它正是判断
+            // "记忆吃了多少 token" 的唯一依据）。
+            val promptMessages = if (messageRange != null) {
+                conversation.currentMessages.let {
+                    it.subList(messageRange.start, messageRange.endInclusive + 1)
+                }
+            } else {
+                conversation.currentMessages
+            }
             generationHandler.generateText(
                 settings = settings,
                 model = model,
@@ -1317,13 +1331,7 @@ class ChatService(
                 // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
                 // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
                 // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
-                messages = if (messageRange != null) {
-                    conversation.currentMessages.let {
-                        it.subList(messageRange.start, messageRange.endInclusive + 1)
-                    }
-                } else {
-                    conversation.currentMessages
-                },
+                messages = promptMessages,
                 // 发送窗口：压缩时 = 检查点合成消息 + 边界后原文（design §4.1 三边界对齐）；
                 // 重生成历史时传 null（= 与 messages 相同）——保持原始轨迹，压缩不改变重生成语义。
                 // 传「可重算的窗口描述」而非冻结列表：生成循环内每步对 live messages 重算，
@@ -1351,7 +1359,15 @@ class ChatService(
                     // 让主线程为了写一条日志去数 token，是拿输入响应当代价（真机上撞出过 ANR）。
                     appScope.launch(Dispatchers.Default) {
                         runCatching {
-                            val selected = selectMemoriesForPrompt(loaded, settings.memoryInjectBudgetTokens)
+                            // **必须带 query**：相关性维度接入后，入选集合依赖本轮查询；
+                            // 不带就是"用另一套口径算出来的条数"，日志会与实际注入不符。
+                            // 注意这里够不到压缩窗口，但压缩只把早期历史换成检查点（合成消息，
+                            // memoryQueryOf 会跳过），"最后一条真实用户消息"两边一致。
+                            val selected = selectMemoriesForPrompt(
+                                loaded,
+                                settings.memoryInjectBudgetTokens,
+                                query = memoryQueryOf(promptMessages),
+                            )
                             val used = selected.sumOf { estimateTokens(it.content) }
                             Log.i(
                                 TAG,

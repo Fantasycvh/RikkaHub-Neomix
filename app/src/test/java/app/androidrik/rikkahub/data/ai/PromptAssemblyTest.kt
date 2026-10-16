@@ -483,6 +483,47 @@ class PromptAssemblyTest {
         assertEquals(emptyList<String>(), anchorIdsOf(listOf(AssistantMemory(id = "1", content = "x"))))
     }
 
+
+    /**
+     * **相关性维度的接线**：查询必须从**真正发出去的那些消息**里取，而不是由调用方另传一份。
+     *
+     * 这是本维度唯一容易静默失效的地方 —— 维度本身（`MemoryRelevanceTest`）测不出"装配侧忘了
+     * 把查询传下去"：那种情况下选取恒等于改动前，测试全绿而生产里相关性从未生效。
+     * 所以这里走完整装配：两条同分记忆 + 只够一条的预算，看**谁被写进尾部块**。
+     */
+    @Test
+    fun `tail memory block picks the memory relevant to the last user message`() {
+        // 两条同重要度、同新鲜度，只有 sortKey 不同的记忆
+        val tikz = AssistantMemory(id = "1", content = "TikZ 渲染器笔记", importance = 0.6f, sortKey = 1)
+        val coffee = AssistantMemory(id = "2", content = "用户喜欢手冲咖啡", importance = 0.6f, sortKey = 2)
+        val tightBudget = settings.copy(memoryInjectBudgetTokens = 10)
+
+        fun tailOf(query: String): String = buildInternalMessages(
+            assistant = assistant(enableMemory = true),
+            settings = tightBudget,
+            model = model,
+            messages = listOf(userMessage(query)),
+            memories = listOf(tikz, coffee),
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            compressionWindow = null,
+        ).last().parts.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text }
+
+        // 尾部块 = 全文层（JSON）+ 清单层（其余记忆各一行）。**必须只看全文层**：
+        // 落选的那条照样会以清单行出现（那正是清单层的用途），拿整块断言会一直为真。
+        fun fullTextLayerOf(block: String) = block.substringBefore("**Memory index**")
+
+        // 问渲染器 ⇒ 全文层应给 TikZ（它的 sortKey 更小，没有相关性时本来轮不到它）
+        val aboutTikz = fullTextLayerOf(tailOf("TikZ 渲染器怎么切换"))
+        assertTrue("装配侧必须把本轮查询传下去，否则相关性在生产里等于没接", aboutTikz.contains("TikZ 渲染器笔记"))
+        assertFalse(aboutTikz.contains("用户喜欢手冲咖啡"))
+
+        // 换话题 ⇒ 全文层应换成咖啡
+        val aboutCoffee = fullTextLayerOf(tailOf("我想喝手冲咖啡"))
+        assertTrue(aboutCoffee.contains("用户喜欢手冲咖啡"))
+        assertFalse(aboutCoffee.contains("TikZ 渲染器笔记"))
+    }
+
     // endregion
     // endregion
 

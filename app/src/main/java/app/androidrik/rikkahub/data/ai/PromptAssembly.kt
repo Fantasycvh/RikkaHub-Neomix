@@ -306,29 +306,37 @@ internal fun buildInternalMessages(
         val separator = if (baseSystem.isBlank()) "" else "\n\n"
         baseSystem + separator + "<recovery_note>\n" + recoveryHint + "\n</recovery_note>"
     }
+    // 发送窗口先算出来：它既是消息部分，也是**相关性查询文本**的来源。
+    // 必须取"模型真正看到的那些消息"而不是入参 messages —— 压缩把早期历史换成了检查点，
+    // 而检查点是合成消息（memoryQueryOf 会跳过它），所以两边对"最后一条真实用户消息"的看法一致；
+    // 但若将来压缩边界改变语义，从这里取才是与实际请求同源的那一份。
+    val windowMessages = buildSendWindowMessages(
+        messages = messages,
+        compressionWindow = compressionWindow,
+        contextMessageLimit = assistant.contextMessageLimit,
+    )
+        // UI 专用提示（生成打断/截断警示）**只给用户看**：回传会让模型以为用户说过
+        // 那句话并可能模仿着往下写。此处是**唯一装配点**——四个 provider 都从这里取消息，
+        // 故只需过滤一次（见 UiNotice.kt 的说明）。
+        .map { it.withoutUiNotices() }
+
     return buildList {
         if (system.isNotBlank()) {
             add(UIMessage.system(prompt = system).copy(isSynthetic = true))
         }
-        addAll(
-            buildSendWindowMessages(
-                messages = messages,
-                compressionWindow = compressionWindow,
-                contextMessageLimit = assistant.contextMessageLimit,
-            )
-                // UI 专用提示（生成打断/截断警示）**只给用户看**：回传会让模型以为用户说过
-                // 那句话并可能模仿着往下写。此处是**唯一装配点**——四个 provider 都从这里取消息，
-                // 故只需过滤一次（见 UiNotice.kt 的说明）。
-                .map { it.withoutUiNotices() }
-        )
+        addAll(windowMessages)
         // L2+L3：记忆数据追加到**对话尾部**（合成 USER 消息，不落库）。
         // 照压缩检查点同款做法（`partitionCheckpointMessages` 判 `isSynthetic && role == USER`）。
         // **为什么在尾部**：本块每次记忆写入都会变；若留在 system，则整条 system 失配 ⇒
         // 前缀从位置 0 起全断（真机实测命中率 98% → 0%，设计稿 §2）。放尾部则不影响前缀。
+        //
+        // **为什么尾部就能用相关性**（设计稿 §3.2）：尾部怎么变都不动它前面的前缀，
+        // 于是选取可以依赖本轮查询、每轮重算。查询取窗口里最后一条真实用户消息。
         if (assistant.enableMemory && !memoryDisabled) {
             val memoryData = buildMemoryDataPrompt(
                 memories = memories,
                 budgetTokens = settings.memoryInjectBudgetTokens,
+                query = memoryQueryOf(windowMessages),
             )
             if (memoryData.isNotBlank()) {
                 add(UIMessage.user(prompt = memoryData).copy(isSynthetic = true))
