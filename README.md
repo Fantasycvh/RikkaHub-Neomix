@@ -11,6 +11,7 @@
 > 本项目由个人维护，代理、S3、MLTS等部分功能未经测试，**不承诺及时响应**。AGPL-3.0 许可，保留上游 `LICENSE` 与出处。
 > **本仓有意不接 issue**，反馈请走 [💬 Discussions](https://github.com/Fantasycvh/RikkaHub-Neomix/discussions)（详见下方「与上游的关系 → 反馈渠道」）。
 > 应用显示名 **Neomix**（仓库名 `RikkaHub-Neomix`），包名 `app.androidrik.rikkahub`。
+> **发布**：正式版 **`v1.0.27`**（`1.0.27 (294)`）——**仅 tag，无预编译资产**：本仓不发预编译包，请按下方「构建」自行编译。
 
 ## 📌 与上游的关系
 
