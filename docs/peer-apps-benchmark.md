@@ -1082,7 +1082,7 @@ migration not found 崩溃；现在降级时清库重建」。实现只 **2 处 
 
 ## 十一、bigeye（suanrongqieqiezi/bigeye）评估（2026-10-14，仅远端源码调研）
 
-**仓库**：[suanrongqieqiezi/bigeye](https://github.com/suanrongqieqiezi/bigeye)（「小眼子」）—— **Python 桌面/服务端**项目，
+**仓库**：[suanrongqieqiezi/bigeye](https://github.com/suanrongqieqiezi/bigeye)（Aria-EQ）—— **Python 桌面/服务端**项目，
 67★，2026-08-18 建仓、**2026-10-13 仍在推**。定位：**让现有大模型获得「无限上下文」**，面向长航时大型任务。
 README 原话概括其思路：**「往大模型里塞聊天记录并只压缩 ✗，往大模型里塞它希望关注的内容 ✓」** ——
 服务对象不是上下文，而是「模型当下关注的内容」。
