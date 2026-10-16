@@ -380,7 +380,10 @@ class GenerationHandler(
             if (pendingTools.isEmpty()) {
                 // 规则提醒：**每一步拼装前**求值 ⇒ 作用于下一步（本仓工具循环每步重拼提示词）。
                 // 刻意放在 `if` 内：`reminder()` 有副作用（标记已提醒），算了不发等于白丢一次提醒。
-                val ruleReminder = ruleEngine.reminder()
+                // 预算比例取会话上的 WorkspaceTurnBudget（撞上限前的那次提醒就靠它）。
+                val ruleReminder = ruleEngine.reminder(
+                    RuleSnapshot(budgetRatio = workspaceBudget.usageRatio()),
+                )
                 generateInternal(
                     assistant = assistant,
                     settings = settings,

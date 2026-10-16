@@ -106,4 +106,44 @@ class WorkspaceTurnBudgetTest {
             assertTrue("'$it' 应以 workspace_ 前缀计费", it.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX))
         }
     }
+
+    // ── usageRatio：给「规则提醒」的 budget_near_limit 用（撞上限**之前**提醒收敛）──
+
+    @Test
+    fun `usage ratio is zero before any workspace call`() {
+        val budget = WorkspaceTurnBudget(outputBudgetChars = 1000, maxSteps = 10)
+
+        assertEquals(0.0, budget.usageRatio(), 0.0001)
+    }
+
+    @Test
+    fun `usage ratio takes the larger of characters and steps`() {
+        val budget = WorkspaceTurnBudget(outputBudgetChars = 1000, maxSteps = 10)
+
+        budget.record(200) // 字符 20%，步数 10% ⇒ 取 20%
+
+        assertEquals(0.2, budget.usageRatio(), 0.0001)
+
+        repeat(7) { budget.record(0) } // 步数 80%，字符仍 20% ⇒ 取 80%
+
+        assertEquals(0.8, budget.usageRatio(), 0.0001)
+    }
+
+    @Test
+    fun `usage ratio passes one after exceeding`() {
+        val budget = WorkspaceTurnBudget(outputBudgetChars = 1000, maxSteps = 10)
+
+        budget.record(2500)
+
+        assertTrue("超了要如实反映（>1），提醒文案据此报百分比", budget.usageRatio() > 1.0)
+    }
+
+    @Test
+    fun `usage ratio survives zero limits instead of dividing by zero`() {
+        val budget = WorkspaceTurnBudget(outputBudgetChars = 0, maxSteps = 0)
+
+        budget.record(10)
+
+        assertTrue("不能抛也不能 NaN", budget.usageRatio().isFinite())
+    }
 }

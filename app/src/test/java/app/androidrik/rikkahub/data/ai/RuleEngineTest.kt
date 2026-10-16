@@ -8,6 +8,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -244,5 +245,88 @@ class RuleEngineTest {
             "尾部消息内容必须就是引擎给的文本",
             injected.last().parts.filterIsInstance<UIMessagePart.Text>().any { it.text.contains(reminder!!.trim()) },
         )
+    }
+
+    // ── 第二条规则：budget_near_limit（本轮 workspace 预算用量 ≥80%）──
+    //
+    // 与 explore_without_landing 的分工：那条管"**没有产出**"，这条管"**产出快把预算吃满了**"。
+    // 现状是撞上限才优雅停止，模型没有收尾的机会 —— 这条给它一次机会。
+
+    private fun RuleEngine.reminderWithRatio(ratio: Double?) =
+        reminder(RuleSnapshot(budgetRatio = ratio))
+
+    @Test
+    fun `budget rule fires at eighty percent and stays silent below`() {
+        val engine = engine()
+
+        assertNull("79% 不该提醒", engine.reminderWithRatio(0.79))
+        assertNotNull("80% 应提醒", engine.reminderWithRatio(0.8))
+        // 注意换实例：同一个引擎里第二次也会被"每轮一次"压住（那是另一条测试的事）
+        assertNotNull("超过 100% 同样提醒", engine().reminderWithRatio(1.4))
+    }
+
+    @Test
+    fun `budget rule is silent when the ratio is unavailable`() {
+        val engine = engine()
+
+        assertNull("拿不到预算（单测/无头路径）就不该参与判定", engine.reminderWithRatio(null))
+        assertNull("默认快照同样不参与", engine.reminder())
+    }
+
+    @Test
+    fun `budget hint reports the actual ratio and offers the ask-the-user exit`() {
+        val engine = engine()
+
+        val text = engine.reminderWithRatio(0.85)!!
+
+        assertTrue("要报出实际比例（模型据此决定收尾还是硬撑）", text.contains("85%"))
+        assertTrue("要求收尾", text.contains("Start wrapping up now"))
+        assertTrue("出口：缺关键信息就问人，而不是交半成品", text.contains("ask"))
+        assertTrue("同样不许暴露机制", text.contains("Do not mention this note"))
+    }
+
+    @Test
+    fun `budget rule works with an empty effect window`() {
+        val engine = engine()
+
+        // 只读几个大文件也会把预算吃满（窗口里没有 12 条探索），两条规则必须彼此独立
+        engine.recordExplore(2)
+
+        assertNotNull("预算规则不依赖探索窗口", engine.reminderWithRatio(0.9))
+    }
+
+    @Test
+    fun `budget rule reminds at most once per turn`() {
+        val engine = engine()
+
+        assertNotNull(engine.reminderWithRatio(0.8))
+        assertNull("预算比例是单调的 ⇒ 命中后靠去重压住，不刷屏", engine.reminderWithRatio(0.95))
+    }
+
+    /** 同一步命中多条：共用一个表头，按 severity（HIGH 先）排序进块。 */
+    @Test
+    fun `both rules can fire in one step ordered by severity`() {
+        val engine = engine()
+        engine.recordExplore(10)
+        engine.recordNeutral(2)
+
+        val text = engine.reminderWithRatio(0.9)!!
+
+        assertEquals("只该有一个表头", 1, Regex("Automatic reminders").findAll(text).count())
+        val exploreAt = text.indexOf("going in circles")
+        val budgetAt = text.indexOf("workspace budget")
+        assertTrue("探索规则（HIGH）应排在预算规则（MEDIUM）前面", exploreAt in 0 until budgetAt)
+    }
+
+    @Test
+    fun `a landed turn with full budget only gets the budget reminder`() {
+        val engine = engine()
+        engine.recordExplore(11)
+        engine.recordLanding() // 有进展 ⇒ 探索规则不命中
+
+        val text = engine.reminderWithRatio(0.9)!!
+
+        assertFalse("不该报打转", text.contains("going in circles"))
+        assertTrue("但预算确实快满了", text.contains("workspace budget"))
     }
 }

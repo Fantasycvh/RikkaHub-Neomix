@@ -64,6 +64,18 @@ class WorkspaceTurnBudget(
         }
     }
 
+    /**
+     * 本轮预算用量占上限的比例（取**字符与步数两者较大的那个**；可能 >1）。
+     *
+     * 给「规则提醒」的 `budget_near_limit` 用：现状是**撞上限才优雅停止**，模型没有收尾的机会；
+     * 有了这个比例就能在撞线之前提醒它收敛。上限口径仍留在本类里 —— 调用方只能拿到比例，
+     * 改不了预算本身（与 `usageRatio` 只读、`record` 才计费的分工一致）。
+     */
+    fun usageRatio(): Double = maxOf(
+        usedChars.toDouble() / outputBudgetChars.coerceAtLeast(1),
+        steps.toDouble() / maxSteps.coerceAtLeast(1),
+    )
+
     /** 清零（新一轮开始时调用）。 */
     fun reset() {
         usedChars = 0

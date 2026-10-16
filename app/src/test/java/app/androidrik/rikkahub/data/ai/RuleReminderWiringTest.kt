@@ -49,7 +49,7 @@ class RuleReminderWiringTest {
     fun `reminder is evaluated per step inside the send path`() {
         val src = source(handler)
         val stepLoop = src.indexOf("for (stepIndex in 0 until maxSteps)")
-        val evaluateAt = src.indexOf("val ruleReminder = ruleEngine.reminder()")
+        val evaluateAt = src.indexOf("val ruleReminder = ruleEngine.reminder(")
         val sendAt = src.indexOf("if (pendingTools.isEmpty()) {")
         val generateAt = src.indexOf("generateInternal(", sendAt)
 
@@ -95,6 +95,22 @@ class RuleReminderWiringTest {
         assertTrue(
             "ChatService 没把会话上的引擎传进 generateText",
             source(chatService).contains("ruleEngine = session.ruleEngine,"),
+        )
+    }
+
+    /**
+     * 预算必须真的喂进引擎 —— 规则表里加了 `budget_near_limit` 却没有输入，
+     * 它会**永远不命中**，而且是静默的（没有编译错误、没有异常）。
+     */
+    @Test
+    fun `budget ratio is fed into the reminder evaluation`() {
+        val src = source(handler)
+        val evaluateAt = src.indexOf("ruleEngine.reminder(")
+        assertTrue("没有求值调用", evaluateAt >= 0)
+        assertTrue(
+            "求值处没传 RuleSnapshot ⇒ budget_near_limit 永远不命中",
+            src.substring(evaluateAt, minOf(evaluateAt + 200, src.length))
+                .contains("RuleSnapshot(budgetRatio = workspaceBudget.usageRatio())"),
         )
     }
 
