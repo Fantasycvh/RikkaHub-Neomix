@@ -2771,3 +2771,27 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   产出永远无法采纳且重启即丢的建议**——代码自己的 kdoc（`Scheduler.kt:50-53`「在那之前不要接自动触发」）
   已被自动接线（`MemoryConsolidationRuntime.kt:100`）违反。
 
+- 2026-10-16 续十四：**存量历史整理 + 整理建议落库与二次确认应用落地**（续十三立项的两件，用户「2 允许存量
+  历史的整理（和应用记忆整理的建议）（二次确认）」）。至此设计稿
+  `docs/design/design-memory-retrieval-and-consolidation.md` **①②③ 三项全部落地**。
+  **②存量历史**：新增 `MEMORY_CONSOLIDATION_ALL_HISTORY = 1L` 哨兵（**> 0 以免与「关闭」撞车**，
+  仍只存一个 `Long` ⇒ **零 DB 迁移**）；`findPending(manual=true)` 起用 `baseline = 0`（只留每会话进度行）
+  ⇒ 手动整理 = 「所有还没整理过的轮次，不论多老」；`MemoryConsolidationStatus` 新增
+  **`pendingConversations`**（积压从**不可观测**变为可观测），记忆页加「整理范围」两档 chip。
+  **一条契约反转**：开关仍是总闸，**撤回** `design-memory-consolidation.md` 里「手动绕过开关」的三处说法
+  （已在该文档就地更正；理由是「开关关着 = 这个助手不用整理后的记忆」）。
+  **③建议落库与应用**：新表 `memory_proposal` + **DB 38→39**；`MemoryProposalRepository` 负责落库/恢复/
+  应用/拒绝/审计；`MemoryConsolidationWorker` 增 5 条契约（**存储形态不进调度器**）；
+  应用**按 batch 原子**（一次合并的 edit+delete 半成品比不应用更糟）+ **目标缺失判 `stale` 并留痕**
+  （与用户主动拒绝分开，界面文案不同）；界面是**两段确认**（勾选 → 确认页逐条列出将发生的改动、
+  删除显示原内容并红字警示 → 才真写库）。
+  **实施修正**：设计稿原定的 `target_updated_at` 前置条件**去掉**（`proposalSink` 拿不到它，
+  且整理本身就会改 `updated_at` ⇒ 会立刻自判「已变」）⇒ 改由确认页并排显示「改前 / 改后」让人当那道条件。
+  **测试 +25**（`MemoryProposalRepositoryTest` 新 10 条含按批原子/stale 留痕/审计上限、
+  `MemoryProposalWiringTest` 新 9 条含 5 条确认页纯函数 + 4 条接线守卫、②侧 6 条）。全套 **2153 测试 0 失败**。
+  **证伪 4 处**（按批校验、落库接线、手动基线、检索接线）全部精确变红后恢复。
+  **架构守卫当场抓出一个真 bug**：第一版把 `proposeChangeSummary` 写进 `MemoryConsolidationScheduler.kt`，
+  而它需要 `AssistantMemory` ⇒ 那道「调度器不许认识存储」的源码守卫**立即变红**；修法是移进
+  `MemoryProposalText.kt`。**未做（诚实记账）**：验证债（三项均**未上真机**，含 DB 38→39 迁移）、
+  自动整理的通知未带「查看建议」入口、以及「连续产建议而用户不处理则暂停该库」这条闸门被砍掉未实施。
+

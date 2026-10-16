@@ -27,6 +27,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.Tag
+import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.service.ChatService
@@ -112,6 +113,19 @@ class AssistantDetailVM(
             consolidationScheduler.organize(assistant.value.memoryId())
         }
     }
+
+    /**
+     * 应用整理建议（**真正改记忆库**）。
+     *
+     * 界面必须先走过二次确认再调它——本函数不做任何确认，它是那一步之后才允许到达的写口。
+     * 返回条数供界面说明结果（应用了几条、几条因目标已变而作废）。
+     */
+    suspend fun applyProposals(ids: Set<Long>): MemoryProposalApplyResult =
+        consolidationScheduler.applyProposals(assistant.value.memoryId(), ids)
+
+    /** 拒绝建议（不写记忆库，只是别再从界面上烦用户） */
+    suspend fun rejectProposals(ids: Set<Long>): Int =
+        consolidationScheduler.rejectProposals(assistant.value.memoryId(), ids)
 
     val providers = settingsStore
         .settingsFlow

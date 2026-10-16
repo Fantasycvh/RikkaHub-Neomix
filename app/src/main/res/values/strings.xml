@@ -129,6 +129,14 @@
   <string name="assistant_page_memory_consolidation_range_desc">By default only content newer than the moment you turned this on is tidied. Choosing “All history” also covers everything said before that. “Tidy now” always processes only the turns that have not been tidied yet.</string>
   <string name="assistant_page_memory_consolidation_range_new">From now on</string>
   <string name="assistant_page_memory_consolidation_range_all">All history</string>
+  <string name="assistant_page_memory_consolidation_apply">Apply %1$d</string>
+  <string name="assistant_page_memory_consolidation_reject">Ignore</string>
+  <string name="assistant_page_memory_consolidation_confirm_title">Apply %1$d suggestions?</string>
+  <string name="assistant_page_memory_consolidation_confirm_desc">This changes the memory library and cannot be undone. Each line shows what will happen:</string>
+  <string name="assistant_page_memory_consolidation_confirm_apply">Confirm and apply</string>
+  <string name="assistant_page_memory_consolidation_confirm_delete_warning">%1$d deletions — the removed text is shown above and will be gone.</string>
+  <string name="assistant_page_memory_consolidation_applied">Applied %1$d.</string>
+  <string name="assistant_page_memory_consolidation_applied_stale">Applied %1$d; %2$d could not be applied (the target had changed).</string>
   <string name="assistant_page_memory_consolidation_running">Tidying…</string>
   <string name="assistant_page_memory_consolidation_last">Last run: %1$d applied, %2$d suggestions</string>
   <string name="assistant_page_memory_consolidation_never">Not tidied yet</string>

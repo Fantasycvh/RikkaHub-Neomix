@@ -134,6 +134,14 @@
   <string name="assistant_page_memory_consolidation_range_desc">預設只整理開啟之後的新內容；選「全部歷史」會把開啟之前的歷史也納入整理（會消耗更多模型額度）。「整理一下」始終只整理還沒整理過的輪次。</string>
   <string name="assistant_page_memory_consolidation_range_new">開啟之後</string>
   <string name="assistant_page_memory_consolidation_range_all">全部歷史</string>
+  <string name="assistant_page_memory_consolidation_apply">採納 %1$d 條</string>
+  <string name="assistant_page_memory_consolidation_reject">忽略</string>
+  <string name="assistant_page_memory_consolidation_confirm_title">確認採納 %1$d 條建議？</string>
+  <string name="assistant_page_memory_consolidation_confirm_desc">這會改動記憶庫，且無法復原。下面逐條列出將會發生什麼：</string>
+  <string name="assistant_page_memory_consolidation_confirm_apply">確認套用</string>
+  <string name="assistant_page_memory_consolidation_confirm_delete_warning">其中 %1$d 條是刪除——被刪的內容見上，套用後就找不回來了。</string>
+  <string name="assistant_page_memory_consolidation_applied">已套用 %1$d 條。</string>
+  <string name="assistant_page_memory_consolidation_applied_stale">已套用 %1$d 條；%2$d 條無法套用（目標已變）。</string>
   <string name="assistant_page_memory_consolidation_running">正在整理…</string>
   <string name="assistant_page_memory_consolidation_last">上次整理：套用 %1$d 條，建議 %2$d 條</string>
   <string name="assistant_page_memory_consolidation_never">還沒有整理過</string>

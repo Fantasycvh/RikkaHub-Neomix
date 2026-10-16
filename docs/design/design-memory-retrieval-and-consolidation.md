@@ -1,7 +1,7 @@
 # 记忆取回与整理补全（检索动作 / 存量历史 / 建议应用）
 
-> 状态（2026-10-16）：**① 检索动作已落地**（含单测 + 接线守卫 + 证伪）；**② 存量历史整理**、
-> **③ 整理建议落库与二次确认应用** 为设计稿，尚未实施。
+> 状态（2026-10-16）：**① 检索动作、② 存量历史整理、③ 建议落库与二次确认应用 —— 三项均已落地**
+> （各含单测 + 接线守卫 + 证伪）。全套 2153 测试 0 失败。
 >
 > 起因：用户问「反思回路、记忆网络与连续思维能力等我们考虑自己的实现？」→ 评估入档
 > `peer-apps-benchmark.md` **§11.3** → 用户拍板「先度量判据」→ 度量做完（§11.3 E）发现
@@ -15,8 +15,8 @@
 | # | 项 | 状态 | 一句话 |
 |---|---|---|---|
 | ① | `memory_tool action="search"` | ✅ **已落地** | 把注入预算之外、清单层也没列到的记录变成**可按需取回** |
-| ② | 存量历史整理 | 设计稿 | 现在只能从「开启那一刻」往后整理，**开启之前的历史任何路径都够不到** |
-| ③ | 整理建议落库 + 二次确认应用 | 设计稿 | 建议只活在进程内、**且没有任何应用路径**；默认配置下这是**常态**而非边缘 |
+| ② | 存量历史整理 | ✅ **已落地** | 以前只能从「开启那一刻」往后整理，**开启之前的历史任何路径都够不到** |
+| ③ | 整理建议落库 + 二次确认应用 | ✅ **已落地** | 建议以前只活在进程内、**且没有任何应用路径**；默认配置下这是**常态**而非边缘 |
 
 **明确不做**（理由见 §11.3 B/C/D）：重建反思回路、记忆网络本体（图/向量）、DAG 任务执行层、
 让 AI 自己写「思维步」、自动 importance pin。
@@ -182,13 +182,19 @@
 | `action` | `create` / `edit` / `delete` |
 | `target_id` | edit/delete 的目标（可为空） |
 | `content` / `importance` / `description` | 提案内容 |
-| `target_updated_at` | **前置条件**：提案时目标的 `updated_at`（见下） |
-| `created_at` / `decided_at` / `decision` | 审计（`pending` / `applied` / `rejected`） |
+| `created_at` / `decided_at` / `decision` | 审计（`pending` / `applied` / `rejected` / **`stale`**） |
 
-**应用的安全前提**（设计稿 `design-memory-consolidation.md:460-463` 已点出、此处落成字段）：
+> **实施修正（2026-10-16）**：原稿设计了一列 `target_updated_at` 作为「目标未被改写」的前置条件，
+> **落地时去掉了**。理由是它拿不到且会自相矛盾：`proposalSink` 只收到模型给的参数，
+> 提案时目标的 `updated_at` 需要额外一次查询才能拿到；而整理本身就会改 `updated_at`，
+> 这个前置条件会立刻把刚整理过的记忆判成「已变」。
+> **替代方案已落地**：二次确认页**并排显示「目标当前内容」与「将被写成的内容」**
+> （`proposeChangeSummary`）——让用户当那道前置条件。这比存一个会自相矛盾的时间戳更省也更准。
+> 应用时仍**校验目标是否存在**（`edit` 对缺失 id 会抛，不校验就是一次崩溃而不是一条提示）。
+
+**应用的安全前提**（设计稿 `design-memory-consolidation.md:460-463` 已点出）：
 提案生成后到用户采纳之间，记忆库可能已被编辑/整理过。故应用前**逐条校验**：
-- `edit` / `delete`：目标仍存在，且 `updated_at` **等于**提案时记录的值；不等 ⇒ 该条标 `stale`、
-  不应用、并在 UI 说明原因（**不静默跳过**）。
+- `edit` / `delete`：目标仍存在；不存在 ⇒ **整批**标 `stale`、不应用、并在 UI 说明原因（**不静默跳过**）。
 - 成组应用：同一 `batch_id` 一次应用或一次拒绝（`edit`+`delete` 合并语义不可拆）。
 - `create`：走既有 `addMemory`（内容幂等去重已存在）。
 
@@ -209,6 +215,38 @@
 两段确认 UI）。理由：② 让「存量历史」这条用户诉求立刻可用；③ 的价值依赖 ②（存量整理会产出
 **大量**建议，先得能看见积压才不会一次性淹没用户）。
 
+### 5.4 落地记录（2026-10-16）
+
+| 文件 | 改动 |
+|---|---|
+| `data/db/entity/MemoryProposalEntity.kt`（新） | 建议表：`memory_id` / `batch_id` / `action` / `target_id` / `content` / `importance` / `description` / `created_at` / `decision` / `decided_at`。**不挂外键**（助手住 DataStore 无父表可挂；挂 CASCADE 会让审计行随应用动作消失，正好毁掉审计） |
+| `data/db/dao/MemoryProposalDAO.kt`（新） | `getPending` / `memoryIdsWithPending` / `insertAll` / `deletePending`（换批）/ `updateDecision` / `updateOne` / `pruneDecided` |
+| `data/db/AppDatabase.kt` | 38 → **39**，`AutoMigration(from = 38, to = 39)`（纯新增表）；schema `39.json` 已生成 |
+| `data/repository/MemoryProposalRepository.kt`（新） | 落库 / 恢复 / **应用（按批原子 + stale 留痕）** / 拒绝 / 审计上限 100。带窄接口 `MemoryProposalStore` |
+| `data/ai/MemoryConsolidationScheduler.kt` | `MemoryConsolidationWorker` 增 5 条建议读写契约；跑完**落库并重读带 id 的版本**；`resumePending` 恢复待决策建议；新增 `refreshProposals` / `applyProposals` / `rejectProposals` |
+| `data/ai/MemoryConsolidator.kt` | 5 条新契约方法**只做委托**（存储形态不进 worker 之外） |
+| `data/ai/MemoryProposalText.kt`（新） | 确认页文案 `proposeChangeSummary`（纯函数） |
+| `di/DataSourceModule.kt` | 注册 `MemoryProposalRepository`；`MemoryConsolidator` 注入之 |
+| `data/ai/MemoryConsolidationScheduler.kt` | `MemoryConsolidationProposal` 增 `id` / `batchId` / `createdAt`（默认值 ⇒ 工具层的位置参数调用不变） |
+| `ui/pages/assistant/detail/AssistantMemoryPage.kt` + `AssistantDetailVM.kt` | 勾选框 + 「采纳 N 条」/「忽略」+ **二次确认弹层**（逐条列出将发生的改动、删除显示原内容并红字警示） |
+| `res/values*/strings.xml` ×6 | 8 条新文案 |
+
+**测试 +19**：`MemoryProposalRepositoryTest`（新，10 条：落库/恢复、换批、空列表不抹待办、
+create/edit/delete 真应用、**按批原子**、stale 与 rejected 分开留痕、未知 id 空操作、拒绝不动库、
+审计上限、按库隔离）+ `MemoryProposalWiringTest`（新，9 条：5 条确认页纯函数 + 4 条接线守卫）。
+
+**证伪已做（3 处，全部当场变红后恢复）**：
+① 去掉按批的 missing 校验 ⇒ `a batch with a missing target is not applied at all` 与
+`stale is recorded separately from rejected` 变红；
+② 去掉 `worker.saveProposals` ⇒ 接线守卫 `scheduler persists proposals and reloads them with ids` 变红；
+③ （架构守卫抓到的真 bug，见下）。
+
+**架构守卫当场抓出一个真 bug（本轮最有价值的一条纪律证据）**：第一版把
+`proposeChangeSummary` 写进了 `MemoryConsolidationScheduler.kt`，而它需要 `AssistantMemory`
+⇒ 该文件里出现了存储符号 ⇒ **`the scheduler only knows memory ids and the worker interface` 立即变红**。
+修法是把函数移进 `MemoryProposalText.kt`（文本层需要目标内容，调度层不需要）。
+**这条守卫不是形式主义：它精确地拦下了一次「顺手就查一下」的越界**。
+
 ## 6. 诚实边界与未验证项
 
 - **① 的收益尚未实测**：检索是能力，用不用取决于模型；V2 上线后 `read` 的实测使用是 **0 次**
@@ -217,6 +255,12 @@
 - 度量样本小（4 条查询 / 1 个助手），且三条查询是续话碎片；`cl100k` 与生产 tokenizer 未逐字节比对。
 - ② 的「继续排下一批」需要防止与 6h 节流互撞（可能把「省钱」设计改成「持续花钱」）——
   落地时必须保留一个**每轮总步数/总 token 上限**，否则存量整理会变成不可控账单。
-- ③ 的 `target_updated_at` 前置条件会让**陈旧率偏高**（整理本身会改 `updated_at`）：
-  另一个可接受口径是「目标内容仍与提案时一致」而不是时间戳；落地前需拍板。
-- 本节所有「收益」均为推断；两个设计稿都**未实施、未测试**。
+- ③ 的 `target_updated_at` 前置条件**已按上文修正去掉**（改为界面并排显示改前/改后）。
+  代价要认得：**只有「目标是否存在」这一条机器校验**，「目标是否已被改写」由用户的眼睛承担。
+- **③ 的「自动整理连续产建议而用户不处理 ⇒ 暂停该库」这条闸门未实施**：它写出时是设计意图，
+  落地时被砍掉，因为「连续 N 次不处理」需要一个跨会话的计数器（又一个表），而本轮的净收益
+  已经由「建议终于能落库 + 能应用」兑现。**未做就是未做**，别把它当成已完成的行为。
+- **通知仍未带「查看建议」入口**：自动整理产出建议仍只有一条计数 toast（`RouteActivity.kt:293-299`）。
+- **未做真机验证**：三项都只有 JVM 单测 + 源码守卫 + 证伪，**没有任何一项装到设备上跑过**。
+  尤其是 DB 38→39 的 AutoMigration 与二次确认弹层的实际观感，属 §三.6「验证债」。
+- ① 的收益、② 的实际覆盖效果、③ 的用户接受度**均为推断**。

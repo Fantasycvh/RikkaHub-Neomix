@@ -132,6 +132,14 @@
   <string name="assistant_page_memory_consolidation_range_desc">По умолчанию упорядочивается только содержимое новее момента включения. Выбор «Вся история» охватывает и сказанное раньше. «Упорядочить сейчас» всегда обрабатывает только ещё не упорядоченные реплики.</string>
   <string name="assistant_page_memory_consolidation_range_new">С этого момента</string>
   <string name="assistant_page_memory_consolidation_range_all">Вся история</string>
+  <string name="assistant_page_memory_consolidation_apply">Применить %1$d</string>
+  <string name="assistant_page_memory_consolidation_reject">Игнорировать</string>
+  <string name="assistant_page_memory_consolidation_confirm_title">Применить %1$d предложений?</string>
+  <string name="assistant_page_memory_consolidation_confirm_desc">Библиотека памяти будет изменена, отменить это нельзя. Ниже перечислено, что произойдёт:</string>
+  <string name="assistant_page_memory_consolidation_confirm_apply">Подтвердить</string>
+  <string name="assistant_page_memory_consolidation_confirm_delete_warning">Среди них удалений: %1$d — удаляемый текст показан выше и исчезнет безвозвратно.</string>
+  <string name="assistant_page_memory_consolidation_applied">Применено: %1$d.</string>
+  <string name="assistant_page_memory_consolidation_applied_stale">Применено: %1$d; не удалось применить %2$d (цель изменилась).</string>
   <string name="assistant_page_memory_consolidation_running">Упорядочивание…</string>
   <string name="assistant_page_memory_consolidation_last">Прошлый раз: применено %1$d, предложений %2$d</string>
   <string name="assistant_page_memory_consolidation_never">Ещё не упорядочивалось</string>

@@ -4,6 +4,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import kotlinx.coroutines.CoroutineScope
@@ -78,6 +79,14 @@ class MemoryConsolidationTriggerTest {
             conversationIds = conversationIds,
             fullReview = fullReview,
         )
+
+        // 建议的落库与应用：本用例只关心"什么时候整理"，这几条留空实现
+        override suspend fun saveProposals(memoryId: String, proposals: List<MemoryConsolidationProposal>) = Unit
+        override suspend fun pendingProposals(memoryId: String): List<MemoryConsolidationProposal> = emptyList()
+        override suspend fun memoryIdsWithProposals(): List<String> = emptyList()
+        override suspend fun applyProposals(memoryId: String, ids: Set<Long>): MemoryProposalApplyResult =
+            MemoryProposalApplyResult()
+        override suspend fun rejectProposals(memoryId: String, ids: Set<Long>): Int = 0
     }
 
     private fun scheduler(scope: CoroutineScope, worker: FakeWorker): MemoryConsolidationScheduler =

@@ -132,6 +132,14 @@
   <string name="assistant_page_memory_consolidation_range_desc">既定ではオンにした時点より新しい内容だけを整理します。「すべての履歴」を選ぶと、それ以前の内容も対象になります（モデルの利用枠をより多く消費します）。「今すぐ整理」は未整理のターンだけを処理します。</string>
   <string name="assistant_page_memory_consolidation_range_new">これから</string>
   <string name="assistant_page_memory_consolidation_range_all">すべての履歴</string>
+  <string name="assistant_page_memory_consolidation_apply">%1$d 件を採用</string>
+  <string name="assistant_page_memory_consolidation_reject">無視</string>
+  <string name="assistant_page_memory_consolidation_confirm_title">%1$d 件の提案を採用しますか？</string>
+  <string name="assistant_page_memory_consolidation_confirm_desc">記憶ライブラリが変更され、元に戻せません。何が起きるかを以下に示します：</string>
+  <string name="assistant_page_memory_consolidation_confirm_apply">適用する</string>
+  <string name="assistant_page_memory_consolidation_confirm_delete_warning">うち %1$d 件は削除です。削除される内容は上に示したとおりで、適用後は戻せません。</string>
+  <string name="assistant_page_memory_consolidation_applied">%1$d 件を適用しました。</string>
+  <string name="assistant_page_memory_consolidation_applied_stale">%1$d 件を適用しました。%2$d 件は適用できませんでした（対象が変更済み）。</string>
   <string name="assistant_page_memory_consolidation_running">整理中…</string>
   <string name="assistant_page_memory_consolidation_last">前回の整理：適用 %1$d 件、提案 %2$d 件</string>
   <string name="assistant_page_memory_consolidation_never">まだ整理していません</string>

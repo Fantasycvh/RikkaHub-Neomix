@@ -139,6 +139,8 @@ class MemoryConsolidatorTest {
             memories = { memoryList.toList() },
             agent = agent,
             settings = { settings },
+            // 建议存储：本类用例不碰「应用建议」，留一个记账用的空实现即可
+            proposals = RecordingProposalStore(),
             now = { now },
         )
     }
@@ -304,4 +306,37 @@ class MemoryConsolidatorTest {
         assertNull(worker.consolidate("nobody", emptySet(), fullReview = true))
         assertTrue(agent.requests.isEmpty())
     }
+
+/**
+ * 只记账的建议存储（[MemoryConsolidator] 只做委托，落库/校验/审计的真逻辑在
+ * `MemoryProposalRepository` 与 `MemoryProposalRepositoryTest` 里）。
+ */
+private class RecordingProposalStore : app.androidrik.rikkahub.data.repository.MemoryProposalStore {
+    val saved = mutableListOf<Pair<String, List<MemoryConsolidationProposal>>>()
+    val applied = mutableListOf<Pair<String, Set<Long>>>()
+    val rejected = mutableListOf<Pair<String, Set<Long>>>()
+    private var rows = mutableListOf<MemoryConsolidationProposal>()
+    private var nextId = 1L
+
+    override suspend fun savePending(memoryId: String, proposals: List<MemoryConsolidationProposal>) {
+        saved += memoryId to proposals
+        rows = proposals.map { it.copy(id = nextId++) }.toMutableList()
+    }
+
+    override suspend fun pending(memoryId: String) = rows.toList()
+
+    override suspend fun memoryIdsWithPending() = if (rows.isEmpty()) emptyList() else listOf("m")
+
+    override suspend fun apply(memoryId: String, ids: Set<Long>): app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult {
+        applied += memoryId to ids
+        rows.removeAll { it.id in ids }
+        return app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult(applied = ids.size)
+    }
+
+    override suspend fun reject(memoryId: String, ids: Set<Long>): Int {
+        rejected += memoryId to ids
+        rows.removeAll { it.id in ids }
+        return ids.size
+    }
+}
 }

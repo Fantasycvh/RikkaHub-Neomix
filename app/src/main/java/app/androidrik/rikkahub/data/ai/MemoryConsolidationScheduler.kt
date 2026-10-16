@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.Uuid
@@ -70,6 +71,20 @@ data class MemoryConsolidationProposal(
     val content: String = "",
     val importance: Float? = null,
     val description: String? = null,
+    /**
+     * 落库后的行 id（`memory_proposal.id`）。
+     *
+     * 0 = **还没落库**（工具层刚构造出来、或在内存里流转）。界面按它勾选与提交；
+     * 用它而不是下标，是因为列表会在「新一轮整理提出建议」时整体换掉，下标会指错东西。
+     */
+    val id: Long = 0L,
+    /**
+     * 同一次整理的一批。一次「合并重复记忆」在工具层是 `edit` + `delete` 两个调用，
+     * **拆开应用会丢内容** ⇒ 应用/拒绝都以 batch 为单位。
+     */
+    val batchId: String = "",
+    /** 产出时间（界面要说明建议来自哪一轮，免得被当成「现在的库」） */
+    val createdAt: Long = 0L,
 )
 
 /**
@@ -102,6 +117,7 @@ fun MemoryConsolidationProposal.describe(maxContent: Int = 60): String {
  * `content` 原样返回（只做 trim，不再截断）：这是「原文」，任何折叠都会让这个函数失去意义。
  */
 fun MemoryConsolidationProposal.detailContent(): String = content.trim()
+
 
 /**
  * 建议详情弹层的**标题**：说清「做什么动作、针对哪条」。
@@ -179,6 +195,35 @@ interface MemoryConsolidationWorker {
 
     /** 整理 [conversationIds] 的新轮次，[fullReview] 时再把整个记忆库清理一遍 */
     suspend fun consolidate(memoryId: String, conversationIds: Set<Uuid>, fullReview: Boolean): MemoryConsolidationRun?
+
+    // ---- 建议的持久化与应用（见 docs/design/design-memory-retrieval-and-consolidation.md §5）----
+    //
+    // 为什么这五条在 worker 而不是调度器里直接写库：本节开头的契约第 1 条——**调度器只认
+    // `memoryId` + 本接口，不认识任何存储形态**。建议怎么存、应用时怎么校验，都是存储侧的知识。
+
+    /**
+     * 落库本轮产出的建议（**替换**该库的待决策集合）。
+     *
+     * [proposals] 为空表示"这一轮什么都没提" ⇒ 必须**不动**已有建议
+     * （与 `MemoryConsolidationStatus.suggestions` 的"黏"语义同源：一次空跑不该抹掉待办）。
+     */
+    suspend fun saveProposals(memoryId: String, proposals: List<MemoryConsolidationProposal>)
+
+    /** 该记忆库**待决策**的建议（进程重启后把界面恢复出来的唯一来源） */
+    suspend fun pendingProposals(memoryId: String): List<MemoryConsolidationProposal>
+
+    /** 有建议待决策的记忆库（启动时逐库恢复用） */
+    suspend fun memoryIdsWithProposals(): List<String>
+
+    /**
+     * 应用建议，**按 batch 原子**；目标已不存在的批判为 `stale` 且不应用。
+     *
+     * @return 应用/判陈旧的条数
+     */
+    suspend fun applyProposals(memoryId: String, ids: Set<Long>): MemoryProposalApplyResult
+
+    /** 拒绝建议（用户显式说不要）。返回实际改判的条数 */
+    suspend fun rejectProposals(memoryId: String, ids: Set<Long>): Int
 }
 
 /**
@@ -246,6 +291,43 @@ class MemoryConsolidationScheduler(
     /** 自动触发的整理结果（手动触发的结果体现在 [statusOf] 里）；给「整理完了」的一次性提示用 */
     val automaticRuns: SharedFlow<MemoryConsolidationRun> = _automaticRuns.asSharedFlow()
 
+    // ---- 建议的恢复与应用（落库后的读写口，见 docs/design/design-memory-retrieval-and-consolidation.md §5）----
+
+    /**
+     * 把**待决策建议**从存储恢复到状态里。
+     *
+     * 为什么需要：[MemoryConsolidationStatus.suggestions] 是进程内的，重启就空；而建议已经落库。
+     * 空则不覆盖（保持"黏"语义：没有待办不该抹掉界面上已有的那批）。
+     */
+    suspend fun refreshProposals(memoryId: String, keepIfEmpty: Boolean = true) {
+        val pending = runCatching { worker.pendingProposals(memoryId) }.getOrNull() ?: return
+        if (pending.isEmpty() && keepIfEmpty) return
+        updateStatus(memoryId) {
+            it.copy(
+                suggestions = pending,
+                suggestionsAt = pending.maxOfOrNull { proposal -> proposal.createdAt } ?: it.suggestionsAt,
+            )
+        }
+    }
+
+    /**
+     * 应用建议。**真正的写库动作**——界面必须先走过二次确认再调它
+     * （不可逆操作不放在一次点击里）。
+     */
+    suspend fun applyProposals(memoryId: String, ids: Set<Long>): MemoryProposalApplyResult {
+        val result = worker.applyProposals(memoryId, ids)
+        // 应用会消耗掉 pending ⇒ 即使结果为空也要重读（该清空就得清空）
+        refreshProposals(memoryId, keepIfEmpty = false)
+        return result
+    }
+
+    /** 拒绝建议（用户显式说不要）。不写记忆库。 */
+    suspend fun rejectProposals(memoryId: String, ids: Set<Long>): Int {
+        val count = worker.rejectProposals(memoryId, ids)
+        refreshProposals(memoryId, keepIfEmpty = false)
+        return count
+    }
+
     /** 一轮对话结束：空闲一段时间后整理，攒够轮数就不再等 */
     fun onTurnFinished(conversation: Conversation) {
         // 应用不在前台时，进程随时可能被冻结、空闲计时走不完。所以趁生成用的前台服务还没释放，
@@ -293,6 +375,10 @@ class MemoryConsolidationScheduler(
         worker.memoryIdsWithUpdates().forEach { memoryId ->
             if (mergePending(memoryId, worker.findPending(memoryId))) restartTimer(memoryId)
         }
+        // 待决策建议也要恢复（落库的正是为了这件事：进程重启后它们仍应在界面上）
+        runCatching { worker.memoryIdsWithProposals() }
+            .getOrDefault(emptyList())
+            .forEach { memoryId -> refreshProposals(memoryId) }
     }
 
     /** 用户手动整理整个记忆库：先处理所有待整理的对话，再把记忆库清理一遍 */
@@ -367,14 +453,28 @@ class MemoryConsolidationScheduler(
                 }
             } finally {
                 hold.close()
+                // 建议**落库**后再进状态（「重启即失」的修复，见设计稿 §5）。
+                // 只在这轮真的提了建议时写：空跑不该覆盖待办（与状态的"黏"语义同源）。
+                // 落库失败**不抛**：本类是纯类（不引 Android 日志），而失败只降级成
+                // 「这批建议这一进程内仍可见、重启后会丢」——比因存不下而把整轮整理判成失败好。
+                if (run != null && run.proposals.isNotEmpty()) {
+                    runCatching { worker.saveProposals(memoryId, run.proposals) }
+                }
                 // 建议「黏」在状态里：这次什么都没提，也**不覆盖**上一次的建议（见 MemoryConsolidationStatus）
+                // 落库成功时重读一遍拿回**带 id** 的版本（界面按 id 勾选与提交，内存那份 id 全是 0）；
+                // 读不到就退回内存里那份（降级路径，见上）。
+                val persisted = if (run != null && run.proposals.isNotEmpty()) {
+                    runCatching { worker.pendingProposals(memoryId) }.getOrNull()
+                } else {
+                    null
+                }
                 updateStatus(memoryId) {
                     val finished = run ?: it.lastRun
                     if (run != null && run.proposals.isNotEmpty()) {
                         it.copy(
                             running = false,
                             lastRun = finished,
-                            suggestions = run.proposals,
+                            suggestions = persisted ?: run.proposals,
                             suggestionsAt = run.finishedAt,
                         )
                     } else {

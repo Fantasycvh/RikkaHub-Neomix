@@ -132,6 +132,14 @@
   <string name="assistant_page_memory_consolidation_range_desc">기본적으로 이 기능을 켜 시점 이후의 새 내용만 정리합니다. ‘전체 기록’을 선택하면 그 이전 내용도 함께 정리합니다(모델 할당량을 더 사용합니다). ‘지금 정리’는 아직 정리하지 않은 턴만 처리합니다.</string>
   <string name="assistant_page_memory_consolidation_range_new">지금부터</string>
   <string name="assistant_page_memory_consolidation_range_all">전체 기록</string>
+  <string name="assistant_page_memory_consolidation_apply">%1$d건 적용</string>
+  <string name="assistant_page_memory_consolidation_reject">무시</string>
+  <string name="assistant_page_memory_consolidation_confirm_title">%1$d건의 제안을 적용할까요?</string>
+  <string name="assistant_page_memory_consolidation_confirm_desc">기억 라이브러리가 변경되며 되돌릴 수 없습니다. 어떤 일이 일어나는지 아래에 나열합니다:</string>
+  <string name="assistant_page_memory_consolidation_confirm_apply">적용</string>
+  <string name="assistant_page_memory_consolidation_confirm_delete_warning">이 중 %1$d건은 삭제입니다. 삭제되는 내용은 위에 표시되며 적용 후에는 되돌릴 수 없습니다.</string>
+  <string name="assistant_page_memory_consolidation_applied">%1$d건을 적용했습니다.</string>
+  <string name="assistant_page_memory_consolidation_applied_stale">%1$d건을 적용했습니다. %2$d건은 적용할 수 없습니다(대상이 변경됨).</string>
   <string name="assistant_page_memory_consolidation_running">정리 중…</string>
   <string name="assistant_page_memory_consolidation_last">지난 정리: 적용 %1$d건, 제안 %2$d건</string>
   <string name="assistant_page_memory_consolidation_never">아직 정리한 적이 없습니다</string>

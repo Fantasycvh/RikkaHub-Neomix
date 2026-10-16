@@ -24,6 +24,7 @@ import app.androidrik.rikkahub.data.ai.MemoryConsolidationWorker
 import app.androidrik.rikkahub.data.ai.MemoryConsolidator
 import app.androidrik.rikkahub.data.ai.AppForegroundState
 import app.androidrik.rikkahub.data.repository.ConversationRepository
+import app.androidrik.rikkahub.data.repository.MemoryProposalRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.common.http.AcceptLanguageBuilder
 import app.androidrik.rikkahub.BuildConfig
@@ -337,6 +338,15 @@ val dataSourceModule = module {
         )
     }
 
+    // 建议的落库与应用：要在 worker 之前建（MemoryConsolidator 委托给它）
+    single {
+        val database: AppDatabase = get()
+        MemoryProposalRepository(
+            proposalDAO = database.memoryProposalDao(),
+            memoryRepository = get(),
+        )
+    }
+
     // 必须显式绑定到**接口**：调度器要的是 MemoryConsolidationWorker，
     // 按具体类型注册时 Koin 只认 MemoryConsolidator，`get()` 会抛 NoDefinitionFound——
     // 真机才发现（源码扫描守卫看不出这种绑定缺失）
@@ -348,6 +358,7 @@ val dataSourceModule = module {
             memories = { memoryId -> memoryRepository.getMemoriesOfAssistant(memoryId) },
             agent = get(),
             settings = { settingsStore.settingsFlow.first() },
+            proposals = get(),
         )
     }
 

@@ -14,6 +14,7 @@ import app.androidrik.rikkahub.data.db.dao.FolderDAO
 import app.androidrik.rikkahub.data.db.dao.GenMediaDAO
 import app.androidrik.rikkahub.data.db.dao.KnowledgeBaseDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryProposalDAO
 import app.androidrik.rikkahub.data.db.dao.ManagedFileDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
@@ -30,6 +31,7 @@ import app.androidrik.rikkahub.data.db.entity.KnowledgeEmbeddingEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryConsolidationEntity
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
+import app.androidrik.rikkahub.data.db.entity.MemoryProposalEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.db.migrations.Migration_16_17
@@ -55,8 +57,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         KnowledgeBaseDocumentEntity::class,
         KnowledgeEmbeddingEntity::class,
         MemoryConsolidationEntity::class,
+        MemoryProposalEntity::class,
     ],
-    version = 38,
+    version = 39,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -103,6 +106,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 存量会话为 null = 未冻结（用实时锚点），行为与改动前一致。
         // 见 docs/design/design-memory-injection-tiering.md
         AutoMigration(from = 37, to = 38),
+        // 38→39：记忆整理**建议**落库（纯新增表，无回填、无外键——理由见实体 kdoc）。
+        // 修的是「默认配置下自动整理烧了模型调用，建议却既无应用路径、重启即失」。
+        // 见 docs/design/design-memory-retrieval-and-consolidation.md §5
+        AutoMigration(from = 38, to = 39),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -130,6 +137,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun knowledgeBaseDao(): KnowledgeBaseDAO
 
     abstract fun memoryConsolidationDao(): MemoryConsolidationDAO
+
+    abstract fun memoryProposalDao(): MemoryProposalDAO
 }
 
 object TokenUsageConverter {

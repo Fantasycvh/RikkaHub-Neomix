@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import app.androidrik.rikkahub.data.model.Conversation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -96,6 +97,38 @@ class MemoryConsolidationSchedulerTest {
                 changedMemories = 1,
                 proposals = proposals,
             )
+        }
+
+        // ---- 建议的落库与应用（内存版：带自增 id，模拟真实存储的行为）----
+
+        /** memoryId -> 待决策建议（落库后应有 id；内存里那份 id 全是 0） */
+        val storedProposals = mutableMapOf<String, MutableList<MemoryConsolidationProposal>>()
+        private var nextProposalId = 1L
+        val applied = mutableListOf<Pair<String, Set<Long>>>()
+        val rejected = mutableListOf<Pair<String, Set<Long>>>()
+
+        override suspend fun saveProposals(memoryId: String, proposals: List<MemoryConsolidationProposal>) {
+            storedProposals[memoryId] = proposals.map {
+                it.copy(id = nextProposalId++, batchId = it.batchId.ifBlank { "batch" })
+            }.toMutableList()
+        }
+
+        override suspend fun pendingProposals(memoryId: String): List<MemoryConsolidationProposal> =
+            storedProposals[memoryId].orEmpty().toList()
+
+        override suspend fun memoryIdsWithProposals(): List<String> =
+            storedProposals.filterValues { it.isNotEmpty() }.keys.toList()
+
+        override suspend fun applyProposals(memoryId: String, ids: Set<Long>): MemoryProposalApplyResult {
+            applied += memoryId to ids
+            storedProposals[memoryId]?.removeAll { it.id in ids }
+            return MemoryProposalApplyResult(applied = ids.size)
+        }
+
+        override suspend fun rejectProposals(memoryId: String, ids: Set<Long>): Int {
+            rejected += memoryId to ids
+            storedProposals[memoryId]?.removeAll { it.id in ids }
+            return ids.size
         }
     }
 

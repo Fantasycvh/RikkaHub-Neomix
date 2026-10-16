@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import app.androidrik.rikkahub.utils.toLocalDateTime
@@ -55,6 +56,7 @@ import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_ALL_HISTORY
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
 import app.androidrik.rikkahub.data.ai.detailContent
+import app.androidrik.rikkahub.data.ai.proposeChangeSummary
 import app.androidrik.rikkahub.data.ai.memoryConsolidationCoversAllHistory
 import app.androidrik.rikkahub.data.ai.detailTitle
 import app.androidrik.rikkahub.data.ai.describe
@@ -132,6 +134,28 @@ fun AssistantMemoryPage(id: String) {
                     )
                 }
             },
+            // 应用建议 = **真正改记忆库**。界面已走过二次确认（勾选 → 确认页 → 确认），
+            // 这里只负责执行与回执。
+            onApplyProposals = { ids ->
+                scope.launch {
+                    val result = vm.applyProposals(ids)
+                    toaster.show(
+                        message = if (result.stale > 0) {
+                            context.getString(
+                                R.string.assistant_page_memory_consolidation_applied_stale,
+                                result.applied,
+                                result.stale,
+                            )
+                        } else {
+                            context.getString(
+                                R.string.assistant_page_memory_consolidation_applied,
+                                result.applied,
+                            )
+                        }
+                    )
+                }
+            },
+            onRejectProposals = { ids -> scope.launch { vm.rejectProposals(ids) } },
         )
     }
 }
@@ -149,6 +173,10 @@ private fun AssistantMemoryContent(
     consolidationStatus: MemoryConsolidationStatus,
     onOrganize: () -> Unit,
     onFreezeAnchors: () -> Unit,
+    /** 应用所选建议（**二次确认之后**才被调用；内部会真的改记忆库） */
+    onApplyProposals: (Set<Long>) -> Unit,
+    /** 忽略所选建议（不改记忆库） */
+    onRejectProposals: (Set<Long>) -> Unit,
 ) {
     val memoryDialogState = useEditState<AssistantMemory> {
         if (it.id.isEmpty()) {   // 空 id = 新建（原为 id == 0）
@@ -160,9 +188,71 @@ private fun AssistantMemoryContent(
     var pendingDeleteMemory by remember { mutableStateOf<AssistantMemory?>(null) }
     var showTimeReminderIntervalDialog by remember(assistant.id) { mutableStateOf(false) }
     var timeReminderIntervalInput by remember(assistant.id) { mutableStateOf("") }
-    // 被点开看详情的建议。按建议本身（而不是 id——它没有 id）记住，弹层只读。
+    // 被点开看详情的建议。按建议本身记住，弹层只读。
     var detailProposal by remember(assistant.id) {
         mutableStateOf<MemoryConsolidationProposal?>(null)
+    }
+    /** 已勾选待采纳的建议 id（用 id 而不是下标：新一轮整理会把整个列表换掉） */
+    var selectedProposals by remember(assistant.id) { mutableStateOf(emptySet<Long>()) }
+    /** 二次确认页是否打开。**打开它不写任何东西**，写库发生在确认按钮之后 */
+    var confirmProposals by remember(assistant.id) { mutableStateOf(false) }
+
+    // 二次确认的**第二段**：把人将要承受的改动逐条摆出来（删除要显示原内容），
+    // 再让用户按一次「确认应用」。不可逆操作不放在一次点击里。
+    if (confirmProposals) {
+        val picked = consolidationStatus.suggestions.filter { it.id in selectedProposals }
+        val deletes = picked.count { it.action == "delete" }
+        AlertDialog(
+            onDismissRequest = { confirmProposals = false },
+            title = {
+                Text(stringResource(R.string.assistant_page_memory_consolidation_confirm_title, picked.size))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(R.string.assistant_page_memory_consolidation_confirm_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    picked.forEach { proposal ->
+                        val target = memories.firstOrNull { it.id == proposal.targetId }
+                        Text(
+                            text = proposeChangeSummary(proposal, target),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (proposal.action == "delete") {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                    if (deletes > 0) {
+                        Text(
+                            text = stringResource(
+                                R.string.assistant_page_memory_consolidation_confirm_delete_warning,
+                                deletes,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmProposals = false
+                    val ids = selectedProposals
+                    selectedProposals = emptySet()
+                    onApplyProposals(ids)
+                }) {
+                    Text(stringResource(R.string.assistant_page_memory_consolidation_confirm_apply))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmProposals = false }) {
+                    Text(stringResource(R.string.close))
+                }
+            },
+        )
     }
 
     detailProposal?.let { proposal ->
@@ -581,19 +671,57 @@ private fun AssistantMemoryContent(
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                                 suggestions.forEach { proposal ->
-                                    // 可点开看**完整原文**：列表这行是 `describe()` 的 60 字摘要，
-                                    // 而「照建议手动改」必须先看得到内容（真机反馈：#建议被截断）。
-                                    // 用 Text 的 clickable 而不是外层包一层：保持与相邻行同样的左边距，
-                                    // 且不给弹层目标加一个会挡住长按选择的父级手势。
-                                    Text(
-                                        text = proposal.describe(),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { detailProposal = proposal }
-                                            .padding(vertical = 4.dp),
-                                    )
+                                    // 勾选 = 待采纳；点文字 = 看完整原文。两个动作分开（勾选框在左，
+                                    // 文字可点）——把选择也塞进整行点击就没法再看详情了。
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = proposal.id in selectedProposals,
+                                            onCheckedChange = { checked ->
+                                                selectedProposals = if (checked) {
+                                                    selectedProposals + proposal.id
+                                                } else {
+                                                    selectedProposals - proposal.id
+                                                }
+                                            },
+                                        )
+                                        // 可点开看**完整原文**：列表这行是 `describe()` 的 60 字摘要，
+                                        // 而「照建议手动改」必须先看得到内容（真机反馈：#建议被截断）。
+                                        // 用 Text 的 clickable 而不是外层包一层：保持与相邻行同样的左边距，
+                                        // 且不给弹层目标加一个会挡住长按选择的父级手势。
+                                        Text(
+                                            text = proposal.describe(),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { detailProposal = proposal }
+                                                .padding(vertical = 4.dp),
+                                        )
+                                    }
+                                }
+                                // 二次确认的第一段：这里只是**打开确认页**，不写任何东西
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(
+                                        onClick = { confirmProposals = true },
+                                        enabled = selectedProposals.isNotEmpty(),
+                                    ) {
+                                        Text(
+                                            stringResource(
+                                                R.string.assistant_page_memory_consolidation_apply,
+                                                selectedProposals.size,
+                                            )
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            val picked = selectedProposals
+                                            selectedProposals = emptySet()
+                                            onRejectProposals(picked)
+                                        },
+                                        enabled = selectedProposals.isNotEmpty(),
+                                    ) {
+                                        Text(stringResource(R.string.assistant_page_memory_consolidation_reject))
+                                    }
                                 }
                             }
                         }

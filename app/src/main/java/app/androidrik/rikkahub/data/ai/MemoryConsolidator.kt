@@ -6,6 +6,8 @@ import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.MemoryConsolidationRepository
+import app.androidrik.rikkahub.data.repository.MemoryProposalStore
+import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import kotlin.uuid.Uuid
 
 /**
@@ -34,6 +36,11 @@ class MemoryConsolidator(
     private val memories: suspend (String) -> List<AssistantMemory>,
     private val agent: MemoryConsolidationAgent,
     private val settings: suspend () -> Settings,
+    /**
+     * 建议的落库与应用。**只做委托**：调度器不认识存储形态（契约第 1 条），
+     * 而校验/按批原子/审计留痕都在 [MemoryProposalRepository] 里。
+     */
+    private val proposals: MemoryProposalStore,
     private val now: () -> Long = System::currentTimeMillis,
 ) : MemoryConsolidationWorker {
 
@@ -54,6 +61,22 @@ class MemoryConsolidator(
 
     override suspend fun findPending(memoryId: String, manual: Boolean): List<PendingMemoryConversation> =
         repository.findPending(memoryId, manual)
+
+    // ---- 建议的落库与应用：只做委托（存储侧知识不进调度器，见接口契约第 1 条） ----
+
+    override suspend fun saveProposals(memoryId: String, proposals: List<MemoryConsolidationProposal>) =
+        this.proposals.savePending(memoryId, proposals)
+
+    override suspend fun pendingProposals(memoryId: String): List<MemoryConsolidationProposal> =
+        proposals.pending(memoryId)
+
+    override suspend fun memoryIdsWithProposals(): List<String> = proposals.memoryIdsWithPending()
+
+    override suspend fun applyProposals(memoryId: String, ids: Set<Long>): MemoryProposalApplyResult =
+        proposals.apply(memoryId, ids)
+
+    override suspend fun rejectProposals(memoryId: String, ids: Set<Long>): Int =
+        proposals.reject(memoryId, ids)
 
     override suspend fun markConsolidated(conversation: Conversation) = repository.markConsolidated(conversation)
 
