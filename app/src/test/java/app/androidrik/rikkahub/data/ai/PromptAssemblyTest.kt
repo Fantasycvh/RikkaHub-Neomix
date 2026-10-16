@@ -713,4 +713,85 @@ class PromptAssemblyTest {
     }
 
     // endregion
+
+    // ── 规则提醒块（探索/落地守卫）：与记忆块同一个尾部位置、同一种合成消息 ──
+
+    @Test
+    fun `rule reminder lands in a synthetic tail user message`() {
+        val text = "━━━ Automatic progress check (not a user message) ━━━\nYou may be going in circles."
+        val internal = buildInternalMessages(
+            assistant = assistant(),
+            settings = settings,
+            model = model,
+            messages = listOf(userMessage("hi")),
+            memories = emptyList(),
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            compressionWindow = null,
+            ruleReminder = text,
+        )
+
+        val tail = internal.last()
+        assertEquals(MessageRole.USER, tail.role)
+        assertTrue("必须是合成消息（不落库）", tail.isSynthetic)
+        assertTrue(
+            "提醒应在**尾部**消息里",
+            tail.parts.filterIsInstance<UIMessagePart.Text>().any { it.text.contains(text) },
+        )
+    }
+
+    /**
+     * **最容易漏的一条**：没有命中时不能产生任何消息。
+     *
+     * 空块不但让每轮白付一段 token，还会破坏"system 块逐字节恒定"的既有约束
+     * （前缀缓存的前提）。
+     */
+    @Test
+    fun `absent or blank rule reminder adds no message`() {
+        fun build(reminder: String?) = buildInternalMessages(
+            assistant = assistant(),
+            settings = settings,
+            model = model,
+            messages = listOf(userMessage("hi")),
+            memories = emptyList(),
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            compressionWindow = null,
+            ruleReminder = reminder,
+        )
+
+        val baseline = build(null)
+        val blank = build("   ")
+        val empty = build("")
+
+        assertEquals("null 与空白都必须与不传参数逐字节一致", baseline.size, blank.size)
+        assertEquals(baseline.size, empty.size)
+        assertEquals(baseline.map { it.role }, blank.map { it.role })
+        assertEquals(
+            baseline.flatMap { m -> m.parts.map { it.toString() } },
+            blank.flatMap { m -> m.parts.map { it.toString() } },
+        )
+    }
+
+    @Test
+    fun `rule reminder coexists with the memory block, still last`() {
+        val memory = AssistantMemory(id = "1", content = "MEMORY_MARKER")
+        val internal = buildInternalMessages(
+            assistant = assistant(enableMemory = true),
+            settings = settings,
+            model = model,
+            messages = listOf(userMessage("hi")),
+            memories = listOf(memory),
+            tools = emptyList(),
+            conversationSystemPrompt = null,
+            compressionWindow = null,
+            ruleReminder = "━━━ Automatic progress check ━━━",
+        )
+
+        val tailTexts = internal.takeLast(2).map { m ->
+            m.parts.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text }
+        }
+        assertTrue("记忆块仍在尾部", tailTexts.any { it.contains("Memory") || it.isNotBlank() })
+        assertTrue("提醒在最后一条", tailTexts.last().contains("Automatic progress check"))
+    }
 }

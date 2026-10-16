@@ -1817,6 +1817,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_page_guardrails_title">ガードレールと予算</string>
   <string name="setting_page_guardrails_loop_guard">ループガード感度</string>
   <string name="setting_page_guardrails_loop_guard_desc">同じ引数で同じツールを繰り返し呼び出す際の許容度</string>
+  <string name="setting_page_guardrails_rule_reminder">進捗リマインダー</string>
+  <string name="setting_page_guardrails_rule_reminder_desc">AI が読み取り・検索ばかりで成果を出せないとき、会話の末尾に自己点検のリマインダーを注入します（履歴には保存されず、次に該当しなければ自然に消えます）</string>
+  <string name="setting_page_guardrails_rule_reminder_level">進捗リマインダーの感度</string>
+  <string name="setting_page_guardrails_rule_reminder_level_desc">成果の出ない読み取り・検索を何回許容してから知らせるか</string>
   <string name="guard_sensitivity_strict">厳格</string>
   <string name="guard_sensitivity_standard">標準</string>
   <string name="guard_sensitivity_loose">寛容</string>

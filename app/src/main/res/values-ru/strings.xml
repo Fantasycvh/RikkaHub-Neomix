@@ -1817,6 +1817,10 @@
   <string name="setting_page_guardrails_title">Ограничения и бюджеты</string>
   <string name="setting_page_guardrails_loop_guard">Чувствительность защиты от циклов</string>
   <string name="setting_page_guardrails_loop_guard_desc">Допустимость повторных вызовов ИИ одного инструмента с теми же аргументами</string>
+  <string name="setting_page_guardrails_rule_reminder">Напоминание о прогрессе</string>
+  <string name="setting_page_guardrails_rule_reminder_desc">Когда ИИ только читает и ищет, не создавая результата, в конец диалога добавляется напоминание о самопроверке (в историю не записывается и исчезает, когда перестаёт быть нужным)</string>
+  <string name="setting_page_guardrails_rule_reminder_level">Чувствительность напоминания о прогрессе</string>
+  <string name="setting_page_guardrails_rule_reminder_level_desc">Сколько вызовов чтения и поиска без результата допускается до напоминания</string>
   <string name="guard_sensitivity_strict">Строго</string>
   <string name="guard_sensitivity_standard">Стандарт</string>
   <string name="guard_sensitivity_loose">Свободно</string>

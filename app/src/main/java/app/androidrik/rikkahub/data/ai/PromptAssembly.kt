@@ -283,6 +283,12 @@ internal fun buildInternalMessages(
     compressionWindow: Conversation.CompressionWindow?,
     /** 空回复补救提示（一次性）：追加到系统提示尾部，不进入对话历史、拼装预览不受影响 */
     recoveryHint: String? = null,
+    /**
+     * 规则提醒块（一次性）：命中时追加到**对话尾部**的合成 USER 消息，不进入对话历史。
+     * 与记忆块同款做法与同款理由（见下方注释）；null/空白 = **不产生任何消息**
+     * （空块会让每轮白付一段 token，且破坏"L0 逐字节恒定"）。
+     */
+    ruleReminder: String? = null,
     /** 会话级「不使用记忆」（隐身对话）：为真时不注入记忆块，见 [buildSystemBlocks] */
     memoryDisabled: Boolean = false,
     /** 冻结的锚点 id 集合：来自 `Conversation.frozenAnchorIds`（null = 未冻结）。 */
@@ -341,6 +347,11 @@ internal fun buildInternalMessages(
             if (memoryData.isNotBlank()) {
                 add(UIMessage.user(prompt = memoryData).copy(isSynthetic = true))
             }
+        }
+        // 规则提醒（探索/落地守卫）：与记忆块同一个尾部位置、同一种"每轮算、不落库、不再命中即消失"
+        // 的合成消息。**必须判空白**——空块会让每轮白付一段 token。
+        ruleReminder?.takeIf { it.isNotBlank() }?.let {
+            add(UIMessage.user(prompt = it).copy(isSynthetic = true))
         }
     }
 }

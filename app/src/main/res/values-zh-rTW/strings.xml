@@ -1873,6 +1873,10 @@
   <string name="setting_page_guardrails_title">護欄與預算</string>
   <string name="setting_page_guardrails_loop_guard">失控護欄靈敏度</string>
   <string name="setting_page_guardrails_loop_guard_desc">AI 用相同參數反覆呼叫同一工具時的容忍度</string>
+  <string name="setting_page_guardrails_rule_reminder">進展提醒</string>
+  <string name="setting_page_guardrails_rule_reminder_desc">AI 連續唯讀／搜尋卻沒有產出時，在對話尾端注入一則自查提醒（不寫入歷史，下次不再命中就自然消失）</string>
+  <string name="setting_page_guardrails_rule_reminder_level">進展提醒靈敏度</string>
+  <string name="setting_page_guardrails_rule_reminder_level_desc">容忍多少次沒有產出的讀取／搜尋之後才提醒</string>
   <string name="guard_sensitivity_strict">嚴格</string>
   <string name="guard_sensitivity_standard">標準</string>
   <string name="guard_sensitivity_loose">寬鬆</string>

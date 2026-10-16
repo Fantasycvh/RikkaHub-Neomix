@@ -1891,6 +1891,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_guardrails_title">护栏与预算</string>
   <string name="setting_page_guardrails_loop_guard">失控护栏灵敏度</string>
   <string name="setting_page_guardrails_loop_guard_desc">AI 用相同参数反复调用同一工具时的容忍度</string>
+  <string name="setting_page_guardrails_rule_reminder">进展提醒</string>
+  <string name="setting_page_guardrails_rule_reminder_desc">AI 连续只读／搜索却没有产出时，在对话尾部注入一条自查提醒（不写进历史，下次不再命中就自然消失）</string>
+  <string name="setting_page_guardrails_rule_reminder_level">进展提醒灵敏度</string>
+  <string name="setting_page_guardrails_rule_reminder_level_desc">容忍多少次没有产出的读取／搜索之后才提醒</string>
   <string name="guard_sensitivity_strict">严格</string>
   <string name="guard_sensitivity_standard">标准</string>
   <string name="guard_sensitivity_loose">宽松</string>

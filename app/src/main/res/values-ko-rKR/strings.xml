@@ -1817,6 +1817,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_page_guardrails_title">가드레일 및 예산</string>
   <string name="setting_page_guardrails_loop_guard">루프 가드 감도</string>
   <string name="setting_page_guardrails_loop_guard_desc">AI가 같은 인수로 같은 도구를 반복 호출할 때의 허용도</string>
+  <string name="setting_page_guardrails_rule_reminder">진행 알림</string>
+  <string name="setting_page_guardrails_rule_reminder_desc">AI가 읽기·검색만 반복하고 성과를 내지 못할 때 대화 끝에 자체 점검 알림을 주입합니다(기록에 저장되지 않고, 다음에 해당하지 않으면 사라집니다)</string>
+  <string name="setting_page_guardrails_rule_reminder_level">진행 알림 감도</string>
+  <string name="setting_page_guardrails_rule_reminder_level_desc">성과 없는 읽기·검색을 몇 번까지 허용한 뒤 알릴지</string>
   <string name="guard_sensitivity_strict">엄격</string>
   <string name="guard_sensitivity_standard">표준</string>
   <string name="guard_sensitivity_loose">관대</string>

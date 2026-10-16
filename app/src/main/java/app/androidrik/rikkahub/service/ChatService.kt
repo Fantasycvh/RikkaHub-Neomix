@@ -61,6 +61,7 @@ import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
+import app.androidrik.rikkahub.data.ai.parseRuleReminderSensitivity
 import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
 import app.androidrik.rikkahub.data.ai.anchorIdsOf
@@ -479,6 +480,8 @@ class ChatService(
                 ),
                 scope = appScope,
                 loopGuardSensitivity = parseLoopGuardSensitivity(settings.loopGuardSensitivity),
+                ruleReminderEnabled = settings.ruleReminderEnabled,
+                ruleReminderSensitivity = parseRuleReminderSensitivity(settings.ruleReminderSensitivity),
                 turnBudgetChars = settings.workspaceTurnBudgetChars,
                 turnBudgetSteps = settings.workspaceTurnMaxSteps,
                 onIdle = { removeSession(it) },
@@ -806,6 +809,7 @@ class ChatService(
                 session.toolLoopGuard.reset()
                 session.workspaceTurnBudget.reset()
                 session.thinkingGuard.reset()
+                session.ruleEngine.reset()
 
                 // 开始补全
                 if (answer) {
@@ -902,6 +906,7 @@ class ChatService(
         session.toolLoopGuard.reset()
         session.workspaceTurnBudget.reset()
         session.thinkingGuard.reset()
+        session.ruleEngine.reset()
 
         val job = appScope.launch {
             try {
@@ -963,6 +968,7 @@ class ChatService(
                 session.toolLoopGuard.reset()
                 session.workspaceTurnBudget.reset()
                 session.thinkingGuard.reset()
+                session.ruleEngine.reset()
 
                 handleMessageComplete(
                     conversationId,
@@ -1325,6 +1331,7 @@ class ChatService(
                 // 工具审批让循环 break 等用户，批准后是新的调用续跑同一轮。挂在 session 上才能
                 // 跨审批累积，并在新一轮用户消息/重新生成时由本类 reset（见 ToolCallLoopGuard）。
                 loopGuard = session.toolLoopGuard,
+                ruleEngine = session.ruleEngine,
                 workspaceBudget = session.workspaceTurnBudget,
                 // 思考退化护栏（家族第四员）：同上取 session 上的实例，跨审批续跑累积
                 thinkingGuard = session.thinkingGuard,

@@ -38,6 +38,8 @@ import app.androidrik.ai.provider.RetrySetting
 import androidx.compose.material3.FilterChip
 import app.androidrik.rikkahub.data.ai.LoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
+import app.androidrik.rikkahub.data.ai.RuleReminderSensitivity
+import app.androidrik.rikkahub.data.ai.parseRuleReminderSensitivity
 import app.androidrik.rikkahub.ui.components.ui.OutlinedNumberInput
 import androidx.compose.foundation.layout.width
 import app.androidrik.rikkahub.R
@@ -539,6 +541,48 @@ private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
                                         LoopGuardSensitivity.STRICT -> stringResource(R.string.guard_sensitivity_strict)
                                         LoopGuardSensitivity.STANDARD -> stringResource(R.string.guard_sensitivity_standard)
                                         LoopGuardSensitivity.LOOSE -> stringResource(R.string.guard_sensitivity_loose)
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                        )
+                    }
+                }
+            },
+        )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_guardrails_rule_reminder)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_guardrails_rule_reminder_desc)) },
+            trailingContent = {
+                Switch(
+                    checked = settings.ruleReminderEnabled,
+                    onCheckedChange = {
+                        vm.updateSettings(settings.copy(ruleReminderEnabled = it))
+                    },
+                )
+            },
+        )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_guardrails_rule_reminder_level)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_guardrails_rule_reminder_level_desc)) },
+            trailingContent = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RuleReminderSensitivity.entries.forEach { level ->
+                        FilterChip(
+                            selected = parseRuleReminderSensitivity(settings.ruleReminderSensitivity) == level,
+                            enabled = settings.ruleReminderEnabled,
+                            onClick = {
+                                vm.updateSettings(settings.copy(ruleReminderSensitivity = level.name))
+                            },
+                            label = {
+                                Text(
+                                    when (level) {
+                                        RuleReminderSensitivity.STRICT -> stringResource(R.string.guard_sensitivity_strict)
+                                        RuleReminderSensitivity.STANDARD -> stringResource(R.string.guard_sensitivity_standard)
+                                        RuleReminderSensitivity.LOOSE -> stringResource(R.string.guard_sensitivity_loose)
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                 )

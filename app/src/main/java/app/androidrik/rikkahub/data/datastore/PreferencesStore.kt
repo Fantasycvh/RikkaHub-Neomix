@@ -266,6 +266,9 @@ class SettingsStore(
         val AUTO_COMPRESS_ENABLED = booleanPreferencesKey("auto_compress_enabled")
         // peer ⑤ Tier 1 可配置化：护栏与预算（写死常量的可配置化）
         val LOOP_GUARD_SENSITIVITY = stringPreferencesKey("loop_guard_sensitivity")
+        // 规则提醒（探索/落地守卫）：默认开 + 三档，与 LoopGuard 同款形态
+        val RULE_REMINDER_ENABLED = booleanPreferencesKey("rule_reminder_enabled")
+        val RULE_REMINDER_SENSITIVITY = stringPreferencesKey("rule_reminder_sensitivity")
         val WORKSPACE_TURN_BUDGET_CHARS = intPreferencesKey("workspace_turn_budget_chars")
         val WORKSPACE_TURN_MAX_STEPS = intPreferencesKey("workspace_turn_max_steps")
         val SUBAGENT_MAX_CONCURRENT_RUNS = intPreferencesKey("subagent_max_concurrent_runs")
@@ -427,6 +430,9 @@ class SettingsStore(
                 autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
                 loopGuardSensitivity = preferences[LOOP_GUARD_SENSITIVITY]
                     ?: app.androidrik.rikkahub.data.ai.LoopGuardSensitivity.STANDARD.name,
+                ruleReminderEnabled = preferences[RULE_REMINDER_ENABLED] ?: true,
+                ruleReminderSensitivity = preferences[RULE_REMINDER_SENSITIVITY]
+                    ?: app.androidrik.rikkahub.data.ai.RuleReminderSensitivity.STANDARD.name,
                 workspaceTurnBudgetChars = (preferences[WORKSPACE_TURN_BUDGET_CHARS]
                     ?: DEFAULT_WORKSPACE_TURN_BUDGET_CHARS).coerceIn(32_000, 2_000_000),
                 workspaceTurnMaxSteps = (preferences[WORKSPACE_TURN_MAX_STEPS]
@@ -682,6 +688,8 @@ class SettingsStore(
             } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
             preferences[AUTO_COMPRESS_ENABLED] = settings.autoCompressEnabled
             preferences[LOOP_GUARD_SENSITIVITY] = settings.loopGuardSensitivity
+            preferences[RULE_REMINDER_ENABLED] = settings.ruleReminderEnabled
+            preferences[RULE_REMINDER_SENSITIVITY] = settings.ruleReminderSensitivity
             preferences[WORKSPACE_TURN_BUDGET_CHARS] = settings.workspaceTurnBudgetChars
             preferences[WORKSPACE_TURN_MAX_STEPS] = settings.workspaceTurnMaxSteps
             preferences[SUBAGENT_MAX_CONCURRENT_RUNS] = settings.subagentMaxConcurrentRuns
@@ -969,6 +977,13 @@ data class Settings(
     val autoCompressEnabled: Boolean = false,
     /** LoopGuard 灵敏度档位（strict/standard/loose），见 [app.androidrik.rikkahub.data.ai.guardThresholds] */
     val loopGuardSensitivity: String = "STANDARD",
+    /**
+     * 规则提醒（探索/落地守卫）：连续多次只读/搜索类工具调用且零落地产出时，在**对话尾部**
+     * 注入一条自查提醒（默认开）。见 `docs/design/design-rule-engine.md`。
+     */
+    val ruleReminderEnabled: Boolean = true,
+    /** 规则提醒灵敏度档位（strict/standard/loose），与 LoopGuard 同款：只做档位、不做自由数字 */
+    val ruleReminderSensitivity: String = "STANDARD",
     /** workspace_* 工具单轮输出预算（字符数），见 [DEFAULT_WORKSPACE_TURN_BUDGET_CHARS] */
     val workspaceTurnBudgetChars: Int = DEFAULT_WORKSPACE_TURN_BUDGET_CHARS,
     /** workspace_* 工具单轮步数上限，见 [DEFAULT_WORKSPACE_TURN_MAX_STEPS] */

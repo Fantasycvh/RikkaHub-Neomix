@@ -14,3 +14,6 @@ local.properties
 
 # ZCode 会话/工具生成，不属于仓库内容
 .zcodeignore
+.kotlin/
+_ui.xml
+_*.png

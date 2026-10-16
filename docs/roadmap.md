@@ -2647,3 +2647,26 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   的好文案）、`plan_missing`（对应 bigeye 的 `dag_missing`，本仓的现成对应物是 `todo_write`）、
   `budget_near_limit`（复用既有 `WorkspaceTurnBudget`，让"到顶才优雅停止"提前给模型一次机会）。
   §8 留了三个待拍板项（范围/默认开关/80% 初值）。
+
+- 2026-10-16 续九：**「规则提醒」（探索/落地守卫）落地** —— bigeye 那条判据的第一次真正实现。用户拍板：
+  只做 `explore_without_landing` 一条、**默认开**、同时可配置化。
+  判据（标准档）：最近 **12** 次工具调用里探索类 **≥10** 且落地类 **==0** ⇒ 在**对话尾部**注入一条
+  自查提醒（现象 → 三步自查 → 不要暴露机制，第 3 步是防误报出口）；文案结构照抄 bigeye，语言用英文
+  （本仓注入给模型的文本一律英文）。**交付位置与参考实现刻意相反**：它插 system prompt 最前，
+  本仓走尾部 —— 第一条理由就是**前缀缓存**（插 system 最前会让每次命中都改前缀，整段 system+历史失效；
+  真机读数缓存命中 86%），其余三条见 `docs/design/design-rule-engine.md` §3。
+  **可配置化照既有形态**：设置 → 通用 → 护栏与预算 新增「进展提醒」开关 + 三档灵敏度
+  （严格 10/8、标准 12/10 = bigeye 原值、宽松 16/14），与 `LoopGuardSensitivity` 同款"只做档位、
+  不做自由数字"；`Settings.ruleReminderEnabled`（默认 **true**）+ `ruleReminderSensitivity`（默认 STANDARD），
+  `PreferencesStore` 三件套齐全。
+  **接缝**：`ToolEffect`/`classifyToolEffect`（本仓 32 个工具名全覆盖；`memory_tool` 看 `action`，
+  `mcp_tool_call` 等语义不可知的**保持中性、不猜**）+ `RuleEngine`（环形窗口 + 每轮每规则一次 +
+  不再命中即解除）+ `PromptAssembly` 尾部合成消息（null/空白**不产生任何消息**）+ 会话持有实例
+  （跨审批续跑累积，reset 与护栏家族同处）+ 每步构造前求值（放在 `if (pendingTools.isEmpty())` 之内：
+  求值有副作用，算了不发等于白丢一次提醒）。
+  **测试 4 个文件**：分类全覆盖、判据/去重/再武装/三档/禁用、尾部位置与空块逐字节、
+  以及 7 条**源码扫描接线守卫**（记录点与 LoopGuard 同处、求值在循环内且在发送路径上、
+  结果确实传下去、reset 处数与护栏家族一致、默认开、设置页可配）。
+  **反证 7 处全部精确变红**：忽略落地／未知工具当探索／去掉去重／不再命中不解除／空块也注入／
+  少一处 reset／默认改关。**未做**：真机「假上游」复现（模拟 12 次只读调用看提醒是否进下一步请求体），
+  JVM 侧已用同形状断言覆盖，真机侧待用户确认（需临时建 provider/assistant）。

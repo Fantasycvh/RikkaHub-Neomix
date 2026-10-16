@@ -256,6 +256,12 @@ class GenerationHandler(
          */
         loopGuard: ToolCallLoopGuard = ToolCallLoopGuard(),
         /**
+         * **规则提醒引擎**（护栏家族，见 [RuleEngine]）：连续多次探索类工具调用且零落地时，
+         * 在对话尾部注入一段自查提醒。取会话上的实例使效果窗口跨「审批续跑」累积——
+         * 挂载理由与 [loopGuard] 完全同款。默认值只服务单测等场景。
+         */
+        ruleEngine: RuleEngine = RuleEngine(),
+        /**
          * **思考退化护栏**（护栏家族第四员，见 [ThinkingDegenerationGuard]）。默认**开启**——
          * 堵的是前三员的前提都落空时的形态：零工具调用的退化（纯思考空转 / 复述上一步 /
          * 单次调用内逐字重复）。挂载理由与 [loopGuard] 同款（挂会话、跨审批续跑累积、
@@ -372,12 +378,16 @@ class GenerationHandler(
 
             // Skip generation if we have approved/denied tool calls to handle
             if (pendingTools.isEmpty()) {
+                // 规则提醒：**每一步拼装前**求值 ⇒ 作用于下一步（本仓工具循环每步重拼提示词）。
+                // 刻意放在 `if` 内：`reminder()` 有副作用（标记已提醒），算了不发等于白丢一次提醒。
+                val ruleReminder = ruleEngine.reminder()
                 generateInternal(
                     assistant = assistant,
                     settings = settings,
                     messages = messages,
                     compressionWindow = compressionWindow,
                     recoveryHint = pendingRecoveryHint,
+                    ruleReminder = ruleReminder,
                     memoryDisabled = memoryDisabled,
                     frozenAnchorIds = frozenAnchorIds,
                     debugKey = debugKey,
@@ -656,6 +666,9 @@ class GenerationHandler(
                         // 失败时由下方 onFailure 用 forget 撤回（见 ToolCallLoopGuard 约束 2）。
                         // 注意只在**批内首次**出现时记录：同一响应里的重复下发已被上面的 dedup 收拢，
                         // 若逐条记录，一次 Gemini 式重复下发就会被算成 2 次、两步即误判。
+                        // 规则提醒的效果窗口：与 LoopGuard 同处记录（上面的批内 dedup 保证
+                        // 一次响应里的重复下发只算一次，窗口密度才不失真）。
+                        ruleEngine.record(tool.toolName, tool.inputAsJson())
                         when (val verdict = loopGuard.record(tool.toolName, signature)) {
                             is ToolCallLoopGuard.Verdict.Loop -> {
                                 if (stopNotice == null) stopNotice = GenerationNotice.ToolLoopStopped(
@@ -933,6 +946,8 @@ class GenerationHandler(
         degenerationGuard: ThinkingDegenerationGuard? = null,
         /** 空回复补救提示（只作用于本请求系统提示，不进入对话历史） */
         recoveryHint: String? = null,
+        /** 规则提醒块（只作用于本请求，作为尾部合成消息，不进入对话历史） */
+        ruleReminder: String? = null,
         /** 会话级「不使用记忆」：为真时不注入记忆块（工具侧已在装配点处理） */
         memoryDisabled: Boolean = false,
         /** L1 冻结的锚点 id 集合：非 null 时只渲染这些锚点（见 [generateText] 同名参数）。 */
@@ -951,6 +966,7 @@ class GenerationHandler(
             conversationSystemPrompt = conversationSystemPrompt,
             compressionWindow = compressionWindow,
             recoveryHint = recoveryHint,
+            ruleReminder = ruleReminder,
             memoryDisabled = memoryDisabled,
             frozenAnchorIds = frozenAnchorIds,
         )

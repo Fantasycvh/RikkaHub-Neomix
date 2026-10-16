@@ -14,6 +14,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.data.ai.LoopGuardSensitivity
+import app.androidrik.rikkahub.data.ai.RuleEngine
+import app.androidrik.rikkahub.data.ai.RuleReminderSensitivity
 import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
 import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
 import app.androidrik.rikkahub.data.ai.guardThresholds
@@ -35,6 +37,9 @@ class ConversationSession(
     private val onGenerationFinished: (Uuid, Throwable?) -> Unit = { _, _ -> },
     /** LoopGuard 灵敏度档位（设置 → 通用 → 护栏与预算）；标准档 = 原写死行为 */
     loopGuardSensitivity: LoopGuardSensitivity = LoopGuardSensitivity.STANDARD,
+    /** 规则提醒（探索/落地守卫）开关与档位（设置 → 通用 → 护栏与预算），默认开 */
+    ruleReminderEnabled: Boolean = true,
+    ruleReminderSensitivity: RuleReminderSensitivity = RuleReminderSensitivity.STANDARD,
     /** workspace_* 单轮输出预算（字符）与步数上限 */
     turnBudgetChars: Int = DEFAULT_WORKSPACE_TURN_BUDGET_CHARS,
     turnBudgetSteps: Int = DEFAULT_WORKSPACE_TURN_MAX_STEPS,
@@ -71,6 +76,16 @@ class ConversationSession(
             failureThreshold = failure,
         )
     }
+
+    /**
+     * 规则提醒引擎（见 `data/ai/RuleEngine.kt`）。挂会话的理由与 [toolLoopGuard] **完全同款**：
+     * 一次「轮」跨多次 `generateText`（审批续跑），效果窗口必须跨审批累积、
+     * 并在**新一轮用户消息 / 重新生成**时由 ChatService [RuleEngine.reset]。
+     */
+    val ruleEngine = RuleEngine(
+        enabled = ruleReminderEnabled,
+        sensitivity = ruleReminderSensitivity,
+    )
 
     /**
      * workspace（rootfs）工具的**单轮总预算**（见 `data/ai/WorkspaceTurnBudget.kt`）。

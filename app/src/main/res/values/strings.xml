@@ -1877,6 +1877,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_page_guardrails_title">Guardrails &amp; Budgets</string>
   <string name="setting_page_guardrails_loop_guard">Loop guard sensitivity</string>
   <string name="setting_page_guardrails_loop_guard_desc">Tolerance for the AI repeating the same tool call with the same arguments</string>
+  <string name="setting_page_guardrails_rule_reminder">Progress reminder</string>
+  <string name="setting_page_guardrails_rule_reminder_desc">Nudges the AI to check itself when it keeps reading or searching without producing anything. Injected at the end of the conversation; never written to history.</string>
+  <string name="setting_page_guardrails_rule_reminder_level">Progress reminder sensitivity</string>
+  <string name="setting_page_guardrails_rule_reminder_level_desc">How much reading and searching without a result is tolerated before the reminder appears</string>
   <string name="guard_sensitivity_strict">Strict</string>
   <string name="guard_sensitivity_standard">Standard</string>
   <string name="guard_sensitivity_loose">Loose</string>
