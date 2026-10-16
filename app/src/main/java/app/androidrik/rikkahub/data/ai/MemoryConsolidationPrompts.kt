@@ -35,6 +35,49 @@ internal const val DEFAULT_LIBRARY_TOKENS = 4_000
 internal const val PAGE_LIBRARY_TOKENS = 12_000
 
 /**
+ * 手动「全量复核」的**上限**：一次请求最多带多少 token 的库。
+ *
+ * 用户定的一档（2026-10-16）。它**不是**「页预算」本身，而是给 [manualLibraryBudget] 封顶用。
+ */
+internal const val MAX_MANUAL_LIBRARY_TOKENS = 512_000
+
+/** 手动复核时**允许占窗口的比例**：留 40% 给输出 / 思考 / 工具回执 */
+internal const val MANUAL_LIBRARY_INPUT_RATIO = 0.6f
+
+/** 给校准表留的余量（每条约 40 token，一页通常几十条） */
+private const val CALIBRATION_RESERVE_TOKENS = 4_000
+
+/** 库太小/窗口太小时的兜底，保证任何模型都还能复核一页 */
+private const val MIN_LIBRARY_TOKENS = 4_000
+
+/**
+ * 手动「全量复核」一页的库预算 —— **按模型自己的上下文窗口放开**，不再固定 12K。
+ *
+ * ## 为什么改（用户 2026-10-16 提出）
+ *
+ * 真机库 ≈30–58K token，而固定 12K 的页 ⇒ 一次「整理一下」只能看 1/3 到 1/2，
+ * 「全量」要分 2–3 轮。按窗口放开后，**通常是 1 轮走完全库**。
+ *
+ * ## 上限为什么必须**与模型窗口取小**（这是本函数唯一容易写错的地方）
+ *
+ * 用户给的是「最大 512K、按 60% 允许输入」。若直译成 `512K × 60% = 307K`，
+ * 那么 **128K / 200K 窗口的模型会收到一个必然失败的请求**。
+ * 所以是 `min(窗口, 512K) × 60%`：512K 表达的是「再大也不超过这个数」，
+ * 真正的约束永远是**模型自己的窗口**。
+ *
+ * ## 还要扣掉同一次请求里的其它东西
+ *
+ * 这一页不是请求的全部：同一发里还有新轮次（[DEFAULT_TRANSCRIPT_TOKENS]）与校准表。
+ * 60% 是**整个输入**的份额，所以先扣掉它们再给库，否则「60%」会被库独吞而超出窗口。
+ */
+internal fun manualLibraryBudget(contextLength: Int): Int {
+    val input = (contextLength.coerceAtMost(MAX_MANUAL_LIBRARY_TOKENS) * MANUAL_LIBRARY_INPUT_RATIO).toInt()
+    return (input - DEFAULT_TRANSCRIPT_TOKENS - CALIBRATION_RESERVE_TOKENS)
+        .coerceAtLeast(MIN_LIBRARY_TOKENS)
+        .coerceAtMost(MAX_MANUAL_LIBRARY_TOKENS)
+}
+
+/**
  * 库快照的**一页**（全量复核的推进单位）。
  *
  * 为什么引入「页」这个概念：整理侧的快照预算只有 4K（手动 12K），而真机库有 ≈58K token

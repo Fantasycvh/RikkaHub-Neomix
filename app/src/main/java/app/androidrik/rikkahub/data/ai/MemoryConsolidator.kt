@@ -7,6 +7,7 @@ import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.MemoryConsolidationRepository
 import app.androidrik.rikkahub.data.repository.MemoryProposalStore
+import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import kotlin.uuid.Uuid
 
@@ -118,16 +119,23 @@ class MemoryConsolidator(
         // **库快照按页下发**（`docs/design/.../design-memory-retrieval-and-consolidation.md` §7）。
         // 真机库 49 条 ≈58,489 token，而快照预算是 4K（手动一页 12K）⇒ 一次看不完；
         // 分页 + 游标是「全量复核」唯一的做法：每轮推进一页，走完一轮从头再来。
+        // 手动复核的页预算**按模型窗口放开**（用户 2026-10-16 定：上限 512K、输入占 60%），
+        // 于是「全量」通常一轮走完；自动路径仍是 4K（它的本职是处理新轮次）。
+        val libraryBudget = if (fullReview) {
+            manualLibraryBudget(model.effectiveContextLength())
+        } else {
+            DEFAULT_LIBRARY_TOKENS
+        }
         val page = pageOfLibrary(
             memories = library,
             cursor = repository.reviewCursor(memoryId),
-            budgetTokens = if (fullReview) PAGE_LIBRARY_TOKENS else DEFAULT_LIBRARY_TOKENS,
+            budgetTokens = libraryBudget,
         )
         Log.i(
             TAG,
             "consolidate($memoryId): ${conversations.size} conversation(s), " +
                 "${library.size} record(s), page=${page.from}-${page.to}/${page.total} " +
-                "last=${page.isLast} remaining=${transcript.remainingTurns} fullReview=$fullReview",
+                "last=${page.isLast} budget=$libraryBudget remaining=${transcript.remainingTurns} fullReview=$fullReview",
         )
         val outcome = agent.run(
             MemoryConsolidationRequest(
@@ -152,9 +160,19 @@ class MemoryConsolidator(
 
         // 只推进**真正带进模型**的水位；agent 抛异常时根本走不到这里（内容不丢）
         transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark) }
-        // 全库复核的水位同样只在**成功之后**推进（agent 抛异常时走不到这里）：
-        // 这样「跨轮次全量复核」是可断点续跑的，不会因为一次失败而跳过一页。
-        repository.setReviewCursor(memoryId, page.nextCursor)
+        // **只有手动全量复核才推进库游标**（2026-10-16 真机日志改正）。
+        //
+        // 第一版让两条路径都推进，理由听起来不错（「让全量复核顺带进行」）。真机日志当场否掉：
+        //   consolidate(…): 52 record(s), page=30-30/52 last=false remaining=274 fullReview=false
+        // 自动路径的页预算只有 4K，**一条大记忆就吃满** ⇒ 每次自动整理只推进**一条**记录，
+        // 而 52 条要 52 次自动整理才走完一遍——每一次都是一通付费的模型调用，而自动整理的主业
+        // （处理新轮次）根本没在做「复核」。**用昂贵的自动调用按条爬库，是把钱花在了错误的地方。**
+        //
+        // 自动路径仍然**读**同一页（拿到的是有全文、且不含「看不到的 id」的库快照，
+        // 比旧的 40 字清单层好），只是**不消耗复核进度**；进度由用户显式触发的 12K 页独占。
+        if (fullReview) {
+            repository.setReviewCursor(memoryId, page.nextCursor)
+        }
         return MemoryConsolidationRun(
             memoryId = memoryId,
             finishedAt = now(),

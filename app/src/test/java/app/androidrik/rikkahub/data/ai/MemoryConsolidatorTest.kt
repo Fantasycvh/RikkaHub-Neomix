@@ -69,10 +69,12 @@ class MemoryConsolidatorTest {
     private val conversations = mutableMapOf<Uuid, Conversation>()
     private val memoryList = mutableListOf<AssistantMemory>()
 
-    private fun provider() = ProviderSetting.OpenAI(
+    private fun provider(contextLength: Int = 32_000) = ProviderSetting.OpenAI(
         id = Uuid.random(),
         name = "test",
-        models = listOf(Model(id = modelId, displayName = "fast")),
+        // 刻意给小窗口：手动页预算按窗口放开（2026-10-16），默认兜底 256K 会一轮装完全库，
+        // 于是「部分覆盖 / 校准表只列本页」这类断言就没有区分度了
+        models = listOf(Model(id = modelId, displayName = "fast", customContextLength = contextLength)),
         apiKey = "sk-test",
         baseUrl = "https://example.invalid/v1",
     )
@@ -123,10 +125,14 @@ class MemoryConsolidatorTest {
     private val agent = FakeAgent()
     private val cursorDAO = FakeReviewCursorDAO()
 
-    private fun consolidator(assistants: List<Assistant>, fastModel: Boolean = true): MemoryConsolidator {
+    private fun consolidator(
+        assistants: List<Assistant>,
+        fastModel: Boolean = true,
+        contextLength: Int = 32_000,
+    ): MemoryConsolidator {
         val settings = Settings(
             assistants = assistants,
-            providers = if (fastModel) listOf(provider()) else emptyList(),
+            providers = if (fastModel) listOf(provider(contextLength)) else emptyList(),
             fastModelId = if (fastModel) modelId else null,
         )
         val repository = MemoryConsolidationRepository(
@@ -207,6 +213,80 @@ class MemoryConsolidatorTest {
             (second?.libraryReviewed ?: 0) > first.libraryReviewed,
         )
         assertTrue("两页看到的记录不能重合", second!!.libraryReviewed > first.libraryReviewed)
+    }
+
+    @Test
+    fun `manual page budget scales with the model window`() {
+        // 用户 2026-10-16 定的一档：上限 512K、输入占 60%，目的是**一轮装完全库**
+        // （真机库 ≈30–58K token，固定 12K 要分 2–3 轮）。
+        assertEquals("200K 窗口 ⇒ 60%（再扣掉新轮次与校准表）", 110_000, manualLibraryBudget(200_000))
+        assertEquals("1M 窗口被 512K 封顶 ⇒ 512K×60% 再扣", 297_200, manualLibraryBudget(1_000_000))
+        assertEquals("窗口大小不同，页预算必须不同", 
+            manualLibraryBudget(200_000) > manualLibraryBudget(32_000), true)
+        // 小窗口：60% 扣完可能为负 ⇒ 兜底，不能让库预算变成 0（那样全量复核会永远空转）
+        assertTrue("小窗口要有兜底", manualLibraryBudget(8_000) >= 4_000)
+        assertTrue("兜底也不许超过窗口本身", manualLibraryBudget(8_000) <= 8_000)
+    }
+
+    @Test
+    fun `a large window reviews the whole library in one round`() = runBlocking {
+        // 「减少轮次」的可证伪形式：窗口放开后，一次手动复核应当走完整个库（isLast）。
+        val assistant = assistant()
+        val conversation = conversation(assistant, 2)
+        conversations[conversation.id] = conversation
+        memoryList += (1..30).map {
+            app.androidrik.rikkahub.data.model.AssistantMemory(
+                id = "mem$it",
+                content = "记忆内容。".repeat(600) + " #$it", // 每条约 3.6K 字符
+                sortKey = it,
+            )
+        }
+        // 用 1M 窗口的模型：手动页预算被 512K 封顶 ⇒ ≈297K ⇒ 36K 字符的库一轮装完
+        val worker = consolidator(listOf(assistant), contextLength = 1_000_000)
+
+        val run = worker.consolidate(assistant.id.toString(), setOf(conversation.id), fullReview = true)
+
+        assertTrue("一次复核要覆盖全库（这就是「减少轮次」）", run?.libraryPageDone == true)
+        assertEquals("全库都被看到", 30, run?.libraryReviewed)
+        assertEquals("走完一轮要从头开始", 0L, cursorDAO.rows[assistant.id.toString()] ?: 0L)
+    }
+
+    @Test
+    fun `automatic runs do not consume the library review progress`() = runBlocking {
+        // 真机日志（21:45:45）抓到的设计错误：
+        //   page=30-30/52 last=false remaining=274 fullReview=false
+        // 自动路径页预算只有 4K，一条大记忆就吃满 ⇒ 每次自动整理只推进一条记录，
+        // 52 条要 52 次付费的自动调用才走完一遍。复核进度必须由手动的 12K 页独占。
+        val assistant = assistant()
+        val conversation = conversation(assistant, 2)
+        conversations[conversation.id] = conversation
+        memoryList += (1..30).map {
+            app.androidrik.rikkahub.data.model.AssistantMemory(
+                id = "mem$it",
+                content = "记忆内容够长以逼出分页。".repeat(400) + " #$it",
+                sortKey = it,
+            )
+        }
+        // **必须另开一个会话**：手动那次已经把 conversation 的水位推过去了，
+        // 复用同一个会话时自动那次会因为「没有新正文」提前 return —— 那样测试是空的
+        // （第一版就是这么写的，证伪时它没变红，才发现）。
+        val other = conversation(assistant, 2)
+        conversations[other.id] = other
+        val worker = consolidator(listOf(assistant))
+        val memoryId = assistant.id.toString()
+
+        // 先手动复核一次，把游标推到中途
+        worker.consolidate(memoryId, setOf(conversation.id), fullReview = true)
+        val afterManual = cursorDAO.rows[memoryId]
+        assertTrue("手动复核要推进游标", (afterManual ?: 0L) > 0L)
+
+        // 再跑自动整理：库快照照给，但游标不许动
+        worker.consolidate(memoryId, setOf(other.id), fullReview = false)
+        assertEquals(
+            "自动整理不许消耗复核进度（否则就是拿付费的自动调用按条爬库）",
+            afterManual,
+            cursorDAO.rows[memoryId],
+        )
     }
 
     @Test
