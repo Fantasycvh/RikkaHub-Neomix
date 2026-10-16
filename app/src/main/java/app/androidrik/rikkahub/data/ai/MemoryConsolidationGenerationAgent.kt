@@ -100,7 +100,7 @@ class MemoryConsolidationGenerationAgent(
         return MemoryConsolidationOutcome(appliedChanges = applied, proposals = proposals)
     }
 
-    /** 三段：库现状（含渐进披露的清单层）→ 校准表 → 新轮次。 */
+    /** 四段：库现状（含渐进披露的清单层）→ 校准表 → **用户拒绝过的改动** → 新轮次。 */
     private fun buildUserMessage(request: MemoryConsolidationRequest): String = buildString {
         appendLine("**Library** (change it only through `memory_tool`)")
         appendLine(request.libraryPrompt)
@@ -108,6 +108,18 @@ class MemoryConsolidationGenerationAgent(
             appendLine()
             appendLine("**Calibration** (id | importance | reads | topic)")
             appendLine(request.calibrationTable)
+        }
+        // 用户拒绝过的改动：**不要重复提出**。
+        // 为什么必须有（2026-10-16 真机发现的缺陷）：同一条 `delete` 被两轮整理**原地重提**——
+        // 上一轮被用户拒绝、下一轮又提一模一样的。整理 agent 看不到「拒绝」这件事，
+        // 于是每轮都重做同样的工作（`proposeOnly` 下还会反复烧模型调用）。
+        if (request.refusedChanges.isNotEmpty()) {
+            appendLine()
+            appendLine(
+                "**Already refused by the user** (do NOT propose these again unless the new turns " +
+                    "give genuinely new evidence; just skip them)"
+            )
+            request.refusedChanges.forEach { appendLine("- $it") }
         }
         appendLine()
         appendLine("**New turns** (not reviewed before)")

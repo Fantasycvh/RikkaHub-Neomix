@@ -140,14 +140,23 @@ fun AssistantMemoryPage(id: String) {
                 scope.launch {
                     val result = vm.applyProposals(ids)
                     toaster.show(
-                        message = if (result.stale > 0) {
-                            context.getString(
+                        message = when {
+                            // blocked 优先：它是**唯一需要用户改动作**的结果
+                            // （stale / applied 都是终态，看一眼就行；
+                            //  blocked 是「你这次勾得不够，把同批的改写一起勾上就能删」）
+                            result.blocked > 0 -> context.getString(
+                                R.string.assistant_page_memory_consolidation_applied_blocked,
+                                result.applied,
+                                result.blocked,
+                            )
+
+                            result.stale > 0 -> context.getString(
                                 R.string.assistant_page_memory_consolidation_applied_stale,
                                 result.applied,
                                 result.stale,
                             )
-                        } else {
-                            context.getString(
+
+                            else -> context.getString(
                                 R.string.assistant_page_memory_consolidation_applied,
                                 result.applied,
                             )
@@ -661,6 +670,24 @@ private fun AssistantMemoryContent(
                             )
                             lastRun?.error?.let { error ->
                                 Text(text = error, style = MaterialTheme.typography.bodySmall)
+                            }
+                            // 闸门状态：必须说出来。静默跳过会让用户以为功能坏了，
+                            // 而且这句话本身就是**行动指令**（处理掉建议，自动整理就恢复）。
+                            if (consolidationStatus.waitingForReview) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.assistant_page_memory_consolidation_waiting_review
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.assistant_page_memory_consolidation_waiting_review_desc
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                             if (suggestions.isNotEmpty()) {
                                 Text(

@@ -132,6 +132,9 @@
   <string name="assistant_page_memory_consolidation_range_desc">По умолчанию упорядочивается только содержимое новее момента включения. Выбор «Вся история» охватывает и сказанное раньше. «Упорядочить сейчас» всегда обрабатывает только ещё не упорядоченные реплики.</string>
   <string name="assistant_page_memory_consolidation_range_new">С этого момента</string>
   <string name="assistant_page_memory_consolidation_range_all">Вся история</string>
+  <string name="assistant_page_memory_consolidation_waiting_review">Авто-упорядочивание приостановлено: сначала обработайте предложения</string>
+  <string name="assistant_page_memory_consolidation_applied_blocked">Применено: %1$d. Пропущено удалений: %2$d (отметьте и правки из той же партии).</string>
+  <string name="assistant_page_memory_consolidation_waiting_review_desc">Есть необработанные предложения — авто-упорядочивание ждёт, пока вы их примените или отклоните.</string>
   <string name="assistant_page_memory_consolidation_apply">Применить %1$d</string>
   <string name="assistant_page_memory_consolidation_reject">Игнорировать</string>
   <string name="assistant_page_memory_consolidation_confirm_title">Применить %1$d предложений?</string>

@@ -147,16 +147,26 @@ data class MemoryConsolidationStatus(
     val running: Boolean = false,
     val lastRun: MemoryConsolidationRun? = null,
     /**
-     * **最近一次有产出的建议**（决策 B：只在进程内，不落库、不一键应用）。
+     * **最近一次有产出的建议**（落库后的内存镜像；真源是 `memory_proposal` 表）。
      *
      * 为什么不直接用 `lastRun.proposals`：随后任何一次「什么都没改」的整理都会把它冲掉。
      * 真机第一次观测就撞上了——自动整理提出 2 条建议，用户 24 秒后点了「整理一下」（空跑），
      * 建议列表当场变空，那两条再也没机会被看到。所以建议要比 `lastRun` 更「黏」：
-     * **只有下一次真的又提出建议才替换它**；进程重启即失（这是决策 B 接受的范围）。
+     * **只有下一次真的又提出建议才替换它**。
+     *
+     * **2026-10-16 起它不再是唯一副本**：建议已落库（`memory_proposal`），进程重启后由
+     * [refreshProposals] 从库里恢复，本字段退化成「当前界面要看的那份」。
      */
     val suggestions: List<MemoryConsolidationProposal> = emptyList(),
     /** 上面那批建议产生的时间：界面要说明它们来自哪一轮，免得被当成「现在的库」 */
     val suggestionsAt: Long = 0L,
+    /**
+     * 自动整理**因为「还有没处理的建议」而暂停**（见 `runAutomatically` 的两条理由）。
+     *
+     * 必须暴露成状态而不是静默跳过：静默会让用户以为功能坏了；而且它就是**给用户的行动指令**——
+     * 「去看一眼那些建议，处理掉，自动整理就恢复」。手动「整理一下」不受它约束。
+     */
+    val waitingForReview: Boolean = false,
 )
 
 /**
@@ -306,6 +316,8 @@ class MemoryConsolidationScheduler(
             it.copy(
                 suggestions = pending,
                 suggestionsAt = pending.maxOfOrNull { proposal -> proposal.createdAt } ?: it.suggestionsAt,
+                // 待办清空 = 那道自动整理的闸门自然打开
+                waitingForReview = pending.isNotEmpty() && it.waitingForReview,
             )
         }
     }
@@ -318,6 +330,7 @@ class MemoryConsolidationScheduler(
         val result = worker.applyProposals(memoryId, ids)
         // 应用会消耗掉 pending ⇒ 即使结果为空也要重读（该清空就得清空）
         refreshProposals(memoryId, keepIfEmpty = false)
+        resumeAfterReview(memoryId)
         return result
     }
 
@@ -325,7 +338,20 @@ class MemoryConsolidationScheduler(
     suspend fun rejectProposals(memoryId: String, ids: Set<Long>): Int {
         val count = worker.rejectProposals(memoryId, ids)
         refreshProposals(memoryId, keepIfEmpty = false)
+        resumeAfterReview(memoryId)
         return count
+    }
+
+    /**
+     * 用户处理过建议之后：把闸门状态清掉，并**立刻重新看一次还有没有活要干**。
+     *
+     * 为什么要主动重扫而不是等下一次轮末：闸门期间攒下的新轮次一直在等，而用户刚处理完建议
+     * 正是最可能希望它接着干的时刻（否则要等到下一次对话结束才有机会）。
+     */
+    private suspend fun resumeAfterReview(memoryId: String) {
+        if (hasUnhandledProposals(memoryId)) return
+        updateStatus(memoryId) { it.copy(waitingForReview = false) }
+        runAutomatically(memoryId)
     }
 
     /** 一轮对话结束：空闲一段时间后整理，攒够轮数就不再等 */
@@ -408,8 +434,26 @@ class MemoryConsolidationScheduler(
 
     private suspend fun runAutomatically(memoryId: String) {
         cancelTimer(memoryId)
+        // **有未处理的建议就先别自动整理**（2026-10-16 真机后加的闸门）。
+        //
+        // 两条理由，任一都足够：
+        // ① **产出会覆盖待办**：`savePending` 是替换语义（旧的 pending 让位给新一轮），
+        //    所以在还有没看过的建议时跑自动整理，等于**把用户还没看的建议冲掉**。
+        // ② **钱**：`proposeOnly` 是默认行为（`memoryModifyApproval` 默认 true），此时自动整理**必然**
+        //    产出建议 ⇒ 必然命中 ①。真机实测就是每轮重做同样的工作、重复计费
+        //    （同一条 `delete` 被两轮整理重复提出）。
+        //
+        // 手动 `organize` **不受此限**：用户显式点击即授权（他会看到新的建议替换旧的——那是他的选择）。
+        if (hasUnhandledProposals(memoryId)) {
+            updateStatus(memoryId) { it.copy(waitingForReview = true) }
+            return
+        }
         run(memoryId, fullReview = false)?.let { _automaticRuns.emit(it) }
     }
+
+    /** 该库还有没有**没被处理过**的建议（闸门与状态共用同一判据，避免两处各判一套） */
+    private suspend fun hasUnhandledProposals(memoryId: String): Boolean =
+        runCatching { worker.pendingProposals(memoryId).isNotEmpty() }.getOrDefault(false)
 
     /** 整理 [memoryId] 下所有待整理的对话；没得做返回 null */
     private suspend fun run(memoryId: String, fullReview: Boolean): MemoryConsolidationRun? =

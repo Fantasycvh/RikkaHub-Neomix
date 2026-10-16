@@ -126,6 +126,9 @@ class MemoryConsolidator(
                 model = model,
                 memoryId = memoryId,
                 libraryPrompt = buildMemoryDataPrompt(library, DEFAULT_LIBRARY_TOKENS, now()),
+                // 用户拒绝过的改动：不喂进去，模型下一轮会原地重提同一条
+                // （真机实测：同一条 `delete` 被两轮整理重复提出）
+                refusedChanges = refusedChangeLines(proposals.recentlyRejected(memoryId)),
                 calibrationTable = buildMemoryCalibrationTable(library),
                 transcript = transcript.text,
                 maxSteps = if (fullReview) MAX_MANUAL_STEPS else MAX_AUTO_STEPS,

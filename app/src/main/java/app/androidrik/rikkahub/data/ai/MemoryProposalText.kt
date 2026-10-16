@@ -55,3 +55,19 @@ fun proposeChangeSummary(
         else -> "[${proposal.action}] ${preview(proposal.content)}"
     }
 }
+
+/**
+ * 把「用户已拒绝的建议」渲染成给模型看的提示行（纯函数，好单测）。
+ *
+ * 输出刻意**只带动作与目标**、内容只给短摘要：这几行的作用是让模型**认得出自己上一轮提过什么**，
+ * 而不是让它重新审阅那些内容（内容该由被拒记录本身保留）。
+ */
+fun refusedChangeLines(
+    refused: List<MemoryConsolidationProposal>,
+    maxContent: Int = 60,
+): List<String> = refused.map { proposal ->
+    val flat = proposal.content.replace('\n', ' ').trim()
+    val preview = if (flat.length > maxContent) flat.take(maxContent) + "…" else flat
+    val target = proposal.targetId?.let { " $it" }.orEmpty()
+    if (preview.isBlank()) "${proposal.action}$target" else "${proposal.action}$target → $preview"
+}

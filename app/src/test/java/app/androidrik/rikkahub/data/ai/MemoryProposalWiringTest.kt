@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.ai
 
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -73,7 +74,67 @@ class MemoryProposalWiringTest {
         assertTrue(line.endsWith("…"))
     }
 
+    @Test
+    fun `refused changes are rendered as short action lines`() {
+        val lines = refusedChangeLines(
+            listOf(
+                MemoryConsolidationProposal("delete", targetId = "23f0e8f1"),
+                MemoryConsolidationProposal("edit", targetId = "0d01f604", content = "新内容"),
+            ),
+        )
+        assertEquals(2, lines.size)
+        assertTrue(lines[0].startsWith("delete 23f0e8f1"))
+        assertTrue(lines[1].startsWith("edit 0d01f604"))
+        assertTrue("要带内容摘要，模型才认得出上一轮提过什么", lines[1].contains("新内容"))
+    }
+
+    @Test
+    fun `long refused content is truncated`() {
+        val lines = refusedChangeLines(
+            listOf(MemoryConsolidationProposal("create", content = "字".repeat(200))),
+            maxContent = 30,
+        )
+        assertTrue("这几行是提示不是日志，不能跟库快照抢预算", lines.single().length < 45)
+    }
+
     // ---- 接线守卫 ----
+
+    @Test
+    fun `refused suggestions are fed back into the consolidation prompt`() {
+        // 真机缺陷：同一条 delete 被两轮整理原地重提（上一轮被拒绝、下一轮又提一模一样的）
+        val agent = read("rikkahub/data/ai/MemoryConsolidationGenerationAgent.kt")
+        assertTrue(
+            "整理提示必须包含「用户已拒绝」这一段，否则模型每轮重做同样的工作",
+            agent.contains("request.refusedChanges"),
+        )
+        assertTrue("而且要明说不要再提", agent.contains("Already refused"))
+        val consolidator = read("rikkahub/data/ai/MemoryConsolidator.kt")
+        assertTrue(
+            "拒绝的清单要从存储读出来（只喂 rejected，不喂 stale）",
+            consolidator.contains("proposals.recentlyRejected(memoryId)"),
+        )
+    }
+
+    @Test
+    fun `automatic tidy is gated on unhandled suggestions`() {
+        val scheduler = read("rikkahub/data/ai/MemoryConsolidationScheduler.kt")
+        assertTrue(
+            "有未处理建议时不许自动整理（产出会把那些建议冲掉 + 重复计费）",
+            scheduler.contains("if (hasUnhandledProposals(memoryId))"),
+        )
+        assertTrue("闸门状态要暴露出去，不能静默跳过", scheduler.contains("waitingForReview = true"))
+    }
+
+    @Test
+    fun `delete may not be applied without its batch siblings`() {
+        val repo = read("rikkahub/data/repository/MemoryProposalRepository.kt")
+        assertTrue(
+            "判「同批成员有没有被勾选」必须看全量 pending，不能先按勾选过滤",
+            repo.contains("val allPending = proposalDAO.getPending(memoryId)"),
+        )
+        assertTrue("只应用半批时跳过 delete", repo.contains("if (siblingsUnselected && hasDelete)"))
+    }
+
 
     @Test
     fun `scheduler persists proposals and reloads them with ids`() {

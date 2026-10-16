@@ -31,6 +31,14 @@ class MemoryProposalRepositoryTest {
             rows.filter { it.memoryId == memoryId && it.decision == MemoryProposalEntity.DECISION_PENDING }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
 
+        override suspend fun getRecentlyRejected(
+            memoryId: String,
+            limit: Int,
+        ): List<MemoryProposalEntity> =
+            rows.filter { it.memoryId == memoryId && it.decision == MemoryProposalEntity.DECISION_REJECTED }
+                .sortedWith(compareByDescending<MemoryProposalEntity> { it.decidedAt }.thenByDescending { it.id })
+                .take(limit)
+
         override suspend fun memoryIdsWithPending(): List<String> =
             rows.filter { it.decision == MemoryProposalEntity.DECISION_PENDING }
                 .map { it.memoryId }
@@ -208,6 +216,80 @@ class MemoryProposalRepositoryTest {
         val contents = memoryRepository.getMemoriesOfAssistant("store").map { it.content }
         assertTrue("目标还在、内容不该被改", contents.contains("will vanish"))
         assertTrue("也不该凭空删掉不存在的东西", contents.size == 1)
+    }
+
+    // ---- 收窄后的安全不变式（2026-10-16 真机后改正） ----
+
+    @Test
+    fun `applying only the delete of a batch deletes nothing`() = runBlocking {
+        // **这是装机暴露的洞**：一次「合并」是 edit + delete。单独执行那条 delete，
+        // 而它要搬运的内容还在同批那条没被应用的 edit 里 ⇒ 内容凭空消失。
+        val keep = seedMemory("the surviving copy")
+        val retire = seedMemory("the older duplicate")
+        repository.savePending(
+            "store",
+            listOf(
+                proposal("edit", targetId = keep, content = "merged content", batchId = "merge"),
+                proposal("delete", targetId = retire, batchId = "merge"),
+            ),
+        )
+        val deleteRow = repository.pending("store").first { it.action == "delete" }
+
+        val result = repository.apply("store", setOf(deleteRow.id))
+
+        assertEquals("一条都不该被执行", 0, result.applied)
+        assertEquals("那条 delete 计入 blocked", 1, result.blocked)
+        val contents = memoryRepository.getMemoriesOfAssistant("store").map { it.content }
+        assertTrue("目标绝不能被删", contents.contains("the older duplicate"))
+        assertTrue("edit 也没被单独偷偷应用", contents.contains("the surviving copy"))
+        assertTrue(
+            "保持 pending（不消耗决策）——用户把同批的改写一起勾上就能删",
+            repository.pending("store").any { it.id == deleteRow.id },
+        )
+    }
+
+    @Test
+    fun `applying the whole batch performs the merge`() = runBlocking {
+        val keep = seedMemory("the surviving copy")
+        val retire = seedMemory("the older duplicate")
+        repository.savePending(
+            "store",
+            listOf(
+                proposal("edit", targetId = keep, content = "merged content", batchId = "merge"),
+                proposal("delete", targetId = retire, batchId = "merge"),
+            ),
+        )
+        val ids = repository.pending("store").map { it.id }.toSet()
+        val result = repository.apply("store", ids)
+
+        assertEquals(2, result.applied)
+        assertEquals(0, result.blocked)
+        val contents = memoryRepository.getMemoriesOfAssistant("store").map { it.content }
+        assertTrue("改写生效", contents.contains("merged content"))
+        assertTrue("旧的退休了", contents.none { it == "the older duplicate" })
+    }
+
+    @Test
+    fun `applying only the edit of a batch is allowed`() = runBlocking {
+        // 真机上用户想做的正是这个：**采纳改写、先留着旧的那条**（可随时再删）。
+        // edit 单独应用不丢内容，所以必须放行——否则用户会被迫连带删除。
+        val keep = seedMemory("the surviving copy")
+        val retire = seedMemory("the older duplicate")
+        repository.savePending(
+            "store",
+            listOf(
+                proposal("edit", targetId = keep, content = "merged content", batchId = "merge"),
+                proposal("delete", targetId = retire, batchId = "merge"),
+            ),
+        )
+        val editRow = repository.pending("store").first { it.action == "edit" }
+        val result = repository.apply("store", setOf(editRow.id))
+
+        assertEquals(1, result.applied)
+        assertEquals(0, result.blocked)
+        val contents = memoryRepository.getMemoriesOfAssistant("store").map { it.content }
+        assertTrue("改写生效", contents.contains("merged content"))
+        assertTrue("旧的那条还在（用户的意图）", contents.contains("the older duplicate"))
     }
 
     @Test

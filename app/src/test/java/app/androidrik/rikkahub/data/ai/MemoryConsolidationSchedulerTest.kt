@@ -282,6 +282,59 @@ class MemoryConsolidationSchedulerTest {
         )
     }
 
+    // ---- 「有未处理建议就暂停自动整理」这道闸门（2026-10-16 真机后加） ----
+
+    /** 造一批没被处理的建议（真机上它会让自动整理反复重做同样的工作并重复计费） */
+    private fun pendingSuggestion() {
+        worker.storedProposals[memoryId] = mutableListOf(
+            MemoryConsolidationProposal("delete", targetId = "23f0e8f1", id = 1L, batchId = "b"),
+        )
+    }
+
+    @Test
+    fun `unhandled suggestions pause automatic tidy`() = runTest {
+        val scheduler = scheduler()
+        pendingSuggestion()
+        worker.pending[chat.id] = 6 // 攒够轮数也不管用
+
+        scheduler.resumePending()
+        advanceTimeBy(2.minutes + 1.seconds)
+
+        assertTrue("有没看过的建议时不许自动整理（它的产出会把那些建议冲掉）", worker.calls.isEmpty())
+        assertTrue("状态要说出来，静默跳过会被当成功能坏了", scheduler.statusOf(memoryId).first().waitingForReview)
+    }
+
+    @Test
+    fun `handling the suggestions reopens the gate`() = runTest {
+        val scheduler = scheduler()
+        pendingSuggestion()
+        worker.pending[chat.id] = 6
+        scheduler.resumePending()
+        advanceTimeBy(2.minutes + 1.seconds)
+        assertTrue(worker.calls.isEmpty())
+
+        // 用户处理掉（这里用「应用」；拒绝走同一条 resumeAfterReview）
+        scheduler.applyProposals(memoryId, setOf(1L))
+        runCurrent()
+
+        assertFalse("待办清空后闸门要自动打开", scheduler.statusOf(memoryId).first().waitingForReview)
+        assertEquals("而且立刻接着干，不必等下一次轮末", 1, worker.calls.size)
+    }
+
+    @Test
+    fun `manual tidy ignores the pause`() = runTest {
+        // 手动是用户显式点击即授权；新的建议替换旧的也是他的选择
+        val scheduler = scheduler()
+        pendingSuggestion()
+        worker.pending[chat.id] = 3
+
+        scheduler.organize(memoryId)
+        runCurrent()
+
+        assertEquals(1, worker.calls.size)
+        assertTrue("手动整理仍带全库复核", worker.calls.single().fullReview)
+    }
+
     @Test
     fun `an unknown memory store reports the default status`() = runTest {
         val scheduler = scheduler()

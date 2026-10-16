@@ -23,6 +23,13 @@ data class MemoryConsolidationRequest(
     val maxSteps: Int,
     /** 审批开着 ⇒ 只提案不改库（工具回执 `applied:false`） */
     val proposeOnly: Boolean,
+    /**
+     * **用户已经拒绝过的改动**（一行一条，给模型看的）。
+     *
+     * 真机发现的缺陷：同一条 `delete` 被两轮整理原地重提（上一轮被拒绝、下一轮又提一模一样的）。
+     * 整理 agent 看不到「拒绝」这件事，于是每轮重做同样的工作。
+     */
+    val refusedChanges: List<String> = emptyList(),
 )
 
 data class MemoryConsolidationOutcome(

@@ -15,6 +15,17 @@ interface MemoryProposalDAO {
     )
     suspend fun getPending(memoryId: String): List<MemoryProposalEntity>
 
+    /**
+     * 最近**被用户拒绝**的建议（整理提示要据此避免原地重提）。
+     *
+     * 只取 rejected：`stale` 是「前提不成立了」，不是用户的意见，喂给模型反而会误导它。
+     */
+    @Query(
+        "SELECT * FROM memory_proposal WHERE memory_id = :memoryId AND decision = 'rejected' " +
+            "ORDER BY decided_at DESC, id DESC LIMIT :limit"
+    )
+    suspend fun getRecentlyRejected(memoryId: String, limit: Int): List<MemoryProposalEntity>
+
     /** 全部有建议的记忆库（启动时把建议恢复进状态用） */
     @Query("SELECT DISTINCT memory_id FROM memory_proposal WHERE decision = 'pending'")
     suspend fun memoryIdsWithPending(): List<String>

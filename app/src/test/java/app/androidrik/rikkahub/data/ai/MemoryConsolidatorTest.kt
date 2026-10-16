@@ -327,6 +327,12 @@ private class RecordingProposalStore : app.androidrik.rikkahub.data.repository.M
 
     override suspend fun memoryIdsWithPending() = if (rows.isEmpty()) emptyList() else listOf("m")
 
+    /** 被拒绝的建议（本用例给「不原地重提」那条测试用） */
+    val refused = mutableListOf<MemoryConsolidationProposal>()
+
+    override suspend fun recentlyRejected(memoryId: String, limit: Int) =
+        refused.take(limit).toList()
+
     override suspend fun apply(memoryId: String, ids: Set<Long>): app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult {
         applied += memoryId to ids
         rows.removeAll { it.id in ids }

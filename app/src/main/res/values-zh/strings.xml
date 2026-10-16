@@ -134,6 +134,9 @@
   <string name="assistant_page_memory_consolidation_range_desc">默认只整理开启之后的新内容；选「全部历史」会把开启之前的历史也纳入整理（会消耗更多模型额度）。「整理一下」始终只整理还没整理过的轮次。</string>
   <string name="assistant_page_memory_consolidation_range_new">开启之后</string>
   <string name="assistant_page_memory_consolidation_range_all">全部历史</string>
+  <string name="assistant_page_memory_consolidation_waiting_review">自动整理已暂停：请先处理待采纳的建议</string>
+  <string name="assistant_page_memory_consolidation_applied_blocked">已应用 %1$d 条。%2$d 条删除未执行：同批的改写要一起勾选。</string>
+  <string name="assistant_page_memory_consolidation_waiting_review_desc">有未处理的建议 —— 自动整理会等你采纳或忽略它们之后再继续。</string>
   <string name="assistant_page_memory_consolidation_apply">采纳 %1$d 条</string>
   <string name="assistant_page_memory_consolidation_reject">忽略</string>
   <string name="assistant_page_memory_consolidation_confirm_title">确认采纳 %1$d 条建议？</string>

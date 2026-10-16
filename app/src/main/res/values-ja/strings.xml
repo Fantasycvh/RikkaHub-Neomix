@@ -132,6 +132,9 @@
   <string name="assistant_page_memory_consolidation_range_desc">既定ではオンにした時点より新しい内容だけを整理します。「すべての履歴」を選ぶと、それ以前の内容も対象になります（モデルの利用枠をより多く消費します）。「今すぐ整理」は未整理のターンだけを処理します。</string>
   <string name="assistant_page_memory_consolidation_range_new">これから</string>
   <string name="assistant_page_memory_consolidation_range_all">すべての履歴</string>
+  <string name="assistant_page_memory_consolidation_waiting_review">自動整理は停止中：保留中の提案を先に処理してください</string>
+  <string name="assistant_page_memory_consolidation_applied_blocked">%1$d 件を適用しました。%2$d 件の削除は実行していません（同じバッチの書き換えも選択してください）。</string>
+  <string name="assistant_page_memory_consolidation_waiting_review_desc">未処理の提案があります。適用または無視するまで自動整理は待機します。</string>
   <string name="assistant_page_memory_consolidation_apply">%1$d 件を採用</string>
   <string name="assistant_page_memory_consolidation_reject">無視</string>
   <string name="assistant_page_memory_consolidation_confirm_title">%1$d 件の提案を採用しますか？</string>
