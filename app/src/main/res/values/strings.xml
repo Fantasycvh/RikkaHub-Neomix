@@ -132,6 +132,7 @@
   <string name="assistant_page_memory_consolidation_waiting_review">Automatic tidy is paused: review the pending suggestions</string>
   <string name="assistant_page_memory_consolidation_applied_blocked">Applied %1$d. %2$d deletion(s) skipped: tick the rewrites from the same batch too.</string>
   <string name="assistant_page_memory_consolidation_waiting_review_desc">There are unhandled suggestions — automatic tidy waits until you apply or ignore them.</string>
+  <string name="assistant_page_memory_consolidation_library_progress">Full-library review: %1$d/%2$d records done. Press again to continue.</string>
   <string name="assistant_page_memory_consolidation_apply">Apply %1$d</string>
   <string name="assistant_page_memory_consolidation_reject">Ignore</string>
   <string name="assistant_page_memory_consolidation_confirm_title">Apply %1$d suggestions?</string>

@@ -135,6 +135,7 @@
   <string name="assistant_page_memory_consolidation_waiting_review">自動整理は停止中：保留中の提案を先に処理してください</string>
   <string name="assistant_page_memory_consolidation_applied_blocked">%1$d 件を適用しました。%2$d 件の削除は実行していません（同じバッチの書き換えも選択してください）。</string>
   <string name="assistant_page_memory_consolidation_waiting_review_desc">未処理の提案があります。適用または無視するまで自動整理は待機します。</string>
+  <string name="assistant_page_memory_consolidation_library_progress">全ライブラリ複核：%1$d/%2$d 件を確認済み。もう一度押すと続きます。</string>
   <string name="assistant_page_memory_consolidation_apply">%1$d 件を採用</string>
   <string name="assistant_page_memory_consolidation_reject">無視</string>
   <string name="assistant_page_memory_consolidation_confirm_title">%1$d 件の提案を採用しますか？</string>

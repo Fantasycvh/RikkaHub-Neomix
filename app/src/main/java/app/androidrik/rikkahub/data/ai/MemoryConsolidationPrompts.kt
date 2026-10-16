@@ -6,6 +6,9 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.utils.estimateTokens
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
@@ -21,6 +24,115 @@ internal const val DEFAULT_TRANSCRIPT_TOKENS = 6_000
  * 上下文越短越快越省钱；看不清的库靠 `memory_tool action=read` 按需取（与渐进披露同一机制）。
  */
 internal const val DEFAULT_LIBRARY_TOKENS = 4_000
+
+/**
+ * 手动「全量复核」（fullReview）一页的预算（token）。
+ *
+ * 比自动路径大 3 倍：用户显式点击「整理一下」是要**看完整个库**，所以给他更大的页；
+ * 但仍**不是无上限**——真机库 49 条 ≈58,489 token，一次塞不下（也不该塞：一轮多步调用会把
+ * 这段上下文重复发很多次）。**全量靠跨轮次分页实现**，见 [pageOfLibrary]。
+ */
+internal const val PAGE_LIBRARY_TOKENS = 12_000
+
+/**
+ * 库快照的**一页**（全量复核的推进单位）。
+ *
+ * 为什么引入「页」这个概念：整理侧的快照预算只有 4K（手动 12K），而真机库有 ≈58K token
+ * ⇒ 一次看不完；更糟的是原来的选取位置**每轮都一样**，于是反复「整理一下」永远看同一批、
+ * 剩下的永不见天日。分页 + 游标让「全量」变成**可推进、可断点续跑**的事。
+ */
+internal data class MemoryLibraryPage(
+    /** 本页要下发的记录（**按 `sortKey` 升序**：一页一页往前走，不跳） */
+    val records: List<AssistantMemory>,
+    /** 本页走完后水位推进到哪；[isLast] 时为 0（下一轮从头开始） */
+    val nextCursor: Long,
+    val isLast: Boolean,
+    /** 本页之前已经复核过多少条（给模型与界面一个「走到哪了」） */
+    val reviewedBefore: Int,
+    /** 库总条数 */
+    val total: Int,
+) {
+    val from: Int get() = if (total == 0) 0 else reviewedBefore + 1
+    val to: Int get() = reviewedBefore + records.size
+}
+
+/**
+ * 从 [memories] 里取 [cursor] 之后的一页（**纯函数**，好单测）。
+ *
+ * 三条必须守住的规则：
+ *
+ * 1. **至少给一条**：`sortKey > cursor` 还有记录时，本页**绝不能为空**——否则水位不推进、
+ *    下一轮还是同一页，变成死循环。真机上确实存在「单条就超过整页预算」的记录
+ *    （`0d01f604` ≈5,151 token），所以首条**豁免预算**（与 `selectMemoriesForPrompt` 同款处理）。
+ * 2. **按 `sortKey` 升序**推进，不按分数：全量复核要的是**不重不漏**，不是「这轮最相关的」。
+ * 3. **[cursor] 已到末尾（或已失效）⇒ 从头开始**：库会变，旧的「已复核」不能当永久结论。
+ */
+internal fun pageOfLibrary(
+    memories: List<AssistantMemory>,
+    cursor: Long,
+    budgetTokens: Int = PAGE_LIBRARY_TOKENS,
+): MemoryLibraryPage {
+    if (memories.isEmpty()) {
+        return MemoryLibraryPage(emptyList(), 0L, isLast = true, reviewedBefore = 0, total = 0)
+    }
+    val ordered = memories.sortedBy { it.sortKey }
+    val fromStart = cursor <= 0L || ordered.none { it.sortKey > cursor }
+    val remaining = if (fromStart) ordered else ordered.filter { it.sortKey > cursor }
+    val reviewedBefore = ordered.size - remaining.size
+
+    val page = mutableListOf<AssistantMemory>()
+    var used = 0
+    for (memory in remaining) {
+        val cost = estimateTokens(memory.content)
+        // 首条豁免：否则一条超预算的长记忆会把水位永远卡住
+        if (page.isNotEmpty() && used + cost > budgetTokens) break
+        page += memory
+        used += cost
+    }
+    val consumedAll = page.size == remaining.size
+    return MemoryLibraryPage(
+        records = page,
+        nextCursor = if (consumedAll) 0L else page.last().sortKey.toLong(),
+        isLast = consumedAll,
+        reviewedBefore = reviewedBefore,
+        total = ordered.size,
+    )
+}
+
+/**
+ * 把一页渲染成整理 agent 的库现状块。
+ *
+ * 与 [buildMemoryDataPrompt] 的区别是**这一页全部给全文**：那条路会再分「全文层 + 清单层」，
+ * 而清单层只给 40 字摘要 ⇒ 模型看得到一个 id 却没有正文 ⇒ **盲改**（真机实证：同一条 edit
+ * 被逐字节重复提出）。全量复核要么看到全文，要么就不该看到那条的 id。
+ */
+internal fun buildLibraryPagePrompt(page: MemoryLibraryPage): String = buildString {
+    if (page.total == 0) {
+        appendLine("**Library** is empty.")
+        return@buildString
+    }
+    appendLine(
+        "**Library** page ${page.from}–${page.to} of ${page.total} " +
+            "(updated only through `memory_tool`; only these records are listed this round)"
+    )
+    if (!page.isLast) {
+        appendLine(
+            "The rest of the library is **not shown this round** and arrives in a later run — " +
+                "do not guess about records you cannot see."
+        )
+    }
+    val json = buildJsonArray {
+        page.records.forEach { memory ->
+            add(
+                buildJsonObject {
+                    put("id", memory.id)
+                    put("content", memory.content)
+                },
+            )
+        }
+    }
+    append(app.androidrik.rikkahub.utils.JsonInstantPretty.encodeToString(json))
+}
 
 /**
  * 整理 agent 的系统提示。

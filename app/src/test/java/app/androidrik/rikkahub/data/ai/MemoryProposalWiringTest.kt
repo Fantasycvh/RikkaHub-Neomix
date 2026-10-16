@@ -116,6 +116,33 @@ class MemoryProposalWiringTest {
     }
 
     @Test
+    fun `the library is reviewed page by page with a cursor`() {
+        // 「全量整理」= 跨轮次分页。没有游标时每轮都从同一位置取 ⇒ 剩下的永不见天日（设计稿 §7）
+        val consolidator = read("rikkahub/data/ai/MemoryConsolidator.kt")
+        assertTrue("库快照要按页取", consolidator.contains("pageOfLibrary("))
+        assertTrue("水位要推进（且只在成功之后——异常时走不到这行）",
+            consolidator.contains("repository.setReviewCursor(memoryId, page.nextCursor)"))
+        assertTrue("读水位", consolidator.contains("repository.reviewCursor(memoryId)"))
+        assertTrue(
+            "校准表只列本页（列了读不到正文的 id 就是盲改的来源）",
+            consolidator.contains("buildMemoryCalibrationTable(page.records)"),
+        )
+        val db = read("rikkahub/data/db/AppDatabase.kt")
+        assertTrue("需要游标表 + 迁移", db.contains("MemoryReviewCursorEntity::class") && db.contains("to = 40"))
+    }
+
+    @Test
+    fun `the page prompt never lets the model guess unseen records`() {
+        val prompts = read("rikkahub/data/ai/MemoryConsolidationPrompts.kt")
+        assertTrue("本页给全文（不是 40 字摘要）", prompts.contains("buildLibraryPagePrompt"))
+        assertTrue("要明确阻止对看不到的记录下判断", prompts.contains("do not guess"))
+        assertTrue(
+            "有剩余记录时本页不许为空，否则水位永远卡住",
+            prompts.contains("首条豁免"),
+        )
+    }
+
+    @Test
     fun `automatic tidy is gated on unhandled suggestions`() {
         val scheduler = read("rikkahub/data/ai/MemoryConsolidationScheduler.kt")
         assertTrue(

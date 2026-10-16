@@ -121,6 +121,7 @@ class MemoryConsolidatorTest {
     }
 
     private val agent = FakeAgent()
+    private val cursorDAO = FakeReviewCursorDAO()
 
     private fun consolidator(assistants: List<Assistant>, fastModel: Boolean = true): MemoryConsolidator {
         val settings = Settings(
@@ -133,6 +134,7 @@ class MemoryConsolidatorTest {
             assistants = { settings.assistants },
             conversationLoader = { id -> conversations[id] },
             limitPerRun = 4,
+            reviewCursorDAO = cursorDAO,
         )
         return MemoryConsolidator(
             repository = repository,
@@ -173,6 +175,65 @@ class MemoryConsolidatorTest {
         assertFalse("两个开关都关 ⇒ 正常改库", agent.requests.single().proposeOnly)
         assertTrue("正文里要带上新轮次", agent.requests.single().transcript.contains("第 3 小时说的话"))
         assertEquals(now, run?.finishedAt)
+    }
+
+    @Test
+    fun `manual review walks the library page by page and advances the cursor`() = runBlocking {
+        // 这是「全量整理」的核心：库装不进一次请求，所以必须**跨轮次推进**。
+        // 以前没有游标 ⇒ 每次「整理一下」都从同一位置取，剩下的永远看不到。
+        val assistant = assistant()
+        val conversation = conversation(assistant, 2)
+        conversations[conversation.id] = conversation
+        // 造 30 条够大的记忆，逼出多页
+        memoryList += (1..30).map {
+            app.androidrik.rikkahub.data.model.AssistantMemory(
+                id = "mem$it",
+                content = "这是一条足够长的记忆内容，占掉一些预算。".repeat(400) + " #$it",
+                sortKey = it,
+            )
+        }
+        val worker = consolidator(listOf(assistant))
+        val memoryId = assistant.id.toString()
+
+        val first = worker.consolidate(memoryId, setOf(conversation.id), fullReview = true)
+        assertTrue("必须走出第一页以上（否则谈不上分页）", (first?.libraryReviewed ?: 0) > 0)
+        val cursorAfterFirst = cursorDAO.rows[memoryId]
+        assertTrue("水位必须推进", (cursorAfterFirst ?: 0L) > 0L)
+        assertFalse(first!!.libraryPageDone)
+
+        val second = worker.consolidate(memoryId, setOf(conversation.id), fullReview = true)
+        assertTrue(
+            "第二页要从第一页之后开始，不能原地重复",
+            (second?.libraryReviewed ?: 0) > first.libraryReviewed,
+        )
+        assertTrue("两页看到的记录不能重合", second!!.libraryReviewed > first.libraryReviewed)
+    }
+
+    @Test
+    fun `the calibration table only lists records visible this round`() = runBlocking {
+        // 真机缺陷：校准表列**全库**（含读不到正文的 id）⇒ 模型「知道 id 却看不到内容」⇒ 盲改
+        // （实证：同一条 edit 被逐字节重复提出）。看不到的记录不该出现在它面前。
+        val assistant = assistant()
+        val conversation = conversation(assistant, 2)
+        conversations[conversation.id] = conversation
+        memoryList += (1..30).map {
+            app.androidrik.rikkahub.data.model.AssistantMemory(
+                id = "mem$it",
+                content = "记忆内容够长以逼出分页。".repeat(400) + " #$it",
+                sortKey = it,
+            )
+        }
+        val worker = consolidator(listOf(assistant))
+
+        worker.consolidate(assistant.id.toString(), setOf(conversation.id), fullReview = true)
+
+        val request = agent.requests.single()
+        val listedIds = Regex("mem[0-9]+").findAll(request.calibrationTable).map { it.value }.toSet()
+        assertTrue("校准表非空", listedIds.isNotEmpty())
+        assertTrue(
+            "校准表不许列出读不到正文的记录（本页 30 条里只应出现一部分）：${listedIds.size}",
+            listedIds.size < 30,
+        )
     }
 
     @Test
@@ -345,4 +406,106 @@ private class RecordingProposalStore : app.androidrik.rikkahub.data.repository.M
         return ids.size
     }
 }
+
+/**
+ * 内存版复核游标（真实现是 Room 表 `memory_review_cursor`）。
+ *
+ * 提成顶层 `internal` 而不是 file-private：用例要断言「跑完一轮之后水位推到哪了」。
+ */
+internal class FakeReviewCursorDAO : app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO {
+    val rows = mutableMapOf<String, Long>()
+    override suspend fun getCursor(memoryId: String): Long? = rows[memoryId]
+    override suspend fun upsert(entry: app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity) {
+        rows[entry.memoryId] = entry.cursor
+    }
+    override suspend fun clear(memoryId: String) { rows.remove(memoryId) }
+}
+}
+
+/**
+ * **全量复核的分页**（`docs/design/design-memory-retrieval-and-consolidation.md` §7）。
+ *
+ * 起因：库有 ≈58K token 而一页装不下，而原来的选取位置**每轮都一样** ⇒ 反复「整理一下」
+ * 永远看同一批、剩下的永不见天日。「全量」只能靠**跨轮次推进的页**实现。
+ */
+class MemoryLibraryPagingTest {
+
+    private fun memory(sortKey: Int, content: String) =
+        app.androidrik.rikkahub.data.model.AssistantMemory(
+            id = "id$sortKey",
+            content = content,
+            sortKey = sortKey,
+        )
+
+    private val library = (1..20).map { memory(it, "记忆内容 $it") }
+
+    @Test
+    fun `successive pages cover the whole library without overlap or loss`() {
+        val seen = mutableSetOf<String>()
+        var cursor = 0L
+        var rounds = 0
+        while (true) {
+            val page = pageOfLibrary(library, cursor, budgetTokens = 20)
+            assertTrue("有剩余记录时本页绝不能为空（否则水位卡死）", page.records.isNotEmpty())
+            page.records.forEach {
+                assertTrue("同一个 id 不能被复核两次：${it.id}", seen.add(it.id))
+            }
+            rounds++
+            if (page.isLast) {
+                assertEquals("走完一轮要从头开始", 0L, page.nextCursor)
+                break
+            }
+            cursor = page.nextCursor
+            assertTrue("轮数不该爆掉", rounds < 100)
+        }
+        assertEquals("20 条必须全部被看到", library.map { it.id }.toSet(), seen)
+    }
+
+    @Test
+    fun `a single oversized record still yields a page`() {
+        // 真机上 0d01f604 ≈5,151 token > 一整页预算。若它能把水位卡住，「全量」永远走不完。
+        val huge = memory(1, "字".repeat(20_000))
+        val page = pageOfLibrary(listOf(huge, memory(2, "小")), cursor = 0L, budgetTokens = 100)
+        assertEquals("首条豁免预算，必须给出且只给这一条", listOf(huge.id), page.records.map { it.id })
+        assertEquals("水位要推到它，否则下一轮还是它", 1L, page.nextCursor)
+        assertFalse(page.isLast)
+    }
+
+    @Test
+    fun `the page reports where it sits in the library`() {
+        val first = pageOfLibrary(library, cursor = 0L, budgetTokens = 20)
+        assertEquals(1, first.from)
+        assertEquals(first.records.size, first.to)
+        assertEquals(20, first.total)
+
+        val second = pageOfLibrary(library, cursor = first.nextCursor, budgetTokens = 20)
+        assertEquals("第二页要从第一页之后开始", first.records.size + 1, second.from)
+        assertEquals(first.records.size, second.reviewedBefore)
+    }
+
+    @Test
+    fun `a stale cursor restarts from the beginning`() {
+        // 库会变（记录被删），旧的「已复核到 sortKey=999」不能变成永久跳过
+        val page = pageOfLibrary(library, cursor = 999L, budgetTokens = 20)
+        assertTrue(page.records.isNotEmpty())
+        assertEquals("id1", page.records.first().id)
+    }
+
+    @Test
+    fun `an empty library is one empty last page`() {
+        val page = pageOfLibrary(emptyList(), cursor = 0L)
+        assertTrue(page.records.isEmpty())
+        assertTrue(page.isLast)
+        assertEquals(0L, page.nextCursor)
+        assertEquals(0, page.total)
+    }
+
+    @Test
+    fun `the page prompt says which slice it is and forbids guessing`() {
+        val page = pageOfLibrary(library, cursor = 0L, budgetTokens = 20)
+        val prompt = buildLibraryPagePrompt(page)
+        assertTrue("要说出这是第几页到第几页", prompt.contains("page ${page.from}–${page.to} of 20"))
+        assertTrue("没给全时必须阻止它猜别的记录", prompt.contains("do not guess"))
+        assertTrue("本页记录要给全文", prompt.contains("记忆内容 1"))
+    }
 }

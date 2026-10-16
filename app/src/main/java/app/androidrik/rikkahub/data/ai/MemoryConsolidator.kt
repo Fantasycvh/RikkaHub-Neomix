@@ -115,21 +115,33 @@ class MemoryConsolidator(
         }
 
         val library = memories(memoryId)
+        // **库快照按页下发**（`docs/design/.../design-memory-retrieval-and-consolidation.md` §7）。
+        // 真机库 49 条 ≈58,489 token，而快照预算是 4K（手动一页 12K）⇒ 一次看不完；
+        // 分页 + 游标是「全量复核」唯一的做法：每轮推进一页，走完一轮从头再来。
+        val page = pageOfLibrary(
+            memories = library,
+            cursor = repository.reviewCursor(memoryId),
+            budgetTokens = if (fullReview) PAGE_LIBRARY_TOKENS else DEFAULT_LIBRARY_TOKENS,
+        )
         Log.i(
             TAG,
             "consolidate($memoryId): ${conversations.size} conversation(s), " +
-                "${library.size} record(s), remaining=${transcript.remainingTurns}, fullReview=$fullReview",
+                "${library.size} record(s), page=${page.from}-${page.to}/${page.total} " +
+                "last=${page.isLast} remaining=${transcript.remainingTurns} fullReview=$fullReview",
         )
         val outcome = agent.run(
             MemoryConsolidationRequest(
                 settings = settings,
                 model = model,
                 memoryId = memoryId,
-                libraryPrompt = buildMemoryDataPrompt(library, DEFAULT_LIBRARY_TOKENS, now()),
+                libraryPrompt = buildLibraryPagePrompt(page),
                 // 用户拒绝过的改动：不喂进去，模型下一轮会原地重提同一条
                 // （真机实测：同一条 `delete` 被两轮整理重复提出）
                 refusedChanges = refusedChangeLines(proposals.recentlyRejected(memoryId)),
-                calibrationTable = buildMemoryCalibrationTable(library),
+                // **校准表只列本页**：它以前列全库（含读不到正文的 id）⇒ 模型「知道 id 却看不到内容」
+                // ⇒ 盲改（真机实证：同一条 edit 被逐字节重复提出）。看不到的记录就**不该出现在它面前**；
+                // 确实要看，走 `memory_tool action=search` / `read`（那两条路本来就在）。
+                calibrationTable = buildMemoryCalibrationTable(page.records),
                 transcript = transcript.text,
                 maxSteps = if (fullReview) MAX_MANUAL_STEPS else MAX_AUTO_STEPS,
                 // 审批开着（任一相关开关）⇒ 整轮只提案：后台没有用户可等，而"直接拒绝"会丢掉
@@ -140,6 +152,9 @@ class MemoryConsolidator(
 
         // 只推进**真正带进模型**的水位；agent 抛异常时根本走不到这里（内容不丢）
         transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark) }
+        // 全库复核的水位同样只在**成功之后**推进（agent 抛异常时走不到这里）：
+        // 这样「跨轮次全量复核」是可断点续跑的，不会因为一次失败而跳过一页。
+        repository.setReviewCursor(memoryId, page.nextCursor)
         return MemoryConsolidationRun(
             memoryId = memoryId,
             finishedAt = now(),
@@ -147,6 +162,9 @@ class MemoryConsolidator(
             fullReview = fullReview,
             changedMemories = outcome.appliedChanges,
             proposals = outcome.proposals,
+            libraryReviewed = page.to,
+            libraryTotal = page.total,
+            libraryPageDone = page.isLast,
         )
     }
 }

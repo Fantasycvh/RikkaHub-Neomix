@@ -6,6 +6,8 @@ import app.androidrik.rikkahub.data.ai.memoryConsolidationEnabled
 import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.ai.unconsolidatedTurns
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO
+import app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryConsolidationEntity
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
@@ -29,10 +31,30 @@ class MemoryConsolidationRepository(
     private val assistants: suspend () -> List<Assistant>,
     /** 载入完整会话（数轮次要消息时间）：生产接 `ConversationRepository::getConversationById` */
     private val conversationLoader: suspend (Uuid) -> Conversation?,
+    /**
+     * 「全量复核」游标（每记忆库一行）。**为什么在这里而不是调度器**：它是**整理进度**，
+     * 与 `memory_consolidation` 的每会话水位是同一类东西；调度器不许认识存储形态。
+     */
+    private val reviewCursorDAO: MemoryReviewCursorDAO,
     private val limitPerRun: Int = DEFAULT_LIMIT_PER_RUN,
     /** 判定「自动整理间隔」用的时钟；测试注入固定时刻，生产用真实时间 */
     private val now: () -> Long = System::currentTimeMillis,
 ) {
+    /**
+     * 该记忆库的**全库复核水位**（已复核到的 `sortKey`，含）。无行 = 0 = 从头。
+     *
+     * 见 `docs/design/design-memory-retrieval-and-consolidation.md` §7：没有它，
+     * 每次「整理一下」都从同一位置取一页 ⇒ 预算之外的那 3/4 永远不看。
+     */
+    suspend fun reviewCursor(memoryId: String): Long =
+        reviewCursorDAO.getCursor(memoryId) ?: 0L
+
+    /** 推进复核水位；[cursor] 传 0 表示一轮走完、下次从头开始 */
+    suspend fun setReviewCursor(memoryId: String, cursor: Long) =
+        reviewCursorDAO.upsert(
+            MemoryReviewCursorEntity(memoryId = memoryId, cursor = cursor, updatedAt = now()),
+        )
+
     companion object {
         /**
          * 一次整理最多带走多少个会话（契约里「一次能处理的数量」由这里定）。

@@ -689,6 +689,21 @@ private fun AssistantMemoryContent(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            // 全库复核的进度：库有 58K token 而一页装不下（设计稿 §7），
+                            // 「全量」是跨多次推进的 —— 不把进度说出来，用户按十次也看不出在往前走。
+                            lastRun?.takeIf { it.fullReview && it.libraryTotal > 0 }?.let { run ->
+                                if (!run.libraryPageDone) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.assistant_page_memory_consolidation_library_progress,
+                                            run.libraryReviewed,
+                                            run.libraryTotal,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                             if (suggestions.isNotEmpty()) {
                                 Text(
                                     text = stringResource(

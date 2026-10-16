@@ -137,6 +137,7 @@
   <string name="assistant_page_memory_consolidation_waiting_review">自動整理已暫停：請先處理待採納的建議</string>
   <string name="assistant_page_memory_consolidation_applied_blocked">已套用 %1$d 條。%2$d 條刪除未執行：同批的改寫要一起勾選。</string>
   <string name="assistant_page_memory_consolidation_waiting_review_desc">有未處理的建議 —— 自動整理會等你採納或忽略它們之後再繼續。</string>
+  <string name="assistant_page_memory_consolidation_library_progress">全庫複核：已看過 %1$d/%2$d 條。再點一次繼續。</string>
   <string name="assistant_page_memory_consolidation_apply">採納 %1$d 條</string>
   <string name="assistant_page_memory_consolidation_reject">忽略</string>
   <string name="assistant_page_memory_consolidation_confirm_title">確認採納 %1$d 條建議？</string>

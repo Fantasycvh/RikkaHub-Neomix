@@ -15,6 +15,7 @@ import app.androidrik.rikkahub.data.db.dao.GenMediaDAO
 import app.androidrik.rikkahub.data.db.dao.KnowledgeBaseDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryProposalDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO
 import app.androidrik.rikkahub.data.db.dao.ManagedFileDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
@@ -32,6 +33,7 @@ import app.androidrik.rikkahub.data.db.entity.MemoryConsolidationEntity
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryProposalEntity
+import app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.db.migrations.Migration_16_17
@@ -58,8 +60,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         KnowledgeEmbeddingEntity::class,
         MemoryConsolidationEntity::class,
         MemoryProposalEntity::class,
+        MemoryReviewCursorEntity::class,
     ],
-    version = 39,
+    version = 40,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -110,6 +113,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 修的是「默认配置下自动整理烧了模型调用，建议却既无应用路径、重启即失」。
         // 见 docs/design/design-memory-retrieval-and-consolidation.md §5
         AutoMigration(from = 38, to = 39),
+        // 39→40：记忆库「全量复核」游标（纯新增表）。没有它，整理侧的快照截断 +
+        // 每轮同一选取位置 ⇒ 约 3/4 的记忆**永远不进模型视野**，「存量记忆本身的整理」无从谈起。
+        // 见 docs/design/design-memory-retrieval-and-consolidation.md §7
+        AutoMigration(from = 39, to = 40),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -139,6 +146,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun memoryConsolidationDao(): MemoryConsolidationDAO
 
     abstract fun memoryProposalDao(): MemoryProposalDAO
+
+    abstract fun memoryReviewCursorDao(): MemoryReviewCursorDAO
 }
 
 object TokenUsageConverter {

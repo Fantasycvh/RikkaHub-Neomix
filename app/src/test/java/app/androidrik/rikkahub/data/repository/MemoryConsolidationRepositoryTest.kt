@@ -96,6 +96,7 @@ class MemoryConsolidationRepositoryTest {
         now: Long = millis(23),
     ) = MemoryConsolidationRepository(
         consolidationDAO = dao,
+        reviewCursorDAO = FakeReviewCursorDAO(),
         assistants = { assistants },
         conversationLoader = { id -> conversations[id] },
         limitPerRun = limitPerRun,
@@ -388,4 +389,14 @@ class MemoryConsolidationRepositoryTest {
             repository(listOf(off)).findPending(off.memoryId(), manual = true).isEmpty(),
         )
     }
+
+/** 内存版复核游标（真实现是 Room 表 `memory_review_cursor`） */
+private class FakeReviewCursorDAO : app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO {
+    val rows = mutableMapOf<String, Long>()
+    override suspend fun getCursor(memoryId: String): Long? = rows[memoryId]
+    override suspend fun upsert(entry: app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity) {
+        rows[entry.memoryId] = entry.cursor
+    }
+    override suspend fun clear(memoryId: String) { rows.remove(memoryId) }
+}
 }

@@ -46,13 +46,18 @@ data class MemoryConsolidationRun(
     /** 是否顺带把整个记忆库清理了一遍（用户手动整理） */
     val fullReview: Boolean,
     val changedMemories: Int = 0,
-    /**
-     * 审批开着时攒下的**待办**（这一轮只分析、没动库）。
-     *
-     * 为什么跟着运行结果走而不是写库：本批没有能「应用建议」的界面，写库只会留下无处可点的数据。
-     * 持久化 + 审批入口是 V3-b3 的事——**在那之前不要接自动触发**（否则等于白烧一次模型调用）。
-     */
+    /** 审批开着时攒下的**待办**（这一轮只分析、没动库）。**已落库**，见 `MemoryProposalEntity` */
     val proposals: List<MemoryConsolidationProposal> = emptyList(),
+    /**
+     * 全量复核走到哪了：本页结束时已复核 [libraryReviewed] / [libraryTotal] 条。
+     *
+     * 为什么必须是运行结果的一部分：库有 58K token 而一页装不下（见设计稿 §7），
+     * 所以「全量」是**跨多次推进**的——不把进度说出来，用户按十次「整理一下」也**看不出在往前走**。
+     */
+    val libraryReviewed: Int = 0,
+    val libraryTotal: Int = 0,
+    /** 这一页是不是最后一块（true ⇒ 下一轮从头开始，即已完成一轮全库复核） */
+    val libraryPageDone: Boolean = false,
     val error: String? = null,
 ) {
     val hasChanges: Boolean get() = changedMemories > 0

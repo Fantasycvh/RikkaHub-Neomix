@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.di
 
+import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.sync.WorkspaceBackupHelper
 import android.content.Context
@@ -109,8 +110,10 @@ val repositoryModule = module {
     single {
         val settingsStore: SettingsStore = get()
         val conversationRepository: ConversationRepository = get()
+        val database: AppDatabase = get()
         MemoryConsolidationRepository(
             consolidationDAO = get(),
+            reviewCursorDAO = database.memoryReviewCursorDao(),
             assistants = { settingsStore.settingsFlow.first().assistants },
             conversationLoader = { id -> conversationRepository.getConversationById(id) },
         )
