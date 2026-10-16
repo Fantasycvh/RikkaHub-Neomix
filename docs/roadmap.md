@@ -2567,3 +2567,22 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `too_many_attempts`（提示去检查 provider 配置）。新增 2 条单测（失败不占花钱额度/持续报错被
   总尝试上限拦住），**两处注入式反证各精确变红**（把失败也算进花钱额度 ⇒ 2 条红；拿掉总尝试
   上限 ⇒ 1 条红）。全量 1558 项 0 失败，已装机。
+
+- 2026-10-16 续五：**上游 2026-10-15 同步（2 提交）+ 吸收 #2137 同因修复**。上游本批只有两条，一条纯包结构
+  重构（`fffa6e82e`，49 文件，**不跟**：无行为收益，且 `ProxyConfig`/`RemoteFileStore` 在 fork 零命中 ⇒ 补丁
+  只有一半能落），另一条是 **#2137 的修复**——正是本仓上批标「待核实」的那条（issue 已 closed）。
+  **核实结论是「同源可达、补丁不可照搬」**：fork 没有上游那个 `ChatCompletionsStreamDecoder`（全仓零命中），
+  也不解析 `reasoning_details`；但 fork 的**外层三层早已自己守好**（非对象行 `:237`、`choices[0]` `:250`、
+  `delta` `:252`，代码里还留着同因注释），**缺口在内层 `parseMessage`** —— 它在**流式增量**上就被调用
+  （`:260`），而 `parseAnnotations` 用 `element.jsonObject`（元素为 `JsonNull` 即抛）与
+  `["url_citation"]?.jsonObject`（**`?.` 只防 null 引用、不防 `JsonNull` 这个值**；上游第三条测试输入
+  恰是 `"url_citation":null`）。修法：三处换 `jsonObjectOrNull` + `map`→`mapNotNull`，`:847` Mistral 那行同因一并改。
+  **顺带修掉两处"一点就炸"**：`require(url.startsWith("data:image"))` 会对 **https 图片 URL** 抛异常杀掉整轮
+  （而 https 恰是 OpenAI 兼容接口最常见的形态）；且原先切前缀存的是**裸 base64**，transformer 与 encoder
+  **两边都不认** ⇒ 图被静默丢成空文本。现在 `data:`/`http(s)` 原样存、其余跳过。
+  保持响亮失败的三处（未知工具类型 `:867`、未知 role `:834`、缺 `type`/未知注解类型 `:903`/`:914`）**未动**：
+  静默丢弃工具调用会让模型以为自己调过了，且**上游也保留了 `error("type is null")`**，本仓不擅自更宽容。
+  `parseMessage` 提为 `internal`（改名会编译报错，比本仓现有 8 处反射调 private 更安全）后新增
+  `ChatCompletionsAPIResponseParseTest` **10 项**；**5 处注入式反证各精确变红**；全量 **2047 项 0 失败**，
+  `assembleRelease` 出包成功；**装机时设备已断连**（`adb devices` 为空）故**未安装**，待接回后补装。判据留档：**`?`/`?:` 只处理引用为空，不处理 `JsonNull` 这个值**（JSON 的 null 到 kotlinx
+  手里是非空引用）—— 新写解析代码凡遇外部 `JsonElement`，默认用 `jsonObjectOrNull` 系。

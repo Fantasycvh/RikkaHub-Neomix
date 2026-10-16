@@ -830,7 +830,9 @@ class ChatCompletionsAPI(
         }
     }
 
-    private fun parseMessage(jsonObject: JsonObject): UIMessage {
+    // internal 而非 private：本仓需要能对"响应解析"写端到端测试（上游 #2137 的三条输入就是现成用例）。
+    // 同模块的 test 源集可见 internal。
+    internal fun parseMessage(jsonObject: JsonObject): UIMessage {
         val role = MessageRole.valueOf(
             jsonObject["role"]?.jsonPrimitive?.contentOrNull?.uppercase() ?: "ASSISTANT"
         )
@@ -842,7 +844,7 @@ class ChatCompletionsAPI(
             ?: jsonObject["content"]?.takeIf { it is JsonArray }?.let { arr ->
                 // Mistral接口
                 // {"id":"","object":"chat.completion.chunk","created":1772351733,"model":"magistral-medium-2509","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"好的"}]}]},"finish_reason":null}]}
-                arr.jsonArrayOrNull?.getOrNull(0)?.jsonObject?.get("thinking")?.jsonArrayOrNull?.getOrNull(0)?.jsonObjectOrNull?.get(
+                arr.jsonArrayOrNull?.getOrNull(0)?.jsonObjectOrNull?.get("thinking")?.jsonArrayOrNull?.getOrNull(0)?.jsonObjectOrNull?.get(
                     "text"
                 )?.jsonPrimitiveOrNull?.contentOrNull
             }
@@ -885,8 +887,22 @@ class ChatCompletionsAPI(
                     val type = imageObject["type"]?.jsonPrimitive?.contentOrNull ?: return@forEach
                     if (type != "image_url") return@forEach
                     val url = imageObject["image_url"]?.jsonObjectOrNull?.get("url")?.jsonPrimitive?.contentOrNull ?: return@forEach
-                    require(url.startsWith("data:image")) { "Only data uri is supported" }
-                    add(UIMessagePart.Image(url.substringAfter("data:image/png;base64,")))
+                    // **原样存**：`data:` 与 `http(s)` 正是下游两种能吃的形态 ——
+                    //  · data: 由 Base64ImageToLocalFileTransformer 转成本地文件（FilesManager:290）
+                    //  · http 由 Coil 显示；发请求时 encodeBase64 原样透传（FileEncoder.kt:75）
+                    // 其余形态（相对路径等）**跳过而不是抛**：这里在流式解析链上，畸形输入不该杀掉整轮。
+                    //
+                    // 两个已修的历史问题（2026-10-16，上游 #2137 同因核查时发现）：
+                    //  ① 原先 `require(url.startsWith("data:image"))` 会对 https 图片 URL 抛
+                    //     IllegalArgumentException —— 而 https 恰是 OpenAI 兼容接口里最常见的形态，
+                    //     于是"中转回一张图"会变成"整轮生成中断"。
+                    //  ② 原先 `url.substringAfter("data:image/png;base64,")` 去掉前缀后存的是**裸 base64**，
+                    //     而 transformer 只认 `data:image` 开头、encodeBase64 只认 file:/data:/http 三种
+                    //     ⇒ 两边都不认，图在发下一轮时被静默换成空文本。**去掉前缀看着像省事，实际是把它
+                    //     变成了谁都不认识的字符串。**
+                    if (url.startsWith("data:") || url.startsWith("http")) {
+                        add(UIMessagePart.Image(url))
+                    }
                 }
             },
             annotations = parseAnnotations(
@@ -897,16 +913,24 @@ class ChatCompletionsAPI(
         )
     }
 
+    // 注解数组里出现 `null` 元素、或 `url_citation` 显式为 `null`，都是中转侧真实会发生的形态
+    // （上游 #2137 的第三条测试输入就是 `"url_citation":null`）。注意 **`?.` 只防 null 引用、
+    // 不防 `JsonNull` 这个值** —— JSON 的 null 到了 kotlinx 手里是非空引用，所以这里必须用
+    // jsonObjectOrNull，而不是 `element.jsonObject` / `?.jsonObject`。
+    //
+    // 与上游保持同一条线：只跳过"元素/字段本身是 null"，`type` 缺失（error("type is null")）与
+    // 未知注解类型仍然**响亮失败** —— 上游的修复也没动这两处，本仓不擅自比上游更宽容。
     private fun parseAnnotations(jsonArray: JsonArray): List<UIMessageAnnotation> {
-        return jsonArray.map { element ->
+        return jsonArray.mapNotNull { element ->
+            val annotation = element.jsonObjectOrNull ?: return@mapNotNull null
             val type =
-                element.jsonObject["type"]?.jsonPrimitive?.contentOrNull ?: error("type is null")
+                annotation["type"]?.jsonPrimitive?.contentOrNull ?: error("type is null")
             when (type) {
                 "url_citation" -> {
                     UIMessageAnnotation.UrlCitation(
-                        title = element.jsonObject["url_citation"]?.jsonObject?.get("title")?.jsonPrimitive?.contentOrNull
+                        title = annotation["url_citation"]?.jsonObjectOrNull?.get("title")?.jsonPrimitive?.contentOrNull
                             ?: "",
-                        url = element.jsonObject["url_citation"]?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
+                        url = annotation["url_citation"]?.jsonObjectOrNull?.get("url")?.jsonPrimitive?.contentOrNull
                             ?: "",
                     )
                 }
