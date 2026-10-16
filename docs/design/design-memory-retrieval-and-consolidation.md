@@ -487,3 +487,34 @@ library  = input − 新轮次(6_000) − 校准表余量(4_000)   // 同一发�
 **另一条**：那次证伪**第一次没变红**，因为测试里的自动整理复用了手动那次已经推进过水位的会话
 ⇒ `transcript` 为空 ⇒ `consolidate` 提前 return，**根本没走到游标那行**。
 补了第二个会话之后才真正守住。**「测试没红」和「测试守住了」是两件事。**
+
+### 7.8 真机确认：一轮装完全库（2026-10-16 21:57–22:01）
+
+用户连点三次「整理一下」，日志全程留痕（`adb logcat -s MemoryConsolidator:V`）：
+
+```
+21:57:47  consolidate(0950e2dc…): 52 record(s), page=31-52/52 last=true  budget=297200 remaining=273 fullReview=true
+21:58:01  consolidated …: applied=0 proposals=0
+21:58:10  consolidate(0950e2dc…): 52 record(s), page=1-52/52  last=true  budget=297200 remaining=264 fullReview=true
+22:00:38  consolidated …: applied=1 proposals=0          ← 花了 2 分 28 秒
+22:01:06  consolidate(0950e2dc…): 52 record(s), page=1-52/52  last=true  budget=297200 remaining=0   fullReview=true
+22:01:09  consolidated …: applied=0 proposals=0
+```
+
+**四件事一次验完：**
+
+| 断言 | 证据 |
+|---|---|
+| 页预算按窗口放开**且**被 512K 封顶 | `budget=297200` = `min(1M, 512K) × 60% − 6K − 4K`，与设计值**逐位相符** |
+| **一轮装完全库**（用户提案的目标） | `page=1-52/52 last=true` —— 52 条全在一次请求里，不再是 2–3 轮 |
+| **旧游标被尊重、走完后归零** | 第一轮 `page=31-52`（接着上次的 `cursor=37` 走完尾巴），随后 DB 里 `cursor=0 @22:01:09` |
+| **看全库才动手** | 第二轮 `applied=1`，DB 里 `9de65730` 的 `updated_at=22:00:36`（与该轮结束时刻吻合）。**只有 1/4 库可见的那些轮次，一次都没改过任何东西** |
+
+最后一行是这次改动**最有说服力的一条**：以前的日志全是 `applied=0 proposals=0`，
+窗口放开后第一次就动了一处。**「模型什么都没做」在旧参数下更可能是「它没看到」。**
+
+**代价（诚实记账）**：
+- 第二轮的 297K 输入花了 **2 分 28 秒**（第一、三轮 3–14 秒是因为没活干/未落笔）；
+- 库（52 条）**小于一页** ⇒ `last=true` ⇒ 游标每轮归零 ⇒ **每次点「整理一下」都是全库重扫**。
+  这就是「全量」的定义，但它意味着**连点几次就是几次 297K 的调用**；
+- 分页的分段能力只在**库大于一页**或**模型窗口小**时才被用到（那时才需要多轮）。
