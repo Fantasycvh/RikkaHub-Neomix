@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.pages.assistant.detail
 
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Book02
+import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.BookOpen01
 import me.rerere.hugeicons.stroke.Brain02
 import me.rerere.hugeicons.stroke.ArrowRight01
@@ -141,6 +142,13 @@ fun AssistantDetailPage(id: String) {
                         leadingContent = { Icon(HugeIcons.BookOpen01, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_local_tools_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_local_tools)) },
+                        trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.AssistantImage(id)) },
+                        leadingContent = { Icon(HugeIcons.Image02, null) },
+                        supportingContent = { Text(stringResource(R.string.assistant_detail_image_desc)) },
+                        headlineContent = { Text(stringResource(R.string.assistant_page_tab_image)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
                     item(

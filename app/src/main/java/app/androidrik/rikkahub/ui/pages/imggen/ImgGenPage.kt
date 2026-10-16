@@ -106,6 +106,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.files.FileUtils
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.image.GeneratedImage
 import app.androidrik.rikkahub.ui.components.ai.ModelSelector
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.FormItem

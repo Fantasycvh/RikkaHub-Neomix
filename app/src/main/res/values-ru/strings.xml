@@ -87,6 +87,11 @@
   <string name="assistant_page_local_tools_clipboard_title">Буфер обмена</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">Выполнение кода JavaScript с помощью движка QuickJS для вычислений и сценариев</string>
   <string name="assistant_page_local_tools_javascript_engine_title">Движок JavaScript</string>
+    <string name="assistant_page_tab_image">Генерация изображений</string>
+    <string name="assistant_detail_image_desc">Инструмент генерации изображений и подтверждение</string>
+    <string name="assistant_page_image_model_title">Модель генерации изображений</string>
+    <string name="assistant_page_image_model_configured">Сейчас: %1$s</string>
+    <string name="assistant_page_image_model_missing">Не настроено. Инструмент генерации изображений неактивен, пока не выбрана модель в настройках.</string>
 
   <string name="assistant_page_local_tools_todo_plan_title">План задач (todo_write)</string>
   <string name="assistant_page_local_tools_todo_plan_desc">Модель разбивает многошаговую работу на явный чек-лист и обновляет прогресс; над полем ввода показывается план</string>
@@ -146,6 +151,8 @@
   <string name="assistant_page_quick_messages">Быстрые сообщения</string>
   <string name="assistant_page_recent_chats">Справка: недавние чаты</string>
   <string name="assistant_page_recent_chats_desc">Когда включено, позволяет ассистенту искать релевантную информацию в предыдущих разговорах.</string>
+    <string name="assistant_page_image_gen_approval">Подтверждение генерации изображений</string>
+    <string name="assistant_page_image_gen_approval_desc">Спрашивать подтверждение перед генерацией изображения ИИ. Требуется настроенная модель генерации изображений.</string>
   <string name="assistant_page_regex_affecting_scopes">Области действия:</string>
   <string name="assistant_page_regex_desc">Задайте шаблоны регулярных выражений для преобразования сообщений перед отправкой/получением</string>
   <string name="assistant_page_regex_find_regex">Найти регулярное выражение</string>
@@ -337,6 +344,13 @@
   <string name="chat_message_tool_deny_dialog_title">Отклонить выполнение инструмента</string>
   <string name="chat_message_tool_edit_memory">Обновлена память</string>
   <string name="chat_message_tool_get_time">Получить информацию о времени</string>
+    <!-- 会话内生图工具（generate_image）的工具卡 -->
+    <string name="chat_message_image_tool_title">Создано изображений: %1$d</string>
+    <string name="chat_message_image_tool_pending">Создание изображения…</string>
+    <string name="chat_message_image_tool_failed">Не удалось создать изображение</string>
+    <string name="chat_message_image_tool_prompt">Запрос</string>
+    <string name="chat_message_image_tool_size">Размер: %1$s</string>
+    <string name="chat_message_image_tool_num">Количество: %1$s</string>
   <string name="chat_message_tool_scrape_prefix">Собрать данные с сайта: %1$s</string>
   <string name="chat_message_tool_scrape_web">Собрать данные со страницы</string>
   <string name="chat_message_tool_search_prefix">Поиск: %1$s</string>

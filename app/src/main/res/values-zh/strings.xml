@@ -89,6 +89,11 @@
   <string name="assistant_page_local_tools_clipboard_title">剪贴板</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">使用 QuickJS 引擎执行 JavaScript 代码，进行计算和脚本处理</string>
   <string name="assistant_page_local_tools_javascript_engine_title">JavaScript 引擎</string>
+    <string name="assistant_page_tab_image">生图</string>
+    <string name="assistant_detail_image_desc">生图工具与审批</string>
+    <string name="assistant_page_image_model_title">生图模型</string>
+    <string name="assistant_page_image_model_configured">当前：%1$s</string>
+    <string name="assistant_page_image_model_missing">未配置。在设置中选定生图模型后，生图工具才会启用。</string>
 
   <string name="assistant_page_local_tools_todo_plan_title">任务计划 (todo_write)</string>
   <string name="assistant_page_local_tools_todo_plan_desc">让模型把多步任务拆成显式清单并持续更新进度；输入栏上方显示计划条</string>
@@ -148,6 +153,8 @@
   <string name="assistant_page_quick_messages">快捷消息</string>
   <string name="assistant_page_recent_chats">参考历史聊天记录</string>
   <string name="assistant_page_recent_chats_desc">启用后，允许助手在过去的对话中搜索相关信息</string>
+    <string name="assistant_page_image_gen_approval">生图审批</string>
+    <string name="assistant_page_image_gen_approval_desc">AI 生图前先向你确认。需在设置中配置生图模型后生效。</string>
   <string name="assistant_page_regex_affecting_scopes">影响范围：</string>
   <string name="assistant_page_regex_desc">定义正则表达式模式，在发送/接收消息前对其进行转换</string>
   <string name="assistant_page_regex_find_regex">查找正则表达式</string>
@@ -340,6 +347,13 @@
   <string name="chat_message_tool_deny_dialog_title">拒绝工具执行</string>
   <string name="chat_message_tool_edit_memory">更新了记忆</string>
   <string name="chat_message_tool_get_time">获取时间信息</string>
+    <!-- 会话内生图工具（generate_image）的工具卡 -->
+    <string name="chat_message_image_tool_title">已生成 %1$d 张图片</string>
+    <string name="chat_message_image_tool_pending">正在生成图片…</string>
+    <string name="chat_message_image_tool_failed">生成图片失败</string>
+    <string name="chat_message_image_tool_prompt">提示词</string>
+    <string name="chat_message_image_tool_size">尺寸：%1$s</string>
+    <string name="chat_message_image_tool_num">数量：%1$s</string>
   <string name="chat_message_tool_scrape_prefix">抓取网站：%1$s</string>
   <string name="chat_message_tool_scrape_web">抓取网页</string>
   <string name="chat_message_tool_search_prefix">搜索: %1$s</string>

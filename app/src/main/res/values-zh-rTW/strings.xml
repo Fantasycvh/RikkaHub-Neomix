@@ -89,6 +89,11 @@
   <string name="assistant_page_local_tools_clipboard_title">剪貼簿</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">使用 QuickJS 引擎執行 JavaScript 代碼，進行計算和腳本處理</string>
   <string name="assistant_page_local_tools_javascript_engine_title">JavaScript 引擎</string>
+    <string name="assistant_page_tab_image">生圖</string>
+    <string name="assistant_detail_image_desc">生圖工具與審批</string>
+    <string name="assistant_page_image_model_title">生圖模型</string>
+    <string name="assistant_page_image_model_configured">目前：%1$s</string>
+    <string name="assistant_page_image_model_missing">未設定。在設定中選定生圖模型後，生圖工具才會啟用。</string>
 
   <string name="assistant_page_local_tools_todo_plan_title">任務計劃 (todo_write)</string>
   <string name="assistant_page_local_tools_todo_plan_desc">讓模型把多步任務拆成顯式清單並持續更新進度；輸入欄上方顯示計劃條</string>
@@ -148,6 +153,8 @@
   <string name="assistant_page_quick_messages">快速訊息</string>
   <string name="assistant_page_recent_chats">參考歷史聊天記錄</string>
   <string name="assistant_page_recent_chats_desc">啟用時，允許助手搜尋過去的對話以獲取相關資訊</string>
+    <string name="assistant_page_image_gen_approval">生圖審批</string>
+    <string name="assistant_page_image_gen_approval_desc">AI 生圖前先向你確認。需在設定中配置生圖模型後生效。</string>
   <string name="assistant_page_regex_affecting_scopes">影響範圍：</string>
   <string name="assistant_page_regex_desc">定義正規表示式模式，在傳送或接收前轉換訊息</string>
   <string name="assistant_page_regex_find_regex">尋找正規表示式</string>
@@ -337,6 +344,13 @@
   <string name="chat_message_tool_deny_dialog_title">拒絕工具執行</string>
   <string name="chat_message_tool_edit_memory">更新了記憶</string>
   <string name="chat_message_tool_get_time">取得時間資訊</string>
+    <!-- 会话内生图工具（generate_image）的工具卡 -->
+    <string name="chat_message_image_tool_title">已產生 %1$d 張圖片</string>
+    <string name="chat_message_image_tool_pending">正在產生圖片…</string>
+    <string name="chat_message_image_tool_failed">產生圖片失敗</string>
+    <string name="chat_message_image_tool_prompt">提示詞</string>
+    <string name="chat_message_image_tool_size">尺寸：%1$s</string>
+    <string name="chat_message_image_tool_num">數量：%1$s</string>
   <string name="chat_message_tool_scrape_prefix">爬取網站：%1$s</string>
   <string name="chat_message_tool_scrape_web">爬取網頁</string>
   <string name="chat_message_tool_search_prefix">搜尋: %1$s</string>

@@ -2514,3 +2514,32 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   「宁可没有工具，也不能出现一个一调用就崩的工具」的既定写法，顺带让用不上的用户一个 token 都不付）。
   ⑤设计稿：`docs/design/design-agent-image-tool.md`（含接口 schema、返回 JSON 形状、8 处实现落点、
   测试与证伪计划、以及"不做/后续"：图生图、视频、一等图片部件）。**尚未开始编码**。
+
+- 2026-10-16 续三：**上游 #2123 会话内生图工具落地**（设计稿 `docs/design/design-agent-image-tool.md`）。
+  ①**共用写路径**：新增 `data/image/ImageGenerationRunner.kt`，把原先整块长在 `ImgGenVM` 里的
+  「生成 → 落盘 → 落 `GenMediaEntity`」抽出来，工具与生图页共用（文件名清洗/相对路径/落库字段
+  三处原本各有一份，任一走偏都会产生"库里有记录、图裂"）。顺带把 `GeneratedImage` 从 UI 包搬到
+  `data/image/`——它本就被 `data/sync/BackupItem.kt` 依赖，放 UI 包里等于数据层反向依赖 UI。
+  ②**工具**：`generate_image`（`data/ai/tools/ImageTools.kt`），参数 prompt/size/num；
+  **硬上限**单次 ≤4 张、每轮 ≤2 次、显式 180s 超时；超限与失败**一律返回文本**让模型自我收敛；
+  **结果只回一行含本地路径的 JSON**（无字节、无 data URI）。
+  ③**门控**：`Settings.resolveImageGenerationModel()`（顶层纯函数，可直测）解析不出模型就
+  **不装配**——沿用 ChatToolFactory「宁可没有工具，也不能出现一个一调用就崩的工具」的定式，
+  顺带让用不上的用户一个 token 都不付。
+  ④**卡片**：`GenerateImageToolUI` 注册进 `ToolUIRegistry`，图就地显示在工具步骤里，
+  点击由 `ZoomableAsyncImage` 自带缩放；详情页摊开 prompt/尺寸/张数。**刻意不做成助手消息的
+  一等图片部件**：那要额外解决 UI-only 标记 + 装配侧过滤 + 落库分支一致性，而图一进消息历史，
+  下一轮就会被当输入模态再发一遍（一张上千 token）。
+  ⑤**开关落点（用户两次纠正后拍板）**：在助手配置里**单独一类**「生图」（`Screen.AssistantImage`
+  → `AssistantImagePage`），页面两项＝生图审批开关 + 只读的"当前生图模型"（**与装配门控同源**，
+  避免"本页说已配置、工具却没装配"）。它不是记忆（不共享机制），也不是本地工具
+  （那一组跑在设备上：JS/剪贴板/时间/朗读；本工具走远程生图模型）。
+  ⑥**测试 1556 项 0 失败**；新增 `ImageToolTest`（12 条：张数夹取/单轮上限后不再真去生成/
+  空提示词不触发付费调用/枚举外尺寸显式失败而不静默改 auto/provider 异常变文本/
+  **结果里绝不出现图片字节**/路径解析的逆函数/门控默认关闭/审批默认关且打开后真拦/schema 必填项）
+  与 `ImageToolWiringTest`（3 条源码守卫：装配门控、卡片注册、工具名两侧同源）。
+  **四处注入式反证各精确变红**：拆掉装配门控 ⇒ 守卫红；摘掉卡片注册 ⇒ 守卫红；
+  拿掉单轮上限 ⇒ 工具测试红；把 base64 塞进结果 ⇒ 工具测试红。
+  ⑦**真机**：装机后进入助手配置的「生图」页，显示「当前：[特价]gpt-image-2-1k」；
+  拼装预览里**工具 Schema 20 个且含 `"name":"generate_image"`** ⇒ 门控与装配在设备上确实生效。
+  **仍未验**：真跑一次生图看卡片里出图（要花一次生图额度，等用户点头）。

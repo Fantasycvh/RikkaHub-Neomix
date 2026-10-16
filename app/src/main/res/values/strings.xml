@@ -1934,5 +1934,18 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="assistant_page_memory_freeze_done">Frozen into %1$d chats</string>
   <string name="chat_memory_freeze_action">Freeze memory in this chat</string>
   <string name="chat_memory_freeze_toast">Frozen %1$d anchors in this chat</string>
+  <string name="chat_message_image_tool_title">Generated %1$d image(s)</string>
+  <string name="chat_message_image_tool_pending">Generating image…</string>
+  <string name="chat_message_image_tool_failed">Image generation failed</string>
+  <string name="chat_message_image_tool_prompt">Prompt</string>
+  <string name="chat_message_image_tool_size">Size: %1$s</string>
+  <string name="chat_message_image_tool_num">Count: %1$s</string>
+  <string name="assistant_page_image_gen_approval">Image generation approval</string>
+  <string name="assistant_page_image_gen_approval_desc">Ask for confirmation before the AI generates an image. Requires an image generation model configured in settings.</string>
+  <string name="assistant_page_tab_image">Image generation</string>
+  <string name="assistant_detail_image_desc">Image generation tool and its approval</string>
+  <string name="assistant_page_image_model_title">Image generation model</string>
+  <string name="assistant_page_image_model_configured">Currently: %1$s</string>
+  <string name="assistant_page_image_model_missing">Not configured. The image tool stays off until you pick an image generation model in settings.</string>
 </resources>
 

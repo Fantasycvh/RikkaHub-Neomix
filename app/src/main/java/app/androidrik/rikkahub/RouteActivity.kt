@@ -83,6 +83,7 @@ import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantBasicPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantDetailPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantKnowledgeBasePage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantExtensionsPage
+import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantImagePage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantLocalToolPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantMcpPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantMemoryPage
@@ -441,6 +442,9 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.AssistantLocalTool> { key ->
                                 AssistantLocalToolPage(key.id)
                             }
+                            entry<Screen.AssistantImage> { key ->
+                                AssistantImagePage(key.id)
+                            }
 
                             entry<Screen.AssistantInjections> { key ->
                                 AssistantExtensionsPage(key.id)
@@ -724,6 +728,10 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class AssistantLocalTool(val id: String) : Screen
+
+    @Serializable
+    /** 生图（上游 #2123）：单独一类——它既不是记忆也不是本地工具 */
+    data class AssistantImage(val id: String) : Screen
 
     @Serializable
     data class AssistantInjections(val id: String) : Screen

@@ -6,6 +6,7 @@ import com.google.firebase.crashlytics.crashlytics
 import kotlinx.serialization.json.Json
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
+import app.androidrik.rikkahub.data.image.ImageGenerationRunner
 import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.event.AppEventBus
@@ -71,6 +72,16 @@ val appModule = module {
         )
     }
 
+    // 生图产物的唯一写路径：会话内 generate_image 工具与生图页共用
+    // （生图页的 ImgGenVM 由 viewModelOf 构造，Koin 自动注入本 single）
+    single {
+        ImageGenerationRunner(
+            providerManager = get(),
+            filesManager = get(),
+            genMediaRepository = get(),
+        )
+    }
+
     single {
         ChatToolFactory(
             json = get(),
@@ -81,6 +92,7 @@ val appModule = module {
             skillManager = get(),
             ragRepository = get(),
             workspaceRepository = get(),
+            imageGenerationRunner = get(),
             // **延迟解析**：SubagentRunner 依赖本工厂（它要用装配点装配工具），
             // 直接在此 `get()` 会构成构造环。lambda 体在装配工具时才执行 ⇒ 环断在这里。
             // 依赖窄接口而非具体 Runner，见下方 single<SubagentDispatcher> 的绑定。

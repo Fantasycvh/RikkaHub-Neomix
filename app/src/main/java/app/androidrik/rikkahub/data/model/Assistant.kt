@@ -83,6 +83,15 @@ data class Assistant(
      */
     val memoryCreateApproval: Boolean = false,
     /**
+     * 生图审批：为 true 时，AI 通过 `generate_image` 工具生图前需用户确认。
+     *
+     * **默认 false**——生图是用户显式要求（或模型判断需要）后的动作，每次打断会是纯摩擦；
+     * 上限（单次 ≤4 张、每轮 ≤2 次）已经兜住了"失控花钱"这个真正的风险，所以本开关是 opt-in：
+     * 给「希望每次生图都先看一眼提示词」的用户（见 `docs/design/design-agent-image-tool.md` §3.5）。
+     * 与 [memoryCreateApproval] 同型，两者相互独立。
+     */
+    val imageGenApproval: Boolean = false,
+    /**
      * **空闲后整理记忆（做梦，V3）**：`0` = 关；`> 0` = 开启时刻（epoch millis）。
      *
      * 用一个时间戳而不是 `Boolean`：它**同时是基线**——做梦只对「开启之后的新轮次」负责。

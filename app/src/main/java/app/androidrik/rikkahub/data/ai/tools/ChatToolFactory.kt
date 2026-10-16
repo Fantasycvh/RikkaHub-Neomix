@@ -19,6 +19,8 @@ import app.androidrik.rikkahub.data.ai.mcp.McpNameSanitizer
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findProvider
+import app.androidrik.rikkahub.data.image.ImageGenerationRunner
+import app.androidrik.rikkahub.data.image.resolveImageGenerationModel
 import app.androidrik.rikkahub.data.files.SkillInstaller
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.model.Assistant
@@ -77,6 +79,8 @@ class ChatToolFactory(
     private val skillManager: SkillManager,
     private val ragRepository: app.androidrik.rikkahub.data.rag.RagRepository,
     private val workspaceRepository: WorkspaceRepository,
+    /** 会话内生图工具（#2123）的写路径；见 [app.androidrik.rikkahub.data.image.ImageGenerationRunner] */
+    private val imageGenerationRunner: ImageGenerationRunner,
     /**
      * 对话内子代理派发器（[SubagentDispatcher] 的**延迟解析**）。
      *
@@ -173,6 +177,22 @@ class ChatToolFactory(
         }
 
         segments += ToolSegment("local", localTools.getTools(assistant.localTools))
+
+        // 会话内生图（上游 #2123）。**门控 = 配置里能解析出生图模型**：没配就一个 token 都不付
+        // （工具 schema 每次请求都要下发），也避免出现"一调用就报错"的工具——沿用本文件
+        // `subagentDispatcher` 那条定式「宁可没有工具，也不能出现一个一调用就崩的工具」。
+        // 用设置里的生图模型（不是当前 chat 模型），故 chat 模型不支持生图也能用。
+        if (settings.resolveImageGenerationModel() != null) {
+            segments += ToolSegment(
+                "image",
+                createImageTools(
+                    assistant = assistant,
+                    generate = { prompt, num, size ->
+                        imageGenerationRunner.generate(settings, prompt, num, size)
+                    },
+                ),
+            )
+        }
 
         if (assistant.enableRecentChatsReference) {
             segments += ToolSegment("conversation", createConversationTools(conversationRepository, assistant.id))

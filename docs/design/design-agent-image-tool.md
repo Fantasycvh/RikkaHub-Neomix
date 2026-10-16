@@ -75,8 +75,9 @@ issue 正文要的是一个本地工具（参数按 `MediaGenerationRequest`，�
 ### 3.4 门控：**没配生图模型就不装配这个工具**
 
 `ChatToolFactory` 已有同款定式，直接沿用其原话：**「宁可没有工具，也不能出现一个一调用就崩的工具」**
-（见 `subagentDispatcher: () -> SubagentDispatcher?` 的注释）。判定 = `settings.imageGenerationModelId`
-能解析出模型、且模型能找到 provider。
+（见 `subagentDispatcher: () -> SubagentDispatcher?` 的注释）。判定 = `Settings.resolveImageGenerationModel()`
+（`data/image/ImageGenerationRunner.kt` 的顶层扩展函数：能解析出模型、且模型能找到 provider。
+抽成顶层纯函数是为了能直接单测门控本身，不必构造整个 runner）。
 
 顺带的收益：**没配生图模型的用户一个 token 都不付**——工具 schema 是要进每次请求的
 （三参数约 120–200 tokens），这条门控把这笔固定开销精确地只落在用得上的人身上。
@@ -139,15 +140,36 @@ issue 正文要的是一个本地工具（参数按 `MediaGenerationRequest`，�
 | # | 文件 | 动作 |
 |---|---|---|
 | 1 | `data/image/ImageGenerationRunner.kt`（新） | 把 `ImgGenVM.collectImageGeneration` 的"生成 → 落盘 → 落 `GenMediaEntity`"抽成**共用一条写路径**，工具与生图页共用。**不复制**：本仓一贯要求单一装配点/单一写点 |
-| 2 | `data/ai/tools/ImageTools.kt`（新） | `createImageTools(...)`：声明 `generate_image`、参数 schema、§3.5 的上限与计数、§4.2 的返回 |
+| 2 | `data/ai/tools/ImageTools.kt`（新） | `createImageTools(assistant, generate: suspend (prompt, num, size) -> List<GeneratedImage>)`：声明 `generate_image`、参数 schema、§3.5 的上限与计数、§4.2 的返回。**生成那一步用注入的 lambda**（同 `buildMemoryTools` 的 onCreation/onUpdate 注入法）——要测的是判定，不是网络 |
 | 3 | `data/ai/tools/ChatToolFactory.kt` | 新 `ToolSegment("image", …)`，门控见 §3.4。**位置固定**并写注释：Claude 的 promptCaching 把断点打在最后一个工具上，顺序不能随手改（一次性失效可接受，长期必须稳定） |
 | 4 | `ui/components/message/tools/GenerateImageToolUI.kt`（新） | §4.3 |
 | 5 | `ui/components/message/tools/ToolUI.kt:94` | 注册进 `renderers` |
 | 6 | `data/model/Assistant.kt` | `imageGenApproval: Boolean = false` + 序列化默认值（**必须**，否则老数据反序列化炸/丢设置） |
-| 7 | 助手详情页 + `values*/strings.xml` × 6 | 审批开关一项；文案走 locale-tui（本仓无 `<plurals>`，计数用 `%1$d`） |
+| 7 | **单开一类**：`Screen.AssistantImage` + 路由 + `AssistantDetailPage` 分类项 + 新页 `AssistantImagePage.kt` | 审批开关 + **当前生图模型**（只读，与装配门控同源）。见下方 §5.1 |
+| 7b | `values*/strings.xml` × 6 | 文案走 locale-tui（本仓无 `<plurals>`，计数用 `%1$d`）；英文由工具写入，其余 5 语言手工补 |
 | 8 | `docs/roadmap.md` / `docs/upstream-analysis.md` | 落地记录 + #2123 小节标注已实施 |
 
 `ChatService` / `GenerationHandler` **不需要改**：审批走的是 `Tool.needsApproval` 既有通路。
+
+### 5.1 开关落在「助手配置里单独一类」（用户拍板，两次纠正后的结论）
+
+最初的落点是**记忆页**（那里已经住着 `memoryCreateApproval`/`memoryModifyApproval` 两个同型开关），
+被否；第二次试**本地工具页**，也被否；用户要的是**在助手配置里单独列一类**。最终：
+
+- 助手详情页的分类列表里新增一项**「生图」**（`Screen.AssistantImage` → `AssistantImagePage`），
+  排在「本地工具」与「知识库」之间；
+- 页面里两项：**生图审批**（开关）+ **生图模型**（只读，显示"当前：<模型名>"）。
+
+**为什么用户的三次选择里这个是对的**：`generate_image` 既不是记忆（与记忆不共享任何机制，
+"审批开关住在记忆页"只是形态上的类比），也不是**本地**工具（`LocalToolOption` 那一组跑在设备上：
+JS 引擎/剪贴板/时间/朗读；本工具走的是设置里配置的**远程**生图模型）。硬塞进任一边都会让
+"我该去哪里找它"这个问题没有正确答案，而单开一类正好让页面**把两件事分清楚**：
+
+1. **能不能生图** = 设置里配没配生图模型（没配时工具**根本不装配**，开关点了也没用）；
+2. **动手前要不要问** = `imageGenApproval`。
+
+页面显示的那个模型名**与装配门控调用同一个函数**（`resolveImageGenerationModel()`），
+所以不会出现"本页说已配置、工具却没装配"这种最难查的不一致。
 
 ## 6. 测试计划
 

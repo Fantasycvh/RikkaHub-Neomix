@@ -87,6 +87,11 @@
   <string name="assistant_page_local_tools_clipboard_title">クリップボード</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">QuickJSエンジンでJavaScriptコードを実行し、計算とスクリプト処理を行います</string>
   <string name="assistant_page_local_tools_javascript_engine_title">JavaScriptエンジン</string>
+    <string name="assistant_page_tab_image">画像生成</string>
+    <string name="assistant_detail_image_desc">画像生成ツールと承認</string>
+    <string name="assistant_page_image_model_title">画像生成モデル</string>
+    <string name="assistant_page_image_model_configured">現在：%1$s</string>
+    <string name="assistant_page_image_model_missing">未設定です。設定で画像生成モデルを選ぶまで画像ツールは有効になりません。</string>
 
   <string name="assistant_page_local_tools_todo_plan_title">タスク計画 (todo_write)</string>
   <string name="assistant_page_local_tools_todo_plan_desc">モデルが複数ステップの作業を明示的なチェックリストに分解し進捗を更新します。入力欄の上に計画バーを表示</string>
@@ -146,6 +151,8 @@
   <string name="assistant_page_quick_messages">クイックメッセージ</string>
   <string name="assistant_page_recent_chats">最近のチャット履歴を参照</string>
   <string name="assistant_page_recent_chats_desc">有効にすると、アシスタントが過去の会話から関連情報を検索できるようになります</string>
+    <string name="assistant_page_image_gen_approval">画像生成の承認</string>
+    <string name="assistant_page_image_gen_approval_desc">AI が画像を生成する前に確認します。設定で画像生成モデルを構成している必要があります。</string>
   <string name="assistant_page_regex_affecting_scopes">影響範囲：</string>
   <string name="assistant_page_regex_desc">メッセージの送受信前に変換する正規表現パターンを定義</string>
   <string name="assistant_page_regex_find_regex">正規表現を検索</string>
@@ -337,6 +344,13 @@
   <string name="chat_message_tool_deny_dialog_title">ツール実行を拒否</string>
   <string name="chat_message_tool_edit_memory">記憶を更新しました</string>
   <string name="chat_message_tool_get_time">時刻情報を取得</string>
+    <!-- 会话内生图工具（generate_image）的工具卡 -->
+    <string name="chat_message_image_tool_title">%1$d 枚の画像を生成しました</string>
+    <string name="chat_message_image_tool_pending">画像を生成しています…</string>
+    <string name="chat_message_image_tool_failed">画像の生成に失敗しました</string>
+    <string name="chat_message_image_tool_prompt">プロンプト</string>
+    <string name="chat_message_image_tool_size">サイズ：%1$s</string>
+    <string name="chat_message_image_tool_num">枚数：%1$s</string>
   <string name="chat_message_tool_scrape_prefix">ウェブサイトをスクレイピング: %1$s</string>
   <string name="chat_message_tool_scrape_web">ウェブページを取得</string>
   <string name="chat_message_tool_search_prefix">検索: %1$s</string>
