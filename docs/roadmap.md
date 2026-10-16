@@ -2781,7 +2781,7 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `DEFAULT_AUTO_MODEL_ID` **保留**但语义改为纯「未配置」哨兵（`chatModelId`/`translateModeId`
   是非空 `Uuid`，删掉只能编随机值，更糟）。
   **代价**：新装不再自带免费模型，先加供应商才可用。
-  **存量安装不动**（`PROVIDERS` 在 DataStore，删出厂项不删已有数据；用户手删后墓碑保证不复活）。
+  **更正**：先前写「存量安装不动 / 删出厂项不删已有数据」是**错的** —— 内置项**不进** `providers` 键，每次加载由 `refillBuiltIns` 从 `DEFAULT_PROVIDERS` 回填 ⇒ 删出厂项**对存量同样立即生效**。真机墓碑里已有 20 条（含 `a8d2d463`）⇒ 这台机器早就删光了全部内置项，本次变更在此**无可删**。
   **守卫**：`no shipped provider points at the upstream relay` —— 数据面（出厂列表无它）+
   源码面（`src/main` 里不得再出现该域名，**剥注释后**判定）。
   **守卫本身出过一次假**：第一版一刀切 `//[^
