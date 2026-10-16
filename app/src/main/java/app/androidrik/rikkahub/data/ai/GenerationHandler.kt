@@ -29,6 +29,7 @@ import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.CustomBody
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderSetting
@@ -368,7 +369,13 @@ class GenerationHandler(
             //   去调一个不存在的工具（那只会白制造一次失败调用）。
             // 中途新建的计划由 `planWrittenThisTurn` 捕获，不必重扫消息。
             val planAtTurnStart = latestTodoPlan(messages).hasUnfinishedItems()
-            val planToolAvailable = tools.any { it.name == TODO_TOOL_NAME }
+            // "计划工具可用"要**两层都成立**：①助手启用了 `todo_write`；②**模型真的收得到工具** ——
+            // 请求体里 `tools` 的发送条件正是 `model.abilities.contains(TOOL)`（ChatCompletionsAPI:526）。
+            // 只查 ① 会在"模型不支持工具"时叫模型去调一个它根本看不到的工具：
+            // 真机假上游复现时踩到的就是这个 —— 临时 mock 模型没有 TOOL 能力、请求里一个 tools 都没有，
+            // 提醒却照样发了（**这道闸门要防的正是这件事**，只是我原先只看了助手那一侧）。
+            val planToolAvailable = tools.any { it.name == TODO_TOOL_NAME } &&
+                targetModel.abilities.contains(ModelAbility.TOOL)
             var planWrittenThisTurn = false
 
             for (stepIndex in 0 until maxSteps) {

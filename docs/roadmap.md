@@ -2712,3 +2712,13 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   忘掉"本轮刚写过计划"／置位行形同虚设。
   **真机复现待跑**：假上游已改好（ROUNDS=5 + 日志记录每次请求的 `tools`），但设备在跑之前从 ADB 掉线，
   装机与复现一并挂起（预期请求 #6 只带计划那条提醒，天然隔离；`tools` 日志顺带验证闸门）。
+  真机复现（2026-10-16 晚，设备恢复后跑完，三次运行）：**run3 抓出一个真 bug** —— 请求体里的 `tools`
+  只在 `model.abilities.contains(ModelAbility.TOOL)` 时才发（`ChatCompletionsAPI.kt:526`），
+  而首版 `planToolAvailable` 只查了助手是否启用 `todo_write` ⇒ **模型根本看不到任何工具时，
+  提醒仍然叫它去调 `todo_write`**（正是那道闸门要防的事，原先只看了助手一侧）。
+  修成两层都查：`tools.any { it.name == TODO_TOOL_NAME } && targetModel.abilities.contains(ModelAbility.TOOL)`。
+  **run4**（修好闸门、模型无 TOOL 能力）：同一套 5 次调用**一条提醒都没有** ⇒ 反向验证；
+  **run5**（模型打开 TOOL 能力）：请求带 **10 个工具（含 `todo_write`）**，**请求 #6 精确出现计划提醒**
+  且只有它 ⇒ 正向验证。两次的"标题/建议生成"轮都不含提醒，继续构成负对照。
+  另记下一条通用教训（已进 handoff）：**`generateText(tools=…)` 是助手侧完整工具表，
+  与请求体里序列化出去的那份不是一回事**（后者被模型能力过滤）。

@@ -144,8 +144,12 @@ class RuleReminderWiringTest {
             src.contains("val planAtTurnStart = latestTodoPlan(messages).hasUnfinishedItems()"),
         )
         assertTrue(
-            "没检查计划工具是否可用",
+            "没检查助手是否启用了计划工具",
             src.contains("val planToolAvailable = tools.any { it.name == TODO_TOOL_NAME }"),
+        )
+        assertTrue(
+            "没检查**模型是否收得到工具** ⇒ 模型不支持工具时也会催它去调 todo_write",
+            src.contains("targetModel.abilities.contains(ModelAbility.TOOL)"),
         )
         assertTrue(
             "没在本轮写过计划时置位 ⇒ 刚写的计划压不住提醒",

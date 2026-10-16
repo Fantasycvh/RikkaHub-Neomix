@@ -301,11 +301,34 @@ severity 排序方向反过来（1 红）**。
 
 （第一轮日志留档为 `_mock_rule_log_run1.jsonl`，干净版为 `_mock_rule_log.jsonl`。）
 
-### 9.2 第三条规则的真机验证：**待跑**（设备 2026-10-16 晚离线）
+### 9.2 第三条规则的真机验证：**跑完，并抓出一个真 bug**（2026-10-16）
 
-`plan_missing` 的假上游复现已**准备好但未执行**：设备在跑之前从 ADB 掉线（`adb devices` 为空），
-装机与真机复现一并挂起。复现配方（已写进 `_mock_rule.py` 的注释与 handoff）：
-把假上游设成 **ROUNDS=5**（只发 5 个 `get_time_info` 调用）并在日志里记下每次请求的 `tools` 数组 ⇒
-**预期**：请求 #6（第 5 次调用之后的下一步）**只**带计划那条提醒 —— 探索规则要 12 次、预算比例为 0，
-所以这一轮天然是隔离验证；同时日志里的 `tools` 能直接告出 `todo_write` 到底在不在工具表里
-（不在 ⇒ 断言"必不带提醒"，那是对 `planToolAvailable` 闸门的反向验证）。
+设备掉线又回来之后跑完，一共三次运行（日志分别留档 `_mock_rule_log_run3_bug.jsonl` /
+`run4_gate_silent.jsonl` / `run5.jsonl`），价值最高的是**中间那次暴露的问题**。
+
+| 运行 | 条件 | 结果 |
+|---|---|---|
+| run3 | 首版闸门（只看助手工具表） | 请求里 **`tools` 全是空数组**，计划提醒**照样发** ⇒ **闸门是错的** |
+| run4 | 修好闸门、模型仍无 TOOL 能力 | 同一套 5 次调用，**一条提醒都没有** ⇒ 反向验证成立 |
+| run5 | 模型打开 TOOL 能力 | 请求带 **10 个工具（含 `todo_write`）**，5 次调用后**请求 #6 精确出现计划提醒**（且只有它）⇒ 正向验证成立 |
+
+**抓到的 bug（run3）**：请求体里 `tools` 的发送条件是
+`params.model.abilities.contains(ModelAbility.TOOL)`（`ChatCompletionsAPI.kt:526`）——
+**模型不支持工具时，请求里一个工具 schema 都没有**。而首版 `planToolAvailable` 只查了
+"助手启用了 `todo_write`"，于是**模型根本看不到任何工具时，提醒仍然叫它去调 `todo_write`** ——
+这正是那道闸门要防的事，只是我原先只看了助手那一侧。修法是把两层都查上：
+
+```kotlin
+val planToolAvailable = tools.any { it.name == TODO_TOOL_NAME } &&
+    targetModel.abilities.contains(ModelAbility.TOOL)
+```
+
+**为什么只有这条规则需要它**：另两条是**自门控**的 —— 调不动工具时探索窗口永远填不满
+（`explore_without_landing` 不命中）、workspace 预算比例为 0（`budget_near_limit` 不命中）。
+只有"催模型去用某个工具"的规则必须额外确认那个工具**真的能被模型看到**。
+
+**顺带确认的两件事**：①`tools`（传给 `generateText` 的参数）是**助手侧的完整工具表**，
+与请求体里序列化出去的那份**不是一回事**（后者还被模型能力过滤）—— 这个区分以后写类似规则时要记住；
+②run4/run5 的日志里都有一轮"App 自己的标题/建议生成"（各自全新的 3 条消息请求），**都不含提醒**，
+继续构成负对照。
+
