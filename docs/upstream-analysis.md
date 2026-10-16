@@ -2,7 +2,8 @@
 
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.27 (294)`；仅 tag、无预编译资产，本仓不发预编译包，CI 自动发版已禁用）。
 
-> **同步点（2026-10-14 更新）**：逐条评估已跟进到上游 **`b8d309e66`（2026-10-14 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-14 同步」；再前一节为「2026-10-13 同步」。
+> **同步点（2026-10-16 更新）**：逐条评估已跟进到上游 **`240deb5fe`（2026-10-15 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-15 同步」；再前一节为「2026-10-14 同步」。
+> **本次取数方式**：bash 无外网（`git fetch upstream` 报 `Failed to connect to github.com port 443`），改用 `gh api`（GitHub API 走的是另一条通路）核对；本地 `upstream/master` 停在 `b8d309e66`，与真实 master 差 **2 个提交**。
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
 > **本仓实际**：基线 = 上游 `2c980642`（RikkaHub `2.4.5`）；其后上游各版本（`2.4.6` → `2.5.x`）的修复/功能
@@ -160,6 +161,43 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | `a26d1d55` **videogen → mediagen 重构（图像+视频统一）** | 模块改名 + 统一 `MediaGeneration*` 请求/任务/供应商接口；setting 改**厂商级**（只存凭据+models，模型带 kind 图像/视频）；新增 OpenAI 图像生成/编辑、火山 Seedream、阿里万相/千问适配器（同步接口直返终态任务）；阿里换带业务空间 ID 的新域名（新增 workspaceId）；`MediaGenerationManager.generate` 统一同步/异步轮询两链路；按厂商分包 + ~900 行单测 | **暂不吸收（维持 `96fbe7e3` 判定，且上游仍未接线）**。fork 无 videogen 无存量冲突，但**上游 app 至今零消费点**（`git grep mediagen 2267943a -- app/src` 只有 build.gradle 模块引用；4e4bfa62 同样无 videogen 消费）⇒ 现阶段吸收=死代码。fork 图像生成走 `OpenAIProvider.generateImages`（imggen 页），视频生成无功能。**前提已失效（2026-10-07 注）**：上游已由 `0450c4c1` 正式接线进 app，本条「零消费点=死代码」论据作废——专项迁移评估见 10-06 二次同步节末尾的 2026-10-07 块。原「重新立项的条件」：想要「厂商级媒体生成」（火山 Seedream/阿里万相这类 chat provider 之外的渠道）或上游把 mediagen 接进 UI 时再评估；届时注意 fork 的 per-provider 代理/key 轮换体系与其厂商级 setting 的关系。阿里的新域名/workspaceId 变更随模块走，fork 无直连阿里媒体生成，单独不适用 |
 | `2267943a` 的 S3 部分：**presignGetUrl 带签名临时下载地址** | `AwsSignatureV4.presignGetUrl`（查询参数签名、只签 host、1s–7 天）+ `S3Client.presignGetUrl(key, expires)` + 顺手把主机/路径计算抽成 `requestHost`/`canonicalUri` 公用函数 + 106 行测试（AWS 文档示例值校验签名） | **可吸收（小，~80 行 + 测试），消费点暂缺**。fork 的 `data/sync/s3/` 三文件与上游同源；逐行 diff 核实：fork 内联的 host/canonicalUri 计算（含 pathStyle 与 host 已含 bucket 两分支）与上游新抽的 helper **功能等价**，fork 的 `S3Client` 另有分片上传/进度回调等扩展（上游无）⇒ 吸收 = ①先做无行为变化的 host/路径提取重构 ②加 presignGetUrl（fork 签名实现支持 queryParams，改造小）③测试直套。**现实用途**：备份文件生成临时分享链接（桶保持私有）；mediagen 的产物分享场景 fork 不存在。可选吸收，等有 UI 入口再做也行 |
 
+### 2026-10-15 同步：`b8d309e66` → `240deb5fe`（2 提交）
+
+> 上游 10-14 19:09 至 10-15 15:17 的 2 个提交：一次**纯包结构重构** + 一个**真 bug 修复**。
+> 后者正是上一批在 issue 表里标着「**待核实**」的 **#2137**（该 issue 现为 closed，2026-10-11 提）。
+
+**一句话结论**：本批**没有功能**。一条是纯结构整理（**不跟**，且补丁只有一半能落）；另一条是 **#2137 的修复** ——
+核实的结论是「**缺陷同源可达，但补丁不能照搬**」：fork 在**外层三层早已自己守好**（且留着同因注释），
+缺口在**内层 `parseMessage`**，而 fork 根本没有上游那个解码器。按 fork 形态做最小修即可。
+顺带在同一函数里核出**另外 3 处「一点就炸」的点**（本批不修，留档）。
+
+#### A. 建议吸收
+
+| 提交 | 内容 | fork 核实 | 结论 |
+|---|---|---|---|
+| ✅ **`240deb5fe` 修复流式 `null` 导致解码崩溃**（#2137） | 上游 `ChatCompletionsStreamDecoder` 三处改为 null 容忍：①`data: null` 之类的**非对象行**直接跳过 ②`reasoning_details` 里的 **null 元素**跳过 ③`annotations` 的 **null 元素**与 **`url_citation: null`** 都跳过。symptom：第三方 OpenAI 兼容中转下偶发 `JsonNull is not a JsonObject` 并**中断整轮生成** | **fork 没有这个解码器**：`ai/.../providers/openai/` 只有 `ChatCompletionsAPI.kt` / `OpenAIImpl.kt` / `ResponseAPI.kt` / `ToolReasoningBackfill.kt` / `ResponseToolCallIdResolver.kt`，全仓 `StreamChunkDecoder` **零命中**，也**不解析 `reasoning_details`** ⇒ **补丁不可照搬**；但逐条对照后**同源缺陷确实可达**：<br>• ① **fork 已免疫**：`ChatCompletionsAPI.kt:237` 是 `.mapNotNull { json.parseToJsonElement(it).jsonObjectOrNull }` —— 非对象行在进 `forEach` 前就被丢掉；`:250`（`choices[0]` 为 null）与 `:252`（`delta` 为 null）也都已 `as? JsonObject ?: return@…` 守住，且代码里留着同因注释「部分 OpenAI 兼容接口会把 choices[0]/delta 显式写成 null，强制解析会中断整轮生成」。**这是 fork 此前自己修过的同一类问题**<br>• ② **N/A**：fork 不解析 `reasoning_details`<br>• ③ **可达 ✗（真缺口）**：`parseMessage` **在流式增量上就被调用**（`:260` `delta = parseMessage(message)`），而它内部 `parseAnnotations`（`:901`）是 `jsonArray.map { element -> element.jsonObject[...] }` —— **元素为 `JsonNull` 即抛**；`:907`/`:909` 的 `element.jsonObject["url_citation"]?.jsonObject` 更隐蔽：**`?.` 只防 null 引用、不防 `JsonNull` 值**，而**上游测试的第 3 条输入正是 `"url_citation":null`** ⇒ fork 即使收到不含 null 元素的注解也会在这条上炸 | **建议吸收（按 fork 形态做最小修）**：把 `:903`/`:907`/`:909` 三处的 `element.jsonObject` / `?.jsonObject` 换成 fork 已有的 `jsonObjectOrNull`（定义在 `common/src/main/java/app/androidrik/common/http/Json.kt:8`）；`:901` 的 `map` 改 `mapNotNull` 以跳过 null 元素。**测试**：上游那 3 条输入可直接当回归用例，但 `parseMessage`/`parseAnnotations` 是 `private` ⇒ 实施时提为 `internal`（同模块 test 可见，本仓有先例）后写端到端解析测试（含「null 元素被跳过而不是抛」与「合法注解仍被解析」两条方向） |
+
+#### B. 不跟
+
+| 提交 | 内容 | fork 核实 | 结论 |
+|---|---|---|---|
+| `fffa6e82e` **整理 data 包结构**（49 文件） | 纯移动 + 改包名行：skills 从 `data/files/*` → `data/skills/`；`data/network/ProxyConfig` + `data/files/RemoteFileStore` + `data/api/{RikkaHubAPI,SponsorAPI}` → `data/remote/`；favorite 适配器 → `data/repository/`；非数据层移出（`data/export/ExportHooks` → `ui/hooks`、`data/provider/WorkspaceDocumentsProvider` → `service`）| fork 的 data 层正是上游**重构前**的形态：`data/files/SkillManager.kt` / `BuiltinSkills.kt` / `data/export/ExportHooks.kt` / `data/favorite/FavoriteAdapter.kt` / `data/provider/WorkspaceDocumentsProvider.kt` **都在原位**；而 **`ProxyConfig.kt` / `RemoteFileStore.kt` 在 fork 里零命中**（上游 S3/网络那支 fork 未吸收）⇒ 补丁**只有一部分能落**，剩下的是冲突 | **不跟**：纯结构、**无行为收益**；fork 的 `data/` 是最重定制区（`data/ai`、`data/image`、`data/sync`、`data/rag` 为 fork 独有或大改），49 文件重命名=拿最大冲突面换零收益。与 10-13 那批判据一致（「按职责拆 `PreferencesStore.kt`」= 纯结构重构、无行为收益 ⇒ 不做）|
+
+#### C. 顺带核实：`parseMessage` 里另外 3 处「一点就炸」（**本批不修**，留档）
+
+同一次核查把 `parseMessage`（`:833-898`）整条链过了一遍，除上面那两处外还有 3 处**中转一侧的畸形输入即抛**：
+
+| 位置 | 触发 | 为什么本次不动 |
+|---|---|---|
+| `:888` `require(url.startsWith("data:image"))` | 中转把 `image_url` 写成 **https 链接**（OpenAI 兼容接口里很常见）⇒ `IllegalArgumentException` **杀掉整轮生成** | **这条最像 bug 而不是纪律**（上游没有这段，是 fork 自有的 `images` 支路）。但"降级跳过 / 改走远程加载"是**能力取舍**（fork 目前只吃 data URI），要单独定 |
+| `:867` `error("tool call type not supported: $type")` | 未知工具类型（如 `computer_call`）| **"响亮失败"在此是对的**：静默丢弃一个工具调用会让模型以为自己调过了。保持 |
+| `:834` `MessageRole.valueOf` / `:903` `error("type is null")` / `:914` `error("unknown annotation type: $type")` | 未知 role / 注解缺 `type` / 未知注解类型 | 同上一行；且**上游也保留了 `error("type is null")`**（它只加 null 元素跳过）⇒ 本仓不擅自比上游更宽容 |
+
+> **判据**：`?` 与 `?:` 只处理**引用为空**，不处理 **`JsonNull` 这个值**；JSON 里的 `null` 到了 kotlinx 手里是**非空引用**。
+> 本次两处缺口（`element.jsonObject`、`?.jsonObject`）都是踩在这一条上。**新写解析代码时，凡遇到来自外部的
+> `JsonElement`，默认用 `jsonObjectOrNull` / `jsonArrayOrNull` / `jsonPrimitiveOrNull`（fork 已有这三个扩展），
+> 而不是 `jsonObject` 系**。
+
 ### 2026-10-14 同步：`05b655bb` → `b8d309e66`（15 提交，上游版本仍未发版）
 
 > 上游 10-13 23:26 至 10-14 18:48 的 15 个提交，以**功能与 MD3 Expressive 改造**为主，bug 类仅 3 个。
@@ -257,7 +295,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | #2127 | **清理历史文件时误删助手自定义头像** | ✅ **已修（本仓同日，见 roadmap 2026-10-13 第三刀）**：fork 同款确认——头像经 `filesManager.createChatFilesByContents()` 落进 `files/upload/`，而「设置→存储管理」的清理走 `FilesManager.deleteAll(folder)` → **整目录 `deleteRecursively()`**（调用点 `SettingFilesPage.kt:186`）⇒ 头像与聊天附件同处一个目录、同一次清理即被删，助手里的 `Avatar.Image` 引用变悬空。**修法（用户拍板「头像独立目录」）**：新增 `FileFolders.AVATARS` + `FilesManager.createAvatarImage()`，`UIAvatar` 改走它；存量由 `AvatarMigration` 在启动时搬迁（先落盘后改引用、失败保持原状）+ `avatars/` 一并进备份。**注**：上游本 issue 仍 OPEN，未修 |
 | #2126 | **工作区同名图片预览显示旧内容** | ✅ **已修（本仓同日第五刀，纯代码侧判定后直接修）**：根因**不是** Coil 缓存键，而是**导出到 cache 的文件名只用了 `entry.name`**——工作区是目录树，`images/a.png` 与 `backup/a.png` 落到同一个 cache 路径互相覆盖；Coil 以**绝对路径**为缓存键，路径没变就直接命中上次的字节 ⇒ 预览串图。同 VM 的兄弟函数 `exportToCacheDir` 早已修过同一坑（注释：「同名文件在不同子目录会碰撞」），说明是**两个出口分叉**。修法=抽出共用判据 `workspaceCacheFileName(path)`（路径换分隔符、扩展名保留），两个出口都改用 |
 | #2142 | 模型不输出被系统打断后，再发请求发不出去 | **待核实**：fork 有半截保留/重试分流/fallback（`design-partial-failure-draft.md` 已闭环 3/3）+ 流式 2s 检查点，可能已免疫；报告细节不足，等复现 |
-| #2137 | 第三方 OpenAI 兼容接口流式偶发 `JsonNull is not a JsonObject` | **待核实**：fork 有 `ensureArrayItems`/`ToolArgumentsJson` 一类的畸形 JSON 归一化先例（`3cce721f`/`f05c9a14`/`#1985`），但不含这条具体形态 |
+| #2137 | 第三方 OpenAI 兼容接口流式偶发 `JsonNull is not a JsonObject` | **✅ 已核实（2026-10-16，见「2026-10-15 同步」A 节）：同源可达**。fork 的外层三层（非对象行 `:237`、`choices[0]` `:250`、`delta` `:252`）**早已自己守好**，缺口在内层 `parseMessage`：`parseAnnotations` 的 `element.jsonObject`（`:903`）与 `?.jsonObject`（`:907`/`:909`）都挡不住 `JsonNull`。上游修复**不可照搬**（fork 无该解码器）⇒ 按 fork 形态最小修 |
 | #2129 | 终端开启后要前台服务 | 灵感级：fork 的 `KeepAliveService` 是**用户自己的开关**（常驻通知 + 电池白名单），与「终端专用前台服务」取舍不同（见 `design-workspace-background-tasks.md` 边界声明）。需产品决策，不是抄实现 |
 | #2128 | 工作区文件菜单加「复制文件路径」 | **小缺口**：fork 的 workspace 文件卡片菜单无该项（终端里的 `file://` 点击已会 toast 复制路径，`WorkspaceTerminalSession.kt:352`）。小 UI，可随手加 |
 | #2134 | 供应商自定义分组 | **closed / 未实现**：fork 的模型列表已有「按供应商分组」折叠（README「模型列表折叠」继承上游），但**供应商本身自定义分组/文件夹**没有。按需 |
