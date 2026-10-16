@@ -77,10 +77,22 @@ class MemoryConsolidationRepository(
     private suspend fun pendingOfIgnoringInterval(
         conversation: Conversation,
         assistant: Assistant,
+        /**
+         * 手动整理：**丢掉「开关开启时刻」那一半基线**，只保留每会话的 `consolidated_at`。
+         *
+         * 语义是「把手动整理定义为『所有还没整理过的轮次』，不论多老」——这正是「存量历史整理」
+         * 的诉求（详见 `design-memory-retrieval-and-consolidation.md` §4）。进度行仍然生效，
+         * 所以不会把已整理过的轮次再灌一遍。
+         */
+        ignoreSince: Boolean = false,
     ): PendingMemoryConversation? {
         if (!assistant.memoryConsolidationEnabled()) return null
         if (conversation.memoryDisabled) return null
-        val baseline = baselineOf(conversation, assistant)
+        val baseline = if (ignoreSince) {
+            baselineOf(conversation, assistant, ignoreSince = true)
+        } else {
+            baselineOf(conversation, assistant)
+        }
         val turns = unconsolidatedTurns(conversation, baseline)
         return if (turns > 0) {
             PendingMemoryConversation(conversation.id, assistant.memoryId(), turns)
@@ -107,9 +119,14 @@ class MemoryConsolidationRepository(
         return baselineOf(conversation, assistant)
     }
 
-    private suspend fun baselineOf(conversation: Conversation, assistant: Assistant): Long =
+    private suspend fun baselineOf(
+        conversation: Conversation,
+        assistant: Assistant,
+        /** 见 [pendingOfIgnoringInterval]：手动整理丢掉「开启时刻」那一半，只留进度行。 */
+        ignoreSince: Boolean = false,
+    ): Long =
         memoryConsolidationBaseline(
-            consolidationSince = assistant.memoryConsolidationSince,
+            consolidationSince = if (ignoreSince) 0L else assistant.memoryConsolidationSince,
             consolidatedAt = consolidationDAO.getConsolidatedAt(conversation.id.toString()) ?: 0L,
         )
 
@@ -144,7 +161,10 @@ class MemoryConsolidationRepository(
         if (participants.isEmpty()) return emptyList()
         // 自动路径服从频次上限；手动整理（用户点了「整理一下」）不判
         if (!manual && !autoIntervalElapsed(participants)) return emptyList()
-        val baseline = storeBaseline(participants)
+        // **手动整理丢掉「开启时刻」基线**（只留每会话进度行）⇒ 「所有还没整理过的轮次，不论多老」。
+        // 自动路径仍用完整基线（否则刚拨开开关就会把几百个历史会话一次性灌进队列——那正是
+        // 基线存在的理由，见 memoryConsolidationBaseline 的 kdoc）。
+        val baseline = if (manual) 0L else storeBaseline(participants)
         val byId = assistants.associateBy { it.id }
         return participants
             .flatMap { assistant ->
@@ -154,7 +174,7 @@ class MemoryConsolidationRepository(
             .mapNotNull { id ->
                 val conversation = Uuid.parseOrNull(id)?.let { conversationLoader(it) } ?: return@mapNotNull null
                 val assistant = byId[conversation.assistantId] ?: return@mapNotNull null
-                pendingOfIgnoringInterval(conversation, assistant)
+                pendingOfIgnoringInterval(conversation, assistant, ignoreSince = manual)
             }
             .take(limitPerRun)
     }

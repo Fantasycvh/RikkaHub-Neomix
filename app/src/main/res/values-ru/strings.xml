@@ -127,7 +127,11 @@
   <string name="assistant_page_memory_consolidation_desc">Когда чат переходит в простой, модель вызывается один раз, чтобы объединить и убрать дубликаты нового содержимого в библиотеке памяти. Обрабатывается только содержимое новее момента включения. Расходует лимит модели.</string>
   <string name="assistant_page_memory_consolidate_now">Упорядочить сейчас</string>
   <string name="assistant_page_memory_consolidate_action">Упорядочить</string>
-  <string name="assistant_page_memory_consolidation_pending">Не упорядочено реплик: %1$d</string>
+  <string name="assistant_page_memory_consolidation_pending">Не упорядочено: чатов %1$d, реплик %2$d</string>
+  <string name="assistant_page_memory_consolidation_range">Диапазон упорядочивания</string>
+  <string name="assistant_page_memory_consolidation_range_desc">По умолчанию упорядочивается только содержимое новее момента включения. Выбор «Вся история» охватывает и сказанное раньше. «Упорядочить сейчас» всегда обрабатывает только ещё не упорядоченные реплики.</string>
+  <string name="assistant_page_memory_consolidation_range_new">С этого момента</string>
+  <string name="assistant_page_memory_consolidation_range_all">Вся история</string>
   <string name="assistant_page_memory_consolidation_running">Упорядочивание…</string>
   <string name="assistant_page_memory_consolidation_last">Прошлый раз: применено %1$d, предложений %2$d</string>
   <string name="assistant_page_memory_consolidation_never">Ещё не упорядочивалось</string>

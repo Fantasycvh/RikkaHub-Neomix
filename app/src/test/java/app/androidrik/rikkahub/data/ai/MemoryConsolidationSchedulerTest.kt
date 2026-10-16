@@ -135,12 +135,33 @@ class MemoryConsolidationSchedulerTest {
         advanceTimeBy(2.minutes - 1.seconds)
         assertTrue("还没到空闲时长就不该整理", worker.calls.isEmpty())
         assertEquals(2, scheduler.statusOf(memoryId).first().pendingTurns)
+        assertEquals(
+            "一个对话无论攒了几轮都只算一个待整理对话",
+            1,
+            scheduler.statusOf(memoryId).first().pendingConversations,
+        )
 
         advanceTimeBy(2.seconds)
 
         assertEquals(listOf(setOf(chat.id)), worker.calls.map { it.conversationIds })
         assertFalse("自动触发只整理待整理的对话，不做全库复查", worker.calls.single().fullReview)
         assertEquals(0, scheduler.statusOf(memoryId).first().pendingTurns)
+        assertEquals(
+            "整理完要归零，否则存量整理时用户看不出「离排空还有多远」",
+            0,
+            scheduler.statusOf(memoryId).first().pendingConversations,
+        )
+    }
+
+    @Test
+    fun `pending conversation count tracks distinct chats not turns`() = runTest {
+        val scheduler = scheduler()
+        worker.pending[chat.id] = 5
+        worker.pending[otherChat.id] = 1
+        scheduler.resumePending()
+        val status = scheduler.statusOf(memoryId).first()
+        assertEquals("轮数是两处之和", 6, status.pendingTurns)
+        assertEquals("会话数是不同对话的个数 —— 存量历史整理下它才是进度", 2, status.pendingConversations)
     }
 
     @Test

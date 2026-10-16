@@ -129,6 +129,32 @@
 **不做**：真正的断点续传游标（现有 per-conversation `consolidated_at` 已足够表达进度，
 加游标会引入第二套真相）；重放历史的「导入即整理」（成本不可控，应先让用户看得见才有意义）。
 
+### 4.3 落地记录（2026-10-16）
+
+| 文件 | 改动 |
+|---|---|
+| `data/ai/MemoryConsolidation.kt` | 新增 `MEMORY_CONSOLIDATION_ALL_HISTORY = 1L` 哨兵与 `Assistant.memoryConsolidationCoversAllHistory()`；`memoryConsolidationBaseline` 的 kdoc 改写为「两条到达历史的路径」 |
+| `data/repository/MemoryConsolidationRepository.kt` | `findPending(manual)` 改用 `baseline = 0`，并把 `ignoreSince` 透到 `pendingOfIgnoringInterval` / `baselineOf` ⇒ **手动整理覆盖全部历史，但进度行仍生效** |
+| `data/ai/MemoryConsolidationScheduler.kt` | `MemoryConsolidationStatus` 新增 `pendingConversations`，在 `mergePending` 处与 `pendingTurns` 一起写 |
+| `ui/pages/assistant/detail/AssistantMemoryPage.kt` | 开关打开后新增「整理范围」两个 `FilterChip`（开启之后 / 全部历史）；状态行改为「N 个会话 / M 轮」 |
+| `res/values*/strings.xml` ×6 | `..._consolidation_pending` 改双参 + 新增 4 条 range 文案 |
+
+**契约定案（与旧设计稿相反的一条）**：**开关仍是总闸，手动整理不走开关后门**。
+理由：开关关着表示这个助手根本不用整理后的记忆，替它整理只会写出一批没人要的记忆；
+`design-memory-consolidation.md` 里「手动绕过开关」的三处说法**已在该文档内就地更正**。
+
+**测试 +6**：`MemoryConsolidationRepositoryTest` 4 条（手动到达开启之前的历史 / 手动仍守进度行 /
+哨兵 > 0 且连自动路径也覆盖 / 开关关闭时手动也为空）+ `MemoryConsolidationSchedulerTest` 2 条
+（会话数与轮数分别计数、整理后归零）。
+
+**证伪已做**：把 `findPending` 的 `if (manual) 0L else storeBaseline(...)` 与 `ignoreSince = manual`
+一起退回改动前，**2 条当场变红**（`manual run reaches history older than the switch-on moment` /
+`manual run still honours the per-conversation progress row`），恢复转绿。
+
+**踩坑记录（值得进 handoff）**：韩语文案里用了 ASCII 单引号 `'전체 기록'`，aapt2 报的是
+**`Invalid unicode escape sequence`**——完全误导（`'` 在 Android 字符串资源里是引用定界符，
+不是转义问题）。改用印刷体引号 `‘ ’` 即通过。**下次直接避开 ASCII `'`，或用 `\'`。**
+
 ## 5. ③ 整理建议落库 + 二次确认应用（设计稿）
 
 ### 5.1 现状里有一条**真缺陷**（不只是缺功能）

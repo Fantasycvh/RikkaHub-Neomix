@@ -39,10 +39,30 @@ internal fun Assistant.memoryConsolidationEnabled(): Boolean =
  * - 只看进度行 ⇒ 刚拨开开关就会把几百个历史会话一次性灌进整理队列（用户没要求的后台花费）；
  * - 只看开启时刻 ⇒ 已整理过的会话会被反复整理同一批轮次（进度行就白记了）。
  *
- * 想要历史内容被整理，走**手动整理**（不受基线与开关限制，见设计稿 §7.1）。
+ * **想要历史内容被整理**，两条路：①把基线选成 [MEMORY_CONSOLIDATION_ALL_HISTORY]（「从最早开始」）；
+ * ②走**手动整理**——`findPending(manual = true)` 会把「开启时刻」那一半丢掉
+ * （只保留每会话的 `consolidated_at` 进度），即「把手动整理定义为『所有还没整理过的轮次』，
+ * 不论多老」。见 `docs/design/design-memory-retrieval-and-consolidation.md` §4。
  */
 internal fun memoryConsolidationBaseline(consolidationSince: Long, consolidatedAt: Long): Long =
     maxOf(consolidationSince, consolidatedAt)
+
+/**
+ * 「整理全部历史」的哨兵基线：**早于一切真实消息，但非 0**。
+ *
+ * 为什么非 0：`memoryConsolidationSince > 0L` 同时是「开关是否拨开」的判据
+ * （见 [memoryConsolidationEnabled]）——用 0 表示"全部历史"会与"关闭"撞车。
+ * 取 1（epoch + 1ms）：真实消息的时间戳不可能早于它，而 SQL 的
+ * `last_message_at > MAX(consolidated_at, 1)` 与轮次计数的 `> 1` 都能自然命中全部内容。
+ *
+ * **不新增字段**：`memoryConsolidationSince` 仍是唯一的 `Long`（0 = 关 / >0 = 基线），
+ * 于是没有 DB 迁移、也没有第二套真相。
+ */
+const val MEMORY_CONSOLIDATION_ALL_HISTORY = 1L
+
+/** 当前基线是否等于「全部历史」哨兵（UI 用它决定选中哪一档）。 */
+internal fun Assistant.memoryConsolidationCoversAllHistory(): Boolean =
+    memoryConsolidationSince == MEMORY_CONSOLIDATION_ALL_HISTORY
 
 /**
  * 会话里**基线之后**的轮数（一个 `MessageNode` = 一轮）。

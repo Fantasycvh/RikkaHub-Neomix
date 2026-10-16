@@ -120,6 +120,14 @@ fun MemoryConsolidationProposal.detailTitle(): String = when (action) {
 /** 某个记忆库的整理状态（状态面板/设置页只读它）。 */
 data class MemoryConsolidationStatus(
     val pendingTurns: Int = 0,
+    /**
+     * 待整理的**会话数**（[pendingTurns] 是轮数）。
+     *
+     * 为什么两个都要：轮数回答「有多少活要干」，会话数回答「离排空还有多远」——存量历史整理
+     * （把基线选成「从最早开始」，见 `design-memory-retrieval-and-consolidation.md` §4）下
+     * 后者才是用户能据以判断进度的量；只有轮数时积压**不可观测**。
+     */
+    val pendingConversations: Int = 0,
     val running: Boolean = false,
     val lastRun: MemoryConsolidationRun? = null,
     /**
@@ -412,7 +420,12 @@ class MemoryConsolidationScheduler(
             (pending[memoryId].orEmpty() + items.associate { it.conversationId to it.turns })
                 .also { pending[memoryId] = it }
         }
-        updateStatus(memoryId) { it.copy(pendingTurns = conversations.values.sum()) }
+        updateStatus(memoryId) {
+            it.copy(
+                pendingTurns = conversations.values.sum(),
+                pendingConversations = conversations.size,
+            )
+        }
         return conversations.isNotEmpty()
     }
 

@@ -3,6 +3,9 @@ package app.androidrik.rikkahub.data.repository
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_ALL_HISTORY
+import app.androidrik.rikkahub.data.ai.memoryConsolidationEnabled
+import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryConsolidationEntity
 import app.androidrik.rikkahub.data.model.Assistant
@@ -322,5 +325,67 @@ class MemoryConsolidationRepositoryTest {
         assertEquals(1, repository.pendingOf(conversation)?.turns)
         assertEquals(listOf(assistant.id.toString()), repository.memoryIdsWithUpdates())
         assertEquals(1, repository.findPending(assistant.id.toString()).size)
+    }
+
+    // ---- 存量历史整理：手动整理丢掉「开启时刻」那半基线 ----
+    // 见 docs/design/design-memory-retrieval-and-consolidation.md §4。
+    // 契约（本轮定案）：**开关仍是总闸**（自动与手动都要它开着），但手动整理不再受
+    // 「开启时刻」约束 —— 它被定义为「所有还没整理过的轮次，不论多老」。
+
+    @Test
+    fun `manual run reaches history older than the switch-on moment`() = runBlocking {
+        val assistant = assistant(since = millis(10))
+        val old = conversation(assistant, 1, 2, 3) // 三轮全部早于开启时刻
+        remember(assistant, old, lastActivityAt = millis(3))
+        val repository = repository(listOf(assistant))
+
+        assertTrue(
+            "自动路径必须看不见开启之前的历史 —— 否则拨开开关就会把几百个历史会话灌进队列",
+            repository.findPending(assistant.memoryId(), manual = false).isEmpty(),
+        )
+        val manual = repository.findPending(assistant.memoryId(), manual = true)
+        assertEquals("手动整理要能到达全部历史", 1, manual.size)
+        assertEquals(3, manual.first().turns)
+    }
+
+    @Test
+    fun `manual run still honours the per-conversation progress row`() = runBlocking {
+        val assistant = assistant(since = millis(10))
+        val old = conversation(assistant, 1, 2, 3)
+        remember(assistant, old, lastActivityAt = millis(3))
+        // 已整理到第 2 小时 ⇒ 只剩第 3 轮
+        dao.progress[old.id.toString()] = millis(2)
+
+        val manual = repository(listOf(assistant)).findPending(assistant.memoryId(), manual = true)
+        assertEquals(1, manual.size)
+        assertEquals("进度行仍生效：不把已整理过的轮次再灌一遍", 1, manual.first().turns)
+    }
+
+    @Test
+    fun `all-history sentinel keeps the switch on and covers pre-switch turns`() = runBlocking {
+        val assistant = assistant(since = MEMORY_CONSOLIDATION_ALL_HISTORY)
+        assertTrue(
+            "哨兵必须 > 0 —— 用 0 表示「全部历史」会与「关闭」撞车（见常量 kdoc）",
+            assistant.memoryConsolidationEnabled(),
+        )
+        val ancient = conversation(assistant, 1, 2)
+        remember(assistant, ancient, lastActivityAt = millis(2))
+
+        val auto = repository(listOf(assistant)).findPending(assistant.memoryId(), manual = false)
+        assertEquals("选「全部历史」后连自动路径也能覆盖开启之前的轮次", 1, auto.size)
+        assertEquals(2, auto.first().turns)
+    }
+
+    @Test
+    fun `manual tidy still requires the feature switch to be on`() = runBlocking {
+        // 刻意保留的决定：手动整理**不走**开关后门。开关关着 = 这个助手根本不用整理后的记忆，
+        // 此时替它整理只会写出一批没人要的记忆。要整理就先拨开开关（可选「全部历史」）。
+        val off = assistant(since = 0L)
+        val conversation = conversation(off, 1, 2)
+        remember(off, conversation, lastActivityAt = millis(2))
+        assertTrue(
+            "开关关闭时手动整理也必须为空（门控是总闸）",
+            repository(listOf(off)).findPending(off.memoryId(), manual = true).isEmpty(),
+        )
     }
 }

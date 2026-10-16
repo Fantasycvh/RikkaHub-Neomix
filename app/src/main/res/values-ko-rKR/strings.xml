@@ -127,7 +127,11 @@
   <string name="assistant_page_memory_consolidation_desc">대화가 유휴 상태가 되면 모델을 한 번 호출해 새로 이야기한 내용을 중복 제거해 기억 라이브러리에 병합합니다. 이 기능을 켠 시점 이후의 새 내용만 처리합니다. 모델 할당량을 사용합니다.</string>
   <string name="assistant_page_memory_consolidate_now">지금 정리</string>
   <string name="assistant_page_memory_consolidate_action">정리</string>
-  <string name="assistant_page_memory_consolidation_pending">아직 정리하지 않은 턴 %1$d개</string>
+  <string name="assistant_page_memory_consolidation_pending">아직 정리하지 않은 대화 %1$d개 / %2$d턴</string>
+  <string name="assistant_page_memory_consolidation_range">정리 범위</string>
+  <string name="assistant_page_memory_consolidation_range_desc">기본적으로 이 기능을 켜 시점 이후의 새 내용만 정리합니다. ‘전체 기록’을 선택하면 그 이전 내용도 함께 정리합니다(모델 할당량을 더 사용합니다). ‘지금 정리’는 아직 정리하지 않은 턴만 처리합니다.</string>
+  <string name="assistant_page_memory_consolidation_range_new">지금부터</string>
+  <string name="assistant_page_memory_consolidation_range_all">전체 기록</string>
   <string name="assistant_page_memory_consolidation_running">정리 중…</string>
   <string name="assistant_page_memory_consolidation_last">지난 정리: 적용 %1$d건, 제안 %2$d건</string>
   <string name="assistant_page_memory_consolidation_never">아직 정리한 적이 없습니다</string>

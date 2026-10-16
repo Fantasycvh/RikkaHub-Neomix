@@ -124,7 +124,11 @@
   <string name="assistant_page_memory_consolidation_desc">When a chat goes idle, calls the model once to merge and de-duplicate what was newly said into the memory library. Only content newer than the moment you turn this on is processed. Uses your model quota.</string>
   <string name="assistant_page_memory_consolidate_now">Tidy now</string>
   <string name="assistant_page_memory_consolidate_action">Tidy</string>
-  <string name="assistant_page_memory_consolidation_pending">%1$d turns not tidied yet</string>
+  <string name="assistant_page_memory_consolidation_pending">%1$d chats / %2$d turns not tidied yet</string>
+  <string name="assistant_page_memory_consolidation_range">Tidy range</string>
+  <string name="assistant_page_memory_consolidation_range_desc">By default only content newer than the moment you turned this on is tidied. Choosing “All history” also covers everything said before that. “Tidy now” always processes only the turns that have not been tidied yet.</string>
+  <string name="assistant_page_memory_consolidation_range_new">From now on</string>
+  <string name="assistant_page_memory_consolidation_range_all">All history</string>
   <string name="assistant_page_memory_consolidation_running">Tidying…</string>
   <string name="assistant_page_memory_consolidation_last">Last run: %1$d applied, %2$d suggestions</string>
   <string name="assistant_page_memory_consolidation_never">Not tidied yet</string>

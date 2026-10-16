@@ -49,10 +49,13 @@ import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import app.androidrik.rikkahub.utils.toLocalDateTime
+import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_ALL_HISTORY
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
 import app.androidrik.rikkahub.data.ai.detailContent
+import app.androidrik.rikkahub.data.ai.memoryConsolidationCoversAllHistory
 import app.androidrik.rikkahub.data.ai.detailTitle
 import app.androidrik.rikkahub.data.ai.describe
 import app.androidrik.rikkahub.data.model.Assistant
@@ -469,6 +472,55 @@ private fun AssistantMemoryContent(
                     )
                 }
             )
+            // 「整理范围」：开启时刻**同时是基线**（只对之后的新内容负责，见
+            // docs/design/design-memory-consolidation.md §7）。存量历史整理要求能把基线回拨到最早 ——
+            // 否则开启之前的内容**任何路径都够不到**（手动整理原先也受同一基线约束）。
+            // 实现上仍只存一个 Long：0 = 关、1 = 全部历史哨兵、其余 = 开启时刻 ⇒ 无 DB 迁移。
+            if (assistant.enableMemory && assistant.memoryConsolidationSince > 0L) {
+                item(
+                    headlineContent = { Text(stringResource(R.string.assistant_page_memory_consolidation_range)) },
+                    supportingContent = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = stringResource(R.string.assistant_page_memory_consolidation_range_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(
+                                    selected = !assistant.memoryConsolidationCoversAllHistory(),
+                                    onClick = {
+                                        if (assistant.memoryConsolidationCoversAllHistory()) {
+                                            onUpdateAssistant(
+                                                assistant.copy(
+                                                    memoryConsolidationSince = System.currentTimeMillis()
+                                                )
+                                            )
+                                        }
+                                    },
+                                    label = {
+                                        Text(stringResource(R.string.assistant_page_memory_consolidation_range_new))
+                                    },
+                                )
+                                FilterChip(
+                                    selected = assistant.memoryConsolidationCoversAllHistory(),
+                                    onClick = {
+                                        if (!assistant.memoryConsolidationCoversAllHistory()) {
+                                            onUpdateAssistant(
+                                                assistant.copy(
+                                                    memoryConsolidationSince = MEMORY_CONSOLIDATION_ALL_HISTORY
+                                                )
+                                            )
+                                        }
+                                    },
+                                    label = {
+                                        Text(stringResource(R.string.assistant_page_memory_consolidation_range_all))
+                                    },
+                                )
+                            }
+                        }
+                    },
+                )
+            }
             // L1 锚点集合的手动固化（设计稿 §5 的手动刷新点）。
             // 会话只在**开始时**冻结一次锚点；此后新固化的锚点不会挤进已有会话。
             // 一个明确的入口是必要的：光靠"保存记忆时顺带刷新"用户看不见这个行为，
@@ -503,6 +555,7 @@ private fun AssistantMemoryContent(
 
                                     consolidationStatus.pendingTurns > 0 -> stringResource(
                                         R.string.assistant_page_memory_consolidation_pending,
+                                        consolidationStatus.pendingConversations,
                                         consolidationStatus.pendingTurns,
                                     )
 
