@@ -114,6 +114,13 @@ class MemoryToolsTest {
     /** onRead 的返回值（单元素容器：让 lambda 能按 id 判断命中） */
     private val readResult = mutableListOf<AssistantMemory?>()
 
+    /** onSearch 收到的 (query, limit)，以及它的返回值 */
+    private val searchCalls = mutableListOf<Pair<String, Int>>()
+    private val searchResult = mutableListOf<AssistantMemory>()
+
+    /** onRead 被调用了几次——用于钉住「检索不记读取遥测」这条口径 */
+    private var readCalls = 0
+
     private fun executingTool() = buildMemoryTools(
         json = json,
         onCreation = { content, importance, description ->
@@ -127,7 +134,14 @@ class MemoryToolsTest {
             AssistantMemory(id, content, importance ?: 0.6f, description.orEmpty())
         },
         onDelete = { },
-        onRead = { id -> readResult.firstOrNull()?.takeIf { it.id == id } },
+        onRead = { id ->
+            readCalls++
+            readResult.firstOrNull()?.takeIf { it.id == id }
+        },
+        onSearch = { query, limit ->
+            searchCalls += query to limit
+            searchResult.toList()
+        },
     ).first { it.name == "memory_tool" }
 
     @Test
@@ -300,6 +314,94 @@ class MemoryToolsTest {
         assertTrue("action 枚举必须有 read", schema.contains("read"))
         // 描述里要说明清单与按需读取的关系，否则模型会把清单行当事实来源
         assertTrue(memoryTool().description.contains("memory index"))
+    }
+
+    // ---- 按需检索（把注入预算之外、清单层也没列到的记录变成可取的） ----
+
+    @Test
+    fun `schema exposes the search action and its params`() {
+        val schema = memoryTool().parameters().toString()
+        assertTrue("action 枚举必须有 search", schema.contains("search"))
+        assertTrue("schema 必须暴露 query", schema.contains("query"))
+        assertTrue("schema 必须暴露 limit", schema.contains("limit"))
+        // 描述里点名 search 的**存在理由**（清单层不列全），否则模型不知道还有这条路
+        assertTrue(memoryTool().description.contains("does not list"))
+    }
+
+    @Test
+    fun `search returns the matching records' full text`() = runBlocking {
+        searchResult += AssistantMemory(
+            id = "a3f1c09e",
+            content = "TikZ 渲染器状态更新：引擎已切换为完整 LaTeX",
+            description = "TikZ 渲染",
+            updatedAt = 1_700_000_000_000L,
+        )
+        val text = executingTool().execute(buildJsonObject {
+            put("action", "search")
+            put("query", "TikZ")
+        }).single().let { (it as UIMessagePart.Text).text }
+        assertTrue("命中要回全文，不能只回一行主题", text.contains("引擎已切换为完整 LaTeX"))
+        assertTrue(text.contains("a3f1c09e"))
+        assertTrue(text.contains("\"matches\":1") || text.contains("\"matches\": 1"))
+    }
+
+    @Test
+    fun `search passes query through and defaults the limit`() = runBlocking {
+        executingTool().execute(buildJsonObject {
+            put("action", "search")
+            put("query", "咖啡")
+        })
+        assertEquals(listOf("咖啡" to 5), searchCalls)
+    }
+
+    @Test
+    fun `search clamps an over-large limit and rejects a non-positive one`() = runBlocking {
+        val tool = executingTool()
+        tool.execute(buildJsonObject {
+            put("action", "search")
+            put("query", "a")
+            put("limit", 999)
+        })
+        tool.execute(buildJsonObject {
+            put("action", "search")
+            put("query", "b")
+            put("limit", 0)
+        })
+        assertEquals(listOf("a" to 20, "b" to 1), searchCalls)
+    }
+
+    @Test
+    fun `search with no hits reports zero matches instead of failing`() = runBlocking {
+        // 无命中**不是错误**（与 read 的 unknown id 不同）：模型需要的是「查过了，没有」这个事实，
+        // 报错会让它以为调用方式错了而重试。
+        searchResult.clear()
+        val text = executingTool().execute(buildJsonObject {
+            put("action", "search")
+            put("query", "不存在的话题")
+        }).single().let { (it as UIMessagePart.Text).text }
+        assertTrue(text.contains("\"matches\":0") || text.contains("\"matches\": 0"))
+    }
+
+    @Test
+    fun `search without a query fails loudly`() = runBlocking {
+        val failure = runCatching {
+            executingTool().execute(buildJsonObject { put("action", "search") })
+        }.exceptionOrNull()
+        assertTrue("缺 query 必须报错，否则会静默搜出一堆无关记录", failure != null)
+        assertTrue(failure!!.message!!.contains("query"))
+    }
+
+    @Test
+    fun `search does not touch the read telemetry`() = runBlocking {
+        // 口径：一次检索可能返回 N 条而模型只用其中一条，若在这里给全部命中记 read_count，
+        // 读数就从「这条真的有用」退化成「这条被搜到过」——见 peer-apps-benchmark §11.3 E5。
+        searchResult += AssistantMemory(id = "a3f1c09e", content = "x", description = "")
+        readCalls = 0
+        executingTool().execute(buildJsonObject {
+            put("action", "search")
+            put("query", "x")
+        })
+        assertEquals("检索不得写读取遥测", 0, readCalls)
     }
 
     // ---- 只提案模式（做梦在审批开着时的形态，见 docs/design/design-memory-consolidation.md §7.2）----

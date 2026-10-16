@@ -7,6 +7,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -15,9 +16,17 @@ import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.utils.toLocalString
 import java.time.Instant
 import java.time.LocalDate
+
+/**
+ * `search` 回执的**总字符预算**：命中条数已由 `limit` 兜底，但单条记忆可以很长
+ * （真机实测最长 3646 字符），5 条满配就可能吃掉数千 token ⇒ 再按总字符截断。
+ * 取值比注入的全文层预算（6000 token ≈ 2 万字符）小得多：检索是**加餐**，不该比正餐还大。
+ */
+private const val SEARCH_RESULT_CHAR_BUDGET = 6000
 
 fun buildMemoryTools(
     json: Json,
@@ -29,6 +38,14 @@ fun buildMemoryTools(
      * 实现里要**顺带记一次读取遥测**（见 `MemoryRepository.readMemory`）；读不到返回 null。
      */
     onRead: suspend (String) -> AssistantMemory? = { null },
+    /**
+     * **检索**记忆库（内容 + 主题词匹配），返回按相关性排序的命中；无命中返回空表。
+     *
+     * 为什么需要：注入是**预算截断**的，真机 50 条库 / 8000 token 下 **23 条完全不出现**，
+     * 而换选取判据并不改变覆盖度（`docs/peer-apps-benchmark.md` §11.3 E）——
+     * 把「不可见」变「可取回」只能靠按需检索。实现见 `MemoryRepository.searchMemories`。
+     */
+    onSearch: suspend (query: String, limit: Int) -> List<AssistantMemory> = { _, _ -> emptyList() },
     /**
      * **只提案模式**（做梦在审批开着时的形态，见 `docs/design/design-memory-consolidation.md` §7.2）：
      * 非 null 时 `create` / `edit` / `delete` 都**不动库**，而是把「本该如何改」交给它，
@@ -47,14 +64,16 @@ fun buildMemoryTools(
         description = """
             The memory tool stores long-term information about the user across conversations.
             Use `action` to control the operation: `create` (add), `edit` (update), `delete` (remove),
-            `read` (load the full text of one record by `id`).
+            `read` (load the full text of one record by `id`), `search` (find records by keyword).
             - No relevant record: `create` + `content` + `importance` + `description`
             - Existing relevant record: `edit` + `id` + `content` (+ `importance` / `description` when they changed)
             - Outdated/irrelevant record: `delete` + `id`
             - A record appears in the memory index but you need its full text: `read` + `id`
-            The memory index lists the records that did not fit the full-text budget; its description is
-            only a hint. Before answering a question about a person, project or plan that the index covers,
-            read the record instead of guessing from its description.
+            - You need something the index does not list: `search` + `query`
+            The memory index lists only the records that fit the budget — older or lower-scored records
+            are not shown at all. So when the user asks about a topic you are not certain is recorded
+            (a person, project, plan or past decision), `search` for it before saying you do not know.
+            The index description is only a hint; read or search instead of guessing from it.
 
             What to record — the stated test:
             Every record must be something the user said themselves, as they said it. Never record:
@@ -99,6 +118,7 @@ fun buildMemoryTools(
             {"action":"create","content":"User prefers brief replies and is more active on weekends.","description":"reply style and activity pattern","importance":0.7}
             {"action":"edit","id":"a3f1c09e","content":"User’s preferred name updated to “A-Xing”, prefers Chinese replies.","importance":0.95}
             {"action":"read","id":"a3f1c09e"}
+            {"action":"search","query":"TikZ 渲染"}
             {"action":"delete","id":"7bd20f45"}
         """.trimIndent(),
         parameters = {
@@ -113,13 +133,30 @@ fun buildMemoryTools(
                                 add("edit")
                                 add("delete")
                                 add("read")
+                                add("search")
                             }
                         )
-                        put("description", "Operation to perform: create, edit, delete, or read")
+                        put("description", "Operation to perform: create, edit, delete, read, or search")
                     })
                     put("id", buildJsonObject {
                         put("type", "string")
                         put("description", "Opaque memory id token (required for edit/delete/read); copy it exactly from the memories list or index")
+                    })
+                    put("query", buildJsonObject {
+                        put("type", "string")
+                        put(
+                            "description",
+                            "Search keywords (required for search). Use the topic's own words — a name, " +
+                                "project or term. Matches on content and description.",
+                        )
+                    })
+                    put("limit", buildJsonObject {
+                        put("type", "number")
+                        put(
+                            "description",
+                            "Search only: maximum records to return (1-${MemoryRepository.MAX_SEARCH_LIMIT}, " +
+                                "default ${MemoryRepository.DEFAULT_SEARCH_LIMIT}).",
+                        )
                     })
                     put("content", buildJsonObject {
                         put("type", "string")
@@ -231,7 +268,72 @@ fun buildMemoryTools(
                     }
                 }
 
-                else -> error("unknown action: $action, must be one of [create, edit, delete, read]")
+                // 按需检索：把注入预算之外、**清单层也没列到**的那些记录变成可取的。
+                // 直接回全文而不是回一行主题——检索是模型的**主动**动作，回指针等于多花一个
+                // 往返并诱使它照主题词猜；渐进披露要约束的是「自动注入」，不是「主动取回」。
+                "search" -> {
+                    val query = params["query"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                    if (query.isEmpty()) error("query is required for search")
+                    val limit = (params["limit"]?.jsonPrimitive?.intOrNull
+                        ?: MemoryRepository.DEFAULT_SEARCH_LIMIT)
+                        .coerceIn(1, MemoryRepository.MAX_SEARCH_LIMIT)
+                    val hits = onSearch(query, limit)
+                    if (hits.isEmpty()) {
+                        buildJsonObject {
+                            put("matches", 0)
+                            put(
+                                "detail",
+                                "No record matches that query. Try different keywords before concluding " +
+                                    "it is not recorded; only `create` if the user just stated it.",
+                            )
+                        }
+                    } else {
+                        // 字符预算：命中条数由 limit 兜底，但单条可以很长 ⇒ 再按总字符截断，
+                        // 并**显式告知被略过几条**（让模型收窄查询，而不是以为这就是全部）。
+                        val included = mutableListOf<AssistantMemory>()
+                        var used = 0
+                        hits.forEach { memory ->
+                            if (included.isEmpty() || used + memory.content.length <= SEARCH_RESULT_CHAR_BUDGET) {
+                                included += memory
+                                used += memory.content.length
+                            }
+                        }
+                        buildJsonObject {
+                            put("matches", hits.size)
+                            put("returned", included.size)
+                            if (included.size < hits.size) {
+                                put(
+                                    "omitted",
+                                    "Results were truncated by length; narrow the query or use `read` with an id.",
+                                )
+                            }
+                            put(
+                                "records",
+                                buildJsonArray {
+                                    included.forEach { memory ->
+                                        add(
+                                            buildJsonObject {
+                                                put("id", memory.id)
+                                                put("content", memory.content)
+                                                if (memory.description.isNotBlank()) {
+                                                    put("description", memory.description)
+                                                }
+                                                if (memory.updatedAt > 0L) {
+                                                    put(
+                                                        "updated",
+                                                        Instant.ofEpochMilli(memory.updatedAt).toString(),
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+
+                else -> error("unknown action: $action, must be one of [create, edit, delete, read, search]")
             }
             listOf(UIMessagePart.Text(payload.toString()))
         }

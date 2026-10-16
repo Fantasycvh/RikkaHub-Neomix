@@ -82,6 +82,61 @@ class MemoryRepositoryTest {
     private val dao = FakeMemoryDAO()
     private val repo = MemoryRepository(dao)
 
+    // ---- searchMemories：把注入预算之外的记录变成可取的 ----
+    // 背景（真机度量，peer-apps-benchmark §11.3 E）：50 条库 / 8000 token 注入预算下
+    // 全文 7 + 清单 20，**23 条完全不出现**；而换清单层判据不改覆盖度 ⇒ 只能靠按需检索。
+
+    @Test
+    fun `search finds a record that injection would not be able to show`() = runBlocking {
+        repo.addMemory("asst", "用户喜欢手冲咖啡，早上喝")
+        repo.addMemory("asst", "TikZ 渲染器已切换为完整 LaTeX 引擎", description = "TikZ 渲染")
+        val hits = repo.searchMemories("asst", "TikZ")
+        assertEquals(1, hits.size)
+        assertTrue(hits.first().content.contains("LaTeX"))
+    }
+
+    @Test
+    fun `search matches on the description too`() = runBlocking {
+        // 清单行只给 description；检索必须也看它，否则「按清单里的主题词去查」会查不到
+        repo.addMemory("asst", "引擎已从 WASM 切换", description = "TikZ 渲染器状态")
+        assertEquals(1, repo.searchMemories("asst", "TikZ").size)
+    }
+
+    @Test
+    fun `search is scoped per assistant`() = runBlocking {
+        repo.addMemory("a", "TikZ 渲染")
+        repo.addMemory("b", "TikZ 渲染")
+        assertEquals(1, repo.searchMemories("a", "TikZ").size)
+    }
+
+    @Test
+    fun `search returns nothing for an unmatched or empty query`() = runBlocking {
+        repo.addMemory("asst", "用户喜欢手冲咖啡")
+        assertTrue(repo.searchMemories("asst", "量子力学").isEmpty())
+        assertTrue("空查询不得退化成「列出全部」", repo.searchMemories("asst", "   ").isEmpty())
+        assertTrue(repo.searchMemories("asst", "咖啡", limit = 0).isEmpty())
+    }
+
+    @Test
+    fun `search ranks more matches first and honours the limit`() = runBlocking {
+        repo.addMemory("asst", "咖啡 咖啡 咖啡", description = "咖啡")
+        repo.addMemory("asst", "咖啡只是顺带一提")
+        val hits = repo.searchMemories("asst", "咖啡", limit = 2)
+        assertEquals(2, hits.size)
+        assertTrue("命中更全的排前面", hits.first().content.startsWith("咖啡 咖啡"))
+        assertEquals(1, repo.searchMemories("asst", "咖啡", limit = 1).size)
+    }
+
+    @Test
+    fun `search does not record a read`() = runBlocking {
+        // 与 readMemory 的口径区分：检索返回 N 条，不代表 N 条都被用了
+        val m = repo.addMemory("asst", "TikZ 渲染")
+        repo.searchMemories("asst", "TikZ")
+        val after = repo.getMemoriesOfAssistant("asst").first { it.id == m.id }
+        assertEquals(0, after.readCount)
+        assertEquals(0L, after.lastReadAt)
+    }
+
     @Test
     fun `addMemory assigns an 8-char hex public token not a sequence number`() = runBlocking {
         val a = repo.addMemory("asst", "first")

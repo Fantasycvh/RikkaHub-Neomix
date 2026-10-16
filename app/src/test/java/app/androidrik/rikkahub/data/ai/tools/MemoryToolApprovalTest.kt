@@ -49,6 +49,16 @@ class MemoryToolApprovalTest {
         assertFalse(memoryToolNeedsApproval(assistant(modifyApproval = false, createApproval = false), "read"))
     }
 
+    // ---- search（按需检索：只读，恒不拦） ----
+
+    @Test
+    fun `search never requires approval, even with every switch on`() {
+        // 检索是「查找」不是「改动」，与 read 同类：它不写库、不改任何记录。
+        // 若落进 else 兜底，每一次按需检索都会变成一次审批轰炸。
+        assertFalse(memoryToolNeedsApproval(assistant(modifyApproval = true, createApproval = true), "search"))
+        assertFalse(memoryToolNeedsApproval(assistant(modifyApproval = false, createApproval = false), "search"))
+    }
+
     // ---- edit / delete（既有开关，默认开） ----
 
     @Test

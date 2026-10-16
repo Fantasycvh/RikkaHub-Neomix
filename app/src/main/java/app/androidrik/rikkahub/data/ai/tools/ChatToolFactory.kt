@@ -54,9 +54,10 @@ internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boo
 internal fun memoryToolNeedsApproval(assistant: Assistant, action: String): Boolean = when (action) {
     "create" -> assistant.memoryCreateApproval
     "edit", "delete" -> assistant.memoryModifyApproval
-    // **读不拦**：只读操作没有可被否决的副作用（与 workspace_task_status 免审批同款）。
-    // 必须显式列出——落进 else 兜底会让渐进披露的每次 memory_read 都变成一次审批轰炸。
-    "read" -> false
+    // **读/检索都不拦**：只读操作没有可被否决的副作用（与 workspace_task_status 免审批同款）。
+    // 必须显式列出——落进 else 兜底会让渐进披露的每次 memory_read、以及每次按需检索，
+    // 都变成一次审批轰炸（检索是「查找」不是「改动」，与 read 同类）。
+    "read", "search" -> false
     else -> assistant.memoryModifyApproval
 }
 
@@ -166,7 +167,12 @@ class ChatToolFactory(
                     onDelete = { id -> memoryRepository.deleteMemory(id) },
                     // 读取顺带记一次遥测（渐进披露的清单层靠它反馈「这条到底有没有用」）
                     onRead = { id -> memoryRepository.readMemory(id) },
-                    // 分档审批：create 默认放行（可选开关）、edit/delete 默认拦截、read 不拦
+                    // 按需检索：把注入预算之外、清单层也没列到的记录变成可取的（**不记遥测**，
+                    // 口径理由见 MemoryRepository.searchMemories 的 kdoc）
+                    onSearch = { query, limit ->
+                        memoryRepository.searchMemories(memoryAssistantId, query, limit)
+                    },
+                    // 分档审批：create 默认放行（可选开关）、edit/delete 默认拦截、read/search 不拦
                     needsApproval = { action -> memoryToolNeedsApproval(assistant, action) },
                 ),
             )

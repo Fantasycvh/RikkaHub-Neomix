@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.repository
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import app.androidrik.rikkahub.data.ai.memoryQueryTokens
 import app.androidrik.rikkahub.data.ai.memoryScoreBucket
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
@@ -25,6 +26,10 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
          * 200 条上限下最坏 ≈ 3.4 万字符（而清单预算只有 8K token 的 1/4）。
          */
         const val MAX_DESCRIPTION_LENGTH = 150
+
+        /** `memory_tool action="search"` 的默认/上限命中条数。 */
+        const val DEFAULT_SEARCH_LIMIT = 5
+        const val MAX_SEARCH_LIMIT = 20
 
         /**
          * 对外 opaque id 的字符集与长度：8 位小写十六进制（32 bit）。
@@ -214,6 +219,58 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         val entity = findEntityByPublicId(id) ?: return null
         memoryDAO.recordRead(entity.id, now)
         return entity.copy(readCount = entity.readCount + 1, lastReadAt = now).toModel()
+    }
+
+    /**
+     * 按查询词**检索**记忆库（`memory_tool action="search"` 的唯一入口）。
+     *
+     * ## 为什么要有这个动作（真机度量驱动的结论）
+     *
+     * 注入是**预算截断**的：真机 50 条库 / 8000 token 预算下，全文层 7 条 + 清单层 20 条，
+     * **23 条完全不出现**（`docs/peer-apps-benchmark.md` §11.3 E）。而度量同时显示：换清单层判据
+     * 只改「看见哪 26 条」、**不改看见多少**（覆盖度 25.5–26.5 / 50，与判据几乎无关），
+     * 预算才是主导项（16K ⇒ 只剩 1 条不可见），但全库 24K+ token 不可能常付。
+     * ⇒ 唯一能把「不可见」变「可取回」的机制是**按需检索**。
+     *
+     * 佐证不是推测：度量在历史里查到模型**在 `read` 动作还不存在时（2026-06/07）就自发试过 4 次**
+     * 取记忆体，4 次全被 `unknown action: read` 拒掉。
+     *
+     * ## 判据：复用注入侧同一套词法相关性，不引入 embedding
+     *
+     * 用 [memoryQueryTokens] + `relevanceOf`，与 L2 注入的 `relevance` 维度**同一个实现**
+     * ⇒ 同一种「覆盖查询词元」的语义、同样的 CJK bigram 处理、同样的功能字过滤，
+     * 不新增 tokenizer、不新增依赖、全 provider 可用（embedding 只有 `OpenAIProvider` 实现，
+     * 见 §11.3 C）。
+     *
+     * ## 刻意不记读取遥测
+     *
+     * 检索**不**等价于「这条被用上了」：一次搜索返回 N 条，其中可能有 N-1 条模型根本没看。
+     * 若在这条路径上给全部命中加 `read_count`，读数就不再是「这条真的有用」的行为证据，
+     * 而退化成「这条被搜到过」。遥测仍**只**由 [readMemory] 写（度量 §11.3 E5 正是靠这个口径
+     * 才能回答「清单层到底有没有被用」）。
+     *
+     * @return 按相关性降序（同分按写入先后）取前 [limit] 条；查不到或无有效词元时返回空表。
+     */
+    suspend fun searchMemories(
+        assistantId: String,
+        query: String,
+        limit: Int = DEFAULT_SEARCH_LIMIT,
+    ): List<AssistantMemory> {
+        if (limit <= 0) return emptyList()
+        val tokens = memoryQueryTokens(query)
+        if (tokens.isEmpty) return emptyList()
+        return memoryDAO.getMemoriesOfAssistant(assistantId)
+            .map { it.toModel() }
+            .mapNotNull { memory ->
+                val score = tokens.relevanceOf(memory)
+                if (score <= 0f) null else memory to score
+            }
+            .sortedWith(
+                compareByDescending<Pair<AssistantMemory, Float>> { it.second }
+                    .thenBy { it.first.sortKey },
+            )
+            .take(limit)
+            .map { it.first }
     }
 
     /**

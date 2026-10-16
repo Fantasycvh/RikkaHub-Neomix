@@ -18,3 +18,6 @@ local.properties
 _ui.xml
 _*.png
 _mock_rule*
+
+# 度量用临时数据（含真机记忆库转储，绝不入库）
+_measure/
