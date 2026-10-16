@@ -2586,3 +2586,16 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `ChatCompletionsAPIResponseParseTest` **10 项**；**5 处注入式反证各精确变红**；全量 **2047 项 0 失败**，
   `assembleRelease` 出包成功；**装机时设备已断连**（`adb devices` 为空）故**未安装**，待接回后补装。判据留档：**`?`/`?:` 只处理引用为空，不处理 `JsonNull` 这个值**（JSON 的 null 到 kotlinx
   手里是非空引用）—— 新写解析代码凡遇外部 `JsonElement`，默认用 `jsonObjectOrNull` 系。
+
+- 2026-10-16 续六：**#2137 修复的真机闭环（主动复现，非等中转撞上）**。装机后不满足于"日常聊天没崩"，
+  用**假上游**造出 issue 里的畸形形态主动打一遍：`adb reverse tcp:8080 tcp:8080` + 本机假 SSE 服务
+  （吐 `data: null`／`annotations:[null,{url_citation:null},合法]`／`content:[null]`／images 的
+  https+dataURI+相对路径三种），App 里加临时提供商指向它。**结果**：回复渲染出 `OK1`（畸形块**之前**）
+  与 `OK2`（畸形块**之后**）两段文本、底部「**2 条引用**」（null 元素被跳过、另两条解析成引用）、
+  **0 FATAL** ⇒ 旧代码会在第 ② 块的 `element.jsonObject` 上抛异常而**走不到 ⑥**，所以这一条同时证明了
+  "修复在生产路径生效"（不只是单测绿）。装机本身也做了身份核对：设备 `base.apk` 的 sha256 与本地产物
+  逐字符一致，且包内已删的 `require("Only data uri is supported")` 文案 0 次、保留的 `"type is null"`
+  2 次（正向对照证明扫描方式有效）——**只看 `adb install` 的 `Success` 会被陈旧 APK 骗**（§二 第 2 条）。
+  把方法连同**三个坑**（建提供商时 App 会自己拉 `/v1/models`；按钮标签互为子串必须精确匹配；
+  键盘弹出会让表单平移、硬坐标必打偏）与**三处清理项**（临时提供商 / `Assistant.chatModelId`
+  ——模型选择器写的是助手字段不是全局 / 测试会话）一并写进 handoff §四「假上游复现法」。
