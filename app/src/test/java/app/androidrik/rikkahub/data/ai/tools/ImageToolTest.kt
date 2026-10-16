@@ -64,17 +64,65 @@ class ImageToolTest {
     }
 
     @Test
-    fun `third call in one turn fails as text and stops generating`() = runBlocking {
+    fun `third successful generation in one turn fails as text and stops generating`() = runBlocking {
         var calls = 0
         val tool = toolOf { _, _, _ -> calls++; listOf(generated("/tmp/1.png")) }
 
-        repeat(MAX_IMAGE_CALLS_PER_TURN) {
+        repeat(MAX_IMAGE_GENERATIONS_PER_TURN) {
             assertTrue(textOf(tool.execute(args())).contains("\"ok\": true"))
         }
         val third = textOf(tool.execute(args()))
 
         assertTrue("第三次必须返回 too_many_calls", third.contains("too_many_calls"))
-        assertEquals("超限后不得再真的去生成", MAX_IMAGE_CALLS_PER_TURN, calls)
+        assertEquals("超限后不得再真的去生成", MAX_IMAGE_GENERATIONS_PER_TURN, calls)
+    }
+
+    /**
+     * **失败不占花钱额度，但占尝试额度**（2026-10-16 真机验证后定的，见设计稿 §8）。
+     *
+     * 真机上真实发生过：同一轮里前两次被 provider 拒（`503`/`401`，一分钱没花），第三次尝试
+     * 却被原先那个"调用前计数"的上限拦住，只能另发一条消息重试。拆成两个计数就是为了这个。
+     */
+    @Test
+    fun `failures do not consume the spending cap but do consume the attempt cap`() = runBlocking {
+        var attempts = 0
+        val tool = toolOf { _, _, _ ->
+            attempts++
+            // 前两次像真机那样被 provider 拒，之后成功
+            if (attempts <= 2) throw IllegalStateException("503 model_not_found")
+            listOf(generated("/tmp/ok.png"))
+        }
+
+        assertTrue("第 1 次失败：不占花钱额度", textOf(tool.execute(args())).contains("generation_failed"))
+        assertTrue("第 2 次失败：同样不占", textOf(tool.execute(args())).contains("generation_failed"))
+        assertTrue(
+            "失败没花钱 ⇒ 之后仍应允许真的生成（真机撞到的正是这里被拦住）",
+            textOf(tool.execute(args())).contains("\"ok\": true"),
+        )
+        // 已经成功 1 次；再成功 1 次用满花钱额度
+        assertTrue(textOf(tool.execute(args())).contains("\"ok\": true"))
+        assertTrue(
+            "花钱额度用满后仍报 too_many_calls",
+            textOf(tool.execute(args())).contains("too_many_calls"),
+        )
+    }
+
+    @Test
+    fun `a provider that always fails is stopped by the attempt cap`() = runBlocking {
+        var attempts = 0
+        val tool = toolOf { _, _, _ -> attempts++; throw IllegalStateException("boom") }
+
+        repeat(MAX_IMAGE_ATTEMPTS_PER_TURN) {
+            assertTrue(textOf(tool.execute(args())).contains("generation_failed"))
+        }
+        val next = textOf(tool.execute(args()))
+
+        assertTrue(
+            "持续报错的 provider 必须有硬顶（否则模型可以无限重试）",
+            next.contains("too_many_attempts"),
+        )
+        assertEquals(MAX_IMAGE_ATTEMPTS_PER_TURN, attempts)
+        assertTrue("总尝试上限必须比花钱上限宽松，否则拆开就没意义", MAX_IMAGE_ATTEMPTS_PER_TURN > MAX_IMAGE_GENERATIONS_PER_TURN)
     }
 
     @Test

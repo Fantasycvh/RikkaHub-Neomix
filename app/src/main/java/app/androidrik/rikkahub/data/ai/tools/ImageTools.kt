@@ -39,12 +39,24 @@ internal const val IMAGE_TOOL_NAME = "generate_image"
 internal const val MAX_IMAGES_PER_CALL = 4
 
 /**
- * 单轮生成最多调用几次。
+ * 单轮最多**成功出图**几次（= 花钱的那个上限）。
  *
  * 为什么不是"不限制"：一次回复里模型很容易变成"再试一张"直到满意，而每一次都是真金白银。
  * 取 2 而不是 1：允许"第一张不满意 → 改一次提示词"，这恰好是正常创作的最短回路。
  */
-internal const val MAX_IMAGE_CALLS_PER_TURN = 2
+internal const val MAX_IMAGE_GENERATIONS_PER_TURN = 2
+
+/**
+ * 单轮最多**尝试**几次，**含失败**（= 防失控的那个上限）。
+ *
+ * 为什么要和上面拆开（2026-10-16 真机验证后定的，见设计稿 §8）：原先只有一个"调用前计数"的上限，
+ * 于是 provider 侧的 `503`/`401`/`402` 这类**根本没花钱**的失败也会吃掉生图额度 —— 真机上实际
+ * 撞到过"同一轮里前两次被 provider 拒 → 第三次尝试被上限拦住，只能另发一条消息重试"。
+ * 拆开之后两个上限各管一件事：**花钱**看 [MAX_IMAGE_GENERATIONS_PER_TURN]，
+ * **不许无限重试**看这里。取 6：够模型换两三次提示词/模型，又不至于让一个持续报错的
+ * provider 把整轮拖成死循环。
+ */
+internal const val MAX_IMAGE_ATTEMPTS_PER_TURN = 6
 
 /**
  * 外层执行上限显式放宽到 180s（默认 60s）。
@@ -130,7 +142,10 @@ internal fun createImageTools(
      */
     generate: suspend (prompt: String, numOfImages: Int, size: String) -> List<GeneratedImage>,
 ): List<Tool> {
-    var callsThisTurn = 0
+    // 两个独立的计数：真正出图的次数（管花钱）与总尝试次数（管失控）。
+    // 作用域 = 本次生成（工具装配每轮一次、生成循环内复用同一份 List<Tool>）。
+    var generationsThisTurn = 0
+    var attemptsThisTurn = 0
     return listOf(
         Tool(
             name = IMAGE_TOOL_NAME,
@@ -140,7 +155,7 @@ internal fun createImageTools(
                 The user sees the images immediately; you do not receive their content back, so do not
                 describe the result in detail. Use this when the user asks for a picture, illustration,
                 diagram-like artwork, avatar, wallpaper, or similar. At most $MAX_IMAGES_PER_CALL images
-                per call and $MAX_IMAGE_CALLS_PER_TURN calls per turn.
+                per call and $MAX_IMAGE_GENERATIONS_PER_TURN successful generations per turn.
             """.trimIndent(),
             parameters = {
                 InputSchema.Obj(
@@ -184,14 +199,20 @@ internal fun createImageTools(
                         hint = "Supported sizes: ${IMAGE_TOOL_SIZES.joinToString(", ")}.",
                     )
 
-                    callsThisTurn >= MAX_IMAGE_CALLS_PER_TURN -> imageToolFailure(
+                    generationsThisTurn >= MAX_IMAGE_GENERATIONS_PER_TURN -> imageToolFailure(
                         error = "too_many_calls",
-                        hint = "At most $MAX_IMAGE_CALLS_PER_TURN image generations per turn. " +
+                        hint = "At most $MAX_IMAGE_GENERATIONS_PER_TURN image generations per turn. " +
                             "Use the images already generated, or ask the user.",
                     )
 
+                    attemptsThisTurn >= MAX_IMAGE_ATTEMPTS_PER_TURN -> imageToolFailure(
+                        error = "too_many_attempts",
+                        hint = "At most $MAX_IMAGE_ATTEMPTS_PER_TURN attempts per turn, failures included. " +
+                            "Check the provider configuration, or ask the user.",
+                    )
+
                     else -> {
-                        callsThisTurn++
+                        attemptsThisTurn++
                         val count = clampImageCount(requestedNum)
                         runCatching {
                             generate(prompt, count, size ?: "auto")
@@ -203,6 +224,9 @@ internal fun createImageTools(
                                         hint = "The provider returned no image. Try a different prompt.",
                                     )
                                 } else {
+                                    // **只有真的出了图才计入花钱额度**：失败（provider 拒/网络错）
+                                    // 不占额度，但已经计进 attemptsThisTurn。
+                                    generationsThisTurn++
                                     imageToolSuccess(
                                         modelName = images.first().model,
                                         paths = images.map { it.filePath },
