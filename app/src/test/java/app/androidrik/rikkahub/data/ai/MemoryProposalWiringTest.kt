@@ -77,7 +77,7 @@ class MemoryProposalWiringTest {
 
     @Test
     fun `scheduler persists proposals and reloads them with ids`() {
-        val scheduler = read("data/ai/MemoryConsolidationScheduler.kt")
+        val scheduler = read("rikkahub/"+"data/ai/MemoryConsolidationScheduler.kt")
         assertTrue(
             "跑完必须落库，否则「重启即失」没修",
             scheduler.contains("worker.saveProposals(memoryId, run.proposals)"),
@@ -94,7 +94,7 @@ class MemoryProposalWiringTest {
 
     @Test
     fun `consolidator delegates the whole proposal path to storage`() {
-        val consolidator = read("data/ai/MemoryConsolidator.kt")
+        val consolidator = read("rikkahub/"+"data/ai/MemoryConsolidator.kt")
         assertTrue("落库委托", consolidator.contains("proposals.savePending(memoryId, proposals)"))
         assertTrue("应用委托", consolidator.contains("proposals.apply(memoryId, ids)"))
         assertTrue("拒绝委托", consolidator.contains("proposals.reject(memoryId, ids)"))
@@ -102,7 +102,7 @@ class MemoryProposalWiringTest {
 
     @Test
     fun `the apply button lives inside the confirmation dialog`() {
-        val page = read("ui/pages/assistant/detail/AssistantMemoryPage.kt")
+        val page = read("rikkahub/"+"ui/pages/assistant/detail/AssistantMemoryPage.kt")
         assertTrue("必须有「打开确认页」这一步", page.contains("confirmProposals = true"))
         assertTrue(
             "真正的写库调用只能在确认按钮里 —— 不可逆操作不放在一次点击里",
@@ -116,9 +116,22 @@ class MemoryProposalWiringTest {
     }
 
     @Test
+    fun `the proposal store is bound to its interface in DI`() {
+        // 真机装机当场崩出来的坑（2026-10-16）：按具体类型注册时 Koin 只认 MemoryProposalRepository，
+        // 而 MemoryConsolidator 的形参是窄接口 MemoryProposalStore ⇒ get() 抛 NoDefinitionFound
+        // ⇒ Application.onCreate 直接 FATAL。**源码扫描看不出这种绑定缺失**，与下面 worker 那条同一个坑。
+        val di = read("rikkahub/di/DataSourceModule.kt")
+        assertTrue(
+            "Koin 必须显式绑定到接口 MemoryProposalStore（真机装机会崩在 Application.onCreate）",
+            di.contains("single<MemoryProposalStore>"),
+        )
+        assertTrue("worker 也要绑到接口", di.contains("single<MemoryConsolidationWorker>"))
+    }
+
+    @Test
     fun `the tool path is the only place that builds unpersisted proposals`() {
         // 工具层构造的建议 id 恒为 0（还没落库）——这条守卫防的是「有人误以为它带 id」
-        val tools = read("data/ai/tools/MemoryTools.kt")
+        val tools = read("rikkahub/"+"data/ai/tools/MemoryTools.kt")
         assertFalse(
             "工具层不得伪造 id",
             tools.contains("MemoryConsolidationProposal(\"create\", null, requiredContent, importance, description, "),
@@ -126,13 +139,14 @@ class MemoryProposalWiringTest {
     }
 
     private fun srcRoot(): File {
-        val candidates = listOf(File("src/main/java/app/androidrik/rikkahub"), File("app/src/main/java/app/androidrik/rikkahub"))
+        val candidates = listOf(File("src/main/java/app/androidrik"), File("app/src/main/java/app/androidrik"))
         return candidates.firstOrNull { it.isDirectory }
             ?: error("找不到源码目录，工作目录=${File(".").absolutePath}")
     }
 
     private fun read(relative: String): String {
-        val file = srcRoot().resolve(relative)
+        // 允许 ../ 前缀（DI 模块在 app/androidrik/rikkahub/di，而本文件的其余目标在 rikkahub/ 下）
+        val file = srcRoot().resolve(relative).normalize()
         assertTrue("源码不存在：${file.absolutePath}", file.isFile)
         return file.readText()
     }

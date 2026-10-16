@@ -245,7 +245,62 @@ create/edit/delete 真应用、**按批原子**、stale 与 rejected 分开留�
 `proposeChangeSummary` 写进了 `MemoryConsolidationScheduler.kt`，而它需要 `AssistantMemory`
 ⇒ 该文件里出现了存储符号 ⇒ **`the scheduler only knows memory ids and the worker interface` 立即变红**。
 修法是把函数移进 `MemoryProposalText.kt`（文本层需要目标内容，调度层不需要）。
-**这条守卫不是形式主义：它精确地拦下了一次「顺手就查一下」的越界**。
+**这条守卫不是形式主义：它精确地拦下了一次「顺手就查一下」的越界。**
+
+### 5.5 真机装机记录（2026-10-16，设备 `6c841f95` / 用户手动测试）
+
+**装机第一版当场崩**（`Application.onCreate` FATAL）：`No definition found for type … on scope '_root_'`。
+根因是 **Koin 没有自动做「具体类 → 接口」绑定**——我按具体类型注册了 `MemoryProposalRepository`，
+而 `MemoryConsolidator` 的形参是窄接口 `MemoryProposalStore` ⇒ 解析失败。
+这正是**同一个坑的第二例**（下方 worker 绑定处早有同款注释），源码扫描守卫看不出，只有真机发现。
+修法：`single<MemoryProposalStore> { … }`；并补守卫
+`the proposal store is bound to its interface in DI`（**证伪**：改回 `single {` 立即变红）。
+
+**修复后装机验证（全部通过）**：
+
+| 项 | 证据 |
+|---|---|
+| APK 一致 | 设备 `base.apk` sha256 前 16 位 = 本地产物 `4aa1a2b2adb316d4` |
+| 启动无崩溃 | 进程存活、`FATAL EXCEPTION` 计数 **0** |
+| **DB 38→39 迁移** | `memory_proposal` 表存在且 schema 与实体逐列一致；**内存 54 条 + 会话 250 条全部完好** |
+| **建议落库** | 表内 3 行：`edit`→**applied**、`delete`→**rejected**、`delete`→**pending**（三种决策各一，`decided_at` 均已落值） |
+| **应用真的改了库** | 被 `edit` 的目标 `0d01f604` 的 `updated_at` = 应用时刻 21:01:01，内容确为提案内容 |
+| 未越权删除 | 被 `reject` 的 `delete` 目标 `23f0e8f1` **仍在**（54 → 54，无净损失） |
+
+#### ⚠️ 装机暴露的缺陷一：按批原子**只在勾选集合内**成立（代码与契约不符）
+
+落库数据直接证伪了文档：`batch_id = 9fbb953d` 的两条，一条被应用、另一条被拒绝 ⇒
+**半成品状态真的发生了**（库里同时留着新旧两份「全部历史对话总纲」）。
+根因：`apply()` 先 `filter { it.id in ids }` **再**按 batch 分组 ⇒ 分组只覆盖用户勾选的那部分，
+`batch.any { … }` 的前提校验因此够不到未勾选的同批成员。
+**Kdoc 与 §5 写的「整批同生共死」是错的实现描述。**
+
+**但重新想过之后，笼统的「整批强制」也不是对的规则**：
+
+- `edit` 单独应用**不丢内容**，只留下一条可回收的重复（本次就是这样，可随时再删）；
+- 真正危险的是**只应用 `delete` 而漏掉同批 `edit`** —— 那才是内容丢失。
+- 因此正确的不变式应当收窄为：**应用任何 `delete` 时，同 batch 的其它成员必须一起应用；
+  否则拒绝这次应用并说明**（`edit` 单独应用放行）。这既堵住丢内容的方向，
+  又不强迫用户连带删掉他想保留的东西。
+
+**状态**：缺陷已确认、根因已定位、修正方案已定；**尚未改代码**（等用户拍板取哪一档）。
+
+#### ⚠️ 装机暴露的缺陷二：建议被拒绝后**原地重提**，且水位不推进
+
+表里 `23f0e8f1` 被提了两次 `delete`：batch `9fbb953d`（已被用户拒绝）与 batch `a7a66a6e`（pending）。
+即**下一次自动整理又提出了完全相同的改动**。叠加 `memory_consolidation` 进度行仍是 10-11 / 06-23 的旧值
+（今晚两轮整理**没有推进水位**）⇒ `proposeOnly` 模式下每一轮自动整理都在**重做同样的工作并重复计费**。
+这印证了设计稿 §5.2 那条被砍掉的闸门（「连续产建议而用户不处理 ⇒ 暂停该库」）**确实有用**，
+且「已拒绝」应当被下一轮整理**看见**（现在存储里有这个信息，但整理提示里没喂给它）。
+
+#### 另一个重要观察：`read_count` 的 4 次不是聊天模型
+
+装机后 4 条记忆的 `read_count` 变正（原来的度量是 50/50 全 0）。但**时间对不上聊天**：
+读取发生在 20:57:55 与 21:01:55，而**最近一次会话更新是当天 12:18:22**（无任何聊天轮次）。
+`recordRead` 只有两个调用点（`ChatToolFactory.kt:169` 与 `MemoryConsolidationGenerationAgent.kt:53`）
+⇒ 这 4 次读取来自**整理 agent**，不是聊天侧的 `memory_tool`。
+**所以「聊天模型不用 `read`」这个结论仍然成立**；新增的事实是
+「**整理 agent 会用 `read` 去看全文**」——它反过来证明了把 `onRead` / `onSearch` 接进整理 agent 是对的。
 
 ## 6. 诚实边界与未验证项
 

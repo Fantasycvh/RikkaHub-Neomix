@@ -25,6 +25,7 @@ import app.androidrik.rikkahub.data.ai.MemoryConsolidator
 import app.androidrik.rikkahub.data.ai.AppForegroundState
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.MemoryProposalRepository
+import app.androidrik.rikkahub.data.repository.MemoryProposalStore
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.common.http.AcceptLanguageBuilder
 import app.androidrik.rikkahub.BuildConfig
@@ -339,7 +340,14 @@ val dataSourceModule = module {
     }
 
     // 建议的落库与应用：要在 worker 之前建（MemoryConsolidator 委托给它）
-    single {
+    //
+    // **必须显式绑定到接口 `MemoryProposalStore`**（`MemoryConsolidator` 的形参是那个窄接口）。
+    // 按具体类型注册时 Koin 只认 `MemoryProposalRepository`，而 `get<MemoryProposalStore>()`
+    // 会抛 `NoDefinitionFound`——**真机装机当场崩在 Application.onCreate**
+    // （`Could not create instance for '[Singleton: …]'` → `No definition found for type …`）。
+    // 与下面那条 worker 绑定是**同一个坑的第二例**：源码扫描守卫看不出这种绑定缺失，
+    // 只有真机（或 Koin 的 verify）能发现。已在 `MemoryProposalWiringTest` 补一条守卫钉住。
+    single<MemoryProposalStore> {
         val database: AppDatabase = get()
         MemoryProposalRepository(
             proposalDAO = database.memoryProposalDao(),
