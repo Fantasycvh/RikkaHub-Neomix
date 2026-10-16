@@ -17,3 +17,4 @@ local.properties
 .kotlin/
 _ui.xml
 _*.png
+_mock_rule*
