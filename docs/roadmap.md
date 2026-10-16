@@ -2495,3 +2495,22 @@ L2 全文层 **7 条**、L3 清单层 **20 条**、**23 条完全落选** ⇒ �
 Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路径）只在清单层；问「skill」与问
 会话可得信息后全文层集合确实改变。结论来自用户手测（我脚本化的那次发送没落库，日志无
 `memory inject` 行、会话 `last_message_at` 未变，已核对，故不作为证据）。
+
+- 2026-10-16 续二：**上游 #2123「Agent toolcall 唤起图片生成」实施设计出稿**。承接同日两份评估
+  （`docs/upstream-analysis.md` 的 #2123 专项 + `docs/peer-apps-benchmark.md` §十二 archify）。
+  ①**更正一条既有记账**：10-06 把 #2123 记成「与 mediagen 接线配套、灵感级」，隐含"要等 mediagen"；
+  源码级核对后这个耦合**不成立**——fork 的 imggen 已用 chat provider 打通（`ImageGenerationParams`
+  + `providerManager.getProviderByType(...).generateImage`），工具只是把**已经能用**的能力暴露给
+  模型。mediagen 的真增量是视频与能力声明矩阵，而 `capabilities(IMAGE)` 那句不是前置。
+  ②**评论串比正文重要**：contributor 劝"写个 skill 就行"，作者答「我也有 py 的 cli harness，
+  但问题统一为**『没办法在聊天界面直接显示图片』**」，绕到最后是"创个 repo 放图片"。
+  ⇒ **卡点是交付不是生成**，而这正是 fork 已有的一半（`UIMessagePart.Image` + 工具卡体系 + 图库落盘）。
+  ③**两条产品决策由用户拍板**：产物形态＝**渲染在工具卡里**（不碰消息落库/分支/装配，改动面最小；
+  一等图片部件的代价高一档，落点写在设计里）；**默认不审批 + 硬上限（单次 ≤4 张、每轮 ≤2 次），
+  同时保留 `Assistant.imageGenApproval` 助手级审批开关**（`memoryCreateApproval` 同型）。
+  ④**三条设计要点**：tool result **只回一行含本地路径的 JSON**——"不回灌"的最强形式，且顺带解掉
+  issue 没写但更贵的问题（产物图进历史后下一轮会被当输入模态再发一遍，一张上千 token）；
+  **用设置里的生图模型而不是 chat 模型**；**没配生图模型就不装配该工具**（沿用 `ChatToolFactory`
+  「宁可没有工具，也不能出现一个一调用就崩的工具」的既定写法，顺带让用不上的用户一个 token 都不付）。
+  ⑤设计稿：`docs/design/design-agent-image-tool.md`（含接口 schema、返回 JSON 形状、8 处实现落点、
+  测试与证伪计划、以及"不做/后续"：图生图、视频、一等图片部件）。**尚未开始编码**。
