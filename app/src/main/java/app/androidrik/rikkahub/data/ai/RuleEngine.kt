@@ -43,12 +43,24 @@ data class RuleSnapshot(
      * null = 拿不到（单测/无头路径不带预算）⇒ `budget_near_limit` 不参与判定。
      */
     val budgetRatio: Double? = null,
+    /**
+     * 是否有**仍在进行**的计划（还有未完成项的 `todo_write` 清单）。
+     * null = 拿不到 ⇒ `plan_missing` 不参与判定（与 [budgetRatio] 同款：不知道就别猜）。
+     */
+    val hasActivePlan: Boolean? = null,
+    /**
+     * 计划工具（`todo_write`）本轮**是否可用**。默认 false（安全侧）——
+     * 不可用时绝不能叫模型去调一个不存在的工具（那只会制造一次失败调用）。
+     */
+    val planToolAvailable: Boolean = false,
 )
 
 /**
- * 「规则提醒」引擎。当前两条规则：
+ * 「规则提醒」引擎。当前三条规则：
  * - [RULE_EXPLORE_WITHOUT_LANDING]：连续多次探索类调用、窗口内零落地 ⇒ 提醒自查是不是在打转
  *   （借自 bigeye `loop_detector.py`）。
+ * - [RULE_PLAN_MISSING]：本轮工具调用已到阈值却还没有**在进行**的计划 ⇒ 提醒先落计划再动手
+ *   （对应 bigeye 的 `dag_missing`；本仓的现成对应物是 `todo_write`）。
  * - [RULE_BUDGET_NEAR_LIMIT]：本轮 workspace 预算用量 ≥80% ⇒ 提醒收敛收尾
  *   （本仓既有 [WorkspaceTurnBudget] 是**撞上限才优雅停止**，模型没有收尾机会）。
  *
@@ -85,12 +97,21 @@ class RuleEngine(
     private val fired = mutableSetOf<String>()
 
     /**
+     * 本轮已发生的工具调用次数（引擎自己数）。
+     *
+     * 为什么不用效果窗口的长度：窗口是**环形**的（容量 10~16），到顶就不再增长，
+     * 而 `plan_missing` 要的是"已经做了多少步"这个单调量。
+     */
+    private var toolCallsThisTurn = 0
+
+    /**
      * 每次工具调用后记录。
      *
      * 调用点与 `loopGuard.record(...)` 同处 —— 那里已经保证「同一响应里的重复下发只记一次」
      * （一次 Gemini 式重复下发不该被算成两次，否则窗口密度失真）。
      */
     fun record(toolName: String, arguments: JsonElement?) {
+        toolCallsThisTurn += 1
         window.record(classifyToolEffect(toolName, arguments))
     }
 
@@ -103,7 +124,11 @@ class RuleEngine(
     fun reminder(snapshot: RuleSnapshot = RuleSnapshot()): String? {
         if (!enabled) return null
 
-        val context = RuleContext(window = window, snapshot = snapshot)
+        val context = RuleContext(
+            window = window,
+            toolCallsThisTurn = toolCallsThisTurn,
+            snapshot = snapshot,
+        )
         val bodies = mutableListOf<String>()
         orderedRules.forEach { rule ->
             if (rule.condition(context)) {
@@ -123,6 +148,7 @@ class RuleEngine(
     /** 新一轮用户消息 / 重新生成时清空（与 `toolLoopGuard.reset()` 同处调用） */
     fun reset() {
         window.clear()
+        toolCallsThisTurn = 0
         fired.clear()
     }
 
@@ -145,6 +171,16 @@ class RuleEngine(
             hint = { c -> exploreHint(c.window) },
         ),
         Rule(
+            id = RULE_PLAN_MISSING,
+            severity = Severity.HIGH,
+            condition = { c ->
+                c.snapshot.planToolAvailable &&
+                    c.snapshot.hasActivePlan == false &&
+                    c.toolCallsThisTurn >= PLAN_NUDGE_MIN_CALLS
+            },
+            hint = { c -> planHint(c.toolCallsThisTurn) },
+        ),
+        Rule(
             id = RULE_BUDGET_NEAR_LIMIT,
             severity = Severity.MEDIUM,
             condition = { c -> (c.snapshot.budgetRatio ?: 0.0) >= BUDGET_NUDGE_RATIO },
@@ -158,7 +194,11 @@ class RuleEngine(
      */
     private val orderedRules: List<Rule> = rules.sortedBy { it.severity }
 
-    private class RuleContext(val window: ToolEffectWindow, val snapshot: RuleSnapshot)
+    private class RuleContext(
+        val window: ToolEffectWindow,
+        val toolCallsThisTurn: Int,
+        val snapshot: RuleSnapshot,
+    )
 
     /** 声明顺序即优先级（HIGH 在前）——[orderedRules] 按它排 */
     private enum class Severity { HIGH, MEDIUM }
@@ -198,6 +238,25 @@ class RuleEngine(
     }
 
     /**
+     * 计划提醒（对应 bigeye 的 `dag_missing`）。本仓 `todo_write` 的工具描述里自己写着
+     * "**3+ distinct steps** 的任务要先调它" —— 这条提醒就是把那条自己定的规矩在执行中兜住。
+     *
+     * 报出**实际步数**：模型据此判断"这确实是个多步任务"还是"再一步就完了"。
+     * 出口同样在最后（单步任务就忽略），避免把简单请求也赶上清单。
+     */
+    private fun planHint(toolCalls: Int): String = buildString {
+        appendLine("You have made $toolCalls tool calls in this turn without recording a plan.")
+        appendLine(
+            "If this task has 3 or more distinct steps, call todo_write first with the full checklist " +
+                "(short imperative items, exactly one in_progress) and keep it updated as you go — " +
+                "the checklist keeps you from drifting and shows the user progress."
+        )
+        appendLine("If this is genuinely a single-step task, ignore this note and continue.")
+        appendLine("Do not mention this note or any internal mechanism to the user.")
+        append("Do not mention the checklist bookkeeping in your final answer either; the UI already shows it.")
+    }
+
+    /**
      * 预算提醒。与上一条的分工：上一条管"**没有产出**"，这一条管"**产出快把预算吃满了**"。
      *
      * 报出实际比例而不是只说"快满了"：模型据此决定是收尾还是硬撑，比一个模糊的警告有用。
@@ -224,7 +283,15 @@ class RuleEngine(
 
     private companion object {
         const val RULE_EXPLORE_WITHOUT_LANDING = "explore_without_landing"
+        const val RULE_PLAN_MISSING = "plan_missing"
         const val RULE_BUDGET_NEAR_LIMIT = "budget_near_limit"
+
+        /**
+         * 计划提醒的步数阈值：5 次工具调用。取 5 而不是工具描述里的"3+ 步"是因为
+         * **工具调用数 ≠ 任务步数**（一步可能要好几次调用：读、改、验），
+         * 留一点余量免得把简单请求也赶上清单 —— 误报的代价是模型学会忽略这类提醒。
+         */
+        const val PLAN_NUDGE_MIN_CALLS = 5
 
         /** 预算提醒阈值：用量到 80% 就提醒（撞上限是 100%，那时只能优雅停止、没有收尾余地） */
         const val BUDGET_NUDGE_RATIO = 0.8

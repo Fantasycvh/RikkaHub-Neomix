@@ -108,10 +108,53 @@ class RuleReminderWiringTest {
         val evaluateAt = src.indexOf("ruleEngine.reminder(")
         assertTrue("没有求值调用", evaluateAt >= 0)
         assertTrue(
-            "求值处没传 RuleSnapshot ⇒ budget_near_limit 永远不命中",
-            src.substring(evaluateAt, minOf(evaluateAt + 200, src.length))
-                .contains("RuleSnapshot(budgetRatio = workspaceBudget.usageRatio())"),
+            "求值处没传预算比例 ⇒ budget_near_limit 永远不命中",
+            src.substring(evaluateAt, minOf(evaluateAt + 600, src.length))
+                .contains("budgetRatio = workspaceBudget.usageRatio()"),
         )
+    }
+
+    /**
+     * 计划状态必须真的喂进引擎，而且**必须两部分都喂**：
+     * ①本轮开始时分支里是否已有在进行中的计划；②本轮中途是否写过计划。
+     * 少了 ① 会在有计划的会话里反复催；少了 ② 会让"模型刚写完计划就被继续催"这种自相矛盾的提醒出现。
+     */
+    @Test
+    fun `plan state is fed into the reminder evaluation`() {
+        val src = source(handler)
+        val evaluateAt = src.indexOf("ruleEngine.reminder(")
+        assertTrue("没有求值调用", evaluateAt >= 0)
+        val call = src.substring(evaluateAt, minOf(evaluateAt + 600, src.length))
+        assertTrue(
+            "求值处没传计划状态 ⇒ plan_missing 永远不命中",
+            call.contains("hasActivePlan = planAtTurnStart || planWrittenThisTurn"),
+        )
+        assertTrue(
+            "求值处没传计划工具可用性 ⇒ 工具没启用时也会催模型去调它",
+            call.contains("planToolAvailable = planToolAvailable"),
+        )
+    }
+
+    /** 每轮只算一次的两个输入：从消息派生计划、从工具表取可用性。 */
+    @Test
+    fun `plan inputs are computed once per turn from messages and the tool list`() {
+        val src = source(handler)
+        assertTrue(
+            "没从消息里派生计划",
+            src.contains("val planAtTurnStart = latestTodoPlan(messages).hasUnfinishedItems()"),
+        )
+        assertTrue(
+            "没检查计划工具是否可用",
+            src.contains("val planToolAvailable = tools.any { it.name == TODO_TOOL_NAME }"),
+        )
+        assertTrue(
+            "没在本轮写过计划时置位 ⇒ 刚写的计划压不住提醒",
+            src.contains("if (tool.toolName == TODO_TOOL_NAME) planWrittenThisTurn = true"),
+        )
+        // 置位必须发生在记录点旁边（同一处批内去重之后），另起一处会漏掉批内重复下发
+        val recordAt = src.indexOf("ruleEngine.record(tool.toolName")
+        val flagAt = src.indexOf("planWrittenThisTurn = true")
+        assertTrue("置位不在记录点附近", kotlin.math.abs(flagAt - recordAt) < 300)
     }
 
     /** 用户明确要求默认开；这条断言防的是"某次改动顺手把它关了"。 */

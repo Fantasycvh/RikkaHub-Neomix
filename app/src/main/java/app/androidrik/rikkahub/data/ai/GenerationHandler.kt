@@ -33,6 +33,9 @@ import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.rikkahub.data.ai.tools.local.TODO_TOOL_NAME
+import app.androidrik.rikkahub.data.ai.tools.local.hasUnfinishedItems
+import app.androidrik.rikkahub.data.ai.tools.local.latestTodoPlan
 import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.ai.ui.isOutputLimitTruncation
 import app.androidrik.ai.ui.UIMessage
@@ -359,6 +362,15 @@ class GenerationHandler(
             var pendingRecoveryHint: String? = initialRecoveryHint
             var autoContinuations = 0
 
+            // 计划提醒（`plan_missing`）的两个输入，**每轮只算一次**：
+            // ①本轮开始时分支里是否已有「仍在进行」的计划 —— 全完成的旧清单不算，否则同一会话里
+            //   开新任务永远会被上一轮做完的清单压住；②计划工具是否可用 —— 不可用时绝不能叫模型
+            //   去调一个不存在的工具（那只会白制造一次失败调用）。
+            // 中途新建的计划由 `planWrittenThisTurn` 捕获，不必重扫消息。
+            val planAtTurnStart = latestTodoPlan(messages).hasUnfinishedItems()
+            val planToolAvailable = tools.any { it.name == TODO_TOOL_NAME }
+            var planWrittenThisTurn = false
+
             for (stepIndex in 0 until maxSteps) {
                 Log.i(TAG, "streamText: start step #$stepIndex (${targetModel.id})")
 
@@ -380,9 +392,14 @@ class GenerationHandler(
             if (pendingTools.isEmpty()) {
                 // 规则提醒：**每一步拼装前**求值 ⇒ 作用于下一步（本仓工具循环每步重拼提示词）。
                 // 刻意放在 `if` 内：`reminder()` 有副作用（标记已提醒），算了不发等于白丢一次提醒。
-                // 预算比例取会话上的 WorkspaceTurnBudget（撞上限前的那次提醒就靠它）。
+                // 三个输入都是显式传参：预算比例取自会话上的 WorkspaceTurnBudget（撞上限前的那次
+                // 提醒）、计划状态取自本轮开始时的分支 + 本轮的 todo_write、工具可用性取自工具表。
                 val ruleReminder = ruleEngine.reminder(
-                    RuleSnapshot(budgetRatio = workspaceBudget.usageRatio()),
+                    RuleSnapshot(
+                        budgetRatio = workspaceBudget.usageRatio(),
+                        hasActivePlan = planAtTurnStart || planWrittenThisTurn,
+                        planToolAvailable = planToolAvailable,
+                    ),
                 )
                 generateInternal(
                     assistant = assistant,
@@ -672,6 +689,8 @@ class GenerationHandler(
                         // 规则提醒的效果窗口：与 LoopGuard 同处记录（上面的批内 dedup 保证
                         // 一次响应里的重复下发只算一次，窗口密度才不失真）。
                         ruleEngine.record(tool.toolName, tool.inputAsJson())
+                        // 本轮写过计划 ⇒ `plan_missing` 立刻闭嘴（这是该条规则的"落地"形态）
+                        if (tool.toolName == TODO_TOOL_NAME) planWrittenThisTurn = true
                         when (val verdict = loopGuard.record(tool.toolName, signature)) {
                             is ToolCallLoopGuard.Verdict.Loop -> {
                                 if (stopNotice == null) stopNotice = GenerationNotice.ToolLoopStopped(

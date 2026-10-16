@@ -135,9 +135,13 @@ fun parseTodoPlanArgs(input: String): List<TodoEntry>? {
  * （借鉴 Yuihub 最终形态——计划不渲染进消息正文，输入栏上方的计划条是唯一展示面）。
  * 无调用或参数畸形时返回空列表（计划条不显示）。
  */
-fun latestTodoPlan(conversation: Conversation): List<TodoEntry> {
+fun latestTodoPlan(conversation: Conversation): List<TodoEntry> =
+    latestTodoPlan(conversation.currentMessages)
+
+/** 同上，但直接吃消息列表：`GenerationHandler` 手里只有 messages、拿不到 Conversation。 */
+fun latestTodoPlan(messages: List<UIMessage>): List<TodoEntry> {
     var latest: List<TodoEntry>? = null
-    conversation.currentMessages.forEach { message: UIMessage ->
+    messages.forEach { message: UIMessage ->
         message.parts.forEach { part ->
             if (part is UIMessagePart.Tool && part.toolName == TODO_TOOL_NAME) {
                 parseTodoPlanArgs(part.input)?.let { latest = it }
@@ -146,3 +150,11 @@ fun latestTodoPlan(conversation: Conversation): List<TodoEntry> {
     }
     return latest.orEmpty()
 }
+
+/**
+ * 计划是否**仍在进行**（还有未完成项）。
+ *
+ * 规则提醒用它而不是"计划非空"：全完成的旧计划不算"有计划" —— 否则同一会话里开新任务时
+ * 那条 `plan_missing` 永远会被上一轮做完的清单压住（实测过的坑：拿残留计划当挡箭牌）。
+ */
+fun List<TodoEntry>.hasUnfinishedItems(): Boolean = any { it.status != TODO_STATUS_COMPLETED }

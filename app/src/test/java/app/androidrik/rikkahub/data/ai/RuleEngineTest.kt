@@ -329,4 +329,107 @@ class RuleEngineTest {
         assertFalse("不该报打转", text.contains("going in circles"))
         assertTrue("但预算确实快满了", text.contains("workspace budget"))
     }
+
+    // ── 第三条规则：plan_missing（到阈值仍没有**在进行**的计划）──
+    //
+    // 对应 bigeye 的 `dag_missing`。本仓 `todo_write` 的工具描述里自己就写着"3+ distinct steps
+    // 的任务要先调它"，这条提醒把那条规矩在执行中兜住。
+
+    private fun snapshotWithPlan(
+        hasActivePlan: Boolean?,
+        planToolAvailable: Boolean = true,
+    ) = RuleSnapshot(hasActivePlan = hasActivePlan, planToolAvailable = planToolAvailable)
+
+    @Test
+    fun `plan rule fires once enough calls happen without an active plan`() {
+        val engine = engine()
+        engine.recordExplore(4)
+
+        assertNull("4 次还不到阈值", engine.reminder(snapshotWithPlan(hasActivePlan = false)))
+
+        engine.recordExplore(1) // 第 5 次
+
+        assertNotNull("5 次工具调用还没计划 ⇒ 提醒先落计划", engine.reminder(snapshotWithPlan(hasActivePlan = false)))
+    }
+
+    @Test
+    fun `plan rule stays silent when a plan is already active`() {
+        val engine = engine()
+        engine.recordExplore(6)
+
+        assertNull("已有在进行中的计划就不该再催", engine.reminder(snapshotWithPlan(hasActivePlan = true)))
+    }
+
+    @Test
+    fun `plan rule does not guess when the plan state is unknown`() {
+        val engine = engine()
+        engine.recordExplore(6)
+
+        assertNull("拿不到计划状态时不许猜（与预算比例同款）", engine.reminder(snapshotWithPlan(hasActivePlan = null)))
+        assertNull("默认快照同样不参与", engine.reminder())
+    }
+
+    /** 计划工具不可用时催它去调 `todo_write`，只会白制造一次失败调用。 */
+    @Test
+    fun `plan rule stays silent when the plan tool is unavailable`() {
+        val engine = engine()
+        engine.recordExplore(6)
+
+        assertNull(
+            "工具表里没有 todo_write ⇒ 不能叫模型去调一个不存在的工具",
+            engine.reminder(snapshotWithPlan(hasActivePlan = false, planToolAvailable = false)),
+        )
+    }
+
+    @Test
+    fun `plan hint reports the call count and names the tool`() {
+        val engine = engine()
+        engine.recordExplore(5)
+
+        val text = engine.reminder(snapshotWithPlan(hasActivePlan = false))!!
+
+        assertTrue("要报出实际步数", text.contains("5 tool calls"))
+        assertTrue("要点名该用哪个工具", text.contains("todo_write"))
+        assertTrue("出口：单步任务就忽略", text.contains("single-step task, ignore"))
+        assertTrue("同样不许暴露机制", text.contains("Do not mention this note"))
+    }
+
+    @Test
+    fun `plan rule reminds at most once per turn`() {
+        val engine = engine()
+        engine.recordExplore(6)
+
+        assertNotNull(engine.reminder(snapshotWithPlan(hasActivePlan = false)))
+        assertNull("同一条规则每轮只提醒一次", engine.reminder(snapshotWithPlan(hasActivePlan = false)))
+    }
+
+    @Test
+    fun `reset clears the turn call counter`() {
+        val engine = engine()
+        engine.recordExplore(4)
+
+        engine.reset()
+        engine.recordExplore(4)
+
+        assertNull("重置后应重新计数（4 次不够）", engine.reminder(snapshotWithPlan(hasActivePlan = false)))
+    }
+
+    /** 三条规则同时命中：一个表头，按 severity（HIGH 先，同档保表序）排。 */
+    @Test
+    fun `three rules share one header ordered by severity`() {
+        val engine = engine()
+        engine.recordExplore(10)
+        engine.recordNeutral(2) // 窗口满 ⇒ 探索规则命中；12 次 ⇒ 计划规则也命中
+
+        val text = engine.reminder(
+            RuleSnapshot(budgetRatio = 0.9, hasActivePlan = false, planToolAvailable = true),
+        )!!
+
+        assertEquals("只该有一个表头", 1, Regex("Automatic reminders").findAll(text).count())
+        val exploreAt = text.indexOf("going in circles")
+        val planAt = text.indexOf("without recording a plan")
+        val budgetAt = text.indexOf("workspace budget")
+        assertTrue("探索(HIGH) 应在计划(HIGH) 之前（同档保表序）", exploreAt in 0 until planAt)
+        assertTrue("计划(HIGH) 应在预算(MEDIUM) 之前", planAt in 0 until budgetAt)
+    }
 }

@@ -142,7 +142,7 @@ internal fun classifyToolEffect(toolName: String, arguments: JsonElement?): Tool
 | id | 信号 | 提醒什么 | 对应 |
 |---|---|---|---|
 | `explore_without_landing` | 窗口内 explore ≥ N 且 landing == 0 | 光看不干 → 三步自查（前提假设/该不该问用户/是否正常长调研） | bigeye ① |
-| `plan_missing`（**未做**） | 本轮步数或消息数达阈值 且 无 `todo_write` 计划 | 多步任务先落计划再动手 | bigeye `dag_missing`（本仓有 `todo_write`，是现成对应物） |
+| `plan_missing` ✅ **已落地（2026-10-16）** | 本轮工具调用 ≥**5** 次 且 无**在进行**的计划 且 计划工具可用 | 多步任务先落计划再动手（点名 `todo_write`） | bigeye `dag_missing`（本仓有 `todo_write`，是现成对应物） |
 | `budget_near_limit` ✅ **已落地（2026-10-16）** | 本轮 workspace 预算用量 ≥80%（字符与步数取大者） | 预算快满 → 收敛输出、优先收尾；缺关键信息就问人 | 本仓既有 `WorkspaceTurnBudget`（现状是到顶才优雅停止，**提前给模型一次机会**） |
 
 （可选第四条 `context_near_full`：上下文接近上限且本轮无压缩检查点 → 建议压缩。先不做，等前三条的
@@ -218,8 +218,9 @@ internal fun classifyToolEffect(toolName: String, arguments: JsonElement?): Tool
 
 ## 9. 落地记录（2026-10-16）
 
-**已落地**：整条交付链路 + 两条规则 —— `explore_without_landing` 与 `budget_near_limit`（**默认开**，三档可配置）。
-用户先拍板"只做第一条、默认开、同时可配置化"，跑完真机复现后追加第二条。
+**已落地**：整条交付链路 + **设计稿 §4.3 的三条规则全部落地**（`explore_without_landing`、
+`plan_missing`、`budget_near_limit`；**默认开**，三档可配置）。用户先拍板"只做第一条、默认开、
+同时可配置化"，跑完真机复现后追加第二条，再追加第三条。
 
 **第二条规则 `budget_near_limit`（2026-10-16 追加）**：判据 = `WorkspaceTurnBudget.usageRatio() >= 0.8`
 （字符与步数取大者）。与第一条的分工写在两条 hint 的注释里：一条管"**没有产出**"，一条管"**产出快把预算吃满了**"。
@@ -247,6 +248,28 @@ internal fun classifyToolEffect(toolName: String, arguments: JsonElement?): Tool
 不再命中也不解除（1 红）／空块也注入（1 红）／少一处 reset（1 红）／默认改关（1 红）／
 **预算阈值改成"只在超限时提醒"（3 红）／`usageRatio` 忽略步数口径（1 红）／忘了把预算喂进引擎（1 红）／
 severity 排序方向反过来（1 红）**。
+
+**第三条规则 `plan_missing`（2026-10-16 追加）**：对应 bigeye 的 `dag_missing`。本仓的 `todo_write`
+工具描述里自己就写着"**3+ distinct steps** 的任务要先调它"——这条提醒就是把那条自定的规矩在执行中兜住。
+
+三个输入都是**显式传参**，且都取真实状态而不是猜：
+- `hasActivePlan`：**每轮只算一次** —— 本轮开始时从分支消息派生（`latestTodoPlan(messages)`），
+  加上"本轮中途写过计划"的标志（在记录效果的同一处、遇到 `todo_write` 就置位）。
+  两个都要：只算开头会让"模型刚写完计划还被继续催"（自相矛盾），只算中途会让上一轮留下的
+  在进行中的计划被无视。
+- **"全完成"的旧清单不算有计划**（`hasUnfinishedItems()`）：否则同一会话里开新任务永远被上一轮
+  做完的清单压住 —— 这是这条规则最容易写错的地方，专门拉了测试。
+- `planToolAvailable`：从工具表取，**不可用时绝不提醒**（叫模型去调一个不存在的工具，只会白造一次
+  失败调用）。默认 false 是安全侧。
+- 阈值 **5 次工具调用**（不是工具描述里的"3+ 步"）：工具调用数 ≠ 任务步数（一步常要读/改/验几次），
+  留点余量免得把简单请求也赶上清单 —— 误报的代价是模型学会忽略这类提醒。
+
+**测试**：`RuleEngineTest` 补 7 条（阈值两侧、有计划时不催、计划状态未知时不猜、工具不可用时不催、
+文案含步数与工具名与出口、每轮一次、`reset` 清计数、三规则同一步按 severity 排序）；
+`TodoToolsTest` 补 2 条（`hasUnfinishedItems` 四种情形、`latestTodoPlan(messages)` 重载与会话版取同一次调用）；
+接线守卫补 2 条（计划状态两部分都喂了、输入每轮只算一次且置位在记录点附近）。
+**反证 5 处全部精确变红**：不管工具可用性都催（1 红）／拿掉步数阈值（2 红）／状态未知时当成"没计划"（1 红）／
+忘掉"本轮刚写过计划"（1 红）／置位行形同虚设（1 红）。
 
 **第二条规则的真机验证情况**：**未单独跑假上游**，理由是边际价值低 —— 交付管道（记录 → 命中 → 尾部注入 →
 本轮下一步生效）已由第一条规则的假上游复现证明（见 §9.1），而这条规则的判据是 `usageRatio()` 的纯函数、
@@ -277,3 +300,12 @@ severity 排序方向反过来（1 红）**。
    都不含提醒 —— 说明这条注入只跟着**本轮的引擎状态**走，不是全局污染。
 
 （第一轮日志留档为 `_mock_rule_log_run1.jsonl`，干净版为 `_mock_rule_log.jsonl`。）
+
+### 9.2 第三条规则的真机验证：**待跑**（设备 2026-10-16 晚离线）
+
+`plan_missing` 的假上游复现已**准备好但未执行**：设备在跑之前从 ADB 掉线（`adb devices` 为空），
+装机与真机复现一并挂起。复现配方（已写进 `_mock_rule.py` 的注释与 handoff）：
+把假上游设成 **ROUNDS=5**（只发 5 个 `get_time_info` 调用）并在日志里记下每次请求的 `tools` 数组 ⇒
+**预期**：请求 #6（第 5 次调用之后的下一步）**只**带计划那条提醒 —— 探索规则要 12 次、预算比例为 0，
+所以这一轮天然是隔离验证；同时日志里的 `tools` 能直接告出 `todo_write` 到底在不在工具表里
+（不在 ⇒ 断言"必不带提醒"，那是对 `planToolAvailable` 闸门的反向验证）。

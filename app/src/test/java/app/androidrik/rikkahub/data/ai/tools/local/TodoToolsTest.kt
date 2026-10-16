@@ -14,6 +14,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
@@ -117,4 +118,45 @@ class TodoToolsTest {
         ))
         assertTrue(latestTodoPlan(conversation).isEmpty())
     }
+
+    // ── 给「规则提醒」的 plan_missing 用：派生与"是否仍在进行" ──
+
+    @Test
+    fun `plan is active only while it has unfinished items`() {
+        assertFalse("空计划不算有计划", emptyList<TodoEntry>().hasUnfinishedItems())
+        assertFalse(
+            "全完成的旧清单不算有计划（否则同一会话里开新任务永远催不动）",
+            listOf(
+                TodoEntry("a", TODO_STATUS_COMPLETED),
+                TodoEntry("b", TODO_STATUS_COMPLETED),
+            ).hasUnfinishedItems(),
+        )
+        assertTrue(
+            "还有 pending 就算在进行",
+            listOf(TodoEntry("a", TODO_STATUS_COMPLETED), TodoEntry("b", TODO_STATUS_PENDING))
+                .hasUnfinishedItems(),
+        )
+        assertTrue(
+            "in_progress 同理",
+            listOf(TodoEntry("a", TODO_STATUS_IN_PROGRESS)).hasUnfinishedItems(),
+        )
+    }
+
+    @Test
+    fun `latest plan can be derived from a message list`() {
+        val first = todoMessage("""{"todos":[{"content":"old","status":"completed"}]}""")
+        val second = todoMessage("""{"todos":[{"content":"new","status":"pending"}]}""")
+
+        // GenerationHandler 手里只有 messages（拿不到 Conversation），故这条重载必须与
+        // 会话版取同一个"最后一次调用"
+        assertEquals(listOf(TodoEntry("new", TODO_STATUS_PENDING)), latestTodoPlan(listOf(first, second)))
+        assertEquals(emptyList<TodoEntry>(), latestTodoPlan(emptyList()))
+    }
+
+    private fun todoMessage(args: String) = UIMessage(
+        role = MessageRole.ASSISTANT,
+        parts = listOf(
+            UIMessagePart.Tool(toolCallId = "call-${args.hashCode()}", toolName = TODO_TOOL_NAME, input = args),
+        ),
+    )
 }
