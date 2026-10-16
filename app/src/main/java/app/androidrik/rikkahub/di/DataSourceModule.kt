@@ -35,7 +35,6 @@ import app.androidrik.rikkahub.data.ai.transformers.AssistantTemplateLoader
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.rag.RagRepository
-import app.androidrik.rikkahub.data.api.RikkaHubAPI
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.db.AppDatabase
@@ -316,16 +315,10 @@ val dataSourceModule = module {
         )
     }
 
-    single<Retrofit> {
-        Retrofit.Builder()
-            .baseUrl("https://api.rikka-ai.com")
-            .addConverterFactory(get<Json>().asConverterFactory("application/json; charset=UTF8".toMediaType()))
-            .build()
-    }
-
-    single<RikkaHubAPI> {
-        get<Retrofit>().create(RikkaHubAPI::class.java)
-    }
+    // 这里原本有一个指向 `https://api.rikka-ai.com`（上游作者自己的中转）的 Retrofit 与
+    // `RikkaHubAPI`（**空接口**，全仓零调用）。那个内置供应商已从出厂默认移除 ⇒ 两者都是死代码，
+    // 一并删掉：留着等于把一个已经不再提供的上游服务地址继续编进包里。
+    // 见 `DefaultProviders.kt` 的 `DEFAULT_AUTO_MODEL_ID` kdoc。
 
     // ---- 做梦（V3）：整理 agent / worker / 触发器 / 运行时 ----
     // 全部是 single：同一记忆库不许并发跑两次（调度器内部还有 Mutex，这里是第二道）。

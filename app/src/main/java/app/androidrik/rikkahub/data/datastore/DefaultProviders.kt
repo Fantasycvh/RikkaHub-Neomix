@@ -9,38 +9,37 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import app.androidrik.ai.provider.BalanceOption
-import app.androidrik.ai.provider.Modality
-import app.androidrik.ai.provider.Model
-import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import kotlin.uuid.Uuid
 
+/**
+ * 「**没有默认自动模型**」的哨兵值（2026-10-16 起）。
+ *
+ * ## 它为什么还存在
+ *
+ * 这个 uuid 原本是内置 `RikkaHub` 供应商里那个 `auto` 模型的 id，同时被 `PreferencesStore`
+ * 当作**「未配置」的落值**用在 `chatModelId` / `translateModeId` / `compressModelId` 上
+ * （`fastModelId` 更是显式把它当"未配置"哨兵，见那里的注释）。
+ *
+ * **那个供应商已从出厂默认里移除**（它指的是上游作者自己的中转服务 `api.rikka-ai.com`），
+ * 所以本常量现在**指向一个不存在的模型**——这正是它的用途：任何解析不到模型的地方，
+ * 行为等同于「用户还没选模型」，UI 会引导去选。
+ *
+ * ## 为什么不删掉 / 不改名成 null
+ *
+ * - `chatModelId` / `translateModeId` 在 `Settings` 里是**非空** `Uuid`，
+ *   删掉常量就得给它们编一个"空"的随机值——那更糟：随机值看起来像一个真实模型。
+ * - `fastModelId` 的注释已经确立了「AUTO 哨兵 = 未配置」这套读法，保留同一个值可**沿用既有语义**，
+ *   不需要给存量数据做迁移。
+ *
+ * ⚠️ **代价（改动新装行为）**：移除那个供应商之后，**全新安装不再自带一个可用的免费模型**，
+ * 用户必须先自己加一个供应商。这是移除上游中转服务的必然结果，不是 bug。
+ */
 val DEFAULT_AUTO_MODEL_ID = Uuid.parse("b7055fb4-39f9-4042-a88a-0d80ed76cf08")
 
 val DEFAULT_PROVIDERS = listOf(
-    ProviderSetting.OpenAI(
-        id = Uuid.parse("a8d2d463-e8c0-41f2-b89e-f5eb8e716cce"),
-        name = "RikkaHub",
-        baseUrl = "https://api.rikka-ai.com/v1",
-        apiKey = "",
-        enabled = true,
-        builtIn = true,
-        description = {
-            Text(stringResource(R.string.rikkahub_provider_description))
-        },
-        models = listOf(
-            Model(
-                id = DEFAULT_AUTO_MODEL_ID,
-                modelId = "auto",
-                displayName = "Auto",
-                inputModalities = listOf(Modality.TEXT),
-                outputModalities = listOf(Modality.TEXT),
-                abilities = listOf(ModelAbility.TOOL, ModelAbility.REASONING),
-            )
-        )
-    ),
     ProviderSetting.OpenAI(
         id = Uuid.parse("1eeea727-9ee5-4cae-93e6-6fb01a4d051e"),
         name = "OpenAI",
