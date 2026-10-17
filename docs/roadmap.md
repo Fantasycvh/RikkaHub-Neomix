@@ -2801,7 +2801,17 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
     `Security violation: Requested utility 'head' does not match executable name: /usr/bin/.l2s.coreutils.dpkg-new0001.0116`
   ⇒ **本仓确凿命中 #2158**，不是理论推断。临时工作区已保留（下游已升级坏掉的状态），
   正好可用作**换 PRoot 后的对照**：同一 rootfs 换二进制后 `ls` 必须恢复正常。
-  **未做**：未升级 PRoot（预编候选已确认存在，见下一条）。
+  **✅ 2026-10-17 已修复**（换 Termux `proot 5.1.107.96`，打包版 ≥71 含 AT_EXECFN 修复）：
+  - jniLibs 换成新版并把新增动态依赖一并入库：`libproot_exec.so`（247 KB）、`libproot_loader.so`（18 KB）、
+    `libtalloc2.so`（33 KB，SONAME `libtalloc.so.2`）、`libandroid-shmem.so`（14 KB），arm64 + x86_64 双架构
+  - **Android 打包硬约束**：AGP 只提取匹配 `lib*.so` 的文件，`libtalloc.so.2` 以 `.2` 结尾**不会被提取**
+    ⇒ 打包名用 `libtalloc2.so`，运行时复制成 `<workspace>/tmp/proot-libs/libtalloc.so.2` 并设 `LD_LIBRARY_PATH`
+    （`ProotShellRunner` 的 ProcessBuilder 与 `WorkspaceTerminalSession` 的 env 两处都要设——后者是第二处
+    独立起 proot 的地方）
+  - **真机对照（决定性）**：同一套已损坏 rootfs，旧二进制报 `Security violation`，
+    新二进制 `ls /` → `bin boot dev etc`、`basename x/y` → `y`、exit 0；装机后 `nativeLibraryDir` 四库齐全
+  - 全量 2211 测试 0 失败（新增 `ProotLibDirTest` 3 项：首次创建 / 幂等且能修截断 / 源缺失不产生半套）
+  **未验**：x86_64 无设备（只核了架构与 SONAME）；app 内终端 UI 未手动打开实跑。
 - 2026-10-17 **DeepSeek Files API 调研完毕，不立项**（仅留评估记录，见 `handoff §三.3`）。
   它是两套东西：**原生 `purpose=file-extract`**（PDF/DOCX/XLSX/PPTX 等文档，服务端抽文本回灌上下文、
   `parse_method=auto|ocr`、不过期）与 **Anthropic 兼容 Files**（JPEG/PNG/GIF/WebP 图像，
