@@ -2775,6 +2775,13 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   产出永远无法采纳且重启即丢的建议**——代码自己的 kdoc（`Scheduler.kt:50-53`「在那之前不要接自动触发」）
   已被自动接线（`MemoryConsolidationRuntime.kt:100`）违反。
 
+- 2026-10-17 **#2158 预编二进制可行性已探明**：Termux 官方 apt 源有现成 aarch64/x86_64 的
+  `proot 5.1.107.96`（issue 说打包版 ≥71 即含 AT_EXECFN 修复），结构与本仓 jniLibs 一一对应
+  （`usr/bin/proot` ↔ `libproot_exec.so`、`usr/libexec/proot/loader` ↔ `libproot_loader.so`）。
+  **但它是动态链接的**：`DT_NEEDED` 比现有二进制多 `libtalloc.so.2` 与 `libandroid-shmem.so`
+  （现有只有 `libc.so` + `libtermux-exec.so`）⇒ 落地要把 `libtalloc 2.5.0` 与
+  `libandroid-shmem 0.7` 一起取来放进 jniLibs，并保证运行时能找到。
+  **未做**：未下载替换、未验证修复（下一步：换二进制后在同一 rootfs 上跑 `ls` 对照）。
 - 2026-10-17 **上游 issue #2158 核实：本仓受影响**（`bug: Ubuntu 26.04 rootfs 中 rust-coreutils 与 PRoot L2S 冲突导致基础命令不可用`，2026-10-17 上游已 closed）。
   机理：Ubuntu ≥25.10 的 coreutils 改用 Rust（uutils），并带 `require-utility-to-be-invoked-at-matching-path` 安全补丁，
   强制 `argv[0]` 与可执行文件路径一致；而 **PRoot L2S（`--link2symlink`）**为 dpkg 新装文件生成
@@ -2784,7 +2791,17 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   而内置的 `libproot_exec.so` 版本串是 **`5.1.0`（< 5.5.0）** ⇒ 用户在 26.04 类 rootfs 里 `apt upgrade` 会中招。
   **候选修法**：①把内置 PRoot 升到 ≥5.5.0（重编 arm64/x86_64 的 `libproot_exec.so` / `libproot_loader.so`，正解）
   ②文档给临时解法 `apt install coreutils-from-gnu coreutils-from-uutils- --allow-remove-essential`（只对旧 PRoot 有效）。
-  **未做**：未升级、未复现（需要一个 26.04 rootfs 做真机对照）。
+  **✅ 2026-10-17 真机复现成功**（PJX110，内置 PRoot 5.1.0 + `--link2symlink`）：
+  解出 `ubuntu-base-26.04.1-base-arm64` 到临时工作区 `repro2158/linux`，手工用内置
+  `libproot_exec.so` 起 shell。
+  - **基线**：`ls /` 正常、`basename x/y` → `y`、`cat /etc/os-release` → `Ubuntu 26.04.1 LTS`，
+    `dpkg -l coreutils` 为 `9.5-1ubuntu2+0.0.0~ubuntu25`（即 uutils/Rust 版）
+  - `apt-get update && apt-get upgrade -y` 之后：**`ls`、`head`、`basename` 全部失效**，
+    报错与 issue **逐字一致**（连临时文件名都一样）：
+    `Security violation: Requested utility 'head' does not match executable name: /usr/bin/.l2s.coreutils.dpkg-new0001.0116`
+  ⇒ **本仓确凿命中 #2158**，不是理论推断。临时工作区已保留（下游已升级坏掉的状态），
+  正好可用作**换 PRoot 后的对照**：同一 rootfs 换二进制后 `ls` 必须恢复正常。
+  **未做**：未升级 PRoot（预编候选已确认存在，见下一条）。
 - 2026-10-17 **DeepSeek Files API 调研完毕，不立项**（仅留评估记录，见 `handoff §三.3`）。
   它是两套东西：**原生 `purpose=file-extract`**（PDF/DOCX/XLSX/PPTX 等文档，服务端抽文本回灌上下文、
   `parse_method=auto|ocr`、不过期）与 **Anthropic 兼容 Files**（JPEG/PNG/GIF/WebP 图像，
