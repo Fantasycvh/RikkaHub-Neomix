@@ -2782,6 +2782,25 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   （现有只有 `libc.so` + `libtermux-exec.so`）⇒ 落地要把 `libtalloc 2.5.0` 与
   `libandroid-shmem 0.7` 一起取来放进 jniLibs，并保证运行时能找到。
   **未做**：未下载替换、未验证修复（下一步：换二进制后在同一 rootfs 上跑 `ls` 对照）。
+- 2026-10-17 **安装包体积盘点（用户决定：TikZ 保留，暂不精简）**。实测 `app/release` 产物 **74.3 MB**：
+  `assets` 30.8M(41.5%) / `lib/arm64-v8a` 26.0M(35.1%) / `classes*.dex` 11.2M(15.1%) / `static` 3.1M(4.2%)。
+  **最大单点是 LaTeX/TikZ 栈，压缩后 34.88M = 49%**：`assets/tex` 18.29M + `libtex_poc.so` 3.48M
+  + **`libicudata78.so` 12.21M** + `libicuuc78.so` 0.76M + `libgraphite2.so` 0.15M
+  （设备上解压后：icudata **33.11 MB**、tex_poc 10.43 MB、mupdf 9.44 MB）。
+  次之 PDF `libmupdf_java.so` 4.36M；ML Kit 条码合计**仅 2.85M**（源码仅 1 处引用，不值得为它动依赖）；
+  **`assets/banner` 5.1M 是零引用死资源**（3 个 PNG，源码 grep 全空）。
+  **Tectonic 二进制的来路已查清**（`rikkahub` 原仓 `docs/tikz-rendering-tectonic-postmortem.md` §8.4）：
+  Tectonic 本体用 **cargo-ndk** 交叉编译；**ICU 是 Termux 78.3 预编库 + `patchelf` 改 NEEDED**
+  （AGP 拒绝版本化 `.so` 文件名）；graphite2/libc++_shared 同 vendor；fontconfig 自写 stub；
+  字体 SimHei（不可再分发）→ **Droid Sans Fallback 3.4MB**；bundle 14.5MB/1598 文件
+  （重打包时 tar 成员不能带 `./` 前缀）。**历史事实：按需下载曾实现并验证通过，后按决策回退为全部内置**，
+  资源仓库 `Fantasycvh/rikkahub-resources` 与 manifest 结构仍在。
+  **三条路**：A 变体分离(slim/full) 省 34.88M、纯 Gradle 改动；B 复活按需下载（实现现成，但 `.so` 需
+  `System.load` from filesDir + 33M 解压峰值）；C 自编 ICU + `ICU_DATA_FILTER_FILE` 裁剪（33M→个位数 M，
+  工作量大）。**未做任何精简**（用户 2026-10-17 决定 TikZ 暂时保留）。
+  ⚠️ 方法论：我最初把 12.2M 的 ICU **错判为 ML Kit 带来的**（估 ML Kit 15M），
+  用「扫 412 个 AAR 缓存 + 查 jniLibs」两秒推翻了它 —— 实际 ML Kit 只 2.85M，ICU 属 Tectonic 栈。
+  **别用「这类库常带 X」的归纳替代证据。**
 - 2026-10-17 **上游 issue #2158 核实：本仓受影响**（`bug: Ubuntu 26.04 rootfs 中 rust-coreutils 与 PRoot L2S 冲突导致基础命令不可用`，2026-10-17 上游已 closed）。
   机理：Ubuntu ≥25.10 的 coreutils 改用 Rust（uutils），并带 `require-utility-to-be-invoked-at-matching-path` 安全补丁，
   强制 `argv[0]` 与可执行文件路径一致；而 **PRoot L2S（`--link2symlink`）**为 dpkg 新装文件生成
