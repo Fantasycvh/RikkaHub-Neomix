@@ -63,6 +63,7 @@ interface SearchService<T : SearchServiceOptions> {
                 is SearchServiceOptions.JinaOptions -> JinaSearchService
                 is SearchServiceOptions.BochaOptions -> BochaSearchService
                 is SearchServiceOptions.RikkaHubOptions -> RikkaHubSearchService
+                is SearchServiceOptions.DeepSeekOptions -> DeepSeekSearchService
                 is SearchServiceOptions.GrokOptions -> GrokSearchService
                 is SearchServiceOptions.TinyfishOptions -> TinyfishSearchService
                 is SearchServiceOptions.SerperOptions -> SerperSearchService
@@ -173,6 +174,7 @@ sealed class SearchServiceOptions : Enableable {
         val TYPES = mapOf(
             BingLocalOptions::class to "Bing",
             RikkaHubOptions::class to "RikkaHub",
+            DeepSeekOptions::class to "DeepSeek",
             ZhipuOptions::class to "智谱",
             DoubaoOptions::class to "豆包",
             TavilyOptions::class to "Tavily",
@@ -347,6 +349,15 @@ sealed class SearchServiceOptions : Enableable {
     ) : SearchServiceOptions()
 
     @Serializable
+    @SerialName("deepseek")
+    data class DeepSeekOptions(
+        override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
+        override val apiKey: String = "",
+        override val apiKeys: List<ApiKeyEntry> = emptyList(),
+    ) : SearchServiceOptions()
+
+    @Serializable
     @SerialName("grok")
     data class GrokOptions(
         override val id: Uuid = Uuid.random(),
@@ -498,6 +509,7 @@ fun <T : SearchServiceOptions> T.withEnabled(enabled: Boolean): T {
         is SearchServiceOptions.JinaOptions -> copy(enabled = enabled)
         is SearchServiceOptions.BochaOptions -> copy(enabled = enabled)
         is SearchServiceOptions.RikkaHubOptions -> copy(enabled = enabled)
+        is SearchServiceOptions.DeepSeekOptions -> copy(enabled = enabled)
         is SearchServiceOptions.GrokOptions -> copy(enabled = enabled)
         is SearchServiceOptions.TinyfishOptions -> copy(enabled = enabled)
         is SearchServiceOptions.SerperOptions -> copy(enabled = enabled)
@@ -544,6 +556,7 @@ fun <T : SearchServiceOptions> T.withNextKey(): T? {
         is SearchServiceOptions.JinaOptions -> copy(apiKeys = entries, apiKey = legacy)
         is SearchServiceOptions.BochaOptions -> copy(apiKeys = entries, apiKey = legacy)
         is SearchServiceOptions.RikkaHubOptions -> copy(apiKeys = entries, apiKey = legacy)
+        is SearchServiceOptions.DeepSeekOptions -> copy(apiKeys = entries, apiKey = legacy)
         is SearchServiceOptions.GrokOptions -> copy(apiKeys = entries, apiKey = legacy)
         is SearchServiceOptions.TinyfishOptions -> copy(apiKeys = entries, apiKey = legacy)
         is SearchServiceOptions.SerperOptions -> copy(apiKeys = entries, apiKey = legacy)

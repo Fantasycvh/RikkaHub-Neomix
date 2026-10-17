@@ -216,6 +216,9 @@ private fun SearchServiceOptionsEditor(
         is SearchServiceOptions.RikkaHubOptions -> {
             RikkaHubOptions(options) { onUpdateOptions(it) }
         }
+        is SearchServiceOptions.DeepSeekOptions -> {
+            DeepSeekOptions(options) { onUpdateOptions(it) }
+        }
         is SearchServiceOptions.GrokOptions -> {
             GrokOptions(options) { onUpdateOptions(it) }
         }
@@ -759,6 +762,25 @@ internal fun RikkaHubOptions(
             }
         }
     }
+}
+
+@Composable
+internal fun DeepSeekOptions(
+    options: SearchServiceOptions.DeepSeekOptions,
+    onUpdateOptions: (SearchServiceOptions.DeepSeekOptions) -> Unit
+) {
+    ApiKeysFormItem(
+        apiKeys = options.apiKeys,
+        legacyKey = options.apiKey,
+        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
+    )
+
+    Text(
+        text = "Shares the DeepSeek chat API key. Search / Fetch are billed per successful call " +
+            "(¥5 / 1000 calls each); the QPS limit is per account, not per key.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable

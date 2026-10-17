@@ -273,6 +273,7 @@ private fun AddProviderDialog(
                     val instance: SearchServiceOptions = when (selectedType) {
                         SearchServiceOptions.BingLocalOptions::class -> SearchServiceOptions.BingLocalOptions()
                         SearchServiceOptions.RikkaHubOptions::class -> SearchServiceOptions.RikkaHubOptions()
+                        SearchServiceOptions.DeepSeekOptions::class -> SearchServiceOptions.DeepSeekOptions()
                         SearchServiceOptions.ZhipuOptions::class -> SearchServiceOptions.ZhipuOptions()
                         SearchServiceOptions.TavilyOptions::class -> SearchServiceOptions.TavilyOptions()
                         SearchServiceOptions.ExaOptions::class -> SearchServiceOptions.ExaOptions()
