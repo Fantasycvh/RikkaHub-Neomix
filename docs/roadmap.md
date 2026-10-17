@@ -2775,6 +2775,17 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   产出永远无法采纳且重启即丢的建议**——代码自己的 kdoc（`Scheduler.kt:50-53`「在那之前不要接自动触发」）
   已被自动接线（`MemoryConsolidationRuntime.kt:100`）违反。
 
+- 2026-10-17 **DeepSeek Files API 调研完毕，不立项**（仅留评估记录，见 `handoff §三.3`）。
+  它是两套东西：**原生 `purpose=file-extract`**（PDF/DOCX/XLSX/PPTX 等文档，服务端抽文本回灌上下文、
+  `parse_method=auto|ocr`、不过期）与 **Anthropic 兼容 Files**（JPEG/PNG/GIF/WebP 图像，
+  `expires_after` 1 小时~30 天/永久）。限制：单文件 64 MiB、列表 `limit` 上限 1000、
+  上传 10 分钟内完成、文件名 ≤512 字节、单用户 25 GiB / 10000 个。
+  **不做的理由**：文档那半与本仓 `document` 模块本地解析重复；唯一真增量是 `parse_method=ocr`
+  （扫描版 PDF），覆盖面太窄；图像那半与本仓 `FileEncoder` 链路重复；
+  引入 `file_id` 生命周期 + token 计费透出 + 「服务端有/本地已删」一致性，成本远大于收益。
+  **同批露出的**：`Responses API (NEW)`、`FIM 补全 (Beta)`。
+  另：本地快照**不完整**（clipping 抓不到官网交互式 `## Request` 面板、整块 Files API 缺失）——
+  以后引用这份文档要回官网核。
 - 2026-10-16 **上游同步（真新 5 提交：`240deb5fe` → `cfb503d8c`）**：`git fetch` 这次可用，
   但区间报 22 个 —— **其中 17 个是 10-13/10-14/10-15 三批已评过的**，真新只有 5 个
   （教训：**判断欠账看文档同步点，不看本地 ref**）。**2 吸收 / 3 不跟**：
