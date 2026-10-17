@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.FileProvider
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import java.io.File
@@ -437,6 +438,12 @@ class FilesManager(
                 activityContext.exportImageFile(activity, File(image))
             }
 
+            image.startsWith("content:") -> {
+                // SAF/相册来源：先落到自己的 cache 再导出（导出接口只吃 File）
+                val file = copyImageToCache(image) ?: error("Invalid image format")
+                activityContext.exportImageFile(activity, file)
+            }
+
             image.startsWith("http") -> {
                 runCatching {
                     val url = URL(image)
@@ -457,6 +464,75 @@ class FilesManager(
 
             else -> error("Invalid image format")
         }
+    }
+
+    /**
+     * 把消息里的一张图片落到可分享的临时文件，并返回它的 FileProvider URI（失败返回 null）。
+     *
+     * 为什么要**先拷贝进 cacheDir**再分享，而不是把原 URI 直接塞进 ACTION_SEND：
+     * - `content://`（SAF / 相册）的读授权是**临时**的，接收方不一定拿得到；进程重启后
+     *   原授权还可能失效（本仓上传路径一律把字节拷进 `filesDir/upload`，但历史数据/
+     *   分享进来的数据仍可能是 content://）；
+     * - `data:image/...;base64` 与 `http(s)` 本来就不是文件；
+     * - `filesDir/images/`（生图落盘目录）不在 FileProvider 暴露范围内
+     *   （见 res/xml/file_paths.xml，只暴露 upload/tool_outputs/logs/exports 与 cache），
+     *   统一走 cache 才不会抛 IllegalArgumentException。
+     */
+    suspend fun createImageShareUri(image: String): Uri? = withContext(Dispatchers.IO) {
+        val file = copyImageToCache(image) ?: return@withContext null
+        runCatching {
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        }.onFailure {
+            Log.e(TAG, "createImageShareUri: FileProvider failed for $file", it)
+        }.getOrNull()
+    }
+
+    /**
+     * 把图片从任意来源（content: / file: / 绝对路径 / data: / http）拷贝进
+     * `cacheDir/images_share`，供「分享」「导出」这类只吃文件的场景使用。
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun copyImageToCache(image: String): File? {
+        return runCatching {
+            val dir = context.cacheDir.resolve("images_share").apply { mkdirs() }
+            val target = File(dir, "share_${System.currentTimeMillis()}.png")
+            when {
+                image.startsWith("data:image") -> {
+                    val data = image.substringAfter("base64,")
+                    target.writeBytes(Base64.decode(data.toByteArray()))
+                }
+
+                image.startsWith("content:") -> {
+                    val input = context.contentResolver.openInputStream(image.toUri())
+                        ?: error("Cannot open stream for $image")
+                    input.use { source -> target.outputStream().use { source.copyTo(it) } }
+                }
+
+                image.startsWith("file:") -> {
+                    val source = image.toUri().toFile()
+                    if (source.absolutePath != target.absolutePath) source.copyTo(target, overwrite = true)
+                }
+
+                image.startsWith("/") -> {
+                    val source = File(image)
+                    if (source.absolutePath != target.absolutePath) source.copyTo(target, overwrite = true)
+                }
+
+                image.startsWith("http") -> {
+                    val connection = URL(image).openConnection() as HttpURLConnection
+                    connection.connectTimeout = 10_000
+                    connection.readTimeout = 10_000
+                    connection.inputStream.use { source -> target.outputStream().use { source.copyTo(it) } }
+                    connection.disconnect()
+                }
+
+                else -> error("Unsupported image source")
+            }
+            target
+        }.onFailure {
+            // 只记前 64 个字符：data: 图片的 URL 可能极长
+            Log.e(TAG, "copyImageToCache failed for ${image.take(64)}", it)
+        }.getOrNull()
     }
 
     suspend fun syncFolder(folder: String = FileFolders.UPLOAD): SyncResult = withContext(Dispatchers.IO) {

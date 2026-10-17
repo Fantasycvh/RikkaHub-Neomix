@@ -50,6 +50,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -100,11 +101,14 @@ import app.androidrik.rikkahub.ui.components.message.ChatMessage
 import app.androidrik.rikkahub.ui.components.message.CompactionCheckpointRow
 import app.androidrik.rikkahub.ui.components.ui.ErrorCardsDisplay
 import app.androidrik.rikkahub.ui.components.ui.ListSelectableItem
+import app.androidrik.rikkahub.ui.components.ui.LocalConversationImageUrls
 import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
 import app.androidrik.rikkahub.ui.components.ui.ScrollJumperBar
 import app.androidrik.rikkahub.ui.components.ui.Tooltip
 import app.androidrik.rikkahub.ui.hooks.ImeLazyListAutoScroller
 import app.androidrik.rikkahub.ui.theme.ChatFontProvider
+import app.androidrik.rikkahub.utils.collectConversationImageUrls
+import app.androidrik.rikkahub.utils.normalizeLocalFileUrl
 import app.androidrik.rikkahub.utils.plus
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
@@ -168,53 +172,64 @@ fun ChatList(
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
 ) {
-    AnimatedContent(
-        targetState = previewMode,
-        label = "ChatListMode",
-        transitionSpec = {
-            (fadeIn() + scaleIn(initialScale = 0.8f) togetherWith fadeOut() + scaleOut(targetScale = 0.8f))
-        }
-    ) { target ->
-        if (target) {
-            ChatListPreview(
-                innerPadding = innerPadding,
-                conversation = conversation,
-                settings = settings,
-                hazeState = hazeState,
-                onJumpToMessage = onJumpToMessage,
-                animatedVisibilityScope = this@AnimatedContent,
-            )
-        } else {
-            ChatListNormal(
-                innerPadding = innerPadding,
-                conversation = conversation,
-                state = state,
-                loading = loading,
-                processingStatus = processingStatus,
-                settings = settings,
-                hazeState = hazeState,
-                glassHazeState = glassHazeState,
-                errors = errors,
-                onDismissError = onDismissError,
-                onClearAllErrors = onClearAllErrors,
-                onRegenerate = onRegenerate,
-                onContinue = onContinue,
-                onEdit = onEdit,
-                onQuoteMessage = onQuoteMessage,
-                onForkMessage = onForkMessage,
-                onDelete = onDelete,
-                onUpdateMessage = onUpdateMessage,
-                onClickSuggestion = onClickSuggestion,
-                onTranslate = onTranslate,
-                onClearTranslation = onClearTranslation,
-                animatedVisibilityScope = this@AnimatedContent,
-                onToolApproval = onToolApproval,
-                onToolAnswer = onToolAnswer,
-                onApproveAll = onApproveAll,
-                onEditReasoning = onEditReasoning,
-                onToggleFavorite = onToggleFavorite,
-                onConversationSystemPromptChange = onConversationSystemPromptChange,
-            )
+    // 「点击消息里的图片 ⇒ 全屏后在**本会话**的图片间左右切换」：
+    // 候选集合在这里算一份（当前分支的顶层 Image part），经 CompositionLocal 下发给
+    // 消息里的图片渲染点。放在 ChatList 而不是 ChatPage：两种模式（普通/预览）都从这里过，
+    // 且不需要把列表逐层透传到深层的消息组件里。
+    val context = LocalContext.current
+    val conversationImageUrls = remember(conversation.currentMessages) {
+        collectConversationImageUrls(conversation.currentMessages)
+            .map { context.normalizeLocalFileUrl(it) }
+    }
+    CompositionLocalProvider(LocalConversationImageUrls provides conversationImageUrls) {
+        AnimatedContent(
+            targetState = previewMode,
+            label = "ChatListMode",
+            transitionSpec = {
+                (fadeIn() + scaleIn(initialScale = 0.8f) togetherWith fadeOut() + scaleOut(targetScale = 0.8f))
+            }
+        ) { target ->
+            if (target) {
+                ChatListPreview(
+                    innerPadding = innerPadding,
+                    conversation = conversation,
+                    settings = settings,
+                    hazeState = hazeState,
+                    onJumpToMessage = onJumpToMessage,
+                    animatedVisibilityScope = this@AnimatedContent,
+                )
+            } else {
+                ChatListNormal(
+                    innerPadding = innerPadding,
+                    conversation = conversation,
+                    state = state,
+                    loading = loading,
+                    processingStatus = processingStatus,
+                    settings = settings,
+                    hazeState = hazeState,
+                    glassHazeState = glassHazeState,
+                    errors = errors,
+                    onDismissError = onDismissError,
+                    onClearAllErrors = onClearAllErrors,
+                    onRegenerate = onRegenerate,
+                    onContinue = onContinue,
+                    onEdit = onEdit,
+                    onQuoteMessage = onQuoteMessage,
+                    onForkMessage = onForkMessage,
+                    onDelete = onDelete,
+                    onUpdateMessage = onUpdateMessage,
+                    onClickSuggestion = onClickSuggestion,
+                    onTranslate = onTranslate,
+                    onClearTranslation = onClearTranslation,
+                    animatedVisibilityScope = this@AnimatedContent,
+                    onToolApproval = onToolApproval,
+                    onToolAnswer = onToolAnswer,
+                    onApproveAll = onApproveAll,
+                    onEditReasoning = onEditReasoning,
+                    onToggleFavorite = onToggleFavorite,
+                    onConversationSystemPromptChange = onConversationSystemPromptChange,
+                )
+            }
         }
     }
 }

@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.ai
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -22,7 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,10 +42,12 @@ import app.androidrik.rikkahub.utils.normalizeLocalFileUrl
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Exchange01
 import me.rerere.hugeicons.stroke.Files02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import org.koin.compose.koinInject
 
@@ -66,6 +72,25 @@ internal fun MediaFileInputRow(
         }
     }
 
+    // 替换：只对图片给入口（编辑历史消息时的「换一张」；删除后再加也能达到同样效果，
+    // 但会丢位置/多两步，所以给一个直接动作）。旧文件不在这里删盘，见 state.replaceImage。
+    val toaster = LocalToaster.current
+    var pendingReplacePart by remember { mutableStateOf<UIMessagePart.Image?>(null) }
+    val replaceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        val target = pendingReplacePart
+        pendingReplacePart = null
+        if (uri != null && target != null) {
+            val localUri = filesManager.createChatFilesByContents(listOf(uri)).firstOrNull()
+            if (localUri != null) {
+                state.replaceImage(target, localUri.toString())
+            } else {
+                toaster.show(message = "无法读取所选图片")
+            }
+        }
+    }
+
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
@@ -83,6 +108,10 @@ internal fun MediaFileInputRow(
                             displayNameByRelativePath = displayNameByRelativePath,
                             displayNameByFileName = displayNameByFileName
                         ),
+                        onReplace = {
+                            pendingReplacePart = part
+                            replaceLauncher.launch("image/*")
+                        },
                         leading = {
                             Surface(
                                 modifier = Modifier.size(34.dp),
@@ -151,6 +180,7 @@ private fun AttachmentChip(
     title: String,
     leading: @Composable () -> Unit,
     onRemove: () -> Unit,
+    onReplace: (() -> Unit)? = null,
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -174,6 +204,22 @@ private fun AttachmentChip(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.widthIn(min = 40.dp, max = 180.dp),
             )
+            if (onReplace != null) {
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .size(26.dp)
+                        .clickable(onClick = onReplace),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Exchange01,
+                        contentDescription = "替换图片",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
