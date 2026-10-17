@@ -40,15 +40,31 @@ class WebServerService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var stateObserverJob: Job? = null
 
+    /**
+     * 最近一次 `onStartCommand` 的 `startId`。
+     *
+     * 供 `onStartCommand` **之外**的退出路径用（状态观察器那条）——那里拿不到 `startId`，
+     * 而裸 `stopSelf()` 会连一次**已排队但还没调 `startForeground()`** 的新启动一起停掉 ⇒
+     * 系统抛 `ForegroundServiceDidNotStartInTimeException` 崩溃。理由详见下方 `onStartCommand`。
+     */
+    private var latestStartId = 0
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // ⚠️ 本服务由 `startForegroundService()` 启动（`RikkaHubApp.kt:318`），所以每次启动都
+        // **必须**走到一次 `startForeground()`。任何退出都要用 `stopSelf(startId)` 而不是裸
+        // `stopSelf()`：后者会把**更新的、尚未履约的那次启动**一起停掉 ⇒
+        // `ForegroundServiceDidNotStartInTimeException` **崩溃**。
+        // 同源缺陷上游在 `72747fc9e`（2026-10-16）修过，但触发它的类本仓没有；
+        // 本仓对应物是这里与 `KeepAliveService`（同一批一起改）。
+        latestStartId = startId
         when (intent?.action) {
             ACTION_START -> {
                 val port = intent.getIntExtra(EXTRA_PORT, 8080)
                 val localhostOnly = intent.getBooleanExtra(EXTRA_LOCALHOST_ONLY, false)
                 if (!startForegroundCompat()) {
-                    stopSelf()
+                    stopSelf(startId)
                     return START_NOT_STICKY
                 }
                 startObservingState()
@@ -66,7 +82,7 @@ class WebServerService : Service() {
             null -> {
                 // 兜底：intent 为 null 时根据设置决定是否启动
                 if (!startForegroundCompat()) {
-                    stopSelf()
+                    stopSelf(startId)
                     return START_NOT_STICKY
                 }
                 serviceScope.launch {
@@ -78,7 +94,7 @@ class WebServerService : Service() {
                             localhostOnly = settings.webServerLocalhostOnly
                         )
                     } else {
-                        stopSelf()
+                        stopSelf(startId)
                     }
                 }
             }
@@ -134,7 +150,11 @@ class WebServerService : Service() {
 
                     wasRunning && !state.isRunning && !state.isLoading -> {
                         stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
+                        // 观察器只在 `onStartCommand` 跑过之后才存在 ⇒ `latestStartId` 必然 > 0。
+                        // 真为 0 属状态异常，此时**宁可不停**（留给下一次 STOP 或系统回收），
+                        // 也不退回裸 `stopSelf()` —— 那正是本条守卫要禁的崩溃写法。
+                        val id = latestStartId
+                        if (id > 0) stopSelf(id)
                     }
                 }
             }

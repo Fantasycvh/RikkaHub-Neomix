@@ -2,8 +2,9 @@
 
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.27 (294)`；仅 tag、无预编译资产，本仓不发预编译包，CI 自动发版已禁用）。
 
-> **同步点（2026-10-16 更新）**：逐条评估已跟进到上游 **`240deb5fe`（2026-10-15 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-15 同步」；再前一节为「2026-10-14 同步」。
-> **本次取数方式**：bash 无外网（`git fetch upstream` 报 `Failed to connect to github.com port 443`），改用 `gh api`（GitHub API 走的是另一条通路）核对；本地 `upstream/master` 停在 `b8d309e66`，与真实 master 差 **2 个提交**。
+> **同步点（2026-10-16 晚间更新）**：逐条评估已跟进到上游 **`cfb503d8c`（2026-10-16 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-16 同步」；再前一节为「2026-10-15 同步」。
+> **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
+> **教训**：`git fetch` 的区间大小 ≠ 待评估量；判断「有没有欠账」要看**文档记录的评估点**（本节顶部的同步点），不是本地 ref。
 
 > 本文档合并原 `upstream-2.4.11/2.4.14/2.4.16/2.5.0-analysis.md` 四份分析（已删除）。
 > **本仓实际**：基线 = 上游 `2c980642`（RikkaHub `2.4.5`）；其后上游各版本（`2.4.6` → `2.5.x`）的修复/功能
@@ -160,6 +161,35 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 |---|---|---|
 | `a26d1d55` **videogen → mediagen 重构（图像+视频统一）** | 模块改名 + 统一 `MediaGeneration*` 请求/任务/供应商接口；setting 改**厂商级**（只存凭据+models，模型带 kind 图像/视频）；新增 OpenAI 图像生成/编辑、火山 Seedream、阿里万相/千问适配器（同步接口直返终态任务）；阿里换带业务空间 ID 的新域名（新增 workspaceId）；`MediaGenerationManager.generate` 统一同步/异步轮询两链路；按厂商分包 + ~900 行单测 | **暂不吸收（维持 `96fbe7e3` 判定，且上游仍未接线）**。fork 无 videogen 无存量冲突，但**上游 app 至今零消费点**（`git grep mediagen 2267943a -- app/src` 只有 build.gradle 模块引用；4e4bfa62 同样无 videogen 消费）⇒ 现阶段吸收=死代码。fork 图像生成走 `OpenAIProvider.generateImages`（imggen 页），视频生成无功能。**前提已失效（2026-10-07 注）**：上游已由 `0450c4c1` 正式接线进 app，本条「零消费点=死代码」论据作废——专项迁移评估见 10-06 二次同步节末尾的 2026-10-07 块。原「重新立项的条件」：想要「厂商级媒体生成」（火山 Seedream/阿里万相这类 chat provider 之外的渠道）或上游把 mediagen 接进 UI 时再评估；届时注意 fork 的 per-provider 代理/key 轮换体系与其厂商级 setting 的关系。阿里的新域名/workspaceId 变更随模块走，fork 无直连阿里媒体生成，单独不适用 |
 | `2267943a` 的 S3 部分：**presignGetUrl 带签名临时下载地址** | `AwsSignatureV4.presignGetUrl`（查询参数签名、只签 host、1s–7 天）+ `S3Client.presignGetUrl(key, expires)` + 顺手把主机/路径计算抽成 `requestHost`/`canonicalUri` 公用函数 + 106 行测试（AWS 文档示例值校验签名） | **可吸收（小，~80 行 + 测试），消费点暂缺**。fork 的 `data/sync/s3/` 三文件与上游同源；逐行 diff 核实：fork 内联的 host/canonicalUri 计算（含 pathStyle 与 host 已含 bucket 两分支）与上游新抽的 helper **功能等价**，fork 的 `S3Client` 另有分片上传/进度回调等扩展（上游无）⇒ 吸收 = ①先做无行为变化的 host/路径提取重构 ②加 presignGetUrl（fork 签名实现支持 queryParams，改造小）③测试直套。**现实用途**：备份文件生成临时分享链接（桶保持私有）；mediagen 的产物分享场景 fork 不存在。可选吸收，等有 UI 入口再做也行 |
+
+### 2026-10-16 同步：`240deb5fe` → `cfb503d8c`（**真新 5 提交**）
+
+> 上游 10-16 一天的 5 个提交：**2 条真修复/功能 + 3 条品牌与文档**。
+> 注：`git fetch` 报出的区间是 22 个提交，但其中 17 个属 10-13/10-14/10-15 三批（已评），
+> 只有 `240deb5fe` 之后的 5 个是本批新账。
+
+**一句话结论**：**2 项可吸收、3 项不跟**。两处修复都**不能照搬补丁**，但**其中一条的同源缺陷在本仓可达**
+—— 而且是**崩溃级**的，这是本批唯一的实质收获。
+
+#### A. 建议吸收
+
+| 提交 | 内容 | fork 核实 | 结论 |
+|---|---|---|---|
+| ✅ **`9f4a651a5` Wan 系列匹配 Qwen 图标** | 一行正则：`PATTERN_QWEN` 加 `wanx?[\d-]`，让 `wan3.0-video-prime` / `wanx2.1` 等也归到 Qwen 图标（同属阿里系视觉）| fork `utils/AIIconMatcher.kt:80` 的正则与上游**逐字相同**（`Regex("qwen\|qwq\|qvq")`），上下文一致 ⇒ **补丁可直接落** | ✅ **已吸收（一行）** |
+| ✅ **`72747fc9e` 前台服务 `stopSelf(startId)`**（崩溃修复） | `ChatGenerationForegroundService` 的 `acquire`/`release` 从裸 `stopService()`/`stopSelf()` 改为 **`stopSelf(startId)`**。原因：该服务由 `startForegroundService()` 启动，系统要求**这次启动必须履约一次 `startForeground()`**；「生成结束」的释放请求若把**刚开始、尚未 `startForeground()` 的新一轮生成**一起停掉 ⇒ `ForegroundServiceDidNotStartInTimeException` **崩溃** | fork **没有这个类**（`service/` 下是 `KeepAliveService` / `WebServerService` / `ChatService` …）⇒ **补丁不可照搬**。<br>**但同源写法在两处可达**：<br>• `KeepAliveService.onStartCommand` **3 处裸 `stopSelf()`**（`ACTION_STOP` / `!isEnabled` / `startForegroundCompat()` 失败）—— 而它正是由 `startForegroundService()` 启动（`:86`），且「设置里关掉又立刻打开保活」或 `stop()`(`startService`) 与 `start()` 交错都能造出「更早的 stop 撞上更新的 start」<br>• `WebServerService` **4 处**（`RikkaHubApp.kt:318` 同样用 `startForegroundService()`），其中 1 处在**状态观察器**里、拿不到 `startId` | ✅ **已按 fork 形态修（2026-10-16）**：`KeepAliveService` 三处 → `stopSelf(startId)`；`WebServerService` 三处（`onStartCommand` 内）→ `stopSelf(startId)`，观察器那处**新增 `latestStartId` 字段**并用它（为 0 时**宁可不停**，也不退回裸 `stopSelf()`）。<br>**新增源码守卫 `ForegroundServiceStopSelfTest`**（2 项）：剥注释后断言这两个文件里不存在裸 `stopSelf()` + 守卫自身的剥注释反证。**已证伪**：把 `KeepAliveService` 那处改回裸 `stopSelf()` ⇒ 当场变红。<br>**未验**：真机没复现过这个竞态（它需要时序巧合），所以这是**按语义修的预防性加固**，不是「修了一个已发生的崩溃」 |
+
+#### B. 不跟
+
+| 提交 | 内容 | fork 核实 | 结论 |
+|---|---|---|---|
+| `ec48d0621` **应用图标 + 移除 DEV 角标 + 移除兔子加载动画**（49 文件，+10/−290） | 换应用/通知图标；删掉 debug 的 DEV 角标与兔子 `AnimatedVectorDrawable` 加载动画 | **三类改动全都与本仓「有意为之」相反**：<br>• **DEV 角标是本仓 2026-09-12 特意吸收的**（`42b933d8`，debug 变体启动图标角标，用于区分 debug/release）<br>• **兔子动画本仓保留并本地化**（`ui/components/ui/RabbitLoading.kt`，仍被 `ChatList.kt`、`CompressContextDialog.kt` 使用）<br>• 应用图标/通知图标：本仓是 **Neomix**，有自己的品牌资产 | **不跟**。⚠️ **这是最容易被盲目跟的一类**：上游**删掉的正是本仓特意加的**，diff 里全是删除 ⇒ 看着像「清理」，落下去等于把本仓的定制抹掉。以后遇到「上游删除」类改动，先在本仓历史里搜同一件事是否被**当作特性**加过 |
+| `d2dd1ed6a` / `cfb503d8c` **README 改版**（宣传海报 / 徽章 / 赞助商表 / 捐赠渠道 Patreon→Ko-fi） | 纯文档：换海报截图、去 DeepWiki/zread 徽章、捐赠渠道改 Ko-fi | 本仓有自己的 README 与发布说明，且**不发预编译包**、赞助体系不同 | **不跟**（文档，与代码无关） |
+
+#### C. 本批的方法论提醒（写给下次）
+
+1. **`git fetch` 的区间 ≠ 待评估量**。本次 fetch 报 22 个提交，真新只有 5 个 —— 因为上一批的评估点是**文档里记的 `240deb5fe`**，而本地 ref 落后，fetch 会把「已评过的」一起吐出来。**判断欠账看文档同步点，不看 ref。**
+2. **同一个 bug 的补丁不可照搬时，先找本仓的同源写法**。`72747fc9e` 的类本仓没有，但「裸 `stopSelf()` + `startForegroundService`」这个组合在本仓两处都在 —— **上游修的是症状所在的那个类，教训是那套语义**。
+3. **「上游删除」要反向核对**（见 B 表 `ec48d0621`）。
 
 ### 2026-10-15 同步：`b8d309e66` → `240deb5fe`（2 提交）
 

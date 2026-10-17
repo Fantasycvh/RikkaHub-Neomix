@@ -77,7 +77,9 @@ private val PATTERN_ANTHROPIC = Regex("anthropic")
 private val PATTERN_CLAUDE = Regex("claude")
 private val PATTERN_DEEPSEEK = Regex("deepseek")
 private val PATTERN_GROK = Regex("grok")
-private val PATTERN_QWEN = Regex("qwen|qwq|qvq")
+// 上游 `9f4a651a5`（2026-10-16）把 Wan 系列也归到 Qwen 图标：`wan3.0-video-prime` / `wanx2.1` 等
+// 与 Qwen 同属阿里系视觉。本仓该行与上游**逐字相同**，所以补丁直接可用（一处正则）。
+private val PATTERN_QWEN = Regex("qwen|qwq|qvq|\\bwanx?[\\d-]")
 private val PATTERN_DOUBAO = Regex("doubao|豆包|火山")
 private val PATTERN_OPENROUTER = Regex("openrouter")
 private val PATTERN_ZHIPU = Regex("zhipu|智谱|glm")

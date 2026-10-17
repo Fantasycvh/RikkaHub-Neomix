@@ -2775,6 +2775,17 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   产出永远无法采纳且重启即丢的建议**——代码自己的 kdoc（`Scheduler.kt:50-53`「在那之前不要接自动触发」）
   已被自动接线（`MemoryConsolidationRuntime.kt:100`）违反。
 
+- 2026-10-16 **上游同步（真新 5 提交：`240deb5fe` → `cfb503d8c`）**：`git fetch` 这次可用，
+  但区间报 22 个 —— **其中 17 个是 10-13/10-14/10-15 三批已评过的**，真新只有 5 个
+  （教训：**判断欠账看文档同步点，不看本地 ref**）。**2 吸收 / 3 不跟**：
+  - ✅ `9f4a651a5` Wan 系列归 Qwen 图标（一行正则，fork `AIIconMatcher.kt:80` 与上游逐字相同）
+  - ✅ `72747fc9e` 前台服务 `stopSelf(startId)` —— **fork 没有那个类，但同源竞态在本仓两处可达**：
+    `KeepAliveService`（3 处裸 `stopSelf()`）+ `WebServerService`（4 处，1 处在观察器 ⇒ 加 `latestStartId`）。
+    已按 fork 形态修 + 新增源码守卫 `ForegroundServiceStopSelfTest`（已证伪变红）。**预防性加固，真机未复现**
+  - ❌ `ec48d0621` 换图标 + 删 DEV 角标 + 删兔子动画：**删的正是本仓特意加的**
+    （DEV 角标本仓 09-12 专门吸收 `42b933d8`；兔子动画本仓保留并本地化）—— 「上游删除」类要反向核对
+  - ❌ README ×2（本仓有自己的 README 与发布体系）
+  详见 `docs/upstream-analysis.md`「2026-10-16 同步」。
 - 2026-10-16 **移除内置 `RikkaHub` 供应商**（用户要求）。它是上游作者自己的中转
   （`api.rikka-ai.com/v1` + 一个 `auto` 免费模型），对 fork 来说不该是出厂默认。
   **连带清掉** `RikkaHubAPI`（空接口、零调用）+ 只服务它的 `Retrofit` 单例 + 6 语言描述字符串。

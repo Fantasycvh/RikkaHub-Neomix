@@ -108,21 +108,34 @@ class KeepAliveService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // ⚠️ 三处退出都必须用 `stopSelf(startId)`，**不能用裸 `stopSelf()`**。
+        //
+        // 同源缺陷在上游 `72747fc9e`（2026-10-16）被修过，但触发它的那个类
+        // （`ChatGenerationForegroundService`）本仓没有 —— 本仓的对应物就是这里。
+        // 竞态：`start()` 走的是 `startForegroundService()`（见上方 :86），系统要求这次启动
+        // **必须调一次 `startForeground()`**；若此刻一个**更早**的 stop 请求用裸 `stopSelf()`
+        // 把服务停掉，那次尚未履约的启动就永远没机会调 `startForeground()` ⇒ 系统抛
+        // `ForegroundServiceDidNotStartInTimeException` **崩溃**。
+        // 「更早的 stop 撞上更新的 start」在本服务完全可达：用户在设置里关掉又立刻打开保活、
+        // 或 `stop()` 的 `startService(ACTION_STOP)` 与另一处的 `start()` 交错。
+        //
+        // `stopSelf(startId)` 只在**自己就是最新一次启动**时才停 —— 有更新的启动在排队时就让位，
+        // 由那次启动自己决定去留（它也会检查 `isEnabled`，所以不会因此漏停）。
         if (intent?.action == ACTION_STOP) {
             releaseWifiLock()
             stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+            stopSelf(startId)
             return START_NOT_STICKY
         }
 
         // START_STICKY 重启时 intent 为 null；若开关已被关闭则顺势退出
         if (!isEnabled(this)) {
-            stopSelf()
+            stopSelf(startId)
             return START_NOT_STICKY
         }
 
         if (!startForegroundCompat()) {
-            stopSelf()
+            stopSelf(startId)
             return START_NOT_STICKY
         }
         acquireWifiLock()
