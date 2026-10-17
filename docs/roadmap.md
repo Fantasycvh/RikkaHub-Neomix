@@ -2775,6 +2775,16 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   产出永远无法采纳且重启即丢的建议**——代码自己的 kdoc（`Scheduler.kt:50-53`「在那之前不要接自动触发」）
   已被自动接线（`MemoryConsolidationRuntime.kt:100`）违反。
 
+- 2026-10-17 **上游 issue #2158 核实：本仓受影响**（`bug: Ubuntu 26.04 rootfs 中 rust-coreutils 与 PRoot L2S 冲突导致基础命令不可用`，2026-10-17 上游已 closed）。
+  机理：Ubuntu ≥25.10 的 coreutils 改用 Rust（uutils），并带 `require-utility-to-be-invoked-at-matching-path` 安全补丁，
+  强制 `argv[0]` 与可执行文件路径一致；而 **PRoot L2S（`--link2symlink`）**为 dpkg 新装文件生成
+  `.l2s.coreutils.dpkg-new…` 这类临时符号链接名 ⇒ 校验失败，`ls` / `basename` 等全部报
+  `Security violation: ... does not match executable name`。修复在 **PRoot v5.5.0**（AT_EXECFN 指向 loader 而非被跟踪程序）。
+  **本仓命中条件已核实**：`workspace/.../ProotShellRunner.kt:105` **确实带 `--link2symlink`**，
+  而内置的 `libproot_exec.so` 版本串是 **`5.1.0`（< 5.5.0）** ⇒ 用户在 26.04 类 rootfs 里 `apt upgrade` 会中招。
+  **候选修法**：①把内置 PRoot 升到 ≥5.5.0（重编 arm64/x86_64 的 `libproot_exec.so` / `libproot_loader.so`，正解）
+  ②文档给临时解法 `apt install coreutils-from-gnu coreutils-from-uutils- --allow-remove-essential`（只对旧 PRoot 有效）。
+  **未做**：未升级、未复现（需要一个 26.04 rootfs 做真机对照）。
 - 2026-10-17 **DeepSeek Files API 调研完毕，不立项**（仅留评估记录，见 `handoff §三.3`）。
   它是两套东西：**原生 `purpose=file-extract`**（PDF/DOCX/XLSX/PPTX 等文档，服务端抽文本回灌上下文、
   `parse_method=auto|ocr`、不过期）与 **Anthropic 兼容 Files**（JPEG/PNG/GIF/WebP 图像，
