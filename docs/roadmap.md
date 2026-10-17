@@ -2852,7 +2852,13 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
     `ls / | head -4` → `bin boot dev etc`、`basename x/y` → `y`、exit 0，**无 Security violation**；
     装机后 `nativeLibraryDir` 只有 `libproot_exec.so`(274352) + `libproot_loader.so`(18136)，
     talloc/shmem **0 个**；安装后应用启动 0 条 `FATAL EXCEPTION`
-  - **未验**：x86_64 仍无设备（只解析了 ELF）；app 内终端 UI 未手动打开实跑（`WorkspaceTerminalSession`
+  - ✅ **app 内终端 UI 已真机实跑（2026-10-17 20:58）**：在已打开的工作区终端里执行
+    `ls /` 与 `basename x/y` —— 输出 `bin boot dev etc home lib media mnt opt proc root run sbin
+    skills srv sys tmp usr var workspace` 与 `y`，提示符 `root@localhost:/workspace#` 正常。
+    这补上了删 `LD_LIBRARY_PATH` 后**唯一没验过的分支**（`WorkspaceTerminalSession` 的 env），
+    同时反证静态链接二进制在该会话里能正常加载（若仍需要 talloc/shmem，这里会直接起不来）。
+  - **未验**：x86_64 仍无设备（只解析了 ELF）；instrumented 测试（`connectedDebugAndroidTest`，
+    其中 `WorkspaceBackgroundTaskInstrumentedTest` 会走真实 `ProotShellRunner`）未跑
     的那份 env 已与 `ProotShellRunner` 对齐，但未点开验证）；device 上的 `libproot_exec.so`
     sha256 = `3c5b3e4c…dc65d`，与 `bf8ff5a27` blob 逐字节相同
   - **教训**：`DT_NEEDED` 才是链接期契约；二进制里出现 `libtalloc` 字样不等于动态依赖——先解 `.dynamic` 再动手。
