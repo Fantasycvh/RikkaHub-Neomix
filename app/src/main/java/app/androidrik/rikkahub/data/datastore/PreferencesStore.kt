@@ -32,6 +32,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 import app.androidrik.ai.core.MessageRole
@@ -128,6 +133,102 @@ internal fun createSettingsDataStore(file: File): DataStore<Preferences> {
         ),
         produceFile = { file },
     )
+}
+
+/**
+ * 已退役的搜索提供方多态 `@SerialName`（类型名）。
+ *
+ * 列入这里 = 该提供方的实现与其 `SearchServiceOptions` 子类**已从 sealed 层删除**，
+ * 因此存量 `search_services` JSON 里若还留着它，**必须在多态解码前剔除**（见 [loadSearchServices]）。
+ *
+ * 当前唯一一项 `rikkahub`：它指向 `https://api.rikka-ai.com/v1/search`，**该服务已不可用**，
+ * 故整体移除（与聊天侧 `DefaultProviders.kt` 移除内置 `RikkaHub` 供应商是**同一个理由**，
+ * 上游移除同类项也是同一个意思——不再提供该服务；不是「因为它是上游作者的服务」）。
+ */
+internal val RETIRED_SEARCH_SERVICE_TYPES: Set<String> = setOf("rikkahub")
+
+/** [loadSearchServices] 的结果：过滤+解码后的服务列表，与校正过的选中索引。 */
+internal data class SearchServicesLoadResult(
+    val services: List<SearchServiceOptions>,
+    val selected: Int,
+)
+
+/**
+ * 加载 `search_services` 原始 JSON（**纯函数**：无 Android / DataStore 依赖，可直接单测）。
+ *
+ * **为什么必须先过滤再解码**：搜索提供方与聊天 provider 的持久化方式不同——聊天内置项
+ * 根本不进 `providers` 键，每次加载由 `refillBuiltIns(existing, DEFAULT_PROVIDERS, 墓碑)`
+ * 回填，所以删默认项不影响已存数据；而搜索提供方是**整份多态列表落盘**在 `search_services`
+ * 单 key 里，直接 `decodeFromString`。已退役子类的 `@SerialName` 一旦从 sealed 层删掉，
+ * 存量 JSON 会在解码时抛 `SerializationException` ⇒ **整份 settings 加载失败**。
+ * 所以先按原始 JSON 把退役类型剔掉，再对剩余内容做多态解码。
+ *
+ * **索引语义**：[storedSelected] 是**完整列表索引**。剔除一个元素后，它之后的元素全部左移，
+ * 因此被剔项在选中项**之前**时必须把索引减一，否则会静默切到**另一个**提供方
+ * （而不是像天真的实现那样「少一个位置」）。最后统一 clamp 到合法范围
+ * （[SettingsStore.sanitizeSearchServiceSelected]），同时覆盖「选中项本身被剔除」与越界。
+ *
+ * **失败即回退，绝不抛出**：畸形 JSON、剔除后为空、剩余内容解码失败，一律返回
+ * `listOf(SearchServiceOptions.DEFAULT)` + 索引 0，与「该键不存在」时的行为一致。
+ * 让异常冒出去正是本函数要修的问题（整份 settings 加载失败），不能再引入一次。
+ */
+internal fun loadSearchServices(raw: String?, storedSelected: Int): SearchServicesLoadResult {
+    val fallback = SearchServicesLoadResult(listOf(SearchServiceOptions.DEFAULT), 0)
+    if (raw == null) return fallback
+    val filtered = runCatching { filterRetiredSearchServices(raw, storedSelected) }.getOrNull()
+        ?: return fallback
+    if (filtered.isEmpty) return fallback
+    val decoded = runCatching {
+        JsonInstant.decodeFromString<List<SearchServiceOptions>>(filtered.json)
+    }.getOrNull() ?: return fallback
+    if (decoded.isEmpty()) return fallback
+    return SearchServicesLoadResult(
+        services = decoded,
+        selected = SettingsStore.sanitizeSearchServiceSelected(filtered.selected, decoded.size),
+    )
+}
+
+/** [filterRetiredSearchServices] 的产物：剩余元素的 JSON 文本 + 左移后的索引。 */
+private data class RetainedSearchServices(
+    val json: String,
+    val selected: Int,
+    val isEmpty: Boolean,
+)
+
+/**
+ * 从原始 JSON 里剔除 [RETIRED_SEARCH_SERVICE_TYPES] 的元素。
+ * 解析失败（非 JSON 数组）返回 null，由 [loadSearchServices] 回退默认值。
+ */
+private fun filterRetiredSearchServices(raw: String, storedSelected: Int): RetainedSearchServices? {
+    val array = JsonInstant.parseToJsonElement(raw) as? JsonArray ?: return null
+    var removedBeforeSelected = 0
+    val kept = buildList {
+        array.forEachIndexed { index, element ->
+            if (element.isRetiredSearchService()) {
+                if (index < storedSelected) removedBeforeSelected++
+            } else {
+                add(element)
+            }
+        }
+    }
+    return RetainedSearchServices(
+        json = JsonArray(kept).toString(),
+        selected = storedSelected - removedBeforeSelected,
+        isEmpty = kept.isEmpty(),
+    )
+}
+
+/**
+ * 多态 `type` 是否属于退役类型；非对象 / 缺 `type` / `type` 非字符串一律交给解码去判定。
+ * `internal` 是因为备份恢复侧的 [app.androidrik.rikkahub.data.datastore.migration.SettingsJsonMigrator]
+ * 也要剔除同一批类型（旧备份里可能还带着它们），两处共用同一份判定，避免各写一遍走偏。
+ */
+internal fun JsonElement.isRetiredSearchService(): Boolean {
+    val type = (this as? JsonObject)
+        ?.get("type")
+        ?.let { (it as? JsonPrimitive)?.contentOrNull }
+        ?: return false
+    return type in RETIRED_SEARCH_SERVICE_TYPES
 }
 
 class SettingsStore(
@@ -312,6 +413,13 @@ class SettingsStore(
             shouldRetry
         }
         .map { preferences ->
+            // 搜索提供方是**持久化**的多态列表（`search_services` 单 key 存整份列表），
+            // 已退役的类型必须在多态解码前剔除，否则存量 JSON 会让整份 settings 加载抛异常。
+            // 详见 loadSearchServices 的 kdoc。
+            val searchServicesLoad = loadSearchServices(
+                raw = preferences[SEARCH_SERVICES],
+                storedSelected = preferences[SEARCH_SELECTED] ?: 0,
+            )
             Settings(
                 favoriteModels = preferences[FAVORITE_MODELS]?.let {
                     JsonInstant.decodeFromString(it)
@@ -363,13 +471,12 @@ class SettingsStore(
                 } ?: emptyList(),
                 developerMode = preferences[DEVELOPER_MODE] == true,
                 displaySetting = JsonInstant.decodeFromString(preferences[DISPLAY_SETTING] ?: "{}"),
-                searchServices = preferences[SEARCH_SERVICES]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: listOf(SearchServiceOptions.DEFAULT),
+                searchServices = searchServicesLoad.services,
                 searchCommonOptions = preferences[SEARCH_COMMON]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: SearchCommonOptions(),
-                searchServiceSelected = preferences[SEARCH_SELECTED] ?: 0,
+                // 索引随剔除元素左移并 clamp（见 loadSearchServices）；不能直接读原始值
+                searchServiceSelected = searchServicesLoad.selected,
                 mcpServers = preferences[MCP_SERVERS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),

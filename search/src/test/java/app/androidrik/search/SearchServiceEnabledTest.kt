@@ -14,7 +14,7 @@ import org.junit.Test
  * 搜索服务启停开关。
  *
  * 三个重点：
- * 1. **零迁移**：`enabled` 是后加字段，20 个子类型的旧 JSON（无该键）都必须读回 `true`；
+ * 1. **零迁移**：`enabled` 是后加字段，19 个子类型的旧 JSON（无该键）都必须读回 `true`；
  * 2. **索引语义**：`searchServiceSelected` 是完整列表索引，隐藏停用项后回调拿到的必须是
  *    真实索引（否则选错服务）——`enabledServicesWithIndex` 就是为这个存在的；
  * 3. **降级判据**：选中项被停用 ⇒ [isServiceUsable] 为 false ⇒ 使用点不注册搜索工具。
@@ -23,7 +23,7 @@ class SearchServiceEnabledTest {
 
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }
 
-    /** 覆盖全部 20 个子类型，防止日后新增子类型时漏掉 `enabled` 声明。 */
+    /** 覆盖全部 19 个子类型，防止日后新增子类型时漏掉 `enabled` 声明。 */
     private fun allTypes(): List<SearchServiceOptions> = listOf(
         SearchServiceOptions.BingLocalOptions(),
         SearchServiceOptions.ZhipuOptions(),
@@ -39,7 +39,6 @@ class SearchServiceEnabledTest {
         SearchServiceOptions.FirecrawlOptions(),
         SearchServiceOptions.JinaOptions(),
         SearchServiceOptions.BochaOptions(),
-        SearchServiceOptions.RikkaHubOptions(),
         SearchServiceOptions.DeepSeekOptions(),
         SearchServiceOptions.GrokOptions(),
         SearchServiceOptions.TinyfishOptions(),
@@ -49,7 +48,7 @@ class SearchServiceEnabledTest {
 
     @Test
     fun `every subtype defaults to enabled`() {
-        assertEquals(20, allTypes().size)
+        assertEquals(19, allTypes().size)
         allTypes().forEach { assertTrue(it.displayName + " 应默认启用", it.enabled) }
     }
 

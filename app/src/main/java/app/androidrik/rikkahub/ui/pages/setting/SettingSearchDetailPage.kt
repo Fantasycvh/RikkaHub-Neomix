@@ -213,9 +213,6 @@ private fun SearchServiceOptionsEditor(
         is SearchServiceOptions.BochaOptions -> {
             BochaOptions(options) { onUpdateOptions(it) }
         }
-        is SearchServiceOptions.RikkaHubOptions -> {
-            RikkaHubOptions(options) { onUpdateOptions(it) }
-        }
         is SearchServiceOptions.DeepSeekOptions -> {
             DeepSeekOptions(options) { onUpdateOptions(it) }
         }
@@ -727,41 +724,6 @@ internal fun BochaOptions(
             )
         }
     )
-}
-
-@Composable
-internal fun RikkaHubOptions(
-    options: SearchServiceOptions.RikkaHubOptions,
-    onUpdateOptions: (SearchServiceOptions.RikkaHubOptions) -> Unit
-) {
-    ApiKeysFormItem(
-        apiKeys = options.apiKeys,
-        legacyKey = options.apiKey,
-        onChange = { newKeys -> onUpdateOptions(options.copy(apiKeys = newKeys)) },
-    )
-
-    FormItem(
-        label = {
-            Text(stringResource(R.string.search_detail_depth))
-        }
-    ) {
-        val depthOptions = listOf("standard", "deep")
-        SingleChoiceSegmentedButtonRow(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            depthOptions.forEachIndexed { index, depth ->
-                SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = depthOptions.size),
-                    onClick = {
-                        onUpdateOptions(options.copy(depth = depth))
-                    },
-                    selected = options.depth == depth
-                ) {
-                    Text(depth.replaceFirstChar { it.uppercase() })
-                }
-            }
-        }
-    }
 }
 
 @Composable

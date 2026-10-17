@@ -2797,9 +2797,11 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
     （DEV 角标本仓 09-12 专门吸收 `42b933d8`；兔子动画本仓保留并本地化）—— 「上游删除」类要反向核对
   - ❌ README ×2（本仓有自己的 README 与发布体系）
   详见 `docs/upstream-analysis.md`「2026-10-16 同步」。
-- 2026-10-16 **移除内置 `RikkaHub` 供应商**（用户要求）。它是上游作者自己的中转
-  （`api.rikka-ai.com/v1` + 一个 `auto` 免费模型），对 fork 来说不该是出厂默认。
-  **连带清掉** `RikkaHubAPI`（空接口、零调用）+ 只服务它的 `Retrofit` 单例 + 6 语言描述字符串。
+- 2026-10-16 **移除内置 `RikkaHub` 供应商与同名搜索提供方**（聊天侧 + 搜索侧）。
+  **理由 = 该服务已不可用**：`api.rikka-ai.com` 的对话中转（`/v1` + 一个 `auto` 免费模型）
+  与搜索端点（`https://api.rikka-ai.com/v1/search`）都已不再提供。**不是**「因为它是上游作者
+  的服务、所以不愿当默认」这类政策偏好——上游移除同类项时也是**同一个意思**（不再提供该服务）。
+  **聊天侧连带清掉** `RikkaHubAPI`（空接口、零调用）+ 只服务它的 `Retrofit` 单例 + 6 语言描述字符串。
   `DEFAULT_AUTO_MODEL_ID` **保留**但语义改为纯「未配置」哨兵（`chatModelId`/`translateModeId`
   是非空 `Uuid`，删掉只能编随机值，更糟）。
   **代价**：新装不再自带免费模型，先加供应商才可用。
@@ -2811,6 +2813,21 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   ⇒ 恰好漏掉它唯一要防的「代码里的 URL」；改为「`//` 之前双引号个数为偶数才切断」后
   **证伪通过**（把域名塞回字符串字面量 ⇒ 当场变红）。全套 **2179 测试 0 失败**。
   **未做**：把已退役内置项从**存量** settings 主动剔除。
+  **搜索侧（同日，修法必须反过来）**：`search` 模块的 `RikkaHubSearchService.kt` 与
+  `SearchServiceOptions.RikkaHubOptions`（`@SerialName("rikkahub")`）整体删除，同一个理由：
+  **该服务已不可用**。**为什么聊天侧能「不剔存量」而搜索侧必须剔**：聊天内置项**不进**
+  `providers` 键，每次加载由 `refillBuiltIns` 从 `DEFAULT_PROVIDERS` 回填；搜索提供方则是
+  **整份多态列表落盘**在 `search_services` 单 key 里，子类 `@SerialName` 一删，存量 JSON 解码
+  就抛 `SerializationException` ⇒ **整份 settings 加载失败**。故新增纯函数
+  `loadSearchServices(raw, storedSelected)` + `filterRetiredSearchServices`
+  （`RETIRED_SEARCH_SERVICE_TYPES = setOf("rikkahub")`）：**解码前**剔除该 type，空/畸形/解码失败
+  一律回退 `listOf(SearchServiceOptions.DEFAULT)` + 索引 0 不外抛；`searchServiceSelected` 是
+  **完整列表索引**，被剔项在选中项之前时减一（否则静默切到另一个提供方）+ clamp。
+  备份恢复同病同治（`settings.json` 整份 `decodeFromString<Settings>`）⇒ `SettingsJsonMigrator`
+  新增 **V4**（剔除 + 索引左移 + clamp），否则恢复旧备份报 `Failed to restore settings`。
+  **守卫**：`SearchServicesLoadTest` 10 项 + `SettingsJsonMigratorTest` V4 三项，**已证伪**
+  （去掉解码前过滤 ⇒ `JsonDecodingException: Serializer for subclass 'rikkahub' is not found
+  in the polymorphic scope`，mixed json 用例变红；放开异常则 8/10 变红）。全量 **2208 测试 0 失败**。
 - 2026-10-16 **待办（用户明确暂不做）**：**记忆全量复核的重复点击成本**。库小于一页 ⇒
   `last=true` ⇒ 游标每轮归零 ⇒ **每次点「整理一下」都全库重扫**（实测 297K 输入 / 2 分 28 秒；
   连点三次就是三次）。可选修法：①短时间重复点击复用上次结果 ②手动复核加最小间隔

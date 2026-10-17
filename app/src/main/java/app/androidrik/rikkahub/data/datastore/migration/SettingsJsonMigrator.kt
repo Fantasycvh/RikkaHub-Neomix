@@ -3,8 +3,11 @@ package app.androidrik.rikkahub.data.datastore.migration
 import android.util.Log
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import app.androidrik.rikkahub.BuildConfig
+import app.androidrik.rikkahub.data.datastore.isRetiredSearchService
 import app.androidrik.rikkahub.utils.JsonInstant
 
 private const val TAG = "SettingsJsonMigrator"
@@ -109,6 +112,34 @@ object SettingsJsonMigrator {
                         }
                     )
                     root["quickMessages"] = merged
+                }
+            }
+
+            // V4: 剔除**已退役的搜索提供方**（`rikkahub`，其服务已不可用）。
+            // 搜索提供方不走 `refillBuiltIns` 回填，而是整份多态列表存在于 settings 里；子类的
+            // `@SerialName` 已从 sealed 层删除 ⇒ 旧备份里若还带着它，`decodeFromString<Settings>`
+            // 会抛 SerializationException，恢复流程直接报 "Failed to restore settings"。
+            // `searchServiceSelected` 是**完整列表索引**，被剔项在选中项之前时要同步减一
+            // （否则恢复后会静默切到另一个提供方），最后 clamp 到合法范围。
+            root["searchServices"]?.let { element ->
+                val array = element as? JsonArray
+                if (array != null) {
+                    val selectedElement = root["searchServiceSelected"] as? JsonPrimitive
+                    val storedSelected = selectedElement?.intOrNull ?: 0
+                    var removedBeforeSelected = 0
+                    val kept = array.filterIndexed { index, item ->
+                        val retired = item.isRetiredSearchService()
+                        if (retired && index < storedSelected) removedBeforeSelected++
+                        !retired
+                    }
+                    if (kept.size != array.size) {
+                        root["searchServices"] = JsonArray(kept)
+                        if (selectedElement != null) {
+                            val adjusted = (storedSelected - removedBeforeSelected)
+                                .coerceIn(0, (kept.size - 1).coerceAtLeast(0))
+                            root["searchServiceSelected"] = JsonPrimitive(adjusted)
+                        }
+                    }
                 }
             }
 

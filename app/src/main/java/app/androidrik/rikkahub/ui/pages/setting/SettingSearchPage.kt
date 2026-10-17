@@ -272,7 +272,6 @@ private fun AddProviderDialog(
                     // 显式按类型创建默认实例
                     val instance: SearchServiceOptions = when (selectedType) {
                         SearchServiceOptions.BingLocalOptions::class -> SearchServiceOptions.BingLocalOptions()
-                        SearchServiceOptions.RikkaHubOptions::class -> SearchServiceOptions.RikkaHubOptions()
                         SearchServiceOptions.DeepSeekOptions::class -> SearchServiceOptions.DeepSeekOptions()
                         SearchServiceOptions.ZhipuOptions::class -> SearchServiceOptions.ZhipuOptions()
                         SearchServiceOptions.TavilyOptions::class -> SearchServiceOptions.TavilyOptions()
