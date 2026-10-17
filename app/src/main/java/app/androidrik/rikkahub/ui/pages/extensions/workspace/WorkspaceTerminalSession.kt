@@ -21,7 +21,6 @@ import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.RootfsPatchOptions
 import app.androidrik.workspace.RootfsPatcher
-import app.androidrik.workspace.prepareProotRuntimeLibs
 import java.io.File
 
 internal fun createWorkspaceTerminalSession(
@@ -42,9 +41,6 @@ internal fun createWorkspaceTerminalSession(
     val nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir)
     val proot = File(nativeLibraryDir, "libproot_exec.so")
     val loader = File(nativeLibraryDir, "libproot_loader.so")
-    // 新版 proot 依赖 libtalloc.so.2 / libandroid-shmem.so；APK 里的打包名是 libtalloc2.so，
-    // 链接器只认 DT_NEEDED 的真实文件名，故先复制到可写目录再经 LD_LIBRARY_PATH 暴露
-    val prootLibDir = prepareProotRuntimeLibs(nativeLibraryDir, tempDir)
 
     // Shell 兼容模式：初始 cwd 移到 rootfs 内部 /root——PROOT_NO_SECCOMP 纯 ptrace 模式下
     // getcwd 在绑定挂载点（/workspace）反向解析会返回 ENOSYS，bash 启动即报
@@ -91,8 +87,7 @@ internal fun createWorkspaceTerminalSession(
         "PROOT_TMP_DIR=${tempDir.absolutePath}",
         "TMPDIR=${tempDir.absolutePath}",
     )
-    // proot 进程自身的动态依赖（libtalloc.so.2 等）走这里；准备失败时不设，交给系统报缺库
-    prootLibDir?.let { env += "LD_LIBRARY_PATH=${it.absolutePath}" }
+    // proot 二进制为静态链接（DT_NEEDED 只有 libc/liblog），无需运行时库目录
     // Shell 兼容模式：禁用 PRoot seccomp 加速（对齐上游 03246406）
     if (shellCompatibilityMode) {
         env += "PROOT_NO_SECCOMP=1"

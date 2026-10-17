@@ -2820,7 +2820,9 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
     `Security violation: Requested utility 'head' does not match executable name: /usr/bin/.l2s.coreutils.dpkg-new0001.0116`
   ⇒ **本仓确凿命中 #2158**，不是理论推断。临时工作区已保留（下游已升级坏掉的状态），
   正好可用作**换 PRoot 后的对照**：同一 rootfs 换二进制后 `ls` 必须恢复正常。
-  **✅ 2026-10-17 已修复**（换 Termux `proot 5.1.107.96`，打包版 ≥71 含 AT_EXECFN 修复）：
+  **✅ 2026-10-17 已修复**（换 Termux `proot 5.1.107.96`，打包版 ≥71 含 AT_EXECFN 修复）——
+  ⚠️ **其中「talloc/shmem 动态依赖 + `LD_LIBRARY_PATH` 库目录」那套机制已被同日后续的「静态链接上游二进制」条目
+  整体删除，实现见下方同日的简化条目**（本段仅作历史记录保留：修复本身有效，只是依赖方式已被更好的方案取代）：
   - jniLibs 换成新版并把新增动态依赖一并入库：`libproot_exec.so`（247 KB）、`libproot_loader.so`（18 KB）、
     `libtalloc2.so`（33 KB，SONAME `libtalloc.so.2`）、`libandroid-shmem.so`（14 KB），arm64 + x86_64 双架构
   - **Android 打包硬约束**：AGP 只提取匹配 `lib*.so` 的文件，`libtalloc.so.2` 以 `.2` 结尾**不会被提取**
@@ -2831,6 +2833,29 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
     新二进制 `ls /` → `bin boot dev etc`、`basename x/y` → `y`、exit 0；装机后 `nativeLibraryDir` 四库齐全
   - 全量 2211 测试 0 失败（新增 `ProotLibDirTest` 3 项：首次创建 / 幂等且能修截断 / 源缺失不产生半套）
   **未验**：x86_64 无设备（只核了架构与 SONAME）；app 内终端 UI 未手动打开实跑。
+- 2026-10-17 **#2158 修复简化为「上游静态链接二进制」（做减法，替代上面的 Termux 动态链接版）**：
+  上游同期自己做了同一件事（提交 `bf8ff5a27`），其 `proot 5.1.107.96` 二进制**改成静态链接**
+  （`DT_NEEDED` 实测只剩 `libc.so` + `liblog.so`；`libtermux-exec.so` 只作为字符串出现/运行时 dlopen，
+  **不在** `DT_NEEDED`；`talloc` 符号全部是链入的静态符号，`.dynsym` 无一条 talloc/shmem 未定义引用）
+  ⇒ 不需要 talloc/shmem，于是把为动态链接加的那套运行时机制整个删掉：
+  - jniLibs 换上游 4 个二进制（`libproot_exec.so` 274/289 KB、`libproot_loader.so` 18 KB，arm64 + x86_64），
+    **删除** `libtalloc2.so` / `libandroid-shmem.so`（双架构 4 个文件）
+  - **删除** `ProotShellRunner` 的 `PROOT_RUNTIME_LIBS` / `PROOT_LIB_DIR_NAME` / `prepareProotRuntimeLibs()` /
+    `prepareProotLibDir()` 及其「准备库目录失败 → 127」分支、`ProcessBuilder` 的 `LD_LIBRARY_PATH`
+  - **删除** `WorkspaceTerminalSession` 的 `LD_LIBRARY_PATH` env 项与相关 import
+  - **删除** `ProotLibDirTest`（3 项，只测已不存在的机制）
+  - **验证**：全量 **2208 测试 0 失败**（= 上轮 2211 − 被删的 3 项）；release 出包 `versionCode=298` 未动，
+    APK 72,630,442 → **72,620,190 B**（69.27 → 69.26 MiB，−10,252 B / −0.01%）——
+    arm64 `libproot_exec` +26,864 B、删 talloc/shmem −48,024 B（x86_64 不在此 APK 内）
+  - **真机对照（同一已损坏 rootfs `repro2158`，控制组未动，仍留 4 个 `.l2s.coreutils` 条目、
+    `coreutils 9.5-1ubuntu2+0.0.0~ubuntu25` uutils 版）**：root 与 **app uid（10442）** 两种身份都通过——
+    `ls / | head -4` → `bin boot dev etc`、`basename x/y` → `y`、exit 0，**无 Security violation**；
+    装机后 `nativeLibraryDir` 只有 `libproot_exec.so`(274352) + `libproot_loader.so`(18136)，
+    talloc/shmem **0 个**；安装后应用启动 0 条 `FATAL EXCEPTION`
+  - **未验**：x86_64 仍无设备（只解析了 ELF）；app 内终端 UI 未手动打开实跑（`WorkspaceTerminalSession`
+    的那份 env 已与 `ProotShellRunner` 对齐，但未点开验证）；device 上的 `libproot_exec.so`
+    sha256 = `3c5b3e4c…dc65d`，与 `bf8ff5a27` blob 逐字节相同
+  - **教训**：`DT_NEEDED` 才是链接期契约；二进制里出现 `libtalloc` 字样不等于动态依赖——先解 `.dynamic` 再动手。
 - 2026-10-17 **DeepSeek Files API 调研完毕，不立项**（仅留评估记录，见 `handoff §三.3`）。
   它是两套东西：**原生 `purpose=file-extract`**（PDF/DOCX/XLSX/PPTX 等文档，服务端抽文本回灌上下文、
   `parse_method=auto|ocr`、不过期）与 **Anthropic 兼容 Files**（JPEG/PNG/GIF/WebP 图像，
