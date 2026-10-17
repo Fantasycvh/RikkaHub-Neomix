@@ -28,6 +28,14 @@ import java.time.LocalDate
  */
 private const val SEARCH_RESULT_CHAR_BUDGET = 6000
 
+/**
+ * 检索结果被削时的可执行下一步：`read` / `search` 都是本工具真实存在的 action，
+ * 模型读完 hint 能直接发下一个调用（而不是去「narrow the query」这种没有落点的话）。
+ */
+private const val MEMORY_TRUNCATION_HINT =
+    "Call memory_tool with action:\"read\" and one of the returned ids for the full text, " +
+        "or action:\"search\" with more specific keywords."
+
 fun buildMemoryTools(
     json: Json,
     onCreation: suspend (String, Float?, String?) -> AssistantMemory,
@@ -307,6 +315,12 @@ fun buildMemoryTools(
                                     "Results were truncated by length; narrow the query or use `read` with an id.",
                                 )
                             }
+                            // 纯加法：散文照旧，另给一份可机读的损失量（整条未返回 ⇒ items）。
+                            markTruncated(
+                                OmittedKind.ITEMS,
+                                hits.size - included.size,
+                                MEMORY_TRUNCATION_HINT,
+                            )
                             put(
                                 "records",
                                 buildJsonArray {

@@ -186,10 +186,20 @@ private const val MAX_TOTAL_CHARS = 24_000
 private const val MAX_MESSAGE_CHARS = 8_000
 
 /**
+ * 截断时的可执行下一步：**两个工具都是本仓真实存在的**（`conversation_search` /
+ * `read_conversation`），不写「narrow the query」那种空话——模型读完得能立刻发下一个调用。
+ * 同一句同时写进 `note`（人读）与 `_meta.hint`（机读），免得两处漂移。
+ */
+private const val TRUNCATION_HINT =
+    "Call conversation_search with more specific keywords, then read_conversation with a smaller " +
+        "`context` (1-3) around the message_id you actually need."
+
+/**
  * 取回锚点 ±[context] 条完整消息（锚点含在内），纯函数可单测。
  *
  * 预算纪律：单条消息截断（[MAX_MESSAGE_CHARS]，工具输出可达 32KB）+ 总量截断
- * （[MAX_TOTAL_CHARS]）——防模型连续拉取把上下文撑爆；截断都带显式标记。
+ * （[MAX_TOTAL_CHARS]）——防模型连续拉取把上下文撑爆；截断都带显式标记
+ * （散文 `note` + 结构化 `_meta`，见 [ToolOutputMeta]）。
  * 寻址失败（message_id 不在当前分支）不报错：回退到会话开头并在 payload 里注明，
  * 让模型自行决定换锚点。
  */
@@ -217,21 +227,31 @@ internal fun buildConversationReadPayload(
 
     var truncated = false
     var used = 0
+    // 被削掉的**字符数**：两种丢失（单条被切成半截 + 整条没写进 payload）都折进这一个数，
+    // 因为对模型来说两种丢的都是正文；而「还剩多少条没给」由 note/_meta.hint 指路。
+    // 记账纪律：每条消息**只记一次**——被整条跳过的记全文长度，写进 payload 的才记
+    // 「超出单条上限的那部分」。先在渲染时记、再判定跳过，会把同一条既算半截又算整条，虚报损失。
+    var omittedChars = 0
     val items = buildJsonArray {
         for (index in from..to) {
             val message = messages[index]
-            val rendered = renderMessage(message).let { text ->
-                if (text.length > MAX_MESSAGE_CHARS) {
-                    truncated = true
-                    text.take(MAX_MESSAGE_CHARS) + "\n…(message truncated)"
-                } else {
-                    text
-                }
+            val full = renderMessage(message)
+            val overLong = full.length > MAX_MESSAGE_CHARS
+            val rendered = if (overLong) {
+                truncated = true
+                full.take(MAX_MESSAGE_CHARS) + "\n…(message truncated)"
+            } else {
+                full
             }
             if (used + rendered.length > MAX_TOTAL_CHARS && index != (anchorIndex ?: 0)) {
                 truncated = true
+                // 预算爆了 ⇒ 从 index 起整段不写。把它们的正文长度计进 omitted，
+                // 别让模型以为窗口到这儿就结束了（那是最容易被误当成「全部」的地方）。
+                for (skipped in index..to) omittedChars += renderMessage(messages[skipped]).length
                 break
             }
+            // 真正写进 payload 的消息，才轮到「超出单条上限的那部分」计入损失
+            if (overLong) omittedChars += full.length - MAX_MESSAGE_CHARS
             used += rendered.length
             add(buildJsonObject {
                 put("position", index)
@@ -250,7 +270,8 @@ internal fun buildConversationReadPayload(
         if (!anchored && anchorMessageId != null) {
             put("note", "Anchor message_id not found in current branch; reading from the beginning")
         }
-        if (truncated) put("note", "Output truncated; narrow the context or search with more specific keywords")
+        if (truncated) put("note", TRUNCATION_HINT)
+        markTruncated(OmittedKind.CHARS, omittedChars, TRUNCATION_HINT)
         put("messages", items)
     }.toString()
 }
