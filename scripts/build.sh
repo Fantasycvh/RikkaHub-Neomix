@@ -8,11 +8,16 @@ set -euo pipefail
 
 # 缓存迁移（2026-09-06，用户已做，C 盘旧缓存已清理）：
 # 注意：本文件在 Git Bash 生效；PowerShell/CMD 需自行设置同名环境变量。
-export GRADLE_USER_HOME=<gradle-home>/gradle
-export PUB_CACHE=<gradle-home>/pub-cache
+#
+# ⚠️ 2026-10-16：原来这里写的是脱敏占位符（`export GRADLE_USER_HOME=<gradle-home>/gradle`），
+# 直接跑会报 `line 11: gradle-home: No such file or directory` —— **脚本开箱即坏**，
+# 而发布流程第 2 步写的就是「用这个脚本」。现在改为**尊重调用方已设置的值**，未设置时才回退到
+# Git Bash 下的默认位置 ⇒ 任何机器/CI 都能用，也不再需要在仓库里写死个人路径。
+export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
+export PUB_CACHE="${PUB_CACHE:-$HOME/.pub-cache}"
 
-# web 模块 preBuild 需要 pnpm（全局目录不在 Git Bash 默认 PATH）
-export PATH="<home>/AppData/Roaming/npm:$PATH"
+# web 模块 preBuild 需要 pnpm（全局目录不在 Git Bash 默认 PATH）；可用 NPM_GLOBAL_BIN 覆盖
+export PATH="${NPM_GLOBAL_BIN:-$HOME/AppData/Roaming/npm}:$PATH"
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
