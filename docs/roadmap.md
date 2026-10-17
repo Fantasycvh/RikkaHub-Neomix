@@ -2782,6 +2782,22 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   （现有只有 `libc.so` + `libtermux-exec.so`）⇒ 落地要把 `libtalloc 2.5.0` 与
   `libandroid-shmem 0.7` 一起取来放进 jniLibs，并保证运行时能找到。
   **未做**：未下载替换、未验证修复（下一步：换二进制后在同一 rootfs 上跑 `ls` 对照）。
+- 2026-10-17 **核对「自动压缩是否破坏前缀缓存」（用户要求先核不改，结论：搁置）**。
+  **稳态不破坏**：`ChatService.kt:1876` 明确「轨迹只追加——不改动 message_node，只往
+  compression_checkpoint 表追加一行」；`Conversation.activeCompression()` 取
+  `compressionSummaries.lastOrNull()`，checkpoint 是存好的字符串 ⇒ 两次压缩之间前缀逐轮稳定。
+  **压缩那一刻破坏一次**（checkpoint 文本变 ⇒ 整段前缀失效）—— 任何替换式压缩都逃不掉，一次性。
+  **最大的破坏路径**：`Conversation.kt:152` 的**区域指纹**校验 —— 总结区域内任一节点或其选中消息被改动
+  （编辑/删除/重新生成/切分支）⇒ `activeCompression()` 返回 null ⇒ **回退全量发送** ⇒
+  前缀从「system+checkpoint+尾部」变成「system+完整历史」，**缓存全废且上下文瞬间涨回去**，
+  很可能再次触发压缩 ⇒ **双份失效 + 额外一次摘要调用**。这是**故意的正确性取舍**
+  （AI 看到的必须与用户所见一致），不是 bug。
+  **对比上游 `7cceda23e`「在对话末尾追加结构化总结指令」**：它不省 token 但压缩时**不破坏缓存**；
+  我们省 token 但压缩时失效一次。**移动端上下文紧张，省 token 更划算 ⇒ 这条不跟。**
+  **本仓真正的洞（唯一可优化点）**：`shouldAutoCompress()` 只看 `usedTokens/windowTokens` 比例，
+  **没有「刚压过 / 已有 checkpoint」的闸门** ⇒ 压缩后若尾部仍满，下一轮会再压一次 ⇒
+  连续两次前缀失效 + 两次摘要调用。
+  **决定：暂时搁置**（用户 2026-10-17）。真要动时只做「加闸门」这一件事，不动替换式压缩本身。
 - 2026-10-17 **安装包体积盘点（用户决定：TikZ 保留，暂不精简）**。实测 `app/release` 产物 **74.3 MB**：
   `assets` 30.8M(41.5%) / `lib/arm64-v8a` 26.0M(35.1%) / `classes*.dex` 11.2M(15.1%) / `static` 3.1M(4.2%)。
   **最大单点是 LaTeX/TikZ 栈，压缩后 34.88M = 49%**：`assets/tex` 18.29M + `libtex_poc.so` 3.48M
