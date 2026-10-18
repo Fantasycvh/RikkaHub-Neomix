@@ -72,6 +72,17 @@ private const val TAG = "GenerationHandler"
 private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 
+/**
+ * 空工具输出的占位文本（见 [finalizeToolOutput]）。
+ *
+ * 为什么必需：`UIMessagePart.Tool.isExecuted` 的定义是 `output.isNotEmpty()`
+ * （`ai/.../ui/UIMessagePart.kt`）。工具返回 `emptyList()` 时结果回填后仍算「未执行」，
+ * 下一轮 `getTools().filter { !it.isExecuted }` 又把它选出来再执行一次 ⇒ **之后每一步都被重复执行**。
+ * 补一个占位 part 让它变成「已执行」，比改 `isExecuted` 的定义安全得多——后者会波及
+ * 审批闸门（`isPending` / `canResumeExecution`）、渲染和导出。
+ */
+internal const val EMPTY_TOOL_OUTPUT = "(no output)"
+
 // 搜索结果的体积由用户设置的结果数决定，且结果列表 UI 与引用跳转都依赖完整的 JSON 结构，不参与截断
 private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web")
 
@@ -128,6 +139,80 @@ private fun canonicalize(element: JsonElement): JsonElement =
 
         else -> element
     }
+
+/**
+ * 工具结果的最终形态：空输出补 [EMPTY_TOOL_OUTPUT] 占位，使其 `isExecuted` 为真。
+ *
+ * 只在**执行完成后**用（截断之后），因此不影响 `maybeTruncateToolOutput` 的既有行为。
+ */
+internal fun finalizeToolOutput(output: List<UIMessagePart>): List<UIMessagePart> =
+    output.ifEmpty { listOf(UIMessagePart.Text(EMPTY_TOOL_OUTPUT)) }
+
+/**
+ * 审批阶段：只把「**新出现**且需要审批」的调用置为 `Pending`。
+ *
+ * 语义（与上游 `c8a9e4e2`/`e10e1043` 同源）：
+ * - `Auto` + 需要审批 ⇒ `Pending`（[autoDeny] 时改为策略拒绝，无头 run 用）；
+ * - 已经是 `Pending` 的**保持不变**（继续等用户）；
+ * - 其余（`Approved` / `Denied` / `Answered` / 不需要审批的 `Auto`）一律不碰。
+ *
+ * **不能因为「本批有待审批的调用」就整批不执行**——同批那些不需要审批的自动调用
+ * 必须照常在本轮执行（见 [toolsToExecute]）。
+ *
+ * @param requiresApproval 工具定义侧的审批判定；由调用方传入以便保留审批诊断日志
+ */
+internal fun markPendingApprovals(
+    tools: List<UIMessagePart.Tool>,
+    requiresApproval: (UIMessagePart.Tool) -> Boolean,
+    autoDeny: Boolean = false,
+): List<UIMessagePart.Tool> = tools.map { tool ->
+    // 对每个工具都求值（即使已执行/已待批）：调用方在这里挂审批诊断日志，
+    // 短路会让「该问却没问」那类现场失去唯一的证据行。
+    val needsApproval = requiresApproval(tool)
+    when {
+        tool.isExecuted -> tool
+        tool.approvalState is ToolApprovalState.Pending -> tool
+        tool.approvalState is ToolApprovalState.Auto && needsApproval ->
+            if (autoDeny) {
+                // 无头 run：无人可批，等在 Pending 上 = 永远卡死。直接置为**策略拒绝**——
+                // 文本经既有 Denied 通路回给模型（"Do not retry" 的措辞是拒绝文本契约）。
+                tool.copy(approvalState = ToolApprovalState.Denied(reason = HEADLESS_DENIAL_REASON))
+            } else {
+                tool.copy(approvalState = ToolApprovalState.Pending)
+            }
+
+        else -> tool
+    }
+}
+
+/**
+ * 执行阶段要处理的调用：**所有尚未执行**的（含 `Auto` / `Approved` / `Denied` / `Answered`）。
+ *
+ * 不能用 `canResumeExecution` 筛：它把 `Auto` 判成 false（见 `ai/.../ui/UIMessagePart.kt`），
+ * 于是「同批里有需要审批的调用」时，不需要审批的自动调用会被整批排除——这正是要修的 bug
+ * （被跳过的 `Auto` 还会在下一轮被 `ChatService.checkInvalidMessages` 连同那条助手回复一起删掉）。
+ * `Pending` 也会被选出来，但执行处的 `when` 分支会跳过它们（等用户批准）。
+ */
+internal fun toolsToExecute(tools: List<UIMessagePart.Tool>): List<UIMessagePart.Tool> =
+    tools.filter { !it.isExecuted }
+
+/**
+ * 把一个工具结果并回**最后一条助手消息**（其余 part 原样保留）。
+ *
+ * **一次只并一个**：调用方每拿到一个结果就并一次并 emit（见 `GenerationHandler` 执行段）——
+ * 取消时已完成的结果已经在内存态里，停止生成能读到（`ChatService.persistStoppedGeneration` 只读内存态），
+ * 不会随「攒到最后统一回填」的局部列表一起丢掉。
+ */
+internal fun applyToolOutput(
+    messages: List<UIMessage>,
+    result: UIMessagePart.Tool,
+): List<UIMessage> {
+    val lastMessage = messages.last()
+    val updatedParts = lastMessage.parts.map { part ->
+        if (part is UIMessagePart.Tool && part.toolCallId == result.toolCallId) result else part
+    }
+    return messages.dropLast(1) + lastMessage.copy(parts = updatedParts)
+}
 
 @Serializable
 sealed interface GenerationChunk {
@@ -559,46 +644,26 @@ class GenerationHandler(
                 }
 
                 // Check for tools that need approval
-                var hasPendingApproval = false
-                val updatedTools = tools.map { tool ->
-                    val toolDef = toolsInternal.find { it.name == tool.toolName }
-                    // 审批判定留一条永远开着的诊断行：审批类问题（"该问却没问" / "不该问却问了"）
-                    // 只看结果无从判断，而这一行同时给出"工具定义在不在、要不要批、当前策略"
-                    val requiresApproval = toolDef?.needsApproval(tool.inputAsJson()) == true
-                    if (requiresApproval) {
-                        Log.i(
-                            TAG,
-                            "approval check: tool=${tool.toolName} state=${tool.approvalState} autoDeny=$autoDenyApproval",
-                        )
-                    }
-                    when {
-                        // Tool needs approval and state is Auto -> set to Pending
-                        requiresApproval && tool.approvalState is ToolApprovalState.Auto -> {
-                            if (autoDenyApproval) {
-                                // 无头 run：无人可批，等在 Pending 上 = 永远卡死。直接置为
-                                // **策略拒绝**——文本经下方既有的 Denied 通路回给模型
-                                // （"Do not retry" 的措辞是 §9.2.1 的拒绝文本契约）。
-                                tool.copy(
-                                    approvalState = ToolApprovalState.Denied(
-                                        reason = HEADLESS_DENIAL_REASON
-                                    )
-                                )
-                            } else {
-                                hasPendingApproval = true
-                                tool.copy(approvalState = ToolApprovalState.Pending)
-                            }
+                // 审批判定留一条永远开着的诊断行：审批类问题（"该问却没问" / "不该问却问了"）
+                // 只看结果无从判断，而这一行同时给出"工具定义在不在、要不要批、当前策略"
+                val updatedTools = markPendingApprovals(
+                    tools = tools,
+                    requiresApproval = { tool ->
+                        val toolDef = toolsInternal.find { it.name == tool.toolName }
+                        val requiresApproval = toolDef?.needsApproval(tool.inputAsJson()) == true
+                        if (requiresApproval) {
+                            Log.i(
+                                TAG,
+                                "approval check: tool=${tool.toolName} state=${tool.approvalState} " +
+                                    "autoDeny=$autoDenyApproval",
+                            )
                         }
-                        // State is Pending -> keep waiting
-                        tool.approvalState is ToolApprovalState.Pending -> {
-                            hasPendingApproval = true
-                            tool
-                        }
+                        requiresApproval
+                    },
+                    autoDeny = autoDenyApproval,
+                )
 
-                        else -> tool
-                    }
-                }
-
-                // If any tools were updated to Pending, update the message and break
+                // If any tools were updated to Pending, update the message so the UI can ask
                 if (updatedTools != tools) {
                     val lastMessage = messages.last()
                     val updatedParts = lastMessage.parts.map { part ->
@@ -612,21 +677,37 @@ class GenerationHandler(
                     emit(GenerationChunk.Messages(messages))
                 }
 
-                // If there are pending approvals, break and wait for user
-                if (hasPendingApproval) {
-                    Log.i(TAG, "generateText: waiting for tool approval")
-                    break
-                }
-
-                toolsToProcess = updatedTools
+                // **不在这里 break**：本批里不需要审批的调用必须照常在本轮执行，
+                // 待审批的那些由下方的「仍有待审批」判定在结果回填**之后**收尾。
+                toolsToProcess = toolsToExecute(updatedTools)
             } else {
-                // Resuming after user interaction - use the resumable tools directly.
+                // Resuming after user interaction: 执行**所有尚未执行**的调用（含 Auto）。
+                // 不能筛 `canResumeExecution`——`Auto → false`，同批里只要还有一条待审批的调用，
+                // 自动调用就会被整批漏掉（bug）。
                 Log.i(TAG, "generateText: resuming with ${pendingTools.size} resumable tools")
-                toolsToProcess = messages.last().getTools().filter { it.canResumeExecution }
+                toolsToProcess = toolsToExecute(messages.last().getTools())
             }
 
             // Handle tools (execute approved tools, handle denied tools)
             val executedTools = arrayListOf<UIMessagePart.Tool>()
+            // **每完成一个工具就回填并 emit 一次**（不再攒到整批之后统一回填）：
+            // 取消/停止时已完成的结果已经在内存态里，`ChatService.persistStoppedGeneration`
+            // （只读内存态）能读到；攒到最后统一回填的实现会把它们随局部列表一起丢掉。
+            val commitToolResult: suspend (UIMessagePart.Tool) -> Unit = { result ->
+                executedTools += result
+                messages = applyToolOutput(messages, result)
+                emit(
+                    GenerationChunk.Messages(
+                        messages.transforms(
+                            transformers = outputTransformers,
+                            context = context,
+                            model = targetModel,
+                            assistant = assistant,
+                            settings = settings
+                        )
+                    )
+                )
+            }
             // 同一批里「工具名 + 参数」完全相同的重复调用只真正执行一次，其余复用首个结果。
             // 为什么需要：部分提供商（实测 Gemini 系）会在一次响应里下发**多条内容相同、
             // 但 toolCallId 不同**的并行 tool_call，逐条执行会重复产生副作用
@@ -651,16 +732,18 @@ class GenerationHandler(
                                 stopNotice = GenerationNotice.TooManyDenials(verdict.denials)
                             }
                         }
-                        executedTools += tool.copy(
-                            output = listOf(
-                                UIMessagePart.Text(
-                                    json.encodeToString(
-                                        buildJsonObject {
-                                            put(
-                                                "error",
-                                                JsonPrimitive("Tool execution denied. Reason: ${reason.ifBlank { "No reason provided" }}")
-                                            )
-                                        }
+                        commitToolResult(
+                            tool.copy(
+                                output = listOf(
+                                    UIMessagePart.Text(
+                                        json.encodeToString(
+                                            buildJsonObject {
+                                                put(
+                                                    "error",
+                                                    JsonPrimitive("Tool execution denied. Reason: ${reason.ifBlank { "No reason provided" }}")
+                                                )
+                                            }
+                                        )
                                     )
                                 )
                             )
@@ -670,15 +753,18 @@ class GenerationHandler(
                     is ToolApprovalState.Answered -> {
                         // Tool was answered by user (e.g., ask_user tool)
                         val answer = (tool.approvalState as ToolApprovalState.Answered).answer
-                        executedTools += tool.copy(
-                            output = listOf(
-                                UIMessagePart.Text(answer)
+                        commitToolResult(
+                            tool.copy(
+                                output = listOf(
+                                    UIMessagePart.Text(answer)
+                                )
                             )
                         )
                     }
 
                     is ToolApprovalState.Pending -> {
-                        // Should not reach here, but just in case
+                        // 同批里待审批的调用：本轮不执行，等用户批准。
+                        // （自动调用已在上面照常执行完，见 markPendingApprovals / toolsToExecute）
                     }
 
                     else -> {
@@ -687,7 +773,7 @@ class GenerationHandler(
                         val signature = toolCallSignature(tool.toolName, tool.input, json)
                         executedSignature[signature]?.let { priorOutput ->
                             Log.i(TAG, "generateText: duplicate ${tool.toolName} call skipped (same args), reused result")
-                            executedTools += tool.copy(output = priorOutput)
+                            commitToolResult(tool.copy(output = priorOutput))
                             return@forEach
                         }
                         // 护栏记录发生在**发起时**（而非执行成功后）：判定的是「模型反复要什么」，
@@ -754,9 +840,12 @@ class GenerationHandler(
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
                             val result = executeToolWithTimeout(toolDef, args) { toolDef.execute(it) }
                             val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
-                            val output = maybeTruncateToolOutput(tool, result, hasShellAccess)
+                            // 空输出补占位：否则 isExecuted 仍为假 ⇒ 下一轮又被选出来重复执行
+                            val output = finalizeToolOutput(
+                                maybeTruncateToolOutput(tool, result, hasShellAccess)
+                            )
                             executedSignature[signature] = output
-                            executedTools += tool.copy(output = output)
+                            commitToolResult(tool.copy(output = output))
                             // workspace 单轮预算：**执行并截断后**计费——计的是「实际进入上下文」
                             // 的字符数（截断掉的部分写进了 tool_outputs 文件、不进上下文）。
                             // 执行前拒绝会让本调用的结果变成合成错误文本，与 LoopGuard 的
@@ -799,13 +888,15 @@ class GenerationHandler(
                             if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
                                 workspaceBudget.record(errorText.length)
                             }
-                            executedTools += tool.copy(
-                                output = listOf(
-                                    UIMessagePart.Text(
-                                        json.encodeToString(
-                                            buildJsonObject {
-                                                put("error", JsonPrimitive(errorText))
-                                            }
+                            commitToolResult(
+                                tool.copy(
+                                    output = listOf(
+                                        UIMessagePart.Text(
+                                            json.encodeToString(
+                                                buildJsonObject {
+                                                    put("error", JsonPrimitive(errorText))
+                                                }
+                                            )
                                         )
                                     )
                                 )
@@ -820,25 +911,8 @@ class GenerationHandler(
                 break
             }
 
-            // Update last message with executed tools (NOT create TOOL message)
-            val lastMessage = messages.last()
-            val updatedParts = lastMessage.parts.map { part ->
-                if (part is UIMessagePart.Tool) {
-                    executedTools.find { it.toolCallId == part.toolCallId } ?: part
-                } else part
-            }
-            messages = messages.dropLast(1) + lastMessage.copy(parts = updatedParts)
-            emit(
-                GenerationChunk.Messages(
-                    messages.transforms(
-                        transformers = outputTransformers,
-                        context = context,
-                        model = targetModel,
-                        assistant = assistant,
-                        settings = settings
-                    )
-                )
-            )
+            // 注：本批结果已在上面的执行段**逐个**回填并 emit（取消时已完成的不会丢），
+            // 这里不再做整批回填。
 
             // 护栏命中（同签名循环 或 workspace 预算耗尽）：结果已全部回填（协议要求每个
             // toolCallId 都有结果，不能半途丢），现在提前结束本轮。**走正常结束路径**而非抛
@@ -846,6 +920,13 @@ class GenerationHandler(
             // 「防失控」变成「丢内容」。
             stopNotice?.let { stopped ->
                 emit(GenerationChunk.Notice(stopped))
+                break
+            }
+
+            // 仍有待审批的调用：本轮里不需要审批的调用已经执行完并回填，现在结束等用户批准。
+            // （审批阶段不能提前 break——那正是「同批自动调用被跳过」的 bug。）
+            if (messages.last().getTools().any { it.isPending }) {
+                Log.i(TAG, "generateText: waiting for tool approval")
                 break
             }
         }
