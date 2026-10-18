@@ -4,6 +4,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.Alert02
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Refresh03
@@ -95,6 +96,8 @@ import app.androidrik.rikkahub.data.model.rebuildSystemPromptFromCardParts
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.AssistantRegex
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.RegexDiagnosisIssue
+import app.androidrik.rikkahub.data.model.diagnoseRegexRule
 import app.androidrik.rikkahub.data.model.toMessageNode
 import app.androidrik.rikkahub.ui.components.message.ChatMessage
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -1037,6 +1040,10 @@ private fun AssistantRegexCard(
                     placeholder = { Text("e.g., [EMAIL]") }
                 )
 
+                // 配置体检（只在编辑期提示，不改运行时行为）：这三类问题的共同点是
+                // 「看起来配好了、实际要么不生效、要么越用越长」，光看正则文本看不出来。
+                RegexDiagnosisWarnings(regex)
+
                 Column {
                     Text(
                         text = stringResource(R.string.assistant_page_regex_affecting_scopes),
@@ -1125,6 +1132,47 @@ private fun AssistantRegexCard(
                         Text(stringResource(R.string.delete))
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 一条正则规则的**编辑期提示**（见 [diagnoseRegexRule]）。
+ *
+ * 为什么只提示、不改行为：这三类问题里只有「会累积」那条真的会改到消息内容，而修它
+ * （每步从干净基线重算而不是在已替换的文本上再替换）属于运行时改动，风险与收益都不该
+ * 由一个 UI 提示顺手带上——这里先把「你配的这条有问题」讲清楚。
+ *
+ * 只有展开编辑时才组合（调用点在 `if (expanded)` 内）；没有问题时整块不占位。
+ */
+@Composable
+private fun RegexDiagnosisWarnings(regex: AssistantRegex) {
+    val issues = diagnoseRegexRule(regex)
+    if (issues.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // 固定顺序展示：同一份配置每次都报同样的顺序，便于对照截图/复述
+        listOf(
+            RegexDiagnosisIssue.INVALID_PATTERN to R.string.assistant_page_regex_issue_invalid,
+            RegexDiagnosisIssue.NO_SCOPE to R.string.assistant_page_regex_issue_no_scope,
+            RegexDiagnosisIssue.AMPLIFIES_OUTPUT to R.string.assistant_page_regex_issue_amplifies,
+        ).forEach { (issue, textRes) ->
+            if (issue !in issues) return@forEach
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Alert02,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = stringResource(textRes),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }

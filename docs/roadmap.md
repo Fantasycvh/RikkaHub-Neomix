@@ -1580,6 +1580,12 @@ data class ApiKeyEntry(
       文本），签名/`thoughtSignature` 挂的是**草稿图 Image 与 functionCall 工具块**，`#1929` 不碰它们。
     - 完整性：全仓「写推理文本」只有两处——`RegexOutputTransformer`（走 `visualTransform`，**仅显示、不改消息**，不进请求）
       与 `ChatService.kt:279`（即 `#1929`）⇒ **用户可驱动的持久化改写只有编辑入口这一条路**。
+      **⚠️ 2026-10-18 更正**：这里的「仅显示、不改消息，不进请求」**是错的**。`GenerationHandler` 在每步结束时
+      `messages = messages.visualTransforms(...)` 又把结果 `emit(GenerationChunk.Messages(messages))`，
+      而 ChatService 拿它 `updateCurrentMessages` 并落库 ⇒ **`RegexOutputTransformer` 的产物会进消息、进落库、
+      也进下一次请求**（这正是「非视觉」规则的语义，不是 bug）。因此上面的结论要收窄成
+      「**用户可驱动的持久化改写**只有编辑入口这一条路」仍成立，但**助手配置里的正则同样是持久化改写通道**
+      （非视觉规则对 `Reasoning` part 也生效）——排查「谁改了这条推理」时不能只查编辑入口。
     - **✅ 真机已核（2026-10-09，设备恢复连接；`su` 可读 release 库 111MB，整拷 `rikka_hub`+`-wal`+`-shm` 后本地解析）**：
       **结论 = 风险未激活（0 命中）**。全库 7542 条消息 / **4638 个推理 part**：metadata 含 `signature` 的 **0**、
       `redactedData` **0**、`thoughtSignature` **0**；推理 part 的 metadata 形状只有三种——`null`（多数）、
@@ -2819,15 +2825,68 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   另两条 P1：大工具输出到达即外置（CAS + 确定性占位符）、触发改增量门而非占用率。
   **未做任何改动**；「5×」是反事实不是实测（[A]），不要按其做容量规划。
 - 2026-10-18 **待办：上游 e10e10433 / 9c5331d4a 同源 bug 修复的收尾两项**（前五项已修，见当日各提交）：
-  - **P2 `workspace_run_background` 取消后留孤儿进程**：取消生成时 taskId 被丢弃，进程继续跑
-    （吃 CPU/联网/继续写文件），且 UI 无法终止。触发窗口比普通工具大（它本就是长任务）。
-    修它要动 taskId 生命周期，中等改动。
-  - **P3 正则幂等校验**：`RegexOutputTransformer` 每次更新对整份消息重跑正则，非幂等规则会逐步放大
+  - **P2 `workspace_run_background` 取消后留孤儿进程**（**✅ 2026-10-18 已落地**，见下方当日条目）：
+    取消生成时 taskId 被丢弃，进程继续跑（吃 CPU/联网/继续写文件），且 UI 无法终止。
+    触发窗口比普通工具大（它本就是长任务）。修它要动 taskId 生命周期，中等改动。
+  - **P3 正则幂等校验**（**✅ 2026-10-18 已落地**，见下方当日条目；`visualOnly` 那条推定**已被证伪**）：
+    `RegexOutputTransformer` 每次更新对整份消息重跑正则，非幂等规则会逐步放大
     （判据：`Regex(find).containsMatchIn(replace) == true` ⇒ 不幂等；样本 `^(?=\S)` → `【AI】`）。
     **默认零影响**（没配正则时在 `Assistant.kt:454` / `RegexOutputTransformer.kt:16` 短路）。
     建议**只在保存时给提示**，不改运行时行为。
     顺带记：`RegexOutputTransformer:26/30` 硬编码 `visual = false` ⇒ `visualOnly = true` 的规则
     **在输出侧永不生效**（配了等于没配）。
+- 2026-10-18 **落地 P2：本轮被打断时收掉这一轮起的后台任务（归属令牌）**。设计稿
+  `design/design-workspace-background-tasks.md` §九之二。**为什么不能靠 taskId**：存在「进程已启动、
+  结果还没回填给模型」的窗口（审批卡住 / 取消正好落在 tool 执行之后 `commitToolResult` 之前），
+  这时 id 不在任何地方 ⇒ 归属只能在**启动那一刻**记下。
+  **实现四处**：①`WorkspaceTaskRegistry.start(context, owner)` + `killByOwner(owner)`（只杀本 owner
+  且运行中的；**空 owner 返 0**，绝不把「无归属」当一批误杀；跨 root 生效——同一助手可能绑多个
+  工作空间）；②`ConversationSession.backgroundTaskOwner`，由**新的唯一轮边界** `beginNewTurn()`
+  换新（它同时收编了原来散在三处的四个护栏 reset）；③`setJob` 在**注册回调那一刻**捕获令牌，
+  `cause is CancellationException` 时回调 `onTurnCancelled`；④ChatService → 仓库
+  `killBackgroundTasksByOwner`。
+  **两个选型理由值得记住**：**(a) 挂 Job 完成回调而不是挂 `stopGeneration`**——取消生成的入口有六个
+  （点停止 / 插队 / 重新生成 / 继续生成 / `setJob(cancelPrevious=true)` 顶掉前任 / 会话清理），它们
+  **都走 `Job.cancel()`**，而回调还发生在「确实停了之后」，不会漏掉正在启动进程的窗口。
+  **(b) 令牌必须在 `setJob` 注册时捕获**——`regenerateAtMessage` 是「先 cancel 前任、再换新令牌」，
+  `beginNewTurn()` 因此**必须在 `appScope.launch` 之前同步调用**（协程体可能晚于 `setJob(job)`
+  才开始跑）；回调里现读 `backgroundTaskOwner` 会拿到下一轮的令牌，孤儿照样漏。
+  **补一条「没有 Job 可取消」的路径**：停在工具审批上的一轮没有活跃协程（等用户决定时生成协程已
+  正常结束），取消回调不会触发 ⇒ `stopGeneration` 在收尾**之前**判定「最后节点还有待审批工具」，
+  `jobs.isEmpty() && awaitingApproval` 时也按令牌收一次（幂等）。
+  **顺带修掉一个既有漂移风险**：轮的边界原本三处各写四行 reset，现在收敛成 `beginNewTurn()` 一处；
+  若谁在第四个边界自己写回那四行，**编译通过、行为看着也对**，但令牌不换新 ⇒ 那一轮的取消会杀掉
+  **上一轮**的任务。`RuleReminderWiringTest` / `ThinkingDegenerationWiringTest` 这两道旧守卫因此
+  改口径（禁止 ChatService 再出现直接 reset，改断言 `beginNewTurn` 覆盖家族全体）。
+  **测试**：`WorkspaceBackgroundTasksTest` +3（只杀本 owner/更早轮次与无归属必须活着/重复返 0/空 owner
+  不误杀/跨 root）、`ConversationTurnCancellationTest` 4（令牌换新、**取消回调报注册时捕获的令牌**
+  ——复现 regenerate 时序、正常结束不回调）、`TurnBackgroundTaskCancelGuardTest` 4（装配链四处齐备、
+  轮边界只有 `beginNewTurn`、`setJob` 捕获顺序、审批中那条分支）。
+  **三条守卫都做了扰动验证**（改坏实现 → 必红）：回调里改成现读 `backgroundTaskOwner`、
+  去掉 `killByOwner` 的 owner 过滤、把某个边界退回直接 reset —— 各红一条。
+  **未覆盖（诚实记账）**：应用进程被杀时子进程仍可能继续跑（需常驻/前台服务托管，见设计稿 §十）；
+  真机端到端**未跑**（需要已装 rootfs，本轮只做 JVM + 源码守卫）。
+- 2026-10-18 **落地 P3：正则规则编辑期体检（只提示，不改运行时）** + **证伪此前「visualOnly 配了等于
+  没配」的推定**。新增 `data/model/AssistantRegexDiagnosis.kt`（纯函数 `diagnoseRegexRule`）与
+  `AssistantPromptPage` 的 `RegexDiagnosisWarnings`（替换串输入框下方，3 语言文案）。
+  **三类问题**：`INVALID_PATTERN`（编译不过 ⇒ `compileRegexCached` 静默跳过）、`NO_SCOPE`
+  （`affectingScope` 为空 ⇒ 永远不命中；**新建规则的默认态正好是这个**）、`AMPLIFIES_OUTPUT`。
+  **判据比原记的更强**：不是「替换串里能否匹配」，而是**把替换串当样例再应用一次看结果变没变**
+  （`replaceString.replace(compiled, replaceString) != replaceString`）——`^` → 空串（真正幂等）
+  因此不会被误报，而 `^(?=\S)` → `【AI】` 照报。已知漏报：`(foo)` → `**$1**` 这类分组引用测不出来
+  （替换串里没有 foo），**宁可漏报也不误报**。
+  **只会累积的那一类才报**：`AMPLIFIES_OUTPUT` 仅在 `visualOnly = false` 且作用域含 ASSISTANT 时报。
+  依据（本次核对代码得出，比原记录更准确）：`GenerationHandler` 每步工具循环结束都执行
+  `messages = messages.visualTransforms(...)`，下一步又拿这份**已被替换过**的消息去请求 ⇒ 非视觉
+  规则在同一轮里被应用「步数」次，且结果**落库**（历史消息也一起被反复替换）；而 `visualOnly = true`
+  的规则只在显示层现算（`ChatMessage.kt:508/527/539`、`ChatMessageReasoning.kt:211` 用 `visual = true`），
+  每次都从**落库原文**重算，**不会累积**。USER 侧非视觉规则只在 `preprocessUserInputParts` 应用一次，
+  同样不累积。⇒ 这两类**刻意不报**（报它只会让用户去改一个本来正确的配置）。
+  **修正我的错误记录**：上一轮我写的「`visualOnly = true` 在输出侧永不生效（配了等于没配）」是**错的**
+  ——那句话只对「输出 transformer 不应用 visualOnly 规则」成立；用户可见效果由显示层负责，
+  功能是好的。这是本仓第二次「只读一半链路就下结论」（第一次是 ICU 体积归因）。
+  **未做（诚实记账）**：运行时的累积本身**没修**（用户拍板只提示）。真要修是一行级改动——每步从
+  干净基线重算而不是在已替换文本上再替换；但它会改动消息内容语义，不该由一个 UI 提示顺手带上。
 - 2026-10-18 **查清「number of function response parts...」拒收来自中转，非本仓缺陷**（真机实证，含对照）。
   现象：`gemini-3.8-flash` 经 `api.rinko.ai` 中转（OpenAI 兼容）跑带工具的会话，工具执行后下一轮 400：
   `Please ensure that the number of function response parts is equal to the number of function call

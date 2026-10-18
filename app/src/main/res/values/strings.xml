@@ -167,6 +167,9 @@
   <string name="assistant_page_regex_affecting_scopes">Affecting Scopes:</string>
   <string name="assistant_page_regex_desc">Define regex patterns to transform messages before sending/receiving</string>
   <string name="assistant_page_regex_find_regex">Find Regex</string>
+  <string name="assistant_page_regex_issue_amplifies">The replacement text matches this regex again, so each pass grows the message. With a tool loop the growth is applied once per step and saved into the conversation.</string>
+  <string name="assistant_page_regex_issue_invalid">This regex does not compile, so the rule is silently skipped.</string>
+  <string name="assistant_page_regex_issue_no_scope">No scope is selected, so this rule never applies.</string>
   <string name="assistant_page_regex_name">Name</string>
   <string name="assistant_page_regex_replace_string">Replace String</string>
   <string name="assistant_page_regex_title">Message Regexes</string>
