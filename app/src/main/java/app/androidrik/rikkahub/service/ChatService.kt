@@ -85,6 +85,7 @@ import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.ai.transformers.ThinkTagTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TavernMacroTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TimeReminderTransformer
+import app.androidrik.rikkahub.data.ai.transformers.ToolResultBalancingTransformer
 import app.androidrik.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
@@ -1161,6 +1162,9 @@ class ChatService(
                 addAll(inputTransformers)
                 add(templateTransformer)
                 add(workspaceReminderTransformer)
+                // **必须是最后一个**：前面任何一环都可能改动消息（注入/模板/引用展开），
+                // 配平必须看到最终形态。与实发链同款注册 ⇒ 预览与真实请求一致。
+                add(ToolResultBalancingTransformer)
             },
             labels = labels,
         )
@@ -1388,6 +1392,10 @@ class ChatService(
                     addAll(inputTransformers)
                     add(templateTransformer)
                     add(workspaceReminderTransformer)
+                    // 工具 call/result 数量配平（发送前护栏，纯派生）——链的**最后一环**：
+                    // 前面任何一环都可能改动消息，配平必须看到最终形态。
+                    // 见 transformers/ToolResultBalancingTransformer.kt。
+                    add(ToolResultBalancingTransformer)
                 },
                 outputTransformers = outputTransformers,
                 // 工具装配集中到 ChatToolFactory（记忆 + 搜索 + 本地 + 对话 + 工作区 + 技能 + MCP）；

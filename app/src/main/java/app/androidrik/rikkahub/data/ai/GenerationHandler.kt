@@ -49,6 +49,7 @@ import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.OutputMessageTransformer
 import app.androidrik.rikkahub.data.files.FileFolders
 import java.io.File
+import app.androidrik.rikkahub.data.ai.transformers.balancedForRequest
 import app.androidrik.rikkahub.data.ai.transformers.onGenerationFinish
 import app.androidrik.rikkahub.data.ai.transformers.transforms
 import app.androidrik.rikkahub.data.ai.transformers.visualTransforms
@@ -1007,6 +1008,11 @@ class GenerationHandler(
         // （`PromptInspector` 那一份有 `val transformed =`）照常显示注入 ⇒「预览里有、实发里没有」，
         // 注入 / 时间提醒 / 引用展开 / OCR / 文档转提示全部静默失效。
         // 守卫测试：`RequestMessagePipelineGuardTest`（源码扫描，防止再次丢赋值）。
+        // 发送前护栏：工具 call / 结果数量配平（纯派生，不落库、不改 UI）——挂在链的产物上，
+        // 因为这里是**所有 provider 的唯一请求出口**（chat / subagent / 记忆整理都经由本函数）。
+        // 为什么链尾还要再兜一遍：`SubagentRunner` 传的是它自己的 `inputTransformers`（可能为空链），
+        // 只靠 ChatService 那条链接入会漏掉它。已配平时返回**同一个实例**，零开销。
+        // 见 transformers/ToolResultBalancingTransformer.kt。
         val requestMessages = internalMessages.transforms(
             transformers = transformers,
             context = context,
@@ -1017,7 +1023,7 @@ class GenerationHandler(
             conversationLorebookIds = conversationLorebookIds,
             processingStatus = processingStatus,
             workspaceCwd = workspaceCwd,
-        )
+        ).balancedForRequest()
         // 前缀分叉诊断：缓存**实际发送**的消息列表（即处理链之后的那份，单次请求差分才有意义）
         debugKey?.let { PromptDebugState.recordRequest(it, requestMessages) }
 
