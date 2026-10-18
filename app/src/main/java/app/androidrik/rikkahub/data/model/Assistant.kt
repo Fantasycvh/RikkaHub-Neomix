@@ -413,6 +413,8 @@ data class AssistantMemory(
     /** 遥测：最近一次被读取的时间（epoch millis；0 = 从未）。 */
     @Transient
     val lastReadAt: Long = 0L,
+    /** Optimistic concurrency token for model and user mutations. */
+    val revision: Long = 1L,
 )
 
 @Serializable

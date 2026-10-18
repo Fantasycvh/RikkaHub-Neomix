@@ -50,8 +50,8 @@ interface MemoryDAO {
     @Query("""
         UPDATE memoryentity SET content = :content,
             importance = COALESCE(:importance, importance),
-            description = COALESCE(:description, description), updated_at = :now
-        WHERE id = :id AND assistant_id = :assistantId
+            description = COALESCE(:description, description), updated_at = :now, revision = revision + 1
+        WHERE id = :id AND assistant_id = :assistantId AND (:expectedRevision IS NULL OR revision = :expectedRevision)
     """)
     suspend fun updateContentFields(
         id: Int,
@@ -60,25 +60,43 @@ interface MemoryDAO {
         importance: Float?,
         description: String?,
         now: Long,
+        expectedRevision: Long? = null,
     ): Int
 
     @Query("""
-        UPDATE memoryentity SET importance = :importance, updated_at = :now
-        WHERE id = :id AND assistant_id = :assistantId
+        UPDATE memoryentity SET importance = :importance, updated_at = :now, revision = revision + 1
+        WHERE id = :id AND assistant_id = :assistantId AND (:expectedRevision IS NULL OR revision = :expectedRevision)
     """)
-    suspend fun updateImportanceFields(id: Int, assistantId: String, importance: Float, now: Long): Int
+    suspend fun updateImportanceFields(
+        id: Int, assistantId: String, importance: Float, now: Long, expectedRevision: Long? = null,
+    ): Int
 
     @Query("""
-        UPDATE memoryentity SET is_anchor = :isAnchor
+        UPDATE memoryentity SET is_anchor = :isAnchor, revision = revision + 1
         WHERE id = :id AND assistant_id = :assistantId AND is_anchor != :isAnchor
+            AND (:expectedRevision IS NULL OR revision = :expectedRevision)
     """)
-    suspend fun updateAnchor(id: Int, assistantId: String, isAnchor: Boolean): Int
+    suspend fun updateAnchor(id: Int, assistantId: String, isAnchor: Boolean, expectedRevision: Long? = null): Int
 
     @Query("""
-        UPDATE memoryentity SET description = :description
+        UPDATE memoryentity SET description = :description, revision = revision + 1
         WHERE id = :id AND assistant_id = :assistantId AND description = ''
+            AND (:expectedRevision IS NULL OR revision = :expectedRevision)
     """)
-    suspend fun backfillDescription(id: Int, assistantId: String, description: String): Int
+    suspend fun backfillDescription(
+        id: Int, assistantId: String, description: String, expectedRevision: Long? = null,
+    ): Int
+
+    /** Atomic UI/history restore: business fields only; current read telemetry is retained. */
+    @Query("""
+        UPDATE memoryentity SET content = :content, importance = :importance, description = :description,
+            is_anchor = :isAnchor, updated_at = :now, revision = revision + 1
+        WHERE id = :id AND assistant_id = :assistantId AND revision = :expectedRevision
+    """)
+    suspend fun replaceBusinessFields(
+        id: Int, assistantId: String, content: String, importance: Float, description: String,
+        isAnchor: Boolean, now: Long, expectedRevision: Long,
+    ): Int
 
     @Query("""
         UPDATE memoryentity SET read_count = read_count + 1, last_read_at = MAX(last_read_at, :now)
@@ -86,8 +104,11 @@ interface MemoryDAO {
     """)
     suspend fun recordReadInStore(id: Int, assistantId: String, now: Long): Int
 
-    @Query("DELETE FROM memoryentity WHERE id = :id AND assistant_id = :assistantId")
-    suspend fun deleteMemoryInStore(id: Int, assistantId: String): Int
+    @Query("""
+        DELETE FROM memoryentity WHERE id = :id AND assistant_id = :assistantId
+            AND (:expectedRevision IS NULL OR revision = :expectedRevision)
+    """)
+    suspend fun deleteMemoryInStore(id: Int, assistantId: String, expectedRevision: Long? = null): Int
 
     /**
      * 遥测：记一次 `memory_read`（读计数 +1、刷新最近读取时间）。

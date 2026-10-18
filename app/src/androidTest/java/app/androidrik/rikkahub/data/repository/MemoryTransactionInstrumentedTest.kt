@@ -56,7 +56,7 @@ class MemoryTransactionInstrumentedTest {
         transactions = RoomMemoryTransactionRunner(database)
         memories = database.memoryDao()
         proposals = database.memoryProposalDao()
-        memoryRepository = MemoryRepository(memories, transactions)
+        memoryRepository = memoryRepository(memories)
     }
 
     @After
@@ -173,8 +173,14 @@ class MemoryTransactionInstrumentedTest {
         repository.savePending(
             STORE,
             listOf(
-                MemoryConsolidationProposal("edit", edited.publicId, "rewritten", batchId = "apply-batch"),
-                MemoryConsolidationProposal("delete", deleted.publicId, batchId = "apply-batch"),
+                MemoryConsolidationProposal(
+                    "edit", edited.publicId, "rewritten", batchId = "apply-batch",
+                    expectedRevision = edited.revision, operationId = "apply-edit",
+                ),
+                MemoryConsolidationProposal(
+                    "delete", deleted.publicId, batchId = "apply-batch", expectedRevision = deleted.revision,
+                    dependsOn = listOf("apply-edit"),
+                ),
                 MemoryConsolidationProposal("create", content = "new fact", batchId = "apply-batch"),
             ),
         )
@@ -182,8 +188,8 @@ class MemoryTransactionInstrumentedTest {
         val failure = InjectedFailure()
         var decisionsWritten = 0
         val failingDAO = object : MemoryProposalDAO by proposals {
-            override suspend fun updateOne(id: Long, decision: String, now: Long) {
-                proposals.updateOne(id, decision, now)
+            override suspend fun markApplied(id: Long, targetId: String?, revision: Long?, now: Long) {
+                proposals.markApplied(id, targetId, revision, now)
                 decisionsWritten++
                 if (decisionsWritten == oldPending.size) {
                     // Establish that all three memory mutations and decisions really executed.
@@ -255,14 +261,20 @@ class MemoryTransactionInstrumentedTest {
             }
         }
 
-        val updated = MemoryRepository(interleavedDAO, transactions).updateContentInStore(
-            STORE, before.publicId, "edited content", now = 50L,
-        )
-
+        expectRevisionConflict {
+            memoryRepository(interleavedDAO).updateContentInStore(
+                STORE, before.publicId, "edited content", now = 50L,
+            )
+        }
         assertTrue(injected)
+        assertEquals("A business-state interleave must roll back the whole transaction", before,
+            memories.getMemoryById(before.id))
+        memoryRepository.readMemoryInStore(STORE, before.publicId, now = 40L)
+        memoryRepository.setAnchor(before.publicId, true)
+        val updated = memoryRepository.updateContentInStore(STORE, before.publicId, "edited content", now = 50L)
         val expected = before.copy(
             content = "edited content", updatedAt = 50L, readCount = before.readCount + 1,
-            lastReadAt = 40L, isAnchor = true,
+            lastReadAt = 40L, isAnchor = true, revision = before.revision + 2,
         )
         assertEquals(expected, memories.getMemoryById(before.id))
         assertEquals(expected.readCount, updated.readCount)
@@ -285,13 +297,17 @@ class MemoryTransactionInstrumentedTest {
             }
         }
 
-        MemoryRepository(interleavedDAO, transactions).setAnchor(before.publicId, true)
-
+        expectRevisionConflict { memoryRepository(interleavedDAO).setAnchor(before.publicId, true) }
         assertTrue(injected)
+        assertEquals(before, memories.getMemoryById(before.id))
+        memoryRepository.updateContentInStore(STORE, before.publicId, "later content", 0.9f, "later topic", 50L)
+        memoryRepository.readMemoryInStore(STORE, before.publicId, now = 60L)
+        memoryRepository.setAnchor(before.publicId, true)
         assertEquals(
             before.copy(
                 content = "later content", importance = 0.9f, description = "later topic", updatedAt = 50L,
                 readCount = before.readCount + 1, lastReadAt = 60L, isAnchor = true,
+                revision = before.revision + 2,
             ),
             memories.getMemoryById(before.id),
         )
@@ -314,14 +330,21 @@ class MemoryTransactionInstrumentedTest {
             }
         }
 
-        val duplicate = MemoryRepository(interleavedDAO, transactions).addMemory(
-            STORE, before.content, description = "stale backfill", now = 90L,
-        )
-
+        expectRevisionConflict {
+            memoryRepository(interleavedDAO).addMemory(
+                STORE, before.content, description = "stale backfill", now = 90L,
+            )
+        }
         assertTrue(injected)
+        assertEquals(before, memories.getMemoryById(before.id))
+        memoryRepository.readMemoryInStore(STORE, before.publicId, now = 70L)
+        memoryRepository.setAnchor(before.publicId, true)
+        memoryRepository.updateContentInStore(STORE, before.publicId, before.content, description = "newer topic",
+            now = 80L)
+        val duplicate = memoryRepository.addMemory(STORE, before.content, description = "stale backfill", now = 90L)
         val expected = before.copy(
             description = "newer topic", updatedAt = 80L, readCount = before.readCount + 1,
-            lastReadAt = 70L, isAnchor = true,
+            lastReadAt = 70L, isAnchor = true, revision = before.revision + 2,
         )
         assertEquals(listOf(expected), memories.getMemoriesOfAssistant(STORE))
         assertEquals("newer topic", duplicate.description)
@@ -361,10 +384,11 @@ class MemoryTransactionInstrumentedTest {
             listOf(
                 MemoryConsolidationProposal(
                     action = "create", content = "replacement too weak to survive", importance = 0f,
-                    batchId = "capacity-replacement",
+                    batchId = "capacity-replacement", operationId = "capacity-create",
                 ),
                 MemoryConsolidationProposal(
                     action = "delete", targetId = original.publicId, batchId = "capacity-replacement",
+                    expectedRevision = original.revision, dependsOn = listOf("capacity-create"),
                 ),
             ),
         )
@@ -384,18 +408,19 @@ class MemoryTransactionInstrumentedTest {
         val before = seedHighScoreLibrary(MemoryRepository.MAX_MEMORY_COUNT - 1)
         var earlierCreateEvicted = false
         val observingDAO = object : MemoryDAO by memories {
-            override suspend fun deleteMemory(id: Int) {
+            override suspend fun deleteMemoryInStore(id: Int, assistantId: String, expectedRevision: Long?): Int {
                 val victim = memories.getMemoryById(id)
-                memories.deleteMemory(id)
+                val affected = memories.deleteMemoryInStore(id, assistantId, expectedRevision)
                 if (victim?.content == "earlier create") {
                     earlierCreateEvicted = true
                     assertNull(memories.getMemoryById(id))
                 }
+                return affected
             }
         }
         val repository = MemoryProposalRepository(
             proposalDAO = proposals,
-            memoryRepository = MemoryRepository(observingDAO, transactions),
+            memoryRepository = memoryRepository(observingDAO),
             transactions = transactions,
             now = { CAPACITY_NOW },
         )
@@ -432,10 +457,12 @@ class MemoryTransactionInstrumentedTest {
             listOf(
                 MemoryConsolidationProposal(
                     action = "edit", targetId = before.publicId, content = "rejected rewrite",
-                    batchId = "rejected-edit-delete",
+                    batchId = "rejected-edit-delete", expectedRevision = before.revision,
+                    operationId = "rejected-edit",
                 ),
                 MemoryConsolidationProposal(
                     action = "delete", targetId = before.publicId, batchId = "rejected-edit-delete",
+                    expectedRevision = before.revision, dependsOn = listOf("rejected-edit"),
                 ),
             ),
         )
@@ -462,10 +489,11 @@ class MemoryTransactionInstrumentedTest {
             listOf(
                 MemoryConsolidationProposal(
                     action = "edit", targetId = "ffffffff", content = "missing rewrite target",
-                    batchId = "stale-edit-delete",
+                    batchId = "stale-edit-delete", expectedRevision = 1L, operationId = "stale-edit",
                 ),
                 MemoryConsolidationProposal(
                     action = "delete", targetId = before.publicId, batchId = "stale-edit-delete",
+                    expectedRevision = before.revision, dependsOn = listOf("stale-edit"),
                 ),
             ),
         )
@@ -494,10 +522,12 @@ class MemoryTransactionInstrumentedTest {
             listOf(
                 MemoryConsolidationProposal(
                     action = "edit", targetId = retained.publicId, content = "merged content",
-                    batchId = "applied-edit-delete",
+                    batchId = "applied-edit-delete", expectedRevision = retained.revision,
+                    operationId = "applied-edit",
                 ),
                 MemoryConsolidationProposal(
                     action = "delete", targetId = retired.publicId, batchId = "applied-edit-delete",
+                    expectedRevision = retired.revision, dependsOn = listOf("applied-edit"),
                 ),
             ),
         )
@@ -524,8 +554,12 @@ class MemoryTransactionInstrumentedTest {
             listOf(
                 MemoryConsolidationProposal(
                     action = "edit", targetId = before.publicId, content = "rejected rewrite", batchId = batchId,
+                    expectedRevision = before.revision, operationId = "protected-edit",
                 ),
-                MemoryConsolidationProposal(action = "delete", targetId = before.publicId, batchId = batchId),
+                MemoryConsolidationProposal(
+                    action = "delete", targetId = before.publicId, batchId = batchId,
+                    expectedRevision = before.revision, dependsOn = listOf("protected-edit"),
+                ),
             ),
         )
         val batch = proposals.getPending(STORE)
@@ -666,6 +700,10 @@ class MemoryTransactionInstrumentedTest {
         assertTrue(cursorWritten)
     }
 
+    private fun memoryRepository(dao: MemoryDAO) = MemoryRepository(
+        dao, transactions, database.memoryHistoryDao(), database.memoryTrashDao(),
+    )
+
     private fun proposalRepository(dao: MemoryProposalDAO = proposals) = MemoryProposalRepository(
         proposalDAO = dao,
         memoryRepository = memoryRepository,
@@ -687,6 +725,15 @@ class MemoryTransactionInstrumentedTest {
             importance = 0.6f, updatedAt = 10L, readCount = 3, lastReadAt = 9L,
         )
         return row.copy(id = memories.insertMemory(row).toInt())
+    }
+
+    private suspend fun expectRevisionConflict(block: suspend () -> Unit) {
+        try {
+            block()
+            fail("Expected real SQL revision CAS conflict")
+        } catch (_: MemoryRevisionConflictException) {
+            // The Room transaction, not a fake runner, rolls back the injected business-state interleave.
+        }
     }
 
     private suspend fun expectFailure(expected: InjectedFailure, block: suspend () -> Unit) {

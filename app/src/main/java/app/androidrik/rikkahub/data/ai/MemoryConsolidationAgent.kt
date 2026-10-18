@@ -30,6 +30,8 @@ data class MemoryConsolidationRequest(
      * 整理 agent 看不到「拒绝」这件事，于是每轮重做同样的工作。
      */
     val refusedChanges: List<String> = emptyList(),
+    /** Exact full-text page snapshot rendered to the model, never refreshed while proposals are saved. */
+    val initialRevisions: Map<String, Long> = emptyMap(),
 )
 
 data class MemoryConsolidationOutcome(

@@ -3,7 +3,9 @@ package app.androidrik.rikkahub.data.db.entity
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
+@Serializable
 @Entity
 data class MemoryEntity(
     @PrimaryKey(true)
@@ -82,6 +84,9 @@ data class MemoryEntity(
      */
     @ColumnInfo("is_anchor", defaultValue = "0")
     val isAnchor: Boolean = false,
+    /** Business-state version. Telemetry reads do not advance it. */
+    @ColumnInfo("revision", defaultValue = "1")
+    val revision: Long = 1L,
 ) {
     companion object {
         /** 缺省重要度（普通偏好档，见 [importance]）。 */

@@ -236,6 +236,7 @@ internal fun buildMemoryDataPrompt(
                 add(buildJsonObject {
                     // 对模型暴露 opaque token（非自增编号）：避免编号泄漏记忆条数、也避免删除空洞难看
                     put("id", memory.id)
+                    put("revision", memory.revision)
                     put("content", memory.content)
                 })
             }

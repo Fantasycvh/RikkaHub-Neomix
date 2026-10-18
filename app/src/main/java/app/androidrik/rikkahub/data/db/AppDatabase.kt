@@ -18,6 +18,8 @@ import app.androidrik.rikkahub.data.db.dao.MemoryProposalDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO
 import app.androidrik.rikkahub.data.db.dao.ManagedFileDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryHistoryDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryTrashDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
 import app.androidrik.rikkahub.data.db.dao.WorkspaceDAO
 import app.androidrik.rikkahub.data.db.entity.CompressionCheckpointEntity
@@ -32,6 +34,8 @@ import app.androidrik.rikkahub.data.db.entity.KnowledgeEmbeddingEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryConsolidationEntity
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
+import app.androidrik.rikkahub.data.db.entity.MemoryHistoryEntity
+import app.androidrik.rikkahub.data.db.entity.MemoryTrashEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryProposalEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
@@ -61,8 +65,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         MemoryConsolidationEntity::class,
         MemoryProposalEntity::class,
         MemoryReviewCursorEntity::class,
+        MemoryHistoryEntity::class,
+        MemoryTrashEntity::class,
     ],
-    version = 40,
+    version = 41,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -124,6 +130,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDAO
 
     abstract fun memoryDao(): MemoryDAO
+
+    abstract fun memoryHistoryDao(): MemoryHistoryDAO
+
+    abstract fun memoryTrashDao(): MemoryTrashDAO
 
     abstract fun genMediaDao(): GenMediaDAO
 

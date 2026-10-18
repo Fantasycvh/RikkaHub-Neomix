@@ -2,6 +2,8 @@ package app.androidrik.rikkahub.data.ai.tools
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import app.androidrik.ai.ui.UIMessagePart
@@ -38,6 +40,11 @@ class MemoryToolsTest {
             for (operation in listOf("updateContentInStore", "deleteMemoryInStore", "readMemoryInStore")) {
                 assertTrue("$path must scope $operation", source.contains("memoryRepository.$operation($store, id"))
             }
+            assertTrue(source.contains("versionedOnUpdate ="))
+            assertTrue(source.contains("versionedOnDelete ="))
+            assertTrue(source.contains("expectedRevision = revision"))
+            assertTrue(source.contains("Versioned update callback is required"))
+            assertTrue(source.contains("Versioned delete callback is required"))
             for (operation in listOf("updateContent", "deleteMemory", "readMemory", "getMemoryById")) {
                 assertFalse("$path must not use trusted $operation", source.contains("memoryRepository.$operation("))
             }
@@ -155,6 +162,11 @@ class MemoryToolsTest {
             AssistantMemory(id, content, importance ?: 0.6f, description.orEmpty())
         },
         onDelete = { },
+        versionedOnUpdate = { id, content, importance, description, expected ->
+            updated += Triple(id, content, importance)
+            updatedDescriptions += description
+            AssistantMemory(id, content, importance ?: 0.6f, description.orEmpty(), revision = expected + 1)
+        },
         onRead = { id ->
             readCalls++
             readResult.firstOrNull()?.takeIf { it.id == id }
@@ -194,6 +206,7 @@ class MemoryToolsTest {
         executingTool().execute(
             buildJsonObject {
                 put("action", "edit")
+                put("expected_revision", 1)
                 put("id", "a3f1c09e")
                 put("content", "prefers coffee")
                 put("importance", 0.4)
@@ -226,6 +239,7 @@ class MemoryToolsTest {
         val result = executingTool().execute(
             buildJsonObject {
                 put("action", "edit")
+                put("expected_revision", 1)
                 put("id", "a3f1c09e")
                 put("content", "身份证 11010519491231002X")
             }
@@ -259,10 +273,12 @@ class MemoryToolsTest {
             onUpdate = { id, content, importance, description ->
                 AssistantMemory(id, content, importance ?: 0.6f, description.orEmpty())
             },
-            onDelete = { deleted += it },
+            onDelete = { error("Legacy delete must not run") },
+            versionedOnDelete = { id, _ -> deleted += id },
         ).first { it.name == "memory_tool" }
         tool.execute(buildJsonObject {
             put("action", "delete")
+                put("expected_revision", 1)
             put("id", "7bd20f45")
         })
         assertEquals(listOf("7bd20f45"), deleted)
@@ -280,6 +296,7 @@ class MemoryToolsTest {
         })
         tool.execute(buildJsonObject {
             put("action", "edit")
+                put("expected_revision", 1)
             put("id", "a3f1c09e")
             put("content", "prefers coffee")
             put("description", "drink preferences")
@@ -443,7 +460,41 @@ class MemoryToolsTest {
         onDelete = { },
         onRead = { id -> readResult.firstOrNull()?.takeIf { it.id == id } },
         proposalSink = { proposals += it },
+        initialRevisions = mapOf("a3f1c09e" to 1L, "7bd20f45" to 1L),
     ).first { it.name == "memory_tool" }
+
+    private fun revisionTool(
+        initial: Map<String, Long> = emptyMap(),
+        read: suspend (String) -> AssistantMemory? = { null },
+        search: suspend (String, Int) -> List<AssistantMemory> = { _, _ -> emptyList() },
+        sink: ((MemoryConsolidationProposal) -> Unit)? = { proposals += it },
+        update: (suspend (String, String, Float?, String?, Long) -> AssistantMemory)? = null,
+        delete: (suspend (String, Long) -> Unit)? = null,
+    ) = buildMemoryTools(
+        json = json,
+        onCreation = { content, _, _ -> AssistantMemory("created", content, revision = 4L) },
+        onUpdate = { _, _, _, _ -> error("Legacy update must not run") },
+        onDelete = { error("Legacy delete must not run") },
+        onRead = read,
+        onSearch = search,
+        proposalSink = sink,
+        initialRevisions = initial,
+        versionedOnUpdate = update,
+        versionedOnDelete = delete,
+    ).single()
+
+    private fun mutation(
+        action: String = "edit",
+        id: String = "target",
+        revision: Long? = 1L,
+        dependencies: List<String>? = null,
+    ) = buildJsonObject {
+        put("action", action)
+        put("id", id)
+        put("content", "updated content")
+        revision?.let { put("expected_revision", it) }
+        dependencies?.let { put("depends_on", buildJsonArray { it.forEach { add(JsonPrimitive(it)) } }) }
+    }
 
     private fun textOf(result: List<UIMessagePart>) =
         result.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text }
@@ -466,10 +517,12 @@ class MemoryToolsTest {
         )
 
         assertTrue("仓库一次都不许被调用", created.isEmpty())
-        assertEquals(
-            listOf(MemoryConsolidationProposal("create", null, "喜欢短回复", 0.7f, "回复风格")),
-            proposals,
-        )
+        assertEquals(1, proposals.size)
+        assertEquals("create", proposals.single().action)
+        assertEquals("喜欢短回复", proposals.single().content)
+        assertEquals(0.7f, proposals.single().importance)
+        assertEquals("回复风格", proposals.single().description)
+        assertTrue(payload.contains(proposals.single().operationId))
         assertTrue(
             "回执必须说清「没落库」：否则模型以为写成功了、也可能反复重试",
             payload.contains("\"applied\":false") && payload.contains("\"proposal\":true"),
@@ -481,26 +534,26 @@ class MemoryToolsTest {
         updated.clear()
         proposals.clear()
 
-        proposingTool().execute(
-            buildJsonObject {
-                put("action", "edit")
-                put("id", "a3f1c09e")
-                put("content", "合并后的内容")
-            }
-        )
-        proposingTool().execute(buildJsonObject {
+        val tool = proposingTool()
+        tool.execute(buildJsonObject {
+            put("action", "edit")
+            put("expected_revision", 1)
+            put("id", "a3f1c09e")
+            put("content", "合并后的内容")
+        })
+        val replacement = proposals.single().operationId
+        tool.execute(buildJsonObject {
             put("action", "delete")
+            put("expected_revision", 1)
             put("id", "7bd20f45")
+            put("depends_on", kotlinx.serialization.json.buildJsonArray { add(JsonPrimitive(replacement)) })
         })
 
         assertTrue("编辑不许落库", updated.isEmpty())
-        assertEquals(
-            listOf(
-                MemoryConsolidationProposal("edit", "a3f1c09e", "合并后的内容", null, null),
-                MemoryConsolidationProposal("delete", "7bd20f45"),
-            ),
-            proposals,
-        )
+        assertEquals(listOf("edit", "delete"), proposals.map { it.action })
+        assertEquals(listOf("a3f1c09e", "7bd20f45"), proposals.map { it.targetId })
+        assertEquals(listOf(1L, 1L), proposals.map { it.expectedRevision })
+        assertEquals(listOf(replacement), proposals.last().dependsOn)
     }
 
     @Test
@@ -515,6 +568,138 @@ class MemoryToolsTest {
 
         assertTrue("只提案说的是写入，读取照常", payload.contains("常读的那条"))
         assertTrue("读不产生建议", proposals.isEmpty())
+    }
+
+    @Test
+    fun `versioned schema and receipts expose revisions`() = runBlocking {
+        val tool = revisionTool(sink = null)
+        assertTrue(tool.parameters().toString().contains("expected_revision"))
+        assertTrue(tool.parameters().toString().contains("depends_on"))
+        val text = textOf(tool.execute(buildJsonObject {
+            put("action", "create")
+            put("content", "user prefers tea")
+        }))
+        assertTrue(text.contains("\"revision\":4"))
+    }
+
+    @Test
+    fun `edit and delete require positive expected revision before callbacks`() = runBlocking {
+        for (action in listOf("edit", "delete")) {
+            for (revision in listOf(null, 0L, -1L)) {
+                val failure = runCatching {
+                    revisionTool(sink = null).execute(mutation(action, revision = revision))
+                }.exceptionOrNull()
+                assertTrue(failure?.message.orEmpty().contains("expected_revision"))
+            }
+        }
+    }
+
+    @Test
+    fun `direct mutations without versioned adapters fail closed instead of using legacy callbacks`() = runBlocking {
+        for (action in listOf("edit", "delete")) {
+            val failure = runCatching {
+                revisionTool(sink = null).execute(mutation(action))
+            }.exceptionOrNull()
+            assertTrue(failure?.message.orEmpty().contains("Versioned"))
+        }
+    }
+
+    @Test
+    fun `default revision is always present even when serializer omits defaults`() = runBlocking {
+        val text = textOf(executingTool().execute(buildJsonObject {
+            put("action", "create")
+            put("content", "likes tea")
+        }))
+        assertTrue(text.contains("\"revision\":1"))
+    }
+
+    @Test
+    fun `production versioned callbacks receive original args without fresh lookup`() = runBlocking {
+        val received = mutableListOf<Long>()
+        val tool = revisionTool(
+            sink = null,
+            read = { error("Must not look up a fresh version during mutation") },
+            update = { id, content, _, _, expected ->
+                received += expected
+                AssistantMemory(id, content, revision = expected + 1)
+            },
+            delete = { _, expected -> received += expected },
+        )
+        val edited = textOf(tool.execute(mutation(revision = 7)))
+        val deleted = textOf(tool.execute(mutation("delete", revision = 9)))
+        assertEquals(listOf(7L, 9L), received)
+        assertTrue(edited.contains("\"revision\":8"))
+        assertTrue(deleted.contains("\"revision\":9"))
+    }
+
+    @Test
+    fun `proposal rejects unseen revision and preserves page snapshot after a newer read`() = runBlocking {
+        val tool = revisionTool(
+            initial = mapOf("target" to 2L),
+            read = { AssistantMemory(it, "newer content", revision = 3L) },
+        )
+        assertTrue(runCatching { tool.execute(mutation(revision = 4)) }.isFailure)
+        tool.execute(buildJsonObject { put("action", "read"); put("id", "target") })
+        tool.execute(mutation(revision = 2))
+        tool.execute(mutation(revision = 3))
+        assertEquals(listOf(2L, 3L), proposals.map { it.expectedRevision })
+    }
+
+    @Test
+    fun `read and only returned search records authorize proposal versions`() = runBlocking {
+        val tool = revisionTool(
+            read = { AssistantMemory(it, "read content", revision = 5L) },
+            search = { _, _ -> listOf(
+                AssistantMemory("included", "x".repeat(6000), revision = 6L),
+                AssistantMemory("omitted", "not returned", revision = 7L),
+            ) },
+        )
+        val readText = textOf(tool.execute(buildJsonObject { put("action", "read"); put("id", "read") }))
+        assertTrue(readText.contains("\"revision\":5"))
+        tool.execute(mutation(id = "read", revision = 5))
+        val searchText = textOf(tool.execute(buildJsonObject { put("action", "search"); put("query", "x") }))
+        assertTrue(searchText.contains("\"revision\":6"))
+        assertFalse(searchText.contains("\"id\":\"omitted\""))
+        tool.execute(mutation(id = "included", revision = 6))
+        assertTrue(runCatching { tool.execute(mutation(id = "omitted", revision = 7)) }.isFailure)
+        assertEquals(listOf("read", "included"), proposals.map { it.targetId })
+    }
+
+    @Test
+    fun `proposal delete requires successful explicit replacement operation ids`() = runBlocking {
+        val tool = revisionTool(initial = mapOf("target" to 1L))
+        assertTrue(runCatching { tool.execute(mutation("delete")) }.isFailure)
+        assertTrue(runCatching {
+            tool.execute(mutation("delete", dependencies = listOf("unknown")))
+        }.isFailure)
+        val receipt = textOf(tool.execute(buildJsonObject {
+            put("action", "create"); put("content", "replacement content")
+        }))
+        val operation = proposals.single().operationId
+        assertTrue(receipt.contains(operation))
+        tool.execute(mutation("delete", dependencies = listOf(operation)))
+        assertEquals(listOf(operation), proposals.last().dependsOn)
+    }
+
+    @Test
+    fun `sink failure never registers a replacement dependency`() = runBlocking {
+        var failedOperation = ""
+        var fail = true
+        val tool = revisionTool(initial = mapOf("target" to 1L), sink = {
+            if (fail) {
+                failedOperation = it.operationId
+                error("storage unavailable")
+            }
+            proposals += it
+        })
+        assertTrue(runCatching {
+            tool.execute(buildJsonObject { put("action", "create"); put("content", "replacement") })
+        }.isFailure)
+        fail = false
+        assertTrue(runCatching {
+            tool.execute(mutation("delete", dependencies = listOf(failedOperation)))
+        }.isFailure)
+        assertTrue(proposals.isEmpty())
     }
 
     @Test

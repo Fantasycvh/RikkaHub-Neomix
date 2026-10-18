@@ -38,6 +38,12 @@ fun proposeChangeSummary(
     }
 
     val id = proposal.targetId.orEmpty()
+    if (proposal.action != "create" && target != null && proposal.expectedRevision != null &&
+        target.revision != proposal.expectedRevision
+    ) {
+        return "[${proposal.action}] $id — revision changed " +
+            "(expected v${proposal.expectedRevision}, current v${target.revision}); will not apply"
+    }
     return when (proposal.action) {
         "create" -> "[new] ${preview(proposal.content)}"
         "edit" -> if (target == null) {

@@ -58,6 +58,7 @@ import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
 import app.androidrik.rikkahub.data.ai.detailContent
 import app.androidrik.rikkahub.data.ai.proposeChangeSummary
 import app.androidrik.rikkahub.data.ai.memoryConsolidationCoversAllHistory
+import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.ai.detailTitle
 import app.androidrik.rikkahub.data.ai.describe
 import app.androidrik.rikkahub.data.model.Assistant
@@ -98,6 +99,24 @@ fun AssistantMemoryPage(id: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
+    val storeId = assistant.memoryId()
+    var showRecovery by remember(storeId) { mutableStateOf(false) }
+    fun launchMemoryAction(action: suspend () -> Unit) {
+        scope.launch {
+            try {
+                action()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                toaster.show("Unable to change memory: ${failure.message ?: failure.javaClass.simpleName}")
+            }
+        }
+    }
+    if (showRecovery) {
+        key(storeId) {
+            MemoryRecoveryDialog(storeId, memories, vm) { showRecovery = false }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -107,6 +126,9 @@ fun AssistantMemoryPage(id: String) {
                 },
                 navigationIcon = {
                     BackButton()
+                },
+                actions = {
+                    TextButton(onClick = { showRecovery = true }) { Text("恢复") }
                 },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors,
@@ -120,11 +142,11 @@ fun AssistantMemoryPage(id: String) {
             assistant = assistant,
             memories = memories,
             onUpdateAssistant = { vm.update(it) },
-            onDeleteMemory = { vm.deleteMemory(it) },
+            onDeleteMemory = { memory -> launchMemoryAction { vm.deleteMemory(storeId, memory) } },
             onAddMemory = { memory ->
                 scope.launch {
                     try {
-                        vm.addMemory(memory)
+                        vm.addMemory(memory, storeId)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (failure: Exception) {
@@ -132,7 +154,7 @@ fun AssistantMemoryPage(id: String) {
                     }
                 }
             },
-            onUpdateMemory = { vm.updateMemory(it) },
+            onUpdateMemory = { memory -> launchMemoryAction { vm.updateMemory(storeId, memory) } },
             consolidationStatus = consolidationStatus,
             onOrganize = { vm.organizeMemory() },
             // 手动固化：动作本身没有可见结果（只影响后续请求的 system 块），
@@ -308,6 +330,10 @@ private fun AssistantMemoryContent(
                 ) {
                     // 全文，不截断——这正是这个弹层存在的理由
                     Text(text = proposal.detailContent())
+                    proposal.expectedRevision?.let { Text("Expected revision: v$it") }
+                    if (proposal.dependsOn.isNotEmpty()) {
+                        Text("Requires ${proposal.dependsOn.size} specific operation(s) to remain applied and unchanged.")
+                    }
                     proposal.importance?.let { importance ->
                         Text(
                             text = stringResource(

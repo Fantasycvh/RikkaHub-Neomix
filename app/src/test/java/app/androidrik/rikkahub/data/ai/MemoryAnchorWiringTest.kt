@@ -142,11 +142,13 @@ class MemoryAnchorWiringTest {
         assertTrue("找不到 AssistantDetailVM.addMemory", start >= 0)
         val newline = '\n'
         val body = vm.substring(start).substringBefore("$newline    }")
-        assertTrue(
-            "新建记忆必须自己补 setAnchor：仓储层的 addMemory 不接受 isAnchor（反自填纪律），" +
-                "不补就会把新建对话框里的锚点开关静默丢掉",
-            body.contains("setAnchor("),
-        )
+        assertTrue("UI must use the atomic user-only create path", body.contains("createMemoryInStore("))
+        assertTrue("The chosen anchor must be passed, not silently lost", body.contains("isAnchor = memory.isAnchor"))
+        val repo = source("app/androidrik/rikkahub/data/repository/MemoryRepository.kt")
+        val create = repo.substringAfter("suspend fun createMemoryInStore(").substringBefore("suspend fun readMemory(")
+        assertTrue("User creation and anchoring must share a transaction", create.contains("transactions.run"))
+        assertTrue(create.contains("setAnchor("))
+        assertTrue(create.contains("expectedRevision = created.revision"))
     }
 
     /**

@@ -228,21 +228,17 @@ class AssistantDetailVM(
     }
 
     /** The UI owns error feedback and cancellation; do not hide failures in a detached launch. */
-    suspend fun addMemory(memory: AssistantMemory) {
-        val added = memoryRepository.addMemory(
-            assistantId = assistant.value.memoryId(),
+    suspend fun addMemory(memory: AssistantMemory, storeId: String = assistant.value.memoryId()) {
+        // User-only path atomically combines creation and the chosen anchor (setAnchor).
+        // Model addMemory deliberately cannot accept an anchor flag.
+        memoryRepository.createMemoryInStore(
+            storeId = storeId,
             content = memory.content,
             importance = memory.importance,
             description = memory.description,
+            isAnchor = memory.isAnchor,
+            reason = "User memory editor",
         )
-        // 新建对话框里那个「固化为锚点」开关：`addMemory` **按纪律不接受**这个参数
-        // （见 MemoryRepository.setAnchor 的注释：AI 不得自填锚点），所以在这里补一次。
-        //
-        // 不补的话，用户新建一条记忆、打开开关、保存 ⇒ 开关被**静默丢弃**，
-        // 既没固化成锚点、也没触发刷新，而界面看起来一切正常（曾经的真实 bug）。
-        if (memory.isAnchor && !added.isAnchor) {
-            memoryRepository.setAnchor(id = added.id, isAnchor = true)
-        }
     }
 
     /**
@@ -256,29 +252,42 @@ class AssistantDetailVM(
      */
     suspend fun freezeMemoryAnchors(): Int = chatService.refreshFrozenAnchorsForAssistant(assistantId)
 
-    fun updateMemory(memory: AssistantMemory) {
-        viewModelScope.launch {
-            // 一并写入 importance：用户在记忆页的滑块覆盖会走这里，不传就等于「改了不生效」
-            memoryRepository.updateContent(
-                id = memory.id,
-                content = memory.content,
-                importance = memory.importance,
-                description = memory.description,
-            )
-            // L1 锚点单独走 setAnchor（**不改 updatedAt**）：固化是标注、不是改写内容
-            memoryRepository.setAnchor(id = memory.id, isAnchor = memory.isAnchor)
-            // **刻意不刷新任何已有会话**（设计稿 §5，2026-10-16 用户决定）：
-            // 改锚点若顺带刷新，就等于「点一下开关、该助手所有会话的缓存被静默作废」，
-            // 而那正是这套分层要消灭的东西。改锚点只影响**新会话**；已有会话要采纳，
-            // 必须有人显式按下两个入口之一——会话菜单「本对话固化记忆」或记忆页「固化记忆」。
-        }
+    suspend fun updateMemory(storeId: String, memory: AssistantMemory) {
+        // One user edit, one CAS and one history boundary (including the anchor field).
+        memoryRepository.updateMemoryInStore(
+            storeId = storeId,
+            id = memory.id,
+            content = memory.content,
+            importance = memory.importance,
+            description = memory.description,
+            isAnchor = memory.isAnchor,
+            expectedRevision = memory.revision,
+            reason = "User memory editor",
+        )
+        // Deliberately do not refresh frozen anchors in existing conversations.
     }
 
-    fun deleteMemory(memory: AssistantMemory) {
-        viewModelScope.launch {
-            memoryRepository.deleteMemory(id = memory.id)
-        }
+    suspend fun deleteMemory(storeId: String, memory: AssistantMemory) {
+        check(memoryRepository.deleteMemoryInStore(
+            storeId, memory.id, expectedRevision = memory.revision,
+            actor = "USER", reason = "User memory editor",
+        )) { "Memory no longer exists" }
     }
+
+    suspend fun memoryHistory(storeId: String, id: String) = memoryRepository.listHistory(storeId, id)
+
+    suspend fun memoryTrash(storeId: String) = memoryRepository.listTrash(storeId)
+
+    suspend fun restoreMemoryRevision(storeId: String, memory: AssistantMemory, revision: Long) =
+        memoryRepository.restoreRevision(
+            storeId, memory.id, targetRevision = revision, expectedRevision = memory.revision,
+            reason = "User restored a previous revision",
+        )
+
+    suspend fun restoreTrashedMemory(storeId: String, memoryId: Int, revision: Long) =
+        memoryRepository.restoreTrash(
+            storeId, memoryId, expectedRevision = revision, reason = "User restored from recycle bin",
+        )
 
     fun checkAvatarDelete(old: Assistant, new: Assistant) {
         if (old.avatar is Avatar.Image && old.avatar != new.avatar) {

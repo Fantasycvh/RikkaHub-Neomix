@@ -180,13 +180,18 @@ class ChatToolFactory(
                 buildMemoryTools(
                     json = json,
                     onCreation = { content, importance, description ->
-                        memoryRepository.addMemory(memoryAssistantId, content, importance, description)
+                        memoryRepository.addMemory(memoryAssistantId, content, importance, description,
+                            actor = "CHAT", reason = "memory_tool create")
                     },
-                    onUpdate = { id, content, importance, description ->
-                        memoryRepository.updateContentInStore(memoryAssistantId, id, content, importance, description)
+                    onUpdate = { _, _, _, _ -> error("Versioned update callback is required") },
+                    onDelete = { error("Versioned delete callback is required") },
+                    versionedOnUpdate = { id, content, importance, description, revision ->
+                        memoryRepository.updateContentInStore(memoryAssistantId, id, content, importance, description,
+                            expectedRevision = revision, actor = "CHAT", reason = "memory_tool edit")
                     },
-                    onDelete = { id ->
-                        check(memoryRepository.deleteMemoryInStore(memoryAssistantId, id)) {
+                    versionedOnDelete = { id, revision ->
+                        check(memoryRepository.deleteMemoryInStore(memoryAssistantId, id,
+                            expectedRevision = revision, actor = "CHAT", reason = "memory_tool delete")) {
                             "Memory record $id not found in store"
                         }
                     },

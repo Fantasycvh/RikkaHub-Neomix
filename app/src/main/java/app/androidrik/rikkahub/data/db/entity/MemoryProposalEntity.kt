@@ -22,8 +22,9 @@ import androidx.room.PrimaryKey
  *
  * [batchId] 把**同一次整理**产出的建议绑在一起：一次「合并重复记忆」在工具层是
  * `edit` + `delete` 两个调用，**拆开应用会丢内容**（先 edit 后被别的东西删掉，或反之）。
- * batch 记录同次运行的来源，不强制整批采纳：create/edit 可单独应用；delete 必须满足
- * 同批待办已选中、且没有 rejected/stale 成员的保守前置条件。拒绝允许逐条。
+ * batch 记录同次运行的来源，不强制整批采纳。显式 [dependsOn] 指向同批 create/edit 操作；
+ * delete 只消费这些操作的成功输出，并复核输出内容版本，无关建议被拒绝不阻止删除。
+ * [expectedRevision] 必须来自模型实际看过的内容，不能在保存时取最新版本伪造证据。
  *
  * [decision] 是审计字段：建议**被应用/被拒绝/已过期**都留行，这样「梦里到底改了什么」
  * 事后可查——与「删了没有账」是本轮要修掉的两件事之一。
@@ -42,7 +43,7 @@ data class MemoryProposalEntity(
     /** 属于哪个记忆库（`MemoryConsolidationWorker` 契约里的不透明 `memoryId`） */
     @ColumnInfo("memory_id")
     val memoryId: String,
-    /** 同一次整理的一批（edit + delete 合并语义不可拆） */
+    /** 同一次整理的一批；依赖边而非整批成员关系决定操作前置条件。 */
     @ColumnInfo("batch_id")
     val batchId: String,
     /** `create` / `edit` / `delete` */
@@ -64,6 +65,20 @@ data class MemoryProposalEntity(
     val decision: String = DECISION_PENDING,
     @ColumnInfo("decided_at")
     val decidedAt: Long = 0L,
+    @ColumnInfo(name = "expected_revision", defaultValue = "NULL")
+    val expectedRevision: Long? = null,
+    @ColumnInfo(name = "operation_id", defaultValue = "''")
+    val operationId: String = "",
+    /** JSON array of same-batch create/edit operation IDs. */
+    @ColumnInfo(name = "depends_on", defaultValue = "'[]'")
+    val dependsOn: String = "[]",
+    @ColumnInfo(name = "applied_target_id", defaultValue = "NULL")
+    val appliedTargetId: String? = null,
+    @ColumnInfo(name = "applied_revision", defaultValue = "NULL")
+    val appliedRevision: Long? = null,
+    /** SQL/Kotlin default 0 deliberately leaves legacy rows untrusted. */
+    @ColumnInfo(name = "contract_version", defaultValue = "0")
+    val contractVersion: Int = 0,
 ) {
     companion object {
         const val DECISION_PENDING = "pending"
@@ -71,7 +86,7 @@ data class MemoryProposalEntity(
         const val DECISION_REJECTED = "rejected"
 
         /**
-         * 应用时目标不存在或不在当前记忆库 ⇒ **不应用**。当前不做内容版本校验。
+         * 目标缺失、版本变化、依赖输出变化或旧契约无可靠证据 ⇒ 不应用。
          *
          * 单列一档而不是复用 `rejected`：用户没有拒绝它，是**前提不成立**了。
          * 界面上这两种的说明完全不同（前者是「你拒绝了」，后者是「这条已经不能安全应用了」），

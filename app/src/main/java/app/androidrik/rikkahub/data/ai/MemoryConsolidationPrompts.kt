@@ -169,6 +169,7 @@ internal fun buildLibraryPagePrompt(page: MemoryLibraryPage): String = buildStri
             add(
                 buildJsonObject {
                     put("id", memory.id)
+                    put("revision", memory.revision)
                     put("content", memory.content)
                 },
             )
@@ -224,8 +225,11 @@ internal val MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """
 internal val MEMORY_CONSOLIDATION_PROPOSAL_NOTE = """
     Note: this library requires the user's approval for changes (memory write approval is on), so your
     `create` / `edit` / `delete` calls are recorded as **suggestions**: nothing is stored, and the tool
-    replies with `applied:false`. Work as if the change were applied — the user will review the
-    suggestions later. Reads work normally.
+    replies with `applied:false` and an `operation_id`. Nothing is applied yet. For edit/delete copy the
+    target's actually visible revision into `expected_revision`; read first if needed. To propose a merge,
+    first successfully propose the replacement create/edit, then put its returned operation_id in the
+    delete's non-empty `depends_on` array. Only those explicit replacement dependencies will authorize
+    that deletion after review. Reads work normally.
 """.trimIndent()
 
 /** 一次整理实际带进模型的新轮次，以及它们把各会话的进度推进到哪。 */

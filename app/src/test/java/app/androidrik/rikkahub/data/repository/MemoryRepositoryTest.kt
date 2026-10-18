@@ -5,7 +5,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryHistoryDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryTrashDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
+import app.androidrik.rikkahub.data.db.entity.MemoryHistoryEntity
+import app.androidrik.rikkahub.data.db.entity.MemoryTrashEntity
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -54,7 +58,8 @@ class MemoryRepositoryTest {
             rows.any { it.publicId == publicId }
 
         override suspend fun insertMemory(memory: MemoryEntity): Long {
-            val id = nextId++
+            val id = if (memory.id == 0) nextId++ else memory.id.also { nextId = maxOf(nextId, it + 1) }
+            check(rows.none { it.id == id })
             rows.add(memory.copy(id = id))
             return id.toLong()
         }
@@ -74,11 +79,16 @@ class MemoryRepositoryTest {
             importance: Float?,
             description: String?,
             now: Long,
+            expectedRevision: Long?,
         ): Int {
             beforeWrite()
-            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId }
+            val i = rows.indexOfFirst {
+                it.id == id && it.assistantId == assistantId &&
+                    (expectedRevision == null || it.revision == expectedRevision)
+            }
             if (i < 0) return 0
             rows[i] = rows[i].copy(
+                revision = rows[i].revision + 1,
                 content = content,
                 importance = importance ?: rows[i].importance,
                 description = description ?: rows[i].description,
@@ -87,27 +97,58 @@ class MemoryRepositoryTest {
             return 1
         }
 
-        override suspend fun updateImportanceFields(id: Int, assistantId: String, importance: Float, now: Long): Int {
+        override suspend fun updateImportanceFields(
+            id: Int, assistantId: String, importance: Float, now: Long, expectedRevision: Long?,
+        ): Int {
             beforeWrite()
-            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId }
+            val i = rows.indexOfFirst {
+                it.id == id && it.assistantId == assistantId &&
+                    (expectedRevision == null || it.revision == expectedRevision)
+            }
             if (i < 0) return 0
-            rows[i] = rows[i].copy(importance = importance, updatedAt = now)
+            rows[i] = rows[i].copy(importance = importance, updatedAt = now, revision = rows[i].revision + 1)
             return 1
         }
 
-        override suspend fun updateAnchor(id: Int, assistantId: String, isAnchor: Boolean): Int {
+        override suspend fun updateAnchor(
+            id: Int, assistantId: String, isAnchor: Boolean, expectedRevision: Long?,
+        ): Int {
             beforeWrite()
-            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId && it.isAnchor != isAnchor }
+            val i = rows.indexOfFirst {
+                it.id == id && it.assistantId == assistantId && it.isAnchor != isAnchor &&
+                    (expectedRevision == null || it.revision == expectedRevision)
+            }
             if (i < 0) return 0
-            rows[i] = rows[i].copy(isAnchor = isAnchor)
+            rows[i] = rows[i].copy(isAnchor = isAnchor, revision = rows[i].revision + 1)
             return 1
         }
 
-        override suspend fun backfillDescription(id: Int, assistantId: String, description: String): Int {
+        override suspend fun backfillDescription(
+            id: Int, assistantId: String, description: String, expectedRevision: Long?,
+        ): Int {
             beforeWrite()
-            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId && it.description.isEmpty() }
+            val i = rows.indexOfFirst {
+                it.id == id && it.assistantId == assistantId && it.description.isEmpty() &&
+                    (expectedRevision == null || it.revision == expectedRevision)
+            }
             if (i < 0) return 0
-            rows[i] = rows[i].copy(description = description)
+            rows[i] = rows[i].copy(description = description, revision = rows[i].revision + 1)
+            return 1
+        }
+
+        override suspend fun replaceBusinessFields(
+            id: Int, assistantId: String, content: String, importance: Float, description: String,
+            isAnchor: Boolean, now: Long, expectedRevision: Long,
+        ): Int {
+            beforeWrite()
+            val i = rows.indexOfFirst {
+                it.id == id && it.assistantId == assistantId && it.revision == expectedRevision
+            }
+            if (i < 0) return 0
+            rows[i] = rows[i].copy(
+                content = content, importance = importance, description = description, isAnchor = isAnchor,
+                updatedAt = now, revision = rows[i].revision + 1,
+            )
             return 1
         }
 
@@ -118,8 +159,11 @@ class MemoryRepositoryTest {
             return 1
         }
 
-        override suspend fun deleteMemoryInStore(id: Int, assistantId: String): Int {
-            val removed = rows.removeAll { it.id == id && it.assistantId == assistantId }
+        override suspend fun deleteMemoryInStore(id: Int, assistantId: String, expectedRevision: Long?): Int {
+            val removed = rows.removeAll {
+                it.id == id && it.assistantId == assistantId &&
+                    (expectedRevision == null || it.revision == expectedRevision)
+            }
             return if (removed) 1 else 0
         }
 
@@ -146,8 +190,47 @@ class MemoryRepositoryTest {
         }
     }
 
+    private class FakeHistoryDAO : MemoryHistoryDAO {
+        val rows = mutableListOf<MemoryHistoryEntity>()
+        var failInsert = false
+        private var nextId = 1L
+        override suspend fun insert(event: MemoryHistoryEntity): Long {
+            if (failInsert) error("history failed")
+            val id = nextId++
+            rows.add(event.copy(id = id))
+            return id
+        }
+        override suspend fun list(storeId: String, memoryId: Int): List<MemoryHistoryEntity> =
+            rows.filter { it.assistantId == storeId && it.memoryId == memoryId }.sortedByDescending { it.id }
+        override suspend fun getRevision(storeId: String, memoryId: Int, revision: Long): MemoryHistoryEntity? =
+            list(storeId, memoryId).firstOrNull { it.revision == revision }
+        override suspend fun prune(storeId: String, memoryId: Int, keep: Int) {
+            val retained = list(storeId, memoryId).take(keep).map { it.id }.toSet()
+            rows.removeAll { it.assistantId == storeId && it.memoryId == memoryId && it.id !in retained }
+        }
+    }
+
+    private class FakeTrashDAO : MemoryTrashDAO {
+        val rows = mutableListOf<MemoryTrashEntity>()
+        override suspend fun insert(tombstone: MemoryTrashEntity) {
+            check(rows.none { it.memoryId == tombstone.memoryId })
+            rows.add(tombstone)
+        }
+        override suspend fun list(storeId: String): List<MemoryTrashEntity> =
+            rows.filter { it.assistantId == storeId }.sortedByDescending { it.deletedAt }
+        override suspend fun get(storeId: String, memoryId: Int): MemoryTrashEntity? =
+            rows.firstOrNull { it.assistantId == storeId && it.memoryId == memoryId }
+        override suspend fun publicIdExists(publicId: String): Boolean = rows.any { it.publicId == publicId }
+        override suspend fun delete(storeId: String, memoryId: Int, revision: Long): Int =
+            if (rows.removeAll {
+                it.assistantId == storeId && it.memoryId == memoryId && it.revision == revision
+            }) 1 else 0
+    }
+
     private val dao = FakeMemoryDAO()
-    private val repo = MemoryRepository(dao, transactions = DirectMemoryTransactionRunner)
+    private val history = FakeHistoryDAO()
+    private val trash = FakeTrashDAO()
+    private val repo = MemoryRepository(dao, DirectMemoryTransactionRunner, history, trash)
 
     @Test
     fun `scoped access rejects foreign assistant and global records including legacy ids`() = runBlocking {
@@ -194,52 +277,53 @@ class MemoryRepositoryTest {
     fun `content edit preserves telemetry anchor and unspecified fields written after lookup`() = runBlocking {
         val memory = repo.addMemory("a", "original", importance = 0.6f)
         // Deliberately interleave at the SQL boundary. This proves field semantics, not Room isolation.
-        dao.beforeFieldWrite = {
-            dao.recordRead(1, 50L)
-            dao.updateAnchor(1, "a", true)
-            dao.updateImportanceFields(1, "a", 0.9f, 60L)
-            dao.backfillDescription(1, "a", "latest topic")
-        }
+        dao.beforeFieldWrite = { dao.recordRead(1, 50L) }
         val edited = repo.updateContentInStore("a", memory.id, "edited", now = 70L)
         assertEquals(1, edited.readCount)
         assertEquals(50L, edited.lastReadAt)
-        assertTrue(edited.isAnchor)
-        assertEquals(0.9f, edited.importance, 0.001f)
-        assertEquals("latest topic", edited.description)
+        assertFalse(edited.isAnchor)
+        assertEquals(0.6f, edited.importance, 0.001f)
+        assertEquals("", edited.description)
         assertEquals(70L, edited.updatedAt)
+        assertEquals(2L, edited.revision)
     }
 
     @Test
-    fun `importance anchor and description backfill preserve concurrent unrelated fields`() = runBlocking {
+    fun `importance anchor and description backfill reject concurrent business revisions`() = runBlocking {
         val memory = repo.addMemory("a", "original", now = 1L)
         dao.beforeFieldWrite = {
             dao.recordRead(1, 2L)
             dao.updateAnchor(1, "a", true)
             dao.updateContentFields(1, "a", "newer content", null, null, 3L)
         }
-        val scored = repo.updateImportance(memory.id, 0.95f, now = 4L)!!
+        val scoreFailure = runCatching { repo.updateImportance(memory.id, 0.95f, now = 4L) }.exceptionOrNull()
+        assertTrue(scoreFailure is MemoryRevisionConflictException)
+        val scored = repo.getMemoryById(memory.id)!!
         assertEquals("newer content", scored.content)
         assertEquals(1, scored.readCount)
         assertTrue(scored.isAnchor)
+        assertEquals(0.6f, scored.importance, 0.001f)
 
         dao.beforeFieldWrite = {
             dao.recordRead(1, 5L)
             dao.updateContentFields(1, "a", "newest content", null, null, 6L)
         }
-        repo.setAnchor(memory.id, false)
+        assertTrue(runCatching { repo.setAnchor(memory.id, false) }.exceptionOrNull()
+            is MemoryRevisionConflictException)
         val unanchored = repo.getMemoryById(memory.id)!!
         assertEquals("newest content", unanchored.content)
         assertEquals(6L, unanchored.updatedAt)
         assertEquals(2, unanchored.readCount)
-        assertFalse(unanchored.isAnchor)
+        assertTrue(unanchored.isAnchor)
 
         dao.beforeFieldWrite = {
             dao.recordRead(1, 7L)
-            dao.updateAnchor(1, "a", true)
             dao.backfillDescription(1, "a", "user supplied topic")
         }
-        val duplicate = repo.addMemory("a", "newest content", description = "model topic", now = 8L)
-        assertEquals(memory.id, duplicate.id)
+        assertTrue(runCatching {
+            repo.addMemory("a", "newest content", description = "model topic", now = 8L)
+        }.exceptionOrNull() is MemoryRevisionConflictException)
+        val duplicate = repo.getMemoryById(memory.id)!!
         assertEquals("user supplied topic", duplicate.description)
         assertEquals(3, duplicate.readCount)
         assertTrue(duplicate.isAnchor)
@@ -289,13 +373,15 @@ class MemoryRepositoryTest {
                 dao.insertMemories(memories)
             }
 
-            override suspend fun deleteMemory(id: Int) {
+            override suspend fun deleteMemoryInStore(
+                id: Int, assistantId: String, expectedRevision: Long?,
+            ): Int {
                 check(active) { "eviction outside transaction" }
                 deletions++
-                dao.deleteMemory(id)
+                return dao.deleteMemoryInStore(id, assistantId, expectedRevision)
             }
         }
-        val guarded = MemoryRepository(guardedDAO, transactions = transactions)
+        val guarded = MemoryRepository(guardedDAO, transactions, history, trash)
         val created = guarded.addMemory("dst", "new record", now = 10L)
         assertEquals(1, runs)
         assertEquals(1, deletions)
@@ -303,8 +389,9 @@ class MemoryRepositoryTest {
         assertEquals(2, runs)
         assertEquals(1, guarded.copyMemories("src", "dst", now = 10L))
         assertEquals(3, runs)
-        assertEquals(1, batches)
+        assertEquals(0, batches) // Inserts now capture each numeric id for its CREATE history.
         assertEquals(2, deletions)
+        assertEquals(2, trash.rows.size)
         assertEquals(MemoryRepository.MAX_MEMORY_COUNT, dao.getMemoriesOfAssistant("dst").size)
     }
 
@@ -699,6 +786,185 @@ class MemoryRepositoryTest {
     @Test
     fun `readMemory returns null and records nothing for an unknown id`() = runBlocking {
         assertNull(repo.readMemory("deadbeef", now = 2_000L))
+    }
+
+    @Test
+    fun `business writes advance revisions while telemetry and idempotent writes do not`() = runBlocking {
+        val created = repo.addMemory("a", "fact", now = 1L)
+        assertEquals(1L, created.revision)
+        assertEquals(1L, repo.readMemoryInStore("a", created.id, now = 2L)!!.revision)
+        assertEquals(1L, repo.addMemory("a", "fact").revision)
+        val edited = repo.updateContentInStore("a", created.id, "edited", expectedRevision = 1L)
+        assertEquals(2L, edited.revision)
+        assertEquals(3L, repo.updateImportance(created.id, 0.8f, expectedRevision = 2L)!!.revision)
+        repo.setAnchor(created.id, true, expectedRevision = 3L)
+        assertEquals(4L, repo.getMemoryInStore("a", created.id)!!.revision)
+        repo.setAnchor(created.id, true, expectedRevision = 4L)
+        assertEquals(4L, repo.getMemoryInStore("a", created.id)!!.revision)
+        val backfilled = repo.addMemory("a", "edited", description = "topic")
+        assertEquals(5L, backfilled.revision)
+        assertEquals(setOf("CREATE", "UPDATE", "IMPORTANCE", "ANCHOR", "BACKFILL"),
+            repo.listHistory("a", created.id).map { it.event.operation }.toSet())
+    }
+
+    @Test
+    fun `stale and missing model versions fail closed without mutation or audit changes`() = runBlocking {
+        val created = repo.addMemory("a", "original", actor = "CHAT", reason = "tool create")
+        val edited = repo.updateContentInStore(
+            "a", created.id, "new", expectedRevision = 1L, actor = "CHAT", reason = "tool edit",
+        )
+        assertEquals(2L, edited.revision)
+        val historyCount = history.rows.size
+        assertTrue(runCatching {
+            repo.updateContentInStore("a", created.id, "stale", expectedRevision = 1L, actor = "CHAT")
+        }.exceptionOrNull() is MemoryRevisionConflictException)
+        assertTrue(runCatching {
+            repo.deleteMemoryInStore("a", created.id, expectedRevision = 1L, actor = "CONSOLIDATOR")
+        }.exceptionOrNull() is MemoryRevisionConflictException)
+        assertTrue(runCatching {
+            repo.updateContentInStore("a", created.id, "no version", actor = "CHAT")
+        }.exceptionOrNull() is MemoryRevisionConflictException)
+        assertEquals("new", repo.getMemoryInStore("a", created.id)!!.content)
+        assertEquals(historyCount, history.rows.size)
+        assertTrue(trash.rows.isEmpty())
+        assertEquals("CHAT", history.rows.first().actor)
+        assertEquals("tool create", history.rows.first().reason)
+    }
+
+    @Test
+    fun `SQL CAS rejects a changed business row even when preflight version matched`() = runBlocking {
+        val created = repo.addMemory("a", "original")
+        dao.beforeFieldWrite = { dao.updateAnchor(created.sortKey, "a", true) }
+        assertTrue(runCatching {
+            repo.updateContentInStore("a", created.id, "stale write", expectedRevision = 1L)
+        }.exceptionOrNull() is MemoryRevisionConflictException)
+        val current = repo.getMemoryInStore("a", created.id)!!
+        assertEquals("original", current.content)
+        assertEquals(2L, current.revision)
+        assertTrue(current.isAnchor)
+        assertEquals(1, history.rows.size)
+    }
+
+    @Test
+    fun `atomic user save changes content and anchor once and retains telemetry`() = runBlocking {
+        val created = repo.addMemory("a", "original", now = 1L)
+        repo.readMemoryInStore("a", created.id, now = 2L)
+        val saved = repo.updateMemoryInStore(
+            "a", created.id, "new", 0.9f, "topic", true, expectedRevision = 1L, now = 3L,
+        )
+        assertEquals(2L, saved.revision)
+        assertEquals(1, saved.readCount)
+        assertEquals(2L, saved.lastReadAt)
+        assertTrue(saved.isAnchor)
+        assertEquals(2, history.rows.size)
+        assertEquals("original", repo.listHistory("a", created.id).first().snapshot.content)
+        val anchoredCreate = repo.createMemoryInStore("a", "another", isAnchor = true)
+        assertTrue(anchoredCreate.isAnchor)
+        assertEquals(2L, anchoredCreate.revision)
+    }
+
+    @Test
+    fun `history restores old business state as a new revision without rewinding read telemetry`() = runBlocking {
+        val created = repo.addMemory("a", "original", importance = 0.3f, now = 1L)
+        repo.updateMemoryInStore("a", created.id, "changed", 0.9f, "new", true, 1L, now = 2L)
+        repo.readMemoryInStore("a", created.id, now = 10L)
+        repo.readMemoryInStore("a", created.id, now = 20L)
+        val restored = repo.restoreRevision("a", created.id, targetRevision = 1L, expectedRevision = 2L, now = 30L)
+        assertEquals(3L, restored.revision)
+        assertEquals("original", restored.content)
+        assertEquals(0.3f, restored.importance, 0.001f)
+        assertFalse(restored.isAnchor)
+        assertEquals(2, restored.readCount)
+        assertEquals(20L, restored.lastReadAt)
+        assertEquals(30L, restored.updatedAt)
+        assertEquals("RESTORE_REVISION", repo.listHistory("a", created.id).first().event.operation)
+        assertEquals("changed", repo.listHistory("a", created.id).first().snapshot.content)
+        assertTrue(runCatching {
+            repo.restoreRevision("a", created.id, 1L, expectedRevision = 2L)
+        }.exceptionOrNull() is MemoryRevisionConflictException)
+    }
+
+    @Test
+    fun `history retains only the newest twenty events per original numeric record`() = runBlocking {
+        val created = repo.addMemory("a", "v1")
+        repeat(25) { index -> repo.updateContentInStore("a", created.id, "v${index + 2}") }
+        val entries = repo.listHistory("a", created.id)
+        assertEquals(MemoryRepository.MAX_HISTORY_COUNT, entries.size)
+        assertEquals(25L, entries.first().snapshot.revision)
+        assertEquals(6L, entries.last().snapshot.revision)
+        val before = repo.getMemoryInStore("a", created.id)!!
+        assertTrue(runCatching {
+            repo.restoreRevision("a", created.id, targetRevision = 1L, expectedRevision = before.revision)
+        }.isFailure)
+        assertEquals(before, repo.getMemoryInStore("a", created.id))
+    }
+
+    @Test
+    fun `trash restores stable numeric and public ids with monotonically increasing versions`() = runBlocking {
+        val created = repo.addMemory("a", "original", now = 1L)
+        repo.readMemoryInStore("a", created.id, now = 2L)
+        repo.deleteMemoryInStore("a", created.id, expectedRevision = 1L, actor = "CHAT", reason = "forget")
+        val deleted = repo.listTrash("a").single()
+        assertEquals(2L, deleted.tombstone.revision)
+        assertEquals(1L, deleted.snapshot.revision)
+        assertEquals("CHAT", deleted.tombstone.actor)
+        assertEquals("forget", deleted.tombstone.reason)
+        assertNull(repo.getMemoryInStore("a", created.id))
+        assertTrue(runCatching {
+            repo.restoreTrash("a", created.sortKey, expectedRevision = 1L)
+        }.exceptionOrNull() is MemoryRevisionConflictException)
+        val restored = repo.restoreTrash("a", created.sortKey, expectedRevision = 2L, now = 3L)
+        assertEquals(created.sortKey, restored.sortKey)
+        assertEquals(created.id, restored.id)
+        assertEquals(3L, restored.revision)
+        assertEquals(1, restored.readCount)
+        assertTrue(repo.listTrash("a").isEmpty())
+        repo.deleteMemoryInStore("a", created.id, expectedRevision = 3L)
+        assertEquals(4L, repo.listTrash("a").single().tombstone.revision)
+        assertEquals(5L, repo.restoreTrash("a", created.sortKey, expectedRevision = 4L).revision)
+        assertEquals(setOf("CREATE", "DELETE", "RESTORE_TRASH"),
+            repo.listHistory("a", created.id).map { it.event.operation }.toSet())
+    }
+
+    @Test
+    fun `history and trash operations reject cross store identifiers including legacy numeric ids`() = runBlocking {
+        val created = repo.addMemory("a", "private")
+        repo.updateContentInStore("a", created.id, "new")
+        assertTrue(repo.listHistory("b", created.id).isEmpty())
+        assertTrue(repo.listHistory("b", created.sortKey.toString()).isEmpty())
+        assertTrue(runCatching { repo.restoreRevision("b", created.id, 1L, 2L) }.isFailure)
+        repo.deleteMemoryInStore("a", created.id, expectedRevision = 2L)
+        assertTrue(repo.listTrash("b").isEmpty())
+        assertTrue(repo.listHistory("b", created.id).isEmpty())
+        assertTrue(runCatching { repo.restoreTrash("b", created.sortKey, 3L) }.isFailure)
+        assertEquals(1, repo.listTrash("a").size)
+    }
+
+    @Test
+    fun `quota evictions remain in durable trash rather than being permanently destroyed`() = runBlocking {
+        repeat(MemoryRepository.MAX_MEMORY_COUNT + 25) { index ->
+            repo.addMemory("a", "fact $index", importance = 0.6f, now = 1L, actor = "CHAT", reason = "tool")
+        }
+        val deleted = repo.listTrash("a")
+        assertEquals(25, deleted.size)
+        assertEquals(MemoryRepository.MAX_MEMORY_COUNT, repo.getMemoriesOfAssistant("a").size)
+        assertTrue(deleted.all { it.tombstone.actor == "CHAT" && it.tombstone.reason == "tool" })
+        assertTrue(deleted.all { it.snapshot.content.startsWith("fact ") })
+        deleted.forEach {
+            assertTrue(repo.listHistory("a", it.snapshot.publicId).any { event -> event.event.operation == "EVICT" })
+        }
+    }
+
+    @Test
+    fun `restoring into a full library refuses without evicting any live record or consuming trash`() = runBlocking {
+        val created = repo.addMemory("a", "deleted")
+        repo.deleteMemoryInStore("a", created.id, expectedRevision = 1L)
+        repeat(MemoryRepository.MAX_MEMORY_COUNT) { index -> repo.addMemory("a", "kept $index") }
+        val before = repo.getMemoriesOfAssistant("a")
+        assertTrue(runCatching { repo.restoreTrash("a", created.sortKey, 2L) }.exceptionOrNull()
+            ?.message.orEmpty().contains("capacity"))
+        assertEquals(before, repo.getMemoriesOfAssistant("a"))
+        assertEquals(1, repo.listTrash("a").size)
     }
 
     @Test

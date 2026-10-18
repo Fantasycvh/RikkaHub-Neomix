@@ -53,6 +53,13 @@ interface MemoryProposalDAO {
     @Query("UPDATE memory_proposal SET decision = :decision, decided_at = :now WHERE id IN (:ids)")
     suspend fun updateDecision(ids: List<Long>, decision: String, now: Long)
 
+    /** 保存应用回执；依赖者后续必须复核这个精确输出版本，而非只检查 applied。 */
+    @Query(
+        "UPDATE memory_proposal SET decision = 'applied', decided_at = :now, " +
+            "applied_target_id = :targetId, applied_revision = :revision WHERE id = :id"
+    )
+    suspend fun markApplied(id: Long, targetId: String?, revision: Long?, now: Long)
+
     /** 单条改判（应用时逐条判 stale，只把这个失败的挑出来） */
     @Query("UPDATE memory_proposal SET decision = :decision, decided_at = :now WHERE id = :id")
     suspend fun updateOne(id: Long, decision: String, now: Long)

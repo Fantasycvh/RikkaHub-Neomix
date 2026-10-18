@@ -18,9 +18,11 @@ class MemoryScopeWiringTest {
         assertTrue(chat.contains("memoryStoreId = assistant?.memoryId()"))
         assertTrue(step.contains("remember(tool, loading, workspaceId, memoryStoreId)"))
         assertTrue(step.contains("memoryStoreId = memoryStoreId"))
-        assertTrue(renderer.contains("key(memoryStoreId, memoryId)"))
+        assertTrue(renderer.contains("key(memoryStoreId, memoryId, expectedRevision)"))
         assertTrue(renderer.contains("memoryRepo.getMemoryInStore(memoryStoreId, memoryId)"))
-        assertTrue(renderer.contains("memoryRepo.deleteMemoryInStore(memoryStoreId, memoryId)"))
+        assertTrue(renderer.contains("it.revision == expectedRevision"))
+        assertTrue(renderer.contains("expectedRevision = resultRevision"))
+        assertTrue(renderer.contains("actor = \"USER\""))
         assertFalse(renderer.contains("memoryRepo.getMemoryById("))
         assertFalse(renderer.contains("memoryRepo.deleteMemory("))
     }

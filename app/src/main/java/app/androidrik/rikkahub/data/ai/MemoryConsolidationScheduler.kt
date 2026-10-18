@@ -90,6 +90,15 @@ data class MemoryConsolidationProposal(
     val batchId: String = "",
     /** 产出时间（界面要说明建议来自哪一轮，免得被当成「现在的库」） */
     val createdAt: Long = 0L,
+    /** 模型实际看见的目标内容版本；保存时不得用当前版本补填。 */
+    val expectedRevision: Long? = null,
+    /** host 生成并在工具回执中返回的操作标识；同批依赖引用此标识。 */
+    val operationId: String = Uuid.random().toString(),
+    val dependsOn: List<String> = emptyList(),
+    /** 0 为旧数据，不能安全应用；新工具契约为 1。 */
+    val contractVersion: Int = 1,
+    val appliedTargetId: String? = null,
+    val appliedRevision: Long? = null,
 )
 
 /**

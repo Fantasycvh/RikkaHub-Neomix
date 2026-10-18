@@ -25,7 +25,13 @@ android {
         versionCode = 303
         versionName = "1.0.28-beta.1"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Database-only tests can opt out of production Application/DI/background initialization.
+        // The regular UI test runner remains the default.
+        testInstrumentationRunner = if (providers.gradleProperty("memoryIsolatedTests").orNull == "true") {
+            "app.androidrik.rikkahub.data.repository.MemoryIsolationTestRunner"
+        } else {
+            "androidx.test.runner.AndroidJUnitRunner"
+        }
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")

@@ -287,6 +287,7 @@ class MemoryConsolidatorTest {
                 id = "mem$it",
                 content = "记忆内容够长以逼出分页。".repeat(400) + " #$it",
                 sortKey = it,
+                revision = it.toLong() + 3,
             )
         }
         // **必须另开一个会话**：手动那次已经把 conversation 的水位推过去了，
@@ -323,6 +324,7 @@ class MemoryConsolidatorTest {
                 id = "mem$it",
                 content = "记忆内容够长以逼出分页。".repeat(400) + " #$it",
                 sortKey = it,
+                revision = it.toLong() + 3,
             )
         }
         val worker = consolidator(listOf(assistant))
@@ -332,6 +334,15 @@ class MemoryConsolidatorTest {
         val request = agent.requests.single()
         val listedIds = Regex("mem[0-9]+").findAll(request.calibrationTable).map { it.value }.toSet()
         assertTrue("校准表非空", listedIds.isNotEmpty())
+        assertEquals("Observed targets must be exactly this rendered page", listedIds, request.initialRevisions.keys)
+        assertEquals(
+            memoryList.filter { it.id in listedIds }.associate { it.id to it.revision },
+            request.initialRevisions,
+        )
+        request.initialRevisions.forEach { (id, revision) ->
+            assertTrue("Every observed record needs visible full text", request.libraryPrompt.contains(id))
+            assertTrue(request.libraryPrompt.contains("\"revision\": $revision"))
+        }
         assertTrue(
             "校准表不许列出读不到正文的记录（本页 30 条里只应出现一部分）：${listedIds.size}",
             listedIds.size < 30,

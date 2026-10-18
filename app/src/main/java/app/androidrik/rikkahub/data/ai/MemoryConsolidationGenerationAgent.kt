@@ -40,18 +40,24 @@ class MemoryConsolidationGenerationAgent(
         val tools = buildMemoryTools(
             json = json,
             onCreation = { content, importance, description ->
-                memoryRepository.addMemory(request.memoryId, content, importance, description).also { applied++ }
+                memoryRepository.addMemory(request.memoryId, content, importance, description,
+                    actor = "CONSOLIDATOR", reason = "memory_tool create").also { applied++ }
             },
-            onUpdate = { id, content, importance, description ->
-                memoryRepository.updateContentInStore(request.memoryId, id, content, importance, description)
+            onUpdate = { _, _, _, _ -> error("Versioned update callback is required") },
+            onDelete = { error("Versioned delete callback is required") },
+            versionedOnUpdate = { id, content, importance, description, revision ->
+                memoryRepository.updateContentInStore(request.memoryId, id, content, importance, description,
+                    expectedRevision = revision, actor = "CONSOLIDATOR", reason = "memory_tool edit")
                     .also { applied++ }
             },
-            onDelete = { id ->
-                check(memoryRepository.deleteMemoryInStore(request.memoryId, id)) {
+            versionedOnDelete = { id, revision ->
+                check(memoryRepository.deleteMemoryInStore(request.memoryId, id,
+                    expectedRevision = revision, actor = "CONSOLIDATOR", reason = "memory_tool delete")) {
                     "Memory record $id not found in store"
                 }
                 applied++
             },
+            initialRevisions = request.initialRevisions,
             // 读取照常记遥测：整理 agent 的读取同样是「这条真的被用到」的证据
             onRead = { id -> memoryRepository.readMemoryInStore(request.memoryId, id) },
             // 整理 agent 尤其需要检索：它拿到的记忆库快照同样是**预算截断**的

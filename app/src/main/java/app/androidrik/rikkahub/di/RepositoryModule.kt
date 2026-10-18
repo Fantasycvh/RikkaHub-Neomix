@@ -34,7 +34,13 @@ val repositoryModule = module {
     }
 
     single {
-        MemoryRepository(get(), transactions = get())
+        val database: AppDatabase = get()
+        MemoryRepository(
+            memoryDAO = database.memoryDao(),
+            transactions = get(),
+            historyDAO = database.memoryHistoryDao(),
+            trashDAO = database.memoryTrashDao(),
+        )
     }
 
     single {

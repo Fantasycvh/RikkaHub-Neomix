@@ -137,14 +137,19 @@ object MemoryToolUI : ToolUIRenderer {
                 val memoryRepo: MemoryRepository = koinInject()
                 val memoryId = context.arguments.getStringContent("id")
                 val memoryStoreId = context.memoryStoreId
-                // Key the state itself, not only the effect: switching libraries must not retain
-                // the preceding library's preview even for one composition. Missing scope fails closed.
-                val target by key(memoryStoreId, memoryId) {
+                val expectedRevision = context.arguments.getStringContent("expected_revision")?.toLongOrNull()
+                // Preview never rebinds an old request to the latest content. Execution uses the
+                // original persisted expected_revision as well, so approval cannot bypass CAS.
+                val target by key(memoryStoreId, memoryId, expectedRevision) {
                     produceState<AssistantMemory?>(initialValue = null) {
-                        value = if (memoryStoreId != null && memoryId != null) {
+                        value = if (memoryStoreId != null && memoryId != null && expectedRevision != null) {
                             memoryRepo.getMemoryInStore(memoryStoreId, memoryId)
+                                ?.takeIf { it.revision == expectedRevision }
                         } else null
                     }
+                }
+                if (target == null) {
+                    Text("Target unavailable or revision changed; read it again before deleting.")
                 }
                 target?.content?.let { memoryContent ->
                     Text(
@@ -178,17 +183,28 @@ object MemoryToolUI : ToolUIRenderer {
         val scope = rememberCoroutineScope()
         val memoryId = (context.content as? JsonObject)?.get("id")?.jsonPrimitiveOrNull?.contentOrNull
         val memoryStoreId = context.memoryStoreId
+        val resultRevision = context.content.getStringContent("revision")?.toLongOrNull()
+        val toaster = app.androidrik.rikkahub.ui.context.LocalToaster.current
         DefaultToolPreview(
             context = context,
             headerActions = if (action(context) in listOf(ACTION_CREATE, ACTION_EDIT) &&
-                memoryId != null && memoryStoreId != null
+                memoryId != null && memoryStoreId != null && resultRevision != null
             ) {
                 {
                     IconButton(
                         onClick = {
                             scope.launch {
-                                memoryRepo.deleteMemoryInStore(memoryStoreId, memoryId)
-                                onDismissRequest()
+                                try {
+                                    check(memoryRepo.deleteMemoryInStore(
+                                        memoryStoreId, memoryId, expectedRevision = resultRevision,
+                                        actor = "USER", reason = "Remove memory from tool result",
+                                    )) { "Memory no longer exists" }
+                                    onDismissRequest()
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (failure: Exception) {
+                                    toaster.show("Unable to remove memory: ${failure.message}")
+                                }
                             }
                         }
                     ) {

@@ -144,6 +144,7 @@ class MemoryConsolidator(
                 model = model,
                 memoryId = memoryId,
                 libraryPrompt = buildLibraryPagePrompt(page),
+                initialRevisions = page.records.associate { it.id to it.revision },
                 // 用户拒绝过的改动：不喂进去，模型下一轮会原地重提同一条
                 // （真机实测：同一条 `delete` 被两轮整理重复提出）
                 refusedChanges = refusedChangeLines(proposals.recentlyRejected(memoryId)),

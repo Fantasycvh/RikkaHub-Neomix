@@ -63,6 +63,18 @@ class MemoryProposalWiringTest {
     }
 
     @Test
+    fun `changed revision is called out rather than displaying a fresh target as the old baseline`() {
+        val line = proposeChangeSummary(
+            MemoryConsolidationProposal("edit", targetId = "abc12345", content = "proposal", expectedRevision = 1L),
+            target = target("new user correction").copy(revision = 2L),
+        )
+        assertTrue(line.contains("revision changed"))
+        assertTrue(line.contains("expected v1, current v2"))
+        assertTrue(line.contains("will not apply"))
+        assertFalse(line.contains("new user correction"))
+    }
+
+    @Test
     fun `long content is truncated so the dialog stays readable`() {
         val long = "字".repeat(300)
         val line = proposeChangeSummary(
@@ -153,13 +165,16 @@ class MemoryProposalWiringTest {
     }
 
     @Test
-    fun `delete may not be applied without its batch siblings`() {
+    fun `delete uses explicit dependencies and retained output revisions instead of batch siblings`() {
         val repo = read("rikkahub/data/repository/MemoryProposalRepository.kt")
-        assertTrue(
-            "判「同批成员有没有被勾选」必须看全量 pending，不能先按勾选过滤",
-            repo.contains("val allPending = proposalDAO.getPending(memoryId)"),
-        )
-        assertTrue("只应用半批时跳过 delete", repo.contains("if ((siblingsUnselected || failedSibling) && hasDelete)"))
+        assertTrue(repo.contains("row.dependencies()"))
+        assertTrue(repo.contains("dependency.appliedTargetId"))
+        assertTrue(repo.contains("dependency.appliedRevision"))
+        assertFalse("Unrelated pending rows must not become implicit prerequisites", repo.contains("siblingsUnselected"))
+        assertTrue(repo.contains("target.revision != row.expectedRevision"))
+        val tools = read("rikkahub/data/ai/tools/MemoryTools.kt")
+        assertTrue(tools.contains("expected_revision"))
+        assertTrue(tools.contains("depends_on"))
     }
 
 
