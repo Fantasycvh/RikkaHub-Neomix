@@ -111,9 +111,24 @@ class ChatToolFactory(
          * 运行详情页给「回到对话」的反向入口。**只有本装配点知道这件事**，所以只能从这里透传。
          */
         conversationId: String? = null,
+        /**
+         * 本轮生成令牌（后台任务归属，见 [createWorkspaceTools] 的 `turnOwner`）。
+         *
+         * **为什么从装配点透传**：令牌是「这一轮」的身份，只有 `ChatService` 知道它什么时候
+         * 换新（新一轮用户消息 / 重新生成 / 继续生成）。工具层拿不到轮次概念，只能被喂。
+         */
+        turnOwner: String? = null,
         /** 会话级「不使用记忆」（隐身对话）：为真时不装配记忆工具，见 [createToolSegments] */
         memoryDisabled: Boolean = false,
-    ): List<Tool> = createToolSegments(settings, assistant, model, workspaceCwd, conversationId, memoryDisabled = memoryDisabled)
+    ): List<Tool> = createToolSegments(
+        settings = settings,
+        assistant = assistant,
+        model = model,
+        workspaceCwd = workspaceCwd,
+        conversationId = conversationId,
+        turnOwner = turnOwner,
+        memoryDisabled = memoryDisabled,
+    )
         .flatMap { it.tools }
 
     /**
@@ -140,6 +155,12 @@ class ChatToolFactory(
          * 宁可多花那一个工具的 schema，也不能让显式配置静默失效。
          */
         explicitlyAllowedToolNames: Set<String> = emptySet(),
+        /**
+         * 本轮生成令牌：写进 `workspace_run_background` 起的任务，供「本轮被打断」时
+         * 精确收掉这一轮起的后台进程（见 `WorkspaceTaskRegistry.start` 的 `owner`）。
+         * 为 null 的装配方（子代理 / 预览）起的任务没有归属，不会被任何一轮的取消误杀。
+         */
+        turnOwner: String? = null,
         /**
          * 会话级「不使用记忆」（隐身对话；见 `docs/design/design-memory-discipline.md` §4.4）。
          * 为真时**不装配记忆工具**——它和「不注入记忆」是同一件事的两半：只关注入的话，
@@ -206,7 +227,7 @@ class ChatToolFactory(
 
         segments += ToolSegment(
             "workspace",
-            createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd),
+            createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd, turnOwner),
         )
 
         // 动态添加 Skill（上游 #1031）：AI 可从 GitHub 安装 / 把对话经验保存为技能。始终注册（不依赖已启用技能）。
@@ -421,7 +442,11 @@ class ChatToolFactory(
     }
 
 
-    private suspend fun createWorkspaceToolsIfReady(workspaceId: String?, cwd: String? = null): List<Tool> {
+    private suspend fun createWorkspaceToolsIfReady(
+        workspaceId: String?,
+        cwd: String? = null,
+        turnOwner: String? = null,
+    ): List<Tool> {
         if (workspaceId.isNullOrBlank()) return emptyList()
         val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
         if (workspace.shellStatus != WorkspaceShellStatus.READY.name) {
@@ -431,7 +456,7 @@ class ChatToolFactory(
             )
             return emptyList()
         }
-        return createWorkspaceTools(workspaceId, workspaceRepository, cwd)
+        return createWorkspaceTools(workspaceId, workspaceRepository, cwd, turnOwner)
     }
 }
 

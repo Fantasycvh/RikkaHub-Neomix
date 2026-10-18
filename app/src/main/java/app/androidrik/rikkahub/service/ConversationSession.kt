@@ -36,6 +36,15 @@ class ConversationSession(
     private val scope: CoroutineScope,
     private val onIdle: (Uuid) -> Unit,
     private val onGenerationFinished: (Uuid, Throwable?) -> Unit = { _, _ -> },
+    /**
+     * 某一轮**被取消**（而不是正常结束）时回调，参数是该轮的后台任务归属令牌。
+     *
+     * 挂在这里而不是挂 `stopGeneration`：取消生成协程的入口不止一个（点停止、插队发送、
+     * 重新生成、继续生成、`setJob(cancelPrevious = true)` 顶掉前任、会话清理），
+     * 但它们**都会取消 Job**；Job 完成回调是唯一同时覆盖全部路径且发生在「确实停了之后」
+     * 的挂点（在取消发起处收尾会漏掉「工具正在启动进程」那个窗口）。
+     */
+    private val onTurnCancelled: (String) -> Unit = {},
     /** LoopGuard 灵敏度档位（设置 → 通用 → 护栏与预算）；标准档 = 原写死行为 */
     loopGuardSensitivity: LoopGuardSensitivity = LoopGuardSensitivity.STANDARD,
     /** 规则提醒（探索/落地守卫）开关与档位（设置 → 通用 → 护栏与预算），默认开 */
@@ -127,6 +136,40 @@ class ConversationSession(
      */
     val thinkingGuard = ThinkingDegenerationGuard()
 
+    /**
+     * **本轮后台任务归属令牌**（`workspace_run_background` 起的进程）。
+     *
+     * 存在理由：本轮被打断（点停止 / 插队 / 重新生成 / 继续生成都会取消生成协程）时，
+     * 这一轮起的后台进程必须一起收掉——否则它们继续吃 CPU/网络、继续写文件，要等 30 分钟
+     * 时长看门狗才停，而模型已经拿不到结果、用户也不知道还有东西在跑。
+     *
+     * 为什么不靠工具结果里的 `taskId`：任务可能在「进程已启动、结果还没回填给模型」的窗口里
+     * 就被取消，那时 id 根本没进对话。归属在**启动那一刻**记下才覆盖得住。
+     *
+     * 换新时机 = 「轮」的边界（[beginNewTurn]）；跨审批续跑**不**换（那是同一轮的第二次
+     * `generateText`），否则审批前起的任务会在审批后失去归属。
+     */
+    @Volatile
+    var backgroundTaskOwner: String = newTurnToken()
+        private set
+
+    /**
+     * 「轮」的边界：重置三个护栏 + 换新后台任务归属令牌。
+     *
+     * 抽成一个函数，是因为这四件事原本在三个调用点各写一遍——少写一项就是一个静默缺陷
+     * （护栏额度跨轮累积，或者上一轮的取消杀掉这一轮的任务）。调用点仅三处：队列派发
+     * （新一轮用户消息）、[ChatService.regenerateAtMessage]、[ChatService.continueMessage]。
+     * **必须在 `appScope.launch` 之前同步调用**：`setJob` 注册取消回调时要捕获令牌，
+     * 令牌若在生成协程体内才换新，注册就可能先拿到上一轮的令牌。
+     */
+    fun beginNewTurn() {
+        toolLoopGuard.reset()
+        workspaceTurnBudget.reset()
+        thinkingGuard.reset()
+        ruleEngine.reset()
+        backgroundTaskOwner = newTurnToken()
+    }
+
     // 生成任务（内聚在 session 中）
     private val _generationJob = MutableStateFlow<Job?>(null)
     val generationJob: StateFlow<Job?> = _generationJob.asStateFlow()
@@ -182,6 +225,10 @@ class ConversationSession(
         if (cancelPrevious) previous?.cancel()
         _generationJob.value = job
         if (job != null) activeJobs.add(job)
+        // 归属**在注册这一刻**捕获：取消回调可能晚于下一轮换新令牌才执行
+        // （regenerate/continue 是先 cancel 前任、再 beginNewTurn、最后注册新 job），
+        // 那时再读 backgroundTaskOwner 已经是下一轮的令牌，会漏掉真正的孤儿。
+        val turnOwner = backgroundTaskOwner
         job?.invokeOnCompletion { cause ->
             synchronized(this) {
                 activeJobs.remove(job)
@@ -197,6 +244,11 @@ class ConversationSession(
                     // 队列派发钩子：失败暂停队列，结束后取下一个
                     onGenerationFinished(id, cause)
                 }
+            }
+            // 被取消（而不是正常走完）⇒ 这一轮不再继续，收掉它起的后台任务。
+            // **只在取消时收**：正常结束后后台任务继续跑正是 `workspace_run_background` 的契约。
+            if (cause is CancellationException) {
+                runCatching { onTurnCancelled(turnOwner) }
             }
             if (refCount.get() <= 0) {
                 scheduleIdleCheck()
@@ -305,3 +357,6 @@ internal suspend fun afterPreviousGeneration(previous: Job?, block: suspend () -
         throw e
     }
 }
+
+/** 新一轮后台任务归属令牌。只要求「同一会话内的两轮不同」，故用随机串而非计数（无跨进程状态）。 */
+private fun newTurnToken(): String = "turn-${Uuid.random()}"

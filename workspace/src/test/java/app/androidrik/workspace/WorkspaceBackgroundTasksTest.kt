@@ -302,6 +302,55 @@ class WorkspaceBackgroundTasksTest {
         assertEquals(50_000L, remaining)
     }
 
+    // ---------- 归属（本轮被打断时只收这一轮起的任务） ----------
+
+    @Test
+    fun `kill by owner only stops the tasks that owner started`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        val thisTurn = registry.start(context(command = "make"), owner = "turn-1")
+        val earlierTurn = registry.start(context(command = "sleep 1000"), owner = "turn-0")
+        val unowned = registry.start(context(command = "tail -f log"))
+
+        assertEquals(1, registry.killByOwner("turn-1"))
+
+        assertEquals(WorkspaceTaskStatus.KILLED, awaitFinished(registry, thisTurn.id).status)
+        // 更早轮次起的任务必须活着：它已经写进对话，模型可能还在轮询，正是后台任务的意义
+        assertEquals(WorkspaceTaskStatus.RUNNING, registry.snapshot(earlierTurn.id)!!.status)
+        assertEquals(WorkspaceTaskStatus.RUNNING, registry.snapshot(unowned.id)!!.status)
+    }
+
+    @Test
+    fun `kill by owner is idempotent and ignores finished or blank owners`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        val task = registry.start(context(command = "make"), owner = "turn-1")
+
+        assertEquals(1, registry.killByOwner("turn-1"))
+        awaitFinished(registry, task.id)
+        // 收尾路径可能被调用两次（多入口取消），第二次必须安静返回 0
+        assertEquals(0, registry.killByOwner("turn-1"))
+        assertEquals(0, registry.killByOwner("turn-unknown"))
+        // 空 owner 绝不能当成「无归属的那一批」一起杀
+        val unowned = registry.start(context(command = "tail -f log"))
+        assertEquals(0, registry.killByOwner(""))
+        assertEquals(WorkspaceTaskStatus.RUNNING, registry.snapshot(unowned.id)!!.status)
+    }
+
+    @Test
+    fun `kill by owner spans workspace roots`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        // 同一个助手可能绑了多个工作空间；取消一轮生成时这一轮起的所有任务都要收
+        val one = registry.start(context(command = "a", root = "ws-1"), owner = "turn-9")
+        val other = registry.start(context(command = "b", root = "ws-2"), owner = "turn-9")
+
+        assertEquals(2, registry.killByOwner("turn-9"))
+
+        assertEquals(WorkspaceTaskStatus.KILLED, awaitFinished(registry, one.id).status)
+        assertEquals(WorkspaceTaskStatus.KILLED, awaitFinished(registry, other.id).status)
+    }
+
     // ---------- 完整日志落盘 ----------
 
     @Test

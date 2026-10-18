@@ -207,6 +207,56 @@ Android 的 `java.lang.Process` **没有公开 pid**（`Process.pid()` 不在 SD
   否则用户以为任务已停），单独 JVM 单测。
 - 完整日志在同一页的文件区 `.tasks/` 目录可见（点前缀只用于与用户文件区分，并未隐藏）。
 
+## 九之二、本轮被打断时收掉这一轮起的任务（归属令牌）
+
+**此前留下的洞**：后台任务刻意没有命令级超时（那是它存在的理由），于是「本轮被取消、模型再也
+拿不到结果」之后，进程仍在设备上跑——吃 CPU/网络、继续写文件，最长要等 30 分钟时长看门狗。
+`workspace_kill_task` 与详情页的终止按钮都要求**先知道 taskId**，而用户/模型在取消后恰恰不再
+持有它（取消那一下 id 可能还没回填进对话）。
+
+**为什么不能靠工具结果里的 taskId 兜底**：存在「进程已启动、结果还没回填给模型」的窗口
+（审批卡住、取消正好落在 tool 执行之后 `commitToolResult` 之前），这时 id 根本不在任何地方。
+归属只能在**启动那一刻**记下。
+
+实现（四处接线，缺一处即静默失效）：
+
+1. `WorkspaceTaskRegistry.start(context, owner)` 记下归属；`killByOwner(owner)` 只杀该 owner 且
+   仍在运行的任务（**空 owner 直接返 0**，绝不把「无归属」当成一批来杀）。跨工作空间生效：
+   同一个助手可能绑多个工作空间，而「取消一轮」是会话级事件。
+2. `ConversationSession.backgroundTaskOwner`：**「轮」的边界**换新令牌。边界统一走
+   `beginNewTurn()`（重置三个护栏 + 换令牌），调用点恰好三处：队列派发（新一轮用户消息）、
+   `regenerateAtMessage`、`continueMessage`。**必须在 `appScope.launch` 之前同步调用**——
+   协程体可能晚于 `session.setJob(job)` 才开始跑，令牌若在体里才换新，`setJob` 捕获的就是上一轮的。
+3. `ConversationSession.setJob` 在**注册回调那一刻**捕获令牌，并在 `cause is CancellationException`
+   时回调 `onTurnCancelled(令牌)`。选 Job 完成回调作挂点，是因为取消生成的入口有六个（点停止、
+   插队发送、重新生成、继续生成、`setJob(cancelPrevious = true)` 顶掉前任、会话清理），但它们
+   **都走 `Job.cancel()`**；而且回调发生在「确实停了之后」，不会漏掉正在启动进程的那个窗口
+   （在取消发起处收尾就会漏）。**只在取消时回调**：正常结束后任务继续跑正是本功能的契约。
+4. `ChatService.onTurnCancelled` → `WorkspaceRepository.killBackgroundTasksByOwner`。
+
+**补一条「没有 Job 可取消」的路径**：停在工具审批上的那一轮没有活跃生成协程（等用户决定时
+协程已正常结束），取消回调不会触发——但用户插队发消息 / 放弃这一轮时它同样不会继续。
+`stopGeneration` 因此在收尾**之前**判定「最后节点还有待审批工具」，`jobs.isEmpty()` 时也按
+本轮令牌收一次（幂等）。
+
+**回归风险与守卫**：这一链每一步单独看都「看起来正常」，漏了只是「进程多跑一会儿」——
+不报错、不崩、测试全绿。故补了两层：
+
+- 行为层（`ConversationTurnCancellationTest`）：令牌换新、**回调报的是注册时捕获的令牌**
+  （复现 regenerate 的「先 cancel 再换令牌」时序）、正常结束不回调。
+- 源码层（`TurnBackgroundTaskCancelGuardTest`）：装配链四处齐备；`ChatService` 里**不得再有**
+  直接的 `session.toolLoopGuard.reset()`（有人若在第四个边界自己写回那四行，编译通过、行为
+  看着也对，但令牌不换新 ⇒ 那一轮的取消会杀掉上一轮的任务）；三个边界都必须在
+  `appScope.launch` 之前换令牌。
+- 归属过滤（`WorkspaceBackgroundTasksTest`）：只杀本 owner、更早轮次与无归属的任务必须活着、
+  重复调用返 0、空 owner 不误杀、跨 root 生效。
+
+三条守卫都做过**扰动验证**（改坏实现 → 测试必红）：把回调里的令牌改成现读 `backgroundTaskOwner`、
+把 `killByOwner` 的 owner 过滤去掉、把某个边界退回直接 reset —— 分别各红一条。
+
+**仍未覆盖**：应用进程被杀时子进程可能继续跑（见 §八 第 1 条，需常驻/前台服务托管）；本轮修复
+只解决「应用还在、这一轮被取消」这一种。
+
 ## 十、后续（未做）
 
 1. **应用退出时清理**：至少把「已知任务」在 `onTrimMemory`/进程可预测退出点终止；孤儿进程的根治

@@ -522,17 +522,22 @@ class WorkspaceRepository(
 
     /**
      * 启动后台命令（不阻塞对话轮）。任务表在 `WorkspaceManager` 内存里，进程重启即丢失。
+     *
+     * @param owner 启动方标记（本轮生成令牌）。只用于 [killBackgroundTasksByOwner]：
+     *   本轮被打断时把这一轮起的任务一起收掉。**不改并发上限、不改工具可见性**。
      */
     suspend fun startBackgroundCommand(
         id: String,
         command: String,
         cwd: String = "",
+        owner: String? = null,
     ): WorkspaceTaskSnapshot = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.ensureWorkspace(workspace.root)
         manager.startBackgroundCommand(
             workspace.root, command, cwd,
             shellCompatibilityMode = workspace.shellCompatibilityMode,
+            owner = owner,
         )
     }
 
@@ -557,6 +562,18 @@ class WorkspaceRepository(
             if (task.root != workspace.root) return@withContext WorkspaceKillResult.NOT_FOUND
             manager.killBackgroundTask(taskId)
         }
+
+    /**
+     * 终止 [owner] 启动的全部后台任务（跨工作空间），返回终止数量。
+     *
+     * **不走 [killBackgroundTask] 的根归属校验**：owner 令牌由本轮生成独占，命中的任务
+     * 天然属于该轮，而调用方（[app.androidrik.rikkahub.service.ChatService.stopGeneration]）
+     * 手上只有会话 id、不一定持有 workspace 行——为了一个「已经确定是这轮起的」集合再去查
+     * 一次工作区只会多一次可能失败的 IO。空 owner 由 [WorkspaceManager] 侧挡掉（返回 0）。
+     */
+    suspend fun killBackgroundTasksByOwner(owner: String): Int = withContext(Dispatchers.IO) {
+        manager.killBackgroundTasksByOwner(owner)
+    }
 
     suspend fun delete(id: String): Boolean {
         val workspace = dao.getById(id) ?: return false

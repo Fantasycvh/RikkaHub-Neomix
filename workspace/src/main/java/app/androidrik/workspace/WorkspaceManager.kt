@@ -297,12 +297,16 @@ class WorkspaceManager(
      *
      * 与 [executeCommand] 的差别：无超时（后台任务的定义就是比一轮对话活得久），
      * 输出不进上下文而是写进尾部缓冲，由 `workspace_task_status` 按需轮询。
+     *
+     * @param owner 启动方标记（上层传「本轮生成」的令牌），供 [killBackgroundTasksByOwner]
+     *   在本轮被打断时精确收掉这一轮起的任务。语义见 [WorkspaceTaskRegistry.start]。
      */
     fun startBackgroundCommand(
         root: String,
         command: String,
         cwd: String = "",
         shellCompatibilityMode: Boolean = false,
+        owner: String? = null,
     ): WorkspaceTaskSnapshot {
         require(command.isNotBlank()) { "Command is required" }
         val registry = requireNotNull(backgroundTaskRegistry) {
@@ -326,7 +330,8 @@ class WorkspaceManager(
                 stdin = null,
                 bindMounts = bindMounts,
                 shellCompatibilityMode = shellCompatibilityMode,
-            )
+            ),
+            owner = owner,
         )
     }
 
@@ -341,6 +346,15 @@ class WorkspaceManager(
 
     /** 终止某工作空间全部运行中的后台任务，返回终止数量。 */
     fun killBackgroundTasks(root: String): Int = backgroundTaskRegistry?.killAll(root) ?: 0
+
+    /**
+     * 终止 [owner] 启动的全部后台任务，返回终止数量（跨工作空间）。
+     *
+     * 调用方是**生成被打断**那条路径：本轮的 owner 令牌随轮次更换，所以「这一轮起的任务」
+     * 可以精确收掉，而更早轮次起的任务（已经写进对话、模型还在轮询的）不受影响。
+     */
+    fun killBackgroundTasksByOwner(owner: String): Int =
+        backgroundTaskRegistry?.killByOwner(owner) ?: 0
 
     /** 是否支持后台任务（DI 配置了启动器）。 */
     val supportsBackgroundTasks: Boolean get() = backgroundTaskRegistry != null

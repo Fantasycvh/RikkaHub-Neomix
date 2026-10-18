@@ -26,6 +26,14 @@ class RuleReminderWiringTest {
 
     private fun source(relative: String): String = File(srcRoot(), relative).readText()
 
+    /** 截出 `fun beginNewTurn()` 的函数体（「轮」边界的唯一实现）。 */
+    private fun resetEntryBody(sessionSrc: String): String {
+        val start = sessionSrc.indexOf("fun beginNewTurn()")
+        check(start >= 0) { "ConversationSession 里找不到 beginNewTurn()" }
+        val end = sessionSrc.indexOf("\n    }", start)
+        return sessionSrc.substring(start, if (end < 0) sessionSrc.length else end)
+    }
+
     private val handler = "app/androidrik/rikkahub/data/ai/GenerationHandler.kt"
     private val chatService = "app/androidrik/rikkahub/service/ChatService.kt"
     private val session = "app/androidrik/rikkahub/service/ConversationSession.kt"
@@ -77,13 +85,34 @@ class RuleReminderWiringTest {
     }
 
     /** reset 必须与护栏家族同处：少一处就会把上一轮的效果窗口/已提醒标记带进新一轮。 */
+    /**
+     * reset 必须与护栏家族同处：少一处就会把上一轮的效果窗口/已提醒标记带进新一轮。
+     *
+     * 2026-10-18：轮的边界**收敛成一个入口** `ConversationSession.beginNewTurn()`
+     * （它同时还换新「本轮后台任务归属令牌」，见 `TurnBackgroundTaskCancelGuardTest`）。
+     * 于是断言从「数各处 reset 的条数」改成两段：①ChatService 里不许再直接 reset 单个护栏
+     * ——那会让边界重新分裂成几份，有的换令牌、有的不换；②`beginNewTurn` 必须覆盖家族全体。
+     */
     @Test
     fun `session engine is reset wherever the guard family is reset`() {
         val src = source(chatService)
-        val engineResets = Regex("session\\.ruleEngine\\.reset\\(\\)").findAll(src).count()
-        val guardResets = Regex("session\\.thinkingGuard\\.reset\\(\\)").findAll(src).count()
-        assertTrue("没有任何 reset ⇒ 跨轮残留", engineResets > 0)
-        assertEquals("reset 处数与护栏家族不一致（少了/多了）", guardResets, engineResets)
+        val turnBoundaries = Regex("""session\.beginNewTurn\(\)""").findAll(src).count()
+        assertTrue("没有任何轮边界调用 ⇒ 跨轮残留", turnBoundaries >= 3)
+        assertEquals(
+            "ChatService 里不应再有直接的护栏 reset（边界统一走 session.beginNewTurn()）",
+            0,
+            Regex("""session\.(ruleEngine|thinkingGuard|toolLoopGuard|workspaceTurnBudget)\.reset\(\)""")
+                .findAll(src).count(),
+        )
+        val begin = resetEntryBody(source(session))
+        for (required in listOf(
+            "toolLoopGuard.reset()",
+            "workspaceTurnBudget.reset()",
+            "thinkingGuard.reset()",
+            "ruleEngine.reset()",
+        )) {
+            assertTrue("beginNewTurn 漏了 $required ⇒ 该护栏跨轮残留：$begin", required in begin)
+        }
     }
 
     @Test

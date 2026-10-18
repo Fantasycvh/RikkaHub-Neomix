@@ -341,6 +341,8 @@ class WorkspaceTaskRegistry(
         val marker: String,
         val stdout: TailBuffer,
         val stderr: TailBuffer,
+        /** 启动方标记（见 [WorkspaceTaskRegistry.start] 的 `owner`）；null = 无归属。 */
+        val owner: String? = null,
     ) {
         @Volatile
         var status: WorkspaceTaskStatus = WorkspaceTaskStatus.RUNNING
@@ -376,8 +378,15 @@ class WorkspaceTaskRegistry(
     private val lock = Any()
     private val tasks = LinkedHashMap<String, Entry>()
 
-    /** 启动一个后台任务；超出并发上限时抛 [IllegalStateException]（工具层转成可见错误）。 */
-    fun start(context: WorkspaceShellContext): WorkspaceTaskSnapshot {
+    /**
+     * 启动一个后台任务；超出并发上限时抛 [IllegalStateException]（工具层转成可见错误）。
+     *
+     * @param owner 启动方标记（模型侧传「本轮生成」的令牌）。用途只有一个：本轮被打断时
+     *   [killByOwner] 能把**这一轮起的任务**一起终止。为什么按 owner 而不是按「工具结果里的
+     *   taskId」：任务可能在「进程已启动、结果还没回填给模型」的窗口里就被取消，那时 taskId
+     *   根本没进对话，只有启动时就记下的归属能找到它。
+     */
+    fun start(context: WorkspaceShellContext, owner: String? = null): WorkspaceTaskSnapshot {
         val entry: Entry
         synchronized(lock) {
             evictFinishedLocked()
@@ -398,6 +407,7 @@ class WorkspaceTaskRegistry(
                 marker = newTaskMarker(id),
                 stdout = TailBuffer(tailChars),
                 stderr = TailBuffer(tailChars),
+                owner = owner?.takeIf { it.isNotBlank() },
             ).apply {
                 logFiles = taskLogsFor(context.filesDir, id)
             }
@@ -472,6 +482,26 @@ class WorkspaceTaskRegistry(
             .filter { it.status == WorkspaceTaskStatus.RUNNING && (root == null || it.root == root) }
             .map { it.id }
     }.count { kill(it) == WorkspaceKillResult.KILLED }
+
+    /**
+     * 终止 [owner] 启动、且仍在运行的全部任务，返回终止数量。
+     *
+     * 用途：**本轮生成被打断时，把这一轮起的后台任务一并收掉**。否则它们会在设备上继续跑
+     * （吃 CPU/网络、继续写文件），直到 30 分钟时长看门狗才停——而模型已经拿不到结果、
+     * 用户也不知道还有东西在跑。归属在 [start] 时记下（不是靠工具结果里的 taskId），
+     * 才能覆盖「进程已启动、结果还没回填就被取消」这个窗口。
+     *
+     * 空 owner 直接返回 0：宁可什么都不杀，也不能把「无归属」的任务当成一批误杀。
+     */
+    fun killByOwner(owner: String): Int {
+        if (owner.isBlank()) return 0
+        val ids = synchronized(lock) {
+            tasks.values
+                .filter { it.owner == owner && it.status == WorkspaceTaskStatus.RUNNING }
+                .map { it.id }
+        }
+        return ids.count { kill(it) == WorkspaceKillResult.KILLED }
+    }
 
     private fun startReaper(entry: Entry, handle: WorkspaceBackgroundHandle) {
         Thread {

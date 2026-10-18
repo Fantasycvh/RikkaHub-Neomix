@@ -490,6 +490,7 @@ class ChatService(
                 turnBudgetChars = settings.workspaceTurnBudgetChars,
                 turnBudgetSteps = settings.workspaceTurnMaxSteps,
                 onIdle = { removeSession(it) },
+                onTurnCancelled = { owner -> killBackgroundTasksOfCancelledTurn(owner) },
                 onGenerationFinished = { sessionId, cause ->
                     val session = sessions[sessionId]
                     if (cause != null) session?.messageQueue?.pause()
@@ -784,6 +785,11 @@ class ChatService(
         val content = queued.parts
         val answer = queued.answer
         val previousAssistantIds = session.state.value.currentMessages.map { it.id }.toSet()
+        // 新一轮开始（新的用户消息）：重置三个护栏 + 换新后台任务归属令牌。
+        // 这是「轮」的真正边界——工具审批的续跑不走这里，故护栏的历史跨审批保留。
+        // **必须在这里同步调用**（不能挪进下面的生成协程体）：`setJob` 注册取消回调时要捕获
+        // 令牌，而协程体可能晚于 `session.setJob(job)` 才开始执行。
+        session.beginNewTurn()
         val job = appScope.launch {
             try {
                 // 派发新消息前的兜底收尾：正常情况下闸门（getJob() != null / pending 工具）已经保证
@@ -808,13 +814,6 @@ class ChatService(
                 )
                 saveConversation(conversationId, newConversation)
                 session.submittingMessage = null
-
-                // 新一轮开始（新的用户消息）：重置工具调用护栏。
-                // 这是「轮」的真正边界——工具审批的续跑不走这里，故护栏的历史跨审批保留。
-                session.toolLoopGuard.reset()
-                session.workspaceTurnBudget.reset()
-                session.thinkingGuard.reset()
-                session.ruleEngine.reset()
 
                 // 开始补全
                 if (answer) {
@@ -908,10 +907,8 @@ class ChatService(
 
         // 重新生成 = 用户发起的**新一轮尝试**（往往正是因为上一轮卡住/不满意）：
         // 护栏历史一并清空，让新尝试从干净的额度开始，避免上一轮的重复记录误伤本次。
-        session.toolLoopGuard.reset()
-        session.workspaceTurnBudget.reset()
-        session.thinkingGuard.reset()
-        session.ruleEngine.reset()
+        // 含换新后台任务归属令牌：被顶掉的那一轮若起过后台任务，它的取消回调用旧令牌收尾。
+        session.beginNewTurn()
 
         val job = appScope.launch {
             try {
@@ -961,6 +958,9 @@ class ChatService(
     fun continueMessage(conversationId: Uuid) {
         val session = getOrCreateSession(conversationId)
         session.getJob()?.cancel()
+        // 续写是用户发起的**新一轮尝试**（与重生成同理）：护栏额度重置 + 换新归属令牌。
+        // 必须在 launch 之前同步执行（`setJob` 注册取消回调时要捕获令牌，见 beginNewTurn）。
+        session.beginNewTurn()
 
         val job = appScope.launch {
             try {
@@ -969,11 +969,6 @@ class ChatService(
                 if (last == null || last.role != MessageRole.ASSISTANT) {
                     throw IllegalStateException("No assistant message to continue")
                 }
-                // 续写是用户发起的**新一轮尝试**（与重生成同理）：护栏额度重置
-                session.toolLoopGuard.reset()
-                session.workspaceTurnBudget.reset()
-                session.thinkingGuard.reset()
-                session.ruleEngine.reset()
 
                 handleMessageComplete(
                     conversationId,
@@ -1302,6 +1297,8 @@ class ChatService(
                 model = model,
                 workspaceCwd = conversation.workspaceCwd,
                 conversationId = conversationId.toString(),
+                // 后台任务归属 = 本轮令牌（本轮被取消时按它精确收掉这一轮起的进程）
+                turnOwner = session.backgroundTaskOwner,
                 memoryDisabled = conversation.memoryDisabled,
             )
             Log.i(
@@ -2644,6 +2641,41 @@ class ChatService(
         saveConversation(conversationId, getConversationFlow(conversationId).value)
     }
 
+    /**
+     * 收掉「被打断的那一轮」起的后台任务（挂点见 `ConversationSession.onTurnCancelled`）。
+     *
+     * **为什么必须收**：`workspace_run_background` 的契约是「比一轮对话活得久」，所以它没有
+     * 命令级超时；本轮被取消后模型再也拿不到它的输出、也不会再轮询，进程却在设备上继续跑
+     * （吃 CPU/网络、继续写文件），最长要等 30 分钟时长看门狗才停。取消的语义是「这一轮停」，
+     * 本轮起的进程属于这一轮，就该一起停。
+     *
+     * **只按 owner 收**：更早轮次起的任务（已经写进对话、模型还在 `workspace_task_status`
+     * 轮询的）不受影响——那正是后台任务存在的意义。归属在任务启动那一刻记下，因此也覆盖
+     * 「进程已启动、工具结果还没回填就被取消」这个靠 taskId 覆盖不到的窗口。
+     */
+    private fun killBackgroundTasksOfCancelledTurn(owner: String) {
+        appScope.launch {
+            runCatching { workspaceRepository.killBackgroundTasksByOwner(owner) }
+                .onSuccess { count ->
+                    if (count > 0) {
+                        Log.i(TAG, "cancelled turn killed $count background task(s) of $owner")
+                    }
+                }
+                .onFailure { Logging.log(TAG, "killBackgroundTasksOfCancelledTurn failed: $it") }
+        }
+    }
+
+    /**
+     * 最后一个节点里是否还有待审批工具（= 本轮停在审批上、且**没有活跃生成协程**）。
+     *
+     * 口径与 [finishInterruptedPendingTools] 一致（待审批工具总是挂在最后一步的回填上）。
+     * 只服务 [stopGeneration] 的一个判断：这种状态下取消 Job 是空操作，本轮起的后台任务
+     * 只能靠这条分支收掉。
+     */
+    private fun hasPendingToolApproval(conversationId: Uuid): Boolean =
+        getConversationFlow(conversationId).value.messageNodes.lastOrNull()
+            ?.currentMessage?.parts?.any { it is UIMessagePart.Tool && it.isPending } == true
+
     // 停止当前会话生成任务（不清理会话缓存）
     //
     // @param persistStoppedContent 停止后是否把**已生成的部分**落库（默认 true）。
@@ -2658,6 +2690,9 @@ class ChatService(
         reason: InterruptReason = InterruptReason.UserCancelled,
     ) {
         val session = sessions[conversationId] ?: return
+        // 「停在工具审批上」也是被打断的一轮，但它**没有活跃 Job**（等用户决定时生成协程已经
+        // 正常结束）⇒ 取消回调不会触发。这个状态要在收尾之前判定，收尾之后就看不到了。
+        val awaitingApproval = hasPendingToolApproval(conversationId)
         val jobs = synchronized(session) {
             session.cancelJobs()
         }
@@ -2680,6 +2715,11 @@ class ChatService(
         // 注意：不因 jobs 为空而早退——生成可能刚结束而收尾保存尚未落库，
         // 此时同样需要下面的持久化（见 persistStoppedGeneration 的说明）。
         finishInterruptedPendingTools(conversationId, reason)
+        // 审批中被放弃的这一轮同样收掉它起的后台任务（有活跃 Job 时取消回调已经收过了，
+        // 这里只补「没有 Job 可取消」的那条路径；两次都调也安全——killByOwner 幂等）。
+        if (jobs.isEmpty() && awaitingApproval) {
+            killBackgroundTasksOfCancelledTurn(session.backgroundTaskOwner)
+        }
         // 用户主动停止：把**已生成的部分**落库（吸收上游 4a3eefc1 的 finishGeneration 语义）。
         //
         // 为什么必需：流式内容只走 updateConversation（**纯内存**），落库点只有两处——

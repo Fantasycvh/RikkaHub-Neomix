@@ -105,6 +105,11 @@ suspend fun createWorkspaceTools(
     workspaceId: String?,
     workspaceRepository: WorkspaceRepository,
     cwd: String? = null,
+    /**
+     * 本轮生成令牌：写进后台任务的归属，供「本轮被打断」时精确收掉这一轮起的任务
+     * （见 [WorkspaceRepository.killBackgroundTasksByOwner]）。null = 不归属（子代理/预览等）。
+     */
+    turnOwner: String? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
     val workspace = workspaceRepository.getById(workspaceId)
@@ -121,7 +126,7 @@ suspend fun createWorkspaceTools(
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createPresentFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
-        createRunBackgroundTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
+        createRunBackgroundTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd, turnOwner),
         createTaskStatusTool(workspaceId, ::needsApproval, workspaceRepository),
         createKillTaskTool(workspaceId, ::needsApproval, workspaceRepository),
     )
@@ -527,6 +532,7 @@ private fun createRunBackgroundTool(
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
     defaultCwd: String? = null,
+    turnOwner: String? = null,
 ) = Tool(
     name = "workspace_run_background",
     description = buildString {
@@ -568,7 +574,7 @@ private fun createRunBackgroundTool(
         val command = params.string("command") ?: error("command is required")
         val cwd = (params.string("cwd") ?: defaultCwd.orEmpty())
             .removePrefix("/workspace/").removePrefix("/workspace")
-        val task = workspaceRepository.startBackgroundCommand(workspaceId, command, cwd)
+        val task = workspaceRepository.startBackgroundCommand(workspaceId, command, cwd, owner = turnOwner)
         listOf(
             UIMessagePart.Text(
                 buildJsonObject {
