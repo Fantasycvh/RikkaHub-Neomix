@@ -179,6 +179,28 @@ interface ConversationDAO {
     suspend fun updateChatSuggestions(id: String, suggestions: String)
 
     /**
+     * 会话级提示词注入绑定（`mode` / `lorebook`）的**单列**写入点。
+     *
+     * 两列放在**同一条语句**里：它们由同一次编辑一起决定，分两条 UPDATE 会留下
+     * 「mode 已换、lorebook 还是旧的」中间态（读侧会把半套绑定当成用户的完整选择）。
+     *
+     * 与 [updateTitle] / [updateChatSuggestions] 同族理由：Web/API 的编辑入口手里只有
+     * 「读到的那个整对象」，若整对象写回，生成中的会话会用旧快照把在途正文盖掉。
+     *
+     * `*_ids` 列存 JSON 数组文本，编码与整对象保存共用
+     * `ConversationRepository` 的 `encodeConversationInjectionIds`（同一格式，读侧只认一种）。
+     */
+    @Query(
+        "UPDATE conversationentity SET mode_injection_ids = :modeInjectionIds, " +
+            "lorebook_ids = :lorebookIds WHERE id = :id"
+    )
+    suspend fun updateConversationInjections(
+        id: String,
+        modeInjectionIds: String,
+        lorebookIds: String,
+    )
+
+    /**
      * **L1 锚点快照**（`docs/design/design-memory-injection-tiering.md` §5）的两个专用写入点。
      *
      * 为什么单列写、不走 [updateMetadata]（与 `sort_order` 同一条教训）：

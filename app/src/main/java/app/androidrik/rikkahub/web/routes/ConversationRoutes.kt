@@ -163,10 +163,13 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/pin - Toggle pinned status
         post("/{id}/pin") {
             val uuid = call.parameters["id"].toUuid("conversation id")
-            val conversation = conversationRepo.getConversationById(uuid)
-                ?: throw NotFoundException("Conversation not found")
+            if (!conversationRepo.existsConversationById(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
 
-            chatService.saveConversation(uuid, conversation.copy(isPinned = !conversation.isPinned))
+            // 走统一元数据原语（改内存**最新态** + 只写 `is_pinned` 单列）：
+            // 旧写法「读 DB 整对象 → 改字段 → saveConversation」会在生成中把在途正文换成旧快照。
+            chatService.togglePinStatus(uuid)
             call.respond(HttpStatusCode.OK, mapOf("status" to "updated"))
         }
 
@@ -190,10 +193,12 @@ fun Route.conversationRoutes(
                 throw BadRequestException("Title must not be blank")
             }
 
-            val conversation = conversationRepo.getConversationById(uuid)
-                ?: throw NotFoundException("Conversation not found")
+            if (!conversationRepo.existsConversationById(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
 
-            chatService.saveConversation(uuid, conversation.copy(title = title))
+            // 单列写（内存最新态 + 只写 `title`）：既不读 DB 整对象当基线，也不整对象写回。
+            chatService.setConversationTitle(uuid, title)
             call.respond(HttpStatusCode.OK, mapOf("status" to "updated"))
         }
 
@@ -201,8 +206,9 @@ fun Route.conversationRoutes(
         post("/{id}/injections") {
             val uuid = call.parameters["id"].toUuid("conversation id")
             val request = call.receive<UpdateConversationInjectionsRequest>()
-            conversationRepo.getConversationById(uuid)
-                ?: throw NotFoundException("Conversation not found")
+            if (!conversationRepo.existsConversationById(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
 
             chatService.initializeConversation(uuid)
             val conversation = chatService.getConversationFlow(uuid).first()
@@ -218,12 +224,15 @@ fun Route.conversationRoutes(
                 modeInjectionIds = request.modeInjectionIds,
                 lorebookIds = request.lorebookIds,
             )
-            val updatedConversation = conversation.copy(
+            // 单列写（内存最新态 + 只写两条 `*_ids`）：不读 DB 整对象、不整对象写回 ⇒
+            // 生成中改注入不会把在途正文换成旧快照。
+            chatService.setConversationInjections(
+                conversationId = uuid,
                 modeInjectionIds = modeInjectionIds,
                 lorebookIds = lorebookIds,
             )
-            chatService.saveConversation(uuid, updatedConversation)
 
+            val updatedConversation = chatService.getConversationFlow(uuid).first()
             val isGenerating = chatService.getGenerationJobStateFlow(uuid).first() != null
             call.respond(HttpStatusCode.OK, updatedConversation.toDto(isGenerating))
         }

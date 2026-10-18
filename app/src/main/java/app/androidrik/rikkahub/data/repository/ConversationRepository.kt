@@ -581,8 +581,8 @@ class ConversationRepository(
             chatSuggestions = JsonInstant.encodeToString(conversation.chatSuggestions),
             isPinned = conversation.isPinned,
             customSystemPrompt = conversation.customSystemPrompt ?: "",
-            modeInjectionIds = JsonInstant.encodeToString(conversation.modeInjectionIds),
-            lorebookIds = JsonInstant.encodeToString(conversation.lorebookIds),
+            modeInjectionIds = encodeConversationInjectionIds(conversation.modeInjectionIds),
+            lorebookIds = encodeConversationInjectionIds(conversation.lorebookIds),
             workspaceCwd = conversation.workspaceCwd ?: "",
             folderId = conversation.folderId?.toString() ?: "",
             memoryDisabled = conversation.memoryDisabled,
@@ -781,6 +781,24 @@ class ConversationRepository(
     }
 
     /**
+     * 会话级提示词注入绑定（mode / lorebook）的**单列回写**（两条 `*_ids` 列，同一条语句）。
+     *
+     * 理由与 [updateTitle] 同族：Web/API 的编辑入口当时手里只有「读到的整对象」，
+     * 整对象写回会把正在流式生成的在途正文换成旧快照。只动这两列 ⇒ 与生成互不干扰。
+     */
+    suspend fun updateConversationInjections(
+        conversationId: Uuid,
+        modeInjectionIds: Set<Uuid>,
+        lorebookIds: Set<Uuid>,
+    ) {
+        conversationDAO.updateConversationInjections(
+            id = conversationId.toString(),
+            modeInjectionIds = encodeConversationInjectionIds(modeInjectionIds),
+            lorebookIds = encodeConversationInjectionIds(lorebookIds),
+        )
+    }
+
+    /**
      * L1 锚点快照的**单会话**写入点（会话开始冻结；见 `ConversationDAO.updateFrozenAnchors`）。
      *
      * 只写 `frozen_anchors` 一列 —— 不走 [updateConversation]，否则会把调用方手里的
@@ -936,6 +954,17 @@ class ConversationRepository(
         return i
     }
 }
+
+/**
+ * 会话级注入 id 集合的**落库编码**（`mode_injection_ids` / `lorebook_ids` 两列共用）。
+ *
+ * 为什么必须抽成一处：这两列有两条写路径——整对象保存（[ConversationRepository.conversationToConversationEntity]）
+ * 与单列原语（[ConversationRepository.updateConversationInjections]）。格式一旦分叉，
+ * 读路径 `conversationEntityToConversation` 的 `decodeFromString` 只认其中一种 ⇒
+ * 另一条路径写进去的绑定会在下次加载时丢失（或直接抛异常）。放在这里让「同一格式」是结构性的。
+ */
+internal fun encodeConversationInjectionIds(ids: Set<Uuid>): String =
+    JsonInstant.encodeToString(ids)
 
 /**
  * 轻量级的会话查询结果，不包含 nodes 和 suggestions 字段

@@ -2088,6 +2088,47 @@ class ChatService(
     }
 
     /**
+     * **手动**改标题（Web/API 入口）。
+     *
+     * 与 [generateTitle] 共用同一个落地入口 [updateConversationMetadata]：
+     * `update` 作用在**当前内存值**上（生成中的在途正文原样保留），`persist` 只写 `title` 一列。
+     *
+     * 历史写法是 Web 路由自己「读 DB 整对象 → 改标题 → `saveConversation`」：
+     * 对活跃 session 那等于用 DB 旧快照覆盖内存态（在途正文消失），而且内存里仍是旧标题，
+     * 下一次整对象保存还会把刚改好的标题**再写回去**（内存/库各持一版，静默回退）。
+     */
+    suspend fun setConversationTitle(conversationId: Uuid, title: String) {
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(title = title) },
+            persist = { conversationRepo.updateTitle(conversationId, it.title) },
+        )
+    }
+
+    /**
+     * **手动**改会话级提示词注入绑定（Web/API 入口；同 [setConversationTitle] 的理由）。
+     *
+     * 两列由同一次编辑决定 ⇒ 内存态一次换好、库里一条语句写两列（[ConversationRepository.updateConversationInjections]）。
+     */
+    suspend fun setConversationInjections(
+        conversationId: Uuid,
+        modeInjectionIds: Set<Uuid>,
+        lorebookIds: Set<Uuid>,
+    ) {
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(modeInjectionIds = modeInjectionIds, lorebookIds = lorebookIds) },
+            persist = {
+                conversationRepo.updateConversationInjections(
+                    conversationId = conversationId,
+                    modeInjectionIds = it.modeInjectionIds,
+                    lorebookIds = it.lorebookIds,
+                )
+            },
+        )
+    }
+
+    /**
      * 切换会话级「不使用记忆」（隐身对话；见 `docs/design/design-memory-discipline.md` §4.4）。
      *
      * 与 [togglePinStatus] 同款：内存态与库各写一次、用同一个新值。
