@@ -103,7 +103,8 @@ class MemoryVersioningInstrumentedTest {
         repository.readMemoryInStore(STORE, before.publicId, now = 40L)
         repository.readMemoryInStore(STORE, before.publicId, now = 30L)
         val read = requireNotNull(memories.getMemoryById(before.id))
-        assertEquals(before.copy(readCount = before.readCount + 2, lastReadAt = 40L), read)
+        assertEquals(before.copy(readCount = before.readCount + 2, lastReadAt = 40L,
+            chatReadCount = before.chatReadCount + 2, lastChatReadAt = 40L), read)
         assertTrue(history.list(STORE, before.id).isEmpty())
 
         repository.setAnchor(before.publicId, true, expectedRevision = read.revision)

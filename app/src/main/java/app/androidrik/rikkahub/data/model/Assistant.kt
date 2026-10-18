@@ -415,7 +415,26 @@ data class AssistantMemory(
     val lastReadAt: Long = 0L,
     /** Optimistic concurrency token for model and user mutations. */
     val revision: Long = 1L,
-)
+    /** 遥测：CHAT 来源读取次数。**不序列化**——工具 JSON 不得暴露来源归因。 */
+    @Transient
+    val chatReadCount: Int = 0,
+    /** 遥测：最近一次 CHAT 来源读取时间（epoch millis；0 = 从未）。**不序列化**。 */
+    @Transient
+    val lastChatReadAt: Long = 0L,
+    /** 遥测：整理器读取次数。**不序列化**，且不参与聊天信用。 */
+    @Transient
+    val consolidationReadCount: Int = 0,
+    /** 遥测：最近一次整理器读取时间（epoch millis；0 = 从未）。**不序列化**。 */
+    @Transient
+    val lastConsolidationReadAt: Long = 0L,
+) {
+    /**
+     * 旧遥测中未被来源归因的读取：原 [readCount] 减去已知 CHAT 次数。
+     * consolidation 读取永不贡献信用，故不参与；下限 0 兜底异常/导入数据。
+     */
+    val legacyReadCount: Int
+        get() = (readCount - chatReadCount).coerceAtLeast(0)
+}
 
 @Serializable
 enum class AssistantAffectScope {

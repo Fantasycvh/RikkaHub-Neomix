@@ -99,10 +99,23 @@ interface MemoryDAO {
     ): Int
 
     @Query("""
-        UPDATE memoryentity SET read_count = read_count + 1, last_read_at = MAX(last_read_at, :now)
+        UPDATE memoryentity SET read_count = read_count + 1, chat_read_count = chat_read_count + 1,
+            last_read_at = MAX(last_read_at, :now), last_chat_read_at = MAX(last_chat_read_at, :now)
         WHERE id = :id AND assistant_id = :assistantId
     """)
     suspend fun recordReadInStore(id: Int, assistantId: String, now: Long): Int
+
+    /**
+     * 遥测：整理器读取。只增 consolidation 两列，不碰原 [read_count]/[last_read_at]，
+     * 也不推进 revision/updated_at/importance/anchor —— 整理不能替历史读取补信用，也不能刷新时效。
+     * 作用域与 CHAT 读取一致（id + assistant_id）；越库写入返回 0。
+     */
+    @Query("""
+        UPDATE memoryentity SET consolidation_read_count = consolidation_read_count + 1,
+            last_consolidation_read_at = MAX(last_consolidation_read_at, :now)
+        WHERE id = :id AND assistant_id = :assistantId
+    """)
+    suspend fun recordConsolidationReadInStore(id: Int, assistantId: String, now: Long): Int
 
     @Query("""
         DELETE FROM memoryentity WHERE id = :id AND assistant_id = :assistantId
@@ -111,13 +124,18 @@ interface MemoryDAO {
     suspend fun deleteMemoryInStore(id: Int, assistantId: String, expectedRevision: Long? = null): Int
 
     /**
-     * 遥测：记一次 `memory_read`（读计数 +1、刷新最近读取时间）。
+     * 遥测：记一次 CHAT 来源的 `memory_read`（原 read_count 与 chat_read_count 同时 +1、
+     * 原 last_read_at 与 last_chat_read_at 同时刷新）。
      *
      * 用 SQL 自增而非「读出实体→改→写回」：后者在并发读（模型一步里连读多条）时会丢计数。
      * 最近读取时间只增不减，避免较早的读取请求晚排队时把时间写回过去。
      * **`updated_at` 不动**——读取不是修改，动它会平白刷新时效衰减（等于「读一次就变新」）。
      */
-    @Query("UPDATE memoryentity SET read_count = read_count + 1, last_read_at = MAX(last_read_at, :now) WHERE id = :id")
+    @Query(
+        "UPDATE memoryentity SET read_count = read_count + 1, chat_read_count = chat_read_count + 1, " +
+            "last_read_at = MAX(last_read_at, :now), last_chat_read_at = MAX(last_chat_read_at, :now) " +
+            "WHERE id = :id",
+    )
     suspend fun recordRead(id: Int, now: Long)
 
     @Query("DELETE FROM memoryentity WHERE id = :id")

@@ -155,7 +155,20 @@ class MemoryRepositoryTest {
         override suspend fun recordReadInStore(id: Int, assistantId: String, now: Long): Int {
             val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId }
             if (i < 0) return 0
-            rows[i] = rows[i].copy(readCount = rows[i].readCount + 1, lastReadAt = maxOf(rows[i].lastReadAt, now))
+            rows[i] = rows[i].copy(
+                readCount = rows[i].readCount + 1, lastReadAt = maxOf(rows[i].lastReadAt, now),
+                chatReadCount = rows[i].chatReadCount + 1, lastChatReadAt = maxOf(rows[i].lastChatReadAt, now),
+            )
+            return 1
+        }
+
+        override suspend fun recordConsolidationReadInStore(id: Int, assistantId: String, now: Long): Int {
+            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId }
+            if (i < 0) return 0
+            rows[i] = rows[i].copy(
+                consolidationReadCount = rows[i].consolidationReadCount + 1,
+                lastConsolidationReadAt = maxOf(rows[i].lastConsolidationReadAt, now),
+            )
             return 1
         }
 
@@ -181,12 +194,7 @@ class MemoryRepositoryTest {
 
         // 与 Room 实现同语义：SQL 自增（不是「读出来 +1 写回」），且不动 updated_at
         override suspend fun recordRead(id: Int, now: Long) {
-            val i = rows.indexOfFirst { it.id == id }
-            if (i >= 0) {
-                rows[i] = rows[i].copy(
-                    readCount = rows[i].readCount + 1, lastReadAt = maxOf(rows[i].lastReadAt, now),
-                )
-            }
+            rows.firstOrNull { it.id == id }?.let { recordReadInStore(id, it.assistantId, now) }
         }
     }
 

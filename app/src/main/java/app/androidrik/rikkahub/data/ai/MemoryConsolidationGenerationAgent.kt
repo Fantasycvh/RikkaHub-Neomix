@@ -4,6 +4,7 @@ import android.util.Log
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.ai.tools.buildMemoryTools
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.MemoryReadSource
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import kotlinx.serialization.json.Json
 import kotlin.uuid.Uuid
@@ -58,8 +59,10 @@ class MemoryConsolidationGenerationAgent(
                 applied++
             },
             initialRevisions = request.initialRevisions,
-            // 读取照常记遥测：整理 agent 的读取同样是「这条真的被用到」的证据
-            onRead = { id -> memoryRepository.readMemoryInStore(request.memoryId, id) },
+            // 整理自读单独计数，不能伪装成聊天使用或抬升信用/活跃度。
+            onRead = { id ->
+                memoryRepository.readMemoryInStore(request.memoryId, id, source = MemoryReadSource.CONSOLIDATION)
+            },
             // 整理 agent 尤其需要检索：它拿到的记忆库快照同样是**预算截断**的
             // （`DEFAULT_LIBRARY_TOKENS = 4000`，真机 50 条库 ≈ 58.6K token ⇒ 大部分记录看不见），
             // 而「找重复/找已被覆盖的记录」恰恰要求能看到快照之外的条目，否则会把已存在的

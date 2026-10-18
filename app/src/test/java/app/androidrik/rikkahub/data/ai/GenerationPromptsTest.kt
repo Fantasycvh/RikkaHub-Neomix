@@ -174,12 +174,12 @@ class GenerationPromptsTest {
     }
 
     @Test
-    fun `build memory prompt with empty memories produces header only`() {
+    fun `build memory prompt with empty memories produces no scaffolding`() {
         // L0 纪律层在 system（恒定），与数据分离
         assertTrue(buildMemoryDisciplinePrompt().contains("**Memories**"))
         // L2+L3 数据层：无记忆时只剩前导标记 + 空数组，不渲染清单标题
         val data = buildMemoryDataPrompt(emptyList())
-        assertTrue(data.startsWith(MEMORY_TAIL_PREAMBLE))
+        assertEquals("Empty library must not spend budget on empty scaffolding", "", data)
         assertFalse("空记忆不应渲染清单标题", data.contains("**Memory index**"))
     }
 

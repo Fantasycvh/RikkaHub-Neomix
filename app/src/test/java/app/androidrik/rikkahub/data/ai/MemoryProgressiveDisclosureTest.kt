@@ -68,10 +68,16 @@ class MemoryProgressiveDisclosureTest {
 
     @Test
     fun `no memory disappears from the whole prompt`() {
-        // 改造的核心承诺：预算不再是「看不见」的边界——每条记忆至少以清单一行的形式出现
-        val prompt = buildPromptWithIndex(count = 10)
-        val missing = (1..10).filterNot { i -> prompt.contains("id$i") }
-        assertEquals("有记忆在提示词里彻底消失了：$missing", emptyList<Int>(), missing)
+        val memories = (1..10).map { i ->
+            memory("id$i", bulky("note", i), description = "topic $i", sortKey = i)
+        }
+        val plan = buildMemoryInjectionPlan(memories, budgetTokens = 400, now = now)
+        val visible = (plan.fullText + plan.indexed).map { it.id }.toSet()
+        assertEquals(memories.size - visible.size, plan.omittedCount)
+        assertTrue(plan.totalEstimatedTokens <= 400)
+        assertTrue(plan.omittedCount > 0)
+        assertTrue(plan.dataText.contains("**Omitted**: ${plan.omittedCount}"))
+        assertTrue("Hidden IDs require search, not guessing an ID", plan.dataText.contains("action:\"search\""))
     }
 
     @Test
@@ -140,7 +146,7 @@ class MemoryProgressiveDisclosureTest {
     @Test
     fun `index line falls back to a content excerpt when description is blank`() {
         val memories = listOf(memory("idA", "这是一条没有主题词的记忆内容", sortKey = 1))
-        val prompt = buildMemoryDataPrompt(memories, budgetTokens = 200, now = now)
+        val prompt = indexLine(memories.single())
         assertTrue("缺主题词时用内容截断兜底（不把派生文本写回库里）", prompt.contains("这是一条没有主题词的记忆内容"))
     }
 

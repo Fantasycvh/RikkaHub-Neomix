@@ -115,6 +115,8 @@ internal fun buildSystemBlocks(
      * 见 `docs/design/design-memory-injection-tiering.md` §5。
      */
     frozenAnchorIds: Set<String>? = null,
+    /** Reuse the exact selection/counting snapshot used for the request tail and preview. */
+    memoryPlan: MemoryInjectionPlan? = null,
 ): List<SystemBlock> {
     val blocks = mutableListOf<SystemBlock>()
 
@@ -158,17 +160,17 @@ internal fun buildSystemBlocks(
 
     // 记忆（会话级「不使用记忆」时整块不发）
     if (assistant.enableMemory && !memoryDisabled) {
-        // L1 锚点：**只在有锚点时才产生该块** ⇒ 无锚点时输出逐字节不变
-        // （见 docs/design/design-memory-injection-tiering.md）
-        // 冻结优先：非 null 时先按冻结集合过滤（空集 ⇒ 无锚点 ⇒ 不产生块，不变式仍成立）
-        val anchorText = buildMemoryAnchorPrompt(memories, frozenIds = frozenAnchorIds)
-        if (anchorText.isNotBlank()) {
-            blocks += SystemBlock(SystemBlockSource.ANCHOR, content = anchorText)
-        }
-        blocks += SystemBlock(
-            SystemBlockSource.MEMORY,
-            content = buildMemoryDisciplinePrompt(),
+        val plan = memoryPlan ?: buildMemoryInjectionPlan(
+            memories, settings.memoryInjectBudgetTokens,
+            query = memoryQueryOf(messages), frozenAnchorIds = frozenAnchorIds,
         )
+        // The component strings already contain their newlines; do not add unbudgeted separators.
+        if (plan.anchorText.isNotBlank()) {
+            blocks += SystemBlock(SystemBlockSource.ANCHOR, content = plan.anchorText, separatorAfter = "")
+        }
+        if (plan.disciplineText.isNotBlank()) {
+            blocks += SystemBlock(SystemBlockSource.MEMORY, content = plan.disciplineText, separatorAfter = "")
+        }
     }
     // 工具prompt
     tools.forEach { tool ->
@@ -229,6 +231,7 @@ internal fun buildSystemPromptText(
     memoryDisabled: Boolean = false,
     /** 冻结的锚点 id 集合：非 null 时只渲染这些锚点（见 [buildSystemBlocks] 同名参数）。 */
     frozenAnchorIds: Set<String>? = null,
+    memoryPlan: MemoryInjectionPlan? = null,
 ): String = joinSystemBlocks(
     buildSystemBlocks(
         assistant = assistant,
@@ -240,6 +243,7 @@ internal fun buildSystemPromptText(
         conversationSystemPrompt = conversationSystemPrompt,
         memoryDisabled = memoryDisabled,
         frozenAnchorIds = frozenAnchorIds,
+        memoryPlan = memoryPlan,
     )
 )
 
@@ -272,7 +276,9 @@ internal fun buildSendWindowMessages(
  * **真实请求路径**（[GenerationHandler.generateInternal]）与**拼装预览**
  * （`PromptInspector`）都必须走这里，不要各自组装。
  */
-internal fun buildInternalMessages(
+internal data class AssembledRequest(val messages: List<UIMessage>, val memoryPlan: MemoryInjectionPlan)
+
+internal fun buildInternalMessagesWithPlan(
     assistant: Assistant,
     settings: Settings,
     model: Model,
@@ -293,7 +299,19 @@ internal fun buildInternalMessages(
     memoryDisabled: Boolean = false,
     /** 冻结的锚点 id 集合：来自 `Conversation.frozenAnchorIds`（null = 未冻结）。 */
     frozenAnchorIds: Set<String>? = null,
-): List<UIMessage> {
+): AssembledRequest {
+    val windowMessages = buildSendWindowMessages(
+        messages = messages,
+        compressionWindow = compressionWindow,
+        contextMessageLimit = assistant.contextMessageLimit,
+    ).map { it.withoutUiNotices() }
+    // Capture query, time, tokenizer strategy, rendered texts and selection once for this request.
+    val memoryPlan = buildMemoryInjectionPlan(
+        memories = if (assistant.enableMemory && !memoryDisabled) memories else emptyList(),
+        budgetTokens = settings.memoryInjectBudgetTokens,
+        query = memoryQueryOf(windowMessages),
+        frozenAnchorIds = frozenAnchorIds,
+    )
     val baseSystem = buildSystemPromptText(
         assistant = assistant,
         settings = settings,
@@ -304,6 +322,7 @@ internal fun buildInternalMessages(
         conversationSystemPrompt = conversationSystemPrompt,
         memoryDisabled = memoryDisabled,
         frozenAnchorIds = frozenAnchorIds,
+        memoryPlan = memoryPlan,
     )
     // 恢复提示追加在系统提示末尾：不写入对话历史（仅本次请求存在，随后消失）
     val system = if (recoveryHint.isNullOrBlank()) {
@@ -312,21 +331,7 @@ internal fun buildInternalMessages(
         val separator = if (baseSystem.isBlank()) "" else "\n\n"
         baseSystem + separator + "<recovery_note>\n" + recoveryHint + "\n</recovery_note>"
     }
-    // 发送窗口先算出来：它既是消息部分，也是**相关性查询文本**的来源。
-    // 必须取"模型真正看到的那些消息"而不是入参 messages —— 压缩把早期历史换成了检查点，
-    // 而检查点是合成消息（memoryQueryOf 会跳过它），所以两边对"最后一条真实用户消息"的看法一致；
-    // 但若将来压缩边界改变语义，从这里取才是与实际请求同源的那一份。
-    val windowMessages = buildSendWindowMessages(
-        messages = messages,
-        compressionWindow = compressionWindow,
-        contextMessageLimit = assistant.contextMessageLimit,
-    )
-        // UI 专用提示（生成打断/截断警示）**只给用户看**：回传会让模型以为用户说过
-        // 那句话并可能模仿着往下写。此处是**唯一装配点**——四个 provider 都从这里取消息，
-        // 故只需过滤一次（见 UiNotice.kt 的说明）。
-        .map { it.withoutUiNotices() }
-
-    return buildList {
+    val assembledMessages = buildList {
         if (system.isNotBlank()) {
             add(UIMessage.system(prompt = system).copy(isSynthetic = true))
         }
@@ -338,15 +343,8 @@ internal fun buildInternalMessages(
         //
         // **为什么尾部就能用相关性**（设计稿 §3.2）：尾部怎么变都不动它前面的前缀，
         // 于是选取可以依赖本轮查询、每轮重算。查询取窗口里最后一条真实用户消息。
-        if (assistant.enableMemory && !memoryDisabled) {
-            val memoryData = buildMemoryDataPrompt(
-                memories = memories,
-                budgetTokens = settings.memoryInjectBudgetTokens,
-                query = memoryQueryOf(windowMessages),
-            )
-            if (memoryData.isNotBlank()) {
-                add(UIMessage.user(prompt = memoryData).copy(isSynthetic = true))
-            }
+        if (memoryPlan.dataText.isNotBlank()) {
+            add(UIMessage.user(prompt = memoryPlan.dataText).copy(isSynthetic = true))
         }
         // 规则提醒（探索/落地守卫）：与记忆块同一个尾部位置、同一种"每轮算、不落库、不再命中即消失"
         // 的合成消息。**必须判空白**——空块会让每轮白付一段 token。
@@ -354,4 +352,34 @@ internal fun buildInternalMessages(
             add(UIMessage.user(prompt = it).copy(isSynthetic = true))
         }
     }
+    return AssembledRequest(assembledMessages, memoryPlan)
 }
+
+/** Compatibility entry point; the shared assembly owns selection and accounting. */
+internal fun buildInternalMessages(
+    assistant: Assistant,
+    settings: Settings,
+    model: Model,
+    messages: List<UIMessage>,
+    memories: List<AssistantMemory>,
+    tools: List<Tool>,
+    conversationSystemPrompt: String?,
+    compressionWindow: Conversation.CompressionWindow?,
+    recoveryHint: String? = null,
+    ruleReminder: String? = null,
+    memoryDisabled: Boolean = false,
+    frozenAnchorIds: Set<String>? = null,
+): List<UIMessage> = buildInternalMessagesWithPlan(
+    assistant = assistant,
+    settings = settings,
+    model = model,
+    messages = messages,
+    memories = memories,
+    tools = tools,
+    conversationSystemPrompt = conversationSystemPrompt,
+    compressionWindow = compressionWindow,
+    recoveryHint = recoveryHint,
+    ruleReminder = ruleReminder,
+    memoryDisabled = memoryDisabled,
+    frozenAnchorIds = frozenAnchorIds,
+).messages

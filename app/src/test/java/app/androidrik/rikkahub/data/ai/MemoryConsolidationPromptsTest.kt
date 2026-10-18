@@ -183,15 +183,16 @@ class MemoryConsolidationPromptsTest {
     fun `calibration table shows declared importance against actual reads`() {
         val table = buildMemoryCalibrationTable(
             listOf(
-                AssistantMemory(id = "aaa", content = "常读的", importance = 0.4f, readCount = 7, sortKey = 1),
+                AssistantMemory(id = "aaa", content = "常读的", importance = 0.4f, readCount = 7, sortKey = 1,
+                    chatReadCount = 2, consolidationReadCount = 13),
                 AssistantMemory(id = "bbb", content = "没读过的", importance = 0.9f, sortKey = 2),
                 AssistantMemory(id = "ccc", content = "有主题词的", importance = 0.6f, description = "主题", sortKey = 3),
             )
         )
 
-        assertTrue(table.contains("- aaa | importance 0.40 | read 7x | 常读的"))
-        assertTrue(table.contains("- bbb | importance 0.90 | never read | 没读过的"))
-        assertTrue(table.contains("- ccc | importance 0.60 | never read | 主题"))
+        assertTrue(table.contains("- aaa | importance 0.40 | legacy+chat read 7x; chat 2x; unknown 5x; consolidation 13x | 常读的"))
+        assertTrue(table.contains("- bbb | importance 0.90 | legacy+chat never read; chat 0x; unknown 0x; consolidation 0x | 没读过的"))
+        assertTrue(table.contains("- ccc | importance 0.60 | legacy+chat never read; chat 0x; unknown 0x; consolidation 0x | 主题"))
         assertEquals("空库不发校准表", "", buildMemoryCalibrationTable(emptyList()))
     }
 }

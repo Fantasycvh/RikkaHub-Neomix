@@ -1111,7 +1111,7 @@ class GenerationHandler(
     ) {
         // 组装发送消息：**与「拼装预览」共用同一个函数**（PromptAssembly.kt）——
         // 原先此段内联实现，预览只能另写一份、必然漂移。改这里即同时改预览。
-        val internalMessages = buildInternalMessages(
+        val assembly = buildInternalMessagesWithPlan(
             assistant = assistant,
             settings = settings,
             model = model,
@@ -1125,6 +1125,14 @@ class GenerationHandler(
             memoryDisabled = memoryDisabled,
             frozenAnchorIds = frozenAnchorIds,
         )
+        val internalMessages = assembly.messages
+        if (assistant.enableMemory && !memoryDisabled) {
+            val plan = assembly.memoryPlan
+            Log.i(TAG, "memory.inject budget=${plan.budgetTokens} estimated=${plan.totalEstimatedTokens} " +
+                "counter=${plan.estimationMode} l0=${plan.disciplineTokens} l1=${plan.anchorTokens} " +
+                "tail=${plan.dataTokens} anchors=${plan.anchors.size} full=${plan.fullText.size} " +
+                "index=${plan.indexed.size} omitted=${plan.omittedCount}")
+        }
         // 输入处理链（时间提醒 / 模式注入 / 世界书 / ST 宏 / 占位符 / 文档转提示 / OCR / 引用 /
         // 助手模板 / workspace 提醒）：**返回值必须接住**——它才是真正发给 provider 的列表。
         //

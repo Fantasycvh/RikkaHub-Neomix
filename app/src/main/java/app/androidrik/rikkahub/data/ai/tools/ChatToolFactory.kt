@@ -24,6 +24,7 @@ import app.androidrik.rikkahub.data.image.resolveImageGenerationModel
 import app.androidrik.rikkahub.data.files.SkillInstaller
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.MemoryReadSource
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
@@ -196,7 +197,9 @@ class ChatToolFactory(
                         }
                     },
                     // 读取顺带记一次遥测（渐进披露的清单层靠它反馈「这条到底有没有用」）
-                    onRead = { id -> memoryRepository.readMemoryInStore(memoryAssistantId, id) },
+                    onRead = { id ->
+                        memoryRepository.readMemoryInStore(memoryAssistantId, id, source = MemoryReadSource.CHAT)
+                    },
                     // 按需检索：把注入预算之外、清单层也没列到的记录变成可取的（**不记遥测**，
                     // 口径理由见 MemoryRepository.searchMemories 的 kdoc）
                     onSearch = { query, limit ->

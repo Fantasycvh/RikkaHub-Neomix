@@ -68,8 +68,6 @@ import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
 import app.androidrik.rikkahub.data.ai.anchorIdsOf
 import app.androidrik.rikkahub.data.ai.inspectPrompt
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
-import app.androidrik.rikkahub.data.ai.memoryQueryOf
-import app.androidrik.rikkahub.data.ai.selectMemoriesForPrompt
 import app.androidrik.rikkahub.data.ai.shouldGenerateTitle
 import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
@@ -101,7 +99,6 @@ import app.androidrik.rikkahub.data.datastore.resolveCompressionModel
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
 import app.androidrik.rikkahub.utils.effectiveContextLength
-import app.androidrik.rikkahub.utils.estimateTokens
 import app.androidrik.rikkahub.utils.estimateWindowTokens
 import app.androidrik.rikkahub.data.ai.compression.shouldAutoCompress
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
@@ -1317,9 +1314,7 @@ class ChatService(
             // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
             // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
             // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
-            // 提成局部变量还有第二个用途：下面那条注入日志要按**同一份消息**推出相关性查询，
-            // 否则日志报的入选集合与实际注入的不是同一个（日志会撒谎，而它正是判断
-            // "记忆吃了多少 token" 的唯一依据）。
+            // GenerationHandler 从实际发送窗口取得查询并记录共享预算计划，不再另选一份日志集合。
             val promptMessages = if (messageRange != null) {
                 conversation.currentMessages.let {
                     it.subList(messageRange.start, messageRange.endInclusive + 1)
@@ -1364,34 +1359,8 @@ class ChatService(
                 workspaceCwd = conversation.workspaceCwd,
                 memoryDisabled = conversation.memoryDisabled,
                 frozenAnchorIds = frozenAnchorIds,
-                memories = loadedMemories.also { loaded ->
-                    // 每回合一条：注入条数与实际占用（按当前预算选出后的结果）。
-                    // 与工具 schema 日志配套——两者是「固定开销」的两大项，合起来看才知道
-                    // 上下文被谁吃掉（实测 MCP schema 可达 3 万余 token，远超记忆注入）。
-                    // 用 Log.i 而非 Logging.log()：见 ChatToolFactory.logSchemaBreakdown 的说明。
-                    //
-                    // **丢到后台线程**：AppScope 是 Dispatchers.Main，而这段是**纯日志**——
-                    // 让主线程为了写一条日志去数 token，是拿输入响应当代价（真机上撞出过 ANR）。
-                    appScope.launch(Dispatchers.Default) {
-                        runCatching {
-                            // **必须带 query**：相关性维度接入后，入选集合依赖本轮查询；
-                            // 不带就是"用另一套口径算出来的条数"，日志会与实际注入不符。
-                            // 注意这里够不到压缩窗口，但压缩只把早期历史换成检查点（合成消息，
-                            // memoryQueryOf 会跳过），"最后一条真实用户消息"两边一致。
-                            val selected = selectMemoriesForPrompt(
-                                loaded,
-                                settings.memoryInjectBudgetTokens,
-                                query = memoryQueryOf(promptMessages),
-                            )
-                            val used = selected.sumOf { estimateTokens(it.content) }
-                            Log.i(
-                                TAG,
-                                "memory inject: ${selected.size}/${loaded.size} memories ≈${used} tokens " +
-                                    "(budget=${settings.memoryInjectBudgetTokens})",
-                            )
-                        }.onFailure { Log.w(TAG, "memory inject log failed", it) }
-                    }
-                },
+                // GenerationHandler logs the actual shared plan; no second selection/tokenization for logs.
+                memories = loadedMemories,
                 inputTransformers = buildList {
                     addAll(inputTransformers)
                     add(templateTransformer)

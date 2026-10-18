@@ -1017,20 +1017,18 @@ private fun MemoryItem(
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                // 读取遥测：让「这条记忆到底有没有起作用」可见（V2 只显示，不参与打分）。
-                // 从未被读过就不显示——零读数是常态，不必占一行。
-                if (memory.readCount > 0) {
+                // Old credit is not proof of CHAT use; show unknown legacy and consolidator reads separately.
+                if (memory.readCount > 0 || memory.consolidationReadCount > 0) {
+                    val lastChat = memory.lastChatReadAt.takeIf { it > 0L }?.let {
+                        Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+                    } ?: "-"
+                    val lastConsolidation = memory.lastConsolidationReadAt.takeIf { it > 0L }?.let {
+                        Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+                    } ?: "-"
                     Text(
-                        text = stringResource(
-                            R.string.assistant_page_memory_read_count,
-                            memory.readCount,
-                            memory.lastReadAt.takeIf { it > 0L }?.let {
-                                Instant.ofEpochMilli(it)
-                                    .atZone(ZoneId.systemDefault())
-                                    .toLocalDate()
-                                    .toString()
-                            } ?: "-",
-                        ),
+                        text = "Chat ${memory.chatReadCount} · legacy/unknown ${memory.legacyReadCount} · " +
+                            "consolidation ${memory.consolidationReadCount}\n" +
+                            "Last chat $lastChat · last consolidation $lastConsolidation",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

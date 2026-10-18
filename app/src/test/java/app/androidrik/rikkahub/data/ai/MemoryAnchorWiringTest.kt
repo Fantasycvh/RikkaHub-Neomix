@@ -250,7 +250,9 @@ class MemoryAnchorWiringTest {
     @Test
     fun `preview passes the same memory flags as the real request`() {
         val inspector = source("app/androidrik/rikkahub/data/ai/PromptInspector.kt")
-        val callIdx = inspector.indexOf("val internalMessages = buildInternalMessages(")
+        assertTrue("Projection must reuse the plan", inspector.contains("memoryPlan = assembly.memoryPlan"))
+        assertTrue("Tail counts must reuse the snapshot", inspector.contains("assembly.memoryPlan.dataTokens"))
+        val callIdx = inspector.indexOf("val assembly = buildInternalMessagesWithPlan(")
         assertTrue("找不到预览侧的 buildInternalMessages 调用", callIdx >= 0)
         val call = inspector.substring(callIdx).substringBefore("\n    )")
         assertTrue(

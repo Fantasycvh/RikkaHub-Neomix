@@ -50,6 +50,7 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_15_16
 import app.androidrik.rikkahub.data.db.migrations.Migration_27_28
 import app.androidrik.rikkahub.data.db.migrations.Migration_28_29
 import app.androidrik.rikkahub.data.db.migrations.Migration_40_41
+import app.androidrik.rikkahub.data.db.migrations.Migration_41_42
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.network.RikkaProxyAuthenticator
 import app.androidrik.rikkahub.data.network.SettingsProxyAuthenticator
@@ -80,7 +81,7 @@ val dataSourceModule = module {
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
             .addMigrations(
                 Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15,
-                Migration_15_16, Migration_27_28, Migration_28_29, Migration_40_41,
+                Migration_15_16, Migration_27_28, Migration_28_29, Migration_40_41, Migration_41_42,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {

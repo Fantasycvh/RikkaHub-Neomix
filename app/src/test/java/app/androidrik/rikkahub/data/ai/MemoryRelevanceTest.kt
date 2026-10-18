@@ -229,7 +229,9 @@ class MemoryRelevanceTest {
             memory(2, "咖啡偏好记录", importance = 0.6f),
         )
         // 同样只够一条：宽预算下两条都入选，换话题也不会改变字节，测不出相关性
-        fun render(query: String) = buildMemoryDataPrompt(memories, budgetTokens = 10, now = now, query = query)
+        fun render(query: String) = buildMemoryDataPrompt(
+            memories, budgetTokens = memoryBudgetForOneFullEntry(memories), now = now, query = query,
+        )
 
         // 同一查询 ⇒ 逐字节一致（尾部块也因此可在同一话题的连续轮次里命中缓存）
         assertEquals(render("TikZ 渲染器怎么切换"), render("TikZ 渲染器怎么切换"))

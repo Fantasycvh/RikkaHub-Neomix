@@ -87,6 +87,21 @@ data class MemoryEntity(
     /** Business-state version. Telemetry reads do not advance it. */
     @ColumnInfo("revision", defaultValue = "1")
     val revision: Long = 1L,
+    /**
+     * 遥测：CHAT 来源的读取次数。历史 [readCount] 里无法归因的部分保持 unknown，
+     * 派生见 `AssistantMemory.legacyReadCount`。读取不推进 [revision]/[updatedAt]。
+     */
+    @ColumnInfo("chat_read_count", defaultValue = "0")
+    val chatReadCount: Int = 0,
+    /** 遥测：最近一次 CHAT 来源读取时间（epoch millis；0 = 从未）。 */
+    @ColumnInfo("last_chat_read_at", defaultValue = "0")
+    val lastChatReadAt: Long = 0L,
+    /** 遥测：整理器（consolidation）读取次数；不计入聊天信用。 */
+    @ColumnInfo("consolidation_read_count", defaultValue = "0")
+    val consolidationReadCount: Int = 0,
+    /** 遥测：最近一次整理器读取时间（epoch millis；0 = 从未）。 */
+    @ColumnInfo("last_consolidation_read_at", defaultValue = "0")
+    val lastConsolidationReadAt: Long = 0L,
 ) {
     companion object {
         /** 缺省重要度（普通偏好档，见 [importance]）。 */

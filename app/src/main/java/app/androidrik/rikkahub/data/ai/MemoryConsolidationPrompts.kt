@@ -191,7 +191,8 @@ internal val MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """
 
     You will be given two things:
     1. THE LIBRARY: the records that exist today, plus a calibration table with each record's
-       importance and how often it has been read.
+       importance and source-attributed reads. `legacy+chat` retains old unknown-source credit;
+       never treat unknown-source reads as known chat use, or consolidation self-reads as user demand.
     2. NEW TURNS: turns from the user's recent conversations that have not been reviewed yet.
 
     Do these in order, using `memory_tool` for every change:
@@ -353,7 +354,9 @@ internal fun buildMemoryCalibrationTable(memories: List<AssistantMemory>): Strin
     return memories
         .sortedBy { it.sortKey }
         .joinToString("\n") { memory ->
-            val reads = if (memory.readCount <= 0) "never read" else "read ${memory.readCount}x"
+            val credit = if (memory.readCount <= 0) "never read" else "read ${memory.readCount}x"
+            val reads = "legacy+chat $credit; chat ${memory.chatReadCount}x; " +
+                "unknown ${memory.legacyReadCount}x; consolidation ${memory.consolidationReadCount}x"
             val topic = memory.description.ifBlank { memory.content.trim().take(40).replace('\n', ' ') }
             "- ${memory.id} | importance ${"%.2f".format(memory.importance)} | $reads | $topic"
         }

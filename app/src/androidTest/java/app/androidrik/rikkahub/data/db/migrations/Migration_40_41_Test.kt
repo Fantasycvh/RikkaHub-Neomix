@@ -155,7 +155,7 @@ class Migration_40_41_Test {
         withRoom(restored) { room ->
             assertEquals(live, room.memoryDao().getMemoryById(43))
             val db = room.openHelper.writableDatabase
-            assertEquals(41, db.version)
+            assertEquals(42, db.version)
             db.query("SELECT snapshot,revision FROM memory_history WHERE memory_id=43").use {
                 assertTrue(it.moveToFirst())
                 assertEquals(history.snapshot, it.getString(0))
@@ -271,7 +271,7 @@ class Migration_40_41_Test {
         block: suspend (AppDatabase) -> T,
     ): T {
         val builder = Room.databaseBuilder(context, AppDatabase::class.java, name)
-        if (migrate) builder.addMigrations(Migration_40_41)
+        if (migrate) builder.addMigrations(Migration_40_41, Migration_41_42)
         val room = builder.build()
         return try {
             block(room)

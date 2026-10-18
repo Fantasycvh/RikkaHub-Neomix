@@ -150,7 +150,13 @@ class MemoryProposalRepositoryTest {
         }
         override suspend fun recordReadInStore(id: Int, assistantId: String, now: Long) =
             update(id, assistantId, null) {
-                it.copy(readCount = it.readCount + 1, lastReadAt = maxOf(it.lastReadAt, now))
+                it.copy(readCount = it.readCount + 1, lastReadAt = maxOf(it.lastReadAt, now),
+                    chatReadCount = it.chatReadCount + 1, lastChatReadAt = maxOf(it.lastChatReadAt, now))
+            }
+        override suspend fun recordConsolidationReadInStore(id: Int, assistantId: String, now: Long) =
+            update(id, assistantId, null) {
+                it.copy(consolidationReadCount = it.consolidationReadCount + 1,
+                    lastConsolidationReadAt = maxOf(it.lastConsolidationReadAt, now))
             }
         override suspend fun deleteMemoryInStore(id: Int, assistantId: String, expectedRevision: Long?): Int {
             val removed = rows.removeAll {

@@ -275,6 +275,7 @@ class MemoryTransactionInstrumentedTest {
         val expected = before.copy(
             content = "edited content", updatedAt = 50L, readCount = before.readCount + 1,
             lastReadAt = 40L, isAnchor = true, revision = before.revision + 2,
+            chatReadCount = before.chatReadCount + 1, lastChatReadAt = 40L,
         )
         assertEquals(expected, memories.getMemoryById(before.id))
         assertEquals(expected.readCount, updated.readCount)
@@ -307,6 +308,7 @@ class MemoryTransactionInstrumentedTest {
             before.copy(
                 content = "later content", importance = 0.9f, description = "later topic", updatedAt = 50L,
                 readCount = before.readCount + 1, lastReadAt = 60L, isAnchor = true,
+                chatReadCount = before.chatReadCount + 1, lastChatReadAt = 60L,
                 revision = before.revision + 2,
             ),
             memories.getMemoryById(before.id),
@@ -345,6 +347,7 @@ class MemoryTransactionInstrumentedTest {
         val expected = before.copy(
             description = "newer topic", updatedAt = 80L, readCount = before.readCount + 1,
             lastReadAt = 70L, isAnchor = true, revision = before.revision + 2,
+            chatReadCount = before.chatReadCount + 1, lastChatReadAt = 70L,
         )
         assertEquals(listOf(expected), memories.getMemoriesOfAssistant(STORE))
         assertEquals("newer topic", duplicate.description)
@@ -615,7 +618,8 @@ class MemoryTransactionInstrumentedTest {
         assertEquals(1, memories.recordReadInStore(id, STORE, 20L))
         assertEquals(1, memories.recordReadInStore(id, STORE, 10L))
 
-        assertEquals(before.copy(id = id, readCount = 2, lastReadAt = 20L), memories.getMemoryById(id))
+        assertEquals(before.copy(id = id, readCount = 2, lastReadAt = 20L,
+            chatReadCount = 2, lastChatReadAt = 20L), memories.getMemoryById(id))
     }
 
     private suspend fun seedHighScoreLibrary(count: Int): List<MemoryEntity> {

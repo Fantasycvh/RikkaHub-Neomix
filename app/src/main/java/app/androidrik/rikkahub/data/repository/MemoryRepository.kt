@@ -10,6 +10,7 @@ import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryHistoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryTrashEntity
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.MemoryReadSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
@@ -53,6 +54,10 @@ class MemoryRepository(
         readCount = readCount,
         lastReadAt = lastReadAt,
         isAnchor = isAnchor,
+        chatReadCount = chatReadCount,
+        lastChatReadAt = lastChatReadAt,
+        consolidationReadCount = consolidationReadCount,
+        lastConsolidationReadAt = lastConsolidationReadAt,
     )
 
     private suspend fun generatePublicId(): String {
@@ -267,23 +272,32 @@ class MemoryRepository(
         requireNotNull(getMemoryInStore(storeId, created.id))
     }
 
-    /** Telemetry reads intentionally do not change revision, history, anchor, or updated_at. */
-    suspend fun readMemory(id: String, now: Long = System.currentTimeMillis()): AssistantMemory? = transactions.run {
+    /** Reads change only scoped usage counters; consolidation never earns chat credit or recency. */
+    suspend fun readMemory(
+        id: String,
+        now: Long = System.currentTimeMillis(),
+        source: MemoryReadSource = MemoryReadSource.CHAT,
+    ): AssistantMemory? = transactions.run {
         val old = findEntityByPublicId(id) ?: return@run null
-        readEntity(old, now)
+        readEntity(old, now, source)
     }
 
     suspend fun readMemoryInStore(
         storeId: String,
         id: String,
         now: Long = System.currentTimeMillis(),
+        source: MemoryReadSource = MemoryReadSource.CHAT,
     ): AssistantMemory? = transactions.run {
         val old = findEntityInStore(storeId, id) ?: return@run null
-        readEntity(old, now)
+        readEntity(old, now, source)
     }
 
-    private suspend fun readEntity(old: MemoryEntity, now: Long): AssistantMemory? {
-        if (memoryDAO.recordReadInStore(old.id, old.assistantId, now) == 0) return null
+    private suspend fun readEntity(old: MemoryEntity, now: Long, source: MemoryReadSource): AssistantMemory? {
+        val updated = when (source) {
+            MemoryReadSource.CHAT -> memoryDAO.recordReadInStore(old.id, old.assistantId, now)
+            MemoryReadSource.CONSOLIDATION -> memoryDAO.recordConsolidationReadInStore(old.id, old.assistantId, now)
+        }
+        if (updated == 0) return null
         return memoryDAO.getMemoryById(old.id)?.toModel()
     }
 

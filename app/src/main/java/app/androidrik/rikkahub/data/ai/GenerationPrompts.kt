@@ -90,7 +90,7 @@ private const val MIN_MEMORY_INJECTION_SCORE = 0.2f
  * 完整内容，必须占大头。**代价说明**：全文层从 8K 降到 6K ⇒ 入选集合会比改造前略小，
  * 换来的是「预算外条目不再静默消失」（见 `docs/design/design-memory-discipline.md` §4.2）。
  */
-private const val MEMORY_INDEX_BUDGET_RATIO = 0.25f
+internal const val MEMORY_INDEX_BUDGET_RATIO = 0.25f
 
 /** 清单行里主题词缺省（模型没写 description）时的内容截断长度。 */
 private const val MEMORY_INDEX_FALLBACK_CHARS = 80
@@ -99,7 +99,7 @@ private const val MEMORY_INDEX_FALLBACK_CHARS = 80
  * **L1 锚点配额**（条）。刻意很小 —— 本层在 system，改动一次其后全部重算，
  * 所以它换来的不是"多注入记忆"而是"这几条永远在最稳的位置且永远在缓存里"。
  */
-private const val MEMORY_ANCHOR_LIMIT = 5
+internal const val MEMORY_ANCHOR_LIMIT = 5
 
 /**
  * **L0 纪律层**（静态）：记忆使用纪律 + 指向尾部数据的说明。
@@ -175,7 +175,7 @@ internal fun buildMemoryAnchorPrompt(
  * [frozenIds] 非 null 时**先按冻结集合过滤**——集合是会话开始那一刻定下的，此后新固化的
  * 锚点不会挤进本会话（要生效得走记忆页的手动刷新）。
  */
-private fun selectAnchorMemories(
+internal fun selectAnchorMemories(
     memories: List<AssistantMemory>,
     limit: Int,
     frozenIds: Set<String>? = null,
@@ -201,9 +201,14 @@ internal const val MEMORY_TAIL_PREAMBLE = "**Memory data** (background, not part
 /**
  * **L2 工作集 + L3 索引层**（动态）：真正的记忆数据，注入到**对话尾部**。
  *
- * **两层渐进披露**（V2）：
- * - **全文层** = [selectMemoriesForPrompt]（打分校准 + 预算截断），占预算 3/4；
- * - **清单层** = 其余记忆每行 `id ｜ 主题 ｜ 更新日`，占预算 1/4，模型据此决定要不要
+ * **兼容出口（tail-only）**：本函数保留旧签名，内部**委托** [buildMemoryInjectionPlan]，
+ * 并以 `frozenAnchorIds = emptySet()` 明确表示「只算尾部、不产生 L1」——L1 由
+ * [buildMemoryAnchorPrompt] 单独装配。真实聊天装配请直接用 plan（L0/L1/L2/L3 统一预算与
+ * 去重），不要再用本函数拼第二套选取。
+ *
+ * **两层渐进披露**（V2）不变：
+ * - **全文层** = 预算内按分数选出的整条 JSON（**不再截断正文**）；
+ * - **清单层** = 其余记忆每行 `id ｜ 主题 ｜ 更新日`，模型据此决定要不要
  *   `memory_tool action=read` 取全文。
  *
  * 两层**不重叠**；入选集合各自按 `sortKey`（写入先后）渲染 ⇒ 只要集合不变，字节稳定。
@@ -221,35 +226,72 @@ internal fun buildMemoryDataPrompt(
      * 因此本块的入选集合**每轮可能不同** —— 这正是把记忆放到尾部换来的自由（设计稿 §3.2）。
      */
     query: String? = null,
-): String {
-    val fullTextBudget = (budgetTokens * (1f - MEMORY_INDEX_BUDGET_RATIO)).toInt()
-    val indexBudget = (budgetTokens * MEMORY_INDEX_BUDGET_RATIO).toInt()
-    val selected = selectMemoriesForPrompt(memories, fullTextBudget, now, query)
-    val selectedIds = selected.mapTo(mutableSetOf()) { it.id }
-    val indexed = selectMemoriesForIndex(memories, selectedIds, indexBudget, now)
+): String = buildMemoryInjectionPlan(
+    memories = memories,
+    budgetTokens = budgetTokens,
+    now = now,
+    query = query,
+    // 尾部-only：空冻结集合 ⇒ 不产生 L1，锚点仍按普通 L2 候选参与排序。
+    frozenAnchorIds = emptySet(),
+).dataText
 
+/** 清单段标题（含前导空行与行尾换行）：预算规划器按它扣除 L3 的固定开销。 */
+internal fun memoryIndexHeaderText(): String = buildString {
+    appendLine()
+    append("**Memory index** (topics not included above; description is only a hint — ")
+    append("call `memory_tool` with `action:\"read\"` and the id to load the full text)")
+    appendLine()
+}
+
+/** 省略告知（尾部块最后一段）：这条告知本身也按实际渲染计费。 */
+internal fun memoryOmissionNotice(omittedCount: Int): String =
+    "**Omitted**: $omittedCount more memories are not shown; " +
+        "use `memory_tool` with `action:\"search\"` and a query, then `action:\"read\"` with a returned id."
+
+/** 尾部 JSON 数组（`id`/`revision`/内容，pretty JSON）：id/revision 与转义都按实际字符串计费。 */
+private fun memoryJsonArrayText(memories: List<AssistantMemory>): String =
+    JsonInstantPretty.encodeToString(
+        buildJsonArray {
+            memories.forEach { memory ->
+                add(
+                    buildJsonObject {
+                        // 对模型暴露 opaque token（非自增编号）：避免编号泄漏记忆条数、也避免删除空洞难看
+                        put("id", memory.id)
+                        put("revision", memory.revision)
+                        put("content", memory.content)
+                    }
+                )
+            }
+        }
+    )
+
+/**
+ * 渲染**尾部数据块**的唯一实现（plan 与兼容 wrapper 共用）。
+ *
+ * 计费口径就是「本函数返回的字符串」：前导行、JSON 转义、清单标题/行、省略告知与换行
+ * 全部按实际渲染文本计 token，而不是按 `content` 估算。
+ *
+ * 无全文、无索引且无省略 ⇒ 返回空串（调用方据此不产生该块）。
+ */
+internal fun renderMemoryDataPrompt(
+    fullText: List<AssistantMemory>,
+    indexed: List<AssistantMemory>,
+    omittedCount: Int,
+): String {
+    if (fullText.isEmpty() && indexed.isEmpty() && omittedCount <= 0) return ""
     return buildString {
         append(MEMORY_TAIL_PREAMBLE)
         appendLine()
-        val json = buildJsonArray {
-            selected.forEach { memory ->
-                add(buildJsonObject {
-                    // 对模型暴露 opaque token（非自增编号）：避免编号泄漏记忆条数、也避免删除空洞难看
-                    put("id", memory.id)
-                    put("revision", memory.revision)
-                    put("content", memory.content)
-                })
-            }
-        }
-        append(JsonInstantPretty.encodeToString(json))
+        append(memoryJsonArrayText(fullText))
         appendLine()
-
         if (indexed.isNotEmpty()) {
-            appendLine()
-            append("**Memory index** (topics not included above; description is only a hint — ")
-            append("call `memory_tool` with `action:\"read\"` and the id to load the full text)")
-            appendLine()
+            append(memoryIndexHeaderText())
             indexed.forEach { memory -> appendLine(indexLine(memory)) }
+        }
+        if (omittedCount > 0) {
+            appendLine()
+            append(memoryOmissionNotice(omittedCount))
+            appendLine()
         }
     }
 }
@@ -283,8 +325,8 @@ internal fun selectMemoriesForIndex(
     return result
 }
 
-/** 清单行：`id ｜ 主题（缺省=内容截断） ｜ 更新日`。 */
-private fun indexLine(memory: AssistantMemory): String {
+/** 清单行：`id ｜ 主题（缺省=内容截断） ｜ 更新日`（internal：plan 的 L3 行成本按同一实现计费）。 */
+internal fun indexLine(memory: AssistantMemory): String {
     val description = memory.description.ifBlank {
         memory.content.trim().take(MEMORY_INDEX_FALLBACK_CHARS)
     }
@@ -298,6 +340,42 @@ private fun AssistantMemory.indexDate(): String {
         .atZone(ZoneId.systemDefault())
         .toLocalDate()
         .toString()
+}
+
+/**
+ * 记忆候选排序（L2 全文层的**唯一**排序口径）：原始 [memoryScore]（刻意不套
+ * [memoryScoreBucket]）× 相关性增益；低于 [MIN_MEMORY_INJECTION_SCORE] 的丢弃；
+ * 同分按 `sortKey` **新的在前**。
+ *
+ * 为什么不用分桶：分桶是给「system 时代分数连续漂移打掉前缀缓存」用的，而 L2 已不在
+ * 前缀里；同一桶内按写入先后排会让相关性不到一档就白算。
+ *
+ * 输出顺序 = 入选尝试顺序；最终渲染仍按 `sortKey` 降序（见 [buildMemoryInjectionPlan]）。
+ */
+internal fun rankedMemoryCandidates(
+    memories: List<AssistantMemory>,
+    now: Long,
+    query: String? = null,
+): List<AssistantMemory> {
+    if (memories.isEmpty()) return emptyList()
+
+    // 相关性：查询只分词一次（逐条记忆里重复分词是纯浪费）
+    val memoryQuery = memoryQueryTokens(query)
+    val boostOf = { memory: AssistantMemory ->
+        1f + RELEVANCE_BOOST * memoryQuery.relevanceOf(memory)
+    }
+
+    return memories
+        .map { it to memoryScore(it, now) * boostOf(it) }
+        // 相关性下限（华灯 RAG 相关性下限的阈值思想）：打分低于下限的记忆**不注入**——
+        // 低重要度且已老化的记忆挤进上下文是纯 token 税。这里用**带相关性增益的分数**比较：
+        // 一条"重要度被标低、但本轮查询确实在讲它"的记忆可以被相关性救回线上。
+        .filter { (_, injectionScore) -> injectionScore >= MIN_MEMORY_INJECTION_SCORE }
+        .sortedWith(
+            compareByDescending<Pair<AssistantMemory, Float>> { it.second }
+                .thenByDescending { it.first.sortKey }
+        )
+        .map { it.first }
 }
 
 /**
@@ -325,32 +403,12 @@ internal fun selectMemoriesForPrompt(
 ): List<AssistantMemory> {
     if (memories.isEmpty()) return emptyList()
 
-    // 相关性：查询只分词一次（逐条记忆里重复分词是纯浪费）
-    val memoryQuery = memoryQueryTokens(query)
-    val boostOf = { memory: AssistantMemory ->
-        1f + RELEVANCE_BOOST * memoryQuery.relevanceOf(memory)
-    }
-
-    // **刻意不走 memoryScoreBucket**：分桶是给「system 时代分数连续漂移打掉前缀缓存」用的，
-    // 而 L2 已经不在前缀里。套了分桶反而有害——同一桶内按写入先后排，相关性不到一档就白算。
-    val ranked = memories
-        .map { it to memoryScore(it, now) * boostOf(it) }
-        .sortedWith(
-            compareByDescending<Pair<AssistantMemory, Float>> { it.second }
-                .thenByDescending { it.first.sortKey }
-        )
+    // 排序 + 相关性下限统一收口在 [rankedMemoryCandidates]，Behavior 与旧实现逐位一致。
+    val ranked = rankedMemoryCandidates(memories, now, query)
 
     val selected = mutableListOf<AssistantMemory>()
     var used = 0
-    for ((memory, injectionScore) in ranked) {
-        // 相关性下限（华灯 RAG 相关性下限的阈值思想）：打分低于下限的记忆**不注入**——
-        // 低重要度且已老化的记忆挤进上下文是纯 token 税。注意与「排序分桶」的分工：
-        // 分桶只影响先后，本下限决定去留。默认 importance=0.6 的记忆永不触线
-        // （全老化也有 0.33）；刻意标低重要度（≤0.36）且老化的记忆才会沉底。
-        //
-        // 这里用**带相关性增益的分数**比较：于是一条"重要度被标低、但本轮查询确实在讲它"
-        // 的记忆可以被相关性救回线上（这正是 §3.2 想要的效果之一）。
-        if (injectionScore < MIN_MEMORY_INJECTION_SCORE) continue
+    for (memory in ranked) {
         val cost = estimateTokens(memory.content) + PER_ENTRY_OVERHEAD_TOKENS
         // 超预算时**跳过本条并继续**（不是 break）：一条长记忆不该把后续预算全堵死，
         // 后面的小记忆仍应有机会入选。`selected.isNotEmpty()` 让首条即使超预算也入选，

@@ -140,10 +140,11 @@ class MemoryConsolidationWiringTest {
     fun `the chat path does not count tokens on the main thread for a log line`() {
         val chat = read("app/androidrik/rikkahub/service/ChatService.kt")
 
-        assertTrue(
-            "记忆注入的计数日志必须丢到后台（它是纯日志，主线程数 token 会让输入卡住）",
-            chat.contains("appScope.launch(Dispatchers.Default) {"),
-        )
+        assertFalse("Logging must not select/tokenize memories a second time", chat.contains("selectMemoriesForPrompt("))
+        val handler = read("app/androidrik/rikkahub/data/ai/GenerationHandler.kt")
+        val log = handler.substringAfter("val plan = assembly.memoryPlan").substringBefore("// 输入处理链")
+        assertTrue("Log the actual plan", log.contains("plan.totalEstimatedTokens"))
+        assertFalse("Logging must reuse counts", log.contains("estimateTokens("))
         assertTrue(
             "主线程分段计时要在场：下次卡顿才能直接点名是哪一段",
             chat.contains("turn prep phases on ") && chat.contains("slow chunk "),
@@ -160,6 +161,16 @@ class MemoryConsolidationWiringTest {
                 "保活因此留空实现，退化是可接受的（水位不推进、内容不丢）",
             source.contains("KeepAliveService.start"),
         )
+    }
+
+    @Test
+    fun `chat and consolidator pin distinct host controlled read sources`() {
+        val chat = read("app/androidrik/rikkahub/data/ai/tools/ChatToolFactory.kt")
+            .substringAfter("onRead = { id ->").substringBefore("onSearch =")
+        val consolidation = read("app/androidrik/rikkahub/data/ai/MemoryConsolidationGenerationAgent.kt")
+            .substringAfter("onRead = { id ->").substringBefore("onSearch =")
+        assertTrue(chat.contains("source = MemoryReadSource.CHAT"))
+        assertTrue(consolidation.contains("source = MemoryReadSource.CONSOLIDATION"))
     }
 
     private fun srcRoot(): File {        val candidates = listOf(File("src/main/java"), File("app/src/main/java"))

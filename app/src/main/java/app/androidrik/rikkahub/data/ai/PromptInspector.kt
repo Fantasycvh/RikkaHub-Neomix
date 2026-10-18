@@ -276,7 +276,7 @@ suspend fun inspectPrompt(
     val sourceById = buildSourceById(settings)
 
     // 与真实请求同源：共用 buildInternalMessages（PromptAssembly.kt）
-    val internalMessages = buildInternalMessages(
+    val assembly = buildInternalMessagesWithPlan(
         assistant = assistant,
         settings = settings,
         model = model,
@@ -293,6 +293,8 @@ suspend fun inspectPrompt(
         // L1 冻结的锚点集合：同上，必须与实发同参（空集 = 冻结且无锚点 ⇒ 不产生锚点块）
         frozenAnchorIds = conversation.frozenAnchorIds,
     )
+
+    val internalMessages = assembly.messages
 
     // 与真实请求同一个 transformer 链。processingStatus 传一次性 StateFlow：
     // 默认参数即可满足 transformer 的写入（如 OcrTransformer），预览不展示进度。
@@ -336,7 +338,9 @@ suspend fun inspectPrompt(
                 content = contentWithNote,
                 isSynthetic = message.isSynthetic,
                 // token 只按 Text 段计：占位行是给人看的提示，不冒充被漏算的附件体积
-                tokens = estimateTokens(content),
+                tokens = if (kind == PromptSegmentKind.MEMORY_TAIL && content == assembly.memoryPlan.dataText) {
+                    assembly.memoryPlan.dataTokens
+                } else estimateTokens(content),
             )
             // Tier 4：合成注入消息是多条 `joinToString("\n")` 的合并体，按贡献者 id 拆回逐条，
             // 使预览能归因到具体条目（否则三条世界书条目表现为一段文本，无从跳转）。
@@ -376,9 +380,11 @@ suspend fun inspectPrompt(
                     memoryDisabled = conversation.memoryDisabled,
                     // L1 冻结的锚点集合：非 null 时只渲染会话冻结的那几条（与实发同参）
                     frozenAnchorIds = conversation.frozenAnchorIds,
+                    memoryPlan = assembly.memoryPlan,
                 ),
                 labels = labels,
                 role = message.role.name.lowercase(),
+                memoryPlan = assembly.memoryPlan,
             ) + afterSegments
         }
         // 投影无损校验（华灯投影原则）：每条实发消息必须产出至少一段——空段意味着
@@ -589,6 +595,7 @@ internal fun systemBlocksToSegments(
     blocks: List<SystemBlock>,
     labels: PromptInspectionLabels,
     role: String,
+    memoryPlan: MemoryInjectionPlan? = null,
 ): List<PromptSegment> = blocks
     // 跳过**空的工具引导块**：`buildSystemBlocks` 为每个工具各加一个 TOOL 块，而绝大多数
     // 工具不提供 `systemPrompt`（默认空串）⇒ 实测 13 个工具里有 11 个空块，若照原样成段
@@ -623,7 +630,11 @@ internal fun systemBlocksToSegments(
         role = role,
         content = block.content,
         isSynthetic = true,
-        tokens = estimateTokens(block.content),
+        tokens = when (block.source) {
+            SystemBlockSource.MEMORY -> memoryPlan?.disciplineTokens
+            SystemBlockSource.ANCHOR -> memoryPlan?.anchorTokens
+            else -> null
+        } ?: estimateTokens(block.content),
     )
 }
 

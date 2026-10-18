@@ -496,7 +496,7 @@ class PromptAssemblyTest {
         // 两条同重要度、同新鲜度，只有 sortKey 不同的记忆
         val tikz = AssistantMemory(id = "1", content = "TikZ 渲染器笔记", importance = 0.6f, sortKey = 1)
         val coffee = AssistantMemory(id = "2", content = "用户喜欢手冲咖啡", importance = 0.6f, sortKey = 2)
-        val tightBudget = settings.copy(memoryInjectBudgetTokens = 10)
+        val tightBudget = settings.copy(memoryInjectBudgetTokens = memoryBudgetForOneFullEntry(listOf(tikz, coffee)))
 
         fun tailOf(query: String): String = buildInternalMessages(
             assistant = assistant(enableMemory = true),
