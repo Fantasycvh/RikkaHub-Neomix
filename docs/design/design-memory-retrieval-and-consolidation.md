@@ -571,3 +571,131 @@ library  = input − 新轮次(6_000) − 校准表余量(4_000)   // 同一发�
 3. 配额仍沿用低分硬淘汰，本轮只修假成功/本次必要输出丢失，未实现可逆淘汰。
 4. 运行完成时间与消费水位分离、review epoch、统一注入预算、分来源遥测、检索黄金集均未实施。
    用户明确暂缓的重复全库复核成本，本轮未改变。
+
+## 9. 2026-10-18 B 阶段：版本、显式依赖与可逆修改
+
+本节替代历史说明中「UI 代替版本校验」「同 batch 互锁删除」「低分永久淘汰」的现状描述。
+A 阶段作用域、短事务、提案/进度共同提交保留；分层注入、现有编辑/审批/建议详情、默认开关与分页语义不变。
+
+### 9.1 版本及实际可见证据
+
+- live 记忆增加 revision，从 1 开始；正文、主题、重要度、锚点及主题回填等业务写递增。
+  读取计数/时间仍为字段级遥测，不递增业务版本，不制造无意义冲突。
+- 模型全文页、read/search、create/edit 回执显式给出 revision。edit/delete 必须带正整数
+  expected_revision，生产工具只能走 scope + revision CAS；批准后继续使用持久化的原始 args。
+- 整理已观察集合来自同一 page.records 与实际返回的 read/search 全文，保存 (id,revision) 对；
+  搜索省略项不登记，再读新版本不偷换旧意图。savePending 原样保存版本，不读当前版本补证据。
+- UI 编辑使用打开时的版本，正文/锚点组合保存为一笔原子修改；预览不是乐观锁的替代。
+
+### 9.2 精确依赖和部分采纳
+
+- host 为成功登记的提案生成 operationId，回执返回它；后续合并删除用 depends_on 明确引用。
+  batch 只表示来源运行，不再锁住所有成员。保存验证同库同批 DAG、唯一操作 ID、合法 action、
+  正版本、引用存在/非自依赖/无环；依赖只允许 create/edit，整理删除必须有非空替换依赖。
+  用户直接删除不受整理合并规则约束。
+- create/edit 可单独采纳；拓扑执行仅受自身依赖限制。无关 rejected/stale 不阻塞独立合并。
+  canonical target（含数字别名）冲突仅令相关行 stale，其依赖者 blocked，其他组继续。
+- applied 决策与精确输出 ID/revision 同 SQL 落库；删除前复核替换输出仍在且版本未变，
+  禁止「create 去重刚好复用删除源」。事务结束再校验所有已消费替换输出原版存活，
+  后续修改/显式删除/容量淘汰不能绕过；违反最终守卫整次 apply 回滚。
+- 审计保留 100 条可裁剪行，加仍有 pending 批次的必要决策证据，不能靠裁剪放行删除。
+
+### 9.3 可逆存储及迁移
+
+- 独立 memory_history 存完整 MemoryEntity 快照、operation/actor/reason；每原 numeric ID
+  保留最近 20 个事件，不复用会丢 transient 字段的 AssistantMemory 序列化，不挂 live 外键级联删除。
+- 删除、整库用户删除与容量淘汰同事务写 memory_trash 墓碑/完整快照、删 live、记 history。
+  分数只决定移出工作库，不再决定永久销毁。回收站不计 live 的 200 条，也不参与检索/注入/整理。
+  本轮没有自动按时间/分数/容量清理回收站，也未提供永久清空入口。
+- 删除墓碑为原版 +1，恢复为墓碑 +1，保留 numeric ID/public ID/记忆库，防 ABA 使旧提案复活。
+  恢复校验 scope/墓碑版本/身份/容量；满库明确拒绝，不隐式淘汰另一条。旧空 public ID
+  继续按数字 ID 寻址，可与其他旧空 token 共存；历史恢复不回退 live 读取遥测。
+- 原记忆页仅追加「恢复」入口及历史/回收站全文确认；冲突或存储错误可见，切库重建状态，
+  不自动刷新既有会话的冻结锚点。
+- 显式 40→41 迁移只加列/表/索引，保留旧 ID、global 与既有迁移链。全部旧 pending
+  （含 create）保留原文并标 stale，expected_revision 仍 NULL、contract_version=0，不能伪造版本证据。
+  不给 live public_id 顺手添加会卡住旧空/重复值的唯一约束。41 schema 已由 Room 生成并验证。
+
+### 9.4 实际验证与边界
+
+- 完整 app JVM：**204 suites / 1873 tests，0 failures/errors/skipped**；其中记忆相关 **319 项**。
+- Android 15 选择性真实 Room：**43 项全部通过**（A 回归 21、B 版本/可逆性 19、迁移/文件恢复 3）。
+  包含并发 CAS 仅一写成功、历史/回收站/决策真实 SQL 后故障回滚、容量可逆、恢复不复活旧提案、
+  两组独立合并、依赖输出被改/删/淘汰与同源去重保护，以及旧空 token 共存恢复。
+- 选择性运行命令：`./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest -PmemoryIsolatedTests=true`
+  加 `-Pandroid.testInstrumentationRunnerArguments.class=` 指定
+  `MemoryTransactionInstrumentedTest,MemoryVersioningInstrumentedTest,Migration_40_41_Test` 的完整类名。
+  可选 Runner 跳过 RikkaHubApp/DI/后台整理/清理初始化，默认 UI runner 不变。
+- 测试前 debug/test 包均不存在；仅安装独立测试包，Gradle 测后已移除，复查仅正式包仍在。
+  测试只用 in-memory 或 UUID 命名文件，不使用正式数据库、FTS 回调或真实用户资料。
+- 迁移覆盖全 schema 验证、40 文件复制后真实 Room 升级、41 checkpoint/VACUUM 文件往返后实际
+  历史/回收站恢复；**不经过生产 ZIP 流程**，不代表 BackupArchiveEngine/WAL fallback 全链路验收。
+- 两路独立只读审查已收齐；属性调用编译错误、旧空 token 恢复冲突、重复目标污染独立合并已修复并回归。
+- **直接写模式仍不保证整轮原子/exactly-once**；LLM 在事务外，各工具各自提交。
+  进程死亡、跨进程/多连接压力、真实模型整理端到端、恢复弹窗真机交互仍需单独验收。
+  C 预算/来源遥测、D 检索评测、运行完成时间与水位分离、review epoch 未混入；
+  用户暂缓的重复全库复核成本语义不变。未 bump、提交、推送或构建 release。
+
+## 10. 2026-10-18 C 阶段：统一注入预算与分来源读取遥测
+
+A/B 的分层注入、排序公式、冻结锚点、工具契约、审批默认、ID 与全局库行为不变；
+本节只统一「四层一次算清」的预算口径，并把「谁读了这条记忆」从混合计数拆开。
+
+### 10.1 一次算清：L0–L3 共享同一个不可变 plan
+
+- 新增 `MemoryInjectionPlan`：纪律文本、锚点文本、尾部数据文本、三层入选列表、
+  省略条数与三段**实际渲染字符串**的 token 计数一次产出。真实请求与拼装预览读同一个对象，
+  不再各自选取（此前 system 的 L1 与尾部 L2/L3 独立挑选，既可能重复也无法给出可验证总数）。
+- 装配顺序：先算发送窗口（压缩+条数上限+UI 提示过滤），据此取本轮查询，再建 plan；
+  `buildInternalMessagesWithPlan` 返回消息与 plan，旧 `buildInternalMessages` 委派取消息。
+- 预算硬边界：L0 装不下 ⇒ 全空；L1 对至多 5 条锚点**整块试渲染**，装不下者不进 L2 正文、
+  允许进 L3 索引；剩余可变预算 75% 给 L2、余量给 L3；最后按三段实际文本精确复核，
+  超限走「去全索引 → 去全正文 → 去尾块」最多三级确定性回退。任何一级都**不截断半条正文**。
+- 计费策略每个 plan 只取一次：捕获 tokenizer 实例，实例失效则用该实例计数，冷启动锁字符启发式，
+  同一 plan 内不混两种口径。它是本地估算器口径，**不声称等于 provider 实际账单**。
+- 正文层仍按 `memoryScore × 相关性增益`（不套分桶、0.2 下限、同分新者先），
+  渲染顺序仍是 `sortKey` 降序（L3 升序）；分数公式与旧实现逐位一致。
+- 手工整理分页与「首条超预算仍入选」的饥饿豁免**不在本阶段**，保持原语义。
+- 精确预算下条目可能完全不可见，因此省略告知额外提示：先 `action:"search"` 再按返回 id
+  `action:"read"`，不再暗示可以直接猜一个 id。
+- 每回合只有一条日志，读取 plan 的分段计数，不再另跑一套选取与分词（旧日志既重复计数、
+  又可能与实际注入不同）；拼装预览的尾部/记忆段 token 复用同一计数。
+
+### 10.2 分来源遥测与 41→42
+
+- 新增 `MemoryReadSource { CHAT, CONSOLIDATION }`，由调用方（宿主）指定，**不是**工具 schema
+  参数：聊天工具显式 CHAT，后台整理 agent 显式 CONSOLIDATION。
+- 记忆实体新增四列（默认 0）：`chat_read_count`、`last_chat_read_at`、
+  `consolidation_read_count`、`last_consolidation_read_at`。
+  CHAT 读取同时自增旧 `read_count` 与新 `chat_read_count`、用 MAX 刷新两个时间；
+  CONSOLIDATION 只动自己的两列。两者都不改 `revision`/`updated_at`/正文/锚点/历史。
+- 旧 `read_count`/`last_read_at` 保持**legacy+chat 信用**，不被重新归类为已知聊天读取；
+  派生 `legacyReadCount = max(0, readCount − chatReadCount)`。整理自读因此不能再抬聊天信用、
+  读取活跃度或注入分数。
+- 搜索、普通查看、拼装预览都不记读取；跨库复制不克隆任何读取遥测；历史恢复保留当前遥测，
+  回收站恢复还原快照遥测（与 9.3 的可逆语义一致）。
+- 显式 41→42 只加四列且全部为 0：不伪造来源归属，不给旧事件补「这条是聊天读的」。
+  旧快照缺字段解码为 0；历史/回收站仍用完整实体快照序列化。
+- 整理校准表把读数拆成 legacy+chat / 已知 chat / unknown / consolidation，并在系统提示里明确
+  「unknown 不得当作聊天使用、整理自读不得当作需求证据」；记忆页同口径分开展示。
+  不新增 locale 资源，避免为一段诊断文字牵动全部语言包。
+
+### 10.3 实际验证与边界
+
+- 完整 app JVM 与 Android 15 选择性真实 Room 的结果见本节末「验证记录」；
+  新增覆盖：微小/零负预算全空、真实分词器与冷启动快照下多预算硬上限、
+  L1/L2/L3 去重与溢出锚点只索引、冻结集合不被预算过滤覆盖、预览与实际同源 plan、
+  CHAT/正规读取/并发、整理读取无分数或业务副作用、跨库复制零信用、
+  41→42 与 40→41→42 真实迁移、历史/回收站恢复遥测。
+- 仍是本地估算而非 provider 精确计费；transformer/provider envelope 之后请求体未逐字节比对。
+  进程死亡、跨连接压力、真实模型整理端到端、D 检索评测与「重复全库复核成本」未混入本阶段。
+  未 bump、提交、推送、安装正式包或构建 release。
+- **验证记录**（2026-10-18，最终一轮）：app JVM **207 suites / 1899 tests，0 failures/errors/skipped**；
+  其中记忆相关 **345 项**。Android 15 选择性真实 Room **51 项全部通过**
+  （A 事务回归 21 + B 版本/可逆 19 + C 来源遥测 6 + 40→41 迁移 3 + 41→42 迁移 2）。
+  运行命令同 9.4，类名追加 `MemoryReadTelemetryInstrumentedTest,Migration_41_42_Test`。
+  测试前仅正式包存在，测后 Gradle 已移除测试包，复查仍只有 `app.androidrik.rikkahub`；
+  所有设备用例只用 in-memory 或 UUID 命名数据库，未访问正式数据库。
+- 固定 DeepSeek Flash 工作流（`F:/dsh-data/workflows/flash-dev`）本轮用于两个限定写域模块，
+  由 Lead 复核 diff、修正预算计费与测试夹具并统一执行构建；工作流的 done 只表示静态审查通过，
+  不作为测试结论。实现前先拍 A/B 源码基线（64 文件 SHA256），增量审查据此进行而不重看 HEAD diff。
