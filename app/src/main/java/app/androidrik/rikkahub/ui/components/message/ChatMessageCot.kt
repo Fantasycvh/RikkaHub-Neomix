@@ -96,7 +96,8 @@ sealed interface MessagePartBlock {
          * 整轮折叠（决策 1/2/8）：该链能否整块收起，只留末尾的最终回答。
          *
          * 为 true 需要同时满足：整轮折叠已开启、该链之后还有面向用户的回答文本、
-         * 链里没有待审批步骤、链里没有“交付物”步骤（图表 / 生成的图片不该被折起来）。
+         * 链里至少有一个工具步骤、链里没有待审批步骤、链里没有“交付物”步骤
+         * （图表 / 生成的图片不该被折起来）。
          */
         val canCollapse: Boolean = false,
         /** 决策 8：链里存在待审批步骤 ⇒ 强制展开（审批入口不能消失） */
@@ -220,9 +221,17 @@ private fun List<MessagePartBlock>.withFoldDecisions(
     val hasFinalAnswer = drop(index + 1).any { next ->
         next is MessagePartBlock.ContentBlock && next.part is UIMessagePart.Text
     }
+    // 链里至少要有一个工具步骤才值得折：纯思考回合（只有 reasoning + 回答、没有工具调用）
+    // 折起来只剩一个「1 步 · 0 工具 · 0 段说明」的折叠头，纯属噪音 ⇒ 按普通思考渲染。
+    // 交付物类工具（generate_image）独占的 1-step 块本身是工具，只被 [hasDeliverable] 挡住。
+    val hasToolStep = block.steps.any { step ->
+        step is ThinkingStep.ToolStep || step is ThinkingStep.ServerToolStep
+    }
     block.copy(
-        // 决策 8：有待审批步骤时整链不折（审批入口不能消失）
-        canCollapse = wholeTurnFolding && hasFinalAnswer && !hasPendingStep && !hasDeliverable,
+        // 决策 8：有待审批步骤时整链不折（审批入口不能消失）；
+        // 纯思考链（无工具）也不折
+        canCollapse = wholeTurnFolding && hasFinalAnswer && hasToolStep &&
+            !hasPendingStep && !hasDeliverable,
         // 决策 8：强制展开与开关无关，审批入口任何时候都不能被藏起来
         forceExpand = hasPendingStep,
     )

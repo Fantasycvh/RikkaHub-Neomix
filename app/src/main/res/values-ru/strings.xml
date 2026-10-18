@@ -1893,5 +1893,10 @@
   <string name="assistant_page_memory_freeze_done">Зафиксировано в чатах: %1$d</string>
   <string name="chat_memory_freeze_action">Зафиксировать якоря в этом чате</string>
   <string name="chat_memory_freeze_toast">Зафиксировано якорей в этом чате: %1$d</string>
+  <!-- 整轮折叠（docs/design/design-whole-turn-folding.md） -->
+  <string name="chain_of_thought_fold_summary">Шагов: %1$d · инструментов: %2$d · пояснений: %3$d</string>
+  <string name="setting_display_page_whole_turn_folding_title">Сворачивать ответ целиком</string>
+  <string name="setting_display_page_whole_turn_folding_desc">Собирать мысли, вызовы инструментов и пояснения по ходу одной реплики в один раскрываемый блок, оставляя финальным ответом только текст после последнего вызова инструмента</string>
+  <string name="setting_display_page_auto_collapse_thinking_taken_over">Управляется сворачиванием ответа целиком</string>
 </resources>
 

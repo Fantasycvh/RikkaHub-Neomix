@@ -1949,5 +1949,10 @@
   <string name="assistant_page_memory_freeze_done">已固化到 %1$d 個會話</string>
   <string name="chat_memory_freeze_action">本對話固化記憶</string>
   <string name="chat_memory_freeze_toast">已在本對話固化 %1$d 條錨點</string>
+  <!-- 整轮折叠（docs/design/design-whole-turn-folding.md） -->
+  <string name="chain_of_thought_fold_summary">%1$d 步 · %2$d 工具 · %3$d 段說明</string>
+  <string name="setting_display_page_whole_turn_folding_title">整輪折疊</string>
+  <string name="setting_display_page_whole_turn_folding_desc">把一則回覆裡的思考、工具調用與過程說明收進一個可展開區塊，只留最後一次工具調用之後的文字作為最終回答</string>
+  <string name="setting_display_page_auto_collapse_thinking_taken_over">由整輪折疊接管</string>
 </resources>
 

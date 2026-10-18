@@ -1893,5 +1893,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="assistant_page_memory_freeze_done">%1$d개 대화에 고정했습니다</string>
   <string name="chat_memory_freeze_action">이 대화에서 앵커 고정</string>
   <string name="chat_memory_freeze_toast">이 대화에서 앵커 %1$d개를 고정했습니다</string>
+  <!-- 整轮折叠（docs/design/design-whole-turn-folding.md） -->
+  <string name="chain_of_thought_fold_summary">%1$d단계 · 도구 %2$d개 · 설명 %3$d개</string>
+  <string name="setting_display_page_whole_turn_folding_title">응답 전체 접기</string>
+  <string name="setting_display_page_whole_turn_folding_desc">한 응답의 사고·도구 호출·중간 설명을 하나의 펼칠 수 있는 블록으로 접고, 마지막 도구 호출 이후 텍스트만 최종 답변으로 남깁니다</string>
+  <string name="setting_display_page_auto_collapse_thinking_taken_over">응답 전체 접기가 대신 처리합니다</string>
 </resources>
 

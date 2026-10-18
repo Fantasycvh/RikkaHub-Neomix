@@ -372,6 +372,53 @@ class WholeTurnFoldingTest {
         assertEquals(ServerToolStatus.IN_PROGRESS, (running.steps.single() as ThinkingStep.ServerToolStep).tool.status)
     }
 
+    // ---- 额外：纯思考回合（无工具）不折叠 ----
+
+    @Test
+    fun `pure thinking turn without any tool is not foldable`() {
+        val blocks = listOf(reasoning("想一下再答"), text("最终回答"))
+            .groupMessageParts(wholeTurnFolding = true)
+
+        // 分组不变：思考仍旧独立成块，回答仍是正文
+        assertEquals(2, blocks.size)
+        val chain = blocks.onlyThinking()
+        assertEquals(1, chain.steps.size)
+        assertTrue(chain.steps.single() is ThinkingStep.ReasoningStep)
+        // 链里没有工具 ⇒ 不折（否则只剩「1 步 · 0 工具 · 0 段说明」的噪音头）
+        assertEquals(0, chain.steps.thinkingChainSummary().toolCount)
+        assertFalse("纯思考回合没有可折叠的过程", chain.canCollapse)
+        assertFalse(chain.forceExpand)
+    }
+
+    // ---- 额外：含工具即折叠（与上一条成对，守住新规则的方向）----
+
+    @Test
+    fun `chain with at least one tool stays foldable`() {
+        val viaTool = listOf(reasoning("想一想"), tool("search_web"), text("最终回答"))
+            .groupMessageParts(wholeTurnFolding = true)
+            .onlyThinking()
+        assertTrue("有工具调用 ⇒ 可以折", viaTool.canCollapse)
+
+        // 服务端工具同样算「工具」
+        val viaServerTool = listOf(reasoning("想一想"), serverTool(), text("最终回答"))
+            .groupMessageParts(wholeTurnFolding = true)
+            .onlyThinking()
+        assertTrue(viaServerTool.canCollapse)
+    }
+
+    // ---- 额外：交付物独占的 1-step 块不被“有工具才折”误伤 ----
+
+    @Test
+    fun `deliverable only block still never folds even though it holds a tool`() {
+        val blocks = listOf(tool("generate_image", output = """{"images":["/files/a.png"]}"""), text("最终回答"))
+            .groupMessageParts(wholeTurnFolding = true)
+
+        val deliverable = blocks.onlyThinking()
+        assertEquals(1, deliverable.steps.size)
+        assertTrue(deliverable.steps.single() is ThinkingStep.ToolStep)
+        assertFalse("交付物块本身是工具，但仍须始终可见", deliverable.canCollapse)
+    }
+
     // ---- helpers ----
 
     private fun MessagePartBlock.ThinkingBlock.tools() =
