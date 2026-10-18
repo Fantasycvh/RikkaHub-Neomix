@@ -42,6 +42,32 @@ private const val SHELL_TIMEOUT_MAX_SECONDS = 600L
  */
 private const val SHELL_TIMEOUT_BUFFER_MS = 15_000L
 
+/**
+ * 沙箱可用工具说明（写进 shell 类**工具描述**，与后台命令共用同一份措辞）。
+ *
+ * 模型默认按「完整 Linux 主机」假设解释器齐全，于是先写 `python3 -c ...` 再撞
+ * `command not found`（日志实证）。Rootfs 是用户自行安装的精简镜像，预装什么因镜像
+ * 而异 ⇒ 只能要求「先探测」，不能写死「没有 python3」（有的镜像确实有）。
+ */
+private const val SANDBOX_INTERPRETER_NOTE =
+    "The Rootfs is a slim, user-installed Linux image: common Unix tools such as bash, perl, awk and sed " +
+        "are usually present, but interpreters like python3 or node are NOT guaranteed. " +
+        "Probe before relying on one (e.g. `command -v python3`); if it is missing, do the job with shell tools " +
+        "or install it with the distribution's package manager instead of assuming it exists."
+
+/** shell 的「找不到命令」退出码（bash/dash 对未知命令统一返回 127）。 */
+private const val COMMAND_NOT_FOUND_EXIT_CODE = 127
+
+/**
+ * 退出码 127 时给模型的可执行提示：只回传 `command not found` 只能让模型自己猜下一步，
+ * 这里直接指明「先探测 + 改用已有工具 / 先安装」。真实清单只能探测，故不写死。
+ */
+private const val COMMAND_NOT_FOUND_NOTE =
+    "Exit code 127 means a command was not found. Probe the exact name with `command -v <name>` and use what " +
+        "actually exists in this Rootfs (bash, perl, awk, sed and core Unix utilities are usually present; " +
+        "python3, node and similar interpreters may not be); otherwise install it with the distribution's " +
+        "package manager."
+
 /** 后台任务查询结果里单流返回的最大字符数：尾部缓冲是 8K，再截一道避免轮询把上下文吃掉。 */
 private const val TASK_TAIL_RETURN_CHARS = 4_000
 /**
@@ -430,7 +456,8 @@ private fun createShellTool(
         if (!defaultCwd.isNullOrBlank()) {
             append("Defaults to '$defaultCwd'. ")
         }
-        append("Requires Rootfs to be installed and ready.")
+        append("Requires Rootfs to be installed and ready. ")
+        append(SANDBOX_INTERPRETER_NOTE)
     },
     parameters = {
         InputSchema.Obj(
@@ -481,6 +508,8 @@ private fun createShellTool(
                     put("stderr", result.stderr)
                     put("timedOut", result.timedOut)
                     if (result.truncated) put("truncated", true)
+                    // 失败也要给「下一步怎么做」：127 是模型最常撞的形态（写了不存在的解释器）
+                    if (result.exitCode == COMMAND_NOT_FOUND_EXIT_CODE) put("note", COMMAND_NOT_FOUND_NOTE)
                 }.toString()
             )
         )
@@ -508,7 +537,8 @@ private fun createRunBackgroundTool(
         append("Interactive commands are NOT supported (stdin is closed, so anything prompting for input fails immediately) - run those with workspace_shell or the terminal. ")
         append("A task is stopped automatically when it exceeds its time limit, and the full output is written to ")
         append("/workspace/.tasks/<taskId>.stdout.log and .stderr.log inside the workspace, so use workspace_read_file if the reported tail is not enough. ")
-        append("The workspace files area is mounted at /workspace.")
+        append("The workspace files area is mounted at /workspace. ")
+        append(SANDBOX_INTERPRETER_NOTE)
     },
     parameters = {
         InputSchema.Obj(
