@@ -60,6 +60,7 @@ import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
+import app.androidrik.rikkahub.data.ai.withProviderErrorHint
 import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.parseRuleReminderSensitivity
 import app.androidrik.rikkahub.data.ai.PromptInspection
@@ -426,8 +427,11 @@ class ChatService(
         solution: ChatErrorSolution? = null,
     ) {
         if (error is CancellationException) return
+        // 线路侧拒绝（如中转重建 Gemini contents 丢 tool 消息）补一条可执行提示；
+        // 判据见 ProviderErrorText 的 KDoc（真机 18/18 配平仍被拒）
+        val shown = error.withProviderErrorHint()
         _errors.update {
-            it + ChatError(title = title, error = error, conversationId = conversationId, solution = solution)
+            it + ChatError(title = title, error = shown, conversationId = conversationId, solution = solution)
         }
     }
 

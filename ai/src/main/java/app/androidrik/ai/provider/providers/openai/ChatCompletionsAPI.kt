@@ -349,16 +349,14 @@ class ChatCompletionsAPI(
         val host = providerSetting.baseUrl.toHttpUrl().host
         return buildJsonObject {
             put("model", params.model.modelId)
-            put(
-                "messages",
-                buildMessages(
-                    messages = messages,
-                    includeHistoryReasoning = providerSetting.includeHistoryReasoning,
-                    supportInputModalities = params.model.inputModalities,
-                    // 见 requiresToolReasoningBackfill：网关要求「思考模式 + 带 tool_calls」的消息必须回传思维链
-                    backfillReasoning = requiresToolReasoningBackfill(host, params.model),
-                )
+            val builtMessages = buildMessages(
+                messages = messages,
+                includeHistoryReasoning = providerSetting.includeHistoryReasoning,
+                supportInputModalities = params.model.inputModalities,
+                // 见 requiresToolReasoningBackfill：网关要求「思考模式 + 带 tool_calls」的消息必须回传思维链
+                backfillReasoning = requiresToolReasoningBackfill(host, params.model),
             )
+            put("messages", builtMessages)
 
             if (isModelAllowTemperature(params.model)) {
                 if (params.temperature != null) put("temperature", params.temperature)

@@ -2810,6 +2810,21 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **没有「刚压过 / 已有 checkpoint」的闸门** ⇒ 压缩后若尾部仍满，下一轮会再压一次 ⇒
   连续两次前缀失效 + 两次摘要调用。
   **决定：暂时搁置**（用户 2026-10-17）。真要动时只做「加闸门」这一件事，不动替换式压缩本身。
+- 2026-10-18 **查清「number of function response parts...」拒收来自中转，非本仓缺陷**（真机实证，含对照）。
+  现象：`gemini-3.8-flash` 经 `api.rinko.ai` 中转（OpenAI 兼容）跑带工具的会话，工具执行后下一轮 400：
+  `Please ensure that the number of function response parts is equal to the number of function call
+  parts of the function call turn.`（**Gemini 原生错误**）。
+  **取证方式**：在 `ChatCompletionsAPI` 构建请求体后加临时诊断（只打印计数），打印
+  `assistant.tool_calls` 与 `role:"tool"` 消息数：
+  - 通过时：25/25、28/28、29/29、33/33、16/16、18/18（全部相等）
+  - **被拒时：`tool_calls=18, role:tool=18`（同样相等），2.6 秒后中转返回 400 报同一个错**
+  ⇒ **我方报文已配平，拒收发生在中转**：它把 OpenAI 报文重建成 Gemini `contents` 时丢了
+  `functionResponse`。这是**线路侧问题，客户端无法修正**。
+  **已做**：删掉临时诊断；新增 `ProviderErrorText.kt` + `addError` 接线 —— 命中该文案时
+  在原错误后追加可执行提示（换模型/换线路 + 声明原始报文已配平）。
+  **另记**：2026-10-17 加的发送前配平护栏（`ToolResultBalancingTransformer`）**并不能修掉这次**
+  （它当时确实补了 1 条缺失结果，但报文本来就合法），价值在于覆盖 subagent/记忆整理路径。
+  **未做**：未给中转提 issue；未验证换其它 Gemini 线路是否也中招。
 - 2026-10-17 **安装包体积盘点（用户决定：TikZ 保留，暂不精简）**。实测 `app/release` 产物 **74.3 MB**：
   `assets` 30.8M(41.5%) / `lib/arm64-v8a` 26.0M(35.1%) / `classes*.dex` 11.2M(15.1%) / `static` 3.1M(4.2%)。
   **最大单点是 LaTeX/TikZ 栈，压缩后 34.88M = 49%**：`assets/tex` 18.29M + `libtex_poc.so` 3.48M
