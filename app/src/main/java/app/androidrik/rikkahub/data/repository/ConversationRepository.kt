@@ -758,6 +758,29 @@ class ConversationRepository(
     }
 
     /**
+     * 自动起名的**单列回写**（只写 `title`）。
+     *
+     * 为什么不走 [updateConversation]：起名是数秒的网络请求，返回时调用方手里的会话快照
+     * 已经过期（期间还在流式接收）；整对象写回会把旧快照的 `messageNodes` 盖到活跃内存态上
+     * ⇒ 标题回来的那一刻，在途正文当场消失。这个入口**每轮自动触发**，是默认路径。
+     */
+    suspend fun updateTitle(conversationId: Uuid, title: String) {
+        conversationDAO.updateTitle(conversationId.toString(), title)
+    }
+
+    /**
+     * 聊天建议的**单列回写**（只写 `suggestions`，JSON 编码与整对象保存共用同一格式）。
+     *
+     * 理由与 [updateTitle] 同款（网络请求 + 每轮自动触发 + 生成中回写）。
+     */
+    suspend fun updateChatSuggestions(conversationId: Uuid, suggestions: List<String>) {
+        conversationDAO.updateChatSuggestions(
+            conversationId.toString(),
+            JsonInstant.encodeToString(suggestions),
+        )
+    }
+
+    /**
      * L1 锚点快照的**单会话**写入点（会话开始冻结；见 `ConversationDAO.updateFrozenAnchors`）。
      *
      * 只写 `frozen_anchors` 一列 —— 不走 [updateConversation]，否则会把调用方手里的

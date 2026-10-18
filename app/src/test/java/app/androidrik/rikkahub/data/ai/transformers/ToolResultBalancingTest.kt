@@ -74,11 +74,40 @@ class ToolResultBalancingTest {
             .output.filterIsInstance<UIMessagePart.Text>().single().text
         val json = Json.parseToJsonElement(text).jsonObject
 
-        assertEquals("tool result missing", json["error"]?.jsonPrimitive?.content)
+        assertEquals(
+            "正文要说明「结果拿不到了、等用户决定」",
+            "unavailable — the app was interrupted before saving this tool's output; " +
+                "do not re-run it automatically, ask the user first",
+            json["result"]?.jsonPrimitive?.content,
+        )
         assertTrue(
             "必须能看出是系统补的：$text",
             json["_meta"]?.jsonObject?.get("synthesized")?.jsonPrimitive?.boolean == true,
         )
+    }
+
+    /**
+     * ② 的**反重试**契约（2026-10-18 核查项）：合成结果里不能出现任何「工具执行失败」的暗示。
+     *
+     * 现场：模型把 `{"error":"tool result missing"}` 读成「这次调用失败了」⇒ 用同样的参数
+     * 重发带副作用的调用（已在修「空输出重跑」的证伪里实际观察到）。
+     * 所以这里逐字扫**整个合成正文**（不只 `result` 字段），任何失败语义的词都算回归。
+     */
+    @Test
+    fun `synthesized result never suggests the tool failed`() {
+        val messages = listOf(user("run it"), assistant(call("call-1")))
+        val text = balanceToolCallResults(messages).messages.toolCalls().single()
+            .output.filterIsInstance<UIMessagePart.Text>().single().text
+        val lower = text.lowercase()
+
+        listOf("error", "failed", "failure", "missing", "exception", "retry").forEach { word ->
+            assertFalse("合成文案不得出现「$word」（会诱发模型自动重发同一调用）：$text", word in lower)
+        }
+        // 明确要求「不要自动重跑、先问用户」
+        assertTrue("必须显式劝阻自动重试：$text", "do not re-run it automatically" in lower)
+        assertTrue("必须要求先问用户：$text", "ask the user first" in lower)
+        // 机器可读标记保留（下游/日志据此识别合成结果）
+        assertTrue("必须保留 synthesized 标记：$text", "\"synthesized\":true" in text.replace(" ", ""))
     }
 
     // ---- 2. call 与 result 都有且配对 ⇒ 原样通过 ----

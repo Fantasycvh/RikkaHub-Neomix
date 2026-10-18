@@ -19,6 +19,8 @@ import app.androidrik.ai.ui.UIMessagePart
  * 不落库、不改 UI、不改导出——只在「构建本次请求的消息列表」那一刻生效。规则：
  * 1. assistant 消息里有 tool call 却缺结果（`output` 为空）⇒ **补一条合成结果**，
  *    而不是剔除该 call（剔除会让模型以为自己没调过，行为上比报错更糟）。
+ *    合成结果的措辞见 [SYNTHESIZED_TOOL_RESULT_TEXT]：只表达「结果拿不到了」，
+ *    **不**暗示「工具执行失败」——后者会诱发模型用同样参数重跑带副作用的调用。
  * 2. 有结果却没有对应 call 的孤儿结果（历史遗留的 `UIMessagePart.ToolResult`）⇒ **丢弃**，
  *    少数 provider 会因孤儿结果报同类错误。
  * 3. 配对键是 `toolCallId`；本仓当前形态把结果内嵌在 `UIMessagePart.Tool.output` 里，
@@ -41,11 +43,19 @@ internal const val TOOL_RESULT_BALANCE_TAG = "ToolResultBalancing"
 /**
  * 补进缺失结果的合成正文。
  *
- * 同时满足两个要求：内容能表达「结果丢了」（`error` 字段）、并且**自证是系统补的**
- * （`_meta.synthesized`），模型据此可以决定重试而不是假装调用成功过。
+ * 措辞是**契约的一部分**：这里只允许说「结果拿不到了」，**不得**出现 `error` / `failed` /
+ * `missing` 这类「工具执行失败」的暗示。
+ *
+ * 为什么（真机观察到的连锁反应）：模型看到 `{"error":"tool result missing"}` 会读成
+ * 「这次调用失败了」⇒ 立刻用**同样的参数再发一次**带副作用的调用（write / shell / memory
+ * create 被重复执行）。而这条合成结果是「app 在保存这次输出之前被打断」——重跑既不安全也不
+ * 必要，正确动作是告诉用户、让用户决定。
+ *
+ * 机器可读标记保留在 `_meta.synthesized`（`true` = 系统补的，不是工具的真实输出）。
  */
 internal const val SYNTHESIZED_TOOL_RESULT_TEXT =
-    """{"error":"tool result missing","_meta":{"synthesized":true}}"""
+    """{"result":"unavailable — the app was interrupted before saving this tool's output; """ +
+        """do not re-run it automatically, ask the user first","_meta":{"synthesized":true}}"""
 
 /** 一次配平的产物：修正后的列表 + 两个计数（供日志与单测断言）。 */
 internal data class ToolResultBalancing(

@@ -7,6 +7,8 @@ import app.androidrik.rikkahub.data.model.toMessageNode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -133,5 +135,98 @@ class ConversationSessionMetadataTest {
         )
 
         assertEquals("update 必须看到最新内存态", 2, seen?.messageNodes?.size)
+    }
+
+    // ---- ③ 自动标题 / 聊天建议的回写（网络请求返回时的落点） ----
+
+    /** 让 session 处于 isGenerating=true（回写的真实现场：标题/建议都是生成期间回来的）。 */
+    private fun markGenerating(session: ConversationSession, scope: CoroutineScope) {
+        session.setJob(scope.launch { awaitCancellation() })
+        assertTrue("前置：会话必须处于生成中", session.isGenerating)
+    }
+
+    /**
+     * ③ 核心断言：**生成中**写回标题时，会话的消息内容不得改变。
+     *
+     * 旧写法是「网络请求返回 → 重新读 DB 整对象 → 改字段 → `saveConversation` 整对象写回」，
+     * 而 DB 里没有请求期间收到的流式内容 ⇒ 标题回来的那一刻正文被旧快照替换
+     *（这个入口每轮自动触发，是默认路径）。
+     *
+     * 落点用 [updateMetadataSafely]（= `ChatService.updateConversationMetadata` 的实现），
+     * `loadCurrent` 故意写成「一读就炸」：有活跃 session 时**不许**去读 DB 拿基线。
+     */
+    @Test
+    fun `title write-back while generating keeps the in-flight messages`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val session = newSession(scope, generatingConversation(Uuid.random()))
+        markGenerating(session, scope)
+        val nodesBefore = session.state.value.messageNodes
+        var persisted: Conversation? = null
+
+        updateMetadataSafely(
+            session = session,
+            loadCurrent = { error("生成中回写标题不得读 DB 快照当基线（会覆盖在途内容）") },
+            update = { it.copy(title = "自动起的标题") },
+            persist = { persisted = it },
+        )
+
+        assertEquals("标题要落地", "自动起的标题", session.state.value.title)
+        assertEquals("在途消息内容一个字都不能变", nodesBefore, session.state.value.messageNodes)
+        // 落库侧同样必须是「当前内存值」——旧实现写回的是 DB 快照
+        assertEquals(nodesBefore, persisted?.messageNodes)
+        assertEquals("自动起的标题", persisted?.title)
+    }
+
+    @Test
+    fun `suggestion write-back while generating keeps the in-flight messages`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val session = newSession(scope, generatingConversation(Uuid.random()))
+        markGenerating(session, scope)
+        val nodesBefore = session.state.value.messageNodes
+        var persistedSuggestions: List<String>? = null
+
+        updateMetadataSafely(
+            session = session,
+            loadCurrent = { error("生成中回写建议不得读 DB 快照当基线") },
+            update = { it.copy(chatSuggestions = listOf("继续吗？", "换个说法")) },
+            persist = { persistedSuggestions = it.chatSuggestions },
+        )
+
+        assertEquals(listOf("继续吗？", "换个说法"), session.state.value.chatSuggestions)
+        assertEquals(nodesBefore, session.state.value.messageNodes)
+        assertEquals(listOf("继续吗？", "换个说法"), persistedSuggestions)
+    }
+
+    /** 没有活跃 session 时才允许（且必须）从 DB 读一次作为基线。 */
+    @Test
+    fun `write-back without a session uses the db baseline`() = runBlocking {
+        val dbConversation = generatingConversation(Uuid.random()).copy(title = "旧标题")
+        var persisted: Conversation? = null
+
+        updateMetadataSafely(
+            session = null,
+            loadCurrent = { dbConversation },
+            update = { it.copy(title = "新标题") },
+            persist = { persisted = it },
+        )
+
+        assertEquals("新标题", persisted?.title)
+        // 无 session ⇒ 落库值必须建立在 DB 读值上（不能凭空造一个空会话）
+        assertEquals(dbConversation.messageNodes, persisted?.messageNodes)
+    }
+
+    /** DB 里也没有这条会话时静默跳过（不落一条空会话）。 */
+    @Test
+    fun `write-back without a session and without a db row is a no-op`() = runBlocking {
+        var persistCalls = 0
+
+        updateMetadataSafely(
+            session = null,
+            loadCurrent = { null },
+            update = { it.copy(title = "新标题") },
+            persist = { persistCalls++ },
+        )
+
+        assertEquals(0, persistCalls)
     }
 }

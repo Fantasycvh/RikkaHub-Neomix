@@ -4,8 +4,10 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -202,6 +204,17 @@ internal fun toolsToExecute(tools: List<UIMessagePart.Tool>): List<UIMessagePart
  * **一次只并一个**：调用方每拿到一个结果就并一次并 emit（见 `GenerationHandler` 执行段）——
  * 取消时已完成的结果已经在内存态里，停止生成能读到（`ChatService.persistStoppedGeneration` 只读内存态），
  * 不会随「攒到最后统一回填」的局部列表一起丢掉。
+ *
+ * 注意：**仅靠 emit 不足以保证「已完成的结果不丢」**。本函数是纯同步变换、永不半途被打断，
+ * 但把结果送到会话内存态的那一步（`emit` → `flowOn` 的 channel → collect 端）是挂起的，
+ * 生成协程被取消时会整段丢失，而且**加 `withContext(NonCancellable)` 也救不回来**：
+ * 1. `flow {}` 的 `SafeCollector` 按 Job 校验发射上下文，换成 `NonCancellable` 会直接抛
+ *    `Flow invariant is violated`（coroutines 1.11；见 `GenerationToolLoopTest` 的用例说明）；
+ * 2. 即便改成 `channelFlow` 让发射合法，`flowOn` 的 channel 在 collect 端被取消后
+ *    也不会再把缓冲值交给 collector（本仓实测：[1] 到、NonCancellable 里的 [2] 不到）。
+ *
+ * 所以「取消时必定落进消息」由 `generateText` 的 `onMessagesCommitted` 旁路落点保证
+ * （每次回填同步写一份快照，`ChatService.stopGeneration` 读它补进内存态）。
  */
 internal fun applyToolOutput(
     messages: List<UIMessage>,
@@ -390,6 +403,19 @@ class GenerationHandler(
          * 手动「继续生成」用它把被截断的消息接着写下去（见 [CONTINUE_INCOMPLETE_HINT]）。
          */
         initialRecoveryHint: String? = null,
+        /**
+         * 每次工具结果回填后的**取消安全落点**（见 `commitToolResult`）。
+         *
+         * 为什么不是「把 emit 包进 `NonCancellable`」就够了：发射要经过 `flow`/`flowOn`，
+         * 而生成协程被取消时这条链路必然断（`flow {}` 里加 `NonCancellable` 会直接抛
+         * Flow invariant，`channelFlow` 的缓冲值也不会再被已取消的 collector 取走）。
+         * 回调是**同步调用**，与 `messages = applyToolOutput(...)` 在同一段不可挂起代码里，
+         * 因此取消请求无法把它撕开 ⇒ 调用方（`ChatService`）能在取消/停止后拿到最后一份
+         * 已完成结果，补进会话内存态再落库。
+         *
+         * 默认 null：无头 run（`SubagentRunner`）自己维护 `currentMessages`，无需此落点。
+         */
+        onMessagesCommitted: ((List<UIMessage>) -> Unit)? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -693,12 +719,30 @@ class GenerationHandler(
             // **每完成一个工具就回填并 emit 一次**（不再攒到整批之后统一回填）：
             // 取消/停止时已完成的结果已经在内存态里，`ChatService.persistStoppedGeneration`
             // （只读内存态）能读到；攒到最后统一回填的实现会把它们随局部列表一起丢掉。
+            //
+            // 回填的**取消安全**（本仓 2026-10-18 核查项 ①）：工具已算完、结果还没并进消息
+            // 就被取消时，只包 `withContext(NonCancellable) { emit(...) }` 是**做不到**的——
+            // `flow {}` 的 SafeCollector 会因 Job 变化抛 `Flow invariant is violated`
+            // （coroutines 1.11），改用 `channelFlow` 也只能送进缓冲、已取消的 collector 不再取
+            // （两条都实测过，用例见 `GenerationToolLoopTest`）。
+            // 因此这里做两件事：
+            // 1. 「合并 + 写旁路落点」放进 `NonCancellable`：这一段今天不含挂起点（语义等价），
+            //    但把「已完成结果必须落地」的意图钉在唯一的回填点上——日后若在此处加落库/检查点
+            //    这类挂起调用，取消在飞也不会把它半途撕开；
+            // 2. 落点在 emit **之前**同步写给 `onMessagesCommitted`，由停止路径补进内存态，
+            //    这条路径不依赖 flow（emit 仍照常尽力送达：collector 还活着时 UI 立刻可见）。
+            // 注意：**工具执行本身不在 NonCancellable 内**（上面 `runCatching` 里的 execute 仍是
+            // 可取消的），否则用户点停止后会继续跑到工具结束。
             val commitToolResult: suspend (UIMessagePart.Tool) -> Unit = { result ->
                 executedTools += result
-                messages = applyToolOutput(messages, result)
+                val committed = withContext(NonCancellable) {
+                    messages = applyToolOutput(messages, result)
+                    onMessagesCommitted?.invoke(messages)
+                    messages
+                }
                 emit(
                     GenerationChunk.Messages(
-                        messages.transforms(
+                        committed.transforms(
                             transformers = outputTransformers,
                             context = context,
                             model = targetModel,

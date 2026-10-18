@@ -22,6 +22,7 @@ import app.androidrik.rikkahub.data.ai.guardThresholds
 import app.androidrik.rikkahub.data.datastore.DEFAULT_WORKSPACE_TURN_BUDGET_CHARS
 import app.androidrik.rikkahub.data.datastore.DEFAULT_WORKSPACE_TURN_MAX_STEPS
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
+import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.model.Conversation
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.uuid.Uuid
@@ -53,6 +54,23 @@ class ConversationSession(
         internal set
     // 会话状态
     val state = MutableStateFlow(initial)
+
+    /**
+     * **已完成工具结果的取消安全落点**（见 `GenerationHandler.generateText` 的
+     * `onMessagesCommitted` 与 `ChatService.stopGeneration`）。
+     *
+     * 为什么需要：工具结果回填后要靠 `emit` 才能进入 [state]，而这条链路（`flow`/`flowOn`
+     * 的 channel → collect 端）在生成协程被取消时必然断掉——`withContext(NonCancellable)`
+     * 包 `emit` 不行（`flow {}` 会抛 Flow invariant），`channelFlow` 的缓冲值也不会再被
+     * 已取消的 collector 取走。于是「工具已算完、随即被取消」的那一份结果会从内存态里消失，
+     * `persistStoppedGeneration` 落库的仍是旧内容。
+     *
+     * 语义：**最近一次工具回填的快照**（每次回填覆盖；新一轮生成开始时清空）。
+     * 停止路径把它交给 `ChatService.withRestoredToolOutputs`——那里**只补**快照里已完成、
+     * 而内存态还没执行的工具结果，绝不覆盖正文，因此「快照旧 / 内存新」的混合状态也安全。
+     * 所以这里不需要「送达即清空」的时序配合：快照只增补，不会把正文改回去。
+     */
+    val lastCommittedMessages = MutableStateFlow<List<UIMessage>?>(null)
 
     // 原子引用计数
     private val refCount = AtomicInteger(0)
@@ -113,6 +131,7 @@ class ConversationSession(
     private val _generationJob = MutableStateFlow<Job?>(null)
     val generationJob: StateFlow<Job?> = _generationJob.asStateFlow()
     val isGenerating: Boolean get() = _generationJob.value?.isActive == true
+
     val isInUse: Boolean
         get() = refCount.get() > 0 || isGenerating ||
                 messageQueue.state.value.messages.isNotEmpty()
@@ -243,6 +262,37 @@ class ConversationSession(
         idleCheckJob?.cancel()
         idleCheckJob = null
     }
+}
+
+/**
+ * 元数据回写的**唯一决策点**（可单测，见 `ConversationSessionMetadataTest`）：
+ * **有活跃 session 时作用在内存最新值上，没有 session 时才允许从 DB 读一次作基线。**
+ *
+ * 为什么必须共用一处：标题 / 聊天建议 / 置顶 / 移动助手这些回写都发生在「几秒的网络请求
+ * 或一次点击之后」，基线若取 DB 快照，就会把这段时间里收到的流式内容整份盖掉——标题回来的
+ * 那一刻正文当场消失（生成建议、自动起名都**每轮自动触发**，是默认路径而不是边缘）。
+ *
+ * 生成中（[ConversationSession.isGenerating]）不特殊处理：`update` 是从**当前内存值**出发的
+ * 纯函数变换（只改一个元数据字段），因此只会改动那一个字段，`messageNodes` 原样保留。
+ *
+ * @param session 活跃会话；null = 该会话没有内存态，此时 `loadCurrent` 是唯一可用的基线
+ * @param loadCurrent 无 session 时的基线来源（从 DB 读一次）
+ * @param update 纯函数变换，只改元数据字段
+ * @param persist 落库；**只写对应单列**（`updateTitle` / `updateChatSuggestions` /
+ *   `updateConversationPinStatus` 等），绝不整对象写回
+ */
+internal suspend fun updateMetadataSafely(
+    session: ConversationSession?,
+    loadCurrent: suspend () -> Conversation?,
+    update: (Conversation) -> Conversation,
+    persist: suspend (Conversation) -> Unit,
+) {
+    if (session == null) {
+        val current = loadCurrent() ?: return
+        persist(update(current))
+        return
+    }
+    session.updateMetadata(update, persist)
 }
 
 /** 串行化审批保存：等前任完成后再落地本决策，避免连续审批互相打断（不主动 cancel 前任）。 */

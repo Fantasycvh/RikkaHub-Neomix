@@ -1330,6 +1330,9 @@ class ChatService(
             } else {
                 conversation.currentMessages
             }
+            // 新一轮生成：清掉上一轮遗留的「未确认回填」快照（见 ConversationSession.lastCommittedMessages）。
+            // 不清的话，本轮若在**任何工具回填之前**被取消，停止路径会把上一轮的旧快照并进内存态。
+            session.lastCommittedMessages.value = null
             generationHandler.generateText(
                 settings = settings,
                 model = model,
@@ -1406,6 +1409,12 @@ class ChatService(
                 // 已在上面取好并计时（assembledTools）
                 tools = assembledTools,
                 initialRecoveryHint = initialRecoveryHint,
+                // 已完成工具结果的**取消安全落点**（见 GenerationHandler 的 `onMessagesCommitted`）：
+                // emit 走 flow/flowOn，生成协程一被取消就送不到本方法的 collect 端
+                // ⇒ 把「已回填」的快照先记在 session 上，停止路径能补进内存态。
+                onMessagesCommitted = { committed ->
+                    session.lastCommittedMessages.value = committed
+                },
             ).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
@@ -1785,13 +1794,15 @@ class ChatService(
                 params = backgroundTextGenerationParams(model),
             )
 
-            // 生成完，conversation可能不是最新了，因此需要重新获取
-            conversationRepo.getConversationById(conversation.id)?.let {
-                saveConversation(
-                    conversationId,
-                    it.copy(title = result.choices[0].message?.toText()?.trim() ?: "")
-                )
-            }
+            // 生成完，回写**只写 title 一列**、且基线是**当前内存值**：
+            // 起名是数秒的网络请求，期间可能还在流式接收；旧写法「重新读 DB 整对象 → 改标题 →
+            // saveConversation」会把请求发出那一刻的 messageNodes 盖回内存态（在途正文消失），
+            // 而本入口每轮自动触发 ⇒ 是默认路径上的数据丢失。
+            updateConversationMetadata(
+                conversationId = conversationId,
+                update = { it.copy(title = result.choices[0].message?.toText()?.trim().orEmpty()) },
+                persist = { conversationRepo.updateTitle(conversationId, it.title) },
+            )
         }.onFailure {
             it.printStackTrace()
             addError(
@@ -1840,10 +1851,12 @@ class ChatService(
                 return@runCatching
             }
 
+            // 清掉旧建议：这是内存态的**字段变换**（不是整对象替换），生成中的正文不受影响；
+            // 落库留到拿到新建议时一起写（旧建议在生成期间短暂留在库里的行为保持不变）。
             sessions[conversationId]?.let { session ->
-                updateConversation(
-                    conversationId,
-                    session.state.value.copy(chatSuggestions = emptyList())
+                session.updateMetadata(
+                    update = { it.copy(chatSuggestions = emptyList()) },
+                    persist = { },
                 )
             }
 
@@ -1864,16 +1877,13 @@ class ChatService(
                 result.choices[0].message?.toText()?.split("\n")?.map { it.trim() }
                     ?.filter { it.isNotBlank() } ?: emptyList()
 
-            val latestConversation = conversationRepo.getConversationById(conversationId)
-                ?: sessions[conversationId]?.state?.value
-                ?: conversation
-            saveConversation(
-                conversationId,
-                latestConversation.copy(
-                    chatSuggestions = suggestions.take(
-                        10
-                    )
-                )
+            // 回写**只写 suggestions 一列**、基线是当前内存值：与 generateTitle 同款理由
+            // （数秒网络请求 + 每轮自动触发 ⇒ 整对象写回会盖掉在途的流式正文）。
+            val finalized = suggestions.take(10)
+            updateConversationMetadata(
+                conversationId = conversationId,
+                update = { it.copy(chatSuggestions = finalized) },
+                persist = { conversationRepo.updateChatSuggestions(conversationId, finalized) },
             )
         }.onFailure {
             it.printStackTrace()
@@ -2037,30 +2047,31 @@ class ChatService(
     }
 
     /**
-     * 元数据编辑的**统一落地入口**（置顶 / 移动助手等）。
+     * 元数据编辑的**统一落地入口**（置顶 / 移动助手 / **自动标题 / 聊天建议**等）。
      *
      * 为什么必须走这里而不是「读 DB → 改字段 → `saveConversation` 整对象写回」：
      * 后者对**活跃 session** 会用 DB 里的旧快照覆盖内存态 ⇒ 生成中途打星标/切助手
      * 会把已在流式接收的内容换掉（与「停止生成丢内容」同族，见 `ConversationSession.updateMetadata` 的说明）。
+     * 自动标题与聊天建议是**数秒的网络请求**、且每轮自动触发——旧写法「生成完重新读 DB 再整对象
+     * 写回」等于把请求发出那一刻的快照盖到内存态上，标题回来时在途正文消失。
      *
      * 三条约束：
      * - [update] 作用在**当前内存值**上（不接收外部快照）；
      * - [persist] 只写对应列（单列 UPDATE），不整对象写回；
      * - 会话**没有活跃 session 时**直接从 DB 读一次作为基线（此时内存态不存在，无覆盖之虞）。
+     *
+     * 决策本身在 [updateMetadataSafely]（顶层函数，便于单测覆盖「生成中回写不动消息」）。
      */
     private suspend fun updateConversationMetadata(
         conversationId: Uuid,
         update: (Conversation) -> Conversation,
         persist: suspend (Conversation) -> Unit,
-    ) {
-        val session = sessions[conversationId]
-        if (session == null) {
-            val current = conversationRepo.getConversationById(conversationId) ?: return
-            persist(update(current))
-            return
-        }
-        session.updateMetadata(update, persist)
-    }
+    ) = updateMetadataSafely(
+        session = sessions[conversationId],
+        loadCurrent = { conversationRepo.getConversationById(conversationId) },
+        update = update,
+        persist = persist,
+    )
 
     /**
      * 切换会话置顶状态。
@@ -2612,6 +2623,19 @@ class ChatService(
         if (jobs.isNotEmpty()) {
             jobs.forEach { it.join() }
         }
+        // 已完成、但没送达 collect 端的工具结果（见 GenerationHandler 的 `onMessagesCommitted`）：
+        // 回填走的是 `emit` → flow/flowOn 的 channel → collect 端，而这三段都在被取消的
+        // 生成 job 里 ⇒ 取消那一下正在回填的那一份结果会从内存态里消失。
+        // 这里在**取消之后、落库之前**把快照里**已完成的结果**补进内存态（只补 output，
+        // 不覆盖正文——快照与内存态可能各有胜负，见 withRestoredToolOutputs）；
+        // 不补的话下面 persistStoppedGeneration 落库的就是缺了最后一个工具结果的旧内容。
+        val pendingCommit = session.lastCommittedMessages.value
+        session.lastCommittedMessages.value = null
+        pendingCommit?.let { committed ->
+            val current = getConversationFlow(conversationId).value
+            val restored = current.withRestoredToolOutputs(committed)
+            if (restored !== current) updateConversation(conversationId, restored)
+        }
         // 注意：不因 jobs 为空而早退——生成可能刚结束而收尾保存尚未落库，
         // 此时同样需要下面的持久化（见 persistStoppedGeneration 的说明）。
         finishInterruptedPendingTools(conversationId, reason)
@@ -2681,4 +2705,63 @@ class ChatService(
             }.onFailure { Logging.log(TAG, "persistStoppedGeneration failed: $it") }
         }
     }
+}
+
+/**
+ * 把「回填快照」里**已完成**的工具结果并回当前会话——**只补 `output`，绝不覆盖正文**。
+ *
+ * 这是取消安全落点的消费端（`stopGeneration` 用）：工具结果回填后本来要靠 `emit` →
+ * `flow`/`flowOn` 的 channel → collect 端才进内存态，而生成协程被取消时这条链必断
+ * ⇒「工具已算完、随即被取消」的那一份结果会消失。停止路径用本函数把它补回来。
+ *
+ * 为什么是「只补」而不是整份替换（`updateCurrentMessages`）：快照可能与内存态**各有胜负**——
+ * 快照有最新回填的工具结果，内存里可能有快照之后才收到的流式正文。整份替换会拿旧正文盖掉
+ * 新正文（另一种丢内容）；按 `toolCallId` 只补「当前还没执行、快照里已完成」的那些，
+ * 两个方向都不会丢：
+ * - 当前已执行的工具：一律保留当前值（当前更新）；
+ * - 当前未执行、快照已执行：补上快照的结果（这正是要救的那份）；
+ * - 正文/推理等其它 part：一个字都不动。
+ *
+ * 无可补时返回**同一个实例**（`===` 可判「没变化」，调用方据此跳过写回）。**纯函数**，便于单测。
+ */
+internal fun Conversation.withRestoredToolOutputs(committed: List<UIMessage>): Conversation {
+    val completed = committed
+        .flatMap { it.getTools() }
+        .filter { it.isExecuted }
+        .associateBy { it.toolCallId }
+    if (completed.isEmpty()) return this
+
+    var changed = false
+    val restoredNodes = messageNodes.map { node ->
+        var nodeChanged = false
+        val messages = node.messages.map { message ->
+            var messageChanged = false
+            val parts = message.parts.map { part ->
+                if (part !is UIMessagePart.Tool || part.isExecuted) {
+                    part
+                } else {
+                    val committedPart = completed[part.toolCallId]
+                    if (committedPart == null) {
+                        part
+                    } else {
+                        messageChanged = true
+                        committedPart
+                    }
+                }
+            }
+            if (messageChanged) {
+                nodeChanged = true
+                message.copy(parts = parts)
+            } else {
+                message
+            }
+        }
+        if (nodeChanged) {
+            changed = true
+            node.copy(messages = messages)
+        } else {
+            node
+        }
+    }
+    return if (changed) copy(messageNodes = restoredNodes) else this
 }

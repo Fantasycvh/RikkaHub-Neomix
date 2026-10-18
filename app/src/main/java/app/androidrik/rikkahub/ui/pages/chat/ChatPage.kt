@@ -135,6 +135,24 @@ import org.koin.core.parameter.parametersOf
 import java.io.File
 import kotlin.uuid.Uuid
 
+/**
+ * 「编辑消息」的**生成中守卫**（与 `onDelete` 同款）：返回 true = 已拒绝并已提示。
+ *
+ * 为什么必须拦：编辑的落点会改写 `messageNodes`，而生成中每一块流式内容都在往同一个节点上
+ * 回写。放行编辑就会出现两份写入互相覆盖——用户的编辑被下一块流冲掉，或者反过来把在途正文
+ * 冲掉（`ChatVM.updateConversation` 的旧落点还是「整对象替换」，丢得更彻底）。
+ *
+ * 抽成顶层纯函数是为了能证伪（`onDelete` 的同类守卫在 Compose 回调里，JVM 单测够不到）。
+ */
+internal fun rejectMessageEditWhileGenerating(
+    loadingJob: Job?,
+    onReject: () -> Unit,
+): Boolean {
+    if (loadingJob == null) return false
+    onReject()
+    return true
+}
+
 @Composable
 fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     val vm: ChatVM = koinViewModel(
@@ -636,17 +654,21 @@ private fun ChatPageContent(
                     }
                 },
                 onUpdateMessage = { newNode ->
-                    vm.updateConversation(
-                        conversation.copy(
-                            messageNodes = conversation.messageNodes.map { node ->
-                                if (node.id == newNode.id) {
-                                    newNode
-                                } else {
-                                    node
-                                }
-                            }
-                        ))
-                    vm.saveConversationAsync()
+                    // 与 onDelete 同款守卫：生成中拒绝编辑。
+                    // 为什么：编辑的落点会改写 messageNodes，而生成中每一块流式内容都在往同一个
+                    // 节点上回写；两份写入互相覆盖（用户的编辑被下一块流冲掉，或反过来冲掉正文）。
+                    // 判定抽成 [rejectMessageEditWhileGenerating]，可在 JVM 单测里证伪
+                    //（见 `ChatMessageEditGuardTest`）。
+                    val blocked = rejectMessageEditWhileGenerating(
+                        loadingJob = loadingJob,
+                        onReject = vm::showEditBlockedWhileGeneratingError,
+                    )
+                    if (!blocked) {
+                        // 落点是**基于 current 的纯函数变换**（只换目标节点），
+                        // 不再用回调闭包里的 `conversation` 快照整对象替换。
+                        vm.updateMessageNode(newNode)
+                        vm.saveConversationAsync()
+                    }
                 },
                 onClickSuggestion = { suggestion ->
                     inputState.editingMessage = null

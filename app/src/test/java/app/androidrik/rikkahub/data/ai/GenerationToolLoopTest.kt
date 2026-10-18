@@ -19,12 +19,19 @@ import app.androidrik.ai.ui.terminalChunk
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.toMessageNode
+import app.androidrik.rikkahub.service.withRestoredToolOutputs
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import okhttp3.OkHttpClient
@@ -299,6 +306,165 @@ class GenerationToolLoopTest {
         assertFalse(tools.single { it.toolCallId == "call-hang" }.isExecuted)
     }
 
+    // ---- 核查项 ①：工具**已算完**、还没回填就被取消 ----
+
+    /**
+     * 「工具返回结果」与「结果并进消息」之间被取消时，结果不能丢。
+     *
+     * 现场（本仓 2026-10-18 核查）：每个工具执行完立刻 `applyToolOutput` + `emit`，但**取消请求
+     * 可以在两次挂起点之间的任意时刻从别的线程到达**（用户点停止）。那一下如果落在
+     * 「execute 已返回、emit 还没发出去」的窗口里，`emit` 会抛取消 ⇒ 这一份结果从来没进过
+     * 会话内存态 ⇒ 停止生成落库的是缺了最后一个工具结果的旧内容。
+     *
+     * 为什么不能只把 emit 包进 `NonCancellable`（本仓实测，两种写法都不行）：
+     * 1. `flow {}` 的 SafeCollector 按 Job 校验发射上下文 ⇒ 换 `NonCancellable` 直接抛
+     *    `Flow invariant is violated`（coroutines 1.11）；
+     * 2. 改 `channelFlow` 让发射合法也只是把值放进缓冲：collect 端已被取消 ⇒ 缓冲值不会被取走
+     *    （实测「取消 100ms 后再 send」的结果永远收不到）。
+     * 因此回填点在 emit **之前**同步写一份快照（`onMessagesCommitted`），停止路径据此补进内存态。
+     *
+     * 本用例用「工具在 NonCancellable 里等取消信号、拿到信号后才返回结果」精确复现该窗口：
+     * 协程恢复到「返回结果 → 回填」时**已经在取消状态**。
+     */
+    @Test
+    fun `a tool result computed right before cancellation still lands in the messages`() {
+        val resultComputed = CompletableDeferred<Unit>()
+        val cancellationArrived = CompletableDeferred<Unit>()
+        val slow = tool("slow_tool") {
+            // 结果早就有了：等「取消已经发生」再返回，确保回填发生在取消之后
+            withContext(NonCancellable) {
+                resultComputed.complete(Unit)
+                cancellationArrived.await()
+            }
+            listOf(UIMessagePart.Text("computed"))
+        }
+        val provider = ScriptedProvider { _, _ -> toolCallStep(toolCall("call-slow", "slow_tool")) }
+        val committed = AtomicReference<List<UIMessage>?>()
+        val emitted = mutableListOf<List<UIMessage>>()
+
+        runBlocking {
+            val job = launch {
+                handler(provider).generateText(
+                    settings = Settings(providers = listOf(providerSetting), chatModelId = model.id),
+                    model = model,
+                    messages = listOf(UIMessage.user("hi")),
+                    assistant = Assistant(chatModelId = model.id),
+                    tools = listOf(slow),
+                    // ChatService 就是这么接的：把「已回填」的快照记到会话上
+                    onMessagesCommitted = { committed.set(it) },
+                ).collect { chunk ->
+                    if (chunk is GenerationChunk.Messages) emitted += chunk.messages
+                }
+            }
+            withTimeout(10_000) { resultComputed.await() }
+            job.cancel()
+            // 让取消先落到生成协程/collector 上——这正是「回填晚了一步」的现场
+            delay(100)
+            cancellationArrived.complete(Unit)
+            job.join()
+        }
+
+        val landed = committed.get()
+        assertTrue(
+            "工具已算完的结果必须落进消息（取消刚好落在回填前）——null 表示" +
+                "这条路径只依赖 emit，而 emit 在取消后必然送不到",
+            landed != null,
+        )
+        val toolPart = landed!!.last().getTools().single { it.toolCallId == "call-slow" }
+        assertTrue("结果必须已回填（isExecuted）", toolPart.isExecuted)
+        assertEquals(listOf(UIMessagePart.Text("computed")), toolPart.output)
+        // 报文层面这次回填确实没送出去（collector 已取消）⇒ 上面这条断言不是靠 emit 蒙过的
+        val deliveredByEmit = emitted.any { snapshot ->
+            snapshot.last().getTools().any { it.toolCallId == "call-slow" && it.isExecuted }
+        }
+        assertFalse(
+            "前置：取消后的 emit 不该送达（否则本用例证明不了落点的作用）",
+            deliveredByEmit,
+        )
+    }
+
+    /** 停止路径把落点补进内存态的那一步（`ChatService.withRestoredToolOutputs`）。 */
+    @Test
+    fun `stop path restores a commit that never reached the collector`() {
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = emptyList(),
+        ).copy(
+            messageNodes = listOf(
+                UIMessage.user("hi").toMessageNode(),
+                UIMessage(
+                    role = MessageRole.ASSISTANT,
+                    parts = listOf(UIMessagePart.Text("半截正文"), toolCall("call-slow", "slow_tool")),
+                ).toMessageNode(),
+            ),
+        )
+        val baseline = conversation.currentMessages
+        // 回填后的快照（落点里存的就是它）
+        val committed = applyToolOutput(
+            baseline,
+            toolCall("call-slow", "slow_tool").copy(
+                output = listOf(UIMessagePart.Text("computed")),
+            ),
+        )
+
+        val restored = conversation.withRestoredToolOutputs(committed)
+
+        val restoredTools = restored.currentMessages.last().getTools().single()
+        assertTrue(
+            "停止路径必须把落点的结果补进内存态（否则落库的是旧内容）",
+            restoredTools.isExecuted,
+        )
+        assertEquals(listOf(UIMessagePart.Text("computed")), restoredTools.output)
+        // 只补工具结果：正文一个字都不能被快照改动
+        assertEquals(
+            listOf(UIMessagePart.Text("半截正文")),
+            restored.currentMessages.last().parts.filterIsInstance<UIMessagePart.Text>(),
+        )
+    }
+
+    /**
+     * 停止路径的补回必须**只增不改**：内存里比快照更新的正文不能被旧快照盖回去。
+     *
+     * 现场：回填发生在第 N 步，之后模型又流式吐了正文（内存更新），此时用户点停止。
+     * 若停止路径整份替换成快照，那几段后来的正文就丢了——那是另一种丢内容。
+     */
+    @Test
+    fun `stop path never rolls back newer streamed text`() {
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = emptyList(),
+        ).copy(
+            messageNodes = listOf(
+                UIMessage.user("hi").toMessageNode(),
+                UIMessage(
+                    role = MessageRole.ASSISTANT,
+                    parts = listOf(UIMessagePart.Text("第 N 步正文"), toolCall("call-slow", "slow_tool")),
+                ).toMessageNode(),
+            ),
+        )
+        val committed = applyToolOutput(
+            conversation.currentMessages,
+            toolCall("call-slow", "slow_tool").copy(output = listOf(UIMessagePart.Text("computed"))),
+        )
+        // 快照之后又收到的流式正文（内存态比快照新）
+        val live = conversation.copy(
+            messageNodes = conversation.messageNodes.map { node ->
+                node.copy(messages = node.messages.map { message ->
+                    message.copy(parts = message.parts + UIMessagePart.Text("之后的正文"))
+                })
+            },
+        )
+
+        val restored = live.withRestoredToolOutputs(committed)
+
+        val texts = restored.currentMessages.last().parts.filterIsInstance<UIMessagePart.Text>().map { it.text }
+        assertEquals("较新的正文必须保留", listOf("第 N 步正文", "之后的正文"), texts)
+        assertTrue(
+            "同时把没送达的工具结果补上",
+            restored.currentMessages.last().getTools().single().isExecuted,
+        )
+    }
+
     // ---- Bug 1 的另一半：续跑时也不能漏掉同批的 Auto ----
 
     @Test
@@ -338,8 +504,8 @@ class GenerationToolLoopTest {
         val sentTools = seenByProvider.first().last().getTools()
         assertTrue("请求里不能出现没有结果的工具调用", sentTools.all { it.isExecuted })
         // 更关键：请求里的结果必须是**真结果**。漏执行时发送前的 ToolResultBalancingTransformer
-        // 会补一条 `{"error":"tool result missing","_meta":{"synthesized":true}}` 兜底 ——
-        // 兜底在异常路径上是对的，但「同批 Auto 被漏掉」绝不能靠它兜。
+        // 会补一条「结果拿不到了 / 别自动重跑」的合成结果（见 SYNTHESIZED_TOOL_RESULT_TEXT）
+        // 兜底 —— 兜底在异常路径上是对的，但「同批 Auto 被漏掉」绝不能靠它兜。
         val autoInRequest = sentTools.single { it.toolCallId == "call-auto" }
         assertEquals(listOf(UIMessagePart.Text("auto-ok")), autoInRequest.output)
         assertEquals("续跑不该先空转一次生成", 1, provider.calls.get())

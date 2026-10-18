@@ -313,6 +313,29 @@ class ChatVM(
         )
     }
 
+    /** [showDeleteBlockedWhileGeneratingError] 的编辑版（`onUpdateMessage` 的守卫提示）。 */
+    fun showEditBlockedWhileGeneratingError() {
+        chatService.addError(
+            error = IllegalStateException("请先停止生成再编辑消息"),
+            conversationId = _conversationId,
+            title = context.getString(R.string.error_title_operation)
+        )
+    }
+
+    /**
+     * 消息编辑的落点：**基于当前内存值的纯函数变换**（只替换目标节点）。
+     *
+     * 为什么不再 `updateConversation(conversation.copy(messageNodes = ...))`：
+     * 那是拿回调闭包里的快照（可能已落后若干块流式内容）**整对象替换**当前会话，
+     * 生成中会把在途正文一并丢掉；即便不在生成中，也会把期间其它字段的改动（标题、
+     * 建议、冻结锚点等）一起回滚。变换见 [Conversation.withReplacedNode]（可单测）。
+     */
+    fun updateMessageNode(node: MessageNode) {
+        chatService.updateConversationState(_conversationId) { current ->
+            current.withReplacedNode(node)
+        }
+    }
+
     fun regenerateAtMessage(
         message: UIMessage,
         scope: ChatService.RegenerateScope = ChatService.RegenerateScope.INCLUDE_FOLLOWING,
@@ -488,4 +511,23 @@ class ChatVM(
         }
     }
 
+}
+
+/**
+ * 消息编辑的**纯函数**落点：只把 id 相同的那个节点换成 [node]，其余节点（含其候选消息）原样保留。
+ *
+ * 独立的顶层函数只为可测：编辑必须作用在**当前内存值**上（`updateConversationState` 的入参
+ * 就是当前值），而不是拿某个回调闭包里的旧快照整对象替换——后者在生成中会把在途正文一起丢掉，
+ * 不在生成中也会回滚期间发生过的其它字段改动。
+ *
+ * 目标节点不存在时**原样返回当前会话**（不新增节点）：编辑不存在的消息说明状态已过期，
+ * 静默追加一个节点比丢弃这次编辑更糟。
+ */
+internal fun Conversation.withReplacedNode(node: MessageNode): Conversation {
+    if (messageNodes.none { it.id == node.id }) return this
+    return copy(
+        messageNodes = messageNodes.map { existing ->
+            if (existing.id == node.id) node else existing
+        },
+    )
 }

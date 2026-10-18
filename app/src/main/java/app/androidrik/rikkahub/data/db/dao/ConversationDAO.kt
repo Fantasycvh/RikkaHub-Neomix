@@ -160,6 +160,25 @@ interface ConversationDAO {
     suspend fun updateMemoryDisabled(id: String, disabled: Boolean)
 
     /**
+     * 标题的**单列**写入点（自动起名的回写专用）。
+     *
+     * 为什么不走 [updateMetadata] / 整对象保存：起名与生成建议都是**网络请求**（数秒），
+     * 请求返回时调用方手里的 `Conversation` 早已过期；整对象写回会把「请求发出那一刻」的
+     * 快照（尤其 `messageNodes`）盖到内存态上，正在流式接收的正文当场消失
+     * （与「停止生成丢内容」同族）。而这两个入口**每轮自动触发**，属于默认路径。
+     */
+    @Query("UPDATE conversationentity SET title = :title WHERE id = :id")
+    suspend fun updateTitle(id: String, title: String)
+
+    /**
+     * 聊天建议列表的**单列**写入点（与 [updateTitle] 同款理由）。
+     *
+     * `suggestions` 列存 JSON 数组文本（见 `ConversationRepository.conversationToConversationEntity`）。
+     */
+    @Query("UPDATE conversationentity SET suggestions = :suggestions WHERE id = :id")
+    suspend fun updateChatSuggestions(id: String, suggestions: String)
+
+    /**
      * **L1 锚点快照**（`docs/design/design-memory-injection-tiering.md` §5）的两个专用写入点。
      *
      * 为什么单列写、不走 [updateMetadata]（与 `sort_order` 同一条教训）：
