@@ -12,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * `buildMemoryTools` 的**接线**测试：验证 `needsApproval` 回调能从 `input` JSON 里正确取出
@@ -22,6 +23,26 @@ import org.junit.Test
  * 本类只负责"JSON → action → 判定"这条链路，不再复刻判定逻辑。
  */
 class MemoryToolsTest {
+
+    // These Android-dependent assemblers cannot be instantiated by this JVM test.
+    // Repository tests exercise authorization; this guard checks their production binding.
+    @Test
+    fun `chat and consolidation tools bind model ids to their active store`() {
+        val root = listOf(File("src/main/java"), File("app/src/main/java")).first { it.isDirectory }
+        val cases = listOf(
+            "app/androidrik/rikkahub/data/ai/tools/ChatToolFactory.kt" to "memoryAssistantId",
+            "app/androidrik/rikkahub/data/ai/MemoryConsolidationGenerationAgent.kt" to "request.memoryId",
+        )
+        for ((path, store) in cases) {
+            val source = File(root, path).readText()
+            for (operation in listOf("updateContentInStore", "deleteMemoryInStore", "readMemoryInStore")) {
+                assertTrue("$path must scope $operation", source.contains("memoryRepository.$operation($store, id"))
+            }
+            for (operation in listOf("updateContent", "deleteMemory", "readMemory", "getMemoryById")) {
+                assertFalse("$path must not use trusted $operation", source.contains("memoryRepository.$operation("))
+            }
+        }
+    }
 
     private val json = Json
 

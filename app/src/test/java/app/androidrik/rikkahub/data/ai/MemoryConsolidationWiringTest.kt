@@ -38,7 +38,7 @@ class MemoryConsolidationWiringTest {
         )
         assertTrue(
             "整理 agent 的读取也要记遥测（读数进打分的输入）",
-            source.contains("memoryRepository.readMemory("),
+            source.contains("memoryRepository.readMemoryInStore("),
         )
         assertTrue(
             "护栏停止必须当失败（这一轮没走完，不能当成整理完了）",

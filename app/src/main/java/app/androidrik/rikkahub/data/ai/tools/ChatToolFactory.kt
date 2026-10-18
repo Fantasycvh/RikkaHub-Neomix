@@ -183,11 +183,15 @@ class ChatToolFactory(
                         memoryRepository.addMemory(memoryAssistantId, content, importance, description)
                     },
                     onUpdate = { id, content, importance, description ->
-                        memoryRepository.updateContent(id, content, importance, description)
+                        memoryRepository.updateContentInStore(memoryAssistantId, id, content, importance, description)
                     },
-                    onDelete = { id -> memoryRepository.deleteMemory(id) },
+                    onDelete = { id ->
+                        check(memoryRepository.deleteMemoryInStore(memoryAssistantId, id)) {
+                            "Memory record $id not found in store"
+                        }
+                    },
                     // 读取顺带记一次遥测（渐进披露的清单层靠它反馈「这条到底有没有用」）
-                    onRead = { id -> memoryRepository.readMemory(id) },
+                    onRead = { id -> memoryRepository.readMemoryInStore(memoryAssistantId, id) },
                     // 按需检索：把注入预算之外、清单层也没列到的记录变成可取的（**不记遥测**，
                     // 口径理由见 MemoryRepository.searchMemories 的 kdoc）
                     onSearch = { query, limit ->

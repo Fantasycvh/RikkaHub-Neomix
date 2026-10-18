@@ -159,21 +159,19 @@ class MemoryProposalWiringTest {
             "判「同批成员有没有被勾选」必须看全量 pending，不能先按勾选过滤",
             repo.contains("val allPending = proposalDAO.getPending(memoryId)"),
         )
-        assertTrue("只应用半批时跳过 delete", repo.contains("if (siblingsUnselected && hasDelete)"))
+        assertTrue("只应用半批时跳过 delete", repo.contains("if ((siblingsUnselected || failedSibling) && hasDelete)"))
     }
 
 
     @Test
-    fun `scheduler persists proposals and reloads them with ids`() {
+    fun `worker commits proposals before the scheduler publishes them`() {
         val scheduler = read("rikkahub/"+"data/ai/MemoryConsolidationScheduler.kt")
-        assertTrue(
-            "跑完必须落库，否则「重启即失」没修",
-            scheduler.contains("worker.saveProposals(memoryId, run.proposals)"),
-        )
-        assertTrue(
-            "落库后要重读带 id 的版本（内存那份 id 全是 0，界面无法提交）",
-            scheduler.contains("worker.pendingProposals(memoryId)"),
-        )
+        assertFalse("scheduler must not separately persist progress-dependent suggestions",
+            scheduler.contains("worker.saveProposals("))
+        val consolidator = read("rikkahub/data/ai/MemoryConsolidator.kt")
+        assertTrue(consolidator.contains("val persistedProposals = transactions.run"))
+        assertTrue(consolidator.contains("proposals.pending(memoryId)"))
+        assertTrue(scheduler.contains("suggestions = run.proposals"))
         assertTrue(
             "启动时要恢复待决策建议（落库的正是为了这件事）",
             scheduler.contains("worker.memoryIdsWithProposals()"),
@@ -183,7 +181,7 @@ class MemoryProposalWiringTest {
     @Test
     fun `consolidator delegates the whole proposal path to storage`() {
         val consolidator = read("rikkahub/"+"data/ai/MemoryConsolidator.kt")
-        assertTrue("落库委托", consolidator.contains("proposals.savePending(memoryId, proposals)"))
+        assertTrue("落库委托", consolidator.contains("proposals.savePending(memoryId, outcome.proposals)"))
         assertTrue("应用委托", consolidator.contains("proposals.apply(memoryId, ids)"))
         assertTrue("拒绝委托", consolidator.contains("proposals.reject(memoryId, ids)"))
     }

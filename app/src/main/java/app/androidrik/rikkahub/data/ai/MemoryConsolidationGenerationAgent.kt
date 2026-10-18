@@ -43,14 +43,17 @@ class MemoryConsolidationGenerationAgent(
                 memoryRepository.addMemory(request.memoryId, content, importance, description).also { applied++ }
             },
             onUpdate = { id, content, importance, description ->
-                memoryRepository.updateContent(id, content, importance, description).also { applied++ }
+                memoryRepository.updateContentInStore(request.memoryId, id, content, importance, description)
+                    .also { applied++ }
             },
             onDelete = { id ->
-                memoryRepository.deleteMemory(id)
+                check(memoryRepository.deleteMemoryInStore(request.memoryId, id)) {
+                    "Memory record $id not found in store"
+                }
                 applied++
             },
             // 读取照常记遥测：整理 agent 的读取同样是「这条真的被用到」的证据
-            onRead = { id -> memoryRepository.readMemory(id) },
+            onRead = { id -> memoryRepository.readMemoryInStore(request.memoryId, id) },
             // 整理 agent 尤其需要检索：它拿到的记忆库快照同样是**预算截断**的
             // （`DEFAULT_LIBRARY_TOKENS = 4000`，真机 50 条库 ≈ 58.6K token ⇒ 大部分记录看不见），
             // 而「找重复/找已被覆盖的记录」恰恰要求能看到快照之外的条目，否则会把已存在的

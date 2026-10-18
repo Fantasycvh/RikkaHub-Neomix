@@ -15,6 +15,13 @@ interface MemoryProposalDAO {
     )
     suspend fun getPending(memoryId: String): List<MemoryProposalEntity>
 
+    /** 同库同批的全部成员，含已决策行：删除不能把 rejected/stale 前提当作已完成。 */
+    @Query(
+        "SELECT * FROM memory_proposal WHERE memory_id = :memoryId AND batch_id = :batchId " +
+            "ORDER BY created_at ASC, id ASC"
+    )
+    suspend fun getBatch(memoryId: String, batchId: String): List<MemoryProposalEntity>
+
     /**
      * 最近**被用户拒绝**的建议（整理提示要据此避免原地重提）。
      *
@@ -51,15 +58,19 @@ interface MemoryProposalDAO {
     suspend fun updateOne(id: Long, decision: String, now: Long)
 
     /**
-     * 审计行的保留上限：某记忆库只留最新 [keep] 条已决策记录。
+     * 每库保留最新 [keep] 条可裁剪审计，另保留仍有同库同 batch pending 的已决策成员。
      *
-     * 为什么要管：建议表会随每次整理增长，而**已决策的行没有任何查询会读全量**
-     * （界面只看 pending）。无上限的话它是又一个只增不减的表。
+     * 后者是 delete 守卫的必要证据，不占 [keep] 预算；不能让 rejected/stale 因裁剪消失后
+     * 被误当作已完成。batch 不再含 pending 时，其已决策成员恢复普通审计裁剪。
      */
     @Query(
         "DELETE FROM memory_proposal WHERE memory_id = :memoryId AND decision != 'pending' " +
+            "AND batch_id NOT IN (" +
+            "SELECT batch_id FROM memory_proposal WHERE memory_id = :memoryId AND decision = 'pending') " +
             "AND id NOT IN (" +
             "SELECT id FROM memory_proposal WHERE memory_id = :memoryId AND decision != 'pending' " +
+            "AND batch_id NOT IN (" +
+            "SELECT batch_id FROM memory_proposal WHERE memory_id = :memoryId AND decision = 'pending') " +
             "ORDER BY decided_at DESC, id DESC LIMIT :keep)"
     )
     suspend fun pruneDecided(memoryId: String, keep: Int)

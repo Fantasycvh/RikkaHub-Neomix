@@ -115,6 +115,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onApproveAll: (() -> Unit)? = null,
     workspaceId: String? = null,
+    memoryStoreId: String? = null,
 ) {
     // ask_user 是交互式问答流程, 不走注册式渲染框架
     if (tool.toolName == ASK_USER_TOOL_NAME) {
@@ -136,13 +137,14 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     }
     // 输出不是 JSON (例如超长被截断后只剩文本预览) 时, 定制渲染器读不到任何字段, 详情改用默认渲染展示原文
     val outputUnparsable = tool.isExecuted && outputJson == null
-    val context = remember(tool, loading, workspaceId) {
+    val context = remember(tool, loading, workspaceId, memoryStoreId) {
         ToolUIContext(
             tool = tool,
             arguments = tool.inputAsJson(),
             content = if (tool.isExecuted) outputJson ?: JsonObject(emptyMap()) else null,
             loading = loading,
             workspaceId = workspaceId,
+            memoryStoreId = memoryStoreId,
         )
     }
 

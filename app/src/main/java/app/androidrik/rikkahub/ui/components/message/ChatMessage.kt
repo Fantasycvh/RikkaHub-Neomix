@@ -80,6 +80,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.utils.normalizeLocalFileUrl
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.replaceRegexes
@@ -442,6 +443,7 @@ private fun MessagePartsBlock(
                                         onToolAnswer = onToolAnswer,
                                         onApproveAll = onApproveAll,
                                         workspaceId = assistant?.workspaceId?.toString(),
+                                        memoryStoreId = assistant?.memoryId(),
                                     )
                                 }
                             }

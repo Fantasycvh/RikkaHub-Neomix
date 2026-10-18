@@ -22,7 +22,8 @@ import androidx.room.PrimaryKey
  *
  * [batchId] 把**同一次整理**产出的建议绑在一起：一次「合并重复记忆」在工具层是
  * `edit` + `delete` 两个调用，**拆开应用会丢内容**（先 edit 后被别的东西删掉，或反之）。
- * 故应用与拒绝都以 batch 为单位。
+ * batch 记录同次运行的来源，不强制整批采纳：create/edit 可单独应用；delete 必须满足
+ * 同批待办已选中、且没有 rejected/stale 成员的保守前置条件。拒绝允许逐条。
  *
  * [decision] 是审计字段：建议**被应用/被拒绝/已过期**都留行，这样「梦里到底改了什么」
  * 事后可查——与「删了没有账」是本轮要修掉的两件事之一。
@@ -47,7 +48,7 @@ data class MemoryProposalEntity(
     /** `create` / `edit` / `delete` */
     @ColumnInfo("action")
     val action: String,
-    /** edit / delete 的目标（`create` 为 null） */
+    /** edit / delete 的目标（`create` 为 null）；应用时还须验证所属记忆库。 */
     @ColumnInfo("target_id")
     val targetId: String?,
     @ColumnInfo("content")
@@ -70,7 +71,7 @@ data class MemoryProposalEntity(
         const val DECISION_REJECTED = "rejected"
 
         /**
-         * 应用时目标已不存在或已被改写 ⇒ **不应用**。
+         * 应用时目标不存在或不在当前记忆库 ⇒ **不应用**。当前不做内容版本校验。
          *
          * 单列一档而不是复用 `rejected`：用户没有拒绝它，是**前提不成立**了。
          * 界面上这两种的说明完全不同（前者是「你拒绝了」，后者是「这条已经不能安全应用了」），

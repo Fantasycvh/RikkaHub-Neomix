@@ -7,6 +7,7 @@ import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.MemoryConsolidationRepository
 import app.androidrik.rikkahub.data.repository.MemoryProposalStore
+import app.androidrik.rikkahub.data.repository.MemoryTransactionRunner
 import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import kotlin.uuid.Uuid
@@ -42,6 +43,7 @@ class MemoryConsolidator(
      * 而校验/按批原子/审计留痕都在 [MemoryProposalRepository] 里。
      */
     private val proposals: MemoryProposalStore,
+    private val transactions: MemoryTransactionRunner,
     private val now: () -> Long = System::currentTimeMillis,
 ) : MemoryConsolidationWorker {
 
@@ -64,9 +66,6 @@ class MemoryConsolidator(
         repository.findPending(memoryId, manual)
 
     // ---- 建议的落库与应用：只做委托（存储侧知识不进调度器，见接口契约第 1 条） ----
-
-    override suspend fun saveProposals(memoryId: String, proposals: List<MemoryConsolidationProposal>) =
-        this.proposals.savePending(memoryId, proposals)
 
     override suspend fun pendingProposals(memoryId: String): List<MemoryConsolidationProposal> =
         proposals.pending(memoryId)
@@ -92,13 +91,15 @@ class MemoryConsolidator(
         if (!fullReview && conversationIds.isEmpty()) return null
 
         val conversations = conversationIds.mapNotNull { id -> repository.loadConversation(id) }
-        val baselines = conversations.associate { it.id to repository.baselineOf(it) }
+        val baselines = conversations.associate { it.id to repository.baselineOf(it, manual = fullReview) }
         val transcript = buildConsolidationTranscript(conversations, baselines)
 
         if (transcript.text.isBlank() && !fullReview) {
             // 有轮次但没有可整理的**正文**（例如整轮只有思考/工具结果）：把水位推过去。
             // 不推进的话它会永远算「待整理」——每 2 分钟被扫一次却什么也做不了。
-            transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark) }
+            transactions.run {
+                transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark) }
+            }
             return null
         }
 
@@ -158,20 +159,19 @@ class MemoryConsolidator(
             )
         )
 
-        // 只推进**真正带进模型**的水位；agent 抛异常时根本走不到这里（内容不丢）
-        transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark) }
-        // **只有手动全量复核才推进库游标**（2026-10-16 真机日志改正）。
-        //
-        // 第一版让两条路径都推进，理由听起来不错（「让全量复核顺带进行」）。真机日志当场否掉：
-        //   consolidate(…): 52 record(s), page=30-30/52 last=false remaining=274 fullReview=false
-        // 自动路径的页预算只有 4K，**一条大记忆就吃满** ⇒ 每次自动整理只推进**一条**记录，
-        // 而 52 条要 52 次自动整理才走完一遍——每一次都是一通付费的模型调用，而自动整理的主业
-        // （处理新轮次）根本没在做「复核」。**用昂贵的自动调用按条爬库，是把钱花在了错误的地方。**
-        //
-        // 自动路径仍然**读**同一页（拿到的是有全文、且不含「看不到的 id」的库快照，
-        // 比旧的 40 字清单层好），只是**不消耗复核进度**；进度由用户显式触发的 12K 页独占。
-        if (fullReview) {
-            repository.setReviewCursor(memoryId, page.nextCursor)
+        // The model runs outside the transaction. In proposal mode, its suggestions and the
+        // progress that consumes their evidence must become durable together, or not at all.
+        // Direct-write mode already commits tool mutations during agent.run; those changes cannot
+        // be rolled back here if generation or this final commit fails (not run-level exactly-once). Nested proposal writes join
+        // this same Room transaction; failures propagate to the scheduler (no in-memory fallback).
+        val persistedProposals = transactions.run {
+            proposals.savePending(memoryId, outcome.proposals)
+            transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark) }
+            // Automatic extraction must not consume the user-owned full-library review cursor.
+            if (fullReview) {
+                repository.setReviewCursor(memoryId, page.nextCursor)
+            }
+            if (outcome.proposals.isEmpty()) emptyList() else proposals.pending(memoryId)
         }
         return MemoryConsolidationRun(
             memoryId = memoryId,
@@ -179,7 +179,7 @@ class MemoryConsolidator(
             conversationIds = conversationIds,
             fullReview = fullReview,
             changedMemories = outcome.appliedChanges,
-            proposals = outcome.proposals,
+            proposals = persistedProposals,
             libraryReviewed = page.to,
             libraryTotal = page.total,
             libraryPageDone = page.isLast,

@@ -47,6 +47,8 @@ data class ToolUIContext(
     val loading: Boolean,
     /** 当前助手绑定的工作区 id（present 文件等需要 workspace 上下文时使用） */
     val workspaceId: String? = null,
+    /** Trusted memory library binding, never derived from tool arguments. Null forbids repository lookups. */
+    val memoryStoreId: String? = null,
 )
 
 /**

@@ -88,6 +88,8 @@ class MemoryConsolidationSchedulerTest {
             calls += Call(conversationIds, fullReview)
             gate?.await()
             failure?.let { throw it }
+            // Successful workers return only already-durable suggestions.
+            if (proposals.isNotEmpty()) saveProposals(memoryId, proposals)
             conversationIds.forEach { pending.remove(it) }
             return MemoryConsolidationRun(
                 memoryId = memoryId,
@@ -95,7 +97,7 @@ class MemoryConsolidationSchedulerTest {
                 conversationIds = conversationIds,
                 fullReview = fullReview,
                 changedMemories = 1,
-                proposals = proposals,
+                proposals = if (proposals.isEmpty()) emptyList() else pendingProposals(memoryId),
             )
         }
 
@@ -107,14 +109,18 @@ class MemoryConsolidationSchedulerTest {
         val applied = mutableListOf<Pair<String, Set<Long>>>()
         val rejected = mutableListOf<Pair<String, Set<Long>>>()
 
-        override suspend fun saveProposals(memoryId: String, proposals: List<MemoryConsolidationProposal>) {
+        private suspend fun saveProposals(memoryId: String, proposals: List<MemoryConsolidationProposal>) {
             storedProposals[memoryId] = proposals.map {
                 it.copy(id = nextProposalId++, batchId = it.batchId.ifBlank { "batch" })
             }.toMutableList()
         }
 
-        override suspend fun pendingProposals(memoryId: String): List<MemoryConsolidationProposal> =
-            storedProposals[memoryId].orEmpty().toList()
+        var proposalReadFailure: Exception? = null
+
+        override suspend fun pendingProposals(memoryId: String): List<MemoryConsolidationProposal> {
+            proposalReadFailure?.let { throw it }
+            return storedProposals[memoryId].orEmpty().toList()
+        }
 
         override suspend fun memoryIdsWithProposals(): List<String> =
             storedProposals.filterValues { it.isNotEmpty() }.keys.toList()
@@ -302,6 +308,42 @@ class MemoryConsolidationSchedulerTest {
 
         assertTrue("有没看过的建议时不许自动整理（它的产出会把那些建议冲掉）", worker.calls.isEmpty())
         assertTrue("状态要说出来，静默跳过会被当成功能坏了", scheduler.statusOf(memoryId).first().waitingForReview)
+    }
+
+    @Test
+    fun `queued automatic runs recheck pending proposals after acquiring the store lock`() = runTest {
+        val scheduler = scheduler()
+        worker.gate = CompletableDeferred()
+        worker.proposals = listOf(MemoryConsolidationProposal("create", content = "first proposal"))
+        scheduler.finishTurn(chat, pendingTurns = 3)
+        runCurrent()
+        assertEquals(1, worker.calls.size)
+
+        scheduler.finishTurn(otherChat, pendingTurns = 3)
+        runCurrent() // Another automatic run has passed the early gate and is waiting for the same lock.
+        worker.gate!!.complete(Unit)
+        runCurrent()
+        advanceTimeBy(2.minutes + 1.seconds)
+
+        assertEquals("queued run must not overwrite the first run's pending suggestions", 1, worker.calls.size)
+        assertEquals("first proposal", worker.storedProposals[memoryId]!!.single().content)
+        assertEquals(3, scheduler.statusOf(memoryId).first().pendingTurns)
+        assertTrue(scheduler.statusOf(memoryId).first().waitingForReview)
+    }
+
+    @Test
+    fun `proposal storage read failure does not authorize automatic model work`() = runTest {
+        val scheduler = scheduler()
+        worker.proposalReadFailure = IllegalStateException("pending storage unavailable")
+        scheduler.finishTurn(chat, pendingTurns = 3)
+        runCurrent()
+
+        assertTrue(worker.calls.isEmpty())
+        val status = scheduler.statusOf(memoryId).first()
+        assertEquals("pending storage unavailable", status.lastRun?.error)
+        assertEquals(3, status.pendingTurns)
+        assertFalse(status.running)
+        assertEquals(0, activeHolds)
     }
 
     @Test

@@ -63,6 +63,7 @@ import app.androidrik.rikkahub.data.ai.describe
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import java.time.Instant
 import java.time.ZoneId
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -120,7 +121,17 @@ fun AssistantMemoryPage(id: String) {
             memories = memories,
             onUpdateAssistant = { vm.update(it) },
             onDeleteMemory = { vm.deleteMemory(it) },
-            onAddMemory = { vm.addMemory(it) },
+            onAddMemory = { memory ->
+                scope.launch {
+                    try {
+                        vm.addMemory(memory)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        toaster.show("Unable to save memory: ${failure.message ?: failure.javaClass.simpleName}")
+                    }
+                }
+            },
             onUpdateMemory = { vm.updateMemory(it) },
             consolidationStatus = consolidationStatus,
             onOrganize = { vm.organizeMemory() },
@@ -138,12 +149,22 @@ fun AssistantMemoryPage(id: String) {
             // 这里只负责执行与回执。
             onApplyProposals = { ids ->
                 scope.launch {
-                    val result = vm.applyProposals(ids)
+                    val result = try {
+                        vm.applyProposals(ids)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        toaster.show("Unable to apply memory suggestions: ${failure.message ?: failure.javaClass.simpleName}")
+                        return@launch
+                    }
                     toaster.show(
                         message = when {
-                            // blocked 优先：它是**唯一需要用户改动作**的结果
-                            // （stale / applied 都是终态，看一眼就行；
-                            //  blocked 是「你这次勾得不够，把同批的改写一起勾上就能删」）
+                            // Failed dependencies cannot be repaired by merely selecting more pending rows.
+                            result.blockedByDecision > 0 ->
+                                "Applied ${result.applied}; ${result.blocked} deletes blocked. " +
+                                    "A related change was rejected or is stale; review and reorganize first."
+
+                            // Ordinary blocked deletes still require selecting their pending siblings.
                             result.blocked > 0 -> context.getString(
                                 R.string.assistant_page_memory_consolidation_applied_blocked,
                                 result.applied,
@@ -164,7 +185,19 @@ fun AssistantMemoryPage(id: String) {
                     )
                 }
             },
-            onRejectProposals = { ids -> scope.launch { vm.rejectProposals(ids) } },
+            onRejectProposals = { ids ->
+                scope.launch {
+                    try {
+                        vm.rejectProposals(ids)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        toaster.show(
+                            "Unable to reject memory suggestions: " + (failure.message ?: failure.javaClass.simpleName)
+                        )
+                    }
+                }
+            },
         )
     }
 }

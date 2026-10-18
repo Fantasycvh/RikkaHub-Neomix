@@ -27,6 +27,8 @@ import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.MemoryProposalRepository
 import app.androidrik.rikkahub.data.repository.MemoryProposalStore
 import app.androidrik.rikkahub.data.repository.MemoryRepository
+import app.androidrik.rikkahub.data.repository.MemoryTransactionRunner
+import app.androidrik.rikkahub.data.repository.RoomMemoryTransactionRunner
 import app.androidrik.common.http.AcceptLanguageBuilder
 import app.androidrik.rikkahub.BuildConfig
 import app.androidrik.rikkahub.data.ai.AIRequestInterceptor
@@ -340,11 +342,15 @@ val dataSourceModule = module {
     // （`Could not create instance for '[Singleton: …]'` → `No definition found for type …`）。
     // 与下面那条 worker 绑定是**同一个坑的第二例**：源码扫描守卫看不出这种绑定缺失，
     // 只有真机（或 Koin 的 verify）能发现。已在 `MemoryProposalWiringTest` 补一条守卫钉住。
+    // All memory DAOs and nested units of work join this same Room database transaction.
+    single<MemoryTransactionRunner> { RoomMemoryTransactionRunner(get<AppDatabase>()) }
+
     single<MemoryProposalStore> {
         val database: AppDatabase = get()
         MemoryProposalRepository(
             proposalDAO = database.memoryProposalDao(),
             memoryRepository = get(),
+            transactions = get(),
         )
     }
 
@@ -360,6 +366,7 @@ val dataSourceModule = module {
             agent = get(),
             settings = { settingsStore.settingsFlow.first() },
             proposals = get(),
+            transactions = get(),
         )
     }
 

@@ -136,9 +136,10 @@ class MemoryConsolidationRepository(
      *
      * 公开给 worker：它要把水位推进到「最后一条带进模型的消息时间」，得先知道从哪儿算起。
      */
-    suspend fun baselineOf(conversation: Conversation): Long {
+    suspend fun baselineOf(conversation: Conversation, manual: Boolean = false): Long {
         val assistant = assistants().firstOrNull { it.id == conversation.assistantId } ?: return 0L
-        return baselineOf(conversation, assistant)
+        // Use the same mode as candidate selection; manual historical backfills ignore the enable time.
+        return baselineOf(conversation, assistant, ignoreSince = manual)
     }
 
     private suspend fun baselineOf(

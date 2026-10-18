@@ -10,7 +10,10 @@ import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import kotlin.random.Random
 
-class MemoryRepository(private val memoryDAO: MemoryDAO) {
+class MemoryRepository(
+    private val memoryDAO: MemoryDAO,
+    private val transactions: MemoryTransactionRunner,
+) {
     companion object {
         private const val TAG = "MemoryRepository"
 
@@ -95,6 +98,10 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     suspend fun getMemoryById(id: String): AssistantMemory? =
         findEntityByPublicId(id)?.toModel()
 
+    /** Model-facing lookup: a token (including a legacy numeric reference) never grants access to another store. */
+    suspend fun getMemoryInStore(storeId: String, id: String): AssistantMemory? =
+        findEntityInStore(storeId, id)?.toModel()
+
     // ---- 写 ----
 
     suspend fun deleteMemoriesOfAssistant(assistantId: String) {
@@ -116,16 +123,37 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         importance: Float? = null,
         description: String? = null,
         now: Long = System.currentTimeMillis(),
-    ): AssistantMemory {
+    ): AssistantMemory = transactions.run {
+        // Trusted UI compatibility entry; model callers must use updateContentInStore.
         val old = requireNotNull(findEntityByPublicId(id)) { "Memory record $id not found" }
-        val newMemory = old.copy(
-            content = content,
-            importance = importance?.coerceIn(0f, 1f) ?: old.importance,
-            description = description?.let { normalizeDescription(it) } ?: old.description,
-            updatedAt = now,
+        updateEntityContent(old, content, importance, description, now)
+    }
+
+    suspend fun updateContentInStore(
+        storeId: String,
+        id: String,
+        content: String,
+        importance: Float? = null,
+        description: String? = null,
+        now: Long = System.currentTimeMillis(),
+    ): AssistantMemory = transactions.run {
+        val old = requireNotNull(findEntityInStore(storeId, id)) { "Memory record $id not found in store" }
+        updateEntityContent(old, content, importance, description, now)
+    }
+
+    private suspend fun updateEntityContent(
+        entity: MemoryEntity,
+        content: String,
+        importance: Float?,
+        description: String?,
+        now: Long,
+    ): AssistantMemory {
+        val updated = memoryDAO.updateContentFields(
+            entity.id, entity.assistantId, content, importance?.coerceIn(0f, 1f),
+            description?.let { normalizeDescription(it) }, now,
         )
-        memoryDAO.updateMemory(newMemory)
-        return newMemory.toModel()
+        check(updated == 1) { "Memory record not found in store" }
+        return requireNotNull(memoryDAO.getMemoryById(entity.id)).toModel()
     }
 
     /** 只改重要度（记忆页里用户覆盖模型给的值）。同时刷新 `updatedAt`，口径同 [updateContent]。 */
@@ -133,11 +161,12 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         id: String,
         importance: Float,
         now: Long = System.currentTimeMillis(),
-    ): AssistantMemory? {
-        val old = findEntityByPublicId(id) ?: return null
-        val newMemory = old.copy(importance = importance.coerceIn(0f, 1f), updatedAt = now)
-        memoryDAO.updateMemory(newMemory)
-        return newMemory.toModel()
+    ): AssistantMemory? = transactions.run {
+        val old = findEntityByPublicId(id) ?: return@run null
+        if (memoryDAO.updateImportanceFields(old.id, old.assistantId, importance.coerceIn(0f, 1f), now) == 0) {
+            return@run null
+        }
+        memoryDAO.getMemoryById(old.id)?.toModel()
     }
 
     /**
@@ -150,16 +179,17 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
      * 刻意**不更新 `updatedAt`**：固化是「标注」而不是「改写内容」。更新它会重置时效衰减，
      * 等于「固化一下反而让老记忆变新」，与锚点"长期稳定"的定位正好相反。
      *
-     * 值没变时**直接早退**，不写库：调用方（记忆页保存）每次编辑都会调到这里，而绝大多数
+     * 值没变时由 SQL 条件跳过写入：调用方（记忆页保存）每次编辑都会调到这里，而绝大多数
      * 编辑与锚点无关。
      */
     suspend fun setAnchor(
         id: String,
         isAnchor: Boolean,
     ) {
-        val old = findEntityByPublicId(id) ?: return
-        if (old.isAnchor == isAnchor) return
-        memoryDAO.updateMemory(old.copy(isAnchor = isAnchor))
+        transactions.run {
+            val old = findEntityByPublicId(id) ?: return@run
+            memoryDAO.updateAnchor(old.id, old.assistantId, isAnchor)
+        }
     }
 
     /**
@@ -180,7 +210,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         importance: Float? = null,
         description: String? = null,
         now: Long = System.currentTimeMillis(),
-    ): AssistantMemory {
+    ): AssistantMemory = transactions.run {
         val normalized = content.trim()
         // 幂等检查：同助手下已有相同内容则直接复用（避免工具循环重复创建）
         memoryDAO.getMemoriesOfAssistant(assistantId)
@@ -189,11 +219,10 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
                 Log.i(TAG, "addMemory: duplicate content, reuse #${existing.publicId}")
                 // 内容没变但模型补了主题词时顺手补上（只在原本为空时补，不清空既有 description）
                 if (!description.isNullOrBlank() && existing.description.isBlank()) {
-                    val withDescription = existing.copy(description = normalizeDescription(description))
-                    memoryDAO.updateMemory(withDescription)
-                    return withDescription.toModel()
+                    memoryDAO.backfillDescription(existing.id, assistantId, normalizeDescription(description))
+                    return@run requireNotNull(memoryDAO.getMemoryById(existing.id)).toModel()
                 }
-                return existing.toModel()
+                return@run existing.toModel()
             }
 
         val newMemory = MemoryEntity(
@@ -206,7 +235,11 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         )
         val insertedId = memoryDAO.insertMemory(newMemory).toInt()
         enforceMaxCount(assistantId, now)
-        return newMemory.copy(id = insertedId).toModel()
+        // A low-score insertion may evict itself. Fail inside the shared transaction so an outer
+        // proposal batch (including earlier deletes) rolls back instead of committing false success.
+        checkNotNull(memoryDAO.getMemoryById(insertedId)) {
+            "Memory capacity exceeded: new record would be evicted"
+        }.toModel()
     }
 
     /**
@@ -215,10 +248,23 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
      * 遥测与取数合在一个方法里：分开写的话调用方漏一处就静默没有读数（而读数一旦缺失，
      * 「这条记忆到底有没有起作用」就永远答不了）。读不到时返回 null、不计数。
      */
-    suspend fun readMemory(id: String, now: Long = System.currentTimeMillis()): AssistantMemory? {
-        val entity = findEntityByPublicId(id) ?: return null
-        memoryDAO.recordRead(entity.id, now)
-        return entity.copy(readCount = entity.readCount + 1, lastReadAt = now).toModel()
+    suspend fun readMemory(id: String, now: Long = System.currentTimeMillis()): AssistantMemory? = transactions.run {
+        val entity = findEntityByPublicId(id) ?: return@run null
+        readEntity(entity, now)
+    }
+
+    suspend fun readMemoryInStore(
+        storeId: String,
+        id: String,
+        now: Long = System.currentTimeMillis(),
+    ): AssistantMemory? = transactions.run {
+        val entity = findEntityInStore(storeId, id) ?: return@run null
+        readEntity(entity, now)
+    }
+
+    private suspend fun readEntity(entity: MemoryEntity, now: Long): AssistantMemory? {
+        if (memoryDAO.recordReadInStore(entity.id, entity.assistantId, now) == 0) return null
+        return memoryDAO.getMemoryById(entity.id)?.toModel()
     }
 
     /**
@@ -289,10 +335,10 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         fromAssistantId: String,
         toAssistantId: String,
         now: Long = System.currentTimeMillis(),
-    ): Int {
-        if (fromAssistantId == toAssistantId) return 0
+    ): Int = transactions.run {
+        if (fromAssistantId == toAssistantId) return@run 0
         val memories = memoryDAO.getMemoriesOfAssistant(fromAssistantId)
-        if (memories.isEmpty()) return 0
+        if (memories.isEmpty()) return@run 0
 
         val usedIds = mutableSetOf<String>()
         val copies = memories.map { memory ->
@@ -313,7 +359,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         memoryDAO.insertMemories(copies)
         enforceMaxCount(toAssistantId, now)
         Log.i(TAG, "copyMemories: copied ${copies.size} memory(ies) from $fromAssistantId to $toAssistantId")
-        return copies.size
+        copies.size
     }
 
     /**
@@ -337,9 +383,19 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
 
     /** 按对外 opaque id 删除（id 兼容旧的自增编号引用）。 */
     suspend fun deleteMemory(id: String) {
-        val entity = findEntityByPublicId(id) ?: return
-        memoryDAO.deleteMemory(entity.id)
+        transactions.run {
+            val entity = findEntityByPublicId(id) ?: return@run
+            memoryDAO.deleteMemoryInStore(entity.id, entity.assistantId)
+        }
     }
+
+    suspend fun deleteMemoryInStore(storeId: String, id: String): Boolean = transactions.run {
+        val entity = findEntityInStore(storeId, id) ?: return@run false
+        memoryDAO.deleteMemoryInStore(entity.id, storeId) == 1
+    }
+
+    private suspend fun findEntityInStore(storeId: String, id: String): MemoryEntity? =
+        findEntityByPublicId(id)?.takeIf { it.assistantId == storeId }
 
     /** token 优先，其次兼容旧的自增编号引用（历史消息里可能是 "12"）。 */
     private suspend fun findEntityByPublicId(id: String): MemoryEntity? {

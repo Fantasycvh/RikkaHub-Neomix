@@ -85,7 +85,7 @@ data class MemoryConsolidationProposal(
     val id: Long = 0L,
     /**
      * 同一次整理的一批。一次「合并重复记忆」在工具层是 `edit` + `delete` 两个调用，
-     * **拆开应用会丢内容** ⇒ 应用/拒绝都以 batch 为单位。
+     * create/edit 可单独采纳；delete 在同批依赖满足前保持 pending。拒绝允许逐条。
      */
     val batchId: String = "",
     /** 产出时间（界面要说明建议来自哪一轮，免得被当成「现在的库」） */
@@ -208,21 +208,16 @@ interface MemoryConsolidationWorker {
     /** 把 [conversation] 现有的内容都算作整理过；之后新增的轮次才会被整理（分叉时用） */
     suspend fun markConsolidated(conversation: Conversation)
 
-    /** 整理 [conversationIds] 的新轮次，[fullReview] 时再把整个记忆库清理一遍 */
+    /**
+     * 整理新轮次或手动复核。成功返回前必须将建议与已消费进度共同持久化；
+     * 存储失败应抛出，不可用 id=0 的内存建议伪装成功。
+     */
     suspend fun consolidate(memoryId: String, conversationIds: Set<Uuid>, fullReview: Boolean): MemoryConsolidationRun?
 
     // ---- 建议的持久化与应用（见 docs/design/design-memory-retrieval-and-consolidation.md §5）----
     //
-    // 为什么这五条在 worker 而不是调度器里直接写库：本节开头的契约第 1 条——**调度器只认
+    // 为什么建议读写契约在 worker 而不是调度器里直接写库：本节开头的契约第 1 条——**调度器只认
     // `memoryId` + 本接口，不认识任何存储形态**。建议怎么存、应用时怎么校验，都是存储侧的知识。
-
-    /**
-     * 落库本轮产出的建议（**替换**该库的待决策集合）。
-     *
-     * [proposals] 为空表示"这一轮什么都没提" ⇒ 必须**不动**已有建议
-     * （与 `MemoryConsolidationStatus.suggestions` 的"黏"语义同源：一次空跑不该抹掉待办）。
-     */
-    suspend fun saveProposals(memoryId: String, proposals: List<MemoryConsolidationProposal>)
 
     /** 该记忆库**待决策**的建议（进程重启后把界面恢复出来的唯一来源） */
     suspend fun pendingProposals(memoryId: String): List<MemoryConsolidationProposal>
@@ -231,7 +226,8 @@ interface MemoryConsolidationWorker {
     suspend fun memoryIdsWithProposals(): List<String>
 
     /**
-     * 应用建议，**按 batch 原子**；目标已不存在的批判为 `stale` 且不应用。
+     * 应用所选建议；存储异常回滚整个调用。目标不存在/跨库判 stale；
+     * create/edit 可部分采纳，delete 须满足同批保守依赖条件。
      *
      * @return 应用/判陈旧的条数
      */
@@ -476,6 +472,13 @@ class MemoryConsolidationScheduler(
             val hold = keepAlive.acquire()
             try {
                 run = try {
+                    // Recheck under the per-store lock: a queued automatic run may have passed
+                    // the early gate before the preceding run committed new pending suggestions.
+                    // This read is intentionally fail-closed; storage errors follow normal failure handling.
+                    if (!fullReview && worker.pendingProposals(memoryId).isNotEmpty()) {
+                        updateStatus(memoryId) { it.copy(waitingForReview = true) }
+                        return null
+                    }
                     worker.consolidate(memoryId, ids, fullReview)
                 } catch (e: CancellationException) {
                     // 取消（进程要走了/用户停掉）不是「整理失败」：不记 failed，否则下次启动会被拦住
@@ -502,28 +505,15 @@ class MemoryConsolidationScheduler(
                 }
             } finally {
                 hold.close()
-                // 建议**落库**后再进状态（「重启即失」的修复，见设计稿 §5）。
-                // 只在这轮真的提了建议时写：空跑不该覆盖待办（与状态的"黏"语义同源）。
-                // 落库失败**不抛**：本类是纯类（不引 Android 日志），而失败只降级成
-                // 「这批建议这一进程内仍可见、重启后会丢」——比因存不下而把整轮整理判成失败好。
-                if (run != null && run.proposals.isNotEmpty()) {
-                    runCatching { worker.saveProposals(memoryId, run.proposals) }
-                }
-                // 建议「黏」在状态里：这次什么都没提，也**不覆盖**上一次的建议（见 MemoryConsolidationStatus）
-                // 落库成功时重读一遍拿回**带 id** 的版本（界面按 id 勾选与提交，内存那份 id 全是 0）；
-                // 读不到就退回内存里那份（降级路径，见上）。
-                val persisted = if (run != null && run.proposals.isNotEmpty()) {
-                    runCatching { worker.pendingProposals(memoryId) }.getOrNull()
-                } else {
-                    null
-                }
+                // A successful worker result is already committed with its progress. Publishing
+                // unpersisted (id=0) suggestions here would hide storage failure and lose evidence.
                 updateStatus(memoryId) {
                     val finished = run ?: it.lastRun
                     if (run != null && run.proposals.isNotEmpty()) {
                         it.copy(
                             running = false,
                             lastRun = finished,
-                            suggestions = persisted ?: run.proposals,
+                            suggestions = run.proposals,
                             suggestionsAt = run.finishedAt,
                         )
                     } else {

@@ -81,7 +81,6 @@ class MemoryConsolidationTriggerTest {
         )
 
         // 建议的落库与应用：本用例只关心"什么时候整理"，这几条留空实现
-        override suspend fun saveProposals(memoryId: String, proposals: List<MemoryConsolidationProposal>) = Unit
         override suspend fun pendingProposals(memoryId: String): List<MemoryConsolidationProposal> = emptyList()
         override suspend fun memoryIdsWithProposals(): List<String> = emptyList()
         override suspend fun applyProposals(memoryId: String, ids: Set<Long>): MemoryProposalApplyResult =

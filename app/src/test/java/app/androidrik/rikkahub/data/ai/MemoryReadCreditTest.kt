@@ -151,18 +151,18 @@ class MemoryReadCreditTest {
         val repository = read("app/androidrik/rikkahub/data/repository/MemoryRepository.kt")
         assertTrue("实体 → 模型必须带上读数", repository.contains("readCount = readCount"))
         assertTrue("实体 → 模型必须带上最近读取时间", repository.contains("lastReadAt = lastReadAt"))
-        assertTrue("读取唯一入口必须落一次遥测", repository.contains("memoryDAO.recordRead("))
+        assertTrue("读取唯一入口必须落一次遥测", repository.contains("memoryDAO.recordReadInStore("))
 
         val dao = read("app/androidrik/rikkahub/data/db/dao/MemoryDAO.kt")
         assertTrue("计数自增", dao.contains("read_count = read_count + 1"))
-        assertTrue("同时刷新最近读取时间", dao.contains("last_read_at = :now"))
+        assertTrue("同时刷新最近读取时间", dao.contains("last_read_at = MAX(last_read_at, :now)"))
 
         val prompts = read("app/androidrik/rikkahub/data/ai/GenerationPrompts.kt")
         assertTrue("打分必须吃读数信用", prompts.contains("memoryReadCredit(memory.readCount)"))
         assertTrue("打分必须吃最近读取时间", prompts.contains("memory.lastReadAt"))
 
         val factory = read("app/androidrik/rikkahub/data/ai/tools/ChatToolFactory.kt")
-        assertTrue("工具装配必须把 read 接到仓库（不接=读数永远是 0）", factory.contains("memoryRepository.readMemory("))
+        assertTrue("工具装配必须把 read 接到仓库（不接=读数永远是 0）", factory.contains("memoryRepository.readMemoryInStore("))
     }
 
     private fun srcRoot(): File {

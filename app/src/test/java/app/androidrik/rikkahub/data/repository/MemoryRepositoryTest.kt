@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -26,6 +27,13 @@ class MemoryRepositoryTest {
     private class FakeMemoryDAO : MemoryDAO {
         private val rows = mutableListOf<MemoryEntity>()
         private var nextId = 1
+        var beforeFieldWrite: (suspend () -> Unit)? = null
+
+        private suspend fun beforeWrite() {
+            val hook = beforeFieldWrite
+            beforeFieldWrite = null
+            hook?.invoke()
+        }
 
         override fun getMemoriesOfAssistantFlow(assistantId: String): Flow<List<MemoryEntity>> =
             MutableStateFlow(rows.filter { it.assistantId == assistantId })
@@ -56,8 +64,63 @@ class MemoryRepositoryTest {
         }
 
         override suspend fun updateMemory(memory: MemoryEntity) {
-            val i = rows.indexOfFirst { it.id == memory.id }
-            if (i >= 0) rows[i] = memory
+            error("Repository must use field-level writes, not whole-row updates")
+        }
+
+        override suspend fun updateContentFields(
+            id: Int,
+            assistantId: String,
+            content: String,
+            importance: Float?,
+            description: String?,
+            now: Long,
+        ): Int {
+            beforeWrite()
+            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId }
+            if (i < 0) return 0
+            rows[i] = rows[i].copy(
+                content = content,
+                importance = importance ?: rows[i].importance,
+                description = description ?: rows[i].description,
+                updatedAt = now,
+            )
+            return 1
+        }
+
+        override suspend fun updateImportanceFields(id: Int, assistantId: String, importance: Float, now: Long): Int {
+            beforeWrite()
+            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId }
+            if (i < 0) return 0
+            rows[i] = rows[i].copy(importance = importance, updatedAt = now)
+            return 1
+        }
+
+        override suspend fun updateAnchor(id: Int, assistantId: String, isAnchor: Boolean): Int {
+            beforeWrite()
+            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId && it.isAnchor != isAnchor }
+            if (i < 0) return 0
+            rows[i] = rows[i].copy(isAnchor = isAnchor)
+            return 1
+        }
+
+        override suspend fun backfillDescription(id: Int, assistantId: String, description: String): Int {
+            beforeWrite()
+            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId && it.description.isEmpty() }
+            if (i < 0) return 0
+            rows[i] = rows[i].copy(description = description)
+            return 1
+        }
+
+        override suspend fun recordReadInStore(id: Int, assistantId: String, now: Long): Int {
+            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId }
+            if (i < 0) return 0
+            rows[i] = rows[i].copy(readCount = rows[i].readCount + 1, lastReadAt = maxOf(rows[i].lastReadAt, now))
+            return 1
+        }
+
+        override suspend fun deleteMemoryInStore(id: Int, assistantId: String): Int {
+            val removed = rows.removeAll { it.id == id && it.assistantId == assistantId }
+            return if (removed) 1 else 0
         }
 
         override suspend fun deleteMemory(id: Int) {
@@ -75,12 +138,175 @@ class MemoryRepositoryTest {
         // 与 Room 实现同语义：SQL 自增（不是「读出来 +1 写回」），且不动 updated_at
         override suspend fun recordRead(id: Int, now: Long) {
             val i = rows.indexOfFirst { it.id == id }
-            if (i >= 0) rows[i] = rows[i].copy(readCount = rows[i].readCount + 1, lastReadAt = now)
+            if (i >= 0) {
+                rows[i] = rows[i].copy(
+                    readCount = rows[i].readCount + 1, lastReadAt = maxOf(rows[i].lastReadAt, now),
+                )
+            }
         }
     }
 
     private val dao = FakeMemoryDAO()
-    private val repo = MemoryRepository(dao)
+    private val repo = MemoryRepository(dao, transactions = DirectMemoryTransactionRunner)
+
+    @Test
+    fun `scoped access rejects foreign assistant and global records including legacy ids`() = runBlocking {
+        repo.addMemory("a", "own record")
+        val foreign = repo.addMemory("b", "private record")
+        val global = repo.addMemory(MemoryRepository.GLOBAL_MEMORY_ID, "global record")
+        for (target in listOf(foreign.id, "2", global.id, "3")) {
+            assertNull(repo.getMemoryInStore("a", target))
+            assertNull(repo.readMemoryInStore("a", target, now = 99L))
+            assertFalse(repo.deleteMemoryInStore("a", target))
+            assertTrue(runCatching { repo.updateContentInStore("a", target, "unauthorized") }.isFailure)
+        }
+        assertEquals("private record", repo.getMemoryById(foreign.id)?.content)
+        assertEquals("global record", repo.getMemoryById(global.id)?.content)
+        assertEquals(0, repo.getMemoryById(foreign.id)?.readCount)
+        assertEquals(0, repo.getMemoryById(global.id)?.readCount)
+        assertNull(repo.getMemoryInStore(MemoryRepository.GLOBAL_MEMORY_ID, foreign.id))
+    }
+
+    @Test
+    fun `scoped legacy references still read edit and delete within their own store`() = runBlocking {
+        val created = repo.addMemory("a", "legacy content", importance = 0.8f, description = "topic", now = 1L)
+        assertEquals(created.id, repo.getMemoryInStore("a", "1")?.id)
+        assertEquals(1, repo.readMemoryInStore("a", "1", now = 2L)?.readCount)
+        val edited = repo.updateContentInStore("a", "1", "edited", now = 3L)
+        assertEquals("edited", edited.content)
+        assertEquals(0.8f, edited.importance, 0.001f)
+        assertEquals("topic", edited.description)
+        assertEquals(1, edited.readCount)
+        assertTrue(repo.deleteMemoryInStore("a", "1"))
+        assertNull(repo.getMemoryById(created.id))
+    }
+
+    @Test
+    fun `foreign numeric public token does not fall back to an own numeric primary key`() = runBlocking {
+        repo.addMemory("a", "own record")
+        dao.insertMemory(MemoryEntity(assistantId = "b", content = "foreign token", publicId = "1"))
+        assertNull(repo.getMemoryInStore("a", "1"))
+        assertFalse(repo.deleteMemoryInStore("a", "1"))
+        assertEquals("own record", repo.getMemoriesOfAssistant("a").single().content)
+    }
+
+    @Test
+    fun `content edit preserves telemetry anchor and unspecified fields written after lookup`() = runBlocking {
+        val memory = repo.addMemory("a", "original", importance = 0.6f)
+        // Deliberately interleave at the SQL boundary. This proves field semantics, not Room isolation.
+        dao.beforeFieldWrite = {
+            dao.recordRead(1, 50L)
+            dao.updateAnchor(1, "a", true)
+            dao.updateImportanceFields(1, "a", 0.9f, 60L)
+            dao.backfillDescription(1, "a", "latest topic")
+        }
+        val edited = repo.updateContentInStore("a", memory.id, "edited", now = 70L)
+        assertEquals(1, edited.readCount)
+        assertEquals(50L, edited.lastReadAt)
+        assertTrue(edited.isAnchor)
+        assertEquals(0.9f, edited.importance, 0.001f)
+        assertEquals("latest topic", edited.description)
+        assertEquals(70L, edited.updatedAt)
+    }
+
+    @Test
+    fun `importance anchor and description backfill preserve concurrent unrelated fields`() = runBlocking {
+        val memory = repo.addMemory("a", "original", now = 1L)
+        dao.beforeFieldWrite = {
+            dao.recordRead(1, 2L)
+            dao.updateAnchor(1, "a", true)
+            dao.updateContentFields(1, "a", "newer content", null, null, 3L)
+        }
+        val scored = repo.updateImportance(memory.id, 0.95f, now = 4L)!!
+        assertEquals("newer content", scored.content)
+        assertEquals(1, scored.readCount)
+        assertTrue(scored.isAnchor)
+
+        dao.beforeFieldWrite = {
+            dao.recordRead(1, 5L)
+            dao.updateContentFields(1, "a", "newest content", null, null, 6L)
+        }
+        repo.setAnchor(memory.id, false)
+        val unanchored = repo.getMemoryById(memory.id)!!
+        assertEquals("newest content", unanchored.content)
+        assertEquals(6L, unanchored.updatedAt)
+        assertEquals(2, unanchored.readCount)
+        assertFalse(unanchored.isAnchor)
+
+        dao.beforeFieldWrite = {
+            dao.recordRead(1, 7L)
+            dao.updateAnchor(1, "a", true)
+            dao.backfillDescription(1, "a", "user supplied topic")
+        }
+        val duplicate = repo.addMemory("a", "newest content", description = "model topic", now = 8L)
+        assertEquals(memory.id, duplicate.id)
+        assertEquals("user supplied topic", duplicate.description)
+        assertEquals(3, duplicate.readCount)
+        assertTrue(duplicate.isAnchor)
+        assertEquals(6L, duplicate.updatedAt)
+    }
+
+    @Test
+    fun `add deduplication insertion eviction and bulk copy stay inside one transaction boundary`() = runBlocking {
+        // This probe verifies placement only; actual rollback and concurrency require real Room tests.
+        var active = false
+        var runs = 0
+        val transactions = object : MemoryTransactionRunner {
+            override suspend fun <T> run(block: suspend () -> T): T {
+                check(!active)
+                active = true
+                runs++
+                return try { block() } finally { active = false }
+            }
+        }
+        repeat(MemoryRepository.MAX_MEMORY_COUNT) { index ->
+            dao.insertMemory(MemoryEntity(
+                assistantId = "dst", content = "seed $index", publicId = "seed$index", updatedAt = 10L,
+            ))
+        }
+        dao.insertMemory(MemoryEntity(assistantId = "src", content = "source", publicId = "source"))
+        var deletions = 0
+        var batches = 0
+        val guardedDAO = object : MemoryDAO by dao {
+            override suspend fun getMemoriesOfAssistant(assistantId: String): List<MemoryEntity> {
+                check(active) { "lookup outside transaction" }
+                return dao.getMemoriesOfAssistant(assistantId)
+            }
+
+            override suspend fun publicIdExists(publicId: String): Boolean {
+                check(active) { "public id check outside transaction" }
+                return dao.publicIdExists(publicId)
+            }
+
+            override suspend fun insertMemory(memory: MemoryEntity): Long {
+                check(active) { "insert outside transaction" }
+                return dao.insertMemory(memory)
+            }
+
+            override suspend fun insertMemories(memories: List<MemoryEntity>) {
+                check(active) { "bulk insert outside transaction" }
+                batches++
+                dao.insertMemories(memories)
+            }
+
+            override suspend fun deleteMemory(id: Int) {
+                check(active) { "eviction outside transaction" }
+                deletions++
+                dao.deleteMemory(id)
+            }
+        }
+        val guarded = MemoryRepository(guardedDAO, transactions = transactions)
+        val created = guarded.addMemory("dst", "new record", now = 10L)
+        assertEquals(1, runs)
+        assertEquals(1, deletions)
+        assertEquals(created.id, guarded.addMemory("dst", "new record", now = 10L).id)
+        assertEquals(2, runs)
+        assertEquals(1, guarded.copyMemories("src", "dst", now = 10L))
+        assertEquals(3, runs)
+        assertEquals(1, batches)
+        assertEquals(2, deletions)
+        assertEquals(MemoryRepository.MAX_MEMORY_COUNT, dao.getMemoriesOfAssistant("dst").size)
+    }
 
     // ---- searchMemories：把注入预算之外的记录变成可取的 ----
     // 背景（真机度量，peer-apps-benchmark §11.3 E）：50 条库 / 8000 token 注入预算下
@@ -320,6 +546,22 @@ class MemoryRepositoryTest {
         )
     }
 
+    @Test
+    fun `a new low score memory that evicts itself fails instead of reporting success`() = runBlocking {
+        val now = 1_000_000L
+        repeat(MemoryRepository.MAX_MEMORY_COUNT) { index ->
+            repo.addMemory("asst", "important memory $index", importance = 1f, now = now)
+        }
+
+        val failure = runCatching {
+            repo.addMemory("asst", "cannot fit", importance = 0f, now = now)
+        }.exceptionOrNull()
+
+        assertTrue("self-eviction must not return a successful memory", failure is IllegalStateException)
+        assertTrue("failure must explain capacity rejection", failure?.message.orEmpty().contains("capacity"))
+        // DirectMemoryTransactionRunner does not establish rollback; the real Room test covers that.
+    }
+
     // ---- copyMemories（复制助手时整批搬运记忆，上游 282b85f2） ----
 
     @Test
@@ -427,6 +669,31 @@ class MemoryRepositoryTest {
         val read2 = repo.readMemory(created.id, now = 3_000L)!!
         assertEquals(2, read2.readCount)
         assertEquals(3_000L, read2.lastReadAt)
+    }
+
+    @Test
+    fun `out of order scoped reads increment both counts without moving last read backwards`() = runBlocking {
+        val created = repo.addMemory("a", "content", now = 1L)
+        repo.readMemoryInStore("a", created.id, now = 20L)
+        val olderRequest = repo.readMemoryInStore("a", created.id, now = 10L)!!
+
+        assertEquals(2, olderRequest.readCount)
+        assertEquals(20L, olderRequest.lastReadAt)
+        assertEquals(1L, olderRequest.updatedAt)
+        val stored = repo.getMemoryInStore("a", created.id)!!
+        assertEquals(2, stored.readCount)
+        assertEquals(20L, stored.lastReadAt)
+    }
+
+    @Test
+    fun `legacy dao reads also keep the greatest request time`() = runBlocking {
+        val created = repo.addMemory("a", "content", now = 1L)
+        dao.recordRead(1, now = 20L)
+        dao.recordRead(1, now = 10L)
+        val stored = repo.getMemoryById(created.id)!!
+        assertEquals(2, stored.readCount)
+        assertEquals(20L, stored.lastReadAt)
+        assertEquals(1L, stored.updatedAt)
     }
 
     @Test

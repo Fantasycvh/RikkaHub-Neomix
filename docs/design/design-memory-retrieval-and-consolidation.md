@@ -518,3 +518,56 @@ library  = input − 新轮次(6_000) − 校准表余量(4_000)   // 同一发�
 - 库（52 条）**小于一页** ⇒ `last=true` ⇒ 游标每轮归零 ⇒ **每次点「整理一下」都是全库重扫**。
   这就是「全量」的定义，但它意味着**连点几次就是几次 297K 的调用**；
 - 分页的分段能力只在**库大于一页**或**模型窗口小**时才被用到（那时才需要多轮）。
+
+## 8. 2026-10-18 二次评估后的 A 阶段（已实现）
+
+### 8.1 实际落地
+
+本轮只补数据边界与提交一致性：保留 UI 布局、审批默认和手动全库扫描语义；DB 仍为 40，无 schema 迁移。
+用户此前确认的「记忆建议详情已验证」仍有效；本轮数据库故障测试不是重复验收该界面。
+
+- 共享 `MemoryTransactionRunner` 生产实现使用同一个 Room 数据库的 `withTransaction`，嵌套调用加入外层短事务。
+  新增的查重/插入/配额、复制、字段更新和提案 save/reject/apply 进入事务；LLM/网络调用不在事务内。
+- 聊天与整理工具 read/edit/delete 均绑定当前记忆库，旧数字 ID 兼容也验证归属。
+  删除审批预览和结果页删除同样传入可信 scope；缺 scope 不查库，切换库重建预览状态。
+- 内容、重要度、锚点、description 回填采用字段级 SQL，避免旧快照覆盖遥测/标记。
+  读取计数自增，读取时间取 MAX，乱序调用不能写回过去。
+- **提案模式**：建议、已消费消息水位、手动复核游标在同一短事务提交，失败/事务内取消共同回滚。
+  worker 成功返回带落库 ID 的建议；scheduler 不再分别保存或降级为 id=0 的内存建议。
+- 手动候选与正文均使用 manual 基线：忽略开启时刻，但保留已消费进度，修复选出旧会话却过滤其正文的接缝。
+- 自动整理拿到同库锁后重查 pending，存储查询失败走失败路径，排队运行不能覆盖刚提交的未审建议。
+- 新记录因容量限制自淘汰时明确失败，不回不存在的 ID；apply 最后还校验本次 create/edit 输出仍存在
+  （排除显式删除），避免晚期 create 淘汰先前替换内容后还删除原文。容量冲突整次 apply 回滚。
+- create/edit 仍可部分采纳；delete 同时检查未选 pending 和同批 rejected/stale，applied 成员不阻挡。
+  这是保守同批规则，不是 B 阶段的精确 operationGroup/dependsOn；failed dependency 有独立 UI 回执。
+- 审计保留「100 条可裁剪记录 + 仍有 pending 批次的必要决策证据」，批次完成后恢复普通裁剪。
+  不能通过裁掉 rejected/stale 证据绕过删除保护。UI 捕获容量/存储异常并继续传播协程取消。
+
+核心：[事务入口](<../../app/src/main/java/app/androidrik/rikkahub/data/repository/MemoryTransactionRunner.kt>)、
+[记忆仓库](<../../app/src/main/java/app/androidrik/rikkahub/data/repository/MemoryRepository.kt>)、
+[提案仓库](<../../app/src/main/java/app/androidrik/rikkahub/data/repository/MemoryProposalRepository.kt>)、
+[整理 worker](<../../app/src/main/java/app/androidrik/rikkahub/data/ai/MemoryConsolidator.kt>)。
+
+### 8.2 验证
+
+- `bash scripts/build.sh :app:testDebugUnitTest --max-workers=2 --console=plain`：
+  **204 suites / 1852 app JVM 测试，0 failures / errors / skipped**。
+- 选择性执行 `MemoryTransactionInstrumentedTest`：**21 项真实 Room 测试全部通过**（Android 15）。
+  覆盖真实 SQL 写后故障、嵌套回滚、提案/进度/游标共同提交、容量保护、删除依赖与审计证据保护、
+  并发同内容 add 去重、并发 read/edit/anchor 字段保留，以及取消已开始的 Room 事务后回滚。
+- [数据库测试源码](<../../app/src/androidTest/java/app/androidrik/rikkahub/data/repository/MemoryTransactionInstrumentedTest.kt>)
+  使用 in-memory AppDatabase，不注册生产 FTS 回调。测试前确认设备无 debug 包；仅安装独立 debug/test 包，
+  Gradle 测试后已移除，正式包未覆盖；未对其数据库执行写入。JVM fake/源码守卫本身不证明 SQLite 原子性。
+- 以上不等价于进程死亡、FTS、备份迁移、跨进程/多数据库连接压力测试或一次真实 LLM 整理会话的端到端验收。
+  本轮未构建 release、未 bump 版本、未提交/推送/发版。
+
+### 8.3 后续边界（不得标成已解决）
+
+1. **直接写模式不保证整轮原子/exactly-once**：全部相关审批关闭时，agent 仍逐工具写库。
+   生成中断/护栏失败/最终进度提交失败不能回滚此前工具写入。共同提交保证针对提案模式；
+   后续可评估统一 ResultDraft + 本地提交或 operationId 幂等，不能把 LLM 放进数据库事务冒充解决。
+2. **内容版本前置条件仍缺**：二次确认 UI 不是乐观锁，目标内容变化仍可能被旧提案覆盖。
+   revision/expectedRevision、精确合并依赖、旧 pending 迁移和回收站属于 B 阶段。
+3. 配额仍沿用低分硬淘汰，本轮只修假成功/本次必要输出丢失，未实现可逆淘汰。
+4. 运行完成时间与消费水位分离、review epoch、统一注入预算、分来源遥测、检索黄金集均未实施。
+   用户明确暂缓的重复全库复核成本，本轮未改变。

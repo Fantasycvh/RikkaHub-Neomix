@@ -28,7 +28,7 @@ interface MemoryProposalStore {
         limit: Int = MemoryProposalRepository.REFUSED_FEEDBACK_LIMIT,
     ): List<MemoryConsolidationProposal>
 
-    /** 应用建议（按 batch 原子；目标缺失判 stale 且不应用） */
+    /** 短事务应用本次选择；create/edit 可部分采纳，delete 保留同批依赖校验。 */
     suspend fun apply(memoryId: String, ids: Set<Long>): MemoryProposalApplyResult
 
     /** 拒绝建议 */
@@ -45,16 +45,16 @@ interface MemoryProposalStore {
  * 2. **全仓没有任何应用路径**。而 `memoryModifyApproval` **默认 true** ⇒ `proposeOnly` 是
  *    **默认行为** ⇒ 默认配置下自动整理会持续烧模型调用，产出永远无法采纳。
  *
- * ## 应用安全：逐条校验 + 按批原子
+ * ## 存储事务与产品采纳规则是两个层次
  *
- * 从「产出建议」到「用户点采纳」之间，记忆库可能已被编辑、或被另一次整理改过。所以：
- *
- * - **目标不存在** ⇒ 整批判 `stale`、**不应用**（`edit` 的 `updateContent` 对缺失 id 会抛，
- *   不校验就是一次崩溃而不是一条提示）；
- * - **同一 batch 原子**：一次合并是 `edit` + `delete` 两条，只应用其中一条会得到
- *   「内容改对了但旧的没删」或反过来的半成品。任一条前提不成立 ⇒ 整批不动；
- * - **不静默跳过**：判 `stale` 是**留痕**的（`decision='stale'` + `decided_at`），
- *   界面据此说明「这条已经不能安全应用了」，与用户主动拒绝区分开。
+ * - **真实短事务**：保存、拒绝、应用分别把读取、记忆写入、决策与审计裁剪放在同一事务中，
+ *   异常时整体回滚。共享 runner 的嵌套调用加入外层事务，便于整理器组合持久化；不在事务里运行 LLM。
+ * - **产品允许部分采纳**：`create` / `edit` 可以单独采纳；`delete` 仍要求同批待决策成员
+ *   一起勾选，且同批不能有 rejected/stale 成员，否则保持 pending 并计入 blocked。
+ *   已 applied 的同批成员不阻止删除；这不是「整个 batch 必须同生共死」。
+ * - **作用域与陈旧校验**：目标必须仍在本记忆库中；本次选中的同批成员有目标缺失或跨库时，
+ *   将该组选中成员记为 `stale`，不应用。未选中成员不因此消耗决策。
+ * - **不静默跳过**：`stale` 留痕（`decision='stale'` + `decided_at`），与用户主动拒绝区分开。
  *
  * **不做「内容未被改写」的前置校验**：那需要把提案时的目标 `updated_at`（或内容哈希）也存下来，
  * 而现有工具回执里拿不到它（`proposalSink` 只收到模型给的参数）。替代方案是**二次确认界面直接
@@ -64,10 +64,11 @@ interface MemoryProposalStore {
 class MemoryProposalRepository(
     private val proposalDAO: MemoryProposalDAO,
     private val memoryRepository: MemoryRepository,
+    private val transactions: MemoryTransactionRunner,
     private val now: () -> Long = System::currentTimeMillis,
 ) : MemoryProposalStore {
     companion object {
-        /** 审计行保留上限（每记忆库）：界面只看 pending，已决策的行只是账 */
+        /** 每库可裁剪审计上限；仍有 pending 的同批已决策成员另作必要守卫证据保留。 */
         const val DECIDED_AUDIT_KEEP = 100
 
         /**
@@ -87,8 +88,8 @@ class MemoryProposalRepository(
     override suspend fun savePending(
         memoryId: String,
         proposals: List<MemoryConsolidationProposal>,
-    ) {
-        if (proposals.isEmpty()) return
+    ) = transactions.run {
+        if (proposals.isEmpty()) return@run
         val at = now()
         val batchId = proposals.firstOrNull { it.batchId.isNotBlank() }?.batchId
             ?: Uuid.random().toString()
@@ -107,6 +108,7 @@ class MemoryProposalRepository(
                 )
             },
         )
+        proposalDAO.pruneDecided(memoryId, DECIDED_AUDIT_KEEP)
     }
 
     /** 某记忆库待决策的建议（进程重启后把界面恢复出来的唯一来源） */
@@ -120,44 +122,43 @@ class MemoryProposalRepository(
         proposalDAO.getRecentlyRejected(memoryId, limit).map { it.toProposal() }
 
     /**
-     * 应用 [ids] 指向的建议。
+     * 应用 [ids] 指向的建议；读取、校验、写入、决策与裁剪共享一个短事务。
      *
-     * ## 安全不变式（2026-10-16 真机后**收窄**，第一版写错了）
+     * 产品规则独立于事务原子性：`create` / `edit` 可单独采纳，允许暂留重复；
+     * `delete` 若仍有同批待决策成员未选中，或同批有 rejected/stale 成员，则保持 pending 并计入 blocked。
+     * 先前已应用的同批改写不再 pending，后续可单独采纳剩余删除。
      *
-     * 第一版写的是「同一 batch 原子 / 整批同生共死」，实现成了「按勾选过滤后再分组」——
-     * 于是**只在勾选集合内原子**，用户拆开勾选时半成品照样发生（真机已发生：新旧两份
-     * 「全部历史对话总纲」并存）。重新想过之后，**笼统的整批强制也不是对的规则**：
-     *
-     * - `create` / `edit` 单独应用**不丢内容**，最多留下一条可回收的重复（可随时再删）⇒ **放行**；
-     * - `delete` 单独应用（同批还有没被应用的成员）**会丢内容**——那条 delete 的语义是
-     *   「内容已搬到别处，这条可以退休了」，而「搬到别处」正是同批那条 `edit`；
-     *   edit 没应用就删 = 内容凭空消失 ⇒ **拒绝这一条**。
-     *
-     * 所以规则是**逐条判、不是逐批判**：遇到前提不成立的 `delete` 就**跳过它**，
-     * 其余照常应用。跳过的那条保持 `pending`（**不消耗决策**：用户没说要放弃它，
-     * 只是这次勾选不足以安全执行），计入 [MemoryProposalApplyResult.blocked]，
-     * 由界面说明「这条删除要连同同批的改写一起勾选」。
-     *
-     * 这正好让「采纳改写、先留着旧的那条」成为**受支持的操作**（真机上用户想做的就是这个），
-     * 同时把「只删不改」这条会丢内容的路径堵死。
+     * 本次选中的同批成员若有目标缺失或跨库，则这些选中成员一起记为 stale；
+     * 这不是强制采纳整个 batch。存储异常或本次写入的记录被后续容量淘汰时，回滚整个 apply 调用；
+     * 用户显式采纳的删除不属于容量淘汰，不要求被明确删除的记录继续存活。
      */
-    override suspend fun apply(memoryId: String, ids: Set<Long>): MemoryProposalApplyResult {
-        if (ids.isEmpty()) return MemoryProposalApplyResult()
+    override suspend fun apply(memoryId: String, ids: Set<Long>): MemoryProposalApplyResult = transactions.run {
+        if (ids.isEmpty()) return@run MemoryProposalApplyResult()
         // 全量 pending：判断「同批成员是否都被勾选」必须看**没被勾选的**那些，所以不能先过滤
         val allPending = proposalDAO.getPending(memoryId)
         val rows = allPending.filter { it.id in ids }
-        if (rows.isEmpty()) return MemoryProposalApplyResult()
-
-        // 目标是否还在：一次取全库（≤200 条），避免逐条查询
-        val existingIds = memoryRepository.getMemoriesOfAssistant(memoryId).mapTo(mutableSetOf()) { it.id }
+        if (rows.isEmpty()) return@run MemoryProposalApplyResult()
 
         var applied = 0
         var stale = 0
         var blocked = 0
+        var blockedByDecision = 0
+        val writtenIds = mutableSetOf<String>()
+        val explicitlyDeletedIds = mutableSetOf<String>()
+        suspend fun applyTrackedRow(row: MemoryProposalEntity) {
+            val canonicalId = applyRow(memoryId, row) ?: return
+            when (row.action) {
+                "create", "edit" -> writtenIds += canonicalId
+                "delete" -> explicitlyDeletedIds += canonicalId
+            }
+        }
         rows.groupBy { it.batchId }.forEach { (batchId, batch) ->
-            val missing = batch.any { it.action != "create" && it.targetId !in existingIds }
+            val missing = batch.any { row ->
+                row.action != "create" && (row.targetId == null ||
+                    memoryRepository.getMemoryInStore(memoryId, row.targetId) == null)
+            }
             if (missing) {
-                // 目标已经不在（或早被改过）⇒ 这一批的前提整体不成立，不应用并留痕
+                // 目标缺失或不属于本库 ⇒ 本次选中的同批成员不应用并留痕；不检测内容是否改过。
                 batch.forEach {
                     proposalDAO.updateOne(
                         it.id,
@@ -172,53 +173,73 @@ class MemoryProposalRepository(
             // 「同批是否还有没被勾选的成员」：用**全量 pending 里同 batch 的行数**与本次勾选数比
             val siblingsUnselected = allPending.count { it.batchId == batchId } > batch.size
             val hasDelete = batch.any { it.action == "delete" }
-            if (siblingsUnselected && hasDelete) {
-                // 只应用了半批，而半批里有 delete ⇒ delete 会丢内容。
+            val failedSibling = hasDelete && proposalDAO.getBatch(memoryId, batchId).any {
+                it.decision == MemoryProposalEntity.DECISION_REJECTED ||
+                    it.decision == MemoryProposalEntity.DECISION_STALE
+            }
+            if ((siblingsUnselected || failedSibling) && hasDelete) {
+                // 同批仍有未选中的待办，或其搬运前提已被拒绝/判陈旧 ⇒ 保守阻止 delete。
                 // **跳过 delete**，同批的 create/edit 照常应用（它们单独应用是安全的）。
-                batch.filter { it.action != "delete" }.forEach { row -> applyRow(memoryId, row) }
+                batch.filter { it.action != "delete" }.forEach { row -> applyTrackedRow(row) }
                 applied += batch.count { it.action != "delete" }
-                blocked += batch.count { it.action == "delete" }
+                val blockedDeletes = batch.count { it.action == "delete" }
+                blocked += blockedDeletes
+                if (failedSibling) blockedByDecision += blockedDeletes
                 return@forEach
             }
 
-            batch.forEach { row -> applyRow(memoryId, row) }
+            batch.forEach { row -> applyTrackedRow(row) }
             applied += batch.size
         }
+        // Later creates can evict an earlier create/edit even when each addMemory itself survived.
+        // Compare canonical IDs, not proposal aliases (legacy numeric targets may refer to the same row).
+        check((writtenIds - explicitlyDeletedIds).all { memoryRepository.getMemoryInStore(memoryId, it) != null }) {
+            "Memory capacity conflict: proposal write was evicted during apply"
+        }
         proposalDAO.pruneDecided(memoryId, DECIDED_AUDIT_KEEP)
-        return MemoryProposalApplyResult(applied = applied, stale = stale, blocked = blocked)
+        MemoryProposalApplyResult(
+            applied = applied, stale = stale, blocked = blocked, blockedByDecision = blockedByDecision,
+        )
     }
 
-    /** 落一条建议，并标成已应用（[apply] 的两条路径共用） */
-    private suspend fun applyRow(memoryId: String, row: MemoryProposalEntity) {
-        when (row.action) {
+    /** 落一条建议、标成已应用并返回受影响的 canonical id（不是提案中的旧数字别名）。 */
+    private suspend fun applyRow(memoryId: String, row: MemoryProposalEntity): String? {
+        val canonicalId = when (row.action) {
             "create" -> memoryRepository.addMemory(
                 memoryId,
                 row.content,
                 row.importance,
                 row.description,
-            )
+            ).id
 
-            "edit" -> memoryRepository.updateContent(
+            "edit" -> memoryRepository.updateContentInStore(
+                memoryId,
                 requireNotNull(row.targetId),
                 row.content,
                 row.importance,
                 row.description,
-            )
+            ).id
 
-            "delete" -> memoryRepository.deleteMemory(requireNotNull(row.targetId))
-            else -> Unit
+            "delete" -> {
+                val targetId = requireNotNull(row.targetId)
+                val canonicalId = memoryRepository.getMemoryInStore(memoryId, targetId)?.id
+                val deleted = memoryRepository.deleteMemoryInStore(memoryId, targetId)
+                if (deleted) canonicalId else null
+            }
+            else -> null
         }
         proposalDAO.updateOne(row.id, MemoryProposalEntity.DECISION_APPLIED, now())
+        return canonicalId
     }
 
     /** 拒绝 [ids] 指向的建议（用户显式说不要）。不做存在性校验——拒绝不需要目标成立。 */
-    override suspend fun reject(memoryId: String, ids: Set<Long>): Int {
-        if (ids.isEmpty()) return 0
+    override suspend fun reject(memoryId: String, ids: Set<Long>): Int = transactions.run {
+        if (ids.isEmpty()) return@run 0
         val rows = proposalDAO.getPending(memoryId).filter { it.id in ids }
-        if (rows.isEmpty()) return 0
+        if (rows.isEmpty()) return@run 0
         proposalDAO.updateDecision(rows.map { it.id }, MemoryProposalEntity.DECISION_REJECTED, now())
         proposalDAO.pruneDecided(memoryId, DECIDED_AUDIT_KEEP)
-        return rows.size
+        rows.size
     }
 }
 
@@ -228,12 +249,14 @@ data class MemoryProposalApplyResult(
     /** 目标已不在 ⇒ 判陈旧、不应用（与用户主动拒绝区分开） */
     val stale: Int = 0,
     /**
-     * 这次**没被执行**的 `delete`：同批还有成员没被勾选，单独删会丢内容。
+     * 这次**没被执行**的 `delete`：同批有未选中的待办或 rejected/stale 成员，不能安全删除。
      *
      * 与 [stale] 分开是因为**处理方式不同**：stale 是「这条没用了」，blocked 是
-     * 「你这次勾得不够，把同批的改写一起勾上就能删」。保持 `pending` 不消耗决策。
+     * 「同批搬运前提未满足，本次不能删」。保持 `pending` 不消耗决策。
      */
     val blocked: Int = 0,
+    /** [blocked] 的子集：同批有 rejected/stale 成员，不能仅靠补选修复，需要重新整理。 */
+    val blockedByDecision: Int = 0,
 ) {
     val isEmpty: Boolean get() = applied == 0 && stale == 0 && blocked == 0
 }

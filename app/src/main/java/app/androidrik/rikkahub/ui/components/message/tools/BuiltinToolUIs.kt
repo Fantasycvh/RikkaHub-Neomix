@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -135,8 +136,15 @@ object MemoryToolUI : ToolUIRenderer {
                 // 无此展示则用户只能盲批「删除记忆」，审批失去意义（见 roadmap 记忆工具审批）。
                 val memoryRepo: MemoryRepository = koinInject()
                 val memoryId = context.arguments.getStringContent("id")
-                val target by produceState<AssistantMemory?>(initialValue = null, memoryId) {
-                    value = memoryId?.let { memoryRepo.getMemoryById(it) }
+                val memoryStoreId = context.memoryStoreId
+                // Key the state itself, not only the effect: switching libraries must not retain
+                // the preceding library's preview even for one composition. Missing scope fails closed.
+                val target by key(memoryStoreId, memoryId) {
+                    produceState<AssistantMemory?>(initialValue = null) {
+                        value = if (memoryStoreId != null && memoryId != null) {
+                            memoryRepo.getMemoryInStore(memoryStoreId, memoryId)
+                        } else null
+                    }
                 }
                 target?.content?.let { memoryContent ->
                     Text(
@@ -169,14 +177,17 @@ object MemoryToolUI : ToolUIRenderer {
         val memoryRepo: MemoryRepository = koinInject()
         val scope = rememberCoroutineScope()
         val memoryId = (context.content as? JsonObject)?.get("id")?.jsonPrimitiveOrNull?.contentOrNull
+        val memoryStoreId = context.memoryStoreId
         DefaultToolPreview(
             context = context,
-            headerActions = if (action(context) in listOf(ACTION_CREATE, ACTION_EDIT) && memoryId != null) {
+            headerActions = if (action(context) in listOf(ACTION_CREATE, ACTION_EDIT) &&
+                memoryId != null && memoryStoreId != null
+            ) {
                 {
                     IconButton(
                         onClick = {
                             scope.launch {
-                                memoryRepo.deleteMemory(memoryId)
+                                memoryRepo.deleteMemoryInStore(memoryStoreId, memoryId)
                                 onDismissRequest()
                             }
                         }

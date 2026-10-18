@@ -45,6 +45,7 @@ class MemoryConsolidatorTest {
 
     private class FakeConsolidationDAO : MemoryConsolidationDAO {
         val progress = mutableMapOf<String, Long>()
+        var candidates = emptyList<String>()
 
         override suspend fun getConsolidatedAt(conversationId: String): Long? = progress[conversationId]
 
@@ -61,7 +62,7 @@ class MemoryConsolidatorTest {
         override suspend fun getLastConsolidatedAt(assistantId: String): Long? = progress.values.maxOrNull()
 
         override suspend fun getCandidateConversationIds(assistantId: String, baseline: Long, limit: Int): List<String> =
-            emptyList()
+            candidates.take(limit)
     }
 
     private val dao = FakeConsolidationDAO()
@@ -124,6 +125,26 @@ class MemoryConsolidatorTest {
 
     private val agent = FakeAgent()
     private val cursorDAO = FakeReviewCursorDAO()
+    private val proposalStore = RecordingProposalStore()
+    private var transactionCalls = 0
+    private val transactions = object : app.androidrik.rikkahub.data.repository.MemoryTransactionRunner {
+        override suspend fun <T> run(block: suspend () -> T): T {
+            transactionCalls++
+            val progress = dao.progress.toMap()
+            val cursors = cursorDAO.rows.toMap()
+            val proposals = proposalStore.rows.toList()
+            try {
+                return block()
+            } catch (failure: Throwable) {
+                dao.progress.clear()
+                dao.progress.putAll(progress)
+                cursorDAO.rows.clear()
+                cursorDAO.rows.putAll(cursors)
+                proposalStore.rows = proposals.toMutableList()
+                throw failure
+            }
+        }
+    }
 
     private fun consolidator(
         assistants: List<Assistant>,
@@ -148,7 +169,8 @@ class MemoryConsolidatorTest {
             agent = agent,
             settings = { settings },
             // 建议存储：本类用例不碰「应用建议」，留一个记账用的空实现即可
-            proposals = RecordingProposalStore(),
+            proposals = proposalStore,
+            transactions = transactions,
             now = { now },
         )
     }
@@ -440,6 +462,101 @@ class MemoryConsolidatorTest {
     }
 
     @Test
+    fun `manual historical candidates reach the model with the same baseline`() = runBlocking {
+        val assistant = assistant(since = millis(10), modifyApproval = true)
+        val old = conversation(assistant, 1, 2)
+        conversations[old.id] = old
+        dao.candidates = listOf(old.id.toString())
+        val worker = consolidator(listOf(assistant))
+
+        assertTrue(worker.findPending(assistant.id.toString(), manual = false).isEmpty())
+        val selected = worker.findPending(assistant.id.toString(), manual = true)
+        assertEquals(2, selected.single().turns)
+        worker.consolidate(assistant.id.toString(), selected.map { it.conversationId }.toSet(), fullReview = true)
+
+        assertTrue(agent.requests.single().transcript.contains("第 1 小时说的话"))
+        assertTrue(agent.requests.single().transcript.contains("第 2 小时说的话"))
+        assertEquals(millis(2), dao.progress[old.id.toString()])
+    }
+
+    @Test
+    fun `manual backfill still respects already consumed messages`() = runBlocking {
+        val assistant = assistant(since = millis(10))
+        val old = conversation(assistant, 1, 2)
+        conversations[old.id] = old
+        dao.progress[old.id.toString()] = millis(1)
+        consolidator(listOf(assistant)).consolidate(assistant.id.toString(), setOf(old.id), fullReview = true)
+        assertFalse(agent.requests.single().transcript.contains("第 1 小时说的话"))
+        assertTrue(agent.requests.single().transcript.contains("第 2 小时说的话"))
+    }
+
+    @Test
+    fun `proposal storage failure keeps evidence retryable and preserves old pending`() = runBlocking {
+        val assistant = assistant(modifyApproval = true)
+        val chat = conversation(assistant, 1, 2)
+        conversations[chat.id] = chat
+        proposalStore.rows += MemoryConsolidationProposal("create", content = "previous", id = 77)
+        agent.outcome = MemoryConsolidationOutcome(0, listOf(MemoryConsolidationProposal("create", content = "new")))
+        proposalStore.failure = IllegalStateException("storage failed")
+        val worker = consolidator(listOf(assistant))
+        try {
+            worker.consolidate(assistant.id.toString(), setOf(chat.id), fullReview = true)
+            org.junit.Assert.fail("storage failure must propagate")
+        } catch (expected: IllegalStateException) {
+            assertEquals("storage failed", expected.message)
+        }
+        assertTrue(dao.progress.isEmpty())
+        assertTrue(cursorDAO.rows.isEmpty())
+        assertEquals("previous", proposalStore.rows.single().content)
+
+        proposalStore.failure = null
+        val run = worker.consolidate(assistant.id.toString(), setOf(chat.id), fullReview = true)!!
+        assertEquals(millis(2), dao.progress[chat.id.toString()])
+        assertEquals("new", run.proposals.single().content)
+        assertTrue(run.proposals.single().id > 0)
+        assertEquals(proposalStore.rows, run.proposals)
+    }
+
+    @Test
+    fun `cursor failure rolls back proposals and conversation progress together`() = runBlocking {
+        val assistant = assistant(modifyApproval = true)
+        val chat = conversation(assistant, 1, 2)
+        conversations[chat.id] = chat
+        dao.progress[chat.id.toString()] = millis(1)
+        cursorDAO.rows[assistant.id.toString()] = 99L
+        proposalStore.rows += MemoryConsolidationProposal("create", content = "previous", id = 77)
+        agent.outcome = MemoryConsolidationOutcome(0, listOf(MemoryConsolidationProposal("create", content = "new")))
+        cursorDAO.failure = IllegalStateException("cursor failed")
+        try {
+            consolidator(listOf(assistant)).consolidate(assistant.id.toString(), setOf(chat.id), fullReview = true)
+            org.junit.Assert.fail("cursor failure must propagate")
+        } catch (expected: IllegalStateException) {
+            assertEquals("cursor failed", expected.message)
+        }
+        assertEquals(1, transactionCalls)
+        assertEquals(millis(1), dao.progress[chat.id.toString()])
+        assertEquals(99L, cursorDAO.rows[assistant.id.toString()])
+        assertEquals("previous", proposalStore.rows.single().content)
+    }
+
+    @Test
+    fun `cancellation during proposal persistence does not consume evidence`() = runBlocking {
+        val assistant = assistant(modifyApproval = true)
+        val chat = conversation(assistant, 1)
+        conversations[chat.id] = chat
+        agent.outcome = MemoryConsolidationOutcome(0, listOf(MemoryConsolidationProposal("create", content = "new")))
+        proposalStore.failure = kotlinx.coroutines.CancellationException("cancelled commit")
+        try {
+            consolidator(listOf(assistant)).consolidate(assistant.id.toString(), setOf(chat.id), fullReview = true)
+            org.junit.Assert.fail("cancellation must propagate")
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            assertTrue(dao.progress.isEmpty())
+            assertTrue(cursorDAO.rows.isEmpty())
+            assertTrue(proposalStore.rows.isEmpty())
+        }
+    }
+
+    @Test
     fun `a store nobody participates in is ignored`() = runBlocking {
         val assistant = assistant()
         val worker = consolidator(listOf(assistant))
@@ -456,12 +573,15 @@ private class RecordingProposalStore : app.androidrik.rikkahub.data.repository.M
     val saved = mutableListOf<Pair<String, List<MemoryConsolidationProposal>>>()
     val applied = mutableListOf<Pair<String, Set<Long>>>()
     val rejected = mutableListOf<Pair<String, Set<Long>>>()
-    private var rows = mutableListOf<MemoryConsolidationProposal>()
+    var rows = mutableListOf<MemoryConsolidationProposal>()
+    var failure: Exception? = null
     private var nextId = 1L
 
     override suspend fun savePending(memoryId: String, proposals: List<MemoryConsolidationProposal>) {
+        if (proposals.isEmpty()) return
         saved += memoryId to proposals
         rows = proposals.map { it.copy(id = nextId++) }.toMutableList()
+        failure?.let { throw it }
     }
 
     override suspend fun pending(memoryId: String) = rows.toList()
@@ -494,9 +614,11 @@ private class RecordingProposalStore : app.androidrik.rikkahub.data.repository.M
  */
 internal class FakeReviewCursorDAO : app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO {
     val rows = mutableMapOf<String, Long>()
+    var failure: Exception? = null
     override suspend fun getCursor(memoryId: String): Long? = rows[memoryId]
     override suspend fun upsert(entry: app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity) {
         rows[entry.memoryId] = entry.cursor
+        failure?.let { throw it }
     }
     override suspend fun clear(memoryId: String) { rows.remove(memoryId) }
 }
