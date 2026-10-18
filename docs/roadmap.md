@@ -2810,6 +2810,16 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **没有「刚压过 / 已有 checkpoint」的闸门** ⇒ 压缩后若尾部仍满，下一轮会再压一次 ⇒
   连续两次前缀失效 + 两次摘要调用。
   **决定：暂时搁置**（用户 2026-10-17）。真要动时只做「加闸门」这一件事，不动替换式压缩本身。
+- 2026-10-18 **待办：上游 e10e10433 / 9c5331d4a 同源 bug 修复的收尾两项**（前五项已修，见当日各提交）：
+  - **P2 `workspace_run_background` 取消后留孤儿进程**：取消生成时 taskId 被丢弃，进程继续跑
+    （吃 CPU/联网/继续写文件），且 UI 无法终止。触发窗口比普通工具大（它本就是长任务）。
+    修它要动 taskId 生命周期，中等改动。
+  - **P3 正则幂等校验**：`RegexOutputTransformer` 每次更新对整份消息重跑正则，非幂等规则会逐步放大
+    （判据：`Regex(find).containsMatchIn(replace) == true` ⇒ 不幂等；样本 `^(?=\S)` → `【AI】`）。
+    **默认零影响**（没配正则时在 `Assistant.kt:454` / `RegexOutputTransformer.kt:16` 短路）。
+    建议**只在保存时给提示**，不改运行时行为。
+    顺带记：`RegexOutputTransformer:26/30` 硬编码 `visual = false` ⇒ `visualOnly = true` 的规则
+    **在输出侧永不生效**（配了等于没配）。
 - 2026-10-18 **查清「number of function response parts...」拒收来自中转，非本仓缺陷**（真机实证，含对照）。
   现象：`gemini-3.8-flash` 经 `api.rinko.ai` 中转（OpenAI 兼容）跑带工具的会话，工具执行后下一轮 400：
   `Please ensure that the number of function response parts is equal to the number of function call
