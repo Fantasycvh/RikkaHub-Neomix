@@ -38,7 +38,7 @@ uv run --directory locale-tui src/main.py set <key> "<Value>" [OPTIONS]
 # Examples
 uv run --directory locale-tui src/main.py set hello_world "你好，世界！" -l values-zh
 uv run --directory locale-tui src/main.py set greeting "Welcome" -l values
-uv run --directory locale-tui src/main.py set test_key "テスト" -l values-ja -m app
+uv run --directory locale-tui src/main.py set test_key "測試" -l values-zh-rTW -m app
 
 # List all string resource keys
 uv run --directory locale-tui src/main.py list-keys [-m module]
@@ -52,7 +52,7 @@ uv run --directory locale-tui src/main.py list-keys [-m module]
 
 ### set
 
-- `--lang, -l`: Specify language code (e.g., values, values-zh, values-ja), defaults to source language (values)
+- `--lang, -l`: Specify language code (e.g., values, values-zh, values-zh-rTW), defaults to source language (values)
 - `--module, -m`: Specify module name (defaults to first module in config)
 
 ## Constraints

@@ -45,12 +45,6 @@ languages:
     name: "Chinese (Simplified)"
   - code: "values-zh-rTW"
     name: "Chinese (Traditional)"
-  - code: "values-ja"
-    name: "Japanese"
-  - code: "values-ko-rKR"
-    name: "Korean"
-  - code: "values-ru"
-    name: "Russian"
 
 # AI 翻译配置
 translation:
