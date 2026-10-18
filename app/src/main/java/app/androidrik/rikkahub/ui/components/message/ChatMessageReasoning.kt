@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -57,6 +58,7 @@ import androidx.compose.runtime.snapshotFlow
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Comment01
 import me.rerere.hugeicons.stroke.Edit02
 import me.rerere.hugeicons.stroke.Idea01
 import app.androidrik.rikkahub.R
@@ -298,6 +300,34 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
     )
 }
 
+
+/**
+ * 过程解说步骤（“现在我来查一下…”）：工具调用之间的解说文本。
+ *
+ * 完整展示、不截断也不单独折叠——它所在的思考链本身就是可折叠的，整体折叠控制显示量。
+ */
+@Composable
+fun ChainOfThoughtScope.ChatMessageNarrationStep(
+    text: UIMessagePart.Text,
+) {
+    ChainOfThoughtStep(
+        icon = {
+            Icon(
+                imageVector = HugeIcons.Comment01,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = LocalContentColor.current.copy(alpha = 0.7f),
+            )
+        },
+        label = {
+            Text(
+                text = text.text.trim(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+    )
+}
 
 /**
  * #1929 编辑思考过程的整屏编辑器（形态照 `TextArea.FullScreenTextEditor`）。

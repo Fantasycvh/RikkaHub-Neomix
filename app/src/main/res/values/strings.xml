@@ -1966,5 +1966,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="assistant_page_image_model_title">Image generation model</string>
   <string name="assistant_page_image_model_configured">Currently: %1$s</string>
   <string name="assistant_page_image_model_missing">Not configured. The image tool stays off until you pick an image generation model in settings.</string>
+  <!-- 整轮折叠（docs/design/design-whole-turn-folding.md） -->
+  <string name="chain_of_thought_fold_summary">%1$d steps · %2$d tools · %3$d notes</string>
+  <string name="setting_display_page_whole_turn_folding_title">Whole-turn Folding</string>
+  <string name="setting_display_page_whole_turn_folding_desc">Fold the thinking, tool calls and in-between narration of one reply into a single expandable block, leaving only the text after the last tool call as the final answer</string>
+  <string name="setting_display_page_auto_collapse_thinking_taken_over">Managed by Whole-turn Folding</string>
 </resources>
 

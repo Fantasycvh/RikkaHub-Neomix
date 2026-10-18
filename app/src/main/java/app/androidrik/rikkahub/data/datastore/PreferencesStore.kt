@@ -1208,6 +1208,14 @@ data class DisplaySetting(
     val useRingContextIndicator: Boolean = false,
     val showThinkingContent: Boolean = true,
     val autoCloseThinking: Boolean = true,
+    /**
+     * 整轮折叠（`docs/design/design-whole-turn-folding.md`）：把一条 assistant 回复的
+     * **思考 + 工具调用 + 过程解说**收进一个可展开块，只留最后一次工具调用之后的文本作最终回答。
+     *
+     * 默认关 = 旧行为（解说文本仍作为正文、思考链按“只显示最后 2 步”折叠）。开启后由它
+     * **接管** [autoCloseThinking]（设置页把后者置灰）。
+     */
+    val wholeTurnFolding: Boolean = false,
     val showMessageJumper: Boolean = true,
     val messageJumperOnLeft: Boolean = false,
     val fontSizeRatio: Float = 1.0f,

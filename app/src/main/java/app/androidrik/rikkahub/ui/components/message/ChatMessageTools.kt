@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
@@ -44,11 +45,13 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.CheckmarkCircle02
 import me.rerere.hugeicons.stroke.Tick01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.message.tools.DefaultToolPreview
@@ -61,6 +64,48 @@ import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.utils.JsonInstant
 
 private const val ASK_USER_TOOL_NAME = "ask_user"
+
+/**
+ * 服务端内置工具（googleSearch / urlContext 等）的链内步骤。
+ *
+ * 服务端执行、不粘审批流（f7869e35 语义）。本仓 [UIMessagePart.ServerTool] 只有
+ * `IN_PROGRESS` / `COMPLETED` 两态（无 `isFinished` / `FAILED`），故用 `status != IN_PROGRESS` 表示已完成。
+ */
+@Composable
+fun ChainOfThoughtScope.ChatMessageServerToolStep(tool: UIMessagePart.ServerTool) {
+    val running = tool.status == ServerToolStatus.IN_PROGRESS
+    ChainOfThoughtStep(
+        icon = {
+            if (running) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(12.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    imageVector = HugeIcons.CheckmarkCircle02,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        label = {
+            Text(
+                text = if (running) {
+                    stringResource(R.string.chat_server_tool_running, tool.toolName)
+                } else {
+                    stringResource(R.string.chat_server_tool_done, tool.toolName)
+                },
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.shimmer(isLoading = running),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+    )
+}
 
 @Composable
 fun ChainOfThoughtScope.ChatMessageToolStep(

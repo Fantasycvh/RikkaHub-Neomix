@@ -245,11 +245,34 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                     item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_whole_turn_folding_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_display_page_whole_turn_folding_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.wholeTurnFolding,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(wholeTurnFolding = it))
+                                }
+                            )
+                        },
+                    )
+                    item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_auto_collapse_thinking_title)) },
-                        supportingContent = { Text(stringResource(R.string.setting_display_page_auto_collapse_thinking_desc)) },
+                        supportingContent = {
+                            Text(
+                                if (displaySetting.wholeTurnFolding) {
+                                    // 决策 4：整轮折叠开着时，思考收起由它接管
+                                    stringResource(R.string.setting_display_page_auto_collapse_thinking_taken_over)
+                                } else {
+                                    stringResource(R.string.setting_display_page_auto_collapse_thinking_desc)
+                                }
+                            )
+                        },
                         trailingContent = {
                             Switch(
                                 checked = displaySetting.autoCloseThinking,
+                                // 决策 4：整轮折叠开时置灰（由整轮折叠接管）
+                                enabled = !displaySetting.wholeTurnFolding,
                                 onCheckedChange = {
                                     updateDisplaySetting(displaySetting.copy(autoCloseThinking = it))
                                 }

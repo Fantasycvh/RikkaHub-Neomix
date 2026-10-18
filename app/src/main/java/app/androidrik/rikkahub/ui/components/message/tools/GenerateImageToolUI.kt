@@ -47,6 +47,14 @@ object GenerateImageToolUI : ToolUIRenderer {
 
     override val toolName: String = IMAGE_TOOL_NAME
 
+    /**
+     * 生成的图是本次交付物：切断思考链，让它独占一块。
+     *
+     * 否则生图前常伴随搜索 / 读文件，步骤数超过折叠阈值时图片会被“只显示最后若干步”
+     * 藏起来，用户看不到本次生成的图。
+     */
+    override fun cutsChain(): Boolean = true
+
     override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Image02
 
     @Composable

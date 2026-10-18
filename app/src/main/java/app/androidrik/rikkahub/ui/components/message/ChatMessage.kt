@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -68,7 +67,6 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.isContentFilterTruncation
 import app.androidrik.ai.ui.isOutputLimitTruncation
-import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
@@ -76,7 +74,6 @@ import app.androidrik.ai.ui.isProviderSigned
 import app.androidrik.ai.ui.isEmptyUIMessage
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.File02
-import me.rerere.hugeicons.stroke.CheckmarkCircle02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
 import app.androidrik.rikkahub.R
@@ -91,6 +88,7 @@ import app.androidrik.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import app.androidrik.rikkahub.ui.components.richtext.buildMarkdownPreviewHtml
 import app.androidrik.rikkahub.ui.components.webview.WebViewContentCache
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThought
+import app.androidrik.rikkahub.ui.components.ui.ChainOfThoughtScope
 import app.androidrik.rikkahub.ui.components.charts.ChartCard
 import app.androidrik.rikkahub.ui.components.charts.ChartSpec
 import app.androidrik.rikkahub.ui.components.ui.Favicon
@@ -395,20 +393,29 @@ private fun MessagePartsBlock(
     }
 
     // Render parts in original order (group thinking/tool as chain-of-thought)
-    val groupedParts = remember(parts) { parts.groupMessageParts() }
+    // 整轮折叠（docs/design/design-whole-turn-folding.md）：过程解说并进思考链、
+    // 只留最后一次工具调用之后的文本作最终回答；关闭时保持旧行为。
+    val wholeTurnFolding = settings.displaySetting.wholeTurnFolding
+    val groupedParts = remember(parts, role, wholeTurnFolding) {
+        parts.groupMessageParts(role = role, wholeTurnFolding = wholeTurnFolding)
+    }
     groupedParts.fastForEach { block ->
         when (block) {
             is MessagePartBlock.ThinkingBlock -> {
                 if (block.steps.isNotEmpty()) {
-                    val isReasoningOnlyBlock = block.steps.fastAll { it is ThinkingStep.ReasoningStep }
-                    ChainOfThought(
-                        modifier = Modifier.animateContentSize(),
-                        steps = block.steps,
-                        collapsedAdaptiveWidth = isReasoningOnlyBlock,
-                        cardColors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
-                        ),
-                    ) { step ->
+                    // 纯“思考 + 解说”链仍是自适应宽度（加入解说步骤后这个判断不修会恒为 false）
+                    val isReasoningOnlyBlock = block.steps.fastAll {
+                        it is ThinkingStep.ReasoningStep || it is ThinkingStep.NarrationStep
+                    }
+                    // 折叠块与回答同色时看起来就是一段正文 ⇒ 折叠块用低一档的容器色
+                    val cardColors = CardDefaults.cardColors(
+                        containerColor = (if (block.canCollapse) {
+                            MaterialTheme.colorScheme.surfaceContainerLow
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        }).copy(alpha = settings.displaySetting.bubbleOpacity),
+                    )
+                    val stepContent: @Composable ChainOfThoughtScope.(ThinkingStep) -> Unit = { step ->
                         when (step) {
                             is ThinkingStep.ReasoningStep -> {
                                 key(step.reasoning.createdAt) {
@@ -438,6 +445,40 @@ private fun MessagePartsBlock(
                                     )
                                 }
                             }
+
+                            is ThinkingStep.ServerToolStep -> {
+                                key(step.tool.toolCallId.ifBlank { step.tool.toolName }) {
+                                    ChatMessageServerToolStep(tool = step.tool)
+                                }
+                            }
+
+                            is ThinkingStep.NarrationStep -> {
+                                key("narration_${step.index}") {
+                                    ChatMessageNarrationStep(text = step.text)
+                                }
+                            }
+                        }
+                    }
+                    // key 让折叠/展开后的槽位不串位（步骤级状态按位置错配）
+                    key(block.steps.first().stableKey()) {
+                        if (block.canCollapse || block.forceExpand) {
+                            WholeTurnFoldBlock(
+                                steps = block.steps,
+                                canCollapse = block.canCollapse,
+                                forceExpand = block.forceExpand,
+                                loading = loading,
+                                cardColors = cardColors,
+                                collapsedAdaptiveWidth = isReasoningOnlyBlock,
+                                content = stepContent,
+                            )
+                        } else {
+                            ChainOfThought(
+                                modifier = Modifier.animateContentSize(),
+                                steps = block.steps,
+                                collapsedAdaptiveWidth = isReasoningOnlyBlock,
+                                cardColors = cardColors,
+                                content = stepContent,
+                            )
                         }
                     }
                 }
@@ -654,44 +695,6 @@ private fun MessagePartsBlock(
                                         modifier = Modifier.widthIn(max = 200.dp)
                                     )
                                 }
-                            }
-                        }
-                    }
-
-                    is UIMessagePart.ServerTool -> {
-                        // 内置工具（googleSearch/urlContext 等）状态行——服务端执行，不粘审批流（f7869e35 语义）
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.padding(vertical = 2.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                if (part.status == ServerToolStatus.IN_PROGRESS) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(12.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = HugeIcons.CheckmarkCircle02,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                                Text(
-                                    text = if (part.status == ServerToolStatus.IN_PROGRESS) {
-                                        stringResource(R.string.chat_server_tool_running, part.toolName)
-                                    } else {
-                                        stringResource(R.string.chat_server_tool_done, part.toolName)
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
                             }
                         }
                     }

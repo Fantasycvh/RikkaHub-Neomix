@@ -87,6 +87,8 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.ui.components.message.ChatMessageNarrationStep
+import app.androidrik.rikkahub.ui.components.message.ChatMessageServerToolStep
 import app.androidrik.rikkahub.ui.components.message.MessagePartBlock
 import app.androidrik.rikkahub.ui.components.message.ThinkingStep
 import app.androidrik.rikkahub.ui.components.message.groupMessageParts
@@ -1158,7 +1160,11 @@ private fun ExportedChatMessage(
         model?.displayName?.isNotBlank() == true -> model.displayName
         else -> "AI"
     }
-    val groupedParts = remember(message.parts) { message.parts.groupMessageParts() }
+    // 导出是静态图：解说也进思考链一起展示（export 内 collapse 关掉，全部步骤都渲染），
+    // 角色守卫照旧生效，用户消息里掺的工具调用不会被折进链里。
+    val groupedParts = remember(message.parts, message.role) {
+        message.parts.groupMessageParts(role = message.role, wholeTurnFolding = true)
+    }
     val messageContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier
@@ -1187,6 +1193,16 @@ private fun ExportedChatMessage(
                                         ExportedToolStep(
                                             tool = step.tool
                                         )
+                                    }
+
+                                    // ServerTool 已从正文常驻状态条移进思考链（本仓无 isFinished/FAILED）
+                                    is ThinkingStep.ServerToolStep -> {
+                                        ChatMessageServerToolStep(tool = step.tool)
+                                    }
+
+                                    // 过程解说：导出图里也是一行可读的说明
+                                    is ThinkingStep.NarrationStep -> {
+                                        ChatMessageNarrationStep(text = step.text)
                                     }
                                 }
                             }

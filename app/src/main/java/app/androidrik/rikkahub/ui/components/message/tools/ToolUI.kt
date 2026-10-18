@@ -75,6 +75,15 @@ interface ToolUIRenderer {
     fun Summary(context: ToolUIContext) {
     }
 
+    /**
+     * 成功执行后是否切断思考链（交付物类工具：图表、生成的图片）。
+     *
+     * 这类工具的产物留在链里时会被“只显示最后若干步”折叠掉，本次交付物就看不见了；
+     * 返回 true 表示它独占一块、永远可见。生成中 / 失败时不切断（仍是普通步骤）。
+     * 注意：切断链不影响 `lastToolIndex`，两者正交。
+     */
+    fun cutsChain(): Boolean = false
+
     /** 点击步骤后的详情, 渲染在 BottomSheet 内 */
     @Composable
     fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {

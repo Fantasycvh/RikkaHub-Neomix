@@ -636,6 +636,9 @@ object CalendarCreateToolUI : ToolUIRenderer {
 object ChartDisplayToolUI : ToolUIRenderer {
     override val toolName: String = "chart_display"
 
+    /** 图表是交付物：切断思考链，避免折叠时把图藏起来（成功时实际渲染走 ChartBlock） */
+    override fun cutsChain(): Boolean = true
+
     override fun icon(context: ToolUIContext): ImageVector =
         when (context.arguments.getStringContent("style")) {
             "bar" -> HugeIcons.ChartColumn

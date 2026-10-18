@@ -1967,5 +1967,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="assistant_page_memory_freeze_done">已固化到 %1$d 个会话</string>
   <string name="chat_memory_freeze_action">本对话固化记忆</string>
   <string name="chat_memory_freeze_toast">已在本对话固化 %1$d 条锚点</string>
+  <!-- 整轮折叠（docs/design/design-whole-turn-folding.md） -->
+  <string name="chain_of_thought_fold_summary">%1$d 步 · %2$d 工具 · %3$d 段说明</string>
+  <string name="setting_display_page_whole_turn_folding_title">整轮折叠</string>
+  <string name="setting_display_page_whole_turn_folding_desc">把一条回复里的思考、工具调用与过程解说收进一个可展开块，只留最后一次工具调用之后的文本作最终回答</string>
+  <string name="setting_display_page_auto_collapse_thinking_taken_over">由整轮折叠接管</string>
 </resources>
 
