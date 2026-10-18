@@ -2874,6 +2874,17 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `turnOwner = null` ⇒ 子代理 run 起的后台任务**没有归属**，中断 run 时不会被收掉。要修得给
   run 一个自己的令牌 + 在 run 取消处收尾（run 的协程取消点与聊天路径不同），本轮未动；
   宁可「不收」也不「误收」，是刻意选择。
+- 2026-10-18 **发布预发布 tag `1.0.28-beta.1`（303）—— `versionCode` 刻意不 bump（用户授权范围）**。
+  指向 `c0b04dadc`（= 303 出包提交 `18ed41432` 之后的 3 条代码 + 1 条文档），因此**同一 versionCode 下
+  设备行为与 303 出包并不完全相同**，区分办法就是用户定的那条：看应用更新时间。
+  **按既有规则发布**（不破例）：tag 不带 `v` 前缀、`--prerelease` 而非 `--latest`（已独立核对
+  `releases/latest` 仍是 `v1.0.27`，预发布没有抢 Latest）、**不挂预编译资产**（本仓一贯只发 tag，
+  构建按 README）；发布前后各做一次独立核验（`git ls-remote` 的 `^{}` 指向 + `releases/{tag}` 的
+  `isDraft/isPrerelease` + 注释 tag 对象里的 commit）。
+  **顺带清掉一个陈迹**：远端躺着一个 2026-10-17 创建、指向 `5de5c9f74`（296 时代）、**零资产**且
+  **tag ref 根本不存在**的同名草稿 ⇒ 已删除（`--cleanup-tag` 对它无效，因为 ref 本来就没建）；
+  否则同名草稿与正式预发布会并存，看的人分不清哪个是真的。
+  本条记录提交于 tag 之后（tag 仍指 `c0b04dadc`），属"文档滞后于发布"，不改写已发布的 tag。
 - 2026-10-18 **落地 P3：正则规则编辑期体检（只提示，不改运行时）** + **证伪此前「visualOnly 配了等于
   没配」的推定**。新增 `data/model/AssistantRegexDiagnosis.kt`（纯函数 `diagnoseRegexRule`）与
   `AssistantPromptPage` 的 `RegexDiagnosisWarnings`（替换串输入框下方，3 语言文案）。
