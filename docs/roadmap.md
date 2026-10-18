@@ -2866,6 +2866,10 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   去掉 `killByOwner` 的 owner 过滤、把某个边界退回直接 reset —— 各红一条。
   **未覆盖（诚实记账）**：应用进程被杀时子进程仍可能继续跑（需常驻/前台服务托管，见设计稿 §十）；
   真机端到端**未跑**（需要已装 rootfs，本轮只做 JVM + 源码守卫）。
+  **一处顺带发现的同类缺口（未修）**：子代理（`SubagentRunner`）装配的工作区工具
+  `turnOwner = null` ⇒ 子代理 run 起的后台任务**没有归属**，中断 run 时不会被收掉。要修得给
+  run 一个自己的令牌 + 在 run 取消处收尾（run 的协程取消点与聊天路径不同），本轮未动；
+  宁可「不收」也不「误收」，是刻意选择。
 - 2026-10-18 **落地 P3：正则规则编辑期体检（只提示，不改运行时）** + **证伪此前「visualOnly 配了等于
   没配」的推定**。新增 `data/model/AssistantRegexDiagnosis.kt`（纯函数 `diagnoseRegexRule`）与
   `AssistantPromptPage` 的 `RegexDiagnosisWarnings`（替换串输入框下方，3 语言文案）。
