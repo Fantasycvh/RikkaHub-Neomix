@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -632,6 +634,11 @@ class ResponseAPI(
             "response.output_item.added" -> {
                 val item = jsonObject["item"]?.jsonObject ?: error("chunk item not found")
                 val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
+                // 部分兼容网关在服务端执行函数工具，并把结果作为 function_call_output 下发（#2181）。
+                // 必须先于 id 解析处理：该项只保证有 call_id，item.id 可能缺失
+                if (type == "function_call_output") {
+                    return functionCallOutputChunk(item)
+                }
                 // item.id 规范上可缺（function_call 只有 call_id 必填），故回退到 call_id；
                 // 再登记「item.id / output_index → 规范 id」，供后续 arguments 事件回查
                 val id = item["id"]?.jsonPrimitive?.contentOrNull
@@ -717,7 +724,14 @@ class ResponseAPI(
             "response.output_item.done" -> {
                 val item = jsonObject["item"]?.jsonObject ?: error("chunk item not found")
                 val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
+                // 同上：先处理服务端已执行的结果，再解析 id
+                if (type == "function_call_output") {
+                    return functionCallOutputChunk(item)
+                }
+                // id 缺失时回退 call_id：兼容网关的 item 形状并不总带 id（原先直接 error 会让整轮失败）
+                val id = item["id"]?.jsonPrimitive?.contentOrNull
+                    ?: item["call_id"]?.jsonPrimitive?.contentOrNull
+                    ?: error("chunk id not found")
                 if (type == "reasoning") {
                     val encryptedContent = item["encrypted_content"]?.jsonPrimitive?.content
                     return MessageChunk(
@@ -809,7 +823,40 @@ class ResponseAPI(
         return null
     }
 
-    private fun parseResponseOutput(jsonObject: JsonObject): MessageChunk {
+    /**
+     * 服务端已执行的函数工具输出（上游 #2181 / `675e59f0d`）：挂到同 `call_id` 的工具 part 上。
+     *
+     * 复用 [UIMessagePart.Tool.merge] 的 `output = output + other.output` 语义，因此**不需要**
+     * 改流式合并层；工具是否已执行由 `output.isNotEmpty()` 自动判定。
+     */
+    private fun functionCallOutputChunk(item: JsonObject): MessageChunk? {
+        val callId = item["call_id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: return null
+        return MessageChunk(
+            id = callId,
+            model = "",
+            choices = listOf(
+                UIMessageChoice(
+                    index = 0,
+                    message = null,
+                    delta = UIMessage(
+                        role = MessageRole.ASSISTANT,
+                        parts = listOf(
+                            UIMessagePart.Tool(
+                                toolCallId = callId,
+                                toolName = "",
+                                input = "",
+                                output = listOf(UIMessagePart.Text(item.functionCallOutputText())),
+                            )
+                        )
+                    ),
+                    finishReason = null,
+                )
+            ),
+        )
+    }
+
+    internal fun parseResponseOutput(jsonObject: JsonObject): MessageChunk {
         println(jsonObject)
         val outputs = jsonObject["output"]?.jsonArray ?: error("output not found")
         val parts = arrayListOf<UIMessagePart>()
@@ -850,6 +897,20 @@ class ResponseAPI(
                             output = emptyList()
                         )
                     )
+                }
+
+                // 服务端已执行函数工具的结果（#2181）：回填到对应工具，避免客户端重复执行
+                "function_call_output" -> {
+                    val callId = output["call_id"]?.jsonPrimitive?.content ?: error("call_id not found")
+                    val index = parts.indexOfLast {
+                        it is UIMessagePart.Tool && it.toolCallId == callId
+                    }
+                    if (index >= 0) {
+                        val tool = parts[index] as UIMessagePart.Tool
+                        parts[index] = tool.copy(
+                            output = tool.output + UIMessagePart.Text(output.functionCallOutputText())
+                        )
+                    }
                 }
 
                 "message" -> {
@@ -905,6 +966,22 @@ class ResponseAPI(
 
 private fun isModelAllowTemperature(model: Model): Boolean {
     return !ModelRegistry.OPENAI_O_MODELS.match(model.modelId) && !ModelRegistry.GPT_5.match(model.modelId)
+}
+
+/**
+ * `function_call_output.output` 的文本化（上游 #2181 / `675e59f0d`）。
+ *
+ * 三种合法形状：字符串、`input_text` 等内容数组、`null`。数组里取不到 `input_text` 时
+ * 退回 `toString()`（宁可把原始 JSON 显示给用户，也不静默丢结果）。
+ */
+internal fun JsonObject.functionCallOutputText(): String = when (val output = get("output")) {
+    null, is JsonNull -> ""
+    is JsonPrimitive -> output.content
+    is JsonArray -> output.mapNotNull { item ->
+        item.jsonObjectOrNull?.takeIf { it["type"]?.jsonPrimitive?.contentOrNull == "input_text" }
+            ?.get("text")?.jsonPrimitive?.contentOrNull
+    }.takeIf { it.isNotEmpty() }?.joinToString("\n") ?: output.toString()
+    else -> output.toString()
 }
 
 private fun List<UIMessagePart>.isOnlyTextPart(): Boolean {
