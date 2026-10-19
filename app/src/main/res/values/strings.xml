@@ -1174,6 +1174,10 @@
   <string name="setting_page_extensions">Extensions</string>
   <string name="setting_page_extensions_desc">Manage prompt injections, skills and more</string>
   <string name="setting_page_general_settings">General Settings</string>
+  <string name="setting_page_ai_and_generation">AI &amp; Generation</string>
+  <string name="setting_page_connection_and_data">Connection &amp; Data</string>
+  <string name="setting_page_media_and_speech">Media &amp; Speech</string>
+  <string name="setting_page_media_and_speech_desc">Image, video, speech generation and recognition providers</string>
   <string name="setting_page_interaction_notification_settings">Interaction &amp;amp; Notifications</string>
   <string name="setting_page_mcp">MCP</string>
   <string name="setting_page_mcp_desc">Configure MCP Servers</string>
@@ -2136,5 +2140,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="media_creation_page_nothing_to_save">The selected items have no images or videos to save</string>
   <string name="media_creation_page_saved_files">Saved %1$d files to gallery</string>
   <string name="media_creation_page_saved_files_partial">Saved %1$d files, %2$d failed: %3$s</string>
+  <string name="media_creation_legacy_entry">Legacy image generation</string>
+  <string name="setting_provider_legacy_image_hint">Image models configured here are used only by legacy image generation. For the new creation workflow, configure providers in Media &amp; Speech.</string>
 </resources>
-

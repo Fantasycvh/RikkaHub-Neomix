@@ -2119,5 +2119,10 @@
   <string name="media_creation_page_nothing_to_save">所選項目沒有可儲存的圖片或影片</string>
   <string name="media_creation_page_saved_files">已將 %1$d 個檔案儲存至相簿</string>
   <string name="media_creation_page_saved_files_partial">已儲存 %1$d 個檔案，%2$d 個失敗：%3$s</string>
+  <string name="setting_page_ai_and_generation">AI 與生成</string>
+  <string name="setting_page_connection_and_data">連線與資料</string>
+  <string name="setting_page_media_and_speech">媒體與語音</string>
+  <string name="setting_page_media_and_speech_desc">圖片、影片、語音生成與識別供應商</string>
+  <string name="media_creation_legacy_entry">舊版圖片生成</string>
+  <string name="setting_provider_legacy_image_hint">此處的圖片模型僅用於舊版圖片生成。新版創作請在「媒體與語音」中設定供應商。</string>
 </resources>
-

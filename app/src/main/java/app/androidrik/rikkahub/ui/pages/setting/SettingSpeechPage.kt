@@ -40,6 +40,8 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -54,6 +56,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,69 +94,32 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
 
 @Composable
-fun SettingSpeechPage(vm: SettingVM = koinViewModel()) {
+fun SettingSpeechPage(vm: SettingVM = koinViewModel(), embedded: Boolean = false) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     var editingTTSProvider by remember { mutableStateOf<TTSProviderSetting?>(null) }
     var editingASRProvider by remember { mutableStateOf<ASRProviderSetting?>(null) }
-    var selectedPage by remember { mutableIntStateOf(0) }
+    var selectedPage by rememberSaveable { mutableIntStateOf(0) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    Scaffold(
-        topBar = {
-            LargeFlexibleTopAppBar(
-                title = {
-                    Text(text = stringResource(R.string.speech_page_title))
-                },
-                navigationIcon = {
-                    BackButton()
-                },
-                actions = {
-                    if (selectedPage == 0) {
-                        AddTTSProviderButton {
-                            vm.updateSettings(
-                                settings.copy(
-                                    ttsProviders = listOf(it) + settings.ttsProviders
-                                )
-                            )
-                        }
-                    } else {
-                        AddASRProviderButton {
-                            vm.updateSettings(
-                                settings.copy(
-                                    asrProviders = listOf(it) + settings.asrProviders,
-                                    selectedASRProviderId = settings.selectedASRProviderId ?: it.id
-                                )
-                            )
-                        }
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors
-            )
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = CustomColors.cardColorsOnSurfaceContainer.containerColor
-            ) {
-                NavigationBarItem(
-                    selected = selectedPage == 0,
-                    onClick = { selectedPage = 0 },
-                    icon = { Icon(HugeIcons.VolumeHigh, contentDescription = null) },
-                    label = { Text(stringResource(R.string.speech_tab_tts)) }
-                )
-                NavigationBarItem(
-                    selected = selectedPage == 1,
-                    onClick = { selectedPage = 1 },
-                    icon = { Icon(HugeIcons.Mic01, contentDescription = null) },
-                    label = { Text(stringResource(R.string.speech_tab_asr)) }
+    val addProvider: @Composable () -> Unit = {
+        if (selectedPage == 0) {
+            AddTTSProviderButton {
+                vm.updateSettings(settings.copy(ttsProviders = listOf(it) + settings.ttsProviders))
+            }
+        } else {
+            AddASRProviderButton {
+                vm.updateSettings(
+                    settings.copy(
+                        asrProviders = listOf(it) + settings.asrProviders,
+                        selectedASRProviderId = settings.selectedASRProviderId ?: it.id,
+                    )
                 )
             }
-        },
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = CustomColors.topBarColors.containerColor,
-    ) { innerPadding ->
+        }
+    }
+    val speechContent: @Composable (Modifier) -> Unit = { modifier ->
         when (selectedPage) {
-            0 -> Column(modifier = Modifier.padding(innerPadding)) {
+            0 -> Column(modifier = modifier.fillMaxSize()) {
                 TTSPlaybackSpeedSetting(
                     speed = settings.defaultTTSPlaybackSpeed,
                     onSpeedChange = {
@@ -173,8 +139,77 @@ fun SettingSpeechPage(vm: SettingVM = koinViewModel()) {
                 settings = settings,
                 onUpdateSettings = vm::updateSettings,
                 onEdit = { editingASRProvider = it },
-                modifier = Modifier.padding(innerPadding)
+                modifier = modifier,
             )
+        }
+    }
+
+    // Embedded speech owns only its TTS/ASR tabs and actions; the media page owns page chrome.
+    if (embedded) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SecondaryTabRow(
+                    selectedTabIndex = selectedPage,
+                    modifier = Modifier.weight(1f),
+                    containerColor = CustomColors.topBarColors.containerColor,
+                ) {
+                    Tab(
+                        selected = selectedPage == 0,
+                        onClick = { selectedPage = 0 },
+                        text = { Text(stringResource(R.string.speech_tab_tts)) },
+                    )
+                    Tab(
+                        selected = selectedPage == 1,
+                        onClick = { selectedPage = 1 },
+                        text = { Text(stringResource(R.string.speech_tab_asr)) },
+                    )
+                }
+                addProvider()
+            }
+            speechContent(Modifier.weight(1f))
+        }
+    } else {
+        Scaffold(
+            topBar = {
+                LargeFlexibleTopAppBar(
+                    title = {
+                        Text(text = stringResource(R.string.speech_page_title))
+                    },
+                    navigationIcon = {
+                        BackButton()
+                    },
+                    actions = {
+                        addProvider()
+                    },
+                    scrollBehavior = scrollBehavior,
+                    colors = CustomColors.topBarColors
+                )
+            },
+            bottomBar = {
+                NavigationBar(
+                    containerColor = CustomColors.cardColorsOnSurfaceContainer.containerColor
+                ) {
+                    NavigationBarItem(
+                        selected = selectedPage == 0,
+                        onClick = { selectedPage = 0 },
+                        icon = { Icon(HugeIcons.VolumeHigh, contentDescription = null) },
+                        label = { Text(stringResource(R.string.speech_tab_tts)) }
+                    )
+                    NavigationBarItem(
+                        selected = selectedPage == 1,
+                        onClick = { selectedPage = 1 },
+                        icon = { Icon(HugeIcons.Mic01, contentDescription = null) },
+                        label = { Text(stringResource(R.string.speech_tab_asr)) }
+                    )
+                }
+            },
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            containerColor = CustomColors.topBarColors.containerColor,
+        ) { innerPadding ->
+            speechContent(Modifier.padding(innerPadding))
         }
     }
 

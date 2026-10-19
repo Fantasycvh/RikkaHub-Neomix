@@ -1358,6 +1358,13 @@ private fun ModelTypeSelector(
             )
         }
     }
+    if (selectedType == ModelType.IMAGE) {
+        Text(
+            text = stringResource(R.string.setting_provider_legacy_image_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

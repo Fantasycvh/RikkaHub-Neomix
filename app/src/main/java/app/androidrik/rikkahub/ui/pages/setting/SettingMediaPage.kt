@@ -46,6 +46,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -95,7 +97,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 /**
  * 媒体生成设置。
  *
- * 两个页签：服务商配置，以及「素材存储」——部分视频接口只接受公网素材地址，配置独立于备份的
+ * 三个页签：服务商配置、素材存储，以及语音设置。部分视频接口只接受公网素材地址，配置独立于备份的
  * S3 兼容桶后，本地素材会先上传再以临时地址提交；未配置时相关生成会给出本地化明确错误。
  */
 @Composable
@@ -104,8 +106,9 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
     var editingProvider by remember { mutableStateOf<MediaGenerationProviderSetting?>(null) }
     var newProvider by remember { mutableStateOf<MediaGenerationProviderSetting?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
-    // 0 = 服务商，1 = 素材存储
-    var selectedTab by remember { mutableStateOf(0) }
+    // 0 = 服务商，1 = 素材存储，2 = 语音
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    val tabStateHolder = rememberSaveableStateHolder()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     // 新建时先选类型，再进配置面板。
@@ -119,7 +122,7 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.setting_page_media)) },
+                title = { Text(stringResource(R.string.setting_page_media_and_speech)) },
                 navigationIcon = { BackButton() },
                 actions = {
                     if (selectedTab == 0) {
@@ -173,6 +176,11 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
                     onClick = { selectedTab = 1 },
                     text = { Text(stringResource(R.string.setting_media_page_asset_storage)) },
                 )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text(stringResource(R.string.speech_page_title)) },
+                )
             }
 
             Box(
@@ -180,19 +188,23 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
                     .fillMaxWidth()
                     .weight(1f),
             ) {
-                when (selectedTab) {
-                    0 -> MediaProviderList(
-                        settings = settings,
-                        onUpdateSettings = vm::updateSettings,
-                        onEdit = { editingProvider = it },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                tabStateHolder.SaveableStateProvider(selectedTab) {
+                    when (selectedTab) {
+                        0 -> MediaProviderList(
+                            settings = settings,
+                            onUpdateSettings = vm::updateSettings,
+                            onEdit = { editingProvider = it },
+                            modifier = Modifier.fillMaxSize(),
+                        )
 
-                    else -> MediaUploadStorageTab(
-                        settings = settings,
-                        onUpdateSettings = vm::updateSettings,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                        1 -> MediaUploadStorageTab(
+                            settings = settings,
+                            onUpdateSettings = vm::updateSettings,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+
+                        2 -> SettingSpeechPage(vm = vm, embedded = true)
+                    }
                 }
             }
         }

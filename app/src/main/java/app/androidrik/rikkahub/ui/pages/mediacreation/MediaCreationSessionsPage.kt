@@ -111,6 +111,15 @@ fun MediaCreationSessionsPage(vm: MediaCreationSessionsVM = koinViewModel()) {
             contentPadding = innerPadding + PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         ) {
+            item(key = "legacy_image_generation") {
+                TextButton(
+                    onClick = { navController.navigate(Screen.ImageGen) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.media_creation_legacy_entry))
+                }
+            }
+
             if (sessions?.isEmpty() == true) {
                 item {
                     EmptySessionsState(modifier = Modifier.fillParentMaxHeight(0.7f))

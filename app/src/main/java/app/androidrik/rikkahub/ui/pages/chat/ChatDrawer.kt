@@ -31,6 +31,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
@@ -48,7 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,14 +68,13 @@ import me.rerere.hugeicons.stroke.File01
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Folder02
 import me.rerere.hugeicons.stroke.FolderAdd
-import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.InLove
 import me.rerere.hugeicons.stroke.LanguageCircle
 import me.rerere.hugeicons.stroke.LookTop
 import me.rerere.hugeicons.stroke.PencilEdit01
+import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings03
-import me.rerere.hugeicons.stroke.Sparkles
 import me.rerere.hugeicons.stroke.TransactionHistory
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
@@ -205,13 +205,18 @@ fun ChatDrawerContent(
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
 
     // Menu popup 状态
-    var showMenuPopup by remember { mutableStateOf(false) }
 
-    ModalDrawerSheet(
-        modifier = Modifier.width(300.dp)
-    ) {
+
+    // 矮屏（手表、横屏手机）上顶部固定会把会话列表挤没，改为随会话列表一起滚动
+    // （吸收上游 9ce1ae1 / #2164）
+    val windowHeight = LocalWindowInfo.current.containerDpSize.height
+    val conversationPanelVisible = !(showFilesPanel && boundWorkspaceId != null)
+    val headerInList = windowHeight < 640.dp && conversationPanelVisible && !editOrderMode
+
+    // 抽屉顶部：备份提醒、用户信息、常用入口（历史 / 媒体创作 / 翻译）、面板切换
+    val drawerHeader: @Composable () -> Unit = {
         Column(
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             BackupReminderCard(
@@ -286,20 +291,7 @@ fun ChatDrawerContent(
                 )
             }
 
-            if (showFilesPanel && boundWorkspaceId != null) {
-                WorkspaceFilesPanel(
-                    workspaceId = boundWorkspaceId.toString(),
-                    files = workspaceFiles,
-                    path = filesPath,
-                    searchQuery = filesSearchInput,
-                    searchResults = filesSearchResults,
-                    onSearchChange = { filesSearchInput = it },
-                    onEnterDir = drawerVm::enterFilesDir,
-                    onUpDir = drawerVm::navigateFilesUp,
-                    navController = navController,
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
+            if (conversationPanelVisible) {
                 // 「排序」入口（设计稿 §四.1）：会话面板顶部，与文件夹条同层
                 Row(
                     modifier = Modifier
@@ -327,7 +319,33 @@ fun ChatDrawerContent(
                     onRename = { folderToRename = it },
                     onDelete = { folderToDelete = it },
                 )
+            }
+        }
+    }
 
+    ModalDrawerSheet(
+        modifier = Modifier.width(300.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (!headerInList) drawerHeader()
+
+            if (showFilesPanel && boundWorkspaceId != null) {
+                WorkspaceFilesPanel(
+                    workspaceId = boundWorkspaceId.toString(),
+                    files = workspaceFiles,
+                    path = filesPath,
+                    searchQuery = filesSearchInput,
+                    searchResults = filesSearchResults,
+                    onSearchChange = { filesSearchInput = it },
+                    onEnterDir = drawerVm::enterFilesDir,
+                    onUpDir = drawerVm::navigateFilesUp,
+                    navController = navController,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
                 if (editOrderMode) {
                     EditConversationOrderList(
                         conversations = editableConversations,
@@ -346,6 +364,7 @@ fun ChatDrawerContent(
                 conversations = conversations,
                 conversationJobs = conversationJobs.keys,
                 listState = conversationListState,
+                header = if (headerInList) drawerHeader else null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -474,51 +493,6 @@ fun ChatDrawerContent(
                         navController.navigate(Screen.Assistant)
                     },
                 )
-
-                Box {
-                    DrawerAction(
-                        icon = {
-                            Icon(HugeIcons.Sparkles, "Menu")
-                        },
-                        label = {
-                            Text(stringResource(R.string.menu))
-                        },
-                        onClick = {
-                            showMenuPopup = true
-                        },
-                    )
-                    DropdownMenu(
-                        expanded = showMenuPopup,
-                        onDismissRequest = { showMenuPopup = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.chat_page_menu_ai_translator)) },
-                            leadingIcon = { Icon(HugeIcons.LanguageCircle, null) },
-                            onClick = {
-                                showMenuPopup = false
-                                navController.navigate(Screen.Translator)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.chat_page_menu_image_generation)) },
-                            leadingIcon = { Icon(HugeIcons.Image02, null) },
-                            onClick = {
-                                showMenuPopup = false
-                                navController.navigate(Screen.ImageGen)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.media_creation_title)) },
-                            leadingIcon = {
-                                Icon(painterResource(R.drawable.ic_media_creation), contentDescription = null)
-                            },
-                            onClick = {
-                                showMenuPopup = false
-                                navController.navigate(Screen.MediaCreationSessions)
-                            }
-                        )
-                    }
-                }
 
                 DrawerAction(
                     icon = {
@@ -870,63 +844,86 @@ fun ChatDrawerContent(
 @Composable
 private fun DrawerActions(navController: Navigator) {
     Column {
-        // 搜索入口
-        Surface(
-            onClick = { navController.navigate(Screen.MessageSearch) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
+        // 聊天历史入口，行尾是搜索入口（吸收上游 660571449：搜索不再单独占一行）
+        DrawerEntry(
+            icon = HugeIcons.TransactionHistory,
+            text = stringResource(R.string.chat_page_history),
+            onClick = { navController.navigate(Screen.History) },
+            trailingIcon = HugeIcons.Search01,
+            trailingDescription = stringResource(R.string.chat_page_search_chats),
+            onTrailingClick = { navController.navigate(Screen.MessageSearch) },
+        )
+
+        // 媒体创作入口（移入聊天历史之下）
+        DrawerEntry(
+            icon = HugeIcons.Image02,
+            text = stringResource(R.string.media_creation_title),
+            onClick = { navController.navigate(Screen.MediaCreationSessions) },
+        )
+
+        // 翻译入口（移入聊天历史之下）
+        DrawerEntry(
+            icon = HugeIcons.LanguageCircle,
+            text = stringResource(R.string.chat_page_menu_ai_translator),
+            onClick = { navController.navigate(Screen.Translator) },
+        )
+    }
+}
+
+@Composable
+private fun DrawerEntry(
+    icon: ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    trailingIcon: ImageVector? = null,
+    trailingDescription: String? = null,
+    onTrailingClick: () -> Unit = {},
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .weight(1f)
                     .padding(horizontal = 8.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Icon(
-                    imageVector = HugeIcons.Search01,
+                    imageVector = icon,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = stringResource(R.string.chat_page_search_chats),
+                    text = text,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
-        }
-
-        // 历史记录入口
-        Surface(
-            onClick = { navController.navigate(Screen.History) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(
-                    imageVector = HugeIcons.TransactionHistory,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = stringResource(R.string.chat_page_history),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+            if (trailingIcon != null) {
+                // 不用 IconButton：它的 48dp 最小尺寸会把这一行撑得比其他行高
+                Box(
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onTrailingClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = trailingIcon,
+                        contentDescription = trailingDescription,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -941,7 +938,7 @@ private fun DrawerAction(
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.minimumInteractiveComponentSize(),
         color = MaterialTheme.colorScheme.primaryContainer,
         shape = CircleShape,
         contentColor = MaterialTheme.colorScheme.onSurface,

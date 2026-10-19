@@ -64,6 +64,7 @@ import app.androidrik.rikkahub.data.datastore.isNotConfigured
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.Navigator
@@ -123,17 +124,10 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     item(
                         leadingContent = { Icon(HugeIcons.Sun01, null) },
                         trailingContent = {
-                            Select(
+                            SegmentedPill(
                                 options = ColorMode.entries,
                                 selectedOption = colorMode,
-                                onOptionSelected = {
-                                    colorMode = it
-                                    navController.navigate(Screen.Setting) {
-                                        popUpTo(Screen.Setting) {
-                                            inclusive = true
-                                        }
-                                    }
-                                },
+                                onOptionSelected = { colorMode = it },
                                 optionToString = {
                                     when (it) {
                                         ColorMode.SYSTEM -> stringResource(R.string.setting_page_color_mode_system)
@@ -141,7 +135,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                                         ColorMode.DARK -> stringResource(R.string.setting_page_color_mode_dark)
                                     }
                                 },
-                                modifier = Modifier.width(150.dp)
+                                modifier = Modifier.width(186.dp)
                             )
                         },
                         headlineContent = { Text(stringResource(R.string.setting_page_color_mode)) },
@@ -168,10 +162,10 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 }
             }
 
-            item("modelServices") {
+            item("aiAndGeneration") {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
-                    title = { Text(stringResource(R.string.setting_page_model_and_services)) },
+                    title = { Text(stringResource(R.string.setting_page_ai_and_generation)) },
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.SettingModels) },
@@ -186,28 +180,16 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         headlineContent = { Text(stringResource(R.string.setting_page_providers)) },
                     )
                     item(
+                        onClick = { navController.navigate(Screen.SettingMedia) },
+                        leadingContent = { Icon(HugeIcons.Image02, null) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_media_and_speech_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_media_and_speech)) },
+                    )
+                    item(
                         onClick = { navController.navigate(Screen.SettingSearch) },
                         leadingContent = { Icon(HugeIcons.GlobalSearch, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_search_service_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_search_service)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingSpeech) },
-                        leadingContent = { Icon(HugeIcons.Megaphone01, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_tts_service_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_tts_service)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingMedia) },
-                        leadingContent = { Icon(HugeIcons.Image02, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_media_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_media)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingMcp) },
-                        leadingContent = { Icon(HugeIcons.McpServer, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_mcp_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_mcp)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingKnowledgeBase) },
@@ -215,23 +197,29 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         supportingContent = { Text(stringResource(R.string.setting_page_kb_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_kb)) },
                     )
+                }
+            }
+
+            item("connectionAndData") {
+                val storageState by produceState(-1 to 0L) {
+                    value = filesManager.countChatFiles()
+                }
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.setting_page_connection_and_data)) },
+                ) {
+                    item(
+                        onClick = { navController.navigate(Screen.SettingMcp) },
+                        leadingContent = { Icon(HugeIcons.McpServer, null) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_mcp_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_mcp)) },
+                    )
                     item(
                         onClick = { navController.navigate(Screen.SettingWeb) },
                         leadingContent = { Icon(HugeIcons.ServerStack01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_web_server_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_web_server)) },
                     )
-                }
-            }
-
-            item("dataSettings") {
-                val storageState by produceState(-1 to 0L) {
-                    value = filesManager.countChatFiles()
-                }
-                CardGroup(
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    title = { Text(stringResource(R.string.setting_page_data_settings)) },
-                ) {
                     item(
                         onClick = { navController.navigate(Screen.Backup) },
                         leadingContent = { Icon(HugeIcons.Database02, null) },
