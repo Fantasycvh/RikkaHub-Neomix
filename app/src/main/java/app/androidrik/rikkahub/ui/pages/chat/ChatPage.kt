@@ -29,14 +29,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DrawerState
-import androidx.compose.material3.DrawerValue
+
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ModalNavigationDrawer
+import app.androidrik.rikkahub.ui.components.drawer.ChatScalingDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.Scaffold
@@ -48,7 +47,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberBottomSheetState
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -207,32 +205,29 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
         }
     }
 
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    var drawerOpen by rememberSaveable { mutableStateOf(false) }
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
 
-    // Handle back press when drawer is open
-    BackHandler(enabled = drawerState.isOpen) {
-        scope.launch {
-            drawerState.close()
-        }
-    }
-
-    // Hide keyboard when drawer is open
-    LaunchedEffect(drawerState.isOpen) {
-        if (drawerState.isOpen) {
-            softwareKeyboardController?.hide()
-        }
-    }
-
+    // Handle back press when drawer is open (small screen only)
     val windowAdaptiveInfo = currentWindowDpSize()
     val isBigScreen =
         windowAdaptiveInfo.width > windowAdaptiveInfo.height && windowAdaptiveInfo.width >= 1100.dp
 
-    // 进入大屏（永久抽屉）模式时重置抽屉状态为关闭，
-    // 避免从横屏旋转回竖屏后，模态抽屉残留为打开状态且无法关闭（#1304）
+    BackHandler(enabled = !isBigScreen && drawerOpen) {
+        drawerOpen = false
+    }
+
+    // Hide keyboard when drawer opens
+    LaunchedEffect(drawerOpen) {
+        if (drawerOpen) {
+            softwareKeyboardController?.hide()
+        }
+    }
+
+    // Reset drawer state when entering big screen mode
     LaunchedEffect(isBigScreen) {
-        if (isBigScreen && drawerState.isOpen) {
-            drawerState.close()
+        if (isBigScreen && drawerOpen) {
+            drawerOpen = false
         }
     }
 
@@ -300,7 +295,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     setting = setting,
                     conversation = conversation,
                     contextUsage = contextUsage,
-                    drawerState = drawerState,
+                    drawerOpen = false,
+                    onOpenDrawer = {},
                     navController = navController,
                     vm = vm,
                     chatListState = chatListState,
@@ -318,8 +314,9 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
         }
 
         else -> {
-            ModalNavigationDrawer(
-                drawerState = drawerState,
+            ChatScalingDrawer(
+                open = drawerOpen,
+                onOpenChange = { drawerOpen = it },
                 drawerContent = {
                     ChatDrawerContent(
                         navController = navController,
@@ -327,33 +324,32 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                         vm = vm,
                         settings = setting
                     )
+                },
+                content = {
+                    ChatPageContent(
+                        inputState = inputState,
+                        loadingJob = loadingJob,
+                        processingStatus = processingStatus,
+                        setting = setting,
+                        conversation = conversation,
+                        contextUsage = contextUsage,
+                        drawerOpen = drawerOpen,
+                        onOpenDrawer = { drawerOpen = true },
+                        navController = navController,
+                        vm = vm,
+                        chatListState = chatListState,
+                        enableWebSearch = enableWebSearch,
+                        currentChatModel = currentChatModel,
+                        messageQueueState = messageQueueState,
+                        voiceState = voiceState,
+                        startVoiceMode = startVoiceMode,
+                        bigScreen = false,
+                        errors = errors,
+                        onDismissError = { vm.dismissError(it) },
+                        onClearAllErrors = { vm.clearAllErrors() },
+                    )
                 }
-            ) {
-                ChatPageContent(
-                    inputState = inputState,
-                    loadingJob = loadingJob,
-                    processingStatus = processingStatus,
-                    setting = setting,
-                    conversation = conversation,
-                    contextUsage = contextUsage,
-                    drawerState = drawerState,
-                    navController = navController,
-                    vm = vm,
-                    chatListState = chatListState,
-                    enableWebSearch = enableWebSearch,
-                    currentChatModel = currentChatModel,
-                    messageQueueState = messageQueueState,
-                    voiceState = voiceState,
-                    startVoiceMode = startVoiceMode,
-                    bigScreen = false,
-                    errors = errors,
-                    onDismissError = { vm.dismissError(it) },
-                    onClearAllErrors = { vm.clearAllErrors() },
-                )
-            }
-            BackHandler(drawerState.isOpen) {
-                scope.launch { drawerState.close() }
-            }
+            )
         }
     }
 }
@@ -367,7 +363,8 @@ private fun ChatPageContent(
     bigScreen: Boolean,
     conversation: Conversation,
     contextUsage: ContextUsage,
-    drawerState: DrawerState,
+    drawerOpen: Boolean,
+    onOpenDrawer: () -> Unit,
     navController: Navigator,
     vm: ChatVM,
     chatListState: LazyListState,
@@ -447,8 +444,9 @@ private fun ChatPageContent(
                     settings = setting,
                     conversation = conversation,
                     contextUsage = contextUsage,
+                    drawerOpen = drawerOpen,
+                    onOpenDrawer = onOpenDrawer,
                     bigScreen = bigScreen,
-                    drawerState = drawerState,
                     previewMode = previewMode,
                     hazeState = hazeState,
                     glassHazeState = glassHazeState,
@@ -1106,7 +1104,8 @@ private fun TopBar(
     settings: Settings,
     conversation: Conversation,
     contextUsage: ContextUsage,
-    drawerState: DrawerState,
+    drawerOpen: Boolean,
+    onOpenDrawer: () -> Unit,
     bigScreen: Boolean,
     previewMode: Boolean,
     hazeState: HazeState,
@@ -1132,11 +1131,7 @@ private fun TopBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         navigationIcon = {
             if (!bigScreen) {
-                IconButton(
-                    onClick = {
-                        scope.launch { drawerState.open() }
-                    }
-                ) {
+                IconButton(onClick = onOpenDrawer) {
                     Icon(HugeIcons.Menu03, "Messages")
                 }
             }
