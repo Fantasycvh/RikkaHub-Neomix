@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import android.content.Context
+import android.util.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.http.HttpHeaders
@@ -31,6 +32,7 @@ import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.MemoryTransactionRunner
 import app.androidrik.rikkahub.data.repository.RoomMemoryTransactionRunner
 import app.androidrik.common.http.AcceptLanguageBuilder
+import app.androidrik.common.android.sanitizeSensitiveText
 import app.androidrik.rikkahub.BuildConfig
 import app.androidrik.rikkahub.data.ai.AIRequestInterceptor
 import app.androidrik.rikkahub.data.ai.RequestLoggingInterceptor
@@ -281,10 +283,23 @@ val dataSourceModule = module {
             }
             .addNetworkInterceptor(RequestLoggingInterceptor())
             .addInterceptor(AIRequestInterceptor())
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                redactHeader("Proxy-Authorization")
-                level = HttpLoggingInterceptor.Level.HEADERS
-            })
+            .apply {
+                // 仅 debug 输出 HTTP 日志：release 不挂该拦截器（避免把请求行/凭据打到 logcat）。
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(
+                        HttpLoggingInterceptor { message ->
+                            // 请求行含完整 URL：预签名 query 参数（X-Amz-Signature 等）先统一脱敏再进 logcat。
+                            Log.d("HttpLogging", sanitizeSensitiveText(message))
+                        }.apply {
+                            redactHeader("Authorization")
+                            redactHeader("x-api-key")
+                            redactHeader("x-goog-api-key")
+                            redactHeader("Proxy-Authorization")
+                            level = HttpLoggingInterceptor.Level.HEADERS
+                        }
+                    )
+                }
+            }
             .build().also { SearchService.init(it, get()) }
     }
 
