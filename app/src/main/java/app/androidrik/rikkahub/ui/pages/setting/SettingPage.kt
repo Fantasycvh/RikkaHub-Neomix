@@ -135,7 +135,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                                         ColorMode.DARK -> stringResource(R.string.setting_page_color_mode_dark)
                                     }
                                 },
-                                modifier = Modifier.width(186.dp)
+                                modifier = Modifier.width(162.dp)
                             )
                         },
                         headlineContent = { Text(stringResource(R.string.setting_page_color_mode)) },

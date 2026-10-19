@@ -66,7 +66,7 @@
 
 ### 2.4 SegmentedPill（设置页内联控件）
 
-设置页颜色模式用胶囊分段（`SettingPage.kt:129-141`，宽 186dp）而非下拉 Select。Neomix 原先用 `Select`（`SettingPage.kt:126-145`，宽 150dp），多一次弹层交互；**2026-10-19 已改为自研 `SegmentedPill`（186dp，`ui/components/ui/SegmentedPill.kt`）**，控件本身带单选语义与 48dp 触控。
+设置页颜色模式用胶囊分段（`SettingPage.kt:129-141`，宽 186dp）而非下拉 Select。Neomix 原先用 `Select`（`SettingPage.kt:126-145`，宽 150dp），多一次弹层交互；**2026-10-19 已改为自研 `SegmentedPill`（162dp，内边距收紧到水平 2dp / 垂直 8dp，外边距只留垂直 2dp，`ui/components/ui/SegmentedPill.kt`）**，控件本身带单选语义与 48dp 触控。宽度取 162dp 是实测下限：labelMedium 下「跟随系统」4 字排版宽 49.5dp，减掉内边距后每项内容区需 ≥174px（49.7dp），162dp 给到 50dp；同时给 `ListItem` 标题列留出 79dp，避免「颜色模式」折行（原先 186dp 时标题列只剩 55dp，会折成「颜色模 / 式」）。
 
 ### 2.5 其它
 

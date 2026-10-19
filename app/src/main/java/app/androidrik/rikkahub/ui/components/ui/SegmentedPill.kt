@@ -41,7 +41,7 @@ fun <T> SegmentedPill(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(2.dp)
+                    .padding(vertical = 2.dp)
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .background(
@@ -53,7 +53,7 @@ fun <T> SegmentedPill(
                         role = Role.RadioButton,
                         onClick = { if (!isSelected) onOptionSelected(option) },
                     )
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                    .padding(horizontal = 2.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(

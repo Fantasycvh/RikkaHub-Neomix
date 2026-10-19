@@ -75,7 +75,7 @@ class SegmentedPillTest {
         rule.setContent {
             MaterialTheme {
                 SegmentedPill(listOf("System", "Light", "Dark"), "System", {}, { it },
-                    Modifier.width(186.dp))
+                    Modifier.width(162.dp))
             }
         }
         rule.onNodeWithText("System").assertHeightIsAtLeast(48.dp)
