@@ -3201,6 +3201,23 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `git ls-remote` 的 `^{}` 指向、`releases/{tag}` 的 `isDraft/isPrerelease`、注释 tag 对象与
   `releases/latest` 仍为 `v1.0.27`。
 
+- 2026-10-19 **发布预发布 tag `1.0.28-beta.3`（305）**，保留 `1.0.28-beta.1`（303）/ `1.0.28-beta.2`（304）不动。
+  `versionCode` 304 → **305**、`versionName` 改为 `1.0.28-beta.3`，tag 指向 release 提交（`148278311`；
+  README 发布行、设计稿「落地对象」、提案「代码基线」同步更新）。
+  **相对 beta.2 的内容**（7 个提交）：①抽屉重构为缩放式 `ChatScalingDrawer`（`538605ca7`）②抽屉顶部归一为
+  聊天历史 / 媒体创作 / AI 翻译三条同级入口 + 设置页四组重排与 TTS 并入「媒体与语音」+ 吸收上游矮屏修复
+  （`5e8e6f667`）③上游 29 提交同步评估与文档记录（`8340c74e6`、`b36be28fd`）④Responses API
+  `function_call_output` 解析修复（`8b85aa3a4`）⑤存量文档核查修正（`793fe65b3`）⑥颜色模式胶囊
+  186dp → 162dp（边距同步收紧）修复标题折行（`7d27b39ce`）。
+  **验证**：`assembleRelease`（R8 + lintVital）通过；装机后 `dumpsys package` 核实 `versionCode=305` /
+  `1.0.28-beta.3`；真机 `6c841f95`（361dp / 560dpi）覆盖安装 304→305 成功、冷启无 `AndroidRuntime`
+  崩溃、既有会话与主题保留；真机像素实测颜色模式标题与三标签均单行、抽屉三入口与设置四组正常。
+  **边界**：Responses 修复仍是事件 JSON 级单测（未接真实网关端到端）；7 处 `ListItem` 多子节点
+  supporting 未真机滚动实测；抽屉手势/路由 Compose 测试未补，`SegmentedPillTest` 未在本次流程重跑。
+  **发布操作**：tag 不带 `v`、`--prerelease` 不加 `--latest`、无预编译资产；发布后核对 `git ls-remote`
+  的 `^{}` = `148278311`、`releases/{tag}` 的 `isDraft=false` / `isPrerelease=true`、注释 tag 对象，
+  且 `releases/latest` 仍为 `v1.0.27`。
+
 - 2026-10-19 **UI 深化批次（抽屉/设置/创作入口）+ 上游同步评估 + Responses API 修复**。
   **① 抽屉框架（`538605ca7`）**：移植 Yuihub 缩放式抽屉为 `ChatScalingDrawer`（`progress` 读数全部放进
   `graphicsLayer`/`drawBehind` lambda ⇒ 拖动期间 0 次/帧整树重组；关闭态仅左缘 24dp 起手；`dampingRatio 0.9 /
