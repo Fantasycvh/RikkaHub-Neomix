@@ -3186,3 +3186,18 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   详见[设计稿 §8](<design/design-memory-retrieval-and-consolidation.md#L522>)；历史记录中的「batch 原子」与
   「UI 替代版本条件」不代表旧实现已有数据库事务或内容乐观锁。本轮未改变暂缓的重复全库扫描语义。
 
+- 2026-10-19 **发布预发布 tag `1.0.28-beta.2`（304）**，保留既有 `1.0.28-beta.1`（303）不动。
+  **versionCode 从 303 递增到 304**：beta.1 当时刻意未 bump，若 beta.2 继续沿用同一 code，
+  装机无法靠版本号区分两版；本轮按正式递增规则 bump，`versionName` 改为 `1.0.28-beta.2`，
+  tag 指向 release 提交（README 与 roadmap 同步更新）。
+  **相对 beta.1 的内容**（4 个提交）：①媒体生成模块（OpenAI 图片 / SiliconFlow T2V/I2V、Room 43、
+  媒体创作页与前台服务）②画板移植（画笔/橡皮/文字/选框、聊天附件与媒体素材接入、原图归档）③独立素材远端存储
+  （`RemoteFileStore`、独立 `uploadS3Config`、仅 `requiresRemoteInputs` 上传、未配置/失败明确报错）④日志安全
+  （预签名 query 脱敏、HTTP 调试日志仅 debug 且脱敏）。
+  **验证**：app JVM **1944/1944**、mediagen **33/33**、common **50/50**；真机画板/持久化全批次 **22/22**
+  （含真实 PNG/JPEG 落盘与附件登记）；`assembleDebug` 与 `assembleDebugAndroidTest` 通过。
+  **边界**：未配置真实上传桶、未做真实公网 S3 上传；整仓 `lintDebug` 仍有既有错误；不挂预编译资产。
+  **发布操作**：按既有规则 tag 不带 `v`、`--prerelease` 且不加 `--latest`、无预编译资产；发布前后核对
+  `git ls-remote` 的 `^{}` 指向、`releases/{tag}` 的 `isDraft/isPrerelease`、注释 tag 对象与
+  `releases/latest` 仍为 `v1.0.27`。
+
