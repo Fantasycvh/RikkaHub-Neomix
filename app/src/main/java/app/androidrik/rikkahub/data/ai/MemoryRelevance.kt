@@ -4,6 +4,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import java.text.Normalizer
 
 /**
  * **记忆打分的相关性维度**（`docs/design/design-memory-injection-tiering.md` §3.2）。
@@ -82,7 +83,12 @@ private val LATIN_STOPWORDS: Set<String> = setOf(
  * 永远匹配不上（长记忆的 bigram 里没有"猫"这个单字）——这是本文件第一版的真 bug，
  * 由 `single character cjk query still works` 抓出来。
  */
-private class Lexicon(val grams: Set<String>, val chars: Set<String>) {
+private class Lexicon(
+    val grams: Set<String>,
+    val chars: Set<String>,
+    // Only isolated CJK runs, not every character of a multi-character word.
+    val singletonChars: Set<String> = emptySet(),
+) {
     val isEmpty: Boolean get() = grams.isEmpty() && chars.isEmpty()
 }
 
@@ -112,22 +118,21 @@ internal class MemoryQuery private constructor(private val lexicon: Lexicon) {
      */
     fun relevanceOf(memory: AssistantMemory): Float {
         val mine = lexiconOf(memory.content + "\n" + memory.description)
-        // 查询有 bigram ⇒ 用 bigram 比；查询只有单字（或多字但都成不了 bigram）⇒ 单字比单字。
-        // 两级混用会静默失效，见 Lexicon 的注释。
-        val probes: Set<String>
-        val haystack: Set<String>
+        // Compare grams with grams and isolated CJK probes with chars, never with the opposite level.
+        // Multi-character CJK words do not expand into individual probes when grams are available.
+        val probeCount: Int
+        val matched: Int
         if (lexicon.grams.isNotEmpty()) {
-            probes = lexicon.grams
-            haystack = mine.grams
+            // Mixed queries such as "猫 python" retain the isolated 猫 signal, at the same unit weight.
+            probeCount = lexicon.grams.size + lexicon.singletonChars.size
+            matched = lexicon.grams.count { it in mine.grams } + lexicon.singletonChars.count { it in mine.chars }
         } else {
-            probes = lexicon.chars
-            haystack = mine.chars
+            probeCount = lexicon.chars.size
+            matched = lexicon.chars.count { it in mine.chars }
         }
-        if (probes.isEmpty() || haystack.isEmpty()) return 0f
+        if (probeCount == 0) return 0f
 
-        var matched = 0
-        probes.forEach { if (it in haystack) matched++ }
-        val coverage = matched.toFloat() / minOf(probes.size, QUERY_TOKEN_CAP)
+        val coverage = matched.toFloat() / minOf(probeCount, QUERY_TOKEN_CAP)
         // 低于下限视为无证据 ⇒ 返回 0（增益退化成 1.0，与改动前逐位一致）
         return if (coverage < RELEVANCE_FLOOR) 0f else coverage.coerceAtMost(1f)
     }
@@ -172,8 +177,20 @@ private fun lexiconOf(text: String): Lexicon {
     val grams = HashSet<String>()
     val chars = HashSet<String>()
     val word = StringBuilder()
-    val lowered = text.lowercase()
+    // Normalize comparison keys only; never rewrite persisted content, descriptions or identifiers.
+    val lowered = Normalizer.normalize(text, Normalizer.Form.NFKC).lowercase()
+    val singletonChars = HashSet<String>()
     var prev: Char? = null
+    var cjkRunLength = 0
+
+    fun flushCjkRun() {
+        val single = prev
+        if (cjkRunLength == 1 && single != null && single !in FUNCTION_CHARS) {
+            singletonChars += single.toString()
+        }
+        cjkRunLength = 0
+        prev = null
+    }
 
     fun flushWord() {
         if (word.length >= 2 && word.toString() !in LATIN_STOPWORDS) grams += word.toString()
@@ -189,11 +206,26 @@ private fun lexiconOf(text: String): Lexicon {
                 grams += "$previous$ch"
             }
             prev = ch
+            cjkRunLength++
         } else {
-            prev = null
+            flushCjkRun()
             if (ch.isLetterOrDigit()) word.append(ch) else flushWord()
         }
     }
     flushWord()
-    return Lexicon(grams = grams, chars = chars)
+    flushCjkRun()
+    return Lexicon(grams = grams, chars = chars, singletonChars = singletonChars)
+}
+
+/** Shared explicit-search ranking; callers remain responsible for supplying only the current store's live records. */
+internal fun rankMemoriesForSearch(
+    memories: List<AssistantMemory>,
+    query: MemoryQuery,
+    limit: Int,
+): List<AssistantMemory> {
+    if (limit <= 0) return emptyList()
+    return memories
+        .mapNotNull { memory -> query.relevanceOf(memory).takeIf { it > 0f }?.let { memory to it } }
+        .sortedWith(compareByDescending<Pair<AssistantMemory, Float>> { it.second }.thenBy { it.first.sortKey })
+        .take(limit).map { it.first }
 }

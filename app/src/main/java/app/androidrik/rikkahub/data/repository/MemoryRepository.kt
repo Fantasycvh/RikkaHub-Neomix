@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.repository
 import android.util.Log
 import app.androidrik.rikkahub.data.ai.memoryQueryTokens
 import app.androidrik.rikkahub.data.ai.memoryScoreBucket
+import app.androidrik.rikkahub.data.ai.rankMemoriesForSearch
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryHistoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryTrashDAO
@@ -310,10 +311,9 @@ class MemoryRepository(
         if (limit <= 0) return emptyList()
         val tokens = memoryQueryTokens(query)
         if (tokens.isEmpty) return emptyList()
-        return memoryDAO.getMemoriesOfAssistant(assistantId).map { it.toModel() }
-            .mapNotNull { memory -> tokens.relevanceOf(memory).takeIf { it > 0f }?.let { memory to it } }
-            .sortedWith(compareByDescending<Pair<AssistantMemory, Float>> { it.second }.thenBy { it.first.sortKey })
-            .take(limit).map { it.first }
+        return rankMemoriesForSearch(
+            memoryDAO.getMemoriesOfAssistant(assistantId).map { it.toModel() }, tokens, limit,
+        )
     }
 
     suspend fun copyMemories(
