@@ -10,15 +10,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -27,8 +31,12 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -37,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,36 +54,49 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.Connect
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.DragDropHorizontal
+import me.rerere.hugeicons.stroke.View
+import me.rerere.hugeicons.stroke.ViewOff
 import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
+import app.androidrik.common.android.sanitizeSensitiveText
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.files.RemoteFileStore
+import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.ui.components.ai.ExtensionEmptyState
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
+import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
+import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.pages.setting.components.MediaGenerationProviderConfigure
 import app.androidrik.rikkahub.ui.pages.setting.components.label
 import app.androidrik.rikkahub.ui.pages.setting.components.typeName
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import com.dokar.sonner.ToastType
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
- * 媒体生成服务商设置。
+ * 媒体生成设置。
  *
- * 上游页面还有第二个「素材上传」页签，依赖 `RemoteFileStore` / `uploadS3Config`；本仓库没有这条上传链路，
- * 因此这里只保留服务商配置页，S3 页签与相关控件一并省略（服务层遇到需要公网素材的模型会明确报错）。
+ * 两个页签：服务商配置，以及「素材存储」——部分视频接口只接受公网素材地址，配置独立于备份的
+ * S3 兼容桶后，本地素材会先上传再以临时地址提交；未配置时相关生成会给出本地化明确错误。
  */
 @Composable
 fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
@@ -82,6 +104,8 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
     var editingProvider by remember { mutableStateOf<MediaGenerationProviderSetting?>(null) }
     var newProvider by remember { mutableStateOf<MediaGenerationProviderSetting?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
+    // 0 = 服务商，1 = 素材存储
+    var selectedTab by remember { mutableStateOf(0) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     // 新建时先选类型，再进配置面板。
@@ -98,25 +122,27 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
                 title = { Text(stringResource(R.string.setting_page_media)) },
                 navigationIcon = { BackButton() },
                 actions = {
-                    Box {
-                        IconButton(onClick = { showAddMenu = true }) {
-                            Icon(
-                                imageVector = HugeIcons.Add01,
-                                contentDescription = stringResource(R.string.setting_media_page_add_provider),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showAddMenu,
-                            onDismissRequest = { showAddMenu = false },
-                        ) {
-                            providerFactories.forEach { (label, factory) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    onClick = {
-                                        showAddMenu = false
-                                        newProvider = factory()
-                                    },
+                    if (selectedTab == 0) {
+                        Box {
+                            IconButton(onClick = { showAddMenu = true }) {
+                                Icon(
+                                    imageVector = HugeIcons.Add01,
+                                    contentDescription = stringResource(R.string.setting_media_page_add_provider),
                                 )
+                            }
+                            DropdownMenu(
+                                expanded = showAddMenu,
+                                onDismissRequest = { showAddMenu = false },
+                            ) {
+                                providerFactories.forEach { (label, factory) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            showAddMenu = false
+                                            newProvider = factory()
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -128,14 +154,48 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
-        MediaProviderList(
-            settings = settings,
-            onUpdateSettings = vm::updateSettings,
-            onEdit = { editingProvider = it },
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-        )
+        ) {
+            SecondaryTabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = CustomColors.topBarColors.containerColor,
+            ) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text(stringResource(R.string.setting_media_page_providers)) },
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text(stringResource(R.string.setting_media_page_asset_storage)) },
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) {
+                when (selectedTab) {
+                    0 -> MediaProviderList(
+                        settings = settings,
+                        onUpdateSettings = vm::updateSettings,
+                        onEdit = { editingProvider = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+
+                    else -> MediaUploadStorageTab(
+                        settings = settings,
+                        onUpdateSettings = vm::updateSettings,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
     }
 
     editingProvider?.let { provider ->
@@ -379,6 +439,196 @@ private fun MediaProviderSheet(
                     Text(confirmText)
                 }
             }
+        }
+    }
+}
+
+/**
+ * 素材上传存储（独立于备份用的 S3 桶）。
+ *
+ * 部分视频接口只接受公网素材地址：配置这里的 S3 兼容桶后，本地素材会先上传并换成临时地址再提交；
+ * 未配置时相关生成会给出本地化明确错误，不做静默降级。上传对象 7 天后自动清理。
+ */
+@Composable
+private fun MediaUploadStorageTab(
+    settings: Settings,
+    onUpdateSettings: (Settings) -> Unit,
+    modifier: Modifier = Modifier,
+    remoteFileStore: RemoteFileStore = koinInject(),
+) {
+    val toaster = LocalToaster.current
+    val scope = rememberCoroutineScope()
+    var testing by remember { mutableStateOf(false) }
+    // 输入框以本地状态为准：设置要经过存储再回流，直接绑定的话打字快了会被旧值覆盖
+    var config by remember { mutableStateOf(settings.uploadS3Config) }
+
+    val connectionSuccess = stringResource(R.string.backup_page_connection_success)
+    // 失败原因由测试结果动态给出；模板在组合期取好，回调里再格式化，避免在回调里读 LocalContext 取资源
+    val connectionFailedTemplate = stringResource(R.string.backup_page_connection_failed, "%s")
+    // 本轮安全策略：素材上传只允许 HTTPS（显式 http 会被 RemoteFileStore 拒绝），在输入处就给出明确提示
+    val usesPlainHttpEndpoint = config.endpoint.trim().startsWith("http://", ignoreCase = true)
+
+    fun updateConfig(newConfig: S3Config) {
+        config = newConfig
+        onUpdateSettings(settings.copy(uploadS3Config = newConfig))
+    }
+
+    Column(
+        modifier = modifier
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.setting_media_page_upload_storage_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        Text(
+            text = stringResource(R.string.setting_media_page_upload_https_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+
+        CardGroup {
+            item(
+                headlineContent = { Text(stringResource(R.string.backup_page_s3_endpoint)) },
+                supportingContent = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = config.endpoint,
+                            onValueChange = { updateConfig(config.copy(endpoint = it.trim())) },
+                            placeholder = { Text("https://s3.amazonaws.com") },
+                            singleLine = true,
+                            isError = usesPlainHttpEndpoint,
+                        )
+                        if (usesPlainHttpEndpoint) {
+                            Text(
+                                text = stringResource(R.string.setting_media_page_upload_http_rejected),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                },
+            )
+            item(
+                headlineContent = { Text(stringResource(R.string.backup_page_s3_access_key_id)) },
+                supportingContent = {
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = config.accessKeyId,
+                        onValueChange = { updateConfig(config.copy(accessKeyId = it.trim())) },
+                        singleLine = true,
+                    )
+                },
+            )
+            item(
+                headlineContent = { Text(stringResource(R.string.backup_page_s3_secret_access_key)) },
+                supportingContent = {
+                    var passwordVisible by remember { mutableStateOf(false) }
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = config.secretAccessKey,
+                        onValueChange = { updateConfig(config.copy(secretAccessKey = it.trim())) },
+                        visualTransformation = if (passwordVisible) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    imageVector = if (passwordVisible) HugeIcons.ViewOff else HugeIcons.View,
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        singleLine = true,
+                    )
+                },
+            )
+            item(
+                headlineContent = { Text(stringResource(R.string.backup_page_s3_bucket)) },
+                supportingContent = {
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = config.bucket,
+                        onValueChange = { updateConfig(config.copy(bucket = it.trim())) },
+                        placeholder = { Text("my-bucket") },
+                        singleLine = true,
+                    )
+                },
+            )
+            item(
+                headlineContent = { Text(stringResource(R.string.backup_page_s3_path_style)) },
+                supportingContent = { Text(stringResource(R.string.backup_page_s3_path_style_desc)) },
+                trailingContent = {
+                    Switch(
+                        checked = config.pathStyle,
+                        onCheckedChange = { updateConfig(config.copy(pathStyle = it)) },
+                    )
+                },
+            )
+            item(
+                headlineContent = { Text(stringResource(R.string.backup_page_s3_region)) },
+                supportingContent = {
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = config.region,
+                        onValueChange = { updateConfig(config.copy(region = it.trim())) },
+                        placeholder = { Text("auto") },
+                        singleLine = true,
+                    )
+                },
+            )
+        }
+
+        CardGroup {
+            item(
+                onClick = if (!testing) {
+                    {
+                        scope.launch {
+                            testing = true
+                            try {
+                                remoteFileStore.testConnection()
+                                    .onSuccess {
+                                        toaster.show(connectionSuccess, type = ToastType.Success)
+                                    }
+                                    .onFailure {
+                                        toaster.show(
+                                            // 连接错误里可能带签名 URL 片段，展示前先抹掉
+                                            connectionFailedTemplate.format(
+                                                sanitizeSensitiveText(it.message ?: "")
+                                            ),
+                                            type = ToastType.Error,
+                                        )
+                                    }
+                            } finally {
+                                testing = false
+                            }
+                        }
+                    }
+                } else null,
+                headlineContent = { Text(stringResource(R.string.backup_page_test_connection)) },
+                supportingContent = { Text(stringResource(R.string.setting_media_page_upload_test_hint)) },
+                leadingContent = {
+                    if (testing) {
+                        Box(
+                            modifier = Modifier.size(40.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
+                    } else {
+                        Icon(HugeIcons.Connect, contentDescription = null)
+                    }
+                },
+            )
         }
     }
 }

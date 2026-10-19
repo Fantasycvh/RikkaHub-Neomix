@@ -320,6 +320,9 @@ class SettingsStore(
         // S3
         val S3_CONFIG = stringPreferencesKey("s3_config")
 
+        // 素材上传用桶：与备份桶完全独立，避免上传临时素材时覆盖/污染备份配置
+        val UPLOAD_S3_CONFIG = stringPreferencesKey("upload_s3_config")
+
         // 备份内容项（全局：S3 / WebDAV / 本地共用同一份）
         val BACKUP_ITEMS = stringPreferencesKey("backup_items")
 
@@ -489,6 +492,9 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: WebDavConfig(),
                 s3Config = preferences[S3_CONFIG]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: S3Config(),
+                uploadS3Config = preferences[UPLOAD_S3_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: S3Config(),
                 backupItems = preferences[BACKUP_ITEMS]?.let {
@@ -775,6 +781,7 @@ class SettingsStore(
             preferences[MCP_DYNAMIC_SCHEMA_LOADING] = settings.mcpDynamicSchemaLoading
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
+            preferences[UPLOAD_S3_CONFIG] = JsonInstant.encodeToString(settings.uploadS3Config)
             preferences[BACKUP_ITEMS] = JsonInstant.encodeToString(settings.backupItems)
             preferences[MEDIA_GENERATION_PROVIDERS] =
                 JsonInstant.encodeToString(settings.mediaGenerationProviders)
@@ -1040,6 +1047,8 @@ data class Settings(
     val mcpServers: List<McpServerConfig> = emptyList(),
     val webDavConfig: WebDavConfig = WebDavConfig(),
     val s3Config: S3Config = S3Config(),
+    // RemoteFileStore 上传临时素材用的桶：与备份 [s3Config] 相互独立，互不覆盖
+    val uploadS3Config: S3Config = S3Config(),
     /**
      * 备份内容（S3 / WebDAV / 本地导出共用同一份）。
      *

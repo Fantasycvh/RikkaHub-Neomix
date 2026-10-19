@@ -24,6 +24,7 @@ import java.io.InputStream
 import java.io.StringReader
 import java.security.MessageDigest
 import java.time.Instant
+import kotlin.time.Duration
 
 private const val TAG = "S3Client"
 
@@ -537,6 +538,17 @@ class S3Client(
             val scheme = if (config.isHttps) "https://" else "http://"
             "$scheme${config.bucket}.${config.host}$path"
         }
+    }
+
+    /**
+     * 带签名的临时下载地址，桶不需要公开读取。[expires] 最长 7 天。
+     */
+    fun presignGetUrl(key: String, expires: Duration): String {
+        return AwsSignatureV4.presignGetUrl(
+            config = config,
+            path = "/${key.trimStart('/')}",
+            expires = expires,
+        )
     }
 
     private fun ByteArray.sha256Hex(): String {

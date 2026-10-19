@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- 媒体生成的素材上传（独立于备份桶）相关文案 -->
+  <string name="setting_media_page_upload_storage_desc">Some APIs only accept assets at public URLs (such as reference images and reference videos for video generation). Configure an S3-compatible bucket here and local assets are uploaded first, then passed to the API as temporary links. This configuration is independent from the backup S3 bucket and is never copied from it. Uploaded objects are kept for 7 days and are cleaned up lazily along with later uploads; presigned links are valid for 24 hours by default.</string>
+  <string name="setting_media_page_upload_https_hint">These temporary links are handed to third-party APIs, so the upload endpoint must use HTTPS. An endpoint without a scheme is treated as HTTPS; an explicit http:// endpoint is rejected for asset uploads.</string>
+  <string name="setting_media_page_upload_http_rejected">Asset upload does not support an http:// endpoint. Use an https:// endpoint, or leave the scheme out to default to HTTPS.</string>
+  <string name="setting_media_page_upload_test_hint">Test Connection only lists the upload prefix to verify connectivity; it does not check write permission.</string>
+</resources>

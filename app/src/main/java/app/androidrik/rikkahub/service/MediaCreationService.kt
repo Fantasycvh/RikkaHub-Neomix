@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
+import app.androidrik.common.android.sanitizeSensitiveText
 import app.androidrik.common.http.await
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaGenerationOutput
@@ -22,6 +23,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.files.MediaCreationFiles
+import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.data.model.MediaCreationAsset
 import app.androidrik.rikkahub.data.model.MediaCreationOutput
 import app.androidrik.rikkahub.data.model.MediaCreationParams
@@ -84,8 +86,8 @@ data class MediaCreationSubmission(
  * 一条记录的流程：上传素材（只有要求公网地址的接口需要）→ 提交 → 轮询到终态 → 把结果下载到本地。
  * 进度全部写进数据库，界面只需要观察记录。
  *
- * 与上游的差异：本仓库没有 `RemoteFileStore`，要求公网素材地址的接口无法上传本地文件，
- * 遇到这种请求会明确失败（`media_creation_error_upload_required`），不做静默降级。
+ * 要求公网素材地址的接口：未配置素材上传桶时明确失败（`media_creation_error_upload_required`）；
+ * 已配置时把本地素材传到桶里换成临时地址再提交。上传失败不会静默退回本地路径。
  */
 class MediaCreationService(
     private val context: Application,
@@ -93,6 +95,7 @@ class MediaCreationService(
     private val settingsStore: SettingsStore,
     private val repository: MediaCreationRepository,
     private val manager: MediaGenerationManager,
+    private val remoteFileStore: RemoteFileStore,
     private val okHttpClient: OkHttpClient,
 ) {
     private val jobs = ConcurrentHashMap<Uuid, Job>()
@@ -249,9 +252,12 @@ class MediaCreationService(
         } catch (e: Throwable) {
             // 被取消时记录的状态由取消方负责
             currentCoroutineContext().ensureActive()
-            Log.e(TAG, "Generation $recordId failed", e)
+            // 不把原始异常栈写入 logcat：provider 可能在 message/cause 中回显签名 URL。
+            Log.e(TAG, "Generation $recordId failed (${e.javaClass.simpleName}): " +
+                sanitizeSensitiveText(e.toDisplayMessage()))
             repository.updateRecord(recordId) {
-                it.copy(status = MediaCreationStatus.FAILED, error = e.toDisplayMessage())
+                // provider 报错可能回显带签名的输入 URL：入库前抹掉签名类 query，只保留可读错误
+                it.copy(status = MediaCreationStatus.FAILED, error = sanitizeSensitiveText(e.toDisplayMessage()))
             }
         }
         repository.getRecord(recordId)?.let(::notifyFinished)
@@ -285,7 +291,11 @@ class MediaCreationService(
         if (task.status != MediaGenerationStatus.SUCCEEDED) {
             // 服务端的任务已经结束，没有再查询的意义
             repository.updateRecord(record.id) {
-                it.copy(status = MediaCreationStatus.FAILED, taskId = null, error = task.failureMessage(context))
+                it.copy(
+                    status = MediaCreationStatus.FAILED,
+                    taskId = null,
+                    error = sanitizeSensitiveText(task.failureMessage(context)),
+                )
             }
             return
         }
@@ -312,11 +322,16 @@ class MediaCreationService(
     ): MediaGenerationTask {
         val capabilities = setting.capabilities(record.kind)
             ?: error(context.getString(R.string.media_creation_error_kind_unsupported, setting.name))
-        // 本仓库没有远端文件存储：需要公网地址的接口收不到本地素材，明确失败而不是把本地路径发出去
-        if (capabilities.requiresRemoteInputs && record.inputs.isNotEmpty()) {
-            throw IllegalStateException(context.getString(R.string.media_creation_error_upload_required))
+        val inputUrls = if (capabilities.requiresRemoteInputs && record.inputs.isNotEmpty()) {
+            // 未配置或上传失败都直接抛：记录会落到 FAILED 并在界面上显示具体原因，不静默退回本地路径
+            check(remoteFileStore.isConfigured) { context.getString(R.string.media_creation_error_upload_required) }
+            repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.PREPARING) }
+            record.inputs.map { input ->
+                remoteFileStore.upload(repository.resolve(input.path)).getOrThrow().url
+            }
+        } else {
+            record.inputs.map { repository.resolve(it.path).absolutePath }
         }
-        val inputUrls = record.inputs.map { repository.resolve(it.path).absolutePath }
         repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.RUNNING) }
         val request = buildMediaGenerationRequest(record.prompt, record.params, record.inputs, inputUrls, capabilities)
         return manager.create(setting, model, request).getOrElse {

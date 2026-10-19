@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- 媒体生成的素材上传（独立于备份桶）相关文案 -->
+  <string name="setting_media_page_upload_storage_desc">部分接口只接受公网地址的素材（如视频生成的参考图、参考视频）。在这里配置一个 S3 兼容的桶后，本地素材会先上传，再以临时链接交给接口。此配置与备份用的 S3 桶互相独立，不会自动复制备份桶配置。上传的对象保留 7 天，并在此后每次上传时顺带清理；预签名链接默认 24 小时内有效。</string>
+  <string name="setting_media_page_upload_https_hint">临时链接会交给第三方接口，因此素材上传 endpoint 必须使用 HTTPS；未写协议时按 HTTPS 处理，显式 http:// 不被接受。</string>
+  <string name="setting_media_page_upload_http_rejected">素材上传不支持 http:// endpoint：请改用 https://，或不写协议（默认按 HTTPS 处理）。</string>
+  <string name="setting_media_page_upload_test_hint">测试连接只列上传前缀以验证连通性，不校验写权限。</string>
+</resources>

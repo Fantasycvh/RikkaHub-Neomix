@@ -135,7 +135,7 @@ val appModule = module {
     }
 
     // 媒体创作的生成任务：每条记录一个协程，挂在应用级作用域上，离开页面后继续运行。
-    // 本仓库没有 RemoteFileStore，因此不注册它；需要公网素材地址的请求在服务内明确失败。
+    // 需要公网素材地址的接口走 RemoteFileStore 上传到素材桶；未配置时服务内明确失败。
     single {
         MediaCreationService(
             context = get(),
@@ -143,6 +143,7 @@ val appModule = module {
             settingsStore = get(),
             repository = get(),
             manager = get(),
+            remoteFileStore = get(),
             okHttpClient = get(),
         )
     }

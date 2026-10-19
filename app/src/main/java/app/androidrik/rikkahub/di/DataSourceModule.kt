@@ -41,6 +41,7 @@ import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.rag.RagRepository
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.fts.MessageFtsManager
@@ -76,6 +77,15 @@ import kotlinx.coroutines.flow.collect
 val dataSourceModule = module {
     single {
         SettingsStore(context = get(), scope = get())
+    }
+
+    // 素材上传（媒体生成参考素材等）：独立 uploadS3Config，与备份 S3 桶互不影响
+    single {
+        RemoteFileStore(
+            settingsStore = get(),
+            httpClient = get(),
+            scope = get<AppScope>(),
+        )
     }
 
     single {

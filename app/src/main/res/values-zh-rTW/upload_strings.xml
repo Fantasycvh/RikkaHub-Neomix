@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- 媒體生成的素材上傳（獨立於備份桶）相關文案 -->
+  <string name="setting_media_page_upload_storage_desc">部分 API 僅接受公開 URL 的素材（例如影片生成的參考圖片與參考影片）。在此設定 S3 相容的儲存桶後，本機素材會先上傳，再以臨時連結傳遞給 API。此設定與備份用的 S3 儲存桶相互獨立，不會自動複製備份桶設定。上傳的物件保留 7 天，並在之後每次上傳時順帶清理；預簽名連結預設 24 小時內有效。</string>
+  <string name="setting_media_page_upload_https_hint">臨時連結會交給第三方 API，因此素材上傳 endpoint 必須使用 HTTPS；未寫協議時按 HTTPS 處理，顯式 http:// 不被接受。</string>
+  <string name="setting_media_page_upload_http_rejected">素材上傳不支援 http:// endpoint：請改用 https://，或不寫協議（預設按 HTTPS 處理）。</string>
+  <string name="setting_media_page_upload_test_hint">測試連線只列出上傳前綴以驗證連通性，不檢查寫入權限。</string>
+</resources>

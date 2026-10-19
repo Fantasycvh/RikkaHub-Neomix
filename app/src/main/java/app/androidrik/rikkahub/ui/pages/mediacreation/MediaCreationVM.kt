@@ -45,6 +45,7 @@ import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.files.MediaCreationFiles
+import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.data.model.MediaCreationAsset
 import app.androidrik.rikkahub.data.model.MediaCreationAssetType
 import app.androidrik.rikkahub.data.model.MediaCreationDraft
@@ -100,6 +101,7 @@ class MediaCreationVM(
     private val settingsStore: SettingsStore,
     private val repository: MediaCreationRepository,
     private val service: MediaCreationService,
+    private val remoteFileStore: RemoteFileStore,
     private val appScope: AppScope,
 ) : ViewModel() {
     val sessionId: Uuid = Uuid.parse(id)
@@ -447,6 +449,11 @@ class MediaCreationVM(
         capabilities: MediaGenerationCapabilities,
         onSubmitted: () -> Unit = {},
     ): Job? {
+        // 该模型只接受公网素材，但素材上传桶还没配置：直接给出本地化提示，不创建半条记录
+        if (capabilities.requiresRemoteInputs && submission.assets.isNotEmpty() && !remoteFileStore.isConfigured) {
+            _events.trySend(MediaCreationEvent.Error(context.getString(R.string.media_creation_error_upload_required)))
+            return null
+        }
         // 接口必填的参数没有设置时用默认值，记录里保存的就是实际下发的值
         val defaults = submission.provider.presets(submission.model.kind).defaults
         val completed = submission.copy(params = submission.params.withRequired(capabilities, defaults))

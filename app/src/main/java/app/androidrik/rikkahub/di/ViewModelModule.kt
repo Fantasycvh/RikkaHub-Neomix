@@ -98,6 +98,7 @@ val viewModelModule = module {
             settingsStore = get(),
             repository = get(),
             service = get(),
+            remoteFileStore = get(),
             appScope = get(),
         )
     }
