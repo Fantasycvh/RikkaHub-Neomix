@@ -246,14 +246,24 @@ class FilesManager(
         return newUris
     }
 
-    fun createChatFilesByByteArrays(byteArrays: List<ByteArray>): List<Uri> {
+    /**
+     * 把内存里的字节数组存成聊天附件（落 `upload/` 并登记 managed_files），返回 `file://` Uri。
+     *
+     * [displayName]/[mimeType] 决定文件扩展名与登记信息；画板导出的 JPEG 草图必须走这里传对类型，
+     * 不能一律写成 image.png。每次都用新的 UUID 文件名，不会覆盖已有附件。
+     */
+    fun createChatFilesByByteArrays(
+        byteArrays: List<ByteArray>,
+        displayName: String = "image.png",
+        mimeType: String = "image/png",
+    ): List<Uri> {
         val newUris = mutableListOf<Uri>()
         val dir = context.filesDir.resolve(FileFolders.UPLOAD)
         if (!dir.exists()) {
             dir.mkdirs()
         }
         byteArrays.forEach { byteArray ->
-            val fileName = buildUuidFileName(displayName = "image.png", mimeType = "image/png")
+            val fileName = buildUuidFileName(displayName = displayName, mimeType = mimeType)
             val file = dir.resolve(fileName)
             if (!file.exists()) {
                 file.createNewFile()
@@ -265,8 +275,8 @@ class FilesManager(
             trackManagedFile(
                 folder = FileFolders.UPLOAD,
                 file = file,
-                displayName = "image.png",
-                mimeType = "image/png"
+                displayName = displayName,
+                mimeType = mimeType
             )
             newUris.add(newUri)
         }

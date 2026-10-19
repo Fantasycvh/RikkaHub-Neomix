@@ -57,6 +57,14 @@ class MediaCreationRepository(
 
     fun draftDir(sessionId: Uuid): File = File(sessionDir(sessionId), DRAFT_DIR)
 
+    /**
+     * 被画板替换掉的原始素材的留存目录。
+     *
+     * 不能留在 [draftDir]：那里在下次打开会话时会清理没有引用的文件，草稿引用被画板结果替换后
+     * 原文件就成了「无引用」会被删掉。放在会话目录下，随会话备份、随会话删除。
+     */
+    fun originalsDir(sessionId: Uuid): File = File(sessionDir(sessionId), ORIGINALS_DIR)
+
     // ---- 会话 ----
 
     fun observeSessions(): Flow<List<MediaCreationSession>> =
@@ -286,6 +294,7 @@ class MediaCreationRepository(
 
     companion object {
         private const val DRAFT_DIR = "draft"
+        private const val ORIGINALS_DIR = "originals"
         private const val PAGE_SIZE = 20
     }
 }

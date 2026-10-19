@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import app.androidrik.rikkahub.utils.ImageUtils
 import java.io.File
 import kotlin.uuid.Uuid
@@ -62,6 +63,41 @@ object MediaCreationFiles {
         input.use { source -> file.outputStream().use { source.copyTo(it) } }
         return file
     }
+
+    /**
+     * 把被画板替换掉的原始素材复制到 [originalsDir]，返回副本；同名副本已存在时复用它。
+     *
+     * 原素材原本在草稿目录里，而草稿目录在下次打开会话时会清理没有引用的文件：草稿引用被画板结果
+     * 替换后原文件就成了「无引用」会被删掉。副本放在会话目录（originals/）下，随会话备份、
+     * 随会话删除，保证「原图保留」。源文件复制后不移动，旧引用仍然可读。
+     *
+     * 副本按来源目录分子目录存放（`originals/<来源目录>/<文件名>`）：不同记录里的 `in_0.jpg`
+     * 之类的同名输入不能互相覆盖/误复用。写盘用同目录 UUID `.part` 临时文件 + 校验 + rename，
+     * 复制中途失败不会留下会被下次误当成「已留存」的半文件；失败时临时文件也会删掉。
+     *
+     * 源文件不存在或复制失败时返回 null，调用方不得替换草稿引用。
+     */
+    fun preserveOriginal(source: File, originalsDir: File): File? = runCatching {
+        check(source.isFile) { "Original asset is missing: ${source.absolutePath}" }
+        val folder = source.parentFile?.name ?: "root"
+        val target = File(File(originalsDir, folder), source.name)
+        // 已经留存过同名副本就不再复制，避免后来被改坏/清空的源文件覆盖好的副本
+        if (target.isFile) return@runCatching target
+        target.parentFile?.mkdirs()
+        val temp = File(target.parentFile, "${target.name}.${Uuid.random()}$PARTIAL_SUFFIX")
+        try {
+            source.copyTo(temp, overwrite = true)
+            check(temp.isFile && temp.length() == source.length()) {
+                "Incomplete copy: ${temp.absolutePath}"
+            }
+            check(temp.renameTo(target)) { "Failed to finalize preserved file: ${target.absolutePath}" }
+        } finally {
+            if (temp.exists()) temp.delete()
+        }
+        target
+    }.onFailure {
+        Log.e(TAG, "Failed to preserve original ${source.absolutePath}", it)
+    }.getOrNull()
 
     fun imageInfo(file: File): MediaInfo? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -135,4 +171,5 @@ object MediaCreationFiles {
 
     private const val MAX_IMAGE_SIZE = 4096
     private const val JPEG_QUALITY = 95
+    private const val TAG = "MediaCreationFiles"
 }

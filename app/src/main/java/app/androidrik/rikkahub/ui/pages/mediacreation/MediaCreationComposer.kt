@@ -91,12 +91,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowUp02
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Eraser
 import me.rerere.hugeicons.stroke.Image02
+import me.rerere.hugeicons.stroke.PaintBoard
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.SlidersHorizontal
 import me.rerere.hugeicons.stroke.Tick02
@@ -117,6 +119,7 @@ import app.androidrik.rikkahub.data.model.MediaCreationParams
 import app.androidrik.rikkahub.data.model.canSubmit
 import app.androidrik.rikkahub.data.model.mixesFramesWithReferences
 import app.androidrik.rikkahub.data.model.withRequired
+import app.androidrik.rikkahub.ui.components.sketch.SketchDialog
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.Tag
@@ -149,6 +152,9 @@ internal fun MediaCreationComposer(
 
     // 系统相册返回时面板已经关闭，这里记住选中的文件该放进哪个角色
     var importRole by rememberSaveable { mutableStateOf(ImageRole.REFERENCE) }
+
+    // 非空时显示画板：给某个角色画一张新的，或者在已有素材上继续画
+    var sketching by remember { mutableStateOf<SketchRequest?>(null) }
 
     val imagesPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_PICKED_IMAGES)
@@ -206,6 +212,7 @@ internal fun MediaCreationComposer(
                         onPick = { pickingRole = it },
                         onRemove = vm::removeAsset,
                         onSetRole = vm::setAssetRole,
+                        onDraw = { sketching = SketchRequest(role = it.role, asset = it) },
                         modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp),
                     )
                 }
@@ -329,6 +336,10 @@ internal fun MediaCreationComposer(
                 pickingRole = null
                 videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
             },
+            onSketch = {
+                pickingRole = null
+                sketching = SketchRequest(role = role)
+            },
             onSelect = { output ->
                 pickingRole = null
                 if (output.isVideo) vm.useVideo(output) else vm.useImage(output, role)
@@ -336,7 +347,32 @@ internal fun MediaCreationComposer(
             onDismiss = { pickingRole = null },
         )
     }
+
+    sketching?.let { request ->
+        SketchDialog(
+            image = request.asset?.let { vm.resolve(it.path).toUri() },
+            // 白纸默认用参数里选的比例，画出来的首帧、参考图和要生成的画面对得上
+            aspectRatio = if (selection != null && capabilities != null) {
+                draft.params
+                    .withRequired(capabilities, selection.provider.presets(selection.model.kind).defaults)
+                    .aspectRatio
+                    ?.let(::parseAspectRatio)
+            } else {
+                null
+            },
+            onDismiss = { sketching = null },
+            onConfirm = { result ->
+                sketching = null
+                vm.addSketch(result, request.role, replacing = request.asset)
+            },
+        )
+    }
 }
+
+/**
+ * 打开画板的一次请求：给 [role] 画一张新的，或者在已有的 [asset] 上画。
+ */
+private class SketchRequest(val role: ImageRole, val asset: MediaCreationAsset? = null)
 
 /**
  * 输入区的内容是从时间线上的一条记录填回来的：生成的结果会成为它的新版本。退出后内容保留，生成时另起一条。
@@ -467,6 +503,7 @@ private fun AssetRow(
     onPick: (ImageRole) -> Unit,
     onRemove: (MediaCreationAsset) -> Unit,
     onSetRole: (MediaCreationAsset, ImageRole) -> Unit,
+    onDraw: (MediaCreationAsset) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val frameRoles = capabilities.frameRoles
@@ -482,6 +519,7 @@ private fun AssetRow(
             // 图片可以在各个槽位之间挪动
             roleOptions = if (isVideo) emptyList() else capabilities.imageRoles.filter { it != asset.role },
             onSetRole = { onSetRole(asset, it) },
+            onDraw = if (isVideo) null else ({ onDraw(asset) }),
             onRemove = { onRemove(asset) },
         )
     }
@@ -514,6 +552,7 @@ private fun AssetTile(
     roleOptions: List<ImageRole>,
     onSetRole: (ImageRole) -> Unit,
     onRemove: () -> Unit,
+    onDraw: (() -> Unit)? = null,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     Box(modifier = Modifier.size(AssetTileSize)) {
@@ -524,7 +563,8 @@ private fun AssetTile(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(AssetTileShape)
-                .clickable(enabled = roleOptions.isNotEmpty()) { showMenu = true },
+                // 有角色可换或者可以在图上继续画时，点素材打开菜单
+                .clickable(enabled = roleOptions.isNotEmpty() || onDraw != null) { showMenu = true },
         )
         if (label != null) {
             Text(
@@ -577,6 +617,15 @@ private fun AssetTile(
                     },
                 )
             }
+            if (onDraw != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.sketch_draw_on_image)) },
+                    onClick = {
+                        showMenu = false
+                        onDraw()
+                    },
+                )
+            }
         }
     }
 }
@@ -612,6 +661,7 @@ private fun AssetPickerSheet(
     resolve: (String) -> File,
     onPickImages: () -> Unit,
     onPickVideo: () -> Unit,
+    onSketch: () -> Unit,
     onSelect: (MediaCreationOutput) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -644,6 +694,11 @@ private fun AssetPickerSheet(
                     Spacer(Modifier.size(8.dp))
                     Text(stringResource(R.string.media_creation_page_gallery_video))
                 }
+            }
+            OutlinedButton(onClick = onSketch, modifier = Modifier.weight(1f)) {
+                Icon(HugeIcons.PaintBoard, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text(stringResource(R.string.sketch))
             }
         }
 

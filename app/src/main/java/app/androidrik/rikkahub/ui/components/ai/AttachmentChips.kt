@@ -26,12 +26,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
@@ -47,8 +49,12 @@ import me.rerere.hugeicons.stroke.Files02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.ui.components.sketch.SketchDialog
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
+import com.dokar.sonner.ToastType
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 @Composable
@@ -56,6 +62,7 @@ internal fun MediaFileInputRow(
     state: ChatInputState,
 ) {
     val context = LocalContext.current
+    val sketchSaveFailed = stringResource(R.string.sketch_save_failed)
     val filesManager: FilesManager = koinInject()
     val managedFiles by filesManager.observe().collectAsState(initial = emptyList())
     val displayNameByRelativePath = remember(managedFiles) {
@@ -91,6 +98,37 @@ internal fun MediaFileInputRow(
         }
     }
 
+    // 在输入区的图片上继续画：确认后把画好的图存成新的聊天附件，再原地替换引用。
+    // 原图既不被覆盖也不在这里删盘（历史分支仍可能引用它），与 replaceImage 的约定一致。
+    val scope = rememberCoroutineScope()
+    var drawingOn by remember { mutableStateOf<UIMessagePart.Image?>(null) }
+    drawingOn?.let { part ->
+        SketchDialog(
+            // 输入区里可能是相对路径或旧包名路径，先规整成当前可读的 file:// 地址
+            image = context.normalizeLocalFileUrl(part.url).toUri(),
+            onDismiss = { drawingOn = null },
+            onConfirm = { result ->
+                drawingOn = null
+                scope.launch {
+                    val url = filesManager.createChatFileBySketch(result)
+                    if (url == null) {
+                        toaster.show(
+                            message = sketchSaveFailed,
+                            type = ToastType.Error,
+                        )
+                        return@launch
+                    }
+                    // 保存的这会儿那张图已经从输入区移走或换掉：新文件没有引用者，删掉
+                    if (part !in state.messageContent) {
+                        filesManager.deleteChatFiles(listOf(url))
+                        return@launch
+                    }
+                    state.replaceImage(part, url.toString())
+                }
+            },
+        )
+    }
+
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
@@ -112,6 +150,7 @@ internal fun MediaFileInputRow(
                             pendingReplacePart = part
                             replaceLauncher.launch("image/*")
                         },
+                        onClick = { drawingOn = part },
                         leading = {
                             Surface(
                                 modifier = Modifier.size(34.dp),
@@ -181,8 +220,12 @@ private fun AttachmentChip(
     leading: @Composable () -> Unit,
     onRemove: () -> Unit,
     onReplace: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
 ) {
     Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(18.dp),
         tonalElevation = 1.dp,
         shadowElevation = 0.dp,

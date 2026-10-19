@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- 畫板接入（媒體創作輸入區 / 聊天附件）用到的文案；畫板元件自身的文案在 sketch_strings.xml -->
+  <string name="sketch">草圖</string>
+  <string name="sketch_draw_on_image">在圖片上繪圖</string>
+  <string name="sketch_save_failed">草圖儲存失敗</string>
+</resources>

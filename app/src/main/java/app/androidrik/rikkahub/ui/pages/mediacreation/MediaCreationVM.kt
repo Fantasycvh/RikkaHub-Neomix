@@ -41,6 +41,7 @@ import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationCapabilities
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.mediagen.provider.capabilities
+import app.androidrik.common.android.Logging
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.SettingsStore
@@ -61,6 +62,7 @@ import app.androidrik.rikkahub.data.model.withRequired
 import app.androidrik.rikkahub.data.repository.MediaCreationRepository
 import app.androidrik.rikkahub.service.MediaCreationService
 import app.androidrik.rikkahub.service.MediaCreationSubmission
+import app.androidrik.rikkahub.ui.components.sketch.SketchResult
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
@@ -265,6 +267,115 @@ class MediaCreationVM(
             }
             files.forEach { addAsset(MediaCreationAsset(repository.relativePath(it), type, role)) }
         }
+    }
+
+    /**
+     * 把画板上画的图放进草稿。[replacing] 是画的时候垫在下面的那项素材，画好的图换掉它。
+     *
+     * 替换前先把原图复制到会话目录的 `originals/`：草稿目录在下次打开会话时会清理未引用的文件，
+     * 只替换草稿引用会让原图被清理掉。编码、写盘、留存原图任一步失败都不替换引用，并通过事件报错；
+     * 写到一半的目标文件会删掉，不留下草稿目录里的幽灵素材。与 [copyToDraft] 共用 [draftCopyMutex]。
+     */
+    fun addSketch(result: SketchResult, role: ImageRole, replacing: MediaCreationAsset? = null) {
+        if (draftState.value == null) return
+        viewModelScope.launch {
+            draftCopyMutex.withLock {
+                val encoded = withContext(Dispatchers.IO) {
+                    runCatching { result.encode() }.onFailure {
+                        Log.e(TAG, "Failed to encode sketch", it)
+                        logSketch(stage = "encode", outcome = "failed", mime = result.mimeType, error = it)
+                    }.getOrNull()
+                }
+                if (encoded == null) {
+                    notifySketchFailed()
+                    return@withLock
+                }
+                val target = withContext(Dispatchers.IO) {
+                    File(repository.draftDir(sessionId).apply { mkdirs() }, "${Uuid.random()}.${result.extension}")
+                }
+                val written = withContext(Dispatchers.IO) {
+                    runCatching { target.writeBytes(encoded) }.onFailure {
+                        // 写了一半的文件不能留：下次打开会话前它没有任何引用，清理也未必赶得上
+                        target.delete()
+                        Log.e(TAG, "Failed to write sketch ${target.absolutePath}", it)
+                        logSketch(
+                            stage = "write",
+                            outcome = "failed",
+                            bytes = encoded.size,
+                            mime = result.mimeType,
+                            error = it,
+                        )
+                    }.isSuccess
+                }
+                if (!written) {
+                    notifySketchFailed()
+                    return@withLock
+                }
+                if (replacing != null) {
+                    val preserved = withContext(Dispatchers.IO) {
+                        MediaCreationFiles.preserveOriginal(
+                            source = repository.resolve(replacing.path),
+                            originalsDir = repository.originalsDir(sessionId),
+                        )
+                    }
+                    if (preserved == null) {
+                        // 原图没能留下副本：不替换引用，也不留下这张新图
+                        withContext(Dispatchers.IO) { target.delete() }
+                        logSketch(
+                            stage = "preserve",
+                            outcome = "failed",
+                            bytes = encoded.size,
+                            mime = result.mimeType,
+                            reason = "original-not-preserved",
+                        )
+                        notifySketchFailed()
+                        return@withLock
+                    }
+                }
+                val asset = MediaCreationAsset(repository.relativePath(target), MediaCreationAssetType.IMAGE, role)
+                updateDraft { draft ->
+                    // 原来那项在保存的这会儿被移走了的话，画好的图照常加进来
+                    val assets = if (replacing != null && replacing in draft.assets) {
+                        draft.assets.map { if (it == replacing) asset else it }
+                    } else {
+                        draft.assets + asset
+                    }
+                    draft.withAssets(assets)
+                }
+                logSketch(stage = "add", outcome = "ok", bytes = encoded.size, mime = result.mimeType)
+            }
+        }
+    }
+
+    // 画板结果没能落成草稿素材：统一报错，让页面弹可见提示
+    private suspend fun notifySketchFailed() {
+        _events.send(MediaCreationEvent.Error(context.getString(R.string.media_creation_page_asset_add_failed)))
+    }
+
+    /**
+     * 画板落盘的安全诊断标记：进「日志」页时只记录阶段、结果、错误类型、字节数与 MIME，
+     * 不记录任何路径、图片内容、密钥或预签名地址。
+     */
+    private fun logSketch(
+        stage: String,
+        outcome: String,
+        bytes: Int? = null,
+        mime: String? = null,
+        error: Throwable? = null,
+        reason: String? = null,
+    ) {
+        Logging.log(
+            "MediaCreationSketch",
+            buildString {
+                append("stage=").append(stage)
+                append(" outcome=").append(outcome)
+                bytes?.let { append(" bytes=").append(it) }
+                mime?.let { append(" mime=").append(it) }
+                reason?.let { append(" reason=").append(it) }
+                // 只有真的拿到异常时才记类名；留存原图失败由 helper 内部记 android log，这里没有异常对象
+                error?.let { append(" error=").append(it::class.simpleName) }
+            },
+        )
     }
 
     fun removeAsset(asset: MediaCreationAsset) = updateDraft { it.copy(assets = it.assets - asset) }

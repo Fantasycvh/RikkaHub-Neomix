@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- 画板接入（媒体创作输入区 / 聊天附件）用到的文案；画板组件自身的文案在 sketch_strings.xml -->
+  <string name="sketch">Sketch</string>
+  <string name="sketch_draw_on_image">Draw on image</string>
+  <string name="sketch_save_failed">Couldn\'t save the sketch</string>
+</resources>

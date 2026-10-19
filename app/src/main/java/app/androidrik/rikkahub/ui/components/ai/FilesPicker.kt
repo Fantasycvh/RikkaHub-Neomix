@@ -38,6 +38,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +63,7 @@ import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.Package01
+import me.rerere.hugeicons.stroke.PaintBoard
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings02
 import me.rerere.hugeicons.stroke.Video01
@@ -72,17 +74,22 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
+import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.rikkahub.ui.components.sketch.SketchDialog
 import app.androidrik.rikkahub.ui.components.ui.ExtensionSelector
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionCamera
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberPermissionState
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import app.androidrik.workspace.WorkspaceShellStatus
+import com.dokar.sonner.ToastType
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 
@@ -111,6 +118,33 @@ internal fun FilesPicker(
     val workspaceRepository: WorkspaceRepository = koinInject()
     val workspaces by workspaceRepository.listFlow().collectAsState(initial = emptyList())
 
+    // 新草图：画板确认后落成聊天附件，走和相册导入相同的 upload/managed_files 持久化路径
+    val sketchSaveFailed = stringResource(R.string.sketch_save_failed)
+    val toaster = LocalToaster.current
+    val filesManager: FilesManager = koinInject()
+    val scope = rememberCoroutineScope()
+    var showSketch by remember { mutableStateOf(false) }
+    if (showSketch) {
+        SketchDialog(
+            onDismiss = { showSketch = false },
+            onConfirm = { result ->
+                showSketch = false
+                scope.launch {
+                    val uri = filesManager.createChatFileBySketch(result)
+                    if (uri == null) {
+                        toaster.show(
+                            message = sketchSaveFailed,
+                            type = ToastType.Error,
+                        )
+                        return@launch
+                    }
+                    state.addImages(listOf(uri))
+                    onDismiss()
+                }
+            },
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -124,6 +158,8 @@ internal fun FilesPicker(
             TakePicButton(onLaunchCamera = onTakePic)
 
             ImagePickButton(onClick = onPickImage)
+
+            SketchButton(onClick = { showSketch = true })
 
             if (provider != null && provider is ProviderSetting.Google) {
                 VideoPickButton(onClick = onPickVideo)
@@ -466,6 +502,17 @@ private fun ImagePickButton(onClick: () -> Unit = {}) {
         Icon(HugeIcons.Image02, null)
     }, text = {
         Text(stringResource(R.string.photo))
+    }) {
+        onClick()
+    }
+}
+
+@Composable
+private fun SketchButton(onClick: () -> Unit = {}) {
+    BigIconTextButton(icon = {
+        Icon(HugeIcons.PaintBoard, null)
+    }, text = {
+        Text(stringResource(R.string.sketch))
     }) {
         onClick()
     }

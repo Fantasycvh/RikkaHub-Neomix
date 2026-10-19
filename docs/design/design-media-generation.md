@@ -59,7 +59,7 @@ JSON 能正常反序列化，但 `MediaGenerationManager` 只注册上面两个�
 
 ## 6. 验证
 
-- `:mediagen`：**31 tests**（OpenAI 兼容 10 + SiliconFlow 视频 14 + 能力/设置/Manager 7），0 失败；
+- `:mediagen`：**33 tests**（OpenAI 兼容 10 + SiliconFlow 视频 16 + 能力/设置/Manager 7），0 失败；
 - app JVM：**210 suites / 1916 tests**，0 失败；隔离真机 Room：**59/59**（含 42→43 迁移 2 项）；
 - 真机端到端（图片）：配置 SiliconFlow（OpenAI 兼容）→ 输入提示词 → 生成 → 图片落盘并渲染成功；
 - 真机端到端（视频）：SiliconFlow `Wan-AI/Wan2.2-T2V-A14B` 提交 → `POST /video/status` 轮询
@@ -74,7 +74,7 @@ JSON 能正常反序列化，但 `MediaGenerationManager` 只注册上面两个�
 2. **I2V 模型 id 修正**：`Wan-AI/Wan2.2-I2V-A14B` 在视频接口上并不存在（实测 400/20012），
    已改为文档与实际探测都有效的 `Wan-AI/Wan2.2-I2V-14B-720P`；旧设置里存了错误 id 的需要删除重建。
    同时加了模型级约束：T2V 拒绝图片输入、I2V 必须且只能带一张首帧，避免发注定失败的请求；
-3. 上游 **S3 上传与画板**未移植：需要公网素材的模型会在服务层明确报错，画板入口已移除；
+3. 画板已移植并接入媒体素材与聊天附件，见 [画板移植](design-sketch-port.md)。用户后续允许引入 `RemoteFileStore`，现已接入独立 S3 素材存储：仅要求公网 URL 的请求上传，未配置/失败仍明确报错，见 [媒体素材远端存储](design-media-upload.md)；
 4. 未移植供应商（含用户旧备份里的 OpenRouter 配置）会被 UI 隐藏、运行期明确失败，不会静默降级；
 5. 已知 P2 语义问题（同步接口下 taskId/续查死代码、取消竞态、恢复不清理旧媒体目录）未修；
 6. 未做 release/lint/整仓 release 构建验证；未提交 git。

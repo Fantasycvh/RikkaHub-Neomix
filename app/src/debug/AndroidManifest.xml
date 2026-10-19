@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      debug 专用的 Compose instrumented 测试宿主（release 不包含）。
+      测试宿主必须和 instrumentation 同进程，所以放在 app 的 debug source set，
+      而不是 androidTest APK（那里的 Activity 属于另一个进程）。
+    -->
+    <application>
+        <activity
+            android:name="app.androidrik.rikkahub.SketchTestHostActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+
+</manifest>

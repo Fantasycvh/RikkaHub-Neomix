@@ -190,6 +190,14 @@ dependencies {
     // DataStore
     implementation(libs.androidx.datastore.preferences)
 
+    // Sketch canvas: upstream Android Ink renderer and EXIF-aware photo loading.
+    implementation(libs.androidx.exifinterface)
+    implementation(libs.androidx.ink.authoring.compose)
+    implementation(libs.androidx.ink.brush)
+    implementation(libs.androidx.ink.geometry)
+    implementation(libs.androidx.ink.rendering)
+    implementation(libs.androidx.ink.strokes)
+
     // Image metadata extractor
     // https://github.com/drewnoakes/metadata-extractor
     implementation(libs.metadata.extractor)
