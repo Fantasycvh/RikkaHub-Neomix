@@ -30,6 +30,7 @@
 | [`design-side-file-panel.md`](design/design-side-file-panel.md) | 会话内文件侧栏 |
 | [`design-subagent-context.md`](design/design-subagent-context.md) | 子代理上下文信封与派发 |
 | [`design-tokenizer.md`](design/design-tokenizer.md) | 真 tokenizer（cl100k BPE）与预算判定 |
+| [`design-ui-yuihub-inspired.md`](design/design-ui-yuihub-inspired.md) | UI 重设计（以 Yuihub 为参考并改进其缺陷）：抽屉缩放、设置页分组、创作入口归一；**含实施结果与实测偏差** |
 | [`design-workspace-background-tasks.md`](design/design-workspace-background-tasks.md) | 工作区后台任务（`run_background` 等三工具） |
 | [`design-workspace-multiselect-export.md`](design/design-workspace-multiselect-export.md) | 工作区长按多选与导出 |
 | [`new-api-balance-design.md`](design/new-api-balance-design.md) | new-api 站点余额查询 |
@@ -42,6 +43,7 @@
 | [`roadmap.md`](roadmap.md) | 规划方向 + 逐日落地记录（含「不做」决策与理由） |
 | [`handoff-2026-09-04.md`](handoff-2026-09-04.md) | 开发交接：**待办全量盘点（§三，最新真相源）**、现状快照、验证习惯、发布流程（私仓时期实践） |
 | [`upstream-analysis.md`](upstream-analysis.md) | 上游逐条评估记录与「吸收 / 不吸收」结论 |
+| [`ui-simplification-proposal.md`](ui-simplification-proposal.md) | UI 复杂度证据基线（**改前快照**；改后状态见 design-ui-yuihub-inspired §7） |
 | [`peer-apps-benchmark.md`](peer-apps-benchmark.md) | 同类客户端 / 竞品调研与借鉴结论 |
 | [`tikz-rendering-tectonic-postmortem.md`](tikz-rendering-tectonic-postmortem.md) | TikZ 渲染链复盘（native Tectonic + mupdf SVG 桥、字体 bundle）；配套 [`../tools/tex-poc/`](../tools/tex-poc/) |
 | [`references/chat-generation-pipeline.md`](references/chat-generation-pipeline.md) | 上游：对话生成管线说明 |
@@ -59,7 +61,7 @@
 | `handoff-2026-09-04.md` | **2026-10-12**（§三 节首复核块 + §〇 快照） | **待办的第一真相源**；§三.1 表内**未划掉**的才是未完成项——长文本里的「YYYY-MM-DD 评估，未实现」多为**存档**，不代表当前状态 |
 | `roadmap.md` | **2026-10-12**（§一 09-06 盘点与 §三.5 待办块已就地更正） | §八 是逐日落地日志（**只追加**）；§一~§七 的规划判断**可能已被 §八 推翻**，冲突时以 §八 + handoff §三 为准 |
 | `peer-apps-benchmark.md` | **2026-10-12**（§四.4 末复核 + §五 落地状态行） | §五 的落地状态行是最新口径，各节正文为评估原文 |
-| `upstream-analysis.md` | **2026-10-13**（同步点 `05b655bb`，上游 master HEAD） | 逐条评估**无欠账**；已闭环的 issue 条目在标题/表内标 ✅。**下次同步从该点往后取** |
+| `upstream-analysis.md` | **2026-10-19**（同步点 `42896e5ad`，上游已 bump `3.0.0`） | 逐条评估**无欠账**（本批 29 提交全部有结论）；既有关闭 issue 的条目在标题/表内标 ✅。**下次同步从 `42896e5ad` 往后取** |
 
 > **一条教训（2026-10-12）**：`handoff` §三 表头曾写「2026-10-05 复核」，但 10-05 之后落地的 4 项
 > （`read_conversation`、记忆整理器、MCP schema 分层加载、启停抽象化）仍挂在表内，且与 `roadmap` §八 的

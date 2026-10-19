@@ -3201,3 +3201,27 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `git ls-remote` 的 `^{}` 指向、`releases/{tag}` 的 `isDraft/isPrerelease`、注释 tag 对象与
   `releases/latest` 仍为 `v1.0.27`。
 
+- 2026-10-19 **UI 深化批次（抽屉/设置/创作入口）+ 上游同步评估 + Responses API 修复**。
+  **① 抽屉框架（`538605ca7`）**：移植 Yuihub 缩放式抽屉为 `ChatScalingDrawer`（`progress` 读数全部放进
+  `graphicsLayer`/`drawBehind` lambda ⇒ 拖动期间 0 次/帧整树重组；关闭态仅左缘 24dp 起手；`dampingRatio 0.9 /
+  stiffness 500`；补 `paneTitle`/dismiss 语义），`ChatPage` 小屏分支由 `ModalNavigationDrawer`+`DrawerState`
+  改为 `ChatScalingDrawer`+`drawerOpen: Boolean`；顺手修助手头像不显示（`normalizeLocalFileUrl` 原先只归一
+  `files/upload/`，补 `files/avatars/`）。
+  **② 抽屉顶部归一 + 设置整合 + 创作入口归一（`5e8e6f667`）**：顶部改为「聊天历史（行尾搜索，吸收上游
+  `660571449`）/ 媒体创作 / AI 翻译」三条同级 `DrawerEntry`，底部动作行只留助手/收藏/统计/设置（删「菜单▾」二级
+  菜单，触控区 ≥48dp）；吸收上游 `9ce1ae1`（矮屏 <640dp 时顶部随列表滚动，`ConversationList` 新增 `header`
+  槽位并修正自动定位索引）；设置页分组重排（常用 / AI 与生成 / 连接与数据 / 关于），TTS 并入「媒体与语音」三 Tab，
+  颜色模式改内联 `SegmentedPill`，行数 16→**15**（不为压行数隐藏入口，理由见设计稿 §5.4）；抽屉「媒体创作」直达
+  `MediaCreationSessions`，旧版生图收进页内兼容入口、Provider 详情页标注。**验证**：`assembleDebug`
+  + `assembleDebugAndroidTest` 通过；真机 `6c841f95` 实测抽屉三入口/历史页/翻译页/媒体创作旧版入口、横屏矮屏滚动、
+  `SegmentedPillTest` 4/4。
+  **③ 上游评估（`aae986e55..42896e5ad` 29 提交，见 `upstream-analysis.md`）**：`9ce1ae1`/`660571449` 已吸收；
+  `42896e5ad`（MCP 崩溃）不适用（结构不同；**更正**：我方 compose-ui 实为 `1.12.0-beta01`，7 处
+  `ListItem(supportingContent={Column})` 属现状风险，待真机滚动实测）；`222bc4ad1`（MiniMax 401）当前不适用
+  （MiniMax 未接适配器，接入时须补 `downloadHeaders` 同源鉴权）；自研 Toaster **不跟**（真机未复现 sonner 阻断输入，
+  且换自研会让 sheet 内提示被遮挡）。
+  **④ Responses API `function_call_output`（`8b85aa3a4`）**：服务端已执行的函数工具结果此前被三处解析点忽略 ⇒
+  工具重复执行；`output_item.done` 还会因缺 `id` 直接抛错。现按 `call_id` 挂回工具（复用 `Tool.merge` 的 output
+  追加，合并层零改动），新增 8 例单测；`:ai:testDebugUnitTest` 全绿、真机启动无崩溃。**边界**：未用真实
+  “服务端执行函数工具”的网关做端到端联调，验证为事件 JSON 级单测。
+

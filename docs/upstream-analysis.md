@@ -3,7 +3,7 @@
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.27 (294)`；仅 tag、无预编译资产，本仓不发预编译包，CI 自动发版已禁用）。
 
 > **同步点（2026-10-16 晚间更新）**：逐条评估已跟进到上游 **`cfb503d8c`（2026-10-16 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-16 同步」；再前一节为「2026-10-15 同步」。
-> **同步点（2026-10-19 更新）**：已评估到上游 **`42896e5ad`**（本批 `aae986e55`..`42896e5ad` 共 31 提交，逐条结论见「2026-10-19 同步评估」一节）；上游同日 `bump version to 3.0.0`。**本批唯一缺口 `675e59f0d`（Responses API `function_call_output`）已于当日落地（fork `8b85aa3a4`）**，无遗留待吸收项。
+> **同步点（2026-10-19 更新）**：已评估到上游 **`42896e5ad`**（本批 `aae986e55`..`42896e5ad` 共 29 提交，逐条结论见「2026-10-19 同步评估」一节）；上游同日 `bump version to 3.0.0`。**本批唯一缺口 `675e59f0d`（Responses API `function_call_output`）已于当日落地（fork `8b85aa3a4`）**，无遗留待吸收项。
 > **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
 > **教训**：`git fetch` 的区间大小 ≠ 待评估量；判断「有没有欠账」要看**文档记录的评估点**（本节顶部的同步点），不是本地 ref。
 
@@ -923,7 +923,7 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 > 不是前置）；**没配生图模型就不装配该工具**（沿用 `ChatToolFactory` 既有定式，顺带让用不上的
 > 用户一个 token 都不付）。
 
-## 2026-10-19 同步评估（`aae986e55`..`42896e5ad`，31 提交）
+## 2026-10-19 同步评估（`aae986e55`..`42896e5ad`，29 提交）
 
 > 触发：UI 深化批次（抽屉顶部归一 / 设置页整合 / 创作入口归一）之后顺带核上游。
 > 本批只对**与近期改动相关**的条目逐条核对，其余仅记录结论。上游同日已 `bump version to 3.0.0`。
@@ -932,10 +932,10 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 |---|---|---|
 | `9ce1ae1` | 矮屏（手表/横屏手机）抽屉顶部随会话列表滚动（#2164） | **已吸收**（fork `5e8e6f667`）：`ConversationList` 新增 `header` 槽位 + 自动定位当前会话的索引偏移；排序与文件夹条一并进入该 header |
 | `660571449` | 侧边栏搜索入口并入聊天历史行尾 | **已吸收**（同批）：三条同级 `DrawerEntry`，行尾 32dp 搜索热区（不用 `IconButton`，避免把行撑高） |
-| `42896e5ad` | MCP 列表 Compose 1.12 测量期崩溃（#2179） | **不适用**：fork `McpPicker` 是 `Card`+`Row`+`Column`，没有 `ListItem.supportingContent` 多子节点结构；且 fork compose-ui 1.11.x（BOM `2026.06.01`）低于出问题的 1.12。**遗留隐患**：`ExtensionPicker`（3 处）、`AssistantMemoryPage`（2 处）、`PropertyEditor`（2 处，含 `OutlinedTextField` 在 supporting 里）共 7 处同款形状 —— 升 Compose 到 1.12+ 前必须滚动实测 |
-| `222bc4ad1` | MiniMax 取回结果同源带鉴权（#2177） | **不适用**：fork `mediagen/provider/providers/` 只有 `openai`、`siliconflow`，MiniMax 仅有 `MediaGenerationProviderSetting.MiniMax` 类型、无适配器 |
+| `42896e5ad` | MCP 列表 Compose 1.12 测量期崩溃（#2179） | **不适用（仅因结构不同，不是因为版本低）**：fork `McpPicker` 是 `Card`+`Row`+`Column`，没有 `ListItem.supportingContent` 多子节点结构。**更正**：fork 实际解析到的 `androidx.compose.ui:ui` 是 **1.12.0-beta01**（与上游同属 1.12 线），此前记的「1.11.x 低于出问题版本」**有误**。因此下列 **7 处同款形状属现状风险**，不是「升级后再说」：`ExtensionPicker`（3 处，直接 `ListItem`）、`AssistantMemoryPage`（2 处，`CardGroup.item` 内部即 `ListItem`，`CardGroup.kt:117`）、`PropertyEditor`（2 处，`OutlinedTextField` 塞在 supporting 里）。**待办：真机滚动实测这 7 处**，命中则按上游写法收敛（supporting 只留单文本，控件移到标题行或独立行） |
+| `222bc4ad1` | MiniMax 取回结果同源带鉴权（#2177） | **当前不适用，但接入 MiniMax 适配器时必须一并做**：fork 有 `MediaGenerationProviderSetting.MiniMax`（含 `MINIMAX_VIDEO` 能力声明），但 `MediaGenerationManager.provider()` 只路由 `OpenAI`/`SiliconFlow`，其余返回 `Provider not ported yet` ⇒ 现在根本走不到下载路径。上游修法是在 `downloadHeaders()` 里抽 `sameOriginBearer()` 并让 MiniMax override（同源才带 `Authorization`，官方 CDN 直链不带）；fork 的 `downloadHeaders` 目前只有 OpenRouter 一处同源逻辑（`MediaGenerationProviderSetting.kt:191-196`）。**移植 MiniMax 适配器时照抄该 override + 上游测试（中转站带 key、CDN 直链不带、http 降级不带）** |
 | `675e59f0d` | Responses API 解析服务端返回的 `function_call_output`（#2181） | **已吸收**（fork `8b85aa3a4`，专项见下节） |
-| `4061537da`（及其后续 `96a9bed4d`） | ui 模块自研 Toaster 替换 sonner / `showProgress` | **不跟**：fork 用 sonner `0.4.0`。真机核查（2026-10-19）：窗口 dump 证实 sonner 确实是 `APPLICATION_SUB_PANEL` 全屏（1264×2584、`NOT_FOCUSABLE\|WATCH_OUTSIDE_TOUCH`）子窗口，但**toast 显示期间输入（点输入框→打字）与手势（滚动）均正常**，未复现上游所述「阻断输入/手势异常」；且 sonner 是独立窗口，天然浮在 BottomSheet/Dialog 之上，换自研 Toaster 反而会让 sheet 内触发的提示（备份/导出/导入，约 30 处）被遮挡。**结论：不为“修 bug”迁移；若将来只为统一风格，须先解决 z-order（sheet 宿主内再放一个 `Toaster(state)`）** |
+| `4061537da`（及其后续 `96a9bed4d`） | ui 模块自研 Toaster 替换 sonner / `showProgress` | **不跟**：fork 用 sonner `0.4.0`。真机核查（2026-10-19）：窗口 dump 证实 sonner 确实是 `APPLICATION_SUB_PANEL` 全屏（1264×2584、`NOT_FOCUSABLE\|WATCH_OUTSIDE_TOUCH`）子窗口，但**toast 显示期间输入（点输入框→打字）与手势（滚动）均正常**，未复现上游所述「阻断输入/手势异常」；且 sonner 是独立窗口，天然浮在 BottomSheet/Dialog 之上。**已核的受影响面**：`ChatExportSheet`（`Export.kt:140` 的 `ModalBottomSheet`，导出/分享提示在其中）、`MemoryRecoveryDialog`、备份页 S3/WebDAV 的测试与恢复弹窗——这些提示在自研 Toaster 下会被 sheet/dialog 挡住。**结论：不为“修 bug”迁移；若将来只为统一风格，须先解决 z-order（sheet 宿主内再放一个 `Toaster(state)`）** |
 | 其余 25 提交（统计 `usage_record` 流水、语音“回复时继续聆听”、记忆空态/自动做梦、媒体创作卡片化、Markdown 引用工作区图片、应用图标、Spotless+ktlint、baseline profile 等） | — | 与本批无关或属独立大特性：`usage_record`（约 2500 行 + DB 迁移）应单独立项；`MediaCreationSessionsPage` 卡片化与我们刚加的“旧版图像生成”入口同文件，合流时需人工；Spotless 会对我们改过的文件做全量重排，不跟 |
 
 ### 专项：Responses API `function_call_output`（#2181）对照
@@ -948,13 +948,13 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 3. `ResponseAPI.parseResponseOutput`（非流式）加同名分支，按 `call_id` 找到已有 `Tool` part 回填 `output`；
 4. 新增 `JsonObject.functionCallOutputText()`：`output` 可能是字符串 / `input_text` 数组 / null，统一转文本。
 
-**fork 对照**（架构不同：fork 是 `ResponseAPI.kt` 内联解析，没有 `StreamChunkHandler`）：
+**fork 对照**（架构不同：fork 是 `ResponseAPI.kt` 内联解析，没有 `StreamChunkHandler`；下表行号为修复后 `8b85aa3a4` 的当前代码）：
 
-| 位置 | fork 现状 | 后果 |
+| 位置 | fork 现状（修复前） | 后果 |
 |---|---|---|
-| `ResponseAPI.kt:632` `response.output_item.added` | 只认 `function_call` / `image_generation_call` / `reasoning`，其它 type 落空返回 `null` | 事件被**静默丢弃** |
-| `ResponseAPI.kt:717` `response.output_item.done` | 紧跟其后 `val id = item["id"] ?: error("chunk id not found")`（**先取 id 再分 type**），只认 `reasoning` / `image_generation_call` | 除丢弃外，**若网关的 `function_call_output` 项不带 `id`，会直接 `error()` 抛异常，整轮请求失败**（比重复执行更严重） |
-| `ResponseAPI.kt:812` `parseResponseOutput`（非流式，仅 `generateText` 用） | `when(type)` 只有 `reasoning` / `function_call` / `message`，**无 else** | 静默忽略 |
+| `ResponseAPI.kt:639` `response.output_item.added` | 只认 `function_call` / `image_generation_call` / `reasoning`，其它 type 落空返回 `null` | 事件被**静默丢弃** |
+| `ResponseAPI.kt:728` `response.output_item.done` | 紧跟其后 `val id = item["id"] ?: error("chunk id not found")`（**先取 id 再分 type**），只认 `reasoning` / `image_generation_call` | 除丢弃外，**若网关的 `function_call_output` 项不带 `id`，会直接 `error()` 抛异常，整轮请求失败**（比重复执行更严重） |
+| `ResponseAPI.kt:859` `parseResponseOutput`（非流式，仅 `generateText` 用） | `when(type)` 只有 `reasoning` / `function_call` / `message`，**无 else** | 静默忽略 |
 | `UIMessagePart.Tool`（`UIMessagePart.kt:156`） | `isExecuted = output.isNotEmpty()` | 输出为空 ⇒ 客户端判定“未执行” ⇒ `GenerationHandler` 再执行一次 |
 
 **可达性**：需要“服务端执行函数工具”的网关（上游收到 #2181 即证明存在）；fork 支持自定义 OpenAI 兼容端点 + `useResponseApi`，且已为网关兼容写过 `ResponseToolCallIdResolver`（#1948 的 id 混用），属**低频但真实**。

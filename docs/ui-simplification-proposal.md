@@ -6,6 +6,15 @@
 
 > 本文是上一版 `ui-simplification-proposal.md` 的**修正版**。上一版有若干基于猜测的结论（当时在文末列为"待确认问题"），本次已逐条落到代码上：**6 条被证伪**，见 §3。请以本文为准。
 
+> **状态更新（2026-10-19，UI 深化批次落地后）** —— 本文是**改前基线**（`cd2cea8ba`），以下数字已过时，引用前先看这里：
+> - **设置页 16 行 → 15 行**：TTS 并入「媒体与语音」页（三 Tab），颜色模式改成内联 `SegmentedPill`（不再是一次弹层）
+> - **抽屉底部 5 动作 + 菜单▾ → 4 动作**（助手 / 收藏 / 统计 / 设置）；聊天历史、媒体创作、AI 翻译上移为抽屉顶部三条同级 `DrawerEntry`（搜索并入历史行尾），**已无二级菜单**
+> - **小屏抽屉 `ModalNavigationDrawer` → 自研 `ChatScalingDrawer`**（`ChatPage` 状态由 `DrawerState` 化简为 `drawerOpen: Boolean`）
+> - **「媒体创作」点击深度 3 → 2**：抽屉直达 `MediaCreationSessions`；旧版生图改为媒体创作页顶部兼容入口
+> - **抽屉目的地仍为 10 个**（原计划“翻译外移”未做——应用内翻译只有抽屉一个入口，外移会成死路）
+>
+> 改造结果与验收见 [design/design-ui-yuihub-inspired.md](design/design-ui-yuihub-inspired.md) §7；提交 `538605ca7`（阶段 1）、`5e8e6f667`（阶段 2+3）。**文中代码行号同样是改前基线**。
+
 ---
 
 ## 1. 核查范围与方法
@@ -247,18 +256,18 @@
 RouteActivity.kt:732          sealed interface Screen（61 条路由）
 RouteActivity.kt:269          AgentRunDetail 深链入口
 ChatPage.kt:286               PermanentNavigationDrawer（大屏）
-ChatPage.kt:321               ModalNavigationDrawer（小屏）
+ChatPage.kt:321               ModalNavigationDrawer（小屏；✅ 已改 ChatScalingDrawer）
 ChatDrawer.kt:217             备份提醒卡
-ChatDrawer.kt:279             DrawerActions 调用点
+ChatDrawer.kt:279             DrawerActions 调用点（✅ 现为 历史/媒体创作/翻译 三条目）
 ChatDrawer.kt:432             AssistantPicker
-ChatDrawer.kt:463-557         底部动作行：助手/菜单▾/收藏/统计/设置
-ChatDrawer.kt:490-520         菜单▾ 的 3 项（翻译/图像生成/媒体创作）
+ChatDrawer.kt:463-557         底部动作行：助手/菜单▾/收藏/统计/设置（✅ 现为 4 动作，无菜单▾）
+ChatDrawer.kt:490-520         菜单▾ 的 3 项（翻译/图像生成/媒体创作）（✅ 已删除）
 ChatDrawer.kt:537,540         硬编码「统计数据」
-ChatDrawer.kt:875/905         搜索对话 / 历史记录
+ChatDrawer.kt:875/905         搜索对话 / 历史记录（✅ 搜索已并入历史行尾）
 SettingProviderDetailPage.kt:220 3 个 Tab（配置/模型/网络代理）
 SettingProviderDetailPage.kt:223/233/243  Tab 定义
 SettingModelPage.kt:93-104     默认模型页 2 Tab（模型/提示词）
-SettingPage.kt:112-282        4 组 16 行
+SettingPage.kt:112-282        4 组 16 行（✅ 现为 15 行）
 SettingPage.kt:163            设置 → 扩展
 SettingMediaPage.kt:162       2 个 Tab
 SettingMediaPage.kt:453       MediaUploadStorageTab

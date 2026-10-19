@@ -11,15 +11,17 @@
 
 ## 1. 可比性边界（先说清楚）
 
-两者同源于 RikkaHub，**导航骨架相同**：都是 `ModalNavigationDrawer`（小屏）/ `PermanentNavigationDrawer`（大屏）+ Navigation3 类型化路由，都没有应用级底部导航栏。
+两者同源于 RikkaHub，**导航骨架相同**：抽屉（小屏）/ `PermanentNavigationDrawer`（大屏）+ Navigation3 类型化路由，都没有应用级底部导航栏。Neomix 的小屏抽屉原为 Material `ModalNavigationDrawer`，2026-10-19 起替换为自研 `ChatScalingDrawer`（见 §6 阶段 1）。
 
-| 维度 | Yuihub | Neomix |
+> 下表「Neomix」一列为 **2026-10-19 改造前**基线；括号内为改造后状态，逐项结果见 §7。
+
+| 维度 | Yuihub | Neomix（改前 → 改后） |
 |---|---|---|
 | 路由规模 | 页面目录 57 个顶层文件 | 路由 **61** 条，页面 132 个文件 |
-| 设置页 | **4 组 10 行** | **4 组 16 行** |
+| 设置页 | **4 组 10 行** | **4 组 16 行 → 15 行** |
 | 功能重心 | 对话/角色扮演（Lorebook、Mode Injection、定时任务、子代理角色） | 媒体创作、画板、知识库、工作区、MCP、日志 |
-| 抽屉实现 | **自定义缩放式** `ChatScalingDrawer` | Material 标准 `ModalNavigationDrawer` |
-| 抽屉底部 | **4 个等权动作栈，无二级菜单** | 5 个动作 + **「菜单▾」二级下拉** |
+| 抽屉实现 | **自定义缩放式** `ChatScalingDrawer` | Material `ModalNavigationDrawer` → **自研 `ChatScalingDrawer`** |
+| 抽屉底部 | **4 个等权动作栈，无二级菜单** | 5 个动作 + **「菜单▾」二级下拉** → **4 个动作（助手/收藏/统计/设置），无二级菜单**；聊天历史/媒体创作/翻译上移为顶部三条同级条目 |
 
 **边界**：Yuihub 是"一个人自己用"的精简二改（README 明说无维护承诺），它的"简洁"部分来自**功能更少**（没有媒体创作、知识库、TTS、Web 服务器、聊天存储、请求日志）。所以不能直接照搬它的设置页行数，只能借鉴**组织方式**。反过来，Neomix 的功能广度决定了抽屉必须承载更多入口，这正是要改进的地方。
 
@@ -54,7 +56,7 @@
 
 > "「图标在上、小字在下」的堆：**靠小字自解释，不再依赖长按提示**"
 
-这正是 Neomix 的对症解药：Neomix 底部是 5 个 `DrawerAction` + 一个「Menu▾」`DropdownMenu`（`ChatDrawer.kt:487-521`），三个功能（翻译/图像生成/媒体创作）藏在二级菜单里，**用户必须先点一次才知道里面有什么**。
+这正是 Neomix 的对症解药：Neomix 改造前底部是 5 个 `DrawerAction` + 一个「Menu▾」`DropdownMenu`（`ChatDrawer.kt:487-521`），三个功能（翻译/图像生成/媒体创作）藏在二级菜单里，**用户必须先点一次才知道里面有什么**（✅ 已整改：菜单▾ 删除，翻译/媒体创作上移为顶部同级条目，见 §6）。
 
 ### 2.3 助手身份卡
 
@@ -64,7 +66,7 @@
 
 ### 2.4 SegmentedPill（设置页内联控件）
 
-设置页颜色模式用胶囊分段（`SettingPage.kt:129-141`，宽 186dp）而非下拉 Select。Neomix 用 `Select`（`SettingPage.kt:126-145`，宽 150dp），多一次弹层交互。
+设置页颜色模式用胶囊分段（`SettingPage.kt:129-141`，宽 186dp）而非下拉 Select。Neomix 原先用 `Select`（`SettingPage.kt:126-145`，宽 150dp），多一次弹层交互；**2026-10-19 已改为自研 `SegmentedPill`（186dp，`ui/components/ui/SegmentedPill.kt`）**，控件本身带单选语义与 48dp 触控。
 
 ### 2.5 其它
 
@@ -192,7 +194,7 @@ Yuihub 抽屉里 `DrawerAssistantCard` / `DrawerActionBar` 用 `surfaceBright + 
 
 | 组件 | 来源 | 说明 |
 |---|---|---|
-| `ChatScalingDrawer(open, onOpenChange, drawerContent, content)` | 移植 + 改进 §4.1/§4.2 | 新文件 `ui/components/nav/ChatScalingDrawer.kt` |
+| `ChatScalingDrawer(open, onOpenChange, drawerContent, content)` | 移植 + 改进 §4.1/§4.2 | 新文件 `ui/components/drawer/ChatScalingDrawer.kt` |
 | `DrawerSurfaceCard(...)` | 新增 | 统一 `surfaceBright + 1dp border + shapes.large` |
 | `DrawerActionBar(stacks)` / `DrawerActionStack(icon, label, onClick)` | 移植 + 改进 §4.3/§4.5 | 槽位由调用方给，不硬编码 |
 | `DrawerAssistantCard(...)` | 移植 + 改造 §2.3 | 内含切换按钮 |
@@ -223,12 +225,16 @@ Yuihub 抽屉里 `DrawerAssistantCard` / `DrawerActionBar` 用 `surfaceBright + 
 > **实施状态（2026-10-19）**：阶段 1/2/3 已落地并通过 `:app:assembleDebug` 与真机
 > （6c841f95）验证；抽屉顶部结构改为「聊天历史（行尾搜索）/ 媒体创作 / AI 翻译」三条同级
 > `DrawerEntry`，底部动作行只保留助手 / 收藏 / 统计 / 设置。下表保留原始计划作对照。
+>
+> 落地提交：阶段 1 `538605ca7`（`ChatScalingDrawer` + `ChatPage` 状态化简 + 助手头像修复）、
+> 阶段 2+3 `5e8e6f667`（抽屉顶部归一、矮屏 header、设置页整合、创作入口归一）。
+> **与计划的偏差**：①设置页实做 **15 行**（非 12/13，理由见 §5.4）；②翻译**未外移**（应用内仅抽屉一个入口，外移会成死路，改为顶部同级条目，故目的地仍 10 个）。
 
 ### 阶段 1：抽屉框架（风险中，收益最大）
 
 | 文件 | 改动 | ripple |
 |---|---|---|
-| **新增** `ui/components/nav/ChatScalingDrawer.kt` | 移植 + §4.1/§4.2 改进 | 无 |
+| **新增** `ui/components/drawer/ChatScalingDrawer.kt` | 移植 + §4.1/§4.2 改进 | 无 |
 | `ui/pages/chat/ChatPage.kt` | 小屏分支 `ModalNavigationDrawer` → `ChatScalingDrawer`；`drawerState: DrawerState` → `drawerOpen: Boolean` + `onOpenDrawer: () -> Unit` | **大**：`ChatPageContent`（`:362`）、内部 `:451`、`:1109`、`:1137` 三处传参都要改；`BackHandler(drawerState.isOpen)`（`:214`、`:354`）改为 `BackHandler(drawerOpen)` |
 | `ui/pages/chat/ChatDrawer.kt` | 底部 `Row(DrawerAction × 5 + 菜单▾)` → `DrawerActionBar`；顶部加助手卡 | 中 |
 
@@ -240,7 +246,7 @@ Yuihub 抽屉里 `DrawerAssistantCard` / `DrawerActionBar` 用 `surfaceBright + 
 
 | 文件 | 改动 |
 |---|---|
-| `ui/pages/setting/SettingPage.kt` | 分组重排（16→13/12）；颜色模式改 `SegmentedPill` |
+| `ui/pages/setting/SettingPage.kt` | 分组重排（实做 16→15，见 §5.4）；颜色模式改 `SegmentedPill` |
 | `ui/pages/setting/SettingMediaPage.kt` | 加第 3 个 Tab「语音」并入 TTS |
 | `ui/components/ui/SegmentedPill.kt` | **新增** |
 
@@ -265,7 +271,7 @@ Yuihub 抽屉里 `DrawerAssistantCard` / `DrawerActionBar` 用 `surfaceBright + 
 | 设置页行数 | 16 | 12-13 | **15**（见 §5.4 差异说明） |
 | 抽屉拖动期间整树重组 | 无动画 | **0 次/帧** | **0 次/帧**：`progress` 读数全部在 `graphicsLayer`/`drawBehind` lambda 内 |
 | 动作栈点击区高度 | 40dp | **≥ 48dp** | **≥ 48dp**（`minimumInteractiveComponentSize`）；抽屉顶部条目行 10dp 内边距 + 18dp 图标 |
-| 抽屉相关 Compose 测试 | 0 | ≥ 8 个用例 | **4**（`SegmentedPillTest`；抽屉手势/导航测试仍未补，见下方待办） |
+| 抽屉相关 Compose 测试 | 0 | ≥ 8 个用例 | **4**（实为 `SegmentedPillTest`，覆盖单选语义/触控高度；**抽屉手势与路由测试仍未补**，见下方待办） |
 
 **其他已落地项**：
 - 矮屏（高度 < 640dp，如手表/横屏手机）：抽屉顶部随会话列表一起滚动，避免固定区把列表挤没
@@ -275,9 +281,9 @@ Yuihub 抽屉里 `DrawerAssistantCard` / `DrawerActionBar` 用 `surfaceBright + 
   `Screen.SettingSpeech` 路由保留，`SettingSpeechPage(embedded = true)` 复用同一套 TTS/ASR 内容。
 
 **待办**：`ChatScalingDrawer` 的手势/导航测试（左缘拖动可开、内容区水平拖动不误开、返回键关闭、
-5 个入口各自路由）尚未补齐。
+底部 4 个动作 + 顶部 3 条条目各自路由）尚未补齐。
 
-**不做**：不在本仓引入 Yuihub 的抽屉内子代理树；不改大屏 `PermanentNavigationDrawer`（`ChatPage.kt:286` 逻辑保留）；不动 61 条路由结构。
+**不做**：不在本仓引入 Yuihub 的抽屉内子代理树；不改大屏 `PermanentNavigationDrawer`（`ChatPage.kt:281` 分支保留）；不动 61 条路由结构。
 
 ---
 
@@ -310,12 +316,15 @@ Yuihub ChatPage.kt:225           大屏仍用 PermanentNavigationDrawer
 Yuihub SettingPage.kt:129-141    SegmentedPill（内联分段）
 Yuihub SettingPage.kt:122-232    设置页 4 组 10 行
 Yuihub ExtensionsPage.kt:79      MCP 归入扩展
-Neomix ChatDrawer.kt:490-520     菜单▾ 的 3 项（待删除）
-Neomix ChatDrawer.kt:456-558     底部 5 动作行
-Neomix ChatDrawer.kt:222-277     用户头像/昵称区（待改为双身份）
-Neomix ChatDrawer.kt:966/1035    FolderBar / FolderChip（已存在）
-Neomix ChatPage.kt:210-221       rememberDrawerState / BackHandler
-Neomix ChatPage.kt:286/321       大屏 / 小屏抽屉分支
-Neomix ChatPage.kt:362/451/1109/1137  drawerState 传递链（重构涟漪）
-Neomix SettingPage.kt:112-282    设置页 4 组 16 行
+> 下列 Neomix 行号为**改前基线**（`cd2cea8ba`），改造后行号已变化；`ChatScalingDrawer` 现位于
+> `ui/components/drawer/`，`ChatPage` 的大屏/小屏分支在 `:280` / `:320` 附近，`drawerState` 传递链已不存在。
+
+Neomix ChatDrawer.kt:490-520     菜单▾ 的 3 项（✅ 已删除，`5e8e6f667`）
+Neomix ChatDrawer.kt:456-558     底部 5 动作行（✅ 已改为 4 动作）
+Neomix ChatDrawer.kt:222-277     用户头像/昵称区（保持不变）
+Neomix ChatDrawer.kt:966/1035    FolderBar / FolderChip（已存在；已移入抽屉 header）
+Neomix ChatPage.kt:210-221       rememberDrawerState / BackHandler（✅ 已改为 drawerOpen: Boolean）
+Neomix ChatPage.kt:286/321       大屏 / 小屏抽屉分支（小屏已改 ChatScalingDrawer）
+Neomix ChatPage.kt:362/451/1109/1137  drawerState 传递链（✅ 已随重构消失）
+Neomix SettingPage.kt:112-282    设置页 4 组 16 行（✅ 已为 15 行）
 ```
