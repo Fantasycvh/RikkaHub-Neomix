@@ -160,6 +160,13 @@ internal class LegacyBackupConverter(private val context: Context) {
             Log.w(TAG, "copyTable($table): no shared columns, skipped")
             return 0
         }
+        // 目标表若有「NOT NULL 且无默认值」的列在源库里不存在，逐行插入必然失败并中止整库导入。
+        // 这种情况按表跳过并记录，避免一个可选功能表毁掉整个恢复。
+        val missingRequired = requiredTargetColumns(target, table) - shared.toSet()
+        if (missingRequired.isNotEmpty()) {
+            Log.w(TAG, "copyTable($table): source lacks required columns $missingRequired, skipped")
+            return 0
+        }
         val columnList = shared.joinToString(",") { "\"$it\"" }
         val placeholders = shared.joinToString(",") { "?" }
         val insert = "INSERT OR REPLACE INTO \"$table\" ($columnList) VALUES ($placeholders)"
@@ -194,6 +201,20 @@ internal class LegacyBackupConverter(private val context: Context) {
     private fun columnsOf(target: SupportSQLiteDatabase, table: String): Set<String> =
         target.query("PRAGMA table_info(\"$table\")").use { cursor ->
             buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) }
+        }
+
+    /** 目标表里「NOT NULL、无默认值、且不是自增主键」的列：复制时必须由源库提供。 */
+    private fun requiredTargetColumns(target: SupportSQLiteDatabase, table: String): Set<String> =
+        target.query("PRAGMA table_info(\"$table\")").use { cursor ->
+            buildSet {
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(1)
+                    val notNull = cursor.getInt(2) != 0
+                    val defaultValue = if (cursor.isNull(3)) null else cursor.getString(3)
+                    val primaryKey = cursor.getInt(5) != 0
+                    if (notNull && defaultValue == null && !primaryKey) add(name)
+                }
+            }
         }
 
     /**

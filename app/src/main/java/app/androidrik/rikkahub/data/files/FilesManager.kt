@@ -723,6 +723,14 @@ object FileFolders {
     const val AVATARS = "avatars"
 
     /**
+     * 媒体创作（图片/视频生成）的文件区：`media_creation/<sessionId>/…`。
+     *
+     * 与 [UPLOAD] 分开的理由同 avatars：产物由生成记录本身引用，不该被「清理聊天文件」连带删除；
+     * 目录按会话分子目录，故备份按递归目录打包（见 `BACKED_UP_FILE_FOLDERS`）。
+     */
+    const val MEDIA_CREATION = "media_creation"
+
+    /**
      * 导出留存区（AI/用户导出的对话文件副本；经「设置 → 文件管理」可见、可再分享）。
      *
      * 与 `tool_outputs`（会话级临时产物、启动即清）不同：本目录是**用户想留的产物**，

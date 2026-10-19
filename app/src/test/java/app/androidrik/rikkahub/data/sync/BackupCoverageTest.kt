@@ -26,6 +26,7 @@ class BackupCoverageTest {
             FileFolders.TOOL_OUTPUTS,
             FileFolders.LOGS,
             FileFolders.EXPORTS,
+            FileFolders.MEDIA_CREATION,
         )
         assertEquals(
             "BACKED_UP + EXCLUDED 必须恰好覆盖 FileFolders 全集（漏掉的目录 = 静默不备份）",

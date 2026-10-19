@@ -39,6 +39,7 @@ import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.AvatarMigration
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.service.MediaCreationService
 import app.androidrik.rikkahub.service.WebServerService
 import app.androidrik.rikkahub.service.KeepAliveService
 import app.androidrik.rikkahub.utils.CrashHandler
@@ -62,6 +63,7 @@ const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
 const val KEEP_ALIVE_NOTIFICATION_CHANNEL_ID = "keep_alive"
+const val MEDIA_CREATION_NOTIFICATION_CHANNEL_ID = "media_creation"
 
 /**
  * 子代理「需要批准」通知渠道（设计 §十一）。
@@ -147,10 +149,23 @@ class RikkaHubApp : Application() {
         // Start keep-alive foreground service if enabled in settings
         startKeepAliveIfEnabled()
 
+        // Resume media generations interrupted by the last process death
+        resumeMediaCreations()
+
         // Increment launch count
         incrementLaunchCount()
 
         // Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.Auto)
+    }
+
+    private fun resumeMediaCreations() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                get<MediaCreationService>().resumePending()
+            }.onFailure {
+                Log.e(TAG, "resumeMediaCreations failed", it)
+            }
+        }
     }
 
     private fun incrementLaunchCount() {
@@ -402,6 +417,12 @@ class RikkaHubApp : Application() {
             .setShowBadge(false)
             .build()
         notificationManager.createNotificationChannel(keepAliveChannel)
+
+        val mediaCreationChannel = NotificationChannelCompat
+            .Builder(MEDIA_CREATION_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+            .setName(getString(R.string.media_creation_title))
+            .build()
+        notificationManager.createNotificationChannel(mediaCreationChannel)
 
         val subagentApprovalChannel = NotificationChannelCompat
             .Builder(

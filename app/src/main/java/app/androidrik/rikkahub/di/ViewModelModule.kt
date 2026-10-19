@@ -15,6 +15,8 @@ import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunDetailVM
 import app.androidrik.rikkahub.ui.pages.subagent.SubagentPresetsVM
 import app.androidrik.rikkahub.ui.pages.stats.StatsVM
 import app.androidrik.rikkahub.ui.pages.imggen.ImgGenVM
+import app.androidrik.rikkahub.ui.pages.mediacreation.MediaCreationSessionsVM
+import app.androidrik.rikkahub.ui.pages.mediacreation.MediaCreationVM
 import app.androidrik.rikkahub.ui.pages.promptinspect.PromptInspectVM
 import app.androidrik.rikkahub.ui.pages.extensions.PromptVM
 import app.androidrik.rikkahub.ui.pages.extensions.QuickMessagesVM
@@ -88,6 +90,17 @@ val viewModelModule = module {
     }
     viewModelOf(::BackupVM)
     viewModelOf(::ImgGenVM)
+    viewModelOf(::MediaCreationSessionsVM)
+    viewModel<MediaCreationVM> {
+        MediaCreationVM(
+            id = it.get(),
+            context = get(),
+            settingsStore = get(),
+            repository = get(),
+            service = get(),
+            appScope = get(),
+        )
+    }
     viewModelOf(::PromptInspectVM)
     viewModelOf(::PromptVM)
     viewModelOf(::QuickMessagesVM)

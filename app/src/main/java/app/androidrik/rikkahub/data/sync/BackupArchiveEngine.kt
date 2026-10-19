@@ -239,6 +239,11 @@ internal class BackupArchiveEngine(
                                     restoreFlatEntry(zipIn, zipEntry.name, FileFolders.AVATARS)
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.SKILLS}/")) {
                                     restoreSkillEntry(zipIn, zipEntry.name)
+                                } else if (BackupItem.FILES in items &&
+                                    zipEntry.name.startsWith("${FileFolders.MEDIA_CREATION}/")
+                                ) {
+                                    // 媒体创作产物：media_creation/<sessionId>/… 递归；复用带 zip-slip 防护的平铺写入
+                                    restoreFlatEntry(zipIn, zipEntry.name, FileFolders.MEDIA_CREATION)
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.FONTS}/")) {
                                     restoreFontEntry(zipIn, zipEntry.name)
                                 } else if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.TOOL_OUTPUTS}/")) {

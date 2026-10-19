@@ -12,6 +12,7 @@ import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.service.ChatNotificationManager
 import app.androidrik.rikkahub.service.ChatService
+import app.androidrik.rikkahub.service.MediaCreationService
 import app.androidrik.rikkahub.service.SubagentRunner
 import app.androidrik.rikkahub.utils.EmojiData
 import app.androidrik.rikkahub.utils.EmojiUtils
@@ -130,6 +131,19 @@ val appModule = module {
             generationHandler = get(),
             chatToolFactory = get(),
             agentRunDAO = get(),
+        )
+    }
+
+    // 媒体创作的生成任务：每条记录一个协程，挂在应用级作用域上，离开页面后继续运行。
+    // 本仓库没有 RemoteFileStore，因此不注册它；需要公网素材地址的请求在服务内明确失败。
+    single {
+        MediaCreationService(
+            context = get(),
+            appScope = get(),
+            settingsStore = get(),
+            repository = get(),
+            manager = get(),
+            okHttpClient = get(),
         )
     }
 

@@ -45,6 +45,7 @@ internal val BACKED_UP_FILE_FOLDERS: List<String> = listOf(
     FileFolders.AVATARS,  // 助手头像 + 用户头像（2026-10-13 从 upload/ 独立出来，见 #2127）
     FileFolders.FONTS,    // 用户字体
     FileFolders.SKILLS,   // 用户技能（含子目录，递归打包）
+    FileFolders.MEDIA_CREATION, // 媒体创作产物（按会话子目录，递归打包）
 )
 
 /**
@@ -60,6 +61,7 @@ internal val BACKED_UP_FILE_FOLDERS: List<String> = listOf(
 internal val RECURSIVE_FILE_FOLDERS: Set<String> = setOf(
     FileFolders.SKILLS,
     FileFolders.IMAGES,
+    FileFolders.MEDIA_CREATION,
 )
 
 /** 一个目录的打包方式：递归或平铺，以及 zip 内的条目前缀。 */

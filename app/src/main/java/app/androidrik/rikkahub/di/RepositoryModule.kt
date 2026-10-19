@@ -13,6 +13,7 @@ import app.androidrik.rikkahub.data.repository.FolderRepository
 import app.androidrik.rikkahub.data.repository.FilesRepository
 import app.androidrik.rikkahub.data.repository.GenMediaRepository
 import app.androidrik.rikkahub.data.repository.MemoryConsolidationRepository
+import app.androidrik.rikkahub.data.repository.MediaCreationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.workspace.ProotBackgroundLauncher
@@ -31,6 +32,15 @@ val repositoryModule = module {
 
     single {
         FolderRepository(get(), get())
+    }
+
+    single {
+        MediaCreationRepository(
+            context = get(),
+            database = get(),
+            dao = get(),
+            json = get(),
+        )
     }
 
     single {

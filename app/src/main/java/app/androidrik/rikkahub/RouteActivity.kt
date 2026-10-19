@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -59,11 +60,14 @@ import coil3.svg.SvgDecoder
 import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.DatabaseMigrationTracker
 import app.androidrik.rikkahub.data.db.MigrationState
 import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
+import app.androidrik.rikkahub.data.repository.MediaCreationRepository
+import app.androidrik.rikkahub.service.MediaCreationForegroundService
 import app.androidrik.rikkahub.ui.activity.SafeModeActivity
 import app.androidrik.rikkahub.ui.components.ui.TTSController
 import app.androidrik.rikkahub.ui.context.LocalASRState
@@ -109,6 +113,8 @@ import app.androidrik.rikkahub.ui.pages.favorite.FavoritePage
 import app.androidrik.rikkahub.ui.pages.history.HistoryPage
 import app.androidrik.rikkahub.ui.pages.imggen.ImageGenPage
 import app.androidrik.rikkahub.ui.pages.log.LogPage
+import app.androidrik.rikkahub.ui.pages.mediacreation.MediaCreationPage
+import app.androidrik.rikkahub.ui.pages.mediacreation.MediaCreationSessionsPage
 import app.androidrik.rikkahub.ui.pages.promptinspect.PromptInspectPage
 import app.androidrik.rikkahub.ui.pages.search.SearchPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingAboutPage
@@ -121,6 +127,7 @@ import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNetworkPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingFilesPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingMcpPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingMediaPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingKnowledgeBaseDetailPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingKnowledgeBasePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingModelPage
@@ -147,10 +154,12 @@ import kotlin.uuid.Uuid
 private const val TAG = "RouteActivity"
 private const val ACTION_TRANSLATE = "app.androidrik.rikkahub.action.TRANSLATE"
 private const val ACTION_IMAGE_GEN = "app.androidrik.rikkahub.action.IMAGE_GEN"
+private const val ACTION_MEDIA_CREATION = "app.androidrik.rikkahub.action.MEDIA_CREATION"
 
 class RouteActivity : ComponentActivity() {
     private val okHttpClient by inject<OkHttpClient>()
     private val settingsStore by inject<SettingsStore>()
+    private val mediaCreationRepository by inject<MediaCreationRepository>()
     private var navStack: MutableList<NavKey>? = null
 
     // Compose 导航栈就绪前到达的 Intent 排队，SideEffect flush（对齐上游 513b784c）
@@ -242,6 +251,10 @@ class RouteActivity : ComponentActivity() {
         val destination = when (intent.action) {
             ACTION_TRANSLATE -> Screen.Translator
             ACTION_IMAGE_GEN -> Screen.ImageGen
+            ACTION_MEDIA_CREATION -> {
+                openNewMediaCreation(backStack)
+                null
+            }
             Intent.ACTION_SEND -> Screen.ShareHandler(
                 text = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty().normalizeNewlines(),
                 streamUri = intent.readShareStreamUri(),
@@ -250,13 +263,30 @@ class RouteActivity : ComponentActivity() {
                 text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty().normalizeNewlines(),
             )
             // 子代理审批通知点进来 → 运行详情页（那里有入参全文与批准/拒绝卡片）；
+            // 媒体创作通知带着会话 ID，点开后直接进入那个会话；
             // 否则沿用会话 id 的老路径
-            else -> intent.getStringExtra("runId")?.let { Screen.AgentRunDetail(it) }
+            else -> mediaCreationDestination(intent)
+                ?: intent.getStringExtra("runId")?.let { Screen.AgentRunDetail(it) }
                 ?: intent.getStringExtra("conversationId")?.let { Screen.Chat(it) }
         }
         if (destination != null && backStack.lastOrNull() != destination) {
             backStack.add(destination)
         }
+    }
+
+    // 快捷方式没有指定会话，打开一个空会话
+    private fun openNewMediaCreation(backStack: MutableList<NavKey>) {
+        lifecycleScope.launch {
+            val destination = Screen.MediaCreation(sessionId = mediaCreationRepository.newSession().id.toString())
+            if (backStack.lastOrNull() != destination) backStack.add(destination)
+        }
+    }
+
+    // 媒体创作的通知带着会话 ID，点击后直接打开那个会话
+    private fun mediaCreationDestination(intent: Intent): Screen? {
+        val sessionId = intent.getStringExtra(MediaCreationForegroundService.EXTRA_MEDIA_SESSION_ID) ?: return null
+        return runCatching { Uuid.parse(sessionId) }.getOrNull()
+            ?.let { Screen.MediaCreation(sessionId = it.toString()) }
     }
 
     // F6：分享/划词文本换行归一（Windows CRLF 残留防护，turbo 3652fd6 语义）
@@ -466,6 +496,14 @@ class RouteActivity : ComponentActivity() {
                                 ImageGenPage()
                             }
 
+                            entry<Screen.MediaCreationSessions> {
+                                MediaCreationSessionsPage()
+                            }
+
+                            entry<Screen.MediaCreation> { key ->
+                                MediaCreationPage(key.sessionId)
+                            }
+
                             entry<Screen.WebView> { key ->
                                 WebViewPage(key.url, key.contentId)
                             }
@@ -538,6 +576,10 @@ class RouteActivity : ComponentActivity() {
 
                             entry<Screen.SettingSpeech> {
                                 SettingSpeechPage()
+                            }
+
+                            entry<Screen.SettingMedia> {
+                                SettingMediaPage()
                             }
 
                             entry<Screen.SettingMcp> {
@@ -749,6 +791,12 @@ sealed interface Screen : NavKey {
     data object ImageGen : Screen
 
     @Serializable
+    data object MediaCreationSessions : Screen
+
+    @Serializable
+    data class MediaCreation(val sessionId: String) : Screen
+
+    @Serializable
     data class WebView(val url: String = "", val contentId: String = "") : Screen
 
     @Serializable
@@ -803,6 +851,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingSpeech : Screen
+
+    @Serializable
+    data object SettingMedia : Screen
 
     @Serializable
     data object SettingMcp : Screen

@@ -43,6 +43,11 @@ class LegacyBackupConversionTest {
             assertEquals(1, count(sqlite, "ConversationEntity"))
             assertEquals(1, count(sqlite, "message_node"))
             assertEquals(1, count(sqlite, "memory_consolidation"))
+            assertEquals(
+                "媒体创作表应随转换一并导入",
+                1,
+                count(sqlite, "media_creation_session"),
+            )
             sqlite.query("select title from ConversationEntity").use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("旧会话", cursor.getString(0))
@@ -128,7 +133,18 @@ class LegacyBackupConversionTest {
                 )
                 """.trimIndent(),
             )
-            db.execSQL("create table media_creation_session (id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL)")
+            db.execSQL(
+                """
+                create table media_creation_session (
+                    id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, draft TEXT NOT NULL,
+                    create_at INTEGER NOT NULL, update_at INTEGER NOT NULL
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "insert into media_creation_session (id, title, draft, create_at, update_at) " +
+                    "values ('s1', '旧媒体会话', '{}', 100, 200)",
+            )
 
             db.execSQL(
                 "insert into ConversationEntity (id, assistant_id, title, nodes, create_at, update_at) " +

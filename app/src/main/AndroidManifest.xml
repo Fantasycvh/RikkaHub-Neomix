@@ -14,6 +14,7 @@
   <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
   <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -165,6 +166,12 @@
         android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
         android:value="Keep AI chat generation running while the app is in the background" />
     </service>
+
+    <!-- 媒体生成（dataSync）：任务本身由 Koin 单例 MediaCreationService 持有，本服务只把进程留在前台 -->
+    <service
+      android:name=".service.MediaCreationForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="dataSync" />
 
     <!--
       子代理审批（设计 §十一）：通知栏「批准 / 拒绝」按钮的落点。

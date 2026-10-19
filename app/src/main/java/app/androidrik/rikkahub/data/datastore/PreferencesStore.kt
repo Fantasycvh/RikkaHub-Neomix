@@ -57,6 +57,7 @@ import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
+import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_TRANSLATION_PROMPT
@@ -322,6 +323,9 @@ class SettingsStore(
         // 备份内容项（全局：S3 / WebDAV / 本地共用同一份）
         val BACKUP_ITEMS = stringPreferencesKey("backup_items")
 
+        // 媒体生成供应商（图片/视频；与聊天 providers 分开存：鉴权与能力枚举不同）
+        val MEDIA_GENERATION_PROVIDERS = stringPreferencesKey("media_generation_providers")
+
         // TTS
         val TTS_PROVIDERS = stringPreferencesKey("tts_providers")
         // 内置 TTS 提供商墓碑（用户显式删除过的不再回填；与聊天提供商同款）
@@ -492,6 +496,9 @@ class SettingsStore(
                 } ?: DEFAULT_BACKUP_ITEMS,
                 ttsProviders = preferences[TTS_PROVIDERS]?.let {
                     JsonInstant.decodeFromString(it)
+                } ?: emptyList(),
+                mediaGenerationProviders = preferences[MEDIA_GENERATION_PROVIDERS]?.let {
+                    JsonInstant.decodeFromString<List<MediaGenerationProviderSetting>>(it)
                 } ?: emptyList(),
                 selectedTTSProviderId = preferences[SELECTED_TTS_PROVIDER]?.let { Uuid.parse(it) }
                     ?: DEFAULT_SYSTEM_TTS_ID,
@@ -769,6 +776,8 @@ class SettingsStore(
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
             preferences[BACKUP_ITEMS] = JsonInstant.encodeToString(settings.backupItems)
+            preferences[MEDIA_GENERATION_PROVIDERS] =
+                JsonInstant.encodeToString(settings.mediaGenerationProviders)
             preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
             settings.selectedTTSProviderId?.let {
                 preferences[SELECTED_TTS_PROVIDER] = it.toString()
@@ -1044,6 +1053,11 @@ data class Settings(
     val defaultTTSPlaybackSpeed: Float = 1.0f,
     val asrProviders: List<ASRProviderSetting> = emptyList(),
     val selectedASRProviderId: Uuid? = null,
+    /**
+     * 媒体生成供应商（图片/视频）。空列表 = 未配置：媒体创作页提示去设置，不静默失败。
+     * 与聊天 [providers] 分开：媒体接口的鉴权、可用模型与能力声明都不同。
+     */
+    val mediaGenerationProviders: List<MediaGenerationProviderSetting> = emptyList(),
     /**
      * 预设容器（一组组具名的注入条目）。**这是持久化字段**。
      *

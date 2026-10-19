@@ -17,6 +17,7 @@ import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryProposalDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO
 import app.androidrik.rikkahub.data.db.dao.ManagedFileDAO
+import app.androidrik.rikkahub.data.db.dao.MediaCreationDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryHistoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryTrashDAO
@@ -31,6 +32,9 @@ import app.androidrik.rikkahub.data.db.entity.GenMediaEntity
 import app.androidrik.rikkahub.data.db.entity.KnowledgeBaseDocumentEntity
 import app.androidrik.rikkahub.data.db.entity.KnowledgeBaseEntity
 import app.androidrik.rikkahub.data.db.entity.KnowledgeEmbeddingEntity
+import app.androidrik.rikkahub.data.db.entity.MediaCreationNodeEntity
+import app.androidrik.rikkahub.data.db.entity.MediaCreationRecordEntity
+import app.androidrik.rikkahub.data.db.entity.MediaCreationSessionEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryConsolidationEntity
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
@@ -67,8 +71,11 @@ import app.androidrik.rikkahub.utils.JsonInstant
         MemoryReviewCursorEntity::class,
         MemoryHistoryEntity::class,
         MemoryTrashEntity::class,
+        MediaCreationSessionEntity::class,
+        MediaCreationNodeEntity::class,
+        MediaCreationRecordEntity::class,
     ],
-    version = 42,
+    version = 43,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -123,6 +130,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 每轮同一选取位置 ⇒ 约 3/4 的记忆**永远不进模型视野**，「存量记忆本身的整理」无从谈起。
         // 见 docs/design/design-memory-retrieval-and-consolidation.md §7
         AutoMigration(from = 39, to = 40),
+        AutoMigration(from = 42, to = 43),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -158,6 +166,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun memoryProposalDao(): MemoryProposalDAO
 
     abstract fun memoryReviewCursorDao(): MemoryReviewCursorDAO
+
+    abstract fun mediaCreationDao(): MediaCreationDAO
 }
 
 object TokenUsageConverter {

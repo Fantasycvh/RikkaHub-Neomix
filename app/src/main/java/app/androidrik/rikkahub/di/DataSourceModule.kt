@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import app.androidrik.ai.provider.ProviderManager
+import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationAgent
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationGenerationAgent
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
@@ -175,6 +176,10 @@ val dataSourceModule = module {
     }
 
     single {
+        get<AppDatabase>().mediaCreationDao()
+    }
+
+    single {
         get<AppDatabase>().messageNodeDao()
     }
 
@@ -285,6 +290,10 @@ val dataSourceModule = module {
 
     single {
         ProviderManager(client = get(), context = get())
+    }
+
+    single {
+        MediaGenerationManager(client = get())
     }
 
     single {

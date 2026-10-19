@@ -155,7 +155,8 @@ class Migration_40_41_Test {
         withRoom(restored) { room ->
             assertEquals(live, room.memoryDao().getMemoryById(43))
             val db = room.openHelper.writableDatabase
-            assertEquals(42, db.version)
+            // 当前 schema 版本（42→43 媒体创作表后为 43）；迁移链末端的版本在这里显式钉住
+            assertEquals(43, db.version)
             db.query("SELECT snapshot,revision FROM memory_history WHERE memory_id=43").use {
                 assertTrue(it.moveToFirst())
                 assertEquals(history.snapshot, it.getString(0))

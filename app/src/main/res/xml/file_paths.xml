@@ -23,4 +23,8 @@
   <files-path
     name="exports"
     path="exports/" />
+  <!-- 媒体创作产物：分享/预览需要 FileProvider URI；同样只暴露这一层子目录 -->
+  <files-path
+    name="media_creation"
+    path="media_creation/" />
 </paths>
