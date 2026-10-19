@@ -1,0 +1,399 @@
+{
+  "version": 1,
+  "sourceRevision": "e9febda0eee5822f16ff4942e94891c4ccdd06b3",
+  "sourceNote": "Pre-D algorithm; baseline measured after a behavior-preserving extraction of its search ranking helper.",
+  "corpusSha256": "28932bc7a6a3eb1acd7dd4e620fe659ab07d99e4d0501ee4f82de1ee0a97f65e",
+  "rawReportSha256": "824b905e348dc4604e987d93b3409435388387cfd274e90b5de163332ef1e6a8",
+  "now": 1800000000000,
+  "estimator": "heuristic",
+  "queryCount": 43,
+  "memoryCount": 23,
+  "measurement": "local rendered components, not provider billing or generated answer quality",
+  "summary": {
+    "overall": {
+      "1": {
+        "positiveCount": 37,
+        "negativeCount": 6,
+        "falsePositiveCount": 0,
+        "macroRecall": 0.7027027027027027,
+        "mrr": 0.7297297297297297,
+        "binaryNdcg": 0.7297297297297297,
+        "noAnswerFalsePositiveRate": 0.0
+      },
+      "3": {
+        "positiveCount": 37,
+        "negativeCount": 6,
+        "falsePositiveCount": 0,
+        "macroRecall": 0.7027027027027027,
+        "mrr": 0.7297297297297297,
+        "binaryNdcg": 0.7088187671765114,
+        "noAnswerFalsePositiveRate": 0.0
+      },
+      "5": {
+        "positiveCount": 37,
+        "negativeCount": 6,
+        "falsePositiveCount": 0,
+        "macroRecall": 0.7027027027027027,
+        "mrr": 0.7297297297297297,
+        "binaryNdcg": 0.7088187671765114,
+        "noAnswerFalsePositiveRate": 0.0
+      }
+    },
+    "groups": {
+      "challenge": {
+        "1": {
+          "positiveCount": 8,
+          "negativeCount": 0,
+          "falsePositiveCount": 0,
+          "macroRecall": 0.125,
+          "mrr": 0.25,
+          "binaryNdcg": 0.25,
+          "noAnswerFalsePositiveRate": null
+        },
+        "3": {
+          "positiveCount": 8,
+          "negativeCount": 0,
+          "falsePositiveCount": 0,
+          "macroRecall": 0.125,
+          "mrr": 0.25,
+          "binaryNdcg": 0.15328679819136462,
+          "noAnswerFalsePositiveRate": null
+        },
+        "5": {
+          "positiveCount": 8,
+          "negativeCount": 0,
+          "falsePositiveCount": 0,
+          "macroRecall": 0.125,
+          "mrr": 0.25,
+          "binaryNdcg": 0.15328679819136462,
+          "noAnswerFalsePositiveRate": null
+        }
+      },
+      "limitation": {
+        "1": {
+          "positiveCount": 4,
+          "negativeCount": 0,
+          "falsePositiveCount": 0,
+          "macroRecall": 0.0,
+          "mrr": 0.0,
+          "binaryNdcg": 0.0,
+          "noAnswerFalsePositiveRate": null
+        },
+        "3": {
+          "positiveCount": 4,
+          "negativeCount": 0,
+          "falsePositiveCount": 0,
+          "macroRecall": 0.0,
+          "mrr": 0.0,
+          "binaryNdcg": 0.0,
+          "noAnswerFalsePositiveRate": null
+        },
+        "5": {
+          "positiveCount": 4,
+          "negativeCount": 0,
+          "falsePositiveCount": 0,
+          "macroRecall": 0.0,
+          "mrr": 0.0,
+          "binaryNdcg": 0.0,
+          "noAnswerFalsePositiveRate": null
+        }
+      },
+      "regression": {
+        "1": {
+          "positiveCount": 25,
+          "negativeCount": 6,
+          "falsePositiveCount": 0,
+          "macroRecall": 1.0,
+          "mrr": 1.0,
+          "binaryNdcg": 1.0,
+          "noAnswerFalsePositiveRate": 0.0
+        },
+        "3": {
+          "positiveCount": 25,
+          "negativeCount": 6,
+          "falsePositiveCount": 0,
+          "macroRecall": 1.0,
+          "mrr": 1.0,
+          "binaryNdcg": 1.0,
+          "noAnswerFalsePositiveRate": 0.0
+        },
+        "5": {
+          "positiveCount": 25,
+          "negativeCount": 6,
+          "falsePositiveCount": 0,
+          "macroRecall": 1.0,
+          "mrr": 1.0,
+          "binaryNdcg": 1.0,
+          "noAnswerFalsePositiveRate": 0.0
+        }
+      }
+    }
+  },
+  "injectionMeansPositiveCases": [
+    {
+      "budget": 0,
+      "positiveCount": 37,
+      "l2Recall": 0.0,
+      "fullTextRecall": 0.0,
+      "visibleRecall": 0.0,
+      "totalEstimatedTokens": 0.0,
+      "relevantFullTextPer1kTokens": null
+    },
+    {
+      "budget": 500,
+      "positiveCount": 37,
+      "l2Recall": 0.7567567567567568,
+      "fullTextRecall": 0.7837837837837838,
+      "visibleRecall": 0.8243243243243243,
+      "totalEstimatedTokens": 484.81081081081084,
+      "relevantFullTextPer1kTokens": 1.6710283841534148
+    },
+    {
+      "budget": 1200,
+      "positiveCount": 37,
+      "l2Recall": 0.9459459459459459,
+      "fullTextRecall": 0.972972972972973,
+      "visibleRecall": 1.0,
+      "totalEstimatedTokens": 842.0,
+      "relevantFullTextPer1kTokens": 1.2518456698979263
+    },
+    {
+      "budget": 8000,
+      "positiveCount": 37,
+      "l2Recall": 0.972972972972973,
+      "fullTextRecall": 1.0,
+      "visibleRecall": 1.0,
+      "totalEstimatedTokens": 3966.0,
+      "relevantFullTextPer1kTokens": 0.27258726199724687
+    }
+  ],
+  "searchCases": [
+    {
+      "id": "zh-coffee",
+      "resultIds": [
+        "coffee"
+      ]
+    },
+    {
+      "id": "latin-case",
+      "resultIds": [
+        "coffee"
+      ]
+    },
+    {
+      "id": "latin-mixed-case",
+      "resultIds": [
+        "coffee"
+      ]
+    },
+    {
+      "id": "zh-bigram",
+      "resultIds": [
+        "coffee"
+      ]
+    },
+    {
+      "id": "zh-tea",
+      "resultIds": [
+        "tea"
+      ]
+    },
+    {
+      "id": "zh-single-tea",
+      "resultIds": [
+        "tea"
+      ]
+    },
+    {
+      "id": "zh-single-cat",
+      "resultIds": [
+        "cat"
+      ]
+    },
+    {
+      "id": "latin-python",
+      "resultIds": [
+        "python"
+      ]
+    },
+    {
+      "id": "latin-tikz",
+      "resultIds": [
+        "tikz"
+      ]
+    },
+    {
+      "id": "latin-kotlin",
+      "resultIds": [
+        "kotlin"
+      ]
+    },
+    {
+      "id": "zh-meal",
+      "resultIds": [
+        "noodles"
+      ]
+    },
+    {
+      "id": "identity",
+      "resultIds": [
+        "vegan"
+      ]
+    },
+    {
+      "id": "two-words",
+      "resultIds": [
+        "dark"
+      ]
+    },
+    {
+      "id": "allergy",
+      "resultIds": [
+        "allergy"
+      ]
+    },
+    {
+      "id": "latex",
+      "resultIds": [
+        "math"
+      ]
+    },
+    {
+      "id": "composed-accent",
+      "resultIds": [
+        "cafe"
+      ]
+    },
+    {
+      "id": "composed-diaeresis",
+      "resultIds": [
+        "naive"
+      ]
+    },
+    {
+      "id": "fullwidth-kana",
+      "resultIds": [
+        "kana"
+      ]
+    },
+    {
+      "id": "composed-hangul",
+      "resultIds": [
+        "hangul"
+      ]
+    },
+    {
+      "id": "identifier",
+      "resultIds": [
+        "fts"
+      ]
+    },
+    {
+      "id": "name",
+      "resultIds": [
+        "name"
+      ]
+    },
+    {
+      "id": "description-only",
+      "resultIds": [
+        "bread"
+      ]
+    },
+    {
+      "id": "strict-ranking",
+      "resultIds": [
+        "ranking-new",
+        "ranking-old"
+      ]
+    },
+    {
+      "id": "repeated-term",
+      "resultIds": [
+        "coffee"
+      ]
+    },
+    {
+      "id": "long-record",
+      "resultIds": [
+        "long-note"
+      ]
+    },
+    {
+      "id": "empty",
+      "resultIds": []
+    },
+    {
+      "id": "zh-stopwords",
+      "resultIds": []
+    },
+    {
+      "id": "latin-stopwords",
+      "resultIds": []
+    },
+    {
+      "id": "no-answer",
+      "resultIds": []
+    },
+    {
+      "id": "punctuation",
+      "resultIds": []
+    },
+    {
+      "id": "prefix-not-word",
+      "resultIds": []
+    },
+    {
+      "id": "wide-tikz",
+      "resultIds": []
+    },
+    {
+      "id": "wide-identifier",
+      "resultIds": []
+    },
+    {
+      "id": "decomposed-accent",
+      "resultIds": []
+    },
+    {
+      "id": "decomposed-diaeresis",
+      "resultIds": []
+    },
+    {
+      "id": "halfwidth-kana",
+      "resultIds": []
+    },
+    {
+      "id": "decomposed-hangul",
+      "resultIds": []
+    },
+    {
+      "id": "mixed-single-cat",
+      "resultIds": [
+        "python"
+      ]
+    },
+    {
+      "id": "mixed-single-tea",
+      "resultIds": [
+        "kotlin"
+      ]
+    },
+    {
+      "id": "operator-language",
+      "resultIds": []
+    },
+    {
+      "id": "single-latin-language",
+      "resultIds": []
+    },
+    {
+      "id": "implicit-preference",
+      "resultIds": []
+    },
+    {
+      "id": "inflection",
+      "resultIds": []
+    }
+  ]
+}
