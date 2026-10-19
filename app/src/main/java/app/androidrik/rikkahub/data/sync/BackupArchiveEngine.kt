@@ -267,6 +267,7 @@ internal class BackupArchiveEngine(
 
                 // 关库 → 清陈旧 -wal/-shm → 放入暂存的备份数据库
                 if (BackupItem.DATABASE in items) {
+                    prepareStagedDatabase(stagedDatabaseFiles)
                     applyStagedDatabaseFiles(stagedDatabaseFiles)
                 }
 
@@ -286,6 +287,37 @@ internal class BackupArchiveEngine(
                 stagedDatabaseFiles.values.forEach { it.takeIf(File::exists)?.delete() }
             }
         }
+
+    /**
+     * 换库前的**数据库家族分流**。
+     *
+     * 本应用历史库（含 2.5.6 的 v25）：直接换库，Room 沿自己的迁移链升到当前版本。
+     * 原版 3.x 的库（文件式记忆 + 媒体/翻译表）与本应用 v30 后 schema 分叉，
+     * Room 迁移链既缺原版表、又多了本应用独有表 ⇒ 先做数据级转换，再走同一套换库。
+     * 未知家族直接报错，不猜、不覆盖。
+     */
+    private fun prepareStagedDatabase(staged: MutableMap<String, File>) {
+        val main = staged["rikka_hub.db"] ?: return
+        when (LegacyBackupConverter.classify(main)) {
+            LegacyDatabaseFamily.CURRENT -> {
+                // 旧包名附件路径就地改写；改过就必须丢弃备份里的陈旧 WAL，否则会盖掉改写
+                if (LegacyBackupConverter(context).rewriteLegacyPathsInPlace(main)) {
+                    staged.keys.filter { it != "rikka_hub.db" }.toList().forEach { name ->
+                        staged.remove(name)?.delete()
+                    }
+                    Log.i(TAG, "prepareStagedDatabase: rewrote legacy attachment paths in staged database")
+                }
+            }
+            LegacyDatabaseFamily.LEGACY_UPSTREAM -> {
+                Log.i(TAG, "prepareStagedDatabase: legacy upstream database, converting to current schema")
+                val converted = LegacyBackupConverter(context).convert(main)
+                staged.keys.toList().forEach { name -> staged.remove(name)?.delete() }
+                staged["rikka_hub.db"] = converted
+            }
+            LegacyDatabaseFamily.UNKNOWN ->
+                throw Exception("Unsupported backup database: neither this app's history nor a known RikkaHub backup")
+        }
+    }
 
     /**
      * 用暂存的备份数据库文件替换现库。
