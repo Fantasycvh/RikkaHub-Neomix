@@ -3,7 +3,7 @@
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.27 (294)`；仅 tag、无预编译资产，本仓不发预编译包，CI 自动发版已禁用）。
 
 > **同步点（2026-10-16 晚间更新）**：逐条评估已跟进到上游 **`cfb503d8c`（2026-10-16 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-16 同步」；再前一节为「2026-10-15 同步」。
-> **同步点（2026-10-19 更新）**：已评估到上游 **`42896e5ad`**（本批 `aae986e55`..`42896e5ad` 共 31 提交，逐条结论见「2026-10-19 同步评估」一节）；上游同日 `bump version to 3.0.0`。**本批唯一待吸收项 = `675e59f0d`（Responses API `function_call_output`，P1）**。
+> **同步点（2026-10-19 更新）**：已评估到上游 **`42896e5ad`**（本批 `aae986e55`..`42896e5ad` 共 31 提交，逐条结论见「2026-10-19 同步评估」一节）；上游同日 `bump version to 3.0.0`。**本批唯一缺口 `675e59f0d`（Responses API `function_call_output`）已于当日落地（fork `8b85aa3a4`）**，无遗留待吸收项。
 > **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
 > **教训**：`git fetch` 的区间大小 ≠ 待评估量；判断「有没有欠账」要看**文档记录的评估点**（本节顶部的同步点），不是本地 ref。
 
@@ -934,7 +934,7 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 | `660571449` | 侧边栏搜索入口并入聊天历史行尾 | **已吸收**（同批）：三条同级 `DrawerEntry`，行尾 32dp 搜索热区（不用 `IconButton`，避免把行撑高） |
 | `42896e5ad` | MCP 列表 Compose 1.12 测量期崩溃（#2179） | **不适用**：fork `McpPicker` 是 `Card`+`Row`+`Column`，没有 `ListItem.supportingContent` 多子节点结构；且 fork compose-ui 1.11.x（BOM `2026.06.01`）低于出问题的 1.12。**遗留隐患**：`ExtensionPicker`（3 处）、`AssistantMemoryPage`（2 处）、`PropertyEditor`（2 处，含 `OutlinedTextField` 在 supporting 里）共 7 处同款形状 —— 升 Compose 到 1.12+ 前必须滚动实测 |
 | `222bc4ad1` | MiniMax 取回结果同源带鉴权（#2177） | **不适用**：fork `mediagen/provider/providers/` 只有 `openai`、`siliconflow`，MiniMax 仅有 `MediaGenerationProviderSetting.MiniMax` 类型、无适配器 |
-| `675e59f0d` | Responses API 解析服务端返回的 `function_call_output`（#2181） | **真缺口，待吸收**（专项见下节） |
+| `675e59f0d` | Responses API 解析服务端返回的 `function_call_output`（#2181） | **已吸收**（fork `8b85aa3a4`，专项见下节） |
 | `4061537da`（及其后续 `96a9bed4d`） | ui 模块自研 Toaster 替换 sonner / `showProgress` | **不跟**：fork 用 sonner `0.4.0`。真机核查（2026-10-19）：窗口 dump 证实 sonner 确实是 `APPLICATION_SUB_PANEL` 全屏（1264×2584、`NOT_FOCUSABLE\|WATCH_OUTSIDE_TOUCH`）子窗口，但**toast 显示期间输入（点输入框→打字）与手势（滚动）均正常**，未复现上游所述「阻断输入/手势异常」；且 sonner 是独立窗口，天然浮在 BottomSheet/Dialog 之上，换自研 Toaster 反而会让 sheet 内触发的提示（备份/导出/导入，约 30 处）被遮挡。**结论：不为“修 bug”迁移；若将来只为统一风格，须先解决 z-order（sheet 宿主内再放一个 `Toaster(state)`）** |
 | 其余 25 提交（统计 `usage_record` 流水、语音“回复时继续聆听”、记忆空态/自动做梦、媒体创作卡片化、Markdown 引用工作区图片、应用图标、Spotless+ktlint、baseline profile 等） | — | 与本批无关或属独立大特性：`usage_record`（约 2500 行 + DB 迁移）应单独立项；`MediaCreationSessionsPage` 卡片化与我们刚加的“旧版图像生成”入口同文件，合流时需人工；Spotless 会对我们改过的文件做全量重排，不跟 |
 
@@ -968,7 +968,12 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 
 **验证**：单测直接喂构造的 SSE JSON（`response.output_item.added`/`.done` 带 `function_call_output` + `response.completed`），断言最终消息里该 `Tool` 的 `output` 非空、`isExecuted == true`；再做一次非流式 `parseResponseOutput` 断言。无需真实网关。
 
-**结论**：**待吸收（P1）**。低频，但命中时是“工具重复执行 + 可能整轮报错”，属正确性缺陷；实现小、无架构改动、可纯单测覆盖。
+**结论**：**已吸收（P1，fork `8b85aa3a4`）**。低频，但命中时是“工具重复执行 + 可能整轮报错”，属正确性缺陷；实现小、无架构改动、纯单测覆盖。
+
+**落地记录**：按上述方案在 `ResponseAPI.kt` 单文件实现（+79/−2），新增 `ResponseAPIFunctionCallOutputTest`（8 例，`ai` 模块 JVM 单测全绿）。与上游的差异：
+1. 我方没有 `StreamChunk` 体系，直接在 `parseResponseDelta` 里产出 `MessageChunk`，靠既有 `Tool.merge` 的 `output + other.output` 合并，**合并层零改动**；
+2. 顺手把 `output_item.done` 的 `id` 取法改为 `id ?: call_id`（上游无此分支，属我方额外加固）；
+3. `parseResponseOutput` 由 `private` 放宽到 `internal` 以便单测驱动事件序列（与既有 `parseResponseDelta` 的处理一致）。
 
 ## 同步方式（ff-only，仅本地）
 
