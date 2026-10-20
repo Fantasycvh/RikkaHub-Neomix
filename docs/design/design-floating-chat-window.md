@@ -132,3 +132,57 @@ FloatingWindowService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedSta
 ## 关联
 
 [design-ui-yuihub-inspired.md](design-ui-yuihub-inspired.md)（抽屉与入口）· `service/KeepAliveService.kt`（前台服务与通知模式）· `ui/components/ui/FloatingWindow.kt`（现有 FloatingX 用法）
+
+## 13. 原型已落地（P0 第一步，真机验证）
+
+原型的边界刻意收窄：**只验证「窗口能不能存在、能不能拖、能不能拉」，不接聊天内容**。
+理由是拖拽/拉伸/贴边/旋转这套几何行为如果手感不对，接上消息列表再改会牵一发动全身。
+
+已实现并真机跑通：
+
+| 能力 | 实现位置 | 真机结果 |
+|---|---|---|
+| 权限检查 + 授权跳转 + 未授权引导 | `FloatingWindowService.canDrawOverlays/overlayPermissionIntent`、`FloatingWindowSettingGroup` | 设置页开关未授权时直接跳系统页，返回后 ON_RESUME 刷新 |
+| 系统级悬浮窗（可覆盖其他应用/桌面） | `OverlayWindowController`（`TYPE_APPLICATION_OVERLAY`） | 回到桌面后窗口仍在 |
+| 前台服务保命 + 常驻通知（可关闭） | `FloatingWindowService`（`specialUse` + `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`） | `isForeground=true`，通知 id 4711，点按回应用 |
+| 标题栏拖动 | `FloatingWindowPane` | 可拖，拖出屏幕会被 clamp 回来 |
+| 八向拉伸 + 最小尺寸限制 | `FloatingWindowGeometry.resized` + 边缘 20dp 热区 | 尺寸读数实时变化（280×320 → 325×418 等） |
+| 松手左右贴边 | `FloatingWindowGeometry.snapped` | 贴边生效 |
+| 最大化 / 还原 | `FloatingWindowGeometry.maximized/isMaximized` | 280×320 ↔ 343×714（屏幕 95%/90% 上限），图标随状态切换 |
+| 几何持久化（设备本地，不进设置备份） | `floating_window_prefs` SharedPreferences | 杀进程/重装后恢复上次尺寸位置 |
+| 窗口关闭 ≠ 停止生成 | 服务不持有会话，生成归 `ChatService` | 由架构保证（尚未接聊天内容，P0 验证） |
+
+### 13.1 过程中发现并修掉的既有缺陷
+
+1. **`SYSTEM_ALERT_WINDOW` 从未在清单声明** — 真机 `appops get` 显示 `default; rejectTime=…`，
+   `dumpsys package` 里也搜不到该权限，意味着既有的 TTS 朗读浮窗（`ui/components/ui/FloatingWindow.kt`）
+   **一直拿不到权限、从未真正展示过**。已补声明（同时修好 TTS 浮窗）。
+2. **`RikkahubTheme` 硬强转 `(view.context as Activity)`** — 非 Activity 宿主（Service 里的 ComposeView、
+   悬浮窗内容）一 attach 就 `ClassCastException` 崩进程。改成 `as?` + 跳过系统栏调整。
+   这不只是小窗的问题：TTS 浮窗此前即使有权限也会崩在同一个点上。
+3. **debug 变体通知 PendingIntent NPE** — `getLaunchIntentForPackage` 对带 `.debug` 后缀的 applicationId
+   可能返回 null，`PendingIntent.getActivity(…, null, …)` 抛 NPE，`startForeground` 失败后触发
+   `ForegroundServiceDidNotStartInTimeException` 崩溃。改为显式 `RouteActivity` Intent。
+4. **最大化后「还原」失效** — `maximized()` 返回整屏，但 `update()` 会按 `MAX_WIDTH_RATIO/MAX_HEIGHT_RATIO`
+   夹到 95%/90%，`isMaximized()` 又按整屏判断 ⇒ 永远判 false。统一成 `maxWidthPx/maxHeightPx` 一个口径，
+   并补了「clamp 之后仍被认成最大化」的回归测试。
+5. 最大化状态不再落盘：否则下次启动直接满屏且「还原」没有参照尺寸。
+
+### 13.2 尚未验证（下一轮）
+
+- TTS 朗读浮窗的**实播**效果（权限与本轮崩溃点已修，但没接真实 TTS 播放验证）。
+- ColorOS 之外的 ROM（HyperOS / EMUI / 原生）的权限页与 FGS 类型接受度。
+- 横竖屏旋转后的 clamp、深色模式下小窗对比度、长时间挂窗的耗电与内存。
+- overlay 里弹输入法的行为（原型 `FLAG_NOT_FOCUSABLE`，P0 接输入框时必须去掉并自行处理 IME insets）。
+
+### 13.3 决策已记录
+
+- 宿主：系统悬浮窗为主 + 应用内浮窗复用同一套 pane（原 §12 决策 1 已拍板）。
+- P0 边界：文本对话 + 审批只读 + 附件跳主界面（决策 2 已拍板）。
+- TTS 浮窗权限：一起修（决策 3 已执行）。
+- 隐私遮挡（决策 4）仍未定，等聊天内容接进来再定。
+
+### 13.4 下一步（P0 剩余）
+
+`FloatingChatPane` 接 `ChatService`（发送/停止/重新生成）+ 消息只读渲染 + 审批只读卡片 + 附件「跳主界面」；
+窗口外壳（本原型）不动，只替换 body。
