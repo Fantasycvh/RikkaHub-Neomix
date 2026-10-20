@@ -166,7 +166,11 @@ private fun ReasoningContent(
     loading: Boolean,
 ) {
     val isPreview = expandState == ReasoningCardState.Preview
-    val reasoningTextStyle = MaterialTheme.typography.bodySmall.copy(
+    val fontSizeRatio = LocalSettings.current.displaySetting.fontSizeRatio
+    val bodySmallStyle = MaterialTheme.typography.bodySmall
+    val reasoningTextStyle = bodySmallStyle.copy(
+        fontSize = bodySmallStyle.fontSize * fontSizeRatio,
+        lineHeight = bodySmallStyle.lineHeight * fontSizeRatio,
         fontFamily = LocalTextStyle.current.fontFamily,
     )
     Column(
