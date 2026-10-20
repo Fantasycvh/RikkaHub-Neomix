@@ -106,7 +106,13 @@ class GenerationToolLoopTest {
         val context = ContextWrapper(null)
         val manager = ProviderManager(OkHttpClient(), context)
         manager.registerProvider("openai", provider)
-        return GenerationHandler(context = context, providerManager = manager, json = JsonInstant)
+        return GenerationHandler(
+            context = context,
+            providerManager = manager,
+            json = JsonInstant,
+            // 空记录器：这些用例考的是生成循环，不需要真的往 usage_record 写行
+            usageRecorder = noopUsageRecorder(),
+        )
     }
 
     private fun tool(
