@@ -5,6 +5,9 @@ import androidx.navigation3.runtime.NavKey
 import app.androidrik.rikkahub.Screen
 
 class Navigator(private val backStack: MutableList<NavKey>) {
+    /** 当前栈顶页面（小窗交接时用来避免重复叠同一个会话页）。 */
+    val current: Screen? get() = backStack.lastOrNull() as? Screen
+
     fun navigate(screen: Screen, builder: NavigateOptionsBuilder.() -> Unit = {}) {
         val options = NavigateOptionsBuilder().apply(builder)
 

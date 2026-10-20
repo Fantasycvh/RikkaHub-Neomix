@@ -2161,10 +2161,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
 
   <!-- 悬浮小窗（原型）：设置页入口、窗口外壳与前台通知 -->
   <string name="setting_floating_window_title">Floating Mini Window (Experimental)</string>
-  <string name="setting_floating_window_desc">Keep the chat window over the home screen or other apps: drag it anywhere, resize it freely. Prototype stage: window shell only, chat content comes next.</string>
+  <string name="setting_floating_window_desc">Chat over other apps in a freely movable, resizable window. Text chat is supported; attachments and tool approvals open in the main app.</string>
   <string name="setting_floating_window_permission_missing">Needs the "Display over other apps" permission</string>
   <string name="setting_floating_window_permission_hint">If the switch does not appear, your ROM may need "display pop-up windows while running in background" as well.</string>
-  <string name="floating_window_title">Mini Window (prototype)</string>
+  <string name="floating_window_title">Mini Window</string>
   <string name="floating_window_size">%1$d × %2$d dp</string>
   <string name="floating_window_close">Close</string>
   <string name="floating_window_maximize">Maximize</string>

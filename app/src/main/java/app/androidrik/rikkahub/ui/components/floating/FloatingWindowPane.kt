@@ -7,20 +7,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,10 +42,7 @@ import app.androidrik.rikkahub.service.floating.ScreenSizePx
 import app.androidrik.rikkahub.service.floating.WindowGeometry
 
 /**
- * 悬浮小窗的**原型界面**：标题栏（拖动/最大化/关闭）+ 占位正文 + 八向拉伸热区。
- *
- * 这一版刻意不接聊天内容——先把「窗口能不能拖、能不能拉、拉到头会不会怪」验证掉。
- * 聊天界面在 P0 接进来时只替换 body，窗口外壳不动。
+ * 双宿主共用的小窗外壳：标题栏（拖动/最大化/关闭）+ 内容插槽 + 八向拉伸热区。
  *
  * 手势分工：
  * - 标题栏：拖动窗口（子层消费，根层的边缘检测收不到）；
@@ -63,8 +55,8 @@ fun FloatingWindowPane(
     screenSize: ScreenSizePx,
     onGeometryChange: (WindowGeometry) -> Unit,
     onClose: () -> Unit,
-    onOpenApp: () -> Unit,
     modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
     val minWidthPx = with(density) { FloatingWindowGeometry.MIN_WIDTH_DP.dp.roundToPx() }
@@ -243,38 +235,8 @@ fun FloatingWindowPane(
                 }
             }
 
-            // ---- 占位正文：P0 替换成聊天消息列表 ----
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.floating_window_prototype_body),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text = stringResource(R.string.floating_window_prototype_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.size(4.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.floating_window_prototype_drag_hint),
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    )
-                }
-                Spacer(Modifier.size(4.dp))
-                TextButton(onClick = onOpenApp) {
-                    Text(stringResource(R.string.floating_window_open_app))
-                }
+            Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
+                content()
             }
         }
 

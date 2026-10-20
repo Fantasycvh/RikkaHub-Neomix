@@ -100,6 +100,22 @@ object FloatingWindowGeometry {
         return WindowGeometry(x = x, y = y, width = width, height = height)
     }
 
+    /** 输入法打开时只调整显示几何，调用方保留原几何供收起后还原，不能把临时缩小尺寸落盘。 */
+    fun aboveIme(
+        geometry: WindowGeometry,
+        screenWidth: Int,
+        screenHeight: Int,
+        imeBottom: Int,
+        minWidth: Int,
+        minHeight: Int,
+    ): WindowGeometry = clamp(
+        geometry = geometry,
+        screenWidth = screenWidth.coerceAtLeast(1),
+        screenHeight = (screenHeight - imeBottom.coerceAtLeast(0)).coerceAtLeast(1),
+        minWidth = minWidth,
+        minHeight = minHeight,
+    )
+
     /** 拖动：从 [origin] 位移 `(dx, dy)`，结果是窗口完整可见（不允许拖出屏幕）。 */
     fun dragged(
         origin: WindowGeometry,

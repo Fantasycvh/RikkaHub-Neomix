@@ -72,6 +72,8 @@ import app.androidrik.rikkahub.ui.activity.SafeModeActivity
 import app.androidrik.rikkahub.ui.components.ui.TTSController
 import app.androidrik.rikkahub.ui.context.LocalASRState
 import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.components.floating.InAppFloatingWindow
+import app.androidrik.rikkahub.utils.base64Encode
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalSharedTransitionScope
 import app.androidrik.rikkahub.ui.context.repairIfEmpty
@@ -268,7 +270,16 @@ class RouteActivity : ComponentActivity() {
             // 否则沿用会话 id 的老路径
             else -> mediaCreationDestination(intent)
                 ?: intent.getStringExtra("runId")?.let { Screen.AgentRunDetail(it) }
-                ?: intent.getStringExtra("conversationId")?.let { Screen.Chat(it) }
+                ?: intent.getStringExtra("conversationId")?.let { rawId ->
+                    runCatching { Uuid.parse(rawId).toString() }.getOrNull()?.let { id ->
+                        Screen.Chat(
+                            id = id,
+                            text = intent.getStringExtra("floatingDraft")
+                                ?.takeIf(String::isNotBlank)?.base64Encode(),
+                            appendDraft = true,
+                        )
+                    }
+                }
         }
         if (destination != null && backStack.lastOrNull() != destination) {
             backStack.add(destination)
@@ -423,7 +434,8 @@ class RouteActivity : ComponentActivity() {
                                     id = Uuid.parse(key.id),
                                     text = key.text,
                                     files = key.files.map { it.toUri() },
-                                    nodeId = key.nodeId?.let { Uuid.parse(it) }
+                                    nodeId = key.nodeId?.let { Uuid.parse(it) },
+                                    appendDraft = key.appendDraft,
                                 )
                             }
 
@@ -686,6 +698,7 @@ class RouteActivity : ComponentActivity() {
                             }
                         }
                     )
+                    InAppFloatingWindow()
                     if (BuildConfig.DEBUG) {
                         Text(
                             text = "[开发模式]",
@@ -740,7 +753,8 @@ sealed interface Screen : NavKey {
         val id: String,
         val text: String? = null,
         val files: List<String> = emptyList(),
-        val nodeId: String? = null
+        val nodeId: String? = null,
+        val appendDraft: Boolean = false,
     ) : Screen
 
     @Serializable

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.service
 
+import android.app.AppOpsManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -36,6 +37,12 @@ import app.androidrik.rikkahub.RouteActivity
 import app.androidrik.rikkahub.service.floating.FloatingWindowGeometry
 import app.androidrik.rikkahub.service.floating.OverlayWindowController
 import app.androidrik.rikkahub.service.floating.WindowGeometry
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import android.content.res.Configuration
+import app.androidrik.rikkahub.ui.components.floating.FloatingChatPane
+import app.androidrik.rikkahub.ui.components.floating.FloatingWindowLauncher
 import app.androidrik.rikkahub.ui.components.floating.FloatingWindowPane
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,7 +89,7 @@ class FloatingWindowService : Service() {
         )
 
         /** 启动小窗。调用点必须在**前台**（Android 12+ 后台启动 FGS 会被系统拒绝）。 */
-        fun start(context: Context) {
+        fun start(context: Context, conversationId: String? = null) {
             if (!canDrawOverlays(context)) {
                 Log.w(TAG, "start refused: SYSTEM_ALERT_WINDOW not granted")
                 return
@@ -90,7 +97,8 @@ class FloatingWindowService : Service() {
             runCatching {
                 ContextCompat.startForegroundService(
                     context,
-                    Intent(context, FloatingWindowService::class.java),
+                    Intent(context, FloatingWindowService::class.java)
+                        .putExtra("conversationId", conversationId),
                 )
             }.onFailure { Log.e(TAG, "startForegroundService failed", it) }
         }
@@ -110,10 +118,17 @@ class FloatingWindowService : Service() {
     private lateinit var controller: OverlayWindowController
     private var composeView: ComposeView? = null
     private var composeOwner: ServiceComposeOwner? = null
+    private var conversationId by mutableStateOf<String?>(null)
+    private var activeConversationId: String? = null
     private var contentSet = false
     private var prefs: SharedPreferences? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val persistGeometry = Runnable { saveGeometry() }
+    private val permissionListener = AppOpsManager.OnOpChangedListener { _, _ ->
+        mainHandler.post {
+            if (!canDrawOverlays(this)) stopSelf()
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -122,6 +137,9 @@ class FloatingWindowService : Service() {
         controller = OverlayWindowController(this)
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         ensureChannel()
+        getSystemService(AppOpsManager::class.java)?.startWatchingMode(
+            AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, packageName, permissionListener,
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -139,6 +157,9 @@ class FloatingWindowService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        FloatingWindowLauncher.closeInApp()
+        conversationId = intent?.getStringExtra("conversationId")
+            ?: activeConversationId ?: prefs?.getString("last_conversation_id", null)
         if (showWindow()) {
             _running.value = true
         } else {
@@ -149,6 +170,7 @@ class FloatingWindowService : Service() {
     }
 
     override fun onDestroy() {
+        getSystemService(AppOpsManager::class.java)?.stopWatchingMode(permissionListener)
         mainHandler.removeCallbacks(persistGeometry)
         saveGeometry()
         // 先撤窗口再销毁 owner：反过来的话窗口上还挂着一份已 DESTROYED 的 composition
@@ -193,8 +215,23 @@ class FloatingWindowService : Service() {
                             mainHandler.postDelayed(persistGeometry, 400)
                         },
                         onClose = { stopSelf() },
-                        onOpenApp = { openApp() },
-                    )
+                    ) {
+                        FloatingChatPane(
+                            initialConversationId = conversationId,
+                            onConversationChanged = { id ->
+                                activeConversationId = id
+                                prefs?.edit { putString("last_conversation_id", id) }
+                                getSystemService(NotificationManager::class.java)
+                                    ?.notify(NOTIFICATION_ID, buildNotification())
+                            },
+                            onOpenApp = { id, draft -> openApp(id, draft) },
+                            onInputFocusChanged = { focused ->
+                                if (focused) controller.setInputFocus(true)
+                                // 键盘高度取屏幕 IME inset，且只在输入框聚焦期间避让
+                                controller.onEditorFocusChanged(focused)
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -208,15 +245,23 @@ class FloatingWindowService : Service() {
         return controller.show(view, initial)
     }
 
-    /** 「打开应用」按钮：回主界面（小窗保留，用户自己关）。 */
-    private fun openApp() {
+    /** 回同一会话并携带未发送草稿；成功交接后关窗，不停止 ChatService 生成。 */
+    private fun openApp(id: String? = conversationId, draft: String = "") {
         runCatching {
+            controller.setInputFocus(false)
             startActivity(
-                Intent(this, RouteActivity::class.java).addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                )
+                Intent(this, RouteActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    .putExtra("conversationId", id)
+                    .putExtra("floatingDraft", draft)
             )
-        }.onFailure { Log.w(TAG, "openApp failed", it) }
+        }.onSuccess { stopSelf() }
+            .onFailure { Log.w(TAG, "openApp failed", it) }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        controller.onConfigurationChanged()
     }
 
     // ---- 几何持久化（设备本地，不进设置备份） ----
@@ -241,7 +286,7 @@ class FloatingWindowService : Service() {
 
     private fun saveGeometry() {
         val p = prefs ?: return
-        if (!controller.isShowing) return
+        if (!controller.isShowing || controller.isImeVisible) return
         val g = controller.geometry
         // 最大化状态不落盘：否则下次启动直接是满屏且「还原」无参照尺寸
         val screen = controller.screenSize()
@@ -303,7 +348,8 @@ class FloatingWindowService : Service() {
         0,
         // 不能 getLaunchIntentForPackage：debug 变体（applicationId 带 .debug）可能返回 null，
         // PendingIntent.getActivity(…, null, …) 会直接 NPE 把 startForeground 带崩。
-        Intent(this, RouteActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        Intent(this, RouteActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra("conversationId", activeConversationId),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
