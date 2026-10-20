@@ -17,6 +17,7 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_27_28
 import app.androidrik.rikkahub.data.db.migrations.Migration_28_29
 import app.androidrik.rikkahub.data.db.migrations.Migration_40_41
 import app.androidrik.rikkahub.data.db.migrations.Migration_41_42
+import app.androidrik.rikkahub.data.db.migrations.Migration_43_44
 import app.androidrik.rikkahub.data.db.migrations.Migration_6_7
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -83,6 +84,7 @@ internal class LegacyBackupConverter(private val context: Context) {
             .addMigrations(
                 Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15,
                 Migration_15_16, Migration_27_28, Migration_28_29, Migration_40_41, Migration_41_42,
+                Migration_43_44,
             )
             .build()
         try {
