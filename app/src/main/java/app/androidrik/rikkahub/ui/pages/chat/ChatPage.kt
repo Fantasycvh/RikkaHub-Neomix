@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import android.net.Uri
 import android.util.Log
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -57,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -212,10 +212,6 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     val windowAdaptiveInfo = currentWindowDpSize()
     val isBigScreen =
         windowAdaptiveInfo.width > windowAdaptiveInfo.height && windowAdaptiveInfo.width >= 1100.dp
-
-    BackHandler(enabled = !isBigScreen && drawerOpen) {
-        drawerOpen = false
-    }
 
     // Hide keyboard when drawer opens
     LaunchedEffect(drawerOpen) {
@@ -380,6 +376,7 @@ private fun ChatPageContent(
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val workspaceRepository: WorkspaceRepository = koinInject()
 
     /**
@@ -392,8 +389,8 @@ private fun ChatPageContent(
     fun doRegenerate(message: UIMessage, regenerateScope: ChatService.RegenerateScope) {
         vm.regenerateAtMessage(message, regenerateScope) { truncation ->
             toaster.show(
-                message = context.getString(R.string.regenerate_truncated, truncation.removedNodes.size),
-                action = TextToastAction(context.getString(R.string.regenerate_truncated_undo)) {
+                message = resources.getString(R.string.regenerate_truncated, truncation.removedNodes.size),
+                action = TextToastAction(resources.getString(R.string.regenerate_truncated_undo)) {
                     vm.undoRegenerateTruncation(truncation)
                 },
                 type = ToastType.Info,
@@ -504,7 +501,7 @@ private fun ChatPageContent(
                         scope.launch {
                             val count = vm.freezeMemoryAnchors(conversation)
                             toaster.show(
-                                message = context.getString(R.string.chat_memory_freeze_toast, count)
+                                message = resources.getString(R.string.chat_memory_freeze_toast, count)
                             )
                         }
                     },
@@ -887,6 +884,7 @@ private fun ChatFilesPickerSheet(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val toaster = LocalToaster.current
     val filesManager: FilesManager = koinInject()
     var showInjectionSheet by remember { mutableStateOf(false) }
@@ -987,7 +985,7 @@ private fun ChatFilesPickerSheet(
                         preCropTempFile = null
                         inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
                         toaster.show(
-                            message = context.getString(R.string.chat_image_crop_unavailable),
+                            message = resources.getString(R.string.chat_image_crop_unavailable),
                             type = ToastType.Warning,
                         )
                         dismissAll()
@@ -1027,7 +1025,7 @@ private fun ChatFilesPickerSheet(
                         val localUri = filesManager.createChatFilesByContents(listOf(uri)).firstOrNull()
                             ?: run {
                                 toaster.show(
-                                    context.getString(R.string.chat_input_file_read_failed, fileName),
+                                    resources.getString(R.string.chat_input_file_read_failed, fileName),
                                     type = ToastType.Error
                                 )
                                 return@mapNotNull null
@@ -1035,7 +1033,7 @@ private fun ChatFilesPickerSheet(
                         UIMessagePart.Document(url = localUri.toString(), fileName = fileName, mime = mime)
                     } else {
                         toaster.show(
-                            context.getString(R.string.chat_input_unsupported_file_type, fileName),
+                            resources.getString(R.string.chat_input_unsupported_file_type, fileName),
                             type = ToastType.Error
                         )
                         null

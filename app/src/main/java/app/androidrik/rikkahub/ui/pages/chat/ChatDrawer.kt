@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -112,6 +113,7 @@ fun ChatDrawerContent(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val toaster = LocalToaster.current
     val repo = koinInject<ConversationRepository>()
 
@@ -377,7 +379,7 @@ fun ChatDrawerContent(
                     scope.launch {
                         if (!vm.regenerateTitle(conversation, force = true)) {
                             toaster.show(
-                                context.getString(R.string.error_title_model_unconfigured),
+                                resources.getString(R.string.error_title_model_unconfigured),
                                 type = ToastType.Warning,
                             )
                         }
@@ -400,7 +402,7 @@ fun ChatDrawerContent(
                     // 自动模式下置顶行为与历史一致，多一句反而干扰。
                     if (customOrderActive) {
                         toaster.show(
-                            context.getString(
+                            resources.getString(
                                 if (willPin) R.string.conversation_pin_keeps_order
                                 else R.string.conversation_unpin_restores_position
                             )
@@ -420,7 +422,7 @@ fun ChatDrawerContent(
                     vm.setMemoryDisabled(it, willDisable)
                     // 菜单项关掉后看不出状态，故补一句即时反馈（与置顶提示同款）
                     toaster.show(
-                        context.getString(
+                        resources.getString(
                             if (willDisable) R.string.chat_memory_disabled_toast_on
                             else R.string.chat_memory_disabled_toast_off
                         )
@@ -432,7 +434,7 @@ fun ChatDrawerContent(
                     scope.launch {
                         val count = vm.freezeMemoryAnchors(it)
                         toaster.show(
-                            message = context.getString(R.string.chat_memory_freeze_toast, count)
+                            message = resources.getString(R.string.chat_memory_freeze_toast, count)
                         )
                     }
                 },
@@ -472,64 +474,7 @@ fun ChatDrawerContent(
                 }
             )
 
-            Row(
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-            ) {
-                DrawerAction(
-                    icon = {
-                        Icon(
-                            imageVector = HugeIcons.LookTop,
-                            contentDescription = stringResource(R.string.assistant_page_title)
-                        )
-                    },
-                    label = {
-                        Text(stringResource(R.string.assistant_page_title))
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Assistant)
-                    },
-                )
-
-                DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.InLove, stringResource(R.string.favorite_page_title))
-                    },
-                    label = {
-                        Text(stringResource(R.string.favorite_page_title))
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Favorite)
-                    },
-                )
-
-                DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.ChartColumn, "统计数据")
-                    },
-                    label = {
-                        Text("统计数据")
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Stats)
-                    },
-                )
-
-                Spacer(Modifier.weight(1f))
-
-                DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.Settings03, null)
-                    },
-                    label = { Text(stringResource(R.string.settings)) },
-                    onClick = {
-                        navController.navigate(Screen.Setting)
-                    },
-                )
-            }
+            DrawerBottomActions(navController = navController)
         }
     }
 
@@ -767,7 +712,7 @@ fun ChatDrawerContent(
                             folderToDelete = null
                             conversations.refresh()
                         } else {
-                            toaster.show(context.getString(R.string.chat_page_delete_folder_generating), type = ToastType.Warning)
+                            toaster.show(resources.getString(R.string.chat_page_delete_folder_generating), type = ToastType.Warning)
                         }
                     }
                 ) { Text(stringResource(R.string.chat_page_delete)) }
@@ -842,7 +787,44 @@ fun ChatDrawerContent(
 }
 
 @Composable
-private fun DrawerActions(navController: Navigator) {
+internal fun DrawerBottomActions(navController: Navigator) {
+    Row(
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+    ) {
+        DrawerAction(
+            icon = {
+                Icon(HugeIcons.LookTop, stringResource(R.string.assistant_page_title))
+            },
+            label = { Text(stringResource(R.string.assistant_page_title)) },
+            onClick = { navController.navigate(Screen.Assistant) },
+        )
+        DrawerAction(
+            icon = {
+                Icon(HugeIcons.InLove, stringResource(R.string.favorite_page_title))
+            },
+            label = { Text(stringResource(R.string.favorite_page_title)) },
+            onClick = { navController.navigate(Screen.Favorite) },
+        )
+        DrawerAction(
+            icon = { Icon(HugeIcons.ChartColumn, "统计数据") },
+            label = { Text("统计数据") },
+            onClick = { navController.navigate(Screen.Stats) },
+        )
+        Spacer(Modifier.weight(1f))
+        DrawerAction(
+            icon = { Icon(HugeIcons.Settings03, stringResource(R.string.settings)) },
+            label = { Text(stringResource(R.string.settings)) },
+            onClick = { navController.navigate(Screen.Setting) },
+        )
+    }
+}
+
+@Composable
+internal fun DrawerActions(navController: Navigator) {
     Column {
         // 聊天历史入口，行尾是搜索入口（吸收上游 660571449：搜索不再单独占一行）
         DrawerEntry(

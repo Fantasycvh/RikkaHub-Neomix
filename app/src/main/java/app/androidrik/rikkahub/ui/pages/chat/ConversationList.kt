@@ -109,11 +109,12 @@ fun ColumnScope.ConversationList(
      */
     onFreezeMemory: (Conversation) -> Unit = {},
 ) {
-    var hasScrolledToCurrent by remember(current.id) { mutableStateOf(false) }
-    // 列表顶部若放了 header，会话项在 LazyColumn 中的位置要往后挪一位
+    // 列表顶部若放了 header，会话项在 LazyColumn 中的位置要往后挪一位。
+    // 旋转使 header 插入/移出时也重新校验当前位置，避免沿用旧布局的索引。
     val headerCount = if (header != null) 1 else 0
+    var hasScrolledToCurrent by remember(current.id, headerCount) { mutableStateOf(false) }
 
-    LaunchedEffect(current.id, conversations.itemCount, hasScrolledToCurrent) {
+    LaunchedEffect(current.id, conversations.itemCount, headerCount, hasScrolledToCurrent) {
         if (hasScrolledToCurrent) return@LaunchedEffect
         val itemIndex = conversations.itemSnapshotList.items.indexOfFirst {
             (it as? ConversationListItem.Item)?.conversation?.id == current.id
