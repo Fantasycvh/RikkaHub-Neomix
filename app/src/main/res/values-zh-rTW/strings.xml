@@ -89,12 +89,11 @@
   <string name="assistant_page_local_tools_clipboard_title">剪貼簿</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">使用 QuickJS 引擎執行 JavaScript 代碼，進行計算和腳本處理</string>
   <string name="assistant_page_local_tools_javascript_engine_title">JavaScript 引擎</string>
-    <string name="assistant_page_tab_image">生圖</string>
-    <string name="assistant_detail_image_desc">生圖工具與審批</string>
-    <string name="assistant_page_image_model_title">生圖模型</string>
-    <string name="assistant_page_image_model_configured">目前：%1$s</string>
-    <string name="assistant_page_image_model_missing">未設定。在設定中選定生圖模型後，生圖工具才會啟用。</string>
-
+  <string name="assistant_page_tab_image">生圖</string>
+  <string name="assistant_detail_image_desc">生圖工具與審批</string>
+  <string name="assistant_page_image_model_title">生圖模型</string>
+  <string name="assistant_page_image_model_configured">目前：%1$s</string>
+  <string name="assistant_page_image_model_missing">未設定。在設定中選定生圖模型後，生圖工具才會啟用。</string>
   <string name="assistant_page_local_tools_todo_plan_title">任務計劃 (todo_write)</string>
   <string name="assistant_page_local_tools_todo_plan_desc">讓模型把多步任務拆成顯式清單並持續更新進度；輸入欄上方顯示計劃條</string>
   <string name="plan_bar_progress">已完成 %1$d/%2$d</string>
@@ -102,7 +101,8 @@
   <string name="chat_generation_interrupted_notice">
 ⚠️ 生成被打斷，此回覆不完整。</string>
   <string name="chat_message_todo_title">任務計劃</string>
-  <string name="plan_bar_summary">計劃：完成 %1$d · 進行中 %2$d · 共 %3$d</string>  <string name="assistant_page_local_tools_time_info_desc">從裝置取得目前日期、星期、時間與時區資訊</string>
+  <string name="plan_bar_summary">計劃：完成 %1$d · 進行中 %2$d · 共 %3$d</string>
+  <string name="assistant_page_local_tools_time_info_desc">從裝置取得目前日期、星期、時間與時區資訊</string>
   <string name="assistant_page_local_tools_time_info_title">時間資訊</string>
   <string name="assistant_page_local_tools_tts_desc">讓 AI 使用您所選的 TTS 服務為您朗讀文字</string>
   <string name="assistant_page_local_tools_tts_title">文字轉語音</string>
@@ -169,8 +169,8 @@
   <string name="assistant_page_quick_messages">快速訊息</string>
   <string name="assistant_page_recent_chats">參考歷史聊天記錄</string>
   <string name="assistant_page_recent_chats_desc">啟用時，允許助手搜尋過去的對話以獲取相關資訊</string>
-    <string name="assistant_page_image_gen_approval">生圖審批</string>
-    <string name="assistant_page_image_gen_approval_desc">AI 生圖前先向你確認。需在設定中配置生圖模型後生效。</string>
+  <string name="assistant_page_image_gen_approval">生圖審批</string>
+  <string name="assistant_page_image_gen_approval_desc">AI 生圖前先向你確認。需在設定中配置生圖模型後生效。</string>
   <string name="assistant_page_regex_affecting_scopes">影響範圍：</string>
   <string name="assistant_page_regex_desc">定義正規表示式模式，在傳送或接收前轉換訊息</string>
   <string name="assistant_page_regex_find_regex">尋找正規表示式</string>
@@ -344,10 +344,10 @@
   <string name="chat_message_quote_assistant">助理</string>
   <string name="chat_message_quote_context">引用訊息</string>
   <string name="chat_message_tool_approve">核准</string>
-    <string name="chat_message_reasoning_edit">編輯思考過程</string>
+  <string name="chat_message_reasoning_edit">編輯思考過程</string>
   <string name="chat_message_reasoning_edit_save">儲存</string>
   <string name="chat_message_reasoning_edit_signed_warning">該思考區塊由供應商簽章：只有原樣回傳才會被接受，編輯後下一次請求可能被拒絕。</string>
-<string name="chat_message_tool_approve_all">全部核准</string>
+  <string name="chat_message_tool_approve_all">全部核准</string>
   <string name="chat_message_tool_ask_questions">詢問 %d 個問題</string>
   <string name="chat_message_tool_call_generic">調用工具 %1$s</string>
   <string name="chat_message_tool_call_label">調用工具 %1$s</string>
@@ -363,13 +363,13 @@
   <string name="chat_message_tool_deny_dialog_title">拒絕工具執行</string>
   <string name="chat_message_tool_edit_memory">更新了記憶</string>
   <string name="chat_message_tool_get_time">取得時間資訊</string>
-    <!-- 会话内生图工具（generate_image）的工具卡 -->
-    <string name="chat_message_image_tool_title">已產生 %1$d 張圖片</string>
-    <string name="chat_message_image_tool_pending">正在產生圖片…</string>
-    <string name="chat_message_image_tool_failed">產生圖片失敗</string>
-    <string name="chat_message_image_tool_prompt">提示詞</string>
-    <string name="chat_message_image_tool_size">尺寸：%1$s</string>
-    <string name="chat_message_image_tool_num">數量：%1$s</string>
+  <!-- 会话内生图工具（generate_image）的工具卡 -->
+  <string name="chat_message_image_tool_title">已產生 %1$d 張圖片</string>
+  <string name="chat_message_image_tool_pending">正在產生圖片…</string>
+  <string name="chat_message_image_tool_failed">產生圖片失敗</string>
+  <string name="chat_message_image_tool_prompt">提示詞</string>
+  <string name="chat_message_image_tool_size">尺寸：%1$s</string>
+  <string name="chat_message_image_tool_num">數量：%1$s</string>
   <string name="chat_message_tool_scrape_prefix">爬取網站：%1$s</string>
   <string name="chat_message_tool_scrape_web">爬取網頁</string>
   <string name="chat_message_tool_search_prefix">搜尋: %1$s</string>
@@ -706,9 +706,7 @@
   <string name="photo">照片</string>
   <string name="pin_chat">置頂聊天</string>
   <string name="pinned_chats">置頂對話</string>
-
   <string name="conversation_pin_keeps_order">已置頂（保持原有順序位置）</string>
-
   <string name="conversation_order_entry">排序</string>
   <string name="conversation_order_editing">編輯順序</string>
   <string name="conversation_order_done">完成</string>
@@ -1698,9 +1696,9 @@
   <string name="setting_retry_after_partial_title">半截後自動重試</string>
   <string name="setting_retry_after_partial_desc">半截輸出後仍整輪重試；開啟時上方「保留半截草稿」不生效</string>
   <string name="setting_retry_partial_chars_title">半截字數門檻</string>
-
   <string name="setting_retry_auto_continue_title">撞輸出上限時自動續寫</string>
-  <string name="setting_retry_auto_continue_desc">回覆達到輸出上限後自動接著寫（關閉時只提示並提供「繼續生成」按鈕）。串流中斷不受此開關影響，恆自動續寫</string>  <string name="setting_retry_partial_chars_desc">可見文字 ≥ 該值視為已產生有效輸出（reasoning 不計，下限 1）</string>
+  <string name="setting_retry_auto_continue_desc">回覆達到輸出上限後自動接著寫（關閉時只提示並提供「繼續生成」按鈕）。串流中斷不受此開關影響，恆自動續寫</string>
+  <string name="setting_retry_partial_chars_desc">可見文字 ≥ 該值視為已產生有效輸出（reasoning 不計，下限 1）</string>
   <string name="setting_retry_partial_chars_applied">目前生效：%1$d</string>
   <string name="generation_retry_waiting">生成失敗，%1$d/%2$d 次重試，%3$d 秒後進行</string>
   <string name="chat_server_tool_running">正在執行內建工具 %1$s…</string>
@@ -1716,12 +1714,12 @@
   <string name="notification_keep_alive_running">背景常駐執行中</string>
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成中斷，已保留部分內容</string>
-
   <string name="chat_image_crop_unavailable">無法準備裁剪所需的圖片副本，已按原圖新增（未裁剪）</string>
   <string name="message_incomplete_output_stream_cut">串流連線中斷，內容可能不完整</string>
   <string name="message_incomplete_output_limit">已達輸出上限，內容被截斷</string>
   <string name="message_incomplete_output_filtered">輸出被內容安全策略截斷</string>
-  <string name="message_incomplete_output_continue">繼續生成</string>  <string name="message_partial_failure_regenerate">重新生成</string>
+  <string name="message_incomplete_output_continue">繼續生成</string>
+  <string name="message_partial_failure_regenerate">重新生成</string>
   <string name="asr_error_not_configured">未配置語音辨識——請先設定 ASR 供應商和 API Key</string>
   <string name="asr_error_audio_focus">無法取得音訊焦點（麥克風可能被占用）</string>
   <string name="prompt_inspect_title">請求內容</string>
@@ -1743,15 +1741,15 @@
   <string name="prompt_inspect_segment_tool_schema">工具 Schema（%1$d 個，≈%2$d token）</string>
   <string name="prompt_inspect_not_in_messages">請求頂層欄位，不在訊息裡</string>
   <string name="prompt_inspect_attachment_note">［未計入：圖片 %1$d、文件 %2$d、音訊 %3$d、影片 %4$d］</string>
-  <string name="prompt_inspect_segment_tool_result">工具輸出 · %1$s</string>  <string name="prompt_inspect_stability">快取穩定性（穩定 / 事件 / 每輪變化）</string>
+  <string name="prompt_inspect_segment_tool_result">工具輸出 · %1$s</string>
+  <string name="prompt_inspect_stability">快取穩定性（穩定 / 事件 / 每輪變化）</string>
   <string name="prompt_inspect_stability_values">≈%1$d 穩定 · %2$d 事件 · %3$d 每輪變化 tokens</string>
-
-  <string name="prompt_inspect_segment_render_hint">渲染提示</string>  <string name="prompt_debug_title">前綴分叉診斷</string>
+  <string name="prompt_inspect_segment_render_hint">渲染提示</string>
+  <string name="prompt_debug_title">前綴分叉診斷</string>
   <string name="prompt_debug_no_previous">與上次請求對比</string>
   <string name="prompt_debug_identical">暫無上次請求記錄（本輪首次請求後再打開）</string>
   <string name="prompt_debug_summary">前綴一致 %1$d 條 ≈ %2$d tokens 可命中（上次 %3$d 條 / 本次 %4$d 條）</string>
   <string name="prompt_debug_diverged_at">分叉於第 %1$d 條：%2$s</string>
-
   <string name="prompt_inspect_cache_title">關於提示詞快取</string>
   <string name="prompt_inspect_cache_body">系統提示詞位於位置 0，每次請求都會重算——這裡約 %1$d token。其中任何易變內容（日期佔位符、依關鍵詞啟停的世界書條目）都會讓整段快取的**前綴失效**。建議把易變內容移出系統提示詞，關鍵詞觸發的世界書放到對話末尾。</string>
   <string name="prompt_inspect_source_format">來自%1$s · %2$s</string>
@@ -2125,4 +2123,8 @@
   <string name="setting_page_media_and_speech_desc">圖片、影片、語音生成與識別供應商</string>
   <string name="media_creation_legacy_entry">舊版圖片生成</string>
   <string name="setting_provider_legacy_image_hint">此處的圖片模型僅用於舊版圖片生成。新版創作請在「媒體與語音」中設定供應商。</string>
+  <string name="safe_mode_enter_app">進入應用程式</string>
+  <string name="setting_tts_page_default_playback_speed">預設播放速度</string>
+  <string name="setting_tts_page_default_playback_speed_description">在本機套用至所有 TTS 供應商，不變更其語音合成設定。</string>
+  <string name="theme_name_claude">Claude</string>
 </resources>

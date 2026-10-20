@@ -89,12 +89,11 @@
   <string name="assistant_page_local_tools_clipboard_title">剪贴板</string>
   <string name="assistant_page_local_tools_javascript_engine_desc">使用 QuickJS 引擎执行 JavaScript 代码，进行计算和脚本处理</string>
   <string name="assistant_page_local_tools_javascript_engine_title">JavaScript 引擎</string>
-    <string name="assistant_page_tab_image">生图</string>
-    <string name="assistant_detail_image_desc">生图工具与审批</string>
-    <string name="assistant_page_image_model_title">生图模型</string>
-    <string name="assistant_page_image_model_configured">当前：%1$s</string>
-    <string name="assistant_page_image_model_missing">未配置。在设置中选定生图模型后，生图工具才会启用。</string>
-
+  <string name="assistant_page_tab_image">生图</string>
+  <string name="assistant_detail_image_desc">生图工具与审批</string>
+  <string name="assistant_page_image_model_title">生图模型</string>
+  <string name="assistant_page_image_model_configured">当前：%1$s</string>
+  <string name="assistant_page_image_model_missing">未配置。在设置中选定生图模型后，生图工具才会启用。</string>
   <string name="assistant_page_local_tools_todo_plan_title">任务计划 (todo_write)</string>
   <string name="assistant_page_local_tools_todo_plan_desc">让模型把多步任务拆成显式清单并持续更新进度；输入栏上方显示计划条</string>
   <string name="plan_bar_progress">已完成 %1$d/%2$d</string>
@@ -102,7 +101,8 @@
   <string name="chat_generation_interrupted_notice">
 ⚠️ 生成被打断，此回复不完整。</string>
   <string name="chat_message_todo_title">任务计划</string>
-  <string name="plan_bar_summary">计划：完成 %1$d · 进行中 %2$d · 共 %3$d</string>  <string name="assistant_page_local_tools_time_info_desc">从设备获取当前日期、星期、时间和时区信息</string>
+  <string name="plan_bar_summary">计划：完成 %1$d · 进行中 %2$d · 共 %3$d</string>
+  <string name="assistant_page_local_tools_time_info_desc">从设备获取当前日期、星期、时间和时区信息</string>
   <string name="assistant_page_local_tools_time_info_title">时间信息</string>
   <string name="assistant_page_local_tools_tts_desc">让AI使用您所选的TTS服务为您朗读文本</string>
   <string name="assistant_page_local_tools_tts_title">文字转语音</string>
@@ -169,8 +169,8 @@
   <string name="assistant_page_quick_messages">快捷消息</string>
   <string name="assistant_page_recent_chats">参考历史聊天记录</string>
   <string name="assistant_page_recent_chats_desc">启用后，允许助手在过去的对话中搜索相关信息</string>
-    <string name="assistant_page_image_gen_approval">生图审批</string>
-    <string name="assistant_page_image_gen_approval_desc">AI 生图前先向你确认。需在设置中配置生图模型后生效。</string>
+  <string name="assistant_page_image_gen_approval">生图审批</string>
+  <string name="assistant_page_image_gen_approval_desc">AI 生图前先向你确认。需在设置中配置生图模型后生效。</string>
   <string name="assistant_page_regex_affecting_scopes">影响范围：</string>
   <string name="assistant_page_regex_desc">定义正则表达式模式，在发送/接收消息前对其进行转换</string>
   <string name="assistant_page_regex_find_regex">查找正则表达式</string>
@@ -346,11 +346,11 @@
   <string name="chat_message_quote_assistant">助手</string>
   <string name="chat_message_quote_context">引用消息</string>
   <string name="chat_message_tool_approve">批准</string>
-    <string name="chat_message_reasoning_edit">编辑思考过程</string>
+  <string name="chat_message_reasoning_edit">编辑思考过程</string>
   <string name="chat_message_reasoning_edit_save">保存</string>
   <string name="chat_message_reasoning_edit_signed_warning">该思考块由提供商签名：只有原样回传才会被接受，编辑后下一次请求可能被拒绝。</string>
   <string name="chat_message_reasoning_edit_disabled_signed">该思考块由提供商签名（Claude thinking / Gemini thoughtSignature），必须原样回传，已禁用编辑。</string>
-<string name="chat_message_tool_approve_all">全部批准</string>
+  <string name="chat_message_tool_approve_all">全部批准</string>
   <string name="chat_message_tool_ask_questions">询问 %d 个问题</string>
   <string name="chat_message_tool_call_generic">调用工具 %1$s</string>
   <string name="chat_message_tool_call_label">调用工具 %1$s</string>
@@ -366,13 +366,13 @@
   <string name="chat_message_tool_deny_dialog_title">拒绝工具执行</string>
   <string name="chat_message_tool_edit_memory">更新了记忆</string>
   <string name="chat_message_tool_get_time">获取时间信息</string>
-    <!-- 会话内生图工具（generate_image）的工具卡 -->
-    <string name="chat_message_image_tool_title">已生成 %1$d 张图片</string>
-    <string name="chat_message_image_tool_pending">正在生成图片…</string>
-    <string name="chat_message_image_tool_failed">生成图片失败</string>
-    <string name="chat_message_image_tool_prompt">提示词</string>
-    <string name="chat_message_image_tool_size">尺寸：%1$s</string>
-    <string name="chat_message_image_tool_num">数量：%1$s</string>
+  <!-- 会话内生图工具（generate_image）的工具卡 -->
+  <string name="chat_message_image_tool_title">已生成 %1$d 张图片</string>
+  <string name="chat_message_image_tool_pending">正在生成图片…</string>
+  <string name="chat_message_image_tool_failed">生成图片失败</string>
+  <string name="chat_message_image_tool_prompt">提示词</string>
+  <string name="chat_message_image_tool_size">尺寸：%1$s</string>
+  <string name="chat_message_image_tool_num">数量：%1$s</string>
   <string name="chat_message_tool_scrape_prefix">抓取网站：%1$s</string>
   <string name="chat_message_tool_scrape_web">抓取网页</string>
   <string name="chat_message_tool_search_prefix">搜索: %1$s</string>
@@ -709,9 +709,7 @@
   <string name="photo">照片</string>
   <string name="pin_chat">置顶聊天</string>
   <string name="pinned_chats">置顶聊天</string>
-
   <string name="conversation_pin_keeps_order">已置顶（保持原有顺序位置）</string>
-
   <string name="conversation_order_entry">排序</string>
   <string name="conversation_order_editing">编辑顺序</string>
   <string name="conversation_order_done">完成</string>
@@ -1716,9 +1714,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_retry_after_partial_title">半截后自动重试</string>
   <string name="setting_retry_after_partial_desc">半截输出后仍整轮重试；开启时上方「保留半截草稿」不生效</string>
   <string name="setting_retry_partial_chars_title">半截字数阈值</string>
-
   <string name="setting_retry_auto_continue_title">撞输出上限时自动续写</string>
-  <string name="setting_retry_auto_continue_desc">回复达到输出上限后自动接着写（关闭时只提示并提供「继续生成」按钮）。流式中断不受此开关影响，恒自动续写</string>  <string name="setting_retry_partial_chars_desc">可见文本 ≥ 该值视为已产生有效输出（reasoning 不计，下限 1）</string>
+  <string name="setting_retry_auto_continue_desc">回复达到输出上限后自动接着写（关闭时只提示并提供「继续生成」按钮）。流式中断不受此开关影响，恒自动续写</string>
+  <string name="setting_retry_partial_chars_desc">可见文本 ≥ 该值视为已产生有效输出（reasoning 不计，下限 1）</string>
   <string name="setting_retry_partial_chars_applied">当前生效：%1$d</string>
   <string name="generation_retry_waiting">生成失败，%1$d/%2$d 次重试，%3$d 秒后进行</string>
   <string name="chat_server_tool_running">正在执行内置工具 %1$s…</string>
@@ -1734,12 +1732,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="notification_keep_alive_running">后台保活运行中</string>
   <string name="notification_keep_alive_stop">停止</string>
   <string name="message_partial_failure_banner">生成中断，已保留部分内容</string>
-
   <string name="chat_image_crop_unavailable">无法准备裁剪所需的图片副本，已按原图添加（未裁剪）</string>
   <string name="message_incomplete_output_stream_cut">流式连接中断，内容可能不完整</string>
   <string name="message_incomplete_output_limit">已达输出上限，内容被截断</string>
   <string name="message_incomplete_output_filtered">输出被内容安全策略截断</string>
-  <string name="message_incomplete_output_continue">继续生成</string>  <string name="message_partial_failure_regenerate">重新生成</string>
+  <string name="message_incomplete_output_continue">继续生成</string>
+  <string name="message_partial_failure_regenerate">重新生成</string>
   <string name="asr_error_not_configured">未配置语音识别——请先设置 ASR 供应商和 API Key</string>
   <string name="asr_error_audio_focus">无法获取音频焦点（麦克风可能被占用）</string>
   <string name="prompt_inspect_title">请求内容</string>
@@ -1761,15 +1759,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="prompt_inspect_segment_tool_schema">工具 Schema（%1$d 个，≈%2$d token）</string>
   <string name="prompt_inspect_not_in_messages">请求顶层字段，不在消息里</string>
   <string name="prompt_inspect_attachment_note">［未计入：图片 %1$d、文档 %2$d、音频 %3$d、视频 %4$d］</string>
-  <string name="prompt_inspect_segment_tool_result">工具输出 · %1$s</string>  <string name="prompt_inspect_stability">缓存稳定性（稳定 / 事件 / 每轮变化）</string>
+  <string name="prompt_inspect_segment_tool_result">工具输出 · %1$s</string>
+  <string name="prompt_inspect_stability">缓存稳定性（稳定 / 事件 / 每轮变化）</string>
   <string name="prompt_inspect_stability_values">≈%1$d 稳定 · %2$d 事件 · %3$d 每轮变化 tokens</string>
-
-  <string name="prompt_inspect_segment_render_hint">渲染提示</string>  <string name="prompt_debug_title">前缀分叉诊断</string>
+  <string name="prompt_inspect_segment_render_hint">渲染提示</string>
+  <string name="prompt_debug_title">前缀分叉诊断</string>
   <string name="prompt_debug_no_previous">与上次请求对比</string>
   <string name="prompt_debug_identical">暂无上次请求记录（本轮首次请求后再打开）</string>
   <string name="prompt_debug_summary">前缀一致 %1$d 条 ≈ %2$d tokens 可命中（上次 %3$d 条 / 本次 %4$d 条）</string>
   <string name="prompt_debug_diverged_at">分叉于第 %1$d 条：%2$s</string>
-
   <string name="prompt_inspect_cache_title">关于提示词缓存</string>
   <string name="prompt_inspect_cache_body">系统提示词位于位置 0，每次请求都会重算——这里约 %1$d token。其中任何易变内容（日期占位符、按关键词启停的世界书条目）都会让整段缓存的**前缀失效**。建议把易变内容移出系统提示词，关键词触发的世界书放到对话末尾。</string>
   <string name="prompt_inspect_source_format">来自%1$s · %2$s</string>
@@ -2143,4 +2141,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_media_and_speech_desc">图像、视频、语音生成与识别提供商</string>
   <string name="media_creation_legacy_entry">旧版图像生成</string>
   <string name="setting_provider_legacy_image_hint">此处的图像模型仅用于旧版图像生成。新版创作请在“媒体与语音”中配置提供商。</string>
+  <string name="safe_mode_enter_app">进入应用</string>
+  <string name="setting_tts_page_default_playback_speed">默认播放速度</string>
+  <string name="setting_tts_page_default_playback_speed_description">在本地应用于所有 TTS 提供商，不改变其语音合成设置。</string>
+  <string name="theme_name_claude">Claude</string>
 </resources>
