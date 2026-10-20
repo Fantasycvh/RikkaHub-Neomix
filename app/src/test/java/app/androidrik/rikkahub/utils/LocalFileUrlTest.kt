@@ -49,4 +49,50 @@ class LocalFileUrlTest {
     fun `空串与空白串原样返回`() {
         assertEquals("", normalizeLocalFileUrl(filesDir, ""))
     }
+
+    // 真机现场（2026-10-20）：release 包的备份恢复到 debug 安装后，消息里的生图路径仍是
+    // `/data/user/0/app.androidrik.rikkahub/files/images/<name>.png`，而文件已经被恢复到
+    // 当前包的 files/images 下 —— 生图工具卡因此显示「已失效或无法读取」。
+    @Test
+    fun `跨包生图绝对路径按当前包 images 目录重写`() {
+        val path = "/data/user/0/app.androidrik.rikkahub/files/images/1792124295694_model_0.png"
+        val expected = File(filesDir, "images/1792124295694_model_0.png").absolutePath
+        assertEquals(expected, normalizeGeneratedImagePath(filesDir, path))
+    }
+
+    @Test
+    fun `跨包生图路径的旧子目录结构保留`() {
+        // 2026-10-04 之前含 "/" 的模型名会把产物落进 images/<vendor>/ 子目录
+        val path = "/data/user/0/app.androidrik.rikkahub/files/images/vendor/model_0.png"
+        val expected = File(filesDir, "images/vendor/model_0.png").absolutePath
+        assertEquals(expected, normalizeGeneratedImagePath(filesDir, path))
+    }
+
+    @Test
+    fun `当前包的生图路径保持不变`() {
+        val path = File(filesDir, "images/a.png").absolutePath
+        assertEquals(path, normalizeGeneratedImagePath(filesDir, path))
+    }
+
+    @Test
+    fun `生图记录表里的相对路径不被改写`() {
+        // gen_media.path 存的是相对路径，由 GeneratedImage 读取侧拼接，这里不能动
+        assertEquals("images/a.png", normalizeGeneratedImagePath(filesDir, "images/a.png"))
+    }
+
+    @Test
+    fun `生图路径归一化不会越过目标目录`() {
+        val attack = "/data/user/0/app.androidrik.rikkahub/files/images/../../databases/rikka_hub"
+        assertEquals(attack, normalizeGeneratedImagePath(filesDir, attack))
+    }
+
+    @Test
+    fun `生图路径归一化不碰远程与 content uri`() {
+        listOf(
+            "https://example.com/files/images/a.png",
+            "content://media/external/images/media/42",
+        ).forEach { url ->
+            assertEquals(url, normalizeGeneratedImagePath(filesDir, url))
+        }
+    }
 }

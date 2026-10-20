@@ -16,12 +16,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.tools.IMAGE_TOOL_NAME
 import app.androidrik.rikkahub.data.ai.tools.parseGeneratedImagePaths
+import app.androidrik.rikkahub.utils.normalizeGeneratedImagePath
 import app.androidrik.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Image02
@@ -71,7 +73,12 @@ object GenerateImageToolUI : ToolUIRenderer {
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        val paths = remember(context.content) { parseGeneratedImagePaths(context.content) }
+        val filesDir = LocalContext.current.applicationContext.filesDir
+        // 备份恢复/跨包恢复后，工具输出里的绝对路径可能还指着旧包的 files/images/；
+        // 文件已经恢复到当前包，这里按当前 filesDir 重新解析，否则会显示「已失效或无法读取」
+        val paths = remember(context.content, filesDir) {
+            parseGeneratedImagePaths(context.content).map { normalizeGeneratedImagePath(filesDir, it) }
+        }
         if (paths.isEmpty()) return
 
         // 单图给大预览，多图走等宽网格：单图是常态（默认 num=1），给大一点才看得出效果

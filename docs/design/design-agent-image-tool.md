@@ -244,3 +244,25 @@ JS 引擎/剪贴板/时间/朗读；本工具走的是设置里配置的**远程
   为什么不是纯候选 B（只按出图计）：那样 provider 持续报错时每轮的尝试次数就**没有硬顶**了，
   只能指望工具循环自身收敛 —— 本仓的取向是"上限不能依赖模型自觉"，所以两个都要有。
   两个上限各管一件事，比一个上限同时管两件事更容易解释，也更容易调。
+
+## 9. 备份恢复后的图片路径（2026-10-20 修复）
+
+工具输出里写的是 `File.absolutePath`（如
+`/data/user/0/app.androidrik.rikkahub/files/images/<ts>_<model>_<i>.png`）。
+备份只保证**文件**被恢复到当前安装的 `files/images/`，**消息里的绝对路径不会改写**，
+于是这两种情况会显示「图片已失效或无法读取」：
+
+- release ↔ debug 跨包恢复：路径还指着旧包私有目录（uid 不同，读不到）；
+- 换设备 / 切用户（`/data/user/<n>` 变了）同样失效。
+
+上传附件一直没这个问题，因为 `normalizeLocalFileUrl` 会把
+`.../files/upload/<name>` 重写到当前 `filesDir`。生图路径此前没有等价兜底。
+
+修法（只改读取侧，不动存档）：
+
+- `utils/LocalFileUrl.kt` 抽出 `normalizeLocalFilePath`：按 `.../files/<folder>/` 段重写到
+  当前 `filesDir`，同时支持 `file://` 与**裸绝对路径**，并做 canonical 目录穿越防护；
+- `normalizeGeneratedImagePath` 只作用于 `images/`；
+- `GenerateImageToolUI` 渲染前把每条路径归一化 ⇒ 老消息在恢复后也能直接显示。
+
+`gen_media`（生图表）存的是相对路径 `images/<name>`，本来就免疫，无需改。
