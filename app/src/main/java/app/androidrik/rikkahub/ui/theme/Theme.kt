@@ -81,18 +81,26 @@ fun RikkahubTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         DisposableEffect(view, darkTheme) {
-            val window = (view.context as Activity).window
-            val controller = WindowCompat.getInsetsController(window, view)
-            val previousLightStatusBars = controller.isAppearanceLightStatusBars
-            val previousLightNavigationBars = controller.isAppearanceLightNavigationBars
-            controller.apply {
-                isAppearanceLightStatusBars = !darkTheme
-                isAppearanceLightNavigationBars = !darkTheme
-            }
-            onDispose {
-                // 嵌套主题（如终端的深色主题）退出时恢复原有系统栏图标颜色（对齐上游 a7ee362f）
-                controller.isAppearanceLightStatusBars = previousLightStatusBars
-                controller.isAppearanceLightNavigationBars = previousLightNavigationBars
+            // 宿主不一定是 Activity：系统悬浮窗（Service 里的 ComposeView）就没有 window 可改。
+            // 这里曾经是硬强转 `as Activity`，TTS 朗读浮窗 / 悬浮小窗一 attach 就
+            // ClassCastException 崩进程（真机实测）。没有 Activity 时跳过系统栏调整即可。
+            val activity = view.context as? Activity
+            if (activity == null) {
+                onDispose { }
+            } else {
+                val window = activity.window
+                val controller = WindowCompat.getInsetsController(window, view)
+                val previousLightStatusBars = controller.isAppearanceLightStatusBars
+                val previousLightNavigationBars = controller.isAppearanceLightNavigationBars
+                controller.apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+                onDispose {
+                    // 嵌套主题（如终端的深色主题）退出时恢复原有系统栏图标颜色（对齐上游 a7ee362f）
+                    controller.isAppearanceLightStatusBars = previousLightStatusBars
+                    controller.isAppearanceLightNavigationBars = previousLightNavigationBars
+                }
             }
         }
     }
