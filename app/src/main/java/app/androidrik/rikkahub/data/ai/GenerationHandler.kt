@@ -318,6 +318,8 @@ class GenerationHandler(
     private val context: Context,
     private val providerManager: ProviderManager,
     private val json: Json,
+    /** 每次 provider 请求写一行用量流水（见 [UsageRecorder]） */
+    private val usageRecorder: UsageRecorder,
 ) {
     /**
      * @param messages 会话**全量**消息（与 messageNodes 对齐），既是回写基线，也是发送上下文的来源
@@ -416,9 +418,17 @@ class GenerationHandler(
          * 默认 null：无头 run（`SubagentRunner`）自己维护 `currentMessages`，无需此落点。
          */
         onMessagesCommitted: ((List<UIMessage>) -> Unit)? = null,
+        /**
+         * 用量流水的归属标记（来源 / 助手 / 会话）。
+         *
+         * 本类是所有 provider 请求的唯一出口（聊天 / 子代理 / 记忆整理都经由它），因此流水在这里
+         * 统一记录：每次 `generateText` / `streamText`（含重试的每一次尝试）各记一行。
+         * 聊天主流程用默认值；标题、翻译等由调用方传自己的 [UsageSource]。
+         */
+        usageTag: UsageTag = UsageTag(UsageSource.CHAT),
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
-        val providerImpl = providerManager.getProviderByType(provider)
+        val providerImpl = usageRecorder.wrap(providerManager.getProviderByType(provider), usageTag)
 
         // 跨 provider 轻量降级（fallback 模型链）：主模型整体不可用时切备用模型重跑整轮。
         // 仅限"零输出失败"（重试耗尽后仍无可见内容）——半截输出（GenerationPartialFailureException）
@@ -439,7 +449,9 @@ class GenerationHandler(
             Log.w(TAG, "fallback model not found in providers, fallback disabled")
         }
         val fallbackProvider = fallbackModel?.findProvider(settings.providers)
-        val fallbackProviderImpl = fallbackProvider?.let { providerManager.getProviderByType(it) }
+        val fallbackProviderImpl = fallbackProvider?.let {
+            usageRecorder.wrap(providerManager.getProviderByType(it), usageTag)
+        }
 
         suspend fun runLoop(
             targetModel: Model,
@@ -1380,7 +1392,11 @@ class GenerationHandler(
         val provider = model.findProvider(settings.providers)
             ?: error("Translation provider not found")
 
-        val providerHandler = providerManager.getProviderByType(provider)
+        // 翻译同样走 provider 出口：包一层流水记录，统计页才能看到「翻译花了多少」
+        val providerHandler = usageRecorder.wrap(
+            providerManager.getProviderByType(provider),
+            UsageTag(UsageSource.TRANSLATION),
+        )
 
         if (!ModelRegistry.QWEN_MT.match(model.modelId)) {
             // Use regular translation with prompt

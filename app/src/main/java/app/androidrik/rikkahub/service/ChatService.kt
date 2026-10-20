@@ -70,6 +70,9 @@ import app.androidrik.rikkahub.data.ai.inspectPrompt
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.ai.shouldGenerateTitle
 import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
+import app.androidrik.rikkahub.data.ai.UsageRecorder
+import app.androidrik.rikkahub.data.ai.UsageSource
+import app.androidrik.rikkahub.data.ai.UsageTag
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.ai.tools.shouldUseExternalWebSearch
@@ -405,6 +408,8 @@ class ChatService(
     private val filesManager: FilesManager,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
+    /** 标题 / 建议 / 压缩这些不走 GenerationHandler 的请求，在这里包一层记用量流水 */
+    private val usageRecorder: UsageRecorder,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
@@ -1381,6 +1386,12 @@ class ChatService(
                 onMessagesCommitted = { committed ->
                     session.lastCommittedMessages.value = committed
                 },
+                // 用量流水的归属：聊天主流程（含工具调用的每一步、每次重试）
+                usageTag = UsageTag(
+                    UsageSource.CHAT,
+                    assistantId = assistant.id,
+                    conversationId = conversationId,
+                ),
             ).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
@@ -1746,7 +1757,11 @@ class ChatService(
             }
 
             started = true
-            val providerHandler = providerManager.getProviderByType(provider)
+            // 标题生成同样计费：包一层流水，source=TITLE（统计页来源拆分里单独一项）
+            val providerHandler = usageRecorder.wrap(
+                providerManager.getProviderByType(provider),
+                UsageTag(UsageSource.TITLE, assistantId = conversation.assistantId, conversationId = conversationId),
+            )
             val result = providerHandler.generateText(
                 providerSetting = provider,
                 messages = listOf(
@@ -1826,7 +1841,15 @@ class ChatService(
                 )
             }
 
-            val providerHandler = providerManager.getProviderByType(provider)
+            // 建议生成是每轮都可能发生的后台请求，同样计入用量（source=SUGGESTION）
+            val providerHandler = usageRecorder.wrap(
+                providerManager.getProviderByType(provider),
+                UsageTag(
+                    UsageSource.SUGGESTION,
+                    assistantId = conversation.assistantId,
+                    conversationId = conversationId,
+                ),
+            )
             val result = providerHandler.generateText(
                 providerSetting = provider,
                 messages = listOf(
@@ -1888,8 +1911,11 @@ class ChatService(
             ?: throw IllegalStateException("No model available for compression")
         val provider = model.findProvider(settings.providers)
             ?: throw IllegalStateException("Provider not found")
-        val providerHandler = providerManager.getProviderByType(provider)
-
+        // 压缩摘要（可能被切成多块并发请求）也计入用量，source=COMPRESSION
+        val providerHandler = usageRecorder.wrap(
+            providerManager.getProviderByType(provider),
+            UsageTag(UsageSource.COMPRESSION, conversationId = conversationId),
+        )
         // 当前会话快照（含内存态最新）
         val conversation = getConversationFlow(conversationId).value
         // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖

@@ -20,6 +20,8 @@ import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.SubagentApprovalQueue
 import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
+import app.androidrik.rikkahub.data.ai.UsageSource
+import app.androidrik.rikkahub.data.ai.UsageTag
 import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
 import app.androidrik.rikkahub.data.ai.USER_DENIED_REASON
 import app.androidrik.rikkahub.data.ai.applyApprovalDecisions
@@ -406,6 +408,14 @@ class SubagentRunner(
                         generationHandler.generateText(
                             settings = settings,
                             model = model,
+                            // 子代理 run 的花费单独归到 SUBAGENT：和用户直接聊天区分开，
+                            // 「跑一阵子代理花掉多少」才看得见（父会话 id 有就一并带上）
+                            usageTag = UsageTag(
+                                UsageSource.SUBAGENT,
+                                assistantId = runProfile.id,
+                                conversationId = initial.parentConversationId
+                                    ?.let { runCatching { Uuid.parse(it) }.getOrNull() },
+                            ),
                             processingStatus = MutableStateFlow(null),
                             messages = currentMessages,
                             compressionWindow = null,

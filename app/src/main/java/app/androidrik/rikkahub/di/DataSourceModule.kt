@@ -38,6 +38,7 @@ import app.androidrik.rikkahub.data.ai.AIRequestInterceptor
 import app.androidrik.rikkahub.data.ai.RequestLoggingInterceptor
 import app.androidrik.rikkahub.data.ai.transformers.AssistantTemplateLoader
 import app.androidrik.rikkahub.data.ai.GenerationHandler
+import app.androidrik.rikkahub.data.ai.UsageRecorder
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.rag.RagRepository
 import app.androidrik.rikkahub.data.datastore.SettingsStore
@@ -55,6 +56,7 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_27_28
 import app.androidrik.rikkahub.data.db.migrations.Migration_28_29
 import app.androidrik.rikkahub.data.db.migrations.Migration_40_41
 import app.androidrik.rikkahub.data.db.migrations.Migration_41_42
+import app.androidrik.rikkahub.data.db.migrations.Migration_43_44
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.network.RikkaProxyAuthenticator
 import app.androidrik.rikkahub.data.network.SettingsProxyAuthenticator
@@ -95,6 +97,7 @@ val dataSourceModule = module {
             .addMigrations(
                 Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15,
                 Migration_15_16, Migration_27_28, Migration_28_29, Migration_40_41, Migration_41_42,
+                Migration_43_44,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
@@ -220,6 +223,15 @@ val dataSourceModule = module {
     }
 
     single {
+        get<AppDatabase>().usageRecordDao()
+    }
+
+    // 用量流水写入器：每次模型请求记一行（见 UsageRecorder 与 docs/design/design-usage-stats.md）
+    single {
+        UsageRecorder(dao = get(), scope = get<AppScope>())
+    }
+
+    single {
         MessageFtsManager(get())
     }
 
@@ -229,7 +241,8 @@ val dataSourceModule = module {
         GenerationHandler(
             context = get(),
             providerManager = get(),
-            json = get()
+            json = get(),
+            usageRecorder = get(),
         )
     }
 

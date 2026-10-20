@@ -119,7 +119,8 @@ val appModule = module {
             mcpManager = get(),
             filesManager = get(),
             workspaceRepository = get(),
-            folderRepository = get()
+            folderRepository = get(),
+            usageRecorder = get()
         )
     }
 

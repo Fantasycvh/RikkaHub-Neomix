@@ -18,6 +18,9 @@ import app.androidrik.common.cache.SingleFileCacheStore
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.datastore.findProvider
+import app.androidrik.rikkahub.data.ai.UsageRecorder
+import app.androidrik.rikkahub.data.ai.UsageSource
+import app.androidrik.rikkahub.data.ai.UsageTag
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import java.io.File
@@ -89,7 +92,11 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         val settings = get<SettingsStore>().settingsFlow.value
         val model = settings.findModelById(settings.ocrModelId) ?: return "[Image]"
         val providerSetting = model.findProvider(settings.providers) ?: return "[Image]"
-        val provider = get<ProviderManager>().getProviderByType(providerSetting)
+        // OCR 也是真实请求：包一层流水（source=OCR），否则这部分花费在统计里完全不可见
+        val provider = get<UsageRecorder>().wrap(
+            get<ProviderManager>().getProviderByType(providerSetting),
+            UsageTag(UsageSource.OCR),
+        )
         val result = provider.generateText(
             providerSetting = providerSetting,
             messages = listOf(
