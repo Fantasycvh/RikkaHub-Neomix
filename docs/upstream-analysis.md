@@ -5,6 +5,7 @@
 > **同步点（2026-10-16 晚间更新）**：逐条评估已跟进到上游 **`cfb503d8c`（2026-10-16 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-16 同步」；再前一节为「2026-10-15 同步」。
 > **同步点（2026-10-19 更新）**：已评估到上游 **`42896e5ad`**（本批 `aae986e55`..`42896e5ad` 共 29 提交，逐条结论见「2026-10-19 同步评估」一节）；上游同日 `bump version to 3.0.0`。**本批唯一缺口 `675e59f0d`（Responses API `function_call_output`）已于当日落地（fork `8b85aa3a4`）**，无遗留待吸收项。
 > **同步点（2026-10-20 更新）**：已评估到上游 **`e5bb70730`**（本批 `42896e5ad`..`e5bb70730` 共 6 提交，见「2026-10-20 同步评估」）。3 条已吸收（`aaa8d2883` / `e53536283` / `d856ddf17`），版本号与发版 skill 两条跳过；**`318cffef6` OAuth 订阅登录（#2186）经评估后决定暂不做**，缺口清单记在该节专项表。
+> **同日专项**：另**单独吸收**了更早未移植的 `5a90c0548`（用量统计流水表，DB v44），见「2026-10-20 专项吸收：用量统计流水」一节——它不在本批 fetch 区间内，是本仓 346 个「上游有、本仓无」存量里按用户指定方向挑的一条。
 > **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
 > **教训**：`git fetch` 的区间大小 ≠ 待评估量；判断「有没有欠账」要看**文档记录的评估点**（本节顶部的同步点），不是本地 ref。
 
@@ -1002,6 +1003,25 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 | DataStore 迁移 | 本仓停在 **V3**，上游已到 **V5** | V4/V5 需重编号接入，编号或键名错会洗掉用户设置 |
 
 **若将来要做**：单独立项、只做这一个特性，按「SSE 读取器 → 账号 + 配额数据层与迁移 → provider 与设置 UI」三段落地，每段跑 provider 层单测并做一次真实订阅账号的端到端验证。不要与日常上游同步混在一个提交里。
+
+## 2026-10-20 专项吸收：用量统计流水（上游 `5a90c0548`）
+
+> 触发：用户「借鉴上游，改进用量统计」。该提交**不在**上面任何一个 fetch 区间里——它比 `42896e5ad`(10-19) 更早（10-19 13:12），
+> 但此前从未移植：`upstream/master` 与本仓共有 **346** 个「上游有、本仓无」的提交，本轮只挑这一条（用户点名的方向）。
+> 设计/取舍/边界见 [design/design-usage-stats.md](design/design-usage-stats.md)。
+
+| 项 | 上游 `5a90c0548` | 本仓落地 |
+|---|---|---|
+| 表 | `usage_record`（DB v30→31） | `usage_record`（DB **v43→44**，手写迁移 `Migration_43_44`，带从消息 JSON 的回填） |
+| 记录器 | `data/ai/UsageRecorder.kt` 包 provider | 同构；`wrap()` 挂在 `GenerationHandler` 的 `providerImpl`/`fallbackProviderImpl`、`ChatService` 三处后台请求、`OcrTransformer` |
+| 来源 | 7 个（CHAT/COMPRESSION/TITLE/SUGGESTION/TRANSLATION/MEMORY/OCR） | **8 个**（多 `SUBAGENT`：本仓有无头子代理 run） |
+| 列 | 无 `provider_name` | 加 `provider_name`（本仓排行一直显示提供商名，且要能在提供商类型被删后仍可读） |
+| 页面 | 范围 7/30/90/全部 + 趋势柱图 + 模型/来源排行；热力图只数请求 | 同结构，**热力图保留双指标**（请求 / Token）；**删掉**本仓原有的「实际消耗 / 当前对话」二口径（流水无法表达「选中分支」） |
+| 旧代码 | 删除 `MessageNodeDAO` 上的 `json_each` 统计 + `MessageNodeStatsTest` | 同样删除（`getTokenStats`/`getModelTokenStats`/`getDayTokenStats`/`getMessageCountPerDay`/`TokenStatsScope` + `TokenStatsQueryTest`），改为 `MessageNodeDAO.countAll()` 数节点 |
+
+**没有照抄的两点及理由**（细节见设计稿 §6）：
+1. 上游把「消息」这一维度整个替换成「请求」，本仓保留 `countAll()` 的总消息数卡片——它是**唯一**还能回答「可见对话有多少」的数；
+2. 上游不记 `SUBAGENT`，本仓单列——子代理 run 可跑几分钟，混进 `CHAT` 会让「聊天花了多少」失真。
 
 ## 同步方式（ff-only，仅本地）
 
