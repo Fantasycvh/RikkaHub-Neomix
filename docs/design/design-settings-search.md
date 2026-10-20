@@ -29,7 +29,10 @@ ui/pages/setting/search/
 └── SettingGlobalSearchPage.kt 搜索页：输入框 + 结果列表 + 空态
 ```
 
-- 路由：`Screen.SettingGlobalSearch`；入口：设置根页与「偏好设置」页顶栏的搜索图标；
+- 路由：`Screen.SettingGlobalSearch`；
+- 入口：设置根页与「偏好设置」页**正文第一行**的搜索框（大标题之下、第一组设置之上）。
+  不放顶栏：顶栏图标与返回键平级，扫视时容易被当成返回的一部分；正文整行搜索框的可见性
+  与「这是一个输入框」的暗示都强得多。
 - 索引条目字段：`title` / `description` / `pageTitle` / `section`（都是 **string 资源 id**，按当前语言匹配与展示）+ `route` + `keywords`（额外别名）。
 
 ## 4. 匹配规则

@@ -15,7 +15,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -53,7 +52,6 @@ import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.ImageUpload
 import me.rerere.hugeicons.stroke.LookTop
 import me.rerere.hugeicons.stroke.McpServer
-import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Megaphone01
 import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.ServerStack01
@@ -66,6 +64,7 @@ import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
+import app.androidrik.rikkahub.ui.pages.setting.search.SettingSearchBar
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.Navigator
@@ -93,14 +92,6 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 navigationIcon = {
                     BackButton()
                 },
-                actions = {
-                    IconButton(onClick = { navController.navigate(Screen.SettingGlobalSearch) }) {
-                        Icon(
-                            HugeIcons.Search01,
-                            contentDescription = stringResource(R.string.setting_global_search_title)
-                        )
-                    }
-                },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors
             )
@@ -113,6 +104,13 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             contentPadding = innerPadding + PaddingValues(8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            item("searchEntry") {
+                SettingSearchBar(
+                    onClick = { navController.navigate(Screen.SettingGlobalSearch) },
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+            }
+
             if (settings.isNotConfigured()) {
                 item {
                     ProviderConfigWarningCard(navController)
