@@ -3202,6 +3202,23 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `git ls-remote` 的 `^{}` 指向、`releases/{tag}` 的 `isDraft/isPrerelease`、注释 tag 对象与
   `releases/latest` 仍为 `v1.0.27`。
 
+- 2026-10-20 **beta.5 发版收尾：远端 README 精简、版本信息统一到「beta.5 已发行」**。
+  远端两条网页编辑（`c9e7e5459` / `da63388c5`）把 README「与上游的关系」里的现状对比表删掉了，
+  本地按「同步远端文档改动」快进接收（不重新加回大表格，避免远端/本地反复覆盖）。
+  随后统一各处过期表述（`37f56832c` / `c8067fb68`）：
+  ①README 发布行改为「稳定版 `v1.0.27`；最新发行 `1.0.28-beta.5`（2026-10-20，现为 GitHub Releases 的
+  `latest`），两者均仅发 tag、无预编译资产」，并清掉网页编辑残留的一行单空格；
+  ②五份文档抬头的「当前源码 `1.0.27 (294)`」全部改为 `1.0.28-beta.5 (307)`（预发布）；
+  ③roadmap「本仓现状」去掉「master 只有 `v1.0.27` 一个 tag」的过期说法，改为 `beta.1`…`beta.5` 均已发行
+  （`beta.1`…`beta.4` 为 prerelease、`beta.5` 按用户要求改为正式 release 且现为 `latest`）；
+  ④handoff 现状快照与发布记录补 beta.5（tag 指向 `02733305a`，资产 0）。
+  **发布状态实测**（`gh api releases`）：`1.0.28-beta.5` = `draft=false` / `prerelease=false` / `assets=0`，
+  `releases/latest` 即它；`beta.1`…`beta.4` 仍为 `prerelease=true`，`v1.0.27` 仍为正式版。
+  **推送故障与绕过**：本机 `git` 配置的 HTTP 代理 `127.0.0.1:7890` 当时 TLS 握手失败、SSH 22/443 也被断开
+  （GitHub 解析到 `198.18.x.x`）；实测直连（`curl --noproxy '*'`）正常，于是用
+  `git -c http.proxy= push https://x-access-token:…@github.com/...` 直连完成推送，并用同样方式
+  `fetch` 回填 `origin/master` 跟踪引用（本地与远端均为 `c8067fb68`）。代理恢复后可直接用原 SSH remote。
+
 - 2026-10-20 **发布预发布 tag `1.0.28-beta.5`（307）**，保留 `1.0.28-beta.1`（303）/ `beta.2`（304）/
   `beta.3`（305）/ `beta.4`（306）不动。
   `versionCode` 306 → **307**、`versionName` 改为 `1.0.28-beta.5`，tag 指向 release 提交（`02733305a`；
