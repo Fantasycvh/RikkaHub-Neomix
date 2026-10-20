@@ -136,6 +136,7 @@ import app.androidrik.rikkahub.ui.pages.setting.SettingProviderDetailPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingProviderPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingSearchDetailPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingSearchPage
+import app.androidrik.rikkahub.ui.pages.setting.search.SettingGlobalSearchPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingSpeechPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingWebPage
 import app.androidrik.rikkahub.ui.pages.share.handler.ShareHandlerPage
@@ -556,6 +557,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingSearchPage()
                             }
 
+                            entry<Screen.SettingGlobalSearch> {
+                                SettingGlobalSearchPage()
+                            }
+
                             entry<Screen.SettingSearchDetail> { key ->
                                 val id = Uuid.parse(key.serviceId)
                                 SettingSearchDetailPage(id)
@@ -834,6 +839,10 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingSearch : Screen
+
+    /** 设置页全局搜索（跨所有设置页搜具体设置项） */
+    @Serializable
+    data object SettingGlobalSearch : Screen
 
     /** 知识库管理（RAG-as-tool）：列表 + 详情（编辑/文档/索引） */
     @Serializable

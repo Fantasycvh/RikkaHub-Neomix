@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -19,6 +20,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.Notification01
 import me.rerere.hugeicons.stroke.PaintBoard
+import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Sun01
 import app.androidrik.rikkahub.R
@@ -42,6 +44,14 @@ fun SettingPreferencesPage() {
                 },
                 navigationIcon = {
                     BackButton()
+                },
+                actions = {
+                    IconButton(onClick = { navController.navigate(Screen.SettingGlobalSearch) }) {
+                        Icon(
+                            HugeIcons.Search01,
+                            contentDescription = stringResource(R.string.setting_global_search_title)
+                        )
+                    }
                 },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors

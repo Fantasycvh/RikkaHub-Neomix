@@ -53,6 +53,7 @@ import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.ImageUpload
 import me.rerere.hugeicons.stroke.LookTop
 import me.rerere.hugeicons.stroke.McpServer
+import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Megaphone01
 import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.ServerStack01
@@ -91,6 +92,14 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 },
                 navigationIcon = {
                     BackButton()
+                },
+                actions = {
+                    IconButton(onClick = { navController.navigate(Screen.SettingGlobalSearch) }) {
+                        Icon(
+                            HugeIcons.Search01,
+                            contentDescription = stringResource(R.string.setting_global_search_title)
+                        )
+                    }
                 },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors

@@ -2181,4 +2181,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="floating_window_notification_text">点击返回应用</string>
   <string name="floating_window_notification_stop">关闭</string>
 
+
+  <!-- 设置页全局搜索 -->
+  <string name="setting_global_search_title">搜索设置</string>
+  <string name="setting_global_search_hint">搜索设置项、功能或名称</string>
+  <string name="setting_global_search_clear">清除</string>
+  <string name="setting_global_search_empty">搜索全部设置</string>
+  <string name="setting_global_search_empty_hint">输入名称即可定位设置项，例如「主题」「字体」「代理」</string>
+  <string name="setting_global_search_quick_links">常去页面</string>
+  <string name="setting_global_search_result_count">%1$d 个结果</string>
+  <string name="setting_global_search_no_result">没有找到与「%1$s」相关的设置项</string>
+  <string name="setting_global_search_no_result_hint">试试更短的关键词，或换一种说法</string>
 </resources>

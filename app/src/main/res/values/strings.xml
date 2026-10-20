@@ -2178,4 +2178,15 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="floating_window_notification_text">Tap to return to the app</string>
   <string name="floating_window_notification_stop">Close</string>
 
+
+  <!-- 设置页全局搜索 -->
+  <string name="setting_global_search_title">Search settings</string>
+  <string name="setting_global_search_hint">Search settings and features</string>
+  <string name="setting_global_search_clear">Clear</string>
+  <string name="setting_global_search_empty">Search all settings</string>
+  <string name="setting_global_search_empty_hint">Find any setting by name — try "theme", "font" or "代理"</string>
+  <string name="setting_global_search_quick_links">Frequently used</string>
+  <string name="setting_global_search_result_count">%1$d results</string>
+  <string name="setting_global_search_no_result">No settings match "%1$s"</string>
+  <string name="setting_global_search_no_result_hint">Try a shorter keyword, or a different name for the same feature</string>
 </resources>

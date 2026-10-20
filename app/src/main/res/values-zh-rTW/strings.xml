@@ -2163,4 +2163,15 @@
   <string name="floating_window_notification_text">點擊返回應用程式</string>
   <string name="floating_window_notification_stop">關閉</string>
 
+
+  <!-- 設定頁全域搜尋 -->
+  <string name="setting_global_search_title">搜尋設定</string>
+  <string name="setting_global_search_hint">搜尋設定項、功能或名稱</string>
+  <string name="setting_global_search_clear">清除</string>
+  <string name="setting_global_search_empty">搜尋全部設定</string>
+  <string name="setting_global_search_empty_hint">輸入名稱即可定位設定項，例如「主題」「字體」「代理」</string>
+  <string name="setting_global_search_quick_links">常去頁面</string>
+  <string name="setting_global_search_result_count">%1$d 個結果</string>
+  <string name="setting_global_search_no_result">沒有找到與「%1$s」相關的設定項</string>
+  <string name="setting_global_search_no_result_hint">試試更短的關鍵詞，或換一種說法</string>
 </resources>
