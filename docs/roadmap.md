@@ -6,8 +6,9 @@
 > **状态说明**：本文档混合「已落地」与「规划中」两类内容——各章节标题/状态行标注实时状态，
 > **不要以「均为规划」理解本篇**；最完整的逐日落地记录见「八、状态记录」。
 >
-> **本仓现状（RikkaHub Neomix）**：当前版本 `1.0.28-beta.5 (307)`（见 `app/build.gradle.kts`），正式版仍是 `v1.0.27`；
-> 预发布 tag `1.0.28-beta.1`…`beta.5` 均已发行（自 `beta.1` 起不带 `v`）。
+> **本仓现状（RikkaHub Neomix）**：当前版本 `1.0.28-beta.5 (307)`（见 `app/build.gradle.kts`），稳定版仍是 `v1.0.27`；
+> 预发布 tag `1.0.28-beta.1`…`beta.5` 均已发行（自 `beta.1` 起不带 `v`），其中 `beta.1`…`beta.4` 在 GitHub 上标记为
+> prerelease，`beta.5` 已按用户要求改为**正式 release**（因此现为 `releases/latest`）。
 > 全部**仅发 tag、无预编译资产**，本仓不发预编译包（CI 自动发版已禁用）。
 > 下文中出现的 `v1.0.x` / `Latest` / release / tag / versionCode 递增等内容，均为**私有开发仓时期的发布记录**，
 > 作为开发历史保留，**不代表本仓的发布状态**。
@@ -3227,8 +3228,10 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   应用内小窗草稿回填、输入区预览 `1/2 → 2/2` 与「在图片上绘制」、恢复后生图正常加载。
   **边界**：系统 overlay 只在 ColorOS / API 35 单机验证；TTS 实播未测；小窗暂无气泡折叠、窗内审批/选附件、
   富文本与工具详情；提供商滚动停在代码级（未真机点「添加」，避免改动用户设置）；未挂预编译资产。
-  **发布操作**：tag 不带 `v`、`--prerelease` 不加 `--latest`、无预编译资产；发布后核对
-  `releases/{tag}` 的 `isDraft=false` / `isPrerelease=true`、注释 tag 对象与 `releases/latest` 仍为 `v1.0.27`。
+  **发布操作**：tag 不带 `v`、无预编译资产。最初按 `--prerelease` 不加 `--latest` 创建（当时核对
+  `isDraft=false` / `isPrerelease=true`、`releases/latest` 仍为 `v1.0.27`）；**随后按用户要求改为正式发行**
+  （`prerelease=false`、标题改为 `1.0.28-beta.5 (307)`）⇒ `releases/latest` 现指向 `1.0.28-beta.5`，
+  资产仍为 **0**（仅 tag）。
 
 - 2026-10-20 **发布预发布 tag `1.0.28-beta.4`（306）**，保留 `1.0.28-beta.1`（303）/ `beta.2`（304）/ `beta.3`（305）不动。
   `versionCode` 305 → **306**、`versionName` 改为 `1.0.28-beta.4`，tag 指向 release 提交（`c62cf91f5`；
