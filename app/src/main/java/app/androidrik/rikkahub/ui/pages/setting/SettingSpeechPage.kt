@@ -64,7 +64,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -349,7 +349,7 @@ private fun TTSProviderList(
     modifier: Modifier = Modifier
 ) {
     val lazyListState = rememberLazyListState()
-    val context = LocalContext.current
+    val resources = LocalResources.current
     val toaster = LocalToaster.current
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         val newProviders = settings.ttsProviders.reorderForDrag(from.index, to.index)
@@ -406,7 +406,7 @@ private fun TTSProviderList(
                         }
                         val normalized = toggled.ensureFallbackTtsEnabled()
                         if (!enabled && normalized != toggled) {
-                            toaster.show(context.getString(R.string.setting_tts_page_fallback_kept))
+                            toaster.show(resources.getString(R.string.setting_tts_page_fallback_kept))
                         }
                         // 停用当前选中项时自动切到第一个仍启用的（避免「选中项不可用」死状态；
                         // 与 SettingSearchPage.onToggleEnabled 同款）

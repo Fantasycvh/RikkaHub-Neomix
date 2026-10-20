@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -62,6 +63,7 @@ fun TikzJax(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val activity = LocalActivity.current
     val toaster = LocalToaster.current
 
@@ -201,13 +203,13 @@ fun TikzJax(
                                     "tikz_${System.currentTimeMillis()}.png"
                                 )
                                 toaster.show(
-                                    context.getString(R.string.mermaid_export_success),
+                                    resources.getString(R.string.mermaid_export_success),
                                     type = ToastType.Success
                                 )
                             }.onFailure {
                                 it.printStackTrace()
                                 toaster.show(
-                                    context.getString(R.string.mermaid_export_failed),
+                                    resources.getString(R.string.mermaid_export_failed),
                                     type = ToastType.Error
                                 )
                             }

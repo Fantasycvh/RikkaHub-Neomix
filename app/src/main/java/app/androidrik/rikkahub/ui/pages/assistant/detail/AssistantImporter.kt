@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -66,6 +67,7 @@ private fun SillyTavernImporter(
     onImport: (Assistant) -> Unit
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val filesManager: FilesManager = koinInject()
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
@@ -88,7 +90,7 @@ private fun SillyTavernImporter(
                         )
                     }.onFailure { exception ->
                         exception.printStackTrace()
-                        toaster.show(exception.message ?: context.getString(R.string.assistant_importer_import_failed))
+                        toaster.show(exception.message ?: resources.getString(R.string.assistant_importer_import_failed))
                     }
                 } finally {
                     isLoading = false
@@ -114,7 +116,7 @@ private fun SillyTavernImporter(
                         )
                     }.onFailure { exception ->
                         exception.printStackTrace()
-                        toaster.show(exception.message ?: context.getString(R.string.assistant_importer_import_failed))
+                        toaster.show(exception.message ?: resources.getString(R.string.assistant_importer_import_failed))
                     }
                 } finally {
                     isLoading = false

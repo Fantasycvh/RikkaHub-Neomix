@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,6 +90,7 @@ fun PromptInspectPage(
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val navController = LocalNavController.current
 
     LaunchedEffect(conversationId) {
@@ -176,11 +178,11 @@ fun PromptInspectPage(
                             debugKey = conversationId,
                             onCopyContent = {
                                 copyToClipboard(context, segment.content)
-                                toaster.show(context.getString(R.string.prompt_inspect_copied))
+                                toaster.show(resources.getString(R.string.prompt_inspect_copied))
                             },
                             onCopyWithHeader = {
                                 copyToClipboard(context, segmentClipboardText(index, segment))
-                                toaster.show(context.getString(R.string.prompt_inspect_copied))
+                                toaster.show(resources.getString(R.string.prompt_inspect_copied))
                             },
                             onShare = { shareText(context, segmentClipboardText(index, segment)) },
                             onJumpToEntry = segment.source?.let { source ->

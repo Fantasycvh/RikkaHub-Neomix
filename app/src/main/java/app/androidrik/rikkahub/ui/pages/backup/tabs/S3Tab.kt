@@ -51,7 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -83,7 +83,7 @@ fun S3Tab(
     val backupItemsState by vm.s3BackupItems.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
     val toaster = LocalToaster.current
-    val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     var showBackupFiles by remember { mutableStateOf(false) }
     var restoringItemId by remember { mutableStateOf<String?>(null) }
@@ -102,7 +102,7 @@ fun S3Tab(
             runCatching {
                 vm.restoreFromS3(item = restoreItem)
                 toaster.show(
-                    context.getString(R.string.backup_page_restore_success),
+                    resources.getString(R.string.backup_page_restore_success),
                     type = ToastType.Success
                 )
                 showBackupFiles = false
@@ -110,7 +110,7 @@ fun S3Tab(
             }.onFailure { err ->
                 err.printStackTrace()
                 toaster.show(
-                    context.getString(R.string.backup_page_restore_failed, err.message ?: ""),
+                    resources.getString(R.string.backup_page_restore_failed, err.message ?: ""),
                     type = ToastType.Error
                 )
             }
@@ -260,13 +260,13 @@ fun S3Tab(
                         try {
                             vm.testS3()
                             toaster.show(
-                                context.getString(R.string.backup_page_connection_success),
+                                resources.getString(R.string.backup_page_connection_success),
                                 type = ToastType.Success
                             )
                         } catch (e: Exception) {
                             e.printStackTrace()
                             toaster.show(
-                                context.getString(
+                                resources.getString(
                                     R.string.backup_page_connection_failed,
                                     e.message ?: ""
                                 ),
@@ -295,13 +295,13 @@ fun S3Tab(
                             vm.backupToS3()
                             vm.loadS3BackupFileItems()
                             toaster.show(
-                                context.getString(R.string.backup_page_backup_success),
+                                resources.getString(R.string.backup_page_backup_success),
                                 type = ToastType.Success
                             )
                         }.onFailure {
                             it.printStackTrace()
                             toaster.show(
-                                it.message ?: context.getString(R.string.backup_page_unknown_error),
+                                it.message ?: resources.getString(R.string.backup_page_unknown_error),
                                 type = ToastType.Error
                             )
                         }
@@ -368,14 +368,14 @@ fun S3Tab(
                                         runCatching {
                                             vm.deleteS3BackupFile(item)
                                             toaster.show(
-                                                context.getString(R.string.backup_page_delete_success),
+                                                resources.getString(R.string.backup_page_delete_success),
                                                 type = ToastType.Success
                                             )
                                             vm.loadS3BackupFileItems()
                                         }.onFailure { err ->
                                             err.printStackTrace()
                                             toaster.show(
-                                                context.getString(
+                                                resources.getString(
                                                     R.string.backup_page_delete_failed,
                                                     err.message ?: ""
                                                 ),

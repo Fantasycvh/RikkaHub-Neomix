@@ -22,7 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.Json
@@ -122,7 +122,7 @@ fun CustomHeaders(headers: List<CustomHeader>, onUpdate: (List<CustomHeader>) ->
 
 @Composable
 fun CustomBodies(customBodies: List<CustomBody>, onUpdate: (List<CustomBody>) -> Unit) {
-    val context = LocalContext.current
+    val resources = LocalResources.current
     Column(
         modifier = Modifier.padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -169,7 +169,7 @@ fun CustomBodies(customBodies: List<CustomBody>, onUpdate: (List<CustomBody>) ->
                                     } catch (e: Throwable) {
                                         // Throwable：深嵌套 JSON 抛 StackOverflowError（Error），catch(Exception) 捕不到
                                         jsonParseError =
-                                            context.getString(
+                                            resources.getString(
                                                 R.string.assistant_page_invalid_json,
                                                 e.message?.take(100) ?: ""
                                             )

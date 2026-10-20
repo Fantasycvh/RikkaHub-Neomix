@@ -35,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.dokar.sonner.ToastType
@@ -60,6 +61,7 @@ fun ImportExportTab(
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
     var isExporting by remember { mutableStateOf(false) }
@@ -78,12 +80,12 @@ fun ImportExportTab(
     var pendingChatboxFile by remember { mutableStateOf<File?>(null) }
 
     fun toastSuccess() = toaster.show(
-        context.getString(R.string.backup_page_restore_success),
+        resources.getString(R.string.backup_page_restore_success),
         type = ToastType.Success,
     )
 
     fun toastFailure(e: Throwable) = toaster.show(
-        context.getString(R.string.backup_page_restore_failed, e.message ?: ""),
+        resources.getString(R.string.backup_page_restore_failed, e.message ?: ""),
         type = ToastType.Error,
     )
 
@@ -114,7 +116,7 @@ fun ImportExportTab(
                     }
                     exportFile.delete()
                     toaster.show(
-                        context.getString(R.string.backup_page_backup_success),
+                        resources.getString(R.string.backup_page_backup_success),
                         type = ToastType.Success
                     )
                 }.onFailure { e ->
@@ -162,7 +164,7 @@ fun ImportExportTab(
                 if (preview == null) {
                     // 「不是有效文件」与「读取失败」要分开报（后者不该被说成格式不对）
                     toaster.show(
-                        context.getString(R.string.backup_page_import_invalid_file),
+                        resources.getString(R.string.backup_page_import_invalid_file),
                         type = ToastType.Error,
                     )
                     return
@@ -184,7 +186,7 @@ fun ImportExportTab(
             val result = vm.restoreFromChatBox(file, targetAssistantId)
             // 导入条数此前被整个丢弃（死返回）——现在如实报出来，用户才知道发生了什么
             toaster.show(
-                context.getString(
+                resources.getString(
                     R.string.backup_page_import_chatbox_done,
                     result.importedConversations.toString(),
                     result.importedProviders.toString(),
@@ -366,7 +368,7 @@ fun ImportExportTab(
                         // 附件缺失要如实说明（否则用户以为完整导入了）
                         if (result.missingAttachments > 0) {
                             toaster.show(
-                                context.getString(
+                                resources.getString(
                                     R.string.backup_page_import_attachment_missing,
                                     result.missingAttachments.toString(),
                                 ),

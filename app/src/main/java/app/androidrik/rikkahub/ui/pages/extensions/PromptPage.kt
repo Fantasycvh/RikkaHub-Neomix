@@ -90,7 +90,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -153,7 +153,7 @@ fun PromptPage(
     // 正向：系统区 → 对话末尾（缓存友好）；反向：对话末尾 → 系统提示词后（系统级强调，
     // 接受缓存代价）。无对应条目时卡片自身不渲染；迁移覆盖预设条目与世界书条目。
     val toaster = LocalToaster.current
-    val context = LocalContext.current
+    val resources by rememberUpdatedState(LocalResources.current)
     val cacheMigrationCard: @Composable () -> Unit = {
         CacheMigrationCard(
             presets = settings.promptPresets,
@@ -163,7 +163,7 @@ fun PromptPage(
                 val (newPresets, newLorebooks) =
                     migrateInjections(settings.promptPresets, settings.lorebooks, direction)
                 vm.updateSettings(settings.copy(promptPresets = newPresets, lorebooks = newLorebooks))
-                toaster.show(context.getString(R.string.prompt_page_cache_migrated, count))
+                toaster.show(resources.getString(R.string.prompt_page_cache_migrated, count))
             },
         )
     }
@@ -318,7 +318,7 @@ private fun PresetListScreen(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
-    val context = LocalContext.current
+    val resources by rememberUpdatedState(LocalResources.current)
     // ⚠️ 必须用 rememberUpdatedState 取「最新」列表：
     // rememberImporter 内部是 `remember(serializer) { ImporterState(... onResult) }`，
     // 只按 serializer 缓存 ⇒ 首次组合时传入的 onResult 会被**永久捕获**。
@@ -345,9 +345,9 @@ private fun PresetListScreen(
     val importer = rememberImporter(PromptPresetSerializer) { result ->
         result.onSuccess { imported ->
             onUpdatePresets(currentPresets + imported)
-            toaster.show(context.getString(R.string.export_import_success))
+            toaster.show(resources.getString(R.string.export_import_success))
         }.onFailure { error ->
-            toaster.show(context.getString(R.string.export_import_failed).format(error.message))
+            toaster.show(resources.getString(R.string.export_import_failed).format(error.message))
         }
     }
 
@@ -613,7 +613,7 @@ private fun PresetDetailScreen(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
-    val context = LocalContext.current
+    val resources by rememberUpdatedState(LocalResources.current)
 
     val displayed = remember(preset.entries) { preset.entries.sortedForDisplay() }
     // Tier 4：滚动到目标条目（+1 补「顺序提示」那一行）并短暂高亮，让用户一眼看到「就是这条」。
@@ -644,9 +644,9 @@ private fun PresetDetailScreen(
     val importer = rememberImporter(ModeInjectionSerializer) { result ->
         result.onSuccess { imported ->
             onUpdatePreset(currentPreset.copy(entries = currentPreset.entries + imported))
-            toaster.show(context.getString(R.string.export_import_success))
+            toaster.show(resources.getString(R.string.export_import_success))
         }.onFailure { error ->
-            toaster.show(context.getString(R.string.export_import_failed).format(error.message))
+            toaster.show(resources.getString(R.string.export_import_failed).format(error.message))
         }
     }
 

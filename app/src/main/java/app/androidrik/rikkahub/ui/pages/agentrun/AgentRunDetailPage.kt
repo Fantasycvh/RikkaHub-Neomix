@@ -28,7 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,7 +70,7 @@ fun AgentRunDetailPage(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
     val toaster = LocalToaster.current
-    val context = LocalContext.current
+    val resources = LocalResources.current
     var parentConversationId by remember { mutableStateOf<String?>(null) }
     var parentExists by remember { mutableStateOf(false) }
 
@@ -185,7 +185,7 @@ fun AgentRunDetailPage(
                             onDecide = { toolCallId, approved ->
                                 if (!vm.resolveApproval(toolCallId, approved)) {
                                     // 无人在等 = 已超时或进程重启（run 其实已经没了）
-                                    toaster.show(context.getString(R.string.agent_run_approval_expired))
+                                    toaster.show(resources.getString(R.string.agent_run_approval_expired))
                                 }
                             },
                         )

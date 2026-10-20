@@ -38,7 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,7 +79,7 @@ fun SubagentPresetsPage(vm: SubagentPresetsVM = koinViewModel()) {
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val toaster = LocalToaster.current
-    val context = LocalContext.current
+    val resources = LocalResources.current
     val presets = settings.subagentPresets
 
     // null = 编辑器关闭；值 = 正在编辑的草稿（新建时是默认构造的预设）
@@ -165,7 +165,7 @@ fun SubagentPresetsPage(vm: SubagentPresetsVM = koinViewModel()) {
             onSave = {
                 vm.upsertPreset(it)
                 editing = null
-                toaster.show(context.getString(R.string.subagent_preset_saved))
+                toaster.show(resources.getString(R.string.subagent_preset_saved))
             },
         )
     }

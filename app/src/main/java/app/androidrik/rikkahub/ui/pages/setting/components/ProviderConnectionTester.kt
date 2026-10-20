@@ -30,7 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,7 +59,7 @@ fun ProviderConnectionTester(
     var showTestDialog by remember { mutableStateOf(false) }
     val providerManager = koinInject<ProviderManager>()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val resources = LocalResources.current
 
     // 带标签的入口（而非纯图标）：此前只有一个小图标、无任何文字，
     // 用户普遍不知道这里能测连通性（handoff 待办「测试连接入口可发现性」）。
@@ -211,7 +211,7 @@ fun ProviderConnectionTester(
                                         ?.filterIsInstance<UIMessagePart.Tool>()
                                         ?.firstOrNull()
                                     val result = if (toolCall != null) {
-                                        context.getString(
+                                        resources.getString(
                                             R.string.setting_provider_page_test_tool_called,
                                             toolCall.toolName,
                                             toolCall.input
@@ -220,7 +220,7 @@ fun ProviderConnectionTester(
                                         val text = message?.parts
                                             ?.filterIsInstance<UIMessagePart.Text>()
                                             ?.joinToString("") { it.text } ?: ""
-                                        context.getString(
+                                        resources.getString(
                                             R.string.setting_provider_page_test_tool_not_called,
                                             text
                                         )

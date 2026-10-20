@@ -9,8 +9,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.documentfile.provider.DocumentFile
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
@@ -19,7 +17,6 @@ import app.androidrik.rikkahub.ui.components.workspace.WorkspaceSelectionToolbar
 import app.androidrik.rikkahub.ui.components.workspace.rootfsPath
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.utils.writeClipboardText
-import app.androidrik.rikkahub.utils.fileSizeToString
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -135,6 +133,7 @@ fun WorkspaceDetailPage(id: String) {
     var showInstallDialog by remember { mutableStateOf(false) }
     var previewImageUri by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val resources = LocalResources.current
     val toaster = LocalToaster.current
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -179,11 +178,11 @@ fun WorkspaceDetailPage(id: String) {
     }
 
     fun exportResultMessage(result: WorkspaceBatchResult?): String = when {
-        result == null -> context.getString(R.string.workspace_export_failed)
+        result == null -> resources.getString(R.string.workspace_export_failed)
         result.skipped == 0 && result.failed == 0 ->
-            context.getString(R.string.workspace_export_done_ok, result.succeeded)
+            resources.getString(R.string.workspace_export_done_ok, result.succeeded)
 
-        else -> context.getString(
+        else -> resources.getString(
             R.string.workspace_export_done_partial,
             result.succeeded,
             result.skipped,
@@ -242,7 +241,7 @@ fun WorkspaceDetailPage(id: String) {
         if (uri == null || entries.isEmpty()) return@rememberLauncherForActivityResult
         val outputStream = context.contentResolver.openOutputStream(uri)
         if (outputStream == null) {
-            toaster.show(context.getString(R.string.workspace_export_failed))
+            toaster.show(resources.getString(R.string.workspace_export_failed))
             return@rememberLauncherForActivityResult
         }
         exportProgress = 0 to entries.size
@@ -271,7 +270,7 @@ fun WorkspaceDetailPage(id: String) {
         if (uri == null || entries.isEmpty()) return@rememberLauncherForActivityResult
         val tree = DocumentFile.fromTreeUri(context, uri)
         if (tree == null) {
-            toaster.show(context.getString(R.string.workspace_export_failed))
+            toaster.show(resources.getString(R.string.workspace_export_failed))
             return@rememberLauncherForActivityResult
         }
         exportProgress = 0 to entries.size
@@ -520,7 +519,7 @@ fun WorkspaceDetailPage(id: String) {
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                             Toast.makeText(
                                 context,
-                                context.getString(R.string.workspace_detail_path_copied),
+                                resources.getString(R.string.workspace_detail_path_copied),
                                 Toast.LENGTH_SHORT,
                             ).show()
                         }
@@ -624,11 +623,11 @@ fun WorkspaceDetailPage(id: String) {
                             finishSelection()
                             if (failed.isEmpty()) {
                                 toaster.show(
-                                    context.getString(R.string.workspace_delete_selection_done, entries.size)
+                                    resources.getString(R.string.workspace_delete_selection_done, entries.size)
                                 )
                             } else {
                                 toaster.show(
-                                    context.getString(
+                                    resources.getString(
                                         R.string.workspace_delete_selection_partial,
                                         entries.size - failed.size,
                                         failed.size,

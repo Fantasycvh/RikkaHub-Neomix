@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,7 +97,7 @@ fun AssistantMemoryPage(id: String) {
     // 做梦（V3）的状态：待整理轮数 / 进行中 / 上次结果（含本次建议）
     val consolidationStatus by vm.consolidationStatus.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val storeId = assistant.memoryId()
@@ -163,7 +164,7 @@ fun AssistantMemoryPage(id: String) {
                 scope.launch {
                     val count = vm.freezeMemoryAnchors()
                     toaster.show(
-                        message = context.getString(R.string.assistant_page_memory_freeze_done, count)
+                        message = resources.getString(R.string.assistant_page_memory_freeze_done, count)
                     )
                 }
             },
@@ -187,19 +188,19 @@ fun AssistantMemoryPage(id: String) {
                                     "A related change was rejected or is stale; review and reorganize first."
 
                             // Ordinary blocked deletes still require selecting their pending siblings.
-                            result.blocked > 0 -> context.getString(
+                            result.blocked > 0 -> resources.getString(
                                 R.string.assistant_page_memory_consolidation_applied_blocked,
                                 result.applied,
                                 result.blocked,
                             )
 
-                            result.stale > 0 -> context.getString(
+                            result.stale > 0 -> resources.getString(
                                 R.string.assistant_page_memory_consolidation_applied_stale,
                                 result.applied,
                                 result.stale,
                             )
 
-                            else -> context.getString(
+                            else -> resources.getString(
                                 R.string.assistant_page_memory_consolidation_applied,
                                 result.applied,
                             )

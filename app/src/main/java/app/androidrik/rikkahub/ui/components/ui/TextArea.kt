@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -83,6 +84,7 @@ fun TextArea(
     onImportError: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     var isFullScreen by remember { mutableStateOf(false) }
@@ -99,10 +101,10 @@ fun TextArea(
                             ?: error("Failed to read file")
                     }
                     state.setTextAndPlaceCursorAtEnd(content)
-                    toaster.show(context.getString(R.string.text_area_import_success), type = ToastType.Success)
+                    toaster.show(resources.getString(R.string.text_area_import_success), type = ToastType.Success)
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    val errorMessage = e.message ?: context.getString(R.string.text_area_import_failed)
+                    val errorMessage = e.message ?: resources.getString(R.string.text_area_import_failed)
                     onImportError?.invoke(errorMessage) ?: toaster.show(
                         message = errorMessage,
                         type = ToastType.Error

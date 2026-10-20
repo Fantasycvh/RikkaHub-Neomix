@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -413,6 +414,7 @@ private fun HighlightCodeActions(
     onTogglePreviewMode: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -456,7 +458,7 @@ private fun HighlightCodeActions(
                                     )
                                 }.onSuccess { assistant ->
                                     toaster.show(
-                                        message = context.getString(
+                                        message = resources.getString(
                                             R.string.code_block_add_assistant_success,
                                             assistant.name,
                                         ),
@@ -465,7 +467,7 @@ private fun HighlightCodeActions(
                                 }.onFailure { error ->
                                     toaster.show(
                                         message = error.message
-                                            ?: context.getString(R.string.assistant_importer_import_failed),
+                                            ?: resources.getString(R.string.assistant_importer_import_failed),
                                         type = ToastType.Error,
                                     )
                                 }

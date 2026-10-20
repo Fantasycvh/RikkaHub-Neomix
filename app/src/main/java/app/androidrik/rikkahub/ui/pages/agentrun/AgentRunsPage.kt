@@ -35,7 +35,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,7 +102,7 @@ fun AgentRunsPage(vm: AgentRunsVM = koinViewModel()) {
     val runs by vm.runs.collectAsStateWithLifecycle()
     val assistants by vm.assistants.collectAsStateWithLifecycle()
     val toaster = LocalToaster.current
-    val context = LocalContext.current
+    val resources = LocalResources.current
     var showDispatch by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
@@ -118,7 +118,7 @@ fun AgentRunsPage(vm: AgentRunsVM = koinViewModel()) {
                 onClick = {
                     if (!vm.canStartRun()) {
                         toaster.show(
-                            context.getString(R.string.agent_run_dispatch_busy, vm.activeRunCount())
+                            resources.getString(R.string.agent_run_dispatch_busy, vm.activeRunCount())
                         )
                     } else {
                         showDispatch = true
@@ -172,7 +172,7 @@ fun AgentRunsPage(vm: AgentRunsVM = koinViewModel()) {
                 if (id == null) {
                     // 必须带活跃数：无参调用不做格式化，会把 `%1$d` 字面显示给用户
                     toaster.show(
-                        context.getString(R.string.agent_run_dispatch_busy, vm.activeRunCount())
+                        resources.getString(R.string.agent_run_dispatch_busy, vm.activeRunCount())
                     )
                 } else {
                     showDispatch = false

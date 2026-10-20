@@ -53,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -161,6 +162,7 @@ fun ChatExportSheet(
     saveToDocument: Boolean = false,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -181,7 +183,7 @@ fun ChatExportSheet(
             // **取消另存 = 不续作破坏性动作**（内容已躺在留存区，用户随时可在
             // 「设置 → 文件管理 → 导出」找回）。见设计稿 §二 决策 1。
             toaster.show(
-                message = context.getString(R.string.chat_page_export_save_cancelled),
+                message = resources.getString(R.string.chat_page_export_save_cancelled),
                 type = ToastType.Info,
             )
             return@rememberLauncherForActivityResult
@@ -192,7 +194,7 @@ fun ChatExportSheet(
                     target.file.inputStream().use { it.copyTo(out) }
                 } ?: error("Cannot open output stream")
             }.onSuccess {
-                toaster.show(context.getString(R.string.chat_page_export_saved), type = ToastType.Success)
+                toaster.show(resources.getString(R.string.chat_page_export_saved), type = ToastType.Success)
                 // **顺序关键**：onExported 必须先于 onDismissRequest。
                 // ChatPage 的 onDismissRequest 会清掉 exportThenRegenerateFor，
                 // 而 onExported 正是读它来续作 scope B —— 反了则续作静默失效。
@@ -200,7 +202,7 @@ fun ChatExportSheet(
                 onDismissRequest()
             }.onFailure {
                 toaster.show(
-                    message = context.getString(R.string.chat_page_export_save_failed, it.message ?: ""),
+                    message = resources.getString(R.string.chat_page_export_save_failed, it.message ?: ""),
                     type = ToastType.Error,
                 )
             }
@@ -218,7 +220,7 @@ fun ChatExportSheet(
             saveLauncher.launch(exported.displayName)
         } else {
             toaster.show(
-                message = context.getString(R.string.chat_page_export_saved_to_retention),
+                message = resources.getString(R.string.chat_page_export_saved_to_retention),
                 type = ToastType.Success,
             )
             context.shareFile(context.fileProviderUri(exported.file), exported.mimeType)
@@ -236,7 +238,7 @@ fun ChatExportSheet(
             }
         } else {
             toaster.show(
-                message = context.getString(R.string.chat_page_export_saved_to_retention),
+                message = resources.getString(R.string.chat_page_export_saved_to_retention),
                 type = ToastType.Success,
             )
             val uris = files.map { context.fileProviderUri(it) }
