@@ -3201,6 +3201,26 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `git ls-remote` 的 `^{}` 指向、`releases/{tag}` 的 `isDraft/isPrerelease`、注释 tag 对象与
   `releases/latest` 仍为 `v1.0.27`。
 
+- 2026-10-20 **发布预发布 tag `1.0.28-beta.4`（306）**，保留 `1.0.28-beta.1`（303）/ `beta.2`（304）/ `beta.3`（305）不动。
+  `versionCode` 305 → **306**、`versionName` 改为 `1.0.28-beta.4`，tag 指向 release 提交（`c62cf91f5`；
+  README 发布行、设计稿「落地对象」、提案「代码基线」同步更新）。
+  **相对 beta.3 的内容**（10 个提交）：①**抽屉左缘手势修复**——原实现在 `onDragStart` 提前 `return` 挡不住后续拖动回调，
+  落点越界的横拖仍被抽屉吃掉；改为按下时判定落点、越界放弃整段手势且不消费事件，手势取消回退到进入拖动态，
+  返回关闭归抽屉自身、遮罩恢复接口层、进度读取移出组合期（`e7b0a1a99`）②90 处 `LocalContext.current.getString`
+  改配置感知 `LocalResources.current` + 3 处 Locale + 1 处 Activity 获取，lint 错误清零（`1e1165955`）
+  ③补齐 4 条缺失中文译文（`5401cd04d`）④上游 2026-10-20 同步评估与文档（`8ccb8451c`）⑤mediagen 空 `b64_json`
+  回落 url（`aaa8d2883`）⑥sketch 落笔重画一帧（`e53536283`）⑦思考内容字号跟随聊天字号（`d856ddf17`）。
+  **新增测试**：`ChatScalingDrawerTest` 13 例、`ChatDrawerNavigationTest` 8 例、`ConversationListHeaderTest` 4 例，
+  连既有 `SegmentedPillTest` 4 例，真机 `6c841f95` 共 **29 项仪器测试全过**；应用 JVM 单测 1944 项全过。
+  **验证**：`assembleRelease`（R8 + lintVital）通过；装机后 `dumpsys package` 核实 `versionCode=306` /
+  `1.0.28-beta.4`；真机覆盖安装 305→306 成功、冷启正常、`logcat -b crash` 为空；应用 `lintDebug` 为
+  0 errors / 361 warnings / 5 hints。
+  **边界**：画笔修复无法在本机复现原始机型故障；mediagen 修复停在解析层单测、未对真实中转做端到端；
+  思考字号未做视觉对比；lint 警告未清；上游 `318cffef6`（OAuth 订阅登录）经评估暂不吸收，
+  缺口见 `docs/upstream-analysis.md`。
+  **发布操作**：tag 不带 `v`、`--prerelease` 不加 `--latest`、无预编译资产；已核对 `releases/{tag}` 的
+  `isDraft=false` / `isPrerelease=true`、注释 tag 对象与 `releases/latest` 仍为 `v1.0.27`。
+
 - 2026-10-19 **发布预发布 tag `1.0.28-beta.3`（305）**，保留 `1.0.28-beta.1`（303）/ `1.0.28-beta.2`（304）不动。
   `versionCode` 304 → **305**、`versionName` 改为 `1.0.28-beta.3`，tag 指向 release 提交（`148278311`；
   README 发布行、设计稿「落地对象」、提案「代码基线」同步更新）。
