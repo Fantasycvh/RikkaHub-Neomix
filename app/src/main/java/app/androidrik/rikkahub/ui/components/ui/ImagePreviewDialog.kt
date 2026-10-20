@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -66,6 +67,8 @@ val LocalConversationImageUrls = compositionLocalOf<List<String>> { emptyList() 
 fun ImagePreviewDialog(
     images: List<String>,
     initialIndex: Int = 0,
+    // 底部操作栏里的额外按钮，参数是当前页（输入区据此「在当前图片上绘制」）
+    actions: @Composable RowScope.(page: Int) -> Unit = {},
     onDismissRequest: () -> Unit,
 ) {
     if (images.isEmpty()) {
@@ -208,6 +211,7 @@ fun ImagePreviewDialog(
                 ) {
                     Icon(HugeIcons.Download01, contentDescription = "保存到相册", tint = Color.White)
                 }
+                actions(currentPage)
             }
         }
     }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -47,10 +49,12 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Exchange01
 import me.rerere.hugeicons.stroke.Files02
 import me.rerere.hugeicons.stroke.MusicNote03
+import me.rerere.hugeicons.stroke.PaintBoard
 import me.rerere.hugeicons.stroke.Video01
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.sketch.SketchDialog
+import app.androidrik.rikkahub.ui.components.ui.ImagePreviewDialog
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import com.dokar.sonner.ToastType
@@ -129,6 +133,36 @@ internal fun MediaFileInputRow(
         )
     }
 
+    // 点开预览时从哪张图开始；非空时显示全屏预览，预览里可以左右切换、也能在当前图上进画板。
+    // 预览集合就是输入区里的图片（按加进来的顺序），URL 统一走 normalizeLocalFileUrl。
+    var previewing by remember { mutableStateOf<UIMessagePart.Image?>(null) }
+    previewing?.let { start ->
+        val images = state.messageContent.filterIsInstance<UIMessagePart.Image>()
+        if (images.isEmpty()) {
+            previewing = null
+        } else {
+            ImagePreviewDialog(
+                images = images.map { context.normalizeLocalFileUrl(it.url) },
+                initialIndex = images.indexOf(start).coerceAtLeast(0),
+                actions = { page ->
+                    IconButton(
+                        onClick = {
+                            previewing = null
+                            images.getOrNull(page)?.let { drawingOn = it }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.PaintBoard,
+                            contentDescription = stringResource(R.string.sketch_draw_on_image),
+                            tint = Color.White,
+                        )
+                    }
+                },
+                onDismissRequest = { previewing = null },
+            )
+        }
+    }
+
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
@@ -150,7 +184,7 @@ internal fun MediaFileInputRow(
                             pendingReplacePart = part
                             replaceLauncher.launch("image/*")
                         },
-                        onClick = { drawingOn = part },
+                        onClick = { previewing = part },
                         leading = {
                             Surface(
                                 modifier = Modifier.size(34.dp),
