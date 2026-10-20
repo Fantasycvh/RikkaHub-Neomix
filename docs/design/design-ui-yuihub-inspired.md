@@ -1,7 +1,7 @@
 # UI 重设计：以 Yuihub 为参考，并改进其缺陷
 
 **参考对象**：`F:\build\projects\Yuihub`（`me.yui.yuihub`，RikkaHub 个人二改版，519 个 Kotlin 文件）
-**落地对象**：本仓 `F:\build\projects\RikkaHub-Neomix`（`app.androidrik.rikkahub`，1.0.28-beta.4 / 306）
+**落地对象**：本仓 `F:\build\projects\RikkaHub-Neomix`（`app.androidrik.rikkahub`，1.0.28-beta.5 / 307）
 **核查时间**：2026-10-19
 **方法**：两个仓库的静态代码对照。**未**编译运行 Yuihub，未做真机 A/B，未采集任何使用数据。
 
