@@ -24,6 +24,11 @@
     tools:ignore="ProtectedPermissions" />
   <uses-permission android:name="android.permission.READ_CALENDAR" />
   <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+  <!--
+    悬浮小窗 / TTS 朗读浮窗（FloatingX）：系统级 overlay 需要「显示在其他应用上层」。
+    此前一直漏声明 ⇒ Settings.canDrawOverlays 恒为 false，TTS 浮窗实际从未显示过。
+  -->
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
   <uses-feature
     android:name="android.hardware.camera"
@@ -165,6 +170,16 @@
       <property
         android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
         android:value="Keep AI chat generation running while the app is in the background" />
+    </service>
+
+    <!-- 悬浮小窗（原型）：系统 overlay 窗口 + 前台服务保命；见 docs/design/design-floating-chat-window.md -->
+    <service
+      android:name=".service.FloatingWindowService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="Floating chat mini window drawn over other apps" />
     </service>
 
     <!-- 媒体生成（dataSync）：任务本身由 Koin 单例 MediaCreationService 持有，本服务只把进程留在前台 -->

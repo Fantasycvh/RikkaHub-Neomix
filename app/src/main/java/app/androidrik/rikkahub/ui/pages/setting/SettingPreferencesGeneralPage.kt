@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.width
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.service.KeepAliveService
+import app.androidrik.rikkahub.service.FloatingWindowService
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.hooks.rememberSharedPreferenceBoolean
@@ -453,6 +454,10 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
             }
 
             item {
+                FloatingWindowSettingGroup()
+            }
+
+            item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
                     title = { Text(stringResource(R.string.setting_page_tts_settings)) },
@@ -727,3 +732,76 @@ private fun KeepAliveSettingGroup() {
         }
     }
 }
+
+/**
+ * 悬浮小窗（原型）设置分组：开关 + 权限引导。
+ *
+ * 未授权时点开关**直接跳系统授权页**（而不是"点了没反应"）；从系统设置返回后由 ON_RESUME
+ * 重新读 [FloatingWindowService.canDrawOverlays]——部分 ROM 的授权不是立刻生效。
+ */
+@Composable
+private fun FloatingWindowSettingGroup() {
+    val context = LocalContext.current
+    val running by FloatingWindowService.running.collectAsStateWithLifecycle()
+
+    var resumeTick by remember { mutableIntStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) resumeTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val canDrawOverlays = remember(resumeTick) { FloatingWindowService.canDrawOverlays(context) }
+
+    fun requestPermission() {
+        runCatching {
+            context.startActivity(FloatingWindowService.overlayPermissionIntent(context))
+        }
+    }
+
+    CardGroup(
+        modifier = Modifier.padding(horizontal = 8.dp),
+        title = { Text(stringResource(R.string.setting_floating_window_title)) },
+    ) {
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_floating_window_title)) },
+            supportingContent = { Text(stringResource(R.string.setting_floating_window_desc)) },
+            trailingContent = {
+                Switch(
+                    checked = running,
+                    onCheckedChange = { checked ->
+                        when {
+                            !checked -> FloatingWindowService.stop(context)
+                            canDrawOverlays -> FloatingWindowService.start(context)
+                            // 没权限就把人带到系统授权页，授权返回后 ON_RESUME 刷新状态
+                            else -> requestPermission()
+                        }
+                    },
+                )
+            },
+        )
+        if (!canDrawOverlays) {
+            item(
+                headlineContent = {
+                    Text(
+                        stringResource(R.string.setting_floating_window_permission_missing),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                },
+                modifier = Modifier.clickable { requestPermission() },
+            )
+            item(
+                headlineContent = {
+                    Text(
+                        stringResource(R.string.setting_floating_window_permission_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+            )
+        }
+    }
+}
+

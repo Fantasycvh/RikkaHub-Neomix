@@ -2143,4 +2143,24 @@
   <string name="setting_tts_page_default_playback_speed">預設播放速度</string>
   <string name="setting_tts_page_default_playback_speed_description">在本機套用至所有 TTS 供應商，不變更其語音合成設定。</string>
   <string name="theme_name_claude">Claude</string>
+
+  <!-- 懸浮小窗（原型）：設定頁入口、視窗外殼與前景通知 -->
+  <string name="setting_floating_window_title">懸浮小窗（實驗）</string>
+  <string name="setting_floating_window_desc">把聊天窗懸在桌面或其他應用程式之上：位置隨意拖，大小自由拉。目前為原型階段，只有視窗外殼，聊天內容下一版接入。</string>
+  <string name="setting_floating_window_permission_missing">需要「顯示在其他應用程式上層」權限</string>
+  <string name="setting_floating_window_permission_hint">若開關未出現，部分 ROM 還需開啟「背景彈出介面」權限。</string>
+  <string name="floating_window_title">小窗（原型）</string>
+  <string name="floating_window_size">%1$d × %2$d dp</string>
+  <string name="floating_window_close">關閉</string>
+  <string name="floating_window_maximize">最大化</string>
+  <string name="floating_window_restore">還原</string>
+  <string name="floating_window_open_app">開啟應用程式</string>
+  <string name="floating_window_prototype_body">視窗外殼原型：拖標題列移動，拖任意邊或角改變大小，放開靠近左右邊緣會自動吸附。</string>
+  <string name="floating_window_prototype_hint">聊天訊息與輸入框在下一版接入。</string>
+  <string name="floating_window_prototype_drag_hint">拖標題列 · 八向拉伸 · 放開貼邊</string>
+  <string name="floating_window_notification_channel">懸浮小窗</string>
+  <string name="floating_window_notification_title">懸浮小窗執行中</string>
+  <string name="floating_window_notification_text">點擊返回應用程式</string>
+  <string name="floating_window_notification_stop">關閉</string>
+
 </resources>

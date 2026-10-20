@@ -2161,4 +2161,24 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_tts_page_default_playback_speed">默认播放速度</string>
   <string name="setting_tts_page_default_playback_speed_description">在本地应用于所有 TTS 提供商，不改变其语音合成设置。</string>
   <string name="theme_name_claude">Claude</string>
+
+  <!-- 悬浮小窗（原型）：设置页入口、窗口外壳与前台通知 -->
+  <string name="setting_floating_window_title">悬浮小窗（实验）</string>
+  <string name="setting_floating_window_desc">把聊天窗悬在桌面或其他应用之上：位置随便拖，大小自由拉。当前为原型阶段，只有窗口外壳，聊天内容下一版接入。</string>
+  <string name="setting_floating_window_permission_missing">需要「显示在其他应用上层」权限</string>
+  <string name="setting_floating_window_permission_hint">若开关不出现，部分 ROM 还需开启「后台弹出界面」权限。</string>
+  <string name="floating_window_title">小窗（原型）</string>
+  <string name="floating_window_size">%1$d × %2$d dp</string>
+  <string name="floating_window_close">关闭</string>
+  <string name="floating_window_maximize">最大化</string>
+  <string name="floating_window_restore">还原</string>
+  <string name="floating_window_open_app">打开应用</string>
+  <string name="floating_window_prototype_body">窗口外壳原型：拖标题栏移动，拖任意边或角改变大小，松手靠近左右边缘会自动吸附。</string>
+  <string name="floating_window_prototype_hint">聊天消息与输入框在下一版接入。</string>
+  <string name="floating_window_prototype_drag_hint">拖标题栏 · 八向拉伸 · 松手贴边</string>
+  <string name="floating_window_notification_channel">悬浮小窗</string>
+  <string name="floating_window_notification_title">悬浮小窗运行中</string>
+  <string name="floating_window_notification_text">点击返回应用</string>
+  <string name="floating_window_notification_stop">关闭</string>
+
 </resources>

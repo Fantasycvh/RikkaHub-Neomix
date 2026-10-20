@@ -2158,4 +2158,24 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="media_creation_page_saved_files_partial">Saved %1$d files, %2$d failed: %3$s</string>
   <string name="media_creation_legacy_entry">Legacy image generation</string>
   <string name="setting_provider_legacy_image_hint">Image models configured here are used only by legacy image generation. For the new creation workflow, configure providers in Media &amp; Speech.</string>
+
+  <!-- 悬浮小窗（原型）：设置页入口、窗口外壳与前台通知 -->
+  <string name="setting_floating_window_title">Floating Mini Window (Experimental)</string>
+  <string name="setting_floating_window_desc">Keep the chat window over the home screen or other apps: drag it anywhere, resize it freely. Prototype stage: window shell only, chat content comes next.</string>
+  <string name="setting_floating_window_permission_missing">Needs the "Display over other apps" permission</string>
+  <string name="setting_floating_window_permission_hint">If the switch does not appear, your ROM may need "display pop-up windows while running in background" as well.</string>
+  <string name="floating_window_title">Mini Window (prototype)</string>
+  <string name="floating_window_size">%1$d × %2$d dp</string>
+  <string name="floating_window_close">Close</string>
+  <string name="floating_window_maximize">Maximize</string>
+  <string name="floating_window_restore">Restore</string>
+  <string name="floating_window_open_app">Open app</string>
+  <string name="floating_window_prototype_body">Window shell prototype: drag the title bar to move, drag any edge or corner to resize, release near a side edge to snap.</string>
+  <string name="floating_window_prototype_hint">Chat messages and the input box land in the next version.</string>
+  <string name="floating_window_prototype_drag_hint">Drag title bar · 8-direction resize · edge snap</string>
+  <string name="floating_window_notification_channel">Floating mini window</string>
+  <string name="floating_window_notification_title">Mini window running</string>
+  <string name="floating_window_notification_text">Tap to return to the app</string>
+  <string name="floating_window_notification_stop">Close</string>
+
 </resources>
