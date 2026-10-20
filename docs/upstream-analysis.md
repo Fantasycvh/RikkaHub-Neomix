@@ -4,6 +4,7 @@
 
 > **同步点（2026-10-16 晚间更新）**：逐条评估已跟进到上游 **`cfb503d8c`（2026-10-16 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-16 同步」；再前一节为「2026-10-15 同步」。
 > **同步点（2026-10-19 更新）**：已评估到上游 **`42896e5ad`**（本批 `aae986e55`..`42896e5ad` 共 29 提交，逐条结论见「2026-10-19 同步评估」一节）；上游同日 `bump version to 3.0.0`。**本批唯一缺口 `675e59f0d`（Responses API `function_call_output`）已于当日落地（fork `8b85aa3a4`）**，无遗留待吸收项。
+> **同步点（2026-10-20 更新）**：已评估到上游 **`e5bb70730`**（本批 `42896e5ad`..`e5bb70730` 共 6 提交，见「2026-10-20 同步评估」）。3 条已吸收（`aaa8d2883` / `e53536283` / `d856ddf17`），版本号与发版 skill 两条跳过；**`318cffef6` OAuth 订阅登录（#2186）经评估后决定暂不做**，缺口清单记在该节专项表。
 > **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
 > **教训**：`git fetch` 的区间大小 ≠ 待评估量；判断「有没有欠账」要看**文档记录的评估点**（本节顶部的同步点），不是本地 ref。
 
@@ -974,6 +975,33 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 1. 我方没有 `StreamChunk` 体系，直接在 `parseResponseDelta` 里产出 `MessageChunk`，靠既有 `Tool.merge` 的 `output + other.output` 合并，**合并层零改动**；
 2. 顺手把 `output_item.done` 的 `id` 取法改为 `id ?: call_id`（上游无此分支，属我方额外加固）；
 3. `parseResponseOutput` 由 `private` 放宽到 `internal` 以便单测驱动事件序列（与既有 `parseResponseDelta` 的处理一致）。
+
+## 2026-10-20 同步评估（`42896e5ad`..`e5bb70730`，6 提交）
+
+> 触发：上一批（10-19）评估到 `42896e5ad`；本次 `git fetch upstream` 补到 `e5bb70730`，区间内 6 个提交，提交人 `re-ovo`（`318cffef6` 为外部 PR #2186）。上游同期 `bump version to 3.1.0`。
+
+| 上游提交 | 内容 | 结论 |
+|---|---|---|
+| `bdb2ddc73` | OpenAI 图像响应里空字符串 `b64_json` 视为没有、改用 `url` | **已吸收**（fork `aaa8d2883`）：`parseTask` 对 `b64_json`/`url` 都加 `takeIf { isNotBlank() }`；`MediaCreationService` 走 url 下载时补地址与字节数日志。带单测 `blankBase64FallsBackToUrl`（`mediagen` 该文件 11 例全过） |
+| `183a7da70` | 画笔落笔主动让窗口重画一帧（Android 13 OPPO 上画不出内容、撤销不可用，#2193） | **已吸收**（fork `e53536283`）：落笔且工具为画笔时 `view.invalidate()`。**注**：本机非该机型，只验证不破坏现有绘制，未复现原始故障 |
+| `43d9e30e1` | 思考内容字号跟随聊天字号设置 | **已吸收**（fork `d856ddf17`）：`ReasoningContent` 的 `bodySmall` 乘 `fontSizeRatio`（字号+行高），与正文口径一致 |
+| `318cffef6` | OAuth 订阅登录（ChatGPT / Grok 账号态，#2186） | **暂不吸收（用户决定）**：见下方专项，依赖本仓完全不存在的子系统，属新功能不是修复 |
+| `eeef60b22` | `bump version to 3.1.0` | **跳过**：本仓独立版本线（`1.0.28-beta.3` / 305） |
+| `e5bb70730` | 更新日志 skill 约定（`.agents/skills/publish-release`） | **跳过**：本仓无该 skill，属上游发版流程文档 |
+
+### 专项：OAuth 订阅登录（#2186）为何暂不吸收
+
+规模 **70 文件 / +4587−586**，且不是「改几个文件」能落地的特性，缺的底座按依赖顺序：
+
+| 依赖 | 本仓现状 | 影响 |
+|---|---|---|
+| `oauth` 模块（`OAuthHttpClient`、`OAuthLoopbackCallbackServer`） | **不存在** | 需新增模块并接依赖图 |
+| `common/http/sse/` 读取器重写（`ServerSentEventReader`、`RealEventSource`） | 只有旧 `common/http/SSE.kt`，无 `sse/` 包 | 账号态的流式接口依赖新读取器 |
+| `ChatGPTProvider` / `GrokProvider` | **均不存在** | 新增两个 provider 实现 + 各自测试 |
+| 配额子系统（`ProviderQuotaText`、`QuotaQueryOption`） | 仍是 `ProviderBalanceText` / `BalanceOption`（上游此次**删除**这两个文件） | 需先做「余额 → 配额」重构，否则冲突面极大 |
+| DataStore 迁移 | 本仓停在 **V3**，上游已到 **V5** | V4/V5 需重编号接入，编号或键名错会洗掉用户设置 |
+
+**若将来要做**：单独立项、只做这一个特性，按「SSE 读取器 → 账号 + 配额数据层与迁移 → provider 与设置 UI」三段落地，每段跑 provider 层单测并做一次真实订阅账号的端到端验证。不要与日常上游同步混在一个提交里。
 
 ## 同步方式（ff-only，仅本地）
 
