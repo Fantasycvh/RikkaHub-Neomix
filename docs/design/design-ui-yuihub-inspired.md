@@ -269,9 +269,9 @@ Yuihub 抽屉里 `DrawerAssistantCard` / `DrawerActionBar` 用 `surfaceBright + 
 | "媒体创作"点击深度 | 3 | **2** | **2**：抽屉首屏直达 `MediaCreationSessions` |
 | 生图入口并列数 | 2 | **1** | **1**：抽屉只留「媒体创作」；旧版生图收进媒体创作页顶部兼容入口 |
 | 设置页行数 | 16 | 12-13 | **15**（见 §5.4 差异说明） |
-| 抽屉拖动期间整树重组 | 无动画 | **0 次/帧** | **0 次/帧**：`progress` 读数全部在 `graphicsLayer`/`drawBehind` lambda 内 |
+| 抽屉拖动期间整树重组 | 无动画 | 避免逐帧整树重组 | 变换只在 `graphicsLayer` 读取进度；遮罩由 `derivedStateOf` 的边界布尔值控制。手动时钟测试验证动画推进时稳定内容槽不逐帧重组，不代表整个页面绝无重组。 |
 | 动作栈点击区高度 | 40dp | **≥ 48dp** | **≥ 48dp**（`minimumInteractiveComponentSize`）；抽屉顶部条目行 10dp 内边距 + 18dp 图标 |
-| 抽屉相关 Compose 测试 | 0 | ≥ 8 个用例 | **4**（实为 `SegmentedPillTest`，覆盖单选语义/触控高度；**抽屉手势与路由测试仍未补**，见下方待办） |
+| 抽屉相关 Compose 测试 | 0 | ≥ 8 个用例 | **25**：13 个抽屉交互与动画测试 + 8 个真实入口导航测试 + 4 个矮屏列表 header 回归测试；另回归原有 4 个分段控件测试，真机共 29 项通过。 |
 
 **其他已落地项**：
 - 矮屏（高度 < 640dp，如手表/横屏手机）：抽屉顶部随会话列表一起滚动，避免固定区把列表挤没
@@ -280,8 +280,13 @@ Yuihub 抽屉里 `DrawerAssistantCard` / `DrawerActionBar` 用 `surfaceBright + 
 - 媒体与语音设置合并为「媒体与语音」一页三 Tab（服务商 / 素材存储 / 语音），独立
   `Screen.SettingSpeech` 路由保留，`SettingSpeechPage(embedded = true)` 复用同一套 TTS/ASR 内容。
 
-**待办**：`ChatScalingDrawer` 的手势/导航测试（左缘拖动可开、内容区水平拖动不误开、返回键关闭、
-底部 4 个动作 + 顶部 3 条条目各自路由）尚未补齐。
+**2026-10-20 补测与 lint 修复**：
+- `ChatScalingDrawerTest`：覆盖受控开关、24dp 左缘打开、内容区横拖不误开且事件到达子控件、短拖完整回弹、左拖关闭、遮罩点击、抽屉按钮、返回分发、无障碍 dismiss，以及手动时钟下稳定内容槽的重组计数。
+- `ChatDrawerNavigationTest`：使用实际生产条目与 `Navigator` 校验历史、行尾搜索、媒体创作、翻译、助手、收藏、统计、设置这 8 个目的地；搜索只压入搜索路由，不连带触发历史入口。
+- `ConversationListHeaderTest`：覆盖带/不带 header 的自动定位索引、大于视口的 header 可滚走，以及插入/移出 header 后保持当前会话可见。
+- 修复测试暴露的左缘限制无效问题（原回调内 return 不会阻止后续拖动）；返回关闭由抽屉自身处理；header 变化时重新校验会话位置。
+- 清除旧报告的 100 个 lint 错误：90 个非配置感知资源读取、3 个非可观察 Locale 读取、1 个 Activity 获取方式错误、4 个缺失翻译、2 个本机 properties 路径转义错误。本机配置不纳入版本控制；未新增 baseline 或整体禁用检查。
+- 验证通过：仓库级 `./gradlew lintDebug`、`:app:assembleDebug`、`:app:assembleDebugAndroidTest`、`:app:testDebugUnitTest`（1944 项，0 失败/跳过）；设备 `6c841f95` 运行上述 29 项仪器测试全部通过。应用 lint 报告为 0 errors、361 warnings、5 hints；本次只清除错误，不宣称警告清零。
 
 **不做**：不在本仓引入 Yuihub 的抽屉内子代理树；不改大屏 `PermanentNavigationDrawer`（`ChatPage.kt:281` 分支保留）；不动 61 条路由结构。
 
