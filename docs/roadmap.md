@@ -3347,3 +3347,17 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   （307，v44 库）覆盖安装后正常启动（44→45 迁移无崩溃），实测翻译成功后历史出现、`am force-stop` 重启仍在、
   点条目恢复、左滑删除、清空后整段消失。
   详见 `docs/design/design-translation-history.md`。
+
+- 2026-10-21 **上游 issue P0 修复（TTS 读 HTML / LaTeX `<` 截断）+ placeholder WebP**（用户：「先开始修复P0」「清理placeholder WebP」；
+  评估见 `docs/upstream-analysis.md`「2026-10-21 同步评估」）。
+  **三个问题**：① TTS 把回复里的 `<details>` / `<summary>` 逐字读成「小于 details 大于」（上游 #2222）；
+  ② 公式 `1\le i<j\le n` 渲染时从 `<` 处截断、后半段丢失（上游 #2224 / #2221）——markdown 解析器本身正常，
+  是 math span 内容原样进 HTML 后被 `Jsoup.parse` 当成标签起点；③ placeholder 两张 1024×1024 PNG 占 2.27MB。
+  **落地**：`e5aac14e2` 在 TTS 共用入口 `stripMarkdown()` 前置 HTML 清洗（注释 / 换行标签 / 行内标签 / 实体；
+  只匹配已知标签名，保留 `1 < 2` 这类正文比较式）；`3e2cfde3d` 在 `generateMarkdownHtml()` 出口只转义
+  math span 内的 `<` / `&`，span 外（用户 HTML / 代码块）零改动；`c0ee758e9` 占位图对齐上游 `97cbb5999` 改 WebP
+  （fork 原 PNG blob 哈希与上游一致，直接用上游 WebP），arm64 debug APK −2,392,194 B。
+  **验证**：新增 6+3 例单测；`:app:testDebugUnitTest` **237 类 / 2133 项 0 失败**；`:app:assembleDebug` 成功；
+  真机 `6c841f95` 覆盖安装后冷启动无崩溃。
+  **边界**：未做真机 TTS 试听与公式截图核对（验证到公式文本完整进入渲染器为止）；`\\[4pt]` 行距不支持属
+  jlatexmath 限制，按评估结论不修；上游同提交的 banner 删除 / BouncyCastle 排除不适用（fork 无 banner / 无 JSch）。

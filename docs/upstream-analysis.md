@@ -7,6 +7,7 @@
 > **同步点（2026-10-20 更新）**：已评估到上游 **`e5bb70730`**（本批 `42896e5ad`..`e5bb70730` 共 6 提交，见「2026-10-20 同步评估」）。3 条已吸收（`aaa8d2883` / `e53536283` / `d856ddf17`），版本号与发版 skill 两条跳过；**`318cffef6` OAuth 订阅登录（#2186）经评估后决定暂不做**，缺口清单记在该节专项表。
 > **同日专项**：另**单独吸收**了更早未移植的 `5a90c0548`（用量统计流水表，DB v44），见「2026-10-20 专项吸收：用量统计流水」一节——它不在本批 fetch 区间内，是本仓 346 个「上游有、本仓无」存量里按用户指定方向挑的一条。
 > **同步点（2026-10-20 晚，beta.5 发版前复核）**：`e5bb70730` 之后上游又有 4 个提交（HEAD `5203601f7`，上游已发 tag `3.1.0` / `eeef60b22`）。其中**又吸收 2 条**：`bc4a6f47e`（输入区图片预览 / 多图左右切换 / 预览内进画板，fork `15e3d8c9e`）、`17d06d26f`（新建/导入提供商后清空搜索并滚到新项，fork `1ddb87d8e`）。**尚余 3 条未评估**：`5203601f7`（全局禁用 overscroll 回弹）、`8bb488e3a`（工具步骤显示执行耗时）、`fe55bff7f`（提供商类型名与「订阅」类型）。本仓「上游有、本仓无」累计 **350** 个提交（含历史存量 346 + 本批未评估 3 + 刻意不做 1）。
+> **同步点（2026-10-21 更新）**：已评估到上游 **`815e9c20b`**（`3.1.0-15-g815e9c20b`，2026-10-21 16:26），本批 `5203601f7`..`815e9c20b` 共 **10 提交**；10-20 遗留的 3 条一并结案：`5203601f7` **已与本仓等价**（`Theme.kt` 的 `LocalOverscrollFactory provides null`）、`fe55bff7f` **不适用**、`8bb488e3a` 列 P2 候选。10 条新提交里只有 **`2aafd708f`（技能删除/校验）** 值得考虑吸收；其余因架构/范围不跟（PDF 替换、渠道 flavor、赞助商、i18n 工具链、远程 SSH）。同期 issue 窗口 **60 条**（22 open / 38 新近 closed）评估见「2026-10-21 issue 评估」；本仓 `upstream/master..HEAD` = **1232**、`HEAD..upstream/master` = **360**。
 > **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
 > **教训**：`git fetch` 的区间大小 ≠ 待评估量；判断「有没有欠账」要看**文档记录的评估点**（本节顶部的同步点），不是本地 ref。
 
@@ -1084,13 +1085,84 @@ git checkout master
 | `bc4a6f47e` | 输入区已添加的图片点开可预览、多图左右滑动切换、预览里可进画板在当前图上绘制；`ImagePreviewDialog` 增 `initialPage` 与底部操作按钮槽 | **已吸收**（fork `15e3d8c9e`，beta.5）：本仓沿用既有 `initialIndex` 命名，新增 `actions: @Composable RowScope.(page: Int) -> Unit = {}` 放在末尾 ⇒ 5 处旧调用点零改动；`AttachmentChips` 点图改为开预览，预览底部加「在图片上绘制」（`sketch_draw_on_image` 文案已有）。真机验证：`1 / 2` → 左滑 → `2 / 2`，画板在**当前页**打开 |
 | `17d06d26f` | 新建 / 导入 / 添加推荐提供商后清空搜索词，等新项写入列表再自动滚到它 | **已吸收**（fork `1ddb87d8e`，beta.5）：`SettingVM` 补 `updateSettings(transform: (Settings) -> Settings)` 读-改-写重载（`SettingsStore.update(fn)` 已有）；`pendingScrollId` 用 `rememberSaveable` 跨详情页；`LaunchedEffect` 等新项真正进列表再 `animateScrollToItem` |
 
-**本批未吸收（3 条，留待下次评估）**：
+**本批未吸收（3 条；已于 2026-10-21 评估，见下节）**：
 
 | 上游提交 | 内容 | 初步判断 |
 |---|---|---|
 | `5203601f7` | 全局禁用滚动容器的 overscroll 拉伸回弹 | 影响面广（抽屉、长列表、小窗内滚动区），需逐页确认手感与嵌套滚动行为，单独评估 |
 | `8bb488e3a` | 工具调用记录 `startedAt/finishedAt`，工具步骤右侧显示执行耗时（执行中实时计时） | 需在 `UIMessagePart.Tool` 加时间戳并落库（序列化 + 历史消息兼容），属小特性，可随下批做 |
 | `fe55bff7f` | 提供商类型列表改用单独类型名；ChatGPT / Grok 显示「订阅」类型并本地化 | 与 `aaa07fd52`（创建后不可改类型）配套；本仓 provider 类型体系与上游不同，需先对齐语义 |
+
+## 2026-10-21 同步评估（`5203601f7`..`815e9c20b`，10 提交 + 3 条旧待评估）
+
+> 触发：`git fetch upstream` 恢复可用。本机 git 全局 `http.proxy=127.0.0.1:7890` 已失效，fetch 需
+> `git -c http.proxy= fetch upstream`；`gh api` 直连正常（`curl` 打 `api.github.com` 会超时）。
+> 上游 HEAD `815e9c20b`（`3.1.0-15-g815e9c20b`，2026-10-21 16:26；tag `3.1.0` = `eeef60b22`），本批 10 提交；
+> 本仓 `upstream/master..HEAD` = **1232**、`HEAD..upstream/master` = **360**（10-20 晚为 1213 / 350）。
+
+### 提交逐条
+
+| 上游提交 | 内容 | 结论 |
+|---|---|---|
+| `815e9c20b` | 纯 Kotlin PDF 文本提取替换 mupdf，删 JNI 绑定与 `libmupdf_java.so`，arm64 APK 35.4→30.9MB（105 文件 +9159/−6566） | **不吸收（硬冲突）**：本仓 `document/PdfParser.kt` 直接用 `com.artifex.mupdf.fitz.*`；TikZ 渲染链 `MupdfSvgBridge` 还 `System.loadLibrary("mupdf_java")`（依赖 document 模块内置 SO）——删 SO 直接断 TikZ SVG 路径。若将来为体积做，须先替换 TikZ 的 PDF→SVG 桥或保留 SO（收益归零），单独立项 |
+| `97cbb5999` | 删未用 banner 图、placeholder 改 WebP、打包排除 BouncyCastle Picnic（约 1.2MB） | **部分可吸收（低优先）**：本仓无 `assets/banner`（已无收益）；`placeholder.png` 1.20MB + `placeholder_dark.png` 1.07MB 仍是 PNG，转 WebP 可省约 2.3MB；BouncyCastle 排除只在引入 JSch（本仓无远程 SSH）后才相关 |
+| `481833116` | distribution 渠道 flavor（github / play）、`BuildConfig.IS_PLAY_STORE` 替代安装来源检测、baseline profile 合并 | **不适用**：本仓不发 Google Play（无 AAB 渠道），更新检查走自有 GitHub release；渠道 flavor 会牵动本仓 release 脚本与 CI，不跟 |
+| `26ca06cb5` | 赞助商钠API（三语 README / 推荐提供商 / 图标） | **不跟**：赞助商与推荐列表属上游运营内容，本仓 `RecommendedProviders` 已裁剪自有集合 |
+| `db93fa11a` / `0ff609f93` / `298bd65e4` / `17f10ca1f` | trace-cli 移动、i18n 工具 oxfmt / XML 校验 / Bun+TS 重写 | **不适用**：工具链（`tools/trace`、`tools/i18n`）不在本仓；本仓本地化走 `locale-tui` 技能 |
+| `2aafd708f` | 技能：按实际目录删除（目录名≠frontmatter name 时能删）、安装校验 SKILL.md、列出无效目录、页面本地化（14 文件 +591/−122） | **可吸收（P2，需重写）**：本仓 `data/files/SkillManager.deleteSkill(name)` 与上游修复前同构（`SkillPaths.resolveSkillDir(root,name)`），目录名≠name 时确实删不掉；`saveSkillFileBytesAtomically` 也无目录名/name 校验。但本仓无 `SkillValidator`、技能页结构不同，不能 cherry-pick；核心修管理器的删除定位 + 写入校验（约 150 行 + 单测），UI「列无效目录」可缓 |
+| `2b633370f` | 远程 SSH 工作区（#2211，99 文件 +13915/−540：`WorkspaceBackend` 抽象 + SSH + `:terminal` 模块 + 凭据加密 + DB 变更） | **不跟（新功能，单独立项）**：本仓 workspace 只有本地 PRoot / Shell Runner，无 SSH / SFTP backend；引入需终端模块、凭据加密、远程工具执行与安全模型，且与 fork 工作区沙箱语义冲突。短期可文档化「用本地 ssh 命令替代」；用户明确要做再立项 |
+| `5203601f7` | 全局禁用滚动容器 overscroll（`LocalOverscrollFactory provides null`） | **已等价（无缺口）**：本仓 `Theme.kt:111` 早已 `LocalOverscrollFactory provides null`（上游本批只是取消注释） |
+| `8bb488e3a` | 工具调用记录 `startedAt` / `finishedAt`，工具步骤右侧显示执行耗时（5 文件 +78/−16） | **可吸收（P2，需重写）**：本仓无 `ai/AgentLoop`，工具执行在 `data/ai/GenerationHandler.kt:908 executeToolWithTimeout` 自研循环。移植需给 `UIMessagePart.Tool` 加 `startedAt/finishedAt`（`kotlin.time.Instant` 可序列化）+ 在 fork 循环写时间 + `ChatMessageTools` 显示；约 1–2h，纯 UI 价值 |
+| `fe55bff7f` | provider 类型名与可改默认名分开；ChatGPT / Grok 显示「订阅」类型 | **不适用**：本仓 Provider 新建对话框无「类型模板列表」（`SettingProviderPage` 直接开 `ProviderSetting.OpenAI()` 编辑），且无 ChatGPT / Grok 订阅 provider；概念可留作以后 |
+
+### issue / PR 评估（窗口 2026-10-18T16:00Z 起，60 条：22 open / 38 新近 closed）
+
+> 逐条明细见本轮临时报告 `build/upstream-issues-2026-10-21.md`（不入库）；这里只留可执行结论。
+> 判定方式：本仓代码 grep + 既有台账，未做真机 / 真实 key 复现的条目显式标注「需验证」。
+
+**P0 立即可修（本仓 bug，不依赖上游）**
+
+| 条目 | 依据 | 修法 |
+|---|---|---|
+| **#2222 TTS 朗读 HTML 标签** | `ui/hooks/TTS.kt` / `ui/pages/chat/TTSAutoPlay.kt` 把消息文本交给 `TTS.speak()`，内部只 `stripMarkdown()`（`utils/MarkdownUtils.kt`）——该函数只去 Markdown 标记，**没有任何 HTML 规则**，`<details>` / `<summary>` 被逐字读成「小于 details 大于」；「不朗读括号内容」开关只管括号 | **已修（fork `e5aac14e2`）**：在 `stripMarkdown()` 前置一步去标签（注释/换行标签/行内标签/实体；只匹配已知标签名，避免误删 `1 < 2` 这类比较式），TTS 与语音模式共用入口；补 6 例单测 |
+| **#2224 / #2221 LaTeX 里 `<` 被当 HTML 吞公式** | 本仓渲染链 `Markdown.kt` + `LatexText.kt`（jlatexmath 1.5）+ `SimpleHtmlBlock.kt`（专门支持 HTML 块）——公式与 HTML 的边界判定与上游同形，`\prod_{1\le i<j\le n}` 这类会在 `<` 处截断；`\\[4pt]` 行距不支持属 jlatexmath 能力限制 | **已修（fork `3e2cfde3d`）**：根因不在 markdown 解析器，而是 math span 内容原样进 HTML 后被 `Jsoup.parse` 当成标签起点——在 `generateMarkdownHtml()` 出口只转义 span 内 `<`/`&`，span 外零改动；`\\[4pt]` 行距属 jlatexmath 限制，文档化不修 |
+
+**落地**：两条 P0 已修——TTS 去 HTML（fork `e5aac14e2`，`MarkdownUtilsTest` 6 例）、LaTeX `<` 截断（fork `3e2cfde3d`，`MarkdownMathParseTest` +3 例）；`97cbb5999` 的 placeholder WebP 也已落地（fork `c0ee758e9`，APK −2.3MB）。
+
+**P1 需决策（与本仓自研能力相关，上游方案不能直抄）**
+
+| 条目 | 上游状态 | 本仓现状与建议 |
+|---|---|---|
+| #2171 / #2180 压缩「保留最近 N 条」 | 已加（`bbe3001d9`，6 文件 +58/−14） | 本仓压缩是 token 预算 + 保留比例（`CompressionPlanner` 40/20/60% + `CompressPreset`），只有 `minKeep` 条数下限，无用户可调「保留最近 N 条」；可在 preset 增加可选条数下限并与 `minKeep` 打通，改动面小 |
+| #2212 / #2206 Claude 通道历史 thinking | #2212 not_planned；#2206 open | `includeHistoryReasoning` 只接在 `ChatCompletionsAPI`；本仓 `ClaudeProvider` 正确保留/回传 `redacted_thinking`（强于上游），但无「剥离历史 thinking」开关。建议加两档开关（强制回传 / 剥离），需实网对照 DeepSeek 的 Anthropic 兼容端（它要求工具续接回传 thinking） |
+| #2178 长消息（>8192px）横向滚动 / 折叠失效 | 已修（`9b458a67c`，消息气泡改为只裁剪绘制） | 本仓 `ChatMessage.kt` 有 `drawWithContent`，是否已是修复后写法**未核对**；需真机展开长代码块误测，按上游思路改 |
+| #2214 / #2198 生成中退出丢消息 | #2198 被 Bot 自动关、#2214 open | 需验证 `GenerationHandler` 是否只在完成时落库（`design-partial-failure-draft.md` 的草稿只覆盖「生成失败/中止」，不是「进程被杀」）；若同款，修法为流式增量周期 upsert（注意分支树/节点合并竞态） |
+| #2179 的 7 处 `ListItem.supportingContent` 同款形状 | 上游绕开（`42896e5ad`） | 台账既有待办：真机滚动实测 `ExtensionPicker`×3、`AssistantMemoryPage`×2、`PropertyEditor`×2（Compose UI 同为 1.12 线）；命中再按上游写法收敛 |
+
+**P2 候选（吸收本批上游提交）**
+
+- `8bb488e3a` 工具耗时（见上表）。
+- `2aafd708f` 技能删除/校验（见上表）。
+- `97cbb5999` 只做 placeholder WebP（fork 无 banner；BouncyCastle 排除依赖 JSch，暂不适用）——**已落地（fork `c0ee758e9`）**，两张 1024×1024 PNG 换成 WebP，APK −2.3MB。
+
+**不跟 / 不适用（本批提交）**
+
+- `815e9c20b` PDF 替换 mupdf：**硬冲突**（mupdf SO 同时被 TikZ 依赖）。
+- `2b633370f` 远程 SSH 工作区：新功能，单独立项。
+- `481833116` 渠道 flavor、`26ca06cb5` 赞助商、`db93fa11a` / `0ff609f93` / `298bd65e4` / `17f10ca1f` 工具链：与 fork 发布 / 工具链 / 运营面不同。
+- `5203601f7`、`fe55bff7f`：已等价 / 不适用（见上表）。
+
+**本仓不吃亏 / 已覆盖（issue 结论）**
+
+- **#2196 记忆读取策略（关键记忆直接注入）**：本仓 L0–L3 `MemoryInjectionPlan` 已是超集（L1 锚点进 system + L2 全文 / L3 索引在尾部 + 预算 / 冻结 / 确定性回退），issue 要的三种策略都已具备且更细；无需动作（若要回帖给设计参考，属对外发文，需先授权）。
+- #2191 记忆自动整理开关：已有；#1055 代理：本仓自研 `SettingsProxy`；#2181 / #2189 / #2193 / #2188 / #2152：已吸收；#2200 overscroll：已等价；#2186 OAuth：已决定暂不做；#2177 MiniMax：未移植（移植时必须做同源鉴权）。
+- #2223 / #2217 `tool_use_id` 变 UUID：静态链路正常（`ClaudeProvider` 直接用服务端 `id` 作 `toolCallId`，`toToolUseBlock` / `toToolResultBlock` 原样回填），**正常路径不产生 UUID**；可疑路径是 MCP 审批续跑 / 中断恢复重建、或中转改写，需真实 Anthropic 兼容端点抓请求体定性。
+
+**本批动作建议（按序）**
+
+1. ~~先修 P0 两条~~ **已落地**：TTS 去 HTML（`e5aac14e2`）、LaTeX `<` 保护（`3e2cfde3d`）。
+2. 再做 P1 决策：压缩「保留最近 N 条」、Claude 侧历史 thinking 开关；真机误测 #2178 / #2179 七处 / #2214。
+3. P2 排队：工具耗时 `8bb488e3a`、技能删除 `2aafd708f`（placeholder WebP 已落地 `c0ee758e9`）；均按 fork 结构重写，无 cherry-pick。
 
 ## 关联
 
