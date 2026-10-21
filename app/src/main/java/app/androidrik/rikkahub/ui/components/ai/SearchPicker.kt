@@ -67,6 +67,7 @@ fun SearchPickerButton(
     onToggleSearch: (Boolean) -> Unit,
     onUpdateSearchService: (Int) -> Unit,
     model: Model?,
+    onUpdateBuiltInSearch: ((Boolean) -> Unit)? = null,
 ) {
     var showSearchPicker by remember { mutableStateOf(false) }
     val currentService = settings.searchServices.getOrNull(settings.searchServiceSelected)
@@ -139,6 +140,7 @@ fun SearchPickerButton(
                         .fillMaxWidth()
                         .weight(1f),
                     model = model,
+                    onUpdateBuiltInSearch = onUpdateBuiltInSearch,
                     onDismiss = {
                         showSearchPicker = false
                     }
@@ -156,7 +158,8 @@ private fun SearchPicker(
     modifier: Modifier = Modifier,
     onToggleSearch: (Boolean) -> Unit,
     onUpdateSearchService: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onUpdateBuiltInSearch: ((Boolean) -> Unit)? = null,
 ) {
     val navBackStack = LocalNavController.current
 
@@ -168,7 +171,7 @@ private fun SearchPicker(
 
     // 模型支持内置搜索，或已开启内置搜索（后者保证残留状态也能被关闭）时显示开关
     if (model != null && (supportsBuiltInSearch || hasBuiltInSearchEnabled)) {
-        BuiltInSearchSetting(model = model)
+        BuiltInSearchSetting(model = model, onUpdateBuiltInSearch = onUpdateBuiltInSearch)
     }
 
     // 如果没有开启内置搜索，显示搜索服务选择
@@ -321,7 +324,7 @@ private fun AppSearchSettings(
 }
 
 @Composable
-private fun BuiltInSearchSetting(model: Model) {
+private fun BuiltInSearchSetting(model: Model, onUpdateBuiltInSearch: ((Boolean) -> Unit)? = null) {
     val settingsStore = koinInject<SettingsStore>()
     val scope = rememberCoroutineScope()
     Card {
@@ -351,6 +354,10 @@ private fun BuiltInSearchSetting(model: Model) {
             Switch(
                 checked = model.tools.contains(BuiltInTools.Search),
                 onCheckedChange = { checked ->
+                    if (onUpdateBuiltInSearch != null) {
+                        onUpdateBuiltInSearch(checked)
+                        return@Switch
+                    }
                     val settings = settingsStore.settingsFlow.value
                     scope.launch {
                         settingsStore.update(

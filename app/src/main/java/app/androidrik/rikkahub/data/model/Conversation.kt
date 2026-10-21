@@ -26,6 +26,7 @@ data class Conversation(
      * 默认空 = 未压缩。设计见 [CompressionSummary] 与 `docs/design/design-auto-compaction.md` §4.4。
      */
     val compressionSummaries: List<CompressionSummary> = emptyList(),
+    val upstreamConfig: UpstreamConversationConfig? = null,
     val chatSuggestions: List<String> = emptyList(),
     val isPinned: Boolean = false,
     @Serializable(with = InstantSerializer::class)
@@ -179,15 +180,15 @@ data class Conversation(
     }
 
     /**
-     * 压缩发送窗口的**可重算**描述：只固化「检查点合成消息 + 边界下标」，不固化消息列表。
+     * 压缩发送窗口的**可重算**描述：只固化「检查点消息 + 边界下标」，不固化消息列表。
      *
      * **为什么不直接给窗口列表**：一个回合内工具调用会让 live messages 增长（新增 assistant
      * 消息及其工具结果）。若沿用回合初的窗口快照，模型在下一步就**看不到自己刚发出的 tool call
      * 的结果** → 会重复调用同一工具（实测 memory_tool create 被重复执行、search_web 同一 query
      * 跑两次）。改为每步对 live messages 重算即可让工具结果自然进入上下文。
      *
-     * @param checkpointMessage 检查点合成消息（isSynthetic，不落库）
-     * @param boundaryIndex turn-start messages 中被摘要的最后一个节点下标；其后为原文
+     * @param checkpointMessage native 合成消息，或 upstream 原始已持久化检查点（不改正文/角色/标记）
+     * @param boundaryIndex native 最后排除的节点，或 upstream 原始检查点所在节点；其后为原文
      */
     data class CompressionWindow(
         val checkpointMessage: UIMessage,
@@ -210,10 +211,19 @@ data class Conversation(
      * （= 直接发送 live messages）。
      */
     fun compressionWindow(): CompressionWindow? {
-        val checkpoint = activeCompression() ?: return null
-        val boundaryId = checkpoint.boundaryNodeId ?: return null
-        val boundaryIndex = messageNodes.indexOfFirst { it.id.toString() == boundaryId }
-        if (boundaryIndex < 0) return null
+        val importedIndex = messageNodes.indexOfLast { node ->
+            node.messages.getOrNull(node.selectIndex)?.isContextCheckpoint == true
+        }
+        val checkpoint = activeCompression()
+        val boundaryIndex = checkpoint?.boundaryNodeId?.let { boundaryId ->
+            messageNodes.indexOfFirst { it.id.toString() == boundaryId }
+        } ?: -1
+        // Native boundaries name the last excluded node; an upstream boundary is the
+        // original retained checkpoint itself. Only a strictly newer native boundary wins.
+        if (importedIndex >= 0 && importedIndex >= boundaryIndex) {
+            return CompressionWindow(messageNodes[importedIndex].currentMessage, importedIndex)
+        }
+        if (checkpoint == null || boundaryIndex < 0) return null
         val checkpointMessage = UIMessage(
             role = MessageRole.USER,
             parts = listOf(

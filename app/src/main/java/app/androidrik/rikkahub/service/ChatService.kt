@@ -1169,12 +1169,14 @@ class ChatService(
 
         // 只把纯 CPU/IO 的重活搬到后台；读不到模型时返回 null（与旧行为一致）。
         return withPromptInspectionDispatcher {
-            val assistant = settings.getAssistantById(conversation.assistantId)
+            val baseAssistant = settings.getAssistantById(conversation.assistantId)
                 ?: settings.getCurrentAssistant()
+            val assistant = conversation.upstreamConfig?.applyTo(baseAssistant) ?: baseAssistant
             // `return@withPromptInspectionDispatcher`：helper 的 block 不是 inline lambda，
             // 不能用裸 `return null`。
-            val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+            val baseModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
                 ?: return@withPromptInspectionDispatcher null
+            val model = conversation.upstreamConfig?.applyToModel(baseModel) ?: baseModel
 
             val memories = if (conversation.memoryDisabled) {
                 // 与实发一致：隐身对话不加载记忆（预览也要显示「没有记忆段」）
@@ -1272,9 +1274,11 @@ class ChatService(
     ) {
         val settings = settingsStore.settingsFlow.first()
         val initialConversation = getConversationFlow(conversationId).value
-        val assistant = settings.getAssistantById(initialConversation.assistantId)
+        val baseAssistant = settings.getAssistantById(initialConversation.assistantId)
             ?: settings.getCurrentAssistant()
-        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId) ?: return
+        val assistant = initialConversation.upstreamConfig?.applyTo(baseAssistant) ?: baseAssistant
+        val baseModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId) ?: return
+        val model = initialConversation.upstreamConfig?.applyToModel(baseModel) ?: baseModel
 
         val senderName = if (assistant.useAssistantAvatar) {
             assistant.name.ifEmpty { context.getString(R.string.assistant_page_default_assistant) }
@@ -1967,13 +1971,19 @@ class ChatService(
         // 当前会话快照（含内存态最新）
         val conversation = getConversationFlow(conversationId).value
         // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
-        val window = conversation.windowNodes()
+        val effectiveWindow = conversation.compressionWindow()
+        val window = effectiveWindow?.let { conversation.messageNodes.drop(it.boundaryIndex + 1) }
+            ?: conversation.messageNodes
         val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
         val plan = estimateCompressionPlan(window, budget)
         if (!plan.shouldCompress) return@runCatching null  // 无可压缩内容（非错误）
 
         val messagesToCompress = plan.toCompress.map { it.currentMessage }
-        val priorSummary = conversation.compressionSummaries.lastOrNull()?.content.orEmpty()
+        val priorSummary = if (effectiveWindow?.checkpointMessage?.isContextCheckpoint == true) {
+            effectiveWindow.checkpointMessage.toText()
+        } else {
+            conversation.activeCompression()?.content.orEmpty()
+        }
         val priorContext = if (priorSummary.isNotBlank()) {
             "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n$priorSummary"
         } else {
@@ -2102,6 +2112,27 @@ class ChatService(
      *
      * 决策本身在 [updateMetadataSafely]（顶层函数，便于单测覆盖「生成中回写不动消息」）。
      */
+    suspend fun setConversationWorkspaceCwd(conversationId: Uuid, cwd: String?) {
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(workspaceCwd = cwd) },
+            persist = { conversationRepo.updateConversationWorkspaceCwd(conversationId, it.workspaceCwd) },
+        )
+    }
+
+    /** Update only an imported snapshot; never replace live message nodes while generating. */
+    suspend fun updateConversationUpstreamConfig(
+        conversationId: Uuid,
+        update: (app.androidrik.rikkahub.data.model.UpstreamConversationConfig) ->
+            app.androidrik.rikkahub.data.model.UpstreamConversationConfig,
+    ) {
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { current -> current.copy(upstreamConfig = current.upstreamConfig?.let(update)) },
+            persist = { conversationRepo.updateConversationUpstreamConfig(conversationId, it.upstreamConfig) },
+        )
+    }
+
     private suspend fun updateConversationMetadata(
         conversationId: Uuid,
         update: (Conversation) -> Conversation,

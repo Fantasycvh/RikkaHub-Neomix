@@ -118,12 +118,62 @@ settings.json 差异很小：旧版多 `compressPrompt/compressModelId`（已删
   断言用量/翻译正文保留、缺失 `provider_name` 为 null、多文件记忆扁平化且 revision=1。
 - 本轮应用 JVM 全量 **2089/2089 通过**，`lintDebug` 通过；未因此提升为整链路验收。
 
-### 仍有的语义损失与未验证项
+### P0 时仍有的语义损失与未验证项
 
-- `ConversationEntity.config` 会话级模型/推理/联网/MCP/工作区/技能快照未映射，恢复后使用助手配置。
-- 原版 `isContextCheckpoint` 尚未转成本应用压缩检查点，摘要消息可能作为普通消息显示/进入上下文；
-  `modelSnapshot/generationTimeMs/lastUsage/stepCount` 及 `Reasoning.reasoningType` 未映射。
-- 多文件记忆只保留拆出的正文，不保留路径、目录、title/description/aliases、来源标记及常驻注入语义。
-- `modeInjections → promptPresets`、`networkSetting → globalProxy` 等设置字段尚未映射。
-- **本轮没有真实 3.1.0 备份的「选文件 → 解包 → 换库 → 重启」实测**；合成 v31 转换与组件测试
-  不等同于整链路验收。导入仍是覆盖而非合并，操作前应先备份当前数据。
+会话配置、压缩检查点和模式注入在后续 §7 继续加固；多文件记忆的元数据、网络代理设置及
+部分消息统计字段尚未映射。导入仍是覆盖而非合并，操作前应先备份当前数据。
+
+## 7. 原版 3.1.0：会话语义与真实备份验证（2026-10-21）
+
+### 会话级配置
+
+- Room v46 新增 nullable `ConversationEntity.upstream_config`，AutoMigration 45→46 对原有会话默认 null。
+- [UpstreamConversationConfig](<../../app/src/main/java/app/androidrik/rikkahub/data/model/UpstreamConversationConfig.kt>)
+  保留七个原版字段：chatModelId、reasoningLevel、enableWebSearch、builtInSearch、mcpServers、workspaceId、enabledSkills。
+  `false`、空集合及 model/workspace 的显式 null 都是冻结值，不当作继承。无 config 才沿用助手。
+- 外挂搜索与内置搜索分别作用于 Assistant 与 Model；只替换 Search 工具，保留其他模型工具。
+  实发及只读提示词预览均应用相同快照，助手本身不因打开旧会话而被改写。
+- 转换阶段验证已知字段类型；损坏配置报错而非静默回退。未知字段在转换 JSON 中保留，
+  但领域对象后续保存仅保留当前已知字段，不宣称任意未来字段无损往返。
+
+### 压缩检查点：保留原始消息而非破坏性抽取
+
+- 为 UIMessage 增加持久化 `isContextCheckpoint=false`。原版消息节点、候选、选择索引及正文保留，
+  不删检查点、不把原文再套本应用的摘要前导语、不按时间排序/拼接多份摘要。
+- 请求时扫描**当前选中候选**，最后一个带标记的节点为有效检查点，发送其原始消息及后续尾部。
+  头节点检查点、混合候选切换、删除最新检查点后回退、生成循环新增工具结果均有回归覆盖。
+  上下文条数限制只作用于尾部，检查点自身始终保留。
+- 后续本应用生成的有效检查点仅在边界严格晚于原版节点时接管；继续压缩时以有效发送窗口及
+  已有摘要为基线，避免把摘要之前的历史重复并回。原版标记不硬塞进本应用独立检查点表，
+  原版检查点在消息列表中仍是可见原始消息；本应用原生折叠 UI 不冒称已完全移植原版样式。
+- 加载器的历史“合成消息泄漏”清理不再单凭文本前缀删候选：需要跨节点重复 ID 佐证，
+  且含原版检查点的节点及全部替代候选受保护，真实用户文本与前导语撞名也能保留。
+
+### 模式注入
+
+[SettingsJsonMigrator](<../../app/src/main/java/app/androidrik/rikkahub/data/datastore/migration/SettingsJsonMigrator.kt>)
+V5 把旧 `modeInjections` 原样包进单个 `promptPresets` 容器，保留条目 ID、顺序、字段及助手/会话绑定。
+显式空列表不填默认项，已有 `promptPresets`（包括空列表）不覆盖，重复迁移幂等。
+
+### 真实样本及验证边界
+
+- 用户指定目录最新 `rikkahub_backup_20261021_144128.zip`（42,754,732 字节，DB v31）：
+  3 个助手、30 个提供商、9 条模式注入、3930 个消息节点、5 份非空会话配置；
+  1 个会话含 2 个原版检查点，均为独立非头节点，无混合检查点候选。
+- 私有备份仅放临时目录，不进 Git、测试资产或公开报告；测试只输出计数/断言，不输出密钥/聊天正文。
+- [Upstream31RealBackupTest](<../../app/src/androidTest/java/app/androidrik/rikkahub/data/sync/Upstream31RealBackupTest.kt>)
+  通过显式仪器参数选择私有 fixture，无参数默认跳过：从 ZIP 读取设置/DB，迁移转换后经
+  ConversationRepository 加载所有会话、保存并重载；逐一验证配置、节点、检查点正文及有效请求窗口。
+  验证 DB 使用独立路径，不覆盖正式包数据库；隔离索引使用普通 SQLite 表模拟索引写入契约，
+  不将其称为生产自定义 FTS 分词器测试。
+- 最终验证：应用 JVM **2118/2118 通过**；真机真实样本往返 + 合成转换 + 45→46 迁移共 **4/4 通过**。
+  `lintDebug` 通过（首次并行分析触发 Kotlin FIR 工具内部错误，串行重跑通过，并非忽略检查）。
+- 这覆盖了真实 ZIP 的数据层组件组合与仓库往返，**不是文件选择器 → 实际覆盖换库 → App 重启的完整 UI 验收**。
+  未发送用户会话到任何远端模型，也未验证所有 MCP/技能的远端实际可用性。
+
+### 仍未覆盖
+
+- `networkSetting → globalProxy`、provider quotaQuery、Google useInteractionsApi 等未映射。
+- 多文件记忆仍只保留正文，不保留路径/目录、标题/描述/别名、来源标记、常驻注入语义。
+- `modelSnapshot/generationTimeMs/lastUsage/stepCount`、`Reasoning.reasoningType` 等部分消息元数据未映射。
+- 被 P0 丢弃的提供商对应模型 UUID 不自动重绑，需用户重新选模型。

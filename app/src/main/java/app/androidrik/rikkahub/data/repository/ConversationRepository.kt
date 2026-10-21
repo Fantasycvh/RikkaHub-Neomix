@@ -42,6 +42,32 @@ import app.androidrik.rikkahub.utils.JsonInstant
 import java.time.Instant
 import kotlin.uuid.Uuid
 
+/**
+ * Legacy repair needs structural evidence, not just a text prefix (ordinary messages can quote it).
+ * Nodes containing upstream checkpoints are authoritative, including their unselected alternatives.
+ */
+internal fun List<MessageNode>.repairLegacyCheckpointCandidates(): List<MessageNode> {
+    val nodeCounts = flatMap { node -> node.messages.map { it.id }.distinct() }
+        .groupingBy { it }.eachCount()
+    val cleaned = map { node ->
+        if (node.messages.any { it.isContextCheckpoint } ||
+            node.messages.none { (nodeCounts[it.id] ?: 0) > 1 }
+        ) return@map node
+        val messages = node.messages.filterOutCheckpointMessages()
+        // Never turn a node into an empty shell on the strength of a heuristic.
+        if (messages.isEmpty() || messages.size == node.messages.size) return@map node
+        val selectedId = node.messages.getOrNull(node.selectIndex)?.id
+        node.copy(
+            messages = messages,
+            selectIndex = messages.indexOfFirst { it.id == selectedId }.takeIf { it >= 0 } ?: messages.lastIndex,
+        )
+    }
+    val repaired = cleaned.repairCorruptedCandidates()
+    return cleaned.mapIndexed { index, node ->
+        if (node.messages.any { it.isContextCheckpoint }) node else repaired[index]
+    }
+}
+
 /** 列表加载耗时埋点（诊断会话打开加载耗时，供判断是否需要窗口化） */
 private const val TAG = "ConversationRepository"
 
@@ -54,6 +80,20 @@ class ConversationRepository(
     private val messageFtsManager: MessageFtsManager,
     private val checkpointDAO: CompressionCheckpointDAO,
 ) {
+    suspend fun updateConversationWorkspaceCwd(conversationId: Uuid, cwd: String?) {
+        conversationDAO.updateWorkspaceCwd(conversationId.toString(), cwd.orEmpty())
+    }
+
+    suspend fun updateConversationUpstreamConfig(
+        conversationId: Uuid,
+        config: app.androidrik.rikkahub.data.model.UpstreamConversationConfig?,
+    ) {
+        conversationDAO.updateUpstreamConfig(
+            conversationId.toString(),
+            config?.let { JsonInstant.encodeToString(it) },
+        )
+    }
+
     // 队列附件清理：判断某 file:// URL 是否仍被任何消息 JSON 引用（保守保留所有分支出现的 URL）
     suspend fun hasFileReference(fileUrl: String): Boolean =
         messageNodeDAO.hasFileReference(JsonInstant.encodeToString(fileUrl))
@@ -465,6 +505,7 @@ class ConversationRepository(
                     folderId = entity.folderId,
                     lastMessageAt = entity.lastMessageAt,
                     memoryDisabled = entity.memoryDisabled,
+                    upstreamConfig = entity.upstreamConfig,
                 )
             }
             // 增量保存（不再删全表重插；见 saveMessageNodes）。
@@ -587,6 +628,7 @@ class ConversationRepository(
             folderId = conversation.folderId?.toString() ?: "",
             memoryDisabled = conversation.memoryDisabled,
             frozenAnchors = conversation.frozenAnchors,
+            upstreamConfig = conversation.upstreamConfig?.let { JsonInstant.encodeToString(it) },
             // 行内「最近活跃」= 末尾消息的 createdAt。消息在内存里（本映射点的入参就带 messageNodes）
             // 时按实际算；元信息保存（轻量 Conversation 无消息）时返回 null，
             // 由 DAO 的 COALESCE 保留库里原值（见 updateMetadata 注释）。
@@ -623,6 +665,7 @@ class ConversationRepository(
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
             memoryDisabled = conversationEntity.memoryDisabled,
             frozenAnchors = conversationEntity.frozenAnchors,
+            upstreamConfig = conversationEntity.upstreamConfig?.let { JsonInstant.decodeFromString(it) },
         )
     }
 
@@ -868,27 +911,11 @@ class ConversationRepository(
                 page.forEach { entity ->
                     val rawMessages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages)
                     val nodeId = Uuid.parse(entity.id)
-                    // 自愈历史 bug：早前版本把检查点合成消息误持久化为消息候选（界面只看到摘要）。
-                    // 清洗后 selectIndex 需回落到有效范围（指向被移除的候选时回退到最后一条）。
-                    val messages = rawMessages.filterOutCheckpointMessages()
-                    // 未发生清洗（条数不变）时保持原 selectIndex；有清洗时按 id 重定位，
-                    // 原选中项被移除则回退到最后一条（保持节点可显示）
-                    val cleanSelectIndex = when {
-                        messages.isEmpty() -> 0
-                        messages.size == rawMessages.size -> entity.selectIndex
-                        else -> {
-                            val selected = rawMessages.getOrNull(entity.selectIndex)
-                            val relocated = selected?.let { sel ->
-                                messages.indexOfFirst { it.id == sel.id }
-                            } ?: -1
-                            if (relocated >= 0) relocated else messages.lastIndex
-                        }
-                    }
                     nodes.add(
                         MessageNode(
                             id = nodeId,
-                            messages = messages,
-                            selectIndex = cleanSelectIndex,
+                            messages = rawMessages,
+                            selectIndex = entity.selectIndex,
                             isFavorite = favoriteNodeIds.contains(nodeId)
                         )
                     )
@@ -896,7 +923,7 @@ class ConversationRepository(
                 offset += page.size
             }
             // 自愈早期压缩 bug 造成的跨节点候选副本（详见 repairCorruptedCandidates）
-            nodes.repairCorruptedCandidates()
+            nodes.repairLegacyCheckpointCandidates()
         }.also { loaded ->
             // 耗时埋点：打开会话、列表加载都经过这里。
             // 触发窗口化的阈值（2026-09-20 实测修正，design-auto-compaction 附录 A §5.2）：

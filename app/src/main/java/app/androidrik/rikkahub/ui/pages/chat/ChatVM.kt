@@ -16,7 +16,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import app.androidrik.rikkahub.data.datastore.getAssistantById
+import app.androidrik.rikkahub.data.datastore.findModelById
+import app.androidrik.rikkahub.data.model.UpstreamConversationConfig
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.Model
@@ -28,7 +31,6 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
-import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
 import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.data.files.FilesManager
@@ -52,6 +54,21 @@ import java.util.Locale
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatVM"
+
+internal fun Conversation.effectiveAssistant(settings: Settings): Assistant {
+    val base = settings.getAssistantById(assistantId) ?: settings.getCurrentAssistant()
+    return upstreamConfig?.applyTo(base) ?: base
+}
+
+/** Apply only intentional edits; an empty/false/null frozen field is never an inheritance marker. */
+internal fun UpstreamConversationConfig.withAssistantChanges(old: Assistant, new: Assistant) = copy(
+    chatModelId = if (old.chatModelId != new.chatModelId) new.chatModelId else chatModelId,
+    reasoningLevel = if (old.reasoningLevel != new.reasoningLevel) new.reasoningLevel else reasoningLevel,
+    enableWebSearch = if (old.enableWebSearch != new.enableWebSearch) new.enableWebSearch else enableWebSearch,
+    mcpServers = if (old.mcpServers != new.mcpServers) new.mcpServers else mcpServers,
+    workspaceId = if (old.workspaceId != new.workspaceId) new.workspaceId else workspaceId,
+    enabledSkills = if (old.enabledSkills != new.enabledSkills) new.enabledSkills else enabledSkills,
+)
 
 class ChatVM(
     id: String,
@@ -108,13 +125,16 @@ class ChatVM(
         settingsStore.settingsFlow.stateIn(viewModelScope, SharingStarted.Eagerly, Settings.dummy())
 
     // 网络搜索(每个助手独立)
-    val enableWebSearch = settings.map {
-        it.getCurrentAssistant().enableWebSearch
+    val enableWebSearch = combine(settings, conversation) { settings, conversation ->
+        conversation.effectiveAssistant(settings).enableWebSearch
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    // 当前模型
-    val currentChatModel = settings.map { settings ->
-        settings.getCurrentChatModel()
+    // 与生成使用同一份会话配置（null 模型 id 仍跟随全局默认模型）。
+    val currentChatModel = combine(settings, conversation) { settings, conversation ->
+        val assistant = conversation.effectiveAssistant(settings)
+        settings.findModelById(assistant.chatModelId ?: settings.chatModelId)?.let { model ->
+            conversation.upstreamConfig?.applyToModel(model) ?: model
+        }
     }.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     // 错误状态
@@ -136,8 +156,55 @@ class ChatVM(
             val oldSettings = settings.value
             // 检查用户头像是否有变化，如果有则删除旧头像
             checkUserAvatarDelete(oldSettings, newSettings)
+            val assistantId = conversation.value.assistantId
+            val oldAssistant = oldSettings.getAssistantById(assistantId) ?: oldSettings.getCurrentAssistant()
+            val newAssistant = newSettings.getAssistantById(oldAssistant.id)
+            if (newAssistant != null && newAssistant != oldAssistant) {
+                // Only fields changed against the GLOBAL baseline are intentional settings edits.
+                // Copying the entire assistant would thaw unrelated false/empty/null snapshot fields.
+                chatService.updateConversationUpstreamConfig(_conversationId) { config ->
+                    config.withAssistantChanges(oldAssistant, newAssistant)
+                }
+            }
             settingsStore.update(newSettings)
         }
+    }
+
+    /** Controls render an effective assistant, so compare to that same baseline, not a stale global one. */
+    fun updateAssistantControls(previous: Assistant, updated: Assistant): Job = viewModelScope.launch {
+        if (conversation.value.upstreamConfig != null) {
+            chatService.updateConversationUpstreamConfig(_conversationId) { config ->
+                config.withAssistantChanges(previous, updated)
+            }
+            // Other controls (e.g. injection bindings) still belong to the global assistant.
+            // Never leak the UI's effective frozen fields into that assistant as a side effect.
+            settingsStore.update { settings ->
+                settings.copy(assistants = settings.assistants.map { global ->
+                    if (global.id == updated.id) updated.copy(
+                        chatModelId = global.chatModelId,
+                        reasoningLevel = global.reasoningLevel,
+                        enableWebSearch = global.enableWebSearch,
+                        mcpServers = global.mcpServers,
+                        workspaceId = global.workspaceId,
+                        enabledSkills = global.enabledSkills,
+                    ) else global
+                })
+            }
+        } else {
+            settingsStore.update { settings ->
+                settings.copy(assistants = settings.assistants.map {
+                    if (it.id == updated.id) updated else it
+                })
+            }
+        }
+    }
+
+    fun setBuiltInSearch(enabled: Boolean) = viewModelScope.launch {
+        chatService.updateConversationUpstreamConfig(_conversationId) { it.copy(builtInSearch = enabled) }
+    }
+
+    fun setWorkspaceCwd(cwd: String?) = viewModelScope.launch {
+        chatService.setConversationWorkspaceCwd(_conversationId, cwd)
     }
 
     // 检查用户头像删除
@@ -153,6 +220,10 @@ class ChatVM(
     // 设置聊天模型
     fun setChatModel(assistant: Assistant, model: Model) {
         viewModelScope.launch {
+            if (conversation.value.upstreamConfig != null) {
+                chatService.updateConversationUpstreamConfig(_conversationId) { it.copy(chatModelId = model.id) }
+                return@launch
+            }
             settingsStore.update { settings ->
                 settings.copy(
                     assistants = settings.assistants.map {
@@ -251,7 +322,7 @@ class ChatVM(
         return viewModelScope.launch {
             // 检查点式压缩：切分由 token 驱动的保留比例决定（对齐 design-auto-compaction §4.1）
             val currentSettings = settings.value
-            val model = currentSettings.getCurrentChatModel()
+            val model = currentChatModel.value
             val windowTokens = model?.effectiveContextLength(currentSettings.contextLengthOverride)
                 ?: DEFAULT_CONTEXT_LENGTH
             val result = chatService.compressToCheckpoint(

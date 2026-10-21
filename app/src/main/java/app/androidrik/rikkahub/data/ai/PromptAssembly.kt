@@ -262,6 +262,8 @@ internal fun buildSendWindowMessages(
     compressionWindow: Conversation.CompressionWindow?,
     contextMessageLimit: Int,
 ): List<UIMessage> {
+    // Only native checkpoints are synthetic. Persisted upstream checkpoints stay in
+    // order here: limitContext retains the last flagged original and limits its suffix.
     val (checkpointMessages, restMessages) =
         (compressionWindow?.applyTo(messages) ?: messages).partitionCheckpointMessages()
     return buildList {

@@ -6,6 +6,8 @@ import androidx.room.RoomDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.rikkahub.data.db.AppDatabase
+import app.androidrik.rikkahub.data.model.UpstreamConversationConfig
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,9 +64,15 @@ class LegacyBackupConversionTest {
                 1,
                 count(sqlite, "media_creation_session"),
             )
-            sqlite.query("select title from ConversationEntity").use { cursor ->
+            sqlite.query("select title, upstream_config from ConversationEntity").use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("旧会话", cursor.getString(0))
+                val config = cursor.getString(1)
+                assertEquals(Json.parseToJsonElement(CONFIG), Json.parseToJsonElement(config))
+                assertEquals(
+                    UpstreamConversationConfig.fromLegacyJson(CONFIG),
+                    UpstreamConversationConfig.fromLegacyJson(config),
+                )
             }
 
             val memories = db.memoryDao().getMemoriesOfAssistant(ASSISTANT)
@@ -164,9 +172,9 @@ class LegacyBackupConversionTest {
             )
 
             db.execSQL(
-                "insert into ConversationEntity (id, assistant_id, title, nodes, create_at, update_at) " +
-                    "values ('c1', ?, '旧会话', '[]', 100, 200)",
-                arrayOf<Any?>(ASSISTANT),
+                "insert into ConversationEntity (id, assistant_id, title, nodes, create_at, update_at, config) " +
+                    "values ('c1', ?, '旧会话', '[]', 100, 200, ?)",
+                arrayOf<Any?>(ASSISTANT, CONFIG),
             )
             val messages = """[{"id":"m1","role":"user","parts":[{"type":"text","text":"看这个附件"},""" +
                 """{"type":"text","text":"file:///data/user/0/me.rerere.rikkahub/files/upload/a.md"},""" +
@@ -222,5 +230,14 @@ class LegacyBackupConversionTest {
 
     private companion object {
         const val ASSISTANT = "0950e2dc-9bd5-4801-afa3-aa887aa36b4e"
+        val CONFIG = """{
+            "chatModelId":"11111111-1111-4111-8111-111111111111",
+            "reasoningLevel":"off",
+            "enableWebSearch":false,
+            "builtInSearch":true,
+            "mcpServers":[],
+            "workspaceId":null,
+            "enabledSkills":["me.rerere.rikkahub.opaque-skill"]
+        }""".trimIndent()
     }
 }

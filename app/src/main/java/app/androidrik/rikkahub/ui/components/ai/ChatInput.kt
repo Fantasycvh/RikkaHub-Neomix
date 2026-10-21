@@ -185,6 +185,8 @@ fun ChatInput(
     onShowContextSheet: () -> Unit = {},
     pendingQuote: UIMessageAnnotation.QuotedMessage? = null,
     onCancelQuote: () -> Unit = {},
+    /** Non-null for a frozen conversation; null retains the global model setting behavior. */
+    onUpdateBuiltInSearch: ((Boolean) -> Unit)? = null,
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -366,6 +368,7 @@ fun ChatInput(
                                 },
                                 onUpdateSearchService = onUpdateSearchService,
                                 model = chatModel,
+                                onUpdateBuiltInSearch = onUpdateBuiltInSearch,
                             )
 
                             // Reasoning

@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonObject
 import app.androidrik.rikkahub.BuildConfig
 import app.androidrik.rikkahub.data.datastore.isRetiredSearchService
 import app.androidrik.rikkahub.utils.JsonInstant
+import kotlin.uuid.Uuid
 
 private const val TAG = "SettingsJsonMigrator"
 
@@ -140,6 +141,25 @@ object SettingsJsonMigrator {
                             root["searchServiceSelected"] = JsonPrimitive(adjusted)
                         }
                     }
+                }
+            }
+
+            // V5: 旧备份的扁平 modeInjections → 预设容器，与 DataStore 的旧 key 回退一致。
+            // 只补缺失的新字段（显式空列表也优先）；原样包装 JSON，保留条目的 id、字段及顺序，
+            // assistants / conversations 的条目级绑定无需重写。空旧列表也必须包装，避免回填默认条目。
+            if ("promptPresets" !in root) {
+                (root["modeInjections"] as? JsonArray)?.let { entries ->
+                    root["promptPresets"] = JsonArray(
+                        listOf(
+                            JsonObject(
+                                mapOf(
+                                    "id" to JsonPrimitive(Uuid.random().toString()),
+                                    "entries" to entries,
+                                )
+                            )
+                        )
+                    )
+                    root.remove("modeInjections")
                 }
             }
 

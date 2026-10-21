@@ -51,6 +51,8 @@ data class UIMessage(
      * 清除提示（详见 `docs/peer-apps-benchmark.md` §四.7）。
      */
     val finishIncomplete: Boolean = false,
+    /** Upstream persisted checkpoint: retain this original message as the active context boundary. */
+    val isContextCheckpoint: Boolean = false,
     // 请求期间生成的内部消息；该标记仅在内存中使用
     @Transient
     val isSynthetic: Boolean = false,
@@ -353,6 +355,12 @@ private const val CONTEXT_KEEP_RATIO = 0.5f
  * @param limit 触发截断的消息条数上限, 小于等于 0 表示不限制
  */
 fun List<UIMessage>.limitContext(limit: Int): List<UIMessage> {
+    // Upstream checkpoints are real persisted messages, not synthetic summary wrappers.
+    // Position (not timestamp) determines the active checkpoint, even with no size limit.
+    val checkpointIndex = indexOfLast { it.isContextCheckpoint }
+    if (checkpointIndex >= 0) {
+        return listOf(this[checkpointIndex]) + drop(checkpointIndex + 1).limitContext(limit)
+    }
     if (limit <= 0 || this.size <= limit) return this
 
     // 截断后回落到的目标条数, 以及两次截断之间截断点前进的步幅

@@ -417,7 +417,17 @@ private fun ChatPageContent(
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
     val glassHazeState = rememberHazeState()
-    val assistant = setting.getCurrentAssistant()
+    val assistant = conversation.effectiveAssistant(setting)
+    // UI-only projection: never persist this whole settings object back to the global store.
+    val effectiveSettings = remember(setting, assistant, currentChatModel) {
+        setting.copy(
+            assistantId = assistant.id,
+            assistants = setting.assistants.map { if (it.id == assistant.id) assistant else it },
+            providers = setting.providers.map { provider ->
+                currentChatModel?.let { provider.editModel(it) } ?: provider
+            },
+        )
+    }
     var showFilesSheet by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
     // 上下文容量面板 + 压缩参数对话框（压缩入口在面板里，参数界面与 + 菜单共用同一个）
@@ -454,7 +464,7 @@ private fun ChatPageContent(
         Scaffold(
             topBar = {
                 TopBar(
-                    settings = setting,
+                    settings = effectiveSettings,
                     conversation = conversation,
                     contextUsage = contextUsage,
                     drawerOpen = drawerOpen,
@@ -483,7 +493,7 @@ private fun ChatPageContent(
                 ChatInput(
                     state = inputState,
                     loading = loadingJob != null,
-                    settings = setting,
+                    settings = effectiveSettings,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
                     contextUsage = contextUsage,
@@ -492,20 +502,12 @@ private fun ChatPageContent(
                         vm.stopGeneration()
                     },
                     enableSearch = enableWebSearch,
-                    onToggleSearch = {
-                        val current = setting.getCurrentAssistant()
-                        vm.updateSettings(
-                            setting.copy(
-                                assistants = setting.assistants.map { assistant ->
-                                    if (assistant.id == current.id) {
-                                        assistant.copy(enableWebSearch = !enableWebSearch)
-                                    } else {
-                                        assistant
-                                    }
-                                }
-                            )
-                        )
+                    onToggleSearch = { enabled ->
+                        vm.updateAssistantControls(assistant, assistant.copy(enableWebSearch = enabled))
                     },
+                    onUpdateBuiltInSearch = if (conversation.upstreamConfig != null) {
+                        { enabled -> vm.setBuiltInSearch(enabled); Unit }
+                    } else null,
                     // 会话内记忆入口（docs/design/design-memory-injection-tiering.md §8.3）。
                     // 与抽屉菜单里的同名项是**同一套语义**，只是作用对象固定为"当前这条会话"。
                     memoryDisabled = conversation.memoryDisabled,
@@ -582,20 +584,10 @@ private fun ChatPageContent(
                     onStartVoiceMode = startVoiceMode,
                     onStopVoiceMode = vm.voiceSession::stop,
                     onUpdateChatModel = {
-                        vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
+                        vm.setChatModel(assistant = assistant, model = it)
                     },
                     onUpdateAssistant = {
-                        vm.updateSettings(
-                            setting.copy(
-                                assistants = setting.assistants.map { assistant ->
-                                    if (assistant.id == it.id) {
-                                        it
-                                    } else {
-                                        assistant
-                                    }
-                                }
-                            )
-                        )
+                        vm.updateAssistantControls(assistant, it)
                     },
                     onUpdateSearchService = { index ->
                         vm.updateSettings(
@@ -1080,21 +1072,12 @@ private fun ChatFilesPickerSheet(
                 onRequestCompress()
             },
             onUpdateAssistant = {
-                vm.updateSettings(
-                    setting.copy(
-                        assistants = setting.assistants.map { assistant ->
-                            if (assistant.id == it.id) {
-                                it
-                            } else {
-                                assistant
-                            }
-                        }
-                    )
-                )
+                vm.updateAssistantControls(assistant, it)
             },
             onUpdateConversation = {
-                vm.updateConversation(it)
-                vm.saveConversationAsync()
+                // FilesPicker edits only this metadata field; never replace streamed messages
+                // with the older conversation snapshot captured by the sheet.
+                vm.setWorkspaceCwd(it.workspaceCwd)
             },
             showInjectionSheet = showInjectionSheet,
             onShowInjectionSheetChange = { showInjectionSheet = it },

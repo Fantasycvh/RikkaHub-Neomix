@@ -81,7 +81,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         UsageRecordEntity::class,
         TranslationHistoryEntity::class,
     ],
-    version = 45,
+    version = 46,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -143,6 +143,8 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // translation_history 同构，旧备份转换时按列名交集就能一并带过来。
         // 见 docs/design/design-translation-history.md
         AutoMigration(from = 44, to = 45),
+        // Nullable upstream snapshot; existing native conversations keep following their assistant.
+        AutoMigration(from = 45, to = 46),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)

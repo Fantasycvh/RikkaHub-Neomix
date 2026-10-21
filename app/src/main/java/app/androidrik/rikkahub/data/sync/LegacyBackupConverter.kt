@@ -20,12 +20,12 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_41_42
 import app.androidrik.rikkahub.data.db.migrations.Migration_43_44
 import app.androidrik.rikkahub.data.db.migrations.Migration_6_7
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
-import app.androidrik.rikkahub.utils.JsonInstant
+import app.androidrik.rikkahub.data.model.UpstreamConversationConfig
 import java.io.File
 import java.util.UUID
 
 /**
- * 原版 RikkaHub 备份（3.x 文件式记忆）→ 本应用 42 版数据库的**读取转换成**导入器。
+ * 原版 RikkaHub 备份（3.x 文件式记忆）→ 本应用当前版数据库的**读取转换成**导入器。
  *
  * 两套 schema 在 v30 后分叉：原版把记忆改成 `memory_file`（一篇 Markdown），
  * 本应用是 `MemoryEntity` 行式记忆 + 版本/历史。Room 迁移只能沿本应用自己的历史走，
@@ -158,21 +158,26 @@ internal class LegacyBackupConverter(private val context: Context) {
     ): Int {
         val sourceCols = sourceColumns(source, table)
         val targetColumns = columnsOf(target, table)
-        val shared = sourceCols.filter { it in targetColumns }
+        // Upstream's config is a frozen snapshot, not a native assistant/global setting.
+        val copyConfig = table == "ConversationEntity" && "config" in sourceCols &&
+            "upstream_config" in targetColumns && "upstream_config" !in sourceCols
+        val shared = sourceCols.filter { it in targetColumns } + if (copyConfig) listOf("config") else emptyList()
+        val destinationColumns = shared.map { if (copyConfig && it == "config") "upstream_config" else it }
         if (shared.isEmpty()) {
             Log.w(TAG, "copyTable($table): no shared columns, skipped")
             return 0
         }
         // 目标表若有「NOT NULL 且无默认值」的列在源库里不存在，逐行插入必然失败并中止整库导入。
         // 这种情况按表跳过并记录，避免一个可选功能表毁掉整个恢复。
-        val missingRequired = requiredTargetColumns(target, table) - shared.toSet()
+        val missingRequired = requiredTargetColumns(target, table) - destinationColumns.toSet()
         if (missingRequired.isNotEmpty()) {
             Log.w(TAG, "copyTable($table): source lacks required columns $missingRequired, skipped")
             return 0
         }
         val columnList = shared.joinToString(",") { "\"$it\"" }
         val placeholders = shared.joinToString(",") { "?" }
-        val insert = "INSERT OR REPLACE INTO \"$table\" ($columnList) VALUES ($placeholders)"
+        val destinationList = destinationColumns.joinToString(",") { "\"$it\"" }
+        val insert = "INSERT OR REPLACE INTO \"$table\" ($destinationList) VALUES ($placeholders)"
         val rewritten = shared.map(::isRewritableText)
         var rows = 0
         source.rawQuery("select $columnList from \"$table\"", null).use { cursor ->
@@ -185,7 +190,11 @@ internal class LegacyBackupConverter(private val context: Context) {
                         Cursor.FIELD_TYPE_BLOB -> cursor.getBlob(index)
                         else -> cursor.getString(index)
                     }
-                    if (rewritten[index] && value is String) {
+                    if (copyConfig && shared[index] == "config") {
+                        // Fail the isolated conversion on malformed known fields, rather than silently
+                        // importing a conversation that will run with different settings.
+                        UpstreamConversationConfig.normalizeLegacyJson(value as String?)
+                    } else if (rewritten[index] && value is String) {
                         LegacyBackupText.rewriteLegacyPaths(value, BuildConfig.APPLICATION_ID)
                     } else value
                 }

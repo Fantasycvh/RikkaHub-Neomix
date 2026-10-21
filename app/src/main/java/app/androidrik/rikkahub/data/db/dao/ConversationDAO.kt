@@ -49,6 +49,12 @@ data class TierOrderRow(
 
 @Dao
 interface ConversationDAO {
+    @Query("UPDATE ConversationEntity SET workspace_cwd = :cwd WHERE id = :id")
+    suspend fun updateWorkspaceCwd(id: String, cwd: String)
+
+    @Query("UPDATE ConversationEntity SET upstream_config = :config WHERE id = :id")
+    suspend fun updateUpstreamConfig(id: String, config: String?)
+
     @Query("SELECT * FROM conversationentity ORDER BY $CONVERSATION_ORDER_BY")
     fun getAll(): Flow<List<ConversationEntity>>
 
@@ -127,6 +133,7 @@ interface ConversationDAO {
             workspace_cwd = :workspaceCwd,
             folder_id = :folderId,
             memory_disabled = :memoryDisabled,
+            upstream_config = :upstreamConfig,
             last_message_at = COALESCE(:lastMessageAt, last_message_at)
         WHERE id = :id
         """
@@ -150,6 +157,7 @@ interface ConversationDAO {
          * ——它是用户开关，false 本身就是有效值，不能让「没传」把它吞掉。
          */
         memoryDisabled: Boolean,
+        upstreamConfig: String?,
     )
 
     /**
