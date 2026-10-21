@@ -329,7 +329,7 @@ private fun ChatListNormal(
     // 压缩检查点（design §4.1 界面侧三边界对齐）：
     // 收起 = 检查点之后的窗口（= AI 实际看到的内容）；展开 = 完整轨迹。
     // 展开态直接复用同一渲染块 -> 历史消息的编辑/重新生成/删除/分支/收藏等操作全部可用。
-    val activeCheckpoint = conversation.activeCompression()
+    val activeCheckpoint = conversation.displayCompression()
     var showCompressedHistory by remember(conversation.id) { mutableStateOf(false) }
     val visibleNodes = if (activeCheckpoint != null && !showCompressedHistory) {
         conversation.windowNodes()
@@ -461,7 +461,25 @@ private fun ChatListNormal(
                         selectedKeys = selectedItems,
                         enabled = selecting,
                     ) {
-                        ChatMessage(
+                        if (node.currentMessage.isContextCheckpoint) {
+                            var showCheckpointBody by remember(node.currentMessage.id) { mutableStateOf(false) }
+                            Column {
+                                CompactionCheckpointRow(
+                                    messageCount = conversation.messageNodes.takeWhile { it.id != node.id }
+                                        .count { !it.currentMessage.isContextCheckpoint },
+                                    summaryPreview = node.currentMessage.toText().lineSequence().firstOrNull().orEmpty(),
+                                    expanded = showCheckpointBody,
+                                    onToggle = { showCheckpointBody = !showCheckpointBody },
+                                )
+                                if (showCheckpointBody) {
+                                    Text(
+                                        text = node.currentMessage.toText(),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        } else ChatMessage(
                             node = node,
                             model = node.currentMessage.modelId?.let(modelById::get),
                             assistant = assistant,

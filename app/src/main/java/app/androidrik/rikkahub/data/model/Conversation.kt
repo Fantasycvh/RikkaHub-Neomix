@@ -11,6 +11,8 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.InstantSerializer
 import app.androidrik.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
 import java.time.Instant
 import kotlin.uuid.Uuid
 
@@ -258,11 +260,26 @@ data class Conversation(
      * 边界之后的节点（存储侧视图，UI 折叠与压缩输入都以它为准）；无有效检查点时返回全量。
      */
     fun windowNodes(): List<MessageNode> {
-        val checkpoint = activeCompression() ?: return messageNodes
-        val boundaryId = checkpoint.boundaryNodeId ?: return messageNodes
-        val boundaryIndex = messageNodes.indexOfFirst { it.id.toString() == boundaryId }
-        if (boundaryIndex < 0) return messageNodes
-        return messageNodes.drop(boundaryIndex + 1)
+        val window = compressionWindow() ?: return messageNodes
+        return messageNodes.drop(window.boundaryIndex + 1)
+    }
+
+    /** Display-only projection; imported checkpoints remain authoritative persisted message nodes. */
+    fun displayCompression(): CompressionSummary? {
+        val window = compressionWindow() ?: return null
+        if (!window.checkpointMessage.isContextCheckpoint) return activeCompression()
+        val message = window.checkpointMessage
+        return CompressionSummary(
+            conversationId = id,
+            content = message.toText(),
+            messageCount = messageNodes.take(window.boundaryIndex)
+                .count { !it.currentMessage.isContextCheckpoint },
+            boundaryNodeId = messageNodes[window.boundaryIndex].id.toString(),
+            // 检查点自身的生成时间：ContextLength 的 usage 陈旧判定与原生检查点同口径。
+            createdAt = java.time.Instant.ofEpochMilli(
+                message.createdAt.toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds(),
+            ),
+        )
     }
 
     /**
@@ -273,10 +290,8 @@ data class Conversation(
      * 无有效检查点时恒为 false。
      */
     fun isWithinCompressionBoundary(nodeIndex: Int): Boolean {
-        val checkpoint = activeCompression() ?: return false
-        val boundaryId = checkpoint.boundaryNodeId ?: return false
-        val boundaryIndex = messageNodes.indexOfFirst { it.id.toString() == boundaryId }
-        return boundaryIndex >= 0 && nodeIndex <= boundaryIndex
+        val boundaryIndex = compressionWindow()?.boundaryIndex ?: return false
+        return nodeIndex <= boundaryIndex
     }
 
     companion object {

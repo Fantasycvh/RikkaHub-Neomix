@@ -1979,11 +1979,7 @@ class ChatService(
         if (!plan.shouldCompress) return@runCatching null  // 无可压缩内容（非错误）
 
         val messagesToCompress = plan.toCompress.map { it.currentMessage }
-        val priorSummary = if (effectiveWindow?.checkpointMessage?.isContextCheckpoint == true) {
-            effectiveWindow.checkpointMessage.toText()
-        } else {
-            conversation.activeCompression()?.content.orEmpty()
-        }
+        val priorSummary = conversation.displayCompression()?.content.orEmpty()
         val priorContext = if (priorSummary.isNotBlank()) {
             "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n$priorSummary"
         } else {
@@ -2027,7 +2023,9 @@ class ChatService(
         // 后续改动（编辑/删除/重生成/切分支）使检查点失效
         val boundaryIndex = conversation.messageNodes.indexOfFirst { it.id == boundaryNode.id }
         val areaFingerprint = conversation.areaFingerprintFor(boundaryIndex)
-        val priorCount = conversation.compressionSummaries.lastOrNull()?.messageCount ?: 0
+        // 被压缩条数按「有效窗口内普通消息」计：此前若是导入的原版检查点（其正文也是被摘要区），
+        // 该计入累计数；仅取 compressionSummaries 会漏掉它，导致「已压缩 N 条」显示偏少。
+        val priorCount = conversation.displayCompression()?.messageCount ?: 0
         val checkpoint = CompressionSummary(
             conversationId = conversationId,
             content = combined,

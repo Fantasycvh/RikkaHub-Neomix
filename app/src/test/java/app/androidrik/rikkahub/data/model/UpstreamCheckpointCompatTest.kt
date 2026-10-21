@@ -39,6 +39,54 @@ class UpstreamCheckpointCompatTest {
         )
 
     @Test
+    fun `display fold follows imported checkpoint and excludes checkpoint from ordinary tail`() {
+        val before = message("history")
+        val first = message("older summary", checkpoint = true)
+        val second = message("active summary", checkpoint = true)
+        val tail = message("tail")
+        val conversation = conversation(before, first, second, tail)
+        val display = requireNotNull(conversation.displayCompression())
+        assertEquals("active summary", display.content)
+        assertEquals(1, display.messageCount)
+        assertEquals(listOf(tail), conversation.windowNodes().map { it.currentMessage })
+        assertEquals(4, conversation.messageNodes.size)
+        assertEquals(listOf(second, tail), conversation.requestWindowMessages())
+    }
+
+    @Test
+    fun `head checkpoint still has display card without deleting persisted node`() {
+        val checkpoint = message("summary", checkpoint = true)
+        val conversation = conversation(checkpoint)
+        assertEquals(0, conversation.displayCompression()?.messageCount)
+        assertTrue(conversation.windowNodes().isEmpty())
+        assertEquals(listOf(checkpoint), conversation.currentMessages)
+    }
+
+    @Test
+    fun `boundary checks and unselected branches agree across checkpoint kinds`() {
+        val before = message("history")
+        val checkpoint = message("summary", checkpoint = true)
+        val unselected = message("unselected", checkpoint = true)
+        val tail = message("tail")
+        val checkpointNode = MessageNode.of(checkpoint).copy(messages = listOf(checkpoint, unselected))
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = listOf(MessageNode.of(before), checkpointNode, MessageNode.of(tail)),
+        )
+        // 显示投影只认「当前选中」的检查点，未选中分支不生效。
+        assertTrue(conversation.isWithinCompressionBoundary(0))
+        assertTrue(conversation.isWithinCompressionBoundary(1))
+        assertFalse(conversation.isWithinCompressionBoundary(2))
+        // 原生检查点在相同边界下判定一致。
+        val native = conversation.copy(
+            compressionSummaries = listOf(nativeAt(conversation, 1)),
+        )
+        assertEquals(conversation.windowNodes(), native.windowNodes())
+        assertTrue(native.isWithinCompressionBoundary(1))
+        assertFalse(native.isWithinCompressionBoundary(2))
+    }
+
+    @Test
     fun `persisted flag defaults false and true round trips`() {
         val ordinary = message("ordinary")
         val encoded = JsonInstant.encodeToString(ordinary)
