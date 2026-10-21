@@ -42,7 +42,7 @@
 | `Model` **无 `contextLength` 字段** | token 驱动需先补字段 |
 | `ChatSizeChecker`：768 节点 / 300K 输入 token 警告阈值 | 已有「长对话有问题」的认知与 UI |
 | `loadMessageNodes`（`ConversationRepository.kt:441`）分页查询（pageSize 64）但**拼成全量 List** | 分页只为规避 `SQLiteBlobTooBigException`，不是懒加载 |
-| 搜索 = SQLite FTS（`MessageFtsManager` 103 行 + `SimpleDictManager` 52 行） | 已够用，无替换需求 |
+| 搜索 = SQLite FTS（`MessageFtsManager` + simple 分词/查询，已去掉 jieba 词典） | 已够用，无替换需求 |
 
 ## 二、Yuihub 实现要点（harness 式）
 
