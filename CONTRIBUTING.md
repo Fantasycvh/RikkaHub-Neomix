@@ -64,7 +64,7 @@
 
 - **提交信息用中文**，写清「改了什么 / 为什么这么改 / 怎么验证的」；吸收自上游的改动请标注来源提交哈希。
 - 代码与注释风格沿用仓库既有形态（4 空格缩进、最长 120 列，见 `.editorconfig`）。
-- 涉及用户可见文案时，**六个语言都要补齐**：`values`(en) / `values-zh` / `values-zh-rTW` / `values-ja` / `values-ko-rKR` / `values-ru`。
+- 涉及用户可见文案时，**三种语言都要补齐**：`values`(en) / `values-zh` / `values-zh-rTW`（UI 语言已收敛为这三种，见 `57fa15533`）。
 
 ## 六、许可
 

@@ -76,8 +76,8 @@ body:
     id: app-version
     attributes:
       label: APP 版本 | App Version
-      description: 例如 v1.2.3 / e.g. v1.2.3
-      placeholder: v1.2.3
+      description: 例如 1.0.28-beta.5 / e.g. 1.0.28-beta.5
+      placeholder: "1.0.28-beta.5"
     validations:
       required: true
 

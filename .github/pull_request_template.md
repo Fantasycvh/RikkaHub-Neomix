@@ -29,7 +29,7 @@ Before opening a PR, read CONTRIBUTING.md. This is an unofficial fork maintained
 跑了什么命令、结果如何。例如：
 ```
 ./gradlew testDebugUnitTest -x :web:buildWebUi --console=plain
-# -> BUILD SUCCESSFUL，:app 1506 项 / :ai 259 项，0 失败
+# -> BUILD SUCCESSFUL，0 失败（各模块计数见输出）
 ```
 新增逻辑请配单测；无法单测的接线处请加**源码级守卫**，并说明是否做过反证。
 -->
@@ -39,5 +39,5 @@ Before opening a PR, read CONTRIBUTING.md. This is an unofficial fork maintained
 - [ ] 我已阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，并确认这个改动**不在**「会被直接拒绝」的范围内
 - [ ] 这个 PR **只做一件事**，没有夹带无关改动（格式重排 / 无关文案 / 依赖升级等）
 - [ ] 这是**本仓自身**的问题；若上游同样存在，我已知悉应提到上游仓库
-- [ ] 涉及用户可见文案时，我已补齐六个语言
+- [ ] 涉及用户可见文案时，我已补齐三种语言（`values` / `values-zh` / `values-zh-rTW`）
 - [ ] 我没有粘贴来源不明、或未经我自己核实与测试的代码
