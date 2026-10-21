@@ -165,6 +165,9 @@ data class UIMessage(
                         }
                     }
 
+                    // These media parts arrive as complete URLs/files, rather than base64 fragments.
+                    is UIMessagePart.Audio, is UIMessagePart.Video, is UIMessagePart.Document -> acc + deltaPart
+
                     else -> {
                         println("delta part append not supported: $deltaPart")
                         acc

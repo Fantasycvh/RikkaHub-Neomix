@@ -76,6 +76,12 @@ import kotlin.time.Clock
 
 private const val TAG = "ResponseAPI"
 
+/** `response.incomplete` 缺 `incomplete_details.reason` 时的 finishReason 兜底（非空即可）。 */
+private const val INCOMPLETE_FALLBACK_FINISH_REASON = "incomplete"
+
+/** 失败事件缺错误详情时，异常文案里最多带多少字符的原始事件。 */
+private const val MAX_FAILURE_DETAIL_CHARS = 300
+
 class ResponseAPI(
     private val client: OkHttpClient,
     private val keyRoulette: KeyRoulette = KeyRoulette.default()
@@ -161,17 +167,58 @@ class ResponseAPI(
                 }
                 Log.d(TAG, "onEvent: $id/$type $data")
                 val json = json.parseToJsonElement(data).jsonObjectOrNull
+                // SSE 的 event 名与 JSON 的 type 双写，且两者可能只出现一个：
+                // - 标准 OpenAI/兼容网关：都有；
+                // - 部分中转只发 `event:`（JSON 里没有 type）⇒ parseResponseDelta 会
+                //   error("chunk type not found")，整条流失败；
+                // - 另有网关发 `event:` 空名（空字符串同样视为缺失）。
+                val sseType = type?.takeIf { it.isNotBlank() }
+                val payloadType = json?.get("type")?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
+                // 结束/失败判定与解析必须同源：有 payload type 用它（parseResponseDelta 读的就是它），
+                // 否则用 SSE event 名兜底。
+                val eventType = payloadType ?: sseType
                 if (json != null) {
-                    val chunk = parseResponseDelta(json, toolCallIdResolver)
+                    // 把归一后的类型补进 payload，只读 JSON type 的 parseResponseDelta 才能继续解析
+                    val payload = if (payloadType == null && sseType != null) {
+                        JsonObject(json + ("type" to JsonPrimitive(sseType)))
+                    } else {
+                        json
+                    }
+                    val chunk = parseResponseDelta(payload, toolCallIdResolver)
                     if (chunk != null) {
                         trySend(chunk).onFailure { e ->
                             Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
                         }
                     }
                 }
-                if (type == "response.completed") {
-                    trySend(terminalChunk())
-                    close()
+                when (eventType) {
+                    // 显式结束：正常完成，或 `response.incomplete`（撞输出上限等「模型本意结束」）。
+                    // 两者都必须发 explicitEnd——否则下游把 incomplete 当裸断流，触发**无条件**自动续写，
+                    // 一次截断变成最多 CONTINUE_LIMIT 次重发（见 ContinuationPolicy）。
+                    "response.completed", "response.incomplete" -> {
+                        trySend(terminalChunk())
+                        close()
+                    }
+
+                    // 失败：内容已由前面的 delta 事件送出；usage 也照样送下游（失败通常已计费），
+                    // 然后按错误结束——不能静默 close()，否则用户只看到半截回复且拿不到原因。
+                    "response.failed", "error" -> {
+                        val failureUsage = json?.get("response")
+                            ?.jsonObjectOrNull
+                            ?.get("usage")
+                            ?.jsonObjectOrNull
+                        parseTokenUsage(failureUsage)?.let { usage ->
+                            trySend(
+                                MessageChunk(
+                                    id = "",
+                                    model = "",
+                                    choices = emptyList(),
+                                    usage = usage,
+                                )
+                            )
+                        }
+                        close(parseStreamFailure(json, eventType))
+                    }
                 }
             }
 
@@ -818,9 +865,64 @@ class ResponseAPI(
                     usage = parseTokenUsage(jsonObject["response"]?.jsonObject?.get("usage")?.jsonObject)
                 )
             }
+
+            // 「有意的提前结束」：典型是撞输出上限
+            // `{"type":"response.incomplete","response":{"status":"incomplete",
+            //   "incomplete_details":{"reason":"max_output_tokens"},"usage":{...}}}`。
+            // 必须把 reason 填进 finishReason 并让调用方发 explicitEnd，否则：
+            // ① 下游看不到「已达输出上限」提示（只能发现回复戛然而止）；
+            // ② 更糟——没有显式结束标记，会被当成裸断流而**无条件**自动续写。
+            "response.incomplete" -> {
+                val response = jsonObject["response"]?.jsonObjectOrNull
+                val reason = response
+                    ?.get("incomplete_details")
+                    ?.jsonObjectOrNull
+                    ?.get("reason")
+                    ?.jsonPrimitiveOrNull
+                    ?.contentOrNull
+                    ?.takeIf { it.isNotBlank() }
+                return MessageChunk(
+                    id = response?.get("id")?.jsonPrimitiveOrNull?.contentOrNull ?: "",
+                    model = "",
+                    choices = listOf(
+                        UIMessageChoice(
+                            index = 0,
+                            delta = null,
+                            message = null,
+                            // reason 缺失时给一个非空值：至少保住「显式结束」语义，避免误续写
+                            finishReason = reason ?: INCOMPLETE_FALLBACK_FINISH_REASON,
+                        )
+                    ),
+                    usage = parseTokenUsage(response?.get("usage")?.jsonObjectOrNull),
+                )
+            }
         }
 
         return null
+    }
+
+    /**
+     * 把流失败事件（`response.failed` / `error`）归一成可抛出的异常。
+     *
+     * 事件形状不同，错误对象位置也不同：
+     * - `{"type":"response.failed","response":{"status":"failed","error":{"code":…,"message":…}}}`
+     *   ⇒ 错误在 `response.error`；
+     * - `{"type":"error","error":{"type":"…","message":…}}` ⇒ 错误在顶层 `error`。
+     *
+     * 缺详情时退化为带事件类型的通用异常（附截断后的原始事件，便于排查），绝不返回 null——
+     * 调用方用 `close(exception)` 结束流，静默 close 会被下游当成「裸断流」。
+     */
+    private fun parseStreamFailure(jsonObject: JsonObject?, eventType: String?): Throwable {
+        val errorElement = jsonObject?.get("response")
+            ?.jsonObjectOrNull
+            ?.get("error")
+            ?.takeIf { it !is JsonNull }
+            ?: jsonObject?.get("error")?.takeIf { it !is JsonNull }
+        return errorElement?.parseErrorDetail()
+            ?: IllegalStateException(
+                "Responses API stream $eventType without error detail: " +
+                    (jsonObject?.toString()?.take(MAX_FAILURE_DETAIL_CHARS) ?: "<non-json event>")
+            )
     }
 
     /**

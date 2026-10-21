@@ -41,6 +41,8 @@ import app.androidrik.rikkahub.data.ai.tools.local.hasUnfinishedItems
 import app.androidrik.rikkahub.data.ai.tools.local.latestTodoPlan
 import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.ai.ui.isOutputLimitTruncation
+import app.androidrik.ai.ui.isContentFilterTruncation
+import app.androidrik.ai.ui.isEmptyUIMessage
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.ToolApprovalState
@@ -639,10 +641,19 @@ class GenerationHandler(
                     val last = messages.lastOrNull()
                     // 空回复补救：最后一次请求只产出思考、无可见正文也无工具调用时，
                     // 注入一次性恢复提示再请求一轮（见循环前的注释）
-                    val hasVisibleOutput = last?.parts.orEmpty().any { part ->
-                        (part is UIMessagePart.Text && part.text.isNotBlank()) ||
-                            part is UIMessagePart.Image
-                    }
+                    val hasVisibleOutput = last?.takeIf { it.role == MessageRole.ASSISTANT }
+                        ?.parts.orEmpty().any { part ->
+                            when (part) {
+                                is UIMessagePart.Text -> part.text.isNotBlank()
+                                is UIMessagePart.Image -> part.url.isNotBlank()
+                                is UIMessagePart.Audio -> part.url.isNotBlank()
+                                is UIMessagePart.Video -> part.url.isNotBlank()
+                                is UIMessagePart.Document -> part.url.isNotBlank()
+                                else -> false
+                            }
+                        }
+                    // Safety refusals are explicit outcomes, not invitations to resend the prompt.
+                    if (isContentFilterTruncation(last?.finishReason)) break
                     if (!hasVisibleOutput && !visibleAnswerRecovered) {
                         visibleAnswerRecovered = true
                         pendingRecoveryHint = VISIBLE_ANSWER_RECOVERY_HINT
@@ -1202,6 +1213,7 @@ class GenerationHandler(
                 // 没有 = 裸断流（网关/中转提前切连接）——此前与「正常收尾」无法区分，整轮被当成功。
                 var sawExplicitEnd = false
                 var finishReason: String? = null
+                var receivedAssistantContent = false
                 // 思考退化护栏：调用内逐字重复 ⇒ 从内部中止本次流（抛出沿链取消上游 SSE 连接），
                 // 已生成内容照常保留，由步骤循环收尾（见 [ThinkingDegenerationGuard]）。
                 degenerationGuard?.onCallStarted()
@@ -1212,9 +1224,11 @@ class GenerationHandler(
                             messages = requestMessages,
                             params = params
                         ).collect { chunk ->
-                            if (chunk.explicitEnd) {
-                                sawExplicitEnd = true
-                                return@collect
+                            // A terminal chunk may also carry usage/finish metadata; never drop it.
+                            if (chunk.explicitEnd) sawExplicitEnd = true
+                            val output = chunk.choices.firstOrNull()?.let { it.delta ?: it.message }
+                            if (output?.role == MessageRole.ASSISTANT && output.parts.hasGenerationContent()) {
+                                receivedAssistantContent = true
                             }
                             // "unknown" 是 chat/completions 解析层「字段缺失」的占位，归一成 null
                             chunk.choices.firstOrNull()?.finishReason
@@ -1250,6 +1264,16 @@ class GenerationHandler(
                         // 护栏主动断流：不是失败——不回滚快照、不重试、不 fallback，
                         // 与另外三个护栏的「优雅停止」同款（停止提示由步骤循环发出）
                     }
+                    // Only output from THIS request counts: an earlier tool result or continuation
+                    // must not turn a completely empty 200 response into success.
+                    requireAssistantResponse(receivedAssistantContent, finishReason)
+                    if (!receivedAssistantContent && isContentFilterTruncation(finishReason) &&
+                        messages.lastOrNull()?.role != MessageRole.ASSISTANT
+                    ) {
+                        messages = messages + UIMessage(
+                            role = MessageRole.ASSISTANT, parts = emptyList(), modelId = model.id,
+                        )
+                    }
                     // 流正常收尾：把「结束状态」写到末尾助手消息上（裸断流也会走到这里，
                     // 区别只在 sawExplicitEnd）。续写成功会再次覆写，故不需要额外的清除逻辑。
                     messages = messages.markLastFinish(finishReason, incomplete = !sawExplicitEnd)
@@ -1266,7 +1290,7 @@ class GenerationHandler(
                     val plan = provider.retryOption ?: settings.retrySetting
                     // #1812 分流：已流式输出可见内容后断开 → 保留为草稿（不再回滚清空）；
                     // 阈值可配（partialOutputMinChars），防呆下限 1（避免误配 0/负数把零输出也当半截）
-                    if (plan.keepPartialOnFailure && !plan.retryAfterPartial &&
+                    if (e !is EmptyGenerationResponseException && plan.keepPartialOnFailure && !plan.retryAfterPartial &&
                         isPartialOutput(messages, plan.partialOutputMinChars.coerceAtLeast(1))
                     ) {
                         throw GenerationPartialFailureException(e, messages)
@@ -1306,6 +1330,11 @@ class GenerationHandler(
                             }
                         }
                     }
+                    val output = chunk.choices.firstOrNull()?.let { it.message ?: it.delta }
+                    requireAssistantResponse(
+                        receivedContent = output?.role == MessageRole.ASSISTANT && output.parts.hasGenerationContent(),
+                        finishReason = chunk.choices.firstOrNull()?.finishReason,
+                    )
                     // 非流式：整包返回（要么完整要么抛错）⇒ 不存在裸断流，只记 finish_reason
                     messages = messages.markLastFinish(
                         reason = chunk.choices.firstOrNull()?.finishReason
@@ -1478,6 +1507,19 @@ class GenerationPartialFailureException(
     cause: Throwable,
     val partialMessages: List<UIMessage>,
 ) : Exception(cause)
+
+/** A valid HTTP response with no assistant output is a failure, not a successful user message. */
+internal class EmptyGenerationResponseException : java.io.IOException(
+    "The model returned an empty response. Please retry or choose another model."
+)
+
+private fun List<UIMessagePart>.hasGenerationContent(): Boolean =
+    !isEmptyUIMessage() || any { it is UIMessagePart.Reasoning && it.metadata != null }
+
+internal fun requireAssistantResponse(receivedContent: Boolean, finishReason: String?) {
+    // Preserve explicit safety outcomes so the UI can explain them without retrying the same prompt.
+    if (!receivedContent && !isContentFilterTruncation(finishReason)) throw EmptyGenerationResponseException()
+}
 
 /** 半截输出判定默认阈值：过滤 reasoning 后最后一条 assistant 消息可见 Text ≥ 该值视为「已产生有效输出」。 */
 private const val PARTIAL_OUTPUT_THRESHOLD_CHAR = 50

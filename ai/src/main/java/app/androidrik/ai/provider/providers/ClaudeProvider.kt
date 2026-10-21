@@ -57,6 +57,7 @@ import app.androidrik.ai.util.stringSafe
 import app.androidrik.ai.util.applyCustomHeaders
 import app.androidrik.ai.util.toHeaders
 import app.androidrik.common.http.await
+import app.androidrik.common.http.jsonObjectOrNull
 import app.androidrik.common.http.jsonPrimitiveOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -195,7 +196,12 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                     return
                 }
 
-                val dataJson = json.parseToJsonElement(data).jsonObject
+                val dataJson = json.parseToJsonElement(data).jsonObjectOrNull ?: return
+                // SSE 的 event 名与 JSON 的 type 双写，且都可能缺省/为空串：
+                // 空名（`event:` 空行）与缺失同样对待，否则 message_stop 认不出来
+                // （只能等连接关闭＝退化成裸断流）。
+                val eventType = type?.takeIf { it.isNotBlank() }
+                    ?: dataJson["type"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
                 val deltaMessage = parseMessage(buildJsonArray {
                     val contentBlockObj = dataJson["content_block"]?.jsonObject
                     val deltaObj = dataJson["delta"]?.jsonObject
@@ -206,6 +212,17 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                         add(deltaObj)
                     }
                 })
+                // `message_delta` 是**唯一**携带 stop_reason 的事件：
+                // `{"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{...}}`。
+                // 早先这里恒填 null，于是 Anthropic 的 max_tokens / refusal 在下游完全不可见——
+                // 「已达输出上限」「内容被拦截」两类提示、手动/自动续写全部失效
+                // （见 `Message.isOutputLimitTruncation` / `isContentFilterTruncation`）。
+                val finishReason = dataJson["delta"]
+                    ?.jsonObjectOrNull
+                    ?.get("stop_reason")
+                    ?.jsonPrimitiveOrNull
+                    ?.contentOrNull
+                    ?.takeIf { it.isNotBlank() }
                 val tokenUsage = parseTokenUsage(dataJson)
                 val messageChunk = MessageChunk(
                     id = id ?: "",
@@ -215,7 +232,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                             index = 0,
                             delta = deltaMessage,
                             message = null,
-                            finishReason = null
+                            finishReason = finishReason
                         )
                     ),
                     usage = tokenUsage
@@ -225,7 +242,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                     Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
                 }
 
-                when (type) {
+                when (eventType) {
                     "message_stop" -> {
                         Log.d(TAG, "Stream ended")
                         trySend(terminalChunk())
@@ -233,8 +250,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                     }
 
                     "error" -> {
-                        val eventData = json.parseToJsonElement(data).jsonObject
-                        val error = eventData["error"]?.parseErrorDetail()
+                        val error = dataJson["error"]?.parseErrorDetail()
                         close(error)
                     }
                 }

@@ -1,6 +1,7 @@
 package app.androidrik.ai.provider.providers.openai
 
 import android.util.Log
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -77,7 +78,15 @@ private const val TAG = "ChatCompletionsAPI"
 
 class ChatCompletionsAPI(
     private val client: OkHttpClient,
-    private val keyRoulette: KeyRoulette
+    private val keyRoulette: KeyRoulette,
+    /**
+     * SSE 事件源工厂（**测试注入点**）。
+     *
+     * 生产环境用 `EventSources.createFactory(configureClientWithProxy(...))`；单测用 fake 工厂
+     * 驱动真实 listener 的回调，覆盖「结构 400 重发 / 取消 / 旧 source 迟到回调」这些
+     * 无法用纯函数验证的并发路径。
+     */
+    private val eventSourceFactory: (OkHttpClient) -> EventSource.Factory = { EventSources.createFactory(it) },
 ) : OpenAIImpl {
     override suspend fun generateText(
         providerSetting: ProviderSetting.OpenAI,
@@ -158,10 +167,12 @@ class ChatCompletionsAPI(
         // 「本来就回填了」而不再重发（自己把自己锁死）。
         val attemptWillBackfill = requiresToolReasoningBackfill(host, params.model)
 
-        // 事件源可被替换：结构校验失败时按带回填的请求重建一个（见 retryWithBackfillIfStructural）。
-        // 工厂与代理配置不变，只有请求体不同。用 lateinit 是因为 listener 要先建、而 listener
-        // 里的重试逻辑又需要它 —— 两者互相引用，只能这样打破循环。
-        lateinit var newEventSource: (Request) -> EventSource
+        // 连接管理（AI-3）：重发出来的新 EventSource 必须能被 `awaitClose` 取消，
+        // 且旧 source 的迟到回调不能污染/关闭新 stream。
+        val tracker = StreamingEventSourceTracker()
+
+        // 事件源可被替换：结构校验失败时按带回填的请求重建一个（见 armBackfillRetry + openSource）。
+        // 工厂与代理配置不变，只有请求体不同。
 
         /**
          * 最近一次 [buildRequest] 生成的请求体 JSON 字符串，仅供日志使用。
@@ -195,8 +206,13 @@ class ChatCompletionsAPI(
                 .build()
         }
 
-        /** 按错误签名决定是否带着回填再发一次。返回 true = 已重发。 */
-        fun retryWithBackfillIfStructural(exception: Throwable?): Boolean {
+        /**
+         * 是否该带着回填**重发一次**：只做判定与学习，**不创建连接**。
+         *
+         * 建连统一交给 [openSource]：旧实现把「建连接」也放在重试 helper 里，于是同步建连失败时
+         * helper 建一个、外层再建一个 —— 多出一条未纳入 `awaitClose` 的连接（AI-3）。
+         */
+        fun armBackfillRetry(exception: Throwable?): Boolean {
             if (retriedWithBackfill || attemptWillBackfill) return false
             if (!isReasoningBackfillError(exception?.message)) return false
             // 先学、后重发：learnReasoningTextValidator 会让重发那次的
@@ -204,16 +220,11 @@ class ChatCompletionsAPI(
             learnReasoningTextValidator(host)
             retriedWithBackfill = true
             Log.i(TAG, "streamText: host=$host requires reasoning_content backfill, resending once")
-            return try {
-                newEventSource(buildRequest())
-                true
-            } catch (e: Throwable) {
-                // 重发也没建立起事件源：如实上报。这里必须自己吞掉——本函数跑在 OkHttp 的
-                // 回调线程上，往外抛既没人接、又会让这次生成悬着不结束（调用方等不到 close）。
-                Log.w(TAG, "streamText: resend with reasoning backfill failed", e)
-                false
-            }
+            return true
         }
+
+        // listener 里的重试需要「建连接」，而建连接又需要 listener —— 用 lateinit 打破互相引用。
+        lateinit var openSource: (Request) -> EventSource
 
         val listener = object : EventSourceListener() {
             override fun onEvent(
@@ -222,6 +233,8 @@ class ChatCompletionsAPI(
                 type: String?,
                 data: String
             ) {
+                // 旧 source 的迟到事件必须丢弃：结构失败重发后旧连接可能还在回调（不得污染新 stream）。
+                if (!tracker.isActive(eventSource)) return
                 if (data == "[DONE]") {
                     println("[onEvent] (done) 结束流: $data")
                     // 显式结束标记：下游据此区分「正常收尾」与「裸断流」（见 MessageChunk.explicitEnd）
@@ -279,7 +292,9 @@ class ChatCompletionsAPI(
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
-                var exception = t
+                // 旧 source 的迟到失败同样不能影响已被替换的新 stream。
+                if (!tracker.isActive(eventSource)) return
+                var exception: Throwable? = t
 
                 t?.printStackTrace()
                 println("[onFailure] 发生错误: ${t?.javaClass?.name} ${t?.message} / $response")
@@ -297,22 +312,52 @@ class ChatCompletionsAPI(
                     e.printStackTrace()
                     exception = e
                 } finally {
-                    // 结构校验失败 ⇒ 带着回填重发一次（此时**不**关闭流，调用方看不到这次失败）
-                    if (!retryWithBackfillIfStructural(exception)) {
-                        close(exception)
+                    // ⚠️ `close(exception)` 传 null 等于**正常结束**：onFailure 但既没有 Throwable
+                    // 也没有可解析 body 时，必须给一个 IOException 兜底，不能把失败当成功。
+                    val failure: Throwable =
+                        exception ?: IOException("SSE stream failed without exception")
+                    // 结构校验失败 ⇒ 带着回填重发一次（此时**不**关闭流，调用方看不到这次失败）。
+                    if (armBackfillRetry(failure)) {
+                        try {
+                            openSource(buildRequest())
+                        } catch (e: Throwable) {
+                            // 重发也没建立起事件源：如实上报。这里必须自己吞掉——本函数跑在
+                            // OkHttp 的回调线程上，往外抛既没人接、又会让这次生成悬着不结束
+                            // （调用方等不到 close）。
+                            Log.w(TAG, "streamText: resend with reasoning backfill failed", e)
+                            close(failure)
+                        }
+                    } else {
+                        close(failure)
                     }
                 }
             }
 
             override fun onClosed(eventSource: EventSource) {
+                // 旧 source 迟到的 onClosed 不得关闭已被替换的新 stream。
+                if (!tracker.isActive(eventSource)) return
                 close()
             }
         }
 
-        // 事件源可被替换：结构校验失败时按带回填的请求重建一个（见 retryWithBackfillIfStructural）。
-        // 工厂与代理配置不变，只有请求体不同。
-        val factory = EventSources.createFactory(client.configureClientWithProxy(providerSetting.proxy))
-        newEventSource = { req -> factory.newEventSource(req, listener) }
+        val factory = eventSourceFactory(client.configureClientWithProxy(providerSetting.proxy))
+
+        /**
+         * 建连并登记。
+         *
+         * ⚠️ 不能只写成 `newEventSource(...).also { tracker.activate(it) }`：OkHttp 在
+         * `newEventSource` **返回前**就可能同步回调（内层 enqueue 之后立即执行），那时 tracker
+         * 还没 active，首个 onEvent/onFailure/onClosed 会被丢弃（丢首个 chunk，甚至 flow 永不结束）。
+         * 因此把 attempt token 绑在 per-source 的 [GuardedEventSourceListener] 上：回调先
+         * `allowsCallback`（当前 attempt 可认领 active），旧 attempt 事后无法重新抢占。
+         */
+        fun openAndTrack(req: Request): EventSource {
+            val attempt = tracker.newAttempt()
+            val guarded = GuardedEventSourceListener(tracker, attempt, listener)
+            return factory.newEventSource(req, guarded).also { tracker.activate(attempt, it) }
+        }
+
+        openSource = { req -> openAndTrack(req) }
 
         val request = buildRequest()
         // ⚠️ **不要**写 `json.encodeToString(request.body)`：`request.body` 的类型是
@@ -322,19 +367,27 @@ class ChatCompletionsAPI(
         // lastRequestBodyJson）。
         Log.i(TAG, "streamText: ${lastRequestBodyJson ?: "<unavailable>"}")
 
-        val eventSource = try {
-            newEventSource(request)
-        } catch (e: Throwable) {
-            // 同步失败（未能建立事件源）走的是另一条路径，onFailure 不会被调用：
-            // 这里同样给一次自学习机会，否则这类网关永远学不到。
-            if (!retryWithBackfillIfStructural(e)) throw e
-            // 重发成功：让下面拿到新的 eventSource。重发是同步注册，失败会抛。
-            factory.newEventSource(buildRequest(), listener)
-        }
+        // ⚠️ 整段「建连 + awaitClose」必须包在 try/finally 里：如果建连（或同步回调）在
+        // `awaitClose` 之前抛错，旧写法不会执行 awaitClose 里的清理 ⇒ 若 tracker 已经通过
+        // 同步回调 claim 了 source，这条连接会泄漏（且 flow 以异常结束但连接还在跑）。
+        try {
+            try {
+                openSource(request)
+            } catch (e: Throwable) {
+                // 同步失败（未能建立事件源）走的是另一条路径，onFailure 不会被调用：
+                // 这里同样给一次自学习机会，否则这类网关永远学不到。
+                if (!armBackfillRetry(e)) throw e
+                // 重发**只建一个**替代连接（旧实现在这里会再建一个未纳入 awaitClose 的连接，AI-3）。
+                openSource(buildRequest())
+            }
 
-        awaitClose {
-            println("[awaitClose] 关闭eventSource ")
-            eventSource.cancel()
+            awaitClose {
+                println("[awaitClose] 关闭eventSource ")
+            }
+        } finally {
+            // 任何退出路径（正常收尾 / 建连抛错 / 同步回调抛错 / 取消）都回收当前 source。
+            // 取消的是**当前**（可能是重发后的新）source，而不是首次创建的那个（AI-3）。
+            tracker.close()
         }
         // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
     }.buffer(Channel.UNLIMITED).flowOn(Dispatchers.IO)
