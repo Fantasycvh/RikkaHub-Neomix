@@ -113,10 +113,15 @@ class MemoryRepository(
         reason: String = "",
         kind: MemoryKind? = null,
         dueAt: Long? = null,
+        allowKindChange: Boolean = true,
+        allowOpenTaskKindChange: Boolean = true,
     ): AssistantMemory = transactions.run {
         val old = requireNotNull(findEntityByPublicId(id)) { "Memory record $id not found" }
         checkRevision(old, expectedRevision, actor)
-        updateEntityContent(old, content, importance, description, now, actor, reason, kind, dueAt)
+        updateEntityContent(
+            old, content, importance, description, now, actor, reason, kind, dueAt,
+            allowKindChange, allowOpenTaskKindChange,
+        )
     }
 
     suspend fun updateContentInStore(
@@ -131,10 +136,15 @@ class MemoryRepository(
         reason: String = "",
         kind: MemoryKind? = null,
         dueAt: Long? = null,
+        allowKindChange: Boolean = true,
+        allowOpenTaskKindChange: Boolean = true,
     ): AssistantMemory = transactions.run {
         val old = requireNotNull(findEntityInStore(storeId, id)) { "Memory record $id not found in store" }
         checkRevision(old, expectedRevision, actor)
-        updateEntityContent(old, content, importance, description, now, actor, reason, kind, dueAt)
+        updateEntityContent(
+            old, content, importance, description, now, actor, reason, kind, dueAt,
+            allowKindChange, allowOpenTaskKindChange,
+        )
     }
 
     private suspend fun updateEntityContent(
@@ -147,11 +157,26 @@ class MemoryRepository(
         reason: String,
         kind: MemoryKind?,
         dueAt: Long?,
+        allowKindChange: Boolean,
+        allowOpenTaskKindChange: Boolean,
     ): AssistantMemory {
-        val nextKind = kind ?: MemoryKind.fromStorage(old.kind)
+        val oldKind = MemoryKind.fromStorage(old.kind)
+        val nextKind = kind ?: oldKind
+        // 整理开关关闭时这是第二道门禁：提示词已经禁止改类，这里保证模型即使给出 kind 也写不进去。
+        // 仅「设置成同一个 kind」仍然放行（edit 常带当前类型，不应因此失败）。
+        require(allowKindChange || nextKind == oldKind) {
+            "Changing memory kind is disabled for this write"
+        }
+        // 未完成事务不能靠 edit 改类绕过 complete/drop：那样会同时丢掉状态、截止日和淘汰保护。
+        // 置空/保持同类型不受影响；已关闭事务与普通记录仍可由调用方决定是否允许改类。
+        val convertingOpenTask = oldKind == MemoryKind.TASK && nextKind != MemoryKind.TASK &&
+            MemoryTaskStatus.fromStorage(old.taskStatus) == MemoryTaskStatus.OPEN
+        require(allowOpenTaskKindChange || !convertingOpenTask) {
+            "Open tasks cannot change kind; complete or drop them first"
+        }
         require(nextKind != MemoryKind.TASK || !old.isAnchor) { "Task memories cannot be anchors" }
         require(dueAt == null || dueAt >= 0L) { "Invalid due date" }
-        val nextStatus = if (nextKind == MemoryKind.TASK && MemoryKind.fromStorage(old.kind) == MemoryKind.TASK) old.taskStatus else MemoryTaskStatus.OPEN.storage
+        val nextStatus = if (nextKind == MemoryKind.TASK && oldKind == MemoryKind.TASK) old.taskStatus else MemoryTaskStatus.OPEN.storage
         val nextDue = if (nextKind == MemoryKind.TASK) dueAt ?: old.dueAt else 0L
         ensureRevisionAvailable(old.revision)
         requireCas(memoryDAO.updateContentFields(

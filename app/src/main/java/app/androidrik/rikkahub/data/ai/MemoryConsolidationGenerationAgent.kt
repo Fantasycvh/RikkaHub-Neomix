@@ -60,7 +60,10 @@ class MemoryConsolidationGenerationAgent(
             typedVersionedOnUpdate = { id, content, importance, description, revision, kind, dueAt ->
                 memoryRepository.updateContentInStore(request.memoryId, id, content, importance, description,
                     expectedRevision = revision, actor = "CONSOLIDATOR", reason = "memory_tool edit",
-                    kind = kind, dueAt = dueAt).also { applied++ }
+                    kind = kind, dueAt = dueAt, allowKindChange = request.allowKindChange,
+                    // 整理永远不能把未完成事务改成别的类型：先 complete/drop 才有资格谈改类。
+                    allowOpenTaskKindChange = false)
+                    .also { applied++ }
             },
             versionedOnComplete = { id, revision ->
                 memoryRepository.setTaskStatusInStore(request.memoryId, id, MemoryTaskStatus.DONE,
@@ -92,11 +95,10 @@ class MemoryConsolidationGenerationAgent(
             proposalSink = if (request.proposeOnly) { proposal -> proposals += proposal } else null,
         )
 
-        val systemPrompt = if (request.proposeOnly) {
-            MEMORY_CONSOLIDATION_SYSTEM_PROMPT + "\n\n" + MEMORY_CONSOLIDATION_PROPOSAL_NOTE
-        } else {
-            MEMORY_CONSOLIDATION_SYSTEM_PROMPT
-        }
+        val systemPrompt = memoryConsolidationSystemPrompt(
+            proposeOnly = request.proposeOnly,
+            allowKindChange = request.allowKindChange,
+        )
         val profile = Assistant(
             id = Uuid.random(),
             name = "memory-consolidator",

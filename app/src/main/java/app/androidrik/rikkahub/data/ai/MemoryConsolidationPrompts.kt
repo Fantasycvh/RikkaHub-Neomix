@@ -230,9 +230,10 @@ internal val MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """
     - topic: knowledge, projects and decisions. Merge duplicates and correct superseded facts as usual.
     - task: the user's own commitment with a completion criterion. Never auto-complete, drop or retire
       an open task because it is old or overdue. Do not turn it into topic/profile to evade protection.
-    - Correct a mistaken kind only with clear user evidence; uncertain classification stays topic.
-      If a finished task yields a lasting conclusion explicitly stated in NEW TURNS, create a separate
-      topic for that conclusion; do not merge it with the task or silently replace the task's kind.
+    - An existing record's kind is fixed: do not change it. If a finished task yields a lasting
+      conclusion explicitly stated in NEW TURNS, create a separate topic for that conclusion; do not
+      replace the task's kind. Uncertain classification stays as it is. (A separate user switch may
+      lift this rule; see the extra section when present.)
 
     Rules:
     - The new turns are the only source of new facts. Never invent, infer, or record your own
@@ -258,6 +259,56 @@ internal val MEMORY_CONSOLIDATION_PROPOSAL_NOTE = """
     Only create/edit replacement operation_ids may authorize that deletion after review; complete/drop
     are status changes, never replacement dependencies. Reads work normally.
 """.trimIndent()
+
+/**
+ * **用户显式开启「整理时可调整类型」**时才追加的一段。
+ *
+ * 这是对主提示「已有记录类型固定」的**窄例外**，必须写明它覆盖哪一条、不覆盖哪些：
+ * 关闭态不再有任何改类许可（仓库层也会拒绝），所以这里是唯一允许改类的入口。
+ * 单步跨类合并仍然禁止；只有「先独立改类、后续步骤再合并」的两步路径被允许，且两侧都要有证据。
+ */
+internal val MEMORY_CONSOLIDATION_RECLASSIFY_NOTE = """
+    Type changes are enabled for this library (the user opted in). This section overrides the base rules
+    that an existing record's kind is fixed and that records are never merged across kinds; every other
+    rule above still applies.
+    - You may change an existing record's kind with `action="edit"` and `kind`, but only when NEW TURNS
+      contain the user's own statement that makes the current kind clearly wrong. An assistant's wording,
+      your inference, age, a due date or silence is never such evidence.
+    - Choose the kind that will stay correct: profile = stable identity or long-term response preference;
+      topic = knowledge, projects and decisions; task = a commitment the user owns with a completion
+      criterion. If still uncertain, keep the current kind.
+    - Do not change kind to get under the 200-record limit, to move a task out of or into protection, or
+      to make a merge pass. Cross-kind merging in one step stays forbidden: reclassify in its own edit
+      first, then merge only when later steps independently support it.
+    - Keep an unfinished open task as a task. The library rejects converting an open task to another kind,
+      so use `complete` when the user says it is done and `drop` when they say it is cancelled.
+    - A closed task normally stays a task: for a lasting conclusion prefer creating a separate topic over
+      replacing the task's kind. Reclassify it only when the record itself was never a commitment and the
+      user's statement shows that.
+    - task -> profile/topic clears the task status and due date; take that consequence as part of the same
+      decision, not as a side effect. Anchored records cannot become tasks (tasks cannot be anchors); do
+      not attempt that.
+    - This is a narrow exception for correcting kinds, not permission to rewrite records freely.
+""".trimIndent()
+
+/**
+ * 一次整理的系统提示：主纪律 + 可选的两段补充。
+ *
+ * 纯函数是为了让「开关有没有真的进到提示里」能在 JVM 上钉死；顺序固定为
+ * 主提示 → 改类例外 → 只提案说明，后者引用前面的动作名，倒过来会读起来像两套规则。
+ */
+internal fun memoryConsolidationSystemPrompt(
+    proposeOnly: Boolean,
+    allowKindChange: Boolean,
+): String = buildString {
+    append(MEMORY_CONSOLIDATION_SYSTEM_PROMPT)
+    if (allowKindChange) {
+        append("\n\n").append(MEMORY_CONSOLIDATION_RECLASSIFY_NOTE)
+    }
+    if (proposeOnly) {
+        append("\n\n").append(MEMORY_CONSOLIDATION_PROPOSAL_NOTE)
+    }
+}
 
 /** 一次整理实际带进模型的新轮次，以及它们把各会话的进度推进到哪。 */
 internal data class ConsolidationTranscript(

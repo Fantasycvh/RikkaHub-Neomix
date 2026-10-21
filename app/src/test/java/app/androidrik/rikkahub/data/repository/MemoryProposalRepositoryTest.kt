@@ -336,6 +336,23 @@ class MemoryProposalRepositoryTest {
         assertTrue(f.trash.rows.isEmpty())
     }
 
+    @Test fun `reclassifying a record can authorize a later same-kind merge`() = runBlocking {
+        // 这是「两步合并」的有意路径：先单独改类，再删除已同类的记录。
+        // 一步内跨类合并仍被上一个测试挡住；这里钉住两步路径不会因守卫误伤。
+        val f = Fixture()
+        val kept = f.seed("identity")
+        val removed = f.seed("project knowledge")
+        f.save(
+            edit(kept.id).copy(kind = "topic"),
+            delete(removed.id, dependency = "edit"),
+        )
+        val result = f.applyAll()
+        assertEquals(2, result.applied)
+        assertNull(f.memory.getMemoryInStore("store", removed.id))
+        assertEquals(app.androidrik.rikkahub.data.model.MemoryKind.TOPIC,
+            f.memory.getMemoryInStore("store", kept.id)!!.kind)
+    }
+
     @Test fun `closing a task then evicting it in same apply rolls back`() = runBlocking {
         val f = Fixture()
         val task = f.memory.addMemory("store", "commitment", kind = app.androidrik.rikkahub.data.model.MemoryKind.TASK)

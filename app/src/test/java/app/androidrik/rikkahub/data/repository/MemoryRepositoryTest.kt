@@ -1017,6 +1017,46 @@ class MemoryRepositoryTest {
     }
 
     @Test
+    fun `kind changes can be disabled per write while same kind edits still work`() = runBlocking {
+        val created = repo.addMemory("a", "fact", kind = MemoryKind.TOPIC)
+        assertTrue(runCatching {
+            repo.updateContentInStore(
+                "a", created.id, created.content, kind = MemoryKind.PROFILE, allowKindChange = false,
+            )
+        }.isFailure)
+        // 模型常把当前类型一起回传；同类型不算「改类」，不能因此让普通 edit 失败。
+        val sameKind = repo.updateContentInStore(
+            "a", created.id, "rewritten", kind = MemoryKind.TOPIC, allowKindChange = false,
+        )
+        assertEquals(MemoryKind.TOPIC, sameKind.kind)
+        assertEquals("rewritten", sameKind.content)
+        val changed = repo.updateContentInStore(
+            "a", created.id, "rewritten", kind = MemoryKind.PROFILE, allowKindChange = true,
+        )
+        assertEquals(MemoryKind.PROFILE, changed.kind)
+    }
+
+    @Test
+    fun `open tasks cannot change kind even when kind changes are allowed`() = runBlocking {
+        val task = repo.addMemory("a", "commitment", kind = MemoryKind.TASK, dueAt = 30L)
+        assertTrue(runCatching {
+            repo.updateContentInStore(
+                "a", task.id, task.content, kind = MemoryKind.TOPIC,
+                allowKindChange = true, allowOpenTaskKindChange = false,
+            )
+        }.isFailure)
+        // 关闭后允许改类：状态与截止日随之清空，但仍需调用方显式允许。
+        val closed = repo.setTaskStatus(task.id, MemoryTaskStatus.DONE, task.revision)
+        val converted = repo.updateContentInStore(
+            "a", closed.id, closed.content, kind = MemoryKind.TOPIC,
+            allowKindChange = true, allowOpenTaskKindChange = false,
+        )
+        assertEquals(MemoryKind.TOPIC, converted.kind)
+        assertEquals(MemoryTaskStatus.OPEN, converted.taskStatus)
+        assertEquals(0L, converted.dueAt)
+    }
+
+    @Test
     fun `new task commitments do not deduplicate closed or differently dated tasks`() = runBlocking {
         val first = repo.addMemory("a", "weekly report", kind = MemoryKind.TASK, dueAt = 10L)
         assertEquals(first.id, repo.addMemory("a", "weekly report", kind = MemoryKind.TASK, dueAt = 10L).id)

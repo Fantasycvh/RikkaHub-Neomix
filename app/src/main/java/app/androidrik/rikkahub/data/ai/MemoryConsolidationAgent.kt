@@ -24,6 +24,14 @@ data class MemoryConsolidationRequest(
     /** 审批开着 ⇒ 只提案不改库（工具回执 `applied:false`） */
     val proposeOnly: Boolean,
     /**
+     * 用户是否允许整理时调整已有记录的类型。默认 false（保持既有纪律）。
+     *
+     * 由 `MemoryConsolidator` 从助手设置算出：共享库要求所有真正参与整理的助手都开启。
+     * 它会同时进入系统提示和仓库写入门禁：**直写**时关闭开关会拒绝不同 `kind`（同值放行），
+     * 而不是只靠提示词约束。只提案模式不改库，建议仍需用户确认后才应用。
+     */
+    val allowKindChange: Boolean = false,
+    /**
      * **用户已经拒绝过的改动**（一行一条，给模型看的）。
      *
      * 真机发现的缺陷：同一条 `delete` 被两轮整理原地重提（上一轮被拒绝、下一轮又提一模一样的）。

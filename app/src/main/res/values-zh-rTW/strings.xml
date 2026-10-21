@@ -2200,4 +2200,6 @@
   <string name="assistant_page_memory_task_drop">取消事務</string>
   <string name="assistant_page_memory_task_drop_confirm">取消此事務？</string>
   <string name="assistant_page_memory_task_without_due">無截止日期</string>
+  <string name="assistant_page_memory_consolidation_kind_change">整理時允許調整類型</string>
+  <string name="assistant_page_memory_consolidation_kind_change_desc">開啟後，整理可在畫像、話題與事務之間修改既有記憶的類型，但僅限新輪次明確顯示其現有類型有誤時。不得為規避 200 條上限、或為讓事務進出保護範圍而改類。事務改為其他類型會清空狀態與截止日。開啟審批時仍僅作為建議。共享記憶庫需所有參與整理的助手都開啟才會生效。</string>
 </resources>

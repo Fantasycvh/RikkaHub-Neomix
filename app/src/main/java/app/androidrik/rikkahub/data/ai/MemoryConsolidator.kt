@@ -138,6 +138,13 @@ class MemoryConsolidator(
                 "${library.size} record(s), page=${page.from}-${page.to}/${page.total} " +
                 "last=${page.isLast} budget=$libraryBudget remaining=${transcript.remainingTurns} fullReview=$fullReview",
         )
+        // 共享记忆库（useGlobalMemory）时，改类纪律不能由某一个助手替其他人放宽：
+        // 只有**真正参与整理**的助手（开启且记忆开）都显式开启，才允许调整类型。
+        // 不能拿全部同库助手做 all：未开整理/已停用的助手不参与本次整理，其开关也永远看不到，
+        // 否则用户在当前助手打开开关会被一个无法操作的隐藏状态静默否决。
+        val enabledParticipants = participants.filter { it.memoryConsolidationEnabled() }
+        val allowKindChange = enabledParticipants.isNotEmpty() &&
+            enabledParticipants.all { it.memoryConsolidationReclassify }
         val outcome = agent.run(
             MemoryConsolidationRequest(
                 settings = settings,
@@ -157,6 +164,7 @@ class MemoryConsolidator(
                 // 审批开着（任一相关开关）⇒ 整轮只提案：后台没有用户可等，而"直接拒绝"会丢掉
                 // 模型原本想改的内容（见 docs/design/design-memory-consolidation.md §7.2）
                 proposeOnly = participants.any { it.memoryModifyApproval || it.memoryCreateApproval },
+                allowKindChange = allowKindChange,
             )
         )
 

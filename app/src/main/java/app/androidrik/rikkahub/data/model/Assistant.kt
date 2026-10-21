@@ -103,6 +103,22 @@ data class Assistant(
      * 本仓对这类功能一贯要求显式开启。
      */
     val memoryConsolidationSince: Long = 0L,
+    /**
+     * **整理时可调整类型**：允许后台整理把已有记录在「画像 / 话题 / 事务」之间改类。
+     *
+     * **默认 false = 整理时类型固定**：改类会改变一条记忆的生命周期（是否受任务保护、是否随日期过期、
+     * 是否进画像候选），静默改类比写错一条更贵。关闭态不仅提示禁止，仓库也会拒绝不同 `kind` 的写入；
+     * 这是相对 A1/A2「提示允许明确证据纠错、代码不拦」的有意收紧。
+     * 开启后仍受硬约束（见 `docs/design/design-memory-kinds.md` §18）：
+     * 1. 必须有**新轮次里用户自己**的直接证据，不能靠猜测或助手转述；
+     * 2. 不能为了绕开 200 条上限 / 任务保护而改类；未完成事务在仓库层直接拒绝改类；
+     * 3. 一步内跨类合并仍禁止；允许先单独改类、后续步骤再合并，但每步都要独立成立。
+     *
+     * 共享记忆库时，在**真正参与整理的助手**中要求全部开启（`MemoryConsolidator` 里 `all`）：
+     * 未开启整理/已停用的共享助手不投票——它们的开关不可见，不能形成静默否决。
+     * 打开整理审批时，改类仍然只作为建议，由用户在确认里看到；用户批准即写授权。
+     */
+    val memoryConsolidationReclassify: Boolean = false,
     val enableRecentChatsReference: Boolean = false,
     val messageTemplate: String = "{{ message }}",
     /**

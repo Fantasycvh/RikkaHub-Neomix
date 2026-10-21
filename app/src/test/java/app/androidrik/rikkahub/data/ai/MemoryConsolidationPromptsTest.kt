@@ -16,6 +16,7 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.uuid.Uuid
@@ -243,6 +244,35 @@ class MemoryConsolidationPromptsTest {
         assertTrue(prompt.contains("Never auto-complete, drop or retire"))
         assertTrue(prompt.contains("create a separate"))
         assertTrue(prompt.contains("candidate in tail context, not automatically a system anchor"))
+        // 关闭态必须真的“类型固定”：只删掉开关段而留下旧的改类许可，会和仓库门禁直接冲突。
+        assertTrue(prompt.contains("An existing record's kind is fixed: do not change it"))
+        assertFalse(prompt.contains("Correct a mistaken kind only with clear user evidence"))
+    }
+
+    @Test
+    fun `kind change note is opt in and never relaxes cross kind merging`() {
+        val off = memoryConsolidationSystemPrompt(proposeOnly = false, allowKindChange = false)
+        assertFalse(off.contains("Type changes are enabled"))
+        val on = memoryConsolidationSystemPrompt(proposeOnly = false, allowKindChange = true)
+        assertTrue(on.startsWith(MEMORY_CONSOLIDATION_SYSTEM_PROMPT))
+        assertTrue(on.contains("Type changes are enabled for this library"))
+        assertTrue(on.contains("Cross-kind merging in one step stays forbidden"))
+        assertTrue(on.contains("only when NEW TURNS"))
+        assertTrue(on.contains("Do not change kind to get under the 200-record limit"))
+        assertTrue(on.contains("Anchored records cannot become tasks"))
+        // 旧禁令仍在：开关只放宽「已有记录改类」，没有删掉反绕过的约束。
+        assertTrue(on.contains("Never merge across kinds or reclassify records merely to bypass"))
+    }
+
+    @Test
+    fun `proposal note comes after the kind change exception when both are enabled`() {
+        val prompt = memoryConsolidationSystemPrompt(proposeOnly = true, allowKindChange = true)
+        assertTrue(prompt.indexOf(MEMORY_CONSOLIDATION_RECLASSIFY_NOTE) <
+            prompt.indexOf(MEMORY_CONSOLIDATION_PROPOSAL_NOTE))
+        assertEquals(
+            MEMORY_CONSOLIDATION_SYSTEM_PROMPT + "\n\n" + MEMORY_CONSOLIDATION_PROPOSAL_NOTE,
+            memoryConsolidationSystemPrompt(proposeOnly = true, allowKindChange = false),
+        )
     }
 
     @Test

@@ -85,6 +85,8 @@ class MemoryConsolidatorTest {
         modifyApproval: Boolean = false,
         createApproval: Boolean = false,
         name: String = "a",
+        reclassify: Boolean = false,
+        globalMemory: Boolean = false,
     ) = Assistant(
         id = Uuid.random(),
         name = name,
@@ -92,6 +94,8 @@ class MemoryConsolidatorTest {
         memoryConsolidationSince = since,
         memoryModifyApproval = modifyApproval,
         memoryCreateApproval = createApproval,
+        memoryConsolidationReclassify = reclassify,
+        useGlobalMemory = globalMemory,
     )
 
     private fun conversation(assistant: Assistant, vararg hours: Int): Conversation = Conversation(
@@ -201,8 +205,43 @@ class MemoryConsolidatorTest {
         assertEquals(1, agent.requests.size)
         assertEquals(MemoryConsolidator.MAX_AUTO_STEPS, agent.requests.single().maxSteps)
         assertFalse("两个开关都关 ⇒ 正常改库", agent.requests.single().proposeOnly)
+        assertFalse("改类默认关闭 ⇒ 请求里必须是 false", agent.requests.single().allowKindChange)
         assertTrue("正文里要带上新轮次", agent.requests.single().transcript.contains("第 3 小时说的话"))
         assertEquals(now, run?.finishedAt)
+    }
+
+    @Test
+    fun `shared library requires every participant to allow kind changes`() = runBlocking {
+        // 共享库时不能由单个助手替别人放宽纪律：全开才允许，混开就退回关闭。
+        val on = assistant(name = "on", reclassify = true, globalMemory = true)
+        val alsoOn = assistant(name = "also-on", reclassify = true, globalMemory = true)
+        val off = assistant(name = "off", reclassify = false, globalMemory = true)
+        val globalId = app.androidrik.rikkahub.data.repository.MemoryRepository.GLOBAL_MEMORY_ID
+
+        val first = conversation(on, 2)
+        conversations[first.id] = first
+        consolidator(listOf(on)).consolidate(globalId, setOf(first.id), fullReview = true)
+        assertTrue("唯一助手开着 ⇒ 允许改类", agent.requests.single().allowKindChange)
+
+        val second = conversation(off, 3)
+        conversations[second.id] = second
+        consolidator(listOf(on, off)).consolidate(globalId, setOf(second.id), fullReview = true)
+        assertFalse("任一相关助手关闭 ⇒ 整库退回关闭", agent.requests.last().allowKindChange)
+
+        val third = conversation(alsoOn, 4)
+        conversations[third.id] = third
+        consolidator(listOf(on, alsoOn)).consolidate(globalId, setOf(third.id), fullReview = true)
+        assertTrue("全部相关助手开启 ⇒ 允许改类", agent.requests.last().allowKindChange)
+
+        // 未开整理 / 已停用的共享助手不参与本次整理，其不可见的开关不能否决：
+        // 否则用户在当前助手打开开关也会被永远隐藏的 false 静默挡掉。
+        val consolidatingOff = assistant(since = 0L, name = "consolidation-off", globalMemory = true)
+        val disabled = assistant(name = "disabled", globalMemory = true).copy(enabled = false)
+        val fourth = conversation(on, 5)
+        conversations[fourth.id] = fourth
+        consolidator(listOf(on, consolidatingOff, disabled))
+            .consolidate(globalId, setOf(fourth.id), fullReview = true)
+        assertTrue("非参与者不投票 ⇒ 仍按真正参与者允许", agent.requests.last().allowKindChange)
     }
 
     @Test

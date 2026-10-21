@@ -79,6 +79,14 @@ class AssistantEnabledTest {
     }
 
     @Test
+    fun `kind change while tidying is opt in and legacy json stays off`() {
+        val legacyJson = """{"id":"0198c3d2-0000-7000-8000-000000000001","name":"old","systemPrompt":""}"""
+        assertFalse("旧数据没有该字段时必须默认关闭", JsonInstant.decodeFromString<Assistant>(legacyJson).memoryConsolidationReclassify)
+        val enabled = Assistant(memoryConsolidationReclassify = true)
+        assertTrue(JsonInstant.decodeFromString<Assistant>(JsonInstant.encodeToString(enabled)).memoryConsolidationReclassify)
+    }
+
+    @Test
     fun `disabling does not change identity fields`() {
         val original = assistant("x")
         val disabled = original.copy(enabled = false)

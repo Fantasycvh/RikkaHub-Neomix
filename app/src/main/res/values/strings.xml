@@ -2215,4 +2215,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="assistant_page_memory_task_drop">Cancel task</string>
   <string name="assistant_page_memory_task_drop_confirm">Cancel this task?</string>
   <string name="assistant_page_memory_task_without_due">No due date</string>
+  <string name="assistant_page_memory_consolidation_kind_change">Allow type changes while tidying</string>
+  <string name="assistant_page_memory_consolidation_kind_change_desc">When on, tidying may change an existing memory between profile, topic and task - but only when the new turns clearly show its stored type is wrong. It may never change type to get under the 200-record limit or to move a task in or out of protection. Changing a task to another type clears its status and due date. If approval is on, these remain suggestions. Shared memory: only when every assistant that tidies the library enables this.</string>
 </resources>

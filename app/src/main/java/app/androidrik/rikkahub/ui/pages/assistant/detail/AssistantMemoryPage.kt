@@ -685,6 +685,29 @@ private fun AssistantMemoryContent(
                     )
                 }
             )
+            // 整理时改类：默认关，与 A1/A2 的严格纪律一致；开启后只在**新轮次有用户直接证据**时
+            // 才允许纠正已有记录的类型。共享库时要求所有相关助手都开启（见 MemoryConsolidator）。
+            if (assistant.enableMemory && assistant.memoryConsolidationSince > 0L) {
+                item(
+                    headlineContent = {
+                        Text(stringResource(R.string.assistant_page_memory_consolidation_kind_change))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.assistant_page_memory_consolidation_kind_change_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = assistant.memoryConsolidationReclassify,
+                            onCheckedChange = {
+                                onUpdateAssistant(
+                                    assistant.copy(memoryConsolidationReclassify = it)
+                                )
+                            },
+                            enabled = assistant.enableMemory
+                        )
+                    }
+                )
+            }
             // 「整理范围」：开启时刻**同时是基线**（只对之后的新内容负责，见
             // docs/design/design-memory-consolidation.md §7）。存量历史整理要求能把基线回拨到最早 ——
             // 否则开启之前的内容**任何路径都够不到**（手动整理原先也受同一基线约束）。

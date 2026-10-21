@@ -30,7 +30,12 @@ class MemoryConsolidationWiringTest {
         )
         assertTrue(
             "提案模式要在系统提示里说清（否则模型以为写失败、反复重试）",
-            source.contains("MEMORY_CONSOLIDATION_PROPOSAL_NOTE"),
+            source.contains("memoryConsolidationSystemPrompt("),
+        )
+        assertTrue(
+            "提示组合必须真的有提案说明",
+            read("app/androidrik/rikkahub/data/ai/MemoryConsolidationPrompts.kt")
+                .contains("MEMORY_CONSOLIDATION_PROPOSAL_NOTE"),
         )
         assertTrue(
             "做梦用临时 profile：不把用户的人设/世界书/记忆注入带进后台调用",
@@ -43,6 +48,41 @@ class MemoryConsolidationWiringTest {
         assertTrue(
             "护栏停止必须当失败（这一轮没走完，不能当成整理完了）",
             source.contains("stopped by guard"),
+        )
+    }
+
+    @Test
+    fun `kind change setting reaches both the prompt and the write gate`() {
+        val agent = read("app/androidrik/rikkahub/data/ai/MemoryConsolidationGenerationAgent.kt")
+        assertTrue(
+            "开关必须进系统提示（否则模型不知道用户授权了改类）",
+            agent.contains("memoryConsolidationSystemPrompt("),
+        )
+        assertTrue(
+            "直写必须经过仓库门禁（只靠提示词挡不住擅自改类）",
+            agent.contains("allowKindChange = request.allowKindChange"),
+        )
+        assertTrue(
+            "整理不能把未完成事务改成别的类型（提示之外还要有仓库门禁）",
+            agent.contains("allowOpenTaskKindChange = false"),
+        )
+        val worker = read("app/androidrik/rikkahub/data/ai/MemoryConsolidator.kt")
+        assertTrue(
+            "开关要从真正参与整理的助手算出来（共享库要求都开启）",
+            worker.contains("enabledParticipants.all { it.memoryConsolidationReclassify }"),
+        )
+        assertTrue(
+            "不能拿同库全部助手做 all（未开整理的助手开关不可见，会静默否决）",
+            !worker.contains("participants.all { it.memoryConsolidationReclassify }"),
+        )
+        assertTrue(
+            "算出来的值必须传给请求",
+            worker.contains("allowKindChange = allowKindChange"),
+        )
+        assertTrue(
+            "改类例外段必须有独立的提示常量",
+            read("app/androidrik/rikkahub/data/ai/MemoryConsolidationPrompts.kt")
+                .contains("MEMORY_CONSOLIDATION_RECLASSIFY_NOTE"),
         )
     }
 
