@@ -2,7 +2,7 @@ package app.androidrik.rikkahub.data.sync
 
 import android.content.Context
 import android.util.Log
-import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.datastore.migration.SettingsCompatDecoder
 import app.androidrik.rikkahub.data.datastore.migration.SettingsJsonMigrator
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.AppDatabase
@@ -149,17 +149,19 @@ internal class BackupArchiveEngine(
      * 从备份 zip 恢复。
      *
      * @param onProgress 解压阶段进度回调（按已处理的未压缩字节计，总量取自 zip 中央目录）
-     * @return 恢复的工作区文件数（0 = 未包含/未恢复）；调用方据此提示「rootfs 需重装」
+     * @return 恢复结果（工作区文件数 + 设置降级提示）
      * @throws IllegalStateException 空间不足（解压产物 + zip 需同时存在于 cacheDir，见 §9.1）
      */
     suspend fun restoreFromBackupFile(
         backupFile: File,
         items: Collection<BackupItem>,
         onProgress: (BackupProgress) -> Unit = {},
-    ): Int =
+    ): RestoreOutcome =
         withContext(Dispatchers.IO) {
             Log.i(TAG, "restoreFromBackupFile: Starting from ${backupFile.absolutePath}")
             var workspaceFilesRestored = 0
+            // 设置里因「当前版本不支持」被降级丢弃的条目（原版 3.1.0 的 chatgpt/grok 提供商等）
+            val settingsWarnings = mutableListOf<String>()
             // 数据库文件先落到 cacheDir 暂存，等整个 zip 读完、确认拿到主库后再关库交换。
             // 这样「读到一半失败」不会先把现库关掉却没有可用的替代文件。
             val stagedDatabaseFiles = linkedMapOf<String, File>()
@@ -203,9 +205,21 @@ internal class BackupArchiveEngine(
                                 try {
                                     // 旧包名（me.rerere.*）备份的迁移必不可少
                                     val migratedJson = SettingsJsonMigrator.migrate(settingsJson)
-                                    val settings = json.decodeFromString<Settings>(migratedJson)
-                                    settingsStore.update(settings)
-                                    Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
+                                    // 原版 3.1.0 可能带本应用没有的多态子类（chatgpt/grok/volcengine…）：
+                                    // 逐条降级丢弃而不是整份失败，否则连会话都恢复不了
+                                    val decoded = SettingsCompatDecoder.decode(json, migratedJson)
+                                    settingsStore.update(decoded.settings)
+                                    settingsWarnings += decoded.droppedEntries
+                                    if (decoded.droppedEntries.isNotEmpty()) {
+                                        Log.w(
+                                            TAG,
+                                            "restoreFromBackupFile: settings restored with " +
+                                                "${decoded.droppedEntries.size} unsupported entr(ies) dropped: " +
+                                                decoded.droppedEntries.joinToString(", "),
+                                        )
+                                    } else {
+                                        Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
+                                    }
                                 } catch (e: Exception) {
                                     Log.e(TAG, "restoreFromBackupFile: Failed to restore settings", e)
                                     throw Exception("Failed to restore settings: ${e.message}")
@@ -287,7 +301,10 @@ internal class BackupArchiveEngine(
                             "rootfs NOT included; reinstall to use shell/terminal",
                     )
                 }
-                workspaceFilesRestored
+                RestoreOutcome(
+                    workspaceFilesRestored = workspaceFilesRestored,
+                    settingsWarnings = settingsWarnings.toList(),
+                )
             } finally {
                 stagedDatabaseFiles.values.forEach { it.takeIf(File::exists)?.delete() }
             }

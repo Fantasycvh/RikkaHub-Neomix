@@ -49,6 +49,7 @@ import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.AlertCircle
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.CheckmarkCircle02
@@ -68,21 +69,30 @@ private const val ASK_USER_TOOL_NAME = "ask_user"
 /**
  * 服务端内置工具（googleSearch / urlContext 等）的链内步骤。
  *
- * 服务端执行、不粘审批流（f7869e35 语义）。本仓 [UIMessagePart.ServerTool] 只有
- * `IN_PROGRESS` / `COMPLETED` 两态（无 `isFinished` / `FAILED`），故用 `status != IN_PROGRESS` 表示已完成。
+ * 服务端执行、不粘审批流（f7869e35 语义）。三态：`IN_PROGRESS` 转圈，`COMPLETED` 打勾，
+ * `FAILED`（上游 3.1.0 备份可能带来，见 design-backup-legacy-import.md）显示失败态——
+ * 只做展示，不参与执行逻辑。
  */
 @Composable
 fun ChainOfThoughtScope.ChatMessageServerToolStep(tool: UIMessagePart.ServerTool) {
     val running = tool.status == ServerToolStatus.IN_PROGRESS
+    val failed = tool.status == ServerToolStatus.FAILED
     ChainOfThoughtStep(
         icon = {
-            if (running) {
-                CircularProgressIndicator(
+            when {
+                running -> CircularProgressIndicator(
                     modifier = Modifier.size(12.dp),
                     strokeWidth = 2.dp,
                 )
-            } else {
-                Icon(
+
+                failed -> Icon(
+                    imageVector = HugeIcons.AlertCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+
+                else -> Icon(
                     imageVector = HugeIcons.CheckmarkCircle02,
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
@@ -92,13 +102,17 @@ fun ChainOfThoughtScope.ChatMessageServerToolStep(tool: UIMessagePart.ServerTool
         },
         label = {
             Text(
-                text = if (running) {
-                    stringResource(R.string.chat_server_tool_running, tool.toolName)
-                } else {
-                    stringResource(R.string.chat_server_tool_done, tool.toolName)
+                text = when {
+                    running -> stringResource(R.string.chat_server_tool_running, tool.toolName)
+                    failed -> stringResource(R.string.chat_server_tool_failed, tool.toolName)
+                    else -> stringResource(R.string.chat_server_tool_done, tool.toolName)
                 },
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.secondary,
+                color = if (failed) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.secondary
+                },
                 modifier = Modifier.shimmer(isLoading = running),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

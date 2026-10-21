@@ -90,6 +90,23 @@ fun ImportExportTab(
     )
 
     /**
+     * 设置里被降级丢弃的条目（原版 3.1.0 的 `chatgpt`/`grok` 提供商、`volcengine` TTS 等）。
+     *
+     * 这些条目本会让整份 settings 解码失败、恢复直接中止；现在改为逐条丢弃继续导入，
+     * 但必须让用户知道"哪些设置没带过来"，否则就是静默丢失。
+     */
+    fun showSettingsDroppedWarning(warnings: List<String>) {
+        if (warnings.isEmpty()) return
+        toaster.show(
+            resources.getString(
+                R.string.backup_page_restore_settings_dropped,
+                warnings.joinToString(", "),
+            ),
+            type = ToastType.Warning,
+        )
+    }
+
+    /**
      * 导入完成的统一收尾：成功提示 +（按描述符）决定是否提示重启。
      *
      * 之前这段逻辑在四条分支后面各写一遍，且「conversation 提前 return」绕过了它——
@@ -134,12 +151,13 @@ fun ImportExportTab(
         val tempFile = context.copyUriToTempFile(uri, ext)
         when (format) {
             ImportFormat.LOCAL_BACKUP -> {
-                try {
+                val outcome = try {
                     vm.restoreFromLocalFile(tempFile)
                 } finally {
                     tempFile.delete()
                 }
                 finishImport(format)
+                showSettingsDroppedWarning(outcome.settingsWarnings)
             }
 
             ImportFormat.CHERRY_STUDIO -> {

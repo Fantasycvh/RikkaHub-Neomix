@@ -87,3 +87,43 @@ settings.json 差异很小：旧版多 `compressPrompt/compressModelId`（已删
 4. 新版记忆的**主题/来源语义**只保留正文；`[stated]` 等标记与 front matter 名称不落库。
 5. 覆盖式恢复会替换现有记忆库；导入前应提示并建议先导出当前数据。
 6. 设备上第三份变体（`excp.rikkahub.zhcn` 2.4.10 等）未取到备份，未验证其 schema 是否也落在已知家族。
+
+## 6. 原版 3.1.0：P0 兼容加固（2026-10-21）
+
+对照上游 `eeef60b22`（DB v31）与本应用 DB v45：原版 14 张业务表中，13 张同名表
+可按列交集复制，没有缺失的目标必填列；`memory_file` 遍历全部文件并按顶层条目转为行式记忆。
+这是 schema 对照结论，不代表真实 3.1.0 zip 已完成端到端验证。
+
+### 已处理
+
+- **不支持的提供商/TTS 类型不再阻断整份恢复**：新增
+  [SettingsCompatDecoder](<../../app/src/main/java/app/androidrik/rikkahub/data/datastore/migration/SettingsCompatDecoder.kt>)，
+  在包名迁移后逐条验证 `providers` / `ttsProviders`。顶层类型不支持（例如 `chatgpt`、`grok`、
+  `volcengine` TTS）时仅跳过该条目，继续解码其余设置。不会将其强行映射为 OpenAI 协议。
+  被删除的 TTS 恰为选中项时回退系统 TTS ID；被删除提供商内的模型引用不自动改绑，使用时需重新选模型。
+- **有限容错，而非忽略损坏数据**：已知类型的字段损坏、嵌套未知类型、其他设置错误仍会报错中止；
+  不通过解析异常 JSON path 任意删除设置。恢复结果只携带条目位置与类型名，不包含 API key 或完整 JSON。
+- **降级提示贯通三入口**：本地、WebDAV、S3 恢复结果携带跳过列表，完成时显示警告并记录日志。
+- **失败的服务端工具消息可读取**：`ServerToolStatus` 增加 serial name `failed`，消息 UI 显示失败图标/文案，
+  不再因该枚举值不受支持导致会话反序列化失败。
+
+### 本轮验证
+
+- [SettingsCompatDecoderTest](<../../app/src/test/java/app/androidrik/rikkahub/data/datastore/migration/SettingsCompatDecoderTest.kt>)：
+  9 项，含支持类型 JSON 往返、ChatGPT/Grok 降级、火山 TTS 回退、旧包名与退役搜索组合、
+  损坏已知类型/嵌套未知类型不误删、非法设置仍失败、`failed` 消息往返。
+- 与既有 `SettingsJsonMigratorTest` 合计 **18 项 JVM 测试通过**；应用及仪器测试 Kotlin 编译通过。
+- 扩展 [LegacyBackupConversionTest](<../../app/src/androidTest/java/app/androidrik/rikkahub/data/sync/LegacyBackupConversionTest.kt>)
+  合成库为 v31 形状，补充 `usage_record`、`translation_history`、第二篇主题记忆；真机 **2/2 通过**。
+  断言用量/翻译正文保留、缺失 `provider_name` 为 null、多文件记忆扁平化且 revision=1。
+- 本轮应用 JVM 全量 **2089/2089 通过**，`lintDebug` 通过；未因此提升为整链路验收。
+
+### 仍有的语义损失与未验证项
+
+- `ConversationEntity.config` 会话级模型/推理/联网/MCP/工作区/技能快照未映射，恢复后使用助手配置。
+- 原版 `isContextCheckpoint` 尚未转成本应用压缩检查点，摘要消息可能作为普通消息显示/进入上下文；
+  `modelSnapshot/generationTimeMs/lastUsage/stepCount` 及 `Reasoning.reasoningType` 未映射。
+- 多文件记忆只保留拆出的正文，不保留路径、目录、title/description/aliases、来源标记及常驻注入语义。
+- `modeInjections → promptPresets`、`networkSetting → globalProxy` 等设置字段尚未映射。
+- **本轮没有真实 3.1.0 备份的「选文件 → 解包 → 换库 → 重启」实测**；合成 v31 转换与组件测试
+  不等同于整链路验收。导入仍是覆盖而非合并，操作前应先备份当前数据。

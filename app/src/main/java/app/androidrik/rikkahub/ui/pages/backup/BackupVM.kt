@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.pages.backup
 
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupProgress
+import app.androidrik.rikkahub.data.sync.RestoreOutcome
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -116,9 +117,9 @@ class BackupVM(
         }
     }
 
-    suspend fun restore(item: WebDavBackupItem) {
+    suspend fun restore(item: WebDavBackupItem): RestoreOutcome {
         try {
-            webDavSync.restore(config = settings.value.webDavConfig, item = item, onProgress = ::reportProgress)
+            return webDavSync.restore(config = settings.value.webDavConfig, item = item, onProgress = ::reportProgress)
         } finally {
             clearProgress()
         }
@@ -138,9 +139,9 @@ class BackupVM(
         }
     }
 
-    suspend fun restoreFromLocalFile(file: File) {
+    suspend fun restoreFromLocalFile(file: File): RestoreOutcome {
         try {
-            webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig, ::reportProgress)
+            return webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig, ::reportProgress)
         } finally {
             clearProgress()
         }
@@ -376,9 +377,9 @@ class BackupVM(
         }
     }
 
-    suspend fun restoreFromS3(item: S3BackupItem) {
+    suspend fun restoreFromS3(item: S3BackupItem): RestoreOutcome {
         try {
-            s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, onProgress = ::reportProgress)
+            return s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, onProgress = ::reportProgress)
         } finally {
             clearProgress()
         }

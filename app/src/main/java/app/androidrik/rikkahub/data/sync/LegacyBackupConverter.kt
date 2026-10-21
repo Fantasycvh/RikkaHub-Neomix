@@ -273,7 +273,7 @@ internal class LegacyBackupConverter(private val context: Context) {
     }
 
     /**
-     * `memory_file`（每助手一篇 Markdown）→ 多条 [MemoryEntity]。
+     * `memory_file`（每助手可有多篇 Markdown，如 profile/preferences/topics）→ 扁平 [MemoryEntity] 列表。
      *
      * 拆分口径（用户已确认）：按**顶层条目**拆，一行一条主题；`[stated]`/`[inferred]`
      * 是原版的来源标记，本应用没有对应字段，导入时剥掉但保留正文。

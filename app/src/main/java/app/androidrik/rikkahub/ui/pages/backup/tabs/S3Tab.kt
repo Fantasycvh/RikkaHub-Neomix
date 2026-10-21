@@ -100,11 +100,20 @@ fun S3Tab(
         scope.launch {
             restoringItemId = restoreItem.displayName
             runCatching {
-                vm.restoreFromS3(item = restoreItem)
+                val outcome = vm.restoreFromS3(item = restoreItem)
                 toaster.show(
                     resources.getString(R.string.backup_page_restore_success),
                     type = ToastType.Success
                 )
+                if (outcome.settingsWarnings.isNotEmpty()) {
+                    toaster.show(
+                        resources.getString(
+                            R.string.backup_page_restore_settings_dropped,
+                            outcome.settingsWarnings.joinToString(", "),
+                        ),
+                        type = ToastType.Warning,
+                    )
+                }
                 showBackupFiles = false
                 onShowRestartDialog()
             }.onFailure { err ->

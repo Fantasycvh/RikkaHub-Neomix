@@ -298,6 +298,7 @@
   <string name="backup_page_restore_confirm_action">Restore</string>
   <string name="backup_page_restore_now">Restore</string>
   <string name="backup_page_restore_success">Restore successful</string>
+  <string name="backup_page_restore_settings_dropped">Restored, but these settings are not supported by this version and were skipped: %s</string>
   <string name="backup_page_restoring">Restoring...</string>
   <string name="backup_page_s3_access_key_id">Access Key ID</string>
   <string name="backup_page_s3_backup">S3 Backup</string>
@@ -1776,6 +1777,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="generation_retry_waiting">Generation failed, retry %1$d/%2$d in %3$d s</string>
   <string name="chat_server_tool_running">Running built-in tool %1$s…</string>
   <string name="chat_server_tool_done">Built-in tool %1$s completed</string>
+  <string name="chat_server_tool_failed">Built-in tool %1$s failed</string>
   <string name="setting_provider_page_retry_override">Custom retry settings</string>
   <string name="setting_provider_page_retry_override_desc">When enabled, this provider uses its own retry configuration instead of the global default</string>
   <string name="setting_keep_alive_title">Keep alive in background</string>

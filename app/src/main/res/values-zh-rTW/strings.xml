@@ -305,6 +305,7 @@
   <string name="backup_page_restore_confirm_action">確認恢復</string>
   <string name="backup_page_restore_now">恢復</string>
   <string name="backup_page_restore_success">恢復成功</string>
+  <string name="backup_page_restore_settings_dropped">已恢復，但以下設定項目前版本不支援，已略過：%s</string>
   <string name="backup_page_restoring">恢復中...</string>
   <string name="backup_page_s3_access_key_id">存取金鑰 ID</string>
   <string name="backup_page_s3_backup">S3 備份</string>
@@ -1723,6 +1724,7 @@
   <string name="generation_retry_waiting">生成失敗，%1$d/%2$d 次重試，%3$d 秒後進行</string>
   <string name="chat_server_tool_running">正在執行內建工具 %1$s…</string>
   <string name="chat_server_tool_done">內建工具 %1$s 已完成</string>
+  <string name="chat_server_tool_failed">內建工具 %1$s 執行失敗</string>
   <string name="setting_provider_page_retry_override">自訂重試設定</string>
   <string name="setting_provider_page_retry_override_desc">開啟後此提供商使用獨立的重試設定，覆蓋全域預設</string>
   <string name="setting_keep_alive_title">背景常駐</string>

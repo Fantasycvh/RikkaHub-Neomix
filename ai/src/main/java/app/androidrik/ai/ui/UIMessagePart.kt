@@ -182,6 +182,13 @@ sealed class UIMessagePart {
     }
 }
 
+/**
+ * 服务端内置工具的执行状态。
+ *
+ * [FAILED] 来自上游 3.1.0（`ServerToolStatus.FAILED`）：原版备份里带 `"status":"failed"` 的
+ * `server_tool` 分片在导入后必须能解码，否则整个会话打不开（见 `design-backup-legacy-import.md`
+ * 的 3.1.0 兼容矩阵）。本应用自己的生成流程不会产生该状态，只做展示与兼容。
+ */
 @Serializable
 enum class ServerToolStatus {
     @SerialName("in_progress")
@@ -189,4 +196,7 @@ enum class ServerToolStatus {
 
     @SerialName("completed")
     COMPLETED,
+
+    @SerialName("failed")
+    FAILED,
 }

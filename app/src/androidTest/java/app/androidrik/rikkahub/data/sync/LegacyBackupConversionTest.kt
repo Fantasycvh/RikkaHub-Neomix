@@ -43,6 +43,20 @@ class LegacyBackupConversionTest {
             assertEquals(1, count(sqlite, "ConversationEntity"))
             assertEquals(1, count(sqlite, "message_node"))
             assertEquals(1, count(sqlite, "memory_consolidation"))
+            assertEquals(1, count(sqlite, "translation_history"))
+            assertEquals(1, count(sqlite, "usage_record"))
+            sqlite.query("select source, prompt_tokens, provider_name from usage_record").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("CHAT", cursor.getString(0))
+                assertEquals(123, cursor.getInt(1))
+                assertTrue(cursor.isNull(2))
+            }
+            sqlite.query("select source_text, translated_text, target_language from translation_history").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("hello", cursor.getString(0))
+                assertEquals("你好", cursor.getString(1))
+                assertEquals("zh-CN", cursor.getString(2))
+            }
             assertEquals(
                 "媒体创作表应随转换一并导入",
                 1,
@@ -54,7 +68,10 @@ class LegacyBackupConversionTest {
             }
 
             val memories = db.memoryDao().getMemoriesOfAssistant(ASSISTANT)
-            assertEquals(listOf("用户喜欢手冲咖啡", "用户常在晚上工作"), memories.map { it.content }.sorted())
+            assertEquals(
+                listOf("用户喜欢手冲咖啡", "用户常在晚上工作", "用户研究咖啡烘焙").sorted(),
+                memories.map { it.content }.sorted(),
+            )
             assertTrue(memories.all { it.revision == 1L && it.publicId.isNotBlank() && !it.isAnchor })
             assertTrue(memories.all { it.updatedAt == 1_700_000_000_000L })
 
@@ -158,6 +175,27 @@ class LegacyBackupConversionTest {
                 "insert into message_node (id, conversation_id, node_index, messages, select_index) " +
                     "values ('n1', 'c1', 0, ?, 0)",
                 arrayOf(messages),
+            )
+            db.version = 31
+            db.execSQL("""
+                create table usage_record (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, created_at INTEGER NOT NULL,
+                    source TEXT NOT NULL, provider_id TEXT, model_id TEXT, model_name TEXT,
+                    assistant_id TEXT, conversation_id TEXT, prompt_tokens INTEGER NOT NULL,
+                    completion_tokens INTEGER NOT NULL, cached_tokens INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("insert into usage_record values (1, 100, 'CHAT', null, null, 'test-model', null, 'c1', 123, 45, 6)")
+            db.execSQL("""
+                create table translation_history (
+                    id TEXT PRIMARY KEY NOT NULL, source_text TEXT NOT NULL, translated_text TEXT NOT NULL,
+                    target_language TEXT NOT NULL, model_id TEXT NOT NULL, create_at INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("insert into translation_history values ('t1', 'hello', '你好', 'zh-CN', 'model-1', 100)")
+            db.execSQL(
+                "insert into memory_file (assistant_id, path, content, updated_at) values (?, '/topics/coffee.md', ?, ?)",
+                arrayOf<Any?>(ASSISTANT, "- [stated] 用户研究咖啡烘焙", 1_700_000_000_000L),
             )
             db.execSQL("insert into memory_consolidation values ('c1', 300)")
             val memory = """

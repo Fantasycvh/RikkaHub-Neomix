@@ -4,6 +4,7 @@ import app.androidrik.rikkahub.data.sync.BackupArchiveEngine
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupPhase
 import app.androidrik.rikkahub.data.sync.BackupProgress
+import app.androidrik.rikkahub.data.sync.RestoreOutcome
 import android.content.Context
 import android.util.Log
 import io.ktor.client.HttpClient
@@ -131,7 +132,7 @@ class WebDavSync(
         file: File,
         config: WebDavConfig,
         onProgress: (BackupProgress) -> Unit = {},
-    ) = withContext(Dispatchers.IO) {
+    ): RestoreOutcome = withContext(Dispatchers.IO) {
         Log.i(TAG, "restoreFromLocalFile: Starting restore from ${file.absolutePath}")
 
         if (!file.exists()) {
@@ -143,8 +144,9 @@ class WebDavSync(
         }
 
         try {
-            restoreFromBackupFile(file, config, onProgress)
+            val outcome = restoreFromBackupFile(file, config, onProgress)
             Log.i(TAG, "restoreFromLocalFile: Restore completed successfully")
+            outcome
         } catch (e: Exception) {
             Log.e(TAG, "restoreFromLocalFile: Failed to restore from local file", e)
             throw Exception("Restore failed: ${e.message}")
@@ -158,9 +160,8 @@ class WebDavSync(
         backupFile: File,
         config: WebDavConfig,
         onProgress: (BackupProgress) -> Unit,
-    ) {
+    ): RestoreOutcome =
         archiveEngine.restoreFromBackupFile(backupFile, settingsStore.settingsFlow.value.backupItems, onProgress)
-    }
 
                 }
 

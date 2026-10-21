@@ -132,9 +132,8 @@ class S3Sync(
         backupFile: File,
         config: S3Config,
         onProgress: (BackupProgress) -> Unit,
-    ) {
+    ): RestoreOutcome =
         archiveEngine.restoreFromBackupFile(backupFile, settingsStore.settingsFlow.value.backupItems, onProgress)
-    }
 
                 }
 
