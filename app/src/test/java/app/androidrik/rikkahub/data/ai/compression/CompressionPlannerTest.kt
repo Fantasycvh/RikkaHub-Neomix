@@ -39,6 +39,44 @@ class CompressionPlannerTest {
         assertTrue(plan.shouldCompress)
     }
 
+    // ===== 用户可选「保留最近 N 条」（上游 #2171/#2180 的条数下限，本仓按 token 比例架构落地）=====
+
+    @Test
+    fun `effective min keep falls back to default for unset or invalid values`() {
+        assertEquals(COMPRESS_MIN_KEEP_MESSAGES, effectiveMinKeep(0))
+        assertEquals(COMPRESS_MIN_KEEP_MESSAGES, effectiveMinKeep(-3))
+        assertEquals(COMPRESS_MIN_KEEP_MESSAGES, effectiveMinKeep(1))
+    }
+
+    @Test
+    fun `effective min keep honors larger user value`() {
+        assertEquals(8, effectiveMinKeep(8))
+    }
+
+    @Test
+    fun `user min keep is a floor on the kept tail even with tiny budget`() {
+        // 每条 100 token、预算 1：默认只会留 2 条；用户要求 6 条时必须留满 6 条
+        val nodes = (1..10).map { nodeTokens(100) }
+        val plan = estimateCompressionPlan(nodes, budgetTokens = 1, minKeep = effectiveMinKeep(6))
+        assertEquals(6, plan.toKeep.size)
+        assertEquals(4, plan.toCompress.size)
+        assertTrue(plan.shouldCompress)
+    }
+
+    @Test
+    fun `user min keep larger than window means no compression`() {
+        val nodes = (1..3).map { nodeTokens(100) }
+        val plan = estimateCompressionPlan(nodes, budgetTokens = 1, minKeep = effectiveMinKeep(10))
+        assertFalse(plan.shouldCompress)
+        assertEquals(3, plan.toKeep.size)
+    }
+
+    @Test
+    fun `keep recent messages range allows zero`() {
+        assertEquals(0, COMPRESS_KEEP_RECENT_MESSAGES_RANGE.first)
+        assertTrue(COMPRESS_KEEP_RECENT_MESSAGES_RANGE.last >= 1)
+    }
+
     @Test
     fun `budget limits how many messages are kept as original`() {
         // 每条 10 token，预算 35 -> 尾部最多保留 3 条（第 4 条会超预算）

@@ -318,9 +318,15 @@ class ChatVM(
         }
     }
 
-    fun handleCompressContext(additionalPrompt: String, targetTokens: Int, retainRatio: Double): Job {
+    fun handleCompressContext(
+        additionalPrompt: String,
+        targetTokens: Int,
+        retainRatio: Double,
+        keepRecentMessages: Int = 0,
+    ): Job {
         return viewModelScope.launch {
-            // 检查点式压缩：切分由 token 驱动的保留比例决定（对齐 design-auto-compaction §4.1）
+            // 检查点式压缩：切分由 token 驱动的保留比例决定（对齐 design-auto-compaction §4.1）；
+            // keepRecentMessages > 0 时作为「保留最近 N 条」的下限
             val currentSettings = settings.value
             val model = currentChatModel.value
             val windowTokens = model?.effectiveContextLength(currentSettings.contextLengthOverride)
@@ -331,6 +337,7 @@ class ChatVM(
                 additionalPrompt = additionalPrompt,
                 targetTokens = targetTokens,
                 retainRatio = retainRatio,
+                keepRecentMessages = keepRecentMessages,
                 // 「跟随对话模型」时使用当前对话模型
                 followModel = model,
             )
@@ -338,8 +345,15 @@ class ChatVM(
                 .onSuccess { checkpoint ->
                     if (checkpoint == null) {
                         // 历史尚不足以切分（非错误）——明确提示，避免用户以为点击无效
+                        val message = context.getString(
+                            if (keepRecentMessages > 0) {
+                                R.string.chat_page_compress_not_enough_messages_keep_recent
+                            } else {
+                                R.string.chat_page_compress_not_enough_messages
+                            }
+                        )
                         chatService.addError(
-                            IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages)),
+                            IllegalStateException(message),
                             conversationId = _conversationId,
                             title = context.getString(R.string.error_title_compress_conversation),
                         )

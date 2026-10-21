@@ -107,6 +107,7 @@ import app.androidrik.rikkahub.utils.estimateWindowTokens
 import app.androidrik.rikkahub.data.ai.compression.shouldAutoCompress
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
+import app.androidrik.rikkahub.data.ai.compression.effectiveMinKeep
 import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
 import app.androidrik.rikkahub.data.model.markGeneratingNodeIncomplete
@@ -1935,6 +1936,7 @@ class ChatService(
      * 检查点式压缩（design-auto-compaction §4.1 三边界对齐 + §4.4 独立表）：
      *
      * 1. 保留策略 token 驱动：从尾部往前累计，预算 = 模型窗口 × [COMPRESS_RETAIN_RATIO]（至少 2 条）；
+     *    用户可再指定「保留最近 N 条」作为**下限**（[keepRecentMessages]），token 预算不足时也不会少留；
      * 2. 其余发送窗口历史分块并行摘要，与旧检查点（prior）合并为单一新摘要（避免层层累积）；
      * 3. **轨迹只追加**：不改动 message_node，只往 compression_checkpoint 表追加一行
      *    （content + boundaryNodeId），并 trimToLatest 清理旧行；
@@ -1944,6 +1946,8 @@ class ChatService(
      * @param additionalPrompt 用户附加指令（与 prior 检查点拼接后注入 {additional_context}）
      * @param targetTokens 摘要目标 token（注入 {target_tokens}）
      * @param retainRatio 保留窗口占比（0.05~0.9 钳制；默认 COMPRESS_RETAIN_RATIO = 0.4）
+     * @param keepRecentMessages 「保留最近 N 条」下限：这些最近节点不参与压缩、原样留在摘要之后；
+     *   0 = 不额外指定（只按 [retainRatio] token 预算切分，默认下限 [COMPRESS_MIN_KEEP_MESSAGES] 条）
      * @return 成功时 Success(新检查点)，无可压缩内容时 Success(null)，失败时 Failure
      */
     suspend fun compressToCheckpoint(
@@ -1952,6 +1956,7 @@ class ChatService(
         additionalPrompt: String = "",
         targetTokens: Int = COMPRESS_TARGET_TOKENS,
         retainRatio: Double = COMPRESS_RETAIN_RATIO,
+        keepRecentMessages: Int = 0,
         /**
          * 「跟随对话模型」时使用的模型（由调用方传入**该会话**实际的生成模型）。
          * 传 null 时回退全局当前对话模型。
@@ -1975,7 +1980,11 @@ class ChatService(
         val window = effectiveWindow?.let { conversation.messageNodes.drop(it.boundaryIndex + 1) }
             ?: conversation.messageNodes
         val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
-        val plan = estimateCompressionPlan(window, budget)
+        val plan = estimateCompressionPlan(
+            nodes = window,
+            budgetTokens = budget,
+            minKeep = effectiveMinKeep(keepRecentMessages),
+        )
         if (!plan.shouldCompress) return@runCatching null  // 无可压缩内容（非错误）
 
         val messagesToCompress = plan.toCompress.map { it.currentMessage }

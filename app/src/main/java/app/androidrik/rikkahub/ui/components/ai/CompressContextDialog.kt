@@ -30,6 +30,7 @@ import kotlinx.coroutines.Job
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_RANGE
+import app.androidrik.rikkahub.data.ai.compression.COMPRESS_KEEP_RECENT_MESSAGES_RANGE
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
 import app.androidrik.rikkahub.data.ai.compression.CompressPreset
 import app.androidrik.rikkahub.R
@@ -38,7 +39,7 @@ import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
 @Composable
 fun CompressContextDialog(
     onDismiss: () -> Unit,
-    onConfirm: (additionalPrompt: String, targetTokens: Int, retainRatio: Double) -> Job,
+    onConfirm: (additionalPrompt: String, targetTokens: Int, retainRatio: Double, keepRecentMessages: Int) -> Job,
     /**
      * 初值：来自当前压缩设置（而不是每次重置为固定值）。
      *
@@ -54,6 +55,8 @@ fun CompressContextDialog(
     // 初值读设置，而非硬编码——此前每次打开都重置为 2000/40，用户上次的选择不被记住
     var selectedTokens by remember { mutableIntStateOf(initialTargetTokens) }
     var selectedRetainPercent by remember { mutableIntStateOf(initialRetainPercent) }
+    // 「保留最近 N 条」下限：默认 0 = 只按 token 比例切分（提示词缓存命中最好，与上游默认一致）
+    var keepRecentMessages by remember { mutableIntStateOf(0) }
     var currentJob by remember { mutableStateOf<Job?>(null) }
     val isLoading = currentJob?.isActive == true
 
@@ -119,6 +122,18 @@ fun CompressContextDialog(
                         range = AUTO_COMPRESS_RETAIN_PERCENT_RANGE,
                         onValueChange = { selectedRetainPercent = it },
                     )
+                    // 可选「保留最近 N 条」下限：token 预算太小、整段发不出去时，多留几条原文
+                    NumericDialogField(
+                        label = stringResource(R.string.chat_page_compress_keep_recent_count),
+                        value = keepRecentMessages,
+                        range = COMPRESS_KEEP_RECENT_MESSAGES_RANGE,
+                        onValueChange = { keepRecentMessages = it },
+                    )
+                    Text(
+                        text = stringResource(R.string.chat_page_compress_keep_recent_count_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
 
                     // Additional context input
                     OutlinedTextField(
@@ -153,7 +168,12 @@ fun CompressContextDialog(
                 }
             } else {
                 TextButton(onClick = {
-                    currentJob = onConfirm(additionalPrompt, selectedTokens, selectedRetainPercent / 100.0)
+                    currentJob = onConfirm(
+                        additionalPrompt,
+                        selectedTokens,
+                        selectedRetainPercent / 100.0,
+                        keepRecentMessages,
+                    )
                 }) {
                     Text(stringResource(R.string.confirm))
                 }

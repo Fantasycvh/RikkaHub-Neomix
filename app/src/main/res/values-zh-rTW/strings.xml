@@ -460,7 +460,10 @@
   <string name="chat_page_compress_context_desc">將對話壓縮成摘要以節省 token</string>
   <string name="chat_page_compress_context_title">壓縮對話紀錄</string>
   <string name="chat_page_compress_keep_recent">保留最近對話比例</string>
+  <string name="chat_page_compress_keep_recent_count">保留最近訊息數</string>
+  <string name="chat_page_compress_keep_recent_count_desc">這些訊息不參與壓縮，原樣保留在摘要之後。填 0 表示壓縮全部訊息（提示詞快取命中最好）；對話太長導致壓縮失敗時可多留幾條。</string>
   <string name="chat_page_compress_not_enough_messages">歷史還不夠長，暫無可壓縮內容——繼續對話後再試。</string>
+  <string name="chat_page_compress_not_enough_messages_keep_recent">可壓縮的訊息不足——請減少保留的最近訊息數。</string>
   <string name="chat_page_compress_target_tokens">目標 Token 大小</string>
   <string name="chat_page_compress_warning">⚠️ 較早的訊息將從傳送給模型的上下文中摘要化；完整歷史仍保留在對話中、可展開查看。對被壓縮的訊息做編輯、重新生成、刪除或切換分支，都會自動取消壓縮。</string>
   <string name="chat_page_compressing">正在壓縮...</string>

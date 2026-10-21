@@ -449,7 +449,10 @@
   <string name="chat_page_compress_context_desc">Compress the conversation into a summary to save tokens</string>
   <string name="chat_page_compress_context_title">Compress Conversation History</string>
   <string name="chat_page_compress_keep_recent">Keep recent %</string>
+  <string name="chat_page_compress_keep_recent_count">Keep recent messages</string>
+  <string name="chat_page_compress_keep_recent_count_desc">These messages are not compressed and stay after the summary. 0 compresses all messages (best prompt-cache reuse); increase it when compression fails because the conversation is too long.</string>
   <string name="chat_page_compress_not_enough_messages">Not enough history to compress yet — keep chatting and try again later.</string>
+  <string name="chat_page_compress_not_enough_messages_keep_recent">Not enough messages to compress — reduce the number of recent messages to keep.</string>
   <string name="chat_page_compress_target_tokens">Target Token Size</string>
   <string name="chat_page_compress_warning">WARNING: Earlier messages will be summarized out of the model context. Your full history stays in the chat and can be expanded. Editing, regenerating, deleting or switching the branch of a compressed message automatically cancels compression.</string>
   <string name="chat_page_compressing">Compressing...</string>

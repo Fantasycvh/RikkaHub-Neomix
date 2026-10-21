@@ -35,6 +35,20 @@ const val COMPRESS_MAX_MESSAGES_PER_CHUNK: Int = 256
 /** 保留窗口最少消息数（低于此值不再切分，避免把整个窗口压掉） */
 const val COMPRESS_MIN_KEEP_MESSAGES: Int = 2
 
+/**
+ * 「保留最近消息数」的输入范围：0 = 不额外指定，只按 token 预算切分（默认下限仍是
+ * [COMPRESS_MIN_KEEP_MESSAGES] 条）；上限 999 只是输入框防误触，超出窗口时自然压无可压。
+ */
+val COMPRESS_KEEP_RECENT_MESSAGES_RANGE: IntRange = 0..999
+
+/**
+ * 把用户可选的「保留最近 N 条」合并成实际的 [estimateCompressionPlan] 下限：
+ * 0（或不填）回退默认 [COMPRESS_MIN_KEEP_MESSAGES]；负数按 0 处理；
+ * 大于 0 时该数值就是**下限**——token 预算仍可能保留更多，但不会少于它。
+ */
+fun effectiveMinKeep(keepRecentMessages: Int): Int =
+    maxOf(COMPRESS_MIN_KEEP_MESSAGES, keepRecentMessages.coerceAtLeast(0))
+
 data class CompressionPlan(
     /** 待压缩的早期节点（按原顺序） */
     val toCompress: List<MessageNode>,
@@ -48,7 +62,9 @@ data class CompressionPlan(
  * 计算压缩切分点：从尾部向前按 token 累计，预算 = [budgetTokens]，至少保留 [minKeep] 条。
  *
  * 对齐 harness 的 token 驱动保留策略（而非按条数），预算不足时至少留 minKeep 条，
- * 防止把整个窗口都压进摘要。不修改入参。
+ * 防止把整个窗口都压进摘要。[minKeep] 由调用方按用户「保留最近 N 条」选项换算
+ * （见 [effectiveMinKeep]）：它是**下限**，token 预算充足时仍会多留。
+ * 不修改入参。
  */
 fun estimateCompressionPlan(
     nodes: List<MessageNode>,

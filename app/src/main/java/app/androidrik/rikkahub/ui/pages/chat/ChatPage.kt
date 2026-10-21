@@ -729,8 +729,13 @@ private fun ChatPageContent(
         if (showCompressDialog) {
             CompressContextDialog(
                 onDismiss = { showCompressDialog = false },
-                onConfirm = { additionalPrompt, targetTokens, retainRatio ->
-                    vm.handleCompressContext(additionalPrompt, targetTokens, retainRatio)
+                onConfirm = { additionalPrompt, targetTokens, retainRatio, keepRecentMessages ->
+                    vm.handleCompressContext(
+                        additionalPrompt = additionalPrompt,
+                        targetTokens = targetTokens,
+                        retainRatio = retainRatio,
+                        keepRecentMessages = keepRecentMessages,
+                    )
                 },
                 // 初值取当前设置（与 + 菜单里的入口同一约定）
                 initialRetainPercent = setting.autoCompressRetainPercent,
