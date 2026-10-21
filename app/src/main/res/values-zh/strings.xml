@@ -1328,7 +1328,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_proxy_http">HTTP</string>
   <string name="setting_provider_page_proxy_socks5">SOCKS5</string>
   <string name="setting_provider_page_proxy_inherit_desc">跟随全局代理设置。选择「无」则该提供商始终直连；也可在下方为其单独配置代理。</string>
-  <string name="setting_provider_page_scan_error">错误: %s</string>
   <string name="setting_provider_page_scan_qr_code">扫描二维码</string>
   <string name="setting_provider_page_search_providers">搜索提供商</string>
   <string name="setting_provider_page_recommend">推荐提供商</string>
