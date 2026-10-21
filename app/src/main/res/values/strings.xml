@@ -2165,7 +2165,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="media_creation_page_saved_files_partial">Saved %1$d files, %2$d failed: %3$s</string>
   <string name="media_creation_legacy_entry">Legacy image generation</string>
   <string name="setting_provider_legacy_image_hint">Image models configured here are used only by legacy image generation. For the new creation workflow, configure providers in Media &amp; Speech.</string>
-
   <!-- 悬浮小窗（原型）：设置页入口、窗口外壳与前台通知 -->
   <string name="setting_floating_window_title">Floating Mini Window (Experimental)</string>
   <string name="setting_floating_window_desc">Chat over other apps in a freely movable, resizable window. Text chat is supported; attachments and tool approvals open in the main app.</string>
@@ -2184,8 +2183,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="floating_window_notification_title">Mini window running</string>
   <string name="floating_window_notification_text">Tap to return to the app</string>
   <string name="floating_window_notification_stop">Close</string>
-
-
   <!-- 设置页全局搜索 -->
   <string name="setting_global_search_title">Search settings</string>
   <string name="setting_global_search_hint">Search settings and features</string>
@@ -2196,4 +2193,26 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_global_search_result_count">%1$d results</string>
   <string name="setting_global_search_no_result">No settings match "%1$s"</string>
   <string name="setting_global_search_no_result_hint">Try a shorter keyword, or a different name for the same feature</string>
+  <string name="assistant_page_memory_kind_profile">Profile</string>
+  <string name="assistant_page_memory_kind_topic">Topic</string>
+  <string name="assistant_page_memory_kind_task">Task</string>
+  <string name="assistant_page_memory_task_open">Open</string>
+  <string name="assistant_page_memory_task_done">Completed</string>
+  <string name="assistant_page_memory_task_dropped">Cancelled</string>
+  <string name="assistant_page_memory_task_due">Due: %1$s</string>
+  <string name="assistant_page_memory_task_overdue">Overdue: %1$s</string>
+  <string name="assistant_page_memory_task_no_due">Set due date</string>
+  <string name="assistant_page_memory_task_clear_due">Clear due date</string>
+  <string name="assistant_page_memory_task_complete">Mark completed</string>
+  <string name="assistant_page_memory_task_reopen">Reopen task</string>
+  <string name="assistant_page_memory_task_unanchor_hint">Turn off the anchor switch before changing this memory to a task.</string>
+  <string name="assistant_page_memory_capacity">Memories: %1$d / %2$d</string>
+  <string name="assistant_page_memory_capacity_full_hint">At capacity. Profiles, anchors and open tasks are never automatically evicted. If space cannot be freed within the 200-record limit, adding a memory fails without changing the library. Complete or cancel tasks, or manually remove memories to make room.</string>
+  <string name="assistant_page_memory_filter_all">All (%1$d)</string>
+  <string name="assistant_page_memory_filter_count">%1$s (%2$d)</string>
+  <string name="assistant_page_memory_filter_empty">No memories in this category.</string>
+  <string name="assistant_page_memory_profile_hint">Profile candidates can be used as ordinary context, but do not enter the system prompt automatically. Turn on Anchor to include them in the system layer of new conversations; existing conversations need an explicit anchor refresh.</string>
+  <string name="assistant_page_memory_task_drop">Cancel task</string>
+  <string name="assistant_page_memory_task_drop_confirm">Cancel this task?</string>
+  <string name="assistant_page_memory_task_without_due">No due date</string>
 </resources>

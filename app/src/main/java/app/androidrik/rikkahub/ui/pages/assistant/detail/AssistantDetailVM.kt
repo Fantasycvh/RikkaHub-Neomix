@@ -26,6 +26,7 @@ import app.androidrik.rikkahub.data.files.SkillMetadata
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Avatar
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import app.androidrik.rikkahub.data.repository.MemoryRepository
@@ -238,6 +239,8 @@ class AssistantDetailVM(
             description = memory.description,
             isAnchor = memory.isAnchor,
             reason = "User memory editor",
+            kind = memory.kind,
+            dueAt = memory.dueAt,
         )
     }
 
@@ -263,8 +266,24 @@ class AssistantDetailVM(
             isAnchor = memory.isAnchor,
             expectedRevision = memory.revision,
             reason = "User memory editor",
+            kind = memory.kind,
+            dueAt = memory.dueAt,
         )
         // Deliberately do not refresh frozen anchors in existing conversations.
+    }
+
+    suspend fun setMemoryTaskDone(storeId: String, memory: AssistantMemory, done: Boolean) =
+        setMemoryTaskStatus(storeId, memory, if (done) MemoryTaskStatus.DONE else MemoryTaskStatus.OPEN)
+
+    suspend fun setMemoryTaskStatus(storeId: String, memory: AssistantMemory, status: MemoryTaskStatus) {
+        memoryRepository.setTaskStatusInStore(
+            storeId = storeId,
+            id = memory.id,
+            status = status,
+            expectedRevision = memory.revision,
+            actor = "USER",
+            reason = "User changed task status",
+        )
     }
 
     suspend fun deleteMemory(storeId: String, memory: AssistantMemory) {

@@ -2150,7 +2150,6 @@
   <string name="setting_tts_page_default_playback_speed">預設播放速度</string>
   <string name="setting_tts_page_default_playback_speed_description">在本機套用至所有 TTS 供應商，不變更其語音合成設定。</string>
   <string name="theme_name_claude">Claude</string>
-
   <!-- 懸浮小窗（原型）：設定頁入口、視窗外殼與前景通知 -->
   <string name="setting_floating_window_title">懸浮小窗（實驗）</string>
   <string name="setting_floating_window_desc">在桌面或其他應用程式之上進行文字對話，視窗可拖動、自由拉伸。附件與工具審批需回主介面處理；聊天頁也可開啟應用內小窗。</string>
@@ -2169,8 +2168,6 @@
   <string name="floating_window_notification_title">懸浮小窗執行中</string>
   <string name="floating_window_notification_text">點擊返回應用程式</string>
   <string name="floating_window_notification_stop">關閉</string>
-
-
   <!-- 設定頁全域搜尋 -->
   <string name="setting_global_search_title">搜尋設定</string>
   <string name="setting_global_search_hint">搜尋設定項、功能或名稱</string>
@@ -2181,4 +2178,26 @@
   <string name="setting_global_search_result_count">%1$d 個結果</string>
   <string name="setting_global_search_no_result">沒有找到與「%1$s」相關的設定項</string>
   <string name="setting_global_search_no_result_hint">試試更短的關鍵詞，或換一種說法</string>
+  <string name="assistant_page_memory_kind_profile">畫像</string>
+  <string name="assistant_page_memory_kind_topic">話題</string>
+  <string name="assistant_page_memory_kind_task">事務</string>
+  <string name="assistant_page_memory_task_open">未完成</string>
+  <string name="assistant_page_memory_task_done">已完成</string>
+  <string name="assistant_page_memory_task_dropped">已取消</string>
+  <string name="assistant_page_memory_task_due">截止：%1$s</string>
+  <string name="assistant_page_memory_task_overdue">已逾期：%1$s</string>
+  <string name="assistant_page_memory_task_no_due">設定截止日期</string>
+  <string name="assistant_page_memory_task_clear_due">清除截止日期</string>
+  <string name="assistant_page_memory_task_complete">標記為已完成</string>
+  <string name="assistant_page_memory_task_reopen">重新開啟事務</string>
+  <string name="assistant_page_memory_task_unanchor_hint">改為事務前，請先關閉固化開關。</string>
+  <string name="assistant_page_memory_capacity">記憶：%1$d / %2$d</string>
+  <string name="assistant_page_memory_capacity_full_hint">記憶庫已滿。畫像、錨點和未完成事務不會被自動淘汰。若無法在 200 筆上限內騰出空間，新增會失敗且不會更改記憶庫。可完成或取消事務，或手動清理記憶以釋出空間。</string>
+  <string name="assistant_page_memory_filter_all">全部（%1$d）</string>
+  <string name="assistant_page_memory_filter_count">%1$s（%2$d）</string>
+  <string name="assistant_page_memory_filter_empty">此分類暫無記憶。</string>
+  <string name="assistant_page_memory_profile_hint">畫像候選可作為一般上下文使用，但不會自動進入系統提示。開啟固化後才會進入新對話的系統層；既有對話需手動重新整理固化記憶。</string>
+  <string name="assistant_page_memory_task_drop">取消事務</string>
+  <string name="assistant_page_memory_task_drop_confirm">取消此事務？</string>
+  <string name="assistant_page_memory_task_without_due">無截止日期</string>
 </resources>

@@ -18,12 +18,46 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.db.entity.MemoryEntity
+import app.androidrik.rikkahub.data.model.MemoryKind
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
+import java.time.Instant
+import java.time.ZoneId
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.repository.MemoryHistoryRecord
 import app.androidrik.rikkahub.data.repository.MemoryTrashRecord
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+
+@Composable
+private fun MemorySnapshotMetadata(snapshot: MemoryEntity) {
+    val metadata = memorySnapshotPresentation(snapshot)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(memoryKindLabel(metadata.kind), style = MaterialTheme.typography.labelMedium)
+        if (metadata.kind == MemoryKind.TASK) {
+            Text(
+                stringResource(when (requireNotNull(metadata.taskStatus)) {
+                    MemoryTaskStatus.OPEN -> R.string.assistant_page_memory_task_open
+                    MemoryTaskStatus.DONE -> R.string.assistant_page_memory_task_done
+                    MemoryTaskStatus.DROPPED -> R.string.assistant_page_memory_task_dropped
+                }),
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Text(
+                if (metadata.dueAt != null) {
+                    stringResource(
+                        R.string.assistant_page_memory_task_due,
+                        Instant.ofEpochMilli(metadata.dueAt).atZone(ZoneId.systemDefault()).toLocalDate().toString(),
+                    )
+                } else stringResource(R.string.assistant_page_memory_task_without_due),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
 
 /** Additive recovery entry; the existing editor, suggestion details and approval flow stay intact. */
 @Composable
@@ -81,6 +115,7 @@ internal fun MemoryRecoveryDialog(
                     if (trash.isEmpty() && loadError == null) Text("回收站为空")
                     trash.forEach { record ->
                         Text("${record.snapshot.publicId} · ${record.tombstone.reason}")
+                        MemorySnapshotMetadata(record.snapshot)
                         Text(record.snapshot.content, maxLines = 4)
                         TextButton(enabled = !busy, onClick = { pickedTrash = record }) {
                             Text("查看并恢复")
@@ -99,6 +134,7 @@ internal fun MemoryRecoveryDialog(
                         if (history.isEmpty() && loadError == null) Text("暂无保留历史")
                         history.forEach { record ->
                             Text("v${record.snapshot.revision} · ${record.event.operation} · ${record.event.actor}")
+                            MemorySnapshotMetadata(record.snapshot)
                             Text(record.snapshot.content, maxLines = 4)
                             TextButton(enabled = !busy, onClick = { pickedHistory = record }) {
                                 Text("查看并恢复此版本")
@@ -120,6 +156,7 @@ internal fun MemoryRecoveryDialog(
             title = { Text("确认恢复") },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    MemorySnapshotMetadata(snapshot)
                     Text(snapshot.content)
                     Text("主题：${snapshot.description}")
                     Text("重要度：${snapshot.importance} · 固化：${snapshot.isAnchor}")

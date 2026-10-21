@@ -2168,7 +2168,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_tts_page_default_playback_speed">默认播放速度</string>
   <string name="setting_tts_page_default_playback_speed_description">在本地应用于所有 TTS 提供商，不改变其语音合成设置。</string>
   <string name="theme_name_claude">Claude</string>
-
   <!-- 悬浮小窗（原型）：设置页入口、窗口外壳与前台通知 -->
   <string name="setting_floating_window_title">悬浮小窗（实验）</string>
   <string name="setting_floating_window_desc">在桌面或其他应用之上进行文本对话，窗口可拖动、自由拉伸。附件与工具审批需回主界面处理；聊天页也可打开应用内小窗。</string>
@@ -2187,8 +2186,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="floating_window_notification_title">悬浮小窗运行中</string>
   <string name="floating_window_notification_text">点击返回应用</string>
   <string name="floating_window_notification_stop">关闭</string>
-
-
   <!-- 设置页全局搜索 -->
   <string name="setting_global_search_title">搜索设置</string>
   <string name="setting_global_search_hint">搜索设置项、功能或名称</string>
@@ -2199,4 +2196,26 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_global_search_result_count">%1$d 个结果</string>
   <string name="setting_global_search_no_result">没有找到与「%1$s」相关的设置项</string>
   <string name="setting_global_search_no_result_hint">试试更短的关键词，或换一种说法</string>
+  <string name="assistant_page_memory_kind_profile">画像</string>
+  <string name="assistant_page_memory_kind_topic">话题</string>
+  <string name="assistant_page_memory_kind_task">事务</string>
+  <string name="assistant_page_memory_task_open">未完成</string>
+  <string name="assistant_page_memory_task_done">已完成</string>
+  <string name="assistant_page_memory_task_dropped">已取消</string>
+  <string name="assistant_page_memory_task_due">截止：%1$s</string>
+  <string name="assistant_page_memory_task_overdue">已逾期：%1$s</string>
+  <string name="assistant_page_memory_task_no_due">设置截止日期</string>
+  <string name="assistant_page_memory_task_clear_due">清除截止日期</string>
+  <string name="assistant_page_memory_task_complete">标记为已完成</string>
+  <string name="assistant_page_memory_task_reopen">重新打开事务</string>
+  <string name="assistant_page_memory_task_unanchor_hint">改为事务前，请先关闭固化开关。</string>
+  <string name="assistant_page_memory_capacity">记忆：%1$d / %2$d</string>
+  <string name="assistant_page_memory_capacity_full_hint">记忆库已满。画像、锚点和未完成事务不会被自动淘汰。若无法在 200 条上限内腾出空间，新增会失败且不会更改记忆库。可完成或取消事务，或手动清理记忆以释放空间。</string>
+  <string name="assistant_page_memory_filter_all">全部（%1$d）</string>
+  <string name="assistant_page_memory_filter_count">%1$s（%2$d）</string>
+  <string name="assistant_page_memory_filter_empty">此分类暂无记忆。</string>
+  <string name="assistant_page_memory_profile_hint">画像候选可作为普通上下文使用，但不会自动进入系统提示。开启固化后才会进入新会话的系统层；已有会话需手动刷新固化记忆。</string>
+  <string name="assistant_page_memory_task_drop">取消事务</string>
+  <string name="assistant_page_memory_task_drop_confirm">取消此事务？</string>
+  <string name="assistant_page_memory_task_without_due">无截止日期</string>
 </resources>

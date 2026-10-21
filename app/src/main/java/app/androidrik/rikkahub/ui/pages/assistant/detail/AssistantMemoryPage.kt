@@ -18,6 +18,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import app.androidrik.rikkahub.data.model.MemoryKind
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
+import java.time.LocalDate
+import java.time.ZoneOffset
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -156,6 +168,12 @@ fun AssistantMemoryPage(id: String) {
                 }
             },
             onUpdateMemory = { memory -> launchMemoryAction { vm.updateMemory(storeId, memory) } },
+            onTaskDoneChange = { memory, done ->
+                launchMemoryAction { vm.setMemoryTaskDone(storeId, memory, done) }
+            },
+            onDropTask = { memory ->
+                launchMemoryAction { vm.setMemoryTaskStatus(storeId, memory, MemoryTaskStatus.DROPPED) }
+            },
             consolidationStatus = consolidationStatus,
             onOrganize = { vm.organizeMemory() },
             // 手动固化：动作本身没有可见结果（只影响后续请求的 system 块），
@@ -234,6 +252,8 @@ private fun AssistantMemoryContent(
     onAddMemory: (AssistantMemory) -> Unit,
     onUpdateMemory: (AssistantMemory) -> Unit,
     onDeleteMemory: (AssistantMemory) -> Unit,
+    onTaskDoneChange: (AssistantMemory, Boolean) -> Unit,
+    onDropTask: (AssistantMemory) -> Unit,
     /** 做梦（V3）的状态与手动整理入口（在顶层收集后传进来：CardGroup 的 DSL 不是 composable 作用域） */
     consolidationStatus: MemoryConsolidationStatus,
     onOrganize: () -> Unit,
@@ -251,6 +271,8 @@ private fun AssistantMemoryContent(
         }
     }
     var pendingDeleteMemory by remember { mutableStateOf<AssistantMemory?>(null) }
+    var pendingDropTask by remember(assistant.memoryId()) { mutableStateOf<AssistantMemory?>(null) }
+    var kindFilter by remember(assistant.memoryId()) { mutableStateOf<MemoryKind?>(null) }
     var showTimeReminderIntervalDialog by remember(assistant.id) { mutableStateOf(false) }
     var timeReminderIntervalInput by remember(assistant.id) { mutableStateOf("") }
     // 被点开看详情的建议。按建议本身记住，弹层只读。
@@ -418,7 +440,37 @@ private fun AssistantMemoryContent(
                 Text(stringResource(R.string.assistant_page_manage_memory_title))
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MemoryKind.entries.forEach { kind ->
+                            FilterChip(
+                                selected = memory.kind == kind,
+                                // The user must explicitly turn off the anchor switch first.
+                                // Saving then combines unanchoring and reclassification in one CAS.
+                                enabled = kind != MemoryKind.TASK || !memory.isAnchor,
+                                onClick = {
+                                    update(memory.copy(
+                                        kind = kind,
+                                        dueAt = if (kind == MemoryKind.TASK) memory.dueAt else 0L,
+                                    ))
+                                },
+                                label = { Text(memoryKindLabel(kind)) },
+                            )
+                        }
+                    }
+                    if (memory.isAnchor) {
+                        Text(
+                            stringResource(R.string.assistant_page_memory_task_unanchor_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (memory.kind == MemoryKind.TASK) {
+                        MemoryDueDateEditor(memory.dueAt) { update(memory.copy(dueAt = it)) }
+                    }
                     TextField(
                         value = memory.content,
                         onValueChange = {
@@ -471,26 +523,28 @@ private fun AssistantMemoryContent(
                     // 配额仅 5 条、且只由用户在此手动固化（AI 不得自填，见 MemoryRepository）。
                     // **只对新会话生效**：已有会话在它开始时冻过集合了，要采纳得显式按下
                     // 会话菜单「本对话固化记忆」或本页的「固化记忆」（设计稿 §5）。
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.assistant_page_memory_anchor),
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                            Text(
-                                text = stringResource(R.string.assistant_page_memory_anchor_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (memory.kind != MemoryKind.TASK) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.assistant_page_memory_anchor),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                                Text(
+                                    text = stringResource(R.string.assistant_page_memory_anchor_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = memory.isAnchor,
+                                onCheckedChange = { update(memory.copy(isAnchor = it)) },
                             )
                         }
-                        Switch(
-                            checked = memory.isAnchor,
-                            onCheckedChange = { update(memory.copy(isAnchor = it)) },
-                        )
                     }
                 }
             },
@@ -918,7 +972,50 @@ private fun AssistantMemoryContent(
             }
         }
 
-        memories.fastForEach { memory ->
+        Text(
+            text = stringResource(R.string.assistant_page_memory_capacity, memories.size, 200),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        if (memories.size >= 200) {
+            Text(
+                text = stringResource(R.string.assistant_page_memory_capacity_full_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        val kindCounts = memoryKindCounts(memories)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = kindFilter == null,
+                onClick = { kindFilter = null },
+                label = { Text(stringResource(R.string.assistant_page_memory_filter_all, memories.size)) },
+            )
+            MemoryKind.entries.forEach { kind ->
+                FilterChip(
+                    selected = kindFilter == kind,
+                    onClick = { kindFilter = kind },
+                    label = {
+                        Text(stringResource(
+                            R.string.assistant_page_memory_filter_count,
+                            memoryKindLabel(kind), kindCounts.getValue(kind),
+                        ))
+                    },
+                )
+            }
+        }
+        if (kindFilter == MemoryKind.PROFILE || (kindFilter == null && memories.any { it.kind == MemoryKind.PROFILE })) {
+            Text(
+                text = stringResource(R.string.assistant_page_memory_profile_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        val visibleMemories = filterMemoriesByKind(memories, kindFilter)
+        if (visibleMemories.isEmpty()) {
+            Text(stringResource(R.string.assistant_page_memory_filter_empty))
+        }
+        // Filtering preserves the repository's stable order; do not regroup or sort.
+        visibleMemories.fastForEach { memory ->
             key(memory.id) {
                 MemoryItem(
                     memory = memory,
@@ -927,11 +1024,26 @@ private fun AssistantMemoryContent(
                     },
                     onDeleteMemory = {
                         pendingDeleteMemory = it
-                    }
+                    },
+                    onTaskDoneChange = onTaskDoneChange,
+                    onDropTask = { pendingDropTask = it },
                 )
             }
         }
     }
+
+    RikkaConfirmDialog(
+        show = pendingDropTask != null,
+        title = stringResource(R.string.assistant_page_memory_task_drop_confirm),
+        confirmText = stringResource(R.string.assistant_page_memory_task_drop),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            pendingDropTask?.let(onDropTask)
+            pendingDropTask = null
+        },
+        onDismiss = { pendingDropTask = null },
+        text = { Text(pendingDropTask?.content.orEmpty()) },
+    )
 
     RikkaConfirmDialog(
         show = pendingDeleteMemory != null,
@@ -954,14 +1066,78 @@ private fun AssistantMemoryContent(
 }
 
 @Composable
+internal fun memoryKindLabel(kind: MemoryKind): String = stringResource(when (kind) {
+    MemoryKind.PROFILE -> R.string.assistant_page_memory_kind_profile
+    MemoryKind.TOPIC -> R.string.assistant_page_memory_kind_topic
+    MemoryKind.TASK -> R.string.assistant_page_memory_kind_task
+})
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MemoryDueDateEditor(dueAt: Long, onChange: (Long) -> Unit) {
+    var showPicker by remember { mutableStateOf(false) }
+    val date = dueAt.takeIf { it > 0L }?.let {
+        Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = { showPicker = true }) {
+            Text(if (date == null) {
+                stringResource(R.string.assistant_page_memory_task_no_due)
+            } else {
+                stringResource(R.string.assistant_page_memory_task_due, date.toString())
+            })
+        }
+        if (date != null) {
+            TextButton(onClick = { onChange(0L) }) {
+                Text(stringResource(R.string.assistant_page_memory_task_clear_due))
+            }
+        }
+    }
+    if (showPicker) {
+        // Material3 represents calendar dates at UTC midnight, not local midnight.
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = date?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(
+                    enabled = pickerState.selectedDateMillis != null,
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { selected ->
+                            val localDate = Instant.ofEpochMilli(selected).atZone(ZoneOffset.UTC).toLocalDate()
+                            onChange(localDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli())
+                        }
+                        showPicker = false
+                    },
+                ) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        ) { DatePicker(state = pickerState) }
+    }
+}
+
+@Composable
 private fun MemoryItem(
     memory: AssistantMemory,
     onEditMemory: (AssistantMemory) -> Unit,
-    onDeleteMemory: (AssistantMemory) -> Unit
+    onDeleteMemory: (AssistantMemory) -> Unit,
+    onTaskDoneChange: (AssistantMemory, Boolean) -> Unit,
+    onDropTask: (AssistantMemory) -> Unit,
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
     val copiedText = stringResource(R.string.copied)
+    val closedTask = memory.kind == MemoryKind.TASK && memory.taskStatus != MemoryTaskStatus.OPEN
+    val dueDate = memory.dueAt.takeIf { it > 0L }?.let {
+        Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+    }
+    val overdue = !closedTask && dueDate != null && dueDate < LocalDate.now()
+    val taskActionLabel = stringResource(
+        if (closedTask) R.string.assistant_page_memory_task_reopen else R.string.assistant_page_memory_task_complete
+    )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -974,10 +1150,49 @@ private fun MemoryItem(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (memory.kind == MemoryKind.TASK) {
+                Checkbox(
+                    checked = closedTask,
+                    onCheckedChange = { onTaskDoneChange(memory, it) },
+                    modifier = Modifier.semantics {
+                        contentDescription = taskActionLabel
+                    },
+                )
+            }
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).alpha(if (closedTask) 0.55f else 1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                Text(
+                    text = memoryKindLabel(memory.kind),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                if (memory.kind == MemoryKind.TASK) {
+                    Text(
+                        text = stringResource(when (memory.taskStatus) {
+                            MemoryTaskStatus.OPEN -> R.string.assistant_page_memory_task_open
+                            MemoryTaskStatus.DONE -> R.string.assistant_page_memory_task_done
+                            MemoryTaskStatus.DROPPED -> R.string.assistant_page_memory_task_dropped
+                        }),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    if (dueDate != null) {
+                        Text(
+                            text = stringResource(
+                                if (overdue) R.string.assistant_page_memory_task_overdue else R.string.assistant_page_memory_task_due,
+                                dueDate.toString(),
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (memory.kind == MemoryKind.TASK && memory.taskStatus == MemoryTaskStatus.OPEN) {
+                    TextButton(onClick = { onDropTask(memory) }) {
+                        Text(stringResource(R.string.assistant_page_memory_task_drop))
+                    }
+                }
                 // id 是随机 opaque token、不便记忆——整行可点复制，方便用户粘到对话里引用该条记忆
                 Row(
                     modifier = Modifier
