@@ -1,7 +1,7 @@
 # 记忆的三种类型：画像 / 话题 / 事务（设计稿）
 
-> 状态：**设计稿，未实现**（2026-10-21）。本稿只回答"做什么、为什么、怎么验收"，
-> 不含代码改动；实施顺序见 §9。
+> 状态：**A1 / A2 与原版导入映射已实现并分批本地提交，未推送**（2026-10-21）；B 未实现。
+> 本稿保留设计与验收口径；实际落地与验证边界见 §14 / §15，实施顺序见 §9。
 >
 > 相关文档：分层注入 [`design-memory-injection-tiering.md`](design-memory-injection-tiering.md)、
 > 打分 [`design-memory-scoring.md`](design-memory-scoring.md)、
@@ -9,9 +9,9 @@
 > 做梦整理 [`design-memory-consolidation.md`](design-memory-consolidation.md)、
 > 检索/提案 [`design-memory-retrieval-and-consolidation.md`](design-memory-retrieval-and-consolidation.md)。
 >
-> **数据库当前为 46 版**（`app/src/main/java/app/androidrik/rikkahub/data/db/AppDatabase.kt`）。
+> **数据库当前为 47 版**（`app/src/main/java/app/androidrik/rikkahub/data/db/AppDatabase.kt`）。
 > 本仓旧文档里写的"DB 42/44"都是历史值（2026-10-21 本地已落地翻译历史 44→45 与上游会话快照 45→46）；
-> 本稿的迁移按 **46 → 47** 计算。
+> 本次 A1 已实现 **46 → 47** 手写迁移。
 
 ## 0. 决策记录
 
@@ -239,8 +239,9 @@ ALTER TABLE `memory_proposal` ADD COLUMN `due_at` INTEGER NOT NULL DEFAULT 0;
 2. 淘汰顺序：
    1. `done` / `dropped` 的任务（先按完成时间升序，最老的先走）；
    2. 话题按 `memoryScoreBucket` 升序（现状口径）；
-   3. 仍超限 ⇒ 从受保护集合按 `memoryScoreBucket` 升序淘汰（**配额是硬约束**，
-      不能让受保护记录无限增长；这一步在正常使用中几乎不会触发，触发时日志显式记录）。
+   3. 仍超限 ⇒ 明确抛出 `Memory capacity exceeded`，整笔事务回滚，**不淘汰受保护集合**。
+      A1 实施时收紧原设计中“受保护记录最后也可淘汰”的矛盾：配额仍是硬约束，
+      但通过拒绝新增保证，而不是静默牺牲既有画像、锚点或未完成事务。
 3. `addMemory` 在满库时新增的记录也可能被同一次 `enforceMaxCount` 淘汰。现有实现会
    `check(...)` 抛 "Memory capacity exceeded"；新增要求：**新增后复核新记录仍在库中**
    （受保护集合必须活得下来）；若全库都受保护、新记录确实被挤掉，按既有契约抛错并回滚，
@@ -300,7 +301,9 @@ ALTER TABLE `memory_proposal` ADD COLUMN `due_at` INTEGER NOT NULL DEFAULT 0;
 - `MemoryConsolidationProposal`（`MemoryConsolidationScheduler.kt`）增：
   `kind: String? = null`（null/空 = 未指定）、`dueAt: Long? = null`。
 - `MemoryProposalEntity` 增列：`kind TEXT NOT NULL DEFAULT ''`、`due_at INTEGER NOT NULL DEFAULT 0`
-  （DB 47 同一批迁移，纯列新增）。
+  （DB 47 同一批迁移，纯列新增）。提案的 `due_at` 编码与记忆实体不同：
+  `0` = 未指定（旧提案保留原截止日），`-1` = 明确清除，正数 = 截止时刻；
+  转回 `MemoryConsolidationProposal` 时分别解成 `null` / `0L` / 原值，避免编辑清日期丢失。
 - `MemoryProposalRepository`：`savePending` 落库、`toProposal` 读回、`applyRow` 传给
   `addMemory` / `updateContent`；确认页摘要（`proposeChangeSummary`）显示类型变化
   （如 `topic → task`）。
@@ -348,8 +351,9 @@ internal data class MemoryInjectionPlan(
 
 ### 5.3 事务块
 
-只收 `kind = task && status = open` 且**不是锚点**的记录（锚点任务被 §4.3 禁止，正常不会出现；
-若历史数据里有，按"已在 L1 渲染 ⇒ 不再重复"处理，避免同一条出现两次）。
+只收 `kind = task && status = open` 且**本次没有实际在 L1 渲染**的记录（锚点任务被 §4.3 禁止，正常不会出现；
+若历史数据里有，按"已在 L1 渲染 ⇒ 不再重复"处理，避免同一条出现两次；
+被冻结集合排除、超出锚点名额或放不进 L1 的异常开放事务仍走事务通道，不能静默消失）。
 
 排序：有截止日的按 `dueAt` 升序在前；无截止日的在后；同组按 `sortKey` 升序（写入先后）。
 理由：近期截止最需要行动；无截止的是"想起来再做"，稳定排序保证同一集合逐字节可复现。
@@ -442,14 +446,16 @@ internal data class MemoryInjectionPlan(
 - 库快照 / 校准表（`buildMemoryCalibrationTable`）增加 `kind` 列；任务再加 `status` / `due`。
 - 规则按 kind 分：
   - **画像**：矛盾时用用户最新说法覆盖；同义画像合并；**永不因"老"删除**；
-    不能替用户"固化"（没有该动作），最多在建议摘要里提示"可考虑固化"（A2 再定）。
+    不能替用户"固化"（没有该动作）；A2 仅允许文字建议用户在有用时考虑固化，不自动执行。
   - **话题**：维持现状（合并重复、被覆盖才退役）。
   - **事务**：只有在**新轮次里用户明说自己做完/取消了**时才 `complete` / 置 `dropped`；
     **永不因为日期过了或记录老而自动完成/删除**；已完成的旧任务可按"被覆盖/无引用"退役。
 - 合并纪律：**不跨 kind 合并**（任务不能并进话题；画像不能并进话题）。跨 kind 的重复由
   两条记录分别保留，或由用户手动处理——自动合并跨类会静默改变生命周期。
-- 提案动作新增 `complete`（A2）：`MemoryConsolidationProposal.action` 允许 `complete`
-  （DB 列是 TEXT，无需迁移；`applyRow` 增加分支）。A1 只做 `kind/due` 透传，不改动作集。
+- 提案动作新增 `complete` / `drop`（A2）：`MemoryConsolidationProposal.action` 分别映射
+  `done` / `dropped`，均要求 `id` + `expected_revision`，走修改审批；DB 动作列是 TEXT，无需迁移。
+  `complete/drop` 是状态变更，不能作为删除提案的替代输出依赖；删除依赖仍只能指向同类 `create/edit`。
+  A1 阶段仅做 `kind/due` 透传；A2 接通这两个状态动作。
 
 ## 7. UI
 
@@ -460,12 +466,12 @@ internal data class MemoryInjectionPlan(
 - 事务条目：复选框 `open ↔ done`（走 CAS）；`due` 逾期用 error 色。
 - 编辑/新建对话框：类型选择（三个 FilterChip 或 `SegmentedPill`，默认话题）；
   选事务时显示截止日选择器（Material3 `DatePicker`，日期粒度，不要时间）；
-  非事务隐藏"固化为锚点"开关（事务不得固化）。
+  **事务**隐藏"固化为锚点"开关（事务不得固化；画像和话题保留既有固化能力）。
 - 列表顺序：保持现有 `id ASC`（`MemoryDAO`），不引入排序选项（避免与"稳定"目标打架）。
 
 ### 7.2 A2（呈现）
 
-- 顶部筛选：`全部 / 画像 / 话题 / 事务`（带计数）——A1 只有条目标记，A2 再做分组/筛选。
+- 顶部筛选：`全部 / 画像 / 话题 / 事务`（带计数）——A2 已实现筛选，保持原列表顺序，不额外重排分组。
 - 画像区引导文案："画像候选不会自动进入系统提示；点『固化』后才会长期生效"。
 - 容量面板：满库时提示"受保护记录（画像/未完成任务/锚点）不会自动淘汰"。
 - 回收站/历史：显示类型与状态。
@@ -544,7 +550,7 @@ internal data class MemoryInjectionPlan(
 
 ### A2：整理与呈现
 
-- 整理器分 kind 规则 + `complete` 提案动作 + 库快照/校准表类型列；
+- 整理器分 kind 规则 + `complete/drop` 提案动作 + 库快照/校准表类型列；
 - 记忆页筛选/分组、画像固化引导、容量提示；
 - 全量回归（含既有 ~2000 项单测、lint、迁移链）。
 
@@ -592,9 +598,105 @@ internal data class MemoryInjectionPlan(
 | 新常量 | `MEMORY_TASK_BUDGET_TOKENS = 800`、`MEMORY_TASK_LIMIT = 20`（`GenerationPrompts.kt` 或 `MemoryInjectionPlan.kt`） |
 | 类型存储值 | `profile` / `topic` / `task`；状态 `open` / `done` / `dropped` |
 | DB | 46 → 47（`Migration_46_47`，注册 `DataSourceModule` + `LegacyBackupConverter`） |
-| 注入 | `MemoryInjectionPlan.kt`、`GenerationPrompts.kt`（`memoryScore` / `rankedMemoryCandidates` / `renderMemoryDataPrompt` / `buildMemoryCalibrationTable`） |
+| 注入 | `MemoryInjectionPlan.kt`、`GenerationPrompts.kt`（`memoryScore` / `rankedMemoryCandidates` / `renderMemoryDataPrompt`） |
+| 整理快照/校准 | `MemoryConsolidationPrompts.kt`（`buildLibraryPagePrompt` / `buildMemoryCalibrationTable`） |
 | 工具 | `MemoryTools.kt`、`ChatToolFactory.kt`（`memoryToolNeedsApproval`） |
 | 仓库/DAO | `MemoryRepository.kt`、`MemoryDAO.kt` |
 | 提案 | `MemoryConsolidationScheduler.kt`、`MemoryProposalEntity.kt`、`MemoryProposalRepository.kt`、`MemoryProposalText.kt` |
 | UI | `AssistantMemoryPage.kt`、`res/values*/strings.xml` |
 | 迁移测试 | `app/src/androidTest/.../db/migrations/Migration_46_47_Test.kt` |
+
+## 14. A1 落地记录（2026-10-21）
+
+- **数据与仓库**：DB 47 三个记忆列 + 两个提案列、两处迁移注册、Room 生成的 schema；
+  字符串枚举容错、旧快照默认话题、复制/恢复保留类型、事务状态 CAS、任务禁止固化。
+  完成/重开不刷新内容 `updatedAt`；关闭状态再次设置幂等但仍校验版本。
+- **容量**：仅淘汰非保护记录，关闭事务先于话题；受保护记录不足以腾出容量时拒绝新增并回滚。
+  这是 §3.5 的实施澄清，不采用原稿中“最后也淘汰保护集合”的冲突分支。
+  事务同文去重只复用“开放且截止日相同”的事务，已关闭或不同截止日允许新建。
+- **工具与提案**：`kind` / 严格本地日期 `due` / `complete`；两处生产装配接 typed 回调；
+  完成走修改审批及仓库 CAS。直接操作的版本校验与既有 edit/delete 同口径（描述要求来自已看过的版本，
+  仓库检测陈旧版本，不额外持久化“模型确实看过”的证明）。A1 阶段提案模式明确拒绝 complete，A2 在 §15 接通。
+  kind/due 提案保存—读回—应用闭环，清除日期与未指定分开编码；确认摘要披露规范化类型与隐式清任务字段。
+- **注入**：开放事务独立尾部块，800 token / 20 条软限额与最终精确硬预算；
+  画像不衰减并保留读取信用；全话题旧格式 golden；关闭事务不注入。
+  异常历史“事务+锚点”只对实际进入 L1 的 id 去重，冻结排除/名额溢出不再静默丢失。
+- **基础 UI**：三类标记与类型选择、Material3 日期选择/清除、逾期色、完成/重开、关闭事务正文置灰。
+  仅事务隐藏固化；已有锚点须先由用户显式关闭固化再改为事务，同一次 CAS 保存。
+  三语各增 13 个资源键，通过 locale-tui CLI 写入；环境无 uv/翻译 API key，
+  使用现有 venv 与人工译文 fallback，未改工具配置。
+- **自动验证**：`:app:testDebugUnitTest` **240 类 / 2170 项，0 失败、0 错误、0 跳过**；
+  `:app:assembleDebug`、`:app:assembleDebugAndroidTest` 成功（`-PmemoryIsolatedTests=true`）。
+  真机 `6c841f95` 隔离 runner 的 **50 项仪器测试全部通过**：46→47、42→43、43→44 迁移，
+  新事务生命周期/容量回滚及既有版本/事务测试；只使用测试自有库或内存库，不操作生产库。
+  最终 arm64 debug APK 已覆盖安装，debug Activity 启动命令成功；release 包未覆盖。
+- **验证边界**：未逐项截图/操作基础 UI，未用真实模型端到端跑创建/完成及缓存计费，
+  未验证跨时区切换后的日期语义，未运行 lint 或所有 androidTest；不把这些计作通过。
+  A1 阶段不做 A2 整理器分型规则/complete 提案/筛选分组（后续进度见 §15），也不做通知调度。
+- **提交状态**：实施当时保留工作树；后经用户授权于2026-10-21分批本地提交（见 §17），未推送。
+
+## 15. A2 落地记录（2026-10-21）
+
+- **整理输入与纪律**：库快照每条带 kind，事务附 task_status / 本地日期 due；校准表增加同类字段，
+  展示描述换行折为空格、竖线转义（不改存储原文）。画像按用户最新明确陈述纠正，话题保持原整理逻辑；
+  禁跨 kind 合并，开放事务不因老、逾期或助手声称而关闭；只有 NEW TURNS 的用户明确完成/取消证据可触发状态动作。
+- **动作闭环**：`complete`→DONE、`drop`→DROPPED，两处生产装配均接 CAS/修改审批。
+  提案需实际观察过的 id/revision；存储、读回、应用、状态回执和详情全部接通，无新增 DB 列。
+  状态动作不能充当替代内容依赖；同批状态记录被后来新增淘汰、或已消费的替代输出被状态变化推进版本，均整批回滚。
+- **合并守卫边界**：显式删除提案的替代输出必须与目标同 kind，否则 stale；
+  **直接整理模式的普通 delete 没有合并意图/替代输出协议，跨类合并仍由提示词约束，不宣称全路径代码强制**。
+- **呈现**：全部/画像/话题/事务 FilterChip 含计数，筛选不改变仓库顺序、切库重置；画像候选说明区分
+  普通上下文与 system 固化；容量显示当前/200，满库明确受保护记录不自动淘汰、容量不足新增失败。
+  开放事务增加取消入口和二次确认；历史/回收站及恢复确认按所选 snapshot 显示类型、状态、截止日。
+  locale-tui CLI 三语各增 9 键，沿用现有 venv/人工译文 fallback；不改工具配置。
+- **测试范围**：新增筛选/计数/快照纯函数测试、分型提示与 worker 请求测试、工具/仓库/摘要测试，
+  以及真实 Room complete/drop 提案、回执失败/依赖版本/容量回滚 8 项与 44→47 连续迁移测试。
+  扩大迁移回归时修正旧 Migration_40_41_Test 的当前版本断言及遗漏的迁移注册，未改旧迁移生产逻辑。
+- **最终验证**：全量 JVM **241 类 / 2188 项，0 失败、0 错误、0 跳过**；
+  debug / androidTest APK 构建成功；`:app:lintDebug` 成功，**0 errors / 367 warnings / 6 hints**，
+  不把 lint 成功解释为零警告。最终 debug 与测试 APK 已覆盖安装，release 未覆盖。
+  真机隔离数据库/完整迁移包 **84 项，83 通过、1 失败**；唯一失败为既有
+  `Migration_11_12_Test.migrate11To12_handlesVeryLargeConversations` 的 `SQLiteBlobTooBigException`
+  （超大行超 CursorWindow），本轮未更改该旧迁移或弱化其测试。新 A2 与 44→47 测试全部通过。
+- **边界**：不操作真实记忆制造 UI 样本，未逐项点击/截图真实 UI，未用真实模型端到端验证整理证据判断；
+  纯 helper 通过不等于 Compose 点击验收。无提醒通知/子任务/依赖图。
+  工具定义相对 A1 粗增约 25 token，整理静态提示粗增约 350–450 token（字符估算，非 tokenizer 实测）。
+- **提交状态**：A1/A2 后经用户授权分批本地提交（见 §17），未推送；原有上下文净化设计稿未改。
+
+## 16. 原版文件式记忆导入映射（2026-10-21）
+
+核对本地 `upstream/master = 815e9c20b` 的 `MemoryPrompts.kt` 与 `MemoryFile.kt`：
+原版约定五类文件位置，但**没有标准事务文件，也没有结构化 task status / due 字段**。
+因此不能把项目目录等同于可关闭事务，或从一句正文推断完成/截止日。
+
+| 原版路径 | 导入分类 | 说明 |
+|---|---|---|
+| `/profile.md` | profile | 身份长期事实，作为候选；不自动固化 |
+| `/preferences.md` | profile | 长期回答偏好，同样不自动固化 |
+| `/topics/<domain>.md` | topic | 领域事实 |
+| `/areas/<name>.md` | topic | 项目/持续事项混合约束、决策、进度，不整篇转 task |
+| `/people/<name>.md` | topic | 人物关系与共同事项，不等同用户画像 |
+| 未知路径（包括自定义 `/tasks/…`） | topic | 没有已核实结构化约定，不猜生命周期 |
+
+- 仅精确根文件识别，兼容省略起始 `/` 与路径两端空白；不做不区分大小写或 basename 匹配，
+  `/topics/profile.md`、`//profile.md`、路径穿越等不会被误识别为画像。
+- 保留既有顶层条目拆分和来源标记处理、正文、助手作用域、更新时间；新行 revision=1、独立 publicId、
+  isAnchor=false。SQL 显式写 kind/task_status/due_at，状态仍为 open、日期为0，不从 checkbox/正文/YAML猜。
+- 不重写已导入的存量话题记录；此映射用于后续原版备份转换。本仓旧库仍走46→47既有迁移规则。
+- **验证**：全量 JVM **241 类 / 2190 项全部通过**；debug / androidTest APK 构建成功并安装。
+  真机隔离 runner 的 `LegacyBackupConversionTest` **3 项全部通过**（含新分类映射、既有兼容表/附件、未知库拒绝），
+  使用自造备份库，无真实备份或生产记忆数据；只读独立审查未发现新增问题。本轮未重跑 lint/全部迁移包，
+  A2 记录的旧11→12超大行失败不因这3项通过而消失。
+  本次映射已实现，但不对已经导入的存量记录做追溯改类；后经用户授权本地提交，未推送。
+
+## 17. 分批本地提交（2026-10-21）
+
+用户授权「分批提交（暂不推送）」；A1/A2交叉的工具/仓库协议按依赖归入核心批次，未机械拆成不完整历史版本。
+
+1. `49be22aab` — `feat(memory): 新增三类记忆、事务生命周期与分层注入`
+2. `06ffa0b70` — `feat(memory): 整理器按记忆类型校准与处理事务`
+3. `85c580d72` — `feat(memory): 增加分类筛选、事务操作及恢复元数据展示`
+4. `1ead505c9` — `fix(backup): 原版记忆文件导入映射画像与话题`（同时注册转换器DB47迁移）
+5. 文档批次 — 同步本设计、验收边界及roadmap。
+
+验证针对最终组合工作树，未逐个checkout中间提交重跑构建。未执行push；无关的上下文净化设计稿未纳入提交。
