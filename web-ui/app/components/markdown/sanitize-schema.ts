@@ -6,9 +6,11 @@ import { defaultSchema } from "rehype-sanitize";
  * [SECURITY] 为什么必须清洗：`markdown.tsx` 用 `rehypeRaw` 把回复里的任意 HTML 解析成真实
  * 元素；而该组件**自定义了 `rehypePlugins`**，这会让 Streamdown 自带的
  * `[raw, sanitize, harden]` 默认三件套**整体失效**（默认值只在未传 prop 时生效）。若不显式
- * 补 `rehypeSanitize`，一个 `<img src=x onerror=...>` 就能在 Web UI 里执行脚本，而
- * `app/services/api.ts` 把 JWT 存在 `localStorage` ⇒ 可直接读走令牌、拿到内嵌服务器
- * （`web` 模块）的完整 API 权限，点击型 `<a href="javascript:...">` 亦可执行。
+ * 补 `rehypeSanitize`，一个 `<img src=x onerror=...>` 就能在 Web UI 里执行脚本，进而读走
+ * Web 访问令牌（`app/services/web-auth.ts`，已改为只存 `sessionStorage`，且旧
+ * `localStorage` 副本在加载时清除）、拿到内嵌服务器（`web` 模块）的完整 API 权限；
+ * 点击型 `<a href="javascript:...">` 亦可执行。清洗是第二道防线：KaTeX 也已关闭
+ * `trust`（见 `markdown.tsx`），不对注入面做「后面那个插件会兜住」的假设。
  *
  * 基线是 `defaultSchema`（禁 script/iframe/object/embed/form/meta/link/base，且高危协议被禁：
  * `href` 仅 http/https/irc/ircs/mailto/xmpp，`src` 仅 http/https）。在此之上的定制都对应

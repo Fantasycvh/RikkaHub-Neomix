@@ -2,7 +2,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 
 import { extractErrorMessage } from "~/lib/error";
-import { onWebAuthRequired, requestWebAuthToken } from "~/services/api";
+import { onWebAuthRequired, requestWebAuthToken, WebAuthStorageError } from "~/services/api";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
@@ -14,9 +14,15 @@ export function WebAuthGate() {
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+  // 解锁框是否已因 401 打开：并发请求会各自派发一次 401，事件会重复到达。
+  const openRef = React.useRef(false);
 
   React.useEffect(() => {
     return onWebAuthRequired(() => {
+      // 401 race：解锁框已打开时，重复事件**不能**再清空用户正在输入的密码，
+      // 也不能把 submitting 打回 false（否则正在提交的登录会被重新点亮，造成重复提交）。
+      if (openRef.current) return;
+      openRef.current = true;
       setOpen(true);
       setSubmitting(false);
       setError(null);
@@ -42,9 +48,16 @@ export function WebAuthGate() {
       try {
         await requestWebAuthToken(password);
         setOpen(false);
+        openRef.current = false;
         window.location.reload();
       } catch (submitError) {
-        setError(extractErrorMessage(submitError, t("web_auth_gate.unlock_failed")));
+        // 存储不可用（隐私模式/站点存储被拦截）时不能假装登录成功去 reload：内存兜底会被
+        // reload 丢掉，变成「登录成功→被踢回解锁页」的循环。明确提示用户放开存储后重试。
+        setError(
+          submitError instanceof WebAuthStorageError
+            ? t("web_auth_gate.storage_unavailable")
+            : extractErrorMessage(submitError, t("web_auth_gate.unlock_failed")),
+        );
       } finally {
         setSubmitting(false);
       }

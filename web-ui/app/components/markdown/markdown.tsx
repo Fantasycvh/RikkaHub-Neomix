@@ -122,7 +122,11 @@ export default function Markdown({
       <Streamdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
-          [rehypeKatex, { trust: true, strict: false }],
+          // [SECURITY] trust: false —— KaTeX 的 trust 模式会放行 `\href{javascript:...}`、
+          // `\includegraphics{...}`、`\htmlStyle/\htmlClass/\htmlId` 等命令，把用户/模型可控
+          // 的 URL 与 HTML 属性直接渲染进 DOM；虽然紧随其后的 rehypeSanitize 会再清洗一遍，
+          // 但不该把「安全」建立在「后面那个插件恰好覆盖到」上（多一条防线、少一个 XSS 面）。
+          [rehypeKatex, { trust: false, strict: false }],
           rehypeRaw,
           // 必须**排在最后**：清洗的是 rehypeRaw 解析出来的真实元素（见 schema 注释）
           [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA],

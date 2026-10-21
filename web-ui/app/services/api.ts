@@ -1,17 +1,21 @@
 import ky, { type Options, HTTPError } from "ky";
 
+import {
+  clearWebAuthToken,
+  getValidWebAuthToken,
+  notifyWebAuthRequired,
+  onWebAuthRequired,
+  setWebAuthToken,
+  WebAuthStorageError,
+  type WebAuthRequiredEventDetail,
+  type WebAuthTokenResponse,
+} from "./web-auth";
+
+export type { WebAuthRequiredEventDetail, WebAuthTokenResponse };
+export { clearWebAuthToken, onWebAuthRequired, setWebAuthToken, WebAuthStorageError };
+
 interface ErrorResponse {
   error: string;
-  code: number;
-}
-
-interface WebAuthTokenResponse {
-  token: string;
-  expiresAt: number;
-}
-
-interface WebAuthRequiredEventDetail {
-  message: string;
   code: number;
 }
 
@@ -25,48 +29,10 @@ export class ApiError extends Error {
   }
 }
 
-const WEB_AUTH_STORAGE_KEY = "rikkahub:web-auth";
-const WEB_AUTH_REQUIRED_EVENT = "rikkahub:web-auth-required";
-const WEB_AUTH_EXPIRY_SKEW_MILLIS = 10_000;
 const WEB_AUTH_QUERY_KEY = "access_token";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
-}
-
-function readStoredWebAuth(): WebAuthTokenResponse | null {
-  if (!isBrowser()) return null;
-  const raw = window.localStorage.getItem(WEB_AUTH_STORAGE_KEY);
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<WebAuthTokenResponse>;
-    if (typeof parsed.token !== "string" || typeof parsed.expiresAt !== "number") {
-      return null;
-    }
-    return { token: parsed.token, expiresAt: parsed.expiresAt };
-  } catch {
-    return null;
-  }
-}
-
-function isWebAuthExpired(expiresAt: number): boolean {
-  return Date.now() >= expiresAt - WEB_AUTH_EXPIRY_SKEW_MILLIS;
-}
-
-function getValidWebAuthToken(): string | null {
-  const auth = readStoredWebAuth();
-  if (!auth) return null;
-  if (isWebAuthExpired(auth.expiresAt)) {
-    clearWebAuthToken();
-    return null;
-  }
-  return auth.token;
-}
-
-function dispatchWebAuthRequired(detail: WebAuthRequiredEventDetail) {
-  if (!isBrowser()) return;
-  window.dispatchEvent(new CustomEvent<WebAuthRequiredEventDetail>(WEB_AUTH_REQUIRED_EVENT, { detail }));
 }
 
 const kyInstance = ky.create({
@@ -97,37 +63,12 @@ async function handleError(error: unknown): Promise<never> {
     const isAuthTokenEndpoint = response.url.includes("/api/auth/token");
     if (code === 401 && !isAuthTokenEndpoint) {
       clearWebAuthToken();
-      dispatchWebAuthRequired({ message, code });
+      // 记录 + 派发：晚挂载的解锁框会在注册监听时补投，避免「401 丢了 ⇒ 只剩报错页」
+      notifyWebAuthRequired({ message, code });
     }
     throw new ApiError(message, code);
   }
   throw error;
-}
-
-export function setWebAuthToken(token: string, expiresAt: number): void {
-  if (!isBrowser()) return;
-  window.localStorage.setItem(WEB_AUTH_STORAGE_KEY, JSON.stringify({ token, expiresAt }));
-}
-
-export function clearWebAuthToken(): void {
-  if (!isBrowser()) return;
-  window.localStorage.removeItem(WEB_AUTH_STORAGE_KEY);
-}
-
-export function onWebAuthRequired(
-  listener: (detail: WebAuthRequiredEventDetail) => void,
-): () => void {
-  if (!isBrowser()) return () => {};
-
-  const handler = (event: Event) => {
-    const customEvent = event as CustomEvent<WebAuthRequiredEventDetail>;
-    listener(customEvent.detail);
-  };
-  window.addEventListener(WEB_AUTH_REQUIRED_EVENT, handler);
-
-  return () => {
-    window.removeEventListener(WEB_AUTH_REQUIRED_EVENT, handler);
-  };
 }
 
 export function appendWebAuthQuery(url: string): string {

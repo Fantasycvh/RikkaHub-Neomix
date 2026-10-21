@@ -65,6 +65,7 @@ dependencies {
     api(libs.ktor.server.cio)
 
     testImplementation(libs.junit)
+    testImplementation("io.ktor:ktor-server-test-host:${libs.versions.ktor.get()}")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

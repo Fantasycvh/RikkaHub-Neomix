@@ -8,6 +8,8 @@
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
     "test:latex": "tsx app/components/markdown/latex-environments.test.mts",
+    "test:web-auth": "tsx app/services/web-auth.test.mts",
+    "test:web-files": "tsx app/lib/files.test.mts",
     "lint": "oxlint app --fix",
     "fmt": "oxfmt app",
     "fmt:check": "oxfmt app --check"

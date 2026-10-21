@@ -1146,7 +1146,9 @@ function ConversationsPageInner() {
         onUpdateTitle={handleUpdateConversationTitle}
         onDelete={handleDeleteConversation}
         onCreateConversation={handleCreateConversation}
-        webAuthEnabled={settings?.webServerJwtEnabled === true}
+        // 鉴权已恒开（后端不再提供「关闭 JWT」模式）：白名单未下发该字段时也显示
+        // 「清除 Web 会话」按钮，避免用户换标签页后无法显式退出当前会话。
+        webAuthEnabled={settings?.webServerJwtEnabled !== false}
         folders={folders}
         selectedFolderId={selectedFolderId}
         onSelectFolder={handleSelectFolder}

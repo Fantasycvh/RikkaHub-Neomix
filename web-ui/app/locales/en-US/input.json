@@ -55,8 +55,12 @@
         "description": "Use extensive reasoning to answer."
       },
       "xhigh": {
-        "label": "Max",
+        "label": "XHigh",
         "description": "Use maximum reasoning to answer."
+      },
+      "max": {
+        "label": "Max",
+        "description": "Use the largest possible reasoning budget (32k)."
       }
     }
   },

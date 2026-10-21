@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { appendWebAuthQuery } from "~/services/api";
 import { cn } from "~/lib/utils";
 
 export interface AIIconProps {
@@ -28,8 +29,10 @@ export function AIIcon({
 }: AIIconProps) {
   const normalizedName = name.trim() || "auto";
   const fallbackText = toFallbackText(normalizedName);
+  // 图标走 <img src>，不能带 Authorization 头 ⇒ 用 access_token query（鉴权已恒开）。
+  // 不加会让所有 AI 图标 401 后回退成首字母（auth 中间件对 /api/* 全量生效）。
   const src = React.useMemo(
-    () => `/api/ai-icon?name=${encodeURIComponent(normalizedName)}`,
+    () => appendWebAuthQuery(`/api/ai-icon?name=${encodeURIComponent(normalizedName)}`),
     [normalizedName],
   );
   const [loadFailed, setLoadFailed] = React.useState(false);

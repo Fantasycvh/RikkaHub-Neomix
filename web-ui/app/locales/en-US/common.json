@@ -118,6 +118,7 @@
     "password_required": "Please enter your access password.",
     "unlock": "Unlock",
     "unlocking": "Unlocking...",
-    "unlock_failed": "Failed to unlock Web API access."
+    "unlock_failed": "Failed to unlock Web API access.",
+    "storage_unavailable": "Browser storage is unavailable (private mode or blocked site storage), so the sign-in cannot be saved. Allow site storage and try again."
   }
 }

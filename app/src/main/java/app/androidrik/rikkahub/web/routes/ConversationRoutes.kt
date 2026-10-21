@@ -40,6 +40,7 @@ import app.androidrik.rikkahub.web.dto.UpdateConversationInjectionsRequest
 import app.androidrik.rikkahub.web.dto.UpdateConversationTitleRequest
 import app.androidrik.rikkahub.web.dto.toDto
 import app.androidrik.rikkahub.web.dto.toListDto
+import app.androidrik.rikkahub.web.untilWebPasswordChanges
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
@@ -376,6 +377,7 @@ fun Route.conversationRoutes(
 
         // SSE /api/conversations/{id}/stream - Stream conversation updates
         sse("/{id}/stream") {
+            val connectedPassword = settingsStore.settingsFlow.value.webServerAccessPassword
             val id = call.parameters["id"] ?: return@sse
             val uuid = runCatching { Uuid.parse(id) }.getOrNull() ?: return@sse
 
@@ -415,7 +417,10 @@ fun Route.conversationRoutes(
                     ConversationStreamPayload.BatchErrors(events)
                 }
 
-                merge(conversationEvents, errorEvents).collect { payload ->
+                merge(conversationEvents, errorEvents)
+                    .untilWebPasswordChanges(
+                        settingsStore.settingsFlow.map { it.webServerAccessPassword }, connectedPassword,
+                    ).collect { payload ->
                     when (payload) {
                         is ConversationStreamPayload.Conversation -> {
                             sequence += 1

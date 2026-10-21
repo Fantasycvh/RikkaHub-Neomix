@@ -535,9 +535,14 @@ class SettingsStore(
                 } ?: emptyList(),
                 webServerEnabled = preferences[WEB_SERVER_ENABLED] == true,
                 webServerPort = preferences[WEB_SERVER_PORT] ?: 8080,
-                webServerJwtEnabled = preferences[WEB_SERVER_JWT_ENABLED] == true,
+                // 安全策略：Web 鉴权**恒开**，不再提供「不鉴权」模式。存量偏好里
+                // `web_server_jwt_enabled=false`（旧版本默认值）也在这里被强制纠正，
+                // 否则老用户升级后仍会以无鉴权方式暴露整个 Web API。
+                webServerJwtEnabled = true,
                 webServerAccessPassword = preferences[WEB_SERVER_ACCESS_PASSWORD] ?: "",
-                webServerLocalhostOnly = preferences[WEB_SERVER_LOCALHOST_ONLY] == true,
+                // 安全策略：默认只听回环（`localhostOnly=true`）。用户仍可显式开启
+                // 局域网模式，但旧偏好里缺失该 key 时不再默认暴露到 LAN。
+                webServerLocalhostOnly = preferences[WEB_SERVER_LOCALHOST_ONLY] ?: true,
                 memoryInjectBudgetTokens = preferences[MEMORY_INJECT_BUDGET_TOKENS]
                     ?: DEFAULT_MEMORY_BUDGET_TOKENS,
                 lorebookInjectBudgetTokens = preferences[LOREBOOK_INJECT_BUDGET_TOKENS]
@@ -727,7 +732,10 @@ class SettingsStore(
             Log.w(TAG, "Cannot update dummy settings")
             return
         }
-        settingsFlow.value = settings
+        // 安全策略：Web 鉴权**恒开**。备份恢复 / 同步 / 增量更新都可能把存量
+        // `webServerJwtEnabled=false` 带进来，这里在广播与落盘前统一纠正——否则
+        // settingsFlow 会短暂出现「不鉴权」快照，而 WebApiModule 只在服务启动时读一次。
+        settingsFlow.value = settings.copy(webServerJwtEnabled = true)
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[THEME_ID] = settings.themeId
@@ -799,7 +807,8 @@ class SettingsStore(
             preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
             preferences[WEB_SERVER_ENABLED] = settings.webServerEnabled
             preferences[WEB_SERVER_PORT] = settings.webServerPort
-            preferences[WEB_SERVER_JWT_ENABLED] = settings.webServerJwtEnabled
+            // 安全策略：Web 鉴权恒开，不落盘 false（读路径也会强制纠正）。
+            preferences[WEB_SERVER_JWT_ENABLED] = true
             preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
             preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
             preferences[MEMORY_INJECT_BUDGET_TOKENS] = settings.memoryInjectBudgetTokens
@@ -1077,9 +1086,11 @@ data class Settings(
     val quickMessages: List<QuickMessage> = emptyList(),
     val webServerEnabled: Boolean = false,
     val webServerPort: Int = 8080,
-    val webServerJwtEnabled: Boolean = false,
+    /** 安全策略：Web 鉴权恒开（不提供不鉴权模式）。读路径同样强制为 true。 */
+    val webServerJwtEnabled: Boolean = true,
     val webServerAccessPassword: String = "",
-    val webServerLocalhostOnly: Boolean = false,
+    /** 安全策略：默认只听回环，需用户显式切换才暴露到局域网/mDNS。 */
+    val webServerLocalhostOnly: Boolean = true,
     /**
      * 记忆注入预算（token）。注入**哪些**记忆由打分校准决定，**装多少**由此预算决定——
      * 见 `docs/design/design-memory-scoring.md`。改它会改变 system prompt 前缀，

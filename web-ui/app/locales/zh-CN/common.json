@@ -118,6 +118,7 @@
     "password_required": "请输入访问密码。",
     "unlock": "解锁",
     "unlocking": "正在解锁...",
-    "unlock_failed": "Web API 解锁失败。"
+    "unlock_failed": "Web API 解锁失败。",
+    "storage_unavailable": "浏览器禁止写入站点存储（隐私模式或存储被拦截），无法保存登录状态。请允许本站存储后重试。"
   }
 }

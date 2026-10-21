@@ -17,6 +17,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.utils.io.readAvailable
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
+import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.saveUploadFromBytes
 import app.androidrik.rikkahub.web.BadRequestException
@@ -27,6 +28,15 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 private const val MAX_UPLOAD_FILE_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB
+
+/**
+ * 文件下载响应统一加的 CSP：`sandbox`（不带 `allow-scripts`）把文档放进 opaque origin 并禁脚本，
+ * `default-src 'none'` 禁一切子资源。防止用户上传的 HTML/SVG 被直接打开时以**应用同源**
+ * 执行脚本、读取 Web 会话的 access token（web-ui 把 token 放在 sessionStorage）。
+ *
+ * 注意：作为 `<img>`/`<video>`/`<audio>` 子资源加载时，该响应头不作用于父文档，媒体预览正常。
+ */
+private const val SANDBOXED_FILE_CSP = "sandbox; default-src 'none'"
 
 fun Route.filesRoutes(
     filesManager: FilesManager,
@@ -105,12 +115,18 @@ fun Route.filesRoutes(
             val entity = filesManager.get(id)
                 ?: throw NotFoundException("File not found")
 
-            val file = filesManager.getFile(entity)
+            // 与 /path 同一套边界：`relative_path` 正常只可能是 upload/avatars/exports 里的相对路径，
+            // 但库被篡改 / 旧数据 / 目录被软链替换时 `getFile()` 能指到 filesDir 内任意位置
+            // （包括 datastore/ 的明文 API key），所以这里必须重新过白名单 + canonical 校验。
+            val file = resolveWebReadableFile(context.filesDir, entity.relativePath)
+                ?: throw NotFoundException("File not found")
             if (!file.exists()) {
                 throw NotFoundException("File not found on disk")
             }
 
             call.response.header("Content-Type", entity.mimeType)
+            call.response.header("Content-Security-Policy", SANDBOXED_FILE_CSP)
+            call.response.header("X-Content-Type-Options", "nosniff")
             call.respondFile(file)
         }
 
@@ -119,24 +135,19 @@ fun Route.filesRoutes(
             val relativePath = call.pathParameters.getAll("path")?.joinToString("/")
                 ?: throw BadRequestException("Missing file path")
 
-            // Validate path to prevent directory traversal attacks
-            if (relativePath.contains("..") || relativePath.startsWith("/")) {
-                throw BadRequestException("Invalid file path")
-            }
-
-            val filesDir = context.filesDir
-            val file = File(filesDir, relativePath)
-
-            // Ensure the file is within the app's files directory
-            if (!file.canonicalPath.startsWith(filesDir.canonicalPath)) {
-                throw BadRequestException("Invalid file path")
-            }
+            // 只允许 FilesManager 的「用户媒体/附件」根目录（upload/avatars/images/media_creation/exports）。
+            // 旧实现只校验 canonical 前缀是 filesDir —— 于是 `datastore/settings.preferences_pb`
+            // （Preferences DataStore，明文 API key / 密码）与 `logs/`（诊断日志）都能整份下载；
+            // 目录内软链还能绕到私有目录之外。根目录白名单 + canonical 边界见 resolveWebReadableFile。
+            val file = resolveWebReadableFile(context.filesDir, relativePath)
+                ?: throw NotFoundException("File not found")
 
             if (!file.exists() || !file.isFile) {
                 throw NotFoundException("File not found")
             }
 
             // Use managed file MIME type first because on-disk file names are UUID-only.
+            // 注意：DB 里存的是**请求的原始相对路径**，不是 canonical 路径（软链/规范化可能不同）。
             val managedFileMime = filesManager.getByRelativePath(relativePath)?.mimeType
             val contentType = if (!managedFileMime.isNullOrBlank()) {
                 managedFileMime
@@ -170,9 +181,80 @@ fun Route.filesRoutes(
             }
 
             call.response.header("Content-Type", contentType)
+            // 上传文件可能是 HTML/SVG：直接打开会以 **应用同源** 执行脚本，进而读走
+            // sessionStorage 里的 Web access token。`sandbox`（无 allow-scripts）让文档进入
+            // opaque origin、`default-src 'none'` 禁掉子资源；作为 <img>/<video> 子资源加载
+            // 不受该响应头影响，媒体预览照常。
+            call.response.header("Content-Security-Policy", SANDBOXED_FILE_CSP)
+            call.response.header("X-Content-Type-Options", "nosniff")
             call.respondFile(file)
         }
     }
+}
+
+/**
+ * Web 端 `/api/files/path/{path}` 允许读取的根目录白名单（相对 `filesDir`）。
+ *
+ * 取自 [FileFolders] 里**用户可见的媒体/附件**目录：
+ * - [FileFolders.UPLOAD]：聊天附件（图片/文档/音频/视频），web-ui 消息气泡要渲染；
+ * - [FileFolders.AVATARS]：助手头像 + 用户头像，web-ui 设置/侧栏要渲染；
+ * - [FileFolders.IMAGES]：生图产物（会话内 `generate_image` 工具输出绝对路径指向这里）；
+ * - [FileFolders.MEDIA_CREATION]：媒体创作产物（按会话分子目录）；
+ * - [FileFolders.EXPORTS]：导出留存区（用户自己的对话导出副本）。
+ *
+ * **刻意排除**（在本工程里都真实存在）：
+ * - `datastore/`：`Preferences DataStore` 的 `settings.preferences_pb`，明文 API key/密码；
+ * - `logs/`：诊断日志（`Logging.initLogDirectory`），可能含请求头/异常栈；
+ * - `skills/`、`builtin_skills/`、`fonts/`、`tool_outputs/`：原生端专属，Web 端不消费；
+ * - 其余任何目录（`filesDir` 下还有 `workspaces/`、`avatar_backup` 等）。
+ *
+ * 新增白名单项前先确认 web-ui 真有消费点（`resolveFileUrl` 会把这些 URL 变成
+ * `/api/files/path/...`），不要为了「以后可能用到」放行。
+ */
+internal val WEB_READABLE_FILE_FOLDERS: Set<String> = setOf(
+    FileFolders.UPLOAD,
+    FileFolders.AVATARS,
+    FileFolders.IMAGES,
+    FileFolders.MEDIA_CREATION,
+    FileFolders.EXPORTS,
+)
+
+/**
+ * 把请求里的相对路径解析为 `filesDir` 下的真实文件；不允许的路径返回 `null`（路由按 404 处理）。
+ *
+ * 三层校验（缺一不可）：
+ * 1. **段级黑名单**：拒绝 `/` 开头、`\`、NUL、空段、`.`、`..`（`..` 必须在段级判断，
+ *    `contains("..")` 会把合法文件名 `a..b` 也误杀，而 `%2e%2e` 解码后同样是 `..` 段）；
+ * 2. **根目录白名单**：[WEB_READABLE_FILE_FOLDERS]，挡住 `datastore/`、`logs/` 这类内部目录；
+ * 3. **canonical 边界**：白名单根**必须真实存在且不是软链**（`canonical == 预期路径`；否则
+ *    `upload -> datastore` 这种整目录软链会让根落在 filesDir 内的敏感目录），最终文件
+ *    canonical 后必须仍位于该根之下（`+ File.separator` 前缀，避免同前缀兄弟目录混过）。
+ */
+internal fun resolveWebReadableFile(filesDir: File, relativePath: String): File? {
+    if (relativePath.isBlank()) return null
+    if (relativePath.startsWith('/')) return null
+    if (relativePath.contains('\\') || relativePath.contains('\u0000')) return null
+
+    val segments = relativePath.split('/')
+    if (segments.any { it.isEmpty() || it == "." || it == ".." }) return null
+
+    val rootName = segments.first()
+    if (rootName !in WEB_READABLE_FILE_FOLDERS) return null
+
+    val canonicalFilesDir = runCatching { filesDir.canonicalFile }.getOrNull() ?: return null
+    val expectedRoot = File(canonicalFilesDir, rootName)
+    val canonicalRoot = runCatching { expectedRoot.canonicalFile }.getOrNull()
+        ?: return null
+    // 根本身必须是**真实目录**，不能是软链：若 `filesDir/upload` 整个软链到 `filesDir/datastore`，
+    // 则 canonicalRoot 会等于 datastore 路径（仍在 filesDir 前缀内），仅靠下面的前缀校验就会被绕过。
+    // 判断方式：canonical 结果必须逐字等于「canonical filesDir / 白名单根名」。
+    if (canonicalRoot.path != expectedRoot.path) return null
+
+    val candidate = File(canonicalFilesDir, segments.joinToString("/"))
+    val canonicalCandidate = runCatching { candidate.canonicalFile }.getOrNull() ?: return null
+    if (!canonicalCandidate.path.startsWith(canonicalRoot.path + File.separator)) return null
+
+    return canonicalCandidate
 }
 
 // GET /api/assets/{...} - Get file from app assets

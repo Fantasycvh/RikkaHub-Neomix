@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { useMutation } from "@tanstack/react-query";
-import { Brain, BrainCircuit, ChevronDown, Lightbulb, LightbulbOff, LoaderCircle, Sparkles } from "lucide-react";
+import { Brain, BrainCircuit, ChevronDown, Flame, Lightbulb, LightbulbOff, LoaderCircle, Sparkles } from "lucide-react";
 import { Slider as SliderPrimitive } from "radix-ui";
 import { useTranslation } from "react-i18next";
 
@@ -17,9 +17,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "~/components/ui/popover
 
 import { PickerErrorAlert } from "./picker-error-alert";
 
-type ReasoningLevel = "off" | "auto" | "low" | "medium" | "high" | "xhigh";
+// 与后端 `ReasoningLevel` 枚举（@SerialName 小写值）逐项对齐，含最新档 `max`。
+type ReasoningLevel = "off" | "auto" | "low" | "medium" | "high" | "xhigh" | "max";
 
-const REASONING_LEVELS: ReasoningLevel[] = ["off", "auto", "low", "medium", "high", "xhigh"];
+const REASONING_LEVELS: ReasoningLevel[] = ["off", "auto", "low", "medium", "high", "xhigh", "max"];
 
 // Thumb size in px, keep in sync with `size-7` on the thumb below
 const THUMB_SIZE = 28;
@@ -49,6 +50,7 @@ function ReasoningIcon({ level, className }: { level: ReasoningLevel; className?
     case "medium": return <Lightbulb {...props} />;
     case "high":   return <BrainCircuit {...props} />;
     case "xhigh":  return <Brain {...props} />;
+    case "max":    return <Flame {...props} />;
   }
 }
 
@@ -111,6 +113,7 @@ export function ReasoningPickerButton({ disabled = false, className }: Reasoning
       { key: "medium", label: t("reasoning.presets.medium.label"), description: t("reasoning.presets.medium.description") },
       { key: "high",   label: t("reasoning.presets.high.label"),   description: t("reasoning.presets.high.description") },
       { key: "xhigh",  label: t("reasoning.presets.xhigh.label"),  description: t("reasoning.presets.xhigh.description") },
+      { key: "max",    label: t("reasoning.presets.max.label"),    description: t("reasoning.presets.max.description") },
     ],
     [t],
   );
