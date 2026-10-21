@@ -10,6 +10,7 @@ import androidx.core.net.toFile
 import androidx.core.net.toUri
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -39,9 +40,6 @@ class FilesManager(
     companion object {
         private const val TAG = "FilesManager"
 
-        /** 模型输出 base64 图片字符数上限（约 20MB base64）：超大 decode 曾 OOM */
-        private const val MAX_BASE64_IMAGE_CHARS = 20_000_000
-
         /** 位图最长边采样上限：超 4096px 时降采样，避免全尺寸解码 OOM */
         private const val MAX_BITMAP_DIMENSION = 4096
     }
@@ -55,17 +53,26 @@ class FilesManager(
         val resolvedName = displayName ?: getFileNameFromUri(uri) ?: "file"
         val resolvedMime = mimeType ?: getFileMimeType(uri) ?: "application/octet-stream"
         val target = createTargetFile(folder, resolvedName, resolvedMime)
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            target.outputStream().use { output ->
-                input.copyTo(output)
-            }
+        // P1-7：`openInputStream` 返回 null 时必须**显式失败**——旧实现会跳过拷贝却继续
+        // 登记 managed_files，于是库里出现 0 字节「成功」附件。拷贝/落盘失败由
+        // writeStreamAtomically 清理半成品（临时文件）并返回 false，同样不登记。
+        val input = context.contentResolver.openInputStream(uri)
+            ?: throw IOException("Failed to open input stream for $uri")
+        if (!input.use { writeStreamAtomically(target, it) }) {
+            throw IOException("Failed to save file from $uri")
         }
-        createManagedFileEntity(
-            folder = folder,
-            file = target,
-            displayName = resolvedName,
-            mimeType = resolvedMime,
-        )
+        try {
+            createManagedFileEntity(
+                folder = folder,
+                file = target,
+                displayName = resolvedName,
+                mimeType = resolvedMime,
+            )
+        } catch (t: Throwable) {
+            // 落库失败不能留孤儿文件
+            target.delete()
+            throw t
+        }
     }
 
     suspend fun saveManagedFromBytes(
@@ -75,13 +82,21 @@ class FilesManager(
         mimeType: String = "application/octet-stream",
     ): ManagedFileEntity = withContext(Dispatchers.IO) {
         val target = createTargetFile(folder, displayName, mimeType)
-        target.writeBytes(bytes)
-        createManagedFileEntity(
-            folder = folder,
-            file = target,
-            displayName = displayName,
-            mimeType = mimeType,
-        )
+        // 空 ByteArray 是合法内容（例如空文本文件），这里只把「写失败」当失败
+        if (!writeBytesAtomically(target, bytes)) {
+            throw IOException("Failed to save file ($displayName) under $folder")
+        }
+        try {
+            createManagedFileEntity(
+                folder = folder,
+                file = target,
+                displayName = displayName,
+                mimeType = mimeType,
+            )
+        } catch (t: Throwable) {
+            target.delete()
+            throw t
+        }
     }
 
     /**
@@ -136,13 +151,21 @@ class FilesManager(
         mimeType: String = "text/plain",
     ): ManagedFileEntity = withContext(Dispatchers.IO) {
         val target = createTargetFile(folder, displayName, mimeType)
-        target.writeText(text)
-        createManagedFileEntity(
-            folder = folder,
-            file = target,
-            displayName = displayName,
-            mimeType = mimeType,
-        )
+        // 空字符串是合法内容（空文本附件），只把「写失败」当失败
+        if (!writeFileAtomically(target, text)) {
+            throw IOException("Failed to save text file ($displayName) under $folder")
+        }
+        try {
+            createManagedFileEntity(
+                folder = folder,
+                file = target,
+                displayName = displayName,
+                mimeType = mimeType,
+            )
+        } catch (t: Throwable) {
+            target.delete()
+            throw t
+        }
     }
 
     fun observe(folder: String = FileFolders.UPLOAD): Flow<List<ManagedFileEntity>> =
@@ -178,15 +201,11 @@ class FilesManager(
             val sourceMime = getFileMimeType(uri)
             val fileName = buildUuidFileName(displayName = sourceName, mimeType = sourceMime)
             val file = dir.resolve(fileName)
-            if (!file.exists()) {
-                file.createNewFile()
-            }
             val inputStream = context.contentResolver.openInputStream(uri)
                 ?: error("Failed to open input stream for $uri")
-            inputStream.use { input ->
-                file.outputStream().use { output ->
-                    input.copyTo(output)
-                }
+            // 原子写入：拷贝失败不留 0 字节/半截头像；失败时返回 null，调用方保持原头像
+            if (!inputStream.use { writeStreamAtomically(file, it) }) {
+                error("Failed to save avatar from $uri")
             }
             trackManagedFile(
                 folder = FileFolders.AVATARS,
@@ -216,15 +235,11 @@ class FilesManager(
                 val sourceMime = getFileMimeType(uri)
                 val fileName = buildUuidFileName(displayName = sourceName, mimeType = sourceMime)
                 val file = dir.resolve(fileName)
-                if (!file.exists()) {
-                    file.createNewFile()
-                }
                 val inputStream = context.contentResolver.openInputStream(uri)
                     ?: error("Failed to open input stream for $uri")
-                inputStream.use { input ->
-                    file.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
+                // 原子写入：流为 null / 拷贝失败都不登记（旧实现会留下 0 字节孤儿文件）
+                if (!inputStream.use { writeStreamAtomically(file, it) }) {
+                    error("Failed to save file from $uri")
                 }
                 val guessedMime = sourceMime ?: guessMimeType(file, sourceName)
                 trackManagedFile(
@@ -263,15 +278,19 @@ class FilesManager(
             dir.mkdirs()
         }
         byteArrays.forEach { byteArray ->
+            // 本方法所有调用点都是图片/媒体字节（画板草图、工作区读图、base64 转换）：
+            // 0 字节图片只会让下游渲染继续失败，显式报错比产出一个「成功」的空附件更可诊断。
+            if (byteArray.isEmpty()) {
+                throw IOException("Refusing to save empty attachment ($displayName)")
+            }
             val fileName = buildUuidFileName(displayName = displayName, mimeType = mimeType)
             val file = dir.resolve(fileName)
-            if (!file.exists()) {
-                file.createNewFile()
+            if (!writeBytesAtomically(file, byteArray)) {
+                Log.e(TAG, "createChatFilesByByteArrays: Failed to save $displayName (${byteArray.size} bytes)")
+                Logging.log(TAG, "createChatFilesByByteArrays: outcome=failed mime=$mimeType bytes=${byteArray.size}")
+                throw IOException("Failed to save attachment ($displayName)")
             }
             val newUri = file.toUri()
-            file.outputStream().use { outputStream ->
-                outputStream.write(byteArray)
-            }
             trackManagedFile(
                 folder = FileFolders.UPLOAD,
                 file = file,
@@ -286,47 +305,30 @@ class FilesManager(
     @OptIn(ExperimentalEncodingApi::class)
     suspend fun convertBase64ImagePartToLocalFile(message: UIMessage): UIMessage =
         withContext(Dispatchers.IO) {
-            message.copy(parts = convertBase64PartsRecursively(message.parts))
-        }
-
-    /**
-     * 递归转换 parts 中的 base64 图片为本地文件，含工具结果嵌套 parts（D3）：
-     * 旧实现只转 message 顶层 parts，UIMessagePart.Tool.output 里的图片漏转，
-     * 后续 require/base64 渲染失败导致消息丢失。
-     */
-    private suspend fun convertBase64PartsRecursively(parts: List<UIMessagePart>): List<UIMessagePart> =
-        parts.map { part ->
-            when (part) {
-                is UIMessagePart.Image -> {
-                    if (part.url.startsWith("data:image")) {
-                        val base64Data = part.url.substringAfter("base64,")
-                        if (base64Data.length > MAX_BASE64_IMAGE_CHARS) {
-                            // 超大 base64 跳过转换（保留原 part，避免 decode OOM）
-                            part
-                        } else {
-                            val sourceByteArray = Base64.decode(base64Data.toByteArray())
-                            val bitmap = decodeSampledBitmap(sourceByteArray)
-                            val byteArray = FileUtils.compressBitmapToPng(bitmap)
-                            val urls = createChatFilesByByteArrays(listOf(byteArray))
-                            Log.i(
-                                TAG,
-                                "convertBase64ImagePartToLocalFile: convert base64 img to ${urls.joinToString(", ")}"
-                            )
-                            part.copy(
-                                url = urls.first().toString(),
-                            )
-                        }
-                    } else {
-                        part
+            // P1-6：只要消息里还留着 `data:` 图片，ConversationRepository 的
+            // `require(... none { it.hasBase64Part() })` 就会让**整轮回复**写不进库
+            // （用户看到回复，重启后消失）。超限/解码失败一律换可见占位文本，
+            // 文本部分照常落库；Tool.output 里嵌套的图片由 sanitizeBase64ImageParts 递归处理。
+            val parts = sanitizeBase64ImageParts(
+                parts = message.parts,
+                convert = { base64Payload ->
+                    val sourceByteArray = Base64.decode(base64Payload.toByteArray())
+                    val bitmap = decodeSampledBitmap(sourceByteArray)
+                    try {
+                        val byteArray = FileUtils.compressBitmapToPng(bitmap)
+                        if (byteArray.isEmpty()) error("Compressed image is empty")
+                        createChatFilesByByteArrays(listOf(byteArray)).firstOrNull()?.toString()
+                    } finally {
+                        // 显式回收：转换链在 IO 线程高频执行，不依赖 GC 回收 native 像素内存
+                        bitmap.recycle()
                     }
-                }
-
-                is UIMessagePart.Tool -> part.copy(
-                    output = convertBase64PartsRecursively(part.output)
-                )
-
-                else -> part
-            }
+                },
+                onOmit = { reason ->
+                    Log.w(TAG, "convertBase64ImagePartToLocalFile: omitted(${reason.name})")
+                    Logging.log(TAG, "convertBase64ImagePartToLocalFile: outcome=omitted reason=${reason.name}")
+                },
+            )
+            message.copy(parts = parts)
         }
 
     /** 采样解码位图：先读边界，超 4096px 时 inSampleSize 降采样 + RGB_565，防全尺寸解码 OOM */
@@ -372,8 +374,10 @@ class FilesManager(
             return@withContext Pair(0, 0)
         }
         val files = dir.listFiles() ?: return@withContext Pair(0, 0)
-        val count = files.size
-        val size = files.sumOf { it.length() }
+        // 跳过原子写入的中间文件（未登记、进程被杀才可能残留），否则统计虚高
+        val visibleFiles = files.filterNot { it.name.startsWith(ATOMIC_TEMP_PREFIX) }
+        val count = visibleFiles.size
+        val size = visibleFiles.sumOf { it.length() }
         Pair(count, size)
     }
 
@@ -384,7 +388,10 @@ class FilesManager(
         }
         val fileName = buildUuidFileName(displayName = "pasted_text.txt", mimeType = "text/plain")
         val file = dir.resolve(fileName)
-        file.writeText(text)
+        // 空文本是合法附件（照常保存）；写失败才显式报错，避免半成品被登记
+        if (!writeFileAtomically(file, text)) {
+            throw IOException("Failed to save pasted text file")
+        }
         trackManagedFile(
             folder = FileFolders.UPLOAD,
             file = file,
@@ -408,16 +415,33 @@ class FilesManager(
 
     @OptIn(ExperimentalEncodingApi::class)
     fun createImageFileFromBase64(base64Data: String, filePath: String): File {
-        val data = if (base64Data.startsWith("data:image")) {
-            base64Data.substringAfter("base64,")
+        // data URI 只取 payload；非 data URI 按裸 base64 处理（保持原有语义）
+        val data = if (base64Data.startsWith("data:")) {
+            val markerIndex = base64Data.indexOf(";base64,")
+            if (markerIndex < 0) {
+                throw IOException("Invalid base64 image data URI")
+            }
+            base64Data.substring(markerIndex + ";base64,".length)
         } else {
             base64Data
         }
 
-        val byteArray = Base64.decode(data.toByteArray())
+        val byteArray = try {
+            Base64.decode(data.toByteArray())
+        } catch (e: Exception) {
+            throw IOException("Invalid base64 image data", e)
+        }
+        // 图片必须非空：0 字节文件只会让下游缩略图/预览继续失败，显式失败更可诊断
+        if (byteArray.isEmpty()) {
+            throw IOException("Invalid base64 image data: empty payload")
+        }
         val file = File(filePath)
-        file.parentFile?.mkdirs()
-        file.writeBytes(byteArray)
+        val parent = file.parentFile
+        if (parent == null) {
+            file.writeBytes(byteArray)
+        } else if (!writeBytesAtomically(file, byteArray)) {
+            throw IOException("Failed to save image file: $filePath")
+        }
         return file
     }
 
@@ -548,7 +572,7 @@ class FilesManager(
     suspend fun syncFolder(folder: String = FileFolders.UPLOAD): SyncResult = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, folder)
         val diskFiles = if (dir.exists()) {
-            dir.listFiles()?.filter { it.isFile }
+            dir.listFiles()?.filter { it.isFile && !it.name.startsWith(ATOMIC_TEMP_PREFIX) }
                 ?: return@withContext SyncResult(inserted = 0, removed = 0)
         } else {
             emptyList()

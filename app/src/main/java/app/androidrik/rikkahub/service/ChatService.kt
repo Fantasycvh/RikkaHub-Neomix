@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.completeWith
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
@@ -392,6 +393,33 @@ internal val outputTransformers by lazy {
         RegexOutputTransformer,
     )
 }
+
+/**
+ * 拼装预览 / 上下文容量面板的**重活统一调度器**。
+ *
+ * 这两处会跑完整 prompt 组装（transformer 链，可能触发 OCR 等 IO）+ 对每个分段做真 BPE
+ * 分词（[app.androidrik.rikkahub.utils.estimateTokens]）——纯 CPU 且与全文长度线性相关。
+ * 此前调用方分别在 `viewModelScope`（Main）和 `produceState`（组合上下文 = Main）里直接调用，
+ * 长会话打开面板会卡住主线程（同子系统已有 main 线程 97s CPU 全在 ByteLevelBpe 的 ANR trace，
+ * 见 `ChatPage.kt` 上下文占用估算处的注释）。
+ *
+ * 在 [ChatService.inspectPromptAssembly] **入口**统一切到后台，所有调用方（拼装预览页、
+ * 聊天页容量面板、未来新增调用）自动覆盖，不需要调用方各自记得切线程；`withContext` 双向
+ * 传播取消，面板关闭/页面销毁时分词会被中断。
+ *
+ * 注意分工：入口只把 **snapshot**（settings / conversation）留在调用方上下文读——session
+ * 创建（`getOrCreateSession`）原本都发生在 Main，而 `_sessionsVersion.value++` 是非原子 RMW
+ * （与其它线程的自增并发可能丢更新），不能随重活一起搬到 Default；重活（组装/分词/记忆读取/
+ * 工具装配）才进本 helper。
+ *
+ * 抽成 dispatcher 可注入的 helper 只为**可测**：JVM 测试用受控单线程 dispatcher 断言
+ * 「真的换了线程 + 取消能传播」与「返回后回到调用方上下文」，而不是写一个只 grep 源码的
+ * 镜像测试（见 `PromptInspectionDispatchTest`）。
+ */
+internal suspend fun <T> withPromptInspectionDispatcher(
+    dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    block: suspend () -> T,
+): T = withContext(dispatcher) { block() }
 
 class ChatService(
     private val context: Application,
@@ -1122,53 +1150,68 @@ class ChatService(
      *
      * 与 [handleMessageComplete] 的差异**仅**在于：不跑自动压缩（预览不产生副作用）、
      * 不注入重试/回退等生成期逻辑。
+     *
+     * **线程**：快照（settings / conversation）在**调用方上下文**读取，其余重活（transformer 链 +
+     * 逐段真 BPE 分词 + 记忆读取 + 工具装配）经 [withPromptInspectionDispatcher] 在
+     * `Dispatchers.Default` 上执行——调用方可以安全地在 Main / 组合上下文里直接 await，
+     * 返回值会回到调用方线程（UI 状态就地更新即可）。新增调用方**不要**再自行 `withContext`。
      */
     suspend fun inspectPromptAssembly(
         conversationId: Uuid,
         labels: PromptInspectionLabels,
     ): PromptInspection? {
+        // [并发] 快照必须在调用方上下文（Main）读：getConversationFlow 会 getOrCreateSession，
+        // 其 computeIfAbsent 里 `_sessionsVersion.value++` 是非原子 RMW（与其它线程的自增并发
+        // 可能丢版本号 ⇒ 会话列表不刷新）；该 session 的 scope/回调（appScope = Main）也按
+        // 「在主线程创建」的既有约定设计。
         val settings = settingsStore.settingsFlow.first()
         val conversation = getConversationFlow(conversationId).value
-        val assistant = settings.getAssistantById(conversation.assistantId)
-            ?: settings.getCurrentAssistant()
-        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
-            ?: return null
 
-        val memories = if (conversation.memoryDisabled) {
-            // 与实发一致：隐身对话不加载记忆（预览也要显示「没有记忆段」）
-            emptyList()
-        } else if (assistant.useGlobalMemory) {
-            memoryRepository.getGlobalMemories()
-        } else {
-            memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
+        // 只把纯 CPU/IO 的重活搬到后台；读不到模型时返回 null（与旧行为一致）。
+        return withPromptInspectionDispatcher {
+            val assistant = settings.getAssistantById(conversation.assistantId)
+                ?: settings.getCurrentAssistant()
+            // `return@withPromptInspectionDispatcher`：helper 的 block 不是 inline lambda，
+            // 不能用裸 `return null`。
+            val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+                ?: return@withPromptInspectionDispatcher null
+
+            val memories = if (conversation.memoryDisabled) {
+                // 与实发一致：隐身对话不加载记忆（预览也要显示「没有记忆段」）
+                emptyList()
+            } else if (assistant.useGlobalMemory) {
+                memoryRepository.getGlobalMemories()
+            } else {
+                memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
+            }
+            val tools = chatToolFactory.createTools(
+                settings = settings,
+                assistant = assistant,
+                model = model,
+                workspaceCwd = conversation.workspaceCwd,
+                conversationId = conversation.id.toString(),
+                memoryDisabled = conversation.memoryDisabled,
+            )
+
+            inspectPrompt(
+                context = context,
+                settings = settings,
+                assistant = assistant,
+                model = model,
+                conversation = conversation,
+                memories = memories,
+                tools = tools,
+                inputTransformers = buildList {
+                    addAll(inputTransformers)
+                    add(templateTransformer)
+                    add(workspaceReminderTransformer)
+                    // **必须是最后一个**：前面任何一环都可能改动消息（注入/模板/引用展开），
+                    // 配平必须看到最终形态。与实发链同款注册 ⇒ 预览与真实请求一致。
+                    add(ToolResultBalancingTransformer)
+                },
+                labels = labels,
+            )
         }
-        val tools = chatToolFactory.createTools(
-            settings = settings,
-            assistant = assistant,
-            model = model,
-            workspaceCwd = conversation.workspaceCwd,
-            conversationId = conversation.id.toString(),
-            memoryDisabled = conversation.memoryDisabled,
-        )
-
-        return inspectPrompt(
-            context = context,
-            settings = settings,
-            assistant = assistant,
-            model = model,
-            conversation = conversation,
-            memories = memories,
-            tools = tools,
-            inputTransformers = buildList {
-                addAll(inputTransformers)
-                add(templateTransformer)
-                add(workspaceReminderTransformer)
-                // **必须是最后一个**：前面任何一环都可能改动消息（注入/模板/引用展开），
-                // 配平必须看到最终形态。与实发链同款注册 ⇒ 预览与真实请求一致。
-                add(ToolResultBalancingTransformer)
-            },
-            labels = labels,
-        )
     }
 
     // ---- 处理消息补全 ----
@@ -1546,8 +1589,13 @@ class ChatService(
                 // #1812：半截输出失败 → 保留为草稿候选并立即落库。
                 // 这是失败路径的第一个写库点（正常流程只在 onSuccess 落库），
                 // 同时缓解 #1820（切对话后内存态丢失）。
-                val annotated = it.partialMessages.mapIndexed { index, message ->
-                    if (index == it.partialMessages.lastIndex && message.role == MessageRole.ASSISTANT) {
+                // Failure skips onGenerationFinish: convert inline images before saving the draft,
+                // so an oversized/invalid image cannot prevent the already generated text from persisting.
+                val partialMessages = it.partialMessages.map { message ->
+                    filesManager.convertBase64ImagePartToLocalFile(message.finishReasoning())
+                }
+                val annotated = partialMessages.mapIndexed { index, message ->
+                    if (index == partialMessages.lastIndex && message.role == MessageRole.ASSISTANT) {
                         message.copy(
                             annotations = message.annotations + UIMessageAnnotation.PartialFailure
                         )
@@ -2774,7 +2822,9 @@ class ChatService(
                     conversationId,
                     conversation.copy(
                         messageNodes = withNotice.map { node ->
-                            node.copy(messages = node.messages.map { it.finishReasoning() })
+                            node.copy(messages = node.messages.map {
+                                filesManager.convertBase64ImagePartToLocalFile(it.finishReasoning())
+                            })
                         },
                     ),
                 )

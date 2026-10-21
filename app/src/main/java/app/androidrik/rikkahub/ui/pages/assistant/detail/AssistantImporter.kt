@@ -322,8 +322,14 @@ private suspend fun importAssistantFromUri(
                     val result = ImageUtils.getTavernCharacterMeta(context, uri)
                     result.map { base64Data ->
                         val json = String(Base64.decode(base64Data, Base64.DEFAULT))
-                        val bg = filesManager.createChatFilesByContents(listOf(uri)).first().toString()
-                        json to bg
+                        // P1-7：背景图落盘失败时 createChatFilesByContents 返回空列表
+                        // （文件名/MIME/流打开失败）。旧代码 `.first()` 抛
+                        // NoSuchElementException（文案只有 "List is empty."）；这里改成
+                        // 明确失败信息，由下方 catch 显示给用户，且**不会**带着空 background
+                        // 继续导入出一份无背景的助手配置。
+                        val bg = filesManager.createChatFilesByContents(listOf(uri)).firstOrNull()
+                            ?: error("Failed to save character card background image")
+                        json to bg.toString()
                     }.getOrElse { throw it }
                 }
 

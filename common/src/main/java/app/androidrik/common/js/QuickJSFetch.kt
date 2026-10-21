@@ -11,11 +11,41 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.nio.charset.Charset
 
 private val json = Json { ignoreUnknownKeys = true }
 
 /** fetch 响应体最大字节数：恶意/超大响应全量读入曾 OOM */
 private const val MAX_FETCH_RESPONSE_BYTES = 5 * 1024 * 1024
+
+/** Read across short network reads, probing one extra byte to distinguish exact size from truncation. */
+internal fun readFetchResponse(
+    input: InputStream,
+    charset: Charset,
+    maxBytes: Int = MAX_FETCH_RESPONSE_BYTES,
+): String {
+    require(maxBytes >= 0)
+    val output = ByteArrayOutputStream(minOf(maxBytes, 8192))
+    val buffer = ByteArray(8192)
+    var remaining = maxBytes
+    while (remaining > 0) {
+        val count = input.read(buffer, 0, minOf(buffer.size, remaining))
+        if (count < 0) break
+        if (count == 0) {
+            val byte = input.read()
+            if (byte < 0) break
+            output.write(byte)
+            remaining--
+        } else {
+            output.write(buffer, 0, count)
+            remaining -= count
+        }
+    }
+    val truncated = remaining == 0 && input.read() >= 0
+    return output.toString(charset.name()) + if (truncated) "\n[TRUNCATED]" else ""
+}
 
 @Serializable
 private data class HttpResponseDto(
@@ -91,31 +121,20 @@ fun QuickJSContext.injectFetch(httpClient: OkHttpClient) {
             }
         }
 
-        val response = httpClient.newCall(requestBuilder.build()).execute()
-        val charset = response.body.contentType()?.charset() ?: Charsets.UTF_8
-        val responseBody = response.body.byteStream().use { input ->
-            // 限量读取：防恶意/超大响应 OOM（body.string() 会全量读入）
-            val buffer = ByteArray(MAX_FETCH_RESPONSE_BYTES + 1)
-            val read = input.read(buffer)
-            if (read < 0) {
-                ""
-            } else {
-                val kept = minOf(read, MAX_FETCH_RESPONSE_BYTES)
-                String(buffer, 0, kept, charset) + if (read > kept) "\n[TRUNCATED]" else ""
+        httpClient.newCall(requestBuilder.build()).execute().use { response ->
+            val charset = response.body.contentType()?.charset() ?: Charsets.UTF_8
+            val responseBody = response.body.byteStream().use { input ->
+                readFetchResponse(input, charset)
             }
-        }
-        val code = response.code
-        val message = response.message
-        response.close()
-
-        json.encodeToString(
-            HttpResponseDto(
-                status = code,
-                ok = code in 200..299,
-                statusText = message,
-                body = responseBody,
+            json.encodeToString(
+                HttpResponseDto(
+                    status = response.code,
+                    ok = response.code in 200..299,
+                    statusText = response.message,
+                    body = responseBody,
+                )
             )
-        )
+        }
     })
 
     evaluate(FETCH_POLYFILL)
