@@ -1133,7 +1133,7 @@ git checkout master
 
 | 条目 | 上游状态 | 本仓现状与建议 |
 |---|---|---|
-| #2171 / #2180 压缩「保留最近 N 条」 | 已加（`bbe3001d9`，6 文件 +58/−14） | 本仓压缩是 token 预算 + 保留比例（`CompressionPlanner` 40/20/60% + `CompressPreset`），只有 `minKeep` 条数下限，无用户可调「保留最近 N 条」；可在 preset 增加可选条数下限并与 `minKeep` 打通，改动面小 |
+| #2171 / #2180 压缩「保留最近 N 条」 | 已加（`bbe3001d9`，6 文件 +58/−14） | **已落地（fork `60e6c5c03`，按本仓 token 比例架构改成可选下限）**：手动压缩对话框新增「保留最近消息数」（0–999，默认 0），`effectiveMinKeep()` = `max(2, N)` 作为 planner 下限，token 预算够时仍会多留；0 = 原行为与提示词缓存命中不变；自动压缩路径不变 |
 | #2212 / #2206 Claude 通道历史 thinking | #2212 not_planned；#2206 open | `includeHistoryReasoning` 只接在 `ChatCompletionsAPI`；本仓 `ClaudeProvider` 正确保留/回传 `redacted_thinking`（强于上游），但无「剥离历史 thinking」开关。建议加两档开关（强制回传 / 剥离），需实网对照 DeepSeek 的 Anthropic 兼容端（它要求工具续接回传 thinking） |
 | #2178 长消息（>8192px）横向滚动 / 折叠失效 | 已修（`9b458a67c`，消息气泡改为只裁剪绘制） | 本仓 `ChatMessage.kt` 有 `drawWithContent`，是否已是修复后写法**未核对**；需真机展开长代码块误测，按上游思路改 |
 | #2214 / #2198 生成中退出丢消息 | #2198 被 Bot 自动关、#2214 open | 需验证 `GenerationHandler` 是否只在完成时落库（`design-partial-failure-draft.md` 的草稿只覆盖「生成失败/中止」，不是「进程被杀」）；若同款，修法为流式增量周期 upsert（注意分支树/节点合并竞态） |

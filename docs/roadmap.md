@@ -3358,6 +3358,18 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   math span 内的 `<` / `&`，span 外（用户 HTML / 代码块）零改动；`c0ee758e9` 占位图对齐上游 `97cbb5999` 改 WebP
   （fork 原 PNG blob 哈希与上游一致，直接用上游 WebP），arm64 debug APK −2,392,194 B。
   **验证**：新增 6+3 例单测；`:app:testDebugUnitTest` **237 类 / 2133 项 0 失败**；`:app:assembleDebug` 成功；
-  真机 `6c841f95` 覆盖安装后冷启动无崩溃。
+  真机 `6c841f95` 的 **debug 包**（`app.androidrik.rikkahub.debug`，带 `.debug` 后缀）覆盖安装后冷启动无崩溃。
   **边界**：未做真机 TTS 试听与公式截图核对（验证到公式文本完整进入渲染器为止）；`\\[4pt]` 行距不支持属
   jlatexmath 限制，按评估结论不修；上游同提交的 banner 删除 / BouncyCastle 排除不适用（fork 无 banner / 无 JSch）。
+
+- 2026-10-21 **手动压缩支持可选「保留最近 N 条」下限**（用户：「#2171/#2180 压缩保留最近 N 条……落地这一项」；
+  参考上游 `bbe3001d9`，按本仓 token 比例架构落地成可选下限，而非照搬节点截断）。
+  **问题**：本仓手动压缩只暴露「保留比例 + 摘要目标」，切分完全由 token 预算决定；对话长到整段发不出去时
+  没法多留几条原文（上游 #2171/#2180 已加条数保留，本仓此前只有 `minKeep=2` 的兜底）。
+  **落地** `60e6c5c03`：`CompressContextDialog` 新增「保留最近消息数」（0–999，默认 0，一次性不持久化）；
+  `effectiveMinKeep()` = `max(2, N)` 作为 `estimateCompressionPlan` 的**下限**（token 预算够时仍会多留）；
+  0 保持原行为与提示词缓存命中；N 超过可压缩窗口时返回空结果并提示「减少保留的消息数」；自动压缩路径不变
+  （不传该参数）；预设档仍只带 2 个数值。
+  **验证**：planner 新增 5 例；`:app:testDebugUnitTest` **237 类 / 2138 项 0 失败**；`:app:assembleDebug` 成功；
+  真机 debug 包（`app.androidrik.rikkahub.debug`，`6c841f95`）冷启动后对话框字段可见（默认 0 / 范围 0–999）。
+  **边界**：未用真实模型跑端到端压缩（验证到 planner 切分与 UI 参数透传）；条数下限只作用于手动路径。
