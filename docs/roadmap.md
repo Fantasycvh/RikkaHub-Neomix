@@ -3373,3 +3373,13 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **验证**：planner 新增 5 例；`:app:testDebugUnitTest` **237 类 / 2138 项 0 失败**；`:app:assembleDebug` 成功；
   真机 debug 包（`app.androidrik.rikkahub.debug`，`6c841f95`）冷启动后对话框字段可见（默认 0 / 范围 0–999）。
   **边界**：未用真实模型跑端到端压缩（验证到 planner 切分与 UI 参数透传）；条数下限只作用于手动路径。
+
+- 2026-10-21 **上下文占用指示器只保留圆环**（用户：「移除长条形的用量统计，仅保留圆环」）。
+  **背景**：输入栏此前有两种形态（细条 + 百分比 / 圆环 + 环内百分比）由 `DisplaySetting.useRingContextIndicator`
+  + 偏好设置→通用开关切换；信息重复，默认长条还占输入栏宽度。
+  **落地** `143e895e2`：删除该字段、设置页开关、设置搜索索引与三语文案；`ContextUsageBarButton`
+  → `ContextUsageRingButton`，只保留 24dp 圆环 + 环内整数百分比（12 点起画、圆头笔帽、80% 阈值转红不变，
+  数值来源 / 点击开面板不变）；旧设置 JSON 的该字段由 `ignoreUnknownKeys` 忽略，零迁移。
+  **验证**：全量 `:app:testDebugUnitTest` **237 类 / 2138 项 0 失败**；`:app:assembleDebug` 成功；
+  真机 debug 包（`6c841f95`）输入栏截图确认只剩圆环（空会话显示 0，无长条）。
+  **边界**：只截图核对了 0% 空会话形态，未验证高占用弧线填充与 80% 红色阈值；release 包未覆盖。

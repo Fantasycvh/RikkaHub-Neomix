@@ -473,7 +473,7 @@ Yuihub 把消息统计行改为图标化（tokens/缓存图标）。fork 的 ner
 - `app/.../utils/ContextLength.kt` 参数 + `estimateWindowTokens` + `estimateTokenCount`
 - `app/.../data/model/Conversation.kt` `activeCompression` / `compressionWindow`（+`CompressionWindow.applyTo`，生成路径用）/ `requestWindowMessages`（回合初一次性）/ `windowNodes`
 - `app/.../data/ai/prompts/CompressPrompt.kt` 检查点文本 + 结构化提示词
-- `app/.../ui/components/ai/ChatInput.kt:756` `ContextUsageBarButton` + `ContextUsage`（**Phase 0.5 可见先行项原型**）
+- `app/.../ui/components/ai/ChatInput.kt:756` `ContextUsageBarButton` + `ContextUsage`（**Phase 0.5 可见先行项原型**；本仓 2026-10-21 起长条形态已删除，仅保留圆环，见 `ContextUsageRingButton`）
 - `app/.../ui/pages/chat/ChatPage.kt:445` `contextUsage` 组装（`estimateWindowTokens` + `effectiveContextLength`）
 - `app/.../ui/components/message/CompactionRow.kt`（不可展开，我们的改进点）
 - `app/.../data/ai/tools/WorkspaceTools.kt` `createPresentFileTool`（**附录 C 发送文件工具**）
