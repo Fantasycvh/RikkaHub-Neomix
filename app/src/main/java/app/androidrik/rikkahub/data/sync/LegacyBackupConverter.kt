@@ -18,9 +18,11 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_28_29
 import app.androidrik.rikkahub.data.db.migrations.Migration_40_41
 import app.androidrik.rikkahub.data.db.migrations.Migration_41_42
 import app.androidrik.rikkahub.data.db.migrations.Migration_43_44
+import app.androidrik.rikkahub.data.db.migrations.Migration_46_47
 import app.androidrik.rikkahub.data.db.migrations.Migration_6_7
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.data.model.UpstreamConversationConfig
+import app.androidrik.rikkahub.data.model.MemoryKind
 import java.io.File
 import java.util.UUID
 
@@ -85,7 +87,7 @@ internal class LegacyBackupConverter(private val context: Context) {
             .addMigrations(
                 Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15,
                 Migration_15_16, Migration_27_28, Migration_28_29, Migration_40_41, Migration_41_42,
-                Migration_43_44,
+                Migration_43_44, Migration_46_47,
             )
             .build()
         try {
@@ -287,6 +289,8 @@ internal class LegacyBackupConverter(private val context: Context) {
      * 拆分口径（用户已确认）：按**顶层条目**拆，一行一条主题；`[stated]`/`[inferred]`
      * 是原版的来源标记，本应用没有对应字段，导入时剥掉但保留正文。
      * front matter 的 `description` 是整篇主题，不硬塞给每一条（会污染检索），留空由渲染兜底截断。
+     * 原版固定根文件 profile/preferences 映射画像候选，其余默认话题；不自动固化，
+     * 不从 areas/自定义 tasks 文件的正文猜事务状态或日期（原版无此结构化契约）。
      */
     private fun importMemoryFiles(source: SQLiteDatabase, target: SupportSQLiteDatabase): Int {
         if (!sourceHasTable(source, "memory_file")) return 0
@@ -309,6 +313,7 @@ internal class LegacyBackupConverter(private val context: Context) {
                         description = "",
                         isAnchor = false,
                         revision = 1L,
+                        kind = LegacyBackupText.kindOfPath(path).storage,
                     )
                     insertMemory(target, entity)
                     imported++
@@ -325,12 +330,14 @@ internal class LegacyBackupConverter(private val context: Context) {
             INSERT INTO MemoryEntity
                 (assistant_id, content, public_id, importance, updated_at, description,
                  read_count, last_read_at, is_anchor, revision,
-                 chat_read_count, last_chat_read_at, consolidation_read_count, last_consolidation_read_at)
-            VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, 0, 0, 0)
+                 chat_read_count, last_chat_read_at, consolidation_read_count, last_consolidation_read_at,
+                 kind, task_status, due_at)
+            VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, 0, 0, 0, ?, ?, ?)
             """.trimIndent(),
             arrayOf<Any?>(
                 memory.assistantId, memory.content, memory.publicId, memory.importance,
                 memory.updatedAt, memory.description, if (memory.isAnchor) 1 else 0, memory.revision,
+                memory.kind, memory.taskStatus, memory.dueAt,
             ),
         )
     }
@@ -360,6 +367,17 @@ private val SOURCE_MARKER_RE = Regex("^\\[[^\\]]+\\]\\s*")
  * 2. 旧包名绝对路径 → 当前 applicationId。
  */
 internal object LegacyBackupText {
+    /**
+     * Upstream 815e9c20b reserves these two root files for identity/response preferences.
+     * Its areas/people/topics contain mixed facts, not structured tasks. Unknown paths stay topic;
+     * never infer a lifecycle, deadline or system anchor from a filename or prose.
+     */
+    fun kindOfPath(path: String): MemoryKind =
+        when (path.trim().removePrefix("/")) {
+            "profile.md", "preferences.md" -> MemoryKind.PROFILE
+            else -> MemoryKind.TOPIC
+        }
+
     /** 顶层条目：`- ` / `* ` 开头（可带 `[stated]` 标记）；无条目的正文整体算一条。 */
     fun entriesOf(content: String): List<String> {
         val entries = mutableListOf<String>()

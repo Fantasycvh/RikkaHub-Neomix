@@ -15,6 +15,24 @@ import org.junit.Test
 class LegacyBackupTextTest {
 
     @Test
+    fun mapsOnlyReservedRootProfileAndPreferencesToProfile() {
+        val profile = app.androidrik.rikkahub.data.model.MemoryKind.PROFILE
+        listOf("/profile.md", "/preferences.md", "profile.md", " preferences.md ").forEach {
+            assertEquals(it, profile, LegacyBackupText.kindOfPath(it))
+        }
+    }
+
+    @Test
+    fun otherDomainsAndAmbiguousPathsStayTopicWithoutTaskInference() {
+        val topic = app.androidrik.rikkahub.data.model.MemoryKind.TOPIC
+        listOf("/topics/food.md", "/areas/taxes.md", "/people/partner.md", "/tasks/todo.md",
+            "/tasks.md", "/profile/work.md", "/topics/profile.md", "/Profile.md", "//profile.md",
+            "/../profile.md", "/profile.md.bak", "", "/preferences/response.md").forEach {
+            assertEquals(it, topic, LegacyBackupText.kindOfPath(it))
+        }
+    }
+
+    @Test
     fun splitsTopLevelBulletsAndStripsSourceMarkers() {
         val markdown = """
             ---

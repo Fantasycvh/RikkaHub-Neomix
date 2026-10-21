@@ -97,6 +97,47 @@ class LegacyBackupConversionTest {
     }
 
     @Test
+    fun mapsReservedFilesWithoutInventingTasksAnchorsOrDeadlines() = kotlinx.coroutines.runBlocking {
+        createLegacyDatabase()
+        val fixtures = listOf(
+            Triple("/preferences.md", "请简洁回答", "profile"),
+            Triple("/areas/taxes.md", "用户计划明天完成报税，截止2026-10-22", "topic"),
+            Triple("/people/partner.md", "伴侣正在研究税务", "topic"),
+            Triple("/tasks/todo.md", "[x] 已完成任务 due: 2026-10-22", "topic"),
+            Triple("/topics/profile.md", "项目画像，不是用户身份", "topic"),
+        )
+        SQLiteDatabase.openDatabase(legacyFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { source ->
+            fixtures.forEach { (path, content, _) ->
+                source.execSQL("insert into memory_file values (?, ?, ?, ?)",
+                    arrayOf<Any?>(ASSISTANT, path, "- [stated] $content", 1234L))
+            }
+            source.execSQL("insert into memory_file values (?, ?, ?, ?)",
+                arrayOf<Any?>("other-assistant", "/profile.md", "- Other identity", 5678L))
+        }
+        val converted = LegacyBackupConverter(context).convert(legacyFile)
+        val db = openConverted(converted)
+        try {
+            val memories = db.memoryDao().getMemoriesOfAssistant(ASSISTANT)
+            fixtures.forEach { (_, content, kind) ->
+                val row = memories.single { it.content == content }
+                assertEquals(kind, row.kind)
+                assertEquals("open", row.taskStatus)
+                assertEquals(0L, row.dueAt)
+                assertFalse(row.isAnchor)
+                assertEquals(1234L, row.updatedAt)
+                assertEquals(1L, row.revision)
+            }
+            assertTrue(memories.filter { it.content.startsWith("用户喜欢") || it.content.startsWith("用户常") }
+                .all { it.kind == "profile" && !it.isAnchor })
+            assertEquals("topic", memories.single { it.content == "用户研究咖啡烘焙" }.kind)
+            val other = db.memoryDao().getMemoriesOfAssistant("other-assistant").single()
+            assertEquals("profile", other.kind)
+            assertFalse(other.isAnchor)
+            assertEquals(5678L, other.updatedAt)
+        } finally { db.close() }
+    }
+
+    @Test
     fun rejectsUnknownDatabaseFamily() {
         val unknown = File(context.cacheDir, "unknown-family-test.db")
         SQLiteDatabase.openOrCreateDatabase(unknown, null).use { db ->
