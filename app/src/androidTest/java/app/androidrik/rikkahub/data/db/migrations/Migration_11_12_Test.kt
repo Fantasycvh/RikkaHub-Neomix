@@ -15,6 +15,7 @@ import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -503,50 +504,58 @@ class Migration_11_12_Test {
         // 运行迁移 - 应该不会失败，即使超大对话无法处理
         val db = helper.runMigrationsAndValidate(TEST_DB, 12, true, Migration_11_12)
 
-        // 验证超大对话的消息节点（可能被跳过或成功迁移，取决于实际 blob 大小）
-        val largeCursor = db.query(
-            "SELECT * FROM message_node WHERE conversation_id = ?",
-            arrayOf(largeConversationId)
-        )
-        val largeNodesMigrated = largeCursor.count
-        largeCursor.close()
+        fun countOf(sql: String, args: Array<Any?> = emptyArray()): Int =
+            db.query(sql, args).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                cursor.getInt(0)
+            }
 
-        // 验证普通对话应该成功迁移
-        val normalCursor = db.query(
-            "SELECT * FROM message_node WHERE conversation_id = ?",
-            arrayOf(normalConversationId)
+        // 只取计数：`SELECT *` 会把每行的 messages 读进 CursorWindow，5000 行本身也可能超窗。
+        val largeNodesMigrated = countOf(
+            "SELECT COUNT(*) FROM message_node WHERE conversation_id = ?",
+            arrayOf<Any?>(largeConversationId),
         )
-        assertEquals("Normal conversation should be migrated successfully", 1, normalCursor.count)
-        normalCursor.close()
-
-        // 验证两个对话记录都还存在
-        val conversationsCursor = db.query("SELECT id FROM conversationentity")
-        assertEquals("Both conversations should still exist", 2, conversationsCursor.count)
-        conversationsCursor.close()
-
-        // 如果超大对话被跳过，其 nodes 字段应该仍然保留原始数据
-        // 如果成功迁移，nodes 字段应该被清空为 "[]"
-        val largeConvCursor = db.query(
-            "SELECT nodes FROM conversationentity WHERE id = ?",
-            arrayOf(largeConversationId)
+        val normalNodesMigrated = countOf(
+            "SELECT COUNT(*) FROM message_node WHERE conversation_id = ?",
+            arrayOf<Any?>(normalConversationId),
         )
-        assertTrue(largeConvCursor.moveToFirst())
-        val largeConvNodes = largeConvCursor.getString(0)
-        largeConvCursor.close()
+        assertEquals("Normal conversation should be migrated successfully", 1, normalNodesMigrated)
+        assertEquals("Both conversations should still exist", 2, countOf("SELECT COUNT(*) FROM conversationentity"))
 
-        // 验证普通对话的 nodes 应该被清空
-        val normalConvCursor = db.query(
-            "SELECT nodes FROM conversationentity WHERE id = ?",
-            arrayOf(normalConversationId)
-        )
-        assertTrue(normalConvCursor.moveToFirst())
-        val normalConvNodes = normalConvCursor.getString(0)
-        assertEquals("Normal conversation nodes should be cleared", "[]", normalConvNodes)
-        normalConvCursor.close()
+        // **不要 `getString(nodes)`**：超大对话的 nodes 是几 MB 的 TEXT，超过 CursorWindow
+        // （约 2 MB）会抛 SQLiteBlobTooBigException，测试读不回来。改由 SQLite 自己比较/计数，
+        // 只把标量结果放进 cursor——语义仍是「被跳过的保留原文、迁移成功的清空」。
+        val (largeNodesLength, largeNodesCleared) = db.query(
+            "SELECT length(nodes), CASE WHEN nodes = '[]' THEN 1 ELSE 0 END " +
+                "FROM conversationentity WHERE id = ?",
+            arrayOf(largeConversationId),
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            cursor.getLong(0) to (cursor.getInt(1) == 1)
+        }
+        val normalNodesCleared = db.query(
+            "SELECT CASE WHEN nodes = '[]' THEN 1 ELSE 0 END FROM conversationentity WHERE id = ?",
+            arrayOf(normalConversationId),
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            cursor.getInt(0) == 1
+        }
+        assertTrue("Normal conversation nodes should be cleared", normalNodesCleared)
+
+        // blob 超过窗口 ⇒ 迁移跳过：nodes 原文保留、message_node 为空；窗口更大的设备若迁移成功，
+        // 则 5000 个节点都应存在且 nodes 被清空。两种结果都自洽，但不能出现「一半」。
+        if (largeNodesMigrated == 0) {
+            assertFalse("Skipped large conversation must keep its nodes", largeNodesCleared)
+            assertTrue("Skipped large conversation must retain its JSON", largeNodesLength > 0)
+        } else {
+            assertEquals("All 5000 nodes should migrate when the blob is readable", 5000, largeNodesMigrated)
+            assertTrue("Migrated large conversation nodes should be cleared", largeNodesCleared)
+        }
 
         Log.i(
             "Migration_11_12_Test",
-            "Large conversation migration result: $largeNodesMigrated nodes migrated, nodes field: ${if (largeConvNodes == "[]") "cleared" else "preserved"}"
+            "Large conversation migration result: $largeNodesMigrated nodes migrated, " +
+                "nodesLength=$largeNodesLength, cleared=$largeNodesCleared",
         )
 
         db.close()

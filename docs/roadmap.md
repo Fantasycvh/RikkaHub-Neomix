@@ -3430,3 +3430,11 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   只提案模式以用户批准为写授权，关闭态不追溯过滤旧建议（不宣称“关闭后旧建议不能改类”）。
   三语各2键。无DB迁移、未改工具schema。全量JVM **241类/2198项全绿**，debug构建与lintDebug成功
   （0错误/367警告/6提示）；未新增仪器测试，未真机点击。验证与边界见设计稿 §18.3。
+
+- 2026-10-21 **测试基建修复与全量仪器回归**（用户要求先做这两项；[记录](design/design-memory-kinds.md#19-测试基建修复与全量仪器回归2026-10-21)）。
+  `Migration_11_12_Test` 超大对话失败根因是测试用 `getString` 读几 MB TEXT 超 CursorWindow，
+  改为 SQL 计数/`length`/`CASE` 断言，迁移生产逻辑不变；单类 **7 项通过**。
+  全量 test APK 用默认 `AndroidJUnitRunner` 运行 **188 项：179 通过、9 跳过、0 失败**
+  （跳过为私有备份 fixture/无 rootfs 工作区/native Tikz 能力等既有 assume）。
+  顺带修 `ExampleInstrumentedTest` 钉死 release 包名、`HeightClampTest` 的 Compose 宿主解析问题。
+  未用隔离 runner 跑 UI/DI 测试；未验证真实模型端到端。

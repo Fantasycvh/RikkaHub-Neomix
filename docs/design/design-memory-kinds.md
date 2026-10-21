@@ -659,7 +659,7 @@ internal data class MemoryInjectionPlan(
   不把 lint 成功解释为零警告。最终 debug 与测试 APK 已覆盖安装，release 未覆盖。
   真机隔离数据库/完整迁移包 **84 项，83 通过、1 失败**；唯一失败为既有
   `Migration_11_12_Test.migrate11To12_handlesVeryLargeConversations` 的 `SQLiteBlobTooBigException`
-  （超大行超 CursorWindow），本轮未更改该旧迁移或弱化其测试。新 A2 与 44→47 测试全部通过。
+  （超大行超 CursorWindow），当轮未改旧迁移或弱化其测试。后续已修复并跑全量仪器测试，见 §19。
 - **边界**：不操作真实记忆制造 UI 样本，未逐项点击/截图真实 UI，未用真实模型端到端验证整理证据判断；
   纯 helper 通过不等于 Compose 点击验收。无提醒通知/子任务/依赖图。
   工具定义相对 A1 粗增约 25 token，整理静态提示粗增约 350–450 token（字符估算，非 tokenizer 实测）。
@@ -757,3 +757,31 @@ internal data class MemoryInjectionPlan(
   运行中切换开关不影响已启动整理捕获的值。「不得为规避 200 条上限/保护而改类」与
   「一步内不跨类合并」仍是**提示层纪律**；代码只硬拦截整理关闭时的改类、整理对未完成事务改类，
   以及提案依赖的同类型校验。
+
+## 19. 测试基建修复与全量仪器回归（2026-10-21）
+
+### 19.1 11→12 超大会话测试
+
+原失败点不在迁移本身，而在**测试读取**：`migrate11To12_handlesVeryLargeConversations`
+用 `getString(nodes)` 取几 MB 的 TEXT，超过 CursorWindow（约 2 MB）抛
+`SQLiteBlobTooBigException`；迁移实现本来就会捕获该异常并跳过、保留 `nodes` 原文。
+
+修复（不改迁移生产逻辑、不弱化语义）：
+- 计数改为 `SELECT COUNT(*)`，不再 `SELECT *` 拉 5000 行；
+- 大字段状态用 `length(nodes)` 与 `CASE WHEN nodes = '[]'` 在 SQLite 内计算，只把标量读进 cursor；
+- 断言仍区分两种自洽结果：跳过的对话 `message_node` 为 0 且 `nodes` 原文保留；
+  成功迁移则 5000 条节点且 `nodes` 清空；普通对话必须迁移且清空，两个对话都保留。
+- 单类复跑 **7 项通过**。
+
+### 19.2 全量仪器测试
+
+- 用**默认** `AndroidJUnitRunner`（不传 `-PmemoryIsolatedTests`）构建并运行整个 test APK：
+  **188 项：179 通过、9 跳过（assume），0 失败**。跳过均为仓库既有可选项：
+  私有上游备份 fixture 未提供、设备无已装 rootfs 工作区、部分 native Tikz 能力不可用等。
+- 这轮同时修掉两处测试基建问题：
+  1. `ExampleInstrumentedTest` 把包名钉死为 release `applicationId`，debug 包必然失败；
+     改为校验 `app.androidrik.rikkahub` 前缀。
+  2. `HeightClampTest` 的 `createComposeRule()` 宿主解析到测试 APK 进程；改用仓库既有的
+     `SketchTestHostActivity` + 显式 Intent（debug source set，与 instrumentation 同进程）。
+- **边界**：全量套件用真实 Application 启动（UI/DI 测试需要），数据库类测试各自用内存库或
+  自命名测试库；私有备份 fixture 与真实模型调用仍不在自动验证内。
