@@ -119,8 +119,28 @@ private val parser by lazy { MarkdownParser(flavour) }
 internal fun generateMarkdownHtml(content: String): String {
     val preprocessed = preProcess(content)
     val tree = parser.buildMarkdownTreeFromString(preprocessed)
-    return HtmlGenerator(preprocessed, tree, flavour).generateHtml()
+    return escapeMathSpanHtml(HtmlGenerator(preprocessed, tree, flavour).generateHtml())
 }
+
+/**
+ * 转义 math span 内的 `<` / `&`。
+ *
+ * 背景（上游 issue #2224 / #2221）：markdown 解析器把 `$$…$$` 的内容**原样**写进
+ * `<span class="math">`，公式里的 `1\le i<j\le n` 于是让后续 `Jsoup.parse` 把 `<j…`
+ * 当成 HTML 标签起点——公式在第一个 `<` 处截断，后半段（乃至后续段落）被吞掉。
+ *
+ * 只处理 math span：普通文本由 HtmlGenerator 正常转义；span 外不做改动，
+ * 避免影响用户自己写的 HTML（走 [SimpleHtmlBlock]）与代码块。
+ */
+private val MATH_SPAN_REGEX = Regex("""(<span class="math"[^>]*>)([\s\S]*?)</span>""")
+
+internal fun escapeMathSpanHtml(html: String): String =
+    MATH_SPAN_REGEX.replace(html) { match ->
+        val escaped = match.groupValues[2]
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+        match.groupValues[1] + escaped + "</span>"
+    }
 
 // ---- Main composable ----
 

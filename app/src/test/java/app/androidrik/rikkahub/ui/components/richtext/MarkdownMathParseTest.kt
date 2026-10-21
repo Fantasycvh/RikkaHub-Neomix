@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.components.richtext
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
+import org.jsoup.Jsoup
 import org.junit.Test
 
 /**
@@ -122,5 +123,46 @@ class MarkdownMathParseTest {
         val codeContent = Regex("<code[^>]*>(.*?)</code>", RegexOption.DOT_MATCHES_ALL)
             .find(html)?.groupValues?.get(1)?.take(120)
         println("codeContent=$codeContent")
+    }
+
+    @Test
+    fun lessThanInsideBlockFormula_isNotSwallowedAsHtmlTag() {
+        // 上游 issue #2224 / #2221：公式里 `1\le i<j\le n` 的 `<j` 被当成 HTML 标签开头，
+        // 导致 math span 在 `<` 处截断、后半段丢失。走真实的 generateMarkdownHtml → Jsoup 链路。
+        val content = """
+            $$
+            V(x_1,\ldots,x_n)=\prod_{1\le i<j\le n}(x_j-x_i).
+            $$
+        """.trimIndent()
+        val html = generateMarkdownHtml(content)
+        println("LESS_THAN_BLOCK_HTML: $html")
+        val math = Jsoup.parse(html).select("span.math").firstOrNull()
+        assert(math != null) { "应生成 math span：$html" }
+        val formula = math!!.text()
+        assert(formula.contains("<j")) { "公式里的 < 应保留而不是被吞成 HTML 标签：$formula" }
+        assert(formula.contains("x_j-x_i")) { "公式后半段不应丢失：$formula" }
+    }
+
+    @Test
+    fun lessThanInsideInlineFormula_isNotSwallowedAsHtmlTag() {
+        val content = """当 ${'$'}1\le i<j\le n${'$'} 时成立。"""
+        val html = generateMarkdownHtml(content)
+        println("LESS_THAN_INLINE_HTML: $html")
+        val math = Jsoup.parse(html).select("span.math").firstOrNull()
+        assert(math != null) { "应生成行内 math span：$html" }
+        val formula = math!!.text()
+        assert(formula.contains("<j")) { "行内公式里的 < 也应保留：$formula" }
+        assert(formula.contains("i<j")) { "行内公式后半段不应丢失：$formula" }
+    }
+
+    @Test
+    fun ampersandInsideFormula_isPreservedAfterJsoup() {
+        // align 环境的 `&` 对齐符：转义为 &amp; 后必须由 Jsoup 原样还原，不能被二次转义
+        val content = "$$\\begin{aligned} a &= b \\\\ c &< d \\end{aligned}$$"
+        val html = generateMarkdownHtml(content)
+        val formula = Jsoup.parse(html).select("span.math").firstOrNull()?.text()
+        assert(formula != null) { "应生成 math span：$html" }
+        assert(formula!!.contains("a &= b")) { "对齐符 & 不应丢失或被转义：$formula" }
+        assert(formula.contains("c &< d")) { "公式里的 & 与 < 都应保留：$formula" }
     }
 }
