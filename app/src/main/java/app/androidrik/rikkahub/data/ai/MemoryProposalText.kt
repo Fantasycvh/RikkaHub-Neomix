@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.ai
 
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.MemoryKind
 
 /**
  * 「整理建议 → 给人看的一句话」的文本函数。
@@ -44,12 +45,34 @@ fun proposeChangeSummary(
         return "[${proposal.action}] $id — revision changed " +
             "(expected v${proposal.expectedRevision}, current v${target.revision}); will not apply"
     }
+    val specifiedKind = proposal.kind?.takeIf { it.isNotBlank() }?.let(MemoryKind::fromStorage)
+    val resultingKind = specifiedKind ?: target?.kind ?: MemoryKind.TOPIC
+    val metadata = buildList {
+        specifiedKind?.let { kind ->
+            add(if (target != null) "${target.kind.storage} → ${kind.storage}" else "kind: ${kind.storage}")
+        }
+        if (resultingKind != MemoryKind.TASK && target?.kind == MemoryKind.TASK) {
+            add("task status and due: cleared")
+        } else if (resultingKind == MemoryKind.TASK) {
+            proposal.dueAt?.let { due ->
+                add(if (due == 0L) "due: cleared" else "due: " +
+                    java.time.Instant.ofEpochMilli(due).atZone(java.time.ZoneId.systemDefault()).toLocalDate())
+            }
+        }
+    }.joinToString("; ").let { if (it.isEmpty()) "" else " [$it]" }
     return when (proposal.action) {
-        "create" -> "[new] ${preview(proposal.content)}"
+        "create" -> "[new] ${preview(proposal.content)}$metadata"
         "edit" -> if (target == null) {
             "[edit] $id — target no longer exists"
         } else {
-            "[edit] $id — “${preview(target.content)}” → “${preview(proposal.content)}”"
+            "[edit] $id — “${preview(target.content)}” → “${preview(proposal.content)}”$metadata"
+        }
+
+        "complete", "drop" -> when {
+            target == null -> "[${proposal.action}] $id — target no longer exists"
+            target.kind != MemoryKind.TASK -> "[${proposal.action}] $id — not a task; will not apply"
+            else -> "[${proposal.action}] $id — “${preview(target.content)}” [${target.taskStatus.storage} → " +
+                (if (proposal.action == "complete") "done" else "dropped") + "]"
         }
 
         "delete" -> if (target == null) {

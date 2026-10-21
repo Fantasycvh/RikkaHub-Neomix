@@ -2,6 +2,8 @@ package app.androidrik.rikkahub.data.ai
 
 import app.androidrik.common.tokenizer.TokenizerRegistry
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.MemoryKind
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import app.androidrik.rikkahub.utils.heuristicTokenCount
 import kotlin.math.floor
 
@@ -20,16 +22,17 @@ internal const val MEMORY_ESTIMATION_HEURISTIC = "heuristic"
 private const val MEMORY_ENTRY_SEPARATOR_OVERHEAD_TOKENS = 2
 
 /**
- * 一次请求的**不可变**记忆注入计划：L0 纪律、L1 锚点、L2 全文、L3 索引四层一次算清。
+ * 一次请求的**不可变**记忆注入计划：L0 纪律、L1 锚点、L2 全文、L3 索引及专用任务尾部通道。
  *
  * 为什么要一次算清：旧实现里 system 的 L1 与尾部的 L2/L3 各自挑各自的（[buildMemoryAnchorPrompt]
  * 与 [buildMemoryDataPrompt]），既可能重复、又无法对「总计费」给出一个可验证的数。现在真实装配和
  * 预览都只读本对象（Lead 的 PromptAssembly/Inspector 接线）。
  *
  * - [disciplineText]/[anchorText] 进 system；[dataText] 进对话尾部；
- * - [anchors]/[fullText]/[indexed] 三层互不重叠，[omittedCount] 是「既不在锚点、也不在全文/
- *   索引里」的条数（锚点在 system 里可见，所以不算省略）；
- * - 三个 token 字段都是**对应渲染字符串**的实际计数，[totalEstimatedTokens] 是它们的和。
+ * - [anchors]/[fullText]/[indexed]/[tasks] 互不重叠；[omittedCount] 仅统计未显示的话题/画像，
+ *   [taskOmittedCount] 单独统计未在 L1/任务块显示的开放事务，关闭事务不计入任何省略告知；
+ * - discipline/anchor/data token 是三段实际计数，总计为其和；[taskTokens] 是 [dataTokens]
+ *   内的诊断子项，不能再次加到 [totalEstimatedTokens]。
  *
  * 计费策略在 plan 创建时锁定一次（[estimationMode]），不会出现同一块文本前后两种口径。
  */
@@ -42,6 +45,10 @@ internal data class MemoryInjectionPlan(
     val fullText: List<AssistantMemory> = emptyList(),
     val indexed: List<AssistantMemory> = emptyList(),
     val omittedCount: Int = 0,
+    val tasks: List<AssistantMemory> = emptyList(),
+    val taskText: String = "",
+    val taskTokens: Int = 0,
+    val taskOmittedCount: Int = 0,
     val disciplineTokens: Int = 0,
     val anchorTokens: Int = 0,
     val dataTokens: Int = 0,
@@ -58,13 +65,14 @@ internal data class MemoryInjectionPlan(
  * 1. **L0** 纪律层先计；预算非正、空库、或连 L0 都装不下 ⇒ 全部为空；
  * 2. **L1** 对最多 5 条锚点**逐条整块试渲染**，system 小计装得下才收；放不下的锚点不进 L2
  *    全文（否则等于绕过 L1 预算），但允许进 L3 索引；
- * 3. 预留尾部脚手架（前导 + 空数组 + 省略告知）后，剩余可变预算的 75% 给 **L2**：
- *    按 [rankedMemoryCandidates] 顺序整条选取，只收完整 JSON，**绝不截断正文**；
- * 4. **L3** 吃掉全部剩余额度（先扣清单标题），按 `sortKey` 升序整行选取；
- * 5. L1 已渲染的 id 从 L2/L3 排除；被冻结集合排除的锚点仍是普通 L2 候选。
+ * 3. 未在 L1 渲染的开放事务先预留最多 800 token / 20 条（首条可超软配额，受最终硬预算约束）；
+ * 4. 预留尾部脚手架后，剩余可变预算的 75% 给 **L2**，只收完整话题/画像 JSON；
+ * 5. **L3** 吃掉剩余额度，按 `sortKey` 升序整行选取；所有 TASK 均排除于 L2/L3；
+ * 6. L1 已渲染的 id 从 L2/L3 排除；被冻结集合排除的非事务锚点仍是普通候选。
  *
- * 最终以**实际渲染字符串**精确复核；若超预算，按「去全索引 → 去全正文 → 去尾块」最多
- * 3 级确定性 fallback 收敛。任何一级都不裁剪正文，因此 total 一定 <= max(0, budgetTokens)。
+ * 最终以**实际渲染字符串**精确复核；若超预算，按「去全索引 → 去全正文 → 去任务正文
+ * （保留各自省略告知）→ 去尾块」最多 4 级确定性 fallback 收敛。绝不裁剪正文，
+ * total 一定 <= max(0, budgetTokens)。
  *
  * @param frozenAnchorIds `null` = 不冻结；非 null = 只把集合内的 `isAnchor` 记忆算锚点
  *   （集合本身应由调用方用 [anchorIdsOf] 的原始值持久化，不能用本 plan 过滤后的结果）。
@@ -90,10 +98,14 @@ internal fun buildMemoryInjectionPlan(
         { text -> heuristicTokenCount(text) }
     }
 
+    val ordinaryMemories = memories.filter { it.kind != MemoryKind.TASK }
+    val openTasks = memories.filter { it.kind == MemoryKind.TASK && it.taskStatus == MemoryTaskStatus.OPEN }
+
     // 空库 / 非正预算 ⇒ 不产生任何记忆块（连 L0 也不塞，保持「空就是全空」）。
     if (memories.isEmpty() || budgetTokens <= 0) {
         return MemoryInjectionPlan(
-            budgetTokens = budgetTokens, omittedCount = memories.size, estimationMode = estimationMode,
+            budgetTokens = budgetTokens, omittedCount = ordinaryMemories.size,
+            taskOmittedCount = openTasks.size, estimationMode = estimationMode,
         )
     }
 
@@ -102,7 +114,8 @@ internal fun buildMemoryInjectionPlan(
     if (disciplineTokens > budgetTokens) {
         // 预算连最小纪律层都装不下 ⇒ 全空（调用方据此不产生任何记忆段）。
         return MemoryInjectionPlan(
-            budgetTokens = budgetTokens, omittedCount = memories.size, estimationMode = estimationMode,
+            budgetTokens = budgetTokens, omittedCount = ordinaryMemories.size,
+            taskOmittedCount = openTasks.size, estimationMode = estimationMode,
         )
     }
 
@@ -127,12 +140,29 @@ internal fun buildMemoryInjectionPlan(
     }
     val anchorIds = anchors.mapTo(HashSet()) { it.id }
 
-    // ---- 尾部脚手架：前导行 + 空 JSON 数组 + 省略告知 ----
-    // 按「全部省略」预留（位数最多），最终精确复核兜底。
+    // ---- Open tasks: reserve before L2/L3; first whole record may exceed the soft cap. ----
+    // Historical task anchors excluded by freezing, quota or L1 budget still need the task channel.
+    val taskCandidates = openTasks.filter { it.id !in anchorIds }
+        .sortedWith(compareBy<AssistantMemory> { if (it.dueAt > 0L) it.dueAt else Long.MAX_VALUE }
+            .thenBy { it.sortKey })
+    val tasks = mutableListOf<AssistantMemory>()
+    val taskCap = minOf(MEMORY_TASK_BUDGET_TOKENS, (budgetTokens - disciplineTokens - anchorTokens).coerceAtLeast(0))
+    taskCandidates.forEach { candidate ->
+        if (tasks.size >= MEMORY_TASK_LIMIT) return@forEach
+        val trial = tasks + candidate
+        val trialText = renderMemoryTaskPrompt(trial, taskCandidates.size - trial.size, now)
+        if (tasks.isEmpty() || count(trialText) <= taskCap) tasks += candidate
+    }
+    var taskOmittedCount = taskCandidates.size - tasks.size
+    var taskText = renderMemoryTaskPrompt(tasks, taskOmittedCount, now)
+    var taskTokens = count(taskText)
+    val ordinaryAnchorCount = anchors.count { it.kind != MemoryKind.TASK }
+
+    // All-topic scaffold stays byte-for-byte identical. Task text is charged separately.
     val tailScaffoldTokens = count(
-        renderMemoryDataPrompt(emptyList(), emptyList(), omittedCount = memories.size)
-    )
-    val remaining = budgetTokens - disciplineTokens - anchorTokens - tailScaffoldTokens
+        renderMemoryDataPrompt(emptyList(), emptyList(), ordinaryMemories.size, taskText)
+    ) - taskTokens
+    val remaining = budgetTokens - disciplineTokens - anchorTokens - taskTokens - tailScaffoldTokens
 
     // ---- L2：全文层，占剩余可变预算 75% ----
     val l2Cap = if (remaining > 0) {
@@ -177,7 +207,7 @@ internal fun buildMemoryInjectionPlan(
         }
         var used = 0
         // 原 sortKey 升序；不套用全文层的相关性下限（否则又会「静默消失」）。
-        memories
+        ordinaryMemories
             .filter { it.id !in anchorIds && it.id !in fullIds }
             .sortedBy { it.sortKey }
             .forEach { memory ->
@@ -189,41 +219,37 @@ internal fun buildMemoryInjectionPlan(
             }
     }
 
-    // ---- 精确复核 + 最多 3 级确定性 fallback（绝不裁剪正文）----
-    var omittedCount = omittedOf(memories.size, anchors.size, fullText.size, indexed.size)
-    var dataText = renderMemoryDataPrompt(fullText, indexed, omittedCount)
+    // Exact whole-tail billing is authoritative, including for the first-task exemption.
+    var omittedCount = omittedOf(ordinaryMemories.size, ordinaryAnchorCount, fullText.size, indexed.size)
+    var dataText = renderMemoryDataPrompt(fullText, indexed, omittedCount, taskText)
     var dataTokens = count(dataText)
-
-    if (disciplineTokens + anchorTokens + dataTokens > budgetTokens) {
-        // fallback 1：去掉全部索引，重新渲染（省略数随之更新）。
-        val omittedWithoutIndex = omittedOf(memories.size, anchors.size, fullText.size, 0)
-        val textWithoutIndex = renderMemoryDataPrompt(fullText, emptyList(), omittedWithoutIndex)
-        val tokensWithoutIndex = count(textWithoutIndex)
-        if (disciplineTokens + anchorTokens + tokensWithoutIndex <= budgetTokens) {
-            indexed.clear()
-            omittedCount = omittedWithoutIndex
-            dataText = textWithoutIndex
-            dataTokens = tokensWithoutIndex
-        } else {
-            // fallback 2：去掉全部正文，只留 all-omitted 告知。
-            val allOmitted = omittedOf(memories.size, anchors.size, 0, 0)
-            val allOmittedText = renderMemoryDataPrompt(emptyList(), emptyList(), allOmitted)
-            val allOmittedTokens = count(allOmittedText)
-            if (disciplineTokens + anchorTokens + allOmittedTokens <= budgetTokens) {
-                fullText.clear()
-                indexed.clear()
-                omittedCount = allOmitted
-                dataText = allOmittedText
-                dataTokens = allOmittedTokens
-            } else {
-                // fallback 3：尾部整块丢弃；L0+L1 已保证装得下。
-                fullText.clear()
-                indexed.clear()
-                omittedCount = allOmitted
-                dataText = ""
-                dataTokens = 0
-            }
-        }
+    fun overBudget() = disciplineTokens + anchorTokens + dataTokens > budgetTokens
+    fun rerender() {
+        omittedCount = omittedOf(ordinaryMemories.size, ordinaryAnchorCount, fullText.size, indexed.size)
+        dataText = renderMemoryDataPrompt(fullText, indexed, omittedCount, taskText)
+        dataTokens = count(dataText)
+    }
+    if (overBudget()) {
+        indexed.clear() // 1. index yields before full memories or tasks
+        rerender()
+    }
+    if (overBudget()) {
+        fullText.clear() // 2. keep the ordinary all-omitted notice
+        rerender()
+    }
+    if (overBudget()) {
+        tasks.clear() // 3. tasks yield last, retaining their own omission notice
+        taskOmittedCount = taskCandidates.size
+        taskText = renderMemoryTaskPrompt(emptyList(), taskOmittedCount, now)
+        taskTokens = count(taskText)
+        rerender()
+    }
+    if (overBudget()) {
+        // 4. even notices do not fit; L0+L1 already obey the hard cap.
+        dataText = ""
+        dataTokens = 0
+        taskText = ""
+        taskTokens = 0
     }
 
     return MemoryInjectionPlan(
@@ -235,6 +261,10 @@ internal fun buildMemoryInjectionPlan(
         fullText = fullText.toList(),
         indexed = indexed.toList(),
         omittedCount = omittedCount,
+        tasks = tasks.toList(),
+        taskText = taskText,
+        taskTokens = taskTokens,
+        taskOmittedCount = taskOmittedCount,
         disciplineTokens = disciplineTokens,
         anchorTokens = anchorTokens,
         dataTokens = dataTokens,

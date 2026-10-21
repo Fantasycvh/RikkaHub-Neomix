@@ -3,6 +3,8 @@ package app.androidrik.rikkahub.data.repository
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.db.dao.MemoryProposalDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryProposalEntity
+import app.androidrik.rikkahub.data.model.MemoryKind
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.uuid.Uuid
@@ -49,6 +51,7 @@ class MemoryProposalRepository(
         val defaultBatch = proposals.firstOrNull { it.batchId.isNotBlank() }?.batchId
             ?: Uuid.random().toString()
         val rows = proposals.map { proposal ->
+            require(proposal.dueAt == null || proposal.dueAt >= 0L) { "Invalid proposal deadline" }
             MemoryProposalEntity(
                 memoryId = memoryId,
                 batchId = proposal.batchId.ifBlank { defaultBatch },
@@ -62,6 +65,8 @@ class MemoryProposalRepository(
                 operationId = proposal.operationId,
                 dependsOn = Json.encodeToString(proposal.dependsOn),
                 contractVersion = proposal.contractVersion,
+                kind = proposal.kind.orEmpty(),
+                dueAt = proposal.dueAt?.let { if (it == 0L) -1L else it } ?: 0L,
             )
         }
         // Validate before replacing pending. Never read the target here to manufacture version evidence.
@@ -120,7 +125,8 @@ class MemoryProposalRepository(
             }
             for (row in ordered.filter { it.id in selectedIds && it.id !in conflictingIds }) {
                 val target = row.targetId?.let { memoryRepository.getMemoryInStore(memoryId, it) }
-                if (row.action != "create" && (target == null || target.revision != row.expectedRevision)) {
+                if (row.action != "create" && (target == null || target.revision != row.expectedRevision ||
+                        (row.action in setOf("complete", "drop") && target.kind != MemoryKind.TASK))) {
                     markStale(row)
                     states[row.operationId] = row.copy(decision = MemoryProposalEntity.DECISION_STALE)
                     continue
@@ -142,7 +148,7 @@ class MemoryProposalRepository(
                     }
                     output == null || dependency.appliedRevision == null ||
                         output.revision != dependency.appliedRevision ||
-                        (row.action == "delete" && output.id == target?.id)
+                        (row.action == "delete" && (output.id == target?.id || output.kind != target?.kind))
                 }
                 if (invalidOutput) {
                     markStale(row)
@@ -151,7 +157,7 @@ class MemoryProposalRepository(
                 }
                 val receipt = applyRow(memoryId, row)
                 when (row.action) {
-                    "create", "edit" -> writtenIds += requireNotNull(receipt.appliedTargetId)
+                    "create", "edit", "complete", "drop" -> writtenIds += requireNotNull(receipt.appliedTargetId)
                     "delete" -> {
                         explicitlyDeletedIds += requireNotNull(receipt.appliedTargetId)
                         dependencies.forEach { dependency ->
@@ -183,9 +189,17 @@ class MemoryProposalRepository(
             "create" -> memoryRepository.addMemory(
                 memoryId, row.content, row.importance, row.description,
                 actor = "CONSOLIDATOR", reason = reason,
+                kind = MemoryKind.fromStorage(row.kind), dueAt = row.proposalDueAt() ?: 0L,
             )
             "edit" -> memoryRepository.updateContentInStore(
                 memoryId, requireNotNull(row.targetId), row.content, row.importance, row.description,
+                expectedRevision = requireNotNull(row.expectedRevision), actor = "CONSOLIDATOR", reason = reason,
+                kind = row.kind.takeIf { it.isNotBlank() }?.let(MemoryKind::fromStorage),
+                dueAt = row.proposalDueAt(),
+            )
+            "complete", "drop" -> memoryRepository.setTaskStatusInStore(
+                memoryId, requireNotNull(row.targetId),
+                if (row.action == "complete") MemoryTaskStatus.DONE else MemoryTaskStatus.DROPPED,
                 expectedRevision = requireNotNull(row.expectedRevision), actor = "CONSOLIDATOR", reason = reason,
             )
             "delete" -> null
@@ -227,7 +241,7 @@ private fun orderedBatch(rows: List<MemoryProposalEntity>): List<MemoryProposalE
     if (rows.isEmpty()) return null
     val byOperation = rows.associateBy { it.operationId }
     if (byOperation.size != rows.size || rows.any {
-        it.contractVersion != 1 || it.operationId.isBlank() || it.action !in setOf("create", "edit", "delete") ||
+        it.contractVersion != 1 || it.operationId.isBlank() || it.action !in setOf("create", "edit", "delete", "complete", "drop") ||
             (it.action != "create" && (it.targetId.isNullOrBlank() || (it.expectedRevision ?: 0L) <= 0L))
     }) return null
     val edges = mutableMapOf<String, List<String>>()
@@ -285,4 +299,14 @@ private fun MemoryProposalEntity.toProposal() = MemoryConsolidationProposal(
     contractVersion = contractVersion,
     appliedTargetId = appliedTargetId,
     appliedRevision = appliedRevision,
+    kind = kind.takeIf { it.isNotBlank() },
+    dueAt = proposalDueAt(),
 )
+
+/** Keep legacy unspecified deadlines distinct from an explicit removal. */
+private fun MemoryProposalEntity.proposalDueAt(): Long? = when {
+    dueAt == 0L -> null
+    dueAt == -1L -> 0L
+    dueAt > 0L -> dueAt
+    else -> error("Invalid proposal deadline")
+}

@@ -79,6 +79,12 @@ data class MemoryProposalEntity(
     /** SQL/Kotlin default 0 deliberately leaves legacy rows untrusted. */
     @ColumnInfo(name = "contract_version", defaultValue = "0")
     val contractVersion: Int = 0,
+    /** Blank means unspecified (legacy edits preserve their current classification). */
+    @ColumnInfo(name = "kind", defaultValue = "''")
+    val kind: String = "",
+    /** 0 = unspecified, -1 = explicit clear, positive = epoch millis. */
+    @ColumnInfo(name = "due_at", defaultValue = "0")
+    val dueAt: Long = 0L,
 ) {
     companion object {
         const val DECISION_PENDING = "pending"

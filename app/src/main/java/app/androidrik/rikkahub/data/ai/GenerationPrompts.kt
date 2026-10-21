@@ -4,6 +4,8 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.MemoryKind
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import app.androidrik.rikkahub.utils.JsonInstantPretty
 import app.androidrik.rikkahub.utils.estimateTokens
 import java.time.Instant
@@ -101,6 +103,10 @@ private const val MEMORY_INDEX_FALLBACK_CHARS = 80
  */
 internal const val MEMORY_ANCHOR_LIMIT = 5
 
+/** Open tasks have their own bounded tail channel, independent of L2 ranking. */
+internal const val MEMORY_TASK_BUDGET_TOKENS = 800
+internal const val MEMORY_TASK_LIMIT = 20
+
 /**
  * **L0 纪律层**（静态）：记忆使用纪律 + 指向尾部数据的说明。
  *
@@ -180,7 +186,10 @@ internal fun selectAnchorMemories(
     limit: Int,
     frozenIds: Set<String>? = null,
 ): List<AssistantMemory> = memories
-    .filter { it.isAnchor && (frozenIds == null || it.id in frozenIds) }
+    .filter {
+        it.isAnchor && (frozenIds == null || it.id in frozenIds) &&
+            (it.kind != MemoryKind.TASK || it.taskStatus == MemoryTaskStatus.OPEN)
+    }
     .sortedWith(compareByDescending<AssistantMemory> { it.importance }.thenBy { it.sortKey })
     .take(limit)
 
@@ -259,6 +268,7 @@ private fun memoryJsonArrayText(memories: List<AssistantMemory>): String =
                         put("id", memory.id)
                         put("revision", memory.revision)
                         put("content", memory.content)
+                        if (memory.kind == MemoryKind.PROFILE) put("kind", memory.kind.storage)
                     }
                 )
             }
@@ -277,8 +287,9 @@ internal fun renderMemoryDataPrompt(
     fullText: List<AssistantMemory>,
     indexed: List<AssistantMemory>,
     omittedCount: Int,
+    taskText: String = "",
 ): String {
-    if (fullText.isEmpty() && indexed.isEmpty() && omittedCount <= 0) return ""
+    if (fullText.isEmpty() && indexed.isEmpty() && omittedCount <= 0 && taskText.isEmpty()) return ""
     return buildString {
         append(MEMORY_TAIL_PREAMBLE)
         appendLine()
@@ -292,6 +303,41 @@ internal fun renderMemoryDataPrompt(
             appendLine()
             append(memoryOmissionNotice(omittedCount))
             appendLine()
+        }
+        if (taskText.isNotEmpty()) {
+            appendLine()
+            append(taskText)
+        }
+    }
+}
+
+/** The task channel is always last; dates and overdue flags use the same local calendar. */
+internal fun renderMemoryTaskPrompt(
+    tasks: List<AssistantMemory>,
+    omittedCount: Int,
+    now: Long,
+): String {
+    if (tasks.isEmpty() && omittedCount <= 0) return ""
+    val zone = ZoneId.systemDefault()
+    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    return buildString {
+        appendLine("**Open tasks** (the user's own commitments; act on them, do not recite them)")
+        appendLine(JsonInstantPretty.encodeToString(buildJsonArray {
+            tasks.forEach { memory ->
+                add(buildJsonObject {
+                    put("id", memory.id)
+                    put("revision", memory.revision)
+                    put("task", memory.content)
+                    if (memory.dueAt > 0L) {
+                        val due = Instant.ofEpochMilli(memory.dueAt).atZone(zone).toLocalDate()
+                        put("due", due.toString())
+                        if (due < today) put("overdue", true)
+                    }
+                })
+            }
+        }))
+        if (omittedCount > 0) {
+            appendLine("**Omitted tasks**: $omittedCount more open tasks are not shown.")
         }
     }
 }
@@ -316,7 +362,7 @@ internal fun selectMemoriesForIndex(
     val result = mutableListOf<AssistantMemory>()
     var used = 0
     memories.sortedBy { it.sortKey }.forEach { memory ->
-        if (memory.id in excludedIds) return@forEach
+        if (memory.id in excludedIds || memory.kind == MemoryKind.TASK) return@forEach
         val cost = estimateTokens(indexLine(memory)) + PER_ENTRY_OVERHEAD_TOKENS / 2
         if (used + cost > budgetTokens && result.isNotEmpty()) return@forEach
         result += memory
@@ -330,7 +376,8 @@ internal fun indexLine(memory: AssistantMemory): String {
     val description = memory.description.ifBlank {
         memory.content.trim().take(MEMORY_INDEX_FALLBACK_CHARS)
     }
-    return "- ${memory.id} | ${description.replace('\n', ' ')} | ${memory.indexDate()}"
+    val prefix = if (memory.kind == MemoryKind.PROFILE) "[profile] " else ""
+    return "- $prefix${memory.id} | ${description.replace('\n', ' ')} | ${memory.indexDate()}"
 }
 
 /** 更新日（`yyyy-MM-dd`，本地时区）；时间未知（0）时不显示日期，避免给出假信息。 */
@@ -366,6 +413,7 @@ internal fun rankedMemoryCandidates(
     }
 
     return memories
+        .filter { it.kind != MemoryKind.TASK }
         .map { it to memoryScore(it, now) * boostOf(it) }
         // 相关性下限（华灯 RAG 相关性下限的阈值思想）：打分低于下限的记忆**不注入**——
         // 低重要度且已老化的记忆挤进上下文是纯 token 税。这里用**带相关性增益的分数**比较：
@@ -446,7 +494,7 @@ internal fun memoryScore(memory: AssistantMemory, now: Long): Float {
     val importance = memory.importance.coerceIn(0f, 1f)
     val credit = memoryReadCredit(memory.readCount)
     val effectiveImportance = importance + (1f - importance) * credit * READ_CREDIT_CONFIDENCE_GAIN
-    val activity = maxOf(
+    val activity = if (memory.kind == MemoryKind.PROFILE) 1f else maxOf(
         recencyFactor(memory.updatedAt, now, unknownIsFresh = true),
         recencyFactor(memory.lastReadAt, now, unknownIsFresh = false),
     )

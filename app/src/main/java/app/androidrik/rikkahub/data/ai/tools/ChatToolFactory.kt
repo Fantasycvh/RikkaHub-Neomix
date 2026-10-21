@@ -25,6 +25,7 @@ import app.androidrik.rikkahub.data.files.SkillInstaller
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.MemoryReadSource
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
@@ -54,7 +55,7 @@ internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boo
  */
 internal fun memoryToolNeedsApproval(assistant: Assistant, action: String): Boolean = when (action) {
     "create" -> assistant.memoryCreateApproval
-    "edit", "delete" -> assistant.memoryModifyApproval
+    "edit", "delete", "complete", "drop" -> assistant.memoryModifyApproval
     // **读/检索都不拦**：只读操作没有可被否决的副作用（与 workspace_task_status 免审批同款）。
     // 必须显式列出——落进 else 兜底会让渐进披露的每次 memory_read、以及每次按需检索，
     // 都变成一次审批轰炸（检索是「查找」不是「改动」，与 read 同类）。
@@ -189,6 +190,23 @@ class ChatToolFactory(
                     versionedOnUpdate = { id, content, importance, description, revision ->
                         memoryRepository.updateContentInStore(memoryAssistantId, id, content, importance, description,
                             expectedRevision = revision, actor = "CHAT", reason = "memory_tool edit")
+                    },
+                    typedOnCreation = { content, importance, description, kind, dueAt ->
+                        memoryRepository.addMemory(memoryAssistantId, content, importance, description,
+                            actor = "CHAT", reason = "memory_tool create", kind = kind, dueAt = dueAt)
+                    },
+                    typedVersionedOnUpdate = { id, content, importance, description, revision, kind, dueAt ->
+                        memoryRepository.updateContentInStore(memoryAssistantId, id, content, importance, description,
+                            expectedRevision = revision, actor = "CHAT", reason = "memory_tool edit",
+                            kind = kind, dueAt = dueAt)
+                    },
+                    versionedOnComplete = { id, revision ->
+                        memoryRepository.setTaskStatusInStore(memoryAssistantId, id, MemoryTaskStatus.DONE,
+                            expectedRevision = revision, actor = "CHAT", reason = "memory_tool complete")
+                    },
+                    versionedOnDrop = { id, revision ->
+                        memoryRepository.setTaskStatusInStore(memoryAssistantId, id, MemoryTaskStatus.DROPPED,
+                            expectedRevision = revision, actor = "CHAT", reason = "memory_tool drop")
                     },
                     versionedOnDelete = { id, revision ->
                         check(memoryRepository.deleteMemoryInStore(memoryAssistantId, id,

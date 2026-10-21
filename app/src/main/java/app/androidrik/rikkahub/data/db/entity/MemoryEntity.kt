@@ -102,6 +102,12 @@ data class MemoryEntity(
     /** 遥测：最近一次整理器读取时间（epoch millis；0 = 从未）。 */
     @ColumnInfo("last_consolidation_read_at", defaultValue = "0")
     val lastConsolidationReadAt: Long = 0L,
+    @ColumnInfo("kind", defaultValue = "'topic'")
+    val kind: String = "topic",
+    @ColumnInfo("task_status", defaultValue = "'open'")
+    val taskStatus: String = "open",
+    @ColumnInfo("due_at", defaultValue = "0")
+    val dueAt: Long = 0L,
 ) {
     companion object {
         /** 缺省重要度（普通偏好档，见 [importance]）。 */

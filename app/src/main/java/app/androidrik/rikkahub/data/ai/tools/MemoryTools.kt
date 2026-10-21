@@ -18,6 +18,11 @@ import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.MemoryKind
+import kotlinx.serialization.json.JsonObjectBuilder
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.ResolverStyle
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.utils.toLocalString
 import java.time.Instant
@@ -73,6 +78,11 @@ fun buildMemoryTools(
     versionedOnDelete: (suspend (String, Long) -> Unit)? = null,
     /** Only records actually rendered in the initial full-text page belong here. */
     initialRevisions: Map<String, Long> = emptyMap(),
+    /** Typed writes preserve kind/due; legacy callbacks remain source-compatible. */
+    typedOnCreation: (suspend (String, Float?, String?, MemoryKind, Long) -> AssistantMemory)? = null,
+    typedVersionedOnUpdate: (suspend (String, String, Float?, String?, Long, MemoryKind?, Long?) -> AssistantMemory)? = null,
+    versionedOnComplete: (suspend (String, Long) -> AssistantMemory)? = null,
+    versionedOnDrop: (suspend (String, Long) -> AssistantMemory)? = null,
 ): List<Tool> {
     val observed = initialRevisions.map { it.key to it.value }.toMutableSet()
     val registeredOperations = mutableSetOf<String>()
@@ -85,6 +95,7 @@ fun buildMemoryTools(
             put(key, value)
         }
         put("revision", memory.revision)
+        putMemoryKind(memory)
         observe(memory)
     }
     fun recordProposal(proposal: MemoryConsolidationProposal) = proposalPayload(proposal).also {
@@ -97,7 +108,7 @@ fun buildMemoryTools(
         if (proposal.action == "delete") {
             require(proposal.dependsOn.isNotEmpty()) { "Proposal delete requires non-empty depends_on" }
         }
-        if (proposal.action == "edit" || proposal.action == "delete") {
+        if (proposal.action in setOf("edit", "delete", "complete", "drop")) {
             require(requireNotNull(proposal.targetId) to requireNotNull(proposal.expectedRevision) in observed) {
                 "expected_revision must match a version actually shown by the page, read or search"
             }
@@ -114,7 +125,12 @@ fun buildMemoryTools(
         description = """
             The memory tool stores long-term information about the user across conversations.
             Use `action` to control the operation: `create` (add), `edit` (update), `delete` (remove),
-            `read` (load the full text of one record by `id`), `search` (find records by keyword).
+            `read` (load full text by `id`), `search` (find by keyword), `complete` (finish a task), `drop` (cancel a task).
+            Kinds: profile = stable identity/settings (a candidate, never auto-pinned to system);
+            topic = knowledge/events; task = the user's own commitment with a completion criterion.
+            "Learning Flutter" is topic; "submit Flutter homework" is task. If unsure, use topic.
+            Complete/drop only when the user says they finished/cancelled, never merely because the due date passed.
+            Never merge records across kinds.
             - No relevant record: `create` + `content` + `importance` + `description`
             - Existing relevant record: `edit` + `id` + `expected_revision` + `content`
             - Outdated/irrelevant record: `delete` + `id` + `expected_revision`
@@ -159,7 +175,7 @@ fun buildMemoryTools(
 
             `id` is an opaque token from the <memories> list (e.g. "a3f1c09e"). Copy it exactly;
             it is not a count or an index, so never guess or derive it.
-            For edit/delete, copy `revision` from the full-text page or read/search into `expected_revision`
+            For edit/delete/complete/drop, copy `revision` from the full-text page or read/search into `expected_revision`
             (a positive integer). If no version is visible, read first. A conflict requires re-reading,
             not guessing a newer revision. In suggestion mode, receipts return `operation_id`; delete must
             supply non-empty `depends_on` containing successful create/edit operation ids from this run.
@@ -188,18 +204,20 @@ fun buildMemoryTools(
                                 add("delete")
                                 add("read")
                                 add("search")
+                                add("complete")
+                                add("drop")
                             }
                         )
-                        put("description", "Operation to perform: create, edit, delete, read, or search")
+                        put("description", "Operation to perform")
                     })
                     put("id", buildJsonObject {
                         put("type", "string")
-                        put("description", "Opaque memory id token (required for edit/delete/read); copy it exactly from the memories list or index")
+                        put("description", "Opaque memory id token (required for edit/delete/read/complete); copy it exactly from the memories list or index")
                     })
                     put("expected_revision", buildJsonObject {
                         put("type", "integer")
                         put("minimum", 1)
-                        put("description", "Required for edit/delete: revision of the full text you actually saw.")
+                        put("description", "Required for edit/delete/complete/drop: revision of the full text you actually saw.")
                     })
                     put("depends_on", buildJsonObject {
                         put("type", "array")
@@ -241,6 +259,15 @@ fun buildMemoryTools(
                                 "full-text budget, so make it specific. Keep sensitive details out of it."
                         )
                     })
+                    put("kind", buildJsonObject {
+                        put("type", "string")
+                        put("enum", buildJsonArray { add("profile"); add("topic"); add("task") })
+                        put("description", "Create/edit: omitted = topic on create, unchanged on edit.")
+                    })
+                    put("due", buildJsonObject {
+                        put("type", "string")
+                        put("description", "Create/edit task: local YYYY-MM-DD; empty clears, omitted preserves on edit.")
+                    })
                     put("importance", buildJsonObject {
                         put("type", "number")
                         put(
@@ -276,14 +303,24 @@ fun buildMemoryTools(
                     val requiredContent = content ?: error("content is required")
                     val importance = params["importance"]?.jsonPrimitive?.floatOrNull
                     val description = params["description"]?.jsonPrimitive?.contentOrNull
+                    val kind = MemoryKind.fromStorage(params["kind"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                    val dueAt = parseMemoryDue(params["due"]?.jsonPrimitive?.contentOrNull) ?: 0L
                     if (proposalSink != null) {
                         recordProposal(MemoryConsolidationProposal(
                             "create", null, requiredContent, importance, description,
+                            kind = kind.storage, dueAt = dueAt,
                             dependsOn = params["depends_on"]?.jsonArray
                                 ?.map { it.jsonPrimitive.content } ?: emptyList(),
                         ))
                     } else {
-                        memoryPayload(onCreation(requiredContent, importance, description))
+                        val create = typedOnCreation
+                        val memory = if (create != null) {
+                            create(requiredContent, importance, description, kind, dueAt)
+                        } else {
+                            check(kind == MemoryKind.TOPIC && dueAt == 0L) { "Typed create callback is required" }
+                            onCreation(requiredContent, importance, description)
+                        }
+                        memoryPayload(memory)
                     }
                 }
 
@@ -292,19 +329,54 @@ fun buildMemoryTools(
                     val requiredContent = content ?: error("content is required")
                     val importance = params["importance"]?.jsonPrimitive?.floatOrNull
                     val description = params["description"]?.jsonPrimitive?.contentOrNull
+                    val kind = params["kind"]?.jsonPrimitive?.contentOrNull?.let { MemoryKind.fromStorage(it) }
+                    val dueAt = parseMemoryDue(params["due"]?.jsonPrimitive?.contentOrNull)
                     val expected = params["expected_revision"]?.jsonPrimitive?.longOrNull
                     require(expected != null && expected > 0) { "Positive expected_revision is required for edit" }
                     if (proposalSink != null) {
                         recordProposal(MemoryConsolidationProposal(
                             "edit", id, requiredContent, importance, description,
+                            kind = kind?.storage, dueAt = dueAt,
                             expectedRevision = expected,
                             dependsOn = params["depends_on"]?.jsonArray
                                 ?.map { it.jsonPrimitive.content } ?: emptyList(),
                         ))
                     } else {
-                        val update = checkNotNull(versionedOnUpdate) { "Versioned update callback is required" }
-                        val memory = update(id, requiredContent, importance, description, expected)
+                        val typedUpdate = typedVersionedOnUpdate
+                        val memory = if (typedUpdate != null) {
+                            typedUpdate(id, requiredContent, importance, description, expected, kind, dueAt)
+                        } else {
+                            check(kind == null && dueAt == null) { "Typed update callback is required" }
+                            val update = checkNotNull(versionedOnUpdate) { "Versioned update callback is required" }
+                            update(id, requiredContent, importance, description, expected)
+                        }
                         memoryPayload(memory)
+                    }
+                }
+
+                "complete", "drop" -> {
+                    val id = params["id"]?.jsonPrimitive?.contentOrNull ?: error("id is required")
+                    val expected = params["expected_revision"]?.jsonPrimitive?.longOrNull
+                    require(expected != null && expected > 0) { "Positive expected_revision is required for $action" }
+                    if (proposalSink != null) {
+                        recordProposal(MemoryConsolidationProposal(
+                            action, targetId = id, expectedRevision = expected,
+                            dependsOn = params["depends_on"]?.jsonArray
+                                ?.map { it.jsonPrimitive.content } ?: emptyList(),
+                        ))
+                    } else {
+                        // Direct mutations rely on repository CAS, including revisions shown in injected tasks.
+                        val changeStatus = checkNotNull(if (action == "complete") versionedOnComplete else versionedOnDrop) {
+                            "Versioned $action callback is required"
+                        }
+                        val memory = changeStatus(id, expected)
+                        observe(memory)
+                        buildJsonObject {
+                            put("success", true)
+                            put("id", memory.id)
+                            put("revision", memory.revision)
+                            putMemoryKind(memory)
+                        }
                     }
                 }
 
@@ -338,6 +410,7 @@ fun buildMemoryTools(
                     buildJsonObject {
                         put("id", memory.id)
                         put("revision", memory.revision)
+                        putMemoryKind(memory)
                         put("content", memory.content)
                         if (memory.description.isNotBlank()) put("description", memory.description)
                         if (memory.updatedAt > 0L) {
@@ -400,6 +473,7 @@ fun buildMemoryTools(
                                             buildJsonObject {
                                                 put("id", memory.id)
                                                 put("revision", memory.revision)
+                                                putMemoryKind(memory)
                                                 put("content", memory.content)
                                                 if (memory.description.isNotBlank()) {
                                                     put("description", memory.description)
@@ -419,7 +493,7 @@ fun buildMemoryTools(
                     }
                 }
 
-                else -> error("unknown action: $action, must be one of [create, edit, delete, read, search]")
+                else -> error("unknown action: $action, must be one of [create, edit, delete, read, search, complete, drop]")
             }
             listOf(UIMessagePart.Text(payload.toString()))
         }
@@ -427,10 +501,39 @@ fun buildMemoryTools(
 )
 }
 
+private fun memoryDueString(dueAt: Long): String =
+    Instant.ofEpochMilli(dueAt).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+
+private fun parseMemoryDue(due: String?): Long? {
+    if (due == null) return null
+    if (due.isEmpty()) return 0L
+    require(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}").matches(due)) { "due must be YYYY-MM-DD or empty" }
+    val date = runCatching {
+        LocalDate.parse(due, DateTimeFormatter.ofPattern("uuuu-MM-dd").withResolverStyle(ResolverStyle.STRICT))
+    }.getOrElse { throw IllegalArgumentException("due must be a valid YYYY-MM-DD date", it) }
+    return date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+}
+
+private fun JsonObjectBuilder.putMemoryKind(memory: AssistantMemory) {
+    put("kind", memory.kind.storage)
+    if (memory.kind == MemoryKind.TASK) {
+        put("task_status", memory.taskStatus.storage)
+        if (memory.dueAt > 0L) put("due", memoryDueString(memory.dueAt))
+    }
+}
+
 /**
  * 只提案模式的回执：明确告诉模型「记下了，但没落库」，免得它以为写失败了又重试。
  */
 private fun proposalPayload(proposal: MemoryConsolidationProposal) = buildJsonObject {
+    if (proposal.action == "complete" || proposal.action == "drop") {
+        put("kind", "task")
+        put("task_status", if (proposal.action == "complete") "done" else "dropped")
+    }
+    proposal.kind?.let { put("kind", it) }
+    if (proposal.kind == MemoryKind.TASK.storage || proposal.kind == null) {
+        proposal.dueAt?.let { put("due", if (it == 0L) "" else memoryDueString(it)) }
+    }
     put("operation_id", proposal.operationId)
     proposal.expectedRevision?.let { put("expected_revision", it) }
     put("depends_on", buildJsonArray { proposal.dependsOn.forEach { add(it) } })

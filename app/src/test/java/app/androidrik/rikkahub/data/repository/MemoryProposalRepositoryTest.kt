@@ -115,10 +115,15 @@ class MemoryProposalRepositoryTest {
         }
         override suspend fun updateContentFields(
             id: Int, assistantId: String, content: String, importance: Float?, description: String?, now: Long,
-            expectedRevision: Long?,
+            expectedRevision: Long?, kind: String?, taskStatus: String?, dueAt: Long?,
         ) = update(id, assistantId, expectedRevision) {
             it.copy(content = content, importance = importance ?: it.importance,
-                description = description ?: it.description, updatedAt = now, revision = it.revision + 1)
+                description = description ?: it.description, updatedAt = now, revision = it.revision + 1,
+                kind = kind ?: it.kind, taskStatus = taskStatus ?: it.taskStatus, dueAt = dueAt ?: it.dueAt)
+        }
+        override suspend fun updateTaskStatus(id: Int, assistantId: String, status: String, expectedRevision: Long): Int {
+            if (rows.none { it.id == id && it.assistantId == assistantId && it.kind == "task" }) return 0
+            return update(id, assistantId, expectedRevision) { it.copy(taskStatus = status, revision = it.revision + 1) }
         }
         override suspend fun updateImportanceFields(
             id: Int, assistantId: String, importance: Float, now: Long, expectedRevision: Long?,
@@ -144,9 +149,10 @@ class MemoryProposalRepositoryTest {
         override suspend fun replaceBusinessFields(
             id: Int, assistantId: String, content: String, importance: Float, description: String,
             isAnchor: Boolean, now: Long, expectedRevision: Long,
+            kind: String, taskStatus: String, dueAt: Long,
         ) = update(id, assistantId, expectedRevision) {
             it.copy(content = content, importance = importance, description = description, isAnchor = isAnchor,
-                updatedAt = now, revision = it.revision + 1)
+                updatedAt = now, revision = it.revision + 1, kind = kind, taskStatus = taskStatus, dueAt = dueAt)
         }
         override suspend fun recordReadInStore(id: Int, assistantId: String, now: Long) =
             update(id, assistantId, null) {
@@ -274,6 +280,113 @@ class MemoryProposalRepositoryTest {
     private class InjectedFailure : IllegalStateException("injected persistence failure")
     private suspend fun expectFailure(block: suspend () -> Unit) {
         try { block(); fail("Persistence failure must propagate") } catch (_: InjectedFailure) { }
+    }
+
+    @Test fun `complete and drop persist apply with exact receipts and idempotent status`() = runBlocking {
+        for (action in listOf("complete", "drop")) {
+            val f = Fixture()
+            val task = f.memory.addMemory("store", "submit homework",
+                kind = app.androidrik.rikkahub.data.model.MemoryKind.TASK)
+            fun proposal(revision: Long, batch: String) = MemoryConsolidationProposal(action,
+                targetId = task.id, expectedRevision = revision, operationId = action, batchId = batch)
+            f.save(proposal(task.revision, "first"))
+            assertEquals(action, f.repository.pending("store").single().action)
+            assertEquals(1, f.applyAll().applied)
+            val closed = f.memory.getMemoryInStore("store", task.id)!!
+            assertEquals(if (action == "complete") "done" else "dropped", closed.taskStatus.storage)
+            assertEquals(task.updatedAt, closed.updatedAt)
+            assertEquals(closed.id, f.row(action).appliedTargetId)
+            assertEquals(closed.revision, f.row(action).appliedRevision)
+            f.save(proposal(closed.revision, "repeat"))
+            assertEquals(1, f.applyAll().applied)
+            assertEquals(closed.revision, f.memory.getMemoryInStore("store", task.id)!!.revision)
+        }
+    }
+
+    @Test fun `status proposal stale revision and non-task targets fail closed`() = runBlocking {
+        for (action in listOf("complete", "drop")) {
+            val f = Fixture()
+            val topic = f.seed("knowledge")
+            f.save(MemoryConsolidationProposal(action, targetId = topic.id, expectedRevision = 1,
+                operationId = action, batchId = "status"))
+            assertEquals(1, f.applyAll().stale)
+            assertEquals("topic", f.memories.rows.single().kind)
+        }
+    }
+
+    @Test fun `status operations cannot be consumed as replacement dependencies`() = runBlocking {
+        val f = Fixture()
+        val task = f.memory.addMemory("store", "commitment", kind = app.androidrik.rikkahub.data.model.MemoryKind.TASK)
+        for (action in listOf("complete", "drop")) {
+            expectInvalid {
+                f.save(MemoryConsolidationProposal(action, targetId = task.id, expectedRevision = 1,
+                    operationId = action, batchId = "batch"), delete(task.id, dependency = action))
+            }
+        }
+    }
+
+    @Test fun `cross-kind replacement does not authorize deleting source`() = runBlocking {
+        val f = Fixture()
+        val topic = f.seed("project knowledge")
+        f.save(create().copy(kind = "profile"), delete(topic.id, dependency = "create"))
+        val result = f.applyAll()
+        assertEquals(1, result.applied)
+        assertEquals(1, result.stale)
+        assertNotNull(f.memory.getMemoryInStore("store", topic.id))
+        assertTrue(f.trash.rows.isEmpty())
+    }
+
+    @Test fun `closing a task then evicting it in same apply rolls back`() = runBlocking {
+        val f = Fixture()
+        val task = f.memory.addMemory("store", "commitment", kind = app.androidrik.rikkahub.data.model.MemoryKind.TASK)
+        repeat(MemoryRepository.MAX_MEMORY_COUNT - 1) { f.seed("topic $it") }
+        val before = f.memories.rows.toList()
+        f.save(MemoryConsolidationProposal("complete", targetId = task.id, expectedRevision = task.revision,
+            operationId = "complete", batchId = "batch"), create())
+        val failure = runCatching { f.applyAll() }.exceptionOrNull()
+        assertTrue(failure is IllegalStateException)
+        assertEquals(before, f.memories.rows)
+        assertTrue(f.proposals.rows.all { it.decision == "pending" })
+    }
+
+    @Test fun `kind and deadline survive proposal persistence and application`() = runBlocking {
+        val f = Fixture()
+        f.save(create().copy(kind = "task", dueAt = 1_800_000_000_000L))
+        val pending = f.repository.pending("store").single()
+        assertEquals("task", pending.kind)
+        assertEquals(1_800_000_000_000L, pending.dueAt)
+        assertEquals(1, f.applyAll().applied)
+        val task = f.memories.rows.single()
+        assertEquals("task", task.kind)
+        assertEquals(1_800_000_000_000L, task.dueAt)
+    }
+
+    @Test fun `unspecified proposal deadline preserves and explicit zero clears`() = runBlocking {
+        val f = Fixture()
+        val task = f.memory.addMemory("store", "user commitment",
+            kind = app.androidrik.rikkahub.data.model.MemoryKind.TASK, dueAt = 1_800_000_000_000L)
+        f.save(edit(task.id))
+        assertNull(f.repository.pending("store").single().dueAt)
+        assertEquals(1, f.applyAll().applied)
+        val preserved = f.memory.getMemoryInStore("store", task.id)!!
+        assertEquals(1_800_000_000_000L, preserved.dueAt)
+        assertEquals(app.androidrik.rikkahub.data.model.MemoryKind.TASK, preserved.kind)
+        f.save(edit(task.id, revision = preserved.revision, operation = "clear-due").copy(batchId = "clear-batch", dueAt = 0L))
+        assertEquals(-1L, f.proposals.rows.last().dueAt)
+        assertEquals(0L, f.repository.pending("store").single().dueAt)
+        assertEquals(1, f.applyAll().applied)
+        assertEquals(0L, f.memory.getMemoryInStore("store", task.id)!!.dueAt)
+    }
+
+    @Test fun `legacy blank proposal classification preserves existing kind`() = runBlocking {
+        val f = Fixture()
+        val profile = f.memory.addMemory("store", "stated identity",
+            kind = app.androidrik.rikkahub.data.model.MemoryKind.PROFILE)
+        f.save(edit(profile.id))
+        assertNull(f.repository.pending("store").single().kind)
+        assertEquals(1, f.applyAll().applied)
+        assertEquals(app.androidrik.rikkahub.data.model.MemoryKind.PROFILE,
+            f.memory.getMemoryInStore("store", profile.id)!!.kind)
     }
 
     @Test fun `save roundtrips visible revision operation and explicit dependencies`() = runBlocking {

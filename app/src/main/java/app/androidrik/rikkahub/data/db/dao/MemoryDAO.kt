@@ -50,7 +50,9 @@ interface MemoryDAO {
     @Query("""
         UPDATE memoryentity SET content = :content,
             importance = COALESCE(:importance, importance),
-            description = COALESCE(:description, description), updated_at = :now, revision = revision + 1
+            description = COALESCE(:description, description), updated_at = :now, revision = revision + 1,
+            kind = COALESCE(:kind, kind), task_status = COALESCE(:taskStatus, task_status),
+            due_at = COALESCE(:dueAt, due_at)
         WHERE id = :id AND assistant_id = :assistantId AND (:expectedRevision IS NULL OR revision = :expectedRevision)
     """)
     suspend fun updateContentFields(
@@ -61,7 +63,16 @@ interface MemoryDAO {
         description: String?,
         now: Long,
         expectedRevision: Long? = null,
+        kind: String? = null,
+        taskStatus: String? = null,
+        dueAt: Long? = null,
     ): Int
+
+    @Query("""
+        UPDATE memoryentity SET task_status = :status, revision = revision + 1
+        WHERE id = :id AND assistant_id = :assistantId AND kind = 'task' AND revision = :expectedRevision
+    """)
+    suspend fun updateTaskStatus(id: Int, assistantId: String, status: String, expectedRevision: Long): Int
 
     @Query("""
         UPDATE memoryentity SET importance = :importance, updated_at = :now, revision = revision + 1
@@ -90,12 +101,14 @@ interface MemoryDAO {
     /** Atomic UI/history restore: business fields only; current read telemetry is retained. */
     @Query("""
         UPDATE memoryentity SET content = :content, importance = :importance, description = :description,
-            is_anchor = :isAnchor, updated_at = :now, revision = revision + 1
+            is_anchor = :isAnchor, updated_at = :now, revision = revision + 1,
+            kind = :kind, task_status = :taskStatus, due_at = :dueAt
         WHERE id = :id AND assistant_id = :assistantId AND revision = :expectedRevision
     """)
     suspend fun replaceBusinessFields(
         id: Int, assistantId: String, content: String, importance: Float, description: String,
         isAnchor: Boolean, now: Long, expectedRevision: Long,
+        kind: String = "topic", taskStatus: String = "open", dueAt: Long = 0L,
     ): Int
 
     @Query("""

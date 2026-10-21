@@ -69,7 +69,7 @@ data class MemoryConsolidationRun(
  * 结构化而不是一行文字：将来的「逐条批准」界面要能直接回放成一次工具调用（action + 目标 + 载荷）。
  */
 data class MemoryConsolidationProposal(
-    /** `create` / `edit` / `delete` */
+    /** `create` / `edit` / `delete` / `complete` / `drop` */
     val action: String,
     /** `edit` / `delete` 的目标记录 id；`create` 为 null */
     val targetId: String? = null,
@@ -99,6 +99,10 @@ data class MemoryConsolidationProposal(
     val contractVersion: Int = 1,
     val appliedTargetId: String? = null,
     val appliedRevision: Long? = null,
+    /** Null/blank preserves the target kind on edit; create defaults to topic. */
+    val kind: String? = null,
+    /** Null preserves the deadline; zero explicitly clears it. */
+    val dueAt: Long? = null,
 )
 
 /**
@@ -113,7 +117,7 @@ fun MemoryConsolidationProposal.describe(maxContent: Int = 60): String {
     return when (action) {
         "create" -> "create · $preview"
         "edit" -> "edit · ${targetId.orEmpty()} → $preview"
-        "delete" -> "delete · ${targetId.orEmpty()}"
+        "delete", "complete", "drop" -> "$action · ${targetId.orEmpty()}"
         else -> "$action · $preview"
     }
 }
@@ -130,7 +134,12 @@ fun MemoryConsolidationProposal.describe(maxContent: Int = 60): String {
  * 所以 `describe` 留作列表摘要（保留密度），**全文由这里给**，由 UI 的详情弹层展示。
  * `content` 原样返回（只做 trim，不再截断）：这是「原文」，任何折叠都会让这个函数失去意义。
  */
-fun MemoryConsolidationProposal.detailContent(): String = content.trim()
+fun MemoryConsolidationProposal.detailContent(): String = when (action) {
+    "complete", "drop" -> "${targetId.orEmpty()} · task_status → " +
+        (if (action == "complete") "done" else "dropped") +
+        "; expected revision: ${expectedRevision ?: "missing"}. Content and deadline stay unchanged."
+    else -> content.trim()
+}
 
 
 /**
@@ -143,7 +152,7 @@ fun MemoryConsolidationProposal.detailContent(): String = content.trim()
 fun MemoryConsolidationProposal.detailTitle(): String = when (action) {
     "create" -> "create"
     "edit" -> "edit · ${targetId.orEmpty()}"
-    "delete" -> "delete · ${targetId.orEmpty()}"
+    "delete", "complete", "drop" -> "$action · ${targetId.orEmpty()}"
     else -> action
 }
 

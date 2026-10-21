@@ -427,6 +427,12 @@ data class AssistantMemory(
     /** 遥测：最近一次整理器读取时间（epoch millis；0 = 从未）。**不序列化**。 */
     @Transient
     val lastConsolidationReadAt: Long = 0L,
+    @Transient
+    val kind: MemoryKind = MemoryKind.TOPIC,
+    @Transient
+    val taskStatus: MemoryTaskStatus = MemoryTaskStatus.OPEN,
+    @Transient
+    val dueAt: Long = 0L,
 ) {
     /**
      * 旧遥测中未被来源归因的读取：原 [readCount] 减去已知 CHAT 次数。

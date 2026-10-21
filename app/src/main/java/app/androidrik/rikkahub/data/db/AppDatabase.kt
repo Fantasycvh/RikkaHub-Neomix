@@ -81,7 +81,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         UsageRecordEntity::class,
         TranslationHistoryEntity::class,
     ],
-    version = 46,
+    version = 47,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),

@@ -155,8 +155,9 @@ class Migration_40_41_Test {
         withRoom(restored) { room ->
             assertEquals(live, room.memoryDao().getMemoryById(43))
             val db = room.openHelper.writableDatabase
-            // 当前 schema 版本（42→43 媒体创作表后为 43）；迁移链末端的版本在这里显式钉住
-            assertEquals(43, db.version)
+            // This roundtrip opens the current AppDatabase, not the isolated 40→41 schema.
+            // Room's @Database metadata is not a runtime-reflection contract.
+            assertEquals(47, db.version)
             db.query("SELECT snapshot,revision FROM memory_history WHERE memory_id=43").use {
                 assertTrue(it.moveToFirst())
                 assertEquals(history.snapshot, it.getString(0))
@@ -272,7 +273,9 @@ class Migration_40_41_Test {
         block: suspend (AppDatabase) -> T,
     ): T {
         val builder = Room.databaseBuilder(context, AppDatabase::class.java, name)
-        if (migrate) builder.addMigrations(Migration_40_41, Migration_41_42)
+        if (migrate) builder.addMigrations(
+            Migration_40_41, Migration_41_42, Migration_43_44, Migration_46_47,
+        )
         val room = builder.build()
         return try {
             block(room)

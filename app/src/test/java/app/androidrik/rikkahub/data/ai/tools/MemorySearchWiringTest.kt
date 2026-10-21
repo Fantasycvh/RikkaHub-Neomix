@@ -21,7 +21,13 @@ class MemorySearchWiringTest {
     fun `search action is declared in the tool schema`() {
         val tools = read("app/androidrik/rikkahub/data/ai/tools/MemoryTools.kt")
         assertTrue("action 枚举必须有 search", tools.contains("add(\"search\")"))
-        assertTrue("未知动作的报错要列出 search（否则模型不知道有这个动作）", tools.contains("read, search]"))
+        val reportedActions = tools.substringAfter("must be one of [").substringBefore("]")
+            .split(",").map { it.trim() }
+        assertTrue("未知动作的报错要列出 search（否则模型不知道有这个动作）", "search" in reportedActions)
+        assertTrue("未知动作的报错要列出 complete", "complete" in reportedActions)
+        assertTrue("未知动作的报错要列出 drop", "drop" in reportedActions)
+        assertTrue("action 枚举必须有 complete", tools.contains("add(\"complete\")"))
+        assertTrue("action 枚举必须有 drop", tools.contains("add(\"drop\")"))
         assertTrue("必须有 query 参数", tools.contains("put(\"query\""))
         assertTrue("必须有 limit 参数", tools.contains("put(\"limit\""))
         assertTrue("说明书要点名「清单不列全」这条存在理由", tools.contains("does not list"))

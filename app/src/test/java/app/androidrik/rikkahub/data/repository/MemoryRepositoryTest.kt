@@ -10,6 +10,8 @@ import app.androidrik.rikkahub.data.db.dao.MemoryTrashDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryHistoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryTrashEntity
+import app.androidrik.rikkahub.data.model.MemoryKind
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -80,6 +82,7 @@ class MemoryRepositoryTest {
             description: String?,
             now: Long,
             expectedRevision: Long?,
+            kind: String?, taskStatus: String?, dueAt: Long?,
         ): Int {
             beforeWrite()
             val i = rows.indexOfFirst {
@@ -88,12 +91,21 @@ class MemoryRepositoryTest {
             }
             if (i < 0) return 0
             rows[i] = rows[i].copy(
+                kind = kind ?: rows[i].kind, taskStatus = taskStatus ?: rows[i].taskStatus, dueAt = dueAt ?: rows[i].dueAt,
                 revision = rows[i].revision + 1,
                 content = content,
                 importance = importance ?: rows[i].importance,
                 description = description ?: rows[i].description,
                 updatedAt = now,
             )
+            return 1
+        }
+
+        override suspend fun updateTaskStatus(id: Int, assistantId: String, status: String, expectedRevision: Long): Int {
+            beforeWrite()
+            val i = rows.indexOfFirst { it.id == id && it.assistantId == assistantId && it.kind == "task" && it.revision == expectedRevision }
+            if (i < 0) return 0
+            rows[i] = rows[i].copy(taskStatus = status, revision = rows[i].revision + 1)
             return 1
         }
 
@@ -139,6 +151,7 @@ class MemoryRepositoryTest {
         override suspend fun replaceBusinessFields(
             id: Int, assistantId: String, content: String, importance: Float, description: String,
             isAnchor: Boolean, now: Long, expectedRevision: Long,
+            kind: String, taskStatus: String, dueAt: Long,
         ): Int {
             beforeWrite()
             val i = rows.indexOfFirst {
@@ -147,6 +160,7 @@ class MemoryRepositoryTest {
             if (i < 0) return 0
             rows[i] = rows[i].copy(
                 content = content, importance = importance, description = description, isAnchor = isAnchor,
+                kind = kind, taskStatus = taskStatus, dueAt = dueAt,
                 updatedAt = now, revision = rows[i].revision + 1,
             )
             return 1
@@ -973,6 +987,70 @@ class MemoryRepositoryTest {
             ?.message.orEmpty().contains("capacity"))
         assertEquals(before, repo.getMemoriesOfAssistant("a"))
         assertEquals(1, repo.listTrash("a").size)
+    }
+
+    @Test
+    fun `kind parsing safely falls back`() {
+        MemoryKind.entries.forEach { assertEquals(it, MemoryKind.fromStorage(it.storage)) }
+        MemoryTaskStatus.entries.forEach { assertEquals(it, MemoryTaskStatus.fromStorage(it.storage)) }
+        assertEquals(MemoryKind.TOPIC, MemoryKind.fromStorage("future"))
+        assertEquals(MemoryTaskStatus.OPEN, MemoryTaskStatus.fromStorage(null))
+        val legacy = kotlinx.serialization.json.Json.decodeFromString<MemoryEntity>("""{"assistantId":"a","content":"legacy"}""")
+        assertEquals("topic", legacy.kind)
+        assertEquals("open", legacy.taskStatus)
+        assertEquals(0L, legacy.dueAt)
+    }
+
+    @Test
+    fun `task lifecycle keeps recency CAS and is idempotent`() = runBlocking {
+        val created = repo.addMemory("a", "commitment", now = 10L, kind = MemoryKind.TASK, dueAt = 30L)
+        val done = repo.setTaskStatusInStore("a", created.id, MemoryTaskStatus.DONE, created.revision, now = 20L)
+        assertEquals(10L, done.updatedAt)
+        assertEquals(2L, done.revision)
+        assertEquals(done, repo.setTaskStatusInStore("a", done.id, MemoryTaskStatus.DONE, done.revision))
+        assertTrue(runCatching { repo.setTaskStatus(done.id, MemoryTaskStatus.DONE, 1L) }.exceptionOrNull() is MemoryRevisionConflictException)
+        assertTrue(runCatching { repo.setTaskStatusInStore("b", done.id, MemoryTaskStatus.OPEN, 2L) }.isFailure)
+        val topic = repo.updateContentInStore("a", done.id, done.content, kind = MemoryKind.TOPIC)
+        assertEquals(0L, topic.dueAt)
+        assertEquals(MemoryTaskStatus.OPEN, topic.taskStatus)
+        assertTrue(runCatching { repo.setTaskStatus(topic.id, MemoryTaskStatus.DONE, topic.revision) }.exceptionOrNull()?.message == "not a task")
+    }
+
+    @Test
+    fun `new task commitments do not deduplicate closed or differently dated tasks`() = runBlocking {
+        val first = repo.addMemory("a", "weekly report", kind = MemoryKind.TASK, dueAt = 10L)
+        assertEquals(first.id, repo.addMemory("a", "weekly report", kind = MemoryKind.TASK, dueAt = 10L).id)
+        val otherDate = repo.addMemory("a", "weekly report", kind = MemoryKind.TASK, dueAt = 20L)
+        assertNotEquals(first.id, otherDate.id)
+        repo.setTaskStatus(first.id, MemoryTaskStatus.DONE, first.revision)
+        val reopenedCommitment = repo.addMemory("a", "weekly report", kind = MemoryKind.TASK, dueAt = 10L)
+        assertNotEquals(first.id, reopenedCommitment.id)
+    }
+
+    @Test
+    fun `task cannot anchor and UI can atomically unanchor during conversion`() = runBlocking {
+        val anchored = repo.createMemoryInStore("a", "identity", isAnchor = true)
+        assertTrue(runCatching { repo.updateContent(anchored.id, "identity", kind = MemoryKind.TASK) }.isFailure)
+        val task = repo.updateMemoryInStore("a", anchored.id, anchored.content, anchored.importance, anchored.description,
+            false, anchored.revision, kind = MemoryKind.TASK, dueAt = 10L)
+        assertFalse(task.isAnchor)
+        assertTrue(runCatching { repo.setAnchor(task.id, true, task.revision) }.isFailure)
+    }
+
+    @Test
+    fun `copy and revision restore retain task business state`() = runBlocking {
+        val created = repo.addMemory("src", "commitment", kind = MemoryKind.TASK, dueAt = 100L)
+        val done = repo.setTaskStatus(created.id, MemoryTaskStatus.DONE, created.revision)
+        repo.copyMemories("src", "dst")
+        val copied = repo.getMemoriesOfAssistant("dst").single()
+        assertEquals(MemoryKind.TASK, copied.kind)
+        assertEquals(MemoryTaskStatus.DONE, copied.taskStatus)
+        assertEquals(100L, copied.dueAt)
+        val topic = repo.updateContent(done.id, "topic", kind = MemoryKind.TOPIC)
+        val restored = repo.restoreRevision("src", topic.id, done.revision, topic.revision)
+        assertEquals(MemoryKind.TASK, restored.kind)
+        assertEquals(MemoryTaskStatus.DONE, restored.taskStatus)
+        assertEquals(100L, restored.dueAt)
     }
 
     @Test

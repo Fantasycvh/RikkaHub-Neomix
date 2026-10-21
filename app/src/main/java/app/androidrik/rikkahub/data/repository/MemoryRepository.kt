@@ -11,6 +11,8 @@ import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryHistoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryTrashEntity
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.MemoryKind
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import app.androidrik.rikkahub.data.model.MemoryReadSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -59,6 +61,9 @@ class MemoryRepository(
         lastChatReadAt = lastChatReadAt,
         consolidationReadCount = consolidationReadCount,
         lastConsolidationReadAt = lastConsolidationReadAt,
+        kind = MemoryKind.fromStorage(kind),
+        taskStatus = if (MemoryKind.fromStorage(kind) == MemoryKind.TASK) MemoryTaskStatus.fromStorage(taskStatus) else MemoryTaskStatus.OPEN,
+        dueAt = if (MemoryKind.fromStorage(kind) == MemoryKind.TASK) dueAt else 0L,
     )
 
     private suspend fun generatePublicId(): String {
@@ -106,10 +111,12 @@ class MemoryRepository(
         expectedRevision: Long? = null,
         actor: String = "USER",
         reason: String = "",
+        kind: MemoryKind? = null,
+        dueAt: Long? = null,
     ): AssistantMemory = transactions.run {
         val old = requireNotNull(findEntityByPublicId(id)) { "Memory record $id not found" }
         checkRevision(old, expectedRevision, actor)
-        updateEntityContent(old, content, importance, description, now, actor, reason)
+        updateEntityContent(old, content, importance, description, now, actor, reason, kind, dueAt)
     }
 
     suspend fun updateContentInStore(
@@ -122,10 +129,12 @@ class MemoryRepository(
         expectedRevision: Long? = null,
         actor: String = "USER",
         reason: String = "",
+        kind: MemoryKind? = null,
+        dueAt: Long? = null,
     ): AssistantMemory = transactions.run {
         val old = requireNotNull(findEntityInStore(storeId, id)) { "Memory record $id not found in store" }
         checkRevision(old, expectedRevision, actor)
-        updateEntityContent(old, content, importance, description, now, actor, reason)
+        updateEntityContent(old, content, importance, description, now, actor, reason, kind, dueAt)
     }
 
     private suspend fun updateEntityContent(
@@ -136,11 +145,19 @@ class MemoryRepository(
         now: Long,
         actor: String,
         reason: String,
+        kind: MemoryKind?,
+        dueAt: Long?,
     ): AssistantMemory {
+        val nextKind = kind ?: MemoryKind.fromStorage(old.kind)
+        require(nextKind != MemoryKind.TASK || !old.isAnchor) { "Task memories cannot be anchors" }
+        require(dueAt == null || dueAt >= 0L) { "Invalid due date" }
+        val nextStatus = if (nextKind == MemoryKind.TASK && MemoryKind.fromStorage(old.kind) == MemoryKind.TASK) old.taskStatus else MemoryTaskStatus.OPEN.storage
+        val nextDue = if (nextKind == MemoryKind.TASK) dueAt ?: old.dueAt else 0L
         ensureRevisionAvailable(old.revision)
         requireCas(memoryDAO.updateContentFields(
             old.id, old.assistantId, content, importance?.coerceIn(0f, 1f),
             description?.let(::normalizeDescription), now, old.revision,
+            nextKind.storage, nextStatus, nextDue,
         ))
         recordHistory(old, "UPDATE", actor, reason, now)
         return requireNotNull(memoryDAO.getMemoryById(old.id)).toModel()
@@ -174,6 +191,7 @@ class MemoryRepository(
     ) = transactions.run {
         val old = findEntityByPublicId(id) ?: return@run
         checkRevision(old, expectedRevision, actor)
+        require(!isAnchor || MemoryKind.fromStorage(old.kind) != MemoryKind.TASK) { "Task memories cannot be anchors" }
         if (old.isAnchor == isAnchor) return@run
         ensureRevisionAvailable(old.revision)
         requireCas(memoryDAO.updateAnchor(old.id, old.assistantId, isAnchor, old.revision))
@@ -192,10 +210,13 @@ class MemoryRepository(
         now: Long = System.currentTimeMillis(),
         actor: String = "USER",
         reason: String = "",
+        kind: MemoryKind? = null,
+        dueAt: Long? = null,
     ): AssistantMemory = transactions.run {
         val old = requireNotNull(findEntityInStore(storeId, id)) { "Memory record $id not found in store" }
         checkRevision(old, expectedRevision, actor)
-        replaceBusiness(old, content, importance, description, isAnchor, now, "UPDATE", actor, reason)
+        replaceBusiness(old, content, importance, description, isAnchor, now, "UPDATE", actor, reason,
+            kind ?: MemoryKind.fromStorage(old.kind), MemoryTaskStatus.fromStorage(old.taskStatus), dueAt ?: old.dueAt)
     }
 
     private suspend fun replaceBusiness(
@@ -208,11 +229,18 @@ class MemoryRepository(
         operation: String,
         actor: String,
         reason: String,
+        kind: MemoryKind = MemoryKind.fromStorage(old.kind),
+        taskStatus: MemoryTaskStatus = MemoryTaskStatus.fromStorage(old.taskStatus),
+        dueAt: Long = old.dueAt,
     ): AssistantMemory {
+        require(kind != MemoryKind.TASK || !isAnchor) { "Task memories cannot be anchors" }
+        require(dueAt >= 0L) { "Invalid due date" }
         ensureRevisionAvailable(old.revision)
         requireCas(memoryDAO.replaceBusinessFields(
             old.id, old.assistantId, content, importance.coerceIn(0f, 1f), normalizeDescription(description),
-            isAnchor, now, old.revision,
+            isAnchor, now, old.revision, kind.storage,
+            if (kind == MemoryKind.TASK) taskStatus.storage else MemoryTaskStatus.OPEN.storage,
+            if (kind == MemoryKind.TASK) dueAt else 0L,
         ))
         recordHistory(old, operation, actor, reason, now)
         return requireNotNull(memoryDAO.getMemoryById(old.id)).toModel()
@@ -227,9 +255,15 @@ class MemoryRepository(
         now: Long = System.currentTimeMillis(),
         actor: String = "USER",
         reason: String = "",
+        kind: MemoryKind = MemoryKind.TOPIC,
+        dueAt: Long = 0L,
     ): AssistantMemory = transactions.run {
+        require(dueAt >= 0L) { "Invalid due date" }
         val normalized = content.trim()
-        memoryDAO.getMemoriesOfAssistant(assistantId).firstOrNull { it.content.trim() == normalized }?.let { old ->
+        memoryDAO.getMemoriesOfAssistant(assistantId).firstOrNull {
+            it.content.trim() == normalized && MemoryKind.fromStorage(it.kind) == kind &&
+                (kind != MemoryKind.TASK || (MemoryTaskStatus.fromStorage(it.taskStatus) == MemoryTaskStatus.OPEN && it.dueAt == dueAt))
+        }?.let { old ->
             if (!description.isNullOrBlank() && old.description.isBlank()) {
                 ensureRevisionAvailable(old.revision)
                 requireCas(memoryDAO.backfillDescription(
@@ -247,6 +281,8 @@ class MemoryRepository(
             importance = importance?.coerceIn(0f, 1f) ?: MemoryEntity.DEFAULT_IMPORTANCE,
             description = description?.let(::normalizeDescription) ?: "",
             updatedAt = now,
+            kind = kind.storage,
+            dueAt = if (kind == MemoryKind.TASK) dueAt else 0L,
         )
         val insertedId = memoryDAO.insertMemory(newMemory).toInt()
         recordHistory(newMemory.copy(id = insertedId), "CREATE", actor, reason, now)
@@ -265,12 +301,44 @@ class MemoryRepository(
         isAnchor: Boolean = false,
         now: Long = System.currentTimeMillis(),
         reason: String = "",
+        kind: MemoryKind = MemoryKind.TOPIC,
+        dueAt: Long = 0L,
     ): AssistantMemory = transactions.run {
-        val created = addMemory(storeId, content, importance, description, now, actor = "USER", reason = reason)
+        require(kind != MemoryKind.TASK || !isAnchor) { "Task memories cannot be anchors" }
+        val created = addMemory(storeId, content, importance, description, now, actor = "USER", reason = reason, kind = kind, dueAt = dueAt)
         if (isAnchor && !created.isAnchor) {
             setAnchor(created.id, true, expectedRevision = created.revision, actor = "USER", reason = reason)
         }
         requireNotNull(getMemoryInStore(storeId, created.id))
+    }
+
+    suspend fun setTaskStatusInStore(
+        storeId: String, id: String, status: MemoryTaskStatus, expectedRevision: Long,
+        actor: String = "USER", reason: String = "", now: Long = System.currentTimeMillis(),
+    ): AssistantMemory = transactions.run {
+        val old = requireNotNull(findEntityInStore(storeId, id)) { "Memory record $id not found in store" }
+        setEntityTaskStatus(old, status, expectedRevision, actor, reason, now)
+    }
+
+    suspend fun setTaskStatus(
+        id: String, status: MemoryTaskStatus, expectedRevision: Long,
+        actor: String = "USER", reason: String = "", now: Long = System.currentTimeMillis(),
+    ): AssistantMemory = transactions.run {
+        val old = requireNotNull(findEntityByPublicId(id)) { "Memory record $id not found" }
+        setEntityTaskStatus(old, status, expectedRevision, actor, reason, now)
+    }
+
+    private suspend fun setEntityTaskStatus(
+        old: MemoryEntity, status: MemoryTaskStatus, expectedRevision: Long,
+        actor: String, reason: String, now: Long,
+    ): AssistantMemory {
+        checkRevision(old, expectedRevision, actor)
+        require(MemoryKind.fromStorage(old.kind) == MemoryKind.TASK) { "not a task" }
+        if (MemoryTaskStatus.fromStorage(old.taskStatus) == status) return old.toModel()
+        ensureRevisionAvailable(old.revision)
+        requireCas(memoryDAO.updateTaskStatus(old.id, old.assistantId, status.storage, old.revision))
+        recordHistory(old, "TASK_STATUS", actor, reason, now)
+        return requireNotNull(memoryDAO.getMemoryById(old.id)).toModel()
     }
 
     /** Reads change only scoped usage counters; consolidation never earns chat credit or recency. */
@@ -330,6 +398,7 @@ class MemoryRepository(
                 assistantId = toAssistantId, content = source.content, publicId = generatePublicId(),
                 importance = source.importance, description = source.description,
                 isAnchor = source.isAnchor, updatedAt = now,
+                kind = source.kind, taskStatus = source.taskStatus, dueAt = source.dueAt,
             )
             val id = memoryDAO.insertMemory(copy).toInt()
             recordHistory(copy.copy(id = id), "CREATE", actor, reason, now)
@@ -343,9 +412,23 @@ class MemoryRepository(
         val all = memoryDAO.getMemoriesOfAssistant(assistantId)
         if (all.size <= MAX_MEMORY_COUNT) return
         val excess = all.size - MAX_MEMORY_COUNT
-        all.sortedWith(compareBy<MemoryEntity> { memoryScoreBucket(it.toModel(), now) }.thenBy { it.id })
-            .take(excess).forEach { moveToTrash(it, now, "EVICT", actor, reason.ifBlank { "memory quota" }) }
-        Log.i(TAG, "moved $excess lowest-score memory(ies) to trash over $MAX_MEMORY_COUNT cap")
+        // Hard quota never licenses deleting anchors, profiles, or open commitments.
+        // If no unprotected victims suffice, the enclosing transaction rolls back explicitly.
+        val candidates = all.filter { row ->
+            !row.isAnchor && MemoryKind.fromStorage(row.kind) != MemoryKind.PROFILE &&
+                !(MemoryKind.fromStorage(row.kind) == MemoryKind.TASK && MemoryTaskStatus.fromStorage(row.taskStatus) == MemoryTaskStatus.OPEN)
+        }
+        check(candidates.size >= excess) { "Memory capacity exceeded: protected records fill the store" }
+        val closed = candidates.filter { MemoryKind.fromStorage(it.kind) == MemoryKind.TASK }
+        // Completion does not touch updatedAt. Its history event supplies the closing time.
+        val closedAt = closed.associate { row ->
+            row.id to (historyDAO.list(assistantId, row.id).firstOrNull { it.operation == "TASK_STATUS" }?.recordedAt ?: row.updatedAt)
+        }
+        val ordered = closed.sortedWith(compareBy<MemoryEntity> { closedAt[it.id] }.thenBy { it.id }) +
+            candidates.filter { MemoryKind.fromStorage(it.kind) != MemoryKind.TASK }
+                .sortedWith(compareBy<MemoryEntity> { memoryScoreBucket(it.toModel(), now) }.thenBy { it.id })
+        ordered.take(excess).forEach { moveToTrash(it, now, "EVICT", actor, reason.ifBlank { "memory quota" }) }
+        Log.i(TAG, "moved $excess unprotected memory(ies) to trash over $MAX_MEMORY_COUNT cap")
     }
 
     suspend fun deleteMemory(
@@ -419,6 +502,7 @@ class MemoryRepository(
         replaceBusiness(
             old, snapshot.content, snapshot.importance, snapshot.description, snapshot.isAnchor,
             now, "RESTORE_REVISION", actor, reason,
+            MemoryKind.fromStorage(snapshot.kind), MemoryTaskStatus.fromStorage(snapshot.taskStatus), snapshot.dueAt,
         )
     }
 

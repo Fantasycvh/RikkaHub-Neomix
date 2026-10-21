@@ -5,6 +5,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.ai.tools.buildMemoryTools
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.MemoryReadSource
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import kotlinx.serialization.json.Json
 import kotlin.uuid.Uuid
@@ -50,6 +51,26 @@ class MemoryConsolidationGenerationAgent(
                 memoryRepository.updateContentInStore(request.memoryId, id, content, importance, description,
                     expectedRevision = revision, actor = "CONSOLIDATOR", reason = "memory_tool edit")
                     .also { applied++ }
+            },
+            typedOnCreation = { content, importance, description, kind, dueAt ->
+                memoryRepository.addMemory(request.memoryId, content, importance, description,
+                    actor = "CONSOLIDATOR", reason = "memory_tool create", kind = kind, dueAt = dueAt)
+                    .also { applied++ }
+            },
+            typedVersionedOnUpdate = { id, content, importance, description, revision, kind, dueAt ->
+                memoryRepository.updateContentInStore(request.memoryId, id, content, importance, description,
+                    expectedRevision = revision, actor = "CONSOLIDATOR", reason = "memory_tool edit",
+                    kind = kind, dueAt = dueAt).also { applied++ }
+            },
+            versionedOnComplete = { id, revision ->
+                memoryRepository.setTaskStatusInStore(request.memoryId, id, MemoryTaskStatus.DONE,
+                    expectedRevision = revision, actor = "CONSOLIDATOR", reason = "memory_tool complete")
+                    .also { if (it.revision != revision) applied++ }
+            },
+            versionedOnDrop = { id, revision ->
+                memoryRepository.setTaskStatusInStore(request.memoryId, id, MemoryTaskStatus.DROPPED,
+                    expectedRevision = revision, actor = "CONSOLIDATOR", reason = "memory_tool drop")
+                    .also { if (it.revision != revision) applied++ }
             },
             versionedOnDelete = { id, revision ->
                 check(memoryRepository.deleteMemoryInStore(request.memoryId, id,
