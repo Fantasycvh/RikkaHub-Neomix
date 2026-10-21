@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -31,12 +32,11 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -66,6 +66,9 @@ import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Connect
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.DragDropHorizontal
+import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.Mic01
+import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
 import app.androidrik.mediagen.model.MediaKind
@@ -154,57 +157,74 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
                 colors = CustomColors.topBarColors,
             )
         },
+        // 内部三个页签放底部：与「设置 → 模型」一致（那边也是 BottomAppBar + NavigationBarItem），
+        // 长列表里切换不用回到顶部；页签本身不滚动，始终可点。
+        bottomBar = {
+            BottomAppBar(
+                containerColor = CustomColors.cardColorsOnSurfaceContainer.containerColor,
+            ) {
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    icon = { Icon(HugeIcons.ServerStack01, contentDescription = null) },
+                    label = {
+                        Text(
+                            stringResource(R.string.setting_media_page_providers),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    icon = { Icon(HugeIcons.Folder01, contentDescription = null) },
+                    label = {
+                        Text(
+                            stringResource(R.string.setting_media_page_asset_storage),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(HugeIcons.Mic01, contentDescription = null) },
+                    label = {
+                        Text(
+                            stringResource(R.string.speech_page_title),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
+            }
+        },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            SecondaryTabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = CustomColors.topBarColors.containerColor,
-            ) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text(stringResource(R.string.setting_media_page_providers)) },
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text(stringResource(R.string.setting_media_page_asset_storage)) },
-                )
-                Tab(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    text = { Text(stringResource(R.string.speech_page_title)) },
-                )
-            }
+            tabStateHolder.SaveableStateProvider(selectedTab) {
+                when (selectedTab) {
+                    0 -> MediaProviderList(
+                        settings = settings,
+                        onUpdateSettings = vm::updateSettings,
+                        onEdit = { editingProvider = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            ) {
-                tabStateHolder.SaveableStateProvider(selectedTab) {
-                    when (selectedTab) {
-                        0 -> MediaProviderList(
-                            settings = settings,
-                            onUpdateSettings = vm::updateSettings,
-                            onEdit = { editingProvider = it },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                    1 -> MediaUploadStorageTab(
+                        settings = settings,
+                        onUpdateSettings = vm::updateSettings,
+                        modifier = Modifier.fillMaxSize(),
+                    )
 
-                        1 -> MediaUploadStorageTab(
-                            settings = settings,
-                            onUpdateSettings = vm::updateSettings,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-
-                        2 -> SettingSpeechPage(vm = vm, embedded = true)
-                    }
+                    2 -> SettingSpeechPage(vm = vm, embedded = true)
                 }
             }
         }
