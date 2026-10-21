@@ -257,7 +257,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | `7e2ec76c2` **`PagerTab` label 改 Composable getter + 调试页改用 `PagerTabs`** | 为 `b8d309e66` 的 MCP 独立详情页铺路 | fork `PagerTab` **零命中** ⇒ 该抽象在 fork 不存在 | **不跟**（无消费者） |
 | `b8d309e66` **MCP 服务器配置改独立详情页 + `PagerTabs`** | 底部弹窗 → 独立页（基础设置 / 工具两 tab），`SettingMcpDetailPage.kt` 782 行新增 | fork 的 MCP 配置仍是**自有形态**（已有独立 `SettingMcpPage` 体系与 MCP 工具分层加载） | **不跟**：属「换配置页形态」的 UX 取舍、不是修复；要做应按 fork 现形态设计，不照搬 782 行 |
 | `660571449` **侧边栏搜索入口并入「聊天历史」一行（行尾）** | `ChatDrawer.kt`，+45/-26 | fork 抽屉是**自有布局**（含 fork 特有入口） | **不跟**：纯 UX 取舍 |
-| `93f231149` **翻译页 MD3 Expressive + 新增翻译历史** | 新增 `TranslationHistoryDAO` + Room **迁移 30** + 设置项 | fork 有**翻译能力**但不是上游那个翻译页；且 fork 的 DB 版本线**已与上游分叉**（fork 到 35+），**上游的 30.json 不能照搬** | **不跟**（会与 fork 的迁移线冲突；翻译历史若要，须按 fork 自己的版本号新写迁移） |
+| `93f231149` **翻译页 MD3 Expressive + 新增翻译历史** | 新增 `TranslationHistoryDAO` + Room **迁移 30** + 设置项 | fork 有**翻译能力**但不是上游那个翻译页；且 fork 的 DB 版本线**已与上游分叉**（fork 到 35+），**上游的 30.json 不能照搬** | **自研已落地（未移植上游改版）**：fork 保持自有翻译页形态，不吸收 MD3 Expressive 改版与翻译页设置项；「翻译历史」按 fork 版本线自研——DB **v45** 新增 `translation_history` + `AutoMigration(44→45)`，见 [design-translation-history.md](design/design-translation-history.md)。上游的 `30.json`/设置项仍未移植 |
 | `06d59cc8c` / `c72fa6853` / `68826514d` **工作区/技能/快捷消息页、备份页/文件管理页、媒体/语音设置页改 MD3 Expressive** | 五批页面**大重写**（`WorkspaceDetailPage` 898 行、`SettingSpeechPage` 813 行、`S3Tab` 489 行…） | fork 这些页面是**自有实现且已有定制**（工作区多选导出、备份留存区、S3 分片等）。照搬=把 fork 定制全部推平 | **不跟**：这是**全仓 UX 改版工程**、不是修复；若要跟进须作为**独立设计任务**按 fork 页面逐个重建，逐条 cherry-pick 不可行 |
 | `f6e3e49a4` **新增「自动生成对话标题」开关** | 关闭后对话结束不再自动生成标题 | **fork 早已具备**：`Settings.enableAutoTitle`（`PreferencesStore.kt:875`，默认 true）+ UI 开关（`SettingModelPage.kt:173`）+ 消费点（`ChatService.kt:1684`） | **不跟（已具备）** |
 | `b69331473` **Markdown 引号内文字高亮开关** / `a6abed3be` **搜索引用角标暗色可读性** | 新增 `quoteHighlight` 开关；角标改实色背景 + 中等字重 | fork **零命中** `quoteHighlight`（含字符串），且 fork 的 Markdown/高亮链是**自有流式/公式定制**（`HighlightCodeBlock` 等） | **不跟**：属功能偏好项、非缺陷；fork 渲染链不宜为它改结构 |
@@ -268,8 +268,10 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 - **本批可立即做**：`923ad3d91`（#2151，4 行，**真 bug**）+ `927fdd51f`（复制路径，小功能）。
 - **待用户决策**：`4061537da`（sonner 阻断输入——需先确认坐标差异下是否同源同 bug）。
 - **待真机视觉确认**：`2e572c204`（标题栏与背景图/顶栏模糊的关系，fork 形态不同）。
-- **明确不跟**：MD3 Expressive 五批大改（独立设计任务）、翻译历史（迁移线冲突）、MCP 配置页改版（自有形态）、
-  PagerTabs/Lucide/引号高亮/抽屉布局（前提不成立或无消费者）。**已具备**：自动标题开关。
+- **明确不跟**：MD3 Expressive 五批大改（独立设计任务）、MCP 配置页改版（自有形态）、
+  PagerTabs/Lucide/引号高亮/抽屉布局（前提不成立或无消费者）。**已自研落地**：翻译历史
+  （DB v45，fork 自有翻译页 + 新表，见 [design-translation-history.md](design/design-translation-history.md)；
+  上游的翻译页 MD3 改版仍不跟）。**已具备**：自动标题开关。
 
 ### 2026-10-13 同步：`b64beeef6` → `05b655bb`（26 提交）+ 新 issue #2126–#2150（22 条）
 

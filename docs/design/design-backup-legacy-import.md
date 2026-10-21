@@ -32,7 +32,7 @@ settings.json 差异很小：旧版多 `compressPrompt/compressModelId`（已删
 
 | 家族 | 判据 | 处理 |
 |---|---|---|
-| CURRENT | 有 `MemoryEntity` | 就地改写旧包名附件路径 → 原有换库 → Room 迁移到 42 |
+| CURRENT | 有 `MemoryEntity` | 就地改写旧包名附件路径 → 原有换库 → Room 迁移到当前版本（45） |
 | LEGACY_UPSTREAM | 无 `MemoryEntity`，有 `memory_file` 或 `media_creation_session` | 数据级转换到当前 schema，再走同一套换库 |
 | UNKNOWN | 两者都不满足 | 报错中止，不猜、不覆盖 |
 
@@ -50,8 +50,11 @@ settings.json 差异很小：旧版多 `compressPrompt/compressModelId`（已删
   （复制源的 schema 身份哈希会让 Room 拒绝打开）。
 - **媒体创作表随功能移植一起导入**：本应用移植了 `media_creation_session/node/record`
   且 schema 与上游 3.x 同构 ⇒ 转换器按同名表复制；媒体文件由 `media_creation/<sessionId>/…`
-  条目恢复到同一相对目录，记录里存的就是相对路径。`translation_history`（本应用没有翻译历史功能）
-  与上游独有的媒体生成设置仍只记日志。
+  条目恢复到同一相对目录，记录里存的就是相对路径。
+- **翻译历史随同名表导入**：DB v45 起本应用也有 `translation_history`（列名/类型与上游 3.x 同构），
+  转换器按「目标库有哪些同名表 + 列名交集」自动复制 ⇒ 3.x 备份里的翻译历史一并带过来，
+  不需要专门分支。上游独有的媒体生成设置仍只记日志（见
+  [design-translation-history.md](design-translation-history.md)）。
 - **表级容错**：目标表若有「NOT NULL 且无默认值」的列在源库不存在，按表跳过并记录，不让一个
   可选功能表毁掉整库恢复（例如第三方改包删过列）。
 - **旧路径改写**：`messages/nodes/config` 等文本列里的 `/data/user/0/me.rerere.rikkahub*`
@@ -76,8 +79,10 @@ settings.json 差异很小：旧版多 `compressPrompt/compressModelId`（已删
 
 1. **未做端到端 zip 恢复测试**：DB 迁移、转换、settings 解码、路径改写分别验证过，
    但「选文件 → 解包 → 换库 → 重启」整链路还没有自动化用例，需要在调试包上实测一次。
-2. **只做导入**：导出的备份仍是本应用 42 版格式，原版 2.5.6/3.x 打不开（用户已确认本轮不做）。
-3. **翻译数据不导入**：`translation_history` 仍丢弃；媒体生成产物改由媒体创作功能承载，
+2. **只做导入**：导出的备份仍是本应用 45 版格式，原版 2.5.6/3.x 打不开（用户已确认本轮不做）。
+3. **翻译历史已导入、但上游翻译页设置未移植**：3.x 备份里的 `translation_history` 现在按同名表随转换导入
+   （本应用 DB v45 起有同构表，见 [design-translation-history.md](design-translation-history.md)）；
+   上游翻译页的 MD3 改版与相关设置项仍未移植。媒体生成产物改由媒体创作功能承载，
    但上游的 S3 上传/画板等子功能未移植，相关素材可能只有本地文件、没有远端引用。
 4. 新版记忆的**主题/来源语义**只保留正文；`[stated]` 等标记与 front matter 名称不落库。
 5. 覆盖式恢复会替换现有记忆库；导入前应提示并建议先导出当前数据。

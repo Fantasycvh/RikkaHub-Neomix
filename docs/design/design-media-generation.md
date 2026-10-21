@@ -48,7 +48,8 @@ JSON 能正常反序列化，但 `MediaGenerationManager` 只注册上面两个�
 - 导入原版 3.x 整库备份：媒体三表结构与上游**逐列一致**（已用真实备份核对），
   `LegacyBackupConverter` 按同名表自动复制；媒体文件按 `media_creation/<sessionId>/…` 恢复。
   目标表必要列缺失时按表跳过并记录，避免单个可选表让整库恢复失败。
-  翻译历史（`translation_history`）仍不导入。
+  翻译历史（`translation_history`）自 DB v45 起与上游同名同构，随转换器按列交集一并导入
+  （见 [design-translation-history.md](design-translation-history.md)）。
 
 ## 5. UI 与导航
 

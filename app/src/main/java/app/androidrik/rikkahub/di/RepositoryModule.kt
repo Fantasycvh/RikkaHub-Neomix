@@ -15,6 +15,7 @@ import app.androidrik.rikkahub.data.repository.GenMediaRepository
 import app.androidrik.rikkahub.data.repository.MemoryConsolidationRepository
 import app.androidrik.rikkahub.data.repository.MediaCreationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
+import app.androidrik.rikkahub.data.repository.TranslationHistoryRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.workspace.ProotBackgroundLauncher
 import app.androidrik.workspace.ProotShellRunner
@@ -59,6 +60,10 @@ val repositoryModule = module {
 
     single {
         FilesRepository(get())
+    }
+
+    single {
+        TranslationHistoryRepository(get())
     }
 
     single {

@@ -1506,6 +1506,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="translator_page_result_placeholder">翻译结果将显示在这里</string>
   <string name="translator_page_title">翻译</string>
   <string name="translator_page_translate">翻译</string>
+  <string name="translator_page_history">翻译历史</string>
+  <string name="translator_page_clear_history">清空</string>
+  <string name="translator_page_clear_history_title">清空翻译历史？</string>
+  <string name="translator_page_clear_history_message">将删除全部已保存的翻译记录，且无法恢复。</string>
   <string name="tts">语音</string>
   <string name="unpin_chat">取消置顶聊天</string>
   <string name="upload_file">上传文件</string>

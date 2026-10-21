@@ -22,6 +22,7 @@ import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryHistoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryTrashDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
+import app.androidrik.rikkahub.data.db.dao.TranslationHistoryDAO
 import app.androidrik.rikkahub.data.db.dao.UsageRecordDAO
 import app.androidrik.rikkahub.data.db.dao.WorkspaceDAO
 import app.androidrik.rikkahub.data.db.entity.CompressionCheckpointEntity
@@ -44,6 +45,7 @@ import app.androidrik.rikkahub.data.db.entity.MemoryTrashEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryProposalEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
+import app.androidrik.rikkahub.data.db.entity.TranslationHistoryEntity
 import app.androidrik.rikkahub.data.db.entity.UsageRecordEntity
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.db.migrations.Migration_16_17
@@ -77,8 +79,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         MediaCreationNodeEntity::class,
         MediaCreationRecordEntity::class,
         UsageRecordEntity::class,
+        TranslationHistoryEntity::class,
     ],
-    version = 44,
+    version = 45,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -136,6 +139,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 43→44 不在这里：用量流水表带**回填**（用消息上的 usage 灌历史），
         // 由手写迁移 Migration_43_44 负责，见 docs/design/design-usage-stats.md
         AutoMigration(from = 42, to = 43),
+        // 44→45：翻译历史表（纯新增，无回填、无外键）。表名/列名与原版 3.x 的
+        // translation_history 同构，旧备份转换时按列名交集就能一并带过来。
+        // 见 docs/design/design-translation-history.md
+        AutoMigration(from = 44, to = 45),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -175,6 +182,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaCreationDao(): MediaCreationDAO
 
     abstract fun usageRecordDao(): UsageRecordDAO
+
+    abstract fun translationHistoryDao(): TranslationHistoryDAO
 }
 
 object TokenUsageConverter {

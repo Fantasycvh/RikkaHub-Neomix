@@ -1522,6 +1522,10 @@
   <string name="translator_page_result_placeholder">Translation result will be shown here</string>
   <string name="translator_page_title">Translator</string>
   <string name="translator_page_translate">Translate</string>
+  <string name="translator_page_history">Translation History</string>
+  <string name="translator_page_clear_history">Clear</string>
+  <string name="translator_page_clear_history_title">Clear translation history?</string>
+  <string name="translator_page_clear_history_message">All saved translation records will be deleted, and this cannot be undone.</string>
   <string name="tts">TTS</string>
   <string name="unpin_chat">Unpin the Chat</string>
   <string name="upload_file">Upload File</string>

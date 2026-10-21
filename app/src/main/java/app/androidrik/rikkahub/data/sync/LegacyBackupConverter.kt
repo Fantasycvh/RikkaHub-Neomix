@@ -34,7 +34,8 @@ import java.util.UUID
  * 1. 目标库用本应用的 [AppDatabase] 新建（自动到当前版本），不写 `fallbackToDestructiveMigration`；
  * 2. 同名的兼容表按「列名交集」逐行复制，缺列走目标表自身的 DEFAULT；
  * 3. `memory_file` 的 Markdown 按**顶层条目**（`- [stated] …`）拆成多条 [MemoryEntity]；
- * 4. 原版独有的功能表（媒体生成/翻译）不复制，只记录跳过；
+ * 4. 只复制目标库存在的表（同名表按列名交集逐列复制）；目标库没有的原版独有表记录跳过。
+ *    `translation_history` 与本应用新表同构，旧备份里的翻译历史会一并带过来；
  * 5. 所有文本列里的旧包名绝对路径改写为当前 applicationId，否则附件指向已不存在的目录。
  *
  * 转换在**换库之前**完成并落在独立文件里：任何一步失败都只删掉半成品，当前库不受影响。

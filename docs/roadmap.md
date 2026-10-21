@@ -2318,8 +2318,10 @@ Page 2:","firstUnit":1,"lastUnit":2,
   - **明确不跟（附核实依据）**：`06d59cc8c`/`c72fa6853`/`68826514d` 五批 **MD3 Expressive 大改**
     （`WorkspaceDetailPage` 898 行、`SettingSpeechPage` 813 行、`S3Tab` 489 行；fork 这些页面是自有实现
     且带定制，照搬=推平，属**独立设计任务**）；`b8d309e66`+`7e2ec76c2` MCP 配置改独立详情页 + `PagerTabs`
-    （fork 无 `PagerTab` 抽象、MCP 配置是自有形态）；`93f231149` 翻译页改版 + 翻译历史（新增 Room **迁移 30**，
-    而 fork 迁移线**已与上游分叉**到 35+，不能照搬）；`660571449` 侧边栏搜索并入历史行（纯 UX 取舍）；
+    （fork 无 `PagerTab` 抽象、MCP 配置是自有形态）；`93f231149` 翻译页 MD3 Expressive 改版
+    （fork 迁移线**已与上游分叉**到 35+，上游 `30.json` 不能照搬；页面改版属独立 UX 任务）
+    ——但其中的**翻译历史已按 fork 版本线自研**（DB v45 新表 + `AutoMigration(44→45)`，见
+    `docs/design/design-translation-history.md`）；`660571449` 侧边栏搜索并入历史行（纯 UX 取舍）；
     `b69331473`/`a6abed3be` 引号高亮与角标（fork 零命中，渲染链是自有定制）；`c94237eaa` 移除 Lucide
     （fork **仍在用** Lucide）。
   - **已具备**：`f6e3e49a4`「自动生成对话标题」开关——fork 早有 `Settings.enableAutoTitle`（默认 true）
@@ -3327,3 +3329,21 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **边界**：流式取消只能记 provider 已给出的 usage（供应商只在末块给时取消即 0）；embedding / 图片生成不记
   （协议无 token 用量）；回填行来源一律 `CHAT`（旧数据分不出来源），来源拆分只对升级后新数据完整。
   详见 `docs/design/design-usage-stats.md`、`docs/upstream-analysis.md`「2026-10-20 专项吸收」。
+
+- 2026-10-21 **翻译历史（翻译页「最近 100 条」）**（用户：「实现翻译历史（记录/留存）？」；参考上游
+  `93f231149` 的翻译历史，只取自研部分、不吸收其 MD3 Expressive 改版）。
+  **问题**：翻译页原本是「输入 → 结果 → 复制」的一次性工具，切走页面结果即失，复用/对照只能重翻（再花一次
+  模型调用）；原版 3.x 备份里的 `translation_history` 也一直被转换器跳过。
+  **落地**：DB **v44→45**（纯新增表 `AutoMigration`）新增 `translation_history`（`id` UUID 主键 /
+  `source_text` / `translated_text` / `target_language` BCP 47 / `model_id` / `create_at` + 索引），
+  `TranslationHistoryRepository` 固定保留**最近 100 条**（每次写入后由 SQLite `trimTo` 裁剪，不依赖后台清理）；
+  `TranslatorVM` 只在**流结束后拿到非空最终结果**时留档（取消/异常/空响应不写，写失败只 `Log.w`、不影响翻译），
+  顺带修掉「旧任务把新任务的 `translating` 改回 false / 取消被当错误弹 toast」的竞态；翻译页结果下方内联历史
+  列表（点一条恢复原文/译文/目标语言并滚回顶部、左滑删除、清空二次确认，空历史时整段不渲染）。
+  **兼容**：表名/列名与上游 3.x `translation_history` 同构 ⇒ `LegacyBackupConverter` 按列名交集自动把旧备份
+  的翻译历史一并导入（原「翻译历史不导入」的文档已改）；整库备份天然包含该表。
+  **验证**：JVM 全量 **2080 项 0 失败**（新增仓储 6 例）；真机 **8 例**（DAO SQL 6 + `Migration_44_45` 2）；
+  `lintDebug` **0 errors / 367 warnings / 6 hints**（与改动前同一基线）；真机 `6c841f95` 用 release 构建
+  （307，v44 库）覆盖安装后正常启动（44→45 迁移无崩溃），实测翻译成功后历史出现、`am force-stop` 重启仍在、
+  点条目恢复、左滑删除、清空后整段消失。
+  详见 `docs/design/design-translation-history.md`。

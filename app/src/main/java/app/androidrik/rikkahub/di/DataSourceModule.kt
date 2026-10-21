@@ -226,6 +226,10 @@ val dataSourceModule = module {
         get<AppDatabase>().usageRecordDao()
     }
 
+    single {
+        get<AppDatabase>().translationHistoryDao()
+    }
+
     // 用量流水写入器：每次模型请求记一行（见 UsageRecorder 与 docs/design/design-usage-stats.md）
     single {
         UsageRecorder(dao = get(), scope = get<AppScope>())
