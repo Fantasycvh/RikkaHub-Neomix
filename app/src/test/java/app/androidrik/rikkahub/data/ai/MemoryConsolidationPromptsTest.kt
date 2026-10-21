@@ -6,6 +6,12 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.MemoryKind
+import app.androidrik.rikkahub.data.model.MemoryTaskStatus
+import app.androidrik.rikkahub.utils.JsonInstantPretty
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
@@ -180,6 +186,92 @@ class MemoryConsolidationPromptsTest {
     }
 
     @Test
+    fun `library snapshot shows kinds and task status due without non task metadata`() {
+        val records = listOf(
+            AssistantMemory("profile", "stable fact", kind = MemoryKind.PROFILE),
+            AssistantMemory("topic", "project fact"),
+            AssistantMemory("task", "commitment", kind = MemoryKind.TASK, taskStatus = MemoryTaskStatus.DROPPED,
+                dueAt = millis(0), revision = 7L),
+            AssistantMemory("undated", "another", kind = MemoryKind.TASK),
+        )
+        val page = pageOfLibrary(records, 0L, 100_000)
+        val prompt = buildLibraryPagePrompt(page)
+        val rows = JsonInstantPretty.parseToJsonElement(prompt.substring(prompt.indexOf('['))).jsonArray
+            .associate { it.jsonObject["id"]!!.jsonPrimitive.content to it.jsonObject }
+        assertEquals("profile", rows.getValue("profile")["kind"]!!.jsonPrimitive.content)
+        assertEquals("topic", rows.getValue("topic")["kind"]!!.jsonPrimitive.content)
+        for (id in listOf("profile", "topic")) {
+            assertTrue(rows.getValue(id)["task_status"] == null)
+            assertTrue(rows.getValue(id)["due"] == null)
+        }
+        assertEquals("dropped", rows.getValue("task")["task_status"]!!.jsonPrimitive.content)
+        assertEquals("2026-01-01", rows.getValue("task")["due"]!!.jsonPrimitive.content)
+        assertEquals("7", rows.getValue("task")["revision"]!!.jsonPrimitive.content)
+        assertEquals("open", rows.getValue("undated")["task_status"]!!.jsonPrimitive.content)
+        assertTrue(rows.getValue("undated")["due"] == null)
+    }
+
+    @Test
+    fun `calibration gives every kind and all task statuses including undated tasks`() {
+        val records = listOf(
+            AssistantMemory("p", "identity", kind = MemoryKind.PROFILE, sortKey = 1),
+            AssistantMemory("t", "knowledge", sortKey = 2),
+        ) + MemoryTaskStatus.entries.mapIndexed { index, status ->
+            AssistantMemory("task${status.storage}", "commitment", kind = MemoryKind.TASK,
+                taskStatus = status, dueAt = if (index == 0) 0 else millis(0), sortKey = index + 3)
+        }
+        val table = buildMemoryCalibrationTable(records.reversed())
+        assertTrue(table.lines().first().startsWith("- p | kind profile |"))
+        assertTrue(table.contains("- t | kind topic |"))
+        assertTrue(table.contains("kind task; status open; due none"))
+        assertTrue(table.contains("kind task; status done; due 2026-01-01"))
+        assertTrue(table.contains("kind task; status dropped; due 2026-01-01"))
+        assertEquals(5, table.lines().size)
+    }
+
+    @Test
+    fun `librarian rules require fresh user evidence and forbid cross kind merging`() {
+        val prompt = MEMORY_CONSOLIDATION_SYSTEM_PROMPT
+        assertTrue(prompt.contains("only within the same kind"))
+        assertTrue(prompt.contains("Never merge across kinds or reclassify records merely to bypass"))
+        assertTrue(prompt.contains("user explicitly says in NEW TURNS"))
+        assertTrue(prompt.contains("action=\"complete\""))
+        assertTrue(prompt.contains("action=\"drop\""))
+        assertTrue(prompt.contains("assistant's claim is never evidence"))
+        assertTrue(prompt.contains("A past due date, age, silence"))
+        assertTrue(prompt.contains("never retire because of age"))
+        assertTrue(prompt.contains("Never auto-complete, drop or retire"))
+        assertTrue(prompt.contains("create a separate"))
+        assertTrue(prompt.contains("candidate in tail context, not automatically a system anchor"))
+    }
+
+    @Test
+    fun `proposal note includes task status actions but only same kind replacements authorize delete`() {
+        val note = MEMORY_CONSOLIDATION_PROPOSAL_NOTE
+        assertTrue(note.contains("`create` / `edit` / `delete` / `complete` / `drop`"))
+        assertTrue(note.contains("edit/delete/complete/drop"))
+        assertTrue(note.contains("expected_revision"))
+        assertTrue(note.contains("applied:false"))
+        assertTrue(note.contains("same-kind replacement"))
+        assertTrue(note.contains("delete's non-empty `depends_on`"))
+        assertTrue(note.contains("Only create/edit replacement operation_ids"))
+        assertTrue(note.contains("never replacement dependencies"))
+    }
+
+    @Test
+    fun `calibration descriptions and content fallback cannot introduce extra rows or columns`() {
+        val described = AssistantMemory("described", "original content\n| unchanged", description = "中文|主题\n次行\r末行")
+        val fallback = AssistantMemory("fallback", "正文|主题\n另行")
+        val table = buildMemoryCalibrationTable(listOf(described, fallback))
+        assertEquals(2, table.lines().size)
+        assertTrue(table.lines()[0].endsWith("中文\\|主题 次行 末行"))
+        assertTrue(table.lines()[1].endsWith("正文\\|主题 另行"))
+        assertEquals("中文|主题\n次行\r末行", described.description)
+        assertEquals("original content\n| unchanged", described.content)
+        assertEquals("正文|主题\n另行", fallback.content)
+    }
+
+    @Test
     fun `calibration table shows declared importance against actual reads`() {
         val table = buildMemoryCalibrationTable(
             listOf(
@@ -190,9 +282,9 @@ class MemoryConsolidationPromptsTest {
             )
         )
 
-        assertTrue(table.contains("- aaa | importance 0.40 | legacy+chat read 7x; chat 2x; unknown 5x; consolidation 13x | 常读的"))
-        assertTrue(table.contains("- bbb | importance 0.90 | legacy+chat never read; chat 0x; unknown 0x; consolidation 0x | 没读过的"))
-        assertTrue(table.contains("- ccc | importance 0.60 | legacy+chat never read; chat 0x; unknown 0x; consolidation 0x | 主题"))
+        assertTrue(table.contains("- aaa | kind topic | importance 0.40 | legacy+chat read 7x; chat 2x; unknown 5x; consolidation 13x | 常读的"))
+        assertTrue(table.contains("- bbb | kind topic | importance 0.90 | legacy+chat never read; chat 0x; unknown 0x; consolidation 0x | 没读过的"))
+        assertTrue(table.contains("- ccc | kind topic | importance 0.60 | legacy+chat never read; chat 0x; unknown 0x; consolidation 0x | 主题"))
         assertEquals("空库不发校准表", "", buildMemoryCalibrationTable(emptyList()))
     }
 }

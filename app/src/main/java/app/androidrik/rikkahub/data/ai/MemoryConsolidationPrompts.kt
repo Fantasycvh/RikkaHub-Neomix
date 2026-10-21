@@ -5,6 +5,9 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.MemoryKind
+import java.time.Instant
+import java.time.ZoneId
 import app.androidrik.rikkahub.utils.estimateTokens
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -171,6 +174,11 @@ internal fun buildLibraryPagePrompt(page: MemoryLibraryPage): String = buildStri
                     put("id", memory.id)
                     put("revision", memory.revision)
                     put("content", memory.content)
+                    put("kind", memory.kind.storage)
+                    if (memory.kind == MemoryKind.TASK) {
+                        put("task_status", memory.taskStatus.storage)
+                        if (memory.dueAt > 0L) put("due", memory.consolidationDueDate())
+                    }
                 },
             )
         }
@@ -199,15 +207,32 @@ internal val MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """
     - Record what is missing. Durable facts the user stated themselves may be added with
       `action="create"`. The tool description defines what may be recorded and what never may:
       follow it exactly, including its `[stated]` test and its never-record list.
-    - Merge duplicates. Two records stating the same fact, even worded differently, must end up as
-      one: rewrite the one you keep with `action="edit"`, then `action="delete"` the other. Keep the
-      user's own wording and the union of the useful detail.
+    - Merge duplicates only within the same kind. Rewrite the one you keep with `action="edit"`,
+      then `action="delete"` the other. Keep the user's own wording and the union of useful detail.
+      Never merge across kinds or reclassify records merely to bypass this restriction.
     - Fix what is wrong. If a record contradicts what the user said in the new turns, rewrite it.
     - Calibrate importance with the calibration table. A record the user keeps reading is worth more
       than it was rated (raise it, at most 0.9). A record nobody ever read, and that the new turns do
       not touch, may be lowered (never below 0.2). Only when the evidence is clear.
-    - Retire: delete a record only when its content is fully covered by another record you keep, or
-      when the user explicitly asked to forget it. Never delete merely for being old or unimportant.
+    - Close tasks only when the user explicitly says in NEW TURNS that they finished or cancelled
+      that task: `action="complete"` means done; `action="drop"` means cancelled (dropped).
+      Both require `id` and the actually observed `expected_revision`; read first if needed.
+      A past due date, age, silence or an assistant's claim is never evidence of completion/cancellation.
+    - Retire: delete a record only when its content is fully covered by another same-kind record you
+      keep, or when the user explicitly asked to forget it. Never delete merely for being old or
+      unimportant; done/dropped tasks may be retired under this same rule, not just because they closed.
+
+    Kind-specific rules:
+    - profile: stable identity or long-term preferences. Correct contradictions using the user's latest
+      statement, merge synonyms within profile, never retire because of age. A profile is only a
+      candidate in tail context, not automatically a system anchor: you cannot set anchors or solidify
+      it; suggest user solidification for system-level standing facts when useful.
+    - topic: knowledge, projects and decisions. Merge duplicates and correct superseded facts as usual.
+    - task: the user's own commitment with a completion criterion. Never auto-complete, drop or retire
+      an open task because it is old or overdue. Do not turn it into topic/profile to evade protection.
+    - Correct a mistaken kind only with clear user evidence; uncertain classification stays topic.
+      If a finished task yields a lasting conclusion explicitly stated in NEW TURNS, create a separate
+      topic for that conclusion; do not merge it with the task or silently replace the task's kind.
 
     Rules:
     - The new turns are the only source of new facts. Never invent, infer, or record your own
@@ -225,12 +250,13 @@ internal val MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """
  */
 internal val MEMORY_CONSOLIDATION_PROPOSAL_NOTE = """
     Note: this library requires the user's approval for changes (memory write approval is on), so your
-    `create` / `edit` / `delete` calls are recorded as **suggestions**: nothing is stored, and the tool
-    replies with `applied:false` and an `operation_id`. Nothing is applied yet. For edit/delete copy the
-    target's actually visible revision into `expected_revision`; read first if needed. To propose a merge,
-    first successfully propose the replacement create/edit, then put its returned operation_id in the
-    delete's non-empty `depends_on` array. Only those explicit replacement dependencies will authorize
-    that deletion after review. Reads work normally.
+    `create` / `edit` / `delete` / `complete` / `drop` calls are recorded as **suggestions**: nothing is
+    applied to the library, and the tool replies with `applied:false` and an `operation_id`.
+    For edit/delete/complete/drop copy the target's actually visible revision into `expected_revision`;
+    read first if needed. To propose a merge, first successfully propose the same-kind replacement
+    create/edit, then put its returned operation_id in the delete's non-empty `depends_on` array.
+    Only create/edit replacement operation_ids may authorize that deletion after review; complete/drop
+    are status changes, never replacement dependencies. Reads work normally.
 """.trimIndent()
 
 /** 一次整理实际带进模型的新轮次，以及它们把各会话的进度推进到哪。 */
@@ -344,8 +370,11 @@ private fun LocalDateTime.stamp(): String = toString().replace('T', ' ').take(16
 
 private fun LocalDateTime.millis(): Long = toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds()
 
+private fun AssistantMemory.consolidationDueDate(): String =
+    Instant.ofEpochMilli(dueAt).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+
 /**
- * **校准表**：每条记忆一行 `id ｜ 重要度 ｜ 被读次数 ｜ 最近被读 ｜ 主题`。
+ * **校准表**：每条记忆一行 `id ｜ kind（事务附 status/due）｜ 重要度 ｜ 来源读取 ｜ 主题`。
  *
  * 为什么要单独一张表，而不是把这些塞进注入块：注入块的读者是**聊天模型**，读次数对它没有意义
  * （V2 刻意用 `@Transient` 挡掉了）；整理 agent 是**唯一**该看到「声明的分数 vs 实际被用」对照的
@@ -359,7 +388,15 @@ internal fun buildMemoryCalibrationTable(memories: List<AssistantMemory>): Strin
             val credit = if (memory.readCount <= 0) "never read" else "read ${memory.readCount}x"
             val reads = "legacy+chat $credit; chat ${memory.chatReadCount}x; " +
                 "unknown ${memory.legacyReadCount}x; consolidation ${memory.consolidationReadCount}x"
-            val topic = memory.description.ifBlank { memory.content.trim().take(40).replace('\n', ' ') }
-            "- ${memory.id} | importance ${"%.2f".format(memory.importance)} | $reads | $topic"
+            val topic = memory.description.ifBlank { memory.content.trim().take(40) }
+                .replace('\r', ' ').replace('\n', ' ').replace("|", "\\|")
+            val kind = buildString {
+                append("kind ${memory.kind.storage}")
+                if (memory.kind == MemoryKind.TASK) {
+                    append("; status ${memory.taskStatus.storage}")
+                    append("; due ${if (memory.dueAt > 0L) memory.consolidationDueDate() else "none"}")
+                }
+            }
+            "- ${memory.id} | $kind | importance ${"%.2f".format(memory.importance)} | $reads | $topic"
         }
 }

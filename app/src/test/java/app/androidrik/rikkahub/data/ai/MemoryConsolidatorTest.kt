@@ -350,6 +350,27 @@ class MemoryConsolidatorTest {
     }
 
     @Test
+    fun `review request exposes task lifecycle consistently in snapshot and calibration`() = runBlocking {
+        val assistant = assistant(modifyApproval = true)
+        val chat = conversation(assistant, 2)
+        conversations[chat.id] = chat
+        memoryList += AssistantMemory(
+            id = "completed-task", content = "deliver assignment", revision = 9L,
+            kind = app.androidrik.rikkahub.data.model.MemoryKind.TASK,
+            taskStatus = app.androidrik.rikkahub.data.model.MemoryTaskStatus.DONE,
+            dueAt = millis(1),
+        )
+        consolidator(listOf(assistant)).consolidate(assistant.id.toString(), setOf(chat.id), fullReview = true)
+        val request = agent.requests.single()
+        assertTrue(request.proposeOnly)
+        assertEquals(mapOf("completed-task" to 9L), request.initialRevisions)
+        assertTrue(request.libraryPrompt.contains("\"kind\": \"task\""))
+        assertTrue(request.libraryPrompt.contains("\"task_status\": \"done\""))
+        assertTrue(request.libraryPrompt.contains("\"due\": \"2026-01-01\""))
+        assertTrue(request.calibrationTable.contains("kind task; status done; due 2026-01-01"))
+    }
+
+    @Test
     fun `manual review raises the step cap`() = runBlocking {
         val assistant = assistant()
         val conversation = conversation(assistant, 2)
