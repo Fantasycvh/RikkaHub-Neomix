@@ -321,12 +321,6 @@ object SettingSearchIndex {
             pageTitle = R.string.setting_page_preferences_general
         ),
         entry(
-            title = R.string.setting_preferences_general_ring_context_indicator_title,
-            description = R.string.setting_preferences_general_ring_context_indicator_desc,
-            route = Screen.SettingPreferencesGeneral,
-            pageTitle = R.string.setting_page_preferences_general
-        ),
-        entry(
             title = R.string.setting_display_page_enable_message_generation_haptic_effect_title,
             description = R.string.setting_display_page_enable_message_generation_haptic_effect_desc,
             route = Screen.SettingPreferencesGeneral,

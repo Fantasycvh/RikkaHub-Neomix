@@ -1985,8 +1985,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="context_capacity_loading">正在测量这次请求…</string>
   <string name="context_capacity_titlebar_readout">%1$s/%2$s（余 %3$s）</string>
   <string name="context_capacity_local_floor_hint">已计入服务端尚未统计的固定开销（系统提示、工具 schema），首次回复后会自动校准。</string>
-  <string name="setting_preferences_general_ring_context_indicator_title">上下文占用改用圆环显示</string>
-  <string name="setting_preferences_general_ring_context_indicator_desc">输入栏的上下文占用改为圆环、百分比显示在环内（默认是细条 + 百分比）。</string>
   <string name="assistant_page_memory_freeze">固化记忆</string>
   <string name="assistant_page_memory_freeze_desc">每个会话在开始时冻结一次锚点。改过锚点后按这里，把当前锚点集合应用到该助手的全部会话（每个会话的前缀缓存会重建一次）。</string>
   <string name="assistant_page_memory_freeze_action">固化</string>

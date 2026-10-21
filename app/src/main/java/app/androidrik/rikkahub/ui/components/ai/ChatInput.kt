@@ -68,7 +68,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -385,11 +384,9 @@ fun ChatInput(
 
                             // 已使用上下文占用（usage 优先 + 本地估算兜底，与压缩触发判断同源）
                             contextUsage?.let { usage ->
-                                ContextUsageBarButton(
+                                ContextUsageRingButton(
                                     usedTokens = usage.usedTokens,
                                     windowTokens = usage.windowTokens,
-                                    // 形态可切换（偏好设置 → 通用）；数值来源与阈值两种形态共用
-                                    useRing = settings.displaySetting.useRingContextIndicator,
                                     onClick = onShowContextSheet,
                                 )
                             }
@@ -941,16 +938,16 @@ data class ContextUsage(
 )
 
 /**
- * 已使用上下文占用：细进度条 + 右侧百分比；**点击打开上下文容量面板**。
+ * 已使用上下文占用：**圆环 + 环内整数百分比**；点击打开上下文容量面板。
  * 达到窗口 80%（CONTEXT_USAGE_WARNING_RATIO）变红警告——阈值与面板、标题旁读数共用同一常量。
  *
- * 这里刻意**只给状态不给数字**（数字读数在标题旁），四处入口分工见 `docs/roadmap.md` 同日条目。
+ * 只保留圆环形态（原「细条 + 百分比」已移除，见 `docs/roadmap.md` 2026-10-21 条目）；
+ * 精确数值在标题旁读数与面板里，圆环内只给整数。
  */
 @Composable
-private fun ContextUsageBarButton(
+private fun ContextUsageRingButton(
     usedTokens: Int,
     windowTokens: Int,
-    useRing: Boolean,
     onClick: () -> Unit,
 ) {
     val fraction = if (windowTokens > 0) {
@@ -987,80 +984,43 @@ private fun ContextUsageBarButton(
                 .padding(horizontal = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
-            if (useRing) {
-                // 圆环形态：百分比放在环内（空间紧，只给整数；精确数值在标题旁读数与面板里）
-                Box(contentAlignment = Alignment.Center) {
-                    Canvas(modifier = Modifier.size(24.dp)) {
-                        val stroke = 3.dp.toPx()
-                        val inset = stroke / 2f
+            // 圆环：百分比放在环内（空间紧，只给整数；精确数值在标题旁读数与面板里）
+            Box(contentAlignment = Alignment.Center) {
+                Canvas(modifier = Modifier.size(24.dp)) {
+                    val stroke = 3.dp.toPx()
+                    val inset = stroke / 2f
+                    drawArc(
+                        color = trackColor,
+                        startAngle = -90f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        topLeft = Offset(inset, inset),
+                        size = Size(size.width - stroke, size.height - stroke),
+                        style = Stroke(width = stroke, cap = StrokeCap.Round),
+                    )
+                    if (animatedFraction > 0f) {
                         drawArc(
-                            color = trackColor,
+                            color = barColor,
                             startAngle = -90f,
-                            sweepAngle = 360f,
+                            sweepAngle = 360f * animatedFraction,
                             useCenter = false,
                             topLeft = Offset(inset, inset),
                             size = Size(size.width - stroke, size.height - stroke),
                             style = Stroke(width = stroke, cap = StrokeCap.Round),
                         )
-                        if (animatedFraction > 0f) {
-                            drawArc(
-                                color = barColor,
-                                startAngle = -90f,
-                                sweepAngle = 360f * animatedFraction,
-                                useCenter = false,
-                                topLeft = Offset(inset, inset),
-                                size = Size(size.width - stroke, size.height - stroke),
-                                style = Stroke(width = stroke, cap = StrokeCap.Round),
-                            )
-                        }
                     }
-                    Text(
-                        text = percent.toString(),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 9.sp,
-                            lineHeight = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFeatureSettings = "tnum",
-                        ),
-                        color = textColor,
-                        maxLines = 1,
-                    )
                 }
-            } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Canvas(modifier = Modifier.size(width = 34.dp, height = 5.dp)) {
-                        val radius = size.height / 2f
-                        drawRoundRect(
-                            color = trackColor,
-                            cornerRadius = CornerRadius(radius),
-                        )
-                        if (animatedFraction > 0f) {
-                            drawRoundRect(
-                                color = barColor,
-                                size = Size(
-                                    width = (size.width * animatedFraction).coerceAtLeast(size.height),
-                                    height = size.height,
-                                ),
-                                cornerRadius = CornerRadius(radius),
-                            )
-                        }
-                    }
-                    Text(
-                        text = "$percent%",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.5.sp,
-                            lineHeight = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFeatureSettings = "tnum",
-                        ),
-                        color = textColor,
-                        maxLines = 1,
-                        modifier = Modifier.widthIn(min = 28.dp),
-                    )
-                }
+                Text(
+                    text = percent.toString(),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 9.sp,
+                        lineHeight = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFeatureSettings = "tnum",
+                    ),
+                    color = textColor,
+                    maxLines = 1,
+                )
             }
         }
     }

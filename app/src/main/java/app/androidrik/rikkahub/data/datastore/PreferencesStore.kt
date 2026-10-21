@@ -1233,13 +1233,6 @@ data class DisplaySetting(
      * 路由归因，供多中转核对与成本/质量定位）。
      */
     val showGenerationSource: Boolean = false,
-    /**
-     * 输入栏的上下文占用指示器形态：false = 细条 + 百分比（默认），true = 圆环 + 整数百分比。
-     *
-     * 两种形态只是**展示**不同：数值来源、警戒阈值（`CONTEXT_USAGE_WARNING_RATIO`）、点击行为
-     * 完全共用，故切换不会带来口径差异。默认 false = 老样子，旧数据零迁移（缺字段取默认值）。
-     */
-    val useRingContextIndicator: Boolean = false,
     val showThinkingContent: Boolean = true,
     val autoCloseThinking: Boolean = true,
     /**
