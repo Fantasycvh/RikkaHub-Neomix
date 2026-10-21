@@ -683,6 +683,9 @@ internal fun toolsToSegment(
  * `docs/design/design-auto-compaction.md` 的 15142509）。
  */
 private val UIMessage.isCompactionCheckpoint: Boolean
-    get() = isSynthetic &&
+    get() = (isSynthetic &&
         role == MessageRole.USER &&
-        parts.any { part -> part is UIMessagePart.Text && part.text.isCompactionCheckpointPreamble() }
+        parts.any { part -> part is UIMessagePart.Text && part.text.isCompactionCheckpointPreamble() }) ||
+        // 导入的原版检查点：已持久化、带 isContextCheckpoint 标记、正文无本应用前导。
+        // 预览归因必须与请求语义一致——它在压缩窗口首部，不是普通历史消息。
+        isContextCheckpoint

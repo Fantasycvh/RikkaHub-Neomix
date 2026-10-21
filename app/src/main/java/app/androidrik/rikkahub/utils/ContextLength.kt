@@ -60,7 +60,9 @@ fun Conversation.estimateWindowTokens(model: Model?): Int {
     val lastAssistant = window.lastOrNull { it.role == MessageRole.ASSISTANT }
     val usageTokens = lastAssistant?.usage?.promptTokens ?: 0
     val usageIsFresh = usageTokens > 0 && lastAssistant != null && run {
-        val checkpoint = activeCompression()
+        // displayCompression() 统一原生与导入检查点：两者都比旧 usage 新时判定陈旧，
+        // 否则导入检查点的会话会拿压缩前的全量 usage 显示虚高占用。
+        val checkpoint = displayCompression()
         if (checkpoint == null) return@run true
         // usage 是在消息**生成完成**时产生的，故以 finishedAt 为准（缺失时退回 createdAt）。
         // 它早于检查点创建 → 该 usage 计的是压缩前的上下文 → 陈旧。

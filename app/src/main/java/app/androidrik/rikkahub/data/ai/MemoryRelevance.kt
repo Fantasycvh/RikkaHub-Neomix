@@ -148,7 +148,7 @@ internal class MemoryQuery private constructor(private val lexicon: Lexicon) {
  * @return null 表示"没有可用的查询" ⇒ 相关性整体退化为 0（增益 1.0，行为与改动前一致）
  */
 internal fun memoryQueryOf(messages: List<UIMessage>): String? = messages
-    .lastOrNull { !it.isSynthetic && it.role == MessageRole.USER }
+    .lastOrNull { !it.isSynthetic && !it.isContextCheckpoint && it.role == MessageRole.USER }
     ?.parts
     ?.filterIsInstance<UIMessagePart.Text>()
     ?.joinToString("\n") { it.text }
