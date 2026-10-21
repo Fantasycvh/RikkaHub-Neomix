@@ -1,6 +1,20 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+---
+#### Mandatory Constraint：Document Submission/Push Authorization Rule
+**Priority**: Highest level, overrides all document operation logic and cannot be bypassed
+**Applicable Scenarios**: All operations involving external submission, push, or release of documents
+
+   ##### Core Execution Rules
+1.  **Pre-authorization Requirement**: An authorization request must be proactively submitted to the user before executing any submission or push action. No submission/push operation shall be triggered before valid authorization is obtained.
+2.  **Unauthorized Fallback Mechanism**: If valid user authorization is not obtained, the current document content must be saved as a draft. No external submission or push action shall be performed.
+3.  **Secondary Confirmation for Partial Authorization**: If only partial content of the document is authorized by the user, the full document shall not be submitted directly. The final complete version with all changes integrated must be sent to the user for confirmation prior to submission. The submission operation may only be executed after the user explicitly approves the final version.
+
+   #####Boundary Definitions
+- Valid Authorization: A clear consent statement from the user (e.g. "agree", "confirm submission", "okay to push") shall be deemed as valid authorization obtained.
+- Unauthorized Determination: No reply from the user, ambiguous expression, or only approval of partial content shall all be judged as failure to obtain full submission authorization.
+---
 
 ## Project Overview
 
