@@ -81,9 +81,9 @@ fun RikkahubTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         DisposableEffect(view, darkTheme) {
-            // 宿主不一定是 Activity：系统悬浮窗（Service 里的 ComposeView）就没有 window 可改。
-            // 这里曾经是硬强转 `as Activity`，TTS 朗读浮窗 / 悬浮小窗一 attach 就
-            // ClassCastException 崩进程（真机实测）。没有 Activity 时跳过系统栏调整即可。
+            // 宿主不一定是 Activity：TTS 朗读浮窗（Service 里的 ComposeView）就没有 window 可改。
+            // 这里曾经是硬强转 `as Activity`，浮窗一 attach 就 ClassCastException 崩进程（真机实测）。
+            // 没有 Activity 时跳过系统栏调整即可。
             val activity = view.context as? Activity
             if (activity == null) {
                 onDispose { }

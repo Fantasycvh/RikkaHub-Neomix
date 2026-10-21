@@ -3438,3 +3438,12 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   （跳过为私有备份 fixture/无 rootfs 工作区/native Tikz 能力等既有 assume）。
   顺带修 `ExampleInstrumentedTest` 钉死 release 包名、`HeightClampTest` 的 Compose 宿主解析问题。
   未用隔离 runner 跑 UI/DI 测试；未验证真实模型端到端。
+
+- 2026-10-21 **移除实验性小窗功能**（用户要求）。删除系统 overlay 宿主 `FloatingWindowService`、
+  应用内宿主 `InAppFloatingWindow`、共用 `FloatingWindowPane`/`FloatingChatPane`/几何与启动器、
+  聊天页/设置页/设置搜索入口、三语 17 个字符串键、manifest 服务声明及对应 3 个 JVM 测试；
+  小窗专用的 `Screen.Chat.appendDraft` 草稿交接逻辑一并移除。
+  **保留** `SYSTEM_ALERT_WINDOW` 权限与 `ui/components/ui/FloatingWindow.kt`：前者是 TTS 朗读浮窗
+  所需，后者不是小窗功能，且此前的权限/非 Activity 宿主修复继续有效。
+  为兼容升级后可能恢复的旧导航状态，保留 `Screen.Chat.appendDraft` 序列化字段（不再写入/读取）。
+  设计稿 `design-floating-chat-window.md` 删除，历史保留在 git。TTS 实播仍未验证。

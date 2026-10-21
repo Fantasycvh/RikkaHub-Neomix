@@ -490,19 +490,6 @@ object SettingSearchIndex {
             section = R.string.setting_keep_alive_title
         ),
         entry(
-            title = R.string.setting_floating_window_title,
-            description = R.string.setting_floating_window_desc,
-            route = Screen.SettingPreferencesGeneral,
-            pageTitle = R.string.setting_page_preferences_general,
-            section = R.string.setting_floating_window_title
-        ),
-        entry(
-            title = R.string.setting_floating_window_permission_missing,
-            route = Screen.SettingPreferencesGeneral,
-            pageTitle = R.string.setting_page_preferences_general,
-            section = R.string.setting_floating_window_title
-        ),
-        entry(
             title = R.string.setting_page_preferences_network,
             route = Screen.SettingPreferencesNetwork,
             keywords = listOf("网络", "network", "代理", "proxy", "翻墙", "科学上网", "daili")

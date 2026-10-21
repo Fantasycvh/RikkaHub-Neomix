@@ -1,6 +1,5 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
-import app.androidrik.rikkahub.ui.components.floating.FloatingWindowMenu
 import app.androidrik.rikkahub.ui.components.message.PlanBar
 import app.androidrik.rikkahub.data.ai.tools.local.latestTodoPlan
 import app.androidrik.rikkahub.ui.components.ai.CompressContextDialog
@@ -158,7 +157,6 @@ fun ChatPage(
     text: String?,
     files: List<Uri>,
     nodeId: Uuid? = null,
-    appendDraft: Boolean = false,
 ) {
     val vm: ChatVM = koinViewModel(
         parameters = {
@@ -236,10 +234,8 @@ fun ChatPage(
 
     val inputState = vm.inputState
 
-    // 浮窗交接仅消费一次，并保留主界面原有草稿；其他来源维持既有预填语义。
-    var floatingDraftConsumed by rememberSaveable(id.toString(), text) { mutableStateOf(false) }
     // 初始化输入状态（处理传入的 files 和 text 参数）
-    LaunchedEffect(files, text, appendDraft) {
+    LaunchedEffect(files, text) {
         if (files.isNotEmpty()) {
             val localFiles = filesManager.createChatFilesByContents(files)
             val contentTypes = files.mapNotNull { file ->
@@ -260,15 +256,8 @@ fun ChatPage(
             inputState.messageContent = parts
         }
         text?.base64Decode()?.let { decodedText ->
-            if (decodedText.isNotEmpty() && (!appendDraft || !floatingDraftConsumed)) {
-                val existing = inputState.textContent.text.toString()
-                val next = if (!appendDraft || existing.isBlank() || existing == decodedText) {
-                    decodedText
-                } else {
-                    "$existing\n$decodedText"
-                }
-                inputState.setMessageText(next)
-                if (appendDraft) floatingDraftConsumed = true
+            if (decodedText.isNotEmpty()) {
+                inputState.setMessageText(decodedText)
             }
         }
     }
@@ -1183,7 +1172,6 @@ private fun TopBar(
             }
         },
         actions = {
-            FloatingWindowMenu(conversation.id.toString())
             IconButton(
                 onClick = {
                     onClickMenu()
