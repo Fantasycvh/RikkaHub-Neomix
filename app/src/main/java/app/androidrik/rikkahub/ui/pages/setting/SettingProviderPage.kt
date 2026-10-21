@@ -345,6 +345,7 @@ private fun ImportProviderButton(
     val context = LocalContext.current
     var showImportDialog by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
+    val permissionDeniedMessage = stringResource(R.string.setting_provider_page_no_permission)
 
     if (showScanner) {
         QRCodeScannerDialog(
@@ -354,10 +355,7 @@ private fun ImportProviderButton(
             },
             onPermissionDenied = {
                 showScanner = false
-                toaster.show(
-                    context.getString(R.string.setting_provider_page_no_permission),
-                    type = ToastType.Error
-                )
+                toaster.show(permissionDeniedMessage, type = ToastType.Error)
             },
             onDismissRequest = { showScanner = false },
         )
