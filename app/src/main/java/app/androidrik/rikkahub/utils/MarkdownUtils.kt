@@ -1,11 +1,44 @@
 package app.androidrik.rikkahub.utils
 
 /**
- * 移除字符串中的Markdown格式
- * @return 移除Markdown格式后的纯文本
+ * HTML 标签/注释/命名实体。
+ *
+ * 背景（上游 issue #2222）：模型回复里常带 `<details>` / `<summary>` 等 HTML，
+ * 旧的 [stripMarkdown] 只处理 Markdown 标记，于是 TTS 会把标签名逐字读成
+ * 「小于 details 大于」。这里先剥掉 HTML，再走 Markdown 清洗。
+ *
+ * 只匹配**已知 HTML 标签名**，避免把正文里的比较式（`a < b`、`x<y`）误当标签删除；
+ * 换行类标签先转换行，防止 `<br>` 删除后两行文字粘在一起。
+ */
+private val HTML_BREAK_TAG = Regex(
+    """(?i)</?(?:br|p|div|li|ul|ol|tr|td|th|h[1-6]|blockquote|pre|section|article|header|footer|figure|figcaption|table|tbody|thead|details|summary|hr)\b[^>]*>"""
+)
+private val HTML_TAG = Regex(
+    """(?i)</?(?:a|abbr|b|bdi|bdo|big|center|cite|code|del|dfn|em|font|i|img|ins|kbd|mark|q|s|samp|small|span|strong|sub|sup|time|u|var|wbr)\b[^>]*>"""
+)
+private val HTML_COMMENT = Regex("""<!--[\s\S]*?-->""")
+private val HTML_ENTITY = Regex("""&(nbsp|amp|lt|gt|quot|#39|apos|#x27);""", RegexOption.IGNORE_CASE)
+
+/**
+ * 移除字符串中的 Markdown 格式（以及 HTML 标签，供 TTS 朗读用）
+ * @return 移除 Markdown / HTML 后的纯文本
  */
 fun String.stripMarkdown(): String {
     return this
+        // 先剥 HTML：注释、换行标签、其余标签（保留标签内文字）、常见命名实体
+        .replace(HTML_COMMENT, "")
+        .replace(HTML_BREAK_TAG, "\n")
+        .replace(HTML_TAG, "")
+        .replace(HTML_ENTITY) {
+            when (it.groupValues[1].lowercase()) {
+                "nbsp" -> " "
+                "amp" -> "&"
+                "lt" -> "<"
+                "gt" -> ">"
+                "quot" -> "\""
+                else -> "'"
+            }
+        }
         // 移除代码块 (```...``` 和 `...`)
         .replace(Regex("```[\\s\\S]*?```|`[^`]*?`"), "")
         // 移除图片和链接，但保留其文本内容
