@@ -8,7 +8,6 @@ import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Refresh03
 import me.rerere.hugeicons.stroke.Tools
-import me.rerere.hugeicons.stroke.Share01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Cancel01
 import androidx.compose.animation.AnimatedVisibility
@@ -117,11 +116,9 @@ import app.androidrik.rikkahub.ui.components.ai.ModelTypeTag
 import app.androidrik.rikkahub.ui.components.ai.ProviderBalanceText
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
-import app.androidrik.rikkahub.ui.components.ui.ShareSheet
 import app.androidrik.rikkahub.ui.components.ui.SiliconFlowPowerByIcon
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
-import app.androidrik.rikkahub.ui.components.ui.rememberShareSheetState
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.useEditState
@@ -205,17 +202,6 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
                         Text(text = provider.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 },
-                actions = {
-                    val shareSheetState = rememberShareSheetState()
-                    ShareSheet(shareSheetState)
-                    IconButton(
-                        onClick = {
-                            shareSheetState.show(provider)
-                        }
-                    ) {
-                        Icon(HugeIcons.Share01, null)
-                    }
-                }
             )
         },
         bottomBar = {

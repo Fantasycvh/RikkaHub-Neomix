@@ -254,12 +254,6 @@ dependencies {
     // YAML front matter（Skill frontmatter 解析，对齐上游 54030ec4）
     implementation(libs.snakeyaml)
 
-    // zxing + CameraX (qrcode scanner)
-    implementation(libs.zxing.core)
-    implementation(libs.androidx.camera.camera2)
-    implementation(libs.androidx.camera.lifecycle)
-    implementation(libs.androidx.camera.compose)
-
     // Room
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

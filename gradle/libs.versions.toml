@@ -1,6 +1,5 @@
 [versions]
 agp = "9.3.1"
-camerax = "1.6.2"
 dom4j = "2.2.0"
 jlatexmath = "1.5"
 kotlin = "2.4.10"
@@ -43,7 +42,6 @@ google-services = "4.5.0"
 firebase-bom = "34.16.0"
 firebase-crashlytics = "3.0.7"
 jsoup = "1.22.2"
-zxing = "3.5.4"
 sonner = "0.4.0"
 leakcanary = "2.14"
 workmanager = "2.11.2"
@@ -74,9 +72,6 @@ ink = "1.1.0-alpha09"
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlin-compose-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
-androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
-androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
-androidx-camera-compose = { module = "androidx.camera:camera-compose", version.ref = "camerax" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version = "1.4.2" }
 androidx-ink-authoring-compose = { group = "androidx.ink", name = "ink-authoring-compose", version.ref = "ink" }
@@ -154,7 +149,6 @@ firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.r
 firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
 firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
-zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 sonner = { module = "io.github.dokar3:sonner", version.ref = "sonner" }
 leakcanary-android = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanary" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }

@@ -132,7 +132,7 @@
 - ✨ ExpressivePopup（Material Expressive 动效弹层）
 - 🗂️ 模型列表折叠（按供应商分组）
 - 🪾 消息分支 / 🔍 搜索能力（Exa、Tavily、智谱、豆包、LinkUp、Brave、Perplexity 等）
-- 🧩 提示词变量 / 🤳 提供商配置二维码导出导入 / 🤖 Agent 自定义
+- 🧩 提示词变量 / 🤖 Agent 自定义
 - 🧠 类 ChatGPT 记忆功能 / 📝 AI 翻译 / 🌐 自定义 HTTP 请求头与请求体
 - 📦 内置技能（skill-creator 等随包内置）
 - ☁️ 备份与恢复（S3 / WebDAV / 本地）/ ⭐ 消息收藏 / 📤 分享 / 📊 统计

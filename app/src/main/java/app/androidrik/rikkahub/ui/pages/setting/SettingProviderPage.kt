@@ -1,36 +1,25 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
-import android.net.Uri
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Camera01
 import me.rerere.hugeicons.stroke.DragDropHorizontal
-import me.rerere.hugeicons.stroke.Image02
-import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Search01
-import me.rerere.hugeicons.stroke.Sparkles
 import me.rerere.hugeicons.stroke.Cancel01
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -38,16 +27,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -61,35 +46,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.dokar.sonner.ToastType
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
-import app.androidrik.rikkahub.data.datastore.RECOMMENDED_PROVIDERS
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
-import app.androidrik.rikkahub.ui.components.ui.QRCodeScannerDialog
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
-import app.androidrik.rikkahub.ui.components.ui.decodeProviderSetting
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConfigure
 import app.androidrik.rikkahub.ui.theme.CustomColors
-import app.androidrik.rikkahub.utils.ImageUtils
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import kotlin.uuid.Uuid
 
 @Composable
 fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
@@ -143,12 +121,6 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
                     BackButton()
                 },
                 actions = {
-                    RecommendProviderButton { provider ->
-                        addProvider(provider.copyProvider(Uuid.random()))
-                    }
-                    ImportProviderButton {
-                        addProvider(it.copyProvider(Uuid.random()))
-                    }
                     AddButton { provider ->
                         addProvider(provider)
                         navController.navigate(
@@ -241,298 +213,6 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
         }
     }
 }
-
-@Composable
-private fun RecommendProviderButton(
-    onAdd: (ProviderSetting) -> Unit
-) {
-    val toaster = LocalToaster.current
-    var showSheet by remember { mutableStateOf(false) }
-    val importSuccessMessage = stringResource(R.string.setting_provider_page_import_success)
-
-    IconButton(
-        onClick = { showSheet = true }
-    ) {
-        Icon(HugeIcons.Sparkles, contentDescription = stringResource(R.string.setting_provider_page_recommend))
-    }
-
-    if (showSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSheet = false },
-            sheetState = rememberBottomSheetState(
-                initialValue = SheetValue.Hidden,
-                enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
-            )
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.setting_provider_page_recommend),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                RECOMMENDED_PROVIDERS.forEach { provider ->
-                    RecommendProviderItem(
-                        provider = provider,
-                        onAdd = {
-                            onAdd(provider)
-                            toaster.show(
-                                importSuccessMessage,
-                                type = ToastType.Success
-                            )
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecommendProviderItem(
-    provider: ProviderSetting,
-    onAdd: () -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = CustomColors.listItemColors.containerColor
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AutoAIIcon(
-                name = provider.name,
-                modifier = Modifier.size(40.dp)
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = provider.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                ProvideTextStyle(MaterialTheme.typography.labelSmall) {
-                    CompositionLocalProvider(LocalContentColor provides LocalContentColor.current.copy(alpha = 0.7f)) {
-                        provider.description()
-                    }
-                }
-            }
-            IconButton(onClick = onAdd) {
-                Icon(HugeIcons.Add01, contentDescription = stringResource(R.string.setting_provider_page_add))
-            }
-        }
-    }
-}
-
-@Composable
-private fun ImportProviderButton(
-    onAdd: (ProviderSetting) -> Unit
-) {
-    val toaster = LocalToaster.current
-    val context = LocalContext.current
-    var showImportDialog by remember { mutableStateOf(false) }
-    var showScanner by remember { mutableStateOf(false) }
-    val permissionDeniedMessage = stringResource(R.string.setting_provider_page_no_permission)
-
-    if (showScanner) {
-        QRCodeScannerDialog(
-            onResult = { content ->
-                showScanner = false
-                handleScannedQRCode(content, onAdd, toaster, context)
-            },
-            onPermissionDenied = {
-                showScanner = false
-                toaster.show(permissionDeniedMessage, type = ToastType.Error)
-            },
-            onDismissRequest = { showScanner = false },
-        )
-    }
-
-    val pickImageLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        uri?.let {
-            handleImageQRCode(it, onAdd, toaster, context)
-        }
-    }
-
-    IconButton(
-        onClick = {
-            showImportDialog = true
-        }
-    ) {
-        Icon(HugeIcons.FileImport, null)
-    }
-
-    if (showImportDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportDialog = false },
-            title = {
-                Text(
-                    text = stringResource(R.string.setting_provider_page_import_dialog_title),
-                    style = MaterialTheme.typography.headlineSmall
-                )
-            },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.setting_provider_page_import_dialog_message),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // 主要操作：扫描二维码
-                        Button(
-                            onClick = {
-                                showImportDialog = false
-                                showScanner = true
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            shape = MaterialTheme.shapes.large
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    imageVector = HugeIcons.Camera01,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = stringResource(R.string.setting_provider_page_scan_qr_code),
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                            }
-                        }
-
-                        // 次要操作：从相册选择
-                        OutlinedButton(
-                            onClick = {
-                                showImportDialog = false
-                                pickImageLauncher.launch(
-                                    androidx.activity.result.PickVisualMediaRequest(
-                                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                                    )
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            shape = MaterialTheme.shapes.large
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    imageVector = HugeIcons.Image02,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = stringResource(R.string.setting_provider_page_select_from_gallery),
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(
-                    onClick = { showImportDialog = false },
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = stringResource(R.string.cancel),
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-            }
-        )
-    }
-}
-
-private fun handleScannedQRCode(
-    content: String,
-    onAdd: (ProviderSetting) -> Unit,
-    toaster: com.dokar.sonner.ToasterState,
-    context: android.content.Context
-) {
-    runCatching {
-        val setting = decodeProviderSetting(content)
-        onAdd(setting)
-        toaster.show(
-            context.getString(R.string.setting_provider_page_import_success),
-            type = ToastType.Success
-        )
-    }.onFailure { error ->
-        toaster.show(
-            context.getString(R.string.setting_provider_page_qr_decode_failed, error.message ?: ""),
-            type = ToastType.Error
-        )
-    }
-}
-
-private fun handleImageQRCode(
-    uri: Uri,
-    onAdd: (ProviderSetting) -> Unit,
-    toaster: com.dokar.sonner.ToasterState,
-    context: android.content.Context
-) {
-    runCatching {
-        // 使用ImageUtils解析二维码
-        val qrContent = ImageUtils.decodeQRCodeFromUri(context, uri)
-
-        if (qrContent.isNullOrEmpty()) {
-            toaster.show(
-                context.getString(R.string.setting_provider_page_no_qr_found),
-                type = ToastType.Error
-            )
-            return
-        }
-
-        val setting = decodeProviderSetting(qrContent)
-        onAdd(setting)
-        toaster.show(
-            context.getString(R.string.setting_provider_page_import_success),
-            type = ToastType.Success
-        )
-    }.onFailure { error ->
-        toaster.show(
-            context.getString(R.string.setting_provider_page_image_qr_decode_failed, error.message ?: ""),
-            type = ToastType.Error
-        )
-    }
-}
-
 
 @Composable
 private fun AddButton(onAdd: (ProviderSetting) -> Unit) {

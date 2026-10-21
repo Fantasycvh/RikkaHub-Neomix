@@ -780,35 +780,10 @@ object SettingSearchIndex {
             keywords = listOf("搜索结果条数", "返回数量", "result size", "top-k")
         ),
         entry(
-            title = R.string.setting_provider_page_recommend,
-            route = Screen.SettingProvider,
-            pageTitle = R.string.setting_provider_page_title,
-            keywords = listOf("推荐", "预置提供商", "一键添加", "recommend", "recommended providers")
-        ),
-        entry(
             title = R.string.setting_provider_page_add_provider,
             route = Screen.SettingProvider,
             pageTitle = R.string.setting_provider_page_title,
             keywords = listOf("新增提供商", "接入", "add provider", "tigongshang")
-        ),
-        entry(
-            title = R.string.setting_provider_page_import_dialog_title,
-            description = R.string.setting_provider_page_import_dialog_message,
-            route = Screen.SettingProvider,
-            pageTitle = R.string.setting_provider_page_title,
-            keywords = listOf("导入", "配置导入", "供应商", "提供商", "import provider")
-        ),
-        entry(
-            title = R.string.setting_provider_page_scan_qr_code,
-            route = Screen.SettingProvider,
-            pageTitle = R.string.setting_provider_page_title,
-            keywords = listOf("扫码", "二维码", "scan qr", "qrcode")
-        ),
-        entry(
-            title = R.string.setting_provider_page_select_from_gallery,
-            route = Screen.SettingProvider,
-            pageTitle = R.string.setting_provider_page_title,
-            keywords = listOf("相册", "图片", "截图导入", "select from gallery")
         ),
         entry(
             title = R.string.setting_page_export_retention,

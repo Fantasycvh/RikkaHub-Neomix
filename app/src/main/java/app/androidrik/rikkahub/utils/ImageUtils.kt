@@ -12,10 +12,6 @@ import java.io.File
 import com.drew.imaging.ImageMetadataReader
 import com.drew.imaging.png.PngChunkType
 import com.drew.metadata.png.PngDirectory
-import com.google.zxing.BinaryBitmap
-import com.google.zxing.MultiFormatReader
-import com.google.zxing.RGBLuminanceSource
-import com.google.zxing.common.HybridBinarizer
 
 /**
  * 图片处理工具类
@@ -202,52 +198,6 @@ object ImageUtils {
         "hevc", "hevx", "hevm", "hevs",
         "mif1", "msf1", "heif",
     )
-
-    /**
-     * 从图片中解析二维码
-     *
-     * @param bitmap 要解析的图片
-     * @return 二维码内容，解析失败返回null
-     */
-    fun decodeQRCodeFromBitmap(bitmap: Bitmap): String? {
-        return runCatching {
-            val width = bitmap.width
-            val height = bitmap.height
-            val pixels = IntArray(width * height)
-            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-            val source = RGBLuminanceSource(width, height, pixels)
-            val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
-
-            val reader = MultiFormatReader()
-            val result = reader.decode(binaryBitmap)
-
-            result.text
-        }.onFailure {
-            it.printStackTrace()
-        }.getOrNull()
-    }
-
-    /**
-     * 从URI加载图片并解析二维码（组合方法）
-     *
-     * @param context Android上下文
-     * @param uri 图片URI
-     * @param maxSize 最大尺寸限制，默认1024px
-     * @return 二维码内容，解析失败返回null
-     */
-    fun decodeQRCodeFromUri(
-        context: Context,
-        uri: Uri,
-        maxSize: Int = 1024
-    ): String? {
-        val bitmap = loadOptimizedBitmap(context, uri, maxSize) ?: return null
-        return try {
-            decodeQRCodeFromBitmap(bitmap)
-        } finally {
-            bitmap.recycle() // 确保释放内存
-        }
-    }
 
     /**
      * 安全地回收Bitmap内存
