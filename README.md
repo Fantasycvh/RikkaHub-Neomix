@@ -179,17 +179,48 @@
 > 以上项目各有其许可与版权；本仓仅在**思路与实现参考**层面借鉴并自行重写，未直接复制其代码；对上游 RikkaHub 则保留原
 > `LICENSE` 与出处（见下方 License）。
 
-## 🧱 原生库（预编译签入）
+## 🧱 原生库
 
-`app/src/main/jniLibs/arm64-v8a/` 下的 `.so` **手工签入，Gradle 不参与编译**：
+分两类：**Gradle 参与编译的**（`workspace` 模块，CMake + NDK）与**预编译签入的**（其余全部，手工拷进 `jniLibs/`）。
 
-| 库 | 源码 | 说明 |
+### 1. 构建时编译（不进版本库）
+
+`workspace/src/main/cpp/`（`CMakeLists.txt` + `workspace.cpp` + `termux_pty.cpp`）→ CMake **3.22.1** + NDK 产出 `libworkspace.so` / `libtermux.so`。
+这两个是唯一由 Gradle 编译的原生库；`app` 打包时对 `libtermux.so` 用 `pickFirsts` 去重。
+
+### 2. 预编译签入（Gradle 不参与编译）
+
+| 库 | 位置 / ABI | 体积 | 用途 | 来源与版本 | 依赖 |
+|---|---|---|---|---|---|
+| `libtex_poc.so` | `app/src/main/jniLibs/`，**仅 arm64-v8a** | 13.5 MB | TikZ 的 TeX 引擎（Tectonic 编译 TeX → PDF），跑在**独立进程 `:texcompile`** 里 | [`tools/tex-poc/`](tools/tex-poc/)（Rust + **Tectonic 0.17**，NDK r27c 交叉编译） | `libicuuc78` / `libgraphite2` / `libc++_shared` / `libz` |
+| `libpdf2svg_bridge.so` | `app/src/main/jniLibs/`，仅 arm64 | 13 KB | 调 mupdf 的 C API 把 PDF 转 SVG（`FZ_SVG_TEXT_AS_PATH`，文字转轮廓） | `app/src/main/cpp/pdf2svg_bridge.c`（自包含 C，自带 mupdf 原型声明） | `libmupdf_java` |
+| `libmupdf_java.so` | `document/src/main/jniLibs/`，arm64 + x86_64 | 9.4 / 9.8 MB | PDF 解析；TikZ 链路里被上一条调用 | Artifex **MuPDF 1.26.8**（上游 RikkaHub 引入的官方 Android SDK 产物） | `libz` / `libstdc++` / `libjnigraphics` |
+| `libsimple.so` | `app/src/main/jniLibs/`，arm64 + x86_64 | 9.0 / 8.7 MB | SQLite **FTS5 `simple` 分词扩展**（消息全文搜索：中文单字 `NEAR`、英文/数字走 `simple_query`），经 Requery `customExtensions` 注册 | 上游/第三方预编译（仓内未记录版本与构建脚本）；配套的 14MB `simple_dict` 已不再使用 | 仅系统库 |
+| `libproot_exec.so` | `workspace/src/main/jniLibs/`，arm64 + x86_64 | 274 / 290 KB | 工作区沙箱的 proot 可执行体（`--link2symlink` + root-id），静态链接 | 上游静态链接二进制，**proot 5.1.107.96**，含 issue #2158 的 `AT_EXECFN` 修复（Ubuntu 26.04 类 rootfs `apt upgrade` 后 `ls`/`basename` 报 Security violation 的问题已真机对照修好） | 仅 `libc` / `liblog`（无 talloc/shmem 动态依赖） |
+| `libproot_loader.so` | 同上 | 18 KB | proot 的 loader 垫片（与上一条成对使用，`PROOT_LOADER` 指向它） | 同上 | — |
+| `libicuuc78.so` / `libicudata78.so` | `app/src/main/jniLibs/`，仅 arm64 | 2.2 MB / 33 MB | Tectonic 的 ICU 运行时（**ICU 78**） | Termux libicu 交叉版 | 互相依赖 |
+| `libgraphite2.so` | 同上，仅 arm64 | 1.5 MB | 字体整形（Tectonic 排版） | 交叉编译版 | `libc++_shared` |
+| `libc++_shared.so` | 同上，仅 arm64 | 1.8 MB | NDK C++ 运行时 | NDK 自带 | — |
+
+打包体积（`assembleRelease` 后的实际 APK，arm64-v8a）：AGP 会对签入的 `.so` 做 **strip**，所以仓库里的大小 ≠ APK 里的大小——
+
+| 库 | 仓库内 | APK 内（未压缩 → 压缩后） |
 |---|---|---|
-| `libtex_poc.so` | [`tools/tex-poc/`](tools/tex-poc/)（Rust，Tectonic 0.17） | TikZ 渲染的 TeX 引擎；重编前置（NDK r27c / 交叉库 / patchelf）见该目录 README |
-| `libpdf2svg_bridge.so` | `app/src/main/cpp/pdf2svg_bridge.c`（自包含，自带 mupdf 原型声明） | mupdf 把 tectonic 的 PDF 转 SVG（文字转轮廓） |
-| `libmupdf_java.so` / `libsimple.so` / icu / graphite2 | 上游 / 第三方 | — |
+| `libicudata78.so` | 33.1 MB | 31.6 MB → **12.2 MB** |
+| `libtex_poc.so` | 13.5 MB | 9.9 MB → 3.5 MB |
+| `libmupdf_java.so` | 9.4 MB | 9.0 MB → 4.4 MB |
+| `libsimple.so` | 9.0 MB | 1.6 MB → 0.5 MB |
 
-> JNI 符号名与**包名绑定**（`Java_app_androidrik_rikkahub_tikz_*`）：改包名必须按新符号重编这两个库，否则运行时 `UnsatisfiedLinkError`。
+arm64 原生库合计约 **62 MB**（未压缩），占 APK 的大头；beta.7 的 arm64 APK 为 **59.7 MiB**。
+另：`libquickjs-android-wrapper.so`（1.3 MB）来自 JS 插件沙箱的 Maven 依赖 `wang.harlon.quickjs`，不属签入库。
+
+注意事项：
+
+- **JNI 符号名与包名绑定**（`Java_app_androidrik_rikkahub_tikz_*`）：改包名必须按新符号重编 `libtex_poc.so` / `libpdf2svg_bridge.so`，否则运行时 `UnsatisfiedLinkError`。
+- 签入库**只做 arm64 交叉编译**（`libtex_poc` / `pdf2svg_bridge` / icu / graphite2 / `c++_shared` 都没有 x86_64 版本）⇒ x86_64 模拟器上 TikZ 引擎不可用，会走既有回退链（纯 Kotlin 子集渲染 → PDF 位图）。x86_64 的 `libproot_*` / `libmupdf_java` / `libsimple` 虽然在包里，但只做过 ELF 解析，**没有 x86_64 设备实跑记录**。
+- icu 的 **SONAME 必须是 `libicuuc78.so`**（不带 `.78`）：AGP 的 jniLibs 不接受版本化文件名，重编时用 `patchelf --replace-needed libicuuc.so.78 libicuuc78.so` 改写（见 `tools/tex-poc/README.md`）。
+- 这些库在构建中**不需要你重编**：仓库已带产物，`assembleRelease` 只会打包。仅当你改包名、换 NDK、或要升级 Tectonic/MuPDF 时才需要按对应源码目录重编。
+- 许可证各自沿上游：**MuPDF 为 AGPL-3.0（或商业授权）**、proot 为 GPLv2+、ICU/Graphite2 为各自开源许可；本仓整体 AGPL-3.0，随包分发时请自行核对。
 
 ## 🛠️ 构建指南
 
