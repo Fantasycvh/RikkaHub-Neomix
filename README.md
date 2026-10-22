@@ -2,7 +2,7 @@
   <img src="docs/icon.png" alt="App Icon" width="100" />
   <h1>RikkaHub Neomix</h1>
 
-基于 [RikkaHub](https://github.com/rikkahub/rikkahub) 的**非官方**定制版 —— 原生 Android LLM 聊天客户端（多提供商 / Agent 工作区 / TikZ 渲染 / 三类记忆）
+基于 [RikkaHub](https://github.com/rikkahub/rikkahub) 的**非官方**定制版 —— 原生 Android LLM 聊天客户端（多提供商 / Agent 工作区 / TikZ 渲染 / 三类记忆 / 实验性插件）
 
 [English (上游原版 README)](README-en-origin.md)
 </div>
@@ -11,7 +11,7 @@
 > 本项目由个人维护，代理、S3、MLTS等部分功能未经测试，**不承诺及时响应**。AGPL-3.0 许可，保留上游 `LICENSE` 与出处。
 > **本仓有意不接 issue**，反馈请走 [💬 Discussions](https://github.com/Fantasycvh/RikkaHub-Neomix/discussions)（详见下方「与上游的关系 → 反馈渠道」）。
 > 应用显示名 **Neomix**（仓库名 `RikkaHub-Neomix`），包名 `app.androidrik.rikkahub`。
-> **发布**：正式版 **`v1.0.27`**（`1.0.27 (294)`）；预发布 **`1.0.28-beta.6`**（`1.0.28-beta.6 (308)`，2026-10-21）。**仅 tag，无预编译资产**：本仓不发预编译包，请按下方「构建」自行编译。
+> **发布**：正式版 **`v1.0.27`**（`1.0.27 (294)`）；预发布 **`1.0.28-beta.7`**（`1.0.28-beta.7 (309)`，2026-10-22，**插件系统标注为实验性**）。**仅 tag，无预编译资产**：本仓不发预编译包，请按下方「构建」自行编译。
 > **tag 前缀**：`v1.0.0`–`v1.0.27` 带 `v`，**自 `1.0.28-beta.1` 起不再带 `v`**。
 
 ## 📌 与上游的关系
@@ -63,6 +63,12 @@
 | 📚 **RAG 知识库** | 跨库向量检索工具 `search_knowledge_base`（per-KB 嵌入模型、导入即解析入库） |
 | 🎭 **SillyTavern 深化** | 官方语义的世界书（多源扫描 / token 预算 / 次要关键词）、ST 预设导入、角色卡 V1 兼容、注入位置批量迁移（缓存友好）、世界书种子三重迁移 |
 | 🧬 **三类记忆（画像 / 话题 / 事务）** | **借鉴**业界「按用途给记忆分型」的思路（Claude 式文件记忆的分层做法；本仓不采用其文件形态，只借「按用途分三类」这个维度），把它作为记录上的第二维度加在现有单表与四层注入框架上：`PROFILE` / `TOPIC` / `TASK` 分型，画像与话题按打分注入，事务有 open / done / dropped 生命周期；整理器按类型校准并支持 `complete` / `drop` 提案，记忆页可按类型筛选、查看容量与恢复元数据；助手级「整理时可调整类型」默认关，开启后仅凭新轮次用户证据改类，未完成事务仍不可改 |
+
+**扩展（实验性）**
+
+| 功能 | 说明 |
+|---|---|
+| 🧩 **插件系统（实验性）** | 借鉴 BiliPai 的能力声明 + 授权模型：**JSON 规则插件**（宿主规则引擎解释执行，按条件做输入/输出改写）与 **JS 单文件插件**（QuickJS 沙箱，单次调用超时、日志截断、跑完即销毁）；导入支持「链接」或「粘贴源码」，安装前逐项确认能力（网络 / 历史读取 / 会话写入 / 注册工具 / 输入改写 / 输出改写 / 插件存储），装后可在详情页撤销；JS 出站网络只走受控网关——清单声明 `networkHosts` 作正向白名单，内网/环回/保留地址一律硬拦截；插件页可启用/停用/卸载，插件可注册自己的工具调用 UI 渲染器。**实验性**：插件 API 与 manifest 字段可能变动，不保证向后兼容 |
 
 **网络与提供商**
 
@@ -163,6 +169,9 @@
 其实现细节本仓**未核实、也未抄**（见 [`docs/design/design-subagent-context.md`](docs/design/design-subagent-context.md)）。
 **Claude 式文件记忆（Anthropic）** 同样是只借思路的一类：三类记忆只借「按用途分型」这个**维度**，
 不借其文件形态（设计口径见 [`docs/design/design-memory-kinds.md`](docs/design/design-memory-kinds.md) §0.3）。
+**BiliPai** ([jay3-yy/BiliPai](https://github.com/jay3-yy/BiliPai)) 只借插件体系的**思路**：能力声明 + 授权
+（声明 ∩ 用户批准、记录绑定插件 id）、「只做会真跑的东西」的取舍；本仓不做其「能解析能授权但不执行」的外部 Dex 形态
+（见 [`docs/PLUGIN_SYSTEM_DESIGN_DRAFT.md`](docs/PLUGIN_SYSTEM_DESIGN_DRAFT.md)）。
 
 > **备注**：`SoLab` 的源码在 **MT 论坛**开源（上表已给帖链接），**没有 GitHub 仓库**，故不伪造 GitHub 链接。
 > 若作者愿意提供正式仓库地址，欢迎提 issue 或 PR 补上。

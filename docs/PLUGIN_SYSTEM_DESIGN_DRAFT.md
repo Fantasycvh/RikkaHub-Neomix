@@ -1,7 +1,7 @@
 # RikkaHub 插件系统设计(借鉴 BiliPai)—— 草稿
 
 > 状态:**草稿,未提交**。日期:2026-10-22。
-> 调研对象:BiliPai(`F:\build\projects\BiliPai`)插件体系 × RikkaHub-Neomix 可扩展性现状。
+> 调研对象:BiliPai([jay3-yy/BiliPai](https://github.com/jay3-yy/BiliPai))插件体系 × RikkaHub-Neomix 可扩展性现状。
 
 ---
 

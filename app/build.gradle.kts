@@ -22,8 +22,8 @@ android {
         applicationId = "app.androidrik.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 308
-        versionName = "1.0.28-beta.6"
+        versionCode = 309
+        versionName = "1.0.28-beta.7"
 
         // Database-only tests can opt out of production Application/DI/background initialization.
         // The regular UI test runner remains the default.
