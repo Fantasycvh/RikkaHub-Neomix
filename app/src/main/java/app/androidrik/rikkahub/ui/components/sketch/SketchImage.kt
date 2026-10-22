@@ -81,7 +81,7 @@ internal suspend fun loadSketchBackground(context: Context, uri: Uri): ImageBitm
 }
 
 // 照片的方向常常只记在 EXIF 里，像素本身是横着或者镜像的
-private fun Bitmap.upright(context: Context, uri: Uri): Bitmap {
+internal fun Bitmap.upright(context: Context, uri: Uri): Bitmap {
     val exif = context.contentResolver.openInputStream(uri)?.use { ExifInterface(it) } ?: return this
     if (exif.rotationDegrees == 0 && !exif.isFlipped) return this
     // 约定是先水平翻转再旋转

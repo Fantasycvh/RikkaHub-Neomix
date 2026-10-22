@@ -2192,4 +2192,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="assistant_page_memory_task_without_due">无截止日期</string>
   <string name="assistant_page_memory_consolidation_kind_change">整理时允许调整类型</string>
   <string name="assistant_page_memory_consolidation_kind_change_desc">开启后，整理可在画像、话题与事务之间修改已有记忆的类型，但仅限新轮次明确表明其现有类型有误时。不得为规避 200 条上限、或为让事务进出保护范围而改类。事务改为其他类型会清空状态与截止日。开启审批时仍只作为建议。共享记忆库需所有参与整理的助手都开启才会生效。</string>
+    <!-- 图片裁剪对话框（Compose 实现，替代 uCrop；上游 2a0a831e6） -->
+    <string name="image_crop_rotate">旋转</string>
+    <string name="image_crop_reset">重置</string>
+    <string name="image_crop_free">自由</string>
+    <string name="image_crop_original">原图</string>
+    <string name="image_crop_load_failed">无法加载图片</string>
+    <string name="image_crop_failed">无法裁剪图片</string>
 </resources>

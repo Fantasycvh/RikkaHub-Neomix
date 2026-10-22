@@ -49,9 +49,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import coil3.compose.AsyncImage
-import app.androidrik.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Edit03
 import app.androidrik.rikkahub.R
@@ -107,8 +105,6 @@ fun UIAvatar(
     var showEmojiPicker by remember { mutableStateOf(false) }
     var showUrlInput by remember { mutableStateOf(false) }
     var urlInput by remember { mutableStateOf("") }
-    var preCropTempFile by remember { mutableStateOf<File?>(null) }
-
     fun saveAvatarImage(uri: Uri) {
         // 用 createAvatarImage（落 files/avatars）而不是 createChatFilesByContents（落 files/upload）：
         // 头像不能进聊天附件目录，否则「设置 → 存储管理」里对聊天文件的清理会把
@@ -120,16 +116,11 @@ fun UIAvatar(
         }
     }
 
-    val (_, launchImageCrop) = useCropLauncher(
+    val launchImageCrop = useCropLauncher(
         onCroppedImageReady = { croppedUri ->
             saveAvatarImage(croppedUri)
         },
-        onCleanup = {
-            preCropTempFile?.delete()
-            preCropTempFile = null
-        },
-        aspectRatio = 1f to 1f,
-        freeStyleCropEnabled = false
+        aspectRatio = 1f,
     )
 
     // 用 GetContent（ACTION_GET_CONTENT）而非 PickVisualMedia：
@@ -140,20 +131,8 @@ fun UIAvatar(
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let { selectedUri ->
-            val tempFile = File(context.appTempFolder, "avatar_pick_${System.currentTimeMillis()}.jpg")
-            runCatching {
-                context.contentResolver.openInputStream(selectedUri)?.use { input ->
-                    tempFile.outputStream().use { output -> input.copyTo(output) }
-                } ?: error("Failed to open input stream for $selectedUri")
-                preCropTempFile?.delete()
-                preCropTempFile = tempFile
-                launchImageCrop(tempFile.toUri())
-            }.onFailure {
-                tempFile.delete()
-                launchImageCrop(selectedUri)
-            }
-        }
+        // 裁剪对话框直接在进程内解码原始 URI（支持 HEIF 与 EXIF 方向），无需先拷临时文件
+        uri?.let { launchImageCrop(it) }
     }
 
     Box(modifier = modifier.then(Modifier.size(32.dp))) {

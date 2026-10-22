@@ -86,7 +86,6 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.toQuotedMessage
-import app.androidrik.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
@@ -123,7 +122,6 @@ import app.androidrik.rikkahub.ui.context.Navigator
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import app.androidrik.rikkahub.ui.hooks.EditStateContent
 import app.androidrik.rikkahub.ui.hooks.useEditState
-import app.androidrik.rikkahub.utils.ImageUtils
 import app.androidrik.rikkahub.utils.base64Decode
 import app.androidrik.rikkahub.utils.isAllowedFileType
 import app.androidrik.rikkahub.utils.navigateToChatPage
@@ -901,7 +899,7 @@ private fun ChatFilesPickerSheet(
 
     var cameraOutputUri by remember { mutableStateOf<Uri?>(null) }
     var cameraOutputFile by remember { mutableStateOf<File?>(null) }
-    val (_, launchCameraCrop) = useCropLauncher(
+    val launchCameraCrop = useCropLauncher(
         onCroppedImageReady = { croppedUri ->
             inputState.addImages(filesManager.createChatFilesByContents(listOf(croppedUri)))
             dismissAll()
@@ -941,16 +939,11 @@ private fun ChatFilesPickerSheet(
         }
     }
 
-    var preCropTempFile by remember { mutableStateOf<File?>(null) }
-    val (_, launchImageCrop) = useCropLauncher(
+    val launchImageCrop = useCropLauncher(
         onCroppedImageReady = { croppedUri ->
             inputState.addImages(filesManager.createChatFilesByContents(listOf(croppedUri)))
             dismissAll()
         },
-        onCleanup = {
-            preCropTempFile?.delete()
-            preCropTempFile = null
-        }
     )
     // GetMultipleContents 而非 PickMultipleVisualMedia：保留文件浏览入口
     // （系统 Photo Picker 只给相册视图、无目录浏览，照片多时翻找慢；上游 4b36640a 亦已 revert 回此形态）。
@@ -959,39 +952,10 @@ private fun ChatFilesPickerSheet(
         rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { selectedUris ->
             if (selectedUris.isNotEmpty()) {
                 Log.d("ImagePickButton", "Selected URIs: $selectedUris")
-                if (setting.displaySetting.skipCropImage) {
-                    inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
-                    dismissAll()
-                } else if (selectedUris.size == 1) {
-                    val tempFile = File(context.appTempFolder, "pick_temp_${System.currentTimeMillis()}.jpg")
-                    runCatching {
-                        val source = selectedUris.first()
-                        // HEIF/HEIC（尤其 HDR HEIF）交给 UCrop 前先解码转为 JPEG，规避裁剪解码失败
-                        val converted = ImageUtils.isHeifImage(context, source) &&
-                            ImageUtils.convertHeifToJpeg(context, source, tempFile)
-                        if (!converted) {
-                            context.contentResolver.openInputStream(source)?.use { input ->
-                                tempFile.outputStream().use { output -> input.copyTo(output) }
-                            }
-                        }
-                        preCropTempFile = tempFile
-                        launchImageCrop(tempFile.toUri())
-                    }.onFailure {
-                        // 拷贝失败时**不能**把原始 URI 交给 UCrop（上游 #1976：系统相册返回的
-                        // media-store URI 在 Android 11 上可能无有效读授权，UCrop 的
-                        // BitmapLoadTask 会直接抛 SecurityException 崩溃——异常发生在库内，
-                        // 我们这边 catch 不到）。降级为「不裁剪、按原图添加」并明确告知，
-                        // 与「跳过裁剪」开关的行为一致。
-                        Log.e("ImagePickButton", "Failed to copy image to temp, adding without crop", it)
-                        preCropTempFile?.delete()
-                        preCropTempFile = null
-                        inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
-                        toaster.show(
-                            message = resources.getString(R.string.chat_image_crop_unavailable),
-                            type = ToastType.Warning,
-                        )
-                        dismissAll()
-                    }
+                // 裁剪改成本进程 Compose 对话框（上游 2a0a831e6）：解码在应用进程内完成，
+                // HEIF 与 EXIF 方向都原生支持，不再需要先拷到临时文件或把 HEIF 转 JPEG。
+                if (!setting.displaySetting.skipCropImage && selectedUris.size == 1) {
+                    launchImageCrop(selectedUris.first())
                 } else {
                     inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
                     dismissAll()

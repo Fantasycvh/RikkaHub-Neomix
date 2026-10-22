@@ -1,23 +1,22 @@
 package app.androidrik.rikkahub.ui.components.ai
 
-import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.net.toFile
+import androidx.core.net.toUri
 import com.dokar.sonner.ToastType
-import com.yalantis.ucrop.UCrop
-import com.yalantis.ucrop.UCropActivity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import app.androidrik.common.android.Logging
 import app.androidrik.common.android.appTempFolder
+import app.androidrik.rikkahub.ui.components.crop.ImageCropDialog
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import java.io.File
 
@@ -30,9 +29,8 @@ import java.io.File
  * 嗅探文件头、再统一压成 JPEG），但错标会误导任何按扩展名判断的消费方，且让「改了格式忘了
  * 改名字」这类改动无声发生——故名字从格式**派生**，两者不可能再分叉。
  *
- * **为何是 JPEG 而非 PNG（#1892）**：`withMaxResultSize(4096, 4096)` 允许到 4096²，
- * PNG 编码这个量级的位图既慢又占内存，正是「裁剪确认卡顿」的成因。JPEG 也是 UCrop 自身的
- * 默认值（`UCropActivity.DEFAULT_COMPRESS_FORMAT`），此前的 PNG 才是在覆盖默认。
+ * **为何是 JPEG 而非 PNG（#1892）**：裁剪结果允许到很大尺寸，PNG 编码这个量级的位图既慢又占
+ * 内存，正是「裁剪确认卡顿」的成因。JPEG 也是主流裁剪器的默认值，此前的 PNG 才是在覆盖默认。
  *
  * **已知取舍**：JPEG 无 alpha 通道，透明像素会合成成黑色。影响仅限**本地/头像显示**；
  * 发给模型的请求路径无变化——`FileEncoder.compressAndEncode` 本就无条件压 JPEG q85。
@@ -40,7 +38,7 @@ import java.io.File
 internal object CropOutput {
     val FORMAT: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG
 
-    /** 与 UCrop 自身默认值一致（`UCropActivity.DEFAULT_COMPRESS_QUALITY`）。 */
+    /** 与 UCrop 时代保持一致的压缩质量（旧 `UCropActivity.DEFAULT_COMPRESS_QUALITY`）。 */
     const val QUALITY: Int = 90
 
     /** 由 [FORMAT] 派生，不写死——见类型注释里那个「名字与内容不符」的历史 bug。 */
@@ -59,63 +57,68 @@ internal object CropOutput {
     }
 }
 
+/**
+ * 返回一个打开裁剪对话框的函数。裁好的图片先写成临时的 JPEG 交给 [onCroppedImageReady]，
+ * 回调结束后删除；不管裁剪完成还是取消，最后都会调用 [onCleanup]。
+ *
+ * 与上游 `2a0a831e6` 的区别：不再启动 ucrop 的 Activity，改用本仓 Compose 实现
+ * [ImageCropDialog]（解码走 `ImageDecoder`/`BitmapFactory`，HEIF 与 EXIF 方向都原生支持，
+ * 因此调用方不必再先把 HEIF 转成 JPEG）。
+ *
+ * @param aspectRatio 固定的宽高比（宽 / 高），为空时可以自由裁剪
+ */
 @Composable
 internal fun useCropLauncher(
     onCroppedImageReady: (Uri) -> Unit,
     onCleanup: (() -> Unit)? = null,
-    aspectRatio: Pair<Float, Float>? = null,
-    freeStyleCropEnabled: Boolean = true
-): Pair<ActivityResultLauncher<Intent>, (Uri) -> Unit> {
+    aspectRatio: Float? = null,
+): (Uri) -> Unit {
     val context = LocalContext.current
     val toaster = LocalToaster.current
-    var cropOutputUri by remember { mutableStateOf<Uri?>(null) }
+    val scope = rememberCoroutineScope()
+    var source by remember { mutableStateOf<Uri?>(null) }
+    // 写文件期间对话框还开着，防止连点确认存出两张
+    var saving by remember { mutableStateOf(false) }
 
-    val cropActivityLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        when (result.resultCode) {
-            android.app.Activity.RESULT_OK -> {
-                cropOutputUri?.let { croppedUri ->
-                    onCroppedImageReady(croppedUri)
-                }
-            }
-
-            UCrop.RESULT_ERROR -> {
-                val error = result.data?.let { UCrop.getError(it) }
-                Logging.log(
-                    "CropLauncher",
-                    "crop failed: ${error?.message} | ${error?.stackTraceToString()}"
-                )
-                toaster.show(
-                    "Failed to crop image: ${error?.message ?: "unknown error"}",
-                    type = ToastType.Error
-                )
-            }
-        }
-        cropOutputUri?.toFile()?.delete()
-        cropOutputUri = null
+    fun finish() {
+        source = null
         onCleanup?.invoke()
     }
 
-    val launchCrop: (Uri) -> Unit = { sourceUri ->
-        val outputFile = File(context.appTempFolder, CropOutput.fileName(System.currentTimeMillis()))
-        cropOutputUri = Uri.fromFile(outputFile)
-
-        var crop = UCrop.of(sourceUri, cropOutputUri!!).withOptions(UCrop.Options().apply {
-            setFreeStyleCropEnabled(freeStyleCropEnabled)
-            setAllowedGestures(
-                UCropActivity.SCALE, UCropActivity.ROTATE, UCropActivity.NONE
-            )
-            setCompressionFormat(CropOutput.FORMAT)
-            setCompressionQuality(CropOutput.QUALITY)
-        }).withMaxResultSize(4096, 4096)
-        aspectRatio?.let { (x, y) ->
-            crop = crop.withAspectRatio(x, y)
-        }
-        val cropIntent = crop.getIntent(context)
-
-        cropActivityLauncher.launch(cropIntent)
+    source?.let { uri ->
+        ImageCropDialog(
+            image = uri,
+            aspectRatio = aspectRatio,
+            onDismiss = ::finish,
+            onConfirm = { bitmap ->
+                if (saving) return@ImageCropDialog
+                saving = true
+                scope.launch {
+                    val outputFile = File(
+                        context.appTempFolder,
+                        CropOutput.fileName(System.currentTimeMillis()),
+                    )
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            outputFile.outputStream().use {
+                                bitmap.compress(CropOutput.FORMAT, CropOutput.QUALITY, it)
+                            }
+                        }
+                        onCroppedImageReady(outputFile.toUri())
+                    }.onFailure { error ->
+                        Logging.log("CropLauncher", "crop failed: ${error.message} | ${error.stackTraceToString()}")
+                        toaster.show(
+                            "Failed to crop image: ${error.message ?: "unknown error"}",
+                            type = ToastType.Error
+                        )
+                    }
+                    outputFile.delete()
+                    saving = false
+                    finish()
+                }
+            },
+        )
     }
 
-    return Pair(cropActivityLauncher, launchCrop)
+    return { source = it }
 }
