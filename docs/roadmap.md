@@ -3489,4 +3489,5 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **验证**：`:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` 通过；真机仪器测试该类 3/3；
   JVM 单测 app **2277 项**（P2 增 `ImageCropStateTest`）、common **96 项** 0 失败；
   `:app:assembleRelease`（R8+lintVital）三次均通过（P1 后 62,519,976 / P2 后 **61,331,196 B**）。
-  **未做**真机 UI 点击（步进器、裁剪对话框、创作页标题重命名都只到编译/单测层面），下次装机补看。
+  真机冒烟（debug 包）：裁剪对话框（旋转/确认→附件）、创作页标题重命名（顶栏更新）、压缩对话框步进器（0 时减号禁用、
+  连加到 5 再减到 4）三项均通过。
