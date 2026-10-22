@@ -45,6 +45,7 @@ import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.db.AppDatabase
+import app.androidrik.rikkahub.data.db.fts.createMessageFtsTables
 import app.androidrik.rikkahub.data.db.fts.MessageFtsManager
 import app.androidrik.rikkahub.data.db.migrations.Migration_6_7
 import app.androidrik.rikkahub.data.db.migrations.Migration_11_12
@@ -104,19 +105,8 @@ val dataSourceModule = module {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     // 旧版本搜索用 jieba 分词，会把词典解压到这里（约 14MB），现在不再需要
                     File(context.filesDir, "simple_dict").takeIf { it.exists() }?.deleteRecursively()
-                    db.execSQL(
-                        """
-                        CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
-                            text,
-                            node_id UNINDEXED,
-                            message_id UNINDEXED,
-                            conversation_id UNINDEXED,
-                            title UNINDEXED,
-                            update_at UNINDEXED,
-                            tokenize = 'simple'
-                        )
-                        """.trimIndent()
-                    )
+                    // 索引表 + conversation_id → rowid 映射表（后者让按会话增删不必扫全表）
+                    createMessageFtsTables(db)
                 }
             })
             .openHelperFactory(
