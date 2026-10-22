@@ -30,6 +30,9 @@ data class JsPluginManifest(
     val networkHosts: List<String> = emptyList(),
     /** 单次钩子求值超时;夹在 [MIN_TIMEOUT_MS]..[MAX_TIMEOUT_MS]。 */
     val timeoutMs: Long = 1500,
+    val storage: Boolean = false,
+    /** Declarative tools are dispatched through onTool({ name, arguments, ctx }). */
+    val tools: List<JsToolDefinition> = emptyList(),
 ) {
     val hooks: Set<JsHook> get() = target.hooks
 
@@ -42,6 +45,8 @@ data class JsPluginManifest(
                 }
             }
             if (networkHosts.isNotEmpty()) add(PluginCapability.NETWORK)
+            if (storage) add(PluginCapability.STORAGE)
+            if (tools.isNotEmpty()) add(PluginCapability.TOOL_REGISTER)
         }
 
     fun validate(): List<String> = buildList {
@@ -50,6 +55,12 @@ data class JsPluginManifest(
         }
         if (id.startsWith(RESERVED_PREFIX)) add("id 不能使用保留前缀 '$RESERVED_PREFIX'")
         if (name.isBlank()) add("name 不能为空")
+        if (target == JsTarget.NONE && tools.isEmpty()) add("target none 必须声明 tools")
+        if (tools.size > 16) add("tools 最多 16 个")
+        if (tools.map { it.name }.distinct().size != tools.size) add("tools name 不能重复")
+        tools.forEachIndexed { index, tool ->
+            tool.validate().forEach { add("tools[$index]: $it") }
+        }
         networkHosts.forEach { host ->
             if (!HOST_REGEX.matches(host)) {
                 add("networkHosts 非法: '$host'(只写域名,可带 '*.' 前缀,不要带 scheme/路径)")
@@ -100,13 +111,17 @@ enum class JsTarget {
     OUTPUT,
 
     @SerialName("both")
-    BOTH;
+    BOTH,
+
+    @SerialName("none")
+    NONE;
 
     val hooks: Set<JsHook>
         get() = when (this) {
             INPUT -> setOf(JsHook.ON_INPUT)
             OUTPUT -> setOf(JsHook.ON_OUTPUT)
             BOTH -> setOf(JsHook.ON_INPUT, JsHook.ON_OUTPUT)
+            NONE -> emptySet()
         }
 }
 

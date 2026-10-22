@@ -108,6 +108,11 @@ class ChatVM(
         // 初始化对话
         viewModelScope.launch {
             chatService.initializeConversation(_conversationId)
+            // 初始化之后再预热：此时 settings/conversation 快照已稳定，预览 join 才对得上
+            chatService.prewarmPromptTokenCounts(
+                _conversationId,
+                labels = app.androidrik.rikkahub.ui.pages.promptinspect.buildPromptInspectionLabels(context),
+            )
         }
 
         // 记住对话ID, 方便下次启动恢复
@@ -375,7 +380,8 @@ class ChatVM(
      * 与真实发送**同源**（[ChatService.inspectPromptAssembly]：共用 PromptAssembly 与同一个
      * transformer 链、同一套工具装配），因此面板里的分段与实际发出的请求一致；不落库、不发请求。
      */
-    suspend fun inspectPromptAssembly(): PromptInspection? = chatService.inspectPromptAssembly(
+    suspend fun inspectPromptAssembly(caller: String = "preview"): PromptInspection? = chatService.inspectPromptAssembly(
+        caller = caller,
         conversationId = _conversationId,
         labels = buildPromptInspectionLabels(context),
     )

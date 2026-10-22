@@ -4,6 +4,7 @@ import app.androidrik.common.tokenizer.TokenizerRegistry
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.MemoryKind
 import app.androidrik.rikkahub.data.model.MemoryTaskStatus
+import app.androidrik.rikkahub.utils.countTokensInParallel
 import app.androidrik.rikkahub.utils.heuristicTokenCount
 import kotlin.math.floor
 
@@ -77,12 +78,31 @@ internal data class MemoryInjectionPlan(
  * @param frozenAnchorIds `null` = 不冻结；非 null = 只把集合内的 `isAnchor` 记忆算锚点
  *   （集合本身应由调用方用 [anchorIdsOf] 的原始值持久化，不能用本 plan 过滤后的结果）。
  */
+/**
+ * 与 [buildMemoryInjectionPlan] L2 内部**完全同口径**的逐条全文成本，只是把试渲染与计数
+ * 并行化。L2 选中与否是串行贪心，但"每条多贵"彼此独立，可以先行算热（实测该阶段 3.5s）。
+ */
+internal suspend fun precomputeMemoryEntryCosts(memories: List<AssistantMemory>): Map<String, Int> {
+    if (memories.isEmpty()) return emptyMap()
+    val emptyTail = renderMemoryDataPrompt(emptyList(), emptyList(), 1)
+    val trials = memories.map { renderMemoryDataPrompt(listOf(it), emptyList(), 1) }
+    val counts = countTokensInParallel(listOf(emptyTail) + trials)
+    val emptyTailCount = counts.first()
+    return memories.mapIndexed { index, memory ->
+        memory.id to ((counts[index + 1] - emptyTailCount).coerceAtLeast(0) + MEMORY_ENTRY_SEPARATOR_OVERHEAD_TOKENS)
+    }.toMap()
+}
+
 internal fun buildMemoryInjectionPlan(
     memories: List<AssistantMemory>,
     budgetTokens: Int = DEFAULT_MEMORY_BUDGET_TOKENS,
     now: Long = System.currentTimeMillis(),
     query: String? = null,
     frozenAnchorIds: Set<String>? = null,
+    /** 仅诊断：记忆计划内部阶段耗时。 */
+    timing: PromptInspectionTiming? = null,
+    /** 预计算好的逐条全文成本（并行算热用）；缺省时按需逐条试渲染。 */
+    precomputedEntryCosts: Map<String, Int>? = null,
 ): MemoryInjectionPlan {
     // 计费策略**每个 plan 只取一次**：中途 tokenizer 预热完成/卸载都不会让同一块文本出现
     // 两种口径的计数（否则字段与真实渲染对不上）。
@@ -98,17 +118,20 @@ internal fun buildMemoryInjectionPlan(
         { text -> heuristicTokenCount(text) }
     }
 
+    timing?.mark("mem_setup")
     val ordinaryMemories = memories.filter { it.kind != MemoryKind.TASK }
     val openTasks = memories.filter { it.kind == MemoryKind.TASK && it.taskStatus == MemoryTaskStatus.OPEN }
 
     // 空库 / 非正预算 ⇒ 不产生任何记忆块（连 L0 也不塞，保持「空就是全空」）。
     if (memories.isEmpty() || budgetTokens <= 0) {
-        return MemoryInjectionPlan(
+        timing?.mark("mem_final")
+    return MemoryInjectionPlan(
             budgetTokens = budgetTokens, omittedCount = ordinaryMemories.size,
             taskOmittedCount = openTasks.size, estimationMode = estimationMode,
         )
     }
 
+    timing?.mark("mem_discipline")
     val disciplineText = buildMemoryDisciplinePrompt()
     val disciplineTokens = count(disciplineText)
     if (disciplineTokens > budgetTokens) {
@@ -140,6 +163,7 @@ internal fun buildMemoryInjectionPlan(
     }
     val anchorIds = anchors.mapTo(HashSet()) { it.id }
 
+    timing?.mark("mem_anchors")
     // ---- Open tasks: reserve before L2/L3; first whole record may exceed the soft cap. ----
     // Historical task anchors excluded by freezing, quota or L1 budget still need the task channel.
     val taskCandidates = openTasks.filter { it.id !in anchorIds }
@@ -158,12 +182,14 @@ internal fun buildMemoryInjectionPlan(
     var taskTokens = count(taskText)
     val ordinaryAnchorCount = anchors.count { it.kind != MemoryKind.TASK }
 
+    timing?.mark("mem_tasks")
     // All-topic scaffold stays byte-for-byte identical. Task text is charged separately.
     val tailScaffoldTokens = count(
         renderMemoryDataPrompt(emptyList(), emptyList(), ordinaryMemories.size, taskText)
     ) - taskTokens
     val remaining = budgetTokens - disciplineTokens - anchorTokens - taskTokens - tailScaffoldTokens
 
+    timing?.mark("mem_scaffold")
     // ---- L2：全文层，占剩余可变预算 75% ----
     val l2Cap = if (remaining > 0) {
         floor(remaining * (1f - MEMORY_INDEX_BUDGET_RATIO)).toInt()
@@ -172,16 +198,19 @@ internal fun buildMemoryInjectionPlan(
     }
     val emptyTailTokens = count(renderMemoryDataPrompt(emptyList(), emptyList(), 1))
     val entryCosts = HashMap<String, Int>()
+    precomputedEntryCosts?.let { entryCosts.putAll(it) }
     fun fullEntryCost(memory: AssistantMemory): Int = entryCosts.getOrPut(memory.id) {
         // 单条试渲染 − 空数组：把每条的 id/revision/content 转义与缩进都算进去（保守）。
         (count(renderMemoryDataPrompt(listOf(memory), emptyList(), 1)) - emptyTailTokens)
             .coerceAtLeast(0) + MEMORY_ENTRY_SEPARATOR_OVERHEAD_TOKENS
     }
 
+    val l2Ranked = if (l2Cap > 0) rankedMemoryCandidates(memories, now, query) else emptyList()
+    timing?.mark("mem_l2_rank")
     val fullText = mutableListOf<AssistantMemory>()
     if (l2Cap > 0) {
         var used = 0
-        rankedMemoryCandidates(memories, now, query).forEach { memory ->
+        l2Ranked.forEach { memory ->
             if (memory.id in anchorIds || memory.id in overflowAnchorIds) return@forEach
             val cost = fullEntryCost(memory)
             if (used + cost <= l2Cap) {
@@ -190,6 +219,7 @@ internal fun buildMemoryInjectionPlan(
             }
         }
     }
+    timing?.mark("mem_l2")
     // 最终 L2 顺序与旧实现一致：sortKey 降序（写入新的在前），集合不变则字节稳定。
     fullText.sortByDescending { it.sortKey }
     // 选取阶段的保守成本之和，用于估算 L3 还能吃多少。
@@ -219,6 +249,7 @@ internal fun buildMemoryInjectionPlan(
             }
     }
 
+    timing?.mark("mem_l3")
     // Exact whole-tail billing is authoritative, including for the first-task exemption.
     var omittedCount = omittedOf(ordinaryMemories.size, ordinaryAnchorCount, fullText.size, indexed.size)
     var dataText = renderMemoryDataPrompt(fullText, indexed, omittedCount, taskText)

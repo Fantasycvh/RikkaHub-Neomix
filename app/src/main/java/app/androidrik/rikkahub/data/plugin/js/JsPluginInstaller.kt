@@ -24,6 +24,7 @@ class JsPluginInstaller(
     private val store: JsPluginStore,
     private val manager: PluginManager,
     private val gateway: PluginHttpGateway,
+    private val keyValueStore: PluginKeyValueStore,
 ) {
     /** 从 URL 抓取(必须 http/https);限制 512 KB,避免拉一个巨文件卡住安装。 */
     suspend fun fetch(url: String): Result<JsPluginDefinition> = withContext(Dispatchers.IO) {
@@ -51,7 +52,7 @@ class JsPluginInstaller(
     /**
      * 安装:先落盘、后注册(取消安全,同规则插件)。
      *
-     * @param approvedCapabilities 用户批准的能力,必须覆盖插件声明的全部能力。
+     * @param approvedCapabilities 用户批准的能力,必须覆盖变换/工具能力，网络和存储可选。
      *   网络能力被拒 → 插件仍可安装,但 `rikka.http()` 会立即失败(而不是偷偷放行)。
      */
     suspend fun install(
@@ -59,9 +60,9 @@ class JsPluginInstaller(
         approvedCapabilities: Set<PluginCapability>,
     ): Result<Unit> = runCatching {
         val declared = definition.manifest.capabilities
-        // 变换能力是插件的存在意义,必须批准;NETWORK 是可选能力,
+        // 变换/工具能力是插件的存在意义,必须批准;NETWORK/STORAGE 是可选能力,
         // 用户可以不勾选安装(此时 rikka.http 在运行期被调用点校验拒绝)。
-        val mandatory = declared - PluginCapability.NETWORK
+        val mandatory = declared - setOf(PluginCapability.NETWORK, PluginCapability.STORAGE)
         require(mandatory.all { it in approvedCapabilities }) {
             "未批准必需能力: ${mandatory - approvedCapabilities}"
         }
@@ -85,6 +86,7 @@ class JsPluginInstaller(
         val current = store.read()
         store.save(current.filterNot { it.id == pluginId })
         manager.unregister(pluginId)
+        // 与授权状态一致保留同 id 的 KV，重装可恢复；插件可通过 store.clear 显式清除。
         Log.i(TAG, "uninstalled js plugin: $pluginId")
     }
 
@@ -110,7 +112,12 @@ class JsPluginInstaller(
         networkGranted = {
             manager.plugins.value
                 .firstOrNull { it.plugin.id == definition.id }
-                ?.hasCapability(PluginCapability.NETWORK) == true
+                ?.let { it.enabled && it.hasCapability(PluginCapability.NETWORK) } == true
+        },
+        keyValueStore = keyValueStore,
+        capabilityGranted = { capability ->
+            manager.plugins.value.firstOrNull { it.plugin.id == definition.id }
+                ?.let { it.enabled && it.hasCapability(capability) } == true
         },
     )
 

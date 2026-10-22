@@ -108,16 +108,35 @@ class PluginManager(
      * 更新用户批准的能力集合。
      *
      * 传 null 表示恢复到"默认信任声明";传空集即撤销全部能力。
+     * 未知插件会抛出异常;写盘成功后才发布授权,失败与协程取消原样传播。
      */
     suspend fun setApprovedCapabilities(pluginId: String, approved: Set<PluginCapability>?) {
         awaitReady()
         mutex.withLock {
-            val info = infos[pluginId] ?: return
-            states[pluginId] = (states[pluginId] ?: PluginState()).copy(
-                approvedCapabilities = approved,
-            )
-            persistLocked()
-            publishLocked(pluginId, info.copy(grants = resolveGrants(info.plugin, states[pluginId])))
+            val info = requireNotNull(infos[pluginId]) { "Unknown plugin: $pluginId" }
+            persistApprovedCapabilitiesLocked(pluginId, info, approved)
+        }
+    }
+
+    /**
+     * 原子更新单项授权,基于锁内当前有效 grants 而非调用方的 UI 快照。
+     * 默认信任声明时同样落成显式集合;未知插件或未声明能力会抛出异常。
+     * 写盘失败(包括协程取消)时不提交内存状态,异常原样传播。
+     */
+    suspend fun setCapabilityApproved(
+        pluginId: String,
+        capability: PluginCapability,
+        approved: Boolean,
+    ) {
+        awaitReady()
+        mutex.withLock {
+            val info = requireNotNull(infos[pluginId]) { "Unknown plugin: $pluginId" }
+            require(capability in info.plugin.capabilities) {
+                "Plugin $pluginId does not declare capability $capability"
+            }
+            val current = resolveGrants(info.plugin, states[pluginId])
+            val updated = if (approved) current + capability else current - capability
+            persistApprovedCapabilitiesLocked(pluginId, info, updated)
         }
     }
 
@@ -178,6 +197,20 @@ class PluginManager(
         val declared = plugin.capabilities
         val approved = state?.approvedCapabilities ?: return declared
         return declared.intersect(approved)
+    }
+
+    private suspend fun persistApprovedCapabilitiesLocked(
+        pluginId: String,
+        info: PluginInfo,
+        approved: Set<PluginCapability>?,
+    ) {
+        val updated = (states[pluginId] ?: PluginState(enabled = info.enabled)).copy(
+            approvedCapabilities = approved?.toSet(),
+        )
+        // 不先修改 states:写盘失败或取消时,后续更新也不能携带未提交的授权。
+        stateStore.write(states.toMap() + (pluginId to updated))
+        states[pluginId] = updated
+        publishLocked(pluginId, info.copy(grants = resolveGrants(info.plugin, updated)))
     }
 
     private suspend fun persistLocked() {

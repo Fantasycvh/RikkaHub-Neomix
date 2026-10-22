@@ -71,6 +71,7 @@ suspend fun List<UIMessage>.transforms(
     conversationLorebookIds: Set<Uuid> = emptySet(),
     processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     workspaceCwd: String? = null,
+    onTransformerTiming: ((index: Int, name: String, nanos: Long) -> Unit)? = null,
 ): List<UIMessage> {
     val ctx = TransformerContext(
         context = context,
@@ -82,9 +83,20 @@ suspend fun List<UIMessage>.transforms(
         processingStatus = processingStatus,
         workspaceCwd = workspaceCwd,
     )
-    return transformers.fold(this) { acc, transformer ->
-        transformer.transform(ctx, acc)
+    var result = this
+    transformers.forEachIndexed { index, transformer ->
+        if (onTransformerTiming == null) {
+            result = transformer.transform(ctx, result)
+        } else {
+            val started = System.nanoTime()
+            try {
+                result = transformer.transform(ctx, result)
+            } finally {
+                onTransformerTiming(index, transformer.javaClass.simpleName, System.nanoTime() - started)
+            }
+        }
     }
+    return result
 }
 
 suspend fun List<UIMessage>.visualTransforms(

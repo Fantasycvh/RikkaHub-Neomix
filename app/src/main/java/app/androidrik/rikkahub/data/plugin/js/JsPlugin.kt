@@ -2,6 +2,9 @@ package app.androidrik.rikkahub.data.plugin.js
 
 import android.content.Context
 import android.util.Log
+import app.androidrik.ai.core.Tool
+import app.androidrik.rikkahub.data.plugin.PluginToolProvider
+import kotlinx.coroutines.CancellationException
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
@@ -29,7 +32,9 @@ class JsPlugin(
     private val context: Context,
     private val gateway: PluginHttpGateway,
     private val networkGranted: () -> Boolean,
-) : PluginInputTransformer, PluginOutputTransformer {
+    private val keyValueStore: PluginKeyValueStore,
+    private val capabilityGranted: (PluginCapability) -> Boolean,
+) : PluginInputTransformer, PluginOutputTransformer, PluginToolProvider {
 
     override val id: String = definition.id
     override val displayName: String = definition.manifest.name
@@ -53,6 +58,15 @@ class JsPlugin(
         messages: List<UIMessage>,
     ): List<UIMessage> = transformLatest(ctx, messages, MessageRole.ASSISTANT, JsHook.ON_OUTPUT)
 
+    override fun tools(): List<Tool> = createJsPluginTools(
+        pluginId = id,
+        manifest = definition.manifest,
+        capabilityGranted = capabilityGranted,
+        executeTool = { name, arguments ->
+            obtainRuntime().runTool(name, arguments).getOrThrow()
+        },
+    )
+
     override suspend fun onDisable() {
         synchronized(runtimeLock) {
             runtime?.close()
@@ -66,6 +80,8 @@ class JsPlugin(
             definition = definition,
             gateway = gateway,
             networkGranted = networkGranted,
+            keyValueStore = keyValueStore,
+            storageGranted = { capabilityGranted(PluginCapability.STORAGE) },
         ).also { runtime = it }
     }
 
@@ -107,6 +123,7 @@ class JsPlugin(
                         },
                     ).getOrThrow()
                 }.onFailure { error ->
+                    if (error is CancellationException) throw error
                     Log.w(TAG, "plugin $id hook ${hook.jsName} failed, keep original text", error)
                 }
                 val text = result.getOrNull()
@@ -128,7 +145,10 @@ class JsPlugin(
 }
 
 /** 供日志/诊断读取的钩子名集合。 */
-val JsPluginDefinition.hookNames: Set<String> get() = manifest.hooks.map { it.jsName }.toSet()
+val JsPluginDefinition.hookNames: Set<String> get() = buildSet {
+    addAll(manifest.hooks.map { it.jsName })
+    if (manifest.tools.isNotEmpty()) add("onTool")
+}
 
 /** 供 UI 预览:把 `ctx` 形状拼成一行说明。 */
 val JsPluginDefinition.payloadShape: String

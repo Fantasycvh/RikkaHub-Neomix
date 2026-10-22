@@ -20,8 +20,14 @@ object TokenizerRegistry {
     /** 内置词表资源路径（`common/src/main/resources/…`，构建期由 tiktoken 官方表转换）。 */
     const val CL100K_BASE_RESOURCE = "/tokenizer/cl100k_base.bin.gz"
 
+    private class Installation(val tokenizer: ByteLevelBpe) {
+        val cache = TokenCountCache()
+    }
+
     @Volatile
-    private var tokenizer: ByteLevelBpe? = null
+    private var installation: Installation? = null
+
+    private val tokenizer: ByteLevelBpe? get() = installation?.tokenizer
 
     /** 冷启动失败原因（诊断用；成功时为 null）。 */
     @Volatile
@@ -61,7 +67,8 @@ object TokenizerRegistry {
         return runCatching {
             synchronized(this) {
                 if (tokenizer == null) {
-                    tokenizer = ByteLevelBpe.load(stream, keepDecodeTable)
+                    installation = Installation(ByteLevelBpe.load(stream, keepDecodeTable))
+                    lastError = null
                 }
             }
         }.onFailure { lastError = it }.isSuccess
@@ -72,33 +79,31 @@ object TokenizerRegistry {
      * 工具 schema）在每次请求里都会被重复计数，缓存直接省掉重复分词。
      */
     fun count(text: String): Int? {
-        val bpe = tokenizer ?: return null
+        val installed = installation ?: return null
         if (text.isEmpty()) return 0
-        cache[text]?.let { return it }
-        val counted = runCatching { bpe.count(text) }.getOrNull() ?: return null
-        remember(text, counted)
-        return counted
+        return installed.cache.count(text) {
+            runCatching { installed.tokenizer.count(text) }.getOrNull()
+        }
     }
 
     /** 卸载（低内存时可选调用；下次 [count] 会返回 null 直到重新装载）。 */
     fun release() {
-        tokenizer = null
-        synchronized(cache) { cache.clear() }
+        synchronized(this) {
+            val previous = installation
+            installation = null
+            previous?.cache?.invalidate()
+        }
     }
 
-    // ---- 有界 LRU（访问序 LinkedHashMap，手动同步：调用点可能在任意线程）----
-
-    private const val CACHE_MAX_ENTRIES = 512
-
-    private val cache = object : LinkedHashMap<String, Int>(64, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>?): Boolean =
-            size > CACHE_MAX_ENTRIES
+    /**
+     * 当前安装的缓存快照（预览日志/诊断用）；未安装时全零，重新安装会重置统计。
+     * 非空文本的每次查找计一次 hit 或 miss；超大文本和计算失败计 miss，但不保留。
+     * release 前已经开始的 count 可返回旧实例的精确值，但不会重新填充已失效的缓存。
+     */
+    fun cacheStats(): TokenCountCacheStats = synchronized(this) {
+        installation?.cache?.snapshot() ?: TokenCountCacheStats(0, 0, 0, 0)
     }
 
-    private fun remember(text: String, counted: Int) {
-        synchronized(cache) { cache[text] = counted }
-    }
-
-    /** 缓存命中数（诊断/测试用）。 */
-    internal fun cacheSize(): Int = synchronized(cache) { cache.size }
+    /** 缓存条目数（兼容现有诊断/测试调用）。 */
+    internal fun cacheSize(): Int = cacheStats().entries
 }

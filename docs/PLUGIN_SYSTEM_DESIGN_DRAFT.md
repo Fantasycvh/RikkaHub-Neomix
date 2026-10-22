@@ -343,8 +343,8 @@ search/TTS 的 when 密封类改造、设置页声明式机制 → 放二期之�
 
 ### 7.6 已知限制(三期)
 
-- JS 插件只有"文本改写"两个钩子,没有工具注册/内容源形态;
-- 能力授权只在安装时决定,但仍**没有 UI 撤销入口**(撤销需删除重装);
+- 三期初始只有文本改写钩子；工具注册已在第九节补齐，内容源形态仍未提供;
+- 能力撤销入口已在第三期后补齐，见第八节；运行中的请求不会被追溯取消;
 - 网络请求不允许自定义 `Host`/`Cookie`/`Authorization`(避免把宿主凭证带出去);
 - 沙箱状态不跨调用(有意),每次冷启动 WebView 有几十~几百 ms 开销;
 - 异步桥超时依赖 `destroy()` 回收渲染进程:极端情况下(设备主线程被长任务占满)回收会延迟,期间该插件表现为"本次未生效";
@@ -352,8 +352,93 @@ search/TTS 的 when 密封类改造、设置页声明式机制 → 放二期之�
 
 ### 7.7 后续候选
 
-1. 插件能力撤销 UI(三期遗留,也覆盖一/二期);
+1. 插件能力撤销 UI 已补齐（见第八节，覆盖内置/规则/JS）;
 2. JSON 规则插件支持 `set`/`drop` 与导入 dry-run 预览;
-3. 给 JS 插件加 `rikka.store`(按插件隔离 KV,受 `STORAGE` 能力约束);
+3. `rikka.store` 已补齐（见第九节，插件隔离 KV + `STORAGE` 调用点检查）;
 4. 把网关的域名白名单做成可查看的"网络访问记录"(次数/域名),让用户能审计;
-5. 声明式工具插件:JSON/JS 定义 `tool` → 自动装配 `ChatToolFactory`。
+5. JS 单文件清单声明式工具已补齐（见第九节）；独立 JSON 工具执行语言仍为后续候选。
+
+## 八、第三期后补齐：能力授权与撤销 UI（2026-10-22）
+
+- 插件详情页统一展示声明能力开关，覆盖内置、JSON 规则和 JS 插件。
+- 撤销直接保存；重新授权需确认，JS 网络授权确认框展示声明的域名白名单。
+- 授权与插件启用状态独立：关闭时也可管理能力，全部撤销不卸载插件，重新启用不会恢复授权。
+- 列表展示「全部能力已撤销」或已撤销项数，不再显示空白摘要。
+- 单项更新在管理器锁内基于当前有效 grants 原子增删，避免旧 UI 快照覆盖其它能力。
+- 授权写盘成功后才发布新状态；失败提示错误并保留旧状态，协程取消正常传播。
+- 生效边界：输入/输出转换和工具在下一次请求装配时读取授权；JS 网络在下一次 `rikka.http` 调用时读取授权。已经完成的改写或已发出的网络请求不追溯撤回，不承诺中断正在运行的插件代码。
+
+### 验证
+
+- `:app:assembleDebug :app:testDebugUnitTest :plugin-manager:testDebugUnitTest` 通过。
+- Manager 共 14 项测试，新增覆盖：默认信任转显式撤销、全部撤销与重启空集、重新授权、关闭状态不变、并发单项更新、写盘失败及取消不发布也不污染后续更新。
+- 真机内置插件：撤销改写输出后持久化为 `approvedCapabilities:[]`，`enabled:true` 不变，列表显示「全部能力已撤销」。
+- `force-stop` 后重启，详情页仍显示「已撤销」；重新授权点取消不改变状态，确认后持久化为 `[OUTPUT_TRANSFORM]`。
+- 设备最终恢复内置插件已启用且已授权；本轮没有导入或清除其他插件/会话数据。
+- 本轮真机交互验证针对内置插件；规则与 JS 复用相同详情页及 manager 授权路径，未重复执行模型/网络实发测试。
+
+## 九、JS 隔离存储与声明式工具（2026-10-22）
+
+### 9.1 存储契约
+
+清单添加 `"storage": true` 即声明 `STORAGE`。安装时可以拒绝此项，安装后可随时撤销；每次桥调用重新检查插件启用状态及授权，无权时 Promise reject，不允许访问其它插件空间。
+
+```javascript
+await rikka.store.set("settings", { theme: "dark" });
+const value = await rikka.store.get("settings");
+const keys = await rikka.store.keys();
+await rikka.store.remove("settings");
+await rikka.store.clear();
+```
+
+- 值仅限 JSON；`get` 缺项和保存的 JSON null 在 JS 侧均返回 null，可用 `keys` 区分。`undefined` 不是有效 set 值。
+- key 非空且 UTF-8 不超过 128 bytes；单值序列化不超过 64 KiB；每插件最多 128 项、完整 JSON object 不超过 256 KiB。
+- `filesDir/plugin_kv` 下 SHA-256(pluginId) 文件名；共享 Mutex 防止并发覆盖；临时文件同步后原子替换，失败保留原文件。坏文件报错，不静默重置。
+- 模块内变量仍不跨调用；KV 跨 WebView、进程重启保留。撤销/禁用/卸载均不删除 KV，同 id 重装可恢复；插件可调用 clear 显式清除。卸载后按授权状态同样保留数据，当前尚无独立宿主清理按钮。
+- 每次执行最多 64 次网络/存储桥调用；执行结束取消未完成的桥任务，已完成写入不回滚；并发多个 get+set 不构成事务。
+- 示例：[持久化计数器](<samples/js-plugins/persistent-counter.js>)。
+
+### 9.2 声明式工具
+
+同一个 `.js` 文件的 JSON 清单添加 `tools`，纯工具用 `"target": "none"`，也可与 input/output/both 混合。无需另建注册表：`JsPlugin` 实现现有 `PluginToolProvider`，由 `ChatToolFactory` 自动装配。
+
+```json
+{
+  "id": "sample.echo",
+  "name": "Echo 工具",
+  "target": "none",
+  "tools": [{
+    "name": "echo",
+    "description": "回显用户要求提供的文本",
+    "parameters": {
+      "type": "object",
+      "properties": {"text": {"type": "string"}},
+      "required": ["text"],
+      "additionalProperties": false
+    }
+  }]
+}
+```
+
+```javascript
+async function onTool({ name, arguments: args, ctx }) {
+  if (name !== "echo") throw new Error("Unknown tool");
+  return { text: args.text, pluginId: ctx.pluginId };
+}
+```
+
+- 工具名为 `[a-z][a-z0-9_]{0,31}`，每插件最多 16 个、不重复；说明非空且不超过 1000 字符。
+- Provider 名自动变成 `rikka_<pluginId SHA-256 前16 hex>_<toolName>`，稳定、插件隔离且小于 64 字符。
+- `TOOL_REGISTER` 安装时必需、之后可撤销；装配时过滤，执行已装配工具前再次检查，防止审批等待期间撤权后仍执行。工具调用始终要求宿主审批，清单不能关闭审批。
+- 参数是严格 JSON Schema 子集：每层显式单 type（object/array/string/number/integer/boolean/null）；object 必须 properties，支持 required、布尔 additionalProperties；array 必须 items；支持 enum/title/description。不支持 `$ref`、组合 schema、format 或数值/长度 bounds 等，导入时拒绝未知关键字。
+- Schema 上限 16 KiB，JSON 深度 32、节点数 16384；执行前检查参数类型、必填项、enum、数组项和额外属性。
+- `onTool` 返回任意 JSON，undefined 转 null，宿主包装为文本工具结果。错误/超时抛给宿主的标准工具错误处理，不伪造成功。
+- 工具与文本钩子共用沙箱；每次新 WebView、同实例执行串行、单次脚本 timeoutMs 仍为 300–5000ms，加载单独 5s。网络/存储仍需各自能力，工具能力不隐式授予它们。
+- 示例：[便笺工具](<samples/js-plugins/notebook-tool.js>)。本阶段实现 JS 文件内 JSON 清单 + JS 执行器；未给 JSON 规则格式增加另一套执行语言。
+
+### 9.3 验证范围
+
+- `:app:assembleDebug :app:testDebugUnitTest :plugin-manager:testDebugUnitTest` 构建与回归通过。
+- 存储 11 项 JVM 测试；清单/工具 schema 18 项；工具构建/撤权/参数/审批/隔离 8 项。
+- 真机 `JsPluginRuntimeInstrumentedTest` 4 项通过：连续调用中新 WebView 仍持久化、插件隔离；存储撤权失败且保留旧数据；onTool JSON 返回及所有 KV 操作；安全嵌入含 `</script>` 源码及 `<` 运算符。
+- 已在真机导入持久化计数器，确认清单与存储能力 UI。未执行依赖外部模型的对话工具选取/审批端到端测试；工具审批接入使用现有 Tool.needsApproval 链路。

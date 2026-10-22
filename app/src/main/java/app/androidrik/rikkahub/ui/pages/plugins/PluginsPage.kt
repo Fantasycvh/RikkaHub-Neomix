@@ -421,8 +421,8 @@ private fun JsApprovalDialog(
     val manifest = definition.manifest
     val declared = manifest.capabilities
     var selected by remember(definition) { mutableStateOf(declared) }
-    // 变换类能力是插件的存在意义,取消勾选则无法安装;NETWORK 可选
-    val required = declared - PluginCapability.NETWORK
+    // 变换/工具能力安装时必需；网络和隔离存储可选，安装后均可撤销。
+    val required = declared - setOf(PluginCapability.NETWORK, PluginCapability.STORAGE)
     val canInstall = required.all { it in selected }
 
     AlertDialog(
@@ -442,6 +442,7 @@ private fun JsApprovalDialog(
                     text = "作用范围: ${when (manifest.target.name) {
                         "INPUT" -> "用户输入"
                         "OUTPUT" -> "模型输出"
+                        "NONE" -> "仅工具"
                         else -> "输入 + 输出"
                     }} · 钩子: ${definition.hookNames.joinToString()}",
                     style = MaterialTheme.typography.bodySmall,
@@ -450,6 +451,9 @@ private fun JsApprovalDialog(
                     text = "源码大小: ${definition.source.toByteArray().size / 1024} KB · 超时: ${manifest.timeoutMs}ms",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                manifest.tools.forEach { tool ->
+                    Text("工具: ${tool.name} — ${tool.description}", style = MaterialTheme.typography.bodySmall)
+                }
                 if (manifest.networkHosts.isNotEmpty()) {
                     Text(
                         text = "网络白名单: ${manifest.networkHosts.joinToString()}",
@@ -457,7 +461,7 @@ private fun JsApprovalDialog(
                     )
                 }
                 Text(
-                    text = "能力授权(可取消网络)",
+                    text = "能力授权(网络和存储可选)",
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.padding(top = 4.dp),
                 )
@@ -466,7 +470,7 @@ private fun JsApprovalDialog(
                         Checkbox(
                             checked = capability in selected,
                             // 变换能力是插件存在意义,锁定勾选;网络是可选能力,允许撤销
-                            enabled = capability == PluginCapability.NETWORK,
+                            enabled = capability in setOf(PluginCapability.NETWORK, PluginCapability.STORAGE),
                             onCheckedChange = { checked ->
                                 selected = if (checked) selected + capability else selected - capability
                             },
@@ -484,7 +488,7 @@ private fun JsApprovalDialog(
                     }
                 }
                 Text(
-                    text = "未勾选的能力不会生效;授权随时可在详情页查看。",
+                    text = "未勾选的能力不会生效；可在详情页撤销。脚本工具调用始终需要审批。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -567,7 +571,12 @@ private fun CapabilitySummary(info: PluginInfo) {
     if (declared.isEmpty()) return
     val granted = declared.intersect(info.grants)
     Text(
-        text = granted.joinToString(" · ") { capabilityLabel(it) },
+        text = if (granted.isEmpty()) {
+            "全部能力已撤销"
+        } else {
+            granted.joinToString(" · ") { capabilityLabel(it) } +
+                if (granted.size < declared.size) " · ${declared.size - granted.size} 项已撤销" else ""
+        },
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

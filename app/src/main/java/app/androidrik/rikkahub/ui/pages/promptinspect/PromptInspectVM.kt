@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.promptinspect
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +15,8 @@ import kotlin.uuid.Uuid
 data class PromptInspectState(
     val loading: Boolean = true,
     val inspection: PromptInspection? = null,
+    /** 首帧骨架用的消息条数（不等组建立即可显示，③ 渐进式渲染的极早期形态） */
+    val headerMessageCount: Int? = null,
 )
 
 /**
@@ -35,18 +38,32 @@ class PromptInspectVM(
     val state = _state.asStateFlow()
 
     private var loadedId: String? = null
+    private var loadJob: Job? = null
 
     fun load(conversationId: String) {
         // 重组/配置变更时避免重复计算（同 id 只算一次）
-        if (loadedId == conversationId && _state.value.inspection != null) return
+        if (loadedId == conversationId && (_state.value.inspection != null || loadJob?.isActive == true)) return
+        loadJob?.cancel()
         loadedId = conversationId
 
-        _state.value = PromptInspectState(loading = true)
-        viewModelScope.launch {
+        _state.value = PromptInspectState(
+            loading = true,
+            headerMessageCount = runCatching {
+                chatService.promptInspectMessageCount(Uuid.parse(conversationId))
+            }.getOrNull(),
+        )
+        loadJob = viewModelScope.launch {
+            // 渐进式：先拿到近似计数的一版（首屏立即有内容），精确值算完后再覆盖
+            var latest: PromptInspection? = null
             val inspection = try {
                 chatService.inspectPromptAssembly(
                     conversationId = Uuid.parse(conversationId),
                     labels = buildPromptInspectionLabels(context),
+                    caller = "preview",
+                    onPartial = { partial ->
+                        latest = partial
+                        _state.value = PromptInspectState(loading = false, inspection = partial)
+                    },
                 )
             } catch (cancelled: CancellationException) {
                 // 页面关闭/重组取消时不要吞掉取消信号（预览会在后台跑长文分词）
@@ -54,7 +71,7 @@ class PromptInspectVM(
             } catch (_: Exception) {
                 null
             }
-            _state.value = PromptInspectState(loading = false, inspection = inspection)
+            _state.value = PromptInspectState(loading = false, inspection = inspection ?: latest)
         }
     }
 }

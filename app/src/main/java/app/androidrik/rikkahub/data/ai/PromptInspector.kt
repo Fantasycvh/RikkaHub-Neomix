@@ -23,7 +23,10 @@ import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.CardSlot
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.utils.JsonInstant
+import app.androidrik.rikkahub.utils.conversationTokenTexts
+import app.androidrik.rikkahub.utils.countTokensInParallel
 import app.androidrik.rikkahub.utils.estimateTokens
+import app.androidrik.rikkahub.utils.heuristicTokenCount
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlin.uuid.Uuid
@@ -161,6 +164,28 @@ data class PromptSegment(
     val location: PromptSegmentLocation = PromptSegmentLocation.MESSAGE,
     /** 缓存稳定性分组（由 [kind] 派生，默认即可） */
     val stability: PromptSegmentStability = kind.stability,
+    /**
+     * `tokens` 是否为**近似值**（渐进式渲染的中间态）。
+     *
+     * 首屏为了秒开，先把大段历史/工具输出用字符启发式估个数、标上此位，随后由
+     * [refineTokens] 用精确 BPE 覆盖并把此位清掉。UI 据此显示 `≈`，避免把近似值当成精确值。
+     */
+    val tokensApproximate: Boolean = false,
+    /**
+     * 精确计数应使用的**原文**（仅在它与 [content] 不同时才填）。
+     *
+     * 历史段的 [content] 尾部可能追加了「附件占位说明」，而计数历来不含它（那行是给人看的
+     * 提示，不冒充被漏算的附件体积）；渐进式渲染要重新计数时必须拿回原始文本，否则会漂移。
+     */
+    val countingText: String? = null,
+    /**
+     * 精确计数应使用的**逐 part 文本**（历史消息）。
+     *
+     * `estimateTokenCount`（上下文占用/预算规划的唯一口径）是逐 part 计数的，而本段的展示正文
+     * 是多 part 用 `"
+"` 拼起来的；要"白拿命中"就必须按同一批字符串去计数。
+     */
+    val countingParts: List<String> = emptyList(),
 )
 
 /** 该段在**请求体**里的落点（决定它是否属于对话消息序列）。 */
@@ -253,6 +278,9 @@ suspend fun inspectPrompt(
     tools: List<Tool>,
     inputTransformers: List<MessageTransformer>,
     labels: PromptInspectionLabels,
+    timing: PromptInspectionTiming? = null,
+    /** 首屏快速模式：长文本用字符启发式计数，随后由 [refineTokens] 覆盖成精确值。 */
+    approximateTokens: Boolean = false,
 ): PromptInspection {
     val windowMessages = conversation.currentMessages
 
@@ -274,8 +302,13 @@ suspend fun inspectPrompt(
     val byPosition = injections.groupBy { it.position }
     val contentById = injections.associate { it.id to it.content }
     val sourceById = buildSourceById(settings)
+    timing?.mark("injections")
 
     // 与真实请求同源：共用 buildInternalMessages（PromptAssembly.kt）
+    // L2 全文层的"每条多贵"是逐条试渲染+计数（实测 3.5s），这里先并行算热，
+    // 计划阶段直接查表 —— 选取顺序/结果完全不变。
+    val precomputedMemoryCosts = precomputeMemoryEntryCosts(memories)
+    timing?.mark("memoryCosts")
     val assembly = buildInternalMessagesWithPlan(
         assistant = assistant,
         settings = settings,
@@ -292,8 +325,11 @@ suspend fun inspectPrompt(
         memoryDisabled = conversation.memoryDisabled,
         // L1 冻结的锚点集合：同上，必须与实发同参（空集 = 冻结且无锚点 ⇒ 不产生锚点块）
         frozenAnchorIds = conversation.frozenAnchorIds,
+        timing = timing,
+        precomputedMemoryEntryCosts = precomputedMemoryCosts,
     )
 
+    timing?.mark("assembly")
     val internalMessages = assembly.messages
 
     // 与真实请求同一个 transformer 链。processingStatus 传一次性 StateFlow：
@@ -308,11 +344,33 @@ suspend fun inspectPrompt(
         conversationLorebookIds = conversation.lorebookIds,
         processingStatus = MutableStateFlow(null),
         workspaceCwd = conversation.workspaceCwd,
+        onTransformerTiming = timing?.let { recorder ->
+            { index, name, nanos -> recorder.record("transformer_${index}_$name", nanos) }
+        },
+    )
+    timing?.mark("transforms")
+
+    // 逐段计数是首次打开的大头(长会话实测 12.7s,约占 70%)。这里先按**与下面分段完全相同的
+    // 文本单元**并行算一遍,把 tokenizer 缓存填热;随后的逐段 estimateTokens 全部命中,
+    // 数值口径与串行完全一致(同一个函数),只是把 CPU 分摊到多核。
+    val projectionTexts = buildList {
+        addAll(conversationTokenTexts(transformed))
+        injections.forEach { add(it.content) }
+    }
+    if (!approximateTokens) {
+        countTokensInParallel(projectionTexts.distinct())
+        timing?.mark("tokenPrefetch")
+    }
+    android.util.Log.d(
+        "PromptInspectionPerf",
+        "prefetch texts=${projectionTexts.size} distinct=${projectionTexts.distinct().size} " +
+            "chars=${projectionTexts.sumOf { it.length }} maxChars=${projectionTexts.maxOfOrNull { it.length } ?: 0}",
     )
 
     val segments = transformed.flatMap { message ->
         val kind = message.segmentKind()
-        val content = message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+        val textParts = message.parts.filterIsInstance<UIMessagePart.Text>().map { it.text }
+        val content = textParts.joinToString("\n")
         // 非文本 part（图片/文档/音视频）此前**一律计 0**，而实发时它们会经 FileEncoder
         // 编码进请求（图片→JPEG base64，是一块很实的开销）。这里在段尾追加一行可见占位，
         // 使「有附件却显示 0」不再被误读成「附件不花钱」——
@@ -338,9 +396,19 @@ suspend fun inspectPrompt(
                 content = contentWithNote,
                 isSynthetic = message.isSynthetic,
                 // token 只按 Text 段计：占位行是给人看的提示，不冒充被漏算的附件体积
+                // 与 estimateTokenCount 同口径：逐 Text part 计数后相加（不是把多 part 拼起来再算）
                 tokens = if (kind == PromptSegmentKind.MEMORY_TAIL && content == assembly.memoryPlan.dataText) {
                     assembly.memoryPlan.dataTokens
-                } else estimateTokens(content),
+                } else if (approximateTokens && kind != PromptSegmentKind.INJECTION) {
+                    // 渐进式渲染首屏：长文本先用字符启发式估个数量级，精确值随后由 refineTokens() 覆盖
+                    textParts.sumOf { heuristicTokenCount(it) }
+                } else {
+                    textParts.sumOf { estimateTokens(it) }
+                },
+                tokensApproximate = approximateTokens && kind != PromptSegmentKind.INJECTION &&
+                    !(kind == PromptSegmentKind.MEMORY_TAIL && content == assembly.memoryPlan.dataText),
+                countingText = content,
+                countingParts = textParts,
             )
             // Tier 4：合成注入消息是多条 `joinToString("\n")` 的合并体，按贡献者 id 拆回逐条，
             // 使预览能归因到具体条目（否则三条世界书条目表现为一段文本，无从跳转）。
@@ -355,7 +423,7 @@ suspend fun inspectPrompt(
                 listOf(single)
             }
             // 工具输出紧随其所属消息之后（实发时它们是独立的 tool 角色消息，故各自成段）。
-            own + toolResultSegments(message, labels)
+            own + toolResultSegments(message, labels, approximateTokens)
         } else {
             // #1542 Tier B 修复：BEFORE/AFTER 注入由 PromptInjectionTransformer 在
             // transformer 链里**合并进 system 本体**，而 buildSystemBlocks 的 base 块
@@ -400,12 +468,14 @@ suspend fun inspectPrompt(
     // 每条请求都发。此前完全没被统计，是「预览估算远低于实发」的主因
     // （实测场景 MCP ≈33K token，见 `docs/peer-apps-benchmark.md` §6.12 末节）。
     // 放在段首：它逻辑上先于对话内容被 provider 读取，也提醒用户「对话之外还有内容」。
+    timing?.mark("projectionAndTokenization")
     val toolSegment = toolsToSegment(
         tools = tools,
         providerType = model.findProvider(settings.providers, checkOverwrite = false),
         json = JsonInstant,
         labels = labels,
     )
+    timing?.mark("toolSchema")
     val allSegments = if (toolSegment == null) segments else listOf(toolSegment) + segments
 
     return PromptInspection(
@@ -420,6 +490,32 @@ suspend fun inspectPrompt(
         },
         totalMessageCount = windowMessages.size,
     )
+}
+
+/**
+ * 把**近似计数**的段替换成精确 BPE 值（渐进式渲染的第二阶段）。
+ *
+ * 只处理 [PromptSegment.tokensApproximate] 的段：先并行把它们的原文算热，再逐段取精确值。
+ * 计数原文取 [PromptSegment.countingText]（展示文本可能追加了「附件占位」说明，不含在计数里）。
+ * 没有近似段时原样返回，调用方可以无脑 await。
+ */
+suspend fun PromptInspection.refineTokens(): PromptInspection {
+    val approximate = segments.filter { it.tokensApproximate }
+    if (approximate.isEmpty()) return this
+    countTokensInParallel(approximate.flatMap { it.countingParts.ifEmpty { listOf(it.countingText ?: it.content) } }.distinct())
+    val refined = segments.map { segment ->
+        if (!segment.tokensApproximate) {
+            segment
+        } else {
+            segment.copy(
+                tokens = segment.countingParts.takeIf { it.isNotEmpty() }
+                    ?.sumOf { estimateTokens(it) }
+                    ?: estimateTokens(segment.countingText ?: segment.content),
+                tokensApproximate = false,
+            )
+        }
+    }
+    return copy(segments = refined, totalTokens = refined.sumOf { it.tokens })
 }
 
 /**
@@ -441,6 +537,7 @@ suspend fun inspectPrompt(
 internal fun toolResultSegments(
     message: UIMessage,
     labels: PromptInspectionLabels,
+    approximateTokens: Boolean = false,
 ): List<PromptSegment> = message.parts
     .filterIsInstance<UIMessagePart.Tool>()
     .filter { it.isExecuted }
@@ -454,7 +551,9 @@ internal fun toolResultSegments(
             role = "tool",
             content = text,
             isSynthetic = message.isSynthetic,
-            tokens = estimateTokens(text),
+            tokens = if (approximateTokens) heuristicTokenCount(text) else estimateTokens(text),
+            tokensApproximate = approximateTokens,
+            countingText = text,
         )
     }
 

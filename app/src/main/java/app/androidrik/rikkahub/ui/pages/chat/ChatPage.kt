@@ -845,7 +845,7 @@ private fun ChatContextCapacitySheet(
     onDismiss: () -> Unit,
 ) {
     val capacity by produceState<ContextCapacity?>(initialValue = null, vm) {
-        val inspection = runCatching { vm.inspectPromptAssembly() }.getOrNull()
+        val inspection = runCatching { vm.inspectPromptAssembly(caller = "capacity") }.getOrNull()
         value = inspection?.let {
             computeContextCapacity(
                 usedTokens = contextUsage.usedTokens,

@@ -65,6 +65,7 @@ import app.androidrik.rikkahub.data.ai.withProviderErrorHint
 import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.parseRuleReminderSensitivity
 import app.androidrik.rikkahub.data.ai.PromptInspection
+import app.androidrik.rikkahub.data.ai.refineTokens
 import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
 import app.androidrik.rikkahub.data.ai.anchorIdsOf
 import app.androidrik.rikkahub.data.ai.inspectPrompt
@@ -108,6 +109,8 @@ import app.androidrik.rikkahub.data.plugin.PluginOutputTransformer
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
+import app.androidrik.rikkahub.utils.conversationTokenTexts
+import app.androidrik.rikkahub.utils.countTokensInParallel
 import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.utils.estimateWindowTokens
 import app.androidrik.rikkahub.data.ai.compression.shouldAutoCompress
@@ -479,6 +482,18 @@ class ChatService(
         add(workspaceReminderTransformer)
         addAll(pluginInputTransformers())
         // 配平必须看到最终形态:前面任何一环(含插件)都可能改动消息。
+        add(ToolResultBalancingTransformer)
+    }
+
+    /**
+     * 与 [buildInputTransformerChain] 相同但**不含插件段**。
+     *
+     * 只给"进会话预热"用：预热不该替用户触发插件（可能发网络/写存储），而内置链才是文本量的主体。
+     */
+    private fun buildInputTransformerChainWithoutPlugins(): List<InputMessageTransformer> = buildList {
+        addAll(inputTransformers)
+        add(templateTransformer)
+        add(workspaceReminderTransformer)
         add(ToolResultBalancingTransformer)
     }
 
@@ -1181,10 +1196,142 @@ class ChatService(
 
     // ---- 拼装预览（只读） ----
 
+    private class InspectionReference(private val value: Any?) {
+        override fun equals(other: Any?): Boolean = other is InspectionReference && value === other.value
+        override fun hashCode(): Int = System.identityHashCode(value)
+    }
+
+    private val inspectionSingleFlight = InspectionSingleFlight<List<Any>, PromptInspection?>(appScope)
+
+    /** 已预热过的会话及其内容签名；同一签名不重复预热。 */
+    private val prewarmedTokenCounts = java.util.concurrent.ConcurrentHashMap<Uuid, String>()
+
+    /** 每个会话的预热任务；预览打开时据此 join（无插件）或取消（有插件，避免抢核）。 */
+    private val warmJobs = java.util.concurrent.ConcurrentHashMap<Uuid, Job>()
+
+    /** 该会话的预热是否与预览共享同一次计算。 */
+    private val warmSharedWithPreview = java.util.concurrent.ConcurrentHashMap<Uuid, Boolean>()
+
+    /**
+     * 进入会话时**只预热精确 token 计数**（不组装、不跑插件、不产生副作用）。
+     *
+     * 动机：拼装预览首次打开的大头是分词（长会话实测 12.7s），而进会话本身总要做一次加载。
+     * 趁这个空档把同一批文本单元算热（[conversationTokenTexts] 与预览分段取法一致），
+     * 用户随后打开预览/容量面板时就是缓存命中。
+     *
+     * 走 [appScope]：离开会话也不至于把已投入的计算丢掉；同一会话内容未变时不重复跑。
+     */
+    fun prewarmPromptTokenCounts(conversationId: Uuid, labels: PromptInspectionLabels) {
+        warmJobs[conversationId]?.cancel()
+        // 同步决定是否共享：预览可能在任务真正开跑前就点了进来，不能等 job 里再写这个标志
+        val shared = !hasInputPluginTransformers()
+        warmSharedWithPreview[conversationId] = shared
+        val job = appScope.launch {
+            val settings = runCatching { settingsStore.settingsFlow.first() }.getOrNull() ?: return@launch
+            val conversation = runCatching { getConversationFlow(conversationId).value }.getOrNull()
+                ?: return@launch
+            val signature = "${conversation.messageNodes.size}:${conversation.currentMessages.lastOrNull()?.id}"
+            // 空会话没有可预热的文本：启动时给「新聊天」白跑一次组装纯属浪费（实测 4.3s）
+            if (conversation.currentMessages.isEmpty()) return@launch
+            if (prewarmedTokenCounts[conversationId] == signature) return@launch
+            // 没有输入插件时，预热与预览跑的是**同一次**计算（同 key、同 labels）：
+            // 用户随后点开预览直接 join 这一份，而不是自己再算一遍。
+            Log.d(PERF_TAG, "prewarm start shared=$shared")
+            runCatching {
+                if (shared) {
+                    runSharedInspection(
+                        inspectionKey(conversationId, settings, conversation, labels),
+                        settings, conversation, labels,
+                    )
+                } else {
+                    // 有插件时预热不跑插件（不替用户触发副作用），只把无插件的那部分算热
+                    val preview = assemblePromptInspection(
+                        settings = settings,
+                        conversation = conversation,
+                        labels = labels,
+                        approximateTokens = true,
+                        includePluginTransformers = false,
+                    ) ?: return@launch
+                    preview.refineTokens()
+                }
+            }
+            prewarmedTokenCounts[conversationId] = signature
+        }
+        warmJobs[conversationId] = job
+    }
+
+    private fun hasInputPluginTransformers(): Boolean =
+        pluginManager.plugins.value.any { it.enabled && it.hasCapability(PluginCapability.PROMPT_TRANSFORM) }
+
+    private fun inspectionKey(
+        conversationId: Uuid,
+        settings: Settings,
+        conversation: Conversation,
+        labels: PromptInspectionLabels,
+    ): List<Any> = listOf(conversationId, labels)
+
+    /**
+     * 组装期间会读插件注册表与 MCP 状态，但它们**每次重发都是新对象**，放进共享 key 会让
+     * 预热与预览永远对不上（实测 join 落空、白跑两遍）。改为：key 只按稳定对象，算完再比对这些
+     * 易变状态的**引用**，变了就重算一次。
+     */
+    private inner class AssemblyState(
+        val settings: Any?,
+        val conversation: Any?,
+        val plugins: Any?,
+        val mcp: Any?,
+    ) {
+        fun matchesCurrent() =
+            settings === currentSettingsSnapshot &&
+                conversation === currentConversationSnapshot &&
+                plugins === pluginManager.plugins.value &&
+                mcp === mcpManager.syncingStatus.value
+    }
+
+    /** 结果回来时用于比对的"当前快照"（由调用方在计算前写入，避免把大对象塞进 key）。 */
+    @Volatile private var currentSettingsSnapshot: Any? = null
+    @Volatile private var currentConversationSnapshot: Any? = null
+
+    private fun currentAssemblyState(settings: Settings, conversation: Conversation): AssemblyState {
+        currentSettingsSnapshot = settings
+        currentConversationSnapshot = conversation
+        return AssemblyState(settings, conversation, pluginManager.plugins.value, mcpManager.syncingStatus.value)
+    }
+
+    /** 共享的精确计算：命中在飞任务；结果回来若易变状态已变，则再算一次（最多两次）。 */
+    private suspend fun runSharedInspection(
+        key: List<Any>,
+        settings: Settings,
+        conversation: Conversation,
+        labels: PromptInspectionLabels,
+    ): PromptInspection? {
+        repeat(2) { attempt ->
+            val state = currentAssemblyState(settings, conversation)
+            val result = inspectionSingleFlight.run(key) {
+                assemblePromptInspection(settings, conversation, labels, approximateTokens = false)
+            }
+            if (state.matchesCurrent() || attempt == 1) return result
+            Log.d(PERF_TAG, "inspection state changed during assembly, recomputing")
+        }
+        return null
+    }
+
+    private companion object {
+        const val PERF_TAG = "PromptInspectionPerf"
+
+        /** 预热不展示任何文案；空标签可避免 service 层依赖 UI 的本地化构建器。 */
+        val PREWARM_LABELS = PromptInspectionLabels(system = "", checkpoint = "", injection = "", history = "")
+    }
+
+    /** 极轻量的预览头信息：只读会话快照的条数，不触发任何组装/分词。 */
+    fun promptInspectMessageCount(conversationId: Uuid): Int? =
+        runCatching { getConversationFlow(conversationId).value.currentMessages.size }.getOrNull()
+
     /**
      * 组装一次「这次请求会发什么」的只读预览，按来源分段。
      *
-     * **不落库、不发请求、不改任何状态**。与真实发送共用 [buildInternalMessages] 与
+     * 宿主不保存对话、不发送模型请求；输入插件自身仍可能访问网络/存储。
+     * 与真实发送共用 [buildInternalMessages] 与
      * 同一个 transformer 链、同一套工具装配（[chatToolFactory]），因此预览与实际请求一致
      * ——避免预览自己另写一套组装而随时间漂移（`docs/peer-apps-benchmark.md` §6.7 ③）。
      *
@@ -1199,7 +1346,12 @@ class ChatService(
     suspend fun inspectPromptAssembly(
         conversationId: Uuid,
         labels: PromptInspectionLabels,
+        /** 非 null 时走渐进式：先回一版近似计数，再回精确版本（预览页首屏秒开用）。 */
+        onPartial: ((PromptInspection) -> Unit)? = null,
+        /** 仅用于诊断日志：哪个入口发起的组装。 */
+        caller: String = "unknown",
     ): PromptInspection? {
+        Log.d(PERF_TAG, "inspect request caller=$caller")
         // [并发] 快照必须在调用方上下文（Main）读：getConversationFlow 会 getOrCreateSession，
         // 其 computeIfAbsent 里 `_sessionsVersion.value++` 是非原子 RMW（与其它线程的自增并发
         // 可能丢版本号 ⇒ 会话列表不刷新）；该 session 的 scope/回调（appScope = Main）也按
@@ -1207,48 +1359,98 @@ class ChatService(
         val settings = settingsStore.settingsFlow.first()
         val conversation = getConversationFlow(conversationId).value
 
-        // 只把纯 CPU/IO 的重活搬到后台；读不到模型时返回 null（与旧行为一致）。
-        return withPromptInspectionDispatcher {
-            val baseAssistant = settings.getAssistantById(conversation.assistantId)
-                ?: settings.getCurrentAssistant()
-            val assistant = conversation.upstreamConfig?.applyTo(baseAssistant) ?: baseAssistant
-            // `return@withPromptInspectionDispatcher`：helper 的 block 不是 inline lambda，
-            // 不能用裸 `return null`。
-            val baseModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
-                ?: return@withPromptInspectionDispatcher null
-            val model = conversation.upstreamConfig?.applyToModel(baseModel) ?: baseModel
-
-            val memories = if (conversation.memoryDisabled) {
-                // 与实发一致：隐身对话不加载记忆（预览也要显示「没有记忆段」）
-                emptyList()
-            } else if (assistant.useGlobalMemory) {
-                memoryRepository.getGlobalMemories()
-            } else {
-                memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
-            }
-            val tools = chatToolFactory.createTools(
-                settings = settings,
-                assistant = assistant,
-                model = model,
-                workspaceCwd = conversation.workspaceCwd,
-                conversationId = conversation.id.toString(),
-                memoryDisabled = conversation.memoryDisabled,
-            )
-
-            inspectPrompt(
-                context = context,
-                settings = settings,
-                assistant = assistant,
-                model = model,
-                conversation = conversation,
-                memories = memories,
-                tools = tools,
-                // 与实发链同款装配(含插件段),预览与真实请求一致
-                inputTransformers = buildInputTransformerChain(),
-                labels = labels,
-            )
+        // 引用快照避免在 Main 对整段历史做深度 hash；只合并在飞任务，完成立即移除。
+        val key = inspectionKey(conversationId, settings, conversation, labels)
+        if (onPartial == null) {
+            return runSharedInspection(key, settings, conversation, labels)
         }
+        // 预热与预览兼容（无输入插件、且预热在飞）：直接 join，省掉第二次组装
+        if (warmSharedWithPreview[conversationId] == true && warmJobs[conversationId]?.isActive == true) {
+            Log.d(PERF_TAG, "joined warm task")
+            val joined = runSharedInspection(key, settings, conversation, labels)
+            Log.d(PERF_TAG, "joined warm task finished ok=${joined != null}")
+            if (joined != null) onPartial(joined)
+            return joined
+        }
+        // 不兼容时别让预热继续抢核：已填的缓存条目不会因取消丢失
+        warmJobs[conversationId]?.cancel()
+        Log.d(PERF_TAG, "join skipped shared=${warmSharedWithPreview[conversationId]} active=${warmJobs[conversationId]?.isActive}")
+        // 渐进式路径**不并入在飞任务**：每个调用方都要拿到自己的中间结果。
+        val fast = assemblePromptInspection(settings, conversation, labels, approximateTokens = true)
+            ?: return null
+        onPartial(fast)
+        // 回调在调用方上下文（Main）触发：VM 直接写 Compose 状态，不必自己切线程
+        val exact = withPromptInspectionDispatcher { fast.refineTokens() }
+        onPartial(exact)
+        return exact
     }
+
+    /** 预览的重活主体：助手/模型解析、记忆读取、工具装配、transformer 链与分段。 */
+    private suspend fun assemblePromptInspection(
+        settings: Settings,
+        conversation: Conversation,
+        labels: PromptInspectionLabels,
+        approximateTokens: Boolean,
+        includePluginTransformers: Boolean = true,
+    ): PromptInspection? = withPromptInspectionDispatcher {
+                val timing = app.androidrik.rikkahub.data.ai.PromptInspectionTiming()
+                val tokenStatsBefore = app.androidrik.common.tokenizer.TokenizerRegistry.cacheStats()
+                try {
+                    val baseAssistant = settings.getAssistantById(conversation.assistantId)
+                        ?: settings.getCurrentAssistant()
+                    val assistant = conversation.upstreamConfig?.applyTo(baseAssistant) ?: baseAssistant
+                    // `return@withPromptInspectionDispatcher`：helper 的 block 不是 inline lambda，
+                    // 不能用裸 `return null`。
+                    val baseModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+                        ?: return@withPromptInspectionDispatcher null
+                    val model = conversation.upstreamConfig?.applyToModel(baseModel) ?: baseModel
+
+                    val memories = if (conversation.memoryDisabled) {
+                        // 与实发一致：隐身对话不加载记忆（预览也要显示「没有记忆段」）
+                        emptyList()
+                    } else if (assistant.useGlobalMemory) {
+                        memoryRepository.getGlobalMemories()
+                    } else {
+                        memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
+                    }
+                    timing.mark("memories")
+                    val tools = chatToolFactory.createTools(
+                        settings = settings,
+                        assistant = assistant,
+                        model = model,
+                        workspaceCwd = conversation.workspaceCwd,
+                        conversationId = conversation.id.toString(),
+                        memoryDisabled = conversation.memoryDisabled,
+                    )
+
+                    timing.mark("tools")
+                    inspectPrompt(
+                        context = context,
+                        settings = settings,
+                        assistant = assistant,
+                        model = model,
+                        conversation = conversation,
+                        memories = memories,
+                        tools = tools,
+                        // 与实发链同款装配(含插件段),预览与真实请求一致
+                        inputTransformers = if (includePluginTransformers) {
+                            buildInputTransformerChain()
+                        } else {
+                            buildInputTransformerChainWithoutPlugins()
+                        },
+                        labels = labels,
+                        timing = timing,
+                        approximateTokens = approximateTokens,
+                    )
+                } finally {
+                    val after = app.androidrik.common.tokenizer.TokenizerRegistry.cacheStats()
+                    // 仅耗时/数量，不记录正文。全局缓存增量可能含同期其它请求，仅供诊断。
+                    Log.d(PERF_TAG, timing.summary() +
+                        " cacheHitsDelta=${after.hits - tokenStatsBefore.hits}" +
+                        " cacheMissesDelta=${after.misses - tokenStatsBefore.misses}" +
+                        " cacheEntries=${after.entries} cacheTextBytes=${after.retainedTextBytes}")
+                }
+            }
 
     // ---- 处理消息补全 ----
 

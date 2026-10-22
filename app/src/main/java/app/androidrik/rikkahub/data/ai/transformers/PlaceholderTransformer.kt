@@ -122,18 +122,23 @@ object PlaceholderTransformer : InputMessageTransformer, KoinComponent {
         messages: List<UIMessage>,
     ): List<UIMessage> {
         val settingsStore = get<SettingsStore>()
-        return messages.map {
-            it.copy(
-                parts = it.parts.map { part ->
-                    if (part is UIMessagePart.Text) {
-                        part.copy(
-                            text = replacePlaceholders(text = part.text, ctx = ctx, settingsStore = settingsStore)
-                        )
-                    } else {
+        return messages.map { message ->
+            var changed = false
+            val parts = message.parts.map { part ->
+                if (part !is UIMessagePart.Text) {
+                    part
+                } else {
+                    val replaced = replacePlaceholders(text = part.text, ctx = ctx, settingsStore = settingsStore)
+                    if (replaced === part.text) {
                         part
+                    } else {
+                        changed = true
+                        part.copy(text = replaced)
                     }
                 }
-            )
+            }
+            // 长会话里绝大多数文本没有占位符:不复制消息,避免整段历史的无谓分配
+            if (changed) message.copy(parts = parts) else message
         }
     }
 
@@ -142,6 +147,9 @@ object PlaceholderTransformer : InputMessageTransformer, KoinComponent {
         ctx: TransformerContext,
         settingsStore: SettingsStore
     ): String {
+        // 所有占位符都含 '{'。先做一次廉价扫描:没有花括号就直接返回原串(含 1MB 级长文本的会话
+        // 上这是本转换器的主要开销来源——每个 part 要扫 20 遍)。
+        if (text.indexOf('{') < 0) return text
         var result = text
 
         val ctx = PlaceholderCtx(
@@ -151,6 +159,8 @@ object PlaceholderTransformer : InputMessageTransformer, KoinComponent {
             assistant = ctx.assistant
         )
         defaultProvider.placeholders.forEach { (key, placeholderInfo) ->
+            // 只有文本真的含该 key 时才求值并替换:避免每个 part 都做 20 次全量扫描和字符串分配
+            if (!result.contains(key, ignoreCase = true)) return@forEach
             val value = placeholderInfo.resolver(ctx)
             result = result
                 .replace(oldValue = "{{$key}}", newValue = value, ignoreCase = true)

@@ -46,6 +46,7 @@ import app.androidrik.rikkahub.service.WebServerService
 import app.androidrik.rikkahub.service.KeepAliveService
 import app.androidrik.rikkahub.utils.CrashHandler
 import app.androidrik.rikkahub.utils.DatabaseUtil
+import app.androidrik.rikkahub.utils.TokenCountDiskCache
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.workspace.WorkspaceManager
 import org.koin.android.ext.android.get
@@ -106,6 +107,11 @@ class RikkaHubApp : Application() {
                     "in ${SystemClock.elapsedRealtime() - startedAt}ms",
             )
             TokenizerRegistry.lastError?.let { Log.e(TAG, "tokenizer install failed", it) }
+            // 装好词表后挂持久化计数缓存：上次启动算过的精确值直接复用（词表版本不符会自动丢弃）
+            if (ok) {
+                TokenCountDiskCache.attach(filesDir)
+                Log.i(TAG, "token count cache entries=${TokenCountDiskCache.size}")
+            }
         }
 
         // set cursor window size to 32MB

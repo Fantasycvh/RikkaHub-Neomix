@@ -1,6 +1,12 @@
 package app.androidrik.rikkahub.ui.pages.plugins
 
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import kotlinx.coroutines.CancellationException
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.plugin.api.PluginCapability
+import app.androidrik.plugin.manager.PluginInfo
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.plugin.js.JsPlugin
@@ -104,23 +111,7 @@ fun PluginDetailPage(pluginId: String) {
             }
 
             item("capabilities") {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(text = "能力声明", style = MaterialTheme.typography.titleSmall)
-                    if (plugin.capabilities.isEmpty()) {
-                        Text(
-                            text = "该插件未声明能力",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        plugin.capabilities.forEach { capability ->
-                            CapabilityRow(
-                                capability = capability,
-                                granted = info.hasCapability(capability),
-                            )
-                        }
-                    }
-                }
+                CapabilityPermissions(info = info, manager = manager)
             }
 
             item("settings") {
@@ -166,6 +157,7 @@ fun PluginDetailPage(pluginId: String) {
                             text = "作用范围: ${when (manifest.target.name) {
                                 "INPUT" -> "用户输入"
                                 "OUTPUT" -> "模型输出"
+                                "NONE" -> "仅工具"
                                 else -> "输入 + 输出"
                             }}",
                             style = MaterialTheme.typography.bodySmall,
@@ -184,6 +176,11 @@ fun PluginDetailPage(pluginId: String) {
                             }",
                             style = MaterialTheme.typography.bodySmall,
                         )
+                        if (manifest.storage) Text("隔离存储: 已声明（每插件 256 KiB / 128 项）", style = MaterialTheme.typography.bodySmall)
+                        manifest.tools.forEach { tool ->
+                            Text("工具: ${tool.name} — ${tool.description}", style = MaterialTheme.typography.bodySmall)
+                            Text("工具调用需逐次审批", style = MaterialTheme.typography.labelSmall)
+                        }
                         Text(
                             text = "源码预览",
                             style = MaterialTheme.typography.labelLarge,
@@ -260,21 +257,114 @@ private fun describeAction(action: RuleAction): String = when (action.type) {
 }
 
 @Composable
-private fun CapabilityRow(capability: PluginCapability, granted: Boolean) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+private fun CapabilityPermissions(info: PluginInfo, manager: PluginManager) {
+    val plugin = info.plugin
+    val appScope: AppScope = koinInject()
+    val toaster = LocalToaster.current
+    var saving by remember(plugin.id) { mutableStateOf(false) }
+    var pendingGrant by remember(plugin.id) { mutableStateOf<PluginCapability?>(null) }
+
+    fun update(capability: PluginCapability, approved: Boolean) {
+        if (saving) return
+        saving = true
+        // 应用作用域保证离开详情页也不会取消写盘;成功发布前保留旧开关状态。
+        appScope.launch {
+            try {
+                manager.setCapabilityApproved(plugin.id, capability, approved)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                toaster.show(message = "能力更新失败: ${e.message}", type = ToastType.Error)
+            } finally {
+                saving = false
+            }
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("能力授权", style = MaterialTheme.typography.titleSmall)
         Text(
-            text = capabilityLabel(capability),
+            "可随时撤销或重新授权，不影响插件启用状态。输入/输出和工具在下一次请求装配时生效，网络和存储在下一次调用时校验；已完成的改写和已发出的请求不会被撤回。",
             style = MaterialTheme.typography.bodySmall,
-            color = if (granted) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
-        Text(
-            text = if (granted) "已授权" else "未授权(插件不会获得该能力)",
-            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (plugin.capabilities.isEmpty()) {
+            Text("该插件未声明能力", style = MaterialTheme.typography.bodySmall)
+        }
+        plugin.capabilities.forEach { capability ->
+            val granted = info.hasCapability(capability)
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .toggleable(
+                        value = granted,
+                        enabled = !saving,
+                        role = Role.Switch,
+                        onValueChange = { approved ->
+                            if (approved) pendingGrant = capability else update(capability, false)
+                        },
+                    )
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(capabilityLabel(capability), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        capabilityDescription(capability),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        if (granted) "已授权" else "已撤销",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = granted, onCheckedChange = null, enabled = !saving)
+            }
+        }
+        if (plugin.capabilities.isNotEmpty() && info.grants.isEmpty()) {
+            Text(
+                "全部能力已撤销，插件不会获得任何已声明能力。重新启用插件不会恢复授权。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (saving) Text("正在保存授权…", style = MaterialTheme.typography.labelSmall)
     }
+
+    pendingGrant?.let { capability ->
+        AlertDialog(
+            onDismissRequest = { pendingGrant = null },
+            title = { Text("授权「${capabilityLabel(capability)}」？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("允许「${plugin.displayName}」${capabilityDescription(capability)}")
+                    if (capability == PluginCapability.NETWORK && plugin is JsPlugin) {
+                        Text("网络白名单: ${plugin.definition.manifest.networkHosts.joinToString()}")
+                    }
+                    if (!info.enabled) Text("插件当前已关闭，授权不会自动启用插件。")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingGrant = null
+                    update(capability, true)
+                }) { Text("授权") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingGrant = null }) { Text("取消") }
+            },
+        )
+    }
+}
+
+private fun capabilityDescription(capability: PluginCapability): String = when (capability) {
+    PluginCapability.NETWORK -> "通过宿主网关访问声明的网络域名"
+    PluginCapability.HISTORY_READ -> "读取会话历史"
+    PluginCapability.CONVERSATION_MUTATE -> "修改会话内容"
+    PluginCapability.TOOL_REGISTER -> "向模型提供插件工具"
+    PluginCapability.PROMPT_TRANSFORM -> "改写发送给模型的输入文本"
+    PluginCapability.OUTPUT_TRANSFORM -> "改写模型生成结束后的输出文本"
+    PluginCapability.STORAGE -> "使用插件本地存储"
 }

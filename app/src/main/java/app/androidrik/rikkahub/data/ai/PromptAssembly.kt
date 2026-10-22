@@ -301,19 +301,27 @@ internal fun buildInternalMessagesWithPlan(
     memoryDisabled: Boolean = false,
     /** 冻结的锚点 id 集合：来自 `Conversation.frozenAnchorIds`（null = 未冻结）。 */
     frozenAnchorIds: Set<String>? = null,
+    /** 仅用于诊断：把组装内部各阶段耗时记进预览的计时表。 */
+    timing: PromptInspectionTiming? = null,
+    /** 预览专用：并行预算好的逐条记忆成本。 */
+    precomputedMemoryEntryCosts: Map<String, Int>? = null,
 ): AssembledRequest {
     val windowMessages = buildSendWindowMessages(
         messages = messages,
         compressionWindow = compressionWindow,
         contextMessageLimit = assistant.contextMessageLimit,
     ).map { it.withoutUiNotices() }
+    timing?.mark("asm_window")
     // Capture query, time, tokenizer strategy, rendered texts and selection once for this request.
     val memoryPlan = buildMemoryInjectionPlan(
         memories = if (assistant.enableMemory && !memoryDisabled) memories else emptyList(),
         budgetTokens = settings.memoryInjectBudgetTokens,
         query = memoryQueryOf(windowMessages),
         frozenAnchorIds = frozenAnchorIds,
+        timing = timing,
+        precomputedEntryCosts = precomputedMemoryEntryCosts,
     )
+    timing?.mark("asm_memoryPlan")
     val baseSystem = buildSystemPromptText(
         assistant = assistant,
         settings = settings,
@@ -326,6 +334,7 @@ internal fun buildInternalMessagesWithPlan(
         frozenAnchorIds = frozenAnchorIds,
         memoryPlan = memoryPlan,
     )
+    timing?.mark("asm_systemBlocks")
     // 恢复提示追加在系统提示末尾：不写入对话历史（仅本次请求存在，随后消失）
     val system = if (recoveryHint.isNullOrBlank()) {
         baseSystem
@@ -354,6 +363,7 @@ internal fun buildInternalMessagesWithPlan(
             add(UIMessage.user(prompt = it).copy(isSynthetic = true))
         }
     }
+    timing?.mark("asm_tail")
     return AssembledRequest(assembledMessages, memoryPlan)
 }
 

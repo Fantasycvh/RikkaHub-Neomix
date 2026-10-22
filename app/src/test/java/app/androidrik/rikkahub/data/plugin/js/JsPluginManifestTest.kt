@@ -91,6 +91,42 @@ class JsPluginManifestTest {
     }
 
     @Test
+    fun `legacy target and capability defaults remain output only`() {
+        val manifest = JsPluginManifest.parse(source("""{"id":"legacy","name":"Legacy"}""")).getOrThrow().manifest
+        assertEquals(JsTarget.OUTPUT, manifest.target)
+        assertEquals(emptyList<JsToolDefinition>(), manifest.tools)
+        assertFalse(manifest.storage)
+        assertEquals(setOf(PluginCapability.OUTPUT_TRANSFORM), manifest.capabilities)
+    }
+
+    @Test
+    fun `tool only manifest has no transform hooks and derives explicit capabilities`() {
+        val manifest = JsPluginManifest.parse(source("""{
+            "id":"tools.only","name":"Tools","target":"none","storage":true,
+            "tools":[{"name":"lookup","description":"Look up a value"}]
+        }""")).getOrThrow().manifest
+        assertTrue(manifest.hooks.isEmpty())
+        assertEquals(setOf(PluginCapability.STORAGE, PluginCapability.TOOL_REGISTER), manifest.capabilities)
+        assertTrue(manifest.tools.single().validate().isEmpty())
+    }
+
+    @Test
+    fun `none requires tools even with storage and network`() {
+        assertTrue(JsPluginManifest("x", "x", target = JsTarget.NONE, storage = true,
+            networkHosts = listOf("example.com")).validate().isNotEmpty())
+    }
+
+    @Test
+    fun `tool count duplicates and invalid definitions are rejected`() {
+        val tool = JsToolDefinition("lookup", "Look up")
+        assertTrue(JsPluginManifest("x", "x", tools = List(17) { tool.copy(name = "tool_$it") }).validate().isNotEmpty())
+        assertTrue(JsPluginManifest("x", "x", tools = listOf(tool, tool)).validate().isNotEmpty())
+        assertTrue(JsPluginManifest("x", "x", tools = listOf(tool.copy(name = "Bad"))).validate().isNotEmpty())
+        assertTrue(JsPluginManifest("x", "x", tools = List(16) { tool.copy(name = "tool_$it") }).validate().isEmpty())
+        assertTrue(JsPluginManifest("x", "x", storage = true).capabilities.contains(PluginCapability.STORAGE))
+    }
+
+    @Test
     fun `oversized source is rejected`() {
         val huge = "x".repeat(JsPluginManifest.MAX_SOURCE_BYTES + 1)
         val result = JsPluginManifest.parse(

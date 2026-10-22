@@ -48,16 +48,17 @@ class ByteLevelBpe private constructor(
      */
     fun count(text: String): Int {
         if (text.isEmpty()) return 0
+        val cache = pieceCounts.get()
         var total = 0
         PRE_TOKEN_PATTERN.findAll(text).forEach { match ->
             val piece = match.value
-            val cached = pieceCounts[piece]
+            val cached = cache[piece]
             if (cached != null) {
                 total += cached
             } else {
                 val counted = encodePiece(piece).size
-                if (pieceCounts.size >= PIECE_CACHE_MAX_ENTRIES) pieceCounts.clear()
-                pieceCounts[piece] = counted
+                if (cache.size >= PIECE_CACHE_MAX_ENTRIES) cache.clear()
+                cache[piece] = counted
                 total += counted
             }
         }
@@ -95,8 +96,15 @@ class ByteLevelBpe private constructor(
     /** 词表大小（诊断用）。 */
     val vocabSize: Int get() = ranks.size
 
-    /** 片段级计数缓存（见 [count]）；`ConcurrentHashMap` 允许并发读写，清空策略容忍"偶尔重算"。 */
-    private val pieceCounts = java.util.concurrent.ConcurrentHashMap<String, Int>(1024)
+    /**
+     * 片段级计数缓存（见 [count]）：**每线程独立**。
+     *
+     * 早先是一张共享的 `ConcurrentHashMap`：单线程够用，但拼装预览把计数分摊到 6 个线程后，
+     * 每个片段都要抢同一张表的写锁、且"装满整表清空"会造成跨线程抖动——实测并发只跑到
+     * 串行的 2 倍。改成 ThreadLocal 后各线程互不干扰（缓存内容只是"片段→计数"的纯函数结果，
+     * 分片不改变任何数值）。
+     */
+    private val pieceCounts = ThreadLocal.withInitial { HashMap<String, Int>(1024) }
 
 
     /**

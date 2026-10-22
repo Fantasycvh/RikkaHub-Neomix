@@ -22,6 +22,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -133,6 +135,15 @@ fun PromptInspectPage(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     CircularProgressIndicator()
+                    // ③ 首屏骨架：不等组装/分词，先把已知的条数显示出来
+                    state.headerMessageCount?.let { count ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "已加载 $count 条消息，正在统计分段…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
 
                 inspection == null -> Column(
@@ -260,6 +271,14 @@ private fun SummaryCard(inspection: app.androidrik.rikkahub.data.ai.PromptInspec
                 label = stringResource(R.string.prompt_inspect_estimated_tokens),
                 value = "≈ ${inspection.totalTokens}",
             )
+            // 渐进式渲染：先出近似计数，精确 BPE 算完会自动刷新；标出来避免被当成精确值
+            if (inspection.segments.any { it.tokensApproximate }) {
+                Text(
+                    text = "正在精确计数…（当前为字符启发式估算）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             MetaRow(
                 label = stringResource(R.string.prompt_inspect_message_count_label),
                 value = stringResource(

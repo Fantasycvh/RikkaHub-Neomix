@@ -126,7 +126,12 @@ fun estimateTokenCount(messages: List<UIMessage>): Int {
  */
 fun estimateTokens(text: String): Int {
     if (text.isEmpty()) return 0
-    TokenizerRegistry.count(text)?.let { return it }
+    // 跨进程复用：同一段历史在多次启动之间几乎不变，冷启动直接命中上次的精确值
+    TokenCountDiskCache.get(text)?.let { return it }
+    TokenizerRegistry.count(text)?.let {
+        TokenCountDiskCache.put(text, it)
+        return it
+    }
     return heuristicTokenCount(text)
 }
 

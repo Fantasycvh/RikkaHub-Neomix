@@ -78,12 +78,17 @@ val appModule = module {
     }
 
     single {
+        app.androidrik.rikkahub.data.plugin.js.PluginKeyValueStore(context = get())
+    }
+
+    single {
         app.androidrik.rikkahub.data.plugin.js.JsPluginInstaller(
             context = get(),
             okHttpClient = get(),
             store = get(),
             manager = get(),
             gateway = get(),
+            keyValueStore = get(),
         )
     }
 

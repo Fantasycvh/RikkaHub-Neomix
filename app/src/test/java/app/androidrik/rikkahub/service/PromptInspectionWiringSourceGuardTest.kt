@@ -47,13 +47,25 @@ class PromptInspectionWiringSourceGuardTest {
             conversationSnapshotAt < dispatchAt,
         )
 
+        // 重活已抽到 assemblePromptInspection（它自身经 withPromptInspectionDispatcher 执行），
+        // 入口只负责快照 + 调度，所以这里钉入口调用了它，再单独校验重活确实在调度之后。
+        val assembleAt = body.indexOf("assemblePromptInspection(")
+        assertTrue("入口必须调用 assemblePromptInspection（重活主体）", assembleAt >= 0)
+        assertTrue(
+            "assemblePromptInspection 必须在快照之后调用",
+            assembleAt > settingsSnapshotAt && assembleAt > conversationSnapshotAt,
+        )
+
+        val assembler = indentedBlock(chatServiceSource(), "private suspend fun assemblePromptInspection(")
+        assertTrue(
+            "重活主体必须自查经 withPromptInspectionDispatcher 调度",
+            assembler.contains("withPromptInspectionDispatcher"),
+        )
+        val heavyDispatchAt = assembler.indexOf("withPromptInspectionDispatcher")
         listOf("inspectPrompt(", "memoryRepository.get", "chatToolFactory.createTools(").forEach { heavy ->
-            val heavyAt = body.indexOf(heavy)
-            assertTrue("入口里找不到重活调用：$heavy", heavyAt >= 0)
-            assertTrue(
-                "$heavy 必须在后台调度之后执行（否则仍在调用方/主线程上跑）",
-                heavyAt > dispatchAt,
-            )
+            val heavyAt = assembler.indexOf(heavy)
+            assertTrue("重活主体里找不到调用：$heavy", heavyAt >= 0)
+            assertTrue("$heavy 必须在后台调度之后执行", heavyAt > heavyDispatchAt)
         }
     }
 
