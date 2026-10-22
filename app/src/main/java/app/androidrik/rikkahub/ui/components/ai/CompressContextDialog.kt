@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -24,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
@@ -33,6 +37,9 @@ import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_KEEP_RECENT_MESSAGES_RANGE
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
 import app.androidrik.rikkahub.data.ai.compression.CompressPreset
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Minus
+import com.composables.icons.lucide.Plus
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
 
@@ -122,13 +129,38 @@ fun CompressContextDialog(
                         range = AUTO_COMPRESS_RETAIN_PERCENT_RANGE,
                         onValueChange = { selectedRetainPercent = it },
                     )
-                    // 可选「保留最近 N 条」下限：token 预算太小、整段发不出去时，多留几条原文
-                    NumericDialogField(
-                        label = stringResource(R.string.chat_page_compress_keep_recent_count),
-                        value = keepRecentMessages,
-                        range = COMPRESS_KEEP_RECENT_MESSAGES_RANGE,
-                        onValueChange = { keepRecentMessages = it },
-                    )
+                    // 可选「保留最近 N 条」下限：token 预算太小、整段发不出去时，多留几条原文。
+                    // 用步进器而非数字输入框（上游 71dd98f88）：不弹键盘、不会出现「负数显示与实际值不一致」
+                    // 「清空后沿用旧值」「输入小数被忽略」这类输入框行为差异。
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.chat_page_compress_keep_recent_count),
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        FilledTonalIconButton(
+                            onClick = { keepRecentMessages-- },
+                            enabled = keepRecentMessages > COMPRESS_KEEP_RECENT_MESSAGES_RANGE.first,
+                        ) {
+                            Icon(Lucide.Minus, contentDescription = "Decrease")
+                        }
+                        Text(
+                            text = keepRecentMessages.toString(),
+                            style = MaterialTheme.typography.titleMediumEmphasized,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.widthIn(min = 40.dp),
+                        )
+                        FilledTonalIconButton(
+                            onClick = { keepRecentMessages++ },
+                            enabled = keepRecentMessages < COMPRESS_KEEP_RECENT_MESSAGES_RANGE.last,
+                        ) {
+                            Icon(Lucide.Plus, contentDescription = "Increase")
+                        }
+                    }
                     Text(
                         text = stringResource(R.string.chat_page_compress_keep_recent_count_desc),
                         style = MaterialTheme.typography.bodySmall,
