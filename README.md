@@ -195,10 +195,12 @@
 
 环境要求：
 
-- **JDK 21**（构建验证版本；`sourceCompatibility` / `jvmTarget` 为 **17**）
-- **AGP 9.3.1** / **Gradle 9.5**
-- Android SDK（release 走 R8 混淆，需签名）
-- `web` 模块在 `preBuild` 阶段构建 `web-ui/`，需要 Node + pnpm
+- **JDK 17+**（本地验证 **21**；CI 用 17。`sourceCompatibility` / `jvmTarget` 为 **17**）
+- **AGP 9.3.1** / **Gradle 9.5**（wrapper 已入库，`gradlew` 自带）
+- **Android SDK Platform 37** + **Build-Tools 37.0.0**（`compileSdk`/`targetSdk` 均为 37；平台 37 需在 `sdkmanager` 里勾选，可能与稳定通道不同步）
+- **Android NDK + CMake 3.22.1**（`workspace` 模块用 CMake 编 `termux_pty` / `workspace` 原生库；NDK 未指定版本，用 AGP 默认版本即可）
+- Android SDK（release 走 R8 混淆，**必须配签名**，见步骤 1）
+- `web` 模块在 `preBuild` 阶段构建 `web-ui/`，需要 **Node 22** + **pnpm**（CI 用 22）
 
 步骤：
 
@@ -210,18 +212,32 @@
 1. `local.properties`（**仓库根目录**，不入版本控制）：
    ```properties
    sdk.dir=<Android SDK 路径>
-   # release 签名（可选，不配则 release 不签名）
+   # 仅 assembleRelease 需要（assembleDebug 不需要）：
+   #   不配会直接失败:Keystore file not set for signing config release
    storeFile=<keystore 路径>
    storePassword=***
    keyAlias=***
    keyPassword=***
    ```
-2. `app/google-services.json`（**占位即可**，package 需匹配 `app.androidrik.rikkahub`；debug 变体需额外 `.debug` client）
-   —— 缺失时 release 可编译，但运行时 Firebase 初始化会崩
+   没有 keystore 就先自签一个（自签包**无法覆盖安装**官方签名版本，需先卸载、会丢本地数据）：
+   ```bash
+   keytool -genkeypair -v -keystore neomix-release.jks -alias neomix \
+     -keyalg RSA -keysize 2048 -validity 10000 \
+     -storepass <密码> -keypass <密码> -dname "CN=Neomix"
+   ```
+2. `app/google-services.json`（**必需**，仓库里没有、已 gitignore）：
+   ```bash
+   cp app/google-services.example.json app/google-services.json
+   ```
+   —— **缺失会让构建直接失败**（`processDebug/ReleaseGoogleServices` 报 `File google-services.json is missing`，不是"只是运行时崩"；
+   只有真实 Crashlytics/Analytics 才需要替换成自己的 Firebase 配置）。仓库自带的示例是占位值，package 覆盖 `app.androidrik.rikkahub`
+   与 `app.androidrik.rikkahub.debug` 两个变体；新增变体（如自建 `applicationIdSuffix`）需要再加一个同 package 的 client，否则同样构建失败。
 3. Debug：`bash scripts/build.sh :app:assembleDebug`；Release：`bash scripts/build.sh release`
 4. 产物：`app/build/outputs/apk/release/app-{arm64-v8a,universal,x86_64}-release.apk`（本项目只发 arm64-v8a）
 5. 测试：`bash scripts/build.sh :app:testDebugUnitTest`
 
+> `scripts/build.sh` 会在 `app/google-services.json` 缺失时自动从示例复制一份（省掉手抄，含义同步骤 2）。
+> CI（`.github/workflows/daily-build.yml`）目前**只能手动触发**：签名与 `GOOGLE_SERVICES_JSON` 两个 repo secrets 尚未配置。
 > 只想快速验证编译：`./gradlew :app:compileDebugKotlin -x :web:buildWebUi -q`（跳过 web-ui 构建）。
 > Gradle wrapper 下载可能超时，可用本地缓存 `~/.gradle/wrapper/dists/gradle-9.5.0-all/.../gradle-9.5.0/bin/gradle`。
 
