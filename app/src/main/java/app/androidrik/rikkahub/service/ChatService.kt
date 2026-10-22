@@ -2791,10 +2791,7 @@ class ChatService(
         // 标题避让：取该助手下已有会话的标题集合，让分叉标题拿到第一个空出的序号。
         // 注意作用域是**助手**而非「所有会话」——分叉不改变 assistantId，同助手内唯一即可
         // （与上游 458c16df 同口径）。
-        val existingTitles = conversationRepo
-            .getConversationsOfAssistant(currentConversation.assistantId)
-            .first()
-            .mapTo(mutableSetOf()) { it.title }
+        val existingTitles = conversationRepo.getTitlesOfAssistant(currentConversation.assistantId)
         val forkConversation = createForkConversation(currentConversation, copiedNodes, existingTitles)
 
         saveConversation(forkConversation.id, forkConversation)

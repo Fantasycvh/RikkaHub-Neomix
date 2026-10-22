@@ -64,6 +64,10 @@ interface ConversationDAO {
     @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId ORDER BY $CONVERSATION_ORDER_BY")
     fun getConversationsOfAssistant(assistantId: String): Flow<List<ConversationEntity>>
 
+    /** 只取标题：分叉会话时的序号避让不需要把整份会话（含节点 JSON）读出来。 */
+    @Query("SELECT title FROM conversationentity WHERE assistant_id = :assistantId")
+    suspend fun getTitlesOfAssistant(assistantId: String): List<String>
+
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, last_message_at as lastMessageAt FROM conversationentity WHERE assistant_id = :assistantId ORDER BY $CONVERSATION_ORDER_BY")
     fun getConversationsOfAssistantPaging(assistantId: String): PagingSource<Int, LightConversationEntity>
 

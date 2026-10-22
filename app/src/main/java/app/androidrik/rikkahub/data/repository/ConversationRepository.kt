@@ -128,6 +128,10 @@ class ConversationRepository(
         }
     }
 
+    /** 某助手下的会话标题集合（分叉序号避让用；只查标题列，不加载节点）。 */
+    suspend fun getTitlesOfAssistant(assistantId: Uuid): Set<String> =
+        conversationDAO.getTitlesOfAssistant(assistantId.toString()).toSet()
+
     fun getConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> {
         return conversationDAO
             .getConversationsOfAssistant(assistantId.toString())
