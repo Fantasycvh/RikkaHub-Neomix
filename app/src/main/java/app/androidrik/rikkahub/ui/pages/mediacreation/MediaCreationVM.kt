@@ -184,6 +184,11 @@ class MediaCreationVM(
 
     fun resolve(path: String): File = repository.resolve(path)
 
+    /** 顶栏点标题重命名（上游 `43f1a5df2`）。 */
+    fun rename(title: String) {
+        viewModelScope.launch { repository.renameSession(sessionId, title.trim()) }
+    }
+
     private suspend fun load() {
         val session = repository.getSession(sessionId) ?: return
         val providers = settingsStore.settingsFlow.first { !it.init }.mediaGenerationProviders
