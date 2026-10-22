@@ -127,6 +127,51 @@ class JsPluginManifestTest {
     }
 
     @Test
+    fun `volatile patterns default empty for legacy manifests`() {
+        val manifest = JsPluginManifest.parse(source("""{"id":"legacy","name":"Legacy"}""")).getOrThrow().manifest
+        assertTrue(manifest.volatilePatterns.isEmpty())
+    }
+
+    @Test
+    fun `valid volatile patterns parse without executing plugin source`() {
+        val definition = JsPluginManifest.parse(source("""{
+            "id":"volatile","name":"Volatile","target":"input",
+            "volatilePatterns":["timestamp=\\d+","(?i)nonce=[a-z]+"]
+        }""", body = "throw new Error('must not execute at parse');")).getOrThrow()
+        assertEquals(listOf("timestamp=\\d+", "(?i)nonce=[a-z]+"), definition.manifest.volatilePatterns)
+        assertEquals(setOf(PluginCapability.PROMPT_TRANSFORM), definition.manifest.capabilities)
+    }
+
+    @Test
+    fun `invalid volatile regex rejects parse with field index and pattern`() {
+        val result = JsPluginManifest.parse(source("""{
+            "id":"volatile","name":"Volatile","target":"input",
+            "volatilePatterns":["valid", "["]
+        }"""))
+        assertTrue(result.isFailure)
+        val message = result.exceptionOrNull()?.message.orEmpty()
+        assertTrue(message.contains("volatilePatterns[1]"))
+        assertTrue(message.contains("invalid regex '['"))
+    }
+
+    @Test
+    fun `validation reports each invalid volatile regex even for output target`() {
+        val errors = JsPluginManifest("volatile", "Volatile", volatilePatterns = listOf("[", "(")).validate()
+        assertEquals(2, errors.size)
+        assertTrue(errors[0].contains("volatilePatterns[0]"))
+        assertTrue(errors[1].contains("volatilePatterns[1]"))
+    }
+
+    @Test
+    fun `volatile patterns must be a string list`() {
+        listOf("null", "42", "[null]", "[{}]").forEach { patterns ->
+            assertTrue(JsPluginManifest.parse(source("""{
+                "id":"volatile","name":"Volatile","volatilePatterns":$patterns
+            }""")).isFailure)
+        }
+    }
+
+    @Test
     fun `oversized source is rejected`() {
         val huge = "x".repeat(JsPluginManifest.MAX_SOURCE_BYTES + 1)
         val result = JsPluginManifest.parse(

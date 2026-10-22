@@ -18,15 +18,18 @@ import kotlinx.coroutines.withContext
  * 并行度取「可用核数」与 [MAX_PARALLELISM] 的较小值：再多只会增加缓存争用和发热，
  * 对总时长没有帮助。文本数少于 2 时直接串行，避免起协程的开销超过收益。
  */
-suspend fun countTokensInParallel(texts: List<String>): List<Int> {
-    if (texts.size < 2) return texts.map { estimateTokens(it) }
+suspend fun countTokensInParallel(
+    texts: List<String>,
+    counter: (String) -> Int = ::estimateTokens,
+): List<Int> {
+    if (texts.size < 2) return texts.map(counter)
     return withContext(Dispatchers.Default) {
         val workers = minOf(
             Runtime.getRuntime().availableProcessors().coerceAtLeast(1),
             MAX_PARALLELISM,
             texts.size,
         )
-        if (workers < 2) return@withContext texts.map { estimateTokens(it) }
+        if (workers < 2) return@withContext texts.map(counter)
 
         val results = IntArray(texts.size)
         coroutineScope {
@@ -35,7 +38,7 @@ suspend fun countTokensInParallel(texts: List<String>): List<Int> {
                 async {
                     var index = worker
                     while (index < texts.size) {
-                        results[index] = estimateTokens(texts[index])
+                        results[index] = counter(texts[index])
                         index += workers
                     }
                 }

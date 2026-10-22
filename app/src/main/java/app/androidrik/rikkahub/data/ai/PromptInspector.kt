@@ -16,14 +16,15 @@ import app.androidrik.rikkahub.data.ai.transformers.collectInjections
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.PromptInjection
-import app.androidrik.rikkahub.data.ai.transformers.transforms
+import app.androidrik.rikkahub.data.ai.transformers.transformsCollectingVolatileSpans
+import app.androidrik.rikkahub.utils.VolatileTokenCounter
+import app.androidrik.rikkahub.utils.partVolatileRanges
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.CardSlot
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.utils.JsonInstant
-import app.androidrik.rikkahub.utils.conversationTokenTexts
 import app.androidrik.rikkahub.utils.countTokensInParallel
 import app.androidrik.rikkahub.utils.estimateTokens
 import app.androidrik.rikkahub.utils.heuristicTokenCount
@@ -186,6 +187,8 @@ data class PromptSegment(
 "` 拼起来的；要"白拿命中"就必须按同一批字符串去计数。
      */
     val countingParts: List<String> = emptyList(),
+    /** Per-part UTF-16 volatile ranges; only used for exact boundary-aware counting. */
+    val countingVolatileSpans: List<List<IntRange>> = emptyList(),
 )
 
 /** 该段在**请求体**里的落点（决定它是否属于对话消息序列）。 */
@@ -334,7 +337,7 @@ suspend fun inspectPrompt(
 
     // 与真实请求同一个 transformer 链。processingStatus 传一次性 StateFlow：
     // 默认参数即可满足 transformer 的写入（如 OcrTransformer），预览不展示进度。
-    val transformed = internalMessages.transforms(
+    val transformResult = internalMessages.transformsCollectingVolatileSpans(
         transformers = inputTransformers,
         context = context,
         model = model,
@@ -348,26 +351,45 @@ suspend fun inspectPrompt(
             { index, name, nanos -> recorder.record("transformer_${index}_$name", nanos) }
         },
     )
+    val transformed = transformResult.messages
+    val annotations = mutableMapOf<String, List<IntRange>>()
+    val partAnnotations = transformed.mapIndexed { messageIndex, message ->
+        var offset = 0
+        message.parts.filterIsInstance<UIMessagePart.Text>().map { part ->
+            val ranges = partVolatileRanges(transformResult.volatileSpans[messageIndex], offset, part.text.length)
+            offset += part.text.length + 1
+            if (ranges.isNotEmpty()) annotations[part.text] = annotations[part.text].orEmpty() + ranges
+            ranges
+        }
+    }
+    val counter = VolatileTokenCounter(annotations)
     timing?.mark("transforms")
 
     // 逐段计数是首次打开的大头(长会话实测 12.7s,约占 70%)。这里先按**与下面分段完全相同的
     // 文本单元**并行算一遍,把 tokenizer 缓存填热;随后的逐段 estimateTokens 全部命中,
     // 数值口径与串行完全一致(同一个函数),只是把 CPU 分摊到多核。
     val projectionTexts = buildList {
-        addAll(conversationTokenTexts(transformed))
+        transformed.forEach { message ->
+            message.parts.filterIsInstance<UIMessagePart.Text>().forEach { add(it.text) }
+            message.parts.filterIsInstance<UIMessagePart.Tool>().filter { it.isExecuted }.forEach { tool ->
+                add(tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text })
+            }
+        }
         injections.forEach { add(it.content) }
     }
     if (!approximateTokens) {
-        countTokensInParallel(projectionTexts.distinct())
+        countTokensInParallel(projectionTexts.distinct(), counter::count)
         timing?.mark("tokenPrefetch")
     }
     android.util.Log.d(
         "PromptInspectionPerf",
-        "prefetch texts=${projectionTexts.size} distinct=${projectionTexts.distinct().size} " +
-            "chars=${projectionTexts.sumOf { it.length }} maxChars=${projectionTexts.maxOfOrNull { it.length } ?: 0}",
+        "prefetch annotatedTexts=${annotations.size} spans=${annotations.values.sumOf { it.size }} " +
+            "texts=${projectionTexts.size} distinct=${projectionTexts.distinct().size} " +
+            "chars=${projectionTexts.sumOf { it.length }} maxChars=${projectionTexts.maxOfOrNull { it.length } ?: 0} " +
+            "disk=${app.androidrik.rikkahub.utils.TokenCountDiskCache.stats()}",
     )
 
-    val segments = transformed.flatMap { message ->
+    val segments = transformed.flatMapIndexed { messageIndex, message ->
         val kind = message.segmentKind()
         val textParts = message.parts.filterIsInstance<UIMessagePart.Text>().map { it.text }
         val content = textParts.joinToString("\n")
@@ -403,12 +425,13 @@ suspend fun inspectPrompt(
                     // 渐进式渲染首屏：长文本先用字符启发式估个数量级，精确值随后由 refineTokens() 覆盖
                     textParts.sumOf { heuristicTokenCount(it) }
                 } else {
-                    textParts.sumOf { estimateTokens(it) }
+                    textParts.sumOf { counter.count(it) }
                 },
                 tokensApproximate = approximateTokens && kind != PromptSegmentKind.INJECTION &&
                     !(kind == PromptSegmentKind.MEMORY_TAIL && content == assembly.memoryPlan.dataText),
                 countingText = content,
                 countingParts = textParts,
+                countingVolatileSpans = partAnnotations[messageIndex],
             )
             // Tier 4：合成注入消息是多条 `joinToString("\n")` 的合并体，按贡献者 id 拆回逐条，
             // 使预览能归因到具体条目（否则三条世界书条目表现为一段文本，无从跳转）。
@@ -502,15 +525,26 @@ suspend fun inspectPrompt(
 suspend fun PromptInspection.refineTokens(): PromptInspection {
     val approximate = segments.filter { it.tokensApproximate }
     if (approximate.isEmpty()) return this
-    countTokensInParallel(approximate.flatMap { it.countingParts.ifEmpty { listOf(it.countingText ?: it.content) } }.distinct())
+    val annotations = mutableMapOf<String, List<IntRange>>()
+    approximate.forEach { segment ->
+        segment.countingParts.forEachIndexed { index, text ->
+            val ranges = segment.countingVolatileSpans.getOrElse(index) { emptyList() }
+            if (ranges.isNotEmpty()) annotations[text] = annotations[text].orEmpty() + ranges
+        }
+    }
+    val counter = VolatileTokenCounter(annotations)
+    countTokensInParallel(
+        approximate.flatMap { it.countingParts.ifEmpty { listOf(it.countingText ?: it.content) } }.distinct(),
+        counter::count,
+    )
     val refined = segments.map { segment ->
         if (!segment.tokensApproximate) {
             segment
         } else {
             segment.copy(
                 tokens = segment.countingParts.takeIf { it.isNotEmpty() }
-                    ?.sumOf { estimateTokens(it) }
-                    ?: estimateTokens(segment.countingText ?: segment.content),
+                    ?.sumOf { counter.count(it) }
+                    ?: counter.count(segment.countingText ?: segment.content),
                 tokensApproximate = false,
             )
         }

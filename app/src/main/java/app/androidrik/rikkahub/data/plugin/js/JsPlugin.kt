@@ -47,6 +47,13 @@ class JsPlugin(
     @Volatile
     private var runtime: JsPluginRuntime? = null
     private val runtimeLock = Any()
+    private val volatilePatterns = JsPluginVolatilePatterns(definition.manifest)
+
+    override fun volatileSpans(
+        ctx: TransformerContext,
+        original: List<UIMessage>,
+        transformed: List<UIMessage>,
+    ): List<List<IntRange>>? = volatilePatterns.spans(transformed)
 
     override suspend fun transform(
         ctx: TransformerContext,

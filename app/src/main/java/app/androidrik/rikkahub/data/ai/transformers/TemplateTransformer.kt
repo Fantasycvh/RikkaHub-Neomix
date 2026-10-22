@@ -19,6 +19,18 @@ class TemplateTransformer(
     private val engine: PebbleEngine,
     private val settingsStore: SettingsStore
 ) : InputMessageTransformer {
+    override fun volatileSpans(
+        ctx: TransformerContext,
+        original: List<UIMessage>,
+        transformed: List<UIMessage>,
+    ): List<List<IntRange>> {
+        val before = original.associateBy { it.id }
+        return transformed.map { output ->
+            val input = before[output.id] ?: return@map emptyList()
+            wrapperOutputRanges(input.countingBody(), output.countingBody())
+        }
+    }
+
     override suspend fun transform(
         ctx: TransformerContext,
         messages: List<UIMessage>,

@@ -59,6 +59,8 @@ class JsPluginInstaller(
         definition: JsPluginDefinition,
         approvedCapabilities: Set<PluginCapability>,
     ): Result<Unit> = runCatching {
+        val errors = definition.manifest.validate()
+        require(errors.isEmpty()) { errors.joinToString("; ") }
         val declared = definition.manifest.capabilities
         // 变换/工具能力是插件的存在意义,必须批准;NETWORK/STORAGE 是可选能力,
         // 用户可以不勾选安装(此时 rikka.http 在运行期被调用点校验拒绝)。

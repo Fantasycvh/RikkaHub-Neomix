@@ -33,6 +33,12 @@ data class JsPluginManifest(
     val storage: Boolean = false,
     /** Declarative tools are dispatched through onTool({ name, arguments, ctx }). */
     val tools: List<JsToolDefinition> = emptyList(),
+    /**
+     * Optional Kotlin/JVM regexes marking volatile input-transform output text (not JS /pattern/ flags).
+     * Matches use UTF-16 offsets in each message's Text parts joined with '\n'.
+     * These are optimization hints only: exact token counting never relies on their correctness.
+     */
+    val volatilePatterns: List<String> = emptyList(),
 ) {
     val hooks: Set<JsHook> get() = target.hooks
 
@@ -60,6 +66,13 @@ data class JsPluginManifest(
         if (tools.map { it.name }.distinct().size != tools.size) add("tools name 不能重复")
         tools.forEachIndexed { index, tool ->
             tool.validate().forEach { add("tools[$index]: $it") }
+        }
+        volatilePatterns.forEachIndexed { index, pattern ->
+            try {
+                Regex(pattern)
+            } catch (error: IllegalArgumentException) {
+                add("volatilePatterns[$index] invalid regex '$pattern': ${error.message}")
+            }
         }
         networkHosts.forEach { host ->
             if (!HOST_REGEX.matches(host)) {
