@@ -62,7 +62,7 @@
 |---|---|
 | 📚 **RAG 知识库** | 跨库向量检索工具 `search_knowledge_base`（per-KB 嵌入模型、导入即解析入库） |
 | 🎭 **SillyTavern 深化** | 官方语义的世界书（多源扫描 / token 预算 / 次要关键词）、ST 预设导入、角色卡 V1 兼容、注入位置批量迁移（缓存友好）、世界书种子三重迁移 |
-| 🧬 **三类记忆（画像 / 话题 / 事务）** | 记忆按 `PROFILE` / `TOPIC` / `TASK` 分型：画像与话题按打分注入，事务有 open / done / dropped 生命周期；整理器按类型校准并支持 `complete` / `drop` 提案，记忆页可按类型筛选、查看容量与恢复元数据；助手级「整理时可调整类型」默认关，开启后仅凭新轮次用户证据改类，未完成事务仍不可改 |
+| 🧬 **三类记忆（画像 / 话题 / 事务）** | **借鉴**业界「按用途给记忆分型」的思路（Claude 式文件记忆的分层做法；本仓不采用其文件形态，只借「按用途分三类」这个维度），把它作为记录上的第二维度加在现有单表与四层注入框架上：`PROFILE` / `TOPIC` / `TASK` 分型，画像与话题按打分注入，事务有 open / done / dropped 生命周期；整理器按类型校准并支持 `complete` / `drop` 提案，记忆页可按类型筛选、查看容量与恢复元数据；助手级「整理时可调整类型」默认关，开启后仅凭新轮次用户证据改类，未完成事务仍不可改 |
 
 **网络与提供商**
 
@@ -161,6 +161,8 @@
 
 **仅作设计参考、未采用其实现细节的**：`opencode` / `codex` / `Cherry Studio` —— 子代理与独立上下文设计稿只借其**思路**，
 其实现细节本仓**未核实、也未抄**（见 [`docs/design/design-subagent-context.md`](docs/design/design-subagent-context.md)）。
+**Claude 式文件记忆（Anthropic）** 同样是只借思路的一类：三类记忆只借「按用途分型」这个**维度**，
+不借其文件形态（设计口径见 [`docs/design/design-memory-kinds.md`](docs/design/design-memory-kinds.md) §0.3）。
 
 > **备注**：`SoLab` 的源码在 **MT 论坛**开源（上表已给帖链接），**没有 GitHub 仓库**，故不伪造 GitHub 链接。
 > 若作者愿意提供正式仓库地址，欢迎提 issue 或 PR 补上。
