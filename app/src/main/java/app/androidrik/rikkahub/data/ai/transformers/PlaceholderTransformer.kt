@@ -16,6 +16,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.temporal.Temporal
@@ -62,6 +63,12 @@ object DefaultPlaceholderProvider : PlaceholderProvider {
             LocalDate.now().toDateString()
         }
 
+        // `{{cur_datetime}}`：日期 + 时间。此前内置系统提示就写着它，但表里没有这个键，
+        // 于是原样发给模型（"Time: {{cur_datetime}}"）。补上这个 key 让既有提示词真正生效。
+        placeholder("cur_datetime", { Text(stringResource(R.string.placeholder_current_datetime)) }) {
+            LocalDateTime.now().toDateTimeString()
+        }
+
         placeholder("model_id", { Text(stringResource(R.string.placeholder_model_id)) }) {
             it.model.modelId
         }
@@ -105,6 +112,11 @@ object DefaultPlaceholderProvider : PlaceholderProvider {
 
     private fun Temporal.toDateString() = DateTimeFormatter
         .ofLocalizedDate(FormatStyle.MEDIUM)
+        .withLocale(Locale.getDefault())
+        .format(this)
+
+    private fun LocalDateTime.toDateTimeString() = DateTimeFormatter
+        .ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
         .withLocale(Locale.getDefault())
         .format(this)
 
