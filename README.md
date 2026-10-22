@@ -11,7 +11,7 @@
 > 本项目由个人维护，代理、S3、MLTS等部分功能未经测试，**不承诺及时响应**。AGPL-3.0 许可，保留上游 `LICENSE` 与出处。
 > **本仓有意不接 issue**，反馈请走 [💬 Discussions](https://github.com/Fantasycvh/RikkaHub-Neomix/discussions)（详见下方「与上游的关系 → 反馈渠道」）。
 > 应用显示名 **Neomix**（仓库名 `RikkaHub-Neomix`），包名 `app.androidrik.rikkahub`。
-> **发布**：正式版 **`v1.0.27`**（`1.0.27 (294)`）；预发布 **`1.0.28-beta.7`**（`1.0.28-beta.7 (309)`，2026-10-22，**插件系统标注为实验性**）。**仅 tag，无预编译资产**：本仓不发预编译包，请按下方「构建」自行编译。
+> **发布**：正式版 **`v1.0.27`**（`1.0.27 (294)`）；预发布 **`1.0.28-beta.7`**（`1.0.28-beta.7 (309)`，2026-10-22，**插件系统标注为实验性**）。**自本版起随 release 提供预编译 APK**（仅 arm64-v8a，见下方「下载与安装」）；更早的 `1.0.28-beta.1`…`beta.6` 与 `v1.0.27` 仅 tag、无资产。
 > **tag 前缀**：`v1.0.0`–`v1.0.27` 带 `v`，**自 `1.0.28-beta.1` 起不再带 `v`**。
 
 ## 📌 与上游的关系
@@ -22,7 +22,7 @@
 - **发布前重写**：本项目在私有仓迭代，公开前对**包名**与**提交身份**做了重写，因此历史短哈希与私有仓不同——
   文档中出现的旧短哈希无法在本仓定位，请用提交信息关键词检索（见 [`docs/README.md`](docs/README.md)）。
 - **不回推上游**：上游明确不接受 PR，故本项目改动不回推。
-- **本仓不提供预编译包**：请自行构建（见下）；CI 自动发版已禁用。
+- **预编译包**：**自 `1.0.28-beta.7` 起**随 release 提供 arm64-v8a APK（见下方「下载与安装」与 [Releases](https://github.com/Fantasycvh/RikkaHub-Neomix/releases)）；更早版本只有 tag，需自行构建。签名为自签密钥，**换密钥会导致无法覆盖升级**。
 - **反馈渠道**：本仓**有意不接 issue**（GitHub 里 issue 功能是关的）。使用问题、功能想法、以及「上游是否也有该问题」的确认，请到
   [💬 Discussions](https://github.com/Fantasycvh/RikkaHub-Neomix/discussions) 讨论。
   **属于上游 RikkaHub 本身的 bug / 功能，请提到 [上游仓库](https://github.com/rikkahub/rikkahub/issues)**——本项目是非官方 fork，与上游无从属关系，上游也不处理本仓的问题。
@@ -221,6 +221,22 @@ arm64 原生库合计约 **62 MB**（未压缩），占 APK 的大头；beta.7 �
 - icu 的 **SONAME 必须是 `libicuuc78.so`**（不带 `.78`）：AGP 的 jniLibs 不接受版本化文件名，重编时用 `patchelf --replace-needed libicuuc.so.78 libicuuc78.so` 改写（见 `tools/tex-poc/README.md`）。
 - 这些库在构建中**不需要你重编**：仓库已带产物，`assembleRelease` 只会打包。仅当你改包名、换 NDK、或要升级 Tectonic/MuPDF 时才需要按对应源码目录重编。
 - 许可证各自沿上游：**MuPDF 为 AGPL-3.0（或商业授权）**、proot 为 GPLv2+、ICU/Graphite2 为各自开源许可；本仓整体 AGPL-3.0，随包分发时请自行核对。
+
+## 📦 下载与安装（预编译 APK）
+
+自 **`1.0.28-beta.7`** 起，[Releases](https://github.com/Fantasycvh/RikkaHub-Neomix/releases) 附带 arm64-v8a APK（**只有这一个架构**）；此前的 `v1.0.27` 与 `1.0.28-beta.1`…`beta.6` 仅 tag、无资产。
+
+| 项 | 值 |
+|---|---|
+| 文件 | `Neomix-<versionName>-arm64-v8a.apk`（如 `Neomix-1.0.28-beta.7-arm64-v8a.apk`） |
+| 架构 | **仅 arm64-v8a**（真机；x86_64 模拟器请自编） |
+| 签名 | 自签密钥 `CN=neomix`，证书 SHA-256 `D1:5B:69:3A:20:10:B2:EE:5F:78:F3:A6:EE:D0:A1:57:E0:74:B4:B2:0F:47:6E:C3:1F:5C:91:74:D9:4E:EC:78` |
+| 安装 | `adb install -r Neomix-<version>.apk`；或手机端打开安装（需允许「安装未知来源」） |
+| 校验 | `sha256sum <apk>`（Windows：`certutil -hashfile <apk> SHA256`）；每次的 SHA-256 写在对应 release 说明里 |
+| 升级 | 与 `beta.1`…`beta.6` 同一把密钥 ⇒ 可直接覆盖升级、本地数据保留；**换密钥或装其他签名的包必须先卸载（会丢数据）** |
+
+> 本仓不提供 Google Play / 上游官方签名，安装前请核对签名与 SHA-256。发布说明原文存档在 [`docs/releases/`](docs/releases/)。
+> 只想自己构建：见下方「构建指南」；构建产物包含 `arm64-v8a` / `universal` / `x86_64` 三个 APK。
 
 ## 🛠️ 构建指南
 

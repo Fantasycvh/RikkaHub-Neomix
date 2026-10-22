@@ -1,15 +1,15 @@
 # 项目规划文档（Roadmap）
 
-> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.5 (307)`（预发布）；仅 tag、无预编译资产，本仓不发预编译包，CI 自动发版已禁用）。
+> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.7 (309)`（预发布）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产，CI 自动发版仍禁用）。
 
 > 记录 RikkaHub Neomix 的后续规划方向 + 逐日落地日志。
 > **状态说明**：本文档混合「已落地」与「规划中」两类内容——各章节标题/状态行标注实时状态，
 > **不要以「均为规划」理解本篇**；最完整的逐日落地记录见「八、状态记录」。
 >
-> **本仓现状（RikkaHub Neomix）**：当前版本 `1.0.28-beta.5 (307)`（见 `app/build.gradle.kts`），稳定版仍是 `v1.0.27`；
-> 预发布 tag `1.0.28-beta.1`…`beta.5` 均已发行（自 `beta.1` 起不带 `v`），其中 `beta.1`…`beta.4` 在 GitHub 上标记为
-> prerelease，`beta.5` 已按用户要求改为**正式 release**（因此现为 `releases/latest`）。
-> 全部**仅发 tag、无预编译资产**，本仓不发预编译包（CI 自动发版已禁用）。
+> **本仓现状（RikkaHub Neomix）**：当前版本 `1.0.28-beta.7 (309)`（见 `app/build.gradle.kts`），稳定版仍是 `v1.0.27`；
+> 预发布 tag `1.0.28-beta.1`…`beta.7` 均已发行（自 `beta.1` 起不带 `v`），其中 `beta.1`…`beta.4` 在 GitHub 上标记为
+> prerelease，`beta.5` 按用户要求改为**正式 release**，`beta.6`/`beta.7` 沿用（因此 `releases/latest` 现指向 `beta.7`）。
+> **`1.0.28-beta.7` 是首个带预编译资产的版本**（`Neomix-1.0.28-beta.7-arm64-v8a.apk`，仅 arm64-v8a）；此前各版均仅 tag、无资产。
 > 下文中出现的 `v1.0.x` / `Latest` / release / tag / versionCode 递增等内容，均为**私有开发仓时期的发布记录**，
 > 作为开发历史保留，**不代表本仓的发布状态**。
 ---
@@ -3447,3 +3447,13 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   所需，后者不是小窗功能，且此前的权限/非 Activity 宿主修复继续有效。
   为兼容升级后可能恢复的旧导航状态，保留 `Screen.Chat.appendDraft` 序列化字段（不再写入/读取）。
   设计稿 `design-floating-chat-window.md` 删除，历史保留在 git。TTS 实播仍未验证。
+
+- 2026-10-21 **发布 `1.0.28-beta.6 (308)`（仅 tag、无资产）**。tag `1.0.28-beta.6` 指向 `c274c4d9f`（发布那一刻的 master HEAD，README 发布行从「草稿」改「预发布」的提交）；`versionCode` 307→308、`versionName` 保持 `1.0.28-beta.6`；数据库 46→47。
+  本版内容：**三类记忆**（画像/话题/事务，记忆实体新增 `kind` + 事务生命周期字段，旧锚点记忆回填为画像，备份导入按内容映射）、上下文占用指示器**只保留圆环**、手动压缩可选「保留最近 N 条」下限、TTS 朗读前剥离 HTML、`math span` 内 `<` 转义（防 Jsoup 截断）、**移除实验性悬浮小窗**（双宿主/浮窗服务/设置项/设计稿）、**移除提供商分享与二维码导入/「推荐提供商」**（连带 CameraX/zxing 依赖与设置索引）、Web 访问强制鉴权 + 请求日志脱敏、翻译历史，上游 `26454cc`（主题改系统 `Theme.Material`，R8 可裁资源）与 `80845dd`（全文搜索去掉 jieba 词典 + 14MB `simple_dict`）吸收，占位图 PNG→WebP。
+  验证：`assembleRelease` + aapt 核实 `versionCode=308`；app JVM **2156 项 0 失败**、仪器 **188 项通过**、`lintDebug` **0 errors**；真机覆盖安装冒烟。发布说明（正文原文）见 [`releases/1.0.28-beta.6.md`](releases/1.0.28-beta.6.md)。
+
+- 2026-10-22 **发布 `1.0.28-beta.7 (309)`——本仓首个带预编译资产的版本**（用户要求「本次开始提供 apk（预发布资产）」）。tag `1.0.28-beta.7`（annotated `612b2bec3`）指向 `0ad5e5dc8`；`versionCode` 308→309；数据库仍为 47。
+  **本版内容**：①**插件系统（实验性）**——`plugin-api`/`plugin-manager`（能力声明 + 生命周期 + 状态持久化）、JSON 规则插件（宿主 RuleEngine 解释执行）、JS 单文件插件（QuickJS 沙箱：超时 300–5000ms、日志截断、跑完即销毁）、能力逐项授权（`NETWORK`/`HISTORY_READ`/`CONVERSATION_MUTATE`/`TOOL_REGISTER`/`PROMPT_TRANSFORM`/`OUTPUT_TRANSFORM`/`STORAGE`，运行期在调用点二次校验）、JS 出站只走 `rikka.http` + 清单 `networkHosts` 白名单 + 内网/环回/保留地址硬拦截 + 解析结果复核、插件页（导入/启用/停用/详情/卸载）与工具 UI 渲染器扩展点；README/发布说明均标注**实验性：API 与 manifest 可能变动、不保证向后兼容**。②**tokenizer 性能**——预分词正则换**手写 code-point 扫描器**（设备实测 11.5 万字符：正则 2572ms(debug)/2386ms(release) → **26ms**；桌面 JVM 同一段 2–3ms，证明慢在设备 regex 实现）、易变区段单次流式切分（不再物化两万多 `MatchResult`，4392→3551ms）+ 持久计数缓存（129KB 构造会话冷启组装 **3787ms→197ms**，同进程二次预览 1ms、重启后 56ms）；正确性靠与正则逐片段对拍（30+ 边界向量 + **6 万条随机语料**）。③**`{{cur_datetime}}`** 占位符补齐（此前内置提示词里的 `Time: {{cur_datetime}}` 原样发给模型）+ 三语文案。④文档：三类记忆标注为**借鉴**、BiliPai 借鉴条目与公开仓库链接、构建前置条件修正（google-services.json 缺失是硬失败、release 必须有 keystore、SDK 37/NDK/CMake/Node 22）、原生库章节补全来源与打包体积。
+  **资产**：`Neomix-1.0.28-beta.7-arm64-v8a.apk`，62,547,072 B，SHA-256 `b393511566bc467d8e1d514b82a4aebcea034673b9033fdbaef6d13016880ae8`；`apksigner` 核实 V2、证书 SHA-256 `D1:5B:69:…:4E:EC:78`（与 `beta.1`…`beta.6` 同一把自签密钥 ⇒ 可覆盖升级）；**只发 arm64-v8a**。GitHub release 标题 `1.0.28-beta.7 (309)`、`prerelease=false` ⇒ 成为 `releases/latest`。
+  **验证**：release 构建 `assembleRelease`（R8 + lintVital）通过，aapt 核实 `versionCode=309` / `versionName=1.0.28-beta.7` / `native-code: arm64-v8a`；JVM 单测 app **2275 项 0 失败**、common **96 项 0 失败**；本机真机 PJX110 覆盖安装 beta.6→beta.7、数据保留、启动 0 条 FATAL；资产用 API 回读 `digest` 与本地 `sha256sum` 比对一致（服务端哈希，防「传一半」）。发布说明见 [`releases/1.0.28-beta.7.md`](releases/1.0.28-beta.7.md)。
+  **流程教训**（已写入 handoff §2.2）：gh 不带 `--repo` 会按 remote 猜成上游 `rikkahub/rikkahub`；本机 SSH 推不通（fake-ip + 22 端口被断）须走 HTTPS + 本地代理；`gh release upload` 成功时**无输出**，只能靠 API 复核；签名密钥为仓库外自签文件，**须离线备份**（换了就无法覆盖升级）。

@@ -7,8 +7,10 @@
 - 本仓由私有开发仓的成果重建：**提交短哈希已重映射**为本仓历史里的对应提交；映射不上说明该提交未随本仓发布。
 - 形如 `<work>` / `<device>` / `<tmp>` 的尖括号串是路径与设备信息的占位符。
 - 引用**上游**的内容（issue/PR 编号、上游 commit 哈希）可直接在 [`rikkahub/rikkahub`](https://github.com/rikkahub/rikkahub) 查看。
-- 涉及**发布**的段落（`v1.0.x` / `Latest` / tag / versionCode 递增 / `gh release` 流程）属**私有开发仓时期的历史记录**：
-  本仓 `master` 暂无 tag、**不发预编译包**（`daily-build` 已改为仅手动触发），签名目前为测试密钥。
+- 涉及**发布**的段落（`v1.0.x` / `Latest` / tag / versionCode 递增 / `gh release` 流程）属**私有开发仓时期的历史记录**；
+  本仓现行发布约定见 [`README`](../README.md) 顶部：**自 `1.0.28-beta.7` 起随 release 提供 arm64-v8a APK 资产**
+  （此前 `v1.0.27` 与 `1.0.28-beta.1`…`beta.6` 仅 tag、无资产），签名为自签测试密钥、换密钥需卸载重装；
+  各版发布说明原文存档在 [`releases/`](releases/)。
 
 ## design/ —— 设计类文档
 
@@ -41,12 +43,13 @@
 | 文档 | 内容 |
 |---|---|
 | [`roadmap.md`](roadmap.md) | 规划方向 + 逐日落地记录（含「不做」决策与理由） |
-| [`handoff-2026-09-04.md`](handoff-2026-09-04.md) | 开发交接：**待办全量盘点（§三，最新真相源）**、现状快照、验证习惯、发布流程（私仓时期实践） |
+| [`handoff-2026-09-04.md`](handoff-2026-09-04.md) | 开发交接：**待办全量盘点（§三，最新真相源）**、现状快照、验证习惯、发布流程（§二.2 = 2026-10-22 起的「带资产发布」现行定式） |
 | [`upstream-analysis.md`](upstream-analysis.md) | 上游逐条评估记录与「吸收 / 不吸收」结论 |
 | [`ui-simplification-proposal.md`](ui-simplification-proposal.md) | UI 复杂度证据基线（**改前快照**；改后状态见 design-ui-yuihub-inspired §7） |
 | [`peer-apps-benchmark.md`](peer-apps-benchmark.md) | 同类客户端 / 竞品调研与借鉴结论 |
 | [`tikz-rendering-tectonic-postmortem.md`](tikz-rendering-tectonic-postmortem.md) | TikZ 渲染链复盘（native Tectonic + mupdf SVG 桥、字体 bundle）；配套 [`../tools/tex-poc/`](../tools/tex-poc/) |
 | [`references/chat-generation-pipeline.md`](references/chat-generation-pipeline.md) | 上游：对话生成管线说明 |
+| [`releases/`](releases/) | **发布说明存档**（按 tag 存 release 正文原文；`1.0.28-beta.7` 起带 arm64-v8a APK，含 SHA-256 与签名指纹） |
 | `icon.png` / `img/` / `sponsors/` / `donate.png` | 上游：README 用图与赞助素材 |
 
 > 内部审计类记录（`turbo-*`）**未随本仓发布**；`roadmap.md` 等文中以「内部记录（未随本仓发布）」指代。
@@ -58,8 +61,8 @@
 
 | 文档 | 待办/状态最新刷新 | 说明 |
 |---|---|---|
-| `handoff-2026-09-04.md` | **2026-10-12**（§三 节首复核块 + §〇 快照） | **待办的第一真相源**；§三.1 表内**未划掉**的才是未完成项——长文本里的「YYYY-MM-DD 评估，未实现」多为**存档**，不代表当前状态 |
-| `roadmap.md` | **2026-10-12**（§一 09-06 盘点与 §三.5 待办块已就地更正） | §八 是逐日落地日志（**只追加**）；§一~§七 的规划判断**可能已被 §八 推翻**，冲突时以 §八 + handoff §三 为准 |
+| `handoff-2026-09-04.md` | **2026-10-22**（§〇 快照 + §二.2 资产化发布流程） | **待办的第一真相源**；§三.1 表内**未划掉**的才是未完成项——长文本里的「YYYY-MM-DD 评估，未实现」多为**存档**，不代表当前状态 |
+| `roadmap.md` | **2026-10-22**（§八 追加 `beta.6`/`beta.7` 发布记录） | §八 是逐日落地日志（**只追加**）；§一~§七 的规划判断**可能已被 §八 推翻**，冲突时以 §八 + handoff §三 为准 |
 | `peer-apps-benchmark.md` | **2026-10-12**（§四.4 末复核 + §五 落地状态行） | §五 的落地状态行是最新口径，各节正文为评估原文 |
 | `upstream-analysis.md` | **2026-10-19**（同步点 `42896e5ad`，上游已 bump `3.0.0`） | 逐条评估**无欠账**（本批 29 提交全部有结论）；既有关闭 issue 的条目在标题/表内标 ✅。**下次同步从 `42896e5ad` 往后取** |
 
