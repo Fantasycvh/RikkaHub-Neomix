@@ -1,0 +1,14 @@
+{
+  "id": "sample.strip_ad_lines",
+  "name": "去掉广告行",
+  "description": "删除模型输出中整行包含「广告」的行（演示 replace 动作与 contains 条件）",
+  "version": "1.0.0",
+  "author": "RikkaHub",
+  "target": "output",
+  "rules": [
+    {
+      "condition": { "field": "text", "op": "contains", "value": "广告" },
+      "action": { "type": "replace", "pattern": "(?m)^.*广告.*(?:\\n|$)", "replacement": "" }
+    }
+  ]
+}

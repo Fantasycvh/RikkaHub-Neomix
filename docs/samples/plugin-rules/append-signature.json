@@ -1,0 +1,14 @@
+{
+  "id": "sample.append_signature",
+  "name": "输出尾注",
+  "description": "在每条助手回复末尾追加一行固定尾注（演示 append 动作）",
+  "version": "1.0.0",
+  "author": "RikkaHub",
+  "target": "output",
+  "rules": [
+    {
+      "condition": { "field": "messageCount", "op": "ge", "value": 0 },
+      "action": { "type": "append", "text": "—— 由 RikkaHub 生成" }
+    }
+  ]
+}

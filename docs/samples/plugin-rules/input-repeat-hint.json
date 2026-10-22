@@ -1,0 +1,14 @@
+{
+  "id": "sample.input_repeat_hint",
+  "name": "输入追加提醒",
+  "description": "每次发送前，在用户消息末尾追加一句固定提醒（演示 target=input 与 append 动作）",
+  "version": "1.0.0",
+  "author": "RikkaHub",
+  "target": "input",
+  "rules": [
+    {
+      "condition": { "field": "messageCount", "op": "ge", "value": 0 },
+      "action": { "type": "append", "text": "（请优先给出结论，再展开细节）" }
+    }
+  ]
+}
