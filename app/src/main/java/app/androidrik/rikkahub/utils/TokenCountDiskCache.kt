@@ -39,9 +39,19 @@ object TokenCountDiskCache {
     private val dirty = AtomicBoolean(false)
     private var lastSaveAt = 0L
     private var saving = false
+    private val getHits = java.util.concurrent.atomic.AtomicLong()
+    private val getMisses = java.util.concurrent.atomic.AtomicLong()
+    private val putCount = java.util.concurrent.atomic.AtomicLong()
 
     /** 只读诊断：当前已加载/已缓存的条目数。 */
     val size: Int get() = synchronized(lock) { entries.size }
+
+    /** 只读诊断：是否已挂上文件（未挂上时读永远落空、写全部丢弃）。 */
+    val attached: Boolean get() = file != null
+
+    /** 只读诊断：命中/未命中/写入计数与条目数（仅用于 perf 日志，不含正文）。 */
+    fun stats(): String = "attached=$attached entries=$size " +
+        "hits=${getHits.get()} misses=${getMisses.get()} puts=${putCount.get()}"
 
     /**
      * 挂上缓存文件并加载。**在主线程调用一次**（实测 2 万条约 10ms，可接受）。
@@ -71,10 +81,11 @@ object TokenCountDiskCache {
 
     fun get(text: String): Int? {
         if (text.isEmpty() || text.length < 64) return null // 短文本 BPE 本身就快，不值得哈希
-        synchronized(lock) {
-            if (entries.isEmpty()) return null
-            return entries[hash(text)]
+        val value = synchronized(lock) {
+            if (entries.isEmpty()) null else entries[hash(text)]
         }
+        if (value != null) getHits.incrementAndGet() else getMisses.incrementAndGet()
+        return value
     }
 
     fun put(text: String, tokens: Int) {
@@ -83,6 +94,7 @@ object TokenCountDiskCache {
         if (TokenizerRegistry.current == null) return
         synchronized(lock) {
             if (file == null) return
+            putCount.incrementAndGet()
             entries[hash(text)] = tokens
             if (entries.size > MAX_ENTRIES) entries = HashMap(entries) // 简单重建，不做精细淘汰
             dirty.set(true)

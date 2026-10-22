@@ -50,8 +50,11 @@ class ByteLevelBpe private constructor(
         if (text.isEmpty()) return 0
         val cache = pieceCounts.get()
         var total = 0
-        PRE_TOKEN_PATTERN.findAll(text).forEach { match ->
-            val piece = match.value
+        var index = 0
+        while (index < text.length) {
+            val end = nextPieceEnd(text, index)
+            val piece = text.substring(index, end)
+            index = end
             val cached = cache[piece]
             if (cached != null) {
                 total += cached
@@ -65,14 +68,276 @@ class ByteLevelBpe private constructor(
         return total
     }
 
+    /**
+     * Counts exactly while allowing callers to persistently cache stable chunks via [countStable].
+     *
+     * [spans] are inclusive UTF-16 ranges in [text]. Each range gets at least 16 UTF-16
+     * characters of context on either side (or [minimumContextChars], if larger), clamped
+     * to the text. Every complete [PRE_TOKEN_PATTERN] match intersecting that window is
+     * volatile, including matches arbitrarily longer than the context window. A boundary
+     * after whitespace is also expanded through the next non-whitespace-ending match:
+     * the regex's whitespace lookahead must not see an artificial end-of-input. Consecutive
+     * matches with the same classification form one chunk; no regex match is ever split.
+     * Thus the sum equals [count] provided [countStable] returns this tokenizer's exact
+     * count for its argument. Volatile chunks bypass the callback and are counted here.
+     *
+     * Empty, reversed, negative or out-of-bounds ranges fall back to [count] for the whole
+     * text, without invoking [countStable]. No spans means the whole nonempty text is stable.
+     */
+    fun countWithVolatileSpans(
+        text: String,
+        spans: List<IntRange>,
+        minimumContextChars: Int = 16,
+        /** Diagnostics only: (stableChars, volatileChars, chunks, splitNanos, countNanos) — no text. */
+        onStats: ((Int, Int, Int, Long, Long) -> Unit)? = null,
+        countStable: (String) -> Int,
+    ): Int {
+        if (spans.any { it.isEmpty() || it.first < 0 || it.last >= text.length }) {
+            onStats?.invoke(-1, text.length, 0, 0L, 0L)
+            return count(text)
+        }
+        if (text.isEmpty()) return 0
+        if (spans.isEmpty()) {
+            onStats?.invoke(text.length, 0, 1, 0L, 0L)
+            return countStable(text)
+        }
+
+        val splitStarted = System.nanoTime()
+        val context = minimumContextChars.coerceAtLeast(16).toLong()
+        // Long arithmetic also makes Int.MAX_VALUE context safe. Merge overlapping windows
+        // so a single forward scan of matches and windows suffices, even for unsorted spans.
+        val windows = ArrayList<IntRange>()
+        for (span in spans.sortedBy { it.first }) {
+            val start = (span.first.toLong() - context).coerceAtLeast(0).toInt()
+            val end = (span.last.toLong() + context).coerceAtMost(text.lastIndex.toLong()).toInt()
+            val previous = windows.lastOrNull()
+            if (previous != null && start.toLong() <= previous.last.toLong() + 1) {
+                windows[windows.lastIndex] = previous.first..maxOf(previous.last, end)
+            } else {
+                windows += start..end
+            }
+        }
+
+        val chunkStarts = ArrayList<Int>()
+        val chunkEnds = ArrayList<Int>()
+        val chunkVolatileFlags = ArrayList<Boolean>()
+
+        fun appendChunk(start: Int, end: Int, volatile: Boolean) {
+            val last = chunkStarts.lastIndex
+            if (last >= 0 && chunkVolatileFlags[last] == volatile && chunkEnds[last] == start) {
+                chunkEnds[last] = end
+            } else {
+                chunkStarts += start
+                chunkEnds += end
+                chunkVolatileFlags += volatile
+            }
+        }
+
+        // Single streaming pass: classify each match against the volatile windows, fold
+        // whitespace-lookahead groups, and accumulate chunk boundaries directly. Materialising
+        // every MatchResult first (tens of thousands of objects for a 128KB prompt) was pure
+        // overhead on top of the scan that already dominates the cost.
+        var windowIndex = 0
+        var groupStart = -1
+        var groupEnd = -1
+        var groupVolatile = false
+        var previousEndsWithWhitespace = false
+        var scanIndex = 0
+        while (scanIndex < text.length) {
+            val matchStart = scanIndex
+            val matchEnd = nextPieceEnd(text, matchStart)
+            scanIndex = matchEnd
+            while (windowIndex < windows.size && windows[windowIndex].last < matchStart) {
+                windowIndex++
+            }
+            val volatile = windowIndex < windows.size && windows[windowIndex].first <= matchEnd - 1
+            if (groupStart < 0) {
+                groupStart = matchStart
+                groupEnd = matchEnd
+                groupVolatile = volatile
+            } else if (previousEndsWithWhitespace) {
+                groupEnd = matchEnd
+                groupVolatile = groupVolatile || volatile
+            } else {
+                appendChunk(groupStart, groupEnd, groupVolatile)
+                groupStart = matchStart
+                groupEnd = matchEnd
+                groupVolatile = volatile
+            }
+            previousEndsWithWhitespace = isPreTokenWhitespace(text.codePointBefore(matchEnd))
+        }
+        if (groupStart >= 0) appendChunk(groupStart, groupEnd, groupVolatile)
+
+        val splitNanos = System.nanoTime() - splitStarted
+        val countingStarted = System.nanoTime()
+        var total = 0
+        var stableChars = 0
+        var volatileChars = 0
+        for (index in chunkStarts.indices) {
+            val chunk = text.substring(chunkStarts[index], chunkEnds[index])
+            total += if (chunkVolatileFlags[index]) count(chunk) else countStable(chunk)
+            if (chunkVolatileFlags[index]) volatileChars += chunk.length else stableChars += chunk.length
+        }
+        onStats?.invoke(stableChars, volatileChars, chunkStarts.size, splitNanos, System.nanoTime() - countingStarted)
+        return total
+    }
+
+    /** Diagnostics: number of pre-tokenizer pieces, so scan cost can be measured in isolation. */
+    fun countPreTokenMatches(text: String): Int {
+        var count = 0
+        var index = 0
+        while (index < text.length) {
+            index = nextPieceEnd(text, index)
+            count++
+        }
+        return count
+    }
+
+    /**
+     * 手写预分词：返回从 [start] 开始的片段结束下标（不含），与 cl100k 正则**逐字节等价**。
+     *
+     * 为什么不用正则：Android 上 `java.util.regex` 的 `Matcher` 极慢——实测同一段 11.5 万字符文本，
+     * 正则扫描 2.4–2.6 秒，而本函数只需要约 26 毫秒（debug 与 release 包都是这个比例，与构建类型无关）。
+     * 分词计数是上下文预算/自动压缩/记忆注入的公共底座，这一层慢会把所有上层功能一起拖慢。
+     *
+     * 语义对应关系（按正则分支顺序，先匹配者胜）：
+     * 1. `'(?i:[sdmt]|ll|ve|re)` 缩写；
+     * 2. `[^\r\n\p{L}\p{N}]?+\p{L}+` 可选前缀 + 字母串（前缀是**占有量词**，不回头）；
+     * 3. `\p{N}{1,3}` 至多三位数字（`\p{N}` 是 Unicode Number 大类，不只是 0-9）；
+     * 4. ` ?[^WS\p{L}\p{N}]++[\r\n]*` 可选空格 + 符号串 + 尾随换行；
+     * 5. `[WS]*[\r\n]` 空白后接换行（贪婪回溯 ⇒ 落在空白串里**最后一个**换行）；
+     * 6. `[WS]+(?![^WS])` 空白串其后不是非空白（贪婪回溯 ⇒ 长度 L≥2 时只吃 L-1）；
+     * 7. `[WS]+` 兜底空白串。
+     *
+     * 等价性由 `ByteLevelBpePreTokenParityTest` 与 [RegexReference] 对拍保证。
+     */
+    private fun nextPieceEnd(text: String, start: Int): Int {
+        val length = text.length
+        val current = text.codePointAt(start)
+
+        // 1. 's 'd 'm 't 'll 've 're（ASCII 大小写不敏感）
+        if (current == APOSTROPHE && start + 1 < length) {
+            val first = text.codePointAt(start + 1)
+            if (first == 's'.code || first == 'S'.code || first == 'd'.code || first == 'D'.code ||
+                first == 'm'.code || first == 'M'.code || first == 't'.code || first == 'T'.code
+            ) {
+                return start + 2
+            }
+            val secondIndex = start + 1 + Character.charCount(first)
+            if (first == 'l'.code || first == 'L'.code || first == 'v'.code || first == 'V'.code ||
+                first == 'r'.code || first == 'R'.code
+            ) {
+                if (secondIndex < length) {
+                    val second = text.codePointAt(secondIndex)
+                    if (((first == 'l'.code || first == 'L'.code) && (second == 'l'.code || second == 'L'.code)) ||
+                        ((first == 'v'.code || first == 'V'.code) && (second == 'e'.code || second == 'E'.code)) ||
+                        ((first == 'r'.code || first == 'R'.code) && (second == 'e'.code || second == 'E'.code))
+                    ) {
+                        return secondIndex + Character.charCount(second)
+                    }
+                }
+            }
+        }
+
+        // 2. 可选前缀（非 CR/LF/字母/数字）+ 字母串
+        if (isPreTokenLetter(current)) {
+            return scanLetters(text, start)
+        }
+        if (current != CARRIAGE_RETURN && current != LINE_FEED && !isPreTokenNumber(current)) {
+            val afterPrefix = start + Character.charCount(current)
+            if (afterPrefix < length && isPreTokenLetter(text.codePointAt(afterPrefix))) {
+                return scanLetters(text, afterPrefix)
+            }
+        }
+
+        // 3. 1..3 位数字
+        if (isPreTokenNumber(current)) {
+            var index = start + Character.charCount(current)
+            var digits = 1
+            while (index < length && digits < 3) {
+                val next = text.codePointAt(index)
+                if (!isPreTokenNumber(next)) break
+                index += Character.charCount(next)
+                digits++
+            }
+            return index
+        }
+
+        // 4. 可选空格 + 符号串 + 尾随换行
+        var index = start
+        if (current == SPACE) index += 1
+        val symbolsStart = index
+        while (index < length) {
+            val next = text.codePointAt(index)
+            if (isPreTokenWhitespace(next) || isPreTokenLetter(next) || isPreTokenNumber(next)) break
+            index += Character.charCount(next)
+        }
+        if (index > symbolsStart) {
+            while (index < length) {
+                val next = text.codePointAt(index)
+                if (next != CARRIAGE_RETURN && next != LINE_FEED) break
+                index += 1
+            }
+            return index
+        }
+
+        // 5/6/7. 空白串
+        var runEnd = start
+        while (runEnd < length) {
+            val next = text.codePointAt(runEnd)
+            if (!isPreTokenWhitespace(next)) break
+            runEnd += Character.charCount(next)
+        }
+        if (runEnd > start) {
+            var lastBreak = -1
+            var scan = start
+            while (scan < runEnd) {
+                val next = text.codePointAt(scan)
+                if (next == CARRIAGE_RETURN || next == LINE_FEED) lastBreak = scan
+                scan += Character.charCount(next)
+            }
+            if (lastBreak >= 0) return lastBreak + 1
+            if (runEnd == length) return runEnd
+            if (runEnd - Character.charCount(text.codePointBefore(runEnd)) > start) {
+                return runEnd - Character.charCount(text.codePointBefore(runEnd))
+            }
+            return runEnd
+        }
+
+        // 正则覆盖所有字符，理论上到不了这里；保守前进一个字符避免死循环。
+        return start + Character.charCount(current)
+    }
+
+    /** 从 [from]（必须是字母）开始吃满字母串，返回结束下标。 */
+    private fun scanLetters(text: String, from: Int): Int {
+        var index = from
+        while (index < text.length) {
+            val next = text.codePointAt(index)
+            if (!isPreTokenLetter(next)) break
+            index += Character.charCount(next)
+        }
+        return index
+    }
+
+    /** 测试用：暴露手写扫描器的单步结果，供与正则对拍。 */
+    internal fun pieceEndsForTest(text: String, start: Int): Int = nextPieceEnd(text, start)
+
+    /** 测试用参考实现：把文本按 cl100k 正则切成片段。 */
+    inner class RegexReference {
+        fun pieces(text: String): List<String> = PRE_TOKEN_PATTERN.findAll(text).map { it.value }.toList()
+    }
+
     /** 编码为 token id 序列。 */
     fun encode(text: String): IntArray {
         if (text.isEmpty()) return IntArray(0)
         val ids = ArrayList<Int>(text.length / 3 + 8)
-        PRE_TOKEN_PATTERN.findAll(text).forEach { match ->
-            for (piece in encodePiece(match.value)) {
+        var index = 0
+        while (index < text.length) {
+            val end = nextPieceEnd(text, index)
+            for (piece in encodePiece(text.substring(index, end))) {
                 ids += rankOf(piece)
             }
+            index = end
         }
         return ids.toIntArray()
     }
@@ -167,6 +432,31 @@ class ByteLevelBpe private constructor(
          * （本功能首版正是这样栽的，见 `docs/` 的设计稿）。⇒ 只能把 `\s` 展开成显式字符集。
          */
         private const val WS = " \t\n\r\u000b\u000c\u001c\u001d\u001e\u001f\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000"
+
+        private const val APOSTROPHE = 0x27
+        private const val SPACE = 0x20
+        private const val CARRIAGE_RETURN = 0x0D
+        private const val LINE_FEED = 0x0A
+
+        /** `\p{L}`：Unicode Letter 大类（按码点判断，补充平面字母也能识别）。 */
+        private fun isPreTokenLetter(codePoint: Int): Boolean = Character.isLetter(codePoint)
+
+        /** `\p{N}`：Unicode Number 大类（Nd/Nl/No），比 `Char.isDigit()` 宽。 */
+        private fun isPreTokenNumber(codePoint: Int): Boolean = when (Character.getType(codePoint)) {
+            Character.DECIMAL_DIGIT_NUMBER.toInt(),
+            Character.LETTER_NUMBER.toInt(),
+            Character.OTHER_NUMBER.toInt(),
+            -> true
+
+            else -> false
+        }
+
+        private fun isPreTokenWhitespace(codePoint: Int): Boolean = when (codePoint) {
+            in 0x0009..0x000d, in 0x001c..0x0020, 0x0085, 0x00a0, 0x1680,
+            in 0x2000..0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000 -> true
+
+            else -> false
+        }
 
         /**
          * tiktoken `cl100k_base` 的预分词正则（逐字符移植；`\s` 已按 [WS] 展开、`\S` 写成 `[^WS]`）。

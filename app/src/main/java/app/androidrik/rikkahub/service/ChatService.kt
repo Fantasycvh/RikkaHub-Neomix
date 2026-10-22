@@ -1380,7 +1380,9 @@ class ChatService(
             ?: return null
         onPartial(fast)
         // 回调在调用方上下文（Main）触发：VM 直接写 Compose 状态，不必自己切线程
+        val refineStarted = android.os.SystemClock.elapsedRealtime()
         val exact = withPromptInspectionDispatcher { fast.refineTokens() }
+        Log.d(PERF_TAG, "refineMs=${android.os.SystemClock.elapsedRealtime() - refineStarted}")
         onPartial(exact)
         return exact
     }
