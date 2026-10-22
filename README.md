@@ -195,7 +195,7 @@
 | `libtex_poc.so` | `app/src/main/jniLibs/`，**仅 arm64-v8a** | 13.5 MB | TikZ 的 TeX 引擎（Tectonic 编译 TeX → PDF），跑在**独立进程 `:texcompile`** 里 | [`tools/tex-poc/`](tools/tex-poc/)（Rust + **Tectonic 0.17**，NDK r27c 交叉编译） | `libicuuc78` / `libgraphite2` / `libc++_shared` / `libz` |
 | `libpdf2svg_bridge.so` | `app/src/main/jniLibs/`，仅 arm64 | 13 KB | 调 mupdf 的 C API 把 PDF 转 SVG（`FZ_SVG_TEXT_AS_PATH`，文字转轮廓） | `app/src/main/cpp/pdf2svg_bridge.c`（自包含 C，自带 mupdf 原型声明） | `libmupdf_java` |
 | `libmupdf_java.so` | `document/src/main/jniLibs/`，arm64 + x86_64 | 9.4 / 9.8 MB | PDF 解析；TikZ 链路里被上一条调用 | Artifex **MuPDF 1.26.8**（上游 RikkaHub 引入的官方 Android SDK 产物） | `libz` / `libstdc++` / `libjnigraphics` |
-| `libsimple.so` | `app/src/main/jniLibs/`，arm64 + x86_64 | 9.0 / 8.7 MB | SQLite **FTS5 `simple` 分词扩展**（消息全文搜索：中文单字 `NEAR`、英文/数字走 `simple_query`），经 Requery `customExtensions` 注册 | 上游/第三方预编译（仓内未记录版本与构建脚本）；配套的 14MB `simple_dict` 已不再使用 | 仅系统库 |
+| `libsimple.so` | `app/src/main/jniLibs/`，arm64 + x86_64 | 7.6 / 7.3 MB | SQLite **FTS5 `simple` 分词扩展**（消息全文搜索：中文单字 `NEAR`、英文/数字走 `simple_query`），经 Requery `customExtensions` 注册 | 上游按 [wangfenjin/simple](https://github.com/wangfenjin/simple) **v0.6.1** 的 Android 参数加 `-DSIMPLE_WITH_JIEBA=OFF` 重编（NDK 29 / android-21 / 静态 libc++）：不含 jieba 代码，`simple` 分词器与 `simple_query` 不变，**已有索引无需重建**；14MB `simple_dict` 已不再使用 | 仅系统库 |
 | `libproot_exec.so` | `workspace/src/main/jniLibs/`，arm64 + x86_64 | 274 / 290 KB | 工作区沙箱的 proot 可执行体（`--link2symlink` + root-id），静态链接 | 上游静态链接二进制，**proot 5.1.107.96**，含 issue #2158 的 `AT_EXECFN` 修复（Ubuntu 26.04 类 rootfs `apt upgrade` 后 `ls`/`basename` 报 Security violation 的问题已真机对照修好） | 仅 `libc` / `liblog`（无 talloc/shmem 动态依赖） |
 | `libproot_loader.so` | 同上 | 18 KB | proot 的 loader 垫片（与上一条成对使用，`PROOT_LOADER` 指向它） | 同上 | — |
 | `libicuuc78.so` / `libicudata78.so` | `app/src/main/jniLibs/`，仅 arm64 | 2.2 MB / 33 MB | Tectonic 的 ICU 运行时（**ICU 78**） | Termux libicu 交叉版 | 互相依赖 |
@@ -209,7 +209,7 @@
 | `libicudata78.so` | 33.1 MB | 31.6 MB → **12.2 MB** |
 | `libtex_poc.so` | 13.5 MB | 9.9 MB → 3.5 MB |
 | `libmupdf_java.so` | 9.4 MB | 9.0 MB → 4.4 MB |
-| `libsimple.so` | 9.0 MB | 1.6 MB → 0.5 MB |
+| `libsimple.so` | 7.6 MB | 1.5 MB → 0.5 MB |
 
 arm64 原生库合计约 **62 MB**（未压缩），占 APK 的大头；beta.7 的 arm64 APK 为 **59.7 MiB**。
 另：`libquickjs-android-wrapper.so`（1.3 MB）来自 JS 插件沙箱的 Maven 依赖 `wang.harlon.quickjs`，不属签入库。

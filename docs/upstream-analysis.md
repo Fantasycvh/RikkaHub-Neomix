@@ -8,6 +8,7 @@
 > **同日专项**：另**单独吸收**了更早未移植的 `5a90c0548`（用量统计流水表，DB v44），见「2026-10-20 专项吸收：用量统计流水」一节——它不在本批 fetch 区间内，是本仓 346 个「上游有、本仓无」存量里按用户指定方向挑的一条。
 > **同步点（2026-10-20 晚，beta.5 发版前复核）**：`e5bb70730` 之后上游又有 4 个提交（HEAD `5203601f7`，上游已发 tag `3.1.0` / `eeef60b22`）。其中**又吸收 2 条**：`bc4a6f47e`（输入区图片预览 / 多图左右切换 / 预览内进画板，fork `15e3d8c9e`）、`17d06d26f`（新建/导入提供商后清空搜索并滚到新项，fork `1ddb87d8e`）。**尚余 3 条未评估**：`5203601f7`（全局禁用 overscroll 回弹）、`8bb488e3a`（工具步骤显示执行耗时）、`fe55bff7f`（提供商类型名与「订阅」类型）。本仓「上游有、本仓无」累计 **350** 个提交（含历史存量 346 + 本批未评估 3 + 刻意不做 1）。
 > **同步点（2026-10-21 更新）**：已评估到上游 **`815e9c20b`**（`3.1.0-15-g815e9c20b`，2026-10-21 16:26），本批 `5203601f7`..`815e9c20b` 共 **10 提交**；10-20 遗留的 3 条一并结案：`5203601f7` **已与本仓等价**（`Theme.kt` 的 `LocalOverscrollFactory provides null`）、`fe55bff7f` **不适用**、`8bb488e3a` 列 P2 候选。10 条新提交里只有 **`2aafd708f`（技能删除/校验）** 值得考虑吸收；其余因架构/范围不跟（PDF 替换、渠道 flavor、赞助商、i18n 工具链、远程 SSH）。同期 issue 窗口 **60 条**（22 open / 38 新近 closed）评估见「2026-10-21 issue 评估」；本仓 `upstream/master..HEAD` = **1232**、`HEAD..upstream/master` = **360**。
+> **同步点（2026-10-23 更新）**：已评估到上游 **`43f1a5df2`**（`3.1.0-27-g43f1a5df2`，2026-10-22），本批 `815e9c20b`..`43f1a5df2` 共 **12 提交**（逐条结论见「2026-10-23 同步评估」）：**吸收 3 条 + 部分吸收 1 条**——`90e48420f` 消息索引增量（`67ef193eb` / `1fd089a04`）、`2b522f990` libsimple 无 jieba（`446836328`）、`71dd98f88` 压缩对话框步进器（`beccde0ce`）、`e3d11e15f` 的 `-keepnames Throwable`（`ae6d23f83`）；`26454cc4d` / `80845dd9b` 已在 beta.6 吸收，`d8ba9cf67` 不适用（本仓已移除扫码）；P2 待定 `2a0a831e6`（裁图）、`43f1a5df2`（创作页重命名），P3 暂缓 `dbccc68c7`（体积），范围外 `070ff683c`（德语）/ `4e99510be`（perf skill 文档）。本仓 `upstream/master..HEAD` = **1272**、`HEAD..upstream/master` = **372**。
 > **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
 > **教训**：`git fetch` 的区间大小 ≠ 待评估量；判断「有没有欠账」要看**文档记录的评估点**（本节顶部的同步点），不是本地 ref。
 
@@ -1163,6 +1164,43 @@ git checkout master
 1. ~~先修 P0 两条~~ **已落地**：TTS 去 HTML（`e5aac14e2`）、LaTeX `<` 保护（`3e2cfde3d`）。
 2. 再做 P1 决策：压缩「保留最近 N 条」、Claude 侧历史 thinking 开关；真机误测 #2178 / #2179 七处 / #2214。
 3. P2 排队：工具耗时 `8bb488e3a`、技能删除 `2aafd708f`（placeholder WebP 已落地 `c0ee758e9`）；均按 fork 结构重写，无 cherry-pick。
+
+## 2026-10-23 同步评估（`815e9c20b`..`43f1a5df2`，12 提交）
+
+> 触发：用户「上游有新的提交」。上游 HEAD = **`43f1a5df2`**（`3.1.0-27-g43f1a5df2`，2026-10-22「创作页点顶栏标题重命名会话」）；
+> 文档记录的评估点是 10-21 的 `815e9c20b`，故本批 12 提交。
+> 取数：`git fetch upstream master`（本机 SSH 推不通、`github.com` 被解析成 fake-ip，fetch 走 HTTPS + 本地代理，见 handoff §2.2）。
+
+### 逐条结论
+
+| 提交 | 内容 | 结论 |
+|---|---|---|
+| `26454cc4d` | 窗口主题改系统 `Theme.Material`，R8 可裁 MDC 资源 | ✅ **已在 beta.6 吸收**（`themes.xml` 现为 `android:Theme.Material.*`） |
+| `80845dd9b` | 全文搜索去 jieba、中文单字 `NEAR` | ✅ **已在 beta.6 吸收**（`buildFtsMatchQuery` + `CJK_NEAR_SLACK`） |
+| `d8ba9cf67` | 扫码导入换 CameraX + zxing | ❌ **不适用**：本仓 beta.6 已整体移除扫码/二维码导入，无目标代码 |
+| `90e48420f` | 消息索引按会话增删不再扫全表（+ `message_fts_rowid` 映射表、增量索引、搜索 join 会话表、144 行仪器测试；附带走 fork 标题的 `getTitlesOfAssistant`） | ✅ **已吸收**：`67ef193eb`（索引增量 + 建表 + 搜索 join，仪器测试 3 项真机通过）、`1fd089a04`（分叉标题只查标题列）。本仓 `indexConversation` 原来是「DELETE by conversation_id + 整份重分词」，FTS5 UNINDEXED 列不可索引 ⇒ 每次保存扫全表，属真实性能问题 |
+| `2b522f990` | `libsimple.so` 换不带 jieba 的版本 | ✅ **已吸收**（`446836328`）：纯二进制替换，`sqlite3_simple_init` 保留、dynsym 0 个 jieba 符号、分词行为不变 ⇒ 已有索引不用重建 |
+| `71dd98f88` | 压缩对话框「保留最近 N 条」数字框改步进器 | ✅ **已吸收**（`beccde0ce`）：修「负数显示/清空沿用旧值/小数被忽略」三个输入框坑；图标按项目约定用 Lucide 而非上游 HugeIcons |
+| `e3d11e15f` | 构建上传 mapping.txt + keepnames | 🟡 **部分吸收**（`ae6d23f83`）：取 `-keepnames class * extends java.lang.Throwable`（release 日志里异常类名可读）；CI 上传 mapping 不适用（本仓 CI 自动发版仍禁用） |
+| `2a0a831e6` | 图片裁剪 uCrop → Compose `ImageCropDialog`（26 文件，约 500 行） | ⏸ **P2 待定**：价值明确（APK −1MB、去 `libucrop.so` 与依赖、顺带修 HEIF/EXIF），本仓 `libs.ucrop` + `CropLauncher` 确实还在；工作量大，需单独立项 |
+| `43f1a5df2` | 创作页点顶栏标题重命名会话 | ⏸ **P2 待定**：85 行，但上游同批**删除了 `MediaCreationSessionsPage.kt`**，本仓仍有该文件 ⇒ 先核对两边创作页是否同代，再决定移植方式 |
+| `dbccc68c7` | 大幅缩 APK（30.9→25.8MB）：web-ui 高亮 shiki→highlight.js、Web JWT 自实现、`resources.arsc` locale 过滤、去 kotlin-reflect 工厂表、删 `sqlite-vector` 声明 | ⏸ **P3 暂缓**：横跨 app/web/web-ui，本仓 web-ui 已改造且 `sqlite-vector` 仍被声明；收益大但风险高，须独立立项评估 |
+| `070ff683c` | 新增德语 + i18n 工具链 | ❌ **范围外**：本仓三语（en/zh/zh-rTW）策略，加语言是独立决定 |
+| `4e99510be` | docs: jetpack compose perf skill | ❌ **价值低**：`.agents/skills` 文档，与功能无关 |
+
+### 台账
+
+- P2 队列：`2a0a831e6`（裁图替换）、`43f1a5df2`（创作页重命名）
+- P3 队列：`dbccc68c7`（体积），需先评估 web-ui 现状与本仓差异
+- 本批吸收后计数：`upstream/master..HEAD` = **1272**、`HEAD..upstream/master` = **372**
+
+### 本轮验证
+
+- `:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` 通过
+- 仪器测试 `MessageFtsManagerTest`（真机 PJX110）：**3/3 通过**（只重写变化消息 / 删会话不影响其他 / 旧库自动补建映射表）
+- JVM 单测：app **2275 项 0 失败**、common **96 项 0 失败**
+- `:app:assembleRelease`（R8 + lintVital）通过；arm64 APK 62,547,072 → **62,519,976 B**（−27,096）
+- ⚠️ 本批**未做**真机 UI 点击验证（压缩对话框步进器只到编译/单测层面）；下次装机冒烟时补看
 
 ## 关联
 

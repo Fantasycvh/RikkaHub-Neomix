@@ -3457,3 +3457,26 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **资产**：`Neomix-1.0.28-beta.7-arm64-v8a.apk`，62,547,072 B，SHA-256 `b393511566bc467d8e1d514b82a4aebcea034673b9033fdbaef6d13016880ae8`；`apksigner` 核实 V2、证书 SHA-256 `D1:5B:69:…:4E:EC:78`（与 `beta.1`…`beta.6` 同一把自签密钥 ⇒ 可覆盖升级）；**只发 arm64-v8a**。GitHub release 标题 `1.0.28-beta.7 (309)`、`prerelease=false` ⇒ 成为 `releases/latest`。
   **验证**：release 构建 `assembleRelease`（R8 + lintVital）通过，aapt 核实 `versionCode=309` / `versionName=1.0.28-beta.7` / `native-code: arm64-v8a`；JVM 单测 app **2275 项 0 失败**、common **96 项 0 失败**；本机真机 PJX110 覆盖安装 beta.6→beta.7、数据保留、启动 0 条 FATAL；资产用 API 回读 `digest` 与本地 `sha256sum` 比对一致（服务端哈希，防「传一半」）。发布说明见 [`releases/1.0.28-beta.7.md`](releases/1.0.28-beta.7.md)。
   **流程教训**（已写入 handoff §2.2）：gh 不带 `--repo` 会按 remote 猜成上游 `rikkahub/rikkahub`；本机 SSH 推不通（fake-ip + 22 端口被断）须走 HTTPS + 本地代理；`gh release upload` 成功时**无输出**，只能靠 API 复核；签名密钥为仓库外自签文件，**须离线备份**（换了就无法覆盖升级）。
+
+- 2026-10-23 **上游同步：吸收 P1 四项（`815e9c20b`..`43f1a5df2`，12 提交中取 3+1）**。触发：用户「上游有新的提交」；用户选「按 P1 开工」。
+  逐条结论见 [`upstream-analysis.md`](upstream-analysis.md)「2026-10-23 同步评估」，此处记落地：
+  ①**消息索引增量更新**（上游 `90e48420f`，`67ef193eb` + `1fd089a04`）——本仓原来每次保存会话都在做
+  `DELETE FROM message_fts WHERE conversation_id = ?` + 整份重插，而 FTS5 虚表除 rowid 外**没有可用索引**，
+  这条 DELETE 扫全部消息行、重分词也随「所有会话消息总数」而非本会话长度增长。移植上游的
+  `message_fts_rowid(fts_rowid PK, conversation_id)` 反查表（onOpen 建表、旧索引只按 rowid 回填不重分词）+
+  逐消息比对只重写变化项 + `deleteConversation` 走 rowid 子查询 + 搜索 JOIN `conversationentity` 取标题/更新时间
+  （改标题/发消息不必改写索引，新增可选 `assistantIds` 过滤）；附带把分叉会话的标题避让从「加载该助手全部会话」
+  换成 `getTitlesOfAssistant` 轻量查询。**仪器测试** `MessageFtsManagerTest` 3 项真机通过（只重写变化消息 /
+  删会话不影响其他 / 旧库打开自动补建映射表）。②**libsimple.so 换无 jieba 版**（上游 `2b522f990`，`446836328`）——
+  `SIMPLE_WITH_JIEBA=OFF` 重编：arm64 9,076,576→7,591,064 B、x86_64 8,743,904→7,261,360 B，
+  `sqlite3_simple_init` 保留、dynsym 0 个 jieba 符号、分词行为不变 ⇒ **已有索引不用重建**。
+  ③**压缩对话框「保留最近 N 条」改步进器**（上游 `71dd98f88`，`beccde0ce`）——修负数显示不一致/清空沿用旧值/小数被忽略；
+  减号 0 禁用、加号到 range 上限禁用；图标按项目约定用 Lucide。④**R8 keepnames Throwable**（上游 `e3d11e15f` 可取部分，`ae6d23f83`）——
+  release 日志里异常类名不再被混淆成 `a.b.c`；同批的 CI 上传 mapping 不取（本仓 CI 发版仍禁用）。
+  **不取**：`d8ba9cf67`（扫码，本仓已移除该功能）、`26454cc4d`/`80845dd9b`（beta.6 已吸收）、
+  `070ff683c`（德语，范围外）、`4e99510be`（perf skill 文档，价值低）。
+  **P2 待定**：`2a0a831e6`（uCrop→Compose 裁图，APK −1MB）、`43f1a5df2`（创作页标题重命名，需先核对创作页结构）。
+  **P3 暂缓**：`dbccc68c7`（缩体积，横跨 web/web-ui）。
+  **验证**：`:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` 通过；真机仪器测试该类 3/3；
+  JVM 单测 app **2275 项**、common **96 项** 0 失败；`:app:assembleRelease`（R8+lintVital）通过，
+  arm64 APK 62,547,072 → **62,519,976 B**（−27,096）。**未做**真机 UI 点击（步进器只到编译层面），下次装机补看。
