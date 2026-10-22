@@ -137,7 +137,10 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         return
     }
 
-    val renderer = remember(tool.toolName) { ToolUIRegistry.resolve(tool.toolName) }
+    // 版本号参与 key:插件运行时注册/注销渲染器后需要重新解析
+    val renderer = remember(tool.toolName, ToolUIRegistry.version) {
+        ToolUIRegistry.resolve(tool.toolName)
+    }
     val outputJson = remember(tool) {
         if (tool.isExecuted) {
             runCatching {

@@ -29,6 +29,9 @@ import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.rikkahub.data.plugin.PluginToolProvider
+import app.androidrik.plugin.api.PluginCapability
+import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.workspace.WorkspaceShellStatus
 
 private const val TAG = "ChatToolFactory"
@@ -82,6 +85,8 @@ class ChatToolFactory(
     private val skillManager: SkillManager,
     private val ragRepository: app.androidrik.rikkahub.data.rag.RagRepository,
     private val workspaceRepository: WorkspaceRepository,
+    /** 插件注册表:插件工具段的装配来源(能力门槛 `TOOL_REGISTER` 在 [createPluginToolSegments] 校验) */
+    private val pluginManager: PluginManager,
     /** 会话内生图工具（#2123）的写路径；见 [app.androidrik.rikkahub.data.image.ImageGenerationRunner] */
     private val imageGenerationRunner: ImageGenerationRunner,
     /**
@@ -431,9 +436,27 @@ class ChatToolFactory(
             )
         }
 
+        // 插件工具段:模型侧看到的就是普通工具,来源记为 plugin:<id>(schema 诊断按段统计)
+        segments += createPluginToolSegments()
+
         logSchemaBreakdown(segments, settings, model)
         return segments
     }
+
+    /**
+     * 插件工具段。
+     *
+     * 门槛:插件已启用 + 持有 [PluginCapability.TOOL_REGISTER] + 实现 [PluginToolProvider]。
+     * 能力在**装配点**校验,撤销能力后下一次装配即消失(不必等插件重启)。
+     */
+    private fun createPluginToolSegments(): List<ToolSegment> =
+        pluginManager.plugins.value
+            .filter { it.enabled && it.hasCapability(PluginCapability.TOOL_REGISTER) }
+            .mapNotNull { info ->
+                val provider = info.plugin as? PluginToolProvider ?: return@mapNotNull null
+                val tools = provider.tools()
+                if (tools.isEmpty()) null else ToolSegment("plugin:${info.plugin.id}", tools)
+            }
 
     /**
      * 打印各来源工具的 schema 体积（每回合一次）。

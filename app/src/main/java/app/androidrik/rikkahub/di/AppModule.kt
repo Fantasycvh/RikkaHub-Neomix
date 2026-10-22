@@ -10,6 +10,9 @@ import app.androidrik.rikkahub.data.image.ImageGenerationRunner
 import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.event.AppEventBus
+import app.androidrik.rikkahub.data.plugin.DataStorePluginStateStore
+import app.androidrik.plugin.manager.PluginManager
+import app.androidrik.plugin.manager.PluginStateStore
 import app.androidrik.rikkahub.service.ChatNotificationManager
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.MediaCreationService
@@ -36,6 +39,52 @@ val appModule = module {
 
     single {
         AppScope()
+    }
+
+    // 插件状态:独立 DataStore(单 key JSON),与主设置解耦
+    single<PluginStateStore> {
+        DataStorePluginStateStore(get())
+    }
+
+    // 插件注册表:进程内单例,Application 启动时 start() 并由内置插件清单注册
+    single {
+        PluginManager(scope = get<AppScope>(), stateStore = get())
+    }
+
+    // JSON 规则插件:定义存储 + 安装器(URL 抓取/校验/物化注册)
+    single {
+        app.androidrik.rikkahub.data.plugin.rules.JsonRulePluginStore(get())
+    }
+
+    single {
+        app.androidrik.rikkahub.data.plugin.rules.RulePluginInstaller(
+            okHttpClient = get(),
+            store = get(),
+            manager = get(),
+        )
+    }
+
+    // JS 沙箱插件:受控出站网关 + 定义存储 + 安装器
+    single {
+        // 显式按 OkHttpClient 解析:网关构造参数声明为 Call.Factory,
+        // 直接 get() 会按 Call.Factory 查找而 Koin 里只有 OkHttpClient 定义(运行期才炸)
+        app.androidrik.rikkahub.data.plugin.net.PluginHttpGateway(
+            callFactory = get<okhttp3.OkHttpClient>(),
+        )
+    }
+
+    single {
+        app.androidrik.rikkahub.data.plugin.js.JsPluginStore(get())
+    }
+
+    single {
+        app.androidrik.rikkahub.data.plugin.js.JsPluginInstaller(
+            context = get(),
+            okHttpClient = get(),
+            store = get(),
+            manager = get(),
+            gateway = get(),
+        )
     }
 
     single<EmojiData> {
@@ -93,6 +142,7 @@ val appModule = module {
             skillManager = get(),
             ragRepository = get(),
             workspaceRepository = get(),
+            pluginManager = get(),
             imageGenerationRunner = get(),
             // **延迟解析**：SubagentRunner 依赖本工厂（它要用装配点装配工具），
             // 直接在此 `get()` 会构成构造环。lambda 体在装配工具时才执行 ⇒ 环断在这里。
@@ -114,6 +164,7 @@ val appModule = module {
             memoryRepository = get(),
             generationHandler = get(),
             templateTransformer = get(),
+            pluginManager = get(),
             providerManager = get(),
             chatToolFactory = get(),
             mcpManager = get(),

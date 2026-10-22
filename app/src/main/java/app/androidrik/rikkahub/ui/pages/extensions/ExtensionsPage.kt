@@ -20,6 +20,7 @@ import app.androidrik.rikkahub.R
 import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.Puzzle
 import me.rerere.hugeicons.stroke.Robot01
 import me.rerere.hugeicons.stroke.Rocket01
@@ -93,6 +94,12 @@ fun ExtensionsPage() {
                         leadingContent = { Icon(HugeIcons.Robot01, null) },
                         headlineContent = { Text(stringResource(R.string.subagent_page_title)) },
                         supportingContent = { Text(stringResource(R.string.subagent_page_desc)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.Plugins) },
+                        leadingContent = { Icon(HugeIcons.Package, null) },
+                        headlineContent = { Text("插件") },
+                        supportingContent = { Text("启用/禁用内置插件,查看能力声明") },
                     )
                 }
             }

@@ -79,7 +79,9 @@ import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.ai.tools.shouldUseExternalWebSearch
 import app.androidrik.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import app.androidrik.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
+import app.androidrik.rikkahub.data.ai.transformers.InputMessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.OcrTransformer
+import app.androidrik.rikkahub.data.ai.transformers.OutputMessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.PlaceholderTransformer
 import app.androidrik.rikkahub.data.ai.transformers.PromptInjectionTransformer
 import app.androidrik.rikkahub.data.ai.transformers.RegexOutputTransformer
@@ -101,6 +103,10 @@ import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.data.datastore.resolveCompressionModel
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.plugin.PluginInputTransformer
+import app.androidrik.rikkahub.data.plugin.PluginOutputTransformer
+import app.androidrik.plugin.api.PluginCapability
+import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
 import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.utils.estimateWindowTokens
@@ -431,6 +437,8 @@ class ChatService(
     private val memoryRepository: MemoryRepository,
     private val generationHandler: GenerationHandler,
     private val templateTransformer: TemplateTransformer,
+    /** 插件注册表:转换管线接入点(见 [buildInputTransformerChain] / [pluginOutputTransformers]) */
+    private val pluginManager: PluginManager,
     private val providerManager: ProviderManager,
     private val chatToolFactory: ChatToolFactory,
     val mcpManager: McpManager,
@@ -442,6 +450,37 @@ class ChatService(
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
+
+    /**
+     * 插件提供的**输入**转换器。
+     *
+     * 两道门:插件已启用 + 持有 [PluginCapability.PROMPT_TRANSFORM]。
+     * 能力在调用点校验(而非启用时一次性判断),撤销能力后立即从管线消失。
+     */
+    private fun pluginInputTransformers(): List<InputMessageTransformer> =
+        pluginManager.plugins.value
+            .filter { it.enabled && it.hasCapability(PluginCapability.PROMPT_TRANSFORM) }
+            .mapNotNull { it.plugin as? PluginInputTransformer }
+
+    /** 插件提供的**输出**转换器;门槛同 [pluginInputTransformers]。 */
+    private fun pluginOutputTransformers(): List<OutputMessageTransformer> =
+        pluginManager.plugins.value
+            .filter { it.enabled && it.hasCapability(PluginCapability.OUTPUT_TRANSFORM) }
+            .mapNotNull { it.plugin as? PluginOutputTransformer }
+
+    /**
+     * 输入转换链(实发与拼装预览共用,保证预览与真实请求一致)。
+     *
+     * 顺序:内置 → 模板 → 工作区提醒 → 插件 → 工具结果配平(必须是最后一环)。
+     */
+    private fun buildInputTransformerChain(): List<InputMessageTransformer> = buildList {
+        addAll(inputTransformers)
+        add(templateTransformer)
+        add(workspaceReminderTransformer)
+        addAll(pluginInputTransformers())
+        // 配平必须看到最终形态:前面任何一环(含插件)都可能改动消息。
+        add(ToolResultBalancingTransformer)
+    }
 
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
@@ -1204,14 +1243,8 @@ class ChatService(
                 conversation = conversation,
                 memories = memories,
                 tools = tools,
-                inputTransformers = buildList {
-                    addAll(inputTransformers)
-                    add(templateTransformer)
-                    add(workspaceReminderTransformer)
-                    // **必须是最后一个**：前面任何一环都可能改动消息（注入/模板/引用展开），
-                    // 配平必须看到最终形态。与实发链同款注册 ⇒ 预览与真实请求一致。
-                    add(ToolResultBalancingTransformer)
-                },
+                // 与实发链同款装配(含插件段),预览与真实请求一致
+                inputTransformers = buildInputTransformerChain(),
                 labels = labels,
             )
         }
@@ -1414,16 +1447,10 @@ class ChatService(
                 frozenAnchorIds = frozenAnchorIds,
                 // GenerationHandler logs the actual shared plan; no second selection/tokenization for logs.
                 memories = loadedMemories,
-                inputTransformers = buildList {
-                    addAll(inputTransformers)
-                    add(templateTransformer)
-                    add(workspaceReminderTransformer)
-                    // 工具 call/result 数量配平（发送前护栏，纯派生）——链的**最后一环**：
-                    // 前面任何一环都可能改动消息，配平必须看到最终形态。
-                    // 见 transformers/ToolResultBalancingTransformer.kt。
-                    add(ToolResultBalancingTransformer)
-                },
-                outputTransformers = outputTransformers,
+                // 内置 → 模板 → 工作区提醒 → 插件 → 工具结果配平(末环);见 buildInputTransformerChain
+                inputTransformers = buildInputTransformerChain(),
+                // 插件输出转换器接在末尾:内置的 ThinkTag 等先规整,插件处理最终文本
+                outputTransformers = outputTransformers + pluginOutputTransformers(),
                 // 工具装配集中到 ChatToolFactory（记忆 + 搜索 + 本地 + 对话 + 工作区 + 技能 + MCP）；
                 // 已在上面取好并计时（assembledTools）
                 tools = assembledTools,

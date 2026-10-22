@@ -39,6 +39,8 @@ import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.AvatarMigration
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.plugin.installBuiltInPlugins
+import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.service.MediaCreationService
 import app.androidrik.rikkahub.service.WebServerService
 import app.androidrik.rikkahub.service.KeepAliveService
@@ -114,6 +116,29 @@ class RikkaHubApp : Application() {
 
         // Init QuickJS native library
         QuickJSLoader.init()
+
+        // 插件内核:先启动状态加载,再注册内置插件(register 内部等待加载完成,
+        // 避免"注册早于读取"导致持久化的启用状态被默认值覆盖)
+        get<PluginManager>().also { manager ->
+            manager.start()
+            get<AppScope>().launch {
+                installBuiltInPlugins(manager)
+                // 已安装的 JSON 规则插件物化回注册表(与内置插件同一套状态与开关)
+                runCatching {
+                    get<app.androidrik.rikkahub.data.plugin.rules.RulePluginInstaller>()
+                        .restoreAll(
+                            get<app.androidrik.rikkahub.data.plugin.rules.JsonRulePluginStore>().read()
+                        )
+                }.onFailure { Log.e(TAG, "failed to restore rule plugins", it) }
+                // 已安装的 JS 沙箱插件同样物化(沙箱实例按需创建,这里只注册)
+                runCatching {
+                    get<app.androidrik.rikkahub.data.plugin.js.JsPluginInstaller>()
+                        .restoreAll(
+                            get<app.androidrik.rikkahub.data.plugin.js.JsPluginStore>().read()
+                        )
+                }.onFailure { Log.e(TAG, "failed to restore js plugins", it) }
+            }
+        }
 
         // 初始化日志落盘目录 + 应用持久化的落盘开关（在生成/网络发生前就绪）
         initLogToFile()

@@ -97,6 +97,8 @@ import app.androidrik.rikkahub.ui.pages.backup.BackupPage
 import app.androidrik.rikkahub.ui.pages.chat.ChatPage
 import app.androidrik.rikkahub.ui.pages.debug.DebugPage
 import app.androidrik.rikkahub.ui.pages.extensions.ExtensionsPage
+import app.androidrik.rikkahub.ui.pages.plugins.PluginDetailPage
+import app.androidrik.rikkahub.ui.pages.plugins.PluginsPage
 import app.androidrik.rikkahub.ui.pages.extensions.PromptPage
 import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunsPage
 import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunDetailPage
@@ -615,6 +617,14 @@ class RouteActivity : ComponentActivity() {
                                 ExtensionsPage()
                             }
 
+                            entry<Screen.Plugins> {
+                                PluginsPage()
+                            }
+
+                            entry<Screen.PluginDetail> { key ->
+                                PluginDetailPage(pluginId = key.pluginId)
+                            }
+
                             entry<Screen.QuickMessages> {
                                 QuickMessagesPage()
                             }
@@ -890,6 +900,14 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Extensions : Screen
+
+    /** 插件中心(内置插件列表 + 启用开关 + 能力声明)。 */
+    @Serializable
+    data object Plugins : Screen
+
+    /** 插件详情;插件自带配置界面在页内内嵌,不新增设置页路由。 */
+    @Serializable
+    data class PluginDetail(val pluginId: String) : Screen
 
     @Serializable
     data object QuickMessages : Screen

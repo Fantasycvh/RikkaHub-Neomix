@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -100,9 +101,12 @@ private object DefaultToolUIRenderer : ToolUIRenderer {
 
 /**
  * 工具 UI 渲染器注册表, 为新工具定制渲染时在 [renderers] 中注册即可
+ *
+ * 也支持运行时动态注册(插件系统):[register] / [unregister] 会递增 [version],
+ * `resolve` 读取该版本号 ⇒ 注册/注销后读取过它的 Compose 内容自动重组。
  */
 object ToolUIRegistry {
-    private val renderers: Map<String, ToolUIRenderer> = listOf(
+    private val renderers: MutableMap<String, ToolUIRenderer> = listOf(
         MemoryToolUI,
         SearchWebToolUI,
         ScrapeWebToolUI,
@@ -127,10 +131,36 @@ object ToolUIRegistry {
         TaskStatusToolUI,
         KillTaskToolUI,
         GenerateImageToolUI,
-    ).associateBy { it.toolName }
+    ).associateBy { it.toolName }.toMutableMap()
+
+    private val versionState = mutableIntStateOf(0)
+
+    /** 注册表版本号;Compose 内容读取它即可在动态注册/注销后重组。 */
+    val version: Int get() = versionState.intValue
+
+    /** 注册(或覆盖)一个渲染器;插件启用时调用。 */
+    fun register(renderer: ToolUIRenderer) {
+        synchronized(this) {
+            renderers[renderer.toolName] = renderer
+            versionState.intValue += 1
+        }
+    }
+
+    /** 注销渲染器;插件禁用时调用(未注册时无副作用)。 */
+    fun unregister(toolName: String) {
+        synchronized(this) {
+            if (renderers.remove(toolName) != null) {
+                versionState.intValue += 1
+            }
+        }
+    }
 
     /** 查找工具对应的渲染器, 未注册时返回默认渲染器 */
-    fun resolve(toolName: String): ToolUIRenderer = renderers[toolName] ?: DefaultToolUIRenderer
+    fun resolve(toolName: String): ToolUIRenderer {
+        // 读取版本号:动态注册后读取方(Compose)重组,否则新渲染器要等页面重建才生效
+        versionState.intValue
+        return renderers[toolName] ?: DefaultToolUIRenderer
+    }
 }
 
 internal fun JsonElement?.getStringContent(key: String): String? =
