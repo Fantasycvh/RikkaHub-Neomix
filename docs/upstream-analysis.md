@@ -8,7 +8,7 @@
 > **同日专项**：另**单独吸收**了更早未移植的 `5a90c0548`（用量统计流水表，DB v44），见「2026-10-20 专项吸收：用量统计流水」一节——它不在本批 fetch 区间内，是本仓 346 个「上游有、本仓无」存量里按用户指定方向挑的一条。
 > **同步点（2026-10-20 晚，beta.5 发版前复核）**：`e5bb70730` 之后上游又有 4 个提交（HEAD `5203601f7`，上游已发 tag `3.1.0` / `eeef60b22`）。其中**又吸收 2 条**：`bc4a6f47e`（输入区图片预览 / 多图左右切换 / 预览内进画板，fork `15e3d8c9e`）、`17d06d26f`（新建/导入提供商后清空搜索并滚到新项，fork `1ddb87d8e`）。**尚余 3 条未评估**：`5203601f7`（全局禁用 overscroll 回弹）、`8bb488e3a`（工具步骤显示执行耗时）、`fe55bff7f`（提供商类型名与「订阅」类型）。本仓「上游有、本仓无」累计 **350** 个提交（含历史存量 346 + 本批未评估 3 + 刻意不做 1）。
 > **同步点（2026-10-21 更新）**：已评估到上游 **`815e9c20b`**（`3.1.0-15-g815e9c20b`，2026-10-21 16:26），本批 `5203601f7`..`815e9c20b` 共 **10 提交**；10-20 遗留的 3 条一并结案：`5203601f7` **已与本仓等价**（`Theme.kt` 的 `LocalOverscrollFactory provides null`）、`fe55bff7f` **不适用**、`8bb488e3a` 列 P2 候选。10 条新提交里只有 **`2aafd708f`（技能删除/校验）** 值得考虑吸收；其余因架构/范围不跟（PDF 替换、渠道 flavor、赞助商、i18n 工具链、远程 SSH）。同期 issue 窗口 **60 条**（22 open / 38 新近 closed）评估见「2026-10-21 issue 评估」；本仓 `upstream/master..HEAD` = **1232**、`HEAD..upstream/master` = **360**。
-> **同步点（2026-10-23 更新）**：已评估到上游 **`43f1a5df2`**（`3.1.0-27-g43f1a5df2`，2026-10-22），本批 `815e9c20b`..`43f1a5df2` 共 **12 提交**（逐条结论见「2026-10-23 同步评估」）：**吸收 3 条 + 部分吸收 1 条**——`90e48420f` 消息索引增量（`67ef193eb` / `1fd089a04`）、`2b522f990` libsimple 无 jieba（`446836328`）、`71dd98f88` 压缩对话框步进器（`beccde0ce`）、`e3d11e15f` 的 `-keepnames Throwable`（`ae6d23f83`）；`26454cc4d` / `80845dd9b` 已在 beta.6 吸收，`d8ba9cf67` 不适用（本仓已移除扫码）；P2 待定 `2a0a831e6`（裁图）、`43f1a5df2`（创作页重命名），P3 暂缓 `dbccc68c7`（体积），范围外 `070ff683c`（德语）/ `4e99510be`（perf skill 文档）。本仓 `upstream/master..HEAD` = **1272**、`HEAD..upstream/master` = **372**。
+> **同步点（2026-10-23 更新）**：已评估到上游 **`43f1a5df2`**（`3.1.0-27-g43f1a5df2`，2026-10-22），本批 `815e9c20b`..`43f1a5df2` 共 **12 提交**（逐条结论见「2026-10-23 同步评估」）：**吸收 5 条 + 部分吸收 1 条**——`90e48420f` 消息索引增量（`67ef193eb` / `1fd089a04`）、`2b522f990` libsimple 无 jieba（`446836328`）、`71dd98f88` 压缩对话框步进器（`beccde0ce`）、`e3d11e15f` 的 `-keepnames Throwable`（`ae6d23f83`）；`26454cc4d` / `80845dd9b` 已在 beta.6 吸收，`d8ba9cf67` 不适用（本仓已移除扫码）；`2a0a831e6` 裁图替换（`075067850`）、`43f1a5df2` 创作页重命名（`6a9d5bdec`）亦已吸收，P3 暂缓 `dbccc68c7`（体积），范围外 `070ff683c`（德语）/ `4e99510be`（perf skill 文档）。本仓 `upstream/master..HEAD` = **1275**、`HEAD..upstream/master` = **372**。
 > **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
 > **教训**：`git fetch` 的区间大小 ≠ 待评估量；判断「有没有欠账」要看**文档记录的评估点**（本节顶部的同步点），不是本地 ref。
 
@@ -1182,25 +1182,31 @@ git checkout master
 | `2b522f990` | `libsimple.so` 换不带 jieba 的版本 | ✅ **已吸收**（`446836328`）：纯二进制替换，`sqlite3_simple_init` 保留、dynsym 0 个 jieba 符号、分词行为不变 ⇒ 已有索引不用重建 |
 | `71dd98f88` | 压缩对话框「保留最近 N 条」数字框改步进器 | ✅ **已吸收**（`beccde0ce`）：修「负数显示/清空沿用旧值/小数被忽略」三个输入框坑；图标按项目约定用 Lucide 而非上游 HugeIcons |
 | `e3d11e15f` | 构建上传 mapping.txt + keepnames | 🟡 **部分吸收**（`ae6d23f83`）：取 `-keepnames class * extends java.lang.Throwable`（release 日志里异常类名可读）；CI 上传 mapping 不适用（本仓 CI 自动发版仍禁用） |
-| `2a0a831e6` | 图片裁剪 uCrop → Compose `ImageCropDialog`（26 文件，约 500 行） | ⏸ **P2 待定**：价值明确（APK −1MB、去 `libucrop.so` 与依赖、顺带修 HEIF/EXIF），本仓 `libs.ucrop` + `CropLauncher` 确实还在；工作量大，需单独立项 |
-| `43f1a5df2` | 创作页点顶栏标题重命名会话 | ⏸ **P2 待定**：85 行，但上游同批**删除了 `MediaCreationSessionsPage.kt`**，本仓仍有该文件 ⇒ 先核对两边创作页是否同代，再决定移植方式 |
+| `2a0a831e6` | 图片裁剪 uCrop → Compose `ImageCropDialog`（26 文件，约 500 行） | ✅ **已吸收**（`075067850`）：上游实现在其 `ui` 模块、本仓无该模块，故 4 个文件（约 880 行）落在 app 模块 `ui/components/crop/`；`useCropLauncher` 改返回「打开对话框的函数」，保留本仓 `CropOutput`（格式派生扩展名 + 单测）；调用点去掉 HEIF→JPEG 预转换与临时拷贝；删 `ImageUtils` HEIF 两个函数、`libs.ucrop`、manifest `UCropActivity`。图标按项目约定改 Lucide |
+| `43f1a5df2` | 创作页点顶栏标题重命名会话 | ✅ **已吸收**（`6a9d5bdec`）：核对后本仓创作页与上游**同代**（`MediaCreationSessionsPage` 仍在，上游在该提交之后才删），按原结构适配：标题胶囊可点、多选/未加载时不可点、空标题显示「新会话」；`RenameSessionDialog` 提到 `MediaCreationCommon` 两页共用 |
 | `dbccc68c7` | 大幅缩 APK（30.9→25.8MB）：web-ui 高亮 shiki→highlight.js、Web JWT 自实现、`resources.arsc` locale 过滤、去 kotlin-reflect 工厂表、删 `sqlite-vector` 声明 | ⏸ **P3 暂缓**：横跨 app/web/web-ui，本仓 web-ui 已改造且 `sqlite-vector` 仍被声明；收益大但风险高，须独立立项评估 |
 | `070ff683c` | 新增德语 + i18n 工具链 | ❌ **范围外**：本仓三语（en/zh/zh-rTW）策略，加语言是独立决定 |
 | `4e99510be` | docs: jetpack compose perf skill | ❌ **价值低**：`.agents/skills` 文档，与功能无关 |
 
 ### 台账
 
-- P2 队列：`2a0a831e6`（裁图替换）、`43f1a5df2`（创作页重命名）
+- P2 队列：~~`2a0a831e6`、`43f1a5df2`~~ **已清空**（2026-10-23 吸收）
 - P3 队列：`dbccc68c7`（体积），需先评估 web-ui 现状与本仓差异
-- 本批吸收后计数：`upstream/master..HEAD` = **1272**、`HEAD..upstream/master` = **372**
+- 遗留小项：上游「各模块去掉 appcompat/material 声明」未取——本仓 `:app:dependencies` 显示
+  appcompat 1.7.1 / material 1.14.0 仍由**传递依赖**引入（app 模块 `RabbitLoading` 还直接用
+  `AppCompatResources`），单独删声明不改变产物，留待依赖树专项
+- 本批吸收后计数：`upstream/master..HEAD` = **1275**、`HEAD..upstream/master` = **372**
 
 ### 本轮验证
 
 - `:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` 通过
 - 仪器测试 `MessageFtsManagerTest`（真机 PJX110）：**3/3 通过**（只重写变化消息 / 删会话不影响其他 / 旧库自动补建映射表）
 - JVM 单测：app **2275 项 0 失败**、common **96 项 0 失败**
-- `:app:assembleRelease`（R8 + lintVital）通过；arm64 APK 62,547,072 → **62,519,976 B**（−27,096）
-- ⚠️ 本批**未做**真机 UI 点击验证（压缩对话框步进器只到编译/单测层面）；下次装机冒烟时补看
+- `:app:assembleRelease`（R8 + lintVital）通过；P1 后 arm64 APK 62,519,976 B，**P2 后 61,331,196 B**
+  （相对 beta.7 的 62,547,072 **−1,215,876 B ≈ −1.19MB**，其中 `libucrop.so` 与 uCrop 资源占大头）
+- P2 单测：app **2277 项**（+2，含移植的 `ImageCropStateTest`）0 失败
+- ⚠️ 本批**未做**真机 UI 点击验证（压缩对话框步进器、裁剪对话框、创作页标题重命名都只到编译/单测层面）；
+  下次装机冒烟时补看
 
 ## 关联
 

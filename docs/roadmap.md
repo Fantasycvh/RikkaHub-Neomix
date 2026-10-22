@@ -3475,8 +3475,18 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   release 日志里异常类名不再被混淆成 `a.b.c`；同批的 CI 上传 mapping 不取（本仓 CI 发版仍禁用）。
   **不取**：`d8ba9cf67`（扫码，本仓已移除该功能）、`26454cc4d`/`80845dd9b`（beta.6 已吸收）、
   `070ff683c`（德语，范围外）、`4e99510be`（perf skill 文档，价值低）。
-  **P2 待定**：`2a0a831e6`（uCrop→Compose 裁图，APK −1MB）、`43f1a5df2`（创作页标题重命名，需先核对创作页结构）。
+  **P2 同日续做（已吸收）**：⑨**图片裁剪 uCrop → Compose**（上游 `2a0a831e6`，`075067850`）——上游实现在其
+  `ui` 模块（本仓无），4 个文件约 880 行落在 app `ui/components/crop/`：对话框内缩放/平移/旋转/重置 +
+  固定比例（头像 1:1）/自由/原图比例，预览长边 2048、导出按变换矩阵重采样，解码在进程内完成
+  （API 28+ `ImageDecoder` 原生支持 HEIF 与 EXIF 方向）⇒ 选图不再预拷临时文件、不再 HEIF→JPEG；
+  `useCropLauncher` 改「返回打开函数」，保留本仓 `CropOutput`（扩展名由格式派生 + 单测）；
+  删 `ImageUtils` HEIF 两函数、`libs.ucrop`、manifest `UCropActivity`，图标改项目约定 Lucide。
+  ⑩**创作页点标题重命名**（上游 `43f1a5df2`，`6a9d5bdec`）——核对后本仓创作页与上游同代，
+  按原结构适配：标题胶囊可点、多选/未加载时不可点、空标题显示「新会话」，
+  `RenameSessionDialog` 提到 `MediaCreationCommon` 两页共用。
+  **P2 后 APK**：arm64 **61,331,196 B**（beta.7 62,547,072 → **−1.19MB**）。
   **P3 暂缓**：`dbccc68c7`（缩体积，横跨 web/web-ui）。
   **验证**：`:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` 通过；真机仪器测试该类 3/3；
-  JVM 单测 app **2275 项**、common **96 项** 0 失败；`:app:assembleRelease`（R8+lintVital）通过，
-  arm64 APK 62,547,072 → **62,519,976 B**（−27,096）。**未做**真机 UI 点击（步进器只到编译层面），下次装机补看。
+  JVM 单测 app **2277 项**（P2 增 `ImageCropStateTest`）、common **96 项** 0 失败；
+  `:app:assembleRelease`（R8+lintVital）三次均通过（P1 后 62,519,976 / P2 后 **61,331,196 B**）。
+  **未做**真机 UI 点击（步进器、裁剪对话框、创作页标题重命名都只到编译/单测层面），下次装机补看。
