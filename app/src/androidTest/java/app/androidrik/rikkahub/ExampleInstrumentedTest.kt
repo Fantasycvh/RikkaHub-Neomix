@@ -15,12 +15,12 @@ import org.junit.runner.RunWith
 class ExampleInstrumentedTest {
     @Test
     fun useAppContext() {
-        // Context of the app under test. 本仓 debug 变体是 `app.androidrik.rikkahub.debug`，
-        // 不能钉死 release applicationId，否则全量测试在 debug 包上必然失败。
+        // Context of the app under test. 本分支全局 applicationId 是 `app.androidrik.neomix`
+        //（debug 为 `app.androidrik.neomix.debug`），不能钉死具体包名，否则换 applicationId 后必失败。
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
         assertTrue(
             "unexpected target package: ${appContext.packageName}",
-            appContext.packageName.startsWith("app.androidrik.rikkahub"),
+            appContext.packageName.startsWith("app.androidrik."),
         )
     }
 }

@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:123456789012:android:aaaaaaaaaaaaaaaa",
         "android_client_info": {
-          "package_name": "app.androidrik.rikkahub"
+          "package_name": "app.androidrik.neomix"
         }
       },
       "oauth_client": [],
@@ -28,7 +28,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:123456789012:android:bbbbbbbbbbbbbbbb",
         "android_client_info": {
-          "package_name": "app.androidrik.rikkahub.debug"
+          "package_name": "app.androidrik.neomix.debug"
         }
       },
       "oauth_client": [],

@@ -10,7 +10,7 @@
 > ⚠️ **非官方 fork**：与上游 [rikkahub/rikkahub](https://github.com/rikkahub/rikkahub) **无从属关系**，上游不处理本项目的问题；
 > 本项目由个人维护，代理、S3、MLTS等部分功能未经测试，**不承诺及时响应**。AGPL-3.0 许可，保留上游 `LICENSE` 与出处。
 > **本仓有意不接 issue**，反馈请走 [💬 Discussions](https://github.com/Fantasycvh/RikkaHub-Neomix/discussions)（详见下方「与上游的关系 → 反馈渠道」）。
-> 应用显示名 **Neomix**（仓库名 `RikkaHub-Neomix`），包名 `app.androidrik.rikkahub`。
+> 应用显示名 **Neomix**（仓库名 `RikkaHub-Neomix`），包名 `app.androidrik.neomix`（本分支全局 applicationId；master 分支仍是 `app.androidrik.rikkahub`）。
 > **发布**：正式版 **`v1.0.27`**（`1.0.27 (294)`）；预发布 **`1.0.28-beta.8`**（`1.0.28-beta.8 (310)`，2026-10-23，**插件系统标注为实验性**）。**自 `1.0.28-beta.7` 起随 release 提供预编译 APK**（仅 arm64-v8a，见下方「下载与安装」）；更早的 `1.0.28-beta.1`…`beta.6` 与 `v1.0.27` 仅 tag、无资产。
 > **tag 前缀**：`v1.0.0`–`v1.0.27` 带 `v`，**自 `1.0.28-beta.1` 起不再带 `v`**。
 
@@ -268,8 +268,8 @@ arm64 原生库合计约 **17.3 MB**（未压缩）。
    cp app/google-services.example.json app/google-services.json
    ```
    —— **缺失会让构建直接失败**（`processDebug/ReleaseGoogleServices` 报 `File google-services.json is missing`，不是"只是运行时崩"；
-   只有真实 Crashlytics/Analytics 才需要替换成自己的 Firebase 配置）。仓库自带的示例是占位值，package 覆盖 `app.androidrik.rikkahub`
-   与 `app.androidrik.rikkahub.debug` 两个变体；新增变体（如自建 `applicationIdSuffix`）需要再加一个同 package 的 client，否则同样构建失败。
+   只有真实 Crashlytics/Analytics 才需要替换成自己的 Firebase 配置）。仓库自带的示例是占位值，package 覆盖 `app.androidrik.neomix`
+   与 `app.androidrik.neomix.debug` 两个变体；新增变体（如自建 `applicationIdSuffix`）需要再加一个同 package 的 client，否则同样构建失败。
 3. Debug：`bash scripts/build.sh :app:assembleDebug`；Release：`bash scripts/build.sh release`
 4. 产物：`app/build/outputs/apk/release/app-{arm64-v8a,universal,x86_64}-release.apk`（本项目只发 arm64-v8a）
 5. 测试：`bash scripts/build.sh :app:testDebugUnitTest`

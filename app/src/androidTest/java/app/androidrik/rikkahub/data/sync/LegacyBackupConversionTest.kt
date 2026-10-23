@@ -87,8 +87,10 @@ class LegacyBackupConversionTest {
                 assertTrue(cursor.moveToFirst())
                 cursor.getString(0)
             }
-            assertTrue("attachment path must be rewritten", messages.contains("/app.androidrik.rikkahub/files/") ||
-                messages.contains("/app.androidrik.rikkahub.debug/files/"))
+            assertTrue(
+                "attachment path must be rewritten to the current applicationId",
+                messages.contains("/${context.packageName}/files/"),
+            )
             assertFalse("legacy path must be gone", messages.contains("/data/user/0/me.rerere.rikkahub/"))
             assertTrue("plain text mentioning the old package stays untouched", messages.contains("at me.rerere.rikkahub."))
         } finally {

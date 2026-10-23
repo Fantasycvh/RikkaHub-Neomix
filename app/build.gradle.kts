@@ -19,7 +19,9 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.androidrik.rikkahub"
+        // 本分支使用独立 applicationId，避免与 master 的 app.androidrik.rikkahub 互相覆盖。
+        // namespace 仍是 app.androidrik.rikkahub（源码包名与 R/BuildConfig 不变）。
+        applicationId = "app.androidrik.neomix"
         minSdk = 26
         targetSdk = 37
         versionCode = 310

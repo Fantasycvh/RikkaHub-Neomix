@@ -355,8 +355,14 @@ internal enum class LegacyDatabaseFamily {
     UNKNOWN,
 }
 
-/** 与 `SettingsJsonMigrator` 保持同一份旧包名清单（改包名时两处一起改）。 */
-private val LEGACY_APPLICATION_IDS = listOf("me.rerere.rikkahub", "app.fantasycvh.rikkahub")
+/**
+ * 旧 applicationId 清单（**改包名时两处一起改**：此处与 `SettingsJsonMigrator`）。
+ *
+ * 含 `app.androidrik.rikkahub`：本分支 applicationId 已改为 `app.androidrik.neomix`，
+ * 从旧包恢复备份时附件/工作区绝对路径要能重写。
+ */
+private val LEGACY_APPLICATION_IDS =
+    listOf("me.rerere.rikkahub", "app.fantasycvh.rikkahub", "app.androidrik.rikkahub")
 
 /** `[stated]` / `[inferred]` 等原版来源标记；不映射成本应用的字段，只从正文剥离。 */
 private val SOURCE_MARKER_RE = Regex("^\\[[^\\]]+\\]\\s*")

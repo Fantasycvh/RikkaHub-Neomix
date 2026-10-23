@@ -37,6 +37,9 @@ private val LEGACY_ROOTS = listOf(
 private val LEGACY_APPLICATION_IDS = listOf(
     "me.rerere.rikkahub",
     "app.fantasycvh.rikkahub",
+    // 本分支把 applicationId 改成 app.androidrik.neomix：旧包路径必须能被重写，
+    // 否则跨包恢复备份后附件/工作区 URI 全部失效。
+    "app.androidrik.rikkahub",
 )
 
 /**
