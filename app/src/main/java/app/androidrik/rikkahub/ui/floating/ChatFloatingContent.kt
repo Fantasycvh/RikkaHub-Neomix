@@ -204,8 +204,12 @@ fun ChatFloatingPanel(
     onResizeFinished: () -> Unit = {},
     onResetSize: (() -> Unit)? = null,
     onMove: ((Float, Float) -> Unit)? = null,
+    windowModifier: Modifier = Modifier,
+    titleModifier: Modifier = Modifier,
+    onToggleMaximize: (() -> Unit)? = null,
+    maximized: Boolean = false,
 ) {
-    Box(modifier = (if (panelWidth == null) Modifier.fillMaxWidth() else Modifier).heightIn(max = maxHeight), contentAlignment = Alignment.TopCenter) {
+    Box(modifier = windowModifier.then(if (panelWidth == null) Modifier.fillMaxWidth() else Modifier).heightIn(max = maxHeight), contentAlignment = Alignment.TopCenter) {
         Surface(
             modifier = (if (panelWidth != null) Modifier.size(panelWidth, maxHeight)
                 else Modifier.widthIn(max = 560.dp).fillMaxWidth())
@@ -222,7 +226,15 @@ fun ChatFloatingPanel(
                         move?.invoke(delta.x, delta.y)
                     }
                 }
-                PanelHeader(state, onOpenConversation, onCollapse, onDismiss, moveModifier)
+                PanelHeader(state, onOpenConversation, onCollapse, onDismiss, titleModifier.then(moveModifier))
+                if (onToggleMaximize != null) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onToggleMaximize) { Text(stringResource(if (maximized) R.string.floating_chat_restore else R.string.floating_chat_maximize)) }
+                        if (onResetSize != null) TextButton(onClick = onResetSize) {
+                            Text(stringResource(R.string.floating_chat_reset_size))
+                        }
+                    }
+                }
                 // 只滚动中段，标题和输入栏始终可见。
                 if (state.preview.isNotEmpty() || state.awaitingApproval || state.queuedCount > 0) {
                     Column(
@@ -294,7 +306,7 @@ private fun PanelHeader(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         if (state.generating) {
             ContainedLoadingIndicator(modifier = Modifier.size(40.dp))
         } else {

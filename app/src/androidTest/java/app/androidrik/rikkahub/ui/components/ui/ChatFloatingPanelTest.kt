@@ -4,6 +4,12 @@ import android.content.Intent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onNodeWithText
+import app.androidrik.rikkahub.ui.floating.windowGeometryGesture
+import app.androidrik.rikkahub.service.floating.WindowGeometry
+import app.androidrik.rikkahub.service.floating.ResizeEdge
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performTouchInput
@@ -114,5 +120,40 @@ class ChatFloatingPanelTest {
             swipe(center, center + Offset(100f, 100f), 400)
         }
         assertTrue(moved.get() > 0)
+    }
+
+    @Test
+    fun restoredEdgeHotZonesRecognizeAllEightDirections() {
+        val directions = mutableSetOf<ResizeEdge>()
+        val geometry = WindowGeometry(0, 0, 900, 1400)
+        rule.setContent {
+            CompositionLocalProvider(LocalSettings provides Settings()) {
+                RikkahubTheme {
+                    ChatFloatingPanel(
+                        state = FloatingChatUiState(
+                            conversationId = Uuid.random(), title = "Edges", generating = false,
+                            processingStatus = null, phase = GenerationPhase.Waiting, hasReply = false,
+                            preview = "Scroll body", previewIsReasoning = false, pendingTools = emptyList(),
+                            queuedCount = 0, queuePaused = false, error = null,
+                        ), maxHeight = 450.dp, panelWidth = 340.dp,
+                        onCollapse = {}, onDismiss = {}, onOpenConversation = {},
+                        onToolApproval = { _, _ -> }, onStop = {}, onSend = {}, onResumeQueue = {},
+                        windowModifier = Modifier.testTag("geometry-window").windowGeometryGesture(
+                            40f, { geometry }, true,
+                            { _, edge, _, _ -> edge?.let { directions.add(it) } }, {},
+                        ),
+                    )
+                }
+            }
+        }
+        val fractions = listOf(0.01f to 0.01f, 0.5f to 0.01f, 0.99f to 0.01f,
+            0.01f to 0.5f, 0.99f to 0.5f, 0.01f to 0.99f, 0.5f to 0.99f, 0.99f to 0.99f)
+        fractions.forEach { (x, y) ->
+            rule.onNodeWithTag("geometry-window").performTouchInput {
+                val start = Offset(width * x, height * y)
+                swipe(start, center, 200)
+            }
+        }
+        rule.runOnIdle { assertEquals(ResizeEdge.entries.toSet(), directions) }
     }
 }

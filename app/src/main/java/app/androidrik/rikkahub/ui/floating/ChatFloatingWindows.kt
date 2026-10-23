@@ -1,5 +1,9 @@
 package app.androidrik.rikkahub.ui.floating
 
+import app.androidrik.rikkahub.service.floating.FloatingWindowGeometry as Geometry
+import app.androidrik.rikkahub.service.floating.WindowGeometry
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.Modifier
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -91,14 +95,16 @@ class ChatFloatingWindows(
     private var bubble: FxControl? = null
     private var panel: FxControl? = null
     private val sizePreferences = context.getSharedPreferences("floating_chat_window", Context.MODE_PRIVATE)
-    private var preferredSize by mutableStateOf(FloatingPanelSize(
-        sizePreferences.getFloat("width_dp", 560f),
-        sizePreferences.getFloat("height_dp", 520f),
-    ))
+    private var preferredGeometry by mutableStateOf<WindowGeometry?>(null)
+    private var preMaximize by mutableStateOf<WindowGeometry?>(null)
 
-    private fun saveSize() {
-        sizePreferences.edit().putFloat("width_dp", preferredSize.width)
-            .putFloat("height_dp", preferredSize.height).apply()
+    private fun saveGeometry() {
+        val geometry = preMaximize ?: preferredGeometry ?: return
+        val density = context.resources.displayMetrics.density
+        sizePreferences.edit().putFloat("x_dp", geometry.x / density)
+            .putFloat("y_dp", geometry.y / density)
+            .putFloat("width_dp", geometry.width / density)
+            .putFloat("height_dp", geometry.height / density).apply()
     }
 
     private val uiState: StateFlow<FloatingChatUiState?> = tracker.window
@@ -227,21 +233,59 @@ class ChatFloatingWindows(
                 }
                 val imeHeight = with(density) { WindowInsets.ime.getBottom(this).toDp() }
                 val availableHeight = minOf(visibleHeight, screenHeight - imeHeight).coerceAtLeast(1.dp)
-                val availableWidth = configuration.screenWidthDp.toFloat()
-                val displayedSize = preferredSize.bounded(availableWidth, availableHeight.value)
+                val scale = density.density
+                val sw = (configuration.screenWidthDp * scale).toInt().coerceAtLeast(1)
+                val sh = with(density) { screenHeight.roundToPx() }.coerceAtLeast(1)
+                val minW = Geometry.minWidthPx(scale)
+                val minH = Geometry.minHeightPx(scale)
+                val base = preferredGeometry ?: Geometry.defaultGeometry(sw, sh, scale).let { default ->
+                    WindowGeometry(
+                        (sizePreferences.getFloat("x_dp", default.x / scale) * scale).toInt(),
+                        (sizePreferences.getFloat("y_dp", default.y / scale) * scale).toInt(),
+                        (sizePreferences.getFloat("width_dp", default.width / scale) * scale).toInt(),
+                        (sizePreferences.getFloat("height_dp", default.height / scale) * scale).toInt(),
+                    )
+                }
+                val normal = Geometry.clamp(if (preMaximize != null) Geometry.maximized(sw, sh) else base, sw, sh, minW, minH)
+                SideEffect { if (preferredGeometry != normal) preferredGeometry = normal }
+                val displayed = Geometry.aboveIme(normal, sw, sh,
+                    (sh - with(density) { availableHeight.roundToPx() }).coerceAtLeast(0), minW, minH)
+                val currentGeometry = androidx.compose.runtime.rememberUpdatedState(displayed)
+                val change: (WindowGeometry, app.androidrik.rikkahub.service.floating.ResizeEdge?, Int, Int) -> Unit =
+                    { origin, edge, dx, dy ->
+                        // IME geometry is temporary: don't turn a keyboard-shrunken window into a saved preference.
+                        if (availableHeight >= screenHeight) {
+                            preMaximize = null
+                            preferredGeometry = if (edge == null) Geometry.dragged(origin, dx, dy, sw, sh)
+                            else Geometry.resized(origin, edge, dx, dy, sw, sh, minW, minH)
+                        }
+                    }
+                val finish = {
+                    preferredGeometry = Geometry.snapped(preferredGeometry ?: normal, sw, Geometry.edgeSnapPx(scale))
+                    saveGeometry()
+                }
+                SideEffect { panel?.moveTo(displayed.x.toFloat(), displayed.y.toFloat(), false) }
                 ChatFloatingPanel(
                     state = state,
-                    maxHeight = displayedSize.height.dp,
-                    panelWidth = displayedSize.width.dp,
-                    onResize = { dx, dy ->
-                        preferredSize = FloatingPanelSize(displayedSize.width, preferredSize.height)
-                            .resized(dx, dy, availableWidth, screenHeight.value)
+                    maxHeight = with(density) { displayed.height.toDp() },
+                    panelWidth = with(density) { displayed.width.toDp() },
+                    windowModifier = Modifier.windowGeometryGesture(20f * scale, { currentGeometry.value }, true, change, finish),
+                    titleModifier = Modifier.windowGeometryGesture(0f, { currentGeometry.value }, false, change, finish),
+                    onToggleMaximize = {
+                        if (preMaximize != null) {
+                            preferredGeometry = preMaximize
+                            preMaximize = null
+                        } else {
+                            preMaximize = normal
+                            preferredGeometry = Geometry.maximized(sw, sh)
+                        }
+                        saveGeometry()
                     },
-                    onResizeFinished = ::saveSize,
-                    onMove = { dx, dy -> panel?.moveBy(dx, dy) },
+                    maximized = preMaximize != null,
                     onResetSize = {
-                        preferredSize = FloatingPanelSize()
-                        saveSize()
+                        preMaximize = null
+                        preferredGeometry = Geometry.defaultGeometry(sw, sh, scale)
+                        saveGeometry()
                     },
                     onCollapse = tracker::collapse,
                     onDismiss = tracker::dismiss,
@@ -263,7 +307,6 @@ class ChatFloatingWindows(
             }
         }
         anchor(FxGravity.TOP_START, dx = dp(8f), dy = dp(PANEL_TOP_OFFSET_DP))
-        persist(FxSpStorage(context))
         gesture(FxGesture(click = false, longPress = false, drag = FxDrag.DISABLED))
         animation(FxAnimations.fade())
         systemHost(context) {
