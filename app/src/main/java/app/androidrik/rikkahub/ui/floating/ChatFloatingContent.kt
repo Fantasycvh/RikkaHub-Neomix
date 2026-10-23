@@ -5,6 +5,11 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.rememberUpdatedState
+import com.composables.icons.lucide.MoveDiagonal2
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -194,10 +199,16 @@ fun ChatFloatingPanel(
     onSend: (String) -> Unit,
     onResumeQueue: () -> Unit,
     onSubagentApproval: (SubagentApprovalQueue.Request, Boolean) -> Unit = { _, _ -> },
+    panelWidth: Dp? = null,
+    onResize: ((Float, Float) -> Unit)? = null,
+    onResizeFinished: () -> Unit = {},
+    onResetSize: (() -> Unit)? = null,
 ) {
     Box(modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight), contentAlignment = Alignment.TopCenter) {
         Surface(
-            modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = (if (panelWidth != null) Modifier.size(panelWidth, maxHeight)
+                else Modifier.widthIn(max = 560.dp).fillMaxWidth())
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             shadowElevation = 8.dp,
@@ -207,7 +218,7 @@ fun ChatFloatingPanel(
                 // 只滚动中段，标题和输入栏始终可见。
                 if (state.preview.isNotEmpty() || state.awaitingApproval || state.queuedCount > 0) {
                     Column(
-                        modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                        modifier = Modifier.weight(1f, fill = panelWidth != null).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         if (state.preview.isNotEmpty()) {
@@ -233,7 +244,34 @@ fun ChatFloatingPanel(
                         }
                     }
                 }
+                if (panelWidth != null && state.preview.isEmpty() && !state.awaitingApproval && state.queuedCount == 0) {
+                    androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                }
                 ReplyBar(state.conversationId, state.stopEnabled, onSend, onStop)
+                if (onResize != null) {
+                    val density = LocalDensity.current
+                    val resize by rememberUpdatedState(onResize)
+                    val finished by rememberUpdatedState(onResizeFinished)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        if (onResetSize != null) TextButton(onClick = onResetSize) {
+                            Text(stringResource(R.string.floating_chat_reset_size))
+                        }
+                        androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                        Icon(
+                            Lucide.MoveDiagonal2,
+                            contentDescription = stringResource(R.string.floating_chat_resize),
+                            modifier = Modifier.size(40.dp).pointerInput(density) {
+                                detectDragGestures(
+                                    onDragEnd = { finished() },
+                                    onDragCancel = { finished() },
+                                ) { change, delta ->
+                                    change.consume()
+                                    with(density) { resize?.invoke(delta.x.toDp().value, delta.y.toDp().value) }
+                                }
+                            }.padding(8.dp),
+                        )
+                    }
+                }
             }
         }
     }

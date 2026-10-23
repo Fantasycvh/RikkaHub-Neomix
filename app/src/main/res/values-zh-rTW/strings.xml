@@ -2203,4 +2203,6 @@
   <string name="floating_chat_status_awaiting_approval">等待工具呼叫確認</string>
   <string name="floating_chat_status_done">回覆完成</string>
   <string name="floating_chat_status_idle">閒置</string>
+  <string name="floating_chat_resize">調整視窗大小</string>
+  <string name="floating_chat_reset_size">恢復預設大小</string>
 </resources>

@@ -2218,4 +2218,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="floating_chat_status_awaiting_approval">Waiting for tool call confirmation</string>
   <string name="floating_chat_status_done">Reply finished</string>
   <string name="floating_chat_status_idle">Idle</string>
+  <string name="floating_chat_resize">Resize window</string>
+  <string name="floating_chat_reset_size">Reset size</string>
 </resources>

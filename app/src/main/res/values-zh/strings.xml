@@ -2221,4 +2221,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="floating_chat_status_awaiting_approval">等待确认工具调用</string>
   <string name="floating_chat_status_done">回复完成</string>
   <string name="floating_chat_status_idle">空闲</string>
+  <string name="floating_chat_resize">调整窗口大小</string>
+  <string name="floating_chat_reset_size">恢复默认大小</string>
 </resources>
