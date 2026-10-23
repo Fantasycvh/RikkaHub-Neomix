@@ -82,6 +82,12 @@ class RikkaHubApp : Application() {
         }
         this.createNotificationChannel()
 
+        // 诊断（临时）：debug 包安装协程调试探针，生成卡死看门狗用它 dump 协程挂起栈
+        // （必须启动即装——探针只跟踪安装后启动的协程）。release 无此类，反射失败静默跳过。
+        runCatching {
+            Class.forName("kotlinx.coroutines.debug.DebugProbes").getMethod("install").invoke(null)
+        }
+
         // 做梦（V3）：接上触发面（轮末 / 切后台 / 启动补漏）。**主线程调用**——
         // ProcessLifecycleOwner 要求在主线程注册观察者（与 ChatNotificationManager 同款）。
         // 整理本身仍然只在设置里那个助手级开关开着时才跑（门控在 scheduler 的 worker 契约里）。

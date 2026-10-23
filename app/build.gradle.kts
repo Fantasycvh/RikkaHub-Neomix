@@ -117,6 +117,11 @@ android {
             useLegacyPackaging = true
             pickFirsts += "lib/*/libtermux.so"
         }
+        // kotlinx-coroutines-debug（debugImplementation）带入 JNA，license 文件与主依赖重复
+        resources {
+            excludes += "META-INF/AL2.0"
+            excludes += "META-INF/LGPL2.1"
+        }
     }
     tasks.withType<KotlinCompile>().configureEach {
         compilerOptions.optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
@@ -331,4 +336,6 @@ dependencies {
     androidTestImplementation(libs.androidx.room.testing)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    // 诊断（临时）：协程调试探针——生成卡死时看门狗用它 dump 协程挂起栈（见 ConversationSession）
+    debugImplementation(libs.kotlinx.coroutines.debug)
 }

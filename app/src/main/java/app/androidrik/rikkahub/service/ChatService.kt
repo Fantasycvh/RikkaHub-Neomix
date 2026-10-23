@@ -557,6 +557,13 @@ class ChatService(
         sessions.clear()
     }
 
+    private suspend fun emitGenerationDoneWithDiagnostics(conversationId: Uuid) {
+        val session = sessions[conversationId]
+        session?.logGenerationStage("generationDone-emit-before")
+        _generationDoneFlow.emit(conversationId)
+        session?.logGenerationStage("generationDone-emit-after")
+    }
+
     // ---- Session 管理 ----
 
     @Synchronized
@@ -928,7 +935,7 @@ class ChatService(
                     handleMessageComplete(conversationId)
                 }
 
-                _generationDoneFlow.emit(conversationId)
+                emitGenerationDoneWithDiagnostics(conversationId)
                 // 语音模式：等本轮生成真正落库后，把新增的 assistant 文本 resolve 给 reply。
                 queued.reply?.completeWith(runCatching {
                     val messages = session.state.value.currentMessages
@@ -1044,7 +1051,7 @@ class ChatService(
                     messageRange = regenerateBaselineRange(replyNodeIndex, conversation.messageNodes.size),
                 )
 
-                _generationDoneFlow.emit(conversationId)
+                emitGenerationDoneWithDiagnostics(conversationId)
             } catch (e: Exception) {
                 addError(e, conversationId, title = context.getString(R.string.error_title_regenerate_message))
             }
@@ -1086,7 +1093,7 @@ class ChatService(
                         CONTINUE_INCOMPLETE_HINT
                     },
                 )
-                _generationDoneFlow.emit(conversationId)
+                emitGenerationDoneWithDiagnostics(conversationId)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 addError(e, conversationId, title = context.getString(R.string.error_title_regenerate_message))
@@ -1207,7 +1214,7 @@ class ChatService(
                         handleMessageComplete(conversationId)
                     }
 
-                    _generationDoneFlow.emit(conversationId)
+                    emitGenerationDoneWithDiagnostics(conversationId)
                 }
             } catch (e: Exception) {
                 addError(e, conversationId, title = context.getString(R.string.error_title_tool_approval))
@@ -1518,7 +1525,7 @@ class ChatService(
                 // β: yield 让出主线程，先完成"批量批准状态 → 重组"渲染，再重启生成
                 yield()
                 handleMessageComplete(conversationId)
-                _generationDoneFlow.emit(conversationId)
+                emitGenerationDoneWithDiagnostics(conversationId)
             } catch (e: Exception) {
                 addError(e, conversationId, title = context.getString(R.string.error_title_tool_approval))
             }
@@ -1534,6 +1541,7 @@ class ChatService(
         initialRecoveryHint: String? = null,
     ) {
         val activeSession = getOrCreateSession(conversationId)
+        activeSession.logGenerationStage("handleMessageComplete-enter")
         activeSession.replyMessageId.value = null
         val settings = settingsStore.settingsFlow.first()
         val initialConversation = getConversationFlow(conversationId).value
@@ -1699,7 +1707,8 @@ class ChatService(
                     assistantId = assistant.id,
                     conversationId = conversationId,
                 ),
-            ).onCompletion {
+            ).onCompletion { cause ->
+                activeSession.logGenerationStage("provider-collect-onCompletion cause=${cause?.javaClass?.simpleName ?: "none"}")
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
                     messageNodes = getConversationFlow(conversationId).value.messageNodes.map { node ->
@@ -1710,6 +1719,7 @@ class ChatService(
                 updateConversation(conversationId, updatedConversation)
 
                 // 生成结束：取消 Live Update 通知，后台时发送完成通知
+                activeSession.logGenerationStage("generation-ended-event-emit-before")
                 appEventBus.emit(
                     AppEvent.ChatGenerationEnded(
                         conversationId = conversationId,
@@ -1718,6 +1728,7 @@ class ChatService(
                             ?.toText()?.take(50)?.trim() ?: "",
                     )
                 )
+                activeSession.logGenerationStage("generation-ended-event-emit-after")
             }.collect { chunk ->
                 // 逐块处理也在主线程（AppScope=Main）：把最慢的一块记下来，
                 // 长回复/带附件的回复里真正吃主线程的往往是某一块（模板、附件搬运、落库）。
@@ -1847,7 +1858,9 @@ class ChatService(
                     }
                 }
             }
+            activeSession.logGenerationStage("provider-collect-returned")
         }.onFailure {
+            activeSession.logGenerationStage("handleMessageComplete-failed cause=${it.javaClass.simpleName}")
             // 兜底取消 Live Update 通知（生成开始前失败时 onCompletion 不会执行）
             appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null))
 
@@ -1874,8 +1887,10 @@ class ChatService(
                 updateConversation(conversationId, updatedConversation)
                 // D1：落库防护——超大内容(>2MB blob)等写入失败时降级为可见错误，
                 // 不能让草稿保存异常在 onFailure 内静默上抛
+                activeSession.logGenerationStage("partial-save-before")
                 runCatching { saveConversation(conversationId, updatedConversation) }
                     .onFailure { saveError ->
+                        activeSession.logGenerationStage("partial-save-failed cause=${saveError.javaClass.simpleName}")
                         addError(
                             saveError,
                             conversationId,
@@ -1883,6 +1898,7 @@ class ChatService(
                         )
                         Logging.log(TAG, "handleMessageComplete: partial draft save failed: $saveError")
                     }
+                activeSession.logGenerationStage("partial-save-after")
                 Logging.log(TAG, "handleMessageComplete: partial generation kept as draft")
                 return@onFailure
             }
@@ -1894,6 +1910,7 @@ class ChatService(
         }.onSuccess {
             val finalConversation = getConversationFlow(conversationId).value
             // D1：落库防护——与 onFailure 半截落库同款降级，防止成功路径写入静默失败
+            activeSession.logGenerationStage("final-save-before")
             runCatching { saveConversation(conversationId, finalConversation) }
                 .onFailure { saveError ->
                     addError(
@@ -1902,7 +1919,9 @@ class ChatService(
                         title = context.getString(R.string.error_title_generation),
                     )
                     Logging.log(TAG, "handleMessageComplete: save failed: $saveError")
+                    activeSession.logGenerationStage("final-save-failed cause=${saveError.javaClass.simpleName}")
                 }
+            activeSession.logGenerationStage("final-save-after")
 
             launchWithConversationReference(conversationId) {
                 generateTitle(conversationId, finalConversation)
@@ -1911,6 +1930,7 @@ class ChatService(
                 generateSuggestion(conversationId, finalConversation)
             }
         }
+        activeSession.logGenerationStage("handleMessageComplete-returned")
     }
 
     // ---- 检查无效消息 ----

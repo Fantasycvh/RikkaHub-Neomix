@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.service
 
 import android.util.Log
+import app.androidrik.common.android.Logging
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -186,6 +188,50 @@ class ConversationSession(
         get() = refCount.get() > 0 || isGenerating ||
                 messageQueue.state.value.messages.isNotEmpty()
 
+    @Volatile
+    private var diagnosticStage = "idle"
+
+    /** Persist only lifecycle metadata; never include message/tool bodies or exception messages. */
+    internal fun logGenerationStage(stage: String) {
+        diagnosticStage = stage
+        runCatching {
+            Logging.log(TAG, "generation-diag conv=$id stage=$stage thread=${Thread.currentThread().name} " +
+                "job=${jobSummary(_generationJob.value)} ${generationStateSummary()}")
+        }
+    }
+
+    private fun generationStateSummary(): String {
+        val conversation = state.value
+        val message = replyMessageId.value?.let { replyId ->
+            conversation.messageNodes.firstNotNullOfOrNull { node -> node.messages.firstOrNull { it.id == replyId } }
+        } ?: conversation.currentMessages.lastOrNull()
+        return "revision=${turnRevision.value} processing=${processingStatus.value != null} " +
+            "messageId=${message?.id} finishedAt=${message?.finishedAt} finishReason=${message?.finishReason?.take(48)} " +
+            "incomplete=${message?.finishIncomplete} partCount=${message?.parts?.size} " +
+            "parts=${message?.parts?.take(32)?.map { it::class.simpleName }}"
+    }
+
+    private fun jobSummary(job: Job?): String = job?.let {
+        "${it::class.simpleName}@${Integer.toHexString(System.identityHashCode(it))}" +
+            "(active=${it.isActive},completed=${it.isCompleted},cancelled=${it.isCancelled})"
+    } ?: "null"
+
+    private fun boundedJobTree(root: Job): String = buildString {
+        var remaining = 32
+        fun appendJob(job: Job, depth: Int) {
+            if (remaining-- <= 0) return
+            append("\n").append("  ".repeat(depth)).append(jobSummary(job))
+            if (depth >= 5) {
+                if (job.children.iterator().hasNext()) append(" children=<depth-limit>")
+                return
+            }
+            val children = job.children.iterator()
+            while (remaining > 0 && children.hasNext()) appendJob(children.next(), depth + 1)
+            if (children.hasNext()) append("\n<node-limit>")
+        }
+        appendJob(root, 0)
+    }
+
     // 所有活动生成/审批协程（含排队等待前任的）：stopGeneration 全链取消
     private val activeJobs = mutableSetOf<Job>()
 
@@ -237,7 +283,40 @@ class ConversationSession(
         // （regenerate/continue 是先 cancel 前任、再 beginNewTurn、最后注册新 job），
         // 那时再读 backgroundTaskOwner 已经是下一轮的令牌，会漏掉真正的孤儿。
         val turnOwner = backgroundTaskOwner
+        // Launch on the injected application/session scope, never on the generation Job.
+        // This observer is a sibling, so it cannot keep the observed Job in Completing.
+        val diagnosticWatchdog = job?.takeIf { Logging.isFileLoggingEnabled() }?.let { observed ->
+            scope.launch(Dispatchers.Default) {
+                var coroutineDumped = false
+                while (!observed.isCompleted) {
+                    delay(30_000L)
+                    if (!observed.isCompleted) runCatching {
+                        Logging.log(TAG, "generation-watchdog conv=$id stage=$diagnosticStage " +
+                            "thread=${Thread.currentThread().name} ${generationStateSummary()}" +
+                            boundedJobTree(observed))
+                        // 首次卡死疑似时 dump 全量协程挂起栈（DebugProbes 仅 debug 包可用，
+                        // 反射失败静默跳过）。install 在 App 启动时完成，此处只读。
+                        if (!coroutineDumped) {
+                            coroutineDumped = true
+                            runCatching {
+                                val dump = Class.forName("kotlinx.coroutines.debug.DebugProbes")
+                                    .getMethod("dumpCoroutinesToString").invoke(null) as? String
+                                if (!dump.isNullOrBlank()) {
+                                    Logging.log(TAG, "coroutine-dump-begin\n$dump\ncoroutine-dump-end")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         job?.invokeOnCompletion { cause ->
+            diagnosticWatchdog?.cancel()
+            runCatching {
+                Logging.log(TAG, "generation-job-completed conv=$id cause=${cause?.javaClass?.simpleName ?: "none"} " +
+                    "observed=${jobSummary(job)} current=${jobSummary(_generationJob.value)} " +
+                    "thread=${Thread.currentThread().name} ${generationStateSummary()}")
+            }
             synchronized(this) {
                 activeJobs.remove(job)
                 // 排队等待前任的协程从未进入体即被取消时，把取消传播给前任——
