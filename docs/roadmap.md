@@ -3538,3 +3538,14 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **发布 `1.0.28-beta.8 (310)`**（用户授权「推送并发布这一版」）：发布说明存档 [`releases/1.0.28-beta.8.md`](releases/1.0.28-beta.8.md)。
   资产 `Neomix-1.0.28-beta.8-arm64-v8a.apk` 61,363,632 B，SHA-256 `a5a1183fd059107294032e641ef9c7b8e279a953011e85f631f0871997d87ec0`；
   apksigner 核实 V2 签名、证书指纹 `d15b693a…d94eec78` 与 beta.7 一致；真机覆盖安装启动 0 FATAL。
+
+- 2026-10-24 **上游跟进：`chore/remove-tikz` 吸收成果移植回 master（保留 TikZ）**。分叉分支已吸收上游 10-23 批
+  （后台生成悬浮窗两步落地 `f066e3f64`/`19826434a` + 4 个悬浮窗修复 + FGS 通知 Intent 修复 + `f88ac3cbe` subagent
+  runJob 补 complete（修「正在生成」卡死）+ `86c158777` ask_user 常量 + `eb52fa82c` 模型匹配修正），master 按用户
+  要求**保留 TikZ**，只移植对应部分（13 提交 cherry-pick 零冲突，分支→master 哈希重映射见 upstream-analysis）；
+  TikZ 移除、纯 Kotlin PDF 提取（与 mupdf 移除绑定）、applicationId 共存改包、临时诊断 4 项**不随移植**。另直接
+  吸收 `f267e8478`（JLatexMath keep 收窄到反射用到的类，本仓同为 1.5）与 `537f3b0ed`（Gradle daemon 8g + 并行）。
+  同步点推进到上游 HEAD `f267e8478`；`fcb4bfe4e`（Tavily answer 开关，低优先）与 `41ce12f66`（models.dev，单独立项）
+  留台账。
+  **验证**：`:app:compileDebugKotlin` 通过；`:ai` **312 项** / `:app` **2371 项**单测 0 失败/错误/跳过；
+  悬浮窗与 TTS 真机回归已在分支完成（PJX110 4 项仪器测试），本轮未再改相关代码路径。未推送。

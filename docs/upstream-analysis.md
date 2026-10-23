@@ -8,7 +8,8 @@
 > **同日专项**：另**单独吸收**了更早未移植的 `5a90c0548`（用量统计流水表，DB v44），见「2026-10-20 专项吸收：用量统计流水」一节——它不在本批 fetch 区间内，是本仓 346 个「上游有、本仓无」存量里按用户指定方向挑的一条。
 > **同步点（2026-10-20 晚，beta.5 发版前复核）**：`e5bb70730` 之后上游又有 4 个提交（HEAD `5203601f7`，上游已发 tag `3.1.0` / `eeef60b22`）。其中**又吸收 2 条**：`bc4a6f47e`（输入区图片预览 / 多图左右切换 / 预览内进画板，fork `15e3d8c9e`）、`17d06d26f`（新建/导入提供商后清空搜索并滚到新项，fork `1ddb87d8e`）。**尚余 3 条未评估**：`5203601f7`（全局禁用 overscroll 回弹）、`8bb488e3a`（工具步骤显示执行耗时）、`fe55bff7f`（提供商类型名与「订阅」类型）。本仓「上游有、本仓无」累计 **350** 个提交（含历史存量 346 + 本批未评估 3 + 刻意不做 1）。
 > **同步点（2026-10-21 更新）**：已评估到上游 **`815e9c20b`**（`3.1.0-15-g815e9c20b`，2026-10-21 16:26），本批 `5203601f7`..`815e9c20b` 共 **10 提交**；10-20 遗留的 3 条一并结案：`5203601f7` **已与本仓等价**（`Theme.kt` 的 `LocalOverscrollFactory provides null`）、`fe55bff7f` **不适用**、`8bb488e3a` 列 P2 候选。10 条新提交里只有 **`2aafd708f`（技能删除/校验）** 值得考虑吸收；其余因架构/范围不跟（PDF 替换、渠道 flavor、赞助商、i18n 工具链、远程 SSH）。同期 issue 窗口 **60 条**（22 open / 38 新近 closed）评估见「2026-10-21 issue 评估」；本仓 `upstream/master..HEAD` = **1232**、`HEAD..upstream/master` = **360**。
-> **同步点（2026-10-23 晚更新）**：已评估到上游 **`e48db7bc7`**（2026-10-23 18:52），`43f1a5df2` 之后共 **8 提交**（逐条见「2026-10-23 晚追加评估」）：新增 2 条中 `f048bed65`（后台生成悬浮窗）**已分两步落地（`31d055ddd` / `1700bad2a`）**，`e48db7bc7` **不适用**（修的是上游文件式记忆，本仓不跟该方向）；此前 6 条未入库提交一并补记录（`487e229f7`、`9dcb4fa44` **已按用户选择吸收**，分别为 `bcf4f57a9` / `11af7bfbc`；其余维持候选/暂缓/不适用结论）。低风险小件及后续悬浮窗验证分别见本节末尾对应落地记录。本仓 `upstream/master..HEAD` = **1292**、`HEAD..upstream/master` = **380**。
+> **同步点（2026-10-24 更新，master 跟进）**：上游 `43f1a5df2` 之后的 **10 提交全部结案**（同步点推进到上游 HEAD **`f267e8478`**）。其中 8 条由 `chore/remove-tikz` 分支先行吸收（悬浮窗两步 + 修复、`487e229f7`、`9dcb4fa44`），本日**移植回 master**——用户要求 master 保留 TikZ，分支的 TikZ 移除、纯 Kotlin PDF 提取、applicationId 共存改包、临时诊断 4 项**不随移植**；`2b4694ba7` 已随 FloatingX 3 迁移（`f066e3f64`）吸收。剩余 2 条本日直接吸收：`f267e8478`（JLatexMath keep 收窄）、`537f3b0ed`（Gradle 8g 并行）。`fcb4bfe4e`（Tavily，低优先）、`41ce12f66`（models.dev，单独立项）维持候选。移植清单与哈希重映射见「2026-10-24 master 跟进」一节。本仓 `upstream/master..HEAD` = **1302**、`HEAD..upstream/master` = **382**。
+> **同步点（2026-10-23 晚更新）**：已评估到上游 **`e48db7bc7`**（2026-10-23 18:52），`43f1a5df2` 之后共 **8 提交**（逐条见「2026-10-23 晚追加评估」）：新增 2 条中 `f048bed65`（后台生成悬浮窗）**已分两步落地（`f066e3f64` / `19826434a`）**，`e48db7bc7` **不适用**（修的是上游文件式记忆，本仓不跟该方向）；此前 6 条未入库提交一并补记录（`487e229f7`、`9dcb4fa44` **已按用户选择吸收**，分别为 `86c158777` / `eb52fa82c`；其余维持候选/暂缓/不适用结论）。低风险小件及后续悬浮窗验证分别见本节末尾对应落地记录。本仓 `upstream/master..HEAD` = **1292**、`HEAD..upstream/master` = **380**。
 
 > **同步点（2026-10-23 更新）**：已评估到上游 **`43f1a5df2`**（`3.1.0-27-g43f1a5df2`，2026-10-22），本批 `815e9c20b`..`43f1a5df2` 共 **12 提交**（逐条结论见「2026-10-23 同步评估」）：**吸收 5 条 + 部分吸收 1 条**——`90e48420f` 消息索引增量（`67ef193eb` / `1fd089a04`）、`2b522f990` libsimple 无 jieba（`446836328`）、`71dd98f88` 压缩对话框步进器（`beccde0ce`）、`e3d11e15f` 的 `-keepnames Throwable`（`ae6d23f83`）；`26454cc4d` / `80845dd9b` 已在 beta.6 吸收，`d8ba9cf67` 不适用（本仓已移除扫码）；`2a0a831e6` 裁图替换（`075067850`）、`43f1a5df2` 创作页重命名（`6a9d5bdec`）亦已吸收，P3 暂缓 `dbccc68c7`（体积），范围外 `070ff683c`（德语）/ `4e99510be`（perf skill 文档）。本仓 `upstream/master..HEAD` = **1275**、`HEAD..upstream/master` = **372**。
 > **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
@@ -1193,8 +1194,8 @@ git checkout master
 ### 台账
 
 - P2 队列：~~`2a0a831e6`、`43f1a5df2`~~ **已清空**（2026-10-23 吸收）
-- **P2 已落地**：`f048bed65` 后台生成悬浮窗（`31d055ddd` 迁移 + `1700bad2a` 功能）；剩余候选 `fcb4bfe4e`（Tavily answer 开关，低优先）
-- 低风险小件 **已吸收**：`487e229f7` → `bcf4f57a9`；`9dcb4fa44` → `11af7bfbc`
+- **P2 已落地**：`f048bed65` 后台生成悬浮窗（`f066e3f64` 迁移 + `19826434a` 功能）；剩余候选 `fcb4bfe4e`（Tavily answer 开关，低优先）
+- 低风险小件 **已吸收**：`487e229f7` → `86c158777`；`9dcb4fa44` → `eb52fa82c`
 - P3 队列：`dbccc68c7`（体积），需先评估 web-ui 现状与本仓差异
 - 遗留小项：上游「各模块去掉 appcompat/material 声明」未取——本仓 `:app:dependencies` 显示
   appcompat 1.7.1 / material 1.14.0 仍由**传递依赖**引入（app 模块 `RabbitLoading` 还直接用
@@ -1223,13 +1224,13 @@ git checkout master
 
 | 上游提交 | 内容 | 结论 |
 |---|---|---|
-| `9dcb4fa44` | 模型匹配：不再把参数量当版本号；token 序列跳过紧跟 b/k 的数字（`8b`/`a32b`/`32k` 不再误判模型能力），补 `QWEN_3_VL`，补单测（3 文件 +35/−8） | ✅ **已吸收（`11af7bfbc`）**：保留本仓注册表条目，跳过参数量/上下文长度数字，新增 `QWEN_3_VL` 并单次分词；移植上游回归测试 |
+| `9dcb4fa44` | 模型匹配：不再把参数量当版本号；token 序列跳过紧跟 b/k 的数字（`8b`/`a32b`/`32k` 不再误判模型能力），补 `QWEN_3_VL`，补单测（3 文件 +35/−8） | ✅ **已吸收（`eb52fa82c`）**：保留本仓注册表条目，跳过参数量/上下文长度数字，新增 `QWEN_3_VL` 并单次分词；移植上游回归测试 |
 | `41ce12f66` | 模型能力识别改用 [models.dev](https://models.dev) 数据：新增 `ModelsDevCatalog`、1.5MB `assets/models_dev.json`、后台更新器 + DI + 测试（9 文件 +576/−25） | ⏸ **暂不跟（单独立项）**：能力识别准确性收益明确，但引入 1.5MB 资产、更新网络/缓存/失败策略与 DI 生命周期；本仓模型能力判定已自研，需先核对覆盖差异再决定 |
 | `fcb4bfe4e` | Tavily 可关闭「生成答案」；各搜索服务 query 参数描述补全（21 文件 +48/−20，多为注释/文案） | 🟡 **部分可吸收（低优先）**：本仓 `search` 模块仍含 Tavily（`TavilySearchService.kt` 差异仅 +8/−12），服务层小改可摘；设置页分叉大（+129/−287），UI 需手改 |
-| `2b4694ba7` | 悬浮窗不再操作已 `cancel` 的 `FxControl`（1 文件 +9/−6） | ❌ **不适用**：本仓 floatingx **2.3.7**（`com.petterp.floatingx.FloatingX` + `IFxAppControl`），没有 3.0 的 `FxState.CANCELLED` 概念；该修复属 3.0 API 语义 |
-| `487e229f7` | `ask_user` 工具名抽成公共常量（2 文件 +4/−3） | ✅ **已吸收（`bcf4f57a9`）**：工具定义与消息 UI 共用 `ASK_USER_TOOL_NAME`，不改变工具名、schema 或行为；仅完成该前置，不引入 `f048bed65` |
+| `2b4694ba7` | 悬浮窗不再操作已 `cancel` 的 `FxControl`（1 文件 +9/−6） | ✅ **已随 `f066e3f64` 吸收**：FloatingX 2.3.7 迁移到 3.0 后 `FxState.CANCELLED` 守卫成为本仓 API 语义的一部分，迁移提交已带该修复（下节评估时为 2.3.7，结论「不适用」已被迁移取代） |
+| `487e229f7` | `ask_user` 工具名抽成公共常量（2 文件 +4/−3） | ✅ **已吸收（`86c158777`）**：工具定义与消息 UI 共用 `ASK_USER_TOOL_NAME`，不改变工具名、schema 或行为；仅完成该前置，不引入 `f048bed65` |
 | `5dd7b764c` | 抽出应用 logo 绘制/变形轮廓 `AppLogo.kt`（2 文件 +108/−79） | ❌ **不跟**：纯 UI 重构，本仓 About 页 logo 绘制与上游不同，无行为/体积收益 |
-| `f048bed65` | **后台生成悬浮窗**：切后台后气泡/面板显示本轮回复进度，可审批工具、快速回复；默认关，通知设置里开启 + 悬浮窗权限（28 文件 +1457/−84） | ✅ **已吸收**：前置迁移 `31d055ddd` + 功能 `1700bad2a`，含本仓子代理独立审批与生命周期修复，验证/差异见本节末尾；下节保留原始评估 |
+| `f048bed65` | **后台生成悬浮窗**：切后台后气泡/面板显示本轮回复进度，可审批工具、快速回复；默认关，通知设置里开启 + 悬浮窗权限（28 文件 +1457/−84） | ✅ **已吸收**：前置迁移 `f066e3f64` + 功能 `19826434a`，含本仓子代理独立审批与生命周期修复，验证/差异见本节末尾；下节保留原始评估 |
 | `e48db7bc7` | 记忆编辑页允许「删小后仍超限」的文件保存（1 文件 +4/−1） | ❌ **不适用**：修的是上游文件式记忆 `MemoryFilePage`（`c9a159a5c` 方向，本仓明确不跟）；本仓记忆是 DB 实体（`MemoryRepository` 有 200 条上限、无 48KB 文件上限），无对应页面/限制 |
 
 ### `f048bed65` 后台生成悬浮窗：落地条件与风险
@@ -1243,7 +1244,7 @@ git checkout master
    `libs.versions.toml`、`common/build.gradle.kts`（`floatingx` → `floatingx-app` + `floatingx-system`）并重写
    `ui/components/ui/FloatingWindow.kt`（`appHost`/`anchor`/`compose`/`FxControl`；带 `FxState.CANCELLED` 守卫）。
    该组件目前只服务 **TTS 朗读悬浮窗**（含本仓自加的 `Settings.canDrawOverlays` 静默降级），升级后必须真机回归 TTS。
-2. ~~`487e229f7`（`ASK_USER_TOOL_NAME` 公共常量）~~：已由 `bcf4f57a9` 完成。
+2. ~~`487e229f7`（`ASK_USER_TOOL_NAME` 公共常量）~~：已由 `86c158777` 完成。
 3. 本仓没有 `ConversationSessionManager` / `ChatGenerationForegroundService` / `ui/floating`；`ChatService` 把会话管理内聚在
    自身（`sessions`、`handleMessageComplete`、`sendQueuedMessage`），需把上游的 reply-id/开始时间追踪手工接进
    `ConversationSession`（加两个 `MutableStateFlow`）与 `ChatService`（发送/重生成/流式回填三处清空/赋值）。
@@ -1265,7 +1266,7 @@ git checkout master
 
 ### 低风险小件落地（2026-10-23）
 
-用户限定仅吸收 `487e229f7` + `9dcb4fa44`，分别提交为 `bcf4f57a9` / `11af7bfbc`。
+用户限定仅吸收 `487e229f7` + `9dcb4fa44`，分别提交为 `86c158777` / `eb52fa82c`。
 未引入 floatingx 升级、后台悬浮窗、models.dev 或 Tavily 变更。
 
 - 共享常量仅改工具定义和消息 UI，不改工具名、参数或返回格式；保留既有序列化标识与其他模块逻辑。
@@ -1278,9 +1279,9 @@ git checkout master
 
 用户继续授权完整功能，已分两步本地提交：
 
-1. `31d055ddd`：FloatingX **2.3.7 → 3.0.0**，取 `d6ba728ed` 相关依赖/API 迁移及 `2b4694ba7` cancelled-control 守卫，
+1. `f066e3f64`：FloatingX **2.3.7 → 3.0.0**，取 `d6ba728ed` 相关依赖/API 迁移及 `2b4694ba7` cancelled-control 守卫，
    保留 TTS 无权限静默降级、rememberUpdatedState 内容刷新；新增宿主真机回归测试。
-2. `1700bad2a`：适配 `f048bed65`，新增后台气泡/面板、正文/思考安全预览、普通工具审批、子代理独立审批、
+2. `19826434a`：适配 `f048bed65`，新增后台气泡/面板、正文/思考安全预览、普通工具审批、子代理独立审批、
    快速回复排队、暂停队列恢复、停止整轮及打开会话。设置默认关闭，英/简/繁各补 18 条文案。
    从 `5dd7b764c` 仅取新 AppLogo 绘制组件作为功能依赖，不改 About 页；不引入 models.dev/Tavily 等其它功能。
 
@@ -1300,6 +1301,57 @@ git checkout master
 - Debug 编译/打包与 Release assemble（含 R8、lintVital）通过；git diff --check 通过。
 - 仪器测试已安装 debug 包；未改用户默认设置。未使用真实模型完成端到端生成/多工具审批续跑、软键盘与厂商后台策略的完整人工验收，
   不将组件仪器测试等同于这些链路全部实测。未推送。
+
+## 2026-10-24 master 跟进：移植 `chore/remove-tikz` 吸收成果 + 两条构建小件
+
+> 背景：分叉分支 `chore/remove-tikz`（基于 master `9d749241e`）已吸收上游 10-23 批共 10 提交，但为吸收
+> `815e9c20b`（纯 Kotlin PDF 提取）**移除了 TikZ 渲染**（TikZ 的 mupdf SVG 桥依赖 libmupdf）。
+> 用户要求 **master 保留 TikZ**，故只移植「除 TikZ 相关外的对应部分」到 master，分支自身保留不动。
+
+### 移植清单（`git cherry-pick`，分支 → master 哈希重映射）
+
+| 分支提交 | master 提交 | 内容 |
+|---|---|---|
+| `bcf4f57a9` | `86c158777` | ask_user 工具名公共常量（上游 `487e229f7`） |
+| `11af7bfbc` | `eb52fa82c` | 模型匹配跳过参数量数字 + `QWEN_3_VL`（上游 `9dcb4fa44`） |
+| `31d055ddd` | `f066e3f64` | FloatingX 2.3.7 → 3.0.0 迁移（含上游 `2b4694ba7` cancelled-control 守卫） |
+| `1700bad2a` | `19826434a` | 后台生成悬浮窗（上游 `f048bed65`，含子代理独立审批路由） |
+| `a23842370` | `31241ece1` | FGS 通知显式启动 Intent 防崩溃（分支后续修复） |
+| `f2f60ba3d` | `69a89b09a` | 悬浮面板缩放并持久化尺寸（分支后续） |
+| `9fd0aedc8` | `fdd7f5a07` | 标题栏拖动悬浮面板（分支后续） |
+| `c8a2e65b1` | `8d478a5da` | 旧版悬浮几何 + 八向缩放（分支后续） |
+| `8e3ac9607` | `98e287e26` | 拖拽改用事件时刻原始坐标（分支后续） |
+| `419b16f3e` | `f88ac3cbe` | **SubagentRunner 裸 runJob 补 complete，修「正在生成」卡死**（分支后续） |
+| `7616b5afa` / `3fe9b00a3` / `a59a84deb` | `965e260f7` / `a5dac9384` / `aca895d8a` | 三份 docs（评估 + 落地记录），哈希已按上表重映射 |
+
+全部 cherry-pick **零冲突**（分支基于 master HEAD，且排除项与移植项文件不相交）。
+
+### 排除项（master 有意不带）
+
+| 分支提交 | 内容 | 不带原因 |
+|---|---|---|
+| `5ff862a91` | 移除 TikZ 渲染 | **用户要求 master 保留 TikZ** |
+| `21e98e2ee` / `8242de7bc` | 纯 Kotlin PDF 提取（上游 `815e9c20b`） | 上游用它替换 mupdf 是为了整体删掉 libmupdf；master 的 TikZ SVG 桥需要 mupdf 存活，二者绑定，**维持 10-21 评估「不跟」** |
+| `72cd7d210` | applicationId 改 `app.androidrik.neomix` | 仅为分支构建与 master **共存**（避免覆盖安装），master 本身就是目标包名 |
+| `7fb7f52a1` | 临时诊断代码 | 前一提交（runJob 修复）的过程性文件存档，非发布内容 |
+
+### 直接吸收（分支未含的本批上游提交）
+
+- **`f267e8478` JLatexMath keep 收窄**：整库 `-keep org.scilab.forge.jlatexmath.**` 改为只 keep 按类名反射查找的
+  `NewCommandMacro` 与希腊/西里尔字母表注册类。本仓 jlatexmath 同为 **1.5**（`com.github.rikkahub.jlatexmath-android`），
+  TikZ 走 mupdf 不经 jlatexmath，与上游使用面一致，可直套。R8 裁剪后 dex 预计减约 50KB（上游数据 160KB→110KB），本仓未单独复测。
+- **`537f3b0ed` Gradle daemon 8g + `org.gradle.parallel=true`**：本仓原值与上游改前一致（4096m / 注释未开）；
+  CI `daily-build.yml` 跑 `ubuntu-latest` 与上游相同，无内存风险。
+
+### 验证
+
+- `:app:compileDebugKotlin` 通过；`:ai:testDebugUnitTest` **312 项、`:app:testDebugUnitTest` 2371 项，0 失败/错误/跳过**；
+  `git diff --check` 通过。悬浮窗/TTS 真机回归（PJX110 4 项仪器测试）已在分支完成且本轮代码未再改动，master 不重复。
+- 环境注意：本地未跟踪的 `app/google-services.json` 是在 remove-tikz 分支按 `app.androidrik.neomix` 生成的，
+  切回 master 后 `processDebugGoogleServices` 找不到 `app.androidrik.rikkahub(.debug)` client；已把其中两个
+  `package_name` 改回 master 包名（其余字段未动）。下次在分支构建需再改回，或两包名都在 Firebase 项目注册。
+- 未推送。本批落定后 `upstream/master..HEAD` = **1302**、`HEAD..upstream/master` = **382**（其中 10-23 批仅剩
+  `fcb4bfe4e`、`41ce12f66` 两条候选与 `e48db7bc7`/`5dd7b764c` 等结论性不做）。
 
 ## 关联
 
