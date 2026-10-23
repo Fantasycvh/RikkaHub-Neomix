@@ -1,6 +1,9 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.ai.ui.UIMessagePart
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -17,6 +20,25 @@ import java.util.concurrent.ConcurrentHashMap
  * 无 Android 依赖，可直接 JVM 单测。
  */
 object SubagentApprovalQueue {
+
+    data class Request(val runId: String, val label: String, val tool: UIMessagePart.Tool)
+
+    private val _requests = MutableStateFlow<List<Request>>(emptyList())
+    val requests = _requests.asStateFlow()
+
+    /** 注册整批后再发布，前台看到请求时等待者一定已经就绪。 */
+    @Synchronized
+    fun registerBatch(
+        runId: String,
+        label: String,
+        tools: List<UIMessagePart.Tool>,
+    ): Map<String, CompletableDeferred<Boolean>> {
+        val registered = tools.associate { it.toolCallId to register(it.toolCallId) }
+        val ids = registered.keys
+        _requests.value = _requests.value.filterNot { it.tool.toolCallId in ids } +
+            tools.map { Request(runId, label, it) }
+        return registered
+    }
 
     /** toolCallId → 等待者。一个 run 的一批待批工具各占一个条目。 */
     private val waiters = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
@@ -37,9 +59,14 @@ object SubagentApprovalQueue {
      *
      * @return true = 确实有 run 在等（已填）；false = 无人在等（进程重启后点旧通知、或已超时）
      */
+    @Synchronized
     fun resolve(toolCallId: String, approved: Boolean): Boolean {
         val waiter = waiters[toolCallId] ?: return false
-        return waiter.complete(approved)
+        val resolved = waiter.complete(approved)
+        if (resolved) {
+            _requests.value = _requests.value.filterNot { it.tool.toolCallId == toolCallId }
+        }
+        return resolved
     }
 
     /**
@@ -48,8 +75,10 @@ object SubagentApprovalQueue {
      * **必须由等待方在 `finally` 里调**：否则超时后队列里会留一个永远没人查的条目
      * （内存泄漏 + 之后点通知会误报"已填"）。
      */
+    @Synchronized
     fun forget(toolCallId: String) {
         waiters.remove(toolCallId)
+        _requests.value = _requests.value.filterNot { it.tool.toolCallId == toolCallId }
     }
 
     /** 当前待批数量（诊断/测试用）。 */

@@ -218,6 +218,7 @@ class RouteActivity : ComponentActivity() {
                         .build()
                 }
                 AppRoutes()
+                app.androidrik.rikkahub.ui.pages.agentrun.SubagentApprovalDialog()
             }
         }
     }

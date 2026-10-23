@@ -79,6 +79,35 @@ class SubagentApprovalTest {
         SubagentApprovalQueue.forget("call-3")
     }
 
+    @Test
+    fun `foreground requests disappear when answered from any entry point`() = runBlocking {
+        val tools = listOf(tool("foreground-a"), tool("foreground-b"))
+        val waiters = SubagentApprovalQueue.registerBatch("run", "Agent", tools)
+        try {
+            val requests = SubagentApprovalQueue.requests.value.filter { it.runId == "run" }
+            assertEquals(tools, requests.map { it.tool })
+            assertEquals("Agent", requests.first().label)
+            assertTrue(SubagentApprovalQueue.resolve("foreground-a", true))
+            assertTrue(waiters.getValue("foreground-a").await())
+            assertFalse(SubagentApprovalQueue.resolve("foreground-a", false))
+            assertEquals(
+                listOf("foreground-b"),
+                SubagentApprovalQueue.requests.value.filter { it.runId == "run" }.map { it.tool.toolCallId },
+            )
+        } finally {
+            tools.forEach { SubagentApprovalQueue.forget(it.toolCallId) }
+        }
+        assertTrue(SubagentApprovalQueue.requests.value.none { it.runId == "run" })
+    }
+
+    @Test
+    fun `timeout cleanup removes unanswered foreground requests`() {
+        SubagentApprovalQueue.registerBatch("expired-run", "Agent", listOf(tool("expired-tool")))
+        SubagentApprovalQueue.forget("expired-tool")
+        assertTrue(SubagentApprovalQueue.requests.value.none { it.runId == "expired-run" })
+        assertFalse(SubagentApprovalQueue.resolve("expired-tool", true))
+    }
+
     // ---- 待批工具筛选 ----
 
     @Test

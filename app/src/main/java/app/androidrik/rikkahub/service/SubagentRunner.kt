@@ -552,7 +552,7 @@ class SubagentRunner(
         label: String,
         pending: List<UIMessagePart.Tool>,
     ): Map<String, ToolApprovalState> {
-        val waiters = pending.associate { it.toolCallId to SubagentApprovalQueue.register(it.toolCallId) }
+        val waiters = SubagentApprovalQueue.registerBatch(runId, label, pending)
         postApprovalNotification(runId, label, pending)
         try {
             withTimeoutOrNull(APPROVAL_TIMEOUT_MS) {
