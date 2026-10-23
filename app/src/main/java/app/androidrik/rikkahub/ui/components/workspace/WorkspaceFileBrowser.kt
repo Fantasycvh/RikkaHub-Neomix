@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.workspace
 
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Pencil
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -108,6 +110,7 @@ fun WorkspaceFileBrowser(
     selectedPaths: Set<String> = emptySet(),
     onSelectToggle: (WorkspaceFileEntry) -> Unit = {},
     onLongPress: ((WorkspaceFileEntry) -> Unit)? = null,
+    onRename: ((WorkspaceFileEntry) -> Unit)? = null,
 ) {
     val itemSpacing = if (compact) 8.dp else 12.dp
     LazyColumn(
@@ -149,6 +152,7 @@ fun WorkspaceFileBrowser(
                     // 选择态下"打开"退化为"切换选中"（边界规则 5）
                     if (selecting) onSelectToggle(entry) else onOpen(entry)
                 },
+                onRename = onRename?.let { { it(entry) } },
                 onDelete = { onDelete(entry) },
                 onExport = { onExport(entry) },
                 onShare = onShare?.let { { it(entry) } },
@@ -175,6 +179,7 @@ fun WorkspaceSelectionToolbar(
     onExport: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    onRename: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -191,6 +196,13 @@ fun WorkspaceSelectionToolbar(
             Tooltip(tooltip = { Text(stringResource(R.string.workspace_selection_select_all)) }) {
                 IconButton(onClick = onSelectAll) {
                     Icon(HugeIcons.CursorPointer01, contentDescription = null)
+                }
+            }
+            onRename?.let { rename ->
+                Tooltip(tooltip = { Text("重命名") }) {
+                    IconButton(onClick = rename, enabled = selectedCount > 0) {
+                        Icon(Lucide.Pencil, contentDescription = "重命名")
+                    }
                 }
             }
             Tooltip(tooltip = { Text(stringResource(R.string.common_export)) }) {
@@ -283,6 +295,7 @@ fun WorkspaceFileCard(
     // 「复制 Rootfs 内绝对路径」需要知道当前区（FILES 挂 /workspace、LINUX 是根）
     area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
     onCopyPath: ((String) -> Unit)? = null,
+    onRename: (() -> Unit)? = null,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -385,6 +398,13 @@ fun WorkspaceFileCard(
                             expanded = menuExpanded,
                             onDismissRequest = { menuExpanded = false },
                         ) {
+                            onRename?.let { rename ->
+                                DropdownMenuItem(
+                                    text = { Text("重命名") },
+                                    leadingIcon = { Icon(Lucide.Pencil, contentDescription = null) },
+                                    onClick = { menuExpanded = false; rename() },
+                                )
+                            }
                             if (!entry.isDirectory) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.common_export)) },

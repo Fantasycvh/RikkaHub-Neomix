@@ -135,19 +135,16 @@ fun WorkspaceDetailPage(id: String) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val toaster = LocalToaster.current
-    val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (nameIndex >= 0) cursor.getString(nameIndex) else null
-            } else null
-        } ?: uri.lastPathSegment ?: "imported_file"
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return@rememberLauncherForActivityResult
-        vm.importFile(inputStream, fileName)
-    }
+    val fileActions = app.androidrik.rikkahub.ui.components.workspace.rememberWorkspaceFileActions(
+        location = app.androidrik.rikkahub.ui.components.workspace.WorkspaceFileLocation(id, state.area, state.path),
+        repository = org.koin.compose.koinInject(),
+        onChanged = vm::refresh,
+    )
+    var exportArea by remember { mutableStateOf(state.area) }
+    var batchArea by remember { mutableStateOf(state.area) }
+    var batchPath by remember { mutableStateOf(state.path) }
+    var deleteArea by remember { mutableStateOf(state.area) }
+    var deleteSnapshot by remember { mutableStateOf<List<WorkspaceFileEntry>>(emptyList()) }
     var exportTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     // SAF launcher 回调里要用的"这次导哪些"（launcher 不能带参数，只能借状态传递）
     var pendingExportEntries by remember { mutableStateOf<List<WorkspaceFileEntry>>(emptyList()) }
@@ -169,7 +166,7 @@ fun WorkspaceDetailPage(id: String) {
         val entry = exportTarget.also { exportTarget = null } ?: return@rememberLauncherForActivityResult
         if (uri == null) return@rememberLauncherForActivityResult
         val outputStream = context.contentResolver.openOutputStream(uri) ?: return@rememberLauncherForActivityResult
-        vm.exportFile(entry, outputStream)
+        vm.exportFile(entry, outputStream, exportArea)
     }
 
     fun finishSelection() {
@@ -208,11 +205,13 @@ fun WorkspaceDetailPage(id: String) {
             showRootfsExportNotice = true
             return
         }
+        batchArea = state.area
+        batchPath = state.path
         pendingExportEntries = entries
         // 只有"含文件夹 / 选择很多"时才多走一次树做体量预览——小选择不必付这个成本
         if (entries.any { it.isDirectory } || entries.size > LARGE_SELECTION_HINT_COUNT) {
             scope.launch {
-                val preview = vm.previewSelection(entries)
+                val preview = vm.previewSelection(entries, batchArea, batchPath)
                 if (preview != null && (preview.second > LARGE_EXPORT_BYTES || preview.first > LARGE_EXPORT_FILES)) {
                     pendingExport = kind
                     largeExportConfirm = preview
@@ -246,7 +245,7 @@ fun WorkspaceDetailPage(id: String) {
         }
         exportProgress = 0 to entries.size
         scope.launch {
-            val result = vm.exportSelectionAsZip(entries, outputStream) { done, total ->
+            val result = vm.exportSelectionAsZip(entries, outputStream, batchArea, batchPath) { done, total ->
                 exportProgress = done to total
             }
             exportProgress = null
@@ -277,6 +276,8 @@ fun WorkspaceDetailPage(id: String) {
         scope.launch {
             val result = vm.exportSelectionToTree(
                 entries = entries,
+                area = batchArea,
+                basePath = batchPath,
                 tree = tree,
                 openOutputStream = { documentUri -> context.contentResolver.openOutputStream(documentUri) },
             ) { done, total ->
@@ -307,6 +308,10 @@ fun WorkspaceDetailPage(id: String) {
     }
 
     // 选择态下返回键先退出选择（用最后注册的 BackHandler 抢占路径返回的语义）
+    LaunchedEffect(state.area, state.path, pagerState.currentPage, selecting) {
+        if (!selecting || pagerState.currentPage != 1) finishSelection()
+    }
+    LaunchedEffect(state.area, state.path) { finishSelection() }
     BackHandler(enabled = selecting) { finishSelection() }
 
     BackHandler(enabled = pagerState.currentPage == 1 && state.path.isNotBlank() && !selecting) {
@@ -326,7 +331,7 @@ fun WorkspaceDetailPage(id: String) {
                 navigationIcon = { BackButton() },
                 actions = {
                     if (pagerState.currentPage == 1) {
-                        IconButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
+                        IconButton(onClick = fileActions.importFiles) {
                             Icon(
                                 HugeIcons.FileImport,
                                 contentDescription = stringResource(R.string.workspace_detail_import_file),
@@ -364,13 +369,17 @@ fun WorkspaceDetailPage(id: String) {
                         if (entries.size == 1 && !entries.first().isDirectory) {
                             // 单个文件不打包：直接走既有的单文件导出（零新增概念）
                             showExportChooser = false
+                            exportArea = state.area
                             exportTarget = entries.first()
                             exportLauncher.launch(entries.first().name)
                         } else {
                             showExportChooser = true
                         }
                     },
-                    onDelete = { showDeleteSelectionConfirm = true },
+                    onRename = if (state.area == WorkspaceStorageArea.FILES) {
+                        { fileActions.rename(selectedEntries); finishSelection() }
+                    } else null,
+                    onDelete = { deleteArea = state.area; deleteSnapshot = selectedEntries.toList(); showDeleteSelectionConfirm = true },
                     modifier = Modifier
                         .padding(bottom = 12.dp),
                 )
@@ -424,6 +433,9 @@ fun WorkspaceDetailPage(id: String) {
                         finishSelection()
                         vm.selectArea(area)
                     },
+                    onRename = if (state.area == WorkspaceStorageArea.FILES) {
+                        { entry -> fileActions.rename(listOf(entry)) }
+                    } else null,
                     onGoUp = {
                         finishSelection()
                         vm.goUp()
@@ -490,8 +502,9 @@ fun WorkspaceDetailPage(id: String) {
                             }
                         }
                     },
-                    onDelete = { deleteTarget = it },
+                    onDelete = { deleteArea = state.area; deleteTarget = it },
                     onExport = { entry ->
+                        exportArea = state.area
                         exportTarget = entry
                         exportLauncher.launch(entry.name)
                     },
@@ -616,10 +629,10 @@ fun WorkspaceDetailPage(id: String) {
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val entries = selectedEntries
+                        val entries = deleteSnapshot
                         showDeleteSelectionConfirm = false
                         scope.launch {
-                            val failed = vm.deleteSelection(entries)
+                            val failed = vm.deleteSelection(entries, deleteArea)
                             finishSelection()
                             if (failed.isEmpty()) {
                                 toaster.show(
@@ -697,7 +710,7 @@ fun WorkspaceDetailPage(id: String) {
             confirmText = stringResource(R.string.common_delete),
             dismissText = stringResource(R.string.common_cancel),
             onConfirm = {
-                vm.delete(entry)
+                vm.delete(entry, deleteArea)
                 deleteTarget = null
             },
             onDismiss = { deleteTarget = null },

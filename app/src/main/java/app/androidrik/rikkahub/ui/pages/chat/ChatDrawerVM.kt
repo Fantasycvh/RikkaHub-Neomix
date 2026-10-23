@@ -289,6 +289,10 @@ class ChatDrawerVM(
 
     fun invalidateFilesCache() {
         filesCache.clear()
+        // 批量操作（导入/删除/重命名）后立刻重拉当前目录与活动搜索结果，
+        // 否则界面继续显示旧列表，已被删除/改名的路径还能被再次操作。
+        loadWorkspaceFiles()
+        if (_filesSearchQuery.value.isNotBlank()) searchWorkspaceFiles(_filesSearchQuery.value)
     }
 
     fun loadWorkspaceFiles() {

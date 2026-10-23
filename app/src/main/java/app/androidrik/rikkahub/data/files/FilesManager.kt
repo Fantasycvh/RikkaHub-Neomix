@@ -13,6 +13,9 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -53,15 +56,29 @@ class FilesManager(
         val resolvedName = displayName ?: getFileNameFromUri(uri) ?: "file"
         val resolvedMime = mimeType ?: getFileMimeType(uri) ?: "application/octet-stream"
         val target = createTargetFile(folder, resolvedName, resolvedMime)
-        // P1-7：`openInputStream` 返回 null 时必须**显式失败**——旧实现会跳过拷贝却继续
-        // 登记 managed_files，于是库里出现 0 字节「成功」附件。拷贝/落盘失败由
-        // writeStreamAtomically 清理半成品（临时文件）并返回 false，同样不登记。
-        val input = context.contentResolver.openInputStream(uri)
-            ?: throw IOException("Failed to open input stream for $uri")
-        if (!input.use { writeStreamAtomically(target, it) }) {
-            throw IOException("Failed to save file from $uri")
+        // Copy on IO with cancellation checks between chunks. Never register a partial file.
+        val temp = createAtomicTempFile(target)
+        try {
+            val input = context.contentResolver.openInputStream(uri)
+                ?: throw IOException("Failed to open input stream for $uri")
+            input.use { source ->
+                temp.outputStream().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                    }
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            if (!temp.renameTo(target)) throw IOException("Failed to save file from $uri")
+        } finally {
+            temp.delete()
         }
         try {
+            currentCoroutineContext().ensureActive()
             createManagedFileEntity(
                 folder = folder,
                 file = target,
@@ -618,10 +635,37 @@ class FilesManager(
     suspend fun delete(id: Long, deleteFromDisk: Boolean = true): Boolean = withContext(Dispatchers.IO) {
         val entity = repository.getById(id) ?: return@withContext false
         if (deleteFromDisk) {
-            runCatching { getFile(entity).delete() }
+            val file = getFile(entity)
+            if (file.exists() && !file.delete()) throw IOException("无法删除文件：${entity.displayName}")
         }
         repository.deleteById(id) > 0
     }
+
+    suspend fun rename(id: Long, displayName: String): Boolean = withContext(Dispatchers.IO) {
+        repository.rename(id, displayName)
+    }
+
+    suspend fun importMany(folder: String, uris: List<Uri>): List<ManagedFileOperationResult> =
+        withContext(Dispatchers.IO) {
+            runManagedFileOperations(uris.distinct(), { it.toString() }, { uri ->
+                getFileNameFromUri(uri) ?: uri.lastPathSegment ?: "file"
+            }) { uri -> saveManagedFromUri(folder, uri) }
+        }
+
+    suspend fun deleteMany(files: List<ManagedFileEntity>): List<ManagedFileOperationResult> =
+        withContext(Dispatchers.IO) {
+            runManagedFileOperations(files.distinctBy { it.id }, { it.id.toString() }, { it.displayName }) {
+                check(delete(it.id)) { "文件已不存在" }
+            }
+        }
+
+    suspend fun renameMany(files: List<ManagedFileEntity>, names: Map<String, String>): List<ManagedFileOperationResult> =
+        withContext(Dispatchers.IO) {
+            runManagedFileOperations(files.distinctBy { it.id }, { it.id.toString() }, { it.displayName }) { file ->
+                val name = requireNotNull(names[file.id.toString()]) { "未提供新名称" }
+                check(rename(file.id, name)) { "文件已不存在" }
+            }
+        }
 
     suspend fun deleteAll(folder: String = FileFolders.UPLOAD): Boolean = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, folder)
@@ -725,6 +769,28 @@ class FilesManager(
 
     private fun guessMimeType(file: File, fileName: String): String =
         FileUtils.guessMimeType(file, fileName)
+}
+
+/** A batch is best-effort per item, but cancellation always stops and propagates. */
+data class ManagedFileOperationResult(val key: String, val name: String, val error: String? = null)
+
+internal suspend fun <T> runManagedFileOperations(
+    items: List<T>,
+    key: (T) -> String,
+    name: (T) -> String,
+    operation: suspend (T) -> Unit,
+): List<ManagedFileOperationResult> = items.map { item ->
+    currentCoroutineContext().ensureActive()
+    var label = key(item)
+    try {
+        label = name(item)
+        operation(item)
+        ManagedFileOperationResult(key(item), label)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        ManagedFileOperationResult(key(item), label, failure.message ?: failure.javaClass.simpleName)
+    }
 }
 
 data class SyncResult(

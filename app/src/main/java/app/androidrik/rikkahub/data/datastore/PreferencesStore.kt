@@ -1290,7 +1290,8 @@ data class WebDavConfig(
     val url: String = "",
     val username: String = "",
     val password: String = "",
-    val path: String = "rikkahub_plus_backups",
+    // 默认远端目录与应用名一致（fork 更名 Neomix 后不再沿用上游的 rikkahub_plus_backups）
+    val path: String = "neomix_backups",
 ) {
 }
 

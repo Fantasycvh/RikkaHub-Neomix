@@ -5,6 +5,8 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
@@ -101,73 +103,69 @@ class WorkspaceDetailVM(
     }
 
     fun refresh() {
+        val location = state.value
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            runCatching {
-                repository.listFiles(
-                    id = id,
-                    area = state.value.area,
-                    path = state.value.path,
-                )
-            }.onSuccess { entries ->
-                _state.update { it.copy(entries = entries, loading = false) }
-            }.onFailure { error ->
+            try {
+                val entries = repository.listFiles(id, location.area, location.path)
                 _state.update {
-                    it.copy(
-                        entries = emptyList(),
-                        loading = false,
-                        error = error.message ?: "加载工作区文件失败",
-                    )
+                    if (it.area == location.area && it.path == location.path) it.copy(entries = entries, loading = false) else it
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _state.update {
+                    if (it.area == location.area && it.path == location.path)
+                        it.copy(entries = emptyList(), loading = false, error = error.message ?: "加载工作区文件失败") else it
                 }
             }
         }
     }
 
-    fun delete(entry: WorkspaceFileEntry) {
+    fun delete(entry: WorkspaceFileEntry, area: WorkspaceStorageArea = state.value.area) {
         viewModelScope.launch {
             runCatching {
-                repository.deleteFile(
-                    id = id,
-                    area = state.value.area,
-                    path = entry.path,
-                    recursive = entry.isDirectory,
-                )
+                check(repository.deleteFile(id, area, entry.path, entry.isDirectory)) { "删除失败: ${entry.path}" }
             }.onSuccess {
                 refresh()
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 _state.update { it.copy(error = error.message ?: "删除失败") }
             }
         }
     }
 
     fun importFile(inputStream: InputStream, fileName: String) {
+        val location = state.value
         viewModelScope.launch {
             runCatching {
                 repository.importFile(
                     id = id,
-                    area = state.value.area,
-                    destinationPath = state.value.path,
+                    area = location.area,
+                    destinationPath = location.path,
                     fileName = fileName,
                     inputStream = inputStream,
                 )
             }.onSuccess {
                 refresh()
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 _state.update { it.copy(error = error.message ?: "导入文件失败") }
             }
         }
     }
 
-    fun exportFile(entry: WorkspaceFileEntry, outputStream: OutputStream) {
+    fun exportFile(entry: WorkspaceFileEntry, outputStream: OutputStream, area: WorkspaceStorageArea = state.value.area) {
         viewModelScope.launch {
             runCatching {
                 repository.exportFile(
                     id = id,
-                    area = state.value.area,
+                    area = area,
                     path = entry.path,
                     outputStream = outputStream,
                 )
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 _state.update { it.copy(error = error.message ?: "导出文件失败") }
             }
         }
@@ -182,20 +180,24 @@ class WorkspaceDetailVM(
      * 看到的是第一张的内容」（Coil 以绝对路径为缓存键，路径没变就直接命中上次的字节）。
      */
     fun exportToCacheFile(entry: WorkspaceFileEntry, cacheDir: File, onReady: (File) -> Unit) {
+        val location = state.value
         viewModelScope.launch {
             runCatching {
+                withContext(Dispatchers.IO) {
                 val dir = File(cacheDir, "workspace_share").apply { mkdirs() }
                 val file = File(dir, workspaceCacheFileName(entry.path))
                 file.outputStream().use { output ->
                     repository.exportFile(
                         id = id,
-                        area = state.value.area,
+                        area = location.area,
                         path = entry.path,
                         outputStream = output,
                     )
                 }
                 file
+                }
             }.onSuccess(onReady).onFailure { error ->
+                if (error is CancellationException) throw error
                 _state.update { it.copy(error = error.message ?: "导出文件失败") }
             }
         }
@@ -206,21 +208,24 @@ class WorkspaceDetailVM(
      * 供列表内 SVG 缩略图渲染等复用 (与 [exportToCacheFile] 的 share 目录分离避免互相覆盖).
      */
     fun exportToCacheDir(entry: WorkspaceFileEntry, dir: File, onReady: (File) -> Unit) {
+        val location = state.value
         viewModelScope.launch {
             runCatching {
+                withContext(Dispatchers.IO) {
                 dir.mkdirs()
                 // 同名文件在不同子目录会碰撞, 用路径替换分隔符保证唯一（判据与 exportToCacheFile 共用）
                 val file = File(dir, workspaceCacheFileName(entry.path))
                 file.outputStream().use { output ->
                     repository.exportFile(
                         id = id,
-                        area = state.value.area,
+                        area = location.area,
                         path = entry.path,
                         outputStream = output,
                     )
                 }
                 file
-            }.onSuccess(onReady)
+                }
+            }.onSuccess(onReady).onFailure { if (it is CancellationException) throw it }
         }
     }
 
@@ -230,8 +235,7 @@ class WorkspaceDetailVM(
      * 逐项删除而不是"一把梭"：单项失败（权限、被占用）不该让其余项也不删——
      * 与导出那边"部分成功"是同一类现实（用户决议 §6.1）。
      */
-    suspend fun deleteSelection(entries: List<WorkspaceFileEntry>): List<String> {
-        val area = state.value.area
+    suspend fun deleteSelection(entries: List<WorkspaceFileEntry>, area: WorkspaceStorageArea = state.value.area): List<String> {
         val failed = mutableListOf<String>()
         entries.forEach { entry ->
             runCatching {
@@ -241,7 +245,11 @@ class WorkspaceDetailVM(
                     path = entry.path,
                     recursive = entry.isDirectory,
                 )
-            }.onFailure { failed += entry.path }
+                .also { check(it) { "Delete returned false" } }
+            }.onFailure {
+                if (it is CancellationException) throw it
+                failed += entry.path
+            }
         }
         refresh()
         return failed
@@ -255,52 +263,60 @@ class WorkspaceDetailVM(
      */
     suspend fun previewSelection(
         entries: List<WorkspaceFileEntry>,
+        area: WorkspaceStorageArea = state.value.area,
+        basePath: String = state.value.path,
     ): Pair<Int, Long>? = runCatching {
         repository.previewSelectionSize(
             id = id,
-            area = state.value.area,
-            basePath = state.value.path,
+            area = area,
+            basePath = basePath,
             selection = entries,
         )
-    }.getOrNull()
+    }.onFailure { if (it is CancellationException) throw it }.getOrNull()
 
     /** 打包为 zip（流式写宿主给的流；返回 null = 失败，异常已落到 state.error）。 */
     suspend fun exportSelectionAsZip(
         entries: List<WorkspaceFileEntry>,
         outputStream: OutputStream,
+        area: WorkspaceStorageArea = state.value.area,
+        basePath: String = state.value.path,
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): WorkspaceBatchResult? = runCatching {
         repository.exportSelectionAsZip(
             id = id,
-            area = state.value.area,
-            basePath = state.value.path,
+            area = area,
+            basePath = basePath,
             selection = entries,
             outputStream = outputStream,
             onProgress = onProgress,
         )
     }.onFailure { error ->
+                if (error is CancellationException) throw error
         _state.update { it.copy(error = error.message ?: "导出失败") }
-    }.getOrNull()
+    }.onFailure { if (it is CancellationException) throw it }.getOrNull()
 
     /** 逐个导出到 SAF 授权目录（保留原目录结构）。 */
     suspend fun exportSelectionToTree(
         entries: List<WorkspaceFileEntry>,
         tree: DocumentFile,
         openOutputStream: (Uri) -> OutputStream?,
+        area: WorkspaceStorageArea = state.value.area,
+        basePath: String = state.value.path,
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): WorkspaceBatchResult? = runCatching {
         repository.exportSelectionToTree(
             id = id,
-            area = state.value.area,
-            basePath = state.value.path,
+            area = area,
+            basePath = basePath,
             selection = entries,
             tree = tree,
             openOutputStream = openOutputStream,
             onProgress = onProgress,
         )
     }.onFailure { error ->
+                if (error is CancellationException) throw error
         _state.update { it.copy(error = error.message ?: "导出失败") }
-    }.getOrNull()
+    }.onFailure { if (it is CancellationException) throw it }.getOrNull()
 
     /** 单次读取上限（字节）。窗口读（offset/limit）不受它约束，所以调大它只是为了"整文件读大文件"。 */
     fun setMaxReadFileBytes(bytes: Long) {
@@ -387,6 +403,7 @@ class WorkspaceDetailVM(
                     )
                 }
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 _terminalState.update {
                     it.copy(
                         running = false,

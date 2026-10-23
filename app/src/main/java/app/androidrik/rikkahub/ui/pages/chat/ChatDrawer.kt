@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
+import com.composables.icons.lucide.Import
+
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -22,6 +24,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -344,6 +347,7 @@ fun ChatDrawerContent(
                     onSearchChange = { filesSearchInput = it },
                     onEnterDir = drawerVm::enterFilesDir,
                     onUpDir = drawerVm::navigateFilesUp,
+                    onChanged = drawerVm::invalidateFilesCache,
                     navController = navController,
                     modifier = Modifier.weight(1f),
                 )
@@ -1158,118 +1162,122 @@ private fun WorkspaceFilesPanel(
     onSearchChange: (String) -> Unit,
     onEnterDir: (String) -> Unit,
     onUpDir: () -> Unit,
+    onChanged: () -> Unit,
     navController: Navigator,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        // 搜索框
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(stringResource(R.string.chat_drawer_files_search_hint)) },
-            singleLine = true,
-            leadingIcon = { Icon(HugeIcons.Search01, null, modifier = Modifier.size(16.dp)) },
-            textStyle = MaterialTheme.typography.bodySmall,
-        )
-
-        // 路径行（非根目录时显示返回）
-        if (path.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onUpDir() }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = HugeIcons.Folder02,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = if (path.isEmpty()) "/" else path,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 4.dp),
-                )
-            }
-        }
-
-        val visible = if (searchQuery.isNotBlank()) searchResults else files
-        if (visible.isNullOrEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.chat_drawer_files_empty),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                items(visible, key = { it.path }) { entry ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                if (entry.isDirectory) {
-                                    onEnterDir(entry.path)
-                                } else {
-                                    navController.navigate(
-                                        Screen.WorkspaceFileEditor(
-                                            id = workspaceId,
-                                            area = "FILES",
-                                            path = entry.path,
-                                        )
-                                    )
-                                }
-                            }
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            imageVector = if (entry.isDirectory) HugeIcons.Folder01 else HugeIcons.File01,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = if (entry.isDirectory) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                        Text(
-                            text = entry.name,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (!entry.isDirectory && entry.sizeBytes > 0) {
-                            Text(
-                                text = formatDrawerFileSize(entry.sizeBytes),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+    val repository = org.koin.compose.koinInject<app.androidrik.rikkahub.data.repository.WorkspaceRepository>()
+    val location = app.androidrik.rikkahub.ui.components.workspace.WorkspaceFileLocation(
+        workspaceId, app.androidrik.workspace.WorkspaceStorageArea.FILES, path,
+    )
+    val actions = app.androidrik.rikkahub.ui.components.workspace.rememberWorkspaceFileActions(location, repository, onChanged)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val toaster = app.androidrik.rikkahub.ui.context.LocalToaster.current
+    val scope = rememberCoroutineScope()
+    var selecting by remember(workspaceId, path, searchQuery) { mutableStateOf(false) }
+    var selected by remember(workspaceId, path, searchQuery) { mutableStateOf(setOf<String>()) }
+    var deleteEntries by remember { mutableStateOf<List<WorkspaceFileEntry>>(emptyList()) }
+    var exportEntries by remember { mutableStateOf<List<WorkspaceFileEntry>>(emptyList()) }
+    var exportPath by remember { mutableStateOf("") }
+    val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        val entries = exportEntries.also { exportEntries = emptyList() }
+        val base = exportPath
+        if (uri != null && entries.isNotEmpty()) scope.launch {
+            try {
+                val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        repository.exportSelectionAsZip(workspaceId, app.androidrik.workspace.WorkspaceStorageArea.FILES, base, entries, output)
+                    } ?: error("无法写入导出文件")
                 }
+                toaster.show("已导出 ${result.succeeded} 项，跳过 ${result.skipped} 项，失败 ${result.failed} 项")
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+            } catch (error: Exception) { toaster.show("导出失败：${error.message}") }
+        }
+    }
+    fun export(entries: List<WorkspaceFileEntry>) {
+        exportEntries = entries.toList()
+        // Search can include descendants; use the workspace root as the stable export base.
+        exportPath = if (searchQuery.isBlank()) path else ""
+        exportPicker.launch("workspace-files.zip")
+    }
+    val visible = if (searchQuery.isNotBlank()) searchResults.orEmpty() else files
+    // 搜索结果可能同时含目录与其后代：删除折叠到最外层目录（递归删除会带上后代），
+    // 重命名禁止祖先/后代同批（先改父目录会让子项旧路径失效，与预览不符）。
+    val chosenPaths = visible.filter { it.path in selected }.map { it.path }
+    val chosenForDelete = chosenPaths.filter { path ->
+        chosenPaths.none { other -> path != other && path.startsWith("$other/") }
+    }
+    val chosenForRename = chosenForDelete.filter { path ->
+        chosenPaths.none { other -> other != path && (path.startsWith("$other/") || other.startsWith("$path/")) }
+    }
+    val chosen = visible.filter { it.path in chosenForDelete.toSet() }
+    if (deleteEntries.isNotEmpty()) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deleteEntries = emptyList() },
+            title = { Text("删除 ${deleteEntries.size} 项？") },
+            text = { Text("删除后无法撤销。") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val entries = deleteEntries.also { deleteEntries = emptyList() }
+                    scope.launch {
+                        val failed = mutableListOf<String>()
+                        for (entry in entries) {
+                            try {
+                                check(repository.deleteFile(workspaceId, app.androidrik.workspace.WorkspaceStorageArea.FILES, entry.path, entry.isDirectory))
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+                            } catch (error: Exception) { failed += "${entry.path}: ${error.message}" }
+                        }
+                        selecting = false
+                        onChanged()
+                        toaster.show("已删除 ${entries.size - failed.size} 项" + if (failed.isEmpty()) "" else "；失败：${failed.joinToString()}")
+                    }
+                }) { Text("删除") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteEntries = emptyList() }) { Text("取消") } },
+        )
+    }
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchChange,
+                modifier = Modifier.weight(1f),
+                placeholder = { Text(stringResource(R.string.chat_drawer_files_search_hint)) },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+            )
+            IconButton(onClick = actions.importFiles) {
+                Icon(com.composables.icons.lucide.Lucide.Import, contentDescription = "导入文件")
             }
         }
+        app.androidrik.rikkahub.ui.components.workspace.WorkspaceFileBrowser(
+            entries = visible, path = path,
+            area = app.androidrik.workspace.WorkspaceStorageArea.FILES,
+            loading = false, error = null, compact = true, showAreaSelector = false,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
+            modifier = Modifier.weight(1f),
+            selecting = selecting, selectedPaths = selected,
+            onSelectToggle = { entry -> selected = if (entry.path in selected) selected - entry.path else selected + entry.path },
+            onLongPress = { entry -> selecting = true; selected = selected + entry.path },
+            onGoUp = onUpDir,
+            onOpen = { entry ->
+                if (entry.isDirectory) onEnterDir(entry.path)
+                else navController.navigate(Screen.WorkspaceFileEditor(workspaceId, "FILES", entry.path))
+            },
+            onDelete = { deleteEntries = listOf(it) },
+            onExport = { export(listOf(it)) },
+            onRename = { actions.rename(listOf(it)) },
+        )
+        app.androidrik.rikkahub.ui.components.workspace.WorkspaceSelectionToolbar(
+            selectedCount = chosen.size, visible = selecting,
+            onCancel = { selecting = false; selected = emptySet() },
+            onSelectAll = { selected = if (selected.size == visible.size) emptySet() else visible.map { it.path }.toSet() },
+            onExport = { export(chosen) },
+            onDelete = { deleteEntries = chosen.toList() },
+            onRename = { actions.rename(chosenForRename.mapNotNull { p -> visible.firstOrNull { it.path == p } }); selecting = false },
+        )
     }
 }
 

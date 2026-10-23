@@ -1,407 +1,259 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Image02
-import me.rerere.hugeicons.stroke.Clean
-import me.rerere.hugeicons.stroke.Delete01
-import me.rerere.hugeicons.stroke.Share08
-import me.rerere.hugeicons.stroke.Time04
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeFlexibleTopAppBar
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
-import kotlinx.coroutines.launch
-import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.SettingsStore
-import app.androidrik.rikkahub.data.files.DEFAULT_EXPORT_RETENTION_DAYS
-import app.androidrik.rikkahub.data.files.EXPORT_RETENTION_DAYS_MAX
-import app.androidrik.rikkahub.data.files.FileFolders
-import app.androidrik.rikkahub.ui.context.LocalSettings
-import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
+import app.androidrik.rikkahub.data.files.*
+import app.androidrik.rikkahub.ui.components.files.BatchRenameDialog
+import app.androidrik.rikkahub.ui.components.files.RenameItem
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.CustomColors
-import app.androidrik.rikkahub.utils.fileSizeToString
 import app.androidrik.rikkahub.utils.fileProviderUri
+import app.androidrik.rikkahub.utils.fileSizeToString
 import app.androidrik.rikkahub.utils.shareFile
+import coil3.compose.AsyncImage
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.File
+import com.composables.icons.lucide.Import
+import com.composables.icons.lucide.ListChecks
+import com.composables.icons.lucide.Pencil
+import com.composables.icons.lucide.Share2
+import com.composables.icons.lucide.Timer
+import com.composables.icons.lucide.Trash2
+import com.composables.icons.lucide.X
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import java.io.File
+import java.io.File as JavaFile
 
 @Composable
-fun SettingFilesPage(
-    filesManager: FilesManager = koinInject(),
-) {
+fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val gridState = rememberLazyStaggeredGridState()
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val context = LocalContext.current
     val settingsStore: SettingsStore = koinInject()
     val settings = LocalSettings.current
-    // 导出留存区与附件一起管：它是「用户想留的产物」，同样需要可见/可删/可再分享
-    // （见 docs/design/design-export-retention.md §4.4）
     val folders = remember { listOf(FileFolders.UPLOAD, FileFolders.EXPORTS) }
-
-    // 预先获取字符串资源
-    val deletedToast = stringResource(R.string.setting_files_page_deleted_toast)
-    val deleteFailedToast = stringResource(R.string.setting_files_page_delete_failed_toast)
-    val cleanedToast = stringResource(R.string.setting_files_page_cleaned_toast)
-    val cleanFailedToast = stringResource(R.string.setting_files_page_clean_failed_toast)
-
     var selectedFolder by remember { mutableStateOf(FileFolders.UPLOAD) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
+    var busy by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
+    var importFolder by rememberSaveable { mutableStateOf<String?>(null) }
     var showRetentionDialog by remember { mutableStateOf(false) }
-    var pendingDelete by remember { mutableStateOf<ManagedFileEntity?>(null) }
-    var showCleanDialog by remember { mutableStateOf(false) }
-    val files by filesManager.observe(selectedFolder).collectAsState(initial = emptyList())
+    var pendingDelete by remember { mutableStateOf<List<ManagedFileEntity>?>(null) }
+    var pendingRename by remember { mutableStateOf<List<ManagedFileEntity>?>(null) }
+    var report by remember { mutableStateOf<Pair<String, List<ManagedFileOperationResult>>?>(null) }
+    val files by remember(selectedFolder) { filesManager.observe(selectedFolder) }.collectAsState(initial = emptyList())
+    val selectedFiles = files.filter { it.id in selectedIds }
+    val enabled = !busy && !picking
 
-    if (pendingDelete != null) {
-        val target = pendingDelete!!
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text(stringResource(R.string.setting_files_page_delete_file_title)) },
-            text = { Text(target.displayName) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            val ok = filesManager.delete(target.id, deleteFromDisk = true)
-                            if (ok) {
-                                toaster.show(deletedToast)
-                            } else {
-                                toaster.show(deleteFailedToast)
-                            }
-                            pendingDelete = null
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.setting_files_page_delete_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) {
-                    Text(stringResource(R.string.setting_files_page_cancel_action))
-                }
-            }
-        )
+    fun clearSelection() { selectedIds = emptySet(); selectionMode = false }
+    fun toggle(file: ManagedFileEntity) {
+        selectionMode = true
+        selectedIds = if (file.id in selectedIds) selectedIds - file.id else selectedIds + file.id
+    }
+    fun operate(title: String, action: suspend () -> List<ManagedFileOperationResult>) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                val results = action()
+                clearSelection()
+                if (results.any { it.error != null }) report = title to results
+                else toaster.show("$title：成功 ${results.size} 项")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                toaster.show("$title 失败：${failure.message}")
+            } finally { busy = false }
+        }
+    }
+    BackHandler(selectionMode && enabled) { clearSelection() }
+    LaunchedEffect(files) { selectedIds = selectedIds.intersect(files.map { it.id }.toSet()) }
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        picking = false
+        val folder = importFolder.also { importFolder = null }
+        if (uris.isNotEmpty() && folder != null) {
+            operate("导入") { filesManager.importMany(folder, uris) }
+        }
     }
 
+    pendingDelete?.let { targets ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除 ${targets.size} 个文件？") },
+            text = { Text("将永久删除所选文件（${targets.sumOf { it.sizeBytes }.fileSizeToString()}），无法撤销。\n聊天中引用这些文件的附件将无法打开；聊天消息本身不会删除。导出文件的留存副本也会被删除。") },
+            confirmButton = { TextButton(enabled = enabled, onClick = {
+                pendingDelete = null
+                operate("删除") { filesManager.deleteMany(targets) }
+            }) { Text("删除 ${targets.size} 项") } },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } },
+        )
+    }
+    pendingRename?.let { targets ->
+        BatchRenameDialog(
+            items = targets.map { RenameItem(it.id.toString(), it.displayName) },
+            onDismiss = { pendingRename = null },
+            onConfirm = { names ->
+                pendingRename = null
+                operate("重命名") { filesManager.renameMany(targets, names) }
+            },
+        )
+    }
+    report?.let { (title, results) ->
+        AlertDialog(
+            onDismissRequest = { report = null },
+            title = { Text("$title：${results.count { it.error == null }} 成功，${results.count { it.error != null }} 失败") },
+            text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                results.filter { it.error != null }.forEach { Text("${it.name}\n${it.error}", modifier = Modifier.padding(bottom = 12.dp)) }
+            } },
+            confirmButton = { TextButton(onClick = { report = null }) { Text("知道了") } },
+        )
+    }
     if (showRetentionDialog) {
-        var daysText by remember(settings.exportRetentionDays) {
-            mutableStateOf(settings.exportRetentionDays.toString())
-        }
+        var daysText by remember(settings.exportRetentionDays) { mutableStateOf(settings.exportRetentionDays.toString()) }
         AlertDialog(
             onDismissRequest = { showRetentionDialog = false },
             title = { Text(stringResource(R.string.setting_page_export_retention)) },
-            text = {
-                Column {
-                    Text(stringResource(R.string.setting_page_export_retention_desc))
-                    OutlinedTextField(
-                        value = daysText,
-                        onValueChange = { daysText = it.filter(Char::isDigit).take(4) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.padding(top = 12.dp),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val days = daysText.toIntOrNull() ?: DEFAULT_EXPORT_RETENTION_DAYS
-                        scope.launch {
-                            settingsStore.update {
-                                it.copy(exportRetentionDays = days.coerceIn(0, EXPORT_RETENTION_DAYS_MAX))
-                            }
-                        }
-                        showRetentionDialog = false
-                    }
-                ) {
-                    Text(stringResource(R.string.setting_files_page_clean_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRetentionDialog = false }) {
-                    Text(stringResource(R.string.setting_files_page_cancel_action))
-                }
-            }
-        )
-    }
-
-    if (showCleanDialog) {
-        AlertDialog(
-            onDismissRequest = { showCleanDialog = false },
-            title = { Text(stringResource(R.string.setting_files_page_clean_title)) },
-            text = { Text(stringResource(R.string.setting_files_page_clean_confirmation)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showCleanDialog = false
-                        scope.launch {
-                            val ok = filesManager.deleteAll(selectedFolder)
-                            toaster.show(if (ok) cleanedToast else cleanFailedToast)
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.setting_files_page_clean_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCleanDialog = false }) {
-                    Text(stringResource(R.string.setting_files_page_cancel_action))
-                }
-            }
+            text = { Column {
+                Text(stringResource(R.string.setting_page_export_retention_desc))
+                OutlinedTextField(value = daysText, onValueChange = { daysText = it.filter(Char::isDigit).take(4) },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            } },
+            confirmButton = { TextButton(onClick = {
+                val days = daysText.toIntOrNull() ?: DEFAULT_EXPORT_RETENTION_DAYS
+                scope.launch { settingsStore.update { it.copy(exportRetentionDays = days.coerceIn(0, EXPORT_RETENTION_DAYS_MAX)) } }
+                showRetentionDialog = false
+            }) { Text("保存") } },
+            dismissButton = { TextButton(onClick = { showRetentionDialog = false }) { Text("取消") } },
         )
     }
 
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.setting_files_page_title)) },
-                navigationIcon = { BackButton() },
-                actions = {
-                    IconButton(onClick = { showRetentionDialog = true }) {
-                        Icon(
-                            imageVector = HugeIcons.Time04,
-                            contentDescription = stringResource(R.string.setting_page_export_retention),
-                        )
-                    }
-                    IconButton(
-                        onClick = { showCleanDialog = true },
-                        enabled = files.isNotEmpty(),
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Clean,
-                            contentDescription = stringResource(R.string.setting_files_page_clean_content_description),
-                        )
-                    }
+                title = { Text(if (selectionMode) "已选 ${selectedFiles.size} 项" else stringResource(R.string.setting_files_page_title)) },
+                navigationIcon = {
+                    if (selectionMode) IconButton(enabled = enabled, onClick = { clearSelection() }) { Icon(Lucide.X, "退出多选") }
+                    else BackButton()
                 },
-                scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors
+                actions = {
+                    if (selectionMode) {
+                        TextButton(enabled = enabled && files.isNotEmpty(), onClick = {
+                            selectedIds = if (selectedFiles.size == files.size) emptySet() else files.map { it.id }.toSet()
+                        }) { Text(if (selectedFiles.size == files.size && files.isNotEmpty()) "取消全选" else "全选") }
+                    } else {
+                        IconButton(enabled = enabled, onClick = { showRetentionDialog = true }) { Icon(Lucide.Timer, "导出留存设置") }
+                        IconButton(enabled = enabled && files.isNotEmpty(), onClick = { selectionMode = true }) { Icon(Lucide.ListChecks, "选择文件") }
+                    }
+                }, scrollBehavior = scrollBehavior, colors = CustomColors.topBarColors,
             )
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = CustomColors.topBarColors.containerColor
+        containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
-        val layoutDirection = LocalLayoutDirection.current
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    top = innerPadding.calculateTopPadding(),
-                    start = innerPadding.calculateStartPadding(layoutDirection),
-                    end = innerPadding.calculateEndPadding(layoutDirection),
-                )
-        ) {
-            FolderRow(
-                folders = folders,
-                selectedFolder = selectedFolder,
-                onFolderSelected = { selectedFolder = it }
-            )
-
+        Column(Modifier.fillMaxSize().padding(innerPadding)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                folders.forEach { folder ->
+                    FilterChip(selected = folder == selectedFolder, enabled = enabled,
+                        onClick = { if (selectedFolder != folder) { clearSelection(); selectedFolder = folder } },
+                        label = { Text(if (folder == FileFolders.UPLOAD) stringResource(R.string.setting_files_page_folder_upload) else stringResource(R.string.setting_files_page_folder_exports)) })
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                if (selectionMode) {
+                    TextButton(enabled = enabled && selectedFiles.isNotEmpty(), onClick = { pendingRename = selectedFiles.toList() }) { Icon(Lucide.Pencil, null); Text("重命名") }
+                    TextButton(enabled = enabled && selectedFiles.isNotEmpty(), onClick = { pendingDelete = selectedFiles.toList() }) { Icon(Lucide.Trash2, null); Text("删除 (${selectedFiles.size})") }
+                } else {
+                    TextButton(enabled = enabled, onClick = {
+                        importFolder = selectedFolder
+                        picking = true
+                        try { importLauncher.launch(arrayOf("*/*")) }
+                        catch (failure: Exception) {
+                            picking = false
+                            importFolder = null
+                            toaster.show("无法打开文件选择器：${failure.message}")
+                        }
+                    }) { Icon(Lucide.Import, null); Text("批量导入") }
+                    TextButton(enabled = enabled && files.isNotEmpty(), onClick = { pendingDelete = files.toList() }) { Icon(Lucide.Trash2, null); Text("清空当前文件夹") }
+                }
+            }
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (files.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // 导出区为空时顺带说明 TTL 行为（用户不易猜到"留存会过期"）
-                    Text(
-                        text = if (selectedFolder == FileFolders.EXPORTS) {
-                            stringResource(R.string.setting_files_page_exports_empty_hint)
-                        } else {
-                            stringResource(R.string.setting_files_page_no_files)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Text(stringResource(if (selectedFolder == FileFolders.EXPORTS) R.string.setting_files_page_exports_empty_hint else R.string.setting_files_page_no_files))
                 }
             } else {
-                LazyVerticalStaggeredGrid(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        top = 16.dp,
-                        end = 16.dp,
-                        bottom = innerPadding.calculateBottomPadding() + 16.dp,
-                    ),
-                    verticalItemSpacing = 8.dp,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    state = gridState,
-                    columns = StaggeredGridCells.Fixed(2)
-                ) {
+                LazyVerticalStaggeredGrid(columns = StaggeredGridCells.Fixed(2), modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp), verticalItemSpacing = 8.dp, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(files, key = { it.id }) { file ->
-                        FileItem(
-                            file = file,
-                            fileOnDisk = filesManager.getFile(file),
-                            onDelete = { pendingDelete = file },
-                            onShare = {
-                                // 再分享：留存区的核心价值之一（"找得到、发得出"）
-                                context.shareFile(context.fileProviderUri(filesManager.getFile(file)), file.mimeType)
-                            }
-                        )
+                        FileItem(file, filesManager.getFile(file), selectionMode, file.id in selectedIds, enabled,
+                            onToggle = { toggle(file) }, onRename = { pendingRename = listOf(file) },
+                            onDelete = { pendingDelete = listOf(file) }, onShare = {
+                                try { context.shareFile(context.fileProviderUri(filesManager.getFile(file)), file.mimeType) }
+                                catch (failure: Exception) { toaster.show("分享失败：${failure.message}") }
+                            })
                     }
                 }
             }
         }
     }
-}
-
-@Composable
-private fun FolderRow(
-    folders: List<String>,
-    selectedFolder: String,
-    onFolderSelected: (String) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        folders.forEach { folder ->
-            FilterChip(
-                selected = selectedFolder == folder,
-                onClick = { onFolderSelected(folder) },
-                label = { Text(folderDisplayName(folder)) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun folderDisplayName(folder: String): String = when (folder) {
-    FileFolders.UPLOAD -> stringResource(R.string.setting_files_page_folder_upload)
-    FileFolders.EXPORTS -> stringResource(R.string.setting_files_page_folder_exports)
-    else -> folder
 }
 
 @Composable
 private fun FileItem(
-    file: ManagedFileEntity,
-    fileOnDisk: File,
-    onDelete: () -> Unit,
-    onShare: (() -> Unit)? = null,
+    file: ManagedFileEntity, fileOnDisk: JavaFile, selectionMode: Boolean, selected: Boolean, enabled: Boolean,
+    onToggle: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit, onShare: () -> Unit,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CustomColors.listItemColors.containerColor)
+        modifier = Modifier.fillMaxWidth().combinedClickable(enabled = enabled,
+            onClick = { if (selectionMode) onToggle() else onShare() }, onLongClick = onToggle),
+        colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else CustomColors.listItemColors.containerColor),
     ) {
-        Column {
-            Box(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (file.mimeType.startsWith("image/")) {
-                    AsyncImage(
-                        model = fileOnDisk,
-                        contentDescription = file.displayName,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(4f / 3f),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(4f / 3f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Image02,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Row(modifier = Modifier.align(Alignment.TopEnd)) {
-                    if (onShare != null) {
-                        IconButton(onClick = onShare) {
-                            Icon(
-                                HugeIcons.Share08,
-                                contentDescription = stringResource(R.string.setting_files_page_share_content_description)
-                            )
-                        }
-                    }
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            HugeIcons.Delete01,
-                            contentDescription = stringResource(R.string.setting_files_page_delete_content_description)
-                        )
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp)
-            ) {
-                Text(
-                    text = file.displayName,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = file.mimeType,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = file.sizeBytes.fileSizeToString(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+        Box(Modifier.fillMaxWidth()) {
+            if (file.mimeType.startsWith("image/")) AsyncImage(model = fileOnDisk, contentDescription = file.displayName,
+                modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f), contentScale = ContentScale.Crop)
+            else Box(Modifier.fillMaxWidth().aspectRatio(4f / 3f), contentAlignment = Alignment.Center) { Icon(Lucide.File, null) }
+            if (selectionMode) Checkbox(checked = selected, enabled = enabled, onCheckedChange = { onToggle() }, modifier = Modifier.align(Alignment.TopEnd))
+        }
+        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+            Text(file.displayName, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(file.mimeType, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(file.sizeBytes.fileSizeToString(), style = MaterialTheme.typography.bodySmall)
+        }
+        if (!selectionMode) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            IconButton(enabled = enabled, onClick = onRename) { Icon(Lucide.Pencil, "重命名") }
+            IconButton(enabled = enabled, onClick = onShare) { Icon(Lucide.Share2, "分享") }
+            IconButton(enabled = enabled, onClick = onDelete) { Icon(Lucide.Trash2, "删除") }
         }
     }
 }

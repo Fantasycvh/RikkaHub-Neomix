@@ -95,8 +95,9 @@ class WorkspaceManager(
         fileName: String,
         inputStream: InputStream,
     ): WorkspaceFileEntry {
+        fileSystem.validateName(fileName)
         val areaRoot = areaDir(root, area)
-        val targetPath = if (destinationPath.isBlank()) fileName else "$destinationPath/$fileName"
+        val targetPath = if (destinationPath.isEmpty()) fileName else "$destinationPath/$fileName"
         return fileSystem.importBytes(areaRoot, targetPath, inputStream)
     }
 
@@ -245,6 +246,13 @@ class WorkspaceManager(
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
     ): Boolean =
         fileSystem.delete(areaDir(root, area), path, recursive)
+
+    fun renameFile(root: String, path: String, name: String, area: WorkspaceStorageArea): WorkspaceFileEntry {
+        require(area == WorkspaceStorageArea.FILES) {
+            "Linux 区重命名暂不可用：无法安全维护 proot 链接元数据，请使用 Linux 终端。"
+        }
+        return fileSystem.rename(filesDir(root), path, name)
+    }
 
     fun moveFile(root: String, source: String, target: String, overwrite: Boolean = false): WorkspaceFileEntry =
         fileSystem.move(filesDir(root), source, target, overwrite)

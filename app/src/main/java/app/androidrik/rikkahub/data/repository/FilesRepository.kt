@@ -16,6 +16,14 @@ class FilesRepository(
         dao.update(file)
     }
 
+    /** Display names are labels, never physical paths. Duplicate labels are safe. */
+    suspend fun rename(id: Long, displayName: String): Boolean {
+        val name = displayName.trim()
+        require(name.isNotEmpty() && name != "." && name != ".." &&
+            name.none { it == '/' || it == '\\' || it.isISOControl() }) { "文件名不能为空或包含路径分隔符/控制字符" }
+        return dao.renameDisplayName(id, name, System.currentTimeMillis()) > 0
+    }
+
     suspend fun getById(id: Long): ManagedFileEntity? = dao.getById(id)
 
     suspend fun getByPath(relativePath: String): ManagedFileEntity? = dao.getByPath(relativePath)

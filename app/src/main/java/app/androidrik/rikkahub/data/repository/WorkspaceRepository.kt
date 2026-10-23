@@ -262,10 +262,33 @@ class WorkspaceRepository(
         destinationPath: String,
         fileName: String,
         inputStream: InputStream,
-    ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
+    ): WorkspaceFileEntry {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.importFile(workspace.root, destinationPath, area, fileName, inputStream)
+        return runInterruptible(Dispatchers.IO) {
+            manager.ensureWorkspace(workspace.root)
+            manager.importFile(workspace.root, destinationPath, area, fileName, inputStream)
+        }
+    }
+
+    suspend fun renameFile(id: String, area: WorkspaceStorageArea, path: String, name: String): WorkspaceFileEntry =
+        withContext(Dispatchers.IO) {
+            val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+            manager.renameFile(workspace.root, path, name, area)
+        }
+
+    /** Sequential, per-item failures; cancellation is never converted into a failed item. */
+    suspend fun renameFiles(id: String, area: WorkspaceStorageArea, names: Map<String, String>): List<String> {
+        val failed = mutableListOf<String>()
+        for ((path, name) in names) {
+            try {
+                renameFile(id, area, path, name)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                failed += "$path: ${error.message}"
+            }
+        }
+        return failed
     }
 
     suspend fun fileSize(

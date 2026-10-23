@@ -16,6 +16,10 @@ interface ManagedFileDAO {
     @Update
     suspend fun update(file: ManagedFileEntity)
 
+    /** Only metadata changes: physical UUID paths are referenced by chat attachments. */
+    @Query("UPDATE managed_files SET display_name = :displayName, updated_at = :updatedAt WHERE id = :id")
+    suspend fun renameDisplayName(id: Long, displayName: String, updatedAt: Long): Int
+
     @Query("SELECT * FROM managed_files WHERE id = :id")
     suspend fun getById(id: Long): ManagedFileEntity?
 

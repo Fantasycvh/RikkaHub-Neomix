@@ -10,6 +10,8 @@ import me.rerere.hugeicons.stroke.Refresh03
 import me.rerere.hugeicons.stroke.Tools
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Clean
+import me.rerere.hugeicons.stroke.CursorPointer01
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +43,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FloatingToolbarDefaults.ScreenOffset
 import androidx.compose.material3.FloatingToolbarDefaults.floatingToolbarVerticalNestedScroll
@@ -616,6 +620,13 @@ private fun ModelList(
         onUpdateProvider(providerSetting.moveMove(from.index, to.index))
     }
 
+    // ---- 模型多选批处理：批量删除 / 一键清空（与文件管理同形）----
+    var selecting by rememberSaveable { mutableStateOf(false) }
+    var selectedIds by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var showDeleteSelectedConfirm by remember { mutableStateOf(false) }
+    var showClearAllConfirm by remember { mutableStateOf(false) }
+    val selectedModels = providerSetting.models.filter { it.id.toString() in selectedIds }
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
@@ -711,9 +722,14 @@ private fun ModelList(
                             onToggleEnabled = { enabled ->
                                 onUpdateProvider(providerSetting.editModel(item.copy(enabled = enabled)))
                             },
+                            selecting = selecting,
+                            selected = item.id.toString() in selectedIds,
+                            onToggleSelect = {
+                                val key = item.id.toString()
+                                selectedIds = if (key in selectedIds) selectedIds - key else selectedIds + key
+                            },
                             parentProvider = providerSetting,
                             modifier = Modifier
-                                .longPressDraggableHandle()
                                 .graphicsLayer {
                                     if (isDragging) {
                                         scaleX = 1.05f
@@ -738,34 +754,125 @@ private fun ModelList(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                FilledIconButton(onClick = { refreshTrigger++ }) {
-                    if (fetchState is UiState.Loading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
+                if (selecting) {
+                    // 多选态：删除所选（左）→ 清空（右）→ 退出；全选已由「清空」承担，不再单独提供
+                    FilledIconButton(
+                        onClick = {
+                            if (selectedModels.isNotEmpty()) showDeleteSelectedConfirm = true
+                        },
+                    ) {
                         Icon(
-                            imageVector = HugeIcons.Refresh03,
-                            contentDescription = stringResource(R.string.setting_provider_page_fetch_models)
+                            imageVector = HugeIcons.Delete01,
+                            contentDescription = stringResource(R.string.common_delete),
                         )
                     }
+                    FilledIconButton(
+                        onClick = { showClearAllConfirm = true },
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Clean,
+                            contentDescription = "清空模型"
+                        )
+                    }
+                    FilledIconButton(
+                        onClick = {
+                            selecting = false
+                            selectedIds = emptyList()
+                        },
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Cancel01,
+                            contentDescription = stringResource(R.string.workspace_selection_cancel)
+                        )
+                    }
+                    if (selectedModels.isNotEmpty()) {
+                        FilledIconButton(onClick = {}, enabled = false) {
+                            Text(
+                                text = selectedModels.size.toString(),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                } else {
+                    FilledIconButton(onClick = { refreshTrigger++ }) {
+                        if (fetchState is UiState.Loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = HugeIcons.Refresh03,
+                                contentDescription = stringResource(R.string.setting_provider_page_fetch_models)
+                            )
+                        }
+                    }
+                    FilledIconButton(
+                        onClick = {
+                            selecting = true
+                            selectedIds = emptyList()
+                        },
+                        enabled = providerSetting.models.isNotEmpty(),
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.CursorPointer01,
+                            contentDescription = "选择模型"
+                        )
+                    }
+                    AddModelButton(
+                        models = candidateModels,
+                        selectedModels = providerSetting.models,
+                        onAddModel = {
+                            onUpdateProvider(providerSetting.addModel(it))
+                        },
+                        onRemoveModel = {
+                            onUpdateProvider(providerSetting.delModel(it))
+                        },
+                        expanded = expanded,
+                        parentProvider = providerSetting,
+                        onUpdateProvider = onUpdateProvider
+                    )
                 }
-                AddModelButton(
-                    models = candidateModels,
-                    selectedModels = providerSetting.models,
-                    onAddModel = {
-                        onUpdateProvider(providerSetting.addModel(it))
-                    },
-                    onRemoveModel = {
-                        onUpdateProvider(providerSetting.delModel(it))
-                    },
-                    expanded = expanded,
-                    parentProvider = providerSetting,
-                    onUpdateProvider = onUpdateProvider
-                )
             }
         }
+    }
+    // ---- 批量删除 / 一键清空的确认与执行（单一更新入口，避免两次 onUpdate 竞态）----
+    if (showDeleteSelectedConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteSelectedConfirm = false },
+            title = { Text("删除 ${selectedModels.size} 个模型？") },
+            text = { Text("删除后无法撤销。若有助手正在使用这些模型，对话时会提示重新选择。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteSelectedConfirm = false
+                    val removed = selectedModels.map { it.id }.toSet()
+                    onUpdateProvider(providerSetting.copyProvider(models = providerSetting.models.filter { it.id !in removed }))
+                    selecting = false
+                    selectedIds = emptyList()
+                }) { Text(stringResource(R.string.common_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteSelectedConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+    if (showClearAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearAllConfirm = false },
+            title = { Text("清空当前提供商的 ${providerSetting.models.size} 个模型？") },
+            text = { Text("将移除该提供商下的全部模型，无法撤销。之后再通过「获取模型」或手动添加即可恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showClearAllConfirm = false
+                    onUpdateProvider(providerSetting.copyProvider(models = emptyList()))
+                    selecting = false
+                    selectedIds = emptyList()
+                }) { Text(stringResource(R.string.common_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
     }
 }
 
@@ -1475,6 +1582,10 @@ private fun ModelCard(
     onEdit: (Model) -> Unit,
     /** 停用/启用该模型（只影响它是否出现在模型选择器里，见 [Model.enabled]） */
     onToggleEnabled: (Boolean) -> Unit,
+    /** 多选态由宿主持有；非空 onToggleSelect 时卡片进入选择语义 */
+    selecting: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelect: (() -> Unit)? = null,
     parentProvider: ProviderSetting
 ) {
     val dialogState = useEditState<Model> {
@@ -1602,10 +1713,19 @@ private fun ModelCard(
             }
         },
         enableDismissFromStartToEnd = false,
-        gesturesEnabled = true,
+        // 多选态下滑动删除退场（点击=切换选中），避免误扫
+        gesturesEnabled = !selecting,
         modifier = modifier
     ) {
-        OutlinedCard {
+        OutlinedCard(
+            colors = if (selected) {
+                CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            } else {
+                CardDefaults.outlinedCardColors()
+            },
+            // 多选态：点击卡片切换选中；平常态点击无动作（开关/编辑按钮照旧）
+            onClick = { if (selecting) onToggleSelect?.invoke() },
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1659,21 +1779,29 @@ private fun ModelCard(
 
                 // 启停开关：与「提供商启停」「预设条目启停」同款交互（行内 Switch）。
                 // 语义=仅从选择器收起，不改既有选中项（见 Model.enabled 的说明）。
-                Switch(
-                    checked = model.enabled,
-                    onCheckedChange = onToggleEnabled,
-                    modifier = Modifier.semantics {
-                        contentDescription = "${model.displayName}: $enabledLabel"
-                    },
-                )
+                // 多选态下隐藏操作件，行内勾选框替代
+                if (selecting) {
+                    Checkbox(
+                        checked = selected,
+                        onCheckedChange = { onToggleSelect?.invoke() },
+                    )
+                } else {
+                    Switch(
+                        checked = model.enabled,
+                        onCheckedChange = onToggleEnabled,
+                        modifier = Modifier.semantics {
+                            contentDescription = "${model.displayName}: $enabledLabel"
+                        },
+                    )
 
-                // Edit button
-                IconButton(
-                    onClick = {
-                        dialogState.open(model.copy())
+                    // Edit button
+                    IconButton(
+                        onClick = {
+                            dialogState.open(model.copy())
+                        }
+                    ) {
+                        Icon(HugeIcons.Tools, "Edit")
                     }
-                ) {
-                    Icon(HugeIcons.Tools, "Edit")
                 }
             }
         }

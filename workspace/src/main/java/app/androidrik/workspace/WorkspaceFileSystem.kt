@@ -53,34 +53,166 @@ class WorkspaceFileSystem(
         return file.toEntry(root)
     }
 
-    fun importBytes(root: File, path: String, inputStream: InputStream): WorkspaceFileEntry {
-        val file = resolvePath(root, path)
-        file.parentFile?.mkdirs()
-        val target = if (!file.exists()) file else resolveConflict(file)
-        inputStream.use { input -> target.outputStream().use { input.copyTo(it) } }
+    /** Reserve the output with CREATE_NEW: concurrent imports never truncate an existing file. */
+    fun importBytes(root: File, path: String, inputStream: InputStream): WorkspaceFileEntry = inputStream.use { input ->
+        // 导入是「落进这个目录」的操作：父目录允许 root 内的目录别名（如 Linux 区 bin→usr/bin，
+        // 用户能浏览到它们），只有最终文件名本身要求不是链接。rename/move/delete 才用逐段
+        // 拒绝链接的 mutationPath（它们操作既有节点，绝不能踩到链接上）。
+        val file = importPath(root, path)
+        require(!Files.isSymbolicLink(file.toPath())) { "Symlinks are not allowed in file operations: $path" }
+        require(file.parentFile?.isDirectory == true) { "Destination directory does not exist" }
+        val stem = file.nameWithoutExtension
+        val ext = file.extension.let { if (it.isNotEmpty()) ".$it" else "" }
+        var n = 0
+        while (true) {
+            checkInterrupted()
+            val target = if (n == 0) file else File(file.parentFile, "$stem ($n)$ext")
+            val output = try {
+                Files.newOutputStream(target.toPath(), java.nio.file.StandardOpenOption.CREATE_NEW,
+                    java.nio.file.StandardOpenOption.WRITE, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+            } catch (_: java.nio.file.FileAlreadyExistsException) {
+                n++
+                continue
+            }
+            try {
+                output.use { out ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        checkInterrupted()
+                        val size = input.read(buffer)
+                        if (size < 0) break
+                        out.write(buffer, 0, size)
+                    }
+                }
+                return@use target.toEntry(root)
+            } catch (error: Throwable) {
+                // 防御性清理：校验后并发把祖先换成外部链接的话，target 可能已指向工作区外。
+                // 删除半成品前重新确认「不是链接且 canonical 仍在 root 内」，否则不碰它
+                //（缩小但不能根除 TOCTOU 窗口；强保证需要目录 FD 锚定的 openat/unlinkat）。
+                if (isSafeToDelete(target, root)) target.delete()
+                throw error
+            }
+        }
+        @Suppress("UNREACHABLE_CODE")
+        error("Unreachable")
+    }
+
+    /** 失败清理前的最后一道确认：目标仍是 root 内的普通文件（非链接）才允许删除。 */
+    private fun isSafeToDelete(target: File, root: File): Boolean = runCatching {
+        val path = target.toPath()
+        val base = root.canonicalFile.toPath()
+        Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS) &&
+            !Files.isSymbolicLink(path) &&
+            Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS) &&
+            path.toRealPath().startsWith(base)
+    }.getOrDefault(false)
+
+    /** UI rename is same-directory only and never replaces a destination (files or directories). */
+    @Synchronized
+    fun rename(root: File, path: String, name: String): WorkspaceFileEntry {
+        validateName(name)
+        val source = mutationPath(root, path)
+        require(Files.exists(source.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "Source does not exist: $path" }
+        val target = mutationPath(root, source.parentFile!!.relativeTo(root.canonicalFile).path.replace(File.separatorChar, '/')
+            .let { if (it.isEmpty()) name else "$it/$name" })
+        if (source == target) return source.toEntry(root)
+        // Files.move without REPLACE_EXISTING rejects occupied destinations, including dangling links.
+        Files.move(source.toPath(), target.toPath())
         return target.toEntry(root)
     }
 
-    private fun resolveConflict(file: File): File {
-        val stem = file.nameWithoutExtension
-        val ext = file.extension.let { if (it.isNotEmpty()) ".$it" else "" }
-        var n = 1
-        var candidate: File
-        do { candidate = File(file.parentFile, "$stem ($n)$ext"); n++ } while (candidate.exists())
-        return candidate
+    internal fun validateName(name: String) {
+        require(name.isNotBlank() && name != "." && name != ".." && name.length <= 255 &&
+            name.none { it == '/' || it == '\\' || it == '\u0000' || it.code < 32 } &&
+            !name.startsWith(".l2s.")) { "Invalid file name: $name" }
+    }
+
+    /** Mutation paths must be literal relative paths, with no symlink at any existing component. */
+    internal fun mutationPath(root: File, path: String): File {
+        require(path.isNotBlank() && !File(path).isAbsolute && !path.startsWith('/') && !path.contains('\\')) {
+            "A relative file path is required"
+        }
+        val parts = path.split('/')
+        parts.forEach(::validateName)
+        val base = root.canonicalFile
+        var current = base
+        for (part in parts) {
+            current = File(current, part)
+            require(!Files.isSymbolicLink(current.toPath())) { "Symlinks are not allowed in file operations: $path" }
+            require(current.canonicalPath.startsWith(base.path + File.separator)) { "Path escapes workspace root" }
+        }
+        return current
+    }
+
+    /**
+     * 导入目标路径：允许路径中已存在的 **root 内目录别名**（如 Linux 区 bin→usr/bin 的目录
+     * 链接——用户能浏览到它们，导入却被逐段拒绝是回归）。命中的链接先 canonical 解析并
+     * 确认仍包含于 root（别名永远出不去）；末级文件名本身不允许是链接。TOCTOU 限定：并发
+     * 把祖先换成指向外部的链接仍可能逃逸（需要 openat/目录 FD 才能根绝），本方法只承诺
+     * 「静态路径下不逃逸」。
+     */
+    internal fun importPath(root: File, path: String): File {
+        require(path.isNotBlank() && !File(path).isAbsolute && !path.startsWith('/') && !path.contains('\\')) {
+            "A relative file path is required"
+        }
+        val parts = path.split('/')
+        parts.forEach(::validateName)
+        val base = root.canonicalFile
+        var current = base
+        for ((index, part) in parts.withIndex()) {
+            val next = File(current, part)
+            if (index < parts.lastIndex && Files.isSymbolicLink(next.toPath())) {
+                // 中间段是链接：解析真实目录并确认仍在 root 内（目录别名；指向文件的别名
+                // 会在 parentFile.isDirectory 检查中失败）
+                val resolved = next.canonicalFile
+                require(resolved.path.startsWith(base.path + File.separator)) { "Path escapes workspace root: $path" }
+                current = resolved
+            } else {
+                current = next
+            }
+        }
+        require(current.canonicalPath.startsWith(base.path + File.separator)) { "Path escapes workspace root" }
+        return current
+    }
+
+    private fun checkInterrupted() {
+        if (Thread.currentThread().isInterrupted) throw java.io.InterruptedIOException("File operation cancelled")
     }
 
     fun delete(root: File, path: String, recursive: Boolean = false): Boolean {
         require(path.isNotBlank() && path != ".") { "Refusing to delete workspace root" }
-        val file = resolvePath(root, path)
+        val file = mutationPath(root, path)
         // [FIX] "./"（或 "/"、" ." 等变体）可绕过上面的字面量检查，resolvePath 会解析到
         // 工作区根目录 → recursive=true 时 deleteRecursively 删除整个工作区。
         // 用 canonical 对比根目录，任何等价写法都拒绝（移植自 rikkahub-turbo 9677cd4）。
         require(file.canonicalFile != root.canonicalFile) { "Refusing to delete workspace root" }
-        if (!file.exists()) return false
-        return if (file.isDirectory) {
+        if (!Files.exists(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return false
+        return if (Files.isDirectory(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             require(recursive) { "Directory delete requires recursive = true" }
-            file.deleteRecursively()
+            // deleteRecursively 会跟随目录内的符号链接遍历（link → 工作区外目录时删到外部）。
+            // 改用 walkFileTree 默认不跟随链接：目录递归删、符号链接只 unlink 本身。
+            var allDeleted = true
+            Files.walkFileTree(
+                file.toPath(),
+                java.util.EnumSet.noneOf(java.nio.file.FileVisitOption::class.java),
+                Int.MAX_VALUE,
+                object : java.nio.file.SimpleFileVisitor<Path>() {
+                    override fun visitFile(target: Path, attrs: java.nio.file.attribute.BasicFileAttributes): java.nio.file.FileVisitResult {
+                        checkInterrupted()
+                        // NOFOLLOW 遍历下 target 可能是链接/文件，直接 delete 只断链本身
+                        if (!Files.deleteIfExists(target)) allDeleted = false
+                        return java.nio.file.FileVisitResult.CONTINUE
+                    }
+
+                    override fun postVisitDirectory(target: Path, error: java.io.IOException?): java.nio.file.FileVisitResult {
+                        checkInterrupted()
+                        error?.let { throw it }
+                        if (!Files.deleteIfExists(target)) allDeleted = false
+                        return java.nio.file.FileVisitResult.CONTINUE
+                    }
+                },
+            )
+            allDeleted
         } else {
             file.delete()
         }
