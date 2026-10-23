@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
@@ -71,6 +73,8 @@ import me.rerere.hugeicons.stroke.Mic01
 import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
+import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.rikkahub.ui.pages.setting.components.toMediaGenerationProvider
 import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.common.android.sanitizeSensitiveText
@@ -109,6 +113,8 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
     var editingProvider by remember { mutableStateOf<MediaGenerationProviderSetting?>(null) }
     var newProvider by remember { mutableStateOf<MediaGenerationProviderSetting?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
+    var showChatImport by remember { mutableStateOf(false) }
+    val importableProviders = settings.providers.filterIsInstance<ProviderSetting.OpenAI>()
     // 0 = 服务商，1 = 素材存储，2 = 语音
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val tabStateHolder = rememberSaveableStateHolder()
@@ -140,6 +146,13 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
                                 expanded = showAddMenu,
                                 onDismissRequest = { showAddMenu = false },
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("从聊天服务商导入") },
+                                    onClick = {
+                                        showAddMenu = false
+                                        showChatImport = true
+                                    },
+                                )
                                 providerFactories.forEach { (label, factory) ->
                                     DropdownMenuItem(
                                         text = { Text(label) },
@@ -228,6 +241,47 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
                 }
             }
         }
+    }
+
+    if (showChatImport) {
+        AlertDialog(
+            onDismissRequest = { showChatImport = false },
+            title = { Text("从聊天服务商导入") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "仅支持 OpenAI 兼容服务商，复制名称、API 地址和第一个可用密钥。" +
+                            "不导入聊天模型、自定义请求头或独立代理；导入后请添加生图模型并确认接口兼容性。" +
+                            "保存为独立配置，不影响原聊天服务商。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (importableProviders.isEmpty()) {
+                        Text("暂无可导入的 OpenAI 兼容聊天服务商")
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(importableProviders, key = { it.id }) { source ->
+                            TextButton(
+                                onClick = {
+                                    newProvider = source.toMediaGenerationProvider()
+                                    showChatImport = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(source.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showChatImport = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 
     editingProvider?.let { provider ->
