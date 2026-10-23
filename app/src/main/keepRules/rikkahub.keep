@@ -24,5 +24,11 @@
 -keep class com.fasterxml.jackson.** { *; }
 -keep class com.auth0.jwt.** { *; }
 
-# Keep JlatexMath（R8 混淆会破坏 jlatexmath 的反射/解析，release 下数学公式失效——对齐上游 2.4.9 修复）
--keep class org.scilab.forge.jlatexmath.** { *; }
+# JLatexMath 只按类名反射查找 \newcommand 宏与希腊/西里尔字母表注册类，其余交给 R8 裁剪
+# （对齐上游 2.4.9 修复与 f267e8478 收窄；加载外部 XML 的反射路径 App 用不到）
+-keep class org.scilab.forge.jlatexmath.NewCommandMacro {
+    <init>();
+    java.lang.String executeMacro(org.scilab.forge.jlatexmath.TeXParser, java.lang.String[]);
+}
+-keep class org.scilab.forge.jlatexmath.cyrillic.CyrillicRegistration { <init>(); }
+-keep class org.scilab.forge.jlatexmath.greek.GreekRegistration { <init>(); }
