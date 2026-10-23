@@ -4,7 +4,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.composed
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.remember
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -12,7 +14,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import app.androidrik.rikkahub.service.floating.ResizeEdge
 import app.androidrik.rikkahub.service.floating.WindowGeometry
 
+/** Raw MotionEvent coordinates avoid mixing event-time local positions with a later window location. */
+private class ScreenPointer { var position: Offset = Offset.Zero }
+
 /** Only edge hits are consumed at Initial pass; body scroll/buttons keep their own gestures. */
+@OptIn(ExperimentalComposeUiApi::class)
 internal fun Modifier.windowGeometryGesture(
     edgeZonePx: Float,
     geometry: () -> WindowGeometry,
@@ -23,13 +29,10 @@ internal fun Modifier.windowGeometryGesture(
     val latestChange = rememberUpdatedState(onChange)
     val latestFinished = rememberUpdatedState(onFinished)
     val latestGeometry = rememberUpdatedState(geometry)
-    val view = LocalView.current
-    fun screenOffset(): Offset {
-        val location = IntArray(2)
-        view.getLocationOnScreen(location)
-        return Offset(location[0].toFloat(), location[1].toFloat())
-    }
-    pointerInput(edgeZonePx, edges) {
+    val screenPointer = remember { ScreenPointer() }
+    motionEventSpy { event ->
+        screenPointer.position = Offset(event.rawX, event.rawY)
+    }.pointerInput(edgeZonePx, edges) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         if (!edges && down.isConsumed) return@awaitEachGesture
@@ -51,7 +54,7 @@ internal fun Modifier.windowGeometryGesture(
             }
         } else null
         val origin = latestGeometry.value()
-        val start = down.position + screenOffset()
+        val start = screenPointer.position
         if (edges) down.consume()
         var dragging = edges
         try {
@@ -62,7 +65,7 @@ internal fun Modifier.windowGeometryGesture(
                 if (dragging) change.consume()
                 break
             }
-            val delta = change.position + screenOffset() - start
+            val delta = screenPointer.position - start
             if (!dragging && delta.getDistance() > viewConfiguration.touchSlop) dragging = true
             if (dragging) {
                 change.consume()
