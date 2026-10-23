@@ -3492,3 +3492,9 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **验证**：`:document:testDebugUnitTest` 25 项（PDF 解析 12 + 文档读取 12，语料对比 1 项按环境变量跳过）0 失败；
   app JVM 单测 2275 项 0 失败；`:app:assembleDebug` / `:app:assembleRelease` 通过；debug 三种 ABI 与 release APK 均无
   `libmupdf_java.so`，Java 资源 `app/androidrik/document/pdf/*` 已打包进 APK。README 原生库表与 `upstream-analysis.md` 状态同步更新。
+
+- 2026-10-24 **bump `1.0.28-beta.9-exp (311)`**（实验分支首次独立出包）：`versionCode` 310→311，
+  versionName 带 `-exp` 后缀与 master 线 `1.0.28-beta.9` 区分；README 发布行标注「无 TikZ / 纯 Kotlin PDF」。
+  **验证**：`scripts/build.sh release` 通过；aapt 核实 `app.androidrik.neomix` / 311 / `1.0.28-beta.9-exp`（仅 arm64-v8a）；
+  apksigner 证书指纹与 beta.1…beta.8 一致；APK 19,998,278 B（TikZ 全栈移除后预期值，对比 master 同版 61,423,158 B）。
+  发布说明草稿 [`releases/1.0.28-beta.9-exp.md`](releases/1.0.28-beta.9-exp.md)。未推送。
