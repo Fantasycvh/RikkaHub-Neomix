@@ -857,6 +857,8 @@
   <string name="search_detail_custom_search_placeholder">我的自訂搜尋</string>
   <string name="search_detail_custom_url">自訂網址</string>
   <string name="search_detail_depth">深度</string>
+  <string name="search_detail_include_answer">產生答案</string>
+  <string name="search_detail_include_answer_description">讓 Tavily 在搜尋結果之外產生答案摘要（模型可能直接照抄，可關閉）</string>
   <string name="search_detail_engines">引擎</string>
   <string name="search_detail_language">語言</string>
   <string name="search_detail_max_tokens">最大權杖數</string>

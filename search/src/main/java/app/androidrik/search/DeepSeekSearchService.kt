@@ -96,7 +96,7 @@ object DeepSeekSearchService : SearchService<SearchServiceOptions.DeepSeekOption
                     put("type", "string")
                     put(
                         "description",
-                        "search keyword; supports `site:`, `-site:`, `-word`, " +
+                        "$SEARCH_QUERY_DESCRIPTION; supports `site:`, `-site:`, `-word`, " +
                             "`-\"phrase\"`, `\"exact phrase\"`, `lang:`, `after:`, `before:` " +
                             "and is passed through to the server as-is"
                     )

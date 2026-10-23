@@ -851,6 +851,8 @@
   <string name="search_detail_custom_search_placeholder">My Custom Search</string>
   <string name="search_detail_custom_url">Custom URL</string>
   <string name="search_detail_depth">Depth</string>
+  <string name="search_detail_include_answer">Include Answer</string>
+  <string name="search_detail_include_answer_description">Let Tavily generate an answer summary alongside the search results</string>
   <string name="search_detail_engines">Engines</string>
   <string name="search_detail_language">Language</string>
   <string name="search_detail_max_tokens">Max Tokens</string>
