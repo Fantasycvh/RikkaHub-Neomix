@@ -8,7 +8,7 @@
 > **同日专项**：另**单独吸收**了更早未移植的 `5a90c0548`（用量统计流水表，DB v44），见「2026-10-20 专项吸收：用量统计流水」一节——它不在本批 fetch 区间内，是本仓 346 个「上游有、本仓无」存量里按用户指定方向挑的一条。
 > **同步点（2026-10-20 晚，beta.5 发版前复核）**：`e5bb70730` 之后上游又有 4 个提交（HEAD `5203601f7`，上游已发 tag `3.1.0` / `eeef60b22`）。其中**又吸收 2 条**：`bc4a6f47e`（输入区图片预览 / 多图左右切换 / 预览内进画板，fork `15e3d8c9e`）、`17d06d26f`（新建/导入提供商后清空搜索并滚到新项，fork `1ddb87d8e`）。**尚余 3 条未评估**：`5203601f7`（全局禁用 overscroll 回弹）、`8bb488e3a`（工具步骤显示执行耗时）、`fe55bff7f`（提供商类型名与「订阅」类型）。本仓「上游有、本仓无」累计 **350** 个提交（含历史存量 346 + 本批未评估 3 + 刻意不做 1）。
 > **同步点（2026-10-21 更新）**：已评估到上游 **`815e9c20b`**（`3.1.0-15-g815e9c20b`，2026-10-21 16:26），本批 `5203601f7`..`815e9c20b` 共 **10 提交**；10-20 遗留的 3 条一并结案：`5203601f7` **已与本仓等价**（`Theme.kt` 的 `LocalOverscrollFactory provides null`）、`fe55bff7f` **不适用**、`8bb488e3a` 列 P2 候选。10 条新提交里只有 **`2aafd708f`（技能删除/校验）** 值得考虑吸收；其余因架构/范围不跟（PDF 替换、渠道 flavor、赞助商、i18n 工具链、远程 SSH）。同期 issue 窗口 **60 条**（22 open / 38 新近 closed）评估见「2026-10-21 issue 评估」；本仓 `upstream/master..HEAD` = **1232**、`HEAD..upstream/master` = **360**。
-> **同步点（2026-10-23 晚更新）**：已评估到上游 **`e48db7bc7`**（2026-10-23 18:52），`43f1a5df2` 之后共 **8 提交**（逐条见「2026-10-23 晚追加评估」）：新增 2 条中 `f048bed65`（后台生成悬浮窗）**列为 P2 候选、单独立项**，`e48db7bc7` **不适用**（修的是上游文件式记忆，本仓不跟该方向）；此前 6 条未入库提交一并补记录（`487e229f7` 可顺手吸收、`9dcb4fa44` 低风险候选，其余不跟/不适用）。本轮**未落代码**。本仓 `upstream/master..HEAD` = **1292**、`HEAD..upstream/master` = **380**。
+> **同步点（2026-10-23 晚更新）**：已评估到上游 **`e48db7bc7`**（2026-10-23 18:52），`43f1a5df2` 之后共 **8 提交**（逐条见「2026-10-23 晚追加评估」）：新增 2 条中 `f048bed65`（后台生成悬浮窗）**列为 P2 候选、单独立项**，`e48db7bc7` **不适用**（修的是上游文件式记忆，本仓不跟该方向）；此前 6 条未入库提交一并补记录（`487e229f7`、`9dcb4fa44` **已按用户选择吸收**，分别为 `bcf4f57a9` / `11af7bfbc`；其余维持候选/暂缓/不适用结论）。未引入悬浮窗或依赖升级；验证见本节末尾「低风险小件落地」。本仓 `upstream/master..HEAD` = **1292**、`HEAD..upstream/master` = **380**。
 
 > **同步点（2026-10-23 更新）**：已评估到上游 **`43f1a5df2`**（`3.1.0-27-g43f1a5df2`，2026-10-22），本批 `815e9c20b`..`43f1a5df2` 共 **12 提交**（逐条结论见「2026-10-23 同步评估」）：**吸收 5 条 + 部分吸收 1 条**——`90e48420f` 消息索引增量（`67ef193eb` / `1fd089a04`）、`2b522f990` libsimple 无 jieba（`446836328`）、`71dd98f88` 压缩对话框步进器（`beccde0ce`）、`e3d11e15f` 的 `-keepnames Throwable`（`ae6d23f83`）；`26454cc4d` / `80845dd9b` 已在 beta.6 吸收，`d8ba9cf67` 不适用（本仓已移除扫码）；`2a0a831e6` 裁图替换（`075067850`）、`43f1a5df2` 创作页重命名（`6a9d5bdec`）亦已吸收，P3 暂缓 `dbccc68c7`（体积），范围外 `070ff683c`（德语）/ `4e99510be`（perf skill 文档）。本仓 `upstream/master..HEAD` = **1275**、`HEAD..upstream/master` = **372**。
 > **取数方式**：上一批（10-15 评估）时 bash 无外网，用 `gh api` 核对、本地 ref 因此停在 `b8d309e66`；**本次 `git fetch upstream` 已恢复可用**，把本地 ref 补到 `cfb503d8c` —— 于是 `git fetch` 一次报出 **22 个提交**的区间，其中 **17 个是 10-13/10-14/10-15 三批已评过的**，**真新只有 5 个**。
@@ -1192,8 +1192,8 @@ git checkout master
 ### 台账
 
 - P2 队列：~~`2a0a831e6`、`43f1a5df2`~~ **已清空**（2026-10-23 吸收）
-- **P2 候选（2026-10-23 晚评估，未落代码）**：`f048bed65` 后台生成悬浮窗（前置 floatingx 3.0 迁移 + `487e229f7`，估 1.5–2.5 人日）；
-  低风险小件 `9dcb4fa44`（模型匹配修正）、`fcb4bfe4e`（Tavily answer 开关，低优先）
+- **P2 候选（2026-10-23 晚评估，未落功能代码）**：`f048bed65` 后台生成悬浮窗（仍需 floatingx 3.0 迁移；常量前置 `487e229f7` 已完成）；`fcb4bfe4e`（Tavily answer 开关，低优先）
+- 低风险小件 **已吸收**：`487e229f7` → `bcf4f57a9`；`9dcb4fa44` → `11af7bfbc`
 - P3 队列：`dbccc68c7`（体积），需先评估 web-ui 现状与本仓差异
 - 遗留小项：上游「各模块去掉 appcompat/material 声明」未取——本仓 `:app:dependencies` 显示
   appcompat 1.7.1 / material 1.14.0 仍由**传递依赖**引入（app 模块 `RabbitLoading` 还直接用
@@ -1222,11 +1222,11 @@ git checkout master
 
 | 上游提交 | 内容 | 结论 |
 |---|---|---|
-| `9dcb4fa44` | 模型匹配：不再把参数量当版本号；token 序列跳过紧跟 b/k 的数字（`8b`/`a32b`/`32k` 不再误判模型能力），补 `QWEN_3_VL`，补单测（3 文件 +35/−8） | 🟡 **可吸收（低风险候选）**：本仓 `ai/registry` 同族（`ModelDsl.kt` 差异 +10/−12、`ModelRegistry.kt` +66/−53），改动小、只影响能力判定；建议随下批小件一起适配 |
+| `9dcb4fa44` | 模型匹配：不再把参数量当版本号；token 序列跳过紧跟 b/k 的数字（`8b`/`a32b`/`32k` 不再误判模型能力），补 `QWEN_3_VL`，补单测（3 文件 +35/−8） | ✅ **已吸收（`11af7bfbc`）**：保留本仓注册表条目，跳过参数量/上下文长度数字，新增 `QWEN_3_VL` 并单次分词；移植上游回归测试 |
 | `41ce12f66` | 模型能力识别改用 [models.dev](https://models.dev) 数据：新增 `ModelsDevCatalog`、1.5MB `assets/models_dev.json`、后台更新器 + DI + 测试（9 文件 +576/−25） | ⏸ **暂不跟（单独立项）**：能力识别准确性收益明确，但引入 1.5MB 资产、更新网络/缓存/失败策略与 DI 生命周期；本仓模型能力判定已自研，需先核对覆盖差异再决定 |
 | `fcb4bfe4e` | Tavily 可关闭「生成答案」；各搜索服务 query 参数描述补全（21 文件 +48/−20，多为注释/文案） | 🟡 **部分可吸收（低优先）**：本仓 `search` 模块仍含 Tavily（`TavilySearchService.kt` 差异仅 +8/−12），服务层小改可摘；设置页分叉大（+129/−287），UI 需手改 |
 | `2b4694ba7` | 悬浮窗不再操作已 `cancel` 的 `FxControl`（1 文件 +9/−6） | ❌ **不适用**：本仓 floatingx **2.3.7**（`com.petterp.floatingx.FloatingX` + `IFxAppControl`），没有 3.0 的 `FxState.CANCELLED` 概念；该修复属 3.0 API 语义 |
-| `487e229f7` | `ask_user` 工具名抽成公共常量（2 文件 +4/−3） | ✅ **可顺手吸收（极低风险）**：本仓 `AskUserTool.kt` 仍写死 `"ask_user"`、`ChatMessageTools.kt` 另有私有同名常量；也是 `f048bed65` 的前置（`ChatFloatingContent` 要 import 公共常量） |
+| `487e229f7` | `ask_user` 工具名抽成公共常量（2 文件 +4/−3） | ✅ **已吸收（`bcf4f57a9`）**：工具定义与消息 UI 共用 `ASK_USER_TOOL_NAME`，不改变工具名、schema 或行为；仅完成该前置，不引入 `f048bed65` |
 | `5dd7b764c` | 抽出应用 logo 绘制/变形轮廓 `AppLogo.kt`（2 文件 +108/−79） | ❌ **不跟**：纯 UI 重构，本仓 About 页 logo 绘制与上游不同，无行为/体积收益 |
 | `f048bed65` | **后台生成悬浮窗**：切后台后气泡/面板显示本轮回复进度，可审批工具、快速回复；默认关，通知设置里开启 + 悬浮窗权限（28 文件 +1457/−84） | ⏸ **P2 候选，建议单独立项**（不上批混入）：功能价值明确，但依赖 floatingx 3.0 迁移，且本仓 `ChatService`/通知/设置页均已分叉；估 **1.5–2.5 人日 + 真机冒烟**，详见下节 |
 | `e48db7bc7` | 记忆编辑页允许「删小后仍超限」的文件保存（1 文件 +4/−1） | ❌ **不适用**：修的是上游文件式记忆 `MemoryFilePage`（`c9a159a5c` 方向，本仓明确不跟）；本仓记忆是 DB 实体（`MemoryRepository` 有 200 条上限、无 48KB 文件上限），无对应页面/限制 |
@@ -1242,7 +1242,7 @@ git checkout master
    `libs.versions.toml`、`common/build.gradle.kts`（`floatingx` → `floatingx-app` + `floatingx-system`）并重写
    `ui/components/ui/FloatingWindow.kt`（`appHost`/`anchor`/`compose`/`FxControl`；带 `FxState.CANCELLED` 守卫）。
    该组件目前只服务 **TTS 朗读悬浮窗**（含本仓自加的 `Settings.canDrawOverlays` 静默降级），升级后必须真机回归 TTS。
-2. `487e229f7`（`ASK_USER_TOOL_NAME` 公共常量）。
+2. ~~`487e229f7`（`ASK_USER_TOOL_NAME` 公共常量）~~：已由 `bcf4f57a9` 完成。
 3. 本仓没有 `ConversationSessionManager` / `ChatGenerationForegroundService` / `ui/floating`；`ChatService` 把会话管理内聚在
    自身（`sessions`、`handleMessageComplete`、`sendQueuedMessage`），需把上游的 reply-id/开始时间追踪手工接进
    `ConversationSession`（加两个 `MutableStateFlow`）与 `ChatService`（发送/重生成/流式回填三处清空/赋值）。
@@ -1261,6 +1261,17 @@ git checkout master
 
 **建议**：若要做，拆两步——先单独提交 floatingx 3.0 迁移（只改 `FloatingWindow.kt` + 依赖，回归 TTS 悬浮窗），
 再落 `f048bed65` 的悬浮窗功能（含 3 个 locale 文案与单测）；不建议与逐条小修混在同一批。
+
+### 低风险小件落地（2026-10-23）
+
+用户限定仅吸收 `487e229f7` + `9dcb4fa44`，分别提交为 `bcf4f57a9` / `11af7bfbc`。
+未引入 floatingx 升级、后台悬浮窗、models.dev 或 Tavily 变更。
+
+- 共享常量仅改工具定义和消息 UI，不改工具名、参数或返回格式；保留既有序列化标识与其他模块逻辑。
+- 模型匹配保留本仓自有注册条目与上下文长度元数据，新增回归断言覆盖 `qwen3-8b`、`qwen3-30b-a3b`、
+  `qwen2.5-3b-instruct` 不误判，并保证 `qwen3-vl-8b-instruct` 与 `qwen3.8-plus` 仍有图片输入能力。
+- 验证：`:ai:testDebugUnitTest` **312 项，0 失败/错误/跳过**；`:app:testDebugUnitTest` **2275 项，0 失败/错误/跳过**；
+  `:app:compileDebugKotlin` 通过；`git diff --check` 通过。未另行打包或安装真机。
 
 ## 关联
 
