@@ -16,6 +16,12 @@ import kotlinx.datetime.toInstant
 import java.time.Instant
 import kotlin.uuid.Uuid
 
+/** Only selected messages count, matching the message-queue approval gate. */
+internal val Conversation.pendingToolCalls: List<UIMessagePart.Tool>
+    get() = currentMessages.flatMap { message ->
+        message.parts.filterIsInstance<UIMessagePart.Tool>().filter { it.isPending }
+    }
+
 @Serializable
 data class Conversation(
     val id: Uuid = Uuid.random(),

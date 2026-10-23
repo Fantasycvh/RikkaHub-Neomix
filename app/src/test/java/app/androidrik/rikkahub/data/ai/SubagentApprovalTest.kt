@@ -5,6 +5,10 @@ import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import kotlinx.coroutines.runBlocking
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -106,6 +110,153 @@ class SubagentApprovalTest {
         SubagentApprovalQueue.forget("expired-tool")
         assertTrue(SubagentApprovalQueue.requests.value.none { it.runId == "expired-run" })
         assertFalse(SubagentApprovalQueue.resolve("expired-tool", true))
+    }
+
+    @Test
+    fun `batch publishes parent conversation id for every tool`() {
+        val runId = UUID.randomUUID().toString()
+        val parentId = UUID.randomUUID().toString()
+        val tools = listOf(tool("$runId-a"), tool("$runId-b"))
+        try {
+            SubagentApprovalQueue.registerBatch(runId, "Child", tools, parentConversationId = parentId)
+            val requests = SubagentApprovalQueue.requests.value.filter { it.runId == runId }
+            assertEquals(2, requests.size)
+            assertEquals(listOf(parentId, parentId), requests.map { it.parentConversationId })
+            assertEquals(tools, requests.map { it.tool })
+        } finally {
+            tools.forEach { SubagentApprovalQueue.forget(it.toolCallId) }
+        }
+    }
+
+    @Test
+    fun `two parents select only their requests and exclude manual runs`() {
+        val prefix = UUID.randomUUID().toString()
+        val parentA = "$prefix-parent-a"
+        val parentB = "$prefix-parent-b"
+        val tools = listOf(tool("$prefix-a"), tool("$prefix-b"), tool("$prefix-manual"))
+        try {
+            SubagentApprovalQueue.registerBatch("$prefix-run-a", "A", listOf(tools[0]), parentA)
+            SubagentApprovalQueue.registerBatch("$prefix-run-b", "B", listOf(tools[1]), parentB)
+            // Manual runs deliberately omit the optional parent association.
+            SubagentApprovalQueue.registerBatch("$prefix-run-manual", "Manual", listOf(tools[2]))
+            val requests = SubagentApprovalQueue.requests.value
+            // Same exact-match selection as ChatFloatingWindows, never substring matching.
+            assertEquals(listOf(tools[0]), requests.filter { it.parentConversationId == parentA }.map { it.tool })
+            assertEquals(listOf(tools[1]), requests.filter { it.parentConversationId == parentB }.map { it.tool })
+            assertTrue(requests.none { it.parentConversationId == "$parentA-other" })
+            assertEquals(null, requests.single { it.tool.toolCallId == tools[2].toolCallId }.parentConversationId)
+            assertEquals(null, SubagentApprovalQueue.Request("manual", "Manual", tools[2]).parentConversationId)
+        } finally {
+            tools.forEach { SubagentApprovalQueue.forget(it.toolCallId) }
+        }
+    }
+
+    @Test
+    fun `resolving one parent leaves another parent request and waiter intact`() = runBlocking {
+        val prefix = UUID.randomUUID().toString()
+        val toolA = tool("$prefix-a")
+        val toolB = tool("$prefix-b")
+        try {
+            val waiterA = SubagentApprovalQueue.registerBatch("$prefix-run-a", "A", listOf(toolA), "parent-a")
+                .getValue(toolA.toolCallId)
+            val waiterB = SubagentApprovalQueue.registerBatch("$prefix-run-b", "B", listOf(toolB), "parent-b")
+                .getValue(toolB.toolCallId)
+            assertTrue(SubagentApprovalQueue.resolve(toolA.toolCallId, true))
+            assertTrue(waiterA.await())
+            assertFalse(waiterB.isCompleted)
+            assertEquals(
+                listOf(toolB),
+                SubagentApprovalQueue.requests.value.filter { it.runId == "$prefix-run-b" }.map { it.tool },
+            )
+            assertTrue(SubagentApprovalQueue.resolve(toolB.toolCallId, false))
+            assertFalse(waiterB.await())
+        } finally {
+            SubagentApprovalQueue.forget(toolA.toolCallId)
+            SubagentApprovalQueue.forget(toolB.toolCallId)
+        }
+    }
+
+    @Test
+    fun `competing overlay and notification decisions deliver exactly once`() = runBlocking {
+        val id = UUID.randomUUID().toString()
+        val executor = Executors.newFixedThreadPool(2)
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        try {
+            val waiter = SubagentApprovalQueue.registerBatch(id, "Agent", listOf(tool(id)), "parent")
+                .getValue(id)
+            val attempts = listOf(true, false).map { decision ->
+                executor.submit<Pair<Boolean, Boolean>> {
+                    ready.countDown()
+                    check(start.await(5, TimeUnit.SECONDS)) { "decision start timed out" }
+                    decision to SubagentApprovalQueue.resolve(id, decision)
+                }
+            }
+            assertTrue("both decision entry points must be ready", ready.await(5, TimeUnit.SECONDS))
+            start.countDown()
+            val results = attempts.map { it.get(5, TimeUnit.SECONDS) }
+            val winner = results.single { it.second }
+            assertEquals(1, results.count { !it.second })
+            assertTrue(waiter.isCompleted)
+            assertEquals(winner.first, waiter.await())
+            assertTrue(SubagentApprovalQueue.requests.value.none { it.tool.toolCallId == id })
+            assertFalse(SubagentApprovalQueue.resolve(id, !winner.first))
+        } finally {
+            start.countDown()
+            executor.shutdownNow()
+            SubagentApprovalQueue.forget(id)
+        }
+    }
+
+    @Test
+    fun `stale snapshot cannot approve reused tool id belonging to another parent run`() = runBlocking {
+        val id = UUID.randomUUID().toString()
+        try {
+            val staleWaiter = SubagentApprovalQueue.registerBatch("old-$id", "Old", listOf(tool(id)), "parent-a")
+                .getValue(id)
+            val stale = SubagentApprovalQueue.requests.value.single { it.tool.toolCallId == id }
+            val freshWaiter = SubagentApprovalQueue.registerBatch("new-$id", "New", listOf(tool(id)), "parent-b")
+                .getValue(id)
+            val fresh = SubagentApprovalQueue.requests.value.single { it.tool.toolCallId == id }
+            assertTrue(staleWaiter.isCompleted)
+            assertFalse(staleWaiter.await())
+            assertEquals("parent-b", fresh.parentConversationId)
+            assertFalse(SubagentApprovalQueue.resolve(stale, approved = true))
+            assertFalse(SubagentApprovalQueue.resolve(stale, approved = false))
+            assertFalse(freshWaiter.isCompleted)
+            assertSame(fresh, SubagentApprovalQueue.requests.value.single { it.tool.toolCallId == id })
+            assertTrue(SubagentApprovalQueue.resolve(fresh, approved = true))
+            assertTrue(freshWaiter.await())
+            assertFalse(SubagentApprovalQueue.resolve(fresh, approved = false))
+        } finally {
+            SubagentApprovalQueue.forget(id)
+        }
+    }
+
+    @Test
+    fun `equal request fields do not let an old or copied snapshot resolve a new registration`() = runBlocking {
+        val id = UUID.randomUUID().toString()
+        val tools = listOf(tool(id))
+        try {
+            val staleWaiter = SubagentApprovalQueue.registerBatch(id, "Agent", tools, "parent").getValue(id)
+            val stale = SubagentApprovalQueue.requests.value.single { it.tool.toolCallId == id }
+            val freshWaiter = SubagentApprovalQueue.registerBatch(id, "Agent", tools, "parent").getValue(id)
+            val fresh = SubagentApprovalQueue.requests.value.single { it.tool.toolCallId == id }
+            assertEquals("payload fields intentionally equal", stale.copy(registrationId = fresh.registrationId), fresh)
+            assertFalse("fresh registration must not be conflated by StateFlow", stale.registrationId == fresh.registrationId)
+            assertFalse("registration identity must still differ", stale === fresh)
+            assertTrue(staleWaiter.isCompleted)
+            assertFalse(staleWaiter.await())
+            assertFalse(SubagentApprovalQueue.resolve(stale, approved = true))
+            assertFalse(SubagentApprovalQueue.resolve(fresh.copy(), approved = true))
+            assertFalse(freshWaiter.isCompleted)
+            assertSame(fresh, SubagentApprovalQueue.requests.value.single { it.tool.toolCallId == id })
+            assertTrue(SubagentApprovalQueue.resolve(fresh, approved = false))
+            assertFalse(freshWaiter.await())
+            assertTrue(SubagentApprovalQueue.requests.value.none { it.tool.toolCallId == id })
+        } finally {
+            SubagentApprovalQueue.forget(id)
+        }
     }
 
     // ---- 待批工具筛选 ----

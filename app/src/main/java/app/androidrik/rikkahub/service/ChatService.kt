@@ -559,8 +559,10 @@ class ChatService(
 
     // ---- Session 管理 ----
 
+    @Synchronized
     private fun getOrCreateSession(conversationId: Uuid): ConversationSession {
-        return sessions.computeIfAbsent(conversationId) { id ->
+        sessions[conversationId]?.let { return it }
+        val session = sessions.computeIfAbsent(conversationId) { id ->
             val settings = settingsStore.settingsFlow.value
             ConversationSession(
                 id = id,
@@ -589,11 +591,12 @@ class ChatService(
                     }
                     appScope.launch { dispatchNextQueuedMessage(sessionId) }
                 }
-            ).also {
-                _sessionsVersion.value++
-                Log.i(TAG, "createSession: $id (total: ${sessions.size + 1})")
-            }
+            )
         }
+        // Publish only after computeIfAbsent inserted it: background flow collectors need the new session.
+        _sessionsVersion.value++
+        Log.i(TAG, "createSession: $conversationId (total: ${sessions.size})")
+        return session
     }
 
     private fun removeSession(conversationId: Uuid) {
@@ -645,6 +648,26 @@ class ChatService(
     fun getProcessingStatusFlow(conversationId: Uuid): StateFlow<String?> {
         val session = sessions[conversationId] ?: return MutableStateFlow(null)
         return session.processingStatus
+    }
+
+    fun getReplyMessageIdFlow(conversationId: Uuid): StateFlow<Uuid?> =
+        getOrCreateSession(conversationId).replyMessageId
+
+    fun getGenerationStartedAtFlow(conversationId: Uuid): StateFlow<Long?> =
+        getOrCreateSession(conversationId).generationStartedAt
+
+    /** 待审批时可能已经没有 Job，仍须允许切后台后继续审批。 */
+    fun getFloatingConversationIds(): Flow<Map<Uuid, Long>> = _sessionsVersion.flatMapLatest {
+        val current = sessions.values.toList()
+        if (current.isEmpty()) flowOf(emptyMap()) else combine(current.map { session ->
+            combine(session.generationJob, session.state, session.turnRevision) { job, conversation, turn ->
+                (session.id to turn).takeIf {
+                    job != null || conversation.currentMessages.any { message ->
+                        message.parts.any { it is UIMessagePart.Tool && it.isPending }
+                    }
+                }
+            }
+        }) { ids -> ids.filterNotNull().toMap() }
     }
 
     fun getConversationJobs(): Flow<Map<Uuid, Job?>> {
@@ -1510,6 +1533,8 @@ class ChatService(
         /** 首轮续写/补救提示（手动「继续生成」用；见 [continueMessage]） */
         initialRecoveryHint: String? = null,
     ) {
+        val activeSession = getOrCreateSession(conversationId)
+        activeSession.replyMessageId.value = null
         val settings = settingsStore.settingsFlow.first()
         val initialConversation = getConversationFlow(conversationId).value
         val baseAssistant = settings.getAssistantById(initialConversation.assistantId)
@@ -1612,6 +1637,9 @@ class ChatService(
             } else {
                 conversation.currentMessages
             }
+            // 真正续写助手消息才恢复 id；初始准备失败时不能遗留上一轮预览。
+            session.replyMessageId.value = promptMessages.lastOrNull()
+                ?.takeIf { it.role == MessageRole.ASSISTANT }?.id
             // 新一轮生成：清掉上一轮遗留的「未确认回填」快照（见 ConversationSession.lastCommittedMessages）。
             // 不清的话，本轮若在**任何工具回填之前**被取消，停止路径会把上一轮的旧快照并进内存态。
             session.lastCommittedMessages.value = null
@@ -1700,6 +1728,8 @@ class ChatService(
                         val updatedConversation = getConversationFlow(conversationId).value
                             .updateCurrentMessages(chunk.messages)
                         updateConversation(conversationId, updatedConversation)
+                        session.replyMessageId.value = chunk.messages.lastOrNull()
+                            ?.takeIf { it.role == MessageRole.ASSISTANT }?.id
 
                         // 流式检查点：节流落库（崩溃/被杀时不丢断点前的内容）。
                         // 索引取本次回写的末位消息（= 生成中的那个节点，见 checkpointGeneratingNode）。

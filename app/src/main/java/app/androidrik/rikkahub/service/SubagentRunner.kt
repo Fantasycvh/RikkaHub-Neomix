@@ -493,6 +493,7 @@ class SubagentRunner(
                             runId = initial.id,
                             label = initial.profileName,
                             pending = pending,
+                            parentConversationId = initial.parentConversationId,
                         )
                         currentMessages = applyApprovalDecisions(currentMessages, decisions)
                         update {
@@ -551,8 +552,9 @@ class SubagentRunner(
         runId: String,
         label: String,
         pending: List<UIMessagePart.Tool>,
+        parentConversationId: String?,
     ): Map<String, ToolApprovalState> {
-        val waiters = SubagentApprovalQueue.registerBatch(runId, label, pending)
+        val waiters = SubagentApprovalQueue.registerBatch(runId, label, pending, parentConversationId)
         postApprovalNotification(runId, label, pending)
         try {
             withTimeoutOrNull(APPROVAL_TIMEOUT_MS) {

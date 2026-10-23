@@ -15,6 +15,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.petterp.floatingx.core.FloatingX
+import com.petterp.floatingx.core.FxControl
+import com.petterp.floatingx.compose.compose
+import com.petterp.floatingx.system.systemHost
+import com.petterp.floatingx.system.permission.FxPermissionStrategy
 
 /** Regression coverage for the shared TTS floating-window host after FloatingX 3 migration. */
 @RunWith(AndroidJUnit4::class)
@@ -66,6 +71,30 @@ class FloatingWindowTest {
         }
         composeRule.waitForIdle()
         assertEquals(0, rendered.get())
+    }
+
+    @Test
+    fun systemOverlayRendersHidesShowsAndCancels() = withOverlayPermission("allow") {
+        val rendered = AtomicInteger()
+        var control: FxControl? = null
+        try {
+            composeRule.runOnIdle {
+                control = FloatingX.install("chat-system-host-regression") {
+                    systemHost(context) { permission(FxPermissionStrategy.skip()) }
+                    compose {
+                        Text("System overlay")
+                        SideEffect { rendered.incrementAndGet() }
+                    }
+                }.also { it.show() }
+            }
+            composeRule.waitUntil(10_000) { rendered.get() > 0 }
+            composeRule.runOnIdle { control?.hide() }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle { control?.show() }
+            composeRule.waitForIdle()
+        } finally {
+            composeRule.runOnIdle { control?.cancel() }
+        }
     }
 
     private fun withOverlayPermission(mode: String, block: () -> Unit) {

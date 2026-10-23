@@ -21,7 +21,14 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object SubagentApprovalQueue {
 
-    data class Request(val runId: String, val label: String, val tool: UIMessagePart.Tool)
+    data class Request(
+        val runId: String,
+        val label: String,
+        val tool: UIMessagePart.Tool,
+        val parentConversationId: String? = null,
+        // StateFlow conflates equal values; each registration must publish a fresh snapshot.
+        val registrationId: String = java.util.UUID.randomUUID().toString(),
+    )
 
     private val _requests = MutableStateFlow<List<Request>>(emptyList())
     val requests = _requests.asStateFlow()
@@ -32,11 +39,12 @@ object SubagentApprovalQueue {
         runId: String,
         label: String,
         tools: List<UIMessagePart.Tool>,
+        parentConversationId: String? = null,
     ): Map<String, CompletableDeferred<Boolean>> {
         val registered = tools.associate { it.toolCallId to register(it.toolCallId) }
         val ids = registered.keys
         _requests.value = _requests.value.filterNot { it.tool.toolCallId in ids } +
-            tools.map { Request(runId, label, it) }
+            tools.map { Request(runId, label, it, parentConversationId) }
         return registered
     }
 
@@ -59,6 +67,13 @@ object SubagentApprovalQueue {
      *
      * @return true = 确实有 run 在等（已填）；false = 无人在等（进程重启后点旧通知、或已超时）
      */
+    /** UI snapshots may outlive a re-registration; verify request identity under the same lock. */
+    @Synchronized
+    fun resolve(request: Request, approved: Boolean): Boolean {
+        if (_requests.value.none { it === request }) return false
+        return resolve(request.tool.toolCallId, approved)
+    }
+
     @Synchronized
     fun resolve(toolCallId: String, approved: Boolean): Boolean {
         val waiter = waiters[toolCallId] ?: return false
