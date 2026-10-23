@@ -22,6 +22,13 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resumeWithException
 import kotlin.uuid.Uuid
 
+// 各搜索服务 query 参数的共享描述（对齐上游 fcb4bfe4e）：关键词而非整句、按最佳资料语言检索、专有名词保留原文
+internal const val SEARCH_QUERY_DESCRIPTION =
+    "Concise search keywords, not a full sentence. Write them in the language the best sources on the topic " +
+        "are written in: usually English for technology, science and international topics; the local language " +
+        "for region-specific topics such as local news, policies, communities or products. " +
+        "Keep proper nouns, product names and error messages verbatim."
+
 interface SearchService<T : SearchServiceOptions> {
     val name: String
 
@@ -235,6 +242,7 @@ sealed class SearchServiceOptions : Enableable {
         override val apiKey: String = "",
         override val apiKeys: List<ApiKeyEntry> = emptyList(),
         val depth: String = "advanced",
+        val includeAnswer: Boolean = true,
     ) : SearchServiceOptions()
 
     @Serializable
