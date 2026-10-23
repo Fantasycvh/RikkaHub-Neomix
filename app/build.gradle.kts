@@ -24,8 +24,8 @@ android {
         applicationId = "app.androidrik.neomix"
         minSdk = 26
         targetSdk = 37
-        versionCode = 310
-        versionName = "1.0.28-beta.8"
+        versionCode = 311
+        versionName = "1.0.28-beta.9-exp"
 
         // Database-only tests can opt out of production Application/DI/background initialization.
         // The regular UI test runner remains the default.
