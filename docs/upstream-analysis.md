@@ -8,7 +8,7 @@
 > **同日专项**：另**单独吸收**了更早未移植的 `5a90c0548`（用量统计流水表，DB v44），见「2026-10-20 专项吸收：用量统计流水」一节——它不在本批 fetch 区间内，是本仓 346 个「上游有、本仓无」存量里按用户指定方向挑的一条。
 > **同步点（2026-10-20 晚，beta.5 发版前复核）**：`e5bb70730` 之后上游又有 4 个提交（HEAD `5203601f7`，上游已发 tag `3.1.0` / `eeef60b22`）。其中**又吸收 2 条**：`bc4a6f47e`（输入区图片预览 / 多图左右切换 / 预览内进画板，fork `15e3d8c9e`）、`17d06d26f`（新建/导入提供商后清空搜索并滚到新项，fork `1ddb87d8e`）。**尚余 3 条未评估**：`5203601f7`（全局禁用 overscroll 回弹）、`8bb488e3a`（工具步骤显示执行耗时）、`fe55bff7f`（提供商类型名与「订阅」类型）。本仓「上游有、本仓无」累计 **350** 个提交（含历史存量 346 + 本批未评估 3 + 刻意不做 1）。
 > **同步点（2026-10-21 更新）**：已评估到上游 **`815e9c20b`**（`3.1.0-15-g815e9c20b`，2026-10-21 16:26），本批 `5203601f7`..`815e9c20b` 共 **10 提交**；10-20 遗留的 3 条一并结案：`5203601f7` **已与本仓等价**（`Theme.kt` 的 `LocalOverscrollFactory provides null`）、`fe55bff7f` **不适用**、`8bb488e3a` 列 P2 候选。10 条新提交里只有 **`2aafd708f`（技能删除/校验）** 值得考虑吸收；其余因架构/范围不跟（PDF 替换、渠道 flavor、赞助商、i18n 工具链、远程 SSH）。同期 issue 窗口 **60 条**（22 open / 38 新近 closed）评估见「2026-10-21 issue 评估」；本仓 `upstream/master..HEAD` = **1232**、`HEAD..upstream/master` = **360**。
-> **同步点（2026-10-24 更新，master 跟进）**：上游 `43f1a5df2` 之后的 **10 提交全部结案**（同步点推进到上游 HEAD **`f267e8478`**）。其中 8 条由 `chore/remove-tikz` 分支先行吸收（悬浮窗两步 + 修复、`487e229f7`、`9dcb4fa44`），本日**移植回 master**——用户要求 master 保留 TikZ，分支的 TikZ 移除、纯 Kotlin PDF 提取、applicationId 共存改包、临时诊断 4 项**不随移植**；`2b4694ba7` 已随 FloatingX 3 迁移（`f066e3f64`）吸收。剩余 2 条本日直接吸收：`f267e8478`（JLatexMath keep 收窄）、`537f3b0ed`（Gradle 8g 并行）。`fcb4bfe4e`（Tavily，低优先）、`41ce12f66`（models.dev，单独立项）维持候选。移植清单与哈希重映射见「2026-10-24 master 跟进」一节。本仓 `upstream/master..HEAD` = **1302**、`HEAD..upstream/master` = **382**。
+> **同步点（2026-10-24 更新，master 跟进）**：上游 `43f1a5df2` 之后的 **10 提交全部结案**（同步点推进到上游 HEAD **`f267e8478`**）。其中 8 条由 `chore/remove-tikz` 分支先行吸收（悬浮窗两步 + 修复、`487e229f7`、`9dcb4fa44`），本日**移植回 master**——用户要求 master 保留 TikZ，分支的 TikZ 移除、纯 Kotlin PDF 提取、applicationId 共存改包、临时诊断 4 项**不随移植**；`2b4694ba7` 已随 FloatingX 3 迁移（`f066e3f64`）吸收。剩余 2 条本日直接吸收：`f267e8478`（JLatexMath keep 收窄）、`537f3b0ed`（Gradle 8g 并行）。`fcb4bfe4e`（Tavily）同日已按用户指定跟进吸收（`10689d1a5`），**本批仅剩 `41ce12f66`（models.dev，单独立项）一条候选**。移植清单与哈希重映射见「2026-10-24 master 跟进」一节，`fcb4bfe4e` 落地细节见「2026-10-24 Tavily answer 开关落地」一节。本仓 `upstream/master..HEAD` = **1303**、`HEAD..upstream/master` = **382**。
 > **同步点（2026-10-23 晚更新）**：已评估到上游 **`e48db7bc7`**（2026-10-23 18:52），`43f1a5df2` 之后共 **8 提交**（逐条见「2026-10-23 晚追加评估」）：新增 2 条中 `f048bed65`（后台生成悬浮窗）**已分两步落地（`f066e3f64` / `19826434a`）**，`e48db7bc7` **不适用**（修的是上游文件式记忆，本仓不跟该方向）；此前 6 条未入库提交一并补记录（`487e229f7`、`9dcb4fa44` **已按用户选择吸收**，分别为 `86c158777` / `eb52fa82c`；其余维持候选/暂缓/不适用结论）。低风险小件及后续悬浮窗验证分别见本节末尾对应落地记录。本仓 `upstream/master..HEAD` = **1292**、`HEAD..upstream/master` = **380**。
 
 > **同步点（2026-10-23 更新）**：已评估到上游 **`43f1a5df2`**（`3.1.0-27-g43f1a5df2`，2026-10-22），本批 `815e9c20b`..`43f1a5df2` 共 **12 提交**（逐条结论见「2026-10-23 同步评估」）：**吸收 5 条 + 部分吸收 1 条**——`90e48420f` 消息索引增量（`67ef193eb` / `1fd089a04`）、`2b522f990` libsimple 无 jieba（`446836328`）、`71dd98f88` 压缩对话框步进器（`beccde0ce`）、`e3d11e15f` 的 `-keepnames Throwable`（`ae6d23f83`）；`26454cc4d` / `80845dd9b` 已在 beta.6 吸收，`d8ba9cf67` 不适用（本仓已移除扫码）；`2a0a831e6` 裁图替换（`075067850`）、`43f1a5df2` 创作页重命名（`6a9d5bdec`）亦已吸收，P3 暂缓 `dbccc68c7`（体积），范围外 `070ff683c`（德语）/ `4e99510be`（perf skill 文档）。本仓 `upstream/master..HEAD` = **1275**、`HEAD..upstream/master` = **372**。
@@ -1194,7 +1194,7 @@ git checkout master
 ### 台账
 
 - P2 队列：~~`2a0a831e6`、`43f1a5df2`~~ **已清空**（2026-10-23 吸收）
-- **P2 已落地**：`f048bed65` 后台生成悬浮窗（`f066e3f64` 迁移 + `19826434a` 功能）；剩余候选 `fcb4bfe4e`（Tavily answer 开关，低优先）
+- **P2 已落地**：`f048bed65` 后台生成悬浮窗（`f066e3f64` 迁移 + `19826434a` 功能）；`fcb4bfe4e` Tavily answer 开关亦已落地（`10689d1a5`，2026-10-24 用户指定跟进）
 - 低风险小件 **已吸收**：`487e229f7` → `86c158777`；`9dcb4fa44` → `eb52fa82c`
 - P3 队列：`dbccc68c7`（体积），需先评估 web-ui 现状与本仓差异
 - 遗留小项：上游「各模块去掉 appcompat/material 声明」未取——本仓 `:app:dependencies` 显示
@@ -1226,7 +1226,7 @@ git checkout master
 |---|---|---|
 | `9dcb4fa44` | 模型匹配：不再把参数量当版本号；token 序列跳过紧跟 b/k 的数字（`8b`/`a32b`/`32k` 不再误判模型能力），补 `QWEN_3_VL`，补单测（3 文件 +35/−8） | ✅ **已吸收（`eb52fa82c`）**：保留本仓注册表条目，跳过参数量/上下文长度数字，新增 `QWEN_3_VL` 并单次分词；移植上游回归测试 |
 | `41ce12f66` | 模型能力识别改用 [models.dev](https://models.dev) 数据：新增 `ModelsDevCatalog`、1.5MB `assets/models_dev.json`、后台更新器 + DI + 测试（9 文件 +576/−25） | ⏸ **暂不跟（单独立项）**：能力识别准确性收益明确，但引入 1.5MB 资产、更新网络/缓存/失败策略与 DI 生命周期；本仓模型能力判定已自研，需先核对覆盖差异再决定 |
-| `fcb4bfe4e` | Tavily 可关闭「生成答案」；各搜索服务 query 参数描述补全（21 文件 +48/−20，多为注释/文案） | 🟡 **部分可吸收（低优先）**：本仓 `search` 模块仍含 Tavily（`TavilySearchService.kt` 差异仅 +8/−12），服务层小改可摘；设置页分叉大（+129/−287），UI 需手改 |
+| `fcb4bfe4e` | Tavily 可关闭「生成答案」；各搜索服务 query 参数描述补全（21 文件 +48/−20，多为注释/文案） | ✅ **已吸收（`10689d1a5`，2026-10-24 用户指定）**：服务层直套 + 设置页手改，细节见「2026-10-24 Tavily answer 开关落地」一节 |
 | `2b4694ba7` | 悬浮窗不再操作已 `cancel` 的 `FxControl`（1 文件 +9/−6） | ✅ **已随 `f066e3f64` 吸收**：FloatingX 2.3.7 迁移到 3.0 后 `FxState.CANCELLED` 守卫成为本仓 API 语义的一部分，迁移提交已带该修复（下节评估时为 2.3.7，结论「不适用」已被迁移取代） |
 | `487e229f7` | `ask_user` 工具名抽成公共常量（2 文件 +4/−3） | ✅ **已吸收（`86c158777`）**：工具定义与消息 UI 共用 `ASK_USER_TOOL_NAME`，不改变工具名、schema 或行为；仅完成该前置，不引入 `f048bed65` |
 | `5dd7b764c` | 抽出应用 logo 绘制/变形轮廓 `AppLogo.kt`（2 文件 +108/−79） | ❌ **不跟**：纯 UI 重构，本仓 About 页 logo 绘制与上游不同，无行为/体积收益 |
@@ -1351,7 +1351,30 @@ git checkout master
   切回 master 后 `processDebugGoogleServices` 找不到 `app.androidrik.rikkahub(.debug)` client；已把其中两个
   `package_name` 改回 master 包名（其余字段未动）。下次在分支构建需再改回，或两包名都在 Firebase 项目注册。
 - 未推送。本批落定后 `upstream/master..HEAD` = **1302**、`HEAD..upstream/master` = **382**（其中 10-23 批仅剩
-  `fcb4bfe4e`、`41ce12f66` 两条候选与 `e48db7bc7`/`5dd7b764c` 等结论性不做）。
+  本批仅剩 `41ce12f66` 一条候选与 `e48db7bc7`/`5dd7b764c` 等结论性不做；`fcb4bfe4e` 已于同日吸收）。
+
+
+## 2026-10-24 Tavily answer 开关落地（`fcb4bfe4e`）
+
+> 用户在 beta.9 发布后指定「跟进这个」。上游改动两部分：Tavily `include_answer` 写死 `advanced` 改为可配；
+> 各服务 query 参数描述从 `"search keyword"` 换成共享 `SEARCH_QUERY_DESCRIPTION`（关键词而非整句、
+> 按最佳资料语言检索、专有名词与报错保留原文）。
+
+**服务层（`search` 模块，直套）**：
+- `SearchService.kt`：新增 `internal const val SEARCH_QUERY_DESCRIPTION`（文案与上游逐字一致）；
+  `TavilyOptions` 加 `includeAnswer: Boolean = true`（默认开 = 旧行为；旧配置 JSON 缺字段反序列化回默认，无须迁移）。
+- `TavilySearchService.kt`：`include_answer` 按 `includeAnswer` 发 `"advanced"` 或 `false`；query 描述换共享常量。
+- 15 个服务 `put("description", "search keyword")` 直替；**DeepSeek 手工合并**——本仓描述与上游文本不同
+  （本仓 `site:`/`-site:`/`lang:` 等操作符说明 + "passed through as-is"），改为共享描述后接本仓操作符半句，语义不变。
+- **Grok 不改**（上游同判：其 query 是自然语言问句）；本仓本就无 Firecrawl/RikkaHub 两个上游服务，不涉及。
+
+**设置页（手改，页面分叉大）**：`TavilyOptions` 深度分段控件后加 `FormItem` 开关
+（`search_detail_include_answer` + `_description`，en/zh/zh-rTW 三语）。注意点：本仓页面里 **LinkUp 也有
+一样的 depth 分段控件**，替换时用函数级锚点定位，避免改错到 LinkUp。
+
+**验证**：`:search:compileDebugKotlin` / `:app:compileDebugKotlin` 通过；`:search:testDebugUnitTest`
+**31 项，0 失败/错误/跳过**（含 DeepSeekSearchServiceTest 14 / SearchOptionsEqualityTest 3）。
+未发版：随下一个 beta 生效。未推送。
 
 ## 关联
 

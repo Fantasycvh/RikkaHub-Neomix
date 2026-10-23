@@ -3555,3 +3555,9 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   master 线 `Neomix-1.0.28-beta.9-arm64-v8a.apk` 61,423,158 B、SHA-256 `0d073cac…c65ed5`；
   exp 线 `Neomix-1.0.28-beta.9-exp-arm64-v8a.apk` 19,998,278 B、SHA-256 `d8e1ca18…3dc05`（TikZ 移除后的预期体积）。
   GitHub API 回读两资产 `digest` 与本地一致；发布说明存档 [`releases/1.0.28-beta.9.md`](releases/1.0.28-beta.9.md)（分支线 [`releases/1.0.28-beta.9-exp.md`](releases/1.0.28-beta.9-exp.md) 在分支上）。
+
+- 2026-10-24 **上游跟进：Tavily 可关闭「生成答案」+ 各搜索服务 query 描述补全**（上游 `fcb4bfe4e`，beta.9
+  发布后用户指定跟进，`10689d1a5`）。`TavilyOptions.includeAnswer`（默认开 = 旧行为）+ 设置页开关（三语文案，
+  关闭时请求发 `include_answer: false`）；共享 `SEARCH_QUERY_DESCRIPTION` 替换 16 个服务的 "search keyword"
+  （DeepSeek 保留本仓操作符说明改接共享描述；Grok 是自然语言问句不改；本仓无 Firecrawl/RikkaHub 服务不涉及）。
+  **验证**：`:search` 与 `:app` 编译通过；`:search:testDebugUnitTest` 31 项 0 失败。未发版、未推送。
