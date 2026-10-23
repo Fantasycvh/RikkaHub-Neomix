@@ -5,6 +5,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.geometry.Offset
+import org.junit.Assert.assertTrue
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -71,5 +76,37 @@ class ChatFloatingPanelTest {
         rule.onNodeWithText(context.getString(app.androidrik.rikkahub.R.string.chat_message_tool_approve)).performClick()
         assertEquals(1, child.get())
         assertEquals(0, ordinary.get())
+    }
+
+    @Test
+    fun resizeHandleAndResetAreInteractiveAtCompactSize() {
+        val resized = AtomicInteger()
+        val reset = AtomicInteger()
+        val finished = AtomicInteger()
+        rule.setContent {
+            CompositionLocalProvider(LocalSettings provides Settings()) {
+                RikkahubTheme {
+                    ChatFloatingPanel(
+                        state = FloatingChatUiState(
+                            conversationId = Uuid.random(), title = "Resize", generating = false,
+                            processingStatus = null, phase = GenerationPhase.Waiting, hasReply = false,
+                            preview = "", previewIsReasoning = false, pendingTools = emptyList(),
+                            queuedCount = 0, queuePaused = false, error = null,
+                        ), maxHeight = 400.dp, panelWidth = 340.dp,
+                        onCollapse = {}, onDismiss = {}, onOpenConversation = {},
+                        onToolApproval = { _, _ -> }, onStop = {}, onSend = {}, onResumeQueue = {},
+                        onResize = { _, _ -> resized.incrementAndGet() },
+                        onResizeFinished = { finished.incrementAndGet() },
+                        onResetSize = { reset.incrementAndGet() },
+                    )
+                }
+            }
+        }
+        rule.onNodeWithContentDescription(context.getString(app.androidrik.rikkahub.R.string.floating_chat_resize))
+            .performTouchInput { swipe(bottomRight - Offset(5f, 5f), topLeft + Offset(5f, 5f), 400) }
+        assertTrue(resized.get() > 0)
+        assertEquals(1, finished.get())
+        rule.onNodeWithText(context.getString(app.androidrik.rikkahub.R.string.floating_chat_reset_size)).performClick()
+        assertEquals(1, reset.get())
     }
 }

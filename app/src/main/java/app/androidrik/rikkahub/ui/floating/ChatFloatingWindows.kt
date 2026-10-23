@@ -1,5 +1,15 @@
 package app.androidrik.rikkahub.ui.floating
 
+import android.content.Context
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.ui.platform.LocalView
+import android.graphics.Rect
+import androidx.compose.runtime.DisposableEffect
+import android.view.ViewTreeObserver
+import android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
 import android.app.Application
 import android.app.AppOpsManager
 import kotlinx.coroutines.channels.awaitClose
@@ -18,6 +28,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.core.net.toUri
 import androidx.core.view.WindowInsetsCompat
@@ -79,6 +90,16 @@ class ChatFloatingWindows(
     private val chatService by lazyChatService
     private var bubble: FxControl? = null
     private var panel: FxControl? = null
+    private val sizePreferences = context.getSharedPreferences("floating_chat_window", Context.MODE_PRIVATE)
+    private var preferredSize by mutableStateOf(FloatingPanelSize(
+        sizePreferences.getFloat("width_dp", 560f),
+        sizePreferences.getFloat("height_dp", 520f),
+    ))
+
+    private fun saveSize() {
+        sizePreferences.edit().putFloat("width_dp", preferredSize.width)
+            .putFloat("height_dp", preferredSize.height).apply()
+    }
 
     private val uiState: StateFlow<FloatingChatUiState?> = tracker.window
         .map { it?.conversationId }
@@ -188,9 +209,40 @@ class ChatFloatingWindows(
         compose {
             WindowContent { state ->
                 val conversationId = state.conversationId
+                val configuration = LocalConfiguration.current
+                val density = LocalDensity.current
+                val screenHeight = rememberPanelMaxHeight()
+                val view = LocalView.current
+                var visibleHeight by remember { mutableStateOf(screenHeight) }
+                DisposableEffect(view, screenHeight, density) {
+                    val listener = ViewTreeObserver.OnGlobalLayoutListener {
+                        val rect = Rect()
+                        view.getWindowVisibleDisplayFrame(rect)
+                        if (rect.height() > 0) {
+                            visibleHeight = with(density) { rect.height().toDp() }.coerceAtMost(screenHeight)
+                        }
+                    }
+                    view.viewTreeObserver.addOnGlobalLayoutListener(listener)
+                    onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+                }
+                val imeHeight = with(density) { WindowInsets.ime.getBottom(this).toDp() }
+                val availableHeight = minOf(visibleHeight, screenHeight - imeHeight).coerceAtLeast(1.dp)
+                val availableWidth = configuration.screenWidthDp.toFloat()
+                val displayedSize = preferredSize.bounded(availableWidth, availableHeight.value)
                 ChatFloatingPanel(
                     state = state,
-                    maxHeight = rememberPanelMaxHeight(),
+                    maxHeight = displayedSize.height.dp,
+                    panelWidth = displayedSize.width.dp,
+                    onResize = { dx, dy ->
+                        // The centered host grows equally on each side, so the right edge moves by dx.
+                        preferredSize = FloatingPanelSize(displayedSize.width, preferredSize.height)
+                            .resized(dx * 2f, dy, availableWidth, screenHeight.value)
+                    },
+                    onResizeFinished = ::saveSize,
+                    onResetSize = {
+                        preferredSize = FloatingPanelSize()
+                        saveSize()
+                    },
                     onCollapse = tracker::collapse,
                     onDismiss = tracker::dismiss,
                     onOpenConversation = { openConversation(conversationId) },
@@ -218,6 +270,7 @@ class ChatFloatingWindows(
             layoutParams {
                 it.flags = it.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
                 it.width = WindowManager.LayoutParams.MATCH_PARENT
+                it.softInputMode = SOFT_INPUT_ADJUST_RESIZE
             }
             onBackPressed {
                 tracker.collapse()
