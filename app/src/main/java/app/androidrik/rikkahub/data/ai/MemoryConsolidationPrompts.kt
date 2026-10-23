@@ -300,8 +300,9 @@ internal val MEMORY_CONSOLIDATION_RECLASSIFY_NOTE = """
 internal fun memoryConsolidationSystemPrompt(
     proposeOnly: Boolean,
     allowKindChange: Boolean,
+    basePrompt: String = MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
 ): String = buildString {
-    append(MEMORY_CONSOLIDATION_SYSTEM_PROMPT)
+    append(basePrompt.ifBlank { MEMORY_CONSOLIDATION_SYSTEM_PROMPT })
     if (allowKindChange) {
         append("\n\n").append(MEMORY_CONSOLIDATION_RECLASSIFY_NOTE)
     }

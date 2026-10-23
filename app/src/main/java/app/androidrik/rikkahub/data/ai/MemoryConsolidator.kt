@@ -20,8 +20,7 @@ import kotlin.uuid.Uuid
  *
  * 1. **切轮次**（[buildConsolidationTranscript]）：按 token 预算装新轮次，装不下的不推进水位；
  * 2. **给库现状**：复用聊天注入的两层披露（换更小预算）+ 一张校准表（重要度 vs 被读次数）；
- * 3. **模型**：优先全局「快速模型」（`Settings.fastModelId`，它本来就是给标题/建议这类后台任务用的），
- *    没配再回落到助手的聊天模型；
+ * 3. **模型**：优先全局「做梦（记忆整理）模型」，没配再回落到快速模型、助手的聊天模型；
  * 4. **审批降级**：库的任一参与助手开着写入审批 ⇒ 整轮**只提案不改库**（见设计稿 §7.2）；
  * 5. **水位只推进到真正带进模型的位置**，失败一律不推进（内容不丢，下一轮对话或手动会再试）。
  *
@@ -103,10 +102,11 @@ class MemoryConsolidator(
             return null
         }
 
-        val model = settings.findModelById(settings.fastModelId)
+        val model = settings.findModelById(settings.memoryConsolidationModelId)
+            ?: settings.findModelById(settings.fastModelId)
             ?: settings.findModelById(participants.first().chatModelId)
         if (model == null) {
-            Log.w(TAG, "consolidate($memoryId): no model available (fastModelId / chatModelId unset)")
+            Log.w(TAG, "consolidate($memoryId): no model available (memoryConsolidationModelId / fastModelId / chatModelId unset)")
             return MemoryConsolidationRun(
                 memoryId = memoryId,
                 finishedAt = now(),

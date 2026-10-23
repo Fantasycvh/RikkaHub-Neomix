@@ -47,6 +47,7 @@ import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.DEFAULT_LOREBOOK_BUDGET_TOKENS
 import app.androidrik.rikkahub.data.ai.DEFAULT_MEMORY_BUDGET_TOKENS
+import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_SYSTEM_PROMPT
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT
 import app.androidrik.rikkahub.data.files.DEFAULT_EXPORT_RETENTION_DAYS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_TARGET_TOKENS
@@ -259,6 +260,8 @@ class SettingsStore(
         val SELECT_MODEL = stringPreferencesKey("chat_model")
         val FALLBACK_CHAT_MODEL = stringPreferencesKey("fallback_chat_model")
         val FAST_MODEL = stringPreferencesKey("fast_model")
+        val MEMORY_CONSOLIDATION_MODEL = stringPreferencesKey("memory_consolidation_model")
+        val MEMORY_CONSOLIDATION_PROMPT = stringPreferencesKey("memory_consolidation_prompt")
         val TITLE_MODEL = stringPreferencesKey("title_model")
         val TRANSLATE_MODEL = stringPreferencesKey("translate_model")
         val ENABLE_SUGGESTION = booleanPreferencesKey("enable_suggestion")
@@ -437,6 +440,9 @@ class SettingsStore(
                 fastModelId = preferences[FAST_MODEL]?.let { Uuid.parse(it) }
                     // 旧版本「未配置」会落成 AUTO 哨兵（无清除入口时代的默认值），视为未配置
                     ?.takeIf { it != DEFAULT_AUTO_MODEL_ID },
+                memoryConsolidationModelId = preferences[MEMORY_CONSOLIDATION_MODEL]?.let { Uuid.parse(it) },
+                memoryConsolidationPrompt = preferences[MEMORY_CONSOLIDATION_PROMPT]
+                    ?: MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
                 titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) },
                 translateModeId = preferences[TRANSLATE_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
@@ -751,6 +757,10 @@ class SettingsStore(
             settings.fastModelId?.let {
                 preferences[FAST_MODEL] = it.toString()
             } ?: preferences.remove(FAST_MODEL)
+            settings.memoryConsolidationModelId?.let {
+                preferences[MEMORY_CONSOLIDATION_MODEL] = it.toString()
+            } ?: preferences.remove(MEMORY_CONSOLIDATION_MODEL)
+            preferences[MEMORY_CONSOLIDATION_PROMPT] = settings.memoryConsolidationPrompt
             settings.titleModelId?.let {
                 preferences[TITLE_MODEL] = it.toString()
             } ?: preferences.remove(TITLE_MODEL)
@@ -998,6 +1008,9 @@ data class Settings(
     val chatModelId: Uuid = Uuid.random(),
     val fallbackChatModelId: Uuid? = null, // 主模型整轮失败后切换的备用模型（助手未配 fallback 时生效）
     val fastModelId: Uuid? = null, // 快速模型（标题/建议等后台任务的兜底）；null = 未配置
+    /** 做梦（记忆整理）专用模型；未配置时依次回落到快速模型、助手聊天模型。 */
+    val memoryConsolidationModelId: Uuid? = null,
+    val memoryConsolidationPrompt: String = MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
     val titleModelId: Uuid? = null,
     val imageGenerationModelId: Uuid = Uuid.random(),
     val titlePrompt: String = DEFAULT_TITLE_PROMPT,

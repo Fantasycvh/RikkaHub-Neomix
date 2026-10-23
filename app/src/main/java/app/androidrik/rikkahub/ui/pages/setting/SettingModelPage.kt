@@ -159,6 +159,17 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
             )
         }
         item {
+            ModelSettingItem(
+                title = "做梦（记忆整理）模型",
+                description = "用于自动和手动记忆整理。未配置时依次使用快速模型、助手聊天模型；建议选择支持工具调用的模型。",
+                modelId = settings.memoryConsolidationModelId,
+                providers = settings.providers,
+                onSelect = { vm.updateSettings(settings.copy(memoryConsolidationModelId = it.id)) },
+                onClear = { vm.updateSettings(settings.copy(memoryConsolidationModelId = null)) },
+                emptyText = "跟随快速模型或助手聊天模型",
+            )
+        }
+        item {
             // 自动标题开关 + 标题模型：与下面「建议模型」同形（关掉时隐藏模型选择器）。
             // 开关只关**自动**：会话列表/抽屉里的「重新生成标题」不受影响（force = true）。
             Column {

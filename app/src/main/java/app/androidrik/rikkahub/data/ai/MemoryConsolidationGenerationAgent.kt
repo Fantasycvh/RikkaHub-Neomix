@@ -96,6 +96,7 @@ class MemoryConsolidationGenerationAgent(
         )
 
         val systemPrompt = memoryConsolidationSystemPrompt(
+            basePrompt = request.settings.memoryConsolidationPrompt,
             proposeOnly = request.proposeOnly,
             allowKindChange = request.allowKindChange,
         )

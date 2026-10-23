@@ -27,6 +27,7 @@ import app.androidrik.ai.core.ReasoningLevel
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowRight01
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_SYSTEM_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
@@ -80,6 +81,17 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                 promptValue = settings.ocrPrompt,
                 onPromptChange = { vm.updateSettings(settings.copy(ocrPrompt = it)) },
                 onResetPrompt = { vm.updateSettings(settings.copy(ocrPrompt = DEFAULT_OCR_PROMPT)) },
+            )
+        }
+        item {
+            PromptSettingItem(
+                title = "做梦（记忆整理）提示词",
+                promptDescription = "用于自动和手动记忆整理。运行时仍会追加当前的审批与记忆类型调整说明。",
+                promptValue = settings.memoryConsolidationPrompt,
+                onPromptChange = { vm.updateSettings(settings.copy(memoryConsolidationPrompt = it)) },
+                onResetPrompt = {
+                    vm.updateSettings(settings.copy(memoryConsolidationPrompt = MEMORY_CONSOLIDATION_SYSTEM_PROMPT))
+                },
             )
         }
         item {

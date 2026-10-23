@@ -29,6 +29,29 @@ import kotlin.uuid.Uuid
  */
 class MemoryConsolidationPromptsTest {
 
+    @Test
+    fun `custom prompt replaces base while runtime notes remain attached`() {
+        val custom = "Keep precise records of the user's projects."
+        val prompt = memoryConsolidationSystemPrompt(
+            proposeOnly = true,
+            allowKindChange = true,
+            basePrompt = custom,
+        )
+        assertEquals(
+            custom + "\n\n" + MEMORY_CONSOLIDATION_RECLASSIFY_NOTE + "\n\n" + MEMORY_CONSOLIDATION_PROPOSAL_NOTE,
+            prompt,
+        )
+        assertEquals(custom, memoryConsolidationSystemPrompt(false, false, custom))
+    }
+
+    @Test
+    fun `blank custom prompt uses the built in default`() {
+        assertEquals(
+            MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
+            memoryConsolidationSystemPrompt(false, false, " \n "),
+        )
+    }
+
     private val zone = TimeZone.currentSystemDefault()
 
     private fun stamp(hour: Int, minute: Int = 0): LocalDateTime =

@@ -154,12 +154,13 @@ class MemoryConsolidatorTest {
         assistants: List<Assistant>,
         fastModel: Boolean = true,
         contextLength: Int = 32_000,
+        configure: (Settings) -> Settings = { it },
     ): MemoryConsolidator {
-        val settings = Settings(
+        val settings = configure(Settings(
             assistants = assistants,
             providers = if (fastModel) listOf(provider(contextLength)) else emptyList(),
             fastModelId = if (fastModel) modelId else null,
-        )
+        ))
         val repository = MemoryConsolidationRepository(
             consolidationDAO = dao,
             assistants = { settings.assistants },
@@ -177,6 +178,45 @@ class MemoryConsolidatorTest {
             transactions = transactions,
             now = { now },
         )
+    }
+
+    @Test
+    fun `dedicated model takes priority for automatic and manual consolidation`() = runBlocking {
+        val assistant = assistant().copy(chatModelId = modelId)
+        val dedicated = Model(id = Uuid.random(), displayName = "dream")
+        val worker = consolidator(listOf(assistant), configure = { settings ->
+            settings.copy(
+                providers = listOf(provider().let { it.copy(models = it.models + dedicated) }),
+                memoryConsolidationModelId = dedicated.id,
+                memoryConsolidationPrompt = "Custom librarian instructions",
+            )
+        })
+        val conversation = conversation(assistant, 2)
+        conversations[conversation.id] = conversation
+        worker.consolidate(assistant.id.toString(), setOf(conversation.id), fullReview = false)
+        worker.consolidate(assistant.id.toString(), emptySet(), fullReview = true)
+        assertEquals(2, agent.requests.size)
+        agent.requests.forEach { request ->
+            assertEquals(dedicated.id, request.model.id)
+            assertEquals("Custom librarian instructions", request.settings.memoryConsolidationPrompt)
+        }
+    }
+
+    @Test
+    fun `missing dedicated model falls back to fast then assistant chat model`() = runBlocking {
+        val chat = Model(id = Uuid.random(), displayName = "chat")
+        val assistant = assistant().copy(chatModelId = chat.id)
+        for (fastModel in listOf(true, false)) {
+            val worker = consolidator(listOf(assistant), configure = { settings ->
+                settings.copy(
+                    providers = listOf(provider().let { it.copy(models = it.models + chat) }),
+                    memoryConsolidationModelId = Uuid.random(),
+                    fastModelId = if (fastModel) modelId else null,
+                )
+            })
+            worker.consolidate(assistant.id.toString(), emptySet(), fullReview = true)
+            assertEquals(if (fastModel) modelId else chat.id, agent.requests.last().model.id)
+        }
     }
 
     @Test
