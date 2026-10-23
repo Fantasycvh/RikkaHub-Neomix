@@ -55,6 +55,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.CheckmarkCircle02
 import me.rerere.hugeicons.stroke.Tick01
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.tools.local.ASK_USER_TOOL_NAME
 import app.androidrik.rikkahub.ui.components.message.tools.DefaultToolPreview
 import app.androidrik.rikkahub.ui.components.message.tools.ToolUIContext
 import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRegistry
@@ -63,8 +64,6 @@ import app.androidrik.rikkahub.ui.components.ui.ChainOfThoughtScope
 import app.androidrik.rikkahub.ui.components.ui.DotLoading
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.utils.JsonInstant
-
-private const val ASK_USER_TOOL_NAME = "ask_user"
 
 /**
  * 服务端内置工具（googleSearch / urlContext 等）的链内步骤。
