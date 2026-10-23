@@ -1,21 +1,25 @@
 # 上下文净化：清掉「已判定退化的思考残留」（而不只是让它停）
 
-> 状态：**设计草案（2026-10-19，未实现，未动代码）**。本文只讨论机制与取舍。
->
-> 相关：`data/ai/ThinkingDegenerationGuard.kt`（护栏家族第四员）、
-> `design-auto-compaction.md`（压缩管「预算」，本文管「质量」）、
-> `design-subagent-context.md` §护栏家族分工、`design-whole-turn-folding.md`（只改显示、不改上下文）。
+> 状态：**设计草案 revision 2（2026-10-23，未实现，未动代码）**。
+> 相对 2026-10-19 初稿，方向与边界不变，**规则表重写**：初稿按「一轮 = 多条助手消息」组织（清 3 条空转消息、成对丢工具对），本仓不是这个模型（§3）——照初稿实现，阈值永不触发。修订把单位下沉到 part，把「删整条」换成「保留最早一份、截掉重复」（§4.2），逐条差异见 §13。
+> 相关：`data/ai/ThinkingDegenerationGuard.kt`（护栏家族第四员）、`design-auto-compaction.md`（压缩管「预算」，本文管「质量」）、`design-subagent-context.md` §护栏家族分工、`design-whole-turn-folding.md`（只改显示、不改上下文）。
+> 锚点均于 2026-10-23 只读核对（包名已改为 `app.androidrik.*`；初稿行号整体漂移 10–40 行）。
+
+## 0. 一句话
+
+护栏挡住了「继续写」，没挡住「继续看」。本文把「继续看」的那部分撤掉——**只在这次请求的副本上撤，不动落库、不动 UI**。
 
 ## 1. 问题：护栏只止损，不清毒
 
-现状（已核实，2026-10-19）：
+现状（2026-10-23 核实）：
 
 | 事实 | 位置 |
 |---|---|
-| 思考退化护栏只做**停止**：调用内命中抛 `ThinkingDegenerationCut` 断流，调用边界命中则跳出步骤循环；**不回滚、不重试、不 fallback** | `ThinkingDegenerationGuard.kt:30-33`、`GenerationHandler.kt:606-638`、`:1240-1252` |
-| 停止提示**故意不写进对话**，只 `addError` 成一条瞬时错误条 | `ChatService.kt:1452-1455`、`:1494-1511` |
-| 当时给的理由：*「用 addError 而非写进对话：后者会被持久化并在下一轮当上下文发给模型，变成自己教自己的噪音」* | `ChatService.kt:1452-1455` |
-| 但**被判定退化的那几条助手消息本身**照常落库（护栏不删内容），于是下一轮照样被组装进请求 | `GenerationHandler.kt` 停止路径；`PromptAssembly.kt:260-271` |
+| 护栏只做**停止**：调用内命中抛 `ThinkingDegenerationCut` 断流；调用边界命中则置 `stopNotice` 后跳出步骤循环；**不回滚、不重试、不 fallback** | `ThinkingDegenerationGuard.kt:40-53`、`:94-172`；`GenerationHandler.kt:604-640`、`:1254-1267`、`:988-991` |
+| 停止提示**故意不写进对话**，只 `addError` 成一条瞬时错误条 | `ChatService.kt:1773-1790`、`:508-521` |
+| 当时给的理由：*「用 addError 而非写进对话：后者会被持久化并在下一轮当上下文发给模型，变成自己教自己的噪音」* | `GenerationHandler.kt:238-243`（`Notice` 的 KDoc）、`ChatService.kt:1732-1734` |
+| 但**被判定退化的那一条助手消息本身**照常落库（护栏不删内容），于是下一轮照样被组装进请求 | `ChatService.kt:1699-1702`、`:1707-1719`、`:1864-1867` |
+| 落库形态不是「3 条空转消息」，而是**一条消息里累积的一大段推理**（续写追加到同一条） | `Message.kt:273-297`、`GenerationHandler.kt:221-230`、`:663-664` |
 
 也就是说：**护栏挡住了「继续写」，但没挡住「继续看」**。「自己教自己」这句注释预判了机制，却只处理了**提示**这条支路——**痕迹**那条支路没人管。
 
@@ -23,75 +27,122 @@
 
 ## 2. 边界：净化能做什么、不能做什么
 
-**能做（客户端可判定）**：字面重复类退化——逐字周期、跨调用复述（containment ≥ 0.8）、连续零产出调用、同签名工具空转。判据与护栏**同源**（`ThinkingDegenerationGuard.containment/minimalPeriod/distinctChars` 都是 `internal`，同包可直接复用），避免两套判据漂移。
+**能做（客户端可判定）**：字面重复类退化——逐字周期、同一消息内累积/复述的推理段、同签名工具空转。判据与护栏**同源**（`containment` / `minimalPeriod` / `distinctChars` 都是 `internal`，同包直接复用；`reasoningText()` / `hasVisibleTextOutput()` / `hasToolCalls()` 三个扩展也已现成，`ThinkingDegenerationGuard.kt:270-279`），避免两套判据漂移。
 
 **不能做（不假装能做）**：
+
 - **语义**漂移：越写越浅、结论自相矛盾、换了话题——客户端无法判定；
 - **不引入低熵比值**：2026-10-09 的标定已经证明覆盖率类指标对合法内容（表格 0.72、日志 0.76、CSS 0.82、JSON dump 0.84）与退化样本（0.92–0.99）只差 0.06，做不了截断边界（`ThinkingDegenerationGuard.kt:24-28`）；
-- 不改变**正常内容**的发送：净化只对「本来就会被护栏判停」的东西生效。
+- 不改变**正常内容**的发送：净化只对「字面重复」生效。
 
-## 3. 现状核实：可挂载点
+**作用域（revision 2 新增）——这个功能只对「会回传推理」的 provider 有意义**：
+
+| Provider 家族 | 历史推理是否进请求 | 净化效果 |
+|---|---|---|
+| OpenAI 兼容 | 默认回传 `reasoning_content`（`includeHistoryReasoning` 默认 true） | **C1 有效** |
+| Claude | 只回传**带签名**的 thinking 块，无签名推理在编码时就被丢掉 | C1 **天然无效**（C2 仍有效） |
+| Gemini | 推理全部丢弃，签名挂在 Tool/Image part 上 | 同上 |
+| OpenAI Responses（`useResponseApi=true`） | 走另一套编码器（`reasoning` item 带 `reasoningId`/`encryptedContent`） | **未测**，P1 不覆盖，需单独 fixture |
+
+结论：Claude/Gemini 在编码层已经天然净化，开关文案不能承诺「对所有模型有效」；§8 的因果实验也只能在 OpenAI 兼容模型上做。
+
+## 3. 消息模型：一轮 = 一条助手消息（revision 2 新增，本文的地基）
+
+### 3.1 证据
+
+| 事实 | 位置 |
+|---|---|
+| `handleMessageChunk`：**同角色** delta 合并进最后一条消息，只有角色变化才新建 | `ai/.../ui/Message.kt:273-297` |
+| `applyToolOutput`：把工具结果**并回最后一条助手消息**（注释直述） | `GenerationHandler.kt:221-230` |
+| `UIMessagePart.Tool` 自带 `output: List<UIMessagePart>`：调用与结果**是同一个 part** | `ai/.../ui/UIMessagePart.kt:145-182` |
+| 独立的 `ToolResult` part 已 `@Deprecated`，只用于导入兼容 | `UIMessagePart.kt:123-132` |
+| 续写（裸断流/撞上限）追加到**同一条**助手消息 | `GenerationHandler.kt:663-690` |
+
+### 3.2 三个推论
+
+1. **一轮的助手产出 = 一条 `UIMessage`**，parts 顺序形如 `[Reasoning?, Text?, Tool, Tool, Reasoning?, Text?]`；工具调用与结果不占两条消息。
+2. **「窗口里有 3 条空转助手消息」写不出来** ⇒ 初稿 §4.3 的样例、以及「窗口内标记数 ≥ `DEFAULT_MAX_STALLED_CALLS(3)` 才生效」的门槛，在本仓永不满足；初稿 R3「assistant + TOOL 结果成对丢弃」是 no-op（没有「两条」可丢，part 天然原子）。
+3. 真正的残留形态是 **part 级**的：一条消息里，`Reasoning` part 因为续写不断累积（`appendChunk` 把后一次调用的推理接到前一个 Reasoning part 上），末尾可能挂着几十 KB 的循环；跨调用之间可能出现多个 `Reasoning` part，彼此高度重叠。
+
+### 3.3 可挂载点（已刷新）
 
 | 层 | 现状 | 位置 |
 |---|---|---|
-| 请求组装 | `buildInternalMessagesWithPlan` = 压缩窗口 + `limitContext` + system + 尾部合成块；**真实请求与拼装预览共用** | `PromptAssembly.kt:281-356`、`:260-271` |
-| 发送前最后一次改写 | `transforms(...)` → `balancedForRequest()`（会丢孤儿 ToolResult、补合成结果，**请求期改写、不落库、不变时返回同一实例**） | `GenerationHandler.kt:1161-1171`、`ToolResultBalancingTransformer.kt:34-39` |
-| 上限裁剪 | `limitContext` **按条数**、阶梯滞回、`alignContextStart` 保证不拆工具对；`contextMessageLimit` 默认 **0 = 不裁** | `Message.kt:352-365`、`:373-413`、`Assistant.kt:65` |
-| 压缩 | token 驱动、检查点替换、**不动 messageNodes**（「轨迹只追加」） | `Conversation.kt:212-225`、`:231` |
-| 推理回传 | OpenAI 兼容路径**回传** `reasoning_content`（`includeHistoryReasoning` 默认 true，部分网关缺字段直接 400）；Claude 只回传**带签名**的块（无签名块丢弃）；Gemini **全部丢弃** | `ProviderSetting.kt:240`、`ChatCompletionsAPI.kt:653-686`、`ClaudeProvider.kt:515-532`、`GoogleProvider.kt:732-774` |
-| 可观测 | 拼装预览与真实请求**同函数**，按来源分段；`PromptDebugState` 留最近两次实发列表 | `PromptInspector.kt:279/301`、`PromptDebugState.kt:24` |
-| 护栏状态 | 全在 `ConversationSession` 内存里，`generateInternal` **看不到**（要么穿参，要么不依赖它） | `ConversationSession.kt:99/124/137`、`:165-171` |
+| 请求组装 | `buildSendWindowMessages` = 压缩窗口 `applyTo` → `partitionCheckpointMessages` → 检查点前置 + `restMessages.limitContext`；**真实请求与拼装预览共用** | `PromptAssembly.kt:260-273`、`:309-313`；`PromptInspector.kt:315-333` |
+| 发送前最后一次改写 | `transforms(...)` → `balancedForRequest()`（丢孤儿 ToolResult、补合成结果，**请求期改写、不落库、不变时返回同一实例**） | `GenerationHandler.kt:1168-1183`；`ToolResultBalancingTransformer.kt:34-39`、`:74-83`、`:89-138` |
+| 上限裁剪 | `limitContext` **按条数**、阶梯滞回（`CONTEXT_KEEP_RATIO = 0.5`）、`alignContextStart` 保证不拆工具对；`contextMessageLimit` 默认 **0 = 不裁** | `Message.kt:344-376`、`:384-424`；`Assistant.kt:65` |
+| 压缩 | token 驱动、检查点替换、**不动 messageNodes**（「轨迹只追加」） | `Conversation.kt:215-237` |
+| 推理回传 | OpenAI 兼容回传 `reasoning_content`（部分网关缺字段直接 400，走 `backfillReasoning` 补空串）；Claude 只回传**带签名**的块；Gemini **全部丢弃** | `ProviderSetting.kt:240`；`ChatCompletionsAPI.kt:611-613`、`:714-739`；`ToolReasoningBackfill.kt:13-33`；`ClaudeProvider.kt:531-549`；`GoogleProvider.kt:732-774` |
+| 可观测 | 拼装预览与真实请求**同函数**，按来源分段；`PromptDebugState` 留最近两次实发列表 | `PromptInspector.kt:315-333`；`PromptDebugState.kt:24` |
+| 护栏状态 | 全在 `ConversationSession` 内存里，**跨轮清零**（`beginNewTurn`），组装期看不到上一轮的标记 | `ConversationSession.kt:137`、`:165-171`；调用点 `ChatService.kt:877`、`:996`、`:1048` |
 
-**推论**：净化不需要护栏状态——它可以只依赖「已落库的消息本身」重算判据。这既省掉穿参，也顺带能处理**导入的旧会话 / 护栏上线前**的存量残留。
+### 3.4 组装期拿不到的三种信息（决定了判据形态）
 
-## 4. 设计之一（主方案）：发送层「残留净化」
+1. **上一轮的护栏状态**：`beginNewTurn` 清零，组装期没有「上一轮被停过」这个事实；
+2. **落库的停止痕迹**：`Notice` 只走内存 `_errors`，库里没有任何标记；
+3. **「被停」与「只是很怪的轮」的区分**：重算只能看内容，看不了护栏的判定过程（而且护栏的停止本身也可能是假阳性，见 §14）。
 
-### 4.1 窗口：只清「上一轮的助手残留」
+⇒ 所以净化判据必须是**内容自证的字面重复**，不能是「护栏说我停过」。副作用是正向的：导入的旧会话、护栏上线前的存量残留，一样能清。
 
-对消息列表按角色定位：
+## 4. 主方案：发送层 part 级净化
+
+### 4.1 窗口：只清「上一轮」
+
+对消息列表按角色定位（**两个判据缺一不可**）：
 
 ```
-u_prev = 倒数第二个真实 USER 消息的索引（isSynthetic == false）
-u_last = 最后一个真实 USER 消息的索引
-窗口   = (u_prev, u_last) 之间的所有消息   // 上一轮助手产出：assistant / tool 交替若干条
+u_prev = 倒数第二个「真实 USER」的索引（isSynthetic == false 且 !isContextCheckpoint）
+u_last = 最后一个「真实 USER」的索引（同上）
+窗口   = (u_prev, u_last) 之间的所有消息
 ```
+
+**必须排除 `isContextCheckpoint`**：上游检查点是 `isSynthetic = false` 的 USER（`Conversation.kt:225-227`），不排除它，窗口会变成「自压缩边界以来」，而不是「上一轮」。判法照 `MemoryRelevance.memoryQueryOf`（`MemoryRelevance.kt:150-155`）。
 
 为什么是这一段：
 
-1. **它就是护栏刚判退化的那一轮**——同一轮内被停掉后留下的所有输出，全在这个区间里；
-2. **它在当前轮内是冻结的**：当前轮无论走到第几步，`u_last` 都是同一条用户消息 ⇒ 窗口内容不变 ⇒ 净化决策每步一致（幂等、不会中途翻转，前缀不抖动）；
-3. **它不会误伤在途工具协议**：当前轮的工具调用/结果都在 `u_last` 之后，净化根本不看它们；
-4. 首次对话（只有 1 条真实 USER）⇒ **不净化**（没有「上一轮」可清）。
+1. **它就是护栏刚判退化的那一轮**——同一轮内被停掉后留下的内容，全在这个区间里；
+2. **它不会误伤在途工具协议**：当前轮的工具调用/结果都在 `u_last` 之后，净化根本不看它们；
+3. **首次对话（只有 1 条真实 USER）⇒ 不净化**（没有「上一轮」可清）。
 
-**不做「跨轮历史扫描」作为默认行为**：那会把更早的残留也一起动，前缀缓存整段作废、误删面扩大（见 §6 才作为可选项）。
+> ⚠️ **位置稳定 ≠ 字节稳定**（revision 2 修正）。初稿说「窗口在轮内是冻结的」，只对了一半：每步都对 live 列表重算（`PromptAssembly.kt:250-258` 的注释），而 **输出变换每步会重写每条助手消息**（`GenerationHandler.kt:584-602`；`RegexOutputTransformer.kt:17-37`），`contextMessageLimit > 0` 时 `limitContext` 的截断点还会随列表增长移动、可能把 `u_prev` 移出窗口（`Message.kt:344-376`）。所以：
+> - **P1 的启用条件是 `contextMessageLimit == 0`**（默认就是 0，等于默认安全）；
+> - 决策里带上「窗口消息 id 序列 + 各 part 内容 hash」，翻转时打日志（P0 统计翻转率）；翻转率高再考虑轮内锁定，而不是先猜。
 
-### 4.2 规则（按顺序，命中即停；全部只依赖窗口内内容）
+### 4.2 规则（part 级；按顺序，命中即处理；全部只依赖窗口内内容）
 
-**门槛与护栏对齐**：先给窗口内每条助手消息打标（判据与护栏**同一份**）。R1/R2 这族只在窗口内标记数 ≥ `ThinkingDegenerationGuard.DEFAULT_MAX_STALLED_CALLS(3)`（即「护栏会判停」的量级）时生效；低于门槛**一条都不动**——护栏没停的轮次，净化也不替它改上下文。R3（工具空转）另有自己的门槛（与 `ToolCallLoopGuard` 同量级：同签名出现 ≥3 次）；R4 不需要门槛（能在单条里出现逐字周期，本身就是判据）。
+**原则：不丢信息，只丢重复。** 同一份信息保留**最早的一份**，后面重复的截掉或去掉；不再有「整段剥掉推理」这种动作。
 
-| # | 名字 | 判据（打标） | 动作 |
+| # | 名字 | 判据 | 动作 |
 |---|---|---|---|
-| R1 | 空转条 | 无工具、无正文/图片、推理 ≥ `DEFAULT_MIN_REASONING_CHARS(2048)` | **整条丢弃** |
-| R2 | 复述条 | 无工具调用；与窗口内上一条的 `containment(本, 上) ≥ DEFAULT_SIMILARITY_THRESHOLD(0.8)`（与护栏同一函数） | 保留**正文/图片**，**剥掉推理 part**（用户看到的回答不能丢） |
-| R3 | 工具空转 | 连续 ≥2 组「纯工具调用的 assistant + 对应 TOOL 结果」，工具名与规范化参数完全相同 | **保留第一组，丢弃之后各组**（成对丢弃，绝不拆散） |
-| R4 | 单条逐字周期 | 单条助手消息：`minimalPeriod(尾部窗口) ∈ 2..64`、周期内 ≥2 个不同字符、尾部跨度 ≥256、且**无正文** | **整条丢弃** |
+| **C1a** | 周期截断 | 某个 `Reasoning` part 的尾部窗口 ≥ `DEFAULT_CYCLE_SPAN_CHARS(256)`，`minimalPeriod` ∈ 2..`DEFAULT_MAX_CYCLE_PERIOD_CHARS(64)`，周期内 ≥2 个不同字符（否则长 `====` / `────` 分隔线会被误杀） | 把该 part 截到**周期起点**（保留前缀） |
+| **C1b** | 块级去重 | 同一 part 内按 ~512 字符切块，块 `i` 与更早的某块 `containment ≥ DEFAULT_SIMILARITY_THRESHOLD(0.8)`（护栏同款 8-gram shingle） | 把该 part 截到块 `i` 起点（保留前面的内容） |
+| **C1c** | part 级去重 | 同一条消息里，后一个 `Reasoning` part 被**更早**的某个 `Reasoning` part 覆盖 ≥ 0.8 | **前面那些一个都不动，后面这个整段去掉** |
+| **C2** | 工具空转 | 同一消息内 `(toolName, 规范化 input)` 重复，**且 output 等价**（相等，或都是错误/空结果） | 保留第一个 `Tool` part，丢掉后续重复的 |
+| **C3** | 空产出轮 | 整条消息无 Text / Image / Audio / Video / Document / Tool，且 C1 之后剩余推理为空或 < 512 字符 | 整条丢（编码器本来也会丢空助手消息，行为一致） |
+
+**为什么是这三条而不是初稿的 R1–R4**：C1a 覆盖「流中途逐字循环」（初稿 R4）；C1b + C1c 覆盖「续写累积 / 跨调用复述」（初稿 R2，且**保留第一份**，不再出现「推理被剥光、模型失忆」）；C2 覆盖「工具空转」（初稿 R3，改在 part 上，天然原子）；C3 覆盖「整轮什么都没产出」（初稿 R1）。四条规则收敛成「去重 + 截周期」，共同点是**判据只看同一个窗口内的字面重叠，不需要跨轮、不需要护栏状态**。
+
+**C2 必须带上 output 等价条件**：同一个工具同参数在不同时刻读出来的结果本来就可能不同（文件被改过），只看 `(toolName, input)` 去重会丢真信息。
 
 **不变式（必须由单测钉住）**：
+
 - 永不丢弃 `USER` 消息、`isSynthetic` 消息、带 `Image/Audio/Video/Document` part 的消息；
-- 工具调用与结果**原子**（丢弃必须成对，或都不丢）；
-- 只读窗口内、只依赖窗口内内容 ⇒ 幂等（`purge(purge(x)) == purge(x)`）且同轮各步结果一致；
-- 不碰带签名推理（`UIMessagePart.Reasoning.isProviderSigned()`，`7e8b440d` 引入）：Claude 的 `thinking` 块改一个字就 400（`ClaudeProvider.kt:526-532` 的注释系列），这类**只看不碰**，记一条 decision 供预览解释；
-- 窗口内全被丢弃时**不补占位消息**：`U_prev` 与 `U_last` 相邻是合法的（OpenAI/Anthropic/Gemini 都接受连续 user），而且语义正确——上一轮本来就没答出来，模型应该去答 `U_prev` 那个问题。
+- 永不改动 `isProviderSigned()` 的 `Reasoning` part（Claude 的 `thinking` 块改一个字就 400，`ClaudeProvider.kt:531-549`；`MessageMetadata.kt:95-97`）——这类**只看不碰**，记一条 decision 供预览解释；
+- 只读窗口内、只依赖窗口内内容 ⇒ 幂等（`purge(purge(x)) == purge(x)`）；
+- 净化只产**新的副本**：元素是共享实例（`limitContext` 可能返回 `this` 或 `subList` 视图），改 part 必须 `copy(parts = ...)`，绝不原地改；
+- 窗口内全被清空时**不补占位消息**：`u_prev` 与 `u_last` 相邻是合法的；而且本仓**已经**天天在发连续 USER（记忆块 L2+L3、规则提醒都是尾部合成 USER，`PromptAssembly.kt:345-365`），所以这不是新风险。
 
-### 4.3 例子（形态 2：复述 + 少量正文）
+### 4.3 例子（按真实形态：一条消息 + 两个工具 part）
 
-净化前（上一轮实际发过的尾部；窗口内 3 条都打上 stalled 标记 ⇒ 达到门槛 3 ⇒ 整段净化）：
+净化前（上一轮实际发过的尾部）：
 
 ```
 user: 把 README 的发行说明改一下
-assistant  [reasoning 3.2K，无正文，无工具]                      ← 空转条 → 整条丢弃
-assistant  [reasoning 3.1K，复述上一条，正文「好的，我来改。」]      ← 复述条 → 剥推理，留正文
-assistant  [reasoning 3.3K，复述上一条，正文「好的，我来改。」]      ← 复述条 → 同上
+assistant  [一条消息]
+  Reasoning 3.2K  「先读 README 的发行说明段，再改版本号与日期…」   ← 最早那份，保留
+  Tool workspace_read_file(README.md) → output 4.1K               ← 保留
+  Reasoning 3.1K  （与上面重叠 ≥0.8：续写累积/复述）              ← C1c 整段去掉
+  Text 「好的，我来改。」                                          ← 保留
 user: 继续
 ```
 
@@ -99,149 +150,213 @@ user: 继续
 
 ```
 user: 把 README 的发行说明改一下
-assistant  好的，我来改。
+assistant
+  Reasoning 3.2K  「先读 README 的发行说明段，再改版本号与日期…」
+  Tool workspace_read_file(README.md) → output 4.1K
+  Text 「好的，我来改。」
 user: 继续
 ```
 
-用户看到的历史（DB/UI）**一个字都不变**；变的只是「模型这一眼看到什么」。这正是「不像护栏那样劝，而是把诱因撤掉」。
+用户看到的历史（DB/UI）**一个字都不变**；变的只是「模型这一眼看到什么」。
 
 ### 4.4 缓存账：为什么这个窗口几乎不花钱
 
-压缩设计里已经确立「前缀缓存稳定性」是硬约束（`PromptAssembly.kt:215-222`、`design-auto-compaction.md` §2.2 ③）。逐条算：
+前缀缓存稳定性是硬约束（`PromptAssembly.kt:215-222`、`design-auto-compaction.md` §2.2 ③）。逐条算：
 
 | 情形 | 上一个请求的 prompt | 本次 prompt | 公共前缀 |
 |---|---|---|---|
 | 不净化 | `…，窗口(原样)，U_last` | `…，窗口(原样)，U_last` | 全省 |
-| 净化（R1/R3/R4 丢弃整条） | 末尾就是被丢的那些条 | 少了那些条 | 断在**第一个被丢的位置** ⇒ 之后重算，代价 = 窗口大小（一轮产出，通常 2–8K token） |
-| 净化（R2 剥推理） | 同上 | 该条推理变空 | 同上 |
+| 净化（C1c / C2 / C3） | 末尾就是被去掉的 part / 消息 | 少了那些 part | 断在**第一个被改的位置** ⇒ 之后重算，代价 = 窗口大小（一轮产出，通常 2–8K token） |
+| 净化（C1a / C1b 截断） | 同上 | 该 part 变短 | 同上 |
 
-结论：**每次「被净化」只付一轮产出的重算，且判据命中本身就是罕见事件**（护栏 20 项单测里合法内容零误杀）。不清的话，那段复读推理**每一轮**都要被重发一次（R1 的条还要按原价整条计费）；净化只付一次重算，之后上下文永久变干净。
+结论：**每次「被净化」只付一轮产出的重算，且命中本身就是罕见事件**（护栏 20 项单测里合法内容零误杀）。不清的话，那段复读**每一轮**都要被重发一次；净化只付一次重算，之后上下文永久变干净。
 
-> ⚠️ 注意与「压缩」的先后：净化在 `limitContext` **之后**执行，所以它只会让窗口更小，不会改变截断的滞回步点；净化省下的 token 也可能让自动压缩少触发一次（正向副作用）。
+> ⚠️ 与「压缩」的先后：净化在 `limitContext` **之后**执行，所以它只会让窗口更小，不会改变截断的滞回步点；净化省下的 token 也可能让自动压缩少触发一次（正向副作用）。
 
 ### 4.5 落点：`buildSendWindowMessages`（预览零漂移）
 
 ```kotlin
 // data/ai/ContextPurifier.kt（纯类，无 Android 依赖，JVM 单测）
 internal object ContextPurifier {
-    data class Decision(val rule: Rule, val droppedIndices: List<Int>, val reason: String)
-    data class Result(val messages: List<UIMessage>, val decisions: List<Decision>)
-    fun purgeResidue(messages: List<UIMessage>): Result
+    enum class Rule { CYCLE_TAIL, BLOCK_DUP, PART_DUP, TOOL_IDLE, EMPTY_TURN }
+    data class Decision(val rule: Rule, val messageRole: MessageRole, val detail: String)
+    data class Result(
+        val messages: List<UIMessage>,
+        val decisions: List<Decision>,
+        /** 仅诊断用：被去掉的字符数（不是账单口径） */
+        val savedChars: Int,
+    )
+
+    fun purgeResidue(window: List<UIMessage>): Result
 }
 ```
 
-调用点：`PromptAssembly.buildSendWindowMessages` 的返回处（`PromptAssembly.kt:267-270`，`ContextPurifier.purgeResidue(...)` 包住 `buildList{}`）。
+调用点：`buildSendWindowMessages` 的 `buildList{}` 外层（`PromptAssembly.kt:269-273`），即 `limitContext` 之后、调用方 `.map { withoutUiNotices() }`（`:313`）之前。
 
 选这里的理由：
-- **预览 = 请求**由构造保证（`PromptInspector.kt:279` 调的正是这个函数）——不需要在预览里另写一份，杜绝漂移；
-- 纯函数、无 Android 依赖、无协程 ⇒ 与护栏同款可单测；
-- 不经过 transformer 链 ⇒ 不受「用户可配置的注入顺序」影响，语义固定。
 
-**不选** `generateInternal:1161`（transforms 之后）：那里预览要自己镜像一遍（`PromptInspector.kt:301`），是已知的漂移源；也不选新增 transformer：`SubagentRunner.kt:422` 传的是 `emptyList()`，会漏掉无头 run。
+- **预览 = 请求**由函数同一性保证（`PromptInspector.kt:315-333` 调的正是这条链）——不需要在预览里另写一份，杜绝漂移；
+- 纯函数、无 Android 依赖、无协程 ⇒ 与护栏同款可单测；
+- 不经过 transformer 链 ⇒ 不受「用户可配置的注入顺序」影响，语义固定；也无头 run（`SubagentRunner.kt:421-423` 传 `emptyList()`）天然覆盖。
+
+**三条落点约束（revision 2 新增）**：
+
+1. 钩子在 `.withoutUiNotices()` **之前** ⇒ 会看到 UI 中断横幅 part：判「有没有正文」只认真实 Text/Image，决策里的索引要映射到最终请求索引（预览卡用）；
+2. 钩子看不到之后才追加的合成尾部（记忆块 / 规则提醒，`PromptAssembly.kt:345-365`）——将来若要净化它们，这里不是那个点；
+3. 预览是**函数**同一性，不是**输入**同一性：regen 走 `messageRange` 子列表 + `compressionWindow = null`，工具循环中预览还缺当步消息 ⇒ 预览卡要注明「本卡是空闲态的重演」。
+
+**不选** `generateInternal:1168`（transforms 之后）：那里预览要自己镜像一遍（`PromptInspector.kt:341` 单独跑一条链），是已知的漂移源；也不选新增 transformer：无头 run 会漏。
 
 ### 4.6 存储语义：净化**不是编辑**，正文与推理都原样保存
 
 | 对象 | 净化后 |
 |---|---|
-| 数据库 `messageNodes` | **不动**：正文、推理、工具调用/结果全部原样在库里（`Conversation.kt:231`「轨迹只追加」） |
+| 数据库 `messageNodes` | **不动**：正文、推理、工具调用/结果全部原样在库里（`Conversation.kt:215-237`「轨迹只追加」） |
 | 用户看到的历史（DB/UI） | 不动，与现在完全一致 |
-| 这一次请求的副本 | R1/R4 的条不出现；R2 的条去掉推理 part、正文/图片保留；R3 的重复组成对不出现 |
+| 这一次请求的副本 | C1a/C1b 的 part 变短；C1c 的重复 part 不出现；C2 的重复工具不出现；C3 的整条不出现 |
 
 **三条「不按编辑算」的理由**：
 
-1. **签名**：Claude/Gemini 的推理块带签名，改写即 400（`7e8b440d` 的 `isProviderSigned()` 警示，以及 `Expected thinking or redacted_thinking, but found tool_use` 前科）——净化若落库成「编辑」，等于永久破坏该块的可回传性。
+1. **签名**：Claude/Gemini 的推理块带签名，改写即 400（`MessageMetadata.kt:95-97` 的 `isProviderSigned()`，以及 `Expected thinking or redacted_thinking, but found tool_use` 前科）——净化若落库成「编辑」，等于永久破坏该块的可回传性。
 2. **可撤销**：净化是自动判据的产物，判据会随标定继续调整；request-only 时「关掉开关 = 立刻全部恢复」，落库改写不可逆。
-3. **语义污染**：编辑是**用户意图**，现有链路会把编辑后的文本按 `reasoning_content` 回传（`ChatCompletionsAPI.kt:682-686` 的注释）；自动净化若复用这条路径，会把「机器删减」混进「用户改写」的语义里，之后谁也说不清这条消息是人改的还是机器清过的。
+3. **语义污染**：编辑是**用户意图**，现有链路会把编辑后的文本按 `reasoning_content` 回传；自动净化若复用这条路径，会把「机器删减」混进「用户改写」的语义里。
 
-**发送副本不会撞 400 的两个兜底**：
-- OpenAI 兼容：R2 把推理 part 整个去掉后，需要回填的网关会走 `backfillReasoning` 分支补**空串**（`ChatCompletionsAPI.kt:664-686`，空串对 `api.deepseek.com` 实测 200）；
-- Claude/Gemini：签名块**只读不碰**；整条丢弃只发生在「无正文、无工具」的 R1/R4 条上，那种条没有 `tool_use`，不构成「缺 thinking 的 tool_use 消息」这个 400 条件。
+**发送副本不会撞 400 的兜底**：
+
+- OpenAI 兼容：C1c 去掉推理 part 后，需要回填的网关会走 `backfillReasoning` 补**空串**（`ChatCompletionsAPI.kt:714-739`，空串对 `api.deepseek.com` 实测 200）；
+- Claude/Gemini：签名块**只读不碰**；而且这两家在编码时本来就会丢掉全部无签名推理，净化对它们近乎 no-op（§2 作用域表）；
+- **OpenAI Responses 路径未覆盖**：`useResponseApi=true` 走另一套编码器（`reasoning` item + `reasoningId`/`encryptedContent`，`ResponseAPI.kt:410-428`），P1 先跳过并留 fixture。
 
 **唯一允许改落库的路径**是 §6.2 的手动清理（用户确认后真删，且是用户可撤销的显式操作）。
 
-## 5. 设计之二（可选）：写入侧「源头截断」
+## 5. 已否决：写入侧截断（原 §5）
 
-护栏在**流中途**断流时（形态 3），被截下的推理尾部**逐字就是那个循环**（「好。执行。好。执行。」），现在会原样落库——一条消息可能就是几十 KB 的复读。发送层净化对它无能为力（R4 只在「无正文」时整条丢；一条 50KB 的复读本身就是个诱因）。
+初稿的「流中途断流后把推理裁到周期起点、落库」这条，**revision 2 决定不做**，理由：
 
-做法：`onDelta` 返回 `Repeating` 时，把该条消息的推理**裁剪到周期起点**（保留前文 + 一个周期），UI 上显示一行「（重复部分已省略 N 字）」。判据现成（`minimalPeriod`），纯函数，无模型调用。
+1. **同一个操作放请求侧就够**：C1a 已经在请求副本上完成同样的截断，而「50KB 复读进上下文」这个危害被完整覆盖；
+2. **不可逆**：截断落库后，判据调整 = 数据已损坏；request-only 关掉开关即恢复；
+3. **与「轨迹只追加」冲突**：`Conversation.kt:215-237` 明确检查点不动 messageNodes，写侧截断会破例；
+4. **签名块**：Claude/Gemini 下必须退化为「不裁」，等于同一个功能一半不可用；
+5. 残余价值只剩**磁盘占用与 UI 观感**——这两件事的正确归宿是「整轮折叠（只改显示）」或 §6.2 手动清理，不是改库。
 
-代价与风险：
-- **改变用户看到的内容**（折叠提示可缓解）；
-- 签名块不能动（Claude/Gemini）⇒ 这两种 provider 下退化为「不裁」；
-- 诊断价值下降（想回看原始循环得开日志）。
+> 若将来确实要处理磁盘/观感：优先做「折叠显示 + 原始文本保留」，即 `design-whole-turn-folding.md` 的路子。
 
-**默认建议：只对「无正文、无工具」的纯复读条生效**（这种条本来就没有回答价值），有正文的留给 §4 的 R2。
-
-## 6. 设计之三（可选）：深度净化 / 手动清理
+## 6. 设计之二（可选）：深度净化 / 手动清理
 
 ### 6.1 深度净化（跨轮扫描）
-把窗口从「上一轮」扩到「最近 N 轮 / 整条上下文」。收益：清更早的残留。代价：前缀缓存整段作废（可见 `PromptInspector` 的 STABLE/EVENT/TURN 三段读数，TURN 段会接近全失）、误删面变大。**建议默认关，标题写明「会让缓存失效」**——本仓已有同款取舍的先例（改历史 ⇒ cache 从该点作废，roadmap 2026-10-08 条）。
+
+把窗口从「上一轮」扩到「最近 N 轮 / 整条上下文」。收益：清更早的残留。代价：前缀缓存整段作废（`PromptInspector` 的 STABLE/EVENT/TURN 三段读数里 TURN 段接近全失）、误删面变大。**建议默认关，标题写明「会让缓存失效」**——本仓已有同款取舍的先例（改历史 ⇒ cache 从该点作废）。
 
 ### 6.2 手动清理（真删，需要确认）
-给「这一段明显在打转」的历史一个用户可见的出口：选中若干助手消息 → 折叠/删除（落库）。对齐记忆整理的**提议 → 确认**模式（`MemoryConsolidationScheduler.kt:336-345`），并且是**唯一允许真删**的路径（自动净化绝不落库）。
 
-这解决一个默认净化覆盖不到的场景：**导入的旧会话**、以及用户想「彻底不想再看到这段」。
+给「这一段明显在打转」的历史一个用户可见的出口：选中若干助手消息 → 折叠/删除（落库）。对齐记忆整理的**提议 → 确认**模式（`MemoryConsolidationScheduler` 的确认流），并且是**唯一允许真删**的路径（自动净化绝不落库）。
+
+这解决默认净化覆盖不到的两个场景：**导入的旧会话**；**用户想「彻底不想再看到这段」**。优先级高于 §5（P2）——成本低、收益直接、风险由用户确认承担。
 
 ## 7. 可观测性与开关
 
-- **预览卡**：照 `PromptDebugState` 的做法，记录「上一次请求的净化决策」（规则、被丢索引、省了多少 token），在 `PromptInspectPage` 里单列一张卡（`PromptDebugState.kt:24` 的 8 条 LRU 同款）。**没有这张卡，净化就是黑箱**——本仓对「静默改历史」的既定态度是必须有解释。
-- **用量**：净化省下的 token 记进统计账本（`UsageRecorder` 现成），与「压缩省下」并列，让收益可见。
-- **开关**：全局一项「净化退化的思考残留」，**默认开**、**不做档位**——与护栏同款理由（`ThinkingDegenerationGuard.kt:32-33`：「真出现误杀再加档位」）。深度净化单独一项，默认关。
+- **P0 先 dry-run**：净化照跑但**不改发送**，只在 `PromptInspectPage` 单列一张「如果开净化会怎么改」的卡（规则、被改的 part、省了多少字符）。**没有这张卡，净化就是黑箱**——本仓对「静默改历史」的既定态度是必须有解释。
+- **实装后的卡**：照 `PromptDebugState` 的做法，记录「上一次请求的净化决策」（`PromptDebugState.kt:24` 的 8 条 LRU 同款），并带窗口 hash，翻转时标红。
+- **用量**：初稿说「净化省下的 token 记进统计账本」——**不成立**：账本记的是实发 usage，省下的量没有口径。改为「诊断数字：被改动的字符数 / 估算 token」，只进预览卡，不混进账单。
+- **开关**：全局一项「净化退化的思考残留」，**默认开、不做档位**——与护栏同款理由（`ThinkingDegenerationGuard.kt:31-33`：「真出现误杀再加档位」）。但**先 P0 埋点**，拿到命中率与误杀样例之后再默认开。深度净化单独一项，默认关。
+- **文案**：要写明作用域（§2）——「仅对会回传推理的提供方有效；Claude/Gemini 已在编码层丢弃历史推理」。
 
 ## 8. 因果假设的验证（本文最不确定的一环）
 
 本设计的理论前提是「模型看到自己原地打转的痕迹，会更容易继续原地打转」（in-context imitation）。**这是假设，不是已测事实**——仓库既有文档只标定了「判据能识别退化」，没有标定「撤掉残留能降低复发」。
 
-验证办法（护栏 E2E 用过同款思路：靠测试桩确定性复现）：
-1. 测试桩 provider 返回一段**固定的退化历史**（形态 2：3.2K 复述 ×3，达到门槛），落库；
-2. 同一句「继续」，A 组走未净化组装、B 组走净化组装，各发 N=20 次（temperature 固定、同一模型）；
-3. 指标：再次命中护栏判据的比例、首条回复与残留的 containment、同义复述率；
-4. **失败判定**：若 B 不显著优于 A，则本设计降级为「省 token / 省缓存」，不再宣称「修复思维退化」——文档与 UI 文案都要跟着降级。
+初稿的办法（同句「继续」、A/B 各 20 次真机真模型）**成本高、方差大、且前提没锁住**。revision 2 改成：
 
-另一条已核实的读数支撑作用面：OpenAI 兼容路径默认**回传** `reasoning_content`（`ProviderSetting.kt:240`），所以推理确实是「会被下一轮看到的」；若用户关了 `includeHistoryReasoning`，R1/R3/R4 仍有效（丢整条），R2 退化为无操作。
+1. **用 `ScriptedProvider` 复现**（`GenerationToolLoopTest` 已有这套桩），不碰真机、不花真钱：A 组喂未净化窗口，B 组喂净化后的窗口，同一模型、同一 temperature；
+2. **temperature 固定 0**：输入差就是全部差，方差大幅下降，N 可降到 10/组；
+3. **主指标用连续量**，不用二值「是否再次退化」：首条回复推理与残留的 `containment`、推理长度、再次触发 C1a 的比例；
+4. **预注册判定**：例如「B 组首条回复对残留的 containment 中位数至少低 0.2」才算有效，否则按失败处理；
+5. **失败即降级**：若 B 不显著优于 A，本设计降级为「省 token / 去噪」，不再宣称「修复思维退化」——文档与 UI 文案都要跟着降级。
+
+**必须承认的一点**：本仓最致命的形态（流中途逐字循环，初稿形态 3）是**单次调用自激**，与「看到残留」无关。所以这个实验真正回答的只是「清掉上一轮残留能否降低复发」。另外，护栏的停止本身存在假阳性（§14），P0 统计命中率时要先排除掉那部分。
 
 ## 9. 风险
 
 | 风险 | 说明 | 缓解 |
 |---|---|---|
-| provider 合法性 | 工具对拆散、Claude 签名块被改 → 400（已有前科：`Expected thinking or redacted_thinking, but found tool_use`） | 成对丢弃 + 签名块只读 + 组装后校验器 |
-| 误删有效信息 | 工具结果可能被用户下一句引用（「结果里那个数」） | R3 只丢**重复**组、保留第一组；P0 先只记录观察一周再启用 |
-| 缓存抖动 | 一次前缀失效（一轮产出量级） | 只清「上一轮」+ 命中罕见；深度净化单独开关且提示代价 |
-| 每步不一致 | 若判据依赖「当前步」状态，同一轮内前缀会来回翻 | 判据只依赖冻结窗口 ⇒ 单测钉「同轮多步结果一致」 |
-| 与压缩互相打脸 | 压缩把窗口摘要掉后，净化窗口可能落在检查点区间内 | `partitionCheckpointMessages` 已把检查点隔离在前；净化只处理其后的消息，空窗口即 no-op |
+| provider 合法性 | Claude 签名块被改 → 400；OpenAI Responses 编码器未测 | 签名 part 只读不碰；P1 跳过 Responses；组装后校验器 |
+| 误删有效信息 | C2 丢掉的工具结果可能被用户下一句引用（「结果里那个数」） | C2 要求 output 等价；保留第一组；P0 先只记录观察一周 |
+| 缓存抖动 | 一次前缀失效（一轮产出量级）；上游轮内重写窗口会让决策翻转 | 只清「上一轮」+ 命中罕见；P1 限定 `contextMessageLimit == 0`；P0 统计翻转率 |
+| 逐条不一致 | 判据只依赖窗口内容 ⇒ 同轮多步结果一致；**但窗口字节本身可能变** | 单测钉「同输入同输出」；P0 记窗口 hash 并在翻转时告警 |
+| 与压缩互相打脸 | 压缩把窗口摘要掉后，净化窗口可能落在检查点区间内 | `partitionCheckpointMessages` 已把检查点隔离在前；净化只处理其后；空窗口即 no-op；`u_prev/u_last` 排除 `isContextCheckpoint` |
 | 无头 run / 子智能体 | `SubagentRunner` 走空的 transformer 链 | 净化在 `buildSendWindowMessages`，两条路径共享，天然覆盖 |
+| 门槛形同虚设 | 初稿「≥3 条标记消息」永不满足（§3.2） | 已改：单条消息内命中即处理，不再有跨消息计数 |
+| 连续 user | 清空窗口后 `u_prev/u_last` 相邻 | 本仓已在发连续 USER（记忆块 / 规则提醒），无新增风险；仍留一条编码器 matrix 测试 |
+| 预览误导 | 预览是函数同一性、非输入同一性 | 卡上注明「空闲态重演」；regen / 工具循环中不展示 |
 
 ## 10. 测试计划
 
 - **纯函数单测**（`ContextPurifierTest`）：
-  - 每条规则的命中/不命中；**四类合法内容零误杀**（markdown 表格 / 日志 / CSS / JSON dump，直接复用护栏测试里的样本）；
-  - 不变式：不丢 USER / 签名块 / 带附件消息；工具对原子；幂等；同轮多步一致；
-  - 边界：只有一条用户消息、窗口为空、窗口全是用户消息、检查点存在。
-- **Wiring 扫描测试**（`ContextPurifierWiringTest`，照 `ThinkingDegenerationWiringTest` 的源码扫描型）：`buildSendWindowMessages` 确实调用净化、预览路径复用、`generateInternal` 未另起一份。
-- **真机验证**（装 debug）：
-  - 测试桩造退化历史 → `PromptInspect` 里看「净化卡」与最终分段，确认预览 = 实发（`PromptDebugState` 的对比卡）；
-  - 请求日志对比净化前后发送条数/token 数；
-  - 真机跑一周：命中率、误伤（用户点「撤销」/抱怨）、缓存命中率（STABLE/TURN 比例）。
-- **因果实验**：§8 的 A/B。
+  - C1a / C1b / C1c / C2 / C3 各自命中与不命中；
+  - **零误杀**：复用护栏的合法样本（markdown 表格 `ThinkingDegenerationGuardTest.kt:252`、JSON dump `:265`、日志 `:278`、长 `====` 分隔线 `:243`）——注意库里**只有 3 个合法样本 + 分隔线**，初稿说的「四类含 CSS」不成立，**需补一个 CSS fixture**；
+  - 不变式：不丢 USER / 合成消息 / 带附件消息；不碰签名 part；幂等；同输入同输出；
+  - 边界：只有一条用户消息、窗口为空、窗口全是 USER、窗口内含 upstream checkpoint。
+- **Wiring 扫描测试**（`ContextPurifierWiringTest`，照 `ThinkingDegenerationWiringTest` 的源码扫描型，4 个用例）：`buildSendWindowMessages` 确实调用净化、预览路径复用、`generateInternal` 未另起一份。
+- **真实形态 fixture**：用 `ScriptedProvider` 造「一条消息 = Reasoning + Tool + 重复 Reasoning + Text」，跑真 `generateText` 后取窗口验证（`GenerationToolLoopTest` 的现成桩）。
+- **编码器 matrix**（轻量，各 1 例）：净化后的窗口分别过 OpenAI 兼容 / Claude / Gemini / Responses 编码器，断言不产生非法结构（连续 user、空助手消息、缺 reasoning 的 tool 组）。
+- **真机验证**（装 debug）：测试桩造退化历史 → `PromptInspect` 看 dry-run 卡与最终分段，确认预览 = 实发；对比净化前后发送条数 / 字符数；真机跑一周看命中率、误伤、缓存 STABLE/TURN 比例。
+- **因果实验**：§8。
 
 ## 11. 分阶段
 
 | 阶段 | 内容 | 风险 |
 |---|---|---|
-| P0 | 只记录：纯函数 + 预览卡 + 日志，**不改发送** | 零行为变更 |
-| P1 | 执行 R1 + R3 + R4（整条丢弃，最安全） | 低 |
-| P2 | 执行 R2（剥推理留正文） | 中（改变上一轮模型所见） |
-| P3 | 写入侧截断（§5）、手动清理（§6.2） | 中（改落库内容，需确认 UI） |
-| P4 | 深度净化（§6.1） | 高（缓存+误删），默认关 |
+| **P0** | 纯函数 `ContextPurifier` + dry-run 预览卡 + 日志（**不改发送**）；同时验三条前提：纯推理历史消息是否真的被回传、Claude/Gemini 是否已天然净化、真实命中率与决策翻转率 | 零行为变更 |
+| **P1** | 执行 C1a + C1b + C1c + C2 + C3（part 级、保留最早一份），默认开、无档位；限定 `contextMessageLimit == 0` | 低 |
+| **P2** | §6.2 手动清理（多选删除，对齐记忆回收站） | 中（真删，需确认 UI） |
+| **P3** | §6.1 深度净化（跨轮） | 高（缓存 + 误删），默认关 |
+| 不做 | 写入侧截断（§5） | — |
 
 ## 12. 已定 / 待拍板
 
-**已定（2026-10-21）**：
+**已定（2026-10-21，revision 2 保留）**：
+
 - 范围 = 只清「上一轮残留」；
 - **净化不落库、不按编辑算**：正文与推理都原样保存在库里，只有这一次请求的副本被删减（§4.6）。
 
+**已定（2026-10-23，revision 2 新增）**：
+
+- 净化单位是 **part**，不是消息（§3.2）——初稿的消息级规则在本仓不可实现；
+- 原则是**保留最早一份、截掉重复**，不做「整段剥推理」——初稿待拍板 1 因此消解；
+- **不做写入侧截断**（§5 否决）；
+- 判据只允许「内容自证的字面重复」，不允许以「护栏停过」为触发（§3.4、§14）。
+
 **待拍板**：
-1. **R2 的接受度**：历史里「只剩正文、推理被剥」——这会让模型看到的上一轮内容变少（但正文一条不少）。接受吗？
-2. **写入侧截断**要不要做（§5）——它会改**落库内容**，是唯一会动用户可见历史的地方。
-3. **开关**：默认开 + 无档位（与护栏一致），还是先做成默认关让用户自己开？
-4. **因果验证**（§8）做不做：需要真机 + 真模型调用约 40 次；不做的话，设计只能以「省 token / 去噪音」立论，不能宣称改善退化。
+
+1. **P0 的观察期长度与决策门**：跑几天、命中率低于多少就放弃 P1（建议：两周；两周内命中会话 < 1% ⇒ 只保留 dry-run 卡，不上 P1）。
+2. **P1 的开关默认值**：P0 无数据前默认关，有数据后默认开——还是反过来先默认开（护栏同款「真出现误杀再加档位」）？
+3. **C3 是否保留**：编码器本来就会丢空助手消息，C3 只在「窗口内整条消失」的组装层语义上有效，收益很小；要不要直接砍掉？
+4. **因果实验（§8）做不做**：需要 `ScriptedProvider` 桩 + 温度 0 的 10–20 次调用；不做的话，设计只能以「省 token / 去噪」立论，不能宣称改善退化。
+
+## 13. 变更记录（revision 2 相对 2026-10-19 初稿）
+
+| # | 初稿 | revision 2 | 依据 |
+|---|---|---|---|
+| 1 | 窗口内容 = 「assistant / tool 交替若干条」 | **一轮 = 一条助手消息**；残留是 part 级的 | §3.1 三处代码证据 |
+| 2 | 门槛 = 窗口内标记数 ≥ 3（抄护栏 `DEFAULT_MAX_STALLED_CALLS`） | **取消跨消息门槛**：单条消息内命中即处理 | 护栏数的是「调用」，落库是「消息」，两个单位对不上 |
+| 3 | R1 空转条整条丢 / R2 复述条剥推理 / R3 工具对成对丢 / R4 单条周期整条丢 | **C1a 周期截断 / C1b 块级去重 / C1c part 级去重 / C2 工具去重（要求 output 等价）/ C3 空产出轮** | 消息级动作会连带丢掉工具进展；part 天然原子 |
+| 4 | R2「剥掉推理 part，保留正文」 | **只截重复段，保留最早一份** | 回答初稿待拍板 1（模型失忆顾虑），信息不再丢 |
+| 5 | §5 写入侧截断（P3，改落库） | **否决**，原因见 §5 | 请求侧已覆盖；不可逆；破「轨迹只追加」 |
+| 6 | 「窗口在轮内冻结」 | **位置冻结 ≠ 字节冻结**；限定 `contextMessageLimit == 0`；P0 统计翻转率 | 输出变换每步重写 + `limitContext` 截断点移动 |
+| 7 | 未提 checkpoint 的角色歧义 | `u_prev/u_last` 必须排除 `isContextCheckpoint` | 上游检查点是 `isSynthetic=false` 的 USER |
+| 8 | 未提 provider 作用域 | 新增 §2 作用域表：仅 OpenAI 兼容族会回传推理 | Claude/Gemini 编码层已天然净化 |
+| 9 | 「净化省下的 token 记进用量账本」 | 改为**诊断数字**，不混进账单 | 账本口径是实发 usage，没有「省下」这个量 |
+| 10 | 因果实验 = 真机 A/B 各 20 次 | **ScriptedProvider 桩 + 温度 0 + 连续指标 + 预注册** | 成本、方差、可复现性 |
+| 11 | 测试「四类合法内容」 | 库里只有 3 个（表格 / JSON / 日志）+ 分隔线，**需补 CSS** | 实测 fixture 清点 |
+| 12 | 行号锚点（10-19） | 全部刷新（包名 `app.androidrik.*`） | 只读核对 |
+
+## 14. 顺带发现（不属于本设计，建议单独立项）
+
+核实护栏时发现：**续写路径上的「复述」判据不稳**，两个方向都会错。
+
+1. **假阳性**：续写追加到**同一条**消息（`GenerationHandler.kt:663-690`），于是 `reasoning` 是累积的，`containment(累积_N, 累积_{N-1}) ≡ 1.0` ⇒ 每次续写都被判成「复述」。一个长回答遇到 3 次裸断流（`finishIncomplete` 默认自动续写，`CONTINUE_LIMIT = 3`），就会以「思考退化」被停掉并显示错误原因。
+2. **假阴性**：`shingles()` 只取最后 4000 字符（`ThinkingDegenerationGuard.kt:229`），单次续写若新增 > ~4000 字符，containment 归零、`stalledCalls` 清零。
+
+建议：续写分支只拿**新增段**做判据（或在 `onCallFinished` 里区分「同一消息的续写」与「新的一次调用」），并把这条单独立项，不要混进净化。
+
+对本设计的影响：**不能把「护栏停过」当作净化触发条件**——事实上一轮可能是被误停的健康轮。这也是 §4.2 坚持「判据只依赖内容字面重复」的原因。
