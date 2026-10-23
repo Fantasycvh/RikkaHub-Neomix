@@ -205,7 +205,13 @@ class KeepAliveService : Service() {
     private fun buildLaunchPendingIntent() = PendingIntent.getActivity(
         this,
         0,
-        packageManager.getLaunchIntentForPackage(packageName),
+        // A package lookup can return null (e.g. immediately after an applicationId change).
+        // The manifest activity is known and must not depend on launcher resolution to promote FGS.
+        Intent(this, app.androidrik.rikkahub.RouteActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        },
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
