@@ -190,4 +190,21 @@ class ModelRegistryTest {
         // 更短的 V2 条目没有视觉，只作为兜底
         assertEquals(listOf(Modality.TEXT), ModelRegistry.MODEL_INPUT_MODALITIES.getData("mimo-v2"))
     }
+
+    @Test
+    fun testMagnitudeNotVersion() {
+        val textInput = listOf(Modality.TEXT)
+        val visionInput = listOf(Modality.TEXT, Modality.IMAGE)
+        // 8b 是参数量，不能当成 qwen 3.8
+        assertEquals(textInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("qwen3-8b"))
+        assertEquals(textInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("qwen3-30b-a3b"))
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("qwen3-vl-8b-instruct"))
+        assertEquals(visionInput, ModelRegistry.MODEL_INPUT_MODALITIES.getData("qwen3.8-plus"))
+        // 3b 不能让 qwen2.5 命中 qwen 3
+        assertEquals(emptyList<ModelAbility>(), ModelRegistry.MODEL_ABILITIES.getData("qwen2.5-3b-instruct"))
+        assertEquals(
+            listOf(ModelAbility.TOOL, ModelAbility.REASONING),
+            ModelRegistry.MODEL_ABILITIES.getData("qwen3-8b")
+        )
+    }
 }
