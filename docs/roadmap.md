@@ -3535,3 +3535,6 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   提交 `d5564de0b`（含文件批处理、工作区安全加固、WebDAV 默认路径 `neomix_backups`）。
 - 2026-10-23 **bump `1.0.28-beta.8 (310)`**：`versionCode` 309→310；README 顶部发布行、「备份与数据」补文件批处理条目、
   「网络与提供商」补模型批量管理条目；roadmap 头部两处版本引用同步；`docs/README.md` 的 beta.7 描述为历史事实（首资产版）不改。
+  **发布 `1.0.28-beta.8 (310)`**（用户授权「推送并发布这一版」）：发布说明存档 [`releases/1.0.28-beta.8.md`](releases/1.0.28-beta.8.md)。
+  资产 `Neomix-1.0.28-beta.8-arm64-v8a.apk` 61,363,632 B，SHA-256 `a5a1183fd059107294032e641ef9c7b8e279a953011e85f631f0871997d87ec0`；
+  apksigner 核实 V2 签名、证书指纹 `d15b693a…d94eec78` 与 beta.7 一致；真机覆盖安装启动 0 FATAL。
