@@ -80,6 +80,7 @@ class ChatFloatingPanelTest {
 
     @Test
     fun resizeHandleAndResetAreInteractiveAtCompactSize() {
+        val moved = AtomicInteger()
         val resized = AtomicInteger()
         val reset = AtomicInteger()
         val finished = AtomicInteger()
@@ -98,6 +99,7 @@ class ChatFloatingPanelTest {
                         onResize = { _, _ -> resized.incrementAndGet() },
                         onResizeFinished = { finished.incrementAndGet() },
                         onResetSize = { reset.incrementAndGet() },
+                        onMove = { _, _ -> moved.incrementAndGet() },
                     )
                 }
             }
@@ -108,5 +110,9 @@ class ChatFloatingPanelTest {
         assertEquals(1, finished.get())
         rule.onNodeWithText(context.getString(app.androidrik.rikkahub.R.string.floating_chat_reset_size)).performClick()
         assertEquals(1, reset.get())
+        rule.onNodeWithText("Resize").performTouchInput {
+            swipe(center, center + Offset(100f, 100f), 400)
+        }
+        assertTrue(moved.get() > 0)
     }
 }

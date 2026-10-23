@@ -203,8 +203,9 @@ fun ChatFloatingPanel(
     onResize: ((Float, Float) -> Unit)? = null,
     onResizeFinished: () -> Unit = {},
     onResetSize: (() -> Unit)? = null,
+    onMove: ((Float, Float) -> Unit)? = null,
 ) {
-    Box(modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight), contentAlignment = Alignment.TopCenter) {
+    Box(modifier = (if (panelWidth == null) Modifier.fillMaxWidth() else Modifier).heightIn(max = maxHeight), contentAlignment = Alignment.TopCenter) {
         Surface(
             modifier = (if (panelWidth != null) Modifier.size(panelWidth, maxHeight)
                 else Modifier.widthIn(max = 560.dp).fillMaxWidth())
@@ -214,7 +215,14 @@ fun ChatFloatingPanel(
             shadowElevation = 8.dp,
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                PanelHeader(state, onOpenConversation, onCollapse, onDismiss)
+                val move by rememberUpdatedState(onMove)
+                val moveModifier = if (onMove == null) Modifier else Modifier.pointerInput(Unit) {
+                    detectDragGestures { change, delta ->
+                        change.consume()
+                        move?.invoke(delta.x, delta.y)
+                    }
+                }
+                PanelHeader(state, onOpenConversation, onCollapse, onDismiss, moveModifier)
                 // 只滚动中段，标题和输入栏始终可见。
                 if (state.preview.isNotEmpty() || state.awaitingApproval || state.queuedCount > 0) {
                     Column(
@@ -283,9 +291,10 @@ private fun PanelHeader(
     onOpenConversation: () -> Unit,
     onCollapse: () -> Unit,
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         if (state.generating) {
             ContainedLoadingIndicator(modifier = Modifier.size(40.dp))
         } else {
