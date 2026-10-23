@@ -2199,4 +2199,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
     <string name="image_crop_original">原图</string>
     <string name="image_crop_load_failed">无法加载图片</string>
     <string name="image_crop_failed">无法裁剪图片</string>
+    <!-- 媒体生成：获取模型列表（fork 自建能力） -->
+    <string name="setting_media_page_fetch_models_desc">从厂商接口获取可用的图像/视频模型，勾选后加入列表</string>
+    <string name="setting_media_page_fetch_models_empty">接口没有返回任何模型</string>
+    <string name="setting_media_page_fetch_models_add">添加 %1$d 项</string>
 </resources>

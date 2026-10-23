@@ -8,9 +8,11 @@ import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.mediagen.model.MediaGenerationStatus
 import app.androidrik.mediagen.model.MediaGenerationTask
 import app.androidrik.mediagen.provider.MediaGenerationProvider
+import app.androidrik.mediagen.provider.MediaModelLister
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.mediagen.provider.providers.bearerRequest
 import app.androidrik.mediagen.provider.providers.executeJson
+import app.androidrik.mediagen.provider.providers.siliconFlowVideoModels
 import app.androidrik.mediagen.provider.providers.obj
 import app.androidrik.mediagen.provider.providers.postJson
 import app.androidrik.mediagen.provider.providers.string
@@ -31,8 +33,23 @@ import okhttp3.OkHttpClient
  */
 class SiliconFlowMediaGenerationProvider(
     private val client: OkHttpClient,
-) : MediaGenerationProvider<MediaGenerationProviderSetting.SiliconFlow> {
+) : MediaGenerationProvider<MediaGenerationProviderSetting.SiliconFlow>,
+    MediaModelLister<MediaGenerationProviderSetting.SiliconFlow> {
     override val id: String = PROVIDER_ID
+
+    /**
+     * `GET {baseUrl}/models?type=video`：文档里的 `type` 参数只返回视频模型。
+     * 自建/中转地址可能忽略该参数而返回全部模型，所以解析时仍按 id 特征兜底过滤一次。
+     */
+    override suspend fun listModels(
+        setting: MediaGenerationProviderSetting.SiliconFlow,
+    ): Result<List<MediaGenerationModel>> = runCatching {
+        val httpRequest = bearerRequest(
+            "${setting.baseUrl.trimEnd('/')}/models?type=video",
+            setting.apiKey,
+        ).get().build()
+        siliconFlowVideoModels(client.executeJson(httpRequest, id))
+    }
 
     override suspend fun create(
         setting: MediaGenerationProviderSetting.SiliconFlow,

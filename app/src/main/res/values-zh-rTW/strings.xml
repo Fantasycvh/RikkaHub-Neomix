@@ -2181,4 +2181,8 @@
     <string name="image_crop_original">原圖</string>
     <string name="image_crop_load_failed">無法載入圖片</string>
     <string name="image_crop_failed">無法裁切圖片</string>
+    <!-- 媒体生成：获取模型列表（fork 自建能力） -->
+    <string name="setting_media_page_fetch_models_desc">從廠商介面取得可用的圖像／影片模型，勾選後加入列表</string>
+    <string name="setting_media_page_fetch_models_empty">介面沒有回傳任何模型</string>
+    <string name="setting_media_page_fetch_models_add">新增 %1$d 項</string>
 </resources>

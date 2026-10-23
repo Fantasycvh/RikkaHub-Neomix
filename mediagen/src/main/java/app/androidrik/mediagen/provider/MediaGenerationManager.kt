@@ -75,6 +75,25 @@ class MediaGenerationManager(
         }
     }
 
+    /** 该供应商是否支持从接口拉取模型列表（设置页据此显示「获取模型列表」）。 */
+    fun supportsModelList(setting: MediaGenerationProviderSetting): Boolean =
+        provider(setting) is MediaModelLister<*>
+
+    /**
+     * 拉取厂商可用的媒体模型。未接入或没有列表接口的供应商返回 [UnsupportedOperationException]，
+     * 与 [create] / [query] 的「Provider not ported yet」保持同一口径。
+     */
+    suspend fun listModels(
+        setting: MediaGenerationProviderSetting,
+    ): Result<List<MediaGenerationModel>> = withContext(Dispatchers.Default) {
+        @Suppress("UNCHECKED_CAST")
+        val lister = provider(setting) as? MediaModelLister<MediaGenerationProviderSetting>
+            ?: return@withContext Result.failure(
+                UnsupportedOperationException("Provider not ported yet: ${setting::class.simpleName}")
+            )
+        lister.listModels(setting)
+    }
+
     // 已接入的厂商适配器；其余厂商的类型尚未移植
     private fun provider(setting: MediaGenerationProviderSetting): MediaGenerationProvider<*>? =
         when (setting) {

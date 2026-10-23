@@ -2196,4 +2196,8 @@ Not counted here: the encoded size of images/documents (their count is shown ins
     <string name="image_crop_original">Original</string>
     <string name="image_crop_load_failed">Couldn\'t load the image</string>
     <string name="image_crop_failed">Couldn\'t crop the image</string>
+    <!-- 媒体生成：获取模型列表（fork 自建能力） -->
+    <string name="setting_media_page_fetch_models_desc">Fetch the image/video models this provider offers and pick the ones to add</string>
+    <string name="setting_media_page_fetch_models_empty">The provider returned no models</string>
+    <string name="setting_media_page_fetch_models_add">Add %1$d</string>
 </resources>

@@ -8,8 +8,11 @@ import app.androidrik.mediagen.model.MediaGenerationStatus
 import app.androidrik.mediagen.model.MediaGenerationTask
 import app.androidrik.mediagen.model.MediaGenerationUsage
 import app.androidrik.mediagen.provider.MediaGenerationProvider
+import app.androidrik.mediagen.provider.MediaModelLister
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
+import app.androidrik.mediagen.provider.providers.bearerRequest
 import app.androidrik.mediagen.provider.providers.executeJson
+import app.androidrik.mediagen.provider.providers.openAiImageModels
 import app.androidrik.mediagen.provider.providers.imageMimeType
 import app.androidrik.mediagen.provider.providers.long
 import app.androidrik.mediagen.provider.providers.obj
@@ -37,8 +40,17 @@ import kotlin.uuid.Uuid
  */
 class OpenAIMediaGenerationProvider(
     private val client: OkHttpClient,
-) : MediaGenerationProvider<MediaGenerationProviderSetting.OpenAI> {
+) : MediaGenerationProvider<MediaGenerationProviderSetting.OpenAI>,
+    MediaModelLister<MediaGenerationProviderSetting.OpenAI> {
     override val id: String = PROVIDER_ID
+
+    /** `GET {baseUrl}/models`：官方接口会列出 `dall-e-*` / `gpt-image-*`，兼容端点会列全部。 */
+    override suspend fun listModels(
+        setting: MediaGenerationProviderSetting.OpenAI,
+    ): Result<List<MediaGenerationModel>> = runCatching {
+        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/models", setting.apiKey).get().build()
+        openAiImageModels(client.executeJson(httpRequest, id))
+    }
 
     override suspend fun create(
         setting: MediaGenerationProviderSetting.OpenAI,

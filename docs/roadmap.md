@@ -3491,3 +3491,18 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `:app:assembleRelease`（R8+lintVital）三次均通过（P1 后 62,519,976 / P2 后 **61,331,196 B**）。
   真机冒烟（debug 包）：裁剪对话框（旋转/确认→附件）、创作页标题重命名（顶栏更新）、压缩对话框步进器（0 时减号禁用、
   连加到 5 再减到 4）三项均通过。
+
+- 2026-10-23 **媒体生成：设置页支持「获取模型列表」**（fork 自建，非上游移植）。起因：用户提议「为媒体创作的模型获取也添加获取模型列表？」
+  背景——`MediaGenerationProviderSetting` 有 6 种厂商，但适配器只接了 OpenAI（图像）与 SiliconFlow（视频），
+  配置页里的模型一直是**手动填 modelId**；对照聊天侧提供商页的「获取模型」能力，这里补上同样的入口：
+  ①`mediagen` 新增 `MediaModelLister` 接口（不塞进 `MediaGenerationProvider`：只有部分厂商的接口能列模型，
+  其余要么没有列表接口、要么列表里混着聊天模型无法区分，手动填写反而可靠），OpenAI / SiliconFlow 两个适配器实现；
+  ②OpenAI 走 `GET {baseUrl}/models`，按 id 特征（含 `image` / `dall-e-` 开头）筛图像模型，**一个都没匹配上就返回全部**——
+  中转站常把模型改成 `flux-dev` 之类的任意名字，候选交给用户勾选、不自动写配置，误判无副作用；
+  ③SiliconFlow 走 `GET {baseUrl}/models?type=video`，若自建/中转地址忽略 `type` 参数，再按 id 特征（`video`/`t2v`/`i2v`）兜底过滤；
+  ④`MediaGenerationManager` 暴露 `supportsModelList(setting)` 与 `listModels(setting)`（未接入厂商返回与 create/query 同口径的
+  `Provider not ported yet`）；⑤配置页模型分组新增「获取模型」入口（仅支持的厂商显示，拉取中显示 loading），
+  拉回来的候选进勾选对话框（默认全选、已有 modelId 自动排除），确认后才 append 到模型列表；文案 en/zh/zh-rTW 各 3 条。
+  **验证**：`mediagen` 新增 8 项单测（官方/中转两种返回形态、兜底过滤、API 错误透传、manager 支持矩阵与未接入厂商失败）——
+  mediagen **42 项**、app **2277 项** 全部通过；真机（debug）用已配置的 OpenAI 兼容中转地址实测拉回 **15 个模型**
+  （`nai-diffusion-3/4-5…`，全部预勾选，点「添加 15 项」后写入列表），随后取消保存未污染配置。

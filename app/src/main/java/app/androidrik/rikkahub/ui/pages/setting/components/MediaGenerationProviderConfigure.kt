@@ -1,35 +1,56 @@
 package app.androidrik.rikkahub.ui.pages.setting.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.Refresh03
+import com.dokar.sonner.ToastType
+import kotlinx.coroutines.launch
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaKind
+import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.FormItem
+import app.androidrik.rikkahub.ui.context.LocalToaster
+import org.koin.compose.koinInject
 
 val MediaGenerationProviderSetting.typeName: String
     @Composable get() = when (this) {
@@ -66,6 +87,47 @@ fun MediaGenerationProviderConfigure(
 
     fun updateModels(models: List<MediaGenerationModel>) {
         onValueChange(setting.copyProvider(models = models))
+    }
+
+    val manager: MediaGenerationManager = koinInject()
+    val context = LocalContext.current
+    val toaster = LocalToaster.current
+    val scope = rememberCoroutineScope()
+    // 只有已接入、且接口能列出模型的供应商才显示「获取模型列表」
+    val canFetchModels = manager.supportsModelList(setting)
+    var fetching by remember { mutableStateOf(false) }
+    // 非 null 时显示勾选对话框
+    var candidates by remember { mutableStateOf<List<MediaGenerationModel>?>(null) }
+    var selectedModelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    fun fetchModels() {
+        if (fetching) return
+        fetching = true
+        scope.launch {
+            manager.listModels(setting)
+                .onSuccess { fetched ->
+                    val existingModelIds = models.map { it.modelId }.toSet()
+                    val fresh = fetched
+                        .filter { it.modelId.isNotBlank() && it.modelId !in existingModelIds }
+                        .distinctBy { it.modelId }
+                    if (fresh.isEmpty()) {
+                        toaster.show(context.getString(R.string.setting_media_page_fetch_models_empty))
+                    } else {
+                        selectedModelIds = fresh.map { it.modelId }.toSet()
+                        candidates = fresh
+                    }
+                }
+                .onFailure { error ->
+                    toaster.show(
+                        context.getString(
+                            R.string.setting_provider_page_fetch_models_error,
+                            error.message ?: "Unknown",
+                        ),
+                        type = ToastType.Error,
+                    )
+                }
+            fetching = false
+        }
     }
 
     Column(
@@ -178,6 +240,31 @@ fun MediaGenerationProviderConfigure(
                 )
             }
 
+            if (canFetchModels) {
+                item(
+                    onClick = if (fetching) null else { { fetchModels() } },
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_provider_page_fetch_models))
+                    },
+                    supportingContent = {
+                        Text(
+                            if (fetching) stringResource(R.string.setting_provider_page_fetch_models_loading)
+                            else stringResource(R.string.setting_media_page_fetch_models_desc)
+                        )
+                    },
+                    leadingContent = {
+                        if (fetching) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(HugeIcons.Refresh03, contentDescription = null)
+                        }
+                    },
+                )
+            }
+
             item(
                 onClick = if (kinds.isNotEmpty()) {
                     { updateModels(models + MediaGenerationModel(modelId = "", kind = kinds.first())) }
@@ -187,6 +274,69 @@ fun MediaGenerationProviderConfigure(
                 leadingContent = { Icon(HugeIcons.Add01, contentDescription = null) },
             )
         }
+    }
+
+    // 勾选对话框：候选来自接口，选中后才写进配置
+    candidates?.let { fetchedModels ->
+        AlertDialog(
+            onDismissRequest = { candidates = null },
+            title = { Text(stringResource(R.string.setting_provider_page_fetch_models)) },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(fetchedModels, key = { it.modelId }) { candidate ->
+                        val checked = candidate.modelId in selectedModelIds
+                        val toggle = {
+                            if (checked) {
+                                selectedModelIds = selectedModelIds - candidate.modelId
+                            } else {
+                                selectedModelIds = selectedModelIds + candidate.modelId
+                            }
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(onClick = toggle)
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = checked, onCheckedChange = { toggle() })
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(candidate.modelId, style = MaterialTheme.typography.bodyMedium)
+                                if (kinds.size > 1) {
+                                    Text(
+                                        text = candidate.kind.label,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = selectedModelIds.isNotEmpty(),
+                    onClick = {
+                        val picked = fetchedModels.filter { it.modelId in selectedModelIds }
+                        updateModels(models + picked)
+                        candidates = null
+                    },
+                ) {
+                    Text(
+                        stringResource(
+                            R.string.setting_media_page_fetch_models_add,
+                            selectedModelIds.size,
+                        )
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { candidates = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 }
 
