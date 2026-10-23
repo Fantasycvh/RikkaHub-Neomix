@@ -31,7 +31,6 @@ class PromptAssemblyTest {
     // 关掉渲染提示：块断言只关注人设/卡槽区，不受 dummy 设置的提示开关干扰
     private val settings = Settings.dummy().copy(
         displaySetting = Settings.dummy().displaySetting.copy(
-            enableDiagramRendering = false,
             enableLatexRendering = false,
         ),
     )
@@ -494,16 +493,16 @@ class PromptAssemblyTest {
     @Test
     fun `tail memory block picks the memory relevant to the last user message`() {
         // 两条同重要度、同新鲜度，只有 sortKey 不同的记忆
-        val tikz = AssistantMemory(id = "1", content = "TikZ 渲染器笔记", importance = 0.6f, sortKey = 1)
+        val renderer = AssistantMemory(id = "1", content = "渲染器笔记", importance = 0.6f, sortKey = 1)
         val coffee = AssistantMemory(id = "2", content = "用户喜欢手冲咖啡", importance = 0.6f, sortKey = 2)
-        val tightBudget = settings.copy(memoryInjectBudgetTokens = memoryBudgetForOneFullEntry(listOf(tikz, coffee)))
+        val tightBudget = settings.copy(memoryInjectBudgetTokens = memoryBudgetForOneFullEntry(listOf(renderer, coffee)))
 
         fun tailOf(query: String): String = buildInternalMessages(
             assistant = assistant(enableMemory = true),
             settings = tightBudget,
             model = model,
             messages = listOf(userMessage(query)),
-            memories = listOf(tikz, coffee),
+            memories = listOf(renderer, coffee),
             tools = emptyList(),
             conversationSystemPrompt = null,
             compressionWindow = null,
@@ -513,15 +512,15 @@ class PromptAssemblyTest {
         // 落选的那条照样会以清单行出现（那正是清单层的用途），拿整块断言会一直为真。
         fun fullTextLayerOf(block: String) = block.substringBefore("**Memory index**")
 
-        // 问渲染器 ⇒ 全文层应给 TikZ（它的 sortKey 更小，没有相关性时本来轮不到它）
-        val aboutTikz = fullTextLayerOf(tailOf("TikZ 渲染器怎么切换"))
-        assertTrue("装配侧必须把本轮查询传下去，否则相关性在生产里等于没接", aboutTikz.contains("TikZ 渲染器笔记"))
-        assertFalse(aboutTikz.contains("用户喜欢手冲咖啡"))
+        // 问渲染器 ⇒ 全文层应给它（它的 sortKey 更小，没有相关性时本来轮不到它）
+        val aboutRenderer = fullTextLayerOf(tailOf("渲染器怎么切换"))
+        assertTrue("装配侧必须把本轮查询传下去，否则相关性在生产里等于没接", aboutRenderer.contains("渲染器笔记"))
+        assertFalse(aboutRenderer.contains("用户喜欢手冲咖啡"))
 
         // 换话题 ⇒ 全文层应换成咖啡
         val aboutCoffee = fullTextLayerOf(tailOf("我想喝手冲咖啡"))
         assertTrue(aboutCoffee.contains("用户喜欢手冲咖啡"))
-        assertFalse(aboutCoffee.contains("TikZ 渲染器笔记"))
+        assertFalse(aboutCoffee.contains("渲染器笔记"))
     }
 
     // endregion
@@ -604,11 +603,10 @@ class PromptAssemblyTest {
 
     @Test
     fun `blank system prompt yields no system message when the render hints are off`() {
-        // 渲染提示（TikZ / LaTeX）在默认设置里是**开**的，且它们被追加到 system 里 →
+        // 渲染提示（LaTeX）在默认设置里是**开**的，且它被追加到 system 里 →
         // 空 systemPrompt 也会产出 system 消息。这里显式关掉，才测得到「真空 system」。
         val quiet = settings.copy(
             displaySetting = settings.displaySetting.copy(
-                enableDiagramRendering = false,
                 enableLatexRendering = false,
             )
         )
@@ -632,7 +630,6 @@ class PromptAssemblyTest {
         // （类级 settings 关掉了渲染开关，这里局部开启）
         val renderOn = settings.copy(
             displaySetting = settings.displaySetting.copy(
-                enableDiagramRendering = true,
                 enableLatexRendering = true,
             ),
         )
@@ -650,7 +647,6 @@ class PromptAssemblyTest {
             .filterIsInstance<UIMessagePart.Text>()
             .joinToString("") { it.text }
         assertTrue("render hints should be part of the system block", systemText.length > "SYS".length)
-        assertTrue(systemText.contains("For TikZ diagrams"))
         assertTrue(systemText.contains("For math formulas"))
     }
 

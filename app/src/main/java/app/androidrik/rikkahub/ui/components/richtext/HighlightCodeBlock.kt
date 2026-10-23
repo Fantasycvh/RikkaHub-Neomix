@@ -92,29 +92,6 @@ import kotlin.time.Clock
 
 private const val COLLAPSE_LINES = 10
 private val PREVIEWABLE_LANGUAGES = setOf("html", "svg")
-/** 触发 TikZ 图表渲染的代码围栏语言（normalizedLanguage 已小写化） */
-private val TIKZ_FENCE_LANGS = setOf("tikz", "tikzpicture", "tikzcd", "tikztiming")
-
-/** 内容是否含 TikZ/数学图表（无语言标注的 fenced block 兜底——AI 常生成 ``` 空标注 + $$...tlz...$$） */
-private val TIKZ_CONTENT_PATTERNS = listOf(
-    Regex("""\\begin\{tikz\w*\}"""),  // tikzpicture / tikzcd / tikztiming...
-    Regex("""\\begin\{axis\}"""),     // pgfplots
-    Regex("""\\xymatrix\{"""),
-    Regex("""\\begin\{CD\}"""),
-)
-
-private fun isTikzContent(code: String): Boolean =
-    TIKZ_CONTENT_PATTERNS.any { it.containsMatchIn(code) }
-
-/** 剥掉外层 $$ / \[...\] 定界符（AI 常把 tikz 包在 $$...$$ 里放代码块） */
-private fun stripTikzWrappers(code: String): String {
-    val t = code.trim()
-    return when {
-        t.startsWith("$$") && t.endsWith("$$") && t.length > 4 -> t.substring(2, t.length - 2).trim()
-        t.startsWith("\\[") && t.endsWith("\\]") && t.length > 4 -> t.substring(2, t.length - 2).trim()
-        else -> t
-    }
-}
 
 @Composable
 fun HighlightCodeBlock(
@@ -210,19 +187,7 @@ fun HighlightCodeBlock(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                // TikZ 内容无需等待代码块闭合：AI 流式输出中 completeCodeBlock 可能为 false，
-                // 但内容已含 \begin{tikzpicture} 即可渲染；闭合后再次触发会重新渲染完整版。
-                // 语言标注（tikz/latex 等）或内容检测命中其一即可。
-                (isTikzContent(code) || (completeCodeBlock && normalizedLanguage in TIKZ_FENCE_LANGS)) -> {
-                    android.util.Log.i("TikzJax", "HighlightCodeBlock->TikzJax lang=$normalizedLanguage complete=$completeCodeBlock isTikz=${isTikzContent(code)} codeHead=${code.take(60)}")
-                    TikzJax(
-                        // AI 常在 ``` 块内包 $$...$$ 包裹 tikz，剥掉外层定界符再传给引擎
-                        code = stripTikzWrappers(code),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
                 else -> {
-                    android.util.Log.i("TikzJax", "HighlightCodeBlock->ELSE lang=$normalizedLanguage complete=$completeCodeBlock isTikz=${code.let { isTikzContent(it) }} codeHead=${code.take(60)}")
                     val textStyle = LocalTextStyle.current.merge(style)
                     val codeLines = remember(code) { code.lines() }
                     val collapsedCode = remember(codeLines) { codeLines.take(COLLAPSE_LINES).joinToString("\n") }

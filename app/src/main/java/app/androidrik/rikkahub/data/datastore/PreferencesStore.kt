@@ -1274,7 +1274,6 @@ data class DisplaySetting(
     val sendOnEnter: Boolean = false,
     val enableAutoScroll: Boolean = true,
     val enableLatexRendering: Boolean = true,
-    val enableDiagramRendering: Boolean = true,
     val enableBlurEffect: Boolean = false,
     val enableGlassTheme: Boolean = false,
     val enableTopBarBlur: Boolean = false,

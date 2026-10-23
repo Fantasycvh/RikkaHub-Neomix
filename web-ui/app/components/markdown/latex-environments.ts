@@ -20,7 +20,7 @@
  * 2. 环境名改写成两端渲染器都认的内联安全等价物（`align`→`aligned`、`gather`→`gathered` 等）。
  */
 
-/** 需要自动补 `$$` 定界符的环境：AMS 块级公式 + 矩阵/分段家族 + 图表环境。 */
+/** 需要自动补 `$$` 定界符的环境：AMS 块级公式 + 矩阵/分段家族。 */
 export const DISPLAY_MATH_ENVIRONMENTS: ReadonlySet<string> = new Set([
   // AMS 多行/对齐
   "align", "align*", "aligned",
@@ -34,9 +34,6 @@ export const DISPLAY_MATH_ENVIRONMENTS: ReadonlySet<string> = new Set([
   "cases", "dcases", "rcases",
   "array", "darray", "subarray",
   "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix", "smallmatrix",
-  // 图表（App 侧图表渲染要求内容位于 $$...$$ 内）
-  "tikzpicture", "tikzcd",
-  "axis", "semilogyaxis", "loglogaxis", "polaraxis",
 ]);
 
 /** 环境名重写表：只保留 KaTeX 与 jlatexmath 都能吃下的等价环境。 */

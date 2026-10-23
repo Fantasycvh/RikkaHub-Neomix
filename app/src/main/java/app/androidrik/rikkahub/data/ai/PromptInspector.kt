@@ -80,7 +80,7 @@ enum class PromptSegmentKind {
      */
     TOOL_SCHEMA,
 
-    /** 渲染提示（TikZ / 数学公式引导） */
+    /** 渲染提示（数学公式引导） */
     RENDER_HINT,
 
     /** 压缩检查点合成消息（见 `docs/design/design-auto-compaction.md`） */
@@ -754,7 +754,7 @@ internal fun systemBlocksToSegments(
         SystemBlockSource.TOOL -> PromptSegmentKind.TOOL_GUIDANCE to (
             labels.toolGuidance.ifBlank { labels.toolSchema }
             )
-        SystemBlockSource.DIAGRAM_HINT, SystemBlockSource.MATH_HINT ->
+        SystemBlockSource.MATH_HINT ->
             PromptSegmentKind.RENDER_HINT to labels.renderHint
     }
     PromptSegment(

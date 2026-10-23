@@ -97,7 +97,7 @@
 | kind | 定义 | 典型内容 | 注入位置 | 整理规则 |
 |---|---|---|---|---|
 | `profile` 画像 | 长期稳定、跨会话仍成立的"用户是谁 / 长期设定"，用户亲口陈述 | 名字、语言、时区、职业、关系、沟通偏好、硬规则 | 候选在 L2；**用户固化后**进 L1 system | 矛盾修正、合并、建议固化；永不因"老"删除 |
-| `topic` 话题 | 知识、项目、决定、领域偏好——描述"是什么 / 发生过什么" | "TikZ 渲染方案"、"Flutter 学习路径"、"用户选了这个库" | L2 全文 / L3 清单（现状不变） | 合并重复、覆盖修正 |
+| `topic` 话题 | 知识、项目、决定、领域偏好——描述"是什么 / 发生过什么" | "渲染器切换方案"、"Flutter 学习路径"、"用户选了这个库" | L2 全文 / L3 清单（现状不变） | 合并重复、覆盖修正 |
 | `task` 事务 | 有完成判据或时间承诺的"要做的事" | "周五前交作业"、"下周去买 X"、"记得回复 Y" | **专用「Open tasks」块**（尾部，固定预留预算） | 完成、过期、清理；永不把 open 事务当"老记录"删掉 |
 
 ### 2.2 判定句与反例
@@ -777,7 +777,7 @@ internal data class MemoryInjectionPlan(
 
 - 用**默认** `AndroidJUnitRunner`（不传 `-PmemoryIsolatedTests`）构建并运行整个 test APK：
   **188 项：179 通过、9 跳过（assume），0 失败**。跳过均为仓库既有可选项：
-  私有上游备份 fixture 未提供、设备无已装 rootfs 工作区、部分 native Tikz 能力不可用等。
+  私有上游备份 fixture 未提供、设备无已装 rootfs 工作区、部分 native 能力不可用等。
 - 这轮同时修掉两处测试基建问题：
   1. `ExampleInstrumentedTest` 把包名钉死为 release `applicationId`，debug 包必然失败；
      改为校验 `app.androidrik.rikkahub` 前缀。

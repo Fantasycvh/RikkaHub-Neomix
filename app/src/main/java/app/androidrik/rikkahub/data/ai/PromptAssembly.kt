@@ -70,8 +70,6 @@ internal enum class SystemBlockSource {
     /** 单个工具的 systemPrompt */
     TOOL,
 
-    DIAGRAM_HINT,
-
     MATH_HINT,
 }
 
@@ -175,15 +173,6 @@ internal fun buildSystemBlocks(
     // 工具prompt
     tools.forEach { tool ->
         blocks += SystemBlock(SystemBlockSource.TOOL, content = tool.systemPrompt(model, messages))
-    }
-    // TikZ 渲染提示（启用时引导模型以闭合 $$...$$ 块输出图表，触发 MathBlock 渲染）。
-    // 注意：必须是原始字符串——普通字符串里 $$ 会被 Kotlin 转义成单个 $，模型将收到错误指令。
-    // 强调「闭合」：只写开头 $$ 漏掉结尾 $$ 的块，客户端不会识别为图表（显示为源码）。
-    if (settings.displaySetting.enableDiagramRendering) {
-        blocks += SystemBlock(
-            SystemBlockSource.DIAGRAM_HINT,
-            content = """For TikZ diagrams, wrap the ENTIRE environment in a CLOSED $$...$$ block: open with $$ immediately before \begin{tikzpicture} (or \begin{tikzcd} or \begin{axis}), and close with $$ immediately after the matching \end{...}. Never omit the closing $$, and never put anything between the closing \end{...} and the closing $$. Example: $$\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}$$. Full TikZ/pgf is supported (positioning, calc, pgfplots, tikz-cd, all standard libraries) with CJK text — do not simplify or avoid advanced syntax. Math macros inside node text are supported too: amsmath and amssymb are loaded (\dfrac, \tfrac, \binom, \text, \operatorname, \mathbb, \mathfrak, \checkmark and the rest), so use them directly instead of downgrading to plain \frac forms or avoiding notation. Diagrams render as inline vector graphics. Colors: use color names (blue, red, gray) optionally with opacity (blue!30); do NOT use #hex colors inside options like fill=#4A90D9 — the # is a TeX parameter token and breaks pgf option parsing (renders as source) PGF Math trigonometry: radians MUST use sin(deg(x)) or sin(x*pi/180) — sin(x rad) and sin(x r) are NOT supported and abort rendering.""",
-        )
     }
     // 数学公式提示（启用 LaTeX 渲染时）：引导模型用 \(...\) / $...$ 输出公式并触发 jlatexmath。
     // 注意：定界符内不能有空格（$ x^2 $ 不会被识别为公式）；括号形式 \(x^2\) 更稳妥。

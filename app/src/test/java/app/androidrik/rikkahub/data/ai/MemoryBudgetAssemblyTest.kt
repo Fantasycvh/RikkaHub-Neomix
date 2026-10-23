@@ -14,7 +14,7 @@ import org.junit.Test
 
 class MemoryBudgetAssemblyTest {
     private val settings = Settings.dummy().let {
-        it.copy(displaySetting = it.displaySetting.copy(enableDiagramRendering = false, enableLatexRendering = false))
+        it.copy(displaySetting = it.displaySetting.copy(enableLatexRendering = false))
     }
     private val model = Model(modelId = "budget-test", displayName = "Budget test")
     private val assistant = Assistant(enableMemory = true, systemPrompt = "persona")

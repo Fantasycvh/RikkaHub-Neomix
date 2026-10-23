@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 裸 LaTeX 环境归一化（会话 `Tikz中文支持`「多重公式对齐」渲染成源码的修复）。
+ * 裸 LaTeX 环境归一化（「多重公式对齐」渲染成源码的修复）。
  *
  * 关键不变量：
  * - 补的 `$$` 必须独占一行（`$$\begin{align}` 同行会被 remark-math 误判）；
@@ -109,15 +109,6 @@ class LatexEnvironmentsTest {
             LatexEnvironments.normalize("\\begin{alignat*}{2} a &= b \\end{alignat*}")
                 .contains("\\begin{alignedat}{2}"),
         )
-    }
-
-    @Test
-    fun `tikz environment is wrapped but never renamed`() {
-        val result = LatexEnvironments.normalize("\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}")
-
-        assertTrue(result, result.contains("$$\n\\begin{tikzpicture}"))
-        assertTrue(result, result.contains("\\end{tikzpicture}\n$$"))
-        assertFalse("tikz 环境名要原样交给 TikZ 编译器", result.contains("tikzpictured"))
     }
 
     @Test

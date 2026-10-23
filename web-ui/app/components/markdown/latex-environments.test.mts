@@ -76,13 +76,7 @@ checkTrue(
   normalizeLatexEnvironments("\\begin{alignat*}{2} a &= b \\end{alignat*}").includes("\\begin{alignedat}{2}"),
 );
 
-// 8. tikz 只包裹不改名
-const tikz = normalizeLatexEnvironments("\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}");
-checkTrue("tikzpicture 被包裹", tikz.includes("$$\n\\begin{tikzpicture}"));
-checkTrue("tikzpicture 结尾", tikz.includes("\\end{tikzpicture}\n$$"));
-checkTrue("tikzpicture 不改名", !tikz.includes("tikzpictured"));
-
-// 9. 未知名 / 行中 / 未闭合
+// 8. 未知名 / 行中 / 未闭合
 check("未知环境不动", normalizeLatexEnvironments("\\begin{itemize}\n\\item a\n\\end{itemize}"), "\\begin{itemize}\n\\item a\n\\end{itemize}");
 const midLine = "前面有字 \\begin{cases}a & b\\end{cases} 后面有字";
 check("行中环境不包裹", normalizeLatexEnvironments(midLine), midLine);

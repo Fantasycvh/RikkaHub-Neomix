@@ -654,13 +654,6 @@ object SettingSearchIndex {
             section = R.string.setting_page_message_display_settings
         ),
         entry(
-            title = R.string.setting_display_page_enable_diagram_rendering_title,
-            description = R.string.setting_display_page_enable_diagram_rendering_desc,
-            route = Screen.SettingPreferencesUI,
-            pageTitle = R.string.setting_page_preferences_ui,
-            section = R.string.setting_page_message_display_settings
-        ),
-        entry(
             title = R.string.setting_display_page_chat_font_family_title,
             route = Screen.SettingPreferencesUI,
             pageTitle = R.string.setting_page_preferences_ui,

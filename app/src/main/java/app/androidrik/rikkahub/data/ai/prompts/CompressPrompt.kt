@@ -16,7 +16,7 @@ package app.androidrik.rikkahub.data.ai.prompts
  * 2. 遗留数据自愈（`filterOutCheckpointMessages` / `repairCorruptedCandidates`）：
  *    识别并清理历史上被误持久化的检查点消息。
  *
- * 因此**改措辞会导致旧数据识别失效**（与「改 TikZ 渲染输出必须递增 CACHE_VERSION」同类教训）。
+ * 因此**改措辞会导致旧数据识别失效**（与「改输出格式必须同步递增缓存版本」同类教训）。
  * 若确需修改：**必须把旧措辞原文追加到 [LEGACY_COMPACTION_PREAMBLES]**，否则旧脏数据将无法自愈。
  */
 internal const val COMPACTION_CHECKPOINT_PREAMBLE =

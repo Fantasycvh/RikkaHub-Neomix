@@ -154,11 +154,6 @@
     </service>
 
     <service
-      android:name=".tikz.TexCompileService"
-      android:exported="false"
-      android:process=":texcompile" />
-
-    <service
       android:name=".service.KeepAliveService"
       android:exported="false"
       android:stopWithTask="false"

@@ -188,7 +188,7 @@ fun buildMemoryTools(
             {"action":"create","content":"User prefers brief replies and is more active on weekends.","description":"reply style and activity pattern","importance":0.7}
             {"action":"edit","id":"a3f1c09e","expected_revision":1,"content":"User prefers Chinese replies."}
             {"action":"read","id":"a3f1c09e"}
-            {"action":"search","query":"TikZ 渲染"}
+            {"action":"search","query":"渲染 咖啡"}
             {"action":"delete","id":"7bd20f45","expected_revision":1}
         """.trimIndent(),
         parameters = {

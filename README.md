@@ -2,7 +2,7 @@
   <img src="docs/icon.png" alt="App Icon" width="100" />
   <h1>RikkaHub Neomix</h1>
 
-基于 [RikkaHub](https://github.com/rikkahub/rikkahub) 的**非官方**定制版 —— 原生 Android LLM 聊天客户端（多提供商 / Agent 工作区 / TikZ 渲染 / 三类记忆 / 实验性插件）
+基于 [RikkaHub](https://github.com/rikkahub/rikkahub) 的**非官方**定制版 —— 原生 Android LLM 聊天客户端（多提供商 / Agent 工作区 / 三类记忆 / 实验性插件）
 
 [English (上游原版 README)](README-en-origin.md)
 </div>
@@ -94,7 +94,6 @@
 | 功能 | 说明 |
 |---|---|
 | 📝 **日志落盘** | 请求日志可落盘 `files/logs`，敏感请求头双重脱敏 |
-| 📐 **TikZ 图表渲染** | mupdf SVG 路线（`$$...$$` 内嵌 + `tikz` 围栏双触发；导出 HTML 内嵌矢量）；三层崩溃防线（尺寸校验/生成端上限/采样上限 + HeightClamp） |
 
 **界面**
 
@@ -107,7 +106,7 @@
 ## 🧪 未在设备上验证（从上方清单移出）
 
 以下功能**已实现**，但在本项目的开发记录里**没有真机 / 端到端验证**（或明确标注待验证），故不计入上方「定制功能」。
-补验清单与逐条状态见 [`docs/handoff-2026-09-04.md`](docs/handoff-2026-09-04.md) §三.6「验证债」（**该节最后刷新 2026-10-12**）。
+补验清单与逐条状态见 [`docs/handoff-2026-09-04.md`](docs/handoff-2026-09-04.md) §三.5「验证债」（**该节最后刷新 2026-10-12**）。
 
 | 功能 | 状态 | 为什么单列 |
 |---|---|---|
@@ -164,7 +163,6 @@
 | **MineChat** | [Mr060805/MineChat](https://github.com/Mr060805/MineChat) | RAG-as-tool 知识库检索移植、输入侧正则与动态宏（st 宏运行时） |
 | **agentd** | [hue913/agentd](https://github.com/hue913/agentd) | 经验记忆 + 信用记账（已接进记忆打分） |
 | **rikkahub-pro**（Turbo） | [dcs666/rikkahub-pro](https://github.com/dcs666/rikkahub-pro) | R3.2 块级流式渲染、`setJob` 修复；其 80+ bug 清单被本仓用作 bug 审计对照表 |
-| **RikkaHub Math+** | [test27818/rikkahub-math-plus](https://github.com/test27818/rikkahub-math-plus) | TikZ 渲染管线架构（检测 → preamble 生成 → 编译 → 三层缓存）与 `standalone[border]` 裁剪留白的作法 |
 | **rikkahub-agent** | [ExTV/rikkahub-agent](https://github.com/ExTV/rikkahub-agent) | Agent 化的同类探索（与上游 `3a533a6a` 一并做过终端/工具链分析） |
 
 **仅作设计参考、未采用其实现细节的**：`opencode` / `codex` / `Cherry Studio` —— 子代理与独立上下文设计稿只借其**思路**，
@@ -194,35 +192,26 @@
 
 | 库 | 位置 / ABI | 体积 | 用途 | 来源与版本 | 依赖 |
 |---|---|---|---|---|---|
-| `libtex_poc.so` | `app/src/main/jniLibs/`，**仅 arm64-v8a** | 13.5 MB | TikZ 的 TeX 引擎（Tectonic 编译 TeX → PDF），跑在**独立进程 `:texcompile`** 里 | [`tools/tex-poc/`](tools/tex-poc/)（Rust + **Tectonic 0.17**，NDK r27c 交叉编译） | `libicuuc78` / `libgraphite2` / `libc++_shared` / `libz` |
-| `libpdf2svg_bridge.so` | `app/src/main/jniLibs/`，仅 arm64 | 13 KB | 调 mupdf 的 C API 把 PDF 转 SVG（`FZ_SVG_TEXT_AS_PATH`，文字转轮廓） | `app/src/main/cpp/pdf2svg_bridge.c`（自包含 C，自带 mupdf 原型声明） | `libmupdf_java` |
-| `libmupdf_java.so` | `document/src/main/jniLibs/`，arm64 + x86_64 | 9.4 / 9.8 MB | PDF 解析；TikZ 链路里被上一条调用 | Artifex **MuPDF 1.26.8**（上游 RikkaHub 引入的官方 Android SDK 产物） | `libz` / `libstdc++` / `libjnigraphics` |
+| `libmupdf_java.so` | `document/src/main/jniLibs/`，arm64 + x86_64 | 9.4 / 9.8 MB | PDF 解析 | Artifex **MuPDF 1.26.8**（上游 RikkaHub 引入的官方 Android SDK 产物） | `libz` / `libstdc++` / `libjnigraphics` |
 | `libsimple.so` | `app/src/main/jniLibs/`，arm64 + x86_64 | 7.6 / 7.3 MB | SQLite **FTS5 `simple` 分词扩展**（消息全文搜索：中文单字 `NEAR`、英文/数字走 `simple_query`），经 Requery `customExtensions` 注册 | 上游按 [wangfenjin/simple](https://github.com/wangfenjin/simple) **v0.6.1** 的 Android 参数加 `-DSIMPLE_WITH_JIEBA=OFF` 重编（NDK 29 / android-21 / 静态 libc++）：不含 jieba 代码，`simple` 分词器与 `simple_query` 不变，**已有索引无需重建**；14MB `simple_dict` 已不再使用 | 仅系统库 |
 | `libproot_exec.so` | `workspace/src/main/jniLibs/`，arm64 + x86_64 | 274 / 290 KB | 工作区沙箱的 proot 可执行体（`--link2symlink` + root-id），静态链接 | 上游静态链接二进制，**proot 5.1.107.96**，含 issue #2158 的 `AT_EXECFN` 修复（Ubuntu 26.04 类 rootfs `apt upgrade` 后 `ls`/`basename` 报 Security violation 的问题已真机对照修好） | 仅 `libc` / `liblog`（无 talloc/shmem 动态依赖） |
 | `libproot_loader.so` | 同上 | 18 KB | proot 的 loader 垫片（与上一条成对使用，`PROOT_LOADER` 指向它） | 同上 | — |
-| `libicuuc78.so` / `libicudata78.so` | `app/src/main/jniLibs/`，仅 arm64 | 2.2 MB / 33 MB | Tectonic 的 ICU 运行时（**ICU 78**） | Termux libicu 交叉版 | 互相依赖 |
-| `libgraphite2.so` | 同上，仅 arm64 | 1.5 MB | 字体整形（Tectonic 排版） | 交叉编译版 | `libc++_shared` |
-| `libc++_shared.so` | 同上，仅 arm64 | 1.8 MB | NDK C++ 运行时 | NDK 自带 | — |
 
 打包体积（`assembleRelease` 后的实际 APK，arm64-v8a）：AGP 会对签入的 `.so` 做 **strip**，所以仓库里的大小 ≠ APK 里的大小——
 
 | 库 | 仓库内 | APK 内（未压缩 → 压缩后） |
 |---|---|---|
-| `libicudata78.so` | 33.1 MB | 31.6 MB → **12.2 MB** |
-| `libtex_poc.so` | 13.5 MB | 9.9 MB → 3.5 MB |
 | `libmupdf_java.so` | 9.4 MB | 9.0 MB → 4.4 MB |
 | `libsimple.so` | 7.6 MB | 1.5 MB → 0.5 MB |
 
-arm64 原生库合计约 **62 MB**（未压缩），占 APK 的大头；beta.7 的 arm64 APK 为 **59.7 MiB**。
+arm64 原生库合计约 **17.3 MB**（未压缩）。
 另：`libquickjs-android-wrapper.so`（1.3 MB）来自 JS 插件沙箱的 Maven 依赖 `wang.harlon.quickjs`，不属签入库。
 
 注意事项：
 
-- **JNI 符号名与包名绑定**（`Java_app_androidrik_rikkahub_tikz_*`）：改包名必须按新符号重编 `libtex_poc.so` / `libpdf2svg_bridge.so`，否则运行时 `UnsatisfiedLinkError`。
-- 签入库**只做 arm64 交叉编译**（`libtex_poc` / `pdf2svg_bridge` / icu / graphite2 / `c++_shared` 都没有 x86_64 版本）⇒ x86_64 模拟器上 TikZ 引擎不可用，会走既有回退链（纯 Kotlin 子集渲染 → PDF 位图）。x86_64 的 `libproot_*` / `libmupdf_java` / `libsimple` 虽然在包里，但只做过 ELF 解析，**没有 x86_64 设备实跑记录**。
-- icu 的 **SONAME 必须是 `libicuuc78.so`**（不带 `.78`）：AGP 的 jniLibs 不接受版本化文件名，重编时用 `patchelf --replace-needed libicuuc.so.78 libicuuc78.so` 改写（见 `tools/tex-poc/README.md`）。
-- 这些库在构建中**不需要你重编**：仓库已带产物，`assembleRelease` 只会打包。仅当你改包名、换 NDK、或要升级 Tectonic/MuPDF 时才需要按对应源码目录重编。
-- 许可证各自沿上游：**MuPDF 为 AGPL-3.0（或商业授权）**、proot 为 GPLv2+、ICU/Graphite2 为各自开源许可；本仓整体 AGPL-3.0，随包分发时请自行核对。
+- x86_64 的 `libproot_*` / `libmupdf_java` / `libsimple` 虽然在包里，但只做过 ELF 解析，**没有 x86_64 设备实跑记录**。
+- 这些库在构建中**不需要你重编**：仓库已带产物，`assembleRelease` 只会打包。仅当你改包名、换 NDK、或要升级 MuPDF 时才需要按对应源码目录重编。
+- 许可证各自沿上游：**MuPDF 为 AGPL-3.0（或商业授权）**、proot 为 GPLv2+；本仓整体 AGPL-3.0，随包分发时请自行核对。
 
 ## 📦 下载与安装（预编译 APK）
 

@@ -3,7 +3,7 @@ package app.androidrik.rikkahub.ui.components.richtext
 /**
  * 裸 LaTeX 环境归一化。
  *
- * 背景（2026-10-06 实测，会话 `Tikz中文支持`）：模型有时会输出**不带任何数学定界符**的
+ * 背景（2026-10-06 实测）：模型有时会输出**不带任何数学定界符**的
  * 块级环境，例如
  *
  * ```
@@ -36,11 +36,7 @@ package app.androidrik.rikkahub.ui.components.richtext
 internal object LatexEnvironments {
 
     /**
-     * 需要自动补 `$$` 定界符的环境：AMS 块级公式环境 + 矩阵/分段家族 + 图表环境。
-     *
-     * 图表环境（tikzpicture/tikzcd/axis）一并纳入：App 侧的图表渲染入口
-     * （`MathBlock.isDiagramLatex`）要求内容位于 `$$...$$` 或代码围栏内，`PromptAssembly`
-     * 里也已要求模型必须裹 `$$`——模型漏写时在这里兜住。
+     * 需要自动补 `$$` 定界符的环境：AMS 块级公式环境 + 矩阵/分段家族。
      */
     val DISPLAY_MATH_ENVIRONMENTS: Set<String> = setOf(
         // AMS 多行/对齐
@@ -55,15 +51,10 @@ internal object LatexEnvironments {
         "cases", "dcases", "rcases",
         "array", "darray", "subarray",
         "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix", "smallmatrix",
-        // 图表
-        "tikzpicture", "tikzcd",
-        "axis", "semilogyaxis", "loglogaxis", "polaraxis",
     )
 
     /**
      * 环境名重写表：只保留 KaTeX 与 jlatexmath 都能吃下的等价环境。
-     *
-     * 不改写 tikzpicture / tikzcd / axis —— 它们要原样交给 TikZ 编译器。
      */
     val LATEX_ENVIRONMENT_ALIASES: Map<String, String> = mapOf(
         "align" to "aligned",

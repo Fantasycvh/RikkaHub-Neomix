@@ -23,7 +23,6 @@ class SystemBlocksAttributionTest {
 
     private val settings = Settings.dummy().copy(
         displaySetting = Settings.dummy().displaySetting.copy(
-            enableDiagramRendering = false,
             enableLatexRendering = false,
         ),
     )
@@ -132,7 +131,6 @@ class SystemBlocksAttributionTest {
             SystemBlock(SystemBlockSource.PERSONA, content = "p"),
             SystemBlock(SystemBlockSource.MEMORY, content = "m"),
             SystemBlock(SystemBlockSource.TOOL, content = "t"),
-            SystemBlock(SystemBlockSource.DIAGRAM_HINT, content = "d"),
             SystemBlock(SystemBlockSource.MATH_HINT, content = "h"),
         )
         val segments = systemBlocksToSegments(blocks, labels, role = "system")
@@ -145,11 +143,10 @@ class SystemBlocksAttributionTest {
                 // 见 PromptToolSchemaSegmentTest。
                 PromptSegmentKind.TOOL_GUIDANCE,
                 PromptSegmentKind.RENDER_HINT,
-                PromptSegmentKind.RENDER_HINT,
             ),
             segments.map { it.kind },
         )
-        assertEquals(listOf("系统提示词", "注入的记忆", "工具引导", "渲染提示", "渲染提示"), segments.map { it.label })
+        assertEquals(listOf("系统提示词", "注入的记忆", "工具引导", "渲染提示"), segments.map { it.label })
     }
 
     @Test

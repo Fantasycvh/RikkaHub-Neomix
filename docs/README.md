@@ -47,7 +47,6 @@
 | [`upstream-analysis.md`](upstream-analysis.md) | 上游逐条评估记录与「吸收 / 不吸收」结论 |
 | [`ui-simplification-proposal.md`](ui-simplification-proposal.md) | UI 复杂度证据基线（**改前快照**；改后状态见 design-ui-yuihub-inspired §7） |
 | [`peer-apps-benchmark.md`](peer-apps-benchmark.md) | 同类客户端 / 竞品调研与借鉴结论 |
-| [`tikz-rendering-tectonic-postmortem.md`](tikz-rendering-tectonic-postmortem.md) | TikZ 渲染链复盘（native Tectonic + mupdf SVG 桥、字体 bundle）；配套 [`../tools/tex-poc/`](../tools/tex-poc/) |
 | [`references/chat-generation-pipeline.md`](references/chat-generation-pipeline.md) | 上游：对话生成管线说明 |
 | [`releases/`](releases/) | **发布说明存档**（按 tag 存 release 正文原文；`1.0.28-beta.7` 起带 arm64-v8a APK，含 SHA-256 与签名指纹；最新见 [`1.0.28-beta.8.md`](releases/1.0.28-beta.8.md)） |
 | `icon.png` / `img/` / `sponsors/` / `donate.png` | 上游：README 用图与赞助素材 |
@@ -62,7 +61,7 @@
 | 文档 | 待办/状态最新刷新 | 说明 |
 |---|---|---|
 | `handoff-2026-09-04.md` | **2026-10-22**（§〇 快照 + §二.2 资产化发布流程） | **待办的第一真相源**；§三.1 表内**未划掉**的才是未完成项——长文本里的「YYYY-MM-DD 评估，未实现」多为**存档**，不代表当前状态 |
-| `roadmap.md` | **2026-10-22**（§八 追加 `beta.6`/`beta.7` 发布记录） | §八 是逐日落地日志（**只追加**）；§一~§七 的规划判断**可能已被 §八 推翻**，冲突时以 §八 + handoff §三 为准 |
+| `roadmap.md` | **2026-10-23**（§八 追加 `beta.8` 发布记录与渲染栈移除记录） | §八 是逐日落地日志（2026-10-23 清理过已移除特性相关条目）；§一~§七 的规划判断**可能已被 §八 推翻**，冲突时以 §八 + handoff §三 为准 |
 | `peer-apps-benchmark.md` | **2026-10-12**（§四.4 末复核 + §五 落地状态行） | §五 的落地状态行是最新口径，各节正文为评估原文 |
 | `upstream-analysis.md` | **2026-10-23**（同步点 `43f1a5df2`，`3.1.0-27-g…`） | 本批 `815e9c20b`..`43f1a5df2` 12 提交全部有结论（吸收 3 + 部分吸收 1；P2/P3 各留台账）。**下次同步从 `43f1a5df2` 往后取** |
 

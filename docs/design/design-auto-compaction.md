@@ -341,10 +341,10 @@ Phase 0 的估算底座**可独立交付**：用户先看到「上下文用了�
 | 模块 | 方式 |
 |---|---|
 | `workspace` | 真 `externalNativeBuild` + CMake（proot） |
-| `app` | **预编译 `.so` 手工签入 `jniLibs/`**（`libpdf2svg_bridge.so` = TikZ 的 mupdf 桥、`libtex_poc.so`、`libsimple.so`）；源码在 `app/src/main/cpp/` 但 Gradle 不参与编译 |
+| `app` | **预编译 `.so` 手工签入 `jniLibs/`**（`libsimple.so`）；`app/src/main/cpp/` 当前无编译目标，Gradle 不参与编译 |
 | `ai` | `externalNativeBuild` 被注释 |
 
-即「Rust 编成 .so 供 Kotlin 调用」这条最后一公里有成熟先例（TikZ 桥）；但 app 的 .so 是**手工编译后签入**的，可复现性差，正经做需把 `cargo-ndk` 纳入 `scripts/build.sh`（并要求构建环境有 Rust 工具链），两个 ABI 各自交叉编译。
+即「Rust 编成 .so 供 Kotlin 调用」这条最后一公里有先例；但 app 的 .so 是**手工编译后签入**的，可复现性差，正经做需把 `cargo-ndk` 纳入 `scripts/build.sh`（并要求构建环境有 Rust 工具链），两个 ABI 各自交叉编译。
 
 **开发机 Rust 环境已核实就绪（2026-09-13）**：`~/.rustup/toolchains/` 已装 `stable-x86_64-pc-windows-msvc` + `gnu` 两个 toolchain，`cargo`/`rustc` **1.97.0** 可用；`~/.cargo/` 有 `registry` 与 `git` 缓存（说明此前编译过 Rust 项目，依赖缓存已热）。**但 PATH 未配 shim**（`~/.cargo/bin` 空，可执行真身在 `~/.rustup/toolchains/.../bin/`），用时需把该目录加进 PATH 或用全路径。引入 Android 交叉编译只需 `rustup target add aarch64-linux-android x86_64-linux-android` + `cargo install cargo-ndk`——接入成本比预估更低（工具链/缓存已就位）。
 
@@ -368,7 +368,7 @@ Phase 0 的估算底座**可独立交付**：用户先看到「上下文用了�
 
 ### 6.4 建议
 
-引入的触发条件 = 需精确 tokenizer、或确定做桌面版共享 core（**原「本地语义检索/向量记忆」触发条件已于 2026-09-14 否决**，见 6.3）。路径 = 先做**一个边界清晰的小模块**（如 tokenizer），用 `cargo-ndk` + jniLibs 打包（沿用 pdf2svg_bridge 模式）验证工具链，再考虑扩大；**不要一上来重写数据层**（那是把架构问题误判为性能问题，还赔上可复现性）。
+引入的触发条件 = 需精确 tokenizer、或确定做桌面版共享 core（**原「本地语义检索/向量记忆」触发条件已于 2026-09-14 否决**，见 6.3）。路径 = 先做**一个边界清晰的小模块**（如 tokenizer），用 `cargo-ndk` + jniLibs 打包并验证工具链，再考虑扩大；**不要一上来重写数据层**（那是把架构问题误判为性能问题，还赔上可复现性）。
 
 ### 6.5 修订：大文件备份场景（2026-09-13）
 
