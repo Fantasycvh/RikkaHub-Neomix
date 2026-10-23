@@ -192,7 +192,6 @@
 
 | 库 | 位置 / ABI | 体积 | 用途 | 来源与版本 | 依赖 |
 |---|---|---|---|---|---|
-| `libmupdf_java.so` | `document/src/main/jniLibs/`，arm64 + x86_64 | 9.4 / 9.8 MB | PDF 解析 | Artifex **MuPDF 1.26.8**（上游 RikkaHub 引入的官方 Android SDK 产物） | `libz` / `libstdc++` / `libjnigraphics` |
 | `libsimple.so` | `app/src/main/jniLibs/`，arm64 + x86_64 | 7.6 / 7.3 MB | SQLite **FTS5 `simple` 分词扩展**（消息全文搜索：中文单字 `NEAR`、英文/数字走 `simple_query`），经 Requery `customExtensions` 注册 | 上游按 [wangfenjin/simple](https://github.com/wangfenjin/simple) **v0.6.1** 的 Android 参数加 `-DSIMPLE_WITH_JIEBA=OFF` 重编（NDK 29 / android-21 / 静态 libc++）：不含 jieba 代码，`simple` 分词器与 `simple_query` 不变，**已有索引无需重建**；14MB `simple_dict` 已不再使用 | 仅系统库 |
 | `libproot_exec.so` | `workspace/src/main/jniLibs/`，arm64 + x86_64 | 274 / 290 KB | 工作区沙箱的 proot 可执行体（`--link2symlink` + root-id），静态链接 | 上游静态链接二进制，**proot 5.1.107.96**，含 issue #2158 的 `AT_EXECFN` 修复（Ubuntu 26.04 类 rootfs `apt upgrade` 后 `ls`/`basename` 报 Security violation 的问题已真机对照修好） | 仅 `libc` / `liblog`（无 talloc/shmem 动态依赖） |
 | `libproot_loader.so` | 同上 | 18 KB | proot 的 loader 垫片（与上一条成对使用，`PROOT_LOADER` 指向它） | 同上 | — |
@@ -201,17 +200,16 @@
 
 | 库 | 仓库内 | APK 内（未压缩 → 压缩后） |
 |---|---|---|
-| `libmupdf_java.so` | 9.4 MB | 9.0 MB → 4.4 MB |
 | `libsimple.so` | 7.6 MB | 1.5 MB → 0.5 MB |
 
-arm64 原生库合计约 **17.3 MB**（未压缩）。
+arm64 原生库合计约 **7.9 MB**（未压缩）。PDF 文本提取已改为**纯 Kotlin 实现**（吸收上游 `815e9c20b`），不再依赖 `libmupdf_java.so`。
 另：`libquickjs-android-wrapper.so`（1.3 MB）来自 JS 插件沙箱的 Maven 依赖 `wang.harlon.quickjs`，不属签入库。
 
 注意事项：
 
-- x86_64 的 `libproot_*` / `libmupdf_java` / `libsimple` 虽然在包里，但只做过 ELF 解析，**没有 x86_64 设备实跑记录**。
-- 这些库在构建中**不需要你重编**：仓库已带产物，`assembleRelease` 只会打包。仅当你改包名、换 NDK、或要升级 MuPDF 时才需要按对应源码目录重编。
-- 许可证各自沿上游：**MuPDF 为 AGPL-3.0（或商业授权）**、proot 为 GPLv2+；本仓整体 AGPL-3.0，随包分发时请自行核对。
+- x86_64 的 `libproot_*` / `libsimple` 虽然在包里，但只做过 ELF 解析，**没有 x86_64 设备实跑记录**。
+- 这些库在构建中**不需要你重编**：仓库已带产物，`assembleRelease` 只会打包。仅当你改包名或换 NDK 时才需要按对应源码目录重编。
+- 许可证各自沿上游：proot 为 GPLv2+；本仓整体 AGPL-3.0，随包分发时请自行核对。
 
 ## 📦 下载与安装（预编译 APK）
 

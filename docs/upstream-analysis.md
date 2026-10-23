@@ -1104,7 +1104,7 @@ git checkout master
 
 | 上游提交 | 内容 | 结论 |
 |---|---|---|
-| `815e9c20b` | 纯 Kotlin PDF 文本提取替换 mupdf，删 JNI 绑定与 `libmupdf_java.so`，arm64 APK 35.4→30.9MB（105 文件 +9159/−6566） | **可重新评估（障碍已消失）**：本仓 `document/PdfParser.kt` 仍直接用 `com.artifex.mupdf.fitz.*`（PDF 解析依赖 `libmupdf_java.so`）。此前另一条 SVG 渲染链路也 `System.loadLibrary("mupdf_java")`，是该提交的硬冲突；该链路已移除后冲突消失，可重新评估吸收（收益≈4.4MB 包体 + 少一个原生库），单独立项 |
+| `815e9c20b` | 纯 Kotlin PDF 文本提取替换 mupdf，删 JNI 绑定与 `libmupdf_java.so`，arm64 APK 35.4→30.9MB（105 文件 +9159/−6566） | **已吸收（本分支 `21e98e2ee`，2026-10-23）**：新增 `app.androidrik.document.pdf` 纯 Kotlin 实现（xref/对象流/增量更新/损坏修复、常用过滤器、RC4/AES、CJK CMap、Type3/CID/TeX 字形、ActualText、可选内容、注解外观、BBox 裁剪、RTL），删除 `com.artifex.mupdf.fitz` 与 `libmupdf_java.so`；`PdfParser` 保留本仓 `pageCount`/`parsePages` 按页 API，移植 PDF 解析单测（JVM 可跑），APK 少一个原生库（原压缩后 4.4MB） |
 | `97cbb5999` | 删未用 banner 图、placeholder 改 WebP、打包排除 BouncyCastle Picnic（约 1.2MB） | **部分可吸收（低优先）**：本仓无 `assets/banner`（已无收益）；`placeholder.png` 1.20MB + `placeholder_dark.png` 1.07MB 仍是 PNG，转 WebP 可省约 2.3MB；BouncyCastle 排除只在引入 JSch（本仓无远程 SSH）后才相关 |
 | `481833116` | distribution 渠道 flavor（github / play）、`BuildConfig.IS_PLAY_STORE` 替代安装来源检测、baseline profile 合并 | **不适用**：本仓不发 Google Play（无 AAB 渠道），更新检查走自有 GitHub release；渠道 flavor 会牵动本仓 release 脚本与 CI，不跟 |
 | `26ca06cb5` | 赞助商钠API（三语 README / 推荐提供商 / 图标） | **不跟**：赞助商与推荐列表属上游运营内容，本仓 `RecommendedProviders` 已裁剪自有集合 |
@@ -1147,7 +1147,7 @@ git checkout master
 
 **不跟 / 不适用（本批提交）**
 
-- `815e9c20b` PDF 替换 mupdf：**可重新评估**（原硬冲突的 SVG 渲染链路已移除，见上表对应行）。
+- `815e9c20b` PDF 替换 mupdf：**已吸收（本分支 `21e98e2ee`）**，见上表对应行。
 - `2b633370f` 远程 SSH 工作区：新功能，单独立项。
 - `481833116` 渠道 flavor、`26ca06cb5` 赞助商、`db93fa11a` / `0ff609f93` / `298bd65e4` / `17f10ca1f` 工具链：与 fork 发布 / 工具链 / 运营面不同。
 - `5203601f7`、`fe55bff7f`：已等价 / 不适用（见上表）。

@@ -3484,3 +3484,11 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   资产 `Neomix-1.0.28-beta.8-arm64-v8a.apk` 61,363,632 B，SHA-256 `a5a1183fd059107294032e641ef9c7b8e279a953011e85f631f0871997d87ec0`；
   apksigner 核实 V2 签名、证书指纹 `d15b693a…d94eec78` 与 beta.7 一致；真机覆盖安装启动 0 FATAL。
 - 2026-10-23 **移除 TikZ 渲染功能**（分支 `chore/remove-tikz`）：删除 `app/.../tikz/` 渲染链与 `:texcompile` 隔离进程、`libtex_poc`/`pdf2svg_bridge` JNI 及 ICU/graphite2 预编库、POC 工具目录与相关文档；Markdown 渲染保留公式/表格/Mermaid，`LatexEnvironments` 不再识别图表环境。
+
+- 2026-10-23 **跟进上游纯 Kotlin PDF 文本提取（`815e9c20b`，提交 `21e98e2ee`）**：TikZ 移除后原先的硬冲突消失，document 模块新增
+  `app.androidrik.document.pdf`（xref 流/对象流/增量更新/损坏修复、常用过滤器、RC4/AES 标准安全处理器、预定义 CJK CMap、
+  简单/Type3/CID 字体、ActualText、可选内容、注解外观流、矩形/表单 BBox 裁剪、RTL 重排），删除 `com.artifex.mupdf.fitz` JNI
+  绑定、`libmupdf_java.so` 与配套 keep 规则；`PdfParser` 保留本仓 `pageCount` / `parsePages` 按页抽取 API。
+  **验证**：`:document:testDebugUnitTest` 25 项（PDF 解析 12 + 文档读取 12，语料对比 1 项按环境变量跳过）0 失败；
+  app JVM 单测 2275 项 0 失败；`:app:assembleDebug` / `:app:assembleRelease` 通过；debug 三种 ABI 与 release APK 均无
+  `libmupdf_java.so`，Java 资源 `app/androidrik/document/pdf/*` 已打包进 APK。README 原生库表与 `upstream-analysis.md` 状态同步更新。
