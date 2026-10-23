@@ -836,19 +836,21 @@ internal fun DrawerActions(navController: Navigator) {
             onTrailingClick = { navController.navigate(Screen.MessageSearch) },
         )
 
-        // 媒体创作入口（移入聊天历史之下）
-        DrawerEntry(
-            icon = HugeIcons.Image02,
-            text = stringResource(R.string.media_creation_title),
-            onClick = { navController.navigate(Screen.MediaCreationSessions) },
-        )
-
-        // 翻译入口（移入聊天历史之下）
-        DrawerEntry(
-            icon = HugeIcons.LanguageCircle,
-            text = stringResource(R.string.chat_page_menu_ai_translator),
-            onClick = { navController.navigate(Screen.Translator) },
-        )
+        // 媒体创作与翻译并列，翻译位于右侧。
+        Row(modifier = Modifier.fillMaxWidth()) {
+            DrawerEntry(
+                icon = HugeIcons.Image02,
+                text = stringResource(R.string.media_creation_title),
+                onClick = { navController.navigate(Screen.MediaCreationSessions) },
+                modifier = Modifier.weight(1f),
+            )
+            DrawerEntry(
+                icon = HugeIcons.LanguageCircle,
+                text = stringResource(R.string.chat_page_menu_ai_translator),
+                onClick = { navController.navigate(Screen.Translator) },
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -857,13 +859,14 @@ private fun DrawerEntry(
     icon: ImageVector,
     text: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     trailingIcon: ImageVector? = null,
     trailingDescription: String? = null,
     onTrailingClick: () -> Unit = {},
 ) {
     Surface(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp),
         shape = MaterialTheme.shapes.medium,
@@ -887,6 +890,8 @@ private fun DrawerEntry(
                     text = text,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             if (trailingIcon != null) {
