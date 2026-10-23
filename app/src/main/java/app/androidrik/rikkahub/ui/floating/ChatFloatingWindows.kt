@@ -234,11 +234,11 @@ class ChatFloatingWindows(
                     maxHeight = displayedSize.height.dp,
                     panelWidth = displayedSize.width.dp,
                     onResize = { dx, dy ->
-                        // The centered host grows equally on each side, so the right edge moves by dx.
                         preferredSize = FloatingPanelSize(displayedSize.width, preferredSize.height)
-                            .resized(dx * 2f, dy, availableWidth, screenHeight.value)
+                            .resized(dx, dy, availableWidth, screenHeight.value)
                     },
                     onResizeFinished = ::saveSize,
+                    onMove = { dx, dy -> panel?.moveBy(dx, dy) },
                     onResetSize = {
                         preferredSize = FloatingPanelSize()
                         saveSize()
@@ -262,14 +262,15 @@ class ChatFloatingWindows(
                 )
             }
         }
-        anchor(FxGravity.TOP_CENTER, dy = dp(PANEL_TOP_OFFSET_DP))
+        anchor(FxGravity.TOP_START, dx = dp(8f), dy = dp(PANEL_TOP_OFFSET_DP))
+        persist(FxSpStorage(context))
         gesture(FxGesture(click = false, longPress = false, drag = FxDrag.DISABLED))
         animation(FxAnimations.fade())
         systemHost(context) {
             permission(FxPermissionStrategy.skip())
             layoutParams {
                 it.flags = it.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                it.width = WindowManager.LayoutParams.MATCH_PARENT
+                it.width = WindowManager.LayoutParams.WRAP_CONTENT
                 it.softInputMode = SOFT_INPUT_ADJUST_RESIZE
             }
             onBackPressed {
