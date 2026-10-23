@@ -2205,4 +2205,6 @@
   <string name="floating_chat_status_idle">閒置</string>
   <string name="floating_chat_resize">調整視窗大小</string>
   <string name="floating_chat_reset_size">恢復預設大小</string>
+  <string name="floating_chat_maximize">最大化</string>
+  <string name="floating_chat_restore">還原</string>
 </resources>

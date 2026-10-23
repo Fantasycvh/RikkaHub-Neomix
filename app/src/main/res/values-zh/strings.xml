@@ -2223,4 +2223,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="floating_chat_status_idle">空闲</string>
   <string name="floating_chat_resize">调整窗口大小</string>
   <string name="floating_chat_reset_size">恢复默认大小</string>
+  <string name="floating_chat_maximize">最大化</string>
+  <string name="floating_chat_restore">还原</string>
 </resources>
