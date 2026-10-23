@@ -3498,3 +3498,7 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **验证**：`scripts/build.sh release` 通过；aapt 核实 `app.androidrik.neomix` / 311 / `1.0.28-beta.9-exp`（仅 arm64-v8a）；
   apksigner 证书指纹与 beta.1…beta.8 一致；APK 19,998,278 B（TikZ 全栈移除后预期值，对比 master 同版 61,423,158 B）。
   发布说明草稿 [`releases/1.0.28-beta.9-exp.md`](releases/1.0.28-beta.9-exp.md)。未推送。
+- 2026-10-24 **发布 `1.0.28-beta.9-exp (311)`**：分支与 tag `1.0.28-beta.9-exp` 已首推；exp 资产按用户要求
+  **同挂 master 线 release `1.0.28-beta.9`**（不单建 release）：`Neomix-1.0.28-beta.9-exp-arm64-v8a.apk`
+  19,998,278 B、SHA-256 `d8e1ca18…3dc05`，API 回读 digest 与本地一致。发布说明存档
+  [`releases/1.0.28-beta.9-exp.md`](releases/1.0.28-beta.9-exp.md)。
