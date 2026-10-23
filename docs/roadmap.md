@@ -3549,3 +3549,9 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   留台账。
   **验证**：`:app:compileDebugKotlin` 通过；`:ai` **312 项** / `:app` **2371 项**单测 0 失败/错误/跳过；
   悬浮窗与 TTS 真机回归已在分支完成（PJX110 4 项仪器测试），本轮未再改相关代码路径。未推送。
+- 2026-10-24 **发布 `1.0.28-beta.9 (311)`**（用户授权「推送（这两个分支），并发布这一版（exp 线发到 master 的这个发行版里）」）：
+  master `f183b0e2d`…`78d0e240e` 与 tag `1.0.28-beta.9`、分支 `chore/remove-tikz`（首推）与 tag `1.0.28-beta.9-exp` 均已推送；
+  release `1.0.28-beta.9 (311)`（prerelease=false，`releases/latest` 将指向本版）**双资产同挂**：
+  master 线 `Neomix-1.0.28-beta.9-arm64-v8a.apk` 61,423,158 B、SHA-256 `0d073cac…c65ed5`；
+  exp 线 `Neomix-1.0.28-beta.9-exp-arm64-v8a.apk` 19,998,278 B、SHA-256 `d8e1ca18…3dc05`（TikZ 移除后的预期体积）。
+  GitHub API 回读两资产 `digest` 与本地一致；发布说明存档 [`releases/1.0.28-beta.9.md`](releases/1.0.28-beta.9.md)（分支线 [`releases/1.0.28-beta.9-exp.md`](releases/1.0.28-beta.9-exp.md) 在分支上）。
