@@ -12,6 +12,8 @@ import kotlinx.coroutines.runBlocking
 import app.androidrik.rikkahub.data.model.Conversation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.uuid.Uuid
@@ -30,6 +32,101 @@ class ConversationSessionTest {
         scope = scope,
         onIdle = {},
     )
+
+    @Test
+    fun `beginNewTurn clears the previous reply message id`() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val session = newSession(scope)
+        try {
+            assertNull(session.replyMessageId.value)
+            session.replyMessageId.value = Uuid.random()
+            session.beginNewTurn()
+            assertNull(session.replyMessageId.value)
+
+            // A later round must clear its own reply too, not just the initial round.
+            session.replyMessageId.value = Uuid.random()
+            session.beginNewTurn()
+            assertNull(session.replyMessageId.value)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `setJob records generation start time before the lazy job runs`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val session = newSession(scope)
+        try {
+            var seenByJob: Long? = null
+            val job = scope.launch(start = CoroutineStart.LAZY) {
+                seenByJob = session.generationStartedAt.value
+            }
+            assertNull(session.generationStartedAt.value)
+            val beforeRegistration = System.currentTimeMillis()
+            session.setJob(job)
+            val recorded = session.generationStartedAt.value
+            val afterRegistration = System.currentTimeMillis()
+
+            assertNotNull(recorded)
+            assertTrue(recorded!! in beforeRegistration..afterRegistration)
+            assertNull("Registering a LAZY job must not execute its body", seenByJob)
+            job.start()
+            job.join()
+            assertEquals(recorded, seenByJob)
+            // Keep the timestamp after completion so immediate failures belong to this round.
+            assertEquals(recorded, session.generationStartedAt.value)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `setJob null does not fabricate or replace a generation start time`() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val session = newSession(scope)
+        try {
+            session.setJob(null)
+            assertNull(session.generationStartedAt.value)
+            session.generationStartedAt.value = 123L
+            session.setJob(null)
+            assertEquals(123L, session.generationStartedAt.value!!)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `cleanup resets floating generation state and cancels its job`() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val session = newSession(scope)
+        try {
+            val job = scope.launch(start = CoroutineStart.LAZY) { awaitCancellation() }
+            session.setJob(job)
+            session.replyMessageId.value = Uuid.random()
+            session.processingStatus.value = "Processing"
+            assertNotNull(session.generationStartedAt.value)
+
+            session.cleanup()
+
+            assertTrue(job.isCancelled)
+            assertNull(session.getJob())
+            assertNull(session.generationJob.value)
+            assertFalse(session.isGenerating)
+            assertNull(session.replyMessageId.value)
+            assertNull(session.generationStartedAt.value)
+            assertNull(session.processingStatus.value)
+            // Repeated cleanup must keep the reset state.
+            session.cleanup()
+            assertNull(session.replyMessageId.value)
+            assertNull(session.generationStartedAt.value)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
 
     @Test
     fun `cancelPrevious=false keeps predecessor alive for serialized approval`() = runBlocking {

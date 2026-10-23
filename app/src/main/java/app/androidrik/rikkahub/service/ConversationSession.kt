@@ -87,6 +87,11 @@ class ConversationSession(
     // 处理状态（如 OCR 识别中）
     val processingStatus = MutableStateFlow<String?>(null)
 
+    // 按消息 id 定位本轮回复，重生成旧节点/切换分支时也不能误显示末条消息。
+    val replyMessageId = MutableStateFlow<Uuid?>(null)
+    val generationStartedAt = MutableStateFlow<Long?>(null)
+    val turnRevision = MutableStateFlow(0L)
+
     /**
      * 工具调用失控护栏（见 `data/ai/ToolCallLoopGuard.kt`）。
      *
@@ -163,11 +168,13 @@ class ConversationSession(
      * 令牌若在生成协程体内才换新，注册就可能先拿到上一轮的令牌。
      */
     fun beginNewTurn() {
+        replyMessageId.value = null
         toolLoopGuard.reset()
         workspaceTurnBudget.reset()
         thinkingGuard.reset()
         ruleEngine.reset()
         backgroundTaskOwner = newTurnToken()
+        turnRevision.value++
     }
 
     // 生成任务（内聚在 session 中）
@@ -222,6 +229,7 @@ class ConversationSession(
     @Synchronized
     fun setJob(job: Job?, cancelPrevious: Boolean = true) {
         val previous = _generationJob.value
+        if (job != null) generationStartedAt.value = System.currentTimeMillis()
         if (cancelPrevious) previous?.cancel()
         _generationJob.value = job
         if (job != null) activeJobs.add(job)
@@ -313,6 +321,9 @@ class ConversationSession(
         _generationJob.value = null
         idleCheckJob?.cancel()
         idleCheckJob = null
+        processingStatus.value = null
+        replyMessageId.value = null
+        generationStartedAt.value = null
     }
 }
 

@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
+import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +20,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.net.toUri
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,6 +56,20 @@ fun SettingPreferencesNotificationPage(vm: SettingVM = koinViewModel()) {
     )
     PermissionManager(permissionState = permissionState)
 
+    val context = LocalContext.current
+    var canDrawOverlays by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    // 从系统设置页授权回来后刷新
+    LifecycleResumeEffect(Unit) {
+        canDrawOverlays = Settings.canDrawOverlays(context)
+        onPauseOrDispose {}
+    }
+
+    fun requestOverlayPermission() {
+        context.startActivity(
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri())
+        )
+    }
+
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
@@ -75,6 +94,7 @@ fun SettingPreferencesNotificationPage(vm: SettingVM = koinViewModel()) {
             item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.setting_page_preferences_notification_background_generation)) },
                 ) {
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_notification_message_generated)) },
@@ -103,6 +123,26 @@ fun SettingPreferencesNotificationPage(vm: SettingVM = koinViewModel()) {
                                     }
                                 )
                             },
+                        )
+                    }
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_page_preferences_notification_floating_window)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_preferences_notification_floating_window_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.enableFloatingChatWindow,
+                                onCheckedChange = {
+                                    if (it && !canDrawOverlays) requestOverlayPermission()
+                                    updateDisplaySetting(displaySetting.copy(enableFloatingChatWindow = it))
+                                }
+                            )
+                        },
+                    )
+                    if (displaySetting.enableFloatingChatWindow && !canDrawOverlays) {
+                        item(
+                            onClick = ::requestOverlayPermission,
+                            headlineContent = { Text(stringResource(R.string.setting_page_preferences_notification_overlay_permission)) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_preferences_notification_overlay_permission_desc)) },
                         )
                     }
                 }

@@ -13,6 +13,8 @@ import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.data.plugin.DataStorePluginStateStore
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.plugin.manager.PluginStateStore
+import app.androidrik.rikkahub.service.ChatFloatingTracker
+import app.androidrik.rikkahub.ui.floating.ChatFloatingWindows
 import app.androidrik.rikkahub.service.ChatNotificationManager
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.MediaCreationService
@@ -124,6 +126,25 @@ val appModule = module {
             appScope = get(),
             eventBus = get(),
             settingsStore = get(),
+        )
+    }
+
+    // ChatService 只在后台才用到，延迟创建
+    single {
+        ChatFloatingTracker(
+            appScope = get(),
+            lazyChatService = lazy { get() },
+            settingsStore = get(),
+        )
+    }
+
+    // 同上，进程启动即开始监听前后台切换
+    single(createdAtStart = true) {
+        ChatFloatingWindows(
+            context = get(),
+            appScope = get(),
+            tracker = get(),
+            lazyChatService = lazy { get() },
         )
     }
 

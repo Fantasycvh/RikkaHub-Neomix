@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -158,6 +159,14 @@ private const val TAG = "RouteActivity"
 private const val ACTION_TRANSLATE = "app.androidrik.rikkahub.action.TRANSLATE"
 private const val ACTION_IMAGE_GEN = "app.androidrik.rikkahub.action.IMAGE_GEN"
 private const val ACTION_MEDIA_CREATION = "app.androidrik.rikkahub.action.MEDIA_CREATION"
+private const val EXTRA_CONVERSATION_ID = "conversationId"
+
+/** 打开指定会话的聊天页 */
+fun conversationIntent(context: Context, conversationId: String): Intent =
+    Intent(context, RouteActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        putExtra(EXTRA_CONVERSATION_ID, conversationId)
+    }
 
 class RouteActivity : ComponentActivity() {
     private val okHttpClient by inject<OkHttpClient>()
@@ -271,7 +280,7 @@ class RouteActivity : ComponentActivity() {
             // 否则沿用会话 id 的老路径
             else -> mediaCreationDestination(intent)
                 ?: intent.getStringExtra("runId")?.let { Screen.AgentRunDetail(it) }
-                ?: intent.getStringExtra("conversationId")?.let { Screen.Chat(it) }
+                ?: intent.getStringExtra(EXTRA_CONVERSATION_ID)?.let { Screen.Chat(it) }
         }
         if (destination != null && backStack.lastOrNull() != destination) {
             backStack.add(destination)
