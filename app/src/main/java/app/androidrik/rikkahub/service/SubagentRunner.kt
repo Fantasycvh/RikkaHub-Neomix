@@ -230,6 +230,11 @@ class SubagentRunner(
                 )
             }
         } finally {
+            // runJob 是手工创建的裸 Job：withContext 结束不会让它完成，必须显式 complete，
+            // 否则它永远 Active 挂在父生成协程下——外层 flow 生产者停在 Completing 等子 Job，
+            // 整轮生成的收尾永不发生（子代理早已返回、回复早已完成，UI 却一直「正在生成」）。
+            // 取消路径无需处理：取消传播会把 runJob 一并置为 Cancelled，complete 对已完成 Job 是空操作。
+            if (runJob.isActive) runJob.complete()
             gate.release(runId.toString())
             activeJobs.remove(runId)
             clearProgress(runId.toString())
