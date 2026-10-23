@@ -1,5 +1,17 @@
 package app.androidrik.rikkahub.ui.components.ui
 
+import android.view.MotionEvent
+import android.os.SystemClock
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import app.androidrik.rikkahub.ui.floating.windowGeometryGesture
+import app.androidrik.rikkahub.service.floating.WindowGeometry
+import com.petterp.floatingx.core.layout.FxGravity
+import com.petterp.floatingx.core.gesture.FxGesture
+import com.petterp.floatingx.core.gesture.FxDrag
+import org.junit.Assert.assertTrue
 import android.content.Intent
 import android.os.ParcelFileDescriptor
 import androidx.compose.material3.Text
@@ -95,6 +107,53 @@ class FloatingWindowTest {
         } finally {
             composeRule.runOnIdle { control?.cancel() }
         }
+    }
+
+    @Test
+    fun systemOverlayDragFollowsRawPointerWithoutFeedbackJumps() = withOverlayPermission("allow") {
+        var control: FxControl? = null
+        val geometry = mutableStateOf(WindowGeometry(30, 100, 500, 500))
+        val positions = java.util.Collections.synchronizedList(mutableListOf<Int>())
+        try {
+            composeRule.runOnIdle {
+                control = FloatingX.install("raw-coordinate-drag-regression") {
+                    anchor(FxGravity.TOP_START, dx = 30f, dy = 100f)
+                    gesture(FxGesture(click = false, longPress = false, drag = FxDrag.DISABLED))
+                    systemHost(context) { permission(FxPermissionStrategy.skip()) }
+                    compose {
+                        val current = geometry.value
+                        SideEffect { control?.moveTo(current.x.toFloat(), current.y.toFloat(), false) }
+                        Box(Modifier.size(200.dp).windowGeometryGesture(
+                            0f, { geometry.value }, false,
+                            { origin, _, dx, dy ->
+                                positions.add(origin.x + dx)
+                                geometry.value = origin.copy(x = origin.x + dx, y = origin.y + dy)
+                            }, {},
+                        ))
+                    }
+                }.also { it.show() }
+            }
+            composeRule.waitForIdle()
+            val location = IntArray(2)
+            composeRule.runOnIdle { control!!.contentView!!.getLocationOnScreen(location) }
+            val startX = location[0] + 100f
+            val startY = location[1] + 100f
+            val down = SystemClock.uptimeMillis()
+            fun inject(action: Int, x: Float, y: Float) {
+                val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0)
+                try { assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true)) }
+                finally { event.recycle() }
+                instrumentation.waitForIdleSync()
+            }
+            inject(MotionEvent.ACTION_DOWN, startX, startY)
+            for (step in 1..12) inject(MotionEvent.ACTION_MOVE, startX + step * 10f, startY + step * 5f)
+            inject(MotionEvent.ACTION_UP, startX + 120f, startY + 60f)
+            composeRule.runOnIdle {
+                assertTrue("drag callbacks missing", positions.size >= 5)
+                assertTrue("window diverged from pointer: ${geometry.value}", kotlin.math.abs(geometry.value.x - 150) <= 3)
+                assertTrue("non-monotonic drag: $positions", positions.zipWithNext().all { (a, b) -> b >= a && b - a <= 35 })
+            }
+        } finally { composeRule.runOnIdle { control?.cancel() } }
     }
 
     private fun withOverlayPermission(mode: String, block: () -> Unit) {
