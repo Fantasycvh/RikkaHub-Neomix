@@ -1263,6 +1263,8 @@
   <string name="setting_provider_page_fetch_models_loading">Fetching models…</string>
   <string name="setting_provider_page_fetch_models_error">Failed to fetch models: %1$s</string>
   <string name="setting_provider_page_fetch_models_retry">Retry</string>
+  <string name="setting_provider_page_fetch_models_copy">Copy error</string>
+  <string name="setting_provider_page_fetch_models_copy_success">Error copied</string>
   <string name="setting_provider_page_add_new_model">Add New Model</string>
   <string name="setting_provider_page_add_provider">Add Provider</string>
   <string name="setting_provider_page_add_provider_override">Add Provider Override</string>

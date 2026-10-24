@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
+import android.content.ClipData
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Package01
 import me.rerere.hugeicons.stroke.Connect
 import me.rerere.hugeicons.stroke.Earth
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -89,6 +92,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
@@ -594,6 +599,10 @@ private fun ModelList(
     onUpdateProvider: (ProviderSetting) -> Unit
 ) {
     val providerManager = koinInject<ProviderManager>()
+    val clipboard = LocalClipboard.current
+    val toaster = LocalToaster.current
+    val scope = rememberCoroutineScope()
+    val copySuccessMsg = stringResource(R.string.setting_provider_page_fetch_models_copy_success)
     var fetchState by remember { mutableStateOf<UiState<List<Model>>>(UiState.Idle) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
     LaunchedEffect(providerSetting, refreshTrigger) {
@@ -678,8 +687,35 @@ private fun ModelList(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.error
                                 )
-                                TextButton(onClick = { refreshTrigger++ }) {
-                                    Text(stringResource(R.string.setting_provider_page_fetch_models_retry))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    TextButton(onClick = { refreshTrigger++ }) {
+                                        Text(stringResource(R.string.setting_provider_page_fetch_models_retry))
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            scope.launch {
+                                                clipboard.setClipEntry(
+                                                    ClipEntry(
+                                                        ClipData.newPlainText(
+                                                            "Error",
+                                                            state.error.message ?: "Unknown"
+                                                        )
+                                                    )
+                                                )
+                                            }
+                                            toaster.show(copySuccessMsg)
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = HugeIcons.Copy01,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(stringResource(R.string.setting_provider_page_fetch_models_copy))
+                                    }
                                 }
                             }
                         }
