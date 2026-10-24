@@ -3509,3 +3509,8 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   条目文件；页面去掉 Dismissed 分支，滑动项补 `reset()`；移除无调用方的 `restoreConversation`。
   **验证**：仪器测试 `HistoryDeleteUndoTest` 3 条真机（PJX110）全绿（单条撤销恢复 / 连删两条一次撤销全恢复 /
   到期不复活且清理无崩溃）；`:app` 全量 JVM 单测通过。
+
+- 2026-10-24 **上游跟进：Tavily 可关闭「生成答案」+ 各搜索服务 query 描述补全**（自 master 同步 `10689d1a5`，
+  上游 `fcb4bfe4e`）。`TavilyOptions.includeAnswer`（默认开 = 旧行为）+ 设置页开关（三语文案，关闭时请求发
+  `include_answer: false`）；共享 `SEARCH_QUERY_DESCRIPTION` 替换 16 个服务的 "search keyword"（DeepSeek 保留
+  本仓操作符说明改接共享描述；Grok 是自然语言问句不改；本仓无 Firecrawl/RikkaHub 服务不涉及）。
