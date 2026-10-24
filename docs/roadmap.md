@@ -3576,3 +3576,11 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   （旧 release 的远端 tag 曾被 `gh release delete --cleanup-tag` 连带删除，已重推）。
   新资产 `Neomix-1.0.28-beta.9-arm64-v8a.apk` 61,430,326 B、SHA-256 `1fd8446b…7aaa8`，exp 资产 20,004,442 B、
   `7c036a2f…2dc5e`，API 回读 digest 均一致；同 versionCode 311，已装旧 beta.9 系可 `adb install -r` 覆盖（签名相同）。
+
+- 2026-10-24 **自动压缩触发阈值改为滑杆 + 可填写**（用户要求「可拖拽和填写,而不是当前写死的」）。
+  原为固定分段按钮(60/70/80/90);改为 `SliderSettingField`:滑杆拖拽即时预览(`dragValue` 缓冲、
+  松手 `onValueChangeFinished` 才落库,避免逐帧 DataStore 写)、数值框可填任意值(解析成功且在
+  50–95 范围内才提交,越界标红,沿用 `compress_preset_range_hint` 文案),两控件经 `remember(value)`
+  双向同步;复用 `AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE`。保留比例/摘要目标的填写框不变。
+  **验证**:`:app:compileDebugKotlin` + 全量 JVM 单测通过;debug 包真机(PJX110)截图冒烟——
+  滑杆拖动 79→84→恢复(实时百分比/滑杆/数值框三处同步、落库确认),文本框改 79 滑杆即时跳回(双向同步)。

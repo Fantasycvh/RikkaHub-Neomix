@@ -24,7 +24,9 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import kotlin.math.roundToInt
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -55,6 +57,7 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.ui.components.ai.ModelListSheet
 import app.androidrik.rikkahub.ui.components.ai.rememberModelListState
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_RANGE
+import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
 import app.androidrik.rikkahub.data.ai.compression.clamped
 import app.androidrik.rikkahub.ui.components.ai.CompressPresetManageDialog
@@ -269,7 +272,6 @@ private fun AutoCompressSetting(
     settings: Settings,
     vm: SettingVM,
 ) {
-    val thresholdOptions = listOf(60, 70, 80, 90)
     val builtInNames = builtInCompressPresetNames()
     var showPresetManager by remember { mutableStateOf(false) }
 
@@ -315,24 +317,16 @@ private fun AutoCompressSetting(
                     modifier = Modifier.padding(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    // 触发阈值：**只属自动压缩**（手动由用户自己判断何时压，无此参数）
-                    Text(
-                        text = stringResource(R.string.setting_model_page_auto_compress_threshold),
-                        style = MaterialTheme.typography.labelMedium,
+                    // 触发阈值：**只属自动压缩**（手动由用户自己判断何时压，无此参数）。
+                    // 滑杆拖拽即时预览、松手落库；数值框可填任意值，提交时按范围钳制。
+                    SliderSettingField(
+                        label = stringResource(R.string.setting_model_page_auto_compress_threshold),
+                        value = settings.autoCompressThresholdPercent,
+                        range = AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE,
+                        onValueChange = {
+                            vm.updateSettings(settings.copy(autoCompressThresholdPercent = it))
+                        },
                     )
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        thresholdOptions.forEachIndexed { index, percent ->
-                            SegmentedButton(
-                                selected = settings.autoCompressThresholdPercent == percent,
-                                onClick = {
-                                    vm.updateSettings(settings.copy(autoCompressThresholdPercent = percent))
-                                },
-                                shape = SegmentedButtonDefaults.itemShape(index, thresholdOptions.size),
-                            ) {
-                                Text("$percent%")
-                            }
-                        }
-                    }
 
                     // 保留比例 + 摘要目标：由「压缩配置档」一键填入，也可自填（= 自定义）
                     CompressPresetSelector(
@@ -411,6 +405,72 @@ private fun NumericSettingField(
         },
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+/**
+ * 数值设置项（滑杆 + 可填写）：滑杆拖拽即时预览、松手落库；文本框可填任意值，解析成功且
+ * 在 [range] 内才提交（与 [NumericSettingField] 同口径，越界标红不落库）。
+ *
+ * 为什么不直接滑一步写一步：滑杆拖动每帧都会触发 onValueChange，直接连到 DataStore 写入
+ * 会高频落库——用 [dragValue] 缓冲拖动中的值，`onValueChangeFinished` 才提交。
+ * `remember(value)` 保证设置被其他入口（如压缩配置档）改写后两个控件都回填同步。
+ */
+@Composable
+private fun SliderSettingField(
+    label: String,
+    value: Int,
+    range: IntRange,
+    onValueChange: (Int) -> Unit,
+) {
+    var dragValue by remember(value) { mutableStateOf<Int?>(null) }
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    val parsed = text.trim().toIntOrNull()
+    val isOutOfRange = text.isNotBlank() && (parsed == null || parsed !in range)
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "${dragValue ?: value}%",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (dragValue != null) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        Slider(
+            value = (dragValue ?: value).toFloat(),
+            onValueChange = { dragValue = it.roundToInt().coerceIn(range.first, range.last) },
+            onValueChangeFinished = {
+                dragValue?.let(onValueChange)
+                dragValue = null
+            },
+            valueRange = range.first.toFloat()..range.last.toFloat(),
+            steps = range.last - range.first - 1,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = text,
+            onValueChange = { new ->
+                text = new
+                new.trim().toIntOrNull()?.let { if (it in range) onValueChange(it) }
+            },
+            isError = isOutOfRange,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            suffix = { Text("%") },
+            supportingText = {
+                Text(stringResource(R.string.compress_preset_range_hint, range.first, range.last))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 /**
