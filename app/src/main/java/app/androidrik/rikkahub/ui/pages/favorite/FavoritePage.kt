@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -240,18 +241,18 @@ fun FavoritePage(vm: FavoriteVM = koinViewModel()) {
                             onClick = { navigateToChatPage(navController, item.conversationId, nodeId = item.nodeId) },
                             onDelete = {
                                 scope.launch {
-                                    // 顺序关键：**先删完再弹 snackbar**（removeFavorite 现在是 suspend）。
-                                    // 原先 fire-and-forget 会让"撤销"的 upsert 可能先于 delete 落库，
-                                    // 反被删除覆盖 —— 见设计稿 §1.4 缺陷 A。
+                                    // 顺序关键：**先删完再弹 snackbar**（removeFavorite 是 suspend）。
+                                    // 删除的实体进 VM 撤销队列：连续删除时新 snackbar 会抢占旧的，被抢占
+                                    // 条目的撤销靠「任意撤销动作恢复全部 pending」兜住（见 FavoriteVM）。
                                     val entity = vm.getEntityByRefKey(item.refKey) ?: return@launch
-                                    vm.removeFavorite(item.refKey)
+                                    vm.removeFavorite(entity)
                                     val result = snackbarHostState.showSnackbar(
                                         message = favoriteRemovedText,
                                         actionLabel = undoText,
                                         withDismissAction = true,
                                     )
                                     if (result == SnackbarResult.ActionPerformed) {
-                                        vm.restoreFavorite(entity)
+                                        vm.undoFavoriteDeletes()
                                     }
                                 }
                             },
@@ -352,7 +353,11 @@ private fun FavoriteCard(
                             tint = MaterialTheme.colorScheme.outline,
                         )
                     }
-                    IconButton(onClick = onDelete) {
+                    IconButton(
+                        onClick = onDelete,
+                        // 测试定位用：滑动背景的删除图标与按钮共用 contentDescription，单靠描述会匹配两个节点
+                        modifier = Modifier.testTag("favorite_card_delete"),
+                    ) {
                         Icon(
                             HugeIcons.Delete01,
                             contentDescription = stringResource(R.string.assistant_page_remove),

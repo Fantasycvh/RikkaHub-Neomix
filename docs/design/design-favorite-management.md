@@ -47,6 +47,16 @@
 
 ### 1.4 两个已定位的缺陷
 
+> **2026-10-24 追记——缺陷 D（snackbar 抢占导致撤销静默丢失，真机复现）**：缺陷 A 的 suspend 修复只保证了
+> 「删除先于 snackbar 落库」，但撤销恢复绑定在**每条删除自己的 snackbar** 上。连续删除时，新 snackbar 会
+> 抢占旧的（`showSnackbar` 的 mutex 语义），被抢占条目的撤销协程收到 `Dismissed` → 恢复被跳过——
+> **用户点最后一条的「撤销」只有最后一条回来**，前面的删除静默失效。仪器测试
+> `FavoriteUndoRestoreTest#undoAfterSuccessiveDeletesRestoresAllPending` 在 PJX110 上复现（修复前 10s 超时失败）。
+> **修复**：`FavoriteVM` 持有撤销队列（`pendingUndoes`，带 10s 保留期，超 snackbar 展示时长），任意撤销动作
+> 恢复队列里全部未过期条目；过期条目在下次触碰队列时修剪（无需定时任务，也不依赖 currentSnackbarData 区分
+> 抢占/超时——那有竞态）。回归：3 条仪器测试全绿（单条撤销 / 连续删除一次撤销全恢复 / 显式按钮撤销）。
+> 同族隐患备注：`HistoryPage` 删会话撤销同形状（且 Dismissed 分支还删附件文件），被抢占时同样丢撤销——未在本轮处理。
+
 #### 缺陷 A：撤销的**时序竞态**（fire-and-forget 逃逸）
 
 ```kotlin

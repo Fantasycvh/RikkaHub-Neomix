@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.entity.FavoriteEntity
 import app.androidrik.rikkahub.data.favorite.NodeFavoriteAdapter
@@ -47,6 +49,10 @@ class FavoriteVM(
 ) : ViewModel() {
 
     private val sortFlow = MutableStateFlow(FavoriteSort.CREATED_DESC)
+
+    /** 待撤销的删除（时间序，见 [removeFavorite]）；`PendingUndo.expiresAt` 过期即视为放弃撤销。 */
+    private var pendingUndoes = mutableListOf<PendingUndo>()
+    private val pendingUndoesMutex = Mutex()
 
     /** 当前排序方式。 */
     val sort: StateFlow<FavoriteSort> = sortFlow.asStateFlow()
@@ -96,24 +102,42 @@ class FavoriteVM(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /**
-     * 删除收藏。
+     * 删除收藏（挂起，保证先删完再弹 snackbar）。
      *
-     * **`suspend` 而非 fire-and-forget**：原先内部 `viewModelScope.launch` 立刻返回，
-     * 于是「删除还没落库就弹撤销」——用户点撤销时 `upsert(REPLACE)` 可能**先于** delete 落库，
-     * **撤销反被删除覆盖**。挂起后调用方能保证「先删完、再弹 snackbar」。
-     * 见 `docs/design/design-favorite-management.md` §1.4 缺陷 A（与 regenerate 撤销同族的
-     * 「动作不等结果、却立刻依赖结果」）。
+     * 实体进 [pendingUndoes] 撤销队列：**一个 snackbar 被下一条删除抢占时，它的撤销协程只会收到
+     * Dismissed**——若只在 ActionPerformed 时恢复「自己那一条」，被抢占的删除就静默丢失（真机复现：
+     * 连删两条 → 点最后一条的「撤销」→ 只有最后一条回来）。撤销时统一恢复队列里未过期的全部条目。
      */
-    suspend fun removeFavorite(refKey: String) {
-        favoriteRepository.deleteByRefKey(refKey)
+    suspend fun removeFavorite(entity: FavoriteEntity) {
+        favoriteRepository.deleteByRefKey(entity.refKey)
+        pendingUndoesMutex.withLock {
+            pruneExpiredLocked()
+            pendingUndoes += PendingUndo(entity, System.currentTimeMillis() + UNDO_RETENTION_MS)
+        }
     }
 
     suspend fun getEntityByRefKey(refKey: String): FavoriteEntity? =
         favoriteRepository.getByRefKey(refKey)
 
-    /** 撤销删除：**挂起**，同样为让调用方保证落库时序（见 [removeFavorite]）。 */
-    suspend fun restoreFavorite(entity: FavoriteEntity) {
-        favoriteRepository.upsert(entity)
+    /** 撤销删除：恢复队列中**全部**未过期条目（见 [removeFavorite] 的抢占说明）。 */
+    suspend fun undoFavoriteDeletes() {
+        val entities = pendingUndoesMutex.withLock {
+            pruneExpiredLocked()
+            pendingUndoes.also { pendingUndoes = mutableListOf() }.map { it.entity }
+        }
+        entities.forEach { favoriteRepository.upsert(it) }
+    }
+
+    private fun pruneExpiredLocked() {
+        val now = System.currentTimeMillis()
+        pendingUndoes.removeAll { it.expiresAt < now }
+    }
+
+    private class PendingUndo(val entity: FavoriteEntity, val expiresAt: Long)
+
+    companion object {
+        /** 撤销条目保留时长：须大于 snackbar 展示时长（Short ≈ 4s），过期条目在下次触碰队列时修剪。 */
+        private const val UNDO_RETENTION_MS = 10_000L
     }
 
     // ---- 标签（批次 2）----
