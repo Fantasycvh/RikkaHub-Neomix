@@ -1376,6 +1376,44 @@ git checkout master
 **31 项，0 失败/错误/跳过**（含 DeepSeekSearchServiceTest 14 / SearchOptionsEqualityTest 3）。
 未发版：随下一个 beta 生效。未推送。
 
+## 2026-10-24 批量评估（`395a0ee03`..`db4982283`，4 提交）
+
+> 上游 16:06–16:52 连发四条。fetch 后 `upstream/master` = `db4982283`。
+
+| 上游 | 内容 | 判定 |
+|---|---|---|
+| `c2a64ff4` | refactor: 抽出公共 SwipeToDelete 组件（收藏/历史/翻译历史三处复用；历史页改为 settledValue 后才删；a11y 描述统一 R.string.delete） | **不跟**（见下） |
+| `4af510624` | fix(nav): 同一帧连按返回把导航栈弹空闪退（onBack 加 `size > 1`） | **已有等价防线，不跟** |
+| `395a0ee03` | fix(model-list): 收藏模型拖动排序来回抽搐（#2229） | **已移植（适配版）** |
+| `db4982283` | fix(tts): 朗读把 HTML 标签读出（#2222），stripMarkdown 改走渲染解析器 | **不可移植，本仓已有替代方案**（见下） |
+
+**`4af510624` 不跟的理由**：本仓 `9cb72482f` 已修同一崩溃（真机 IllegalArgumentException + 崩溃循环），
+且方案更强——`RouteActivity.kt` 的 onBack 是 `if (backStack.size > 1) removeLastOrNull() else finish()`，
+另配 `rememberNavBackStack` 处的第一道防线。上游仅补了 `size > 1` 半句。
+
+**`c2a64ff4` 不跟的理由**：纯重构，但其宿主页面（收藏/历史左滑删除）本仓已大改——显式删除按钮 +
+VM 持有 pendingUndo 队列（防 snackbar 抢占），直套/手移都要重写整套交互，收益仅是去重代码。
+历史页「滑动 settled 后才触发删除」这一点本仓交互已不同（显式按钮 + 撤销），无对应需求。
+
+**`395a0ee03` 移植（手改适配）**：本仓 `ModelList.kt` 与上游改前逐字同构（下标偏移 + 每次移动直写设置），
+同 bug 在。适配四处：`draggingFavoriteOrder` 本地顺序 state → `favoriteModels` 优先读它；
+reorder 回调弃用下标偏移、按 `"favorite:$it"` key 找位置（本仓 key 构造与上游一致）；
+`onDragStopped` 原本只做震动，现补写回设置 + 按 `===` 撤本地顺序。Uuid 为 `kotlin.uuid.Uuid`，类型直配。
+
+**`db4982283` 不可移植**：上游 stripMarkdown 改为复用 `parseMarkdown`（自定义 `MarkdownBlock/MarkdownInline`
+AST），该解析器来自 `c04365d6f`「渲染收敛到 ui 模块」大重构——本仓仍是 intellij-markdown 的 `ASTNode`
+（`ui/components/richtext/Markdown.kt`），落后 391 提交中未吸收，cherry-pick 无宿主。
+本仓 #2222 已有自己的方案（`MarkdownUtils.kt` 已知标签白名单剥 HTML + 7 种实体解码 + 单测 6 项），
+主体覆盖相当；残余差异两条，均记录待议：
+1. **双重清洗**：上游顺带修了 VoiceMode 在 `tts.speak()` 外先 strip 一次的问题（解码出的 `&lt;b&gt;`
+   二次清洗时被当真标签删掉）。本仓 `VoiceMode.kt:95` 仍先 strip 再 speak（`TTS.kt:146` 内部再 strip），
+   白名单方案下同样存在该二次清洗丢字风险（仅当正文含命名实体且解码后恰好是已知标签名）。
+2. **`TTSProvider.promptGuidance`**：上游把「标记优先用方括号/尖括号」改为「优先用方括号」
+   （尖括号会被 strip 删）。本仓 `speech/.../TTSProvider.kt:23` 仍是旧文案；白名单只删已知标签名，
+   自定义尖括号标记大多存活，风险低于上游，故未急改。
+
+**验证**：`:app:compileDebugKotlin` 通过。未推送。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)
