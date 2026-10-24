@@ -3514,3 +3514,8 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   上游 `fcb4bfe4e`）。`TavilyOptions.includeAnswer`（默认开 = 旧行为）+ 设置页开关（三语文案，关闭时请求发
   `include_answer: false`）；共享 `SEARCH_QUERY_DESCRIPTION` 替换 16 个服务的 "search keyword"（DeepSeek 保留
   本仓操作符说明改接共享描述；Grok 是自然语言问句不改；本仓无 Firecrawl/RikkaHub 服务不涉及）。
+
+- 2026-10-24 **删除重建 `1.0.28-beta.9-exp (311)`**（用户要求「删除重建 beta9」）：beta.9 发行版删除重建，
+  追补撤销修复（favorite/history，`7eebc3d24`/`be6bc4961`）与 Tavily（`fb5b000e7`）；tag 重打到 `cefb45f71`。
+  新资产 `Neomix-1.0.28-beta.9-exp-arm64-v8a.apk` 20,004,442 B、SHA-256 `7c036a2f…2dc5e`，API 回读 digest 一致；
+  同 versionCode 311,已装旧 beta.9 系可 `adb install -r` 覆盖（签名相同）。
