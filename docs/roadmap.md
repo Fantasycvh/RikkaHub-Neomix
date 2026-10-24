@@ -3570,3 +3570,9 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   移除无调用方的 `restoreConversation`。
   **验证**：新增仪器测试 `HistoryDeleteUndoTest` 3 条真机（PJX110）全绿（单条撤销恢复 / 连删两条一次
   撤销全恢复 / 到期不复活且清理无崩溃）；`:app` 全量 JVM 单测通过。
+
+- 2026-10-24 **删除重建 `1.0.28-beta.9 (311)`**（用户要求「删除重建 beta9」）：beta.9 发行版删除重建，
+  追补 Tavily（`10689d1a5`）与撤销修复（favorite `34d6cd60f` / history `cee7c4567`）；tag 重打到 `af744e0d5`
+  （旧 release 的远端 tag 曾被 `gh release delete --cleanup-tag` 连带删除，已重推）。
+  新资产 `Neomix-1.0.28-beta.9-arm64-v8a.apk` 61,430,326 B、SHA-256 `1fd8446b…7aaa8`，exp 资产 20,004,442 B、
+  `7c036a2f…2dc5e`，API 回读 digest 均一致；同 versionCode 311，已装旧 beta.9 系可 `adb install -r` 覆盖（签名相同）。
