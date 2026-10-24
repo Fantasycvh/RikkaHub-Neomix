@@ -55,7 +55,11 @@
 > **修复**：`FavoriteVM` 持有撤销队列（`pendingUndoes`，带 10s 保留期，超 snackbar 展示时长），任意撤销动作
 > 恢复队列里全部未过期条目；过期条目在下次触碰队列时修剪（无需定时任务，也不依赖 currentSnackbarData 区分
 > 抢占/超时——那有竞态）。回归：3 条仪器测试全绿（单条撤销 / 连续删除一次撤销全恢复 / 显式按钮撤销）。
-> 同族隐患备注：`HistoryPage` 删会话撤销同形状（且 Dismissed 分支还删附件文件），被抢占时同样丢撤销——未在本轮处理。
+> 同族隐患跟进（同日）：`HistoryPage` 删会话撤销同形状、且 Dismissed 分支会**删附件文件**（被抢占条目
+> 恢复不完整），已同方案修复——`HistoryVM` 撤销队列 + 每条 10s 到期清理 job（替代页面 Dismissed 分支的
+> 立即清理，被抢占条目不再提前清文件），`onCleared` 兜底清剩余条目文件；`restoreConversation`/页面
+> Dismissed 分支删除。回归 `HistoryDeleteUndoTest` 3 条真机全绿（单条撤销 / 连删两条一次撤销全恢复 /
+> 到期不复活且清理无崩溃）。
 
 #### 缺陷 A：撤销的**时序竞态**（fire-and-forget 逃逸）
 

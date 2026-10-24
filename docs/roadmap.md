@@ -3561,3 +3561,12 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   关闭时请求发 `include_answer: false`）；共享 `SEARCH_QUERY_DESCRIPTION` 替换 16 个服务的 "search keyword"
   （DeepSeek 保留本仓操作符说明改接共享描述；Grok 是自然语言问句不改；本仓无 Firecrawl/RikkaHub 服务不涉及）。
   **验证**：`:search` 与 `:app` 编译通过；`:search:testDebugUnitTest` 31 项 0 失败。未发版、未推送。
+
+- 2026-10-24 **历史页删会话撤销：同族缺陷修复（snackbar 抢占 + 附件文件提前清理）**。收藏页缺陷 D
+  （连删后被抢占的撤销静默丢失）的同族跟进：`HistoryPage` 原实现里被抢占条目收到 Dismissed 后不仅丢撤销，
+  还被立即删附件文件——真机连删两条点最后一条「撤销」只有最后一条恢复。`HistoryVM` 改挂起删除 + 撤销队列
+  （每条带 10s 到期清理 job，到期未撤销才删文件），任意撤销动作恢复全部未过期条目并取消对应清理；
+  `onCleared` 兜底清剩余条目文件（原先此处同样泄漏）；页面去掉 Dismissed 分支，滑动项补 `reset()`；
+  移除无调用方的 `restoreConversation`。
+  **验证**：新增仪器测试 `HistoryDeleteUndoTest` 3 条真机（PJX110）全绿（单条撤销恢复 / 连删两条一次
+  撤销全恢复 / 到期不复活且清理无崩溃）；`:app` 全量 JVM 单测通过。
