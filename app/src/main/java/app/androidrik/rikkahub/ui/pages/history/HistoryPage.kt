@@ -117,18 +117,19 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                         scope.launch {
                             // 先获取完整的对话数据（包含 messageNodes），用于撤销恢复
                             val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
-                            vm.deleteConversation(conversation)
+                            vm.deleteConversation(fullConversation)
                             val result = snackbarHostState.showSnackbar(
                                 message = snackMessageDeleted,
                                 actionLabel = snackMessageUndo,
                                 withDismissAction = true,
                             )
                             if (result == SnackbarResult.ActionPerformed) {
-                                vm.restoreConversation(fullConversation)
-                            } else {
-                                // 撤销窗口结束：清理保留的附件文件，避免磁盘泄漏
-                                vm.deleteConversationFiles(fullConversation)
+                                // 恢复队列里全部待撤销会话（含被新 snackbar 抢占的旧条目——原先它们
+                                // 被静默丢弃且附件文件已被 Dismissed 分支删掉，恢复不完整）
+                                vm.undoConversationDeletes()
                             }
+                            // Dismissed（超时/被抢占）不再在此处删文件：到期清理由撤销队列的
+                            // 定时任务兜住（undoRetentionMs，见 HistoryVM.deleteConversation）
                         }
                     },
                     onTogglePin = { vm.togglePinStatus(conversation.id) },
@@ -186,6 +187,7 @@ private fun SwipeableConversationItem(
         when (dismissState.currentValue) {
             SwipeToDismissBoxValue.EndToStart -> {
                 onDelete()
+                dismissState.reset()  // 立即归位，避免会话列表快速刷新时复用节点停在滑出态
             }
 
             else -> {}
