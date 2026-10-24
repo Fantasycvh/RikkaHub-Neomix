@@ -149,6 +149,8 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlin.uuid.Uuid
 
 @Composable
@@ -747,6 +749,7 @@ private fun ModelList(
                         state = reorderableLazyListState,
                         key = item.id
                     ) { isDragging ->
+                        val haptic = LocalHapticFeedback.current
                         ModelCard(
                             model = item,
                             onDelete = {
@@ -766,6 +769,17 @@ private fun ModelList(
                             },
                             parentProvider = providerSetting,
                             modifier = Modifier
+                                // 排序管线（ReorderableItem + onMove）一直都在，但此前没接任何拖拽
+                                // 触发器，长按无反应。卡片无其他长按用途，直接整卡长按拖动
+                                .longPressDraggableHandle(
+                                    enabled = !selecting,
+                                    onDragStarted = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                                    },
+                                    onDragStopped = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                    }
+                                )
                                 .graphicsLayer {
                                     if (isDragging) {
                                         scaleX = 1.05f

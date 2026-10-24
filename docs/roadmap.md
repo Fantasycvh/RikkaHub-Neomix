@@ -3620,3 +3620,10 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   HugeIcons.Copy01 + ClipEntry 模式;字符串三种语言齐备。
   注：媒体生成配置页（MediaGenerationProviderConfigure）失败仍为 toast 提示,不可复制。
   **验证**：编译通过。
+
+- 2026-10-24 **修复提供商模型列表长按无法拖动排序**。设置→提供商→详情页的模型列表排序管线
+  （ReorderableItem + onMove 写回）一直存在,但从未接拖拽触发器（整个文件无 draggableHandle）,
+  长按无反应——排序功能实际不可用。卡片无其他长按用途,整卡接 longPressDraggableHandle
+  （带启停震动反馈,与模型选择器收藏区同款交互;多选态 enabled=false 防误拖）。上游同页同样
+  缺触发器,属本仓继承性问题非移植回归。
+  **验证**：编译通过;长按拖动与左滑删除并存的手势冲突需真机确认。
