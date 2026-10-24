@@ -3648,6 +3648,11 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   生效,开关语义不变;旧数据缺字段反序列化回 null,零迁移。UI:模型编辑「高级设置」页新增
   「思考强度覆盖（模型级）」,提供商配置页新增「思考强度映射兜底（提供商级）」,共用
   ReasoningOverrideSettings 组件（留空即跟随默认）,字符串三语齐备。
-  **验证**：`:ai:testDebugUnitTest` 315 项 0 失败（GoogleProviderReasoningConfigTest 扩至 7 项,
-  覆盖 模型级优先/兜底生效/OFF与AUTO不吃覆盖;反射签名随 builder 加参同步更新）;
-  `:app:testDebugUnitTest` + 两模块编译通过。真机待验。
+  **验证**：`:ai:testDebugUnitTest` **359 项 0 失败**（GoogleProviderReasoningConfigTest 7 项；
+  新增 ReasoningOverrideTest 8 / ClaudeProviderReasoningOverrideTest 8 /
+  ChatCompletionsAPIReasoningOverrideTest 21 / ResponseAPIReasoningOverrideTest 7，共 44 项，
+  均断言真实请求体而非纯函数）；`:app:testDebugUnitTest`、`:app:assembleDebug` 通过。
+  **真机 debug 已验证**（`app.androidrik.rikkahub.debug`，独立包名不影响正式版）：提供商级兜底
+  effort=max / budget=12345、模型级 effort=minimal，真实请求体分别为
+  `"reasoning_effort":"minimal"`（模型级优先）与 `"reasoning_effort":"max"`
+  （清空模型级覆盖后走提供商兜底），两次 SSE 均 200；测试后已还原临时设置。
