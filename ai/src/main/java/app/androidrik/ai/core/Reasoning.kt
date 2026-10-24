@@ -58,4 +58,3 @@ fun resolveReasoningOverride(
     model: Model,
     providerSetting: ProviderSetting?,
 ): ReasoningOverride? = model.reasoningOverride ?: providerSetting?.reasoningOverride
-
