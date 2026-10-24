@@ -87,7 +87,25 @@ fun RikkahubTheme(
         }
     }
     val extendColors = if (darkTheme) ExtendDarkColors else ExtendLightColors
-    val extendColorsAdjusted = extendColors
+    // 动态取色（壁纸或种子色）时，gray 阶从当前方案的 surface→onSurface 端点在 HCT 色调空间
+    // 插值生成——中性文字/图标带一点取色色调，与主配色不再违和。red/orange/green/blue 是
+    // 错误/警告/成功/信息的**语义色**，必须保持色相固定，不跟随取色。
+    val extendColorsAdjusted = if (settings.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        extendColors.copy(
+            gray1 = deriveTone(colorScheme.surface, colorScheme.onSurface, 0),
+            gray2 = deriveTone(colorScheme.surface, colorScheme.onSurface, 1),
+            gray3 = deriveTone(colorScheme.surface, colorScheme.onSurface, 2),
+            gray4 = deriveTone(colorScheme.surface, colorScheme.onSurface, 3),
+            gray5 = deriveTone(colorScheme.surface, colorScheme.onSurface, 4),
+            gray6 = deriveTone(colorScheme.surface, colorScheme.onSurface, 5),
+            gray7 = deriveTone(colorScheme.surface, colorScheme.onSurface, 6),
+            gray8 = deriveTone(colorScheme.surface, colorScheme.onSurface, 7),
+            gray9 = deriveTone(colorScheme.surface, colorScheme.onSurface, 8),
+            gray10 = deriveTone(colorScheme.surface, colorScheme.onSurface, 9),
+        )
+    } else {
+        extendColors
+    }
     // 更新状态栏图标颜色
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -118,7 +136,7 @@ fun RikkahubTheme(
 
     CompositionLocalProvider(
         LocalDarkMode provides darkTheme,
-        LocalExtendColors provides extendColors,
+        LocalExtendColors provides extendColorsAdjusted,
         LocalOverscrollFactory provides null
     ) {
         MaterialExpressiveTheme(
@@ -134,5 +152,24 @@ val MaterialTheme.extendColors
     @Composable
     @ReadOnlyComposable
     get() = LocalExtendColors.current
+
+/**
+ * 在 [from]（亮端，如 surface）与 [to]（暗端，如 onSurface）之间取第 [step] 档（0..9）
+ * 的中间色：HCT 色调空间线性插值——色调/色度也插值，动态方案的中性色带轻微取色色调，
+ * 插值结果随之协调（固定 gray 阶是带一点冷蓝的中性，端点本身决定最终观感）。
+ */
+private fun deriveTone(from: Color, to: Color, step: Int): Color {
+    val hctFrom = hct.Hct.fromInt(from.toArgb())
+    val hctTo = hct.Hct.fromInt(to.toArgb())
+    val t = step / 9.0
+    // 色相走最短弧
+    var hueDelta = hctTo.hue - hctFrom.hue
+    if (hueDelta > 180) hueDelta -= 360
+    if (hueDelta < -180) hueDelta += 360
+    val hue = (hctFrom.hue + hueDelta * t + 360) % 360
+    val chroma = hctFrom.chroma + (hctTo.chroma - hctFrom.chroma) * t
+    val tone = hctFrom.tone + (hctTo.tone - hctFrom.tone) * t
+    return Color(hct.Hct.from(hue, chroma, tone).toInt())
+}
 
 
