@@ -3598,3 +3598,12 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   ,穿线 ChatMessage/ChatList/ChatPage。
   **验证**:MergeEditedPartsTest 新增 5 条回归（默认最后一段/按段编辑第一段/保留 Tool/非法索引回退/
   新增附件追加末尾）+ 全量 JVM 单测通过;debug 包真机启动冒烟无崩溃。
+
+- 2026-10-24 **动态取色种子色覆盖**（用户确认动态取色支持程度后要求 1/2 两条分批实现）。原动态取色
+  是「全有或全无」跟随壁纸。新增 `dynamicColorSeedColor`（ARGB Long,null=跟随壁纸）:开启动态颜色且
+  Android 12+ 时,种子色经 `CustomTheme.generateColorScheme`（material-color-utilities,TONAL_SPOT,
+  与系统 monet 同观感）生成全套方案,`remember(seed, darkTheme)` 缓存;偏好设置 > 主题新增「种子色」
+  入口（色板 + 复用 `ColorPickerRow` HSL 取色对话框,「跟随壁纸」清空）,复用条件与生效条件一致
+  （动态颜色开 + Android 12+）。
+  **验证**：编译通过;debug 包真机（PJX110）冒烟——入口/对话框/跟随壁纸态渲染正确,选紫确认后全局
+  变紫（用户亲自验证通过）。

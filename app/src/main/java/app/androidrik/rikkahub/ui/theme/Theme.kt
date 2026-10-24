@@ -17,6 +17,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -57,7 +58,17 @@ fun RikkahubTheme(
     val colorScheme = when {
         settings.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            val seed = settings.dynamicColorSeedColor
+            if (seed == null) {
+                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            } else {
+                // 种子色覆盖：壁纸取色换成用户指定种子（复用 CustomTheme 的 material-color-utilities
+                // 方案生成路径，TONAL_SPOT + 默认对比度，与系统 monet 观感一致）。palette 生成
+                // 有成本，remember 按种子与深浅色缓存。
+                remember(seed, darkTheme) {
+                    CustomTheme(primaryColorArgb = seed).generateColorScheme(dark = darkTheme)
+                }
+            }
         }
         else -> {
             val theme = findThemeById(settings.themeId, settings.customThemes)
@@ -76,7 +87,7 @@ fun RikkahubTheme(
         }
     }
     val extendColors = if (darkTheme) ExtendDarkColors else ExtendLightColors
-
+    val extendColorsAdjusted = extendColors
     // 更新状态栏图标颜色
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -123,3 +134,5 @@ val MaterialTheme.extendColors
     @Composable
     @ReadOnlyComposable
     get() = LocalExtendColors.current
+
+

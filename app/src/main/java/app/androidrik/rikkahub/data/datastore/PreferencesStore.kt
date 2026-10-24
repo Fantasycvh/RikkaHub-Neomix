@@ -250,6 +250,8 @@ class SettingsStore(
 
         // UI设置
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        // 动态取色种子色(ARGB Long);null = 跟随壁纸。空串表示显式清除
+        val DYNAMIC_COLOR_SEED = stringPreferencesKey("dynamic_color_seed")
         val THEME_ID = stringPreferencesKey("theme_id")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
@@ -478,6 +480,7 @@ class SettingsStore(
                     ?: RetrySetting(),
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
                 dynamicColor = preferences[DYNAMIC_COLOR] != false,
+                dynamicColorSeedColor = preferences[DYNAMIC_COLOR_SEED]?.takeIf { it.isNotBlank() }?.toLongOrNull(),
                 themeId = preferences[THEME_ID] ?: PresetThemes[0].id,
                 customThemes = preferences[CUSTOM_THEMES]?.let {
                     JsonInstant.decodeFromString(it)
@@ -744,6 +747,7 @@ class SettingsStore(
         settingsFlow.value = settings.copy(webServerJwtEnabled = true)
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
+            preferences[DYNAMIC_COLOR_SEED] = settings.dynamicColorSeedColor?.toString() ?: ""
             preferences[THEME_ID] = settings.themeId
             preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
             preferences[DEVELOPER_MODE] = settings.developerMode
@@ -1000,6 +1004,8 @@ data class Settings(
     @Transient
     val init: Boolean = false,
     val dynamicColor: Boolean = true,
+    /** 动态取色种子色（ARGB）；null = 跟随壁纸。仅 dynamicColor 且 Android 12+ 时生效。 */
+    val dynamicColorSeedColor: Long? = null,
     val themeId: String = PresetThemes[0].id,
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,

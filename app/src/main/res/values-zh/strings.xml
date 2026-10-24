@@ -1170,6 +1170,8 @@
   <string name="setting_page_display_setting">显示设置</string>
   <string name="setting_page_display_setting_desc">管理显示设置</string>
   <string name="setting_page_dynamic_color">动态颜色</string>
+  <string name="setting_page_dynamic_color_seed">动态颜色种子色</string>
+  <string name="setting_page_dynamic_color_seed_follow">跟随壁纸</string>
   <string name="setting_page_dynamic_color_desc">是否基于壁纸动态生成 app 主题配色</string>
   <string name="setting_page_extensions">扩展管理</string>
   <string name="setting_page_extensions_desc">管理提示词注入、技能等扩展</string>

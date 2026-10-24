@@ -541,7 +541,7 @@ private fun ImportThemeDialog(
 }
 
 @Composable
-private fun ColorPickerRow(
+internal fun ColorPickerRow(
     color: Color,
     onColorChange: (Color) -> Unit,
 ) {

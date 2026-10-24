@@ -1178,6 +1178,8 @@
   <string name="setting_network_proxy_title">Global proxy</string>
   <string name="setting_network_proxy_desc">Only transport-layer (proxy type) options apply to search; TTS, MCP, S3 and WebDAV use their own connections.</string>
   <string name="setting_page_dynamic_color">Dynamic Color</string>
+  <string name="setting_page_dynamic_color_seed">Dynamic color seed</string>
+  <string name="setting_page_dynamic_color_seed_follow">Follow wallpaper</string>
   <string name="setting_page_dynamic_color_desc">Generate the app theme colors dynamically from your wallpaper</string>
   <string name="setting_page_extensions">Extensions</string>
   <string name="setting_page_extensions_desc">Manage prompt injections, skills and more</string>
