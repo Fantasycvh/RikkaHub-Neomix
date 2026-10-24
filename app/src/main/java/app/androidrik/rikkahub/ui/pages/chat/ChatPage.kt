@@ -624,6 +624,12 @@ private fun ChatPageContent(
                     inputState.editingMessage = it.id
                     inputState.setContents(it.parts)
                 },
+                onEditSegment = { message, textPartIndex ->
+                    // 多文本段消息（工具轮续跑形状）按段编辑：装的是被选中那段文本，
+                    // 提交时 mergeEditedParts 只替换该段、原样保留 Tool/Reasoning。
+                    inputState.editingMessage = message.id
+                    inputState.setContents(message.parts, textPartIndex)
+                },
                 onQuoteMessage = { message ->
                     // 引用是「下一条新消息」的行为：进入引用即退出编辑态，
                     // 否则发送会走编辑分支、引用被丢掉。

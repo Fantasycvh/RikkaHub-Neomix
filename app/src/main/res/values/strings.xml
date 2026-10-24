@@ -537,6 +537,7 @@
   <string name="deep_thinking_seconds">Thought for %1$.1f seconds</string>
   <string name="delete">Delete</string>
   <string name="edit">Edit</string>
+  <string name="chat_message_edit_segment">Edit text segment %1$d: %2$s</string>
   <string name="editing">Editing</string>
   <string name="emoji_picker_search_placeholder">Search emojis...</string>
   <string name="emoji_picker_select_skin_tone">Select Skin Tone</string>

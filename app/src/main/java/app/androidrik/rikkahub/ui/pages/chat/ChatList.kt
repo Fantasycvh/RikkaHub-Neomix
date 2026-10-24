@@ -158,6 +158,8 @@ fun ChatList(
     /** 手动「继续生成」：把被截断的末条消息接着写下去（本批：裸断流/撞上限时可用） */
     onContinue: (UIMessage) -> Unit = {},
     onEdit: (UIMessage) -> Unit = {},
+    /** 多文本段消息按段编辑；null = 动作面板只给整体编辑入口 */
+    onEditSegment: ((UIMessage, Int) -> Unit)? = null,
     onQuoteMessage: (UIMessage) -> Unit = {},
     onForkMessage: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
@@ -215,6 +217,7 @@ fun ChatList(
                     onRegenerate = onRegenerate,
                     onContinue = onContinue,
                     onEdit = onEdit,
+                    onEditSegment = onEditSegment,
                     onQuoteMessage = onQuoteMessage,
                     onForkMessage = onForkMessage,
                     onDelete = onDelete,
@@ -251,6 +254,7 @@ private fun ChatListNormal(
     onRegenerate: (UIMessage) -> Unit,
     onContinue: (UIMessage) -> Unit,
     onEdit: (UIMessage) -> Unit,
+    onEditSegment: ((UIMessage, Int) -> Unit)? = null,
     onQuoteMessage: (UIMessage) -> Unit,
     onForkMessage: (UIMessage) -> Unit,
     onDelete: (UIMessage) -> Unit,
@@ -493,6 +497,7 @@ private fun ChatListNormal(
                             onEdit = {
                                 onEdit(node.currentMessage)
                             },
+                            onEditSegment = onEditSegment,
                             onQuote = {
                                 onQuoteMessage(node.currentMessage)
                             },

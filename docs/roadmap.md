@@ -3584,3 +3584,17 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   双向同步;复用 `AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE`。保留比例/摘要目标的填写框不变。
   **验证**:`:app:compileDebugKotlin` + 全量 JVM 单测通过;debug 包真机(PJX110)截图冒烟——
   滑杆拖动 79→84→恢复(实时百分比/滑杆/数值框三处同步、落库确认),文本框改 79 滑杆即时跳回(双向同步)。
+
+- 2026-10-24 **消息手动编辑支持多文本段按段编辑 + 保留工具调用记录**（用户报「回复1-编辑记忆-回复2,
+  回复1 无法手动编辑」）。根因:工具轮（记忆编辑等 memory_tool 调用）续跑按同角色追加,把
+  「文本-工具卡-文本」拼进**同一条**消息;而编辑链路 `ChatInputState.setContents` 只装载**最后一个**
+  Text part——编辑回复1 时输入框里装的是回复2 的文本（且提交会经 `mergeEditedParts` 把 Tool part
+  当附件查找失败而**整段丢弃**,工具调用记录连带丢失）。修复:
+  ① `setContents(contents, textPartIndex)` 指定编辑段,`mergeEditedParts` 新增 `editedTextIndex`
+  （缺省=最后一段,历史行为不变）;
+  ② `mergeEditedParts` 非附件 part（Tool/Reasoning 等）**原样保留**,不再被当附件丢弃——这是本次
+  顺带修掉的数据丢失问题;
+  ③ 动作面板:消息含多个非空文本段时,「编辑」按段列出（`chat_message_edit_segment`,带 24 字摘要）
+  ,穿线 ChatMessage/ChatList/ChatPage。
+  **验证**:MergeEditedPartsTest 新增 5 条回归（默认最后一段/按段编辑第一段/保留 Tool/非法索引回退/
+  新增附件追加末尾）+ 全量 JVM 单测通过;debug 包真机启动冒烟无崩溃。

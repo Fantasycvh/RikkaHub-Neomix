@@ -128,4 +128,101 @@ class MergeEditedPartsTest {
         )
         assertEquals(listOf(UIMessagePart.Text("文本")), result)
     }
+
+    // ---- 工具轮多文本段消息（「回复1-编辑记忆-回复2」形状）----
+
+    private val toolPart = UIMessagePart.Tool(
+        toolCallId = "call_1",
+        toolName = "memory_tool",
+        input = "{}",
+        output = listOf(UIMessagePart.Text("已更新记忆")),
+    )
+
+    @Test
+    fun `工具轮消息_默认编辑最后一段文本`() {
+        val original = listOf(
+            UIMessagePart.Text("回复1"),
+            toolPart,
+            UIMessagePart.Text("回复2"),
+        )
+        val result = mergeEditedParts(
+            text = "回复2改",
+            attachments = emptyList(),
+            originalParts = original,
+        )
+        assertEquals(
+            listOf(UIMessagePart.Text("回复1"), toolPart, UIMessagePart.Text("回复2改")),
+            result,
+        )
+    }
+
+    @Test
+    fun `工具轮消息_按段索引编辑第一段_保留工具与第二段`() {
+        val original = listOf(
+            UIMessagePart.Text("回复1"),
+            toolPart,
+            UIMessagePart.Text("回复2"),
+        )
+        val result = mergeEditedParts(
+            text = "回复1改",
+            attachments = emptyList(),
+            originalParts = original,
+            editedTextIndex = 0,
+        )
+        assertEquals(
+            listOf(UIMessagePart.Text("回复1改"), toolPart, UIMessagePart.Text("回复2")),
+            result,
+        )
+    }
+
+    @Test
+    fun `工具轮消息_编辑前必须原样保留 Tool part_不再被当附件丢弃`() {
+        val original = listOf(UIMessagePart.Text("回复1"), toolPart)
+        val result = mergeEditedParts(
+            text = "回复1改",
+            attachments = emptyList(),
+            originalParts = original,
+            editedTextIndex = 0,
+        )
+        assertEquals(listOf(UIMessagePart.Text("回复1改"), toolPart), result)
+    }
+
+    @Test
+    fun `工具轮消息_传入非法段索引按缺省处理`() {
+        val original = listOf(
+            UIMessagePart.Text("回复1"),
+            toolPart,
+            UIMessagePart.Text("回复2"),
+        )
+        // 索引指向 Tool part → 回退到「最后一段文本」的历史行为
+        val result = mergeEditedParts(
+            text = "回复2改",
+            attachments = emptyList(),
+            originalParts = original,
+            editedTextIndex = 1,
+        )
+        assertEquals(
+            listOf(UIMessagePart.Text("回复1"), toolPart, UIMessagePart.Text("回复2改")),
+            result,
+        )
+    }
+
+    @Test
+    fun `工具轮消息_新增附件追加在末尾`() {
+        val original = listOf(
+            UIMessagePart.Text("回复1"),
+            toolPart,
+            UIMessagePart.Text("回复2"),
+        )
+        val result = mergeEditedParts(
+            text = "回复1改",
+            attachments = listOf(imageC),
+            originalParts = original,
+            editedTextIndex = 0,
+        )
+        assertEquals(
+            listOf(UIMessagePart.Text("回复1改"), toolPart, UIMessagePart.Text("回复2"), imageC),
+            result,
+        )
+    }
 }

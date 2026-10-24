@@ -117,6 +117,8 @@ fun ChatMessage(
     onFork: () -> Unit,
     onRegenerate: () -> Unit,
     onEdit: () -> Unit,
+    /** 多文本段消息按段编辑（工具轮续跑形状「文本-工具卡-文本」）；null 时动作面板只给整体编辑入口 */
+    onEditSegment: ((UIMessage, Int) -> Unit)? = null,
     /** 手动「继续生成」：把被截断的消息接着写下去（仅末条消息显示该按钮）。 */
     onContinue: () -> Unit = {},
     onShare: () -> Unit,
@@ -286,6 +288,7 @@ fun ChatMessage(
         ChatMessageActionsSheet(
             message = message,
             onEdit = onEdit,
+            onEditSegment = onEditSegment,
             onDelete = onDelete,
             onShare = onShare,
             onFork = onFork,

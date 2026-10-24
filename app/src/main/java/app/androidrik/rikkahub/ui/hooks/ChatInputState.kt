@@ -28,6 +28,15 @@ class ChatInputState {
     private var editingAttachmentUrls: Set<String> = emptySet()
 
     /**
+     * 编辑目标 Text part 在 [editingParts] 里的下标。
+     *
+     * 工具轮（如记忆编辑）续跑按同角色追加，会把「文本-工具卡-文本」拼进**同一条**消息
+     * ——此时编辑必须指明改哪一段文本，否则永远只能改最后一段（回复1 改不了的现象）。
+     * null = 取最后一个 Text part（单文本消息的历史行为）。
+     */
+    private var editingTextIndex: Int? = null
+
+    /**
      * 编辑历史消息时「原附件 → 替换后的附件」。
      *
      * 替换必须记这层映射，否则 [getContents] 按原 parts 顺序回填时找不到原附件，
@@ -44,6 +53,7 @@ class ChatInputState {
         editingParts = null
         editingAttachmentUrls = emptySet()
         replacedAttachments = emptyMap()
+        editingTextIndex = null
     }
 
     fun isEditing() = editingMessage != null
@@ -56,16 +66,23 @@ class ChatInputState {
         textContent.setTextAndPlaceCursorAtEnd(textContent.text.toString() + content)
     }
 
-    fun setContents(contents: List<UIMessagePart>) {
-        val lastTextIndex = contents.indexOfLast { it is UIMessagePart.Text }
-        val text = if (lastTextIndex >= 0) {
-            (contents[lastTextIndex] as UIMessagePart.Text).text
-        } else {
-            ""
-        }
+    /**
+     * 进入编辑态并装载 [contents]。
+     *
+     * [textPartIndex] 指定编辑哪一个 Text part（多文本段消息——工具轮续跑会产生
+     * 「文本-工具卡-文本」形状——由动作面板按段选择传入）；缺省取最后一个 Text part
+     * （单文本消息的历史行为）。附件装载按「可编辑附件」过滤，Tool/Reasoning 等
+     * 非附件 part 不进输入框，提交时由 [mergeEditedParts] 原样保留。
+     */
+    fun setContents(contents: List<UIMessagePart>, textPartIndex: Int? = null) {
+        val resolvedIndex = textPartIndex
+            ?.takeIf { contents.getOrNull(it) is UIMessagePart.Text }
+            ?: contents.indexOfLast { it is UIMessagePart.Text }
+        val text = (resolvedIndex.takeIf { it >= 0 }?.let { contents[it] } as? UIMessagePart.Text)?.text ?: ""
         textContent.setTextAndPlaceCursorAtEnd(text)
-        messageContent = contents.filter { it !is UIMessagePart.Text }
+        messageContent = contents.filter { it.isEditableAttachment() }
         editingParts = contents
+        editingTextIndex = resolvedIndex.takeIf { it >= 0 }
         editingAttachmentUrls = contents.mapNotNull { it.attachmentUrlOrNull() }.toSet()
         replacedAttachments = emptyMap()
     }
@@ -80,6 +97,7 @@ class ChatInputState {
             attachments = messageContent,
             originalParts = editingParts,
             replacements = replacedAttachments,
+            editedTextIndex = editingTextIndex,
         )
     }
 
@@ -170,18 +188,26 @@ class ChatInputState {
  * - 编辑历史消息 ⇒ 严格按**原 parts 顺序**回填：文本槽位用当前输入框文本替换
  *   （为空则整条 Text part 消失，对齐纯图片消息），附件槽位按原顺序取出仍在的附件，
  *   被替换过的附件取替换后的那份（保持位置），删掉的原附件直接消失；
+ *   **Tool / Reasoning 等非附件 part 原样保留**（工具轮消息被编辑时不能丢掉工具调用记录
+ *   ——它们不是附件，丢失即破坏会话历史）；
  * - 不在原消息里的附件（本次新追加的）按插入顺序追加到末尾。
+ *
+ * [editedTextIndex] 指定被编辑的 Text part 下标（多文本段消息按段编辑）；缺省取
+ * 最后一个 Text part（单文本消息的历史行为）。传入了不指向 Text part 的值时按缺省处理。
  */
 internal fun mergeEditedParts(
     text: String,
     attachments: List<UIMessagePart>,
     originalParts: List<UIMessagePart>?,
     replacements: Map<UIMessagePart, UIMessagePart> = emptyMap(),
+    editedTextIndex: Int? = null,
 ): List<UIMessagePart> {
     if (originalParts == null) {
         return if (text.isBlank()) attachments else listOf(UIMessagePart.Text(text)) + attachments
     }
-    val editedTextIndex = originalParts.indexOfLast { it is UIMessagePart.Text }
+    val editedTextIndex = editedTextIndex
+        ?.takeIf { originalParts.getOrNull(it) is UIMessagePart.Text }
+        ?: originalParts.indexOfLast { it is UIMessagePart.Text }
     val remainingAttachments = attachments.toMutableList()
     val merged = mutableListOf<UIMessagePart>()
 
@@ -200,7 +226,7 @@ internal fun mergeEditedParts(
                 }
             }
 
-            else -> {
+            part.isEditableAttachment() -> {
                 val currentIndex = remainingAttachments.indexOf(part).takeIf { it >= 0 }
                     ?: replacements[part]?.let { replacement -> remainingAttachments.indexOf(replacement) }
                         ?.takeIf { it >= 0 }
@@ -208,6 +234,11 @@ internal fun mergeEditedParts(
                 if (currentIndex >= 0) {
                     merged.add(remainingAttachments.removeAt(currentIndex))
                 }
+            }
+
+            // Tool / Reasoning 等非附件 part：编辑不触及，原样保留（此前会被当附件查找失败而丢弃）
+            else -> {
+                merged.add(part)
             }
         }
     }
@@ -218,4 +249,11 @@ internal fun mergeEditedParts(
     // Newly added attachments are appended in insertion order.
     merged.addAll(remainingAttachments)
     return merged
+}
+
+private fun UIMessagePart.isEditableAttachment(): Boolean {
+    return when (this) {
+        is UIMessagePart.Image, is UIMessagePart.Video, is UIMessagePart.Audio, is UIMessagePart.Document -> true
+        else -> false
+    }
 }

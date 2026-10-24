@@ -231,6 +231,8 @@ fun ChatMessageActionsSheet(
     model: Model?,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
+    /** 多文本段消息（工具轮续跑产生「文本-工具卡-文本」）按段编辑；null 时只提供整体编辑入口。 */
+    onEditSegment: ((UIMessage, Int) -> Unit)? = null,
     onShare: () -> Unit,
     onFork: () -> Unit,
     onSelectAndCopy: () -> Unit,
@@ -340,30 +342,67 @@ fun ChatMessageActionsSheet(
                 }
             }
 
-            // Edit
-            Card(
-                onClick = {
-                    onDismissRequest()
-                    onEdit()
-                },
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
+            // Edit。多文本段消息（工具轮续跑形状「文本-工具卡-文本」）按段列出编辑入口——
+            // 否则编辑只能落到最后一段（更早的文本永远改不了，且用户会以为编辑的是前面那段）。
+            val textSegments = remember(message) {
+                message.parts.withIndex()
+                    .filter { (it.value as? UIMessagePart.Text)?.text?.isNotBlank() == true }
+            }
+            if (onEditSegment != null && textSegments.size > 1) {
+                textSegments.forEachIndexed { ordinal, (index, part) ->
+                    val fullText = (part as UIMessagePart.Text).text.trim()
+                    val snippet = if (fullText.length > 24) fullText.take(24) + "…" else fullText
+                    Card(
+                        onClick = {
+                            onDismissRequest()
+                            onEditSegment(message, index)
+                        },
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.Edit01,
+                                contentDescription = null,
+                                modifier = Modifier.padding(4.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.chat_message_edit_segment, ordinal + 1, snippet),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+                }
+            } else {
+                Card(
+                    onClick = {
+                        onDismissRequest()
+                        onEdit()
+                    },
+                    shape = MaterialTheme.shapes.medium
                 ) {
-                    Icon(
-                        imageVector = HugeIcons.Edit01,
-                        contentDescription = null,
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.edit),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Edit01,
+                            contentDescription = null,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.edit),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
                 }
             }
 
