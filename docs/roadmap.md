@@ -3627,3 +3627,13 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   （带启停震动反馈,与模型选择器收藏区同款交互;多选态 enabled=false 防误拖）。上游同页同样
   缺触发器,属本仓继承性问题非移植回归。
   **验证**：编译通过;长按拖动与左滑删除并存的手势冲突需真机确认。
+
+- 2026-10-24 **世界书/注入导入器枚举大小写兼容**。外部工具按本仓信封（version/type/data,
+  type=lorebook|mode_injection|prompt_preset）导出的文件,枚举值写成 Kotlin 常量名大写
+  （AFTER_SYSTEM_PROMPT/USER）而非 @SerialName 小写,kotlinx.serialization 精确匹配,
+  一处不符整份报「格式不支持」。ExportSerializer companion 新增 withCaseInsensitiveEnums
+  （递归把 position/role/selectiveLogic 三个纯枚举字段的字符串值转小写;已是小写无操作,
+  非法值仍照常失败,不会静默变空数据）,三个 tryImportNative 统一套用;Lorebook 顺带合并
+  双重解码。实测用户 QQ 收到的一份 24 条世界书（同形大写）原文件现可直接导入。
+  **验证**：新增 LorebookNativeImportCaseTest 3 项（大写解码/小写不受影响/非法值仍失败）
+  全过;export 包既有 58 项 0 失败。

@@ -23,6 +23,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.rikkahub.utils.jsonPrimitiveOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
 @Serializable
@@ -90,6 +91,29 @@ interface ExportSerializer<T> {
             encodeDefaults = true
             prettyPrint = false
         }
+
+        // 这三个字段在本仓各注入模型里都只承载枚举值（位置/角色/次要键逻辑），递归改写无副作用
+        private val ENUM_FIELDS = setOf("position", "role", "selectiveLogic")
+
+        /**
+         * 兼容外部工具按本仓信封导出的文件：枚举值可能写成 Kotlin 常量名（`AFTER_SYSTEM_PROMPT`/
+         * `USER`）而非 `@SerialName` 的小写形式。kotlinx.serialization 精确匹配序列名，
+         * 一处不符整份解码失败 → 导入报「格式不支持」。解码前把已知枚举字符串字段统一转小写：
+         * 已是小写时无操作；非法值仍按原样解码失败，不会把坏文件静默变成空数据。
+         */
+        internal fun withCaseInsensitiveEnums(element: JsonElement): JsonElement {
+            fun transform(e: JsonElement): JsonElement = when (e) {
+                is JsonObject -> JsonObject(e.mapValues { (key, value) ->
+                    val t = transform(value)
+                    if (key in ENUM_FIELDS && t is JsonPrimitive && t.isString) {
+                        JsonPrimitive(t.content.lowercase())
+                    } else t
+                })
+                is JsonArray -> JsonArray(e.map { transform(it) })
+                else -> e
+            }
+            return transform(element)
+        }
     }
 }
 
@@ -124,7 +148,9 @@ object ModeInjectionSerializer : ExportSerializer<PromptInjection.ModeInjection>
             )
             if (exportData.type != type) return null
             ExportSerializer.DefaultJson
-                .decodeFromJsonElement<PromptInjection.ModeInjection>(exportData.data)
+                .decodeFromJsonElement<PromptInjection.ModeInjection>(
+                    ExportSerializer.withCaseInsensitiveEnums(exportData.data)
+                )
                 .copy(id = Uuid.random())
         }.getOrNull()
     }
@@ -164,7 +190,7 @@ object PromptPresetSerializer : ExportSerializer<PromptPreset> {
             )
             if (exportData.type != type) return null
             val preset = ExportSerializer.DefaultJson
-                .decodeFromJsonElement<PromptPreset>(exportData.data)
+                .decodeFromJsonElement<PromptPreset>(ExportSerializer.withCaseInsensitiveEnums(exportData.data))
             // 全部换新 id（预设与其条目），避免与已有预设/条目撞 id
             preset.copy(
                 id = Uuid.random(),
@@ -285,14 +311,12 @@ object LorebookSerializer : ExportSerializer<Lorebook> {
                 json
             )
             if (exportData.type != type) return null
-            ExportSerializer.DefaultJson
-                .decodeFromJsonElement<Lorebook>(exportData.data)
-                .copy(
-                    id = Uuid.random(),
-                    entries = ExportSerializer.DefaultJson
-                        .decodeFromJsonElement<Lorebook>(exportData.data)
-                        .entries.map { it.copy(id = Uuid.random()) }
-                )
+            val lorebook = ExportSerializer.DefaultJson
+                .decodeFromJsonElement<Lorebook>(ExportSerializer.withCaseInsensitiveEnums(exportData.data))
+            lorebook.copy(
+                id = Uuid.random(),
+                entries = lorebook.entries.map { it.copy(id = Uuid.random()) }
+            )
         }.getOrNull()
     }
 
