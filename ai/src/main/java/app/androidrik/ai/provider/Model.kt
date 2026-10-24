@@ -1,5 +1,6 @@
 package app.androidrik.ai.provider
 
+import app.androidrik.ai.core.ReasoningOverride
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
@@ -31,6 +32,12 @@ data class Model(
     val outputModalities: List<Modality> = listOf(Modality.TEXT),
     val abilities: List<ModelAbility> = emptyList(),
     val tools: Set<BuiltInTools> = emptySet(),
+    /**
+     * 思考强度映射的用户覆盖（effort 文本 / budget 数值）。
+     * 只影响选中具体档位时发出的值,OFF/AUTO 开关语义不变;null = 跟随提供商兜底与内置映射。
+     * 见 [app.androidrik.ai.core.ReasoningOverride]。
+     */
+    val reasoningOverride: ReasoningOverride? = null,
     val providerOverwrite: ProviderSetting? = null,
 )
 

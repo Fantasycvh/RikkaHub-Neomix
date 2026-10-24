@@ -30,6 +30,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
+import app.androidrik.ai.core.resolveReasoningOverride
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.BuiltInTools
@@ -170,7 +171,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): MessageChunk = withContext(Dispatchers.IO) {
-        val requestBody = buildCompletionRequestBody(messages, params)
+        val requestBody = buildCompletionRequestBody(providerSetting, messages, params)
 
         val url = buildUrl(
             providerSetting = providerSetting,
@@ -226,7 +227,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): Flow<MessageChunk> = callbackFlow {
-        val requestBody = buildCompletionRequestBody(messages, params)
+        val requestBody = buildCompletionRequestBody(providerSetting, messages, params)
 
         val url = buildUrl(
             providerSetting = providerSetting,
@@ -369,6 +370,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
     }.buffer(Channel.UNLIMITED).flowOn(Dispatchers.IO)
 
     private fun buildCompletionRequestBody(
+        providerSetting: ProviderSetting.Google,
         messages: List<UIMessage>,
         params: TextGenerationParams
     ): JsonObject = buildJsonObject {
@@ -423,14 +425,17 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                         }
 
                         else -> {
+                            // 模型级覆盖优先,提供商级兜底:effort 文本可作 thinkingLevel,budget 数值可作 thinkingBudget
+                            val override = resolveReasoningOverride(params.model, providerSetting)
                             if (useThinkingLevel) {
-                                when (params.reasoningLevel) {
-                                    ReasoningLevel.LOW -> put("thinkingLevel", "low")
-                                    ReasoningLevel.MEDIUM -> put("thinkingLevel", "medium")
-                                    else -> put("thinkingLevel", "high") // HIGH, XHIGH
+                                val thinkingLevel = override?.effort ?: when (params.reasoningLevel) {
+                                    ReasoningLevel.LOW -> "low"
+                                    ReasoningLevel.MEDIUM -> "medium"
+                                    else -> "high" // HIGH, XHIGH
                                 }
+                                put("thinkingLevel", thinkingLevel)
                             } else {
-                                put("thinkingBudget", params.reasoningLevel.budgetTokens)
+                                put("thinkingBudget", override?.budgetTokens ?: params.reasoningLevel.budgetTokens)
                             }
                         }
                     }

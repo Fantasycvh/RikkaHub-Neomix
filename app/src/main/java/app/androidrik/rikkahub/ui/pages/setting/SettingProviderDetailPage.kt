@@ -105,6 +105,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
@@ -136,6 +137,7 @@ import app.androidrik.rikkahub.ui.pages.assistant.detail.CustomHeaders
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConfigure
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConnectionTester
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderRetryOption
+import app.androidrik.rikkahub.ui.pages.setting.components.ReasoningOverrideSettings
 import app.androidrik.rikkahub.ui.pages.setting.components.SettingProviderBalanceOption
 import app.androidrik.rikkahub.ui.pages.setting.components.isUsingDefaultBaseUrl
 import app.androidrik.rikkahub.ui.pages.setting.components.resetBaseUrlToDefault
@@ -1103,6 +1105,15 @@ private fun ModelSettingsForm(
                                 onModelChange(model.copy(providerOverwrite = providerOverride))
                             },
                             parentProvider = parentProvider
+                        )
+
+                        ReasoningOverrideSettings(
+                            title = stringResource(R.string.setting_provider_page_reasoning_override),
+                            description = stringResource(R.string.setting_provider_page_reasoning_override_desc),
+                            override = model.reasoningOverride,
+                            onUpdate = { reasoningOverride ->
+                                onModelChange(model.copy(reasoningOverride = reasoningOverride))
+                            }
                         )
 
                         CustomHeaders(

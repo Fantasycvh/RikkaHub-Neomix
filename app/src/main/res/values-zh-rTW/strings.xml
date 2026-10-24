@@ -1205,6 +1205,14 @@
   <string name="setting_provider_page_fetch_models_retry">重試</string>
   <string name="setting_provider_page_fetch_models_copy">複製錯誤資訊</string>
   <string name="setting_provider_page_fetch_models_copy_success">已複製</string>
+  <string name="setting_provider_page_reasoning_override">思考強度覆蓋（模型級）</string>
+  <string name="setting_provider_page_reasoning_override_desc">覆蓋該模型在選中思考檔位時發出的參數值（優先於提供商兜底與內建映射）。僅在選擇具體檔位（關閉/自動之外）時生效；留空跟隨預設。</string>
+  <string name="setting_provider_page_reasoning_override_provider">思考強度映射兜底（提供商級）</string>
+  <string name="setting_provider_page_reasoning_override_provider_desc">該提供商下所有模型的兜底映射，模型級覆蓋優先於它。同樣僅在選擇具體思考檔位時生效。</string>
+  <string name="setting_provider_page_reasoning_override_effort">Effort 文字</string>
+  <string name="setting_provider_page_reasoning_override_budget">Budget（tokens）</string>
+  <string name="setting_provider_page_reasoning_override_follow">跟隨預設映射</string>
+  <string name="setting_provider_page_reasoning_override_budget_hint">覆蓋 thinking_budget / thinkingBudget 數值；effort 文字覆蓋 reasoning_effort / thinkingLevel / output_config.effort。</string>
   <string name="setting_provider_page_add_new_model">添加新模型</string>
   <string name="setting_provider_page_add_provider">添加提供商</string>
   <string name="setting_provider_page_add_provider_override">新增提供商覆寫</string>

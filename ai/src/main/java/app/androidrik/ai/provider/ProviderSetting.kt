@@ -1,6 +1,7 @@
 package app.androidrik.ai.provider
 
 import androidx.compose.runtime.Composable
+import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.common.settings.Enableable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -195,6 +196,11 @@ sealed class ProviderSetting : Enableable {
     abstract val customHeaders: List<CustomHeader>
     /** per-provider 重试配置覆盖；null = 跟随全局 Settings.retrySetting */
     abstract val retryOption: RetrySetting?
+    /**
+     * 思考强度映射的**提供商级兜底覆盖**（模型级 [Model.reasoningOverride] 优先）。
+     * null = 该提供商全部跟随内置映射。见 [ReasoningOverride]。
+     */
+    abstract val reasoningOverride: ReasoningOverride?
 
     abstract val builtIn: Boolean
     abstract val description: @Composable() () -> Unit
@@ -213,6 +219,7 @@ sealed class ProviderSetting : Enableable {
         balanceOption: BalanceOption = this.balanceOption,
         customHeaders: List<CustomHeader> = this.customHeaders,
         retryOption: RetrySetting? = this.retryOption,
+        reasoningOverride: ReasoningOverride? = this.reasoningOverride,
         builtIn: Boolean = this.builtIn,
         description: @Composable (() -> Unit) = this.description,
         shortDescription: @Composable (() -> Unit) = this.shortDescription,
@@ -229,6 +236,7 @@ sealed class ProviderSetting : Enableable {
         override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
+        override var reasoningOverride: ReasoningOverride? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -271,6 +279,7 @@ sealed class ProviderSetting : Enableable {
             balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
+            reasoningOverride: ReasoningOverride?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -286,6 +295,7 @@ sealed class ProviderSetting : Enableable {
                 balanceOption = balanceOption,
                 customHeaders = customHeaders,
                 retryOption = retryOption,
+                reasoningOverride = reasoningOverride,
                 shortDescription = shortDescription
             )
         }
@@ -302,6 +312,7 @@ sealed class ProviderSetting : Enableable {
         override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
+        override var reasoningOverride: ReasoningOverride? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -346,6 +357,7 @@ sealed class ProviderSetting : Enableable {
             balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
+            reasoningOverride: ReasoningOverride?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -361,7 +373,8 @@ sealed class ProviderSetting : Enableable {
                 proxy = proxy,
                 balanceOption = balanceOption,
                 customHeaders = customHeaders,
-                retryOption = retryOption
+                retryOption = retryOption,
+                reasoningOverride = reasoningOverride
             )
         }
     }
@@ -377,6 +390,7 @@ sealed class ProviderSetting : Enableable {
         override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
+        override var reasoningOverride: ReasoningOverride? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -417,6 +431,7 @@ sealed class ProviderSetting : Enableable {
             balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
+            reasoningOverride: ReasoningOverride?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -430,6 +445,7 @@ sealed class ProviderSetting : Enableable {
                 balanceOption = balanceOption,
                 customHeaders = customHeaders,
                 retryOption = retryOption,
+                reasoningOverride = reasoningOverride,
                 builtIn = builtIn,
                 description = description,
                 shortDescription = shortDescription,

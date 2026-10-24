@@ -28,6 +28,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
+import app.androidrik.ai.core.resolveReasoningOverride
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
@@ -357,8 +358,10 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                             put("type", "adaptive")
                             put("display", "summarized")
                         })
+                        // 模型级覆盖优先,提供商级兜底(见 ReasoningOverride)
+                        val override = resolveReasoningOverride(params.model, providerSetting)
                         put("output_config", buildJsonObject {
-                            put("effort", params.reasoningLevel.effort)
+                            put("effort", override?.effort ?: params.reasoningLevel.effort)
                         })
                     }
                 }

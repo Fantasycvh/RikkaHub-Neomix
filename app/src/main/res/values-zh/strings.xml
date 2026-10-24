@@ -1252,6 +1252,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_fetch_models_retry">重试</string>
   <string name="setting_provider_page_fetch_models_copy">复制错误信息</string>
   <string name="setting_provider_page_fetch_models_copy_success">已复制</string>
+  <string name="setting_provider_page_reasoning_override">思考强度覆盖（模型级）</string>
+  <string name="setting_provider_page_reasoning_override_desc">覆盖该模型在选中思考档位时发出的参数值（优先于提供商兜底与内置映射）。仅在选择具体档位（关闭/自动之外）时生效；留空跟随默认。</string>
+  <string name="setting_provider_page_reasoning_override_provider">思考强度映射兜底（提供商级）</string>
+  <string name="setting_provider_page_reasoning_override_provider_desc">该提供商下所有模型的兜底映射，模型级覆盖优先于它。同样仅在选择具体思考档位时生效。</string>
+  <string name="setting_provider_page_reasoning_override_effort">Effort 文本</string>
+  <string name="setting_provider_page_reasoning_override_budget">Budget（tokens）</string>
+  <string name="setting_provider_page_reasoning_override_follow">跟随默认映射</string>
+  <string name="setting_provider_page_reasoning_override_budget_hint">覆盖 thinking_budget / thinkingBudget 数值；effort 文本覆盖 reasoning_effort / thinkingLevel / output_config.effort。</string>
   <string name="setting_provider_page_add_new_model">添加新模型</string>
   <string name="setting_provider_page_add_provider">添加提供商</string>
   <string name="setting_provider_page_add_provider_override">添加提供商重写</string>

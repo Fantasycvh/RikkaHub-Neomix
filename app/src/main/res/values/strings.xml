@@ -1265,6 +1265,14 @@
   <string name="setting_provider_page_fetch_models_retry">Retry</string>
   <string name="setting_provider_page_fetch_models_copy">Copy error</string>
   <string name="setting_provider_page_fetch_models_copy_success">Error copied</string>
+  <string name="setting_provider_page_reasoning_override">Reasoning override (model)</string>
+  <string name="setting_provider_page_reasoning_override_desc">Overrides the parameter values sent for the selected reasoning level of this model (takes precedence over the provider fallback and built-in mapping). Only applies when a concrete level (other than Off/Auto) is selected; leave blank to follow defaults.</string>
+  <string name="setting_provider_page_reasoning_override_provider">Reasoning override (provider fallback)</string>
+  <string name="setting_provider_page_reasoning_override_provider_desc">Fallback mapping for all models under this provider; the model-level override takes precedence. Also only applies when a concrete reasoning level is selected.</string>
+  <string name="setting_provider_page_reasoning_override_effort">Effort text</string>
+  <string name="setting_provider_page_reasoning_override_budget">Budget (tokens)</string>
+  <string name="setting_provider_page_reasoning_override_follow">Follow default mapping</string>
+  <string name="setting_provider_page_reasoning_override_budget_hint">Overrides thinking_budget / thinkingBudget; the effort text overrides reasoning_effort / thinkingLevel / output_config.effort.</string>
   <string name="setting_provider_page_add_new_model">Add New Model</string>
   <string name="setting_provider_page_add_provider">Add Provider</string>
   <string name="setting_provider_page_add_provider_override">Add Provider Override</string>

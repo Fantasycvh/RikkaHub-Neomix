@@ -1,8 +1,10 @@
 package app.androidrik.ai.provider.providers
 
 import app.androidrik.ai.core.ReasoningLevel
+import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
+import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
@@ -24,9 +26,15 @@ class GoogleProviderReasoningConfigTest {
 
     private val provider = GoogleProvider(OkHttpClient())
 
-    private fun thinkingConfig(modelId: String, level: ReasoningLevel): JsonObject? {
+    private fun thinkingConfig(
+        modelId: String,
+        level: ReasoningLevel,
+        override: ReasoningOverride? = null,
+        providerOverride: ReasoningOverride? = null,
+    ): JsonObject? {
         val method = GoogleProvider::class.java.getDeclaredMethod(
             "buildCompletionRequestBody",
+            ProviderSetting.Google::class.java,
             List::class.java,
             TextGenerationParams::class.java
         )
@@ -34,11 +42,13 @@ class GoogleProviderReasoningConfigTest {
         val params = TextGenerationParams(
             model = Model(
                 modelId = modelId,
-                abilities = listOf(ModelAbility.TOOL, ModelAbility.REASONING)
+                abilities = listOf(ModelAbility.TOOL, ModelAbility.REASONING),
+                reasoningOverride = override
             ),
             reasoningLevel = level
         )
-        val body = method.invoke(provider, emptyList<Any>(), params) as JsonObject
+        val providerSetting = ProviderSetting.Google(reasoningOverride = providerOverride)
+        val body = method.invoke(provider, providerSetting, emptyList<Any>(), params) as JsonObject
         return body["generationConfig"]?.jsonObject?.get("thinkingConfig")?.jsonObject
     }
 
@@ -80,5 +90,60 @@ class GoogleProviderReasoningConfigTest {
         assertEquals(true, off?.get("includeThoughts")?.jsonPrimitive?.content?.toBoolean())
         assertNull(off?.get("thinkingBudget"))
         assertNull(off?.get("thinkingLevel"))
+    }
+
+    @Test
+    fun `模型级覆盖优先于提供商兜底`() {
+        // Gemini4 系走 thinkingLevel,effort 覆盖直接作为 thinkingLevel
+        val config = thinkingConfig(
+            modelId = "gemini-4-flash",
+            level = ReasoningLevel.HIGH,
+            override = ReasoningOverride(effort = "pro", budgetTokens = 12_345),
+            providerOverride = ReasoningOverride(effort = "provider-text", budgetTokens = 99),
+        )
+        assertEquals("pro", config?.get("thinkingLevel")?.jsonPrimitive?.content)
+        assertNull(config?.get("thinkingBudget"))
+        // 2.5 系走 thinkingBudget,budget 覆盖生效
+        val budget = thinkingConfig(
+            modelId = "gemini-2.5-flash",
+            level = ReasoningLevel.HIGH,
+            override = ReasoningOverride(budgetTokens = 12_345),
+        )
+        assertEquals(12_345, budget?.get("thinkingBudget")?.jsonPrimitive?.int)
+    }
+
+    @Test
+    fun `提供商级兜底在模型无覆盖时生效`() {
+        val config = thinkingConfig(
+            modelId = "gemini-4-flash",
+            level = ReasoningLevel.HIGH,
+            providerOverride = ReasoningOverride(effort = "provider-text", budgetTokens = 99),
+        )
+        assertEquals("provider-text", config?.get("thinkingLevel")?.jsonPrimitive?.content)
+        val budget = thinkingConfig(
+            modelId = "gemini-2.5-flash",
+            level = ReasoningLevel.HIGH,
+            providerOverride = ReasoningOverride(budgetTokens = 99),
+        )
+        assertEquals(99, budget?.get("thinkingBudget")?.jsonPrimitive?.int)
+    }
+
+    @Test
+    fun `OFF 与 AUTO 不吃覆盖`() {
+        val off = thinkingConfig(
+            modelId = "gemini-2.5-flash",
+            level = ReasoningLevel.OFF,
+            override = ReasoningOverride(effort = "x", budgetTokens = 77),
+            providerOverride = ReasoningOverride(effort = "y", budgetTokens = 88),
+        )
+        assertEquals(0, off?.get("thinkingBudget")?.jsonPrimitive?.int)
+
+        // AUTO:不设任何思考参数
+        val auto = thinkingConfig(
+            modelId = "gemini-3-flash",
+            level = ReasoningLevel.AUTO,
+            override = ReasoningOverride(effort = "x"),
+        )
+        assertNull(auto?.get("thinkingLevel"))
     }
 }

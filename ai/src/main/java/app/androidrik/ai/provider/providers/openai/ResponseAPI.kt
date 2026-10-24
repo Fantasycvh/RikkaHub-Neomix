@@ -29,6 +29,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
+import app.androidrik.ai.core.resolveReasoningOverride
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.providers.asDowngradedSystemMessage
@@ -294,12 +295,14 @@ class ResponseAPI(
             // reasoning
             if (params.model.abilities.contains(ModelAbility.REASONING)) {
                 val level = params.reasoningLevel
+                val reasoningOverride = resolveReasoningOverride(params.model, providerSetting)
+                    ?.takeIf { level.isEnabled && level != ReasoningLevel.AUTO }
                 put("reasoning", buildJsonObject {
                     if (capabilities.supportsReasoningSummary) {
                         put("summary", "auto")
                     }
                     if (level != ReasoningLevel.AUTO) {
-                        put("effort", level.effort)
+                        put("effort", reasoningOverride?.effort ?: level.effort)
                     }
                 })
                 if (capabilities.supportEncryptedContent) {

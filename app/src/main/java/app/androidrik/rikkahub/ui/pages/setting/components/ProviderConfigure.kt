@@ -92,6 +92,14 @@ fun ProviderConfigure(
             is ProviderSetting.Google -> ProviderConfigureGoogle(provider, onEdit)
             is ProviderSetting.Claude -> ProviderConfigureClaude(provider, onEdit)
         }
+
+        // 思考强度映射的提供商级兜底：模型级覆盖优先于它，它优先于内置映射（见 ReasoningOverride）
+        ReasoningOverrideSettings(
+            title = stringResource(R.string.setting_provider_page_reasoning_override_provider),
+            description = stringResource(R.string.setting_provider_page_reasoning_override_provider_desc),
+            override = provider.reasoningOverride,
+            onUpdate = { onEdit(provider.copyProvider(reasoningOverride = it)) }
+        )
     }
 }
 
@@ -126,19 +134,19 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
             builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl, reasoningOverride = this.reasoningOverride
         )
         ProviderSetting.Google::class -> ProviderSetting.Google(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
             builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl, reasoningOverride = this.reasoningOverride
         )
         ProviderSetting.Claude::class -> ProviderSetting.Claude(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
             builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl, reasoningOverride = this.reasoningOverride
         )
         else -> error("Unsupported provider type: $type")
     }

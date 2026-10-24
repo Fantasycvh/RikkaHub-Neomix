@@ -31,6 +31,7 @@ import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
+import app.androidrik.ai.core.resolveReasoningOverride
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.Modality
@@ -438,6 +439,9 @@ class ChatCompletionsAPI(
 
             if (params.model.abilities.contains(ModelAbility.REASONING)) {
                 val level = params.reasoningLevel
+                // 模型级覆盖优先,提供商级兜底;只在选中具体档位时生效,OFF/AUTO 的开关语义不变
+                val reasoningOverride = resolveReasoningOverride(params.model, providerSetting)
+                    ?.takeIf { level.isEnabled && level != ReasoningLevel.AUTO }
                 when (host) {
                     "openrouter.ai" -> {
                         // https://openrouter.ai/docs/use-cases/reasoning-tokens
@@ -445,7 +449,7 @@ class ChatCompletionsAPI(
                             when (level) {
                                 ReasoningLevel.OFF -> put("effort", "none")
                                 ReasoningLevel.AUTO -> put("enabled", true)
-                                else -> put("effort", level.effort)
+                                else -> put("effort", reasoningOverride?.effort ?: level.effort)
                             }
                         })
                     }
@@ -454,7 +458,9 @@ class ChatCompletionsAPI(
                         // 阿里云百炼
                         // https://bailian.console.aliyun.com/console?tab=doc#/doc/?type=model&url=https%3A%2F%2Fhelp.aliyun.com%2Fdocument_detail%2F2870973.html&renderType=iframe
                         put("enable_thinking", level.isEnabled)
-                        if (level != ReasoningLevel.AUTO) put("thinking_budget", level.budgetTokens)
+                        if (level != ReasoningLevel.AUTO) {
+                            put("thinking_budget", reasoningOverride?.budgetTokens ?: level.budgetTokens)
+                        }
                     }
 
                     "ark.cn-beijing.volces.com" -> {
@@ -535,14 +541,14 @@ class ChatCompletionsAPI(
                             put("type", if (!level.isEnabled) "disabled" else "enabled")
                         })
                         if (level.isEnabled && level != ReasoningLevel.AUTO) {
-                            put("reasoning_effort", level.effort)
+                            put("reasoning_effort", reasoningOverride?.effort ?: level.effort)
                         }
                     }
 
                     "integrate.api.nvidia.com" -> {
                         if ("deepseek-v4" in params.model.modelId.lowercase()) {
                             if (level != ReasoningLevel.AUTO) {
-                                val effort = when (level) {
+                                val effort = reasoningOverride?.effort ?: when (level) {
                                     ReasoningLevel.XHIGH -> "max"
                                     ReasoningLevel.MAX -> "max"
                                     ReasoningLevel.OFF -> "none"
@@ -552,14 +558,18 @@ class ChatCompletionsAPI(
                             }
                         } else {
                             if (level != ReasoningLevel.AUTO) {
-                                put("reasoning_effort", if (level.effort == "none") "low" else level.effort)
+                                put(
+                                    "reasoning_effort",
+                                    reasoningOverride?.effort
+                                        ?: if (level.effort == "none") "low" else level.effort
+                                )
                             }
                         }
                     }
 
                     "opencode.ai" -> {
                         if (level != ReasoningLevel.AUTO) {
-                            put("reasoning_effort", level.effort)
+                            put("reasoning_effort", reasoningOverride?.effort ?: level.effort)
                         }
                     }
 
@@ -567,7 +577,11 @@ class ChatCompletionsAPI(
                         // OpenAI 官方
                         // 文档中，completions API 只支持 "low", "medium", "high"
                         if (level != ReasoningLevel.AUTO) {
-                            put("reasoning_effort", if (level.effort == "none") "low" else level.effort)
+                            put(
+                                "reasoning_effort",
+                                reasoningOverride?.effort
+                                    ?: if (level.effort == "none") "low" else level.effort
+                            )
                         }
                     }
                 }

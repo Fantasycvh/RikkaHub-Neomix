@@ -3637,3 +3637,17 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   双重解码。实测用户 QQ 收到的一份 24 条世界书（同形大写）原文件现可直接导入。
   **验证**：新增 LorebookNativeImportCaseTest 3 项（大写解码/小写不受影响/非法值仍失败）
   全过;export 包既有 58 项 0 失败。
+
+- 2026-10-24 **思考强度映射支持自定义（模型级覆盖 + 提供商级兜底）**。背景:档位→各家 API
+  参数的映射硬编码在 provider 层（ChatCompletionsAPI 按 host 的 when、ResponseAPI、Claude
+  output_config.effort、Google thinkingLevel/thinkingBudget）,中转站/私部署方言经常对不上。
+  新增 `ReasoningOverride(effort, budgetTokens)` 两个自由度:effort 文本覆盖 reasoning_effort/
+  thinkingLevel/output_config.effort,budget 数值覆盖 thinking_budget/thinkingBudget。
+  解析链:模型级（`Model.reasoningOverride`）→ 提供商级兜底（`ProviderSetting.reasoningOverride`,
+  三个子类 + copyProvider + convertTo 均带）→ 内置映射;仅在选择具体档位（OFF/AUTO 之外）时
+  生效,开关语义不变;旧数据缺字段反序列化回 null,零迁移。UI:模型编辑「高级设置」页新增
+  「思考强度覆盖（模型级）」,提供商配置页新增「思考强度映射兜底（提供商级）」,共用
+  ReasoningOverrideSettings 组件（留空即跟随默认）,字符串三语齐备。
+  **验证**：`:ai:testDebugUnitTest` 315 项 0 失败（GoogleProviderReasoningConfigTest 扩至 7 项,
+  覆盖 模型级优先/兜底生效/OFF与AUTO不吃覆盖;反射签名随 builder 加参同步更新）;
+  `:app:testDebugUnitTest` + 两模块编译通过。真机待验。
