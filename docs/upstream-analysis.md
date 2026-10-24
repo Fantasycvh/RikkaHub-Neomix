@@ -1414,6 +1414,28 @@ AST），该解析器来自 `c04365d6f`「渲染收敛到 ui 模块」大重构�
 
 **验证**：`:app:compileDebugKotlin` 通过。未推送。
 
+## 2026-10-24 晚追加评估（`db4982283`..`ad2c4430d`，3 提交）
+
+> fetch 后 `upstream/master` = `ad2c4430d`（上游已 bump 3.1.1）。
+
+| 上游 | 内容 | 判定 |
+|---|---|---|
+| `ad2c4430d` | chore: bump 3.1.1 | 不适用（版本线独立） |
+| `72d419171` | feat(memory): 新增记忆整理模型设置（#2243） | **模型选择部分本仓早已有；仅「整理单独配推理强度」是增量**，待用户定夺 |
+| `b68760d92` | refactor(media): 媒体提供商配置改独立详情页 | **不跟**（纯重构） |
+
+**`72d419171` 细看**：上游的「整理模型选择 + 快速模型/对话模型回落链」本仓记忆体系
+（自建做梦模型）早已实现（`MemoryConsolidator.kt:105` memoryConsolidationModelId→fastModelId→
+chatModelId,比上游还多了「要求支持工具调用」校验语义）。增量仅两点:①给整理模型单独配
+推理强度（清除后跟随）——本仓整理用临时 Assistant profile,reasoningLevel 恒为默认 AUTO,
+后台整理无法控制强度;②上游 ModelField 加 placeholder/清除按钮（UI 小件）。移植成本低
+（Settings 一字段 + profile 一行 + 设置页一控件）,价值中低（后台整理烧 token 的强度控制）。
+
+**`b68760d92` 不跟**：纯页面重构（编辑面板→详情页+双分页+草稿保存）。本仓媒体配置页已
+分叉（9d749241e 接入聊天提供商导入）,移植=重写页面,无用户可感收益。
+
+**验证**：本轮无代码改动。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)
