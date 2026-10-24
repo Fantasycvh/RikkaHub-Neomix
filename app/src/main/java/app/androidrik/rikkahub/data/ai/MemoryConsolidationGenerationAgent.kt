@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.ai
 
 import android.util.Log
+import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.ai.tools.buildMemoryTools
 import app.androidrik.rikkahub.data.model.Assistant
@@ -106,6 +107,8 @@ class MemoryConsolidationGenerationAgent(
             systemPrompt = systemPrompt,
             enableMemory = false,
             streamOutput = false,
+            // 整理任务的推理强度可配（上游 72d419171 增量移植）;null = 跟随默认 AUTO
+            reasoningLevel = request.settings.memoryConsolidationReasoningLevel ?: ReasoningLevel.AUTO,
         )
 
         var notice: GenerationNotice? = null

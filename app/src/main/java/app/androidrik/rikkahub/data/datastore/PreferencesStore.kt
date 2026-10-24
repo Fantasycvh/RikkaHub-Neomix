@@ -263,6 +263,7 @@ class SettingsStore(
         val FALLBACK_CHAT_MODEL = stringPreferencesKey("fallback_chat_model")
         val FAST_MODEL = stringPreferencesKey("fast_model")
         val MEMORY_CONSOLIDATION_MODEL = stringPreferencesKey("memory_consolidation_model")
+        val MEMORY_CONSOLIDATION_REASONING = stringPreferencesKey("memory_consolidation_reasoning")
         val MEMORY_CONSOLIDATION_PROMPT = stringPreferencesKey("memory_consolidation_prompt")
         val TITLE_MODEL = stringPreferencesKey("title_model")
         val TRANSLATE_MODEL = stringPreferencesKey("translate_model")
@@ -443,6 +444,9 @@ class SettingsStore(
                     // 旧版本「未配置」会落成 AUTO 哨兵（无清除入口时代的默认值），视为未配置
                     ?.takeIf { it != DEFAULT_AUTO_MODEL_ID },
                 memoryConsolidationModelId = preferences[MEMORY_CONSOLIDATION_MODEL]?.let { Uuid.parse(it) },
+                memoryConsolidationReasoningLevel = preferences[MEMORY_CONSOLIDATION_REASONING]
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { runCatching { JsonInstant.decodeFromString<ReasoningLevel>(it) }.getOrNull() },
                 memoryConsolidationPrompt = preferences[MEMORY_CONSOLIDATION_PROMPT]
                     ?: MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
                 titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) },
@@ -764,6 +768,9 @@ class SettingsStore(
             settings.memoryConsolidationModelId?.let {
                 preferences[MEMORY_CONSOLIDATION_MODEL] = it.toString()
             } ?: preferences.remove(MEMORY_CONSOLIDATION_MODEL)
+            settings.memoryConsolidationReasoningLevel?.let {
+                preferences[MEMORY_CONSOLIDATION_REASONING] = JsonInstant.encodeToString(it)
+            } ?: preferences.remove(MEMORY_CONSOLIDATION_REASONING)
             preferences[MEMORY_CONSOLIDATION_PROMPT] = settings.memoryConsolidationPrompt
             settings.titleModelId?.let {
                 preferences[TITLE_MODEL] = it.toString()
@@ -1016,6 +1023,11 @@ data class Settings(
     val fastModelId: Uuid? = null, // 快速模型（标题/建议等后台任务的兜底）；null = 未配置
     /** 做梦（记忆整理）专用模型；未配置时依次回落到快速模型、助手聊天模型。 */
     val memoryConsolidationModelId: Uuid? = null,
+    /**
+     * 整理任务的推理强度（上游 72d419171 增量移植）；null = 跟随默认（AUTO，原行为）。
+     * 对整理实际用上的那个模型生效（做梦模型或回落链上的模型）。
+     */
+    val memoryConsolidationReasoningLevel: ReasoningLevel? = null,
     val memoryConsolidationPrompt: String = MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
     val titleModelId: Uuid? = null,
     val imageGenerationModelId: Uuid = Uuid.random(),

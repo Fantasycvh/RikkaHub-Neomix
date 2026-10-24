@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.ProviderSetting
@@ -55,7 +56,9 @@ import me.rerere.hugeicons.stroke.Cancel01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.ui.components.ai.ModelListSheet
+import app.androidrik.rikkahub.ui.components.ai.ReasoningButton
 import app.androidrik.rikkahub.ui.components.ai.rememberModelListState
+import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
@@ -162,15 +165,36 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
             )
         }
         item {
-            ModelSettingItem(
-                title = "做梦（记忆整理）模型",
-                description = "用于自动和手动记忆整理。未配置时依次使用快速模型、助手聊天模型；建议选择支持工具调用的模型。",
-                modelId = settings.memoryConsolidationModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(memoryConsolidationModelId = it.id)) },
-                onClear = { vm.updateSettings(settings.copy(memoryConsolidationModelId = null)) },
-                emptyText = "跟随快速模型或助手聊天模型",
-            )
+            Column {
+                ModelSettingItem(
+                    title = "做梦（记忆整理）模型",
+                    description = "用于自动和手动记忆整理。未配置时依次使用快速模型、助手聊天模型；建议选择支持工具调用的模型。",
+                    modelId = settings.memoryConsolidationModelId,
+                    providers = settings.providers,
+                    onSelect = { vm.updateSettings(settings.copy(memoryConsolidationModelId = it.id)) },
+                    onClear = { vm.updateSettings(settings.copy(memoryConsolidationModelId = null)) },
+                    emptyText = "跟随快速模型或助手聊天模型",
+                )
+                // 整理任务的推理强度（上游 72d419171 增量移植）：仅配置了做梦模型时展示，
+                // 对整理实际用上的模型生效；选「自动」= 原行为
+                if (settings.memoryConsolidationModelId != null) {
+                    FormItem(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        label = { Text("整理推理强度") },
+                        description = { Text("记忆整理任务使用的思考强度；「自动」为原行为") },
+                    ) {
+                        ReasoningButton(
+                            reasoningLevel = settings.memoryConsolidationReasoningLevel
+                                ?: ReasoningLevel.AUTO,
+                            onUpdateReasoningLevel = { level ->
+                                vm.updateSettings(
+                                    settings.copy(memoryConsolidationReasoningLevel = level)
+                                )
+                            }
+                        )
+                    }
+                }
+            }
         }
         item {
             // 自动标题开关 + 标题模型：与下面「建议模型」同形（关掉时隐藏模型选择器）。

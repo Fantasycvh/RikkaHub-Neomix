@@ -3656,3 +3656,12 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   effort=max / budget=12345、模型级 effort=minimal，真实请求体分别为
   `"reasoning_effort":"minimal"`（模型级优先）与 `"reasoning_effort":"max"`
   （清空模型级覆盖后走提供商兜底），两次 SSE 均 200；测试后已还原临时设置。
+
+- 2026-10-24 **记忆整理推理强度可配**（上游 `72d419171` 增量移植,#2243 剩余部分）。上游该
+  提交的主体（整理模型选择+回落链）本仓记忆体系早已自建,增量仅「整理单独配推理强度」:
+  Settings 新增 `memoryConsolidationReasoningLevel: ReasoningLevel?`（null=跟随默认 AUTO,
+  即原行为;DataStore 按 JSON 枚举串存,坏值反序列化为 null 不炸）,MemoryConsolidationGenerationAgent
+  的临时 profile 接上该档位;对整理实际用上的模型生效（做梦模型或回落链上的）。UI:模型设置页
+  「做梦（记忆整理）模型」条目下,仅在已配置该模型时展示「整理推理强度」+ ReasoningButton
+  （选「自动」= 原行为）。文本未走 stringResource（该页既有同款做法,如做梦模型条目本身）。
+  **验证**：`:app:testDebugUnitTest` 全过 + 编译通过;真机待验。
