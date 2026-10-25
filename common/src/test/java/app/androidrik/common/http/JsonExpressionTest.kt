@@ -29,4 +29,19 @@ class JsonExpressionTest {
     fun `evaluate missing field returns empty`() {
         assertEquals("", evaluateJsonExpr("missing.field", root))
     }
+
+    @Test
+    fun `evaluate json number is locale independent`() {
+        // 回归 #2245：逗号小数 locale（波兰语等）下 "%.2f" 产出 "5,00"，toDouble 回读失败
+        // 导致余额表达式整体抛错、显示为空
+        val root2 = buildJsonObject { put("c", 5.0); put("u", 2.5) }
+        val original = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("pl-PL"))
+            assertEquals("5", evaluateJsonExpr("c", root2))
+            assertEquals("2.5", evaluateJsonExpr("c - u", root2))
+        } finally {
+            java.util.Locale.setDefault(original)
+        }
+    }
 }

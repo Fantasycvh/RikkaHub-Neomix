@@ -43,6 +43,7 @@ import app.androidrik.common.http.await
 import app.androidrik.common.http.evaluateJsonExpr
 import app.androidrik.common.http.getByKey
 import app.androidrik.common.http.jsonObjectOrNull
+import java.util.Locale
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -194,7 +195,7 @@ class OpenAIProvider(
             val value = bodyJson.getByKey(balanceOption.resultPath)
             val digitalValue = value.toFloatOrNull()
             if (digitalValue != null) {
-                "%.2f".format(digitalValue)
+                "%.2f".format(Locale.ROOT, digitalValue)
             } else {
                 value
             }
@@ -236,7 +237,7 @@ class OpenAIProvider(
             val result = evaluateJsonExpr(balanceOption.expression, merged)
             val digitalValue = result.toFloatOrNull()
             if (digitalValue != null) {
-                "%.2f".format(digitalValue)
+                "%.2f".format(Locale.ROOT, digitalValue)
             } else {
                 result
             }

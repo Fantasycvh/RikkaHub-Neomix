@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.util.Locale
 
 // Public API
 
@@ -363,7 +364,8 @@ private class Evaluator(private val root: JsonObject) {
         return when (elem) {
             is JsonPrimitive -> {
                 if (elem.isString) Value.Str(elem.content)
-                else elem.doubleOrNull()?.let { Value.Num("%.2f".format(it).toDouble()) } ?: Value.Str(elem.content)
+                // 必须固定 Locale：逗号小数 locale（如波兰语）会产出 "5,00"，toDouble 回读失败
+                else elem.doubleOrNull()?.let { Value.Num("%.2f".format(Locale.ROOT, it).toDouble()) } ?: Value.Str(elem.content)
             }
             is JsonObject, is JsonArray -> Value.Str(elem.toString())
             else -> Value.Str(elem.toString())
