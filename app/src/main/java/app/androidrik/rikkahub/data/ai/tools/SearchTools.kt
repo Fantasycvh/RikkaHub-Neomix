@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.datastore.Settings
@@ -29,39 +30,26 @@ fun createSearchTools(settings: Settings): Set<Tool> {
         return emptySet()
     }
     return buildSet {
+        val options = settings.searchServices.getOrElse(
+            index = settings.searchServiceSelected,
+            defaultValue = { SearchServiceOptions.DEFAULT })
+        val service = SearchService.getService(options)
+        // 描述是模型判断工具能力的唯一依据：日期/域名过滤只有部分服务在 schema 里实现
+        // （如 Exa 的 startPublishedDate/includeDomains），scrape_web 也只在支持抓取的服务上注册，
+        // 两段提示按真实能力拼装，避免向模型声明签名里不存在的能力
+        val schemaProps = (service.parameters(options) as? InputSchema.Obj)?.properties?.keys.orEmpty()
+        val supportsFilters = schemaProps.any { key ->
+            key.contains("PublishedDate", ignoreCase = true) || key.contains("Domains", ignoreCase = true)
+        }
+        val supportsScrape = service.scrapingParameters(options) != null
         add(
             Tool(
                 name = "search_web",
-                description = """
-                    Search the web for up-to-date or specific information.
-                    Use this when the user asks for the latest news, current facts, or needs verification.
-                    Do not treat result order as proof of freshness. Prefer primary sources and inspect
-                    each result's title, URL, publication date, and content before making a current claim.
-                    Use the optional publication-date and domain filters only when they match the question.
-                    If a date or primary source is missing, or sources conflict, run another focused search
-                    or use scrape_web to verify the most relevant source before answering.
-                    Generate focused keywords and run multiple searches if needed.
-                    Today is ${LocalDate.now().toLocalString(true)}.
-
-                    Response format:
-                    - retrievedAt is the local retrieval time, never a publication date
-                    - items[].id (short id), index, title, url, publishedDate (if supplied), highlights (if supplied), text
-                    - images[]: image urls related to the query (may be empty)
-
-                    Citations:
-                    - After using results, add `[citation,domain](id)` after the sentence.
-                    - Multiple citations are allowed.
-                    - If no results are cited, omit citations.
-
-                    Images:
-                    - When images help the user understand the answer, embed relevant ones using Markdown: `![](url)`.
-                    - Embed 2 to 4 images, and only use urls from `images[]` (never fabricate or alter urls).
-                    - Usually place the images at the very beginning of your reply; skip them entirely if none are relevant.
-
-                    Example:
-                    The capital of France is Paris. [citation,example.com](abc123)
-                    The population is about 2.1 million. [citation,example.com](abc123) [citation,example2.com](def456)
-                    """.trimIndent(),
+                description = searchWebDescription(
+                    today = LocalDate.now().toLocalString(true),
+                    supportsFilters = supportsFilters,
+                    supportsScrape = supportsScrape,
+                ),
                 parameters = {
                     val options = settings.searchServices.getOrElse(
                         index = settings.searchServiceSelected,
@@ -99,11 +87,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
             )
         )
 
-        val options = settings.searchServices.getOrElse(
-            index = settings.searchServiceSelected,
-            defaultValue = { SearchServiceOptions.DEFAULT })
-        val service = SearchService.getService(options)
-        if (service.scrapingParameters(options) != null) {
+        if (supportsScrape) {
             add(
                 Tool(
                     name = "scrape_web",
@@ -138,6 +122,51 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                 ))
         }
     }
+}
+
+/**
+ * search_web 描述：`supportsFilters`/`supportsScrape` 来自当前搜索服务的真实能力
+ * （schema 里的日期/域名参数、scrapingParameters 是否为空），见 [createSearchTools]。
+ */
+private fun searchWebDescription(
+    today: String,
+    supportsFilters: Boolean,
+    supportsScrape: Boolean,
+): String = buildString {
+    appendLine("Search the web for up-to-date or specific information.")
+    appendLine("Use this when the user asks for the latest news, current facts, or needs verification.")
+    appendLine("Do not treat result order as proof of freshness. Prefer primary sources and inspect")
+    appendLine("each result's title, URL, publication date, and content before making a current claim.")
+    if (supportsFilters) {
+        appendLine("Use the optional publication-date and domain filters only when they match the question.")
+    }
+    if (supportsScrape) {
+        appendLine("If a date or primary source is missing, or sources conflict, run another focused search")
+        appendLine("or use scrape_web to verify the most relevant source before answering.")
+    } else {
+        appendLine("If a date or primary source is missing, or sources conflict, run another focused search before answering.")
+    }
+    appendLine("Generate focused keywords and run multiple searches if needed.")
+    appendLine("Today is $today.")
+    appendLine()
+    appendLine("Response format:")
+    appendLine("- retrievedAt is the local retrieval time, never a publication date")
+    appendLine("- items[].id (short id), index, title, url, publishedDate (if supplied), highlights (if supplied), text")
+    appendLine("- images[]: image urls related to the query (may be empty)")
+    appendLine()
+    appendLine("Citations:")
+    appendLine("- After using results, add `[citation,domain](id)` after the sentence.")
+    appendLine("- Multiple citations are allowed.")
+    appendLine("- If no results are cited, omit citations.")
+    appendLine()
+    appendLine("Images:")
+    appendLine("- When images help the user understand the answer, embed relevant ones using Markdown: `![](url)`.")
+    appendLine("- Embed 2 to 4 images, and only use urls from `images[]` (never fabricate or alter urls).")
+    appendLine("- Usually place the images at the very beginning of your reply; skip them entirely if none are relevant.")
+    appendLine()
+    appendLine("Example:")
+    appendLine("The capital of France is Paris. [citation,example.com](abc123)")
+    append("The population is about 2.1 million. [citation,example.com](abc123) [citation,example2.com](def456)")
 }
 
 /**
