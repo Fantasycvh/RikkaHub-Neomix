@@ -1436,6 +1436,34 @@ chatModelId,比上游还多了「要求支持工具调用」校验语义）。�
 
 **验证**：本轮无代码改动。
 
+## 2026-10-25 issue 扫描（#2244–#2253，自上次评估后新增）+ 两项修复
+
+上次评估截至 2026-10-24 晚（台账最远 #2243），本轮新增 issue：#2244–#2253。
+
+| Issue | 内容 | 判定 |
+|---|---|---|
+| #2244 | search_web 描述声明不存在的参数（closed） | **修复（本仓同款）** |
+| #2245 | 余额在逗号小数 locale 下报错/为空（open） | **修复（本仓同款）** |
+| #2246 | 工具确认拒绝后对话卡在输出状态（open） | 待议——落在本仓不完整失败/净化设计地界，与生成卡死同类状态机问题，建议复现后纳入净化测试清单 |
+| #2252 | HTML/SVG 预览返回后卡死崩溃（open，v3.1.1 仍复现，系 #2227 未真修） | 观察——本仓亦有 HTML 预览，待上游动作 |
+| #2253 | 切换模型后思考链渲染出错且疑似污染对话存档（open） | 待议——本仓渲染层已分叉，需单独判断是否同构 |
+| #2247/#2248/#2249/#2250/#2251/#2242 | UX/功能诉求 | 不适用（宿主页面已分叉或自建） |
+
+**#2245 修复**（3 处，同根因：`"%.2f".format` 用默认 locale）：
+`common/http/JsonExpression.kt:367` 数字摄取行（波兰语下产出 `"5,00"`，`toDouble` 回读抛
+NumberFormatException → `evaluateJsonExpr` 整体吞成空串，余额显示失败）；`OpenAIProvider.getBalance`
+单/多接口两处显示格式化（`ai/provider/providers/OpenAIProvider.kt`）。统一改 `Locale.ROOT`。
+单测：`JsonExpressionTest` 新增 pl-PL 默认 locale 回归用例。
+
+**#2244 修复**（与上游修法不同）：上游 closed 但本仓情况不同——本仓 `scrape_web` 是真注册的
+（`SearchTools.kt`），谎言只在于：①publication-date/domain 过滤仅 Exa 实现（schema 里有
+`startPublishedDate/includeDomains` 等），其余服务声明了不存在的参数；②不支持抓取的服务上
+scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真实能力动态拼装这两段
+（schema keys 探测 PublishedDate/Domains + scrapingParameters 判空），其余文案不动。
+
+**验证**：`:common:testDebugUnitTest`（JsonExpressionTest 5 用例）、`:ai:compileDebugKotlin`、
+`:app:compileDebugKotlin` 通过。未推送。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)
