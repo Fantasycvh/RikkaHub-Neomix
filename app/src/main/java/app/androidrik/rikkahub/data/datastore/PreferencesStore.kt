@@ -1302,6 +1302,16 @@ data class DisplaySetting(
     val chatCustomFontName: String = "",
     val enableVolumeKeyScroll: Boolean = false,
     val volumeKeyScrollRatio: Float = 1.0f,
+    /**
+     * 应用内显示名：留空 = 用默认 R.string.app_name；非空时用于应用内展示与
+     * 最近任务窗口标题（RouteActivity 的 TaskDescription）。桌面名称不归它管。
+     */
+    val customAppName: String = "",
+    /**
+     * 桌面「名称 + 图标」预置的 activity-alias id（见 [app.androidrik.rikkahub.utils.LauncherAlias]）。
+     * 空串 = 默认别名；切换由 PackageManager.setComponentEnabledSetting 完成，这里只存选择结果。
+     */
+    val launcherAliasId: String = "",
 )
 
 @Serializable

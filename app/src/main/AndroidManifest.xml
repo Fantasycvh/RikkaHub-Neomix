@@ -84,6 +84,10 @@
 
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
+      <!-- 静态快捷方式声明挂在默认桌面入口上（切到其它预置后长按不可见属预期） -->
+      <meta-data
+        android:name="android.app.shortcuts"
+        android:resource="@xml/shortcuts" />
       <intent-filter>
         <action android:name="android.intent.action.SEND" />
 
@@ -109,11 +113,81 @@
 
         <category android:name="android.intent.category.DEFAULT" />
       </intent-filter>
-
-      <meta-data
-        android:name="android.app.shortcuts"
-        android:resource="@xml/shortcuts" />
     </activity>
+    <!--
+      桌面「名称 + 图标」预置入口：真实 Activity（RouteActivity 子类），不用 activity-alias。
+      原因见 LauncherRikkaHubActivity 注释：ROM 的组件开关 hook 校验 alias 会失败。
+      RouteActivity 是默认入口（Neomix），切换时由 LauncherAlias 把本体与预置互斥启停。
+    -->
+    <activity
+      android:name=".LauncherRikkaHubActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:configChanges="keyboardHidden|orientation|screenSize"
+      android:importantForAutofill="noExcludeDescendants"
+      android:icon="@mipmap/ic_launcher"
+      android:label="@string/app_name_variant_rikkahub"
+      android:theme="@style/Theme.Rikkahub"
+      android:windowSoftInputMode="adjustResize">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+    <activity
+      android:name=".LauncherChatActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:configChanges="keyboardHidden|orientation|screenSize"
+      android:importantForAutofill="noExcludeDescendants"
+      android:icon="@mipmap/ic_launcher_chat"
+      android:label="@string/app_name_variant_chat"
+      android:theme="@style/Theme.Rikkahub"
+      android:windowSoftInputMode="adjustResize">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+    <activity
+      android:name=".LauncherNotesActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:configChanges="keyboardHidden|orientation|screenSize"
+      android:importantForAutofill="noExcludeDescendants"
+      android:icon="@mipmap/ic_launcher_notes"
+      android:label="@string/app_name_variant_notes"
+      android:theme="@style/Theme.Rikkahub"
+      android:windowSoftInputMode="adjustResize">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+    <activity
+      android:name=".LauncherAssistantActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:configChanges="keyboardHidden|orientation|screenSize"
+      android:importantForAutofill="noExcludeDescendants"
+      android:icon="@mipmap/ic_launcher_assistant"
+      android:label="@string/app_name_variant_assistant"
+      android:theme="@style/Theme.Rikkahub"
+      android:windowSoftInputMode="adjustResize">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+    <activity
+      android:name=".ShortcutEntryActivity"
+      android:enabled="true"
+      android:exported="true"
+      android:theme="@android:style/Theme.NoDisplay" />
     <activity
       android:name=".ui.activity.ShortcutHandlerActivity"
       android:exported="true"

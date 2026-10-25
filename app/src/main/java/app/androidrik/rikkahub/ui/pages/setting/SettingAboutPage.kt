@@ -45,6 +45,7 @@ import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.easteregg.EmojiBurstHost
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.openUrl
 import app.androidrik.rikkahub.utils.plus
@@ -120,7 +121,8 @@ fun SettingAboutPage() {
                         )
 
                         Text(
-                            text = stringResource(R.string.app_name),
+                            text = LocalSettings.current.displaySetting.customAppName
+                                .ifBlank { stringResource(R.string.app_name) },
                             style = MaterialTheme.typography.displaySmall,
                         )
                     }

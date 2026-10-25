@@ -1,11 +1,13 @@
 package app.androidrik.rikkahub
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -43,6 +46,8 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavKey
@@ -125,6 +130,7 @@ import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNotificationPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesGeneralPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesAppIdentityPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesUIPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNetworkPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingThemePage
@@ -149,6 +155,7 @@ import app.androidrik.rikkahub.ui.pages.webview.WebViewPage
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import app.androidrik.rikkahub.utils.CrashHandler
+import app.androidrik.rikkahub.utils.LauncherAlias
 import app.androidrik.rikkahub.utils.openUsageAccessSettings
 import okhttp3.OkHttpClient
 import org.koin.android.ext.android.inject
@@ -168,7 +175,7 @@ fun conversationIntent(context: Context, conversationId: String): Intent =
         putExtra(EXTRA_CONVERSATION_ID, conversationId)
     }
 
-class RouteActivity : ComponentActivity() {
+open class RouteActivity : ComponentActivity() {
     private val okHttpClient by inject<OkHttpClient>()
     private val settingsStore by inject<SettingsStore>()
     private val mediaCreationRepository by inject<MediaCreationRepository>()
@@ -317,6 +324,34 @@ class RouteActivity : ComponentActivity() {
     fun AppRoutes() {
         val toastState = rememberToasterState()
         val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
+        // 最近任务窗口标题跟随自定义应用名（桌面 label 不归它管，走 activity-alias）
+        val appDisplayName = settings.displaySetting.customAppName.ifBlank { getString(R.string.app_name) }
+        LaunchedEffect(appDisplayName) {
+            setTaskDescription(ActivityManager.TaskDescription(appDisplayName))
+        }
+        // activity-alias（桌面名称/图标预置）切换必须在**后台**执行：Android 15 起系统
+        // PackageManagerService 会直接抛异常拒绝前台应用禁用自己的 launcher 入口
+        //（实测崩溃：RemoteException from setEnabledSettings）。设置页只写偏好，
+        // 这里在 ON_STOP（应用离开前台）时对齐系统组件状态；上一次前台切换失败
+        // 留下的不一致也会在此自愈。
+        DisposableEffect(Unit) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP) {
+                    Log.d(TAG, "ON_STOP: applying alias preset")
+                    runCatching {
+                        // 幂等对齐（跳过状态一致的组件）：顺带清理前台切换失败
+                        // 可能留下的「多个别名同时启用」脏状态
+                        LauncherAlias.apply(
+                            applicationContext,
+                            settingsStore.settingsFlow.value.displaySetting.launcherAliasId
+                                .ifBlank { LauncherAlias.DEFAULT_ID },
+                        )
+                    }.onFailure { Log.e(TAG, "alias apply on ON_STOP failed", it) }
+                }
+            }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
+        }
         val tts = rememberCustomTtsState()
         val asr = rememberCustomAsrState()
         val eventBus = koinInject<AppEventBus>()
@@ -545,6 +580,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingPreferencesUIPage()
                             }
 
+                            entry<Screen.SettingPreferencesAppIdentity> {
+                                SettingPreferencesAppIdentityPage()
+                            }
+
                             entry<Screen.SettingPreferencesNetwork> {
                                 SettingPreferencesNetworkPage()
                             }
@@ -754,6 +793,45 @@ class RouteActivity : ComponentActivity() {
     }
 }
 
+/**
+ * 桌面「名称 + 图标」预置入口（utils/LauncherAlias.kt 切换）。
+ *
+ * 必须是**真实 Activity**（RouteActivity 子类）而不是 activity-alias：
+ * ColorOS/HyperOS 一类 ROM 的组件开关 hook 会对 alias 做「组件是否存在」校验，
+ * alias 不在 activity 表里 ⇒ setComponentEnabledSetting 被拒（实测崩溃
+ * IllegalArgumentException "Component class does not exist"，后台静默丢弃同理）；
+ * 真实 Activity 放行（对齐 legado-with-MD3 的 Launcher0~6 做法）。
+ * 静态快捷方式声明挂在 RouteActivity（默认入口）上，切走后长按不可见属预期。
+ */
+class LauncherRikkaHubActivity : RouteActivity()
+
+class LauncherChatActivity : RouteActivity()
+
+class LauncherNotesActivity : RouteActivity()
+
+class LauncherAssistantActivity : RouteActivity()
+
+/**
+ * 桌面快捷方式的固定入口：**永不参与预置启停**（始终 enabled）。
+ * 快捷方式若直接指向 [RouteActivity]，切换预置后 RouteActivity 会被禁用 ⇒
+ * 点快捷方式无法启动（实测）。由本类转发到当前启用的入口 Activity。
+ */
+class ShortcutEntryActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val entryClass = runCatching {
+            Class.forName(LauncherAlias.variantOf(LauncherAlias.enabledVariantId(this)).activityClass)
+        }.getOrNull() ?: RouteActivity::class.java
+        startActivity(
+            Intent(this, entryClass).apply {
+                action = Intent.ACTION_MAIN
+                if (getIntent()?.extras != null) putExtras(getIntent()!!.extras!!)
+            }
+        )
+        finish()
+    }
+}
+
 sealed interface Screen : NavKey {
     @Serializable
     data class Chat(
@@ -846,6 +924,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingPreferencesUI : Screen
+
+    @Serializable
+    data object SettingPreferencesAppIdentity : Screen
 
     @Serializable
     data object SettingPreferencesNetwork : Screen

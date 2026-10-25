@@ -267,6 +267,28 @@ object SettingSearchIndex {
             keywords = listOf("通用", "general", "保活", "护栏")
         ),
         entry(
+            title = R.string.setting_page_preferences_app_identity,
+            route = Screen.SettingPreferencesAppIdentity,
+            keywords = listOf("应用名", "显示名", "改名", "图标", "桌面", "快捷方式", "app name", "icon", "shortcut", "yingyongming")
+        ),
+        entry(
+            title = R.string.setting_page_app_identity_display_name,
+            description = R.string.setting_page_app_identity_display_name_desc,
+            route = Screen.SettingPreferencesAppIdentity,
+            pageTitle = R.string.setting_page_preferences_app_identity
+        ),
+        entry(
+            title = R.string.setting_page_app_identity_launcher,
+            route = Screen.SettingPreferencesAppIdentity,
+            pageTitle = R.string.setting_page_preferences_app_identity
+        ),
+        entry(
+            title = R.string.setting_page_app_identity_shortcut,
+            description = R.string.setting_page_app_identity_shortcut_desc,
+            route = Screen.SettingPreferencesAppIdentity,
+            pageTitle = R.string.setting_page_preferences_app_identity
+        ),
+        entry(
             title = R.string.setting_display_page_create_new_conversation_on_start_title,
             description = R.string.setting_display_page_create_new_conversation_on_start_desc,
             route = Screen.SettingPreferencesGeneral,

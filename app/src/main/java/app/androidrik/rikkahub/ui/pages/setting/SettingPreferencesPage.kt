@@ -20,6 +20,7 @@ import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.Notification01
 import me.rerere.hugeicons.stroke.PaintBoard
 import me.rerere.hugeicons.stroke.Settings03
+import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Sun01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
@@ -90,6 +91,12 @@ fun SettingPreferencesPage() {
                         leadingContent = { Icon(HugeIcons.PaintBoard, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_ui)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_ui_desc)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingPreferencesAppIdentity) },
+                        leadingContent = { Icon(HugeIcons.SmartPhone01, null) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_preferences_app_identity)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_preferences_app_identity_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesNetwork) },
