@@ -308,36 +308,4 @@ val DEFAULT_PROVIDERS = listOf(
             )
         }
     ),
-    // New API 系列（中转站，典型接口如 one-api / new-api）
-    // 余额接口：/api/usage/token/ 直接用 API Key 查询当前 token 额度，返回
-    // total_granted（总充值）/ total_used（已使用）/ total_available（可用）。
-    // 站点按 1 USD = 500000 quota 折算；若某站点比例不同，可在设置里改 resultPath。
-    ProviderSetting.OpenAI(
-        id = Uuid.parse("7b3e9f1a-2c4d-5e6f-8a9b-0c1d2e3f4a5b"),
-        name = "New API",
-        baseUrl = "https://your-api.com/v1",
-        apiKey = "",
-        enabled = false,
-        builtIn = true,
-        balanceOption = BalanceOption(
-            enabled = true,
-            apiPath = "/api/usage/token/",
-            resultPath = "(data.total_granted - data.total_used) / 500000",
-        ),
-    ),
-    // Agent Router（公益中转，OpenAI 兼容入口）
-    // 实测无余额 API（/api/usage/token、/v1/dashboard/billing/* 均 Invalid URL），默认关闭余额显示
-    ProviderSetting.OpenAI(
-        id = Uuid.parse("1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"),
-        name = "Agent Router",
-        baseUrl = "https://agentrouter.org/v1",
-        apiKey = "",
-        enabled = false,
-        builtIn = true,
-        balanceOption = BalanceOption(
-            enabled = false,
-            apiPath = "/api/usage/token/",
-            resultPath = "(data.total_granted - data.total_used) / 500000",
-        ),
-    ),
 )
