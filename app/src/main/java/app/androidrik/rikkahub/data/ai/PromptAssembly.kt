@@ -305,12 +305,24 @@ internal fun buildInternalMessagesWithPlan(
     timing: PromptInspectionTiming? = null,
     /** 预览专用：并行预算好的逐条记忆成本。 */
     precomputedMemoryEntryCosts: Map<String, Int>? = null,
+    /**
+     * 上下文净化 dry-run 观察者（P0，`design-context-purification.md` §4.5/§11）：
+     * 非 null 时在发送窗口组装完成后跑一次 [ContextPurifier.purgeSendWindow] 并回调报告。
+     * **不改发送内容**——P1 才把净化副本换成实发；null（无头 run / 预览）则完全不算。
+     */
+    purgeObserver: ((ContextPurifier.Result) -> Unit)? = null,
 ): AssembledRequest {
-    val windowMessages = buildSendWindowMessages(
+    val windowRaw = buildSendWindowMessages(
         messages = messages,
         compressionWindow = compressionWindow,
         contextMessageLimit = assistant.contextMessageLimit,
-    ).map { it.withoutUiNotices() }
+    )
+    // §4.5 落点：limitContext 之后、withoutUiNotices 之前；纯函数不抛、不改发送。
+    purgeObserver?.let { observer ->
+        val report = ContextPurifier.purgeSendWindow(windowRaw)
+        if (report.windowCount > 0) observer(report)
+    }
+    val windowMessages = windowRaw.map { it.withoutUiNotices() }
     timing?.mark("asm_window")
     // Capture query, time, tokenizer strategy, rendered texts and selection once for this request.
     val memoryPlan = buildMemoryInjectionPlan(

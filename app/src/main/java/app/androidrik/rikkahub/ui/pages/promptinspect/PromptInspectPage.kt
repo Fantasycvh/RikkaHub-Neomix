@@ -107,10 +107,10 @@ fun PromptInspectPage(
         isRecentScroll = false
     }
 
-    // 段落下标 = 概览(0) + 缓存提示(1) + 目录(2) 之后的第 n 项 ⇒ n + SEGMENT_OFFSET。
-    // 注意：这三个都是 `item {}` 槽位，即使内容 compose 为空也**仍然占位**，
+    // 段落下标 = 概览(0) + 缓存提示(1) + 分叉诊断(2) + 净化 dry-run(3) + 目录(4) 之后的第 n 项 ⇒ n + SEGMENT_OFFSET。
+    // 注意：这些全是 `item {}` 槽位，即使内容 compose 为空也**仍然占位**，
     // 所以偏移是常量、不随是否渲染而变化（目录卡在段数 ≤1 时返回空，同样占位）。
-    val segmentOffset = 3
+    val segmentOffset = 4
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -175,10 +175,11 @@ fun PromptInspectPage(
                     item { SummaryCard(inspection) }
                     item { PrefixCacheHint(inspection) }
                     item { DivergenceDiagnosisCard(conversationId) }
+                    item { PurgeDryRunCard(conversationId) }
                     item { SegmentIndexCard(inspection, segmentOffset) {
                         scope.launch { listState.animateScrollToItem(it) }
                     } }
-                    // 目录卡恒存在 ⇒ 段落下标 = 目录之后 + n，偏移即 3
+                    // 目录卡恒存在 ⇒ 段落下标 = 目录之后 + n，偏移即 4
                     itemsIndexed(
                         items = inspection.segments,
                         key = { index, _ -> index },
@@ -438,6 +439,70 @@ private fun DivergenceDiagnosisCard(conversationId: String) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 净化 dry-run 卡（P0，`design-context-purification.md` §7）：显示「如果开启净化会怎么改」。
+ *
+ * 数据来自**最近一次真实请求**的记录（`PromptDebugState` store 3，与分叉诊断卡同款取数
+ * 模式）——这比预览时现算更贴 P0 的目的（真实命中率）；预览路径本身不算净化，零额外开销。
+ * 文案暂不本地化（P0 诊断卡，与首屏骨架「已加载 N 条消息」同款处理）。
+ */
+@Composable
+private fun PurgeDryRunCard(conversationId: String) {
+    val snapshot by produceState(
+        initialValue = null as PromptDebugState.PurgeSnapshot?,
+        conversationId,
+    ) {
+        value = PromptDebugState.latestPurge(conversationId)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = HugeIcons.ChartLineData01,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "净化 dry-run（P0 · 未改发送）",
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                )
+                val s = snapshot
+                val summary = when {
+                    s == null -> "尚无记录：该会话在本进程内生成一次后，此处显示「如果开启净化会怎么改」"
+                    s.decisions.isEmpty() -> "最近一次请求：窗口 ${s.windowCount} 条消息，无退化残留命中"
+                    else -> "最近一次请求：窗口 ${s.windowCount} 条 · 命中 ${s.decisions.size} 条决策 · " +
+                        "可省约 ${s.savedChars} 字符（诊断口径，不进用量账）"
+                }
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                s?.decisions?.take(8)?.forEach { line ->
+                    Text(
+                        text = line,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (s != null && s.decisions.size > 8) {
+                    Text(
+                        text = "… 共 ${s.decisions.size} 条（完整列表见 Logcat 标签 purge.dryrun）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

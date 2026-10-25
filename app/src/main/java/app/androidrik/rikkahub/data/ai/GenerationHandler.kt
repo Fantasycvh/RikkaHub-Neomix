@@ -1147,6 +1147,25 @@ class GenerationHandler(
             ruleReminder = ruleReminder,
             memoryDisabled = memoryDisabled,
             frozenAnchorIds = frozenAnchorIds,
+            // 净化 P0 dry-run（design-context-purification §7/§11）：不改发送，只记报告 + 日志；
+            // debugKey 为空的无头 run（SubagentRunner）天然跳过。
+            purgeObserver = debugKey?.let { key ->
+                { report ->
+                    val flipped = PromptDebugState.recordPurge(key, report)
+                    if (report.decisions.isNotEmpty()) {
+                        Log.i(
+                            TAG, "purge.dryrun window=${report.windowCount} " +
+                                "decisions=${report.decisions.size} savedChars=${report.savedChars} :: " +
+                                report.decisions.joinToString("; ") {
+                                    "${it.rule}@${it.messageIndex}.${it.partIndex} ${it.detail.take(60)}"
+                                },
+                        )
+                    }
+                    if (flipped) {
+                        Log.w(TAG, "purge.dryrun FLIP: same window hash but decisions changed (§4.1 观察项)")
+                    }
+                }
+            },
         )
         val internalMessages = assembly.messages
         if (assistant.enableMemory && !memoryDisabled) {

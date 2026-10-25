@@ -68,6 +68,49 @@ object PromptDebugState {
     fun setFolded(key: String, segmentIndex: Int, folded: Boolean) {
         foldStates.getOrPut(key) { mutableMapOf() }[segmentIndex] = folded
     }
+
+    // ---- store 3：净化 dry-run 报告（小、每生成步写、可丢）——独立 LRU（同 store 1 的淘汰语义） ----
+
+    /** 一次净化 dry-run 的快照（P0 观察数据；见 `design-context-purification.md` §7） */
+    data class PurgeSnapshot(
+        val windowCount: Int,
+        val savedChars: Int,
+        val windowHash: Int,
+        /** `rule@messageIndex:detail` 列表（预览卡与翻转对比用） */
+        val decisions: List<String>,
+    )
+
+    private const val MAX_PURGE_ENTRIES = 8
+
+    private val purges = object : LinkedHashMap<String, Pair<PurgeSnapshot, PurgeSnapshot?>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<PurgeSnapshot, PurgeSnapshot?>>): Boolean =
+            size > MAX_PURGE_ENTRIES
+    }
+
+    /**
+     * 记录一次净化 dry-run（真实路径每步组装后调用）。
+     *
+     * @return 是否**翻转**：窗口内容指纹相同但决策不同——设计稿 §4.1「位置稳定 ≠ 字节稳定」
+     *   的观察项，正常应恒为 false；true 时调用方应打告警日志（P0 统计翻转率）。
+     */
+    @Synchronized
+    internal fun recordPurge(key: String, result: ContextPurifier.Result): Boolean {
+        val snap = PurgeSnapshot(
+            windowCount = result.windowCount,
+            savedChars = result.savedChars,
+            windowHash = result.windowHash,
+            decisions = result.decisions.map { "${it.rule}@${it.messageIndex}:${it.detail}" },
+        )
+        val old = purges[key]
+        purges[key] = snap to old?.first
+        return old != null &&
+            old.first.windowHash == snap.windowHash &&
+            old.first.decisions != snap.decisions
+    }
+
+    /** 最近一次净化 dry-run 快照；null = 该会话本进程内尚未生成过（或被 LRU 淘汰）。 */
+    @Synchronized
+    fun latestPurge(key: String): PurgeSnapshot? = purges[key]?.first
 }
 
 /** 诊断结果：前缀一致段 + 分叉点信息。 */
