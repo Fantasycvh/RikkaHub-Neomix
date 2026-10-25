@@ -150,11 +150,11 @@ class StorageUsageManager internal constructor(
     }
 
     private fun categoryDirs(id: StorageCategoryId): List<File> = when (id) {
-        StorageCategoryId.IMAGE_CACHE -> listOf(File(cacheDir, IMAGE_CACHE_DIR))
-        StorageCategoryId.TEMP -> listOf(File(cacheDir, TEMP_DIR))
-        StorageCategoryId.WEBVIEW -> listOf(File(cacheDir, WEBVIEW_DIR))
-        StorageCategoryId.THUMBS -> listOf(File(cacheDir, THUMBS_DIR))
-        StorageCategoryId.TEX -> listOf(File(cacheDir, TEX_DIR))
+        StorageCategoryId.IMAGE_CACHE -> listOf(File(cacheDir, StoragePaths.IMAGE_CACHE))
+        StorageCategoryId.TEMP -> listOf(File(cacheDir, StoragePaths.TEMP))
+        StorageCategoryId.WEBVIEW -> listOf(File(cacheDir, StoragePaths.WEBVIEW))
+        StorageCategoryId.THUMBS -> listOf(File(cacheDir, StoragePaths.THUMBS))
+        StorageCategoryId.TEX -> listOf(File(cacheDir, StoragePaths.TEX))
         StorageCategoryId.LOGS, StorageCategoryId.BACKUP_TEMP -> emptyList()
     }
 
@@ -230,21 +230,4 @@ class StorageUsageManager internal constructor(
 
     private fun isSymlink(file: File): Boolean =
         runCatching { Files.isSymbolicLink(file.toPath()) }.getOrDefault(false)
-
-    private companion object {
-        // 写入方：Coil 3 默认磁盘缓存（ImageLoader 未显式配置 diskCache）
-        const val IMAGE_CACHE_DIR = "image_cache"
-
-        // 写入方：Context.appTempFolder（common/ContextUtil.kt）
-        const val TEMP_DIR = "temp"
-
-        // 写入方：WebViewContentCache
-        const val WEBVIEW_DIR = "webview_content"
-
-        // 写入方：WorkspaceFileBrowser 的 SVG 缩略图
-        const val THUMBS_DIR = "workspace_svg_thumb"
-
-        // 写入方：TectonicNative
-        const val TEX_DIR = "texfmt"
-    }
 }

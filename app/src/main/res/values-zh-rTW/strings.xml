@@ -1013,9 +1013,9 @@
   <string name="setting_files_page_folder_upload">上傳</string>
   <string name="setting_files_page_no_files">無檔案</string>
   <string name="setting_files_page_title">檔案管理</string>
-  <string name="setting_page_storage">儲存管理</string>
+  <string name="setting_page_storage">快取管理</string>
   <string name="setting_page_storage_desc">查看快取佔用，清理可再生的快取</string>
-  <string name="setting_storage_page_title">儲存管理</string>
+  <string name="setting_storage_page_title">快取管理</string>
   <string name="setting_storage_page_summary">可清理快取</string>
   <string name="setting_storage_page_summary_count">%1$d 類</string>
   <string name="setting_storage_page_files_count">%1$d 個檔案</string>
@@ -1031,7 +1031,7 @@
   <string name="setting_storage_page_busy">另有備份或還原任務正在進行，請稍後再試。</string>
   <string name="setting_storage_page_toggle_details">展開或收合明細</string>
   <string name="setting_storage_page_loading_details">正在讀取明細…</string>
-  <string name="setting_storage_page_error_title">讀取儲存佔用失敗</string>
+  <string name="setting_storage_page_error_title">讀取快取佔用失敗</string>
   <string name="setting_storage_page_error">%1$s</string>
   <string name="setting_storage_page_retry">重試</string>
   <string name="setting_storage_page_note">這裡只列出可再生快取。聊天記錄、附件、頭像與工作區檔案不會在此被刪除。</string>

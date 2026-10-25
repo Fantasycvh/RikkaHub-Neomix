@@ -107,7 +107,7 @@ fun UIAvatar(
     var urlInput by remember { mutableStateOf("") }
     fun saveAvatarImage(uri: Uri) {
         // 用 createAvatarImage（落 files/avatars）而不是 createChatFilesByContents（落 files/upload）：
-        // 头像不能进聊天附件目录，否则「设置 → 存储管理」里对聊天文件的清理会把
+        // 头像不能进聊天附件目录，否则「设置 → 文件管理」里对聊天文件的清理会把
         // 正在使用的头像一起删掉（上游 issue #2127）。见 FileFolders.AVATARS。
         // 失败时保持原头像不变（与改动前的静默行为一致，不新增失败提示文案）。
         val localUri = filesManager.createAvatarImage(uri)

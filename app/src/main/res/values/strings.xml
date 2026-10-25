@@ -1041,9 +1041,9 @@
   <string name="setting_files_page_folder_upload">Upload</string>
   <string name="setting_files_page_no_files">No Files</string>
   <string name="setting_files_page_title">File Management</string>
-  <string name="setting_page_storage">Storage Management</string>
+  <string name="setting_page_storage">Cache Management</string>
   <string name="setting_page_storage_desc">See cache usage and clean what can be regenerated</string>
-  <string name="setting_storage_page_title">Storage Management</string>
+  <string name="setting_storage_page_title">Cache Management</string>
   <string name="setting_storage_page_summary">Cleanable cache</string>
   <string name="setting_storage_page_summary_count">%1$d categories</string>
   <string name="setting_storage_page_files_count">%1$d files</string>
@@ -1059,7 +1059,7 @@
   <string name="setting_storage_page_busy">Another backup or restore task is running. Try again later.</string>
   <string name="setting_storage_page_toggle_details">Show or hide details</string>
   <string name="setting_storage_page_loading_details">Loading details…</string>
-  <string name="setting_storage_page_error_title">Storage scan failed</string>
+  <string name="setting_storage_page_error_title">Cache scan failed</string>
   <string name="setting_storage_page_error">%1$s</string>
   <string name="setting_storage_page_retry">Retry</string>
   <string name="setting_storage_page_note">Only regenerable caches are listed. Chat history, attachments, avatars and workspace files are never removed here.</string>

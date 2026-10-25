@@ -1,8 +1,9 @@
-# 存储管理（Storage Management）设计稿
+# 缓存管理（Cache Management）设计稿
 
-> 状态：**Phase 1 + Phase 2 已实现并通过真机验证**（2026-10-25，PJX110）。
+> 状态：**Phase 1 + Phase 2 已实现并通过真机验证**（2026-10-25，PJX110）；
+> **Phase 3 部分落地**（共享路径常量 + `temp` 启动清理委托）。
 > 验证：单测 13 项通过（1 项在 Windows 上因无符号链接权限跳过）、`:app:assembleDebug` 成功、
-> 真机注入文件后的统计/清理/展开/结果提示/入口/搜索均通过（详见 §十一）。Phase 3 未开始。
+> 真机注入文件后的统计/清理/展开/结果提示/入口/搜索均通过（详见 §十一）。
 > 本文同时是方案与实现记录；本地暂存，未提交。
 > 参照实现：Legado_Max 的「精准管理 → 存储管理」（外部仓库，仅作对照，不移植）。
 > 关联：`design-export-retention.md`（`files/exports` 留存区与启动清理）、
@@ -11,7 +12,7 @@
 
 ## 一、背景与结论
 
-本项目目前没有独立的「存储管理」页，只有：
+本项目目前没有独立的「缓存管理」页，只有：
 
 - 设置 → 连接与数据 → **聊天存储**（`SettingFilesPage`，只管 `upload` / `exports` 两个目录）；
 - 设置 → 关于 里的版本信息，以及日志页里的日志文件大小/清空；
@@ -211,7 +212,7 @@ class StorageVM(private val manager: StorageUsageManager) : ViewModel() {
 1. 路由：`Screen.SettingStorage`（`RouteActivity.kt:900-913` 区域）+ `entry<Screen.SettingStorage>`（`:617` 区域）；
 2. 入口：`SettingPage` 的 `connectionAndData` 分组，放在「聊天存储」下方（`SettingPage.kt:236-253` 附近）；
 3. DI：`RepositoryModule.kt:118` 附近注册 manager；`ViewModelModule.kt:36` 注册 `viewModelOf(::StorageVM)`；
-4. 搜索索引：`SettingSearchIndex.kt:53-57` 目前把「存储管理」关键词挂在文件管理页上，新增页后需
+4. 搜索索引：`SettingSearchIndex.kt:53-57` 目前把「缓存管理 / 存储管理」关键词挂在文件管理页上，新增页后需
    **迁移/拆分关键词**，否则搜索结果指向错页；
 5. 字符串：`setting_storage_page_*`，英文默认 + `values-zh` + `values-zh-rTW` 三份齐全。
 
@@ -273,7 +274,9 @@ class StorageVM(private val manager: StorageUsageManager) : ViewModel() {
 3. **`upload` / `exports` 是否纳入清理？** 建议：不纳入，仅展示 + 跳转既有文件管理页，避免双入口。
 4. **`SettingPage` 的「聊天存储」计数是否改为 Flow？** 已按「RESUME 重算」落地（Phase 2），
    不使用 Flow（避免设置页常驻时持续 IO）。
-5. **是否把 `RikkaHubApp` 的启动清理收敛进 manager？** 建议延后到 Phase 3，先保持现状，降低回归面。
+5. **是否把 `RikkaHubApp` 的启动清理收敛进 manager？** 已做**最小收敛**：共享路径常量，
+   `deleteTempFiles()` 委托给 `clear(TEMP)`；其余 5 项（exports TTL、tool_outputs、workspace tmp、
+   managed_files 对账、头像迁移）仍留在 `RikkaHubApp`——它们是生命周期/数据策略，不是缓存口径。
 
 ## 十、分期
 
@@ -281,9 +284,10 @@ class StorageVM(private val manager: StorageUsageManager) : ViewModel() {
   日志 / 备份临时文件）。不做明细展开、不做 DB、不遍历工作区。
 - **Phase 2（已实现，2026-10-25）**：分类可展开（备份临时文件列表、日志文件列表）、结果报告、
   与备份/恢复的互斥、设置页计数刷新。
-- **Phase 3**：工作区/数据库只读展示 + 跳转；启动清理收敛（可选）。
+- **Phase 3（部分，2026-10-25）**：启动清理最小收敛（共享常量 + `temp` 委托）已落地；
+  工作区/数据库只读展示待定（§九 1、2）。
 
-## 十一、实现结果（Phase 1 + Phase 2，2026-10-25）
+## 十一、实现结果（Phase 1 + Phase 2 + Phase 3 部分，2026-10-25）
 
 | 文件 | 内容 |
 |---|---|
@@ -293,7 +297,7 @@ class StorageVM(private val manager: StorageUsageManager) : ViewModel() {
 | `app/.../RouteActivity.kt` | `Screen.SettingStorage` + entry |
 | `app/.../ui/pages/setting/SettingPage.kt` | 「连接与数据」分组新增入口 |
 | `app/.../di/{RepositoryModule,ViewModelModule}.kt` | 注册 manager 与 VM |
-| `app/.../search/SettingSearchIndex.kt` | 新条目；「存储管理 / 存储空间」关键词从文件管理页迁出 |
+| `app/.../search/SettingSearchIndex.kt` | 新条目；「缓存管理 / 缓存空间」关键词从文件管理页迁出 |
 | `res/values{,-zh,-zh-rTW}/strings.xml` | 32 条文案，三语言齐全 |
 | `app/src/test/.../StorageUsageManagerTest.kt` | 7 项：口径、白名单、目录保留、日志钩子、符号链接 |
 
@@ -308,6 +312,18 @@ class StorageVM(private val manager: StorageUsageManager) : ViewModel() {
 | `app/.../ui/pages/setting/SettingStoragePage.kt` | 可展开卡片、阻塞横幅、带分类名的结果提示 |
 | `app/.../ui/pages/setting/SettingPage.kt` | 「聊天存储」计数改为 `LifecycleResumeEffect` 重算 |
 | `app/src/test/...` | `StorageUsageManagerTest` 增至 11 项；新增 `DataOperationLockTest` 2 项 |
+
+### Phase 3 部分落地（启动清理）
+
+| 文件 | 内容 |
+|---|---|
+| `common/.../StorageNames.kt` | `TEMP` 目录名的唯一来源；`Context.appTempFolder` 改用它 |
+| `app/.../data/storage/StoragePaths.kt` | 5 个缓存目录名统一出口（`TEMP` 复用 `StorageNames.TEMP`） |
+| `app/.../RikkaHubApp.kt` | `deleteTempFiles()` 改为 `StorageUsageManager.clear(TEMP)`，失败写日志；其余启动清理不动 |
+
+刻意只收敛这一项：另外 5 项是生命周期/数据策略（exports TTL 依赖 DataStore、workspace tmp 依赖
+`WorkspaceManager`、`managed_files` 对账、头像迁移），不属于缓存统计口径；整体搬进来会把
+manager 变成「启动 GC + UI 统计」混合体，并引入启动时序风险。
 
 与草案的差异（刻意收窄）：
 
@@ -337,7 +353,7 @@ Debug 包 `applicationId` 独立（`app.androidrik.rikkahub.debug`），不影�
 - 清理备份临时文件：`backup_seed.zip` 删除，非白名单文件保留。
 - 清理日志：13.8 KB → 0 B，`files/logs` 为空。
 - 空分类的删除按钮点击无响应（已禁用）。
-- 入口位于「设置 → 连接与数据 → 存储管理」；返回与再次进入正常；设置搜索 `cache` 命中该页且排第一。
+- 入口位于「设置 → 连接与数据 → 缓存管理」；返回与再次进入正常；设置搜索 `cache` 命中该页且排第一。
 - 注入的测试文件已清理，页面回到 0 B。
 
 Phase 2 真机验证（同一轮）：

@@ -30,7 +30,7 @@
 | [`design-proxy-two-layer.md`](design/design-proxy-two-layer.md) | 两层代理（per-provider + 全局兜底） |
 | [`design-regenerate-scope.md`](design/design-regenerate-scope.md) | 重新生成的作用范围 |
 | [`design-side-file-panel.md`](design/design-side-file-panel.md) | 会话内文件侧栏 |
-| [`design-storage-management.md`](design/design-storage-management.md) | 存储管理：占用聚合、白名单清理、明细展开与备份互斥（Phase 1+2 已实现并真机验证） |
+| [`design-storage-management.md`](design/design-storage-management.md) | 缓存管理：占用聚合、白名单清理、明细展开与备份互斥（Phase 1+2 已实现并真机验证；Phase 3 部分） |
 | [`design-subagent-context.md`](design/design-subagent-context.md) | 子代理上下文信封与派发 |
 | [`design-tokenizer.md`](design/design-tokenizer.md) | 真 tokenizer（cl100k BPE）与预算判定 |
 | [`design-ui-yuihub-inspired.md`](design/design-ui-yuihub-inspired.md) | UI 重设计（以 Yuihub 为参考并改进其缺陷）：抽屉缩放、设置页分组、创作入口归一；**含实施结果与实测偏差** |

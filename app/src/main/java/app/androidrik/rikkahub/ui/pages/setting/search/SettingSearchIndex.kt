@@ -59,7 +59,10 @@ object SettingSearchIndex {
             title = R.string.setting_storage_page_title,
             route = Screen.SettingStorage,
             keywords = listOf(
-                "存储管理", "存储空间", "缓存", "清理缓存", "storage", "cache", "huancun"
+                "缓存管理", "缓存空间", "缓存", "清理缓存", "清缓存",
+                "storage", "cache", "huancun",
+                // 兼容旧叫法，避免习惯「存储管理」的用户搜不到
+                "存储管理", "存储空间",
             )
         ),
         entry(

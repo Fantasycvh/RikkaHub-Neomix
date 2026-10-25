@@ -212,7 +212,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             item("connectionAndData") {
                 val scope = rememberCoroutineScope()
                 var storageState by remember { mutableStateOf(-1 to 0L) }
-                // 每次回到设置页重算：从文件管理/存储管理返回后数字不会停留在旧值
+                // 每次回到设置页重算：从文件管理/缓存管理返回后数字不会停留在旧值
                 LifecycleResumeEffect(filesManager) {
                     scope.launch { storageState = filesManager.countChatFiles() }
                     onPauseOrDispose { }

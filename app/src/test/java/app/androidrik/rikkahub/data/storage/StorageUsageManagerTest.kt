@@ -12,7 +12,7 @@ import java.io.File
 import java.nio.file.Files
 
 /**
- * 存储管理的统计口径与清理边界（`docs/design/design-storage-management.md` §五、§八）。
+ * 缓存管理的统计口径与清理边界（`docs/design/design-storage-management.md` §五、§八）。
  *
  * 清理是破坏性动作，故这里钉死三件事：只动白名单路径、只删内容不删目录、失败不掩盖。
  */

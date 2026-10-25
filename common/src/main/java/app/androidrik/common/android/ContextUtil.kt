@@ -5,7 +5,7 @@ import java.io.File
 
 val Context.appTempFolder: File
     get() {
-        val dir = File(cacheDir, "temp")
+        val dir = File(cacheDir, StorageNames.TEMP)
         if (!dir.exists()) {
             dir.mkdirs()
         }

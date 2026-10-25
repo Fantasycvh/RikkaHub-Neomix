@@ -811,7 +811,7 @@ object FileFolders {
      * 用户配置的头像（助手头像 + 用户头像）。
      *
      * **为什么单独一个目录**（2026-10-13，上游 issue #2127）：此前头像经
-     * [FilesManager.createChatFilesByContents] 落进 [UPLOAD]，而「设置 → 存储管理 → 文件管理」
+     * [FilesManager.createChatFilesByContents] 落进 [UPLOAD]，而「设置 → 文件管理」
      * 里对 `upload` 的「清理」走 [FilesManager.deleteAll] ⇒ **整目录 `deleteRecursively()`**，
      * 于是用户主动配置、且**正被助手引用**的头像被当成「历史文件」一并删掉，助手头像当场变空。
      * 头像与聊天附件是两类东西（前者是持久配置、后者是可清历史），目录分开后

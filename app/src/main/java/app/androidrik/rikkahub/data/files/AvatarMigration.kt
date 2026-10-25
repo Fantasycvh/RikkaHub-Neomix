@@ -19,7 +19,7 @@ import app.androidrik.rikkahub.data.repository.FilesRepository
  * 新写入的头像已由 [FilesManager.createAvatarImage] 直接落 [FileFolders.AVATARS]。
  * 但**老版本**的头像经 `createChatFilesByContents` 落在 [FileFolders.UPLOAD] 下，
  * 引用也是那条 `upload/...` 的 `file://` 地址；若不搬，这些头像仍与聊天附件同处一室，
- * **「设置 → 存储管理」里对聊天文件的「清理」（整目录递归删）仍会删掉正在使用的头像**
+ * **「设置 → 文件管理」里对聊天文件的「清理」（整目录递归删）仍会删掉正在使用的头像**
  * ——也就是本次要修的那个 bug 对存量用户依然成立。
  *
  * ## 做法与顺序（为什么不能更简单）
@@ -102,7 +102,7 @@ object AvatarMigration {
     suspend fun migrate(context: Context, repository: FilesRepository, settingsStore: SettingsStore) {
         // 必须等**真实**设置加载完，不能用 `settingsFlow.value`：它在 DataStore 首次产出前是
         // `Settings.dummy()`（助手列表为空）⇒ 计划恒为空、迁移被静默跳过，而且这次启动里
-        // 用户随后去「存储管理」点清理，那些头像照旧会被删。`first()` 是挂起等待，不是空转。
+        // 用户随后去「文件管理」点清理，那些头像照旧会被删。`first()` 是挂起等待，不是空转。
         val plan = planAvatarMigration(settingsStore.settingsFlowRaw.first())
         if (plan.isEmpty()) return
 

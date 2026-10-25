@@ -10,7 +10,7 @@ import kotlinx.coroutines.sync.withLock
  * 会改写或删除 `cacheDir`/数据库文件的长任务。
  *
  * 备份与恢复会写 `cacheDir/backup_*.zip`、`restore_*`、`backup_db_snapshot.db`；
- * 存储管理会清理这些白名单文件 ⇒ 两者必须互斥（见 `docs/design/design-storage-management.md` §5.2 红线 5）。
+ * 缓存管理会清理这些白名单文件 ⇒ 两者必须互斥（见 `docs/design/design-storage-management.md` §5.2 红线 5）。
  */
 enum class DataOperation {
     BACKUP,

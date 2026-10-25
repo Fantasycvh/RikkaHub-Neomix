@@ -25,7 +25,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
-import app.androidrik.common.android.appTempFolder
 import app.androidrik.rikkahub.data.files.EXPORT_TEMP_PREFIX
 import app.androidrik.rikkahub.data.files.exportRetentionCutoff
 import app.androidrik.rikkahub.data.files.isExportExpired
@@ -38,6 +37,8 @@ import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.AvatarMigration
 import app.androidrik.rikkahub.data.files.SkillManager
+import app.androidrik.rikkahub.data.storage.StorageCategoryId
+import app.androidrik.rikkahub.data.storage.StorageUsageManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.plugin.installBuiltInPlugins
 import app.androidrik.plugin.manager.PluginManager
@@ -168,7 +169,7 @@ class RikkaHubApp : Application() {
         syncManagedFiles()
 
         // 把老版本遗留在 upload/ 的头像搬进 avatars/（上游 #2127 的存量部分）。
-        // 必须早于用户去点「存储管理 → 清理聊天文件」，否则那些头像仍会被删掉。
+        // 必须早于用户去点「文件管理」清理聊天文件，否则那些头像仍会被删掉。
         migrateLegacyAvatars()
 
         // Extract builtin skills from assets after install/update (上游 3b346748)
@@ -235,9 +236,18 @@ class RikkaHubApp : Application() {
 
     private fun deleteTempFiles() {
         get<AppScope>().launch(Dispatchers.IO) {
-            val dir = appTempFolder
-            if (dir.exists()) {
-                dir.deleteRecursively()
+            // 与「缓存管理」共用同一份目录口径（StoragePaths.TEMP）；只清内容、保留目录
+            runCatching {
+                get<StorageUsageManager>().clear(StorageCategoryId.TEMP)
+            }.onSuccess { result ->
+                if (!result.success) {
+                    Log.w(
+                        TAG,
+                        "deleteTempFiles: ${result.failures.size} item(s) could not be removed",
+                    )
+                }
+            }.onFailure {
+                Log.e(TAG, "deleteTempFiles failed", it)
             }
         }
     }
