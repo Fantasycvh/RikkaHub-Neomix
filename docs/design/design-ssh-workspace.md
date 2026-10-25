@@ -146,7 +146,8 @@ SSH 工作区按四段推进，每段都能独立验收：
    SSH 终端、本地终端与兼容模式 cwd、本地 Markdown 工作区图片。
 2. Windows 跳过的 18 项嵌入式 SSHD 用例已由 `SshLiveServerTest` 在 WSL 真实 OpenSSH 上覆盖
    主要路径；仍需在 CI/真机补跑完整矩阵。
-3. R8 keep/dontwarn 已补齐，`minifyReleaseWithR8` 与 `assembleRelease` 通过；release 包尚未安装做运行时回归。
+3. R8 keep/dontwarn 已补齐，`minifyReleaseWithR8` 与 `assembleRelease` 通过；release arm64 包已安装，
+   SSH/本地终端与 Keystore 运行时回归通过。
 4. SSH 工作区的「下载/分享」目前只在详情页提供单文件导出；聊天抽屉隐藏了批量导出以避免误用本地打包逻辑。
 5. Markdown 工作区图片：已对齐上游 `resolveAbsoluteFile` 解析；远程工作区没有宿主机落点，
    `localAbsoluteFile` 返回 null，因此远程图片仍不会渲染（上游同样如此，需要自定义 Coil fetcher 才能支持）。
@@ -240,6 +241,9 @@ Windows 宿主无 POSIX `/bin/sh` 时，依赖真实 shell 的用例会按既有
   远程工作区仍返回 null（`localAbsoluteFile` 无宿主机落点）。
 - R8：`minifyReleaseWithR8` 与 `assembleRelease` 成功；release arm64 APK 约 61 MB，JSch keep 规则已进入
   `configuration.txt`（`-keep class com.jcraft.jsch.**`）。
+- release 运行时（arm64 release APK 覆盖安装，保留原数据）：启动无 R8/反射崩溃；新建 SSH 工作区
+  （Keystore 存凭据、主机指纹确认、测试连接、保存）成功；SSH 终端 `id -un`=`sshit`、`pwd` 为远程目录；
+  本地 Rootfs 终端 `echo release-local-ok` 正常。测试工作区验后已删除。
 - Markdown 工作区图片：补 `LocalWorkspaceId` 与 `resolveAbsoluteFile` 解析（对齐上游）；本地工作区绝对路径
   可解析，远程工作区仍无宿主机落点。
 
@@ -247,5 +251,4 @@ Windows 宿主无 POSIX `/bin/sh` 时，依赖真实 shell 的用例会按既有
 
 - 远程提示词注入的**不可达分支**尚未在线路级抓包（transformer 输出已覆盖）；
 - 本地 Docker SSH（改用 WSL OpenSSH 替代）；
-- release 包的 SSH/终端运行时回归（R8 构建已通过，但未安装 release 包验证）；
 - 远程工作区 Markdown 图片（需要自定义 Coil fetcher，上游也未支持）。
