@@ -316,7 +316,7 @@ internal fun FilesPicker(
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = conversation.workspaceCwd ?: "/workspace",
+                    text = conversation.workspaceCwd ?: boundWorkspace?.workspaceDir().orEmpty(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -324,6 +324,7 @@ internal fun FilesPicker(
             if (showCwdSheet) {
                 WorkspaceCwdPickerSheet(
                     workspaceId = boundWorkspace.id,
+                    workspaceDir = boundWorkspace.workspaceDir(),
                     currentCwd = conversation.workspaceCwd,
                     onSelectCwd = { newCwd ->
                         onUpdateConversation(conversation.copy(workspaceCwd = newCwd))
@@ -393,7 +394,7 @@ private fun WorkspacePickerListItem(
                             contentDescription = stringResource(R.string.workspace_detail),
                         )
                     }
-                    if (boundWorkspace.shellStatus != WorkspaceShellStatus.DISABLED.name) {
+                    if (boundWorkspace.supportsTerminal()) {
                         IconButton(onClick = { onNavigateToTerminal(boundWorkspace.id) }) {
                             Icon(
                                 imageVector = HugeIcons.ComputerTerminal01,

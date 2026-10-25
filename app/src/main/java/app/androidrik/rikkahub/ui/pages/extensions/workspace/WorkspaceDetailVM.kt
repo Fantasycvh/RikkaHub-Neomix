@@ -22,6 +22,7 @@ import app.androidrik.workspace.RootfsInstallProgress
 import app.androidrik.workspace.RootfsInstallStage
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.WorkspaceCommandResult
+import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.WorkspaceStorageArea
 import app.androidrik.workspace.WorkspaceTaskSnapshot
 
@@ -425,13 +426,21 @@ class WorkspaceDetailVM(
     private fun loadWorkspace() {
         viewModelScope.launch {
             val workspace = repository.getById(id)
-            _state.update { it.copy(workspace = workspace) }
+            val layout = repository.layout(id)
+            _state.update {
+                it.copy(
+                    workspace = workspace,
+                    workspaceDir = layout?.workspaceDir ?: WorkspaceManager.ROOTFS_WORKSPACE_DIR,
+                )
+            }
         }
     }
 }
 
 data class WorkspaceDetailState(
     val workspace: WorkspaceEntity? = null,
+    /** 文件区在执行环境内的绝对路径（本地 /workspace，远程为配置的目录） */
+    val workspaceDir: String = WorkspaceManager.ROOTFS_WORKSPACE_DIR,
     val area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
     val path: String = "",
     val entries: List<WorkspaceFileEntry> = emptyList(),

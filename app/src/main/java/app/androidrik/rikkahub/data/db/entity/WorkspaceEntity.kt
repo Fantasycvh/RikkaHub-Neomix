@@ -4,9 +4,14 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import app.androidrik.rikkahub.data.model.SshWorkspaceSettings
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.workspace.Workspace
+import app.androidrik.workspace.WorkspaceCapabilities
+import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.WorkspaceShellStatus
+import app.androidrik.workspace.WorkspaceType
+import app.androidrik.workspace.ssh.SshWorkspaceBackend
 
 @Entity(
     tableName = "workspaces",
@@ -47,7 +52,32 @@ data class WorkspaceEntity(
      */
     @ColumnInfo("max_read_file_bytes", defaultValue = "8388608")
     val maxReadFileBytes: Long = DEFAULT_MAX_READ_FILE_BYTES,
+    @ColumnInfo("type", defaultValue = "LOCAL")
+    val type: String = WorkspaceType.LOCAL.name,
+    // SSH 工作区的连接配置 (SshWorkspaceSettings 的 JSON, 凭据为 Keystore 密文), 本地工作区为 null
+    @ColumnInfo("ssh_config")
+    val sshConfig: String? = null,
 ) {
+    fun isSsh(): Boolean = type == WorkspaceType.SSH.name
+
+    fun capabilities(): WorkspaceCapabilities =
+        runCatching { WorkspaceType.valueOf(type) }.getOrDefault(WorkspaceType.LOCAL).capabilities
+
+    fun sshSettings(): SshWorkspaceSettings? = sshConfig?.let { config ->
+        runCatching { JsonInstant.decodeFromString<SshWorkspaceSettings>(config) }.getOrNull()
+    }
+
+    /** 工作区文件目录在执行环境内的绝对路径，不需要连接即可得到，供界面展示 */
+    fun workspaceDir(): String =
+        if (isSsh()) {
+            sshSettings()?.let { SshWorkspaceBackend.layoutOf(it.remoteDir).workspaceDir } ?: "/"
+        } else {
+            WorkspaceManager.ROOTFS_WORKSPACE_DIR
+        }
+
+    fun supportsTerminal(): Boolean =
+        capabilities().terminal && shellStatus != WorkspaceShellStatus.DISABLED.name
+
     companion object {
         /** 默认 8MB（与迁移前的硬编码上限一致：老工作区行为零变化） */
         const val DEFAULT_MAX_READ_FILE_BYTES = 8L * 1024 * 1024

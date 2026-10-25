@@ -23,6 +23,7 @@ import app.androidrik.rikkahub.ui.pages.extensions.QuickMessagesVM
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillDetailVM
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillsVM
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceDetailVM
+import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceSshEditorVM
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceVM
 import app.androidrik.rikkahub.ui.pages.setting.KnowledgeBaseDetailVM
 import app.androidrik.rikkahub.ui.pages.setting.KnowledgeBasesVM
@@ -115,6 +116,13 @@ val viewModelModule = module {
             id = it.get(),
             repository = get(),
             terminalSessionManager = get(),
+        )
+    }
+    viewModel<WorkspaceSshEditorVM> { params ->
+        WorkspaceSshEditorVM(
+            // 新建工作区时没有 id，Koin 的参数表里找不到这个 String
+            id = params.getOrNull<String>(),
+            repository = get(),
         )
     }
     viewModelOf(::FavoriteVM)

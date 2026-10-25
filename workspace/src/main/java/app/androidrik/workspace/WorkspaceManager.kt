@@ -23,6 +23,12 @@ class WorkspaceManager(
 ) {
     private val fileSystem = WorkspaceFileSystem(config)
 
+    /** 工作区在执行环境内的目录约定；可写区与工具审批口径保持一致 */
+    val layout = WorkspaceLayout(
+        workspaceDir = ROOTFS_WORKSPACE_DIR,
+        writableRoots = listOf(ROOTFS_WORKSPACE_DIR, "/tmp"),
+    )
+
     /** 后台任务表：进程内内存态，见 [WorkspaceTaskRegistry] 的类注释。 */
     private val backgroundTaskRegistry: WorkspaceTaskRegistry? =
         backgroundLauncher?.let {
@@ -39,6 +45,9 @@ class WorkspaceManager(
     init {
         baseDir.mkdirs()
     }
+
+    fun backend(root: String, shellCompatibilityMode: Boolean = false): WorkspaceBackend =
+        LocalWorkspaceBackend(this, root, shellCompatibilityMode)
 
     fun ensureWorkspace(root: String): File {
         val dir = workspaceDir(root)
@@ -110,6 +119,18 @@ class WorkspaceManager(
         require(file.exists()) { "File does not exist: $path" }
         require(file.isFile) { "Path is not a file: $path" }
         return file.length()
+    }
+
+    /** 存储区内文件在宿主机上的真实文件，已校验存在且为文件 */
+    fun resolveFile(
+        root: String,
+        path: String,
+        area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
+    ): File {
+        val file = fileSystem.resolve(areaDir(root, area), path)
+        require(file.exists()) { "File does not exist: $path" }
+        require(file.isFile) { "Path is not a file: $path" }
+        return file
     }
 
     fun exportFile(
@@ -229,7 +250,8 @@ class WorkspaceManager(
         outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
     }
 
-    private fun resolveRootfsFile(root: String, path: String): File {
+    /** Rootfs 内绝对路径对应的宿主机文件，不检查是否存在 */
+    fun resolveRootfsFile(root: String, path: String): File {
         val location = resolveRootfsPath(root, path)
         return fileSystem.resolve(location.rootDir, location.relativePath)
     }

@@ -101,6 +101,9 @@ fun WorkspaceFileBrowser(
     contentPadding: PaddingValues = PaddingValues(16.dp),
     compact: Boolean = false,
     showAreaSelector: Boolean = true,
+    hasRootfs: Boolean = true,
+    allowExport: Boolean = true,
+    workspaceDir: String = WorkspaceManager.ROOTFS_WORKSPACE_DIR,
     onSelectArea: (WorkspaceStorageArea) -> Unit = {},
     onShare: ((WorkspaceFileEntry) -> Unit)? = null,
     onExportToDir: ((WorkspaceFileEntry, File, (File) -> Unit) -> Unit)? = null,
@@ -120,7 +123,7 @@ fun WorkspaceFileBrowser(
     ) {
         if (showAreaSelector) {
             item {
-                WorkspaceAreaSelector(selected = area, onSelected = onSelectArea)
+                WorkspaceAreaSelector(selected = area, hasRootfs = hasRootfs, onSelected = onSelectArea)
             }
         }
 
@@ -155,9 +158,11 @@ fun WorkspaceFileBrowser(
                 onRename = onRename?.let { { it(entry) } },
                 onDelete = { onDelete(entry) },
                 onExport = { onExport(entry) },
+                allowExport = allowExport,
                 onShare = onShare?.let { { it(entry) } },
                 onExportToDir = onExportToDir,
                 area = area,
+                workspaceDir = workspaceDir,
                 onCopyPath = onCopyPath,
             )
         }
@@ -231,11 +236,17 @@ fun WorkspaceSelectionToolbar(
 @Composable
 fun WorkspaceAreaSelector(
     selected: WorkspaceStorageArea,
+    hasRootfs: Boolean = true,
     onSelected: (WorkspaceStorageArea) -> Unit,
 ) {
+    // 没有 Rootfs 的工作区 (如远程) 两个区域分别是工作目录和根目录
     val areas = listOf(
-        WorkspaceStorageArea.FILES to stringResource(R.string.workspace_detail_area_files),
-        WorkspaceStorageArea.LINUX to stringResource(R.string.workspace_detail_area_rootfs),
+        WorkspaceStorageArea.FILES to stringResource(
+            if (hasRootfs) R.string.workspace_detail_area_files else R.string.workspace_detail_area_working_dir
+        ),
+        WorkspaceStorageArea.LINUX to stringResource(
+            if (hasRootfs) R.string.workspace_detail_area_rootfs else R.string.workspace_detail_area_root
+        ),
     )
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         areas.forEachIndexed { index, (area, label) ->
@@ -294,6 +305,8 @@ fun WorkspaceFileCard(
     onExportToDir: ((WorkspaceFileEntry, File, (File) -> Unit) -> Unit)? = null,
     // 「复制 Rootfs 内绝对路径」需要知道当前区（FILES 挂 /workspace、LINUX 是根）
     area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
+    allowExport: Boolean = true,
+    workspaceDir: String = WorkspaceManager.ROOTFS_WORKSPACE_DIR,
     onCopyPath: ((String) -> Unit)? = null,
     onRename: (() -> Unit)? = null,
 ) {
@@ -405,7 +418,7 @@ fun WorkspaceFileCard(
                                     onClick = { menuExpanded = false; rename() },
                                 )
                             }
-                            if (!entry.isDirectory) {
+                            if (!entry.isDirectory && allowExport) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.common_export)) },
                                     leadingIcon = {
@@ -448,7 +461,7 @@ fun WorkspaceFileCard(
                                     },
                                     onClick = {
                                         menuExpanded = false
-                                        copyPath(entry.rootfsPath(area))
+                                        copyPath(entry.rootfsPath(area, workspaceDir))
                                     },
                                 )
                             }
@@ -508,8 +521,11 @@ fun EmptyDirectoryState(compact: Boolean = false) {
  * FILES 区在 Rootfs 里挂载于 [WorkspaceManager.ROOTFS_WORKSPACE_DIR]（`/workspace`）；
  * LINUX 区本身就是 Rootfs 根，故直接用 `/` + 相对路径。
  */
-internal fun WorkspaceFileEntry.rootfsPath(area: WorkspaceStorageArea): String = when (area) {
-    WorkspaceStorageArea.FILES -> "${WorkspaceManager.ROOTFS_WORKSPACE_DIR}/$path"
+internal fun WorkspaceFileEntry.rootfsPath(
+    area: WorkspaceStorageArea,
+    workspaceDir: String = WorkspaceManager.ROOTFS_WORKSPACE_DIR,
+): String = when (area) {
+    WorkspaceStorageArea.FILES -> "${workspaceDir.trimEnd('/')}/$path"
     WorkspaceStorageArea.LINUX -> "/$path"
 }
 

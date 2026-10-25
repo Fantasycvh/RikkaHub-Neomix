@@ -32,7 +32,7 @@ import me.rerere.hugeicons.stroke.Tick02
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.model.Assistant
-import app.androidrik.rikkahub.ui.pages.extensions.workspace.toShellStatusLabel
+import app.androidrik.rikkahub.ui.pages.extensions.workspace.statusLabel
 
 @Composable
 internal fun WorkspaceSelectSheet(
@@ -77,7 +77,7 @@ internal fun WorkspaceSelectSheet(
                 workspaces.forEach { workspace ->
                     WorkspaceSelectRow(
                         title = workspace.name,
-                        status = workspace.shellStatus.toShellStatusLabel(),
+                        status = workspace.statusLabel(),
                         selected = workspace.id == assistant.workspaceId?.toString(),
                         onClick = { onSelect(workspace.id) },
                     )

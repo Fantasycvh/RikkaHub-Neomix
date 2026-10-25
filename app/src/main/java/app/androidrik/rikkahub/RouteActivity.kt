@@ -115,6 +115,7 @@ import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillsPage
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspacePage
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceDetailPage
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceFileEditorPage
+import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceSshEditorPage
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalPage
 import app.androidrik.workspace.WorkspaceStorageArea
 import app.androidrik.rikkahub.ui.pages.favorite.FavoritePage
@@ -729,6 +730,10 @@ open class RouteActivity : ComponentActivity() {
                                 WorkspaceTerminalPage(key.id)
                             }
 
+                            entry<Screen.WorkspaceSshEditor> { key ->
+                                WorkspaceSshEditorPage(key.id)
+                            }
+
                             entry<Screen.WorkspaceFileEditor> { key ->
                                 WorkspaceFileEditorPage(
                                     id = key.id,
@@ -1055,6 +1060,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class WorkspaceTerminal(val id: String) : Screen
+
+    @Serializable
+    data class WorkspaceSshEditor(val id: String? = null) : Screen
 
     @Serializable
     data class WorkspaceFileEditor(val id: String, val area: String, val path: String) : Screen

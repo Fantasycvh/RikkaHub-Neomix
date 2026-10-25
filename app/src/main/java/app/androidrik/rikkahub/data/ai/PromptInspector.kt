@@ -256,6 +256,11 @@ data class PromptInspectionLabels(
     val toolResult: String = "",
     val renderHint: String = "",
     /**
+     * transformer 链在 system 末尾**追加**的合成文本（如工作区提醒）。
+     * 空串 = 回落到 [injection]。
+     */
+    val systemExtra: String = "",
+    /**
      * 非文本 part 的占位提示；四个 `%d` 依次为图片/文档/音频/视频数量。
      * 空串 = 不追加该提示。
      */
@@ -453,30 +458,58 @@ suspend fun inspectPrompt(
             // 不含它们——若只用 base 块分段，这部分内容会从预览里消失（实测回归）。
             // 修复：用与真实链相同的 collectInjections 参数取出系统区注入，
             // 作为 INJECTION 段插到 base 块前/后（顺序与 applyInjections 的合并一致）。
-            val beforeSegments = (byPosition[InjectionPosition.BEFORE_SYSTEM_PROMPT] ?: emptyList())
+            val beforeEntries = byPosition[InjectionPosition.BEFORE_SYSTEM_PROMPT] ?: emptyList()
+            val afterEntries = byPosition[InjectionPosition.AFTER_SYSTEM_PROMPT] ?: emptyList()
+            val beforeSegments = beforeEntries
                 .map { entry -> injectionSegment(entry, labels.injection, "system", sourceById) }
-            val afterSegments = (byPosition[InjectionPosition.AFTER_SYSTEM_PROMPT] ?: emptyList())
+            val afterSegments = afterEntries
                 .map { entry -> injectionSegment(entry, labels.injection, "system", sourceById) }
+            val blocks = buildSystemBlocks(
+                assistant = assistant,
+                settings = settings,
+                model = model,
+                messages = windowMessages,
+                memories = memories,
+                tools = tools,
+                // 与 buildInternalMessages 同参：会话级覆盖口径一致
+                conversationSystemPrompt = conversation.customSystemPrompt,
+                // 会话级「不使用记忆」同样要作用到预览——预览与实际不一致是本仓明确防的坑
+                memoryDisabled = conversation.memoryDisabled,
+                // L1 冻结的锚点集合：非 null 时只渲染会话冻结的那几条（与实发同参）
+                frozenAnchorIds = conversation.frozenAnchorIds,
+                memoryPlan = assembly.memoryPlan,
+            )
+            // transformer 链在 system 上追加的文本（典型：工作区提醒）不属于任何块，
+            // 若只投影块会从预览里消失。用「注入后的实发文本」减去「块+系统区注入」
+            // 得到残余，作为独立合成段——与实发保持逐字节一致。
+            val systemActualText = textParts.joinToString("")
+            val expectedSystemText = buildString {
+                val beforeContent = beforeEntries.joinToString("\n") { it.content }
+                val afterContent = afterEntries.joinToString("\n") { it.content }
+                if (beforeContent.isNotEmpty()) {
+                    append(beforeContent)
+                    appendLine()
+                }
+                append(joinSystemBlocks(blocks))
+                if (afterContent.isNotEmpty()) {
+                    appendLine()
+                    append(afterContent)
+                }
+            }
             beforeSegments + systemBlocksToSegments(
-                blocks = buildSystemBlocks(
-                    assistant = assistant,
-                    settings = settings,
-                    model = model,
-                    messages = windowMessages,
-                    memories = memories,
-                    tools = tools,
-                    // 与 buildInternalMessages 同参：会话级覆盖口径一致
-                    conversationSystemPrompt = conversation.customSystemPrompt,
-                    // 会话级「不使用记忆」同样要作用到预览——预览与实际不一致是本仓明确防的坑
-                    memoryDisabled = conversation.memoryDisabled,
-                    // L1 冻结的锚点集合：非 null 时只渲染会话冻结的那几条（与实发同参）
-                    frozenAnchorIds = conversation.frozenAnchorIds,
-                    memoryPlan = assembly.memoryPlan,
-                ),
+                blocks = blocks,
                 labels = labels,
                 role = message.role.name.lowercase(),
                 memoryPlan = assembly.memoryPlan,
-            ) + afterSegments
+            ) + afterSegments + listOfNotNull(
+                systemExtraSegment(
+                    actual = systemActualText,
+                    generated = expectedSystemText,
+                    role = message.role.name.lowercase(),
+                    label = labels.systemExtra.ifBlank { labels.injection },
+                    countTokens = counter::count,
+                )
+            )
         }
         // 投影无损校验（华灯投影原则）：每条实发消息必须产出至少一段——空段意味着
         // 预览**静默丢失**该消息（实测过 buildSystemBlocks 漏 BEFORE/AFTER 注入的回归形态）。
@@ -718,6 +751,56 @@ private val UIMessage.isMemoryTail: Boolean
     get() = isSynthetic &&
         role == MessageRole.USER &&
         parts.any { it is UIMessagePart.Text && it.text.startsWith(MEMORY_TAIL_PREAMBLE) }
+
+/**
+ * 实发 system 文本相对「块 + 系统区注入」多出来的残余（transformer 追加/前置的合成文本）。
+ *
+ * 先剥公共前缀、再剥公共后缀，保留中间差异；两侧只剩换行时视为无差异。
+ * 这样 `withPrompt()` 追加的 `\n\n<workspace>...` 会得到干净的 `<workspace>...`，
+ * 而不会把块或注入重复计入预览。
+ */
+internal fun systemTextDelta(actual: String, generated: String): String {
+    if (actual == generated) return ""
+    val max = minOf(actual.length, generated.length)
+    var prefix = 0
+    while (prefix < max && actual[prefix] == generated[prefix]) prefix++
+    var suffix = 0
+    while (suffix < max - prefix &&
+        actual[actual.length - 1 - suffix] == generated[generated.length - 1 - suffix]
+    ) {
+        suffix++
+    }
+    val start = prefix
+    val end = actual.length - suffix
+    if (end <= start) return ""
+    return actual.substring(start, end).trim('\n')
+}
+
+/**
+ * 把 [systemTextDelta] 的残余投影成一段合成注入；无残余返回 null。
+ *
+ * 归为 [PromptSegmentKind.INJECTION]：它确实只存在于请求期、不落库，且工作区不可达时
+ * 会整段变化（EVENT 稳定性），与其它条件注入同口径。
+ */
+internal fun systemExtraSegment(
+    actual: String,
+    generated: String,
+    role: String,
+    label: String,
+    countTokens: (String) -> Int,
+): PromptSegment? {
+    val extra = systemTextDelta(actual, generated)
+    if (extra.isBlank()) return null
+    return PromptSegment(
+        kind = PromptSegmentKind.INJECTION,
+        label = label,
+        role = role,
+        content = extra,
+        isSynthetic = true,
+        tokens = countTokens(extra),
+        countingText = extra,
+    )
+}
 
 /**
  * system 的块列表 → 预览段（**纯函数**，便于 JVM 单测——`inspectPrompt` 本体需要

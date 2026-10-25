@@ -7,10 +7,14 @@ import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.model.SshWorkspaceDraft
+import app.androidrik.rikkahub.data.model.SshWorkspaceSettings
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
 import app.androidrik.rikkahub.data.export.ExportTreeWriter
 import app.androidrik.rikkahub.data.export.collectWorkspaceExportPlan
@@ -19,18 +23,29 @@ import app.androidrik.rikkahub.data.export.writeWorkspaceZip
 import app.androidrik.rikkahub.data.db.dao.WorkspaceDAO
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.utils.JsonInstant
+import app.androidrik.rikkahub.utils.SecretCipher
 import app.androidrik.workspace.RootfsInstallProgress
 import app.androidrik.workspace.RootfsInstaller
+import app.androidrik.workspace.WorkspaceBackend
 import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.RootfsLineWindow
+import app.androidrik.workspace.WorkspaceLayout
 import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.WorkspaceKillResult
 import app.androidrik.workspace.WorkspaceShellStatus
 import app.androidrik.workspace.WorkspaceStorageArea
 import app.androidrik.workspace.WorkspaceTaskSnapshot
+import app.androidrik.workspace.WorkspaceType
+import app.androidrik.workspace.ssh.SshAuthType
+import app.androidrik.workspace.ssh.SshConnectionConfig
+import app.androidrik.workspace.ssh.SshConnectionPool
+import app.androidrik.workspace.ssh.SshProbeResult
+import app.androidrik.workspace.ssh.SshShell
+import app.androidrik.workspace.ssh.SshWorkspaceBackend
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import kotlin.uuid.Uuid
@@ -40,12 +55,15 @@ class WorkspaceRepository(
     private val manager: WorkspaceManager,
     private val rootfsInstaller: RootfsInstaller,
     private val settingsStore: SettingsStore,
+    private val sshPool: SshConnectionPool,
 ) {
     fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
 
     suspend fun checkIntegrity() = withContext(Dispatchers.IO) {
         val workspaces = dao.getAll()
         for (workspace in workspaces) {
+            // 文件不在本机的工作区（如远程）没有本地目录和 Rootfs
+            if (!workspace.capabilities().localFiles) continue
             val dir = manager.workspaceDir(workspace.root)
             if (!dir.exists()) {
                 // 目录缺失时不删除记录(例如恢复备份后工作区文件未随数据库一起恢复),
@@ -85,6 +103,46 @@ class WorkspaceRepository(
         )
         manager.ensureWorkspace(workspace.root)
         dao.upsert(workspace)
+        return workspace
+    }
+
+    /** 用一条临时连接测试 SSH 配置；[id] 不为空时，表单里留空的凭据沿用该工作区已保存的值 */
+    suspend fun probeSsh(id: String?, draft: SshWorkspaceDraft): SshProbeResult {
+        val previous = id?.let { dao.getById(it)?.sshSettings() }
+        return runInterruptible(Dispatchers.IO) {
+            sshPool.probe(draft.toSettings(previous).toConnectionConfig())
+        }
+    }
+
+    /** 新建（[id] 为 null）或更新 SSH 工作区 */
+    suspend fun saveSsh(id: String?, draft: SshWorkspaceDraft): WorkspaceEntity {
+        val existing = id?.let { dao.getById(it) ?: error("Workspace not found: $it") }
+        require(existing == null || existing.isSsh()) { "Not an SSH workspace: $id" }
+        val finalName = draft.name.trim().ifBlank { "Workspace" }
+        require(!isNameTaken(finalName, excludeId = id)) {
+            "Workspace name already exists: $finalName"
+        }
+        val settings = withContext(Dispatchers.IO) { draft.toSettings(existing?.sshSettings()) }
+        val now = System.currentTimeMillis()
+        val workspace = existing?.copy(
+            name = finalName,
+            sshConfig = JsonInstant.encodeToString(settings),
+            updatedAt = now,
+        ) ?: Uuid.random().toString().let { newId ->
+            WorkspaceEntity(
+                id = newId,
+                name = finalName,
+                root = newId,
+                // 远程工作区不需要安装 Rootfs, 视为 shell 已就绪
+                shellStatus = WorkspaceShellStatus.READY.name,
+                createdAt = now,
+                updatedAt = now,
+                type = WorkspaceType.SSH.name,
+                sshConfig = JsonInstant.encodeToString(settings),
+            )
+        }
+        dao.upsert(workspace)
+        withContext(Dispatchers.IO) { sshPool.close(workspace.id) }
         return workspace
     }
 
@@ -140,6 +198,7 @@ class WorkspaceRepository(
         onProgress: (RootfsInstallProgress) -> Unit = {},
     ): Boolean {
         val workspace = dao.getById(id) ?: return false
+        require(workspace.capabilities().rootfs) { "Rootfs is not available for ${workspace.type} workspaces" }
         updateShellState(workspace, WorkspaceShellStatus.INSTALLING.name)
         try {
             // runInterruptible 让协程取消转成线程中断, 打断 install 内阻塞的下载/解压循环
@@ -171,8 +230,7 @@ class WorkspaceRepository(
         path: String,
     ): List<WorkspaceFileEntry> = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: return@withContext emptyList()
-        manager.ensureWorkspace(workspace.root)
-        manager.listFiles(workspace.root, path, area)
+        runInterruptible { backendOf(workspace).listFiles(area, path) }
     }
 
     /**
@@ -188,14 +246,14 @@ class WorkspaceRepository(
         val needle = query.trim().lowercase()
         if (needle.isEmpty()) return@withContext emptyList()
         val workspace = dao.getById(id) ?: return@withContext emptyList()
-        manager.ensureWorkspace(workspace.root)
+        val backend = backendOf(workspace)
         val results = mutableListOf<WorkspaceFileEntry>()
         val pending = ArrayDeque<String>()
         pending.add("")
         while (pending.isNotEmpty() && results.size < limit) {
             val dir = pending.removeFirst()
             val entries = runCatching {
-                manager.listFiles(workspace.root, dir, WorkspaceStorageArea.FILES)
+                backend.listFiles(WorkspaceStorageArea.FILES, dir)
             }.getOrElse { emptyList() }
             for (entry in entries) {
                 if (results.size >= limit) break
@@ -212,22 +270,14 @@ class WorkspaceRepository(
     suspend fun readText(
         id: String,
         path: String,
-    ): String = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.readText(workspace.root, path)
-    }
+    ): String = readFromBackend(id) { it.readText(path) }
 
     suspend fun writeText(
         id: String,
         path: String,
         text: String,
         overwrite: Boolean,
-    ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.writeText(workspace.root, path, text, overwrite)
-    }
+    ): WorkspaceFileEntry = withBackend(id) { it.writeText(path, text, overwrite) }
 
     /**
      * 读取文本用于应用内预览/编辑, 支持两个存储区.
@@ -238,18 +288,16 @@ class WorkspaceRepository(
         id: String,
         area: WorkspaceStorageArea,
         path: String,
-    ): String = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
+    ): String = readFromBackend(id) { backend ->
         when (area) {
-            WorkspaceStorageArea.FILES -> manager.readText(workspace.root, path)
+            WorkspaceStorageArea.FILES -> backend.readText(path)
             WorkspaceStorageArea.LINUX -> {
-                val size = manager.fileSize(workspace.root, path, area)
+                val size = backend.fileSize(area, path)
                 require(size <= MAX_PREVIEW_BYTES) {
                     "文件过大, 无法预览 (${size} bytes)"
                 }
                 ByteArrayOutputStream().use { out ->
-                    manager.exportFile(workspace.root, path, area, out)
+                    backend.exportFile(area, path, out)
                     out.toString(Charsets.UTF_8.name())
                 }
             }
@@ -262,17 +310,14 @@ class WorkspaceRepository(
         destinationPath: String,
         fileName: String,
         inputStream: InputStream,
-    ): WorkspaceFileEntry {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        return runInterruptible(Dispatchers.IO) {
-            manager.ensureWorkspace(workspace.root)
-            manager.importFile(workspace.root, destinationPath, area, fileName, inputStream)
-        }
+    ): WorkspaceFileEntry = withBackend(id) {
+        it.importFile(area, destinationPath, fileName, inputStream)
     }
 
     suspend fun renameFile(id: String, area: WorkspaceStorageArea, path: String, name: String): WorkspaceFileEntry =
         withContext(Dispatchers.IO) {
             val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+            require(workspace.capabilities().localFiles) { "Rename is not available for ${workspace.type} workspaces" }
             manager.renameFile(workspace.root, path, name, area)
         }
 
@@ -295,46 +340,40 @@ class WorkspaceRepository(
         id: String,
         area: WorkspaceStorageArea,
         path: String,
-    ): Long = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.fileSize(workspace.root, path, area)
-    }
+    ): Long = readFromBackend(id) { it.fileSize(area, path) }
 
     suspend fun exportFile(
         id: String,
         area: WorkspaceStorageArea,
         path: String,
         outputStream: OutputStream,
-    ) = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.exportFile(workspace.root, path, area, outputStream)
-    }
+    ) = readFromBackend(id) { it.exportFile(area, path, outputStream) }
 
     /** 按 Rootfs 内绝对路径读取文件大小, 支持 /workspace、bind mount 与 Rootfs 内部路径 */
     suspend fun rootfsFileSize(
         id: String,
         path: String,
-    ): Long = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.rootfsFileSize(workspace.root, path)
-    }
+    ): Long = readFromBackend(id) { it.absoluteFileSize(path) }
 
     /**
      * 取 Rootfs 内文件的真实路径（给 PDF 等需要 `File` 的解析器；解析本身在调用方做，
      * 这样 workspace 模块不必认识文档格式）。
+     *
+     * 只有文件在本机的工作区才有真实路径；SSH 工作区由调用方按能力跳过。
      */
     suspend fun rootfsReadableFile(id: String, path: String): File = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        require(workspace.capabilities().localFiles) {
+            "Local file access is not available for ${workspace.type} workspaces"
+        }
         manager.ensureWorkspace(workspace.root)
         manager.resolveReadableRootfsFile(workspace.root, path)
     }
 
     /**
-     * 按行窗口读取 Rootfs 内文件（流式，见 `WorkspaceManager.readRootfsLineWindow`）。
+     * 按行窗口读取 Rootfs 内文件。
      *
-     * **不受工作区的单次读取上限约束**：这条路径正是为了读大文件的局部而定，上限只作用于
-     * 窗口自身的字节数（在工具层按上限裁）。
+     * 本地工作区走流式读取；SSH 工作区没有本地 `File`，退化为按 backend 允许的大小整读后切窗口。
      */
     suspend fun readRootfsLineWindow(
         id: String,
@@ -343,8 +382,32 @@ class WorkspaceRepository(
         limit: Int,
     ): RootfsLineWindow = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.readRootfsLineWindow(workspace.root, path, startLine, limit)
+        if (workspace.capabilities().localFiles) {
+            manager.ensureWorkspace(workspace.root)
+            manager.readRootfsLineWindow(workspace.root, path, startLine, limit)
+        } else {
+            // 远程没有本地 File 可流式读：按绝对路径整读后再切窗口，
+            // 上限沿用工作区的单次读取上限，避免窗口请求顺手把大文件全拉进内存。
+            val backend = backendOf(workspace)
+            val maxBytes = workspace.maxReadFileBytes.takeIf { it > 0 }
+                ?: WorkspaceEntity.DEFAULT_MAX_READ_FILE_BYTES
+            val size = backend.absoluteFileSize(path)
+            require(size <= maxBytes) {
+                "File is too large for a remote window read: $path (${size / 1024 / 1024}MB, " +
+                    "max ${maxBytes / 1024 / 1024}MB). Use shell commands like sed or head instead."
+            }
+            val content = ByteArrayOutputStream(size.toInt()).use { output ->
+                backend.exportAbsoluteFile(path, output)
+                output.toString(Charsets.UTF_8.name())
+            }
+            val lines = content.lineSequence().toList()
+            val from = (startLine - 1).coerceAtLeast(0).coerceAtMost(lines.size.toLong()).toInt()
+            val window = lines.drop(from).take(limit)
+            RootfsLineWindow(
+                lines = window,
+                moreLines = from + window.size < lines.size,
+            )
+        }
     }
 
     /**
@@ -353,10 +416,7 @@ class WorkspaceRepository(
      * 系统提示与执行点共用它：模型按提示里的 shell 写命令，若这里与实际启动的不一致，
      * 命令会以「提示说 bash、实际起的是 sh」的方式莫名其妙地失败。
      */
-    suspend fun rootfsShell(id: String): String = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.rootfsShell(workspace.root)
-    }
+    suspend fun rootfsShell(id: String): String = readFromBackend(id) { it.shell() }
 
     /** Rootfs 内文件的最后修改时间（毫秒）；不存在或不是文件时返回 null（写入冲突检测用） */
     suspend fun rootfsFileMtime(
@@ -364,6 +424,7 @@ class WorkspaceRepository(
         path: String,
     ): Long? = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        if (!workspace.capabilities().localFiles) return@withContext null
         manager.ensureWorkspace(workspace.root)
         manager.rootfsFileMtime(workspace.root, path)
     }
@@ -373,11 +434,7 @@ class WorkspaceRepository(
         id: String,
         path: String,
         outputStream: OutputStream,
-    ) = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.exportRootfsFile(workspace.root, path, outputStream)
-    }
+    ) = readFromBackend(id) { it.exportAbsoluteFile(path, outputStream) }
 
     /**
      * 选中集体量预览（文件数, 总字节）。**只读遍历**，供"导出前先提示"用。
@@ -389,6 +446,9 @@ class WorkspaceRepository(
         selection: List<WorkspaceFileEntry>,
     ): Pair<Int, Long> = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        require(workspace.capabilities().localFiles) {
+            "Batch export is not available for ${workspace.type} workspaces"
+        }
         manager.ensureWorkspace(workspace.root)
         val (plan, _) = collectWorkspaceExportPlan(
             root = areaRootDir(workspace.root, area),
@@ -413,6 +473,9 @@ class WorkspaceRepository(
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): WorkspaceBatchResult = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        require(workspace.capabilities().localFiles) {
+            "Batch export is not available for ${workspace.type} workspaces"
+        }
         manager.ensureWorkspace(workspace.root)
         val (plan, skipped) = collectWorkspaceExportPlan(
             root = areaRootDir(workspace.root, area),
@@ -454,6 +517,9 @@ class WorkspaceRepository(
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): WorkspaceBatchResult = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        require(workspace.capabilities().localFiles) {
+            "Batch export is not available for ${workspace.type} workspaces"
+        }
         manager.ensureWorkspace(workspace.root)
         val (plan, skipped) = collectWorkspaceExportPlan(
             root = areaRootDir(workspace.root, area),
@@ -502,13 +568,7 @@ class WorkspaceRepository(
         area: WorkspaceStorageArea,
         path: String,
         recursive: Boolean,
-    ): Boolean {
-        val deleted = withContext(Dispatchers.IO) {
-            val workspace = dao.getById(id) ?: return@withContext false
-            manager.deleteFile(workspace.root, path, recursive, area)
-        }
-        return deleted
-    }
+    ): Boolean = withBackend(id) { it.deleteFile(area, path, recursive) }
 
     suspend fun moveFile(
         id: String,
@@ -517,11 +577,16 @@ class WorkspaceRepository(
         overwrite: Boolean,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        require(workspace.capabilities().localFiles) { "Move is not available for ${workspace.type} workspaces" }
         manager.ensureWorkspace(workspace.root)
         manager.moveFile(workspace.root, source, target, overwrite)
     }
 
     suspend fun setShellCompatibilityMode(id: String, enabled: Boolean) {
+        val workspace = dao.getById(id) ?: return
+        require(workspace.capabilities().rootfs) {
+            "Shell compatibility mode is not available for ${workspace.type} workspaces"
+        }
         dao.setShellCompatibilityMode(id, enabled, System.currentTimeMillis())
     }
 
@@ -535,11 +600,7 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         // runInterruptible 让协程取消转化为线程中断，从而打断阻塞的 Process.waitFor 并杀掉进程
         return runInterruptible(Dispatchers.IO) {
-            manager.ensureWorkspace(workspace.root)
-            manager.executeCommand(
-                workspace.root, command, cwd, timeoutMillis, stdin,
-                shellCompatibilityMode = workspace.shellCompatibilityMode,
-            )
+            backendOf(workspace).executeCommand(command, cwd, timeoutMillis, stdin)
         }
     }
 
@@ -556,6 +617,9 @@ class WorkspaceRepository(
         owner: String? = null,
     ): WorkspaceTaskSnapshot = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        require(workspace.capabilities().backgroundTasks) {
+            "Background tasks are not available for ${workspace.type} workspaces"
+        }
         manager.ensureWorkspace(workspace.root)
         manager.startBackgroundCommand(
             workspace.root, command, cwd,
@@ -567,18 +631,21 @@ class WorkspaceRepository(
     /** 该工作空间的后台任务列表（内存态，只含本次进程启动后创建的）。 */
     suspend fun listBackgroundTasks(id: String): List<WorkspaceTaskSnapshot> = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: return@withContext emptyList()
+        if (!workspace.capabilities().backgroundTasks) return@withContext emptyList()
         manager.backgroundTasks(workspace.root)
     }
 
     suspend fun getBackgroundTask(id: String, taskId: String): WorkspaceTaskSnapshot? =
         withContext(Dispatchers.IO) {
             val workspace = dao.getById(id) ?: return@withContext null
+            if (!workspace.capabilities().backgroundTasks) return@withContext null
             manager.backgroundTask(taskId)?.takeIf { it.root == workspace.root }
         }
 
     suspend fun killBackgroundTask(id: String, taskId: String): WorkspaceKillResult =
         withContext(Dispatchers.IO) {
             val workspace = dao.getById(id) ?: return@withContext WorkspaceKillResult.NOT_FOUND
+            if (!workspace.capabilities().backgroundTasks) return@withContext WorkspaceKillResult.NOT_FOUND
             // 归属校验：只允许终止本工作空间的任务，避免跨工作空间误杀
             val task = manager.backgroundTask(taskId)
                 ?: return@withContext WorkspaceKillResult.NOT_FOUND
@@ -598,10 +665,141 @@ class WorkspaceRepository(
         manager.killBackgroundTasksByOwner(owner)
     }
 
+    /** 工作区在执行环境内的目录约定；工作区不存在时返回 null */
+    suspend fun layout(id: String): WorkspaceLayout? = dao.getById(id)?.let { workspace ->
+        // 只需要目录约定, 不解密凭据也不建立连接
+        if (workspace.isSsh()) {
+            workspace.sshSettings()?.let { SshWorkspaceBackend.layoutOf(it.remoteDir) }
+        } else {
+            manager.layout
+        }
+    }
+
+    /** 按环境内绝对路径写入文本；本地工作区在 Rootfs 内执行 shell 写入。 */
+    suspend fun writeAbsoluteText(
+        id: String,
+        path: String,
+        text: String,
+        overwrite: Boolean,
+    ): WorkspaceFileEntry {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        return runInterruptible(Dispatchers.IO) {
+            backendOf(workspace).writeAbsoluteText(path, text, overwrite)
+        }
+    }
+
+    /** 按环境内绝对路径解析宿主机上的文件；没有本地落点时返回 null */
+    suspend fun resolveAbsoluteFile(
+        id: String,
+        path: String,
+    ): File? = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: return@withContext null
+        runCatching { backendOf(workspace).localAbsoluteFile(path) }
+            .getOrNull()
+            ?.takeIf { it.isFile }
+    }
+
+    /** 打开 SSH 工作区的交互式 shell，阻塞到连接和 shell 都建立好，不能在主线程调用 */
+    fun openSshShell(workspace: WorkspaceEntity, columns: Int, rows: Int): SshShell {
+        val backend = backendOf(workspace) as? SshWorkspaceBackend
+            ?: error("Not an SSH workspace: ${workspace.id}")
+        return backend.openShell(columns, rows)
+    }
+
+    private fun backendOf(workspace: WorkspaceEntity): WorkspaceBackend =
+        if (workspace.isSsh()) {
+            val settings = workspace.sshSettings() ?: error("SSH workspace config is missing: ${workspace.id}")
+            SshWorkspaceBackend(sshPool, workspace.id, settings.toConnectionConfig())
+        } else {
+            manager.backend(workspace.root, workspace.shellCompatibilityMode)
+        }
+
+    private fun SshWorkspaceSettings.toConnectionConfig() = SshConnectionConfig(
+        host = host,
+        port = port,
+        username = username,
+        authType = authType,
+        password = encryptedPassword?.let(::decryptSecret),
+        privateKey = encryptedPrivateKey?.let(::decryptSecret),
+        passphrase = encryptedPassphrase?.let(::decryptSecret),
+        remoteDir = remoteDir,
+        hostKey = hostKey,
+    )
+
+    /**
+     * 表单转成持久化配置并加密凭据。编辑时留空的凭据沿用 [previous] 的密文；
+     * 私钥口令跟随私钥：换了新私钥就以表单为准，沿用旧私钥时口令留空也沿用。
+     */
+    private fun SshWorkspaceDraft.toSettings(previous: SshWorkspaceSettings?): SshWorkspaceSettings {
+        val normalizedRemoteDir = remoteDir.trim().trimEnd('/').ifEmpty { "/" }
+        require(normalizedRemoteDir.startsWith("/")) { "Remote directory must be an absolute path" }
+        require(host.isNotBlank()) { "Host is required" }
+        require(username.isNotBlank()) { "Username is required" }
+        require(port in 1..65535) { "Invalid port: $port" }
+        val keepPrivateKey = privateKey.isBlank()
+        return SshWorkspaceSettings(
+            host = host.trim(),
+            port = port,
+            username = username.trim(),
+            authType = authType,
+            remoteDir = normalizedRemoteDir,
+            hostKey = hostKey,
+            encryptedPassword = if (authType == SshAuthType.PASSWORD) {
+                password.takeIf { it.isNotEmpty() }?.let(SecretCipher::encrypt) ?: previous?.encryptedPassword
+            } else {
+                null
+            },
+            encryptedPrivateKey = if (authType == SshAuthType.PRIVATE_KEY) {
+                privateKey.takeIf { it.isNotBlank() }?.let { SecretCipher.encrypt(it.trim()) }
+                    ?: previous?.encryptedPrivateKey
+            } else {
+                null
+            },
+            encryptedPassphrase = when {
+                authType != SshAuthType.PRIVATE_KEY -> null
+                passphrase.isNotEmpty() -> SecretCipher.encrypt(passphrase)
+                keepPrivateKey -> previous?.encryptedPassphrase
+                else -> null
+            },
+        )
+    }
+
+    private fun decryptSecret(value: String): String = try {
+        SecretCipher.decrypt(value)
+    } catch (e: Exception) {
+        throw IOException(
+            "Saved SSH credentials cannot be decrypted (for example after restoring a backup on another device). " +
+                "Re-enter them in the workspace settings.",
+            e,
+        )
+    }
+
+    /**
+     * 读操作：取消时中断线程，远程读取卡在网络上时也能及时返回。
+     * 中途放弃没有副作用；写操作被打断会留下写了一半的文件，走 [withBackend] 照常执行完。
+     */
+    private suspend fun <T> readFromBackend(id: String, block: (WorkspaceBackend) -> T): T {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        return try {
+            runInterruptible(Dispatchers.IO) { block(backendOf(workspace)) }
+        } catch (e: Exception) {
+            // 被中断的读取会抛出 JSch 包装过的 IO 异常, 已取消时统一按取消处理, 免得被当成连接失败
+            currentCoroutineContext().ensureActive()
+            throw e
+        }
+    }
+
+    private suspend fun <T> withBackend(id: String, block: (WorkspaceBackend) -> T): T =
+        withContext(Dispatchers.IO) {
+            val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+            block(backendOf(workspace))
+        }
+
     suspend fun delete(id: String): Boolean {
         val workspace = dao.getById(id) ?: return false
         dao.deleteById(id)
         withContext(Dispatchers.IO) {
+            sshPool.close(id)
             manager.deleteWorkspace(workspace.root)
         }
         cleanupAssistantReferences(id)

@@ -1167,6 +1167,12 @@ private fun WorkspaceFilesPanel(
     modifier: Modifier = Modifier,
 ) {
     val repository = org.koin.compose.koinInject<app.androidrik.rikkahub.data.repository.WorkspaceRepository>()
+    val workspaceEntity by androidx.compose.runtime.produceState<app.androidrik.rikkahub.data.db.entity.WorkspaceEntity?>(
+        initialValue = null,
+        key1 = workspaceId,
+    ) { value = repository.getById(workspaceId) }
+    // 批量导出与重命名只支持本地工作区；远程工作区保留浏览、导入、打开与删除
+    val localFiles = workspaceEntity?.capabilities()?.localFiles ?: true
     val location = app.androidrik.rikkahub.ui.components.workspace.WorkspaceFileLocation(
         workspaceId, app.androidrik.workspace.WorkspaceStorageArea.FILES, path,
     )
@@ -1259,8 +1265,11 @@ private fun WorkspaceFilesPanel(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
             modifier = Modifier.weight(1f),
             selecting = selecting, selectedPaths = selected,
+            allowExport = localFiles,
             onSelectToggle = { entry -> selected = if (entry.path in selected) selected - entry.path else selected + entry.path },
-            onLongPress = { entry -> selecting = true; selected = selected + entry.path },
+            onLongPress = if (localFiles) {
+                { entry -> selecting = true; selected = selected + entry.path }
+            } else null,
             onGoUp = onUpDir,
             onOpen = { entry ->
                 if (entry.isDirectory) onEnterDir(entry.path)
@@ -1268,7 +1277,9 @@ private fun WorkspaceFilesPanel(
             },
             onDelete = { deleteEntries = listOf(it) },
             onExport = { export(listOf(it)) },
-            onRename = { actions.rename(listOf(it)) },
+            onRename = if (localFiles) {
+                { actions.rename(listOf(it)) }
+            } else null,
         )
         app.androidrik.rikkahub.ui.components.workspace.WorkspaceSelectionToolbar(
             selectedCount = chosen.size, visible = selecting,
@@ -1276,7 +1287,9 @@ private fun WorkspaceFilesPanel(
             onSelectAll = { selected = if (selected.size == visible.size) emptySet() else visible.map { it.path }.toSet() },
             onExport = { export(chosen) },
             onDelete = { deleteEntries = chosen.toList() },
-            onRename = { actions.rename(chosenForRename.mapNotNull { p -> visible.firstOrNull { it.path == p } }); selecting = false },
+            onRename = if (localFiles) {
+                { actions.rename(chosenForRename.mapNotNull { p -> visible.firstOrNull { it.path == p } }); selecting = false }
+            } else null,
         )
     }
 }

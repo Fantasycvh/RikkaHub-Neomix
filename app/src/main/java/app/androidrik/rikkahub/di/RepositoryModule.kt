@@ -23,8 +23,10 @@ import app.androidrik.workspace.ProotShellRunner
 import app.androidrik.workspace.RootfsInstaller
 import app.androidrik.workspace.WorkspaceBindMount
 import app.androidrik.workspace.WorkspaceManager
+import app.androidrik.workspace.ssh.SshConnectionPool
 import kotlinx.coroutines.flow.first
 import org.koin.dsl.module
+import org.koin.dsl.onClose
 import java.io.File
 
 val repositoryModule = module {
@@ -108,11 +110,15 @@ val repositoryModule = module {
     }
 
     single {
+        SshConnectionPool()
+    } onClose { it?.close() }
+
+    single {
         RootfsInstaller(get())
     }
 
     single {
-        WorkspaceRepository(get(), get(), get(), get())
+        WorkspaceRepository(get(), get(), get(), get(), get())
     }
 
     single {

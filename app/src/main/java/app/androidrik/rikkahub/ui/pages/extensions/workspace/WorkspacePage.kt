@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.CloudServer
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Edit01
 import me.rerere.hugeicons.stroke.File02
@@ -49,6 +51,8 @@ import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import androidx.compose.ui.res.stringResource
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.CardGroupIcon
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -60,6 +64,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
     val navController = LocalNavController.current
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var showTypeSheet by rememberSaveable { mutableStateOf(false) }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
@@ -74,7 +79,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
+            FloatingActionButton(onClick = { showTypeSheet = true }) {
                 Icon(HugeIcons.Add01, contentDescription = null)
             }
         },
@@ -98,6 +103,36 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
                     onRename = { editTarget = workspace },
                     onDelete = { deleteTarget = workspace },
                     onOpen = { navController.navigate(Screen.WorkspaceDetail(workspace.id)) },
+                )
+            }
+        }
+    }
+
+    if (showTypeSheet) {
+        ModalBottomSheet(onDismissRequest = { showTypeSheet = false }) {
+            CardGroup(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 24.dp),
+                title = { Text(stringResource(R.string.workspace_page_create)) },
+            ) {
+                item(
+                    onClick = {
+                        showTypeSheet = false
+                        showAddDialog = true
+                    },
+                    leadingContent = { CardGroupIcon(HugeIcons.File02) },
+                    supportingContent = { Text(stringResource(R.string.workspace_page_type_local_desc)) },
+                    headlineContent = { Text(stringResource(R.string.workspace_page_type_local)) },
+                )
+                item(
+                    onClick = {
+                        showTypeSheet = false
+                        navController.navigate(Screen.WorkspaceSshEditor())
+                    },
+                    leadingContent = { CardGroupIcon(HugeIcons.CloudServer) },
+                    supportingContent = { Text(stringResource(R.string.workspace_page_type_ssh_desc)) },
+                    headlineContent = { Text(stringResource(R.string.workspace_page_type_ssh)) },
                 )
             }
         }
@@ -215,7 +250,7 @@ private fun WorkspaceCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = workspace.shellStatus.toShellStatusLabel(),
+                        text = workspace.statusLabel(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

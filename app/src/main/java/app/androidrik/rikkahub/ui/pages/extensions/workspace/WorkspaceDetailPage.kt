@@ -14,7 +14,6 @@ import androidx.documentfile.provider.DocumentFile
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
 import app.androidrik.rikkahub.data.export.WorkspaceExportNames
 import app.androidrik.rikkahub.ui.components.workspace.WorkspaceSelectionToolbar
-import app.androidrik.rikkahub.ui.components.workspace.rootfsPath
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.utils.writeClipboardText
 import androidx.compose.foundation.clickable
@@ -76,7 +75,10 @@ import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
 import me.rerere.hugeicons.stroke.Bash
+import me.rerere.hugeicons.stroke.CloudServer
 import me.rerere.hugeicons.stroke.ComputerTerminal01
+import me.rerere.hugeicons.stroke.FingerPrint
+import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.FileImport
@@ -93,6 +95,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.FilterChip
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.CardGroupIcon
 import app.androidrik.rikkahub.ui.components.ui.ImagePreviewDialog
 import app.androidrik.rikkahub.ui.components.workspace.WorkspaceFileBrowser
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
@@ -341,7 +345,7 @@ fun WorkspaceDetailPage(id: String) {
                     IconButton(onClick = { vm.refresh() }) {
                         Icon(HugeIcons.Refresh01, contentDescription = null)
                     }
-                    if (state.workspace?.shellStatus != WorkspaceShellStatus.DISABLED.name) {
+                    if (state.workspace?.supportsTerminal() == true) {
                         IconButton(onClick = { navController.navigate(Screen.WorkspaceTerminal(id)) }) {
                             Icon(HugeIcons.ComputerTerminal01, contentDescription = null)
                         }
@@ -376,7 +380,7 @@ fun WorkspaceDetailPage(id: String) {
                             showExportChooser = true
                         }
                     },
-                    onRename = if (state.area == WorkspaceStorageArea.FILES) {
+                    onRename = if (state.area == WorkspaceStorageArea.FILES && state.workspace?.capabilities()?.localFiles != false) {
                         { fileActions.rename(selectedEntries); finishSelection() }
                     } else null,
                     onDelete = { deleteArea = state.area; deleteSnapshot = selectedEntries.toList(); showDeleteSelectionConfirm = true },
@@ -419,6 +423,7 @@ fun WorkspaceDetailPage(id: String) {
                     onToolApprovalChange = vm::setToolApproval,
                     onMaxReadBytesChange = vm::setMaxReadFileBytes,
                     onShellCompatibilityModeChange = vm::setShellCompatibilityMode,
+                    onEditSsh = { navController.navigate(Screen.WorkspaceSshEditor(id)) },
                 )
 
                 1 -> WorkspaceFileBrowser(
@@ -428,12 +433,14 @@ fun WorkspaceDetailPage(id: String) {
                     loading = state.loading,
                     error = state.error,
                     contentPadding = PaddingValues(),
+                    hasRootfs = state.workspace?.capabilities()?.rootfs ?: true,
+                    workspaceDir = state.workspaceDir,
                     onSelectArea = { area ->
                         // 切区等于换了一棵树：清空选择（跨目录/跨区多选不做，见设计 §五.3）
                         finishSelection()
                         vm.selectArea(area)
                     },
-                    onRename = if (state.area == WorkspaceStorageArea.FILES) {
+                    onRename = if (state.area == WorkspaceStorageArea.FILES && state.workspace?.capabilities()?.localFiles != false) {
                         { entry -> fileActions.rename(listOf(entry)) }
                     } else null,
                     onGoUp = {
@@ -449,19 +456,22 @@ fun WorkspaceDetailPage(id: String) {
                             selectedPaths + entry.path
                         }
                     },
-                    onLongPress = { entry ->
-                        // 长按是**快捷入口**：⋮ 菜单里也有等价项（隐藏手势需要可发现性，本仓有过教训）
-                        if (!selecting) {
-                            selecting = true
-                            selectedPaths = listOf(entry.path)
-                        } else {
-                            selectedPaths = if (entry.path in selectedPaths) {
-                                selectedPaths - entry.path
+                    // 批量打包导出只支持本地工作区；远程工作区隐藏多选，单文件导出仍在菜单里
+                    onLongPress = if (state.workspace?.capabilities()?.localFiles != false) {
+                        { entry ->
+                            // 长按是**快捷入口**：⋮ 菜单里也有等价项（隐藏手势需要可发现性，本仓有过教训）
+                            if (!selecting) {
+                                selecting = true
+                                selectedPaths = listOf(entry.path)
                             } else {
-                                selectedPaths + entry.path
+                                selectedPaths = if (entry.path in selectedPaths) {
+                                    selectedPaths - entry.path
+                                } else {
+                                    selectedPaths + entry.path
+                                }
                             }
                         }
-                    },
+                    } else null,
                     onOpen = { entry ->
                         when {
                             entry.isDirectory -> vm.open(entry)
@@ -731,8 +741,11 @@ private fun WorkspaceBasicPage(
     onToolApprovalChange: (String, Boolean) -> Unit,
     onMaxReadBytesChange: (Long) -> Unit,
     onShellCompatibilityModeChange: (Boolean) -> Unit,
+    onEditSsh: () -> Unit,
 ) {
     val shellStatus = workspace?.shellStatus
+    // 加载完成前按本地工作区展示
+    val hasRootfs = workspace?.capabilities()?.rootfs ?: true
     val installing = installProgress != null || shellStatus == WorkspaceShellStatus.INSTALLING.name
     val rootfsReady = shellStatus == WorkspaceShellStatus.READY.name
     val installButtonText = when {
@@ -764,74 +777,86 @@ private fun WorkspaceBasicPage(
                     WorkspaceInfoRow(stringResource(R.string.workspace_detail_name), workspace?.name ?: stringResource(R.string.workspace_detail_loading))
                     WorkspaceInfoRow(stringResource(R.string.workspace_detail_shell_status), workspace?.shellStatus?.toShellStatusLabel() ?: "-")
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.workspace_detail_shell_compatibility),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                text = stringResource(R.string.workspace_detail_shell_compatibility_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (hasRootfs) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.workspace_detail_shell_compatibility),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    text = stringResource(R.string.workspace_detail_shell_compatibility_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = workspace?.shellCompatibilityMode ?: false,
+                                onCheckedChange = onShellCompatibilityModeChange,
+                                enabled = workspace != null,
                             )
                         }
-                        Switch(
-                            checked = workspace?.shellCompatibilityMode ?: false,
-                            onCheckedChange = onShellCompatibilityModeChange,
-                            enabled = workspace != null,
-                        )
                     }
                 }
             }
         }
 
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CustomColors.cardColorsOnSurfaceContainer,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+        if (workspace?.isSsh() == true) {
+            item {
+                SshConnectionCard(workspace = workspace, onEdit = onEditSsh)
+            }
+        }
+
+        if (hasRootfs) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CustomColors.cardColorsOnSurfaceContainer,
                 ) {
-                    Text(
-                        text = stringResource(R.string.workspace_detail_enable_shell),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = stringResource(R.string.workspace_detail_enable_shell_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    Button(
-                        onClick = onInstallRootfs,
-                        enabled = workspace != null && !installing,
-                        modifier = Modifier.fillMaxWidth(),
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        Icon(HugeIcons.Bash, contentDescription = null)
                         Text(
-                            text = installButtonText,
-                            modifier = Modifier.padding(start = 8.dp),
+                            text = stringResource(R.string.workspace_detail_enable_shell),
+                            style = MaterialTheme.typography.titleMedium,
                         )
-                    }
+                        Text(
+                            text = stringResource(R.string.workspace_detail_enable_shell_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
 
-                    installProgress?.let { progress ->
-                        RootfsProgress(progress)
+                        Button(
+                            onClick = onInstallRootfs,
+                            enabled = workspace != null && !installing,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(HugeIcons.Bash, contentDescription = null)
+                            Text(
+                                text = installButtonText,
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
+
+                        installProgress?.let { progress ->
+                            RootfsProgress(progress)
+                        }
                     }
                 }
             }
         }
 
-        item {
-            WorkspaceTasksCard(tasks = tasks, now = tasksNow, onKill = onKillTask)
+        if (workspace?.capabilities()?.backgroundTasks != false) {
+            item {
+                WorkspaceTasksCard(tasks = tasks, now = tasksNow, onKill = onKillTask)
+            }
         }
 
         item {
@@ -841,6 +866,45 @@ private fun WorkspaceBasicPage(
                 onMaxReadBytesChange = onMaxReadBytesChange,
             )
         }
+    }
+}
+
+@Composable
+private fun SshConnectionCard(
+    workspace: WorkspaceEntity,
+    onEdit: () -> Unit,
+) {
+    val settings = workspace.sshSettings()
+    CardGroup(title = { Text(stringResource(R.string.workspace_detail_ssh_connection)) }) {
+        item(
+            leadingContent = { CardGroupIcon(HugeIcons.CloudServer) },
+            headlineContent = { Text(stringResource(R.string.workspace_detail_ssh_address)) },
+            supportingContent = {
+                Text(settings?.let { "${it.username}@${it.host}:${it.port}" } ?: stringResource(R.string.workspace_detail_ssh_config_missing))
+            },
+        )
+        item(
+            leadingContent = { CardGroupIcon(HugeIcons.Folder01) },
+            headlineContent = { Text(stringResource(R.string.workspace_detail_ssh_remote_dir)) },
+            supportingContent = { Text(settings?.remoteDir ?: "-") },
+        )
+        item(
+            leadingContent = { CardGroupIcon(HugeIcons.FingerPrint) },
+            headlineContent = { Text(stringResource(R.string.workspace_detail_ssh_host_key)) },
+            supportingContent = {
+                val hostKey = settings?.hostKey
+                Text(
+                    text = hostKey?.let { "${it.type}\n${it.fingerprint}" } ?: stringResource(R.string.workspace_detail_ssh_host_key_unconfirmed),
+                    fontFamily = if (hostKey != null) FontFamily.Monospace else null,
+                )
+            },
+        )
+        item(
+            onClick = onEdit,
+            leadingContent = { CardGroupIcon(HugeIcons.PencilEdit01) },
+            headlineContent = { Text(stringResource(R.string.workspace_detail_ssh_edit)) },
+            supportingContent = { Text(stringResource(R.string.workspace_detail_ssh_edit_desc)) },
+        )
     }
 }
 
@@ -970,6 +1034,7 @@ private fun WorkspaceToolApprovalCard(
     onMaxReadBytesChange: (Long) -> Unit,
 ) {
     val overrides = workspace?.toolApprovalOverrides().orEmpty()
+    val capabilities = workspace?.capabilities()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1018,7 +1083,13 @@ private fun WorkspaceToolApprovalCard(
                 }
             }
 
-            workspaceToolApprovalItems().forEach { (toolName, label) ->
+            val tools = workspaceToolApprovalItems()
+            tools
+                .filter { (toolName) ->
+                    (capabilities == null || capabilities.fileWriteTools || toolName !in WORKSPACE_FILE_WRITE_TOOLS) &&
+                        (capabilities == null || capabilities.backgroundTasks || toolName !in WORKSPACE_BACKGROUND_TOOLS)
+                }
+                .forEach { (toolName, label) ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1050,6 +1121,13 @@ private fun WorkspaceToolApprovalCard(
         }
     }
 }
+
+private val WORKSPACE_FILE_WRITE_TOOLS = setOf("workspace_write_file", "workspace_edit_file")
+private val WORKSPACE_BACKGROUND_TOOLS = setOf(
+    "workspace_run_background",
+    "workspace_task_status",
+    "workspace_kill_task",
+)
 
 @Composable
 private fun workspaceToolApprovalItems() = listOf(
@@ -1171,6 +1249,15 @@ private fun InstallRootfsDialog(
         },
     )
 }
+
+/** 列表里展示的状态: 远程工作区显示连接地址, 本地工作区显示 shell 状态 */
+@Composable
+internal fun WorkspaceEntity.statusLabel(): String =
+    if (isSsh()) {
+        sshSettings()?.let { "SSH · ${it.username}@${it.host}" } ?: "SSH"
+    } else {
+        shellStatus.toShellStatusLabel()
+    }
 
 @Composable
 internal fun String.toShellStatusLabel(): String = when (this) {

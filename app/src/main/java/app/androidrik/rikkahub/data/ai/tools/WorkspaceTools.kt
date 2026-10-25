@@ -25,6 +25,7 @@ import app.androidrik.rikkahub.utils.generateUnifiedDiff
 import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.WorkspaceKillResult
+import app.androidrik.workspace.WorkspaceLayout
 import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.WorkspaceTaskSnapshot
 import app.androidrik.workspace.WorkspaceTaskStatus
@@ -112,24 +113,37 @@ suspend fun createWorkspaceTools(
     turnOwner: String? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
-    val workspace = workspaceRepository.getById(workspaceId)
-    val approvalOverrides = workspace?.toolApprovalOverrides().orEmpty()
+    val layout = workspaceRepository.layout(workspaceId) ?: return emptyList()
+    val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
+    val capabilities = workspace.capabilities()
+    val approvalOverrides = workspace.toolApprovalOverrides()
     // 单次读取上限按工作区取（非正值/读不到时回落到默认 8MB）
-    val maxReadBytes = workspace?.maxReadFileBytes?.takeIf { it > 0 } ?: DEFAULT_MAX_READ_FILE_BYTES
+    val maxReadBytes = workspace.maxReadFileBytes.takeIf { it > 0 } ?: DEFAULT_MAX_READ_FILE_BYTES
     fun needsApproval(name: String) = resolveWorkspaceToolApproval(name, approvalOverrides)
 
-    val shellCwd = cwd?.removePrefix("/workspace/")?.removePrefix("/workspace")
+    val shellCwd = cwd?.let(layout::relativeToWorkspace)
 
-    return listOf(
-        createReadFileTool(workspaceId, ::needsApproval, workspaceRepository, maxReadBytes),
-        createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
-        createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
-        createPresentFileTool(workspaceId, ::needsApproval, workspaceRepository),
-        createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
-        createRunBackgroundTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd, turnOwner),
-        createTaskStatusTool(workspaceId, ::needsApproval, workspaceRepository),
-        createKillTaskTool(workspaceId, ::needsApproval, workspaceRepository),
-    )
+    return buildList {
+        add(
+            createReadFileTool(
+                workspaceId, layout, ::needsApproval, workspaceRepository,
+                maxReadBytes, capabilities.localFiles,
+            )
+        )
+        if (capabilities.fileWriteTools) {
+            add(createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository))
+            add(createEditFileTool(workspaceId, ::needsApproval, workspaceRepository))
+        }
+        if (capabilities.localFiles) {
+            add(createPresentFileTool(workspaceId, ::needsApproval, workspaceRepository))
+        }
+        add(createShellTool(workspaceId, layout, ::needsApproval, workspaceRepository, shellCwd, capabilities.rootfs))
+        if (capabilities.backgroundTasks) {
+            add(createRunBackgroundTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd, turnOwner))
+            add(createTaskStatusTool(workspaceId, ::needsApproval, workspaceRepository))
+            add(createKillTaskTool(workspaceId, ::needsApproval, workspaceRepository))
+        }
+    }
 }
 
 private val IMAGE_EXTENSIONS = setOf(
@@ -141,26 +155,36 @@ private fun String.isImagePath(): Boolean =
 
 private fun createReadFileTool(
     workspaceId: String,
+    layout: WorkspaceLayout,
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
     maxReadBytes: Long,
+    supportsDocumentExtraction: Boolean,
 ) = Tool(
     name = "workspace_read_file",
-    description = """
-        Read a file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
-        Use /workspace for the workspace files area.
-        Supports UTF-8 text files, image files (png, jpg, jpeg, gif, webp, bmp, svg, heic, heif, avif, ico)
-        and documents (pdf, docx, pptx, epub).
-        For text files offset (1-based first line) and limit (max lines) read a window; the window is streamed,
-        so files larger than the single-read limit can still be read this way.
-        For documents offset/limit mean units: pdf pages, pptx slides, epub chapters, docx blocks of 100
-        paragraphs (docx has no real pagination); the extracted text comes back with firstUnit/lastUnit/totalUnits
-        so you can page through it.
-    """.trimIndent().replace("\n", " "),
+    description = buildString {
+        if (supportsDocumentExtraction) {
+            append("Read a file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs. ")
+            append("Use ${layout.workspaceDir} for the workspace files area. ")
+            append("Supports UTF-8 text files, image files (png, jpg, jpeg, gif, webp, bmp, svg, heic, heif, avif, ico) ")
+            append("and documents (pdf, docx, pptx, epub). ")
+        } else {
+            append("Read a file using the assistant's bound remote workspace. Paths must be absolute on the remote machine. ")
+            append("Use ${layout.workspaceDir} for the workspace directory. ")
+            append("Supports UTF-8 text files and image files (png, jpg, jpeg, gif, webp, bmp, svg, heic, heif, avif, ico). ")
+        }
+        append("For text files offset (1-based first line) and limit (max lines) read a window; the window is streamed, ")
+        append("so files larger than the single-read limit can still be read this way. ")
+        if (supportsDocumentExtraction) {
+            append("For documents offset/limit mean units: pdf pages, pptx slides, epub chapters, docx blocks of 100 ")
+            append("paragraphs (docx has no real pagination); the extracted text comes back with firstUnit/lastUnit/totalUnits ")
+            append("so you can page through it.")
+        }
+    }.trim(),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
-                putPathProperty(required = true)
+                putPathProperty(layout, required = true)
                 put("offset", buildJsonObject {
                     put("type", "integer")
                     put(
@@ -197,6 +221,13 @@ private fun createReadFileTool(
             path.isImagePath() -> workspaceRepository.readImageInRootfs(workspaceId, path, maxReadBytes)
 
             // 文档：offset/limit 是"单元"（页/张/章/块），默认读前 DEFAULT_DOC_UNITS_PER_READ 个单元
+            DocumentFormat.of(path) != null && !supportsDocumentExtraction -> {
+                error(
+                    "Document extraction is not available in this workspace: $path. " +
+                        "Use shell commands such as pdftotext, unzip or head instead."
+                )
+            }
+
             DocumentFormat.of(path) != null -> {
                 val format = DocumentFormat.of(path)!!
                 val startUnit = window?.startLine?.toInt() ?: 1
@@ -450,19 +481,31 @@ private fun createPresentFileTool(
 
 private fun createShellTool(
     workspaceId: String,
+    layout: WorkspaceLayout,
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
     defaultCwd: String? = null,
+    rootfs: Boolean = true,
 ) = Tool(
     name = "workspace_shell",
     description = buildString {
-        append("Run a shell command in the assistant's bound workspace Rootfs. The workspace files area is mounted at /workspace. ")
-        append("Use cwd for a path relative to the workspace files root. ")
-        if (!defaultCwd.isNullOrBlank()) {
-            append("Defaults to '$defaultCwd'. ")
+        if (rootfs) {
+            append("Run a shell command in the assistant's bound workspace Rootfs. The workspace files area is mounted at ${layout.workspaceDir}. ")
+            append("Use cwd for a path relative to the workspace files root. ")
+            if (!defaultCwd.isNullOrBlank()) {
+                append("Defaults to '$defaultCwd'. ")
+            }
+            append("Requires Rootfs to be installed and ready. ")
+            append(SANDBOX_INTERPRETER_NOTE)
+        } else {
+            append("Run a shell command on the remote machine of the assistant's bound SSH workspace. The workspace directory is ${layout.workspaceDir}. ")
+            append("Use cwd for a path relative to the workspace directory. ")
+            if (!defaultCwd.isNullOrBlank()) {
+                append("Defaults to '$defaultCwd'. ")
+            }
+            append("Commands run with the SSH user's real permissions on that machine, outside any sandbox. ")
+            append("Use this tool to create and modify files (quoted heredocs, sed, patch or short scripts), since no file write or edit tools are available.")
         }
-        append("Requires Rootfs to be installed and ready. ")
-        append(SANDBOX_INTERPRETER_NOTE)
     },
     parameters = {
         InputSchema.Obj(
@@ -475,10 +518,12 @@ private fun createShellTool(
                     put("type", "string")
                     put(
                         "description",
-                        if (!defaultCwd.isNullOrBlank()) {
-                            "Working directory relative to the workspace files root. Defaults to '$defaultCwd'."
-                        } else {
-                            "Working directory relative to the workspace files root. Defaults to root."
+                        buildString {
+                            append("Working directory relative to ${if (rootfs) "the workspace files root" else "the workspace directory"}. ")
+                            append(
+                                if (!defaultCwd.isNullOrBlank()) "Defaults to '$defaultCwd'."
+                                else "Defaults to root."
+                            )
                         }
                     )
                 })
@@ -498,8 +543,7 @@ private fun createShellTool(
     execute = {
         val params = it.jsonObject
         val command = params.string("command") ?: error("command is required")
-        val cwd = (params.string("cwd") ?: defaultCwd.orEmpty())
-            .removePrefix("/workspace/").removePrefix("/workspace")
+        val cwd = layout.relativeToWorkspace(params.string("cwd") ?: defaultCwd.orEmpty())
         val timeoutMillis = params.string("timeout")?.toLongOrNull()
             ?.coerceIn(1L, SHELL_TIMEOUT_MAX_SECONDS)
             ?.times(1_000L)
@@ -976,6 +1020,17 @@ private fun JsonObjectBuilder.putPathProperty(required: Boolean) {
             } else {
                 "Optional absolute path inside Rootfs. Use /workspace for the workspace files area."
             }
+        )
+    })
+}
+
+private fun JsonObjectBuilder.putPathProperty(layout: WorkspaceLayout, required: Boolean) {
+    put("path", buildJsonObject {
+        put("type", "string")
+        put(
+            "description",
+            (if (required) "" else "Optional ") +
+                "absolute path. Use ${layout.workspaceDir} for the workspace files area."
         )
     })
 }
