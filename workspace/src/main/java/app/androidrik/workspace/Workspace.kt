@@ -34,8 +34,7 @@ enum class WorkspaceType(val capabilities: WorkspaceCapabilities) {
     SSH(
         WorkspaceCapabilities(
             rootfs = false,
-            // 终端需要 Phase 3 的 :terminal 模块；接入前不开放，避免留下不可用入口
-            terminal = false,
+            terminal = true,
             localFiles = false,
             fileWriteTools = false,
             backgroundTasks = false,

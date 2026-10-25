@@ -69,7 +69,8 @@ fun WorkspaceTerminalPage(id: String) {
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
     val state by vm.state.collectAsStateWithLifecycle()
     val sessionManager: WorkspaceTerminalSessionManager = koinInject()
-    val root = state.workspace?.root
+    val workspace = state.workspace
+    val root = workspace?.root
     val terminalStateFlow = remember(root, sessionManager) {
         root?.let(sessionManager::observeWorkspace) ?: flowOf(WorkspaceTerminalTabsState())
     }
@@ -77,9 +78,8 @@ fun WorkspaceTerminalPage(id: String) {
         initialValue = WorkspaceTerminalTabsState(),
     )
 
-    val shellCompatibilityMode = state.workspace?.shellCompatibilityMode ?: false
-    LaunchedEffect(root, shellCompatibilityMode) {
-        root?.let { sessionManager.ensureSession(it, shellCompatibilityMode) }
+    LaunchedEffect(workspace?.id, workspace?.shellCompatibilityMode) {
+        workspace?.let(sessionManager::ensureSession)
     }
 
     RikkahubTheme(colorMode = ColorMode.DARK) {
@@ -97,11 +97,7 @@ fun WorkspaceTerminalPage(id: String) {
                     actions = {
                         val newTabDescription = stringResource(R.string.workspace_terminal_new_tab)
                         IconButton(
-                            onClick = {
-                                root?.let { currentRoot ->
-                                    sessionManager.createTab(currentRoot, shellCompatibilityMode)
-                                }
-                            },
+                            onClick = { workspace?.let(sessionManager::createTab) },
                             enabled = root != null && !terminalState.isCreating,
                             modifier = Modifier.semantics {
                                 contentDescription = newTabDescription

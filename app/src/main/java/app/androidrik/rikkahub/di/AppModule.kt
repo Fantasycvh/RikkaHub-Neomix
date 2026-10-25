@@ -115,7 +115,7 @@ val appModule = module {
     }
 
     single {
-        WorkspaceTerminalSessionManager(get(), get())
+        WorkspaceTerminalSessionManager(get(), get(), get())
     }
 
     // 生成通知与业务解耦：ChatService 只发事件，通知由这里消费；

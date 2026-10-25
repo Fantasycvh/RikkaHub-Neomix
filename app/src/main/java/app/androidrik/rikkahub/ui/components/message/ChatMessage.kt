@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -94,6 +95,7 @@ import app.androidrik.rikkahub.ui.components.charts.ChartCard
 import app.androidrik.rikkahub.ui.components.charts.ChartSpec
 import app.androidrik.rikkahub.ui.components.ui.Favicon
 import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.theme.LocalChatFontFamily
@@ -152,6 +154,7 @@ fun ChatMessage(
     val navController = LocalNavController.current
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
+    CompositionLocalProvider(LocalWorkspaceId provides assistant?.workspaceId?.toString()) {
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
@@ -340,6 +343,7 @@ fun ChatMessage(
                 onEditReasoning?.invoke(message.id, target, text)
             },
         )
+    }
     }
 }
 

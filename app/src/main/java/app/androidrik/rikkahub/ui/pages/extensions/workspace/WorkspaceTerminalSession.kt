@@ -12,9 +12,11 @@ import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.core.net.toUri
+import com.termux.terminal.LocalPtyTransport
 import com.termux.terminal.TerminalEmulator
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
+import com.termux.terminal.TerminalTransport
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import app.androidrik.rikkahub.data.files.FileFolders
@@ -23,12 +25,11 @@ import app.androidrik.workspace.RootfsPatchOptions
 import app.androidrik.workspace.RootfsPatcher
 import java.io.File
 
-internal fun createWorkspaceTerminalSession(
+internal fun createLocalTerminalTransport(
     context: Context,
     root: String,
-    client: TerminalSessionClient,
     shellCompatibilityMode: Boolean = false,
-): TerminalSession {
+): LocalPtyTransport {
     val appContext = context.applicationContext
     val workspaceDir = File(File(appContext.filesDir, "workspaces"), root)
     val filesDir = File(workspaceDir, "files")
@@ -93,17 +94,22 @@ internal fun createWorkspaceTerminalSession(
         env += "PROOT_NO_SECCOMP=1"
     }
 
-    return TerminalSession(
+    return LocalPtyTransport(
         proot.absolutePath,
         filesDir.absolutePath,
         args.toTypedArray(),
         env.toTypedArray(),
-        2_000,
-        client,
-    ).apply {
+    )
+}
+
+internal fun createWorkspaceTerminalSession(
+    transport: TerminalTransport,
+    root: String,
+    client: TerminalSessionClient,
+): TerminalSession =
+    TerminalSession(transport, 2_000, client).apply {
         mSessionName = root
     }
-}
 
 internal fun prepareWorkspaceTerminalSession(context: Context, root: String) {
     val appContext = context.applicationContext

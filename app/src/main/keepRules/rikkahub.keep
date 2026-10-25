@@ -32,3 +32,13 @@
 }
 -keep class org.scilab.forge.jlatexmath.cyrillic.CyrillicRegistration { <init>(); }
 -keep class org.scilab.forge.jlatexmath.greek.GreekRegistration { <init>(); }
+
+# JSch 按类名从配置里反射加载 cipher / key exchange / compression 实现，必须保活
+-keep class com.jcraft.jsch.** { *; }
+
+# JSch 的可选集成（JNA / junixsocket、日志桥、GSSAPI）在 Android 上不会用到
+-dontwarn com.sun.jna.**
+-dontwarn org.newsclub.net.unix.**
+-dontwarn org.slf4j.**
+-dontwarn org.apache.logging.log4j.**
+-dontwarn org.ietf.jgss.**

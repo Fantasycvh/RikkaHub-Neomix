@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -97,7 +98,10 @@ import me.rerere.hugeicons.stroke.Download04
 import me.rerere.hugeicons.stroke.Tick01
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.ui.components.table.DataTable
+import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
+import org.koin.compose.koinInject
 import app.androidrik.rikkahub.ui.modifier.onClick
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
 import app.androidrik.rikkahub.utils.toDp
@@ -458,6 +462,24 @@ object HeaderStyle {
     )
 }
 
+/**
+ * 绑定了工作区时，把环境内绝对路径（如 /workspace/out.png）解析成宿主机上的文件路径；
+ * 解析期间返回 null 显示占位图，找不到文件时原样返回交给 Coil。
+ *
+ * Markdown 解析器会对 src 做百分号编码（空格、中文等），需取解码后的 path 并丢掉 query/fragment。
+ */
+@Composable
+private fun rememberWorkspaceImageUrl(url: String): String? {
+    val workspaceId = LocalWorkspaceId.current
+    if (workspaceId == null || !url.startsWith("/") || url.startsWith("//")) return url
+    val path = remember(url) { url.toUri().path } ?: return url
+    val workspaceRepository: WorkspaceRepository = koinInject()
+    val resolved by produceState<String?>(initialValue = null, workspaceId, path) {
+        value = workspaceRepository.resolveAbsoluteFile(workspaceId, path)?.absolutePath ?: url
+    }
+    return resolved
+}
+
 @Composable
 private fun MarkdownNode(
     node: ASTNode,
@@ -647,7 +669,7 @@ private fun MarkdownNode(
             ) {
                 // 这里可以使用Coil等图片加载库加载图片
                 ZoomableAsyncImage(
-                    model = imageUrl,
+                    model = rememberWorkspaceImageUrl(imageUrl),
                     contentDescription = altText,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))

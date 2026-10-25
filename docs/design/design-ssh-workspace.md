@@ -1,6 +1,6 @@
 # SSH 工作区设计稿（Draft）
 
-> 状态：**Phase 1a + 1b + 2 已实现，并通过单测、WSL OpenSSH 与真机（PJX110 / Android 15）验证**（2026-10-25）。
+> 状态：**Phase 1a + 1b + 2 + 3 已实现，并通过单测、WSL OpenSSH 与真机（PJX110 / Android 15）验证**（2026-10-25）。
 > 验证：`:workspace:testDebugUnitTest` 全绿（115 项，0 失败，20 项在 Windows 宿主跳过）、
 > 新增 `RemoteEnvironmentCacheTest` 3 项全绿、`:app:compileDebugKotlin` 与
 > `:app:assembleDebug` 成功；另用 WSL Ubuntu 24.04 的真实 OpenSSH 跑通
@@ -116,32 +116,40 @@ SSH 工作区按四段推进，每段都能独立验收：
 
 - 凭据使用 Android Keystore AES-GCM 加密后存库；换设备恢复备份后无法解密，必须明确提示重新填写。
 - 主机指纹首次确认，变化拒绝；不提供“忽略”按钮。
-- JSch + BouncyCastle 增加 R8 keep/dontwarn 与 APK 体积，需 release 实测。
+- JSch + BouncyCastle 的 R8 keep/dontwarn 已补齐，release 构建通过；体积见第八节。
 
-## 六、Phase 3：终端
-
-本地现状：`terminal-view` AAR + 自建 `libtermux.so`，`TerminalSession` 直接绑本地 PTY。
+## 六、Phase 3：终端（已实现）
 
 上游做法：vendor termux terminal-emulator 为 `:terminal` 模块，抽 `TerminalTransport`，
 本地 PTY 迁到 `LocalPtyTransport`，SSH 用 `SshTerminalTransport`。
 
-风险点：排除 AAR 的 `terminal-emulator`、移动 `termux_pty.cpp`、`pickFirsts`/16KB 对齐、
-本地 PRoot 参数（Skills 挂载、兼容模式 cwd）迁移、粘贴死锁/孤进程清理回归。
+本 fork 已按同一结构落地：
+- `:terminal` 模块取自上游 `2b633370f`（termux v0.118.0 + 本地 transport 改造），`workspace` 的
+  `termux_pty.cpp` 与 CMake target 已移除；app 排除 `terminal-emulator` aar 并去掉 `pickFirsts`。
+- 本地终端：保留 fork 自己的 PRoot 参数（`/workspace`、Skills、内置 Skills、兼容模式 cwd），
+  只把启动方式换成 `LocalPtyTransport`；进程启动/退出收尾、整会话 SIGKILL 由新 transport 负责。
+- SSH 终端：`SshShell` 的 PTY exec channel 先 `cd` 到远程工作目录再 exec 登录 shell；
+  `SshTerminalTransport` 把 resize/close 放到后台线程，连接期间显示目标地址，掉线显示 `Connection lost`。
+- `WorkspaceType.SSH` 的 `terminal` 能力已打开；详情页终端入口恢复；`backgroundTasks` 仍为 false。
+
+风险点已处理：AAR 排除、PTY 原生实现迁移、`pickFirsts` 移除、本地参数保留、粘贴死锁/孤进程修复
+随上游 `TerminalSession` 一并带入。
 
 ## 七、决策与遗留
 
-已按建议落地：首版不含交互式终端；后台任务/文档抽取/present_file 在 SSH 下隐藏；
-远程不读 `AGENTS.md`；缓存管理排除 SSH 工作区占用。
+已按建议落地：远程提示词注入、后台任务/文档抽取/present_file 在 SSH 下隐藏；
+远程不读 `AGENTS.md`；缓存管理排除 SSH 工作区占用；交互式终端已接入（本地 + SSH）。
 
 仍需验证/决策：
 
-1. 真机全链路已覆盖 Keystore 凭据、指纹确认/变化、文件浏览与导入导出；远程提示词注入尚未在
-   配置了模型的会话里观测（见上节“仍未覆盖”）。
+1. 真机全链路已覆盖 Keystore 凭据、指纹确认/变化、文件浏览、导入导出、提示词注入（含线路级抓包）、
+   SSH 终端、本地终端与兼容模式 cwd、本地 Markdown 工作区图片。
 2. Windows 跳过的 18 项嵌入式 SSHD 用例已由 `SshLiveServerTest` 在 WSL 真实 OpenSSH 上覆盖
    主要路径；仍需在 CI/真机补跑完整矩阵。
-3. release 构建（R8）对 JSch/BouncyCastle 的 keep/dontwarn 与 APK 体积影响尚未实测。
+3. R8 keep/dontwarn 已补齐，`minifyReleaseWithR8` 与 `assembleRelease` 通过；release 包尚未安装做运行时回归。
 4. SSH 工作区的「下载/分享」目前只在详情页提供单文件导出；聊天抽屉隐藏了批量导出以避免误用本地打包逻辑。
-5. 交互式终端（Phase 3）依赖 `TerminalTransport`，本阶段未改动 `:terminal`。
+5. Markdown 工作区图片：已对齐上游 `resolveAbsoluteFile` 解析；远程工作区没有宿主机落点，
+   `localAbsoluteFile` 返回 null，因此远程图片仍不会渲染（上游同样如此，需要自定义 Coil fetcher 才能支持）。
 6. Docker Desktop 引擎当前启动失败（API 500 / status stopped），本次改用 WSL 内直接运行 OpenSSH，
    不依赖 Docker；需要容器矩阵时再补。
 
@@ -149,9 +157,11 @@ SSH 工作区按四段推进，每段都能独立验收：
 
 ```bash
 ./gradlew :workspace:testDebugUnitTest
+./gradlew :terminal:testDebugUnitTest
 ./gradlew :app:testDebugUnitTest --tests "app.androidrik.rikkahub.data.ai.transformers.RemoteEnvironmentCacheTest"
 ./gradlew :app:compileDebugKotlin
 ./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease   # 含 R8 / JSch keep 验证
 
 # 可选：真实 OpenSSH 集成测试（未设置环境变量时自动跳过）
 MSYS_NO_PATHCONV=1 \
@@ -207,9 +217,11 @@ Windows 宿主无 POSIX `/bin/sh` 时，依赖真实 shell 的用例会按既有
 - `SshRepositoryInstrumentedTest` 1/1：凭证以 `v1:` 密文落库且不存在明文密码，`rootfsShell`、
   `executeCommand`（stdout/退出码）、SFTP 写读、远程清理全部通过；
 - UI 全链路：新建 SSH 编辑页（首次主机密钥确认 → “信任并继续”后保存）、详情页仅显示
-  `workspace_read_file` / `workspace_shell` 与 SSH 连接卡（无 Rootfs、无 Shell 兼容、无终端入口）、
+  `workspace_read_file` / `workspace_shell` 与 SSH 连接卡（无 Rootfs、无 Shell 兼容）；
   文件页“工作目录/根目录”、远程文件预览与保存、导入（设备 → 远程）、导出（远程 → Downloads）、
   单击文件打开编辑器、主机密钥变化弹窗（显示新指纹并拒绝）、不可达端口测试报错且退出编辑页后配置不变；
+- SSH 交互式终端：详情页入口 → 终端显示 `Connecting to sshit@127.0.0.1:2222...`、Ubuntu MOTD，
+  启动目录为 `/home/sshit/rikkahub-ui`；输入 `id -un` 返回 `sshit`，`pwd` 返回远程工作目录；
 - 绑定助手后 @ 补全列出远程绝对路径（`/home/sshit/rikkahub-ui/...`）；验证后已恢复为未绑定；
 - `WorkspaceReminderTransformerInstrumentedTest` 2/2：可达时注入 `<workspace>` 远程说明且不含
   `AGENTS.md`，不可达时注入 `currently unreachable`；
@@ -220,9 +232,20 @@ Windows 宿主无 POSIX `/bin/sh` 时，依赖真实 shell 的用例会按既有
   `tools` 恰为 5 个（`get_time_info`、`workspace_read_file`、`workspace_shell`、`install_skill`、`save_skill`），
   无 write/edit/background/present；`workspace_shell` 参数为 `command/cwd/timeout`。
   另确认：模型未声明 TOOL 能力时 OpenAI provider 会**不下发 tools**（模型能力门控，非工作区问题）。
+- `:terminal:testDebugUnitTest` 全绿（Termux terminal-emulator 单测），`:workspace:testDebugUnitTest` 仍全绿；
+  debug/release APK 都只含一份 `lib/arm64-v8a/libtermux.so`。
+- 本地终端（rootfs 安装后）：`LocalPtyTransport` 正常，提示符 `root@localhost:/workspace#`，
+  `ls /skills`、`/workspace` 挂载可见，`SHELL=/bin/sh`；开启 Shell 兼容模式后重开终端 cwd 为 `/root`。
+- Markdown 本地工作区图片：`![](/workspace/pic.png)` 在用户消息气泡里正常渲染（测试图已删除）；
+  远程工作区仍返回 null（`localAbsoluteFile` 无宿主机落点）。
+- R8：`minifyReleaseWithR8` 与 `assembleRelease` 成功；release arm64 APK 约 61 MB，JSch keep 规则已进入
+  `configuration.txt`（`-keep class com.jcraft.jsch.**`）。
+- Markdown 工作区图片：补 `LocalWorkspaceId` 与 `resolveAbsoluteFile` 解析（对齐上游）；本地工作区绝对路径
+  可解析，远程工作区仍无宿主机落点。
 
 仍未覆盖：
 
 - 远程提示词注入的**不可达分支**尚未在线路级抓包（transformer 输出已覆盖）；
-- 本地 Docker SSH（改用 WSL OpenSSH 替代）、release/R8 下 JSch + BouncyCastle 的体积与 keep 规则；
-- 交互式终端（Phase 3）与 `:terminal` 相关回归。
+- 本地 Docker SSH（改用 WSL OpenSSH 替代）；
+- release 包的 SSH/终端运行时回归（R8 构建已通过，但未安装 release 包验证）；
+- 远程工作区 Markdown 图片（需要自定义 Coil fetcher，上游也未支持）。
