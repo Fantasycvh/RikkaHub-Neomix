@@ -2,6 +2,8 @@ package app.androidrik.rikkahub.data.sync
 
 import android.content.Context
 import android.util.Log
+import app.androidrik.rikkahub.data.DataOperation
+import app.androidrik.rikkahub.data.DataOperationLock
 import app.androidrik.rikkahub.data.datastore.migration.SettingsCompatDecoder
 import app.androidrik.rikkahub.data.datastore.migration.SettingsJsonMigrator
 import app.androidrik.rikkahub.data.datastore.SettingsStore
@@ -50,6 +52,13 @@ internal class BackupArchiveEngine(
      * @throws IllegalStateException cacheDir 空间不足（见 §9.1 空间预检）
      */
     suspend fun prepareBackupFile(
+        items: Collection<BackupItem>,
+        onProgress: (BackupProgress) -> Unit = {},
+    ): File = DataOperationLock.runWaiting(DataOperation.BACKUP) {
+        prepareBackupFileLocked(items, onProgress)
+    }
+
+    private suspend fun prepareBackupFileLocked(
         items: Collection<BackupItem>,
         onProgress: (BackupProgress) -> Unit = {},
     ): File = withContext(Dispatchers.IO) {
@@ -153,6 +162,14 @@ internal class BackupArchiveEngine(
      * @throws IllegalStateException 空间不足（解压产物 + zip 需同时存在于 cacheDir，见 §9.1）
      */
     suspend fun restoreFromBackupFile(
+        backupFile: File,
+        items: Collection<BackupItem>,
+        onProgress: (BackupProgress) -> Unit = {},
+    ): RestoreOutcome = DataOperationLock.runWaiting(DataOperation.RESTORE) {
+        restoreFromBackupFileLocked(backupFile, items, onProgress)
+    }
+
+    private suspend fun restoreFromBackupFileLocked(
         backupFile: File,
         items: Collection<BackupItem>,
         onProgress: (BackupProgress) -> Unit = {},

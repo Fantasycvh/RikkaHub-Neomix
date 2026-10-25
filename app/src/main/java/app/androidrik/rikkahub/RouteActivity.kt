@@ -135,6 +135,7 @@ import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesUIPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNetworkPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingFilesPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingStoragePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingMcpPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingMediaPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingKnowledgeBaseDetailPage
@@ -646,6 +647,10 @@ open class RouteActivity : ComponentActivity() {
                                 SettingFilesPage()
                             }
 
+                            entry<Screen.SettingStorage> {
+                                SettingStoragePage()
+                            }
+
                             entry<Screen.SettingWeb> {
                                 SettingWebPage()
                             }
@@ -975,6 +980,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingFiles : Screen
+
+    @Serializable
+    data object SettingStorage : Screen
 
     @Serializable
     data object SettingWeb : Screen

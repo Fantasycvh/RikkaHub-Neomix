@@ -53,7 +53,14 @@ object SettingSearchIndex {
         entry(
             title = R.string.setting_files_page_title,
             route = Screen.SettingFiles,
-            keywords = listOf("聊天存储", "存储管理", "文件管理", "存储空间", "chat storage", "wenjian")
+            keywords = listOf("聊天存储", "文件管理", "chat storage", "wenjian")
+        ),
+        entry(
+            title = R.string.setting_storage_page_title,
+            route = Screen.SettingStorage,
+            keywords = listOf(
+                "存储管理", "存储空间", "缓存", "清理缓存", "storage", "cache", "huancun"
+            )
         ),
         entry(
             title = R.string.setting_page_kb_title,

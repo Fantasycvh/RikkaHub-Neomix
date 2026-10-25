@@ -17,6 +17,7 @@ import app.androidrik.rikkahub.data.repository.MediaCreationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.TranslationHistoryRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.rikkahub.data.storage.StorageUsageManager
 import app.androidrik.workspace.ProotBackgroundLauncher
 import app.androidrik.workspace.ProotShellRunner
 import app.androidrik.workspace.RootfsInstaller
@@ -116,6 +117,10 @@ val repositoryModule = module {
 
     single {
         FilesManager(get(), get(), get(), get())
+    }
+
+    single {
+        StorageUsageManager(get<Context>())
     }
 
     single {

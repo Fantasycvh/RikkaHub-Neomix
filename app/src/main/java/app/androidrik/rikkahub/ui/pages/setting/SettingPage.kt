@@ -26,8 +26,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +36,9 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Book02
 import me.rerere.hugeicons.stroke.AiMagic
@@ -208,8 +210,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             }
 
             item("connectionAndData") {
-                val storageState by produceState(-1 to 0L) {
-                    value = filesManager.countChatFiles()
+                val scope = rememberCoroutineScope()
+                var storageState by remember { mutableStateOf(-1 to 0L) }
+                // 每次回到设置页重算：从文件管理/存储管理返回后数字不会停留在旧值
+                LifecycleResumeEffect(filesManager) {
+                    scope.launch { storageState = filesManager.countChatFiles() }
+                    onPauseOrDispose { }
                 }
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
@@ -250,6 +256,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                             }
                         },
                         headlineContent = { Text(stringResource(R.string.setting_page_chat_storage)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingStorage) },
+                        leadingContent = { Icon(HugeIcons.Package, null) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_storage_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_storage)) },
                     )
                 }
             }
