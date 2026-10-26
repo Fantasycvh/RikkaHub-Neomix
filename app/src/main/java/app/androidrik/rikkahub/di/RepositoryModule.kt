@@ -20,6 +20,7 @@ import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.data.storage.StorageUsageManager
 import app.androidrik.workspace.ProotBackgroundLauncher
 import app.androidrik.workspace.ProotShellRunner
+import app.androidrik.workspace.ReadOnlyMountSnapshots
 import app.androidrik.workspace.RootfsInstaller
 import app.androidrik.workspace.WorkspaceBindMount
 import app.androidrik.workspace.WorkspaceManager
@@ -99,9 +100,14 @@ val repositoryModule = module {
                 WorkspaceBindMount(
                     source = File(context.filesDir, FileFolders.UPLOAD).apply { mkdirs() },
                     target = "/upload",
+                    // 只读挂载（design-readonly-mount-snapshots）：shell 前必须先快照，
+                    // 否则 workspace_shell 的 rm/写操作会绕过工具层保护删掉用户上传原件
+                    readOnly = true,
                 ),
             ),
             backgroundLauncher = ProotBackgroundLauncher(prootRunner),
+            // 只读挂载快照存储（design-readonly-mount-snapshots §3.3）：全局一份，跨工作区复用
+            readOnlySnapshotStorage = File(context.filesDir, ReadOnlyMountSnapshots.DIRECTORY),
             // 后台任务时长上限可配（Tier 1）：此单例首次注入发生在首次会话/工作区使用时，
             // DataStore 已加载完毕（dummy 值 = Settings 默认值 30，即使真提前读也回落到原行为）
             maxBackgroundTaskLifetimeMillis =

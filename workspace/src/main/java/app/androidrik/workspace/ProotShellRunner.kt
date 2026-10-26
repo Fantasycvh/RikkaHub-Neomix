@@ -15,6 +15,13 @@ sealed interface ProotStart {
 data class WorkspaceBindMount(
     val source: File,
     val target: String,
+    /**
+     * 只读挂载（design-readonly-mount-snapshots §3.1）：PRoot 的 `-b` 没有只读语义，
+     * 此标记只是声明——**binding 前必须先经 [ReadOnlyMountSnapshots.prepare] 换成私有快照**
+     * （prepare 产物以 readOnly=false 形态下发）。任何调用方把 readOnly 挂载直接塞进
+     * shell 上下文都会在 runner 这里当场失败，而不是静默挂载原件。
+     */
+    val readOnly: Boolean = false,
 ) {
     init {
         require(target.startsWith("/")) { "Bind mount target must be absolute: $target" }
@@ -62,6 +69,12 @@ class ProotShellRunner(
         }
         if (!loader.isFile) {
             return ProotStart.Failed("proot loader not found: ${loader.absolutePath}")
+        }
+
+        // 强制快照（design-readonly-mount-snapshots §3.1）：只读挂载的原件物理不可达。
+        // 放在预检段（patch 之前）——任何调用方把只读挂载直接塞进 shell 上下文都当场失败
+        context.bindMounts.forEach { mount ->
+            require(!mount.readOnly) { "Read-only mount must be snapshotted before binding: ${mount.target}" }
         }
 
         context.tempDir.mkdirs()

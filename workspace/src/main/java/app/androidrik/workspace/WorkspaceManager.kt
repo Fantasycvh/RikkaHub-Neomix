@@ -20,8 +20,15 @@ class WorkspaceManager(
     private val maxBackgroundTasks: Int = DEFAULT_MAX_CONCURRENT_TASKS,
     /** 后台任务最长存活时长；`<= 0` 表示不限制（见 [DEFAULT_MAX_TASK_LIFETIME_MS]）。 */
     private val maxBackgroundTaskLifetimeMillis: Long = DEFAULT_MAX_TASK_LIFETIME_MS,
+    /**
+     * 只读挂载快照的存储目录（design-readonly-mount-snapshots §3.3）。null = 关闭（测试用）。
+     * 全局一份而非按工作区：/upload 源本就是全局的，快照跨工作区复用同一代才省空间。
+     */
+    private val readOnlySnapshotStorage: File? = null,
 ) {
     private val fileSystem = WorkspaceFileSystem(config)
+
+    private val readOnlySnapshots = ReadOnlyMountSnapshots()
 
     /** 工作区在执行环境内的目录约定；可写区与工具审批口径保持一致 */
     val layout = WorkspaceLayout(
@@ -305,6 +312,8 @@ class WorkspaceManager(
         require(workingDir.exists()) { "Working directory does not exist: $cwd" }
         require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
 
+        // 只读挂载先换快照（design-readonly-mount-snapshots §3.3）：shell（前台 + 后台任务）
+        // 是 /upload 只读保护的唯一绕过面；失败向上传播，与 cwd 预检同层
         return shellRunner.execute(
             WorkspaceShellContext(
                 root = root,
@@ -316,7 +325,7 @@ class WorkspaceManager(
                 workingDir = workingDir,
                 timeoutMillis = timeoutMillis,
                 stdin = stdin,
-                bindMounts = bindMounts,
+                bindMounts = preparedBindMounts(),
                 shellCompatibilityMode = shellCompatibilityMode,
             )
         )
@@ -358,11 +367,22 @@ class WorkspaceManager(
                 // 后台任务无超时；这里的 timeoutMillis 不被启动器使用
                 timeoutMillis = 0L,
                 stdin = null,
-                bindMounts = bindMounts,
+                bindMounts = preparedBindMounts(),
                 shellCompatibilityMode = shellCompatibilityMode,
             ),
             owner = owner,
         )
+    }
+
+    /**
+     * 给 shell 上下文的挂载表：只读挂载（/upload）先经 [ReadOnlyMountSnapshots.prepare]
+     * 换成私有快照（readOnly=false 下发，runner 的 `require(!readOnly)` 才能通过）。
+     * 无只读挂载或快照关闭时原样返回。
+     */
+    private fun preparedBindMounts(): List<WorkspaceBindMount> {
+        if (readOnlySnapshotStorage == null) return bindMounts
+        if (bindMounts.none { it.readOnly }) return bindMounts
+        return readOnlySnapshots.prepare(bindMounts, readOnlySnapshotStorage)
     }
 
     /** 后台任务列表；[root] 为 null 时列出所有工作空间的。 */
