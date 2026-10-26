@@ -1,7 +1,7 @@
 # 设计：B 档备份恢复 —— staged 换库 + 启动应用 + 失败回滚
 
 - 日期：2026-10-26
-- 状态：阶段 1+2 代码完成（PendingRestoreStore + 13 项 JVM 测试；RikkaHubApp boot 编排 + StartupState + RouteActivity 全屏 gate + 引擎切 stage-only，全量 2456 项 0 失败）；真机验收（§9 阶段 3）待做。实现偏差：①入库校验为 applyIfPending 的 validate lambda 注入（原稿 StagedDbValidator 接口 + xerial——实际 lambda + fake 即可，无新依赖）；②Room 打开确认失败按「不可重试」处理（重试会撞已启动的 Koin），进程重启后 rollbackIfUnconfirmed 自动回滚，比原稿「记录后照常 Ready」更稳。
+- 状态：阶段 1+2 代码完成（PendingRestoreStore + 13 项 JVM 测试；RikkaHubApp boot 编排 + StartupState + RouteActivity 全屏 gate + 引擎切 stage-only，全量 2456 项 0 失败）；真机验收（§9 阶段 3）✅ 已通过（2026-10-26 用户确认，四场景均验）。实现偏差：①入库校验为 applyIfPending 的 validate lambda 注入（原稿 StagedDbValidator 接口 + xerial——实际 lambda + fake 即可，无新依赖）；②Room 打开确认失败按「不可重试」处理（重试会撞已启动的 Koin），进程重启后 rollbackIfUnconfirmed 自动回滚，比原稿「记录后照常 Ready」更稳。
 - 来源：Yuihub 3.0.1（`6dcc7224`）`PendingRestoreStore` + `StartupState` 蓝图；本仓账本 §五表 15
 - 前置：A 档（恢复前自动安全备份，`filesDir/safety_backup/` 滚动 3 份）已落地（`aaadfaf86`）
 

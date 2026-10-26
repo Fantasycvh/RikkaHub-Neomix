@@ -3729,7 +3729,7 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   B 闸请求前 ≥85% 紧急卸载（工具结果落 `tool_outputs/guard-<id>.txt` 留 2K 预览、请求期投影不动
   DB/UI）+ ≥90% `ContextGateHardStop` 优雅停止（阈值比 Yuihub 90/97 收紧=用户决策）；C 闸聊天路径
   执行中「剩余 <4K」优雅停止，与 B 先到先得；MediaEncodingCache（8MB LRU）治多图会话每轮重编码的
-  首字延迟。单测共 22 项；真机验收项（大文件循环/无 workspace 大输出/多图缓存命中）待批次验收。
+  首字延迟。单测共 22 项；真机验收**✅ 已通过（2026-10-26 用户确认）**——大文件循环/无 workspace 大输出/多图缓存命中三项均验。
 
 - 2026-10-26 **只读挂载快照 ReadOnlyMountSnapshots**（`ecafaff12`，批次 2，design-readonly-mount-snapshots
   落地）：执行前把只读挂载源复制成私有快照再绑定（SHA-256 指纹、内容不变复用同代、symlink
@@ -3741,7 +3741,7 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   SHA-256），读毕 `verifyBackupManifest` 统一校验通过才写 settings/换库——损坏/外来/篡改备份零破坏
   （legacy 无 manifest 照常）；RestoreByteBudget 单条目 2GB/总量 8GB；**A 档**：恢复含 DATABASE 前自动
   打包当前 settings+库到 `safety_backup/`（滚动 3 份，失败不阻断恢复）；恢复预览对话框
-  （inspectBackup 随机访问不全量解压）。单测 11 项；引擎流式记账与 UI 走真机批次验收。
+  （inspectBackup 随机访问不全量解压）。单测 11 项；引擎流式记账与恢复预览 UI 真机验收**✅ 已通过（2026-10-26 用户确认）**。
 
 - 2026-10-26 **批次 4 小件**（`27cb0e01f`）：LogRedaction——四 provider 请求体/SSE/错误日志全元数据化
   （chars/messages/tools，结束事件保留 event 名），println 清零（含 bodyRaw 明文泄漏点）；TodoTools 结果
@@ -3761,7 +3761,7 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   （删运行中关库换库，消灭「Koin 持有已关闭单例」crash 窗口）。真机回归修三件：`1a026886f` 恢复流
   双关闭「Stream Closed」；`ecbd77c7f` gate 阻塞屏与 SafeMode 提前解析 Koin 启动崩溃（GateTheme 零
   Koin 依赖 + `ensureKoinStarted()` 幂等）；`262bcbfa5` db 打开失败文案重复退出提示。全量 2456 项 0 失败；
-  **阶段 3 真机验收待做**（设计稿 §9：正常恢复/kill 后自动应用/模拟 Room 打不开自动回滚/全新安装）。
+  **阶段 3 真机验收✅ 已通过（2026-10-26 用户确认）**——§9 四场景（正常恢复/kill 后自动应用/模拟 Room 打不开自动回滚/全新安装）均验。
 
 - 2026-10-26 **工具步骤执行耗时 + 轮级步数 + 生成中实时 tok/s**（`79b73101d`，上游
   `8bb488e3a`/`e7f2c04f7`/`660b5d65f`）：Tool part 增 startedAt/finishedAt（旧 JSON 兼容免迁移），步骤行
