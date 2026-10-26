@@ -892,14 +892,23 @@ class ConversationRepository(
         return database.withTransaction {
             val nodes = mutableListOf<MessageNode>()
             var offset = 0
-            val pageSize = 64
+            var pageSize = 64
+            // 读失败（单节点 messages 超出 cursor 窗口等）：先收窄到单行把坏行隔离出来，
+            // 单行仍失败才跳过该行。旧实现整页跳过，内存序列缺一整页，而增量保存按
+            // 「内存 ≡ 全量」求公共前缀删除重插 ⇒ 该位置起的库中行（含未读出的好节点）
+            // 全被删掉，不可逆丢数据。收窄后最坏只丢一行（该行本就无法渲染）。
+            fun onUnreadablePage(e: Exception) {
+                e.printStackTrace()
+                if (pageSize > 1) {
+                    pageSize = 1
+                } else {
+                    Log.w(TAG, "loadMessageNodes: skip unreadable node row at offset=$offset (conv=$conversationId)")
+                    offset += 1
+                }
+            }
             while (true) {
                 val page = try {
                     messageNodeDAO.getNodesOfConversationPaged(conversationId, pageSize, offset)
-                } catch (e: SQLiteBlobTooBigException) {
-                    e.printStackTrace()
-                    offset += pageSize
-                    continue
                 } catch (e: CancellationException) {
                     // ⚠️ 必须排在 IllegalStateException **之前**：CancellationException 是它的子类，
                     // 顺序反了就会被下面那个 catch 吞掉，于是协程取消后继续往下读，
@@ -907,8 +916,10 @@ class ConversationRepository(
                     // 吸收上游 923ad3d91（Fixes #2151），此处保持同样语义。
                     throw e
                 } catch (e: IllegalStateException) {
-                    e.printStackTrace()
-                    offset += pageSize
+                    onUnreadablePage(e)
+                    continue
+                } catch (e: SQLiteBlobTooBigException) {
+                    onUnreadablePage(e)
                     continue
                 }
                 if (page.isEmpty()) break
@@ -925,6 +936,10 @@ class ConversationRepository(
                     )
                 }
                 offset += page.size
+                if (pageSize == 1) {
+                    // 单行模式读到成功页，恢复批量（坏行会在下一次批量读取中再次被收窄隔离）
+                    pageSize = 64
+                }
             }
             // 自愈早期压缩 bug 造成的跨节点候选副本（详见 repairCorruptedCandidates）
             nodes.repairLegacyCheckpointCandidates()

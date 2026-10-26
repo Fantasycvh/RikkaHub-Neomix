@@ -741,6 +741,12 @@ class SettingsStore(
     }
 
     suspend fun update(settings: Settings) {
+        updateMutex.withLock {
+            updateLocked(settings)
+        }
+    }
+
+    private suspend fun updateLocked(settings: Settings) {
         if(settings.init) {
             Log.w(TAG, "Cannot update dummy settings")
             return
@@ -748,7 +754,7 @@ class SettingsStore(
         // 安全策略：Web 鉴权**恒开**。备份恢复 / 同步 / 增量更新都可能把存量
         // `webServerJwtEnabled=false` 带进来，这里在广播与落盘前统一纠正——否则
         // settingsFlow 会短暂出现「不鉴权」快照，而 WebApiModule 只在服务启动时读一次。
-        settingsFlow.value = settings.copy(webServerJwtEnabled = true)
+        val corrected = settings.copy(webServerJwtEnabled = true)
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[DYNAMIC_COLOR_SEED] = settings.dynamicColorSeedColor?.toString() ?: ""
@@ -835,7 +841,8 @@ class SettingsStore(
             preferences[MEMORY_INJECT_BUDGET_TOKENS] = settings.memoryInjectBudgetTokens
             preferences[LOREBOOK_INJECT_BUDGET_TOKENS] = settings.lorebookInjectBudgetTokens
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
-            preferences[LAUNCH_COUNT] = settings.launchCount
+            // 防回退：整份快照可能早于 incrementLaunchCount()，取盘内现值与新值的较大者
+            preferences[LAUNCH_COUNT] = maxOf(settings.launchCount, preferences[LAUNCH_COUNT] ?: 0)
             settings.contextLengthOverride?.let {
                 preferences[CONTEXT_LENGTH_OVERRIDE] = it
             } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
@@ -859,11 +866,13 @@ class SettingsStore(
             preferences[ENABLE_SUBAGENT_DISPATCH] = settings.enableSubagentDispatch
             preferences[SUBAGENT_PRESETS] = JsonInstant.encodeToString(settings.subagentPresets)
         }
+        // 落盘成功后再广播内存态：edit 抛异常（序列化失败等）时内存与磁盘不分叉
+        settingsFlow.value = corrected
     }
 
     suspend fun update(fn: (Settings) -> Settings) {
         updateMutex.withLock {
-            update(fn(settingsFlow.value))
+            updateLocked(fn(settingsFlow.value))
         }
     }
 

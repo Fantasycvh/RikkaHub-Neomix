@@ -139,7 +139,7 @@ fun ChatMessage(
     /** #1929 编辑思考过程（原地改推理文本）；null = 不显示编辑入口 */
     onEditReasoning: ((messageId: Uuid, reasoning: UIMessagePart.Reasoning, text: String) -> Unit)? = null,
 ) {
-    val message = node.messages[node.selectIndex]
+    val message = node.messages[node.safeSelectIndex]
     val settings = LocalSettings.current.displaySetting
     val chatFontFamily = LocalChatFontFamily.current ?: rememberChatFontFamily(settings)
     val textStyle = LocalTextStyle.current.copy(

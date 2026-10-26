@@ -104,7 +104,7 @@ data class Conversation(
      */
     val currentMessages
         get(): List<UIMessage> {
-            return messageNodes.map { node -> node.messages[node.selectIndex] }
+            return messageNodes.map { node -> node.messages[node.safeSelectIndex] }
         }
 
     fun getMessageNodeByMessage(message: UIMessage): MessageNode? {
@@ -323,10 +323,19 @@ data class MessageNode(
     @Transient
     val isFavorite: Boolean = false,
 ) {
-    val currentMessage get() = if (messages.isEmpty() || selectIndex !in messages.indices) {
-        throw IllegalStateException("MessageNode has no valid current message: messages.size=${messages.size}, selectIndex=$selectIndex")
+    /**
+     * 越界防御的选中下标。`select_index` 落库无约束，历史脏数据（崩溃写入/旧版本 bug/导入）
+     * 可能让它越界——直接抛异常会让 [Conversation.currentMessages]、token 估算、压缩等
+     * 所有读路径一起失败，且用户无法自救（修复入口本身要先读会话）。夹取到合法区间，
+     * 宁可选中非预期分支也不要整个会话打不开。
+     */
+    val safeSelectIndex: Int
+        get() = if (messages.isEmpty()) 0 else selectIndex.coerceIn(0, messages.lastIndex)
+
+    val currentMessage get() = if (messages.isEmpty()) {
+        throw IllegalStateException("MessageNode has no messages: selectIndex=$selectIndex")
     } else {
-        messages[selectIndex]
+        messages[safeSelectIndex]
     }
 
     val role get() = messages.firstOrNull()?.role ?: MessageRole.USER
