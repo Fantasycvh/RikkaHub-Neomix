@@ -167,7 +167,8 @@ fun ChatList(
     onClickSuggestion: (String) -> Unit = {},
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
-    onJumpToMessage: (Int) -> Unit = {},
+    /** 预览搜索跳转：参数为目标节点（外层借此退出预览模式；滚动由列表内部解析） */
+    onJumpToMessage: (MessageNode) -> Unit = {},
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToolSkip: ((toolCallId: String) -> Unit)? = null,
@@ -186,6 +187,9 @@ fun ChatList(
             .map { context.normalizeLocalFileUrl(it) }
     }
     CompositionLocalProvider(LocalConversationImageUrls provides conversationImageUrls) {
+        // 预览搜索跳转：目标以**节点**表达（不是完整列表下标——压缩折叠态的下标空间不同），
+        // 交给 ChatListNormal 的 quoteJump 机制解析（含「目标在折叠历史里先展开」）
+        var pendingPreviewJump by remember(conversation.id) { mutableStateOf<Uuid?>(null) }
         AnimatedContent(
             targetState = previewMode,
             label = "ChatListMode",
@@ -199,11 +203,16 @@ fun ChatList(
                     conversation = conversation,
                     settings = settings,
                     hazeState = hazeState,
-                    onJumpToMessage = onJumpToMessage,
+                    onJumpToMessage = { node ->
+                        pendingPreviewJump = node.id
+                        onJumpToMessage(node)
+                    },
                     animatedVisibilityScope = this@AnimatedContent,
                 )
             } else {
                 ChatListNormal(
+                    pendingPreviewJump = pendingPreviewJump,
+                    onPreviewJumpConsumed = { pendingPreviewJump = null },
                     innerPadding = innerPadding,
                     conversation = conversation,
                     state = state,
@@ -242,6 +251,9 @@ fun ChatList(
 
 @Composable
 private fun ChatListNormal(
+    /** 预览搜索跳转的待办目标（节点 id）；由外层（ChatList）写入、消费后回调清空 */
+    pendingPreviewJump: Uuid? = null,
+    onPreviewJumpConsumed: () -> Unit = {},
     innerPadding: PaddingValues,
     conversation: Conversation,
     state: LazyListState,
@@ -356,6 +368,12 @@ private fun ChatListNormal(
     //     不自动切换 selectIndex：那会静默改变会话展示分支并影响后续发送，代价远大于收益。
     // 完全找不到（消息已被删除）时放弃，不报错。
     var pendingQuoteJump by remember(conversation.id) { mutableStateOf<Uuid?>(null) }
+    // 预览搜索跳转并入同一条 quoteJump 管线（含检查点行偏移与「折叠历史先展开」）
+    LaunchedEffect(pendingPreviewJump) {
+        val target = pendingPreviewJump ?: return@LaunchedEffect
+        onPreviewJumpConsumed()
+        pendingQuoteJump = target
+    }
     LaunchedEffect(pendingQuoteJump, visibleNodes, activeCheckpoint) {
         val targetId = pendingQuoteJump ?: return@LaunchedEffect
         val index = visibleNodes.quoteJumpTargetIndex(
@@ -588,9 +606,11 @@ private fun ChatListNormal(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            // 错误消息卡片
+            // 错误消息卡片。
+            // 按当前会话过滤：errors 是 ChatService 的全局流，后台会话（切走后仍在生成的）
+            // 报错时不该落在当前浏览的会话底部；conversationId 为 null 的全局错误照常显示
             ErrorCardsDisplay(
-                errors = errors,
+                errors = errors.filter { it.conversationId == null || it.conversationId == conversation.id },
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 modifier = Modifier
@@ -771,17 +791,18 @@ private fun ChatListPreview(
     settings: Settings,
     hazeState: HazeState,
     animatedVisibilityScope: AnimatedVisibilityScope,
-    onJumpToMessage: (Int) -> Unit
+    onJumpToMessage: (MessageNode) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
-    // 过滤消息，同时保留原始 index 避免后续 O(n) indexOf 查找
+    // 过滤消息（跳转按**节点**解析，不再携带完整列表下标——压缩折叠态两套下标空间不可混用）
     val filteredMessages = remember(conversation.messageNodes, searchQuery) {
         if (searchQuery.isBlank()) {
-            conversation.messageNodes.mapIndexed { index, node -> index to node }
+            conversation.messageNodes
         } else {
-            conversation.messageNodes.mapIndexed { index, node -> index to node }
-                .filter { (_, node) -> node.currentMessage.toText().contains(searchQuery, ignoreCase = true) }
+            conversation.messageNodes.filter { node ->
+                node.currentMessage.toText().contains(searchQuery, ignoreCase = true)
+            }
         }
     }
 
@@ -832,8 +853,8 @@ private fun ChatListPreview(
         ) {
             itemsIndexed(
                 items = filteredMessages,
-                key = { index, item -> item.second.id },
-            ) { _, (originalIndex, node) ->
+                key = { _, item -> item.id },
+            ) { _, node ->
                 val message = node.currentMessage
                 val isUser = message.role == app.androidrik.ai.core.MessageRole.USER
                 Column(
@@ -851,7 +872,7 @@ private fun ChatListPreview(
                         Row(
                             modifier = Modifier
                                 .clickable {
-                                    onJumpToMessage(originalIndex)
+                                    onJumpToMessage(node)
                                 }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),

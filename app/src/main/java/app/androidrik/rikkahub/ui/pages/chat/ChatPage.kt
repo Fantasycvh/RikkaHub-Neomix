@@ -81,6 +81,7 @@ import dev.chrisbanes.haze.rememberHazeState
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
@@ -192,10 +193,9 @@ fun ChatPage(
     ) {
         var lastComputedAt = 0L
         var job: Job? = null
-        snapshotFlow { conversation }.collect { convo ->
-            val now = System.currentTimeMillis()
-            if (now - lastComputedAt < 300) return@collect
-            lastComputedAt = now
+        var trailingJob: Job? = null
+        var latestConvo: Conversation? = null
+        fun compute(convo: Conversation) {
             job?.cancel()
             job = launch(Dispatchers.Default) {
                 val usedTokens = convo.estimateWindowTokens(currentChatModel)
@@ -204,6 +204,24 @@ fun ChatPage(
                     windowTokens = currentChatModel?.effectiveContextLength(setting.contextLengthOverride)
                         ?: DEFAULT_CONTEXT_LENGTH,
                 )
+            }
+        }
+        snapshotFlow { conversation }.collect { convo ->
+            latestConvo = convo
+            val now = System.currentTimeMillis()
+            val since = now - lastComputedAt
+            if (since >= 300) {
+                trailingJob?.cancel()
+                lastComputedAt = now
+                compute(convo)
+            } else if (trailingJob?.isActive != true) {
+                // 尾沿补偿：节流窗口内的更新不丢弃（旧实现直接 return，
+                // 流式收尾前最后一批 chunk 落在窗口内时读数永远停在旧值）
+                trailingJob = launch {
+                    delay(300 - since)
+                    lastComputedAt = System.currentTimeMillis()
+                    latestConvo?.let { compute(it) }
+                }
             }
         }
     }
@@ -266,7 +284,9 @@ fun ChatPage(
             if (nodeId != null) {
                 val index = conversation.messageNodes.indexOfFirst { it.id == nodeId }
                 if (index >= 0) {
-                    chatListState.scrollToItem(index)
+                    // 压缩检查点行恒为列表第一项 ⇒ 节点下标整体 +1（无检查点则不加）
+                    val checkpointOffset = if (conversation.displayCompression() != null) 1 else 0
+                    chatListState.scrollToItem(index + checkpointOffset)
                 }
             } else {
                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
@@ -687,11 +707,10 @@ private fun ChatPageContent(
                 onClearTranslation = { message ->
                     vm.clearTranslationField(message.id)
                 },
-                onJumpToMessage = { index ->
+                onJumpToMessage = { _ ->
+                    // 只负责退出预览：滚动由 ChatListNormal 的 quoteJump 管线解析
+                    // （按节点定位，含检查点行偏移与「目标在折叠历史里先展开」）
                     previewMode = false
-                    scope.launch {
-                        chatListState.requestScrollToItem(index)
-                    }
                 },
                 onToolApproval = { toolCallId, approved, reason ->
                     vm.handleToolApproval(toolCallId, approved, reason)

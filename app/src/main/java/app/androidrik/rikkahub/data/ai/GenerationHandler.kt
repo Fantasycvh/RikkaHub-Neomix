@@ -26,6 +26,8 @@ import kotlinx.serialization.json.put
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.Tool
+import app.androidrik.ai.core.TokenUsage
+import app.androidrik.ai.core.accumulateRound
 import app.androidrik.ai.core.merge
 import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.CustomBody
@@ -1337,8 +1339,19 @@ class GenerationHandler(
                 processingStatus = processingStatus,
                 maxRetries = retryBudgetOverride,
             ) { provider ->
+                // 多步工具轮：上一步收尾写下的 finishedAt 若不清掉，实时 tok/s 的闸门
+                // （loading && finishedAt == null）从这一步起恒为 false 不再显示，
+                // 且 UI 会提前显示「终值」tok/s 卡片——新一步开始即清除
+                messages.lastOrNull()?.takeIf { it.finishedAt != null }?.let { last ->
+                    messages = messages.dropLast(1) + last.copy(finishedAt = null)
+                    onUpdateMessages(messages)
+                }
                 // 快照：流中途失败时回滚已输出的部分内容，重试从干净状态重新生成
                 val snapshot = messages
+                // 本步 usage 单独记账（chunk 级 merge 是"新值替换"语义，只反映本步），
+                // 与进入本步前的累计值相加得到全轮口径，见 TokenUsage.plus
+                val roundBaseUsage = messages.last().usage ?: TokenUsage()
+                var stepUsage: TokenUsage? = null
                 // 流结束语义（见 MessageChunk.explicitEnd）：本次流是否见到 provider 的显式结束标记。
                 // 没有 = 裸断流（网关/中转提前切连接）——此前与「正常收尾」无法区分，整轮被当成功。
                 var sawExplicitEnd = false
@@ -1370,9 +1383,10 @@ class GenerationHandler(
                                 providerName = provider.name,
                             )
                             chunk.usage?.let { usage ->
+                                stepUsage = stepUsage.merge(usage)
                                 messages = messages.mapIndexed { index, message ->
                                     if (index == messages.lastIndex) {
-                                        message.copy(usage = message.usage.merge(usage))
+                                        message.copy(usage = roundBaseUsage.accumulateRound(stepUsage ?: TokenUsage()))
                                     } else {
                                         message
                                     }
@@ -1437,7 +1451,13 @@ class GenerationHandler(
                 processingStatus = processingStatus,
                 maxRetries = retryBudgetOverride,
             ) { provider ->
+                // 同流式路径：清上一步的 finishedAt + usage 按全轮口径累计
+                messages.lastOrNull()?.takeIf { it.finishedAt != null }?.let { last ->
+                    messages = messages.dropLast(1) + last.copy(finishedAt = null)
+                    onUpdateMessages(messages)
+                }
                 val snapshot = messages
+                val roundBaseUsage = messages.last().usage ?: TokenUsage()
                 try {
                     val chunk = providerImpl.generateText(
                         providerSetting = provider,
@@ -1453,7 +1473,7 @@ class GenerationHandler(
                         messages = messages.mapIndexed { index, message ->
                             if (index == messages.lastIndex) {
                                 message.copy(
-                                    usage = message.usage.merge(usage)
+                                    usage = roundBaseUsage.accumulateRound(usage)
                                 )
                             } else {
                                 message
