@@ -502,6 +502,7 @@ class GenerationHandler(
             // 护栏停止提示（三个来源共用、先到先得）：同签名循环 / workspace 预算耗尽 /
             // 重复拒绝达阈值。设一次，本批结果回填后停本轮（优雅停止）。
             var stopNotice: GenerationNotice? = null
+            var stepsExecuted = 0
 
             // 上下文预算的固定开销（system 正文 + 工具 schema）：每轮不变量，故只算一次。
             // 有 usage 锚点时它会被忽略（锚点已包含这些），只在第一步无锚点时才起作用。
@@ -683,6 +684,10 @@ class GenerationHandler(
                         )
                     }
                 }
+
+                // 本步已完整发起并收完一次 LLM 请求（置于各 break 之前防 off-by-one；
+                // 审批恢复的迭代走 else 分支、不发请求，不计）
+                stepsExecuted++
 
                 val tools = messages.last().getTools().filter { !it.isExecuted }
                 if (tools.isEmpty()) {
@@ -942,6 +947,8 @@ class GenerationHandler(
                         val outputBudget = toolOutputBudget(messages, targetModel)
                         val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
                         val workspaceBound = toolsInternal.any { it.name == "workspace_read_file" }
+                        // 执行窗口起点：**护栏全过后、真正执行前**（不含审批等待——语义=执行耗时）
+                        val toolStartedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
                         runCatching {
                             val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
                                 ?: error("Tool ${tool.toolName} not found")
@@ -975,7 +982,13 @@ class GenerationHandler(
                                 )
                             )
                             executedSignature[signature] = output
-                            commitToolResult(tool.copy(output = output))
+                            commitToolResult(
+                                tool.copy(
+                                    output = output,
+                                    startedAt = toolStartedAt,
+                                    finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
+                                )
+                            )
                             // workspace 单轮预算：**执行并截断后**计费——计的是「实际进入上下文」
                             // 的字符数（截断掉的部分写进了 tool_outputs 文件、不进上下文）。
                             // 执行前拒绝会让本调用的结果变成合成错误文本，与 LoopGuard 的
@@ -1037,7 +1050,9 @@ class GenerationHandler(
                                                 }
                                             )
                                         )
-                                    )
+                                    ),
+                                    startedAt = toolStartedAt,
+                                    finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
                                 )
                             )
                         }
@@ -1068,6 +1083,14 @@ class GenerationHandler(
                 Log.i(TAG, "generateText: waiting for tool approval")
                 break
             }
+        }
+
+        // 轮级步数（上游 660b5d65f 面）：落在最后一条 assistant 消息上，>1 时统计行显示徽标。
+        // 审批恢复是新一次 runLoop ⇒ 各自计数；取消中途不落。
+        if (stepsExecuted > 1) {
+            val lastMessage = messages.last()
+            messages = messages.dropLast(1) + lastMessage.copy(stepCount = stepsExecuted)
+            emit(GenerationChunk.Messages(messages))
         }
         }
 

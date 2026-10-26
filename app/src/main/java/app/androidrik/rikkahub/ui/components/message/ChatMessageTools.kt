@@ -28,7 +28,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +40,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toJavaLocalDateTime
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Clock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -256,6 +264,11 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     }
                 }
             }
+        } else if (tool.startedAt != null) {
+            // 执行耗时（8bb488e3a）：有执行窗口就显示；执行中实时计时（每 200ms 重算，不进消息流）
+            {
+                ToolStepDuration(tool = tool)
+            }
         } else {
             null
         },
@@ -328,6 +341,51 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
 }
 
 @OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ToolStepDuration(tool: UIMessagePart.Tool) {
+    val startedAt = tool.startedAt ?: return
+    // 执行中：tick 驱动重算「起点→现在」；结束后固定 finishedAt
+    var tick by remember(startedAt) { mutableLongStateOf(0L) }
+    val stillRunning = tool.finishedAt == null
+    if (stillRunning) {
+        LaunchedEffect(startedAt) {
+            while (isActive) {
+                delay(200)
+                tick++
+            }
+        }
+    }
+    val end = if (stillRunning) {
+        tick // 读取以建立 recompose 订阅：每 200ms 用「现在」重算
+        Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+    } else {
+        tool.finishedAt
+    }
+    val millis = end?.let {
+        java.time.Duration
+            .between(startedAt.toJavaLocalDateTime(), it.toJavaLocalDateTime())
+            .toMillis()
+            .coerceAtLeast(0L)
+    } ?: 0L
+    Text(
+        text = formatToolDuration(millis),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f),
+        modifier = Modifier.padding(horizontal = 2.dp),
+    )
+}
+
+private fun formatToolDuration(millis: Long): String {
+    val totalSeconds = millis / 1000.0
+    return if (totalSeconds < 60) {
+        String.format(java.util.Locale.ROOT, "%.1fs", totalSeconds)
+    } else {
+        val minutes = totalSeconds.toLong() / 60
+        val seconds = (totalSeconds.toLong() % 60).toInt()
+        "${minutes}m ${seconds}s"
+    }
+}
+
 @Composable
 private fun ChainOfThoughtScope.AskUserToolStep(
     tool: UIMessagePart.Tool,

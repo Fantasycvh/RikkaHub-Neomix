@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.datetime.LocalDateTime
 import app.androidrik.ai.util.json
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -150,6 +151,9 @@ sealed class UIMessagePart {
         val input: String,
         val output: List<UIMessagePart> = emptyList(),
         val approvalState: ToolApprovalState = ToolApprovalState.Auto,
+        // 执行窗口（不含审批等待；denied/answered 路径不记）。旧消息 JSON 无此字段 ⇒ 可空缺省兼容
+        val startedAt: LocalDateTime? = null,
+        val finishedAt: LocalDateTime? = null,
         override var metadata: JsonObject? = null
     ) : UIMessagePart() {
         /** Whether the tool has been executed (has output) */
@@ -176,6 +180,8 @@ sealed class UIMessagePart {
                 input = input + other.input,
                 output = output + other.output,
                 approvalState = approvalState,
+                startedAt = other.startedAt ?: startedAt,
+                finishedAt = other.finishedAt ?: finishedAt,
                 metadata = if (other.metadata != null) other.metadata else metadata,
             )
         }

@@ -33,6 +33,12 @@ data class UIMessage(
     val modelNameSnapshot: String? = null,
     val providerNameSnapshot: String? = null,
     val usage: TokenUsage? = null,
+    /**
+     * 本轮工具循环实际发起 LLM 请求的步数（落本轮**最后一条** assistant 消息；
+     * >1 时统计行显示步数徽标）。旧消息无此字段（缺省 0 不显示）。
+     * 审批恢复是新的一次 generateText ⇒ 各自计各自的步数。
+     */
+    val stepCount: Int = 0,
     val translation: String? = null,
     /**
      * 本轮输出的 `finish_reason`（provider 原样值，如 `stop` / `length` / `MAX_TOKENS` /
