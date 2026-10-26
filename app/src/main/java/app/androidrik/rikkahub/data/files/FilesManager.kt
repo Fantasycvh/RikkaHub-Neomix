@@ -837,6 +837,14 @@ object FileFolders {
      * 故按 TTL 清理而非启动清空。见 `docs/design/design-export-retention.md`。
      */
     const val EXPORTS = "exports"
+
+    /**
+     * 恢复前自动安全备份（design-backup-manifest-and-safety §3.4）：恢复含数据库的备份前，
+     * 先把当前 settings+数据库快照打包到这里，滚动保留 3 份——恢复失败的后悔药。
+     * 派生数据（由 [app.androidrik.rikkahub.data.sync.BackupArchiveEngine] 生成），
+     * 不进备份（见 `EXCLUDED_FILE_FOLDERS`）。
+     */
+    const val SAFETY_BACKUP = "safety_backup"
 }
 
 suspend fun FilesManager.saveUploadFromUri(

@@ -319,8 +319,8 @@ Yuihub 记忆改动是**架构换代**：写入带 keywords/weight(1-4)/kind、d
 | 9 | Yuihub 3.0.0 | ~~**工具循环上下文闸**~~ ✅ **已落地（2026-10-26，`4d32eea84`+`abb2b0bc8`+`d5ef5a3be`）**：A per-call 动态限幅（65/80 分级+恒截断+能力三分支指引）/ B 85% 紧急卸载+90% 优雅停止（请求期投影，阈值比 Yuihub 收紧）/ C 聊天接入 ContextBudgetGuard；单测 11 项；真机验收待批次验收 | ~~中~~ 代码完成 |
 | 10 | Yuihub 3.0.0 | ~~**MediaEncodingCache**~~ ✅ **已落地（2026-10-26，`7396efbc4`）**（8MB/2MB LRU，三 encodeBase64 挂缓存） | ~~小~~ 完成 |
 | 11 | Yuihub 3.0.0 | ~~**ReadOnlyMountSnapshots**~~ ✅ **已落地（2026-10-26，设计稿 `design-readonly-mount-snapshots.md`）**：/upload 只读快照 bind（全局存储跨工作区复用、恒复用与 Yuihub 有意差异、runner require fail-fast）；单测 17 项；真机验收待批次验收 | ~~中~~ 代码完成 |
-| 12 | Yuihub 3.0.0 | **备份 manifest v2 + 双 SHA-256 + 恢复预览 + RestoreByteBudget** | ~1 天（第 3 批） |
-| 13 | Yuihub 3.0.0 | **备份 A 档：恢复前自动安全备份**（safety_backup/ 留 3 份） | ~0.5 天（第 3 批） |
+| 12 | Yuihub 3.0.0 | ~~**备份 manifest v2 + 双 SHA-256 + 恢复预览 + RestoreByteBudget**~~ ✅ **已落地（2026-10-26，设计稿 `design-backup-manifest-and-safety.md`）**：manifest 末条目、settings 缓冲校验后才写、单条 2GB/总 8GB 预算、预览卡（inspectBackup + BackupRestorePreviewDialog，3 语言）；纯函数校验 11 项单测；真机验收待批次验收 | ~~1 天~~ 代码完成 |
+| 13 | Yuihub 3.0.0 | ~~**备份 A 档：恢复前自动安全备份**~~ ✅ **已落地（2026-10-26，同上）**：safety_backup/ 滚动 3 份、失败不阻断恢复、FileFolders 登记 + CoverageTest 钉豁免 | ~~0.5 天~~ 完成 |
 | 14 | Yuihub 3.0.0 | 小件打包：**provider 日志脱敏**（正文 chars=N、结束事件保留 event 名）、**ToolSchemaCompactor**、**TodoTools `next`+无 in_progress 警告** | 小（第 4 批） |
 | 15 | Yuihub 3.0.0 | （可选-高价值）**B 档 staged 换库 + 启动应用 + 失败回滚**（StartupState 推迟 startKoin，170 行测试蓝图） | 2-3 天 |
 | 16 | Yuihub 3.0.0 | 可选小件（记账不排期）：history_search/read、memory keywords、写入 Jaccard 去重、Skills 内联上限、增量 emit、整理事件流水、query≤128 校验、backup_rules 钉白名单 | 按需 |

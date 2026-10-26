@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.sync.webdav
 
 import app.androidrik.rikkahub.data.sync.BackupArchiveEngine
+import app.androidrik.rikkahub.data.sync.BackupInspection
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupPhase
 import app.androidrik.rikkahub.data.sync.BackupProgress
@@ -151,6 +152,13 @@ class WebDavSync(
             Log.e(TAG, "restoreFromLocalFile: Failed to restore from local file", e)
             throw Exception("Restore failed: ${e.message}")
         }
+    }
+
+    /** 恢复前巡检（design-backup-manifest-and-safety §3.5）：读 manifest + 中央目录，不全量解压。 */
+    suspend fun inspectBackupFile(file: File): BackupInspection = withContext(Dispatchers.IO) {
+        if (!file.exists()) throw Exception("Backup file does not exist")
+        if (!file.canRead()) throw Exception("Cannot read backup file")
+        archiveEngine.inspectBackup(file)
     }
 
     suspend fun prepareBackupFile(config: WebDavConfig, onProgress: (BackupProgress) -> Unit = {}): File =

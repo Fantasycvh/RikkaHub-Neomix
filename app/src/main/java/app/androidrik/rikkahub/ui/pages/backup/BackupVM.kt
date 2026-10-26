@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.backup
 
+import app.androidrik.rikkahub.data.sync.BackupInspection
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupProgress
 import app.androidrik.rikkahub.data.sync.RestoreOutcome
@@ -146,6 +147,13 @@ class BackupVM(
             clearProgress()
         }
     }
+
+    /**
+     * 恢复前巡检（design-backup-manifest-and-safety §3.5）：读 manifest 与中央目录
+     * （**不全量解压**，秒级），供预览卡展示「这个备份里有什么」。
+     * **在 IO 线程执行**（调用方是 Compose 的 rememberCoroutineScope，同 parseConversationImport 的约束）。
+     */
+    suspend fun inspectLocalBackup(file: File): BackupInspection = webDavSync.inspectBackupFile(file)
 
     /** 查某来源是否导入过（重复导入提示用）。未导入过返回 null。 */
     suspend fun findImportedSource(sourceId: String): ImportSourceRecord? =

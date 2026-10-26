@@ -103,4 +103,5 @@ internal val EXCLUDED_FILE_FOLDERS: Map<String, String> = mapOf(
     FileFolders.TOOL_OUTPUTS to "会话级临时产物，启动即清",
     FileFolders.LOGS to "诊断日志，可再生",
     FileFolders.EXPORTS to "导出留存区，源对话在 DATABASE 内",
+    FileFolders.SAFETY_BACKUP to "恢复前安全备份，滚动保留 3 份（design-backup-manifest-and-safety §3.4）",
 )

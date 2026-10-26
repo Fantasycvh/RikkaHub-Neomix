@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.ui.pages.backup.components.DuplicateImportRecord
 import app.androidrik.rikkahub.ui.pages.backup.components.ImportTargetAssistantDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupProgressRow
+import app.androidrik.rikkahub.ui.pages.backup.components.BackupRestorePreviewDialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
 import me.rerere.hugeicons.HugeIcons
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.sync.BackupInspection
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.CardGroupScope
 import app.androidrik.rikkahub.ui.components.ui.StickyHeader
@@ -78,6 +80,8 @@ fun ImportExportTab(
     var duplicateImportRecord by remember { mutableStateOf<DuplicateImportRecord?>(null) }
     // Chatbox 导入：已复制到本地的临时文件，等待用户选目标助手
     var pendingChatboxFile by remember { mutableStateOf<File?>(null) }
+    // 批次3 恢复预览：已巡检的本地备份（临时文件 + 巡检结果），等待用户在预览卡确认
+    var pendingLocalRestore by remember { mutableStateOf<Pair<File, BackupInspection>?>(null) }
 
     fun toastSuccess() = toaster.show(
         resources.getString(R.string.backup_page_restore_success),
@@ -151,13 +155,16 @@ fun ImportExportTab(
         val tempFile = context.copyUriToTempFile(uri, ext)
         when (format) {
             ImportFormat.LOCAL_BACKUP -> {
-                val outcome = try {
-                    vm.restoreFromLocalFile(tempFile)
-                } finally {
+                // 批次3 预览（design-backup-manifest-and-safety §3.5）：先巡检（ZipFile 随机
+                // 访问，不全量解压）→ 预览卡 → 用户确认后才真正恢复。文件生命周期移交给
+                // 预览弹窗（确认后恢复、取消即删）。
+                val inspection = try {
+                    vm.inspectLocalBackup(tempFile)
+                } catch (e: Throwable) {
                     tempFile.delete()
+                    throw e
                 }
-                finishImport(format)
-                showSettingsDroppedWarning(outcome.settingsWarnings)
+                pendingLocalRestore = tempFile to inspection
             }
 
             ImportFormat.CHERRY_STUDIO -> {
@@ -416,6 +423,34 @@ fun ImportExportTab(
                 launchPicker(ImportFormat.LOCAL_BACKUP)
             },
             onDismissRequest = { pendingLocalImport = false },
+        )
+    }
+
+    // 批次3 恢复预览：覆盖确认与选文件之后，展示这份备份实际包含什么，再确认一次才恢复
+    pendingLocalRestore?.let { (file, inspection) ->
+        BackupRestorePreviewDialog(
+            inspection = inspection,
+            onConfirm = {
+                pendingLocalRestore = null
+                scope.launch {
+                    isRestoring = true
+                    try {
+                        val outcome = vm.restoreFromLocalFile(file)
+                        finishImport(ImportFormat.LOCAL_BACKUP)
+                        showSettingsDroppedWarning(outcome.settingsWarnings)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        toastFailure(e)
+                    } finally {
+                        file.delete()
+                        isRestoring = false
+                    }
+                }
+            },
+            onDismiss = {
+                pendingLocalRestore = null
+                file.delete()
+            },
         )
     }
 }

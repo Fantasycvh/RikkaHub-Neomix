@@ -303,6 +303,15 @@
   <string name="backup_page_restart_desc">應用需要重啟以使設置生效。</string>
   <string name="backup_page_restore">恢復</string>
   <string name="backup_page_restore_failed">恢復失敗: %s</string>
+  <string name="backup_restore_preview_title">恢復預覽</string>
+  <string name="backup_restore_preview_created_at">備份建立時間：%1$s</string>
+  <string name="backup_restore_preview_legacy">這是沒有 manifest 的舊格式備份；下方摘要由歸檔內容推斷。</string>
+  <string name="backup_restore_preview_hint">恢復將覆蓋上文勾選的目前資料，且無法復原。</string>
+  <string name="backup_restore_preview_section_settings">設定</string>
+  <string name="backup_restore_preview_section_database">對話記錄（資料庫）</string>
+  <string name="backup_restore_preview_section_files">應用程式檔案</string>
+  <string name="backup_restore_preview_section_workspace">工作區檔案</string>
+  <string name="backup_restore_preview_section_stats">%1$s 個條目，%2$s</string>
   <string name="backup_page_restore_confirm_title">確認恢復</string>
   <string name="backup_page_restore_confirm_message">恢復將**覆蓋**以下現有資料：</string>
   <string name="backup_page_restore_confirm_warning">對話記錄為**整庫取代**且不可撤销，不確定時請先匯出目前資料。</string>

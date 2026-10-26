@@ -2260,17 +2260,17 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="assistant_page_memory_task_without_due">No due date</string>
   <string name="assistant_page_memory_consolidation_kind_change">Allow type changes while tidying</string>
   <string name="assistant_page_memory_consolidation_kind_change_desc">When on, tidying may change an existing memory between profile, topic and task - but only when the new turns clearly show its stored type is wrong. It may never change type to get under the 200-record limit or to move a task in or out of protection. Changing a task to another type clears its status and due date. If approval is on, these remain suggestions. Shared memory: only when every assistant that tidies the library enables this.</string>
-    <!-- 图片裁剪对话框（Compose 实现，替代 uCrop；上游 2a0a831e6） -->
-    <string name="image_crop_rotate">Rotate</string>
-    <string name="image_crop_reset">Reset</string>
-    <string name="image_crop_free">Free</string>
-    <string name="image_crop_original">Original</string>
-    <string name="image_crop_load_failed">Couldn\'t load the image</string>
-    <string name="image_crop_failed">Couldn\'t crop the image</string>
-    <!-- 媒体生成：获取模型列表（fork 自建能力） -->
-    <string name="setting_media_page_fetch_models_desc">Fetch the image/video models this provider offers and pick the ones to add</string>
-    <string name="setting_media_page_fetch_models_empty">The provider returned no models</string>
-    <string name="setting_media_page_fetch_models_add">Add %1$d</string>
+  <!-- 图片裁剪对话框（Compose 实现，替代 uCrop；上游 2a0a831e6） -->
+  <string name="image_crop_rotate">Rotate</string>
+  <string name="image_crop_reset">Reset</string>
+  <string name="image_crop_free">Free</string>
+  <string name="image_crop_original">Original</string>
+  <string name="image_crop_load_failed">Couldn\'t load the image</string>
+  <string name="image_crop_failed">Couldn\'t crop the image</string>
+  <!-- 媒体生成：获取模型列表（fork 自建能力） -->
+  <string name="setting_media_page_fetch_models_desc">Fetch the image/video models this provider offers and pick the ones to add</string>
+  <string name="setting_media_page_fetch_models_empty">The provider returned no models</string>
+  <string name="setting_media_page_fetch_models_add">Add %1$d</string>
   <string name="setting_page_preferences_notification_background_generation">Background generation</string>
   <string name="setting_page_preferences_notification_floating_window">Background floating window</string>
   <string name="setting_page_preferences_notification_floating_window_desc">When you leave the app while the AI is still replying, show a floating icon. Tap it to check progress, confirm tool calls and reply quickly</string>
@@ -2293,7 +2293,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="floating_chat_reset_size">Reset size</string>
   <string name="floating_chat_maximize">Maximize</string>
   <string name="floating_chat_restore">Restore</string>
-
   <!-- Workspace types and SSH remote workspaces -->
   <string name="workspace_page_type_local">Local workspace</string>
   <string name="workspace_page_type_local_desc">Runs in a Linux sandbox on this device and needs a Rootfs</string>
@@ -2355,4 +2354,14 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="workspace_ssh_editor_missing_fields">Enter the host, port and username</string>
   <string name="workspace_ssh_editor_missing_remote_dir">Enter the remote working directory</string>
   <string name="workspace_ssh_editor_save_failed">Failed to save</string>
+  <string name="backup_restore_preview_title">Restore Preview</string>
+  <string name="backup_restore_preview_created_at">Backup created: %1$s</string>
+  <string name="backup_restore_preview_legacy">This is a legacy backup without a manifest; the summary below is inferred from the archive.</string>
+  <string name="backup_restore_preview_hint">Restoring will overwrite the current data selected above and cannot be undone.</string>
+  <string name="backup_restore_preview_section_settings">Settings</string>
+  <string name="backup_restore_preview_section_database">Conversations (database)</string>
+  <string name="backup_restore_preview_section_files">App files</string>
+  <string name="backup_restore_preview_section_workspace">Workspace files</string>
+  <string name="backup_restore_preview_section_stats">%1$s entr(ies), %2$s</string>
 </resources>
+
