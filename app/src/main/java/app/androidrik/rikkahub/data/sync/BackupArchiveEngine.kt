@@ -396,10 +396,20 @@ internal class BackupArchiveEngine(
                     }
                 }
 
-                // 关库 → 清陈旧 -wal/-shm → 放入暂存的备份数据库
+                // B 档：**不换库**——staged 家族移交 PendingRestoreStore，重启后由
+                // RikkaHubApp 在 startKoin 之前应用并失败回滚（design-backup-staged-restore §5）。
+                // 现库全程保持打开：本进程不再有「Koin 持有已关闭单例」的窗口。
                 if (BackupItem.DATABASE in items) {
                     prepareStagedDatabase(stagedDatabaseFiles)
-                    applyStagedDatabaseFiles(stagedDatabaseFiles)
+                    val stagedMain = stagedDatabaseFiles["rikka_hub.db"]
+                        ?: throw Exception("Backup database entry is missing")
+                    PendingRestoreStore.stage(
+                        filesDir = context.filesDir,
+                        stagedMain = stagedMain,
+                        stagedWal = stagedDatabaseFiles["rikka_hub-wal"],
+                        stagedShm = stagedDatabaseFiles["rikka_hub-shm"],
+                    )
+                    Log.i(TAG, "restoreFromBackupFile: database staged for next startup (${stagedMain.length()} bytes)")
                 }
 
                 Log.i(TAG, "restoreFromBackupFile: completed")
@@ -521,11 +531,11 @@ internal class BackupArchiveEngine(
     }
 
     /**
-     * 换库前的**数据库家族分流**。
+     * stage 前的**数据库家族分流**。
      *
-     * 本应用历史库（含 2.5.6 的 v25）：直接换库，Room 沿自己的迁移链升到当前版本。
+     * 本应用历史库（含 2.5.6 的 v25）：直接 stage，Room 启动期打开时沿迁移链升到当前版本。
      * 原版 3.x 的库（文件式记忆 + 媒体/翻译表）与本应用 v30 后 schema 分叉，
-     * Room 迁移链既缺原版表、又多了本应用独有表 ⇒ 先做数据级转换，再走同一套换库。
+     * Room 迁移链既缺原版表、又多了本应用独有表 ⇒ 先做数据级转换，再走同一套 stage。
      * 未知家族直接报错，不猜、不覆盖。
      */
     private fun prepareStagedDatabase(staged: MutableMap<String, File>) {
@@ -548,91 +558,6 @@ internal class BackupArchiveEngine(
             }
             LegacyDatabaseFamily.UNKNOWN ->
                 throw Exception("Unsupported backup database: neither this app's history nor a known RikkaHub backup")
-        }
-    }
-
-    /**
-     * 用暂存的备份数据库文件替换现库。
-     *
-     * **为什么必须关库**：恢复期间 Room 连接一直开着，持有旧库的页缓存与 `-wal`/`-shm`
-     * 文件映射。若原地覆盖主库、而备份又未带 `-wal`（上游导出包即只含主库），重启时
-     * 那条陈旧 WAL 会被回放，把刚恢复的数据整体盖掉——表现为「提示恢复成功、聊天记录没变」。
-     * 故先 `close()`（WAL 模式下会 checkpoint 并释放文件），清掉残留伴随文件，再放入备份。
-     *
-     * **失败顺序**：先把备份复制到目标目录内的临时文件（同文件系统，重命名快且原子），
-     * 再关库；这样「复制失败」发生在关库之前，不会留下一个已关闭、无法使用却又没换成功的库。
-     *
-     * 调用方随后**必须重启应用**（现流程已有「重启」弹窗）——连接已关闭，不能继续使用。
-     */
-    private fun applyStagedDatabaseFiles(staged: Map<String, File>) {
-        val stagedMain = staged["rikka_hub.db"] ?: run {
-            Log.w(TAG, "applyStagedDatabaseFiles: no staged main db, skip database replace")
-            return
-        }
-        val dbPath = context.getDatabasePath("rikka_hub")
-        val dbDir = dbPath.parentFile ?: return
-        dbDir.mkdirs()
-
-        // 1) 先把全部暂存文件复制到目标目录（重命名前的重活全在关库之前完成）
-        val prepared = staged.mapValues { (name, src) ->
-            val tmp = File(dbDir, "$name.restore-tmp")
-            try {
-                src.copyTo(tmp, overwrite = true)
-            } catch (e: Exception) {
-                Log.e(TAG, "applyStagedDatabaseFiles: staging $name failed", e)
-                throw Exception("Failed to prepare database file $name: ${e.message}")
-            }
-            tmp
-        }
-        val preparedMain = prepared.getValue("rikka_hub.db")
-
-        // 0) 换库前校验暂存主库完整性（Yuihub `34f1a976` 隐患 2 同源）：打开即自动回放 WAL，
-        //    不过则中止——此时现库尚未关闭，中止即安全回退（旧格式/外来改包备份的兜底）
-        runCatching {
-            val db = android.database.sqlite.SQLiteDatabase.openDatabase(
-                stagedMain.absolutePath,
-                null,
-                android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
-            )
-            val result = db.rawQuery("PRAGMA integrity_check", null).use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else "unknown"
-            }
-            db.close()
-            if (!result.equals("ok", ignoreCase = true)) {
-                throw IllegalStateException("integrity_check: $result")
-            }
-            Log.i(TAG, "applyStagedDatabaseFiles: staged db integrity check ok")
-        }.onFailure {
-            throw Exception("Backup database failed integrity check: ${it.message}")
-        }
-
-        try {
-            // 2) 释放连接；失败则中止（继续覆盖可能得到「新旧混杂」的损坏库）
-            try {
-                appDatabase.close()
-                Log.i(TAG, "applyStagedDatabaseFiles: database closed")
-            } catch (e: Exception) {
-                Log.e(TAG, "applyStagedDatabaseFiles: closing database failed", e)
-                throw Exception("Failed to close database before restore: ${e.message}")
-            }
-
-            // 3) 清理陈旧伴随文件（备份未提供时它们会盖掉恢复结果）
-            val deleted = DatabaseRestoreFiles.deleteSidecarFiles(dbDir, "rikka_hub")
-            if (deleted.isNotEmpty()) {
-                Log.i(TAG, "applyStagedDatabaseFiles: removed stale ${deleted.joinToString()}")
-            }
-
-            // 4) 换到位：同目录内重命名（回退复制）——主库必需，wal/shm 备份里带则一并还原
-            DatabaseRestoreFiles.moveIntoPlace(preparedMain, dbPath)
-            DatabaseRestoreFiles.sidecarSuffixes().forEach { suffix ->
-                prepared["rikka_hub$suffix"]?.let {
-                    DatabaseRestoreFiles.moveIntoPlace(it, File(dbDir, "rikka_hub$suffix"))
-                }
-            }
-            Log.i(TAG, "applyStagedDatabaseFiles: database replaced (${dbPath.length()} bytes)")
-        } finally {
-            // 未换走的临时文件（异常路径）不留在数据库目录里
-            prepared.values.forEach { it.takeIf(File::exists)?.delete() }
         }
     }
 

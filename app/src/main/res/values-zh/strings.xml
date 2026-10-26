@@ -317,6 +317,11 @@
   <string name="backup_restore_preview_section_files">应用文件</string>
   <string name="backup_restore_preview_section_workspace">工作区文件</string>
   <string name="backup_restore_preview_section_stats">%1$s 个条目，%2$s</string>
+  <string name="startup_restore_running">正在安装已校验的备份…</string>
+  <string name="startup_restore_failed">恢复失败：%1$s</string>
+  <string name="startup_restore_failed_exit">恢复失败：%1$s。请退出并重新启动应用，将自动恢复到之前的数据库。</string>
+  <string name="startup_restore_db_open_failed">恢复后的数据库无法打开。请退出并重新启动应用，将自动恢复到之前的数据库。</string>
+  <string name="startup_restore_retry">重试</string>
   <string name="backup_page_restore_confirm_title">确认恢复</string>
   <string name="backup_page_restore_confirm_message">恢复将**覆盖**以下现有数据：</string>
   <string name="backup_page_restore_confirm_warning">对话记录为**整库替换**且不可撤销，不确定时请先导出当前数据。</string>

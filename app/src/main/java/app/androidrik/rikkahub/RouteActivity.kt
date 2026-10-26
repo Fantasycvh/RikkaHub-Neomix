@@ -29,15 +29,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -216,27 +220,87 @@ open class RouteActivity : ComponentActivity() {
         }
         setContent {
             RikkahubTheme {
-                setSingletonImageLoaderFactory { context ->
-                    ImageLoader.Builder(context)
-                        .crossfade(true)
-                        .components {
-                            add(
-                                OkHttpNetworkFetcherFactory(
-                                    callFactory = { okHttpClient },
-                                    cacheStrategy = { CacheControlCacheStrategy() },
-                                )
-                            )
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                add(AnimatedImageDecoder.Factory())
-                            } else {
-                                add(GifDecoder.Factory())
-                            }
-                            add(SvgDecoder.Factory(scaleToDensity = true))
-                        }
-                        .build()
+                // B 档备份：非 Ready 全屏阻塞——换库发生在 startKoin 之前，Ready 即
+                // 「换库 + Koin + Room 打开确认都成功」；内容页在此前不渲染（防 DAO
+                // 访问落在换库中途/已失败的库上）。
+                val startupApp = LocalContext.current.applicationContext as RikkaHubApp
+                val startupState by startupApp.startupState.collectAsState()
+                when (val state = startupState) {
+                    StartupState.Ready -> AppStartupGateContent()
+                    StartupState.Restoring -> StartupBlockingScreen()
+                    is StartupState.Failed -> StartupFailedScreen(state) { startupApp.retryPendingRestore() }
                 }
-                AppRoutes()
-                app.androidrik.rikkahub.ui.pages.agentrun.SubagentApprovalDialog()
+            }
+        }
+    }
+
+    @Composable
+    private fun AppStartupGateContent() {        setSingletonImageLoaderFactory { context ->
+            ImageLoader.Builder(context)
+                .crossfade(true)
+                .components {
+                    add(
+                        OkHttpNetworkFetcherFactory(
+                            callFactory = { okHttpClient },
+                            cacheStrategy = { CacheControlCacheStrategy() },
+                        )
+                    )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        add(AnimatedImageDecoder.Factory())
+                    } else {
+                        add(GifDecoder.Factory())
+                    }
+                    add(SvgDecoder.Factory(scaleToDensity = true))
+                }
+                .build()
+        }
+        AppRoutes()
+        app.androidrik.rikkahub.ui.pages.agentrun.SubagentApprovalDialog()
+    }
+
+    /** Restoring 阻塞屏：换库 + Koin 完成前的全屏转圈。 */
+    @Composable
+    private fun StartupBlockingScreen() {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Text(
+                    text = stringResource(R.string.startup_restore_running),
+                    modifier = Modifier.padding(top = 16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+
+    /** Failed 阻塞屏：applyIfPending 可重试；Koin/Room 失败只能重启进程。 */
+    @Composable
+    private fun StartupFailedScreen(state: StartupState.Failed, onRetry: () -> Unit) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(horizontal = 32.dp),
+            ) {
+                Text(
+                    text = if (state.canRetry) {
+                        stringResource(R.string.startup_restore_failed, state.message)
+                    } else {
+                        stringResource(R.string.startup_restore_failed_exit, state.message)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (state.canRetry) {
+                    Button(onClick = onRetry) {
+                        Text(stringResource(R.string.startup_restore_retry))
+                    }
+                }
             }
         }
     }

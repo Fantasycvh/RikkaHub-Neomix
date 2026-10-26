@@ -28,7 +28,15 @@ import kotlinx.coroutines.flow.first
 import app.androidrik.rikkahub.data.files.EXPORT_TEMP_PREFIX
 import app.androidrik.rikkahub.data.files.exportRetentionCutoff
 import app.androidrik.rikkahub.data.files.isExportExpired
+import app.androidrik.rikkahub.data.db.AppDatabase
+import app.androidrik.rikkahub.data.sync.PendingRestoreStore
 import com.whl.quickjs.android.QuickJSLoader
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
+import android.database.sqlite.SQLiteDatabase
 import app.androidrik.rikkahub.di.appModule
 import app.androidrik.rikkahub.di.dataSourceModule
 import app.androidrik.rikkahub.di.repositoryModule
@@ -76,21 +84,142 @@ const val MEDIA_CREATION_NOTIFICATION_CHANNEL_ID = "media_creation"
  */
 const val SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID = "subagent_approval"
 
+/**
+ * B 档备份恢复的启动期状态（design-backup-staged-restore §4）。
+ *
+ * 初值恒为 [Restoring]：RouteActivity 在非 Ready 时全屏阻塞，内容页（及其 ViewModel
+ * 的 Koin 解析/DAO 访问）不得提前开始——换库发生在 startKoin 之前，Ready 即
+ * 「换库 + Koin 都已成功」。[Failed] 的 canRetry 只在 Koin 尚未启动时为 true。
+ */
+sealed interface StartupState {
+    data object Restoring : StartupState
+    data object Ready : StartupState
+    data class Failed(val message: String, val canRetry: Boolean) : StartupState
+}
+
 class RikkaHubApp : Application() {
+    private val startupScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineName("Startup")
+    )
+    private val _startupState = MutableStateFlow<StartupState>(StartupState.Restoring)
+    val startupState: StateFlow<StartupState> = _startupState.asStateFlow()
+
+    // boot 重入闸：Ready/不可重试时拒绝，防止重试按钮连点造成 startKoin 二次启动
+    private val startupRunning = AtomicBoolean(false)
+
     override fun onCreate() {
         super.onCreate()
         // 隔离进程（TexCompileService，TikZ native 编译）跳过
         // 全部应用初始化：isolatedProcess 无大部分系统服务（WorkManager 依赖的
         // JobScheduler 为 null 直接崩溃），Koin/DB/WorkManager 与编译无关
         if (isIsolatedProcess()) return
-        startKoin {
-            androidLogger()
-            androidContext(this@RikkaHubApp)
-            workManagerFactory()
-            modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
-        }
-        this.createNotificationChannel()
 
+        // 这些步骤不依赖 Koin，且 Failed 态下也应当就绪（崩溃处理器/通知渠道）
+        createNotificationChannel()
+        // set cursor window size to 32MB
+        DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
+        // install crash handler
+        CrashHandler.install(this)
+        // Init QuickJS native library
+        QuickJSLoader.init()
+
+        boot()
+    }
+
+    /**
+     * 启动编排：换库（如有）→ startKoin → Room 打开确认 → Ready → 其余初始化。
+     *
+     * **startKoin 被推迟到换库成功之后**——换库失败时 Koin/Room/后台写者都不存在，
+     * fail-closed 的重试才是无损的（设计稿 §1 的动机）。
+     */
+    fun boot() {
+        if (!startupRunning.compareAndSet(false, true)) return
+        startupScope.launch {
+            try {
+                doBoot()
+            } finally {
+                startupRunning.set(false)
+            }
+        }
+    }
+
+    private suspend fun doBoot() {
+        val dbFile = getDatabasePath("rikka_hub")
+        val applied = runCatching {
+            PendingRestoreStore.applyIfPending(filesDir, dbFile, ::validateStagedDatabase)
+        }.getOrElse { e ->
+            Log.e(TAG, "PendingRestoreStore.applyIfPending failed", e)
+            _startupState.value = StartupState.Failed(e.message ?: "Restore failed", canRetry = true)
+            return
+        }
+        if (!applied) {
+            // 上次启动换库成功但没活着确认（Room 打开失败/进程早死）：自动回滚
+            runCatching { PendingRestoreStore.rollbackIfUnconfirmed(filesDir, dbFile) }
+                .onFailure { Log.e(TAG, "rollbackIfUnconfirmed failed", it) }
+        }
+        runCatching {
+            startKoin {
+                androidLogger()
+                androidContext(this@RikkaHubApp)
+                workManagerFactory()
+                modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
+            }
+        }.getOrElse { e ->
+            Log.e(TAG, "startKoin failed", e)
+            _startupState.value = StartupState.Failed(e.message ?: "Init failed", canRetry = false)
+            return
+        }
+        if (PendingRestoreStore.hasApplied(filesDir)) {
+            // 用 Koin 里的 AppDatabase 强制打开（含迁移链）：SELECT 1 通过才确认换库
+            val dbOpened = runCatching {
+                get<AppDatabase>().openHelper.writableDatabase
+                    .query("SELECT 1").use { it.moveToFirst() }
+            }.getOrElse { e ->
+                Log.e(TAG, "restore confirmation: database failed to open", e)
+                false
+            }
+            if (!dbOpened) {
+                // 不清 applied/rollback：进程重启后 rollbackIfUnconfirmed 自动回滚到旧库
+                _startupState.value = StartupState.Failed(
+                    getString(R.string.startup_restore_db_open_failed),
+                    canRetry = false,
+                )
+                return
+            }
+            PendingRestoreStore.confirmApplied(filesDir)
+        }
+        _startupState.value = StartupState.Ready
+        // 原 onCreate 里 startKoin 之后的所有步骤原样后移（依赖 Koin 或 Ready 语义）
+        withContext(Dispatchers.Main) { postReadyInit() }
+    }
+
+    /** RouteActivity 的重试按钮：仅 applyIfPending 可重试（Koin 未启动，重试无损）。 */
+    fun retryPendingRestore() {
+        val current = _startupState.value
+        if (current is StartupState.Ready) return
+        if (current is StartupState.Failed && !current.canRetry) return
+        _startupState.value = StartupState.Restoring
+        boot()
+    }
+
+    /** staged 主库入库校验：版本可迁移 + 完整性（Android SQLiteDatabase，生产专用）。 */
+    private fun validateStagedDatabase(dbFile: File) {
+        SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            val version = db.rawQuery("PRAGMA user_version", null).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+            check(version in 1..AppDatabase.SCHEMA_VERSION) {
+                "Pending database is from an incompatible app version ($version)"
+            }
+            db.rawQuery("PRAGMA integrity_check", null).use { c ->
+                check(c.moveToFirst() && c.getString(0) == "ok") { "Pending database failed integrity check" }
+            }
+        }
+    }
+
+    /**
+     * 原 onCreate 中 startKoin 之后的步骤，顺序原样保留。
+     * **主线程调用**（MemoryConsolidationRuntime 注册 ProcessLifecycleOwner 观察者的约束）。
+     */
+    private fun postReadyInit() {
         // 做梦（V3）：接上触发面（轮末 / 切后台 / 启动补漏）。**主线程调用**——
         // ProcessLifecycleOwner 要求在主线程注册观察者（与 ChatNotificationManager 同款）。
         // 整理本身仍然只在设置里那个助手级开关开着时才跑（门控在 scheduler 的 worker 契约里）。
@@ -114,15 +243,6 @@ class RikkaHubApp : Application() {
                 Log.i(TAG, "token count cache entries=${TokenCountDiskCache.size}")
             }
         }
-
-        // set cursor window size to 32MB
-        DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
-
-        // install crash handler
-        CrashHandler.install(this)
-
-        // Init QuickJS native library
-        QuickJSLoader.init()
 
         // 插件内核:先启动状态加载,再注册内置插件(register 内部等待加载完成,
         // 避免"注册早于读取"导致持久化的启用状态被默认值覆盖)

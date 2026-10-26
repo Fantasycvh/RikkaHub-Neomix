@@ -2364,6 +2364,11 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="backup_restore_preview_section_files">App files</string>
   <string name="backup_restore_preview_section_workspace">Workspace files</string>
   <string name="backup_restore_preview_section_stats">%1$s entr(ies), %2$s</string>
+  <string name="startup_restore_running">Installing verified backup…</string>
+  <string name="startup_restore_failed">Restore failed: %1$s</string>
+  <string name="startup_restore_failed_exit">Restore failed: %1$s. Please exit and restart the app — the previous database will be restored automatically.</string>
+  <string name="startup_restore_db_open_failed">Restored database failed to open. Please exit and restart the app — the previous database will be restored automatically.</string>
+  <string name="startup_restore_retry">Retry</string>
   <string name="setting_page_tool_schema_compact_title">Tool Schema Compaction</string>
   <string name="setting_page_tool_schema_compact_desc">Trim tool description text before sending to the provider (parameters and enums are never touched). Reduces tokens when many tools are installed.</string>
   <string name="setting_page_tool_schema_compact_off">Off</string>

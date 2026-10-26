@@ -186,6 +186,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun usageRecordDao(): UsageRecordDAO
 
     abstract fun translationHistoryDao(): TranslationHistoryDAO
+
+    companion object {
+        /** 必须与上方 `@Database(version = …)` 保持一致（启动期 staged 库校验用）。 */
+        const val SCHEMA_VERSION = 48
+    }
 }
 
 object TokenUsageConverter {
