@@ -2305,14 +2305,19 @@ class ChatService(
             ""
         }
 
-        suspend fun compressChunk(chunk: List<UIMessage>): String {
+        // prior 只注入**第一个**分块：每个分块提示词都要求「与 prior 合并为单一检查点」，
+        // 全部注入会让 prior 在 join 后的合并结果里出现 N 次，且随层层压缩滚雪球膨胀、
+        // 稀释覆盖率闸的分母。单步路径（singleSummarize）恒注入。
+        suspend fun compressChunk(chunk: List<UIMessage>, includePrior: Boolean): String {
             val contentToCompress = chunk.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
             val additional = buildString {
                 if (additionalPrompt.isNotBlank()) {
                     appendLine("Additional instructions from user: $additionalPrompt")
                     appendLine()
                 }
-                append(priorContext)
+                if (includePrior) {
+                    append(priorContext)
+                }
             }.trim()
             val prompt = settings.compressPrompt.applyPlaceholders(
                 "content" to contentToCompress,
@@ -2325,7 +2330,7 @@ class ChatService(
                 messages = listOf(UIMessage.user(prompt)),
                 params = backgroundTextGenerationParams(model),
             )
-            return result.choices[0].message?.toText()?.trim()
+            return result.choices.firstOrNull()?.message?.toText()?.trim()
                 ?.takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Failed to generate compressed summary")
         }
@@ -2341,12 +2346,14 @@ class ChatService(
             chunkedSummarize = {
                 coroutineScope {
                     splitIntoChunks(messagesToCompress)
-                        .map { chunk -> async { compressChunk(chunk) } }
+                        .mapIndexed { index, chunk ->
+                            async { compressChunk(chunk, includePrior = index == 0) }
+                        }
                         .awaitAll()
                 }.joinToString("\n\n")
             },
             singleSummarize = if (sourceText.length <= COMPRESS_SINGLE_STEP_MAX_CHARS) {
-                { compressChunk(messagesToCompress) }
+                { compressChunk(messagesToCompress, includePrior = true) }
             } else {
                 null
             },
