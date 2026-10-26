@@ -21,6 +21,20 @@ class RootfsPatcher {
         linuxDir: File,
         options: RootfsPatchOptions = RootfsPatchOptions(),
     ) {
+        // 互斥到类级：前台命令（ProotShellRunner.start 每条命令都 patch）、后台任务启动、
+        // 终端页各自 new 的实例都可能并发 patch 同一个 rootfs——这些读-改-写非原子的
+        // 关键文件（ca bundle / resolv.conf / group / hosts）交错写入会留下截断的
+        // ca-certificates.crt（容器内 https 全部**静默**失败）或重复行。
+        // patch 是幂等且毫秒级的（不变即不写），串行化代价可忽略。
+        synchronized(RootfsPatcher::class.java) {
+            patchLocked(linuxDir, options)
+        }
+    }
+
+    private fun patchLocked(
+        linuxDir: File,
+        options: RootfsPatchOptions,
+    ) {
         val etcDir = File(linuxDir, "etc")
         if (!etcDir.isDirectory) return
 
