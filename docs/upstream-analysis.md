@@ -1479,6 +1479,19 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 
 本轮无代码改动。
 
+## 2026-10-26 追记：工具步骤耗时/用量统计三件吸收（本仓 `79b73101d`，上游 `8bb488e3a`+`e7f2c04f7`+`660b5d65f`）
+
+> 10-21 评估时 `8bb488e3a` 列 P2 排队（见「2026-10-21」批次表），`e7f2c04f7`/`660b5d65f` 因宿主是上游
+> `ai/AgentLoop` 判不跟；本批三件一并按 fork 自研循环（`data/ai/GenerationHandler.kt`）重写吸收，销 P2 账。
+
+| 上游 | 内容 | 本仓落地（`79b73101d`） |
+|---|---|---|
+| `8bb488e3a` | Tool part `startedAt/finishedAt`，步骤行右侧执行耗时（执行中实时计时） | 同构落地：`UIMessagePart.Tool` 加可空时间戳（旧 JSON 兼容免迁移）；执行窗口不含审批等待；`ChatMessageTools` 步骤行显示、执行中 200ms 刷新 |
+| `e7f2c04f7` | 修多轮工具调用 token 统计被最后一步覆盖、TPS 计入工具执行与审批等待 | 本仓病灶不同构（**每步新起一条 assistant 消息**，A1 审计结论），分母天然只含本步生成，无需 `generationMillis`；本仓吸收的是 `stepCount` 计数（runLoop 实际 LLM 请求数，置于各 break 之前防 off-by-one） |
+| `660b5d65f` | 消息统计行显步数/速度/最后请求上下文占用（`lastUsage`+`stepCount` 替换 `contextTokens`） | 吸收步数徽标（>1 时显示）+ 生成中实时 tok/s（500ms 滚动，usage 空时估算、到达切真值）；未跟 `lastUsage` 替换 `contextTokens`（本仓统计行结构已分叉） |
+
+**验证**：单测 5 项（序列化兼容/merge 保留/stepCount 缺省），全量 2461 项 0 失败；真机验收待做。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)

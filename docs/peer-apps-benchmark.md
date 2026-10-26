@@ -244,7 +244,7 @@ fork #1812 的既定哲学=「保留草稿 + 用户手动重试」（成本控�
 
 ## 四.8、Yuihub 2.5.8 → 3.0.0 增量评估（2026-10-26，`6dcc7224` + `2631f2d3`，评估完成、未落地）
 
-> Yuihub 3.0.0（2026-10-25，`6dcc7224`）为巨型提交（298 文件 / +3.3 万行；-62 万行主要是**删除 jieba 分词词典资产**），宣称「重构数据备份与恢复：分类备份、清单校验、恢复预览、安全备份与启动回滚；更新记忆系统、提示词预算、请求解剖与工具链；重做备份页/助手设置页」。另有 `2631f2d3`（DeepSeek 搜索改官方 Search API）、`08825f5a`（发版 3.0.1）。上游 rikkahub 同期**无新增**（仍 `ad2c4430d` / 3.1.1，已评至 `a8cf290c1`）。**本节为评估快照，吸收项均未落地**（建议批次见 §五表 9–16）。
+> Yuihub 3.0.0（2026-10-25，`6dcc7224`）为巨型提交（298 文件 / +3.3 万行；-62 万行主要是**删除 jieba 分词词典资产**），宣称「重构数据备份与恢复：分类备份、清单校验、恢复预览、安全备份与启动回滚；更新记忆系统、提示词预算、请求解剖与工具链；重做备份页/助手设置页」。另有 `2631f2d3`（DeepSeek 搜索改官方 Search API）、`08825f5a`（发版 3.0.1）。上游 rikkahub 同期**无新增**（仍 `ad2c4430d` / 3.1.1，已评至 `a8cf290c1`）。**本节为评估快照**；建议批次见 §五表 9–16——表 9–15 已于 2026-10-26 全部落地（上下文闸/MediaEncodingCache/只读快照/manifest+安全备份/B 档 staged 恢复，销账见各行状态），表 16 仍为记账不排期。
 >
 > 附：§四.6「其他新提交简评（10-03/04）」里 `0502e45d`（工具间过程解说并入思考折叠）**已随后在 fork 落地**（`ChatMessageNarrationStep`，ChatMessageReasoning.kt），此处销账；未评小件仅剩 `12b27763`（侧滑页助手卡片+四宫格，其 UI 路线 fork 不跟）、`206aea90`（分时问候空态，可选 cosmetic）、`1c2f9a8b`（CI，fork 禁用 CI 不适用）。
 
@@ -322,7 +322,7 @@ Yuihub 记忆改动是**架构换代**：写入带 keywords/weight(1-4)/kind、d
 | 12 | Yuihub 3.0.0 | ~~**备份 manifest v2 + 双 SHA-256 + 恢复预览 + RestoreByteBudget**~~ ✅ **已落地（2026-10-26，设计稿 `design-backup-manifest-and-safety.md`）**：manifest 末条目、settings 缓冲校验后才写、单条 2GB/总 8GB 预算、预览卡（inspectBackup + BackupRestorePreviewDialog，3 语言）；纯函数校验 11 项单测；真机验收待批次验收 | ~~1 天~~ 代码完成 |
 | 13 | Yuihub 3.0.0 | ~~**备份 A 档：恢复前自动安全备份**~~ ✅ **已落地（2026-10-26，同上）**：safety_backup/ 滚动 3 份、失败不阻断恢复、FileFolders 登记 + CoverageTest 钉豁免 | ~~0.5 天~~ 完成 |
 | 14 | Yuihub 3.0.0 | ~~小件打包：**provider 日志脱敏**（正文 chars=N、结束事件保留 event 名）、**ToolSchemaCompactor**、**TodoTools `next`+无 in_progress 警告**~~ ✅ **已落地（2026-10-26）**：四 provider 请求体/SSE/错误体全部元数据化（`LogRedaction.kt`，println 清零）；ToolSchemaCompactor 移植 + Settings 三档（默认 OFF，设置→通用）；TodoTools next/警告同款 | ~~小~~ 完成 |
-| 15 | Yuihub 3.0.0 | （可选-高价值）**B 档 staged 换库 + 启动应用 + 失败回滚**（StartupState 推迟 startKoin，170 行测试蓝图） | 2-3 天 |
+| 15 | Yuihub 3.0.0 | ~~（可选-高价值）**B 档 staged 换库 + 启动应用 + 失败回滚**~~ ✅ **已落地（2026-10-26，阶段 1+2：`ab0c16803`+`586955c20`，设计稿 `design-backup-staged-restore.md`）**：PendingRestoreStore 状态机（现库 rename 让位零拷贝，13 项 JVM 测试）+ 启动期换库（startKoin 推迟/StartupState/RouteActivity 全屏 gate/引擎 stage-only）；真机回归修三件（Stream Closed、gate/SafeMode 提前解析 Koin、重复退出提示）；**阶段 3 真机验收待做**（§9） | ~~2-3 天~~ 代码完成 |
 | 16 | Yuihub 3.0.0 | 可选小件（记账不排期）：history_search/read、memory keywords、写入 Jaccard 去重、Skills 内联上限、增量 emit、整理事件流水、query≤128 校验、backup_rules 钉白名单 | 按需 |
 | 17 | NMoi-Agent | 小件打包（近期可做）：**备份快照发布前自校验**（VACUUM 快照上跑 integrity_check，通过才进 zip）+ **内容级脱敏**（工具输出进历史时 6 类正则，见 §十三） | 各 ~0.5 天 |
 

@@ -1,14 +1,14 @@
 # 项目规划文档（Roadmap）
 
-> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.9 (311)`（预发布）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产，CI 自动发版仍禁用）。
+> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.12 (314)`（预发布线）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产，CI 自动发版仍禁用）。
 
 > 记录 RikkaHub Neomix 的后续规划方向 + 逐日落地日志。
 > **状态说明**：本文档混合「已落地」与「规划中」两类内容——各章节标题/状态行标注实时状态，
 > **不要以「均为规划」理解本篇**；最完整的逐日落地记录见「八、状态记录」。
 >
-> **本仓现状（RikkaHub Neomix）**：当前版本 `1.0.28-beta.9 (311)`（见 `app/build.gradle.kts`），稳定版仍是 `v1.0.27`；
-> 预发布 tag `1.0.28-beta.1`…`beta.7` 均已发行（自 `beta.1` 起不带 `v`），其中 `beta.1`…`beta.4` 在 GitHub 上标记为
-> prerelease，`beta.5` 按用户要求改为**正式 release**，`beta.6`/`beta.7` 沿用（因此 `releases/latest` 现指向 `beta.7`）。
+> **本仓现状（RikkaHub Neomix）**：当前版本 `1.0.28-beta.12 (314)`（见 `app/build.gradle.kts`，数据库版本 48），稳定版仍是 `v1.0.27`；
+> 预发布 tag `1.0.28-beta.1`…`beta.12` 均已发行（自 `beta.1` 起不带 `v`），其中 `beta.1`…`beta.4` 在 GitHub 上标记为
+> prerelease，`beta.5` 按用户要求改为**正式 release**，`beta.6`…`beta.12` 沿用（因此 `releases/latest` 现指向 `beta.12`）。
 > **`1.0.28-beta.7` 是首个带预编译资产的版本**（`Neomix-1.0.28-beta.7-arm64-v8a.apk`，仅 arm64-v8a）；此前各版均仅 tag、无资产。
 > 下文中出现的 `v1.0.x` / `Latest` / release / tag / versionCode 递增等内容，均为**私有开发仓时期的发布记录**，
 > 作为开发历史保留，**不代表本仓的发布状态**。
@@ -3665,3 +3665,115 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   「做梦（记忆整理）模型」条目下,仅在已配置该模型时展示「整理推理强度」+ ReasoningButton
   （选「自动」= 原行为）。文本未走 stringResource（该页既有同款做法,如做梦模型条目本身）。
   **验证**：`:app:testDebugUnitTest` 全过 + 编译通过;真机待验。
+
+- 2026-10-24 **发布 `1.0.28-beta.10 (312)`**（用户授权推送+发布）：tag 打在 `55adda2f8`，仅 master 线
+  （exp 分支未同步本轮改动，无 exp 资产）；正式 release（prerelease=false，`releases/latest` 指向本版），
+  单资产 `Neomix-1.0.28-beta.10-arm64-v8a.apk` 61,454,478 B。内容 = 10-24 白天批次（思考强度映射自定义、
+  记忆整理推理强度可配、动态取色种子色/灰阶、多文本段编辑、自动压缩阈值滑杆+填写、获取模型错误复制、
+  世界书导入枚举大小写兼容、模型列表拖动排序修复等）；发布说明存档 `releases/1.0.28-beta.10.md`。
+
+- 2026-10-25 **上游 issue 扫描 #2244–#2253 + 两项修复**（台账 `upstream-analysis.md`，`cc1f8abcd`）：
+  `84005ec4f` search_web 描述按服务真实能力动态拼装（#2244——publication-date/domain 过滤与 scrape_web
+  仅部分服务实现，不再向模型声明签名里不存在的能力）；`9f9e0ac7a` 余额求值与显示固定 Locale.ROOT
+  （#2245——逗号小数语言下 `"%.2f".format` 产出 `5,00` 回读抛 NFE，三处修复 + pl-PL 回归单测）。
+  `01d0e3a09` 移除 New API / Agent Router 两条内置提供商（存量用户配置不受影响）；
+  `80f61ae3d` 删除对应两条过时余额断言（全量单测仅剩的 2 个既有基线失败即源于此，至此归零）。
+
+- 2026-10-25 **存储管理页**（`1327afa60`，design-storage-management Phase 1+2）：设置→连接与数据→存储管理，
+  7 类可再生缓存统计/白名单清理/明细展开/结果报告（部分失败逐文件列出）；`DataOperationLock` 与
+  备份/恢复全程互斥；单测 13 项。**真机（PJX110）验证通过**。`9cad882cc` 用户可见文案统一改「缓存管理」
+  （保留「存储管理」兼容别名）+ 启动 temp 清理收敛为 `StorageUsageManager.clear(TEMP)`（其余启动清理
+  非缓存口径保持原位）；冷启动清理注入实测通过。
+
+- 2026-10-25 **应用名称与图标自定义**（`ad303a051`）：`customAppName` 显示名（关于页 + 最近任务
+  TaskDescription）+ 5 套桌面「名称+图标」预置切换（Neomix/RikkaHub/Chat/Notes/Assistant）+ 桌面快捷方式
+  （固定名 + 可选相册图 432²）。实现要点：预置用真实 Activity + `setComponentEnabledSetting` 互斥启停
+  （不用 activity-alias——`.debug` 后缀包名与 manifest package 拼接会命中 PMS "Component class does not
+  exist"）；快捷方式 intent 指向永不启停的 `ShortcutEntryActivity` 中转（pinned shortcut intent 不可更新）。
+  **真机（ColorOS / Android 15+）验证通过**。
+
+- 2026-10-25 **SSH 远程工作区**（`9172db55e`，design-ssh-workspace Phase 1a+1b+2+3）：`WorkspaceBackend`
+  抽象 + JSch backend（SFTP/exec/PTY/主机密钥校验/连接池）；DB 47→48（`workspaces.type` + `ssh_config`，
+  凭据 Android Keystore AES-GCM 加密落库）；编辑页 SSH 配置、详情页连接卡、按能力裁剪
+  rootfs/终端/写文件/后台任务入口；远程提示词注入、cwd 与 `@` 补全、拼装预览补投影 system 文本。
+  验证：workspace 单测 + WSL OpenSSH 集成 + 真机 Keystore/迁移/注入 instrumented。
+
+- 2026-10-25 **交互式终端**（`d266d8c9e`）：新增 `:terminal` 模块（termux v0.118.0 terminal-emulator，
+  `TerminalTransport` 抽象——本地 `LocalPtyTransport` / SSH `SshTerminalTransport`），SSH 主机可开交互式
+  终端，本地终端迁移同实现（保留 PRoot 挂载与兼容模式）；JSch R8 keep/dontwarn 补齐 release 构建通过；
+  Markdown 支持工作区绝对路径图片。`b6d3b8ffc` release 包运行时验证通过（SSH/本地终端、Keystore）。
+
+- 2026-10-25 **上下文净化 P0 dry-run 落地**（`c8d07353f`，design-context-purification revision 5）：
+  `ContextPurifier`（C1a 周期截断/C1b 块级/C1c part 级/C2 工具去重）在真实请求组装时判定但**不改发送**
+  （request-only 副本）；拼装预览页「净化 dry-run」卡（窗口条数/命中决策/可省字符）+ Logcat
+  `purge.dryrun` 命中明细与决策翻转告警。观察期数据 + 零误杀决定 P1（真正执行）解禁（§8 三臂实验预注册）。
+
+- 2026-10-25 **压缩对话框「保留最近消息数」改数字直接填写**（`6be9de761`，0–999，负数/非法输入不生效）。
+
+- 2026-10-25 **发布 `1.0.28-beta.11 (313)`**：tag 打在 `12bd19cff`，正式 release，单资产 61,526,106 B。
+  内容 = 存储管理（缓存管理）+ 应用名称与图标自定义 + 余额 Locale 修复 + search_web 描述修复。
+  发布说明存档 `releases/1.0.28-beta.11.md`。
+
+- 2026-10-25 **发布 `1.0.28-beta.12 (314)`**（DB 47→48，SSH 工作区迁移）：tag 打在 `e01da4dcf`，
+  正式 release，单资产 63,262,784 B。内容 = SSH 远程工作区 + 交互式终端 + 净化 P0 dry-run +
+  压缩数字填写；本版无上游移植（均为自研）。发布说明存档 `releases/1.0.28-beta.12.md`（`3ce48c4ae` 回填 tag 哈希）。
+
+- 2026-10-26 **peer-apps 同步评估回写**（`f7a5272ba`，台账 `peer-apps-benchmark.md`）：Yuihub 3.0.0 四域
+  （§四.8）+ 落地表 9–16 + senera §7.5 + bigeye §11.5；同日 issue 扫描 #2254–#2259（`16aa02339`，
+  台账 `upstream-analysis.md`——#2254 备份加密排在 manifest 批次后另议，#2255 划词已有
+  ACTION_PROCESS_TEXT，其余不适用或可选，#2246/#2252/#2253 上游仍无动作继续观察）。
+
+- 2026-10-26 **工具循环上下文闸 A/B/C + MediaEncodingCache**（批次 1/4，design-tool-context-gate 全四批
+  落地 `4d32eea84`/`abb2b0bc8`/`d5ef5a3be`/`7396efbc4`）：A 闸工具输出 per-call 动态限幅
+  （窗口 <65%→32K / ≥65%→16K / ≥80%→8K，废除无 shell 会话的截断短路，恢复指引按能力三分支）；
+  B 闸请求前 ≥85% 紧急卸载（工具结果落 `tool_outputs/guard-<id>.txt` 留 2K 预览、请求期投影不动
+  DB/UI）+ ≥90% `ContextGateHardStop` 优雅停止（阈值比 Yuihub 90/97 收紧=用户决策）；C 闸聊天路径
+  执行中「剩余 <4K」优雅停止，与 B 先到先得；MediaEncodingCache（8MB LRU）治多图会话每轮重编码的
+  首字延迟。单测共 22 项；真机验收项（大文件循环/无 workspace 大输出/多图缓存命中）待批次验收。
+
+- 2026-10-26 **只读挂载快照 ReadOnlyMountSnapshots**（`ecafaff12`，批次 2，design-readonly-mount-snapshots
+  落地）：执行前把只读挂载源复制成私有快照再绑定（SHA-256 指纹、内容不变复用同代、symlink
+  物化/逃逸/环 fail-closed、1GB/64 代预算），堵「workspace_shell rm 绕过工具层删 /upload 原件」缺口；
+  未快照只读挂载在 ProotShellRunner 预检段当场失败。单测 17 项全绿。
+
+- 2026-10-26 **备份 manifest v2 + 恢复校验/预览 + A 档安全备份**（`aaadfaf86`，批次 3，
+  design-backup-manifest-and-safety 落地）：manifest 写 zip 末条目（formatVersion/items/各 section 双
+  SHA-256），读毕 `verifyBackupManifest` 统一校验通过才写 settings/换库——损坏/外来/篡改备份零破坏
+  （legacy 无 manifest 照常）；RestoreByteBudget 单条目 2GB/总量 8GB；**A 档**：恢复含 DATABASE 前自动
+  打包当前 settings+库到 `safety_backup/`（滚动 3 份，失败不阻断恢复）；恢复预览对话框
+  （inspectBackup 随机访问不全量解压）。单测 11 项；引擎流式记账与 UI 走真机批次验收。
+
+- 2026-10-26 **批次 4 小件**（`27cb0e01f`）：LogRedaction——四 provider 请求体/SSE/错误日志全元数据化
+  （chars/messages/tools，结束事件保留 event 名），println 清零（含 bodyRaw 明文泄漏点）；TodoTools 结果
+  增 `next` 字段 + 无 in_progress 警告；ToolSchemaCompactor 移植（只裁描述文本不改 schema，
+  `toolSchemaCompactLevel` 三档默认 OFF）。
+
+- 2026-10-26 **ask_user 待答期可跳过 + 队列滞留可见化**（`29715e296`，design-ask-user-interrupt 落地）：
+  `InterruptReason.SkippedQuestion`（pending 收尾 status=skipped，模型知道用户没答该转向新消息）；
+  插队入口条件放宽为「生成中 || 有 pending 提问/审批」（消除 ask_user 待答时发送静默滞留且无出路的
+  死角）；队列面板头部「等待回答 · N 条」。同日 `cf485b79a`（§6）：审批/提问卡片增「跳过」按钮——
+  工具结果写 status=skipped 合成输出 + 卡片置「用户已跳过此步骤」，续跑不再执行该工具。
+
+- 2026-10-26 **B 档 staged 恢复阶段 1+2**（`ab0c16803` + `586955c20`，design-backup-staged-restore）：
+  `PendingRestoreStore` 状态机（stage/applyIfPending/confirmApplied/rollbackIfUnconfirmed，marker JSON
+  最后原子写、现库 rename 让位零拷贝、13 项 JVM 测试）；启动期换库——startKoin 推迟到换库成功后、
+  Room SELECT 1 确认才删 rollback、`StartupState` 三档 + RouteActivity 全屏 gate、恢复引擎切 stage-only
+  （删运行中关库换库，消灭「Koin 持有已关闭单例」crash 窗口）。真机回归修三件：`1a026886f` 恢复流
+  双关闭「Stream Closed」；`ecbd77c7f` gate 阻塞屏与 SafeMode 提前解析 Koin 启动崩溃（GateTheme 零
+  Koin 依赖 + `ensureKoinStarted()` 幂等）；`262bcbfa5` db 打开失败文案重复退出提示。全量 2456 项 0 失败；
+  **阶段 3 真机验收待做**（设计稿 §9：正常恢复/kill 后自动应用/模拟 Room 打不开自动回滚/全新安装）。
+
+- 2026-10-26 **工具步骤执行耗时 + 轮级步数 + 生成中实时 tok/s**（`79b73101d`，上游
+  `8bb488e3a`/`e7f2c04f7`/`660b5d65f`）：Tool part 增 startedAt/finishedAt（旧 JSON 兼容免迁移），步骤行
+  执行中 200ms 实时计时；`stepCount`=runLoop 实际 LLM 请求数（>1 显步数徽标）；生成中 500ms 滚动
+  tok/s（usage 空时估算、到达切真值）。A1 审计结论：本仓每步新起一条 assistant 消息，TPS 分母天然
+  不含工具等待（design-tool-timing-and-usage-fix 已记账）。单测 5 项，全量 2461 项 0 失败；真机验收待做。
+
+- 2026-10-26 **workspace_present_file 补 cutsChain**（`e52841297`，真机回归）：文件卡是交付物，与
+  chart_display/generate_image 同类——未声明 cutsChain 被「整轮折叠/只显示最后 N 步」藏起，补
+  `cutsChain()=true` 独占成块。
+
+- 2026-10-26 **新设计稿 design-history-tools-and-delta-emit**（`49d9d15d3`，草案待批准，暂不实现）：
+  Part A `history_search`/`history_read`——本会话被压缩区域的按需查回（FTS 全树已覆盖，按实时压缩边界
+  过滤 + node_id 分页读，仅 activeCompression 时注册）；Part B GenerationHandler 增量 emit——本仓合并
+  是索引制，需先落 id 制 mergeGenerationMessages 再切 Delta 发射。
