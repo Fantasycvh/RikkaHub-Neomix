@@ -242,6 +242,66 @@ fork #1812 的既定哲学=「保留草稿 + 用户手动重试」（成本控�
 
 **与 Yuihub 的差异（刻意保留）**：Yuihub 对 length 截断也自动续写（上限 3）；fork 保持 #1812 的「成本控制权在用户」取舍——length 默认只提示 + 手动继续。另：Yuihub 的 `mergeTrailingAssistantTextParts`（续写新建 Text part 在正文多出空行）在 fork 不需要——fork 的同角色 chunk 追加规则会把续写文本拼进最后一个 Text part。
 
+## 四.8、Yuihub 2.5.8 → 3.0.0 增量评估（2026-10-26，`6dcc7224` + `2631f2d3`，评估完成、未落地）
+
+> Yuihub 3.0.0（2026-10-25，`6dcc7224`）为巨型提交（298 文件 / +3.3 万行；-62 万行主要是**删除 jieba 分词词典资产**），宣称「重构数据备份与恢复：分类备份、清单校验、恢复预览、安全备份与启动回滚；更新记忆系统、提示词预算、请求解剖与工具链；重做备份页/助手设置页」。另有 `2631f2d3`（DeepSeek 搜索改官方 Search API）、`08825f5a`（发版 3.0.1）。上游 rikkahub 同期**无新增**（仍 `ad2c4430d` / 3.1.1，已评至 `a8cf290c1`）。**本节为评估快照，吸收项均未落地**（建议批次见 §五表 9–16）。
+>
+> 附：§四.6「其他新提交简评（10-03/04）」里 `0502e45d`（工具间过程解说并入思考折叠）**已随后在 fork 落地**（`ChatMessageNarrationStep`，ChatMessageReasoning.kt），此处销账；未评小件仅剩 `12b27763`（侧滑页助手卡片+四宫格，其 UI 路线 fork 不跟）、`206aea90`（分时问候空态，可选 cosmetic）、`1c2f9a8b`（CI，fork 禁用 CI 不适用）。
+
+### A. workspace——ReadOnlyMountSnapshots：**值得吸收（安全缺口，第 2 批）**
+
+Yuihub 的 PRoot `-b` 不支持只读，原 `readOnly` 只是语义标记，`workspace_shell` 可绕过工具层保护直接删只读挂载源。3.0.0 改为**执行前把只读挂载源复制成私有快照目录再绑定**：
+
+- `workspace/.../ReadOnlyMountSnapshots.kt:19-86`：`prepare()` = SHA-256 指纹、未变化复用、1GB/64 代预算、symlink 逃逸/环检测、复制中变更即 fail（+359 行测试）；
+- `ProotShellRunner.kt`：`prootBindSpec()` 改 `require(!readOnly)`（只读挂载必须先快照）；会话崩溃重试的 `sessions.remove(root, entry)` 竞态修复——**fork 是无状态 per-command 进程，此修复不适用**；执行串行锁另议；
+- 触发点：`RepositoryModule.kt:60-76` 仅 `/upload` 标 readOnly。
+
+**fork 现状（缺口实锤）**：`WorkspaceBindMount`（`workspace/.../ProotShellRunner.kt:15-22`）无 readOnly 字段，bindMounts 直接 `-b` 原件；挂载表含 `/skills` `/builtin_skills` `/tool_outputs` `/upload`（`app/.../di/RepositoryModule.kt:86-103`）；`/upload` 只读仅靠提示词（`WorkspaceReminderTransformer.kt:233`）+ 工具层拦截，shell 可绕过（Yuihub `dec9f2f4` 文档里自己也承认这是 pre-3.0.0 状态）。
+**吸收最小面**：只对 `/upload` 快照（skills 允许 AI 写），约 200 行 + 接线 + 测试。
+
+### B. ai 模块——上下文闸/编码缓存/日志脱敏（第 1 批 + 小件打包）
+
+**B1. 工具循环上下文闸（`enforceContextBudget` + `toolOutputBudget`）——优先级最高**。Yuihub 在工具循环内加最后防线：占用 65%/80% 时动态收缩单条工具输出预算（32K→16K→8K）、90% 时把旧工具结果卸载文件留 2K 预览、97% 硬限报错（GenerationHandler）。
+**fork 缺口实锤**：`GenerationHandler.kt:1399` 有 `|| !hasShellAccess` 短路 ⇒ **无 shell 时超大工具输出不截断直接进历史**（与 Yuihub「截断始终生效」相反）；`ContextBudgetPlanner` 自述只管无头 run，聊天工具循环无闸。吸收时注意：闸的阈值/卸载路径要与 §C tool-output-budget 句柄体系与 §四.7 explicitEnd 语义对齐。
+
+**B2. MediaEncodingCache——值得吸收**。base64 编码结果按「绝对路径:length:lastModified」缓存（含压缩+EXIF 矫正），3.0.0 把旧条目数 LRU 重构为**字节预算 LRU**（总 8MB、单条 2MB、`@Synchronized`、超限拒存）。动机：多轮会话历史图片每轮重发，重复「解码→EXIF→缩放→JPEG→Base64」使首字延迟随轮次线性恶化。**fork 同款问题**：`ai/.../util/FileEncoder.kt:52-115` 每次调用重新 `compressAndEncode`/`encodeToBase64Streaming`，零缓存。单条 2MB 上限按 fork 大图策略可再调。
+
+**B3. provider 日志脱敏——值得吸收（机械改动）**。四 provider 的请求体/SSE payload/错误响应体改 `messages=N`/`chars=N`/`httpCode=N`/异常类名，删 `printStackTrace`。fork 仍打全文：`ClaudeProvider.kt:134/182/185`、`GoogleProvider.kt:253/262`、`ChatCompletionsAPI.kt:369`、`ResponseAPI.kt:113/122`，且有裸 `println`（ChatCompletionsAPI.kt:240）。**别照抄其 SSE 日志方案**：Yuihub `describeSseEvent` 连结束事件类型都丢了（`StreamChunkDecoder.kt:29-31`），不利诊断裸断流——fork 版应「正文事件只记 chars，结束事件保留 event 名」。
+
+**B4. 小件**：TodoTools 结果 JSON 加 `next` 字段 + 无 in_progress 警告（fork 只有「多 in_progress」警告，`local/TodoTools.kt:110`）——治「建完清单不复更」，便宜，吸收。
+
+**B5. 可选（记账不排期）**：`history_search`/`history_read`（FTS 检索当前会话被压缩归档的消息 + 按 node_id 分页读原文，`ConversationTools.kt` +129 行——取决于 fork compression/ 产物是否可寻址）；SkillsTools 内联 24 条上限（fork 只截描述 1024 字无条数上限）；GenerationHandler 增量 emit（`generationMessageUpdates` 只带新增消息）；`customApiType`（自定义 /v1 路径开关，产品特性）；StreamTraceReplayTest 的 fixture 离线重放（SSE 抓线存 `events.jsonl` 回归裸断流——思路好但 fork 解码内联在 provider listener，需先抽 decoder 接口，成本大）。
+
+**B6. 已有等价**：RequestBreakdown（fork `PromptInspector.kt` PromptSegmentKind 分段计数）、onUsage 回调。
+
+### C. 记忆/提示词——架构换代，但无一推翻 fork 既有决策
+
+Yuihub 记忆改动是**架构换代**：写入带 keywords/weight(1-4)/kind、delete→归档、快照落库三分块、jieba→纯函数分词、整理管道三阶段化。逐项对照：
+
+- **MemoryText.kt（新 148 行）——已有等价**：NFKC + CJK bigram（fork `MemoryRelevance.kt:161-195` 同款且注释已论证不引词典）、Jaccard 去重（fork :113-138 明确论证过**为何不用 Jaccard**）、rankHits = 候选集 IDF×覆盖率×45 天半衰期×weight。**可选**：a) 写入时相似度去重（fork `MemoryRepository` create 无去重）；b) 其 IDF 是候选集相关的连续量，若进注入层会破坏 fork「逐字节可复现/分档量化」（`design-memory-injection-tiering.md:74`），**只可进 searchMemories 工具路径**。
+- **ToolSchemaCompactor（新 99 行）——值得吸收（第 4 批）**：请求准备期裁工具/参数描述（句子边界截断，保参数/枚举/required），memory_tool 等 ESSENTIAL_TOOLS 给 3× 上限防纪律文本被裁坏，三档设置（:15-60）。fork 只有测量（ToolSchemaSizeTest）无压缩。RequestBreakdown（给用户看的请求解剖）= fork PromptInspector 已有等价。
+- **MemoryConsolidator（-373 行）——主体不吸收**：重写为 merge（非 core 取 80 条）→ 模型判 archived → **core 重写**（1200 字符预算、rewriteCore）三阶段 + onProgress 四段 + 24h 冷却 + MemoryEvent 流水 + 专属维护模型。它直接改库、无审批概念——与 fork「整理 agent 走 memory_tool + 提案不落库」（§8.3/§9.1）语义正交，不采纳即无冲突；core 重写-压预算与 fork「注入期分层裁剪」是刻意不同路线。**可选**：整理完成的**结构化事件流水**（fork 进度表只存最新态）。
+- **MemorySnapshot 三分块（core 原位替换 + hit 幂等绑定 + rebase 单块）——不吸收**：为「持久化进会话历史」的落库架构服务；fork 请求期组装（buildInternalMessagesWithPlan + MemoryInjectionPlan）天然幂等，§四.3 已论证不落库。
+- **MemoryTools——已有等价为主**：fork 有 search action + expected_revision 乐观并发 + 审批门 + 命中削限提示 + read credit 记账。**可选**：keywords 字段（5-10 个召回词，让匹配面向「用户会说的话」，需动 schema/DB）。weight 整数化、kind 分类与其 3.0.0 体系绑定，不迁移。
+- **DefaultPrompts/LegacyPromptDefaults——产品决策可选**：提示词外置为 Settings 可编辑模板（PromptId 枚举 + disabledPromptIds + isPlainChatMode，一次性等值迁移）。与 fork「纪律文本防漂改」取向有张力。
+- **⚠ 待核实**：后台整理/提取的 LLM 调用 token 是否已计入 fork 用量统计（Yuihub 走 TokenUsageSource.MEMORY + token_usage_event 按请求记账；fork `UsageRecorder.kt:66` 按请求/重试记账，后台调用是否覆盖待查）。
+
+### D. 备份/恢复——manifest+预览值得吸收；启动回滚难题已被化解
+
+**D1. manifest + 双 SHA-256 + 恢复预览——值得吸收（第 3 批，~1 天）**：Yuihub `BackupModels.kt` 定义 7 类 + Manifest v2（formatVersion、db/settings 双 SHA-256、counts、分项字节）；`LocalBackupService.kt:181` inspectBackup + `BackupPage.kt:772` RestorePreviewSheet（按 presentItems 勾选、分项大小/条数预览）；`:300` RestoreByteBudget（单条 2GB/总 8GB）+ 重复条目/10 万条目上限。**fork 缺口**：`BackupArchiveEngine` 无 manifest、无校验和、无预览，恢复直接执行（`BackupVM.kt:142`）；设置在解压时**即时写入**（Engine:228）；DB 校验仅 integrity_check（:398-414）。顺带防损坏备份/高版本备份/zip 超限。7 类细粒度本身是 UX，可选。
+
+**D2. 安全备份 + 启动回滚——分两档**：
+- **A 档（恢复前自动安全备份，~0.5 天，建议立即做）**：恢复含 DB/SETTINGS 时先 `createSafetyBackup`（`LocalBackupService.kt:254`，safety_backup/ 留 3 份），fork 可复用 prepareBackupFile。
+- **B 档（staged 换库 + 启动应用 + 失败回滚，~2-3 天，可选-高价值）**：全部先 `PendingRestoreStore.stage`（:76 fsync+原子 marker）**不落现库**；启动时 `applyIfPending`（:129）先把现库+设置（含 -wal/-shm）拷成 rollback 副本→校验 user_version+integrity→temp+rename 换入→写 applied.marker；Room 打开成功（含迁移）才 `confirmApplied`，否则下次启动 `rollbackIfUnconfirmed`（:193）。**§四.6 判定的「startKoin 之前检测难」被化解**：不是「之前检测」而是**推迟 startKoin**——`YuiHubApp` StartupState 状态机，恢复成功才 initializeAndPublish，失败停在 Failed 可重试，Workers 先 `WorkManager.initialize` 再 await startupState。Yuihub 附 170 行测试当蓝图，§四.6 的「重构面大」顾虑仍在但已降级。
+- 顺带小件：fork `backup_rules.xml` 仍是上游 sample（仅 upload/），可加 SystemBackupRulesTest 钉 Android auto-backup 白名单。
+
+**D3. DB 36→41 五迁移盘点**：36→37 scheduled_task（fork 无该域，不适用）；37→38 token_usage_event（fork `UsageRecorder.kt:66` 已按请求记账，已有等价）；38→39 compression_summaries（fork CompressionCheckpointEntity 多检查点更强，已有等价）；**39→40 会话级 enabled_skills/mcp_servers/local_tools/subagent_persona 覆盖列——领域功能缺口（与备份无关，另议）**；40→41 Memory 分层 11 列+三表（fork 记忆体系更重，不适用）。
+
+### E. 搜索与 UI——不吸收
+
+- **DeepSeek 官方 Search API（`2631f2d3`）——已有等价且更强**：fork `search/.../DeepSeekSearchService.kt:62-63` 早已是官方 Search + **Fetch/scrape**（:160-199）+ 重试（408/429/5xx，:256）+ 402 提示 + 多 key keyRoulette（:290）；Yuihub 新版反而无 scrape 且删了配置项。唯一可选核查项：其 query≤128 前置校验（若官方确有上限可补一行）。
+- **备份页/助手设置页 UI 重做——不适用**：改动绑定其数据层大重构（恢复预览/启动回滚），非纯 UI；`design-ui-yuihub-inspired.md` 清单未列这两页。
+
 ## 五、落地顺序建议
 
 > **落地状态（2026-10-02 复核，2026-10-12 更新）**：① 终端多 Tab **已落地**（`86cd6a70`）；② 的 **ContextBudgetPlanner 已落地**（`f821181c`），终端 URL 点击仍待做；③ LoopGuard/AgentRun 账本 **已落地**（`15a4dc8c`/`4adcda07`）；④ WifiLock **已落地**（`935f8b97`）+ LoopGuard 已落地；⑤ 的 seed 迁移 + dry-run 审批 **已落地**（`2d30c528`）、**schema 三档缩水版也已落地（`8bf348d0` + `05571808`，10-06）⇒ 本行「仍待排期」已过期**；⑥ MCP host 仍是真·未立项（其前置后台任务三件套已就绪）；⑦ 记忆打分已落地（`91d88551`）；⑧ **记忆提取管道 + 整理器已落地**（见 §4.4 末复核），不再是「未立项」。
@@ -256,6 +316,14 @@ fork #1812 的既定哲学=「保留草稿 + 用户手动重试」（成本控�
 | 6 | SoLab | MCP host 模式（手机当桌面 AI 工具箱） | 高，按需；**一旦立项即成为第 4 个工具装配方**（远程调用者需设备工具子集、复用审批/loop guard，见 `upstream-analysis.md`「注意点」第 9 条装配方盘点） |
 | 7 | Yuihub | ~~记忆打分校准 + 字符预算~~ ✅ 已落地（`91d88551`，真机验证） | ~~低~~ 完成 |
 | 8 | Yuihub | ~~记忆提取管道 + 整理器~~ ✅ **整理器已落地**（V1/V2/V3-b1~b3，`f4c2def2`…`63a92148`，10-09）；提取以 `memory_tool` 主动调用形态覆盖 | 收口 |
+| 9 | Yuihub 3.0.0 | **工具循环上下文闸**（65%/80%/90% 分级收缩单条工具输出 + 97% 硬限；堵 `GenerationHandler.kt:1399` 无 shell 不截断缺口） | 中（**第 1 批**） |
+| 10 | Yuihub 3.0.0 | **MediaEncodingCache**（base64 字节预算 LRU 8MB/单条 2MB，路径:size:mtime 键） | 小（第 1 批） |
+| 11 | Yuihub 3.0.0 | **ReadOnlyMountSnapshots**（只读挂载先快照再 bind，最小面=仅 /upload） | 中 ~200 行（第 2 批，workspace 域） |
+| 12 | Yuihub 3.0.0 | **备份 manifest v2 + 双 SHA-256 + 恢复预览 + RestoreByteBudget** | ~1 天（第 3 批） |
+| 13 | Yuihub 3.0.0 | **备份 A 档：恢复前自动安全备份**（safety_backup/ 留 3 份） | ~0.5 天（第 3 批） |
+| 14 | Yuihub 3.0.0 | 小件打包：**provider 日志脱敏**（正文 chars=N、结束事件保留 event 名）、**ToolSchemaCompactor**、**TodoTools `next`+无 in_progress 警告** | 小（第 4 批） |
+| 15 | Yuihub 3.0.0 | （可选-高价值）**B 档 staged 换库 + 启动应用 + 失败回滚**（StartupState 推迟 startKoin，170 行测试蓝图） | 2-3 天 |
+| 16 | Yuihub 3.0.0 | 可选小件（记账不排期）：history_search/read、memory keywords、写入 Jaccard 去重、Skills 内联上限、增量 emit、整理事件流水、query≤128 校验、backup_rules 钉白名单 | 按需 |
 
 **记忆机制结论（Yuihub，详见 §四）**：值得借鉴的是**检索与写入的组织方式**（打分校准 / 提取管道 / 整理器），**不是语义向量**——Yuihub 上线语义检索后第二天整套删除（`a8c33b2d` → `fbd15331`），构成「记忆语义检索不做」的独立二次印证（与 `design-auto-compaction.md` §6.3 成本结论一致）。
 
@@ -941,6 +1009,18 @@ fork 现状对照：我们已有**文件版近似**（tool_outputs 落盘 + 32KB
 - **P1 因此精确化为一句话**：把**记忆注入从 system 块挪到历史之后**（尾部合成消息，沿用压缩检查点「合成消息 + 前导标记」先例）⇒ 记忆变动只重算尾部，而不是整段历史。**未做**：长会话实测（当前结论基于一次小会话 + 前缀语义推断）。
 
 **一句话结论**：senera 这套里**唯一值得现在动手的是「稳定前缀不被易变状态污染」**（且必须先量 cached 比例再定），其余两条是小纪律，第四类（时间摘要树）与我们的记忆哲学不同、只记账；#972 若上游真立项，本节映射表可直接当设计输入。
+
+### 7.5 增量评估：10-13 → 10-21（v1.16.0 → v1.20.0，2026-10-26）
+
+11 个功能提交（`99834b90`/`01703d67`/`aedb9a40`/`9d3a0f4d`/`de6c0d41`/`3602057a`/`af53923a`/`859cadeb`/`5e804083`/`e6a51461`/`ab011ee0`/`4a83dae1`/`db34914c`/`c5b691d5`，去除 release bump 后实质 4 个）。**总评：无可吸收项**——全部是既有路线的延续（v2 runtime/桌面多进程化/多工作区服务端/浏览器工具换驱动层/Web 首屏优化），未触及 §7.1 ToolSearch 协议或 §7.4 P1 相关代码，与 §5 规则引擎/工具预算无冲突。
+
+| 提交 | 实质 | 判定 |
+|---|---|---|
+| `3602057a` agent-browser | 删 Playwright 驱动（-975 行），改官方 `agent-browser` CLI 原生驱动（`AgentNativeBrowserDriver.ts:62`，宿主保留会话所有权/URL 准入/网络路由拦截）；工具面本体 26 个窄工具未变：严格 schema 带长度上限、readOnly 标记、审批分级（导航=allow/交互=ask，:749-755）、输出 `trust:"untrusted_browser_content"`（:53）、全文进 artifact 只回摘要、导航使旧 snapshot 引用失效 | **不适用（平台）**：Android 无 CDP/Playwright 执行体，WebView 无法被后台工具循环无头驱动。**记账**：其工具 schema 规格（读写分离+审批分级+artifact 承载+不信任内容标记+引用失效语义）是将来立项受控浏览器工具的现成设计参照 |
+| `859cadeb` 模型路由/设置所有权 | 发送前校验持久化选中模型仍在目录（失效置 undefined 交后端解析）、重试不继承失败 run 的模型回执（「回执是历史证据不是路由选择」）、默认连接禁止禁用 | **已有等价**：fork 发送时统一从 SettingsStore 读当前设置（Mutex 串行化，§8.1 E 已记），无 per-message 路由持久化，「陈旧 ID 随消息重放」路径不存在 |
+| `db34914c` 懒加载消息虚拟化 | 名不符实：MessageList 早已 react-virtuoso，本次只是 `React.lazy`+Suspense 切出首屏 bundle | **不适用**：fork ChatPage 用 LazyColumn，虚拟化内建于 Compose |
+| `e6a51461`/`4a83dae1` workspace/桌面 runtime | 多 workspace 服务端宿主、Electron 内嵌 server 子进程、交互面重构 | **不适用（架构/基础设施）** |
+| `2298b67c` 等 | MCP stdio 隔离、gVisor CI、测试门、依赖加固 | **不适用**（无机制） |
 
 ## 八、华灯（rikkahub-sillytavern-android）评估（2026-10-05，本地源码调研）
 
@@ -2027,3 +2107,18 @@ breakevenTurns = 一次性成本 / 每轮节省
 本仓现状：**三层都各有一点、都不完整** —— 有规则提醒（bigeye 层）、有分层注入 + 压缩
 （布局层，但布局是结构性反模式）、有审批与工具配平（行为层）。
 ⇒ **最该补的是中间那层**，因为已有资产正好卡在那。
+
+### 11.5 增量评估：10-18 → 10-24（v1.5 / v1.6，2026-10-26）
+
+5 个提交（`5bf21b7` 工具产出/见图片/侧栏、`3c71a2e` 切任务落点+fe-manifest/cost、`734f831` 热点雷达、`32a774a` 上下文裁剪+凭据引导、`7464a19` 本地 TTS）。**总评：无代码吸收项，判据级记账 2 条**。
+
+**① tool_output 落盘/翻页 3 条实证判据（`5bf21b7` `tools/tool_output.py`）→ 补进 `design-tool-output-budget.md`**（fork C4/D3 句柄概念已有，这是落地层的失败模式证据）：
+- 读取器自身返回须低于落盘阈值，防「二次落盘套娃」（tool_output.py:21-25，3200<4000 留 800 余量）；
+- 游标按「实际完整交付行数」推进而非请求 limit（:119-126）；
+- 超长单行至少交付开头（:44-49）。
+
+**② loop_detector 自指死循环修复（`5bf21b7` `loop_detector.py:6-16,66-79`）——将来做运行时循环提醒的前置护栏**：提醒被模型当作用户指令去「调查检测器」→ 自指关键词静默 + 每话题 MAX_INJECTS=2 硬熔断 + 「先落地才许再注入」。fork 现为静态规则提醒无注入面，立项时再取。
+
+**已有等价**：`32a774a` 裁剪本体（token 预算内按对话边界切+钉住最近 6 个整理摘要——修「摘要下一轮被自己裁掉」，fork 检查点合成模型不删消息无此根因）；`_ORGANIZE_MAX_ITEMS=200` 整理区间闸（与 multi-pass 分块无 token 上限同题已修）；system 静/动拆分（上游 #1542/#1630 同族已收录，bigeye 仅多两个量化细节：单字节变化命中率 99.6%→26.6%、动态段只追加一次防误判插话）；`3c71a2e` /api/cost 口径（fork usage 锚点已落地）；`7464a19` TTS（前端朗读 API+自动播放，与 fork 同形态，引擎层全 Windows 专属，Android 系统 TTS 即零模型本地）。
+
+**不适用**：`5bf21b7` see_image（磁盘图自看，聊天客户端无工作区磁盘图场景）、shell_router（Windows Git Bash/cmd）、write_ledger（多进程文件锁，Android 单进程+Room）；`3c71a2e` fe-manifest/localStorage 键前缀（桌面打包面）；`734f831` 热点雷达/跨天差分（bigeye 特有产品面）、msg_vectors 词面绕向量门槛（§11.1 已有结论）；`7464a19` 消息反馈落库/付费引擎优先（产品选择）。
