@@ -1464,6 +1464,21 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 **验证**：`:common:testDebugUnitTest`（JsonExpressionTest 5 用例）、`:ai:compileDebugKotlin`、
 `:app:compileDebugKotlin` 通过。未推送。
 
+## 2026-10-26 issue 扫描（#2254–#2259，自上次扫描后新增）
+
+上次扫描截至 #2253（2026-10-25）。本轮新增 6 个，全部 open；此前待议/观察的 #2246（确认拒绝后卡输出状态）、#2252（HTML/SVG 预览返回卡死）、#2253（切模型思考链渲染出错）仍 open，上游无动作，继续观察。
+
+| Issue | 内容 | 判定 |
+|---|---|---|
+| #2254 | feat: 备份加密（open） | **记账**——与本轮 §四.8 D 批次（manifest/预览/安全备份）同域：若立项，加密应加在 manifest 之上（对 db/settings 条目 AES-GCM、密钥进 Keystore、manifest 记密文条目哈希），排在 manifest+预览落地后另议，不并入本批 |
+| #2255 | feat: 选中文字后直接引用并提问（open） | **已有**——fork 已接 `ACTION_PROCESS_TEXT → Screen.ShareHandler`（`RouteActivity.kt:284`，划词进分享处理页） |
+| #2256 | 图片再次点开的预览选项中加图片编辑（open） | 不适用——上游产品面（画板/编辑器 fork 未跟） |
+| #2257 | feat: Minimax 语音识别供应商（open） | 可选记账——fork speech 模块 ASR 供应商列表独立维护，有用户需求再加 |
+| #2258 | bug: 压缩对话功能在矮屏中被挤没（open） | **不适用（入口布局已分叉）**——fork 压缩入口在容量面板 + 菜单（`ChatPage.kt:420`/`721`），非上游输入区布局，无同款挤压路径；上游修复后可看一眼其矮屏适配手法 |
+| #2259 | feat: 图片分享聊天加自定义模型名/字体（open） | 不跟进——fork 图片导出为 PNG 分页形态（`ExportHooks`），模型名/字体定制属上游产品诉求 |
+
+本轮无代码改动。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)
