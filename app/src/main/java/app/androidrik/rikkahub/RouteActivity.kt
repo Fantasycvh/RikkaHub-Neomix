@@ -22,6 +22,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -219,17 +222,17 @@ open class RouteActivity : ComponentActivity() {
             handleIntent(intent)
         }
         setContent {
-            RikkahubTheme {
-                // B 档备份：非 Ready 全屏阻塞——换库发生在 startKoin 之前，Ready 即
-                // 「换库 + Koin + Room 打开确认都成功」；内容页在此前不渲染（防 DAO
-                // 访问落在换库中途/已失败的库上）。
-                val startupApp = LocalContext.current.applicationContext as RikkaHubApp
-                val startupState by startupApp.startupState.collectAsState()
-                when (val state = startupState) {
-                    StartupState.Ready -> AppStartupGateContent()
-                    StartupState.Restoring -> StartupBlockingScreen()
-                    is StartupState.Failed -> StartupFailedScreen(state) { startupApp.retryPendingRestore() }
-                }
+            // B 档备份：非 Ready 全屏阻塞——换库发生在 startKoin 之前，Ready 即
+            // 「换库 + Koin + Room 打开确认都成功」；内容页在此前不渲染（防 DAO
+            // 访问落在换库中途/已失败的库上）。
+            // **gate 屏不能包 RikkahubTheme**：主题内部 koinInject(SettingsStore)，
+            // Koin 未启动时合成即崩（真机踩过）；只有 Ready 分支进 Koin 主题。
+            val startupApp = LocalContext.current.applicationContext as RikkaHubApp
+            val startupState by startupApp.startupState.collectAsState()
+            when (val state = startupState) {
+                StartupState.Ready -> RikkahubTheme { AppStartupGateContent() }
+                StartupState.Restoring -> StartupBlockingScreen()
+                is StartupState.Failed -> StartupFailedScreen(state) { startupApp.retryPendingRestore() }
             }
         }
     }
@@ -258,20 +261,22 @@ open class RouteActivity : ComponentActivity() {
         app.androidrik.rikkahub.ui.pages.agentrun.SubagentApprovalDialog()
     }
 
-    /** Restoring 阻塞屏：换库 + Koin 完成前的全屏转圈。 */
+    /** Restoring 阻塞屏：换库 + Koin 完成前的全屏转圈。基础 Material 主题（不走 Koin）。 */
     @Composable
     private fun StartupBlockingScreen() {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Text(
-                    text = stringResource(R.string.startup_restore_running),
-                    modifier = Modifier.padding(top = 16.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+        GateTheme {
+            Box(
+                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Text(
+                        text = stringResource(R.string.startup_restore_running),
+                        modifier = Modifier.padding(top = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
     }
@@ -279,30 +284,41 @@ open class RouteActivity : ComponentActivity() {
     /** Failed 阻塞屏：applyIfPending 可重试；Koin/Room 失败只能重启进程。 */
     @Composable
     private fun StartupFailedScreen(state: StartupState.Failed, onRetry: () -> Unit) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(horizontal = 32.dp),
+        GateTheme {
+            Box(
+                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = if (state.canRetry) {
-                        stringResource(R.string.startup_restore_failed, state.message)
-                    } else {
-                        stringResource(R.string.startup_restore_failed_exit, state.message)
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                if (state.canRetry) {
-                    Button(onClick = onRetry) {
-                        Text(stringResource(R.string.startup_restore_retry))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                ) {
+                    Text(
+                        text = if (state.canRetry) {
+                            stringResource(R.string.startup_restore_failed, state.message)
+                        } else {
+                            stringResource(R.string.startup_restore_failed_exit, state.message)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (state.canRetry) {
+                        Button(onClick = onRetry) {
+                            Text(stringResource(R.string.startup_restore_retry))
+                        }
                     }
                 }
             }
         }
+    }
+
+    /** Koin 之外的兜底主题：仅随系统深浅色取默认配色，不解析任何 Koin 依赖。 */
+    @Composable
+    private fun GateTheme(content: @Composable () -> Unit) {
+        MaterialTheme(
+            colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
+            content = content,
+        )
     }
 
     private fun disableNavigationBarContrast() {

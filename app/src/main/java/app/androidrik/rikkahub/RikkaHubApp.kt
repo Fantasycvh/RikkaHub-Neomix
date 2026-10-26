@@ -158,12 +158,7 @@ class RikkaHubApp : Application() {
                 .onFailure { Log.e(TAG, "rollbackIfUnconfirmed failed", it) }
         }
         runCatching {
-            startKoin {
-                androidLogger()
-                androidContext(this@RikkaHubApp)
-                workManagerFactory()
-                modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
-            }
+            ensureKoinStarted()
         }.getOrElse { e ->
             Log.e(TAG, "startKoin failed", e)
             _startupState.value = StartupState.Failed(e.message ?: "Init failed", canRetry = false)
@@ -191,6 +186,23 @@ class RikkaHubApp : Application() {
         _startupState.value = StartupState.Ready
         // 原 onCreate 里 startKoin 之后的所有步骤原样后移（依赖 Koin 或 Ready 语义）
         withContext(Dispatchers.Main) { postReadyInit() }
+    }
+
+    /**
+     * Koin 幂等启动（B 档的 startKoin 唯一入口）。
+     *
+     * **SafeModeActivity 也会调用**：崩溃后重启进程 → RouteActivity 检测到崩溃标记 →
+     * 进 SafeMode，但此时 boot() 可能尚未跑到 startKoin（甚至永远不会——Failed 态），
+     * 不在这里补齐的话 SafeMode 自己就会因 Koin 未启动再崩一次（真机踩过同款）。
+     */
+    fun ensureKoinStarted() {
+        if (org.koin.core.context.GlobalContext.getOrNull() != null) return
+        startKoin {
+            androidLogger()
+            androidContext(this@RikkaHubApp)
+            workManagerFactory()
+            modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
+        }
     }
 
     /** RouteActivity 的重试按钮：仅 applyIfPending 可重试（Koin 未启动，重试无损）。 */

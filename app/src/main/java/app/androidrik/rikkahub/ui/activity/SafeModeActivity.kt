@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.activity
 
+import app.androidrik.rikkahub.RikkaHubApp
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -66,6 +67,9 @@ class SafeModeActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // startKoin 已推迟到 boot() 编排（B 档）；崩溃重启时 SafeMode 可能早于/绕过它，
+        // 幂等补齐，否则本页的 koinInject/inject 会再崩一次
+        (applicationContext as? RikkaHubApp)?.ensureKoinStarted()
         val stackTrace = CrashHandler.getStackTrace(this)
         CrashHandler.clearCrashed(this)
         enableEdgeToEdge()
