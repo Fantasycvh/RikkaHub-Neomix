@@ -44,6 +44,7 @@ import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FavoriteRepository
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.ChatService
+import app.androidrik.rikkahub.service.InterruptReason
 import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.ui.pages.promptinspect.buildPromptInspectionLabels
 import app.androidrik.rikkahub.service.MessageQueueState
@@ -269,16 +270,26 @@ class ChatVM(
      * 与 [handleMessageSend] 的区别只在「当前有轮次在跑」时才有意义：
      * 那边是排队等它跑完，这边是让当前轮次让路（半截落草稿、待审批工具默认拒绝）。
      * 没有东西可打断时自然退化成普通发送。
+     *
+     * [skipQuestion]：AI 反问（ask_user）待答时的跳过语义（design-ask-user-interrupt §3.1）
+     * ——待审批工具收尾为 `skipped` 而非 `cancelled`，模型知道用户没答、该转向新消息。
      */
     fun handleMessageSendInterrupting(
         content: List<UIMessagePart>,
         answer: Boolean = true,
         annotations: List<UIMessageAnnotation> = emptyList(),
+        skipQuestion: Boolean = false,
     ) {
         if (content.isEmptyInputMessage()) return
         analytics.logEvent("ai_send_message_interrupting", null)
 
-        chatService.sendInterrupting(_conversationId, content, answer, annotations)
+        chatService.sendInterrupting(
+            _conversationId,
+            content,
+            answer,
+            annotations,
+            reason = if (skipQuestion) InterruptReason.SkippedQuestion else InterruptReason.QueueJumped,
+        )
     }
 
     // ---- 消息队列（发送不打断生成：入队等当前轮次结束后自动派发） ----

@@ -168,8 +168,12 @@ fun ChatInput(
      * 只在与 [onSendClick] 语义分岔时才显示入口——即「生成中 + 输入框非空」：
      * 此时点普通发送是**排队等**，点这里是**让当前轮次让路**。不显示确认弹窗（用户明确），
      * 半截回复会作为可编辑候选留在会话里，不是真丢。
+     *
+     * [hasPendingInteraction]：AI 反问/工具审批待答（此时生成已结束、loading=false），
+     * 入口同样显示、语义变为「跳过提问并发送」（design-ask-user-interrupt §3.2）。
      */
     onInterruptSendClick: () -> Unit = {},
+    hasPendingInteraction: Boolean = false,
     messageQueue: MessageQueueState = MessageQueueState(),
     onRemoveQueuedMessage: (Uuid) -> Unit = {},
     onBeginEditQueuedMessage: (Uuid) -> QueuedMessage? = { null },
@@ -294,6 +298,10 @@ fun ChatInput(
                     }
                     MessageQueuePanel(
                         state = messageQueue,
+                        // 待答（ask_user/审批）时队列被 pending 闸堵着不派发，给出可见提示
+                        // （design-ask-user-interrupt §3.3；此前文本模式静默滞留，
+                        // 与语音模式的显式报错不对称）
+                        waitingForInteraction = hasPendingInteraction,
                         onRemove = onRemoveQueuedMessage,
                         onBeginEdit = onBeginEditQueuedMessage,
                         onFinishEdit = onFinishEditQueuedMessage,
@@ -453,8 +461,11 @@ fun ChatInput(
                         // （普通发送是排队等，这个是打断并立刻发）。不用长按承载：长按已被
                         // 「发送但不触发回复」占用，且这是个破坏性动作，值得一个看得见的按钮。
                         // 不做二次确认（用户明确）：半截会落成可编辑候选，不是真丢。
+                        // ask_user/审批待答（hasPendingInteraction，loading=false）时同样出现，
+                        // 语义变为「跳过提问并发送」（design-ask-user-interrupt §3.2）——
+                        // 待答期间普通发送会被 pending 闸静默滞留，没有这个入口用户就没有出路。
                         AnimatedVisibility(
-                            visible = loading && !state.isEmpty() && !asrState.isRecording,
+                            visible = (loading || hasPendingInteraction) && !state.isEmpty() && !asrState.isRecording,
                             enter = fadeIn() + scaleIn(),
                             exit = fadeOut() + scaleOut(),
                         ) {
@@ -467,7 +478,10 @@ fun ChatInput(
                             ) {
                                 Icon(
                                     imageVector = HugeIcons.Zap,
-                                    contentDescription = stringResource(R.string.chat_interrupt_and_send),
+                                    contentDescription = stringResource(
+                                        if (!loading && hasPendingInteraction) R.string.chat_skip_question_and_send
+                                        else R.string.chat_interrupt_and_send
+                                    ),
                                     tint = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.size(18.dp),
                                 )

@@ -355,6 +355,7 @@
   <string name="chat_input_unsupported_file_type">不支援的檔案類型：%s</string>
   <string name="chat_input_file_read_failed">檔案讀取失敗：%s</string>
   <string name="chat_interrupt_and_send">插隊傳送</string>
+  <string name="chat_skip_question_and_send">跳過提問並傳送</string>
   <string name="chat_message_add_favorite">加入最愛</string>
   <string name="chat_message_remove_favorite">移除最愛</string>
   <string name="chat_message_quote">引用</string>
@@ -417,6 +418,7 @@
   <string name="chat_page_voice_generation_failed">模型生成失敗，請查看聊天中的錯誤。</string>
   <string name="chat_message_queue_pending">待發送：%1$d 條</string>
   <string name="chat_message_queue_paused">佇列已暫停 · %1$d 條</string>
+  <string name="chat_message_queue_waiting_reply">等待回答 · %1$d 條</string>
   <string name="chat_message_queue_resume">繼續發送</string>
   <string name="chat_message_queue_move_to_front">下一則傳送</string>
   <string name="chat_message_queue_at_front">下一則</string>

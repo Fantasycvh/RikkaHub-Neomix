@@ -2368,5 +2368,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_page_tool_schema_compact_off">Off</string>
   <string name="setting_page_tool_schema_compact_balanced">Balanced</string>
   <string name="setting_page_tool_schema_compact_aggressive">Aggressive</string>
+  <string name="chat_skip_question_and_send">Skip question and send</string>
+  <string name="chat_message_queue_waiting_reply">Waiting for reply · %1$d message(s)</string>
 </resources>
 

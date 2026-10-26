@@ -41,6 +41,8 @@ import kotlin.uuid.Uuid
 @Composable
 internal fun MessageQueuePanel(
     state: MessageQueueState,
+    /** AI 反问/审批待答：队列被 pending 闸堵住不派发，头部给出可见提示（design-ask-user-interrupt §3.3） */
+    waitingForInteraction: Boolean = false,
     onRemove: (Uuid) -> Unit,
     onBeginEdit: (Uuid) -> QueuedMessage?,
     onFinishEdit: (Uuid, List<UIMessagePart>?) -> Unit,
@@ -58,10 +60,11 @@ internal fun MessageQueuePanel(
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = if (state.paused) {
-                            stringResource(R.string.chat_message_queue_paused, state.messages.size)
-                        } else {
-                            stringResource(R.string.chat_message_queue_pending, state.messages.size)
+                        text = when {
+                            state.paused -> stringResource(R.string.chat_message_queue_paused, state.messages.size)
+                            waitingForInteraction ->
+                                stringResource(R.string.chat_message_queue_waiting_reply, state.messages.size)
+                            else -> stringResource(R.string.chat_message_queue_pending, state.messages.size)
                         },
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

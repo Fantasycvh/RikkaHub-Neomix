@@ -44,10 +44,14 @@ class InterruptSemanticsTest {
     )
 
     @Test
-    fun `both interrupt reasons are present and tell the user which one happened`() {
+    fun `interrupt reasons are present and tell the user which one happened`() {
         val reasons = InterruptReason.entries
 
-        assertEquals("打断来源应当只有这两种", 2, reasons.size)
+        assertEquals(
+            "打断来源：用户取消 / 插队发送 / 跳过提问（design-ask-user-interrupt §3.1）",
+            3,
+            reasons.size,
+        )
         reasons.forEach { reason ->
             assertTrue(
                 "理由 ($reason) 不能为空——它直接显示在审批卡片上",
@@ -63,6 +67,11 @@ class InterruptSemanticsTest {
             InterruptReason.UserCancelled.approvalReason,
             InterruptReason.QueueJumped.approvalReason,
         )
+        // status 字段：取消/插队 = cancelled；跳过提问 = skipped（模型据此知道用户没答、
+        // 该转向新消息，而不是把它当成又一次被拒绝的调用）
+        assertEquals("cancelled", InterruptReason.UserCancelled.toolStatus)
+        assertEquals("cancelled", InterruptReason.QueueJumped.toolStatus)
+        assertEquals("skipped", InterruptReason.SkippedQuestion.toolStatus)
     }
 
     @Test
@@ -138,13 +147,23 @@ class InterruptSemanticsTest {
             source.contains("reason: InterruptReason = InterruptReason.UserCancelled"),
         )
         assertTrue(
-            "插队发送必须标记成 QueueJumped，否则审批卡片会把插队说成「用户取消」",
-            source.contains("reason = InterruptReason.QueueJumped"),
+            "插队发送默认必须是 QueueJumped（保持既有插队语义）",
+            source.contains("reason: InterruptReason = InterruptReason.QueueJumped"),
         )
         assertTrue(
             "插队路径必须复用 stopGeneration（而不是自己另写一套取消），" +
                 "两条路径共用同一套半截落库/待审批收尾",
             source.contains("fun sendInterrupting("),
+        )
+        // design-ask-user-interrupt §3：skipped 语义要真正接线
+        assertTrue(
+            "cancelToolByUser 的工具结果必须带 status 字段且取自 reason，" +
+                "否则 skipped 语义到不了模型",
+            source.contains(""""status":"${'$'}{reason.toolStatus}""""),
+        )
+        assertTrue(
+            "中断链必须定义 SkippedQuestion（跳过提问语义，design-ask-user-interrupt §3.1）",
+            source.contains("InterruptReason.SkippedQuestion"),
         )
     }
 }

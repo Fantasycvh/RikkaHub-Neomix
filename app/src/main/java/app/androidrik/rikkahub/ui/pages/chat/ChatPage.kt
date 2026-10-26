@@ -476,10 +476,16 @@ private fun ChatPageContent(
             },
             bottomBar = {
                 Column {
+                // AI 反问/工具审批待答（design-ask-user-interrupt）：待答时生成已结束、
+                // isGenerating=false，但用户同样需要打断出口与队列滞留提示
+                val hasPendingInteraction = conversation.currentMessages.any { message ->
+                    message.parts.any { it is UIMessagePart.Tool && it.isPending }
+                }
                 PlanBar(todos = planTodos)
                 ChatInput(
                     state = inputState,
                     loading = loadingJob != null,
+                    hasPendingInteraction = hasPendingInteraction,
                     settings = effectiveSettings,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
@@ -550,11 +556,16 @@ private fun ChatPageContent(
                         inputState.clearInput()
                     },
                     // 插队发送：打断当前生成、立刻发这条（半截落成可编辑候选、待审批工具默认拒绝）。
+                    // AI 反问（ask_user）待答时同样可见，语义变为「跳过提问并发送」
+                    // （design-ask-user-interrupt §3.2）——不放宽的话，用户在提问待答期间
+                    // 既没有插队入口、普通发送又被 pending 闸静默滞留。
                     // 编辑态下不提供——编辑历史消息与「打断当前轮次」是两件事，混在一起语义不清。
                     onInterruptSendClick = {
                         vm.handleMessageSendInterrupting(
                             content = inputState.getContents(),
                             annotations = inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
+                            // 生成中 = 常规插队；仅 pending（提问/审批待答）= 跳过语义
+                            skipQuestion = loadingJob == null && hasPendingInteraction,
                         )
                         scope.launch {
                             chatListState.requestScrollToItem(conversation.currentMessages.size + 5)

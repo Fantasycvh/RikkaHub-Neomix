@@ -171,6 +171,8 @@ enum class InterruptReason(
     val approvalReason: String,
     /** 写进工具结果的错误串（模型看） */
     val toolOutputError: String,
+    /** 写进工具结果 JSON 的 status 字段（模型据此区分「取消」与「跳过」） */
+    val toolStatus: String = "cancelled",
 ) {
     /** 用户主动点「停止」 */
     UserCancelled(
@@ -182,6 +184,18 @@ enum class InterruptReason(
     QueueJumped(
         approvalReason = "插队发送，本轮让路，未执行该工具",
         toolOutputError = "Generation interrupted by a newer user message before tool execution completed.",
+    ),
+
+    /**
+     * AI 反问（ask_user）待答时用户跳过提问、直接发新消息（design-ask-user-interrupt §3.1）。
+     *
+     * status 用 `skipped` 而非 `cancelled`：模型要知道「用户没答、该转向新消息」，
+     * 而不是「被拒绝」——否则下一轮它可能反复重新提问。
+     */
+    SkippedQuestion(
+        approvalReason = "已跳过该提问（用户发送了新消息）",
+        toolOutputError = "User skipped this question and sent a new message instead of answering.",
+        toolStatus = "skipped",
     ),
 }
 
@@ -744,6 +758,12 @@ class ChatService(
         content: List<UIMessagePart>,
         answer: Boolean = true,
         annotations: List<UIMessageAnnotation> = emptyList(),
+        /**
+         * pending 收尾理由：生成中插队 = [InterruptReason.QueueJumped]（既有语义）；
+         * ask_user/审批待答时跳过 = [InterruptReason.SkippedQuestion]
+         * （design-ask-user-interrupt §3.1，工具结果 status=skipped）。
+         */
+        reason: InterruptReason = InterruptReason.QueueJumped,
     ) {
         if (content.isEmptyInputMessage()) return
 
@@ -753,7 +773,7 @@ class ChatService(
             stopGeneration(
                 conversationId = conversationId,
                 persistStoppedContent = true,
-                reason = InterruptReason.QueueJumped,
+                reason = reason,
             )
             synchronized(session) {
                 if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
@@ -1992,7 +2012,7 @@ class ChatService(
         return tool.copy(
             output = listOf(
                 UIMessagePart.Text(
-                    """{"status":"cancelled","error":"${reason.toolOutputError}"}"""
+                    """{"status":"${reason.toolStatus}","error":"${reason.toolOutputError}"}"""
                 )
             ),
             approvalState = ToolApprovalState.Denied(reason = reason.approvalReason),
