@@ -25,37 +25,7 @@ class DefaultProvidersTest {
         assertEquals("balance", provider.balanceOption.resultPath)
     }
 
-    @Test
-    fun `default new api provider should use token usage endpoint for balance`() {
-        val newApiProviders = DEFAULT_PROVIDERS
-            .filterIsInstance<ProviderSetting.OpenAI>()
-            .filter { it.name == "New API" }
-
-        assertEquals(1, newApiProviders.size)
-
-        val provider = newApiProviders.single()
-        assertTrue(provider.balanceOption.enabled)
-        assertEquals("/api/usage/token/", provider.balanceOption.apiPath)
-        assertEquals("(data.total_granted - data.total_used) / 500000", provider.balanceOption.resultPath)
-        assertTrue(provider.balanceOption.sources.isEmpty())
-    }
-
-    @Test
-    fun `default agent router provider should use token usage endpoint for balance`() {
-        val agentRouterProviders = DEFAULT_PROVIDERS
-            .filterIsInstance<ProviderSetting.OpenAI>()
-            .filter { it.name == "Agent Router" }
-
-        assertEquals(1, agentRouterProviders.size)
-
-        val provider = agentRouterProviders.single()
-        assertEquals("https://agentrouter.org/v1", provider.baseUrl)
-        assertFalse(provider.enabled)
-        assertTrue(provider.builtIn)
-        assertFalse(provider.balanceOption.enabled)
-        assertEquals("/api/usage/token/", provider.balanceOption.apiPath)
-        assertEquals("(data.total_granted - data.total_used) / 500000", provider.balanceOption.resultPath)
-    }
+    // New API / Agent Router 两条内置供应商已移除（`01d0e3a09`），其余额断言测试一并删除。
 
     /**
      * **出厂默认里不得再有上游作者自己的中转服务**（2026-10-16 移除）。
