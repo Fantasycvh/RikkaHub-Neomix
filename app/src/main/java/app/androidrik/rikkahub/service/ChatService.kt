@@ -187,14 +187,14 @@ enum class InterruptReason(
     ),
 
     /**
-     * AI 反问（ask_user）待答时用户跳过提问、直接发新消息（design-ask-user-interrupt §3.1）。
+     * AI 反问（ask_user）待答或工具审批待批时用户跳过（design-ask-user-interrupt §3.1/§6）。
      *
-     * status 用 `skipped` 而非 `cancelled`：模型要知道「用户没答、该转向新消息」，
-     * 而不是「被拒绝」——否则下一轮它可能反复重新提问。
+     * status 用 `skipped` 而非 `cancelled`：模型要知道「用户没等这一步、该继续推进」，
+     * 而不是「被拒绝」——否则下一轮它可能反复重新提问/重试同一调用。
      */
     SkippedQuestion(
-        approvalReason = "已跳过该提问（用户发送了新消息）",
-        toolOutputError = "User skipped this question and sent a new message instead of answering.",
+        approvalReason = "用户已跳过此步骤",
+        toolOutputError = "User skipped this step without providing a result.",
         toolStatus = "skipped",
     ),
 }
@@ -1161,6 +1161,12 @@ class ChatService(
         approved: Boolean,
         reason: String = "",
         answer: String? = null,
+        /**
+         * 跳过（design-ask-user-interrupt §6）：工具结果直接写 `status=skipped` 的
+         * 合成输出（与 [cancelToolByUser] 同形态），卡片置为 Denied(用户已跳过此步骤)。
+         * output 已填 ⇒ isExecuted=true ⇒ 续跑时不再执行该工具，直接带结果推进。
+         */
+        skip: Boolean = false,
     ) {
         val session = getOrCreateSession(conversationId)
         val previousJob = session.getJob()
@@ -1176,6 +1182,7 @@ class ChatService(
                     if (conversation.currentMessages.none { message ->
                             message.getTools().any { it.toolCallId == toolCallId && it.isPending }
                         }) return@afterPreviousGeneration
+                    val skipped = InterruptReason.SkippedQuestion
                     val newApprovalState = when {
                         answer != null -> ToolApprovalState.Answered(answer)
                         approved -> ToolApprovalState.Approved
@@ -1194,7 +1201,18 @@ class ChatService(
                             val targetMsg = node.messages[targetMsgIndex]
                             val updatedParts = targetMsg.parts.map { part ->
                                 if (part is UIMessagePart.Tool && part.toolCallId == toolCallId) {
-                                    part.copy(approvalState = newApprovalState)
+                                    if (skip) {
+                                        part.copy(
+                                            output = listOf(
+                                                UIMessagePart.Text(
+                                                    """{"status":"${skipped.toolStatus}","error":"${skipped.toolOutputError}"}"""
+                                                )
+                                            ),
+                                            approvalState = ToolApprovalState.Denied(reason = skipped.approvalReason),
+                                        )
+                                    } else {
+                                        part.copy(approvalState = newApprovalState)
+                                    }
                                 } else {
                                     part
                                 }

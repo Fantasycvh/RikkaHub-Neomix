@@ -699,6 +699,9 @@ private fun ChatPageContent(
                 onToolAnswer = { toolCallId, answer ->
                     vm.handleToolAnswer(toolCallId, answer)
                 },
+                onToolSkip = { toolCallId ->
+                    vm.handleToolSkip(toolCallId)
+                },
                 onApproveAll = {
                     vm.handleApproveAllPending()
                 },

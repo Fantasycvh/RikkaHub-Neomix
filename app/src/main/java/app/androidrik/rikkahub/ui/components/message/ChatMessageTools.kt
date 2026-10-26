@@ -49,6 +49,7 @@ import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Forward02
 import me.rerere.hugeicons.stroke.AlertCircle
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Cancel01
@@ -126,13 +127,14 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     loading: Boolean = false,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    onToolSkip: ((toolCallId: String) -> Unit)? = null,
     onApproveAll: (() -> Unit)? = null,
     workspaceId: String? = null,
     memoryStoreId: String? = null,
 ) {
     // ask_user 是交互式问答流程, 不走注册式渲染框架
     if (tool.toolName == ASK_USER_TOOL_NAME) {
-        AskUserToolStep(tool = tool, loading = loading, onToolAnswer = onToolAnswer)
+        AskUserToolStep(tool = tool, loading = loading, onToolAnswer = onToolAnswer, onToolSkip = onToolSkip)
         return
     }
 
@@ -215,6 +217,20 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                             contentDescription = stringResource(R.string.chat_message_tool_deny),
                             modifier = Modifier.size(14.dp)
                         )
+                    }
+                    // 跳过（design-ask-user-interrupt §6）：工具结果直接写 status=skipped，
+                    // 模型知道用户没等这一步——区别于拒绝（明确不要）与批准（执行）
+                    if (onToolSkip != null) {
+                        FilledTonalIconButton(
+                            onClick = { onToolSkip(tool.toolCallId) },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.Forward02,
+                                contentDescription = stringResource(R.string.chat_message_tool_skip),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
                     FilledTonalIconButton(
                         onClick = { onToolApproval(tool.toolCallId, true, "") },
@@ -317,6 +333,7 @@ private fun ChainOfThoughtScope.AskUserToolStep(
     tool: UIMessagePart.Tool,
     loading: Boolean,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)?,
+    onToolSkip: ((toolCallId: String) -> Unit)? = null,
 ) {
     val isPending = tool.approvalState is ToolApprovalState.Pending
     val isAnswered = tool.approvalState is ToolApprovalState.Answered
@@ -524,58 +541,82 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                     }
                 }
 
-                // Submit button
-                if (isPending && onToolAnswer != null) {
-                    FilledTonalButton(
-                        onClick = {
-                            val answerPayload = buildJsonObject {
-                                put("answers", buildJsonObject {
-                                    questions.forEach { q ->
-                                        when (q.selectionType) {
-                                            "multi" -> {
-                                                val custom = customAnswers[q.id]?.trim().orEmpty()
-                                                val selected = multiAnswers[q.id].orEmpty()
-                                                put(
-                                                    q.id,
-                                                    JsonPrimitive(
-                                                        (if (custom.isNotEmpty()) selected + custom else selected)
-                                                            .joinToString(", ")
-                                                    )
-                                                )
-                                            }
-                                            "single" -> {
-                                                val custom = customAnswers[q.id]?.trim().orEmpty()
-                                                put(
-                                                    q.id,
-                                                    JsonPrimitive(
-                                                        if (custom.isNotEmpty()) custom else (answers[q.id] ?: "")
-                                                    )
-                                                )
-                                            }
-                                            else -> put(q.id, JsonPrimitive(answers[q.id] ?: ""))
-                                        }
-                                    }
-                                })
-                            }
-                            onToolAnswer(tool.toolCallId, answerPayload.toString())
-                        },
-                        enabled = questions.all { q ->
-                            when (q.selectionType) {
-                                "multi" -> !multiAnswers[q.id].isNullOrEmpty() || !customAnswers[q.id].isNullOrBlank()
-                                else -> !answers[q.id].isNullOrBlank() || !customAnswers[q.id].isNullOrBlank()
-                            }
-                        },
+                // Submit button（+ 跳过提问，design-ask-user-interrupt §6：不答也不断，
+                // 结果写 skipped，模型继续推进）
+                if (isPending && (onToolAnswer != null || onToolSkip != null)) {
+                    Row(
                         modifier = Modifier.align(Alignment.End),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            imageVector = HugeIcons.Tick01,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.chat_message_tool_submit),
-                            modifier = Modifier.padding(start = 4.dp),
-                        )
+                        if (onToolAnswer != null) {
+                            FilledTonalButton(
+                                onClick = {
+                                    val answerPayload = buildJsonObject {
+                                        put("answers", buildJsonObject {
+                                            questions.forEach { q ->
+                                                when (q.selectionType) {
+                                                    "multi" -> {
+                                                        val custom = customAnswers[q.id]?.trim().orEmpty()
+                                                        val selected = multiAnswers[q.id].orEmpty()
+                                                        put(
+                                                            q.id,
+                                                            JsonPrimitive(
+                                                                (if (custom.isNotEmpty()) selected + custom else selected)
+                                                                    .joinToString(", ")
+                                                            )
+                                                        )
+                                                    }
+                                                    "single" -> {
+                                                        val custom = customAnswers[q.id]?.trim().orEmpty()
+                                                        put(
+                                                            q.id,
+                                                            JsonPrimitive(
+                                                                if (custom.isNotEmpty()) custom else (answers[q.id] ?: "")
+                                                            )
+                                                        )
+                                                    }
+                                                    else -> put(q.id, JsonPrimitive(answers[q.id] ?: ""))
+                                                }
+                                            }
+                                        })
+                                    }
+                                    onToolAnswer(tool.toolCallId, answerPayload.toString())
+                                },
+                                enabled = questions.all { q ->
+                                    when (q.selectionType) {
+                                        "multi" -> !multiAnswers[q.id].isNullOrEmpty() || !customAnswers[q.id].isNullOrBlank()
+                                        else -> !answers[q.id].isNullOrBlank() || !customAnswers[q.id].isNullOrBlank()
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    imageVector = HugeIcons.Tick01,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.chat_message_tool_submit),
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                            }
+                        }
+                        // 跳过提问：不答也不断（结果写 skipped），与提交按钮同行
+                        if (onToolSkip != null) {
+                            TextButton(
+                                onClick = { onToolSkip(tool.toolCallId) },
+                            ) {
+                                Icon(
+                                    imageVector = HugeIcons.Forward02,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.chat_message_tool_skip),
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -134,6 +134,7 @@ fun ChatMessage(
     onClearTranslation: (UIMessage) -> Unit = {},
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    onToolSkip: ((toolCallId: String) -> Unit)? = null,
     onApproveAll: (() -> Unit)? = null,
     /** #1929 编辑思考过程（原地改推理文本）；null = 不显示编辑入口 */
     onEditReasoning: ((messageId: Uuid, reasoning: UIMessagePart.Reasoning, text: String) -> Unit)? = null,
@@ -234,6 +235,7 @@ fun ChatMessage(
                 model = model,
                 onToolApproval = onToolApproval,
                 onToolAnswer = onToolAnswer,
+                onToolSkip = onToolSkip,
                 onApproveAll = onApproveAll,
                 onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
                 onReasoningEditRequest = if (onEditReasoning != null) {
@@ -358,6 +360,7 @@ private fun MessagePartsBlock(
     loading: Boolean,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    onToolSkip: ((toolCallId: String) -> Unit)? = null,
     onApproveAll: (() -> Unit)? = null,
     onUserMessageClick: (() -> Unit)? = null,
     onReasoningEditRequest: ((UIMessagePart.Reasoning) -> Unit)? = null,

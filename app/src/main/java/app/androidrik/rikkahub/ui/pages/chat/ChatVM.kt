@@ -474,6 +474,12 @@ class ChatVM(
         chatService.handleToolApproval(_conversationId, toolCallId, approved = true, answer = answer)
     }
 
+    /** 跳过（ask_user 提问 / 工具审批通用）：结果写 status=skipped，模型知道用户没等这一步。 */
+    fun handleToolSkip(toolCallId: String) {
+        analytics.logEvent("ai_tool_skip", null)
+        chatService.handleToolApproval(_conversationId, toolCallId, approved = false, skip = true)
+    }
+
     fun stopGeneration() {
         viewModelScope.launch {
             chatService.stopGeneration(_conversationId)

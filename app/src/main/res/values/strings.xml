@@ -344,6 +344,7 @@
   <string name="chat_message_quote_assistant">Assistant</string>
   <string name="chat_message_quote_context">Quoted message</string>
   <string name="chat_message_tool_approve">Approve</string>
+  <string name="chat_message_tool_skip">Skip</string>
   <string name="chat_message_reasoning_edit">Edit reasoning</string>
   <string name="chat_message_reasoning_edit_save">Save</string>
   <string name="chat_message_reasoning_edit_signed_warning">This reasoning block is signed by the provider. Only an unchanged block is accepted when sent back, so editing it may make the next request be rejected.</string>
