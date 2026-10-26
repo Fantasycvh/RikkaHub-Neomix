@@ -123,6 +123,7 @@ internal val DEFAULT_COMPRESS_PROMPT = """
     - [decisions and their rationale, constraints, user preferences, open questions, data needed to continue]
 
     Rules:
+    - Write in first person from the assistant's perspective ("I said", "I decided", "the user asked me to...") — this checkpoint is the assistant's own memory of the conversation, NOT a third-person report about "the user and the assistant".
     - Preserve exact file paths, commands, error strings, identifiers, numeric values, function signatures.
     - Capture user feedback and explicit instructions faithfully, especially corrections.
     - Do NOT mention this summarization request or that the context was compacted.

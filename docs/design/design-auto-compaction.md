@@ -44,6 +44,15 @@
 | `loadMessageNodes`（`ConversationRepository.kt:441`）分页查询（pageSize 64）但**拼成全量 List** | 分页只为规避 `SQLiteBlobTooBigException`，不是懒加载 |
 | 搜索 = SQLite FTS（`MessageFtsManager` + simple 分词/查询，已去掉 jieba 词典） | 已够用，无替换需求 |
 
+### 1.5 追记（2026-10-26）：压缩切点的窗口形状问题（NMoi D143）
+
+借 NMoi-Agent 实测（7 种历史形状 × 5 档预算，真 `choose_cut_for_budget`）：**9 次切点里 7 次让压缩后窗口以助手消息开头**——模型读到「自己回答了一个看不见的问题」；2 次还留下悬空工具对。fork 现状的对应关系：
+
+- **悬空工具对**：已由 `alignContextStart`（`Message.kt` limitContext）与 `ToolResultBalancingTransformer` 兜住，无此问题；
+- **窗口起点是助手消息**：`estimateCompressionPlan` 从尾部按 token 累计取保留窗口、`limitContext` 从头部截——都**没有轮边界对齐检查**，D143 同款问题大概率存在。
+
+修法（NMoi 已实现于 core，`choose_cut_for_window_shape`）：预算切点先取最靠后位置，再**前挪到最近的轮边界**（真实 USER 消息之前；A 槽 = 整轮助手发言组，按原子单元整组搬），挪不动退一档预算。`estimateCompressionPlan` 与 `limitContext` 各自补一次对齐即可，属小改动——**记为待办，未排期**；与多步压缩稿 §3.5 的失败阶梯互相独立。
+
 ## 二、Yuihub 实现要点（harness 式）
 
 ### 2.1 参数（对齐 deepseek-harness compaction-basic）

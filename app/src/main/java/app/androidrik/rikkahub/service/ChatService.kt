@@ -116,9 +116,13 @@ import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.utils.estimateWindowTokens
 import app.androidrik.rikkahub.data.ai.compression.shouldAutoCompress
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
+import app.androidrik.rikkahub.data.ai.compression.COMPRESS_SINGLE_STEP_MAX_CHARS
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
+import app.androidrik.rikkahub.data.ai.compression.CompressionTier
+import app.androidrik.rikkahub.data.ai.compression.buildTruncatedFallback
 import app.androidrik.rikkahub.data.ai.compression.effectiveMinKeep
 import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
+import app.androidrik.rikkahub.data.ai.compression.runCompressionLadder
 import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
 import app.androidrik.rikkahub.data.model.markGeneratingNodeIncomplete
 import app.androidrik.rikkahub.data.model.CompressionSummary
@@ -2326,11 +2330,32 @@ class ChatService(
                 ?: throw IllegalStateException("Failed to generate compressed summary")
         }
 
-        val combined = coroutineScope {
-            splitIntoChunks(messagesToCompress)
-                .map { chunk -> async { compressChunk(chunk) } }
-                .awaitAll()
-        }.joinToString("\n\n")
+        // 失败阶梯 C3→C2→C4（design-multi-pass-compression.md §3.5）：现状分块并行产出
+        // 过覆盖率闸（硬事实逐字命中 ≥0.8，代码侧），不过就退单步整体重摘一次，再不过
+        // 落确定性兜底（原文截断 + incomplete 声明）——宁可明说没压好，不静默入档。
+        // C2 在原文过长时跳过（单步请求自身会超窗）；各档同用上面的 model/providerHandler
+        // （同一次压缩冻结模型，NMoi D76 同款原则）。
+        val sourceText = messagesToCompress.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
+        val ladder = runCompressionLadder(
+            sourceText = sourceText,
+            chunkedSummarize = {
+                coroutineScope {
+                    splitIntoChunks(messagesToCompress)
+                        .map { chunk -> async { compressChunk(chunk) } }
+                        .awaitAll()
+                }.joinToString("\n\n")
+            },
+            singleSummarize = if (sourceText.length <= COMPRESS_SINGLE_STEP_MAX_CHARS) {
+                { compressChunk(messagesToCompress) }
+            } else {
+                null
+            },
+            truncatedFallback = buildTruncatedFallback(sourceText),
+        )
+        if (ladder.tier != CompressionTier.CHUNKED) {
+            Log.w(TAG, "compressToCheckpoint fell to tier=${ladder.tier} for $conversationId (coverage gate / upstream failure)")
+        }
+        val combined = ladder.summary
 
         val boundaryNode = plan.toCompress.lastOrNull() ?: return@runCatching null
         val boundaryNodeId = boundaryNode.id.toString()

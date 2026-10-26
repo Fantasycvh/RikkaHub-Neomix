@@ -54,6 +54,16 @@ class CompressPromptTest {
     }
 
     @Test
+    fun `default prompt requires first person memory voice`() {
+        // D147 实测（NMoi）：第三人称摘要高置信率 22–38%，第一人称 62%，文件口吻 20%→0%
+        // 人称比条数重要 ⇒ 第一人称是硬规则不是风格建议
+        assertTrue(DEFAULT_COMPRESS_PROMPT.contains("first person"))
+        assertTrue(DEFAULT_COMPRESS_PROMPT.contains("own memory"))
+        // 显式否定第三方报告形态，防止模型写成「用户与助手」的会议纪要
+        assertTrue(DEFAULT_COMPRESS_PROMPT.contains("NOT a third-person report"))
+    }
+
+    @Test
     fun `checkpoint text wraps preamble and summary body`() {
         val text = buildCompactionCheckpointText("summary body")
         assertTrue(text.startsWith(COMPACTION_CHECKPOINT_PREAMBLE))
