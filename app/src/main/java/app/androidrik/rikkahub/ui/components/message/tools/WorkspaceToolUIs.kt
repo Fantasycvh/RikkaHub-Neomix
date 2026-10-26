@@ -696,6 +696,10 @@ private fun languageOf(path: String?): String = when (
 object PresentFileToolUI : ToolUIRenderer {
     override val toolName: String = "workspace_present_file"
 
+    // 交付物：文件卡是 AI 交给用户的产物，与 chart_display/generate_image 同类——
+    // 切断思考链独占一块，否则整轮折叠/「只显示最后 N 步」会把交付物藏起来
+    override fun cutsChain(): Boolean = true
+
     override fun icon(context: ToolUIContext): ImageVector = HugeIcons.FileImport
 
     @Composable
