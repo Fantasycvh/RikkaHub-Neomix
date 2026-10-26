@@ -132,8 +132,8 @@ class RikkaHubApp : Application() {
      * **startKoin 被推迟到换库成功之后**——换库失败时 Koin/Room/后台写者都不存在，
      * fail-closed 的重试才是无损的（设计稿 §1 的动机）。
      */
-    fun boot() {
-        if (!startupRunning.compareAndSet(false, true)) return
+    fun boot(): Boolean {
+        if (!startupRunning.compareAndSet(false, true)) return false
         startupScope.launch {
             try {
                 doBoot()
@@ -141,6 +141,7 @@ class RikkaHubApp : Application() {
                 startupRunning.set(false)
             }
         }
+        return true
     }
 
     private suspend fun doBoot() {
@@ -211,7 +212,11 @@ class RikkaHubApp : Application() {
         if (current is StartupState.Ready) return
         if (current is StartupState.Failed && !current.canRetry) return
         _startupState.value = StartupState.Restoring
-        boot()
+        if (!boot()) {
+            // 上一轮 boot 协程还没跑到 finally 清 startupRunning（微秒窗口）：
+            // 回退 UI，等它的 finally 落定状态，否则永远转圈
+            _startupState.value = current
+        }
     }
 
     /** staged 主库入库校验：版本可迁移 + 完整性（Android SQLiteDatabase，生产专用）。 */

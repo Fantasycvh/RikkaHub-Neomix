@@ -97,6 +97,8 @@ object PendingRestoreStore {
      * 崩溃点覆盖：
      * - applied + pending 残留（applied 写完、pending 未清时死了）→ 只清残留；
      * - 让位后、换入前死了（rollback 满员 + pending 在）→ 先归位再重走；
+     * - 换入后、applied.marker 写前死了（staged 已 move 走、现库已是新库）→ 补写 applied
+     *   转入确认态（不得走 rollback 归位，那会把旧库盖回新库上）；
      * - validate 失败 / payload 残缺 → 抛错，现库未动、marker 保留（可重试）。
      */
     @Synchronized
@@ -111,7 +113,23 @@ object PendingRestoreStore {
         val manifest = runCatching {
             json.decodeFromString<PendingManifest>(markerFile(filesDir).readText())
         }.getOrElse { throw IllegalStateException("Pending restore marker is corrupt", it) }
-        check(manifest.databaseSize > 0 && staged.isFile && staged.length() == manifest.databaseSize) {
+
+        if (!staged.isFile) {
+            // staged 已消失：唯一来源是上次运行走到了换入那步（move 语义）。
+            // 现库在场 ⇒ 换入实际已完成，补 applied.marker 进确认态；现库也不在场 ⇒ payload
+            // 彻底丢失，若有 rollback 副本先归位并放弃本次恢复——锁死启动屏比放弃恢复更糟。
+            if (databaseFile.isFile) {
+                completeInterruptedSwapIn(filesDir, dir, manifest, databaseFile)
+                return true
+            }
+            if (File(appliedDir(filesDir), ROLLBACK_DB).isFile) {
+                recoverRollback(filesDir, databaseFile)
+                clearPending(filesDir)
+                return false
+            }
+            throw IllegalStateException("Pending database is missing and no swapped-in database found")
+        }
+        check(manifest.databaseSize > 0 && staged.length() == manifest.databaseSize) {
             "Pending database is missing or incomplete"
         }
         listOf("-wal" to manifest.databaseWalSize, "-shm" to manifest.databaseShmSize).forEach { (suffix, size) ->
@@ -163,6 +181,35 @@ object PendingRestoreStore {
     }
 
     /**
+     * 换入已完成、applied.marker 未写就死了：把残留的 staged sidecar 归位、补写 applied.marker
+     * 转入确认态。rollback 里是旧库，Room 打开成功后 [confirmApplied] 删之，打开失败则由
+     * [rollbackIfUnconfirmed] 回滚——与正常换入完全同一条收尾路径。
+     */
+    private fun completeInterruptedSwapIn(
+        filesDir: File,
+        dir: File,
+        manifest: PendingManifest,
+        databaseFile: File,
+    ) {
+        val rollbackDir = appliedDir(filesDir)
+        check(rollbackDir.isDirectory || rollbackDir.mkdirs()) { "Cannot create rollback directory" }
+        listOf("-wal" to manifest.databaseWalSize, "-shm" to manifest.databaseShmSize).forEach { (suffix, size) ->
+            if (size != null) {
+                val sidecar = File(dir, "$STAGED_DB$suffix")
+                if (sidecar.isFile) DatabaseRestoreFiles.moveIntoPlace(sidecar, File(databaseFile.path + suffix))
+            }
+        }
+        writeSynced(
+            File(rollbackDir, APPLIED_MARKER),
+            json.encodeToString(
+                RollbackMarker.serializer(),
+                RollbackMarker(hadDatabase = File(rollbackDir, ROLLBACK_DB).isFile)
+            ).toByteArray(),
+        )
+        clearPending(filesDir)
+    }
+
+    /**
      * 上次换库后应用没能活着确认（applied 在、rollback 还在）：自动回滚。
      * [rollbackIfUnconfirmed] 失败会抛出——调用方 runCatching 记日志后照常初始化
      * （一个可能损坏的库好过白屏；此时 safety_backup 仍在）。
@@ -175,7 +222,13 @@ object PendingRestoreStore {
             json.decodeFromString<RollbackMarker>(File(rollbackDir, APPLIED_MARKER).readText())
         }.getOrDefault(RollbackMarker())
         if (payload.hadDatabase) {
-            check(File(rollbackDir, ROLLBACK_DB).isFile) { "Rollback database is missing" }
+            if (!File(rollbackDir, ROLLBACK_DB).isFile) {
+                // rollback 副本缺失但 applied.marker 还在：只可能是 [confirmApplied] 的
+                // deleteRecursively 删了一半（它只在 Room 打开成功后运行，新库已验证可用）。
+                // 无法回滚也无需回滚——清残留即可，否则每次启动都重复抛 "Rollback database is missing"。
+                confirmApplied(filesDir)
+                return
+            }
             listOf("", "-wal", "-shm").forEach { suffix ->
                 val target = File(databaseFile.path + suffix)
                 target.delete() // 先清换入的，防陈旧 WAL 回放

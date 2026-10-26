@@ -97,11 +97,48 @@ class PendingRestoreStoreTest {
         assertFalse(File(filesDir, "restore_applied").isDirectory)
     }
 
-    // ---- 4. payload 残缺（staged 丢失 / 大小不符）fail-closed ----
+    // ---- 4a. 换入后、applied.marker 写前崩溃：staged 已 move 走、现库已是新库 ⇒ 补 applied 转确认态 ----
 
     @Test
-    fun `missing staged payload fails closed with marker retained`() {
+    fun `interrupted swap-in is completed as applied instead of locking startup`() {
+        PendingRestoreStore.stage(filesDir, stagedMainFile("STAGED-B"), stagedSidecarFile("STAGED-WAL"), null)
+        // 手工构造「换入完成、marker 未写」现场：staged.db 已 move 到现库位置，staged-wal 还在 pending
+        val pendingDir = PendingRestoreStore.pendingDir(filesDir)
+        File(pendingDir, "staged.db").renameTo(dbFile)
+        dbFile.writeText("STAGED-B")
+        assertTrue(PendingRestoreStore.hasPending(filesDir))
+
+        assertTrue(PendingRestoreStore.applyIfPending(filesDir, dbFile, okValidator))
+
+        assertEquals("STAGED-B", dbFile.readText())
+        assertEquals("STAGED-WAL", File(dbDir, "rikka_hub-wal").readText())
+        assertFalse(PendingRestoreStore.hasPending(filesDir))
+        assertTrue(PendingRestoreStore.hasApplied(filesDir))
+    }
+
+    // ---- 4b. payload 彻底丢失但有 rollback 副本：归位旧库并放弃本次恢复（不锁死启动） ----
+
+    @Test
+    fun `lost payload with rollback copy restores live database and abandons restore`() {
         write(dbFile, "LIVE-A")
+        PendingRestoreStore.stage(filesDir, stagedMainFile("STAGED-B"), null, null)
+        // 手工构造「换入时 staged 与现库双双丢失」现场，rollback 里有原库
+        File(PendingRestoreStore.pendingDir(filesDir), "staged.db").delete()
+        dbFile.delete()
+        val rollbackDir = File(filesDir, "restore_applied").apply { mkdirs() }
+        File(rollbackDir, "rollback.db").writeText("LIVE-A")
+
+        assertFalse(PendingRestoreStore.applyIfPending(filesDir, dbFile, okValidator))
+
+        assertEquals("LIVE-A", dbFile.readText())
+        assertFalse(PendingRestoreStore.hasPending(filesDir))
+        assertFalse(PendingRestoreStore.hasApplied(filesDir))
+    }
+
+    // ---- 4c. payload 丢失且无任何副本 → fail-closed（可重试，不装半个库） ----
+
+    @Test
+    fun `lost payload without any copy fails closed`() {
         PendingRestoreStore.stage(filesDir, stagedMainFile("B"), null, null)
         File(PendingRestoreStore.pendingDir(filesDir), "staged.db").delete()
 
@@ -109,9 +146,8 @@ class PendingRestoreStoreTest {
             PendingRestoreStore.applyIfPending(filesDir, dbFile, okValidator)
             throw AssertionError("expected failure")
         } catch (expected: IllegalStateException) {
-            assertTrue(expected.message!!.contains("missing or incomplete"))
+            assertTrue(expected.message!!.contains("missing"))
         }
-        assertEquals("LIVE-A", dbFile.readText())
         assertTrue(PendingRestoreStore.hasPending(filesDir))
     }
 
@@ -249,6 +285,22 @@ class PendingRestoreStoreTest {
         }
         assertEquals("LIVE-A", dbFile.readText())
         assertTrue(PendingRestoreStore.hasPending(filesDir))
+    }
+
+    // ---- 14. confirmApplied 删了一半（rollback.db 已删、marker 残留）⇒ 清残留，不重复抛错 ----
+
+    @Test
+    fun `partial confirmApplied residue is cleared instead of throwing every startup`() {
+        write(dbFile, "STAGED-B")
+        val rollbackDir = File(filesDir, "restore_applied").apply { mkdirs() }
+        File(rollbackDir, "applied.marker").writeText("""{"hadDatabase":true}""")
+        assertTrue(PendingRestoreStore.hasApplied(filesDir))
+
+        PendingRestoreStore.rollbackIfUnconfirmed(filesDir, dbFile)
+
+        assertEquals("STAGED-B", dbFile.readText())
+        assertFalse(PendingRestoreStore.hasApplied(filesDir))
+        assertFalse(rollbackDir.exists())
     }
 
     // ---- 13. applied 写完、pending 未清时崩溃：残留 pending 只清不重装 ----

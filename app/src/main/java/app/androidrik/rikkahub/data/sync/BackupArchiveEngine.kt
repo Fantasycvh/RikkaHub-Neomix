@@ -105,8 +105,12 @@ internal class BackupArchiveEngine(
             var databaseBytes: Long? = null
             if (BackupItem.DATABASE in items) {
                 val (sha, bytes) = addDatabaseToZip(zipOut, ::report)
-                databaseSha256 = sha
-                databaseBytes = bytes
+                if (bytes > 0L) {
+                    databaseSha256 = sha
+                    databaseBytes = bytes
+                }
+                // bytes == 0（新装设备库尚未创建）：manifest 保持 null——写成 ""/0 会让恢复侧
+                // 校验永远失败（空库备份变成死包），见 verifyBackupManifest 的可空约定
             }
             if (BackupItem.FILES in items) {
                 addAppFilesToZip(zipOut, ::report)
@@ -240,9 +244,11 @@ internal class BackupArchiveEngine(
             val throttle = ProgressThrottle()
             // 进度按「已消费的归档字节」计（= backupFile 长度），比逐条目 size 稳——
             // ZipInputStream 流式读时条目 size 常为 -1（本地头用 data descriptor）。
+            // 恢复读 zip 两遍（第一遍校验记账、第二遍落盘用户文件），进度总量 ×2。
             val archiveTotal = backupFile.length()
+            val archiveTotalTwice = archiveTotal * 2
             val countingIn = CountingInputStream(FileInputStream(backupFile)) { consumed ->
-                val progress = BackupProgress(BackupPhase.EXTRACTING, consumed, archiveTotal)
+                val progress = BackupProgress(BackupPhase.EXTRACTING, consumed, archiveTotalTwice)
                 if (throttle.shouldEmit(progress)) onProgress(progress)
             }
 
@@ -257,6 +263,56 @@ internal class BackupArchiveEngine(
             var stagedMainBytes = 0L
             val sectionEntries = mutableMapOf<BackupManifestSection, Int>()
             var manifest: BackupManifest? = null
+
+            // FILES / WORKSPACE_FILES 条目的落盘逻辑，第二遍（校验通过后）调用；
+            // 第一遍对这两类条目只记账、不写任何用户文件（见下方 else 分支注释）。
+            fun restoreUserFileEntry(zipIn: ZipInputStream, zipEntry: ZipEntry) {
+                val bounded = boundedEntryStream(zipIn)
+                when {
+                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.UPLOAD}/") -> {
+                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.UPLOAD)
+                    }
+                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.IMAGES}/") -> {
+                        // images（imggen 产物）此前不进备份——旧备份无此条目自然跳过
+                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.IMAGES)
+                    }
+                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.AVATARS}/") -> {
+                        // avatars（助手/用户头像）2026-10-13 从 upload/ 独立出来（#2127）；
+                        // **旧备份里头像在 upload/ 下**，由上面那条分支照常恢复到 upload/，
+                        // 再于下次启动被 AvatarMigration 搬进 avatars/ ⇒ 新旧备份都能恢复出头像
+                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.AVATARS)
+                    }
+                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.SKILLS}/") -> {
+                        restoreSkillEntry(bounded, zipEntry.name)
+                    }
+                    BackupItem.FILES in items &&
+                        zipEntry.name.startsWith("${FileFolders.MEDIA_CREATION}/") -> {
+                        // 媒体创作产物：media_creation/<sessionId>/… 递归；复用带 zip-slip 防护的平铺写入
+                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.MEDIA_CREATION)
+                    }
+                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.FONTS}/") -> {
+                        restoreFontEntry(bounded, zipEntry.name)
+                    }
+                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.TOOL_OUTPUTS}/") -> {
+                        // 仅兼容旧备份（新备份已不含它）；恢复后也会在下次启动被 cleanup 清掉
+                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.TOOL_OUTPUTS)
+                    }
+                    BackupItem.WORKSPACE_FILES in items &&
+                        zipEntry.name.startsWith(WorkspaceBackupHelper.ZIP_PREFIX) -> {
+                        val restored = WorkspaceBackupHelper.restoreEntry(
+                            context = context,
+                            workspaceBaseDir = WorkspaceBackupHelper.workspacesDir(context),
+                            zipEntryName = zipEntry.name,
+                        ) { output -> bounded.copyTo(output) }
+                        if (restored) {
+                            workspaceFilesRestored++
+                            Log.i(TAG, "restoreFromBackupFile: restored workspace file ${zipEntry.name}")
+                        } else {
+                            Log.w(TAG, "restoreFromBackupFile: skipped workspace entry ${zipEntry.name}")
+                        }
+                    }
+                }
+            }
 
             try {
                 ZipInputStream(countingIn).use { zipIn ->
@@ -304,51 +360,10 @@ internal class BackupArchiveEngine(
                             }
 
                             else -> {
-                                val bounded = boundedEntryStream(zipIn)
-                                when {
-                                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.UPLOAD}/") -> {
-                                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.UPLOAD)
-                                    }
-                                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.IMAGES}/") -> {
-                                        // images（imggen 产物）此前不进备份——旧备份无此条目自然跳过
-                                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.IMAGES)
-                                    }
-                                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.AVATARS}/") -> {
-                                        // avatars（助手/用户头像）2026-10-13 从 upload/ 独立出来（#2127）；
-                                        // **旧备份里头像在 upload/ 下**，由上面那条分支照常恢复到 upload/，
-                                        // 再于下次启动被 AvatarMigration 搬进 avatars/ ⇒ 新旧备份都能恢复出头像
-                                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.AVATARS)
-                                    }
-                                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.SKILLS}/") -> {
-                                        restoreSkillEntry(bounded, zipEntry.name)
-                                    }
-                                    BackupItem.FILES in items &&
-                                        zipEntry.name.startsWith("${FileFolders.MEDIA_CREATION}/") -> {
-                                        // 媒体创作产物：media_creation/<sessionId>/… 递归；复用带 zip-slip 防护的平铺写入
-                                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.MEDIA_CREATION)
-                                    }
-                                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.FONTS}/") -> {
-                                        restoreFontEntry(bounded, zipEntry.name)
-                                    }
-                                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.TOOL_OUTPUTS}/") -> {
-                                        // 仅兼容旧备份（新备份已不含它）；恢复后也会在下次启动被 cleanup 清掉
-                                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.TOOL_OUTPUTS)
-                                    }
-                                    BackupItem.WORKSPACE_FILES in items &&
-                                        zipEntry.name.startsWith(WorkspaceBackupHelper.ZIP_PREFIX) -> {
-                                        val restored = WorkspaceBackupHelper.restoreEntry(
-                                            context = context,
-                                            workspaceBaseDir = WorkspaceBackupHelper.workspacesDir(context),
-                                            zipEntryName = zipEntry.name,
-                                        ) { output -> bounded.copyTo(output) }
-                                        if (restored) {
-                                            workspaceFilesRestored++
-                                            Log.i(TAG, "restoreFromBackupFile: restored workspace file ${zipEntry.name}")
-                                        } else {
-                                            Log.w(TAG, "restoreFromBackupFile: skipped workspace entry ${zipEntry.name}")
-                                        }
-                                    }
-                                }
+                                // FILES / WORKSPACE_FILES 是用户数据：第一遍只记账（classify
+                                // 已在 when 之前计数），不落盘——manifest 校验在读毕后才进行，
+                                // 先写就把「校验通过才破坏」的承诺漏掉了。条目剩余字节由下方的
+                                // closeEntry 跳过；总量上限已由 BackupSpaceCheck 把关。
                             }
                         }
                         zipIn.closeEntry()
@@ -370,6 +385,47 @@ internal class BackupArchiveEngine(
                 }
 
                 // ---- 校验通过，破坏性步骤开始 ----
+
+                // FILES / WORKSPACE_FILES 第二遍流式写入（第一遍只记账，见上）：
+                // 「校验通过才破坏」由此覆盖用户文件区，而不只 settings+数据库
+                if (BackupItem.FILES in items || BackupItem.WORKSPACE_FILES in items) {
+                    val secondPassIn = CountingInputStream(FileInputStream(backupFile)) { consumed ->
+                        val progress = BackupProgress(BackupPhase.EXTRACTING, archiveTotal + consumed, archiveTotalTwice)
+                        if (throttle.shouldEmit(progress)) onProgress(progress)
+                    }
+                    ZipInputStream(secondPassIn).use { zipIn ->
+                        var entry: ZipEntry?
+                        while (zipIn.nextEntry.also { entry = it } != null) {
+                            val zipEntry = entry ?: continue
+                            restoreUserFileEntry(zipIn, zipEntry)
+                            zipIn.closeEntry()
+                        }
+                    }
+                }
+
+                // B 档：**不换库**——staged 家族移交 PendingRestoreStore，重启后由
+                // RikkaHubApp 在 startKoin 之前应用并失败回滚（design-backup-staged-restore §5）。
+                // 现库全程保持打开：本进程不再有「Koin 持有已关闭单例」的窗口。
+                // **先 stage 再写 settings**：stage 失败（典型：上次恢复未重启就再次恢复）时
+                // settings 必须保持原样，否则用户面对「报错但设置已换、库没换」的半套恢复状态。
+                if (BackupItem.DATABASE in items) {
+                    prepareStagedDatabase(stagedDatabaseFiles)
+                    val stagedMain = stagedDatabaseFiles["rikka_hub.db"]
+                    if (stagedMain != null) {
+                        PendingRestoreStore.stage(
+                            filesDir = context.filesDir,
+                            stagedMain = stagedMain,
+                            stagedWal = stagedDatabaseFiles["rikka_hub-wal"],
+                            stagedShm = stagedDatabaseFiles["rikka_hub-shm"],
+                        )
+                        Log.i(TAG, "restoreFromBackupFile: database staged for next startup (${stagedMain.length()} bytes)")
+                    } else {
+                        // 备份来自无库环境（新装设备）：无条目可换，跳过数据库恢复（保留现库），
+                        // settings/FILES 照常——空库备份不再变成永远校验失败的死包
+                        Log.i(TAG, "restoreFromBackupFile: no database entry in backup; skipping database restore")
+                    }
+                }
+
                 settingsJson?.let { settingsString ->
                     Log.i(TAG, "restoreFromBackupFile: Restoring settings")
                     try {
@@ -396,25 +452,9 @@ internal class BackupArchiveEngine(
                     }
                 }
 
-                // B 档：**不换库**——staged 家族移交 PendingRestoreStore，重启后由
-                // RikkaHubApp 在 startKoin 之前应用并失败回滚（design-backup-staged-restore §5）。
-                // 现库全程保持打开：本进程不再有「Koin 持有已关闭单例」的窗口。
-                if (BackupItem.DATABASE in items) {
-                    prepareStagedDatabase(stagedDatabaseFiles)
-                    val stagedMain = stagedDatabaseFiles["rikka_hub.db"]
-                        ?: throw Exception("Backup database entry is missing")
-                    PendingRestoreStore.stage(
-                        filesDir = context.filesDir,
-                        stagedMain = stagedMain,
-                        stagedWal = stagedDatabaseFiles["rikka_hub-wal"],
-                        stagedShm = stagedDatabaseFiles["rikka_hub-shm"],
-                    )
-                    Log.i(TAG, "restoreFromBackupFile: database staged for next startup (${stagedMain.length()} bytes)")
-                }
-
                 Log.i(TAG, "restoreFromBackupFile: completed")
                 // 收尾：确保 UI 到达 100%（节流可能吞掉末次）
-                onProgress(BackupProgress(BackupPhase.EXTRACTING, archiveTotal, archiveTotal))
+                onProgress(BackupProgress(BackupPhase.EXTRACTING, archiveTotalTwice, archiveTotalTwice))
                 if (workspaceFilesRestored > 0) {
                     // rootfs 不在备份内（见设计稿）：工作区文件可用，但 shell/终端需重装 rootfs
                     Log.i(
