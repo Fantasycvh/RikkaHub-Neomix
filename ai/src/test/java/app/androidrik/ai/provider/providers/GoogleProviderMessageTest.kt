@@ -37,10 +37,12 @@ class GoogleProviderMessageTest {
     private fun invokeBuildContents(messages: List<UIMessage>): JsonArray {
         val method = GoogleProvider::class.java.getDeclaredMethod(
             "buildContents",
-            List::class.java
+            List::class.java,
+            Boolean::class.javaPrimitiveType,
         )
         method.isAccessible = true
-        return method.invoke(provider, messages) as JsonArray
+        // skipFirstSystem=true：与生产默认路径（第一条 system 已进 systemInstruction）一致
+        return method.invoke(provider, messages, true) as JsonArray
     }
 
     @Test

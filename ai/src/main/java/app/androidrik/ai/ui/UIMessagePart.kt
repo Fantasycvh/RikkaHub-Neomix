@@ -174,11 +174,19 @@ sealed class UIMessagePart {
         }
 
         fun merge(other: Tool): Tool {
+            // Responses API 的 function_call_output 在 output_item.added / done 两个事件各携带
+            // 一份**完整**结果（非增量流式）：内容相同时幂等去重，否则工具输出/回传上下文翻倍
+            val mergedOutput =
+                if (output.size == 1 && other.output.size == 1 && output.first() == other.output.first()) {
+                    output
+                } else {
+                    output + other.output
+                }
             return Tool(
                 toolCallId = toolCallId,
                 toolName = toolName + other.toolName,
                 input = input + other.input,
-                output = output + other.output,
+                output = mergedOutput,
                 approvalState = approvalState,
                 startedAt = other.startedAt ?: startedAt,
                 finishedAt = other.finishedAt ?: finishedAt,

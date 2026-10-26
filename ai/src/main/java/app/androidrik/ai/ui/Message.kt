@@ -87,19 +87,28 @@ data class UIMessage(
                     }
 
                     is UIMessagePart.Image -> {
-                        val lastPart = acc.lastOrNull()
-                        if (lastPart is UIMessagePart.Image) {
-                            // Append to the last Image part (for streaming base64)
-                            acc.dropLast(1) + lastPart.copy(
-                                url = lastPart.url + deltaPart.url,
-                                metadata = deltaPart.metadata ?: lastPart.metadata
-                            )
-                        } else {
-                            // Create new Image part
-                            acc + UIMessagePart.Image(
-                                url = "data:image/png;base64,${deltaPart.url}",
-                                metadata = deltaPart.metadata,
-                            )
+                        when {
+                            // parseMessage 对 delta.images 存的是**完整 URL**（data:/http 原样存）：
+                            // 这不是增量片段，直接作新图片——否则会被拼上/串进
+                            // "data:image/png;base64," 前缀产生双重前缀、图片损坏
+                            deltaPart.url.startsWith("data:") || deltaPart.url.startsWith("http") -> {
+                                acc + deltaPart
+                            }
+                            acc.lastOrNull() is UIMessagePart.Image -> {
+                                // Append to the last Image part (for streaming base64)
+                                val lastPart = acc.last() as UIMessagePart.Image
+                                acc.dropLast(1) + lastPart.copy(
+                                    url = lastPart.url + deltaPart.url,
+                                    metadata = deltaPart.metadata ?: lastPart.metadata
+                                )
+                            }
+                            else -> {
+                                // Create new Image part
+                                acc + UIMessagePart.Image(
+                                    url = "data:image/png;base64,${deltaPart.url}",
+                                    metadata = deltaPart.metadata,
+                                )
+                            }
                         }
                     }
 

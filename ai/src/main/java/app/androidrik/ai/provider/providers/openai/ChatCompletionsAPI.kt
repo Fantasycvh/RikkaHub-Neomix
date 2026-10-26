@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -126,7 +127,9 @@ class ChatCompletionsAPI(
         // 从 JsonObject 中提取必要的信息
         val id = bodyJson["id"]?.jsonPrimitive?.contentOrNull ?: ""
         val model = bodyJson["model"]?.jsonPrimitive?.contentOrNull ?: ""
-        val choice = bodyJson["choices"]?.jsonArray?.get(0)?.jsonObject ?: error("choices is null")
+        // 空数组（异常/空响应的网关形态）用 firstOrNull 兜底，避免下标越界淹没真实错误
+        val choice = bodyJson["choices"]?.jsonArray?.firstOrNull()?.jsonObjectOrNull
+            ?: error("choices is null or empty")
 
         val message = choice["message"]?.jsonObject ?: throw Exception("message is null")
         val finishReason = choice["finish_reason"]
@@ -253,7 +256,10 @@ class ChatCompletionsAPI(
                     .filter { it.isNotBlank() }
                     .mapNotNull { json.parseToJsonElement(it).jsonObjectOrNull }
                     .forEach {
-                        if (it["error"] != null) {
+                        // ⚠️ `!= null` 只防引用判空、不防 JSON null：部分网关用 `"error": null`
+                        // 表示无错误，kotlinx 里那是非空的 JsonNull 引用，误进错误分支会拿
+                        // HttpException("null") 杀掉整条流（同 ResponseAPI.parseStreamFailure 处理）
+                        if (it["error"] != null && it["error"] !is JsonNull) {
                             val error = it["error"]!!.parseErrorDetail()
                             throw error
                         }

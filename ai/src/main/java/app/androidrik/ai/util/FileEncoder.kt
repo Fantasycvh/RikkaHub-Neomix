@@ -125,10 +125,24 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<Encoded
         this.url.startsWith("data:") -> {
             // 从 data URL 提取 mime type
             val mimeType = url.substringAfter("data:").substringBefore(";")
-            EncodedImage(base64 = url, mimeType = mimeType)
+            // withPrefix=false（Claude/Google 直传裸 base64）时必须剥掉前缀，否则发出
+            // "data:image/png;base64,data:image/..." 服务端必拒
+            val payload = if (withPrefix) url else {
+                if (!url.contains(";base64,")) {
+                    throw IllegalArgumentException("Non-base64 data URL is not supported: ${url.take(64)}")
+                }
+                url.substringAfter(";base64,")
+            }
+            EncodedImage(base64 = payload, mimeType = mimeType)
         }
         this.url.startsWith("http") -> {
             // HTTP URL 无法确定 mime type，默认使用 image/png
+            EncodedImage(base64 = url, mimeType = "image/png")
+        }
+        // 裸 base64 直通：Gemini 等把生成图片的 inlineData.data（裸 base64）原样存进 Image.url，
+        // 不再包 data: 前缀。此前落到 else 抛异常，图片被静默从上下文丢弃。
+        // mime 无法从内容反推，按最常见形态给 image/png。
+        url.isNotBlank() && url.length % 4 == 0 && url.all { it in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=" } -> {
             EncodedImage(base64 = url, mimeType = "image/png")
         }
         else -> throw IllegalArgumentException("Unsupported URL format: $url")

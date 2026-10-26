@@ -273,7 +273,10 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                     Log.w(TAG, "onFailure: failed to parse error body (${summarizeErrorBody(bodyRaw)})")
                     e.printStackTrace()
                 } finally {
-                    close(exception)
+                    // ⚠️ close(null) 等于**正常结束**：HTTP 非 2xx 且错误体为空/解析失败时
+                    // exception 仍是 null，必须给兜底，不能把失败当成功收尾
+                    // （同 ChatCompletionsAPI.onFailure 的既有处理）
+                    close(exception ?: java.io.IOException("SSE stream failed without exception"))
                 }
             }
 

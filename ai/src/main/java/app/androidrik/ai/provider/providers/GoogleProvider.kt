@@ -131,7 +131,11 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
 
     override suspend fun listModels(providerSetting: ProviderSetting.Google): List<Model> =
         withContext(Dispatchers.IO) {
-            val url = buildUrl(providerSetting = providerSetting, path = "models?pageSize=100")
+            // Vertex 的模型列表端点是 publishers/google/models（与 generateContent 同一前缀），
+            // 裸 "models" 会拼出 aiplatform.../v1/models —— Vertex 上必然 404
+            val listPath =
+                if (providerSetting.vertexAI) "publishers/google/models?pageSize=100" else "models?pageSize=100"
+            val url = buildUrl(providerSetting = providerSetting, path = listPath)
             val request = transformRequest(
                 providerSetting = providerSetting,
                 request = Request.Builder()
@@ -205,8 +209,15 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         val bodyStr = response.body?.string() ?: ""
         val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
 
-        val candidates = bodyJson["candidates"]!!.jsonArray
-        val usage = bodyJson["usageMetadata"]!!.jsonObject
+        // 阻断响应只有 promptFeedback 没有 candidates（Gemini 文档化行为）——像 streamText
+        // 路径一样把 blockReason 作为错误上报，而不是抛 NPE
+        val candidates = bodyJson["candidates"]?.jsonArray
+        if (candidates.isNullOrEmpty()) {
+            val blockReason = bodyJson["promptFeedback"]?.jsonObject
+                ?.get("blockReason")?.jsonPrimitiveOrNull?.contentOrNull
+            throw Exception(if (blockReason != null) "Prompt blocked: $blockReason" else "No candidates in response")
+        }
+        val usage = bodyJson["usageMetadata"]?.jsonObject ?: JsonObject(emptyMap())
 
         val messageChunk = MessageChunk(
             id = Uuid.random().toString(),
@@ -348,7 +359,8 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     }
                 } catch (e: Throwable) {
                     e.printStackTrace()
-                    exception = e
+                    // 错误体不是 JSON（如网关 502 的 HTML 页）时不要拿解析异常掩盖真实 HTTP 状态
+                    exception = Exception("Unknown error: ${response?.code}", e)
                 } finally {
                     close(exception ?: Exception("Stream failed"))
                 }
@@ -375,9 +387,12 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         messages: List<UIMessage>,
         params: TextGenerationParams
     ): JsonObject = buildJsonObject {
-        // System message if available
+        // System message if available。
+        // 图片输出模式下不写 systemInstruction（保持请求形态不变），但**不能把 system 丢掉**：
+        // buildContents 的防重复跳过只在此为 true 时生效，否则第一条 system 会被降级进 contents
+        val systemInInstruction = !params.model.outputModalities.contains(Modality.IMAGE)
         val systemMessage = messages.firstOrNull { it.role == MessageRole.SYSTEM }
-        if (systemMessage != null && !params.model.outputModalities.contains(Modality.IMAGE)) {
+        if (systemMessage != null && systemInInstruction) {
             put("systemInstruction", buildJsonObject {
                 putJsonArray("parts") {
                     add(buildJsonObject {
@@ -447,7 +462,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         // Contents (user messages)
         put(
             "contents",
-            buildContents(messages)
+            buildContents(messages, skipFirstSystem = systemMessage != null && systemInInstruction)
         )
 
         // Tools（客户端 function declarations 与内置工具共存于同一数组——吸收上游 9851d037；
@@ -653,7 +668,10 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 }
                 UIMessagePart.Image(
                     url = data,
-                    metadata = GoogleThoughtMetadata(thoughtSignature = thoughtSignature).toMetadata()
+                    metadata = GoogleThoughtMetadata(
+                        thoughtSignature = thoughtSignature,
+                        inlineDataMime = mime,
+                    ).toMetadata()
                 )
             }
 
@@ -661,16 +679,16 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         }
     }
 
-    private fun buildContents(messages: List<UIMessage>): JsonArray {
-        // 第一条 system 的内容已进 systemInstruction（见 buildCompletionRequestBody）；
-        // **后续的 system 消息不能丢弃**（如轮次尾部注入的 system 段）——Gemini 的
-        // contents 不接受 "system" 角色，且 systemInstruction 在顶部（动态内容放那里
+    private fun buildContents(messages: List<UIMessage>, skipFirstSystem: Boolean = true): JsonArray {
+        // 第一条 system 的内容已进 systemInstruction（见 buildCompletionRequestBody，仅当
+        // skipFirstSystem=true）；**后续的 system 消息不能丢弃**（如轮次尾部注入的 system 段）——
+        // Gemini 的 contents 不接受 "system" 角色，且 systemInstruction 在顶部（动态内容放那里
         // 会作废缓存前缀）⇒ 降级为 user 发送：位置语义保住，仅语气降级。
         // ⚠️ 过滤条件必须是「保留全部可上传消息」：曾写成
         // `it.role != SYSTEM || it === firstSystem`，非首条 system 会在进入 `when` 之前被滤掉 ⇒
         // 下面的 SYSTEM→user 降级分支成了**死代码**、后续 system 被**静默丢弃**（与上面声明的
         // 「不能丢弃」相反；2026-10-06 单测实测并修正，ClaudeProvider/ResponseAPI 两处同款一并改）。
-        val firstSystem = messages.firstOrNull { it.role == MessageRole.SYSTEM }
+        val firstSystem = if (skipFirstSystem) messages.firstOrNull { it.role == MessageRole.SYSTEM } else null
         return buildJsonArray {
             messages
                 .filter { it.isValidToUpload() }
@@ -744,7 +762,10 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             encodeBase64(false).getOrNull()?.let { encoded ->
                 buildJsonObject {
                     put("inlineData", buildJsonObject {
-                        put("mimeType", encoded.mimeType)
+                        // 裸 base64 输入时 encodeBase64 只能默认 image/png；inlineDataMime
+                        // 记录了解析期的真实 mime，优先用
+                        val thoughtMeta = metadataAs<GoogleThoughtMetadata>()
+                        put("mimeType", thoughtMeta?.inlineDataMime ?: encoded.mimeType)
                         put("data", encoded.base64)
                     })
                     metadataAs<GoogleThoughtMetadata>()?.thoughtSignature?.let {
