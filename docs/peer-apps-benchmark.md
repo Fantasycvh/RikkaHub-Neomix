@@ -316,8 +316,8 @@ Yuihub 记忆改动是**架构换代**：写入带 keywords/weight(1-4)/kind、d
 | 6 | SoLab | MCP host 模式（手机当桌面 AI 工具箱） | 高，按需；**一旦立项即成为第 4 个工具装配方**（远程调用者需设备工具子集、复用审批/loop guard，见 `upstream-analysis.md`「注意点」第 9 条装配方盘点） |
 | 7 | Yuihub | ~~记忆打分校准 + 字符预算~~ ✅ 已落地（`91d88551`，真机验证） | ~~低~~ 完成 |
 | 8 | Yuihub | ~~记忆提取管道 + 整理器~~ ✅ **整理器已落地**（V1/V2/V3-b1~b3，`f4c2def2`…`63a92148`，10-09）；提取以 `memory_tool` 主动调用形态覆盖 | 收口 |
-| 9 | Yuihub 3.0.0 | **工具循环上下文闸**（65%/80%/90% 分级收缩单条工具输出 + 97% 硬限；堵 `GenerationHandler.kt:1399` 无 shell 不截断缺口） | 中（**第 1 批**） |
-| 10 | Yuihub 3.0.0 | **MediaEncodingCache**（base64 字节预算 LRU 8MB/单条 2MB，路径:size:mtime 键） | 小（第 1 批） |
+| 9 | Yuihub 3.0.0 | ~~**工具循环上下文闸**~~ ✅ **已落地（2026-10-26，`4d32eea84`+`abb2b0bc8`+`d5ef5a3be`）**：A per-call 动态限幅（65/80 分级+恒截断+能力三分支指引）/ B 85% 紧急卸载+90% 优雅停止（请求期投影，阈值比 Yuihub 收紧）/ C 聊天接入 ContextBudgetGuard；单测 11 项；真机验收待批次验收 | ~~中~~ 代码完成 |
+| 10 | Yuihub 3.0.0 | ~~**MediaEncodingCache**~~ ✅ **已落地（2026-10-26，`7396efbc4`）**（8MB/2MB LRU，三 encodeBase64 挂缓存） | ~~小~~ 完成 |
 | 11 | Yuihub 3.0.0 | **ReadOnlyMountSnapshots**（只读挂载先快照再 bind，最小面=仅 /upload） | 中 ~200 行（第 2 批，workspace 域） |
 | 12 | Yuihub 3.0.0 | **备份 manifest v2 + 双 SHA-256 + 恢复预览 + RestoreByteBudget** | ~1 天（第 3 批） |
 | 13 | Yuihub 3.0.0 | **备份 A 档：恢复前自动安全备份**（safety_backup/ 留 3 份） | ~0.5 天（第 3 批） |
