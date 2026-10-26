@@ -287,7 +287,9 @@ internal class BackupArchiveEngine(
                                 if (BackupItem.DATABASE in items) {
                                     // 仅暂存，不直接写现库（现库正被 Room 连接持有）
                                     val staged = File(context.cacheDir, "restore_${zipEntry.name}")
-                                    boundedEntryCopy(zipIn, zipEntry) { FileOutputStream(staged).use { it } }
+                                    // openOutput 只负责打开；关闭由 boundedEntryCopy 统一做。
+                                    // （在此处 .use 会先关流再返回，copyTo 对已关闭流写入 → "Stream Closed"，真机踩过）
+                                    boundedEntryCopy(zipIn, zipEntry) { FileOutputStream(staged) }
                                     stagedDatabaseFiles[zipEntry.name] = staged
                                     if (zipEntry.name == "rikka_hub.db") {
                                         stagedMainSha256 = sha256Of(staged)
@@ -476,10 +478,8 @@ internal class BackupArchiveEngine(
         }
     }
 
-    /**
-     * 恢复侧单条目解压上限（zip 炸弹兜底，§3.3）：`ZipEntry.size` 在 data descriptor
-     * 模式下常为 -1，不能信 size 字段——用包装流边拷边数，超限抛错。
-     */
+    // 恢复侧单条目解压上限（zip 炸弹兜底，§3.3）：`ZipEntry.size` 在 data descriptor
+    // 模式下常为 -1，不能信 size 字段——用包装流边拷边数，超限抛错。
     private fun boundedEntryStream(zipIn: ZipInputStream): java.io.InputStream =
         object : java.io.FilterInputStream(zipIn) {
             private var total = 0L
@@ -494,6 +494,10 @@ internal class BackupArchiveEngine(
                 if (result > 0) count(result.toLong())
                 return result
             }
+
+            // 不透传 close：FilterInputStream.close() 会关掉底层 ZipInputStream，
+            // 而恢复循环还要继续读后续条目（条目末尾由外层 closeEntry 收尾）。
+            override fun close() {}
 
             private fun count(delta: Long) {
                 total += delta
