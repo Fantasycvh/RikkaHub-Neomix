@@ -303,6 +303,11 @@
   <string name="backup_page_restart_desc">应用需要重启以使设置生效。</string>
   <string name="backup_page_restore">恢复</string>
   <string name="backup_page_restore_failed">恢复失败: %s</string>
+  <string name="setting_page_tool_schema_compact_title">工具描述压缩</string>
+  <string name="setting_page_tool_schema_compact_desc">发给供应商前裁剪工具描述文本（参数、枚举不动）。安装较多工具/MCP 时可省 token。</string>
+  <string name="setting_page_tool_schema_compact_off">关闭</string>
+  <string name="setting_page_tool_schema_compact_balanced">均衡</string>
+  <string name="setting_page_tool_schema_compact_aggressive">激进</string>
   <string name="backup_restore_preview_title">恢复预览</string>
   <string name="backup_restore_preview_created_at">备份创建时间：%1$s</string>
   <string name="backup_restore_preview_legacy">这是没有 manifest 的旧格式备份；下方摘要由归档内容推断。</string>

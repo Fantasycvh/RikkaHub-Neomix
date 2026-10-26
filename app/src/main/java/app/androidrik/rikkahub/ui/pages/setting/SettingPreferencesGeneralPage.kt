@@ -638,6 +638,37 @@ private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
                 )
             },
         )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_tool_schema_compact_title)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_tool_schema_compact_desc)) },
+            trailingContent = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    listOf(0, 1, 2).forEach { level ->
+                        FilterChip(
+                            selected = settings.toolSchemaCompactLevel == level,
+                            onClick = {
+                                vm.updateSettings(settings.copy(toolSchemaCompactLevel = level))
+                            },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        when (level) {
+                                            1 -> R.string.setting_page_tool_schema_compact_balanced
+                                            2 -> R.string.setting_page_tool_schema_compact_aggressive
+                                            else -> R.string.setting_page_tool_schema_compact_off
+                                        }
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                        )
+                    }
+                }
+            },
+        )
     }
 }
 

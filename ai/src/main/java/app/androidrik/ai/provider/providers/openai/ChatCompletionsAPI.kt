@@ -74,6 +74,9 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import kotlin.time.Clock
+import app.androidrik.ai.util.summarizeRequestBody
+import app.androidrik.ai.util.summarizeErrorBody
+import app.androidrik.ai.util.summarizeSseEvent
 
 private const val TAG = "ChatCompletionsAPI"
 
@@ -109,7 +112,7 @@ class ChatCompletionsAPI(
             .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
+        Log.i(TAG, "generateText: ${summarizeRequestBody(json, requestBody)}")
 
         val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
         if (!response.isSuccessful) {
@@ -237,13 +240,13 @@ class ChatCompletionsAPI(
                 // 旧 source 的迟到事件必须丢弃：结构失败重发后旧连接可能还在回调（不得污染新 stream）。
                 if (!tracker.isActive(eventSource)) return
                 if (data == "[DONE]") {
-                    println("[onEvent] (done) 结束流: $data")
+                    Log.d(TAG, "onEvent: terminal [DONE]")
                     // 显式结束标记：下游据此区分「正常收尾」与「裸断流」（见 MessageChunk.explicitEnd）
                     trySend(terminalChunk())
                     close()
                     return
                 }
-                Log.d(TAG, "onEvent: $data")
+                Log.d(TAG, "onEvent: chars=${data.length}")
                 data
                     .trim()
                     .split("\n")
@@ -297,19 +300,17 @@ class ChatCompletionsAPI(
                 if (!tracker.isActive(eventSource)) return
                 var exception: Throwable? = t
 
-                t?.printStackTrace()
-                println("[onFailure] 发生错误: ${t?.javaClass?.name} ${t?.message} / $response")
+                Log.w(TAG, "onFailure: ${t?.javaClass?.name} ${t?.message ?: ""} httpCode=${response?.code}")
 
                 val bodyRaw = response?.body?.stringSafe()
                 try {
                     if (!bodyRaw.isNullOrBlank()) {
                         val bodyElement = Json.parseToJsonElement(bodyRaw)
-                        println(bodyElement)
                         exception = bodyElement.parseErrorDetail()
                         Log.i(TAG, "onFailure: $exception")
                     }
                 } catch (e: Throwable) {
-                    Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
+                    Log.w(TAG, "onFailure: failed to parse error body (${summarizeErrorBody(bodyRaw)})")
                     e.printStackTrace()
                     exception = e
                 } finally {
@@ -366,7 +367,7 @@ class ChatCompletionsAPI(
         // `Serializer for class 'RequestBody' is not found` —— 而这是**成功路径上的日志**，
         // 于是每一次流式请求都会当场失败。要打请求体就在构建处把字符串带出来（见 buildRequest 的
         // lastRequestBodyJson）。
-        Log.i(TAG, "streamText: ${lastRequestBodyJson ?: "<unavailable>"}")
+        Log.i(TAG, "streamText: ${lastRequestBodyJson?.let { "chars=${it.length}" } ?: "<unavailable>"}")
 
         // ⚠️ 整段「建连 + awaitClose」必须包在 try/finally 里：如果建连（或同步回调）在
         // `awaitClose` 之前抛错，旧写法不会执行 awaitClose 里的清理 ⇒ 若 tracker 已经通过
@@ -383,7 +384,7 @@ class ChatCompletionsAPI(
             }
 
             awaitClose {
-                println("[awaitClose] 关闭eventSource ")
+                Log.d(TAG, "awaitClose: closing eventSource")
             }
         } finally {
             // 任何退出路径（正常收尾 / 建连抛错 / 同步回调抛错 / 取消）都回收当前 source。

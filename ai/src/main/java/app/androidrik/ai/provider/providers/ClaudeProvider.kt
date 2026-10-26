@@ -69,6 +69,9 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import kotlin.time.Clock
+import app.androidrik.ai.util.summarizeRequestBody
+import app.androidrik.ai.util.summarizeErrorBody
+import app.androidrik.ai.util.summarizeSseEvent
 
 private const val TAG = "ClaudeProvider"
 private const val ANTHROPIC_VERSION = "2023-06-01"
@@ -131,7 +134,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
+        Log.i(TAG, "generateText: ${summarizeRequestBody(json, requestBody)}")
 
         val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
         if (!response.isSuccessful) {
@@ -179,11 +182,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
-
-        requestBody["messages"]!!.jsonArray.forEach {
-            Log.i(TAG, "streamText: $it")
-        }
+        Log.i(TAG, "streamText: ${summarizeRequestBody(json, requestBody)}")
 
         val listener = object : EventSourceListener() {
             override fun onEvent(
@@ -192,7 +191,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 type: String?,
                 data: String
             ) {
-                Log.d(TAG, "onEvent: type=$type, data=$data")
+                Log.d(TAG, "onEvent: ${summarizeSseEvent(type, data, terminal = type == "message_stop" || type == "error")}")
                 if (data == "[DONE]") {
                     return
                 }
@@ -267,11 +266,11 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 try {
                     if (!bodyRaw.isNullOrBlank()) {
                         val bodyElement = Json.parseToJsonElement(bodyRaw)
-                        Log.i(TAG, "Error response: $bodyElement")
+                        Log.i(TAG, "Error response (${summarizeErrorBody(bodyElement.toString())})")
                         exception = bodyElement.parseErrorDetail()
                     }
                 } catch (e: Throwable) {
-                    Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
+                    Log.w(TAG, "onFailure: failed to parse error body (${summarizeErrorBody(bodyRaw)})")
                     e.printStackTrace()
                 } finally {
                     close(exception)

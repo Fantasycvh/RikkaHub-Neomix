@@ -103,12 +103,39 @@ fun buildTodoWriteTool(): Tool = Tool(
         val inProgressCount = normalized.count {
             it["status"]?.jsonPrimitive?.contentOrNull == TODO_STATUS_IN_PROGRESS
         }
+        // 下一步指引（Yuihub 3.0.0 同款）：弱模型常常只建清单、不再回来更新，
+        // 把下一步该做什么直接回给结果 JSON，治「建完清单不复更」
+        val inProgressItem = normalized.firstOrNull {
+            it["status"]?.jsonPrimitive?.contentOrNull == TODO_STATUS_IN_PROGRESS
+        }?.get("content")?.jsonPrimitive?.contentOrNull
+        val pendingItem = normalized.firstOrNull {
+            it["status"]?.jsonPrimitive?.contentOrNull == TODO_STATUS_PENDING
+        }?.get("content")?.jsonPrimitive?.contentOrNull
         val payload = buildJsonObject {
             put("todos", JsonArray(normalized))
-            if (inProgressCount > 1) {
-                // 不报错：模型偶发多个 in_progress 时仍让它继续，但给出提示便于自我纠正
-                put("warning", "More than one item is in_progress ($inProgressCount). Keep exactly one.")
+            when {
+                inProgressCount > 1 -> {
+                    // 不报错：模型偶发多个 in_progress 时仍让它继续，但给出提示便于自我纠正
+                    put("warning", "More than one item is in_progress ($inProgressCount). Keep exactly one.")
+                }
+
+                inProgressCount == 0 && pendingItem != null -> {
+                    put("warning", "No item is in_progress. Mark the step you are about to start as in_progress.")
+                }
             }
+            put(
+                "next",
+                when {
+                    inProgressItem != null ->
+                        "Working on \"$inProgressItem\". Call todo_write again the moment it is done: " +
+                            "mark it completed and the next step in_progress."
+
+                    pendingItem != null ->
+                        "Call todo_write again before starting \"$pendingItem\": mark it in_progress."
+
+                    else -> "All steps are completed."
+                }
+            )
         }
         listOf(UIMessagePart.Text(payload.toString()))
     },

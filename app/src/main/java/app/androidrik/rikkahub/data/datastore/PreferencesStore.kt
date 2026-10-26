@@ -1051,6 +1051,11 @@ data class Settings(
     /** 压缩使用的模型 id。默认锁定内置模型；**null = 跟随当前对话模型**（可选，避免单独配置） */
     val compressModelId: Uuid? = DEFAULT_AUTO_MODEL_ID,
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
+    /**
+     * 工具 schema 压缩档位（批次4 ToolSchemaCompactor）：0=OFF（默认），1=BALANCED，2=AGGRESSIVE。
+     * 只裁描述文本不改参数/required；默认关闭——压缩改变模型看到的内容，属用户显式选择。
+     */
+    val toolSchemaCompactLevel: Int = 0,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val providers: List<ProviderSetting> = DEFAULT_PROVIDERS,
     /** 用户显式删除的内置提供商 id（墓碑）——默认回填逻辑跳过这些 */

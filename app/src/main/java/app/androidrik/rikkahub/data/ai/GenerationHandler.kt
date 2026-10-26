@@ -1204,6 +1204,13 @@ class GenerationHandler(
         frozenAnchorIds: Set<String>? = null,
         debugKey: String? = null,
     ) {
+        // 工具 schema 压缩（批次4，design §ToolSchemaCompactor）：只裁描述文本不改参数/required，
+        // 默认 OFF。**只作用请求面**——工具执行查找走 runLoop 的 toolsInternal（未压缩原名表），
+        // 两边按 name 对齐，互不影响。
+        val requestTools = ToolSchemaCompactor.compact(
+            tools = tools,
+            level = ToolSchemaCompactor.Level.from(settings.toolSchemaCompactLevel),
+        )
         // 组装发送消息：**与「拼装预览」共用同一个函数**（PromptAssembly.kt）——
         // 原先此段内联实现，预览只能另写一份、必然漂移。改这里即同时改预览。
         val assembly = buildInternalMessagesWithPlan(
@@ -1212,7 +1219,7 @@ class GenerationHandler(
             model = model,
             messages = messages,
             memories = memories,
-            tools = tools,
+            tools = requestTools,
             conversationSystemPrompt = conversationSystemPrompt,
             compressionWindow = compressionWindow,
             recoveryHint = recoveryHint,
@@ -1289,7 +1296,7 @@ class GenerationHandler(
             temperature = assistant.temperature,
             topP = assistant.topP,
             maxTokens = assistant.maxTokens,
-            tools = tools,
+            tools = requestTools,
             reasoningLevel = assistant.reasoningLevel,
             customHeaders = buildList {
                 addAll(assistant.customHeaders)

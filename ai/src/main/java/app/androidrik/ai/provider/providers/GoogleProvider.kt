@@ -79,6 +79,9 @@ import okhttp3.sse.EventSources
 import org.apache.commons.text.StringEscapeUtils
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+import app.androidrik.ai.util.summarizeRequestBody
+import app.androidrik.ai.util.summarizeErrorBody
+import app.androidrik.ai.util.summarizeSseEvent
 
 private const val TAG = "GoogleProvider"
 
@@ -140,7 +143,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
             if (response.isSuccessful) {
                 val body = response.body?.string() ?: error("empty body")
-                Log.d(TAG, "listModels: $body")
+                Log.d(TAG, "listModels: ${summarizeErrorBody(body)}")
                 val bodyObject = json.parseToJsonElement(body).jsonObject
                 val models = bodyObject["models"]?.jsonArray ?: return@withContext emptyList()
 
@@ -250,7 +253,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 .build()
         )
 
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
+        Log.i(TAG, "streamText: ${summarizeRequestBody(json, requestBody)}")
 
         val listener = object : EventSourceListener() {
             override fun onEvent(
@@ -259,7 +262,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 type: String?,
                 data: String
             ) {
-                Log.i(TAG, "onEvent: $data")
+                Log.i(TAG, "onEvent: chars=${data.length}")
 
                 try {
                     val jsonData = json.parseToJsonElement(data).jsonObject
@@ -315,7 +318,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    println("[onEvent] 解析错误: $data")
+                    Log.w(TAG, "onEvent: parse error (${summarizeErrorBody(data)})")
                 }
             }
 
@@ -326,15 +329,13 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             ) {
                 var exception = t
 
-                t?.printStackTrace()
-                println("[onFailure] 发生错误: ${t?.message}")
+                Log.w(TAG, "onFailure: ${t?.javaClass?.name} ${t?.message ?: ""} httpCode=${response?.code}")
 
                 try {
                     if (t == null && response != null) {
                         val bodyStr = response.body.stringSafe()
                         if (!bodyStr.isNullOrEmpty()) {
                             val bodyElement = json.parseToJsonElement(bodyStr)
-                            println(bodyElement)
                             if (bodyElement is JsonObject) {
                                 exception = Exception(
                                     bodyElement["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content
@@ -354,7 +355,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             }
 
             override fun onClosed(eventSource: EventSource) {
-                println("[onClosed] 连接已关闭")
+                Log.d(TAG, "onClosed: connection closed")
                 close()
             }
         }

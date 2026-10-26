@@ -74,6 +74,9 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import kotlin.time.Clock
+import app.androidrik.ai.util.summarizeRequestBody
+import app.androidrik.ai.util.summarizeErrorBody
+import app.androidrik.ai.util.summarizeSseEvent
 
 private const val TAG = "ResponseAPI"
 
@@ -110,7 +113,7 @@ class ResponseAPI(
             .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
+        Log.i(TAG, "generateText: ${summarizeRequestBody(json, requestBody)}")
 
         // await() 只等响应头；读 body 仍可能阻塞——use 确保流关闭，整体在 IO 线程执行（对齐 ab8b6cc8）
         client.newCall(request).await().use { response ->
@@ -119,7 +122,7 @@ class ResponseAPI(
             }
 
             val bodyStr = response.body?.string() ?: ""
-            Log.i(TAG, "generateText: $bodyStr")
+            Log.d(TAG, "generateText: response ${summarizeErrorBody(bodyStr)}")
             val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
                 ?: error("Responses API response is not a JSON object: ${bodyStr.take(200)}")
             parseResponseOutput(bodyJson)
@@ -148,7 +151,7 @@ class ResponseAPI(
             .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
 
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
+        Log.i(TAG, "streamText: ${summarizeRequestBody(json, requestBody)}")
 
         // 每次流一个：把 item.id / output_index 归一到规范 toolCallId（= 回传时用的 call_id）。
         // 必须按流创建——ResponseAPI 是进程级共享实例（见 ResponseToolCallIdResolver 注释）。
@@ -166,7 +169,7 @@ class ResponseAPI(
                     close()
                     return
                 }
-                Log.d(TAG, "onEvent: $id/$type $data")
+                Log.d(TAG, "onEvent: ${summarizeSseEvent(type, data, terminal = type == "response.completed")}")
                 val json = json.parseToJsonElement(data).jsonObjectOrNull
                 // SSE 的 event 名与 JSON 的 type 双写，且两者可能只出现一个：
                 // - 标准 OpenAI/兼容网关：都有；
@@ -227,18 +230,17 @@ class ResponseAPI(
                 var exception = t
 
                 t?.printStackTrace()
-                println("[onFailure] 发生错误: ${t?.javaClass?.name} ${t?.message} / $response")
+                Log.w(TAG, "onFailure: ${t?.javaClass?.name} ${t?.message ?: ""} httpCode=${response?.code}")
 
                 val bodyRaw = response?.body?.stringSafe()
                 try {
                     if (!bodyRaw.isNullOrBlank()) {
                         val bodyElement = Json.parseToJsonElement(bodyRaw)
-                        println(bodyElement)
                         exception = bodyElement.parseErrorDetail()
                         Log.i(TAG, "onFailure: $exception")
                     }
                 } catch (e: Throwable) {
-                    Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
+                    Log.w(TAG, "onFailure: failed to parse error body (${summarizeErrorBody(bodyRaw)})")
                     e.printStackTrace()
                 } finally {
                     close(exception)
@@ -254,7 +256,7 @@ class ResponseAPI(
             .newEventSource(request, listener)
 
         awaitClose {
-            println("[awaitClose] 关闭eventSource ")
+            Log.d(TAG, "awaitClose: closing eventSource")
             eventSource.cancel()
         }
         // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
@@ -962,7 +964,6 @@ class ResponseAPI(
     }
 
     internal fun parseResponseOutput(jsonObject: JsonObject): MessageChunk {
-        println(jsonObject)
         val outputs = jsonObject["output"]?.jsonArray ?: error("output not found")
         val parts = arrayListOf<UIMessagePart>()
 
