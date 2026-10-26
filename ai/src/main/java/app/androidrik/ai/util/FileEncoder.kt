@@ -23,6 +23,59 @@ data class EncodedImage(
     val mimeType: String
 )
 
+/**
+ * 媒体编码缓存（design-tool-context-gate §7，移植自 Yuihub 3.0.0 `MediaEncodingCache`）。
+ *
+ * 动机：多轮会话的历史图片每轮请求都重新「解码→EXIF→缩放→JPEG→Base64」，
+ * 首字延迟随轮次线性恶化。key = 媒体类型:withPrefix:绝对路径:length:lastModified ——
+ * 文件更新自动失效，无需失效钩子。
+ *
+ * 字节预算 LRU（总 8MB / 单条 2MB）：条目按 base64 实际字节计账，超单条上限拒存，
+ * 超总量从最旧逐出。`@Synchronized`：编码发生在请求路径上，串行化可接受。
+ */
+internal class MediaEncodingCache(
+    private val maxBytes: Int = 8 * 1024 * 1024,
+    private val maxEntryBytes: Int = 2 * 1024 * 1024,
+) {
+    private val entries = LinkedHashMap<String, EncodedImage>(16, 0.75f, true)
+    internal var sizeBytes: Int = 0
+        private set
+
+    private fun size(key: String, value: EncodedImage): Long =
+        (key.length.toLong() + value.base64.length + value.mimeType.length) * 2
+
+    @Synchronized
+    fun get(key: String): EncodedImage? = entries[key]
+
+    @Synchronized
+    fun put(key: String, value: EncodedImage) {
+        entries.remove(key)?.let { sizeBytes -= size(key, it).toInt() }
+        val bytes = size(key, value)
+        if (bytes > maxEntryBytes || bytes > maxBytes) return
+        entries[key] = value
+        sizeBytes += bytes.toInt()
+        val iterator = entries.iterator()
+        while (sizeBytes > maxBytes && iterator.hasNext()) {
+            val entry = iterator.next()
+            sizeBytes -= size(entry.key, entry.value).toInt()
+            iterator.remove()
+        }
+    }
+
+    @Synchronized
+    fun clear() {
+        entries.clear()
+        sizeBytes = 0
+    }
+}
+
+private val mediaEncodeCache = MediaEncodingCache()
+
+fun clearMediaEncodingCache() = mediaEncodeCache.clear()
+
+private fun mediaCacheKey(kind: String, withPrefix: Boolean, file: File): String =
+    "$kind:$withPrefix:${file.absolutePath}:${file.length()}:${file.lastModified()}"
+
 internal enum class ExifTransformType {
     NONE,
     FLIP_HORIZONTAL,
@@ -59,12 +112,14 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<Encoded
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
             val mimeType = file.guessMimeType().getOrThrow()
+            val cacheKey = mediaCacheKey("img", withPrefix, file)
+            mediaEncodeCache.get(cacheKey)?.let { return Result.success(it) }
             // 统一进行压缩处理
             val (encoded, outputMimeType) = file.compressAndEncode(mimeType)
             EncodedImage(
                 base64 = if (withPrefix) "data:$outputMimeType;base64,$encoded" else encoded,
                 mimeType = outputMimeType
-            )
+            ).also { mediaEncodeCache.put(cacheKey, it) }
         }
 
         this.url.startsWith("data:") -> {
@@ -89,8 +144,12 @@ fun UIMessagePart.Video.encodeBase64(withPrefix: Boolean = true): Result<String>
             if (!file.exists()) {
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
+            val cacheKey = mediaCacheKey("video", withPrefix, file)
+            mediaEncodeCache.get(cacheKey)?.let { return Result.success(it.base64) }
             val encoded = file.encodeToBase64Streaming()
-            if (withPrefix) "data:video/mp4;base64,$encoded" else encoded
+            val base64 = if (withPrefix) "data:video/mp4;base64,$encoded" else encoded
+            mediaEncodeCache.put(cacheKey, EncodedImage(base64, "video/mp4"))
+            base64
         }
 
         else -> throw IllegalArgumentException("Unsupported URL format: $url")
@@ -106,8 +165,12 @@ fun UIMessagePart.Audio.encodeBase64(withPrefix: Boolean = true): Result<String>
             if (!file.exists()) {
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
+            val cacheKey = mediaCacheKey("audio", withPrefix, file)
+            mediaEncodeCache.get(cacheKey)?.let { return Result.success(it.base64) }
             val encoded = file.encodeToBase64Streaming()
-            if (withPrefix) "data:audio/mp3;base64,$encoded" else encoded
+            val base64 = if (withPrefix) "data:audio/mp3;base64,$encoded" else encoded
+            mediaEncodeCache.put(cacheKey, EncodedImage(base64, "audio/mp3"))
+            base64
         }
 
         else -> throw IllegalArgumentException("Unsupported URL format: $url")
