@@ -54,3 +54,16 @@ tool result；新用户消息插在其后而工具无结果，请求协议破损
 - 不把普通发送偷改成打断（留档决策）。
 - 不做「携带 pending 问题进入新轮次」（协议不成立，§2）。
 - 不做队列内消息与待答问题的优先级重排（队列重排本就未立项）。
+
+## 6. 追加：审批/提问卡片上的显式「跳过」按钮（2026-10-26 第二批，`cf485b79a`）
+
+输入行的跳过入口需要先打字；用户把跳过放到了**卡片本位**：
+
+- `handleToolApproval` 增 `skip` 参数：pending 工具结果直接写
+  `{"status":"skipped",...}` 合成输出（与 cancelToolByUser 同形态）+
+  卡片置 `Denied(用户已跳过此步骤)`——output 已填 ⇒ isExecuted ⇒ 续跑不执行、直接推进
+- **普通工具审批卡**（拒绝/批准之间）与 **ask_user 提问卡**（提交按钮旁）都有跳过；
+  `SkippedQuestion` 文案泛化为「用户已跳过此步骤」（提问/工具通用）
+- `onToolSkip` 管线：ChatPage → ChatList → ChatMessage → ChatMessageTools；
+  浮窗两面（ChatFloatingContent/Windows）默认 null 不显示（最小面）
+- 字符串 `chat_message_tool_skip` 3 语言
