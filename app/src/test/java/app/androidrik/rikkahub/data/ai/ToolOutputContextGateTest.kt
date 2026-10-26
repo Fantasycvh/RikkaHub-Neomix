@@ -457,6 +457,49 @@ class ToolOutputContextGateTest {
         assertEquals(40 * 1024, File(toolOutputsDir(), "guard-old1.txt").readText().length)
     }
 
+    // ---- 上下文闸 C：聊天路径接入 ContextBudgetGuard（执行中评估） ----
+
+    @Test
+    fun `chat-side context guard stops the turn when remaining budget is exhausted`() {
+        // 同 shrinkModel（窗口 40000）：历史 128K 字符 ≈32K token（80%，B 闸快速路径放行）。
+        // 每个工具输出 30K 字符 → A 闸收到 8K（≈2K token）。三个结果后占用 ≈38K，
+        // 第四个工具执行前剩余 <4K ⇒ C 守卫判定 Exhausted ⇒ 优雅停止通知。
+        val tools = (1..4).map { i ->
+            bigTool("chat_tool_$i", outputChars = 30 * 1024)
+        }
+        val provider = ScriptedProvider { index, _ ->
+            when (index) {
+                0 -> toolCallStep(*tools.mapIndexed { i, _ -> toolCall("ct$i", "chat_tool_${i + 1}") }.toTypedArray())
+                else -> textStep("done")
+            }
+        }
+        val chunks = mutableListOf<GenerationChunk>()
+        runBlocking {
+            handler(provider).generateText(
+                settings = Settings(providers = listOf(providerSetting), chatModelId = shrinkModel.id),
+                model = shrinkModel,
+                messages = longTextMessages(),
+                assistant = Assistant(chatModelId = shrinkModel.id),
+                tools = tools,
+                contextGuard = ContextBudgetGuard(windowTokens = 40_000),
+            ).collect { chunks += it }
+        }
+        val notice = chunks.filterIsInstance<GenerationChunk.Notice>().singleOrNull()
+        assertTrue("C 守卫应在剩余 <4K 时优雅停止", notice?.notice is GenerationNotice.ContextBudgetExhausted)
+        // B 闸没有硬停（80% 起步 + 每步只 +2K，未越过 90%）；结果已全部回填
+        val committed = chunks.filterIsInstance<GenerationChunk.Messages>().last().messages
+        assertEquals(
+            listOf("ct0", "ct1", "ct2", "ct3"),
+            committed
+                .asSequence()
+                .flatMap { it.parts }
+                .filterIsInstance<UIMessagePart.Tool>()
+                .map { it.toolCallId }
+                .sorted()
+                .toList(),
+        )
+    }
+
     // ---- 错误文本限幅 ----
 
     @Test

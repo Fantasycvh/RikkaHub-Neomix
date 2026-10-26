@@ -57,6 +57,7 @@ import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.CONTINUE_TRUNCATED_HINT
 import app.androidrik.rikkahub.data.ai.CONTINUE_INCOMPLETE_HINT
+import app.androidrik.rikkahub.data.ai.ContextBudgetGuard
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
@@ -1656,6 +1657,12 @@ class ChatService(
                 workspaceBudget = session.workspaceTurnBudget,
                 // 思考退化护栏（家族第四员）：同上取 session 上的实例，跨审批续跑累积
                 thinkingGuard = session.thinkingGuard,
+                // 上下文预算守卫（design-tool-context-gate §6）：无累积状态，调用点直接新建。
+                // 自动压缩/条数上限仍是第一道线；本守卫只管工具循环内部增长撞到
+                // 「剩余 <4K」的优雅停止（与 B 闸 90% 硬限互补：B 管请求前，C 管执行中）
+                contextGuard = ContextBudgetGuard(
+                    windowTokens = model.effectiveContextLength(settings.contextLengthOverride),
+                ),
                 // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
                 // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
                 // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
@@ -1819,8 +1826,8 @@ class ChatService(
                             )
                         }
                         is GenerationNotice.ContextBudgetExhausted -> {
-                            // 上下文预算守卫只由无头 run 传入（聊天路径有压缩 + 条数上限兜底），
-                            // 这个分支同样只为 when 穷尽，防御性记录。
+                            // 上下文预算守卫（design-tool-context-gate §6）：聊天路径也传入，
+                            // 工具循环内部增长撞到「剩余 <4K」时优雅停止并在此浮出错误条目
                             Log.w(
                                 TAG,
                                 "context budget exhausted: ${notice.usedTokens}/${notice.windowTokens} tokens " +

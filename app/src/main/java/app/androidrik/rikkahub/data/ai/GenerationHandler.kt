@@ -423,9 +423,12 @@ class GenerationHandler(
         /** 重复拒绝护栏（仅无头 run 传入；见 [DenialGuard] 类注释的覆盖盲区说明）。 */
         denialGuard: DenialGuard? = null,
         /**
-         * 上下文预算守卫（仅无头 run 传入；见 [ContextBudgetGuard]）。
+         * 上下文预算守卫（见 [ContextBudgetGuard]）。
          *
-         * 聊天路径不传：它有自动压缩 + `contextMessageLimit` 兜底，再叠一层硬停会改变既有行为。
+         * 契约（design-tool-context-gate §6，修订自原「仅无头 run 传入」）：
+         * 自动压缩 + `contextMessageLimit` 仍是第一道线（轮间起作用）；本守卫管的是
+         * 工具循环**内部**的增长——每个工具执行前 evaluate，剩余余量 <4K 判
+         * [GenerationNotice.ContextBudgetExhausted] 优雅停止。聊天路径现在也传入。
          */
         contextGuard: ContextBudgetGuard? = null,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
