@@ -90,12 +90,17 @@ class ToolOutputContextGateTest {
         abilities = listOf(ModelAbility.TOOL),
     )
 
-    /** 窗口=1 的模型：任何消息估算都 ≥80% ⇒ 收缩档 8K（比构造精确 65% 边界稳）。 */
-    private val tinyWindowModel = bigWindowModel.copy(customContextLength = 1)
+    /**
+     * A 收缩档专用模型：窗口 40000。用户文本 128K 字符（启发式 ≈32K token）⇒ 占用率 0.80
+     * 恰好落进收缩档；截断后的再请求 ≈33075 token ≤ 85% 软限（34000），不会误触 B 闸硬限。
+     */
+    private val shrinkModel = bigWindowModel.copy(customContextLength = 40_000)
+
+    private fun longTextMessages(): List<UIMessage> = listOf(UIMessage.user("A".repeat(128_000)))
 
     private val providerSetting = ProviderSetting.OpenAI(
         id = Uuid.parse("22222222-2222-4222-8222-222222222222"),
-        models = listOf(bigWindowModel, tinyWindowModel),
+        models = listOf(bigWindowModel, shrinkModel),
         apiKey = "test-key",
     )
 
@@ -179,7 +184,7 @@ class ToolOutputContextGateTest {
                 settings = Settings(providers = listOf(providerSetting), chatModelId = model.id),
                 model = model,
                 // 足够长：窗口=1 的收缩档用例里 estimate 必须非零，比率判定才稳定
-                messages = listOf(UIMessage.user("hi there, this is a reasonably long test message")),
+                messages = longTextMessages(),
                 assistant = Assistant(chatModelId = model.id),
                 tools = tools,
             ).collect { chunk ->
@@ -277,7 +282,7 @@ class ToolOutputContextGateTest {
             provider,
             tools = listOf(bigTool("big_tool", outputChars = 10 * 1024)),
             // 10K < 32K 基础档 ⇒ 不触发；窗口=1 ⇒ ≥80% ⇒ 预算 8K ⇒ 必须截断
-            model = tinyWindowModel,
+            model = shrinkModel,
         )
         val text = output.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
         assertTrue(text.contains("[Tool output truncated:"))
@@ -305,11 +310,151 @@ class ToolOutputContextGateTest {
         val shrunkOutput = runAndGetToolOutput(
             shrunkProvider,
             tools = listOf(bigTool("search_web", outputChars = 10 * 1024)),
-            model = tinyWindowModel,
+            model = shrinkModel,
             toolCallId = "t2",
         )
         val shrunkText = shrunkOutput.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
         assertTrue("收缩档 search_web 不再豁免", shrunkText.contains("[Tool output truncated:"))
+    }
+
+    // ---- 上下文闸 B：85% 紧急卸载 + 90% 硬限 ----
+
+    /** 窗口 6000：40K 字符 ≈ 10K token ⇒ 必然超 85%（5100）；卸载后预览 ≈ 500 token ⇒ 低于硬限（5400）。 */
+    private val gateModel = bigWindowModel.copy(customContextLength = 6_000)
+
+    private fun historyWithHugeToolOutput(toolCallId: String, at: Int, size: Int = 6): List<UIMessage> {
+        val hugePart = toolCall(toolCallId, "big_tool")
+            .copy(output = listOf(UIMessagePart.Text("x".repeat(40 * 1024))))
+        return List(size) { index ->
+            when {
+                index == at -> UIMessage(role = MessageRole.ASSISTANT, parts = listOf(hugePart))
+                index % 2 == 0 -> UIMessage.user("msg-$index")
+                else -> UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("ok-$index")))
+            }
+        }
+    }
+
+    @Test
+    fun `old tool outputs beyond 85 percent are offloaded to guard files at request time`() {
+        val sentLists = mutableListOf<List<UIMessage>>()
+        val provider = ScriptedProvider { index, messages ->
+            sentLists += messages
+            if (index == 0) textStep("done") else error("只应发一次请求")
+        }
+        // 6 条消息，huge 在 index 1（< keepFrom=2）⇒ 可卸载；最近 4 条里没有大输出
+        val input = historyWithHugeToolOutput("old1", at = 1)
+        val chunks = mutableListOf<GenerationChunk>()
+        runBlocking {
+            handler(provider).generateText(
+                settings = Settings(providers = listOf(providerSetting), chatModelId = gateModel.id),
+                model = gateModel,
+                messages = input,
+                assistant = Assistant(chatModelId = gateModel.id),
+                tools = emptyList(),
+            ).collect { chunks += it }
+        }
+        val sentTool = sentLists[0]
+            .asSequence()
+            .flatMap { it.parts }
+            .filterIsInstance<UIMessagePart.Tool>()
+            .first { it.toolCallId == "old1" }
+        val sentText = sentTool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+        assertTrue("发送面应替换为卸载投影", sentText.contains("[Context guard: output offloaded]"))
+        assertTrue(sentText.contains("/tool_outputs/guard-old1.txt"))
+        // guard 文件保存全文
+        val guard = File(toolOutputsDir(), "guard-old1.txt")
+        assertTrue(guard.exists())
+        assertEquals(40 * 1024, guard.readText().length)
+        // 投影不落库：调用方传入的列表保持全文
+        val inputTool = input[1].parts.filterIsInstance<UIMessagePart.Tool>().first()
+        assertEquals(40 * 1024, inputTool.output.filterIsInstance<UIMessagePart.Text>().first().text.length)
+        // 最近 4 条未被改写：发送面里带卸载标记的工具 part 只有 old1 一个
+        // （不能按位置断言：装配产物与输入列表的索引不一一对应）
+        val markedCalls = sentLists[0]
+            .asSequence()
+            .flatMap { it.parts }
+            .filterIsInstance<UIMessagePart.Tool>()
+            .filter { it.output.filterIsInstance<UIMessagePart.Text>().any { t -> t.text.contains("offloaded") } }
+            .map { it.toolCallId }
+            .toList()
+        assertEquals(listOf("old1"), markedCalls)
+        // 没有硬限通知
+        assertTrue(chunks.none { it is GenerationChunk.Notice })
+    }
+
+    @Test
+    fun `offload skips the recent four messages and hard-stops at 90 percent`() {
+        val sentLists = mutableListOf<List<UIMessage>>()
+        val provider = ScriptedProvider { _, messages ->
+            sentLists += messages
+            textStep("done")
+        }
+        // huge 在 index 4（落在最近 4 条保护区内）⇒ 无法卸载 ⇒ 仍超 90% ⇒ 优雅停止
+        val input = historyWithHugeToolOutput("recent1", at = 4)
+        val chunks = mutableListOf<GenerationChunk>()
+        runBlocking {
+            handler(provider).generateText(
+                settings = Settings(providers = listOf(providerSetting), chatModelId = gateModel.id),
+                model = gateModel,
+                messages = input,
+                assistant = Assistant(chatModelId = gateModel.id),
+                tools = emptyList(),
+            ).collect { chunks += it }
+        }
+        val notice = chunks.filterIsInstance<GenerationChunk.Notice>().singleOrNull()
+        assertTrue("应有硬限停止通知", notice?.notice is GenerationNotice.ContextBudgetExhausted)
+        // 保护区内的大输出没有被卸载
+        assertFalse(File(toolOutputsDir(), "guard-recent1.txt").exists())
+        // 硬停发生在请求发出之前 ⇒ 没有任何请求到达 provider；投影不落库，输入保持全文
+        assertTrue("硬停前不应发出请求", sentLists.isEmpty())
+        val stillFull = input[4].parts.filterIsInstance<UIMessagePart.Tool>().first()
+        assertEquals(
+            40 * 1024,
+            stillFull.output.filterIsInstance<UIMessagePart.Text>().first().text.length,
+        )
+    }
+
+    @Test
+    fun `offload is stable across tool loop steps`() {
+        val sentLists = mutableListOf<List<UIMessage>>()
+        val provider = ScriptedProvider { index, messages ->
+            sentLists += messages
+            when (index) {
+                0 -> toolCallStep(toolCall("t1", "small_tool"))
+                1 -> textStep("done")
+                else -> error("只应发两次请求")
+            }
+        }
+        runBlocking {
+            handler(provider).generateText(
+                settings = Settings(providers = listOf(providerSetting), chatModelId = gateModel.id),
+                model = gateModel,
+                messages = historyWithHugeToolOutput("old1", at = 1),
+                assistant = Assistant(chatModelId = gateModel.id),
+                tools = listOf(
+                    Tool(
+                        name = "small_tool",
+                        description = "",
+                        parameters = { InputSchema.Obj(properties = JsonObject(emptyMap())) },
+                        needsApproval = { false },
+                        executionTimeoutMillis = null,
+                        execute = { listOf(UIMessagePart.Text("tiny")) },
+                    )
+                ),
+            ).collect { /* 消费完即可 */ }
+        }
+        assertEquals(2, sentLists.size)
+        // 两次请求的发送面都有卸载投影（runLoop 内存态保持全文，每步重新投影）
+        sentLists.forEach { sent ->
+            val marker = sent.asSequence()
+                .flatMap { it.parts }
+                .filterIsInstance<UIMessagePart.Tool>()
+                .first { it.toolCallId == "old1" }
+                .output.filterIsInstance<UIMessagePart.Text>()
+                .joinToString("\n") { it.text }
+            assertTrue(marker.contains("[Context guard: output offloaded]"))
+        }
+        assertEquals(40 * 1024, File(toolOutputsDir(), "guard-old1.txt").readText().length)
     }
 
     // ---- 错误文本限幅 ----

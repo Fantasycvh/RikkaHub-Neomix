@@ -83,6 +83,19 @@ private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 private const val TOOL_OUTPUT_MID_CHARS = 16 * 1024
 private const val TOOL_OUTPUT_MIN_CHARS = 8 * 1024
 
+// 上下文闸 B：请求前紧急卸载 + 硬限（design-tool-context-gate §5，阈值比 Yuihub 的 0.90/0.97 收紧）。
+// 占用 ≥85% 时把旧工具结果卸载到文件留 2K 预览；卸完仍 ≥90% 判定硬限。
+private const val CONTEXT_EMERGENCY_RATIO = 0.85f
+private const val CONTEXT_HARD_RATIO = 0.90f
+private const val EMERGENCY_TOOL_PREVIEW_CHARS = 2 * 1024
+private const val CONTEXT_GUARD_KEEP_RECENT = 4
+
+/** 上下文闸 B 的硬限信号：卸载后仍超 90%。由 [GenerationHandler.enforceContextBudget] 抛出，调用方转成优雅停止。 */
+internal class ContextGateHardStop(
+    val usedTokens: Int,
+    val windowTokens: Int,
+) : IllegalStateException("Context window budget exceeded after offloading old tool outputs: $usedTokens / $windowTokens")
+
 /**
  * 空工具输出的占位文本（见 [finalizeToolOutput]）。
  *
@@ -552,53 +565,72 @@ class GenerationHandler(
                         planToolAvailable = planToolAvailable,
                     ),
                 )
-                generateInternal(
-                    assistant = assistant,
-                    settings = settings,
-                    messages = messages,
-                    compressionWindow = compressionWindow,
-                    recoveryHint = pendingRecoveryHint,
-                    ruleReminder = ruleReminder,
-                    memoryDisabled = memoryDisabled,
-                    frozenAnchorIds = frozenAnchorIds,
-                    debugKey = debugKey,
-                    onUpdateMessages = {
-                        messages = it.transforms(
-                            transformers = outputTransformers,
-                            context = context,
-                            model = targetModel,
-                            assistant = assistant,
-                            settings = settings
-                        )
-                        emit(
-                            GenerationChunk.Messages(
-                                messages.visualTransforms(
-                                    transformers = outputTransformers,
-                                    context = context,
-                                    model = targetModel,
-                                    assistant = assistant,
-                                    settings = settings
+                try {
+                    generateInternal(
+                        assistant = assistant,
+                        settings = settings,
+                        messages = messages,
+                        compressionWindow = compressionWindow,
+                        recoveryHint = pendingRecoveryHint,
+                        ruleReminder = ruleReminder,
+                        memoryDisabled = memoryDisabled,
+                        frozenAnchorIds = frozenAnchorIds,
+                        debugKey = debugKey,
+                        onUpdateMessages = {
+                            messages = it.transforms(
+                                transformers = outputTransformers,
+                                context = context,
+                                model = targetModel,
+                                assistant = assistant,
+                                settings = settings
+                            )
+                            emit(
+                                GenerationChunk.Messages(
+                                    messages.visualTransforms(
+                                        transformers = outputTransformers,
+                                        context = context,
+                                        model = targetModel,
+                                        assistant = assistant,
+                                        settings = settings
+                                    )
                                 )
                             )
+                        },
+                        transformers = inputTransformers,
+                        model = targetModel,
+                        providerImpl = targetProviderImpl,
+                        provider = targetProvider,
+                        tools = toolsInternal,
+                        memories = memories ?: emptyList(),
+                        stream = assistant.streamOutput,
+                        processingStatus = processingStatus,
+                        degenerationGuard = thinkingGuard,
+                        conversationSystemPrompt = conversationSystemPrompt,
+                        conversationModeInjectionIds = conversationModeInjectionIds,
+                        conversationLorebookIds = conversationLorebookIds,
+                        workspaceCwd = workspaceCwd,
+                        // 有 fallback 时压缩主模型重试预算（最多 2 次），快速切备用模型——
+                        // 否则连接类故障会先等完整个延迟序列（默认可达 100s+）才降级
+                        retryBudgetOverride = if (fallbackModel != null) 2 else null,
+                    )
+                } catch (e: ContextGateHardStop) {
+                    // 上下文闸 B 硬限：卸载后仍 ≥90%。此异常发生在**请求发出之前**（装配期），
+                    // 不会进重试/fallback；本轮已生成内容都已在前面 emit，直接发停止提示收束。
+                    // 不走 stopNotice 变量：executedTools 为空会先 break、丢通知（见循环尾注释）。
+                    Log.w(
+                        TAG,
+                        "generateText: context gate hard stop (${e.usedTokens}/${e.windowTokens} tokens), stopping turn"
+                    )
+                    emit(
+                        GenerationChunk.Notice(
+                            GenerationNotice.ContextBudgetExhausted(
+                                usedTokens = e.usedTokens,
+                                windowTokens = e.windowTokens,
+                            )
                         )
-                    },
-                    transformers = inputTransformers,
-                    model = targetModel,
-                    providerImpl = targetProviderImpl,
-                    provider = targetProvider,
-                    tools = toolsInternal,
-                    memories = memories ?: emptyList(),
-                    stream = assistant.streamOutput,
-                    processingStatus = processingStatus,
-                    degenerationGuard = thinkingGuard,
-                    conversationSystemPrompt = conversationSystemPrompt,
-                    conversationModeInjectionIds = conversationModeInjectionIds,
-                    conversationLorebookIds = conversationLorebookIds,
-                    workspaceCwd = workspaceCwd,
-                    // 有 fallback 时压缩主模型重试预算（最多 2 次），快速切备用模型——
-                    // 否则连接类故障会先等完整个延迟序列（默认可达 100s+）才降级
-                    retryBudgetOverride = if (fallbackModel != null) 2 else null,
-                )
+                    )
+                    return
+                }
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,
                     context = context,
@@ -1205,6 +1237,14 @@ class GenerationHandler(
             },
         )
         val internalMessages = assembly.messages
+        // 上下文闸 B（design-tool-context-gate §5）：**请求前**对实发载荷做紧急卸载。
+        // 挂在装配产物上而非原始会话：压缩窗口/上下文条数裁剪之后才是真正要发的东西，
+        // 在原始会话上估算是白算。改写的是每请求临时物 ⇒ 天然投影、零持久化副作用；
+        // DB/UI 里的全文是权威，guard 文件只是发送面备份。
+        // 85% 触发卸载；卸完仍 ≥90% 抛 [ContextGateHardStop]，由步骤循环转成优雅停止
+        // （不采 Yuihub 的 throw 直达失败——本仓护栏家族一律优雅停止）。
+        // 无工具的请求（标题/翻译）没有 Tool part，算法自然空转，无需特判。
+        val gatedMessages = enforceContextBudget(internalMessages, model)
         if (assistant.enableMemory && !memoryDisabled) {
             val plan = assembly.memoryPlan
             Log.i(TAG, "memory.inject budget=${plan.budgetTokens} estimated=${plan.totalEstimatedTokens} " +
@@ -1226,7 +1266,7 @@ class GenerationHandler(
         // 为什么链尾还要再兜一遍：`SubagentRunner` 传的是它自己的 `inputTransformers`（可能为空链），
         // 只靠 ChatService 那条链接入会漏掉它。已配平时返回**同一个实例**，零开销。
         // 见 transformers/ToolResultBalancingTransformer.kt。
-        val requestMessages = internalMessages.transforms(
+        val requestMessages = gatedMessages.transforms(
             transformers = transformers,
             context = context,
             model = model,
@@ -1429,6 +1469,90 @@ class GenerationHandler(
      */
     private fun toolOutputBudget(messages: List<UIMessage>, model: Model): Int =
         toolOutputBudgetFor(estimateTokenCount(messages), model.effectiveContextLength())
+
+    /**
+     * 上下文闸 B：请求前紧急卸载（design-tool-context-gate §5，Yuihub 3.0.0 `enforceContextBudget` 的投影版）。
+     *
+     * 占用 ≥85% 时从最旧向新把工具结果全文卸载到 `tool_outputs/guard-<id>.txt`、
+     * part 替换为「卸载标记 + resultId + 恢复指引 + 2K 预览」，保留最近
+     * [CONTEXT_GUARD_KEEP_RECENT] 条消息不动（新近结果是模型正在用的）；
+     * 每卸载一条重算估算，达标即停。卸完仍 ≥90% 抛 [ContextGateHardStop]。
+     *
+     * 幂等：guard 文件按 toolCallId 命名、内容不可变，已存在即跳过写入；
+     * 已是投影（卸载标记 / 既有截断标记）的 part 不再处理。
+     * 快速路径（≤85%）每请求只多一次本地估算。
+     */
+    private suspend fun enforceContextBudget(
+        messages: List<UIMessage>,
+        model: Model,
+    ): List<UIMessage> {
+        val window = model.effectiveContextLength().coerceAtLeast(1)
+        val softLimit = (window * CONTEXT_EMERGENCY_RATIO).toInt()
+        val hardLimit = (window * CONTEXT_HARD_RATIO).toInt()
+        var current = messages
+        var estimated = estimateTokenCount(current)
+        if (estimated <= softLimit) return messages
+
+        val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() }
+        var changed = false
+        val keepFrom = (current.size - CONTEXT_GUARD_KEEP_RECENT).coerceAtLeast(0)
+        for (index in 0 until keepFrom) {
+            val message = current[index]
+            var messageChanged = false
+            val parts = message.parts.map { part ->
+                if (part !is UIMessagePart.Tool || part.output.isEmpty()) return@map part
+                val textParts = part.output.filterIsInstance<UIMessagePart.Text>()
+                val fullText = textParts.joinToString("\n") { it.text }
+                if (fullText.length <= EMERGENCY_TOOL_PREVIEW_CHARS ||
+                    fullText.contains("[Context guard: output offloaded]") ||
+                    fullText.contains("[Tool output truncated:")
+                ) {
+                    return@map part
+                }
+                val safeId = part.toolCallId.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                val fileName = "guard-$safeId.txt"
+                val outputFile = File(outputDir, fileName)
+                if (!outputFile.exists() || outputFile.readText() != fullText) {
+                    withContext(Dispatchers.IO) {
+                        outputFile.writeText(fullText)
+                    }
+                }
+                messageChanged = true
+                val nonText = part.output.filter { it !is UIMessagePart.Text }
+                part.copy(
+                    output = listOf(
+                        UIMessagePart.Text(
+                            buildString {
+                                appendLine("[Context guard: output offloaded]")
+                                appendLine("resultId: guard-$safeId")
+                                appendLine("Full output saved to: /tool_outputs/$fileName")
+                                appendLine(
+                                    "Read only the needed range with workspace_read_file " +
+                                        "(or shell cat/grep if bound), instead of re-running the tool."
+                                )
+                                appendLine()
+                                append(fullText.take(EMERGENCY_TOOL_PREVIEW_CHARS))
+                            }
+                        )
+                    ) + nonText
+                )
+            }
+            if (messageChanged) {
+                current = current.toMutableList().also { it[index] = message.copy(parts = parts) }
+                changed = true
+                estimated = estimateTokenCount(current)
+                if (estimated <= softLimit) break
+            }
+        }
+        if (estimated > hardLimit) {
+            Log.w(TAG, "enforceContextBudget: hard limit after offloading ($estimated / $window)")
+            throw ContextGateHardStop(estimated, window)
+        }
+        if (changed) {
+            Log.i(TAG, "enforceContextBudget: offloaded old tool outputs, $estimated / $window tokens")
+        }
+        return if (changed) current else messages
+    }
 
     private fun maybeTruncateToolOutput(
         tool: UIMessagePart.Tool,
