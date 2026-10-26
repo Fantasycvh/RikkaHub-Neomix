@@ -2367,7 +2367,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="startup_restore_running">Installing verified backup…</string>
   <string name="startup_restore_failed">Restore failed: %1$s</string>
   <string name="startup_restore_failed_exit">Restore failed: %1$s. Please exit and restart the app — the previous database will be restored automatically.</string>
-  <string name="startup_restore_db_open_failed">Restored database failed to open. Please exit and restart the app — the previous database will be restored automatically.</string>
+  <string name="startup_restore_db_open_failed">Restored database failed to open</string>
   <string name="startup_restore_retry">Retry</string>
   <string name="setting_page_tool_schema_compact_title">Tool Schema Compaction</string>
   <string name="setting_page_tool_schema_compact_desc">Trim tool description text before sending to the provider (parameters and enums are never touched). Reduces tokens when many tools are installed.</string>
