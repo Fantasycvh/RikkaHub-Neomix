@@ -67,7 +67,9 @@ import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.ai.util.ToolSchemaSize
 import app.androidrik.rikkahub.utils.applyPlaceholders
+import app.androidrik.rikkahub.utils.estimateTokenCount
 import app.androidrik.rikkahub.utils.estimateTokens
+import app.androidrik.rikkahub.utils.effectiveContextLength
 import java.util.Locale
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -75,6 +77,11 @@ import kotlin.uuid.Uuid
 private const val TAG = "GenerationHandler"
 private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
+
+// 上下文闸 A：per-call 动态限幅的收缩档（design-tool-context-gate §4）。
+// 窗口占用 ≥65% 收到 16K、≥80% 收到 8K；基础档维持 32K 不变。
+private const val TOOL_OUTPUT_MID_CHARS = 16 * 1024
+private const val TOOL_OUTPUT_MIN_CHARS = 8 * 1024
 
 /**
  * 空工具输出的占位文本（见 [finalizeToolOutput]）。
@@ -87,8 +94,19 @@ private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
  */
 internal const val EMPTY_TOOL_OUTPUT = "(no output)"
 
-// 搜索结果的体积由用户设置的结果数决定，且结果列表 UI 与引用跳转都依赖完整的 JSON 结构，不参与截断
+// 搜索结果的体积由用户设置的结果数决定，且结果列表 UI 与引用跳转都依赖完整的 JSON 结构，不参与截断。
+// 豁免只在基础档生效：分级收缩档（16K/8K）下窗口优先级高于豁免（design-tool-context-gate §3）。
 private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web")
+
+/** 上下文闸 A 的纯函数核（边界测试直接打这个，不用拉起整条生成流）。 */
+internal fun toolOutputBudgetFor(estimatedTokens: Int, window: Int): Int {
+    val ratio = estimatedTokens.toFloat() / window.coerceAtLeast(1)
+    return when {
+        ratio >= 0.80f -> TOOL_OUTPUT_MIN_CHARS
+        ratio >= 0.65f -> TOOL_OUTPUT_MID_CHARS
+        else -> MAX_TOOL_OUTPUT_CHARS
+    }
+}
 
 /**
  * 空回复补救提示：模型只输出思考、无可见正文也无工具调用时，向随后一次请求追加此提示
@@ -884,6 +902,11 @@ class GenerationHandler(
                                 )
                             }
                         }
+                        // 上下文闸 A：per-call 动态限幅（每次执行前按当前窗口占用算预算）；
+                        // 能力判定放 runCatching 外——成功/失败两条路径共用
+                        val outputBudget = toolOutputBudget(messages, targetModel)
+                        val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
+                        val workspaceBound = toolsInternal.any { it.name == "workspace_read_file" }
                         runCatching {
                             val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
                                 ?: error("Tool ${tool.toolName} not found")
@@ -906,10 +929,15 @@ class GenerationHandler(
                             }
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
                             val result = executeToolWithTimeout(toolDef, args) { toolDef.execute(it) }
-                            val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
                             // 空输出补占位：否则 isExecuted 仍为假 ⇒ 下一轮又被选出来重复执行
                             val output = finalizeToolOutput(
-                                maybeTruncateToolOutput(tool, result, hasShellAccess)
+                                maybeTruncateToolOutput(
+                                    tool,
+                                    result,
+                                    maxChars = outputBudget,
+                                    workspaceBound = workspaceBound,
+                                    hasShellAccess = hasShellAccess,
+                                )
                             )
                             executedSignature[signature] = output
                             commitToolResult(tool.copy(output = output))
@@ -948,9 +976,18 @@ class GenerationHandler(
                             // 失败调用的错误文本（含堆栈）同样进入上下文 ⇒ 同样计费——否则
                             // 「每步换参数、每次都失败」的 shell 调用既不占输出预算也不占步数。
                             // 判定结果此处不设提示（成功路径统一负责），只记账。
+                            // 错误文本同样受 per-call 限幅（堆栈可以非常长）；JSON 包裹后
+                            // 截断会破坏结构，故在编码前硬切。
                             val errorText = buildString {
                                 append("[${it.javaClass.name}] ${it.message}")
                                 append("\n${it.stackTraceToString()}")
+                            }.let { text ->
+                                if (text.length > outputBudget) {
+                                    text.take(outputBudget) +
+                                        "\n[... error text truncated at $outputBudget chars]"
+                                } else {
+                                    text
+                                }
                             }
                             if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
                                 workspaceBudget.record(errorText.length)
@@ -1384,21 +1421,34 @@ class GenerationHandler(
         return dropLast(1) + last.copy(finishReason = reason, finishIncomplete = incomplete)
     }
 
+    /**
+     * 上下文闸 A：per-call 动态限幅（design-tool-context-gate §4，Yuihub 3.0.0 `toolOutputBudget`）。
+     *
+     * 按当前消息列表占模型窗口的比率分三档：基础 32K / ≥65% 收 16K / ≥80% 收 8K。
+     * 只做本地估算（`estimateTokenCount`），无锚点——保守方向是少给预算，可接受。
+     */
+    private fun toolOutputBudget(messages: List<UIMessage>, model: Model): Int =
+        toolOutputBudgetFor(estimateTokenCount(messages), model.effectiveContextLength())
+
     private fun maybeTruncateToolOutput(
         tool: UIMessagePart.Tool,
         output: List<UIMessagePart>,
+        maxChars: Int,
+        workspaceBound: Boolean,
         hasShellAccess: Boolean,
     ): List<UIMessagePart> {
-        if (tool.toolName in TOOLS_WITHOUT_OUTPUT_TRUNCATION) return output
+        // 截断**恒生效**（原 `|| !hasShellAccess` 短路已废除，design-tool-context-gate §3）：
+        // 无恢复通道时宁可给「缩窄重跑」提示，也不能让 30K+ 输出无界进历史
+        if (tool.toolName in TOOLS_WITHOUT_OUTPUT_TRUNCATION && maxChars >= MAX_TOOL_OUTPUT_CHARS) return output
 
         val toolCallId = tool.toolCallId
         val textParts = output.filterIsInstance<UIMessagePart.Text>()
         val nonTextParts = output.filter { it !is UIMessagePart.Text }
         val totalChars = textParts.sumOf { it.text.length }
 
-        if (totalChars <= MAX_TOOL_OUTPUT_CHARS || !hasShellAccess) return output
+        if (totalChars <= maxChars) return output
 
-        Log.i(TAG, "maybeTruncateToolOutput: truncating tool $toolCallId output ($totalChars chars)")
+        Log.i(TAG, "maybeTruncateToolOutput: truncating tool $toolCallId output ($totalChars chars, budget $maxChars)")
 
         val fullText = textParts.joinToString("\n") { it.text }
         val preview = fullText.take(TOOL_OUTPUT_PREVIEW_CHARS)
@@ -1413,7 +1463,21 @@ class GenerationHandler(
         // 投影无损回环校验（华灯投影原则）：外部全文是模型恢复上下文的**唯一**来源，
         // 写坏（磁盘满/静默截断）必须当场报错——绝不能让「预览说存了、文件却是残的」。
         require(outputFile.readText() == fullText) {
-            "Tool output projection write failed (lossless check): ${'$'}fileName"
+            "Tool output projection write failed (lossless check): $fileName"
+        }
+
+        // 恢复指引按会话真实能力三分支（§4）：有 workspace 用分页读（比整段 cat 省）；
+        // 只有 shell 才指引 cat/grep；两者皆无时诚实告知重跑，不给假指引
+        val recovery = when {
+            workspaceBound ->
+                "Use workspace_read_file(path=\"/tool_outputs/$fileName\", offset=1, limit=200) " +
+                    "to read only the needed range instead of re-running the tool."
+            hasShellAccess ->
+                "Use shell to read: `cat /tool_outputs/$fileName`\n" +
+                    "Use shell to search: `grep \"pattern\" /tool_outputs/$fileName`"
+            else ->
+                "The output is too large to include in context and this session has no file-reading " +
+                    "tool. Re-run the tool with narrower arguments to get a smaller result."
         }
 
         return listOf(
@@ -1421,8 +1485,7 @@ class GenerationHandler(
                 buildString {
                     appendLine("[Tool output truncated: $totalChars characters total]")
                     appendLine("Full output saved to: /tool_outputs/$fileName")
-                    appendLine("Use shell to read: `cat /tool_outputs/$fileName`")
-                    appendLine("Use shell to search: `grep \"pattern\" /tool_outputs/$fileName`")
+                    append(recovery)
                     appendLine()
                     append(preview)
                 }
