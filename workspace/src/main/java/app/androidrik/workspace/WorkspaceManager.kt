@@ -145,12 +145,7 @@ class WorkspaceManager(
         path: String,
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
         outputStream: OutputStream,
-    ) {
-        val file = fileSystem.resolve(areaDir(root, area), path)
-        require(file.exists()) { "File does not exist: $path" }
-        require(file.isFile) { "Path is not a file: $path" }
-        outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
-    }
+    ) = fileSystem.exportTo(areaDir(root, area), path, outputStream)
 
     /**
      * 把 Rootfs 内的绝对路径映射到宿主机上的真实文件。

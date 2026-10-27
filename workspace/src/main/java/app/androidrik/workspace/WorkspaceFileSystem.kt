@@ -2,6 +2,7 @@ package app.androidrik.workspace
 
 import java.io.File
 import java.io.InputStream
+import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.nio.file.FileSystems
@@ -31,7 +32,19 @@ class WorkspaceFileSystem(
         require(file.length() <= config.maxReadBytes) {
             "File is too large to read: ${file.length()} bytes"
         }
-        return file.readText(charset)
+        // 先 open 后按 fd 复核（审计 #4）：窗口内路径被换成指向工作区外的链接时拒绝，
+        // 不会静默把外部文件内容读进上下文/导出
+        return String(AnchoredFileAccess.readBytes(root, file), charset)
+    }
+
+    /** 导出/分享：与 [readText] 同一条 fd 复核的读路径。 */
+    fun exportTo(root: File, path: String, outputStream: OutputStream) {
+        val file = resolvePath(root, path)
+        require(file.exists()) { "File does not exist: $path" }
+        require(file.isFile) { "Path is not a file: $path" }
+        AnchoredFileAccess.openRead(root, file).use { input ->
+            outputStream.use { out -> input.copyTo(out) }
+        }
     }
 
     fun writeText(
@@ -48,8 +61,9 @@ class WorkspaceFileSystem(
         val file = resolvePath(root, path)
         require(!file.exists() || overwrite) { "File already exists: $path" }
         require(!file.exists() || file.isFile) { "Path is not a file: $path" }
-        file.parentFile?.mkdirs()
-        file.writeBytes(bytes)
+        AnchoredFileAccess.ensureParentDirectories(root, file)
+        // rw 打开（不截断）→ fd 复核 → 才截断写入：复核失败时原文件内容完好（审计 #4）
+        AnchoredFileAccess.writeTruncate(root, file) { it.write(bytes) }
         return file.toEntry(root)
     }
 
@@ -67,15 +81,15 @@ class WorkspaceFileSystem(
         while (true) {
             checkInterrupted()
             val target = if (n == 0) file else File(file.parentFile, "$stem ($n)$ext")
-            val output = try {
-                Files.newOutputStream(target.toPath(), java.nio.file.StandardOpenOption.CREATE_NEW,
-                    java.nio.file.StandardOpenOption.WRITE, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+            // CREATE_NEW 占位（O_CREAT|O_EXCL：末级是链接时同样 EEXIST），再按 fd 复核后写入
+            try {
+                Files.createFile(target.toPath())
             } catch (_: java.nio.file.FileAlreadyExistsException) {
                 n++
                 continue
             }
             try {
-                output.use { out ->
+                AnchoredFileAccess.writeTruncate(root, target) { out ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     while (true) {
                         checkInterrupted()
@@ -115,6 +129,9 @@ class WorkspaceFileSystem(
         require(Files.exists(source.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "Source does not exist: $path" }
         val target = mutationPath(root, source.parentFile!!.relativeTo(root.canonicalFile).path.replace(File.separatorChar, '/')
             .let { if (it.isEmpty()) name else "$it/$name" })
+        require(AnchoredFileAccess.verifyAncestors(root, source)) {
+            "Path contains a symlinked component: $path"
+        }
         if (source == target) return source.toEntry(root)
         // Files.move without REPLACE_EXISTING rejects occupied destinations, including dangling links.
         Files.move(source.toPath(), target.toPath())
@@ -186,6 +203,10 @@ class WorkspaceFileSystem(
         // 工作区根目录 → recursive=true 时 deleteRecursively 删除整个工作区。
         // 用 canonical 对比根目录，任何等价写法都拒绝（移植自 rikkahub-turbo 9677cd4）。
         require(file.canonicalFile != root.canonicalFile) { "Refusing to delete workspace root" }
+        // 解析与操作之间无 fd 可用，只能在删之前再逐级复核一次（窗口收窄，未根除——审计 #4）
+        require(AnchoredFileAccess.verifyAncestors(root, file)) {
+            "Path contains a symlinked component: $path"
+        }
         if (!Files.exists(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return false
         return if (Files.isDirectory(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             require(recursive) { "Directory delete requires recursive = true" }
@@ -225,6 +246,10 @@ class WorkspaceFileSystem(
         // [FIX] 同 delete："./" 变体可解析到根目录 → renameTo 移动整个工作区
         //（移植自 rikkahub-turbo 9677cd4）。
         require(sourceFile.canonicalFile != root.canonicalFile) { "Refusing to move workspace root" }
+        require(
+            AnchoredFileAccess.verifyAncestors(root, sourceFile) &&
+                AnchoredFileAccess.verifyAncestors(root, targetFile)
+        ) { "Path contains a symlinked component: $source -> $target" }
         require(sourceFile.exists()) { "Source does not exist: $source" }
         if (targetFile.exists()) {
             require(overwrite) { "Target already exists: $target" }
