@@ -8,6 +8,7 @@ import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 工作空间**后台任务**：让长命令（构建、下载、训练脚本）不再阻塞一轮对话。
@@ -385,8 +386,24 @@ class WorkspaceTaskRegistry(
      *   [killByOwner] 能把**这一轮起的任务**一起终止。为什么按 owner 而不是按「工具结果里的
      *   taskId」：任务可能在「进程已启动、结果还没回填给模型」的窗口里就被取消，那时 taskId
      *   根本没进对话，只有启动时就记下的归属能找到它。
+     * @param onFinished 任务生命周期结束（进程退出被 reaper 收尾，或启动失败被置为
+     *   [WorkspaceTaskStatus.FAILED]）后**恰好调用一次**的回调；用于释放调用方为任务持有的资源
+     *   （本仓：只读快照代的租约，见 [ReadOnlyMountSnapshots.prepareLeased]）。回调异常被吞掉，
+     *   不能影响任务状态机。`start` 自身在登记任务之前抛错时不会调用该回调，由调用方兜底。
      */
-    fun start(context: WorkspaceShellContext, owner: String? = null): WorkspaceTaskSnapshot {
+    fun start(
+        context: WorkspaceShellContext,
+        owner: String? = null,
+        onFinished: (() -> Unit)? = null,
+    ): WorkspaceTaskSnapshot {
+        // 释放回调必须**恰好**调用一次：成功路径由 reaper 线程 finally 调用，启动失败路径在返回前
+        // 调用（两条路径互斥，这里再用 AtomicBoolean 兜底重复/并发调用）。
+        val finished = AtomicBoolean(false)
+        fun notifyFinished() {
+            if (finished.compareAndSet(false, true)) {
+                runCatching { onFinished?.invoke() }
+            }
+        }
         val entry: Entry
         synchronized(lock) {
             evictFinishedLocked()
@@ -430,6 +447,8 @@ class WorkspaceTaskRegistry(
             }
             entry.status = WorkspaceTaskStatus.FAILED
             entry.finishedAtMillis = now()
+            // 启动失败路径没有 reaper 线程，置终态之后必须在这里回调释放任务资源
+            notifyFinished()
             return snapshotOf(entry)
         }
 
@@ -438,7 +457,7 @@ class WorkspaceTaskRegistry(
         entry.stderrLogPath = handle.stderrLogPath
         // kill 可能在 handle 赋值前就被下发（见 kill()）：这里补一次，避免终止请求丢失
         if (entry.killRequested) handle.kill()
-        startReaper(entry, handle)
+        startReaper(entry, handle) { notifyFinished() }
         return snapshotOf(entry)
     }
 
@@ -503,40 +522,47 @@ class WorkspaceTaskRegistry(
         return ids.count { kill(it) == WorkspaceKillResult.KILLED }
     }
 
-    private fun startReaper(entry: Entry, handle: WorkspaceBackgroundHandle) {
+    private fun startReaper(entry: Entry, handle: WorkspaceBackgroundHandle, onFinished: () -> Unit) {
         Thread {
-            var code: Int? = null
+            // 释放任务资源（本仓：只读快照代租约）必须覆盖所有收尾路径：正常退出、时长看门狗、
+            // kill、以及 awaitExit 抛异常——都走最外层 finally
             try {
-                val limit = maxLifetimeMillis
-                if (limit <= 0L) {
-                    // 不限制：分片等待，避免把超大 timeout 交给平台实现（nanos 溢出风险）
-                    while (code == null) code = handle.awaitExit(UNLIMITED_WAIT_SLICE_MS)
-                } else {
-                    val deadline = entry.startedAtMillis + limit
-                    code = handle.awaitExit((deadline - now()).coerceAtLeast(0L))
-                    if (code == null) {
-                        // 到点仍在跑：按同一条终止路径杀整棵树；状态记 TIMED_OUT（用户没动手）
-                        entry.timedOut = true
-                        handle.kill()
-                        code = handle.awaitExit(TIMED_OUT_REAP_GRACE_MS)
+                var code: Int? = null
+                try {
+                    val limit = maxLifetimeMillis
+                    if (limit <= 0L) {
+                        // 不限制：分片等待，避免把超大 timeout 交给平台实现（nanos 溢出风险）
+                        while (code == null) code = handle.awaitExit(UNLIMITED_WAIT_SLICE_MS)
+                    } else {
+                        val deadline = entry.startedAtMillis + limit
+                        code = handle.awaitExit((deadline - now()).coerceAtLeast(0L))
+                        if (code == null) {
+                            // 到点仍在跑：按同一条终止路径杀整棵树；状态记 TIMED_OUT（用户没动手）
+                            entry.timedOut = true
+                            handle.kill()
+                            code = handle.awaitExit(TIMED_OUT_REAP_GRACE_MS)
+                        }
+                    }
+                } catch (_: Throwable) {
+                    code = null
+                }
+                entry.exitCode = code
+                if (entry.finishedAtMillis == null) entry.finishedAtMillis = now()
+                // 先写终态的赢（kill() / 看门狗 / 正常退出三选一），回收线程只补 exitCode
+                if (entry.status == WorkspaceTaskStatus.RUNNING) {
+                    entry.status = when {
+                        entry.timedOut -> WorkspaceTaskStatus.TIMED_OUT
+                        entry.killRequested -> WorkspaceTaskStatus.KILLED
+                        code == null -> WorkspaceTaskStatus.FAILED
+                        else -> WorkspaceTaskStatus.EXITED
                     }
                 }
-            } catch (_: Throwable) {
-                code = null
+                // 结束即淘汰：只在 start() 里淘汰会有一段时间超限（连续完成的旧任务还留着占内存）
+                synchronized(lock) { evictFinishedLocked() }
+            } finally {
+                // 终态与退出码写完之后才释放：调用方按终态收尾时资源已经不再需要了
+                onFinished()
             }
-            entry.exitCode = code
-            if (entry.finishedAtMillis == null) entry.finishedAtMillis = now()
-            // 先写终态的赢（kill() / 看门狗 / 正常退出三选一），回收线程只补 exitCode
-            if (entry.status == WorkspaceTaskStatus.RUNNING) {
-                entry.status = when {
-                    entry.timedOut -> WorkspaceTaskStatus.TIMED_OUT
-                    entry.killRequested -> WorkspaceTaskStatus.KILLED
-                    code == null -> WorkspaceTaskStatus.FAILED
-                    else -> WorkspaceTaskStatus.EXITED
-                }
-            }
-            // 结束即淘汰：只在 start() 里淘汰会有一段时间超限（连续完成的旧任务还留着占内存）
-            synchronized(lock) { evictFinishedLocked() }
         }.apply {
             isDaemon = true
             name = "workspace-task-reaper-${entry.id}"

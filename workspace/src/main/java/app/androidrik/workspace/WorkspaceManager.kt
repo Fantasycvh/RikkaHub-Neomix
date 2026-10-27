@@ -308,22 +308,28 @@ class WorkspaceManager(
         require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
 
         // 只读挂载先换快照（design-readonly-mount-snapshots §3.3）：shell（前台 + 后台任务）
-        // 是 /upload 只读保护的唯一绕过面；失败向上传播，与 cwd 预检同层
-        return shellRunner.execute(
-            WorkspaceShellContext(
-                root = root,
-                command = command,
-                cwd = cwd,
-                filesDir = filesDir(root),
-                linuxDir = linuxDir(root),
-                tempDir = tempDir(root),
-                workingDir = workingDir,
-                timeoutMillis = timeoutMillis,
-                stdin = stdin,
-                bindMounts = preparedBindMounts(),
-                shellCompatibilityMode = shellCompatibilityMode,
+        // 是 /upload 只读保护的唯一绕过面；失败向上传播，与 cwd 预检同层。
+        // 租约覆盖整条命令（审计 #20）：命令跑完才释放，期间这一代不会被 GC 回收。
+        val leased = preparedBindMountLease()
+        return try {
+            shellRunner.execute(
+                WorkspaceShellContext(
+                    root = root,
+                    command = command,
+                    cwd = cwd,
+                    filesDir = filesDir(root),
+                    linuxDir = linuxDir(root),
+                    tempDir = tempDir(root),
+                    workingDir = workingDir,
+                    timeoutMillis = timeoutMillis,
+                    stdin = stdin,
+                    bindMounts = leased?.mounts ?: bindMounts,
+                    shellCompatibilityMode = shellCompatibilityMode,
+                )
             )
-        )
+        } finally {
+            leased?.close()
+        }
     }
 
     /**
@@ -350,34 +356,46 @@ class WorkspaceManager(
         require(workingDir.exists()) { "Working directory does not exist: $cwd" }
         require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
 
-        return registry.start(
-            WorkspaceShellContext(
-                root = root,
-                command = command,
-                cwd = cwd,
-                filesDir = filesDir(root),
-                linuxDir = linuxDir(root),
-                tempDir = tempDir(root),
-                workingDir = workingDir,
-                // 后台任务无超时；这里的 timeoutMillis 不被启动器使用
-                timeoutMillis = 0L,
-                stdin = null,
-                bindMounts = preparedBindMounts(),
-                shellCompatibilityMode = shellCompatibilityMode,
-            ),
-            owner = owner,
+        // 后台任务比一轮对话活得久：租约交给注册表，在进程退出（reaper 线程收尾）或启动失败置终态
+        // 之后释放，期间该代不会被回收（审计 #20）。start 校验失败（并发超限）时这里兜底释放。
+        val leased = preparedBindMountLease()
+        val context = WorkspaceShellContext(
+            root = root,
+            command = command,
+            cwd = cwd,
+            filesDir = filesDir(root),
+            linuxDir = linuxDir(root),
+            tempDir = tempDir(root),
+            workingDir = workingDir,
+            // 后台任务无超时；这里的 timeoutMillis 不被启动器使用
+            timeoutMillis = 0L,
+            stdin = null,
+            bindMounts = leased?.mounts ?: bindMounts,
+            shellCompatibilityMode = shellCompatibilityMode,
         )
+        return try {
+            registry.start(
+                context,
+                owner = owner,
+                onFinished = leased?.let { held -> { held.close() } },
+            )
+        } catch (error: Throwable) {
+            // start 在「登记任务」之前就可能抛错（并发上限等），此时回调永远不会被调用
+            leased?.close()
+            throw error
+        }
     }
 
     /**
-     * 给 shell 上下文的挂载表：只读挂载（/upload）先经 [ReadOnlyMountSnapshots.prepare]
-     * 换成私有快照（readOnly=false 下发，runner 的 `require(!readOnly)` 才能通过）。
-     * 无只读挂载或快照关闭时原样返回。
+     * 给 shell 上下文租赁挂载表（审计 #19/#20）：只读挂载（/upload）先经
+     * [ReadOnlyMountSnapshots.prepareLeased] 换成私有快照（readOnly=false 下发，runner 的
+     * `require(!readOnly)` 才能通过），并持有这些代的引用计数直到命令/任务结束。
+     * 无只读挂载或快照关闭时返回 null（调用方原样透传 [bindMounts]，也不需要释放）。
      */
-    private fun preparedBindMounts(): List<WorkspaceBindMount> {
-        if (readOnlySnapshotStorage == null) return bindMounts
-        if (bindMounts.none { it.readOnly }) return bindMounts
-        return readOnlySnapshots.prepare(bindMounts, readOnlySnapshotStorage)
+    private fun preparedBindMountLease(): ReadOnlyMountSnapshots.Leased? {
+        if (readOnlySnapshotStorage == null) return null
+        if (bindMounts.none { it.readOnly }) return null
+        return readOnlySnapshots.prepareLeased(bindMounts, readOnlySnapshotStorage)
     }
 
     /** 后台任务列表；[root] 为 null 时列出所有工作空间的。 */

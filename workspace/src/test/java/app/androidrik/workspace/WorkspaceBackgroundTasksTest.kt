@@ -14,6 +14,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 后台任务三件套的 JVM 单测：尾部缓冲、流泵、注册表（启动/查询/终止/并发上限/淘汰）。
@@ -349,6 +350,40 @@ class WorkspaceBackgroundTasksTest {
 
         assertEquals(WorkspaceTaskStatus.KILLED, awaitFinished(registry, one.id).status)
         assertEquals(WorkspaceTaskStatus.KILLED, awaitFinished(registry, other.id).status)
+    }
+
+    // ---------- 生命周期结束回调（用于释放调用方为任务持有的资源） ----------
+
+    @Test
+    fun `finished callback runs exactly once after the process ends`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        val count = AtomicInteger(0)
+        val called = CountDownLatch(1)
+        val task = registry.start(context(command = "true"), onFinished = {
+            count.incrementAndGet()
+            called.countDown()
+        })
+
+        launcher.startedProcesses.single().finish(exitCode = 0)
+
+        assertTrue("回调必须在任务结束后发生", called.await(2, TimeUnit.SECONDS))
+        awaitFinished(registry, task.id)
+        // 给潜在的重复调用留一个窗口：多调一次就会把租约引用计数减错
+        Thread.sleep(50)
+        assertEquals(1, count.get())
+    }
+
+    @Test
+    fun `finished callback runs when launching fails`() {
+        val launcher = FakeLauncher().apply { failWith = "rootfs missing" }
+        val registry = WorkspaceTaskRegistry(launcher)
+        val count = AtomicInteger(0)
+
+        val task = registry.start(context(command = "true"), onFinished = { count.incrementAndGet() })
+
+        assertEquals(WorkspaceTaskStatus.FAILED, task.status)
+        assertEquals("没有 reaper 线程的失败路径也必须释放", 1, count.get())
     }
 
     // ---------- 完整日志落盘 ----------
