@@ -301,6 +301,7 @@
   <string name="backup_page_reminder_title">備份提醒</string>
   <string name="backup_page_restart_app">重啟應用</string>
   <string name="backup_page_restart_desc">應用需要重啟以使設置生效。</string>
+  <string name="backup_page_restarting">備份已恢復，正在重新啟動以套用變更…</string>
   <string name="backup_page_restore">恢復</string>
   <string name="backup_page_restore_failed">恢復失敗: %s</string>
   <string name="setting_page_tool_schema_compact_title">工具描述壓縮</string>

@@ -14,11 +14,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
@@ -26,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.nav.BackButton
-import app.androidrik.rikkahub.ui.pages.backup.components.BackupDialog
+import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
 import app.androidrik.rikkahub.ui.pages.backup.tabs.ImportExportTab
 import app.androidrik.rikkahub.ui.pages.backup.tabs.ReminderTab
 import app.androidrik.rikkahub.ui.pages.backup.tabs.S3Tab
@@ -38,7 +34,6 @@ import org.koin.androidx.compose.koinViewModel
 fun BackupPage(vm: BackupVM = koinViewModel()) {
     val pagerState = rememberPagerState { 4 }
     val scope = rememberCoroutineScope()
-    var showRestartDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -99,21 +94,21 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     0 -> {
                         ImportExportTab(
                             vm = vm,
-                            onShowRestartDialog = { showRestartDialog = true }
+                            onShowRestartDialog = { RestoreRestartSignal.requestRestart() }
                         )
                     }
 
                     1 -> {
                         WebDavTab(
                             vm = vm,
-                            onShowRestartDialog = { showRestartDialog = true }
+                            onShowRestartDialog = { RestoreRestartSignal.requestRestart() }
                         )
                     }
 
                     2 -> {
                         S3Tab(
                             vm = vm,
-                            onShowRestartDialog = { showRestartDialog = true }
+                            onShowRestartDialog = { RestoreRestartSignal.requestRestart() }
                         )
                     }
 
@@ -123,9 +118,5 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                 }
             }
         }
-    }
-
-    if (showRestartDialog) {
-        BackupDialog()
     }
 }

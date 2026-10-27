@@ -107,6 +107,7 @@ import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantMemoryPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantPromptPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantRequestPage
 import app.androidrik.rikkahub.ui.pages.backup.BackupPage
+import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartGate
 import app.androidrik.rikkahub.ui.pages.chat.ChatPage
 import app.androidrik.rikkahub.ui.pages.debug.DebugPage
 import app.androidrik.rikkahub.ui.pages.extensions.ExtensionsPage
@@ -230,7 +231,12 @@ open class RouteActivity : ComponentActivity() {
             val startupApp = LocalContext.current.applicationContext as RikkaHubApp
             val startupState by startupApp.startupState.collectAsState()
             when (val state = startupState) {
-                StartupState.Ready -> RikkahubTheme { AppStartupGateContent() }
+                // Ready 之后再套「恢复后强制重启」闸门：恢复成功只把换库 stage 起来，
+                // 本进程不重启就会继续在旧库上写、写入在下次启动被覆盖（审计 #16）。
+                // 闸门放根 UI 外层，用户离开备份页也无法绕过。
+                StartupState.Ready -> RikkahubTheme {
+                    RestoreRestartGate { AppStartupGateContent() }
+                }
                 StartupState.Restoring -> StartupBlockingScreen()
                 is StartupState.Failed -> StartupFailedScreen(state) { startupApp.retryPendingRestore() }
             }

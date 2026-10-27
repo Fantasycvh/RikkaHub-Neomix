@@ -301,6 +301,7 @@
   <string name="backup_page_reminder_title">备份提醒</string>
   <string name="backup_page_restart_app">重启应用</string>
   <string name="backup_page_restart_desc">应用需要重启以使设置生效。</string>
+  <string name="backup_page_restarting">备份已恢复，正在重启以应用更改…</string>
   <string name="backup_page_restore">恢复</string>
   <string name="backup_page_restore_failed">恢复失败: %s</string>
   <string name="setting_page_tool_schema_compact_title">工具描述压缩</string>
