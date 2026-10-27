@@ -309,6 +309,8 @@ internal object ContextPurifier {
 5. **预注册判定**：例如「B 组首条回复对残留的 containment 中位数至少低 0.2」才算有效，否则按失败处理；C 臂单独判定——containment 指标优于 B **且**脱轨率不升，才满足 §6.3 的转默认条件，否则维持默认关；
 6. **失败即降级**：若 B 不显著优于 A，本设计降级为「省 token / 去噪」，不再宣称「修复思维退化」——文档与 UI 文案都要跟着降级。即使不做实验，也按失败处理（§12 已定 4：做，但失败路径同样成立）。
 
+**实验落地（2026-10-27）**：`app/src/test/java/app/androidrik/rikkahub/data/ai/PurgeCausalityExperimentTest.kt`——三臂（A 原始 / B 净化 / C 净化+§6.3 注记）同一 fixture、`temperature = 0`、每臂 N 次，**env 门控**（`PURGE_EXP_BASE_URL` / `PURGE_EXP_API_KEY` / `PURGE_EXP_MODEL`，不设则整类跳过）；判定写死在测试里（B 的 containment 中位数 ≤ A − 0.2）。备用旋钮 `PURGE_EXP_CARRIER=content`：把残留从 `reasoning_content` 挪进正文——若 reasoning 载体无差异而 content 载体有差异，说明是 provider 忽略/剥离了该字段（属字段支持问题），不是假设被证伪；这一区分是 §2 作用域表在真机上的直接检验。
+
 **必须承认的一点**：本仓最致命的形态（流中途逐字循环，初稿形态 3）是**单次调用自激**，与「看到残留」无关。所以这个实验真正回答的只是「清掉上一轮残留能否降低复发」。另外，护栏的停止本身存在假阳性（§14），P0 统计命中率时要先排除掉那部分。
 
 ## 9. 风险

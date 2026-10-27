@@ -3795,3 +3795,10 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   已无应用日志 ⇒ 设计稿 §12 已定 1 的两周双口径（命中会话占比 / 中位精简字符量）+ 零误杀判定
   **目前采集不到**。P1 解禁前需补持久计数（请求/命中请求/命中会话/决策条数/savedChars/翻转/按
   provider-model 分组），已在设计稿 §7 记账。
+
+- 2026-10-27 **净化 §8 因果实验桩**（`PurgeCausalityExperimentTest`，env 门控，**待真模型 key 实跑**）：
+  三臂 A（原始）/ B（净化）/ C（净化 + §6.3 尾部注记）同一 fixture、`temperature = 0`、每臂 10 次，
+  判定写死（B 的 containment 中位数 ≤ A − 0.2 才算「撤掉残留能降低复发」，否则按 §8.6 降级为
+  「省 token / 去噪」）；`PURGE_EXP_CARRIER=content` 备用旋钮区分「provider 忽略 reasoning_content」
+  与「假设不成立」。fixture 自检单测已绿（C1a 恰命中一条、只截循环不碰 plan、幂等）；未设
+  `PURGE_EXP_*` 时整类 assume-skip，常规全量测试不受影响。
