@@ -3777,3 +3777,21 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   Part A `history_search`/`history_read`——本会话被压缩区域的按需查回（FTS 全树已覆盖，按实时压缩边界
   过滤 + node_id 分页读，仅 activeCompression 时注册）；Part B GenerationHandler 增量 emit——本仓合并
   是索引制，需先落 id 制 mergeGenerationMessages 再切 Delta 发射。
+
+- 2026-10-27 **全仓 bug 审计 + 6 批修复**（`829cf63b2`…`3976c68ab`，报告 `docs/bug-audit-2026-10-27.md`）：
+  五路静态审计 + 高危项人工复核，报告列 40 行（高 4 / 中 20 / 低 16，低项为 L1–L16 摘要）；6 批修复
+  24 项主项并逐项回填状态：①`a19eefd5d` 备份恢复状态机 4 处（换库崩溃窗口 #1、空库死包 #17、
+  manifest 校验前落盘 #14、stage 顺序 #15 + L16/L17 竞态）；②`5dc3ff2b3` 数据层（`loadMessageNodes`
+  整页跳过 + 公共前缀删除的丢数据链 #2、`selectIndex` 越界防御 #13、`PreferencesStore` 双写并发 #12）；
+  ③`40d9aad97` 供应商层 10 处（`encodeBase64` 双缺口 #3、`close(null)` 当成功 #5、Google 生图丢
+  system prompt #6、`"error":null` 误判 #7、流式图片双重前缀 #8、工具输出翻倍 #9、非流式硬解 #10、
+  L1–L3）；④`06c506bde` chat/UI（多步轮 tok/s 口径 #21、检查点偏移跳转 #22、错误卡片跨会话串扰 #23、
+  节流尾沿 #32）；⑤`46cff8653` workspace `RootfsPatcher` 类级互斥 #18；⑥`45f1075b9` 压缩 C3 分块
+  prior 重复 #11。**遗留**：#4 文件工具 resolve-then-open TOCTOU 需 openat/FD 锚定（架构级）；
+  #19/#20/#16 快照代际回收与「恢复后强制重启」属设计级，需产品决策。
+
+- 2026-10-27 **净化 P0 观察数据缺口（核对，无代码改动）**：dry-run 命中只写 Logcat `purge.dryrun`
+  （main 4 MiB 环形缓冲）+ `PromptDebugState` 内存 LRU，进程结束/日志滚动即丢；当日真机核对缓冲内
+  已无应用日志 ⇒ 设计稿 §12 已定 1 的两周双口径（命中会话占比 / 中位精简字符量）+ 零误杀判定
+  **目前采集不到**。P1 解禁前需补持久计数（请求/命中请求/命中会话/决策条数/savedChars/翻转/按
+  provider-model 分组），已在设计稿 §7 记账。
