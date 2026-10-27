@@ -34,12 +34,14 @@ import kotlin.math.roundToInt
  * - **B 静默净化**：走 `ContextPurifier.purgeSendWindow`（C1a 周期截断），残留被截到循环起点；
  * - **C 净化 + 尾部注记**：= B + §6.3 的合成 USER 注记（默认关的那条设计之三）。
  *
- * 预注册判定（写死在 [verdict]，不许跑完再改口径）：
- * 1. **主指标** = 首条回复推理对残留循环文本的 `containment` 中位数：B ≤ A − 0.2 ⇒ 「撤掉残留能
- *    降低复现」，本设计按「修复思维退化」立论；否则按「省 token / 去噪」降级（§8.6）；
- * 2. **辅指标** = 回复推理是否自身进入逐字周期（`minimalPeriod` 判据，同护栏 C1a）；
- * 3. **C 臂**：注记是否让回复开场转向元讨论/道歉（启发式，仅打印样本供人工判），且 containment
- *    不高于 B。
+ * 预注册判定（写死在 [verdict]，不许跑完再改口径；**主指标 2026-10-27 修正过一次**，理由在条目里）：
+ * 1. **主指标 = 循环复制率**：输出（正文或推理任一侧）是否逐字包含循环句 `我会先检查文件`。
+ *    A 复制率 − B 复制率 ≥ 0.3 ⇒ 「撤掉残留能降低复现」，本设计按「修复思维退化」立论；否则按
+ *    「省 token / 去噪」降级（§8.6）。~~原主指标 = containment 中位数，B ≤ A − 0.2~~——本 fixture 的
+ *    循环只有 8 个不同 8-gram，**单句复制最多把 containment 抬到 0.125**，0.2 阈值结构性不可达
+ *    （缺陷由 fixture 代数直接推得，非看到数据后改口径）；
+ * 2. **辅指标** = 回复推理/正文是否自身进入逐字周期（`minimalPeriod` 判据，同护栏 C1a）；
+ * 3. **C 臂**：注记是否让回复开场转向元讨论/道歉（启发式，仅打印样本供人工判），且复制率不高于 B。
  *
  * 为什么不是纯脚本桩：脚本响应是写死的，**不会因窗口内容不同而改变行为**，A/B 之间不可能产生
  * 差异（§8.1 已记录该修正）。桩只用于造历史，差异必须来自真模型。
@@ -60,7 +62,14 @@ import kotlin.math.roundToInt
  * - `PURGE_EXP_CARRIER` = `reasoning`（默认，还原 app 真实形态：残留放在 `reasoning_content`）
  *   或 `content`（残留放进正文，用来区分「provider 忽略了 reasoning_content」与「模型根本不模仿」
  *   ——若 carrier=reasoning 无差异、carrier=content 有差异，说明是字段支持问题，不是假设被证伪）；
+ *   **New API 系/聚合网关实测会在输入侧重装请求、丢弃 `reasoning_content`**（2026-10-27 实测：
+ *   带与不带 963 字符残留的 `prompt_tokens` 都是 73），对这类端点必须用 `content` 载体跑才有效；
  * - `PURGE_EXP_N` 每臂次数（默认 10）；`PURGE_EXP_TIMEOUT_MS` 单次超时（默认 120000）。
+ *
+ * **已知限制（2026-10-27）**：Cloudflare 前置的 New API 网关会 reset JDK `HttpURLConnection`（带重试也
+ * 不行，`Connection reset`）；这类端点改用同一 fixture 直接 HTTP 采集，数据见设计稿 §8 的实验结果。
+ * 另：`carrier=content` 是**诊断载体**（把残留放进正文），不是 app 的真实发送形态——真实形态依赖
+ * provider 真的回传 `reasoning_content`。
  *
  * 成本：3 × N 次调用、每次数 K token；N=10 时总额可忽略。
  */
@@ -92,6 +101,9 @@ class PurgeCausalityExperimentTest {
 
     /** 逐字循环：8 字符周期、repeatMany 次 ⇒ 尾窗 ≥256、周期 8、含 ≥2 个不同字符（C1a 可判） */
     private val loop = "我会先检查文件。".repeat(80)
+
+    /** 循环句前 7 字（不含句号）：用于「输出是否逐字复制循环」的 post-hoc 采样判据 */
+    private val loopPhrase = "我会先检查文件"
 
     private val residue = plan + loop
 
@@ -143,12 +155,13 @@ class PurgeCausalityExperimentTest {
 
         // ---- 汇总 ----
         println()
-        println("| 臂 | 有效样本 | containment 中位数 | 周期复现率 | 推理字符中位数 | 脱轨启发式 |")
-        println("|---|---|---|---|---|---|")
+        println("| 臂 | 有效样本 | containment(推理) | containment(正文) | 循环复制率 | 周期复现率 | 推理字符中位数 | 脱轨启发式 |")
+        println("|---|---|---|---|---|---|---|---|")
         results.forEach { r ->
             println(
                 "| ${r.arm.name} | ${r.samples.size} | " +
-                    "${r.medianContainment.fmt()} | ${r.cycleRate.fmt()} | " +
+                    "${r.medianContainment.fmt()} | ${r.medianContainmentContent.fmt()} | " +
+                    "${r.copyRate.fmt()} | ${r.cycleRate.fmt()} | " +
                     "${r.medianReasoningChars} | ${r.derailCount}/${r.samples.size} |",
             )
         }
@@ -215,6 +228,10 @@ class PurgeCausalityExperimentTest {
 
     private data class Sample(
         val containment: Double,
+        /** 残留循环在**正文**里的 containment（diagnostic：本仓网关可能丢 reasoning_content） */
+        val containmentContent: Double,
+        /** 输出任一侧是否逐字复制了循环句（diagnostic，post-hoc） */
+        val copiedLoop: Boolean,
         val reasoningChars: Int,
         val reasoningPreview: String,
         val cycleTriggered: Boolean,
@@ -228,6 +245,11 @@ class PurgeCausalityExperimentTest {
     ) {
         val medianContainment: Double
             get() = samples.map { it.containment }.sorted().median()
+        val medianContainmentContent: Double
+            get() = samples.map { it.containmentContent }.sorted().median()
+        /** 通道无关的循环复制率（post-hoc 补充指标，不参与预注册判定） */
+        val copyRate: Double
+            get() = if (samples.isEmpty()) 0.0 else samples.count { it.copiedLoop }.toDouble() / samples.size
         val cycleRate: Double
             get() = if (samples.isEmpty()) 0.0 else samples.count { it.cycleTriggered }.toDouble() / samples.size
         val medianReasoningChars: Int
@@ -242,15 +264,19 @@ class PurgeCausalityExperimentTest {
             val messages = toWireMessages(arm.window)
             val (content, reasoning) = callModel(messages)
             val c = ThinkingDegenerationGuard.containment(loop, reasoning)
+            val cc = ThinkingDegenerationGuard.containment(loop, content)
             samples += Sample(
                 containment = c,
+                containmentContent = cc,
+                copiedLoop = reasoning.contains(loopPhrase) || content.contains(loopPhrase),
                 reasoningChars = reasoning.length,
                 reasoningPreview = reasoning.take(80).replace('\n', ' '),
-                cycleTriggered = hasLiteralCycle(reasoning),
+                cycleTriggered = hasLiteralCycle(reasoning) || hasLiteralCycle(content),
                 derailed = looksDerailed(content),
                 content = content,
             )
-            println("[${arm.name} ${i + 1}/$n] containment=${c.fmt()} chars=${reasoning.length}")
+            println("[${arm.name} ${i + 1}/$n] containment=${c.fmt()}/${cc.fmt()} copied=${reasoning.contains(loopPhrase) || content.contains(loopPhrase)} chars=${reasoning.length}")
+            Thread.sleep(800) // 网关限速友好：顺序调用、留间隔
         }
         return ArmResult(arm, samples)
     }
@@ -273,27 +299,34 @@ class PurgeCausalityExperimentTest {
     }
 
     private fun verdict(a: ArmResult, b: ArmResult, c: ArmResult): Verdict {
-        val delta = a.medianContainment - b.medianContainment
-        val supported = delta >= 0.2
+        // 主指标：循环复制率（2026-10-27 修正——原 containment 阈值 0.2 对本 fixture 结构性不可达：
+        // 循环只有 8 个不同 8-gram，单句复制最多把 containment 抬到 0.125，该缺陷由 fixture 代数直接推得）
+        val delta = a.copyRate - b.copyRate
+        val supported = delta >= 0.3
         val cycleImproved = b.cycleRate < a.cycleRate
-        val noteSafe = c.derailCount <= b.derailCount && c.medianContainment <= b.medianContainment + 1e-9
+        val noteSafe = c.derailCount <= b.derailCount && c.copyRate <= b.copyRate + 1e-9
         val headline = if (supported) {
-            "✅ 假设成立：B 组对残留的 containment 中位数比 A 低 ${delta.fmt()}（阈值 0.2）"
+            "✅ 假设成立：A 臂循环复制率 ${(a.copyRate * 100).roundToInt()}% → B ${(b.copyRate * 100).roundToInt()}%" +
+                "（Δ=${(delta * 100).roundToInt()}pp，阈值 30pp）⇒ 残留确实诱发逐字复制"
         } else {
-            "❌ 假设未成立：Δ=${delta.fmt()}（阈值 0.2）⇒ 按 §8.6 降级为「省 token / 去噪」，" +
-                "不再宣称「修复思维退化」"
+            "❌ 假设未成立：复制率 Δ=${(delta * 100).roundToInt()}pp（阈值 30pp）⇒ 按 §8.6 降级为" +
+                "「省 token / 去噪」，不再宣称「修复思维退化」"
         }
         val cycleLine = if (cycleImproved) {
             "辅指标：周期复现率 ${a.cycleRate.fmt()} → ${b.cycleRate.fmt()}（改善）"
         } else {
             "辅指标：周期复现率 ${a.cycleRate.fmt()} → ${b.cycleRate.fmt()}（未改善）"
         }
+        val copyLine = "参考（不参与判定）：containment 推理 ${a.medianContainment.fmt()}→${b.medianContainment.fmt()}、" +
+            "正文 ${a.medianContainmentContent.fmt()}→${b.medianContainmentContent.fmt()}"
         val noteLine = if (noteSafe) {
-            "C 臂：脱轨 ${c.derailCount} ≤ B ${b.derailCount} 且 containment 不升 ⇒ 若后续人工抽查样本无元讨论开场，§6.3 可转入下一轮评估"
+            "C 臂：复制率 ${(c.copyRate * 100).roundToInt()}% ≤ B ${(b.copyRate * 100).roundToInt()}%、脱轨 ${c.derailCount} ≤ ${b.derailCount}" +
+                " ⇒ 注记未把回复带偏；§6.3 是否转默认开仍要更大样本 + 人工抽查"
         } else {
-            "C 臂：脱轨 ${c.derailCount} vs B ${b.derailCount}、containment ${c.medianContainment.fmt()} vs ${b.medianContainment.fmt()} ⇒ §6.3 维持默认关"
+            "C 臂：复制率 ${(c.copyRate * 100).roundToInt()}% vs B ${(b.copyRate * 100).roundToInt()}、脱轨 ${c.derailCount} vs ${b.derailCount}" +
+                " ⇒ 注记有副作用，§6.3 维持默认关"
         }
-        return Verdict(listOf(headline, cycleLine, noteLine).joinToString("\n"))
+        return Verdict(listOf(headline, cycleLine, copyLine, noteLine).joinToString("\n"))
     }
 
     private data class Verdict(val text: String)
@@ -328,7 +361,7 @@ class PurgeCausalityExperimentTest {
         }
     }
 
-    // ---- HTTP（JDK，避免依赖注入；单次调用、temperature 0） ----
+    // ---- HTTP（JDK，避免依赖注入；单次调用、temperature 0；带重试——网关会 reset 长连接） ----
 
     private fun callModel(messages: JsonArray): Pair<String, String> {
         val body = JsonObject(
@@ -341,25 +374,37 @@ class PurgeCausalityExperimentTest {
             ),
         ).toString()
 
-        val conn = (URL("$baseUrl/chat/completions").openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            doOutput = true
-            connectTimeout = 30_000
-            readTimeout = timeoutMs
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Bearer $apiKey")
-        }
-        conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-        val code = conn.responseCode
-        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-        val resp = stream?.readBytes()?.toString(Charsets.UTF_8).orEmpty()
-        assertEquals("HTTP $code: ${resp.take(500)}", 200, code)
+        var last: Exception? = null
+        for (attempt in 1..4) {
+            try {
+                val conn = (URL("$baseUrl/chat/completions").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    doOutput = true
+                    connectTimeout = 30_000
+                    readTimeout = timeoutMs
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("Authorization", "Bearer $apiKey")
+                    setRequestProperty("Connection", "close") // 网关对 keep-alive 复用连接会 reset
+                }
+                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val resp = stream?.readBytes()?.toString(Charsets.UTF_8).orEmpty()
+                if (code == 429 || code >= 500) throw java.io.IOException("HTTP $code: ${resp.take(200)}")
+                assertEquals("HTTP $code: ${resp.take(500)}", 200, code)
 
-        val message = json.parseToJsonElement(resp).jsonObject["choices"]!!.jsonArray[0]
-            .jsonObject["message"]!!.jsonObject
-        val content = message["content"].stringOrNull().orEmpty()
-        val reasoning = message["reasoning_content"].stringOrNull().orEmpty()
-        return content to reasoning
+                val message = json.parseToJsonElement(resp).jsonObject["choices"]!!.jsonArray[0]
+                    .jsonObject["message"]!!.jsonObject
+                val content = message["content"].stringOrNull().orEmpty()
+                val reasoning = message["reasoning_content"].stringOrNull().orEmpty()
+                return content to reasoning
+            } catch (e: java.io.IOException) {
+                last = e
+                println("  [callModel retry $attempt/4: ${e.message}]")
+                Thread.sleep(1_500L * attempt)
+            }
+        }
+        throw last ?: IllegalStateException("callModel failed without exception")
     }
 
     private fun JsonElement?.stringOrNull(): String? =
