@@ -3820,3 +3820,12 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   **暂缓**，停在 P0 dry-run，等「确认回传推理且模型可见」的端点证据（自建 vLLM / 部分聚合 /
   Responses API 未测）。设计稿 §2 补 DeepSeek 行、§8 记端点排查、§11 P1 标暂缓、§12 新增
   「已定 2026-10-27」三条。
+
+- 2026-10-27 **净化前置条件全端点排查：DeepSeek Responses 也不回传推理 ⇒ 三种格式全覆盖，P1 暂缓收尾**：
+  DeepSeek `/v1/responses` 实测把真实 `reasoning` item 原样回传（真实 id + `encrypted_content` +
+  960 字符 `reasoning_text`）后 `input_tokens` 仍 **59 = 无 item 基线**（推理零 token 进上下文），
+  暗号探针模型答「未提供」；`store=true` 被忽略（响应 `store=false`），`previous_response_id` 链路也
+  不带推理。加上 Chat Completions（49=49 / 102=102）与 New API 网关（73=73）⇒ **可测的三种格式全部
+  不回传历史推理**，净化在主流端点上无目标：客户端回传推理只是**结构校验**要求（缺了 400），模型看不见。
+  结论：P1 暂缓落定（§12），设计稿 §2 补 Responses 实测、§8 记探针、§11 P1 理由扩到三种格式、
+  §13 revision 6 加第 5 行。

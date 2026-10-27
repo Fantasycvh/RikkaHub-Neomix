@@ -3,7 +3,7 @@
 > 状态：**设计草案 revision 5（2026-10-24）；P0 已实现（2026-10-25 落地、提交 `c8d07353f`、随 `1.0.28-beta.12 (314)` 发行；dry-run，未改发送）**。
 > **P0 落地（2026-10-25）**：`data/ai/ContextPurifier.kt`（纯函数，C1a/C1b/C1c/C2 + §4.1 revision 5 全窗口作用域 + SIGNED_SKIP）+ 组装层 dry-run 观察者（`buildInternalMessagesWithPlan`，§4.5 落点，observer 为 null 的无头/预览路径不算）+ `PromptDebugState` store 3（报告 LRU + 翻转检测）+ `PromptInspectPage` 净化 dry-run 卡（取真实请求记录，同分叉诊断卡模式）+ `purge.dryrun` 日志（命中 Log.i / 翻转 Log.w）。16 项单测（`ContextPurifierTest` / `ContextPurifierWiringTest`，含设计稿 §10 点名的 CSS fixture）；`data/ai` 包 1029 项全绿。三条前提中「命中率与翻转率」开始积累；「推理是否回传 / Claude·Gemini 天然净化」仍待真机观察。
 > **P0 观察手段缺口（2026-10-27 核对）**：dry-run 命中只写 Logcat `purge.dryrun`（main 4 MiB 环形缓冲，滚动即丢）与 `PromptDebugState` 内存 LRU，进程结束/日志滚过后**无任何持久记录**；10-27 真机核对时缓冲内已无应用日志 ⇒ §12 已定 1 的两周双口径（命中会话占比 / 中位精简字符量）+ 零误杀判定**目前采集不到**。P1 解禁前需补持久计数，见 §7。
-> revision 6（2026-10-27）：§8 三臂实验**已实跑**（New API 网关实测输入侧丢 `reasoning_content`，改用 content 诊断载体：循环复制率 A 70% → B 0%，假设成立；C 臂 0/10 脱轨）；主指标由 containment 中位数修正为「循环复制率」（原阈值结构性不可达，依据见 §8）；§2 作用域表新增「New API 系网关」一类；§7 新增 P0 观察数据持久化缺口；§11 P0 状态改为已发行。
+> revision 6（2026-10-27）：§8 三臂实验**已实跑**（New API 网关实测输入侧丢 `reasoning_content`，改用 content 诊断载体：循环复制率 A 70% → B 0%，假设成立；C 臂 0/10 脱轨）；主指标由 containment 中位数修正为「循环复制率」（原阈值结构性不可达，依据见 §8）；**端点上可测的三种格式（DeepSeek Chat Completions / DeepSeek Responses / New API 网关）实测全部不回传历史推理 ⇒ P1 暂缓**；§2 作用域表新增三类端点；§7 新增 P0 观察数据持久化缺口；§11 P0 状态改为已发行、P1 标暂缓。
 > revision 5（2026-10-24）：**作用域反转（用户拍板：上下文污染的代价大于缓存失效）**——只清「上一轮」→ 发送窗口内全部已完成轮次（§4.1）；缓存账修正为一次性口径（§4.4）；P1 取消 `contextMessageLimit == 0` 门控；新增 §5.1 检查点式持久替换（否决）与 §6.3 尾部注记（设计之三，默认关、§8 三臂门控）；§6.1 深度净化并入主方案；§15.1 措辞跟进。
 > revision 4（2026-10-24）：新增 §15「与多步压缩的接口」——多步压缩稿 revision 2 §6 收敛后净化侧的对应记账：接力关系、口径「部分对齐」、Text 字面重复不在规则表的边界澄清、判据库三消费者。**方案本体（规则表、窗口、落点、开关）零变化**。
 > revision 3（2026-10-24）：删 C3（编码器本就丢空助手消息，该规则是 no-op，只留 dry-run 统计）；§8 因果实验方法修正——脚本桩无法对窗口差异作出不同反应，改为「桩只造历史、响应用真实便宜模型」；开关策略改「默认关起步，数据达标且零误杀才默认开」（净化的失败模式不可见，与护栏不同类）；四项待拍板全部收敛（§12）。逐条差异见 §13 revision 3 表。
@@ -50,7 +50,7 @@
 | OpenAI 兼容**DeepSeek 官方 API** | 2026-10-27 实测：同样丢弃输入侧推理（`deepseek-flash` / `deepseek-v4-pro`，带/不带 `prompt_tokens` 49=49、102=102；暗号探针：推理里的暗号模型答「无」，放正文里能答出） | C1 **天然无效**（无收益也无害） |
 | Claude | 只回传**带签名**的 thinking 块，无签名推理在编码时就被丢掉 | C1 **天然无效**（C2 仍有效） |
 | Gemini | 推理全部丢弃，签名挂在 Tool/Image part 上 | 同上 |
-| OpenAI Responses（`useResponseApi=true`） | 走另一套编码器（`reasoning` item 带 `reasoningId`/`encryptedContent`） | **未测**，P1 不覆盖，需单独 fixture |
+| OpenAI Responses（`useResponseApi=true`） | **DeepSeek Responses 已测（2026-10-27）**：真实 `reasoning` item 原样回传（含 id / `encrypted_content` / 960 字符 `reasoning_text`）后 `input_tokens` 仍 59 = 无 item 基线；暗号探针不可见；`store=true` 被忽略（响应 `store=false`） | C1 **天然无效**——客户端回传推理是**结构校验**要求，模型看不到；OpenAI 官方 Responses 未测 |
 
 结论：Claude/Gemini 在编码层已经天然净化；**New API 系/聚合网关与 DeepSeek 官方 API 都在输入侧丢推理（实测）**——只有「确认回传 `reasoning_content` 且模型真的看见」的端点才有 C1 收益。开关文案不能承诺「对所有模型有效」；§8 的因果实验要在这种端点上才能验真实形态（2026-10-27 的 content 载体只是诊断）。**目前可测的两类端点全部天然无效** ⇒ P1 前置条件未满足（见 §12）。
 
@@ -329,6 +329,7 @@ internal object ContextPurifier {
 - **主指标修正记一笔**：原定 containment 中位数阈值 0.2 对本 fixture **结构性不可达**（循环只有 8 个不同 8-gram，单句复制最多 0.125），改为「循环复制率」；该缺陷由 fixture 代数直接推得、非看到数据后改口径（但探测阶段已看过 2 例样本，如实记录）；
 - **限制**：n=10、单模型、单网关；`content` 载体是诊断形态，**不是 app 真实发送形态**——真实形态依赖 provider 真的回传 `reasoning_content`。真实形态的因果验证仍缺一个「确认回传推理」的端点（P1 前补）；
 - **真实形态的端点排查（同日）**：DeepSeek 官方 API（`deepseek-flash` / `deepseek-v4-pro`）**同样丢弃输入侧 `reasoning_content`**——`prompt_tokens` 不变（49=49 / 102=102），暗号探针里放推理中的暗号模型答「无」、放正文里能答出。⇒ 可测的两类端点都不回传历史推理，**§8 的前提在主流端点上不成立**；机制本身已证（可见残留 → 70% 复制），但「净化降低复发」目前只在 content 载体上成立；
+- **Responses 路径（同日，DeepSeek `/v1/responses`）**：把真实 `reasoning` item 原样回传（真实 id + `encrypted_content` + 完整 `reasoning_text`）后 `input_tokens` 仍 **59 = 无 item 基线**（960 字符推理一个 token 都没进上下文），暗号探针模型答「未提供」；`store=true` 请求被忽略、`previous_response_id` 链路也不带推理。⇒ 回传推理只是**结构校验**要求（缺了会 400），模型看不到；**三种格式（Chat Completions / Responses / New API 网关）全部不回传历史推理**；
 - **对设计的直接推论**：① §2 作用域表要加一类——「输入侧丢弃推理的网关（New API 系常见）」对该类渠道净化**无收益也无害**（残留本就不在上下文）；② 若真实形态可用，B 臂收益方向与 content 载体一致，但**不能**把 70pp 直接外推给 reasoning 载体；③ C 臂 0/10 脱轨、复制率不升 ⇒ 注记本身没把回复带偏，但 n=10 不足以转默认开，§6.3 维持默认关。
 
 **必须承认的一点**：本仓最致命的形态（流中途逐字循环，初稿形态 3）是**单次调用自激**，与「看到残留」无关。所以这个实验真正回答的只是「清掉上一轮残留能否降低复发」。另外，护栏的停止本身存在假阳性（§14），P0 统计命中率时要先排除掉那部分。
@@ -367,7 +368,7 @@ internal object ContextPurifier {
 | 阶段 | 内容 | 风险 |
 |---|---|---|
 | **P0** | ✅ **已实现并发行（2026-10-25 落地、提交 `c8d07353f`、随 beta.12 发行；见头部落地记录）**：纯函数 `ContextPurifier` + dry-run 预览卡 + 日志（**不改发送**；作用域 = 全发送窗口，存量老残留一并入统计）；三条前提中命中率/翻转率随使用积累，「推理回传 / Claude·Gemini 天然净化」待真机观察；⚠️ 观察数据只落 Logcat + 内存 LRU（§7），决策门需先补持久计数 | 零行为变更（已由 `ContextPurifierWiringTest` 钉住「实发未被改动」） |
-| **P1** | ⚠️ **2026-10-27 起暂缓**：可测端点（DeepSeek 官方 / New API 网关）都在输入侧丢推理 ⇒ 净化对它们无收益可测，前置条件未满足（§2、§12）。原计划：执行 C1a + C1b + C1c + C2（part 级、保留最早一份），作用域 = 发送窗口内全部已完成轮次（revision 5）；默认值按 §7 决策门（数据达标且零误杀 ⇒ 开）；~~限定 `contextMessageLimit == 0`~~（门控取消，理由 §4.1） | 低（暂缓后为零） |
+| **P1** | ⚠️ **2026-10-27 起暂缓**：可测端点（DeepSeek 官方 Chat Completions / DeepSeek Responses / New API 网关）全部不回传历史推理 ⇒ 净化对它们无收益可测，前置条件未满足（§2、§12）。原计划：执行 C1a + C1b + C1c + C2（part 级、保留最早一份），作用域 = 发送窗口内全部已完成轮次（revision 5）；默认值按 §7 决策门（数据达标且零误杀 ⇒ 开）；~~限定 `contextMessageLimit == 0`~~（门控取消，理由 §4.1） | 低（暂缓后为零） |
 | **P2** | §6.2 手动清理（多选删除，对齐记忆回收站） | 中（真删，需确认 UI） |
 | **P3** | §6.3 尾部注记：实现但默认关；转默认条件 = §8 三臂实验 C 臂达标（原 P3 深度净化已并入 P1，revision 5） | 低 |
 | 不做 | 写入侧截断（§5）；检查点式持久替换（§5.1）；流内顶替注记（§6.3） | — |
@@ -402,8 +403,8 @@ internal object ContextPurifier {
 
 **已定（2026-10-27，实验与端点验证后）**：
 
-1. **P1 暂缓**：机制已证（content 载体上残留可见 ⇒ 循环复制率 70% vs 0%），但**前置条件在可测端点上不成立**——DeepSeek 官方 API 与 New API 网关都在输入侧丢弃 `reasoning_content`（prompt_tokens 不变、暗号探针证实模型看不见）⇒ 净化对这类渠道无收益也无害，不值得为「无收益」付 P1 的复杂度；
-2. 继续等「确认回传推理且模型可见」的端点证据（自建 vLLM / 部分聚合 / Responses API 未测）——出现之前净化停在 P0 dry-run；
+1. **P1 暂缓**：机制已证（content 载体上残留可见 ⇒ 循环复制率 70% vs 0%），但**前置条件在可测端点上不成立**——三种格式实测都不回传历史推理：DeepSeek 官方 Chat Completions 丢 `reasoning_content`（prompt_tokens 49=49 / 102=102）、DeepSeek Responses 回传 `reasoning` item 后 `input_tokens` 仍 59 = 基线（960 字符推理零 token 入上下文）、New API 网关同样丢弃。⇒ 净化对这类渠道无收益也无害，不值得为「无收益」付 P1 的复杂度；
+2. 继续等「确认回传推理且模型可见」的端点证据（自建 vLLM / llama.cpp 等把推理塞回上下文的模板、部分聚合）——出现之前净化停在 P0 dry-run；OpenAI 官方 Responses 未测，但它用加密推理、模型侧可见，属潜在候选；
 3. 主指标口径改为「循环复制率」（§8；原 containment 阈值结构性不可达）。
 
 **待拍板**：无。
@@ -463,6 +464,7 @@ internal object ContextPurifier {
 | 2 | 主指标 = containment 中位数（阈值 0.2） | **改为「循环复制率」**（阈值 30pp） | fixture 循环只有 8 个不同 8-gram，单句复制上界 0.125 < 0.2，原阈值结构性不可达（代数推得，非事后改口径；探测阶段已看过 2 例，如实记录） |
 | 3 | §2 作用域表四类 | 新增「OpenAI 兼容经 New API 系网关」：输入侧丢推理，C1 **天然无效**（无收益也无害） | 实测 |
 | 4 | P0 观察手段未记账 | §7 新增持久化缺口与计数待办；§11 P0 标「已发行」 | 10-27 真机核对：Logcat 环形缓冲已滚、内存 LRU 不持久 |
+| 5 | Responses 路径「未测」、官方 API 未验 | DeepSeek Chat Completions（丢 `reasoning_content`，token 49=49/102=102）、DeepSeek Responses（回传 reasoning item 后 token 仍 59=基线、暗号不可见、`store=true` 被忽略）、New API 网关（73=73）**三种格式实测全部不回传历史推理** ⇒ **P1 暂缓**（§12 已定 2026-10-27） | 实测：暗号探针 + token 计数 |
 
 ## 14. 顺带发现（不属于本设计，建议单独立项）
 
