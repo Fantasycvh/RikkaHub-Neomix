@@ -3,6 +3,7 @@
 > 状态：**设计草案 revision 5（2026-10-24）；P0 已实现（2026-10-25 落地、提交 `c8d07353f`、随 `1.0.28-beta.12 (314)` 发行；dry-run，未改发送）**。
 > **P0 落地（2026-10-25）**：`data/ai/ContextPurifier.kt`（纯函数，C1a/C1b/C1c/C2 + §4.1 revision 5 全窗口作用域 + SIGNED_SKIP）+ 组装层 dry-run 观察者（`buildInternalMessagesWithPlan`，§4.5 落点，observer 为 null 的无头/预览路径不算）+ `PromptDebugState` store 3（报告 LRU + 翻转检测）+ `PromptInspectPage` 净化 dry-run 卡（取真实请求记录，同分叉诊断卡模式）+ `purge.dryrun` 日志（命中 Log.i / 翻转 Log.w）。16 项单测（`ContextPurifierTest` / `ContextPurifierWiringTest`，含设计稿 §10 点名的 CSS fixture）；`data/ai` 包 1029 项全绿。三条前提中「命中率与翻转率」开始积累；「推理是否回传 / Claude·Gemini 天然净化」仍待真机观察。
 > **P0 观察手段缺口（2026-10-27 核对）**：dry-run 命中只写 Logcat `purge.dryrun`（main 4 MiB 环形缓冲，滚动即丢）与 `PromptDebugState` 内存 LRU，进程结束/日志滚过后**无任何持久记录**；10-27 真机核对时缓冲内已无应用日志 ⇒ §12 已定 1 的两周双口径（命中会话占比 / 中位精简字符量）+ 零误杀判定**目前采集不到**。P1 解禁前需补持久计数，见 §7。
+> revision 6（2026-10-27）：§8 三臂实验**已实跑**（New API 网关实测输入侧丢 `reasoning_content`，改用 content 诊断载体：循环复制率 A 70% → B 0%，假设成立；C 臂 0/10 脱轨）；主指标由 containment 中位数修正为「循环复制率」（原阈值结构性不可达，依据见 §8）；§2 作用域表新增「New API 系网关」一类；§7 新增 P0 观察数据持久化缺口；§11 P0 状态改为已发行。
 > revision 5（2026-10-24）：**作用域反转（用户拍板：上下文污染的代价大于缓存失效）**——只清「上一轮」→ 发送窗口内全部已完成轮次（§4.1）；缓存账修正为一次性口径（§4.4）；P1 取消 `contextMessageLimit == 0` 门控；新增 §5.1 检查点式持久替换（否决）与 §6.3 尾部注记（设计之三，默认关、§8 三臂门控）；§6.1 深度净化并入主方案；§15.1 措辞跟进。
 > revision 4（2026-10-24）：新增 §15「与多步压缩的接口」——多步压缩稿 revision 2 §6 收敛后净化侧的对应记账：接力关系、口径「部分对齐」、Text 字面重复不在规则表的边界澄清、判据库三消费者。**方案本体（规则表、窗口、落点、开关）零变化**。
 > revision 3（2026-10-24）：删 C3（编码器本就丢空助手消息，该规则是 no-op，只留 dry-run 统计）；§8 因果实验方法修正——脚本桩无法对窗口差异作出不同反应，改为「桩只造历史、响应用真实便宜模型」；开关策略改「默认关起步，数据达标且零误杀才默认开」（净化的失败模式不可见，与护栏不同类）；四项待拍板全部收敛（§12）。逐条差异见 §13 revision 3 表。
@@ -44,12 +45,13 @@
 
 | Provider 家族 | 历史推理是否进请求 | 净化效果 |
 |---|---|---|
-| OpenAI 兼容 | 默认回传 `reasoning_content`（`includeHistoryReasoning` 默认 true） | **C1 有效** |
+| OpenAI 兼容 | 默认回传 `reasoning_content`（`includeHistoryReasoning` 默认 true） | **C1 有效**（仅限确认回传的端点） |
+| OpenAI 兼容**经 New API 系网关** | 2026-10-27 实测：输入侧**丢弃** `reasoning_content`（带/不带 963 字符残留，`prompt_tokens` 同为 73） | C1 **天然无效**（无收益也无害：残留本就不在上下文） |
 | Claude | 只回传**带签名**的 thinking 块，无签名推理在编码时就被丢掉 | C1 **天然无效**（C2 仍有效） |
 | Gemini | 推理全部丢弃，签名挂在 Tool/Image part 上 | 同上 |
 | OpenAI Responses（`useResponseApi=true`） | 走另一套编码器（`reasoning` item 带 `reasoningId`/`encryptedContent`） | **未测**，P1 不覆盖，需单独 fixture |
 
-结论：Claude/Gemini 在编码层已经天然净化，开关文案不能承诺「对所有模型有效」；§8 的因果实验也只能在 OpenAI 兼容模型上做。
+结论：Claude/Gemini 在编码层已经天然净化；**New API 系/聚合网关在输入侧丢推理（实测）**——只有「确认回传 `reasoning_content` 的直连端点」才有 C1 收益。开关文案不能承诺「对所有模型有效」；§8 的因果实验要在这种端点上才能验真实形态（2026-10-27 的 content 载体只是诊断）。
 
 ## 3. 消息模型：一轮 = 一条助手消息（revision 2 新增，本文的地基）
 
@@ -311,6 +313,22 @@ internal object ContextPurifier {
 
 **实验落地（2026-10-27）**：`app/src/test/java/app/androidrik/rikkahub/data/ai/PurgeCausalityExperimentTest.kt`——三臂（A 原始 / B 净化 / C 净化+§6.3 注记）同一 fixture、`temperature = 0`、每臂 N 次，**env 门控**（`PURGE_EXP_BASE_URL` / `PURGE_EXP_API_KEY` / `PURGE_EXP_MODEL`，不设则整类跳过）；判定写死在测试里（B 的 containment 中位数 ≤ A − 0.2）。备用旋钮 `PURGE_EXP_CARRIER=content`：把残留从 `reasoning_content` 挪进正文——若 reasoning 载体无差异而 content 载体有差异，说明是 provider 忽略/剥离了该字段（属字段支持问题），不是假设被证伪；这一区分是 §2 作用域表在真机上的直接检验。
 
+**实验结果（2026-10-27，`rinko.ai` / `deepseek-v4.1-flash`，n=10/臂，temperature 0，费用 <0.1 元）**：
+
+先撞上一条**前置事实**：该端点（New API 系、Cloudflare 前置）在输入侧**丢弃 `reasoning_content`**——带 963 字符推理残留与不带，`prompt_tokens` 都是 73。⇒「推理载体」臂在这种网关上天然等价，A/B 无差异**不能**用来判假设（首次全零结果作废）。改用 `PURGE_EXP_CARRIER=content`（残留放进可见正文，诊断载体）后：
+
+| 臂 | prompt_tokens | 循环复制率 | plan 提及率 | 推理字符中位数 | 脱轨启发式 |
+|---|---|---|---|---|---|
+| A 原始（残留可见） | 646 | **70%** | 70% | 560 | 3/10 |
+| B 净化 | 73 | **0%** | 20% | 266 | 0/10 |
+| C 净化 + §6.3 注记 | 109 | 0% | 10% | 446 | 0/10 |
+
+- **主指标成立**：A 70% → B 0%（Δ=70pp，阈值 30pp）。残留可见时模型会**逐字复制**那段循环，撤掉即消失——「in-context imitation」在这条形态上被证实；
+- **残留污染可见**：A 臂 3/10 以「抱歉，上一条回复输出异常（重复语句）」开场——模型会主动评论这段重复，用户直接看到降级；
+- **主指标修正记一笔**：原定 containment 中位数阈值 0.2 对本 fixture **结构性不可达**（循环只有 8 个不同 8-gram，单句复制最多 0.125），改为「循环复制率」；该缺陷由 fixture 代数直接推得、非看到数据后改口径（但探测阶段已看过 2 例样本，如实记录）；
+- **限制**：n=10、单模型、单网关；`content` 载体是诊断形态，**不是 app 真实发送形态**——真实形态依赖 provider 真的回传 `reasoning_content`。真实形态的因果验证仍缺一个「确认回传推理」的端点（P1 前补）；
+- **对设计的直接推论**：① §2 作用域表要加一类——「输入侧丢弃推理的网关（New API 系常见）」对该类渠道净化**无收益也无害**（残留本就不在上下文）；② 若真实形态可用，B 臂收益方向与 content 载体一致，但**不能**把 70pp 直接外推给 reasoning 载体；③ C 臂 0/10 脱轨、复制率不升 ⇒ 注记本身没把回复带偏，但 n=10 不足以转默认开，§6.3 维持默认关。
+
 **必须承认的一点**：本仓最致命的形态（流中途逐字循环，初稿形态 3）是**单次调用自激**，与「看到残留」无关。所以这个实验真正回答的只是「清掉上一轮残留能否降低复发」。另外，护栏的停止本身存在假阳性（§14），P0 统计命中率时要先排除掉那部分。
 
 ## 9. 风险
@@ -428,6 +446,15 @@ internal object ContextPurifier {
 | 5 | 未提主动告知 | 新增 §6.3 尾部注记（设计之三，默认关）；§8 加 C 臂与脱轨率 | 流内顶替否决的 salvage；抗性指令 vs 锚定失败未知，实验定 |
 | 6 | §6.1 深度净化为独立 P3 条目 | **并入主方案作用域**，独立条目取消 | 作用域反转后失去独立对象；检查点正文归压缩稿 §4.2 |
 | 7 | §15.1 净化「管在途」（够不着老残留） | 保护区**直达检查点边界**，接力无缝 | 作用域反转的跨文档跟进 |
+
+### revision 6（2026-10-27）
+
+| # | revision 5 | revision 6 | 依据 |
+|---|---|---|---|
+| 1 | §8 只有方法、无实测 | **已实跑**：New API 网关输入侧丢 `reasoning_content`（带/不带残留 `prompt_tokens` 同为 73）⇒ 改用 content 诊断载体，循环复制率 A 70% → B 0%（阈值 30pp），A 臂 3/10 因残留开场道歉；C 臂 0/10 脱轨 | `PurgeCausalityExperimentTest` + 直接 HTTP 采集（该网关 reset JDK `HttpURLConnection`） |
+| 2 | 主指标 = containment 中位数（阈值 0.2） | **改为「循环复制率」**（阈值 30pp） | fixture 循环只有 8 个不同 8-gram，单句复制上界 0.125 < 0.2，原阈值结构性不可达（代数推得，非事后改口径；探测阶段已看过 2 例，如实记录） |
+| 3 | §2 作用域表四类 | 新增「OpenAI 兼容经 New API 系网关」：输入侧丢推理，C1 **天然无效**（无收益也无害） | 实测 |
+| 4 | P0 观察手段未记账 | §7 新增持久化缺口与计数待办；§11 P0 标「已发行」 | 10-27 真机核对：Logcat 环形缓冲已滚、内存 LRU 不持久 |
 
 ## 14. 顺带发现（不属于本设计，建议单独立项）
 

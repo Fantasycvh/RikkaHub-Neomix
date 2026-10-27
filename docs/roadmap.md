@@ -3802,3 +3802,13 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   「省 token / 去噪」）；`PURGE_EXP_CARRIER=content` 备用旋钮区分「provider 忽略 reasoning_content」
   与「假设不成立」。fixture 自检单测已绿（C1a 恰命中一条、只截循环不碰 plan、幂等）；未设
   `PURGE_EXP_*` 时整类 assume-skip，常规全量测试不受影响。
+
+- 2026-10-27 **净化 §8 三臂实验实跑（New API 网关 + content 诊断载体）**：端点 `rinko.ai`（New API 系）
+  实测输入侧**丢弃 `reasoning_content`**（带/不带 963 字符残留 `prompt_tokens` 同为 73）⇒ 推理载体臂
+  天然等价，首次全零结果作废；改用 `PURGE_EXP_CARRIER=content` 后：**循环复制率 A 70% → B 0%**
+  （Δ=70pp，阈值 30pp，假设成立），plan 提及率 70% → 20%，A 臂 3/10 以「抱歉，上一条回复输出异常
+  （重复语句）」开场（残留可见时用户直接看到降级）；C 臂（净化 + §6.3 注记）复制率 0%、脱轨 0/10，
+  注记未带偏但 n=10 不足以转默认开。主指标由 containment 中位数改为「循环复制率」（8 字周期循环只有
+  8 个不同 8-gram，单句复制上界 0.125 < 0.2，原阈值结构性不可达）。限制：content 是诊断载体，不是
+  app 真实发送形态，真实形态仍缺一个「确认回传推理」的端点。设计稿 revision 6（§2/§7/§8/§11/§13）
+  已记账；`PurgeCausalityExperimentTest` 增补复制率指标 + 网关重试与限速间隔。
