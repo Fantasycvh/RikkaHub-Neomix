@@ -3850,3 +3850,14 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   可见的载体（Claude thinking 文本 / OpenAI 官方 Responses 加密推理）不可编辑**」，不再宣称「没有端点回传」。
   新暴露缺口：签名思考里的退化残留当前既不被护栏也不被 C1（`SIGNED_SKIP`）清掉。设计稿 revision 7
   （§2 作用域表改四维、§8 更正外推、§11 改口径、§12 新开待拍板 A/B/C、§13 revision 7）。
+
+- 2026-10-27 **P0 净化观察数据持久化补齐（决策门首次可结算）**：新增 `data/ai/PurgeObservationStore.kt`，
+  每次真实组装的 dry-run 结果落 `filesDir/purge-observation.json`（原子替换 + 单线程异步写 + 损坏自愈，
+  只留本机、不进备份）：请求数 / 命中请求数 / 决策条数 / `savedChars` 累计与最大值 / 翻转次数 / 会话表
+  （上限 2000，会话残留量取单次最大值——同一窗口每步都会重复命中，累加会放大 N 倍）/ 按 provider-model
+  分组。决策门口径按设计稿 §12 已定 1 落地：**分母排除护栏停止过的会话**（§14 假阳性来源，无法自动区分
+  真/假阳性 ⇒ 整体排除取保守）。`PromptInspectPage` dry-run 卡新增「P0 累计」一行（请求/命中请求/命中会话
+  占比/残留中位数/翻转/排除数）。⇒ 命中会话占比与命中会话残留中位数此前「采集不到」，现可结算；两周
+  观察期自 2026-10-27 起算。P1 是否走「签名思考整块丢弃 / 只回传最近 N 轮」（§12 待拍板 A/B/C）仍等
+  观察数据。验证：`PurgeObservationStoreTest` 9 项、`ContextPurifier*` 既有用例，`:app:testDebugUnitTest`
+  与 `:app:compileDebugKotlin` 全绿。设计稿 revision 8。

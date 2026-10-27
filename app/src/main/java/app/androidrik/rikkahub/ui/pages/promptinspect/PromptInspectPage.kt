@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.promptinspect
 import me.rerere.hugeicons.stroke.GitCompare
 import app.androidrik.rikkahub.data.ai.diagnosePrefixDivergence
 import app.androidrik.rikkahub.data.ai.PromptDebugState
+import app.androidrik.rikkahub.data.ai.PurgeObservationStore
 import app.androidrik.rikkahub.data.ai.PrefixDivergence
 import app.androidrik.rikkahub.data.ai.PromptSegmentStability
 import kotlinx.coroutines.withContext
@@ -459,6 +460,14 @@ private fun PurgeDryRunCard(conversationId: String) {
     ) {
         value = PromptDebugState.latestPurge(conversationId)
     }
+    // P0 累计观察（跨进程持久，§7）：决策门双口径从这里取数，不受 Logcat/LRU 丢失影响
+    val context = LocalContext.current
+    val observation by produceState(
+        initialValue = null as PurgeObservationStore.Summary?,
+        conversationId,
+    ) {
+        value = withContext(Dispatchers.IO) { PurgeObservationStore.summary(context.filesDir) }
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CustomColors.cardColorsOnSurfaceContainer,
@@ -489,6 +498,11 @@ private fun PurgeDryRunCard(conversationId: String) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    text = purgeObservationText(observation),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 s?.decisions?.take(8)?.forEach { line ->
                     Text(
                         text = line,
@@ -506,6 +520,21 @@ private fun PurgeDryRunCard(conversationId: String) {
             }
         }
     }
+}
+
+/** P0 累计观察的一行摘要（决策门双口径 + 排除口径）；诊断卡文案沿用本卡「暂不本地化」约定。 */
+private fun purgeObservationText(summary: PurgeObservationStore.Summary?): String {
+    if (summary == null) return "P0 累计：尚无观察数据（生成一次后开始累计）"
+    val percent = String.format(java.util.Locale.US, "%.1f%%", summary.hitSessionRatio * 100)
+    val guard = if (summary.guardStoppedSessions > 0) {
+        " · 已排除护栏停止会话 ${summary.guardStoppedSessions}"
+    } else {
+        ""
+    }
+    return "P0 累计：请求 ${summary.requests} · 命中请求 ${summary.hitRequests} · " +
+        "命中会话 ${summary.hitSessions}/${summary.eligibleSessions}（$percent）· " +
+        "命中会话残留中位数 ${summary.hitSessionSavedCharsMedian} 字符 · " +
+        "翻转 ${summary.flips}$guard"
 }
 
 @Composable

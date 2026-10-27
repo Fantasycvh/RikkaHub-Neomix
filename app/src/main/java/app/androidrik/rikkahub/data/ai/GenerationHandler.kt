@@ -678,6 +678,11 @@ class GenerationHandler(
                                 "(cut=${cut?.rule}/${cut?.repeated}, stalled=${stalled?.stalledCalls}, " +
                                 "restated=${stalled?.restated}), stopping this turn",
                         )
+                        // §14：续写路径的复述判据存在假阳性 ⇒ 该会话的命中率不可信，标记后
+                        // 从 P0 决策门口的分子/分母里整体排除（保守口径，见 store 类注释）
+                        debugKey?.let { key ->
+                            runCatching { PurgeObservationStore.markGuardStopped(context.filesDir, key) }
+                        }
                         stopNotice = GenerationNotice.ThinkingDegenerationStopped(
                             stalledCalls = stalled?.stalledCalls ?: thinkingGuard.stalledCallCount,
                             restated = stalled?.restated == true,
@@ -1256,6 +1261,17 @@ class GenerationHandler(
             purgeObserver = debugKey?.let { key ->
                 { report ->
                     val flipped = PromptDebugState.recordPurge(key, report)
+                    // P0 持久计数（design-context-purification §7 的持久化缺口）：内存 LRU 与
+                    // Logcat 都会丢，决策门双口径需要跨进程累计。失败不影响生成（store 内部自吞）。
+                    runCatching {
+                        PurgeObservationStore.record(
+                            filesDir = context.filesDir,
+                            sessionKey = key,
+                            groupKey = "${provider.name}/${model.modelId}",
+                            result = report,
+                            flipped = flipped,
+                        )
+                    }
                     if (report.decisions.isNotEmpty()) {
                         Log.i(
                             TAG, "purge.dryrun window=${report.windowCount} " +
