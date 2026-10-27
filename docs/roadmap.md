@@ -3829,3 +3829,13 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   不回传历史推理**，净化在主流端点上无目标：客户端回传推理只是**结构校验**要求（缺了 400），模型看不见。
   结论：P1 暂缓落定（§12），设计稿 §2 补 Responses 实测、§8 记探针、§11 P1 理由扩到三种格式、
   §13 revision 6 加第 5 行。
+
+- 2026-10-27 **审计遗留四件套修复（#4 / #16 / #19 / #20）**：#4 workspace 文件工具改「先 open 再按
+  fd 复核」（`AnchoredFileAccess`：`Os.fstat` inode 比对 + 祖先链 lstat，读写失败即 fail-closed，
+  `importBytes`/`exportTo` 同一条路径；move/delete/rename 只能操作前复核，窗口收窄未根除）；#16 备份
+  恢复后强制重启（`AppRestart` + 根 UI `RestoreRestartGate` 复用不可 dismiss 的 `BackupDialog`，
+  `hasPending` + `ON_RESUME` 复检，旋转/弹栈不丢）；#19 只读快照改 stat 级 `quickSignature` 缓存
+  （常态 0 内容读取，锁外采样）；#20 快照代改租约 + 引用计数回收（`prepareLeased`/`Leased`/
+  `onFinished` 恰好一次，脏代不再耗尽 64 代/1GB 预算）。验证：workspace 147 测试全绿、
+  `:app:compileDebugKotlin` 绿。残余风险（#4 路径操作非原子、#19 快速指纹近似）记在
+  `docs/bug-audit-2026-10-27.md` §六。

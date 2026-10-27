@@ -48,7 +48,8 @@ PRoot 的 `-b` 绑定挂载没有只读语义：`/upload` 的「只读」目前�
 - **安全检查**：源必须是目录；源与快照存储互不嵌套；存储目录自身非 symlink；
   symlink 逃逸（`toRealPath` 必须仍在源内）与目录环检测（ancestors 集合）。
 - **预算**：1GB / 64 代；已发布代**永不删除**（终端/后台进程可能仍在用——本仓后台任务
-  同样成立）；`requireCapacity` 超限抛错（错误文案说明原因）。与 CA 证书补丁的
+  在有租约/仍是当前代时不删（§6 修订：租约释放后由回收收走，旧 `prepare` API 仍是永久保留）；
+  `requireCapacity` 超限抛错（错误文案说明原因）。与 CA 证书补丁的
   「内容变了才写」是同一纪律：指纹变了才新开一代，旧代不动。
 - **与本仓的差异（刻意）**：①去掉 Yuihub `reuseUnchanged = !shellCompatibilityMode`
   的兼容模式开关，恒复用——其关复用的动机不可考，恒复用语义更可预测，由测试兜底；
@@ -73,8 +74,8 @@ val executionMounts = if (readOnlySnapshotStorage != null)
 
 ### 3.4 成本与运维
 
-- **每次 shell 命令都会 walk+hash 一遍 /upload**（复用只省拷贝不省指纹）——Yuihub 同款。
-  /upload 是用户上传目录，量级小；若将来成为瓶颈，再做 mtime 短路（记下不做）。
+- ~~**每次 shell 命令都会 walk+hash 一遍 /upload**~~（§6 修订：常态只做一次 stat 遍历的快速签名，
+  源元数据变化才重算内容哈希）。/upload 是用户上传目录，量级小。
 - 快照目录是**派生数据**：不进备份（BackupItem.FILES 不含它 ✓）；应在缓存管理里
   登记为可清理项（并入存储管理 Phase 3 只读行的后续，不在本批做）。
 
@@ -101,6 +102,41 @@ val executionMounts = if (readOnlySnapshotStorage != null)
 ## 5. 明确不做
 
 - 不给 /skills、/tool_outputs 加只读（AI 需要写）。
-- 不做快照代回收（预算错误即兜底；GC 需要引用追踪，Yuihub 也不做）。
+- ~~不做快照代回收（预算错误即兜底；GC 需要引用追踪，Yuihub 也不做）~~ —— §6 修订：改为租约 +
+  引用计数回收（审计 #20 指出预算耗尽会让 /upload 工具永久不可用，属 DoS）。
 - 不做缓存管理登记（并入 Phase 3 后续）。
 - 不动 SSH 工作区与交互终端（无此缺口）。
+
+## 6. 修订：快速指纹缓存 + 租约回收（2026-10-27，审计 #19/#20）
+
+审计发现两处问题（`docs/bug-audit-2026-10-27.md` #19/#20）：
+
+- **#19 每条命令两次全量 SHA-256**（源 + 已发布代），且都在存储目录的全局锁里，所有工作区命令被串行化；
+- **#20 已发布代永不删除**：shell 在快照里写一次，复用校验就失败 ⇒ 每条命令新拷一代；64 代 / 1GB
+  用尽后带 /upload 的命令永久报 budget exhausted，只能清应用数据（工具级 DoS）。
+
+修法（`ReadOnlyMountSnapshots`）：
+
+1. **快速签名** `quickSignature(root)`：stat 遍历（相对路径 + 类型 + 大小 + mtime + 可执行位 + symlink
+   目标，条目排序与全量遍历一致，NOFOLLOW），**不读内容**。
+2. **源缓存** `sourceCache`：`quick` 一致 ⇒ 直接复用上次全量指纹（常态 0 内容读取）；不一致才重算
+   内容哈希。两处 stat 遍历都移到 `storageLocks` 之外，锁内只剩内存比较/单飞拷贝。
+3. **已发布代判定**：发布瞬间记下该代的 `publishedQuick`，复用前只比它；删除 `inspectPublished`
+   全量复验。脏代最终仍会被「下一次发布时复制后全量复验」暴露并替换。
+4. **租约与回收**：`prepareLeased()` 返回 `Leased`（`AutoCloseable`，幂等），内部对本次下发的代
+   `pins +1`；`close()` 减计数，归零且**不再是任何 key 的当前代**时立即删除该代目录。每次
+   `prepareLeased` 开始时回收「不在 `current` 且无租约」的孤儿代（崩溃遗留、源被删后的 stale 映射），
+   **先回收再判预算**。旧 `prepare` 保持「无租约、代永久保留」语义（仅供测试/无生命周期调用方）。
+5. **接线**：`WorkspaceManager.executeCommand` 用 `try/finally` 释放；`startBackgroundCommand` 把租约
+   交给 `WorkspaceTaskRegistry.start(onFinished)`，由 reaper 最外层 `finally`（或启动失败路径）调用
+   **恰好一次**（`AtomicBoolean` 兜底）。
+
+**刻意接受的近似（写进类 KDoc）**：
+
+- 同大小、同 mtime 的原地内容改写不触发换代（直到该文件元数据变化）；/upload 是用户上传目录，
+  shell 拿到的是只读视图，可接受；内容级正确性由「复制后全量复验」兜底。
+- 源内 symlink 指向的子树内容变化不在快速签名覆盖内（遍历不跟随 symlink，避免环/逃逸判定重复）。
+
+**测试**：`SnapshotLifecycleTest` 6 例（租约回收、污染循环不耗尽预算、大文件不重哈希、运行中任务
+代不删、Manager 前后台接线）、`WorkspaceBackgroundTasksTest` 追加回调恰好一次两例；既有 17 个
+`ReadOnlyMountSnapshotsTest` 断言未改、全绿。

@@ -161,3 +161,30 @@ UI 层不测（全屏 gate 是纯 Compose 分支）。
 1. **阶段 1**：`PendingRestoreStore`（含 rollback/apply/confirm/rollbackIfUnconfirmed 全套）+ `StagedDbValidator` 抽象 + 12 场景 JVM 测试。不接线。
 2. **阶段 2**：启动接线——RikkaHubApp onCreate 改造 + StartupState + RouteActivity 全屏 gate + confirmRestoreAfterDatabaseOpen；恢复侧引擎切到 stage-only、删 in-flow 换库。字符串 3 语言。
 3. **阶段 3**：真机验收——正常恢复重启后数据到位；恢复后立即 kill 进程再启动自动应用；模拟 Room 打不开（暂存一个 schema 超前的库）验证自动回滚；全新安装恢复 + 回滚。
+
+## 10. 修订：恢复后强制重启（2026-10-27，审计 #16）
+
+审计 #16 指出：staged 恢复完成后，旧进程仍在旧库上读写，这些写入在下次启动换库时被整体覆盖
+（静默丢数据）；而原实现的「重启」弹窗依赖 `BackupPage` 的 `remember` 状态且只由备份页渲染，
+Activity 重建/用户离开备份页后窗口重新打开。§8 的 R-1 是同一问题的已知权衡。
+
+本轮改动（`app` 侧）：
+
+1. `utils/AppRestart.kt`：launcher intent + `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TASK`
+   拉起新实例，随后 `exitProcess(0)`；拿不到 launcher 入口或 `startActivity` 抛异常时只记日志再退出
+   ——**绝不留在旧进程里继续写**。
+2. `ui/pages/backup/components/RestoreRestartGate.kt`：根 UI（`RouteActivity` 的 Ready 分支）外包一层。
+   `LaunchedEffect(Unit)` + `LifecycleEventObserver(ON_RESUME)` 检查
+   `PendingRestoreStore.hasPending(filesDir)`；另有一个进程级信号 `RestoreRestartSignal` 供恢复完成
+   当场上报。命中即在内容页之上渲染**唯一**的不可 dismiss `BackupDialog`（`onDismissRequest={}`、
+   `dismissOnBackPress=false`、`dismissOnClickOutside=false`，700ms 后 `AppRestart.restart`）。
+3. `BackupPage.kt` 不再持有弹窗状态，三处恢复成功回调只调 `RestoreRestartSignal.requestRestart()`。
+   旋转/配置变更/路由弹栈都不会丢「需重启」；结构上也不可能叠两个对话框。
+
+**为什么不会重启环**：`PendingRestoreStore.applyIfPending` 的所有成功分支（正常换入、
+applied 残留、interrupted-swap、recoverRollback）都在 `StartupState.Ready` 之前 `clearPending`，
+所以 Ready 之后 `hasPending == false`，gate 不会在每次启动触发重启。
+
+**语义变化**：`needsRestartDialog=true` 但不 stage DB 的导入（providers-only）也会走强制重启。
+旧实现同样只有「重启」一个动作、且不可取消（`onDismissRequest={}`），差别只是现在不需要用户点
+按钮——记录为有意统一：任何「需重启」导入后继续在旧进程写都会丢。
