@@ -3839,3 +3839,14 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   `onFinished` 恰好一次，脏代不再耗尽 64 代/1GB 预算）。验证：workspace 147 测试全绿、
   `:app:compileDebugKotlin` 绿。残余风险（#4 路径操作非原子、#19 快速指纹近似）记在
   `docs/bug-audit-2026-10-27.md` §六。
+
+- 2026-10-27 **净化端点结论修正（用户指正）：主流端点强制回传历史思考 ⇒ P1 暂缓改为结构性原因**：此前由
+  DeepSeek 官方 Chat Completions / DeepSeek Responses / New API 网关三个实测渠道外推出「端点普遍不回传推理」，
+  据此给 P1 暂缓。用户指出主流端点基本要求回传历史思考；代码核实：Claude 带签名 thinking 原样回传
+  （`ClaudeProvider.kt:539-551`，工具循环轮必需、无签名块丢弃）、OpenAI Responses 缺 reasoning item 会被
+  400 拒（`ResponseAPI.kt:294-300`）、Gemini thoughtSignature 挂在 Tool/Image part 回传
+  （`GoogleProvider.kt:771,808`）、`MessageMetadata.kt:87-99` 明确「必须原样回传，修改过的块会被拒」⇒
+  `isProviderSigned()` 只读。修正后 P1 暂缓原因 =「**可编辑的载体（无签名 reasoning_content）不可见；
+  可见的载体（Claude thinking 文本 / OpenAI 官方 Responses 加密推理）不可编辑**」，不再宣称「没有端点回传」。
+  新暴露缺口：签名思考里的退化残留当前既不被护栏也不被 C1（`SIGNED_SKIP`）清掉。设计稿 revision 7
+  （§2 作用域表改四维、§8 更正外推、§11 改口径、§12 新开待拍板 A/B/C、§13 revision 7）。

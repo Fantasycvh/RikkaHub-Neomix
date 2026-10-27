@@ -1,9 +1,10 @@
 # 上下文净化：清掉「已判定退化的思考残留」（而不只是让它停）
 
-> 状态：**设计草案 revision 5（2026-10-24）；P0 已实现（2026-10-25 落地、提交 `c8d07353f`、随 `1.0.28-beta.12 (314)` 发行；dry-run，未改发送）**。
+> 状态：**设计草案 revision 7（2026-10-27）；P0 已实现（2026-10-25 落地、提交 `c8d07353f`、随 `1.0.28-beta.12 (314)` 发行；dry-run，未改发送）**。
 > **P0 落地（2026-10-25）**：`data/ai/ContextPurifier.kt`（纯函数，C1a/C1b/C1c/C2 + §4.1 revision 5 全窗口作用域 + SIGNED_SKIP）+ 组装层 dry-run 观察者（`buildInternalMessagesWithPlan`，§4.5 落点，observer 为 null 的无头/预览路径不算）+ `PromptDebugState` store 3（报告 LRU + 翻转检测）+ `PromptInspectPage` 净化 dry-run 卡（取真实请求记录，同分叉诊断卡模式）+ `purge.dryrun` 日志（命中 Log.i / 翻转 Log.w）。16 项单测（`ContextPurifierTest` / `ContextPurifierWiringTest`，含设计稿 §10 点名的 CSS fixture）；`data/ai` 包 1029 项全绿。三条前提中「命中率与翻转率」开始积累；「推理是否回传 / Claude·Gemini 天然净化」仍待真机观察。
 > **P0 观察手段缺口（2026-10-27 核对）**：dry-run 命中只写 Logcat `purge.dryrun`（main 4 MiB 环形缓冲，滚动即丢）与 `PromptDebugState` 内存 LRU，进程结束/日志滚过后**无任何持久记录**；10-27 真机核对时缓冲内已无应用日志 ⇒ §12 已定 1 的两周双口径（命中会话占比 / 中位精简字符量）+ 零误杀判定**目前采集不到**。P1 解禁前需补持久计数，见 §7。
 > revision 6（2026-10-27）：§8 三臂实验**已实跑**（New API 网关实测输入侧丢 `reasoning_content`，改用 content 诊断载体：循环复制率 A 70% → B 0%，假设成立；C 臂 0/10 脱轨）；主指标由 containment 中位数修正为「循环复制率」（原阈值结构性不可达，依据见 §8）；**端点上可测的三种格式（DeepSeek Chat Completions / DeepSeek Responses / New API 网关）实测全部不回传历史推理 ⇒ P1 暂缓**；§2 作用域表新增三类端点；§7 新增 P0 观察数据持久化缺口；§11 P0 状态改为已发行、P1 标暂缓。
+> revision 7（2026-10-27）：**修正端点结论的外推**——回传历史思考是主流端点的常态：Claude 的 thinking 块在工具循环轮必须带签名原样回传（改了就 Invalid signature 拒整请求）、OpenAI Responses 在 `store=false`/工具循环轮缺 reasoning item 会被 400 拒、Gemini 的 `thoughtSignature` 必须挂在 Tool/Image part 上回传；其中 **Claude 的 thinking 文本与 OpenAI 的加密推理在模型侧是可见的**。但**可见的强制回传载体全部带签名/加密，客户端不能改**（`isProviderSigned()` 只读、P0 只记 `SIGNED_SKIP`）。⇒ P1 暂缓原因改写为结构性：**可编辑的载体不可见 / 可见的载体不可编辑**；并新开 §12 待拍板（签名思考整块丢弃 vs 历史思考只回传最近 N 轮）。
 > revision 5（2026-10-24）：**作用域反转（用户拍板：上下文污染的代价大于缓存失效）**——只清「上一轮」→ 发送窗口内全部已完成轮次（§4.1）；缓存账修正为一次性口径（§4.4）；P1 取消 `contextMessageLimit == 0` 门控；新增 §5.1 检查点式持久替换（否决）与 §6.3 尾部注记（设计之三，默认关、§8 三臂门控）；§6.1 深度净化并入主方案；§15.1 措辞跟进。
 > revision 4（2026-10-24）：新增 §15「与多步压缩的接口」——多步压缩稿 revision 2 §6 收敛后净化侧的对应记账：接力关系、口径「部分对齐」、Text 字面重复不在规则表的边界澄清、判据库三消费者。**方案本体（规则表、窗口、落点、开关）零变化**。
 > revision 3（2026-10-24）：删 C3（编码器本就丢空助手消息，该规则是 no-op，只留 dry-run 统计）；§8 因果实验方法修正——脚本桩无法对窗口差异作出不同反应，改为「桩只造历史、响应用真实便宜模型」；开关策略改「默认关起步，数据达标且零误杀才默认开」（净化的失败模式不可见，与护栏不同类）；四项待拍板全部收敛（§12）。逐条差异见 §13 revision 3 表。
@@ -41,18 +42,19 @@
 - **不引入低熵比值**：2026-10-09 的标定已经证明覆盖率类指标对合法内容（表格 0.72、日志 0.76、CSS 0.82、JSON dump 0.84）与退化样本（0.92–0.99）只差 0.06，做不了截断边界（`ThinkingDegenerationGuard.kt:24-28`）；
 - 不改变**正常内容**的发送：净化只对「字面重复」生效。
 
-**作用域（revision 2 新增）——这个功能只对「会回传推理」的 provider 有意义**：
+**作用域（revision 2 新增，revision 7 修正口径）——这个功能只对「回传、模型可见、且客户端可编辑」的 provider 有意义**：回传是必要不充分条件。主流端点确实强制回传，但可见的强制回传载体带签名/加密，客户端改了就 400；C1 真正能动的只有无签名的 `reasoning_content`。
 
-| Provider 家族 | 历史推理是否进请求 | 净化效果 |
-|---|---|---|
-| OpenAI 兼容 | 默认回传 `reasoning_content`（`includeHistoryReasoning` 默认 true） | **C1 有效**（仅限确认回传的端点） |
-| OpenAI 兼容**经 New API 系网关** | 2026-10-27 实测：输入侧**丢弃** `reasoning_content`（带/不带 963 字符残留，`prompt_tokens` 同为 73） | C1 **天然无效**（无收益也无害：残留本就不在上下文） |
-| OpenAI 兼容**DeepSeek 官方 API** | 2026-10-27 实测：同样丢弃输入侧推理（`deepseek-flash` / `deepseek-v4-pro`，带/不带 `prompt_tokens` 49=49、102=102；暗号探针：推理里的暗号模型答「无」，放正文里能答出） | C1 **天然无效**（无收益也无害） |
-| Claude | 只回传**带签名**的 thinking 块，无签名推理在编码时就被丢掉 | C1 **天然无效**（C2 仍有效） |
-| Gemini | 推理全部丢弃，签名挂在 Tool/Image part 上 | 同上 |
-| OpenAI Responses（`useResponseApi=true`） | **DeepSeek Responses 已测（2026-10-27）**：真实 `reasoning` item 原样回传（含 id / `encrypted_content` / 960 字符 `reasoning_text`）后 `input_tokens` 仍 59 = 无 item 基线；暗号探针不可见；`store=true` 被忽略（响应 `store=false`） | C1 **天然无效**——客户端回传推理是**结构校验**要求，模型看不到；OpenAI 官方 Responses 未测 |
+| Provider 家族 | 回传要求（协议层） | 模型是否可见 | 客户端可否改 | 净化效果 |
+|---|---|---|---|---|
+| OpenAI 兼容（自建/自定义模板） | 可选：默认回传 `reasoning_content`（`includeHistoryReasoning` 默认 true） | 取决于端点模板；实测端点多数不可见 | **可改**（无签名） | **C1 有效**（仅限确认回传**且可见**的端点；目前无实测样本） |
+| OpenAI 兼容**经 New API 系网关** | 不要求；输入侧丢弃（2026-10-27 实测：带/不带 963 字符残留 `prompt_tokens` 同为 73） | 不可见 | 可改 | C1 **无收益无害**（残留本就不在上下文） |
+| OpenAI 兼容**DeepSeek 官方 API** | 不要求/忽略（实测 `deepseek-flash` / `deepseek-v4-pro`，49=49、102=102；暗号探针答「无」） | 不可见 | 可改 | 同上 |
+| **Claude（extended thinking）** | **工具循环轮强制**回传 `thinking` 块（带签名），老轮次可省略（本仓编码器对无签名块直接丢，`ClaudeProvider.kt:539-551`） | **可见**（thinking 文本进上下文） | **不可改**（改文本 ⇒ Invalid signature 拒整请求；`redacted_thinking` 文本不可见也不可改） | C1 **结构性不适用**（`SIGNED_SKIP`，只读不碰）；C2 仍有效 |
+| **Gemini** | 工具调用轮强制回传 `thoughtSignature`（签名挂在 Tool/Image part 上，`GoogleProvider.kt:771,808`；协议要求，未实测） | thought 文本不进请求 ⇒ 不可见 | 签名 part 不可改；文本本就不发 | C1 **天然无效**（请求里只有签名、没有可编辑文本） |
+| **OpenAI 官方 Responses（未实测）** | `store=false`/工具循环轮必须回传 reasoning item（含 `encrypted_content`），缺了 400（本仓 `ResponseAPI.kt:294-300` 注释记录同类 400） | **可见**（服务端解密后进上下文） | **不可改**（加密，客户端只有密文） | C1 **不可用**——只能整块丢/不丢（见 §12 待拍板） |
+| OpenAI Responses（**DeepSeek `/v1/responses` 已测**） | 结构上必须回传 reasoning item（缺了 400） | **不可见**（回传后 `input_tokens` 59 = 无 item 基线；暗号探针「未提供」；`store=true` 被忽略） | 不可改（结构校验） | C1 **无收益无害**；回传仅为过校验 |
 
-结论：Claude/Gemini 在编码层已经天然净化；**New API 系/聚合网关与 DeepSeek 官方 API 都在输入侧丢推理（实测）**——只有「确认回传 `reasoning_content` 且模型真的看见」的端点才有 C1 收益。开关文案不能承诺「对所有模型有效」；§8 的因果实验要在这种端点上才能验真实形态（2026-10-27 的 content 载体只是诊断）。**目前可测的两类端点全部天然无效** ⇒ P1 前置条件未满足（见 §12）。
+结论（revision 7 修正）：**回传历史思考是主流端点的常态，不是例外**——Claude/OpenAI 官方 Responses/Gemini 在工具循环轮强制回传，缺了 400；但**凡模型可见的强制回传载体都带签名/加密，客户端改一个字就整请求被拒**（本仓 `MessageMetadata.kt:87-99` 明确「必须原样回传，修改过的块会被拒」⇒ 对这类块禁用编辑）。C1 能编辑的只剩无签名的 `reasoning_content`，而实测过的渠道（DeepSeek 官方、New API 网关）都不把它放进上下文 ⇒ **P1 前置条件仍未满足，但原因是结构性的——「可编辑的载体不可见 / 可见的载体不可编辑」**，不是「没有端点回传推理」。由此还暴露出一个新缺口：在 Claude/OpenAI 官方这类端点上，老轮次的退化思考**确实在上下文里**，护栏（止写）与 C1（只读签名，记 `SIGNED_SKIP`）都清不掉，见 §12 待拍板 1。
 
 ## 3. 消息模型：一轮 = 一条助手消息（revision 2 新增，本文的地基）
 
@@ -328,8 +330,9 @@ internal object ContextPurifier {
 - **残留污染可见**：A 臂 3/10 以「抱歉，上一条回复输出异常（重复语句）」开场——模型会主动评论这段重复，用户直接看到降级；
 - **主指标修正记一笔**：原定 containment 中位数阈值 0.2 对本 fixture **结构性不可达**（循环只有 8 个不同 8-gram，单句复制最多 0.125），改为「循环复制率」；该缺陷由 fixture 代数直接推得、非看到数据后改口径（但探测阶段已看过 2 例样本，如实记录）；
 - **限制**：n=10、单模型、单网关；`content` 载体是诊断形态，**不是 app 真实发送形态**——真实形态依赖 provider 真的回传 `reasoning_content`。真实形态的因果验证仍缺一个「确认回传推理」的端点（P1 前补）；
-- **真实形态的端点排查（同日）**：DeepSeek 官方 API（`deepseek-flash` / `deepseek-v4-pro`）**同样丢弃输入侧 `reasoning_content`**——`prompt_tokens` 不变（49=49 / 102=102），暗号探针里放推理中的暗号模型答「无」、放正文里能答出。⇒ 可测的两类端点都不回传历史推理，**§8 的前提在主流端点上不成立**；机制本身已证（可见残留 → 70% 复制），但「净化降低复发」目前只在 content 载体上成立；
-- **Responses 路径（同日，DeepSeek `/v1/responses`）**：把真实 `reasoning` item 原样回传（真实 id + `encrypted_content` + 完整 `reasoning_text`）后 `input_tokens` 仍 **59 = 无 item 基线**（960 字符推理一个 token 都没进上下文），暗号探针模型答「未提供」；`store=true` 请求被忽略、`previous_response_id` 链路也不带推理。⇒ 回传推理只是**结构校验**要求（缺了会 400），模型看不到；**三种格式（Chat Completions / Responses / New API 网关）全部不回传历史推理**；
+- **真实形态的端点排查（同日）**：DeepSeek 官方 API（`deepseek-flash` / `deepseek-v4-pro`）**同样丢弃输入侧 `reasoning_content`**——`prompt_tokens` 不变（49=49 / 102=102），暗号探针里放推理中的暗号模型答「无」、放正文里能答出。⇒ **实测过的这两个渠道**不回传历史推理；这不能外推成「§8 的前提在主流端点上不成立」（revision 7 更正：Claude/OpenAI 官方 Responses/Gemini 在工具循环轮强制回传，且 Claude 的 thinking 文本、OpenAI 的加密推理在模型侧可见——只是客户端不可编辑）；机制本身已证（可见残留 → 70% 复制），但「净化降低复发」目前只在 content 载体上成立；
+- **Responses 路径（同日，DeepSeek `/v1/responses`）**：把真实 `reasoning` item 原样回传（真实 id + `encrypted_content` + 完整 `reasoning_text`）后 `input_tokens` 仍 **59 = 无 item 基线**（960 字符推理一个 token 都没进上下文），暗号探针模型答「未提供」；`store=true` 请求被忽略、`previous_response_id` 链路也不带推理。⇒ **在 DeepSeek Responses 上**，回传推理只是结构校验要求（缺了会 400）、模型看不到；**这一条不能外推到 OpenAI 官方 Responses**（加密推理由服务端解密后可见，未实测）。三种实测格式（DeepSeek Chat Completions / DeepSeek Responses / New API 网关）不回传历史推理，但它们都是聚合/官方渠道，不代表主流端点；
+- **真实形态实验的可行性（revision 7 补记）**：在**签名/加密载体**上做不了 §8 那种真实形态实验——伪造残留会让签名失效（Claude 直接 400）、加密内容客户端无法构造 ⇒ 真实形态验证只可能落在**无签名**载体（自建模板 / `reasoning_content`）上，而这类端点目前没有实测样本；content 载体的 70pp 只能证明机制，不能替代真实形态；
 - **对设计的直接推论**：① §2 作用域表要加一类——「输入侧丢弃推理的网关（New API 系常见）」对该类渠道净化**无收益也无害**（残留本就不在上下文）；② 若真实形态可用，B 臂收益方向与 content 载体一致，但**不能**把 70pp 直接外推给 reasoning 载体；③ C 臂 0/10 脱轨、复制率不升 ⇒ 注记本身没把回复带偏，但 n=10 不足以转默认开，§6.3 维持默认关。
 
 **必须承认的一点**：本仓最致命的形态（流中途逐字循环，初稿形态 3）是**单次调用自激**，与「看到残留」无关。所以这个实验真正回答的只是「清掉上一轮残留能否降低复发」。另外，护栏的停止本身存在假阳性（§14），P0 统计命中率时要先排除掉那部分。
@@ -368,7 +371,7 @@ internal object ContextPurifier {
 | 阶段 | 内容 | 风险 |
 |---|---|---|
 | **P0** | ✅ **已实现并发行（2026-10-25 落地、提交 `c8d07353f`、随 beta.12 发行；见头部落地记录）**：纯函数 `ContextPurifier` + dry-run 预览卡 + 日志（**不改发送**；作用域 = 全发送窗口，存量老残留一并入统计）；三条前提中命中率/翻转率随使用积累，「推理回传 / Claude·Gemini 天然净化」待真机观察；⚠️ 观察数据只落 Logcat + 内存 LRU（§7），决策门需先补持久计数 | 零行为变更（已由 `ContextPurifierWiringTest` 钉住「实发未被改动」） |
-| **P1** | ⚠️ **2026-10-27 起暂缓**：可测端点（DeepSeek 官方 Chat Completions / DeepSeek Responses / New API 网关）全部不回传历史推理 ⇒ 净化对它们无收益可测，前置条件未满足（§2、§12）。原计划：执行 C1a + C1b + C1c + C2（part 级、保留最早一份），作用域 = 发送窗口内全部已完成轮次（revision 5）；默认值按 §7 决策门（数据达标且零误杀 ⇒ 开）；~~限定 `contextMessageLimit == 0`~~（门控取消，理由 §4.1） | 低（暂缓后为零） |
+| **P1** | ⚠️ **2026-10-27 起暂缓（revision 7 改口径）**：**可编辑的载体不可见**——实测过的三个渠道（DeepSeek 官方 Chat Completions / DeepSeek Responses / New API 网关）都不把推理放进上下文；**可见的载体不可编辑**——Claude thinking / OpenAI 官方 Responses 加密推理 / Gemini 签名在工具循环轮强制回传且在模型侧可见，但改了就 400（§2、§12）。前置条件因此是**结构性**的，不是「没有端点回传」。原计划：执行 C1a + C1b + C1c + C2（part 级、保留最早一份），作用域 = 发送窗口内全部已完成轮次（revision 5）；默认值按 §7 决策门（数据达标且零误杀 ⇒ 开）；~~限定 `contextMessageLimit == 0`~~（门控取消，理由 §4.1） | 低（暂缓后为零） |
 | **P2** | §6.2 手动清理（多选删除，对齐记忆回收站） | 中（真删，需确认 UI） |
 | **P3** | §6.3 尾部注记：实现但默认关；转默认条件 = §8 三臂实验 C 臂达标（原 P3 深度净化已并入 P1，revision 5） | 低 |
 | 不做 | 写入侧截断（§5）；检查点式持久替换（§5.1）；流内顶替注记（§6.3） | — |
@@ -403,11 +406,18 @@ internal object ContextPurifier {
 
 **已定（2026-10-27，实验与端点验证后）**：
 
-1. **P1 暂缓**：机制已证（content 载体上残留可见 ⇒ 循环复制率 70% vs 0%），但**前置条件在可测端点上不成立**——三种格式实测都不回传历史推理：DeepSeek 官方 Chat Completions 丢 `reasoning_content`（prompt_tokens 49=49 / 102=102）、DeepSeek Responses 回传 `reasoning` item 后 `input_tokens` 仍 59 = 基线（960 字符推理零 token 入上下文）、New API 网关同样丢弃。⇒ 净化对这类渠道无收益也无害，不值得为「无收益」付 P1 的复杂度；
-2. 继续等「确认回传推理且模型可见」的端点证据（自建 vLLM / llama.cpp 等把推理塞回上下文的模板、部分聚合）——出现之前净化停在 P0 dry-run；OpenAI 官方 Responses 未测，但它用加密推理、模型侧可见，属潜在候选；
+1. **P1 暂缓**：机制已证（content 载体上残留可见 ⇒ 循环复制率 70% vs 0%），但前置条件未满足，且理由是**结构性**的（revision 7 修正外推）：**实测过的渠道**（DeepSeek 官方 Chat Completions：49=49 / 102=102；DeepSeek Responses：`input_tokens` 59 = 基线、960 字符推理零 token；New API 网关：73=73）都不把推理放进上下文 ⇒ 这些渠道无收益无害；而**强制回传且模型可见的载体（Claude thinking 文本、OpenAI 官方 Responses 加密推理）带签名/加密，客户端改一个字就整请求被拒** ⇒ C1 结构性不适用。⇒ 在「可见且可编辑」的载体出现前，P1 仍停在 P0 dry-run，不值得为「无收益」付复杂度；
+2. 继续等**「回传 + 模型可见 + 客户端可编辑」三者同时成立**的端点证据（自建 vLLM / llama.cpp 等把无签名推理塞回上下文的模板、部分聚合）——出现之前净化停在 P0 dry-run。OpenAI 官方 Responses / Gemini 3 / Claude 属于「可见但不可编辑」，不在候选内（它们需要的是另一种动作，见待拍板 1）；
 3. 主指标口径改为「循环复制率」（§8；原 containment 阈值结构性不可达）。
 
-**待拍板**：无。
+**待拍板（revision 7 新增，2026-10-27）**：
+
+1. **对「可见但不可编辑」的签名思考，要不要整块丢弃？** C1 只能改文本，签名思考改了就 400，唯一能动的是**整块省略**：Claude 旧轮次的 thinking 块省略是安全的（本仓编码器注释已写明；`ClaudeProvider.kt:544-547`），因此「老轮次里已判定退化的签名思考整块不发送」在 Claude 上可落地；OpenAI Responses 加密推理在工具调用轮是强校验，整块丢可能 400（未实测）。三个选项：
+   - **A 维持只读**（现状）：接受「老轮次退化思考持续回传」这一污染面，C1 只管无签名载体；
+   - **B 仅丢弃「已判定退化」的签名思考整块**：信息损失仅限垃圾内容，需 provider 兼容矩阵（Claude 安全、OpenAI Responses 未验、Gemini 无文本可丢）与「最后一轮工具循环不能丢」的门控；
+   - **C 历史思考只回传最近 N 轮**（全局策略，不与退化判定挂钩）：省 token + 降污染，但会丢合法推理，且改前缀缓存（每轮丢出的边界移动）。
+   与已定「保留最早一份、不整段剥推理」（2026-10-23）存在张力，需产品拍板。
+2. 若选 B/C，观测口径要加一条「签名思考被省略的字符量/轮次」，并先补 P0 的持久计数（§7 缺口）。
 
 ## 13. 变更记录（revision 2 相对 2026-10-19 初稿）
 
@@ -465,6 +475,14 @@ internal object ContextPurifier {
 | 3 | §2 作用域表四类 | 新增「OpenAI 兼容经 New API 系网关」：输入侧丢推理，C1 **天然无效**（无收益也无害） | 实测 |
 | 4 | P0 观察手段未记账 | §7 新增持久化缺口与计数待办；§11 P0 标「已发行」 | 10-27 真机核对：Logcat 环形缓冲已滚、内存 LRU 不持久 |
 | 5 | Responses 路径「未测」、官方 API 未验 | DeepSeek Chat Completions（丢 `reasoning_content`，token 49=49/102=102）、DeepSeek Responses（回传 reasoning item 后 token 仍 59=基线、暗号不可见、`store=true` 被忽略）、New API 网关（73=73）**三种格式实测全部不回传历史推理** ⇒ **P1 暂缓**（§12 已定 2026-10-27） | 实测：暗号探针 + token 计数 |
+
+### revision 7（2026-10-27）
+
+| # | revision 6 | revision 7 | 依据 |
+|---|---|---|---|
+| 1 | §2 表只有「是否回传」一维，结论按「三种格式全部不回传 ⇒ P1 暂缓」 | 表改为**回传要求 / 模型可见 / 客户端可编辑 / 净化效果**四维；结论改为「**可编辑的载体不可见 / 可见的载体不可编辑**」 | 用户指出主流端点基本都要求回传历史思考；代码：`ClaudeProvider.kt:539-551`（带签名 thinking 原样回传，无签名丢弃）、`ResponseAPI.kt:294-300`（缺 reasoning item 被 400 拒）、`GoogleProvider.kt:771,808`（thoughtSignature 回传）、`MessageMetadata.kt:87-99`（「必须原样回传，修改过的块会被拒」⇒ 禁用编辑） |
+| 2 | §8 由两个实测渠道外推「§8 的前提在主流端点上不成立」「模型看不到」 | 限定为「实测过的三个渠道」；DeepSeek Responses 的不可见**不**外推到 OpenAI 官方 Responses | 同上 |
+| 3 | P1 暂缓原因 = 无收益 | 改为结构性原因（可编辑不可见 / 可见不可编辑）；§12 新开待拍板（签名思考整块丢弃 vs 只回传最近 N 轮） | C1 对 `isProviderSigned()` 只记 `SIGNED_SKIP`，与「可见载体带签名」直接冲突 |
 
 ## 14. 顺带发现（不属于本设计，建议单独立项）
 
