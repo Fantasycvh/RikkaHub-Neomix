@@ -274,19 +274,11 @@ arm64 原生库合计约 **62 MB**（未压缩），占 APK 的大头；beta.7 �
      -keyalg RSA -keysize 2048 -validity 10000 \
      -storepass <密码> -keypass <密码> -dname "CN=Neomix"
    ```
-2. `app/google-services.json`（**必需**，仓库里没有、已 gitignore）：
-   ```bash
-   cp app/google-services.example.json app/google-services.json
-   ```
-   —— **缺失会让构建直接失败**（`processDebug/ReleaseGoogleServices` 报 `File google-services.json is missing`，不是"只是运行时崩"；
-   只有真实 Crashlytics/Analytics 才需要替换成自己的 Firebase 配置）。仓库自带的示例是占位值，package 覆盖 `app.androidrik.rikkahub`
-   与 `app.androidrik.rikkahub.debug` 两个变体；新增变体（如自建 `applicationIdSuffix`）需要再加一个同 package 的 client，否则同样构建失败。
-3. Debug：`bash scripts/build.sh :app:assembleDebug`；Release：`bash scripts/build.sh release`
-4. 产物：`app/build/outputs/apk/release/app-{arm64-v8a,universal,x86_64}-release.apk`（本项目只发 arm64-v8a）
-5. 测试：`bash scripts/build.sh :app:testDebugUnitTest`
+2. Debug：`bash scripts/build.sh :app:assembleDebug`；Release：`bash scripts/build.sh release`
+3. 产物：`app/build/outputs/apk/release/app-{arm64-v8a,universal,x86_64}-release.apk`（本项目只发 arm64-v8a）
+4. 测试：`bash scripts/build.sh :app:testDebugUnitTest`
 
-> `scripts/build.sh` 会在 `app/google-services.json` 缺失时自动从示例复制一份（省掉手抄，含义同步骤 2）。
-> CI（`.github/workflows/daily-build.yml`）目前**只能手动触发**：签名与 `GOOGLE_SERVICES_JSON` 两个 repo secrets 尚未配置。
+> CI（`.github/workflows/daily-build.yml`）目前**只能手动触发**：签名的 repo secret 尚未配置。
 > 只想快速验证编译：`./gradlew :app:compileDebugKotlin -x :web:buildWebUi -q`（跳过 web-ui 构建）。
 > Gradle wrapper 下载可能超时，可用本地缓存 `~/.gradle/wrapper/dists/gradle-9.5.0-all/.../gradle-9.5.0/bin/gradle`。
 

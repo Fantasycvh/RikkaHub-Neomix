@@ -22,15 +22,6 @@ export PATH="${NPM_GLOBAL_BIN:-$HOME/AppData/Roaming/npm}:$PATH"
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-# google-services.json 不在仓库里（已 gitignore），但**缺失会让 Gradle 直接失败**
-# （processDebug/ReleaseGoogleServices 报 "File google-services.json is missing"），
-# 而 CI 的 GOOGLE_SERVICES_JSON secret 尚未配置 ⇒ 首次构建/新克隆必须自己造一份。
-# 这里在缺失时自动从仓库内示例复制，避免"开箱即报错"；真实 Firebase 项目需自行替换。
-if [ ! -f app/google-services.json ] && [ -f app/google-services.example.json ]; then
-  cp app/google-services.example.json app/google-services.json
-  echo "created app/google-services.json from example (placeholder Firebase config)"
-fi
-
 case "${1:-}" in
   debug)
     shift || true
