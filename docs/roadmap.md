@@ -3861,3 +3861,18 @@ Skill 设计规范）既不在 L2 也不在 L3，`ef22aca1`（Flutter 学习路�
   观察期自 2026-10-27 起算。P1 是否走「签名思考整块丢弃 / 只回传最近 N 轮」（§12 待拍板 A/B/C）仍等
   观察数据。验证：`PurgeObservationStoreTest` 9 项、`ContextPurifier*` 既有用例，`:app:testDebugUnitTest`
   与 `:app:compileDebugKotlin` 全绿。设计稿 revision 8。
+
+- 2026-10-28 **记录 DeepSeek 端点能力声明与 system_fingerprint 实测**：新增
+  `docs/deepseek-endpoint-notes-2026-10-28.md`（端点实测记录，非设计稿）——`GET /models` 的
+  `api_capabilities.anthropic_messages` 两次抓取 diff：10/17 flash 只有 `system_prompt_update:
+  "in-history"`，10/27 多出 `tool_update: "addition-only"`；`deepseek-v4-pro` 两项均为
+  `leading-only`。每次推理响应的 `system_fingerprint` 实测：flash `bc19ba97…`、pro `a307abda…`
+  （与推文一致；灰度期同一 alias 可两值，变化≠换模型，只证明后端版本变）。**声明≠硬校验**：
+  给 pro 塞 mid-history system 仍 200 且被采纳 ⇒ `leading-only` 是「保缓存的编码建议」而非
+  报错规则，收益在 cache hit。OpenAI 两种协议（Chat Completions / Responses）无对应
+  `api_capabilities` 命名空间，协议本身允许 system/工具中途变化（本仓编码位置：mid-history
+  system 原样发 `ChatCompletionsAPI.kt:820`；Responses 首条 system 进 `instructions`、其余
+  降级 user，`ResponseAPI.kt:374-395`）。落点：默认 DeepSeek provider 走 OpenAI 兼容
+  `https://api.deepseek.com/v1`，不经过该兼容层；**fingerprint 记作「证据时效哨兵」**——
+  10-27 那批「三渠道不回传推理」的实测在 fingerprint 变化后需重测。环境：本机 curl/Schannel
+  报 `SEC_E_NO_CREDENTIALS`，探测改走 Python urllib；临时脚本未入库。
