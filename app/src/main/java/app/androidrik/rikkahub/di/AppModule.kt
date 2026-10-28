@@ -1,8 +1,5 @@
 package app.androidrik.rikkahub.di
 
-import com.google.firebase.Firebase
-import com.google.firebase.analytics.analytics
-import com.google.firebase.crashlytics.crashlytics
 import kotlinx.serialization.json.Json
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
@@ -100,14 +97,6 @@ val appModule = module {
 
     single {
         TTSManager(get())
-    }
-
-    single {
-        Firebase.crashlytics
-    }
-
-    single {
-        Firebase.analytics
     }
 
     single {

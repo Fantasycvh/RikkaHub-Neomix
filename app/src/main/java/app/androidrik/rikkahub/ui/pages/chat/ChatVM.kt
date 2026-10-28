@@ -11,7 +11,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.analytics.FirebaseAnalytics
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -77,7 +76,6 @@ class ChatVM(
     private val settingsStore: SettingsStore,
     private val conversationRepo: ConversationRepository,
     private val chatService: ChatService,
-    private val analytics: FirebaseAnalytics,
     private val filesManager: FilesManager,
     private val favoriteRepository: FavoriteRepository,
 ) : ViewModel() {
@@ -259,7 +257,6 @@ class ChatVM(
         annotations: List<UIMessageAnnotation> = emptyList(),
     ) {
         if (content.isEmptyInputMessage()) return
-        analytics.logEvent("ai_send_message", null)
 
         chatService.sendMessage(_conversationId, content, answer, annotations)
     }
@@ -281,7 +278,6 @@ class ChatVM(
         skipQuestion: Boolean = false,
     ) {
         if (content.isEmptyInputMessage()) return
-        analytics.logEvent("ai_send_message_interrupting", null)
 
         chatService.sendInterrupting(
             _conversationId,
@@ -321,7 +317,6 @@ class ChatVM(
 
     fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {
         if (parts.isEmptyInputMessage()) return
-        analytics.logEvent("ai_edit_message", null)
 
         viewModelScope.launch {
             chatService.editMessage(_conversationId, messageId, parts)
@@ -443,7 +438,6 @@ class ChatVM(
         scope: ChatService.RegenerateScope = ChatService.RegenerateScope.INCLUDE_FOLLOWING,
         onTruncated: ((TruncationPlan) -> Unit)? = null,
     ) {
-        analytics.logEvent("ai_regenerate_at_message", null)
         chatService.regenerateAtMessage(_conversationId, message, scope, onTruncated)
     }
 
@@ -457,12 +451,10 @@ class ChatVM(
         approved: Boolean,
         reason: String = ""
     ) {
-        analytics.logEvent("ai_tool_approval", null)
         chatService.handleToolApproval(_conversationId, toolCallId, approved, reason)
     }
 
     fun handleApproveAllPending() {
-        analytics.logEvent("ai_tool_approve_all", null)
         chatService.handleApproveAllPending(_conversationId)
     }
 
@@ -470,13 +462,11 @@ class ChatVM(
         toolCallId: String,
         answer: String,
     ) {
-        analytics.logEvent("ai_tool_answer", null)
         chatService.handleToolApproval(_conversationId, toolCallId, approved = true, answer = answer)
     }
 
     /** 跳过（ask_user 提问 / 工具审批通用）：结果写 status=skipped，模型知道用户没等这一步。 */
     fun handleToolSkip(toolCallId: String) {
-        analytics.logEvent("ai_tool_skip", null)
         chatService.handleToolApproval(_conversationId, toolCallId, approved = false, skip = true)
     }
 

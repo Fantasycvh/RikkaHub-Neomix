@@ -9,8 +9,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.google.services)
-    alias(libs.plugins.firebase.crashlytics)
     alias(libs.plugins.baselineprofile)
 }
 
@@ -183,11 +181,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     // 移除 adaptive-navigation3：全仓无任何调用点（grep 证实），且此前版本号是
     // `1.0.0-SNAPSHOT`（不写进仓库快照源的解析结果不可复现）。它由 adaptive-layout 传递带入 1.3.0-rc01。
-
-    // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.analytics)
-    implementation(libs.firebase.crashlytics)
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)
