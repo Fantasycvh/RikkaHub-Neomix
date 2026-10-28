@@ -79,4 +79,12 @@ class ToolTimingAndStepCountTest {
         val legacy = """{"role":"assistant","parts":[{"type":"text","text":"hi"}]}"""
         assertEquals(0, JsonInstant.decodeFromString<UIMessage>(legacy).stepCount)
     }
+
+    @Test
+    fun `legacy nullable-stepCount json decodes without crash`() {
+        // 上游 660b5d65f（stepCount: Int? + lastUsage 时代）落库的 blob 显式带 null；
+        // 当前 stepCount 非空，靠 JsonInstant.coerceInputValues 收敛为默认值
+        val poisoned = """{"role":"assistant","parts":[{"type":"text","text":"hi"}],"lastUsage":null,"stepCount":null}"""
+        assertEquals(0, JsonInstant.decodeFromString<UIMessage>(poisoned).stepCount)
+    }
 }
