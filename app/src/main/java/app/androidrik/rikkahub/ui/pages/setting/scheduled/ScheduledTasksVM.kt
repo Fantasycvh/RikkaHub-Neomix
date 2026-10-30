@@ -53,6 +53,7 @@ class ScheduledTasksVM(
         payload: SchedulePayload,
         missPolicy: MissPolicy,
         idleOnly: Boolean,
+        onCreated: () -> Unit = {},
     ) {
         viewModelScope.launch {
             taskRepository.create(
@@ -65,6 +66,7 @@ class ScheduledTasksVM(
                 idleOnly = idleOnly,
             )
             sweeperKeeper.rearm(taskRepository)
+            onCreated()
         }
     }
 

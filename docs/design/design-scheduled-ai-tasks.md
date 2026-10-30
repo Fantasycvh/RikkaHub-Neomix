@@ -23,6 +23,20 @@
 > 上跑一轮、`saveConversation` 整行覆盖历史」的数据损坏路径）；③ 成功判定加**产出证据**
 > （必须新增 assistant 消息）并把模型解析失败改成可见错误卡。详见 §六.1。
 >
+> **revision 5（2026-10-30，UI 事故修复）**：创建任务表单从 `AlertDialog` 改为**整页**
+> （`ScheduledTaskCreatePage`）——对话框里七组字段 + 键盘必然溢出，`时/分` 贴着可见区边缘，
+> 每敲一位都触发「滚动到光标」把内容上顶 18dp（真机表现为**界面抖动**）；`时/分/间隔` 同时
+> 改数字键盘、`时 → 分` 用 `ImeAction.Next` 串焦点。复现数据与定位见 §7.1。
+>
+> **revision 6（2026-10-30，真机崩溃修复）**：新建/开关任务必崩——`armPrompt` 给唤醒作业同时
+> 加了 `setExpedited` + `setInitialDelay`，而 WorkManager 的 expedited 作业**不允许带延迟**，
+> `.build()` 直接抛 `IllegalArgumentException: Expedited jobs cannot be delayed`；异常发生在
+> ViewModel 的 coroutine 里，用户看到「保存 → App 停止运行」（存量任务是直接写 DB 造的，
+> 所以之前没暴露）。修法：抽出纯函数 `promptWorkPlan`——**已到期才 expedited 且延迟为 0**，
+> 未来时刻退化为普通延迟作业；`rearm` 逐任务 try/catch 只记日志，单个排程失败不再打崩调用方。
+> 回归护栏 `ScheduledTaskPromptWorkPlanTest`。真机验证：新建任务保存成功、启动时对账无异常、
+> 闹钟正常落 `mode=alarmClock`。
+>
 > **revision 4（2026-10-30，触发层改造：闹钟 + 前台服务）**：真机验证发现第二层问题——
 > 生成链路修好后，**Doze 熄屏下 WorkManager 到点不跑**（22:13:07 到点的任务直到 22:15:31
 > 亮屏才执行）。设计稿初版把这条列为「已接受的 Doze 延迟」（§八.1），但用户的预期是
@@ -185,8 +199,13 @@ Worker 单飞后对每个认领的任务：
 |---|---|---|---|
 | 主 | `AlarmManager.setAlarmClock`（闹钟语义，无需特殊权限）→ `ScheduledTaskAlarmReceiver` → `ScheduledTaskRunService` | 精确到点（真机 `window=0`） | 准点性来源；闹钟广播自带临时豁免，允许后台 `startForegroundService` |
 | 主（降级） | `setExactAndAllowWhileIdle`（需「闹钟和提醒」授权）→ 同上 | 精确/被系统窗口化 | `setAlarmClock` 意外失败时兜底；真机实测此档会被放进 ~67–90s 窗口批处理 |
-| 兜底 1 | per-task 一次性 WorkManager 唤醒作业（expedited，`RUN_AS_NON_EXPEDITED`） | 到点 +5s | 闹钟被系统压制/丢失时仍有概率触发 |
+| 兜底 1 | per-task 一次性 WorkManager 唤醒作业（到期即跑时 expedited；未来时刻只能普通延迟，见 §6.2 注） | 到点 +5s | 闹钟被系统压制/丢失时仍有概率触发 |
 | 兜底 2 | 15 分钟周期 sweep（WorkManager） | 每 15 分钟 | 漏槽、进程死亡、错过的维护窗口自愈 |
+
+> 注（revision 6）：WorkManager 的 expedited 作业**不允许带 `initialDelay`**（`build()` 抛
+> `IllegalArgumentException`）。所以「到点 +5s 的 expedited 唤醒」只在**已经到期**时成立
+> （延迟 0 立即跑）；为未来时刻排的兜底作业是**普通延迟作业**，没有 expedited 的前台豁免
+> ——这也符合定位：准点性与执行期保护由闹钟 + FGS 负责，WorkManager 只是漏网兜底。
 
 执行载体（`ScheduledTaskRunService`，dataSync 前台服务）在生成期间同时持：
 
@@ -301,10 +320,37 @@ assistant 回复**，管理页 `last_status` 却显示 OK。
 - **管理页**：设置里新增「定时任务」页——列表（标题 / 目标会话 / 下次运行 / 上次状态）、
   开关、删除；新建表单 = 选会话 + 标题 + prompt + 周期（每天 HH:mm / 每周周几 HH:mm / 每 N 小时）
   + 错过策略 + **仅空闲时执行**开关（`idleOnly`，默认关）。
+- **新建 = 整页**（revision 5 改写，原为 `AlertDialog`）：七组字段 + 键盘在对话框里放不下，
+  真机表现为**内容抖动 + 输入失焦**（§7.1）。现改为与详情页同构的整页表单
+  （`ScheduledTaskCreatePage`）：`Column(imePadding().verticalScroll())`、顶栏「保存」动作、
+  会话选择器仍是小对话框（内容短，不受影响）。
+- **时刻字段**（revision 5）：`时` / `分` / `间隔` 一律 `KeyboardType.Number`；`时` 的
+  `ImeAction.Next` 直接落到 `分`，`分` 的 Done 收起键盘。
 - **会话内入口（P2）**：会话菜单「为此会话创建定时任务」，prompt 表单预填；
   同页加**会话目标**编辑入口（`Conversation.goal`，长文本），任务表单出现「附带长期目标」开关
   （`withGoal`，仅该会话 goal 非空时可选）。
 - 字符串走 `locale-tui` 全量三语。
+
+### 7.1 真机事故：对话框里的表单「抖 + 失焦」（2026-10-30）
+
+症状（PJX110 / ColorOS 15，创建任务对话框里输入「时」）：每敲/删一位数字，**整块表单上跳
+约 18dp**（截图逐帧对比实测 63px @560dpi），有时焦点从「时」跳到「分」。
+
+复现与定位：
+
+- 键盘弹起后对话框内容比可见区高，`时/分` 行**正好落在可见区边缘**；每敲一位触发
+  Compose 的「滚动到光标」把内容整体上顶（63px/18dp），敲「名称」等靠上的字段则完全不抖
+  （逐帧对比 `dy=0`）⇒ **不是输入框本身，而是「内容比可见区高 + 光标贴边」引发的滚动补偿**。
+- 对话框窗口本身不移动（`dumpsys window`：`frame=[72,140][1192,2618]`、`Requested h=2478`
+  在空/有值两态一致），抖的是**内容**（居中 wrap-content 对话框 + 键盘 inset 的共同结果）。
+- 附带发现：`take(2)` 截断会让 IME 的一次按键回调两次（日志 `raw='817'` → `raw='81'`），
+  文字在截断瞬间闪一下；文本键盘（Gboard 自动纠错/联想条）还会放大这类抖动。
+- 「失焦」的确切成因未能完全复现（ADB 注入的 `input text` 只复现了滚动抖动；真机手打时
+  偶发焦点从「时」到「分」），但**抖动**与**焦点在同排两框间跳**有共同前提：表单被塞进
+  高度受限、内容溢出的对话框。故修复方式是把创建表单改成整页，而不是给两框打补丁。
+
+修复后回归要点（真机自测）：新建任务整页可滚到底、键盘不挡「时/分」与保存；`时` 敲完按
+键盘「下一步」跳到 `分`；`间隔` 出数字键盘；详情页同样 `imePadding()`。
 
 ## 八、诚实声明的边界
 
@@ -339,6 +385,7 @@ Room 编译期校验 + 真机验证兜底：
 | 注入前必须先等设置（`awaitLoaded`）再载入会话（`ensureConversationLoaded`）；静默 no-op 不得记 OK | `ScheduledTaskGuardTest`（源码守卫） |
 | 触发层接线：主唤醒必须用 `setExactAndAllowWhileIdle` 且有 `setAndAllowWhileIdle` 退化；接收器必须拉起执行服务；manifest 必须有 receiver/dataSync service/`SCHEDULE_EXACT_ALARM`；执行服务必须持 FGS + partial wakelock | `ScheduledTaskGuardTest`（源码守卫） |
 | 闹钟触发时刻：未来任务 = nextRunAt+slop、已过期任务 = now+slop（不得排到过去）；requestCode 稳定且按 taskId 区分 | `ScheduledTaskAlarmTest`（纯函数） |
+| 唤醒作业参数：**expedited ⇒ 延迟必须为 0**（否则 WorkManager 在 `build()` 抛异常把 App 打崩），到期即跑、未来时刻走普通延迟作业 | `ScheduledTaskPromptWorkPlanTest`（纯函数，4 项） |
 | 结果判定：静默 no-op→FAILED、有新错误→FAILED、超时→TIMEOUT | `ScheduledTaskStatusTest`（纯函数） |
 | Worker 端到端（注入→等→超时）、Room claim SQL 本身、闹钟真实投递/Doze 行为 | 未自动化——真机验证兜底（P1 验收项） |
 

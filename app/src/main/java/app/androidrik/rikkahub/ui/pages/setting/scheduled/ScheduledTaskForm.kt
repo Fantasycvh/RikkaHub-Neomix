@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.OutlinedTextField
@@ -19,7 +21,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
@@ -105,6 +112,10 @@ fun rememberScheduledTaskFormState(entity: ScheduledTaskEntity?): ScheduledTaskF
 @Composable
 fun ScheduledTaskFormFields(state: ScheduledTaskFormState, modifier: Modifier = Modifier) {
     var showDatePicker by remember { mutableStateOf(false) }
+    // 「时」按键盘的下一步直接落到「分」，省掉一次点按（此前是行内两个独立输入框，
+    // 键盘不切数字、也不串焦点，见 docs/design/design-scheduled-ai-tasks.md §七）
+    val minuteFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(
@@ -162,9 +173,14 @@ fun ScheduledTaskFormFields(state: ScheduledTaskFormState, modifier: Modifier = 
             ScheduleType.INTERVAL -> {
                 OutlinedTextField(
                     value = state.intervalText,
-                    onValueChange = { state.intervalText = it.filter(Char::isDigit) },
+                    onValueChange = { state.intervalText = it.filter(Char::isDigit).take(4) },
                     label = { Text(stringResource(R.string.scheduled_task_interval_minutes)) },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -179,6 +195,13 @@ fun ScheduledTaskFormFields(state: ScheduledTaskFormState, modifier: Modifier = 
                     onValueChange = { state.hourText = it.filter(Char::isDigit).take(2) },
                     label = { Text(stringResource(R.string.scheduled_task_hour)) },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { minuteFocusRequester.requestFocus() },
+                    ),
                     modifier = Modifier.weight(1f),
                 )
                 OutlinedTextField(
@@ -186,7 +209,14 @@ fun ScheduledTaskFormFields(state: ScheduledTaskFormState, modifier: Modifier = 
                     onValueChange = { state.minuteText = it.filter(Char::isDigit).take(2) },
                     label = { Text(stringResource(R.string.scheduled_task_minute)) },
                     singleLine = true,
-                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(minuteFocusRequester),
                 )
             }
         }

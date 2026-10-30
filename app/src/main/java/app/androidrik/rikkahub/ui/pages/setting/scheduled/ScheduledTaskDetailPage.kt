@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.setting.scheduled
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -66,6 +67,8 @@ fun ScheduledTaskDetailPage(
                 // 曲面屏两侧的曲率区会吃掉贴边内容，表单留足边距
                 .padding(horizontal = 16.dp)
                 .fillMaxSize()
+                // 键盘弹起时把表单顶起来，避免「时/分」被键盘压住后触发滚动抖动
+                .imePadding()
                 .verticalScroll(rememberScrollState()),
         ) {
             FormItem(
