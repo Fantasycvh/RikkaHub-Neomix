@@ -15,6 +15,9 @@ import app.androidrik.rikkahub.ui.floating.ChatFloatingWindows
 import app.androidrik.rikkahub.service.ChatNotificationManager
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.MediaCreationService
+import app.androidrik.rikkahub.service.ScheduledTaskExecutor
+import app.androidrik.rikkahub.service.ScheduledTaskRunner
+import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
 import app.androidrik.rikkahub.service.SubagentRunner
 import app.androidrik.rikkahub.utils.EmojiData
 import app.androidrik.rikkahub.utils.EmojiUtils
@@ -198,6 +201,33 @@ val appModule = module {
             generationHandler = get(),
             chatToolFactory = get(),
             agentRunDAO = get(),
+        )
+    }
+
+    // 定时任务执行层：只做「注入 + 等结束 + 报结果」，生成本体走 ChatService 老管线。
+    // settingsStore 用于冷启动等设置落盘（Settings.dummy() 陷阱，见 Runner KDoc）。
+    single {
+        ScheduledTaskRunner(
+            context = get(),
+            chatService = get(),
+            conversationRepository = get(),
+            taskRepository = get(),
+            settingsStore = get(),
+        )
+    }
+
+    single {
+        ScheduledTaskSweeperKeeper(context = get())
+    }
+
+    // 三个触发入口（闹钟 / 一次性唤醒作业 / 15 分钟 sweep）共用同一个执行器：
+    // 「查到期 → idle 门控 → 认领 → 执行 → 重排」只此一份，入口只负责把自己叫醒。
+    single {
+        ScheduledTaskExecutor(
+            chatService = get(),
+            taskRepository = get(),
+            runner = get(),
+            keeper = get(),
         )
     }
 

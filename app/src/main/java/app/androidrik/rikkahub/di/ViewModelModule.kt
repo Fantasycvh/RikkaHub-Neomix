@@ -29,6 +29,8 @@ import app.androidrik.rikkahub.ui.pages.setting.KnowledgeBaseDetailVM
 import app.androidrik.rikkahub.ui.pages.setting.KnowledgeBasesVM
 import app.androidrik.rikkahub.ui.pages.setting.SettingVM
 import app.androidrik.rikkahub.ui.pages.setting.StorageVM
+import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskDetailVM
+import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTasksVM
 import app.androidrik.rikkahub.ui.pages.share.handler.ShareHandlerVM
 import app.androidrik.rikkahub.ui.pages.translator.TranslatorVM
 import org.koin.core.module.dsl.viewModel
@@ -50,6 +52,15 @@ val viewModelModule = module {
     viewModelOf(::ChatDrawerVM)
     viewModelOf(::SettingVM)
     viewModelOf(::StorageVM)
+    viewModelOf(::ScheduledTasksVM)
+    viewModel { params ->
+        ScheduledTaskDetailVM(
+            taskId = params.get(),
+            taskRepository = get(),
+            conversationRepository = get(),
+            sweeperKeeper = get(),
+        )
+    }
     viewModelOf(::KnowledgeBasesVM)
     viewModel<KnowledgeBaseDetailVM> { params ->
         KnowledgeBaseDetailVM(

@@ -22,6 +22,7 @@ import app.androidrik.rikkahub.MEDIA_CREATION_NOTIFICATION_CHANNEL_ID
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.files.MediaCreationFiles
 import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.data.model.MediaCreationAsset
@@ -550,12 +551,6 @@ class MediaCreationService(
             (POLL_INTERVAL * (1 shl failures.coerceIn(0, 4))).coerceAtMost(MAX_POLL_INTERVAL)
     }
 }
-
-/**
- * 等到设置真正从磁盘读出：本仓库的 `settingsFlow` 以 `Settings.dummy()`（`init = true`）起手，
- * 与上游 `awaitLoaded()` 语义一致，避免生成任务在冷启动时读到空配置。
- */
-private suspend fun SettingsStore.awaitLoaded(): Settings = settingsFlow.first { !it.init }
 
 private fun MediaGenerationStatus.toCreationStatus(current: MediaCreationStatus): MediaCreationStatus = when (this) {
     MediaGenerationStatus.QUEUED -> MediaCreationStatus.QUEUED

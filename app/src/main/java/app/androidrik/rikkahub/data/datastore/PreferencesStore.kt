@@ -23,6 +23,7 @@ import io.pebbletemplates.pebble.PebbleEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -1412,6 +1413,21 @@ fun Settings.getCurrentAssistant(): Assistant {
 fun Settings.getAssistantById(id: Uuid): Assistant? {
     return this.assistants.find { it.id == id }
 }
+
+/**
+ * 等到设置**真正从磁盘读出**（`init = true` 的 `Settings.dummy()` 退场）。
+ *
+ * 为什么必须有这个口：本仓库 `settingsFlow` 以 [Settings.dummy] 起手（`toMutableStateFlow`
+ * 的初始值），冷启动 / 后台进程被 WorkManager 拉起时，`settingsFlow.value` 与
+ * `settingsFlow.first()` 在最初几百毫秒里返回的都是**全默认配置**——`providers` 是内置空表、
+ * `chatModelId` 是 `Uuid.random()`。生成侧 `findModelById` 于是一定返回 null，行为不是「用错模型」
+ * 而是「整轮静默不动」（2026-10-30 定时任务真机复现：后台注入的 user 消息落了库，assistant
+ * 一条没有、也没有任何错误）。上游同名 helper 即此语义，MediaCreationService 早已在用。
+ *
+ * 调用方应加超时兜底（`withTimeoutOrNull`），避免 DataStore 持续读失败时把调用方挂死；
+ * 超时后拿到的仍是 dummy，下游至少能显式报错而不是无声。
+ */
+suspend fun SettingsStore.awaitLoaded(): Settings = settingsFlow.first { !it.init }
 
 fun Settings.getQuickMessagesOfAssistant(assistant: Assistant) =
     quickMessages.filter { it.id in assistant.quickMessageIds }

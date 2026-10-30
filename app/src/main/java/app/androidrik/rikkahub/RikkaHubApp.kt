@@ -53,6 +53,7 @@ import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.service.MediaCreationService
 import app.androidrik.rikkahub.service.WebServerService
 import app.androidrik.rikkahub.service.KeepAliveService
+import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
 import app.androidrik.rikkahub.utils.CrashHandler
 import app.androidrik.rikkahub.utils.DatabaseUtil
 import app.androidrik.rikkahub.utils.TokenCountDiskCache
@@ -318,6 +319,9 @@ class RikkaHubApp : Application() {
         // Start keep-alive foreground service if enabled in settings
         startKeepAliveIfEnabled()
 
+        // 定时任务 sweeper 对账（design-scheduled-ai-tasks §三）：有启用任务才排唯一周期工作
+        reconcileScheduledTasks()
+
         // Resume media generations interrupted by the last process death
         resumeMediaCreations()
 
@@ -333,6 +337,17 @@ class RikkaHubApp : Application() {
                 get<MediaCreationService>().resumePending()
             }.onFailure {
                 Log.e(TAG, "resumeMediaCreations failed", it)
+            }
+        }
+    }
+
+    private fun reconcileScheduledTasks() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                val repository = get<app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository>()
+                get<ScheduledTaskSweeperKeeper>().rearm(repository)
+            }.onFailure {
+                Log.e(TAG, "reconcileScheduledTasks failed", it)
             }
         }
     }

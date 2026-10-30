@@ -135,6 +135,8 @@ import app.androidrik.rikkahub.ui.pages.mediacreation.MediaCreationSessionsPage
 import app.androidrik.rikkahub.ui.pages.promptinspect.PromptInspectPage
 import app.androidrik.rikkahub.ui.pages.search.SearchPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingAboutPage
+import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskDetailPage
+import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTasksPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNotificationPage
@@ -722,6 +724,14 @@ open class RouteActivity : ComponentActivity() {
                                 SettingSpeechPage()
                             }
 
+                            entry<Screen.SettingScheduledTasks> {
+                                ScheduledTasksPage()
+                            }
+
+                            entry<Screen.SettingScheduledTaskDetail> { key ->
+                                ScheduledTaskDetailPage(taskId = key.taskId)
+                            }
+
                             entry<Screen.SettingMedia> {
                                 SettingMediaPage()
                             }
@@ -1062,6 +1072,12 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingSpeech : Screen
+
+    @Serializable
+    data object SettingScheduledTasks : Screen
+
+    @Serializable
+    data class SettingScheduledTaskDetail(val taskId: String) : Screen
 
     @Serializable
     data object SettingMedia : Screen

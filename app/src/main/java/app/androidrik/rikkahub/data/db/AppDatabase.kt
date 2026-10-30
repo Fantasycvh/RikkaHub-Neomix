@@ -22,6 +22,7 @@ import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryHistoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryTrashDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
+import app.androidrik.rikkahub.data.db.dao.ScheduledTaskDAO
 import app.androidrik.rikkahub.data.db.dao.TranslationHistoryDAO
 import app.androidrik.rikkahub.data.db.dao.UsageRecordDAO
 import app.androidrik.rikkahub.data.db.dao.WorkspaceDAO
@@ -45,6 +46,7 @@ import app.androidrik.rikkahub.data.db.entity.MemoryTrashEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryProposalEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
 import app.androidrik.rikkahub.data.db.entity.TranslationHistoryEntity
 import app.androidrik.rikkahub.data.db.entity.UsageRecordEntity
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
@@ -80,8 +82,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         MediaCreationRecordEntity::class,
         UsageRecordEntity::class,
         TranslationHistoryEntity::class,
+        ScheduledTaskEntity::class,
     ],
-    version = 48,
+    version = 49,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -145,6 +148,8 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 44, to = 45),
         // Nullable upstream snapshot; existing native conversations keep following their assistant.
         AutoMigration(from = 45, to = 46),
+        // 48→49：定时任务表（纯新增，无外键无回填，见 docs/design/design-scheduled-ai-tasks.md §四）。
+        AutoMigration(from = 48, to = 49),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -187,9 +192,11 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun translationHistoryDao(): TranslationHistoryDAO
 
+    abstract fun scheduledTaskDao(): ScheduledTaskDAO
+
     companion object {
         /** 必须与上方 `@Database(version = …)` 保持一致（启动期 staged 库校验用）。 */
-        const val SCHEMA_VERSION = 48
+        const val SCHEMA_VERSION = 49
     }
 }
 

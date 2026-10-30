@@ -59,6 +59,7 @@ import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Sun01
+import me.rerere.hugeicons.stroke.Time02
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.datastore.isNotConfigured
@@ -205,6 +206,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HugeIcons.Book02, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_kb_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_kb)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingScheduledTasks) },
+                        leadingContent = { Icon(HugeIcons.Time02, null) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_scheduled_tasks_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_scheduled_tasks)) },
                     )
                 }
             }

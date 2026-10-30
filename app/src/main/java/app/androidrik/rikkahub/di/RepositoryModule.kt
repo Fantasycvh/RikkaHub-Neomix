@@ -16,6 +16,7 @@ import app.androidrik.rikkahub.data.repository.MemoryConsolidationRepository
 import app.androidrik.rikkahub.data.repository.MediaCreationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.data.repository.TranslationHistoryRepository
+import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.data.storage.StorageUsageManager
 import app.androidrik.workspace.ProotBackgroundLauncher
@@ -68,6 +69,11 @@ val repositoryModule = module {
 
     single {
         TranslationHistoryRepository(get())
+    }
+
+    single {
+        val database: AppDatabase = get()
+        ScheduledTaskRepository(database.scheduledTaskDao())
     }
 
     single {

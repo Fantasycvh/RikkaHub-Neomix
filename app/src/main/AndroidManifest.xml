@@ -18,6 +18,14 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+  <!--
+    定时任务到点唤醒（docs/design/design-scheduled-ai-tasks.md §六）：
+    WorkManager 在 Doze 熄屏下不保证到点执行（2026-10-30 真机实测延迟 2 分钟以上直到亮屏），
+    因此用 AlarmManager 的 setExactAndAllowWhileIdle 做主唤醒。该权限是「特殊应用权限」，
+    用户可在系统设置「闹钟和提醒」里授予；未授予时代码退化为 setAndAllowWhileIdle
+    （Doze 也放行，但可能被系统挪动几分钟）。
+  -->
+  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
   <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
   <uses-permission
     android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -285,6 +293,31 @@
         android:value="androidx.startup"
         tools:node="remove" />
     </provider>
+    <!--
+      定时任务唤醒 / 执行载体（docs/design/design-scheduled-ai-tasks.md §六「触发层」）：
+      闹钟广播（exported=false：PendingIntent 只由本应用创建）拉起执行专用前台服务。
+      执行期同持 partial wakelock + Wi-Fi 高性能锁，Doze/熄屏下生成不被冻、流式回包不断。
+    -->
+    <receiver
+      android:name=".service.ScheduledTaskAlarmReceiver"
+      android:exported="false" />
+
+    <service
+      android:name=".service.ScheduledTaskRunService"
+      android:exported="false"
+      android:stopWithTask="false"
+      android:foregroundServiceType="dataSync" />
+
+    <!--
+      定时任务 Worker 执行期用 setForeground 挂前台服务（防后台生成被 ColorOS/大厂 ROM 的
+      cached-app freezer 冻结——实测冷启动进程生成到一半被冻，回前台才续上）。
+      API 34+ 要求 FGS 必须声明类型：给 WorkManager 的 FGS 载体合并 dataSync 类型
+      （FOREGROUND_SERVICE_DATA_SYNC 权限本仓已声明）。
+    -->
+    <service
+      android:name="androidx.work.impl.foreground.SystemForegroundService"
+      android:foregroundServiceType="dataSync"
+      tools:node="merge" />
   </application>
 
 </manifest>

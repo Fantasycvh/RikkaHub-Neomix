@@ -71,6 +71,11 @@ object SettingSearchIndex {
             keywords = listOf("知识库", "知识库管理", "rag", "knowledge base", "zhishiku")
         ),
         entry(
+            title = R.string.scheduled_task_page_title,
+            route = Screen.SettingScheduledTasks,
+            keywords = listOf("定时任务", "周期任务", "自动运行", "cron", "scheduled", "dingshi")
+        ),
+        entry(
             title = R.string.setting_mcp_page_title,
             route = Screen.SettingMcp,
             keywords = listOf("mcp", "工具服务器")

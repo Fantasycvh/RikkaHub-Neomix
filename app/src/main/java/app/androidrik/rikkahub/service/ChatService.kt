@@ -12,6 +12,7 @@ import kotlinx.coroutines.completeWith
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonObject
+import kotlin.time.Duration.Companion.seconds
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.provider.BuiltInTools
@@ -98,6 +100,7 @@ import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.datastore.getAssistantById
@@ -735,6 +738,59 @@ class ChatService(
         }
     }
 
+    /**
+     * 后台入口（定时任务）用：**session 尚未存在时**才从 DB 载入会话。
+     *
+     * 为什么不能直接复用 [initializeConversation]：那条路径会无条件用 DB 覆盖内存态，而
+     * 「待审批工具」时 session 的 job 可能为 null（[initializeConversation] 的生成中守卫挡不住），
+     * 覆盖会把内存里的待审批状态抹掉。定时任务是**非用户发起**的入口，没有资格重置用户
+     * 正在看的会话，所以只在 session 缺席时载入——这正是后台冷启动的形状（进程被 WorkManager
+     * 拉起，内存里没有任何会话）。
+     *
+     * 不载入的后果（2026-10-30 真机事故的一半）：`getOrCreateSession` 会给一个磁盘中不存在的
+     * 空 `Conversation.ofId`，注入后的 `saveConversation` 再按这个空内存态整行写回 ⇒ 目标
+     * 会话的历史消息、标题、工作区、注入绑定一起被抹掉。
+     *
+     * @return false 表示会话行已不存在（调用方据此记 TARGET_GONE）
+     */
+    suspend fun ensureConversationLoaded(conversationId: Uuid): Boolean {
+        val stored = conversationRepo.getConversationById(conversationId) ?: return false
+        val session = sessions[conversationId]
+        if (session == null) {
+            updateConversation(conversationId, stored)
+            Log.i(TAG, "ensureConversationLoaded: $conversationId (nodes=${stored.messageNodes.size})")
+            return true
+        }
+        // 已有 session：**只在内存态明显未初始化时**才用 DB 覆盖。判据取最保守的一侧——
+        // 内存里一条消息都没有、DB 有内容、且没有在途生成/排队。这样既兜住「别处用
+        // getConversationFlow 顺手建了个空 session」的漏洞，又不会覆盖用户正在看的会话
+        // （待审批工具时内存有节点、生成中有守卫、队列非空说明有发起方）。
+        val memory = session.state.value
+        val uninitialized = memory.messageNodes.isEmpty() &&
+            stored.messageNodes.isNotEmpty() &&
+            !session.isGenerating &&
+            session.messageQueue.state.value.messages.isEmpty()
+        if (uninitialized) {
+            updateConversation(conversationId, stored)
+            Log.i(TAG, "ensureConversationLoaded: $conversationId (recover empty in-memory, nodes=${stored.messageNodes.size})")
+        }
+        return true
+    }
+
+    /**
+     * 冷启动安全的设置读取（`settingsFlow` 起手是 `Settings.dummy()`）。
+     *
+     * 不加这道等待时，后台入口在进程刚起来的几百毫秒内拿到的是全默认配置：
+     * `providers` 为空 ⇒ 生成侧 `findModelById` 恒 null；`assistants` 是内置默认助手 ⇒
+     * 会话助手指针也跟着错。表现不是「用错模型」，而是**整轮静默不动**（定时任务真机复现）。
+     *
+     * 超时兜底：DataStore 持续读失败时不能把发送/生成协程挂死；超时退回 dummy，让下游
+     * 以**可见错误**收尾（见 [handleMessageComplete] 的模型缺失分支）。
+     */
+    private suspend fun awaitSettings(): Settings =
+        withTimeoutOrNull(SETTINGS_AWAIT_TIMEOUT) { settingsStore.awaitLoaded() }
+            ?: settingsStore.settingsFlow.value
+
     // ---- 发送消息 ----
 
     /**
@@ -931,7 +987,8 @@ class ChatService(
                 finishInterruptedPendingTools(conversationId, InterruptReason.UserCancelled)
 
                 val currentConversation = session.state.value
-                val settings = settingsStore.settingsFlow.first()
+                // 冷启动（尤其后台进程刚被拉起）时 settingsFlow 仍是 dummy：用 awaitSettings 等真实配置
+                val settings = awaitSettings()
                 val assistant = settings.getAssistantById(currentConversation.assistantId)
                     ?: settings.getCurrentAssistant()
                 val processedContent = preprocessUserInputParts(content, assistant)
@@ -1385,6 +1442,12 @@ class ChatService(
     private companion object {
         const val PERF_TAG = "PromptInspectionPerf"
 
+        /**
+         * 冷启动等设置落盘的兜底上限（见 [awaitSettings]）。正常 DataStore 首读是百毫秒级；
+         * 超时说明读链异常，此时退回 dummy 并让下游报「未配置模型」的可见错误，而不是挂死。
+         */
+        val SETTINGS_AWAIT_TIMEOUT = 15.seconds
+
         /** 预热不展示任何文案；空标签可避免 service 层依赖 UI 的本地化构建器。 */
         val PREWARM_LABELS = PromptInspectionLabels(system = "", checkpoint = "", injection = "", history = "")
     }
@@ -1578,12 +1641,26 @@ class ChatService(
     ) {
         val activeSession = getOrCreateSession(conversationId)
         activeSession.replyMessageId.value = null
-        val settings = settingsStore.settingsFlow.first()
+        // 冷启动安全的设置读取：起手值是 Settings.dummy()，直接 first() 会拿到空 providers /
+        // 随机 chatModelId ⇒ 下面的模型解析必然失败（2026-10-30 定时任务真机事故）
+        val settings = awaitSettings()
         val initialConversation = getConversationFlow(conversationId).value
         val baseAssistant = settings.getAssistantById(initialConversation.assistantId)
             ?: settings.getCurrentAssistant()
         val assistant = initialConversation.upstreamConfig?.applyTo(baseAssistant) ?: baseAssistant
-        val baseModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId) ?: return
+        val baseModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+        if (baseModel == null) {
+            // **不能静默 return**：这一轮的 job 会秒结、无错误、队列空，调用方（定时任务执行层）
+            // 会把「什么都没发生」判成 OK，用户看到的就是「后台触发了却没有回复」。
+            // 报成错误卡（并让定时任务据 errors 记 FAILED）才是可诊断的收尾。
+            Log.w(TAG, "handleMessageComplete: no model for conversation=$conversationId (settings.init=${settings.init})")
+            addError(
+                IllegalStateException(context.getString(R.string.agent_run_error_no_model)),
+                conversationId,
+                title = context.getString(R.string.error_title_generation),
+            )
+            return
+        }
         val model = initialConversation.upstreamConfig?.applyToModel(baseModel) ?: baseModel
 
         val senderName = if (assistant.useAssistantAvatar) {
