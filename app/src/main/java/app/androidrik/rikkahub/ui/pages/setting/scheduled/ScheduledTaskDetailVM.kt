@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
 import app.androidrik.rikkahub.data.db.entity.ScheduleType
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.scheduled.SchedulePayload
@@ -22,6 +23,7 @@ class ScheduledTaskDetailVM(
     private val taskRepository: ScheduledTaskRepository,
     conversationRepository: ConversationRepository,
     private val sweeperKeeper: ScheduledTaskSweeperKeeper,
+    settingsStore: SettingsStore,
 ) : ViewModel() {
     private val _task = MutableStateFlow<ScheduledTaskEntity?>(null)
     val task = _task.asStateFlow()
@@ -29,6 +31,11 @@ class ScheduledTaskDetailVM(
     /** 详情页只读展示目标会话标题 */
     val conversationTitles = conversationRepository.searchConversations("")
         .map { list -> list.associate { it.id.toString() to it.title } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** 目标描述里的助手名（NEW_EACH_RUN / DEDICATED） */
+    val assistantNames = settingsStore.settingsFlow
+        .map { settings -> settings.assistants.associate { it.id.toString() to it.name } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     init {

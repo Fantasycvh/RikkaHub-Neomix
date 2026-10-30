@@ -63,6 +63,7 @@ import org.koin.androidx.compose.koinViewModel
 fun ScheduledTasksPage(vm: ScheduledTasksVM = koinViewModel()) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val conversationTitles by vm.conversationTitles.collectAsStateWithLifecycle()
+    val assistantNames by vm.assistantNames.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     // 删除是永久的（任务 + 排程），列表里点一下垃圾桶就删太容易误触，先弹确认
@@ -190,8 +191,7 @@ fun ScheduledTasksPage(vm: ScheduledTasksVM = koinViewModel()) {
                         supportingContent = {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    text = conversationTitles[task.conversationId]
-                                        ?: stringResource(R.string.scheduled_task_conversation_missing),
+                                    text = targetDescription(task, conversationTitles, assistantNames),
                                     style = MaterialTheme.typography.labelSmall,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -295,6 +295,7 @@ private fun statusLabel(status: String): String = when (status) {
     TaskRunStatus.TIMEOUT -> stringResource(R.string.scheduled_task_status_timeout)
     TaskRunStatus.SKIPPED_MISSED -> stringResource(R.string.scheduled_task_status_skipped_missed)
     TaskRunStatus.TARGET_GONE -> stringResource(R.string.scheduled_task_status_target_gone)
+    TaskRunStatus.ASSISTANT_GONE -> stringResource(R.string.scheduled_task_status_assistant_gone)
     else -> status
 }
 

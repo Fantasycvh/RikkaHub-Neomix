@@ -84,7 +84,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         TranslationHistoryEntity::class,
         ScheduledTaskEntity::class,
     ],
-    version = 49,
+    version = 50,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -150,6 +150,11 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 45, to = 46),
         // 48→49：定时任务表（纯新增，无外键无回填，见 docs/design/design-scheduled-ai-tasks.md §四）。
         AutoMigration(from = 48, to = 49),
+        // 49→50：定时任务支持三种执行目标（已有会话 / 专属新会话 / 每轮新建）。
+        // 三个纯新增列：target_mode NOT NULL + DEFAULT 'EXISTING'（老行=老行为），
+        // assistant_id / last_conversation_id 可空 ⇒ 无需 spec、无需回填。
+        // 见 docs/design/design-scheduled-ai-tasks.md §4.1
+        AutoMigration(from = 49, to = 50),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -196,7 +201,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** 必须与上方 `@Database(version = …)` 保持一致（启动期 staged 库校验用）。 */
-        const val SCHEMA_VERSION = 49
+        const val SCHEMA_VERSION = 50
     }
 }
 

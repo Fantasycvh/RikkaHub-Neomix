@@ -12,7 +12,9 @@ import app.androidrik.rikkahub.conversationIntent
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.db.entity.TargetMode
 import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
+import app.androidrik.rikkahub.data.db.entity.targetModeOrDefault
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
 import app.androidrik.rikkahub.utils.sendNotification
@@ -58,17 +60,42 @@ class ScheduledTaskRunner(
      * 生成（消息还在队列里正常走完，只是不再等/不再报状态）。
      */
     suspend fun runClaimed(task: ScheduledTaskEntity): String {
-        val conversationId = runCatching { Uuid.parse(task.conversationId) }.getOrNull()
-        if (conversationId == null || !conversationRepository.existsConversationById(conversationId)) {
-            taskRepository.markTargetGone(task.id)
-            return TaskRunStatus.TARGET_GONE
-        }
-
         // 冷启动前提 1：等真实设置就位（超时兜底——读不出来也不能把 worker 挂死；
         // 此时下游会以「未配置模型」的可见错误收尾，状态记 FAILED）。
+        // 放在目标解析之前：NEW_EACH_RUN 建会话就要用 settings 里的助手（含预设消息）。
         val settingsLoaded = withTimeoutOrNull(SETTINGS_AWAIT_TIMEOUT) {
             settingsStore.awaitLoaded()
         } != null
+
+        val mode = targetModeOrDefault(task.targetMode)
+        val conversationId = when (mode) {
+            // 每轮新建：没有存量锚点，本轮现建一条（按选中助手）
+            TargetMode.NEW_EACH_RUN -> {
+                val assistantId = task.assistantId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+                val created = assistantId?.let {
+                    chatService.createTaskConversation(
+                        assistantId = it,
+                        title = scheduledRunConversationTitle(task.title, System.currentTimeMillis()),
+                    )
+                }
+                if (created == null) {
+                    taskRepository.markAssistantGone(task.id)
+                    return TaskRunStatus.ASSISTANT_GONE
+                }
+                taskRepository.recordLastConversation(task.id, created.toString())
+                created
+            }
+            // 已有会话 / 专属会话：都是存量锚点，会话被删即失效
+            TargetMode.EXISTING, TargetMode.DEDICATED -> {
+                val parsed = runCatching { Uuid.parse(task.conversationId) }.getOrNull()
+                if (parsed == null || !conversationRepository.existsConversationById(parsed)) {
+                    taskRepository.markTargetGone(task.id)
+                    return TaskRunStatus.TARGET_GONE
+                }
+                parsed
+            }
+        }
+
         // 冷启动前提 2：后台没有 session，必须先按 DB 载入会话（历史/助手/工作区），
         // 否则注入建立在一个空 Conversation 上，落库会覆盖整行会话。
         if (!chatService.ensureConversationLoaded(conversationId)) {
@@ -173,6 +200,22 @@ class ScheduledTaskRunner(
         /** 与 ChatNotificationManager 的会话通知 id（+10000）错开 */
         const val NOTIFICATION_ID_OFFSET = 30000
     }
+}
+
+/**
+ * 「每轮新建」产出的会话标题：任务名 + 触发时刻（同一任务多轮产生的会话在列表里可区分）。
+ *
+ * 纯函数，单测覆盖（时区与格式不属于业务判断，所以参数化时区）。
+ */
+internal fun scheduledRunConversationTitle(
+    taskTitle: String,
+    atMillis: Long,
+    zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+): String {
+    val stamp = java.time.Instant.ofEpochMilli(atMillis)
+        .atZone(zone)
+        .format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+    return if (taskTitle.isBlank()) stamp else "$taskTitle · $stamp"
 }
 
 /**

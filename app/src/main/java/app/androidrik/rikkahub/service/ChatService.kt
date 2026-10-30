@@ -739,6 +739,35 @@ class ChatService(
     }
 
     /**
+     * 定时任务「专属新会话 / 每轮新建」用：按**指定助手**新建一条会话，返回它的 id。
+     *
+     * 与 [initializeConversation] 的差别只有一点：助手由调用方给（定时任务选中的那个），
+     * 不读「当前助手」指针——后台执行时那个指针属于用户正在看的会话，任务没有资格改它。
+     *
+     * 三步顺序刻意固定：**先落库、再建内存 session**。只建 session 不落库的话，后续
+     * `ensureConversationLoaded` 会判定会话不存在（TARGET_GONE），而生成结束的
+     * `saveConversation` 也没有行可写，回复会丢。助手预设消息随会话一起落库（与新建对话同款）。
+     *
+     * @return null 表示助手已不存在（调用方记 ASSISTANT_GONE）
+     */
+    suspend fun createTaskConversation(assistantId: Uuid, title: String): Uuid? {
+        val settings = awaitSettings()
+        val assistant = settings.assistants.find { it.id == assistantId } ?: return null
+        val conversationId = Uuid.random()
+        val conversation = Conversation.ofId(
+            id = conversationId,
+            assistantId = assistant.id,
+            newConversation = true,
+        )
+            .updateCurrentMessages(assistant.presetMessages)
+            .copy(title = title)
+        conversationRepo.insertConversation(conversation)
+        updateConversation(conversationId, conversation)
+        Log.i(TAG, "createTaskConversation: $conversationId assistant=${assistant.name} title=$title")
+        return conversationId
+    }
+
+    /**
      * 后台入口（定时任务）用：**session 尚未存在时**才从 DB 载入会话。
      *
      * 为什么不能直接复用 [initializeConversation]：那条路径会无条件用 DB 覆盖内存态，而

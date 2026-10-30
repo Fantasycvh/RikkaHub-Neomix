@@ -14,6 +14,7 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,8 +23,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.data.db.entity.TargetMode
+import app.androidrik.rikkahub.data.db.entity.targetModeOrDefault
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.FormItem
+import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Delete01
@@ -41,6 +46,8 @@ fun ScheduledTaskDetailPage(
 ) {
     val task by vm.task.collectAsStateWithLifecycle()
     val conversationTitles by vm.conversationTitles.collectAsStateWithLifecycle()
+    val assistantNames by vm.assistantNames.collectAsStateWithLifecycle()
+    val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -72,14 +79,20 @@ fun ScheduledTaskDetailPage(
                 .verticalScroll(rememberScrollState()),
         ) {
             FormItem(
-                label = { Text(stringResource(R.string.scheduled_task_field_conversation)) },
+                label = { Text(stringResource(R.string.scheduled_task_field_target)) },
                 content = {
-                    Text(
-                        text = conversationTitles[current.conversationId]
-                            ?: stringResource(R.string.scheduled_task_conversation_missing),
-                    )
+                    Text(targetDescription(current, conversationTitles, assistantNames))
                 },
             )
+            // 「每轮新建」没有固定会话可看，给一个跳到最近一轮结果的入口（没有跑过就不显示）
+            val lastConversationId = current.lastConversationId
+            if (targetModeOrDefault(current.targetMode) == TargetMode.NEW_EACH_RUN &&
+                !lastConversationId.isNullOrBlank()
+            ) {
+                TextButton(onClick = { navController.navigate(Screen.Chat(lastConversationId)) }) {
+                    Text(stringResource(R.string.scheduled_task_view_last_conversation))
+                }
+            }
             ScheduledTaskFormFields(form)
             FormItem(
                 label = { Text(stringResource(R.string.scheduled_task_enabled)) },

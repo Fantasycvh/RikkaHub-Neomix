@@ -2432,4 +2432,16 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="scheduled_task_keepalive_action">去开启</string>
   <string name="scheduled_task_delete_confirm_title">删除定时任务？</string>
   <string name="scheduled_task_delete_confirm_message">任务及其触发时间会被永久删除，无法恢复。</string>
+  <string name="scheduled_task_field_target">执行目标</string>
+  <string name="scheduled_task_target_existing">已有会话</string>
+  <string name="scheduled_task_target_dedicated">专属新会话</string>
+  <string name="scheduled_task_target_new_each_run">每轮新建</string>
+  <string name="scheduled_task_target_hint_existing">每轮把提示词发到这条会话里。</string>
+  <string name="scheduled_task_target_hint_dedicated">现在新建一条会话，之后每轮都在它里面执行。</string>
+  <string name="scheduled_task_target_hint_new_each_run">每轮新建一条会话执行，历史互不影响。</string>
+  <string name="scheduled_task_pick_assistant">选择助手</string>
+  <string name="scheduled_task_view_last_conversation">查看最近一次会话</string>
+  <string name="scheduled_task_assistant_missing">助手已删除</string>
+  <string name="scheduled_task_group_unknown_assistant">未知助手</string>
+  <string name="scheduled_task_status_assistant_gone">助手已删除</string>
 </resources>

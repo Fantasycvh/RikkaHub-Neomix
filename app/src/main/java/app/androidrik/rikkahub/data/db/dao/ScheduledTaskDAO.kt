@@ -44,6 +44,14 @@ interface ScheduledTaskDAO {
     @Query("UPDATE scheduled_tasks SET enabled = 0, last_status = 'TARGET_GONE' WHERE id = :id")
     suspend fun markTargetGone(id: String)
 
+    /** 目标助手已删（NEW_EACH_RUN / DEDICATED）：与「会话没了」分开记，便于排查 */
+    @Query("UPDATE scheduled_tasks SET enabled = 0, last_status = 'ASSISTANT_GONE' WHERE id = :id")
+    suspend fun markAssistantGone(id: String)
+
+    /** NEW_EACH_RUN 每轮新建的会话：记下来供列表/详情跳转看结果 */
+    @Query("UPDATE scheduled_tasks SET last_conversation_id = :conversationId WHERE id = :id")
+    suspend fun recordLastConversation(id: String, conversationId: String)
+
     /**
      * 认领：推进 next_run_at + 记 last_run_at，仅当行仍处于「看到时的状态」。
      * ONCE 任务的推进值传 null → 调用方应改用 [claimOnce]（enabled 直接落 false）。

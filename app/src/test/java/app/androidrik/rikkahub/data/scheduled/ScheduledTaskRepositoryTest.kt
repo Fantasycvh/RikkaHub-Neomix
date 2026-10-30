@@ -68,6 +68,16 @@ class ScheduledTaskRepositoryTest {
             bump()
         }
 
+        override suspend fun markAssistantGone(id: String) {
+            rows[id] = rows[id]!!.copy(enabled = false, lastStatus = "ASSISTANT_GONE")
+            bump()
+        }
+
+        override suspend fun recordLastConversation(id: String, conversationId: String) {
+            rows[id] = rows[id]!!.copy(lastConversationId = conversationId)
+            bump()
+        }
+
         override suspend fun claim(id: String, seen: Long, advanced: Long, claimedAt: Long): Int {
             val current = rows[id] ?: return 0
             if (!current.enabled || current.nextRunAt != seen) return 0

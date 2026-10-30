@@ -4,6 +4,7 @@ import app.androidrik.rikkahub.data.db.dao.ScheduledTaskDAO
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
 import app.androidrik.rikkahub.data.db.entity.ScheduleType
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.db.entity.TargetMode
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.Flow
 
@@ -36,11 +37,16 @@ class ScheduledTaskRepository(
         payload: SchedulePayload,
         missPolicy: MissPolicy = MissPolicy.RUN_LATE,
         idleOnly: Boolean = false,
+        targetMode: TargetMode = TargetMode.EXISTING,
+        assistantId: String? = null,
     ): ScheduledTaskEntity {
         val now = clock()
         val entity = ScheduledTaskEntity(
             id = Uuid.random().toString(),
             conversationId = conversationId,
+            targetMode = targetMode.name,
+            assistantId = assistantId,
+            lastConversationId = null,
             title = title,
             prompt = prompt,
             scheduleType = scheduleType.name,
@@ -98,6 +104,12 @@ class ScheduledTaskRepository(
     }
 
     suspend fun markTargetGone(id: String) = dao.markTargetGone(id)
+
+    suspend fun markAssistantGone(id: String) = dao.markAssistantGone(id)
+
+    /** NEW_EACH_RUN：记录本轮新建出来的会话 id（供列表/详情跳转） */
+    suspend fun recordLastConversation(id: String, conversationId: String) =
+        dao.recordLastConversation(id, conversationId)
 
     suspend fun recordStatus(id: String, status: String) = dao.recordStatus(id, status)
 

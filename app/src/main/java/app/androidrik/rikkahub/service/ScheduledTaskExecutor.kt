@@ -2,7 +2,9 @@ package app.androidrik.rikkahub.service
 
 import android.util.Log
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
+import app.androidrik.rikkahub.data.db.entity.TargetMode
 import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
+import app.androidrik.rikkahub.data.db.entity.targetModeOrDefault
 import app.androidrik.rikkahub.data.scheduled.MissDecision
 import app.androidrik.rikkahub.data.scheduled.ScheduleMath
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
@@ -46,8 +48,14 @@ class ScheduledTaskExecutor(
         for (task in due) {
             if (isStopped()) break
             // idle 门控（purrcat A4.1）：目标会话在生成中就本轮让路——**认领之前**，
-            // 不动任何状态，下个触发点再试；超窗后的回退由 decideMiss 决定（§5.1）
-            if (task.idleOnly && isConversationBusy(task.conversationId)) continue
+            // 不动任何状态，下个触发点再试；超窗后的回退由 decideMiss 决定（§5.1）。
+            // 「每轮新建」没有存量会话可忙（新建的那条是本轮独占的），恒不触发门控。
+            if (task.idleOnly &&
+                targetModeOrDefault(task.targetMode) != TargetMode.NEW_EACH_RUN &&
+                isConversationBusy(task.conversationId)
+            ) {
+                continue
+            }
 
             val claimed = taskRepository.claim(task)
             Log.i(TAG, "$source: claim task=${task.title} -> $claimed")

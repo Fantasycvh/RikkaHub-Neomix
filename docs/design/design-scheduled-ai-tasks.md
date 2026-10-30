@@ -48,6 +48,17 @@
 > 三个入口共用 `ScheduledTaskExecutor`，认领乐观锁保证不重复执行。
 > 真机还暴露了代码之外的边界：OnePlus/ColorOS 的 `OplusAppStartupManager` 会丢弃后台广播
 > （`SKIPPED ... reason: oplus startup`），必须在系统「应用启动管理」里手动放行——见 §6.2.1。
+>
+> **revision 8（2026-10-31，执行目标扩成三种）**：初版只支持「向一条**已有**会话注入」，实际
+> 用起来有两个缺口：① 选会话的列表是全库平铺，几十条会话里按助手找不到；② 「让 AI 每轮独立
+> 干活」的场景（每日简报、独立巡检）根本不想要历史，却被迫挤在同一条会话里，上下文越滚越脏。
+> 因此加 `TargetMode`：**EXISTING**（老行为，注入已有会话）/ **DEDICATED**（创建任务时**新建**
+> 一条专属会话，之后每轮都往里跑）/ **NEW_EACH_RUN**（每轮**新建**一条会话，历史互不影响）。
+> 三条硬约束：① 目标模式是**创建时决定**的（详情页只读，与「执行锚点不可改」一致）；
+> ② 存库仍是**同一张表**（`target_mode` 枚举名 + `conversation_id = ""` 作 NEW_EACH_RUN 哨兵，
+> 避免 `conversation_id` 改可空触发整表重建），49→50 自动迁移给老行默认 `'EXISTING'`；
+> ③ 后台新建会话必须**先插 DB 再 `updateConversation`**（否则 `saveConversation` 整行覆盖、
+> 回复丢失——与 §6.1 同一条命门）。DEMO 见 §4.1。
 
 ## 一、要解决的问题
 
@@ -110,8 +121,16 @@ data class ScheduledTaskEntity(
     val withGoal: Boolean = false,   // 目标语义（purrcat A4.2，P2）：注入「会话目标 + 本次 prompt」
     val enabled: Boolean = true,
     val createdAt: Long,
+    // revision 8（DB v50）：执行目标三态
+    val targetMode: String = "EXISTING",  // EXISTING / DEDICATED / NEW_EACH_RUN（列默认值 'EXISTING'）
+    val assistantId: Uuid? = null,        // DEDICATED / NEW_EACH_RUN 用：新建会话绑哪个助手
+    val lastConversationId: Uuid? = null, // NEW_EACH_RUN 上一轮建出来的会话，详情页「查看最近一次会话」
 )
 ```
+
+> `conversationId` 对 `NEW_EACH_RUN` 存**空串哨兵**（不是 null）：那类任务没有「目标会话」，
+> 但把列改成可空要整表重建，收益不抵风险。空串在读路径一律按「无已有会话」处理，真实历史
+> 落 `lastConversationId`（每轮覆盖）。
 
 **会话目标的存放位置**：`Conversation` 模型加一个可空 `goal: String?`（长期目标，用户在聊天页
 编辑），**不落任务表**——目标是会话的属性，多个任务可以共享同一份。`withGoal = true` 的任务
@@ -126,7 +145,34 @@ data class ScheduledTaskEntity(
 - DAILY/WEEKLY：从 `nextRunAt` 起算**下一个**严格大于 now 的时刻（连续错过多次不会连环补）；
 - INTERVAL：`nextRunAt += interval`，若已落后超过一个周期则对齐到 now（避免追帧式连环触发）。
 
+### 4.1 执行目标三态（revision 8）
+
+| TargetMode | `conversation_id` | 建会话时机 | 适用场景 | 列表中显示 |
+|---|---|---|---|---|
+| `EXISTING` | 选中的会话 id | 不建（老行为） | 每天往同一会话里补一条 | 会话标题 |
+| `DEDICATED` | 保存时**新建**的会话 id | **保存时**（用户在场，失败可当场报错） | 长期主题连成一条线、上下文要累积 | 「标题 · 专属新会话」 |
+| `NEW_EACH_RUN` | `""`（哨兵） | **每轮执行时** | 日报/巡检这类「每轮独立、不要历史」 | 「每轮新建 · 助手名」 |
+
+要点：
+
+- **创建时决定，之后只读**：与「执行锚点不可改」同一条设计线——改目标等于换任务，不如重建。
+  老库行由迁移给默认 `'EXISTING'`，`targetModeOrDefault()` 对未知/空值一律回退 `EXISTING`，
+  保证「宁可按老行为跑，也不因新字段读不出而停摆」。
+- **每轮新建的标题带触发时刻**（`scheduledRunConversationTitle` → `"{任务名} · MM-dd HH:mm"`，
+  任务名为空则只留时刻）：否则会话列表里会出现一串同名行、分不清哪条是哪一轮。
+- **每轮新建的会话内容**：`Conversation.ofId(..., newConversation = true)` +
+  `updateCurrentMessages(assistant.presetMessages)`，与「新建聊天」同款初始状态（预设消息不丢）。
+- **顺序铁律**：先 `insertConversation()` 落库，再 `updateConversation()` 设内存会话状态；
+  反过来会让 `saveConversation` 在生成结束时**整行覆盖**（§6.1 的真机事故同源）。
+- **助手被删**：`DEDICATED` 在保存时报错、不建任务；`NEW_EACH_RUN` 在**执行时**发现助手不在，
+  记 `ASSISTANT_GONE` 并自动 `enabled = 0`（与 `TARGET_GONE` 区分：一个是助手没了、一个是会话没了，
+  用户要修的东西不同）。
+- **idle 门控（§5.1）对 `NEW_EACH_RUN` 不适用**：它没有「目标会话」可忙，若照样套用会让这轮
+  永远被让路。执行器的门控条件因此是 `idleOnly && mode != NEW_EACH_RUN && isConversationBusy(...)`。
+
 ## 五、状态机与认领（幂等核心）
+
+
 
 ```
 (idle) --sweeper 原子认领--> (claimed) --注入生成--> (running) --生成结束--> (idle, lastStatus=OK)
@@ -165,12 +211,19 @@ sweep 周期再试。默认 `false`：走 `sendMessage` 的 FIFO 排队（消息
   「最坏情况下与默认行为一致」，不会因为会话一直忙而无限顺延到永远不跑。
 - **让路不是丢任务**：不认领就没有任何状态变更，幂等性（§五认领）不受影响；ONCE 任务同样
   适用（忙则等下个 sweep，直到超窗按错过策略收口）。
+- **`NEW_EACH_RUN` 不参与门控**（revision 8）：它每轮新建会话，没有「目标会话正忙」这回事；
+  照套门控等于永远让路。执行器条件是 `idleOnly && targetMode != NEW_EACH_RUN && isConversationBusy(cid)`。
 
 ## 六、执行层：只做「注入」，生成走老路
 
 Worker 单飞后对每个认领的任务：
 
-1. 校验：会话仍存在、任务仍 enabled（认领后可能被用户禁用）；
+1. 解析目标（revision 8，`targetModeOrDefault` 未知值回退 EXISTING）：
+   - `EXISTING` / `DEDICATED`：会话仍存在、任务仍 enabled（认领后可能被用户禁用）；
+     会话不在库里 ⇒ `TARGET_GONE` + 自动停用；
+   - `NEW_EACH_RUN`：按 `assistantId` 找助手（`assistantId` 也允许为空，此时用设置里的默认助手），
+     助手不在 ⇒ `ASSISTANT_GONE` + 自动停用；在则 `ChatService.createTaskConversation()` 建会话
+     （标题 `"{任务名} · MM-dd HH:mm"`），建成功立刻 `recordLastConversation()`，再继续注入；
 2. 组装 prompt：`withGoal = true` 且会话 `goal` 非空时，注入形态为
    `## 长期目标\n{goal}\n\n{task.prompt}`——多次自唤醒围绕同一目标（purrcat A4.2：这是
    「主动 agent」与「定时 prompt」的分界）；goal 为空则按普通 prompt 走，不报错；
@@ -317,17 +370,29 @@ assistant 回复**，管理页 `last_status` 却显示 OK。
 
 ## 七、UI（v1 最小面）
 
-- **管理页**：设置里新增「定时任务」页——列表（标题 / 目标会话 / 下次运行 / 上次状态）、
-  开关、删除；新建表单 = 选会话 + 标题 + prompt + 周期（每天 HH:mm / 每周周几 HH:mm / 每 N 小时）
+- **管理页**：设置里新增「定时任务」页——列表（标题 / 目标 / 下次运行 / 上次状态）、
+  开关、删除；新建表单 = 选目标 + 标题 + prompt + 周期（每天 HH:mm / 每周周几 HH:mm / 每 N 小时）
   + 错过策略 + **仅空闲时执行**开关（`idleOnly`，默认关）。
+- **执行目标选择器**（revision 8）：表单首项是 `SegmentedPill`（已有会话 / 专属新会话 / 每轮新建）
+  + 一行随模式变化的说明；下面是**目标拥有者**按钮：`已有会话` 打开会话选择器，
+  另两种打开**助手**选择器。选会话的列表**按助手分组**（`groupConversationsByAssistant`：按
+  助手顺序分节、节头是助手名，助手已删的会话归到末尾「未知助手」组）——原来全库平铺、
+  几十条里根本找不到目标。保存按钮的可用性 = 目标就绪（EXISTING 需选会话，其余需选助手）∧ 表单合法。
+  保存瞬间目标已被删（竞态）不是静默 no-op：`TargetFailure` 回落到目标区下方一行错误
+  （复用「会话不存在 / 助手已删除」文案）——按钮点了必须有反馈。
 - **新建 = 整页**（revision 5 改写，原为 `AlertDialog`）：七组字段 + 键盘在对话框里放不下，
   真机表现为**内容抖动 + 输入失焦**（§7.1）。现改为与详情页同构的整页表单
   （`ScheduledTaskCreatePage`）：`Column(imePadding().verticalScroll())`、顶栏「保存」动作、
-  会话选择器仍是小对话框（内容短，不受影响）。
+  会话/助手选择器仍是小对话框（内容短，不受影响）。
+- **详情页目标只读**（revision 8）：显示 `targetDescription`（会话标题 / 「标题 · 专属新会话」/
+  「每轮新建 · 助手名」，目标缺失时给「会话已删除」「助手已删除」）；
+  `NEW_EACH_RUN` 且有过运行记录时，多一个「查看最近一次会话」按钮直达 `lastConversationId`。
 - **时刻字段**（revision 5）：`时` / `分` / `间隔` 一律 `KeyboardType.Number`；`时` 的
   `ImeAction.Next` 直接落到 `分`，`分` 的 Done 收起键盘。
 - **删除二次确认**（revision 7）：列表里垃圾桶原来一点即删（任务 + 排程不可恢复，误触代价高），
   改为 `AlertDialog`：标题「删除定时任务？」+ 不可恢复说明 + 任务名 + 取消/确认（三语文案）。
+- **状态文案**（revision 8）：`TARGET_GONE`（会话没了）与 `ASSISTANT_GONE`（助手没了）分开显示，
+  两者都会自动停用任务——用户要修的东西不同，不能合并成一个「目标不存在」。
 - **会话内入口（P2）**：会话菜单「为此会话创建定时任务」，prompt 表单预填；
   同页加**会话目标**编辑入口（`Conversation.goal`，长文本），任务表单出现「附带长期目标」开关
   （`withGoal`，仅该会话 goal 非空时可选）。
@@ -372,6 +437,10 @@ assistant 回复**，管理页 `last_status` 却显示 OK。
    oplus startup`，§6.2.1），这一层只能由用户在系统设置里放行；此外用户手动强行停止 App /
    ROM 深度清理仍会掐断当轮（与所有后台任务一致）。设置页给「电池优化白名单」「应用启动管理」
    两条引导，降低被压制的概率。
+7. **每轮新建 = 会话数量线性增长**（revision 8）：`NEW_EACH_RUN` 每跑一轮多一条会话，
+   一天一次的任务一年就是 365 条（`DEDICATED` / `EXISTING` 不会）。这是「历史互不影响」的
+   必然代价，v1 不做自动清理（自动删用户数据风险更大）；标题带时刻至少让它们在列表里可辨、
+   可批量删。若日后要「保留最近 N 条」再单开一轮设计（需要运行账本才能安全删）。
 
 ## 九、测试策略（P1 实际落点）
 
@@ -383,8 +452,11 @@ Room 编译期校验 + 真机验证兜底：
 | `nextRunAt` 推进：DAILY 跨天/跳过错过天、DST 墙钟不漂、WEEKLY、INTERVAL 落后对齐、ONCE | `ScheduleMathTest`（纯函数，含 New York DST 用例） |
 | 错过窗口：≤GRACE 执行 / 超窗 RUN_LATE / SKIP | `ScheduleMathTest` |
 | 认领幂等（二次认领被拒）、ONCE 认领即禁用、disabled 行不认领、due 过滤、create 首槽位 | `ScheduledTaskRepositoryTest`（Fake DAO 复刻 `WHERE next_run_at = :seen` 语义） |
-| 执行只许 `sendMessage` 禁 `sendInterrupting`；idle 门控必须先于认领；worker / 执行服务都必须委托 `ScheduledTaskExecutor` | `ScheduledTaskGuardTest`（源码守卫，仿 `TurnBackgroundTaskCancelGuardTest`） |
+| 执行只许 `sendMessage` 禁 `sendInterrupting`；idle 门控必须先于认领且跳过 `NEW_EACH_RUN`；worker / 执行服务都必须委托 `ScheduledTaskExecutor` | `ScheduledTaskGuardTest`（源码守卫，仿 `TurnBackgroundTaskCancelGuardTest`） |
 | 注入前必须先等设置（`awaitLoaded`）再载入会话（`ensureConversationLoaded`）；静默 no-op 不得记 OK | `ScheduledTaskGuardTest`（源码守卫） |
+| 目标模式解析：空/未知值回退 `EXISTING`（老库行不得因新列读不出而停摆）；枚举**存库名稳定**（改名即破坏 49→50 迁移后的数据） | `ScheduledTaskTargetTest`（纯函数） |
+| 会话按助手分组：按助手顺序分节、助手已删的会话进「未知助手」组且不丢、空输入不产节 | `ScheduledTaskTargetTest`（纯函数） |
+| 每轮新建的标题：任务名 + `MM-dd HH:mm`、空任务名只留时刻、不同轮次不重名 | `ScheduledTaskRunTitleTest`（纯函数） |
 | 触发层接线：主唤醒必须用 `setExactAndAllowWhileIdle` 且有 `setAndAllowWhileIdle` 退化；接收器必须拉起执行服务；manifest 必须有 receiver/dataSync service/`SCHEDULE_EXACT_ALARM`；执行服务必须持 FGS + partial wakelock | `ScheduledTaskGuardTest`（源码守卫） |
 | 闹钟触发时刻：未来任务 = nextRunAt+slop、已过期任务 = now+slop（不得排到过去）；requestCode 稳定且按 taskId 区分 | `ScheduledTaskAlarmTest`（纯函数） |
 | 唤醒作业参数：**expedited ⇒ 延迟必须为 0**（否则 WorkManager 在 `build()` 抛异常把 App 打崩），到期即跑、未来时刻走普通延迟作业 | `ScheduledTaskPromptWorkPlanTest`（纯函数，4 项） |

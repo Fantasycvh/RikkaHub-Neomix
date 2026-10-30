@@ -2428,5 +2428,17 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="scheduled_task_keepalive_action">Turn on</string>
   <string name="scheduled_task_delete_confirm_title">Delete scheduled task?</string>
   <string name="scheduled_task_delete_confirm_message">This scheduled task will be deleted. This cannot be undone.</string>
+  <string name="scheduled_task_field_target">Target</string>
+  <string name="scheduled_task_target_existing">Existing conversation</string>
+  <string name="scheduled_task_target_dedicated">Dedicated new conversation</string>
+  <string name="scheduled_task_target_new_each_run">Fresh conversation each run</string>
+  <string name="scheduled_task_target_hint_existing">Each run sends the prompt into this conversation.</string>
+  <string name="scheduled_task_target_hint_dedicated">A conversation is created now; every run stays inside it.</string>
+  <string name="scheduled_task_target_hint_new_each_run">Each run creates a brand-new conversation, so runs never mix.</string>
+  <string name="scheduled_task_pick_assistant">Pick assistant</string>
+  <string name="scheduled_task_view_last_conversation">Open the latest conversation</string>
+  <string name="scheduled_task_assistant_missing">Assistant deleted</string>
+  <string name="scheduled_task_group_unknown_assistant">Unknown assistant</string>
+  <string name="scheduled_task_status_assistant_gone">Assistant deleted</string>
 </resources>
 

@@ -49,13 +49,17 @@ class ScheduledTaskGuardTest {
     @Test
     fun `idle gate is checked before claiming`() {
         val executor = executor()
-        val gateIndex = executor.indexOf("if (task.idleOnly && isConversationBusy")
+        val gateIndex = executor.indexOf("if (task.idleOnly")
         val claimIndex = executor.indexOf("taskRepository.claim(task)")
         assertTrue("执行器里必须存在 idle 门控预检", gateIndex >= 0)
         assertTrue("执行器里必须存在认领调用", claimIndex >= 0)
         assertTrue(
             "idle 门控必须在认领之前（否则让路变成白吃一轮）",
             gateIndex < claimIndex,
+        )
+        assertTrue(
+            "「每轮新建」没有存量会话可忙，idle 门控必须跳过它（否则这轮永远被让路）",
+            "TargetMode.NEW_EACH_RUN" in executor.substring(gateIndex, claimIndex),
         )
     }
 

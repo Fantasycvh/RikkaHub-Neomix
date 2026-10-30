@@ -2414,4 +2414,16 @@
   <string name="scheduled_task_keepalive_action">去開啟</string>
   <string name="scheduled_task_delete_confirm_title">刪除定時任務？</string>
   <string name="scheduled_task_delete_confirm_message">任務及其觸發時間會被永久刪除，無法復原。</string>
+  <string name="scheduled_task_field_target">執行目標</string>
+  <string name="scheduled_task_target_existing">已有會話</string>
+  <string name="scheduled_task_target_dedicated">專屬新會話</string>
+  <string name="scheduled_task_target_new_each_run">每輪新建</string>
+  <string name="scheduled_task_target_hint_existing">每輪把提示詞發到這條會話裡。</string>
+  <string name="scheduled_task_target_hint_dedicated">現在新建一條會話，之後每輪都在它裡面執行。</string>
+  <string name="scheduled_task_target_hint_new_each_run">每輪新建一條會話執行，歷史互不影響。</string>
+  <string name="scheduled_task_pick_assistant">選擇助手</string>
+  <string name="scheduled_task_view_last_conversation">查看最近一次會話</string>
+  <string name="scheduled_task_assistant_missing">助手已刪除</string>
+  <string name="scheduled_task_group_unknown_assistant">未知助手</string>
+  <string name="scheduled_task_status_assistant_gone">助手已刪除</string>
 </resources>
