@@ -2430,4 +2430,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="scheduled_task_rom_action">去设置</string>
   <string name="scheduled_task_keepalive_hint">后台保活未开启,部分系统会拦截后台启动;开启后熄屏也能准时执行任务</string>
   <string name="scheduled_task_keepalive_action">去开启</string>
+  <string name="scheduled_task_delete_confirm_title">删除定时任务？</string>
+  <string name="scheduled_task_delete_confirm_message">任务及其触发时间会被永久删除，无法恢复。</string>
 </resources>

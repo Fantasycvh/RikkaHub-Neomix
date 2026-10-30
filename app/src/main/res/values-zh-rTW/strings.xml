@@ -2412,4 +2412,6 @@
   <string name="scheduled_task_rom_action">去設定</string>
   <string name="scheduled_task_keepalive_hint">背景保活未開啟,部分系統會攔截背景啟動;開啟後熄屏也能準時執行任務</string>
   <string name="scheduled_task_keepalive_action">去開啟</string>
+  <string name="scheduled_task_delete_confirm_title">刪除定時任務？</string>
+  <string name="scheduled_task_delete_confirm_message">任務及其觸發時間會被永久刪除，無法復原。</string>
 </resources>

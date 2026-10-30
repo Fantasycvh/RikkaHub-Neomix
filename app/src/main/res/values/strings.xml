@@ -2426,5 +2426,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="scheduled_task_rom_action">Settings</string>
   <string name="scheduled_task_keepalive_hint">Background keep-alive is off - some ROMs drop background starts; turn it on so tasks run while the screen is off</string>
   <string name="scheduled_task_keepalive_action">Turn on</string>
+  <string name="scheduled_task_delete_confirm_title">Delete scheduled task?</string>
+  <string name="scheduled_task_delete_confirm_message">This scheduled task will be deleted. This cannot be undone.</string>
 </resources>
 
