@@ -732,8 +732,8 @@ open class RouteActivity : ComponentActivity() {
                             entry<Screen.SettingScheduledTaskDetail> { key ->
                                 ScheduledTaskDetailPage(taskId = key.taskId)
                             }
-                            entry<Screen.SettingScheduledTaskCreate> {
-                                ScheduledTaskCreatePage()
+                            entry<Screen.SettingScheduledTaskCreate> { key ->
+                                ScheduledTaskCreatePage(prefillConversationId = key.conversationId)
                             }
 
                             entry<Screen.SettingMedia> {
@@ -1084,7 +1084,7 @@ sealed interface Screen : NavKey {
     data class SettingScheduledTaskDetail(val taskId: String) : Screen
 
     @Serializable
-    data object SettingScheduledTaskCreate : Screen
+    data class SettingScheduledTaskCreate(val conversationId: String? = null) : Screen
 
     @Serializable
     data object SettingMedia : Screen

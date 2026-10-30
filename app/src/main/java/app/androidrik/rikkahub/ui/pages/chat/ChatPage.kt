@@ -125,6 +125,7 @@ import app.androidrik.rikkahub.ui.hooks.EditStateContent
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.utils.base64Decode
 import app.androidrik.rikkahub.utils.isAllowedFileType
+import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.utils.navigateToChatPage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -733,6 +734,15 @@ private fun ChatPageContent(
                 onConversationSystemPromptChange = { newPrompt ->
                     vm.updateConversation(conversation.copy(customSystemPrompt = newPrompt))
                     vm.saveConversationAsync()
+                },
+                onConversationGoalChange = { newGoal ->
+                    vm.updateConversation(conversation.copy(goal = newGoal))
+                    vm.saveConversationAsync()
+                },
+                onCreateScheduledTask = {
+                    navController.navigate(
+                        Screen.SettingScheduledTaskCreate(conversationId = conversation.id.toString())
+                    )
                 },
             )
         }

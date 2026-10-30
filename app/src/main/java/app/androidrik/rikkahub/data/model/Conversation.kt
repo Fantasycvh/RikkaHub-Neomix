@@ -51,6 +51,15 @@ data class Conversation(
     @Serializable(with = InstantSerializer::class)
     val lastMessageAt: Instant? = null,
     val customSystemPrompt: String? = null,
+    /**
+     * **会话长期目标**（定时任务 P2，purrcat A4.2；见 `docs/design/design-scheduled-ai-tasks.md` §四）。
+     *
+     * 目标是**会话的属性**而非任务表字段——多个任务可以共享同一份；`withGoal = true` 的定时任务
+     * 注入时把它拼在 prompt 头部，使多次自唤醒围绕同一目标而非孤立 prompt
+     * （这是「主动 agent」与「定时 prompt」的分界）。用户在聊天页编辑；缺字段反序列化即 null
+     * （Conversation 整体 JSON 落库，无迁移）。
+     */
+    val goal: String? = null,
     val modeInjectionIds: Set<Uuid> = emptySet(),
     val lorebookIds: Set<Uuid> = emptySet(),
     // Absolute path inside the workspace rootfs

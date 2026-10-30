@@ -46,6 +46,7 @@ fun ScheduledTaskDetailPage(
 ) {
     val task by vm.task.collectAsStateWithLifecycle()
     val conversationTitles by vm.conversationTitles.collectAsStateWithLifecycle()
+    val conversationGoals by vm.conversationGoals.collectAsStateWithLifecycle()
     val assistantNames by vm.assistantNames.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -68,6 +69,9 @@ fun ScheduledTaskDetailPage(
     ) { innerPadding ->
         val current = task ?: return@Scaffold
         val form = rememberScheduledTaskFormState(current)
+        // 「附带长期目标」仅当目标会话写了 goal 才可选；每轮新建没有固定会话，恒不可选
+        val withGoalAvailable = targetModeOrDefault(current.targetMode) != TargetMode.NEW_EACH_RUN &&
+            !conversationGoals[current.conversationId].isNullOrBlank()
         Column(
             modifier = Modifier
                 .padding(innerPadding)
@@ -93,7 +97,7 @@ fun ScheduledTaskDetailPage(
                     Text(stringResource(R.string.scheduled_task_view_last_conversation))
                 }
             }
-            ScheduledTaskFormFields(form)
+            ScheduledTaskFormFields(form, withGoalAvailable = withGoalAvailable)
             FormItem(
                 label = { Text(stringResource(R.string.scheduled_task_enabled)) },
                 tail = {

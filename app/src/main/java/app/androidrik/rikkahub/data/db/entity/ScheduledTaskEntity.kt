@@ -47,7 +47,7 @@ import androidx.room.PrimaryKey
     /** 用户起的名字（通知/列表里显示） */
     @ColumnInfo("title")
     val title: String,
-    /** 到点注入的 prompt（withGoal 语义在 P2 才有，当前就是全文） */
+    /** 到点注入的 prompt（[withGoal] 为 true 且会话 goal 非空时，头部拼「长期目标」） */
     @ColumnInfo("prompt")
     val prompt: String,
     /** [ScheduleType] 名称：ONCE / DAILY / WEEKLY / INTERVAL */
@@ -70,6 +70,13 @@ import androidx.room.PrimaryKey
     /** idle 门控（purrcat A4.1）：目标会话有进行中生成则本轮让路（不认领） */
     @ColumnInfo("idle_only")
     val idleOnly: Boolean,
+    /**
+     * 目标语义（purrcat A4.2，P2）：注入时把目标会话的 `goal`（长期目标）拼在 prompt 头部。
+     * 只对有会话目标的目标有意义——goal 为空时执行层按普通 prompt 走，不报错。
+     * NOT NULL + DEFAULT 0 ⇒ AutoMigration 无需 spec（50→51）。
+     */
+    @ColumnInfo("with_goal", defaultValue = "0")
+    val withGoal: Boolean = false,
     @ColumnInfo("enabled")
     val enabled: Boolean,
     @ColumnInfo("created_at")

@@ -49,6 +49,20 @@
 > 真机还暴露了代码之外的边界：OnePlus/ColorOS 的 `OplusAppStartupManager` 会丢弃后台广播
 > （`SKIPPED ... reason: oplus startup`），必须在系统「应用启动管理」里手动放行——见 §6.2.1。
 >
+> **revision 9（2026-10-31，P2 第一块落地：会话目标 + 会话内入口）**：`Conversation` 加
+> 可空 `goal`（会话 JSON 整体落库，缺字段即 null，无迁移）；任务表加 `with_goal`（NOT NULL +
+> DEFAULT 0，AutoMigration 50→51）。注入形态 `## 长期目标
+{goal}
+
+{prompt}`（`buildTaskPrompt`
+> 纯函数 + 三用例）：开关没开、goal 为 null/空白一律原样注入。表单开关**仅目标会话 goal 非空时
+> 显示**（隐藏时不动 state——详情页里用户开过开关、后来清了目标，保存保留原值而非静默改写；
+> 执行层对 goal 为空本就按普通 prompt 走，挂着无害）。会话内两个入口挂在消息列表尾部
+> 会话级卡片区（与系统提示按钮同形态）：`ConversationGoalButton`（就地展开长文本编辑）+
+> 「为此会话创建定时任务」（`Screen.SettingScheduledTaskCreate(conversationId)` 带参预选目标；
+> prompt 刻意**不**预填模板文本——替用户写一句模板反而要再删，预选目标 + goal 开关自动出现
+> 就是入口的全部便利）。
+>
 > **revision 8（2026-10-31，执行目标扩成三种）**：初版只支持「向一条**已有**会话注入」，实际
 > 用起来有两个缺口：① 选会话的列表是全库平铺，几十条会话里按助手找不到；② 「让 AI 每轮独立
 > 干活」的场景（每日简报、独立巡检）根本不想要历史，却被迫挤在同一条会话里，上下文越滚越脏。
@@ -467,7 +481,7 @@ Room 编译期校验 + 真机验证兜底：
 
 - **P1（本设计范围）**：Room 表 + sweeper + 认领/错过语义 + idle 门控 + 执行注入 + 完成通知 +
   设置页最小管理面。
-- **P2**：会话内创建入口 + **会话目标**（`Conversation.goal` 字段、编辑入口、`withGoal` 注入）；
+- **P2**：~~会话内创建入口 + 会话目标~~（**已实现** revision 9，2026-10-31）；
   **运行账本**（`scheduled_task_runs` 表：每次执行的 started/finished/status——对应
   `peer-apps-benchmark.md` §5「后台/无头运行显式状态机 + 终态」，管理页运行历史卡片吃这张表）；
   DAILY 多时段。

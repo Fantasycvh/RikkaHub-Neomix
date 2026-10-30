@@ -2387,6 +2387,11 @@
   <string name="scheduled_task_miss_run_late">補跑一次</string>
   <string name="scheduled_task_miss_skip">跳過</string>
   <string name="scheduled_task_idle_only">僅閒置時執行</string>
+  <string name="scheduled_task_with_goal">附帶長期目標</string>
+  <string name="scheduled_task_with_goal_desc">注入時在 prompt 頭部附上該會話的長期目標</string>
+  <string name="chat_page_conversation_goal">會話目標</string>
+  <string name="chat_page_conversation_goal_hint">本會話的長期目標（定時任務可附帶）</string>
+  <string name="scheduled_task_create_for_conversation">為此會話建立定時任務</string>
   <string name="scheduled_task_idle_only_desc">目標會話正在生成時讓路,等下個週期再試</string>
   <string name="scheduled_task_status_ok">上次執行:成功</string>
   <string name="scheduled_task_status_failed">上次執行:失敗</string>

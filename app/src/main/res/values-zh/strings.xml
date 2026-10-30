@@ -2405,6 +2405,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="scheduled_task_miss_run_late">补跑一次</string>
   <string name="scheduled_task_miss_skip">跳过</string>
   <string name="scheduled_task_idle_only">仅空闲时执行</string>
+  <string name="scheduled_task_with_goal">附带长期目标</string>
+  <string name="scheduled_task_with_goal_desc">注入时在 prompt 头部附上该会话的长期目标</string>
+  <string name="chat_page_conversation_goal">会话目标</string>
+  <string name="chat_page_conversation_goal_hint">本会话的长期目标（定时任务可附带）</string>
+  <string name="scheduled_task_create_for_conversation">为此会话创建定时任务</string>
   <string name="scheduled_task_idle_only_desc">目标会话正在生成时让路,等下个周期再试</string>
   <string name="scheduled_task_status_ok">上次运行:成功</string>
   <string name="scheduled_task_status_failed">上次运行:失败</string>

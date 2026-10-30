@@ -75,7 +75,7 @@ fun ScheduledTasksPage(vm: ScheduledTasksVM = koinViewModel()) {
                 title = { Text(stringResource(R.string.scheduled_task_page_title)) },
                 navigationIcon = { BackButton() },
                 actions = {
-                    IconButton(onClick = { navController.navigate(Screen.SettingScheduledTaskCreate) }) {
+                    IconButton(onClick = { navController.navigate(Screen.SettingScheduledTaskCreate()) }) {
                         Icon(HugeIcons.Add01, contentDescription = stringResource(R.string.scheduled_task_create))
                     }
                 },

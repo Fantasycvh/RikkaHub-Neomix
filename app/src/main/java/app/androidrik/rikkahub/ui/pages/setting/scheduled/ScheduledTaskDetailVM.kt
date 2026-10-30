@@ -33,6 +33,11 @@ class ScheduledTaskDetailVM(
         .map { list -> list.associate { it.id.toString() to it.title } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    /** 目标会话是否写了长期目标（Conversation.goal）——「附带长期目标」开关的可用条件 */
+    val conversationGoals = conversationRepository.searchConversations("")
+        .map { list -> list.associate { it.id.toString() to it.goal } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     /** 目标描述里的助手名（NEW_EACH_RUN / DEDICATED） */
     val assistantNames = settingsStore.settingsFlow
         .map { settings -> settings.assistants.associate { it.id.toString() to it.name } }
@@ -73,6 +78,7 @@ class ScheduledTaskDetailVM(
                 payload = form.payload(),
                 missPolicy = form.missPolicy,
                 idleOnly = form.idleOnly,
+                withGoal = form.withGoal,
             )
             sweeperKeeper.rearm(taskRepository)
             refresh()

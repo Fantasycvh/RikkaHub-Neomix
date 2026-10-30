@@ -37,6 +37,7 @@ class ScheduledTaskRepository(
         payload: SchedulePayload,
         missPolicy: MissPolicy = MissPolicy.RUN_LATE,
         idleOnly: Boolean = false,
+        withGoal: Boolean = false,
         targetMode: TargetMode = TargetMode.EXISTING,
         assistantId: String? = null,
     ): ScheduledTaskEntity {
@@ -56,6 +57,7 @@ class ScheduledTaskRepository(
             lastStatus = null,
             missPolicy = missPolicy.name,
             idleOnly = idleOnly,
+            withGoal = withGoal,
             enabled = true,
             createdAt = now,
         )
@@ -68,7 +70,7 @@ class ScheduledTaskRepository(
     suspend fun delete(id: String) = dao.deleteById(id)
 
     /**
-     * 编辑任务（详情页保存）。目标会话不可改（执行锚点）；标题/提示词/周期/策略/idleOnly 可改。
+     * 编辑任务（详情页保存）。目标会话不可改（执行锚点）；标题/提示词/周期/策略/idleOnly/withGoal 可改。
      *
      * 周期字段（type/payload）变了才重算 `nextRunAt`——只改标题或提示词不该把用户的既定
      * 槽位推走；周期变了从「现在」取第一个未来槽位（旧槽位对应的是旧周期，无意义）。
@@ -81,6 +83,7 @@ class ScheduledTaskRepository(
         payload: SchedulePayload,
         missPolicy: MissPolicy,
         idleOnly: Boolean,
+        withGoal: Boolean = false,
     ): Boolean {
         val existing = dao.byId(id) ?: return false
         val newPayload = payload.encode()
@@ -98,6 +101,7 @@ class ScheduledTaskRepository(
                 },
                 missPolicy = missPolicy.name,
                 idleOnly = idleOnly,
+                withGoal = withGoal,
             )
         )
         return true

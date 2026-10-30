@@ -2440,5 +2440,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="scheduled_task_assistant_missing">Assistant deleted</string>
   <string name="scheduled_task_group_unknown_assistant">Unknown assistant</string>
   <string name="scheduled_task_status_assistant_gone">Assistant deleted</string>
+  <string name="scheduled_task_with_goal">Attach conversation goal</string>
+  <string name="scheduled_task_with_goal_desc">Prepend the conversation\'s long-term goal to the injected prompt</string>
+  <string name="chat_page_conversation_goal">Conversation goal</string>
+  <string name="chat_page_conversation_goal_hint">Long-term goal for this conversation (used by scheduled tasks)</string>
+  <string name="scheduled_task_create_for_conversation">Scheduled task for this conversation</string>
 </resources>
 

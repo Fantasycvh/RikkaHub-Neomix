@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,7 +60,11 @@ import org.koin.androidx.compose.koinViewModel
  * 后两者选助手即可，不必先手动建好会话。
  */
 @Composable
-fun ScheduledTaskCreatePage(vm: ScheduledTasksVM = koinViewModel()) {
+fun ScheduledTaskCreatePage(
+    /** 会话内入口预填：进来时目标已定（EXISTING + 该会话），prompt 给一个默认模板 */
+    prefillConversationId: String? = null,
+    vm: ScheduledTasksVM = koinViewModel(),
+) {
     val navController = LocalNavController.current
     val form = rememberScheduledTaskFormState(null)
     val assistants by vm.assistants.collectAsStateWithLifecycle()
@@ -69,6 +74,15 @@ fun ScheduledTaskCreatePage(vm: ScheduledTasksVM = koinViewModel()) {
     var selectedAssistant by remember { mutableStateOf<Assistant?>(null) }
     var showConversationPicker by remember { mutableStateOf(false) }
     var showAssistantPicker by remember { mutableStateOf(false) }
+
+    // 会话内入口：目标预选（设计稿 §七「会话内创建入口」）。prompt 不预填模板文本——
+    // 任务内容是用户的意图，替用户写一句模板反而要再删；预选目标 + 若会话有 goal
+    // 自动出现「附带长期目标」开关，就是入口的全部便利。
+    LaunchedEffect(prefillConversationId) {
+        prefillConversationId?.let { id ->
+            vm.conversationById(id)?.let { selectedConversation = it }
+        }
+    }
     // 保存时目标已被删掉的竞态：不静默吞掉，显示一行错误（见 TargetFailure）
     var targetFailure by remember { mutableStateOf<TargetFailure?>(null) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -78,6 +92,8 @@ fun ScheduledTaskCreatePage(vm: ScheduledTasksVM = koinViewModel()) {
         TargetMode.EXISTING -> selectedConversation != null
         TargetMode.DEDICATED, TargetMode.NEW_EACH_RUN -> selectedAssistant != null
     }
+    // 「附带长期目标」只有目标会话写了 goal 才有意义（§四：目标是会话的属性）
+    val withGoalAvailable = targetMode == TargetMode.EXISTING && !selectedConversation?.goal.isNullOrBlank()
 
     Scaffold(
         topBar = {
@@ -98,6 +114,7 @@ fun ScheduledTaskCreatePage(vm: ScheduledTasksVM = koinViewModel()) {
                                 payload = form.payload(),
                                 missPolicy = form.missPolicy,
                                 idleOnly = form.idleOnly,
+                                withGoal = form.withGoal && withGoalAvailable,
                                 onCreated = { navController.popBackStack() },
                                 onFailed = { targetFailure = it },
                             )
@@ -188,7 +205,7 @@ fun ScheduledTaskCreatePage(vm: ScheduledTasksVM = koinViewModel()) {
                 )
             }
             Spacer(Modifier.height(8.dp))
-            ScheduledTaskFormFields(form)
+            ScheduledTaskFormFields(form, withGoalAvailable = withGoalAvailable)
             Spacer(Modifier.height(24.dp))
         }
     }

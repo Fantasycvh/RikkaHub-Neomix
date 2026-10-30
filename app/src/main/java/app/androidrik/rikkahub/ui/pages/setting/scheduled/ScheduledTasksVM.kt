@@ -14,6 +14,7 @@ import app.androidrik.rikkahub.data.scheduled.SchedulePayload
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -64,6 +65,10 @@ class ScheduledTasksVM(
         _conversationQuery.value = query
     }
 
+    /** 会话内「为此会话创建定时任务」入口：按 id 取会话做目标预填（不在列表里也允许） */
+    suspend fun conversationById(id: String): Conversation? =
+        runCatching { conversationRepository.getConversationById(Uuid.parse(id)) }.getOrNull()
+
     /**
      * 新建任务。目标形态三选一（见 [TargetMode]）：
      * - [TargetMode.EXISTING]：用选中的已有会话；
@@ -86,6 +91,7 @@ class ScheduledTasksVM(
         payload: SchedulePayload,
         missPolicy: MissPolicy,
         idleOnly: Boolean,
+        withGoal: Boolean = false,
         onCreated: () -> Unit = {},
         onFailed: (TargetFailure) -> Unit = {},
     ) {
@@ -113,6 +119,7 @@ class ScheduledTasksVM(
                 payload = payload,
                 missPolicy = missPolicy,
                 idleOnly = idleOnly,
+                withGoal = withGoal,
             )
             sweeperKeeper.rearm(taskRepository)
             onCreated()

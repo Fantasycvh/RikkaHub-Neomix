@@ -110,7 +110,14 @@ class ScheduledTaskRunner(
             "runClaimed: inject task=${task.title} conversation=$conversationId " +
                 "(settingsLoaded=$settingsLoaded, assistantsSeen=$assistantCountBefore)",
         )
-        chatService.sendMessage(conversationId, listOf(UIMessagePart.Text(task.prompt)))
+        // 目标语义（purrcat A4.2）：withGoal 且会话 goal 非空 → 头部拼「长期目标」，
+        // 多次自唤醒围绕同一目标；goal 为空按普通 prompt 走，不报错（§六.2）。
+        // 会话已由 ensureConversationLoaded 载入，直接读内存态的 goal。
+        val conversationGoal = chatService.getConversationFlow(conversationId).value.goal
+        chatService.sendMessage(
+            conversationId,
+            listOf(UIMessagePart.Text(buildTaskPrompt(task.prompt, task.withGoal, conversationGoal))),
+        )
 
         // 等待结束期间打心跳：若进程被 ROM 的 cached-app freezer 冻住，日志会断一条明显的
         // 空档、回前台后继续——这是「后台不回复、切前台才续上」的判据（2026-10-30 真机）。
@@ -236,4 +243,14 @@ internal fun evaluateRunStatus(
     hasNewError -> TaskRunStatus.FAILED
     !producedReply -> TaskRunStatus.FAILED
     else -> TaskRunStatus.OK
+}
+
+/**
+ * 注入 prompt 的组装（纯函数，单测覆盖）：
+ * `withGoal = true` 且会话目标非空 → `## 长期目标\n{goal}\n\n{prompt}`；
+ * 开关没开、或会话没写目标（含 NEW_EACH_RUN 每轮新建的空会话）→ 原样返回，不报错。
+ */
+internal fun buildTaskPrompt(prompt: String, withGoal: Boolean, goal: String?): String {
+    if (!withGoal || goal.isNullOrBlank()) return prompt
+    return "## 长期目标\n$goal\n\n$prompt"
 }

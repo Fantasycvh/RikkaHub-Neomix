@@ -58,6 +58,7 @@ class ScheduledTaskFormState {
     var runAtDate by mutableStateOf<LocalDate?>(null)
     var missPolicy by mutableStateOf(MissPolicy.RUN_LATE)
     var idleOnly by mutableStateOf(false)
+    var withGoal by mutableStateOf(false)
 
     val hour: Int? get() = hourText.toIntOrNull()?.coerceIn(0, 23)
     val minute: Int? get() = minuteText.toIntOrNull()?.coerceIn(0, 59)
@@ -98,6 +99,7 @@ class ScheduledTaskFormState {
         }
         missPolicy = runCatching { MissPolicy.valueOf(entity.missPolicy) }.getOrDefault(MissPolicy.RUN_LATE)
         idleOnly = entity.idleOnly
+        withGoal = entity.withGoal
     }
 }
 
@@ -106,11 +108,20 @@ fun rememberScheduledTaskFormState(entity: ScheduledTaskEntity?): ScheduledTaskF
     remember(entity?.id) { ScheduledTaskFormState().apply { entity?.let(::loadFrom) } }
 
 /**
- * 表单字段主体（名称/提示词/周期/时刻/错过策略/idleOnly）。
+ * 表单字段主体（名称/提示词/周期/时刻/错过策略/idleOnly/附带长期目标）。
  * ONCE 的日期选择对话框内置；会话选择由外层负责（两处形态不同）。
+ *
+ * [withGoalAvailable]：目标会话写了长期目标（`Conversation.goal`）才显示「附带长期目标」开关
+ * （目标语义 purrcat A4.2，§四/§六.2）——没写目标的会话开了开关也注入不了东西，索性不给开。
+ * 开关隐藏时不动 state.withGoal：详情页里用户此前开过、后来清了目标，保存应保留原值而不是
+ * 静默改写（执行层对 goal 为空本来就按普通 prompt 走，开关挂着无害）。
  */
 @Composable
-fun ScheduledTaskFormFields(state: ScheduledTaskFormState, modifier: Modifier = Modifier) {
+fun ScheduledTaskFormFields(
+    state: ScheduledTaskFormState,
+    withGoalAvailable: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
     var showDatePicker by remember { mutableStateOf(false) }
     // 「时」按键盘的下一步直接落到「分」，省掉一次点按（此前是行内两个独立输入框，
     // 键盘不切数字、也不串焦点，见 docs/design/design-scheduled-ai-tasks.md §七）
@@ -244,6 +255,18 @@ fun ScheduledTaskFormFields(state: ScheduledTaskFormState, modifier: Modifier = 
                 )
             },
         )
+        if (withGoalAvailable) {
+            FormItem(
+                label = { Text(stringResource(R.string.scheduled_task_with_goal)) },
+                description = { Text(stringResource(R.string.scheduled_task_with_goal_desc)) },
+                tail = {
+                    Switch(
+                        checked = state.withGoal,
+                        onCheckedChange = { state.withGoal = it },
+                    )
+                },
+            )
+        }
     }
 
     if (showDatePicker) {
