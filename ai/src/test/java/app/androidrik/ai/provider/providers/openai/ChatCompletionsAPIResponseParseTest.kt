@@ -1,5 +1,6 @@
 package app.androidrik.ai.provider.providers.openai
 
+import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.KeyRoulette
@@ -136,5 +137,24 @@ class ChatCompletionsAPIResponseParseTest {
                 """{"role":"assistant","images":[null,{"type":"input_text","text":"x"},{"type":"image_url","image_url":null},{"type":"image_url"}]}"""
             ),
         )
+    }
+
+    // ---- role：上游 #2266（部分中转返回空/非标准 role，valueOf 直接抛异常）----
+
+    @Test
+    fun `empty role falls back to assistant`() {
+        // valueOf("") 抛异常 ⇒ 流式 delta 解析中断，整轮生成失败
+        assertEquals(MessageRole.ASSISTANT, parse("""{"role":"","content":"Hi"}""").role)
+    }
+
+    @Test
+    fun `unknown role falls back to assistant and case is ignored`() {
+        assertEquals(MessageRole.ASSISTANT, parse("""{"role":"weird","content":"Hi"}""").role)
+        assertEquals(MessageRole.USER, parse("""{"role":"USER","content":"Hi"}""").role)
+    }
+
+    @Test
+    fun `missing role falls back to assistant`() {
+        assertEquals(MessageRole.ASSISTANT, parse("""{"content":"Hi"}""").role)
     }
 }

@@ -905,9 +905,8 @@ class ChatCompletionsAPI(
     // internal 而非 private：本仓需要能对"响应解析"写端到端测试（上游 #2137 的三条输入就是现成用例）。
     // 同模块的 test 源集可见 internal。
     internal fun parseMessage(jsonObject: JsonObject): UIMessage {
-        val role = MessageRole.valueOf(
-            jsonObject["role"]?.jsonPrimitive?.contentOrNull?.uppercase() ?: "ASSISTANT"
-        )
+        val role = MessageRole.fromValueOrNull(jsonObject["role"]?.jsonPrimitiveOrNull?.contentOrNull)
+            ?: MessageRole.ASSISTANT
 
         // 也许支持其他模态的输出content?
         val content = jsonObject["content"]?.jsonPrimitiveOrNull?.contentOrNull ?: ""

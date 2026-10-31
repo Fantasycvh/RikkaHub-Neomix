@@ -65,9 +65,12 @@ class ExporterState<T>(
 
     internal fun writeToUri(uri: Uri) {
         scope.launch(Dispatchers.IO) {
-            context.contentResolver.openOutputStream(uri)?.use { output ->
-                output.write(value.toByteArray())
-            }
+            // 部分 ROM 的 SAF Uri 并未真正创建文件，openOutputStream 抛 FileNotFoundException（上游 #2263/#2264）
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(value.toByteArray())
+                }
+            }.onFailure { it.printStackTrace() }
         }
     }
 }

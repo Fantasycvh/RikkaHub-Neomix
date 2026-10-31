@@ -16,4 +16,12 @@ enum class MessageRole {
 
     @SerialName("tool")
     TOOL,
+    ;
+
+    companion object {
+        // 宽松匹配 role 字符串：部分中转会返回空字符串或非标准值，valueOf 直接抛异常（上游 #2266），
+        // 匹配不到时返回 null 由调用方回退
+        fun fromValueOrNull(value: String?): MessageRole? =
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+    }
 }
