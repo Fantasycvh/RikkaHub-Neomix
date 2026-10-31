@@ -46,7 +46,8 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          # AGP 9.x 的配置期在 JDK 17 上有失败案例（nmoi D189）；与本机开发环境（21）一致化
+          java-version: '21'
 
       # web 模块的 preBuild 会执行 `pnpm run build` 构建前端，必须准备好 Node + pnpm
       - name: Set up pnpm
@@ -100,16 +101,45 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease
 
-      # 把 APK 直接发布为 Prerelease，用户点链接即可下载单个 apk，无需登录、无需解压
-      - name: Publish nightly prerelease
-        uses: softprops/action-gh-release@v2
-        if: success()
-        with:
-          tag_name: nightly            # 固定 tag，每晚覆盖同一个「最新每日构建」
-          name: Nightly Build
-          prerelease: true
-          body: |
-            自动每日构建（commit `${{ github.sha }}`）
+      # 验签闸：有签名材料时产物必须出自钉死的 release 密钥（CN=neomix）；
+      # 没有时是 debug 签名（预期内），只打印证书信息不拦。
+      - name: 验签（固定指纹闸）
+        run: |
+          set -euo pipefail
+          apk=$(find app/build/outputs/apk/release -name '*arm64-v8a-release.apk' | head -1)
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          want="d15b693a2010b2ee5f78f3a6eed0a157e074b4b20f476ec31f5c9174d94eec78"
+          got=$("$APKSIGNER" verify --print-certs "$apk" \
+                | grep -i "certificate SHA-256 digest" | head -1 \
+                | sed 's/.*digest: *//' | tr -d ':' | tr 'A-Z' 'a-z')
+          echo "签名指纹：$got"
+          if grep -q '^storeFile=' local.properties; then
+            [ "$got" = "$want" ] \
+              || { echo "签名指纹不对：期望 $want。要么 secret 不是那把钥匙，要么它没被用上" >&2; exit 1; }
+            echo "固定签名 ✓"
+          else
+            echo "无签名材料：debug 签名包，仅能本机随手试（预期内）"
+          fi
 
-            > ⚠️ 开发版本，可能不稳定，仅供测试。
-          files: app/build/outputs/apk/release/*.apk
+      # 发布 nightly：删旧 Release + tag 后在**当前 commit** 重建（--target HEAD），
+      # 让 nightly tag 永远指向最新提交、排在 tag 列表最前面，而不是停在首建那天
+      - name: Publish nightly prerelease（tag 定位到最新）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          apk=$(find app/build/outputs/apk/release -name '*arm64-v8a-release.apk' | head -1)
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+          git push origin ":refs/tags/nightly" 2>/dev/null || true
+          {
+            echo "自动每日构建（commit \`${GITHUB_SHA}\`）"
+            echo ""
+            echo "> ⚠️ 开发版本，可能不稳定，仅供测试。"
+          } > /tmp/nightly-notes.md
+          gh release create nightly \
+            --prerelease \
+            --title "Nightly Build" \
+            --notes-file /tmp/nightly-notes.md \
+            --target "$GITHUB_SHA" \
+            "$apk"
+          echo "nightly 已重建于 $(git rev-parse --short HEAD)"

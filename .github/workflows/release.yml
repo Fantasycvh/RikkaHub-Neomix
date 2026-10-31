@@ -34,7 +34,9 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          # AGP 9.x 的配置期在 JDK 17 上有失败案例（nmoi D189 的教训）；本机开发环境是 21，
+          # CI 与其一致化，消除"本地过、CI 挂"的环境差
+          java-version: '21'
 
       # web 模块的 preBuild 会执行 `pnpm run build` 构建前端，必须准备好 Node + pnpm
       - name: Set up pnpm
@@ -90,10 +92,69 @@ jobs:
             exit 1
           fi
 
+      # 失败时先自述环境：SDK 里到底装了哪些 platform / build-tools、gradle 什么版本，
+      # 排查不用靠猜是哪件缺了（借 nmoi ci.yml 的环境自述手法）
+      - name: 环境自述
+        run: |
+          set -x
+          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+          ls "$ANDROID_HOME/platforms" || true
+          ls "$ANDROID_HOME/build-tools" || true
+          gradle --version || ./gradlew --version
+
       - name: Gradle Build
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease
+
+      # 验签闸：产物必须出自钉死的 release 密钥（CN=neomix）。
+      # 签名配置缺失/被 AGP 静默降级/secret 配错钥匙，都会在这里拦下——
+      # 前面的 local.properties 四键校验只验输入，这道闸验的是产物本身。
+      - name: 验签（固定指纹闸）
+        run: |
+          set -euo pipefail
+          apk=$(find app/build/outputs/apk/release -name '*arm64-v8a-release.apk' | head -1)
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          want="d15b693a2010b2ee5f78f3a6eed0a157e074b4b20f476ec31f5c9174d94eec78"
+          got=$("$APKSIGNER" verify --print-certs "$apk" \
+                | grep -i "certificate SHA-256 digest" | head -1 \
+                | sed 's/.*digest: *//' | tr -d ':' | tr 'A-Z' 'a-z')
+          echo "签名指纹：$got"
+          [ "$got" = "$want" ] \
+            || { echo "签名指纹不对：期望 $want。要么 secret 不是那把钥匙，要么它没被用上" >&2; exit 1; }
+          echo "固定签名 ✓"
+
+      # 包名 + 启动入口对账：本仓桌面入口是「默认 RouteActivity + 4 预置」五个真实 Activity
+      # （特意不用 activity-alias，见 AndroidManifest.xml 注释），预置漂移编译期不可见，
+      # 表现是设置里切了没反应——做成闸，不做"记得看一下"。
+      - name: 包名与启动入口对账
+        run: |
+          set -euo pipefail
+          apk=$(find app/build/outputs/apk/release -name '*arm64-v8a-release.apk' | head -1)
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+
+          pkg=$("$AAPT2" dump badging "$apk" | sed -nE "s/^package: name='([^']+)'.*/\1/p" | head -1)
+          echo "package=$pkg"
+          [ "$pkg" = "app.androidrik.rikkahub" ] \
+            || { echo "APK 包名是 $pkg，应为 app.androidrik.rikkahub" >&2; exit 1; }
+
+          tree=$("$AAPT2" dump xmltree --file AndroidManifest.xml "$apk")
+          # 只数「组件节点内」的 LAUNCHER：<queries> 里的包可见性 intent 也带这个 category，
+          # 整树 raw grep 会多数（本仓 manifest 就有一处 queries/LAUNCHER）
+          launchers=$(printf '%s\n' "$tree" | awk '
+            /^[[:space:]]*E: (activity|activity-alias|service|receiver|provider) \(/ { if (incomp) { total += flag }; incomp=1; flag=0; next }
+            incomp && /android.intent.category.LAUNCHER/ { flag=1 }
+            END { if (incomp) total += flag; print total + 0 }
+          ')
+          echo "LAUNCHER 入口数量=$launchers"
+          [ "$launchers" -eq 5 ] \
+            || { echo "启动入口应 5 个（默认 + 4 预置），实际 $launchers：桌面入口切换会缺项" >&2; exit 1; }
+
+          for want in RouteActivity LauncherRikkaHubActivity LauncherChatActivity LauncherNotesActivity LauncherAssistantActivity; do
+            printf '%s\n' "$tree" | grep -q "app.androidrik.rikkahub.$want" \
+              || { echo "APK manifest 里找不到启动入口 $want" >&2; exit 1; }
+          done
+          echo "启动入口齐全 ✓"
 
       - name: Prepare asset
         run: |
