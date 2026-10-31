@@ -226,6 +226,10 @@ jobs:
               print("无占位符，视为已手工回填，跳过改写")
           PYEOF
           tail -n +3 "$F" > /tmp/notes.md
+          # 同 Publish 步：存档里没写 mapping 说明就补一句，防止回填刷新正文时把它冲掉
+          if ! grep -q "mapping.txt.gz" /tmp/notes.md; then
+            printf '\n> 🧩 附 `mapping.txt.gz`（R8 混淆映射，对应本 release 的 APK）：供排查使用，一般无需下载，除非你想调试混淆后的代码。\n' >> /tmp/notes.md
+          fi
           gh release edit "$VERSION" --notes-file /tmp/notes.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
