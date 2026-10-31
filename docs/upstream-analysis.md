@@ -1548,6 +1548,19 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 
 **验证**：`:ai:compileDebugKotlin` + `:ai:testDebugUnitTest`（ParseTest 13 用例含 3 条新增）+ `:app:compileDebugKotlin` 通过。已本地提交 `beb6fb1fb`，**未推送**。`upstream/master..HEAD` = **1419**、`HEAD..upstream/master` = **404**。
 
+## 2026-10-31 构建链差异盘点（对照上游 `a5db9c9b7`，暂存本地未推送）
+
+对照 `upstream/master` 的 `app/build.gradle.kts` / `libs.versions.toml` / `settings.gradle.kts` / wrapper，本仓构建与上游的完整差异见当次会话记录；**可行动项**如下（全部 P3，攒一批「构建小件」一起做，过编译+冒烟即可）：
+
+| 项 | 本仓 | 上游 | 判定 |
+|---|---|---|---|
+| Gradle | 9.5.0 | 9.6.0 | 待跟（wrapper 一行；本仓 `tooling.parallel` 需 9.4+，双向满足） |
+| AGP | 9.3.1 | 9.4.0 | 待跟（`libs.versions.toml` 一行；跨 9.x minor，重点过 R8/lint） |
+| compileSdk | 37 | 37.2（`compileSdk { version = release(37) { minorApiLevel = 2 } }`） | 待跟（半级细分，随 AGP 9.4 一起） |
+| `androidResources.localeFilters` | 未设（只开 `generateLocaleConfig`） | 只保留 9 种自家语言（en/ar/de/ja/ko/ko-rKR/ru/zh/zh-rTW），裁掉依赖库携带的其余语言资源 | **待吸收（瘦身）**——本仓 APK 因此多打依赖库的无关语言资源；跟随前先核对本仓 `values*` 目录清单与上游语言集合的差异（本仓是否多了上游没有的语言） |
+
+**确认不跟的构建差异**（盘点结论，勿重复评估）：flavor 双渠道（play 版无需求）、Firebase 全家桶（本仓已移除，回不去）、`ui` 模块与 `build-logic`（宿主重构不跟，见 `24a742270`/`db4982283` 结论）、iText/Objectbox 仓库（上游 PDF 替换方案依赖）。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)
