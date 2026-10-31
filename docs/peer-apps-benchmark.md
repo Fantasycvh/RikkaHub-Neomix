@@ -34,6 +34,7 @@
 | 12 | PurrCat（PurrPod/purrcat） | Python + Electron + Docker 的 local-first Agent 宿主（桌面） | 源码 | 2026-10-30 | 代码复用 ≈ 0、方法论价值高：**收尾闸门 / 能力生产线 / 子代理交付物契约** 三项建议，均未落地；含第三方文档偏差核验 | [purrcat-analysis.md](purrcat-analysis.md)（独立成文） |
 | — | 上游 `3a533a6a` | 上游工作区终端后台运行 + 多 Tab | 源码 | 2026-08-28 | 多 Tab 底座以吸收上游为准（见 §二） | [upstream-analysis.md](upstream-analysis.md) |
 | 13 | BiliPai | B 站第三方客户端，液态玻璃工程化参照系 | 源码 | 2026-10-31 | **门控层 + 可读性 + 回归测试**是本仓液态玻璃缺的防线；haze 2.0.1 / SDK 分级 / 前后台 gate / 51 个 UI 回归 | [bilipai.md](references/other%20projects/bilipai.md) |
+| 14 | Miffan（Ayuilos/Miffan） | 同源 RikkaHub fork，划词翻译 / IM 模式 / 云电脑 | 源码 | 2026-10-31 | 跨应用划词翻译的**零权限正解**（PROCESS_TEXT 对话框 Activity）；本仓已有 90% 底层，缺口仅弹窗壳，半天级移植 | [miffan.md](references/other%20projects/miffan.md) |
 
 > 新增一个应用时按 §六 的约定加行、加文件、加章节号；**不要**把评估原文再塞回本页。
 
@@ -154,6 +155,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 | §11.4（A–I） | billion-context（追加式压缩 / 前缀缓存三规则 / breakeven / 三方综合对比） | [billion-context.md](references/other%20projects/billion-context.md) |
 | §11.5 | 10-18 → 10-24 增量（bigeye） | [bigeye.md](references/other%20projects/bigeye.md) 末尾 |
 | §13、§13.1–§13.2 | NMoi-Agent | [nmoi-agent.md](references/other%20projects/nmoi-agent.md) |
+| —（按 §六 新约定直接入 §一 #14） | Miffan 划词翻译评估（2026-10-31） | [miffan.md](references/other%20projects/miffan.md) |
 | —（独立成文，未纳入本次拆分） | PurrCat 借鉴评估（2026-10-30） | [purrcat-analysis.md](purrcat-analysis.md) |
 
 **编号为什么是乱的**：原文按评估时间追加，`§11.4` 是插进 bigeye 序列里的另一个应用、`§十` 从未存在、`§六`/`§七` 的小节号与 `§6.x`/`§7.x` 混用。拆分时**保留原编号**（便于旧引用与提交历史对账），不做重排。
