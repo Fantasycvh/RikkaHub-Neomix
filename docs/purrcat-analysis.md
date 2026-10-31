@@ -152,8 +152,8 @@ KernelUpgrade(action × type)           # 唯一入口：create/upgrade/install/
 
 **对本仓的意义**：🚫 **不吸收**。本仓记忆体系在"该记什么/记多少/怎么给模型"三层都比它成熟：
 
-- 注入预算：`settings.memoryInjectBudgetTokens`（默认 8K）+ `importance × 时效衰减` 打分 + 分档量化保前缀缓存（`docs/design/design-memory-scoring.md`，已实现）；
-- 写入纪律：`[stated]` 测试、永不记录清单、`MemoryContentGuard` 代码级兜底（`docs/design/design-memory-discipline.md`，V1/V2 已落地）；
+- 注入预算：`settings.memoryInjectBudgetTokens`（默认 8K）+ `importance × 时效衰减` 打分 + 分档量化保前缀缓存（`docs/design/completed/design-memory-scoring.md`，已实现）；
+- 写入纪律：`[stated]` 测试、永不记录清单、`MemoryContentGuard` 代码级兜底（`docs/design/completed/design-memory-discipline.md`，V1/V2 已落地）；
 - 检索：**明确不用 embedding**，走词元重叠 + 只抬不压（`app/src/main/java/app/androidrik/rikkahub/data/ai/MemoryRelevance.kt`）；
 - 生命周期：`MemoryKind` 三型 + 整理器 + 回收站。
 
@@ -172,7 +172,7 @@ PurrCat 的"全量库 + 少量注入"与本仓"记录 + 清单 + 按需读"是**
 
 **机制**：`heartbeat.json` 存 `{interval ≥60s, active}`，管理线程按 **mtime 热加载**；**只有 Agent 回到 idle 才开始倒计时**，到点把 `GOAL.md` 内容注入会话（为空则注入兜底文案 `"当前没有待办事项"`）。181 行，`src/agent/heartbeat.py`。
 
-**对本仓的意义**：本仓已有更完整的 `docs/design/design-scheduled-ai-tasks.md`（单 Sweeper + Room 权威状态 + 幂等认领 + 错过策略，**更强**），所以**不重复设计**。但 PurrCat 有两点是设计稿里没有的：
+**对本仓的意义**：本仓已有更完整的 `docs/design/completed/design-scheduled-ai-tasks.md`（单 Sweeper + Room 权威状态 + 幂等认领 + 错过策略，**更强**），所以**不重复设计**。但 PurrCat 有两点是设计稿里没有的：
 
 1. **idle 门控**：只在 Agent 空闲时才开始计时/注入，天然避免"定时任务撞上进行中的生成"（本仓设计稿用 `sendMessage` 的 FIFO 排队解决，代价是消息排队而非择时）。
 2. **`GOAL.md` 语义**：注入的不是一次性 prompt，而是一份**会话级长期目标文件**，使 Agent 的每次自唤醒都围绕同一目标（本仓设计稿是 per-task prompt）。
@@ -194,7 +194,7 @@ PurrCat 的"全量库 + 少量注入"与本仓"记录 + 清单 + 按需读"是**
 | 语义遗忘 / 置信度图谱 | 无（明确否决 embedding；整理器只做去重合并） | 不吸收 |
 | 子代理上下文/信封/账本 | 已有（`SubagentRunner` + `agent_run`） | 已有 |
 | 子代理交付物契约 | `RunOutcome.Completed` 只校验文本非空 | **增量（小）** |
-| 定时/周期任务 | 无实现（`docs/design/design-scheduled-ai-tasks.md` 设计稿；`androidx.work` 已声明但全仓 0 个 Worker） | 已有更优设计，**只补两点语义** |
+| 定时/周期任务 | 无实现（`docs/design/completed/design-scheduled-ai-tasks.md` 设计稿；`androidx.work` 已声明但全仓 0 个 Worker） | 已有更优设计，**只补两点语义** |
 | 中断 → 合成合法 tool result | `ToolResultBalancingTransformer`（论证更细，含"不暗示工具失败"） | 已有 |
 | 命名空间工具 + action 枚举 | `memory_tool` 已多 action | 已有 |
 | 工具 schema 压缩 / MCP 按需折叠 | `ToolSchemaCompactor` + `get_tool_map`/`mcp_tool_call` | 已有 |
@@ -240,7 +240,7 @@ PurrCat 的"全量库 + 少量注入"与本仓"记录 + 清单 + 按需读"是**
 
 ### A4. 定时任务的两个补充语义 —— 🟡 并入既有设计稿
 
-- **不新增设计**，只建议把两条并入 `docs/design/design-scheduled-ai-tasks.md`：
+- **不新增设计**，只建议把两条并入 `docs/design/completed/design-scheduled-ai-tasks.md`：
   1. **idle 门控**：per-task 可选"仅当该会话无进行中生成时才注入"（当前设计是 FIFO 排队）。价值：避免周期性任务把用户的即时对话挤到后面。
   2. **会话级目标文件**：per-conversation 的 `goal.md`（或助手级），定时任务注入"目标 + 本次关注点"，使多次自唤醒围绕同一长期目标而非孤立 prompt。价值：这是"主动 agent"与"定时 prompt"的分界。
 - **工程量**：小（都是注入内容/查询条件的增量，不改调度核心）。

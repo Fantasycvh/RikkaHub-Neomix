@@ -89,4 +89,4 @@ for m in json.load(urllib.request.urlopen(req))["data"]:
 
 - 本机 `curl`（Windows Schannel）访问 `api.deepseek.com` 报 `SEC_E_NO_CREDENTIALS`；`--insecure` / `--ssl-no-revoke` 未验证可解，实际改走 Python `urllib`。
 - 临时探测脚本已删；本记录只留字段与结论，**不含 key、不含响应全文**。
-- 相关：`docs/design/design-context-purification.md`（§2 端点作用域表、§8 实测）、`docs/roadmap.md`。
+- 相关：`docs/design/in-progress/design-context-purification.md`（§2 端点作用域表、§8 实测）、`docs/roadmap.md`。

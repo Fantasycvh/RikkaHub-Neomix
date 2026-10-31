@@ -172,7 +172,7 @@ resolveRefineModel = fastModelId → 压缩模型(resolveCompressionModel 的结
 - [decision] 保留比维持 0.4，不为编码场景调低
 - [task] 待办：滚动摘要落地后观察一版再上精炼遍
 - [value] 阈值暂定 0.95
-- [file] docs/design/design-multi-pass-compression.md
+- [file] docs/design/in-progress/design-multi-pass-compression.md
 - [name] 提交者 re-ovo / 并行会话
 </anchors>
 ```

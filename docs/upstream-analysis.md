@@ -925,7 +925,7 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 ②不依赖 mediagen，不受 10-07「触发点立项」约束；③成本小（一个工具 + 一条渲染/过滤路径）。
 **只有想要视频/厂商直连/能力矩阵时，才需要动 mediagen 路线**（10-07 的触发点结论不变）。
 
-> **实施设计已出（2026-10-16）**：`docs/design/design-agent-image-tool.md`。
+> **实施设计已出（2026-10-16）**：`docs/design/completed/design-agent-image-tool.md`。
 > 两条产品决策已由用户拍板：**产物形态 = 渲染在工具卡里**（不碰消息落库/分支/装配，改动面最小）；
 > **默认不审批 + 硬上限（单次 ≤4 张、每轮 ≤2 次），同时保留 `Assistant.imageGenApproval`
 > 助手级审批开关**（与 `memoryCreateApproval` 同型）。另外三条设计要点：tool result **只回一行含
