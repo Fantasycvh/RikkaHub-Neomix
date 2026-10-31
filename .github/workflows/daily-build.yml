@@ -4,30 +4,54 @@ on:
   # 自动触发（原每日 UTC 18:00 定时）已禁用：本仓暂不发预编译包，
   # 且签名的 repo secrets 尚未配置。需要时在 Actions 页面手动运行。
   workflow_dispatch:
+    inputs:
+      force:
+        description: '强制构建（跳过纯文档跳过逻辑）'
+        type: boolean
+        default: false
 
 jobs:
-  # 检查过去 24 小时内是否有新提交，没有则跳过构建，避免重复打包
+  # 与「上次构建点」（nightly tag，每次构建都会重定位到当时 HEAD）比对差异：
+  # 无差异，或**只有纯文档差异**（docs/** 或任意 *.md），都跳过构建——
+  # 文档变化不进 APK，重打包只是浪费时间与一次 nightly 重发布。
+  # 手动触发可用 force 输入越过本闸（例如想刷新 nightly 说明页时）。
   check:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
     steps:
       - uses: actions/checkout@v7
-      - name: Check for recent commits
+        with:
+          fetch-depth: 0 # 需要完整历史与 tags，才能和 nightly 基准比对
+      - name: Check for commits worth building
         id: check
         run: |
-          # 手动触发时无条件构建
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          # 手动强制：无条件构建
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # 定时触发：仅当过去 24 小时内有新提交才构建
-          if [ -n "$(git log --since='24 hours ago' --oneline)" ]; then
+          # 基准：上次构建点。尚无 nightly tag 时无从比对，直接构建
+          # （^{commit} 剥壳：nightly 可能是 annotated tag，别把 tag 对象当 commit）
+          if ! git rev-parse -q --verify 'refs/tags/nightly^{commit}' >/dev/null 2>&1; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "过去 24 小时无新提交，跳过构建"
+            exit 0
           fi
+          changed=$(git diff --name-only 'refs/tags/nightly^{commit}..HEAD' || true)
+          if [ -z "$changed" ]; then
+            echo "与上次构建点无差异，跳过构建"
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 逐行过滤：docs/ 目录 + 任意 *.md 视为纯文档（文件名含空格也不误判，按行处理）
+          non_docs=$(printf '%s\n' "$changed" | grep -vE '^docs/|\.md$' || true)
+          if [ -z "$non_docs" ]; then
+            echo "自上次构建点（$(git rev-parse --short 'refs/tags/nightly^{commit}')）以来仅文档变化（$(printf '%s\n' "$changed" | wc -l) 个文件），跳过构建"
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "非文档变化 $(printf '%s\n' "$non_docs" | wc -l) 个文件，构建"
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
 
   build:
     needs: check
