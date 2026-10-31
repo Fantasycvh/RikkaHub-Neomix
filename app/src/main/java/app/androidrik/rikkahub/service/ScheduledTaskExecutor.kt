@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.service
 
 import android.util.Log
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import app.androidrik.rikkahub.data.db.entity.TargetMode
 import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
 import app.androidrik.rikkahub.data.db.entity.targetModeOrDefault
@@ -66,7 +67,7 @@ class ScheduledTaskExecutor(
             when (ScheduleMath.decideMiss(task.nextRunAt, now, policy)) {
                 // RUN_LATE_FORCED 也执行一次；与 RUN 的差别只是历史上有错过的槽数
                 MissDecision.RUN, MissDecision.RUN_LATE_FORCED -> try {
-                    runner.runClaimed(task)
+                    runner.runClaimed(task, source)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -75,9 +76,18 @@ class ScheduledTaskExecutor(
                     // 崩溃类异常也不能拖垮本轮的剩余任务
                 }
 
-                // 静默推进：认领已把 next_run_at 推到位，这里只补状态
-                MissDecision.SKIP ->
+                // 静默推进：认领已把 next_run_at 推到位，这里补状态 + 给账本记一行
+                // （跳过也是一次「运行」，运行历史里能看到，不然像凭空少了一轮）
+                MissDecision.SKIP -> {
+                    val runId = taskRepository.startRun(
+                        taskId = task.id,
+                        source = ScheduledTaskRunEntity.RunSource.SKIP,
+                        conversationId = task.conversationId.takeIf { it.isNotBlank() },
+                        startedAt = now,
+                    )
+                    taskRepository.finishRun(runId, TaskRunStatus.SKIPPED_MISSED, finishedAt = now)
                     taskRepository.recordStatus(task.id, TaskRunStatus.SKIPPED_MISSED)
+                }
             }
         }
         // 失败不向上抛：任务各自记了状态，周期兜底还在。收尾重新对齐唤醒（认领推进了

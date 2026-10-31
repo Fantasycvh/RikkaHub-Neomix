@@ -289,7 +289,7 @@ private fun formatDateTime(epochMillis: Long): String =
         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
 
 @Composable
-private fun statusLabel(status: String): String = when (status) {
+internal fun statusLabel(status: String): String = when (status) {
     TaskRunStatus.OK -> stringResource(R.string.scheduled_task_status_ok)
     TaskRunStatus.FAILED -> stringResource(R.string.scheduled_task_status_failed)
     TaskRunStatus.TIMEOUT -> stringResource(R.string.scheduled_task_status_timeout)

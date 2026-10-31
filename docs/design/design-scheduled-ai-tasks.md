@@ -49,6 +49,16 @@
 > 真机还暴露了代码之外的边界：OnePlus/ColorOS 的 `OplusAppStartupManager` 会丢弃后台广播
 > （`SKIPPED ... reason: oplus startup`），必须在系统「应用启动管理」里手动放行——见 §6.2.1。
 >
+> **revision 10（2026-10-31，P2 后两块落地：运行账本 + DAILY 多时段）**：
+> ① **运行账本**：`scheduled_task_runs` 新表（AutoMigration 52→53，纯新增无外键）——每轮执行
+> 一行（含 SKIP 静默跳过、TARGET_GONE/ASSISTANT_GONE），`finished_at/status` 终态必达；
+> `status == null` = 执行层中途死亡（进程被杀的直接证据），任务表 `next_run_at` 已推进所以
+> 不卡调度。触发入口记 `source`（alarm/sweep/skip）；NEW_EACH_RUN 各行带本轮实际会话 id，
+> 详情页历史行可点跳回。任务删除随清账本；per-task 保底留 60 条。② **DAILY 多时段**：
+> payload 加 `extraMinutesOfDay`（当天分钟数列表，缺字段空 = 单时刻，老数据行为不变）；
+> 推进语义改为「**当天剩余槽位 → 明天首槽位**」（`nextSlotOfDay` 逐日扫，单时刻退化为原语义）；
+> 表单 DAILY 下主行外可加删时刻行，非法行（半填）阻塞保存。见 §四/§五。
+>
 > **revision 9（2026-10-31，P2 第一块落地：会话目标 + 会话内入口）**：`Conversation` 加
 > 可空 `goal`——**conversations 表真实列**（逐列存储不是 JSON blob；`""` = 未设置，
 > AutoMigration 51→52，真机已验证 50→51→52 连续迁移）；任务表加 `with_goal`（NOT NULL +
@@ -486,9 +496,7 @@ Room 编译期校验 + 真机验证兜底：
 - **P1（本设计范围）**：Room 表 + sweeper + 认领/错过语义 + idle 门控 + 执行注入 + 完成通知 +
   设置页最小管理面。
 - **P2**：~~会话内创建入口 + 会话目标~~（**已实现** revision 9，2026-10-31）；
-  **运行账本**（`scheduled_task_runs` 表：每次执行的 started/finished/status——对应
-  `peer-apps-benchmark.md` §5「后台/无头运行显式状态机 + 终态」，管理页运行历史卡片吃这张表）；
-  DAILY 多时段。
+  ~~运行账本~~ 与 ~~DAILY 多时段~~（**已实现** revision 10，2026-10-31）。
 - **P3（另立设计再谈）**：备份集成、cron-lite、
   无会话全局任务（需要独立执行环境，解决 §二 非目标最后一条的架构前提）、
   收尾闸门限定接入（purrcat A1 把「定时任务会话」列为可启用场景，届时在任务维度加开关）。

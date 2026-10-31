@@ -2410,6 +2410,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="chat_page_conversation_goal">会话目标</string>
   <string name="chat_page_conversation_goal_hint">本会话的长期目标（定时任务可附带）</string>
   <string name="scheduled_task_create_for_conversation">为此会话创建定时任务</string>
+  <string name="scheduled_task_run_history">运行历史</string>
+  <string name="scheduled_task_run_empty">还没有运行记录</string>
+  <string name="scheduled_task_run_unfinished">未收尾（执行中断）</string>
+  <string name="scheduled_task_run_source_alarm">闹钟</string>
+  <string name="scheduled_task_run_source_sweep">兜底巡检</string>
+  <string name="scheduled_task_run_source_skip">跳过</string>
+  <string name="scheduled_task_add_time">添加时间</string>
   <string name="scheduled_task_idle_only_desc">目标会话正在生成时让路,等下个周期再试</string>
   <string name="scheduled_task_status_ok">上次运行:成功</string>
   <string name="scheduled_task_status_failed">上次运行:失败</string>

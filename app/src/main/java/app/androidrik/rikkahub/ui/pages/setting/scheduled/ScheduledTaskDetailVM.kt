@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** 详情页运行历史展示条数（账本每任务保留 60 条，页面只摊开最近的） */
+internal const val RUN_HISTORY_LIMIT = 10
+
 class ScheduledTaskDetailVM(
     private val taskId: String,
     private val taskRepository: ScheduledTaskRepository,
@@ -37,6 +40,10 @@ class ScheduledTaskDetailVM(
     val conversationGoals = conversationRepository.searchConversations("")
         .map { list -> list.associate { it.id.toString() to it.goal } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** 运行账本（P2）：详情页运行历史（新→旧，展示最近 10 条） */
+    val runs = taskRepository.flowRuns(taskId, RUN_HISTORY_LIMIT)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** 目标描述里的助手名（NEW_EACH_RUN / DEDICATED） */
     val assistantNames = settingsStore.settingsFlow

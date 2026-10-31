@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -71,4 +72,37 @@ interface ScheduledTaskDAO {
 
     @Query("UPDATE scheduled_tasks SET last_status = :status WHERE id = :id")
     suspend fun recordStatus(id: String, status: String)
+
+    // ---- 运行账本（P2）：每次执行一行，终态必达；诊断「昨晚为什么没跑成」用 ----
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRun(run: ScheduledTaskRunEntity)
+
+    @Query(
+        "UPDATE scheduled_task_runs SET finished_at = :finishedAt, status = :status WHERE id = :id"
+    )
+    suspend fun finishRun(id: String, finishedAt: Long, status: String)
+
+    /** NEW_EACH_RUN：会话是执行中途才建出来的，账本行补记本轮实际会话 */
+    @Query("UPDATE scheduled_task_runs SET conversation_id = :conversationId WHERE id = :id")
+    suspend fun updateRunConversation(id: String, conversationId: String)
+
+    /** 详情页运行历史：最近 [limit] 条（新→旧） */
+    @Query(
+        "SELECT * FROM scheduled_task_runs WHERE task_id = :taskId " +
+            "ORDER BY started_at DESC LIMIT :limit"
+    )
+    fun flowRuns(taskId: String, limit: Int): Flow<List<ScheduledTaskRunEntity>>
+
+    /** 任务删除时清账本（无外键，手动清；防孤儿行无限累积） */
+    @Query("DELETE FROM scheduled_task_runs WHERE task_id = :taskId")
+    suspend fun deleteRunsOfTask(taskId: String)
+
+    /** per-task 保底裁剪：只留最近 [keep] 条（insert 后调用） */
+    @Query(
+        "DELETE FROM scheduled_task_runs WHERE task_id = :taskId AND id NOT IN (" +
+            "SELECT id FROM scheduled_task_runs WHERE task_id = :taskId " +
+            "ORDER BY started_at DESC LIMIT :keep)"
+    )
+    suspend fun pruneRuns(taskId: String, keep: Int)
 }

@@ -4,6 +4,7 @@ import app.androidrik.rikkahub.data.db.dao.ScheduledTaskDAO
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
 import app.androidrik.rikkahub.data.db.entity.ScheduleType
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import app.androidrik.rikkahub.data.db.entity.TargetMode
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.Flow
@@ -67,7 +68,10 @@ class ScheduledTaskRepository(
 
     suspend fun setEnabled(id: String, enabled: Boolean) = dao.setEnabled(id, enabled)
 
-    suspend fun delete(id: String) = dao.deleteById(id)
+    suspend fun delete(id: String) {
+        dao.deleteById(id)
+        dao.deleteRunsOfTask(id) // 账本无外键，随任务显式清理
+    }
 
     /**
      * 编辑任务（详情页保存）。目标会话不可改（执行锚点）；标题/提示词/周期/策略/idleOnly/withGoal 可改。
@@ -117,6 +121,42 @@ class ScheduledTaskRepository(
 
     suspend fun recordStatus(id: String, status: String) = dao.recordStatus(id, status)
 
+    // ---- 运行账本（P2）：执行层经这里写，UI 经这里读 ----
+
+    /** 一轮执行开始（含 SKIP 静默跳过）。返回账本行 id，执行结束时传给 [finishRun]。 */
+    suspend fun startRun(
+        taskId: String,
+        source: String,
+        conversationId: String?,
+        startedAt: Long = clock(),
+    ): String {
+        val run = ScheduledTaskRunEntity(
+            id = Uuid.random().toString(),
+            taskId = taskId,
+            source = source,
+            conversationId = conversationId,
+            startedAt = startedAt,
+        )
+        dao.insertRun(run)
+        dao.pruneRuns(taskId, RUNS_KEEP_PER_TASK)
+        return run.id
+    }
+
+    /** 一轮执行落终态（status 见 [TaskRunStatus]；进程死亡时这步不会发生，finished_at 留空） */
+    suspend fun finishRun(runId: String, status: String, finishedAt: Long = clock()) =
+        dao.finishRun(runId, finishedAt, status)
+
+    /** NEW_EACH_RUN：会话是执行中途才建出来的，账本行补记本轮实际会话 */
+    suspend fun updateRunConversation(runId: String, conversationId: String) =
+        dao.updateRunConversation(runId, conversationId)
+
+    /** 详情页运行历史（新→旧，最近 [limit] 条） */
+    fun flowRuns(taskId: String, limit: Int = RUNS_KEEP_PER_TASK): Flow<List<ScheduledTaskRunEntity>> =
+        dao.flowRuns(taskId, limit)
+
+    /** 任务删除时清账本（表间无外键，靠调用方显式清） */
+    suspend fun deleteRunsOfTask(taskId: String) = dao.deleteRunsOfTask(taskId)
+
     /**
      * 认领（乐观锁）：`seen` 必须是本次 sweep 读到的 `next_run_at`。
      * 返回是否抢到；抢到即已推进（ONCE 已禁用），调用方只管执行。
@@ -135,4 +175,9 @@ class ScheduledTaskRepository(
 
     private fun scheduleTypeOf(task: ScheduledTaskEntity): ScheduleType =
         runCatching { ScheduleType.valueOf(task.scheduleType) }.getOrDefault(ScheduleType.ONCE)
+
+    companion object {
+        /** 每任务保留的账本行数上限（一天一次的任务 ≈ 两个月的完整历史） */
+        const val RUNS_KEEP_PER_TASK = 60
+    }
 }

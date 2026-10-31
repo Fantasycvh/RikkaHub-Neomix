@@ -4,6 +4,7 @@ import app.androidrik.rikkahub.data.db.dao.ScheduledTaskDAO
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
 import app.androidrik.rikkahub.data.db.entity.ScheduleType
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
@@ -14,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -97,6 +99,40 @@ class ScheduledTaskRepositoryTest {
         override suspend fun recordStatus(id: String, status: String) {
             rows[id] = rows[id]!!.copy(lastStatus = status)
             bump()
+        }
+
+        // ---- 运行账本（Fake：内存 map，供 Repository 层测试的调用形状）----
+
+        val runs = ConcurrentHashMap<String, ScheduledTaskRunEntity>()
+
+        override suspend fun insertRun(run: ScheduledTaskRunEntity) {
+            runs[run.id] = run
+        }
+
+        override suspend fun finishRun(id: String, finishedAt: Long, status: String) {
+            runs[id] = runs[id]!!.copy(finishedAt = finishedAt, status = status)
+        }
+
+        override suspend fun updateRunConversation(id: String, conversationId: String) {
+            runs[id] = runs[id]!!.copy(conversationId = conversationId)
+        }
+
+        override fun flowRuns(taskId: String, limit: Int): Flow<List<ScheduledTaskRunEntity>> =
+            MutableStateFlow(0L).map {
+                runs.values.filter { it.taskId == taskId }
+                    .sortedByDescending { it.startedAt }
+                    .take(limit)
+            }
+
+        override suspend fun deleteRunsOfTask(taskId: String) {
+            runs.values.removeAll { it.taskId == taskId }
+        }
+
+        override suspend fun pruneRuns(taskId: String, keep: Int) {
+            runs.values.filter { it.taskId == taskId }
+                .sortedByDescending { it.startedAt }
+                .drop(keep)
+                .forEach { runs.remove(it.id) }
         }
     }
 
@@ -243,5 +279,39 @@ class ScheduledTaskRepositoryTest {
         ).toString())
         assertEquals(MissPolicy.SKIP.name, after.missPolicy)
         assertTrue(after.idleOnly)
+    }
+
+
+    // ---- 运行账本（P2）----
+
+    @Test
+    fun `startRun and finishRun write ledger with terminal status`() = runTest {
+        val dao = FakeScheduledTaskDAO()
+        val repo = repository(dao, now = millis("2026-10-30T08:00"))
+        val runId = repo.startRun("task-1", source = "alarm", conversationId = null)
+        val started = dao.runs[runId]!!
+        assertEquals(null, started.status)
+        assertEquals(null, started.finishedAt)
+
+        repo.finishRun(runId, status = "OK")
+        val finished = dao.runs[runId]!!
+        assertEquals("OK", finished.status)
+        assertEquals(millis("2026-10-30T08:00"), finished.finishedAt)
+    }
+
+    @Test
+    fun `delete removes task and its run history`() = runTest {
+        val dao = FakeScheduledTaskDAO()
+        val repo = repository(dao, now = millis("2026-10-30T08:00"))
+        val created = repo.create(
+            conversationId = "c", title = "t", prompt = "p",
+            scheduleType = ScheduleType.DAILY, payload = SchedulePayload(hour = 8, minute = 0),
+        )
+        repo.startRun(created.id, source = "alarm", conversationId = "c")
+        assertTrue(dao.runs.isNotEmpty())
+
+        repo.delete(created.id)
+        assertNull(dao.byId(created.id))
+        assertTrue(dao.runs.values.none { it.taskId == created.id })
     }
 }

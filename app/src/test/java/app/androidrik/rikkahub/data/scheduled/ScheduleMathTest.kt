@@ -136,6 +136,55 @@ class ScheduleMathTest {
         assertEquals(runAt, first)
     }
 
+    // ---- DAILY 多时段（P2：extraMinutesOfDay）----
+
+    @Test
+    fun `advance DAILY multi-times uses the next slot of today before tomorrow`() {
+        // 8 点的槽被认领时 now=8:05：应推进到**今天 20 点**，而不是明天 8 点
+        val next = ScheduleMath.advance(
+            ScheduleType.DAILY, SchedulePayload(hour = 8, minute = 0, extraMinutesOfDay = listOf(1200)),
+            scheduledAt = millis("2026-10-30T08:00"), now = millis("2026-10-30T08:05"),
+        )!!
+        assertEquals("2026-10-30T20:00", dateTime(next))
+    }
+
+    @Test
+    fun `advance DAILY multi-times rolls to first slot tomorrow after the last one`() {
+        val next = ScheduleMath.advance(
+            ScheduleType.DAILY, SchedulePayload(hour = 8, minute = 0, extraMinutesOfDay = listOf(1200)),
+            scheduledAt = millis("2026-10-30T20:00"), now = millis("2026-10-30T20:05"),
+        )!!
+        assertEquals("2026-10-31T08:00", dateTime(next))
+    }
+
+    @Test
+    fun `advance DAILY multi-times catches up across missed days to the nearest future slot`() {
+        // 错过两天：一次推进跨过所有错过槽，落到最近的未来槽（30 日 20 点）
+        val next = ScheduleMath.advance(
+            ScheduleType.DAILY, SchedulePayload(hour = 8, minute = 0, extraMinutesOfDay = listOf(1200)),
+            scheduledAt = millis("2026-10-28T08:00"), now = millis("2026-10-30T09:00"),
+        )!!
+        assertEquals("2026-10-30T20:00", dateTime(next))
+    }
+
+    @Test
+    fun `firstRunAt DAILY multi-times picks the earliest future slot of today`() {
+        val first = ScheduleMath.firstRunAt(
+            ScheduleType.DAILY, SchedulePayload(hour = 8, minute = 0, extraMinutesOfDay = listOf(1200, 720)),
+            from = millis("2026-10-30T09:00"),
+        )
+        assertEquals("2026-10-30T12:00", dateTime(first))
+    }
+
+    @Test
+    fun `dailyMinutes dedupes sorts and filters out-of-range values`() {
+        val payload = SchedulePayload(
+            hour = 20, minute = 0,
+            extraMinutesOfDay = listOf(480, 1200, -5, 1500, 480),
+        )
+        assertEquals(listOf(480, 1200), payload.dailyMinutes)
+    }
+
     // ---- decideMiss ----
 
     @Test

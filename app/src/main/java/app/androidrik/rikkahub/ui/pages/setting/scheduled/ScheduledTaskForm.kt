@@ -17,9 +17,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -60,15 +62,29 @@ class ScheduledTaskFormState {
     var idleOnly by mutableStateOf(false)
     var withGoal by mutableStateOf(false)
 
+    /**
+     * DAILY 多时段（P2）：主时刻之外的追加时刻（时,分 文本对，与主行同一套数字键盘约定）。
+     * 空输入行（有键无值）不算合法时刻，保存时跳过；列表只在 DAILY 下渲染。
+     */
+    val extraTimes = mutableStateListOf<Pair<String, String>>()
+
     val hour: Int? get() = hourText.toIntOrNull()?.coerceIn(0, 23)
     val minute: Int? get() = minuteText.toIntOrNull()?.coerceIn(0, 59)
     val interval: Long? get() = intervalText.toLongOrNull()?.coerceAtLeast(15)
 
-    /** ONCE 需要 date + 时刻；其余类型只要求时刻/间隔字段可解析 */
+    private val parsedExtraMinutes: List<Int>?
+        get() = extraTimes.map { (h, m) ->
+            val hh = h.toIntOrNull()?.coerceIn(0, 23) ?: return null
+            val mm = m.toIntOrNull()?.coerceIn(0, 59) ?: return null
+            hh * 60 + mm
+        }
+
+    /** ONCE 需要 date + 时刻；其余类型只要求时刻/间隔字段可解析（多时段行同样必须可解析） */
     val isValid: Boolean
         get() = title.isNotBlank() && prompt.isNotBlank() && hour != null && minute != null &&
             (type != ScheduleType.INTERVAL || interval != null) &&
-            (type != ScheduleType.ONCE || runAtDate != null)
+            (type != ScheduleType.ONCE || runAtDate != null) &&
+            (type != ScheduleType.DAILY || parsedExtraMinutes != null)
 
     fun payload(): SchedulePayload = SchedulePayload(
         hour = hour ?: 8,
@@ -81,6 +97,7 @@ class ScheduledTaskFormState {
             ?.toInstant()
             ?.toEpochMilli()
             ?: 0L,
+        extraMinutesOfDay = if (type == ScheduleType.DAILY) parsedExtraMinutes.orEmpty() else emptyList(),
     )
 
     fun loadFrom(entity: ScheduledTaskEntity) {
@@ -100,6 +117,13 @@ class ScheduledTaskFormState {
         missPolicy = runCatching { MissPolicy.valueOf(entity.missPolicy) }.getOrDefault(MissPolicy.RUN_LATE)
         idleOnly = entity.idleOnly
         withGoal = entity.withGoal
+        val primary = payload.hour * 60 + payload.minute
+        extraTimes.clear()
+        extraTimes.addAll(
+            payload.extraMinutesOfDay
+                .filter { it in 0..1439 && it != primary }
+                .map { (it / 60).toString() to (it % 60).toString() }
+        )
     }
 }
 
@@ -229,6 +253,45 @@ fun ScheduledTaskFormFields(
                         .weight(1f)
                         .focusRequester(minuteFocusRequester),
                 )
+            }
+        }
+        // DAILY 多时段（P2）：主时刻之外的追加时刻，一行一组、随时删
+        if (state.type == ScheduleType.DAILY) {
+            state.extraTimes.forEachIndexed { index, pair ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = pair.first,
+                        onValueChange = { state.extraTimes[index] = it.filter(Char::isDigit).take(2) to pair.second },
+                        label = { Text(stringResource(R.string.scheduled_task_hour)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Next,
+                        ),
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = pair.second,
+                        onValueChange = { state.extraTimes[index] = pair.first to it.filter(Char::isDigit).take(2) },
+                        label = { Text(stringResource(R.string.scheduled_task_minute)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { state.extraTimes.removeAt(index) }) {
+                        Text(stringResource(R.string.delete))
+                    }
+                }
+            }
+            TextButton(onClick = { state.extraTimes.add("" to "") }) {
+                Text(stringResource(R.string.scheduled_task_add_time))
             }
         }
         FormItem(label = { Text(stringResource(R.string.scheduled_task_field_miss_policy)) }) {

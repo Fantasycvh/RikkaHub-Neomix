@@ -2445,5 +2445,12 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="chat_page_conversation_goal">Conversation goal</string>
   <string name="chat_page_conversation_goal_hint">Long-term goal for this conversation (used by scheduled tasks)</string>
   <string name="scheduled_task_create_for_conversation">Scheduled task for this conversation</string>
+  <string name="scheduled_task_run_history">Run history</string>
+  <string name="scheduled_task_run_empty">No runs yet</string>
+  <string name="scheduled_task_run_unfinished">Unfinished (process died)</string>
+  <string name="scheduled_task_run_source_alarm">alarm</string>
+  <string name="scheduled_task_run_source_sweep">sweep</string>
+  <string name="scheduled_task_add_time">Add time</string>
+  <string name="scheduled_task_run_source_skip">skip</string>
 </resources>
 

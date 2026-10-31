@@ -27,7 +27,19 @@ data class SchedulePayload(
     val intervalMinutes: Long = 240,
     /** ONCE 的执行时刻（epoch millis） */
     val runAt: Long = 0,
+    /**
+     * DAILY 多时段（P2）：主时刻（hour/minute）之外的**当天分钟数**（0..1439）。
+     * 有效时刻 = 主时刻 ∪ 本集合，去重升序；空 = 单时刻（老数据无此字段，行为不变）。
+     */
+    val extraMinutesOfDay: List<Int> = emptyList(),
 ) {
+    /** DAILY 的全部时刻（当天分钟数，去重升序；含越界防御） */
+    val dailyMinutes: List<Int>
+        get() = (listOf(hour.coerceIn(0, 23) * 60 + minute.coerceIn(0, 59)) + extraMinutesOfDay
+            .filter { it in 0..1439 })
+            .distinct()
+            .sorted()
+
     fun encode(): String = JsonInstant.encodeToString(this)
 
     companion object {
@@ -47,12 +59,14 @@ object ScheduleMath {
      * 认领时推进 `nextRunAt` 的纯函数（设计稿 §四推进规则）。
      *
      * - ONCE：返回 null（认领即禁用，由调用方落 `enabled = false`）；
-     * - DAILY/WEEKLY：从 `current` 槽位逐日/逐周步进，找到**严格大于 now** 的下一个槽位
+     * - DAILY：**当天剩余槽位 → 明天起的首槽位**（多时段见 [SchedulePayload.dailyMinutes]；
+     *   单时刻时退化为老的「逐日步进」语义）；
+     * - WEEKLY：从 `current` 槽位逐周步进，找到**严格大于 now** 的下一个槽位
      *   （连续错过多次不会连环补——一次推进跨过所有错过的槽数）；
      * - INTERVAL：`current + interval`，落后超过一个周期就对齐到 `now + interval`（不追帧）。
      *
      * 传 [scheduledAt] = 被认领的 `next_run_at`（<= now），[now] 为认领时刻。
-     * DAILY/WEEKLY 用 ZonedDateTime 的 plusDays/plusWeeks 步进，DST 切换日自动落在同一墙钟时刻。
+     * DAILY/WEEKLY 用 ZonedDateTime 的墙钟步进，DST 切换日自动落在同一墙钟时刻。
      */
     fun advance(
         type: ScheduleType,
@@ -68,12 +82,23 @@ object ScheduleMath {
             if (next <= now) now + interval else next
         }
 
-        ScheduleType.DAILY -> advanceWallClock(type, payload, scheduledAt, now, zone) { it.plusDays(1) }
-        ScheduleType.WEEKLY -> advanceWallClock(type, payload, scheduledAt, now, zone) { it.plusWeeks(1) }
+        ScheduleType.DAILY -> {
+            // 从「现在」所在的一天起逐日扫：当天还有没过的时刻就用它，否则明天的首槽位。
+            // 不从 scheduledAt 起扫：多时段下「今天 8 点的槽被认领」应推进到今天 20 点而非明天 8 点。
+            var day = Instant.ofEpochMilli(now).atZone(zone)
+            repeat(MAX_ADVANCE_STEPS) {
+                val slot = nextSlotOfDay(day, payload, if (it == 0) now else Long.MIN_VALUE)
+                if (slot != null) return slot
+                day = day.plusDays(1)
+            }
+            // 逻辑上不可达（每天至少一个合法槽位）；防御性返回 now+1 天，避免坏数据把认领卡死
+            now + 24 * 60 * 60_000L
+        }
+
+        ScheduleType.WEEKLY -> advanceWallClock(payload, scheduledAt, now, zone) { it.plusWeeks(1) }
     }
 
     private inline fun advanceWallClock(
-        type: ScheduleType,
         payload: SchedulePayload,
         scheduledAt: Long,
         now: Long,
@@ -95,8 +120,24 @@ object ScheduleMath {
     }
 
     /**
+     * [day] 当天的下一个槽位：时刻集合升序里第一个**严格大于 [after]** 的。
+     * 没有（全部已过）返回 null，调用方步进到下一天。墙钟时刻由 minute-of-day 重建，
+     * DST 跳变时 `withHour/withMinute` 落在合法墙钟上（不存在 2:30 → 次日 3:30 的歧义，
+     * java.time 对不存在的墙钟取偏移最近的合法时刻）。
+     */
+    private fun nextSlotOfDay(day: ZonedDateTime, payload: SchedulePayload, after: Long): Long? {
+        for (minute in payload.dailyMinutes) {
+            val slot = day.withHour(minute / 60).withMinute(minute % 60).withSecond(0).withNano(0)
+            val millis = slot.toInstant().toEpochMilli()
+            if (millis > after) return millis
+        }
+        return null
+    }
+
+    /**
      * 新建任务时的首个 `nextRunAt`：从 [from] 起算第一个**未来**槽位。
      * ONCE 直接用 [payload.runAt]（调用方保证 > from；不保证也照存——sweeper 会立即执行/走错过逻辑）。
+     * DAILY 多时段：今天剩余时刻 → 明天首槽位。
      */
     fun firstRunAt(
         type: ScheduleType,
@@ -107,9 +148,13 @@ object ScheduleMath {
         ScheduleType.ONCE -> payload.runAt
         ScheduleType.INTERVAL -> from + payload.intervalMinutes.coerceAtLeast(15) * 60_000L
         ScheduleType.DAILY -> {
-            var slot = from.toSlot(payload, zone)
-            if (slot.toInstant().toEpochMilli() <= from) slot = slot.plusDays(1)
-            slot.toInstant().toEpochMilli()
+            var day = Instant.ofEpochMilli(from).atZone(zone)
+            repeat(MAX_ADVANCE_STEPS) {
+                val slot = nextSlotOfDay(day, payload, if (it == 0) from else Long.MIN_VALUE)
+                if (slot != null) return slot
+                day = day.plusDays(1)
+            }
+            from + 24 * 60 * 60_000L
         }
 
         ScheduleType.WEEKLY -> {

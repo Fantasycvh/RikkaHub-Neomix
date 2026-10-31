@@ -2392,6 +2392,13 @@
   <string name="chat_page_conversation_goal">會話目標</string>
   <string name="chat_page_conversation_goal_hint">本會話的長期目標（定時任務可附帶）</string>
   <string name="scheduled_task_create_for_conversation">為此會話建立定時任務</string>
+  <string name="scheduled_task_run_history">執行歷史</string>
+  <string name="scheduled_task_run_empty">還沒有執行記錄</string>
+  <string name="scheduled_task_run_unfinished">未收尾（執行中斷）</string>
+  <string name="scheduled_task_run_source_alarm">鬧鐘</string>
+  <string name="scheduled_task_run_source_sweep">兜底巡檢</string>
+  <string name="scheduled_task_run_source_skip">跳過</string>
+  <string name="scheduled_task_add_time">新增時間</string>
   <string name="scheduled_task_idle_only_desc">目標會話正在生成時讓路,等下個週期再試</string>
   <string name="scheduled_task_status_ok">上次執行:成功</string>
   <string name="scheduled_task_status_failed">上次執行:失敗</string>

@@ -47,6 +47,7 @@ import app.androidrik.rikkahub.data.db.entity.MemoryProposalEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import app.androidrik.rikkahub.data.db.entity.TranslationHistoryEntity
 import app.androidrik.rikkahub.data.db.entity.UsageRecordEntity
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
@@ -83,8 +84,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         UsageRecordEntity::class,
         TranslationHistoryEntity::class,
         ScheduledTaskEntity::class,
+        ScheduledTaskRunEntity::class,
     ],
-    version = 52,
+    version = 53,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -162,6 +164,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 映射层 ifEmpty { null }，与 custom_system_prompt 同款编码）。定时任务 P2 目标语义。
         // 见 docs/design/design-scheduled-ai-tasks.md §四
         AutoMigration(from = 51, to = 52),
+        // 52→53：定时任务运行账本（纯新增表，无外键无回填）。每次执行一行（含 SKIP/
+        // TARGET_GONE），终态必达；诊断「后台为什么没跑成」不再只有任务表里的 last_status。
+        // 见 docs/design/design-scheduled-ai-tasks.md §十（P2 运行账本）
+        AutoMigration(from = 52, to = 53),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -206,9 +212,10 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun scheduledTaskDao(): ScheduledTaskDAO
 
+
     companion object {
         /** 必须与上方 `@Database(version = …)` 保持一致（启动期 staged 库校验用）。 */
-        const val SCHEMA_VERSION = 52
+        const val SCHEMA_VERSION = 53
     }
 }
 
