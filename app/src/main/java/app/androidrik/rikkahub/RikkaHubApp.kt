@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.first
 import app.androidrik.rikkahub.data.files.EXPORT_TEMP_PREFIX
 import app.androidrik.rikkahub.data.files.exportRetentionCutoff
 import app.androidrik.rikkahub.data.files.isExportExpired
+import android.content.pm.ApplicationInfo
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.sync.PendingRestoreStore
 import com.whl.quickjs.android.QuickJSLoader
@@ -260,6 +261,27 @@ class RikkaHubApp : Application() {
             if (ok) {
                 TokenCountDiskCache.attach(filesDir)
                 Log.i(TAG, "token count cache entries=${TokenCountDiskCache.size}")
+            }
+        }
+
+        // SCHEMA_VERSION 漂移哨兵（design-db-downgrade-rebuild.md §0）：Room 真实开库版本
+        // vs 常量。编译期闸门是 SchemaVersionConsistencyTest（schemas/ 最新 JSON 对账），
+        // 这里只是运行时兜底；debug 包直接抛（AppScope handler 会落成显眼的红字日志）。
+        get<AppScope>().launch(Dispatchers.Default) {
+            val actual = runCatching { get<AppDatabase>().openHelper.writableDatabase.version }
+                .getOrElse { e ->
+                    Log.e(TAG, "schema version canary: database failed to open", e)
+                    return@launch
+                }
+            if (actual != AppDatabase.SCHEMA_VERSION) {
+                Log.e(
+                    TAG,
+                    "SCHEMA_VERSION drifted: Room opened version=$actual, " +
+                        "constant=${AppDatabase.SCHEMA_VERSION}",
+                )
+                if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                    error("SCHEMA_VERSION drifted: Room=$actual, constant=${AppDatabase.SCHEMA_VERSION}")
+                }
             }
         }
 

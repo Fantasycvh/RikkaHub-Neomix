@@ -224,8 +224,13 @@ abstract class AppDatabase : RoomDatabase() {
 
 
     companion object {
-        /** 必须与上方 `@Database(version = …)` 保持一致（启动期 staged 库校验用）。 */
-        const val SCHEMA_VERSION = 54
+        /**
+         * 必须与上方 `@Database(version = …)` 保持一致（启动期 staged 库校验、降级检测用）。
+         * 曾漂移到 54 落后真实版本 56，导致 v55/56 的库过不了 staged 恢复校验（2026-10-31 根治）。
+         * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
+         * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
+         */
+        const val SCHEMA_VERSION = 56
     }
 }
 
