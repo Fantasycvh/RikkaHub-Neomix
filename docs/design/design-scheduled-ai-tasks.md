@@ -50,8 +50,12 @@
 > （`SKIPPED ... reason: oplus startup`），必须在系统「应用启动管理」里手动放行——见 §6.2.1。
 >
 > **revision 9（2026-10-31，P2 第一块落地：会话目标 + 会话内入口）**：`Conversation` 加
-> 可空 `goal`（会话 JSON 整体落库，缺字段即 null，无迁移）；任务表加 `with_goal`（NOT NULL +
-> DEFAULT 0，AutoMigration 50→51）。注入形态 `## 长期目标
+> 可空 `goal`——**conversations 表真实列**（逐列存储不是 JSON blob；`""` = 未设置，
+> AutoMigration 51→52，真机已验证 50→51→52 连续迁移）；任务表加 `with_goal`（NOT NULL +
+> DEFAULT 0，AutoMigration 50→51）。两个真机测出的持久化命门：① 目标编辑**强制落库**
+> （`updateConversationGoal` → `saveConversation(force=true)`）——新聊天上写目标会被
+> 「空会话不保存」拦截静默丢掉，而创建页开关按 DB 的 goal 判可用性；② 「为此会话创建
+> 定时任务」跳转前同样 force 落库，否则未保存的新聊天目标预选落空。注入形态 `## 长期目标
 {goal}
 
 {prompt}`（`buildTaskPrompt`

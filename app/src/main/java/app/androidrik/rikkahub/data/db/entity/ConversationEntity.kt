@@ -45,6 +45,12 @@ data class ConversationEntity(
     val lastMessageAt: Long? = null,
     @ColumnInfo("custom_system_prompt", defaultValue = "")
     val customSystemPrompt: String = "",
+    /**
+     * 会话长期目标（定时任务 P2，purrcat A4.2）。存 `""` = 未设置（与 custom_system_prompt
+     * 同款编码：映射层 ifEmpty { null }）；NOT NULL + DEFAULT '' ⇒ AutoMigration 无需 spec（51→52）。
+     */
+    @ColumnInfo("goal", defaultValue = "")
+    val goal: String = "",
     @ColumnInfo("mode_injection_ids", defaultValue = "[]")
     val modeInjectionIds: String = "[]",
     @ColumnInfo("lorebook_ids", defaultValue = "[]")

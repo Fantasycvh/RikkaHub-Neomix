@@ -487,6 +487,16 @@ class ChatVM(
         }
     }
 
+    /**
+     * 同步落库（供需要「会话必须已在 DB」的入口等待：如「为此会话创建定时任务」——
+     * 未保存的新聊天直接跳转，创建页按 id 查不到会话，目标预选会静默落空）。
+     * force：新会话只写了目标（无标题无消息）会被 saveConversation 的空会话拦截跳过，
+     * 但这类会话作为任务锚点必须真实存在，强制写行。
+     */
+    suspend fun saveConversationNow() {
+        chatService.saveConversation(_conversationId, conversation.value, force = true)
+    }
+
     fun updateTitle(title: String) {
         viewModelScope.launch {
             val updatedConversation = conversation.value.copy(title = title)
@@ -576,6 +586,19 @@ class ChatVM(
     fun updateConversation(newConversation: Conversation) {
         chatService.updateConversationState(_conversationId) {
             newConversation
+        }
+    }
+
+    /**
+     * 会话目标的编辑（定时任务 P2）。**强制落库**：目标常在新聊天上第一次写（无标题无消息），
+     * 普通 saveConversation 的「空会话不保存」拦截会把它静默丢掉；而创建页的「附带长期目标」
+     * 开关按 DB 里的 goal 判断可用性，落库失败 = 用户写了目标开关却不出现。
+     */
+    fun updateConversationGoal(goal: String?) {
+        viewModelScope.launch {
+            val updated = conversation.value.copy(goal = goal)
+            updateConversation(updated)
+            chatService.saveConversation(_conversationId, updated, force = true)
         }
     }
 
