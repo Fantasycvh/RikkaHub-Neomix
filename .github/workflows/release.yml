@@ -1,0 +1,124 @@
+name: Release
+
+# tag 触发的正式发版流水线（对齐手工发版流程，如 1.0.28-beta.13 / v1.0.27）：
+# 构建签名 release APK → 以 tag 名建 GitHub Release（版本含 beta 即 prerelease）并上传 arm64 资产。
+#
+# 必需 repo secrets（与 daily-build.yml 同一套）：
+#   KEY_BASE64     — release keystore 的 base64（解码后落到 app/app.key）
+#   SIGNING_CONFIG — 写入 local.properties 的原文，必须包含四行（storeFile 相对 app/ 解析）：
+#       storeFile=app.key
+#       storePassword=...
+#       keyAlias=...
+#       keyPassword=...
+
+on:
+  push:
+    tags:
+      - '[0-9]*.[0-9]*.[0-9]*'
+      - '[0-9]*.[0-9]*.[0-9]*-*'
+      - 'v[0-9]*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # 创建 Release 需要写权限
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive # 拉取子模块
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # web 模块的 preBuild 会执行 `pnpm run build` 构建前端，必须准备好 Node + pnpm
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web-ui/pnpm-lock.yaml
+
+      # gradle 的 buildWebUi 任务只跑 build 不跑 install，需在此提前安装依赖
+      - name: Install web-ui dependencies
+        working-directory: web-ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: Prepare signing
+        env:
+          KEY_BASE64: ${{ secrets.KEY_BASE64 }}
+          SIGNING_CONFIG: ${{ secrets.SIGNING_CONFIG }}
+        run: |
+          # 解码 keystore 并写入签名配置到 local.properties
+          echo "$KEY_BASE64" | base64 -d > app/app.key
+          echo "$SIGNING_CONFIG" > local.properties
+
+          # 显式校验四个键齐全：signingConfigs 读不到时不会报错，而是静默产出 unsigned 包
+          for k in storeFile storePassword keyAlias keyPassword; do
+            grep -q "^$k=" local.properties || { echo "::error::local.properties 缺少 $k（检查 SIGNING_CONFIG secret 格式）"; exit 1; }
+          done
+          [ -s app/app.key ] || { echo "::error::keystore 解码为空（检查 KEY_BASE64 secret）"; exit 1; }
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION_NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts | head -1)
+          VERSION_CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts | head -1)
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          # tag 与构建版本一致性守卫：tag 打错了构建出来也发不出去
+          if [ "v$VERSION_NAME" != "${{ github.ref_name }}" ] && [ "$VERSION_NAME" != "${{ github.ref_name }}" ]; then
+            echo "::error::tag ${{ github.ref_name }} 与 versionName $VERSION_NAME 不一致"
+            exit 1
+          fi
+
+      - name: Gradle Build
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Prepare asset
+        run: |
+          # 发布资产命名对齐既有 release（Neomix-<version>-arm64-v8a.apk），只发 arm64
+          cp app/build/outputs/apk/release/*arm64-v8a-release.apk \
+             "Neomix-${{ steps.version.outputs.name }}-arm64-v8a.apk"
+
+      # 发布说明优先取仓内存档 docs/releases/<version>.md（去掉顶部两行存档注释），
+      # 没有就用兜底文案——本地发版前的存档习惯保持不变，CI 只是兜底
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.name }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          PRERELEASE_FLAG="--prerelease"
+          case "$VERSION" in *beta*|*exp*|*alpha*|*rc*) ;; *) PRERELEASE_FLAG="" ;; esac
+          if [ -f "docs/releases/$VERSION.md" ]; then
+            tail -n +3 "docs/releases/$VERSION.md" > /tmp/notes.md
+          else
+            printf 'Automated release for `%s (%s)`.\n\nNon-official fork, not affiliated with upstream rikkahub/rikkahub. AGPL-3.0.\n' \
+              "$VERSION" "$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts | head -1)" > /tmp/notes.md
+          fi
+          gh release create "$TAG" \
+            $PRERELEASE_FLAG \
+            --title "$VERSION (${{ steps.version.outputs.code }})" \
+            --notes-file /tmp/notes.md \
+            "Neomix-$VERSION-arm64-v8a.apk"

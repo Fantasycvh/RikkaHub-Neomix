@@ -75,12 +75,25 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
       - name: Prepare build files
+        env:
+          KEY_BASE64: ${{ secrets.KEY_BASE64 }}
+          SIGNING_CONFIG: ${{ secrets.SIGNING_CONFIG }}
         run: |
           # 解码base64编码的keystore文件
-          echo "${{ secrets.KEY_BASE64 }}" | base64 -d > app/app.key
+          echo "$KEY_BASE64" | base64 -d > app/app.key
 
-          # 写入签名配置到local.properties
-          echo "${{ secrets.SIGNING_CONFIG }}" > local.properties
+          # 写入签名配置到local.properties。secret 必须包含四行（storeFile 相对 app/ 解析）：
+          #   storeFile=app.key
+          #   storePassword=...
+          #   keyAlias=...
+          #   keyPassword=...
+          echo "$SIGNING_CONFIG" > local.properties
+
+          # 显式校验：signingConfigs 读不到键时不会报错，而是静默产出 unsigned 包
+          for k in storeFile storePassword keyAlias keyPassword; do
+            grep -q "^$k=" local.properties || { echo "::error::local.properties 缺少 $k（检查 SIGNING_CONFIG secret 格式）"; exit 1; }
+          done
+          [ -s app/app.key ] || { echo "::error::keystore 解码为空（检查 KEY_BASE64 secret）"; exit 1; }
 
       - name: Gradle Build
         run: |
