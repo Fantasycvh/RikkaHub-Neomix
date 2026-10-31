@@ -44,6 +44,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +64,7 @@ import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.stroke.MoreVertical
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.utils.reorderForDragByKey
 import app.androidrik.rikkahub.Screen
@@ -70,6 +72,7 @@ import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.Tag
@@ -153,14 +156,23 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
         ) {
             val lazyListState = rememberLazyListState()
             val isFiltering = selectedTagIds.isNotEmpty() || searchQuery.isNotBlank()
+            // 拖动只改本地顺序、松手才落盘：设置走 DataStore 异步回流，拖到边缘自动滚动时
+            // 每帧的移动会被旧顺序反复改回去（来回抽搐，同 ModelList dc2a43003 / 上游 395a0ee0）
+            val assistantDragOrder = remember { DragOrderState<Assistant>() }
+            LaunchedEffect(isFiltering) {
+                // 过滤开启后拖拽被禁用，本地顺序与过滤后的显示列表脱钩，直接丢弃
+                if (isFiltering) assistantDragOrder.reset()
+            }
             val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
                 if (!isFiltering) {
                     // **按 key 映射**：列表首行可能是「仅剩最后一个助手」横幅（非数据行），
                     // 且 filteredAssistants 与 settings.assistants 未必等长 ⇒ 用下标会错位
-                    val newAssistants = settings.assistants.reorderForDragByKey(from.key, to.key) { it.id }
-                    vm.updateSettings(settings.copy(assistants = newAssistants))
+                    assistantDragOrder.onMove(settings.assistants) {
+                        it.reorderForDragByKey(from.key, to.key) { assistant -> assistant.id }
+                    }
                 }
             }
+            LaunchedEffect(settings.assistants) { assistantDragOrder.syncFromSource(settings.assistants) }
             val haptic = LocalHapticFeedback.current
 
             // 搜索框
@@ -210,7 +222,10 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                         LastAssistantBanner(onCreate = { createState.open(Assistant()) })
                     }
                 }
-                lazyItems(filteredAssistants, key = { assistant -> assistant.id }) { assistant ->
+                lazyItems(
+                    if (isFiltering) filteredAssistants else assistantDragOrder.pendingOrder ?: filteredAssistants,
+                    key = { assistant -> assistant.id },
+                ) { assistant ->
                     ReorderableItem(
                         state = reorderableState,
                         key = assistant.id,
@@ -252,6 +267,9 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                                             },
                                             onDragStopped = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                                assistantDragOrder.onDragStopped { order ->
+                                                    vm.updateSettings(settings.copy(assistants = order))
+                                                }
                                             }
                                         )
                                     } else {
@@ -330,17 +348,19 @@ private fun AssistantTagsFilterRow(
     val haptic = LocalHapticFeedback.current
     if (settings.assistantTags.isNotEmpty()) {
         val tagsListState = rememberLazyListState()
+        // 同助手列表：拖动只改本地顺序、松手才落盘（设置异步回流会抽搐）
+        val tagDragOrder = remember { DragOrderState<Tag>() }
         val tagsReorderableState = rememberReorderableLazyListState(tagsListState) { from, to ->
-            val newTags = settings.assistantTags.reorderForDrag(from.index, to.index)
-            vm.updateSettings(settings.copy(assistantTags = newTags))
+            tagDragOrder.onMove(settings.assistantTags) { it.reorderForDrag(from.index, to.index) }
         }
+        LaunchedEffect(settings.assistantTags) { tagDragOrder.syncFromSource(settings.assistantTags) }
 
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(horizontal = 16.dp),
             state = tagsListState
         ) {
-            lazyItems(items = settings.assistantTags, key = { tag -> tag.id }) { tag ->
+            lazyItems(items = tagDragOrder.pendingOrder ?: settings.assistantTags, key = { tag -> tag.id }) { tag ->
                 ReorderableItem(
                     state = tagsReorderableState, key = tag.id
                 ) { isDragging ->
@@ -371,6 +391,9 @@ private fun AssistantTagsFilterRow(
                                     },
                                     onDragStopped = {
                                         haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                        tagDragOrder.onDragStopped { order ->
+                                            vm.updateSettings(settings.copy(assistantTags = order))
+                                        }
                                     },
                                 )
                         )

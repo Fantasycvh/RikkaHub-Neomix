@@ -143,6 +143,7 @@ import app.androidrik.rikkahub.ui.pages.setting.components.isUsingDefaultBaseUrl
 import app.androidrik.rikkahub.ui.pages.setting.components.resetBaseUrlToDefault
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.extendColors
+import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.UiState
 import app.androidrik.rikkahub.utils.formatContextLength
 import app.androidrik.rikkahub.utils.parseContextLengthInput
@@ -629,9 +630,16 @@ private fun ModelList(
     }
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
+    // 拖动只改本地顺序、松手才落盘：onUpdateProvider 最终走 DataStore 异步回流，
+    // 拖到边缘自动滚动时每帧的移动会被旧顺序改回去（抽搐，同 ModelList dc2a43003）
+    val modelDragOrder = remember { DragOrderState<Model>() }
     val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        onUpdateProvider(providerSetting.moveMove(from.index, to.index))
+        modelDragOrder.onMove(providerSetting.models) { list ->
+            // 与 ProviderSetting.moveMove 同构的列表移动
+            list.toMutableList().apply { add(to.index, removeAt(from.index)) }
+        }
     }
+    LaunchedEffect(providerSetting.models) { modelDragOrder.syncFromSource(providerSetting.models) }
 
     // ---- 模型多选批处理：批量删除 / 一键清空（与文件管理同形）----
     var selecting by rememberSaveable { mutableStateOf(false) }
@@ -746,7 +754,7 @@ private fun ModelList(
                     }
                 }
             } else {
-                items(providerSetting.models, key = { it.id }) { item ->
+                items(modelDragOrder.pendingOrder ?: providerSetting.models, key = { it.id }) { item ->
                     ReorderableItem(
                         state = reorderableLazyListState,
                         key = item.id
@@ -780,6 +788,10 @@ private fun ModelList(
                                     },
                                     onDragStopped = {
                                         haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                        modelDragOrder.onDragStopped { order ->
+                                            // ProviderSetting 是抽象类没有 copy，走 copyProvider 换 models
+                                            onUpdateProvider(providerSetting.copyProvider(models = order))
+                                        }
                                     }
                                 )
                                 .graphicsLayer {

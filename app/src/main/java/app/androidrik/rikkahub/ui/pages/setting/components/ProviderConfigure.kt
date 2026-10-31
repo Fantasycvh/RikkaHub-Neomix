@@ -42,6 +42,7 @@ import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.data.datastore.DEFAULT_PROVIDERS
 import me.rerere.hugeicons.HugeIcons
@@ -588,8 +589,10 @@ fun ProviderApiKeysEditor(
         }
         // 拖拽排序：列表顺序即优先级（首个=首选，失败按序切下一个）
         val lazyListState = rememberLazyListState()
+        // 拖动只改本地顺序、松手才落盘：onChange 最终走 DataStore 异步回流会抽搐
+        val keyDragOrder = remember { DragOrderState<ApiKeyEntry>() }
         val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-            onChange(entries.reorderForDrag(from.index, to.index))
+            keyDragOrder.onMove(entries) { it.reorderForDrag(from.index, to.index) }
         }
         LazyColumn(
             state = lazyListState,
@@ -600,7 +603,7 @@ fun ProviderApiKeysEditor(
                 .heightIn(max = 240.dp),
         ) {
             itemsIndexed(
-                items = entries,
+                items = keyDragOrder.pendingOrder ?: entries,
                 // item key 必须用**稳定 id**（ApiKeyEntry.id）而非内容哈希：
                 // 用 key.hashCode() 时每敲一个字符 key 就变 → 该行被销毁重建 →
                 // 焦点丢失（IME 收起）+ animateItem 播放动画（抖动）——历史 bug
@@ -620,9 +623,11 @@ fun ProviderApiKeysEditor(
                         IconButton(
                             onClick = {},
                             modifier = Modifier.longPressDraggableHandle(
-    onDragStarted = {},
-    onDragStopped = {},
-),
+                                onDragStarted = {},
+                                onDragStopped = {
+                                    keyDragOrder.onDragStopped { order -> onChange(order) }
+                                },
+                            ),
                         ) {
                             Icon(HugeIcons.DragDropVertical, contentDescription = stringResource(R.string.setting_provider_page_drag_to_reorder))
                         }

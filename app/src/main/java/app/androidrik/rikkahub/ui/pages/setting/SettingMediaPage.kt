@@ -44,6 +44,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +52,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import app.androidrik.rikkahub.utils.DragOrderState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -328,11 +330,15 @@ private fun MediaProviderList(
     modifier: Modifier = Modifier,
 ) {
     val lazyListState = rememberLazyListState()
+    // 拖动只改本地顺序、松手才落盘：设置异步回流会把每帧移动改回去（抽搐，同 ModelList dc2a43003）
+    val providerDragOrder = remember { DragOrderState<MediaGenerationProviderSetting>() }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newProviders = settings.mediaGenerationProviders.toMutableList().apply {
-            add(to.index, removeAt(from.index))
+        providerDragOrder.onMove(settings.mediaGenerationProviders) { providers ->
+            providers.toMutableList().apply { add(to.index, removeAt(from.index)) }
         }
-        onUpdateSettings(settings.copy(mediaGenerationProviders = newProviders))
+    }
+    LaunchedEffect(settings.mediaGenerationProviders) {
+        providerDragOrder.syncFromSource(settings.mediaGenerationProviders)
     }
     var deleteTarget by remember { mutableStateOf<MediaGenerationProviderSetting?>(null) }
 
@@ -347,7 +353,7 @@ private fun MediaProviderList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             state = lazyListState,
         ) {
-            items(settings.mediaGenerationProviders, key = { it.id }) { provider ->
+            items(providerDragOrder.pendingOrder ?: settings.mediaGenerationProviders, key = { it.id }) { provider ->
                 ReorderableItem(state = reorderableState, key = provider.id) { isDragging ->
                     val haptic = LocalHapticFeedback.current
                     MediaProviderItem(
@@ -366,6 +372,9 @@ private fun MediaProviderList(
                                     },
                                     onDragStopped = {
                                         haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                        providerDragOrder.onDragStopped { order ->
+                                            onUpdateSettings(settings.copy(mediaGenerationProviders = order))
+                                        }
                                     },
                                 ),
                             ) {

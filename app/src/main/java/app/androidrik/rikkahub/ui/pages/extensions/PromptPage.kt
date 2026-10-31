@@ -77,6 +77,7 @@ import app.androidrik.rikkahub.ui.components.ai.SHOW_LOREBOOK_TABS
 import app.androidrik.rikkahub.data.model.entriesForDisplay
 import app.androidrik.rikkahub.data.model.reorderEntries
 import app.androidrik.rikkahub.data.model.updateEntry
+import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.reorderForDragByKey
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -335,12 +336,15 @@ private fun PresetListScreen(
             onUpdatePresets(presets + edited)
         }
     }
+    // 拖动只改本地顺序、松手才落盘（设置异步回流会抽搐，同 ModelList dc2a43003）
+    val presetDragOrder = remember { DragOrderState<PromptPreset>() }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         // **按 key 映射，不要用下标**：from/to.index 是 lazy 列表的**绝对**下标（含头部非数据行），
         // 而本列表首行可能是「迁移卡」⇒ 用下标会整体错位（拖 A 实际移动了 B）。
         // 越界（拖到列表末尾）由 reorderForDrag 内部夹取，不会崩。
-        onUpdatePresets(presets.reorderForDragByKey(from.key, to.key) { it.id })
+        presetDragOrder.onMove(presets) { it.reorderForDragByKey(from.key, to.key) { preset -> preset.id } }
     }
+    LaunchedEffect(presets) { presetDragOrder.syncFromSource(presets) }
     val toaster = LocalToaster.current
     val importer = rememberImporter(PromptPresetSerializer) { result ->
         result.onSuccess { imported ->
@@ -402,12 +406,16 @@ private fun PresetListScreen(
                         }
                     }
                 } else {
-                    items(presets, key = { it.id }) { preset ->
+                    items(presetDragOrder.pendingOrder ?: presets, key = { it.id }) { preset ->
                         ReorderableItem(state = reorderableState, key = preset.id) { isDragging ->
                             PresetCard(
                                 preset = preset,
                                 modifier = Modifier
-                                    .longPressDraggableHandle()
+                                    .longPressDraggableHandle(
+                                        onDragStopped = {
+                                            presetDragOrder.onDragStopped { order -> onUpdatePresets(order) }
+                                        },
+                                    )
                                     .graphicsLayer {
                                         if (isDragging) {
                                             scaleX = 1.03f
@@ -624,12 +632,13 @@ private fun PresetDetailScreen(
     // 同 PresetListScreen 的理由：rememberImporter 只按 serializer 缓存 onResult，
     // 首次组合捕获的 preset 会过期（详情页首帧可能仍是旧值）。
     val currentPreset by rememberUpdatedState(preset)
+    // 拖动只改本地顺序、松手才落盘（priority 是唯一真相，落盘时统一重写）
+    val entryDragOrder = remember { DragOrderState<PromptInjection.ModeInjection>() }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         // **按 key 映射**：本列表首行是「顺序提示」（orderHint）非数据行，绝对下标会错位
-        val moved = displayed.reorderForDragByKey(from.key, to.key) { it.id }
-        // 拖拽即把新顺序写回 priority（priority 是唯一真相）
-        onUpdatePreset(preset.copy(entries = normalizeEntryPriorities(moved)))
+        entryDragOrder.onMove(displayed) { it.reorderForDragByKey(from.key, to.key) { entry -> entry.id } }
     }
+    LaunchedEffect(displayed) { entryDragOrder.syncFromSource(displayed) }
     val editState = useEditState<PromptInjection.ModeInjection> { edited ->
         val index = preset.entries.indexOfFirst { it.id == edited.id }
         if (index >= 0) {
@@ -713,12 +722,19 @@ private fun PresetDetailScreen(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                         )
                     }
-                    items(displayed, key = { it.id }) { injection ->
+                    items(entryDragOrder.pendingOrder ?: displayed, key = { it.id }) { injection ->
                         ReorderableItem(state = reorderableState, key = injection.id) { isDragging ->
                             ModeInjectionCard(
                                 injection = injection,
                                 modifier = Modifier
-                                    .longPressDraggableHandle()
+                                    .longPressDraggableHandle(
+                                        onDragStopped = {
+                                            // 拖拽即把新顺序写回 priority（priority 是唯一真相）
+                                            entryDragOrder.onDragStopped { moved ->
+                                                onUpdatePreset(preset.copy(entries = normalizeEntryPriorities(moved)))
+                                            }
+                                        },
+                                    )
                                     .graphicsLayer {
                                         if (isDragging) {
                                             scaleX = 1.05f
@@ -1304,10 +1320,12 @@ private fun LorebookTab(
     val toaster = LocalToaster.current
     val currentLorebooks by rememberUpdatedState(lorebooks)
     val currentOnUpdate by rememberUpdatedState(onUpdate)
+    // 拖动只改本地顺序、松手才落盘（设置异步回流会抽搐）
+    val bookDragOrder = remember { DragOrderState<Lorebook>() }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val moved = currentLorebooks.reorderForDragByKey(from.key, to.key) { it.id }
-        if (moved !== currentLorebooks) currentOnUpdate(moved)
+        bookDragOrder.onMove(currentLorebooks) { it.reorderForDragByKey(from.key, to.key) { book -> book.id } }
     }
+    LaunchedEffect(currentLorebooks) { bookDragOrder.syncFromSource(currentLorebooks) }
     val editState = useEditState<Lorebook> { edited ->
         val existing = currentLorebooks.find { it.id == edited.id }
         currentOnUpdate(if (existing == null) currentLorebooks + edited else currentLorebooks.map {
@@ -1370,7 +1388,7 @@ private fun LorebookTab(
                 if (migrationCard != null) {
                     item(key = "cache_migration") { migrationCard() }
                 }
-                items(lorebooks, key = { it.id }) { book ->
+                items(bookDragOrder.pendingOrder ?: lorebooks, key = { it.id }) { book ->
                     ReorderableItem(
                         state = reorderableState,
                         key = book.id
@@ -1378,7 +1396,11 @@ private fun LorebookTab(
                         LorebookCard(
                             book = book,
                             modifier = Modifier
-                                .longPressDraggableHandle()
+                                .longPressDraggableHandle(
+                                    onDragStopped = {
+                                        bookDragOrder.onDragStopped { order -> currentOnUpdate(order) }
+                                    },
+                                )
                                 .graphicsLayer {
                                     if (isDragging) {
                                         scaleX = 1.05f
@@ -1623,10 +1645,12 @@ private fun LorebookDetailScreen(
     }
     val currentBook by rememberUpdatedState(book)
     val currentOnUpdate by rememberUpdatedState(onUpdateBook)
+    // 拖动只改本地顺序、松手才落盘（displayed 是纯显示序，落盘时才重写 priority——同 reorderEntries 语义）
+    val entryDragOrder = remember { DragOrderState<PromptInjection.RegexInjection>() }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val moved = currentBook.reorderEntries(from.key, to.key)
-        if (moved !== currentBook) currentOnUpdate(moved)
+        entryDragOrder.onMove(displayed) { it.reorderForDragByKey(from.key, to.key) { entry -> entry.id } }
     }
+    LaunchedEffect(displayed) { entryDragOrder.syncFromSource(displayed) }
     val editState = useEditState<PromptInjection.RegexInjection> { edited ->
         currentOnUpdate(currentBook.updateEntry(edited))
     }
@@ -1693,12 +1717,25 @@ private fun LorebookDetailScreen(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                         )
                     }
-                    items(displayed, key = { it.id }) { injection ->
+                    items(entryDragOrder.pendingOrder ?: displayed, key = { it.id }) { injection ->
                         ReorderableItem(state = reorderableState, key = injection.id) { isDragging ->
                             RegexInjectionEntryCard(
                                 entry = injection,
                                 modifier = Modifier
-                                    .longPressDraggableHandle()
+                                    .longPressDraggableHandle(
+                                        onDragStopped = {
+                                            // displayed 是纯显示序（priority 降序），落盘时按新顺序重写 priority
+                                            entryDragOrder.onDragStopped { moved ->
+                                                currentOnUpdate(
+                                                    currentBook.copy(
+                                                        entries = moved.mapIndexed { index, entry ->
+                                                            entry.copy(priority = moved.lastIndex - index)
+                                                        }
+                                                    )
+                                                )
+                                            }
+                                        },
+                                    )
                                     .graphicsLayer {
                                         if (isDragging) {
                                             scaleX = 1.05f

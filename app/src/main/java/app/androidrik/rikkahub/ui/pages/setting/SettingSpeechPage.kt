@@ -55,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -84,6 +85,7 @@ import app.androidrik.rikkahub.ui.pages.setting.components.ASRProviderConfigure
 import app.androidrik.rikkahub.ui.pages.setting.components.TTSProviderConfigure
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.plus
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.tts.provider.TTSProviderSetting
@@ -351,10 +353,12 @@ private fun TTSProviderList(
     val lazyListState = rememberLazyListState()
     val resources = LocalResources.current
     val toaster = LocalToaster.current
+    // 拖动只改本地顺序、松手才落盘：设置异步回流会把每帧移动改回去（抽搐，同 ModelList dc2a43003）
+    val ttsDragOrder = remember { DragOrderState<TTSProviderSetting>() }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newProviders = settings.ttsProviders.reorderForDrag(from.index, to.index)
-        onUpdateSettings(settings.copy(ttsProviders = newProviders))
+        ttsDragOrder.onMove(settings.ttsProviders) { it.reorderForDrag(from.index, to.index) }
     }
+    LaunchedEffect(settings.ttsProviders) { ttsDragOrder.syncFromSource(settings.ttsProviders) }
 
     LazyColumn(
         modifier = modifier
@@ -364,7 +368,7 @@ private fun TTSProviderList(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         state = lazyListState
     ) {
-        items(settings.ttsProviders, key = { it.id }) { provider ->
+        items(ttsDragOrder.pendingOrder ?: settings.ttsProviders, key = { it.id }) { provider ->
             ReorderableItem(
                 state = reorderableState,
                 key = provider.id
@@ -385,6 +389,9 @@ private fun TTSProviderList(
                                     },
                                     onDragStopped = {
                                         haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                        ttsDragOrder.onDragStopped { order ->
+                                            onUpdateSettings(settings.copy(ttsProviders = order))
+                                        }
                                     }
                                 )
                         ) {
@@ -507,11 +514,13 @@ private fun ASRProviderList(
     onEdit: (ASRProviderSetting) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 拖动只改本地顺序、松手才落盘（同上方 TTS 列表）
     val lazyListState = rememberLazyListState()
+    val asrDragOrder = remember { DragOrderState<ASRProviderSetting>() }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newProviders = settings.asrProviders.reorderForDrag(from.index, to.index)
-        onUpdateSettings(settings.copy(asrProviders = newProviders))
+        asrDragOrder.onMove(settings.asrProviders) { it.reorderForDrag(from.index, to.index) }
     }
+    LaunchedEffect(settings.asrProviders) { asrDragOrder.syncFromSource(settings.asrProviders) }
 
     LazyColumn(
         modifier = modifier
@@ -521,7 +530,7 @@ private fun ASRProviderList(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         state = lazyListState
     ) {
-        items(settings.asrProviders, key = { it.id }) { provider ->
+        items(asrDragOrder.pendingOrder ?: settings.asrProviders, key = { it.id }) { provider ->
             ReorderableItem(
                 state = reorderableState,
                 key = provider.id
@@ -542,6 +551,9 @@ private fun ASRProviderList(
                                     },
                                     onDragStopped = {
                                         haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                        asrDragOrder.onDragStopped { order ->
+                                            onUpdateSettings(settings.copy(asrProviders = order))
+                                        }
                                     }
                                 )
                         ) {

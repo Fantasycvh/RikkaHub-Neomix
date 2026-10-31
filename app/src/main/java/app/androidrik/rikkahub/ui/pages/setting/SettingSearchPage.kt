@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +60,7 @@ import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.plus
 import app.androidrik.search.SearchCommonOptions
 import app.androidrik.search.SearchService
@@ -103,19 +105,19 @@ fun SettingSearchPage(vm: SettingVM = koinViewModel()) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor
     ) {
+        // 拖动只改本地顺序、松手才落盘：设置异步回流会把每帧移动改回去（抽搐，同 ModelList dc2a43003）
+        val serviceDragOrder = remember { DragOrderState<SearchServiceOptions>() }
         val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
             val fromIndex = from.index
             val toIndex = to.index
 
             if (fromIndex >= 0 && toIndex >= 0 && fromIndex < settings.searchServices.size && toIndex < settings.searchServices.size) {
-                val newServices = settings.searchServices.toMutableList().apply {
-                    add(toIndex, removeAt(fromIndex))
+                serviceDragOrder.onMove(settings.searchServices) { services ->
+                    services.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
                 }
-                vm.updateSettings(
-                    settings.copy(searchServices = newServices)
-                )
             }
         }
+        LaunchedEffect(settings.searchServices) { serviceDragOrder.syncFromSource(settings.searchServices) }
         val haptic = LocalHapticFeedback.current
 
         LazyColumn(
@@ -126,7 +128,7 @@ fun SettingSearchPage(vm: SettingVM = koinViewModel()) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             state = lazyListState
         ) {
-            items(settings.searchServices, key = { it.id }) { service ->
+            items(serviceDragOrder.pendingOrder ?: settings.searchServices, key = { it.id }) { service ->
                 ReorderableItem(
                     state = reorderableState,
                     key = service.id
@@ -172,6 +174,9 @@ fun SettingSearchPage(vm: SettingVM = koinViewModel()) {
                                 },
                                 onDragStopped = {
                                     haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                    serviceDragOrder.onDragStopped { order ->
+                                        vm.updateSettings(settings.copy(searchServices = order))
+                                    }
                                 }
                             )
                     )

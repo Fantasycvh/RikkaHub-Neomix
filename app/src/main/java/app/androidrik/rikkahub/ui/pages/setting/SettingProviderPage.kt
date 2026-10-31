@@ -63,6 +63,7 @@ import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConfigure
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
@@ -76,10 +77,16 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var searchQuery by remember { mutableStateOf("") }
     val lazyListState = rememberLazyListState()
-    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newProviders = settings.providers.reorderForDrag(from.index, to.index)
-        vm.updateSettings(settings.copy(providers = newProviders))
+    // 拖动只改本地顺序、松手才落盘：设置异步回流会把每帧移动改回去（抽搐，同 ModelList dc2a43003）
+    val providerDragOrder = remember { DragOrderState<ProviderSetting>() }
+    LaunchedEffect(searchQuery) {
+        // 搜索时拖拽与过滤显示脱钩，丢弃本地顺序
+        if (searchQuery.isNotBlank()) providerDragOrder.reset()
     }
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        providerDragOrder.onMove(settings.providers) { it.reorderForDrag(from.index, to.index) }
+    }
+    LaunchedEffect(settings.providers) { providerDragOrder.syncFromSource(settings.providers) }
 
     val filteredProviders = remember(settings.providers, searchQuery) {
         if (searchQuery.isBlank()) {
@@ -173,7 +180,10 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 state = lazyListState,
             ) {
-                items(filteredProviders, key = { it.id }) { provider ->
+                items(
+                    if (searchQuery.isBlank()) providerDragOrder.pendingOrder ?: filteredProviders else filteredProviders,
+                    key = { it.id },
+                ) { provider ->
                     ReorderableItem(
                         state = reorderableState,
                         key = provider.id
@@ -194,6 +204,9 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
                                             },
                                             onDragStopped = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                                providerDragOrder.onDragStopped { order ->
+                                                    vm.updateSettings(settings.copy(providers = order))
+                                                }
                                             }
                                         )
                                 ) {
