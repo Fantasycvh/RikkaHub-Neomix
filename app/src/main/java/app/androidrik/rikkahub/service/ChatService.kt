@@ -604,7 +604,9 @@ class ChatService(
                 onTurnCancelled = { owner -> killBackgroundTasksOfCancelledTurn(owner) },
                 onGenerationFinished = { sessionId, cause ->
                     val session = sessions[sessionId]
-                    if (cause != null) session?.messageQueue?.pause()
+                    // 取消只来自停止（stopGeneration 已自行暂停）或删除会话，这里再暂停会
+                    // 盖掉停止后用户发送时恢复的队列（同上游 281c9525a）
+                    if (cause != null && cause !is CancellationException) session?.messageQueue?.pause()
                     // 本轮停在工具审批：语音模式的 reply 等待者等不到文本，直接失败提示
                     if (session?.state?.value?.currentMessages?.any { message ->
                             message.parts.any { it is UIMessagePart.Tool && it.isPending }
@@ -3243,6 +3245,10 @@ class ChatService(
         // 正常结束）⇒ 取消回调不会触发。这个状态要在收尾之前判定，收尾之后就看不到了。
         val awaitingApproval = hasPendingToolApproval(conversationId)
         val jobs = synchronized(session) {
+            // 停止 = 用户介入，队列有意暂停（「继续发送」按钮兜底）。此前这个暂停靠
+            // onGenerationFinished 的取消路径「顺便」实现；那里改为不因取消暂停后
+            // （同上游 281c9525a），必须在这里显式补上，否则停止后队列会继续自动派发。
+            session.messageQueue.pause()
             session.cancelJobs()
         }
         if (jobs.isNotEmpty()) {
