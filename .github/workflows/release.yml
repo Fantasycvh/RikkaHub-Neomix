@@ -162,6 +162,10 @@ jobs:
           # 发布资产命名对齐既有 release（Neomix-<version>-arm64-v8a.apk），只发 arm64
           cp app/build/outputs/apk/release/*arm64-v8a-release.apk \
              "Neomix-${{ steps.version.outputs.name }}-arm64-v8a.apk"
+          # R8 混淆映射随包发布（原文件 ~200MB，gzip 后 ~14MB）；与 APK 同一次构建一一对应
+          mapping=app/build/outputs/mapping/release/mapping.txt
+          [ -s "$mapping" ] || { echo "::error::mapping.txt 不存在（R8 没跑？）" >&2; exit 1; }
+          gzip -9 -c "$mapping" > mapping.txt.gz
 
       # 发布说明优先取仓内存档 docs/releases/<version>.md（去掉顶部两行存档注释），
       # 没有就用兜底文案——本地发版前的存档习惯保持不变，CI 只是兜底
@@ -179,11 +183,15 @@ jobs:
             printf 'Automated release for `%s (%s)`.\n\nNon-official fork, not affiliated with upstream rikkahub/rikkahub. AGPL-3.0.\n' \
               "$VERSION" "$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts | head -1)" > /tmp/notes.md
           fi
+          # mapping 用途说明：存档里已写则不重复追加
+          if ! grep -q "mapping.txt.gz" /tmp/notes.md; then
+            printf '\n> 🧩 附 `mapping.txt.gz`（R8 混淆映射，对应本 release 的 APK）：供排查使用，一般无需下载，除非你想调试混淆后的代码。\n' >> /tmp/notes.md
+          fi
           gh release create "$TAG" \
             $PRERELEASE_FLAG \
             --title "$VERSION (${{ steps.version.outputs.code }})" \
             --notes-file /tmp/notes.md \
-            "Neomix-$VERSION-arm64-v8a.apk"
+            "Neomix-$VERSION-arm64-v8a.apk" mapping.txt.gz
 
       # 发布后自动回填：把资产大小 / SHA-256 写回仓内存档（docs/releases/<ver>.md）的
       # 占位符（「待 CI 构建后回填」两个：第一个替换为大小、第二个为哈希；占位符缺失
