@@ -365,7 +365,8 @@ private fun TranslationHistoryItem(
     }
 }
 
-private val Locales by lazy {
+// internal 而非 private：划词弹窗（ProcessTextTranslatorWindow.kt）同包共用
+internal val Locales by lazy {
     listOf(
         Locale.SIMPLIFIED_CHINESE,
         Locale.ENGLISH,
@@ -381,7 +382,7 @@ private val Locales by lazy {
 
 /** 目标语言/历史记录共用的显示名（历史只存 BCP 47 标签，显示时再本地化） */
 @Composable
-private fun translationLanguageName(locale: Locale): String {
+internal fun translationLanguageName(locale: Locale): String {
     return when (locale) {
         Locale.SIMPLIFIED_CHINESE -> stringResource(R.string.language_simplified_chinese)
         Locale.ENGLISH -> stringResource(R.string.language_english)

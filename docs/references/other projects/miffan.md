@@ -99,4 +99,38 @@ App，比轻弹窗**重得多也慢得多**（起完整导航栈）。
 
 ## 落地记录
 
-- （未落地，2026-10-31 评估暂存。实施前先出具体方案：文件清单 + manifest diff + VM 裁剪点。）
+- 2026-10-31 **已实施并真机验证通过**：
+  - 新增 `app/src/main/java/app/androidrik/rikkahub/ui/activity/ProcessTextTranslatorActivity.kt`（对话框壳，
+    含 `ensureKoinStarted()` 幂等补齐——本仓 Koin 延迟启动，弹窗冷启动直达必须补，SafeModeActivity 同款）
+  - 新增 `ui/pages/translator/ProcessTextTranslatorWindow.kt`（复用 `TranslatorVM`/`ModelSelector`/`Locales`/
+    `translationLanguageName`，模型与目标语言改动即时重翻，错误显示在结果区不弹 toast）
+  - `TranslatorVM.translate(settingsOverride)` 加可选参数（弹窗改模型后 settingsStore 异步未落，直传快照）；
+    `initializeInputText` 幂等守卫放 VM（进程死亡重建后 rememberSaveable 会误报已初始化）
+  - `themes.xml` 加 `Theme.Rikkahub.ProcessText`（透明 + 浮窗 + 0.32 dim）；strings 加 `process_text_translate_label`
+  - manifest：`PROCESS_TEXT` filter 从 RouteActivity 迁出（ACTION_SEND/ACTION_TRANSLATE 不动），挂到新 Activity
+    一处（不随图标预置切换）
+  - 验证：compileDebugKotlin / processDebugMainManifest / processDebugResources 全过
+- 2026-10-31 **真机验证通过（6c841f95，debug 包）**，过程中修掉三个问题：
+  1. **弹窗里打开共享 ModelSelector 即崩**（`IllegalStateException: No Navigator provided`）：
+     ModelItem 长按跳供应商设置页强依赖 LocalNavController，弹窗不在导航栈里。改为弹窗自带
+     轻量模型选择器（搜索 + radio，无导航依赖），见 `PopupModelButton`。
+  2. **"Translation model not found"**：`GenerationHandler.translateText` 补 chatModelId 兜底
+     （Miffan 同款）——但这只解决「没配翻译模型」；真正的主坑是下一条。
+  3. **`Settings.init` 语义反转坑**：本仓 `Settings.dummy() = Settings(init = true)`（未加载占位是
+     true，磁盘读出后变 false），与 Miffan 的 init 语义**相反**。照抄 Miffan 守卫
+     `if (settings.init)` 导致自动翻译拿 dummy 空 providers 发车报「模型未找到」。正确守卫是
+     `if (!settings.init)`（等真正从磁盘读出）。已修 + 代码注释留档。
+  - 最终链路全通：其他 App 上层弹窗（零权限）→ 全文进输入框 → 自动开翻 → glm-4.5-air 流式
+    出结果 → 复制按钮出现；模型选择器（上次崩溃点）正常打开可切换；无新增 crash。
+- 2026-10-31 **系统选择菜单真机实测（ColorOS）——两套菜单体系，可用性不同**：
+  - **ColorOS 全局选择菜单**（短信 App 实测）：长按 → ⋮ 溢出 → **可滚动列表**，含完整第三方
+    PROCESS_TEXT（全选/便签速记/朗读/Neomix(旧装)/…/翻译）→ 点「翻译」拉起弹窗自动翻译，
+    **全链路通过**。旧版同源多包（neomix / neomix.debug / rikkahub）也在列表里抢位。
+  - **App 自带 ActionMode 工具栏**（微注记 wenote 实测，用户确认）：剪切/复制/粘贴/分享 + ⋮，
+    其溢出只注入白名单项（全选/朗读/AI搜索——WPS 走 `lingxi` 定制集成），**第三方一律不进**，
+    本仓入口同样缺失。这类 App 里只能走 分享 → ACTION_SEND（ShareHandler）兜底。
+  - **别用自家 App 判断入口缺失**：Compose 输入框的选择工具栏不聚合 PROCESS_TEXT（Compose 已知
+    限制，只有剪切/复制/粘贴），要用系统 EditText 的选择菜单测。
+  - `android:priority="100"` 加在 filter 上（Miffan 同款），不影响解析但可能影响排序，保留。
+  - 注意包名随分支变（applicationId per-branch），`pm list packages | grep rikkahub` 会漏掉
+    `app.androidrik.neomix(.debug)` 这类包名。

@@ -103,13 +103,7 @@
 
         <data android:mimeType="text/plain" />
       </intent-filter>
-      <intent-filter>
-        <action android:name="android.intent.action.PROCESS_TEXT" />
-
-        <category android:name="android.intent.category.DEFAULT" />
-
-        <data android:mimeType="text/plain" />
-      </intent-filter>
+      <!-- PROCESS_TEXT（划词）已迁至 ProcessTextTranslatorActivity：轻弹窗直翻，不再打开整个 App -->
       <intent-filter>
         <action android:name="app.androidrik.rikkahub.action.TRANSLATE" />
 
@@ -120,6 +114,28 @@
         <action android:name="app.androidrik.rikkahub.action.IMAGE_GEN" />
 
         <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity>
+    <!--
+      跨应用划词翻译：系统文本选择菜单 → "Translate with RikkaHub" → 对话框样式 Activity。
+      filter 只挂本 Activity 一处（不随桌面图标预置切换，菜单文案固定，见 miffan.md 不照搬节）
+    -->
+    <activity
+      android:name=".ui.activity.ProcessTextTranslatorActivity"
+      android:excludeFromRecents="true"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher"
+      android:label="@string/process_text_translate_label"
+      android:theme="@style/Theme.Rikkahub.ProcessText"
+      android:windowSoftInputMode="adjustResize">
+      <intent-filter
+        android:label="@string/process_text_translate_label"
+        android:priority="100">
+        <action android:name="android.intent.action.PROCESS_TEXT" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+
+        <data android:mimeType="text/plain" />
       </intent-filter>
     </activity>
     <!--

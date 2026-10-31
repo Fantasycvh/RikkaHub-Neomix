@@ -62,6 +62,10 @@ class TranslatorVM(
     // 当前任务
     private var currentJob: Job? = null
 
+    // 划词弹窗进窗写入一次源文本：守卫放 VM 而不是 rememberSaveable——进程死亡重建后
+    // rememberSaveable 会恢复「已初始化」，而 VM 是新的，输入会永远空着
+    private var inputInitialized = false
+
     fun updateSettings(settings: Settings) {
         viewModelScope.launch {
             settingsStore.update(settings)
@@ -72,11 +76,18 @@ class TranslatorVM(
         _inputText.value = text
     }
 
+    /** 划词弹窗的进窗写入（幂等）；完整翻译页不经过这里 */
+    fun initializeInputText(text: String) {
+        if (inputInitialized) return
+        inputInitialized = true
+        _inputText.value = text
+    }
+
     fun updateTargetLanguage(language: Locale) {
         _targetLanguage.value = language
     }
 
-    fun translate() {
+    fun translate(settingsOverride: Settings? = null) {
         val sourceText = _inputText.value
         if (sourceText.isBlank()) return
 
@@ -90,7 +101,8 @@ class TranslatorVM(
         // 先建 job 再启动：finally 里要拿 currentJob 比较，才能避免「被新任务替换掉时
         // 旧任务把新任务的 translating 改回 false」以及把取消当错误弹出来
         val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
-            val settingsSnapshot = settings.value
+            // settingsOverride：划词弹窗改模型后 settingsStore 还没写完，直接带上本次要用的值
+            val settingsSnapshot = settingsOverride ?: settings.value
             val targetLanguage = _targetLanguage.value
             try {
                 generationHandler.translateText(

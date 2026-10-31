@@ -1592,6 +1592,8 @@
   <string name="translator_page_clear_history">Clear</string>
   <string name="translator_page_clear_history_title">Clear translation history?</string>
   <string name="translator_page_clear_history_message">All saved translation records will be deleted, and this cannot be undone.</string>
+  <!-- 系统文本选择菜单里的划词翻译入口标签（ProcessTextTranslatorActivity） -->
+  <string name="process_text_translate_label">Translate with RikkaHub</string>
   <string name="tts">TTS</string>
   <string name="unpin_chat">Unpin the Chat</string>
   <string name="upload_file">Upload File</string>

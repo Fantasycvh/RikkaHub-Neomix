@@ -1718,7 +1718,10 @@ class GenerationHandler(
         targetLanguage: Locale,
         onStreamUpdate: ((String) -> Unit)? = null
     ): Flow<String> = flow {
+        // 翻译模型未配置（落值 UUID 解析不到）时回落到聊天模型（Miffan 同款兜底），
+        // 否则划词弹窗/翻译页在只配了聊天模型的用户那里直接报错
         val model = settings.providers.findModelById(settings.translateModeId)
+            ?: settings.providers.findModelById(settings.chatModelId)
             ?: error("Translation model not found")
         val provider = model.findProvider(settings.providers)
             ?: error("Translation provider not found")

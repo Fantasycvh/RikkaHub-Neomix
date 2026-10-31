@@ -4,4 +4,16 @@
 <style name="Theme.Rikkahub" parent="android:Theme.Material.Light.NoActionBar">
     <item name="android:windowBackground">#FFFFF8F7</item>
 </style>
+
+<!-- 划词翻译弹窗（ProcessTextTranslatorActivity）：透明背景 + 浮窗样式，
+     看起来像悬浮窗但走普通任务栈，不申请 draw-over-other-apps 权限 -->
+<style name="Theme.Rikkahub.ProcessText" parent="Theme.Rikkahub">
+    <item name="android:backgroundDimEnabled">true</item>
+    <item name="android:backgroundDimAmount">0.32</item>
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:windowIsFloating">true</item>
+    <item name="android:windowMinWidthMajor">90%</item>
+    <item name="android:windowMinWidthMinor">90%</item>
+    <item name="android:windowNoTitle">true</item>
+</style>
 </resources>
