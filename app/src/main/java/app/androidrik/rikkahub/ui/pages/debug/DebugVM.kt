@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.debug
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,6 +12,7 @@ import kotlinx.coroutines.launch
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANTS_IDS
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
 import app.androidrik.rikkahub.data.datastore.Settings
@@ -26,6 +28,7 @@ import kotlin.random.Random
 import kotlin.uuid.Uuid
 
 class DebugVM(
+    private val context: Application,
     private val settingsStore: SettingsStore,
     private val conversationRepository: ConversationRepository,
 ) : ViewModel() {
@@ -151,7 +154,7 @@ class DebugVM(
             val conversation = Conversation(
                 id = Uuid.random(),
                 assistantId = DEFAULT_ASSISTANT_ID,
-                title = "超大对话测试 (${sizeMB}MB)",
+                title = context.getString(R.string.debug_vm_oversized_title, sizeMB),
                 messageNodes = messageNodes,
             )
 
@@ -177,7 +180,7 @@ class DebugVM(
             val conversation = Conversation(
                 id = Uuid.random(),
                 assistantId = DEFAULT_ASSISTANT_ID,
-                title = "${messageCount}条消息测试",
+                title = context.getString(R.string.debug_vm_message_count_title, messageCount),
                 messageNodes = messageNodes,
             )
 

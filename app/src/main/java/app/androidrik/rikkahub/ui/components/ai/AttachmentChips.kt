@@ -97,7 +97,7 @@ internal fun MediaFileInputRow(
             if (localUri != null) {
                 state.replaceImage(target, localUri.toString())
             } else {
-                toaster.show(message = "无法读取所选图片")
+                toaster.show(message = context.getString(R.string.attachment_chips_image_read_failed))
             }
         }
     }
@@ -291,7 +291,7 @@ private fun AttachmentChip(
                 ) {
                     Icon(
                         imageVector = HugeIcons.Exchange01,
-                        contentDescription = "替换图片",
+                        contentDescription = stringResource(R.string.attachment_chips_replace_image),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(16.dp)
                     )

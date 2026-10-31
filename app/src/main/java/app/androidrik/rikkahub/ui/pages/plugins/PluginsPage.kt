@@ -32,12 +32,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginInfo
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.plugin.js.JsPluginDefinition
 import app.androidrik.rikkahub.data.plugin.js.JsPluginInstaller
@@ -70,6 +73,7 @@ fun PluginsPage() {
     // 变更操作挂在应用作用域:页面离开/重组不应把"已注册但未落盘"的中间态留在磁盘上
     val appScope: AppScope = koinInject()
     val toaster = LocalToaster.current
+    val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
 
@@ -82,7 +86,7 @@ fun PluginsPage() {
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("插件") },
+                title = { Text(stringResource(R.string.plugins_page_title)) },
                 navigationIcon = { BackButton() },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors,
@@ -98,7 +102,7 @@ fun PluginsPage() {
         ) {
             item("intro") {
                 Text(
-                    text = "插件通过窄接口接入消息转换管线、工具装配与消息渲染。关闭后下一次请求即从管线移除。",
+                    text = stringResource(R.string.plugins_page_intro),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 8.dp),
@@ -107,8 +111,8 @@ fun PluginsPage() {
 
             item("import_rule") {
                 ImportCard(
-                    title = "规则插件",
-                    subtitle = "JSON 规则定义的正则替换 / 追加动作,可对输入或输出文本生效",
+                    title = stringResource(R.string.plugins_page_rule_plugin_title),
+                    subtitle = stringResource(R.string.plugins_page_rule_plugin_subtitle),
                     busy = busy,
                     onImport = { showRuleImport = true },
                 )
@@ -116,8 +120,8 @@ fun PluginsPage() {
 
             item("import_js") {
                 ImportCard(
-                    title = "JS 插件",
-                    subtitle = ".js 单文件脚本,在 WebView 沙箱里改写输入/输出,可申请受控网络访问",
+                    title = stringResource(R.string.plugins_page_js_plugin_title),
+                    subtitle = stringResource(R.string.plugins_page_js_plugin_subtitle),
                     busy = busy,
                     onImport = { showJsImport = true },
                 )
@@ -126,7 +130,7 @@ fun PluginsPage() {
             if (plugins.isEmpty()) {
                 item("empty") {
                     Text(
-                        text = "暂无已注册插件",
+                        text = stringResource(R.string.plugins_page_empty),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(8.dp),
@@ -148,9 +152,9 @@ fun PluginsPage() {
 
     if (showRuleImport) {
         ImportSourceDialog(
-            title = "导入规则插件",
-            urlLabel = "JSON 链接(https)",
-            bodyLabel = "或粘贴 JSON 内容",
+            title = stringResource(R.string.plugins_page_import_rule_title),
+            urlLabel = stringResource(R.string.plugins_page_import_rule_url_label),
+            bodyLabel = stringResource(R.string.plugins_page_import_rule_body_label),
             onDismiss = { showRuleImport = false },
             onParsed = { definition ->
                 showRuleImport = false
@@ -163,9 +167,9 @@ fun PluginsPage() {
 
     if (showJsImport) {
         ImportSourceDialog(
-            title = "导入 JS 插件",
-            urlLabel = "JS 链接(https)",
-            bodyLabel = "或粘贴 .js 源码",
+            title = stringResource(R.string.plugins_page_import_js_title),
+            urlLabel = stringResource(R.string.plugins_page_import_js_url_label),
+            bodyLabel = stringResource(R.string.plugins_page_import_js_body_label),
             onDismiss = { showJsImport = false },
             onParsed = { definition ->
                 showJsImport = false
@@ -191,11 +195,14 @@ fun PluginsPage() {
                     busy = false
                     result
                         .onSuccess {
-                            toaster.show(message = "已安装: ${definition.name}", type = ToastType.Success)
+                            toaster.show(
+                                message = context.getString(R.string.plugins_page_installed_toast, definition.name),
+                                type = ToastType.Success,
+                            )
                         }
                         .onFailure { error ->
                             toaster.show(
-                                message = "安装失败: ${error.message}",
+                                message = context.getString(R.string.plugins_page_install_failed_toast, error.message),
                                 type = ToastType.Error,
                             )
                         }
@@ -217,13 +224,13 @@ fun PluginsPage() {
                     result
                         .onSuccess {
                             toaster.show(
-                                message = "已安装: ${definition.manifest.name}",
+                                message = context.getString(R.string.plugins_page_installed_toast, definition.manifest.name),
                                 type = ToastType.Success,
                             )
                         }
                         .onFailure { error ->
                             toaster.show(
-                                message = "安装失败: ${error.message}",
+                                message = context.getString(R.string.plugins_page_install_failed_toast, error.message),
                                 type = ToastType.Error,
                             )
                         }
@@ -269,7 +276,7 @@ private fun ImportCard(
                 CircularProgressIndicator(modifier = Modifier.padding(8.dp))
             } else {
                 TextButton(onClick = onImport) {
-                    Text("导入")
+                    Text(stringResource(R.string.common_import))
                 }
             }
         }
@@ -291,6 +298,7 @@ private fun <T> ImportSourceDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -324,7 +332,7 @@ private fun <T> ImportSourceDialog(
                     Text(text = it, color = MaterialTheme.colorScheme.error)
                 }
                 Text(
-                    text = "导入后需确认插件声明的能力才可启用。",
+                    text = stringResource(R.string.plugins_page_import_capability_hint),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -345,16 +353,16 @@ private fun <T> ImportSourceDialog(
                         loading = false
                         result
                             .onSuccess(onParsed)
-                            .onFailure { error = it.message ?: "解析失败" }
+                            .onFailure { error = it.message ?: context.getString(R.string.plugins_page_parse_failed) }
                     }
                 },
             ) {
-                if (loading) CircularProgressIndicator(modifier = Modifier.padding(4.dp)) else Text("解析")
+                if (loading) CircularProgressIndicator(modifier = Modifier.padding(4.dp)) else Text(stringResource(R.string.plugins_page_parse))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     )
@@ -368,7 +376,7 @@ private fun RuleApprovalDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("确认插件能力") },
+        title = { Text(stringResource(R.string.plugins_page_rule_approve_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text = definition.name, style = MaterialTheme.typography.titleMedium)
@@ -380,20 +388,30 @@ private fun RuleApprovalDialog(
                     )
                 }
                 Text(
-                    text = "作用范围: ${if (definition.target == RuleTarget.INPUT) "用户输入" else "模型输出"}",
+                    text = stringResource(
+                        R.string.plugin_target_scope,
+                        if (definition.target == RuleTarget.INPUT) {
+                            stringResource(R.string.plugin_target_input)
+                        } else {
+                            stringResource(R.string.plugin_target_output)
+                        },
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    text = "规则数量: ${definition.rules.size}",
+                    text = stringResource(R.string.plugins_page_rule_count, definition.rules.size),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    text = "申请能力: ${capabilityLabel(definition.requiredCapability)}",
+                    text = stringResource(
+                        R.string.plugins_page_requested_capability,
+                        capabilityLabel(definition.requiredCapability),
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "插件只会获得上述能力;未批准的能力不会生效。",
+                    text = stringResource(R.string.plugins_page_rule_approve_hint),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -401,12 +419,12 @@ private fun RuleApprovalDialog(
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("批准并安装")
+                Text(stringResource(R.string.plugins_page_approve_and_install))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     )
@@ -427,7 +445,7 @@ private fun JsApprovalDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("确认 JS 插件能力") },
+        title = { Text(stringResource(R.string.plugins_page_js_approve_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text = manifest.name, style = MaterialTheme.typography.titleMedium)
@@ -439,29 +457,42 @@ private fun JsApprovalDialog(
                     )
                 }
                 Text(
-                    text = "作用范围: ${when (manifest.target.name) {
-                        "INPUT" -> "用户输入"
-                        "OUTPUT" -> "模型输出"
-                        "NONE" -> "仅工具"
-                        else -> "输入 + 输出"
-                    }} · 钩子: ${definition.hookNames.joinToString()}",
+                    text = stringResource(
+                        R.string.plugins_page_js_target_hooks,
+                        stringResource(
+                            when (manifest.target.name) {
+                                "INPUT" -> R.string.plugin_target_input
+                                "OUTPUT" -> R.string.plugin_target_output
+                                "NONE" -> R.string.plugin_target_tool_only
+                                else -> R.string.plugin_target_input_output
+                            }
+                        ),
+                        definition.hookNames.joinToString(),
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    text = "源码大小: ${definition.source.toByteArray().size / 1024} KB · 超时: ${manifest.timeoutMs}ms",
+                    text = stringResource(
+                        R.string.plugins_page_js_source_size_timeout,
+                        definition.source.toByteArray().size / 1024,
+                        manifest.timeoutMs,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 manifest.tools.forEach { tool ->
-                    Text("工具: ${tool.name} — ${tool.description}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        stringResource(R.string.plugin_tool_line, tool.name, tool.description),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 if (manifest.networkHosts.isNotEmpty()) {
                     Text(
-                        text = "网络白名单: ${manifest.networkHosts.joinToString()}",
+                        text = stringResource(R.string.plugin_network_whitelist, manifest.networkHosts.joinToString()),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 Text(
-                    text = "能力授权(网络和存储可选)",
+                    text = stringResource(R.string.plugins_page_capability_grant_header),
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.padding(top = 4.dp),
                 )
@@ -479,7 +510,7 @@ private fun JsApprovalDialog(
                             Text(capabilityLabel(capability), style = MaterialTheme.typography.bodyMedium)
                             if (capability == PluginCapability.NETWORK) {
                                 Text(
-                                    text = "仅能访问上面声明的域名,内网地址一律拒绝",
+                                    text = stringResource(R.string.plugins_page_network_hint),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -488,7 +519,7 @@ private fun JsApprovalDialog(
                     }
                 }
                 Text(
-                    text = "未勾选的能力不会生效；可在详情页撤销。脚本工具调用始终需要审批。",
+                    text = stringResource(R.string.plugins_page_js_approve_hint),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -499,12 +530,12 @@ private fun JsApprovalDialog(
                 enabled = canInstall,
                 onClick = { onConfirm(selected) },
             ) {
-                Text("批准并安装")
+                Text(stringResource(R.string.plugins_page_approve_and_install))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         },
     )
@@ -572,22 +603,27 @@ private fun CapabilitySummary(info: PluginInfo) {
     val granted = declared.intersect(info.grants)
     Text(
         text = if (granted.isEmpty()) {
-            "全部能力已撤销"
+            stringResource(R.string.plugins_page_all_capabilities_revoked)
         } else {
-            granted.joinToString(" · ") { capabilityLabel(it) } +
-                if (granted.size < declared.size) " · ${declared.size - granted.size} 项已撤销" else ""
+            granted.map { capabilityLabel(it) }.joinToString(" · ") +
+                if (granted.size < declared.size) {
+                    stringResource(R.string.plugins_page_revoked_count_suffix, declared.size - granted.size)
+                } else {
+                    ""
+                }
         },
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
+@Composable
 internal fun capabilityLabel(capability: PluginCapability): String = when (capability) {
-    PluginCapability.NETWORK -> "网络"
-    PluginCapability.HISTORY_READ -> "读取历史"
-    PluginCapability.CONVERSATION_MUTATE -> "修改会话"
-    PluginCapability.TOOL_REGISTER -> "注册工具"
-    PluginCapability.PROMPT_TRANSFORM -> "改写输入"
-    PluginCapability.OUTPUT_TRANSFORM -> "改写输出"
-    PluginCapability.STORAGE -> "本地存储"
+    PluginCapability.NETWORK -> stringResource(R.string.plugin_capability_network)
+    PluginCapability.HISTORY_READ -> stringResource(R.string.plugin_capability_history_read)
+    PluginCapability.CONVERSATION_MUTATE -> stringResource(R.string.plugin_capability_conversation_mutate)
+    PluginCapability.TOOL_REGISTER -> stringResource(R.string.plugin_capability_tool_register)
+    PluginCapability.PROMPT_TRANSFORM -> stringResource(R.string.plugin_capability_prompt_transform)
+    PluginCapability.OUTPUT_TRANSFORM -> stringResource(R.string.plugin_capability_output_transform)
+    PluginCapability.STORAGE -> stringResource(R.string.plugin_capability_storage)
 }

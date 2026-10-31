@@ -17,7 +17,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.RikkaHubApp
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.sync.DowngradeQuarantineStore
@@ -57,7 +59,7 @@ fun DowngradeQuarantineSection() {
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = "降级数据恢复",
+            text = stringResource(R.string.downgrade_quarantine_title),
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
@@ -69,18 +71,21 @@ fun DowngradeQuarantineSection() {
                     onClick = if (recoverable) ({ pendingRestore = entry }) else null,
                     headlineContent = {
                         Text(
-                            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                                .format(Date(entry.marker.quarantinedAt)) + " 备份",
+                            stringResource(
+                                R.string.downgrade_quarantine_backup_label,
+                                SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                                    .format(Date(entry.marker.quarantinedAt)),
+                            ),
                         )
                     },
                     supportingContent = {
                         Text(
                             buildString {
-                                append("schema v${entry.marker.schemaVersion} · 约 ${totalMb}MB")
+                                append(stringResource(R.string.downgrade_quarantine_support_base, entry.marker.schemaVersion, totalMb))
                                 when {
-                                    !recoverable -> append(" · 需升级到 v${entry.marker.schemaVersion}+ 才能恢复")
-                                    entry.dismissed -> append(" · 已忽略启动提示")
-                                    else -> append(" · 点击恢复")
+                                    !recoverable -> append(stringResource(R.string.downgrade_quarantine_need_upgrade, entry.marker.schemaVersion))
+                                    entry.dismissed -> append(stringResource(R.string.downgrade_quarantine_dismissed_hint))
+                                    else -> append(stringResource(R.string.downgrade_quarantine_tap_restore))
                                 }
                             },
                         )
@@ -91,12 +96,12 @@ fun DowngradeQuarantineSection() {
                                 TextButton(onClick = {
                                     scope.launch {
                                         app.dismissDowngradeEntry(entry).onFailure { e ->
-                                            toaster.show(message = e.message ?: "操作失败")
+                                            toaster.show(message = e.message ?: context.getString(R.string.error_title_operation))
                                         }
                                     }
-                                }) { Text("忽略") }
+                                }) { Text(stringResource(R.string.backup_page_reminder_dismiss)) }
                             }
-                            TextButton(onClick = { pendingDelete = entry }) { Text("删除") }
+                            TextButton(onClick = { pendingDelete = entry }) { Text(stringResource(R.string.common_delete)) }
                         }
                     },
                 )
@@ -107,12 +112,14 @@ fun DowngradeQuarantineSection() {
     pendingRestore?.let { entry ->
         AlertDialog(
             onDismissRequest = { pendingRestore = null },
-            title = { Text("恢复这份数据？") },
+            title = { Text(stringResource(R.string.downgrade_quarantine_restore_title)) },
             text = {
                 Text(
-                    "恢复 ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(entry.marker.quarantinedAt))} " +
-                        "备份的数据（schema v${entry.marker.schemaVersion}）。\n\n" +
-                        "当前数据库将被完整备份后覆盖，重启后生效。",
+                    stringResource(
+                        R.string.downgrade_quarantine_restore_message,
+                        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(entry.marker.quarantinedAt)),
+                        entry.marker.schemaVersion,
+                    ),
                 )
             },
             confirmButton = {
@@ -120,13 +127,13 @@ fun DowngradeQuarantineSection() {
                     pendingRestore = null
                     scope.launch {
                         app.restoreDowngradeEntry(entry).onFailure { e ->
-                            toaster.show(message = e.message ?: "恢复失败")
+                            toaster.show(message = e.message ?: context.getString(R.string.downgrade_quarantine_restore_failed))
                         }
                     }
-                }) { Text("恢复并重启") }
+                }) { Text(stringResource(R.string.downgrade_quarantine_restore_and_restart)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingRestore = null }) { Text("取消") }
+                TextButton(onClick = { pendingRestore = null }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }
@@ -134,11 +141,13 @@ fun DowngradeQuarantineSection() {
     pendingDelete?.let { entry ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("删除这份数据？") },
+            title = { Text(stringResource(R.string.downgrade_quarantine_delete_title)) },
             text = {
                 Text(
-                    "删除 ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(entry.marker.quarantinedAt))} " +
-                        "备份的降级前数据？删除后无法找回。",
+                    stringResource(
+                        R.string.downgrade_quarantine_delete_message,
+                        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(entry.marker.quarantinedAt)),
+                    ),
                 )
             },
             confirmButton = {
@@ -146,13 +155,13 @@ fun DowngradeQuarantineSection() {
                     pendingDelete = null
                     scope.launch {
                         app.deleteDowngradeEntry(entry).onFailure { e ->
-                            toaster.show(message = e.message ?: "删除失败")
+                            toaster.show(message = e.message ?: context.getString(R.string.setting_files_page_delete_failed_toast))
                         }
                     }
-                }) { Text("删除") }
+                }) { Text(stringResource(R.string.common_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }

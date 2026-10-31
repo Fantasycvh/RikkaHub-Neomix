@@ -835,7 +835,7 @@ private fun ModelList(
                     ) {
                         Icon(
                             imageVector = HugeIcons.Clean,
-                            contentDescription = "清空模型"
+                            contentDescription = stringResource(R.string.setting_provider_detail_page_clear_models)
                         )
                     }
                     FilledIconButton(
@@ -880,7 +880,7 @@ private fun ModelList(
                     ) {
                         Icon(
                             imageVector = HugeIcons.CursorPointer01,
-                            contentDescription = "选择模型"
+                            contentDescription = stringResource(R.string.model_list_select_model)
                         )
                     }
                     AddModelButton(
@@ -904,8 +904,8 @@ private fun ModelList(
     if (showDeleteSelectedConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteSelectedConfirm = false },
-            title = { Text("删除 ${selectedModels.size} 个模型？") },
-            text = { Text("删除后无法撤销。若有助手正在使用这些模型，对话时会提示重新选择。") },
+            title = { Text(stringResource(R.string.setting_provider_detail_page_delete_models_title, selectedModels.size)) },
+            text = { Text(stringResource(R.string.setting_provider_detail_page_delete_models_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteSelectedConfirm = false
@@ -923,8 +923,8 @@ private fun ModelList(
     if (showClearAllConfirm) {
         AlertDialog(
             onDismissRequest = { showClearAllConfirm = false },
-            title = { Text("清空当前提供商的 ${providerSetting.models.size} 个模型？") },
-            text = { Text("将移除该提供商下的全部模型，无法撤销。之后再通过「获取模型」或手动添加即可恢复。") },
+            title = { Text(stringResource(R.string.setting_provider_detail_page_clear_models_title, providerSetting.models.size)) },
+            text = { Text(stringResource(R.string.setting_provider_detail_page_clear_models_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     showClearAllConfirm = false

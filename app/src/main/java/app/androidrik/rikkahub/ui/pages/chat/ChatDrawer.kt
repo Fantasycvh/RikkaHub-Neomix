@@ -814,8 +814,8 @@ internal fun DrawerBottomActions(navController: Navigator) {
             onClick = { navController.navigate(Screen.Favorite) },
         )
         DrawerAction(
-            icon = { Icon(HugeIcons.ChartColumn, "统计数据") },
-            label = { Text("统计数据") },
+            icon = { Icon(HugeIcons.ChartColumn, stringResource(R.string.chat_drawer_statistics)) },
+            label = { Text(stringResource(R.string.chat_drawer_statistics)) },
             onClick = { navController.navigate(Screen.Stats) },
         )
         Spacer(Modifier.weight(1f))
@@ -1195,11 +1195,11 @@ private fun WorkspaceFilesPanel(
                 val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri)?.use { output ->
                         repository.exportSelectionAsZip(workspaceId, app.androidrik.workspace.WorkspaceStorageArea.FILES, base, entries, output)
-                    } ?: error("无法写入导出文件")
+                    } ?: error(context.getString(R.string.chat_drawer_export_write_failed))
                 }
-                toaster.show("已导出 ${result.succeeded} 项，跳过 ${result.skipped} 项，失败 ${result.failed} 项")
+                toaster.show(context.getString(R.string.chat_drawer_export_result, result.succeeded, result.skipped, result.failed))
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
-            } catch (error: Exception) { toaster.show("导出失败：${error.message}") }
+            } catch (error: Exception) { toaster.show(context.getString(R.string.chat_drawer_export_failed_with_reason, error.message)) }
         }
     }
     fun export(entries: List<WorkspaceFileEntry>) {
@@ -1222,8 +1222,8 @@ private fun WorkspaceFilesPanel(
     if (deleteEntries.isNotEmpty()) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { deleteEntries = emptyList() },
-            title = { Text("删除 ${deleteEntries.size} 项？") },
-            text = { Text("删除后无法撤销。") },
+            title = { Text(stringResource(R.string.chat_drawer_delete_title, deleteEntries.size)) },
+            text = { Text(stringResource(R.string.chat_drawer_delete_unrecoverable)) },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     val entries = deleteEntries.also { deleteEntries = emptyList() }
@@ -1237,11 +1237,14 @@ private fun WorkspaceFilesPanel(
                         }
                         selecting = false
                         onChanged()
-                        toaster.show("已删除 ${entries.size - failed.size} 项" + if (failed.isEmpty()) "" else "；失败：${failed.joinToString()}")
+                        toaster.show(
+                            if (failed.isEmpty()) context.getString(R.string.chat_drawer_delete_result_ok, entries.size - failed.size)
+                            else context.getString(R.string.chat_drawer_delete_result, entries.size - failed.size, failed.joinToString())
+                        )
                     }
-                }) { Text("删除") }
+                }) { Text(stringResource(R.string.common_delete)) }
             },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteEntries = emptyList() }) { Text("取消") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteEntries = emptyList() }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
@@ -1255,7 +1258,7 @@ private fun WorkspaceFilesPanel(
                 textStyle = MaterialTheme.typography.bodySmall,
             )
             IconButton(onClick = actions.importFiles) {
-                Icon(com.composables.icons.lucide.Lucide.Import, contentDescription = "导入文件")
+                Icon(com.composables.icons.lucide.Lucide.Import, contentDescription = stringResource(R.string.workspace_detail_import_file))
             }
         }
         app.androidrik.rikkahub.ui.components.workspace.WorkspaceFileBrowser(

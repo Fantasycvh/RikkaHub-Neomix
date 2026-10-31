@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import app.androidrik.rikkahub.R
@@ -69,6 +70,7 @@ internal fun MemoryRecoveryDialog(
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
+    val context = LocalContext.current
     var trashMode by remember { mutableStateOf(true) }
     var selectedMemory by remember { mutableStateOf<AssistantMemory?>(null) }
     var history by remember { mutableStateOf<List<MemoryHistoryRecord>>(emptyList()) }
@@ -95,30 +97,29 @@ internal fun MemoryRecoveryDialog(
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("记忆恢复") },
+        title = { Text(stringResource(R.string.memory_recovery_title)) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row {
-                    TextButton(onClick = { trashMode = true }) { Text("回收站") }
-                    TextButton(onClick = { trashMode = false }) { Text("修改历史") }
+                    TextButton(onClick = { trashMode = true }) { Text(stringResource(R.string.memory_recovery_tab_trash)) }
+                    TextButton(onClick = { trashMode = false }) { Text(stringResource(R.string.memory_recovery_tab_history)) }
                 }
                 Text(
-                    "恢复保留原 ID，并生成新版本。旧提案不会因此重新生效。" +
-                        "回收站不参与注入或检索；修改历史每条最多保留 20 个事件。",
+                    stringResource(R.string.memory_recovery_description),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 loadError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (trashMode) {
-                    if (trash.isEmpty() && loadError == null) Text("回收站为空")
+                    if (trash.isEmpty() && loadError == null) Text(stringResource(R.string.memory_recovery_trash_empty))
                     trash.forEach { record ->
                         Text("${record.snapshot.publicId} · ${record.tombstone.reason}")
                         MemorySnapshotMetadata(record.snapshot)
                         Text(record.snapshot.content, maxLines = 4)
                         TextButton(enabled = !busy, onClick = { pickedTrash = record }) {
-                            Text("查看并恢复")
+                            Text(stringResource(R.string.memory_recovery_view_and_restore))
                         }
                     }
                 } else {
@@ -129,22 +130,22 @@ internal fun MemoryRecoveryDialog(
                             }
                         }
                     } else {
-                        TextButton(onClick = { selectedMemory = null }) { Text("返回记忆列表") }
-                        Text("当前快照 v${selectedMemory?.revision}；若已变化，恢复会被拒绝。")
-                        if (history.isEmpty() && loadError == null) Text("暂无保留历史")
+                        TextButton(onClick = { selectedMemory = null }) { Text(stringResource(R.string.memory_recovery_back_to_list)) }
+                        Text(stringResource(R.string.memory_recovery_snapshot_revision, requireNotNull(selectedMemory).revision))
+                        if (history.isEmpty() && loadError == null) Text(stringResource(R.string.memory_recovery_history_empty))
                         history.forEach { record ->
                             Text("v${record.snapshot.revision} · ${record.event.operation} · ${record.event.actor}")
                             MemorySnapshotMetadata(record.snapshot)
                             Text(record.snapshot.content, maxLines = 4)
                             TextButton(enabled = !busy, onClick = { pickedHistory = record }) {
-                                Text("查看并恢复此版本")
+                                Text(stringResource(R.string.memory_recovery_view_restore_this))
                             }
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 
     val historyChoice = pickedHistory
@@ -153,14 +154,14 @@ internal fun MemoryRecoveryDialog(
         val snapshot = historyChoice?.snapshot ?: requireNotNull(trashChoice).snapshot
         AlertDialog(
             onDismissRequest = { if (!busy) { pickedHistory = null; pickedTrash = null } },
-            title = { Text("确认恢复") },
+            title = { Text(stringResource(R.string.backup_page_restore_confirm_action)) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     MemorySnapshotMetadata(snapshot)
                     Text(snapshot.content)
-                    Text("主题：${snapshot.description}")
-                    Text("重要度：${snapshot.importance} · 固化：${snapshot.isAnchor}")
-                    Text("这会作为一次新修改保存；不会回退当前读取计数。")
+                    Text(stringResource(R.string.memory_recovery_topic, snapshot.description))
+                    Text(stringResource(R.string.memory_recovery_importance_anchor, snapshot.importance, snapshot.isAnchor))
+                    Text(stringResource(R.string.memory_recovery_confirm_note))
                 }
             },
             confirmButton = {
@@ -181,19 +182,19 @@ internal fun MemoryRecoveryDialog(
                             pickedHistory = null
                             pickedTrash = null
                             refresh++
-                            toaster.show("已恢复为新版本")
+                            toaster.show(context.getString(R.string.memory_recovery_restored_toast))
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
-                            toaster.show("无法恢复：${failure.message}")
+                            toaster.show(context.getString(R.string.memory_recovery_restore_failed, failure.message))
                         } finally {
                             busy = false
                         }
                     }
-                }) { Text(if (busy) "恢复中…" else "确认恢复") }
+                }) { Text(if (busy) stringResource(R.string.memory_recovery_restoring) else stringResource(R.string.backup_page_restore_confirm_action)) }
             },
             dismissButton = {
-                TextButton(enabled = !busy, onClick = { pickedHistory = null; pickedTrash = null }) { Text("取消") }
+                TextButton(enabled = !busy, onClick = { pickedHistory = null; pickedTrash = null }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }

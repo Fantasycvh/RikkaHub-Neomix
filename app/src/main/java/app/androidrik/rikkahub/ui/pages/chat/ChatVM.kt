@@ -404,7 +404,7 @@ class ChatVM(
 
     fun showDeleteBlockedWhileGeneratingError() {
         chatService.addError(
-            error = IllegalStateException("请先停止生成再删除消息"),
+            error = IllegalStateException(context.getString(R.string.chat_vm_stop_generation_before_delete)),
             conversationId = _conversationId,
             title = context.getString(R.string.error_title_operation)
         )
@@ -413,7 +413,7 @@ class ChatVM(
     /** [showDeleteBlockedWhileGeneratingError] 的编辑版（`onUpdateMessage` 的守卫提示）。 */
     fun showEditBlockedWhileGeneratingError() {
         chatService.addError(
-            error = IllegalStateException("请先停止生成再编辑消息"),
+            error = IllegalStateException(context.getString(R.string.chat_vm_stop_generation_before_edit)),
             conversationId = _conversationId,
             title = context.getString(R.string.error_title_operation)
         )

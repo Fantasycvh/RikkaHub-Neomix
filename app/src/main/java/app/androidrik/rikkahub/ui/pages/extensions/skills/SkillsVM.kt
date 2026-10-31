@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.extensions.skills
 
+import android.app.Application
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.files.FileUtils
 import app.androidrik.rikkahub.data.files.SkillFrontmatterParser
 import app.androidrik.rikkahub.data.files.SkillManager
@@ -27,6 +29,7 @@ private const val MAX_ZIP_TOTAL_SIZE = 256L * 1024 * 1024
 
 class SkillsVM(
     private val skillManager: SkillManager,
+    private val context: Application,
 ) : ViewModel() {
     private val skillInstaller by lazy { SkillInstaller(skillManager) }
     private val _skills = MutableStateFlow<List<SkillMetadata>>(emptyList())
@@ -68,7 +71,7 @@ class SkillsVM(
                 val fileName = FileUtils.getFileNameFromUri(appContext, uri).orEmpty()
                 val bytes = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: run {
-                        withContext(Dispatchers.Main) { onResult(false, "无法读取文件") }
+                        withContext(Dispatchers.Main) { onResult(false, appContext.getString(R.string.skills_page_cannot_read_file)) }
                         return@launch
                     }
 
@@ -83,7 +86,7 @@ class SkillsVM(
                     onResult(true, importedNames.joinToString())
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { onResult(false, e.message ?: "未知错误") }
+                withContext(Dispatchers.Main) { onResult(false, e.message ?: appContext.getString(R.string.backup_page_unknown_error)) }
             }
         }
     }
@@ -96,7 +99,7 @@ class SkillsVM(
                     withContext(Dispatchers.Main) { onResult(true, skill.name) }
                 }
                 .onFailure { e ->
-                    withContext(Dispatchers.Main) { onResult(false, e.message ?: "未知错误") }
+                    withContext(Dispatchers.Main) { onResult(false, e.message ?: context.getString(R.string.backup_page_unknown_error)) }
                 }
         }
     }
@@ -106,12 +109,12 @@ class SkillsVM(
         val frontmatter = SkillFrontmatterParser.parse(content)
         val name = frontmatter["name"]?.trim()
         if (name.isNullOrBlank()) {
-            error("SKILL.md 格式错误：缺少 name 字段")
+            error(context.getString(R.string.skills_page_skill_md_missing_name))
         }
         if (frontmatter["description"].isNullOrBlank()) {
-            error("SKILL.md 格式错误：缺少 description 字段")
+            error(context.getString(R.string.skills_page_skill_md_missing_description))
         }
-        val saved = skillManager.saveSkill(name, content) ?: error("保存失败，请检查技能格式")
+        val saved = skillManager.saveSkill(name, content) ?: error(context.getString(R.string.skills_page_save_failed))
         return listOf(saved.name)
     }
 
@@ -130,14 +133,14 @@ class SkillsVM(
                             continue
                         }
                         if (totalUncompressedBytes + entry.size > MAX_ZIP_TOTAL_SIZE) {
-                            error("压缩包解压后体积过大")
+                            error(context.getString(R.string.skills_page_zip_too_large))
                         }
                         val path = normalizeZipEntryPath(entry.name)
                         if (path != null) {
                             val content = zipInput.readBytes()
                             totalUncompressedBytes += content.size
                             if (totalUncompressedBytes > MAX_ZIP_TOTAL_SIZE) {
-                                error("压缩包解压后体积过大")
+                                error(context.getString(R.string.skills_page_zip_too_large))
                             }
                             files[path] = content
                         }
@@ -152,7 +155,7 @@ class SkillsVM(
             .filter { it.substringAfterLast('/').equals("SKILL.md", ignoreCase = true) }
             .sorted()
         if (skillMdPaths.isEmpty()) {
-            error("压缩包中未找到 SKILL.md")
+            error(context.getString(R.string.skills_page_zip_no_skill_md))
         }
         val skillBasePaths = skillMdPaths.map {
             it.substringBeforeLast('/', missingDelimiterValue = "")
@@ -161,14 +164,14 @@ class SkillsVM(
         val importedNames = mutableListOf<String>()
         for (skillMdPath in skillMdPaths) {
             val skillContent = files[skillMdPath]?.toString(Charsets.UTF_8)
-                ?: error("读取失败：$skillMdPath")
+                ?: error(context.getString(R.string.skills_page_read_failed_path, skillMdPath))
             val frontmatter = SkillFrontmatterParser.parse(skillContent)
             val name = frontmatter["name"]?.trim()
             if (name.isNullOrBlank()) {
-                error("$skillMdPath 格式错误：缺少 name 字段")
+                error(context.getString(R.string.skills_page_skill_md_missing_name_path, skillMdPath))
             }
             if (frontmatter["description"].isNullOrBlank()) {
-                error("$skillMdPath 格式错误：缺少 description 字段")
+                error(context.getString(R.string.skills_page_skill_md_missing_description_path, skillMdPath))
             }
 
             val basePath = skillMdPath.substringBeforeLast('/', missingDelimiterValue = "")
@@ -186,7 +189,7 @@ class SkillsVM(
 
             val saved = skillManager.saveSkillFileBytesAtomically(name, skillFiles)
             if (!saved) {
-                error("保存失败：$name")
+                error(context.getString(R.string.skills_page_save_failed_name, name))
             }
             importedNames += name
         }

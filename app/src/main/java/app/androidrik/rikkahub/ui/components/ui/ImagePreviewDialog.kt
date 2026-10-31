@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -44,6 +45,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.ImageNotFound01
 import me.rerere.hugeicons.stroke.Share08
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import org.koin.compose.koinInject
@@ -129,7 +131,7 @@ fun ImagePreviewDialog(
                         modifier = Modifier.size(48.dp),
                     )
                     Text(
-                        text = "图片已失效或无法读取",
+                        text = stringResource(R.string.image_preview_unavailable),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.8f),
                     )
@@ -157,7 +159,7 @@ fun ImagePreviewDialog(
                     .padding(8.dp)
                     .zIndex(1f),
             ) {
-                Icon(HugeIcons.Cancel01, contentDescription = "关闭", tint = Color.White)
+                Icon(HugeIcons.Cancel01, contentDescription = stringResource(R.string.close), tint = Color.White)
             }
 
             Row(
@@ -173,7 +175,7 @@ fun ImagePreviewDialog(
                             runCatching {
                                 val shareUri = filesManager.createImageShareUri(images[currentPage])
                                 if (shareUri == null) {
-                                    toaster.show(message = "无法分享该图片", type = ToastType.Error)
+                                    toaster.show(message = context.getString(R.string.image_preview_share_failed), type = ToastType.Error)
                                     return@launch
                                 }
                                 val intent = Intent(Intent.ACTION_SEND).apply {
@@ -189,16 +191,16 @@ fun ImagePreviewDialog(
                         }
                     }
                 ) {
-                    Icon(HugeIcons.Share08, contentDescription = "分享", tint = Color.White)
+                    Icon(HugeIcons.Share08, contentDescription = stringResource(R.string.common_share), tint = Color.White)
                 }
                 IconButton(
                     onClick = {
                         lifecycleOwner.lifecycleScope.launch {
                             runCatching {
-                                toaster.show("正在保存")
+                                toaster.show(context.getString(R.string.image_preview_saving))
                                 val imgUrl = images[currentPage]
                                 filesManager.saveMessageImage(context, imgUrl)
-                                toaster.show(message = "已保存图片", type = ToastType.Success)
+                                toaster.show(message = context.getString(R.string.image_preview_saved), type = ToastType.Success)
                             }.onFailure {
                                 it.printStackTrace()
                                 toaster.show(
@@ -209,7 +211,7 @@ fun ImagePreviewDialog(
                         }
                     }
                 ) {
-                    Icon(HugeIcons.Download01, contentDescription = "保存到相册", tint = Color.White)
+                    Icon(HugeIcons.Download01, contentDescription = stringResource(R.string.media_creation_page_save_to_gallery), tint = Color.White)
                 }
                 actions(currentPage)
             }

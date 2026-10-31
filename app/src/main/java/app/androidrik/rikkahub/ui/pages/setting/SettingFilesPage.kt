@@ -88,11 +88,11 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
                 val results = action()
                 clearSelection()
                 if (results.any { it.error != null }) report = title to results
-                else toaster.show("$title：成功 ${results.size} 项")
+                else toaster.show(context.getString(R.string.setting_files_page_operate_success_toast, title, results.size))
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                toaster.show("$title 失败：${failure.message}")
+                toaster.show(context.getString(R.string.setting_files_page_operate_failed_toast, title, failure.message))
             } finally { busy = false }
         }
     }
@@ -103,20 +103,20 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
         picking = false
         val folder = importFolder.also { importFolder = null }
         if (uris.isNotEmpty() && folder != null) {
-            operate("导入") { filesManager.importMany(folder, uris) }
+            operate(context.getString(R.string.common_import)) { filesManager.importMany(folder, uris) }
         }
     }
 
     pendingDelete?.let { targets ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("删除 ${targets.size} 个文件？") },
-            text = { Text("将永久删除所选文件（${targets.sumOf { it.sizeBytes }.fileSizeToString()}），无法撤销。\n聊天中引用这些文件的附件将无法打开；聊天消息本身不会删除。导出文件的留存副本也会被删除。") },
+            title = { Text(stringResource(R.string.setting_files_page_delete_files_title, targets.size)) },
+            text = { Text(stringResource(R.string.setting_files_page_delete_files_message, targets.sumOf { it.sizeBytes }.fileSizeToString())) },
             confirmButton = { TextButton(enabled = enabled, onClick = {
                 pendingDelete = null
-                operate("删除") { filesManager.deleteMany(targets) }
-            }) { Text("删除 ${targets.size} 项") } },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } },
+                operate(context.getString(R.string.common_delete)) { filesManager.deleteMany(targets) }
+            }) { Text(stringResource(R.string.setting_files_page_delete_selected_button, targets.size)) } },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     pendingRename?.let { targets ->
@@ -125,18 +125,18 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
             onDismiss = { pendingRename = null },
             onConfirm = { names ->
                 pendingRename = null
-                operate("重命名") { filesManager.renameMany(targets, names) }
+                operate(context.getString(R.string.common_rename)) { filesManager.renameMany(targets, names) }
             },
         )
     }
     report?.let { (title, results) ->
         AlertDialog(
             onDismissRequest = { report = null },
-            title = { Text("$title：${results.count { it.error == null }} 成功，${results.count { it.error != null }} 失败") },
+            title = { Text(stringResource(R.string.setting_files_page_report_title, title, results.count { it.error == null }, results.count { it.error != null })) },
             text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                 results.filter { it.error != null }.forEach { Text("${it.name}\n${it.error}", modifier = Modifier.padding(bottom = 12.dp)) }
             } },
-            confirmButton = { TextButton(onClick = { report = null }) { Text("知道了") } },
+            confirmButton = { TextButton(onClick = { report = null }) { Text(stringResource(R.string.common_got_it)) } },
         )
     }
     if (showRetentionDialog) {
@@ -153,27 +153,27 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
                 val days = daysText.toIntOrNull() ?: DEFAULT_EXPORT_RETENTION_DAYS
                 scope.launch { settingsStore.update { it.copy(exportRetentionDays = days.coerceIn(0, EXPORT_RETENTION_DAYS_MAX)) } }
                 showRetentionDialog = false
-            }) { Text("保存") } },
-            dismissButton = { TextButton(onClick = { showRetentionDialog = false }) { Text("取消") } },
+            }) { Text(stringResource(R.string.common_save)) } },
+            dismissButton = { TextButton(onClick = { showRetentionDialog = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text(if (selectionMode) "已选 ${selectedFiles.size} 项" else stringResource(R.string.setting_files_page_title)) },
+                title = { Text(if (selectionMode) stringResource(R.string.setting_files_page_selected_count, selectedFiles.size) else stringResource(R.string.setting_files_page_title)) },
                 navigationIcon = {
-                    if (selectionMode) IconButton(enabled = enabled, onClick = { clearSelection() }) { Icon(Lucide.X, "退出多选") }
+                    if (selectionMode) IconButton(enabled = enabled, onClick = { clearSelection() }) { Icon(Lucide.X, stringResource(R.string.media_creation_page_exit_selection)) }
                     else BackButton()
                 },
                 actions = {
                     if (selectionMode) {
                         TextButton(enabled = enabled && files.isNotEmpty(), onClick = {
                             selectedIds = if (selectedFiles.size == files.size) emptySet() else files.map { it.id }.toSet()
-                        }) { Text(if (selectedFiles.size == files.size && files.isNotEmpty()) "取消全选" else "全选") }
+                        }) { Text(if (selectedFiles.size == files.size && files.isNotEmpty()) stringResource(R.string.media_creation_page_deselect_all) else stringResource(R.string.imggen_page_select_all)) }
                     } else {
-                        IconButton(enabled = enabled, onClick = { showRetentionDialog = true }) { Icon(Lucide.Timer, "导出留存设置") }
-                        IconButton(enabled = enabled && files.isNotEmpty(), onClick = { selectionMode = true }) { Icon(Lucide.ListChecks, "选择文件") }
+                        IconButton(enabled = enabled, onClick = { showRetentionDialog = true }) { Icon(Lucide.Timer, stringResource(R.string.setting_files_page_export_retention_content_description)) }
+                        IconButton(enabled = enabled && files.isNotEmpty(), onClick = { selectionMode = true }) { Icon(Lucide.ListChecks, stringResource(R.string.setting_files_page_select_files_content_description)) }
                     }
                 }, scrollBehavior = scrollBehavior, colors = CustomColors.topBarColors,
             )
@@ -191,8 +191,8 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 if (selectionMode) {
-                    TextButton(enabled = enabled && selectedFiles.isNotEmpty(), onClick = { pendingRename = selectedFiles.toList() }) { Icon(Lucide.Pencil, null); Text("重命名") }
-                    TextButton(enabled = enabled && selectedFiles.isNotEmpty(), onClick = { pendingDelete = selectedFiles.toList() }) { Icon(Lucide.Trash2, null); Text("删除 (${selectedFiles.size})") }
+                    TextButton(enabled = enabled && selectedFiles.isNotEmpty(), onClick = { pendingRename = selectedFiles.toList() }) { Icon(Lucide.Pencil, null); Text(stringResource(R.string.common_rename)) }
+                    TextButton(enabled = enabled && selectedFiles.isNotEmpty(), onClick = { pendingDelete = selectedFiles.toList() }) { Icon(Lucide.Trash2, null); Text(stringResource(R.string.setting_files_page_delete_count_button, selectedFiles.size)) }
                 } else {
                     TextButton(enabled = enabled, onClick = {
                         importFolder = selectedFolder
@@ -201,10 +201,10 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
                         catch (failure: Exception) {
                             picking = false
                             importFolder = null
-                            toaster.show("无法打开文件选择器：${failure.message}")
+                            toaster.show(context.getString(R.string.setting_files_page_file_picker_error_toast, failure.message))
                         }
-                    }) { Icon(Lucide.Import, null); Text("批量导入") }
-                    TextButton(enabled = enabled && files.isNotEmpty(), onClick = { pendingDelete = files.toList() }) { Icon(Lucide.Trash2, null); Text("清空当前文件夹") }
+                    }) { Icon(Lucide.Import, null); Text(stringResource(R.string.setting_files_page_batch_import)) }
+                    TextButton(enabled = enabled && files.isNotEmpty(), onClick = { pendingDelete = files.toList() }) { Icon(Lucide.Trash2, null); Text(stringResource(R.string.setting_files_page_clear_folder)) }
                 }
             }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -220,7 +220,7 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
                             onToggle = { toggle(file) }, onRename = { pendingRename = listOf(file) },
                             onDelete = { pendingDelete = listOf(file) }, onShare = {
                                 try { context.shareFile(context.fileProviderUri(filesManager.getFile(file)), file.mimeType) }
-                                catch (failure: Exception) { toaster.show("分享失败：${failure.message}") }
+                                catch (failure: Exception) { toaster.show(context.getString(R.string.setting_files_page_share_failed_toast, failure.message)) }
                             })
                     }
                 }
@@ -251,9 +251,9 @@ private fun FileItem(
             Text(file.sizeBytes.fileSizeToString(), style = MaterialTheme.typography.bodySmall)
         }
         if (!selectionMode) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            IconButton(enabled = enabled, onClick = onRename) { Icon(Lucide.Pencil, "重命名") }
-            IconButton(enabled = enabled, onClick = onShare) { Icon(Lucide.Share2, "分享") }
-            IconButton(enabled = enabled, onClick = onDelete) { Icon(Lucide.Trash2, "删除") }
+            IconButton(enabled = enabled, onClick = onRename) { Icon(Lucide.Pencil, stringResource(R.string.common_rename)) }
+            IconButton(enabled = enabled, onClick = onShare) { Icon(Lucide.Share2, stringResource(R.string.setting_files_page_share_content_description)) }
+            IconButton(enabled = enabled, onClick = onDelete) { Icon(Lucide.Trash2, stringResource(R.string.common_delete)) }
         }
     }
 }

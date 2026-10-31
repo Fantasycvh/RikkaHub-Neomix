@@ -882,7 +882,7 @@ private suspend fun exportToHtml(
                 }
 
                 is UIMessagePart.Reasoning -> {
-                    sb.append("<details>\n<summary>").append("思考过程".escapeHtml()).append("</summary>\n")
+                    sb.append("<details>\n<summary>").append(context.getString(R.string.export_reasoning_summary).escapeHtml()).append("</summary>\n")
                     sb.append(generateMarkdownHtml(part.reasoning))
                     sb.append("\n</details>\n")
                 }

@@ -505,6 +505,7 @@ private fun MessagePartsBlock(
             is MessagePartBlock.ContentBlock -> key(block.index) {
                 when (val part = block.part) {
                     is UIMessagePart.Text -> {
+                        val truncatedNotice = stringResource(R.string.chat_message_truncated_notice, MAX_RENDER_TEXT_LENGTH)
                         val textContent = @Composable {
                             if (role == MessageRole.USER) {
                                 Surface(
@@ -515,7 +516,7 @@ private fun MessagePartsBlock(
                                 ) {
                                     Column(modifier = Modifier.padding(8.dp)) {
                                         MarkdownBlock(
-                                            content = part.text.renderSafe().replaceRegexes(
+                                            content = part.text.renderSafe(truncatedNotice).replaceRegexes(
                                                 assistant = assistant,
                                                 scope = AssistantAffectScope.USER,
                                                 visual = true,
@@ -534,7 +535,7 @@ private fun MessagePartsBlock(
                                     ) {
                                         Column(modifier = Modifier.padding(8.dp)) {
                                             MarkdownBlock(
-                                                content = part.text.renderSafe().replaceRegexes(
+                                                content = part.text.renderSafe(truncatedNotice).replaceRegexes(
                                                     assistant = assistant,
                                                     scope = AssistantAffectScope.ASSISTANT,
                                                     visual = true,
@@ -546,7 +547,7 @@ private fun MessagePartsBlock(
                                     }
                                 } else {
                                     MarkdownBlock(
-                                        content = part.text.renderSafe().replaceRegexes(
+                                        content = part.text.renderSafe(truncatedNotice).replaceRegexes(
                                             assistant = assistant,
                                             scope = AssistantAffectScope.ASSISTANT,
                                             visual = true,
@@ -861,7 +862,7 @@ private fun IncompleteOutputBanner(
 
 /** 渲染前保护：超长消息文本截断，避免 Compose 测量高度溢出 Int.MAX（vet 图极长空白消息曾触发） */
 private const val MAX_RENDER_TEXT_LENGTH = 1_100_000
-private fun String.renderSafe(): String {
+private fun String.renderSafe(truncatedNotice: String): String {
     if (length <= MAX_RENDER_TEXT_LENGTH) return this
     // 按码点截断（UTF-16 length 会劈开 emoji/代理对/组合字符）
     val sb = StringBuilder()
@@ -873,5 +874,5 @@ private fun String.renderSafe(): String {
         i += Character.charCount(cp)
         count++
     }
-    return sb.append("\n\n[内容过长，已截断显示前 ${MAX_RENDER_TEXT_LENGTH} 字符]").toString()
+    return sb.append(truncatedNotice).toString()
 }

@@ -85,8 +85,8 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
         }
         item {
             PromptSettingItem(
-                title = "做梦（记忆整理）提示词",
-                promptDescription = "用于自动和手动记忆整理。运行时仍会追加当前的审批与记忆类型调整说明。",
+                title = stringResource(R.string.setting_model_page_prompt_memory_consolidation),
+                promptDescription = stringResource(R.string.setting_model_page_prompt_memory_consolidation_desc),
                 promptValue = settings.memoryConsolidationPrompt,
                 onPromptChange = { vm.updateSettings(settings.copy(memoryConsolidationPrompt = it)) },
                 onResetPrompt = {

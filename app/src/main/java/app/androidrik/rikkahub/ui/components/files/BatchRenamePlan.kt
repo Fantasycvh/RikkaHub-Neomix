@@ -3,12 +3,18 @@ package app.androidrik.rikkahub.ui.components.files
 /** Stable identity is separate from the visible filename (managed files use database IDs). */
 data class RenameItem(val key: String, val name: String, val isDirectory: Boolean = false)
 
-internal fun validateRenameName(name: String) {
-    require(name.isNotBlank() && name == name.trim()) { "名称不能为空或以空格开头、结尾" }
-    require(name != "." && name != ".." && name.none { it == '/' || it == '\\' || it.isISOControl() }) {
-        "名称不能包含路径分隔符或控制字符"
-    }
-    require(name.toByteArray(Charsets.UTF_8).size <= 255) { "名称过长（最多 255 字节）" }
+/** Validation failures are typed so the dialog can localize them; no raw messages cross the boundary. */
+internal enum class RenameValidationError {
+    BLANK_NAME, INVALID_CHARS, NAME_TOO_LONG, NO_FILES, DUPLICATE_ITEMS, START_INDEX_OUT_OF_RANGE, DUPLICATE_NAMES
+}
+
+internal class RenamePlanException(val error: RenameValidationError) : IllegalArgumentException()
+
+internal fun validateRenameName(name: String): RenameValidationError? {
+    if (!(name.isNotBlank() && name == name.trim())) return RenameValidationError.BLANK_NAME
+    if (name == "." || name == ".." || name.any { it == '/' || it == '\\' || it.isISOControl() }) return RenameValidationError.INVALID_CHARS
+    if (name.toByteArray(Charsets.UTF_8).size > 255) return RenameValidationError.NAME_TOO_LONG
+    return null
 }
 
 /** Same ordered input produces the exact plan shown in the confirmation preview. */
@@ -18,10 +24,11 @@ internal fun buildRenamePlan(
     startIndex: Int = 1,
     keepExtension: Boolean = true,
 ): Map<String, String> {
-    require(items.isNotEmpty()) { "请选择文件" }
-    require(items.map { it.key }.distinct().size == items.size) { "选择中存在重复项" }
-    validateRenameName(baseName)
-    require(startIndex >= 0 && startIndex.toLong() + items.size - 1 <= Int.MAX_VALUE) { "起始序号超出范围" }
+    fun fail(error: RenameValidationError): Nothing = throw RenamePlanException(error)
+    if (items.isEmpty()) fail(RenameValidationError.NO_FILES)
+    if (items.map { it.key }.distinct().size != items.size) fail(RenameValidationError.DUPLICATE_ITEMS)
+    validateRenameName(baseName)?.let { fail(it) }
+    if (!(startIndex >= 0 && startIndex.toLong() + items.size - 1 <= Int.MAX_VALUE)) fail(RenameValidationError.START_INDEX_OUT_OF_RANGE)
     val names = items.mapIndexed { index, item ->
         val name = if (items.size == 1) baseName else {
             val dot = item.name.lastIndexOf('.')
@@ -30,9 +37,9 @@ internal fun buildRenamePlan(
             } else ""
             "${baseName}_${startIndex + index}$extension"
         }
-        validateRenameName(name)
+        validateRenameName(name)?.let { fail(it) }
         name
     }
-    require(names.distinct().size == names.size) { "新名称不能重复" }
+    if (names.distinct().size != names.size) fail(RenameValidationError.DUPLICATE_NAMES)
     return items.mapIndexed { index, item -> item.key to names[index] }.toMap()
 }

@@ -74,13 +74,6 @@ import org.koin.compose.koinInject
 private const val PORT_SAVE_DEBOUNCE_MS = 400L
 private const val PASSWORD_SAVE_DEBOUNCE_MS = 400L
 
-private const val PASSWORD_REQUIRED_TOAST =
-    "Set a non-empty access password first / 请先设置非空访问口令"
-private const val START_SERVER_FAILED_TOAST =
-    "Unable to start web server / 无法启动 Web 服务"
-private const val SETTINGS_LOADING_TOAST =
-    "Settings are still loading, please retry / 设置仍在加载，请稍后重试"
-
 @Composable
 fun SettingWebPage() {
     val webServerManager: WebServerManager = koinInject()
@@ -188,7 +181,7 @@ fun SettingWebPage() {
         val latest = settingsStore.settingsFlow.value
         // 双保险：空口令不允许启动（WebServerManager 也会拒绝，这里给即时反馈）。
         if (accessPasswordText.isBlank() || latest.webServerAccessPassword.isBlank()) {
-            toaster.show(PASSWORD_REQUIRED_TOAST)
+            toaster.show(context.getString(R.string.setting_page_web_server_password_required_toast))
             return
         }
         val intent = Intent(context, WebServerService::class.java).apply {
@@ -199,7 +192,7 @@ fun SettingWebPage() {
         // 只有 FGS 真正拉起来才把 enabled 置 true；否则失败后会在下次启动继续自动拉起，
         // 反复出现「启动失败→通知驻留→下次再失败」的循环。
         val started = runCatching { context.startForegroundService(intent) }
-            .onFailure { toaster.show("$START_SERVER_FAILED_TOAST: ${it.message}") }
+            .onFailure { toaster.show(context.getString(R.string.setting_page_web_server_start_failed_with_error_toast, it.message)) }
             .isSuccess
         if (!started) return
         scope.launch {
@@ -211,11 +204,11 @@ fun SettingWebPage() {
     fun requestServerStart() {
         // 首屏 Settings 可能仍是 dummy：此时读写会污染真实设置，先提示等待。
         if (settingsStore.settingsFlow.value.init) {
-            toaster.show(SETTINGS_LOADING_TOAST)
+            toaster.show(context.getString(R.string.setting_page_web_server_settings_loading_toast))
             return
         }
         if (accessPasswordText.isBlank()) {
-            toaster.show(PASSWORD_REQUIRED_TOAST)
+            toaster.show(context.getString(R.string.setting_page_web_server_password_required_toast))
             return
         }
         if (permissionState.allPermissionsGranted) {

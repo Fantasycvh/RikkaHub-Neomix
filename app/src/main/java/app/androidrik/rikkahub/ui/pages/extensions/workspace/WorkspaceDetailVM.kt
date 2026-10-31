@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
+import android.app.Application
 import android.net.Uri
 import android.os.Build
 import androidx.documentfile.provider.DocumentFile
@@ -16,6 +17,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
 import app.androidrik.rikkahub.data.repository.AptIndexRefresh
@@ -36,6 +38,7 @@ class WorkspaceDetailVM(
     private val id: String,
     private val repository: WorkspaceRepository,
     private val terminalSessionManager: WorkspaceTerminalSessionManager,
+    private val context: Application,
 ) : ViewModel() {
     private val _state = MutableStateFlow(WorkspaceDetailState())
     val state = _state.asStateFlow()
@@ -146,7 +149,7 @@ class WorkspaceDetailVM(
             } catch (error: Exception) {
                 _state.update {
                     if (it.area == location.area && it.path == location.path)
-                        it.copy(entries = emptyList(), loading = false, error = error.message ?: "加载工作区文件失败") else it
+                        it.copy(entries = emptyList(), loading = false, error = error.message ?: context.getString(R.string.workspace_detail_load_files_failed)) else it
                 }
             }
         }
@@ -155,12 +158,12 @@ class WorkspaceDetailVM(
     fun delete(entry: WorkspaceFileEntry, area: WorkspaceStorageArea = state.value.area) {
         viewModelScope.launch {
             runCatching {
-                check(repository.deleteFile(id, area, entry.path, entry.isDirectory)) { "删除失败: ${entry.path}" }
+                check(repository.deleteFile(id, area, entry.path, entry.isDirectory)) { context.getString(R.string.workspace_detail_delete_failed_path, entry.path) }
             }.onSuccess {
                 refresh()
             }.onFailure { error ->
                 if (error is CancellationException) throw error
-                _state.update { it.copy(error = error.message ?: "删除失败") }
+                _state.update { it.copy(error = error.message ?: context.getString(R.string.setting_files_page_delete_failed_toast)) }
             }
         }
     }
@@ -180,7 +183,7 @@ class WorkspaceDetailVM(
                 refresh()
             }.onFailure { error ->
                 if (error is CancellationException) throw error
-                _state.update { it.copy(error = error.message ?: "导入文件失败") }
+                _state.update { it.copy(error = error.message ?: context.getString(R.string.text_area_import_failed)) }
             }
         }
     }
@@ -196,7 +199,7 @@ class WorkspaceDetailVM(
                 )
             }.onFailure { error ->
                 if (error is CancellationException) throw error
-                _state.update { it.copy(error = error.message ?: "导出文件失败") }
+                _state.update { it.copy(error = error.message ?: context.getString(R.string.workspace_detail_export_file_failed)) }
             }
         }
     }
@@ -228,7 +231,7 @@ class WorkspaceDetailVM(
                 }
             }.onSuccess(onReady).onFailure { error ->
                 if (error is CancellationException) throw error
-                _state.update { it.copy(error = error.message ?: "导出文件失败") }
+                _state.update { it.copy(error = error.message ?: context.getString(R.string.workspace_detail_export_file_failed)) }
             }
         }
     }
@@ -322,7 +325,7 @@ class WorkspaceDetailVM(
         )
     }.onFailure { error ->
                 if (error is CancellationException) throw error
-        _state.update { it.copy(error = error.message ?: "导出失败") }
+        _state.update { it.copy(error = error.message ?: context.getString(R.string.workspace_export_failed)) }
     }.onFailure { if (it is CancellationException) throw it }.getOrNull()
 
     /** 逐个导出到 SAF 授权目录（保留原目录结构）。 */
@@ -345,7 +348,7 @@ class WorkspaceDetailVM(
         )
     }.onFailure { error ->
                 if (error is CancellationException) throw error
-        _state.update { it.copy(error = error.message ?: "导出失败") }
+        _state.update { it.copy(error = error.message ?: context.getString(R.string.workspace_export_failed)) }
     }.onFailure { if (it is CancellationException) throw it }.getOrNull()
 
     /** 单次读取上限（字节）。窗口读（offset/limit）不受它约束，所以调大它只是为了"整文件读大文件"。 */
@@ -375,7 +378,7 @@ class WorkspaceDetailVM(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                _installError.value = error.message ?: "保存 Shell 兼容模式失败"
+                _installError.value = error.message ?: context.getString(R.string.workspace_detail_shell_compat_save_failed)
             }
         }
     }
@@ -403,7 +406,7 @@ class WorkspaceDetailVM(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                _mirrorError.value = error.message ?: "镜像源配置失败"
+                _mirrorError.value = error.message ?: context.getString(R.string.workspace_detail_package_mirrors_failed)
             } finally {
                 _mirrorSetupRunning.value = false
             }
@@ -469,7 +472,7 @@ class WorkspaceDetailVM(
                         if (e.message?.startsWith("Rootfs download failed") != true) break
                     }
                 }
-                _installError.value = lastError?.message ?: "Rootfs 安装失败"
+                _installError.value = lastError?.message ?: context.getString(R.string.workspace_detail_rootfs_install_failed)
             } finally {
                 _installProgress.value = null
             }
@@ -511,7 +514,7 @@ class WorkspaceDetailVM(
                 _terminalState.update {
                     it.copy(
                         running = false,
-                        history = it.history + WorkspaceTerminalEntry.Error(error.message ?: "命令执行失败"),
+                        history = it.history + WorkspaceTerminalEntry.Error(error.message ?: context.getString(R.string.workspace_detail_command_failed)),
                     )
                 }
             }

@@ -167,21 +167,21 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
         item {
             Column {
                 ModelSettingItem(
-                    title = "做梦（记忆整理）模型",
-                    description = "用于自动和手动记忆整理。未配置时依次使用快速模型、助手聊天模型；建议选择支持工具调用的模型。",
+                    title = stringResource(R.string.setting_model_page_memory_consolidation_model),
+                    description = stringResource(R.string.setting_model_page_memory_consolidation_model_desc),
                     modelId = settings.memoryConsolidationModelId,
                     providers = settings.providers,
                     onSelect = { vm.updateSettings(settings.copy(memoryConsolidationModelId = it.id)) },
                     onClear = { vm.updateSettings(settings.copy(memoryConsolidationModelId = null)) },
-                    emptyText = "跟随快速模型或助手聊天模型",
+                    emptyText = stringResource(R.string.setting_model_page_memory_consolidation_empty),
                 )
                 // 整理任务的推理强度（上游 72d419171 增量移植）：仅配置了做梦模型时展示，
                 // 对整理实际用上的模型生效；选「自动」= 原行为
                 if (settings.memoryConsolidationModelId != null) {
                     FormItem(
                         modifier = Modifier.padding(horizontal = 8.dp),
-                        label = { Text("整理推理强度") },
-                        description = { Text("记忆整理任务使用的思考强度；「自动」为原行为") },
+                        label = { Text(stringResource(R.string.setting_model_page_memory_consolidation_reasoning)) },
+                        description = { Text(stringResource(R.string.setting_model_page_memory_consolidation_reasoning_desc)) },
                     ) {
                         ReasoningButton(
                             reasoningLevel = settings.memoryConsolidationReasoningLevel

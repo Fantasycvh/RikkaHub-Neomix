@@ -27,6 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,6 +36,7 @@ import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginInfo
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.plugin.js.JsPlugin
 import app.androidrik.rikkahub.data.plugin.js.JsPluginInstaller
 import app.androidrik.rikkahub.data.plugin.js.hookNames
@@ -66,7 +69,7 @@ fun PluginDetailPage(pluginId: String) {
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text(info?.plugin?.displayName ?: "插件") },
+                title = { Text(info?.plugin?.displayName ?: stringResource(R.string.plugin_detail_title_fallback)) },
                 navigationIcon = { BackButton() },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors,
@@ -77,7 +80,7 @@ fun PluginDetailPage(pluginId: String) {
     ) { innerPadding ->
         if (info == null) {
             Text(
-                text = "插件不存在或已被移除",
+                text = stringResource(R.string.plugin_detail_not_found),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(innerPadding).padding(16.dp),
             )
@@ -94,12 +97,21 @@ fun PluginDetailPage(pluginId: String) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(text = plugin.description, style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        text = "版本 ${plugin.version} · 作者 ${plugin.author} · ${plugin.id}",
+                        text = stringResource(
+                            R.string.plugin_detail_meta_line,
+                            plugin.version,
+                            plugin.author,
+                            plugin.id,
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = if (info.enabled) "已启用" else "已关闭",
+                        text = if (info.enabled) {
+                            stringResource(R.string.plugin_detail_enabled)
+                        } else {
+                            stringResource(R.string.plugin_detail_disabled)
+                        },
                         style = MaterialTheme.typography.labelMedium,
                         color = if (info.enabled) {
                             MaterialTheme.colorScheme.primary
@@ -125,7 +137,7 @@ fun PluginDetailPage(pluginId: String) {
                 item("rules") {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            text = "规则 (${plugin.definition.rules.size})",
+                            text = stringResource(R.string.plugin_detail_rules_header, plugin.definition.rules.size),
                             style = MaterialTheme.typography.titleSmall,
                         )
                         plugin.definition.rules.forEachIndexed { index, rule ->
@@ -152,37 +164,63 @@ fun PluginDetailPage(pluginId: String) {
                 item("js_manifest") {
                     val manifest = plugin.definition.manifest
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("脚本清单", style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.plugin_detail_manifest_header), style = MaterialTheme.typography.titleSmall)
                         Text(
-                            text = "作用范围: ${when (manifest.target.name) {
-                                "INPUT" -> "用户输入"
-                                "OUTPUT" -> "模型输出"
-                                "NONE" -> "仅工具"
-                                else -> "输入 + 输出"
-                            }}",
+                            text = stringResource(
+                                R.string.plugin_target_scope,
+                                stringResource(
+                                    when (manifest.target.name) {
+                                        "INPUT" -> R.string.plugin_target_input
+                                        "OUTPUT" -> R.string.plugin_target_output
+                                        "NONE" -> R.string.plugin_target_tool_only
+                                        else -> R.string.plugin_target_input_output
+                                    }
+                                ),
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
-                            text = "钩子: ${plugin.definition.hookNames.joinToString()} · 超时: ${manifest.timeoutMs}ms",
+                            text = stringResource(
+                                R.string.plugin_detail_hooks_timeout,
+                                plugin.definition.hookNames.joinToString(),
+                                manifest.timeoutMs,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
-                            text = "源码: ${plugin.definition.source.toByteArray().size / 1024} KB",
+                            text = stringResource(
+                                R.string.plugin_detail_source_size,
+                                plugin.definition.source.toByteArray().size / 1024,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
-                            text = "网络白名单: ${
-                                manifest.networkHosts.ifEmpty { listOf("无") }.joinToString()
-                            }",
+                            text = stringResource(
+                                R.string.plugin_network_whitelist,
+                                manifest.networkHosts
+                                    .ifEmpty { listOf(stringResource(R.string.plugin_detail_network_none)) }
+                                    .joinToString(),
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                         )
-                        if (manifest.storage) Text("隔离存储: 已声明（每插件 256 KiB / 128 项）", style = MaterialTheme.typography.bodySmall)
+                        if (manifest.storage) {
+                            Text(
+                                stringResource(R.string.plugin_detail_storage_declared),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         manifest.tools.forEach { tool ->
-                            Text("工具: ${tool.name} — ${tool.description}", style = MaterialTheme.typography.bodySmall)
-                            Text("工具调用需逐次审批", style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                stringResource(R.string.plugin_tool_line, tool.name, tool.description),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                stringResource(R.string.plugin_detail_tool_approval_hint),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
                         }
                         Text(
-                            text = "源码预览",
+                            text = stringResource(R.string.plugin_detail_source_preview),
                             style = MaterialTheme.typography.labelLarge,
                             modifier = Modifier.padding(top = 6.dp),
                         )
@@ -215,17 +253,18 @@ private fun UninstallButton(
     var confirm by remember { mutableStateOf(false) }
     val toaster = LocalToaster.current
     val nav = LocalNavController.current
+    val context = LocalContext.current
     // 应用作用域:详情页会在插件注销后立刻重组为"不存在",用页面作用域会把持久化那一步取消(实测踩到过)
     val appScope: AppScope = koinInject()
 
     TextButton(onClick = { confirm = true }) {
-        Text("删除插件", color = MaterialTheme.colorScheme.error)
+        Text(stringResource(R.string.plugin_detail_delete_plugin), color = MaterialTheme.colorScheme.error)
     }
     if (confirm) {
         AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("删除插件?") },
-            text = { Text("将移除「$displayName」的定义并停止其生效。") },
+            title = { Text(stringResource(R.string.plugin_detail_delete_confirm_title)) },
+            text = { Text(stringResource(R.string.plugin_detail_delete_confirm_text, displayName)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
@@ -233,27 +272,36 @@ private fun UninstallButton(
                     appScope.launch {
                         onUninstall()
                             .onSuccess {
-                                toaster.show(message = "已删除: $displayName", type = ToastType.Success)
+                                toaster.show(
+                                    message = context.getString(R.string.plugin_detail_deleted_toast, displayName),
+                                    type = ToastType.Success,
+                                )
                             }
                             .onFailure {
-                                toaster.show(message = "删除失败: ${it.message}", type = ToastType.Error)
+                                toaster.show(
+                                    message = context.getString(R.string.plugin_detail_delete_failed_toast, it.message),
+                                    type = ToastType.Error,
+                                )
                             }
                     }
                 }) {
-                    Text("删除")
+                    Text(stringResource(R.string.common_delete))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirm = false }) { Text("取消") }
+                TextButton(onClick = { confirm = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             },
         )
     }
 }
 
+@Composable
 private fun describeAction(action: RuleAction): String = when (action.type) {
-    RuleActionType.REPLACE -> "替换 /${action.pattern}/ → ${action.replacement}"
-    RuleActionType.APPEND -> "追加：${action.text}"
-    RuleActionType.PREPEND -> "前置：${action.text}"
+    RuleActionType.REPLACE -> stringResource(R.string.plugin_detail_action_replace, action.pattern, action.replacement)
+    RuleActionType.APPEND -> stringResource(R.string.plugin_detail_action_append, action.text)
+    RuleActionType.PREPEND -> stringResource(R.string.plugin_detail_action_prepend, action.text)
 }
 
 @Composable
@@ -261,6 +309,7 @@ private fun CapabilityPermissions(info: PluginInfo, manager: PluginManager) {
     val plugin = info.plugin
     val appScope: AppScope = koinInject()
     val toaster = LocalToaster.current
+    val context = LocalContext.current
     var saving by remember(plugin.id) { mutableStateOf(false) }
     var pendingGrant by remember(plugin.id) { mutableStateOf<PluginCapability?>(null) }
 
@@ -274,7 +323,10 @@ private fun CapabilityPermissions(info: PluginInfo, manager: PluginManager) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                toaster.show(message = "能力更新失败: ${e.message}", type = ToastType.Error)
+                toaster.show(
+                    message = context.getString(R.string.plugin_detail_capability_update_failed, e.message),
+                    type = ToastType.Error,
+                )
             } finally {
                 saving = false
             }
@@ -282,14 +334,14 @@ private fun CapabilityPermissions(info: PluginInfo, manager: PluginManager) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("能力授权", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.plugin_detail_capability_header), style = MaterialTheme.typography.titleSmall)
         Text(
-            "可随时撤销或重新授权，不影响插件启用状态。输入/输出和工具在下一次请求装配时生效，网络和存储在下一次调用时校验；已完成的改写和已发出的请求不会被撤回。",
+            stringResource(R.string.plugin_detail_capability_description),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (plugin.capabilities.isEmpty()) {
-            Text("该插件未声明能力", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.plugin_detail_no_capabilities), style = MaterialTheme.typography.bodySmall)
         }
         plugin.capabilities.forEach { capability ->
             val granted = info.hasCapability(capability)
@@ -315,7 +367,11 @@ private fun CapabilityPermissions(info: PluginInfo, manager: PluginManager) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        if (granted) "已授权" else "已撤销",
+                        if (granted) {
+                            stringResource(R.string.plugin_detail_granted)
+                        } else {
+                            stringResource(R.string.plugin_detail_revoked)
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -325,46 +381,62 @@ private fun CapabilityPermissions(info: PluginInfo, manager: PluginManager) {
         }
         if (plugin.capabilities.isNotEmpty() && info.grants.isEmpty()) {
             Text(
-                "全部能力已撤销，插件不会获得任何已声明能力。重新启用插件不会恢复授权。",
+                stringResource(R.string.plugin_detail_all_revoked_warning),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
         }
-        if (saving) Text("正在保存授权…", style = MaterialTheme.typography.labelSmall)
+        if (saving) Text(stringResource(R.string.plugin_detail_saving), style = MaterialTheme.typography.labelSmall)
     }
 
     pendingGrant?.let { capability ->
         AlertDialog(
             onDismissRequest = { pendingGrant = null },
-            title = { Text("授权「${capabilityLabel(capability)}」？") },
+            title = { Text(stringResource(R.string.plugin_detail_grant_title, capabilityLabel(capability))) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("允许「${plugin.displayName}」${capabilityDescription(capability)}")
+                    Text(
+                        stringResource(
+                            R.string.plugin_detail_grant_text,
+                            plugin.displayName,
+                            capabilityDescription(capability),
+                        ),
+                    )
                     if (capability == PluginCapability.NETWORK && plugin is JsPlugin) {
-                        Text("网络白名单: ${plugin.definition.manifest.networkHosts.joinToString()}")
+                        Text(
+                            stringResource(
+                                R.string.plugin_network_whitelist,
+                                plugin.definition.manifest.networkHosts.joinToString(),
+                            ),
+                        )
                     }
-                    if (!info.enabled) Text("插件当前已关闭，授权不会自动启用插件。")
+                    if (!info.enabled) {
+                        Text(stringResource(R.string.plugin_detail_grant_disabled_hint))
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     pendingGrant = null
                     update(capability, true)
-                }) { Text("授权") }
+                }) { Text(stringResource(R.string.plugin_detail_grant_action)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingGrant = null }) { Text("取消") }
+                TextButton(onClick = { pendingGrant = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             },
         )
     }
 }
 
+@Composable
 private fun capabilityDescription(capability: PluginCapability): String = when (capability) {
-    PluginCapability.NETWORK -> "通过宿主网关访问声明的网络域名"
-    PluginCapability.HISTORY_READ -> "读取会话历史"
-    PluginCapability.CONVERSATION_MUTATE -> "修改会话内容"
-    PluginCapability.TOOL_REGISTER -> "向模型提供插件工具"
-    PluginCapability.PROMPT_TRANSFORM -> "改写发送给模型的输入文本"
-    PluginCapability.OUTPUT_TRANSFORM -> "改写模型生成结束后的输出文本"
-    PluginCapability.STORAGE -> "使用插件本地存储"
+    PluginCapability.NETWORK -> stringResource(R.string.plugin_detail_cap_desc_network)
+    PluginCapability.HISTORY_READ -> stringResource(R.string.plugin_detail_cap_desc_history_read)
+    PluginCapability.CONVERSATION_MUTATE -> stringResource(R.string.plugin_detail_cap_desc_conversation_mutate)
+    PluginCapability.TOOL_REGISTER -> stringResource(R.string.plugin_detail_cap_desc_tool_register)
+    PluginCapability.PROMPT_TRANSFORM -> stringResource(R.string.plugin_detail_cap_desc_prompt_transform)
+    PluginCapability.OUTPUT_TRANSFORM -> stringResource(R.string.plugin_detail_cap_desc_output_transform)
+    PluginCapability.STORAGE -> stringResource(R.string.plugin_detail_cap_desc_storage)
 }

@@ -41,11 +41,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import app.androidrik.common.android.Logging
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.ui.components.ui.UIAvatar
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -175,8 +177,7 @@ private fun RecoveryPage(vm: DebugVM) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            "扫描聊天记录中引用的助手，为设置里缺失的助手补齐，使对应聊天记录重新可见。" +
-                "内置助手会恢复为原始配置；其余助手只能建同名占位（原配置不可恢复）。",
+            stringResource(R.string.debug_page_recover_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -230,6 +231,7 @@ private fun RecoveryPage(vm: DebugVM) {
 @Composable
 private fun MainPage(vm: DebugVM) {
     val settings = LocalSettings.current
+    val context = LocalContext.current
     val conversationCount by vm.conversationCount.collectAsStateWithLifecycle()
     Column(
         modifier = Modifier
@@ -276,9 +278,9 @@ private fun MainPage(vm: DebugVM) {
         val toaster = LocalToaster.current
         Button(
             onClick = {
-                toaster.show("测试 ${counter++}")
-                toaster.show("测试 ${counter++}", type = ToastType.Info)
-                toaster.show("测试 ${counter++}", type = ToastType.Error)
+                toaster.show(context.getString(R.string.debug_page_toast_test, counter++))
+                toaster.show(context.getString(R.string.debug_page_toast_test, counter++), type = ToastType.Info)
+                toaster.show(context.getString(R.string.debug_page_toast_test, counter++), type = ToastType.Error)
             }
         ) {
             Text("toast")
@@ -292,7 +294,7 @@ private fun MainPage(vm: DebugVM) {
                 )
             }
         ) {
-            Text("重置Chat模型")
+            Text(stringResource(R.string.debug_page_reset_chat_model))
         }
 
         Button(
@@ -300,7 +302,7 @@ private fun MainPage(vm: DebugVM) {
                 error("测试崩溃 ${Random.nextInt(0..1000)}")
             }
         ) {
-            Text("崩溃")
+            Text(stringResource(R.string.debug_page_crash))
         }
 
         Row(
@@ -308,30 +310,30 @@ private fun MainPage(vm: DebugVM) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Conversation 数量: ${conversationCount?.toString() ?: "..."}",
+                text = stringResource(R.string.debug_page_conversation_count, conversationCount?.toString() ?: "..."),
                 modifier = Modifier.weight(1f),
             )
             Button(onClick = { vm.refreshConversationCount() }) {
-                Text("刷新")
+                Text(stringResource(R.string.setting_storage_page_refresh))
             }
         }
 
         Button(
             onClick = {
                 vm.createOversizedConversation(30)
-                toaster.show("正在创建 30MB 超大对话...")
+                toaster.show(context.getString(R.string.debug_page_creating_oversized))
             }
         ) {
-            Text("创建超大对话 (30MB)")
+            Text(stringResource(R.string.debug_page_create_oversized))
         }
 
         Button(
             onClick = {
                 vm.createConversationWithMessages(1024)
-                toaster.show("正在创建 1024 条消息对话...")
+                toaster.show(context.getString(R.string.debug_page_creating_1024))
             }
         ) {
-            Text("创建 1024 个消息的聊天")
+            Text(stringResource(R.string.debug_page_create_1024))
         }
 
         var markdown by remember { mutableStateOf("") }

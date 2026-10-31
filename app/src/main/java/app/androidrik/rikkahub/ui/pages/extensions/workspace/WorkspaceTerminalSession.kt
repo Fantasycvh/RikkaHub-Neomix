@@ -19,6 +19,7 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.terminal.TerminalTransport
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.RootfsPatchOptions
@@ -356,7 +357,7 @@ private fun dispatchTerminalUrl(context: Context, url: String): Boolean {
         // 工作区本地文件: 复制完整路径, 跳转文件浏览器留给工作区联动阶段
         uri.scheme == "file" -> {
             copyText(context, url)
-            Toast.makeText(context, "已复制路径: $url", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.workspace_terminal_path_copied, url), Toast.LENGTH_SHORT).show()
             true
         }
         // git/ssh 仓库地址: 弹菜单(复制 / 打开浏览器), 直接 ACTION_VIEW 在多数设备没有处理器
@@ -400,7 +401,11 @@ private fun showGitUrlMenu(context: Context, url: String) {
     AlertDialog.Builder(dialogContext)
         .setTitle(url)
         .setItems(
-            arrayOf("在浏览器打开", "复制到剪贴板", "取消"),
+            arrayOf(
+                context.getString(R.string.workspace_terminal_open_in_browser),
+                context.getString(R.string.workspace_terminal_copy_to_clipboard),
+                context.getString(R.string.common_cancel),
+            ),
         ) { _, which ->
             when (which) {
                 0 -> gitUrlToHttp(url)?.let { httpUrl ->

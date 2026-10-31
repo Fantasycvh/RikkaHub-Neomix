@@ -432,12 +432,12 @@ private fun AssistantPromptContent(
                     style = MaterialTheme.typography.titleSmall
                 )
                 val rawMessages = buildList {
-                    add(UIMessage.user("你好啊"))
-                    add(UIMessage.assistant("你好，有什么我可以帮你的吗？"))
+                    add(UIMessage.user(stringResource(R.string.assistant_prompt_preview_sample_user)))
+                    add(UIMessage.assistant(stringResource(R.string.assistant_prompt_preview_sample_assistant)))
                     // 设了「系统内容模板」时把**合成**样本也放进预览：否则用户看不到该模板的效果，
                     // 也无从发现「system 与注入默认不走任何模板」这件事（预览盲区）。
                     if (assistant.systemMessageTemplate.isNotBlank()) {
-                        add(UIMessage.system("（系统提示与注入内容示例）").copy(isSynthetic = true))
+                        add(UIMessage.system(stringResource(R.string.assistant_prompt_preview_sample_system)).copy(isSynthetic = true))
                     }
                 }
                 val preview by produceState<UiState<List<UIMessage>>>(

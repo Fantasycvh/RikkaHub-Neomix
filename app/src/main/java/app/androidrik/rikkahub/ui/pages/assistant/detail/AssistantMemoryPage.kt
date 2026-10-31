@@ -141,7 +141,7 @@ fun AssistantMemoryPage(id: String) {
                     BackButton()
                 },
                 actions = {
-                    TextButton(onClick = { showRecovery = true }) { Text("恢复") }
+                    TextButton(onClick = { showRecovery = true }) { Text(stringResource(R.string.backup_page_restore)) }
                 },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors,

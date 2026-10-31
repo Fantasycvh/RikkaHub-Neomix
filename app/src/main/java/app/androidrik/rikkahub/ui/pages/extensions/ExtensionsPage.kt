@@ -98,8 +98,8 @@ fun ExtensionsPage() {
                     item(
                         onClick = { navController.navigate(Screen.Plugins) },
                         leadingContent = { Icon(HugeIcons.Package, null) },
-                        headlineContent = { Text("插件") },
-                        supportingContent = { Text("启用/禁用内置插件,查看能力声明") },
+                        headlineContent = { Text(stringResource(R.string.extensions_page_plugins)) },
+                        supportingContent = { Text(stringResource(R.string.extensions_page_plugins_desc)) },
                     )
                 }
             }

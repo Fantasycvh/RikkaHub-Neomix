@@ -149,7 +149,7 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
                                 onDismissRequest = { showAddMenu = false },
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("从聊天服务商导入") },
+                                    text = { Text(stringResource(R.string.setting_media_page_import_from_chat)) },
                                     onClick = {
                                         showAddMenu = false
                                         showChatImport = true
@@ -248,17 +248,15 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
     if (showChatImport) {
         AlertDialog(
             onDismissRequest = { showChatImport = false },
-            title = { Text("从聊天服务商导入") },
+            title = { Text(stringResource(R.string.setting_media_page_import_from_chat)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "仅支持 OpenAI 兼容服务商，复制名称、API 地址和第一个可用密钥。" +
-                            "不导入聊天模型、自定义请求头或独立代理；导入后请添加生图模型并确认接口兼容性。" +
-                            "保存为独立配置，不影响原聊天服务商。",
+                        stringResource(R.string.setting_media_page_import_from_chat_desc),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (importableProviders.isEmpty()) {
-                        Text("暂无可导入的 OpenAI 兼容聊天服务商")
+                        Text(stringResource(R.string.setting_media_page_import_from_chat_empty))
                     }
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),

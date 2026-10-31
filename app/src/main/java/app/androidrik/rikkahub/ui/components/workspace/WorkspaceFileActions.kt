@@ -11,8 +11,10 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import android.provider.OpenableColumns
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.ui.components.files.BatchRenameDialog
 import app.androidrik.rikkahub.ui.components.files.RenameItem
@@ -74,7 +76,7 @@ fun rememberWorkspaceFileActions(
                             } ?: "imported_file"
                             context.contentResolver.openInputStream(uri)?.use { input ->
                                 repository.importFile(target.id, target.area, target.path, name, input)
-                            } ?: error("无法读取文件")
+                            } ?: error(context.getString(R.string.workspace_file_actions_cannot_read_file))
                         }
                         succeeded++
                     } catch (cancelled: CancellationException) {
@@ -84,8 +86,8 @@ fun rememberWorkspaceFileActions(
                     }
                 }
                 changed()
-                if (failures.isEmpty()) toaster.show("已导入 $succeeded 项")
-                else report = "导入" to failures
+                if (failures.isEmpty()) toaster.show(context.getString(R.string.workspace_file_actions_imported_count, succeeded))
+                else report = context.getString(R.string.common_import) to failures
             } finally { busy = false }
         }
     }
@@ -105,8 +107,8 @@ fun rememberWorkspaceFileActions(
                             val requested = names.filterKeys { it in allowed }
                             val failures = repository.renameFiles(target.id, target.area, requested)
                             changed()
-                            if (failures.isEmpty()) toaster.show("已重命名 ${requested.size} 项")
-                            else report = "重命名" to failures
+                            if (failures.isEmpty()) toaster.show(context.getString(R.string.workspace_file_actions_renamed_count, requested.size))
+                            else report = context.getString(R.string.common_rename) to failures
                         } finally { busy = false }
                     }
                 }
@@ -116,7 +118,7 @@ fun rememberWorkspaceFileActions(
     report?.let { (title, failures) ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { report = null },
-            title = { androidx.compose.material3.Text("$title：${failures.size} 项失败") },
+            title = { androidx.compose.material3.Text(stringResource(R.string.workspace_file_actions_report_title, title, failures.size)) },
             text = {
                 androidx.compose.foundation.layout.Column(
                     modifier = Modifier
@@ -127,7 +129,7 @@ fun rememberWorkspaceFileActions(
                 }
             },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { report = null }) { androidx.compose.material3.Text("知道了") }
+                androidx.compose.material3.TextButton(onClick = { report = null }) { androidx.compose.material3.Text(stringResource(R.string.common_got_it)) }
             },
         )
     }
@@ -137,7 +139,7 @@ fun rememberWorkspaceFileActions(
             when {
                 busy -> Unit
                 location.area == WorkspaceStorageArea.LINUX ->
-                    toaster.show("Linux 区重命名暂不可用：无法安全维护 proot 链接元数据，请使用 Linux 终端。")
+                    toaster.show(context.getString(R.string.workspace_file_actions_rename_linux_unavailable))
                 else -> { renameLocation = location; renameEntries = entries.toList() }
             }
         },

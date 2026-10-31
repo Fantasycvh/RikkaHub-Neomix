@@ -140,7 +140,7 @@ fun PromptInspectPage(
                     state.headerMessageCount?.let { count ->
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "已加载 $count 条消息，正在统计分段…",
+                            text = stringResource(R.string.prompt_inspect_loaded_count, count),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -276,7 +276,7 @@ private fun SummaryCard(inspection: app.androidrik.rikkahub.data.ai.PromptInspec
             // 渐进式渲染：先出近似计数，精确 BPE 算完会自动刷新；标出来避免被当成精确值
             if (inspection.segments.any { it.tokensApproximate }) {
                 Text(
-                    text = "正在精确计数…（当前为字符启发式估算）",
+                    text = stringResource(R.string.prompt_inspect_counting_precise),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -483,15 +483,19 @@ private fun PurgeDryRunCard(conversationId: String) {
             )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "净化 dry-run（P0 · 未改发送）",
+                    text = stringResource(R.string.prompt_inspect_purge_dryrun_title),
                     style = MaterialTheme.typography.titleSmallEmphasized,
                 )
                 val s = snapshot
                 val summary = when {
-                    s == null -> "尚无记录：该会话在本进程内生成一次后，此处显示「如果开启净化会怎么改」"
-                    s.decisions.isEmpty() -> "最近一次请求：窗口 ${s.windowCount} 条消息，无退化残留命中"
-                    else -> "最近一次请求：窗口 ${s.windowCount} 条 · 命中 ${s.decisions.size} 条决策 · " +
-                        "可省约 ${s.savedChars} 字符（诊断口径，不进用量账）"
+                    s == null -> stringResource(R.string.prompt_inspect_purge_no_record)
+                    s.decisions.isEmpty() -> stringResource(R.string.prompt_inspect_purge_no_hit, s.windowCount)
+                    else -> stringResource(
+                        R.string.prompt_inspect_purge_hit,
+                        s.windowCount,
+                        s.decisions.size,
+                        s.savedChars,
+                    )
                 }
                 Text(
                     text = summary,
@@ -512,7 +516,7 @@ private fun PurgeDryRunCard(conversationId: String) {
                 }
                 if (s != null && s.decisions.size > 8) {
                     Text(
-                        text = "… 共 ${s.decisions.size} 条（完整列表见 Logcat 标签 purge.dryrun）",
+                        text = stringResource(R.string.prompt_inspect_purge_more, s.decisions.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -522,19 +526,27 @@ private fun PurgeDryRunCard(conversationId: String) {
     }
 }
 
-/** P0 累计观察的一行摘要（决策门双口径 + 排除口径）；诊断卡文案沿用本卡「暂不本地化」约定。 */
+/** P0 累计观察的一行摘要（决策门双口径 + 排除口径）；诊断卡文案沿用本卡约定。 */
+@Composable
 private fun purgeObservationText(summary: PurgeObservationStore.Summary?): String {
-    if (summary == null) return "P0 累计：尚无观察数据（生成一次后开始累计）"
+    if (summary == null) return stringResource(R.string.prompt_inspect_p0_no_data)
     val percent = String.format(java.util.Locale.US, "%.1f%%", summary.hitSessionRatio * 100)
     val guard = if (summary.guardStoppedSessions > 0) {
-        " · 已排除护栏停止会话 ${summary.guardStoppedSessions}"
+        stringResource(R.string.prompt_inspect_p0_guard_excluded, summary.guardStoppedSessions)
     } else {
         ""
     }
-    return "P0 累计：请求 ${summary.requests} · 命中请求 ${summary.hitRequests} · " +
-        "命中会话 ${summary.hitSessions}/${summary.eligibleSessions}（$percent）· " +
-        "命中会话残留中位数 ${summary.hitSessionSavedCharsMedian} 字符 · " +
-        "翻转 ${summary.flips}$guard"
+    return stringResource(
+        R.string.prompt_inspect_p0_summary,
+        summary.requests,
+        summary.hitRequests,
+        summary.hitSessions,
+        summary.eligibleSessions,
+        percent,
+        summary.hitSessionSavedCharsMedian,
+        summary.flips,
+        guard,
+    )
 }
 
 @Composable

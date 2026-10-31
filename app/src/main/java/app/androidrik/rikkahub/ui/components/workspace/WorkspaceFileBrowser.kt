@@ -204,9 +204,9 @@ fun WorkspaceSelectionToolbar(
                 }
             }
             onRename?.let { rename ->
-                Tooltip(tooltip = { Text("重命名") }) {
+                Tooltip(tooltip = { Text(stringResource(R.string.common_rename)) }) {
                     IconButton(onClick = rename, enabled = selectedCount > 0) {
-                        Icon(Lucide.Pencil, contentDescription = "重命名")
+                        Icon(Lucide.Pencil, contentDescription = stringResource(R.string.common_rename))
                     }
                 }
             }
@@ -413,7 +413,7 @@ fun WorkspaceFileCard(
                         ) {
                             onRename?.let { rename ->
                                 DropdownMenuItem(
-                                    text = { Text("重命名") },
+                                    text = { Text(stringResource(R.string.common_rename)) },
                                     leadingIcon = { Icon(Lucide.Pencil, contentDescription = null) },
                                     onClick = { menuExpanded = false; rename() },
                                 )
