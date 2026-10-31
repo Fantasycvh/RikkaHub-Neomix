@@ -39,6 +39,7 @@ class ScheduledTaskRepository(
         missPolicy: MissPolicy = MissPolicy.RUN_LATE,
         idleOnly: Boolean = false,
         withGoal: Boolean = false,
+        keepLastConversations: Int = 0,
         targetMode: TargetMode = TargetMode.EXISTING,
         assistantId: String? = null,
     ): ScheduledTaskEntity {
@@ -59,6 +60,7 @@ class ScheduledTaskRepository(
             missPolicy = missPolicy.name,
             idleOnly = idleOnly,
             withGoal = withGoal,
+            keepLastConversations = keepLastConversations,
             enabled = true,
             createdAt = now,
         )
@@ -88,6 +90,7 @@ class ScheduledTaskRepository(
         missPolicy: MissPolicy,
         idleOnly: Boolean,
         withGoal: Boolean = false,
+        keepLastConversations: Int = 0,
     ): Boolean {
         val existing = dao.byId(id) ?: return false
         val newPayload = payload.encode()
@@ -106,6 +109,7 @@ class ScheduledTaskRepository(
                 missPolicy = missPolicy.name,
                 idleOnly = idleOnly,
                 withGoal = withGoal,
+                keepLastConversations = keepLastConversations,
             )
         )
         return true
@@ -156,6 +160,10 @@ class ScheduledTaskRepository(
 
     /** 任务删除时清账本（表间无外键，靠调用方显式清） */
     suspend fun deleteRunsOfTask(taskId: String) = dao.deleteRunsOfTask(taskId)
+
+    /** 自动清理（§4.2）：全量账本行（新→旧） */
+    suspend fun allRunsOfTask(taskId: String): List<ScheduledTaskRunEntity> =
+        dao.allRunsOfTask(taskId)
 
     /**
      * 认领（乐观锁）：`seen` 必须是本次 sweep 读到的 `next_run_at`。

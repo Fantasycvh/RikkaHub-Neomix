@@ -185,6 +185,61 @@ class ScheduleMathTest {
         assertEquals(listOf(480, 1200), payload.dailyMinutes)
     }
 
+    // ---- MONTHLY（P3：dayOfMonth）----
+
+    @Test
+    fun `advance MONTHLY stays in current month when slot still ahead`() {
+        val next = ScheduleMath.advance(
+            ScheduleType.MONTHLY, SchedulePayload(dayOfMonth = 15, hour = 8, minute = 0),
+            scheduledAt = millis("2026-10-01T08:00"), now = millis("2026-10-10T09:00"),
+        )!!
+        assertEquals("2026-10-15T08:00", dateTime(next))
+    }
+
+    @Test
+    fun `advance MONTHLY rolls to next month after slot passed`() {
+        val next = ScheduleMath.advance(
+            ScheduleType.MONTHLY, SchedulePayload(dayOfMonth = 5, hour = 8, minute = 0),
+            scheduledAt = millis("2026-10-05T08:00"), now = millis("2026-10-06T09:00"),
+        )!!
+        assertEquals("2026-11-05T08:00", dateTime(next))
+    }
+
+    @Test
+    fun `advance MONTHLY clamps to end of short month`() {
+        // 1 月 31 日的任务，2 月没有 31 日 → 2 月 28 日（2026 非闰年），3 月回 31 日
+        val feb = ScheduleMath.advance(
+            ScheduleType.MONTHLY, SchedulePayload(dayOfMonth = 31, hour = 8, minute = 0),
+            scheduledAt = millis("2026-01-31T08:00"), now = millis("2026-02-01T09:00"),
+        )!!
+        assertEquals("2026-02-28T08:00", dateTime(feb))
+
+        val mar = ScheduleMath.advance(
+            ScheduleType.MONTHLY, SchedulePayload(dayOfMonth = 31, hour = 8, minute = 0),
+            scheduledAt = feb, now = millis("2026-03-01T09:00"),
+        )!!
+        assertEquals("2026-03-31T08:00", dateTime(mar))
+    }
+
+    @Test
+    fun `firstRunAt MONTHLY today when slot still ahead`() {
+        val first = ScheduleMath.firstRunAt(
+            ScheduleType.MONTHLY, SchedulePayload(dayOfMonth = 31, hour = 20, minute = 0),
+            from = millis("2026-10-30T09:00"),
+        )
+        assertEquals("2026-10-31T20:00", dateTime(first))
+    }
+
+    @Test
+    fun `firstRunAt MONTHLY clamps in short months`() {
+        // 2026-11-30 创建「每月 31 日 20:00」：11 月没有 31 → 本月 clamp 到 30 日已过 → 12 月 31
+        val first = ScheduleMath.firstRunAt(
+            ScheduleType.MONTHLY, SchedulePayload(dayOfMonth = 31, hour = 20, minute = 0),
+            from = millis("2026-11-30T21:00"),
+        )
+        assertEquals("2026-12-31T20:00", dateTime(first))
+    }
+
     // ---- decideMiss ----
 
     @Test

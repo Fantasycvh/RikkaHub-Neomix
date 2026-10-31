@@ -2452,5 +2452,9 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="scheduled_task_run_source_sweep">sweep</string>
   <string name="scheduled_task_add_time">Add time</string>
   <string name="scheduled_task_run_source_skip">skip</string>
+  <string name="scheduled_task_type_monthly">Monthly</string>
+  <string name="scheduled_task_day_of_month">Day of month</string>
+  <string name="scheduled_task_keep_last">Keep last N run conversations</string>
+  <string name="scheduled_task_keep_last_desc">Auto-delete older run conversations (0 = off). Conversations you continued chatting in are kept</string>
 </resources>
 

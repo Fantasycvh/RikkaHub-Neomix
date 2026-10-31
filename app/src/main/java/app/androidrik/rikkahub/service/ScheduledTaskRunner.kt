@@ -12,6 +12,7 @@ import app.androidrik.rikkahub.conversationIntent
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import app.androidrik.rikkahub.data.db.entity.TargetMode
 
 import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
@@ -169,7 +170,44 @@ class ScheduledTaskRunner(
         taskRepository.recordStatus(task.id, status)
         taskRepository.finishRun(runId, status)
         notifyResult(task, conversationId, status)
+
+        // 自动清理（§4.2）：仅 NEW_EACH_RUN 且开关开启，仅成功轮次后执行——失败轮的会话
+        // 带错误卡，用户可能要排查，不参与清理。清理失败只记日志，不影响本轮结果。
+        if (status == TaskRunStatus.OK && mode == TargetMode.NEW_EACH_RUN &&
+            task.keepLastConversations > 0
+        ) {
+            cleanupOldRunConversations(task)
+        }
         return status
+    }
+
+    /**
+     * 按运行账本清理历史轮会话：保留最近 [ScheduledTaskEntity.keepLastConversations] 轮，
+     * 更旧的删除（CASCADE 连带消息节点与附件文件）。「本轮结束后用户又发过消息」的会话
+     * 跳过——那是用户接手的对话，不是任务产物（lastMessageAt > 本轮 finishedAt）。
+     */
+    private suspend fun cleanupOldRunConversations(task: ScheduledTaskEntity) {
+        runCatching {
+            val runs = taskRepository.allRunsOfTask(task.id)
+            val withConversation = runs.filter { !it.conversationId.isNullOrBlank() }
+            val candidates = withConversation.drop(task.keepLastConversations)
+            if (candidates.isEmpty()) return
+            val lastMessageAt = candidates.associate { candidate ->
+                val id = runCatching { Uuid.parse(candidate.conversationId!!) }.getOrNull()
+                val lastMsg = id?.let { conversationRepository.getConversationById(it)?.lastMessageAt }
+                candidate.conversationId!! to lastMsg?.toEpochMilli()
+            }
+            val targets = pickAutoCleanupTargets(withConversation, task.keepLastConversations, lastMessageAt)
+            targets.forEach { id ->
+                val uuid = runCatching { Uuid.parse(id) }.getOrNull() ?: return@forEach
+                conversationRepository.getConversationById(uuid)?.let {
+                    Log.i(TAG, "cleanup: delete old run conversation=$id (task=${task.title})")
+                    conversationRepository.deleteConversation(it)
+                }
+            }
+        }.onFailure { e ->
+            Log.w(TAG, "cleanup failed for task=${task.title}", e)
+        }
     }
 
     private fun assistantMessageCount(conversationId: Uuid): Int =
@@ -258,6 +296,36 @@ internal fun evaluateRunStatus(
     hasNewError -> TaskRunStatus.FAILED
     !producedReply -> TaskRunStatus.FAILED
     else -> TaskRunStatus.OK
+}
+
+/**
+ * 自动清理的目标挑选（纯函数，单测覆盖，§4.2）。
+ *
+ * [runs] 必须新→旧有序（DAO 保证）。保留最近 [keep] 行（带会话的行），其余行里：
+ * - 未收尾（finishedAt == null）→ 跳过（宁可少删——行未收尾意味着时间线不可信）；
+ * - 会话在本轮结束后又有新消息（lastMessageAt > finishedAt）→ 跳过（用户接手了的对话）。
+ * 每轮新建的会话各只出现一行，无需去重。
+ */
+internal fun pickAutoCleanupTargets(
+    runs: List<ScheduledTaskRunEntity>,
+    keep: Int,
+    lastMessageAt: Map<String, Long?>,
+): List<String> {
+    if (keep <= 0) return emptyList()
+    return runs.asSequence()
+        .filter { !it.conversationId.isNullOrBlank() }
+        .drop(keep)
+        .mapNotNull { run ->
+            val conversationId = run.conversationId!!
+            val finishedAt = run.finishedAt
+            val lastMsg = lastMessageAt[conversationId]
+            when {
+                finishedAt == null -> null
+                lastMsg != null && lastMsg > finishedAt -> null
+                else -> conversationId
+            }
+        }
+        .toList()
 }
 
 /**

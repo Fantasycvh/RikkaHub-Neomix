@@ -94,6 +94,12 @@ interface ScheduledTaskDAO {
     )
     fun flowRuns(taskId: String, limit: Int): Flow<List<ScheduledTaskRunEntity>>
 
+    /** 自动清理（§4.2）：全量账本行（新→旧），不看 limit */
+    @Query(
+        "SELECT * FROM scheduled_task_runs WHERE task_id = :taskId ORDER BY started_at DESC"
+    )
+    suspend fun allRunsOfTask(taskId: String): List<ScheduledTaskRunEntity>
+
     /** 任务删除时清账本（无外键，手动清；防孤儿行无限累积） */
     @Query("DELETE FROM scheduled_task_runs WHERE task_id = :taskId")
     suspend fun deleteRunsOfTask(taskId: String)

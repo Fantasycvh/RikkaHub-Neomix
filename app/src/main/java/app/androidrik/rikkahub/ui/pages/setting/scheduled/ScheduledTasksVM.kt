@@ -92,6 +92,7 @@ class ScheduledTasksVM(
         missPolicy: MissPolicy,
         idleOnly: Boolean,
         withGoal: Boolean = false,
+        keepLastConversations: Int = 0,
         onCreated: () -> Unit = {},
         onFailed: (TargetFailure) -> Unit = {},
     ) {
@@ -120,6 +121,7 @@ class ScheduledTasksVM(
                 missPolicy = missPolicy,
                 idleOnly = idleOnly,
                 withGoal = withGoal,
+                keepLastConversations = keepLastConversations,
             )
             sweeperKeeper.rearm(taskRepository)
             onCreated()

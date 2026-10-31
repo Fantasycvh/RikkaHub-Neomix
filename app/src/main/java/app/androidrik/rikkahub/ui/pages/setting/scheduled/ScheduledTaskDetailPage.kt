@@ -80,6 +80,7 @@ fun ScheduledTaskDetailPage(
         // 「附带长期目标」仅当目标会话写了 goal 才可选；每轮新建没有固定会话，恒不可选
         val withGoalAvailable = targetModeOrDefault(current.targetMode) != TargetMode.NEW_EACH_RUN &&
             !conversationGoals[current.conversationId].isNullOrBlank()
+        val keepLastVisible = targetModeOrDefault(current.targetMode) == TargetMode.NEW_EACH_RUN
         Column(
             modifier = Modifier
                 .padding(innerPadding)
@@ -105,7 +106,11 @@ fun ScheduledTaskDetailPage(
                     Text(stringResource(R.string.scheduled_task_view_last_conversation))
                 }
             }
-            ScheduledTaskFormFields(form, withGoalAvailable = withGoalAvailable)
+            ScheduledTaskFormFields(
+                form,
+                withGoalAvailable = withGoalAvailable,
+                keepLastVisible = keepLastVisible,
+            )
             RunHistoryCard(vm, navController)
             FormItem(
                 label = { Text(stringResource(R.string.scheduled_task_enabled)) },

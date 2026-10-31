@@ -86,7 +86,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 53,
+    version = 54,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -168,6 +168,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // TARGET_GONE），终态必达；诊断「后台为什么没跑成」不再只有任务表里的 last_status。
         // 见 docs/design/design-scheduled-ai-tasks.md §十（P2 运行账本）
         AutoMigration(from = 52, to = 53),
+        // 53→54：NEW_EACH_RUN 自动清理（keep_last_conversations，NOT NULL + DEFAULT 0 = 关）。
+        // 见 docs/design/design-scheduled-ai-tasks.md §4.2
+        AutoMigration(from = 53, to = 54),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -215,7 +218,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** 必须与上方 `@Database(version = …)` 保持一致（启动期 staged 库校验用）。 */
-        const val SCHEMA_VERSION = 53
+        const val SCHEMA_VERSION = 54
     }
 }
 

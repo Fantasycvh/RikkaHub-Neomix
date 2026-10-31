@@ -190,6 +190,8 @@ data class ConversationDto(
     val chatSuggestions: List<String>,
     val isPinned: Boolean,
     val customSystemPrompt: String? = null,
+    /** 会话长期目标（定时任务 P2）；web 端只读展示 */
+    val goal: String? = null,
     val modeInjectionIds: List<String> = emptyList(),
     val lorebookIds: List<String> = emptyList(),
     val workspaceCwd: String? = null,
@@ -331,6 +333,7 @@ fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(
     chatSuggestions = chatSuggestions,
     isPinned = isPinned,
     customSystemPrompt = customSystemPrompt,
+    goal = goal,
     modeInjectionIds = modeInjectionIds.map { it.toString() },
     lorebookIds = lorebookIds.map { it.toString() },
     workspaceCwd = workspaceCwd,

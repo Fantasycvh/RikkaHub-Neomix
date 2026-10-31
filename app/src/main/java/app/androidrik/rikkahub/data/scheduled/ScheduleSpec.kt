@@ -23,6 +23,8 @@ data class SchedulePayload(
     val minute: Int = 0,
     /** WEEKLY 的目标日，ISO 语义（1=周一 … 7=周日） */
     val dayOfWeek: Int = 1,
+    /** MONTHLY 的目标日（1–31）；大月不存在该日时 clamp 到月末日（2 月 31 → 2 月 28/29） */
+    val dayOfMonth: Int = 1,
     /** INTERVAL 的间隔（分钟），下限 15（WorkManager 粒度） */
     val intervalMinutes: Long = 240,
     /** ONCE 的执行时刻（epoch millis） */
@@ -96,6 +98,17 @@ object ScheduleMath {
         }
 
         ScheduleType.WEEKLY -> advanceWallClock(payload, scheduledAt, now, zone) { it.plusWeeks(1) }
+
+        ScheduleType.MONTHLY -> {
+            // 逐月扫：本月目标日已过 → 下月；dayOfMonth 越界月 clamp 到月末日
+            var month = Instant.ofEpochMilli(now).atZone(zone)
+            repeat(MAX_ADVANCE_STEPS) {
+                val slot = monthlySlot(month, payload, if (it == 0) now else Long.MIN_VALUE)
+                if (slot != null) return slot
+                month = month.plusMonths(1)
+            }
+            now + 31L * 24 * 60 * 60_000L
+        }
     }
 
     private inline fun advanceWallClock(
@@ -125,6 +138,22 @@ object ScheduleMath {
      * DST 跳变时 `withHour/withMinute` 落在合法墙钟上（不存在 2:30 → 次日 3:30 的歧义，
      * java.time 对不存在的墙钟取偏移最近的合法时刻）。
      */
+    /**
+     * [month] 所在月的槽位：dayOfMonth clamp 到月长（2 月 31 → 28/29，诚实边界——
+     * 「每月底跑一次」在短月提前，好过跳月），时刻用 payload.hour/minute。
+     * 已过（<= [after]）返回 null，调用方步进到下个月。
+     */
+    private fun monthlySlot(month: ZonedDateTime, payload: SchedulePayload, after: Long): Long? {
+        val day = payload.dayOfMonth.coerceIn(1, month.toLocalDate().lengthOfMonth())
+        val slot = month.withDayOfMonth(day)
+            .withHour(payload.hour.coerceIn(0, 23))
+            .withMinute(payload.minute.coerceIn(0, 59))
+            .withSecond(0)
+            .withNano(0)
+        val millis = slot.toInstant().toEpochMilli()
+        return if (millis > after) millis else null
+    }
+
     private fun nextSlotOfDay(day: ZonedDateTime, payload: SchedulePayload, after: Long): Long? {
         for (minute in payload.dailyMinutes) {
             val slot = day.withHour(minute / 60).withMinute(minute % 60).withSecond(0).withNano(0)
@@ -164,6 +193,16 @@ object ScheduleMath {
                 slot = slot.plusDays(1)
             }
             slot.toInstant().toEpochMilli()
+        }
+
+        ScheduleType.MONTHLY -> {
+            var month = Instant.ofEpochMilli(from).atZone(zone)
+            repeat(MAX_ADVANCE_STEPS) {
+                val slot = monthlySlot(month, payload, if (it == 0) from else Long.MIN_VALUE)
+                if (slot != null) return slot
+                month = month.plusMonths(1)
+            }
+            from + 31L * 24 * 60 * 60_000L
         }
     }
 

@@ -94,6 +94,8 @@ fun ScheduledTaskCreatePage(
     }
     // 「附带长期目标」只有目标会话写了 goal 才有意义（§四：目标是会话的属性）
     val withGoalAvailable = targetMode == TargetMode.EXISTING && !selectedConversation?.goal.isNullOrBlank()
+    // 自动清理只对「每轮新建」有意义（§4.2）
+    val keepLastVisible = targetMode == TargetMode.NEW_EACH_RUN
 
     Scaffold(
         topBar = {
@@ -115,6 +117,7 @@ fun ScheduledTaskCreatePage(
                                 missPolicy = form.missPolicy,
                                 idleOnly = form.idleOnly,
                                 withGoal = form.withGoal && withGoalAvailable,
+                                keepLastConversations = if (keepLastVisible) (form.keepLast ?: 0) else 0,
                                 onCreated = { navController.popBackStack() },
                                 onFailed = { targetFailure = it },
                             )
@@ -205,7 +208,11 @@ fun ScheduledTaskCreatePage(
                 )
             }
             Spacer(Modifier.height(8.dp))
-            ScheduledTaskFormFields(form, withGoalAvailable = withGoalAvailable)
+            ScheduledTaskFormFields(
+                form,
+                withGoalAvailable = withGoalAvailable,
+                keepLastVisible = keepLastVisible,
+            )
             Spacer(Modifier.height(24.dp))
         }
     }

@@ -124,6 +124,9 @@ class ScheduledTaskRepositoryTest {
                     .take(limit)
             }
 
+        override suspend fun allRunsOfTask(taskId: String): List<ScheduledTaskRunEntity> =
+            runs.values.filter { it.taskId == taskId }.sortedByDescending { it.startedAt }
+
         override suspend fun deleteRunsOfTask(taskId: String) {
             runs.values.removeAll { it.taskId == taskId }
         }

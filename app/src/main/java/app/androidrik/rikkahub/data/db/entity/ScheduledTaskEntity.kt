@@ -77,6 +77,13 @@ import androidx.room.PrimaryKey
      */
     @ColumnInfo("with_goal", defaultValue = "0")
     val withGoal: Boolean = false,
+    /**
+     * NEW_EACH_RUN 自动清理（P3，§4.2）：只保留最近 N 轮的会话，更旧的按运行账本删除。
+     * 0 = 不清理（默认关——自动删用户数据必须显式开启）；仅对 NEW_EACH_RUN 有意义。
+     * 保护语义见 [TaskRunStatus] 与 Runner 的清理路径：本轮结束后用户又发过消息的会话不删。
+     */
+    @ColumnInfo("keep_last_conversations", defaultValue = "0")
+    val keepLastConversations: Int = 0,
     @ColumnInfo("enabled")
     val enabled: Boolean,
     @ColumnInfo("created_at")
@@ -84,7 +91,7 @@ import androidx.room.PrimaryKey
 )
 
 /** 周期形态；存的是 [name]，新增枚举值必须向后兼容旧库 */
-enum class ScheduleType { ONCE, DAILY, WEEKLY, INTERVAL }
+enum class ScheduleType { ONCE, DAILY, WEEKLY, MONTHLY, INTERVAL }
 
 /**
  * 任务「往哪儿执行」（revision 8，见 docs/design/design-scheduled-ai-tasks.md §4.1）。

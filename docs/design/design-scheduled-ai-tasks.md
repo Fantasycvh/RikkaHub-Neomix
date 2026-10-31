@@ -49,6 +49,14 @@
 > 真机还暴露了代码之外的边界：OnePlus/ColorOS 的 `OplusAppStartupManager` 会丢弃后台广播
 > （`SKIPPED ... reason: oplus startup`），必须在系统「应用启动管理」里手动放行——见 §6.2.1。
 >
+> **revision 11（2026-10-31，P3 第一批：MONTHLY + NEW_EACH_RUN 自动清理）**：
+> ① **MONTHLY**：`ScheduleType.MONTHLY`（新枚举值，向后兼容）+ payload `dayOfMonth`
+> （1–31，大月不存在时 **clamp 到月末日**——2 月 31 跑 2 月 28/29，诚实边界）；推进/首槽
+> 语义同 WEEKLY 的墙钟套路。② **NEW_EACH_RUN 自动清理**：per-task `keepLastConversations`
+> （0 = 不清理，默认关——自动删用户数据必须显式开启）；执行成功后按运行账本删除
+> 「除最近 N 轮外」的轮次会话，**跳过「本轮结束后又有新消息」的会话**（用户接着聊的
+> 不删，用 lastMessageAt > 本轮 finishedAt 判定）。见 §4.2。
+>
 > **revision 10（2026-10-31，P2 后两块落地：运行账本 + DAILY 多时段）**：
 > ① **运行账本**：`scheduled_task_runs` 新表（AutoMigration 52→53，纯新增无外键）——每轮执行
 > 一行（含 SKIP 静默跳过、TARGET_GONE/ASSISTANT_GONE），`finished_at/status` 终态必达；
@@ -199,6 +207,24 @@ data class ScheduledTaskEntity(
   用户要修的东西不同）。
 - **idle 门控（§5.1）对 `NEW_EACH_RUN` 不适用**：它没有「目标会话」可忙，若照样套用会让这轮
   永远被让路。执行器的门控条件因此是 `idleOnly && mode != NEW_EACH_RUN && isConversationBusy(...)`。
+
+### 4.2 NEW_EACH_RUN 自动清理（revision 11）
+
+§八.7 预留的「保留最近 N 条」在运行账本落地后成为可安全实现的能力：
+
+- **开关是 per-task 的 `keep_last_conversations`（DB v54，NOT NULL + DEFAULT 0 = 关）**：
+  自动删用户数据必须显式开启，不做全局默认。表单只在 `NEW_EACH_RUN` 下渲染该行。
+- **删除对象只来自运行账本**：每轮新建的会话都在账本行里（`conversation_id`），
+  按本轮开始时刻新→旧排序，保留最近 N 行，更旧的删除（`deleteConversation` 级联消息节点
+  与附件文件）。任务只删**自己产出的会话**，碰不到用户手动建的。
+- **两条保护**（`pickAutoCleanupTargets` 纯函数，单测覆盖）：
+  1. 账本行**未收尾**（`finished_at == null`）→ 跳过——时间线不可信时宁可少删；
+  2. 会话 `lastMessageAt > 本轮 finishedAt` → 跳过——本轮结束后用户又发过消息，
+     说明用户接手了这条对话，它不再是「可丢弃的任务产物」。
+- **只在成功轮次后触发**：失败轮的会话带错误卡，用户可能要排查，不参与清理；
+  清理失败只记日志，不影响本轮结果。
+- MONTHLY 的诚实边界：`dayOfMonth` 1–31，大月不存在该日时 **clamp 到月末日**
+  （2 月 31 → 2 月 28/29）——「每月底跑一次」在短月提前，好过跳月。
 
 ## 五、状态机与认领（幂等核心）
 
@@ -461,7 +487,11 @@ assistant 回复**，管理页 `last_status` 却显示 OK。
    「只总结增量」类指令；文档不在此展开。
 4. **会话删除**：任务指向的会话被删 → 执行时校验失败，任务自动 `enabled=false` 并
    `lastStatus = TARGET_GONE`（不是静默消失，用户在管理页能看到原因）。
-5. **备份**：v1 不进备份 manifest（表是新 schema，备份设计文档需要另议增补）——P3 处理。
+5. **备份**（P3 核验后改写，2026-10-31）：`BackupItem.DATABASE` 是**整库文件级**备份
+   （db + wal + shm），`scheduled_tasks` / `scheduled_task_runs` 天然随库走，恢复后启动
+   对账（`RikkaHubApp.reconcileScheduledTasks`）自动重排闹钟/作业——无需任何增补。
+   旧版 legacy import 不带任务表（旧版本本就没有），接受。会话归档导出用整模型序列化，
+   `goal` 自带；web DTO 已补（P3）。
 6. **中国 ROM 强杀 / 启动拦截**（revision 4 改写）：闹钟唤醒 → 前台服务 + wake lock 保护执行期；
    但 **ROM 的「应用启动管理」会直接丢弃后台启动请求**（ColorOS 实测 `SKIPPED ... reason:
    oplus startup`，§6.2.1），这一层只能由用户在系统设置里放行；此外用户手动强行停止 App /
@@ -499,7 +529,10 @@ Room 编译期校验 + 真机验证兜底：
   设置页最小管理面。
 - **P2**：~~会话内创建入口 + 会话目标~~（**已实现** revision 9，2026-10-31）；
   ~~运行账本~~ 与 ~~DAILY 多时段~~（**已实现** revision 10，2026-10-31）。
-- **P3（另立设计再谈）**：备份集成、cron-lite、
-  无会话全局任务（需要独立执行环境，解决 §二 非目标最后一条的架构前提）、
-  收尾闸门限定接入（purrcat A1 把「定时任务会话」列为可启用场景，届时在任务维度加开关）。
+- **P3（另立设计再谈）**：~~备份集成~~（**核验后免做**——整库文件级备份天然覆盖，§八.5）；
+  ~~cron-lite~~（以 **MONTHLY** 替代，revision 11——通用 cron 的真实诉求已被多时段抽干）；
+  **NEW_EACH_RUN 自动清理**（revision 11，运行账本使安全删除成为可能，§4.2）；
+  **隐形会话**（无会话全局任务的四两拨千斤形态，另立设计——真无头需解耦 ChatService
+  集中式装配方，不挂在定时任务名下）；收尾闸门限定接入（purrcat A1）；
+  AI 管理任务（Yuihub 形态，另立设计）。
   ~~Alarm 精确档~~ 已在 revision 4 提前落地（§6.2）。

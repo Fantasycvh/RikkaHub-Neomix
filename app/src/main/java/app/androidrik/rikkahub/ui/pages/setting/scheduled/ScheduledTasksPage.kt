@@ -268,13 +268,20 @@ private fun scheduleDescription(task: ScheduledTaskEntity): String {
         ScheduleType.ONCE ->
             stringResource(R.string.scheduled_task_type_once) + " · " + formatDateTime(payload.runAt)
 
-        ScheduleType.DAILY ->
-            stringResource(R.string.scheduled_task_type_daily) + " · " + formatTime(payload.hour, payload.minute)
+        ScheduleType.DAILY -> {
+            // 多时段（P2）：展示全部时刻（去重升序），单时刻时与旧形态一致
+            stringResource(R.string.scheduled_task_type_daily) + " · " +
+                payload.dailyMinutes.joinToString(" / ") { formatTime(it / 60, it % 60) }
+        }
 
         ScheduleType.WEEKLY ->
             stringResource(R.string.scheduled_task_type_weekly) + " · " +
                 DayOfWeek.of(payload.dayOfWeek.coerceIn(1, 7)).getDisplayName(TextStyle.SHORT, Locale.getDefault()) +
                 " " + formatTime(payload.hour, payload.minute)
+
+        ScheduleType.MONTHLY ->
+            stringResource(R.string.scheduled_task_type_monthly) + " · " +
+                payload.dayOfMonth.coerceIn(1, 31) + " " + formatTime(payload.hour, payload.minute)
 
         ScheduleType.INTERVAL ->
             stringResource(R.string.scheduled_task_type_interval, payload.intervalMinutes)

@@ -56,11 +56,15 @@ class ScheduledTaskFormState {
     var hourText by mutableStateOf("8")
     var minuteText by mutableStateOf("0")
     var dayOfWeek by mutableIntStateOf(1)
+    var dayOfMonthText by mutableStateOf("1")
     var intervalText by mutableStateOf("240")
     var runAtDate by mutableStateOf<LocalDate?>(null)
     var missPolicy by mutableStateOf(MissPolicy.RUN_LATE)
     var idleOnly by mutableStateOf(false)
     var withGoal by mutableStateOf(false)
+
+    /** NEW_EACH_RUN 自动清理（§4.2）：保留最近 N 轮；0 = 关。文本态与「间隔」同一套数字键盘约定 */
+    var keepLastText by mutableStateOf("0")
 
     /**
      * DAILY 多时段（P2）：主时刻之外的追加时刻（时,分 文本对，与主行同一套数字键盘约定）。
@@ -68,6 +72,8 @@ class ScheduledTaskFormState {
      */
     val extraTimes = mutableStateListOf<Pair<String, String>>()
 
+    val dayOfMonth: Int? get() = dayOfMonthText.toIntOrNull()?.coerceIn(1, 31)
+    val keepLast: Int? get() = keepLastText.toIntOrNull()?.coerceIn(0, 999)
     val hour: Int? get() = hourText.toIntOrNull()?.coerceIn(0, 23)
     val minute: Int? get() = minuteText.toIntOrNull()?.coerceIn(0, 59)
     val interval: Long? get() = intervalText.toLongOrNull()?.coerceAtLeast(15)
@@ -84,12 +90,15 @@ class ScheduledTaskFormState {
         get() = title.isNotBlank() && prompt.isNotBlank() && hour != null && minute != null &&
             (type != ScheduleType.INTERVAL || interval != null) &&
             (type != ScheduleType.ONCE || runAtDate != null) &&
-            (type != ScheduleType.DAILY || parsedExtraMinutes != null)
+            (type != ScheduleType.DAILY || parsedExtraMinutes != null) &&
+            (type != ScheduleType.MONTHLY || dayOfMonth != null) &&
+            keepLast != null
 
     fun payload(): SchedulePayload = SchedulePayload(
         hour = hour ?: 8,
         minute = minute ?: 0,
         dayOfWeek = dayOfWeek,
+        dayOfMonth = dayOfMonth ?: 1,
         intervalMinutes = interval ?: 240,
         runAt = runAtDate
             ?.atTime(hour ?: 8, minute ?: 0)
@@ -108,6 +117,7 @@ class ScheduledTaskFormState {
         hourText = payload.hour.toString()
         minuteText = payload.minute.toString()
         dayOfWeek = payload.dayOfWeek
+        dayOfMonthText = payload.dayOfMonth.toString()
         intervalText = payload.intervalMinutes.toString()
         runAtDate = if (payload.runAt > 0) {
             Instant.ofEpochMilli(payload.runAt).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -117,6 +127,7 @@ class ScheduledTaskFormState {
         missPolicy = runCatching { MissPolicy.valueOf(entity.missPolicy) }.getOrDefault(MissPolicy.RUN_LATE)
         idleOnly = entity.idleOnly
         withGoal = entity.withGoal
+        keepLastText = entity.keepLastConversations.toString()
         val primary = payload.hour * 60 + payload.minute
         extraTimes.clear()
         extraTimes.addAll(
@@ -144,6 +155,8 @@ fun rememberScheduledTaskFormState(entity: ScheduledTaskEntity?): ScheduledTaskF
 fun ScheduledTaskFormFields(
     state: ScheduledTaskFormState,
     withGoalAvailable: Boolean = false,
+    /** NEW_EACH_RUN 才显示「保留最近 N 轮」清理行（§4.2） */
+    keepLastVisible: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
@@ -177,6 +190,7 @@ fun ScheduledTaskFormFields(
                         ScheduleType.ONCE -> stringResource(R.string.scheduled_task_type_once)
                         ScheduleType.DAILY -> stringResource(R.string.scheduled_task_type_daily)
                         ScheduleType.WEEKLY -> stringResource(R.string.scheduled_task_type_weekly)
+                        ScheduleType.MONTHLY -> stringResource(R.string.scheduled_task_type_monthly)
                         ScheduleType.INTERVAL -> stringResource(R.string.scheduled_task_type_interval_short)
                     }
                 },
@@ -201,6 +215,21 @@ fun ScheduledTaskFormFields(
                     optionToString = { dow ->
                         DayOfWeek.of(dow).getDisplayName(java.time.format.TextStyle.NARROW, Locale.getDefault())
                     },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            ScheduleType.MONTHLY -> {
+                // 「日 → 时 → 分」自然焦点链（Next 默认落到下一个可聚焦项，不指到「分」）
+                OutlinedTextField(
+                    value = state.dayOfMonthText,
+                    onValueChange = { state.dayOfMonthText = it.filter(Char::isDigit).take(2) },
+                    label = { Text(stringResource(R.string.scheduled_task_day_of_month)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -328,6 +357,21 @@ fun ScheduledTaskFormFields(
                         onCheckedChange = { state.withGoal = it },
                     )
                 },
+            )
+        }
+        if (keepLastVisible) {
+            OutlinedTextField(
+                value = state.keepLastText,
+                onValueChange = { state.keepLastText = it.filter(Char::isDigit).take(3) },
+                label = { Text(stringResource(R.string.scheduled_task_keep_last)) },
+                supportingText = { Text(stringResource(R.string.scheduled_task_keep_last_desc)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
