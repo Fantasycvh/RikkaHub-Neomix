@@ -530,6 +530,16 @@ class ChatVM(
     }
 
     /**
+     * 隐藏会话开关（隐形会话手动切换）。走 ChatService 的统一元数据原语，
+     * 与 [setMemoryDisabled] 同款理由（只改 DB 单列会被整对象保存用旧内存值盖回）。
+     */
+    fun setHidden(conversation: Conversation, hidden: Boolean) {
+        viewModelScope.launch {
+            chatService.setConversationHidden(conversation.id, hidden)
+        }
+    }
+
+    /**
      * 会话级「固化记忆」：让**这一条**会话立刻采纳当前的锚点集合（设计稿 §5）。
      *
      * 与记忆页的助手指级入口分工：这里只让选中的这一条付出一次前缀失效，那里一次改完

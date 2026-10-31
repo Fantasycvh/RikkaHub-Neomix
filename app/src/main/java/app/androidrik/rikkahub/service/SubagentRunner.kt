@@ -18,6 +18,9 @@ import app.androidrik.rikkahub.data.ai.DenialGuard
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.GenerationNotice
+import app.androidrik.rikkahub.data.ai.DeliverableChecker
+import app.androidrik.rikkahub.data.ai.LoopGateConfig
+import app.androidrik.rikkahub.data.ai.forcePassNote
 import app.androidrik.rikkahub.data.ai.SubagentApprovalQueue
 import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
 import app.androidrik.rikkahub.data.ai.UsageSource
@@ -41,6 +44,8 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.SubagentPreset
 import app.androidrik.rikkahub.data.model.SubagentToolApproval
 import app.androidrik.rikkahub.data.model.toRunProfile
+import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.workspace.WorkspaceStorageArea
 import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -91,6 +96,7 @@ class SubagentRunner(
     private val generationHandler: GenerationHandler,
     private val chatToolFactory: ChatToolFactory,
     private val agentRunDAO: AgentRunDAO,
+    private val workspaceRepository: WorkspaceRepository,
 ) : SubagentDispatcher {
     /**
      * 并发闸：上限可配（设置 → 通用 → 护栏与预算）。lazy 而非构造期读取——
@@ -219,6 +225,7 @@ class SubagentRunner(
                     allowedTools = preset.allowedTools,
                     timeoutMillis = timeoutMillis,
                     toolApproval = preset.toolApproval,
+                    deliverables = preset.deliverables,
                 )
                 // 状态/失败原因以**落库结果**为准：超时、取消、异常这些路径只有账本知道
                 val stored = agentRunDAO.getRun(run.id)
@@ -316,6 +323,8 @@ class SubagentRunner(
         timeoutMillis: Long,
         /** 工具级审批策略（预设给；运行页手动派发恒为 [SubagentToolApproval.DENY]）。 */
         toolApproval: SubagentToolApproval,
+        /** 交付物契约（预设给；运行页手动派发恒为 null = 不设闸），见 design-deliverable-gate.md §二。 */
+        deliverables: List<String>? = null,
     ): RunOutcome? {
         val runId = Uuid.parse(initial.id)
 
@@ -357,6 +366,8 @@ class SubagentRunner(
                 failRun(runId, AgentRunEntity.ERROR_NO_MODEL, null)
                 return null
             }
+            // 交付物闸门（purrcat A3）：声明了 deliverables 才挂，null/空 = 行为不变
+            val loopGate = buildSubagentLoopGate(profile.workspaceId, deliverables)
 
             // 分段装配（不是扁平列表）：信封的 `null` 语义（"按能力开关"）要知道工具的**来源**，
             // 否则 MCP / 技能安装这些无条件装配的来源会顺着 `null` 静默流进来。
@@ -439,6 +450,7 @@ class SubagentRunner(
                             conversationModeInjectionIds = emptySet(),
                             conversationLorebookIds = emptySet(),
                             workspaceCwd = null,
+                            loopGate = loopGate,
                         ).collect { chunk ->
                             when (chunk) {
                                 is GenerationChunk.Messages -> {
@@ -473,6 +485,14 @@ class SubagentRunner(
                         val pending = pendingApprovalTools(currentMessages)
                         if (pending.isEmpty()) {
                             outcome = evaluateCompletion(currentMessages, stopNotice)
+                            // 强制放行：达打回上限仍缺交付物——宁可带瑕疵交付，不可无限烧钱
+                            // （设计稿 §二.3.4）。注记同时给父模型与账本。
+                            val completed = outcome as? RunOutcome.Completed
+                            if (completed != null && loopGate?.forcePassed == true) {
+                                outcome = RunOutcome.Completed(
+                                    completed.summary + "\n\n" + forcePassNote(loopGate!!.missingAtForcePass),
+                                )
+                            }
                             break
                         }
                         if (approvalRounds >= MAX_APPROVAL_ROUNDS) {
@@ -541,6 +561,40 @@ class SubagentRunner(
             failRun(runId, AgentRunEntity.ERROR_EXCEPTION, "${t.javaClass.simpleName}: ${t.message}")
             return null
         }
+    }
+
+    /**
+     * 装配子代理的收尾闸门（purrcat A3，`docs/design/design-deliverable-gate.md` §二）。
+     *
+     * - `deliverables` null/空（含规范化后剔光）→ null = 不挂闸，行为与过去逐位一致；
+     * - 声明了但预设没绑 workspace → 降级为**自检**（`deliverables` 置空只留自检提示，
+     *   §二.3.5——无从查文件，不硬失败）；
+     * - 正常路径 → 确定性校验：`fileSize` 对缺失/目录抛错（`WorkspaceManager.fileSize`
+     *   的 `require(file.isFile)`），`runCatching` 归一成「缺失」；size ≤ 0 视为空交付。
+     *   校验中途工作区不可用（如被删）按 fail-open 放行——闸门是验收器不是刹车，
+     *   把「环境坏了」打成「交付缺失」只会烧光重试预算后强制放行，还污染注记。
+     */
+    private fun buildSubagentLoopGate(
+        workspaceId: Uuid?,
+        deliverables: List<String>?,
+    ): LoopGateConfig? {
+        val declared = deliverables?.let(DeliverableChecker::normalizeAll).orEmpty()
+        if (declared.isEmpty()) return null
+        if (workspaceId == null) return LoopGateConfig(deliverables = emptyList())
+        val wsId = workspaceId.toString()
+        return LoopGateConfig(
+            deliverables = declared,
+            checkDeliverables = { paths ->
+                paths.filter { path ->
+                    val size = runCatching {
+                        workspaceRepository.fileSize(wsId, WorkspaceStorageArea.FILES, path)
+                    }.onFailure { e ->
+                        android.util.Log.w(TAG, "deliverable check failed: $path (${e.message})")
+                    }.getOrNull()
+                    size == null || size <= 0L
+                }
+            },
+        )
     }
 
     /**

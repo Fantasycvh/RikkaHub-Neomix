@@ -2462,5 +2462,24 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="scheduled_task_run_skipped_missed">Missed, skipped</string>
   <string name="scheduled_task_run_target_gone">Conversation deleted</string>
   <string name="scheduled_task_run_assistant_gone">Assistant deleted</string>
+  <string name="chat_hidden_banner_text">Hidden conversation (scheduled-task workbench)</string>
+  <string name="chat_hidden_unhide_action">Unhide</string>
+  <string name="chat_hidden_adopted_toast">Conversation restored to the list</string>
+  <string name="scheduled_task_deliverables">Deliverables (one path per line)</string>
+  <string name="scheduled_task_deliverables_desc">Relative to the workspace root. Non-empty = the turn must produce these files before it may end; blank = no gate.</string>
+  <string name="task_manage_notif_title">AI modified a scheduled task</string>
+  <string name="task_manage_notif_content">AI %s scheduled task "%s". You can review it in Settings → Scheduled tasks.</string>
+  <string name="assistant_page_task_manage_title">Let AI manage scheduled tasks</string>
+  <string name="assistant_page_task_manage_desc">Mounts the task_manage tool so this assistant can list, create, enable/disable and delete its own scheduled tasks. Tasks it creates run in hidden conversations.</string>
+  <string name="assistant_page_task_manage_create_approval">Approve before creating</string>
+  <string name="assistant_page_task_manage_create_approval_desc">Each task the AI creates costs tokens on every future run, so ask before the first one.</string>
+  <string name="assistant_page_task_manage_modify_approval">Approve before enabling/disabling</string>
+  <string name="assistant_page_task_manage_modify_approval_desc">Changing whether a task runs is a change to future behavior; ask each time.</string>
+  <string name="assistant_page_task_manage_delete_approval">Approve before deleting</string>
+  <string name="assistant_page_task_manage_delete_approval_desc">Only tasks created by the AI itself can be deleted; user-created tasks are always refused.</string>
+  <string name="scheduled_task_created_by_ai">AI</string>
+  <string name="setting_page_guardrails_loop_guard_limit">Tool repeat limit override</string>
+  <string name="setting_page_guardrails_loop_guard_limit_desc">How many times the same tool call with identical arguments may repeat before the turn is stopped. 0 = follow the tier above; window and failure thresholds stay on the tier.</string>
+  <string name="setting_page_guardrails_loop_guard_limit_unit">0 = tier</string>
 </resources>
 

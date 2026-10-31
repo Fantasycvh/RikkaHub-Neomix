@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import app.androidrik.rikkahub.data.ai.LoopGateConfig
 import app.androidrik.rikkahub.data.ai.LoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.RuleEngine
 import app.androidrik.rikkahub.data.ai.RuleReminderSensitivity
@@ -47,6 +48,12 @@ class ConversationSession(
     private val onTurnCancelled: (String) -> Unit = {},
     /** LoopGuard 灵敏度档位（设置 → 通用 → 护栏与预算）；标准档 = 原写死行为 */
     loopGuardSensitivity: LoopGuardSensitivity = LoopGuardSensitivity.STANDARD,
+    /**
+     * LoopGuard「成功重复阈值」自定义覆盖（0 = 跟随档位）。用户决议 2026-10-31：
+     * 档位粒度满足不了「同参数调用其实是有意重复」的使用形态，允许把成功阈值单独调高；
+     * 窗口与失败阈值仍随档位（失控止损的底线不动）。
+     */
+    loopGuardRepeatLimit: Int = 0,
     /** 规则提醒（探索/落地守卫）开关与档位（设置 → 通用 → 护栏与预算），默认开 */
     ruleReminderEnabled: Boolean = true,
     ruleReminderSensitivity: RuleReminderSensitivity = RuleReminderSensitivity.STANDARD,
@@ -104,7 +111,8 @@ class ConversationSession(
     val toolLoopGuard = loopGuardSensitivity.guardThresholds().let { (window, success, failure) ->
         ToolCallLoopGuard(
             windowSize = window,
-            successThreshold = success,
+            // 自定义覆盖只动成功阈值：用户感知的「重复 N 次才停」就是它
+            successThreshold = if (loopGuardRepeatLimit > 0) loopGuardRepeatLimit else success,
             failureThreshold = failure,
         )
     }
@@ -142,6 +150,18 @@ class ConversationSession(
     val thinkingGuard = ThinkingDegenerationGuard()
 
     /**
+     * **本轮的收尾闸门**（design-deliverable-gate.md §三；null = 不挂闸）。
+     *
+     * 由 [ChatService.sendQueuedMessage] 在「轮」的边界从队列项带入（闸门随队列项走，
+     * 见 [QueuedMessage.loopGate]），并在 [beginNewTurn] 清空——所以用户发起的下一轮
+     * 普通消息必然无闸。审批续跑**不清**（那是同一轮的第二次 generateText），与三个
+     * 护栏的挂载理由完全同款。
+     */
+    @Volatile
+    var turnLoopGate: LoopGateConfig? = null
+        internal set
+
+    /**
      * **本轮后台任务归属令牌**（`workspace_run_background` 起的进程）。
      *
      * 存在理由：本轮被打断（点停止 / 插队 / 重新生成 / 继续生成都会取消生成协程）时，
@@ -174,6 +194,7 @@ class ConversationSession(
         thinkingGuard.reset()
         ruleEngine.reset()
         backgroundTaskOwner = newTurnToken()
+        turnLoopGate = null
         turnRevision.value++
     }
 

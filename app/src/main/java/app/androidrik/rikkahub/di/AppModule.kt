@@ -201,6 +201,7 @@ val appModule = module {
             generationHandler = get(),
             chatToolFactory = get(),
             agentRunDAO = get(),
+            workspaceRepository = get(),
         )
     }
 
@@ -213,6 +214,7 @@ val appModule = module {
             conversationRepository = get(),
             taskRepository = get(),
             settingsStore = get(),
+            workspaceRepository = get(),
         )
     }
 

@@ -40,8 +40,14 @@ class ScheduledTaskRepository(
         idleOnly: Boolean = false,
         withGoal: Boolean = false,
         keepLastConversations: Int = 0,
+        /** 交付物 JSON 数组（design-deliverable-gate.md §三.2）；null = 不设闸 */
+        deliverables: String? = null,
         targetMode: TargetMode = TargetMode.EXISTING,
         assistantId: String? = null,
+        /** 创建者（'user'/'ai'，design-proactive-task-management.md §三.4） */
+        createdBy: String = ScheduledTaskEntity.CREATED_BY_USER,
+        /** AI 建任务时的发起会话溯源 */
+        sourceConversationId: String? = null,
     ): ScheduledTaskEntity {
         val now = clock()
         val entity = ScheduledTaskEntity(
@@ -61,6 +67,9 @@ class ScheduledTaskRepository(
             idleOnly = idleOnly,
             withGoal = withGoal,
             keepLastConversations = keepLastConversations,
+            deliverables = deliverables?.takeIf { it.isNotBlank() },
+            createdBy = createdBy,
+            sourceConversationId = sourceConversationId,
             enabled = true,
             createdAt = now,
         )
@@ -91,6 +100,8 @@ class ScheduledTaskRepository(
         idleOnly: Boolean,
         withGoal: Boolean = false,
         keepLastConversations: Int = 0,
+        /** 交付物 JSON 数组；null/空 = 不设闸 */
+        deliverables: String? = null,
     ): Boolean {
         val existing = dao.byId(id) ?: return false
         val newPayload = payload.encode()
@@ -110,6 +121,7 @@ class ScheduledTaskRepository(
                 idleOnly = idleOnly,
                 withGoal = withGoal,
                 keepLastConversations = keepLastConversations,
+                deliverables = deliverables?.takeIf { it.isNotBlank() },
             )
         )
         return true
@@ -146,9 +158,16 @@ class ScheduledTaskRepository(
         return run.id
     }
 
-    /** 一轮执行落终态（status 见 [TaskRunStatus]；进程死亡时这步不会发生，finished_at 留空） */
-    suspend fun finishRun(runId: String, status: String, finishedAt: Long = clock()) =
-        dao.finishRun(runId, finishedAt, status)
+    /**
+     * 一轮执行落终态（status 见 [TaskRunStatus]；进程死亡时这步不会发生，finished_at 留空）。
+     * [gateRetries] = 收尾闸门打回次数（design-deliverable-gate.md §三.4，未挂闸传 0）。
+     */
+    suspend fun finishRun(
+        runId: String,
+        status: String,
+        finishedAt: Long = clock(),
+        gateRetries: Int = 0,
+    ) = dao.finishRun(runId, finishedAt, status, gateRetries)
 
     /** NEW_EACH_RUN：会话是执行中途才建出来的，账本行补记本轮实际会话 */
     suspend fun updateRunConversation(runId: String, conversationId: String) =

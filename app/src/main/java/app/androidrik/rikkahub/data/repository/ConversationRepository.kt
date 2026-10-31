@@ -510,6 +510,7 @@ class ConversationRepository(
                     folderId = entity.folderId,
                     lastMessageAt = entity.lastMessageAt,
                     memoryDisabled = entity.memoryDisabled,
+                    hidden = entity.hidden,
                     upstreamConfig = entity.upstreamConfig,
                 )
             }
@@ -633,6 +634,7 @@ class ConversationRepository(
             workspaceCwd = conversation.workspaceCwd ?: "",
             folderId = conversation.folderId?.toString() ?: "",
             memoryDisabled = conversation.memoryDisabled,
+            hidden = conversation.hidden,
             frozenAnchors = conversation.frozenAnchors,
             upstreamConfig = conversation.upstreamConfig?.let { JsonInstant.encodeToString(it) },
             // 行内「最近活跃」= 末尾消息的 createdAt。消息在内存里（本映射点的入参就带 messageNodes）
@@ -671,6 +673,7 @@ class ConversationRepository(
             workspaceCwd = conversationEntity.workspaceCwd.ifEmpty { null },
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
             memoryDisabled = conversationEntity.memoryDisabled,
+            hidden = conversationEntity.hidden,
             frozenAnchors = conversationEntity.frozenAnchors,
             upstreamConfig = conversationEntity.upstreamConfig?.let { JsonInstant.decodeFromString(it) },
         )
@@ -805,6 +808,11 @@ class ConversationRepository(
      */
     suspend fun updateConversationMemoryDisabled(conversationId: Uuid, disabled: Boolean) {
         conversationDAO.updateMemoryDisabled(conversationId.toString(), disabled)
+    }
+
+    /** 隐藏会话的单列回写（「移出隐藏 / 移入隐藏」；见 [ConversationDAO.setHidden]）。 */
+    suspend fun updateConversationHidden(conversationId: Uuid, hidden: Boolean) {
+        conversationDAO.setHidden(conversationId.toString(), hidden)
     }
 
     /**

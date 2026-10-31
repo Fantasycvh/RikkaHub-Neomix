@@ -439,6 +439,13 @@ class GenerationHandler(
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
         /**
+         * 收尾闸门配置（`docs/design/design-deliverable-gate.md` §三）。null = 不挂闸
+         * （默认——**普通聊天路径恒为 null**，行为逐位不变）。只在工具循环的「空工具分支」
+         * 自然出口生效；判定与打回语义见 [evaluateLoopGate]。由有明确任务的调用方显式传入
+         * （定时任务 run / 子代理 run），本类不做任何场景反查。
+         */
+        loopGate: LoopGateConfig? = null,
+        /**
          * 首轮的「续写/补救提示」（只进本请求的系统提示、不写入对话历史）。
          * 手动「继续生成」用它把被截断的消息接着写下去（见 [CONTINUE_INCOMPLETE_HINT]）。
          */
@@ -753,7 +760,26 @@ class GenerationHandler(
                         )
                         continue
                     }
-                    // no tool calls, break
+                    // no tool calls — 唯一自然出口（模型宣告结束）。收尾闸门
+                    // （design-deliverable-gate.md §三）只挂在这一个出口：stopNotice /
+                    // 上下文硬限 / maxSteps 耗尽 / 待审批等**环境掐断**的出口一律不触发
+                    // （模型没宣告结束，打回只会雪上加霜）。普通聊天路径 loopGate 恒 null。
+                    if (loopGate != null) {
+                        when (val verdict = evaluateLoopGate(loopGate)) {
+                            is LoopGateVerdict.Retry -> {
+                                Log.i(TAG, "generateText: loop gate retry #${loopGate.retries}")
+                                // 打回 = 一条**新的用户指令**（「补齐交付物/自检」），打回后模型
+                                // 重复上一步的调用是合理复查而非失控——重置 LoopGuard 滑动窗口，
+                                // 否则「闸门要求的复查」会被护栏误判成工具循环提前掐轮
+                                // （2026-10-31 用户决议；详见 design-deliverable-gate.md §3.3）。
+                                loopGuard.reset()
+                                messages = messages + UIMessage.user(verdict.prompt)
+                                emit(GenerationChunk.Messages(messages))
+                                continue
+                            }
+                            LoopGateVerdict.Pass -> Unit
+                        }
+                    }
                     break
                 }
 

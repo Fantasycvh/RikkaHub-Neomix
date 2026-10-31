@@ -256,6 +256,15 @@ class ChatToolFactory(
             )
         }
 
+        // AI 管理任务（Yuihub 形态，design-proactive-task-management.md §三）：能力层开关——
+        // 关（默认）= 工具不装配，模型看不到也碰不到定时任务。动作层审批在工具内按 action 分档。
+        if (assistant.taskManageEnabled) {
+            segments += ToolSegment(
+                "task_manage",
+                listOf(buildTaskManageTool(assistant, conversationId)),
+            )
+        }
+
         if (assistant.enableRecentChatsReference) {
             segments += ToolSegment("conversation", createConversationTools(conversationRepository, assistant.id))
         }

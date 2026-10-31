@@ -79,9 +79,10 @@ interface ScheduledTaskDAO {
     suspend fun insertRun(run: ScheduledTaskRunEntity)
 
     @Query(
-        "UPDATE scheduled_task_runs SET finished_at = :finishedAt, status = :status WHERE id = :id"
+        "UPDATE scheduled_task_runs SET finished_at = :finishedAt, status = :status, " +
+            "gate_retries = :gateRetries WHERE id = :id"
     )
-    suspend fun finishRun(id: String, finishedAt: Long, status: String)
+    suspend fun finishRun(id: String, finishedAt: Long, status: String, gateRetries: Int = 0)
 
     /** NEW_EACH_RUN：会话是执行中途才建出来的，账本行补记本轮实际会话 */
     @Query("UPDATE scheduled_task_runs SET conversation_id = :conversationId WHERE id = :id")

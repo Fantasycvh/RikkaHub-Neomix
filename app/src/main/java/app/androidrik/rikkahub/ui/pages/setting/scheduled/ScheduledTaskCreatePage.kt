@@ -118,6 +118,7 @@ fun ScheduledTaskCreatePage(
                                 idleOnly = form.idleOnly,
                                 withGoal = form.withGoal && withGoalAvailable,
                                 keepLastConversations = if (keepLastVisible) (form.keepLast ?: 0) else 0,
+                                deliverablesJson = form.deliverablesJson(),
                                 onCreated = { navController.popBackStack() },
                                 onFailed = { targetFailure = it },
                             )

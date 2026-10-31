@@ -84,6 +84,7 @@ class ScheduledTaskDetailVM(
                 idleOnly = form.idleOnly,
                 withGoal = form.withGoal,
                 keepLastConversations = form.keepLast ?: 0,
+                deliverables = form.deliverablesJson(),
             )
             sweeperKeeper.rearm(taskRepository)
             refresh()

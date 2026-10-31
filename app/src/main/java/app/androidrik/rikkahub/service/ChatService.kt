@@ -64,6 +64,7 @@ import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
+import app.androidrik.rikkahub.data.ai.LoopGateConfig
 import app.androidrik.rikkahub.data.ai.withProviderErrorHint
 import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.parseRuleReminderSensitivity
@@ -594,6 +595,7 @@ class ChatService(
                 ),
                 scope = appScope,
                 loopGuardSensitivity = parseLoopGuardSensitivity(settings.loopGuardSensitivity),
+                loopGuardRepeatLimit = settings.loopGuardRepeatLimit,
                 ruleReminderEnabled = settings.ruleReminderEnabled,
                 ruleReminderSensitivity = parseRuleReminderSensitivity(settings.ruleReminderSensitivity),
                 turnBudgetChars = settings.workspaceTurnBudgetChars,
@@ -754,13 +756,15 @@ class ChatService(
         val settings = awaitSettings()
         val assistant = settings.assistants.find { it.id == assistantId } ?: return null
         val conversationId = Uuid.random()
+        // 隐形会话（design-proactive-task-management.md §二）：任务会话默认隐藏——
+        // 不刷会话列表，只能从任务详情页/完成通知直达；用户可从会话内横幅「移出隐藏」收养。
         val conversation = Conversation.ofId(
             id = conversationId,
             assistantId = assistant.id,
             newConversation = true,
         )
             .updateCurrentMessages(assistant.presetMessages)
-            .copy(title = title)
+            .copy(title = title, hidden = true)
         conversationRepo.insertConversation(conversation)
         updateConversation(conversationId, conversation)
         Log.i(TAG, "createTaskConversation: $conversationId assistant=${assistant.name} title=$title")
@@ -877,6 +881,12 @@ class ChatService(
         content: List<UIMessagePart>,
         answer: Boolean = true,
         annotations: List<UIMessageAnnotation> = emptyList(),
+        /**
+         * 收尾闸门（design-deliverable-gate.md §三）。**默认 null = 不挂闸**——聊天 UI、
+         * web/API、重生成等一切用户发起的路径都不传；只有定时任务执行层为「有明确任务、
+         * 无人盯着」的轮次显式传入。闸门随队列项走（见 [QueuedMessage.loopGate]）。
+         */
+        loopGate: LoopGateConfig? = null,
     ) {
         if (content.isEmptyInputMessage()) return
 
@@ -890,7 +900,7 @@ class ChatService(
             // 不该由「当时有没有在生成」这种状态悄悄替用户决定。
             // 队列内重排（把某条挪到队首）仍未做，属未立项。
             if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
-            session.messageQueue.enqueue(content, answer, annotations = annotations)
+            session.messageQueue.enqueue(content, answer, annotations = annotations, loopGate = loopGate)
             dispatchNextQueuedMessage(conversationId)
         }
     }
@@ -1008,6 +1018,8 @@ class ChatService(
         // **必须在这里同步调用**（不能挪进下面的生成协程体）：`setJob` 注册取消回调时要捕获
         // 令牌，而协程体可能晚于 `session.setJob(job)` 才开始执行。
         session.beginNewTurn()
+        // 闸门随本轮队列项带入（beginNewTurn 已清空，这里覆盖；用户发起的轮次恒为 null）
+        session.turnLoopGate = queued.loopGate
         val job = appScope.launch {
             try {
                 // 派发新消息前的兜底收尾：正常情况下闸门（getJob() != null / pending 工具）已经保证
@@ -1830,13 +1842,14 @@ class ChatService(
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
+                // 收尾闸门：随本轮队列项带入（sendQueuedMessage），用户发起的轮次恒为 null
+                loopGate = session.turnLoopGate,
                 memoryDisabled = conversation.memoryDisabled,
                 frozenAnchorIds = frozenAnchorIds,
                 // GenerationHandler logs the actual shared plan; no second selection/tokenization for logs.
                 memories = loadedMemories,
                 // 内置 → 模板 → 工作区提醒 → 插件 → 工具结果配平(末环);见 buildInputTransformerChain
-                inputTransformers = buildInputTransformerChain(),
-                // 插件输出转换器接在末尾:内置的 ThinkTag 等先规整,插件处理最终文本
+                inputTransformers = buildInputTransformerChain(),                // 插件输出转换器接在末尾:内置的 ThinkTag 等先规整,插件处理最终文本
                 outputTransformers = outputTransformers + pluginOutputTransformers(),
                 // 工具装配集中到 ChatToolFactory（记忆 + 搜索 + 本地 + 对话 + 工作区 + 技能 + MCP）；
                 // 已在上面取好并计时（assembledTools）
@@ -2661,6 +2674,20 @@ class ChatService(
             conversationId = conversationId,
             update = { it.copy(memoryDisabled = disabled) },
             persist = { conversationRepo.updateConversationMemoryDisabled(conversationId, disabled) },
+        )
+    }
+
+    /**
+     * 切换隐藏会话（隐形会话的手动开关；`docs/design/design-proactive-task-management.md` §二.3）。
+     *
+     * 与 [setConversationMemoryDisabled] 同款：内存态与库各写一次、用同一个新值。
+     * 「移出隐藏」（false）= 收养进列表；「移入隐藏」（true）数据层支持，v1 UI 只露出移出。
+     */
+    suspend fun setConversationHidden(conversationId: Uuid, hidden: Boolean) {
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(hidden = hidden) },
+            persist = { conversationRepo.updateConversationHidden(conversationId, hidden) },
         )
     }
 

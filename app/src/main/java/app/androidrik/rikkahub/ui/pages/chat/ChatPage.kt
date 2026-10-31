@@ -627,6 +627,7 @@ private fun ChatPageContent(
             },
             containerColor = Color.Transparent,
         ) { innerPadding ->
+            Box {
             ChatList(
                 innerPadding = innerPadding,
                 conversation = conversation,
@@ -740,6 +741,21 @@ private fun ChatPageContent(
                     vm.updateConversationGoal(newGoal)
                 },
             )
+            // 隐形会话（design-proactive-task-management.md §二.3）：任务工作台的唯一 UI 开关。
+            // 覆盖在列表顶部（不挤占 ChatList 的 padding）；「移出隐藏」= 收养进列表。
+            if (conversation.hidden) {
+                HiddenSessionBanner(
+                    onUnhide = {
+                        vm.setHidden(conversation, false)
+                        toaster.show(resources.getString(R.string.chat_hidden_adopted_toast))
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(innerPadding)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            }
         }
 
         if (showContextSheet) {
@@ -1108,6 +1124,34 @@ private fun ChatFilesPickerSheet(
 @Composable
 private fun glassHazeStyle(): HazeBlurStyle = HazeBlurStyle.Material3 {
     blurRadius(16.dp)
+}
+
+/**
+ * 隐形会话的会话内横幅（design-proactive-task-management.md §二.3）：隐藏会话不出现在
+ * 任何列表，这里是用户被任务详情页/通知带进来之后的**唯一**可见解释与出口——
+ * 「移出隐藏」= 收养进列表（数据层支持再隐藏，v1 不给普通会话露出隐藏入口）。
+ */
+@Composable
+private fun HiddenSessionBanner(onUnhide: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 3.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.chat_hidden_banner_text),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            TextButton(onClick = onUnhide) {
+                Text(stringResource(R.string.chat_hidden_unhide_action))
+            }
+        }
+    }
 }
 
 @Composable

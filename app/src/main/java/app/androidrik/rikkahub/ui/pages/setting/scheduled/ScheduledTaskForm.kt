@@ -34,7 +34,9 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
 import app.androidrik.rikkahub.data.db.entity.ScheduleType
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.ai.DeliverableChecker
 import app.androidrik.rikkahub.data.scheduled.SchedulePayload
+import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import java.time.DayOfWeek
@@ -65,6 +67,19 @@ class ScheduledTaskFormState {
 
     /** NEW_EACH_RUN 自动清理（§4.2）：保留最近 N 轮；0 = 关。文本态与「间隔」同一套数字键盘约定 */
     var keepLastText by mutableStateOf("0")
+
+    /**
+     * 交付物契约（purrcat A1，design-deliverable-gate.md §三.2）：**每行一个路径**（相对
+     * workspace 根）。空 = 不设闸。保存时逐行 [DeliverableChecker.normalizeRelative] 校验，
+     * 非法行（绝对路径/..）直接剔除——配置错误不阻断保存，闸门按剩余合法声明执行。
+     */
+    var deliverablesText by mutableStateOf("")
+
+    fun deliverablesJson(): String? {
+        val lines = deliverablesText.lines().mapNotNull(DeliverableChecker::normalizeRelative)
+        if (lines.isEmpty()) return null
+        return JsonInstant.encodeToString(lines)
+    }
 
     /**
      * DAILY 多时段（P2）：主时刻之外的追加时刻（时,分 文本对，与主行同一套数字键盘约定）。
@@ -128,6 +143,10 @@ class ScheduledTaskFormState {
         idleOnly = entity.idleOnly
         withGoal = entity.withGoal
         keepLastText = entity.keepLastConversations.toString()
+        deliverablesText = entity.deliverables
+            ?.let { raw -> runCatching { JsonInstant.decodeFromString<List<String>>(raw) }.getOrDefault(emptyList()) }
+            ?.joinToString("\n")
+            .orEmpty()
         val primary = payload.hour * 60 + payload.minute
         extraTimes.clear()
         extraTimes.addAll(
@@ -374,6 +393,21 @@ fun ScheduledTaskFormFields(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        // 交付物契约（design-deliverable-gate.md）：每行一个相对 workspace 根的路径；
+        // 留空 = 不设闸（默认）。放在表单尾部：它是进阶字段，不是排周期的必经之路。
+        OutlinedTextField(
+            value = state.deliverablesText,
+            onValueChange = { state.deliverablesText = it },
+            label = { Text(stringResource(R.string.scheduled_task_deliverables)) },
+            supportingText = { Text(stringResource(R.string.scheduled_task_deliverables_desc)) },
+            minLines = 1,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Uri,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 
     if (showDatePicker) {

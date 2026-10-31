@@ -539,6 +539,20 @@ private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
             },
         )
         item(
+            headlineContent = { Text(stringResource(R.string.setting_page_guardrails_loop_guard_limit)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_guardrails_loop_guard_limit_desc)) },
+            trailingContent = {
+                OutlinedNumberInput(
+                    value = settings.loopGuardRepeatLimit,
+                    onValueChange = {
+                        vm.updateSettings(settings.copy(loopGuardRepeatLimit = it.coerceIn(0, 20)))
+                    },
+                    label = stringResource(R.string.setting_page_guardrails_loop_guard_limit_unit),
+                    modifier = Modifier.width(96.dp),
+                )
+            },
+        )
+        item(
             headlineContent = { Text(stringResource(R.string.setting_page_guardrails_rule_reminder)) },
             supportingContent = { Text(stringResource(R.string.setting_page_guardrails_rule_reminder_desc)) },
             trailingContent = {

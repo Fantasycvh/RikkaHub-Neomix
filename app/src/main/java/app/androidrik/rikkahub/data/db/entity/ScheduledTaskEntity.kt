@@ -84,11 +84,34 @@ import androidx.room.PrimaryKey
      */
     @ColumnInfo("keep_last_conversations", defaultValue = "0")
     val keepLastConversations: Int = 0,
+    /**
+     * 交付物契约（purrcat A1，design-deliverable-gate.md §三.2）：相对 workspace 根的路径
+     * 列表的 **JSON 数组**；NULL/空 = 不设闸（默认，老行行为不变）。非空 ⇒ 执行轮在自然出口
+     * 逐个校验「存在且非空」，缺失打回（上限 [app.androidrik.rikkahub.data.ai.LOOP_GATE_MAX_RETRIES]），
+     * 打回次数落 `scheduled_task_runs.gate_retries`。**非空即挂闸**，不另设布尔开关。
+     */
+    @ColumnInfo("deliverables")
+    val deliverables: String? = null,
+    /**
+     * 创建者（AI 管理任务，design-proactive-task-management.md §三.4）：'user' / 'ai'。
+     * 管理页来源徽标 + 越权红线的数据基础（AI **不可删** user 建的任务——不是审批，是拒绝）。
+     * NOT NULL + DEFAULT 'user' ⇒ AutoMigration 无需 spec（55→56），老数据语义无损。
+     */
+    @ColumnInfo("created_by", defaultValue = "'user'")
+    val createdBy: String = CREATED_BY_USER,
+    /** AI 建任务时的会话溯源（task_manage create 的发起会话）；用户建的为 null。 */
+    @ColumnInfo("source_conversation_id")
+    val sourceConversationId: String? = null,
     @ColumnInfo("enabled")
     val enabled: Boolean,
     @ColumnInfo("created_at")
     val createdAt: Long,
-)
+) {
+    companion object {
+        const val CREATED_BY_USER = "user"
+        const val CREATED_BY_AI = "ai"
+    }
+}
 
 /** 周期形态；存的是 [name]，新增枚举值必须向后兼容旧库 */
 enum class ScheduleType { ONCE, DAILY, WEEKLY, MONTHLY, INTERVAL }

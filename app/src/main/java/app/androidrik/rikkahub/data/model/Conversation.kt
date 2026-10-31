@@ -76,6 +76,12 @@ data class Conversation(
      */
     val memoryDisabled: Boolean = false,
     /**
+     * **隐藏会话**（定时任务 P3，`docs/design/design-proactive-task-management.md` §二）：
+     * 默认 false；任务会话的工作台属性，列表/搜索/统计不显示，任务详情页与通知直达。
+     * 手动切换（移出 = 收养进列表，可再移入）；不进任何执行路径判断。
+     */
+    val hidden: Boolean = false,
+    /**
      * **冻结的锚点集合**（L1）：会话开始时一次 + 用户手动「固化记忆」时重写。
      *
      * 存的是**锚点 id（逗号分隔）**，不是锚点文本 —— 文本按当前内容实时渲染。理由：记忆库

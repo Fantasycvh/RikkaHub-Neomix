@@ -2466,4 +2466,23 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="scheduled_task_assistant_missing">助手已删除</string>
   <string name="scheduled_task_group_unknown_assistant">未知助手</string>
   <string name="scheduled_task_status_assistant_gone">助手已删除</string>
+  <string name="chat_hidden_banner_text">已隐藏会话（定时任务工作台）</string>
+  <string name="chat_hidden_unhide_action">移出隐藏</string>
+  <string name="chat_hidden_adopted_toast">会话已恢复到列表</string>
+  <string name="scheduled_task_deliverables">交付物（每行一个路径）</string>
+  <string name="scheduled_task_deliverables_desc">相对工作区根。非空 = 本轮必须产出这些文件才允许结束；留空 = 不设闸。</string>
+  <string name="task_manage_notif_title">AI 修改了定时任务</string>
+  <string name="task_manage_notif_content">AI %1$s 了定时任务「%2$s」。可在 设置 → 定时任务 中查看。</string>
+  <string name="assistant_page_task_manage_title">允许 AI 管理定时任务</string>
+  <string name="assistant_page_task_manage_desc">装配 task_manage 工具，让本助手可以查看、创建、启停、删除挂在自己名下的定时任务；它建的任务在隐藏会话中执行。</string>
+  <string name="assistant_page_task_manage_create_approval">创建前需批准</string>
+  <string name="assistant_page_task_manage_create_approval_desc">AI 建的每个任务未来每次运行都要花 token，首次授权应有人点头。</string>
+  <string name="assistant_page_task_manage_modify_approval">启停前需批准</string>
+  <string name="assistant_page_task_manage_modify_approval_desc">启停改变任务的未来行为，逐次确认。</string>
+  <string name="assistant_page_task_manage_delete_approval">删除前需批准</string>
+  <string name="assistant_page_task_manage_delete_approval_desc">只有 AI 自己创建的任务可删；用户创建的任务一律拒绝。</string>
+  <string name="scheduled_task_created_by_ai">AI 建</string>
+  <string name="setting_page_guardrails_loop_guard_limit">工具重复次数覆盖</string>
+  <string name="setting_page_guardrails_loop_guard_limit_desc">同一工具+同一参数重复多少次才结束本轮。0 = 跟随上方档位；窗口与失败阈值仍随档位。调大适合「有意重复同一调用」的用法。</string>
+  <string name="setting_page_guardrails_loop_guard_limit_unit">0=档位</string>
 </resources>

@@ -381,6 +381,7 @@ class SettingsStore(
         val AUTO_COMPRESS_ENABLED = booleanPreferencesKey("auto_compress_enabled")
         // peer ⑤ Tier 1 可配置化：护栏与预算（写死常量的可配置化）
         val LOOP_GUARD_SENSITIVITY = stringPreferencesKey("loop_guard_sensitivity")
+        val LOOP_GUARD_REPEAT_LIMIT = intPreferencesKey("loop_guard_repeat_limit")
         // 规则提醒（探索/落地守卫）：默认开 + 三档，与 LoopGuard 同款形态
         val RULE_REMINDER_ENABLED = booleanPreferencesKey("rule_reminder_enabled")
         val RULE_REMINDER_SENSITIVITY = stringPreferencesKey("rule_reminder_sensitivity")
@@ -569,6 +570,7 @@ class SettingsStore(
                 autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
                 loopGuardSensitivity = preferences[LOOP_GUARD_SENSITIVITY]
                     ?: app.androidrik.rikkahub.data.ai.LoopGuardSensitivity.STANDARD.name,
+                loopGuardRepeatLimit = (preferences[LOOP_GUARD_REPEAT_LIMIT] ?: 0).coerceIn(0, 20),
                 ruleReminderEnabled = preferences[RULE_REMINDER_ENABLED] ?: true,
                 ruleReminderSensitivity = preferences[RULE_REMINDER_SENSITIVITY]
                     ?: app.androidrik.rikkahub.data.ai.RuleReminderSensitivity.STANDARD.name,
@@ -849,6 +851,7 @@ class SettingsStore(
             } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
             preferences[AUTO_COMPRESS_ENABLED] = settings.autoCompressEnabled
             preferences[LOOP_GUARD_SENSITIVITY] = settings.loopGuardSensitivity
+            preferences[LOOP_GUARD_REPEAT_LIMIT] = settings.loopGuardRepeatLimit.coerceIn(0, 20)
             preferences[RULE_REMINDER_ENABLED] = settings.ruleReminderEnabled
             preferences[RULE_REMINDER_SENSITIVITY] = settings.ruleReminderSensitivity
             preferences[WORKSPACE_TURN_BUDGET_CHARS] = settings.workspaceTurnBudgetChars
@@ -1164,6 +1167,12 @@ data class Settings(
     val autoCompressEnabled: Boolean = false,
     /** LoopGuard 灵敏度档位（strict/standard/loose），见 [app.androidrik.rikkahub.data.ai.guardThresholds] */
     val loopGuardSensitivity: String = "STANDARD",
+    /**
+     * LoopGuard「成功重复阈值」**自定义覆盖**（2026-10-31 用户决议，推翻早前「只做档位不做
+     * 自由数字」的取舍）：0 = 跟随档位默认；>0 = 覆盖成功阈值（窗口/失败阈值仍随档位）。
+     * 上限 20：护栏名存实亡的下限由调用侧 coerce 保证（不设下限 1——那等于关掉护栏）。
+     */
+    val loopGuardRepeatLimit: Int = 0,
     /**
      * 规则提醒（探索/落地守卫）：连续多次只读/搜索类工具调用且零落地产出时，在**对话尾部**
      * 注入一条自查提醒（默认开）。见 `docs/design/design-rule-engine.md`。

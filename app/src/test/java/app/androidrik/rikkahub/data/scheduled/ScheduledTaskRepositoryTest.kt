@@ -109,8 +109,8 @@ class ScheduledTaskRepositoryTest {
             runs[run.id] = run
         }
 
-        override suspend fun finishRun(id: String, finishedAt: Long, status: String) {
-            runs[id] = runs[id]!!.copy(finishedAt = finishedAt, status = status)
+        override suspend fun finishRun(id: String, finishedAt: Long, status: String, gateRetries: Int) {
+            runs[id] = runs[id]!!.copy(finishedAt = finishedAt, status = status, gateRetries = gateRetries)
         }
 
         override suspend fun updateRunConversation(id: String, conversationId: String) {

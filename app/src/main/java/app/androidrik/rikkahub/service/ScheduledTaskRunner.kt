@@ -11,6 +11,10 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.conversationIntent
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.awaitLoaded
+import app.androidrik.rikkahub.data.datastore.getAssistantById
+import app.androidrik.rikkahub.data.ai.DeliverableChecker
+import app.androidrik.rikkahub.data.ai.LoopGateConfig
+import app.androidrik.rikkahub.data.ai.forcePassNote
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import app.androidrik.rikkahub.data.db.entity.TargetMode
@@ -18,8 +22,11 @@ import app.androidrik.rikkahub.data.db.entity.TargetMode
 import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
 import app.androidrik.rikkahub.data.db.entity.targetModeOrDefault
 import app.androidrik.rikkahub.data.repository.ConversationRepository
+import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
+import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.utils.sendNotification
+import app.androidrik.workspace.WorkspaceStorageArea
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
@@ -48,6 +55,7 @@ class ScheduledTaskRunner(
     private val conversationRepository: ConversationRepository,
     private val taskRepository: ScheduledTaskRepository,
     private val settingsStore: SettingsStore,
+    private val workspaceRepository: WorkspaceRepository,
 ) {
     /**
      * 执行一个**已认领**的任务，返回落 `last_status` 的状态值。
@@ -129,9 +137,13 @@ class ScheduledTaskRunner(
         // 多次自唤醒围绕同一目标；goal 为空按普通 prompt 走，不报错（§六.2）。
         // 会话已由 ensureConversationLoaded 载入，直接读内存态的 goal。
         val conversationGoal = chatService.getConversationFlow(conversationId).value.goal
+        // 收尾闸门（purrcat A1，design-deliverable-gate.md §三.2）：任务声明了交付物
+        // （deliverables 非空）才挂闸；null = 行为与过去逐位一致。
+        val loopGate = buildTaskLoopGate(task, conversationId)
         chatService.sendMessage(
             conversationId,
             listOf(UIMessagePart.Text(buildTaskPrompt(task.prompt, task.withGoal, conversationGoal))),
+            loopGate = loopGate,
         )
 
         // 等待结束期间打心跳：若进程被 ROM 的 cached-app freezer 冻住，日志会断一条明显的
@@ -168,8 +180,8 @@ class ScheduledTaskRunner(
                 "producedReply=$producedReply)",
         )
         taskRepository.recordStatus(task.id, status)
-        taskRepository.finishRun(runId, status)
-        notifyResult(task, conversationId, status)
+        taskRepository.finishRun(runId, status, gateRetries = loopGate?.retries ?: 0)
+        notifyResult(task, conversationId, status, loopGate)
 
         // 自动清理（§4.2）：仅 NEW_EACH_RUN 且开关开启，仅成功轮次后执行——失败轮的会话
         // 带错误卡，用户可能要排查，不参与清理。清理失败只记日志，不影响本轮结果。
@@ -214,7 +226,55 @@ class ScheduledTaskRunner(
         chatService.getConversationFlow(conversationId).value.currentMessages
             .count { it.role == MessageRole.ASSISTANT }
 
-    private fun notifyResult(task: ScheduledTaskEntity, conversationId: Uuid, status: String) {
+    /**
+     * 装配任务的收尾闸门（purrcat A1，`docs/design/design-deliverable-gate.md` §三.2）。
+     *
+     * - `deliverables` 列 NULL/空（含解析后剔光）→ null = 不挂闸，行为与过去逐位一致；
+     * - 会话助手没绑 workspace → 降级为**自检**（`deliverables` 置空只留自检提示，
+     *   与子代理侧同款，§二.3.5——无从查文件，不硬失败）；
+     * - 正常路径 → 确定性校验：`fileSize` 对缺失/目录抛错（`WorkspaceManager.fileSize`
+     *   的 `require(file.isFile)`），`runCatching` 归一成「缺失」；size ≤ 0 视为空交付。
+     *   校验中途工作区不可用按 fail-open 放行（理由见 [SubagentRunner.buildSubagentLoopGate]）。
+     */
+    private fun buildTaskLoopGate(
+        task: ScheduledTaskEntity,
+        conversationId: Uuid,
+    ): LoopGateConfig? {
+        val declared = task.deliverables
+            ?.let { raw ->
+                runCatching { JsonInstant.decodeFromString<List<String>>(raw) }
+                    .onFailure { Log.w(TAG, "deliverables parse failed for task=${task.id}", it) }
+                    .getOrDefault(emptyList())
+            }
+            ?.let(DeliverableChecker::normalizeAll)
+            .orEmpty()
+        if (declared.isEmpty()) return null
+        val assistantId = chatService.getConversationFlow(conversationId).value.assistantId
+        val workspaceId = settingsStore.settingsFlow.value
+            .getAssistantById(assistantId)?.workspaceId
+        if (workspaceId == null) return LoopGateConfig(deliverables = emptyList())
+        val wsId = workspaceId.toString()
+        return LoopGateConfig(
+            deliverables = declared,
+            checkDeliverables = { paths ->
+                paths.filter { path ->
+                    val size = runCatching {
+                        workspaceRepository.fileSize(wsId, WorkspaceStorageArea.FILES, path)
+                    }.onFailure { e ->
+                        Log.w(TAG, "deliverable check failed: $path (${e.message})")
+                    }.getOrNull()
+                    size == null || size <= 0L
+                }
+            },
+        )
+    }
+
+    private fun notifyResult(
+        task: ScheduledTaskEntity,
+        conversationId: Uuid,
+        status: String,
+        loopGate: LoopGateConfig?,
+    ) {
         val (titleRes, contentRes) = when (status) {
             TaskRunStatus.OK ->
                 R.string.scheduled_task_notif_done_title to R.string.scheduled_task_notif_done_content
@@ -225,7 +285,13 @@ class ScheduledTaskRunner(
             else ->
                 R.string.scheduled_task_notif_failed_title to R.string.scheduled_task_notif_failed_content
         }
-        val contentText = context.getString(contentRes, task.title)
+        // 闸门强制放行 = OK 但有缺失：通知里必须说出来，不能让「带瑕疵交付」伪装成全绿
+        val contentText = buildString {
+            append(context.getString(contentRes, task.title))
+            if (loopGate?.forcePassed == true) {
+                append('\n').append(forcePassNote(loopGate.missingAtForcePass))
+            }
+        }
         context.sendNotification(
             channelId = CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
             notificationId = task.id.hashCode() + NOTIFICATION_ID_OFFSET,

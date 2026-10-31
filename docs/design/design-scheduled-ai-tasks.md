@@ -532,7 +532,8 @@ Room 编译期校验 + 真机验证兜底：
 - **P3（另立设计再谈）**：~~备份集成~~（**核验后免做**——整库文件级备份天然覆盖，§八.5）；
   ~~cron-lite~~（以 **MONTHLY** 替代，revision 11——通用 cron 的真实诉求已被多时段抽干）；
   **NEW_EACH_RUN 自动清理**（revision 11，运行账本使安全删除成为可能，§4.2）；
-  **隐形会话**（无会话全局任务的四两拨千斤形态，另立设计——真无头需解耦 ChatService
-  集中式装配方，不挂在定时任务名下）；收尾闸门限定接入（purrcat A1）；
-  AI 管理任务（Yuihub 形态，另立设计）。
+  **隐形会话 + AI 管理任务（Yuihub 形态）**（另立设计
+  `design-proactive-task-management.md`，2026-10-31 起——含「真无头明确不做」声明）；
+  **收尾闸门限定接入（purrcat A1）+ 交付物契约（A3）**（另立设计
+  `design-deliverable-gate.md`，2026-10-31 起）。
   ~~Alarm 精确档~~ 已在 revision 4 提前落地（§6.2）。

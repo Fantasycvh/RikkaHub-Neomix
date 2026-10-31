@@ -86,7 +86,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 54,
+    version = 56,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -171,6 +171,13 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 53→54：NEW_EACH_RUN 自动清理（keep_last_conversations，NOT NULL + DEFAULT 0 = 关）。
         // 见 docs/design/design-scheduled-ai-tasks.md §4.2
         AutoMigration(from = 53, to = 54),
+        // 54→55：收尾闸门（design-deliverable-gate.md）+ 隐形会话（design-proactive-task-management.md）
+        // 合批——scheduled_tasks.deliverables（NULL=不设闸）、scheduled_task_runs.gate_retries
+        // （NOT NULL DEFAULT 0）、conversationentity.hidden（NOT NULL DEFAULT 0）。全部免 spec。
+        AutoMigration(from = 54, to = 55),
+        // 55→56：AI 管理任务来源标记（design-proactive-task-management.md §三.4）
+        // —— scheduled_tasks.created_by（NOT NULL DEFAULT 'user'）+ source_conversation_id。免 spec。
+        AutoMigration(from = 55, to = 56),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)

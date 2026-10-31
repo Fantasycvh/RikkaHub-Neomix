@@ -41,6 +41,13 @@ data class ScheduledTaskRunEntity(
     /** [TaskRunStatus] 名称；null = 未落终态（同上） */
     @ColumnInfo("status")
     val status: String? = null,
+    /**
+     * 收尾闸门打回次数（purrcat A1，design-deliverable-gate.md §三.4）：本轮生成在自然出口
+     * 被闸门打回（确定性交付校验未过 / 自检注入）的次数。0 = 未挂闸或一次通过；
+     * 「一轮实跑了 N 次」必须在这里可见。NOT NULL DEFAULT 0 ⇒ AutoMigration 无需 spec（54→55）。
+     */
+    @ColumnInfo("gate_retries", defaultValue = "0")
+    val gateRetries: Int = 0,
 ) {
     /** 触发入口的规范值；只作记录与展示，执行器不依赖它做任何分支（与 Executor 的 source 串一致） */
     object RunSource {

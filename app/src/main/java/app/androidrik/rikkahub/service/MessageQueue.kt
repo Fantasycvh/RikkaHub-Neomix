@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isEmptyInputMessage
+import app.androidrik.rikkahub.data.ai.LoopGateConfig
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.localFileUrls
 import kotlin.uuid.Uuid
@@ -19,6 +20,12 @@ data class QueuedMessage(
     val reply: CompletableDeferred<String?>? = null,
     // 引用快照：派发时原样落到 user message 的 annotations。
     val annotations: List<UIMessageAnnotation> = emptyList(),
+    /**
+     * 收尾闸门（design-deliverable-gate.md §三）：**随队列项走**而不是随会话走——
+     * 普通发送/插队/重生成等一切用户发起的入队都不传（null = 不挂闸），只有定时任务
+     * 执行层显式传入。挂在队列项上保证「这一轮用哪个闸门」由触发方决定，无跨轮残留。
+     */
+    val loopGate: LoopGateConfig? = null,
 )
 
 data class MessageQueueState(
@@ -63,6 +70,7 @@ class MessageQueue {
         answer: Boolean = true,
         reply: CompletableDeferred<String?>? = null,
         annotations: List<UIMessageAnnotation> = emptyList(),
+        loopGate: LoopGateConfig? = null,
     ) {
         if (parts.isEmptyInputMessage()) {
             reply?.complete(null)
@@ -74,6 +82,7 @@ class MessageQueue {
                 answer = answer,
                 reply = reply,
                 annotations = annotations.toList(),
+                loopGate = loopGate,
             ),
         )
     }

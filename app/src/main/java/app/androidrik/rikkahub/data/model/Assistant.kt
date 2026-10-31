@@ -83,6 +83,20 @@ data class Assistant(
      */
     val memoryCreateApproval: Boolean = false,
     /**
+     * AI 管理任务**能力总开关**（Yuihub 形态，`docs/design/design-proactive-task-management.md` §三.2）：
+     * 为 false（默认）时 `task_manage` 工具**不装配**——AI 看不到也碰不到定时任务。
+     * 对齐记忆库按助手隔离的哲学：助手只能操作挂在自己名下的任务。
+     */
+    val taskManageEnabled: Boolean = false,
+    /**
+     * 动作层审批（与能力层相互独立，决议 2026-10-31）：以下三个开关默认全开——
+     * 定时任务是「未来持续烧钱 + 无人监督的自动化」，create/delete/modify 都要人点头。
+     */
+    val taskCreateApproval: Boolean = true,
+    val taskDeleteApproval: Boolean = true,
+    /** enable/disable 也算「修改」：改变任务的未来行为，同档审批 */
+    val taskModifyApproval: Boolean = true,
+    /**
      * 生图审批：为 true 时，AI 通过 `generate_image` 工具生图前需用户确认。
      *
      * **默认 false**——生图是用户显式要求（或模型判断需要）后的动作，每次打断会是纯摩擦；

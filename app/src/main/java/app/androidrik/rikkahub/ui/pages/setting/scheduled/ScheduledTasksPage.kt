@@ -187,7 +187,20 @@ fun ScheduledTasksPage(vm: ScheduledTasksVM = koinViewModel()) {
                         onClick = {
                             navController.navigate(Screen.SettingScheduledTaskDetail(task.id))
                         },
-                        headlineContent = { Text(task.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        headlineContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(task.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                // 来源徽标（AI 管理任务 §三.4）：用户必须能一眼分出「这条不是我建的」
+                                if (task.createdBy == ScheduledTaskEntity.CREATED_BY_AI) {
+                                    Text(
+                                        text = stringResource(R.string.scheduled_task_created_by_ai),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(start = 6.dp),
+                                    )
+                                }
+                            }
+                        },
                         supportingContent = {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(

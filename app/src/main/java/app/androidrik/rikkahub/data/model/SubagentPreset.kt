@@ -73,6 +73,14 @@ data class SubagentPreset(
     val timeoutSeconds: Int = DEFAULT_SUBAGENT_TIMEOUT_SECONDS,
     /** 停用后不出现在派发工具的清单里（历史 run 不受影响）。 */
     val enabled: Boolean = true,
+    /**
+     * 交付物契约（purrcat A3，`docs/design/design-deliverable-gate.md` §二）：相对 workspace
+     * 根的路径列表。非空 ⇒ run 自然收束时逐个校验「存在且非空」，缺失则打回继续补
+     * （上限 [app.androidrik.rikkahub.data.ai.LOOP_GATE_MAX_RETRIES]，达上限强制放行）；
+     * null = 不设闸（默认，旧数据行为不变——零迁移，本字段在 Settings JSON 里）。
+     * 声明了 deliverables 但预设没绑 workspace ⇒ 降级为自检（不硬失败，§二.3.5）。
+     */
+    val deliverables: List<String>? = null,
 )
 
 /**

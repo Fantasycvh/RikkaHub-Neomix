@@ -255,5 +255,70 @@ private fun AssistantLocalToolContent(
                 }
             )
         }
+
+        // AI 管理任务（Yuihub 形态，design-proactive-task-management.md §三.2）：
+        // 能力层总开关（工具面挂载）+ 动作层审批分档（默认全开）。
+        // 审批开关在能力关闭时置灰——挂载都没有，审批无从谈起。
+        CardGroup {
+            item(
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_task_manage_title))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_task_manage_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.taskManageEnabled,
+                        onCheckedChange = { onUpdate(assistant.copy(taskManageEnabled = it)) }
+                    )
+                }
+            )
+            item(
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_task_manage_create_approval))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_task_manage_create_approval_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.taskCreateApproval,
+                        onCheckedChange = { onUpdate(assistant.copy(taskCreateApproval = it)) },
+                        enabled = assistant.taskManageEnabled,
+                    )
+                }
+            )
+            item(
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_task_manage_modify_approval))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_task_manage_modify_approval_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.taskModifyApproval,
+                        onCheckedChange = { onUpdate(assistant.copy(taskModifyApproval = it)) },
+                        enabled = assistant.taskManageEnabled,
+                    )
+                }
+            )
+            item(
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_task_manage_delete_approval))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_task_manage_delete_approval_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.taskDeleteApproval,
+                        onCheckedChange = { onUpdate(assistant.copy(taskDeleteApproval = it)) },
+                        enabled = assistant.taskManageEnabled,
+                    )
+                }
+            )
+        }
     }
 }

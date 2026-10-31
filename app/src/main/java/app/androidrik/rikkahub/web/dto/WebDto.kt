@@ -189,6 +189,8 @@ data class ConversationDto(
     val messages: List<MessageNodeDto>,
     val chatSuggestions: List<String>,
     val isPinned: Boolean,
+    /** 隐藏会话（任务工作台）；web 端照常可读（有直达 id 时），列表侧由路由过滤 */
+    val hidden: Boolean = false,
     val customSystemPrompt: String? = null,
     /** 会话长期目标（定时任务 P2）；web 端只读展示 */
     val goal: String? = null,
@@ -332,6 +334,7 @@ fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(
     messages = messageNodes.map { it.toDto() },
     chatSuggestions = chatSuggestions,
     isPinned = isPinned,
+    hidden = hidden,
     customSystemPrompt = customSystemPrompt,
     goal = goal,
     modeInjectionIds = modeInjectionIds.map { it.toString() },

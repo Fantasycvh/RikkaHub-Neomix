@@ -2448,4 +2448,23 @@
   <string name="scheduled_task_assistant_missing">助手已刪除</string>
   <string name="scheduled_task_group_unknown_assistant">未知助手</string>
   <string name="scheduled_task_status_assistant_gone">助手已刪除</string>
+  <string name="chat_hidden_banner_text">已隱藏會話（定時任務工作台）</string>
+  <string name="chat_hidden_unhide_action">移出隱藏</string>
+  <string name="chat_hidden_adopted_toast">會話已恢復到列表</string>
+  <string name="scheduled_task_deliverables">交付物（每行一個路徑）</string>
+  <string name="scheduled_task_deliverables_desc">相對工作區根。非空 = 本輪必須產出這些檔案才允許結束；留空 = 不設閘。</string>
+  <string name="task_manage_notif_title">AI 修改了定時任務</string>
+  <string name="task_manage_notif_content">AI %1$s 了定時任務「%2$s」。可在 設定 → 定時任務 中查看。</string>
+  <string name="assistant_page_task_manage_title">允許 AI 管理定時任務</string>
+  <string name="assistant_page_task_manage_desc">裝配 task_manage 工具，讓本助手可以查看、建立、啟停、刪除掛在自己名下的定時任務；它建的任務在隱藏會話中執行。</string>
+  <string name="assistant_page_task_manage_create_approval">建立前需批准</string>
+  <string name="assistant_page_task_manage_create_approval_desc">AI 建的每個任務未來每次執行都要花 token，首次授權應有人點頭。</string>
+  <string name="assistant_page_task_manage_modify_approval">啟停前需批准</string>
+  <string name="assistant_page_task_manage_modify_approval_desc">啟停改變任務的未來行為，逐次確認。</string>
+  <string name="assistant_page_task_manage_delete_approval">刪除前需批准</string>
+  <string name="assistant_page_task_manage_delete_approval_desc">只有 AI 自己建立的任務可刪；使用者建立的任務一律拒絕。</string>
+  <string name="scheduled_task_created_by_ai">AI 建</string>
+  <string name="setting_page_guardrails_loop_guard_limit">工具重複次數覆寫</string>
+  <string name="setting_page_guardrails_loop_guard_limit_desc">同一工具+同一參數重複多少次才結束本輪。0 = 跟隨上方檔位；視窗與失敗閾值仍隨檔位。調大適合「有意重複同一呼叫」的用法。</string>
+  <string name="setting_page_guardrails_loop_guard_limit_unit">0=檔位</string>
 </resources>

@@ -67,6 +67,16 @@ data class ConversationEntity(
     @ColumnInfo("memory_disabled", defaultValue = "0")
     val memoryDisabled: Boolean = false,
     /**
+     * **隐藏会话**（定时任务 P3，`docs/design/design-proactive-task-management.md` §二）：
+     * 任务会话的工作台属性——不出现在任何列表/搜索/统计里，只能从任务详情页与完成通知
+     * 直达；会话菜单「移出隐藏 / 移入隐藏」手动切换（不自动收养）。
+     *
+     * **表现层属性**：只进查询面过滤，不进任何执行路径判断（设计稿 §五 留缝纪律 2）。
+     * NOT NULL + DEFAULT 0 ⇒ AutoMigration 无需 spec（54→55）。
+     */
+    @ColumnInfo("hidden", defaultValue = "0")
+    val hidden: Boolean = false,
+    /**
      * **冻结的锚点快照**（L1，会话开始时一次 + 用户手动「固化记忆」时重写）。
      *
      * 为什么需要冻结：L1 在 **system** 层，而 system 是第一条消息、前缀缓存从位置 0 起
