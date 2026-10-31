@@ -137,6 +137,7 @@ import app.androidrik.rikkahub.ui.pages.search.SearchPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingAboutPage
 import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskCreatePage
 import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskDetailPage
+import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskRunsPage
 import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTasksPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesThemePage
@@ -732,6 +733,9 @@ open class RouteActivity : ComponentActivity() {
                             entry<Screen.SettingScheduledTaskDetail> { key ->
                                 ScheduledTaskDetailPage(taskId = key.taskId)
                             }
+                            entry<Screen.SettingScheduledTaskRuns> { key ->
+                                ScheduledTaskRunsPage(taskId = key.taskId)
+                            }
                             entry<Screen.SettingScheduledTaskCreate> { key ->
                                 ScheduledTaskCreatePage(prefillConversationId = key.conversationId)
                             }
@@ -1082,6 +1086,10 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class SettingScheduledTaskDetail(val taskId: String) : Screen
+
+    /** 任务运行历史二级页（P3）：详情页的「运行历史」入口进这里 */
+    @Serializable
+    data class SettingScheduledTaskRuns(val taskId: String) : Screen
 
     @Serializable
     data class SettingScheduledTaskCreate(val conversationId: String? = null) : Screen

@@ -2,7 +2,6 @@ package app.androidrik.rikkahub.ui.pages.setting.scheduled
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -22,16 +21,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
-import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import app.androidrik.rikkahub.data.db.entity.TargetMode
-import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
 import app.androidrik.rikkahub.data.db.entity.targetModeOrDefault
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.FormItem
@@ -39,6 +35,7 @@ import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.Navigator
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Delete01
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -56,6 +53,7 @@ fun ScheduledTaskDetailPage(
     val conversationTitles by vm.conversationTitles.collectAsStateWithLifecycle()
     val conversationGoals by vm.conversationGoals.collectAsStateWithLifecycle()
     val assistantNames by vm.assistantNames.collectAsStateWithLifecycle()
+    val runs by vm.runs.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -111,7 +109,35 @@ fun ScheduledTaskDetailPage(
                 withGoalAvailable = withGoalAvailable,
                 keepLastVisible = keepLastVisible,
             )
-            RunHistoryCard(vm, navController)
+            // 运行历史入口（P3）：列表摊到二级页（ScheduledTaskRunsPage），这里只留一行摘要——
+            // 几十条历史塞在编辑表单中间既挤又喧宾夺主
+            FormItem(
+                label = { Text(stringResource(R.string.scheduled_task_run_history)) },
+                content = {
+                    val latest = runs.firstOrNull()
+                    Text(
+                        text = latest?.let { run ->
+                            val status = run.status?.let { runStatusLabel(it) }
+                                ?: stringResource(R.string.scheduled_task_run_unfinished)
+                            "${runTimeText(run.startedAt)} · $status"
+                        } ?: stringResource(R.string.scheduled_task_run_empty),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalContentColor.current.copy(alpha = 0.7f),
+                    )
+                },
+                tail = {
+                    Icon(
+                        HugeIcons.ArrowRight01,
+                        contentDescription = null,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        navController.navigate(Screen.SettingScheduledTaskRuns(taskId))
+                    },
+            )
             FormItem(
                 label = { Text(stringResource(R.string.scheduled_task_enabled)) },
                 tail = {
@@ -129,77 +155,4 @@ fun ScheduledTaskDetailPage(
             }
         }
     }
-}
-
-/**
- * 运行历史卡片（P2 运行账本）：最近 [RUN_HISTORY_LIMIT] 次执行（新→旧）。
- * `status == null`（finished_at 空白）= 执行层中途死亡——这不是「加载中」，是进程被杀的
- * 直接证据，单独文案标出（peer-apps「无头运行显式终态」的 UI 面）。
- * 行可点：本轮有实际会话（NEW_EACH_RUN 各行不同）就跳过去看结果。
- */
-@Composable
-private fun RunHistoryCard(vm: ScheduledTaskDetailVM, navController: Navigator) {
-    val runs by vm.runs.collectAsStateWithLifecycle()
-    FormItem(label = { Text(stringResource(R.string.scheduled_task_run_history)) })
-    if (runs.isEmpty()) {
-        Text(
-            text = stringResource(R.string.scheduled_task_run_empty),
-            style = MaterialTheme.typography.labelMedium,
-            color = LocalContentColor.current.copy(alpha = 0.6f),
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-    } else {
-        runs.forEach { run ->
-            val statusText = run.status?.let { statusLabel(it) }
-                ?: stringResource(R.string.scheduled_task_run_unfinished)
-            val sourceText = runSourceLabel(run.source)
-            val conversationId = run.conversationId
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (conversationId != null) {
-                            Modifier.clickable {
-                                navController.navigate(Screen.Chat(conversationId))
-                            }
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = runTimeText(run.startedAt) + " · " + sourceText,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (run.status == TaskRunStatus.OK) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** 账本时刻展示：本地时区 MM-dd HH:mm:ss（秒级才分得清同分钟内的重试/补跑） */
-private fun runTimeText(startedAt: Long): String =
-    java.time.Instant.ofEpochMilli(startedAt)
-        .atZone(java.time.ZoneId.systemDefault())
-        .format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm:ss"))
-
-@Composable
-private fun runSourceLabel(source: String): String = when (source) {
-    // 与 RunSource 常量一一对应；未知值原样展示（新版本加的入口在旧版本上也不断言）
-    ScheduledTaskRunEntity.RunSource.ALARM -> stringResource(R.string.scheduled_task_run_source_alarm)
-    ScheduledTaskRunEntity.RunSource.SWEEP -> stringResource(R.string.scheduled_task_run_source_sweep)
-    ScheduledTaskRunEntity.RunSource.SKIP -> stringResource(R.string.scheduled_task_run_source_skip)
-    else -> source
 }

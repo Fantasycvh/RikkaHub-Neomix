@@ -2403,6 +2403,12 @@
   <string name="scheduled_task_day_of_month">每月幾號</string>
   <string name="scheduled_task_keep_last">保留最近 N 輪會話</string>
   <string name="scheduled_task_keep_last_desc">自動刪除更舊的輪次會話（0 = 不清理）；你接續聊過的會話不會被刪</string>
+  <string name="scheduled_task_run_ok">成功</string>
+  <string name="scheduled_task_run_failed">失敗</string>
+  <string name="scheduled_task_run_timeout">逾時</string>
+  <string name="scheduled_task_run_skipped_missed">錯過已跳過</string>
+  <string name="scheduled_task_run_target_gone">目標會話已刪除</string>
+  <string name="scheduled_task_run_assistant_gone">助手已刪除</string>
   <string name="scheduled_task_idle_only_desc">目標會話正在生成時讓路,等下個週期再試</string>
   <string name="scheduled_task_status_ok">上次執行:成功</string>
   <string name="scheduled_task_status_failed">上次執行:失敗</string>

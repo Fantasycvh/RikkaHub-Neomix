@@ -2421,6 +2421,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="scheduled_task_day_of_month">每月几号</string>
   <string name="scheduled_task_keep_last">保留最近 N 轮会话</string>
   <string name="scheduled_task_keep_last_desc">自动删除更旧的轮次会话（0 = 不清理）；你接续聊过的会话不会被删</string>
+  <string name="scheduled_task_run_ok">成功</string>
+  <string name="scheduled_task_run_failed">失败</string>
+  <string name="scheduled_task_run_timeout">超时</string>
+  <string name="scheduled_task_run_skipped_missed">错过已跳过</string>
+  <string name="scheduled_task_run_target_gone">目标会话已删除</string>
+  <string name="scheduled_task_run_assistant_gone">助手已删除</string>
   <string name="scheduled_task_idle_only_desc">目标会话正在生成时让路,等下个周期再试</string>
   <string name="scheduled_task_status_ok">上次运行:成功</string>
   <string name="scheduled_task_status_failed">上次运行:失败</string>
