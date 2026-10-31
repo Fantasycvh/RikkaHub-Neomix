@@ -14,6 +14,11 @@ class AssistantImporterTest {
 
     private fun parse(raw: String) =
         parseAssistantFromJson(context = null, json = Json.parseToJsonElement(raw).jsonObject, background = null)
+            .assistant
+
+    /** 未解包结果（世界书拆分测试用）。 */
+    private fun parseRaw(raw: String) =
+        parseAssistantFromJson(context = null, json = Json.parseToJsonElement(raw).jsonObject, background = null)
 
     // ---- #1942：从**文本**导入（对话内 JSON 代码块入口）----
     //
@@ -31,7 +36,7 @@ class AssistantImporterTest {
                   "data": { "name": "文本入口卡", "description": "desc" }
                 }
             """.trimIndent(),
-        )
+        ).assistant
 
         assertEquals("文本入口卡", assistant.name)
         assertTrue(assistant.hasCardParts)
@@ -265,6 +270,83 @@ class AssistantImporterTest {
         val rebuilt = manual.rebuildSystemPromptFromCardParts()
         assertEquals("keep me", rebuilt.systemPrompt)
         assertTrue(!manual.hasCardParts)
+    }
+
+    // endregion
+
+    // region 内嵌世界书拆分（design-card-lorebook-import.md：拆独立世界书 + id 绑定）
+
+    @Test
+    fun `v2 卡内嵌世界书拆分为独立 Lorebook 并预绑助手`() {
+        val result = parseRaw(
+            """
+            {
+              "spec": "chara_card_v2",
+              "data": {
+                "name": "Alice",
+                "character_book": {
+                  "name": "Alice 的书",
+                  "scan_depth": 6,
+                  "entries": [
+                    { "keys": ["dragon"], "content": "Dragon lore", "insertion_order": 5 }
+                  ]
+                }
+              }
+            }
+            """.trimIndent()
+        )
+
+        val book = result.lorebook!!
+        assertEquals("Alice 的书", book.name)
+        assertEquals(1, book.entries.size)
+        assertEquals(listOf("dragon"), book.entries[0].keywords)
+        assertEquals(5, book.entries[0].priority)
+        assertEquals(6, book.entries[0].scanDepth)
+        // 绑定：书 id 已写进助手
+        assertEquals(setOf(book.id), result.assistant.lorebookIds)
+    }
+
+    @Test
+    fun `无内嵌世界书的卡 lorebook 为 null 且不绑定`() {
+        val result = parseRaw("""{"spec": "chara_card_v2", "data": {"name": "Bob"}}""")
+        assertNull(result.lorebook)
+        assertTrue(result.assistant.lorebookIds.isEmpty())
+    }
+
+    @Test
+    fun `内嵌世界书条目为空时不建书也不绑定`() {
+        val result = parseRaw(
+            """
+            {
+              "spec": "chara_card_v2",
+              "data": {
+                "name": "Bob",
+                "character_book": { "name": "空书", "entries": [] }
+              }
+            }
+            """.trimIndent()
+        )
+        assertNull(result.lorebook)
+        assertTrue(result.assistant.lorebookIds.isEmpty())
+    }
+
+    @Test
+    fun `内嵌世界书损坏时助手照常导入（无书）`() {
+        // ST 同款行为：卡照常导入，书失败不拦整个卡（此层无 toast 通道，降级为无书）
+        val result = parseRaw(
+            """
+            {
+              "spec": "chara_card_v2",
+              "data": {
+                "name": "Carol",
+                "character_book": { "entries": "不是数组" }
+              }
+            }
+            """.trimIndent()
+        )
+        assertEquals("Carol", result.assistant.name)
+        assertNull(result.lorebook)
+        assertTrue(result.assistant.lorebookIds.isEmpty())
     }
 
     // endregion

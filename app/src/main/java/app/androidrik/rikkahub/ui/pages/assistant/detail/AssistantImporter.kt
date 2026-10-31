@@ -38,7 +38,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.Lorebook
 import app.androidrik.rikkahub.data.model.buildCardSystemPrompt
+import app.androidrik.rikkahub.data.export.ExportSerializer
+import app.androidrik.rikkahub.data.export.SillyTavernCharacterBook
+import app.androidrik.rikkahub.data.export.parseSillyTavernCharacterBook
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
@@ -46,6 +50,7 @@ import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.utils.ImageUtils
 import app.androidrik.rikkahub.utils.jsonPrimitiveOrNull
 import app.androidrik.rikkahub.R
+import kotlinx.serialization.json.decodeFromJsonElement
 import org.koin.compose.koinInject
 
 @Composable
@@ -69,6 +74,7 @@ private fun SillyTavernImporter(
     val context = LocalContext.current
     val resources = LocalResources.current
     val filesManager: FilesManager = koinInject()
+    val settingsStore: SettingsStore = koinInject()
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     var isLoading by remember { mutableStateOf(false) }
@@ -87,6 +93,7 @@ private fun SillyTavernImporter(
                             onImport = onImport,
                             toaster = toaster,
                             filesManager = filesManager,
+                            settingsStore = settingsStore,
                         )
                     }.onFailure { exception ->
                         exception.printStackTrace()
@@ -113,6 +120,7 @@ private fun SillyTavernImporter(
                             onImport = onImport,
                             toaster = toaster,
                             filesManager = filesManager,
+                            settingsStore = settingsStore,
                         )
                     }.onFailure { exception ->
                         exception.printStackTrace()
@@ -152,13 +160,24 @@ private fun SillyTavernImporter(
 
 // region Parsing Strategy
 
+/**
+ * 角色卡解析结果：助手本体 + 可选拆分出的世界书（`data.character_book`）。
+ *
+ * 书已预绑进 [assistant] 的 `lorebookIds`——调用方只需负责把两者落库
+ * （设计稿 `docs/design/design-card-lorebook-import.md` §二 决策 1/3）。
+ */
+internal data class TavernCardImport(
+    val assistant: Assistant,
+    val lorebook: Lorebook? = null,
+)
+
 private interface TavernCardParser {
     val specName: String
-    fun parse(context: Context?, json: JsonObject, background: String?): Assistant
+    fun parse(context: Context?, json: JsonObject, background: String?): TavernCardImport
 }
 
-// V1/V2/V3 共用：data 对象（V2/V3 为 json["data"]，V1 老卡为顶层 json）→ Assistant
-private fun parseCardData(context: Context?, data: JsonObject, background: String?): Assistant {
+// V1/V2/V3 共用：data 对象（V2/V3 为 json["data"]，V1 老卡为顶层 json）→ TavernCardImport
+private fun parseCardData(context: Context?, data: JsonObject, background: String?): TavernCardImport {
     val name = data["name"]?.jsonPrimitiveOrNull?.contentOrNull
         ?: error(context?.getString(R.string.assistant_importer_missing_name_field) ?: "Missing name field")
     val firstMessage = data["first_mes"]?.jsonPrimitiveOrNull?.contentOrNull
@@ -179,7 +198,17 @@ private fun parseCardData(context: Context?, data: JsonObject, background: Strin
         exampleDialogue = example,
     )
 
-    return Assistant(
+    // 内嵌世界书拆分（V1 卡无此字段，天然为 null）：条目为空不建书（决策 4）。
+    // 书本身坏了不拦整个卡导入——ST 同款行为（card 照常导入，仅 toast 书失败）；
+    // 此层无 toast 通道，降级为「无书」而非静默丢助手。
+    val lorebook = data["character_book"]?.let { bookJson ->
+        runCatching {
+            ExportSerializer.DefaultJson
+                .decodeFromJsonElement<SillyTavernCharacterBook>(bookJson)
+        }.getOrNull()?.let { book -> parseSillyTavernCharacterBook(cardName = name, book = book) }
+    }
+
+    val assistant = Assistant(
         name = name,
         presetMessages = if (firstMessage != null) listOf(UIMessage.assistant(firstMessage)) else emptyList(),
         systemPrompt = prompt,
@@ -189,13 +218,15 @@ private fun parseCardData(context: Context?, data: JsonObject, background: Strin
         cardScenario = scenario,
         cardExampleDialogue = example,
         cardSystemPrompt = system,
+        lorebookIds = lorebook?.let { setOf(it.id) } ?: emptySet(),
     )
+    return TavernCardImport(assistant, lorebook)
 }
 
 private class CharaCardV2Parser : TavernCardParser {
     override val specName: String = "chara_card_v2"
 
-    override fun parse(context: Context?, json: JsonObject, background: String?): Assistant {
+    override fun parse(context: Context?, json: JsonObject, background: String?): TavernCardImport {
         val data = json["data"]?.jsonObject
             ?: error(context?.getString(R.string.assistant_importer_missing_data_field) ?: "Missing data field")
         return parseCardData(context, data, background)
@@ -205,7 +236,7 @@ private class CharaCardV2Parser : TavernCardParser {
 private class CharaCardV3Parser : TavernCardParser {
     override val specName: String = "chara_card_v3"
 
-    override fun parse(context: Context?, json: JsonObject, background: String?): Assistant {
+    override fun parse(context: Context?, json: JsonObject, background: String?): TavernCardImport {
         val data = json["data"]?.jsonObject
             ?: error(context?.getString(R.string.assistant_importer_missing_data_field) ?: "Missing data field")
         return parseCardData(context, data, background)
@@ -216,7 +247,7 @@ private class CharaCardV3Parser : TavernCardParser {
 private class CharaCardV1Parser : TavernCardParser {
     override val specName: String = "chara_card_v1"
 
-    override fun parse(context: Context?, json: JsonObject, background: String?): Assistant =
+    override fun parse(context: Context?, json: JsonObject, background: String?): TavernCardImport =
         parseCardData(context, json, background)
 }
 
@@ -230,7 +261,7 @@ internal fun parseAssistantFromJson(
     context: Context?,
     json: JsonObject,
     background: String?,
-): Assistant {
+): TavernCardImport {
     val spec = json["spec"]?.jsonPrimitive?.contentOrNull
     val parser = if (spec != null) {
         TAVERN_PARSERS[spec]
@@ -270,7 +301,7 @@ internal fun parseAssistantFromJson(
  * 只额外负责一件事：把「JSON 本身不合法」也转成可读错误（文件导入原先是直接抛
  * SerializationException，文案不可读）。
  */
-internal fun parseAssistantFromJsonText(context: Context?, jsonText: String): Assistant {
+internal fun parseAssistantFromJsonText(context: Context?, jsonText: String): TavernCardImport {
     val json = runCatching {
         Json.parseToJsonElement(jsonText).jsonObject
     }.getOrElse {
@@ -280,13 +311,23 @@ internal fun parseAssistantFromJsonText(context: Context?, jsonText: String): As
 }
 
 /**
- * 追加一个助手到设置（**唯一实现**：助手页导入与对话内代码块导入共用）。
+ * 追加一个助手（及其拆分出的世界书）到设置（**唯一实现**：助手页导入与对话内代码块导入共用）。
  *
- * 抽出来是为了避免两处各写一遍 `assistants + assistant`——将来若要加去重/排序/刷新，
- * 只改这里一处。
+ * 抽出来是为了避免两处各写一遍 `assistants + lorebooks`——将来若要加去重/排序/刷新，
+ * 只改这里一处。书与助手**同一次原子写**（设计稿 §五.4）。
  */
+internal suspend fun SettingsStore.appendAssistantWithLorebook(result: TavernCardImport) {
+    update { settings ->
+        settings.copy(
+            assistants = settings.assistants + result.assistant,
+            lorebooks = result.lorebook?.let { book -> settings.lorebooks + book } ?: settings.lorebooks,
+        )
+    }
+}
+
+/** 仅追加助手（无书；如 `AssistantVM.addAssistant` 的手工创建路径）。 */
 internal suspend fun SettingsStore.appendAssistant(assistant: Assistant) {
-    update { settings -> settings.copy(assistants = settings.assistants + assistant) }
+    appendAssistantWithLorebook(TavernCardImport(assistant))
 }
 
 /**
@@ -294,15 +335,17 @@ internal suspend fun SettingsStore.appendAssistant(assistant: Assistant) {
  *
  * 不需要 ViewModel：落库走 [SettingsStore.update] 的一次原子写。失败时抛异常，
  * 异常文案已是本地化可读内容（见 [parseAssistantFromJsonText] 与其调用的解析层）。
+ *
+ * 返回完整结果（含拆分出的世界书），调用方据此组装成功反馈（书名 + 条目数）。
  */
 internal suspend fun importAssistantFromJsonText(
     context: Context,
     settingsStore: SettingsStore,
     jsonText: String,
-): Assistant {
-    val assistant = parseAssistantFromJsonText(context, jsonText)
-    settingsStore.appendAssistant(assistant)
-    return assistant
+): TavernCardImport {
+    val result = parseAssistantFromJsonText(context, jsonText)
+    settingsStore.appendAssistantWithLorebook(result)
+    return result
 }
 
 // endregion
@@ -313,6 +356,7 @@ private suspend fun importAssistantFromUri(
     onImport: (Assistant) -> Unit,
     toaster: ToasterState,
     filesManager: FilesManager,
+    settingsStore: SettingsStore,
 ) {
     try {
         val mime = withContext(Dispatchers.IO) { filesManager.getFileMimeType(uri) }
@@ -343,13 +387,19 @@ private suspend fun importAssistantFromUri(
                 else -> error(context.getString(R.string.assistant_importer_unsupported_file_type, mime ?: "unknown"))
             }
         }
-        val assistant = if (backgroundStr == null) {
+        val result = if (backgroundStr == null) {
             // 纯 JSON 文本：与对话内代码块走同一条文本入口（解析规则单点）
             parseAssistantFromJsonText(context = context, jsonText = jsonString)
         } else {
             // PNG 卡：背景图已在上面落盘，需把 background 交给解析层
             val json = Json.parseToJsonElement(jsonString).jsonObject
             parseAssistantFromJson(context = context, json = json, background = backgroundStr)
+        }
+        val assistant = result.assistant
+        // 助手页路径：助手走 onImport（EditState 草稿，用户点保存才落库），
+        // 拆分出的世界书**导入瞬间即落库**（设计稿 §二 决策 3；取消弹窗的孤儿书取舍见 §五.2）
+        result.lorebook?.let { book ->
+            settingsStore.update { settings -> settings.copy(lorebooks = settings.lorebooks + book) }
         }
         onImport(assistant)
     } catch (exception: Exception) {

@@ -2490,5 +2490,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_display_page_liquid_glass_readability_desc">How text stays readable on blurred or glass surfaces</string>
   <string name="setting_display_page_liquid_glass_readability_auto">Auto</string>
   <string name="setting_display_page_liquid_glass_readability_stable">Stable Colors</string>
+  <string name="code_block_add_assistant_success_with_lorebook">Added assistant: %1$s (lorebook: %2$s, %3$d entries)</string>
 </resources>
 

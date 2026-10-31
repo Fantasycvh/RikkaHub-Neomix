@@ -2044,6 +2044,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_tts_page_fallback_kept">系统 TTS 作为兜底会保持启用</string>
   <string name="code_block_add_assistant">设为助手</string>
   <string name="code_block_add_assistant_success">已添加助手：%1$s</string>
+  <string name="code_block_add_assistant_success_with_lorebook">已添加助手：%1$s（世界书：%2$s，%3$d 条）</string>
   <string name="assistant_importer_invalid_json">JSON 不合法：无法把该代码块解析为角色卡</string>
   <string name="context_capacity_title">会话上下文容量</string>
   <string name="context_capacity_status_ok">空间充裕</string>

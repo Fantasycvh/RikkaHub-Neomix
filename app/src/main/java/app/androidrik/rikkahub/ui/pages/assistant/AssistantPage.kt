@@ -446,6 +446,7 @@ private fun AssistantCreationSheet(
 
                     AssistantImporter(
                         onUpdate = {
+                            // 回调收到的只有助手本体；拆分出的世界书已在导入层落库（设计稿决策 3）
                             update(it)
                             state.confirm()
                         },

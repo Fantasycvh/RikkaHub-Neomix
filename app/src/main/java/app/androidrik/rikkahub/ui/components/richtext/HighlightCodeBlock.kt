@@ -456,12 +456,23 @@ private fun HighlightCodeActions(
                                         settingsStore = settingsStore,
                                         jsonText = code,
                                     )
-                                }.onSuccess { assistant ->
-                                    toaster.show(
-                                        message = resources.getString(
+                                }.onSuccess { result ->
+                                    // 卡内嵌世界书已随导入落库；有书时反馈带上书信息（设计稿 §4.4）
+                                    val message = result.lorebook
+                                        ?.let { book ->
+                                            resources.getString(
+                                                R.string.code_block_add_assistant_success_with_lorebook,
+                                                result.assistant.name,
+                                                book.name,
+                                                book.entries.size,
+                                            )
+                                        }
+                                        ?: resources.getString(
                                             R.string.code_block_add_assistant_success,
-                                            assistant.name,
-                                        ),
+                                            result.assistant.name,
+                                        )
+                                    toaster.show(
+                                        message = message,
                                         type = ToastType.Success,
                                     )
                                 }.onFailure { error ->

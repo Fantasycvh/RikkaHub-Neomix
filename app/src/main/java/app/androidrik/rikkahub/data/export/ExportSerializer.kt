@@ -544,3 +544,109 @@ internal fun mapSillyTavernSelectiveLogic(value: Int): SelectiveLogic = when (va
     3 -> SelectiveLogic.AND_ALL
     else -> SelectiveLogic.AND_ANY
 }
+
+// region 角色卡内嵌世界书（chara_card_v2/v3 的 data.character_book）
+//
+// 卡内嵌书的字段名体系与独立世界书文件**不同**（spec 是两套）：
+// `keys`/`secondary_keys`/`enabled`/`insertion_order`（数组），而独立文件是
+// `key`/`keysecondary`/`disable`/`order`（map）。故 DTO 独立，仅复用映射**函数**。
+// 见 docs/design/design-card-lorebook-import.md §3.1。
+
+@Serializable
+internal data class SillyTavernCharacterBook(
+    val name: String? = null,
+    val description: String? = null,
+    /** 书级扫描深度：条目自身无 `extensions.scanDepth` 时作缺省。 */
+    @SerialName("scan_depth")
+    val scanDepth: Int? = null,
+    val entries: List<SillyTavernBookEntry> = emptyList(),
+)
+
+@Serializable
+internal data class SillyTavernBookEntry(
+    val keys: List<String> = emptyList(),
+    @SerialName("secondary_keys")
+    val secondaryKeys: List<String> = emptyList(),
+    val content: String = "",
+    /** 条目名（部分卡用 `name`，部分用 `comment`；两者都可能出现）。 */
+    val name: String? = null,
+    val comment: String? = null,
+    /** 正向开关（注意与独立文件的 `disable` 语义相反，**不反转**）。 */
+    val enabled: Boolean = true,
+    @SerialName("insertion_order")
+    val insertionOrder: Int = 100,
+    val selective: Boolean = true,
+    val constant: Boolean = false,
+    /** 顶层位置（V2 spec）：`before_char` / `after_char`。 */
+    val position: String? = null,
+    @SerialName("case_sensitive")
+    val caseSensitive: Boolean? = null,
+    /** ST 转换约定：世界书的数值字段塞在这里（position 0–7 / depth / selectiveLogic / scanDepth…）。 */
+    val extensions: SillyTavernBookEntryExtensions = SillyTavernBookEntryExtensions(),
+)
+
+@Serializable
+internal data class SillyTavernBookEntryExtensions(
+    val position: Int? = null,
+    val depth: Int? = null,
+    val selectiveLogic: Int? = null,
+    val scanDepth: Int? = null,
+    val caseSensitive: Boolean? = null,
+)
+
+/**
+ * 把卡内嵌世界书转成 fork [Lorebook]（**纯函数**，单测直测）。
+ *
+ * 对齐 ST `convertCharacterBook` 的映射口径：
+ * - `extensions.position`（整数 0–7）存在时**优先**，走 [mapSillyTavernPosition]；
+ *   否则按顶层字符串 `before_char`/`after_char`（ST 的 fallback 是 1 = after_char 一侧）。
+ * - `selective == false` 时次要键整体作废（同 [SillyTavernEntry.toRegexInjection] 的口径，
+ *   且在算 `useRegex` 之前作废）。
+ * - 书级 [SillyTavernCharacterBook.scanDepth] 作条目缺省，条目 `extensions.scanDepth` 覆盖。
+ *
+ * 条目为空返回 **null**（调用方据此不建书——延续「拒绝静默空书」的既有口径）。
+ * 书级 `token_budget` / `recursive_scanning` 及条目 `probability`/`group`/`recursion` 系
+ * fork 无对应概念，诚实忽略（设计稿 §3.3/§3.4）。
+ *
+ * @param cardName 角色名，书名缺省时拼 `"{cardName}的世界书"`
+ */
+internal fun parseSillyTavernCharacterBook(cardName: String, book: SillyTavernCharacterBook): Lorebook? {
+    if (book.entries.isEmpty()) return null
+    return Lorebook(
+        id = Uuid.random(),
+        name = book.name.orEmpty().ifEmpty { "${cardName}的世界书" },
+        description = book.description.orEmpty(),
+        enabled = true,
+        entries = book.entries.map { it.toRegexInjection(defaultScanDepth = book.scanDepth ?: 4) },
+    )
+}
+
+/** [SillyTavernBookEntry] → fork [PromptInjection.RegexInjection]（纯函数，设计稿 §4.5）。 */
+internal fun SillyTavernBookEntry.toRegexInjection(defaultScanDepth: Int): PromptInjection.RegexInjection {
+    val parsedPrimary = parseStKeywords(keys)
+    val effectiveSecondary = if (selective) parseStKeywords(secondaryKeys) else null
+    return PromptInjection.RegexInjection(
+        id = Uuid.random(),
+        // 部分卡把条目名放 `name`，ST 转换读 `comment || name`；此处两者任一非空即可
+        name = (comment ?: name).orEmpty().ifEmpty { keys.firstOrNull().orEmpty() },
+        enabled = enabled,
+        priority = insertionOrder,
+        position = extensions.position
+            ?.takeIf { it in 0..7 }
+            ?.let { mapSillyTavernPosition(it) }
+            ?: if (position == "before_char") InjectionPosition.BEFORE_SYSTEM_PROMPT
+            else InjectionPosition.AFTER_SYSTEM_PROMPT,
+        injectDepth = extensions.depth ?: 4,
+        content = content,
+        keywords = parsedPrimary.keywords,
+        useRegex = parsedPrimary.useRegex || (effectiveSecondary?.useRegex == true),
+        caseSensitive = caseSensitive ?: extensions.caseSensitive ?: false,
+        scanDepth = extensions.scanDepth ?: defaultScanDepth,
+        constantActive = constant,
+        secondaryKeywords = effectiveSecondary?.keywords.orEmpty(),
+        selectiveLogic = mapSillyTavernSelectiveLogic(extensions.selectiveLogic ?: 0),
+        // 卡内嵌 spec 不携带 match* 字段（那是世界书文件的字段）→ 统一 false，与 ST 转换一致
+        matchAssistantPrompt = false,
+    )
+}
+// endregion

@@ -2030,6 +2030,7 @@
   <string name="setting_tts_page_fallback_kept">系統 TTS 作為兜底會保持啟用</string>
   <string name="code_block_add_assistant">設為助手</string>
   <string name="code_block_add_assistant_success">已新增助手：%1$s</string>
+  <string name="code_block_add_assistant_success_with_lorebook">已新增助手：%1$s（世界書：%2$s，%3$d 條）</string>
   <string name="assistant_importer_invalid_json">JSON 不合法：無法將該程式碼區塊解析為角色卡</string>
   <string name="context_capacity_title">對話上下文容量</string>
   <string name="context_capacity_status_ok">空間充裕</string>
