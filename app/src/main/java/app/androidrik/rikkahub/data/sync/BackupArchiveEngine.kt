@@ -163,7 +163,7 @@ internal class BackupArchiveEngine(
     private fun collectBackupInputs(items: Collection<BackupItem>): List<File> {
         val inputs = mutableListOf<File>()
         if (BackupItem.DATABASE in items) {
-            val dbFile = context.getDatabasePath("rikka_hub")
+            val dbFile = context.getDatabasePath(AppDatabase.NAME)
             inputs += dbFile
             DatabaseRestoreFiles.sidecarSuffixes().forEach { suffix ->
                 inputs += File(dbFile.parentFile, "rikka_hub$suffix")
@@ -634,7 +634,7 @@ internal class BackupArchiveEngine(
     }
 
     private fun addDatabaseToZip(zipOut: ZipOutputStream, onBytes: (Long) -> Unit): Pair<String, Long> {
-        val dbFile = context.getDatabasePath("rikka_hub")
+        val dbFile = context.getDatabasePath(AppDatabase.NAME)
         if (!dbFile.exists()) return "" to 0L
 
         // 一致性快照（Yuihub `47e7dfaf` 对照）：VACUUM INTO 在**单个读事务**里导出，

@@ -29,7 +29,9 @@ import app.androidrik.rikkahub.data.files.EXPORT_TEMP_PREFIX
 import app.androidrik.rikkahub.data.files.exportRetentionCutoff
 import app.androidrik.rikkahub.data.files.isExportExpired
 import app.androidrik.rikkahub.data.db.AppDatabase
+import app.androidrik.rikkahub.data.sync.DowngradeQuarantineStore
 import app.androidrik.rikkahub.data.sync.PendingRestoreStore
+import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
 import com.whl.quickjs.android.QuickJSLoader
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -147,7 +149,19 @@ class RikkaHubApp : Application() {
     }
 
     private suspend fun doBoot() {
-        val dbFile = getDatabasePath("rikka_hub")
+        val dbFile = getDatabasePath(AppDatabase.NAME)
+        // 第 0 步：降级隔离（design-db-downgrade-rebuild.md §4.3）。现库版本高于本应用可开
+        // 版本时 copy 三件套到 downgrade_pending/ 并删原件，让 Room 全新建库。失败进
+        // Failed(retry)——隔离是 copy 语义、原件未动（fail-closed），磁盘满等瞬时故障重试即可。
+        val downgraded = runCatching {
+            DowngradeQuarantineStore.quarantineIfDowngraded(
+                filesDir, dbFile, AppDatabase.SCHEMA_VERSION, ::readDbVersionReadonly,
+            )
+        }.getOrElse { e ->
+            Log.e(TAG, "downgrade quarantine failed", e)
+            _startupState.value = StartupState.Failed(e.message ?: "Quarantine failed", canRetry = true)
+            return
+        }
         val applied = runCatching {
             PendingRestoreStore.applyIfPending(filesDir, dbFile, ::validateStagedDatabase)
         }.getOrElse { e ->
@@ -186,6 +200,16 @@ class RikkaHubApp : Application() {
             }
             PendingRestoreStore.confirmApplied(filesDir)
         }
+        // 降级告知/恢复提示的状态源（RouteActivity Ready 分支消费）：
+        // 本次启动发生了隔离 → 一次性告知弹窗；否则扫可恢复隔离件 → 恢复提示弹窗。
+        _downgradeState.value = DowngradeState(
+            quarantined = downgraded,
+            recoverable = if (downgraded == null) {
+                runCatching {
+                    DowngradeQuarantineStore.recoverableEntries(filesDir, AppDatabase.SCHEMA_VERSION)
+                }.getOrElse { emptyList() }
+            } else emptyList(),
+        )
         _startupState.value = StartupState.Ready
         // 原 onCreate 里 startKoin 之后的所有步骤原样后移（依赖 Koin 或 Ready 语义）
         withContext(Dispatchers.Main) { postReadyInit() }
@@ -233,6 +257,65 @@ class RikkaHubApp : Application() {
             }
         }
     }
+
+    /** 只读打开现库读 user_version（降级检测用；此刻 Room 尚未打开，只读不写）。 */
+    private fun readDbVersionReadonly(file: File): Int =
+        SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("PRAGMA user_version", null).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+        }
+
+    // ---------- 降级隔离：告知/恢复（design-db-downgrade-rebuild.md §4.5/§5） ----------
+
+    /** 降级 UI 状态：[quarantined] 非空 = 本次启动发生了隔离（一次性告知）；否则看 [recoverable]。 */
+    data class DowngradeState(
+        val quarantined: DowngradeQuarantineStore.QuarantineMarker? = null,
+        val recoverable: List<DowngradeQuarantineStore.QuarantineEntry> = emptyList(),
+    )
+
+    private val _downgradeState = MutableStateFlow(DowngradeState())
+    val downgradeState = _downgradeState.asStateFlow()
+
+    /** 告知弹窗「知道了」。 */
+    fun acknowledgeDowngradeNotice() {
+        _downgradeState.value = _downgradeState.value.copy(quarantined = null)
+    }
+
+    /** 重新扫描可恢复隔离件（备份页进出时、操作后调用）。 */
+    fun refreshDowngradeEntries() {
+        get<AppScope>().launch(Dispatchers.Default) {
+            _downgradeState.value = _downgradeState.value.copy(
+                recoverable = DowngradeQuarantineStore.recoverableEntries(filesDir, AppDatabase.SCHEMA_VERSION),
+            )
+        }
+    }
+
+    /**
+     * 恢复一份隔离件：stage 进 PendingRestoreStore（move 语义），成功即置进程级重启闸门——
+     * 真正换库在下一次启动走完整校验/回滚管线。失败原样返回给 UI 弹 toast（fail-closed，
+     * 隔离件未动）。
+     */
+    suspend fun restoreDowngradeEntry(entry: DowngradeQuarantineStore.QuarantineEntry): Result<Unit> =
+        runCatching {
+            DowngradeQuarantineStore.stageForRestore(filesDir, entry.dir.name, AppDatabase.SCHEMA_VERSION)
+        }.onSuccess {
+            RestoreRestartSignal.requestRestart()
+        }
+
+    /** 启动恢复提示选「不再提示」。 */
+    suspend fun dismissDowngradeEntry(entry: DowngradeQuarantineStore.QuarantineEntry): Result<Unit> =
+        runCatching {
+            DowngradeQuarantineStore.markDismissed(filesDir, entry.dir.name)
+        }.onSuccess {
+            refreshDowngradeEntries()
+        }
+
+    /** 备份页清理空间：删除一份隔离件。 */
+    suspend fun deleteDowngradeEntry(entry: DowngradeQuarantineStore.QuarantineEntry): Result<Unit> =
+        runCatching {
+            DowngradeQuarantineStore.deleteEntry(filesDir, entry.dir.name)
+        }.onSuccess {
+            refreshDowngradeEntries()
+        }
 
     /**
      * 原 onCreate 中 startKoin 之后的步骤，顺序原样保留。
