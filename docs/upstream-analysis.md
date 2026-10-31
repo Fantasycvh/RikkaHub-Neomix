@@ -1385,7 +1385,7 @@ git checkout master
 |---|---|---|
 | `c2a64ff4` | refactor: 抽出公共 SwipeToDelete 组件（收藏/历史/翻译历史三处复用；历史页改为 settledValue 后才删；a11y 描述统一 R.string.delete） | **不跟**（见下） |
 | `4af510624` | fix(nav): 同一帧连按返回把导航栈弹空闪退（onBack 加 `size > 1`） | **已有等价防线，不跟** |
-| `395a0ee03` | fix(model-list): 收藏模型拖动排序来回抽搐（#2229） | **已移植（适配版）** |
+| `395a0ee03` | fix(model-list): 收藏模型拖动排序来回抽搐（#2229） | **已移植（适配版）**；2026-10-31 追记：同病灶全仓排查再修 10 处（助手列表/标签行、提示词预设×4、提供商列表/模型列表/API keys、搜索服务、媒体、TTS/ASR），通用化为 `DragOrderState`（fork `32b783c03`）；EditConversationOrderList（本地列表）与 AssistantPromptPage（onSettle 松手一次）无此问题 |
 | `db4982283` | fix(tts): 朗读把 HTML 标签读出（#2222），stripMarkdown 改走渲染解析器 | **不可移植，本仓已有替代方案**（见下） |
 
 **`4af510624` 不跟的理由**：本仓 `9cb72482f` 已修同一崩溃（真机 IllegalArgumentException + 崩溃循环），
