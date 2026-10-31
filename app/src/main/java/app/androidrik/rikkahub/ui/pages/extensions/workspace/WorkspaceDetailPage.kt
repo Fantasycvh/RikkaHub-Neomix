@@ -3,12 +3,17 @@ package app.androidrik.rikkahub.ui.pages.extensions.workspace
 import android.content.Intent
 import android.os.Build
 import android.provider.OpenableColumns
+import android.text.format.DateUtils
 import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.documentfile.provider.DocumentFile
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
@@ -80,6 +85,7 @@ import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.FingerPrint
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.Earth
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.Folder01
@@ -87,6 +93,7 @@ import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
+import me.rerere.hugeicons.stroke.Zap
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
 import androidx.compose.foundation.layout.FlowRow
@@ -94,6 +101,7 @@ import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.FilterChip
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.repository.AptIndexRefresh
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.CardGroupIcon
@@ -104,8 +112,13 @@ import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.fileSizeToString
 import app.androidrik.rikkahub.utils.plus
+import app.androidrik.workspace.PackageMirrorPick
+import app.androidrik.workspace.PackageMirrorSetup
+import app.androidrik.workspace.PackageManager
+import app.androidrik.workspace.RootfsCatalog
 import app.androidrik.workspace.RootfsInstallProgress
 import app.androidrik.workspace.RootfsInstallStage
+import app.androidrik.workspace.RootfsMirrorSpeed
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.WorkspaceShellStatus
 import app.androidrik.workspace.WorkspaceTaskSnapshot
@@ -122,6 +135,12 @@ fun WorkspaceDetailPage(id: String) {
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
     val tasks by vm.tasks.collectAsStateWithLifecycle()
+    val mirrorSpeeds by vm.mirrorSpeeds.collectAsStateWithLifecycle()
+    val mirrorSetupRunning by vm.mirrorSetupRunning.collectAsStateWithLifecycle()
+    val mirrorPicks by vm.mirrorPicks.collectAsStateWithLifecycle()
+    val aptIndexRefresh by vm.aptIndexRefresh.collectAsStateWithLifecycle()
+    val aptIndexDetail by vm.aptIndexDetail.collectAsStateWithLifecycle()
+    val mirrorError by vm.mirrorError.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState { 2 }
     // 后台任务的剩余时长需要「现在」这个输入；轮询的每一跳顺带刷新它，避免再挂一个秒级 ticker
     var tasksNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -424,6 +443,11 @@ fun WorkspaceDetailPage(id: String) {
                     onMaxReadBytesChange = vm::setMaxReadFileBytes,
                     onShellCompatibilityModeChange = vm::setShellCompatibilityMode,
                     onEditSsh = { navController.navigate(Screen.WorkspaceSshEditor(id)) },
+                    mirrorSetupRunning = mirrorSetupRunning,
+                    mirrorPicks = mirrorPicks,
+                    aptIndexRefresh = aptIndexRefresh,
+                    aptIndexDetail = aptIndexDetail,
+                    onConfigureMirrors = vm::configurePackageMirrors,
                 )
 
                 1 -> WorkspaceFileBrowser(
@@ -684,13 +708,32 @@ fun WorkspaceDetailPage(id: String) {
         if (showInstallDialog) {
             InstallRootfsDialog(
                 workspace = workspace,
-                onDismiss = { showInstallDialog = false },
+                mirrorSpeeds = mirrorSpeeds,
+                fileName = vm.rootfsFileName(),
+                onTest = { vm.testRootfsMirrors(force = true) },
+                onDismiss = {
+                    showInstallDialog = false
+                    vm.clearMirrorSpeeds()
+                },
                 onConfirm = { url ->
                     vm.installRootfs(url)
                     showInstallDialog = false
                 },
             )
         }
+    }
+
+    mirrorError?.let { message ->
+        AlertDialog(
+            onDismissRequest = vm::dismissMirrorError,
+            title = { Text(stringResource(R.string.workspace_detail_package_mirrors_failed)) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = vm::dismissMirrorError) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+        )
     }
 
     installError?.let { message ->
@@ -742,6 +785,11 @@ private fun WorkspaceBasicPage(
     onMaxReadBytesChange: (Long) -> Unit,
     onShellCompatibilityModeChange: (Boolean) -> Unit,
     onEditSsh: () -> Unit,
+    mirrorSetupRunning: Boolean,
+    mirrorPicks: List<PackageMirrorPick>,
+    aptIndexRefresh: AptIndexRefresh?,
+    aptIndexDetail: String?,
+    onConfigureMirrors: () -> Unit,
 ) {
     val shellStatus = workspace?.shellStatus
     // 加载完成前按本地工作区展示
@@ -859,6 +907,20 @@ private fun WorkspaceBasicPage(
             }
         }
 
+        // 镜像源只对本地 rootfs 工作区有意义：SSH 工作区没有我们可控的 rootfs 可写
+        if (hasRootfs && workspace?.isSsh() != true) {
+            item {
+                PackageMirrorCard(
+                    workspace = workspace,
+                    running = mirrorSetupRunning,
+                    picks = mirrorPicks,
+                    aptIndex = aptIndexRefresh,
+                    aptIndexDetail = aptIndexDetail,
+                    onConfigure = onConfigureMirrors,
+                )
+            }
+        }
+
         item {
             WorkspaceToolApprovalCard(
                 workspace = workspace,
@@ -911,6 +973,190 @@ private fun SshConnectionCard(
 /** 轮询间隔：有任务在跑时快、空闲时慢（注册表是内存态，代价只是一次 DAO 查询）。 */
 private const val TASKS_POLL_RUNNING_MS = 2_000L
 private const val TASKS_POLL_IDLE_MS = 10_000L
+
+@Composable
+private fun PackageMirrorCard(
+    workspace: WorkspaceEntity?,
+    running: Boolean,
+    picks: List<PackageMirrorPick>,
+    aptIndex: AptIndexRefresh?,
+    aptIndexDetail: String?,
+    onConfigure: () -> Unit,
+) {
+    val context = LocalContext.current
+    val setup = workspace?.packageMirrorSetup() ?: PackageMirrorSetup()
+    val rows = listOf(
+        PackageManager.APT to setup.aptRepoUrl,
+        PackageManager.NPM to setup.npmRegistry,
+        PackageManager.PIP to setup.pipIndexUrl,
+        PackageManager.GO to setup.goProxy,
+    ).filter { it.second.isNotBlank() }
+    val rootfsReady = workspace?.shellStatus == WorkspaceShellStatus.READY.name
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_package_mirrors),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(R.string.workspace_detail_package_mirrors_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (rows.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_package_mirrors_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                rows.forEach { (manager, url) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = manager.mirrorLabel,
+                            modifier = Modifier.weight(0.22f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = url,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            picks.firstOrNull { it.manager == manager }?.let { pick ->
+                                Text(
+                                    text = stringResource(
+                                        R.string.workspace_detail_package_mirrors_pick,
+                                        pick.displayName,
+                                        pick.bytesPerSecond.fileSizeToString(),
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+                if (setup.configuredAt > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.workspace_detail_package_mirrors_configured_at,
+                            DateUtils.formatDateTime(
+                                context,
+                                setup.configuredAt,
+                                DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME,
+                            ),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (aptIndex == AptIndexRefresh.FAILED || aptIndex == AptIndexRefresh.TIMEOUT) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (aptIndex == AptIndexRefresh.TIMEOUT) {
+                                R.string.workspace_detail_package_mirrors_apt_timeout
+                            } else {
+                                R.string.workspace_detail_package_mirrors_apt_failed
+                            }
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                    aptIndexDetail?.let { detail ->
+                        Text(
+                            text = detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            } else if (aptIndex == AptIndexRefresh.SUCCESS) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_package_mirrors_apt_ready),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Button(
+                onClick = onConfigure,
+                enabled = rootfsReady && !running,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(HugeIcons.Zap, contentDescription = null)
+                Text(
+                    text = stringResource(
+                        if (running) {
+                            R.string.workspace_detail_package_mirrors_working
+                        } else {
+                            R.string.workspace_detail_package_mirrors_configure
+                        }
+                    ),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+
+            if (running) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text(
+                    text = stringResource(R.string.workspace_detail_package_mirrors_progress),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (!rootfsReady) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_package_mirrors_need_rootfs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** 包管理器在设置页里的显示名：都是产品专名，不进字符串资源。 */
+private val PackageManager.mirrorLabel: String
+    get() = when (this) {
+        PackageManager.APT -> "apt"
+        PackageManager.NPM -> "npm"
+        PackageManager.PIP -> "pip"
+        PackageManager.GO -> "Go"
+    }
 
 /** 卡片里最多列几个任务；其余只报数量（避免长列表把设置项挤到屏幕外）。 */
 private const val TASKS_MAX_ROWS = 5
@@ -1210,24 +1456,139 @@ private fun RootfsProgress(progress: RootfsInstallProgress) {
 @Composable
 private fun InstallRootfsDialog(
     workspace: WorkspaceEntity,
+    mirrorSpeeds: List<RootfsMirrorSpeed>,
+    fileName: String?,
+    onTest: () -> Unit,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var url by rememberSaveable(workspace.id) { mutableStateOf(DEFAULT_ROOTFS_URL) }
+    // 打开即测速：省掉用户先点一次「测速」的多余交互
+    LaunchedEffect(workspace.id, fileName) {
+        if (fileName != null) onTest()
+    }
+    var url by rememberSaveable(workspace.id) {
+        mutableStateOf(fileName?.let { RootfsCatalog.MIRRORS.first().urlFor(it) }.orEmpty())
+    }
+    var edited by rememberSaveable(workspace.id) { mutableStateOf(false) }
+    val fastest = mirrorSpeeds.firstOrNull { it.usable }
+    // 用户没手动改过地址时，测速一出结果就自动切到最快的源
+    LaunchedEffect(fastest?.url) {
+        val best = fastest?.url ?: return@LaunchedEffect
+        if (!edited) url = best
+    }
+    val testing = fileName != null && mirrorSpeeds.isEmpty()
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.workspace_detail_install_rootfs)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     text = stringResource(R.string.workspace_detail_install_rootfs_desc, workspace.name),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    text = if (fileName != null) {
+                        stringResource(R.string.workspace_detail_rootfs_image, fileName)
+                    } else {
+                        stringResource(R.string.workspace_detail_rootfs_arch_unsupported)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(HugeIcons.Earth, contentDescription = null)
+                    Text(
+                        text = stringResource(R.string.workspace_detail_mirror_speed),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onTest, enabled = fileName != null && !testing) {
+                        Text(stringResource(R.string.workspace_detail_mirror_retest))
+                    }
+                }
+
+                if (testing) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(
+                        text = stringResource(R.string.workspace_detail_mirror_testing),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    mirrorSpeeds.forEach { speed ->
+                        val selected = speed.url == url
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = speed.usable) {
+                                    edited = true
+                                    url = speed.url
+                                }
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = selected,
+                                onClick = {
+                                    edited = true
+                                    url = speed.url
+                                },
+                                enabled = speed.usable,
+                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text(
+                                    text = if (speed == fastest) {
+                                        stringResource(
+                                            R.string.workspace_detail_mirror_fastest,
+                                            speed.mirror.displayName,
+                                        )
+                                    } else {
+                                        speed.mirror.displayName
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = if (speed.usable) {
+                                        stringResource(
+                                            R.string.workspace_detail_mirror_result,
+                                            speed.bytesPerSecond.fileSizeToString(),
+                                            speed.latencyMillis,
+                                        )
+                                    } else {
+                                        speed.error ?: stringResource(R.string.workspace_detail_mirror_unreachable)
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = url,
-                    onValueChange = { url = it },
+                    onValueChange = {
+                        edited = true
+                        url = it
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(stringResource(R.string.workspace_detail_download_url)) },
                     maxLines = 5,
@@ -1277,6 +1638,3 @@ private const val LARGE_EXPORT_FILES = 2_000
 
 /** 选择项多于这个数就先做一次体量预览（小选择不付这次遍历成本）。 */
 private const val LARGE_SELECTION_HINT_COUNT = 50
-
-private const val DEFAULT_ROOTFS_URL =
-    "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-arm64.tar.gz"

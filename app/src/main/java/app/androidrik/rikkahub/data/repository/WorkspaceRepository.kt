@@ -24,6 +24,9 @@ import app.androidrik.rikkahub.data.db.dao.WorkspaceDAO
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.utils.SecretCipher
+import app.androidrik.workspace.PackageMirrorConfigurator
+import app.androidrik.workspace.PackageMirrorOutcome
+import app.androidrik.workspace.PackageMirrorSetup
 import app.androidrik.workspace.RootfsInstallProgress
 import app.androidrik.workspace.RootfsInstaller
 import app.androidrik.workspace.WorkspaceBackend
@@ -57,6 +60,8 @@ class WorkspaceRepository(
     private val settingsStore: SettingsStore,
     private val sshPool: SshConnectionPool,
 ) {
+    private val mirrorConfigurator = PackageMirrorConfigurator()
+
     fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
 
     suspend fun checkIntegrity() = withContext(Dispatchers.IO) {
@@ -206,7 +211,6 @@ class WorkspaceRepository(
                 rootfsInstaller.install(workspace.root, url, onProgress)
             }
             updateShellState(workspace, WorkspaceShellStatus.READY.name)
-            return true
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
                 restoreShellState(workspace)
@@ -222,6 +226,65 @@ class WorkspaceRepository(
             updateShellState(workspace, WorkspaceShellStatus.BROKEN.name)
             throw e
         }
+        // 重新安装会换掉整个 rootfs，之前写进去的镜像配置随之消失，
+        // 摘要不清空会让系统提示词继续告诉 AI「源已经配好」。
+        clearPackageMirrors(workspace.id)
+        return true
+    }
+
+    /**
+     * 一键配置国内镜像源：并行测速→每个包管理器挑最快的一家→写进 rootfs。
+     *
+     * 写完后额外刷一次 apt 索引：新装的 rootfs 里 apt 连包列表都没有，只改源不 update，
+     * AI 第一次 `apt-get install` 仍会失败。刷索引失败（比如离线）不抽销已写入的配置，
+     * 因此结果里单独回传状态让 UI 区分。仅限本地 rootfs 工作区（SSH 工作区无 rootfs 可写）。
+     */
+    suspend fun configurePackageMirrors(id: String): PackageMirrorApplyResult {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        require(!workspace.isSsh()) { "Package mirrors are not available for SSH workspaces" }
+        require(manager.hasRootfs(workspace.root)) { "Rootfs is not installed" }
+        val outcome = mirrorConfigurator.configure(manager.linuxDir(workspace.root))
+        val (aptIndex, aptIndexDetail) = if (outcome.setup.aptRepoUrl.isNotBlank()) {
+            refreshAptIndex(id)
+        } else {
+            AptIndexRefresh.SKIPPED to null
+        }
+        dao.upsert(
+            workspace.copy(
+                packageMirrors = JsonInstant.encodeToString(outcome.setup),
+                updatedAt = System.currentTimeMillis(),
+            )
+        )
+        return PackageMirrorApplyResult(outcome, aptIndex, aptIndexDetail)
+    }
+
+    /** 清除记录里的镜像源摘要（rootfs 里的配置文件保留，重新安装时会回到默认源）。 */
+    suspend fun clearPackageMirrors(id: String) {
+        val workspace = dao.getById(id) ?: return
+        dao.upsert(
+            workspace.copy(
+                packageMirrors = JsonInstant.encodeToString(PackageMirrorSetup()),
+                updatedAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    /** @return 索引刷新状态与失败原因文本 */
+    private suspend fun refreshAptIndex(id: String): Pair<AptIndexRefresh, String?> = try {
+        val result = executeCommand(id, APT_LOCK_RETRY_SNIPPET, timeoutMillis = APT_INDEX_TIMEOUT_MS)
+        when {
+            result.timedOut -> AptIndexRefresh.TIMEOUT to null
+            result.exitCode != 0 -> {
+                val detail = (result.stderr.ifBlank { result.stdout }).lines().lastOrNull()?.take(MAX_ERROR_DETAIL_CHARS)
+                AptIndexRefresh.FAILED to (detail ?: "exit ${result.exitCode}")
+            }
+
+            else -> AptIndexRefresh.SUCCESS to null
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        AptIndexRefresh.FAILED to e.message
     }
 
     suspend fun listFiles(
@@ -854,8 +917,32 @@ class WorkspaceRepository(
     companion object {
         private const val TAG = "WorkspaceRepository"
         private const val MAX_PREVIEW_BYTES = 512L * 1024
+        private const val APT_INDEX_TIMEOUT_MS = 300_000L
+        private const val MAX_ERROR_DETAIL_CHARS = 300
+
+        /**
+         * apt 锁冲突重试：锁被其它 apt 进程持有时 update 会立即 rc=100（E: Unable to lock），
+         * 重试最多 6 次 x 2s。只对锁类错误重试，网络/源错误照常立即失败上报。
+         * 用 apt 自身的报错做判断，不依赖 fuser/lsof 等 base 镜像没有的工具。
+         */
+        private const val APT_LOCK_RETRY_SNIPPET =
+            "try=0; while :; do " +
+                "err=\$(apt-get update -qq 2>&1); rc=\$?; " +
+                "if [ \$rc -eq 0 ]; then break; fi; " +
+                "try=\$((try+1)); " +
+                "if [ \$try -ge 6 ] || ! printf '%s' \"\$err\" | grep -Eiq 'unable to lock|locked by another'; then " +
+                "printf '%s\\n' \"\$err\" >&2; exit \$rc; fi; sleep 2; done"
     }
 }
+
+/** apt 索引刷新结果，UI 据此提示「配置已写入但当前网络刷不动索引」。 */
+enum class AptIndexRefresh { SUCCESS, FAILED, TIMEOUT, SKIPPED }
+
+data class PackageMirrorApplyResult(
+    val outcome: PackageMirrorOutcome,
+    val aptIndex: AptIndexRefresh,
+    val aptIndexDetail: String? = null,
+)
 
 /**
  * 扩展名 → mime；未知一律 `application/octet-stream`（SAF 的 `createFile` 需要它）。

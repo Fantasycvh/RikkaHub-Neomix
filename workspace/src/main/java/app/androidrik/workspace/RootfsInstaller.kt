@@ -55,6 +55,8 @@ class RootfsInstaller(
         connection.connectTimeout = CONNECT_TIMEOUT_MS
         connection.readTimeout = READ_TIMEOUT_MS
         connection.instanceFollowRedirects = true
+        // 部分镜像站/CDN 会对 Java 默认 UA 回 403（与 RootfsMirrorSelector 测速共用同一个 UA）
+        connection.setRequestProperty("User-Agent", RootfsCatalog.DOWNLOAD_USER_AGENT)
         try {
             val code = connection.responseCode
             require(code in 200..299) { "Rootfs download failed: HTTP $code" }

@@ -6,6 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import app.androidrik.rikkahub.data.model.SshWorkspaceSettings
 import app.androidrik.rikkahub.utils.JsonInstant
+import app.androidrik.workspace.PackageMirrorSetup
 import app.androidrik.workspace.Workspace
 import app.androidrik.workspace.WorkspaceCapabilities
 import app.androidrik.workspace.WorkspaceManager
@@ -57,6 +58,10 @@ data class WorkspaceEntity(
     // SSH 工作区的连接配置 (SshWorkspaceSettings 的 JSON, 凭据为 Keystore 密文), 本地工作区为 null
     @ColumnInfo("ssh_config")
     val sshConfig: String? = null,
+    // 一键配置写入 rootfs 的国内镜像源摘要 (PackageMirrorSetup 的 JSON)，同时用于给 AI 注入源配置提示词。
+    // 仅本地 rootfs 工作区使用；SSH 工作区永远保持默认空对象。
+    @ColumnInfo("package_mirrors", defaultValue = "{}")
+    val packageMirrors: String = "{}",
 ) {
     fun isSsh(): Boolean = type == WorkspaceType.SSH.name
 
@@ -86,6 +91,11 @@ data class WorkspaceEntity(
     fun toolApprovalOverrides(): Map<String, Boolean> = runCatching {
         JsonInstant.decodeFromString<Map<String, Boolean>>(toolApprovals)
     }.getOrDefault(emptyMap())
+
+    /** 当前生效的国内镜像源配置；从未配置过（或手改坏了 JSON）时返回空配置。 */
+    fun packageMirrorSetup(): PackageMirrorSetup = runCatching {
+        JsonInstant.decodeFromString<PackageMirrorSetup>(packageMirrors)
+    }.getOrDefault(PackageMirrorSetup())
 
     fun toWorkspace(): Workspace = Workspace(
         id = id,

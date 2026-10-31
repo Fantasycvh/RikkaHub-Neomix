@@ -7,9 +7,12 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.workspace.PackageMirrorCatalog
+import app.androidrik.workspace.PackageMirrorSetup
 import app.androidrik.workspace.WorkspaceLayout
 import app.androidrik.workspace.WorkspaceShellStatus
 import java.io.ByteArrayOutputStream
+import java.net.URI
 import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap
 
@@ -55,7 +58,8 @@ class WorkspaceReminderTransformer(
                 shell = workspaceRepository.rootfsShell(workspaceId),
                 distro = readDistroName(workspaceId),
                 cwd = ctx.workspaceCwd,
-            ) + buildAgentsPrompt(workspaceId, ctx.workspaceCwd)
+            ) + buildAgentsPrompt(workspaceId, ctx.workspaceCwd) +
+                buildPackageMirrorPrompt(workspace.packageMirrorSetup())
         }
         return messages.withPrompt(prompt)
     }
@@ -283,6 +287,49 @@ private fun StringBuilder.appendShellLine(shell: String) {
     } else {
         appendLine("- `workspace_shell` runs commands with `$shell`, a POSIX shell. Bash is not installed, so avoid bash-only syntax such as arrays, here-strings (`<<<`) and brace expansion.")
     }
+}
+
+/**
+ * 国内镜像源已配置时追加的提示词（仅本地 rootfs 工作区；SSH 工作区 packageMirrors 恒为空配置）。
+ *
+ * 光告诉模型「源换好了」不够：没被自动覆盖到的下载（GitHub Release 预编译二进制、
+ * Maven 依赖等）依旧会卡住，模型容易因此报「环境不可用」。这里把「慢/连不上就先换国内源
+ * 重试」写成可执行的指令，并给出各管理器的具体写法与备选站。
+ */
+internal fun buildPackageMirrorPrompt(setup: PackageMirrorSetup): String {
+    if (!setup.active) return ""
+    return buildString {
+        appendLine()
+        appendLine("<package_mirrors>")
+        appendLine("This workspace's package managers already point at fast domestic (China) mirrors — keep them; never switch a working install back to official endpoints.")
+        if (setup.aptRepoUrl.isNotBlank()) {
+            appendLine("- apt: `${setup.aptRepoUrl}` (already rewritten in the sources list; run `apt-get update` before the first install of a session)")
+        }
+        if (setup.npmRegistry.isNotBlank()) {
+            appendLine("- npm: `${setup.npmRegistry}` (already in `/root/.npmrc`, mirrors prebuilt binaries too)")
+        }
+        if (setup.pipIndexUrl.isNotBlank()) {
+            appendLine("- pip: `${setup.pipIndexUrl}` (already in `/etc/pip.conf`)")
+        }
+        if (setup.goProxy.isNotBlank()) {
+            appendLine("- Go: `GOPROXY=${setup.goProxy},direct` (already exported)")
+        }
+        appendLine("A slow, hanging or unreachable download is a mirror problem, NOT a broken environment — retry once against a domestic mirror (see redirects below) with a raised timeout; if it still fails, report the exact error to the user instead of retrying further.")
+        appendLine("One-off redirects: GitHub release/archive hangs → prefix `https://gh-proxy.com/`; npm `--registry=https://registry.npmmirror.com`; pip `-i ${setup.pipIndexUrl.ifBlank { "https://pypi.tuna.tsinghua.edu.cn/simple" }}`; Maven/Gradle deps → add `maven.aliyun.com/repository/public`; Gradle wrapper → rewrite the host to `mirrors.cloud.tencent.com`; apt → swap the `URIs:` line in `/etc/apt/sources.list.d/ubuntu.sources` then `apt-get update` (other mirrors: ${otherAptMirrors(setup)}).")
+        appendLine("The base image ships without `ca-certificates`: on TLS errors run `apt-get install -y ca-certificates` first, then retry.")
+        append("</package_mirrors>")
+    }
+}
+
+/** 备选 apt 站：从候选清单里取，排除当前已生效的主机。 */
+private fun otherAptMirrors(setup: PackageMirrorSetup): String {
+    val currentHost = runCatching { URI(setup.aptRepoUrl).host }.getOrNull()
+    return PackageMirrorCatalog.APT_SITES
+        .asSequence()
+        .map { it.host.removePrefix("http://").removePrefix("https://") }
+        .distinct()
+        .filter { it != currentHost }
+        .joinToString(", ") { "http://$it" }
 }
 
 private fun UIMessage.appendText(extra: String): UIMessage {

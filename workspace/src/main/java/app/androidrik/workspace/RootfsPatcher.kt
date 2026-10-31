@@ -49,6 +49,20 @@ class RootfsPatcher {
         ensureLocale(etcDir, options.locale)
         ensureGroupNames(etcDir, options.groupIds.ifEmpty { currentSupplementaryGroupIds() })
         ensureTempDirs(linuxDir)
+        ensureAptMirror(linuxDir)
+    }
+
+    /**
+     * 把 apt 源换成国内镜像。ubuntu-base 的源默认指向 ports.ubuntu.com / archive.ubuntu.com，
+     * 国内直连极慢，AI 装包（node/git 等）经常超时被当成「环境不可用」。
+     *
+     * 用户在工作区详情页显式配置过镜像源（一键配置写的是 explicit 标记）时不再插手，
+     * 避免把用户选的站点抢回默认站。改写规则（deb822 + one-line、ubuntu 与 ubuntu-ports
+     * 池目录、.orig 备份重放）见 [AptSources]；幂等（marker 短路），每次会话启动都跑也无妨。
+     */
+    private fun ensureAptMirror(linuxDir: File) {
+        if (AptSources.isExplicit(linuxDir)) return
+        AptSources.rewriteTo(linuxDir, AptSources.DEFAULT_MIRROR, explicit = false)
     }
 
     /**

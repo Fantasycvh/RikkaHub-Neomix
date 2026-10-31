@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
 import android.net.Uri
+import android.os.Build
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,9 +18,14 @@ import java.io.InputStream
 import java.io.OutputStream
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
+import app.androidrik.rikkahub.data.repository.AptIndexRefresh
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.workspace.PackageMirrorPick
+import app.androidrik.workspace.RootfsCatalog
 import app.androidrik.workspace.RootfsInstallProgress
 import app.androidrik.workspace.RootfsInstallStage
+import app.androidrik.workspace.RootfsMirrorSelector
+import app.androidrik.workspace.RootfsMirrorSpeed
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceManager
@@ -51,6 +57,29 @@ class WorkspaceDetailVM(
      */
     private val _tasks = MutableStateFlow<List<WorkspaceTaskSnapshot>>(emptyList())
     val tasks = _tasks.asStateFlow()
+
+    private val mirrorSelector = RootfsMirrorSelector()
+
+    /** rootfs 候选镜像的测速结果（装机对话框用）；仅本次会话有效。 */
+    private val _mirrorSpeeds = MutableStateFlow<List<RootfsMirrorSpeed>>(emptyList())
+    val mirrorSpeeds = _mirrorSpeeds.asStateFlow()
+
+    private val _mirrorSetupRunning = MutableStateFlow(false)
+    val mirrorSetupRunning = _mirrorSetupRunning.asStateFlow()
+
+    /** 最近一次「一键配置」测速选中的站点及其吞吐；持久化的摘要看 workspace.packageMirrorSetup() */
+    private val _mirrorPicks = MutableStateFlow<List<PackageMirrorPick>>(emptyList())
+    val mirrorPicks = _mirrorPicks.asStateFlow()
+
+    private val _mirrorError = MutableStateFlow<String?>(null)
+    val mirrorError = _mirrorError.asStateFlow()
+
+    /** 最近一次「一键配置」后的 apt 索引刷新状态与失败原因（配置已写入、只影响提示口径）。 */
+    private val _aptIndexRefresh = MutableStateFlow<AptIndexRefresh?>(null)
+    val aptIndexRefresh = _aptIndexRefresh.asStateFlow()
+
+    private val _aptIndexDetail = MutableStateFlow<String?>(null)
+    val aptIndexDetail = _aptIndexDetail.asStateFlow()
 
     init {
         loadWorkspace()
@@ -351,22 +380,96 @@ class WorkspaceDetailVM(
         }
     }
 
+    /**
+     * 一键配置国内镜像源。
+     *
+     * 失败（包括刷索引超时）不影响已写入的配置，所以错误只弹提示、不回滚状态。
+     */
+    fun configurePackageMirrors() {
+        if (_mirrorSetupRunning.value) return
+        _mirrorSetupRunning.value = true
+        _mirrorError.value = null
+        _aptIndexRefresh.value = null
+        _aptIndexDetail.value = null
+        viewModelScope.launch {
+            try {
+                val result = repository.configurePackageMirrors(id)
+                _mirrorPicks.value = result.outcome.picks
+                _aptIndexRefresh.value = result.aptIndex
+                _aptIndexDetail.value = result.aptIndexDetail
+                // 终端标签的 proot 参数与已 source 的环境变量不会自动更新，重开才能拿到新 GOPROXY
+                state.value.workspace?.let { terminalSessionManager.closeWorkspace(it.root) }
+                loadWorkspace()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _mirrorError.value = error.message ?: "镜像源配置失败"
+            } finally {
+                _mirrorSetupRunning.value = false
+            }
+        }
+    }
+
+    fun dismissMirrorError() {
+        _mirrorError.value = null
+    }
+
+    /** 当前设备 ABI 对应的 rootfs 文件名，不支持的架构返回 null */
+    fun rootfsFileName(): String? = RootfsCatalog.fileNameForAbi(Build.SUPPORTED_ABIS.firstOrNull() ?: "")
+
+    /**
+     * 对候选镜像测速，返回按速度降序的结果；首个即推荐源。
+     *
+     * 重复点击时直接复用上次结果，避免反复对镜像站发压测流量。
+     */
+    fun testRootfsMirrors(force: Boolean = false): List<RootfsMirrorSpeed> {
+        if (!force && _mirrorSpeeds.value.isNotEmpty()) return _mirrorSpeeds.value
+        val fileName = rootfsFileName() ?: return emptyList()
+        viewModelScope.launch {
+            _mirrorSpeeds.value = emptyList()
+            _mirrorSpeeds.value = runCatching { mirrorSelector.select(fileName) }
+                .getOrDefault(emptyList())
+        }
+        return _mirrorSpeeds.value
+    }
+
+    fun clearMirrorSpeeds() {
+        _mirrorSpeeds.value = emptyList()
+    }
+
     fun installRootfs(url: String) {
         viewModelScope.launch {
             _installError.value = null
             val workspace = state.value.workspace ?: return@launch
             _installProgress.value = RootfsInstallProgress(stage = RootfsInstallStage.DOWNLOADING)
+            // 候选源: 用户确认的 URL 优先, 之后按测速可用的镜像依次回退。
+            // 部分镜像站/CDN 会对特定网络环境回 403/限流, 单源失败不应让用户干着急。
+            val candidates = buildList {
+                add(url)
+                _mirrorSpeeds.value.filter { it.usable }.forEach { speed ->
+                    if (speed.url !in this) add(speed.url)
+                }
+            }
+            var lastError: Throwable? = null
             try {
                 terminalSessionManager.closeWorkspace(workspace.root)
-                repository.installRootfs(workspace.id, url) { progress ->
-                    _installProgress.value = progress
+                for (candidate in candidates) {
+                    try {
+                        repository.installRootfs(workspace.id, candidate) { progress ->
+                            _installProgress.value = progress
+                        }
+                        loadWorkspace()
+                        refresh()
+                        return@launch
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        lastError = e
+                        // 只有下载阶段的错误才值得换源重试; 解压/移动阶段失败换源也一样
+                        if (e.message?.startsWith("Rootfs download failed") != true) break
+                    }
                 }
-                loadWorkspace()
-                refresh()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (error: Throwable) {
-                _installError.value = error.message ?: "Rootfs 安装失败"
+                _installError.value = lastError?.message ?: "Rootfs 安装失败"
             } finally {
                 _installProgress.value = null
             }
