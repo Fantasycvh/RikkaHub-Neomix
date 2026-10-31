@@ -1522,6 +1522,7 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 | `50bb57857` | fix(message): 折叠思考链保持待审批工具可见（#2246） | **已等价，不跟**——本仓自研折叠「决策 8」更强：`forceExpand = hasPendingStep` 且待审批时整链不折（`ChatMessageCot.kt:215-225`），上游只保证尾部 N 步可见 |
 | `a046505a6` | fix(chat): 加号面板主页面支持滚动（#2258） | **已吸收（2026-10-31 第二批）**——本仓 `FilesPicker.kt` 主面板 Column 加 `verticalScroll`（本仓面板结构已分叉但同款挤压路径）；与 10-26 #2258「不适用」判定不冲突：那条指压缩入口布局不同，此条是面板本体滚动 |
 | `a5db9c9b7` | feat(search): Tinyfish 可选 purpose 参数（#2261） | **吸收候选 P2**——本仓 `TinyfishSearchService.kt` 无 purpose，16 行直套（schema 字段 + URL 参数拼接） |
+| （盘点） | haze **2.0.0-alpha05 → 2.0.1**（上游已在正式版） | **吸收候选 P2**（2026-10-31 液态玻璃对比时发现，详见 [`references/other projects/bilipai.md`](references/other%20projects/bilipai.md)）——本仓 `HazeInput.Sources`/`HazeBlurStyle.Material3` 即 2.0.x 形态，预期平滑；**artifact 改名 `haze-blur-material3` → `haze-blur-materials`**；升完 `hazeGlass` 可用、上游玻璃相关提交才可能直套；可与门控层（bilipai.md 落地清单 #2）同批 |
 
 **分支 `feat/background-shell`（未合入 master，记账观察）**：
 - `8a472304b` feat(workspace): shell 支持后台运行命令（+887，新增 `WorkspaceBackgroundCommand`，ProotShellRunner/WorkspaceManager 改造）——与本仓 workspace 方向相关，等上游合入后评估；

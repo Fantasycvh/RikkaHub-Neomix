@@ -1,6 +1,6 @@
 # 同类应用借鉴评估（索引 + 汇总）
 
-> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.12`（314）（预发布）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产，CI 自动发版仍禁用）。
+> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.13`（315）（预发布）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产，CI 自动发版仍禁用）。
 
 > 生成时间：2026-08-28（Yuihub 记忆机制评估 2026-09-14 补，见 [`yuihub.md`](references/other%20projects/yuihub.md)）
 > **2026-10-30 按应用拆分**：正文（每个应用的评估原文）迁至 [`docs/references/other projects/`](references/other%20projects/)，本页只保留**索引、跨应用章节与汇总分析**。拆分只重排位置，正文逐字保留（仅 4 处链接按新位置修正了相对路径）；每个应用文件头部标注了它对应原 §几。
@@ -33,6 +33,7 @@
 | 11 | NMoi-Agent | Rust 无头核心 + 原生 UI，stage 0「写了没接线」 | 源码 | 2026-10-26 | 思路与判据可借：**备份发布前自校验** + **内容级脱敏**（各 ~0.5 天，近期可做） | [nmoi-agent.md](references/other%20projects/nmoi-agent.md) |
 | 12 | PurrCat（PurrPod/purrcat） | Python + Electron + Docker 的 local-first Agent 宿主（桌面） | 源码 | 2026-10-30 | 代码复用 ≈ 0、方法论价值高：**收尾闸门 / 能力生产线 / 子代理交付物契约** 三项建议，均未落地；含第三方文档偏差核验 | [purrcat-analysis.md](purrcat-analysis.md)（独立成文） |
 | — | 上游 `3a533a6a` | 上游工作区终端后台运行 + 多 Tab | 源码 | 2026-08-28 | 多 Tab 底座以吸收上游为准（见 §二） | [upstream-analysis.md](upstream-analysis.md) |
+| 13 | BiliPai | B 站第三方客户端，液态玻璃工程化参照系 | 源码 | 2026-10-31 | **门控层 + 可读性 + 回归测试**是本仓液态玻璃缺的防线；haze 2.0.1 / SDK 分级 / 前后台 gate / 51 个 UI 回归 | [bilipai.md](references/other%20projects/bilipai.md) |
 
 > 新增一个应用时按 §六 的约定加行、加文件、加章节号；**不要**把评估原文再塞回本页。
 
