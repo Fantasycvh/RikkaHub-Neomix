@@ -143,5 +143,5 @@ data class DuplicateImportRecord(
  * 导入日期：走 [Instant.toLocalDate]（**按系统语言取当地习惯格式**）——
  * 用户给的中文形态「yyyy年MM月dd日」正是 zh 下 MEDIUM 的产物，其它语言若照抄中文年号会读不通。
  */
-private fun formatImportDate(epochMillis: Long): String =
+internal fun formatImportDate(epochMillis: Long): String =
     Instant.ofEpochMilli(epochMillis).toLocalDate()

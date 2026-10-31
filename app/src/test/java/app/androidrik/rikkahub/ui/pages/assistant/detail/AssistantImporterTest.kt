@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.assistant.detail
 
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.ImportSourceRecord
 import app.androidrik.rikkahub.data.model.hasCardParts
 import app.androidrik.rikkahub.data.model.rebuildSystemPromptFromCardParts
 import kotlinx.serialization.json.Json
@@ -347,6 +348,63 @@ class AssistantImporterTest {
         assertEquals("Carol", result.assistant.name)
         assertNull(result.lorebook)
         assertTrue(result.assistant.lorebookIds.isEmpty())
+    }
+
+    // endregion
+
+    // region 重复导入检测（design-card-lorebook-import.md §六：卡内容指纹）
+
+    @Test
+    fun `同一张卡两次解析指纹一致`() {
+        val raw = """
+            {
+              "spec": "chara_card_v2",
+              "data": { "name": "Alice", "description": "d" }
+            }
+        """.trimIndent()
+        assertEquals(parseRaw(raw).sourceKey, parseRaw(raw).sourceKey)
+    }
+
+    @Test
+    fun `指纹只看卡数据不看书不_hashed 外层信封`() {
+        // hash 的是 data 对象：外层 spec_version 等信封字段不同不影响指纹
+        val a = parseRaw(
+            """{"spec": "chara_card_v2", "spec_version": "2.0", "data": {"name": "Alice"}}"""
+        ).sourceKey
+        val b = parseRaw(
+            """{"spec": "chara_card_v2", "spec_version": "2.1", "data": {"name": "Alice"}}"""
+        ).sourceKey
+        assertEquals(a, b)
+    }
+
+    @Test
+    fun `内容不同的卡指纹不同`() {
+        val a = parseRaw("""{"spec": "chara_card_v2", "data": {"name": "Alice"}}""").sourceKey
+        val b = parseRaw("""{"spec": "chara_card_v2", "data": {"name": "Bob"}}""").sourceKey
+        assertTrue(a != null && b != null && a != b)
+    }
+
+    @Test
+    fun `v1 老卡也有指纹`() {
+        assertTrue(parseRaw("""{"name": "Old", "description": "v1"}""").sourceKey != null)
+    }
+
+    @Test
+    fun `记录 upsert 空指纹不动_非空指纹加前缀键`() {
+        val existing = mapOf("uuid-of-conversation" to ImportSourceRecord(importedAt = 1L, title = "会话"))
+        // null 指纹（手工创建等）→ 原样返回
+        assertEquals(existing, upsertCardSourceRecord(existing, null, "Alice"))
+        // 正常路径：card: 前缀隔离键空间，title 空白降为 null
+        val updated = upsertCardSourceRecord(existing, "abc", "Alice", now = 42L)
+        assertEquals(2, updated.size)
+        val record = updated["card:abc"]!!
+        assertEquals(42L, record.importedAt)
+        assertEquals("Alice", record.title)
+        assertEquals(ImportSourceRecord(1L, "会话"), updated["uuid-of-conversation"])
+        // 二次导入刷新时间戳而非新增键
+        val refreshed = upsertCardSourceRecord(updated, "abc", "Alice", now = 99L)
+        assertEquals(2, refreshed.size)
+        assertEquals(99L, refreshed["card:abc"]!!.importedAt)
     }
 
     // endregion

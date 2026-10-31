@@ -31,6 +31,8 @@
   <string name="assistant_extensions_page_tab_quick_messages">快捷消息</string>
   <string name="assistant_extensions_page_tab_skills">Skills</string>
   <string name="assistant_extensions_page_title">扩展管理</string>
+  <string name="assistant_importer_duplicate_fallback_name">该角色卡</string>
+  <string name="assistant_importer_duplicate_title">重复导入</string>
   <string name="assistant_importer_import_failed">导入失败</string>
   <string name="assistant_importer_import_tavern_json">导入酒馆角色卡 (JSON)</string>
   <string name="assistant_importer_import_tavern_png">导入酒馆角色卡 (PNG)</string>

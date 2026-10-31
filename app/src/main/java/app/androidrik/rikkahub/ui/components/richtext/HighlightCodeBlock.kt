@@ -1,9 +1,14 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
 import org.koin.compose.koinInject
-import app.androidrik.rikkahub.ui.pages.assistant.detail.importAssistantFromJsonText
+import app.androidrik.rikkahub.ui.pages.assistant.detail.CardDuplicateConfirmDialog
+import app.androidrik.rikkahub.ui.pages.assistant.detail.TavernCardImport
+import app.androidrik.rikkahub.ui.pages.assistant.detail.appendAssistantWithLorebook
+import app.androidrik.rikkahub.ui.pages.assistant.detail.findCardDuplicate
+import app.androidrik.rikkahub.ui.pages.assistant.detail.parseAssistantFromJsonText
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.ui.pages.backup.components.DuplicateImportRecord
 import com.dokar.sonner.ToastType
 import me.rerere.hugeicons.stroke.AiUser
 import android.content.ClipData
@@ -442,6 +447,45 @@ private fun HighlightCodeActions(
             if (completeCodeBlock && language.lowercase() == "json") {
                 val toaster = LocalToaster.current
                 val settingsStore = koinInject<SettingsStore>()
+                // 重复导入的中间态：命中后停在这里等确认（§6.3），确认才落库
+                var pendingDuplicate by remember {
+                    mutableStateOf<Pair<TavernCardImport, DuplicateImportRecord>?>(null)
+                }
+
+                fun showSuccessToast(result: TavernCardImport) {
+                    // 卡内嵌世界书已随导入落库；有书时反馈带上书信息（设计稿 §4.4）
+                    val message = result.lorebook
+                        ?.let { book ->
+                            resources.getString(
+                                R.string.code_block_add_assistant_success_with_lorebook,
+                                result.assistant.name,
+                                book.name,
+                                book.entries.size,
+                            )
+                        }
+                        ?: resources.getString(
+                            R.string.code_block_add_assistant_success,
+                            result.assistant.name,
+                        )
+                    toaster.show(message = message, type = ToastType.Success)
+                }
+
+                fun commitImport(result: TavernCardImport) {
+                    scope.launch {
+                        runCatching {
+                            // 助手 + 书 + 来源记录同一次原子写（§6.3；重复确认「继续」也走这里刷新 importedAt）
+                            settingsStore.appendAssistantWithLorebook(result)
+                        }.onSuccess { showSuccessToast(result) }
+                            .onFailure { error ->
+                                toaster.show(
+                                    message = error.message
+                                        ?: resources.getString(R.string.assistant_importer_import_failed),
+                                    type = ToastType.Error,
+                                )
+                            }
+                    }
+                }
+
                 Icon(
                     imageVector = HugeIcons.AiUser,
                     contentDescription = stringResource(id = R.string.code_block_add_assistant),
@@ -451,30 +495,19 @@ private fun HighlightCodeActions(
                         .onClick {
                             scope.launch {
                                 runCatching {
-                                    importAssistantFromJsonText(
+                                    val result = parseAssistantFromJsonText(
                                         context = context,
-                                        settingsStore = settingsStore,
                                         jsonText = code,
                                     )
-                                }.onSuccess { result ->
-                                    // 卡内嵌世界书已随导入落库；有书时反馈带上书信息（设计稿 §4.4）
-                                    val message = result.lorebook
-                                        ?.let { book ->
-                                            resources.getString(
-                                                R.string.code_block_add_assistant_success_with_lorebook,
-                                                result.assistant.name,
-                                                book.name,
-                                                book.entries.size,
-                                            )
-                                        }
-                                        ?: resources.getString(
-                                            R.string.code_block_add_assistant_success,
-                                            result.assistant.name,
+                                    val duplicate = settingsStore.findCardDuplicate(result.sourceKey)
+                                    if (duplicate == null) {
+                                        commitImport(result)
+                                    } else {
+                                        pendingDuplicate = result to DuplicateImportRecord(
+                                            title = duplicate.title,
+                                            importedAt = duplicate.importedAt,
                                         )
-                                    toaster.show(
-                                        message = message,
-                                        type = ToastType.Success,
-                                    )
+                                    }
                                 }.onFailure { error ->
                                     toaster.show(
                                         message = error.message
@@ -487,6 +520,17 @@ private fun HighlightCodeActions(
                         .padding(4.dp)
                         .size(iconSize)
                 )
+
+                pendingDuplicate?.let { (result, record) ->
+                    CardDuplicateConfirmDialog(
+                        record = record,
+                        onConfirm = {
+                            pendingDuplicate = null
+                            commitImport(result)
+                        },
+                        onDismiss = { pendingDuplicate = null },
+                    )
+                }
             }
 
             Icon(

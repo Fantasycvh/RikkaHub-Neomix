@@ -1,9 +1,10 @@
 # 角色卡内嵌世界书（character_book）导入 — 设计稿
 
-> 状态：**已实现，本地单测通过**（2026-10-31，`:app:testDebugUnitTest` 全绿，待真机验证）。
-> **实现结果**：`parseSillyTavernCharacterBook` + 卡内嵌书 DTO（`ExportSerializer.kt`）、`TavernCardImport` 结果类与解析接线（`AssistantImporter.kt`）、代码块导入 toast 带书信息（`HighlightCodeBlock.kt`）、`code_block_add_assistant_success_with_lorebook` 三语言；单测 `SillyTavernCharacterBookTest`（15 项）+ `AssistantImporterTest` 内嵌世界书 region（4 项）。
+> 状态：**一期（世界书拆分导入）+ 二期（重复导入检测 §六）均已实现**，本地单测全绿（2026-10-31，`:app:testDebugUnitTest`），待真机验证。
+> **一期实现**：`parseSillyTavernCharacterBook` + 卡内嵌书 DTO（`ExportSerializer.kt`）、`TavernCardImport` 结果类与解析接线（`AssistantImporter.kt`）、代码块导入 toast 带书信息（`HighlightCodeBlock.kt`）、`code_block_add_assistant_success_with_lorebook` 三语言；单测 `SillyTavernCharacterBookTest`（15 项）+ `AssistantImporterTest` 内嵌世界书 region（4 项）。
+> **二期实现**：`tavernCardSourceKey` 指纹 + `findCardDuplicate`/`upsertCardSourceRecord`/`commitCardImportExtras`（复用 `Settings.importedSources`，键空间 `card:` 前缀）；两入口共用 `CardDuplicateConfirmDialog`（文案复用对话导入通用键）；单测指纹 4 项 + upsert 1 项。实现期补充：`importAssistantFromJsonText` 一站式入口因「确认对话框无法阻塞 suspend」撤销，改为调用方编排（`parseAssistantFromJsonText` + 查重 + `appendAssistantWithLorebook`）。
 > **方向**：角色卡（chara_card_v2/v3）内嵌的 `data.character_book` 拆分为**独立世界书**，导入时**绑定到新导入的助手**（`assistant.lorebookIds`）。不把条目压进人设、不新建存储模型。
-> 关联：`AssistantImporter.kt`（卡解析）、`ExportSerializer.kt`（`parseSillyTavernLorebook` 及 ST 映射助手函数）、`PromptInjectionTransformer.kt`（注入链路，**零改动**）、`docs/peer-apps-benchmark.md` §6（ST 保真原则）。
+> 关联：`AssistantImporter.kt`（卡解析）、`ExportSerializer.kt`（`parseSillyTavernLorebook` 及 ST 映射助手函数）、`PromptInjectionTransformer.kt`（注入链路，**零改动**）、`design-conversation-import-export.md` §十（去重机制原型）、`docs/peer-apps-benchmark.md` §6（ST 保真原则）。
 
 ## 一、现状核实
 
@@ -113,8 +114,56 @@ internal fun parseSillyTavernCharacterBook(cardName: String, book: SillyTavernCh
 
 ## 五、边界与取舍
 
-1. **重复导入同一张卡** → 第二本同名书（id 随机）。与现状重复导入助手的行为一致，不做去重（用户可在世界书页签自行删除）。
+1. **重复导入同一张卡** → 第二本同名书（id 随机）。~~与现状重复导入助手的行为一致，不做去重~~ → §六 立项去重检测（2026-10-31 二期）。
 2. **助手页路径的孤儿书**：书在导入瞬间落库，若用户随后取消弹窗（不保存助手），书已存在但无助手绑定——**接受**：书完全可编辑/可删，ST 本身也是「导入卡即建书」；若要消除需穿透 EditState 生命周期，不值。
 3. **V1 卡**无 `character_book` 字段，天然走原路径，零影响。
 4. **对话内代码块导入**的书落库与助手落库合并为一次 `SettingsStore.update`，保持原子；助手页路径书单独一次写（§五.2 已接受）。
 5. 不做的事：卡内嵌书的去重/合并、书级 token_budget、递归扫描、probability/group 系（§3.4）。
+
+## 六、重复导入检测 + 提示（二期，2026-10-31 立项）
+
+对齐 `design-conversation-import-export.md` §十 的机制与语义（检测 → **允许继续**的确认 → 成功后记录），差异在**锚点来源**：对话导入的 `sourceId` 是我们自己导出时写入的；角色卡来自外部（ST PNG/JSON），**没有可信的来源字段，锚点只能由内容派生**。
+
+### 6.1 锚点：卡内容指纹
+
+- **`sourceKey = "card:" + sha256(卡数据 JSON 的规范化序列化)`**：
+  - 有 `spec` 的卡（V2/V3）hash `data` 对象、V1 老卡 hash 整个顶层对象（`JsonElement.toString()`，kotlinx 对同一解析结果输出稳定）；
+  - hash `data`（而非整个文件）带来一个免费性质：**同一张卡的 PNG 与 .json 两种载体互认**（PNG 的 tEXt chunk 里就是同一段 JSON）；
+  - 序列化在 `parseCardData` 处计算，存进 `TavernCardImport.sourceKey`。
+- **Fail-open 原则（与对话导入 null `sourceId` 跳过检测同款）**：
+  - 跨工具重排过键序的同一张卡 → hash 不同 → **不报重复**（漏报可接受，误报不可接受）；
+  - 用户改过卡内容再导入 → hash 不同 → 不报（与对话导入「改过的文件 = 不同的来源」口径一致）；
+  - 哈希计算本身失败 → null → 跳过检测。
+
+### 6.2 存储：复用 `importedSources`，零迁移
+
+`Settings.importedSources: Map<String, ImportSourceRecord(importedAt, title)>` 原样复用：
+- 键空间用 `card:` 前缀与对话的 UUID 键天然隔离；
+- `title` = 助手名（提示文案直接用现有键 `backup_page_import_duplicate_warning/hint`——措辞是通用的「%1$s 已于 %2$s 导入过」，无需新字符串）；
+- `importedSources` 本就只增不减（对话导入 §10.4.4 同款，几十条量级暂不处理）。
+
+### 6.3 流程（两个入口同一编排）
+
+```
+解析 → 算 sourceKey → 查 importedSources
+  ├─ 未命中 → 照常导入 → 成功后记入 importedSources
+  └─ 命中   → 弹「重复导入」确认（显示助手名 + 导入日期，允许继续）
+              ├─ 继续 → 照常导入 → 刷新 importedAt
+              └─ 取消 → 终止（不落库、不记录）
+```
+
+- 助手页（`AssistantImporter` 组合层）：检测在**书落库之前**；命中弹 `AlertDialog`（组合层本地 state）。
+- 对话内代码块（`HighlightCodeBlock`）：**同样弹确认对话框**而非 toast 拦截——保持「允许继续」语义一致；拦截式会让「删了助手想从聊天记录重新导入」变成死路。
+- 编排抽成共享的非 UI 辅助（解析/查重/记录），UI 只负责确认对话框。
+
+### 6.4 记录时机与孤儿记录（对齐 §五.2）
+
+- 记录在**导入动作完成时**写入（与书的落库同时机）。
+- **助手页路径取消弹窗 → 记录已在**（孤儿记录）：后果只是下次再导入同一张卡时多一次「已导入过」警告（允许继续），**非数据损坏**；且此时书确实已落库（§五.2），「导入过」半真。接受，与孤儿书同一条取舍逻辑。
+- 解析失败/用户取消不写记录。
+
+### 6.5 范围与不做的事
+
+- **本次只做角色卡导入**（PNG + JSON + 对话内代码块三入口，锚点同一）。内嵌书随卡同源检测，不单独对书做指纹。
+- **独立 ST 世界书文件导入暂不纳入**：文件名即书名、列表可见易手删，收益低；将来要做，指纹 = entries 规范化序列化，机制同款。
+- 不做「同名助手」启发式检测——内容指纹是唯一判据（同名不同卡、同卡不同名都存在，名字不可靠）。
