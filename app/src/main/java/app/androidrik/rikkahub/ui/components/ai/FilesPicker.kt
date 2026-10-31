@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -151,6 +153,8 @@ internal fun FilesPicker(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // 矮屏上放不下时可以滚动，避免底部的入口被挤出屏幕（上游 a046505a6，#2258）
+            .verticalScroll(rememberScrollState())
             .padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         FlowRow(

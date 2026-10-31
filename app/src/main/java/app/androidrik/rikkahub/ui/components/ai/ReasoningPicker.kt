@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SliderState
 import androidx.compose.material3.Text
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
@@ -94,10 +95,17 @@ fun ReasoningPicker(
     onUpdateReasoningLevel: (ReasoningLevel) -> Unit,
 ) {
     val currentIndex = levels.indexOf(reasoningLevel).coerceAtLeast(0)
-    var sliderValue by remember { mutableFloatStateOf(currentIndex.toFloat()) }
+    // material3 1.5.0-beta02 起移除了 value-overload，改走 SliderState（上游 20c24e7d3 同款）
+    val sliderState = remember {
+        SliderState(
+            value = currentIndex.toFloat(),
+            trackRange = 0f..(levelCount - 1).toFloat(),
+            steps = levelCount - 2,
+        )
+    }
 
     LaunchedEffect(currentIndex) {
-        sliderValue = currentIndex.toFloat()
+        sliderState.value = currentIndex.toFloat()
     }
 
     ModalBottomSheet(
@@ -163,15 +171,13 @@ fun ReasoningPicker(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Slider(
-                    value = sliderValue,
-                    onValueChange = { sliderValue = it },
+                    state = sliderState,
+                    onValueChange = { sliderState.value = it },
                     onValueChangeFinished = {
-                        val snappedIndex = sliderValue.roundToInt().coerceIn(0, levelCount - 1)
-                        sliderValue = snappedIndex.toFloat()
+                        val snappedIndex = sliderState.value.roundToInt().coerceIn(0, levelCount - 1)
+                        sliderState.value = snappedIndex.toFloat()
                         onUpdateReasoningLevel(levels[snappedIndex])
                     },
-                    valueRange = 0f..(levelCount - 1).toFloat(),
-                    steps = levelCount - 2,
                     modifier = Modifier.fillMaxWidth(),
                     thumb = {
                         Box(
@@ -201,7 +207,7 @@ fun ReasoningPicker(
                 ReasoningScale(
                     selectedLevel = reasoningLevel,
                     onSelect = { level ->
-                        sliderValue = levels.indexOf(level).toFloat()
+                        sliderState.value = levels.indexOf(level).toFloat()
                         onUpdateReasoningLevel(level)
                     }
                 )
