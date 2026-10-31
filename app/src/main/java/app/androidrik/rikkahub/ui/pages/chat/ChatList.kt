@@ -81,12 +81,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceAtLeast
 import androidx.compose.ui.zIndex
-import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.HazeBlurStyle
-import dev.chrisbanes.haze.blur.hazeBlur
-import dev.chrisbanes.haze.blur.material3.Material3
-import dev.chrisbanes.haze.hazeSource
+import app.androidrik.rikkahub.ui.components.haze.hazeSourceCompat
+import app.androidrik.rikkahub.ui.components.haze.liquidGlassBlurStyle
+import app.androidrik.rikkahub.ui.components.haze.recoverableHazeBlur
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -116,11 +114,6 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "ChatList"
 private const val LoadingIndicatorKey = "LoadingIndicator"
-@Composable
-private fun glassHazeStyle(): HazeBlurStyle = HazeBlurStyle.Material3 {
-    blurRadius(16.dp)
-}
-
 private const val ScrollBottomKey = "ScrollBottomKey"
 
 /**
@@ -435,30 +428,36 @@ private fun ChatListNormal(
         }
 
         ChatFontProvider(displaySetting = settings.displaySetting) {
+            // 容器不再被顶栏 padding 挡住：列表与玻璃层都延伸到顶栏底下，
+            // 滚动时消息从顶栏下穿过被 blur（顶栏消费 hazeState，见 ChatPage.TopBar）
+            //
+            // ⚠️ 父子层结构实验（2026-10-31）：blur 挂在**包含 LazyColumn 的容器**上——
+            // 这正是 2.4.10~2.4.12 闪退时代的拓扑（22552aaa6 包固定 Box 仍闪退 /
+            // 76910162a 定位「blur 容器不能含可滚动子节点」后改兄弟层）。haze 2.0.1 +
+            // 门控层下重试真机是否可行。仍只消费 glassHazeState（背景）——hazeState 里
+            // 注册了 LazyColumn 自己，父层采样会把列表内容模糊进自己的背景（重影）。
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = innerPadding.calculateTopPadding()),
+                    .then(
+                        if (settings.displaySetting.enableGlassTheme) Modifier.recoverableHazeBlur(
+                            state = glassHazeState,
+                            style = liquidGlassBlurStyle(settings.displaySetting.liquidGlassReadabilityMode),
+                        ) else Modifier
+                    ),
             ) {
-            // 液态玻璃层：固定尺寸兄弟节点，blur 只消费背景 source（glassHazeState）
-            if (settings.displaySetting.enableGlassTheme) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .hazeBlur(
-                            input = HazeInput.Sources(glassHazeState),
-                            style = glassHazeStyle(),
-                        )
-                )
-            }
             LazyColumn(
                 state = state,
-                contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
+                // top 进 contentPadding 而非容器 padding：静止时首条消息仍从顶栏下缘起排，
+                // 滚动时消息可穿过顶栏被 blur（与 bottom 穿过输入栏同款）
+                contentPadding = PaddingValues(16.dp) +
+                    PaddingValues(top = innerPadding.calculateTopPadding()) +
+                    PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .hazeSource(state = hazeState),
+                    .hazeSourceCompat(state = hazeState),
             ) {
             // 压缩检查点折叠行：展开/收起切换 visibleNodes（历史消息仍是完整可操作的行）
             if (activeCheckpoint != null) {
@@ -821,50 +820,22 @@ private fun ChatListPreview(
         }
     }
 
-    Column(
+    // 与 ChatListNormal 统一：列表全尺寸延伸到顶栏底下（contentPadding 穿底），
+    // 搜索框悬浮在顶栏下缘（自带底色保证从内容上滚过时可读）
+    Box(
         modifier = Modifier
-            .padding(top = innerPadding.calculateTopPadding())
             .fillMaxSize()
-            .hazeSource(state = hazeState),
+            .hazeSourceCompat(state = hazeState),
     ) {
-        // 搜索框
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            placeholder = { Text(stringResource(R.string.history_page_search)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = HugeIcons.Search01,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-            },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(
-                            imageVector = HugeIcons.Cancel01,
-                            contentDescription = "Clear",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            },
-            singleLine = true,
-            shape = CircleShape,
-            maxLines = 1,
-        )
-
         // 消息预览
         LazyColumn(
-            contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
+            contentPadding = PaddingValues(16.dp) +
+                // 顶栏 + 悬浮搜索框高度（singleLine 输入框 56dp + 上下 8dp = 72dp）
+                PaddingValues(top = innerPadding.calculateTopPadding() + 72.dp) +
+                PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+                .fillMaxSize(),
         ) {
             itemsIndexed(
                 items = filteredMessages,
@@ -917,6 +888,39 @@ private fun ChatListPreview(
                 }
             }
         }
+
+        // 搜索框：悬浮在顶栏下缘（Box 第二子元素叠在列表上），自带底色
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = innerPadding.calculateTopPadding())
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape),
+            placeholder = { Text(stringResource(R.string.history_page_search)) },
+            leadingIcon = {
+                Icon(
+                    imageVector = HugeIcons.Search01,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(
+                            imageVector = HugeIcons.Cancel01,
+                            contentDescription = "Clear",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            shape = CircleShape,
+            maxLines = 1,
+        )
     }
 }
 

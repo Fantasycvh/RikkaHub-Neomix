@@ -71,13 +71,11 @@ import com.dokar.sonner.TextToastAction
 import app.androidrik.rikkahub.data.model.followingCount
 import app.androidrik.rikkahub.data.model.followingMessages
 import app.androidrik.rikkahub.service.ChatService
-import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.HazeBlurStyle
-import dev.chrisbanes.haze.blur.hazeBlur
-import dev.chrisbanes.haze.blur.material3.Material3
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
+import app.androidrik.rikkahub.ui.components.haze.hazeSourceCompat
+import app.androidrik.rikkahub.ui.components.haze.liquidGlassBlurStyle
+import app.androidrik.rikkahub.ui.components.haze.rememberRecoverableHazeState
+import app.androidrik.rikkahub.ui.components.haze.recoverableHazeBlur
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -423,8 +421,8 @@ private fun ChatPageContent(
         }
     }
     var previewMode by rememberSaveable { mutableStateOf(false) }
-    val hazeState = rememberHazeState()
-    val glassHazeState = rememberHazeState()
+    val hazeState = rememberRecoverableHazeState()
+    val glassHazeState = rememberRecoverableHazeState()
     val assistant = conversation.effectiveAssistant(setting)
     // UI-only projection: never persist this whole settings object back to the global store.
     val effectiveSettings = remember(setting, assistant, currentChatModel) {
@@ -468,7 +466,7 @@ private fun ChatPageContent(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
     ) {
-        AssistantBackground(setting = setting, modifier = Modifier.hazeSource(hazeState).hazeSource(glassHazeState))
+        AssistantBackground(setting = setting, modifier = Modifier.hazeSourceCompat(hazeState).hazeSourceCompat(glassHazeState))
         Scaffold(
             topBar = {
                 TopBar(
@@ -1121,11 +1119,6 @@ private fun ChatFilesPickerSheet(
     }
 }
 
-@Composable
-private fun glassHazeStyle(): HazeBlurStyle = HazeBlurStyle.Material3 {
-    blurRadius(16.dp)
-}
-
 /**
  * 隐形会话的会话内横幅（design-proactive-task-management.md §二.3）：隐藏会话不出现在
  * 任何列表，这里是用户被任务详情页/通知带进来之后的**唯一**可见解释与出口——
@@ -1178,9 +1171,12 @@ private fun TopBar(
 
     TopAppBar(
         modifier = Modifier.then(
-            if (settings.displaySetting.enableTopBarBlur) Modifier.hazeBlur(
-                input = HazeInput.Sources(glassHazeState),
-                style = glassHazeStyle(),
+            // 与输入栏同款机制：消费 hazeState（背景 + 穿底内容）——列表经 contentPadding
+            // 从顶栏底下穿过，穿过的部分被实时模糊（上游截图同款效果）。
+            // 顶栏是悬浮层，采样聊天内容不踩兄弟层的「blur 容器含可滚动子节点」坑。
+            if (settings.displaySetting.enableTopBarBlur) Modifier.recoverableHazeBlur(
+                state = hazeState,
+                style = liquidGlassBlurStyle(settings.displaySetting.liquidGlassReadabilityMode),
             ) else Modifier
         ),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),

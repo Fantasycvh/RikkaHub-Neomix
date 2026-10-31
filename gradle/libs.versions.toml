@@ -50,7 +50,7 @@ appcompat = "1.7.1"
 material = "1.14.0"
 ucrop = "2.2.11-native"
 floatingx = "3.0.0"
-haze = "2.0.0-alpha05"
+haze = "2.0.1"
 uiautomator = "2.4.0"
 benchmarkMacroJunit4 = "1.4.1"
 baselineprofile = "1.5.0-beta01"
@@ -164,6 +164,8 @@ floatingx-system = { group = "io.github.petterpx", name = "floatingx-system", ve
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 haze-blur = { module = "dev.chrisbanes.haze:haze-blur", version.ref = "haze" }
 haze-blur-material3 = { module = "dev.chrisbanes.haze:haze-blur-material3", version.ref = "haze" }
+haze-glass = { module = "dev.chrisbanes.haze:haze-glass", version.ref = "haze" }
+haze-glass-material3 = { module = "dev.chrisbanes.haze:haze-glass-material3", version.ref = "haze" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmarkMacroJunit4" }
 androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }

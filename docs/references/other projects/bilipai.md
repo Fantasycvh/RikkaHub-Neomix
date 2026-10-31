@@ -39,15 +39,28 @@
 GLASS 走 `hazeGlass` + `GlassStyle.Material3`（`ChatInputHaze.kt`，铺底 + 30% tint + 暗色适配）。
 上游不闪退的秘诀就是「只铺输入框一处」。
 
-## 落地清单（2026-10-31 评估，均未落地）
+## 落地清单（2026-10-31 评估；同日全量落地 ✅，见文末落账）
 
 | # | 项 | 优先级 | 备注 |
 |---|---|---|---|
-| 1 | haze 2.0.0-alpha05 → **2.0.1** | P2 | 同族 API（本仓已在用 `HazeInput.Sources`/`HazeBlurStyle.Material3`），预期平滑；**artifact 改名**：`haze-blur-material3` → `haze-blur-materials`；升完 `hazeGlass` 才可用；与上游 2.0.1 同版，后续上游玻璃相关提交才可能直套 |
-| 2 | **门控层三件**（SDK 分级 / 前后台 gate / `hazeSourceCompat`） | P2 | 重写成本低于搬运（~100 行小件）；解决后台崩溃 + 费电两个现存隐患；ChatList 兄弟层与输入框两处消费点都挂上 |
-| 3 | 上游 `BackgroundEffectType` 二选一模式对照 | P3 | 设置项更整洁；**不用 hazeGlass 替换兄弟层**（兄弟层是真机闪退换来的，替换需完整真机回归） |
-| 4 | 可读性模式（稳定内容色 / 自动适配） | P3 | 玻璃上文字是真实痛点 |
-| 5 | 玻璃开关 androidTest 冒烟一条 | P3 | 不追 BiliPai 的 51 个，先兜底 |
+| 1 | haze 2.0.0-alpha05 → **2.0.1** | P2 | ✅ 已落地。同族 API（本仓已在用 `HazeInput.Sources`/`HazeBlurStyle.Material3`），平滑。**勘误**：`haze-blur-material3` 在 2.0.1 仍在 Maven 发布（上游 a5db9c9b7 也继续在用），**无需改名**；`HazeMaterials.*` 在独立 `haze-blur-materials` 里，不改不缺功能。真玻璃在独立 `haze-glass`/`haze-glass-material3`（`hazeGlass` + `GlassStyle.Material3`，`@ExperimentalHazeApi`），本仓已一并引入 |
+| 2 | **门控层三件**（SDK 分级 / 前后台 gate / `hazeSourceCompat`） | P2 | ✅ 已落地。`ui/components/haze/RecoverableVisualEffects.kt`（按本仓重写，~150 行）：blur 后端 ≥S(31) / 玻璃后端 ≥T(33) / 回前台重建 ≥36；前后台 gate 用 `ProcessLifecycleOwner`（BiliPai 用自家 BackgroundManager），按 state 存 WeakHashMap；`recoverableHazeBlur` 把 gate 写进 `blurEnabled(...)`。三处消费点（ChatPage 背景双 source + 顶栏、ChatList 兄弟层 + 预览列表、ChatInput）全部挂上 |
+| 3 | 上游 `BackgroundEffectType` 二选一模式对照 | P3 | ✅ 已落地（`BackgroundEffectType.BLUR/GLASS`，默认 BLUR，入 DisplaySetting + 设置页 SegmentedPill，开模糊开关才露出）。输入框 GLASS 走 `hazeGlass` + `GlassStyle.Material3`（<T(33) 或后台 gate 关时退回 blur 路线）；**兄弟层未替换**（真机闪退换来的，替换需完整真机回归） |
+| 4 | 可读性模式（稳定内容色 / 自动适配） | P3 | ✅ 已落地。`LiquidGlassReadabilityMode.AUTO/STABLE_CONTENT` 入 DisplaySetting（默认 AUTO）；AUTO = 现状 Material3 铺底，STABLE_CONTENT = 兄弟层/顶栏 `containerColor=surfaceContainerHigh` 厚铺底、输入框玻璃 tint 0.3→0.55；设置页在任一效果开启时露出 |
+| 5 | 玻璃开关 androidTest 冒烟一条 | P3 | ✅ 已落地。`ui/components/haze/LiquidGlassSmokeTest.kt`：兄弟层开关挂载/卸载 + SDK 分级策略断言（复用 SketchTestHostActivity，低版本设备因门控自动退化同样应过） |
 
 **明确不做**：全 App 组件级铺开（本仓历史已证伪——三版闪退；BiliPai 敢铺是先有门控层和测试才铺的，
 顺序不能反）；miuix-blur 引入（多一个 UI 库依赖，haze 已够）。
+
+## 落地勘误与备忘（2026-10-31 实施时核对源码所得）
+
+1. **artifact 结论修正**：评估稿里「material3 改名 materials」只是 BiliPai 的选择（它内联了 `haze-blur-materials`）；
+   `haze-blur-material3:2.0.1` 在 Maven 正常发布且只含 `blur.material3` 一个包，与 `haze-glass` 无类冲突，保留可零改动通过升级。
+2. **同步后增量**：BiliPai 同日快进 299 提交到 v0.7.1，门控层核心未变，新增 `recoverableBlurEnabledState()`（响应式 gate 读取，
+   本仓未搬——消费点已在 `recoverableHazeBlur` 内读 gate，无此需求）；`HazeInput.Backdrop(fallback)` 官方背景采样为清单外增强，暂不采用。
+3. **BiliPai 未用 hazeGlass**（2.0.1 下），全 App 玻璃实际仍是 haze-blur 材质；真玻璃（RuntimeShader）只有上游在输入框一处用了，
+   本仓 #3 的 GLASS 路线即对齐上游实现（含 `appearanceResponse` 明暗预设写法）。
+4. **兄弟层已退役（2026-10-31 实验）**：本仓评估稿里「不用 hazeGlass 替换兄弟层（真机闪退换来的）」的禁令针对的是 haze 2.0.0-alpha05
+   时代的父子拓扑闪退；haze 2.0.1 + 门控层下把 ChatList 玻璃层改回**父子层**（blur 挂包含 LazyColumn 的父容器，仍只采背景），
+   真机初测无闪退——「blur 容器不能含可滚动子节点」约束疑似已解除。观察期后若稳定，2.4.10~2.4.12 的历史教训应改写为「alpha05 时代的约束」。
+5. 真机验证待办：blur/glass 在 ≥31 真机冒烟一遍（后台→回前台往返是历史闪退场景，重点回归）；父子层玻璃同样需过这轮。

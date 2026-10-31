@@ -933,6 +933,31 @@ class SettingsStore(
         }
     }
 
+    /**
+     * 定点改写各助手的**聊天背景** `file://` 引用（[BackgroundsMigration] 用）。
+     * 与 [rewriteAvatarReferences] 同款：字符串级替换，不走 `update { }` 的快照守卫
+     * （迁移在启动极早期跑，快照还是 dummy）。
+     */
+    suspend fun rewriteAssistantBackgroundReferences(urlMap: Map<String, String>) {
+        if (urlMap.isEmpty()) return
+        updateMutex.withLock {
+            dataStore.edit { preferences ->
+                preferences[ASSISTANTS]?.let { raw ->
+                    runCatching {
+                        val assistants = JsonInstant.decodeFromString<List<Assistant>>(raw)
+                        val rewritten = assistants.map { assistant ->
+                            val newUrl = assistant.background?.let { urlMap[it] }
+                            if (newUrl != null) assistant.copy(background = newUrl) else assistant
+                        }
+                        if (rewritten != assistants) {
+                            preferences[ASSISTANTS] = JsonInstant.encodeToString(rewritten)
+                        }
+                    }.onFailure { Log.w(TAG, "rewriteAssistantBackgroundReferences: assistants parse failed", it) }
+                }
+            }
+        }
+    }
+
     suspend fun updateAssistant(assistantId: Uuid) {
         dataStore.edit { preferences ->
             preferences[SELECT_ASSISTANT] = assistantId.toString()
@@ -1269,6 +1294,31 @@ enum class ChatFontFamily {
     CUSTOM,
 }
 
+/**
+ * 输入框背景效果二选一（对照上游 BackgroundEffectType）：模糊 / 真玻璃（hazeGlass）。
+ * 只作用于输入框一处；ChatList 的兄弟层磨砂由 enableGlassTheme 独立控制，不参与二选一。
+ */
+@Serializable
+enum class BackgroundEffectType {
+    @SerialName("blur")
+    BLUR,
+    @SerialName("glass")
+    GLASS,
+}
+
+/**
+ * 玻璃/磨砂表面上的文字可读性模式（对照 BiliPai LiquidGlassReadabilityMode）：
+ * - AUTO：自动适配，效果自身按主题铺底，视觉最「透」；
+ * - STABLE_CONTENT：稳定内容色，效果表面加厚铺底/着色，文字对比度不随背景图变化。
+ */
+@Serializable
+enum class LiquidGlassReadabilityMode {
+    @SerialName("auto")
+    AUTO,
+    @SerialName("stable_content")
+    STABLE_CONTENT,
+}
+
 @Serializable
 data class DisplaySetting(
     val userAvatar: Avatar = Avatar.Dummy,
@@ -1319,8 +1369,10 @@ data class DisplaySetting(
     val enableLatexRendering: Boolean = true,
     val enableDiagramRendering: Boolean = true,
     val enableBlurEffect: Boolean = false,
+    val backgroundEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
     val enableGlassTheme: Boolean = false,
     val enableTopBarBlur: Boolean = false,
+    val liquidGlassReadabilityMode: LiquidGlassReadabilityMode = LiquidGlassReadabilityMode.AUTO,
     val chatFontFamily: ChatFontFamily = ChatFontFamily.DEFAULT,
     val chatCustomFontPath: String = "",
     val chatCustomFontName: String = "",

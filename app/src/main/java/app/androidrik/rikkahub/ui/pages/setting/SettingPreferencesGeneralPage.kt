@@ -43,10 +43,13 @@ import app.androidrik.rikkahub.data.ai.parseRuleReminderSensitivity
 import app.androidrik.rikkahub.ui.components.ui.OutlinedNumberInput
 import androidx.compose.foundation.layout.width
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.datastore.BackgroundEffectType
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
+import app.androidrik.rikkahub.data.datastore.LiquidGlassReadabilityMode
 import app.androidrik.rikkahub.service.KeepAliveService
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.ui.hooks.rememberSharedPreferenceBoolean
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
@@ -179,6 +182,28 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         },
                     )
+                    // 背景效果二选一（对照上游 BackgroundEffectType）：仅开关打开时露出
+                    if (displaySetting.enableBlurEffect) {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(stringResource(R.string.setting_display_page_background_effect_type))
+                                SegmentedPill(
+                                    options = BackgroundEffectType.entries,
+                                    selectedOption = displaySetting.backgroundEffectType,
+                                    onOptionSelected = {
+                                        updateDisplaySetting(displaySetting.copy(backgroundEffectType = it))
+                                    },
+                                    optionToString = { type ->
+                                        when (type) {
+                                            BackgroundEffectType.BLUR -> stringResource(R.string.setting_display_page_background_effect_blur)
+                                            BackgroundEffectType.GLASS -> stringResource(R.string.setting_display_page_background_effect_glass)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_desc)) },
@@ -203,6 +228,33 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         },
                     )
+                    // 玻璃上文字可读性（对照 BiliPai LiquidGlassReadabilityMode）：任一效果开启时露出
+                    if (displaySetting.enableBlurEffect || displaySetting.enableGlassTheme || displaySetting.enableTopBarBlur) {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(stringResource(R.string.setting_display_page_liquid_glass_readability_title))
+                                Text(
+                                    text = stringResource(R.string.setting_display_page_liquid_glass_readability_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                SegmentedPill(
+                                    options = LiquidGlassReadabilityMode.entries,
+                                    selectedOption = displaySetting.liquidGlassReadabilityMode,
+                                    onOptionSelected = {
+                                        updateDisplaySetting(displaySetting.copy(liquidGlassReadabilityMode = it))
+                                    },
+                                    optionToString = { mode ->
+                                        when (mode) {
+                                            LiquidGlassReadabilityMode.AUTO -> stringResource(R.string.setting_display_page_liquid_glass_readability_auto)
+                                            LiquidGlassReadabilityMode.STABLE_CONTENT -> stringResource(R.string.setting_display_page_liquid_glass_readability_stable)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_desc)) },

@@ -85,11 +85,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import com.dokar.sonner.ToastType
-import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.HazeBlurStyle
-import dev.chrisbanes.haze.blur.hazeBlur
-import dev.chrisbanes.haze.blur.material3.Material3
+import app.androidrik.rikkahub.ui.components.haze.chatInputBackgroundEffect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.roundToInt
@@ -193,10 +190,8 @@ fun ChatInput(
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
+    // 开启背景效果时容器透明，铺底/着色由效果负责（BLUR/GLASS 两条路线都如此）
     val hazeTintColor = MaterialTheme.colorScheme.surfaceContainerLow
-    val inputHazeStyle = HazeBlurStyle.Material3 {
-        blurRadius(12.dp)
-    }
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -270,12 +265,11 @@ fun ChatInput(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(containerShape)
-                    .then(
-                        if (settings.displaySetting.enableBlurEffect) Modifier.hazeBlur(
-                            input = HazeInput.Sources(hazeState),
-                            style = inputHazeStyle,
-                        )
-                        else Modifier
+                    .chatInputBackgroundEffect(
+                        hazeState = hazeState,
+                        displaySetting = settings.displaySetting,
+                        containerColor = hazeTintColor,
+                        shape = containerShape,
                     ),
                 shape = containerShape,
                 tonalElevation = 0.dp,

@@ -2467,4 +2467,11 @@
   <string name="setting_page_guardrails_loop_guard_limit">工具重複次數覆寫</string>
   <string name="setting_page_guardrails_loop_guard_limit_desc">同一工具+同一參數重複多少次才結束本輪。0 = 跟隨上方檔位；視窗與失敗閾值仍隨檔位。調大適合「有意重複同一呼叫」的用法。</string>
   <string name="setting_page_guardrails_loop_guard_limit_unit">0=檔位</string>
+  <string name="setting_display_page_background_effect_type">效果樣式</string>
+  <string name="setting_display_page_background_effect_blur">模糊</string>
+  <string name="setting_display_page_background_effect_glass">液態玻璃</string>
+  <string name="setting_display_page_liquid_glass_readability_title">玻璃上文字可讀性</string>
+  <string name="setting_display_page_liquid_glass_readability_desc">模糊/玻璃表面上的文字如何保持可讀</string>
+  <string name="setting_display_page_liquid_glass_readability_auto">自動適配</string>
+  <string name="setting_display_page_liquid_glass_readability_stable">穩定內容色</string>
 </resources>

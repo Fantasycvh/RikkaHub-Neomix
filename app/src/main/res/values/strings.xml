@@ -2481,5 +2481,12 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_page_guardrails_loop_guard_limit">Tool repeat limit override</string>
   <string name="setting_page_guardrails_loop_guard_limit_desc">How many times the same tool call with identical arguments may repeat before the turn is stopped. 0 = follow the tier above; window and failure thresholds stay on the tier.</string>
   <string name="setting_page_guardrails_loop_guard_limit_unit">0 = tier</string>
+  <string name="setting_display_page_background_effect_type">Effect Style</string>
+  <string name="setting_display_page_background_effect_blur">Blur</string>
+  <string name="setting_display_page_background_effect_glass">Liquid Glass</string>
+  <string name="setting_display_page_liquid_glass_readability_title">Text Readability on Glass</string>
+  <string name="setting_display_page_liquid_glass_readability_desc">How text stays readable on blurred or glass surfaces</string>
+  <string name="setting_display_page_liquid_glass_readability_auto">Auto</string>
+  <string name="setting_display_page_liquid_glass_readability_stable">Stable Colors</string>
 </resources>
 
