@@ -1501,9 +1501,9 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 | 上游 | 内容 | 判定 |
 |---|---|---|
 | `281c9525a` | fix(chat): 停止后立即发送的消息卡在暂停队列（onGenerationFinished 对 CancellationException 不再 pause） | **待核（P2）——本仓 `ChatService.kt:607` 同为 `if (cause != null) pause()` 无 CancellationException 豁免，疑同款在；但本仓 MessageQueue/停止链路已大改（GenerationHandler 自研循环），需先复现/确认停止路径确实走这条回调再移植** |
-| `fa5d5f3f6` | build: `org.gradle.tooling.parallel=true`（IDE 同步并行） | P3 顺手（一行 gradle.properties，无风险） |
-| `20c24e7d3` | chore: update deps（11 项：material3 beta02、datastore 1.3.0、serialization-json 1.12、bouncycastle 1.86、jsch 2.28.8、apache-sshd 2.20、firebase-bom 35.1 等） | 常规选择性跟（P3，独立一批，过编译+冒烟即可） |
-| `eb530b0ff` | fix(markdown): 公式里 `<` 被当 HTML 标签（#2240/#2224）+ JLatexMath 不认 `\\[4pt]` 行距 | **部分吸收候选**：markdown `<` 部分不适用（宿主是上游新 MarkdownParser，本仓 GFMFlavourDescriptor 解析路径不同，同款低风险待真机验证 `x<y && y>0`）；**LatexText 的 `lineBreakSpacingRegex` 可直套**（本仓 `LatexText.kt:140` processLatex 无此处理） |
+| `fa5d5f3f6` | build: `org.gradle.tooling.parallel=true`（IDE 同步并行） | **已吸收（第二批）**（一行 gradle.properties） |
+| `20c24e7d3` | chore: update deps（11 项） | **已吸收 10 项（第二批）**：material3 **alpha25→beta02**（跨越大，随迁两处 API 破坏：Slider 改 `SliderState` 重载——`ReasoningPicker.kt` 按上游模式移植、`ExposedDropdownMenu` 变顶层函数需显式 import——`Select.kt`/`TranslatorPage.kt` 补 import）、datastore 1.3.0、serialization-json 1.12.0、bouncycastle 1.86、jsch 2.28.8、apache-sshd 2.20.0、diffutils 4.18、jmdns 3.6.4、metadataExtractor 2.22.0、ink alpha10；**firebase-bom 不适用（本仓已无此依赖）** |
+| `eb530b0ff` | fix(markdown): 公式里 `<` 被当 HTML 标签（#2240/#2224）+ JLatexMath 不认 `\\[4pt]` 行距 | **LatexText 部分已吸收（第二批）**：`lineBreakSpacingRegex` 落进本仓 `LatexText.kt` processLatex；markdown `<` 部分不适用（宿主是上游新 MarkdownParser，本仓 GFMFlavourDescriptor 解析路径不同，同款低风险待真机验证 `x<y && y>0`） |
 | `102be19d3` | refactor(chat): 联网搜索入口移到加号 sheet | **不跟**（输入区布局已分叉，方向自定） |
 | `c2a64ff4b` | refactor(ui): 抽公共 SwipeToDelete（= 前批 `c2a64ff4` 的延续批注） | 不跟（前批已结） |
 | `4af510624` | fix(nav): 同帧连按返回弹空栈 | 已等价（10-24 批已结） |
@@ -1516,11 +1516,11 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 | `a7d1e6efb` | docs: README 图标 512x512 | 不适用 |
 | `24a742270` | refactor(markdown): 迁移 BetterText，保留选择/折叠 | **不跟**——宿主是上游「渲染收敛 ui 模块」大重构（与 `db4982283` 结论同源：本仓 MarkdownNew/intellij-markdown 已分叉，迁移=重写整套渲染，且本仓有 TikZ 桥要保） |
 | `e0914b20f` | feat(markdown): 颜色代码前显示色块 | **不跟（P3 观望）**——宿主为上游新 Markdown.kt 渲染管线（+83 行 ANSI 解析+色块 InlineText）；有需求时可移植到本仓 MarkdownNew |
-| `a1c61c3cb` | chore(baselineprofile): 移除 Markdown 性能对比基准 | **P3 顺手**——本仓 `app/baselineprofile` 有同源模块，BetterText 对比基准对本仓无意义，可随下一批构建小件一并清 |
+| `a1c61c3cb` | chore(baselineprofile): 移除 Markdown 性能对比基准 | **不适用**——本仓 `app/baselineprofile` 只有 BaselineProfileGenerator + StartupBenchmarks，从未引入 MarkdownBenchmarks/MockOpenAIServer，无可删项 |
 | `79f4b6fb2` | fix(export): 部分 ROM SAF 导出闪退（#2263/#2264，openOutputStream 抛 FileNotFoundException 未捕获） | **已吸收（fork `beb6fb1fb`，2026-10-31）**——本仓同款两处：`ui/components/message/ChatMessageEditedFiles.kt`（开流移 IO 协程 + runCatching）+ `data/export/ExportHooks.kt` writeToUri（补 runCatching） |
 | `1575d179d` | fix(openai): 中转返回空 role 解析崩溃（#2266） | **已吸收（fork `beb6fb1fb`，2026-10-31）**——`MessageRole.fromValueOrNull` 宽松匹配 + 回退 ASSISTANT；parseMessage 改 `jsonPrimitiveOrNull`；`ChatCompletionsAPIResponseParseTest` 补 3 条回归用例（空/未知/缺失 role） |
 | `50bb57857` | fix(message): 折叠思考链保持待审批工具可见（#2246） | **已等价，不跟**——本仓自研折叠「决策 8」更强：`forceExpand = hasPendingStep` 且待审批时整链不折（`ChatMessageCot.kt:215-225`），上游只保证尾部 N 步可见 |
-| `a046505a6` | fix(chat): 加号面板主页面支持滚动（#2258） | **吸收候选 P2**——本仓 `FilesPicker.kt` 有同构 `FilesPickerPage.MAIN` 且无 verticalScroll，矮屏同款挤压路径（4 行）；与 10-26 #2258「不适用」判定不冲突：那条指压缩入口布局不同，此条是面板本体滚动 |
+| `a046505a6` | fix(chat): 加号面板主页面支持滚动（#2258） | **已吸收（2026-10-31 第二批）**——本仓 `FilesPicker.kt` 主面板 Column 加 `verticalScroll`（本仓面板结构已分叉但同款挤压路径）；与 10-26 #2258「不适用」判定不冲突：那条指压缩入口布局不同，此条是面板本体滚动 |
 | `a5db9c9b7` | feat(search): Tinyfish 可选 purpose 参数（#2261） | **吸收候选 P2**——本仓 `TinyfishSearchService.kt` 无 purpose，16 行直套（schema 字段 + URL 参数拼接） |
 
 **分支 `feat/background-shell`（未合入 master，记账观察）**：
