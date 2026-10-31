@@ -1,6 +1,6 @@
 # 同类应用借鉴评估（索引 + 汇总）
 
-> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.13`（315）（预发布）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产，CI 自动发版仍禁用）。
+> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.14`（316）（预发布）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产；tag 触发的 CI 发版流水线自 `beta.14` 起启用）。
 
 > 生成时间：2026-08-28（Yuihub 记忆机制评估 2026-09-14 补，见 [`yuihub.md`](references/other%20projects/yuihub.md)）
 > **2026-10-30 按应用拆分**：正文（每个应用的评估原文）迁至 [`docs/references/other projects/`](references/other%20projects/)，本页只保留**索引、跨应用章节与汇总分析**。拆分只重排位置，正文逐字保留（仅 4 处链接按新位置修正了相对路径）；每个应用文件头部标注了它对应原 §几。
@@ -22,7 +22,7 @@
 |---|---|---|---|---|---|---|
 | 1 | rikkahub-agent | 同源 Kotlin，Agent 化改造成 80+ 设备工具 / 工作流 / Cron / 子 Agent | 源码 | 2026-08-28 | **摘取成本最低**；ContextBudgetPlanner / LoopGuard / AgentRun 账本 / 工具审批模型已陆续落地 | [rikkahub-agent.md](references/other%20projects/rikkahub-agent.md) |
 | 2 | SoLab | Kelivo 二次开发，APK 逆向工作台（Flutter + Kotlin） | 源码 | 2026-08-28 / 08-31 | 逆向域无关；**客户端工程件**可取（工具 schema 三档、结果外置、previewToken 审批、保活四件套）；MCP host 未立项 | [solab.md](references/other%20projects/solab.md) |
-| 3 | Yuihub | RikkaHub fork，仅 en/zh | 源码 | 2026-09-14 → 10-26（四批） | 记忆/备份/压缩三域**落地最多**：评分预算、提取整理器、工具循环上下文闸、备份 manifest + staged restore | [yuihub.md](references/other%20projects/yuihub.md) |
+| 3 | Yuihub | RikkaHub fork，仅 en/zh | 源码 | 2026-09-14 → 10-26（四批） | 记忆/备份/压缩三域**落地最多**：评分预算、提取整理器、工具循环上下文闸、备份 manifest + staged restore；2026-10-31 另**逐文件移植**其工作区镜像站两件套（§三 #18） | [yuihub.md](references/other%20projects/yuihub.md) |
 | 4 | SillyTavern | 同域竞品，注入 / 预设 / 世界书 | 源码 | 2026-09-16 → 09-21 | 用户判断「后期堆面板」正确；**只借不是面板的那部分**（世界书激活质量 + 预设槽位序），已落地 6.8 / 6.11 / 6.12 多批 | [sillytavern.md](references/other%20projects/sillytavern.md) |
 | 5 | senera | 宿主型 TS Agent 工作台，命题是「执行可审计」 | 远端 | 2026-10-02 / 10-26 | 动态工具检索 / 元工具桥的成熟参考；**schema 三档缩水版已落地** | [senera.md](references/other%20projects/senera.md) |
 | 6 | 华灯（rikkahub-sillytavern-android） | 另一条 RikkaHub × ST 融合路线 | 源码 | 2026-10-05 / 10-14 | 价值在**待办命中**与提示词调试面（`PromptDebugCache` 借自它） | [huadeng.md](references/other%20projects/huadeng.md) |
@@ -80,6 +80,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 | 15 | Yuihub 3.0.0 | ~~（可选-高价值）**B 档 staged 换库 + 启动应用 + 失败回滚**~~ ✅ **已落地（2026-10-26，阶段 1+2：`ab0c16803`+`586955c20`，设计稿 `design-backup-staged-restore.md`）**：PendingRestoreStore 状态机（现库 rename 让位零拷贝，13 项 JVM 测试）+ 启动期换库（startKoin 推迟/StartupState/RouteActivity 全屏 gate/引擎 stage-only）；真机回归修三件（Stream Closed、gate/SafeMode 提前解析 Koin、重复退出提示）；**阶段 3 真机验收待做**（§9） | ~~2-3 天~~ 代码完成 |
 | 16 | Yuihub 3.0.0 | 可选小件（记账不排期）：history_search/read、memory keywords、写入 Jaccard 去重、Skills 内联上限、增量 emit、整理事件流水、query≤128 校验、backup_rules 钉白名单 | 按需 |
 | 17 | NMoi-Agent | 小件打包（近期可做）：**备份快照发布前自校验**（VACUUM 快照上跑 integrity_check，通过才进 zip）+ **内容级脱敏**（工具输出进历史时 6 类正则，见 [`nmoi-agent.md` §13.1](references/other%20projects/nmoi-agent.md)） | 各 ~0.5 天 |
+| 18 | Yuihub 2.5.8+ | **工作区镜像站两件套**（rootfs 下载测速 + 包管理器一键换源）：`HttpProbe` / `AptSources` / `PackageMirrors` / `RootfsCatalog` / `RootfsMirrorSelector` **逐文件移植**（仅包名与标记文件名改名）；DB 57 `package_mirrors` + Repository 锁重试 / SSH 拒绝 + 三语 UI + 提示词注入为本仓接驳。✅ **已落地（2026-10-31，`9ec9ec79`）**，台账见 [`yuihub.md` §四.9](references/other%20projects/yuihub.md) | ~~低~~ 完成 |
 
 **记忆机制结论（Yuihub，详见 [`yuihub.md`](references/other%20projects/yuihub.md)）**：值得借鉴的是**检索与写入的组织方式**（打分校准 / 提取管道 / 整理器），**不是语义向量**——Yuihub 上线语义检索后第二天整套删除（`a8c33b2d` → `fbd15331`），构成「记忆语义检索不做」的独立二次印证（与 `design-auto-compaction.md` §6.3 成本结论一致）。
 

@@ -155,7 +155,7 @@
 | 项目 | 来源 | 借鉴了什么 |
 |---|---|---|
 | **RikkaHub** | [rikkahub/rikkahub](https://github.com/rikkahub/rikkahub) | 本仓的上游基线；上游修复与功能按需**人工逐条评估后选择性吸收**（不做 ff-only 同步，改动不回推上游） |
-| **Yuihub** | [xiaoyuili/Yuihub](https://github.com/xiaoyuili/Yuihub) | 借鉴最多的一家：记忆打分校准 + 字符预算、被动提取管道的组织方式、整理器（先落库再删源 / 幂等）、工具结果投影无损回环校验。**其「记忆语义检索上线一天即整套删除」也被本仓引为「不做语义检索」的独立佐证** |
+| **Yuihub** | [xiaoyuili/Yuihub](https://github.com/xiaoyuili/Yuihub) | 借鉴最多的一家：记忆打分校准 + 字符预算、被动提取管道的组织方式、整理器（先落库再删源 / 幂等）、工具结果投影无损回环校验。**其「记忆语义检索上线一天即整套删除」也被本仓引为「不做语义检索」的独立佐证**。另有一处**逐文件移植**（2026-10-31）：工作区镜像站两件套——rootfs 下载测速 + 包管理器一键换源（`PackageMirrors.kt` 系，仅改包名、品牌串与标记文件名；DB/Repository/UI/提示词接线为本仓适配），见 [`docs/references/other projects/yuihub.md`](docs/references/other%20projects/yuihub.md) §四.9 |
 | **SillyTavern** | [SillyTavern/SillyTavern](https://github.com/SillyTavern/SillyTavern) | 世界书/提示词注入与预设体系（Tier A/B 系列落地）、ST 宏运行时移植；其余按需 |
 | **bigeye**（Aria-EQ） | [suanrongqieqiezi/bigeye](https://github.com/suanrongqieqiezi/bigeye) | **记忆分层注入的原型**：`_anchors` 的「身份锚点、极小配额、恒在场」是 **L1 的原型**，`recall()` 的五因子工作集（relevance 作乘数）是 **L2 的由来**——本仓把「天生恒在场 / 天生每轮变」这套分层**显式映射到注入位置**；`recall_guaranteed` 的**确定性通道 + 禁 AI 自填**被照抄为锚点的入选与提拔纪律（`MemoryRepository` / `MemoryEntity` 内注明了出处行号）；免衰减免淘汰对应其 `IMPORTANCE_PIN_THRESHOLD`。**反面教训**：其 `MAX_OBS_PER_PAGE` 配置项零引用、与注释矛盾，被本仓引为「配置项必须有测试钉住」的对照。另有一条**已落地**（2026-10-16）：其「探索/落地二分」的循环守卫 —— 补的正是本仓 `ToolCallLoopGuard` 抓不到的那个维度（「重复 ≠ 无进展」）。落成「规则提醒」：三条规则（打转自查 / 缺计划催规划 / 预算 ≥80% 催收尾）在**对话尾部**注入提醒（默认开、三档可配、不落库）。设计与取舍见 [`docs/design/completed/design-rule-engine.md`](docs/design/completed/design-rule-engine.md) |
 | **华灯**（rikkahub-sillytavern-android） | [MiaoWuNYA/rikkahub-sillytavern-android](https://github.com/MiaoWuNYA/rikkahub-sillytavern-android) | 工具输出「投影无损回环校验」原则、R8 序列化 keep 纪律等（另有一项 Jev 契约仍待评估） |
@@ -178,7 +178,7 @@
 > **备注**：`SoLab` 的源码在 **MT 论坛**开源（上表已给帖链接），**没有 GitHub 仓库**，故不伪造 GitHub 链接。
 > 若作者愿意提供正式仓库地址，欢迎提 issue 或 PR 补上。
 >
-> 以上项目各有其许可与版权；本仓仅在**思路与实现参考**层面借鉴并自行重写，未直接复制其代码；对上游 RikkaHub 则保留原
+> 以上项目各有其许可与版权；除 **Yuihub 的工作区镜像站两件套为逐文件移植**（同为 AGPL-3.0，出处与提交已注明）外，本仓仅在**思路与实现参考**层面借鉴并自行重写，未直接复制其代码；对上游 RikkaHub 则保留原
 > `LICENSE` 与出处（见下方 License）。
 
 ## 🧱 原生库

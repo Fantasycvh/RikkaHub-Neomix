@@ -53,7 +53,7 @@
 | [`tikz-rendering-tectonic-postmortem.md`](tikz-rendering-tectonic-postmortem.md) | TikZ 渲染链复盘（native Tectonic + mupdf SVG 桥、字体 bundle）；配套 [`../tools/tex-poc/`](../tools/tex-poc/) |
 | [`references/chat-generation-pipeline.md`](references/chat-generation-pipeline.md) | 上游：对话生成管线说明 |
 | [`references/other projects/`](references/other%20projects/) | 同类应用评估**原文**（按应用一文件）：rikkahub-agent / SoLab / Yuihub / SillyTavern / senera / 华灯 / agentd / bigeye / billion-context / archify / NMoi-Agent；索引入口见 `peer-apps-benchmark.md` |
-| [`releases/`](releases/) | **发布说明存档**（按 tag 存 release 正文原文；`1.0.28-beta.7` 起带 arm64-v8a APK，含 SHA-256 与签名指纹；最新见 [`1.0.28-beta.8.md`](releases/1.0.28-beta.8.md)） |
+| [`releases/`](releases/) | **发布说明存档**（按 tag 存 release 正文原文；`1.0.28-beta.7` 起带 arm64-v8a APK，含 SHA-256 与签名指纹；最新见 [`1.0.28-beta.14.md`](releases/1.0.28-beta.14.md)，索引见 [`releases/README.md`](releases/README.md)） |
 | `icon.png` / `img/` / `sponsors/` / `donate.png` | 上游：README 用图与赞助素材 |
 
 > 内部审计类记录（`turbo-*`）**未随本仓发布**；`roadmap.md` 等文中以「内部记录（未随本仓发布）」指代。

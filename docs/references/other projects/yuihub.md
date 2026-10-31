@@ -1,6 +1,6 @@
 # Yuihub（xiaoyuili/Yuihub）借鉴评估：记忆 / 备份 / 压缩续写
 
-> 评估：**2026-09-14**（记忆机制，原 §四）· **2026-10-02**（2.5.5→2.5.7，原 §4.5）· **2026-10-04**（备份体系，原 §4.6；压缩/半截/续写，原 §4.7）· **2026-10-26**（2.5.8→3.0.0，原 §4.8）。
+> 评估：**2026-09-14**（记忆机制，原 §四）· **2026-10-02**（2.5.5→2.5.7，原 §4.5）· **2026-10-04**（备份体系，原 §4.6；压缩/半截/续写，原 §4.7）· **2026-10-26**（2.5.8→3.0.0，原 §4.8）· **2026-10-31**（工作区镜像站两件套移植，§四.9）。
 > 定位：RikkaHub fork（包名 `me.yui.yuihub`，仅维护 en/zh）；**同源程度最高**，评估深度也最深（多批次增量同步）。本地副本 `<work>\projects\Yuihub\`。
 > 返回 [索引](../../peer-apps-benchmark.md)。
 
@@ -209,3 +209,21 @@ Yuihub 记忆改动是**架构换代**：写入带 keywords/weight(1-4)/kind、d
 
 - **DeepSeek 官方 Search API（`2631f2d3`）——已有等价且更强**：fork `search/.../DeepSeekSearchService.kt:62-63` 早已是官方 Search + **Fetch/scrape**（:160-199）+ 重试（408/429/5xx，:256）+ 402 提示 + 多 key keyRoulette（:290）；Yuihub 新版反而无 scrape 且删了配置项。唯一可选核查项：其 query≤128 前置校验（若官方确有上限可补一行）。
 - **备份页/助手设置页 UI 重做——不适用**：改动绑定其数据层大重构（恢复预览/启动回滚），非纯 UI；`design-ui-yuihub-inspired.md` 清单未列这两页。
+
+## 四.9、工作区镜像站两件套——**已移植**（2026-10-31）
+
+> 来源：Yuihub 2.5.8 线（本仓提交 `9ec9ec79`）。该项落在 2.5.8 之前的 `5ada0f4d`（rootfs 镜像测速安装）/ `6af40c65`（Rootfs UA + 安装失败逐源回退）/ `9309df90`（环境配置页 + 一键配置国内镜像源）三个提交里，§四.5 与 §四.8 两次增量评估均未单列；移植后补记于此，**避免被误记为自研**。
+
+**逐文件对等移植**（仅改包名 `me.rerere.workspace` → `app.androidrik.workspace`、标记文件 `yuihub-mirror` → `rikkahub-mirror`、UA/品牌串改名）：
+
+| 本仓文件（`workspace/.../`） | Yuihub 原文件 | 作用 |
+|---|---|---|
+| `HttpProbe.kt` | `HttpProbe.kt` | 首字节延迟 + 小段 Range 吞吐测速 |
+| `AptSources.kt` | `AptSources.kt` | deb822 / one-line 双格式改写、`.orig` 备份重放防「镜像的镜像」、ubuntu / ubuntu-ports 池按架构区分 |
+| `PackageMirrors.kt` | `PackageMirrors.kt` | apt 8 站 + npm / pip / go 候选与一键配置执行器（写 sources / `.npmrc` / `pip.conf` / `profile.d`） |
+| `RootfsCatalog.kt` | `RootfsCatalog.kt` | rootfs 下载 6 镜像站 + ABI→架构映射 + 下载 UA（默认镜像 24.04.4） |
+| `RootfsMirrorSelector.kt` | `RootfsMirrorSelector.kt` | 并行测速，官方源排首位兜底 |
+
+**本仓适配层（非移植）**：`RootfsPatcher.ensureAptMirror` 装机默认切 TUNA（`AptSources.isExplicit` 短路，不覆盖用户显式选择；本仓的 CA 证书/并发锁是既有改造）；`RootfsInstaller` 补 UA；DB 56→57 `workspaces.package_mirrors`；`WorkspaceRepository.configurePackageMirrors`（写后带 6×2s 锁重试跑 `apt-get update`，失败不回滚只回传状态）/ `clearPackageMirrors`（重装 rootfs 必清摘要）；SSH 工作区一律拒绝；`WorkspaceReminderTransformer` 注入 `<package_mirrors>` 段；详情页「国内镜像源」卡 + 装机对话框测速与逐源回退 + 三语文案。
+
+**许可**：Yuihub 与本仓同为 AGPL-3.0，逐文件移植合规；出处已在 README「借鉴与参考」表与发布说明 `1.0.28-beta.14` 中标注。
