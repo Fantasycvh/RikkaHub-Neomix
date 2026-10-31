@@ -1295,8 +1295,11 @@ enum class ChatFontFamily {
 }
 
 /**
- * 输入框背景效果二选一（对照上游 BackgroundEffectType）：模糊 / 真玻璃（hazeGlass）。
- * 只作用于输入框一处；ChatList 的兄弟层磨砂由 enableGlassTheme 独立控制，不参与二选一。
+ * 玻璃效果方案二选一（对照上游 BackgroundEffectType）：模糊 / 真玻璃（hazeGlass）。
+ * 输入框 / 顶栏 / 聊天列表玻璃层各有独立一份（inputEffectType / topBarEffectType /
+ * listGlassEffectType），各自的开关（enableBlurEffect / enableTopBarBlur /
+ * enableGlassTheme）只管开不开，开什么方案由各自字段决定。
+ * GLASS 依赖 RuntimeShader，<T(33) 或后台 gate 时各消费点自动退回 blur 路线。
  */
 @Serializable
 enum class BackgroundEffectType {
@@ -1369,9 +1372,11 @@ data class DisplaySetting(
     val enableLatexRendering: Boolean = true,
     val enableDiagramRendering: Boolean = true,
     val enableBlurEffect: Boolean = false,
-    val backgroundEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
+    val inputEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
     val enableGlassTheme: Boolean = false,
+    val listGlassEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
     val enableTopBarBlur: Boolean = false,
+    val topBarEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
     val liquidGlassReadabilityMode: LiquidGlassReadabilityMode = LiquidGlassReadabilityMode.AUTO,
     val chatFontFamily: ChatFontFamily = ChatFontFamily.DEFAULT,
     val chatCustomFontPath: String = "",

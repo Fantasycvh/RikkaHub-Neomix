@@ -83,8 +83,7 @@ import androidx.compose.ui.util.fastCoerceAtLeast
 import androidx.compose.ui.zIndex
 import dev.chrisbanes.haze.HazeState
 import app.androidrik.rikkahub.ui.components.haze.hazeSourceCompat
-import app.androidrik.rikkahub.ui.components.haze.liquidGlassBlurStyle
-import app.androidrik.rikkahub.ui.components.haze.recoverableHazeBlur
+import app.androidrik.rikkahub.ui.components.haze.liquidGlassChromeEffect
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -431,7 +430,7 @@ private fun ChatListNormal(
             // 容器不再被顶栏 padding 挡住：列表与玻璃层都延伸到顶栏底下，
             // 滚动时消息从顶栏下穿过被 blur（顶栏消费 hazeState，见 ChatPage.TopBar）
             //
-            // ⚠️ 父子层结构实验（2026-10-31）：blur 挂在**包含 LazyColumn 的容器**上——
+            // ⚠️ 父子层结构实验（2026-10-31）：效果挂在**包含 LazyColumn 的容器**上——
             // 这正是 2.4.10~2.4.12 闪退时代的拓扑（22552aaa6 包固定 Box 仍闪退 /
             // 76910162a 定位「blur 容器不能含可滚动子节点」后改兄弟层）。haze 2.0.1 +
             // 门控层下重试真机是否可行。仍只消费 glassHazeState（背景）——hazeState 里
@@ -440,9 +439,10 @@ private fun ChatListNormal(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
-                        if (settings.displaySetting.enableGlassTheme) Modifier.recoverableHazeBlur(
-                            state = glassHazeState,
-                            style = liquidGlassBlurStyle(settings.displaySetting.liquidGlassReadabilityMode),
+                        if (settings.displaySetting.enableGlassTheme) Modifier.liquidGlassChromeEffect(
+                            hazeState = glassHazeState,
+                            effectType = settings.displaySetting.listGlassEffectType,
+                            readabilityMode = settings.displaySetting.liquidGlassReadabilityMode,
                         ) else Modifier
                     ),
             ) {

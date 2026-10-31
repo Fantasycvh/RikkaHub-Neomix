@@ -182,26 +182,13 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         },
                     )
-                    // 背景效果二选一（对照上游 BackgroundEffectType）：仅开关打开时露出
+                    // 输入栏的方案二选一（模糊/液态玻璃），开关打开时露出
                     if (displaySetting.enableBlurEffect) {
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(stringResource(R.string.setting_display_page_background_effect_type))
-                                SegmentedPill(
-                                    options = BackgroundEffectType.entries,
-                                    selectedOption = displaySetting.backgroundEffectType,
-                                    onOptionSelected = {
-                                        updateDisplaySetting(displaySetting.copy(backgroundEffectType = it))
-                                    },
-                                    optionToString = { type ->
-                                        when (type) {
-                                            BackgroundEffectType.BLUR -> stringResource(R.string.setting_display_page_background_effect_blur)
-                                            BackgroundEffectType.GLASS -> stringResource(R.string.setting_display_page_background_effect_glass)
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
+                            EffectTypePill(
+                                selected = displaySetting.inputEffectType,
+                                onSelect = { updateDisplaySetting(displaySetting.copy(inputEffectType = it)) },
+                            )
                         }
                     }
                     item(
@@ -216,6 +203,15 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         },
                     )
+                    // 列表玻璃层的方案二选一，开关打开时露出
+                    if (displaySetting.enableGlassTheme) {
+                        item {
+                            EffectTypePill(
+                                selected = displaySetting.listGlassEffectType,
+                                onSelect = { updateDisplaySetting(displaySetting.copy(listGlassEffectType = it)) },
+                            )
+                        }
+                    }
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_enable_top_bar_blur_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_enable_top_bar_blur_desc)) },
@@ -228,6 +224,15 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         },
                     )
+                    // 顶栏的方案二选一，开关打开时露出
+                    if (displaySetting.enableTopBarBlur) {
+                        item {
+                            EffectTypePill(
+                                selected = displaySetting.topBarEffectType,
+                                onSelect = { updateDisplaySetting(displaySetting.copy(topBarEffectType = it)) },
+                            )
+                        }
+                    }
                     // 玻璃上文字可读性（对照 BiliPai LiquidGlassReadabilityMode）：任一效果开启时露出
                     if (displaySetting.enableBlurEffect || displaySetting.enableGlassTheme || displaySetting.enableTopBarBlur) {
                         item {
@@ -813,3 +818,23 @@ private fun KeepAliveSettingGroup() {
     }
 }
 
+
+/** 单处消费点（输入栏 / 顶栏 / 列表玻璃层）的方案二选一：模糊 / 液态玻璃。 */
+@Composable
+private fun EffectTypePill(selected: BackgroundEffectType, onSelect: (BackgroundEffectType) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.setting_display_page_background_effect_type))
+        SegmentedPill(
+            options = BackgroundEffectType.entries,
+            selectedOption = selected,
+            onOptionSelected = onSelect,
+            optionToString = { type ->
+                when (type) {
+                    BackgroundEffectType.BLUR -> stringResource(R.string.setting_display_page_background_effect_blur)
+                    BackgroundEffectType.GLASS -> stringResource(R.string.setting_display_page_background_effect_glass)
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}

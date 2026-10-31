@@ -73,9 +73,8 @@ import app.androidrik.rikkahub.data.model.followingMessages
 import app.androidrik.rikkahub.service.ChatService
 import dev.chrisbanes.haze.HazeState
 import app.androidrik.rikkahub.ui.components.haze.hazeSourceCompat
-import app.androidrik.rikkahub.ui.components.haze.liquidGlassBlurStyle
+import app.androidrik.rikkahub.ui.components.haze.liquidGlassChromeEffect
 import app.androidrik.rikkahub.ui.components.haze.rememberRecoverableHazeState
-import app.androidrik.rikkahub.ui.components.haze.recoverableHazeBlur
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1171,12 +1170,14 @@ private fun TopBar(
 
     TopAppBar(
         modifier = Modifier.then(
-            // 与输入栏同款机制：消费 hazeState（背景 + 穿底内容）——列表经 contentPadding
-            // 从顶栏底下穿过，穿过的部分被实时模糊（上游截图同款效果）。
-            // 顶栏是悬浮层，采样聊天内容不踩兄弟层的「blur 容器含可滚动子节点」坑。
-            if (settings.displaySetting.enableTopBarBlur) Modifier.recoverableHazeBlur(
-                state = hazeState,
-                style = liquidGlassBlurStyle(settings.displaySetting.liquidGlassReadabilityMode),
+            // 与输入栏同款机制（BackgroundEffectType BLUR/GLASS 二选一）：消费 hazeState
+            // （背景 + 穿底内容）——列表经 contentPadding 从顶栏底下穿过，穿过的部分被
+            // 实时模糊/玻璃化（上游截图同款效果）。顶栏是悬浮层，采样聊天内容不踩
+            // 「blur 容器含可滚动子节点」坑。
+            if (settings.displaySetting.enableTopBarBlur) Modifier.liquidGlassChromeEffect(
+                hazeState = hazeState,
+                effectType = settings.displaySetting.topBarEffectType,
+                readabilityMode = settings.displaySetting.liquidGlassReadabilityMode,
             ) else Modifier
         ),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
