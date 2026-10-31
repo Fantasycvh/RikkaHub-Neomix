@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.CheckList
 import me.rerere.hugeicons.stroke.Setting07
-import me.rerere.hugeicons.stroke.Time02
 import app.androidrik.rikkahub.R
 
 @Composable
@@ -184,32 +183,5 @@ fun ConversationGoalButton(
                 }
             }
         }
-    }
-}
-
-/**
- * 「为此会话创建定时任务」入口（定时任务 P2，设计稿 §七）。跳到整页创建表单，
- * 目标已由本会话预选（Screen.SettingScheduledTaskCreate(conversationId)）。
- * 与目标/系统提示按钮同排同形态；图标与设置页「定时任务」入口同款（Time02）。
- */
-@Composable
-fun CreateScheduledTaskButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    TextButton(
-        onClick = onClick,
-        modifier = modifier,
-    ) {
-        Icon(
-            imageVector = HugeIcons.Time02,
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
-        )
-        Spacer(Modifier.size(4.dp))
-        Text(
-            text = stringResource(R.string.scheduled_task_create_for_conversation),
-            style = MaterialTheme.typography.labelSmall,
-        )
     }
 }

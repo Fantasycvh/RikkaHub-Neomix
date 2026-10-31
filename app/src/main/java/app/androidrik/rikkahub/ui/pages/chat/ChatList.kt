@@ -178,8 +178,6 @@ fun ChatList(
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     /** 会话长期目标（Conversation.goal）编辑回调；null = 不显示入口 */
     onConversationGoalChange: ((String?) -> Unit)? = null,
-    /** 「为此会话创建定时任务」入口；null = 不显示 */
-    onCreateScheduledTask: (() -> Unit)? = null,
 ) {
     // 「点击消息里的图片 ⇒ 全屏后在**本会话**的图片间左右切换」：
     // 候选集合在这里算一份（当前分支的顶层 Image part），经 CompositionLocal 下发给
@@ -248,7 +246,6 @@ fun ChatList(
                     onToggleFavorite = onToggleFavorite,
                     onConversationSystemPromptChange = onConversationSystemPromptChange,
                     onConversationGoalChange = onConversationGoalChange,
-                    onCreateScheduledTask = onCreateScheduledTask,
                 )
             }
         }
@@ -292,8 +289,6 @@ private fun ChatListNormal(
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     /** 会话长期目标（Conversation.goal）编辑回调；null = 不显示入口 */
     onConversationGoalChange: ((String?) -> Unit)? = null,
-    /** 「为此会话创建定时任务」入口；null = 不显示 */
-    onCreateScheduledTask: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val loadingState by rememberUpdatedState(loading)
@@ -585,13 +580,6 @@ private fun ChatListNormal(
                     )
                 }
             }
-            // 为本会话创建定时任务：跳创建页，目标已预选
-            if (!loading && onCreateScheduledTask != null) {
-                item(key = "CreateScheduledTask") {
-                    CreateScheduledTaskButton(onClick = onCreateScheduledTask)
-                }
-            }
-
             if (loading) {
                 item(LoadingIndicatorKey) {
                     Row(

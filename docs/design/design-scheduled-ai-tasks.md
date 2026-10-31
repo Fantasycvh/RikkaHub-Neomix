@@ -71,9 +71,11 @@
 {prompt}`（`buildTaskPrompt`
 > 纯函数 + 三用例）：开关没开、goal 为 null/空白一律原样注入。表单开关**仅目标会话 goal 非空时
 > 显示**（隐藏时不动 state——详情页里用户开过开关、后来清了目标，保存保留原值而非静默改写；
-> 执行层对 goal 为空本就按普通 prompt 走，挂着无害）。会话内两个入口挂在消息列表尾部
-> 会话级卡片区（与系统提示按钮同形态）：`ConversationGoalButton`（就地展开长文本编辑）+
-> 「为此会话创建定时任务」（`Screen.SettingScheduledTaskCreate(conversationId)` 带参预选目标；
+> 执行层对 goal 为空本就按普通 prompt 走，挂着无害）。会话内两个入口：**目标编辑**挂在消息列表尾部
+> 会话级卡片区（与系统提示按钮同形态，`ConversationGoalButton` 就地展开长文本编辑）；
+> **创建定时任务**入口挂在「+」面板（与压缩/提示词预览同列的 ListItem——它和那些一样是
+> 「对这条会话发起的动作」，不是聊天内容；跳转前照旧 force 落库，
+> `Screen.SettingScheduledTaskCreate(conversationId)` 带参预选目标；
 > prompt 刻意**不**预填模板文本——替用户写一句模板反而要再删，预选目标 + goal 开关自动出现
 > 就是入口的全部便利）。
 >

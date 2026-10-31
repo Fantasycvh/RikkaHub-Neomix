@@ -66,6 +66,7 @@ import me.rerere.hugeicons.stroke.Package01
 import me.rerere.hugeicons.stroke.PaintBoard
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings02
+import me.rerere.hugeicons.stroke.Time02
 import me.rerere.hugeicons.stroke.Video01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
@@ -111,6 +112,8 @@ internal fun FilesPicker(
     onPickVideo: () -> Unit,
     onPickAudio: () -> Unit,
     onPickFile: () -> Unit,
+    /** 「为此会话创建定时任务」：由 ChatPage 提供（跳转前要先同步落库，见 ChatVM.saveConversationNow） */
+    onCreateScheduledTask: () -> Unit = {},
 ) {
     val settings = LocalSettings.current
     val provider = settings.getCurrentChatModel()?.findProvider(providers = settings.providers)
@@ -295,6 +298,29 @@ internal fun FilesPicker(
                 .clickable {
                     navController.navigate(Screen.PromptInspect(conversation.id.toString()))
                     onDismiss()
+                },
+        )
+
+        // 为本会话创建定时任务（定时任务 P2）：入口从消息列表挪进「+」面板——它和
+        // 压缩/提示词预览一样是「对这条会话发起的动作」，不是聊天内容的一部分
+        ListItem(
+            leadingContent = {
+                Icon(
+                    imageVector = HugeIcons.Time02,
+                    contentDescription = stringResource(R.string.scheduled_task_create_for_conversation),
+                )
+            },
+            headlineContent = {
+                Text(stringResource(R.string.scheduled_task_create_for_conversation))
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            modifier = Modifier
+                .clip(MaterialTheme.shapes.large)
+                .clickable {
+                    onDismiss()
+                    onCreateScheduledTask()
                 },
         )
 

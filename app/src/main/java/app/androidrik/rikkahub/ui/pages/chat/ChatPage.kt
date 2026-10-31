@@ -739,15 +739,6 @@ private fun ChatPageContent(
                     // 强制落库：新聊天上写目标必须真实持久化，创建页的 withGoal 开关按 DB 的 goal 判断
                     vm.updateConversationGoal(newGoal)
                 },
-                onCreateScheduledTask = {
-                    // 新聊天还没落库：先保存再跳，否则创建页按 id 查不到会话、目标预选落空
-                    scope.launch {
-                        vm.saveConversationNow()
-                        navController.navigate(
-                            Screen.SettingScheduledTaskCreate(conversationId = conversation.id.toString())
-                        )
-                    }
-                },
             )
         }
 
@@ -793,6 +784,15 @@ private fun ChatPageContent(
                 vm = vm,
                 onRequestCompress = { showCompressDialog = true },
                 onDismiss = { showFilesSheet = false },
+                onCreateScheduledTask = {
+                    // 新聊天还没落库：先保存再跳，否则创建页按 id 查不到会话、目标预选落空
+                    scope.launch {
+                        vm.saveConversationNow()
+                        navController.navigate(
+                            Screen.SettingScheduledTaskCreate(conversationId = conversation.id.toString())
+                        )
+                    }
+                },
             )
         }
 
@@ -935,6 +935,8 @@ private fun ChatFilesPickerSheet(
     vm: ChatVM,
     onRequestCompress: () -> Unit,
     onDismiss: () -> Unit,
+    /** 「为此会话创建定时任务」（+ 面板入口）：跳转前先同步落库（新聊天目标预选依赖 DB 行） */
+    onCreateScheduledTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -1098,6 +1100,7 @@ private fun ChatFilesPickerSheet(
             onPickVideo = { videoPickerLauncher.launch("video/*") },
             onPickAudio = { audioPickerLauncher.launch("audio/*") },
             onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
+            onCreateScheduledTask = onCreateScheduledTask,
         )
     }
 }
