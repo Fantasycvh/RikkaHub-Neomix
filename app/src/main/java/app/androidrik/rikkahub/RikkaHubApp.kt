@@ -44,6 +44,7 @@ import app.androidrik.rikkahub.di.viewModelModule
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.AvatarMigration
+import app.androidrik.rikkahub.data.files.BackgroundsMigration
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.storage.StorageCategoryId
 import app.androidrik.rikkahub.data.storage.StorageUsageManager
@@ -310,6 +311,9 @@ class RikkaHubApp : Application() {
         // 必须早于用户去点「文件管理」清理聊天文件，否则那些头像仍会被删掉。
         migrateLegacyAvatars()
 
+        // 同款坑的背景图版：老版本的助手背景也在 upload/，搬进 backgrounds/（2026-10-31）。
+        migrateLegacyBackgrounds()
+
         // Extract builtin skills from assets after install/update (上游 3b346748)
         extractBuiltinSkills()
 
@@ -490,6 +494,21 @@ class RikkaHubApp : Application() {
                 )
             }.onFailure {
                 Log.e(TAG, "migrateLegacyAvatars failed", it)
+            }
+        }
+    }
+
+    /** 把老版本遗留在 `upload/` 的助手背景搬进 `backgrounds/`（#2127 同款坑，2026-10-31）。 */
+    private fun migrateLegacyBackgrounds() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                BackgroundsMigration.migrate(
+                    context = this@RikkaHubApp,
+                    repository = get(),
+                    settingsStore = get(),
+                )
+            }.onFailure {
+                Log.e(TAG, "migrateLegacyBackgrounds failed", it)
             }
         }
     }

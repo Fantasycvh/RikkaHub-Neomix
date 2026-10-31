@@ -20,6 +20,7 @@ class BackupCoverageTest {
             FileFolders.UPLOAD,
             FileFolders.IMAGES,
             FileFolders.AVATARS,
+            FileFolders.BACKGROUNDS,
             FileFolders.SKILLS,
             FileFolders.BUILTIN_SKILLS,
             FileFolders.FONTS,

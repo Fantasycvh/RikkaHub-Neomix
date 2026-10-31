@@ -240,6 +240,48 @@ class FilesManager(
         }.getOrNull()
     }
 
+    /**
+     * 保存一张**助手背景**图片，落 [FileFolders.BACKGROUNDS]。
+     *
+     * 与 [createAvatarImage] 同款问题（2026-10-31）：背景图此前经
+     * [createChatFilesByContents] 落进 `upload/`，「设置 → 文件管理」清理聊天文件
+     * 会把**正在使用的助手背景**一并删掉。与头像一样单独成方法而非加参数——
+     * 背景图是持久配置，生命周期语义与聊天附件不同。
+     *
+     * @return 落盘后的 `file://` Uri；失败返回 null（调用方保持原背景不变）。
+     */
+    fun createBackgroundImage(uri: Uri): Uri? {
+        val dir = context.filesDir.resolve(FileFolders.BACKGROUNDS)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return runCatching {
+            val sourceName = getFileNameFromUri(uri) ?: uri.lastPathSegment ?: "background"
+            val sourceMime = getFileMimeType(uri)
+            val fileName = buildUuidFileName(displayName = sourceName, mimeType = sourceMime)
+            val file = dir.resolve(fileName)
+            val inputStream = context.contentResolver.openInputStream(uri)
+                ?: error("Failed to open input stream for $uri")
+            // 原子写入：拷贝失败不留 0 字节/半截文件；失败时返回 null，调用方保持原背景
+            if (!inputStream.use { writeStreamAtomically(file, it) }) {
+                error("Failed to save background from $uri")
+            }
+            trackManagedFile(
+                folder = FileFolders.BACKGROUNDS,
+                file = file,
+                displayName = sourceName,
+                mimeType = sourceMime ?: guessMimeType(file, sourceName),
+            )
+            file.toUri()
+        }.onFailure {
+            Log.e(TAG, "createBackgroundImage: Failed to save background from $uri", it)
+            Logging.log(
+                TAG,
+                "createBackgroundImage: Failed to save background from $uri ${it.message} | ${it.stackTraceToString()}",
+            )
+        }.getOrNull()
+    }
+
     fun createChatFilesByContents(uris: List<Uri>): List<Uri> {
         val newUris = mutableListOf<Uri>()
         val dir = context.filesDir.resolve(FileFolders.UPLOAD)
@@ -821,6 +863,19 @@ object FileFolders {
      * `AvatarMigration` 在启动时搬进本目录并改写引用（搬不动的留在原处并打日志）。
      */
     const val AVATARS = "avatars"
+
+    /**
+     * 用户配置的**助手聊天背景**图。
+     *
+     * **为什么单独一个目录**（2026-10-31）：与头像（[AVATARS] / #2127）同一类坑——
+     * 背景图此前经 [FilesManager.createChatFilesByContents] 落进 [UPLOAD]，
+     * 「设置 → 文件管理」清理聊天文件会把**正在使用的助手背景**当历史文件一并删掉。
+     * 持久配置与可清历史分开后，「清理聊天文件」在语义上不可能碰到背景。
+     *
+     * **存量兼容**：老版本的背景文件仍在 `upload/` 下、引用也指向那里，由
+     * `BackgroundsMigration` 在启动时搬进本目录并改写引用（搬不动的留在原处并打日志）。
+     */
+    const val BACKGROUNDS = "backgrounds"
 
     /**
      * 媒体创作（图片/视频生成）的文件区：`media_creation/<sessionId>/…`。

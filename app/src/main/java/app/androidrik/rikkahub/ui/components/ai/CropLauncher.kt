@@ -66,12 +66,14 @@ internal object CropOutput {
  * 因此调用方不必再先把 HEIF 转成 JPEG）。
  *
  * @param aspectRatio 固定的宽高比（宽 / 高），为空时可以自由裁剪
+ * @param maxResultSize 裁剪结果的长边上限（像素），透传给 [ImageCropDialog]
  */
 @Composable
 internal fun useCropLauncher(
     onCroppedImageReady: (Uri) -> Unit,
     onCleanup: (() -> Unit)? = null,
     aspectRatio: Float? = null,
+    maxResultSize: Int = 4096,
 ): (Uri) -> Unit {
     val context = LocalContext.current
     val toaster = LocalToaster.current
@@ -89,6 +91,7 @@ internal fun useCropLauncher(
         ImageCropDialog(
             image = uri,
             aspectRatio = aspectRatio,
+            maxResultSize = maxResultSize,
             onDismiss = ::finish,
             onConfirm = { bitmap ->
                 if (saving) return@ImageCropDialog

@@ -23,11 +23,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import org.koin.compose.koinInject
 
@@ -43,17 +45,33 @@ fun BackgroundPicker(
     var showUrlInput by remember { mutableStateOf(false) }
     var urlInput by remember { mutableStateOf("") }
 
+    // 背景裁剪按**设备屏幕比例**锁框：裁出来的就是全屏会显示的部分（ContentScale.Crop 下
+    // 其余像素本来就被裁掉）；长边上限 = 屏幕长边，4K 原图由此降采样成 1:1 像素的 JPEG，
+    // 避免每帧解码一张远超屏幕分辨率的位图
+    val metrics = LocalContext.current.resources.displayMetrics
+    val screenRatio = metrics.widthPixels.toFloat() / metrics.heightPixels
+    val screenLongEdge = maxOf(metrics.widthPixels, metrics.heightPixels)
+    val launchBackgroundCrop = useCropLauncher(
+        onCroppedImageReady = { croppedUri ->
+            // 背景图与头像一样是**持久配置**，落 backgrounds/ 专用目录而非 upload/——
+            // 否则「设置 → 文件管理」清理聊天文件会把正在使用的背景一并删掉（#2127 同款坑）。
+            // 失败时保持原背景不变（与头像静默行为一致）。
+            val localUri = filesManager.createBackgroundImage(croppedUri)
+            if (localUri != null) {
+                onUpdate(localUri.toString())
+            }
+        },
+        aspectRatio = screenRatio,
+        maxResultSize = screenLongEdge,
+    )
+
     // GetContent 而非 PickVisualMedia：保留文件浏览入口（同 UIAvatar 的说明——
     // 系统 Photo Picker 无目录浏览、照片多时翻找慢；上游 4b36640a 亦已 revert 回此形态）
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            val localUris = filesManager.createChatFilesByContents(listOf(it))
-            localUris.firstOrNull()?.let { localUri ->
-                onUpdate(localUri.toString())
-            }
-        }
+        // 与头像同款归一化：先进程内裁剪（HEIF/EXIF 原生支持），再落盘
+        uri?.let(launchBackgroundCrop)
     }
 
     val previewOpacity = backgroundOpacity.coerceIn(0f, 1f)

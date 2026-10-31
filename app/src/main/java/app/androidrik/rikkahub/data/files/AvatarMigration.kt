@@ -85,7 +85,7 @@ object AvatarMigration {
      * 这类 bug 最坏的地方。故：**判据与改写一律在 URL 字符串上做**（见 [planAvatarMigration]），
      * 本函数只负责「URL → File」这一步转换。
      */
-    private fun fileUrlToFile(url: String): File? {
+    internal fun fileUrlToFile(url: String): File? {
         if (!url.startsWith("file:")) return null
         return runCatching {
             // URI 解出的是带正斜杠的绝对路径；File 只是把它交给文件系统（各平台自会归一）
@@ -220,7 +220,7 @@ object AvatarMigration {
      * 拿不到 `File.name`，但仍需要拼出 `upload/<name>` 这个**相对路径**去删记录。
      * 一律在 URL 字符串上切（正斜杠），不经过 `File`（Windows 上是反斜杠，见上方注释）。
      */
-    private fun uriLastSegment(url: String): String =
+    internal fun uriLastSegment(url: String): String =
         url.substringAfterLast('/').substringBefore('?').substringBefore('#')
 
     /**
@@ -228,8 +228,10 @@ object AvatarMigration {
      *
      * 用 `contains` 而非 `==` 是沿用本仓既有判据（见 `getFileNameFromUri` 一类 helper），
      * 以兼容 `/data/user/0/...` 与 `/data/data/...` 这类同义前缀差异。
+     *
+     * internal：`BackgroundsMigration`（#2127 同款坑的背景图版）复用同一套判据。
      */
-    private fun resolveInFilesDir(filesDir: File, url: String): File? {
+    internal fun resolveInFilesDir(filesDir: File, url: String): File? {
         val file = fileUrlToFile(url) ?: return null
         // 越界保护：只动 filesDir 内的文件（与 FilesManager 既有判据同款，用 contains 兼容
         // /data/user/0/... 与 /data/data/... 这类同义前缀）
