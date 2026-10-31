@@ -153,17 +153,26 @@ jobs:
         run: |
           set -euo pipefail
           apk=$(find app/build/outputs/apk/release -name '*arm64-v8a-release.apk' | head -1)
+          # R8 混淆映射随包发布，便于还原 crash 堆栈。原文件 ~200MB（158 万行，全量
+          # keep 场景），gzip -9 后 ~14MB 才适合当资产；排查时先 gunzip 再喂 retrace
+          mapping=app/build/outputs/mapping/release/mapping.txt
+          [ -s "$mapping" ] || { echo "::error::mapping.txt 不存在（R8 没跑？）" >&2; exit 1; }
+          gzip -9 -c "$mapping" > mapping.txt.gz
           gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
           git push origin ":refs/tags/nightly" 2>/dev/null || true
           {
             echo "自动每日构建（commit \`${GITHUB_SHA}\`）"
             echo ""
             echo "> ⚠️ 开发版本，可能不稳定，仅供测试。"
+            echo ""
+            echo "> 🧩 附 \`mapping.txt.gz\`（R8 混淆映射，对应本 commit 的 APK）：还原堆栈时"
+            echo "> 先 \`gunzip mapping.txt.gz\`，再用 retrace 或 Android Studio 的"
+            echo "> Analyze Stack Trace 指定它。"
           } > /tmp/nightly-notes.md
           gh release create nightly \
             --prerelease \
             --title "Nightly Build" \
             --notes-file /tmp/nightly-notes.md \
             --target "$GITHUB_SHA" \
-            "$apk"
+            "$apk" mapping.txt.gz
           echo "nightly 已重建于 $(git rev-parse --short HEAD)"
