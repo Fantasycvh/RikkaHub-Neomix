@@ -9,6 +9,7 @@ import app.androidrik.rikkahub.ui.pages.backup.specOf
 import app.androidrik.rikkahub.ui.pages.backup.components.ConversationImportConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.DuplicateImportRecord
 import app.androidrik.rikkahub.ui.pages.backup.components.ImportTargetAssistantDialog
+import app.androidrik.rikkahub.ui.pages.backup.components.DowngradeQuarantineSection
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupProgressRow
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupRestorePreviewDialog
@@ -350,6 +351,11 @@ fun ImportExportTab(
                         )
                     }
             }
+        }
+
+        // 降级数据恢复常驻入口（design-db-downgrade-rebuild.md §5.3，拍板：双入口）
+        item {
+            DowngradeQuarantineSection()
         }
     }
 

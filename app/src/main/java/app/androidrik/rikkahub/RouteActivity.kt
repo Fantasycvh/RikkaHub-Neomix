@@ -28,10 +28,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -41,7 +43,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -72,6 +77,9 @@ import coil3.request.crossfade
 import coil3.svg.SvgDecoder
 import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.data.datastore.SettingsStore
@@ -240,6 +248,8 @@ open class RouteActivity : ComponentActivity() {
                 // 闸门放根 UI 外层，用户离开备份页也无法绕过。
                 StartupState.Ready -> RikkahubTheme {
                     RestoreRestartGate { AppStartupGateContent() }
+                    // 降级告知 / 恢复提示（design-db-downgrade-rebuild.md §4.5/§5）
+                    DowngradeDialogs(startupApp)
                 }
                 StartupState.Restoring -> StartupBlockingScreen()
                 is StartupState.Failed -> StartupFailedScreen(state) { startupApp.retryPendingRestore() }
@@ -289,6 +299,70 @@ open class RouteActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * 降级隔离的两个弹窗（design-db-downgrade-rebuild.md §4.5/§5，2026-10-31 拍板：弹窗需要）：
+     * 1. [RikkaHubApp.DowngradeState.quarantined] 非空 = 本次启动发生了隔离 → 一次性告知（不可点外关闭）；
+     * 2. 否则有可恢复隔离件 → 恢复提示：确认则 stage + 走 RestoreRestartGate 强制重启，
+     *    「不再提示」写 dismissed.marker，备份页常驻入口仍可见（拍板：双入口）。
+     */
+    @Composable
+    private fun DowngradeDialogs(startupApp: RikkaHubApp) {
+        val state by startupApp.downgradeState.collectAsState()
+        val scope = rememberCoroutineScope()
+
+        val quarantined = state.quarantined
+        if (quarantined != null) {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("数据库已重建") },
+                text = {
+                    Text(
+                        "检测到数据库来自更新版本的应用（schema v${quarantined.schemaVersion}），" +
+                            "本版本无法打开。已重建空白数据库，原数据已备份在本地；升级回对应版本后，" +
+                            "可在「设置 → 备份 → 降级数据恢复」中找回。",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { startupApp.acknowledgeDowngradeNotice() }) {
+                        Text("知道了")
+                    }
+                },
+            )
+            return
+        }
+
+        val entry = state.recoverable.firstOrNull() ?: return
+        val backupDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+            .format(Date(entry.marker.quarantinedAt))
+        // 失败信息内联展示（本层在 Toaster provider 之外；弹窗失败不关，内联比 toast 直观）
+        var restoreError by remember { mutableStateOf<String?>(null) }
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("发现降级前的数据备份") },
+            text = {
+                Text(
+                    "检测到 $backupDate 备份的数据（schema v${entry.marker.schemaVersion}）。\n\n" +
+                        "恢复将覆盖当前全部数据，重启后生效。" +
+                        (restoreError?.let { "\n\n失败：$it" } ?: ""),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        startupApp.restoreDowngradeEntry(entry).onFailure { e ->
+                            restoreError = e.message ?: "未知错误"
+                        }
+                    }
+                }) { Text("恢复并重启") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    scope.launch { startupApp.dismissDowngradeEntry(entry) }
+                }) { Text("不再提示") }
+            },
+        )
     }
 
     /** Failed 阻塞屏：applyIfPending 可重试；Koin/Room 失败只能重启进程。 */
