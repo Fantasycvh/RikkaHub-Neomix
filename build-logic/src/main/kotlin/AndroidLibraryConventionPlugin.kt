@@ -12,7 +12,12 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
         pluginManager.apply("com.android.library")
 
         extensions.configure<LibraryExtension> {
-            compileSdk = 37
+            // 37.2：与 app 模块保持同一 SDK 细分（上游 a5db9c9b7 同款写法）
+            compileSdk {
+                version = release(37) {
+                    minorApiLevel = 2
+                }
+            }
 
             defaultConfig {
                 minSdk = 26

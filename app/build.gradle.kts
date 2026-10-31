@@ -14,7 +14,11 @@ plugins {
 
 android {
     namespace = "app.androidrik.rikkahub"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     defaultConfig {
         applicationId = "app.androidrik.rikkahub"
@@ -107,6 +111,9 @@ android {
     }
     androidResources {
         generateLocaleConfig = true
+        // 只保留本仓自己翻译过的语言，依赖库（AndroidX 等）带的其他语言资源不打包
+        // （对齐上游 a5db9c9b7 的 localeFilters 手法；本仓语言集合只有 en/zh/zh-rTW）
+        localeFilters += listOf("en", "zh", "zh-rTW")
     }
     packaging {
         jniLibs {

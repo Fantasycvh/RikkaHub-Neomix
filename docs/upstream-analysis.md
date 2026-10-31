@@ -1548,18 +1548,20 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 
 **验证**：`:ai:compileDebugKotlin` + `:ai:testDebugUnitTest`（ParseTest 13 用例含 3 条新增）+ `:app:compileDebugKotlin` 通过。已本地提交 `beb6fb1fb`，**未推送**。`upstream/master..HEAD` = **1419**、`HEAD..upstream/master` = **404**。
 
-## 2026-10-31 构建链差异盘点（对照上游 `a5db9c9b7`，暂存本地未推送）
+## 2026-10-31 构建链差异盘点（对照上游 `a5db9c9b7`）——四项已全部落地（本仓 `本地提交`，暂存未推送）
 
-对照 `upstream/master` 的 `app/build.gradle.kts` / `libs.versions.toml` / `settings.gradle.kts` / wrapper，本仓构建与上游的完整差异见当次会话记录；**可行动项**如下（全部 P3，攒一批「构建小件」一起做，过编译+冒烟即可）：
+对照 `upstream/master` 的 `app/build.gradle.kts` / `libs.versions.toml` / `settings.gradle.kts` / wrapper 盘点，可行动四项当日全部落地：
 
-| 项 | 本仓 | 上游 | 判定 |
-|---|---|---|---|
-| Gradle | 9.5.0 | 9.6.0 | 待跟（wrapper 一行；本仓 `tooling.parallel` 需 9.4+，双向满足） |
-| AGP | 9.3.1 | 9.4.0 | 待跟（`libs.versions.toml` 一行；跨 9.x minor，重点过 R8/lint） |
-| compileSdk | 37 | 37.2（`compileSdk { version = release(37) { minorApiLevel = 2 } }`） | 待跟（半级细分，随 AGP 9.4 一起） |
-| `androidResources.localeFilters` | 未设（只开 `generateLocaleConfig`） | 只保留 9 种自家语言（en/ar/de/ja/ko/ko-rKR/ru/zh/zh-rTW），裁掉依赖库携带的其余语言资源 | **待吸收（瘦身）**——本仓 APK 因此多打依赖库的无关语言资源；跟随前先核对本仓 `values*` 目录清单与上游语言集合的差异（本仓是否多了上游没有的语言） |
+| 项 | 改动 | 结果 |
+|---|---|---|
+| Gradle 9.5.0 → 9.6.0 | wrapper 一行 | ✅ |
+| AGP 9.3.1 → 9.4.0 | `libs.versions.toml` 一行 | ✅ |
+| compileSdk 37 → 37.2 | `app/build.gradle.kts` + `build-logic/.../AndroidLibraryConventionPlugin.kt`（库模块走约定插件，改一处管全部）改 `compileSdk { version = release(37) { minorApiLevel = 2 } }` | ✅ |
+| `localeFilters` 瘦身 | `androidResources.localeFilters += listOf("en", "zh", "zh-rTW")`（**本仓自有翻译只有这三种**，与上游 9 语集合不同，按本仓实际集合裁） | ✅ arm64 release **61.62 MB → 60.45 MB**（-1.17 MB） |
 
-**确认不跟的构建差异**（盘点结论，勿重复评估）：flavor 双渠道（play 版无需求）、Firebase 全家桶（本仓已移除，回不去）、`ui` 模块与 `build-logic`（宿主重构不跟，见 `24a742270`/`db4982283` 结论）、iText/Objectbox 仓库（上游 PDF 替换方案依赖）。
+**验证**：全模块 `compileDebugKotlin` + `assembleDebug` + `assembleRelease`（R8）通过；release 包装机冷启动 0 FATAL。本机 SDK 目录命名不规范会有 CXX5304 警告（`platforms;android-37` vs `android-37.0`），非致命、不影响 CI（CI 的 SDK 布局干净）；嫌烦可 `sdkmanager "platforms;android-37"` 重装规范目录名。
+
+**确认不跟的构建差异**（盘点结论，勿重复评估）：flavor 双渠道（play 版无需求）、Firebase 全家桶（本仓已移除，回不去）、`ui` 模块与 `build-logic` 上游版（宿主重构不跟，见 `24a742270`/`db4982283` 结论；本仓保留自有 build-logic）、iText/Objectbox 仓库（上游 PDF 替换方案依赖）。
 
 ## 关联
 
