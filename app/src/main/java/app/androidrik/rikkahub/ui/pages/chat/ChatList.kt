@@ -553,6 +553,7 @@ private fun ChatListNormal(
                             onClearTranslation = onClearTranslation,
                             onToolApproval = onToolApproval,
                             onToolAnswer = onToolAnswer,
+                            onToolSkip = onToolSkip,
                             onApproveAll = onApproveAll,
                             onEditReasoning = onEditReasoning,
                             lastMessage = index == lastMessageIndex,

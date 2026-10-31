@@ -451,6 +451,7 @@ private fun MessagePartsBlock(
                                         loading = loading && !step.tool.isExecuted,
                                         onToolApproval = onToolApproval,
                                         onToolAnswer = onToolAnswer,
+                                        onToolSkip = onToolSkip,
                                         onApproveAll = onApproveAll,
                                         workspaceId = assistant?.workspaceId?.toString(),
                                         memoryStoreId = assistant?.memoryId(),
