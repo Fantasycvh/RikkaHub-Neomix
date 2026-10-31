@@ -1,7 +1,8 @@
 name: Release
 
 # tag 触发的正式发版流水线（对齐手工发版流程，如 1.0.28-beta.13 / v1.0.27）：
-# 构建签名 release APK → 以 tag 名建 GitHub Release（版本含 beta 即 prerelease）并上传 arm64 资产。
+# 构建签名 release APK → 以 tag 名建 GitHub Release（版本含 beta 即 prerelease）并上传 arm64 资产
+# → 回填资产大小/SHA-256 到仓内存档并用其刷新 Release 正文。
 #
 # 必需 repo secrets（与 daily-build.yml 同一套）：
 #   KEY_BASE64     — release keystore 的 base64（解码后落到 app/app.key）
@@ -183,3 +184,45 @@ jobs:
             --title "$VERSION (${{ steps.version.outputs.code }})" \
             --notes-file /tmp/notes.md \
             "Neomix-$VERSION-arm64-v8a.apk"
+
+      # 发布后自动回填：把资产大小 / SHA-256 写回仓内存档（docs/releases/<ver>.md）的
+      # 占位符（「待 CI 构建后回填」两个：第一个替换为大小、第二个为哈希；占位符缺失
+      # 视为已手工回填，跳过改写不报错），然后用回填后的存档刷新 Release 正文——
+      # 打 tag 后若存档又改过（如修正措辞/归因），正文随之同步，始终以仓内存档为准；
+      # 回填提交推回 master（HEAD 即 tag 提交，正常与 master 齐平可快进；
+      # master 已前移时推送失败仅告警不失败——Release 正文已更新，仓内存档手工对齐）
+      - name: Backfill asset info & refresh release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          F="docs/releases/$VERSION.md"
+          APK="Neomix-$VERSION-arm64-v8a.apk"
+          [ -f "$F" ] || { echo "无仓内存档（兜底文案发版），跳过回填"; exit 0; }
+          SIZE=$(stat -c%s "$APK")
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          python3 - "$F" "$SIZE" "$SHA" <<'PYEOF'
+          import sys
+          path, size, sha = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+          text = open(path, encoding="utf-8").read()
+          ph = "待 CI 构建后回填"
+          if ph in text:
+              n = text.count(ph)
+              assert n == 2, f"占位符应恰 2 个（大小/SHA-256 各一），实际 {n} 个"
+              text = text.replace(ph, f"{size:,} B（{size / 1048576:.1f} MiB）", 1)
+              text = text.replace(ph, f"`{sha}`", 1)
+              open(path, "w", encoding="utf-8").write(text)
+              print(f"已回填：{size:,} B / {sha}")
+          else:
+              print("无占位符，视为已手工回填，跳过改写")
+          PYEOF
+          tail -n +3 "$F" > /tmp/notes.md
+          gh release edit "$VERSION" --notes-file /tmp/notes.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$F"
+          git diff --cached --quiet && { echo "存档无改动，无需提交"; exit 0; }
+          git commit -m "docs(release): $VERSION 回填资产大小与 SHA-256（CI 自动）"
+          git push origin HEAD:master \
+            || echo "::warning::回填提交推 master 失败（master 已前移）；Release 正文已更新，仓内存档需手工对齐"
