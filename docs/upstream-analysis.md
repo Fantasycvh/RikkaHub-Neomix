@@ -2,6 +2,7 @@
 
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.7 (309)`（预发布）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产，CI 自动发版仍禁用）。
 
+> **同步点（2026-10-31 更新）**：已评估到上游 **`a5db9c9b7`**（2026-10-29，上游 HEAD，版本 `3.1.1`+dev），本批 `ad2c4430d`..`a5db9c9b7` 共 **10 提交**（逐条见「2026-10-31 同步评估」）：**两条 P1 已吸收（fork `beb6fb1fb`）**——`1575d179d`（空 role 崩溃容错 + 3 条回归用例）、`79f4b6fb2`（SAF 导出防闪退两处）；**余吸收候选**：`a046505a6`（加号面板滚动，P2）、`a5db9c9b7`（Tinyfish purpose，P2）、`eb530b0ff` 的 LatexText 行距正则（P3）、`281c9525a`（停止后队列卡住，P2 待核）、`a1c61c3cb`+`fa5d5f3f6`+`20c24e7d3`（构建/依赖小件，P3 一批）；已等价 3 条（`2c4d1979c` 本仓 10-25 已修同根因、`50bb57857` 决策 8 覆盖更强、`4af510624` 前批已结）；不跟 4 条（BetterText 迁移、ANSI 色块等）。**未合入分支 `feat/background-shell` 两条（shell 后台命令 + 会话收件箱）记账观察**。issue 扫描至 #2275，**#2271（Mistral 422 reasoning_content，open）本仓同构风险**。
 > **同步点（2026-10-16 晚间更新）**：逐条评估已跟进到上游 **`cfb503d8c`（2026-10-16 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-16 同步」；再前一节为「2026-10-15 同步」。
 > **同步点（2026-10-19 更新）**：已评估到上游 **`42896e5ad`**（本批 `aae986e55`..`42896e5ad` 共 29 提交，逐条结论见「2026-10-19 同步评估」一节）；上游同日 `bump version to 3.0.0`。**本批唯一缺口 `675e59f0d`（Responses API `function_call_output`）已于当日落地（fork `8b85aa3a4`）**，无遗留待吸收项。
 > **同步点（2026-10-20 更新）**：已评估到上游 **`e5bb70730`**（本批 `42896e5ad`..`e5bb70730` 共 6 提交，见「2026-10-20 同步评估」）。3 条已吸收（`aaa8d2883` / `e53536283` / `d856ddf17`），版本号与发版 skill 两条跳过；**`318cffef6` OAuth 订阅登录（#2186）经评估后决定暂不做**，缺口清单记在该节专项表。
@@ -1491,6 +1492,61 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 | `660b5d65f` | 消息统计行显步数/速度/最后请求上下文占用（`lastUsage`+`stepCount` 替换 `contextTokens`） | 吸收步数徽标（>1 时显示）+ 生成中实时 tok/s（500ms 滚动，usage 空时估算、到达切真值）；未跟 `lastUsage` 替换 `contextTokens`（本仓统计行结构已分叉） |
 
 **验证**：单测 5 项（序列化兼容/merge 保留/stepCount 缺省），全量 2461 项 0 失败；真机验收待做。
+
+## 2026-10-31 同步评估（`ad2c4430d`..`a5db9c9b7`，10 提交）+ issue 扫描（#2260–#2275）
+
+> fetch 后 `upstream/master` = `a5db9c9b7`（2026-10-29），上游已发 `3.1.1`；另现新分支 `feat/background-shell`
+> （2 条未合入提交，见文末）。本批只评 10-24 晚评估点（`ad2c4430d`）之后的真增量。
+
+| 上游 | 内容 | 判定 |
+|---|---|---|
+| `281c9525a` | fix(chat): 停止后立即发送的消息卡在暂停队列（onGenerationFinished 对 CancellationException 不再 pause） | **待核（P2）——本仓 `ChatService.kt:607` 同为 `if (cause != null) pause()` 无 CancellationException 豁免，疑同款在；但本仓 MessageQueue/停止链路已大改（GenerationHandler 自研循环），需先复现/确认停止路径确实走这条回调再移植** |
+| `fa5d5f3f6` | build: `org.gradle.tooling.parallel=true`（IDE 同步并行） | P3 顺手（一行 gradle.properties，无风险） |
+| `20c24e7d3` | chore: update deps（11 项：material3 beta02、datastore 1.3.0、serialization-json 1.12、bouncycastle 1.86、jsch 2.28.8、apache-sshd 2.20、firebase-bom 35.1 等） | 常规选择性跟（P3，独立一批，过编译+冒烟即可） |
+| `eb530b0ff` | fix(markdown): 公式里 `<` 被当 HTML 标签（#2240/#2224）+ JLatexMath 不认 `\\[4pt]` 行距 | **部分吸收候选**：markdown `<` 部分不适用（宿主是上游新 MarkdownParser，本仓 GFMFlavourDescriptor 解析路径不同，同款低风险待真机验证 `x<y && y>0`）；**LatexText 的 `lineBreakSpacingRegex` 可直套**（本仓 `LatexText.kt:140` processLatex 无此处理） |
+| `102be19d3` | refactor(chat): 联网搜索入口移到加号 sheet | **不跟**（输入区布局已分叉，方向自定） |
+| `c2a64ff4b` | refactor(ui): 抽公共 SwipeToDelete（= 前批 `c2a64ff4` 的延续批注） | 不跟（前批已结） |
+| `4af510624` | fix(nav): 同帧连按返回弹空栈 | 已等价（10-24 批已结） |
+| `395a0ee03` | fix(model-list): 拖动排序抽搐 | 已移植（10-24 批已结） |
+| `db4982283` | fix(tts): 朗读 HTML 标签 | 已有替代方案（10-24 批已结） |
+| `b68760d92` | refactor(media): 媒体配置独立详情页 | 不跟（10-24 晚批已结） |
+| `72d419171` | feat(memory): 记忆整理模型设置 | 待用户定夺（10-24 晚批已结：增量仅「整理单独配推理强度」+ placeholder 小件） |
+| `ad2c4430d` | chore: bump 3.1.1 | 不适用 |
+| `2c4d1979c` | fix(quota): 非英文系统余额报数字格式错误（#2245） | **已等价，不跟**——本仓 10-25 修 #2245 时已全链 `Locale.ROOT`（`JsonExpression.kt:368` 数字摄取 + `OpenAIProvider` 单/多接口两处显示格式化），与上游同根因同修法；上游另做的「读值阶段不舍入、显示时 Double 解析」属精度优化，本仓保留读值舍入但解析已安全，可忽略 |
+| `a7d1e6efb` | docs: README 图标 512x512 | 不适用 |
+| `24a742270` | refactor(markdown): 迁移 BetterText，保留选择/折叠 | **不跟**——宿主是上游「渲染收敛 ui 模块」大重构（与 `db4982283` 结论同源：本仓 MarkdownNew/intellij-markdown 已分叉，迁移=重写整套渲染，且本仓有 TikZ 桥要保） |
+| `e0914b20f` | feat(markdown): 颜色代码前显示色块 | **不跟（P3 观望）**——宿主为上游新 Markdown.kt 渲染管线（+83 行 ANSI 解析+色块 InlineText）；有需求时可移植到本仓 MarkdownNew |
+| `a1c61c3cb` | chore(baselineprofile): 移除 Markdown 性能对比基准 | **P3 顺手**——本仓 `app/baselineprofile` 有同源模块，BetterText 对比基准对本仓无意义，可随下一批构建小件一并清 |
+| `79f4b6fb2` | fix(export): 部分 ROM SAF 导出闪退（#2263/#2264，openOutputStream 抛 FileNotFoundException 未捕获） | **已吸收（fork `beb6fb1fb`，2026-10-31）**——本仓同款两处：`ui/components/message/ChatMessageEditedFiles.kt`（开流移 IO 协程 + runCatching）+ `data/export/ExportHooks.kt` writeToUri（补 runCatching） |
+| `1575d179d` | fix(openai): 中转返回空 role 解析崩溃（#2266） | **已吸收（fork `beb6fb1fb`，2026-10-31）**——`MessageRole.fromValueOrNull` 宽松匹配 + 回退 ASSISTANT；parseMessage 改 `jsonPrimitiveOrNull`；`ChatCompletionsAPIResponseParseTest` 补 3 条回归用例（空/未知/缺失 role） |
+| `50bb57857` | fix(message): 折叠思考链保持待审批工具可见（#2246） | **已等价，不跟**——本仓自研折叠「决策 8」更强：`forceExpand = hasPendingStep` 且待审批时整链不折（`ChatMessageCot.kt:215-225`），上游只保证尾部 N 步可见 |
+| `a046505a6` | fix(chat): 加号面板主页面支持滚动（#2258） | **吸收候选 P2**——本仓 `FilesPicker.kt` 有同构 `FilesPickerPage.MAIN` 且无 verticalScroll，矮屏同款挤压路径（4 行）；与 10-26 #2258「不适用」判定不冲突：那条指压缩入口布局不同，此条是面板本体滚动 |
+| `a5db9c9b7` | feat(search): Tinyfish 可选 purpose 参数（#2261） | **吸收候选 P2**——本仓 `TinyfishSearchService.kt` 无 purpose，16 行直套（schema 字段 + URL 参数拼接） |
+
+**分支 `feat/background-shell`（未合入 master，记账观察）**：
+- `8a472304b` feat(workspace): shell 支持后台运行命令（+887，新增 `WorkspaceBackgroundCommand`，ProotShellRunner/WorkspaceManager 改造）——与本仓 workspace 方向相关，等上游合入后评估；
+- `d7627effd` feat(chat): 后台命令结束经会话收件箱主动通知模型（+1018/-467，`ConversationInbox` + service 层大重构）——同上；本仓 `281c9525a` 的移植判断也受此重构影响，建议一并等。
+
+### issue 扫描（#2260–#2275，自上次扫描 #2259 后新增）
+
+| Issue | 内容 | 判定 |
+|---|---|---|
+| #2261 | tinyfish purpose 参数（closed） | → `a5db9c9b7`，见上 |
+| #2263/#2264 | SAF 导出闪退（closed） | → `79f4b6fb2`，见上（**本仓同款在**） |
+| #2266 | 空 role 解析崩溃（closed） | → `1575d179d`，见上（**本仓同款在**） |
+| #2271 | **Mistral 多轮 422 extra_forbidden：assistant 消息带 reasoning_content（open，0 评论）** | **观察——本仓同构风险**：本仓 assistant 消息会回传 `reasoning_content`（`ChatCompletionsAPI.kt:735-737`），无 per-host 开关；等上游修法出来再对症 |
+| #2252 | HTML/SVG 预览返回卡死崩溃（open，v3.1.1 仍复现） | 维持观察（10-25 已记，#2227 未真修） |
+| #2272 | Gemini 配置报 Illegal base64 character 2e（closed） | 关因未入本批区间（未定位到提交）；本仓 Gemini 分支独立维护，暂不动作 |
+| #2265 | GitHub Copilot 提供商（closed） | 提供商标诉求，本仓提供商自维护，不跟 |
+| #2275 | feat: 数字助理应用（closed） | 产品方向，不适用 |
+| #2270 | feat: 腾讯云 tokenhub 搜索（open） | 记账——本仓 search 供应商独立维护，有需求再加 |
+| #2269 | 技能分组收纳 / 内置终端 / 技能备选替代（open） | 需求记账 |
+| #2273 | OpenAI Realtime 采样率可调（open） | 本仓语音模块自研，不适用 |
+| #2260 | 生图分辨率自定义预设（open） | 产品诉求，不跟（本仓媒体管线已分叉） |
+| #2267 | 网页版图标同步更新（open） | 不适用 |
+| #2262 | 统一模型工具设置入口（closed） | UI 整理诉求，不跟 |
+
+**验证**：`:ai:compileDebugKotlin` + `:ai:testDebugUnitTest`（ParseTest 13 用例含 3 条新增）+ `:app:compileDebugKotlin` 通过。已本地提交 `beb6fb1fb`，**未推送**。`upstream/master..HEAD` = **1419**、`HEAD..upstream/master` = **404**。
 
 ## 关联
 
