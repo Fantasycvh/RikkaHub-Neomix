@@ -25,13 +25,13 @@ jobs:
       contents: write   # 创建 Release 需要写权限
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive # 拉取子模块
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           # AGP 9.x 的配置期在 JDK 17 上有失败案例（nmoi D189 的教训）；本机开发环境是 21，
@@ -40,12 +40,12 @@ jobs:
 
       # web 模块的 preBuild 会执行 `pnpm run build` 构建前端，必须准备好 Node + pnpm
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -57,7 +57,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Gradle cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.gradle/caches
