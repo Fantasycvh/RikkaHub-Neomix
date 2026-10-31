@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,8 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetProperties
@@ -44,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -151,12 +151,12 @@ internal fun FilesPicker(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         FlowRow(
             modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally),
-            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.Start),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.Start),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             TakePicButton(onLaunchCamera = onTakePic)
 
@@ -219,109 +219,57 @@ internal fun FilesPicker(
             assistant.quickMessageIds.size +
                 modeAndLorebookCount +
                 assistant.enabledSkills.size
-        ListItem(
-            leadingContent = {
-                Icon(
-                    imageVector = HugeIcons.Package,
-                    contentDescription = stringResource(R.string.assistant_page_tab_extensions),
+        CompactPickerListItem(
+            icon = HugeIcons.Package,
+            text = stringResource(R.string.assistant_page_tab_extensions),
+            onClick = { onShowInjectionSheetChange(true) },
+        ) {
+            if (activeCount > 0) {
+                Text(
+                    text = activeCount.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 4.dp),
                 )
-            },
-            headlineContent = {
-                Text(stringResource(R.string.assistant_page_tab_extensions))
-            },
-            trailingContent = {
-                if (activeCount > 0) {
-                    Text(
-                        text = activeCount.toString(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            },
-            colors = ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ),
-            modifier = Modifier
-                .clip(MaterialTheme.shapes.large)
-                .clickable {
-                    onShowInjectionSheetChange(true)
-                },
-        )
+            }
+        }
 
         // Compress History Button
-        ListItem(
-            leadingContent = {
-                Icon(
-                    imageVector = HugeIcons.Package01,
-                    contentDescription = stringResource(R.string.chat_page_compress_context),
+        CompactPickerListItem(
+            icon = HugeIcons.Package01,
+            text = stringResource(R.string.chat_page_compress_context),
+            onClick = { onRequestCompress() },
+        ) {
+            if (conversation.messageNodes.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.chat_page_message_count, conversation.messageNodes.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 4.dp),
                 )
-            },
-            headlineContent = {
-                Text(stringResource(R.string.chat_page_compress_context))
-            },
-            trailingContent = {
-                if (conversation.messageNodes.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.chat_page_message_count, conversation.messageNodes.size),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            colors = ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ),
-            modifier = Modifier
-                .clip(MaterialTheme.shapes.large)
-                .clickable {
-                    onRequestCompress()
-                },
-        )
+            }
+        }
 
         // 拼装后提示词预览（只读）：显示这次请求实际会发什么、按来源分段。
         // 与真实请求共用同一条组装与 transformer 链，故不会漂移。
-        ListItem(
-            leadingContent = {
-                Icon(
-                    imageVector = HugeIcons.Search01,
-                    contentDescription = stringResource(R.string.prompt_inspect_title),
-                )
+        CompactPickerListItem(
+            icon = HugeIcons.Search01,
+            text = stringResource(R.string.prompt_inspect_title),
+            onClick = {
+                navController.navigate(Screen.PromptInspect(conversation.id.toString()))
+                onDismiss()
             },
-            headlineContent = {
-                Text(stringResource(R.string.prompt_inspect_title))
-            },
-            colors = ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ),
-            modifier = Modifier
-                .clip(MaterialTheme.shapes.large)
-                .clickable {
-                    navController.navigate(Screen.PromptInspect(conversation.id.toString()))
-                    onDismiss()
-                },
         )
 
         // 为本会话创建定时任务（定时任务 P2）：入口从消息列表挪进「+」面板——它和
         // 压缩/提示词预览一样是「对这条会话发起的动作」，不是聊天内容的一部分
-        ListItem(
-            leadingContent = {
-                Icon(
-                    imageVector = HugeIcons.Time02,
-                    contentDescription = stringResource(R.string.scheduled_task_create_for_conversation),
-                )
+        CompactPickerListItem(
+            icon = HugeIcons.Time02,
+            text = stringResource(R.string.scheduled_task_create_for_conversation),
+            onClick = {
+                onDismiss()
+                onCreateScheduledTask()
             },
-            headlineContent = {
-                Text(stringResource(R.string.scheduled_task_create_for_conversation))
-            },
-            colors = ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ),
-            modifier = Modifier
-                .clip(MaterialTheme.shapes.large)
-                .clickable {
-                    onDismiss()
-                    onCreateScheduledTask()
-                },
         )
 
         // Workspace CWD
@@ -392,52 +340,33 @@ private fun WorkspacePickerListItem(
         workspaces.find { it.id == assistant.workspaceId?.toString() }
     }
 
-    ListItem(
-        leadingContent = {
-            Icon(
-                imageVector = HugeIcons.Codesandbox,
-                contentDescription = stringResource(R.string.assistant_page_workspace),
-            )
-        },
-        headlineContent = {
-            Text(stringResource(R.string.assistant_page_workspace))
-        },
-        supportingContent = {
-            Text(
-                text = boundWorkspace?.name ?: stringResource(R.string.assistant_page_workspace_unbound),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        trailingContent = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (boundWorkspace != null) {
-                    IconButton(onClick = { onNavigateToDetail(boundWorkspace.id) }) {
+    CompactPickerListItem(
+        icon = HugeIcons.Codesandbox,
+        text = stringResource(R.string.assistant_page_workspace),
+        supportingText = boundWorkspace?.name ?: stringResource(R.string.assistant_page_workspace_unbound),
+        onClick = { showSheet = true },
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (boundWorkspace != null) {
+                IconButton(onClick = { onNavigateToDetail(boundWorkspace.id) }) {
+                    Icon(
+                        imageVector = HugeIcons.Settings02,
+                        contentDescription = stringResource(R.string.workspace_detail),
+                    )
+                }
+                if (boundWorkspace.supportsTerminal()) {
+                    IconButton(onClick = { onNavigateToTerminal(boundWorkspace.id) }) {
                         Icon(
-                            imageVector = HugeIcons.Settings02,
-                            contentDescription = stringResource(R.string.workspace_detail),
+                            imageVector = HugeIcons.ComputerTerminal01,
+                            contentDescription = stringResource(R.string.workspace_terminal),
                         )
-                    }
-                    if (boundWorkspace.supportsTerminal()) {
-                        IconButton(onClick = { onNavigateToTerminal(boundWorkspace.id) }) {
-                            Icon(
-                                imageVector = HugeIcons.ComputerTerminal01,
-                                contentDescription = stringResource(R.string.workspace_terminal),
-                            )
-                        }
                     }
                 }
             }
-        },
-        colors = ListItemDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        ),
-        modifier = Modifier
-            .clip(MaterialTheme.shapes.large)
-            .clickable { showSheet = true },
-    )
+        }
+    }
 
     if (showSheet) {
         WorkspaceSelectSheet(
@@ -589,6 +518,69 @@ fun FilePickButton(onClick: () -> Unit = {}) {
     }
 }
 
+/**
+ * 「+」面板的功能行：替代默认 ListItem（其固定最小高度偏大，行数多时面板被撑长）。
+ * 行高收到 44dp、图标 20dp，视觉上与 [ListItem] 同款 surfaceContainer + large 圆角。
+ */
+@Composable
+internal fun CompactPickerListItem(
+    icon: ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    supportingText: String? = null,
+    /** 覆盖默认图标（如 MCP 同步中显示进度圈） */
+    leadingContent: (@Composable () -> Unit)? = null,
+    trailing: @Composable RowScope.() -> Unit = {},
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(start = 12.dp, end = 8.dp)
+                .heightIn(min = 44.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (leadingContent != null) {
+                leadingContent()
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+            ) {
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                supportingText?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            trailing()
+        }
+    }
+}
+
 @Composable
 private fun BigIconTextButton(
     modifier: Modifier = Modifier,
@@ -613,7 +605,7 @@ private fun BigIconTextButton(
             color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(8.dp)
         ) {
             Box(
-                modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp)
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
             ) {
                 icon()
             }

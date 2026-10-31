@@ -21,8 +21,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearWavyProgressIndicator
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -176,38 +174,24 @@ fun McpPickerListItem(
         it.commonOptions.enable && assistant.mcpServers.contains(it.id)
     }
 
-    ListItem(
-        leadingContent = {
-            if (loading) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-            } else {
-                Icon(
-                    imageVector = HugeIcons.McpServer,
-                    contentDescription = stringResource(R.string.mcp_picker_title),
-                )
-            }
-        },
-        headlineContent = {
-            Text(stringResource(R.string.mcp_picker_title))
-        },
-        trailingContent = {
-            if (enabledServers.isNotEmpty()) {
-                Text(
-                    text = enabledServers.size.toString(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-        },
-        colors = ListItemDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        ),
-        modifier = modifier
-            .clip(MaterialTheme.shapes.large)
-            .clickable {
-                showMcpPicker = true
-            },
-    )
+    CompactPickerListItem(
+        icon = HugeIcons.McpServer,
+        text = stringResource(R.string.mcp_picker_title),
+        onClick = { showMcpPicker = true },
+        modifier = modifier,
+        leadingContent = if (loading) {
+            { CircularProgressIndicator(modifier = Modifier.size(20.dp)) }
+        } else null,
+    ) {
+        if (enabledServers.isNotEmpty()) {
+            Text(
+                text = enabledServers.size.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(end = 4.dp),
+            )
+        }
+    }
 
     if (showMcpPicker) {
         McpPickerSheet(

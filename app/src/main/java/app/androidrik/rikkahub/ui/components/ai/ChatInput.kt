@@ -334,13 +334,17 @@ fun ChatInput(
                             .fillMaxWidth()
                             .padding(horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Row(
                             modifier = Modifier
                                 .weight(1f)
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            // CenterVertically：行内 item 高度不一（ModelSelector IconButton 48dp、
+                            // 其余 ToggleSurface 40dp），顶对齐会让矮 item 的中心整体偏上——
+                            // 上下文圆环因此显得位置偏高；按中心对齐后全部落在同一水平线上
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
                             // Model Picker
                             ModelSelector(
@@ -984,18 +988,19 @@ private fun ContextUsageRingButton(
         label = "contextUsageFraction",
     )
 
-    // 外层容器高度必须与相邻图标按钮（IconButton 默认 48dp）**一致**：这一行是 Top 对齐的，
-    // 各 item 的「中心」由各自高度决定 —— 40dp 容器会比 48dp 的邻居高约 4dp（实测 12px 偏差）。
+    // 外层容器高度与相邻图标按钮（ToggleSurface 的 40dp，含内边距）**一致**：
+    // 整行做紧凑化后，邻居统一收到 40dp（Search/Reasoning/Memory 均为 8dp 内边距 + 24dp 图标）；
+    // 行内对齐方式是 CenterVertically（见图标行注释）。
     Box(
-        modifier = Modifier.height(48.dp),
+        modifier = Modifier.height(40.dp),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
-                .height(32.dp)
+                .height(28.dp)
                 .clip(RoundedCornerShape(percent = 50))
                 .clickable { onClick() }
-                .padding(horizontal = 6.dp),
+                .padding(horizontal = 5.dp),
             contentAlignment = Alignment.Center,
         ) {
             // 圆环：百分比放在环内（空间紧，只给整数；精确数值在标题旁读数与面板里）
