@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -79,7 +82,13 @@ fun CompressContextDialog(
             Text(stringResource(R.string.chat_page_compress_context_title))
         },
         text = {
+            // verticalScroll + imePadding（AGENTS.md TextField Host Rules #3）：对话框窗口
+            // 不与 IME insets 协调，preset 档 + 三个数字框 + 多行提示词在键盘弹起时被遮且
+            // 无法滚入视口（d50d7aeaf 同款机制的现症）；内容需整体可滚 + 抬到键盘上方。
             Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (isLoading) {

@@ -85,6 +85,25 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 
 ## Development Guidelines
 
+### TextField Host Rules（IME 输入陷阱，历史四连击的防回归规范）
+
+> 本仓已四次踩同一个坑族（`4d2938da6` item key 内容哈希 / `d50d7aeaf` AlertDialog 表单抖动 /
+> `9bc2d58f4` LazyColumn item 视口裁剪 / compress 对话框反复返工）。TextField 的宿主必须是
+> **滚动容器里常驻的稳定节点**，规则：
+>
+> 1. Lazy item 的 `key` 必须用**稳定 id**（持久化字段），禁止 `content.hashCode()`——内容每变
+>    一次 key 就变，该行被销毁重建：焦点丢失（IME 收起）+ animateItem 抖动。
+> 2. **长表单/多字段编辑禁止内联在 Lazy item 里**。键盘弹起收缩视口，焦点字段被裁出列表 →
+>    item 销毁重建 → 输入状态丢失、IME 收起再弹（逐字符回退、光标漂移）。一律改用
+>    ModalBottomSheet（`Column+verticalScroll` 子项常驻）或整页。注意：本仓 `CardGroup` 是
+>    **Column 实现**（`item(headlineContent=…)` 是自家 DSL，非 LazyListScope），天然免疫此坑——
+>    表单优先用 CardGroup。
+> 3. AlertDialog 放多字段表单：对话框窗口不与 IME insets 协调，内容高于可见区会被遮挡且
+>    「滚动到光标」引发整体抖动。内容必须 `verticalScroll + imePadding`；字段多到需要滚动
+>    就升级为 sheet 或整页。
+>
+> 回归审计：`python scripts/audit_ime_trap.py`（A/A' 类命中即失败；C 类仅告警）。
+
 ### UI Development
 
 - Follow Material Design 3 principles
