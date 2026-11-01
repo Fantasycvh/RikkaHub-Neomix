@@ -104,6 +104,15 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 >
 > 回归审计：`python scripts/audit_ime_trap.py`（A/A' 类命中即失败；C 类仅告警）。
 
+### ListItem supportingContent Slot（条件内容静默丢失陷阱）
+
+> `CardGroup` 的 `item(supportingContent = …)` 最终进 M3 `ListItem`，该槽位**只渲染第一个直接
+> 子节点**：在 `FlowRow`/`SegmentedPill` 之后同级再写 `when`/`if` 条件行，条件行会被静默丢弃
+> （标题与第一子节点正常、状态更新正常，唯独条件内容永不出现——`d3212c913` 的头像框/思维链
+> 「编辑参数」入口即此坑，真机排查良久）。
+>
+> 规则：支持内容有多块时一律 `Column { … }` 包一层；条件行不要与主控件平级直接挂在槽位上。
+
 ### UI Development
 
 - Follow Material Design 3 principles

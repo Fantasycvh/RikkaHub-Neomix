@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,7 +13,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -31,6 +35,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -69,10 +76,14 @@ import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.datastore.AvatarFrameParams
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtCustomStyle
+import app.androidrik.rikkahub.data.datastore.AvatarFrameScheme
+import app.androidrik.rikkahub.data.datastore.ChainOfThoughtScheme
 import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
+import app.androidrik.rikkahub.ui.components.ui.drawAvatarFrameParams
 import app.androidrik.rikkahub.ui.pages.setting.components.AvatarFrameParamsSheet
 import app.androidrik.rikkahub.ui.pages.setting.components.ChainOfThoughtCustomSheet
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
+import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 import org.koin.compose.koinInject
 
 @Composable
@@ -125,7 +136,11 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     }
     var showFrameParamsSheet by remember { mutableStateOf(false) }
     var showCotCustomSheet by remember { mutableStateOf(false) }
+    // 方案删除二次确认（分立列表，各自持有一个待删项）
+    var deletingFrameScheme by remember { mutableStateOf<AvatarFrameScheme?>(null) }
+    var deletingCotScheme by remember { mutableStateOf<ChainOfThoughtScheme?>(null) }
 
+    val schemeSavedMsg = stringResource(R.string.setting_personalization_scheme_saved)
     val importSuccessMsg = stringResource(R.string.setting_display_page_custom_font_import_success)
     val importFailedMsg = stringResource(R.string.setting_display_page_custom_font_import_failed)
     val fontPickerLauncher = rememberLauncherForActivityResult(
@@ -472,49 +487,51 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_avatar_frame_title)) },
                         supportingContent = {
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                AvatarFrameStyle.entries.forEach { style ->
-                                    FilterChip(
-                                        selected = displaySetting.avatarFrameStyle == style,
-                                        onClick = {
-                                            updateDisplaySetting(displaySetting.copy(avatarFrameStyle = style))
-                                        },
-                                        label = { Text(avatarFrameLabel(style)) },
-                                    )
-                                }
-                            }
-                            when (displaySetting.avatarFrameStyle) {
-                                AvatarFrameStyle.CUSTOM_IMAGE -> Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = displaySetting.avatarFrameImagePath
-                                            .ifBlank { stringResource(R.string.setting_display_page_input_background_none) },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    TextButton(onClick = { avatarFrameImagePicker.launch("image/*") }) {
-                                        Text(stringResource(R.string.setting_display_page_avatar_frame_pick_image))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    AvatarFrameStyle.entries.forEach { style ->
+                                        FilterChip(
+                                            selected = displaySetting.avatarFrameStyle == style,
+                                            onClick = {
+                                                updateDisplaySetting(displaySetting.copy(avatarFrameStyle = style))
+                                                when (style) {
+                                                    AvatarFrameStyle.CUSTOM_PARAMS -> showFrameParamsSheet = true
+                                                    AvatarFrameStyle.CUSTOM_IMAGE -> avatarFrameImagePicker.launch("image/*")
+                                                    else -> Unit
+                                                }
+                                            },
+                                            label = { Text(avatarFrameLabel(style)) },
+                                        )
                                     }
-                                    if (displaySetting.avatarFrameImagePath.isNotBlank()) {
-                                        TextButton(onClick = {
-                                            updateDisplaySetting(displaySetting.copy(avatarFrameImagePath = ""))
-                                        }) {
-                                            Text(stringResource(R.string.setting_display_page_avatar_frame_clear_image))
+                                }
+                                when (displaySetting.avatarFrameStyle) {
+                                    AvatarFrameStyle.CUSTOM_IMAGE -> Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = displaySetting.avatarFrameImagePath
+                                                .ifBlank { stringResource(R.string.setting_display_page_input_background_none) },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        TextButton(onClick = { avatarFrameImagePicker.launch("image/*") }) {
+                                            Text(stringResource(R.string.setting_display_page_avatar_frame_pick_image))
+                                        }
+                                        if (displaySetting.avatarFrameImagePath.isNotBlank()) {
+                                            TextButton(onClick = {
+                                                updateDisplaySetting(displaySetting.copy(avatarFrameImagePath = ""))
+                                            }) {
+                                                Text(stringResource(R.string.setting_display_page_avatar_frame_clear_image))
+                                            }
                                         }
                                     }
+                                    else -> Unit
                                 }
-                                AvatarFrameStyle.CUSTOM_PARAMS -> TextButton(onClick = {
-                                    showFrameParamsSheet = true
-                                }) {
-                                    Text(stringResource(R.string.setting_display_page_avatar_frame_edit_params))
-                                }
-                                else -> Unit
                             }
                         },
                     )
@@ -553,22 +570,83 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_cot_style_title)) },
                         supportingContent = {
-                            SegmentedPill(
-                                options = ChainOfThoughtStyle.entries.toList(),
-                                selectedOption = displaySetting.chainOfThoughtStyle,
-                                onOptionSelected = {
-                                    updateDisplaySetting(displaySetting.copy(chainOfThoughtStyle = it))
-                                },
-                                optionToString = { cotStyleLabel(it) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            if (displaySetting.chainOfThoughtStyle == ChainOfThoughtStyle.CUSTOM) {
-                                TextButton(onClick = { showCotCustomSheet = true }) {
-                                    Text(stringResource(R.string.setting_display_page_avatar_frame_edit_params))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SegmentedPill(
+                                    options = ChainOfThoughtStyle.entries.toList(),
+                                    selectedOption = displaySetting.chainOfThoughtStyle,
+                                    onOptionSelected = {
+                                        updateDisplaySetting(displaySetting.copy(chainOfThoughtStyle = it))
+                                        if (it == ChainOfThoughtStyle.CUSTOM) showCotCustomSheet = true
+                                    },
+                                    optionToString = { cotStyleLabel(it) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                if (displaySetting.chainOfThoughtStyle == ChainOfThoughtStyle.CUSTOM) {
+                                    TextButton(onClick = { showCotCustomSheet = true }) {
+                                        Text(stringResource(R.string.setting_display_page_avatar_frame_edit_params))
+                                    }
                                 }
                             }
                         },
                     )
+                }
+            }
+
+            // 已保存的方案（分立列表）：点行应用并切到自定义档，尾部按钮删除
+            if (settings.avatarFrameSchemes.isNotEmpty()) {
+                item {
+                    CardGroup(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        title = { Text(stringResource(R.string.setting_display_page_avatar_frame_schemes_title)) },
+                    ) {
+                        settings.avatarFrameSchemes.forEach { scheme ->
+                            item(
+                                onClick = {
+                                    updateDisplaySetting(
+                                        displaySetting.copy(
+                                            avatarFrameStyle = AvatarFrameStyle.CUSTOM_PARAMS,
+                                            avatarFrameParams = scheme.params,
+                                        )
+                                    )
+                                },
+                                headlineContent = { Text(scheme.name) },
+                                leadingContent = { AvatarFrameSchemePreview(scheme.params) },
+                                trailingContent = {
+                                    IconButton(onClick = { deletingFrameScheme = scheme }) {
+                                        Icon(HugeIcons.Delete02, contentDescription = null)
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            if (settings.cotStyleSchemes.isNotEmpty()) {
+                item {
+                    CardGroup(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        title = { Text(stringResource(R.string.setting_display_page_cot_schemes_title)) },
+                    ) {
+                        settings.cotStyleSchemes.forEach { scheme ->
+                            item(
+                                onClick = {
+                                    updateDisplaySetting(
+                                        displaySetting.copy(
+                                            chainOfThoughtStyle = ChainOfThoughtStyle.CUSTOM,
+                                            chainOfThoughtCustomStyle = scheme.style,
+                                        )
+                                    )
+                                },
+                                headlineContent = { Text(scheme.name) },
+                                leadingContent = { CotSchemePreview(scheme.style) },
+                                trailingContent = {
+                                    IconButton(onClick = { deletingCotScheme = scheme }) {
+                                        Icon(HugeIcons.Delete02, contentDescription = null)
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
@@ -626,6 +704,12 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                 updateDisplaySetting(displaySetting.copy(avatarFrameParams = it))
                 showFrameParamsSheet = false
             },
+            onSaveScheme = { name, params ->
+                vm.updateSettings {
+                    it.copy(avatarFrameSchemes = it.avatarFrameSchemes + AvatarFrameScheme(name = name, params = params))
+                }
+                toaster.show(schemeSavedMsg)
+            },
             onDismiss = { showFrameParamsSheet = false },
         )
     }
@@ -642,7 +726,84 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                 )
                 showCotCustomSheet = false
             },
+            onSaveScheme = { name, style ->
+                vm.updateSettings {
+                    it.copy(cotStyleSchemes = it.cotStyleSchemes + ChainOfThoughtScheme(name = name, style = style))
+                }
+                toaster.show(schemeSavedMsg)
+            },
             onDismiss = { showCotCustomSheet = false },
+        )
+    }
+
+    deletingFrameScheme?.let { scheme ->
+        SchemeDeleteDialog(
+            name = scheme.name,
+            onConfirm = {
+                vm.updateSettings { settings ->
+                    settings.copy(avatarFrameSchemes = settings.avatarFrameSchemes.filterNot { it.id == scheme.id })
+                }
+                deletingFrameScheme = null
+            },
+            onDismiss = { deletingFrameScheme = null },
+        )
+    }
+    deletingCotScheme?.let { scheme ->
+        SchemeDeleteDialog(
+            name = scheme.name,
+            onConfirm = {
+                vm.updateSettings { settings ->
+                    settings.copy(cotStyleSchemes = settings.cotStyleSchemes.filterNot { it.id == scheme.id })
+                }
+                deletingCotScheme = null
+            },
+            onDismiss = { deletingCotScheme = null },
+        )
+    }
+}
+
+@Composable
+private fun SchemeDeleteDialog(name: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.setting_personalization_scheme_delete_title)) },
+        text = { Text(stringResource(R.string.setting_personalization_scheme_delete_message, name)) },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text(stringResource(R.string.setting_personalization_scheme_delete_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun AvatarFrameSchemePreview(params: AvatarFrameParams) {
+    val primary = MaterialTheme.colorScheme.primary
+    val tertiary = MaterialTheme.colorScheme.tertiary
+    Canvas(modifier = Modifier.size(32.dp)) {
+        drawAvatarFrameParams(params, primary, tertiary)
+    }
+}
+
+/** 缩略示意：容器色圆角块 + 左缘强调色竖线（对应思维链自定义的三项核心观感）。 */
+@Composable
+private fun CotSchemePreview(style: ChainOfThoughtCustomStyle) {
+    val container = style.containerColorHex.toComposeColorOrNull()
+        ?: MaterialTheme.colorScheme.surfaceContainerLow
+    val accent = style.accentColorHex.toComposeColorOrNull() ?: MaterialTheme.colorScheme.primary
+    Canvas(modifier = Modifier.size(32.dp)) {
+        drawRoundRect(color = container, size = size, cornerRadius = CornerRadius(6.dp.toPx()))
+        drawLine(
+            color = accent,
+            start = Offset(7.dp.toPx(), 7.dp.toPx()),
+            end = Offset(7.dp.toPx(), size.height - 7.dp.toPx()),
+            strokeWidth = 3.dp.toPx(),
+            cap = StrokeCap.Round,
         )
     }
 }

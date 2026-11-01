@@ -257,6 +257,9 @@ class SettingsStore(
         val THEME_ID = stringPreferencesKey("theme_id")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
+        // 轻量个性化命名方案（分立：头像框参数 / 思维链样式各一份列表）
+        val AVATAR_FRAME_SCHEMES = stringPreferencesKey("avatar_frame_schemes")
+        val COT_STYLE_SCHEMES = stringPreferencesKey("cot_style_schemes")
         val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
 
         // 模型选择
@@ -494,6 +497,12 @@ class SettingsStore(
                 } ?: emptyList(),
                 developerMode = preferences[DEVELOPER_MODE] == true,
                 displaySetting = JsonInstant.decodeFromString(preferences[DISPLAY_SETTING] ?: "{}"),
+                avatarFrameSchemes = preferences[AVATAR_FRAME_SCHEMES]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: emptyList(),
+                cotStyleSchemes = preferences[COT_STYLE_SCHEMES]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: emptyList(),
                 searchServices = searchServicesLoad.services,
                 searchCommonOptions = preferences[SEARCH_COMMON]?.let {
                     JsonInstant.decodeFromString(it)
@@ -766,6 +775,8 @@ class SettingsStore(
             preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
             preferences[DEVELOPER_MODE] = settings.developerMode
             preferences[DISPLAY_SETTING] = JsonInstant.encodeToString(settings.displaySetting)
+            preferences[AVATAR_FRAME_SCHEMES] = JsonInstant.encodeToString(settings.avatarFrameSchemes)
+            preferences[COT_STYLE_SCHEMES] = JsonInstant.encodeToString(settings.cotStyleSchemes)
 
             preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
             preferences[SELECT_MODEL] = settings.chatModelId.toString()
@@ -1056,6 +1067,10 @@ data class Settings(
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
     val displaySetting: DisplaySetting = DisplaySetting(),
+    /** 头像框自定义参数方案（CUSTOM_PARAMS 档的命名预设）。 */
+    val avatarFrameSchemes: List<AvatarFrameScheme> = emptyList(),
+    /** 思维链自定义样式方案（CUSTOM 档的命名预设）。 */
+    val cotStyleSchemes: List<ChainOfThoughtScheme> = emptyList(),
     val favoriteModels: List<Uuid> = emptyList(),
     val chatModelId: Uuid = Uuid.random(),
     val fallbackChatModelId: Uuid? = null, // 主模型整轮失败后切换的备用模型（助手未配 fallback 时生效）
@@ -1379,6 +1394,22 @@ data class ChainOfThoughtCustomStyle(
     val cornerRadiusDp: Float = 16f,
     val timelineLineWidthDp: Float = 1f,
     val showTimeline: Boolean = true,
+)
+
+/** 头像框参数方案：命名预设，应用时写入 [DisplaySetting.avatarFrameParams] 并切到 CUSTOM_PARAMS 档。 */
+@Serializable
+data class AvatarFrameScheme(
+    val id: String = Uuid.random().toString(),
+    val name: String,
+    val params: AvatarFrameParams = AvatarFrameParams(),
+)
+
+/** 思维链样式方案：命名预设，应用时写入 [DisplaySetting.chainOfThoughtCustomStyle] 并切到 CUSTOM 档。 */
+@Serializable
+data class ChainOfThoughtScheme(
+    val id: String = Uuid.random().toString(),
+    val name: String,
+    val style: ChainOfThoughtCustomStyle = ChainOfThoughtCustomStyle(),
 )
 
 @Serializable

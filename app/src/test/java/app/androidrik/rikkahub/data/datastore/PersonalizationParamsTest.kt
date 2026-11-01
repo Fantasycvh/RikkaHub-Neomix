@@ -54,4 +54,40 @@ class PersonalizationParamsTest {
         assertEquals(1f, decoded.timelineLineWidthDp, 0f)
         assertEquals(true, decoded.showTimeline)
     }
+
+    @Test
+    fun `avatar frame scheme list json roundtrip`() {
+        val schemes = listOf(
+            AvatarFrameScheme(name = "夜色", params = AvatarFrameParams(kind = "glow", colorHex = "#112233")),
+            AvatarFrameScheme(name = "双环", params = AvatarFrameParams(kind = "double")),
+        )
+        val decoded = JsonInstant.decodeFromString<List<AvatarFrameScheme>>(
+            JsonInstant.encodeToString(schemes)
+        )
+        assertEquals(schemes, decoded)
+        // id 缺省时自动生成，保证 UI 删除/对比有稳定键
+        assertTrue(decoded.all { it.id.isNotBlank() })
+    }
+
+    @Test
+    fun `chain of thought scheme list json roundtrip`() {
+        val schemes = listOf(
+            ChainOfThoughtScheme(
+                name = "墨绿",
+                style = ChainOfThoughtCustomStyle(containerColorHex = "#0F2B22", showTimeline = false),
+            ),
+        )
+        val decoded = JsonInstant.decodeFromString<List<ChainOfThoughtScheme>>(
+            JsonInstant.encodeToString(schemes)
+        )
+        assertEquals(schemes, decoded)
+    }
+
+    @Test
+    fun `scheme json without id generates unique ids`() {
+        val a = JsonInstant.decodeFromString<AvatarFrameScheme>("""{"name":"A"}""")
+        val b = JsonInstant.decodeFromString<AvatarFrameScheme>("""{"name":"A"}""")
+        assertTrue(a.id.isNotBlank())
+        assertTrue(a.id != b.id)
+    }
 }

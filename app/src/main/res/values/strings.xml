@@ -2874,6 +2874,14 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_personalization_json_export">Export JSON</string>
   <string name="setting_personalization_json_imported">Imported</string>
   <string name="setting_personalization_json_exported">Exported to clipboard</string>
+  <string name="setting_personalization_save_as_scheme">Save as preset</string>
+  <string name="setting_personalization_scheme_name_title">Preset name</string>
+  <string name="setting_personalization_scheme_saved">Preset saved</string>
+  <string name="setting_personalization_scheme_delete_title">Delete preset</string>
+  <string name="setting_personalization_scheme_delete_message">Delete preset “%1$s”?</string>
+  <string name="setting_personalization_scheme_delete_confirm">Delete</string>
+  <string name="setting_display_page_avatar_frame_schemes_title">Avatar frame presets</string>
+  <string name="setting_display_page_cot_schemes_title">Thinking style presets</string>
   <string name="setting_personalization_hex_optional">#RRGGBB, optional</string>
 </resources>
 

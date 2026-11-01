@@ -2875,6 +2875,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_personalization_json_export">导出 JSON</string>
   <string name="setting_personalization_json_imported">已导入</string>
   <string name="setting_personalization_json_exported">已复制到剪贴板</string>
+  <string name="setting_personalization_save_as_scheme">保存为方案</string>
+  <string name="setting_personalization_scheme_name_title">方案名称</string>
+  <string name="setting_personalization_scheme_saved">已保存方案</string>
+  <string name="setting_personalization_scheme_delete_title">删除方案</string>
+  <string name="setting_personalization_scheme_delete_message">确定删除方案「%1$s」？</string>
+  <string name="setting_personalization_scheme_delete_confirm">删除</string>
+  <string name="setting_display_page_avatar_frame_schemes_title">头像框方案</string>
+  <string name="setting_display_page_cot_schemes_title">思维链方案</string>
   <string name="setting_personalization_hex_optional">#RRGGBB，可留空</string>
 </resources>
 

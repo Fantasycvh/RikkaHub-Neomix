@@ -4,13 +4,14 @@ import android.content.ClipData
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -141,6 +142,50 @@ private fun JsonImportExportButtons(
 }
 
 @Composable
+private fun SchemeNameDialog(
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.setting_personalization_scheme_name_title)) },
+        text = {
+            // 单字段也走滚动+imePadding：AlertDialog 窗口不与 IME 协调（AGENTS.md TextField Host Rules）
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(),
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.setting_personalization_scheme_name_title)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(name.trim())
+                    onDismiss()
+                },
+                enabled = name.isNotBlank(),
+            ) {
+                Text(stringResource(R.string.setting_theme_page_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
+}
+
+@Composable
 private fun HexField(label: String, value: String, onValueChange: (String) -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -184,6 +229,7 @@ private fun LabeledSlider(
 fun AvatarFrameParamsSheet(
     params: AvatarFrameParams,
     onSave: (AvatarFrameParams) -> Unit,
+    onSaveScheme: (String, AvatarFrameParams) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberBottomSheetState(
@@ -196,6 +242,7 @@ fun AvatarFrameParamsSheet(
     var strokeWidth by remember { mutableStateOf(params.strokeWidthDp) }
     var dash by remember { mutableStateOf(params.dashDp) }
     var gap by remember { mutableStateOf(params.gapDp) }
+    var showSchemeNameDialog by remember { mutableStateOf(false) }
 
     fun snapshot(): AvatarFrameParams = AvatarFrameParams(
         kind = kind,
@@ -234,7 +281,10 @@ fun AvatarFrameParamsSheet(
                 text = stringResource(R.string.setting_display_page_avatar_frame_param_kind),
                 style = MaterialTheme.typography.titleSmall,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 listOf("ring", "gradient", "double", "dashed", "glow").forEach { k ->
                     OutlinedButton(
                         onClick = { kind = k },
@@ -291,15 +341,26 @@ fun AvatarFrameParamsSheet(
             Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                OutlinedButton(onClick = { showSchemeNameDialog = true }) {
+                    Text(stringResource(R.string.setting_personalization_save_as_scheme))
+                }
+                Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
-                Spacer(Modifier.width(8.dp))
                 Button(onClick = { onSave(snapshot()) }) {
                     Text(stringResource(R.string.setting_theme_page_save))
                 }
             }
         }
+    }
+
+    if (showSchemeNameDialog) {
+        SchemeNameDialog(
+            onConfirm = { name -> onSaveScheme(name, snapshot()) },
+            onDismiss = { showSchemeNameDialog = false },
+        )
     }
 }
 
@@ -308,6 +369,7 @@ fun AvatarFrameParamsSheet(
 fun ChainOfThoughtCustomSheet(
     style: ChainOfThoughtCustomStyle,
     onSave: (ChainOfThoughtCustomStyle) -> Unit,
+    onSaveScheme: (String, ChainOfThoughtCustomStyle) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberBottomSheetState(
@@ -319,6 +381,7 @@ fun ChainOfThoughtCustomSheet(
     var corner by remember { mutableStateOf(style.cornerRadiusDp) }
     var lineWidth by remember { mutableStateOf(style.timelineLineWidthDp) }
     var showTimeline by remember { mutableStateOf(style.showTimeline) }
+    var showSchemeNameDialog by remember { mutableStateOf(false) }
 
     fun snapshot(): ChainOfThoughtCustomStyle = ChainOfThoughtCustomStyle(
         containerColorHex = containerHex.takeIf { it.isNotBlank() },
@@ -386,14 +449,25 @@ fun ChainOfThoughtCustomSheet(
             Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                OutlinedButton(onClick = { showSchemeNameDialog = true }) {
+                    Text(stringResource(R.string.setting_personalization_save_as_scheme))
+                }
+                Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
-                Spacer(Modifier.width(8.dp))
                 Button(onClick = { onSave(snapshot()) }) {
                     Text(stringResource(R.string.setting_theme_page_save))
                 }
             }
         }
+    }
+
+    if (showSchemeNameDialog) {
+        SchemeNameDialog(
+            onConfirm = { name -> onSaveScheme(name, snapshot()) },
+            onDismiss = { showSchemeNameDialog = false },
+        )
     }
 }
