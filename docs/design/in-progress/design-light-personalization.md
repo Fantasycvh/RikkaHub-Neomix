@@ -50,4 +50,5 @@
 - 保存：两个编辑 sheet 底部「保存为方案」→ 命名对话框（单字段 AlertDialog，verticalScroll + imePadding）→ `updateSettings(transform)` 追加；编辑器保持打开，toast 反馈。
 - 应用：设置页「头像框方案 / 思维链方案」CardGroup（列表非空才出现），点行 = 写参数 + 切对应 CUSTOM 档；leading 为 Canvas 缩略预览（框环 / 容器色 + 强调线）。
 - 删除：行尾垃圾桶 → 确认对话框 → `filterNot(id)`。
+- 导入：JSON 导入只回填编辑器本地态，**保持 sheet 打开**让用户点「保存」落库（曾因 `onImported = onDismiss` 关 sheet 导致导入值直接丢失，真机实测暴露后修复）。
 - 非目标（本轮不做）：方案 JSON 文件格式与导入导出（单参数 JSON 导入导出维持现状）；方案重命名/排序；CUSTOM_IMAGE 素材入方案（managed 图片跨设备必丢）。
