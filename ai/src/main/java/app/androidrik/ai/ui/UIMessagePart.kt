@@ -9,6 +9,24 @@ import app.androidrik.ai.util.json
 import kotlin.time.Clock
 import kotlin.time.Instant
 
+/**
+ * 推理内容的语义类型（对齐上游 #1648）。
+ *
+ * - [REASONING_TEXT]：模型的「思考正文」（OpenAI Responses 的 `reasoning_text`、
+ *   Anthropic 的 `thinking`、Google 的 `thought`）
+ * - [SUMMARY_TEXT]：供应商生成的**摘要**（OpenAI Responses 的 `reasoning_summary_text`）
+ *
+ * 两类内容在 UI 上分开渲染；旧数据无此字段时按 [REASONING_TEXT] 处理。
+ */
+@Serializable
+enum class ReasoningType {
+    @SerialName("reasoning_text")
+    REASONING_TEXT,
+
+    @SerialName("summary_text")
+    SUMMARY_TEXT,
+}
+
 @Serializable
 sealed class ToolApprovalState {
     @Serializable
@@ -90,7 +108,9 @@ sealed class UIMessagePart {
         val reasoning: String,
         val createdAt: Instant = Clock.System.now(),
         val finishedAt: Instant? = Clock.System.now(),
-        override var metadata: JsonObject? = null
+        override var metadata: JsonObject? = null,
+        /** 推理语义类型（#1648 移植）：摘要与正文分开展示；旧数据缺省为正文。 */
+        val reasoningType: ReasoningType = ReasoningType.REASONING_TEXT,
     ) : UIMessagePart()
 
     @Deprecated("Deprecated")
