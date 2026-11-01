@@ -568,11 +568,11 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 
 ### 16.6 P4 未覆盖 / 已知限制（P5 承接）
 
-- **ChatGPT loopback 登录**（Custom Tabs + 前台服务 + `127.0.0.1:1455` 回调）只做了代码与单测（`ChatGPTAuthTest` 12 例），**未在新账号上点通真实登录**；真机只验证了「已登录态迁移」与「Grok 设备码登录」。P5 需要真机走一遍新账号登录 + 通知权限（Android 13+）。
+- **ChatGPT loopback 登录**（Custom Tabs + 前台服务 + `127.0.0.1:1455` 回调）：P5 已由用户在新账号上真机点通（含 Android 13+ 通知权限），见 §17.1。
 - **Grok 全链路**：登录成功但账号无 SuperGrok 订阅，模型目录/额度/对话均无法真机验证；需有订阅的账号补验（`GrokProviderTest` 8 例覆盖解析，未覆盖真实端点差异）。
-- **降级/去留**：旧 Codex 设备码 UI（`ProviderConfigure` 内 OpenAI 订阅分支）、`OpenAICodexAuthService`、`CodexSubscriptionAccount` 与 `ProviderSetting.OpenAI` 相关字段仍在；P5 决定「保留为兜底 or 删除」，并补发布说明（旧版本读新数据不可用，需迁移前自动备份）。
-- **Grok 订阅锁**：P5 已决策纳入 `SubscriptionProviderLock`（Grok Responses 端点同样回传自家加密推理），见 §十七。
-- **`ProviderAccountManager` 并发刷新 / 杀进程重启**：仍无自动化覆盖（无 Robolectric），P4 真机只验证了单请求刷新链路；P5 补真机压测（并发两路请求只用一个 refresh token、刷新期间登出不写回）。
+- **降级/去留**：P5 已删除旧设备码链路，降级与发布说明见 §17.3 / §17.4。
+- **Grok 订阅锁**：P5 已决策纳入 `SubscriptionProviderLock`（Grok Responses 端点同样回传自家加密推理），见 §17.2。
+- **`ProviderAccountManager` 并发刷新 / 杀进程重启**：仍无自动化覆盖（无 Robolectric），P4 真机只验证了单请求刷新链路；P5 未压测，建议在真机用多请求并发 + 强制停止验证一次。
 - **server-tool 回传 / 全局 session 头**：属 P1 起既有缺口与后续增强，不在 P4 范围。
 
 ### 16.7 补充：用量展示口径（已用 / 剩余）与后端字段实测
@@ -623,5 +623,49 @@ P4 唯一未点通的登录路径已在真机补验通过：**新账号**走 Cus
 - **依据**：Grok 的 Responses 端点与 Codex 后端一样，会回传只有自家后端能解读的加密推理（`encrypted_content`）；把这类对话切到其它提供商 = 把解不开的加密块丢给外人，轻则静默丢弃、重则 400。
 - **规则**（与 ChatGPT 一致）：`ProviderSetting.Grok` 满足 `enabled && credential != null && models.isNotEmpty()` 才参与锁定；未登录/停用/无模型的 Grok 不锁（否则锁上去只会让对话彻底没法继续）。
 - **行为**：一旦对话历史里有 Grok 订阅模型生成的消息，后续只能在该 Grok 提供商内换模型；模型选择器的候选提供商同步只保留它。判定仍按**对话历史**而不是当前选中模型（避免助手级换模型把历史对话全部锁死）。
-- **测试**：`SubscriptionProviderLockTest` 用 3 例钉住新契约（登录且有模型 ⇒ 锁定；未登录 ⇒ 不锁；停用 ⇒ 不锁），并保留「同提供商换模型允许 / 别家模型拒绝」断言。app 2742 → 2744。
+- **测试**：`SubscriptionProviderLockTest` 用 3 例钉住新契约（登录且有模型 ⇒ 锁定；未登录 ⇒ 不锁；停用 ⇒ 不锁），并保留「同提供商换模型允许 / 别家模型拒绝」断言。app 2742 → 2744（P5 删旧链路后为 2734）。
 - **真机限制**：当前测试账号没有 SuperGrok 订阅，无法产生「Grok 订阅模型生成的历史消息」来做端到端锁定验证；锁定逻辑由纯函数单测覆盖，有订阅账号后按 P4 记的 Grok 全链路补验。
+
+### 17.3 删除旧 ChatGPT 设备码订阅链路（loopback 登录通过后的清理）
+
+P4 的两条登录路径都在真机走通（§17.1）后，旧 OpenAI 设备码订阅链路不再承担登录职责，按 P5 计划整体删除：
+
+| 删除项 | 说明 |
+| --- | --- |
+| `app/.../data/ai/openai/OpenAICodexAuthService.kt`（603 行）+ 单测 | 设备码登录、token 刷新、`codexAccount` 写回设置 |
+| `ai/.../providers/openai/OpenAICodexTokenProvider.kt`（`CodexToken`） | app 层向 ai 层喂明文令牌的接口 |
+| `ProviderSetting.OpenAIAuthType`、`CodexSubscriptionAccount`、`OpenAI.authType`、`OpenAI.codexAccount` | 旧订阅的存储模型（`copyProvider` 同步去掉两个参数） |
+| `OpenAIProvider` / `ChatCompletionsAPI` / `ResponseAPI` 的 `codexTokenProvider` 参数与订阅分支；`OpenAIRequestAuthenticator` 的订阅鉴权 + Codex 端点守卫 | 鉴权统一回落到 `KeyRoulette`（账号类走 `AccountAuth.kt`，P3 已就位） |
+| `CodexSupport` 的 `isChatGPTSubscription` / `codexPromptCacheKey` / `CODEX_PROMPT_CACHE_KEY_MAX` 与订阅 URL 分支 | 保留 `CODEX_CAPABILITIES`、`CODEX_CLIENT_VERSION`、`CODEX_ORIGINATOR`、`parseCodexModels`（ChatGPTProvider 依赖） |
+| `ProviderConfigureOpenAI` 的「认证方式」分段按钮、设备码对话框、登录/登出/强制刷新 UI；`DataSourceModule` 的 `OpenAICodexAuthService` 单例 | 设置页 API Key 类只剩名称 / 多 Key / BaseUrl / 路径 / Response API 开关等原有字段 |
+| 22 条 `setting_provider_page_codex_*` 文案 + 3 条认证方式文案（en/zh/zh-TW 同步） | 无引用后清理，三语文案一致 |
+
+**兼容性**：`Settings` 解码用 `JsonInstant`（`ignoreUnknownKeys = true`），旧 JSON 里残留的 `authType`/`codexAccount` 会被静默忽略；V5/V7 迁移仍按**原始 JSON** 解析旧字段（不依赖已删的数据类），所以「老用户升级」的迁移路径完全不变。单测验证：V5 迁移用例里「显式 `authType=api_key` 的残留 `codexAccount`」仍解码成可用的 API Key provider（旧字段被忽略、`apiKey` 保留）。
+
+**验证**：`:ai` 467（−3：订阅鉴权 / 请求体相关用例随旧链路删除）、`:app` 2734（−10：旧锁 / 旧服务 / 旧 UI 用例）；`:app:assembleDebug` 通过；真机覆盖安装后启动正常，设置页 OpenAI 类 provider 只剩 API Key 字段，迁移后的 ChatGPT 账号页显示邮箱 + ChatGPT Plus + 剩余额度，Grok 账号页与用量正常加载。
+
+### 17.4 降级策略与发布说明
+
+**为什么不兼容**：V5 迁移后 `data_version = 5`、provider 列表里出现 `{"type":"chatgpt"}` / `{"type":"grok"}` 两种**旧版本不认识的类型**。降级回 P1/P2 时代的构建时，旧的兼容解码会把未知类型**丢弃**（provider 及其模型消失，历史消息的 `modelId` 找不到 provider）；更早版本可能整体解码失败。
+
+**降级策略（写进发布说明）**：
+
+1. **升级前先备份**：设置 → 备份 → 立即备份。备份文件是旧格式；恢复时会走 `SettingsJsonMigrator` V7 把旧订阅条目转成账号类。
+2. **不建议降级**：若必须降级，就**卸载重装旧版本并恢复升级前的备份**（直接覆盖安装旧 APK 会读到已迁移数据，provider 丢失）。
+3. **迁移前自动兜底**：P5 未新增自动备份文件；DataStore 的 `data_version` 保证迁移只跑一次，且 V5 转换是**纯 JSON 形态变换**（幂等、密文原样搬运），出错面很小。
+4. 降级之后再升级回来：账号类 provider 会被 `SettingsCompatDecoder` 保留（P3 起支持 chatgpt/grok），无需重复迁移。
+
+**发布说明草案（可直接贴 GitHub Release）**：
+
+> **订阅登录重构（OpenAI OAuth 移植）**
+>
+> - **ChatGPT 订阅**：改用 ChatGPT 官方 OAuth 登录（Custom Tabs 授权 + 本地回环回调），旧的「设备码登录」已移除；升级时会自动把原订阅配置迁移成新的账号 provider（id / 名称 / 模型 / 代理 / 自定义头 / 重试 / 思考强度保留），无需重新登录。
+> - **Grok 订阅**：新增 xAI 账号登录（设备码），支持 SuperGrok 订阅的模型目录与周/月额度，需要 SuperGrok 订阅才可用。
+> - **额度展示**：ChatGPT / Grok 的用量支持「已用 / 剩余」两种口径切换（偏好设置 → 界面 → 用量显示）。
+> - **流式重构**：四个 provider 统一 `StreamChunk` 解码路径；ChatGPT / Grok 订阅对话会锁定提供商（历史里有该 provider 生成的消息后，只能在同 provider 内换模型），避免加密推理跨提供商失效。
+> - **注意**：本版升级后 **不支持降级**（数据格式 4→5）；升级前请先在「设置 → 备份」做一次备份，若需回退请卸载重装旧版并从该备份恢复。
+
+### 17.5 收尾
+
+- `ai/README.md` 补一节「移植说明」，记录本仓与上游 `#1648` / `#2186` 的对应关系、刻意偏离（凭据加密、`sessionId`、SSE 容错范围）与旧设备码链路已删除。
+- `server-tool` 回传缺口（§16.6 最后一条）不属于本次 OAuth 移植范围，建议单开任务，不在 P5 修。
