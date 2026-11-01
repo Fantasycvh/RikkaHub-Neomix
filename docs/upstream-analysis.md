@@ -3,13 +3,14 @@
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.14 (316)`（预发布，2026-10-31 发）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产；tag 触发的 CI 发版流水线自 `beta.14` 起启用）。
 
 > **同步点（2026-10-31 更新）**：已评估到上游 **`a5db9c9b7`**（2026-10-29，上游 HEAD，版本 `3.1.1`+dev），本批 `ad2c4430d`..`a5db9c9b7` 共 **10 提交**（逐条见「2026-10-31 同步评估」）：**两条 P1 已吸收（fork `beb6fb1fb`）**——`1575d179d`（空 role 崩溃容错 + 3 条回归用例）、`79f4b6fb2`（SAF 导出防闪退两处）；**余吸收候选**：`a046505a6`（加号面板滚动，P2）、`a5db9c9b7`（Tinyfish purpose，P2）、`eb530b0ff` 的 LatexText 行距正则（P3）、`281c9525a`（停止后队列卡住，P2 待核）、`a1c61c3cb`+`fa5d5f3f6`+`20c24e7d3`（构建/依赖小件，P3 一批）；已等价 3 条（`2c4d1979c` 本仓 10-25 已修同根因、`50bb57857` 决策 8 覆盖更强、`4af510624` 前批已结）；不跟 4 条（BetterText 迁移、ANSI 色块等）。**未合入分支 `feat/background-shell` 两条（shell 后台命令 + 会话收件箱）记账观察**。issue 扫描至 #2275，**#2271（Mistral 422 reasoning_content，open）本仓同构风险**。
+> **同步点（2026-11-01 更新）**：按用户指定吸收 2026-10-24 起挂起的最后一条候选 **`41ce12f66`（models.dev 模型元数据）**，fork **`b9a95f0d4`**——ai 侧 `ModelsDevCatalog` + 注册表 catalog 优先、app 侧 `ModelsDevUpdater` + 内置快照（每日 ETag 刷新）+ 本仓补上的 `contextLength` 消费全部落地。数据覆盖核对与取舍见文末「2026-11-01 models.dev 模型元数据落地」一节。
 > **同步点（2026-10-16 晚间更新）**：逐条评估已跟进到上游 **`cfb503d8c`（2026-10-16 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-16 同步」；再前一节为「2026-10-15 同步」。
 > **同步点（2026-10-19 更新）**：已评估到上游 **`42896e5ad`**（本批 `aae986e55`..`42896e5ad` 共 29 提交，逐条结论见「2026-10-19 同步评估」一节）；上游同日 `bump version to 3.0.0`。**本批唯一缺口 `675e59f0d`（Responses API `function_call_output`）已于当日落地（fork `8b85aa3a4`）**，无遗留待吸收项。
 > **同步点（2026-10-20 更新）**：已评估到上游 **`e5bb70730`**（本批 `42896e5ad`..`e5bb70730` 共 6 提交，见「2026-10-20 同步评估」）。3 条已吸收（`aaa8d2883` / `e53536283` / `d856ddf17`），版本号与发版 skill 两条跳过；**`318cffef6` OAuth 订阅登录（#2186）经评估后决定暂不做**，缺口清单记在该节专项表。
 > **同日专项**：另**单独吸收**了更早未移植的 `5a90c0548`（用量统计流水表，DB v44），见「2026-10-20 专项吸收：用量统计流水」一节——它不在本批 fetch 区间内，是本仓 346 个「上游有、本仓无」存量里按用户指定方向挑的一条。
 > **同步点（2026-10-20 晚，beta.5 发版前复核）**：`e5bb70730` 之后上游又有 4 个提交（HEAD `5203601f7`，上游已发 tag `3.1.0` / `eeef60b22`）。其中**又吸收 2 条**：`bc4a6f47e`（输入区图片预览 / 多图左右切换 / 预览内进画板，fork `15e3d8c9e`）、`17d06d26f`（新建/导入提供商后清空搜索并滚到新项，fork `1ddb87d8e`）。**尚余 3 条未评估**：`5203601f7`（全局禁用 overscroll 回弹）、`8bb488e3a`（工具步骤显示执行耗时）、`fe55bff7f`（提供商类型名与「订阅」类型）。本仓「上游有、本仓无」累计 **350** 个提交（含历史存量 346 + 本批未评估 3 + 刻意不做 1）。
 > **同步点（2026-10-21 更新）**：已评估到上游 **`815e9c20b`**（`3.1.0-15-g815e9c20b`，2026-10-21 16:26），本批 `5203601f7`..`815e9c20b` 共 **10 提交**；10-20 遗留的 3 条一并结案：`5203601f7` **已与本仓等价**（`Theme.kt` 的 `LocalOverscrollFactory provides null`）、`fe55bff7f` **不适用**、`8bb488e3a` 列 P2 候选。10 条新提交里只有 **`2aafd708f`（技能删除/校验）** 值得考虑吸收；其余因架构/范围不跟（PDF 替换、渠道 flavor、赞助商、i18n 工具链、远程 SSH）。同期 issue 窗口 **60 条**（22 open / 38 新近 closed）评估见「2026-10-21 issue 评估」；本仓 `upstream/master..HEAD` = **1232**、`HEAD..upstream/master` = **360**。
-> **同步点（2026-10-24 更新，master 跟进）**：上游 `43f1a5df2` 之后的 **10 提交全部结案**（同步点推进到上游 HEAD **`f267e8478`**）。其中 8 条由 `chore/remove-tikz` 分支先行吸收（悬浮窗两步 + 修复、`487e229f7`、`9dcb4fa44`），本日**移植回 master**——用户要求 master 保留 TikZ，分支的 TikZ 移除、纯 Kotlin PDF 提取、applicationId 共存改包、临时诊断 4 项**不随移植**；`2b4694ba7` 已随 FloatingX 3 迁移（`f066e3f64`）吸收。剩余 2 条本日直接吸收：`f267e8478`（JLatexMath keep 收窄）、`537f3b0ed`（Gradle 8g 并行）。`fcb4bfe4e`（Tavily）同日已按用户指定跟进吸收（`10689d1a5`），**本批仅剩 `41ce12f66`（models.dev，单独立项）一条候选**。移植清单与哈希重映射见「2026-10-24 master 跟进」一节，`fcb4bfe4e` 落地细节见「2026-10-24 Tavily answer 开关落地」一节。本仓 `upstream/master..HEAD` = **1303**、`HEAD..upstream/master` = **382**。
+> **同步点（2026-10-24 更新，master 跟进）**：上游 `43f1a5df2` 之后的 **10 提交全部结案**（同步点推进到上游 HEAD **`f267e8478`**）。其中 8 条由 `chore/remove-tikz` 分支先行吸收（悬浮窗两步 + 修复、`487e229f7`、`9dcb4fa44`），本日**移植回 master**——用户要求 master 保留 TikZ，分支的 TikZ 移除、纯 Kotlin PDF 提取、applicationId 共存改包、临时诊断 4 项**不随移植**；`2b4694ba7` 已随 FloatingX 3 迁移（`f066e3f64`）吸收。剩余 2 条本日直接吸收：`f267e8478`（JLatexMath keep 收窄）、`537f3b0ed`（Gradle 8g 并行）。`fcb4bfe4e`（Tavily）同日已按用户指定跟进吸收（`10689d1a5`），**本批仅剩 `41ce12f66`（models.dev，单独立项）一条候选**——**已于 2026-11-01 落地（fork `b9a95f0d4`）**，见文末「2026-11-01 models.dev 模型元数据落地」一节。移植清单与哈希重映射见「2026-10-24 master 跟进」一节，`fcb4bfe4e` 落地细节见「2026-10-24 Tavily answer 开关落地」一节。本仓 `upstream/master..HEAD` = **1303**、`HEAD..upstream/master` = **382**。
 > **同步点（2026-10-23 晚更新）**：已评估到上游 **`e48db7bc7`**（2026-10-23 18:52），`43f1a5df2` 之后共 **8 提交**（逐条见「2026-10-23 晚追加评估」）：新增 2 条中 `f048bed65`（后台生成悬浮窗）**已分两步落地（`f066e3f64` / `19826434a`）**，`e48db7bc7` **不适用**（修的是上游文件式记忆，本仓不跟该方向）；此前 6 条未入库提交一并补记录（`487e229f7`、`9dcb4fa44` **已按用户选择吸收**，分别为 `86c158777` / `eb52fa82c`；其余维持候选/暂缓/不适用结论）。低风险小件及后续悬浮窗验证分别见本节末尾对应落地记录。本仓 `upstream/master..HEAD` = **1292**、`HEAD..upstream/master` = **380**。
 
 > **同步点（2026-10-23 更新）**：已评估到上游 **`43f1a5df2`**（`3.1.0-27-g43f1a5df2`，2026-10-22），本批 `815e9c20b`..`43f1a5df2` 共 **12 提交**（逐条结论见「2026-10-23 同步评估」）：**吸收 5 条 + 部分吸收 1 条**——`90e48420f` 消息索引增量（`67ef193eb` / `1fd089a04`）、`2b522f990` libsimple 无 jieba（`446836328`）、`71dd98f88` 压缩对话框步进器（`beccde0ce`）、`e3d11e15f` 的 `-keepnames Throwable`（`ae6d23f83`）；`26454cc4d` / `80845dd9b` 已在 beta.6 吸收，`d8ba9cf67` 不适用（本仓已移除扫码）；`2a0a831e6` 裁图替换（`075067850`）、`43f1a5df2` 创作页重命名（`6a9d5bdec`）亦已吸收，P3 暂缓 `dbccc68c7`（体积），范围外 `070ff683c`（德语）/ `4e99510be`（perf skill 文档）。本仓 `upstream/master..HEAD` = **1275**、`HEAD..upstream/master` = **372**。
@@ -1226,7 +1227,7 @@ git checkout master
 | 上游提交 | 内容 | 结论 |
 |---|---|---|
 | `9dcb4fa44` | 模型匹配：不再把参数量当版本号；token 序列跳过紧跟 b/k 的数字（`8b`/`a32b`/`32k` 不再误判模型能力），补 `QWEN_3_VL`，补单测（3 文件 +35/−8） | ✅ **已吸收（`eb52fa82c`）**：保留本仓注册表条目，跳过参数量/上下文长度数字，新增 `QWEN_3_VL` 并单次分词；移植上游回归测试 |
-| `41ce12f66` | 模型能力识别改用 [models.dev](https://models.dev) 数据：新增 `ModelsDevCatalog`、1.5MB `assets/models_dev.json`、后台更新器 + DI + 测试（9 文件 +576/−25） | ⏸ **暂不跟（单独立项）**：能力识别准确性收益明确，但引入 1.5MB 资产、更新网络/缓存/失败策略与 DI 生命周期；本仓模型能力判定已自研，需先核对覆盖差异再决定 |
+| `41ce12f66` | 模型能力识别改用 [models.dev](https://models.dev) 数据：新增 `ModelsDevCatalog`、1.5MB `assets/models_dev.json`、后台更新器 + DI + 测试（9 文件 +576/−25） | ✅ **已吸收（2026-11-01，fork `b9a95f0d4`）**：按上游语义做 catalog 优先 + 注册表兜底（覆盖差异已逐条核对，见文末 2026-11-01 一节）；另补上上游没接的 `contextLength` 消费；内置快照按当日 api.json 重生成（1,573,408 B，gzip≈95 KB），工具脚本改 Node 可跑 |
 | `fcb4bfe4e` | Tavily 可关闭「生成答案」；各搜索服务 query 参数描述补全（21 文件 +48/−20，多为注释/文案） | ✅ **已吸收（`10689d1a5`，2026-10-24 用户指定）**：服务层直套 + 设置页手改，细节见「2026-10-24 Tavily answer 开关落地」一节 |
 | `2b4694ba7` | 悬浮窗不再操作已 `cancel` 的 `FxControl`（1 文件 +9/−6） | ✅ **已随 `f066e3f64` 吸收**：FloatingX 2.3.7 迁移到 3.0 后 `FxState.CANCELLED` 守卫成为本仓 API 语义的一部分，迁移提交已带该修复（下节评估时为 2.3.7，结论「不适用」已被迁移取代） |
 | `487e229f7` | `ask_user` 工具名抽成公共常量（2 文件 +4/−3） | ✅ **已吸收（`86c158777`）**：工具定义与消息 UI 共用 `ASK_USER_TOOL_NAME`，不改变工具名、schema 或行为；仅完成该前置，不引入 `f048bed65` |
@@ -1563,6 +1564,49 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 **验证**：全模块 `compileDebugKotlin` + `assembleDebug` + `assembleRelease`（R8）通过；release 包装机冷启动 0 FATAL。本机 SDK 目录命名不规范会有 CXX5304 警告（`platforms;android-37` vs `android-37.0`），非致命、不影响 CI（CI 的 SDK 布局干净）；嫌烦可 `sdkmanager "platforms;android-37"` 重装规范目录名。
 
 **确认不跟的构建差异**（盘点结论，勿重复评估）：flavor 双渠道（play 版无需求）、Firebase 全家桶（本仓已移除，回不去）、`ui` 模块与 `build-logic` 上游版（宿主重构不跟，见 `24a742270`/`db4982283` 结论；本仓保留自有 build-logic）、iText/Objectbox 仓库（上游 PDF 替换方案依赖）。
+
+## 2026-11-01 models.dev 模型元数据落地（上游 `41ce12f66`，fork `b9a95f0d4`）
+
+> 背景：该提交在 2026-10-24 评估时被判「暂不跟（单独立项）」——收益明确，但引入约 1.5MB 资产、
+> 更新网络/缓存/失败策略与 DI 生命周期，且本仓模型能力判定已自研，需先核对覆盖差异。
+> 2026-11-01 用户指定「上游和 yuihub 都有」后立项落地（上游实现 9 文件 +576/−25）。
+> 上游同一能力在 yuihub 也有等价实现（`ecaca331`，见 [`references/other projects/yuihub.md`](references/other%20projects/yuihub.md) 功能灵感清单）。
+> 本仓按包名与既有分叉人工适配，未整段合并。
+
+### 上游实现 → 本仓落地
+
+| 项 | 上游 | 本仓（`b9a95f0d4`） |
+|---|---|---|
+| `ModelsDevCatalog`（ai） | 按完整 id / 去前缀名 / canonical id 建索引；同一 key 下多提供商记录按多数投票合并（持平算支持），context 取票数最多者 | 逐行移植到 `app.androidrik.ai.registry`，行为一致；`ModelsDevCatalogTest` 钉住索引、`:free` 类后缀、canonical 合票、投票合并与序列化往返 |
+| 注册表接入 | 输入/输出模态、能力、上下文长度**先查 catalog**，查不到回落原 token 规则；`GPT_5.match()` 这类请求行为判断仍走 token 规则 | 同语义：`ModelRegistry.installCatalog(catalog?)` + 四个访问器（`MODEL_CONTEXT_LENGTH` 本仓已有）；`match`/`TokenMatcher` 零改动 |
+| 启动装载 | `ModelsDevUpdater`：filesDir 缓存 → assets 快照 → 每 ≥1 天带 ETag 刷新；304 只记时间；失败仅日志 | 同，绑定进 `dataSourceModule`，`postReadyInit()` 中 `extractBuiltinSkills()` 之后、`startWebServerIfEnabled()` 之前后台启动（不阻塞启动，失败不影响启动） |
+| 内置快照 | `app/src/main/assets/models_dev.json`（上游为 1,553,397 B，gzip≈97KB） | 用当日 `https://models.dev/api.json` 重新生成：**1,573,408 B**、235 providers / 8,940 条模型记录、解码索引 **5,106**、gzip -9 **97,378 B**（APK 内 aapt 默认压缩 .json，实际增量约 95KB） |
+| 生成工具 | `tools/models-dev/update.ts`，`Bun.write` | 同路径脚本改为 **Node 24 可直接跑**（本机无 bun）：`node tools/models-dev/update.ts`；输出格式字段与上游严格一致（只留 `modalities.input/output` 的 text/image、`tool_call`、`reasoning`、`limit.context`、`canonical_model_id`） |
+| 上下文长度消费 | 上游只加了访问器，app 内没有消费点（本仓此前也一样：`contextLength(...)` 有声明无读取口） | **本仓补上**：`SettingProviderDetailPage` 三处「按 registry 补模型元数据」的 copy + `CherryStudioProviderImporter` 写入 `contextLength`；只在新增/选择/导入模型时生效，**存量模型不迁移**（避免静默改掉用户已用的上下文预算），用户仍可用模型级 `customContextLength` 覆盖 |
+
+### 「catalog 优先」的覆盖与冲突核对（2026-11-01 的 models.dev 数据）
+
+- 当日 api.json：**235 providers / 8,940 条模型记录**，合并索引后 **5,106 个 key**（同一模型多提供商投票合并）。
+- 抽样本仓注册表覆盖的 **65 个代表性 id**：**45 个**在 catalog 命中、**20 个** MISS。MISS 基本是本仓自维护/较新的国模与厂商命名——`gemini-4-*`、`gpt-6`、`hy-3`/`hy-4`（hunyuan-4）、`doubao-1.6`/`2.0`、`mimo-v2`/`v2.6`、`step-3`/裸 `step-5`、`qwen3.8-plus`、`intern-s1`、`qwen-mt`、`qwen2.5-3b-instruct` 等——**注册表兜底仍然必需**，这也是不能只靠 catalog 的原因。
+- 命中项里 catalog 与注册表 token 规则结论不同的几处（正是采用 catalog 优先的理由，均为 catalog 更准）：
+  - `o3-mini`：注册表 `OPENAI_O_MODELS` 给了图片输入，catalog 只有文本（o3-mini 实际不收图）；
+  - `claude-3.5-sonnet`、`kimi-k2`、`qwen3-vl-8b-instruct`：注册表 token 规则标了 REASONING，catalog 为 false（这些是 instruct / 非 thinking 变体）；
+  - 上下文长度由 catalog 补齐的例子：`claude-4.5-sonnet` → 200K、`gpt-5` → 400K、`gemini-2.5-flash` → 1,048,576、`kimi-k3` → 1,048,576 等（注册表只给 5 代 Claude 与 DeepSeek V4.1 声明了 1M）。
+  - 反向边界（注册表仍不可替代）：带日期后缀的 id 如 `claude-sonnet-5-20260305` catalog 索引不到，会回落到注册表声明（1M）；本仓自维护的新模型同理。
+
+### 运维与风险
+
+- **网络**：仅每天最多一次 `https://models.dev/api.json` 请求（ETag 命中 304 不下载），复用共享 `OkHttpClient`（走用户全局/提供商代理设置）；失败静默 `Log.w`，继续用内置快照。
+- **缓存**：`filesDir/models_dev/api.json` 原子替换（tmp → rename）；缓存解码失败即删除并回退 assets；下载结果 `<100` 条目视为异常、不覆盖本地。
+- **数据正确性**：models.dev 是多提供商众包数据，个别条目可能滞后/标错（例：`deepseek-reasoner` 的 context 数据为 1M），所以保留了模型级 `customContextLength` 与能力的手动编辑入口；catalog 只影响「新增模型时的默认值」，不改存量。
+- **隐私/行为**：启动期会向 models.dev 发一次请求（与上游一致，本仓未加 UI 开关；该请求不带用户数据，仅 `api.json` 的 GET/ETag）。
+- **首次启动**：`installCatalog` 前的极短窗口内查询仍回落 token 规则，与未安装 catalog 的行为完全一致。
+
+### 验证
+
+- `:ai:testDebugUnitTest`：**377 项，0 失败/错误/跳过**（新增 `ModelsDevCatalogTest` 7 项、`ModelRegistryCatalogTest` 4 项；`ModelRegistryTest` 只加 `@After` 复位 catalog，防同 JVM 下的执行顺序污染，断言一条未改）。
+- `:app:testDebugUnitTest`：**2,658 项，0 失败/错误，2 skipped（均既有）**（新增 `ModelsDevAssetTest`：读内置快照解码后断言 `gpt-4o` 视觉输入 + 上下文 128K、`claude-sonnet-4-5` 支持 TOOL）。
+- `:app:compileDebugKotlin` 通过；`git diff --check` 通过。未另行打包/真机验证（本次是纯元数据/启动期装载，不涉 UI 布局）。
 
 ## 关联
 

@@ -141,6 +141,7 @@
 - 📊 图表工具（`chart_display`：折线 / 柱状 / 散点）
 - ✨ ExpressivePopup（Material Expressive 动效弹层）
 - 🗂️ 模型列表折叠（按供应商分组）
+- 🧭 模型元数据自动补全：按 modelId 从 [models.dev](https://models.dev) 补全图片/工具/推理能力与上下文长度（内置快照 + 每日 ETag 刷新，失败回落内置；新增或选择模型时自动带入，2026-11-01 吸收上游 `41ce12f66`，并补上上游未接的 `contextLength` 消费）
 - 🪾 消息分支 / 🔍 搜索能力（Exa、Tavily、智谱、豆包、LinkUp、Brave、Perplexity 等）
 - 🧩 提示词变量 / 🤖 Agent 自定义
 - 🧠 类 ChatGPT 记忆功能 / 📝 AI 翻译 / 🌐 自定义 HTTP 请求头与请求体
