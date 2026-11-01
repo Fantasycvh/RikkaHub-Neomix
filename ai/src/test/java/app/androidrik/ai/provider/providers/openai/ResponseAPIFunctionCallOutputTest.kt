@@ -1,17 +1,20 @@
 package app.androidrik.ai.provider.providers.openai
 
-import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.provider.stream.SseEvent
+import app.androidrik.ai.ui.StreamChunk
+import app.androidrik.ai.ui.StreamChunkHandler
+import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 
 /**
@@ -22,27 +25,35 @@ import org.junit.Test
  * `GenerationHandler` **再执行一次**（重复副作用）；其中 `output_item.done` 还先取 `item.id`
  * 再分 type，网关不带 `id` 时直接 `error()` 让整轮请求失败。
  *
- * 事件形状参照上游测试与 Responses API 规范：`function_call_output` 只保证 `call_id` + `output`。
+ * P1（#1648 移植）后流式解析从 `parseResponseDelta`（`MessageChunk`）换成
+ * [ResponseApiStreamDecoder]（`StreamChunk`）。本仓新增了第 19 个通用事件
+ * [StreamChunk.ToolCallOutput]（上游事件集没有对应通道），解码器在
+ * `response.output_item.added/done` 遇到 `function_call_output` 时**先于 id 解析**发出该事件，
+ * 再由 [StreamChunkHandler] 按 id 合并进工具 part（`Tool.merge` 幂等去重）。
  */
 class ResponseAPIFunctionCallOutputTest {
 
-    private lateinit var api: ResponseAPI
-    private val json = Json { ignoreUnknownKeys = true }
+    private fun newDecoder() = ResponseApiStreamDecoder()
 
-    @Before
-    fun setUp() {
-        api = ResponseAPI(OkHttpClient())
+    private fun decode(
+        payload: String,
+        decoder: ResponseApiStreamDecoder = newDecoder(),
+    ): List<StreamChunk> = decoder.accept(SseEvent(data = payload)).chunks
+
+    /** 用 [StreamChunkHandler] 把事件折叠成末条助手消息（消费端真实路径）。 */
+    private fun aggregate(chunks: List<StreamChunk>): UIMessage {
+        val handler = StreamChunkHandler()
+        return chunks.fold(listOf(UIMessage.user("use a server-executed tool"))) { messages, chunk ->
+            handler.handle(messages, chunk)
+        }.last()
     }
 
-    private fun decode(payload: String, resolver: ResponseToolCallIdResolver = ResponseToolCallIdResolver()): MessageChunk? =
-        api.parseResponseDelta(json.parseToJsonElement(payload).jsonObject, resolver)
-
-    private fun toolOf(chunk: MessageChunk?): UIMessagePart.Tool? =
-        chunk?.choices?.firstOrNull()?.delta?.parts?.filterIsInstance<UIMessagePart.Tool>()?.firstOrNull()
+    private fun toolsOf(chunks: List<StreamChunk>): List<UIMessagePart.Tool> =
+        aggregate(chunks).parts.filterIsInstance<UIMessagePart.Tool>()
 
     private fun outputItemEvent(
         eventType: String,
-        item: kotlinx.serialization.json.JsonObject,
+        item: JsonObject,
     ): String = buildJsonObject {
         put("type", eventType)
         put("output_index", 1)
@@ -58,7 +69,7 @@ class ResponseAPIFunctionCallOutputTest {
     }
 
     private fun functionCallOutputItem(
-        output: kotlinx.serialization.json.JsonElement,
+        output: JsonElement,
         includeId: Boolean = true,
         callId: String = "call_1",
     ) = buildJsonObject {
@@ -70,28 +81,34 @@ class ResponseAPIFunctionCallOutputTest {
 
     @Test
     fun `streaming added - function_call_output carries output text`() {
-        val chunk = decode(outputItemEvent("response.output_item.added", functionCallOutputItem(kotlinx.serialization.json.JsonPrimitive("42°C"))))
-        val tool = toolOf(chunk)
+        val chunks = decode(
+            outputItemEvent(
+                "response.output_item.added",
+                functionCallOutputItem(JsonPrimitive("42°C")),
+            )
+        )
+        val tool = toolsOf(chunks).single()
 
-        assertEquals("call_1", tool?.toolCallId)
-        assertEquals(listOf("42°C"), tool?.output?.filterIsInstance<UIMessagePart.Text>()?.map { it.text })
+        assertEquals("call_1", tool.toolCallId)
+        assertEquals(listOf("42°C"), tool.output.filterIsInstance<UIMessagePart.Text>().map { it.text })
         // 有 output ⇒ 已执行，客户端不会再跑一遍
-        assertTrue(tool!!.isExecuted)
+        assertTrue(tool.isExecuted)
     }
 
     @Test
     fun `streaming done without item id does not throw and still attaches output`() {
         // 回归：修复前 done 分支先取 item.id 再分 type，缺 id 直接 error("chunk id not found")
-        val chunk = decode(
+        val chunks = decode(
             outputItemEvent(
                 "response.output_item.done",
-                functionCallOutputItem(kotlinx.serialization.json.JsonPrimitive("ok"), includeId = false),
+                functionCallOutputItem(JsonPrimitive("ok"), includeId = false),
             )
         )
-        val tool = toolOf(chunk)
+        val tool = toolsOf(chunks).single()
 
-        assertEquals("call_1", tool?.toolCallId)
-        assertEquals("ok", tool?.output?.filterIsInstance<UIMessagePart.Text>()?.firstOrNull()?.text)
+        assertEquals("call_1", tool.toolCallId)
+        assertEquals("ok", tool.output.filterIsInstance<UIMessagePart.Text>().firstOrNull()?.text)
+        assertTrue(tool.isExecuted)
     }
 
     @Test
@@ -106,18 +123,25 @@ class ResponseAPIFunctionCallOutputTest {
                 put("text", "line2")
             })
         }
-        val chunk = decode(outputItemEvent("response.output_item.done", functionCallOutputItem(output)))
+        val chunks = decode(outputItemEvent("response.output_item.done", functionCallOutputItem(output)))
+
         assertEquals(
             "line1\nline2",
-            toolOf(chunk)?.output?.filterIsInstance<UIMessagePart.Text>()?.firstOrNull()?.text,
+            toolsOf(chunks).single().output.filterIsInstance<UIMessagePart.Text>().single().text,
         )
     }
 
     @Test
     fun `streaming - null output yields empty text and stays executed`() {
-        val chunk = decode(outputItemEvent("response.output_item.done", functionCallOutputItem(JsonNull)))
-        val tool = toolOf(chunk)!!
+        // 修复后：空串/null output 也发 ToolCallOutput(callId, "")——「已执行」信号就靠这个事件；
+        // 丢掉会让 isExecuted=false ⇒ 客户端重复执行（#2181 的原始缺陷）。
+        val chunks = decode(outputItemEvent("response.output_item.done", functionCallOutputItem(JsonNull)))
 
+        val emitted = chunks.filterIsInstance<StreamChunk.ToolCallOutput>().single()
+        assertEquals("call_1", emitted.id)
+        assertEquals("", emitted.output)
+
+        val tool = toolsOf(chunks).single()
         assertEquals("", tool.output.filterIsInstance<UIMessagePart.Text>().firstOrNull()?.text)
         // 服务端确实执行过：宁可显示空结果，也不能让客户端再执行一次
         assertTrue(tool.isExecuted)
@@ -125,12 +149,38 @@ class ResponseAPIFunctionCallOutputTest {
 
     @Test
     fun `streaming - missing call_id is ignored instead of crashing`() {
+        // function_call_output 只保证 call_id；两者都缺时只能丢弃该 item，且绝不能崩
         val item = buildJsonObject {
             put("type", "function_call_output")
             put("output", "x")
         }
-        val chunk = decode(outputItemEvent("response.output_item.done", item))
-        assertEquals(null, chunk)
+        val chunks = decode(outputItemEvent("response.output_item.done", item))
+        assertTrue(chunks.isEmpty())
+    }
+
+    @Test
+    fun `streaming - added and done carry the same output and merge once`() {
+        // Responses API 会在 added/done 各带一份**完整**结果（非增量流式）；
+        // 消费端必须幂等去重，否则工具输出/回传上下文翻倍。
+        val decoder = newDecoder()
+        val added = decode(
+            outputItemEvent("response.output_item.added", functionCallOutputItem(JsonPrimitive("sunny"))),
+            decoder,
+        )
+        val done = decode(
+            outputItemEvent("response.output_item.done", functionCallOutputItem(JsonPrimitive("sunny"))),
+            decoder,
+        )
+        val chunks = added + done
+        assertEquals(
+            "added/done 各一次 ToolCallOutput",
+            2,
+            chunks.filterIsInstance<StreamChunk.ToolCallOutput>().size,
+        )
+
+        val tool = toolsOf(chunks).single()
+        assertEquals(listOf("sunny"), tool.output.filterIsInstance<UIMessagePart.Text>().map { it.text })
+        assertTrue(tool.isExecuted)
     }
 
     @Test
@@ -158,13 +208,13 @@ class ResponseAPIFunctionCallOutputTest {
                 "output",
                 buildJsonArray {
                     add(functionCallItem())
-                    add(functionCallOutputItem(kotlinx.serialization.json.JsonPrimitive("sunny")))
+                    add(functionCallOutputItem(JsonPrimitive("sunny")))
                 },
             )
         }
 
-        val chunk = api.parseResponseOutput(response)
-        val tools = chunk.choices.first().message!!.parts.filterIsInstance<UIMessagePart.Tool>()
+        val result = ResponseAPI(OkHttpClient()).parseResponseOutput(response)
+        val tools = result.message.parts.filterIsInstance<UIMessagePart.Tool>()
 
         assertEquals(1, tools.size)
         assertEquals("call_1", tools.first().toolCallId)
@@ -181,13 +231,13 @@ class ResponseAPIFunctionCallOutputTest {
                 "output",
                 buildJsonArray {
                     add(functionCallItem())
-                    add(functionCallOutputItem(kotlinx.serialization.json.JsonPrimitive("x"), callId = "call_other"))
+                    add(functionCallOutputItem(JsonPrimitive("x"), callId = "call_other"))
                 },
             )
         }
 
-        val chunk = api.parseResponseOutput(response)
-        val tools = chunk.choices.first().message!!.parts.filterIsInstance<UIMessagePart.Tool>()
+        val result = ResponseAPI(OkHttpClient()).parseResponseOutput(response)
+        val tools = result.message.parts.filterIsInstance<UIMessagePart.Tool>()
 
         assertEquals(1, tools.size)
         assertEquals("call_1", tools.first().toolCallId)

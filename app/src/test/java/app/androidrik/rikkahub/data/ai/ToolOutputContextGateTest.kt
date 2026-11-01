@@ -11,11 +11,10 @@ import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
-import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.provider.TextGenerationResult
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
-import app.androidrik.ai.ui.UIMessageChoice
 import app.androidrik.ai.ui.UIMessagePart
-import app.androidrik.ai.ui.terminalChunk
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.model.Assistant
@@ -52,7 +51,7 @@ class ToolOutputContextGateTest {
     // ---- 假 provider（同 GenerationToolLoopTest） ----
 
     private class ScriptedProvider(
-        private val script: (callIndex: Int, messages: List<UIMessage>) -> List<MessageChunk>,
+        private val script: (callIndex: Int, messages: List<UIMessage>) -> List<StreamChunk>,
     ) : Provider<ProviderSetting.OpenAI> {
         val calls = AtomicInteger(0)
 
@@ -62,13 +61,13 @@ class ToolOutputContextGateTest {
             providerSetting: ProviderSetting.OpenAI,
             messages: List<UIMessage>,
             params: TextGenerationParams,
-        ): MessageChunk = error("这些用例只走流式路径")
+        ): TextGenerationResult = error("这些用例只走流式路径")
 
         override suspend fun streamText(
             providerSetting: ProviderSetting.OpenAI,
             messages: List<UIMessage>,
             params: TextGenerationParams,
-        ): Flow<MessageChunk> = flow {
+        ): Flow<StreamChunk> = flow {
             script(calls.getAndIncrement(), messages).forEach { emit(it) }
         }
     }
@@ -139,36 +138,23 @@ class ToolOutputContextGateTest {
         input = input,
     )
 
-    private fun toolCallStep(vararg calls: UIMessagePart.Tool): List<MessageChunk> = listOf(
-        MessageChunk(
-            id = "chunk-tool",
-            model = bigWindowModel.modelId,
-            choices = listOf(
-                UIMessageChoice(
-                    index = 0,
-                    delta = UIMessage(role = MessageRole.ASSISTANT, parts = calls.toList()),
-                    message = null,
-                    finishReason = "tool_calls",
-                )
-            ),
-        ),
-        terminalChunk(),
-    )
+    private fun toolCallStep(vararg calls: UIMessagePart.Tool): List<StreamChunk> = buildList {
+        calls.forEach { call ->
+            add(StreamChunk.ToolCallStart(id = call.toolCallId, toolName = call.toolName))
+            if (call.input.isNotEmpty()) {
+                add(StreamChunk.ToolCallDelta(id = call.toolCallId, inputDelta = call.input))
+            }
+            add(StreamChunk.ToolCallEnd(id = call.toolCallId))
+        }
+        // 显式结束：旧 terminalChunk() 的等价物（缺了会被判裸断流并触发自动续写）
+        add(StreamChunk.Finish(finishReason = "tool_calls"))
+    }
 
-    private fun textStep(text: String): List<MessageChunk> = listOf(
-        MessageChunk(
-            id = "chunk-text",
-            model = bigWindowModel.modelId,
-            choices = listOf(
-                UIMessageChoice(
-                    index = 0,
-                    delta = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text(text))),
-                    message = null,
-                    finishReason = "stop",
-                )
-            ),
-        ),
-        terminalChunk(),
+    private fun textStep(text: String): List<StreamChunk> = listOf(
+        StreamChunk.TextStart("text"),
+        StreamChunk.TextDelta("text", text),
+        StreamChunk.TextEnd("text"),
+        StreamChunk.Finish(finishReason = "stop"),
     )
 
     /** 跑完一轮（调用工具 → 文本收尾），返回**最后一次**消息快照里的工具结果 part。 */

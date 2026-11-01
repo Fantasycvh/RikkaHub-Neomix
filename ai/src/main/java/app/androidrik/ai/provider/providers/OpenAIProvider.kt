@@ -27,6 +27,7 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.provider.providers.openai.ChatCompletionsAPI
 import app.androidrik.ai.provider.providers.openai.OpenAICodexTokenProvider
 import app.androidrik.ai.provider.providers.openai.OpenAIRequestAuthenticator
@@ -36,7 +37,7 @@ import app.androidrik.ai.provider.providers.openai.modelsUrl
 import app.androidrik.ai.provider.providers.openai.parseCodexModels
 import app.androidrik.ai.provider.providers.openai.ResponseAPI
 import app.androidrik.ai.ui.ImageGenerationItem
-import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.util.KeyRoulette
 import app.androidrik.ai.util.configureClientWithProxy
@@ -266,7 +267,7 @@ class OpenAIProvider(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): Flow<MessageChunk> = if (providerSetting.useResponseApi || providerSetting.isChatGPTSubscription) {
+    ): Flow<StreamChunk> = if (providerSetting.useResponseApi || providerSetting.isChatGPTSubscription) {
         responseAPI.streamText(
             providerSetting = providerSetting,
             messages = messages,
@@ -284,7 +285,7 @@ class OpenAIProvider(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): MessageChunk = if (providerSetting.useResponseApi || providerSetting.isChatGPTSubscription) {
+    ): TextGenerationResult = if (providerSetting.useResponseApi || providerSetting.isChatGPTSubscription) {
         responseAPI.generateText(
             providerSetting = providerSetting,
             messages = messages,

@@ -1183,7 +1183,7 @@ class ChatService(
      *
      * 与 [regenerateAtMessage] 的区别（为什么不能复用它）：重生成是「重开一个候选」，会把原内容
      * 丢到候选列表里；续写是「同一条消息往下写」——基线取到那条消息为止（末尾就是它），
-     * 流式新增文本由 `handleMessageChunk` 按同角色追加规则拼进**同一条**消息。
+     * 流式新增文本由 `StreamChunkHandler` 按同角色追加规则拼进**同一条**消息。
      *
      * 提示词按结束状态选（与自动续写同一套判定）：裸断流用 [CONTINUE_INCOMPLETE_HINT]，
      * 撞输出上限用 [CONTINUE_TRUNCATED_HINT]。
@@ -2265,7 +2265,7 @@ class ChatService(
             // 而本入口每轮自动触发 ⇒ 是默认路径上的数据丢失。
             updateConversationMetadata(
                 conversationId = conversationId,
-                update = { it.copy(title = result.choices[0].message?.toText()?.trim().orEmpty()) },
+                update = { it.copy(title = result.message.toText()?.trim().orEmpty()) },
                 persist = { conversationRepo.updateTitle(conversationId, it.title) },
             )
         }.onFailure {
@@ -2347,7 +2347,7 @@ class ChatService(
                 params = backgroundTextGenerationParams(model),
             )
             val suggestions =
-                result.choices[0].message?.toText()?.split("\n")?.map { it.trim() }
+                result.message.toText()?.split("\n")?.map { it.trim() }
                     ?.filter { it.isNotBlank() } ?: emptyList()
 
             // 回写**只写 suggestions 一列**、基线是当前内存值：与 generateTitle 同款理由
@@ -2451,7 +2451,7 @@ class ChatService(
                 messages = listOf(UIMessage.user(prompt)),
                 params = backgroundTextGenerationParams(model),
             )
-            return result.choices.firstOrNull()?.message?.toText()?.trim()
+            return result.message.toText()?.trim()
                 ?.takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Failed to generate compressed summary")
         }

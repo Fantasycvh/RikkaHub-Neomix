@@ -10,7 +10,8 @@ import app.androidrik.ai.core.merge
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
-import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.provider.TextGenerationResult
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.db.dao.UsageRecordDAO
 import app.androidrik.rikkahub.data.db.entity.UsageRecordEntity
@@ -116,15 +117,15 @@ class UsageRecorder(
             providerSetting: T,
             messages: List<UIMessage>,
             params: TextGenerationParams,
-        ): MessageChunk = delegate.generateText(providerSetting, messages, params).also { chunk ->
-            chunk.usage?.let { record(tag, providerSetting, params, it) }
+        ): TextGenerationResult = delegate.generateText(providerSetting, messages, params).also { result ->
+            result.usage?.let { record(tag, providerSetting, params, it) }
         }
 
         override suspend fun streamText(
             providerSetting: T,
             messages: List<UIMessage>,
             params: TextGenerationParams,
-        ): Flow<MessageChunk> {
+        ): Flow<StreamChunk> {
             val upstream = delegate.streamText(providerSetting, messages, params)
             return flow {
                 // 同一次请求里的 usage 是逐步更新的快照（有的供应商只在末块给，有的每块累加），
@@ -133,7 +134,7 @@ class UsageRecorder(
                 var usage: TokenUsage? = null
                 try {
                     upstream.collect { chunk ->
-                        chunk.usage?.let { usage = usage.merge(it) }
+                        if (chunk is StreamChunk.Usage) usage = usage.merge(chunk.usage)
                         emit(chunk)
                     }
                 } finally {

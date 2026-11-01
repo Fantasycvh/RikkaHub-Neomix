@@ -8,6 +8,7 @@ import kotlinx.serialization.Transient
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.util.json
 import kotlin.math.roundToInt
 import kotlin.time.Clock
@@ -63,10 +64,15 @@ data class UIMessage(
     @Transient
     val isSynthetic: Boolean = false,
 ) {
-    private fun appendChunk(chunk: MessageChunk): UIMessage {
-        val choice = chunk.choices.getOrNull(0)
-        val message = choice?.delta ?: choice?.message
-        return message?.let { delta ->
+    /**
+     * 把一条**增量或完整**的 assistant 消息合并进当前消息。
+     *
+     * 这是旧 `UIMessage + MessageChunk` 的类型化等价物（`MessageChunk` 已随上游 #1648 移除）：
+     * Text 追加到最后一段 Text、Tool/ServerTool 按 id `merge`、Image 区分 base64 拼接与完整 URL、
+     * Reasoning 收尾时补 `finishedAt`。流式路径走 [StreamChunkHandler]，这里只服务非流式结果。
+     */
+    internal fun mergeDelta(delta: UIMessage): UIMessage {
+        return delta.let { delta ->
             // Handle Parts
             var newParts = delta.parts.fold(parts) { acc, deltaPart ->
                 when (deltaPart) {
@@ -210,7 +216,7 @@ data class UIMessage(
                 parts = newParts,
                 annotations = newAnnotations,
             )
-        } ?: this
+        }
     }
 
     fun summaryAsText(maxLength: Int = Int.MAX_VALUE): String {
@@ -254,10 +260,6 @@ data class UIMessage(
         it is UIMessagePart.Image && it.url.startsWith("data:")
     }
 
-    operator fun plus(chunk: MessageChunk): UIMessage {
-        return this.appendChunk(chunk)
-    }
-
     companion object {
         fun system(prompt: String) = UIMessage(
             role = MessageRole.SYSTEM,
@@ -277,37 +279,31 @@ data class UIMessage(
 }
 
 /**
- * 处理MessageChunk合并
+ * 处理非流式生成结果（对齐上游 #1648 的 `TextGenerationResult` 消费方式）。
  *
- * @receiver 已有消息列表
- * @param chunk 消息chunk
- * @param model 模型, 可以不传，如果传了，会把模型id写入到消息，标记是哪个模型输出的消息
- * @param providerName 提供商名称快照, 与 model 一同写入新消息, 供 token 统计按名称分组
- * @return 新消息列表
+ * 与流式路径 [StreamChunkHandler] 的产物形态保持一致：同角色则合并到上一条 assistant 消息
+ * （复用 [UIMessage.mergeDelta] 的工具/推理/图片合并语义），否则按新消息追加并写入模型/提供商快照。
+ * `finishReason`/`usage` 由调用方（`GenerationHandler`）落库，这里不重复写。
  */
-fun List<UIMessage>.handleMessageChunk(
-    chunk: MessageChunk,
+fun List<UIMessage>.handleTextGenerationResult(
+    result: TextGenerationResult,
     model: Model? = null,
     providerName: String? = null,
 ): List<UIMessage> {
     require(this.isNotEmpty()) {
         "messages must not be empty"
     }
-    val choice = chunk.choices.getOrNull(0) ?: return this
-    val message = choice.delta ?: choice.message ?: return this
-    if (this.last().role != message.role) {
-        return this + (
-            UIMessage(
-                modelId = model?.id,
-                modelNameSnapshot = model?.displayName?.takeIf { it.isNotBlank() },
-                providerNameSnapshot = providerName?.takeIf { it.isNotBlank() },
-                role = message.role,
-                parts = emptyList(),
-            ) + chunk
-            )
+    val message = result.message
+    return if (last().role != message.role) {
+        this + UIMessage(
+            modelId = model?.id,
+            modelNameSnapshot = model?.displayName?.takeIf { it.isNotBlank() },
+            providerNameSnapshot = providerName?.takeIf { it.isNotBlank() },
+            role = message.role,
+            parts = emptyList(),
+        ).mergeDelta(message)
     } else {
-        val last = this.last() + chunk
-        return this.dropLast(1) + last
+        dropLast(1) + last().mergeDelta(message)
     }
 }
 
@@ -738,10 +734,11 @@ fun <T> List<T>.migrateToolNodes(
  * Anthropic 用 `max_tokens`，Responses API 用 `max_output_tokens`，Google 用 `MAX_TOKENS`，
  * 部分兼容层写作 `token_limit`。统一在此判定，避免各调用点各写一份字符串比较而漂移。
  */
-fun isOutputLimitTruncation(finishReason: String?): Boolean = when (finishReason?.lowercase()) {
-    "length", "max_tokens", "max_output_tokens", "token_limit" -> true
-    else -> false
-}
+fun isOutputLimitTruncation(finishReason: String?): Boolean =
+    when (normalizeFinishReason(finishReason)) {
+        "length", "max_tokens", "max_output_tokens", "token_limit" -> true
+        else -> false
+    }
 
 /**
  * 输出是否被**内容安全策略**掐断（OpenAI `content_filter`、Anthropic `refusal`、
@@ -750,48 +747,21 @@ fun isOutputLimitTruncation(finishReason: String?): Boolean = when (finishReason
  * 语义上与 [isOutputLimitTruncation] 不同：**续写通常无意义**（同一内容会再次被拦），
  * 故 UI 只提示不提供「继续生成」。
  */
-fun isContentFilterTruncation(finishReason: String?): Boolean = when (finishReason?.uppercase()) {
-    "CONTENT_FILTER", "REFUSAL", "SAFETY", "PROHIBITED_CONTENT", "RECITATION", "BLOCKLIST", "SPII" -> true
-    else -> false
-}
-
-@Serializable
-data class MessageChunk(
-    val id: String,
-    val model: String,
-    val choices: List<UIMessageChoice>,
-    val usage: TokenUsage? = null,
-    /**
-     * **显式结束**标记：provider 明确告知本轮输出已完结（`[DONE]` / `message_stop` /
-     * `response.completed` / 带 `finishReason` 的末块）。
-     *
-     * 为什么需要：各家 SSE 的「正常结束」与「连接被提前关闭」在**流层面无法区分**——
-     * 两者都只是 `close()`，下游一律当成功收尾。中转站断流（裸 EOF）因此被静默吞掉：
-     * 用户看到戛然而止的回答，既没有提示也无法自动续写（见 [UIMessage.finishIncomplete]）。
-     *
-     * 约定：`explicitEnd = true` 的 chunk 只作标记用，`choices` 为空、`id`/`model` 无意义，
-     * 消费方（[handleMessageChunk]）对空 choices 原样返回、不产生副作用。
-     */
-    val explicitEnd: Boolean = false,
-)
+fun isContentFilterTruncation(finishReason: String?): Boolean =
+    when (normalizeFinishReason(finishReason)?.uppercase()) {
+        "CONTENT_FILTER", "REFUSAL", "SAFETY", "PROHIBITED_CONTENT", "RECITATION", "BLOCKLIST", "SPII" -> true
+        else -> false
+    }
 
 /**
- * 流终止标记：唯一的 `explicitEnd = true` 空 chunk。
+ * 归一化 provider 的 finish_reason：大小写不敏感、去掉 `<前缀>:`（如
+ * `incomplete:max_output_tokens`，Responses API 的 `response.incomplete` 形态）。
  *
- * provider 在**显式结束**处发送它，随后关流；`onClosed`（无显式结束）则不发 ⇒ 消费方
- * 据「流结束了但没见到标记」判定裸断流。见 [MessageChunk.explicitEnd]。
+ * 返回小写串；空串/纯空白返回 null。
  */
-fun terminalChunk(): MessageChunk = MessageChunk(
-    id = "",
-    model = "",
-    choices = emptyList(),
-    explicitEnd = true,
-)
-
-@Serializable
-data class UIMessageChoice(
-    val index: Int,
-    val delta: UIMessage?,
-    val message: UIMessage?,
-    val finishReason: String?
-)
+private fun normalizeFinishReason(finishReason: String?): String? = finishReason
+    ?.trim()
+    ?.substringAfterLast(':')
+    ?.trim()
+    ?.lowercase()
+    ?.takeIf { it.isNotEmpty() }

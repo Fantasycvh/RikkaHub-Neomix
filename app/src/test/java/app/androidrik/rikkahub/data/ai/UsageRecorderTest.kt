@@ -1,11 +1,13 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
-import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.provider.TextGenerationResult
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.db.dao.DayCount
 import app.androidrik.rikkahub.data.db.dao.ModelUsageRow
@@ -52,17 +54,26 @@ class UsageRecorderTest {
     private fun TestScope.recorder(dao: UsageRecordDAO = this@UsageRecorderTest.dao) =
         UsageRecorder(dao, this)
 
-    private fun chunk(usage: TokenUsage?): MessageChunk = MessageChunk(
+    // ---- 新接口夹具（旧 `chunk(usage)` 的等价物） ----
+
+    /** 非流式结果：只关心 usage（旧 `MessageChunk(choices = emptyList(), usage = ...)` 的等价物）。 */
+    private fun textResult(usage: TokenUsage?) = TextGenerationResult(
         id = "chunk",
         model = "gpt-test",
-        choices = emptyList(),
+        message = UIMessage(role = MessageRole.ASSISTANT, parts = emptyList()),
         usage = usage,
     )
+
+    /** 带 usage 的流事件（旧 `chunk(usage)` 的流式等价物）。 */
+    private fun usageEvent(usage: TokenUsage) = StreamChunk.Usage(usage)
+
+    /** 不带 usage 的流事件（旧 `chunk(null)` 的等价物）：包装器应原样透传、不记流水。 */
+    private fun noUsageEvent(): StreamChunk = StreamChunk.TextStart("noop")
 
     @Test
     fun `generateText records one row with source provider model and tag attribution`() = runTest {
         val provider = FakeProvider(
-            result = chunk(TokenUsage(promptTokens = 10, completionTokens = 2, cachedTokens = 4, totalTokens = 12)),
+            result = textResult(TokenUsage(promptTokens = 10, completionTokens = 2, cachedTokens = 4, totalTokens = 12)),
         )
 
         recorder().wrap(provider, tag).generateText(setting, emptyList(), params)
@@ -84,7 +95,7 @@ class UsageRecorderTest {
 
     @Test
     fun `generateText falls back to modelId snapshot when display name is blank`() = runTest {
-        val provider = FakeProvider(result = chunk(TokenUsage(promptTokens = 3, completionTokens = 1)))
+        val provider = FakeProvider(result = textResult(TokenUsage(promptTokens = 3, completionTokens = 1)))
         val blankNamedModel = Model(modelId = "gpt-raw", displayName = "")
 
         recorder().wrap(provider, tag)
@@ -98,9 +109,9 @@ class UsageRecorderTest {
     fun `streamText merges usage snapshots and records exactly one row`() = runTest {
         val provider = FakeProvider(
             chunks = flow {
-                emit(chunk(TokenUsage(promptTokens = 10)))
-                emit(chunk(null))
-                emit(chunk(TokenUsage(completionTokens = 5, cachedTokens = 3)))
+                emit(usageEvent(TokenUsage(promptTokens = 10)))
+                emit(noUsageEvent())
+                emit(usageEvent(TokenUsage(completionTokens = 5, cachedTokens = 3)))
             },
         )
 
@@ -119,7 +130,7 @@ class UsageRecorderTest {
     fun `streamText that throws midway still records the usage already received`() = runTest {
         val provider = FakeProvider(
             chunks = flow {
-                emit(chunk(TokenUsage(promptTokens = 10)))
+                emit(usageEvent(TokenUsage(promptTokens = 10)))
                 throw IllegalStateException("upstream exploded")
             },
         )
@@ -140,7 +151,7 @@ class UsageRecorderTest {
     fun `streamText cancelled midway still records the usage already received`() = runTest {
         val provider = FakeProvider(
             chunks = flow {
-                emit(chunk(TokenUsage(promptTokens = 10)))
+                emit(usageEvent(TokenUsage(promptTokens = 10)))
                 awaitCancellation()
             },
         )
@@ -160,11 +171,11 @@ class UsageRecorderTest {
     fun `usage with no prompt and no completion tokens is not recorded`() = runTest {
         val recorder = recorder()
         // usage 为 null：上游没回
-        recorder.wrap(FakeProvider(result = chunk(null)), tag).generateText(setting, emptyList(), params)
+        recorder.wrap(FakeProvider(result = textResult(null)), tag).generateText(setting, emptyList(), params)
         // 只有 cache 字段：prompt/completion 都是 0
-        recorder.wrap(FakeProvider(result = chunk(TokenUsage(cachedTokens = 7))), tag)
+        recorder.wrap(FakeProvider(result = textResult(TokenUsage(cachedTokens = 7))), tag)
             .generateText(setting, emptyList(), params)
-        recorder.wrap(FakeProvider(chunks = flow { emit(chunk(null)) }), tag)
+        recorder.wrap(FakeProvider(chunks = flow { emit(noUsageEvent()) }), tag)
             .streamText(setting, emptyList(), params).toList()
         testScheduler.advanceUntilIdle()
 
@@ -174,9 +185,9 @@ class UsageRecorderTest {
     @Test
     fun `two attempts each record their own row`() = runTest {
         val recorder = recorder()
-        recorder.wrap(FakeProvider(result = chunk(TokenUsage(promptTokens = 10, completionTokens = 1))), tag)
+        recorder.wrap(FakeProvider(result = textResult(TokenUsage(promptTokens = 10, completionTokens = 1))), tag)
             .generateText(setting, emptyList(), params)
-        recorder.wrap(FakeProvider(result = chunk(TokenUsage(promptTokens = 20, completionTokens = 2))), tag)
+        recorder.wrap(FakeProvider(result = textResult(TokenUsage(promptTokens = 20, completionTokens = 2))), tag)
             .generateText(setting, emptyList(), params)
         testScheduler.advanceUntilIdle()
 
@@ -192,11 +203,11 @@ class UsageRecorderTest {
         val throwingDao = FakeUsageRecordDAO(throwOnInsert = true)
 
         val result = recorder(throwingDao).wrap(
-            FakeProvider(result = chunk(TokenUsage(promptTokens = 10, completionTokens = 1))),
+            FakeProvider(result = textResult(TokenUsage(promptTokens = 10, completionTokens = 1))),
             tag,
         ).generateText(setting, emptyList(), params)
         val chunks = recorder(throwingDao).wrap(
-            FakeProvider(chunks = flow { emit(chunk(TokenUsage(promptTokens = 2, completionTokens = 1))) }),
+            FakeProvider(chunks = flow { emit(usageEvent(TokenUsage(promptTokens = 2, completionTokens = 1))) }),
             tag,
         ).streamText(setting, emptyList(), params).toList()
         testScheduler.advanceUntilIdle()
@@ -209,14 +220,14 @@ class UsageRecorderTest {
     @Test
     fun `unrelated provider capabilities are passed through`() = runTest {
         // 包装器是 Kotlin 委托：只覆盖 generateText/streamText，其余能力必须原样透传。
-        val provider = FakeProvider(result = chunk(null))
+        val provider = FakeProvider(result = textResult(null))
         val wrapped = recorder().wrap(provider, tag)
         assertTrue(wrapped.listModels(setting).isEmpty())
     }
 
     private class FakeProvider(
-        private val result: MessageChunk? = null,
-        private val chunks: Flow<MessageChunk> = emptyFlow(),
+        private val result: TextGenerationResult? = null,
+        private val chunks: Flow<StreamChunk> = emptyFlow(),
     ) : Provider<ProviderSetting.OpenAI> {
         override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> = emptyList()
 
@@ -224,13 +235,13 @@ class UsageRecorderTest {
             providerSetting: ProviderSetting.OpenAI,
             messages: List<UIMessage>,
             params: TextGenerationParams,
-        ): MessageChunk = result ?: error("FakeProvider has no generateText result")
+        ): TextGenerationResult = result ?: error("FakeProvider has no generateText result")
 
         override suspend fun streamText(
             providerSetting: ProviderSetting.OpenAI,
             messages: List<UIMessage>,
             params: TextGenerationParams,
-        ): Flow<MessageChunk> = chunks
+        ): Flow<StreamChunk> = chunks
     }
 
     private class FakeUsageRecordDAO(

@@ -336,3 +336,93 @@ chatgpt.com/backend-api/codex、grok 后端
 - 上游提交：`4b9ff1a99`（#1648 ai 重构）、`b6df5f044`（oauth 抽包）、`318cffef6`（#2186 订阅登录）、`5ad19405c`（评估时 HEAD）
 - 上游 PR：[#2186](https://github.com/rikkahub/rikkahub/pull/2186)、[#1752](https://github.com/rikkahub/rikkahub/pull/1752)（设备码血统，本仓现行方案参考）
 - 本仓：`docs/design/drafts/design-codex-subscription-login.md`（现行方案设计 + 已落地记录）、`docs/upstream-analysis.md` §专项「OAuth 订阅登录（#2186）为何暂不吸收」
+
+---
+
+## 十二、P1 实施记录（进行中，分支 `feat/p1-stream-chunk`）
+
+### 12.1 已落地（纯新增，尚未接线，旧 `MessageChunk` 链路原样保留 ⇒ 行为不变）
+
+| 提交 | 内容 |
+| --- | --- |
+| `e7f2938db` | `StreamChunk`（18 类事件）、`SseEvent`、`StreamChunkDecoder`/`DecodeResult`、`StreamChunkHandler`（含 `finished` 标记供裸断流判定）、`ReasoningType` 枚举 + `Reasoning.reasoningType`（序列化缺省兼容旧数据）、`ServerToolProtocol`/`ServerToolMetadata`/`OpenRouterReasoningMetadata`、`ChatCompletionsStreamDecoder` |
+| `96d091e33` | `ResponseApiStreamDecoder`、`ClaudeStreamDecoder`、`GoogleStreamDecoder` + `isOpenAIServerToolCall`/`toOpenAIServerTool`/`toServerToolStatus`、`isClaudeServerToolUseType`/`ResultType`/`Error` |
+
+验证：`./gradlew :ai:compileDebugKotlin` 通过（三次增量均 0 错误）。
+
+### 12.2 接口与接线（阶段 2，工作区增量）
+
+**接口**
+- `Provider.generateText` → `TextGenerationResult(id, model, message, finishReason, usage)`；`Provider.streamText` → `Flow<StreamChunk>`。
+- `Message.kt` 新增 `List<UIMessage>.handleTextGenerationResult(result, model, providerName)`，内部复用 `handleMessageChunk` 的合并语义（同角色追加、Tool 按 id merge + 时间戳、ServerTool 状态更新、Reasoning 收尾），保证非流式与流式产物形态一致。
+
+**四个 provider 全部改为 decoder 驱动**（本仓特性逐项保留）
+
+| provider | 保留的本仓特性 | 新增/变化 |
+| --- | --- | --- |
+| `ResponseAPI` | codex 鉴权 + `Accept: text/event-stream` + `CodexSseContentTypeInterceptor`、proxy、`onFailure` 错误体解析、失败事件先送 `Usage` 再抛错、SSE `event:` 名与 payload `type` 双写归一 | 流式解析整体换 `ResponseApiStreamDecoder`；`parseResponseDelta`/`parseStreamFailure`/`functionCallOutputChunk` 删除；非流式解析升级为上游版（reasoning summary/content 两种 `reasoningType`、server tool、image gen），保留本仓 `function_call_output` 回填 |
+| `ChatCompletionsAPI` | 400 结构校验「自学习重发带回填」（`armBackfillRetry` + `StreamingEventSourceTracker` + 防旧 source 迟到回调）、多 key 轮询、`"error": null` 防护（下沉到 decoder） | 逐行 JSON 解析换 `ChatCompletionsStreamDecoder`（decoder 内部按行拆包），`[DONE]` 由 decoder 产出 `Finish` |
+| `ClaudeProvider` | thinking / `redacted_thinking`（`ClaudeReasoningMetadata.redactedData`）、server tool（ANTHROPIC_MESSAGES）、`stop_reason` 透出 | 换 `ClaudeStreamDecoder`；`message_stop` → `Finish`；event 名/payload type 双写归一 |
+| `GoogleProvider` | thought parts、grounding annotations、`usageMetadata`（含 `thoughtsTokenCount`）、`promptFeedback.blockReason` → 抛错 | 换 `GoogleStreamDecoder`；**无独立终止事件** ⇒ 连接关闭时「有 `finishReason` 才补 `Finish`」，无 `finishReason` 保持裸断流语义 |
+
+**app 消费端**
+- `GenerationHandler`：每步一个 `StreamChunkHandler(model, providerName)`；裸断流判定 = `!chunkHandler.finished`（等价旧的 `explicitEnd`）；`chunk.toGuardDelta()` 继续喂思考退化护栏；usage 仍按「本步 merge → 全轮累计」口径；非流式改 `handleTextGenerationResult`；翻译流式按**每次重试**重建 handler。
+- `ChatService`（标题/建议/压缩三处）、`OcrTransformer`、`ProviderConnectionTester`、`UsageRecorder`：改用 `result.message` / `StreamChunk.Usage`。
+
+**语义决策（需在 PR 说明中写清）**
+1. 成功路径的 `Finish` 一律由 decoder 在**显式终止事件**（`[DONE]` / `message_stop` / `response.completed|incomplete` / Google 带 `finishReason` 的末块）产出；`ChatCompletions`/`ResponseAPI`/`Claude` 的 `onClosed` **不补** `Finish`，否则裸断流会被误判为正常收尾。
+2. `Responses` 非流式 `finishReason` 只透出非 `completed` 状态（避免 `"completed"` 泄进 UI/续写判定，对齐旧行为）。
+3. `StreamChunkHandler` 在 `Finish` 上写 `finishedAt`/`finishReason`：相对旧路径「轮末统一写 `finishedAt`」提前到流结束瞬间；多步轮次开始时仍会清空，tok/s 卡片与 UI 终值行为不变。
+4. 旧 `MessageChunk`/`UIMessageChoice`/`terminalChunk`/`handleMessageChunk` 暂时保留（被 `handleTextGenerationResult` 内部复用），下一个增量删除。
+
+验证：`./gradlew :ai:compileDebugKotlin`、`:app:compileDebugKotlin` 均通过。
+
+**阶段 2 实施中发现并已修复的回归**（主代码，均为「换解码器时丢掉本仓语义」或「新链路把协议细节丢给上层」）：
+
+| 问题 | 根因 | 修复 |
+| --- | --- | --- |
+| Responses 流式 `function_call_output` 结果被丢弃（#2181 回归：服务端已执行的工具被客户端**重复执行**；且 `output_item.done` 缺 `item.id` 时崩溃） | 上游 `StreamChunk` 事件集没有「工具输出」通道 | 新增第 19 个事件 `StreamChunk.ToolCallOutput(id, output)`；`StreamChunkHandler` 按 id 合并进 Tool（复用 `Tool.merge` 的幂等去重，added/done 各带一份不会翻倍）；`ResponseApiStreamDecoder` 在 `output_item.added/done` **先于 id 解析**处理该类型，`call_id ?: item.id` 取 id，空输出也发（「已执行」信号本身） |
+| toolCallId 兜底丢失（兼容网关在 arguments 事件里只给 `call_id`/`output_index` → `item_id not found` 抛错） | 换解码器时本仓 `ResponseToolCallIdResolver` 未接入 | 解码器内部改用 `ResponseToolCallIdResolver.registerItem/resolveArgumentsId`（`item.id` 与 `call_id` 归一、`item_id → call_id → output_index` 回退），该类不再是 dead code |
+| `incomplete:<reason>` 前缀打穿截断判定（截断横幅/续写策略/content_filter 空响应路径全部失配） | 解码器按上游拼 `"incomplete:$reason"`，本仓 helper 只认裸值 | `Message.kt` 的 `isOutputLimitTruncation`/`isContentFilterTruncation` 统一走 `normalizeFinishReason()`（trim → 取 `:` 后最后一段 → lowercase），不改 decoder 输出、对其它 provider 无副作用 |
+| Claude 异常中转省略 `content_block_start` 时失真（旧解析容忍，新解码器直接抛 `Unknown content block index`） | 解码器要求先 start 才建 block | `ClaudeStreamDecoder.inferBlock()` 按 delta 类型懒创建 block 并补对应 Start 事件；`content_block_stop` 缺 block 静默跳过 |
+| Google 每条流都被判「正常收尾」（裸断流不可区分） | 上游 `GoogleStreamDecoder.accept()` 永不返回 `completed`，只能靠 provider `onClosed` 收尾 | `GoogleProvider.onClosed` 只在拿到过 `finishReason` 时补 `Finish`，否则保持裸断流语义；补 `GoogleStreamDecoderTest` 锁行为 |
+
+### 12.3 后续步骤
+
+1. **单测**（✅ 已完成）：ai 模块旧测试迁移到解码器 + 移植上游 `StreamChunkHandlerTest`（10 例）/`ResponseApiStreamDecoderTest`（9 例），新增 `GoogleStreamDecoderTest`（3 例）；`:ai:testDebugUnitTest` **421 例全绿、0 skip**。app 侧 5 个 `GenerationHandler` 相关测试迁移到 `StreamChunk` 脚本，`:app:testDebugUnitTest --tests 'app.androidrik.rikkahub.data.ai.*'` 1129 例全绿。
+2. **清理 legacy**（✅ 已完成）：删除 `MessageChunk`/`UIMessageChoice`/`terminalChunk()`/`handleMessageChunk()`/`UIMessage.plus(MessageChunk)`；合并语义原样搬进 `UIMessage.mergeDelta(delta: UIMessage)`，`handleTextGenerationResult` 改为直接合并（异角色追加并写模型/提供商快照、同角色 `mergeDelta`）。`ResponseToolCallIdResolver` **保留**（已接入 `ResponseApiStreamDecoder`，不是 dead code）。`trace-cli`/`stream-traces` 语料仍为可选项。
+3. **真机验证**（✅ 已完成，详见 12.5）：codex 订阅、API Key（ChatCompletions）、Claude、Google 四条路径均已在设备 `6c841f95` / debug 包跑通流式对话（含 reasoning 展示与 token/tok/s 统计，无崩溃）。工具调用 / Claude·Google 推理流 / 裸断流仍由解码器单测覆盖（`StreamChunkHandlerTest`、`GoogleStreamDecoderTest`、`ResponseAPIStreamFinishTest` 等）。
+4. **提交**：P1 独立 PR（接口改造 + 4 provider 接线 + app 消费端 + 单测），PR 说明附本表与语义决策。
+
+### 12.4 风险提示（实施中发现）
+
+- 本仓 `UIMessagePart.Tool` 比上游多 `startedAt`/`finishedAt`（执行窗口统计），`StreamChunkHandler` 按上游语义不改这两个字段，app 侧执行工具时的赋值逻辑保持不变（已核对未被本次改动触碰）。
+- `StreamChunk` 事件集**没有 Audio/Video 增量事件**：若某网关在 `/chat/completions` 流式下发 audio/video part，新链路会丢失（旧 `parseMessage` 有 Audio 分支）。上游同样不支持，按需在 P2 之后再补事件类型。
+- `Google` 的裸断流判定依赖「末块带 `finishReason`」；若网关把最后一块（含 `finishReason`）丢掉，会正确判 incomplete（符合预期），但若网关把 `finishReason` 放在被截断前的块里则不判 incomplete——与旧实现同款局限。
+- `Responses` 非流式解析现在会产出上游新增的 `Image`/`ServerTool`/`reasoningType` part：这些 part 在本仓 UI 已支持渲染，但**旧版本客户端**（如果存在跨版本同步/导入）可能不认识——本仓无跨版本消息互通，暂不处理。
+- `StreamChunk.ToolCallOutput` 是本仓在 18 类上游事件之外新增的第 19 类（`@SerialName("tool_call_output")`）；后续 P2 若上游再改事件集，需在每次变基时确认该事件仍有承载位置（上游没有对应语义，预计长期保留）。
+- `normalizeFinishReason` 取 `:` 后最后一段：若将来某 provider 的 reason 自身含 `:` 且最后一段恰为 `length`/`content_filter` 之类会误判；三家现行协议无此形状，单测已加负例（`completed`/`end_turn`/null 不命中）。
+
+---
+
+## 十三、P1 真机验收记录（2026-11-01，设备 `6c841f95` / Pix110 / debug 包）
+
+### 13.1 结果
+
+| 路径 | 提供方 | 结果 | 证据 |
+| --- | --- | --- | --- |
+| ChatGPT 订阅（Codex，Responses 流式） | 本机 codex 账号（plus） | ✅ | 两次：阶段 2 完成后 + legacy 清理重打包后；回复 "1+1=2"，token/tok/s 卡片正常，订阅会话 provider lock 横幅正常，无崩溃 |
+| API Key（ChatCompletions 流式） | 鸭鸭AI平台 · `glm-4.5-air`（真实服务） | ✅ | 回复 `Hello! How can I help you today?`；**思考 0.7 秒**（reasoning part 正常渲染）；↑7.6K/↓61 tokens、74.6 tok/s、0.8s；`智谱AI开放平台 · glm-4.5-air` 角标正确 |
+| Claude 协议（Anthropic Messages 流式） | mock SSE（`adb reverse` → 宿主机，`POST /claude/v1/messages`） | ✅ | 回复 `Hello from mock Claude (streaming OK)`；↑12/↓9 tokens；服务端日志 200；`MOCK Claude · MOCK-Claude` 角标正确 |
+| Google 协议（Gemini `:streamGenerateContent?alt=sse`） | mock SSE（`adb reverse` → 宿主机） | ✅ | 回复 `Hello from mock Gemini (streaming OK)`；↑11/↓8 tokens；`finishReason: STOP` 收尾正常；服务端日志 200；`MOCK Gemini · MOCK-Gemini` 角标正确 |
+
+Claude / Google 两条走的是**同一份 APK 的真实代码路径**（`ClaudeStreamDecoder` / `GoogleStreamDecoder` → `StreamChunkHandler` → UI 渲染 + usage + Finish 语义），仅服务端换成本地 mock SSE；验证方式：临时向 DataStore Preferences（protobuf）注入两个 MOCK 提供商（原 `settings.preferences_pb` 已备份），验证后完整还原（设备当前 settings 中 `MOCK Claude`/`MOCK Gemini`/`claude-mock` 计数均为 0），`adb reverse` 规则已移除、mock 服务已停。
+
+### 13.2 真机未覆盖项（由单测兜底，后续有真实 key 时补验）
+
+- **工具调用 / `ToolCallOutput`**：Claude、Google 真机未构造工具回合（ChatCompletions 与 Responses 的 `function_call_output` 由 `ResponseAPIFunctionCallOutputTest`、`ResponseAPIStreamToolCallIdTest` 覆盖）。
+- **Claude / Google 推理流**：mock 未造 thinking / thought parts 事件（`ClaudeStreamDecoder`、`GoogleStreamDecoder` 单测覆盖）。
+- **裸断流（bare-EOF）**：mock 只发正常终止事件；裸断流语义由 `StreamFinishSemanticsTest` / `GoogleStreamDecoderTest` / `ResponseAPIStreamFinishTest` 覆盖。
+- **真实 Anthropic / Gemini 服务的字段差异**：真实 `stop_reason` 取值分布、真实 `usageMetadata`（含 `thoughtsTokenCount`）、真实 server tool 事件形状——待有 key 或 P4 账号 provider 落地后补。
+- 多 key 轮询、代理、per-provider 重试等本仓特性在 Claude/Google 真机路径上未单独复验（ChatCompletions 路径已有真实服务覆盖）。
+
