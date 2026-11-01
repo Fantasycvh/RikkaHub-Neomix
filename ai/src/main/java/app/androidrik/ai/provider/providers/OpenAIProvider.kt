@@ -25,7 +25,9 @@ import app.androidrik.ai.provider.ImageEditParams
 import app.androidrik.ai.provider.ImageGenerationParams
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.Provider
+import app.androidrik.ai.provider.ProviderQuota
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.runQuotaQuery
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.provider.providers.openai.ChatCompletionsAPI
@@ -260,6 +262,14 @@ class OpenAIProvider(
             } else {
                 result
             }
+        }
+    }
+
+    override suspend fun getQuota(providerSetting: ProviderSetting.OpenAI): ProviderQuota? {
+        // 订阅态没有 API Key 余额概念（Codex 额度走账号查询，P4 落地）
+        if (providerSetting.isChatGPTSubscription) return null
+        return client.configureClientWithProxy(providerSetting.proxy).runQuotaQuery(providerSetting) {
+            keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
         }
     }
 

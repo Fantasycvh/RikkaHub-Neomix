@@ -20,6 +20,14 @@ interface Provider<T : ProviderSetting> {
         return "TODO"
     }
 
+    /**
+     * 查询额度（对齐上游 #2186 的余额体系）。返回 null = 该提供商没有额度可查。
+     *
+     * API Key 类提供商走用户配置的 [QuotaQuery]（见 `runQuotaQuery`）；账号类由各自实现
+     * 写死查询地址（P4 落地）。
+     */
+    suspend fun getQuota(providerSetting: T): ProviderQuota? = null
+
     suspend fun generateText(
         providerSetting: T,
         messages: List<UIMessage>,

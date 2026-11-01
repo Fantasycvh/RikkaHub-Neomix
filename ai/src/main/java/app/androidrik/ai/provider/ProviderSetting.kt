@@ -265,6 +265,25 @@ sealed class ProviderSetting : Enableable {
     ): ProviderSetting
 
     @Serializable
+    sealed class ApiKey : ProviderSetting() {
+        /** 单 key 旧字段（多 key 用户以 [apiKeys] 为准，见 [effectiveApiKeys]） */
+        abstract var apiKey: String
+
+        /** 多 key 轮询列表 */
+        abstract var apiKeys: List<ApiKeyEntry>
+
+        abstract var baseUrl: String
+
+        /**
+         * 用户自定义额度查询（本仓对齐上游 #2186 的余额替换入口）。
+         *
+         * 只有 API Key 类提供商有；账号类（ChatGPT/Grok 订阅）的额度查询写死在各自
+         * Provider 里，账号凭据不会被发往用户配置的地址。
+         */
+        abstract val quotaQuery: QuotaQuery
+    }
+
+    @Serializable
     @SerialName("openai")
     data class OpenAI(
         override var id: Uuid = Uuid.random(),
@@ -279,9 +298,10 @@ sealed class ProviderSetting : Enableable {
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
-        var apiKey: String = "",
-        var apiKeys: List<ApiKeyEntry> = emptyList(),
-        var baseUrl: String = "https://api.openai.com/v1",
+        override var apiKey: String = "",
+        override var apiKeys: List<ApiKeyEntry> = emptyList(),
+        override var baseUrl: String = "https://api.openai.com/v1",
+        override val quotaQuery: QuotaQuery = QuotaQuery(),
         var chatCompletionsPath: String = "/chat/completions",
         var useResponseApi: Boolean = false,
         var includeHistoryReasoning: Boolean = true,
@@ -290,7 +310,7 @@ sealed class ProviderSetting : Enableable {
         var authType: OpenAIAuthType = OpenAIAuthType.API_KEY,
         /** 订阅账号状态（密文令牌）；[authType] 为 API_KEY 时忽略 */
         var codexAccount: CodexSubscriptionAccount? = null,
-    ) : ProviderSetting() {
+    ) : ApiKey() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
         }
@@ -359,16 +379,17 @@ sealed class ProviderSetting : Enableable {
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
-        var apiKey: String = "",
-        var apiKeys: List<ApiKeyEntry> = emptyList(),
-        var baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
+        override var apiKey: String = "",
+        override var apiKeys: List<ApiKeyEntry> = emptyList(),
+        override var baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
+        override val quotaQuery: QuotaQuery = QuotaQuery(),
         var vertexAI: Boolean = false,
         var useServiceAccount: Boolean = false,
         var privateKey: String = "", // only for vertex AI service account
         var serviceAccountEmail: String = "", // only for vertex AI service account
         var location: String = "us-central1", // only for vertex AI service account
         var projectId: String = "", // only for vertex AI service account
-    ) : ProviderSetting() {
+    ) : ApiKey() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
         }
@@ -437,12 +458,13 @@ sealed class ProviderSetting : Enableable {
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
-        var apiKey: String = "",
-        var apiKeys: List<ApiKeyEntry> = emptyList(),
-        var baseUrl: String = "https://api.anthropic.com/v1",
+        override var apiKey: String = "",
+        override var apiKeys: List<ApiKeyEntry> = emptyList(),
+        override var baseUrl: String = "https://api.anthropic.com/v1",
+        override val quotaQuery: QuotaQuery = QuotaQuery(),
         var promptCaching: Boolean = false,
         var promptCacheTtl: ClaudePromptCacheTtl = ClaudePromptCacheTtl.FIVE_MINUTES,
-    ) : ProviderSetting() {
+    ) : ApiKey() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
         }
