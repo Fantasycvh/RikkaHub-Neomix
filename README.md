@@ -100,6 +100,8 @@
 
 | 功能 | 说明 |
 |---|---|
+| 🎨 **自定义主题增强** | 三件：① 主题内核——`CustomTheme` 支持调色风格（9 种 MCU Variant）与对比度级别（0/0.5/1.0），取色器支持 HEX 直输；② **角色覆写（全局层）**——浅色/深色各五槽位（背景/主文字/次文字/控件强调/用户气泡），叠加在动态取色/预设/自定义**任意基底**之上，强调色作新 seed 重生成 12 个配色角色，WCAG 对比度 <4.5 预警；③ **外观快照导入导出**——主题 + 外观设置一体化，兼容旧版裸主题 JSON（实现参照 BiliPai，见「借鉴」） |
+| 🪞 **轻量个性化（聊天页）** | ① **头像框**：六档 Canvas 预设（无/单环/渐变环/双环/虚线环/光晕）+ 两档自定义（正方形透明中框 PNG 素材导入 / JSON 参数框实时预览）；② **输入栏背景图**：选图自由裁剪 + 透明度可调，与玻璃/模糊互斥；③ **思维链样式**：三档预设（卡片/引用条/极简）+ JSON 自定义（容器/强调/圆角/时间线）；④ **方案分立保存**：头像框方案、思维链方案各自存档，设置页一键应用/删除（灵感来源橘瓣，实现自研，见「借鉴」） |
 | 🧩 **代码块一键设为助手** | 会话内 JSON 助手卡即点即用 |
 | 🔎 **设置全局搜索** | 全量设置项索引 + 独立搜索页、双入口；入口为「设置」大标题下的**正文搜索框**。匹配逻辑（含别名/关键词）抽成纯函数并单测覆盖 |
 | 🧹 **移除上游营销** | 移除应用内更新检查、赞助入口/捐赠页/启动次数赞助弹窗、导出图片中的 `rikka-ai.com` 品牌水印 |
@@ -166,14 +168,18 @@
 | **rikkahub-pro**（Turbo） | [dcs666/rikkahub-pro](https://github.com/dcs666/rikkahub-pro) | R3.2 块级流式渲染、`setJob` 修复；其 80+ bug 清单被本仓用作 bug 审计对照表 |
 | **RikkaHub Math+** | [test27818/rikkahub-math-plus](https://github.com/test27818/rikkahub-math-plus) | TikZ 渲染管线架构（检测 → preamble 生成 → 编译 → 三层缓存）与 `standalone[border]` 裁剪留白的作法 |
 | **rikkahub-agent** | [ExTV/rikkahub-agent](https://github.com/ExTV/rikkahub-agent) | Agent 化的同类探索（与上游 `3a533a6a` 一并做过终端/工具链分析） |
+| **BiliPai** | [jay3-yy/BiliPai](https://github.com/jay3-yy/BiliPai) | 主题引擎工程化的**实现参照**（源码级调研在档，见 [`docs/references/other projects/bilipai.md`](docs/references/other%20projects/bilipai.md)）：seed 优先管线、**角色覆写全局层**（覆写作用于任意色源基底 + 对比度预警）、主题 = 设置快照——对应本仓自定义主题增强三项（`userBubbleHex` 为本 fork 特有第五槽位，槽位空值语义更轻）；**液态玻璃**的「门控层 + 可读性 + 回归测试」防线参照；**插件体系仅借思路**（见下） |
 
 **仅作设计参考、未采用其实现细节的**：`opencode` / `codex` / `Cherry Studio` —— 子代理与独立上下文设计稿只借其**思路**，
 其实现细节本仓**未核实、也未抄**（见 [`docs/design/in-progress/design-subagent-context.md`](docs/design/in-progress/design-subagent-context.md)）。
 **Claude 式文件记忆（Anthropic）** 同样是只借思路的一类：三类记忆只借「按用途分型」这个**维度**，
 不借其文件形态（设计口径见 [`docs/design/in-progress/design-memory-kinds.md`](docs/design/in-progress/design-memory-kinds.md) §0.3）。
-**BiliPai** ([jay3-yy/BiliPai](https://github.com/jay3-yy/BiliPai)) 只借插件体系的**思路**：能力声明 + 授权
+**BiliPai** 的**插件体系**仍属只借思路的一类：能力声明 + 授权
 （声明 ∩ 用户批准、记录绑定插件 id）、「只做会真跑的东西」的取舍；本仓不做其「能解析能授权但不执行」的外部 Dex 形态
-（见 [`docs/PLUGIN_SYSTEM_DESIGN_DRAFT.md`](docs/PLUGIN_SYSTEM_DESIGN_DRAFT.md)）。
+（见 [`docs/PLUGIN_SYSTEM_DESIGN_DRAFT.md`](docs/PLUGIN_SYSTEM_DESIGN_DRAFT.md)）——主题/液态玻璃部分则为源码级参照，见上表。
+**橘瓣 OrangeChat**（[watermio123-droid/orangechat](https://github.com/watermio123-droid/orangechat) 的 `liquid-glass-ui` 分支）同样只借思路：
+轻量个性化只借「用户想直接改哪几个颜色位」（背景/气泡/重点色）的需求洞察，实现不照抄，由自定义主题的角色覆写全量承接；
+两者是**不同应用**（橘瓣 ≠ BiliPai，见 [`docs/design/in-progress/design-custom-theme.md`](docs/design/in-progress/design-custom-theme.md) §2.2）。
 
 > **备注**：`SoLab` 的源码在 **MT 论坛**开源（上表已给帖链接），**没有 GitHub 仓库**，故不伪造 GitHub 链接。
 > 若作者愿意提供正式仓库地址，欢迎提 issue 或 PR 补上。
