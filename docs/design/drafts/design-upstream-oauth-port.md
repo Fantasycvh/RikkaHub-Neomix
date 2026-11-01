@@ -254,11 +254,12 @@ chatgpt.com/backend-api/codex、grok 后端
 | 2 | 设备码是否留兜底 | **保留一版（P5 再评估是否移除）**：`OpenAICodexAuthService` 降级为登录兜底，只负责取 token，凭据/刷新/额度统一由 `ProviderAccountManager` 持有；UI 在主登录失败时提供「改用设备码」入口。增量 P3/P4/P5 合计 +1.5–2.5 人日 |
 | 3 | 降级策略 | **旧版不可用 + 发布说明**；迁移前自动备份设置，不做兼容读取层 |
 | 4 | 额度 UI 与 `BalanceOption` | **选 B：上游额度体系替换本仓余额**。删除本仓 `BalanceOption`/`BalanceSource`/`Provider.getBalance`/`ProviderBalanceText`/`BalanceOption.kt`（11 文件 75 处引用），统一用 `ProviderQuota`（账号=用量窗口，API Key=`QuotaQuery` 余额）；存量 `balanceOption` 配置迁移为 `QuotaQuery`。P2/P4 合计 +1–2 人日 |
+| 4a | 多源/表达式余额配置迁移 | **给 `QuotaQuery` 扩展 `sources`/`expression` 两个可选字段，能力无损**（+1–1.5 人日，落在 P2）；迁移器把 `balanceOption` 的 sources/expression 原样搬到 `QuotaQuery`，单接口配置映射为 url/resultPath |
+| 5 | 发布节奏 | **五个 PR 分批**：P1 流式层（行为不变）单独一个 PR 先跑通，之后 P2 类型体系、P3 账号层、P4 provider/UI、P5 回归收尾各一个 PR，每阶段可独立回滚 |
 
 ### 待决问题
 
-1. **多源 / 表达式余额配置的迁移方式**：本仓 `BalanceOption` 支持「多接口 + 表达式」（上游 `QuotaQuery` 只有单 URL + resultPath）。三个选项：(a) 迁移时取第一个源 + 发布说明提示，损失多源能力（0 额外成本）；(b) 给 `QuotaQuery` 扩展 `sources`/`expression`，保留能力（+1–1.5 人日）；(c) 迁移时检测到多源配置则弹提示要求用户手工重配（+0.5 人日）。
-2. **发布节奏**：五个 PR 分批（推荐，每阶段可回滚）还是一个大的移植 PR。
+（暂无。原「多源/表达式迁移」已拍板为方案 b（决策 4a），「发布节奏」已拍板为五 PR 分批（决策 5）。）
 
 ---
 
