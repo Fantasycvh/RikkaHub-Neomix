@@ -309,6 +309,7 @@ val dataSourceModule = module {
                             redactHeader("x-api-key")
                             redactHeader("x-goog-api-key")
                             redactHeader("Proxy-Authorization")
+                            redactHeader("ChatGPT-Account-ID")
                             level = HttpLoggingInterceptor.Level.HEADERS
                         }
                     )

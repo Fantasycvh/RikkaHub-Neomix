@@ -381,6 +381,8 @@ private val SENSITIVE_HEADERS = setOf(
     "x-goog-api-key",
     "x-subscription-token",
     "x-auth-token",
+    // Codex 订阅请求带账号标识头（PII，非凭据）：脱敏口径与 Authorization 一致
+    "chatgpt-account-id",
     "proxy-authorization",
     "cookie",
     "set-cookie",

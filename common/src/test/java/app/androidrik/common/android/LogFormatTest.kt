@@ -127,6 +127,17 @@ class LogFormatTest {
     }
 
     @Test
+    fun `chatgpt account id header is redacted`() {
+        val entry = LogEntry.RequestLog(
+            timestamp = 0, tag = "HTTP", url = "https://x", method = "POST",
+            requestHeaders = mapOf("ChatGPT-Account-ID" to "acct-123-secret"),
+        )
+        val text = formatLogEntry(entry)
+        assertTrue(text.contains("ChatGPT-Account-ID: [redacted]"))
+        assertFalse(text.contains("acct-123-secret"))
+    }
+
+    @Test
     fun `non-sensitive headers are preserved verbatim`() {
         val entry = LogEntry.RequestLog(
             timestamp = 0, tag = "HTTP", url = "https://x", method = "POST",
