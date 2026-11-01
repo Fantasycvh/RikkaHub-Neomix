@@ -135,20 +135,19 @@ internal fun ProviderSetting.OpenAI.toResponsesEndpoint(
             // 顺序与改造前一致：refer 头 → 自定义头 → 鉴权（鉴权最后写，自定义 Authorization 会被盖掉）
             configureReferHeaders(baseUrl)
             applyCustomHeaders(this@toResponsesEndpoint, params.customHeaders)
-            authenticator.authenticate(this, this@toResponsesEndpoint, endpointUrl)
+            authenticator.authenticateApiKey(this, this@toResponsesEndpoint)
         },
         reasoningOverride = reasoningOverride,
         proxy = proxy,
-        forceEventStream = isChatGPTSubscription,
+        forceEventStream = looksLikeCodexEndpoint(),
     )
 }
 
 class ResponseAPI(
     private val client: OkHttpClient,
     private val keyRoulette: KeyRoulette = KeyRoulette.default(),
-    codexTokenProvider: OpenAICodexTokenProvider? = null,
 ) : OpenAIImpl {
-    private val authenticator = OpenAIRequestAuthenticator(keyRoulette, codexTokenProvider)
+    private val authenticator = OpenAIRequestAuthenticator(keyRoulette)
 
     override suspend fun generateText(
         providerSetting: ProviderSetting.OpenAI,
@@ -339,10 +338,10 @@ class ResponseAPI(
     )
 
     /**
-     * 本仓既有的 [ProviderSetting.OpenAI] 入口（P1 的 Codex 订阅单测与调用点仍用它）。
+     * 本仓既有的 [ProviderSetting.OpenAI] 入口（P1 的既有单测与调用点仍用它）。
      *
-     * 与上游的差异：Codex 订阅态没有会话 ID 时用旧的 `codexPromptCacheKey`（provider+model 稳定键）
-     * 兜底 `prompt_cache_key`，保住 P1 已验证行为；API Key 模式不再无条件写该字段。
+     * `prompt_cache_key` 只取 [TextGenerationParams.sessionId]（P1 起由 app 层显式传对话 id）；
+     * 不再有旧的 provider+model 稳定键兜底（随旧订阅链路一起删除）。
      */
     internal fun buildRequestBody(
         providerSetting: ProviderSetting.OpenAI,
@@ -350,19 +349,10 @@ class ResponseAPI(
         params: TextGenerationParams,
         stream: Boolean
     ): JsonObject {
-        val codexCacheKey = if (providerSetting.isChatGPTSubscription) {
-            providerSetting.codexPromptCacheKey(params.model.modelId)
-        } else {
-            null
-        }
         return buildRequestBody(
             capabilities = resolveResponseProviderCapabilities(providerSetting),
             messages = messages,
-            params = if (codexCacheKey != null && params.sessionId == null) {
-                params.copy(sessionId = codexCacheKey)
-            } else {
-                params
-            },
+            params = params,
             stream = stream,
             reasoningOverride = providerSetting.reasoningOverride,
             reasoningTextRequired = isKnownReasoningTextValidator(providerSetting.baseUrl.toHttpUrl().host),

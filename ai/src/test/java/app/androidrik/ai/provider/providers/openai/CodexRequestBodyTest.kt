@@ -3,10 +3,8 @@ package app.androidrik.ai.provider.providers.openai
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
-import app.androidrik.ai.provider.OpenAIAuthType
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
-import app.androidrik.ai.provider.CustomHeader
 import app.androidrik.ai.ui.UIMessage
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -22,11 +20,12 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Codex 订阅模式的 Responses 请求体（对齐上游 #2186 `CODEX_CAPABILITIES`）：
+ * Codex 端点（baseUrl 指向官方 Codex 后端）的 Responses 请求体，套用 `CODEX_CAPABILITIES`
+ * （对齐上游 #2186）：
  * - 不带采样参数（`temperature`/`top_p`/`max_output_tokens`）
  * - system 提示以 `developer` 消息进 `input`，不写 `instructions`
  * - 推理模型带 `reasoning.effort` + 加密推理 `include`
- * - 带稳定 `prompt_cache_key`
+ * - `prompt_cache_key` 只取显式 sessionId（P5 删掉旧的 provider+model 稳定键兜底）
  */
 class CodexRequestBodyTest {
 
@@ -37,17 +36,15 @@ class CodexRequestBodyTest {
         api = ResponseAPI(OkHttpClient())
     }
 
-    private fun codexSetting(
-        customHeaders: List<CustomHeader> = emptyList(),
-    ) = ProviderSetting.OpenAI(
-        authType = OpenAIAuthType.CHATGPT_SUBSCRIPTION,
-        customHeaders = customHeaders,
+    private fun codexSetting() = ProviderSetting.OpenAI(
+        baseUrl = "https://chatgpt.com/backend-api/codex",
     )
 
     private fun buildBody(
         setting: ProviderSetting.OpenAI = codexSetting(),
         abilities: List<ModelAbility> = listOf(ModelAbility.TOOL, ModelAbility.REASONING),
         stream: Boolean = true,
+        sessionId: String? = null,
     ): JsonObject = api.buildRequestBody(
         providerSetting = setting,
         messages = listOf(
@@ -60,6 +57,7 @@ class CodexRequestBodyTest {
             topP = 0.9f,
             maxTokens = 1024,
             reasoningLevel = ReasoningLevel.HIGH,
+            sessionId = sessionId,
         ),
         stream = stream,
     )
@@ -111,23 +109,15 @@ class CodexRequestBodyTest {
     }
 
     @Test
-    fun `prompt_cache_key 默认用 provider 加 model 稳定键`() {
-        val setting = codexSetting()
-        val body = buildBody(setting = setting)
-        assertEquals(
-            "codex-${setting.id}-gpt-5.1-codex",
-            body["prompt_cache_key"]!!.jsonPrimitive.content,
-        )
+    fun `prompt_cache_key 只取显式 sessionId`() {
+        val body = buildBody(sessionId = "conv-123")
+        assertEquals("conv-123", body["prompt_cache_key"]!!.jsonPrimitive.content)
     }
 
     @Test
-    fun `prompt_cache_key 优先取 session-id 自定义头`() {
-        val body = buildBody(
-            setting = codexSetting(
-                customHeaders = listOf(CustomHeader("session-id", "conv-123")),
-            )
-        )
-        assertEquals("conv-123", body["prompt_cache_key"]!!.jsonPrimitive.content)
+    fun `没有 sessionId 时不写 prompt_cache_key`() {
+        val body = buildBody()
+        assertNull(body["prompt_cache_key"])
     }
 
     @Test

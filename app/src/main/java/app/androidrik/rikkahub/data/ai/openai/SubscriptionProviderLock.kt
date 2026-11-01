@@ -1,7 +1,6 @@
 package app.androidrik.rikkahub.data.ai.openai
 
 import app.androidrik.ai.provider.Model
-import app.androidrik.ai.provider.OpenAIAuthType
 import app.androidrik.ai.provider.ProviderSetting
 import kotlin.uuid.Uuid
 
@@ -51,11 +50,10 @@ fun SubscriptionProviderLock?.allowsSendingWith(
 /**
  * 解析当前对话的订阅锁定。
  *
- * 触发条件：对话历史里有消息由某个**已启用**的订阅提供商生成。订阅提供商包括：
- * - 迁移前的旧形态 `ProviderSetting.OpenAI(authType = CHATGPT_SUBSCRIPTION)`：P5 删除旧链路之前
- *   仍可能有存量数据/回退安装，保留识别；
- * - 迁移后的账号类 `ProviderSetting.ChatGPT`：需要已登录（[ProviderSetting.Account.credential]
- *   非 null）——未登录的提供商发不出请求，锁在它上面只会让这条对话彻底没法继续。
+ * 触发条件：对话历史里有消息由某个**已启用**的订阅提供商生成。订阅提供商即账号类
+ * [ProviderSetting.ChatGPT] / [ProviderSetting.Grok]：需要已登录
+ * （[ProviderSetting.Account.credential] 非 null）且有模型——未登录的提供商发不出请求，
+ * 锁在它上面只会让这条对话彻底没法继续。
  *
  * 没有订阅模型生成过的对话返回 null（普通对话不受影响，空对话也不会一选订阅模型就被锁住）。
  *
@@ -85,12 +83,11 @@ fun resolveSubscriptionProviderLock(
 /**
  * 该 provider 是否会产出「只有自家后端能解读的加密推理」（需要锁定对话）。
  *
- * 判定范围（P5 起）：旧 OpenAI 订阅态、迁移后的 [ProviderSetting.ChatGPT]，以及
- * [ProviderSetting.Grok]。Grok 的 Responses 端点同样会回传只有自家能解读的加密推理，
- * 跨提供商复用会 400/静默丢弃，因此和 ChatGPT 同一规则：**已登录且至少有一个模型**才锁定。
+ * 判定范围（P5 起）：[ProviderSetting.ChatGPT] 与 [ProviderSetting.Grok]。两者都回传只有自家
+ * 能解读的加密推理，跨提供商复用会 400/静默丢弃，因此同一规则：
+ * **已登录且至少有一个模型**才锁定（旧 OpenAI 设备码订阅链路已在 P5 删除）。
  */
 private fun ProviderSetting.isSubscriptionProvider(): Boolean = when (this) {
-    is ProviderSetting.OpenAI -> enabled && authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION
     is ProviderSetting.ChatGPT -> enabled && credential != null && models.isNotEmpty()
     is ProviderSetting.Grok -> enabled && credential != null && models.isNotEmpty()
     else -> false
