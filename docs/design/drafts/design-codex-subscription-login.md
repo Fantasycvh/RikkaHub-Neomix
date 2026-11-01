@@ -377,3 +377,31 @@ JVM 单测（`:ai:testDebugUnitTest` / `:app:testDebugUnitTest`）：
 - agent 系（多账号/Keystore/额度）：https://github.com/ExTV/rikkahub-agent 、`AAAelina/rikkahub`
 - 官方协议源：`openai/codex` → `codex-rs/login/src/device_code_auth.rs`（`deviceauth/usercode`、`deviceauth/token`、15 分钟超时）
 - 上游已合并路线（请求体语义参考）：PR https://github.com/rikkahub/rikkahub/pull/2186 ，commit `318cffef6`
+
+## 十四、实施记录与真机验证（2026-11-01）
+
+### 已落地（提交）
+
+| 阶段 | 提交 | 内容 |
+| --- | --- | --- |
+| S1 | `174946239` | ai 层：请求体语义（developer 角色 / 加密推理 / `prompt_cache_key`）、Codex 鉴权、`/models` 解析、SSE Content-Type 兜底；单测 18 例 |
+| S2 | `3f4c8252d` | app 层 `OpenAICodexAuthService`：设备码申请/轮询/兑换、JSON 优先 + form 回退刷新、`SecretCipher` 加密落盘、per-provider Mutex、失效清凭据；DI 接入；单测 9 例（纯解析/错误分类） |
+| S3 | `397593ee2` | 设置页 UI：认证方式切换、账号/套餐卡片、设备码对话框（自动复制 + 打开浏览器）、错误按 `CodexAuthErrorCode` 本地化；23 条字符串（en/zh/zh-rTW） |
+| S4 | `e3c33743c` | 日志脱敏：`SENSITIVE_HEADERS` + debug `HttpLoggingInterceptor` 增加 `chatgpt-account-id` |
+| 修复 | `5d343e2b6` | 真机启动崩溃：Koin 裸 `get()` 按接口类型解析不到实现，改 `get<OpenAICodexAuthService>()`（编译期无感知，仅运行期暴露） |
+
+### 真机验证（PJX110 / Android 15，`app.androidrik.rikkahub.debug`）
+
+环境：App 内全局代理指向 host clash（`adb reverse tcp:8888`），验证后已恢复为「无」并复位系统 `http_proxy`。
+
+- 设备码申请 200 → 自动打开 `auth.openai.com/codex/device` → 轮询 403 `deviceauth_authorization_pending`（约 5s 间隔）符合预期
+- 完成授权后：`deviceauth/token` 200 → `oauth/token` 200 → 设置页显示账号 `jiushixiuqi@gmail.com`、套餐 `plus`；登录后自动拉取 8 个 Codex 模型（`GPT-6.1-Sol` 等，500K 上下文）
+- 落盘校验（`settings.preferences_pb`）：含 `chatgpt_subscription`、`accessTokenEncrypted`（`v1:` 密文）、账号邮箱；**无明文 JWT（`eyJ` 零命中）**
+- 对话：`POST https://chatgpt.com/backend-api/codex/responses` 200；首轮 "OK"，次轮 "SECOND"（多轮 + 历史加密推理回传可用），token 统计/速度正常
+- 杀进程重启后继续对话仍 200（解密 + `ChatGPT-Account-ID` 链路可用，无需重新登录）
+
+### 尚未覆盖（后续补充）
+
+- **真实刷新**：access token 有效期 1h，未在设备上强制过期验证 JSON→form 回退（服务端实际接受哪种编码仍未证）；可临时改设备时间或加 debug 入口补测
+- 工具调用、退出登录、备份恢复跨设备后的重新登录引导
+- `client_version` 漂移与后端约束变化（见十二）
