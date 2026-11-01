@@ -32,3 +32,22 @@
 - 头像框不做自定义图片框/动画框；不改抽屉/助手列表等其他页面头像。
 - 输入框背景不做 per-assistant（聊天背景图已是 per-assistant，二者语义分层：全局个性化 vs 会话主题）。
 - 思维链不改折叠/展开/整轮折叠逻辑，只做容器视觉。
+
+## 四、追加轮：入口直达 + 方案（2026-11-01）
+
+真机反馈「点自定义后无反馈、没有导入」。定位后两项一起改（用户拍板：**分立方案** + **提升入口**）。
+
+### 4.1 入口直达（提升入口）
+
+- 头像框 `CUSTOM_PARAMS` chip 点击 = 选档 + 直接弹 `AvatarFrameParamsSheet`；`CUSTOM_IMAGE` chip 点击 = 选档 + 直接弹系统选图。
+- 思维链 SegmentedPill 选中 `CUSTOM` = 选档 + 直接弹 `ChainOfThoughtCustomSheet`；下方「编辑参数」保留为再次进入入口。
+- 原来的二级「编辑参数」按钮消失是**渲染 bug**，不是没接上：`CardGroup` 的 `item(supportingContent=…)` 走 M3 `ListItem`，该槽位**只渲染第一个直接子节点**——chips/FlowRow 之后的 `when`/`if` 条件行被静默丢弃（选中态会更新，条件行永不出现）。修复：支持内容统一用 `Column { … }` 包一层。全仓同型写法需注意（已记 AGENTS.md）。
+
+### 4.2 分立方案
+
+- 模型（`PreferencesStore.kt`）：`AvatarFrameScheme(id, name, params)` / `ChainOfThoughtScheme(id, name, style)`，`id` 缺省 `Uuid.random()`。
+- 存储：`Settings.avatarFrameSchemes` / `Settings.cotStyleSchemes`，DataStore 单 JSON key（`avatar_frame_schemes` / `cot_style_schemes`），与 `customThemes` 同套路。
+- 保存：两个编辑 sheet 底部「保存为方案」→ 命名对话框（单字段 AlertDialog，verticalScroll + imePadding）→ `updateSettings(transform)` 追加；编辑器保持打开，toast 反馈。
+- 应用：设置页「头像框方案 / 思维链方案」CardGroup（列表非空才出现），点行 = 写参数 + 切对应 CUSTOM 档；leading 为 Canvas 缩略预览（框环 / 容器色 + 强调线）。
+- 删除：行尾垃圾桶 → 确认对话框 → `filterNot(id)`。
+- 非目标（本轮不做）：方案 JSON 文件格式与导入导出（单参数 JSON 导入导出维持现状）；方案重命名/排序；CUSTOM_IMAGE 素材入方案（managed 图片跨设备必丢）。
