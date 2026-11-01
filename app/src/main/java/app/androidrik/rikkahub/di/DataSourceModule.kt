@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import app.androidrik.ai.provider.ProviderManager
+import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
 import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationAgent
 import app.androidrik.rikkahub.data.ai.openai.OpenAICodexAuthService
@@ -329,6 +330,7 @@ val dataSourceModule = module {
             context = get(),
             // 显式按实现类型取：接口无单独 definition，裸 get() 会 NoDefinitionFound
             codexTokenProvider = get<OpenAICodexAuthService>(),
+            accountCredentials = get<ProviderAccountManager>(),
         )
     }
 

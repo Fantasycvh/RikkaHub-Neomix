@@ -51,7 +51,12 @@ fun SubscriptionProviderLock?.allowsSendingWith(
 /**
  * 解析当前对话的订阅锁定。
  *
- * 触发条件：对话历史里有消息由某个已启用的 ChatGPT 订阅提供商的模型生成。
+ * 触发条件：对话历史里有消息由某个**已启用**的订阅提供商生成。订阅提供商包括：
+ * - 迁移前的旧形态 `ProviderSetting.OpenAI(authType = CHATGPT_SUBSCRIPTION)`：P5 删除旧链路之前
+ *   仍可能有存量数据/回退安装，保留识别；
+ * - 迁移后的账号类 `ProviderSetting.ChatGPT`：需要已登录（[ProviderSetting.Account.credential]
+ *   非 null）——未登录的提供商发不出请求，锁在它上面只会让这条对话彻底没法继续。
+ *
  * 没有订阅模型生成过的对话返回 null（普通对话不受影响，空对话也不会一选订阅模型就被锁住）。
  *
  * @param historyModelIds 对话历史各条消息的 `modelId`（[app.androidrik.ai.ui.UIMessage.modelId]，
@@ -63,9 +68,7 @@ fun resolveSubscriptionProviderLock(
 ): SubscriptionProviderLock? {
     if (historyModelIds.isEmpty()) return null
 
-    val subscriptionProviders = providers
-        .filterIsInstance<ProviderSetting.OpenAI>()
-        .filter { it.enabled && it.authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION }
+    val subscriptionProviders = providers.filter { it.isSubscriptionProvider() }
     if (subscriptionProviders.isEmpty()) return null
 
     val generatedBySubscription = historyModelIds.toSet()
@@ -77,4 +80,17 @@ fun resolveSubscriptionProviderLock(
         providerId = locked.id,
         providerName = locked.name,
     )
+}
+
+/**
+ * 该 provider 是否会产出「只有自家后端能解读的加密推理」（需要锁定对话）。
+ *
+ * 目前只有 ChatGPT 订阅：旧 OpenAI 订阅态与迁移后的
+ * [ProviderSetting.ChatGPT] 账号类。Grok 等其它账号类不在此列（是否也锁定是独立设计决策，
+ * 见 P4 报告未决问题）。
+ */
+private fun ProviderSetting.isSubscriptionProvider(): Boolean = when (this) {
+    is ProviderSetting.OpenAI -> enabled && authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION
+    is ProviderSetting.ChatGPT -> enabled && credential != null && models.isNotEmpty()
+    else -> false
 }

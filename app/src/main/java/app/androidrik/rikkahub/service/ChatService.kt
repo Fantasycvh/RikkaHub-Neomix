@@ -1810,6 +1810,8 @@ class ChatService(
                 settings = settings,
                 model = model,
                 debugKey = conversationId.toString(),
+                // 提示缓存/账号类提供商的会话键（对齐上游 #2186 的 prompt_cache_key 语义）
+                sessionId = conversationId.toString(),
                 processingStatus = session.processingStatus,
                 // 护栏取自 session（不是在此处新建）：一次「轮」会跨多次 generateText——
                 // 工具审批让循环 break 等用户，批准后是新的调用续跑同一轮。挂在 session 上才能

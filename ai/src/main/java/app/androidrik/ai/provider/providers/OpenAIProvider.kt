@@ -38,6 +38,7 @@ import app.androidrik.ai.provider.providers.openai.isChatGPTSubscription
 import app.androidrik.ai.provider.providers.openai.modelsUrl
 import app.androidrik.ai.provider.providers.openai.parseCodexModels
 import app.androidrik.ai.provider.providers.openai.ResponseAPI
+import app.androidrik.ai.provider.providers.openai.toResponsesEndpoint
 import app.androidrik.ai.ui.ImageGenerationItem
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
@@ -194,7 +195,7 @@ class OpenAIProvider(
         params: TextGenerationParams
     ): Flow<StreamChunk> = if (providerSetting.useResponseApi || providerSetting.isChatGPTSubscription) {
         responseAPI.streamText(
-            providerSetting = providerSetting,
+            endpoint = providerSetting.toResponsesEndpoint(params, authenticator),
             messages = messages,
             params = params
         )
@@ -212,7 +213,7 @@ class OpenAIProvider(
         params: TextGenerationParams
     ): TextGenerationResult = if (providerSetting.useResponseApi || providerSetting.isChatGPTSubscription) {
         responseAPI.generateText(
-            providerSetting = providerSetting,
+            endpoint = providerSetting.toResponsesEndpoint(params, authenticator),
             messages = messages,
             params = params
         )

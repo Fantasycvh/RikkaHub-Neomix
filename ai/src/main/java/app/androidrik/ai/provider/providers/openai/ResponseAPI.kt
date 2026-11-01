@@ -29,13 +29,14 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
-import app.androidrik.ai.core.resolveReasoningOverride
+import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.providers.asDowngradedSystemMessage
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
+import app.androidrik.ai.provider.ProviderProxy
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
@@ -90,37 +91,101 @@ private const val INCOMPLETE_FALLBACK_FINISH_REASON = "incomplete"
 /** 失败事件缺错误详情时，异常文案里最多带多少字符的原始事件。 */
 private const val MAX_FAILURE_DETAIL_CHARS = 300
 
+/**
+ * Responses API 请求的目标：发往哪里、怎么鉴权，以及该网关对请求体的特殊要求（[capabilities]）。
+ *
+ * OpenAI 兼容提供商由 [ProviderSetting.OpenAI] 生成（`toResponsesEndpoint`）；地址写死的账号型
+ * 提供商（ChatGPT / Grok）各自构造。抽象与上游 #2186 相同，末尾三个字段是本仓扩展
+ * （P1 两层代理、思考强度覆盖、Codex 类后端的 SSE 容错）。
+ */
+internal class ResponsesEndpoint(
+    val url: String,
+    val capabilities: ResponseProviderCapabilities = ResponseProviderCapabilities(),
+    // 构建请求时调用，负责请求头和鉴权；可挂起，以便先刷新 token
+    val configureRequest: suspend Request.Builder.() -> Unit,
+    /**
+     * 本仓扩展：提供商级思考强度兜底覆盖（`ProviderSetting.reasoningOverride`）。
+     * 模型级 [Model.reasoningOverride] 仍然优先；只影响 Responses 的 `reasoning.effort`。
+     */
+    val reasoningOverride: ReasoningOverride? = null,
+    /** 本仓扩展：P1 两层代理——Inherit 时沿用 app 全局 client 的 ProxySelector */
+    val proxy: ProviderProxy = ProviderProxy.Inherit,
+    /**
+     * 本仓扩展：Codex 类后端不发 `Content-Type: text/event-stream`，需要补 Accept 头并挂
+     * [CodexSseContentTypeInterceptor]；其它网关保持 OkHttp 的严格校验。
+     */
+    val forceEventStream: Boolean = false,
+)
+
+/**
+ * OpenAI 兼容提供商自己构造请求目标（地址、能力、代理、鉴权都在这里定）。
+ *
+ * 放在 ResponseAPI 之外，让 [OpenAIProvider] 不必经 ResponseAPI 的旧入口也能用新 endpoint API
+ * （对齐上游 #2186「OpenAI 调用方自行构造 endpoint」）。
+ */
+internal fun ProviderSetting.OpenAI.toResponsesEndpoint(
+    params: TextGenerationParams,
+    authenticator: OpenAIRequestAuthenticator,
+): ResponsesEndpoint {
+    val endpointUrl = responsesUrl()
+    return ResponsesEndpoint(
+        url = endpointUrl,
+        capabilities = resolveResponseProviderCapabilities(this),
+        configureRequest = {
+            // 顺序与改造前一致：refer 头 → 自定义头 → 鉴权（鉴权最后写，自定义 Authorization 会被盖掉）
+            configureReferHeaders(baseUrl)
+            applyCustomHeaders(this@toResponsesEndpoint, params.customHeaders)
+            authenticator.authenticate(this, this@toResponsesEndpoint, endpointUrl)
+        },
+        reasoningOverride = reasoningOverride,
+        proxy = proxy,
+        forceEventStream = isChatGPTSubscription,
+    )
+}
+
 class ResponseAPI(
     private val client: OkHttpClient,
     private val keyRoulette: KeyRoulette = KeyRoulette.default(),
     codexTokenProvider: OpenAICodexTokenProvider? = null,
 ) : OpenAIImpl {
     private val authenticator = OpenAIRequestAuthenticator(keyRoulette, codexTokenProvider)
+
     override suspend fun generateText(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams
+    ): TextGenerationResult =
+        generateText(providerSetting.toResponsesEndpoint(params, authenticator), messages, params)
+
+    override suspend fun streamText(
+        providerSetting: ProviderSetting.OpenAI,
+        messages: List<UIMessage>,
+        params: TextGenerationParams
+    ): Flow<StreamChunk> =
+        streamText(providerSetting.toResponsesEndpoint(params, authenticator), messages, params)
+
+    internal suspend fun generateText(
+        endpoint: ResponsesEndpoint,
+        messages: List<UIMessage>,
+        params: TextGenerationParams
     ): TextGenerationResult = withContext(Dispatchers.IO) {
         val requestBody = buildRequestBody(
-            providerSetting = providerSetting,
+            endpoint = endpoint,
             messages = messages,
             params = params,
             stream = false,
         )
-        val url = providerSetting.responsesUrl()
         val requestBuilder = Request.Builder()
-            .url(url)
+            .url(endpoint.url)
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader("Content-Type", "application/json")
-            .configureReferHeaders(providerSetting.baseUrl)
-            .applyCustomHeaders(providerSetting, params.customHeaders)
-        authenticator.authenticate(requestBuilder, providerSetting, url)
+        endpoint.configureRequest.invoke(requestBuilder)
         val request = requestBuilder.build()
 
         Log.i(TAG, "generateText: ${summarizeRequestBody(json, requestBody)}")
 
         // await() 只等响应头；读 body 仍可能阻塞——use 确保流关闭，整体在 IO 线程执行（对齐 ab8b6cc8）
-        client.newCall(request).await().use { response ->
+        client.configureClientWithProxy(endpoint.proxy).newCall(request).await().use { response ->
             if (!response.isSuccessful) {
                 throw Exception("Failed to get response: ${response.code} ${response.body.string()}")
             }
@@ -133,28 +198,26 @@ class ResponseAPI(
         }
     }
 
-    override suspend fun streamText(
-        providerSetting: ProviderSetting.OpenAI,
+    internal fun streamText(
+        endpoint: ResponsesEndpoint,
         messages: List<UIMessage>,
         params: TextGenerationParams
     ): Flow<StreamChunk> = callbackFlow {
         val requestBody = buildRequestBody(
-            providerSetting = providerSetting,
+            endpoint = endpoint,
             messages = messages,
             params = params,
             stream = true,
         )
-        val url = providerSetting.responsesUrl()
         val requestBuilder = Request.Builder()
-            .url(url)
+            .url(endpoint.url)
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .apply {
                 // Codex 后端只支持流式；显式声明可避免部分网关按普通 JSON 响应处理
-                if (providerSetting.isChatGPTSubscription) addHeader("Accept", "text/event-stream")
+                if (endpoint.forceEventStream) addHeader("Accept", "text/event-stream")
             }
-            .configureReferHeaders(providerSetting.baseUrl)
-            .applyCustomHeaders(providerSetting, params.customHeaders)
-        authenticator.authenticate(requestBuilder, providerSetting, url)
+        // 鉴权可能要先刷新 token（挂起），因此在构建器上单独调用
+        endpoint.configureRequest.invoke(requestBuilder)
         val request = requestBuilder.build()
 
         Log.i(TAG, "streamText: ${summarizeRequestBody(json, requestBody)}")
@@ -242,14 +305,15 @@ class ResponseAPI(
             }
         }
 
-        // Codex 后端有时不发 Content-Type: text/event-stream：只在订阅模式下挂补头拦截器，
+        // Codex 类后端有时不发 Content-Type: text/event-stream：只对这类端点挂补头拦截器，
         // 其他 provider 的严格校验与真实错误不受影响
-        val streamClient = if (providerSetting.isChatGPTSubscription) {
-            client.newBuilder().addNetworkInterceptor(CodexSseContentTypeInterceptor()).build()
-        } else {
-            client
+        var streamClient = client.configureClientWithProxy(endpoint.proxy)
+        if (endpoint.forceEventStream) {
+            streamClient = streamClient.newBuilder()
+                .addNetworkInterceptor(CodexSseContentTypeInterceptor())
+                .build()
         }
-        val eventSource = EventSources.createFactory(streamClient.configureClientWithProxy(providerSetting.proxy))
+        val eventSource = EventSources.createFactory(streamClient)
             .newEventSource(request, listener)
 
         awaitClose {
@@ -259,14 +323,65 @@ class ResponseAPI(
         // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
     }.buffer(Channel.UNLIMITED).flowOn(Dispatchers.IO)
 
+    /** 以请求目标为入口：host（回填门槛）与提供商级覆盖都从 endpoint 取 */
+    internal fun buildRequestBody(
+        endpoint: ResponsesEndpoint,
+        messages: List<UIMessage>,
+        params: TextGenerationParams,
+        stream: Boolean,
+    ): JsonObject = buildRequestBody(
+        capabilities = endpoint.capabilities,
+        messages = messages,
+        params = params,
+        stream = stream,
+        reasoningOverride = endpoint.reasoningOverride,
+        reasoningTextRequired = isKnownReasoningTextValidator(endpoint.url.toHttpUrl().host),
+    )
+
+    /**
+     * 本仓既有的 [ProviderSetting.OpenAI] 入口（P1 的 Codex 订阅单测与调用点仍用它）。
+     *
+     * 与上游的差异：Codex 订阅态没有会话 ID 时用旧的 `codexPromptCacheKey`（provider+model 稳定键）
+     * 兜底 `prompt_cache_key`，保住 P1 已验证行为；API Key 模式不再无条件写该字段。
+     */
     internal fun buildRequestBody(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams,
         stream: Boolean
     ): JsonObject {
-        val host = providerSetting.baseUrl.toHttpUrl().host
-        val capabilities = resolveResponseProviderCapabilities(providerSetting)
+        val codexCacheKey = if (providerSetting.isChatGPTSubscription) {
+            providerSetting.codexPromptCacheKey(params.model.modelId)
+        } else {
+            null
+        }
+        return buildRequestBody(
+            capabilities = resolveResponseProviderCapabilities(providerSetting),
+            messages = messages,
+            params = if (codexCacheKey != null && params.sessionId == null) {
+                params.copy(sessionId = codexCacheKey)
+            } else {
+                params
+            },
+            stream = stream,
+            reasoningOverride = providerSetting.reasoningOverride,
+            reasoningTextRequired = isKnownReasoningTextValidator(providerSetting.baseUrl.toHttpUrl().host),
+        )
+    }
+
+    /**
+     * 请求体构造（对齐上游 #2186 的签名，另加两个本仓参数）：
+     * [reasoningOverride] 是本仓的思考强度覆盖；[reasoningTextRequired] 是「思考模式必须回传思维链」
+     * 的网关门槛（见 [isKnownReasoningTextValidator]），只有 host 命中时才回填占位 reasoning。
+     */
+    internal fun buildRequestBody(
+        capabilities: ResponseProviderCapabilities,
+        messages: List<UIMessage>,
+        params: TextGenerationParams,
+        stream: Boolean,
+        reasoningOverride: ReasoningOverride? = null,
+        reasoningTextRequired: Boolean = false,
+    ): JsonObject {
         val systemPrompt = messages.firstOrNull { it.role == MessageRole.SYSTEM }
             ?.parts
             ?.filterIsInstance<UIMessagePart.Text>()
@@ -301,23 +416,26 @@ class ResponseAPI(
                     })
                 }
                 // buildMessages 会跳过首条 system（上面已单独处理），其余 system 仍按本仓规则降级为 user
-                buildMessages(messages, isKnownReasoningTextValidator(host)).forEach { add(it) }
+                buildMessages(messages, reasoningTextRequired).forEach { add(it) }
             })
 
             // reasoning
             val reasoningModel = params.model.abilities.contains(ModelAbility.REASONING)
             if (reasoningModel) {
                 val level = params.reasoningLevel
-                val reasoningOverride = resolveReasoningOverride(params.model, providerSetting)
+                // 本仓 P1：思考强度覆盖（模型级优先、提供商级兜底），只作用于「选中具体档位」时
+                val effectiveOverride = (params.model.reasoningOverride ?: reasoningOverride)
                     ?.takeIf { level.isEnabled && level != ReasoningLevel.AUTO }
-                put("reasoning", buildJsonObject {
+                val reasoning = buildJsonObject {
                     if (capabilities.supportsReasoningSummary) {
                         put("summary", "auto")
                     }
-                    val effort = reasoningOverride?.effort
+                    val effort = effectiveOverride?.effort
                         ?: capabilities.reasoningEffort(level, params.model.modelId)
                     if (effort != null) put("effort", effort)
-                })
+                }
+                // 空对象（既无 summary 也无 effort，如 Grok AUTO）时不写该字段
+                if (reasoning.isNotEmpty()) put("reasoning", reasoning)
             }
             // 服务端不保存会话（store=false）时，推理链要靠加密推理内容接续；Codex 强制要求
             if (capabilities.supportEncryptedContent &&
@@ -328,10 +446,9 @@ class ResponseAPI(
                 })
             }
 
-            // 同会话请求命中服务端提示缓存（Codex 后端只认 prompt_cache_key）
-            if (providerSetting.isChatGPTSubscription) {
-                put("prompt_cache_key", providerSetting.codexPromptCacheKey(params.model.modelId))
-            }
+            // 同会话请求命中服务端提示缓存（对齐上游 #2186：会话 ID 即 prompt_cache_key；
+            // 本仓 app 层尚未传 sessionId 时由旧 Codex 稳定键兜底，见下面的 providerSetting 重载）
+            params.sessionId?.let { put("prompt_cache_key", it) }
 
             // tools
             // Response API 的 tools 是扁平数组, 函数工具和内置工具可以共存, 必须写在同一个 key 下,

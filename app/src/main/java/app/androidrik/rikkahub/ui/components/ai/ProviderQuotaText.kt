@@ -8,34 +8,75 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderQuota
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.UsageWindow
+import app.androidrik.ai.provider.supportsQuota
+import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.datastore.UsageDisplayMode
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.utils.SimpleCache
 import app.androidrik.rikkahub.utils.toDp
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.DashboardSpeed02
 import me.rerere.hugeicons.stroke.MoneyBag02
 import org.koin.compose.koinInject
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
-private val quotaCache = SimpleCache.builder<String, String>()
+private val quotaCache = SimpleCache.builder<String, ProviderQuota>()
     .expireAfterWrite(2, TimeUnit.MINUTES)
     .build()
 
 /**
+ * 查询提供商的额度，结果缓存 2 分钟，失败不缓存。返回 null 表示还在查询。
+ *
+ * 调用前先用 [supportsQuota] 判断有没有额度可查。
+ *
+ * 缓存键带上**会影响额度结果的那部分设置**：API Key 类是额度查询配置的哈希；账号类是当前
+ * 登录账号的 id（换了账号要重查，token 刷新不算换账号、不必重查）。配置或账号一变键就变，
+ * 旧结果不会再被命中。
+ */
+@Composable
+fun rememberProviderQuota(providerSetting: ProviderSetting): Result<ProviderQuota>? {
+    val providerManager = koinInject<ProviderManager>()
+    val cacheKey = "${providerSetting.id}," + when (providerSetting) {
+        is ProviderSetting.ApiKey -> providerSetting.quotaQuery.hashCode()
+        is ProviderSetting.Account -> providerSetting.credential?.accountId
+    }
+    val quota by produceState<Result<ProviderQuota>?>(
+        initialValue = quotaCache.getIfPresent(cacheKey)?.let { Result.success(it) },
+        cacheKey,
+    ) {
+        val cached = quotaCache.getIfPresent(cacheKey)
+        if (cached != null) {
+            value = Result.success(cached)
+            return@produceState
+        }
+        value = null
+        value = runCatching {
+            providerManager.getProviderByType(providerSetting).getQuota(providerSetting)
+                ?: error("Quota is not available")
+        }.onSuccess { quotaCache.put(cacheKey, it) }
+    }
+    return quota
+}
+
+/**
  * 提供商额度展示（对齐上游 #2186 的 `ProviderQuota`）。
  *
- * API Key 类提供商仅在开启自定义额度查询（[ProviderSetting.ApiKey.quotaQuery]）时展示；
- * 账号类提供商（P4 落地）有凭据即展示订阅用量。查询结果按「提供商 id + 查询配置」缓存 2 分钟，
- * 改配置后哈希变化自然失效。
+ * API Key 类提供商仅在开启自定义额度查询（[ProviderSetting.ApiKey.quotaQuery]）时展示余额；
+ * 账号类提供商登录后有订阅用量就展示用量窗口。是否有得查统一由 ai 模块的 [supportsQuota] 判断。
  */
 @Composable
 fun ProviderQuotaText(
@@ -44,32 +85,19 @@ fun ProviderQuotaText(
     style: TextStyle = LocalTextStyle.current,
     color: Color = Color.Unspecified,
 ) {
-    val apiKeySetting = providerSetting as? ProviderSetting.ApiKey ?: return
-    if (!apiKeySetting.quotaQuery.enabled) return
+    if (!providerSetting.supportsQuota) return
 
-    val providerManager = koinInject<ProviderManager>()
-
-    val value = produceState(
-        initialValue = "~",
-        key1 = providerSetting.id,
-        key2 = providerSetting.quotaQuery,
-    ) {
-        val cacheKey = "${providerSetting.id},${providerSetting.quotaQuery.hashCode()}"
-        val cached = quotaCache.getIfPresent(cacheKey)
-        if (cached != null) {
-            value = cached
-        } else {
-            runCatching {
-                providerManager.getProviderByType(providerSetting).getQuota(providerSetting)
-            }.onSuccess { quota ->
-                val text = quota.toDisplayText()
-                if (text != null) {
-                    quotaCache.put(cacheKey, text)
-                    value = text
-                }
-            }.onFailure {
-                // 错误不缓存，下次进入页面会重试
-                value = "Error: ${it.message}"
+    val mode = LocalSettings.current.usageDisplayMode
+    val modeLabel = mode.label()
+    val result = rememberProviderQuota(providerSetting)
+    val quota = result?.getOrNull()
+    val text = when {
+        result == null -> "~"
+        quota == null -> "Error: ${result.exceptionOrNull()?.message}"
+        else -> when (quota) {
+            is ProviderQuota.Balance -> quota.value
+            is ProviderQuota.UsageLimits -> quota.windows.joinToString(" · ") { window ->
+                "${window.shortLabel()} $modeLabel ${window.displayPercent(mode)}%".trim()
             }
         }
     }
@@ -80,13 +108,17 @@ fun ProviderQuotaText(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Icon(
-            imageVector = HugeIcons.MoneyBag02,
+            imageVector = if (quota is ProviderQuota.UsageLimits) {
+                HugeIcons.DashboardSpeed02
+            } else {
+                HugeIcons.MoneyBag02
+            },
             contentDescription = null,
             modifier = Modifier.size(style.fontSize.toDp()),
             tint = color.takeOrElse { LocalContentColor.current },
         )
         Text(
-            text = value.value,
+            text = text,
             style = style,
             maxLines = 1,
             color = color,
@@ -94,14 +126,64 @@ fun ProviderQuotaText(
     }
 }
 
-/** 额度 → 一行展示文本；没有可展示的额度返回 null（不渲染图标行） */
-internal fun ProviderQuota?.toDisplayText(): String? = when (this) {
-    null -> null
-    is ProviderQuota.Balance -> value
-    is ProviderQuota.UsageLimits -> buildString {
-        append(windows.joinToString(" / ") { window ->
-            "${window.usedPercent.roundToInt()}%"
-        })
-        if (limitReached) append(" (limit)")
-    }.ifEmpty { null }
+/**
+ * 按展示口径换算窗口百分比：已用 = 后端原值；剩余 = 100 - 已用。
+ *
+ * 后端 `used_percent` 会随用量增长（实测连续请求后 0% → 1%、2% → 3%），
+ * 因此 [UsageDisplayMode.USED] 是默认口径，[UsageDisplayMode.REMAINING] 只补个 100-。
+ */
+internal fun UsageWindow.displayPercent(mode: UsageDisplayMode): Int = when (mode) {
+    UsageDisplayMode.USED -> usedPercent
+    UsageDisplayMode.REMAINING -> 100.0 - usedPercent
+}.roundToInt().coerceIn(0, 100)
+
+/** 「已用」/「剩余」文案，用于百分比前缀。 */
+@Composable
+internal fun UsageDisplayMode.label(): String = stringResource(
+    when (this) {
+        UsageDisplayMode.USED -> R.string.setting_provider_page_usage_used
+        UsageDisplayMode.REMAINING -> R.string.setting_provider_page_usage_remaining
+    }
+)
+
+private enum class WindowUnit(val minutes: Int, val suffix: String) {
+    WEEK(7 * 24 * 60, "w"),
+    DAY(24 * 60, "d"),
+    HOUR(60, "h"),
+    MINUTE(1, "m"),
+}
+
+// 按能整除的最大单位拆分窗口长度：300 -> 5 小时，10080 -> 1 周
+private fun Int.toWindowSpan(): Pair<Int, WindowUnit> {
+    val unit = WindowUnit.entries.first { this % it.minutes == 0 }
+    return this / unit.minutes to unit
+}
+
+// 300 -> 5h，10080 -> 1w，未知时为空
+internal fun UsageWindow.shortLabel(): String {
+    val (count, unit) = windowMinutes?.toWindowSpan() ?: return ""
+    return "$count${unit.suffix}"
+}
+
+// 5 小时 -> 5-hour limit，一周 -> Weekly limit
+@Composable
+internal fun UsageWindow.longLabel(): String {
+    val (count, unit) = windowMinutes?.toWindowSpan()
+        ?: return stringResource(R.string.setting_provider_page_usage_limit)
+    return when (unit) {
+        WindowUnit.WEEK -> if (count == 1) {
+            stringResource(R.string.setting_provider_page_usage_limit_weekly)
+        } else {
+            stringResource(R.string.setting_provider_page_usage_limit_weeks, count)
+        }
+
+        WindowUnit.DAY -> if (count == 1) {
+            stringResource(R.string.setting_provider_page_usage_limit_daily)
+        } else {
+            stringResource(R.string.setting_provider_page_usage_limit_days, count)
+        }
+
+        WindowUnit.HOUR -> stringResource(R.string.setting_provider_page_usage_limit_hours, count)
+        WindowUnit.MINUTE -> stringResource(R.string.setting_provider_page_usage_limit_minutes, count)
+    }
 }

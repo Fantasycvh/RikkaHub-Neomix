@@ -173,6 +173,17 @@ object SettingsJsonMigrator {
                 }
             }
 
+            // V7: providers 里的旧「OpenAI ChatGPT 订阅」（`codexAccount`）→ 账号类 ChatGPT
+            // （与 DataStore V5 迁移等价）。不做的话，旧备份恢复后订阅 provider 会以旧的
+            // OpenAI(authType=chatgpt_subscription) 形态落回设置，账号界面看不到、登录态也不迁移；
+            // 幂等：已是 `type == "chatgpt"` 的条目原样保留。
+            root["providers"]?.let { element ->
+                val array = element as? JsonArray
+                if (array != null) {
+                    root["providers"] = JsonArray(array.map(::migrateProviderCodexAccountEntry))
+                }
+            }
+
             JsonInstant.encodeToString(JsonObject(root))
         }.onFailure {
             Log.e(TAG, "migrate: Failed to migrate settings JSON, using package-migrated JSON", it)

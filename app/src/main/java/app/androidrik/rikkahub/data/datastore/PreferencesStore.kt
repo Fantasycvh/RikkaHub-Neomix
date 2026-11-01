@@ -69,6 +69,7 @@ import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV1Migrati
 import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV2Migration
 import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
+import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.InjectionPosition
@@ -135,7 +136,8 @@ internal fun createSettingsDataStore(file: File): DataStore<Preferences> {
             PreferenceStoreV1Migration(),
             PreferenceStoreV2Migration(),
             PreferenceStoreV3Migration(),
-            PreferenceStoreV4Migration()
+            PreferenceStoreV4Migration(),
+            PreferenceStoreV5Migration()
         ),
         produceFile = { file },
     )
@@ -410,6 +412,8 @@ class SettingsStore(
         val SUBAGENT_PRESETS = stringPreferencesKey("subagent_presets")
         // 全局代理（两层代理设计的全局兜底层）；结构化 JSON 存储
         val GLOBAL_PROXY = stringPreferencesKey("global_proxy")
+        // 订阅用量展示口径（已用 / 剩余）；只是展示层偏好，不改 ai 层语义
+        val USAGE_DISPLAY_MODE = stringPreferencesKey("usage_display_mode")
         // 日志落盘（Log 页「导出到文件」开关；默认关，避免无谓写盘）
         val LOG_TO_FILE_ENABLED = booleanPreferencesKey("log_to_file_enabled")
         // 请求记录（Log 页「记录请求」开关；默认关。**必须持久化**——否则重启后
@@ -598,6 +602,9 @@ class SettingsStore(
                 globalProxy = preferences[GLOBAL_PROXY]?.let {
                     JsonInstant.decodeFromString<GlobalProxySetting>(it)
                 } ?: GlobalProxySetting(),
+                usageDisplayMode = preferences[USAGE_DISPLAY_MODE]?.let {
+                    runCatching { UsageDisplayMode.valueOf(it) }.getOrNull()
+                } ?: UsageDisplayMode.USED,
                 recordRequestsEnabled = preferences[RECORD_REQUESTS_ENABLED] ?: false,
                 autoCompressThresholdPercent = preferences[AUTO_COMPRESS_THRESHOLD_PERCENT]
                     ?: DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
@@ -884,6 +891,7 @@ class SettingsStore(
             preferences[IMPORTED_SOURCES] = JsonInstant.encodeToString(settings.importedSources)
             preferences[LOG_TO_FILE_ENABLED] = settings.logToFileEnabled
             preferences[GLOBAL_PROXY] = JsonInstant.encodeToString(settings.globalProxy)
+            preferences[USAGE_DISPLAY_MODE] = settings.usageDisplayMode.name
             preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
             preferences[ENABLE_SUBAGENT_DISPATCH] = settings.enableSubagentDispatch
             preferences[SUBAGENT_PRESETS] = JsonInstant.encodeToString(settings.subagentPresets)
@@ -1062,6 +1070,13 @@ class SettingsStore(
     }
 }
 
+/** 订阅用量窗口的展示口径，见 [Settings.usageDisplayMode]。 */
+@Serializable
+enum class UsageDisplayMode {
+    USED,
+    REMAINING,
+}
+
 @Serializable
 data class Settings(
     @Transient
@@ -1116,6 +1131,13 @@ data class Settings(
      * 只裁描述文本不改参数/required；默认关闭——压缩改变模型看到的内容，属用户显式选择。
      */
     val toolSchemaCompactLevel: Int = 0,
+    /**
+     * 订阅用量（ChatGPT/Grok 的额度窗口）展示口径：
+     * [UsageDisplayMode.USED] = 已用百分比（默认，与后端 `used_percent` 同义）；
+     * [UsageDisplayMode.REMAINING] = 剩余百分比（100 - 已用）。
+     * 仅影响展示，ai 层的 [app.androidrik.ai.provider.UsageWindow.usedPercent] 语义不变。
+     */
+    val usageDisplayMode: UsageDisplayMode = UsageDisplayMode.USED,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val providers: List<ProviderSetting> = DEFAULT_PROVIDERS,
     /** 用户显式删除的内置提供商 id（墓碑）——默认回填逻辑跳过这些 */

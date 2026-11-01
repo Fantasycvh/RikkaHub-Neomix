@@ -76,7 +76,8 @@ class EmptyGenerationResponseTest {
         retry: RetrySetting = RetrySetting(enabled = false),
     ) = runBlocking {
         val context = ContextWrapper(null)
-        val manager = ProviderManager(OkHttpClient(), context)
+        // 账号类提供商不参与这些用例；新增的必填回调只在真的取账号凭据时抛错
+        val manager = ProviderManager(OkHttpClient(), context, accountCredentials = { _, _ -> error("no account provider in tests") })
         manager.registerProvider("openai", provider)
         GenerationHandler(context, manager, JsonInstant, usageRecorder = noopUsageRecorder()).generateText(
             settings = Settings(

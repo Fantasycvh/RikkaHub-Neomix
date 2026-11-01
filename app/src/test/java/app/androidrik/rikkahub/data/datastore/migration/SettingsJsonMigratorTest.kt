@@ -1,6 +1,10 @@
 package app.androidrik.rikkahub.data.datastore.migration
 
+import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.rikkahub.utils.JsonInstant
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -108,5 +112,105 @@ class SettingsJsonMigratorTest {
         val input = """{"launchCount":7}"""
         val result = SettingsJsonMigrator.migrate(input)
         assertTrue(result.contains("\"launchCount\":7"))
+    }
+
+    // ---- V7：旧订阅 codexAccount → ChatGPT 账号（与 DataStore V5 等价） ----
+
+    private val providerId = "8f7c3a1e-2b4d-4c5f-9a6b-0d1e2f3a4b5c"
+    private val modelId = "3c9e5b2f-6a1d-4e7c-8f0b-2d4a6c8e0f1a"
+
+    private fun legacySubscriptionBackup(authType: String = "chatgpt_subscription"): String =
+        "{\"providers\":[{" +
+            "\"type\":\"openai\",\"id\":\"$providerId\",\"name\":\"我的订阅\"," +
+            "\"models\":[{\"modelId\":\"gpt-6.1-sol\",\"displayName\":\"GPT-6.1-Sol\",\"id\":\"$modelId\"}]," +
+            "\"baseUrl\":\"https://api.openai.com/v1\",\"apiKey\":\"sk-old\"," +
+            "\"authType\":\"$authType\"," +
+            "\"codexAccount\":{\"accountId\":\"acct-1\",\"email\":\"user@example.com\",\"planType\":\"plus\"," +
+            "\"expiresAt\":1700000000000,\"accessTokenEncrypted\":\"v1:access-cipher\"," +
+            "\"refreshTokenEncrypted\":\"v1:refresh-cipher\"}}]}"
+
+    @Test
+    fun `V7 旧备份的订阅 provider 迁移成 ChatGPT 账号且密文原样保留`() {
+        val result = SettingsJsonMigrator.migrate(legacySubscriptionBackup())
+
+        assertFalse("旧账号字段不能留（它已不属于任何 provider）", result.contains("codexAccount"))
+        assertFalse(result.contains("chatgpt_subscription"))
+        assertTrue("必须改写成账号类 type", result.contains("\"type\":\"chatgpt\""))
+        // id / 模型 / 密文令牌都不能变：对话历史按 modelId 找回模型，账号层按 v1: 密文解密
+        assertTrue(result.contains(providerId))
+        assertTrue(result.contains("\"gpt-6.1-sol\""))
+        assertTrue(result.contains("v1:access-cipher"))
+        assertTrue(result.contains("v1:refresh-cipher"))
+        assertTrue(result.contains("\"accountId\":\"acct-1\""))
+        assertTrue(result.contains("\"plan\":\"plus\""))
+    }
+
+    @Test
+    fun `V7 备份恢复后的订阅 provider 能被账号层解码（不再按旧 OpenAI 落回设置）`() {
+        val migrated = SettingsJsonMigrator.migrate(legacySubscriptionBackup())
+        val decoded = SettingsCompatDecoder.decode(JsonInstant, migrated)
+
+        assertTrue(decoded.droppedEntries.isEmpty())
+        val provider = decoded.settings.providers.single()
+        assertTrue(provider is ProviderSetting.ChatGPT)
+        provider as ProviderSetting.ChatGPT
+        assertEquals(providerId, provider.id.toString())
+        assertEquals(listOf(modelId), provider.models.map { it.id.toString() })
+        assertEquals("v1:access-cipher", provider.credential?.accessToken)
+        assertEquals("v1:refresh-cipher", provider.credential?.refreshToken)
+        assertEquals("acct-1", provider.credential?.accountId)
+        assertEquals("plus", provider.credential?.plan)
+    }
+
+    @Test
+    fun `V7 备份里已切回 API Key 的 provider 不被迁移`() {
+        val result = SettingsJsonMigrator.migrate(legacySubscriptionBackup(authType = "api_key"))
+
+        assertTrue("显式 API Key 模式保留原 provider", result.contains("\"type\":\"openai\""))
+        assertTrue(result.contains("\"authType\":\"api_key\""))
+        assertTrue("旧账号字段保留（P5 再决定去留）", result.contains("codexAccount"))
+        assertFalse(result.contains("\"type\":\"chatgpt\""))
+    }
+
+    @Test
+    fun `V7 备份迁移幂等`() {
+        val once = SettingsJsonMigrator.migrate(legacySubscriptionBackup())
+        val twice = SettingsJsonMigrator.migrate(once)
+        assertEquals(once, twice)
+    }
+
+    @Test
+    fun `V7 没有 providers 的备份不受影响`() {
+        val result = SettingsJsonMigrator.migrate("""{"launchCount":3}""")
+        assertTrue(result.contains("\"launchCount\":3"))
+        assertFalse(result.contains("chatgpt"))
+    }
+
+    @Test
+    fun `V7 与 V6 叠加：旧余额配置与旧订阅账号同时迁移`() {
+        val input = "{\"providers\":[{" +
+            "\"type\":\"openai\",\"id\":\"$providerId\",\"name\":\"订阅\"," +
+            "\"authType\":\"chatgpt_subscription\"," +
+            "\"balanceOption\":{\"enabled\":true,\"apiPath\":\"/credits\",\"resultPath\":\"data.x\"}," +
+            "\"codexAccount\":{\"accountId\":\"acct-1\",\"expiresAt\":0," +
+            "\"accessTokenEncrypted\":\"v1:access-cipher\",\"refreshTokenEncrypted\":\"v1:refresh-cipher\"}}]}"
+
+        val result = SettingsJsonMigrator.migrate(input)
+        assertFalse("V6 先删 balanceOption", result.contains("balanceOption"))
+        assertTrue(result.contains("\"type\":\"chatgpt\""))
+        // 账号类没有 quotaQuery：V6 中间产物不能残留在最终 JSON 里
+        assertFalse(result.contains("quotaQuery"))
+        assertTrue(result.contains("v1:access-cipher"))
+    }
+
+    @Test
+    fun `V7 未登录的旧订阅 provider 迁移后 credential 为空`() {
+        val result = SettingsJsonMigrator.migrate(
+            "{\"providers\":[{\"type\":\"openai\",\"id\":\"$providerId\"," +
+                "\"authType\":\"chatgpt_subscription\"}]}"
+        )
+        val provider = SettingsCompatDecoder.decode(JsonInstant, result).settings.providers.single()
+        assertTrue(provider is ProviderSetting.ChatGPT)
+        assertNull((provider as ProviderSetting.ChatGPT).credential)
     }
 }
