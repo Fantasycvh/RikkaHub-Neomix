@@ -2884,5 +2884,28 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_display_page_avatar_frame_schemes_title">头像框方案</string>
   <string name="setting_display_page_cot_schemes_title">思维链方案</string>
   <string name="setting_personalization_hex_optional">#RRGGBB，可留空</string>
+  <string name="setting_provider_page_auth_method">认证方式</string>
+  <string name="setting_provider_page_auth_api_key">API Key</string>
+  <string name="setting_provider_page_auth_chatgpt">ChatGPT 订阅</string>
+  <string name="setting_provider_page_codex_notice">订阅模式下请求发往官方 Codex 后端（chatgpt.com/backend-api/codex），API Key 与 Base URL 不生效。</string>
+  <string name="setting_provider_page_codex_login">登录 ChatGPT 账号</string>
+  <string name="setting_provider_page_codex_logout">退出登录</string>
+  <string name="setting_provider_page_codex_account">账号</string>
+  <string name="setting_provider_page_codex_plan">套餐</string>
+  <string name="setting_provider_page_codex_device_title">登录 ChatGPT 订阅</string>
+  <string name="setting_provider_page_codex_device_desc">打开下面的链接并输入设备码：</string>
+  <string name="setting_provider_page_codex_device_expires">设备码 %1$d 分钟内有效。</string>
+  <string name="setting_provider_page_codex_copy">复制设备码</string>
+  <string name="setting_provider_page_codex_copied">设备码已复制</string>
+  <string name="setting_provider_page_codex_open_browser">打开浏览器</string>
+  <string name="setting_provider_page_codex_waiting">等待授权…</string>
+  <string name="setting_provider_page_codex_cancel">取消</string>
+  <string name="setting_provider_page_codex_login_success">已登录 ChatGPT</string>
+  <string name="setting_provider_page_codex_error_region">当前网络无法访问 OpenAI 授权服务，请配置代理后重试。</string>
+  <string name="setting_provider_page_codex_error_network">网络错误，请检查代理后重试。</string>
+  <string name="setting_provider_page_codex_error_expired">设备码已过期，请重新登录。</string>
+  <string name="setting_provider_page_codex_error_reauth">订阅登录已失效，请重新登录。</string>
+  <string name="setting_provider_page_codex_error_failed">登录失败：%1$s</string>
+  <string name="setting_provider_page_codex_usage_hint">订阅模式仅支持文本对话（不支持 Embedding 和图片生成）。</string>
 </resources>
 

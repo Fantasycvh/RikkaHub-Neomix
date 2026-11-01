@@ -2870,5 +2870,28 @@
   <string name="setting_display_page_avatar_frame_schemes_title">頭像框方案</string>
   <string name="setting_display_page_cot_schemes_title">思維鏈方案</string>
   <string name="setting_personalization_hex_optional">#RRGGBB，可留空</string>
+  <string name="setting_provider_page_auth_method">認證方式</string>
+  <string name="setting_provider_page_auth_api_key">API Key</string>
+  <string name="setting_provider_page_auth_chatgpt">ChatGPT 訂閱</string>
+  <string name="setting_provider_page_codex_notice">訂閱模式下請求發往官方 Codex 後端（chatgpt.com/backend-api/codex），API Key 與 Base URL 不生效。</string>
+  <string name="setting_provider_page_codex_login">登入 ChatGPT 帳號</string>
+  <string name="setting_provider_page_codex_logout">登出</string>
+  <string name="setting_provider_page_codex_account">帳號</string>
+  <string name="setting_provider_page_codex_plan">方案</string>
+  <string name="setting_provider_page_codex_device_title">登入 ChatGPT 訂閱</string>
+  <string name="setting_provider_page_codex_device_desc">開啟下方連結並輸入裝置碼：</string>
+  <string name="setting_provider_page_codex_device_expires">裝置碼 %1$d 分鐘內有效。</string>
+  <string name="setting_provider_page_codex_copy">複製裝置碼</string>
+  <string name="setting_provider_page_codex_copied">裝置碼已複製</string>
+  <string name="setting_provider_page_codex_open_browser">開啟瀏覽器</string>
+  <string name="setting_provider_page_codex_waiting">等待授權…</string>
+  <string name="setting_provider_page_codex_cancel">取消</string>
+  <string name="setting_provider_page_codex_login_success">已登入 ChatGPT</string>
+  <string name="setting_provider_page_codex_error_region">目前網路無法存取 OpenAI 授權服務，請設定代理後重試。</string>
+  <string name="setting_provider_page_codex_error_network">網路錯誤，請檢查代理後重試。</string>
+  <string name="setting_provider_page_codex_error_expired">裝置碼已過期，請重新登入。</string>
+  <string name="setting_provider_page_codex_error_reauth">訂閱登入已失效，請重新登入。</string>
+  <string name="setting_provider_page_codex_error_failed">登入失敗：%1$s</string>
+  <string name="setting_provider_page_codex_usage_hint">訂閱模式僅支援文字對話（不支援 Embedding 與圖片生成）。</string>
 </resources>
 
