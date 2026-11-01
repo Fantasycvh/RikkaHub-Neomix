@@ -537,7 +537,7 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 - `data_version` 4 → **5**（本仓 V1..V4；上游同语义迁移在 V4/V5，编号已错位，**不改名**）。
 - 备份格式 `SettingsJsonMigrator` 最高 V6 → **V7**：旧备份恢复同样转换成 ChatGPT，不会以旧 OpenAI 形态落回；与新版本无关的中间产物（如 V6 的 `quotaQuery`）随迁移丢弃（Account 无该字段）。
 - 迁移规则：保留 `id`（历史消息 modelId 与订阅锁依赖）、`enabled`/`name`/`models`/`proxy`/`customHeaders`/`retryOption`/`reasoningOverride`；`credential = OAuthCredential(accessToken=accessTokenEncrypted, refreshToken=refreshTokenEncrypted, expiresAt, accountId, email, plan=planType)`，密文逐字节原样搬；两个 token 都空 ⇒ `credential=null`（未登录）；显式 `authType=api_key` 的残留 `codexAccount` **不迁**（用户已切回 API Key，旧请求链路本就不读 codexAccount，迁走等于删掉可用配置）；幂等、畸形 JSON 原样返回。
-- `SubscriptionProviderLock`：锁定候选 = 旧 OpenAI 订阅 ∪ 已登录且有 models 的 ChatGPT；Grok 暂不参与（是否也因加密推理锁定留待 P5 决策，测试已钉住当前行为）。
+- `SubscriptionProviderLock`：锁定候选 = 旧 OpenAI 订阅 ∪ 已登录且有 models 的 ChatGPT（P5 起加上 Grok，见 §十七）。
 
 ### 16.4 刻意偏离上游
 
@@ -571,7 +571,7 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 - **ChatGPT loopback 登录**（Custom Tabs + 前台服务 + `127.0.0.1:1455` 回调）只做了代码与单测（`ChatGPTAuthTest` 12 例），**未在新账号上点通真实登录**；真机只验证了「已登录态迁移」与「Grok 设备码登录」。P5 需要真机走一遍新账号登录 + 通知权限（Android 13+）。
 - **Grok 全链路**：登录成功但账号无 SuperGrok 订阅，模型目录/额度/对话均无法真机验证；需有订阅的账号补验（`GrokProviderTest` 8 例覆盖解析，未覆盖真实端点差异）。
 - **降级/去留**：旧 Codex 设备码 UI（`ProviderConfigure` 内 OpenAI 订阅分支）、`OpenAICodexAuthService`、`CodexSubscriptionAccount` 与 `ProviderSetting.OpenAI` 相关字段仍在；P5 决定「保留为兜底 or 删除」，并补发布说明（旧版本读新数据不可用，需迁移前自动备份）。
-- **Grok 订阅锁**：当前不锁定对话；若 Grok 也回传只有自家能解密的加密推理，需要在 P5 评估加入 `SubscriptionProviderLock` 并补迁移/测试。
+- **Grok 订阅锁**：P5 已决策纳入 `SubscriptionProviderLock`（Grok Responses 端点同样回传自家加密推理），见 §十七。
 - **`ProviderAccountManager` 并发刷新 / 杀进程重启**：仍无自动化覆盖（无 Robolectric），P4 真机只验证了单请求刷新链路；P5 补真机压测（并发两路请求只用一个 refresh token、刷新期间登出不写回）。
 - **server-tool 回传 / 全局 session 头**：属 P1 起既有缺口与后续增强，不在 P4 范围。
 
@@ -609,3 +609,19 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 两种口径互相补足，切换后立即生效（设置页改完返回即刷新，无需重启）。
 
 **顺带记录**：验证「用量是否随请求增长」时，有一次带工具调用（`eval_javascript`）的长回复报 `SSE stream failed without exception`（`ResponseAPI` 的流结束兜底：没收到 `response.completed` 就断开）。同批次另外 3 次短回复与随后 1 次长回复均正常，怀疑是代理链路中途掐断（本机经 `127.0.0.1:8888` 代理），留待 P5 用稳定网络复测并确认是否需要把「无 completed 的 EOF」降级为可恢复错误。
+
+---
+
+## 十七、P5 实施记录（分支 `feat/p5-cleanup`，基于已合并 P1–P4 的 `master`）
+
+### 17.1 ChatGPT loopback 登录真机验收（用户操作，2026-11-02）
+
+P4 唯一未点通的登录路径已在真机补验通过：**新账号**走 Custom Tabs → ChatGPT 授权页 → `127.0.0.1:1455` 回环回调（前台服务通知，Android 13+ 通知权限）→ 回到 App 显示已登录（邮箱 + 套餐），凭据以 `v1:` 密文落盘。至此 ChatGPT 的 loopback PKCE 与 Grok 的设备码两条登录路径都在真机走通，旧 Codex 设备码链路不再承担主登录职责。
+
+### 17.2 Grok 纳入订阅锁定（`SubscriptionProviderLock`）
+
+- **依据**：Grok 的 Responses 端点与 Codex 后端一样，会回传只有自家后端能解读的加密推理（`encrypted_content`）；把这类对话切到其它提供商 = 把解不开的加密块丢给外人，轻则静默丢弃、重则 400。
+- **规则**（与 ChatGPT 一致）：`ProviderSetting.Grok` 满足 `enabled && credential != null && models.isNotEmpty()` 才参与锁定；未登录/停用/无模型的 Grok 不锁（否则锁上去只会让对话彻底没法继续）。
+- **行为**：一旦对话历史里有 Grok 订阅模型生成的消息，后续只能在该 Grok 提供商内换模型；模型选择器的候选提供商同步只保留它。判定仍按**对话历史**而不是当前选中模型（避免助手级换模型把历史对话全部锁死）。
+- **测试**：`SubscriptionProviderLockTest` 用 3 例钉住新契约（登录且有模型 ⇒ 锁定；未登录 ⇒ 不锁；停用 ⇒ 不锁），并保留「同提供商换模型允许 / 别家模型拒绝」断言。app 2742 → 2744。
+- **真机限制**：当前测试账号没有 SuperGrok 订阅，无法产生「Grok 订阅模型生成的历史消息」来做端到端锁定验证；锁定逻辑由纯函数单测覆盖，有订阅账号后按 P4 记的 Grok 全链路补验。
