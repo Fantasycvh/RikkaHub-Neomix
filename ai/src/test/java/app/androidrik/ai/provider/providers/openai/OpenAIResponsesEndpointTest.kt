@@ -4,7 +4,6 @@ import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.ai.provider.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.OPENAI_CODEX_BASE_URL
-import app.androidrik.ai.provider.OpenAIAuthType
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.util.KeyRoulette
@@ -20,7 +19,7 @@ import org.junit.Test
  *
  * 锁三件事：
  * - API Key 模式：URL 仍是 `baseUrl + responsesPath`、走默认能力；
- * - Codex 订阅模式：URL 固定官方 Codex 后端、`developer` 角色、不吃采样参数、需要 SSE 容错；
+ * - Codex 端点（baseUrl 指向官方 Codex 后端）：`developer` 角色、不吃采样参数、需要 SSE 容错；
  * - 请求头顺序语义不变：refer 头与自定义头都在、鉴权是最后写的那一个（自定义 Authorization 被盖掉）。
  */
 class OpenAIResponsesEndpointTest {
@@ -46,12 +45,8 @@ class OpenAIResponsesEndpointTest {
     }
 
     @Test
-    fun `subscription endpoint uses the codex backend and codex capabilities`() {
-        val setting = ProviderSetting.OpenAI(
-            authType = OpenAIAuthType.CHATGPT_SUBSCRIPTION,
-            // 订阅凭据不覆写 baseUrl，但端点必须是官方 Codex 后端
-            baseUrl = "https://openrouter.ai/api/v1",
-        )
+    fun `codex base url endpoint uses codex capabilities and force event stream`() {
+        val setting = ProviderSetting.OpenAI(baseUrl = OPENAI_CODEX_BASE_URL)
 
         val endpoint = endpoint(setting)
 

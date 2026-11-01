@@ -17,8 +17,9 @@ import kotlinx.serialization.json.put
 
 /**
  * V5：把本仓旧的「OpenAI ChatGPT 订阅」提供商迁成上游 #2186 的账号类
- * [app.androidrik.ai.provider.ProviderSetting.ChatGPT]，让存量订阅用户在 P4 的账号界面里原地可用
- * （旧 `codexAccount` 设备码链路 P5 才决定去留，**本迁移不删任何旧代码**）。
+ * [app.androidrik.ai.provider.ProviderSetting.ChatGPT]，让存量订阅用户在 P4 的账号界面里原地可用。
+ * 旧 `codexAccount` 设备码链路的代码已在 P5 删除，但**迁移只按原始 JSON 解析旧字段**，不依赖
+ * 那些已删的数据类，所以老用户升级路径（V5 / V7）保持可用。
  *
  * 旧数据形如：
  * ```

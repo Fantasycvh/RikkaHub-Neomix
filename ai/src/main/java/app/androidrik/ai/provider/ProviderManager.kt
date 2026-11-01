@@ -6,7 +6,6 @@ import app.androidrik.ai.provider.providers.GoogleProvider
 import app.androidrik.ai.provider.providers.OpenAIProvider
 import app.androidrik.ai.provider.providers.chatgpt.ChatGPTProvider
 import app.androidrik.ai.provider.providers.grok.GrokProvider
-import app.androidrik.ai.provider.providers.openai.OpenAICodexTokenProvider
 import okhttp3.OkHttpClient
 
 /**
@@ -17,15 +16,13 @@ class ProviderManager(
     context: Context,
     /** P4 账号层：ChatGPT / Grok 的凭据来源（app 层 ProviderAccountManager 实现） */
     accountCredentials: AccountCredentialProvider,
-    /** 本仓旧 Codex 设备码订阅链路（P5 决定去留），API Key 类 OpenAI 仍会用到 */
-    codexTokenProvider: OpenAICodexTokenProvider? = null,
 ) {
     // 存储已注册的Provider实例
     private val providers = mutableMapOf<String, Provider<*>>()
 
     init {
         // 注册默认Provider
-        registerProvider("openai", OpenAIProvider(client, context, codexTokenProvider))
+        registerProvider("openai", OpenAIProvider(client, context))
         registerProvider("google", GoogleProvider(client, context))
         registerProvider("claude", ClaudeProvider(client, context))
         // 账号类：请求地址写死，鉴权走 OAuth 凭据 + 401 自动刷新重试

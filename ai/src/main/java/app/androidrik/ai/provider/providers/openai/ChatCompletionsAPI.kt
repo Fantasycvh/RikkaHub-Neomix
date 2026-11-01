@@ -84,7 +84,6 @@ private const val TAG = "ChatCompletionsAPI"
 class ChatCompletionsAPI(
     private val client: OkHttpClient,
     private val keyRoulette: KeyRoulette,
-    codexTokenProvider: OpenAICodexTokenProvider? = null,
     /**
      * SSE 事件源工厂（**测试注入点**）。
      *
@@ -94,16 +93,12 @@ class ChatCompletionsAPI(
      */
     private val eventSourceFactory: (OkHttpClient) -> EventSource.Factory = { EventSources.createFactory(it) },
 ) : OpenAIImpl {
-    // /chat/completions 只服务 API Key 模式；订阅模式的请求由 ResponseAPI 处理（见 OpenAIProvider）
-    private val authenticator = OpenAIRequestAuthenticator(keyRoulette, codexTokenProvider)
+    private val authenticator = OpenAIRequestAuthenticator(keyRoulette)
     override suspend fun generateText(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): TextGenerationResult = withContext(Dispatchers.IO) {
-        require(!providerSetting.isChatGPTSubscription) {
-            "ChatGPT 订阅模式不走 /chat/completions，请改用 Response API"
-        }
         val requestBody =
             buildChatCompletionRequest(
                 messages = messages,
@@ -158,9 +153,6 @@ class ChatCompletionsAPI(
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): Flow<StreamChunk> = callbackFlow {
-        require(!providerSetting.isChatGPTSubscription) {
-            "ChatGPT 订阅模式不走 /chat/completions，请改用 Response API"
-        }
         val host = providerSetting.baseUrl.toHttpUrl().host
 
         // 从错误自学习（2026-10-13 用户拍板）：先按静态判定发一次；若网关回

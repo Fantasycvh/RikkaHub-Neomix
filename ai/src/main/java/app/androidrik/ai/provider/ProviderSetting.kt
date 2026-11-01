@@ -163,42 +163,6 @@ val ProviderSetting.effectiveApiKeys: String
         }
     }
 
-/**
- * OpenAI 提供商的认证方式。
- *
- * - [API_KEY]：传统 API Key（含多 key/中转 baseUrl），行为与旧版本完全一致。
- * - [CHATGPT_SUBSCRIPTION]：ChatGPT 订阅账号（Codex 设备码登录，见
- *   `docs/design/drafts/design-codex-subscription-login.md`）。请求只发往官方 Codex 后端，
- *   `baseUrl`/`apiKey` 在请求侧被忽略但**不覆写**，切回 API Key 时原样恢复。
- */
-@Serializable
-enum class OpenAIAuthType {
-    @SerialName("api_key")
-    API_KEY,
-
-    @SerialName("chatgpt_subscription")
-    CHATGPT_SUBSCRIPTION,
-}
-
-/**
- * ChatGPT 订阅账号的本地状态。**只存元数据与密文**：
- * 明文 access/refresh token 由 app 层解密后经
- * [app.androidrik.ai.provider.providers.openai.OpenAICodexTokenProvider] 提供给 ai 层。
- */
-@Serializable
-data class CodexSubscriptionAccount(
-    /** ChatGPT 账号 id（`chatgpt_account_id`），请求头 `ChatGPT-Account-ID` 用 */
-    val accountId: String = "",
-    val email: String? = null,
-    /** 套餐标识（如 `plus`/`pro`/`team`），仅用于展示 */
-    val planType: String? = null,
-    /** access token 过期时间（epoch millis），0 表示未知 */
-    val expiresAt: Long = 0L,
-    /** SecretCipher 密文（`v1:` 前缀）；换设备/重装后解不开 */
-    val accessTokenEncrypted: String = "",
-    val refreshTokenEncrypted: String = "",
-)
-
 /** 官方 Codex 后端（ChatGPT 订阅账号态）。 */
 const val OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 
@@ -284,10 +248,6 @@ sealed class ProviderSetting : Enableable {
         var useResponseApi: Boolean = false,
         var includeHistoryReasoning: Boolean = true,
         var responsesPath: String = "/responses",
-        /** 认证方式：默认 API Key ⇒ 旧数据零迁移（缺省即旧行为） */
-        var authType: OpenAIAuthType = OpenAIAuthType.API_KEY,
-        /** 订阅账号状态（密文令牌）；[authType] 为 API_KEY 时忽略 */
-        var codexAccount: CodexSubscriptionAccount? = null,
     ) : ApiKey() {
         override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
             return copy(quotaQuery = quotaQuery)

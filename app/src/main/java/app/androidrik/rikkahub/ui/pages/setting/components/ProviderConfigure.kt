@@ -39,22 +39,17 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.dokar.sonner.ToastType
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ProgressIndicatorDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
-import app.androidrik.ai.provider.OpenAIAuthType
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderQuota
 import app.androidrik.ai.provider.ProviderSetting
@@ -62,17 +57,9 @@ import app.androidrik.ai.provider.supportsQuota
 import app.androidrik.rikkahub.data.ai.account.AccountLoginStatus
 import app.androidrik.rikkahub.data.ai.account.ChatGPTAuth
 import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
-import app.androidrik.rikkahub.data.ai.mcp.launchOAuthAuthorization
-import app.androidrik.rikkahub.data.ai.openai.CodexAuthErrorCode
-import app.androidrik.rikkahub.data.ai.openai.CodexAuthException
-import app.androidrik.rikkahub.data.ai.openai.CodexDeviceCode
-import app.androidrik.rikkahub.data.ai.openai.OpenAICodexAuthService
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import app.androidrik.rikkahub.R
-import app.androidrik.rikkahub.BuildConfig
 import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.data.datastore.DEFAULT_PROVIDERS
@@ -313,64 +300,6 @@ private fun ProviderConfigureOpenAI(
     onEdit: (provider: ProviderSetting.OpenAI) -> Unit
 ) {
     val toaster = LocalToaster.current
-    val context = LocalContext.current
-    val resources = LocalResources.current
-    val scope = rememberCoroutineScope()
-    val codexAuthService: OpenAICodexAuthService = koinInject()
-    val providerManager: ProviderManager = koinInject()
-
-    var deviceCode by remember { mutableStateOf<CodexDeviceCode?>(null) }
-    var loginError by remember { mutableStateOf<CodexAuthException?>(null) }
-    var loginJob by remember { mutableStateOf<Job?>(null) }
-    // 调试用：强制刷新中的状态（避免连点 / 与登录互斥）
-    var refreshing by remember { mutableStateOf(false) }
-
-    val copiedMessage = stringResource(R.string.setting_provider_page_codex_copied)
-    val successMessage = stringResource(R.string.setting_provider_page_codex_login_success)
-
-    fun copyDeviceCode(code: String) {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText("ChatGPT device code", code))
-        toaster.show(message = copiedMessage, type = ToastType.Success)
-    }
-
-    fun startLogin() {
-        if (loginJob != null) return
-        loginError = null
-        loginJob = scope.launch {
-            try {
-                val account = codexAuthService.startLogin(provider.id) { code ->
-                    deviceCode = code
-                    // 自动复制设备码并打开授权页：用户回浏览器粘贴即可，不必手动抄写
-                    copyDeviceCode(code.userCode)
-                    runCatching { launchOAuthAuthorization(context, code.verificationUrl) }
-                }
-                val updated = provider.copy(
-                    authType = OpenAIAuthType.CHATGPT_SUBSCRIPTION,
-                    codexAccount = account,
-                    includeHistoryReasoning = true,
-                )
-                // 登录后拉一次 Codex 模型列表；失败不影响登录结果（用户可稍后手动刷新）
-                val models = runCatching {
-                    providerManager.getProviderByType(updated).listModels(updated)
-                }.getOrDefault(emptyList())
-                onEdit(if (models.isEmpty()) updated else updated.copy(models = models))
-                toaster.show(message = successMessage, type = ToastType.Success)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: CodexAuthException) {
-                loginError = e
-            } catch (e: Exception) {
-                loginError = CodexAuthException(
-                    CodexAuthErrorCode.UNKNOWN,
-                    e.message ?: "Unknown error",
-                )
-            } finally {
-                deviceCode = null
-                loginJob = null
-            }
-        }
-    }
 
     provider.description()
 
@@ -381,216 +310,67 @@ private fun ProviderConfigureOpenAI(
         modifier = Modifier.fillMaxWidth(),
     )
 
-    // 认证方式：API Key（默认，旧行为） / ChatGPT 订阅（设备码登录 + 官方 Codex 后端）
-    if (provider.supportsChatGPTSubscription()) {
-        Text(
-            text = stringResource(R.string.setting_provider_page_auth_method),
-            style = MaterialTheme.typography.labelLarge,
-        )
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            OpenAIAuthType.entries.forEachIndexed { index, authType ->
-                SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(
-                        index = index,
-                        count = OpenAIAuthType.entries.size,
-                    ),
-                    label = {
-                        Text(
-                            stringResource(
-                                if (authType == OpenAIAuthType.API_KEY) {
-                                    R.string.setting_provider_page_auth_api_key
-                                } else {
-                                    R.string.setting_provider_page_auth_chatgpt
-                                }
-                            )
-                        )
-                    },
-                    selected = provider.authType == authType,
-                    onClick = {
-                        loginError = null
-                        onEdit(
-                            provider.copy(
-                                authType = authType,
-                                // Codex 多轮推理依赖回传历史推理内容，订阅态强制打开
-                                includeHistoryReasoning = if (authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION) {
-                                    true
-                                } else {
-                                    provider.includeHistoryReasoning
-                                },
-                            )
-                        )
-                    },
-                )
+    // 多 key 编辑器：每 key 一框 + 启用开关（兼容旧单 key 字段展示）
+    ProviderApiKeysEditor(
+        keys = provider.apiKeys,
+        legacyKey = provider.apiKey,
+        onChange = { newKeys -> onEdit(provider.copy(apiKeys = newKeys)) },
+    )
+
+    OutlinedTextField(
+        value = provider.baseUrl,
+        onValueChange = { onEdit(provider.copy(baseUrl = it.trim())) },
+        label = { Text(stringResource(R.string.setting_provider_page_api_base_url)) },
+        modifier = Modifier.fillMaxWidth(),
+        isError = provider.baseUrl.isNotBlank() && !provider.baseUrl.isValidBaseUrl(),
+    )
+
+    // API 路径按协议切换：Response API 用 responsesPath，Chat Completions 用 chatCompletionsPath
+    //（对齐上游 a61d116d：此前 Response API 路径固定 /responses，中转端点无法自定义）
+    OutlinedTextField(
+        value = if (provider.useResponseApi) provider.responsesPath else provider.chatCompletionsPath,
+        onValueChange = {
+            onEdit(
+                if (provider.useResponseApi) {
+                    provider.copy(responsesPath = it.trim())
+                } else {
+                    provider.copy(chatCompletionsPath = it.trim())
+                }
+            )
+        },
+        label = { Text(stringResource(R.string.setting_provider_page_api_path)) },
+        modifier = Modifier.fillMaxWidth(),
+        enabled = !provider.builtIn,
+    )
+
+    val responseAPIWarning = stringResource(R.string.setting_provider_page_response_api_warning)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(stringResource(R.string.setting_provider_page_response_api))
+        Switch(
+            checked = provider.useResponseApi,
+            onCheckedChange = {
+                onEdit(provider.copy(useResponseApi = it))
+                if (it && provider.baseUrl.toHttpUrlOrNull()?.host != "api.openai.com") {
+                    toaster.show(message = responseAPIWarning, type = ToastType.Warning)
+                }
             }
-        }
+        )
     }
 
-    if (provider.authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION) {
-        Text(
-            text = stringResource(R.string.setting_provider_page_codex_notice),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(stringResource(R.string.setting_provider_page_include_history_reasoning))
+        Switch(
+            checked = provider.includeHistoryReasoning,
+            onCheckedChange = { onEdit(provider.copy(includeHistoryReasoning = it)) }
         )
-
-        val account = provider.codexAccount
-        if (account != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = stringResource(R.string.setting_provider_page_codex_account) + ": " +
-                        (account.email ?: account.accountId),
-                )
-                account.planType?.takeIf { it.isNotBlank() }?.let { plan ->
-                    Text(
-                        text = stringResource(R.string.setting_provider_page_codex_plan) + ": " + plan,
-                    )
-                }
-            }
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        codexAuthService.logout(provider.id)
-                        onEdit(
-                            provider.copy(
-                                authType = OpenAIAuthType.API_KEY,
-                                codexAccount = null,
-                            )
-                        )
-                    }
-                },
-                enabled = loginJob == null,
-            ) {
-                Text(stringResource(R.string.setting_provider_page_codex_logout))
-            }
-            // 调试入口：access token 1h 有效，等自然过期太久；强制刷新一次即可验证
-            // 刷新链路与「JSON 优先、form 回退」实际命中哪种编码（结果从 toast 读）。
-            if (BuildConfig.DEBUG) {
-                OutlinedButton(
-                    onClick = {
-                        if (refreshing) return@OutlinedButton
-                        scope.launch {
-                            refreshing = true
-                            try {
-                                val result = codexAuthService.forceRefresh(provider.id)
-                                onEdit(provider.copy(codexAccount = result.account))
-                                toaster.show(
-                                    message = resources.getString(
-                                        R.string.setting_provider_page_codex_debug_refresh_ok,
-                                        result.encoding.name,
-                                    ),
-                                    type = ToastType.Success,
-                                )
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: CodexAuthException) {
-                                loginError = e
-                            } finally {
-                                refreshing = false
-                            }
-                        }
-                    },
-                    enabled = loginJob == null && !refreshing,
-                ) {
-                    if (refreshing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Text(stringResource(R.string.setting_provider_page_codex_debug_force_refresh))
-                    }
-                }
-            }
-        } else {
-            OutlinedButton(
-                onClick = { startLogin() },
-                enabled = loginJob == null,
-            ) {
-                if (loginJob != null) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text(stringResource(R.string.setting_provider_page_codex_login))
-                }
-            }
-        }
-
-        loginError?.let { error ->
-            Text(
-                text = codexErrorMessage(error),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-        Text(
-            text = stringResource(R.string.setting_provider_page_codex_usage_hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    } else {
-        // 多 key 编辑器：每 key 一框 + 启用开关（兼容旧单 key 字段展示）
-        ProviderApiKeysEditor(
-            keys = provider.apiKeys,
-            legacyKey = provider.apiKey,
-            onChange = { newKeys -> onEdit(provider.copy(apiKeys = newKeys)) },
-        )
-
-        OutlinedTextField(
-            value = provider.baseUrl,
-            onValueChange = { onEdit(provider.copy(baseUrl = it.trim())) },
-            label = { Text(stringResource(R.string.setting_provider_page_api_base_url)) },
-            modifier = Modifier.fillMaxWidth(),
-            isError = provider.baseUrl.isNotBlank() && !provider.baseUrl.isValidBaseUrl(),
-        )
-
-        // API 路径按协议切换：Response API 用 responsesPath，Chat Completions 用 chatCompletionsPath
-        //（对齐上游 a61d116d：此前 Response API 路径固定 /responses，中转端点无法自定义）
-        OutlinedTextField(
-            value = if (provider.useResponseApi) provider.responsesPath else provider.chatCompletionsPath,
-            onValueChange = {
-                onEdit(
-                    if (provider.useResponseApi) {
-                        provider.copy(responsesPath = it.trim())
-                    } else {
-                        provider.copy(chatCompletionsPath = it.trim())
-                    }
-                )
-            },
-            label = { Text(stringResource(R.string.setting_provider_page_api_path)) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !provider.builtIn,
-        )
-
-        val responseAPIWarning = stringResource(R.string.setting_provider_page_response_api_warning)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(stringResource(R.string.setting_provider_page_response_api))
-            Switch(
-                checked = provider.useResponseApi,
-                onCheckedChange = {
-                    onEdit(provider.copy(useResponseApi = it))
-                    if (it && provider.baseUrl.toHttpUrlOrNull()?.host != "api.openai.com") {
-                        toaster.show(message = responseAPIWarning, type = ToastType.Warning)
-                    }
-                }
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(stringResource(R.string.setting_provider_page_include_history_reasoning))
-            Switch(
-                checked = provider.includeHistoryReasoning,
-                onCheckedChange = { onEdit(provider.copy(includeHistoryReasoning = it)) }
-            )
-        }
     }
 
     Row(
@@ -604,91 +384,6 @@ private fun ProviderConfigureOpenAI(
             onCheckedChange = { onEdit(provider.copy(enabled = it)) }
         )
     }
-
-    deviceCode?.let { code ->
-        CodexDeviceCodeDialog(
-            deviceCode = code,
-            onCopy = { copyDeviceCode(code.userCode) },
-            onOpenBrowser = {
-                runCatching { launchOAuthAuthorization(context, code.verificationUrl) }
-            },
-            onCancel = {
-                loginJob?.cancel()
-                loginJob = null
-                deviceCode = null
-            },
-        )
-    }
-}
-
-private fun ProviderSetting.OpenAI.supportsChatGPTSubscription(): Boolean {
-    val url = baseUrl.toHttpUrlOrNull() ?: return false
-    return url.host == "api.openai.com" || url.host == "chatgpt.com"
-}
-
-@Composable
-private fun CodexDeviceCodeDialog(
-    deviceCode: CodexDeviceCode,
-    onCopy: () -> Unit,
-    onOpenBrowser: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(stringResource(R.string.setting_provider_page_codex_device_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.setting_provider_page_codex_device_desc))
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = deviceCode.userCode,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = JetbrainsMono,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                    )
-                }
-                Text(
-                    text = stringResource(R.string.setting_provider_page_codex_device_expires, 15),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    text = stringResource(R.string.setting_provider_page_codex_waiting),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onOpenBrowser) {
-                Text(stringResource(R.string.setting_provider_page_codex_open_browser))
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onCopy) {
-                    Text(stringResource(R.string.setting_provider_page_codex_copy))
-                }
-                TextButton(onClick = onCancel) {
-                    Text(stringResource(R.string.setting_provider_page_codex_cancel))
-                }
-            }
-        },
-    )
-}
-
-@Composable
-private fun codexErrorMessage(error: CodexAuthException): String = when (error.code) {
-    CodexAuthErrorCode.REGION_BLOCKED -> stringResource(R.string.setting_provider_page_codex_error_region)
-    CodexAuthErrorCode.NETWORK -> stringResource(R.string.setting_provider_page_codex_error_network)
-    CodexAuthErrorCode.EXPIRED -> stringResource(R.string.setting_provider_page_codex_error_expired)
-    CodexAuthErrorCode.INVALID_GRANT -> stringResource(R.string.setting_provider_page_codex_error_reauth)
-    else -> stringResource(R.string.setting_provider_page_codex_error_failed, error.message.orEmpty())
 }
 
 @Composable

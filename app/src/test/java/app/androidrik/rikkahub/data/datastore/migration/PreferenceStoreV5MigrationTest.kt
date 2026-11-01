@@ -1,7 +1,6 @@
 package app.androidrik.rikkahub.data.datastore.migration
 
 import androidx.datastore.preferences.core.mutablePreferencesOf
-import app.androidrik.ai.provider.OpenAIAuthType
 import app.androidrik.ai.provider.ProviderProxy
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.data.datastore.SettingsStore
@@ -213,9 +212,9 @@ class PreferenceStoreV5MigrationTest {
 
         assertTrue(provider is ProviderSetting.OpenAI)
         provider as ProviderSetting.OpenAI
-        assertEquals(OpenAIAuthType.API_KEY, provider.authType)
+        // P5 删除旧字段后：旧 codexAccount/authType 由 ignoreUnknownKeys 忽略，配置仍可用
         assertEquals("sk-live", provider.apiKey)
-        assertEquals("旧字段保留（P5 再决定去留）", "acct-1", provider.codexAccount?.accountId)
+        assertEquals("旧 codexAccount 不属于任何账号类 provider", 1, migratedProviders(legacyProviderJson(authType = "api_key", apiKey = "sk-live")).size)
     }
 
     @Test
@@ -225,7 +224,6 @@ class PreferenceStoreV5MigrationTest {
         ).single()
 
         assertTrue("普通 API Key provider 不动", provider is ProviderSetting.OpenAI)
-        assertEquals(OpenAIAuthType.API_KEY, (provider as ProviderSetting.OpenAI).authType)
     }
 
     @Test

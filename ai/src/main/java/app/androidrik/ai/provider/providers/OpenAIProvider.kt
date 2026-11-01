@@ -31,10 +31,7 @@ import app.androidrik.ai.provider.runQuotaQuery
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.provider.providers.openai.ChatCompletionsAPI
-import app.androidrik.ai.provider.providers.openai.OpenAICodexTokenProvider
 import app.androidrik.ai.provider.providers.openai.OpenAIRequestAuthenticator
-import app.androidrik.ai.provider.providers.openai.codexPromptCacheKey
-import app.androidrik.ai.provider.providers.openai.isChatGPTSubscription
 import app.androidrik.ai.provider.providers.openai.modelsUrl
 import app.androidrik.ai.provider.providers.openai.parseCodexModels
 import app.androidrik.ai.provider.providers.openai.ResponseAPI
@@ -131,19 +128,17 @@ internal fun buildOpenRouterEditBody(
 class OpenAIProvider(
     private val client: OkHttpClient,
     context: Context? = null,
-    codexTokenProvider: OpenAICodexTokenProvider? = null,
 ) : Provider<ProviderSetting.OpenAI> {
     // 默认顺序模式（优先级语义：列表顺序即优先级，首个=首选，失败按序切下一个）；
     // LRU 保留为可选（未来配置切换），当前统一走默认顺序
     private val keyRoulette = KeyRoulette.default()
 
-    // API Key / ChatGPT 订阅两种鉴权的统一入口（订阅令牌由 app 层实现 provider 提供）
-    private val authenticator = OpenAIRequestAuthenticator(keyRoulette, codexTokenProvider)
+    private val authenticator = OpenAIRequestAuthenticator(keyRoulette)
 
     private val chatCompletionsAPI =
-        ChatCompletionsAPI(client = client, keyRoulette = keyRoulette, codexTokenProvider = codexTokenProvider)
+        ChatCompletionsAPI(client = client, keyRoulette = keyRoulette)
     private val responseAPI =
-        ResponseAPI(client = client, keyRoulette = keyRoulette, codexTokenProvider = codexTokenProvider)
+        ResponseAPI(client = client, keyRoulette = keyRoulette)
 
 
     override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> =
@@ -153,7 +148,7 @@ class OpenAIProvider(
                 .url(url)
                 .get()
                 .applyCustomHeaders(providerSetting)
-            authenticator.authenticate(requestBuilder, providerSetting, url)
+            authenticator.authenticateApiKey(requestBuilder, providerSetting)
             val request = requestBuilder.build()
 
             val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
@@ -162,10 +157,6 @@ class OpenAIProvider(
             }
 
             val bodyStr = response.body?.string() ?: ""
-            // 订阅态：Codex 后端返回 {"models":[...]}，字段是 slug/display_name，不是 OpenAI 的 data[].id
-            if (providerSetting.isChatGPTSubscription) {
-                return@withContext parseCodexModels(bodyStr)
-            }
             val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
                 ?: error("Models API response is not a JSON object: ${bodyStr.take(200)}")
             val data = bodyJson["data"]?.jsonArray ?: return@withContext emptyList()
@@ -182,8 +173,6 @@ class OpenAIProvider(
         }
 
     override suspend fun getQuota(providerSetting: ProviderSetting.OpenAI): ProviderQuota? {
-        // 订阅态没有 API Key 余额概念（Codex 额度走账号查询，P4 落地）
-        if (providerSetting.isChatGPTSubscription) return null
         return client.configureClientWithProxy(providerSetting.proxy).runQuotaQuery(providerSetting) {
             keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
         }
@@ -193,7 +182,7 @@ class OpenAIProvider(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): Flow<StreamChunk> = if (providerSetting.useResponseApi || providerSetting.isChatGPTSubscription) {
+    ): Flow<StreamChunk> = if (providerSetting.useResponseApi) {
         responseAPI.streamText(
             endpoint = providerSetting.toResponsesEndpoint(params, authenticator),
             messages = messages,
@@ -211,7 +200,7 @@ class OpenAIProvider(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): TextGenerationResult = if (providerSetting.useResponseApi || providerSetting.isChatGPTSubscription) {
+    ): TextGenerationResult = if (providerSetting.useResponseApi) {
         responseAPI.generateText(
             endpoint = providerSetting.toResponsesEndpoint(params, authenticator),
             messages = messages,
@@ -229,9 +218,6 @@ class OpenAIProvider(
         providerSetting: ProviderSetting.OpenAI,
         params: EmbeddingGenerationParams
     ): EmbeddingGenerationResult = withContext(Dispatchers.IO) {
-        require(!providerSetting.isChatGPTSubscription) {
-            "ChatGPT 订阅模式只支持文本对话，不支持 Embedding"
-        }
         require(params.input.isNotEmpty()) { "Embedding input cannot be empty" }
 
         val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
@@ -286,10 +272,6 @@ class OpenAIProvider(
         require(providerSetting is ProviderSetting.OpenAI) {
             "Expected OpenAI provider setting"
         }
-        require(!providerSetting.isChatGPTSubscription) {
-            "ChatGPT 订阅模式只支持文本对话，不支持图片生成/编辑"
-        }
-
         val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
 
         val requestBody = json.encodeToString(
@@ -338,9 +320,6 @@ class OpenAIProvider(
     ): Flow<ImageGenerationItem> = flow {
         require(providerSetting is ProviderSetting.OpenAI) {
             "Expected OpenAI provider setting"
-        }
-        require(!providerSetting.isChatGPTSubscription) {
-            "ChatGPT 订阅模式只支持文本对话，不支持图片生成/编辑"
         }
         require(params.images.isNotEmpty()) {
             "At least one image is required"

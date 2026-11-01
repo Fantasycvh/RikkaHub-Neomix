@@ -19,7 +19,6 @@ import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
 import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationAgent
-import app.androidrik.rikkahub.data.ai.openai.OpenAICodexAuthService
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationGenerationAgent
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationScheduler
@@ -319,17 +318,11 @@ val dataSourceModule = module {
             .build().also { SearchService.init(it, get()) }
     }
 
-    // ChatGPT 订阅（Codex 设备码登录）：令牌解密/刷新在 app 层，ai 层只拿明文令牌
-    single {
-        OpenAICodexAuthService(settingsStore = get(), client = get())
-    }
-
     single {
         ProviderManager(
             client = get(),
             context = get(),
             // 显式按实现类型取：接口无单独 definition，裸 get() 会 NoDefinitionFound
-            codexTokenProvider = get<OpenAICodexAuthService>(),
             accountCredentials = get<ProviderAccountManager>(),
         )
     }

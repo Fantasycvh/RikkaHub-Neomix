@@ -537,7 +537,7 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 - `data_version` 4 → **5**（本仓 V1..V4；上游同语义迁移在 V4/V5，编号已错位，**不改名**）。
 - 备份格式 `SettingsJsonMigrator` 最高 V6 → **V7**：旧备份恢复同样转换成 ChatGPT，不会以旧 OpenAI 形态落回；与新版本无关的中间产物（如 V6 的 `quotaQuery`）随迁移丢弃（Account 无该字段）。
 - 迁移规则：保留 `id`（历史消息 modelId 与订阅锁依赖）、`enabled`/`name`/`models`/`proxy`/`customHeaders`/`retryOption`/`reasoningOverride`；`credential = OAuthCredential(accessToken=accessTokenEncrypted, refreshToken=refreshTokenEncrypted, expiresAt, accountId, email, plan=planType)`，密文逐字节原样搬；两个 token 都空 ⇒ `credential=null`（未登录）；显式 `authType=api_key` 的残留 `codexAccount` **不迁**（用户已切回 API Key，旧请求链路本就不读 codexAccount，迁走等于删掉可用配置）；幂等、畸形 JSON 原样返回。
-- `SubscriptionProviderLock`：锁定候选 = 旧 OpenAI 订阅 ∪ 已登录且有 models 的 ChatGPT；Grok 暂不参与（是否也因加密推理锁定留待 P5 决策，测试已钉住当前行为）。
+- `SubscriptionProviderLock`：锁定候选 = 旧 OpenAI 订阅 ∪ 已登录且有 models 的 ChatGPT（P5 起加上 Grok，见 §十七）。
 
 ### 16.4 刻意偏离上游
 
@@ -568,11 +568,11 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 
 ### 16.6 P4 未覆盖 / 已知限制（P5 承接）
 
-- **ChatGPT loopback 登录**（Custom Tabs + 前台服务 + `127.0.0.1:1455` 回调）只做了代码与单测（`ChatGPTAuthTest` 12 例），**未在新账号上点通真实登录**；真机只验证了「已登录态迁移」与「Grok 设备码登录」。P5 需要真机走一遍新账号登录 + 通知权限（Android 13+）。
+- **ChatGPT loopback 登录**（Custom Tabs + 前台服务 + `127.0.0.1:1455` 回调）：P5 已由用户在新账号上真机点通（含 Android 13+ 通知权限），见 §17.1。
 - **Grok 全链路**：登录成功但账号无 SuperGrok 订阅，模型目录/额度/对话均无法真机验证；需有订阅的账号补验（`GrokProviderTest` 8 例覆盖解析，未覆盖真实端点差异）。
-- **降级/去留**：旧 Codex 设备码 UI（`ProviderConfigure` 内 OpenAI 订阅分支）、`OpenAICodexAuthService`、`CodexSubscriptionAccount` 与 `ProviderSetting.OpenAI` 相关字段仍在；P5 决定「保留为兜底 or 删除」，并补发布说明（旧版本读新数据不可用，需迁移前自动备份）。
-- **Grok 订阅锁**：当前不锁定对话；若 Grok 也回传只有自家能解密的加密推理，需要在 P5 评估加入 `SubscriptionProviderLock` 并补迁移/测试。
-- **`ProviderAccountManager` 并发刷新 / 杀进程重启**：仍无自动化覆盖（无 Robolectric），P4 真机只验证了单请求刷新链路；P5 补真机压测（并发两路请求只用一个 refresh token、刷新期间登出不写回）。
+- **降级/去留**：P5 已删除旧设备码链路，降级与发布说明见 §17.3 / §17.4。
+- **Grok 订阅锁**：P5 已决策纳入 `SubscriptionProviderLock`（Grok Responses 端点同样回传自家加密推理），见 §17.2。
+- **`ProviderAccountManager` 并发刷新 / 杀进程重启**：P5 已把刷新编排抽成 `AccountRefreshCoordinator` 并补 7 例 JVM 单测（并发只刷新一次 / 401 复用 / 失败不写回 / 刷新期间登出作废 / 缺 refresh token 等）；**杀进程**仍无自动化覆盖，需真机手测（步骤见 §17.6）。
 - **server-tool 回传 / 全局 session 头**：属 P1 起既有缺口与后续增强，不在 P4 范围。
 
 ### 16.7 补充：用量展示口径（已用 / 剩余）与后端字段实测
@@ -608,4 +608,103 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 
 两种口径互相补足，切换后立即生效（设置页改完返回即刷新，无需重启）。
 
-**顺带记录**：验证「用量是否随请求增长」时，有一次带工具调用（`eval_javascript`）的长回复报 `SSE stream failed without exception`（`ResponseAPI` 的流结束兜底：没收到 `response.completed` 就断开）。同批次另外 3 次短回复与随后 1 次长回复均正常，怀疑是代理链路中途掐断（本机经 `127.0.0.1:8888` 代理），留待 P5 用稳定网络复测并确认是否需要把「无 completed 的 EOF」降级为可恢复错误。
+**顺带记录**：验证「用量是否随请求增长」时，有一次带工具调用（`eval_javascript`）的长回复报 `SSE stream failed without exception`（`ResponseAPI` 的流结束兜底：没收到 `response.completed` 就断开）。同批次另外 3 次短回复与随后 1 次长回复均正常，怀疑是代理链路中途掐断（本机经 `127.0.0.1:8888` 代理）。**P5 复测通过**：同一路径（带工具调用的长回复）重试已正常流式完成、收到 `response.completed`，判定当时是代理链路瞬时断流，非代码缺陷；「无 completed 的 EOF 降级为可恢复错误」作为可选增强留待后续，不在本次修复。
+
+---
+
+## 十七、P5 实施记录（分支 `feat/p5-cleanup`，基于已合并 P1–P4 的 `master`）
+
+### 17.1 ChatGPT loopback 登录真机验收（用户操作，2026-11-02）
+
+P4 唯一未点通的登录路径已在真机补验通过：**新账号**走 Custom Tabs → ChatGPT 授权页 → `127.0.0.1:1455` 回环回调（前台服务通知，Android 13+ 通知权限）→ 回到 App 显示已登录（邮箱 + 套餐），凭据以 `v1:` 密文落盘。至此 ChatGPT 的 loopback PKCE 与 Grok 的设备码两条登录路径都在真机走通，旧 Codex 设备码链路不再承担主登录职责。
+
+### 17.2 Grok 纳入订阅锁定（`SubscriptionProviderLock`）
+
+- **依据**：Grok 的 Responses 端点与 Codex 后端一样，会回传只有自家后端能解读的加密推理（`encrypted_content`）；把这类对话切到其它提供商 = 把解不开的加密块丢给外人，轻则静默丢弃、重则 400。
+- **规则**（与 ChatGPT 一致）：`ProviderSetting.Grok` 满足 `enabled && credential != null && models.isNotEmpty()` 才参与锁定；未登录/停用/无模型的 Grok 不锁（否则锁上去只会让对话彻底没法继续）。
+- **行为**：一旦对话历史里有 Grok 订阅模型生成的消息，后续只能在该 Grok 提供商内换模型；模型选择器的候选提供商同步只保留它。判定仍按**对话历史**而不是当前选中模型（避免助手级换模型把历史对话全部锁死）。
+- **测试**：`SubscriptionProviderLockTest` 用 3 例钉住新契约（登录且有模型 ⇒ 锁定；未登录 ⇒ 不锁；停用 ⇒ 不锁），并保留「同提供商换模型允许 / 别家模型拒绝」断言。app 2742 → 2744（P5 删旧链路后为 2734）。
+- **真机限制**：当前测试账号没有 SuperGrok 订阅，无法产生「Grok 订阅模型生成的历史消息」来做端到端锁定验证；锁定逻辑由纯函数单测覆盖，有订阅账号后按 P4 记的 Grok 全链路补验。
+
+### 17.3 删除旧 ChatGPT 设备码订阅链路（loopback 登录通过后的清理）
+
+P4 的两条登录路径都在真机走通（§17.1）后，旧 OpenAI 设备码订阅链路不再承担登录职责，按 P5 计划整体删除：
+
+| 删除项 | 说明 |
+| --- | --- |
+| `app/.../data/ai/openai/OpenAICodexAuthService.kt`（603 行）+ 单测 | 设备码登录、token 刷新、`codexAccount` 写回设置 |
+| `ai/.../providers/openai/OpenAICodexTokenProvider.kt`（`CodexToken`） | app 层向 ai 层喂明文令牌的接口 |
+| `ProviderSetting.OpenAIAuthType`、`CodexSubscriptionAccount`、`OpenAI.authType`、`OpenAI.codexAccount` | 旧订阅的存储模型（`copyProvider` 同步去掉两个参数） |
+| `OpenAIProvider` / `ChatCompletionsAPI` / `ResponseAPI` 的 `codexTokenProvider` 参数与订阅分支；`OpenAIRequestAuthenticator` 的订阅鉴权 + Codex 端点守卫 | 鉴权统一回落到 `KeyRoulette`（账号类走 `AccountAuth.kt`，P3 已就位） |
+| `CodexSupport` 的 `isChatGPTSubscription` / `codexPromptCacheKey` / `CODEX_PROMPT_CACHE_KEY_MAX` 与订阅 URL 分支 | 保留 `CODEX_CAPABILITIES`、`CODEX_CLIENT_VERSION`、`CODEX_ORIGINATOR`、`parseCodexModels`（ChatGPTProvider 依赖） |
+| `ProviderConfigureOpenAI` 的「认证方式」分段按钮、设备码对话框、登录/登出/强制刷新 UI；`DataSourceModule` 的 `OpenAICodexAuthService` 单例 | 设置页 API Key 类只剩名称 / 多 Key / BaseUrl / 路径 / Response API 开关等原有字段 |
+| 22 条 `setting_provider_page_codex_*` 文案 + 3 条认证方式文案（en/zh/zh-TW 同步） | 无引用后清理，三语文案一致 |
+
+**兼容性**：`Settings` 解码用 `JsonInstant`（`ignoreUnknownKeys = true`），旧 JSON 里残留的 `authType`/`codexAccount` 会被静默忽略；V5/V7 迁移仍按**原始 JSON** 解析旧字段（不依赖已删的数据类），所以「老用户升级」的迁移路径完全不变。单测验证：V5 迁移用例里「显式 `authType=api_key` 的残留 `codexAccount`」仍解码成可用的 API Key provider（旧字段被忽略、`apiKey` 保留）。
+
+**验证**：`:ai` 467（−3：订阅鉴权 / 请求体相关用例随旧链路删除）、`:app` 2734（−10：旧锁 / 旧服务 / 旧 UI 用例）；`:app:assembleDebug` 通过；真机覆盖安装后启动正常，设置页 OpenAI 类 provider 只剩 API Key 字段，迁移后的 ChatGPT 账号页显示邮箱 + ChatGPT Plus + 剩余额度，Grok 账号页与用量正常加载。
+
+### 17.4 降级策略与发布说明
+
+**为什么不兼容**：V5 迁移后 `data_version = 5`、provider 列表里出现 `{"type":"chatgpt"}` / `{"type":"grok"}` 两种**旧版本不认识的类型**。降级回 P1/P2 时代的构建时，旧的兼容解码会把未知类型**丢弃**（provider 及其模型消失，历史消息的 `modelId` 找不到 provider）；更早版本可能整体解码失败。
+
+**降级策略（写进发布说明）**：
+
+1. **升级前先备份**：设置 → 备份 → 立即备份。备份文件是旧格式；恢复时会走 `SettingsJsonMigrator` V7 把旧订阅条目转成账号类。
+2. **不建议降级**：若必须降级，就**卸载重装旧版本并恢复升级前的备份**（直接覆盖安装旧 APK 会读到已迁移数据，provider 丢失）。
+3. **迁移前自动兜底**：P5 未新增自动备份文件；DataStore 的 `data_version` 保证迁移只跑一次，且 V5 转换是**纯 JSON 形态变换**（幂等、密文原样搬运），出错面很小。
+4. 降级之后再升级回来：账号类 provider 会被 `SettingsCompatDecoder` 保留（P3 起支持 chatgpt/grok），无需重复迁移。
+
+**发布说明草案（可直接贴 GitHub Release）**：
+
+> **订阅登录重构（OpenAI OAuth 移植）**
+>
+> - **ChatGPT 订阅**：改用 ChatGPT 官方 OAuth 登录（Custom Tabs 授权 + 本地回环回调），旧的「设备码登录」已移除；升级时会自动把原订阅配置迁移成新的账号 provider（id / 名称 / 模型 / 代理 / 自定义头 / 重试 / 思考强度保留），无需重新登录。
+> - **Grok 订阅**：新增 xAI 账号登录（设备码），支持 SuperGrok 订阅的模型目录与周/月额度，需要 SuperGrok 订阅才可用。
+> - **额度展示**：ChatGPT / Grok 的用量支持「已用 / 剩余」两种口径切换（偏好设置 → 界面 → 用量显示）。
+> - **流式重构**：四个 provider 统一 `StreamChunk` 解码路径；ChatGPT / Grok 订阅对话会锁定提供商（历史里有该 provider 生成的消息后，只能在同 provider 内换模型），避免加密推理跨提供商失效。
+> - **注意**：本版升级后 **不支持降级**（数据格式 4→5）；升级前请先在「设置 → 备份」做一次备份，若需回退请卸载重装旧版并从该备份恢复。
+
+### 17.5 收尾
+
+- `ai/README.md` 补一节「移植说明」，记录本仓与上游 `#1648` / `#2186` 的对应关系、刻意偏离（凭据加密、`sessionId`、SSE 容错范围）与旧设备码链路已删除。
+- `server-tool` 回传缺口（§16.6 最后一条）不属于本次 OAuth 移植范围，建议单开任务，不在 P5 修。
+
+### 17.6 后续复测记录
+
+- **SSE 断流（§16.7 遗留）**：用户于 2026-11-02 P5 期间复测「带工具调用的长回复」，**正常流式完成、收到 `response.completed`**。据此判定 P4 那次 `SSE stream failed without exception` 为代理链路（`127.0.0.1:8888`）瞬时断流，属环境问题，非代码缺陷；「无 `response.completed` 的 EOF 是否降级为可恢复错误」不作为本次修复项，留作可选增强。
+- 仍待补验：有 SuperGrok 订阅账号的 Grok 全链路、`ProviderAccountManager` 并发刷新/杀进程压测（见 §16.6）。
+
+### 17.7 并发刷新与杀进程的测试方式
+
+**并发刷新（已自动化）**：`ProviderAccountManager` 原有的「串行 + 拿锁后重读设置」逻辑抽成
+`AccountRefreshCoordinator`（`app/.../data/ai/account/AccountRefreshCoordinator.kt`），与设置存储/网络解耦，
+用内存 fake 存储 + 可控 refresh lambda 做 JVM 测试（`AccountRefreshCoordinatorTest`，7 例）：
+
+| 用例 | 断言 |
+| --- | --- |
+| 两路并发刷新 | 网络只请求 1 次，两路都拿到新 token（refresh token 一次性，重复刷新会打废会话） |
+| token 仍有效 | 不触发刷新、不写回 |
+| 401 拒绝后两路都带旧 token | 只刷新 1 次，第二路拿锁后重读设置直接复用 |
+| 刷新失败（invalid_grant） | 包装成 `failed to refresh sign-in`，不写回设置 |
+| 刷新期间登出 | `store` 的 expected 不匹配 ⇒ 拒绝写回并报 `sign-in changed during refresh` |
+| 无 refresh token / 未登录 | 报 `session expired` / `not signed in` |
+
+**真机并发压测（可选，验证端到端）**：
+
+1. 让 access token 进入「快过期」窗口（≤5 分钟）或已过期：等自然过期，或 debug 包里改设置里
+   ChatGPT provider 的 `credential.expiresAt`（`run-as app.androidrik.rikkahub.debug` 改 DataStore 文件较麻烦，
+   更简单是断网重连/等 1 小时）。
+2. 同时触发两路请求：开两个会话各发一条消息（或在同一对话里触发一次工具调用 + 主回复）。
+3. 观察：两路请求都成功；logcat 里 `ProviderAccountManager` 的刷新只发生一次；若出现两次刷新，
+   第二次 refresh 会 `invalid_grant`、UI 会提示重新登录（说明串行失效）。
+4. 可选：临时在 `ChatGPTAuth.refreshRequest` 前后加 `Log.d`（不入库）核对只打了一条。
+
+**杀进程（只能真机手测，无法单测）**：
+
+1. 在刷新窗口内强制停止：`adb shell am force-stop app.androidrik.rikkahub.debug`（窗口只有几百 ms，
+   若来不及，可临时 debug 版在刷新前 `delay(5s)`，验证完删掉）。
+2. 重启 App 后再发消息，期望行为：
+   - 若新 refresh token 已落盘（DataStore 原子写）⇒ 正常继续对话；
+   - 若只完成了服务端轮换、本地还没写回 ⇒ 本地 refresh token 已失效 ⇒ 请求 `invalid_grant` ⇒ 设置页显示需重新登录，**不崩溃**、不把错误凭据继续用。
+3. 检查 `data_version` 与 provider 的 `credential` 仍在（写回失败不应破坏原有数据）。
