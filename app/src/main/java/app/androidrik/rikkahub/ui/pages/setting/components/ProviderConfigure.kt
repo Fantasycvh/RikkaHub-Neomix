@@ -144,6 +144,11 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
         is ProviderSetting.Google -> this.baseUrl
         is ProviderSetting.Claude -> this.baseUrl
     }
+    val quotaQuery = when (this) {
+        is ProviderSetting.OpenAI -> this.quotaQuery
+        is ProviderSetting.Google -> this.quotaQuery
+        is ProviderSetting.Claude -> this.quotaQuery
+    }
     val targetDefaultBaseUrl = when (type) {
         ProviderSetting.OpenAI::class -> ProviderSetting.OpenAI().baseUrl
         ProviderSetting.Google::class -> ProviderSetting.Google().baseUrl
@@ -155,21 +160,24 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
     return when (type) {
         ProviderSetting.OpenAI::class -> ProviderSetting.OpenAI(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
-            proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
+            proxy = this.proxy, customHeaders = this.customHeaders,
             builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl, reasoningOverride = this.reasoningOverride
+            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl,
+            quotaQuery = quotaQuery, reasoningOverride = this.reasoningOverride
         )
         ProviderSetting.Google::class -> ProviderSetting.Google(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
-            proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
+            proxy = this.proxy, customHeaders = this.customHeaders,
             builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl, reasoningOverride = this.reasoningOverride
+            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl,
+            quotaQuery = quotaQuery, reasoningOverride = this.reasoningOverride
         )
         ProviderSetting.Claude::class -> ProviderSetting.Claude(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
-            proxy = this.proxy, balanceOption = this.balanceOption, customHeaders = this.customHeaders,
+            proxy = this.proxy, customHeaders = this.customHeaders,
             builtIn = this.builtIn, description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl, reasoningOverride = this.reasoningOverride
+            apiKey = apiKey, apiKeys = apiKeys, baseUrl = convertedBaseUrl,
+            quotaQuery = quotaQuery, reasoningOverride = this.reasoningOverride
         )
         else -> error("Unsupported provider type: $type")
     }

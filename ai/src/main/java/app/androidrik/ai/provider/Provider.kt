@@ -16,10 +16,6 @@ import app.androidrik.ai.ui.UIMessage
 interface Provider<T : ProviderSetting> {
     suspend fun listModels(providerSetting: T): List<Model>
 
-    suspend fun getBalance(providerSetting: T): String {
-        return "TODO"
-    }
-
     /**
      * 查询额度（对齐上游 #2186 的余额体系）。返回 null = 该提供商没有额度可查。
      *

@@ -53,22 +53,6 @@ sealed class ProviderProxy {
     ) : ProviderProxy()
 }
 
-@Serializable
-data class BalanceOption(
-    val enabled: Boolean = false, // 是否开启余额获取功能
-    val apiPath: String = "/credits", // 余额获取API路径（单接口模式）
-    val resultPath: String = "data.total_usage", // 余额获取JSON路径（单接口模式）
-    val sources: List<BalanceSource> = emptyList(), // 多接口模式：各数据源
-    val expression: String = "", // 多接口模式：最终表达式，如 "quota - usage"
-)
-
-@Serializable
-data class BalanceSource(
-    val name: String, // 变量名，供 expression 引用（如 "quota"、"usage"）
-    val apiPath: String, // API 路径（如 "/api/user/self"）
-    val resultPath: String, // JSON 取值路径（如 "quota"）
-)
-
 /**
  * 生成失败自动重试配置。
  *
@@ -231,7 +215,6 @@ sealed class ProviderSetting : Enableable {
     abstract val name: String
     abstract val models: List<Model>
     abstract val proxy: ProviderProxy
-    abstract val balanceOption: BalanceOption
     abstract val customHeaders: List<CustomHeader>
     /** per-provider 重试配置覆盖；null = 跟随全局 Settings.retrySetting */
     abstract val retryOption: RetrySetting?
@@ -255,7 +238,6 @@ sealed class ProviderSetting : Enableable {
         name: String = this.name,
         models: List<Model> = this.models,
         proxy: ProviderProxy = this.proxy,
-        balanceOption: BalanceOption = this.balanceOption,
         customHeaders: List<CustomHeader> = this.customHeaders,
         retryOption: RetrySetting? = this.retryOption,
         reasoningOverride: ReasoningOverride? = this.reasoningOverride,
@@ -281,6 +263,9 @@ sealed class ProviderSetting : Enableable {
          * Provider 里，账号凭据不会被发往用户配置的地址。
          */
         abstract val quotaQuery: QuotaQuery
+
+        /** 更新额度查询配置（设置页编辑用；泛型 copy 在抽象子类上不可用） */
+        abstract fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey
     }
 
     @Serializable
@@ -291,7 +276,6 @@ sealed class ProviderSetting : Enableable {
         override var name: String = "OpenAI",
         override var models: List<Model> = emptyList(),
         override var proxy: ProviderProxy = ProviderProxy.Inherit,
-        override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override var reasoningOverride: ReasoningOverride? = null,
@@ -311,6 +295,10 @@ sealed class ProviderSetting : Enableable {
         /** 订阅账号状态（密文令牌）；[authType] 为 API_KEY 时忽略 */
         var codexAccount: CodexSubscriptionAccount? = null,
     ) : ApiKey() {
+        override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
+            return copy(quotaQuery = quotaQuery)
+        }
+
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
         }
@@ -339,7 +327,6 @@ sealed class ProviderSetting : Enableable {
             name: String,
             models: List<Model>,
             proxy: ProviderProxy,
-            balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
@@ -355,7 +342,6 @@ sealed class ProviderSetting : Enableable {
                 builtIn = builtIn,
                 description = description,
                 proxy = proxy,
-                balanceOption = balanceOption,
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride,
@@ -372,7 +358,6 @@ sealed class ProviderSetting : Enableable {
         override var name: String = "Google",
         override var models: List<Model> = emptyList(),
         override var proxy: ProviderProxy = ProviderProxy.Inherit,
-        override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override var reasoningOverride: ReasoningOverride? = null,
@@ -390,6 +375,10 @@ sealed class ProviderSetting : Enableable {
         var location: String = "us-central1", // only for vertex AI service account
         var projectId: String = "", // only for vertex AI service account
     ) : ApiKey() {
+        override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
+            return copy(quotaQuery = quotaQuery)
+        }
+
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
         }
@@ -418,7 +407,6 @@ sealed class ProviderSetting : Enableable {
             name: String,
             models: List<Model>,
             proxy: ProviderProxy,
-            balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
@@ -435,7 +423,6 @@ sealed class ProviderSetting : Enableable {
                 description = description,
                 shortDescription = shortDescription,
                 proxy = proxy,
-                balanceOption = balanceOption,
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride
@@ -451,7 +438,6 @@ sealed class ProviderSetting : Enableable {
         override var name: String = "Claude",
         override var models: List<Model> = emptyList(),
         override var proxy: ProviderProxy = ProviderProxy.Inherit,
-        override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override var reasoningOverride: ReasoningOverride? = null,
@@ -465,6 +451,10 @@ sealed class ProviderSetting : Enableable {
         var promptCaching: Boolean = false,
         var promptCacheTtl: ClaudePromptCacheTtl = ClaudePromptCacheTtl.FIVE_MINUTES,
     ) : ApiKey() {
+        override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
+            return copy(quotaQuery = quotaQuery)
+        }
+
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
         }
@@ -493,7 +483,6 @@ sealed class ProviderSetting : Enableable {
             name: String,
             models: List<Model>,
             proxy: ProviderProxy,
-            balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
@@ -507,7 +496,6 @@ sealed class ProviderSetting : Enableable {
                 name = name,
                 models = models,
                 proxy = proxy,
-                balanceOption = balanceOption,
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride,

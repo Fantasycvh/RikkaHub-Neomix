@@ -126,16 +126,6 @@ internal fun buildOpenRouterEditBody(
  * New API 的管理接口（/api/...）挂在站点根路径，不在 OpenAI 兼容的 /v1 下。
  * 因此当 balance 路径以 /api/ 开头且 baseUrl 以 /v1 结尾时，先剥掉 /v1 再拼接。
  */
-private fun balanceApiUrl(baseUrl: String, path: String): String {
-    if (path.startsWith("http")) return path
-    val trimmed = baseUrl.trimEnd('/')
-    val root = if (path.startsWith("/api/") && trimmed.endsWith("/v1")) {
-        trimmed.removeSuffix("/v1")
-    } else {
-        trimmed
-    }
-    return "$root$path"
-}
 
 class OpenAIProvider(
     private val client: OkHttpClient,
@@ -189,81 +179,6 @@ class OpenAIProvider(
                 )
             }
         }
-
-    override suspend fun getBalance(providerSetting: ProviderSetting.OpenAI): String = withContext(Dispatchers.IO) {
-        // 订阅态没有 API Key 余额概念（Codex 额度走 /wham/usage，见设计稿 P2），直接返回空
-        if (providerSetting.isChatGPTSubscription) return@withContext ""
-        val balanceOption = providerSetting.balanceOption
-        val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
-
-        if (balanceOption.sources.isEmpty()) {
-            // 旧逻辑：单接口模式
-            val url = balanceApiUrl(providerSetting.baseUrl, balanceOption.apiPath)
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("Authorization", "Bearer $key")
-                .get()
-                .applyCustomHeaders(providerSetting)
-                .build()
-            val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
-            if (!response.isSuccessful) {
-                error("Failed to get balance: ${response.code} ${response.body?.string()}")
-            }
-
-            val bodyStr = response.body.string()
-            val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
-                ?: error("Balance API response is not a JSON object: ${bodyStr.take(200)}")
-            val value = bodyJson.getByKey(balanceOption.resultPath)
-            val digitalValue = value.toFloatOrNull()
-            if (digitalValue != null) {
-                "%.2f".format(Locale.ROOT, digitalValue)
-            } else {
-                value
-            }
-        } else {
-            // 新逻辑：多接口模式 — 并行调用各 source，合并为单一 JSON，求值表达式
-            val merged = coroutineScope {
-                val results = balanceOption.sources.map { source ->
-                    async {
-                        val url = balanceApiUrl(providerSetting.baseUrl, source.apiPath)
-                        val request = Request.Builder()
-                            .url(url)
-                            .addHeader("Authorization", "Bearer $key")
-                            .get()
-                            .applyCustomHeaders(providerSetting)
-                            .build()
-                        val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
-                        if (!response.isSuccessful) {
-                            error("Failed to get balance source '${source.name}': ${response.code} ${response.body?.string()}")
-                        }
-                        val bodyStr = response.body.string()
-                        val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
-                            ?: error("Balance API response for source '${source.name}' is not a JSON object: ${bodyStr.take(200)}")
-                        val rawValue = bodyJson.getByKey(source.resultPath)
-                        source.name to rawValue
-                    }
-                }
-                val pairs = results.awaitAll()
-                buildJsonObject {
-                    pairs.forEach { (name, rawValue) ->
-                        val num = rawValue.toFloatOrNull()
-                        if (num != null) {
-                            put(name, JsonPrimitive(num))
-                        } else {
-                            put(name, JsonPrimitive(rawValue))
-                        }
-                    }
-                }
-            }
-            val result = evaluateJsonExpr(balanceOption.expression, merged)
-            val digitalValue = result.toFloatOrNull()
-            if (digitalValue != null) {
-                "%.2f".format(Locale.ROOT, digitalValue)
-            } else {
-                result
-            }
-        }
-    }
 
     override suspend fun getQuota(providerSetting: ProviderSetting.OpenAI): ProviderQuota? {
         // 订阅态没有 API Key 余额概念（Codex 额度走账号查询，P4 落地）
