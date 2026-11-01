@@ -88,8 +88,10 @@ private const val MAX_FAILURE_DETAIL_CHARS = 300
 
 class ResponseAPI(
     private val client: OkHttpClient,
-    private val keyRoulette: KeyRoulette = KeyRoulette.default()
+    private val keyRoulette: KeyRoulette = KeyRoulette.default(),
+    codexTokenProvider: OpenAICodexTokenProvider? = null,
 ) : OpenAIImpl {
+    private val authenticator = OpenAIRequestAuthenticator(keyRoulette, codexTokenProvider)
     override suspend fun generateText(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
@@ -101,17 +103,15 @@ class ResponseAPI(
             params = params,
             stream = false,
         )
-        val request = Request.Builder()
-            .url(apiEndpoint(providerSetting.baseUrl, providerSetting.responsesPath))
+        val url = providerSetting.responsesUrl()
+        val requestBuilder = Request.Builder()
+            .url(url)
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
-            .addHeader(
-                "Authorization",
-                "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}"
-            )
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting, params.customHeaders)
-            .build()
+        authenticator.authenticate(requestBuilder, providerSetting, url)
+        val request = requestBuilder.build()
 
         Log.i(TAG, "generateText: ${summarizeRequestBody(json, requestBody)}")
 
@@ -140,16 +140,18 @@ class ResponseAPI(
             params = params,
             stream = true,
         )
-        val request = Request.Builder()
-            .url(apiEndpoint(providerSetting.baseUrl, providerSetting.responsesPath))
+        val url = providerSetting.responsesUrl()
+        val requestBuilder = Request.Builder()
+            .url(url)
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
-            .addHeader(
-                "Authorization",
-                "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}"
-            )
+            .apply {
+                // Codex 后端只支持流式；显式声明可避免部分网关按普通 JSON 响应处理
+                if (providerSetting.isChatGPTSubscription) addHeader("Accept", "text/event-stream")
+            }
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting, params.customHeaders)
-            .build()
+        authenticator.authenticate(requestBuilder, providerSetting, url)
+        val request = requestBuilder.build()
 
         Log.i(TAG, "streamText: ${summarizeRequestBody(json, requestBody)}")
 
@@ -255,7 +257,14 @@ class ResponseAPI(
             }
         }
 
-        val eventSource = EventSources.createFactory(client.configureClientWithProxy(providerSetting.proxy))
+        // Codex 后端有时不发 Content-Type: text/event-stream：只在订阅模式下挂补头拦截器，
+        // 其他 provider 的严格校验与真实错误不受影响
+        val streamClient = if (providerSetting.isChatGPTSubscription) {
+            client.newBuilder().addNetworkInterceptor(CodexSseContentTypeInterceptor()).build()
+        } else {
+            client
+        }
+        val eventSource = EventSources.createFactory(streamClient.configureClientWithProxy(providerSetting.proxy))
             .newEventSource(request, listener)
 
         awaitClose {
@@ -272,33 +281,47 @@ class ResponseAPI(
         stream: Boolean
     ): JsonObject {
         val host = providerSetting.baseUrl.toHttpUrl().host
-        val capabilities = resolveResponseProviderCapabilities(host)
+        val capabilities = resolveResponseProviderCapabilities(providerSetting)
+        val systemPrompt = messages.firstOrNull { it.role == MessageRole.SYSTEM }
+            ?.parts
+            ?.filterIsInstance<UIMessagePart.Text>()
+            ?.joinToString("\n") { it.text }
         return buildJsonObject {
             put("model", params.model.modelId)
             put("stream", stream)
             put("store", false)
 
-            if (isModelAllowTemperature(params.model)) {
-                if (params.temperature != null) put("temperature", params.temperature)
-                if (params.topP != null) put("top_p", params.topP)
+            if (capabilities.supportsSamplingParams) {
+                if (isModelAllowTemperature(params.model)) {
+                    if (params.temperature != null) put("temperature", params.temperature)
+                    if (params.topP != null) put("top_p", params.topP)
+                }
+                if (params.maxTokens != null) put("max_output_tokens", params.maxTokens)
             }
-            if (params.maxTokens != null) put("max_output_tokens", params.maxTokens)
 
-            // system instructions
-            if (messages.any { it.role == MessageRole.SYSTEM }) {
-                val parts = messages.first { it.role == MessageRole.SYSTEM }.parts
-                put(
-                    "instructions",
-                    parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text })
+            // system 提示：默认走顶层 instructions；Codex 等要求 developer 消息的端点走 input 开头
+            val systemRole = capabilities.systemMessageRole
+            if (systemRole == null && systemPrompt != null) {
+                put("instructions", systemPrompt)
             }
 
             // messages
             // 见 requiresToolReasoningBackfill：思考模式下带 tool_call 的 assistant 消息缺 reasoning item
             // 会被网关直接拒（DeepSeek Responses / opencode 实测：400「reasoning_text must be passed back」）
-            put("input", buildMessages(messages, isKnownReasoningTextValidator(host)))
+            put("input", buildJsonArray {
+                if (systemRole != null && systemPrompt != null) {
+                    add(buildJsonObject {
+                        put("role", systemRole)
+                        put("content", systemPrompt)
+                    })
+                }
+                // buildMessages 会跳过首条 system（上面已单独处理），其余 system 仍按本仓规则降级为 user
+                buildMessages(messages, isKnownReasoningTextValidator(host)).forEach { add(it) }
+            })
 
             // reasoning
-            if (params.model.abilities.contains(ModelAbility.REASONING)) {
+            val reasoningModel = params.model.abilities.contains(ModelAbility.REASONING)
+            if (reasoningModel) {
                 val level = params.reasoningLevel
                 val reasoningOverride = resolveReasoningOverride(params.model, providerSetting)
                     ?.takeIf { level.isEnabled && level != ReasoningLevel.AUTO }
@@ -306,15 +329,23 @@ class ResponseAPI(
                     if (capabilities.supportsReasoningSummary) {
                         put("summary", "auto")
                     }
-                    if (level != ReasoningLevel.AUTO) {
-                        put("effort", reasoningOverride?.effort ?: level.effort)
-                    }
+                    val effort = reasoningOverride?.effort
+                        ?: capabilities.reasoningEffort(level, params.model.modelId)
+                    if (effort != null) put("effort", effort)
                 })
-                if (capabilities.supportEncryptedContent) {
-                    put("include", buildJsonArray {
-                        add("reasoning.encrypted_content")
-                    })
-                }
+            }
+            // 服务端不保存会话（store=false）时，推理链要靠加密推理内容接续；Codex 强制要求
+            if (capabilities.supportEncryptedContent &&
+                (reasoningModel || capabilities.alwaysIncludeEncryptedContent)
+            ) {
+                put("include", buildJsonArray {
+                    add("reasoning.encrypted_content")
+                })
+            }
+
+            // 同会话请求命中服务端提示缓存（Codex 后端只认 prompt_cache_key）
+            if (providerSetting.isChatGPTSubscription) {
+                put("prompt_cache_key", providerSetting.codexPromptCacheKey(params.model.modelId))
             }
 
             // tools
@@ -1101,7 +1132,34 @@ private fun List<UIMessagePart>.isOnlyTextPart(): Boolean {
 
 internal data class ResponseProviderCapabilities(
     val supportsReasoningSummary: Boolean = true,
-    val supportEncryptedContent: Boolean = true
+    val supportEncryptedContent: Boolean = true,
+    /**
+     * 非 null 时：system 提示以该角色的消息放在 `input` 开头，**不使用** `instructions` 字段
+     * （Codex 后端要求 `developer`）。null = 沿用 `instructions`（默认行为）。
+     */
+    val systemMessageRole: String? = null,
+    /** 是否接受 `temperature`/`top_p`/`max_output_tokens`；Codex 后端不接受 */
+    val supportsSamplingParams: Boolean = true,
+    /**
+     * 非推理模型也请求加密推理内容：服务端不保存会话时，自带推理的模型要靠它接上多轮推理
+     * （Codex 后端必须回传）。
+     */
+    val alwaysIncludeEncryptedContent: Boolean = false,
+    /** 推理档位 → `reasoning.effort`；返回 null 时不带该字段（默认：AUTO 由调用侧跳过） */
+    val reasoningEffort: (ReasoningLevel, String) -> String? =
+        { level, _ -> level.effort.takeIf { level != ReasoningLevel.AUTO } },
+)
+
+/**
+ * 官方 Codex 后端（ChatGPT 订阅账号态）的请求体能力，取自上游 #2186 `CODEX_CAPABILITIES`：
+ * - system 提示以 `developer` 消息放 `input` 开头，不用 `instructions`；
+ * - 不接受采样参数；
+ * - 必须请求并用回加密推理内容（`store=false` 下多轮推理靠它接续）。
+ */
+internal val CODEX_CAPABILITIES = ResponseProviderCapabilities(
+    systemMessageRole = "developer",
+    supportsSamplingParams = false,
+    alwaysIncludeEncryptedContent = true,
 )
 
 internal fun resolveResponseProviderCapabilities(host: String): ResponseProviderCapabilities {
@@ -1113,5 +1171,13 @@ internal fun resolveResponseProviderCapabilities(host: String): ResponseProvider
 
         else -> ResponseProviderCapabilities()
     }
+}
+
+internal fun resolveResponseProviderCapabilities(
+    providerSetting: ProviderSetting.OpenAI
+): ResponseProviderCapabilities = if (providerSetting.looksLikeCodexEndpoint()) {
+    CODEX_CAPABILITIES
+} else {
+    resolveResponseProviderCapabilities(providerSetting.baseUrl.toHttpUrl().host)
 }
 

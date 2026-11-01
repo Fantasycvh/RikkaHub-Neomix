@@ -84,6 +84,7 @@ private const val TAG = "ChatCompletionsAPI"
 class ChatCompletionsAPI(
     private val client: OkHttpClient,
     private val keyRoulette: KeyRoulette,
+    codexTokenProvider: OpenAICodexTokenProvider? = null,
     /**
      * SSE 事件源工厂（**测试注入点**）。
      *
@@ -93,11 +94,16 @@ class ChatCompletionsAPI(
      */
     private val eventSourceFactory: (OkHttpClient) -> EventSource.Factory = { EventSources.createFactory(it) },
 ) : OpenAIImpl {
+    // /chat/completions 只服务 API Key 模式；订阅模式的请求由 ResponseAPI 处理（见 OpenAIProvider）
+    private val authenticator = OpenAIRequestAuthenticator(keyRoulette, codexTokenProvider)
     override suspend fun generateText(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): MessageChunk = withContext(Dispatchers.IO) {
+        require(!providerSetting.isChatGPTSubscription) {
+            "ChatGPT 订阅模式不走 /chat/completions，请改用 Response API"
+        }
         val requestBody =
             buildChatCompletionRequest(
                 messages = messages,
@@ -108,7 +114,7 @@ class ChatCompletionsAPI(
         val request = Request.Builder()
             .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
-            .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}")
+            .apply { authenticator.authenticateApiKey(this, providerSetting) }
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
@@ -158,6 +164,9 @@ class ChatCompletionsAPI(
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): Flow<MessageChunk> = callbackFlow {
+        require(!providerSetting.isChatGPTSubscription) {
+            "ChatGPT 订阅模式不走 /chat/completions，请改用 Response API"
+        }
         val host = providerSetting.baseUrl.toHttpUrl().host
 
         // 从错误自学习（2026-10-13 用户拍板）：先按静态判定发一次；若网关回
@@ -206,7 +215,7 @@ class ChatCompletionsAPI(
             return Request.Builder()
                 .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
                 .post(bodyJson.toRequestBody("application/json".toMediaType()))
-                .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())}")
+                .apply { authenticator.authenticateApiKey(this, providerSetting) }
                 .addHeader("Content-Type", "application/json")
                 .configureReferHeaders(providerSetting.baseUrl)
                 .applyCustomHeaders(providerSetting, params.customHeaders)
