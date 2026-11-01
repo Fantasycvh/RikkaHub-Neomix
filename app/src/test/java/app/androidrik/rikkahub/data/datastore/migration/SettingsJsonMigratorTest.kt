@@ -91,4 +91,22 @@ class SettingsJsonMigratorTest {
         assertTrue(result.contains("\"tavily\""))
         assertTrue(result.contains("\"searchServiceSelected\":0"))
     }
+
+    @Test
+    fun `备份恢复把 providers 的 balanceOption 迁移成 quotaQuery`() {
+        val input = "{\"providers\":[{\"type\":\"openai\",\"id\":\"a\",\"name\":\"A\"," +
+            "\"balanceOption\":{\"enabled\":true,\"apiPath\":\"/credits\",\"resultPath\":\"data.total_usage\"}}]}"
+        val result = SettingsJsonMigrator.migrate(input)
+        assertFalse(result.contains("balanceOption"))
+        assertTrue(result.contains("\"quotaQuery\""))
+        assertTrue(result.contains("{{baseUrl}}/credits"))
+        assertTrue(result.contains("data.total_usage"))
+    }
+
+    @Test
+    fun `备份里没有 providers 时不报错且原样返回`() {
+        val input = """{"launchCount":7}"""
+        val result = SettingsJsonMigrator.migrate(input)
+        assertTrue(result.contains("\"launchCount\":7"))
+    }
 }

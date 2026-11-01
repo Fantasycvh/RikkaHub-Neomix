@@ -39,7 +39,9 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.Provider
+import app.androidrik.ai.provider.ProviderQuota
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.runQuotaQuery
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.provider.providers.google.GoogleStreamDecoder
@@ -228,6 +230,11 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             usage = parseUsageMeta(usage),
         )
     }
+
+    override suspend fun getQuota(providerSetting: ProviderSetting.Google): ProviderQuota? =
+        client.configureClientWithProxy(providerSetting.proxy).runQuotaQuery(providerSetting) {
+            keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
+        }
 
     override suspend fun streamText(
         providerSetting: ProviderSetting.Google,

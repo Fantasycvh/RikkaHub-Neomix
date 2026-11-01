@@ -9,7 +9,7 @@ import org.junit.Test
 
 class DefaultProvidersTest {
     @Test
-    fun `default providers should include vercel ai gateway with expected balance config`() {
+    fun `default providers should include vercel ai gateway with expected quota config`() {
         val vercelProviders = DEFAULT_PROVIDERS
             .filterIsInstance<ProviderSetting.OpenAI>()
             .filter { it.name == "Vercel AI Gateway" }
@@ -20,9 +20,9 @@ class DefaultProvidersTest {
         assertEquals("https://ai-gateway.vercel.sh/v1", provider.baseUrl)
         assertFalse(provider.enabled)
         assertTrue(provider.builtIn)
-        assertTrue(provider.balanceOption.enabled)
-        assertEquals("/credits", provider.balanceOption.apiPath)
-        assertEquals("balance", provider.balanceOption.resultPath)
+        assertTrue(provider.quotaQuery.enabled)
+        assertEquals("{{baseUrl}}/credits", provider.quotaQuery.url)
+        assertEquals("balance", provider.quotaQuery.resultPath)
     }
 
     // New API / Agent Router 两条内置供应商已移除（`01d0e3a09`），其余额断言测试一并删除。

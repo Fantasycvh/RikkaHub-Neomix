@@ -1,6 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.setting.components
 
-import app.androidrik.ai.provider.BalanceOption
+import app.androidrik.ai.provider.QuotaQuery
 import app.androidrik.ai.provider.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
@@ -19,9 +19,9 @@ class ProviderConfigureConvertToTest {
             modelId = "gpt-custom",
             displayName = "GPT Custom"
         )
-        val balanceOption = BalanceOption(
+        val quotaQuery = QuotaQuery(
             enabled = true,
-            apiPath = "/custom/credits",
+            url = "{{baseUrl}}/custom/credits",
             resultPath = "data.balance"
         )
         val original = ProviderSetting.OpenAI(
@@ -29,7 +29,7 @@ class ProviderConfigureConvertToTest {
             enabled = false,
             name = "My Provider",
             models = listOf(model),
-            balanceOption = balanceOption,
+            quotaQuery = quotaQuery,
             apiKey = "sk-test",
             baseUrl = "https://api.openai.com/v1"
         )
@@ -42,7 +42,7 @@ class ProviderConfigureConvertToTest {
         assertEquals(original.enabled, google.enabled)
         assertEquals(original.name, google.name)
         assertEquals(original.models, google.models)
-        assertEquals(original.balanceOption, google.balanceOption)
+        assertEquals(original.quotaQuery, google.quotaQuery)
         assertEquals(original.apiKey, google.apiKey)
         assertEquals("https://generativelanguage.googleapis.com/v1beta", google.baseUrl)
     }

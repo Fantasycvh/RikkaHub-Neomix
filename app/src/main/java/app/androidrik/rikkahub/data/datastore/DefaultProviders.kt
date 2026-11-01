@@ -8,7 +8,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
-import app.androidrik.ai.provider.BalanceOption
+import app.androidrik.ai.provider.QuotaQuery
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
@@ -102,11 +102,11 @@ val DEFAULT_PROVIDERS = listOf(
                 """.trimIndent()
             )
         },
-        balanceOption = BalanceOption(
+        quotaQuery = QuotaQuery(
             enabled = true,
-            apiPath = "/user/info",
+            url = "{{baseUrl}}/user/info",
             resultPath = "data.totalBalance",
-        ),
+        )
     ),
     ProviderSetting.OpenAI(
         id = Uuid.parse("f099ad5b-ef03-446d-8e78-7e36787f780b"),
@@ -114,10 +114,10 @@ val DEFAULT_PROVIDERS = listOf(
         baseUrl = "https://api.deepseek.com/v1",
         apiKey = "",
         builtIn = true,
-        balanceOption = BalanceOption(
+        quotaQuery = QuotaQuery(
             enabled = true,
-            apiPath = "/user/balance",
-            resultPath = "balance_infos[0].total_balance"
+            url = "{{baseUrl}}/user/balance",
+            resultPath = "balance_infos[0].total_balance",
         )
     ),
     ProviderSetting.OpenAI(
@@ -127,10 +127,10 @@ val DEFAULT_PROVIDERS = listOf(
         apiKey = "",
         enabled = true,
         builtIn = true,
-        balanceOption = BalanceOption(
+        quotaQuery = QuotaQuery(
             enabled = true,
-            apiPath = "/users/me/balance",
-            resultPath = "data.available_balance"
+            url = "{{baseUrl}}/users/me/balance",
+            resultPath = "data.available_balance",
         )
     ),
     ProviderSetting.OpenAI(
@@ -139,9 +139,9 @@ val DEFAULT_PROVIDERS = listOf(
         baseUrl = "https://openrouter.ai/api/v1",
         apiKey = "",
         builtIn = true,
-        balanceOption = BalanceOption(
+        quotaQuery = QuotaQuery(
             enabled = true,
-            apiPath = "/credits",
+            url = "{{baseUrl}}/credits",
             resultPath = "data.total_credits - data.total_usage",
         )
     ),
@@ -152,9 +152,9 @@ val DEFAULT_PROVIDERS = listOf(
         apiKey = "",
         enabled = false,
         builtIn = true,
-        balanceOption = BalanceOption(
+        quotaQuery = QuotaQuery(
             enabled = true,
-            apiPath = "/credits",
+            url = "{{baseUrl}}/credits",
             resultPath = "balance",
         )
     ),

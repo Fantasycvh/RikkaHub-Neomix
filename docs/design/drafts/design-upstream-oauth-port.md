@@ -426,3 +426,39 @@ Claude / Google 两条走的是**同一份 APK 的真实代码路径**（`Claude
 - **真实 Anthropic / Gemini 服务的字段差异**：真实 `stop_reason` 取值分布、真实 `usageMetadata`（含 `thoughtsTokenCount`）、真实 server tool 事件形状——待有 key 或 P4 账号 provider 落地后补。
 - 多 key 轮询、代理、per-provider 重试等本仓特性在 Claude/Google 真机路径上未单独复验（ChatCompletions 路径已有真实服务覆盖）。
 
+## 十四、P2 实施记录（分支 `feat/p2-quota-accounts`，基于 `master`）
+
+P2 = 类型体系 + 余额替换：引入上游 #2186 的 `ProviderQuota`/`QuotaQuery` 语义，删除本仓 `BalanceOption` 余额链路。
+P1（PR #1，`ecc290b46`）已合并，本分支已变基到该提交之上；`Provider.kt` 与 P1 无冲突（P1 改 `generateText/streamText`，P2 只增删 `getBalance/getQuota`）。
+
+### 14.1 提交
+
+| 提交 | 内容 |
+| --- | --- |
+| `729b20683` | `ProviderQuota`（Balance / UsageLimits + UsageWindow）、`QuotaQuery`（上游 `url`/`headers`/`resultPath` + 本仓扩展 `sources`/`expression`）、`QuotaSource`、`renderQuotaTemplate`；`QuotaQueryTest` 6 例 |
+| `060c13535` | `ProviderSetting.ApiKey` 抽象基类（`apiKey`/`apiKeys`/`baseUrl`/`quotaQuery`），三个提供商改为继承；`Provider.getQuota()`；`QuotaQueryRunner`（单接口模板渲染 / 多接口并行 + 表达式求值 / 数字两位小数 / 头合并与覆盖）；三家 provider 实现 `getQuota`；`QuotaQueryRunnerTest` 7 例 |
+| `1e00e71b7` | 删除 `BalanceOption`/`BalanceSource`/`getBalance`/`ProviderBalanceText`；`PreferenceStoreV4Migration`（数据版本 3→4）；`QuotaQueryOption` 编辑器替换余额编辑器；`ProviderQuotaText` 替换余额文本；内置供应商默认配置改为 `QuotaQuery`；测试与文案更新 |
+| `fc6b974b5` | 备份恢复路径（`SettingsJsonMigrator` V6）复用同一迁移实现，避免旧备份的余额配置被静默丢弃 |
+
+### 14.2 语义与兼容
+
+- **类型**：`ProviderQuota.Balance(value)` 承载自定义查询结果与（后续）账号类余额；`UsageLimits(windows, limitReached)` 供 P4 的 ChatGPT/Grok 订阅用量使用。
+- **ApiKey/Account 分层**：`ApiKey` 抽象子类已就位；`Account` 与 `OAuthCredential` 留到 P3（账号层 PR），避免在 P2 引入无人使用的类型。
+- **多接口能力无损**：旧 `BalanceOption.sources/expression` 原样进 `QuotaQuery.sources/expression`；单接口 `apiPath` → `url = "{{baseUrl}}" + apiPath`；`apiPath` 本身是完整 URL 时不拼 baseUrl（旧余额实现同款分支，迁移与执行器两侧都有测试）。
+- **鉴权**：`QuotaQuery.headers` 默认 `Authorization: Bearer {{apiKey}}`；提供商级自定义头原样下发、查询配置头模板渲染且同名覆盖；key 走各自多 key 轮询，且模板里**只取一个 key**（懒求值，不影响对话轮转）。
+- **缓存/展示**：模型列表的额度文本按「提供商 id + 查询配置哈希」缓存 2 分钟，改配置自然失效；失败不缓存（显示 `Error: …` 下次重进重试）。
+- **删掉的类型**：`BalanceOption`、`BalanceSource`、`ProviderSetting.balanceOption`、`Provider.getBalance`、`ProviderBalanceText`、`SettingsProviderBalanceOption` 共 89 处引用清零；`ignoreUnknownKeys` 保证旧数据/旧备份未迁移时也能解码（不崩、只是丢配置，因此迁移必须生效）。
+
+### 14.3 迁移与真机验证（设备 `6c841f95`，debug 包）
+
+- **DataStore V4**：设备升级启动无崩溃；`data_version` 3 → 4；37 个提供商 `balanceOption` 计数 0、全部带 `quotaQuery`，8 个原本开启余额的提供商迁移出可用配置（含 `sources`/`expression` 用例）。
+- **额度链路真机**：真实服务「DeepSeek」显示 **25.81**（内置 `{{baseUrl}}/user/balance` + `balance_infos[0].total_balance`）；mock 端点（`adb reverse` 到宿主机 `/quota` 返回 `{"data":{"total_usage":12.5}}`）显示 **12.50**（验证两位小数格式化与 `getQuota` → UI 全链路）。验证后设备配置已还原、`adb reverse` 与 mock 服务已清理。
+- **备份恢复**：`SettingsJsonMigrator` V6 单测覆盖（旧备份 `balanceOption` → `quotaQuery`、无 providers 时原样返回）。
+
+### 14.4 P2 未覆盖 / 已知限制
+
+- `QuotaQueryOption` 的**多接口模式**只在单测覆盖，真机只点验了单接口；多接口编辑（增删数据源/表达式）留待 P3 联调时一起过一遍。
+- 额度查询的**请求头编辑器**未做（默认 `Authorization: Bearer {{apiKey}}` + 提供商自定义头已能覆盖绝大多数中转；需要任意头时在提供商「自定义 Headers」里配）。
+- Chatbox 导入器按 Chatbox 自己的 JSON 结构构造 provider，不含 `balanceOption`，无需迁移；Web DTO / 分享串无余额字段，核对后无改动。
+- `ProviderQuota.UsageLimits` 的展示（窗口占比、`limitReached`）已实现但 P2 无 provider 返回该类型，P4 接入 ChatGPT/Grok 后再真机验证。
+- 降级策略（旧版读新数据）按 §10 第 3 条：旧版本不可用 + 发布说明 + 迁移前自动备份，P5 统一落地。

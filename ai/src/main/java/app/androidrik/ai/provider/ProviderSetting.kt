@@ -53,22 +53,6 @@ sealed class ProviderProxy {
     ) : ProviderProxy()
 }
 
-@Serializable
-data class BalanceOption(
-    val enabled: Boolean = false, // 是否开启余额获取功能
-    val apiPath: String = "/credits", // 余额获取API路径（单接口模式）
-    val resultPath: String = "data.total_usage", // 余额获取JSON路径（单接口模式）
-    val sources: List<BalanceSource> = emptyList(), // 多接口模式：各数据源
-    val expression: String = "", // 多接口模式：最终表达式，如 "quota - usage"
-)
-
-@Serializable
-data class BalanceSource(
-    val name: String, // 变量名，供 expression 引用（如 "quota"、"usage"）
-    val apiPath: String, // API 路径（如 "/api/user/self"）
-    val resultPath: String, // JSON 取值路径（如 "quota"）
-)
-
 /**
  * 生成失败自动重试配置。
  *
@@ -231,7 +215,6 @@ sealed class ProviderSetting : Enableable {
     abstract val name: String
     abstract val models: List<Model>
     abstract val proxy: ProviderProxy
-    abstract val balanceOption: BalanceOption
     abstract val customHeaders: List<CustomHeader>
     /** per-provider 重试配置覆盖；null = 跟随全局 Settings.retrySetting */
     abstract val retryOption: RetrySetting?
@@ -255,7 +238,6 @@ sealed class ProviderSetting : Enableable {
         name: String = this.name,
         models: List<Model> = this.models,
         proxy: ProviderProxy = this.proxy,
-        balanceOption: BalanceOption = this.balanceOption,
         customHeaders: List<CustomHeader> = this.customHeaders,
         retryOption: RetrySetting? = this.retryOption,
         reasoningOverride: ReasoningOverride? = this.reasoningOverride,
@@ -265,6 +247,28 @@ sealed class ProviderSetting : Enableable {
     ): ProviderSetting
 
     @Serializable
+    sealed class ApiKey : ProviderSetting() {
+        /** 单 key 旧字段（多 key 用户以 [apiKeys] 为准，见 [effectiveApiKeys]） */
+        abstract var apiKey: String
+
+        /** 多 key 轮询列表 */
+        abstract var apiKeys: List<ApiKeyEntry>
+
+        abstract var baseUrl: String
+
+        /**
+         * 用户自定义额度查询（本仓对齐上游 #2186 的余额替换入口）。
+         *
+         * 只有 API Key 类提供商有；账号类（ChatGPT/Grok 订阅）的额度查询写死在各自
+         * Provider 里，账号凭据不会被发往用户配置的地址。
+         */
+        abstract val quotaQuery: QuotaQuery
+
+        /** 更新额度查询配置（设置页编辑用；泛型 copy 在抽象子类上不可用） */
+        abstract fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey
+    }
+
+    @Serializable
     @SerialName("openai")
     data class OpenAI(
         override var id: Uuid = Uuid.random(),
@@ -272,16 +276,16 @@ sealed class ProviderSetting : Enableable {
         override var name: String = "OpenAI",
         override var models: List<Model> = emptyList(),
         override var proxy: ProviderProxy = ProviderProxy.Inherit,
-        override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override var reasoningOverride: ReasoningOverride? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
-        var apiKey: String = "",
-        var apiKeys: List<ApiKeyEntry> = emptyList(),
-        var baseUrl: String = "https://api.openai.com/v1",
+        override var apiKey: String = "",
+        override var apiKeys: List<ApiKeyEntry> = emptyList(),
+        override var baseUrl: String = "https://api.openai.com/v1",
+        override val quotaQuery: QuotaQuery = QuotaQuery(),
         var chatCompletionsPath: String = "/chat/completions",
         var useResponseApi: Boolean = false,
         var includeHistoryReasoning: Boolean = true,
@@ -290,7 +294,11 @@ sealed class ProviderSetting : Enableable {
         var authType: OpenAIAuthType = OpenAIAuthType.API_KEY,
         /** 订阅账号状态（密文令牌）；[authType] 为 API_KEY 时忽略 */
         var codexAccount: CodexSubscriptionAccount? = null,
-    ) : ProviderSetting() {
+    ) : ApiKey() {
+        override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
+            return copy(quotaQuery = quotaQuery)
+        }
+
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
         }
@@ -319,7 +327,6 @@ sealed class ProviderSetting : Enableable {
             name: String,
             models: List<Model>,
             proxy: ProviderProxy,
-            balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
@@ -335,7 +342,6 @@ sealed class ProviderSetting : Enableable {
                 builtIn = builtIn,
                 description = description,
                 proxy = proxy,
-                balanceOption = balanceOption,
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride,
@@ -352,23 +358,27 @@ sealed class ProviderSetting : Enableable {
         override var name: String = "Google",
         override var models: List<Model> = emptyList(),
         override var proxy: ProviderProxy = ProviderProxy.Inherit,
-        override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override var reasoningOverride: ReasoningOverride? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
-        var apiKey: String = "",
-        var apiKeys: List<ApiKeyEntry> = emptyList(),
-        var baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
+        override var apiKey: String = "",
+        override var apiKeys: List<ApiKeyEntry> = emptyList(),
+        override var baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
+        override val quotaQuery: QuotaQuery = QuotaQuery(),
         var vertexAI: Boolean = false,
         var useServiceAccount: Boolean = false,
         var privateKey: String = "", // only for vertex AI service account
         var serviceAccountEmail: String = "", // only for vertex AI service account
         var location: String = "us-central1", // only for vertex AI service account
         var projectId: String = "", // only for vertex AI service account
-    ) : ProviderSetting() {
+    ) : ApiKey() {
+        override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
+            return copy(quotaQuery = quotaQuery)
+        }
+
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
         }
@@ -397,7 +407,6 @@ sealed class ProviderSetting : Enableable {
             name: String,
             models: List<Model>,
             proxy: ProviderProxy,
-            balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
@@ -414,7 +423,6 @@ sealed class ProviderSetting : Enableable {
                 description = description,
                 shortDescription = shortDescription,
                 proxy = proxy,
-                balanceOption = balanceOption,
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride
@@ -430,19 +438,23 @@ sealed class ProviderSetting : Enableable {
         override var name: String = "Claude",
         override var models: List<Model> = emptyList(),
         override var proxy: ProviderProxy = ProviderProxy.Inherit,
-        override val balanceOption: BalanceOption = BalanceOption(),
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override var reasoningOverride: ReasoningOverride? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
-        var apiKey: String = "",
-        var apiKeys: List<ApiKeyEntry> = emptyList(),
-        var baseUrl: String = "https://api.anthropic.com/v1",
+        override var apiKey: String = "",
+        override var apiKeys: List<ApiKeyEntry> = emptyList(),
+        override var baseUrl: String = "https://api.anthropic.com/v1",
+        override val quotaQuery: QuotaQuery = QuotaQuery(),
         var promptCaching: Boolean = false,
         var promptCacheTtl: ClaudePromptCacheTtl = ClaudePromptCacheTtl.FIVE_MINUTES,
-    ) : ProviderSetting() {
+    ) : ApiKey() {
+        override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
+            return copy(quotaQuery = quotaQuery)
+        }
+
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
         }
@@ -471,7 +483,6 @@ sealed class ProviderSetting : Enableable {
             name: String,
             models: List<Model>,
             proxy: ProviderProxy,
-            balanceOption: BalanceOption,
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
@@ -485,7 +496,6 @@ sealed class ProviderSetting : Enableable {
                 name = name,
                 models = models,
                 proxy = proxy,
-                balanceOption = balanceOption,
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride,

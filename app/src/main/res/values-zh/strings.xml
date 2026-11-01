@@ -1352,6 +1352,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_api_path">API 路径</string>
   <string name="setting_provider_page_avaliable_models">可用模型</string>
   <string name="setting_provider_page_balance_api_path">余额 API 路径</string>
+  <string name="setting_provider_page_quota_url">额度查询 URL</string>
   <string name="setting_provider_page_balance_info">获取账户余额</string>
   <string name="setting_provider_page_balance_json_key">结果 JSON 键</string>
   <string name="setting_provider_page_balance_expression">计算表达式</string>

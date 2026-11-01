@@ -123,7 +123,7 @@ import app.androidrik.rikkahub.ui.components.ai.ModelAbilityTag
 import app.androidrik.rikkahub.ui.components.ai.ModelModalityTag
 import app.androidrik.rikkahub.ui.components.ai.ModelSelector
 import app.androidrik.rikkahub.ui.components.ai.ModelTypeTag
-import app.androidrik.rikkahub.ui.components.ai.ProviderBalanceText
+import app.androidrik.rikkahub.ui.components.ai.ProviderQuotaText
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.SiliconFlowPowerByIcon
@@ -138,7 +138,7 @@ import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConfigure
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConnectionTester
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderRetryOption
 import app.androidrik.rikkahub.ui.pages.setting.components.ReasoningOverrideSettings
-import app.androidrik.rikkahub.ui.pages.setting.components.SettingProviderBalanceOption
+import app.androidrik.rikkahub.ui.pages.setting.components.SettingProviderQuotaQuery
 import app.androidrik.rikkahub.ui.pages.setting.components.isUsingDefaultBaseUrl
 import app.androidrik.rikkahub.ui.pages.setting.components.resetBaseUrlToDefault
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -335,13 +335,15 @@ private fun SettingProviderConfigPage(
             onEdit = { internalProvider = it },
         )
 
-        if (internalProvider is ProviderSetting.OpenAI) {
-            SettingProviderBalanceOption(
-                provider = internalProvider,
-                balanceOption = internalProvider.balanceOption,
-                onEdit = { internalProvider = internalProvider.copyProvider(balanceOption = it) }
+        // 委托属性上的智能转换不成立，先取局部不可变引用
+        val apiKeyProvider = internalProvider as? ProviderSetting.ApiKey
+        if (apiKeyProvider != null) {
+            SettingProviderQuotaQuery(
+                provider = apiKeyProvider,
+                quotaQuery = apiKeyProvider.quotaQuery,
+                onEdit = { internalProvider = apiKeyProvider.copyQuotaQuery(it) }
             )
-            ProviderBalanceText(providerSetting = provider, style = MaterialTheme.typography.labelSmall)
+            ProviderQuotaText(providerSetting = provider, style = MaterialTheme.typography.labelSmall)
         }
 
         Row(

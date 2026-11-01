@@ -1,9 +1,5 @@
 package app.androidrik.rikkahub.ui.pages.setting.components
 
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.ArrowDown01
-import me.rerere.hugeicons.stroke.ArrowUp01
-import me.rerere.hugeicons.stroke.Refresh03
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,35 +23,43 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import app.androidrik.ai.provider.BalanceOption
-import app.androidrik.ai.provider.BalanceSource
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.QuotaQuery
+import app.androidrik.ai.provider.QuotaSource
 import app.androidrik.common.http.isJsonExprValid
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.DEFAULT_PROVIDERS
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowUp01
+import me.rerere.hugeicons.stroke.Refresh03
 
-private val ApiPathRegex = Regex("""^/[^ \t\n\r]*$""")
+private val ApiPathRegex = Regex("""^(https?://|/)[^ \t\n\r]*$""")
 
+/**
+ * API Key 类提供商的额度查询编辑器（对齐上游 #2186 的 `QuotaQuery`，保留本仓多接口/表达式能力）。
+ *
+ * - 单接口模式：URL（支持 `{{baseUrl}}` / `{{apiKey}}` 模板）+ 结果 JSON 键
+ * - 多接口模式：多个数据源（变量名 + 路径 + JSON 键）+ 计算表达式
+ */
 @Composable
-fun SettingProviderBalanceOption(
+fun SettingProviderQuotaQuery(
     provider: ProviderSetting,
-    balanceOption: BalanceOption,
+    quotaQuery: QuotaQuery,
     modifier: Modifier = Modifier,
-    onEdit: (BalanceOption) -> Unit,
+    onEdit: (QuotaQuery) -> Unit,
 ) {
     var expand by remember { mutableStateOf(false) }
     // 当前模式：sources 非空 = 多接口，否则单接口
-    val isMultiMode = balanceOption.sources.isNotEmpty()
+    val isMultiMode = quotaQuery.sources.isNotEmpty()
 
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier
+        modifier = modifier,
     ) {
         Row(
-            modifier = Modifier,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -63,47 +67,30 @@ fun SettingProviderBalanceOption(
                 text = stringResource(R.string.setting_provider_page_balance_info),
                 modifier = Modifier.weight(1f),
             )
-            IconButton(
-                onClick = {
-                    expand = !expand
-                }
-            ) {
-                if (expand) {
-                    Icon(
-                        imageVector = HugeIcons.ArrowUp01,
-                        contentDescription = null,
-                    )
-                } else {
-                    Icon(
-                        imageVector = HugeIcons.ArrowDown01,
-                        contentDescription = null,
-                    )
-                }
+            IconButton(onClick = { expand = !expand }) {
+                Icon(
+                    imageVector = if (expand) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
+                    contentDescription = null,
+                )
             }
             Checkbox(
-                checked = balanceOption.enabled,
-                onCheckedChange = { onEdit(balanceOption.copy(enabled = it)) }
+                checked = quotaQuery.enabled,
+                onCheckedChange = { onEdit(quotaQuery.copy(enabled = it)) },
             )
         }
         AnimatedVisibility(visible = expand) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                // 模式切换
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = stringResource(R.string.setting_provider_page_balance_mode),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = !isMultiMode,
                         onClick = {
-                            // 切到单接口：清空 sources + expression
                             if (isMultiMode) {
-                                onEdit(balanceOption.copy(sources = emptyList(), expression = ""))
+                                onEdit(quotaQuery.copy(sources = emptyList(), expression = ""))
                             }
                         },
                         label = { Text(stringResource(R.string.setting_provider_page_balance_mode_single)) },
@@ -111,12 +98,13 @@ fun SettingProviderBalanceOption(
                     FilterChip(
                         selected = isMultiMode,
                         onClick = {
-                            // 切到多接口：初始化一个空 source（若仍空）
                             if (!isMultiMode) {
-                                onEdit(balanceOption.copy(
-                                    sources = listOf(BalanceSource("var", "/api/path", "field")),
-                                    expression = "var",
-                                ))
+                                onEdit(
+                                    quotaQuery.copy(
+                                        sources = listOf(QuotaSource("var", "/api/path", "field")),
+                                        expression = "var",
+                                    )
+                                )
                             }
                         },
                         label = { Text(stringResource(R.string.setting_provider_page_balance_mode_multi)) },
@@ -124,12 +112,8 @@ fun SettingProviderBalanceOption(
                 }
 
                 if (isMultiMode) {
-                    // 多接口模式：可编辑 sources 列表 + expression
-                    balanceOption.sources.forEachIndexed { index, source ->
-                        Surface(
-                            tonalElevation = 1.dp,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
+                    quotaQuery.sources.forEachIndexed { index, source ->
+                        Surface(tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier.fillMaxWidth(),
@@ -146,8 +130,8 @@ fun SettingProviderBalanceOption(
                                     )
                                     TextButton(
                                         onClick = {
-                                            val updated = balanceOption.sources.toMutableList().also { it.removeAt(index) }
-                                            onEdit(balanceOption.copy(sources = updated))
+                                            val updated = quotaQuery.sources.toMutableList().also { it.removeAt(index) }
+                                            onEdit(quotaQuery.copy(sources = updated))
                                         }
                                     ) {
                                         Text(stringResource(R.string.setting_provider_page_balance_source_delete))
@@ -156,9 +140,9 @@ fun SettingProviderBalanceOption(
                                 OutlinedTextField(
                                     value = source.name,
                                     onValueChange = { newName ->
-                                        val updated = balanceOption.sources.toMutableList()
+                                        val updated = quotaQuery.sources.toMutableList()
                                         updated[index] = source.copy(name = newName)
-                                        onEdit(balanceOption.copy(sources = updated))
+                                        onEdit(quotaQuery.copy(sources = updated))
                                     },
                                     label = { Text(stringResource(R.string.setting_provider_page_balance_source_name)) },
                                     modifier = Modifier.fillMaxWidth(),
@@ -167,9 +151,9 @@ fun SettingProviderBalanceOption(
                                 OutlinedTextField(
                                     value = source.apiPath,
                                     onValueChange = { newPath ->
-                                        val updated = balanceOption.sources.toMutableList()
+                                        val updated = quotaQuery.sources.toMutableList()
                                         updated[index] = source.copy(apiPath = newPath)
-                                        onEdit(balanceOption.copy(sources = updated))
+                                        onEdit(quotaQuery.copy(sources = updated))
                                     },
                                     label = { Text(stringResource(R.string.setting_provider_page_balance_api_path)) },
                                     isError = !source.apiPath.matches(ApiPathRegex),
@@ -179,9 +163,9 @@ fun SettingProviderBalanceOption(
                                 OutlinedTextField(
                                     value = source.resultPath,
                                     onValueChange = { newPath ->
-                                        val updated = balanceOption.sources.toMutableList()
+                                        val updated = quotaQuery.sources.toMutableList()
                                         updated[index] = source.copy(resultPath = newPath)
-                                        onEdit(balanceOption.copy(sources = updated))
+                                        onEdit(quotaQuery.copy(sources = updated))
                                     },
                                     label = { Text(stringResource(R.string.setting_provider_page_balance_json_key)) },
                                     isError = !isJsonExprValid(source.resultPath),
@@ -193,51 +177,54 @@ fun SettingProviderBalanceOption(
                     }
                     Button(
                         onClick = {
-                            onEdit(balanceOption.copy(
-                                sources = balanceOption.sources + BalanceSource("var${balanceOption.sources.size + 1}", "/api/path", "field")
-                            ))
+                            onEdit(
+                                quotaQuery.copy(
+                                    sources = quotaQuery.sources + QuotaSource(
+                                        "var${quotaQuery.sources.size + 1}",
+                                        "/api/path",
+                                        "field",
+                                    )
+                                )
+                            )
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(stringResource(R.string.setting_provider_page_balance_source_add))
                     }
                     OutlinedTextField(
-                        value = balanceOption.expression,
-                        onValueChange = { onEdit(balanceOption.copy(expression = it)) },
+                        value = quotaQuery.expression,
+                        onValueChange = { onEdit(quotaQuery.copy(expression = it)) },
                         label = { Text(stringResource(R.string.setting_provider_page_balance_expression)) },
-                        isError = !isJsonExprValid(balanceOption.expression),
+                        isError = !isJsonExprValid(quotaQuery.expression),
                         modifier = Modifier.fillMaxWidth(),
-                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono)
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
                     )
                 } else {
-                    // 单接口模式：原有字段
                     OutlinedTextField(
-                        value = balanceOption.apiPath,
-                        onValueChange = { onEdit(balanceOption.copy(apiPath = it)) },
-                        label = { Text(stringResource(R.string.setting_provider_page_balance_api_path)) },
-                        isError = !balanceOption.apiPath.matches(ApiPathRegex),
-                        modifier = Modifier.fillMaxWidth()
+                        value = quotaQuery.url,
+                        onValueChange = { onEdit(quotaQuery.copy(url = it)) },
+                        label = { Text(stringResource(R.string.setting_provider_page_quota_url)) },
+                        isError = !quotaQuery.url.matches(ApiPathRegex),
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
                     )
                     OutlinedTextField(
-                        value = balanceOption.resultPath,
-                        onValueChange = { onEdit(balanceOption.copy(resultPath = it)) },
+                        value = quotaQuery.resultPath,
+                        onValueChange = { onEdit(quotaQuery.copy(resultPath = it)) },
                         label = { Text(stringResource(R.string.setting_provider_page_balance_json_key)) },
-                        isError = !isJsonExprValid(balanceOption.resultPath),
+                        isError = !isJsonExprValid(quotaQuery.resultPath),
                         modifier = Modifier.fillMaxWidth(),
-                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono)
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
                     )
                 }
                 IconButton(
                     onClick = {
                         val defaultProvider = DEFAULT_PROVIDERS.find { it.id == provider.id }
-                        if (defaultProvider != null) {
-                            onEdit(defaultProvider.balanceOption.copy())
-                        } else {
-                            onEdit(BalanceOption())
-                        }
+                        val resetQuery = (defaultProvider as? ProviderSetting.ApiKey)?.quotaQuery
+                        onEdit(resetQuery ?: QuotaQuery())
                     }
                 ) {
-                    Icon(HugeIcons.Refresh03, null)
+                    Icon(HugeIcons.Refresh03, contentDescription = null)
                 }
             }
         }
