@@ -462,3 +462,52 @@ P1（PR #1，`ecc290b46`）已合并，本分支已变基到该提交之上；`P
 - Chatbox 导入器按 Chatbox 自己的 JSON 结构构造 provider，不含 `balanceOption`，无需迁移；Web DTO / 分享串无余额字段，核对后无改动。
 - `ProviderQuota.UsageLimits` 的展示（窗口占比、`limitReached`）已实现但 P2 无 provider 返回该类型，P4 接入 ChatGPT/Grok 后再真机验证。
 - 降级策略（旧版读新数据）按 §10 第 3 条：旧版本不可用 + 发布说明 + 迁移前自动备份，P5 统一落地。
+
+---
+
+## 十五、P3 实施记录（分支 `feat/p3-account-layer`，基于已合并 P1+P2 的 `master`）
+
+P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台服务）+ `Account` 类型体系 + `ProviderAccountManager`。
+本阶段**不产生用户可见变化**（没有登录入口、没有 ChatGPT/Grok Provider 实现），等价 P1 的"先落基础、后接线"策略；设备码登录路径原样保留。
+
+### 15.1 提交
+
+| 提交 | 内容 |
+| --- | --- |
+| `fa02c9e4b` | 移植上游 `oauth/` 模块 17 文件（`OAuthHttpClient` 329 行、`OAuthLoopbackCallbackServer` 453 行、`OAuthCallbackForegroundService` 187 行、Launcher、Manifest、通知图标、7 语言文案、2 个单测），包名 `me.rerere.oauth` → `app.androidrik.oauth`；`settings.gradle.kts` 加 `:oauth`，app 加 `implementation(project(":oauth"))` |
+| `2c529c456` | ai 账号类型：`OAuthCredential`、`AccountCredentialProvider`、`ProviderSetting.Account`（`ChatGPT`/`Grok`，`@SerialName("chatgpt")`/`("grok")`，保留 fork 的 proxy/retry/reasoningOverride 字段）、`providers/AccountAuth.kt`（账号鉴权头 + 401 刷新重试 Authenticator）；`effectiveApiKeys` 只对 ApiKey 生效；编译期穷尽 `when` 的适配（ProviderManager/ToolSchemaSize/GenerationHandler/PreferencesStore/导入器/ProviderConfigure）；`SettingsCompatDecoder` 不再丢弃上游 chatgpt/grok |
+| `210481f6b` | app 账号层：`ProviderAccountManager`（登录/刷新/凭据写回/状态流）、`ChatGPTAuth`（codex-rs 同款 loopback PKCE + JSON 刷新）、`GrokAuth`（xAI 设备码）、`Jwt`、`preserveCredential`、DI 注册；测试：上游 `ChatGPTAuthTest`/`GrokAuthTest` + `CredentialCipherTest` |
+
+### 15.2 架构与语义
+
+- **oauth 模块**：与上游逐字节一致（唯一差异包名）。`OAuthHttpClient` 封装 PKCE 生成、授权 URL 拼装、code/device-code 换 token、refresh、device token 轮询；`OAuthLoopbackCallbackServer` 绑定 `127.0.0.1:1455` 接收回调并显示前台服务通知。模块 Manifest 带来 `POST_NOTIFICATIONS` / `FOREGROUND_SERVICE(_SPECIAL_USE)` 权限（manifest merge 进 app）。
+- **Account 分层**：`ProviderSetting.Account` 只有 `credential` 与 `withCredential`，没有 baseUrl/apiKey——token 不可能被配置发到第三方地址。`ProviderSetting.Types`（类型切换器）仍只有三种 API 格式：账号类 provider 由 P4 的登录入口创建，不参与"API 格式切换"。
+- **401 刷新**：`AccountAuth.configureAccountAuth` 先写自定义头再写 Authorization（保证不被覆盖），并给请求打 tag；`AccountTokenAuthenticator` 只在 401 且未重试过时向 `AccountCredentialProvider` 要新凭据重试一次。
+- **刷新语义**（对齐上游）：过期前 5 分钟或 token 刚被 401 拒绝就刷新；刷新在 `appScope.async(Dispatchers.IO)` 里跑，**调用方取消（停止生成/关界面）不会打断已发出的刷新**（refresh token 一次性轮换，丢了只能重登）；按 provider id 串行 + 拿锁后重读设置（并发请求只用一个 refresh token）；若刷新期间账号被登出/切换，`replaceCredential(expected=…)` 不写入并报错。
+- **登录**：ChatGPT 走 loopback PKCE（Custom Tabs + 前台服务 + 5 分钟超时）；Grok 走设备码（`AccountLoginStatus.DeviceCode` 供 UI 展示 user_code），email 缺失时查 `userinfo`（失败不影响登录）。
+- **设备码兜底**：旧 `OpenAICodexAuthService` 的订阅登录链路**完全未动**，P3 的账号层与它并存；P4 把新 ChatGPT Provider 接上后，旧链路降级为"主登录失败时的设备码兜底"，P5 再评估是否移除。
+
+### 15.3 刻意偏离上游
+
+| 项 | 上游 | 本仓 | 原因 |
+| --- | --- | --- | --- |
+| 凭据落盘 | settings JSON 明文 | `SecretCipher` 加密 access/refresh token（`v1:` 前缀），读取时解密；解不开按未登录处理 | 沿用旧 `CodexSubscriptionAccount` 的安全策略，避免把已有加密能力降级 |
+| 加密实现 | — | `CredentialCipher` 抽象 + 默认 `SecretCipher` 实现（可注入） | Keystore 不可用于 JVM 单测；`CredentialCipherTest` 覆盖加密 roundtrip/幂等/明文透传/解不开置空 |
+| Account 字段 | 无 proxy/retry/reasoningOverride | 保留 fork 额外字段 | 账号类 provider 同样需要代理与重试覆盖 |
+| 备份兼容 | — | 明文凭据（上游格式）读取时原样透传；加密凭据解不开 → 空 token → 引导重登 | 跨设备恢复备份时 Keystore 密钥不同（与旧 codexAccount 同限制） |
+| Manager 测试 | `ProviderAccountManagerTest`（并发刷新） | 未移植：fork `SettingsStore(context, AppScope)` 依赖 Android Context、无 Robolectric | P3 用纯函数测试覆盖（认证参数/JWT/cipher/preserveCredential），并发刷新语义留待 P4 真机验证 |
+
+### 15.4 验证
+
+- `:oauth:testDebugUnitTest` **9/9**（OAuthHttpClientTest 8 + OAuthLoopbackCallbackServerTest 1；`--rerun-tasks` 复跑确认，与上游 diff 仅包名）。
+- `:ai:testDebugUnitTest` **443 例**（新增 `AccountTypesTest` 8 例：类型名持久化、多态 roundtrip、旧 JSON 兼容、withCredential/copyProvider、effectiveApiKeys、toString 脱敏）。
+- `:app:testDebugUnitTest` **2707 例（2 skip）**：新增 `ChatGPTAuthTest` 12 例、`GrokAuthTest` 3 例、`CredentialCipherTest` 6 例；`SettingsCompatDecoderTest` 更新为「chatgpt/grok 已支持 + 真正未知类型仍降级丢弃」。
+- `:app:assembleDebug` 通过（manifest merge 带入 oauth 前台服务）。
+- 真机（设备 `6c841f95`，P3 APK 覆盖安装）：启动无崩溃；settings 仍是 37 个提供商、`codexAccount` 字段完整、`data_version=4`（Account 类型新增未影响旧数据解码）；模型列表渲染正常；订阅模型（GPT-6.1-Sol / OpenAI codex）发消息后请求确实打到 `https://chatgpt.com/backend-api/codex/responses`，但本机网络对该域名 **TLS handshake 被中途关闭**（`SSLHandshakeException: connection closed`），未拿到回复——属网络环境问题（P1 验收时同一路径成功），P3 无相关改动。
+
+### 15.5 P3 未覆盖（P4 承接）
+
+- `ChatGPTProvider` / `GrokProvider` 实现与注册、登录 UI（设置页账号区、设备码 user_code 展示、退出登录）、订阅额度 `ProviderQuota.UsageLimits`。
+- 旧 `ProviderSetting.OpenAI.codexAccount` → `ProviderSetting.ChatGPT(credential)` 的**设置迁移**（需要新 Provider 能用；含 `SubscriptionProviderLock` 与对话模型绑定适配、`authType=CHATGPT_SUBSCRIPTION` 的 OpenAI 提供商去留）。
+- `ProviderAccountManager` 的并发刷新/杀进程重启真机验证；`preserveCredential` 接入设置页保存路径。
+- oauth 前台服务在真实登录流程中的通知权限申请（Android 13+）与 Custom Tabs 回跳体验。

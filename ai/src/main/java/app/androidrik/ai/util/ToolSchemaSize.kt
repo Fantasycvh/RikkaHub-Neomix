@@ -73,7 +73,8 @@ object ToolSchemaSize {
                 put("input_schema", schemaElement ?: JsonObject(emptyMap()))
             }
             // OpenAI Responses API 与 Chat Completions 形状相同（都是 {type,function:{...}}）
-            is ProviderSetting.OpenAI -> buildJsonObject {
+            // 账号类（P4 接入）里 ChatGPT 也走 Responses 形状；Grok 复用 OpenAI 兼容形状
+            is ProviderSetting.OpenAI, is ProviderSetting.Account -> buildJsonObject {
                 put("type", "function")
                 put("function", buildJsonObject {
                     put("name", tool.name)

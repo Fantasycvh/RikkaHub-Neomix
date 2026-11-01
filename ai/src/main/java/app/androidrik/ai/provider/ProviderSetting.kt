@@ -152,20 +152,14 @@ data class ApiKeyEntry(
 /** 多 key 统一读取：enabled 过滤后回退旧单 key 字段（备份兼容，单 key 用户零迁移） */
 val ProviderSetting.effectiveApiKeys: String
     get() {
-        val apiKeys = when (this) {
-            is ProviderSetting.OpenAI -> this.apiKeys
-            is ProviderSetting.Google -> this.apiKeys
-            is ProviderSetting.Claude -> this.apiKeys
-        }
-        val keys = apiKeys.filter { it.enabled }.map { it.key }.filter { it.isNotBlank() }.distinct()
+        // 账号类提供商没有 API Key（凭据由账号层提供）
+        val apiKeyProvider = this as? ProviderSetting.ApiKey ?: return ""
+        val keys = apiKeyProvider.apiKeys.filter { it.enabled }.map { it.key }
+            .filter { it.isNotBlank() }.distinct()
         return if (keys.isNotEmpty()) {
             keys.joinToString("\n")
         } else {
-            when (this) {
-                is ProviderSetting.OpenAI -> this.apiKey
-                is ProviderSetting.Google -> this.apiKey
-                is ProviderSetting.Claude -> this.apiKey
-            }
+            apiKeyProvider.apiKey
         }
     }
 
@@ -454,6 +448,162 @@ sealed class ProviderSetting : Enableable {
         override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
             return copy(quotaQuery = quotaQuery)
         }
+
+        override fun addModel(model: Model): ProviderSetting {
+            return copy(models = models + model)
+        }
+
+        override fun editModel(model: Model): ProviderSetting {
+            return copy(models = models.map { if (it.id == model.id) model.copy() else it })
+        }
+
+        override fun delModel(model: Model): ProviderSetting {
+            return copy(models = models.filter { it.id != model.id })
+        }
+
+        override fun moveMove(
+            from: Int,
+            to: Int
+        ): ProviderSetting {
+            return copy(models = models.toMutableList().apply {
+                val model = removeAt(from)
+                add(to, model)
+            })
+        }
+
+        override fun copyProvider(
+            id: Uuid,
+            enabled: Boolean,
+            name: String,
+            models: List<Model>,
+            proxy: ProviderProxy,
+            customHeaders: List<CustomHeader>,
+            retryOption: RetrySetting?,
+            reasoningOverride: ReasoningOverride?,
+            builtIn: Boolean,
+            description: @Composable (() -> Unit),
+            shortDescription: @Composable (() -> Unit),
+        ): ProviderSetting {
+            return this.copy(
+                id = id,
+                enabled = enabled,
+                name = name,
+                models = models,
+                proxy = proxy,
+                customHeaders = customHeaders,
+                retryOption = retryOption,
+                reasoningOverride = reasoningOverride,
+                builtIn = builtIn,
+                description = description,
+                shortDescription = shortDescription,
+            )
+        }
+    }
+
+
+    /**
+     * 绑定官方账号的提供商（P3 账号层基础设施；provider 实现与界面在 P4 接入）。
+     *
+     * 没有 baseUrl 和 apiKey：请求地址由具体类型写死，凭据只能通过账号登录获得，保证 token
+     * 不会被发到第三方地址。凭据由 app 层的账号管理负责登录、刷新和写回，界面编辑不应改动它
+     * （见 app 层 `preserveCredential`）。
+     */
+    @Serializable
+    sealed class Account : ProviderSetting() {
+        /** 未登录时为 null */
+        abstract val credential: OAuthCredential?
+
+        abstract fun withCredential(credential: OAuthCredential?): Account
+    }
+
+    @Serializable
+    @SerialName("chatgpt")
+    data class ChatGPT(
+        override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
+        override val name: String = "ChatGPT",
+        override val models: List<Model> = emptyList(),
+        override val proxy: ProviderProxy = ProviderProxy.Inherit,
+        override val customHeaders: List<CustomHeader> = emptyList(),
+        override val retryOption: RetrySetting? = null,
+        override val reasoningOverride: ReasoningOverride? = null,
+        @Transient override val builtIn: Boolean = false,
+        @Transient override val description: @Composable() () -> Unit = {},
+        @Transient override val shortDescription: @Composable() () -> Unit = {},
+        override val credential: OAuthCredential? = null,
+    ) : Account() {
+        override fun withCredential(credential: OAuthCredential?): Account =
+            copy(credential = credential)
+
+        override fun addModel(model: Model): ProviderSetting {
+            return copy(models = models + model)
+        }
+
+        override fun editModel(model: Model): ProviderSetting {
+            return copy(models = models.map { if (it.id == model.id) model.copy() else it })
+        }
+
+        override fun delModel(model: Model): ProviderSetting {
+            return copy(models = models.filter { it.id != model.id })
+        }
+
+        override fun moveMove(
+            from: Int,
+            to: Int
+        ): ProviderSetting {
+            return copy(models = models.toMutableList().apply {
+                val model = removeAt(from)
+                add(to, model)
+            })
+        }
+
+        override fun copyProvider(
+            id: Uuid,
+            enabled: Boolean,
+            name: String,
+            models: List<Model>,
+            proxy: ProviderProxy,
+            customHeaders: List<CustomHeader>,
+            retryOption: RetrySetting?,
+            reasoningOverride: ReasoningOverride?,
+            builtIn: Boolean,
+            description: @Composable (() -> Unit),
+            shortDescription: @Composable (() -> Unit),
+        ): ProviderSetting {
+            return this.copy(
+                id = id,
+                enabled = enabled,
+                name = name,
+                models = models,
+                proxy = proxy,
+                customHeaders = customHeaders,
+                retryOption = retryOption,
+                reasoningOverride = reasoningOverride,
+                builtIn = builtIn,
+                description = description,
+                shortDescription = shortDescription,
+            )
+        }
+    }
+
+    @Serializable
+    @SerialName("grok")
+    data class Grok(
+        override val id: Uuid = Uuid.random(),
+        override val enabled: Boolean = true,
+        override val name: String = "Grok",
+        override val models: List<Model> = emptyList(),
+        override val proxy: ProviderProxy = ProviderProxy.Inherit,
+        override val customHeaders: List<CustomHeader> = emptyList(),
+        override val retryOption: RetrySetting? = null,
+        override val reasoningOverride: ReasoningOverride? = null,
+        @Transient override val builtIn: Boolean = false,
+        @Transient override val description: @Composable() () -> Unit = {},
+        @Transient override val shortDescription: @Composable() () -> Unit = {},
+        override val credential: OAuthCredential? = null,
+    ) : Account() {
+        override fun withCredential(credential: OAuthCredential?): Account =
+            copy(credential = credential)
 
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)

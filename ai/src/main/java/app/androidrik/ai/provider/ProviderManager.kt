@@ -57,6 +57,10 @@ class ProviderManager(
             is ProviderSetting.OpenAI -> getProvider("openai")
             is ProviderSetting.Google -> getProvider("google")
             is ProviderSetting.Claude -> getProvider("claude")
+            // P3 账号层先落类型与凭据管理；ChatGPT/Grok 的 Provider 实现随 P4 注册
+            is ProviderSetting.Account -> throw IllegalArgumentException(
+                "Account provider is not registered yet: ${'$'}{setting.name}"
+            )
         } as Provider<T>
     }
 }

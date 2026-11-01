@@ -147,6 +147,8 @@ object CherryStudioProviderImporter {
             is ProviderSetting.OpenAI -> "openai|${provider.baseUrl}|${provider.apiKey}"
             is ProviderSetting.Google -> "google|${provider.baseUrl}|${provider.apiKey}"
             is ProviderSetting.Claude -> "claude|${provider.baseUrl}|${provider.apiKey}"
+            // 导入器只处理 API Key 类；账号类没有 baseUrl/apiKey
+            is ProviderSetting.Account -> "account|${provider.id}"
         }
     }
 }
