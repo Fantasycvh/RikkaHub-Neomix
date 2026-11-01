@@ -163,6 +163,16 @@ object SettingsJsonMigrator {
                 }
             }
 
+            // V6: providers 的旧余额配置 `balanceOption` → `quotaQuery`（与 DataStore V4 迁移等价）。
+            // 备份里的 settings.json 是整份 Settings 序列化结果，不走 DataStore migration；
+            // 不迁移的话旧备份恢复后余额配置会被 `ignoreUnknownKeys` 静默丢弃。
+            root["providers"]?.let { element ->
+                val array = element as? JsonArray
+                if (array != null) {
+                    root["providers"] = JsonArray(array.map(::migrateProviderBalanceEntry))
+                }
+            }
+
             JsonInstant.encodeToString(JsonObject(root))
         }.onFailure {
             Log.e(TAG, "migrate: Failed to migrate settings JSON, using package-migrated JSON", it)

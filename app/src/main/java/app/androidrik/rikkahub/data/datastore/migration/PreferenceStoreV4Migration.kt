@@ -55,14 +55,14 @@ internal fun migrateProvidersBalanceToQuota(providersJson: String): String {
         val root = JsonInstant.parseToJsonElement(providersJson).jsonArray
         val migrated = buildJsonArray {
             root.forEach { element ->
-                add(migrateProviderEntry(element))
+                add(migrateProviderBalanceEntry(element))
             }
         }
         JsonInstant.encodeToString(JsonArray.serializer(), migrated)
     }.getOrElse { providersJson }
 }
 
-private fun migrateProviderEntry(element: JsonElement): JsonElement {
+internal fun migrateProviderBalanceEntry(element: JsonElement): JsonElement {
     val provider = element as? JsonObject ?: return element
     if ("balanceOption" !in provider) return provider
 
