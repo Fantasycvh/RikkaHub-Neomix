@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.DragDropHorizontal
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Search01
@@ -19,20 +20,23 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +54,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastForEachIndexed
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.R
@@ -58,14 +63,13 @@ import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
+import app.androidrik.rikkahub.ui.components.ui.cardGroupItemShape
 import app.androidrik.rikkahub.ui.context.LocalNavController
-import app.androidrik.rikkahub.ui.context.LocalToaster
-import app.androidrik.rikkahub.ui.hooks.useEditState
-import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConfigure
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.utils.plus
+import kotlin.uuid.Uuid
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -227,54 +231,84 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
     }
 }
 
+// 新建时只选类型，其余配置到详情页里填
 @Composable
 private fun AddButton(onAdd: (ProviderSetting) -> Unit) {
-    val dialogState = useEditState<ProviderSetting> {
-        onAdd(it.copyProvider(name = it.name.trim()))
+    var showSheet by remember { mutableStateOf(false) }
+    // 账号类（ChatGPT / Grok）也在新建入口里：它们的 API 格式由登录方式决定，
+    // 不能像 API Key 类那样事后切换类型，只能从这里创建。
+    val templates = remember {
+        listOf(
+            ProviderSetting.OpenAI(),
+            ProviderSetting.Google(),
+            ProviderSetting.Claude(),
+            ProviderSetting.ChatGPT(),
+            ProviderSetting.Grok(),
+        )
     }
 
     IconButton(
-        onClick = {
-            dialogState.open(ProviderSetting.OpenAI())
-        }
+        onClick = { showSheet = true }
     ) {
         Icon(HugeIcons.Add01, "Add")
     }
 
-    if (dialogState.isEditing) {
-        AlertDialog(
-            onDismissRequest = {
-                dialogState.dismiss()
-            },
-            title = {
-                Text(stringResource(R.string.setting_provider_page_add_provider))
-            },
-            text = {
-                dialogState.currentState?.let {
-                    ProviderConfigure(it) { newState ->
-                        dialogState.currentState = newState
+    if (showSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSheet = false },
+            sheetState = rememberBottomSheetState(
+                initialValue = SheetValue.Hidden,
+                enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.setting_provider_page_add_provider),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                    templates.fastForEachIndexed { index, template ->
+                        Surface(
+                            onClick = {
+                                showSheet = false
+                                onAdd(template.copyProvider(id = Uuid.random()))
+                            },
+                            shape = cardGroupItemShape(index, templates.size),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                AutoAIIcon(
+                                    name = template.name,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Text(
+                                    text = template.name,
+                                    style = MaterialTheme.typography.titleMediumEmphasized,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Icon(
+                                    imageVector = HugeIcons.ArrowRight01,
+                                    contentDescription = null,
+                                )
+                            }
+                        }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        dialogState.confirm()
-                    }
-                ) {
-                    Text(stringResource(R.string.setting_provider_page_add))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        dialogState.dismiss()
-                    }
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
+            }
+        }
     }
 }
 

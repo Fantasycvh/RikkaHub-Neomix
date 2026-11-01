@@ -119,6 +119,7 @@ import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.account.preserveCredential
 import app.androidrik.rikkahub.ui.components.ai.ModelAbilityTag
 import app.androidrik.rikkahub.ui.components.ai.ModelModalityTag
 import app.androidrik.rikkahub.ui.components.ai.ModelSelector
@@ -171,7 +172,9 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
         val newSettings = settings.copy(
             providers = settings.providers.map {
                 if (newProvider.id == it.id) {
-                    newProvider
+                    // 凭据只由 ProviderAccountManager 写：编辑期间后台可能刷新过 token，
+                    // 整份写回会把轮换后的 refresh token 覆盖掉（见 preserveCredential）
+                    newProvider.preserveCredential(it)
                 } else {
                     it
                 }
@@ -1115,13 +1118,17 @@ private fun ModelSettingsForm(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        ProviderOverrideSettings(
-                            providerOverride = model.providerOverwrite,
-                            onUpdateProviderOverride = { providerOverride ->
-                                onModelChange(model.copy(providerOverwrite = providerOverride))
-                            },
-                            parentProvider = parentProvider
-                        )
+                        // 模型级覆盖是提供商的独立副本，账号凭据不会随 copyProvider 复制出去，
+                        // 覆盖出来的账号提供商没有凭据也用不了，所以账号类不提供覆盖入口
+                        if (parentProvider !is ProviderSetting.Account) {
+                            ProviderOverrideSettings(
+                                providerOverride = model.providerOverwrite,
+                                onUpdateProviderOverride = { providerOverride ->
+                                    onModelChange(model.copy(providerOverwrite = providerOverride))
+                                },
+                                parentProvider = parentProvider
+                            )
+                        }
 
                         ReasoningOverrideSettings(
                             title = stringResource(R.string.setting_provider_page_reasoning_override),

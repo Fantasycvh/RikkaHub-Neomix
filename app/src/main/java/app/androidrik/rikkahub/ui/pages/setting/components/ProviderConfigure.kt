@@ -44,14 +44,24 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
 import app.androidrik.ai.provider.OpenAIAuthType
 import app.androidrik.ai.provider.ProviderManager
+import app.androidrik.ai.provider.ProviderQuota
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.supportsQuota
+import app.androidrik.rikkahub.data.ai.account.AccountLoginStatus
+import app.androidrik.rikkahub.data.ai.account.ChatGPTAuth
+import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
 import app.androidrik.rikkahub.data.ai.mcp.launchOAuthAuthorization
 import app.androidrik.rikkahub.data.ai.openai.CodexAuthErrorCode
 import app.androidrik.rikkahub.data.ai.openai.CodexAuthException
@@ -74,13 +84,29 @@ import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import androidx.compose.ui.platform.LocalResources
+import app.androidrik.rikkahub.ui.components.ai.longLabel
+import app.androidrik.rikkahub.ui.components.ai.rememberProviderQuota
+import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.CardGroupIcon
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
+import app.androidrik.rikkahub.utils.toMessageTimeString
+import app.androidrik.oauth.CustomTabsOAuthAuthorizationLauncher
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.DashboardSpeed02
+import me.rerere.hugeicons.stroke.Login03
+import me.rerere.hugeicons.stroke.Logout03
+import me.rerere.hugeicons.stroke.UserCircle
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.time.LocalDateTime
+import java.time.ZoneId
+import kotlin.math.roundToInt
 import kotlin.reflect.KClass
+import kotlin.time.toJavaInstant
 
 @Composable
 fun ProviderConfigure(
@@ -92,7 +118,8 @@ fun ProviderConfigure(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
     ) {
-        if (!provider.builtIn) {
+        // 账号类提供商（ChatGPT / Grok）的 API 格式由登录方式决定，不参与类型切换
+        if (!provider.builtIn && provider !is ProviderSetting.Account) {
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 ProviderSetting.Types.forEachIndexed { index, option ->
                     SegmentedButton(
@@ -114,8 +141,23 @@ fun ProviderConfigure(
             is ProviderSetting.OpenAI -> ProviderConfigureOpenAI(provider, onEdit)
             is ProviderSetting.Google -> ProviderConfigureGoogle(provider, onEdit)
             is ProviderSetting.Claude -> ProviderConfigureClaude(provider, onEdit)
-            // 账号类提供商的登录/额度界面随 P4 接入；P3 只有账号层基础设施
-            is ProviderSetting.Account -> Unit
+            is ProviderSetting.ChatGPT -> ProviderConfigureAccount(
+                provider = provider,
+                onEdit = onEdit,
+                serviceName = "ChatGPT",
+                plan = provider.credential?.plan?.let { plan ->
+                    "ChatGPT ${ChatGPTAuth.planDisplayName(plan)}"
+                },
+                disclaimer = stringResource(R.string.setting_provider_page_chatgpt_disclaimer),
+            )
+
+            is ProviderSetting.Grok -> ProviderConfigureAccount(
+                provider = provider,
+                onEdit = onEdit,
+                serviceName = "Grok",
+                plan = null,
+                disclaimer = stringResource(R.string.setting_provider_page_grok_disclaimer),
+            )
         }
 
         // 思考强度映射的提供商级兜底：模型级覆盖优先于它，它优先于内置映射（见 ReasoningOverride）
@@ -871,6 +913,193 @@ private fun ProviderConfigureGoogle(
             label = { Text(stringResource(R.string.setting_provider_page_project_id)) },
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+/**
+ * 账号类提供商（ChatGPT / Grok）的登录状态、订阅用量和说明。
+ *
+ * 没有 API Key / Base URL 可填：地址写死在各自的 Provider 里，凭据只能通过登录获得，
+ * 这样 token 不会被配置发往第三方地址（见 `ProviderSetting.Account`）。
+ */
+@Composable
+private fun ProviderConfigureAccount(
+    provider: ProviderSetting.Account,
+    onEdit: (provider: ProviderSetting) -> Unit,
+    serviceName: String,
+    plan: String?,
+    disclaimer: String,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val accountManager: ProviderAccountManager = koinInject()
+    val loginStatus by accountManager.loginStatus.collectAsStateWithLifecycle()
+    val status = loginStatus[provider.id]
+    val credential = provider.credential
+
+    OutlinedTextField(
+        value = provider.name,
+        onValueChange = { onEdit(provider.copyProvider(name = it)) },
+        label = { Text(stringResource(R.string.setting_provider_page_name)) },
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    CardGroup(title = { Text(stringResource(R.string.setting_provider_page_account)) }) {
+        if (credential != null) {
+            item(
+                leadingContent = { CardGroupIcon(HugeIcons.UserCircle) },
+                // ListItem 的 supportingContent 只渲染第一个直接子节点：这里只有一段文本，安全
+                supportingContent = plan?.let { text -> { Text(text) } },
+                headlineContent = {
+                    Text(credential.email ?: stringResource(R.string.setting_provider_page_signed_in))
+                },
+            )
+            item(
+                onClick = { scope.launch { accountManager.logout(provider.id) } },
+                leadingContent = {
+                    CardGroupIcon(
+                        icon = HugeIcons.Logout03,
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                },
+                headlineContent = { Text(stringResource(R.string.setting_provider_page_sign_out)) },
+            )
+        } else if (status is AccountLoginStatus.DeviceCode) {
+            // 设备码登录：验证页已经自动开过一次，点这一项可以重新打开（user_code 已带上）
+            item(
+                onClick = {
+                    CustomTabsOAuthAuthorizationLauncher.launch(context, status.verificationUrl)
+                },
+                leadingContent = { ContainedLoadingIndicator(modifier = Modifier.size(40.dp)) },
+                overlineContent = { Text(stringResource(R.string.setting_provider_page_device_code_hint)) },
+                supportingContent = { Text(stringResource(R.string.setting_provider_page_device_code_reopen)) },
+                headlineContent = {
+                    Text(
+                        text = status.userCode,
+                        style = MaterialTheme.typography.headlineSmallEmphasized,
+                        fontFamily = JetbrainsMono,
+                    )
+                },
+            )
+            item(
+                onClick = { accountManager.cancelLogin(provider.id) },
+                leadingContent = { CardGroupIcon(HugeIcons.Cancel01) },
+                headlineContent = { Text(stringResource(R.string.cancel)) },
+            )
+        } else if (status == AccountLoginStatus.Authorizing) {
+            item(
+                onClick = { accountManager.cancelLogin(provider.id) },
+                leadingContent = { ContainedLoadingIndicator(modifier = Modifier.size(40.dp)) },
+                supportingContent = {
+                    Text(stringResource(R.string.setting_provider_page_waiting_authorization_desc))
+                },
+                headlineContent = { Text(stringResource(R.string.setting_provider_page_waiting_authorization)) },
+            )
+        } else {
+            item(
+                onClick = { accountManager.startLogin(provider.id, context) },
+                leadingContent = { CardGroupIcon(HugeIcons.Login03) },
+                supportingContent = (status as? AccountLoginStatus.Failed)?.let { failed ->
+                    { Text(failed.message, color = MaterialTheme.colorScheme.error) }
+                },
+                trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
+                headlineContent = {
+                    Text(stringResource(R.string.setting_provider_page_sign_in_with, serviceName))
+                },
+            )
+        }
+    }
+
+    if (provider.supportsQuota) {
+        AccountUsage(provider)
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(stringResource(R.string.setting_provider_page_enable))
+        Switch(
+            checked = provider.enabled,
+            onCheckedChange = { onEdit(provider.copyProvider(enabled = it)) }
+        )
+    }
+
+    Text(
+        text = disclaimer,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * 订阅用量：每个窗口一条进度和重置时间。
+ *
+ * 额度查询按 provider id + 登录账号缓存 2 分钟（见 [rememberProviderQuota]），
+ * 进页面、换账号都会重新查；退出登录后 [supportsQuota] 为 false，整块不再渲染。
+ */
+@Composable
+private fun AccountUsage(provider: ProviderSetting.Account) {
+    val result = rememberProviderQuota(provider)
+    val limits = result?.getOrNull() as? ProviderQuota.UsageLimits
+    CardGroup(title = { Text(stringResource(R.string.setting_provider_page_usage)) }) {
+        when {
+            result == null -> item(
+                leadingContent = { ContainedLoadingIndicator(modifier = Modifier.size(40.dp)) },
+                headlineContent = { Text(stringResource(R.string.setting_provider_page_usage_loading)) },
+            )
+
+            limits == null -> item(
+                leadingContent = { CardGroupIcon(HugeIcons.DashboardSpeed02) },
+                supportingContent = {
+                    Text(
+                        text = result.exceptionOrNull()?.message.orEmpty(),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                },
+                headlineContent = { Text(stringResource(R.string.setting_provider_page_usage_failed)) },
+            )
+
+            limits.windows.isEmpty() -> item(
+                leadingContent = { CardGroupIcon(HugeIcons.DashboardSpeed02) },
+                headlineContent = { Text(stringResource(R.string.setting_provider_page_usage_none)) },
+            )
+
+            else -> limits.windows.forEach { window ->
+                val reached = limits.limitReached || window.usedPercent >= 100
+                formItem(
+                    headlineContent = { Text(window.longLabel()) },
+                    supportingContent = window.resetsAt?.let { resetsAt ->
+                        {
+                            val time = LocalDateTime.ofInstant(
+                                resetsAt.toJavaInstant(),
+                                ZoneId.systemDefault(),
+                            )
+                            Text(stringResource(R.string.setting_provider_page_usage_resets, time.toMessageTimeString()))
+                        }
+                    },
+                    trailingContent = {
+                        Text(
+                            text = "${window.usedPercent.roundToInt()}%",
+                            style = MaterialTheme.typography.titleMediumEmphasized,
+                            color = if (reached) MaterialTheme.colorScheme.error else Color.Unspecified,
+                        )
+                    },
+                ) {
+                    LinearWavyProgressIndicator(
+                        progress = { (window.usedPercent / 100).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = if (reached) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            ProgressIndicatorDefaults.linearColor
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 

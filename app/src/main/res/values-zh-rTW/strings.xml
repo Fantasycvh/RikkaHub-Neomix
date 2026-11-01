@@ -2898,5 +2898,27 @@
   <string name="chat_input_subscription_provider_send_blocked">此對話由 ChatGPT 訂閱登入產生，只能繼續使用該提供商的模型；目前模型不屬於該提供商，請先切回後再傳送。</string>
   <string name="setting_provider_page_codex_debug_force_refresh">強制重新整理權杖（偵錯）</string>
   <string name="setting_provider_page_codex_debug_refresh_ok">權杖已重新整理（編碼：%1$s）</string>
+  <string name="setting_provider_page_account">帳戶</string>
+  <string name="setting_provider_page_signed_in">已登入</string>
+  <string name="setting_provider_page_sign_out">登出</string>
+  <string name="setting_provider_page_sign_in_with">使用 %1$s 登入</string>
+  <string name="setting_provider_page_waiting_authorization">正在等待授權</string>
+  <string name="setting_provider_page_waiting_authorization_desc">請在瀏覽器中完成登入，或點按取消</string>
+  <string name="setting_provider_page_device_code_hint">請在瀏覽器中確認此驗證碼</string>
+  <string name="setting_provider_page_device_code_reopen">輕觸重新開啟頁面</string>
+  <string name="setting_provider_page_usage">用量</string>
+  <string name="setting_provider_page_usage_loading">正在載入用量</string>
+  <string name="setting_provider_page_usage_failed">無法載入用量</string>
+  <string name="setting_provider_page_usage_none">無用量上限</string>
+  <string name="setting_provider_page_usage_resets">於 %1$s 重設</string>
+  <string name="setting_provider_page_usage_limit">用量上限</string>
+  <string name="setting_provider_page_usage_limit_weekly">每週上限</string>
+  <string name="setting_provider_page_usage_limit_daily">每日上限</string>
+  <string name="setting_provider_page_usage_limit_weeks">%1$d 週上限</string>
+  <string name="setting_provider_page_usage_limit_days">%1$d 天上限</string>
+  <string name="setting_provider_page_usage_limit_hours">%1$d 小時上限</string>
+  <string name="setting_provider_page_usage_limit_minutes">%1$d 分鐘上限</string>
+  <string name="setting_provider_page_chatgpt_disclaimer">透過 Codex 後端使用您的 ChatGPT 訂閱。實驗性：OpenAI 可能隨時變更或限制此功能。</string>
+  <string name="setting_provider_page_grok_disclaimer">以 Grok CLI 的方式登入，使用你的 SuperGrok 訂閱。實驗性功能：xAI 可能隨時變更或限制此功能。</string>
 </resources>
 

@@ -2912,5 +2912,27 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="chat_input_subscription_provider_send_blocked">此对话由 ChatGPT 订阅登录生成，只能继续使用该提供商的模型；当前模型不属于该提供商，请先切回后再发送。</string>
   <string name="setting_provider_page_codex_debug_force_refresh">强制刷新令牌（调试）</string>
   <string name="setting_provider_page_codex_debug_refresh_ok">令牌已刷新（编码：%1$s）</string>
+  <string name="setting_provider_page_account">账户</string>
+  <string name="setting_provider_page_signed_in">已登录</string>
+  <string name="setting_provider_page_sign_out">退出登录</string>
+  <string name="setting_provider_page_sign_in_with">使用 %1$s 登录</string>
+  <string name="setting_provider_page_waiting_authorization">等待授权</string>
+  <string name="setting_provider_page_waiting_authorization_desc">请在浏览器中完成登录，或点击取消</string>
+  <string name="setting_provider_page_device_code_hint">请在浏览器中确认此验证码</string>
+  <string name="setting_provider_page_device_code_reopen">点击重新打开页面</string>
+  <string name="setting_provider_page_usage">用量</string>
+  <string name="setting_provider_page_usage_loading">正在加载用量</string>
+  <string name="setting_provider_page_usage_failed">加载用量失败</string>
+  <string name="setting_provider_page_usage_none">无用量限额</string>
+  <string name="setting_provider_page_usage_resets">%1$s 重置</string>
+  <string name="setting_provider_page_usage_limit">用量限额</string>
+  <string name="setting_provider_page_usage_limit_weekly">每周限额</string>
+  <string name="setting_provider_page_usage_limit_daily">每日限额</string>
+  <string name="setting_provider_page_usage_limit_weeks">%1$d 周限额</string>
+  <string name="setting_provider_page_usage_limit_days">%1$d 天限额</string>
+  <string name="setting_provider_page_usage_limit_hours">%1$d 小时限额</string>
+  <string name="setting_provider_page_usage_limit_minutes">%1$d 分钟限额</string>
+  <string name="setting_provider_page_chatgpt_disclaimer">通过 Codex 后端使用你的 ChatGPT 订阅。实验性功能：OpenAI 可能随时更改或限制此功能。</string>
+  <string name="setting_provider_page_grok_disclaimer">以 Grok CLI 的方式登录，使用你的 SuperGrok 订阅。实验性功能：xAI 可能随时更改或限制此功能。</string>
 </resources>
 
