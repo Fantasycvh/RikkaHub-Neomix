@@ -572,7 +572,7 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 - **Grok 全链路**：登录成功但账号无 SuperGrok 订阅，模型目录/额度/对话均无法真机验证；需有订阅的账号补验（`GrokProviderTest` 8 例覆盖解析，未覆盖真实端点差异）。
 - **降级/去留**：P5 已删除旧设备码链路，降级与发布说明见 §17.3 / §17.4。
 - **Grok 订阅锁**：P5 已决策纳入 `SubscriptionProviderLock`（Grok Responses 端点同样回传自家加密推理），见 §17.2。
-- **`ProviderAccountManager` 并发刷新 / 杀进程重启**：仍无自动化覆盖（无 Robolectric），P4 真机只验证了单请求刷新链路；P5 未压测，建议在真机用多请求并发 + 强制停止验证一次。
+- **`ProviderAccountManager` 并发刷新 / 杀进程重启**：P5 已把刷新编排抽成 `AccountRefreshCoordinator` 并补 7 例 JVM 单测（并发只刷新一次 / 401 复用 / 失败不写回 / 刷新期间登出作废 / 缺 refresh token 等）；**杀进程**仍无自动化覆盖，需真机手测（步骤见 §17.6）。
 - **server-tool 回传 / 全局 session 头**：属 P1 起既有缺口与后续增强，不在 P4 范围。
 
 ### 16.7 补充：用量展示口径（已用 / 剩余）与后端字段实测
@@ -674,3 +674,37 @@ P4 的两条登录路径都在真机走通（§17.1）后，旧 OpenAI 设备码
 
 - **SSE 断流（§16.7 遗留）**：用户于 2026-11-02 P5 期间复测「带工具调用的长回复」，**正常流式完成、收到 `response.completed`**。据此判定 P4 那次 `SSE stream failed without exception` 为代理链路（`127.0.0.1:8888`）瞬时断流，属环境问题，非代码缺陷；「无 `response.completed` 的 EOF 是否降级为可恢复错误」不作为本次修复项，留作可选增强。
 - 仍待补验：有 SuperGrok 订阅账号的 Grok 全链路、`ProviderAccountManager` 并发刷新/杀进程压测（见 §16.6）。
+
+### 17.7 并发刷新与杀进程的测试方式
+
+**并发刷新（已自动化）**：`ProviderAccountManager` 原有的「串行 + 拿锁后重读设置」逻辑抽成
+`AccountRefreshCoordinator`（`app/.../data/ai/account/AccountRefreshCoordinator.kt`），与设置存储/网络解耦，
+用内存 fake 存储 + 可控 refresh lambda 做 JVM 测试（`AccountRefreshCoordinatorTest`，7 例）：
+
+| 用例 | 断言 |
+| --- | --- |
+| 两路并发刷新 | 网络只请求 1 次，两路都拿到新 token（refresh token 一次性，重复刷新会打废会话） |
+| token 仍有效 | 不触发刷新、不写回 |
+| 401 拒绝后两路都带旧 token | 只刷新 1 次，第二路拿锁后重读设置直接复用 |
+| 刷新失败（invalid_grant） | 包装成 `failed to refresh sign-in`，不写回设置 |
+| 刷新期间登出 | `store` 的 expected 不匹配 ⇒ 拒绝写回并报 `sign-in changed during refresh` |
+| 无 refresh token / 未登录 | 报 `session expired` / `not signed in` |
+
+**真机并发压测（可选，验证端到端）**：
+
+1. 让 access token 进入「快过期」窗口（≤5 分钟）或已过期：等自然过期，或 debug 包里改设置里
+   ChatGPT provider 的 `credential.expiresAt`（`run-as app.androidrik.rikkahub.debug` 改 DataStore 文件较麻烦，
+   更简单是断网重连/等 1 小时）。
+2. 同时触发两路请求：开两个会话各发一条消息（或在同一对话里触发一次工具调用 + 主回复）。
+3. 观察：两路请求都成功；logcat 里 `ProviderAccountManager` 的刷新只发生一次；若出现两次刷新，
+   第二次 refresh 会 `invalid_grant`、UI 会提示重新登录（说明串行失效）。
+4. 可选：临时在 `ChatGPTAuth.refreshRequest` 前后加 `Log.d`（不入库）核对只打了一条。
+
+**杀进程（只能真机手测，无法单测）**：
+
+1. 在刷新窗口内强制停止：`adb shell am force-stop app.androidrik.rikkahub.debug`（窗口只有几百 ms，
+   若来不及，可临时 debug 版在刷新前 `delay(5s)`，验证完删掉）。
+2. 重启 App 后再发消息，期望行为：
+   - 若新 refresh token 已落盘（DataStore 原子写）⇒ 正常继续对话；
+   - 若只完成了服务端轮换、本地还没写回 ⇒ 本地 refresh token 已失效 ⇒ 请求 `invalid_grant` ⇒ 设置页显示需重新登录，**不崩溃**、不把错误凭据继续用。
+3. 检查 `data_version` 与 provider 的 `credential` 仍在（写回失败不应破坏原有数据）。

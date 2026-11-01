@@ -35,8 +35,6 @@ import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "ProviderAccountManager"
 
-// 与 Codex CLI 一致：access token 过期前 5 分钟内就刷新
-private const val TOKEN_REFRESH_LEEWAY_MS = 5 * 60_000L
 private val AUTHORIZATION_TIMEOUT = 5.minutes
 
 /** `SecretCipher` 密文前缀（`v1:`）；没有该前缀视为尚未加密的明文 */
@@ -155,52 +153,30 @@ class ProviderAccountManager(
             ?.takeUnless { it.needsRefresh(rejectedAccessToken) }
             ?.let { return it }
         return appScope.async(Dispatchers.IO) {
-            refreshIfNeeded(setting, rejectedAccessToken)
+            refresher.refreshIfNeeded(setting, rejectedAccessToken)
         }.await()
     }
 
     /**
-     * 按提供商串行刷新。拿到锁后重新读设置：并发请求可能已经刷新过，refresh token 只能用一次。
+     * 并发刷新规则见 [AccountRefreshCoordinator]（串行 + 拿锁后重读设置，refresh token 只能用一次）。
      */
-    private suspend fun refreshIfNeeded(
-        setting: ProviderSetting.Account,
-        rejectedAccessToken: String?,
-    ): OAuthCredential {
-        val lock = refreshLocks.computeIfAbsent(setting.id) { Mutex() }
-        return lock.withLock {
-            val latest = findAccount(setting.id) ?: setting.decrypted()
-            val credential = latest.credential ?: error("${latest.name}: not signed in")
-            if (!credential.needsRefresh(rejectedAccessToken)) return@withLock credential
+    private val refresher = AccountRefreshCoordinator(
+        read = { id -> findAccount(id) },
+        refresh = { latest, refreshToken ->
+            when (latest) {
+                is ProviderSetting.ChatGPT -> ChatGPTAuth.toCredential(
+                    token = oauthClient.refreshToken(ChatGPTAuth.refreshRequest(refreshToken)),
+                    previous = latest.credential,
+                )
 
-            val refreshToken = credential.refreshToken
-                ?: error("${latest.name}: session expired, please sign in again")
-            val refreshed = try {
-                when (latest) {
-                    is ProviderSetting.ChatGPT -> ChatGPTAuth.toCredential(
-                        token = oauthClient.refreshToken(ChatGPTAuth.refreshRequest(refreshToken)),
-                        previous = credential,
-                    )
-
-                    is ProviderSetting.Grok -> GrokAuth.toCredential(
-                        token = oauthClient.refreshToken(GrokAuth.refreshRequest(refreshToken)),
-                        previous = credential,
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                throw IllegalStateException(
-                    "${latest.name}: failed to refresh sign-in, please sign in again",
-                    e
+                is ProviderSetting.Grok -> GrokAuth.toCredential(
+                    token = oauthClient.refreshToken(GrokAuth.refreshRequest(refreshToken)),
+                    previous = latest.credential,
                 )
             }
-            // 刷新期间用户可能退出或换了账号，这时结果作废，不能把旧会话写回去
-            if (!replaceCredential(latest.id, expected = credential, credential = refreshed)) {
-                error("${latest.name}: sign-in changed during refresh, please try again")
-            }
-            refreshed
-        }
-    }
+        },
+        store = { id, expected, credential -> replaceCredential(id, expected, credential) },
+    )
 
     private suspend fun loginChatGPT(context: Context): OAuthCredential =
         withContext(Dispatchers.IO) {
@@ -310,11 +286,6 @@ class ProviderAccountManager(
         }
         return replaced
     }
-
-    // 刚被服务端拒绝，或者快过期了
-    private fun OAuthCredential.needsRefresh(rejectedAccessToken: String?): Boolean =
-        accessToken == rejectedAccessToken ||
-            (expiresAt > 0 && System.currentTimeMillis() >= expiresAt - TOKEN_REFRESH_LEEWAY_MS)
 
     /** 设置里存的是密文，读出来先解密（解不开按未登录处理） */
     private fun findAccount(providerId: Uuid): ProviderSetting.Account? =
