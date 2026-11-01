@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
 import kotlinx.serialization.json.JsonObject
@@ -671,4 +672,22 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             cachedTokens = cachedInputTokens,
         )
     }
+}
+
+/**
+ * Claude 的「服务端工具调用/结果」块类型判定（移植自上游 #1648）。
+ *
+ * Anthropic 的内置工具（web_search / code_execution / bash 等）在流里以
+ * `*_tool_use` / `*_tool_result` 类型出现，与用户自定义工具（`tool_use` / `tool_result`）区分。
+ */
+internal fun String?.isClaudeServerToolResultType(): Boolean =
+    this != null && this != "tool_result" && endsWith("_tool_result")
+
+internal fun String?.isClaudeServerToolUseType(): Boolean =
+    this == "server_tool_use" || (this != null && this != "tool_use" && endsWith("_tool_use"))
+
+/** 服务端工具结果是否以错误结束（`*_error` 内容块）。 */
+internal fun JsonElement?.isClaudeServerToolError(): Boolean {
+    val content = this as? JsonObject ?: return false
+    return content["type"]?.jsonPrimitive?.contentOrNull?.endsWith("_error") == true
 }

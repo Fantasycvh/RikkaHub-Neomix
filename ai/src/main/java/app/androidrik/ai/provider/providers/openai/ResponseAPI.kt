@@ -45,6 +45,9 @@ import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.ai.ui.terminalChunk
 import app.androidrik.ai.ui.MessageChunk
 import app.androidrik.ai.ui.OpenAIReasoningMetadata
+import app.androidrik.ai.ui.ServerToolMetadata
+import app.androidrik.ai.ui.ServerToolProtocol
+import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageChoice
 import app.androidrik.ai.ui.UIMessagePart
@@ -1181,3 +1184,43 @@ internal fun resolveResponseProviderCapabilities(
     resolveResponseProviderCapabilities(providerSetting.baseUrl.toHttpUrl().host)
 }
 
+/**
+ * OpenAI Responses 中「服务端工具调用」的判定（移植自上游 #1648）。
+ *
+ * 除内置的 function/custom/computer/shell/image_generation 之外，`*_call` 都是服务端工具
+ * （`web_search_call` / `file_search_call` / `code_interpreter_call` / `mcp_call` 等）。
+ */
+internal fun isOpenAIServerToolCall(type: String): Boolean =
+    type.endsWith("_call") && type !in setOf(
+        "function_call",
+        "custom_tool_call",
+        "computer_call",
+        "local_shell_call",
+        "shell_call",
+        "image_generation_call",
+    )
+
+/** 把 Responses 的服务端工具 item 原样转换成通用 [UIMessagePart.ServerTool]，供多轮回传。 */
+internal fun JsonObject.toOpenAIServerTool(): UIMessagePart.ServerTool {
+    val type = get("type")?.jsonPrimitive?.contentOrNull ?: "server_tool_call"
+    val protocolFields = setOf("type", "id", "status", "result", "output")
+    val input = get("action") ?: JsonObject(filterKeys { it !in protocolFields })
+        .takeUnless { it.isEmpty() }
+    return UIMessagePart.ServerTool(
+        toolCallId = get("id")?.jsonPrimitive?.contentOrNull ?: "",
+        toolName = type.removeSuffix("_call"),
+        input = input,
+        output = get("output") ?: get("result"),
+        status = get("status")?.jsonPrimitive?.contentOrNull.toServerToolStatus(),
+        metadata = ServerToolMetadata(
+            protocol = ServerToolProtocol.OPENAI_RESPONSES,
+            call = this,
+        ).toMetadata(),
+    )
+}
+
+internal fun String?.toServerToolStatus(): ServerToolStatus = when (this) {
+    "completed" -> ServerToolStatus.COMPLETED
+    "failed", "incomplete", "cancelled" -> ServerToolStatus.FAILED
+    else -> ServerToolStatus.IN_PROGRESS
+}
