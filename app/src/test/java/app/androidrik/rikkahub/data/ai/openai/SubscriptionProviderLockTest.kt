@@ -252,11 +252,39 @@ class SubscriptionProviderLockTest {
     }
 
     @Test
-    fun `grok account provider does not lock in p4`() {
-        // P4 决策：锁定范围只有 ChatGPT 订阅（本仓旧 codexAccount + 新 ChatGPT）；
-        // Grok 是否也要锁是独立设计决策（见 P4 报告未决问题），先用测试钉住当前行为
+    fun `grok account provider locks once signed in with models`() {
+        // P5 决策：Grok 的 Responses 端点同样回传只有自家能解读的加密推理，与 ChatGPT 同一规则
         val grok = ProviderSetting.Grok(
             name = "Grok",
+            models = listOf(codexModel),
+            credential = OAuthCredential(accessToken = "v1:encrypted-token"),
+        )
+        val lock = resolveSubscriptionProviderLock(
+            providers = listOf(grok, apiKeyProvider()),
+            historyModelIds = listOf(codexModel.id),
+        )
+        assertEquals(grok.id, lock?.providerId)
+        assertEquals("Grok", lock?.providerName)
+        assertTrue(lock!!.allows(codexModel, listOf(grok)))
+        assertFalse(lock.allows(otherModel, listOf(grok, apiKeyProvider())))
+    }
+
+    @Test
+    fun `signed out grok provider does not lock`() {
+        val grok = ProviderSetting.Grok(name = "Grok", models = listOf(codexModel))
+        assertNull(
+            resolveSubscriptionProviderLock(
+                providers = listOf(grok),
+                historyModelIds = listOf(codexModel.id),
+            )
+        )
+    }
+
+    @Test
+    fun `disabled grok provider does not lock`() {
+        val grok = ProviderSetting.Grok(
+            name = "Grok",
+            enabled = false,
             models = listOf(codexModel),
             credential = OAuthCredential(accessToken = "v1:encrypted-token"),
         )

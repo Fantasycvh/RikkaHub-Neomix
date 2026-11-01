@@ -6,7 +6,7 @@ import app.androidrik.ai.provider.ProviderSetting
 import kotlin.uuid.Uuid
 
 /**
- * ChatGPT 订阅（Codex 后端）对话的**提供商锁定**。
+ * 订阅对话（ChatGPT Codex 后端 / Grok 订阅）的**提供商锁定**。
  *
  * Codex 后端返回的推理是 `encrypted_content` 加密块，只有该后端能解读；其它 provider 既解不开、
  * 也无法回传（送过去会 400/静默丢弃）。因此一旦某条对话里已经落了订阅模型生成的消息，后续换模型
@@ -85,12 +85,13 @@ fun resolveSubscriptionProviderLock(
 /**
  * 该 provider 是否会产出「只有自家后端能解读的加密推理」（需要锁定对话）。
  *
- * 目前只有 ChatGPT 订阅：旧 OpenAI 订阅态与迁移后的
- * [ProviderSetting.ChatGPT] 账号类。Grok 等其它账号类不在此列（是否也锁定是独立设计决策，
- * 见 P4 报告未决问题）。
+ * 判定范围（P5 起）：旧 OpenAI 订阅态、迁移后的 [ProviderSetting.ChatGPT]，以及
+ * [ProviderSetting.Grok]。Grok 的 Responses 端点同样会回传只有自家能解读的加密推理，
+ * 跨提供商复用会 400/静默丢弃，因此和 ChatGPT 同一规则：**已登录且至少有一个模型**才锁定。
  */
 private fun ProviderSetting.isSubscriptionProvider(): Boolean = when (this) {
     is ProviderSetting.OpenAI -> enabled && authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION
     is ProviderSetting.ChatGPT -> enabled && credential != null && models.isNotEmpty()
+    is ProviderSetting.Grok -> enabled && credential != null && models.isNotEmpty()
     else -> false
 }
