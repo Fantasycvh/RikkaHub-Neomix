@@ -326,7 +326,9 @@ fun AvatarFrameParamsSheet(
 
             JsonImportExportButtons(
                 exportJson = { JsonInstant.encodeToString(snapshot()) },
-                onImported = onDismiss,
+                // 导入后保持 sheet 打开：decode 写的是本 sheet 的本地态，关掉就丢了，
+                // 用户需要看到回填值再点「保存」才落库
+                onImported = {},
                 decode = { text ->
                     val imported = JsonInstant.decodeFromString<AvatarFrameParams>(text)
                     kind = imported.kind
@@ -435,7 +437,9 @@ fun ChainOfThoughtCustomSheet(
 
             JsonImportExportButtons(
                 exportJson = { JsonInstant.encodeToString(snapshot()) },
-                onImported = onDismiss,
+                // 导入后保持 sheet 打开：decode 写的是本 sheet 的本地态，关掉就丢了，
+                // 用户需要看到回填值再点「保存」才落库
+                onImported = {},
                 decode = { text ->
                     val imported = JsonInstant.decodeFromString<ChainOfThoughtCustomStyle>(text)
                     containerHex = imported.containerColorHex ?: ""
