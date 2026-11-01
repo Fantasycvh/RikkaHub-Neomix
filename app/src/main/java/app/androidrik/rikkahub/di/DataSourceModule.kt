@@ -18,6 +18,7 @@ import kotlinx.serialization.json.Json
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationAgent
+import app.androidrik.rikkahub.data.ai.openai.OpenAICodexAuthService
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationGenerationAgent
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationScheduler
@@ -316,8 +317,13 @@ val dataSourceModule = module {
             .build().also { SearchService.init(it, get()) }
     }
 
+    // ChatGPT 订阅（Codex 设备码登录）：令牌解密/刷新在 app 层，ai 层只拿明文令牌
     single {
-        ProviderManager(client = get(), context = get())
+        OpenAICodexAuthService(settingsStore = get(), client = get())
+    }
+
+    single {
+        ProviderManager(client = get(), context = get(), codexTokenProvider = get())
     }
 
     single {
