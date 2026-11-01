@@ -324,7 +324,12 @@ val dataSourceModule = module {
     }
 
     single {
-        ProviderManager(client = get(), context = get(), codexTokenProvider = get())
+        ProviderManager(
+            client = get(),
+            context = get(),
+            // 显式按实现类型取：接口无单独 definition，裸 get() 会 NoDefinitionFound
+            codexTokenProvider = get<OpenAICodexAuthService>(),
+        )
     }
 
     single {
