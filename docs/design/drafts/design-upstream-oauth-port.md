@@ -391,7 +391,7 @@ chatgpt.com/backend-api/codex、grok 后端
 
 1. **单测**（✅ 已完成）：ai 模块旧测试迁移到解码器 + 移植上游 `StreamChunkHandlerTest`（10 例）/`ResponseApiStreamDecoderTest`（9 例），新增 `GoogleStreamDecoderTest`（3 例）；`:ai:testDebugUnitTest` **421 例全绿、0 skip**。app 侧 5 个 `GenerationHandler` 相关测试迁移到 `StreamChunk` 脚本，`:app:testDebugUnitTest --tests 'app.androidrik.rikkahub.data.ai.*'` 1129 例全绿。
 2. **清理 legacy**（✅ 已完成）：删除 `MessageChunk`/`UIMessageChoice`/`terminalChunk()`/`handleMessageChunk()`/`UIMessage.plus(MessageChunk)`；合并语义原样搬进 `UIMessage.mergeDelta(delta: UIMessage)`，`handleTextGenerationResult` 改为直接合并（异角色追加并写模型/提供商快照、同角色 `mergeDelta`）。`ResponseToolCallIdResolver` **保留**（已接入 `ResponseApiStreamDecoder`，不是 dead code）。`trace-cli`/`stream-traces` 语料仍为可选项。
-3. **真机验证**（部分完成）：ChatGPT 订阅(codex) 路径已真机通过两次（阶段 2 完成后一次、legacy 清理 + 重新打包后再一次：流式回复 "1+1=2" + token/tok/s 统计 + provider lock 横幅，设备 `6c841f95` / debug 包 / 无崩溃）；OpenAI API Key、Claude、Google 三条仍待真机各跑一次「流式对话 + 工具调用 + 推理展示 + 裸断流」，当前由解码器单测覆盖（含裸断流 / `incomplete` / 工具 id 归一 / 服务端工具输出）。
+3. **真机验证**（✅ 已完成，详见 12.5）：codex 订阅、API Key（ChatCompletions）、Claude、Google 四条路径均已在设备 `6c841f95` / debug 包跑通流式对话（含 reasoning 展示与 token/tok/s 统计，无崩溃）。工具调用 / Claude·Google 推理流 / 裸断流仍由解码器单测覆盖（`StreamChunkHandlerTest`、`GoogleStreamDecoderTest`、`ResponseAPIStreamFinishTest` 等）。
 4. **提交**：P1 独立 PR（接口改造 + 4 provider 接线 + app 消费端 + 单测），PR 说明附本表与语义决策。
 
 ### 12.4 风险提示（实施中发现）
@@ -402,3 +402,27 @@ chatgpt.com/backend-api/codex、grok 后端
 - `Responses` 非流式解析现在会产出上游新增的 `Image`/`ServerTool`/`reasoningType` part：这些 part 在本仓 UI 已支持渲染，但**旧版本客户端**（如果存在跨版本同步/导入）可能不认识——本仓无跨版本消息互通，暂不处理。
 - `StreamChunk.ToolCallOutput` 是本仓在 18 类上游事件之外新增的第 19 类（`@SerialName("tool_call_output")`）；后续 P2 若上游再改事件集，需在每次变基时确认该事件仍有承载位置（上游没有对应语义，预计长期保留）。
 - `normalizeFinishReason` 取 `:` 后最后一段：若将来某 provider 的 reason 自身含 `:` 且最后一段恰为 `length`/`content_filter` 之类会误判；三家现行协议无此形状，单测已加负例（`completed`/`end_turn`/null 不命中）。
+
+---
+
+## 十三、P1 真机验收记录（2026-11-01，设备 `6c841f95` / Pix110 / debug 包）
+
+### 13.1 结果
+
+| 路径 | 提供方 | 结果 | 证据 |
+| --- | --- | --- | --- |
+| ChatGPT 订阅（Codex，Responses 流式） | 本机 codex 账号（plus） | ✅ | 两次：阶段 2 完成后 + legacy 清理重打包后；回复 "1+1=2"，token/tok/s 卡片正常，订阅会话 provider lock 横幅正常，无崩溃 |
+| API Key（ChatCompletions 流式） | 鸭鸭AI平台 · `glm-4.5-air`（真实服务） | ✅ | 回复 `Hello! How can I help you today?`；**思考 0.7 秒**（reasoning part 正常渲染）；↑7.6K/↓61 tokens、74.6 tok/s、0.8s；`智谱AI开放平台 · glm-4.5-air` 角标正确 |
+| Claude 协议（Anthropic Messages 流式） | mock SSE（`adb reverse` → 宿主机，`POST /claude/v1/messages`） | ✅ | 回复 `Hello from mock Claude (streaming OK)`；↑12/↓9 tokens；服务端日志 200；`MOCK Claude · MOCK-Claude` 角标正确 |
+| Google 协议（Gemini `:streamGenerateContent?alt=sse`） | mock SSE（`adb reverse` → 宿主机） | ✅ | 回复 `Hello from mock Gemini (streaming OK)`；↑11/↓8 tokens；`finishReason: STOP` 收尾正常；服务端日志 200；`MOCK Gemini · MOCK-Gemini` 角标正确 |
+
+Claude / Google 两条走的是**同一份 APK 的真实代码路径**（`ClaudeStreamDecoder` / `GoogleStreamDecoder` → `StreamChunkHandler` → UI 渲染 + usage + Finish 语义），仅服务端换成本地 mock SSE；验证方式：临时向 DataStore Preferences（protobuf）注入两个 MOCK 提供商（原 `settings.preferences_pb` 已备份），验证后完整还原（设备当前 settings 中 `MOCK Claude`/`MOCK Gemini`/`claude-mock` 计数均为 0），`adb reverse` 规则已移除、mock 服务已停。
+
+### 13.2 真机未覆盖项（由单测兜底，后续有真实 key 时补验）
+
+- **工具调用 / `ToolCallOutput`**：Claude、Google 真机未构造工具回合（ChatCompletions 与 Responses 的 `function_call_output` 由 `ResponseAPIFunctionCallOutputTest`、`ResponseAPIStreamToolCallIdTest` 覆盖）。
+- **Claude / Google 推理流**：mock 未造 thinking / thought parts 事件（`ClaudeStreamDecoder`、`GoogleStreamDecoder` 单测覆盖）。
+- **裸断流（bare-EOF）**：mock 只发正常终止事件；裸断流语义由 `StreamFinishSemanticsTest` / `GoogleStreamDecoderTest` / `ResponseAPIStreamFinishTest` 覆盖。
+- **真实 Anthropic / Gemini 服务的字段差异**：真实 `stop_reason` 取值分布、真实 `usageMetadata`（含 `thoughtsTokenCount`）、真实 server tool 事件形状——待有 key 或 P4 账号 provider 落地后补。
+- 多 key 轮询、代理、per-provider 重试等本仓特性在 Claude/Google 真机路径上未单独复验（ChatCompletions 路径已有真实服务覆盖）。
+
