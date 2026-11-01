@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.di
 
 import kotlinx.serialization.json.Json
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.image.ImageGenerationRunner
 import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
@@ -41,6 +42,11 @@ val appModule = module {
 
     single {
         AppScope()
+    }
+
+    // 账号型提供商（ChatGPT/Grok）的登录、token 刷新与凭据持久化（P3 账号层）
+    single {
+        ProviderAccountManager(settingsStore = get(), appScope = get(), client = get())
     }
 
     // 插件状态:独立 DataStore(单 key JSON),与主设置解耦
