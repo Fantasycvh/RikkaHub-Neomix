@@ -1,13 +1,17 @@
 package app.androidrik.ai.util
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import app.androidrik.ai.provider.CustomBody
 import app.androidrik.ai.provider.CustomHeader
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.common.http.await
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.ResponseBody
 import okhttp3.internal.http.RealResponseBody
@@ -66,6 +70,21 @@ fun Request.Builder.configureReferHeaders(url: String): Request.Builder {
         }
 
         else -> this
+    }
+}
+
+/**
+ * 执行请求并读出响应体；不是 2xx 时报错，带上路径、状态码和响应体（不带 query，里面可能有 key）。
+ *
+ * 移植自上游 #2186 `ai/util/Request.kt`：账号类提供商的模型目录/额度查询共用。
+ */
+internal suspend fun OkHttpClient.fetchBody(request: Request): String = withContext(Dispatchers.IO) {
+    newCall(request).await().use { response ->
+        val body = response.body.string()
+        if (!response.isSuccessful) {
+            error("Request to ${request.url.encodedPath} failed: ${response.code} $body")
+        }
+        body
     }
 }
 

@@ -83,6 +83,15 @@ data class TextGenerationParams(
     val reasoningLevel: ReasoningLevel = ReasoningLevel.OFF,
     val customHeaders: List<CustomHeader> = emptyList(),
     val customBody: List<CustomBody> = emptyList(),
+    /**
+     * 会话 ID（上游 #2186）：作为 Responses 的 `prompt_cache_key`、以及部分网关的会话头，
+     * 同一会话的请求能命中服务端提示缓存。
+     *
+     * ⚠️ 与上游的偏离：上游默认值是 `Uuid.random().toString()`，本仓默认 **null**——
+     * 本仓的 `prompt_cache_key` 在 Codex 订阅态下由 `codexPromptCacheKey`（provider+model 稳定键）
+     * 兜底，随机默认值会破坏这段既有行为与既有单测；app 层尚未接入会话 ID，等接入后显式传入。
+     */
+    val sessionId: String? = null,
 )
 
 @Serializable

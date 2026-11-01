@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -141,6 +142,16 @@ class QuotaQueryRunnerTest {
         assertTrue(error is IllegalStateException)
         assertTrue(error!!.message!!.contains("401"))
         assertTrue(error.message!!.contains("bad key"))
+    }
+
+    @Test
+    fun `supportsQuota follows the query switch and the account sign in`() {
+        assertFalse(ProviderSetting.OpenAI().supportsQuota)
+        assertTrue(ProviderSetting.OpenAI(quotaQuery = QuotaQuery(enabled = true)).supportsQuota)
+        assertFalse(ProviderSetting.ChatGPT().supportsQuota)
+        assertTrue(ProviderSetting.ChatGPT(credential = OAuthCredential(accessToken = "a")).supportsQuota)
+        assertFalse(ProviderSetting.Grok().supportsQuota)
+        assertTrue(ProviderSetting.Grok(credential = OAuthCredential(accessToken = "a")).supportsQuota)
     }
 
     @Test

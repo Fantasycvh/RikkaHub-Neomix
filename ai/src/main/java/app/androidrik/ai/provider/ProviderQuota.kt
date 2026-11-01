@@ -78,6 +78,18 @@ data class QuotaSource(
     val resultPath: String,
 )
 
+/**
+ * 该提供商是否有额度可查，界面据此决定要不要显示（对齐上游 #2186）。
+ *
+ * - API Key 类：用户开了自定义查询才有；
+ * - 账号类：登录后就有（查询地址写死在各自 Provider 里）。
+ */
+val ProviderSetting.supportsQuota: Boolean
+    get() = when (this) {
+        is ProviderSetting.ApiKey -> quotaQuery.enabled
+        is ProviderSetting.Account -> credential != null
+    }
+
 private val TEMPLATE_VARIABLE = Regex("""\{\{\s*(\w+)\s*\}\}""")
 
 /**
