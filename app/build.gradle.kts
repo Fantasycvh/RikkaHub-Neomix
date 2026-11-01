@@ -315,6 +315,7 @@ dependencies {
     implementation(project(":workspace"))
     implementation(project(":terminal"))
     implementation(project(":mediagen"))
+    implementation(project(":oauth"))
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
     implementation(kotlin("reflect"))
 
