@@ -108,7 +108,9 @@ import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import com.dokar.sonner.rememberToasterState
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.theme.LocalUserBubbleColor
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
+import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
 import app.androidrik.rikkahub.data.export.AttachmentPlan
 import app.androidrik.rikkahub.data.export.ConversationSerializer
 import app.androidrik.rikkahub.data.export.packConversationArchive
@@ -1222,8 +1224,15 @@ private fun ExportedChatMessage(
                                 if (part.text.isNotBlank()) {
                                     ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
                                         if (message.role == MessageRole.USER) {
+                                            // 与屏显同源：用户气泡走角色覆写（LocalUserBubbleColor），缺省 primaryContainer
+                                            val userBubbleColor = LocalUserBubbleColor.current
+                                                ?: MaterialTheme.colorScheme.primaryContainer
                                             Card(
                                                 shape = MaterialTheme.shapes.medium,
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = userBubbleColor,
+                                                    contentColor = adaptiveContentColor(userBubbleColor),
+                                                )
                                             ) {
                                                 MarkdownBlock(
                                                     content = part.text,

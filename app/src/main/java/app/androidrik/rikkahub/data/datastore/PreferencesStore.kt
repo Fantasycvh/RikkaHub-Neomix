@@ -82,6 +82,7 @@ import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.ui.theme.CustomTheme
 import app.androidrik.rikkahub.ui.theme.PresetThemes
+import app.androidrik.rikkahub.ui.theme.ThemeRoleOverrides
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.utils.toMutableStateFlow
 import app.androidrik.search.SearchCommonOptions
@@ -1393,6 +1394,12 @@ data class DisplaySetting(
      * 空串 = 默认别名；切换由 PackageManager.setComponentEnabledSetting 完成，这里只存选择结果。
      */
     val launcherAliasId: String = "",
+    /**
+     * 角色覆写（全局层，对照 BiliPai ThemeRoleOverrides；见 `ui/theme/ThemeRoleOverride.kt`）。
+     * enabled=false（默认）零行为变化；开启后叠加在任意色源之上。存这里而非 Settings 顶层：
+     * 复用 display_setting 单 JSON key 不加键，且天然可进主题外观快照（design-custom-theme.md §4.2）。
+     */
+    val themeRoleOverrides: ThemeRoleOverrides = ThemeRoleOverrides(),
 )
 
 @Serializable

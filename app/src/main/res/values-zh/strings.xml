@@ -2807,5 +2807,31 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_terminal_open_in_browser">在浏览器打开</string>
   <string name="workspace_terminal_path_copied">已复制路径: %1$s</string>
   <string name="chat_drawer_delete_result_ok">已删除 %1$d 项</string>
+  <string name="setting_theme_page_palette_tonal_spot">o</string>
+  <string name="setting_theme_page_palette_monochrome">o</string>
+  <string name="setting_theme_page_palette_neutral">e</string>
+  <string name="setting_theme_page_palette_vibrant">i</string>
+  <string name="setting_theme_page_palette_expressive">x</string>
+  <string name="setting_theme_page_palette_fidelity">i</string>
+  <string name="setting_theme_page_palette_content">o</string>
+  <string name="setting_theme_page_palette_rainbow">a</string>
+  <string name="setting_theme_page_palette_fruit_salad">r</string>
+  <string name="setting_theme_page_contrast_level">o</string>
+  <string name="setting_theme_page_contrast_standard">t</string>
+  <string name="setting_theme_page_contrast_medium">e</string>
+  <string name="setting_theme_page_contrast_high">i</string>
+  <string name="setting_theme_page_role_overrides">d</string>
+  <string name="setting_theme_page_role_overrides_desc">v</string>
+  <string name="setting_theme_page_role_overrides_mode_light">i</string>
+  <string name="setting_theme_page_role_overrides_mode_dark">a</string>
+  <string name="setting_theme_page_role_background">a</string>
+  <string name="setting_theme_page_role_primary_text">r</string>
+  <string name="setting_theme_page_role_secondary_text">e</string>
+  <string name="setting_theme_page_role_control_accent">o</string>
+  <string name="setting_theme_page_role_user_bubble">s</string>
+  <string name="setting_theme_page_role_contrast_warning">o</string>
+  <string name="setting_theme_page_role_clear">l</string>
+  <string name="setting_theme_page_apply_appearance">l</string>
+  <string name="setting_theme_page_apply_appearance_desc">l</string>
 </resources>
 

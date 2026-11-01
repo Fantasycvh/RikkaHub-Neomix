@@ -2793,5 +2793,31 @@
   <string name="workspace_terminal_open_in_browser">在瀏覽器開啟</string>
   <string name="workspace_terminal_path_copied">已複製路徑: %1$s</string>
   <string name="chat_drawer_delete_result_ok">已刪除 %1$d 個項目</string>
+  <string name="setting_theme_page_palette_tonal_spot">n</string>
+  <string name="setting_theme_page_palette_monochrome">n</string>
+  <string name="setting_theme_page_palette_neutral">u</string>
+  <string name="setting_theme_page_palette_vibrant">b</string>
+  <string name="setting_theme_page_palette_expressive">p</string>
+  <string name="setting_theme_page_palette_fidelity">d</string>
+  <string name="setting_theme_page_palette_content">n</string>
+  <string name="setting_theme_page_palette_rainbow">i</string>
+  <string name="setting_theme_page_palette_fruit_salad">u</string>
+  <string name="setting_theme_page_contrast_level">n</string>
+  <string name="setting_theme_page_contrast_standard">a</string>
+  <string name="setting_theme_page_contrast_medium">d</string>
+  <string name="setting_theme_page_contrast_high">g</string>
+  <string name="setting_theme_page_role_overrides">v</string>
+  <string name="setting_theme_page_role_overrides_desc">e</string>
+  <string name="setting_theme_page_role_overrides_mode_light">g</string>
+  <string name="setting_theme_page_role_overrides_mode_dark">r</string>
+  <string name="setting_theme_page_role_background">c</string>
+  <string name="setting_theme_page_role_primary_text">i</string>
+  <string name="setting_theme_page_role_secondary_text">c</string>
+  <string name="setting_theme_page_role_control_accent">n</string>
+  <string name="setting_theme_page_role_user_bubble">e</string>
+  <string name="setting_theme_page_role_contrast_warning">n</string>
+  <string name="setting_theme_page_role_clear">e</string>
+  <string name="setting_theme_page_apply_appearance">s</string>
+  <string name="setting_theme_page_apply_appearance_desc">a</string>
 </resources>
 

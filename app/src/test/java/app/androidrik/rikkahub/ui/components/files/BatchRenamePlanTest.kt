@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.components.files
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -28,8 +29,9 @@ class BatchRenamePlanTest {
     }
 
     @Test fun `unsafe names are rejected`() {
+        // 枚举化重构（66a20deda）后 validateRenameName 返回错误枚举而非抛异常
         for (name in listOf("", " ", ".", "..", "../escape", "a/b", "a\\b", "a\n", "a\u0000", " leading", "trailing ", "中".repeat(86))) {
-            assertThrows("must reject $name", IllegalArgumentException::class.java) { validateRenameName(name) }
+            assertNotNull("must reject $name", validateRenameName(name))
         }
     }
 

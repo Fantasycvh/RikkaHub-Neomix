@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,8 +26,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -35,6 +39,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -74,11 +79,25 @@ import me.rerere.hugeicons.stroke.Tick01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
+import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.pages.setting.components.PresetThemeButtonGroup
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.CustomTheme
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
+import app.androidrik.rikkahub.ui.theme.PresetThemes
+import app.androidrik.rikkahub.ui.theme.THEME_CONTRAST_LEVELS
+import app.androidrik.rikkahub.ui.theme.ThemeAppearanceSnapshot
+import app.androidrik.rikkahub.ui.theme.ThemePaletteStyle
+import app.androidrik.rikkahub.ui.theme.ThemeRoleOverrides
+import app.androidrik.rikkahub.ui.theme.ThemeSnapshot
+import app.androidrik.rikkahub.ui.theme.ThemeModeRoleOverrides
+import app.androidrik.rikkahub.ui.theme.WCAG_AA_CONTRAST
+import app.androidrik.rikkahub.ui.theme.toAppearanceSnapshot
+import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
+import app.androidrik.rikkahub.ui.theme.toHexCode
+import app.androidrik.rikkahub.ui.theme.wcagContrastRatio
+import app.androidrik.rikkahub.ui.theme.withAppearanceSnapshot
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import kotlin.math.roundToInt
@@ -225,9 +244,14 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
                         isSelected = settings.themeId == theme.id,
                         onSelect = {
                             vm.updateSettings(settings.copy(themeId = theme.id))
-                        },
-                        onExport = {
-                            val json = themeJson.encodeToString(theme)
+                        },                        onExport = {
+                            // 快照格式（design-custom-theme.md §4.3）：色板 + 外观子集；导入端双兼容旧裸主题
+                            val json = themeJson.encodeToString(
+                                ThemeSnapshot(
+                                    theme = theme,
+                                    appearance = settings.displaySetting.toAppearanceSnapshot(),
+                                )
+                            )
                             scope.launch {
                                 clipboardManager.setClipEntry(
                                     ClipEntry(ClipData.newPlainText("theme", json))
@@ -244,6 +268,18 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
                         }
                     )
                 }
+            }
+
+            // 角色覆写是全局层（作用于动态取色/预设/自定义任意色源），不受 dynamicColor 开关影响
+            item("roleOverrides") {
+                RoleOverridesSection(
+                    overrides = settings.displaySetting.themeRoleOverrides,
+                    onChange = {
+                        vm.updateSettings(
+                            settings.copy(displaySetting = settings.displaySetting.copy(themeRoleOverrides = it))
+                        )
+                    },
+                )
             }
         }
     }
@@ -272,13 +308,21 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
     if (showImportDialog) {
         ImportThemeDialog(
             onDismiss = { showImportDialog = false },
-            onImport = { theme ->
+            onImport = { theme, appearance ->
                 val importedTheme = theme.copy(id = Uuid.random().toString())
                 vm.updateSettings(
-                    settings.copy(
-                        customThemes = settings.customThemes + importedTheme,
-                        themeId = importedTheme.id
-                    )
+                    if (appearance != null) {
+                        settings.copy(
+                            customThemes = settings.customThemes + importedTheme,
+                            themeId = importedTheme.id,
+                            displaySetting = settings.displaySetting.withAppearanceSnapshot(appearance),
+                        )
+                    } else {
+                        settings.copy(
+                            customThemes = settings.customThemes + importedTheme,
+                            themeId = importedTheme.id
+                        )
+                    }
                 )
                 showImportDialog = false
                 toaster.show(importSuccessMsg, type = ToastType.Success)
@@ -294,7 +338,8 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
         onConfirm = {
             deletingTheme?.let { theme ->
                 val newThemes = settings.customThemes.filter { it.id != theme.id }
-                val newThemeId = if (settings.themeId == theme.id) "sakura" else settings.themeId
+                // 默认主题跟随预设列表首项（与 PreferencesStore 的默认口径一致，勿写死 id）
+                val newThemeId = if (settings.themeId == theme.id) PresetThemes[0].id else settings.themeId
                 vm.updateSettings(settings.copy(customThemes = newThemes, themeId = newThemeId))
             }
             deletingTheme = null
@@ -464,6 +509,34 @@ private fun CustomThemeEditSheet(
                     }
                 )
 
+                Text(
+                    text = stringResource(R.string.setting_theme_page_palette_style),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ThemePaletteStyle.entries.forEach { style ->
+                        FilterChip(
+                            selected = (currentTheme.paletteStyle ?: ThemePaletteStyle.TONAL_SPOT) == style,
+                            onClick = { currentTheme = currentTheme.copy(paletteStyle = style) },
+                            label = { Text(paletteStyleLabel(style)) },
+                        )
+                    }
+                }
+
+                Text(
+                    text = stringResource(R.string.setting_theme_page_contrast_level),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                SegmentedPill(
+                    options = THEME_CONTRAST_LEVELS.toList(),
+                    selectedOption = CustomTheme.normalizeContrastLevel(currentTheme.contrastLevel),
+                    onOptionSelected = { currentTheme = currentTheme.copy(contrastLevel = it) },
+                    optionToString = { contrastLevelLabel(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
                 ThemePreview(currentTheme)
             }
 
@@ -492,10 +565,13 @@ private fun CustomThemeEditSheet(
 @Composable
 private fun ImportThemeDialog(
     onDismiss: () -> Unit,
-    onImport: (CustomTheme) -> Unit,
+    onImport: (CustomTheme, ThemeAppearanceSnapshot?) -> Unit,
 ) {
     var jsonText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    // 快照携带外观子集时显示「同时应用外观」勾选（默认不勾：主题色共享是常态，外观子集是侵入性操作）
+    var hasAppearance by remember { mutableStateOf(false) }
+    var applyAppearance by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -507,6 +583,12 @@ private fun ImportThemeDialog(
                     onValueChange = {
                         jsonText = it
                         errorMessage = null
+                        // 双格式探测：快照（theme + appearance）优先，旧裸 CustomTheme 兼容
+                        val snapshot = runCatching {
+                            themeJson.decodeFromString<ThemeSnapshot>(it)
+                        }.getOrNull()
+                        hasAppearance = snapshot?.appearance != null
+                        if (!hasAppearance) applyAppearance = false
                     },
                     label = { Text("JSON") },
                     modifier = Modifier.fillMaxWidth(),
@@ -515,14 +597,32 @@ private fun ImportThemeDialog(
                     isError = errorMessage != null,
                     supportingText = errorMessage?.let { msg -> { Text(msg) } },
                 )
+                if (hasAppearance) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = applyAppearance,
+                            onCheckedChange = { applyAppearance = it }
+                        )
+                        Text(stringResource(R.string.setting_theme_page_apply_appearance))
+                    }
+                    Text(
+                        text = stringResource(R.string.setting_theme_page_apply_appearance_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     try {
-                        val theme = themeJson.decodeFromString<CustomTheme>(jsonText)
-                        onImport(theme)
+                        val snapshot = runCatching {
+                            themeJson.decodeFromString<ThemeSnapshot>(jsonText)
+                        }.getOrNull()
+                        val theme = snapshot?.theme
+                            ?: themeJson.decodeFromString<CustomTheme>(jsonText)
+                        onImport(theme, snapshot?.appearance?.takeIf { applyAppearance })
                     } catch (e: Exception) {
                         errorMessage = e.message
                     }
@@ -541,6 +641,204 @@ private fun ImportThemeDialog(
 }
 
 @Composable
+private fun paletteStyleLabel(style: ThemePaletteStyle): String = stringResource(
+    when (style) {
+        ThemePaletteStyle.TONAL_SPOT -> R.string.setting_theme_page_palette_tonal_spot
+        ThemePaletteStyle.MONOCHROME -> R.string.setting_theme_page_palette_monochrome
+        ThemePaletteStyle.NEUTRAL -> R.string.setting_theme_page_palette_neutral
+        ThemePaletteStyle.VIBRANT -> R.string.setting_theme_page_palette_vibrant
+        ThemePaletteStyle.EXPRESSIVE -> R.string.setting_theme_page_palette_expressive
+        ThemePaletteStyle.FIDELITY -> R.string.setting_theme_page_palette_fidelity
+        ThemePaletteStyle.CONTENT -> R.string.setting_theme_page_palette_content
+        ThemePaletteStyle.RAINBOW -> R.string.setting_theme_page_palette_rainbow
+        ThemePaletteStyle.FRUIT_SALAD -> R.string.setting_theme_page_palette_fruit_salad
+    }
+)
+
+@Composable
+private fun contrastLevelLabel(level: Double): String = stringResource(
+    when {
+        level <= 0.0 -> R.string.setting_theme_page_contrast_standard
+        level < 1.0 -> R.string.setting_theme_page_contrast_medium
+        else -> R.string.setting_theme_page_contrast_high
+    }
+)
+
+/**
+ * 高级角色覆写区块（BiliPai ThemeRoleOverrides 语义）：全局层，作用于任意色源。
+ * 浅/深色各五个槽位，null = 跟随主题；文字槽与背景算 WCAG 对比度，<4.5 警告不阻断。
+ */
+@Composable
+private fun RoleOverridesSection(
+    overrides: ThemeRoleOverrides,
+    onChange: (ThemeRoleOverrides) -> Unit,
+) {
+    // 页签默认落在当前明暗模式，方便对照实际效果（current 须在 remember 外读，lambda 非 Composable）
+    val initialDarkTab = LocalDarkMode.current
+    var darkTab by remember { mutableStateOf(initialDarkTab) }
+
+    Column(
+        modifier = Modifier.padding(horizontal = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.setting_theme_page_role_overrides),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.surfaceBright)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.setting_theme_page_role_overrides_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = overrides.enabled,
+                    onCheckedChange = { onChange(overrides.copy(enabled = it)) },
+                )
+            }
+            if (overrides.enabled) {
+                SegmentedPill(
+                    options = listOf(false, true),
+                    selectedOption = darkTab,
+                    onOptionSelected = { darkTab = it },
+                    optionToString = {
+                        if (it) stringResource(R.string.setting_theme_page_role_overrides_mode_dark)
+                        else stringResource(R.string.setting_theme_page_role_overrides_mode_light)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                RoleOverrideModeEditor(
+                    mode = if (darkTab) overrides.dark else overrides.light,
+                    onChange = { newMode ->
+                        onChange(if (darkTab) overrides.copy(dark = newMode) else overrides.copy(light = newMode))
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoleOverrideModeEditor(
+    mode: ThemeModeRoleOverrides,
+    onChange: (ThemeModeRoleOverrides) -> Unit,
+) {
+    // 对比度预警的兜底色取当前色板对应角色；若编辑的是非当前明暗页签，兜底色来自另一
+    // 模式——仅影响预警精度（两 hex 均显式设置时结果精确），不影响覆写本身。
+    val scheme = MaterialTheme.colorScheme
+    val effectiveBackground = mode.backgroundHex.toComposeColorOrNull() ?: scheme.background
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        RoleSlotRow(
+            label = stringResource(R.string.setting_theme_page_role_background),
+            value = mode.backgroundHex,
+            fallbackColor = scheme.background,
+            onValueChange = { onChange(mode.copy(backgroundHex = it)) },
+        )
+        RoleSlotRow(
+            label = stringResource(R.string.setting_theme_page_role_primary_text),
+            value = mode.primaryTextHex,
+            fallbackColor = scheme.onBackground,
+            onValueChange = { onChange(mode.copy(primaryTextHex = it)) },
+        )
+        ContrastHint(
+            foreground = mode.primaryTextHex.toComposeColorOrNull() ?: scheme.onBackground,
+            background = effectiveBackground,
+        )
+        RoleSlotRow(
+            label = stringResource(R.string.setting_theme_page_role_secondary_text),
+            value = mode.secondaryTextHex,
+            fallbackColor = scheme.onSurfaceVariant,
+            onValueChange = { onChange(mode.copy(secondaryTextHex = it)) },
+        )
+        ContrastHint(
+            foreground = mode.secondaryTextHex.toComposeColorOrNull() ?: scheme.onSurfaceVariant,
+            background = effectiveBackground,
+        )
+        RoleSlotRow(
+            label = stringResource(R.string.setting_theme_page_role_control_accent),
+            value = mode.controlAccentHex,
+            fallbackColor = scheme.primary,
+            onValueChange = { onChange(mode.copy(controlAccentHex = it)) },
+        )
+        RoleSlotRow(
+            label = stringResource(R.string.setting_theme_page_role_user_bubble),
+            value = mode.userBubbleHex,
+            fallbackColor = scheme.primaryContainer,
+            onValueChange = { onChange(mode.copy(userBubbleHex = it)) },
+        )
+    }
+}
+
+@Composable
+private fun ContrastHint(foreground: Color, background: Color) {
+    val ratio = wcagContrastRatio(foreground, background)
+    if (ratio < WCAG_AA_CONTRAST) {
+        Text(
+            text = stringResource(R.string.setting_theme_page_role_contrast_warning, ratio),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun RoleSlotRow(
+    label: String,
+    value: String?,
+    fallbackColor: Color,
+    onValueChange: (String?) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Canvas(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+        ) {
+            drawCircle(color = value.toComposeColorOrNull() ?: fallbackColor)
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedTextField(
+            value = value ?: "",
+            onValueChange = { onValueChange(it.takeIf { s -> s.isNotBlank() }) },
+            modifier = Modifier.weight(1.4f),
+            singleLine = true,
+            placeholder = { Text("#RRGGBB") },
+            isError = value != null && value.toComposeColorOrNull() == null,
+            textStyle = MaterialTheme.typography.bodyMedium,
+        )
+        if (value != null) {
+            TextButton(onClick = { onValueChange(null) }) {
+                Text(stringResource(R.string.setting_theme_page_role_clear))
+            }
+        }
+    }
+}
+
+@Composable
 internal fun ColorPickerRow(
     color: Color,
     onColorChange: (Color) -> Unit,
@@ -553,6 +851,8 @@ internal fun ColorPickerRow(
     var lightness by remember(color) { mutableFloatStateOf(hsl[2]) }
     var hslCode by remember(color) { mutableStateOf(formatHslCode(hsl[0], hsl[1], hsl[2])) }
     var hslCodeError by remember(color) { mutableStateOf(false) }
+    var hexCode by remember(color) { mutableStateOf(color.toHexCode()) }
+    var hexCodeError by remember(color) { mutableStateOf(false) }
 
     fun updateColor(newHue: Float, newSaturation: Float, newLightness: Float) {
         hue = newHue
@@ -614,30 +914,59 @@ internal fun ColorPickerRow(
             }
         }
 
-        OutlinedTextField(
-            value = hslCode,
-            onValueChange = { value ->
-                hslCode = value
-                val parsedHsl = parseHslCode(value)
-                hslCodeError = parsedHsl == null
-                if (parsedHsl != null) {
-                    hue = parsedHsl[0]
-                    saturation = parsedHsl[1]
-                    lightness = parsedHsl[2]
-                    onColorChange(Color(ColorUtils.HSLToColor(parsedHsl)))
-                }
-            },
-            label = { Text("HSL") },
-            placeholder = { Text("hsl(267 36% 48%)") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            isError = hslCodeError,
-            supportingText = if (hslCodeError) {
-                { Text("Use hsl(267 36% 48%)") }
-            } else {
-                null
-            },
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = hslCode,
+                onValueChange = { value ->
+                    hslCode = value
+                    val parsedHsl = parseHslCode(value)
+                    hslCodeError = parsedHsl == null
+                    if (parsedHsl != null) {
+                        hue = parsedHsl[0]
+                        saturation = parsedHsl[1]
+                        lightness = parsedHsl[2]
+                        onColorChange(Color(ColorUtils.HSLToColor(parsedHsl)))
+                    }
+                },
+                label = { Text("HSL") },
+                placeholder = { Text("hsl(267 36% 48%)") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                isError = hslCodeError,
+                supportingText = if (hslCodeError) {
+                    { Text("Use hsl(267 36% 48%)") }
+                } else {
+                    null
+                },
+            )
+            OutlinedTextField(
+                value = hexCode,
+                onValueChange = { value ->
+                    hexCode = value
+                    val parsedHex = value.toComposeColorOrNull()
+                    hexCodeError = parsedHex == null
+                    if (parsedHex != null) {
+                        val parsedHsl = FloatArray(3).also { ColorUtils.colorToHSL(parsedHex.toArgb(), it) }
+                        hue = parsedHsl[0]
+                        saturation = parsedHsl[1]
+                        lightness = parsedHsl[2]
+                        onColorChange(parsedHex)
+                    }
+                },
+                label = { Text("HEX") },
+                placeholder = { Text("#6750A4") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                isError = hexCodeError,
+                supportingText = if (hexCodeError) {
+                    { Text("Use #RRGGBB") }
+                } else {
+                    null
+                },
+            )
+        }
     }
 }
 

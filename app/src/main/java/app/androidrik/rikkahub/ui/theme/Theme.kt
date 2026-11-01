@@ -32,6 +32,12 @@ val LocalExtendColors = compositionLocalOf { ExtendLightColors }
 
 val LocalDarkMode = compositionLocalOf { false }
 
+/**
+ * 用户气泡覆写色（角色覆写的 fork 特有槽位，见 `ThemeRoleOverride.kt`）。
+ * null = 跟随主题（`primaryContainer`）；覆写是全局层，预设主题/动态取色下同样生效。
+ */
+val LocalUserBubbleColor = compositionLocalOf<Color?> { null }
+
 private val AMOLED_DARK_BACKGROUND = Color(0xFF000000)
 
 @Serializable
@@ -76,14 +82,31 @@ fun RikkahubTheme(
             theme.getColorScheme(dark = darkTheme)
         }
     }
-    val colorSchemeConverted = remember(darkTheme, amoledDarkMode, colorScheme) {
+    // 角色覆写（全局层）：作用于任意色源分支（动态取色/预设/自定义）之后、AMOLED 纯黑之前。
+    // AMOLED 覆盖 background/surface 的优先级高于覆写背景（维持既有行为）。
+    val roleOverrides = settings.displaySetting.themeRoleOverrides
+    val colorSchemeOverridden = if (roleOverrides.enabled) {
+        remember(colorScheme, roleOverrides, darkTheme) {
+            colorScheme.withRoleOverrides(roleOverrides.forMode(darkTheme), darkTheme)
+        }
+    } else {
+        colorScheme
+    }
+    val userBubbleColor = if (roleOverrides.enabled) {
+        remember(roleOverrides, darkTheme) {
+            roleOverrides.forMode(darkTheme).userBubbleHex.toComposeColorOrNull()
+        }
+    } else {
+        null
+    }
+    val colorSchemeConverted = remember(darkTheme, amoledDarkMode, colorSchemeOverridden) {
         if (darkTheme && amoledDarkMode) {
-            colorScheme.copy(
+            colorSchemeOverridden.copy(
                 background = AMOLED_DARK_BACKGROUND,
                 surface = AMOLED_DARK_BACKGROUND,
             )
         } else {
-            colorScheme
+            colorSchemeOverridden
         }
     }
     val extendColors = if (darkTheme) ExtendDarkColors else ExtendLightColors
@@ -137,6 +160,7 @@ fun RikkahubTheme(
     CompositionLocalProvider(
         LocalDarkMode provides darkTheme,
         LocalExtendColors provides extendColorsAdjusted,
+        LocalUserBubbleColor provides userBubbleColor,
         LocalOverscrollFactory provides null
     ) {
         MaterialExpressiveTheme(

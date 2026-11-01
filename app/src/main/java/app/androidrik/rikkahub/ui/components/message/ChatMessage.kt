@@ -99,6 +99,8 @@ import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.theme.LocalChatFontFamily
+import app.androidrik.rikkahub.ui.theme.LocalUserBubbleColor
+import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
 import app.androidrik.rikkahub.ui.theme.rememberChatFontFamily
 import app.androidrik.rikkahub.ui.theme.extendColors
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -506,14 +508,19 @@ private fun MessagePartsBlock(
                 when (val part = block.part) {
                     is UIMessagePart.Text -> {
                         val truncatedNotice = stringResource(R.string.chat_message_truncated_notice, MAX_RENDER_TEXT_LENGTH)
-                        val textContent = @Composable {
-                            if (role == MessageRole.USER) {
-                                Surface(
-                                    modifier = Modifier.animateContentSize(),
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = settings.displaySetting.bubbleOpacity),
-                                    onClick = { onUserMessageClick?.invoke() },
-                                ) {
+                            val textContent = @Composable {
+                                if (role == MessageRole.USER) {
+                                    // 用户气泡：角色覆写（LocalUserBubbleColor）优先，null = 跟随主题；
+                                    // 任意拾取色时 contentColorFor 命中不了，按 HCT tone 自适应内容色。
+                                    val userBubbleColor = LocalUserBubbleColor.current
+                                        ?: MaterialTheme.colorScheme.primaryContainer
+                                    Surface(
+                                        modifier = Modifier.animateContentSize(),
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = userBubbleColor.copy(alpha = settings.displaySetting.bubbleOpacity),
+                                        contentColor = adaptiveContentColor(userBubbleColor),
+                                        onClick = { onUserMessageClick?.invoke() },
+                                    ) {
                                     Column(modifier = Modifier.padding(8.dp)) {
                                         MarkdownBlock(
                                             content = part.text.renderSafe(truncatedNotice).replaceRegexes(
