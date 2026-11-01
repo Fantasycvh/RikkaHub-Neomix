@@ -708,3 +708,23 @@ P4 的两条登录路径都在真机走通（§17.1）后，旧 OpenAI 设备码
    - 若新 refresh token 已落盘（DataStore 原子写）⇒ 正常继续对话；
    - 若只完成了服务端轮换、本地还没写回 ⇒ 本地 refresh token 已失效 ⇒ 请求 `invalid_grant` ⇒ 设置页显示需重新登录，**不崩溃**、不把错误凭据继续用。
 3. 检查 `data_version` 与 provider 的 `credential` 仍在（写回失败不应破坏原有数据）。
+
+### 17.8 上游 OAuth 账号 provider 备份导入兼容性（已验证）
+
+**结论：上游 RikkaHub 的备份可以直接导入本仓，其中的 `chatgpt` / `grok` 账号 provider 会正常落成账号类 provider**（新增 `UpstreamOAuthBackupImportTest` 4 例钉住，走的是恢复链路真实入口 `SettingsJsonMigrator.migrate` → `SettingsCompatDecoder.decode`）。
+
+兼容依据：
+
+| 项 | 情况 |
+| --- | --- |
+| 多态类型名 | 双方都是 `@SerialName("chatgpt")` / `("grok")`，`SettingsJsonMigrator` 还会把 `me.rerere.*` 根前缀改写成 `app.androidrik.*`（覆盖少见的全限定类名形态） |
+| 凭据字段 | `OAuthCredential` 字段名完全一致（`accessToken`/`refreshToken`/`expiresAt`/`accountId`/`email`/`plan`） |
+| 凭据加密 | 上游备份是**明文**；本仓读取时「没有 `v1:` 前缀按明文用」，因此导入后立即可用；之后任意一次刷新/登录/保存（`preserveCredential`）都会写成 `v1:` 密文 |
+| 本仓额外字段 | 账号类在本仓多了 `proxy`/`retryOption`/`reasoningOverride`，上游 JSON 没有 ⇒ 取默认值（`Inherit`/`null`），不影响使用 |
+| 未知字段/类型 | `ignoreUnknownKeys` 忽略字段；未知 provider 类型逐条丢弃并给出恢复警告（P3 起 `chatgpt`/`grok` 不再进丢弃名单） |
+| 旧 `codexAccount` | V7 只认 `type=openai` 的旧订阅形态，上游账号类 provider 不会被误转换 |
+
+**已知限制**：
+
+- 导入后到首次凭据写回之前，token 以明文躺在本仓 DataStore（与上游一致，因为来源就是明文）；若要严格「落盘即加密」，可在恢复完成后统一补一次加密（当前未做，属可选增强）。
+- **反向不兼容**：本仓备份 → 上游恢复时，`v1:` 密文会被上游当成不透明 token 直接发出去（必然 401），且 `data_version = 5` 的账号类数据旧版本也不认识 —— 跨仓迁移只保证「上游 → 本仓」这一方向。
