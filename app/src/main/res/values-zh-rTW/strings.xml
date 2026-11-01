@@ -2907,6 +2907,11 @@
   <string name="setting_provider_page_device_code_hint">請在瀏覽器中確認此驗證碼</string>
   <string name="setting_provider_page_device_code_reopen">輕觸重新開啟頁面</string>
   <string name="setting_provider_page_usage">用量</string>
+  <string name="setting_provider_page_usage_used">已用</string>
+  <string name="setting_provider_page_usage_remaining">剩餘</string>
+  <string name="setting_page_usage_display_settings">用量顯示</string>
+  <string name="setting_display_page_usage_mode_title">百分比口徑</string>
+  <string name="setting_display_page_usage_mode_desc">訂閱額度以「已用量」還是「剩餘量」顯示。</string>
   <string name="setting_provider_page_usage_loading">正在載入用量</string>
   <string name="setting_provider_page_usage_failed">無法載入用量</string>
   <string name="setting_provider_page_usage_none">無用量上限</string>

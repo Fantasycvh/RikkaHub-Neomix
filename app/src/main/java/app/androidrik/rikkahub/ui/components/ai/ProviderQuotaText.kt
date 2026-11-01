@@ -23,6 +23,8 @@ import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.UsageWindow
 import app.androidrik.ai.provider.supportsQuota
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.datastore.UsageDisplayMode
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.utils.SimpleCache
 import app.androidrik.rikkahub.utils.toDp
 import me.rerere.hugeicons.HugeIcons
@@ -85,6 +87,8 @@ fun ProviderQuotaText(
 ) {
     if (!providerSetting.supportsQuota) return
 
+    val mode = LocalSettings.current.usageDisplayMode
+    val modeLabel = mode.label()
     val result = rememberProviderQuota(providerSetting)
     val quota = result?.getOrNull()
     val text = when {
@@ -93,7 +97,7 @@ fun ProviderQuotaText(
         else -> when (quota) {
             is ProviderQuota.Balance -> quota.value
             is ProviderQuota.UsageLimits -> quota.windows.joinToString(" · ") { window ->
-                "${window.shortLabel()} ${window.usedPercent.roundToInt()}%".trim()
+                "${window.shortLabel()} $modeLabel ${window.displayPercent(mode)}%".trim()
             }
         }
     }
@@ -121,6 +125,26 @@ fun ProviderQuotaText(
         )
     }
 }
+
+/**
+ * 按展示口径换算窗口百分比：已用 = 后端原值；剩余 = 100 - 已用。
+ *
+ * 后端 `used_percent` 会随用量增长（实测连续请求后 0% → 1%、2% → 3%），
+ * 因此 [UsageDisplayMode.USED] 是默认口径，[UsageDisplayMode.REMAINING] 只补个 100-。
+ */
+internal fun UsageWindow.displayPercent(mode: UsageDisplayMode): Int = when (mode) {
+    UsageDisplayMode.USED -> usedPercent
+    UsageDisplayMode.REMAINING -> 100.0 - usedPercent
+}.roundToInt().coerceIn(0, 100)
+
+/** 「已用」/「剩余」文案，用于百分比前缀。 */
+@Composable
+internal fun UsageDisplayMode.label(): String = stringResource(
+    when (this) {
+        UsageDisplayMode.USED -> R.string.setting_provider_page_usage_used
+        UsageDisplayMode.REMAINING -> R.string.setting_provider_page_usage_remaining
+    }
+)
 
 private enum class WindowUnit(val minutes: Int, val suffix: String) {
     WEEK(7 * 24 * 60, "w"),

@@ -54,6 +54,7 @@ import me.rerere.hugeicons.stroke.FileImport
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.ChatFontFamily
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
+import app.androidrik.rikkahub.data.datastore.UsageDisplayMode
 import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.files.FileUtils
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -689,6 +690,40 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                     updateDisplaySetting(displaySetting.copy(showLineNumbers = it))
                                 }
                             )
+                        },
+                    )
+                }
+            }
+
+            item {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.setting_page_usage_display_settings)) },
+                ) {
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_usage_mode_title)) },
+                        supportingContent = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(stringResource(R.string.setting_display_page_usage_mode_desc))
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    UsageDisplayMode.entries.forEach { mode ->
+                                        FilterChip(
+                                            selected = settings.usageDisplayMode == mode,
+                                            onClick = {
+                                                vm.updateSettings(settings.copy(usageDisplayMode = mode))
+                                            },
+                                            label = {
+                                                Text(
+                                                    when (mode) {
+                                                        UsageDisplayMode.USED -> stringResource(R.string.setting_provider_page_usage_used)
+                                                        UsageDisplayMode.REMAINING -> stringResource(R.string.setting_provider_page_usage_remaining)
+                                                    }
+                                                )
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                         },
                     )
                 }

@@ -2920,6 +2920,11 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_provider_page_device_code_hint">Confirm this code in the browser</string>
   <string name="setting_provider_page_device_code_reopen">Tap to open the page again</string>
   <string name="setting_provider_page_usage">Usage</string>
+  <string name="setting_provider_page_usage_used">Used</string>
+  <string name="setting_provider_page_usage_remaining">Remaining</string>
+  <string name="setting_page_usage_display_settings">Usage Display</string>
+  <string name="setting_display_page_usage_mode_title">Percentage basis</string>
+  <string name="setting_display_page_usage_mode_desc">Show subscription usage as the used percentage or the remaining percentage.</string>
   <string name="setting_provider_page_usage_loading">Loading usage</string>
   <string name="setting_provider_page_usage_failed">Failed to load usage</string>
   <string name="setting_provider_page_usage_none">No usage limits</string>

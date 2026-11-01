@@ -2921,6 +2921,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_device_code_hint">请在浏览器中确认此验证码</string>
   <string name="setting_provider_page_device_code_reopen">点击重新打开页面</string>
   <string name="setting_provider_page_usage">用量</string>
+  <string name="setting_provider_page_usage_used">已用</string>
+  <string name="setting_provider_page_usage_remaining">剩余</string>
+  <string name="setting_page_usage_display_settings">用量显示</string>
+  <string name="setting_display_page_usage_mode_title">百分比口径</string>
+  <string name="setting_display_page_usage_mode_desc">订阅额度按「已用量」还是「剩余量」显示。</string>
   <string name="setting_provider_page_usage_loading">正在加载用量</string>
   <string name="setting_provider_page_usage_failed">加载用量失败</string>
   <string name="setting_provider_page_usage_none">无用量限额</string>

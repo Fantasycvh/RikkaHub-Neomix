@@ -84,8 +84,11 @@ import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import androidx.compose.ui.platform.LocalResources
+import app.androidrik.rikkahub.ui.components.ai.displayPercent
+import app.androidrik.rikkahub.ui.components.ai.label
 import app.androidrik.rikkahub.ui.components.ai.longLabel
 import app.androidrik.rikkahub.ui.components.ai.rememberProviderQuota
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.CardGroupIcon
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
@@ -1042,6 +1045,8 @@ private fun ProviderConfigureAccount(
  */
 @Composable
 private fun AccountUsage(provider: ProviderSetting.Account) {
+    val mode = LocalSettings.current.usageDisplayMode
+    val modeLabel = mode.label()
     val result = rememberProviderQuota(provider)
     val limits = result?.getOrNull() as? ProviderQuota.UsageLimits
     CardGroup(title = { Text(stringResource(R.string.setting_provider_page_usage)) }) {
@@ -1069,6 +1074,7 @@ private fun AccountUsage(provider: ProviderSetting.Account) {
 
             else -> limits.windows.forEach { window ->
                 val reached = limits.limitReached || window.usedPercent >= 100
+                val displayPercent = window.displayPercent(mode)
                 formItem(
                     headlineContent = { Text(window.longLabel()) },
                     supportingContent = window.resetsAt?.let { resetsAt ->
@@ -1082,14 +1088,14 @@ private fun AccountUsage(provider: ProviderSetting.Account) {
                     },
                     trailingContent = {
                         Text(
-                            text = "${window.usedPercent.roundToInt()}%",
+                            text = "$modeLabel $displayPercent%",
                             style = MaterialTheme.typography.titleMediumEmphasized,
                             color = if (reached) MaterialTheme.colorScheme.error else Color.Unspecified,
                         )
                     },
                 ) {
                     LinearWavyProgressIndicator(
-                        progress = { (window.usedPercent / 100).toFloat().coerceIn(0f, 1f) },
+                        progress = { (displayPercent / 100f).coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth(),
                         color = if (reached) {
                             MaterialTheme.colorScheme.error
