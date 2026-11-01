@@ -390,7 +390,7 @@ chatgpt.com/backend-api/codex、grok 后端
 ### 12.3 后续步骤
 
 1. **单测**（✅ 已完成）：ai 模块旧测试迁移到解码器 + 移植上游 `StreamChunkHandlerTest`（10 例）/`ResponseApiStreamDecoderTest`（9 例），新增 `GoogleStreamDecoderTest`（3 例）；`:ai:testDebugUnitTest` **421 例全绿、0 skip**。app 侧 5 个 `GenerationHandler` 相关测试迁移到 `StreamChunk` 脚本，`:app:testDebugUnitTest --tests 'app.androidrik.rikkahub.data.ai.*'` 1129 例全绿。
-2. **清理 legacy**：删除 `MessageChunk`/`UIMessageChoice`/`terminalChunk`/`handleMessageChunk`/`ResponseToolCallIdResolver`，`handleTextGenerationResult` 改为直接合并；`trace-cli`/`stream-traces` 语料可选。
+2. **清理 legacy**（✅ 已完成）：删除 `MessageChunk`/`UIMessageChoice`/`terminalChunk()`/`handleMessageChunk()`/`UIMessage.plus(MessageChunk)`；合并语义原样搬进 `UIMessage.mergeDelta(delta: UIMessage)`，`handleTextGenerationResult` 改为直接合并（异角色追加并写模型/提供商快照、同角色 `mergeDelta`）。`ResponseToolCallIdResolver` **保留**（已接入 `ResponseApiStreamDecoder`，不是 dead code）。`trace-cli`/`stream-traces` 语料仍为可选项。
 3. **真机验证**（部分完成）：ChatGPT 订阅(codex) 路径已真机通过（流式回复 + token/tok/s 统计 + provider lock 横幅，`6c841f95` / debug 包）；OpenAI API Key、Claude、Google 三条仍待真机各跑一次「流式对话 + 工具调用 + 推理展示 + 裸断流」，当前由解码器单测覆盖（含裸断流 / `incomplete` / 工具 id 归一 / 服务端工具输出）。
 4. **提交**：P1 独立 PR（接口改造 + 4 provider 接线 + app 消费端 + 单测），PR 说明附本表与语义决策。
 

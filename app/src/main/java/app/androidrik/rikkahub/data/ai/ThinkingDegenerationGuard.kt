@@ -86,7 +86,7 @@ class ThinkingDegenerationGuard(
     }
 
     /**
-     * 流中途喂一个 delta（`UIMessageChoice.delta`）。返回 [Verdict.Repeating] 时，
+     * 流中途喂一个增量（由 `StreamChunk` 事件映射出的 `UIMessage` delta）。返回 [Verdict.Repeating] 时，
      * 调用方应**立刻中止本次流**（保留已生成内容），并按护栏停止本轮。
      *
      * 只看文本与推理增量：工具增量视为「有进展」，会清空调用内计数。

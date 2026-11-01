@@ -64,10 +64,15 @@ data class UIMessage(
     @Transient
     val isSynthetic: Boolean = false,
 ) {
-    private fun appendChunk(chunk: MessageChunk): UIMessage {
-        val choice = chunk.choices.getOrNull(0)
-        val message = choice?.delta ?: choice?.message
-        return message?.let { delta ->
+    /**
+     * 把一条**增量或完整**的 assistant 消息合并进当前消息。
+     *
+     * 这是旧 `UIMessage + MessageChunk` 的类型化等价物（`MessageChunk` 已随上游 #1648 移除）：
+     * Text 追加到最后一段 Text、Tool/ServerTool 按 id `merge`、Image 区分 base64 拼接与完整 URL、
+     * Reasoning 收尾时补 `finishedAt`。流式路径走 [StreamChunkHandler]，这里只服务非流式结果。
+     */
+    internal fun mergeDelta(delta: UIMessage): UIMessage {
+        return delta.let { delta ->
             // Handle Parts
             var newParts = delta.parts.fold(parts) { acc, deltaPart ->
                 when (deltaPart) {
@@ -211,7 +216,7 @@ data class UIMessage(
                 parts = newParts,
                 annotations = newAnnotations,
             )
-        } ?: this
+        }
     }
 
     fun summaryAsText(maxLength: Int = Int.MAX_VALUE): String {
@@ -255,10 +260,6 @@ data class UIMessage(
         it is UIMessagePart.Image && it.url.startsWith("data:")
     }
 
-    operator fun plus(chunk: MessageChunk): UIMessage {
-        return this.appendChunk(chunk)
-    }
-
     companion object {
         fun system(prompt: String) = UIMessage(
             role = MessageRole.SYSTEM,
@@ -278,66 +279,32 @@ data class UIMessage(
 }
 
 /**
- * 处理MessageChunk合并
+ * 处理非流式生成结果（对齐上游 #1648 的 `TextGenerationResult` 消费方式）。
  *
- * @receiver 已有消息列表
- * @param chunk 消息chunk
- * @param model 模型, 可以不传，如果传了，会把模型id写入到消息，标记是哪个模型输出的消息
- * @param providerName 提供商名称快照, 与 model 一同写入新消息, 供 token 统计按名称分组
- * @return 新消息列表
- */
-fun List<UIMessage>.handleMessageChunk(
-    chunk: MessageChunk,
-    model: Model? = null,
-    providerName: String? = null,
-): List<UIMessage> {
-    require(this.isNotEmpty()) {
-        "messages must not be empty"
-    }
-    val choice = chunk.choices.getOrNull(0) ?: return this
-    val message = choice.delta ?: choice.message ?: return this
-    if (this.last().role != message.role) {
-        return this + (
-            UIMessage(
-                modelId = model?.id,
-                modelNameSnapshot = model?.displayName?.takeIf { it.isNotBlank() },
-                providerNameSnapshot = providerName?.takeIf { it.isNotBlank() },
-                role = message.role,
-                parts = emptyList(),
-            ) + chunk
-            )
-    } else {
-        val last = this.last() + chunk
-        return this.dropLast(1) + last
-    }
-}
-
-/**
- * 处理非流式生成结果（移植自上游 #1648 的 `handleTextGenerationResult`）。
- *
- * 复用 [handleMessageChunk] 的全部合并语义（同角色追加、Tool 按 id merge + 时间戳去重、
- * ServerTool 状态更新、Reasoning 收尾），因此非流式与流式两条路径产出的消息形态一致。
+ * 与流式路径 [StreamChunkHandler] 的产物形态保持一致：同角色则合并到上一条 assistant 消息
+ * （复用 [UIMessage.mergeDelta] 的工具/推理/图片合并语义），否则按新消息追加并写入模型/提供商快照。
+ * `finishReason`/`usage` 由调用方（`GenerationHandler`）落库，这里不重复写。
  */
 fun List<UIMessage>.handleTextGenerationResult(
     result: TextGenerationResult,
     model: Model? = null,
     providerName: String? = null,
 ): List<UIMessage> {
-    val chunk = MessageChunk(
-        id = result.id,
-        model = result.model,
-        choices = listOf(
-            UIMessageChoice(
-                index = 0,
-                delta = null,
-                message = result.message,
-                finishReason = result.finishReason,
-            )
-        ),
-        usage = result.usage,
-        explicitEnd = true,
-    )
-    return handleMessageChunk(chunk = chunk, model = model, providerName = providerName)
+    require(this.isNotEmpty()) {
+        "messages must not be empty"
+    }
+    val message = result.message
+    return if (last().role != message.role) {
+        this + UIMessage(
+            modelId = model?.id,
+            modelNameSnapshot = model?.displayName?.takeIf { it.isNotBlank() },
+            providerNameSnapshot = providerName?.takeIf { it.isNotBlank() },
+            role = message.role,
+            parts = emptyList(),
+        ).mergeDelta(message)
+    } else {
+        dropLast(1) + last().mergeDelta(message)
+    }
 }
 
 /**
@@ -798,44 +765,3 @@ private fun normalizeFinishReason(finishReason: String?): String? = finishReason
     ?.trim()
     ?.lowercase()
     ?.takeIf { it.isNotEmpty() }
-
-@Serializable
-data class MessageChunk(
-    val id: String,
-    val model: String,
-    val choices: List<UIMessageChoice>,
-    val usage: TokenUsage? = null,
-    /**
-     * **显式结束**标记：provider 明确告知本轮输出已完结（`[DONE]` / `message_stop` /
-     * `response.completed` / 带 `finishReason` 的末块）。
-     *
-     * 为什么需要：各家 SSE 的「正常结束」与「连接被提前关闭」在**流层面无法区分**——
-     * 两者都只是 `close()`，下游一律当成功收尾。中转站断流（裸 EOF）因此被静默吞掉：
-     * 用户看到戛然而止的回答，既没有提示也无法自动续写（见 [UIMessage.finishIncomplete]）。
-     *
-     * 约定：`explicitEnd = true` 的 chunk 只作标记用，`choices` 为空、`id`/`model` 无意义，
-     * 消费方（[handleMessageChunk]）对空 choices 原样返回、不产生副作用。
-     */
-    val explicitEnd: Boolean = false,
-)
-
-/**
- * 流终止标记：唯一的 `explicitEnd = true` 空 chunk。
- *
- * provider 在**显式结束**处发送它，随后关流；`onClosed`（无显式结束）则不发 ⇒ 消费方
- * 据「流结束了但没见到标记」判定裸断流。见 [MessageChunk.explicitEnd]。
- */
-fun terminalChunk(): MessageChunk = MessageChunk(
-    id = "",
-    model = "",
-    choices = emptyList(),
-    explicitEnd = true,
-)
-
-@Serializable
-data class UIMessageChoice(
-    val index: Int,
-    val delta: UIMessage?,
-    val message: UIMessage?,
-    val finishReason: String?
-)

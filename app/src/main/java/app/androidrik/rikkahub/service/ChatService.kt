@@ -1183,7 +1183,7 @@ class ChatService(
      *
      * 与 [regenerateAtMessage] 的区别（为什么不能复用它）：重生成是「重开一个候选」，会把原内容
      * 丢到候选列表里；续写是「同一条消息往下写」——基线取到那条消息为止（末尾就是它），
-     * 流式新增文本由 `handleMessageChunk` 按同角色追加规则拼进**同一条**消息。
+     * 流式新增文本由 `StreamChunkHandler` 按同角色追加规则拼进**同一条**消息。
      *
      * 提示词按结束状态选（与自动续写同一套判定）：裸断流用 [CONTINUE_INCOMPLETE_HINT]，
      * 撞输出上限用 [CONTINUE_TRUNCATED_HINT]。

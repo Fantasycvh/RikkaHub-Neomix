@@ -1823,7 +1823,7 @@ internal class EmptyGenerationResponseException : java.io.IOException(
 private fun List<UIMessagePart>.hasGenerationContent(): Boolean =
     !isEmptyUIMessage() || any { it is UIMessagePart.Reasoning && it.metadata != null }
 
-/** 该流式事件是否带来**可渲染内容**（用于整步「空响应」判定，对齐旧 MessageChunk 口径）。 */
+/** 该流式事件是否带来**可渲染内容**（用于整步「空响应」判定，口径与 `StreamChunk` 的内容事件一致）。 */
 private fun StreamChunk.hasGenerationContent(): Boolean = when (this) {
     is StreamChunk.TextDelta -> text.isNotBlank()
     is StreamChunk.ReasoningDelta -> text.isNotBlank() || metadata != null
