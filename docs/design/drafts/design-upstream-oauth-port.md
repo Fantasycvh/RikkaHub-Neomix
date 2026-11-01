@@ -336,3 +336,29 @@ chatgpt.com/backend-api/codex、grok 后端
 - 上游提交：`4b9ff1a99`（#1648 ai 重构）、`b6df5f044`（oauth 抽包）、`318cffef6`（#2186 订阅登录）、`5ad19405c`（评估时 HEAD）
 - 上游 PR：[#2186](https://github.com/rikkahub/rikkahub/pull/2186)、[#1752](https://github.com/rikkahub/rikkahub/pull/1752)（设备码血统，本仓现行方案参考）
 - 本仓：`docs/design/drafts/design-codex-subscription-login.md`（现行方案设计 + 已落地记录）、`docs/upstream-analysis.md` §专项「OAuth 订阅登录（#2186）为何暂不吸收」
+
+---
+
+## 十二、P1 实施记录（进行中，分支 `feat/p1-stream-chunk`）
+
+### 12.1 已落地（纯新增，尚未接线，旧 `MessageChunk` 链路原样保留 ⇒ 行为不变）
+
+| 提交 | 内容 |
+| --- | --- |
+| `e7f2938db` | `StreamChunk`（18 类事件）、`SseEvent`、`StreamChunkDecoder`/`DecodeResult`、`StreamChunkHandler`（含 `finished` 标记供裸断流判定）、`ReasoningType` 枚举 + `Reasoning.reasoningType`（序列化缺省兼容旧数据）、`ServerToolProtocol`/`ServerToolMetadata`/`OpenRouterReasoningMetadata`、`ChatCompletionsStreamDecoder` |
+| `96d091e33` | `ResponseApiStreamDecoder`、`ClaudeStreamDecoder`、`GoogleStreamDecoder` + `isOpenAIServerToolCall`/`toOpenAIServerTool`/`toServerToolStatus`、`isClaudeServerToolUseType`/`ResultType`/`Error` |
+
+验证：`./gradlew :ai:compileDebugKotlin` 通过（三次增量均 0 错误）。
+
+### 12.2 后续步骤（下一阶段）
+
+1. **接口改造**：`Provider.generateText` 返回 `TextGenerationResult(message, usage)`；`Provider.streamText` 返回 `Flow<StreamChunk>`；`ProviderManager` 同步。
+2. **各 provider 接线**：把现有 SSE 解析替换为 decoder 驱动，保留本仓特性——Codex 能力体（`CODEX_CAPABILITIES`）、多 key 轮询、加密推理 metadata 回传、`response.output_item` 增量语义。
+3. **app 消费端**：`GenerationHandler`（1993 行）、`ChatService`（3405 行）、`ChatMessage`/`ChatMessageCot`/`ChatMessageTools`、`Export`、`LogPage`、`ProviderConnectionTester` 改用 `StreamChunkHandler`；裸断流判定改为「流结束但 handler.finished == false」；`explicitEnd` 语义保留。
+4. **单测**：移植 `ResponseApiStreamDecoderTest`/`ChatCompletions*Test`/`Claude*Test`/`Google*Test`；`trace-cli` 与 stream-traces 语料列为可选。
+5. **真机验证**：ChatGPT 订阅(codex)、OpenAI API Key、Claude、Google 各一次流式对话 + 工具调用 + 推理展示。
+
+### 12.3 风险提示（实施中发现）
+
+- 本仓 `MessageChunk` 的 `choices[].message` 支持「整段替换」语义（用于非增量结果合并），`StreamChunk` 没有对应事件；app 侧需把该路径改为 `handleTextGenerationResult`（非流式）或在 provider 内直接构造完整 `StreamChunk` 序列。
+- 本仓 `UIMessagePart.Tool` 比上游多 `startedAt`/`finishedAt`（执行窗口统计），`StreamChunkHandler` 已按上游语义不改这两个字段，app 侧执行工具时赋值逻辑需保持不变。
