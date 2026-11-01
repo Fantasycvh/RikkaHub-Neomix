@@ -413,6 +413,14 @@ class GenerationHandler(
         /** 前缀分叉诊断的会话键（聊天路径传 conversationId；工具循环每一步都会记录） */
         debugKey: String? = null,
         /**
+         * 请求级会话语义 id（聊天路径传 conversationId）。
+         *
+         * 对齐上游 #2186：Responses 协议提供商把它当 `prompt_cache_key` / `X-Session-ID`，
+         * 账号类提供商（ChatGPT `session-id`、Grok `x-grok-conv-id`）也用它命中服务端提示缓存。
+         * 无头 run（SubagentRunner 等）传 null ⇒ 与改动前逐字节一致。
+         */
+        sessionId: String? = null,
+        /**
          * workspace（rootfs）工具的**单轮总预算**。挂载理由与 [loopGuard] 同款（跨审批累积、
          * 新一轮重置），堵的是 LoopGuard 防不住的形态——每步换参数的 workspace 调用。
          * 见 [WorkspaceTurnBudget] 类注释。默认值只服务于单测等场景。
@@ -591,6 +599,7 @@ class GenerationHandler(
                         memoryDisabled = memoryDisabled,
                         frozenAnchorIds = frozenAnchorIds,
                         debugKey = debugKey,
+                        sessionId = sessionId,
                         onUpdateMessages = {
                             messages = it.transforms(
                                 transformers = outputTransformers,
@@ -1261,6 +1270,8 @@ class GenerationHandler(
         /** L1 冻结的锚点 id 集合：非 null 时只渲染这些锚点（见 [generateText] 同名参数）。 */
         frozenAnchorIds: Set<String>? = null,
         debugKey: String? = null,
+        /** 请求级会话 id（见 [generateText] 同名参数）；null = 不带。 */
+        sessionId: String? = null,
     ) {
         // 工具 schema 压缩（批次4，design §ToolSchemaCompactor）：只裁描述文本不改参数/required，
         // 默认 OFF。**只作用请求面**——工具执行查找走 runLoop 的 toolsInternal（未压缩原名表），
@@ -1374,7 +1385,8 @@ class GenerationHandler(
             customBody = buildList {
                 addAll(assistant.customBodies)
                 addAll(model.customBodies)
-            }
+            },
+            sessionId = sessionId,
         )
         if (stream) {
             withGenerationRetry(

@@ -104,7 +104,7 @@ class ToolOutputContextGateTest {
     )
 
     private fun handler(provider: Provider<ProviderSetting.OpenAI>): GenerationHandler {
-        val manager = ProviderManager(OkHttpClient(), context)
+        val manager = ProviderManager(OkHttpClient(), context, accountCredentials = { _, _ -> error("no account provider in tests") })
         manager.registerProvider("openai", provider)
         return GenerationHandler(
             context = context,

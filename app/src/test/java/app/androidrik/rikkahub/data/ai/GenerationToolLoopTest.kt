@@ -103,7 +103,7 @@ class GenerationToolLoopTest {
     private fun handler(provider: Provider<ProviderSetting.OpenAI>): GenerationHandler {
         // ContextWrapper(null)：循环只把它交给 Log / filesDir，单测里两者都不该被真正用到
         val context = ContextWrapper(null)
-        val manager = ProviderManager(OkHttpClient(), context)
+        val manager = ProviderManager(OkHttpClient(), context, accountCredentials = { _, _ -> error("no account provider in tests") })
         manager.registerProvider("openai", provider)
         return GenerationHandler(
             context = context,
