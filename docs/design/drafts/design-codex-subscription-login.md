@@ -405,9 +405,14 @@ JVM 单测（`:ai:testDebugUnitTest` / `:app:testDebugUnitTest`）：
 - 落盘校验（`settings.preferences_pb`）：含 `chatgpt_subscription`、`accessTokenEncrypted`（`v1:` 密文）、账号邮箱；**无明文 JWT（`eyJ` 零命中）**
 - 对话：`POST https://chatgpt.com/backend-api/codex/responses` 200；首轮 "OK"，次轮 "SECOND"（多轮 + 历史加密推理回传可用），token 统计/速度正常
 - 杀进程重启后继续对话仍 200（解密 + `ChatGPT-Account-ID` 链路可用，无需重新登录）
+- 工具调用、退出登录：2026-11-01 用户真机验证通过（退出后凭据清除、工具往返正常）
+- 设备级代理：App 内代理为「无」时会回落系统代理选择器（`SettingsProxySelector` 的 system 兜底），设备配好代理后 Codex 请求 200
 
 ### 尚未覆盖（后续补充）
 
 - **真实刷新**：access token 有效期 1h，未在设备上强制过期验证 JSON→form 回退（服务端实际接受哪种编码仍未证）；可临时改设备时间或加 debug 入口补测
-- 工具调用、退出登录、备份恢复跨设备后的重新登录引导
+- 备份恢复跨设备后的重新登录引导（`INVALID_GRANT` → 提示重新登录）
+- 长对话触发压缩后，Codex 加密推理块被清理/回传的行为
+- 区域封锁（`REGION_BLOCKED`）文案在无代理时的真机表现
+- 订阅模式下图片/嵌入输入的拦截提示
 - `client_version` 漂移与后端约束变化（见十二）
