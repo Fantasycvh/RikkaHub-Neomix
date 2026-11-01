@@ -1015,6 +1015,8 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 **若将来要做**：单独立项、只做这一个特性，按「SSE 读取器 → 账号 + 配额数据层与迁移 → provider 与设置 UI」三段落地，每段跑 provider 层单测并做一次真实订阅账号的端到端验证。不要与日常上游同步混在一个提交里。
 
 > **2026-11-01 复审（结论变更）**：上述「缺的底座」评估成立，但**不必走 #2186 这条重路线**——上游 Draft PR [#1752](https://github.com/rikkahub/rikkahub/pull/1752)（+1389/−94）、二次修改版 `Lin-chpin/rikkahub-Jude`、`Inonvation/rikkahub` 已给出「设备授权登录塞进 OpenAI Provider」的实现：不需要 `oauth` 模块、loopback 回调服务器、前台服务，也不需要新 provider 子类型与 Streaming 重构；设备码端点已于 2026-11-01 用 curl 实测可用（`usercode` 200 / 轮询 403 pending）。落地设计与逐文件拆解见 **`docs/design/drafts/design-codex-subscription-login.md`**（估 5–7 人日、~1.5k 行；#2186 的 `CODEX_CAPABILITIES`、`parseCodexModels`、`parseCodexUsage` 仍作为请求体与额度语义的正确性参考）。
+>
+> **2026-11-01 追加（用户决定走全量路线）**：设备码方案已落地并通过 debug/release 真机验证；随后用户选择**路线 A：全量对齐上游 #2186 架构**。可行性、依赖拓扑（前置 `#1648` 流式重构）、迁移风险与 P0–P5 分期见 **`docs/design/drafts/design-upstream-oauth-port.md`**（估 18–25 人日）。
 
 ## 2026-10-20 专项吸收：用量统计流水（上游 `5a90c0548`）
 
