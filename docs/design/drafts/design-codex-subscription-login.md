@@ -414,6 +414,7 @@ JVM 单测（`:ai:testDebugUnitTest` / `:app:testDebugUnitTest`）：
 - 工具调用、退出登录：2026-11-01 用户真机验证通过（退出后凭据清除、工具往返正常）
 - 设备级代理：App 内代理为「无」时会回落系统代理选择器（`SettingsProxySelector` 的 system 兜底），设备配好代理后 Codex 请求 200
 - **刷新链路**：2026-11-01 用调试入口「强制刷新令牌」验证——`POST https://auth.openai.com/oauth/token` **200，服务端接受 JSON 编码**（日志 `refreshTokens: JSON accepted`，未触发 form 回退）；刷新后继续对话 `/responses` 200，说明 refresh token 轮换后的新 access token 落盘/解密正确，无需重新登录
+- **release 构建（R8 + lintVital）**：2026-11-01 `:app:assembleRelease` 通过（`neomix.jks` 签名，arm64/universal/x86_64 三个包）；把 arm64 包装到 PJX110 复验——设备码登录成功 → `/models` 解析出 Codex 模型列表 → 选 `GPT-6.1-Sol` 发消息收到回复（`/responses` SSE 流式可用），确认 R8 未裁掉 kotlinx.serialization/Tink/SSE 相关路径；debug 专属的「强制刷新令牌」按钮在 release 包中正确隐藏
 
 ### 尚未覆盖（后续补充）
 
