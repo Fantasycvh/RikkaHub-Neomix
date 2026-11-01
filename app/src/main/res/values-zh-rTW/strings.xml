@@ -2821,5 +2821,22 @@
   <string name="setting_theme_page_apply_appearance_desc">玻璃效果、字型、氣泡與字號、角色覆寫</string>
   <string name="setting_theme_page_palette_style">調色風格</string>
   <string name="setting_theme_page_role_edit_slots">編輯槽位顏色（已設 %1$d 項）</string>
+  <string name="setting_display_page_personalization_title">聊天個人化</string>
+  <string name="setting_display_page_avatar_frame_title">頭像框</string>
+  <string name="setting_display_page_avatar_frame_none">無</string>
+  <string name="setting_display_page_avatar_frame_ring">單環</string>
+  <string name="setting_display_page_avatar_frame_gradient">漸變環</string>
+  <string name="setting_display_page_avatar_frame_double">雙環</string>
+  <string name="setting_display_page_avatar_frame_dashed">虛線環</string>
+  <string name="setting_display_page_avatar_frame_glow">光暈</string>
+  <string name="setting_display_page_input_background_title">輸入欄背景圖</string>
+  <string name="setting_display_page_input_background_none">未設定</string>
+  <string name="setting_display_page_input_background_choose">選擇圖片</string>
+  <string name="setting_display_page_input_background_clear">清除</string>
+  <string name="setting_display_page_input_background_failed">背景圖儲存失敗</string>
+  <string name="setting_display_page_cot_style_title">思維鏈樣式</string>
+  <string name="setting_display_page_cot_style_card">卡片</string>
+  <string name="setting_display_page_cot_style_quote">引用條</string>
+  <string name="setting_display_page_cot_style_minimal">極簡</string>
 </resources>
 

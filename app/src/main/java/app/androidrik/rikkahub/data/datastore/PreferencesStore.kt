@@ -1323,6 +1323,28 @@ enum class LiquidGlassReadabilityMode {
     STABLE_CONTENT,
 }
 
+/**
+ * 聊天页头像装饰框预设（轻量个性化，橘瓣灵感；见 design-light-personalization.md）。
+ * 纯 Canvas 绘制、随主题取色，作用于聊天页用户/助手双侧头像。
+ */
+@Serializable
+enum class AvatarFrameStyle {
+    @SerialName("none") NONE,
+    @SerialName("ring") RING,
+    @SerialName("gradient") GRADIENT,
+    @SerialName("double") DOUBLE,
+    @SerialName("dashed") DASHED,
+    @SerialName("glow") GLOW,
+}
+
+/** 思维链容器视觉样式（轻量个性化）：卡片=现状，引用条=透明底+左缘主色竖线，极简=无框无线。 */
+@Serializable
+enum class ChainOfThoughtStyle {
+    @SerialName("card") CARD,
+    @SerialName("quote") QUOTE,
+    @SerialName("minimal") MINIMAL,
+}
+
 @Serializable
 data class DisplaySetting(
     val userAvatar: Avatar = Avatar.Dummy,
@@ -1400,6 +1422,13 @@ data class DisplaySetting(
      * 复用 display_setting 单 JSON key 不加键，且天然可进主题外观快照（design-custom-theme.md §4.2）。
      */
     val themeRoleOverrides: ThemeRoleOverrides = ThemeRoleOverrides(),
+    /** 聊天页头像装饰框（用户+助手双侧，见 design-light-personalization.md）。 */
+    val avatarFrameStyle: AvatarFrameStyle = AvatarFrameStyle.NONE,
+    /** 聊天输入栏背景图（file:// 或 http url；空=无）。生效时输入栏底色转透明并与模糊效果互斥。 */
+    val chatInputBackgroundImage: String = "",
+    val chatInputBackgroundOpacity: Float = 0.35f,
+    /** 思维链容器视觉样式（见 design-light-personalization.md）。 */
+    val chainOfThoughtStyle: ChainOfThoughtStyle = ChainOfThoughtStyle.CARD,
 )
 
 @Serializable

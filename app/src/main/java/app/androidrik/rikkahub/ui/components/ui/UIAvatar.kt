@@ -54,6 +54,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Edit03
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.utils.normalizeLocalFileUrl
+import app.androidrik.rikkahub.data.datastore.AvatarFrameStyle
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
@@ -96,6 +97,9 @@ fun UIAvatar(
     value: Avatar,
     modifier: Modifier = Modifier,
     loading: Boolean = false,
+    // 头像装饰框（轻量个性化）：聊天页双侧头像传入 DisplaySetting.avatarFrameStyle，
+    // 其余调用处默认 NONE 零变化（design-light-personalization.md 决策 2/3）
+    frame: AvatarFrameStyle = AvatarFrameStyle.NONE,
     onUpdate: ((Avatar) -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
@@ -138,7 +142,9 @@ fun UIAvatar(
     Box(modifier = modifier.then(Modifier.size(32.dp))) {
         Surface(
             shape = rememberAvatarShape(loading),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(frame.contentInset()),
             onClick = {
                 onClick?.invoke()
                 if (onUpdate != null) showPickOption = true
@@ -182,6 +188,13 @@ fun UIAvatar(
                 }
             }
         }
+
+        AvatarFrameOverlay(
+            style = frame,
+            primary = MaterialTheme.colorScheme.primary,
+            tertiary = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.matchParentSize(),
+        )
 
         // Show edit icon when editable
         if (onUpdate != null) {

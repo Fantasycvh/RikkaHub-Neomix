@@ -19,6 +19,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
+import app.androidrik.rikkahub.ui.components.ui.AvatarFrameBox
 import app.androidrik.rikkahub.ui.components.ui.UIAvatar
 import app.androidrik.rikkahub.ui.context.LocalSettings
 
@@ -46,6 +47,7 @@ fun ChatMessageUserAvatar(
                 modifier = Modifier.size(28.dp),
                 value = avatar,
                 loading = false,
+                frame = settings.displaySetting.avatarFrameStyle,
             )
         }
     }
@@ -81,6 +83,7 @@ fun ChatMessageAssistantAvatar(
                         modifier = Modifier.size(28.dp),
                         value = assistant.avatar,
                         loading = loading,
+                        frame = settings.displaySetting.avatarFrameStyle,
                     )
                 }
                 Row(
@@ -98,11 +101,18 @@ fun ChatMessageAssistantAvatar(
                 }
             } else if (iconSeed != null) {
                 if (showIcon) {
-                    AutoAIIcon(
-                        name = iconSeed,
+                    AvatarFrameBox(
+                        style = settings.displaySetting.avatarFrameStyle,
+                        primary = MaterialTheme.colorScheme.primary,
+                        tertiary = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier.size(28.dp),
-                        loading = loading
-                    )
+                    ) {
+                        AutoAIIcon(
+                            name = iconSeed,
+                            modifier = Modifier.matchParentSize(),
+                            loading = loading
+                        )
+                    }
                 }
                 Row(
                     modifier = Modifier.weight(1f),

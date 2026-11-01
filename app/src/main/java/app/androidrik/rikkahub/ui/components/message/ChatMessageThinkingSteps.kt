@@ -30,6 +30,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThought
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThoughtScope
 
@@ -62,6 +63,8 @@ internal fun WholeTurnFoldBlock(
     cardColors: CardColors,
     modifier: Modifier = Modifier,
     collapsedAdaptiveWidth: Boolean = false,
+    // 思维链容器视觉样式，透传给 ChainOfThought（design-light-personalization.md）
+    style: ChainOfThoughtStyle = ChainOfThoughtStyle.CARD,
     content: @Composable ChainOfThoughtScope.(ThinkingStep) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(loading || forceExpand) }
@@ -102,6 +105,7 @@ internal fun WholeTurnFoldBlock(
                 // 折叠交给外层：关掉组件自己的 takeLast(n)
                 collapsedVisibleCount = steps.size,
                 collapsedAdaptiveWidth = collapsedAdaptiveWidth,
+                style = style,
                 content = content,
             )
         }

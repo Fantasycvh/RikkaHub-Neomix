@@ -2835,5 +2835,22 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_theme_page_apply_appearance_desc">玻璃效果、字体、气泡与字号、角色覆写</string>
   <string name="setting_theme_page_palette_style">调色风格</string>
   <string name="setting_theme_page_role_edit_slots">编辑槽位颜色（已设 %1$d 项）</string>
+  <string name="setting_display_page_personalization_title">聊天个性化</string>
+  <string name="setting_display_page_avatar_frame_title">头像框</string>
+  <string name="setting_display_page_avatar_frame_none">无</string>
+  <string name="setting_display_page_avatar_frame_ring">单环</string>
+  <string name="setting_display_page_avatar_frame_gradient">渐变环</string>
+  <string name="setting_display_page_avatar_frame_double">双环</string>
+  <string name="setting_display_page_avatar_frame_dashed">虚线环</string>
+  <string name="setting_display_page_avatar_frame_glow">光晕</string>
+  <string name="setting_display_page_input_background_title">输入栏背景图</string>
+  <string name="setting_display_page_input_background_none">未设置</string>
+  <string name="setting_display_page_input_background_choose">选择图片</string>
+  <string name="setting_display_page_input_background_clear">清除</string>
+  <string name="setting_display_page_input_background_failed">背景图保存失败</string>
+  <string name="setting_display_page_cot_style_title">思维链样式</string>
+  <string name="setting_display_page_cot_style_card">卡片</string>
+  <string name="setting_display_page_cot_style_quote">引用条</string>
+  <string name="setting_display_page_cot_style_minimal">极简</string>
 </resources>
 

@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.ui.components.ai
 
+import coil3.compose.AsyncImage
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
@@ -261,25 +264,51 @@ fun ChatInput(
                 .padding(bottom = if (imeVisible) 0.dp else 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 输入栏背景图（轻量个性化，design-light-personalization.md 决策 4/5）：
+            // 与玻璃/模糊互斥——模糊采样的是页面背景，与输入框内叠图语义冲突；
+            // 生效时底色转透明、跳过 blur modifier，图放内容层之下。
+            val inputBackgroundImage = settings.displaySetting.chatInputBackgroundImage
+            val useInputBackground = inputBackgroundImage.isNotBlank()
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(containerShape)
-                    .chatInputBackgroundEffect(
-                        hazeState = hazeState,
-                        displaySetting = settings.displaySetting,
-                        containerColor = hazeTintColor,
-                        shape = containerShape,
+                    .then(
+                        if (useInputBackground) {
+                            Modifier
+                        } else {
+                            Modifier.chatInputBackgroundEffect(
+                                hazeState = hazeState,
+                                displaySetting = settings.displaySetting,
+                                containerColor = hazeTintColor,
+                                shape = containerShape,
+                            )
+                        }
                     ),
                 shape = containerShape,
                 tonalElevation = 0.dp,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                color = if (settings.displaySetting.enableBlurEffect) Color.Transparent else hazeTintColor,
+                color = if (settings.displaySetting.enableBlurEffect || useInputBackground) {
+                    Color.Transparent
+                } else {
+                    hazeTintColor
+                },
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
+                Box {
+                    if (useInputBackground) {
+                        AsyncImage(
+                            model = inputBackgroundImage,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .alpha(settings.displaySetting.chatInputBackgroundOpacity.coerceIn(0f, 1f)),
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
                     if (voiceState.phase != VoicePhase.Off) {
                         VoiceModeRow(
                             state = voiceState,
@@ -542,6 +571,7 @@ fun ChatInput(
                         }
                     }
                 }
+                    }
             }
 
         }

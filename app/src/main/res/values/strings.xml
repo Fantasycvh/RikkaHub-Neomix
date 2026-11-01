@@ -2834,5 +2834,22 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_theme_page_apply_appearance">Also apply appearance settings</string>
   <string name="setting_theme_page_apply_appearance_desc">Glass effects, font family, bubbles and font size, role overrides</string>
   <string name="setting_theme_page_role_edit_slots">Edit color slots (%1$d set)</string>
+  <string name="setting_display_page_personalization_title">Chat personalization</string>
+  <string name="setting_display_page_avatar_frame_title">Avatar frame</string>
+  <string name="setting_display_page_avatar_frame_none">None</string>
+  <string name="setting_display_page_avatar_frame_ring">Ring</string>
+  <string name="setting_display_page_avatar_frame_gradient">Gradient</string>
+  <string name="setting_display_page_avatar_frame_double">Double</string>
+  <string name="setting_display_page_avatar_frame_dashed">Dashed</string>
+  <string name="setting_display_page_avatar_frame_glow">Glow</string>
+  <string name="setting_display_page_input_background_title">Input bar background</string>
+  <string name="setting_display_page_input_background_none">Not set</string>
+  <string name="setting_display_page_input_background_choose">Choose</string>
+  <string name="setting_display_page_input_background_clear">Clear</string>
+  <string name="setting_display_page_input_background_failed">Failed to save background image</string>
+  <string name="setting_display_page_cot_style_title">Chain-of-thought style</string>
+  <string name="setting_display_page_cot_style_card">Card</string>
+  <string name="setting_display_page_cot_style_quote">Quote bar</string>
+  <string name="setting_display_page_cot_style_minimal">Minimal</string>
 </resources>
 

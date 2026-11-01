@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
@@ -35,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,6 +48,7 @@ import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Sparkles
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
 
 private val LocalCardColor = staticCompositionLocalOf { Color.White }
 
@@ -75,6 +76,11 @@ fun <T> ChainOfThought(
     steps: List<T>,
     collapsedVisibleCount: Int = 2,
     collapsedAdaptiveWidth: Boolean = false,
+    // 思维链容器视觉样式（轻量个性化，design-light-personalization.md 决策 6/7）：
+    // CARD=现状；QUOTE=透明底+左缘主色竖线；MINIMAL=透明底+无时间线。
+    // 折叠/展开状态机与各步骤 UI 零改动。LocalCardColor 始终用原容器色——
+    // 步骤图标靠它遮时间线，透明会漏线。
+    style: ChainOfThoughtStyle = ChainOfThoughtStyle.CARD,
     content: @Composable ChainOfThoughtScope.(T) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -86,8 +92,12 @@ fun <T> ChainOfThought(
     ) {
         Card(
             modifier = modifier,
-            colors = cardColors,
-            shape = RoundedCornerShape(16.dp),
+            colors = if (style == ChainOfThoughtStyle.CARD) {
+                cardColors
+            } else {
+                cardColors.copy(containerColor = Color.Transparent)
+            },
+            shape = RoundedCornerShape(if (style == ChainOfThoughtStyle.CARD) 16.dp else 8.dp),
         ) {
             Column(
                 modifier = Modifier
@@ -151,17 +161,30 @@ fun <T> ChainOfThought(
                 }
 
                 val lineColor = MaterialTheme.colorScheme.outlineVariant
+                val accentColor = MaterialTheme.colorScheme.primary
                 val scope = remember { ChainOfThoughtScopeImpl() }
                 Box(
                     modifier = Modifier.drawBehind {
-                        val x = 12.dp.toPx()
-                        val offsetPx = 18.dp.toPx()
-                        drawLine(
-                            color = lineColor,
-                            start = Offset(x, offsetPx),
-                            end = Offset(x, size.height - offsetPx),
-                            strokeWidth = 1.dp.toPx()
-                        )
+                        when (style) {
+                            ChainOfThoughtStyle.CARD -> {
+                                val x = 12.dp.toPx()
+                                val offsetPx = 18.dp.toPx()
+                                drawLine(
+                                    color = lineColor,
+                                    start = Offset(x, offsetPx),
+                                    end = Offset(x, size.height - offsetPx),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
+                            // 引用条：左缘主色竖线贯穿全高
+                            ChainOfThoughtStyle.QUOTE -> drawLine(
+                                color = accentColor,
+                                start = Offset(1.dp.toPx(), 2.dp.toPx()),
+                                end = Offset(1.dp.toPx(), size.height - 2.dp.toPx()),
+                                strokeWidth = 2.dp.toPx(),
+                            )
+                            ChainOfThoughtStyle.MINIMAL -> Unit
+                        }
                     }
                 ) {
                     Column {

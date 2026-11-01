@@ -99,6 +99,7 @@ import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.theme.LocalChatFontFamily
+import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
 import app.androidrik.rikkahub.ui.theme.LocalUserBubbleColor
 import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
 import app.androidrik.rikkahub.ui.theme.rememberChatFontFamily
@@ -421,12 +422,22 @@ private fun MessagePartsBlock(
                         it is ThinkingStep.ReasoningStep || it is ThinkingStep.NarrationStep
                     }
                     // 折叠块与回答同色时看起来就是一段正文 ⇒ 折叠块用低一档的容器色
+                    // 思维链样式（轻量个性化）：非 CARD 档容器转透明（引用条/极简在
+                    // ChainOfThought 内部用左缘竖线/无装饰表达层级），LocalCardColor 仍
+                    // 走原容器色供步骤图标遮线
+                    val cotStyle = settings.displaySetting.chainOfThoughtStyle
                     val cardColors = CardDefaults.cardColors(
                         containerColor = (if (block.canCollapse) {
                             MaterialTheme.colorScheme.surfaceContainerLow
                         } else {
                             MaterialTheme.colorScheme.surfaceContainerHigh
-                        }).copy(alpha = settings.displaySetting.bubbleOpacity),
+                        }).let {
+                            if (cotStyle == ChainOfThoughtStyle.CARD) {
+                                it.copy(alpha = settings.displaySetting.bubbleOpacity)
+                            } else {
+                                Color.Transparent
+                            }
+                        },
                     )
                     val stepContent: @Composable ChainOfThoughtScope.(ThinkingStep) -> Unit = { step ->
                         when (step) {
@@ -484,6 +495,7 @@ private fun MessagePartsBlock(
                                 loading = loading,
                                 cardColors = cardColors,
                                 collapsedAdaptiveWidth = isReasoningOnlyBlock,
+                                style = cotStyle,
                                 content = stepContent,
                             )
                         } else {
@@ -492,6 +504,7 @@ private fun MessagePartsBlock(
                                 steps = block.steps,
                                 collapsedAdaptiveWidth = isReasoningOnlyBlock,
                                 cardColors = cardColors,
+                                style = cotStyle,
                                 content = stepContent,
                             )
                         }

@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -58,6 +59,16 @@ import app.androidrik.rikkahub.ui.theme.rememberChatFontFamily
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.style.TextOverflow
+import app.androidrik.rikkahub.data.datastore.AvatarFrameStyle
+import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
+import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
+import org.koin.compose.koinInject
 
 @Composable
 fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
@@ -71,6 +82,22 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     fun updateDisplaySetting(setting: DisplaySetting) {
         displaySetting = setting
         vm.updateSettings(settings.copy(displaySetting = setting))
+    }
+
+    // 输入栏背景图选择：复用助手背景的 managed 目录（backgrounds/），防「文件管理」
+    // 清理误删（同 #2127 语义）。声明顺序：局部函数须先声明后引用。
+    val filesManager: FilesManager = koinInject()
+    val inputBackgroundFailedMsg = stringResource(R.string.setting_display_page_input_background_failed)
+    val inputBackgroundPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val saved = filesManager.createBackgroundImage(uri)
+        if (saved != null) {
+            updateDisplaySetting(displaySetting.copy(chatInputBackgroundImage = saved.toString()))
+        } else {
+            toaster.show(inputBackgroundFailedMsg, type = ToastType.Error)
+        }
     }
 
     val importSuccessMsg = stringResource(R.string.setting_display_page_custom_font_import_success)
@@ -413,6 +440,77 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
             item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.setting_display_page_personalization_title)) },
+                ) {
+                    // 头像框：作用于聊天页双侧头像（用户+助手），预设绘制零资源
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_avatar_frame_title)) },
+                        supportingContent = {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AvatarFrameStyle.entries.forEach { style ->
+                                    FilterChip(
+                                        selected = displaySetting.avatarFrameStyle == style,
+                                        onClick = {
+                                            updateDisplaySetting(displaySetting.copy(avatarFrameStyle = style))
+                                        },
+                                        label = { Text(avatarFrameLabel(style)) },
+                                    )
+                                }
+                            }
+                        },
+                    )
+                    // 输入栏背景图：与玻璃/模糊互斥（渲染端自动降级），managed 目录存图
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_input_background_title)) },
+                        supportingContent = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    text = displaySetting.chatInputBackgroundImage
+                                        .ifBlank { stringResource(R.string.setting_display_page_input_background_none) },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = { inputBackgroundPicker.launch("image/*") }) {
+                                    Text(stringResource(R.string.setting_display_page_input_background_choose))
+                                }
+                                if (displaySetting.chatInputBackgroundImage.isNotBlank()) {
+                                    TextButton(onClick = {
+                                        updateDisplaySetting(displaySetting.copy(chatInputBackgroundImage = ""))
+                                    }) {
+                                        Text(stringResource(R.string.setting_display_page_input_background_clear))
+                                    }
+                                }
+                            }
+                        },
+                    )
+                    // 思维链容器样式
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_cot_style_title)) },
+                        supportingContent = {
+                            SegmentedPill(
+                                options = ChainOfThoughtStyle.entries.toList(),
+                                selectedOption = displaySetting.chainOfThoughtStyle,
+                                onOptionSelected = {
+                                    updateDisplaySetting(displaySetting.copy(chainOfThoughtStyle = it))
+                                },
+                                optionToString = { cotStyleLabel(it) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        },
+                    )
+                }
+            }
+
+            item {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
                     title = { Text(stringResource(R.string.setting_page_code_display_settings)) },
                 ) {
                     item(
@@ -555,3 +653,25 @@ private fun deleteCustomChatFontInternal(context: Context, relativePath: String)
         fontFile.delete()
     }
 }
+
+
+@Composable
+private fun avatarFrameLabel(style: AvatarFrameStyle): String = stringResource(
+    when (style) {
+        AvatarFrameStyle.NONE -> R.string.setting_display_page_avatar_frame_none
+        AvatarFrameStyle.RING -> R.string.setting_display_page_avatar_frame_ring
+        AvatarFrameStyle.GRADIENT -> R.string.setting_display_page_avatar_frame_gradient
+        AvatarFrameStyle.DOUBLE -> R.string.setting_display_page_avatar_frame_double
+        AvatarFrameStyle.DASHED -> R.string.setting_display_page_avatar_frame_dashed
+        AvatarFrameStyle.GLOW -> R.string.setting_display_page_avatar_frame_glow
+    }
+)
+
+@Composable
+private fun cotStyleLabel(style: ChainOfThoughtStyle): String = stringResource(
+    when (style) {
+        ChainOfThoughtStyle.CARD -> R.string.setting_display_page_cot_style_card
+        ChainOfThoughtStyle.QUOTE -> R.string.setting_display_page_cot_style_quote
+        ChainOfThoughtStyle.MINIMAL -> R.string.setting_display_page_cot_style_minimal
+    }
+)
