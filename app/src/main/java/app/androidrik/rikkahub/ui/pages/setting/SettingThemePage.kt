@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -137,7 +138,10 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
         containerColor = CustomColors.topBarColors.containerColor
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                // 键盘弹起时让列表内容上移，避免遮住覆写槽位输入框
+                .imePadding(),
             contentPadding = innerPadding + PaddingValues(8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -270,14 +274,20 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
                 }
             }
 
-            // 角色覆写是全局层（作用于动态取色/预设/自定义任意色源），不受 dynamicColor 开关影响
+            // 角色覆写是全局层（作用于动态取色/预设/自定义任意色源），不受 dynamicColor 开关影响。
+            // onChange 走 transform 式读-改-写：每个按键都是一次 settings 更新，整对象写会丢更新
+            // （真机实测：hex 连续输入被过期快照打回 null）
             item("roleOverrides") {
                 RoleOverridesSection(
                     overrides = settings.displaySetting.themeRoleOverrides,
-                    onChange = {
-                        vm.updateSettings(
-                            settings.copy(displaySetting = settings.displaySetting.copy(themeRoleOverrides = it))
-                        )
+                    onChange = { transform ->
+                        vm.updateSettings { s ->
+                            s.copy(
+                                displaySetting = s.displaySetting.copy(
+                                    themeRoleOverrides = transform(s.displaySetting.themeRoleOverrides)
+                                )
+                            )
+                        }
                     },
                 )
             }
@@ -310,20 +320,17 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
             onDismiss = { showImportDialog = false },
             onImport = { theme, appearance ->
                 val importedTheme = theme.copy(id = Uuid.random().toString())
-                vm.updateSettings(
-                    if (appearance != null) {
-                        settings.copy(
-                            customThemes = settings.customThemes + importedTheme,
-                            themeId = importedTheme.id,
-                            displaySetting = settings.displaySetting.withAppearanceSnapshot(appearance),
-                        )
-                    } else {
-                        settings.copy(
-                            customThemes = settings.customThemes + importedTheme,
-                            themeId = importedTheme.id
-                        )
-                    }
-                )
+                vm.updateSettings { s ->
+                    s.copy(
+                        customThemes = s.customThemes + importedTheme,
+                        themeId = importedTheme.id,
+                        displaySetting = if (appearance != null) {
+                            s.displaySetting.withAppearanceSnapshot(appearance)
+                        } else {
+                            s.displaySetting
+                        },
+                    )
+                }
                 showImportDialog = false
                 toaster.show(importSuccessMsg, type = ToastType.Success)
             }
@@ -671,7 +678,9 @@ private fun contrastLevelLabel(level: Double): String = stringResource(
 @Composable
 private fun RoleOverridesSection(
     overrides: ThemeRoleOverrides,
-    onChange: (ThemeRoleOverrides) -> Unit,
+    // transform 语义：在**最新**的 ThemeRoleOverrides 基础上做修改（配合 SettingsStore
+    // 的读-改-写，逐键输入不丢更新）
+    onChange: ((ThemeRoleOverrides) -> ThemeRoleOverrides) -> Unit,
 ) {
     // 页签默认落在当前明暗模式，方便对照实际效果（current 须在 remember 外读，lambda 非 Composable）
     val initialDarkTab = LocalDarkMode.current
@@ -708,7 +717,7 @@ private fun RoleOverridesSection(
                 )
                 Switch(
                     checked = overrides.enabled,
-                    onCheckedChange = { onChange(overrides.copy(enabled = it)) },
+                    onCheckedChange = { onChange { o -> o.copy(enabled = it) } },
                 )
             }
             if (overrides.enabled) {
@@ -722,13 +731,78 @@ private fun RoleOverridesSection(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                RoleOverrideModeEditor(
-                    mode = if (darkTab) overrides.dark else overrides.light,
-                    onChange = { newMode ->
-                        onChange(if (darkTab) overrides.copy(dark = newMode) else overrides.copy(light = newMode))
-                    },
-                )
+                // 槽位编辑放 ModalBottomSheet：列表 item 会因键盘弹起被裁出视口而销毁重建
+                // （remember 丢失 → 焦点掉 → IME 收起再弹，逐字符回退/光标漂移，真机实测）；
+                // sheet 的 Column+verticalScroll 子项常驻，与本页主题编辑 sheet 同款可靠结构
+                var showSlotSheet by remember { mutableStateOf(false) }
+                FilledTonalButton(
+                    onClick = { showSlotSheet = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        stringResource(
+                            R.string.setting_theme_page_role_edit_slots,
+                            listOf(
+                                (if (darkTab) overrides.dark else overrides.light).backgroundHex,
+                                (if (darkTab) overrides.dark else overrides.light).primaryTextHex,
+                                (if (darkTab) overrides.dark else overrides.light).secondaryTextHex,
+                                (if (darkTab) overrides.dark else overrides.light).controlAccentHex,
+                                (if (darkTab) overrides.dark else overrides.light).userBubbleHex,
+                            ).count { it != null },
+                        )
+                    )
+                }
+                if (showSlotSheet) {
+                    RoleOverrideEditSheet(
+                        overrides = overrides,
+                        dark = darkTab,
+                        onChange = { modeTransform ->
+                            onChange { o ->
+                                val newMode = modeTransform(if (darkTab) o.dark else o.light)
+                                if (darkTab) o.copy(dark = newMode) else o.copy(light = newMode)
+                            }
+                        },
+                        onDismiss = { showSlotSheet = false },
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun RoleOverrideEditSheet(
+    overrides: ThemeRoleOverrides,
+    dark: Boolean,
+    onChange: ((ThemeModeRoleOverrides) -> ThemeModeRoleOverrides) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+    )
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = if (dark) {
+                    stringResource(R.string.setting_theme_page_role_overrides_mode_dark)
+                } else {
+                    stringResource(R.string.setting_theme_page_role_overrides_mode_light)
+                },
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Spacer(Modifier.height(4.dp))
+            RoleOverrideModeEditor(
+                mode = if (dark) overrides.dark else overrides.light,
+                onChange = onChange,
+            )
         }
     }
 }
@@ -736,7 +810,7 @@ private fun RoleOverridesSection(
 @Composable
 private fun RoleOverrideModeEditor(
     mode: ThemeModeRoleOverrides,
-    onChange: (ThemeModeRoleOverrides) -> Unit,
+    onChange: ((ThemeModeRoleOverrides) -> ThemeModeRoleOverrides) -> Unit,
 ) {
     // 对比度预警的兜底色取当前色板对应角色；若编辑的是非当前明暗页签，兜底色来自另一
     // 模式——仅影响预警精度（两 hex 均显式设置时结果精确），不影响覆写本身。
@@ -748,13 +822,13 @@ private fun RoleOverrideModeEditor(
             label = stringResource(R.string.setting_theme_page_role_background),
             value = mode.backgroundHex,
             fallbackColor = scheme.background,
-            onValueChange = { onChange(mode.copy(backgroundHex = it)) },
+            onValueChange = { onChange { m -> m.copy(backgroundHex = it) } },
         )
         RoleSlotRow(
             label = stringResource(R.string.setting_theme_page_role_primary_text),
             value = mode.primaryTextHex,
             fallbackColor = scheme.onBackground,
-            onValueChange = { onChange(mode.copy(primaryTextHex = it)) },
+            onValueChange = { onChange { m -> m.copy(primaryTextHex = it) } },
         )
         ContrastHint(
             foreground = mode.primaryTextHex.toComposeColorOrNull() ?: scheme.onBackground,
@@ -764,7 +838,7 @@ private fun RoleOverrideModeEditor(
             label = stringResource(R.string.setting_theme_page_role_secondary_text),
             value = mode.secondaryTextHex,
             fallbackColor = scheme.onSurfaceVariant,
-            onValueChange = { onChange(mode.copy(secondaryTextHex = it)) },
+            onValueChange = { onChange { m -> m.copy(secondaryTextHex = it) } },
         )
         ContrastHint(
             foreground = mode.secondaryTextHex.toComposeColorOrNull() ?: scheme.onSurfaceVariant,
@@ -774,13 +848,13 @@ private fun RoleOverrideModeEditor(
             label = stringResource(R.string.setting_theme_page_role_control_accent),
             value = mode.controlAccentHex,
             fallbackColor = scheme.primary,
-            onValueChange = { onChange(mode.copy(controlAccentHex = it)) },
+            onValueChange = { onChange { m -> m.copy(controlAccentHex = it) } },
         )
         RoleSlotRow(
             label = stringResource(R.string.setting_theme_page_role_user_bubble),
             value = mode.userBubbleHex,
             fallbackColor = scheme.primaryContainer,
-            onValueChange = { onChange(mode.copy(userBubbleHex = it)) },
+            onValueChange = { onChange { m -> m.copy(userBubbleHex = it) } },
         )
     }
 }
@@ -805,6 +879,11 @@ private fun RoleSlotRow(
     fallbackColor: Color,
     onValueChange: (String?) -> Unit,
 ) {
+    // 本地编辑态：按键先落本地、解析成功才提交（commit-only-valid）——若直接拿 DataStore
+    // 回环的受控值喂 TextField，异步写-回流滞后于 IME，逐字符被回退、光标漂移（真机实测）。
+    // remember(value)：模型变化（提交成功/清除）时本地随之归位；非法中间态只留本地不动模型。
+    var text by remember(value) { mutableStateOf(value ?: "") }
+    val parsed = text.toComposeColorOrNull()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -814,7 +893,7 @@ private fun RoleSlotRow(
                 .size(24.dp)
                 .clip(CircleShape)
         ) {
-            drawCircle(color = value.toComposeColorOrNull() ?: fallbackColor)
+            drawCircle(color = parsed ?: fallbackColor)
         }
         Text(
             text = label,
@@ -822,12 +901,19 @@ private fun RoleSlotRow(
             modifier = Modifier.weight(1f),
         )
         OutlinedTextField(
-            value = value ?: "",
-            onValueChange = { onValueChange(it.takeIf { s -> s.isNotBlank() }) },
+            value = text,
+            onValueChange = { input ->
+                text = input
+                when {
+                    input.isBlank() -> onValueChange(null)
+                    input.toComposeColorOrNull() != null -> onValueChange(input)
+                    // 非法中间态：仅本地显示错误样式，不动已提交值
+                }
+            },
             modifier = Modifier.weight(1.4f),
             singleLine = true,
             placeholder = { Text("#RRGGBB") },
-            isError = value != null && value.toComposeColorOrNull() == null,
+            isError = text.isNotBlank() && parsed == null,
             textStyle = MaterialTheme.typography.bodyMedium,
         )
         if (value != null) {

@@ -138,6 +138,12 @@ val LocalUserBubbleColor = compositionLocalOf<Color?> { null }   // null = 跟�
 
 - 总开关（`enabled`）+ 浅色/深色两个页签（Compose 内取当前模式的页签默认选中，方便对照），每页签五个 hex 输入位（复用 §4.1 补了 hex 输入的 `ColorPickerRow`，或紧凑型 hex 单行 + 色块预览——实现时按 `CardGroup` 版面定，**语义同构**即可）。
 - 开关关闭时区块折叠置灰；对比度警告见上。
+- **实现期修订（2026-11-01 真机）**：槽位编辑器**内联在 LazyColumn item 里不可用**——键盘弹起
+  `imePadding` 收缩视口，焦点字段被裁出列表 → item 销毁重建 → 输入状态丢失、焦点掉落、IME
+  收起再弹（逐字符回退/光标漂移/组合缓冲重复提交，`input text` 与手打同症）。改为
+  **「编辑槽位颜色」按钮弹 ModalBottomSheet**（`Column+verticalScroll` 子项常驻，与主题编辑
+  sheet 同款已验证结构），列表内只留开关+浅/深页签+「已设 N 项」按钮；输入框本地编辑态 +
+  仅解析成功才提交（commit-only-valid），覆写更新走 `updateSettings(transform)` 读-改-写。
 - 明确不做：背景色不做整页图片/渐变（背景图已是 per-assistant 能力，`BackgroundPicker.kt` 先例）；壁纸逐角色覆写（BiliPai `WallpaperPaletteOverrides`，我们没有壁纸 retoning 管线，无对象可覆）。
 
 ### 4.3 外观快照导入导出（BiliPai「主题=设置快照」语义）
