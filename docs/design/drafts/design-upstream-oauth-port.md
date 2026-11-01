@@ -608,7 +608,7 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 
 两种口径互相补足，切换后立即生效（设置页改完返回即刷新，无需重启）。
 
-**顺带记录**：验证「用量是否随请求增长」时，有一次带工具调用（`eval_javascript`）的长回复报 `SSE stream failed without exception`（`ResponseAPI` 的流结束兜底：没收到 `response.completed` 就断开）。同批次另外 3 次短回复与随后 1 次长回复均正常，怀疑是代理链路中途掐断（本机经 `127.0.0.1:8888` 代理），留待 P5 用稳定网络复测并确认是否需要把「无 completed 的 EOF」降级为可恢复错误。
+**顺带记录**：验证「用量是否随请求增长」时，有一次带工具调用（`eval_javascript`）的长回复报 `SSE stream failed without exception`（`ResponseAPI` 的流结束兜底：没收到 `response.completed` 就断开）。同批次另外 3 次短回复与随后 1 次长回复均正常，怀疑是代理链路中途掐断（本机经 `127.0.0.1:8888` 代理）。**P5 复测通过**：同一路径（带工具调用的长回复）重试已正常流式完成、收到 `response.completed`，判定当时是代理链路瞬时断流，非代码缺陷；「无 completed 的 EOF 降级为可恢复错误」作为可选增强留待后续，不在本次修复。
 
 ---
 
@@ -669,3 +669,8 @@ P4 的两条登录路径都在真机走通（§17.1）后，旧 OpenAI 设备码
 
 - `ai/README.md` 补一节「移植说明」，记录本仓与上游 `#1648` / `#2186` 的对应关系、刻意偏离（凭据加密、`sessionId`、SSE 容错范围）与旧设备码链路已删除。
 - `server-tool` 回传缺口（§16.6 最后一条）不属于本次 OAuth 移植范围，建议单开任务，不在 P5 修。
+
+### 17.6 后续复测记录
+
+- **SSE 断流（§16.7 遗留）**：用户于 2026-11-02 P5 期间复测「带工具调用的长回复」，**正常流式完成、收到 `response.completed`**。据此判定 P4 那次 `SSE stream failed without exception` 为代理链路（`127.0.0.1:8888`）瞬时断流，属环境问题，非代码缺陷；「无 `response.completed` 的 EOF 是否降级为可恢复错误」不作为本次修复项，留作可选增强。
+- 仍待补验：有 SuperGrok 订阅账号的 Grok 全链路、`ProviderAccountManager` 并发刷新/杀进程压测（见 §16.6）。
