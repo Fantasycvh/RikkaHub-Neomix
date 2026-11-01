@@ -108,6 +108,8 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.FullScreen
 import me.rerere.hugeicons.stroke.Zap
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.openai.SubscriptionProviderLock
+import app.androidrik.rikkahub.data.ai.openai.allowsSendingWith
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
@@ -190,9 +192,31 @@ fun ChatInput(
     onCancelQuote: () -> Unit = {},
     /** Non-null for a frozen conversation; null retains the global model setting behavior. */
     onUpdateBuiltInSearch: ((Boolean) -> Unit)? = null,
+    /**
+     * 订阅对话的提供商锁定（非空 = 本对话已使用 ChatGPT 订阅模型）。
+     *
+     * Codex 后端的推理是它自家专属的加密块，换 provider 后既解不开也回传不了，
+     * 因此锁定期间模型选择器只列出该提供商的模型，选中别家模型会被拦下并提示。
+     */
+    modelProviderLock: SubscriptionProviderLock? = null,
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
+    // 订阅对话锁定：选择器只列同一提供商的模型；选中别家模型的兜底提示文案先取好
+    // （stringResource 不能在 onSelect 回调里调用）
+    val lockNotice = if (modelProviderLock != null) {
+        stringResource(R.string.chat_input_subscription_provider_locked)
+    } else {
+        null
+    }
+    val lockSendBlockedNotice = if (modelProviderLock != null) {
+        stringResource(R.string.chat_input_subscription_provider_send_blocked)
+    } else {
+        null
+    }
+    val modelPickerProviders = remember(settings.providers, modelProviderLock) {
+        modelProviderLock?.filterProviders(settings.providers) ?: settings.providers
+    }
     // 开启背景效果时容器透明，铺底/着色由效果负责（BLUR/GLASS 两条路线都如此）
     val hazeTintColor = MaterialTheme.colorScheme.surfaceContainerLow
 
@@ -210,10 +234,34 @@ fun ChatInput(
         MaterialTheme.shapes.largeIncreased
     }
 
+    /**
+     * 订阅对话锁定的发送兜底：助手模型可能在别处（如助手设置页）被改成别家 provider，
+     * 此时这条对话已含订阅模型生成的加密内容，不能再发给别家——拦住并提示切回。
+     */
+    fun providerLockAllowsSend(): Boolean {
+        if (modelProviderLock == null) return true
+        val allowed = modelProviderLock.allowsSendingWith(
+            model = settings.getCurrentChatModel(),
+            providers = settings.providers,
+        )
+        if (allowed) return true
+        toaster.show(
+            message = lockSendBlockedNotice.orEmpty(),
+            duration = 3.seconds,
+            type = ToastType.Error,
+        )
+        return false
+    }
+
     fun sendMessage() {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        if (loading && state.isEmpty()) onCancelClick() else onSendClick()
+        if (loading && state.isEmpty()) {
+            onCancelClick()
+            return
+        }
+        if (!providerLockAllowsSend()) return
+        onSendClick()
     }
 
     fun sendMessageWithoutAnswer() {
@@ -372,9 +420,15 @@ fun ChatInput(
                             // Model Picker
                             ModelSelector(
                                 modelId = assistant.chatModelId ?: settings.chatModelId,
-                                providers = settings.providers,
-                                onSelect = {
-                                    onUpdateChatModel(it)
+                                providers = modelPickerProviders,
+                                notice = lockNotice,
+                                onSelect = { model ->
+                                    if (modelProviderLock != null && !modelProviderLock.allows(model, settings.providers)) {
+                                        // 兜底（列表已过滤）：锁定期间换到别家 provider 会被拦下
+                                        lockNotice?.let { toaster.show(message = it, duration = 3.seconds) }
+                                    } else {
+                                        onUpdateChatModel(model)
+                                    }
                                 },
                                 type = ModelType.CHAT,
                                 onlyIcon = true,

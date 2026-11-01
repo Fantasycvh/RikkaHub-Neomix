@@ -188,6 +188,8 @@ fun ModelSelector(
     modifier: Modifier = Modifier,
     onlyIcon: Boolean = false,
     allowClear: Boolean = false,
+    /** 非空时在选择面板顶部提示一行（如「订阅对话只能在同一提供商内换模型」）。 */
+    notice: String? = null,
     onSelect: (Model) -> Unit
 ) {
     val state = rememberModelListState(
@@ -259,6 +261,7 @@ fun ModelSelector(
 
     ModelListSheet(
         state = state,
+        notice = notice,
         onSelect = onSelect,
     )
 }
@@ -266,6 +269,8 @@ fun ModelSelector(
 @Composable
 fun ModelListSheet(
     state: ModelListState,
+    /** 面板顶部提示行；null = 不显示（普通对话）。 */
+    notice: String? = null,
     onSelect: (Model) -> Unit,
 ) {
     if (!state.visible) return
@@ -296,6 +301,14 @@ fun ModelListSheet(
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            notice?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
             ModelList(
                 currentModel = state.modelId,
                 providers = state.filteredProviders,
@@ -334,6 +347,8 @@ private fun ColumnScope.ModelList(
         // 停用的模型同样从收藏区移除：收藏只是「取用捷径」，不该绕过「不再提供」的语义
         if (!model.enabled) return@mapNotNull null
         val provider = model.findProvider(providers = settings.value.providers, checkOverwrite = false) ?: return@mapNotNull null
+        // 收藏区同样受传入的 providers 约束：订阅对话锁定时只该看到本提供商的收藏
+        if (providers.none { it.id == provider.id }) return@mapNotNull null
         model to provider
     }
 

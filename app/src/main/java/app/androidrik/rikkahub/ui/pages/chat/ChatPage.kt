@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
 import app.androidrik.rikkahub.ui.components.message.PlanBar
+import app.androidrik.rikkahub.data.ai.openai.resolveSubscriptionProviderLock
 import app.androidrik.rikkahub.data.ai.tools.local.latestTodoPlan
 import app.androidrik.rikkahub.ui.components.ai.CompressContextDialog
 import androidx.compose.ui.Alignment
@@ -423,6 +424,19 @@ private fun ChatPageContent(
     val hazeState = rememberRecoverableHazeState()
     val glassHazeState = rememberRecoverableHazeState()
     val assistant = conversation.effectiveAssistant(setting)
+    /**
+     * 订阅对话的提供商锁定：Codex 后端只认它自家生成的加密推理，换到其它 provider 后
+     * 这些块既解不开也回传不了，所以这类对话里不允许切换提供商（同提供商换模型照旧）。
+     *
+     * 只看**对话历史**：模型选择是助手级的，按"当前选中的模型"判定会把该助手所有历史对话
+     * 一起锁死（连切回去的路都没有）。
+     */
+    val subscriptionProviderLock = remember(setting.providers, conversation) {
+        resolveSubscriptionProviderLock(
+            providers = setting.providers,
+            historyModelIds = conversation.currentMessages.mapNotNull { it.modelId },
+        )
+    }
     // UI-only projection: never persist this whole settings object back to the global store.
     val effectiveSettings = remember(setting, assistant, currentChatModel) {
         setting.copy(
@@ -505,6 +519,7 @@ private fun ChatPageContent(
                     loading = loadingJob != null,
                     hasPendingInteraction = hasPendingInteraction,
                     settings = effectiveSettings,
+                    modelProviderLock = subscriptionProviderLock,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
                     contextUsage = contextUsage,

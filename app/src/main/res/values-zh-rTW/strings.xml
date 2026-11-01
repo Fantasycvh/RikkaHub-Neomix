@@ -2893,5 +2893,7 @@
   <string name="setting_provider_page_codex_error_reauth">訂閱登入已失效，請重新登入。</string>
   <string name="setting_provider_page_codex_error_failed">登入失敗：%1$s</string>
   <string name="setting_provider_page_codex_usage_hint">訂閱模式僅支援文字對話（不支援 Embedding 與圖片生成）。</string>
+  <string name="chat_input_subscription_provider_locked">此對話使用 ChatGPT 訂閱登入。Codex 推理內容是該後端專屬的加密區塊，只能由同一提供商繼續，不能切換到其它提供商。</string>
+  <string name="chat_input_subscription_provider_send_blocked">此對話由 ChatGPT 訂閱登入產生，只能繼續使用該提供商的模型；目前模型不屬於該提供商，請先切回後再傳送。</string>
 </resources>
 

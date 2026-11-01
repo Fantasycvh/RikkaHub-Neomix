@@ -316,6 +316,12 @@ single { ProviderManager(client = get(), context = get(), codexTokenProvider = g
 - `WebSettingsDto` 白名单不含凭据，**零改动**；若后续要在 web 显示认证方式，只加 `authType` 一个枚举字段。
 - 导入器（`SettingsJsonMigrator` 等）构造新 `ProviderSetting.OpenAI` 实例，`codexAccount` 默认 null → 导入的配置**天然不带他人凭据**；同时确认导入路径不会把未知字段透传到 settings（现有实现是按类字段赋值，天然安全）。
 
+### 7.6 订阅对话的提供商锁定（S3 补丁，2026-11-01）
+
+- **规则**：对话历史里已有订阅模型生成的消息 ⇒ 这条对话只能继续用**同一提供商**的模型（同 provider 换模型照旧）；模型选择器只列该提供商、顶部一行说明，发送入口再兜底拦截（助手模型在别处被改成别家时提示切回）。
+- **判定用历史（`UIMessage.modelId`）而不是"当前选中模型"**：模型选择是助手级的（`assistant.chatModelId`），按当前模型判定会把这个助手所有历史对话一起锁死，连切回去的路都没有（真机复现过）。
+- 代码：`app/.../data/ai/openai/SubscriptionProviderLock.kt`（`resolveSubscriptionProviderLock` / `allows` / `allowsSendingWith`，纯函数 + JVM 单测 12 例）；`ChatPage` 解析锁 → `ChatInput` 过滤列表、显示说明、拦截发送；`ModelList` 增加可选 `notice` 槽位，收藏区同样按传入 providers 过滤（否则锁定后收藏区仍能点别家模型）。
+
 ## 八、安全设计
 
 | 面 | 设计 |
