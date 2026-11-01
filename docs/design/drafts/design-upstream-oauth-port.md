@@ -574,3 +574,38 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 - **Grok 订阅锁**：当前不锁定对话；若 Grok 也回传只有自家能解密的加密推理，需要在 P5 评估加入 `SubscriptionProviderLock` 并补迁移/测试。
 - **`ProviderAccountManager` 并发刷新 / 杀进程重启**：仍无自动化覆盖（无 Robolectric），P4 真机只验证了单请求刷新链路；P5 补真机压测（并发两路请求只用一个 refresh token、刷新期间登出不写回）。
 - **server-tool 回传 / 全局 session 头**：属 P1 起既有缺口与后续增强，不在 P4 范围。
+
+### 16.7 补充：用量展示口径（已用 / 剩余）与后端字段实测
+
+**来源**：P4 验收后反馈「用量显示为剩余量而非已用量」，并接受「做成可选项切换」。
+
+**先确认后端语义**（临时给 `parseCodexUsage` 加了一行 `Log.d` 打印原始 body，验完已删）：
+
+```json
+"rate_limit": {
+  "allowed": true,
+  "limit_reached": false,
+  "primary_window":   { "used_percent": 0, "limit_window_seconds": 18000,  "reset_at": 1793567476 },
+  "secondary_window": { "used_percent": 2, "limit_window_seconds": 604800, "reset_at": 1794134729 }
+}
+```
+
+字段名就是 `used_percent`，且随用量**增长**：连着发 4 次真实 Codex 请求（每次 ↑6.3K tokens，其中 97% 命中缓存）后再查，5 小时窗口 `0 → 1`、每周窗口 `2 → 3`。所以 ChatGPT/Codex 后端给的是**已用量**，`used_percent` 不能当剩余量用；`limit_reached=false / allowed=true` 也印证 0% 是「刚重置、还没用」。
+
+**改动**（`feat(app): 用量展示口径可切换（已用/剩余）`）：
+
+- `Settings.usageDisplayMode`（新枚举 `UsageDisplayMode.USED / REMAINING`，默认 **USED**）：只是展示层偏好，DataStore 新 key `usage_display_mode`，旧设置无该键 → 默认 USED；**不升 `data_version`**（无迁移必要），备份 JSON 同样按缺省值解码。
+- 展示：账号用量卡与 `ProviderQuotaText` 都按口径换算——已用 = 后端原值，剩余 = `100 - 已用`（`UsageWindow.displayPercent(mode)`，钳在 0..100）；百分比前**显式加「已用 / 剩余」前缀**，不再出现「0% 到底是用了还是剩了」的歧义；进度条跟着所选口径走。
+- 入口：偏好设置 → 界面偏好设置 → 用量显示 → 百分比口径（已用 / 剩余两个 chip）。
+- 测试：`UsageWindowDisplayTest` 3 例（已用/剩余换算、钳位）。
+
+**真机验证**（同一账号、同一时刻）：
+
+| 口径 | 5 小时限额 | 每周限额 |
+| --- | --- | --- |
+| 已用（默认） | 已用 1% | 已用 3% |
+| 剩余 | 剩余 99% | 剩余 97% |
+
+两种口径互相补足，切换后立即生效（设置页改完返回即刷新，无需重启）。
+
+**顺带记录**：验证「用量是否随请求增长」时，有一次带工具调用（`eval_javascript`）的长回复报 `SSE stream failed without exception`（`ResponseAPI` 的流结束兜底：没收到 `response.completed` 就断开）。同批次另外 3 次短回复与随后 1 次长回复均正常，怀疑是代理链路中途掐断（本机经 `127.0.0.1:8888` 代理），留待 P5 用稳定网络复测并确认是否需要把「无 completed 的 EOF」降级为可恢复错误。
