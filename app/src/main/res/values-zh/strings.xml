@@ -2909,5 +2909,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_codex_usage_hint">订阅模式仅支持文本对话（不支持 Embedding 和图片生成）。</string>
   <string name="chat_input_subscription_provider_locked">此对话使用 ChatGPT 订阅登录。Codex 推理内容是该后端专属的加密块，只能由同一提供商继续，不能切换到其它提供商。</string>
   <string name="chat_input_subscription_provider_send_blocked">此对话由 ChatGPT 订阅登录生成，只能继续使用该提供商的模型；当前模型不属于该提供商，请先切回后再发送。</string>
+  <string name="setting_provider_page_codex_debug_force_refresh">强制刷新令牌（调试）</string>
+  <string name="setting_provider_page_codex_debug_refresh_ok">令牌已刷新（编码：%1$s）</string>
 </resources>
 

@@ -97,6 +97,24 @@ internal data class CodexTokenResult(
     val planType: String?,
 )
 
+/** 刷新请求实际被服务端接受的编码（调试入口用来确认 JSON→form 回退是否发生）。 */
+enum class CodexTokenEncoding {
+    JSON,
+    FORM,
+}
+
+/** 刷新请求的结果 + 实际生效的编码。 */
+internal data class CodexRefreshPayload(
+    val tokens: CodexTokenResult,
+    val encoding: CodexTokenEncoding,
+)
+
+/** [OpenAICodexAuthService.forceRefresh] 的结果：实际编码 + 刷新后落盘的账号状态。 */
+data class CodexForceRefreshResult(
+    val encoding: CodexTokenEncoding,
+    val account: CodexSubscriptionAccount,
+)
+
 /**
  * ChatGPT 订阅（Codex）登录服务。
  *
@@ -263,7 +281,7 @@ class OpenAICodexAuthService(
         account: CodexSubscriptionAccount,
     ): CodexToken {
         val refreshToken = decryptOrReauth(account.refreshTokenEncrypted)
-        val tokens = try {
+        val payload = try {
             refreshTokens(refreshToken)
         } catch (e: CodexAuthException) {
             if (e.code == CodexAuthErrorCode.INVALID_GRANT) {
@@ -272,18 +290,53 @@ class OpenAICodexAuthService(
             }
             throw e
         }
+        val tokens = payload.tokens
         val updated = persist(providerId, tokens, previous = account)
         val token = CodexToken(
             accessToken = decryptOrReauth(updated.accessTokenEncrypted),
             accountId = updated.accountId,
         )
         cachedTokens[providerId] = CachedToken(token, updated.expiresAt)
-        Log.i(TAG, "refresh: token refreshed for provider ${setting.name}")
+        Log.i(TAG, "refresh: token refreshed for provider ${setting.name} (encoding=${payload.encoding})")
         return token
     }
 
+    /**
+     * **调试入口**：忽略本地有效期与缓存，强制走一次 refresh token 换新并落盘。
+     *
+     * 真机验证刷新链路用（access token 1h 有效，等自然过期太久）：设置页订阅态下
+     * debug 包会显示「强制刷新令牌」按钮，返回值里的 [CodexTokenEncoding] 就是服务端
+     * 实际接受的编码——JSON 成功说明第一发就被接受，FORM 说明发生了回退。
+     */
+    suspend fun forceRefresh(providerId: Uuid): CodexForceRefreshResult = withContext(Dispatchers.IO) {
+        val mutex = refreshLocks.getOrPut(providerId) { Mutex() }
+        mutex.withLock {
+            val setting = currentSetting(providerId)
+                ?: throw CodexAuthException(CodexAuthErrorCode.INVALID_GRANT, "订阅配置已删除，请重新登录")
+            val account = setting.codexAccount
+                ?: throw CodexAuthException(CodexAuthErrorCode.INVALID_GRANT, "订阅登录已失效，请重新登录")
+            val refreshToken = decryptOrReauth(account.refreshTokenEncrypted)
+            val payload = try {
+                refreshTokens(refreshToken)
+            } catch (e: CodexAuthException) {
+                if (e.code == CodexAuthErrorCode.INVALID_GRANT) logout(providerId)
+                throw e
+            }
+            val updated = persist(providerId, payload.tokens, previous = account)
+            cachedTokens[providerId] = CachedToken(
+                token = CodexToken(
+                    accessToken = decryptOrReauth(updated.accessTokenEncrypted),
+                    accountId = updated.accountId,
+                ),
+                expiresAtMs = updated.expiresAt,
+            )
+            Log.i(TAG, "forceRefresh: encoding=${payload.encoding}, provider=${setting.name}")
+            CodexForceRefreshResult(encoding = payload.encoding, account = updated)
+        }
+    }
+
     /** 刷新接口：JSON 优先（上游 #2186 口径），编码不兼容时回退 form 重试一次。 */
-    internal suspend fun refreshTokens(refreshToken: String): CodexTokenResult = withContext(Dispatchers.IO) {
+    internal suspend fun refreshTokens(refreshToken: String): CodexRefreshPayload = withContext(Dispatchers.IO) {
         val jsonBody = buildJsonObject {
             put("client_id", CODEX_CLIENT_ID)
             put("grant_type", "refresh_token")
@@ -293,8 +346,13 @@ class OpenAICodexAuthService(
             Request.Builder().url(CODEX_TOKEN_URL).post(jsonBody).build()
         )
         if (jsonResult.first in 200..299) {
-            return@withContext parseTokenResponse(jsonResult.second)
+            Log.i(TAG, "refreshTokens: JSON accepted (${jsonResult.first})")
+            return@withContext CodexRefreshPayload(
+                tokens = parseTokenResponse(jsonResult.second),
+                encoding = CodexTokenEncoding.JSON,
+            )
         }
+        Log.i(TAG, "refreshTokens: JSON rejected (${jsonResult.first}), falling back to form")
         // 400/415 视为编码不被接受，回退 form（PR #1752/Jude 实测可用形态）
         val formResult = execute(
             Request.Builder()
@@ -309,7 +367,11 @@ class OpenAICodexAuthService(
                 .build()
         )
         if (formResult.first in 200..299) {
-            parseTokenResponse(formResult.second)
+            Log.i(TAG, "refreshTokens: FORM accepted (${formResult.first})")
+            CodexRefreshPayload(
+                tokens = parseTokenResponse(formResult.second),
+                encoding = CodexTokenEncoding.FORM,
+            )
         } else {
             throw authError(formResult.first, formResult.second, "刷新订阅令牌失败")
         }

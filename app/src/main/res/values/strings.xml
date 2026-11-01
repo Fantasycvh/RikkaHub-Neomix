@@ -2908,5 +2908,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_provider_page_codex_usage_hint">Subscription mode supports text chat only (no embeddings or image generation).</string>
   <string name="chat_input_subscription_provider_locked">This conversation uses a ChatGPT subscription. Codex reasoning is encrypted for its own backend, so only models from this provider can continue it.</string>
   <string name="chat_input_subscription_provider_send_blocked">This conversation was generated with a ChatGPT subscription, so it can only continue with that provider. Switch back to that provider model before sending.</string>
+  <string name="setting_provider_page_codex_debug_force_refresh">Force refresh token (debug)</string>
+  <string name="setting_provider_page_codex_debug_refresh_ok">Token refreshed via %1$s</string>
 </resources>
 

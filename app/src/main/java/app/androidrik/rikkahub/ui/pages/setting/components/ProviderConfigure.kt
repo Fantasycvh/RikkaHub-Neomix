@@ -62,6 +62,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.BuildConfig
 import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.reorderForDrag
 import app.androidrik.rikkahub.data.datastore.DEFAULT_PROVIDERS
@@ -72,6 +73,7 @@ import me.rerere.hugeicons.stroke.DragDropVertical
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import androidx.compose.ui.platform.LocalResources
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.serialization.json.Json
@@ -255,6 +257,7 @@ private fun ProviderConfigureOpenAI(
 ) {
     val toaster = LocalToaster.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val codexAuthService: OpenAICodexAuthService = koinInject()
     val providerManager: ProviderManager = koinInject()
@@ -262,6 +265,8 @@ private fun ProviderConfigureOpenAI(
     var deviceCode by remember { mutableStateOf<CodexDeviceCode?>(null) }
     var loginError by remember { mutableStateOf<CodexAuthException?>(null) }
     var loginJob by remember { mutableStateOf<Job?>(null) }
+    // 调试用：强制刷新中的状态（避免连点 / 与登录互斥）
+    var refreshing by remember { mutableStateOf(false) }
 
     val copiedMessage = stringResource(R.string.setting_provider_page_codex_copied)
     val successMessage = stringResource(R.string.setting_provider_page_codex_login_success)
@@ -398,6 +403,45 @@ private fun ProviderConfigureOpenAI(
                 enabled = loginJob == null,
             ) {
                 Text(stringResource(R.string.setting_provider_page_codex_logout))
+            }
+            // 调试入口：access token 1h 有效，等自然过期太久；强制刷新一次即可验证
+            // 刷新链路与「JSON 优先、form 回退」实际命中哪种编码（结果从 toast 读）。
+            if (BuildConfig.DEBUG) {
+                OutlinedButton(
+                    onClick = {
+                        if (refreshing) return@OutlinedButton
+                        scope.launch {
+                            refreshing = true
+                            try {
+                                val result = codexAuthService.forceRefresh(provider.id)
+                                onEdit(provider.copy(codexAccount = result.account))
+                                toaster.show(
+                                    message = resources.getString(
+                                        R.string.setting_provider_page_codex_debug_refresh_ok,
+                                        result.encoding.name,
+                                    ),
+                                    type = ToastType.Success,
+                                )
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: CodexAuthException) {
+                                loginError = e
+                            } finally {
+                                refreshing = false
+                            }
+                        }
+                    },
+                    enabled = loginJob == null && !refreshing,
+                ) {
+                    if (refreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text(stringResource(R.string.setting_provider_page_codex_debug_force_refresh))
+                    }
+                }
             }
         } else {
             OutlinedButton(

@@ -322,6 +322,12 @@ single { ProviderManager(client = get(), context = get(), codexTokenProvider = g
 - **判定用历史（`UIMessage.modelId`）而不是"当前选中模型"**：模型选择是助手级的（`assistant.chatModelId`），按当前模型判定会把这个助手所有历史对话一起锁死，连切回去的路都没有（真机复现过）。
 - 代码：`app/.../data/ai/openai/SubscriptionProviderLock.kt`（`resolveSubscriptionProviderLock` / `allows` / `allowsSendingWith`，纯函数 + JVM 单测 12 例）；`ChatPage` 解析锁 → `ChatInput` 过滤列表、显示说明、拦截发送；`ModelList` 增加可选 `notice` 槽位，收藏区同样按传入 providers 过滤（否则锁定后收藏区仍能点别家模型）。
 
+### 7.7 调试入口：强制刷新令牌（仅 debug 包）
+
+- 动机：access token 1h 有效，靠等自然过期验证刷新链路不现实；改设备时间又会污染其它逻辑。
+- 实现：`OpenAICodexAuthService.forceRefresh(providerId)` 忽略本地有效期与缓存，直接走一次 refresh token 换新并落盘，返回 `CodexForceRefreshResult(encoding, account)`，其中 `encoding` 是服务端**实际接受的编码**（`JSON` / `FORM`）；`refreshTokens` 改为返回 `CodexRefreshPayload(tokens, encoding)` 并在两条分支各打一行日志（`JSON accepted/rejected`、`FORM accepted`）。
+- UI：设置 → 提供商 → OpenAI → 订阅态账号卡片下方，`BuildConfig.DEBUG` 才渲染「强制刷新令牌（调试）」按钮，结果以 toast 显示编码。
+
 ## 八、安全设计
 
 | 面 | 设计 |
@@ -407,10 +413,11 @@ JVM 单测（`:ai:testDebugUnitTest` / `:app:testDebugUnitTest`）：
 - 杀进程重启后继续对话仍 200（解密 + `ChatGPT-Account-ID` 链路可用，无需重新登录）
 - 工具调用、退出登录：2026-11-01 用户真机验证通过（退出后凭据清除、工具往返正常）
 - 设备级代理：App 内代理为「无」时会回落系统代理选择器（`SettingsProxySelector` 的 system 兜底），设备配好代理后 Codex 请求 200
+- **刷新链路**：2026-11-01 用调试入口「强制刷新令牌」验证——`POST https://auth.openai.com/oauth/token` **200，服务端接受 JSON 编码**（日志 `refreshTokens: JSON accepted`，未触发 form 回退）；刷新后继续对话 `/responses` 200，说明 refresh token 轮换后的新 access token 落盘/解密正确，无需重新登录
 
 ### 尚未覆盖（后续补充）
 
-- **真实刷新**：access token 有效期 1h，未在设备上强制过期验证 JSON→form 回退（服务端实际接受哪种编码仍未证）；可临时改设备时间或加 debug 入口补测
+- **form 回退分支**：只有 JSON 被拒（400/415）时才会走到，正常账号触发不到；代码按上游 PR #1752 形态实现，保持为安全网
 - 备份恢复跨设备后的重新登录引导（`INVALID_GRANT` → 提示重新登录）
 - 长对话触发压缩后，Codex 加密推理块被清理/回传的行为
 - 区域封锁（`REGION_BLOCKED`）文案在无代理时的真机表现
