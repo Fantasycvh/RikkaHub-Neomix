@@ -9,7 +9,7 @@
 
 ## 一、结论（先行）
 
-1. **难度：高。** 单人 **18–25 人日**，其中 **7–9 人日**花在与 oauth 无关的前置条件上——上游 #2186 建立在 ai 流式层重构 #1648（85 文件 +7981/−1016）之上，而本仓完全没有这层。
+1. **难度：高。** 单人 **21–28 人日**，其中 **7–9 人日**花在与 oauth 无关的前置条件上——上游 #2186 建立在 ai 流式层重构 #1648（85 文件 +7981/−1016）之上，而本仓完全没有这层。
 2. **它不是「移植一个登录模块」**，而是同时动四块：`oauth` 模块、`ProviderSetting` sealed 层级重构（本仓 295 处引用 / 71 文件）、账号与额度子系统、SSE 解码层。
 3. **最大风险不是写代码，而是设置兼容**：`ProviderSetting` 从扁平三类型改成 `ApiKey` / `Account` 两级多态，设置 JSON 形状变化 → 必须做 V4/V5 迁移，且**旧版本无法读取新设置**（我们当初选设备码方案就是为了避开这个坑）。
 4. **收益**：额度展示、Grok 账号态、多账号抽象、后续可持续同步上游 oauth。**不具备的收益**：现有设备码方案已经能完成登录、多轮、工具、刷新、release 运行——移植换的是架构与增量能力，不是「能用/不能用」。
@@ -122,7 +122,7 @@ data class OAuthCredential(          // 账号凭据（明文，落盘由 app �
 | 流式层 | `MessageChunk` + `ai/util/SSE.kt` + `EventSources`（与上游 #1648 前同源） |
 | 凭据 | `CodexSubscriptionAccount`（`SecretCipher` 密文，`v1:` 前缀）挂在 `ProviderSetting.OpenAI.codexAccount` |
 | 设置迁移 | 仅 V1–V3 |
-| provider 扩展 | `ProviderProxy`（4 种）、`BalanceOption`、`RetrySetting`、`ReasoningOverride`、`apiKeys: List<ApiKeyEntry>`（多 key 轮询）、`ProviderType` |
+| provider 扩展 | `ProviderProxy`（4 种）、`BalanceOption`（**将由上游 `QuotaQuery` 替换**，见决策 4）、`RetrySetting`、`ReasoningOverride`、`apiKeys: List<ApiKeyEntry>`（多 key 轮询）、`ProviderType` |
 | 订阅相关自研 | 对话级「提供商锁定」（`SubscriptionProviderLock`）、debug 强制刷新入口、Codex SSE Content-Type 兼容、加密推理 metadata 通路 |
 
 ### 4.2 差距与迁移动作
@@ -184,7 +184,7 @@ chatgpt.com/backend-api/codex、grok 后端
 | `ProviderProxy`（全局/无/HTTP/SOCKS5） | 基类 `ProviderSetting` 保留，`Account` 子类同样带 |
 | `RetrySetting` | 同上 |
 | `ReasoningOverride` | 同上 |
-| `BalanceOption` / `ProviderType` | 与上游 `QuotaQuery` 二选一或共存（**需拍板**：额度展示用上游 `ProviderQuota`，本仓 `BalanceOption` 是余额文本，语义不同可共存） |
+| `BalanceOption` / `ProviderType` | **已拍板：删除 `BalanceOption`，改用上游 `QuotaQuery`**（决策 4）；`ProviderType` 保留在本仓 `ProviderSetting` 外层概念里 |
 | `apiKeys: List<ApiKeyEntry>`（多 key） | 仅 `ApiKey.OpenAI` 需要，`Account` 不需要 |
 | `SubscriptionProviderLock`（对话锁定） | 改为匹配 `Account.ChatGPT` provider id，逻辑不变 |
 | debug 强制刷新入口 | 改为调用 `ProviderAccountManager` 的刷新 |
@@ -197,11 +197,11 @@ chatgpt.com/backend-api/codex、grok 后端
 | --- | --- | --- | --- | --- |
 | **P0** 探测 | 用 `git worktree`/临时分支试合并 `#1648`，统计冲突文件与不可自动合并块；确认 fork 自定义字段清单；Grok 端点 curl 实测 | 冲突清单 + 端点实测记录 | 冲突面与预估一致；端点可用性有结论 | 0.5–1 |
 | **P1** 流式重构 | 移植 `#1648`：新增 `StreamChunk`/`StreamChunkHandler`/`StreamChunkDecoder`/`SseEvent` + 三个 `*StreamDecoder`；改造本仓全部 provider（OpenAI/ResponseAPI/ChatCompletions/Claude/Google/vertex）**以及 app 侧消费端**（`GenerationHandler` 1993 行、`ChatService` 3405 行、`ChatMessage`/`ChatMessageCot`/`Export` 等 8 个文件）；**行为不变** | 流式层替换 PR | 全 provider 单测绿 + 至少 3 家真机对话正常 + 本仓 codex 分支不回归 | 7–9 |
-| **P2** 类型体系 | `ProviderSetting` 拆 `ApiKey`/`Account`，新增 `OAuthCredential`/`QuotaQuery`；295 处引用改写；V4/V5 迁移 + 本仓迁移链重排；导入器/Web DTO/分享面板核对 | 设置模型重构 PR | 旧设置可迁移、导入导出正常、降级策略明确 | 3–4 |
-| **P3** 账号层 | `oauth` 模块（含前台服务/深链/Manifest）+ `ProviderAccountManager` + `ChatGPTAuth`/`GrokAuth`/`Jwt`；替换现有 `OpenAICodexAuthService` 或双轨 | 登录/刷新/额度 PR | 登录/刷新/退出/杀进程重启真机通过 | 3–4 |
-| **P4** provider + UI | `ChatGPTProvider`/`GrokProvider`、额度 UI、`ProviderConfigure` 拆分、订阅对话锁定适配、多语言、debug 入口迁移 | provider 与 UI PR | 真机：登录→模型列表→对话→额度显示；Grok 可用性视 P0 结论 | 2.5–3.5 |
-| **P5** 回归收尾 | 全 provider 回归矩阵、备份恢复重登、降级安装策略、日志脱敏复核、文档/changelog | 回归报告 | 第八节清单全过 | 2–3 |
-| 合计 | | | | **18–25** |
+| **P2** 类型体系 + 余额替换 | `ProviderSetting` 拆 `ApiKey`/`Account`，新增 `OAuthCredential`/`QuotaQuery`；295 处引用改写；V4/V5 迁移 + 本仓迁移链重排；**删除本仓 `BalanceOption`/`getBalance`/`ProviderBalanceText`（11 文件 75 处引用）并把存量余额配置迁移成 `QuotaQuery`**；导入器/Web DTO/分享面板核对 | 设置模型重构 PR | 旧设置可迁移（含余额配置）、导入导出正常、降级策略明确 | 4–5.5 |
+| **P3** 账号层 | `oauth` 模块（含前台服务/深链/Manifest）+ `ProviderAccountManager` + `ChatGPTAuth`/`GrokAuth`/`Jwt`；`OpenAICodexAuthService` 降级为**登录兜底**（只取 token，凭据/刷新统一走 Manager） | 登录/刷新/额度 PR | 主路径 + 兜底路径登录/刷新/退出/杀进程重启真机通过 | 3.5–5 |
+| **P4** provider + UI | `ChatGPTProvider`/`GrokProvider`、额度 UI（`ProviderQuotaText`/`QuotaQueryOption` 替换 `ProviderBalanceText`/`BalanceOption`）、`ProviderConfigure` 拆分、订阅对话锁定适配、兜底登录入口、多语言、debug 入口迁移 | provider 与 UI PR | 真机：登录→模型列表→对话→用量窗口/余额显示；Grok 登录+对话 | 3–4.5 |
+| **P5** 回归收尾 | 全 provider 回归矩阵（含主路径 + 设备码兜底路径）、备份恢复重登、降级安装策略、日志脱敏复核、**评估是否在下一个版本移除兜底**、文档/changelog | 回归报告 | 第八节清单全过 | 2.5–3.5 |
+| 合计 | | | | **21–28** |
 
 阶段间依赖严格：P1 → P2 → P3 → P4 → P5；P0 可与任意阶段并行但不能跳过。
 
@@ -215,6 +215,7 @@ chatgpt.com/backend-api/codex、grok 后端
 | 聊天主链路全量回归（#1648） | 所有 provider 的流式/工具调用/推理可能回归 | P1 单独 PR、行为不变；按 provider 逐个真机验证；保留旧解码器开关一个版本 |
 | 295 处引用改写遗漏 | 编译能过但语义错（如按 provider 类型分支漏了 `ChatGPT`） | 编译器驱动 + 全仓 `grep ProviderSetting.` 复核 + 真机遍历设置页 |
 | 凭据迁移 | `codexAccount` 密文 → `OAuthCredential` 迁移失败 → 用户需重登 | 解密失败即走重登引导（现有 `INVALID_GRANT` 路径复用） |
+| 余额配置迁移（决策 4） | `BalanceOption` 的多源/表达式无法 1:1 映射到 `QuotaQuery` → 部分用户余额查询能力下降或显示为空 | 迁移器按待决问题 1 的方案处理；迁移前自动备份；发布说明列出「余额查询改为额度查询」+ 需要重配的提示 |
 | 上游持续漂移 | 移植完成即落后（基线以来 405 提交） | 锁定移植目标 commit；完成后按季度同步；不追求与 HEAD 对齐 |
 | ~~Grok 端点未证~~ | **P0 已实测可用**（见第十节），form 编码 + RFC 8628 pending 语义均符合预期 | 风险关闭；实现时注意 device/code 必须 `application/x-www-form-urlencoded`（JSON 返回 415） |
 | 双轨期复杂度 | 设备码与新账号层并存，状态源两份 | 明确弃用时间点；`OpenAICodexAuthService` 只保留「读旧数据→迁移→删除」 |
@@ -228,7 +229,9 @@ chatgpt.com/backend-api/codex、grok 后端
 | --- | --- |
 | loopback PKCE 登录 / 设备码兜底 | 真机：授权后回到 app 自动完成 |
 | token 刷新 | 强制过期或 debug 入口，JSON/form 编码记录 |
-| 额度展示 | 真机：`/wham/usage` 数据正确回落 |
+| 额度展示（账号） | 真机：`/wham/usage` 双窗口（5h/周）正确显示，`limitReached` 状态正确 |
+| 余额展示（API Key） | 真机：迁移后的 `QuotaQuery` 配置能查出余额并显示；旧多源配置按迁移策略行为符合预期 |
+| 登录兜底 | 真机：主路径（loopback）登录失败时，设备码入口可用 |
 | 模型列表 | 登录后自动拉取；手动刷新 |
 | 多轮 + 加密推理 | 连续两轮以上、历史推理回传 |
 | 工具调用 | 本地工具往返 |
@@ -248,13 +251,14 @@ chatgpt.com/backend-api/codex、grok 后端
 | # | 问题 | 决定 |
 | --- | --- | --- |
 | 1 | Grok 是否同批 | **先 P0 实测端点再定** → 实测结论：可用（第十节），按 P4 一并实现（增量 2.5–3.5 人日） |
+| 2 | 设备码是否留兜底 | **保留一版（P5 再评估是否移除）**：`OpenAICodexAuthService` 降级为登录兜底，只负责取 token，凭据/刷新/额度统一由 `ProviderAccountManager` 持有；UI 在主登录失败时提供「改用设备码」入口。增量 P3/P4/P5 合计 +1.5–2.5 人日 |
 | 3 | 降级策略 | **旧版不可用 + 发布说明**；迁移前自动备份设置，不做兼容读取层 |
+| 4 | 额度 UI 与 `BalanceOption` | **选 B：上游额度体系替换本仓余额**。删除本仓 `BalanceOption`/`BalanceSource`/`Provider.getBalance`/`ProviderBalanceText`/`BalanceOption.kt`（11 文件 75 处引用），统一用 `ProviderQuota`（账号=用量窗口，API Key=`QuotaQuery` 余额）；存量 `balanceOption` 配置迁移为 `QuotaQuery`。P2/P4 合计 +1–2 人日 |
 
 ### 待决问题
 
-1. **是否保留设备码兜底**：保留则双路径（省一层回滚保险，但双轨期长）；不保留则登录体验与上游一致。
-2. **额度 UI 与本仓 `BalanceOption` 的关系**：共存（额度=订阅配额，余额=API 余额）还是统一。
-3. **发布节奏**：五个 PR 分批（推荐，每阶段可回滚）还是一个大的移植 PR。
+1. **多源 / 表达式余额配置的迁移方式**：本仓 `BalanceOption` 支持「多接口 + 表达式」（上游 `QuotaQuery` 只有单 URL + resultPath）。三个选项：(a) 迁移时取第一个源 + 发布说明提示，损失多源能力（0 额外成本）；(b) 给 `QuotaQuery` 扩展 `sources`/`expression`，保留能力（+1–1.5 人日）；(c) 迁移时检测到多源配置则弹提示要求用户手工重配（+0.5 人日）。
+2. **发布节奏**：五个 PR 分批（推荐，每阶段可回滚）还是一个大的移植 PR。
 
 ---
 
