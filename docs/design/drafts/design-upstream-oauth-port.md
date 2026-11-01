@@ -511,3 +511,66 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 - 旧 `ProviderSetting.OpenAI.codexAccount` → `ProviderSetting.ChatGPT(credential)` 的**设置迁移**（需要新 Provider 能用；含 `SubscriptionProviderLock` 与对话模型绑定适配、`authType=CHATGPT_SUBSCRIPTION` 的 OpenAI 提供商去留）。
 - `ProviderAccountManager` 的并发刷新/杀进程重启真机验证；`preserveCredential` 接入设置页保存路径。
 - oauth 前台服务在真实登录流程中的通知权限申请（Android 13+）与 Custom Tabs 回跳体验。
+
+---
+
+## 十六、P4 实施记录（分支 `feat/p4-account-providers`，基于已合并 P1+P2 的 `master` + P3）
+
+### 16.1 提交
+
+| 提交 | 内容 |
+| --- | --- |
+| `25ad5bc94` | ai 侧账号类提供商：`ChatGPTProvider`（Codex 后端模型/额度/流式）、`GrokProvider`（CLI+api.x.ai 双目录、周/月 billing）、`ResponsesEndpoint`/`ResponseProviderCapabilities` 重构（含 endpoint 版 generateText/streamText、capabilities 版请求体、`prompt_cache_key = params.sessionId`）、`ProviderManager` 注册 chatgpt/grok、`ProviderSetting.supportsQuota`、`TextGenerationParams.sessionId`、`fetchBody`；测试 ChatGPTProviderTest 11 / CodexEventStreamTest 2 / GrokProviderTest 8 / OpenAIResponsesEndpointTest 4 + 既有 2 例扩充（`:ai` 443 → 470） |
+| `30aeeedd7` | app 接线：`ProviderManager(accountCredentials = ProviderAccountManager)`；`GenerationHandler.sessionId` + `ChatService` 传 `conversationId`（Responses prompt_cache_key / ChatGPT `session-id` / Grok `x-grok-conv-id`）；3 处单测补 fake 凭据 |
+| `144a95de2` | 设置页 UI：`ProviderConfigureAccount`（登录/等待/设备码大字+重开验证页/已登录邮箱套餐+退出）、ChatGPT/Grok 分支、`rememberProviderQuota` + Account 用量展示、新建模板 sheet（OpenAI/Google/Claude/ChatGPT/Grok）、保存走 `preserveCredential`、账号类隐藏 API 格式切换与模型级 provider 覆盖、22 条上游同 key 文案（values / values-zh / values-zh-rTW） |
+| `623d4ee5a` | 本仓专有迁移：`PreferenceStoreV5Migration`（data_version 4→5，旧 `OpenAI(authType=chatgpt_subscription, codexAccount)` → `ProviderSetting.ChatGPT`，密文原样搬）、`SettingsJsonMigrator` V7（备份恢复同一变换）、`SubscriptionProviderLock` 扩展识别账号类 ChatGPT；测试 V5 17 例、备份 +7、订阅锁 +8 |
+
+### 16.2 实施内容
+
+- **ai 层**：账号类 Provider 的请求地址写死在各自 Provider 内（`chatgpt.com/backend-api/codex`、`cli-chat-proxy.grok.com`/`api.x.ai`），配置里没有 baseUrl/apiKey，token 不可能被发往第三方地址。ChatGPT 复用本仓 `CodexSupport.kt` 已有的 `CODEX_CLIENT_VERSION`/`CODEX_ORIGINATOR`/`parseCodexModels`（旧设备码链路仍在使用，避免两份）；Grok 复用 `xai-grok-cli` 通道头与 `grokCli` 目录优先级。
+- **app 层接线**：账号凭据只在 provider 发请求时通过 `AccountCredentialProvider` 现取（401 时由 `AccountTokenAuthenticator` 刷新重试一次），设置页保存整份 provider 时用 `preserveCredential` 保留后台写回的最新凭据。
+- **旧链路并存**：旧 `ProviderSetting.OpenAI.authType=chatgpt_subscription` + `OpenAICodexAuthService` 设备码链路**完全未删**；迁移只做一次性数据形态转换，P5 再决定是否移除旧 UI/服务。
+- **能力判定**：`supportsQuota`（ApiKey → `quotaQuery.enabled`；Account → `credential != null`）统一决定设置页是否展示用量；`ProviderSetting.Types`（API 格式切换）仍只有 OpenAI/Google/Claude，账号类不参与互转。
+
+### 16.3 版本与迁移
+
+- `data_version` 4 → **5**（本仓 V1..V4；上游同语义迁移在 V4/V5，编号已错位，**不改名**）。
+- 备份格式 `SettingsJsonMigrator` 最高 V6 → **V7**：旧备份恢复同样转换成 ChatGPT，不会以旧 OpenAI 形态落回；与新版本无关的中间产物（如 V6 的 `quotaQuery`）随迁移丢弃（Account 无该字段）。
+- 迁移规则：保留 `id`（历史消息 modelId 与订阅锁依赖）、`enabled`/`name`/`models`/`proxy`/`customHeaders`/`retryOption`/`reasoningOverride`；`credential = OAuthCredential(accessToken=accessTokenEncrypted, refreshToken=refreshTokenEncrypted, expiresAt, accountId, email, plan=planType)`，密文逐字节原样搬；两个 token 都空 ⇒ `credential=null`（未登录）；显式 `authType=api_key` 的残留 `codexAccount` **不迁**（用户已切回 API Key，旧请求链路本就不读 codexAccount，迁走等于删掉可用配置）；幂等、畸形 JSON 原样返回。
+- `SubscriptionProviderLock`：锁定候选 = 旧 OpenAI 订阅 ∪ 已登录且有 models 的 ChatGPT；Grok 暂不参与（是否也因加密推理锁定留待 P5 决策，测试已钉住当前行为）。
+
+### 16.4 刻意偏离上游
+
+| 项 | 上游 | 本仓 | 原因 |
+| --- | --- | --- | --- |
+| `TextGenerationParams.sessionId` 默认值 | 随机 UUID | `null`；由 app 层显式传 `conversationId` | 本仓旧 Codex 链路用 `codexPromptCacheKey` 稳定键，随机默认会破坏 P1 行为与既有单测 |
+| `ResponsesEndpoint` 字段 | 只有 url/capabilities/configureRequest | 多 `reasoningOverride`/`proxy`/`forceEventStream` | 本仓 P2 提供商级思考强度兜底、P1 两层代理、Codex SSE 容错 |
+| Codex SSE 容错 | 改 common `newEventSource` 全局宽容 | 沿用 `CodexSseContentTypeInterceptor`（只补 Codex 端点）+ 显式 `Accept: text/event-stream` | 其它网关保持 OkHttp 严格校验，不放大全局宽容面 |
+| 旧 `buildRequestBody(ProviderSetting.OpenAI, …)` 重载 | 已删 | 保留 | 旧 Codex 设备码链路与 P1 既有单测仍在用；订阅态回填 `codexPromptCacheKey` 保证逐字不变 |
+| server-tool 回传 / 全局 session 头（含 Chat Completions 的 `session_id`） | 有 | **未移植** | 本仓 P1 起就没有 server-tool 回传能力（既有缺口，建议单开任务）；全局 session 头等 app 传 sessionId 后再评估 |
+| `ProviderAccountManager` 并发刷新测试 | 有 | 未移植（P3 已说明：无 Robolectric） | 并发/杀进程语义改为真机与代码审查覆盖 |
+| Account 类型字段 | 无 proxy/retry/reasoningOverride | 保留本仓扩展字段 | 账号类同样需要代理与重试覆盖（P2/P3 已有语义） |
+
+### 16.5 验证
+
+**单测 / 构建**
+
+- `:oauth:testDebugUnitTest` **9/9**；`:ai:testDebugUnitTest` **470 例全绿**（P3 443 + P4 新增 27）；`:app:testDebugUnitTest` **2739 例全绿（2 skip）**（P3 2707 + 新增 32）。
+- `:app:compileDebugKotlin`、`:app:assembleDebug` 通过（arm64-v8a APK）。
+
+**真机（设备 `6c841f95` / PJX110 / debug 包，覆盖安装）**
+
+- **迁移（V5）**：启动无崩溃；设备上唯一一个旧订阅 provider（`OpenAI`，`authType=chatgpt_subscription`）原地变成 `{"type":"chatgpt","id":"bd407eef-…"}`：id 不变、8 个模型不变、`credential.email=jiushixiuqi@gmail.com`、`plan=plus`、`expiresAt` 不变、`accessToken/refreshToken` 仍是同一份 `v1:` 密文；全库 `codexAccount` 计数归 0；`data_version=5`。
+- **账号 UI**：设置 → 提供商列表首个条目即迁移后的 ChatGPT（原名 OpenAI、8 个模型）；详情页「账户」区显示邮箱 + `ChatGPT Plus` + 退出登录，「用量」区显示真实额度（5 小时限额 0%、每周期限 2%、重置时间 2026-11-08 18:45:29），无 API Key/Base URL/额度查询配置；「模型」页 8 个模型齐全、可启停。
+- **真实流式对话（核心验收）**：用迁移后的 provider（GPT-6.1-Sol）发一条消息，**成功收到真实回复**（"Hello, how can I help you today?"），usage 卡片显示 ↑6.3K tokens / ↓13 tokens / 36.1 tok/s / 0.4s，页脚 `OpenAI · GPT-6.1-Sol`。⇒ 迁移后的凭据解密、401 刷新链路、Codex 后端请求体/SSE 解码、`sessionId` 提示缓存键全链路工作。
+- **Grok 登录**：新建 Grok provider → 「使用 Grok 登录」→ 设备码流程拉起 `accounts.x.ai` 自定义页签，用户在真机完成登录后设置页自动变为已登录（邮箱 + 退出登录），凭据以 `v1:` 密文落盘；用量/模型接口在**无 SuperGrok 订阅**的账号上被服务端拒绝（分别报 `connection closed` 与 `获取模型失败`），UI 正确显示可重试的错误态、不崩溃 —— 属账号权限/网络环境，不是代码缺陷。
+- **环境备注**：设备设置了全局代理 `127.0.0.1:8888`（P1 遗留，指向宿主 clash），需要 `adb reverse tcp:8888 tcp:8888` 才能联网；验收中 adb server 重启导致该映射丢失，出现 `Failed to connect to /127.0.0.1:8888`，恢复映射后 ChatGPT 链路即恢复正常。测试创建的 Grok provider（已登录、无订阅、models 为空）留在设备上，可随时删除。
+
+### 16.6 P4 未覆盖 / 已知限制（P5 承接）
+
+- **ChatGPT loopback 登录**（Custom Tabs + 前台服务 + `127.0.0.1:1455` 回调）只做了代码与单测（`ChatGPTAuthTest` 12 例），**未在新账号上点通真实登录**；真机只验证了「已登录态迁移」与「Grok 设备码登录」。P5 需要真机走一遍新账号登录 + 通知权限（Android 13+）。
+- **Grok 全链路**：登录成功但账号无 SuperGrok 订阅，模型目录/额度/对话均无法真机验证；需有订阅的账号补验（`GrokProviderTest` 8 例覆盖解析，未覆盖真实端点差异）。
+- **降级/去留**：旧 Codex 设备码 UI（`ProviderConfigure` 内 OpenAI 订阅分支）、`OpenAICodexAuthService`、`CodexSubscriptionAccount` 与 `ProviderSetting.OpenAI` 相关字段仍在；P5 决定「保留为兜底 or 删除」，并补发布说明（旧版本读新数据不可用，需迁移前自动备份）。
+- **Grok 订阅锁**：当前不锁定对话；若 Grok 也回传只有自家能解密的加密推理，需要在 P5 评估加入 `SubscriptionProviderLock` 并补迁移/测试。
+- **`ProviderAccountManager` 并发刷新 / 杀进程重启**：仍无自动化覆盖（无 Robolectric），P4 真机只验证了单请求刷新链路；P5 补真机压测（并发两路请求只用一个 refresh token、刷新期间登出不写回）。
+- **server-tool 回传 / 全局 session 头**：属 P1 起既有缺口与后续增强，不在 P4 范围。
