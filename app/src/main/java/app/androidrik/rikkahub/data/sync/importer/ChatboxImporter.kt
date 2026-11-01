@@ -570,6 +570,8 @@ object ChatboxImporter {
         is ProviderSetting.OpenAI -> "openai"
         is ProviderSetting.Google -> "gemini"
         is ProviderSetting.Claude -> "claude"
+        // 账号类提供商不参与 Chatbox 会话导入的 provider 匹配
+        is ProviderSetting.Account -> ""
     }
 
     private fun millisToLocalDateTime(timestamp: Long?) =

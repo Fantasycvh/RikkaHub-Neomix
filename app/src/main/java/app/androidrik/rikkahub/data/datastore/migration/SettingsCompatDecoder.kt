@@ -19,7 +19,8 @@ internal data class SettingsDecodeResult(
 
 /**
  * 备份设置的有限降级解码：只跳过 providers / ttsProviders 中不支持的顶层多态类型。
- * 原版 3.1.0 的 chatgpt、grok、volcengine TTS 不映射为其他协议，避免误发请求。
+ * 原版 3.1.0 的 volcengine TTS 不映射为其他协议，避免误发请求；上游的 chatgpt / grok
+ * 账号类提供商自 P3 起原生支持，不再丢弃。
  * 已知类型的字段损坏、嵌套类型错误及其他设置错误仍中止恢复，不静默删数据。
  * 不依赖异常的 JSON path（不同 kotlinx 版本的 path 格式并不稳定）。
  */

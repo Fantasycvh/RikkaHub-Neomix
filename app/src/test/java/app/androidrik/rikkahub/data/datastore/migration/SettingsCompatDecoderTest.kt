@@ -23,15 +23,29 @@ class SettingsCompatDecoderTest {
         assertTrue(result.droppedEntries.isEmpty())
     }
 
-    @Test fun unsupportedProvidersAreSkippedWithoutChangingSupportedCredentials() {
+    @Test fun unknownProvidersAreSkippedWithoutChangingSupportedCredentials() {
+        // chatgpt / grok 在 P3 已支持（账号类）；这里用真正未知的类型验证降级丢弃
         val result = decode("""{"providers":[
-            {"type":"chatgpt"},
+            {"type":"future_provider"},
             {"type":"openai","name":"Supported","apiKey":"test-secret","models":[]},
-            {"type":"grok"}
+            {"type":"another_future_provider"}
         ]}""")
         assertEquals(listOf("Supported"), result.settings.providers.map { it.name })
-        assertEquals(listOf("providers[0] (chatgpt)", "providers[2] (grok)"), result.droppedEntries)
+        assertEquals(
+            listOf("providers[0] (future_provider)", "providers[2] (another_future_provider)"),
+            result.droppedEntries,
+        )
         assertFalse(result.droppedEntries.toString().contains("test-secret"))
+    }
+
+    @Test fun upstreamAccountProvidersAreNoLongerDropped() {
+        // 上游 #2186 的账号类提供商：P3 起能解码（凭据缺失 = 未登录状态）
+        val result = decode("""{"providers":[
+            {"type":"chatgpt","name":"ChatGPT"},
+            {"type":"grok","name":"Grok"}
+        ]}""")
+        assertEquals(listOf("ChatGPT", "Grok"), result.settings.providers.map { it.name })
+        assertTrue(result.droppedEntries.isEmpty())
     }
 
     @Test fun selectedUnsupportedTtsFallsBackToSystem() {
@@ -50,7 +64,9 @@ class SettingsCompatDecoderTest {
             "displaySetting":{"userAvatar":{"type":"me.rerere.rikkahub.data.model.Avatar.Dummy"}}
         }""", "app.androidrik.rikkahub")
         val result = decode(migrated)
-        assertEquals(1, result.settings.providers.size)
+        // grok 在 P3 起是支持的类型，不再被丢弃
+        assertEquals(2, result.settings.providers.size)
+        assertTrue(result.settings.providers.any { it is app.androidrik.ai.provider.ProviderSetting.Grok })
         assertEquals(1, result.settings.searchServices.size)
         assertEquals(0, result.settings.searchServiceSelected)
     }

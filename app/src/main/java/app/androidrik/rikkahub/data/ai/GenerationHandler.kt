@@ -1985,11 +1985,8 @@ private fun Throwable.matchesAnyMarker(markers: List<String>): Boolean {
 
 /** 该提供商是否配置了多个可用 key（enabled 过滤后） */
 internal fun hasMultipleEnabledKeys(providerSetting: ProviderSetting): Boolean {
-    val keys = when (providerSetting) {
-        is ProviderSetting.OpenAI -> providerSetting.apiKeys
-        is ProviderSetting.Google -> providerSetting.apiKeys
-        is ProviderSetting.Claude -> providerSetting.apiKeys
-    }
+    // 账号类没有 API Key 轮询
+    val keys = (providerSetting as? ProviderSetting.ApiKey)?.apiKeys ?: return false
     return keys.count { it.enabled && it.key.isNotBlank() } > 1
 }
 
@@ -2004,10 +2001,11 @@ internal fun rotateProviderKeys(setting: ProviderSetting): ProviderSetting? {
     val remaining = keys.drop(1)
     val entries = remaining.map { ApiKeyEntry(it) }
     val legacy = remaining.joinToString("\n")
-    return when (setting) {
-        is ProviderSetting.OpenAI -> setting.copy(apiKeys = entries, apiKey = legacy)
-        is ProviderSetting.Google -> setting.copy(apiKeys = entries, apiKey = legacy)
-        is ProviderSetting.Claude -> setting.copy(apiKeys = entries, apiKey = legacy)
+    val apiKeySetting = setting as? ProviderSetting.ApiKey ?: return null
+    return when (apiKeySetting) {
+        is ProviderSetting.OpenAI -> apiKeySetting.copy(apiKeys = entries, apiKey = legacy)
+        is ProviderSetting.Google -> apiKeySetting.copy(apiKeys = entries, apiKey = legacy)
+        is ProviderSetting.Claude -> apiKeySetting.copy(apiKeys = entries, apiKey = legacy)
     }
 }
 

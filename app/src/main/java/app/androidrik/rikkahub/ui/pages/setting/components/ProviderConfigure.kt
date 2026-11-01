@@ -114,6 +114,8 @@ fun ProviderConfigure(
             is ProviderSetting.OpenAI -> ProviderConfigureOpenAI(provider, onEdit)
             is ProviderSetting.Google -> ProviderConfigureGoogle(provider, onEdit)
             is ProviderSetting.Claude -> ProviderConfigureClaude(provider, onEdit)
+            // 账号类提供商的登录/额度界面随 P4 接入；P3 只有账号层基础设施
+            is ProviderSetting.Account -> Unit
         }
 
         // 思考强度映射的提供商级兜底：模型级覆盖优先于它，它优先于内置映射（见 ReasoningOverride）
@@ -129,26 +131,24 @@ fun ProviderConfigure(
 fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSetting {
     if (this::class == type) return this
 
-    val apiKey = when (this) {
-        is ProviderSetting.OpenAI -> this.apiKey
-        is ProviderSetting.Google -> this.apiKey
-        is ProviderSetting.Claude -> this.apiKey
+    // convertTo 只在 API Key 类之间切换；账号类没有这些字段，调用方也不应走到这里
+    val apiKeySetting = this as? ProviderSetting.ApiKey ?: return this
+    val apiKey = when (apiKeySetting) {
+        is ProviderSetting.OpenAI -> apiKeySetting.apiKey
+        is ProviderSetting.Google -> apiKeySetting.apiKey
+        is ProviderSetting.Claude -> apiKeySetting.apiKey
     }
-    val apiKeys = when (this) {
-        is ProviderSetting.OpenAI -> this.apiKeys
-        is ProviderSetting.Google -> this.apiKeys
-        is ProviderSetting.Claude -> this.apiKeys
+    val apiKeys = when (apiKeySetting) {
+        is ProviderSetting.OpenAI -> apiKeySetting.apiKeys
+        is ProviderSetting.Google -> apiKeySetting.apiKeys
+        is ProviderSetting.Claude -> apiKeySetting.apiKeys
     }
-    val sourceBaseUrl = when (this) {
-        is ProviderSetting.OpenAI -> this.baseUrl
-        is ProviderSetting.Google -> this.baseUrl
-        is ProviderSetting.Claude -> this.baseUrl
+    val sourceBaseUrl = when (apiKeySetting) {
+        is ProviderSetting.OpenAI -> apiKeySetting.baseUrl
+        is ProviderSetting.Google -> apiKeySetting.baseUrl
+        is ProviderSetting.Claude -> apiKeySetting.baseUrl
     }
-    val quotaQuery = when (this) {
-        is ProviderSetting.OpenAI -> this.quotaQuery
-        is ProviderSetting.Google -> this.quotaQuery
-        is ProviderSetting.Claude -> this.quotaQuery
-    }
+    val quotaQuery = apiKeySetting.quotaQuery
     val targetDefaultBaseUrl = when (type) {
         ProviderSetting.OpenAI::class -> ProviderSetting.OpenAI().baseUrl
         ProviderSetting.Google::class -> ProviderSetting.Google().baseUrl
@@ -190,12 +190,14 @@ internal fun ProviderSetting.defaultBaseUrlForReset(): String {
             is ProviderSetting.OpenAI -> if (defaultProvider is ProviderSetting.OpenAI) return defaultProvider.baseUrl
             is ProviderSetting.Google -> if (defaultProvider is ProviderSetting.Google) return defaultProvider.baseUrl
             is ProviderSetting.Claude -> if (defaultProvider is ProviderSetting.Claude) return defaultProvider.baseUrl
+            is ProviderSetting.Account -> return ""
         }
     }
     return when (this) {
         is ProviderSetting.OpenAI -> ProviderSetting.OpenAI().baseUrl
         is ProviderSetting.Google -> ProviderSetting.Google().baseUrl
         is ProviderSetting.Claude -> ProviderSetting.Claude().baseUrl
+        is ProviderSetting.Account -> ""
     }
 }
 
@@ -205,6 +207,7 @@ internal fun ProviderSetting.resetBaseUrlToDefault(): ProviderSetting {
         is ProviderSetting.OpenAI -> this.copy(baseUrl = defaultBaseUrl)
         is ProviderSetting.Google -> this.copy(baseUrl = defaultBaseUrl)
         is ProviderSetting.Claude -> this.copy(baseUrl = defaultBaseUrl)
+        is ProviderSetting.Account -> this
     }
 }
 
@@ -213,6 +216,7 @@ internal fun ProviderSetting.isUsingDefaultBaseUrl(): Boolean {
         is ProviderSetting.OpenAI -> this.baseUrl
         is ProviderSetting.Google -> this.baseUrl
         is ProviderSetting.Claude -> this.baseUrl
+        is ProviderSetting.Account -> return true
     }
     return baseUrl == defaultBaseUrlForReset()
 }
