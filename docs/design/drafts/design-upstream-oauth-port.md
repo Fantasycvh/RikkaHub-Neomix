@@ -13,7 +13,7 @@
 2. **它不是「移植一个登录模块」**，而是同时动四块：`oauth` 模块、`ProviderSetting` sealed 层级重构（本仓 295 处引用 / 71 文件）、账号与额度子系统、SSE 解码层。
 3. **最大风险不是写代码，而是设置兼容**：`ProviderSetting` 从扁平三类型改成 `ApiKey` / `Account` 两级多态，设置 JSON 形状变化 → 必须做 V4/V5 迁移，且**旧版本无法读取新设置**（我们当初选设备码方案就是为了避开这个坑）。
 4. **收益**：额度展示、Grok 账号态、多账号抽象、后续可持续同步上游 oauth。**不具备的收益**：现有设备码方案已经能完成登录、多轮、工具、刷新、release 运行——移植换的是架构与增量能力，不是「能用/不能用」。
-5. **建议**：按 P0–P5 六阶段推进，每阶段独立可验收/可回滚；**P0 先做「试合并探测」再决定是否投入 P1**，否则有可能在 #1648 阶段就止损。
+5. **建议**：按 P0–P5 六阶段推进，每阶段独立可验收/可回滚；**P0 已执行**（见第十节）：Grok 设备码端点实测可用，#1648 试合并的冲突面已量化，可以投入 P1。
 
 ---
 
@@ -196,7 +196,7 @@ chatgpt.com/backend-api/codex、grok 后端
 | 阶段 | 内容 | 关键交付 | 验收 | 人日 |
 | --- | --- | --- | --- | --- |
 | **P0** 探测 | 用 `git worktree`/临时分支试合并 `#1648`，统计冲突文件与不可自动合并块；确认 fork 自定义字段清单；Grok 端点 curl 实测 | 冲突清单 + 端点实测记录 | 冲突面与预估一致；端点可用性有结论 | 0.5–1 |
-| **P1** 流式重构 | 移植 `#1648`：`StreamChunk`/`StreamChunkHandler`/`StreamChunkDecoder` + 本仓全部 provider 适配（OpenAI/ChatCompletions/ResponseAPI/Claude/Google/vertex）；**行为不变** | 流式层替换 PR | 全 provider 单测绿 + 至少 3 家真机对话正常 + 本仓 codex 分支不回归 | 7–9 |
+| **P1** 流式重构 | 移植 `#1648`：新增 `StreamChunk`/`StreamChunkHandler`/`StreamChunkDecoder`/`SseEvent` + 三个 `*StreamDecoder`；改造本仓全部 provider（OpenAI/ResponseAPI/ChatCompletions/Claude/Google/vertex）**以及 app 侧消费端**（`GenerationHandler` 1993 行、`ChatService` 3405 行、`ChatMessage`/`ChatMessageCot`/`Export` 等 8 个文件）；**行为不变** | 流式层替换 PR | 全 provider 单测绿 + 至少 3 家真机对话正常 + 本仓 codex 分支不回归 | 7–9 |
 | **P2** 类型体系 | `ProviderSetting` 拆 `ApiKey`/`Account`，新增 `OAuthCredential`/`QuotaQuery`；295 处引用改写；V4/V5 迁移 + 本仓迁移链重排；导入器/Web DTO/分享面板核对 | 设置模型重构 PR | 旧设置可迁移、导入导出正常、降级策略明确 | 3–4 |
 | **P3** 账号层 | `oauth` 模块（含前台服务/深链/Manifest）+ `ProviderAccountManager` + `ChatGPTAuth`/`GrokAuth`/`Jwt`；替换现有 `OpenAICodexAuthService` 或双轨 | 登录/刷新/额度 PR | 登录/刷新/退出/杀进程重启真机通过 | 3–4 |
 | **P4** provider + UI | `ChatGPTProvider`/`GrokProvider`、额度 UI、`ProviderConfigure` 拆分、订阅对话锁定适配、多语言、debug 入口迁移 | provider 与 UI PR | 真机：登录→模型列表→对话→额度显示；Grok 可用性视 P0 结论 | 2.5–3.5 |
@@ -211,12 +211,12 @@ chatgpt.com/backend-api/codex、grok 后端
 
 | 风险 | 影响 | 缓解 |
 | --- | --- | --- |
-| 设置层级重构不可逆 | 降级安装旧版无法解析新 `provider` JSON；按本仓评估推演，旧版 sealed 解码会直接抛异常（连设置页都打不开） | 保留 `SettingsCompatDecoder` 兼容读取；发布说明标注「降级需清除数据」；或加版本门控拒绝降级 |
+| 设置层级重构不可逆 | 降级安装旧版无法解析新 `provider` JSON；按本仓评估推演，旧版 sealed 解码会直接抛异常（连设置页都打不开） | **已拍板（2026-11-01）：接受「旧版不可用」**，发布说明中明确「本版起 provider 设置结构升级，降级安装需清除应用数据」；不做兼容读取层。同时迁移前自动备份一次设置（`BackupArchiveEngine` 已有能力）  |
 | 聊天主链路全量回归（#1648） | 所有 provider 的流式/工具调用/推理可能回归 | P1 单独 PR、行为不变；按 provider 逐个真机验证；保留旧解码器开关一个版本 |
 | 295 处引用改写遗漏 | 编译能过但语义错（如按 provider 类型分支漏了 `ChatGPT`） | 编译器驱动 + 全仓 `grep ProviderSetting.` 复核 + 真机遍历设置页 |
 | 凭据迁移 | `codexAccount` 密文 → `OAuthCredential` 迁移失败 → 用户需重登 | 解密失败即走重登引导（现有 `INVALID_GRANT` 路径复用） |
 | 上游持续漂移 | 移植完成即落后（基线以来 405 提交） | 锁定移植目标 commit；完成后按季度同步；不追求与 HEAD 对齐 |
-| Grok 端点未证 | P4 才发现不可用 | P0 先 curl 实测；不可用则 Grok 降为 P3 可选 |
+| ~~Grok 端点未证~~ | **P0 已实测可用**（见第十节），form 编码 + RFC 8628 pending 语义均符合预期 | 风险关闭；实现时注意 device/code 必须 `application/x-www-form-urlencoded`（JSON 返回 415） |
 | 双轨期复杂度 | 设备码与新账号层并存，状态源两份 | 明确弃用时间点；`OpenAICodexAuthService` 只保留「读旧数据→迁移→删除」 |
 | Web/导入导出泄漏面 | 凭据经 web 或导入导出外泄 | 沿用白名单 DTO；新增字段默认不导出；日志脱敏复核 `chatgpt-account-id` 已做 |
 
@@ -232,7 +232,7 @@ chatgpt.com/backend-api/codex、grok 后端
 | 模型列表 | 登录后自动拉取；手动刷新 |
 | 多轮 + 加密推理 | 连续两轮以上、历史推理回传 |
 | 工具调用 | 本地工具往返 |
-| Grok | 视 P0 结论：登录 + 对话 |
+| Grok | 已实测端点（第十节），验收：登录 + 对话 |
 | 设置迁移 | 旧版设置（V3）→ 新版启动，provider 完整 |
 | 导入导出 / 备份恢复 | 导入后无凭据；恢复后引导重登 |
 | 降级策略 | 旧版安装包打开新数据的行为符合发布说明 |
@@ -241,17 +241,92 @@ chatgpt.com/backend-api/codex、grok 后端
 
 ---
 
-## 九、待决问题（需拍板）
+## 九、决策记录与待决问题
 
-1. **Grok 是否同批**：+2.5–3.5 人日，且端点未实测；建议 P0 出结论后再定。
-2. **是否保留设备码兜底**：保留则双路径（省一层回滚保险，但双轨期长）；不保留则登录体验与上游一致。
-3. **降级策略**：接受「旧版不可用 + 发布说明」还是做兼容读取层（+0.5–1 人日）。
-4. **额度 UI 与本仓 `BalanceOption` 的关系**：共存（额度=订阅配额，余额=API 余额）还是统一。
-5. **发布节奏**：五个 PR 分批（推荐，每阶段可回滚）还是一个大的移植 PR。
+### 已拍板（2026-11-01）
+
+| # | 问题 | 决定 |
+| --- | --- | --- |
+| 1 | Grok 是否同批 | **先 P0 实测端点再定** → 实测结论：可用（第十节），按 P4 一并实现（增量 2.5–3.5 人日） |
+| 3 | 降级策略 | **旧版不可用 + 发布说明**；迁移前自动备份设置，不做兼容读取层 |
+
+### 待决问题
+
+1. **是否保留设备码兜底**：保留则双路径（省一层回滚保险，但双轨期长）；不保留则登录体验与上游一致。
+2. **额度 UI 与本仓 `BalanceOption` 的关系**：共存（额度=订阅配额，余额=API 余额）还是统一。
+3. **发布节奏**：五个 PR 分批（推荐，每阶段可回滚）还是一个大的移植 PR。
 
 ---
 
-## 十、参考
+## 十、P0 探测结果（2026-11-01 实测）
+
+### 11.1 Grok（xAI）设备码端点
+
+客户端参数取自上游 `GrokAuth.kt`：`client_id=b1a00492-073a-47ea-816f-4c329264a828`，scope=`openid profile email offline_access grok-cli:access api:access`。全部经 host 代理实测（设备侧同样走系统代理）。
+
+| # | 请求 | 结果 | 结论 |
+| --- | --- | --- | --- |
+| 1 | `POST https://auth.x.ai/oauth2/device/code`，**JSON** body | **415** `Form requests must have Content-Type: application/x-www-form-urlencoded` | 该端点只接受 form 编码 |
+| 2 | 同上，**form** body | **200** `device_code` / `user_code=VHQC-SHX3` / `verification_uri=https://accounts.x.ai/oauth2/device` / `verification_uri_complete` / `expires_in=1800` / `interval=5` | ✅ 设备码可用 |
+| 3 | `POST https://auth.x.ai/oauth2/token`，`grant_type=urn:ietf:params:oauth:grant-type:device_code` + `device_code` + `client_id` | **400** `authorization_pending`（`User has not yet authorized`） | ✅ 轮询语义符合 RFC 8628，可照搬 OpenAI 设备码状态机 |
+| 4 | `GET https://auth.x.ai/oauth2/userinfo`（无 token） | **401** `invalid_token` | ✅ 端点存在，需 Bearer |
+| 5 | `POST https://cli-chat-proxy.grok.com/v1/responses`（无 token） | **401** `Invalid or expired credentials (auth_kind=none…)` | ✅ Codex 类后端可达（区域/网络无阻断） |
+
+**Grok 结论**：技术上可行，且比 ChatGPT 更简单（设备码而非 loopback），可与 ChatGPT 共用一套设备码状态机；实现注意点：device/token 请求必须 form 编码（与 ChatGPT 刷新接口「JSON 优先」相反，需在 `OAuthHttpClient` 里按端点区分）。Grok provider 后端基址为 `https://cli-chat-proxy.grok.com/v1`（Responses API 形态）。
+
+### 11.2 `#1648` 试合并冲突面
+
+在临时 worktree（`/f/build/projects/.tmp-p0/wt-1648`，从本仓 HEAD 建，**未动主干**，测完已移除）执行 `git cherry-pick 4b9ff1a99`：
+
+| 指标 | 值 |
+| --- | --- |
+| 结果 | 冲突，`exit 1` |
+| 冲突路径数 | **62**（`git diff --diff-filter=U`） |
+| 状态分布 | `UU`(内容冲突) 8、`DU`/`UD`(改删) 8、`AU`/`UA`/`DD`(重命名/新增) 46 |
+| 内容冲突块（工作区） | 66 |
+
+其中 46 个是**本仓包名重命名**（`me/rerere/` → `app/androidrik/`）造成的路径错位，属于机械性冲突。
+
+为排除重命名噪声，另做了「路径/包名归一后的三方合并模拟」（对 `#1648` 每个改动文件取 `HEAD`(ours) / `#1648^`(base) / `#1648`(theirs)，统一改名后跑 `git merge-file --diff3`）：
+
+| 指标 | 值 |
+| --- | --- |
+| 可映射到本仓的文件 | 31 |
+| 其中仍有语义冲突 | **15** |
+| 语义冲突块合计 | **63** |
+| 上游新增、本仓缺失的文件 | **52**（其中源码 8 个、测试/工具 44 个，含 `trace-cli/` 与 stream-traces 语料） |
+
+语义冲突 top（冲突块 / 本仓行数 / 上游行数）：
+
+| 文件 | 冲突块 | 本仓 | 上游 |
+| --- | --- | --- | --- |
+| `openai/ChatCompletionsAPI.kt` | 11 | 1043 | 805 |
+| `data/ai/GenerationHandler.kt` | 9 | 1993 | 545 |
+| `openai/ResponseAPI.kt` | 8 | 1183 | 723 |
+| `GoogleProvider.kt` | 7 | 894 | 769 |
+| `service/ChatService.kt` | 5 | 3405 | 1268 |
+| `ChatCompletionsAPIMessageTest.kt` | 5 | 552 | 528 |
+| `ClaudeProvider.kt` | 3 | 674 | 922 |
+| `ai/ui/Message.kt` | 3 | 797 | 496 |
+| `OpenAIProvider.kt` | 3 | 568 | 372 |
+| `ui/components/message/ChatMessageCot.kt` | 3 | 265 | 68 |
+
+本仓消费面（P1 必须同步改的调用方）：
+
+- `MessageChunk`：**24 文件 / 120 处**（ai 16 文件、app 8 文件）
+- `EventSources` / `RealEventSource`：7 文件
+- app 侧最大三处：`ChatService.kt` 3405 行、`GenerationHandler.kt` 1993 行、`Export.kt` 1451 行
+
+### 11.3 P0 结论
+
+1. **可以进入 P1**：冲突面集中在 15 个文件、63 处，量级与 P1 预估（7–9 人日）一致，未出现「无法映射/无解」的结构性问题；代价是 app 侧消费端比预期更重（`ChatService` + `GenerationHandler` 共 5.4k 行）。
+2. **重命名噪声可低成本消除**：P1 开工前先做一次纯机械的「上游路径/包名 → 本仓」映射脚本（本次已用 sed 验证可行），能把 46 个机械冲突降到 0。
+3. **Grok 风险关闭**，按 P4 纳入；实现时注意 form 编码差异。
+4. 上游 `#1648` 还带了一个 `trace-cli/`（Bun/TS 的流式 trace 录制回放工具）与 `ai/src/test/resources/stream-traces/` 语料——属于测试基建，**本仓可只移植 `ai/src/test` 下的 Java/Kotlin 部分**，`trace-cli` 与语料列为可选（不影响功能）。
+
+---
+
+## 十一、参考
 
 - 上游提交：`4b9ff1a99`（#1648 ai 重构）、`b6df5f044`（oauth 抽包）、`318cffef6`（#2186 订阅登录）、`5ad19405c`（评估时 HEAD）
 - 上游 PR：[#2186](https://github.com/rikkahub/rikkahub/pull/2186)、[#1752](https://github.com/rikkahub/rikkahub/pull/1752)（设备码血统，本仓现行方案参考）
