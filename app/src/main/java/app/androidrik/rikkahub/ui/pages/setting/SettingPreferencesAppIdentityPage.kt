@@ -49,6 +49,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
+import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
 import androidx.core.graphics.drawable.IconCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -292,9 +293,15 @@ private fun ShortcutDialog(
 ) {
     var name by remember { mutableStateOf("") }
     var iconUri by remember { mutableStateOf<Uri?>(null) }
+    // 选图即弹 1:1 交互裁剪（对齐头像链路）：decodeSquareBitmap 只做最终方图兜底，
+    // 取景交给用户而非静默中心裁
+    val launchIconCrop = useCropLauncher(
+        onCroppedImageReady = { cropped -> iconUri = cropped },
+        aspectRatio = 1f,
+    )
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         Log.d(TAG, "picker returned uri=$uri")
-        if (uri != null) iconUri = uri
+        if (uri != null) launchIconCrop(uri)
     }
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -67,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import app.androidrik.rikkahub.data.datastore.AvatarFrameStyle
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import org.koin.compose.koinInject
 
@@ -85,19 +86,26 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     }
 
     // 输入栏背景图选择：复用助手背景的 managed 目录（backgrounds/），防「文件管理」
-    // 清理误删（同 #2127 语义）。声明顺序：局部函数须先声明后引用。
+    // 清理误删（同 #2127 语义）。选图后先过 ImageCropDialog 自由裁剪（aspectRatio=null，
+    // 用户自行决定取景——输入栏高度随内容变化，固定比例反而不贴），再落盘。
+    // 声明顺序：局部函数须先声明后引用。
     val filesManager: FilesManager = koinInject()
     val inputBackgroundFailedMsg = stringResource(R.string.setting_display_page_input_background_failed)
+    val launchInputBackgroundCrop = useCropLauncher(
+        onCroppedImageReady = { croppedUri ->
+            val saved = filesManager.createBackgroundImage(croppedUri)
+            if (saved != null) {
+                updateDisplaySetting(displaySetting.copy(chatInputBackgroundImage = saved.toString()))
+            } else {
+                toaster.show(inputBackgroundFailedMsg, type = ToastType.Error)
+            }
+        },
+    )
     val inputBackgroundPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val saved = filesManager.createBackgroundImage(uri)
-        if (saved != null) {
-            updateDisplaySetting(displaySetting.copy(chatInputBackgroundImage = saved.toString()))
-        } else {
-            toaster.show(inputBackgroundFailedMsg, type = ToastType.Error)
-        }
+        launchInputBackgroundCrop(uri)
     }
 
     val importSuccessMsg = stringResource(R.string.setting_display_page_custom_font_import_success)
