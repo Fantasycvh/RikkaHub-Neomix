@@ -130,6 +130,8 @@ object CherryStudioProviderImporter {
                 inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(modelId),
                 outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(modelId),
                 abilities = ModelRegistry.MODEL_ABILITIES.getData(modelId),
+                // 上下文长度来自 models.dev / 注册表内置数据（用户仍可用 customContextLength 覆盖）
+                contextLength = ModelRegistry.MODEL_CONTEXT_LENGTH.getData(modelId),
             )
         }
     }

@@ -3,12 +3,23 @@ package app.androidrik.ai
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.registry.ModelRegistry
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ModelRegistryTest {
+    /**
+     * 本类断言的是「未安装 models.dev catalog」时的 token 规则行为。
+     * catalog 是 ModelRegistry 单例上的状态，同 JVM 里其他测试类装过就必须清掉，
+     * 否则断言会随执行顺序飘。
+     */
+    @After
+    fun resetCatalog() {
+        ModelRegistry.installCatalog(null)
+    }
+
     @Test
     fun testGPT5() {
         assertTrue(ModelRegistry.GPT_5.match("gpt-5"))

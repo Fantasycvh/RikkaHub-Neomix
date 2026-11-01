@@ -61,6 +61,7 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_46_47
 import app.androidrik.rikkahub.data.db.migrations.Migration_47_48
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.network.RikkaProxyAuthenticator
+import app.androidrik.rikkahub.data.remote.ModelsDevUpdater
 import app.androidrik.rikkahub.data.network.SettingsProxyAuthenticator
 import app.androidrik.rikkahub.data.network.SettingsProxySelector
 import app.androidrik.rikkahub.data.network.SocksCredentialRegistry
@@ -91,6 +92,11 @@ val dataSourceModule = module {
             httpClient = get(),
             scope = get<AppScope>(),
         )
+    }
+
+    // models.dev 模型元数据：启动时装本地缓存/assets 快照，之后每天最多刷新一次（见 RikkaHubApp）
+    single {
+        ModelsDevUpdater(context = get(), client = get())
     }
 
     single {

@@ -51,6 +51,7 @@ import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.storage.StorageCategoryId
 import app.androidrik.rikkahub.data.storage.StorageUsageManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.remote.ModelsDevUpdater
 import app.androidrik.rikkahub.data.plugin.installBuiltInPlugins
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.service.MediaCreationService
@@ -418,6 +419,11 @@ class RikkaHubApp : Application() {
         // Extract builtin skills from assets after install/update (上游 3b346748)
         extractBuiltinSkills()
 
+        // models.dev 模型元数据（上游 41ce12f66）：provider 设置页一打开就会读 registry 的
+        // 模态/能力/上下文长度，所以要在启动链路里尽早装数据；但装数据要读 assets（约 1.5MB）
+        // 或发网络请求，必须后台跑、不阻塞启动，失败也不影响启动（runCatching 兜在 updater 内部）。
+        updateModelsDev()
+
         // Start WebServer if enabled in settings
         startWebServerIfEnabled()
 
@@ -565,6 +571,18 @@ class RikkaHubApp : Application() {
     private fun extractBuiltinSkills() {
         get<AppScope>().launch(Dispatchers.IO) {
             get<SkillManager>().ensureBuiltinSkillsExtracted()
+        }
+    }
+
+    /**
+     * 装载 / 刷新 models.dev 模型元数据（上下文长度、模态、能力）。
+     *
+     * 后台协程：本地缓存或 assets 快照的解析 + 每天一次的网络刷新都在 IO 上，
+     * 绝不把启动拖成等网络；装载前的查询会回落到 ModelRegistry 原有的 token 规则。
+     */
+    private fun updateModelsDev() {
+        get<AppScope>().launch {
+            get<ModelsDevUpdater>().start()
         }
     }
 

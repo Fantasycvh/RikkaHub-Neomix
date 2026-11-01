@@ -960,7 +960,9 @@ private fun ModelSettingsForm(
                 displayName = id,
                 inputModalities = inputModality,
                 outputModalities = outputModality,
-                abilities = abilities
+                abilities = abilities,
+                // 上下文长度来自 models.dev / 注册表内置数据；用户仍可用 customContextLength 覆盖
+                contextLength = ModelRegistry.MODEL_CONTEXT_LENGTH.getData(id),
             )
         )
     }
@@ -1186,7 +1188,11 @@ private fun AddModelButton(
                     model.copy(
                         inputModalities = inputModalities,
                         outputModalities = outputModalities,
-                        abilities = abilities
+                        abilities = abilities,
+                        // 上下文长度来自 models.dev / 注册表内置数据（查不到则保留拉取时解析的值）；
+                        // 用户仍可用 customContextLength 覆盖
+                        contextLength = ModelRegistry.MODEL_CONTEXT_LENGTH.getData(model.modelId)
+                            ?: model.contextLength,
                     )
                 )
             },
@@ -1202,7 +1208,11 @@ private fun AddModelButton(
                             model.copy(
                                 inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(model.modelId),
                                 outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(model.modelId),
-                                abilities = ModelRegistry.MODEL_ABILITIES.getData(model.modelId)
+                                abilities = ModelRegistry.MODEL_ABILITIES.getData(model.modelId),
+                                // 上下文长度来自 models.dev / 注册表内置数据（查不到则保留拉取时解析的值）；
+                                // 用户仍可用 customContextLength 覆盖
+                                contextLength = ModelRegistry.MODEL_CONTEXT_LENGTH.getData(model.modelId)
+                                    ?: model.contextLength,
                             )
                         }
                     )

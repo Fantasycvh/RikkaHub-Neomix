@@ -762,18 +762,37 @@ object ModelRegistry {
         QWEN_MT
     )
 
+    @Volatile
+    private var catalog: ModelsDevCatalog? = null
+
+    /** 安装 models.dev 数据：查得到的模型以它为准，查不到的再走上面的 token 规则 */
+    fun installCatalog(catalog: ModelsDevCatalog?) {
+        this.catalog = catalog
+    }
+
     val MODEL_INPUT_MODALITIES = ModelData { modelId ->
-        resolveModalities(modelId) { it.inputModalities }
+        val info = catalog?.find(modelId)
+        if (info != null) {
+            sortModalities(info.inputModalities)
+        } else {
+            resolveModalities(modelId) { it.inputModalities }
+        }
     }
 
     val MODEL_OUTPUT_MODALITIES = ModelData { modelId ->
-        resolveModalities(modelId) { it.outputModalities }
+        val info = catalog?.find(modelId)
+        if (info != null) {
+            sortModalities(info.outputModalities)
+        } else {
+            resolveModalities(modelId) { it.outputModalities }
+        }
     }
 
     val MODEL_ABILITIES = ModelData { modelId ->
-        val abilities = resolveModels(modelId)
-            .flatMap { it.abilities }
-            .toSet()
+        val abilities = catalog?.find(modelId)?.abilities
+            ?: resolveModels(modelId)
+                .flatMap { it.abilities }
+                .toSet()
         buildList {
             if (ModelAbility.TOOL in abilities) add(ModelAbility.TOOL)
             if (ModelAbility.REASONING in abilities) add(ModelAbility.REASONING)
@@ -787,7 +806,8 @@ object ModelRegistry {
      * 于是那些值既用不上也测不了；补上后「5 代 1M / 4 代不误判」这类声明才有断言可钉。
      */
     val MODEL_CONTEXT_LENGTH = ModelData { modelId ->
-        resolveModels(modelId).firstNotNullOfOrNull { it.contextLength }
+        catalog?.find(modelId)?.contextLength
+            ?: resolveModels(modelId).firstNotNullOfOrNull { it.contextLength }
     }
 
     private fun resolveModels(modelId: String): List<ModelDefinition> {
@@ -816,6 +836,10 @@ object ModelRegistry {
         val modalities = resolveModels(modelId)
             .flatMap { selector(it) }
             .toSet()
+        return sortModalities(modalities)
+    }
+
+    private fun sortModalities(modalities: Set<Modality>): List<Modality> {
         return if (modalities.isEmpty()) {
             listOf(Modality.TEXT)
         } else {
