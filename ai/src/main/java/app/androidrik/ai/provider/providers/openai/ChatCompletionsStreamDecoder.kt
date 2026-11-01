@@ -17,6 +17,7 @@ import app.androidrik.common.http.jsonArrayOrNull
 import app.androidrik.common.http.jsonObjectOrNull
 import app.androidrik.common.http.jsonPrimitiveOrNull
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -51,7 +52,8 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
         val chunks = buildList {
             event.data.trim().split("\n").filter(String::isNotBlank).forEach { line ->
                 val payload = json.parseToJsonElement(line).jsonObject
-                payload["error"]?.let { throw it.parseErrorDetail() }
+                // "error": null 是部分网关的「无错误」表示，kotlinx 里是 JsonNull 引用，不能当错误抛
+                payload["error"]?.takeIf { it != JsonNull }?.let { throw it.parseErrorDetail() }
                 responseId = payload["id"]?.jsonPrimitive?.contentOrNull ?: responseId
                 responseModel = payload["model"]?.jsonPrimitive?.contentOrNull ?: responseModel
 

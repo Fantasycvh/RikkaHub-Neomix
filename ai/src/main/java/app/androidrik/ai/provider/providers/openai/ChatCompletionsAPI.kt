@@ -40,15 +40,15 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.ai.provider.TextGenerationResult
+import app.androidrik.ai.provider.stream.SseEvent
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.provider.providers.PartGroup
 import app.androidrik.ai.util.ensureArrayItems
 import app.androidrik.ai.provider.providers.groupPartsByToolBoundary
 import app.androidrik.ai.registry.ModelRegistry
-import app.androidrik.ai.ui.terminalChunk
-import app.androidrik.ai.ui.MessageChunk
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
-import app.androidrik.ai.ui.UIMessageChoice
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.KeyRoulette
 import app.androidrik.ai.util.apiEndpoint
@@ -100,7 +100,7 @@ class ChatCompletionsAPI(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams,
-    ): MessageChunk = withContext(Dispatchers.IO) {
+    ): TextGenerationResult = withContext(Dispatchers.IO) {
         require(!providerSetting.isChatGPTSubscription) {
             "ChatGPT 订阅模式不走 /chat/completions，请改用 Response API"
         }
@@ -144,18 +144,12 @@ class ChatCompletionsAPI(
             ?: "unknown"
         val usage = parseTokenUsage(bodyJson["usage"] as? JsonObject)
 
-        MessageChunk(
+        TextGenerationResult(
             id = id,
             model = model,
-            choices = listOf(
-                UIMessageChoice(
-                    index = 0,
-                    delta = null,
-                    message = parseMessage(message),
-                    finishReason = finishReason
-                )
-            ),
-            usage = usage
+            message = parseMessage(message),
+            finishReason = finishReason,
+            usage = usage,
         )
     }
 
@@ -163,7 +157,7 @@ class ChatCompletionsAPI(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams,
-    ): Flow<MessageChunk> = callbackFlow {
+    ): Flow<StreamChunk> = callbackFlow {
         require(!providerSetting.isChatGPTSubscription) {
             "ChatGPT 订阅模式不走 /chat/completions，请改用 Response API"
         }
@@ -186,6 +180,9 @@ class ChatCompletionsAPI(
         // 连接管理（AI-3）：重发出来的新 EventSource 必须能被 `awaitClose` 取消，
         // 且旧 source 的迟到回调不能污染/关闭新 stream。
         val tracker = StreamingEventSourceTracker()
+
+        // 每条流一个解码器实例（内部保存 toolCallId / reasoning details 等状态，对齐上游 #1648）
+        val decoder = ChatCompletionsStreamDecoder()
 
         // 事件源可被替换：结构校验失败时按带回填的请求重建一个（见 armBackfillRetry + openSource）。
         // 工厂与代理配置不变，只有请求体不同。
@@ -251,63 +248,19 @@ class ChatCompletionsAPI(
             ) {
                 // 旧 source 的迟到事件必须丢弃：结构失败重发后旧连接可能还在回调（不得污染新 stream）。
                 if (!tracker.isActive(eventSource)) return
-                if (data == "[DONE]") {
-                    Log.d(TAG, "onEvent: terminal [DONE]")
-                    // 显式结束标记：下游据此区分「正常收尾」与「裸断流」（见 MessageChunk.explicitEnd）
-                    trySend(terminalChunk())
-                    close()
-                    return
-                }
-                Log.d(TAG, "onEvent: chars=${data.length}")
-                data
-                    .trim()
-                    .split("\n")
-                    .filter { it.isNotBlank() }
-                    .mapNotNull { json.parseToJsonElement(it).jsonObjectOrNull }
-                    .forEach {
-                        // ⚠️ `!= null` 只防引用判空、不防 JSON null：部分网关用 `"error": null`
-                        // 表示无错误，kotlinx 里那是非空的 JsonNull 引用，误进错误分支会拿
-                        // HttpException("null") 杀掉整条流（同 ResponseAPI.parseStreamFailure 处理）
-                        if (it["error"] != null && it["error"] !is JsonNull) {
-                            val error = it["error"]!!.parseErrorDetail()
-                            throw error
-                        }
-                        val id = it["id"]?.jsonPrimitive?.contentOrNull ?: ""
-                        val model = it["model"]?.jsonPrimitive?.contentOrNull ?: ""
-
-                        val choices = it["choices"] as? JsonArray ?: JsonArray(emptyList())
-                        val choiceList = buildList {
-                            if (choices.isNotEmpty()) {
-                                // 部分 OpenAI 兼容接口会把 choices[0]/delta 显式写成 null，强制解析会中断整轮生成
-                                val choice = choices[0] as? JsonObject ?: return@buildList
-                                val message =
-                                    choice["delta"] as? JsonObject ?: choice["message"] as? JsonObject
-                                    ?: return@buildList
-                                val finishReason =
-                                    choice["finish_reason"]?.jsonPrimitive?.contentOrNull
-                                        ?: "unknown"
-                                add(
-                                    UIMessageChoice(
-                                        index = 0,
-                                        delta = parseMessage(message),
-                                        message = null,
-                                        finishReason = finishReason,
-                                    )
-                                )
-                            }
-                        }
-                        val usage = parseTokenUsage(it["usage"] as? JsonObject)
-
-                        val messageChunk = MessageChunk(
-                            id = id,
-                            model = model,
-                            choices = choiceList,
-                            usage = usage
-                        )
-                        trySend(messageChunk).onFailure { e ->
+                try {
+                    // 解码器内部会按行拆分多行 data、处理 [DONE]、把 "error": null 之类忽略，
+                    // 并把增量 JSON 折叠成跨 provider 的 StreamChunk 事件。
+                    val result = decoder.accept(SseEvent(id = id, event = type, data = data))
+                    result.chunks.forEach { chunk ->
+                        trySend(chunk).onFailure { e ->
                             Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
                         }
                     }
+                    if (result.completed) close()
+                } catch (e: Throwable) {
+                    close(e)
+                }
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {

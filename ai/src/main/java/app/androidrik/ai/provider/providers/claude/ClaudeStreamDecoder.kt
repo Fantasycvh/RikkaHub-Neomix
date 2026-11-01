@@ -40,7 +40,11 @@ internal class ClaudeStreamDecoder : StreamChunkDecoder {
         if (event.data == "[DONE]") return DecodeResult(finish(), completed = true)
 
         val dataJson = json.parseToJsonElement(event.data).jsonObject
-        if (event.event == "error") {
+        // SSE 的 event 名与 JSON 的 type 双写，且都可能缺省/为空串：归一后再判定
+        // （对齐本仓既有逻辑，部分中转只发一种）
+        val eventType = event.event?.takeIf { it.isNotBlank() }
+            ?: dataJson["type"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+        if (eventType == "error") {
             throw (dataJson["error"] ?: dataJson).parseErrorDetail()
         }
 
@@ -57,7 +61,7 @@ internal class ClaudeStreamDecoder : StreamChunkDecoder {
             val index = dataJson["index"]?.jsonPrimitive?.intOrNull
             val contentBlock = dataJson["content_block"]?.jsonObject
 
-            if (event.event == "content_block_start" && index != null && contentBlock != null) {
+            if (eventType == "content_block_start" && index != null && contentBlock != null) {
                 val kind = contentBlock["type"]?.jsonPrimitive?.contentOrNull ?: ""
                 val blockId = contentBlock["id"]?.jsonPrimitive?.contentOrNull
                     ?: contentBlock["tool_use_id"]?.jsonPrimitive?.contentOrNull
@@ -126,10 +130,22 @@ internal class ClaudeStreamDecoder : StreamChunkDecoder {
                 }
             }
 
-            if (event.event == "content_block_delta" && index != null) {
-                val block = blocks[index] ?: error("Unknown content block index: $index")
+            if (eventType == "content_block_delta" && index != null) {
                 val delta = dataJson["delta"]?.jsonObject ?: JsonObject(emptyMap())
-                when (delta["type"]?.jsonPrimitive?.contentOrNull) {
+                val deltaType = delta["type"]?.jsonPrimitive?.contentOrNull
+                val block = blocks[index] ?: inferBlock(index, deltaType).also { inferred ->
+                    // 懒创建：部分中转省略 content_block_start，旧解析容忍；不补 Start 事件的话
+                    // 增量会挂到不存在的 part 上（下游会丢内容）
+                    when (inferred.kind) {
+                        "text" -> add(StreamChunk.TextStart(inferred.id))
+                        "thinking", "redacted_thinking" ->
+                            add(StreamChunk.ReasoningStart(inferred.id, inferred.metadata))
+
+                        "tool_use" -> add(StreamChunk.ToolCallStart(inferred.id, ""))
+                        else -> Unit
+                    }
+                }
+                when (deltaType) {
                     "text_delta" -> add(
                         StreamChunk.TextDelta(
                             block.id,
@@ -164,13 +180,13 @@ internal class ClaudeStreamDecoder : StreamChunkDecoder {
                 }
             }
 
-            if (event.event == "content_block_stop" && index != null) {
-                val block = blocks.remove(index) ?: error("Unknown content block index: $index")
-                endBlock(block)?.let(::add)
+            if (eventType == "content_block_stop" && index != null) {
+                // 缺失 start 的 block 在 delta 阶段已懒创建；这里再缺失就静默跳过（旧解析容忍）
+                blocks.remove(index)?.let { block -> endBlock(block)?.let(::add) }
             }
         }
 
-        return if (event.event == "message_stop") {
+        return if (eventType == "message_stop") {
             DecodeResult(chunks + finish(), completed = true)
         } else {
             DecodeResult(chunks)
@@ -215,6 +231,22 @@ internal class ClaudeStreamDecoder : StreamChunkDecoder {
             totalTokens = promptTokens + completionTokens,
             cachedTokens = cachedInputTokens,
         )
+    }
+
+    /**
+     * 依据 delta 类型推断缺失的 content block（异常中转会省略 `content_block_start`）。
+     *
+     * 返回的同时登记到 [blocks]，使后续 delta / stop 事件与正常路径走同一套状态。
+     */
+    private fun inferBlock(index: Int, deltaType: String?): ClaudeStreamBlock {
+        val kind = when (deltaType) {
+            "text_delta" -> "text"
+            "thinking_delta", "signature_delta" -> "thinking"
+            "input_json_delta" -> "tool_use"
+            else -> ""
+        }
+        val id = "${responseId ?: "response"}:block-$index"
+        return ClaudeStreamBlock(kind = kind, id = id).also { blocks[index] = it }
     }
 
     private data class ClaudeStreamBlock(

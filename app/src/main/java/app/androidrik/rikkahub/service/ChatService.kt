@@ -2265,7 +2265,7 @@ class ChatService(
             // 而本入口每轮自动触发 ⇒ 是默认路径上的数据丢失。
             updateConversationMetadata(
                 conversationId = conversationId,
-                update = { it.copy(title = result.choices[0].message?.toText()?.trim().orEmpty()) },
+                update = { it.copy(title = result.message.toText()?.trim().orEmpty()) },
                 persist = { conversationRepo.updateTitle(conversationId, it.title) },
             )
         }.onFailure {
@@ -2347,7 +2347,7 @@ class ChatService(
                 params = backgroundTextGenerationParams(model),
             )
             val suggestions =
-                result.choices[0].message?.toText()?.split("\n")?.map { it.trim() }
+                result.message.toText()?.split("\n")?.map { it.trim() }
                     ?.filter { it.isNotBlank() } ?: emptyList()
 
             // 回写**只写 suggestions 一列**、基线是当前内存值：与 generateTitle 同款理由
@@ -2451,7 +2451,7 @@ class ChatService(
                 messages = listOf(UIMessage.user(prompt)),
                 params = backgroundTextGenerationParams(model),
             )
-            return result.choices.firstOrNull()?.message?.toText()?.trim()
+            return result.message.toText()?.trim()
                 ?.takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Failed to generate compressed summary")
         }

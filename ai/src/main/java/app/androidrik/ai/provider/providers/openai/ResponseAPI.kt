@@ -38,18 +38,19 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.ai.provider.TextGenerationResult
+import app.androidrik.ai.provider.stream.SseEvent
 import app.androidrik.ai.provider.providers.PartGroup
 import app.androidrik.ai.util.ensureArrayItems
 import app.androidrik.ai.provider.providers.groupPartsByToolBoundary
 import app.androidrik.ai.registry.ModelRegistry
-import app.androidrik.ai.ui.terminalChunk
-import app.androidrik.ai.ui.MessageChunk
 import app.androidrik.ai.ui.OpenAIReasoningMetadata
+import app.androidrik.ai.ui.ReasoningType
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.ServerToolMetadata
 import app.androidrik.ai.ui.ServerToolProtocol
 import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessage
-import app.androidrik.ai.ui.UIMessageChoice
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.metadataAs
 import app.androidrik.ai.ui.toMetadata
@@ -99,7 +100,7 @@ class ResponseAPI(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): MessageChunk = withContext(Dispatchers.IO) {
+    ): TextGenerationResult = withContext(Dispatchers.IO) {
         val requestBody = buildRequestBody(
             providerSetting = providerSetting,
             messages = messages,
@@ -136,7 +137,7 @@ class ResponseAPI(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): Flow<MessageChunk> = callbackFlow {
+    ): Flow<StreamChunk> = callbackFlow {
         val requestBody = buildRequestBody(
             providerSetting = providerSetting,
             messages = messages,
@@ -158,9 +159,16 @@ class ResponseAPI(
 
         Log.i(TAG, "streamText: ${summarizeRequestBody(json, requestBody)}")
 
-        // 每次流一个：把 item.id / output_index 归一到规范 toolCallId（= 回传时用的 call_id）。
-        // 必须按流创建——ResponseAPI 是进程级共享实例（见 ResponseToolCallIdResolver 注释）。
-        val toolCallIdResolver = ResponseToolCallIdResolver()
+        // 每条流一个解码器实例：内部保存 open part / toolCallId 映射（对齐上游 #1648）
+        val decoder = ResponseApiStreamDecoder()
+
+        fun sendChunks(chunks: Iterable<StreamChunk>) {
+            chunks.forEach { chunk ->
+                trySend(chunk).onFailure { e ->
+                    Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                }
+            }
+        }
 
         val listener = object : EventSourceListener() {
             override fun onEvent(
@@ -170,64 +178,37 @@ class ResponseAPI(
                 data: String
             ) {
                 if (data == "[DONE]") {
-                    trySend(terminalChunk())
+                    sendChunks(decoder.onClosed())
                     close()
                     return
                 }
                 Log.d(TAG, "onEvent: ${summarizeSseEvent(type, data, terminal = type == "response.completed")}")
-                val json = json.parseToJsonElement(data).jsonObjectOrNull
-                // SSE 的 event 名与 JSON 的 type 双写，且两者可能只出现一个：
-                // - 标准 OpenAI/兼容网关：都有；
-                // - 部分中转只发 `event:`（JSON 里没有 type）⇒ parseResponseDelta 会
-                //   error("chunk type not found")，整条流失败；
-                // - 另有网关发 `event:` 空名（空字符串同样视为缺失）。
-                val sseType = type?.takeIf { it.isNotBlank() }
-                val payloadType = json?.get("type")?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
-                // 结束/失败判定与解析必须同源：有 payload type 用它（parseResponseDelta 读的就是它），
-                // 否则用 SSE event 名兜底。
-                val eventType = payloadType ?: sseType
-                if (json != null) {
-                    // 把归一后的类型补进 payload，只读 JSON type 的 parseResponseDelta 才能继续解析
-                    val payload = if (payloadType == null && sseType != null) {
-                        JsonObject(json + ("type" to JsonPrimitive(sseType)))
-                    } else {
-                        json
-                    }
-                    val chunk = parseResponseDelta(payload, toolCallIdResolver)
-                    if (chunk != null) {
-                        trySend(chunk).onFailure { e ->
-                            Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
-                        }
-                    }
-                }
-                when (eventType) {
-                    // 显式结束：正常完成，或 `response.incomplete`（撞输出上限等「模型本意结束」）。
-                    // 两者都必须发 explicitEnd——否则下游把 incomplete 当裸断流，触发**无条件**自动续写，
-                    // 一次截断变成最多 CONTINUE_LIMIT 次重发（见 ContinuationPolicy）。
-                    "response.completed", "response.incomplete" -> {
-                        trySend(terminalChunk())
-                        close()
-                    }
+                try {
+                    // SSE 的 event 名与 payload 的 type 双写，且两者可能只出现一个：
+                    // 部分中转只发 `event:`（JSON 里没有 type）。解码器会优先读 payload.type、
+                    // 缺失时回退到 event 名，这里保持同样的归一语义。
+                    val payloadJson = json.parseToJsonElement(data).jsonObjectOrNull
+                    val sseType = type?.takeIf { it.isNotBlank() }
+                    val payloadType = payloadJson?.get("type")?.jsonPrimitiveOrNull?.contentOrNull
+                        ?.takeIf { it.isNotBlank() }
+                    val eventType = payloadType ?: sseType
 
-                    // 失败：内容已由前面的 delta 事件送出；usage 也照样送下游（失败通常已计费），
-                    // 然后按错误结束——不能静默 close()，否则用户只看到半截回复且拿不到原因。
-                    "response.failed", "error" -> {
-                        val failureUsage = json?.get("response")
+                    // 失败通常已计费：先把 usage 送下游，再按错误结束（对齐本仓旧实现）
+                    if (eventType == "response.failed" || eventType == "error") {
+                        val failureUsage = payloadJson?.get("response")
                             ?.jsonObjectOrNull
                             ?.get("usage")
                             ?.jsonObjectOrNull
-                        parseTokenUsage(failureUsage)?.let { usage ->
-                            trySend(
-                                MessageChunk(
-                                    id = "",
-                                    model = "",
-                                    choices = emptyList(),
-                                    usage = usage,
-                                )
-                            )
+                        parseTokenUsage(failureUsage)?.let {
+                            sendChunks(listOf(StreamChunk.Usage(it)))
                         }
-                        close(parseStreamFailure(json, eventType))
                     }
+
+                    val result = decoder.accept(SseEvent(id = id, event = sseType, data = data))
+                    sendChunks(result.chunks)
+                    if (result.completed) close()
+                } catch (e: Throwable) {
+                    close(e)
                 }
             }
 
@@ -250,12 +231,13 @@ class ResponseAPI(
                 } finally {
                     // ⚠️ close(null) 等于**正常结束**：HTTP 非 2xx 且错误体为空/解析失败时
                     // exception 仍是 null，必须给兜底，不能把失败当成功收尾
-                    // （同 ChatCompletionsAPI.onFailure 的既有处理）
                     close(exception ?: java.io.IOException("SSE stream failed without exception"))
                 }
             }
 
             override fun onClosed(eventSource: EventSource) {
+                // ⚠️ 这里**不能**补 Finish：本仓靠「有没有收到 Finish」区分正常收尾与裸断流，
+                // 无 response.completed 的连接关闭必须保持「未显式结束」的语义（见 GenerationHandler）。
                 close()
             }
         }
@@ -665,342 +647,7 @@ class ResponseAPI(
         })
     }
 
-    /**
-     * 解析一条流式事件。
-     *
-     * [toolCallIdResolver] 由调用方**按流**创建并贯穿同一流的所有事件（见其类注释）。
-     * 可见性放宽到 internal 以便单测直接驱动事件序列。
-     */
-    internal fun parseResponseDelta(
-        jsonObject: JsonObject,
-        toolCallIdResolver: ResponseToolCallIdResolver = ResponseToolCallIdResolver(),
-    ): MessageChunk? {
-        val chunkType = jsonObject["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-
-        when (chunkType) {
-            "response.output_text.delta" -> {
-                return MessageChunk(
-                    id = jsonObject["item_id"]?.jsonPrimitive?.contentOrNull ?: "",
-                    model = "",
-                    choices = listOf(
-                        UIMessageChoice(
-                            index = 0,
-                            delta = UIMessage.assistant(
-                                jsonObject["delta"]?.jsonPrimitive?.contentOrNull ?: ""
-                            ),
-                            message = null,
-                            finishReason = null
-                        )
-                    )
-                )
-            }
-
-            "response.reasoning_summary_text.delta", "response.reasoning_text.delta" -> {
-                return MessageChunk(
-                    id = jsonObject["item_id"]?.jsonPrimitive?.contentOrNull ?: "",
-                    model = "",
-                    choices = listOf(
-                        UIMessageChoice(
-                            index = 0,
-                            delta = UIMessage(
-                                role = MessageRole.ASSISTANT,
-                                parts = listOf(
-                                    UIMessagePart.Reasoning(
-                                        reasoning = jsonObject["delta"]?.jsonPrimitive?.contentOrNull
-                                            ?: "",
-                                        createdAt = Clock.System.now(),
-                                        finishedAt = null
-                                    )
-                                )
-                            ),
-                            message = null,
-                            finishReason = null
-                        )
-                    )
-                )
-            }
-
-            "response.output_item.added" -> {
-                val item = jsonObject["item"]?.jsonObject ?: error("chunk item not found")
-                val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                // 部分兼容网关在服务端执行函数工具，并把结果作为 function_call_output 下发（#2181）。
-                // 必须先于 id 解析处理：该项只保证有 call_id，item.id 可能缺失
-                if (type == "function_call_output") {
-                    return functionCallOutputChunk(item)
-                }
-                // item.id 规范上可缺（function_call 只有 call_id 必填），故回退到 call_id；
-                // 再登记「item.id / output_index → 规范 id」，供后续 arguments 事件回查
-                val id = item["id"]?.jsonPrimitive?.contentOrNull
-                    ?: item["call_id"]?.jsonPrimitive?.contentOrNull
-                    ?: error("chunk id not found")
-                val canonicalId = toolCallIdResolver.registerItem(
-                    itemId = id,
-                    callId = item["call_id"]?.jsonPrimitive?.contentOrNull,
-                    outputIndex = jsonObject["output_index"]?.jsonPrimitive?.intOrNull,
-                )
-                if (type == "function_call") {
-                    return MessageChunk(
-                        id = id,
-                        model = "",
-                        choices = listOf(
-                            UIMessageChoice(
-                                index = 0,
-                                message = null,
-                                delta = UIMessage(
-                                    role = MessageRole.ASSISTANT,
-                                    parts = listOf(
-                                        UIMessagePart.Tool(
-                                            // 用规范 id（call_id 优先）：同一流内所有事件一致，
-                                            // 且 next-round 请求回传的 call_id 正是它
-                                            toolCallId = canonicalId,
-                                            toolName = item["name"]?.jsonPrimitive?.content ?: "",
-                                            input = item["arguments"]?.jsonPrimitive?.content
-                                                ?: "",
-                                            output = emptyList()
-                                        )
-                                    )
-                                ),
-                                finishReason = null
-                            )
-                        )
-                    )
-                } else if (type == "image_generation_call") {
-                    return MessageChunk(
-                        id = id,
-                        model = "",
-                        choices = listOf(
-                            UIMessageChoice(
-                                index = 0,
-                                delta = UIMessage(
-                                    role = MessageRole.ASSISTANT,
-                                    parts = listOf(UIMessagePart.Image(url = ""))
-                                ),
-                                message = null,
-                                finishReason = null
-                            )
-                        )
-                    )
-                } else if (type == "reasoning") {
-                    val encryptedContent = item["encrypted_content"]?.jsonPrimitive?.content
-                    return MessageChunk(
-                        id = id,
-                        model = "",
-                        choices = listOf(
-                            UIMessageChoice(
-                                index = 0,
-                                message = null,
-                                delta = UIMessage(
-                                    role = MessageRole.ASSISTANT,
-                                    parts = listOf(
-                                        UIMessagePart.Reasoning(
-                                            reasoning = "",
-                                            createdAt = Clock.System.now(),
-                                            finishedAt = null,
-                                            metadata = OpenAIReasoningMetadata(
-                                                reasoningId = id,
-                                                encryptedContent = encryptedContent,
-                                            ).toMetadata()
-                                        )
-                                    )
-                                ),
-                                finishReason = null,
-                            )
-                        )
-                    )
-                }
-            }
-
-            "response.output_item.done" -> {
-                val item = jsonObject["item"]?.jsonObject ?: error("chunk item not found")
-                val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                // 同上：先处理服务端已执行的结果，再解析 id
-                if (type == "function_call_output") {
-                    return functionCallOutputChunk(item)
-                }
-                // id 缺失时回退 call_id：兼容网关的 item 形状并不总带 id（原先直接 error 会让整轮失败）
-                val id = item["id"]?.jsonPrimitive?.contentOrNull
-                    ?: item["call_id"]?.jsonPrimitive?.contentOrNull
-                    ?: error("chunk id not found")
-                if (type == "reasoning") {
-                    val encryptedContent = item["encrypted_content"]?.jsonPrimitive?.content
-                    return MessageChunk(
-                        id = id,
-                        model = "",
-                        choices = listOf(
-                            UIMessageChoice(
-                                index = 0,
-                                message = null,
-                                delta = UIMessage(
-                                    role = MessageRole.ASSISTANT,
-                                    parts = listOf(
-                                        UIMessagePart.Reasoning(
-                                            reasoning = "",
-                                            createdAt = Clock.System.now(),
-                                            finishedAt = null,
-                                            metadata = OpenAIReasoningMetadata(
-                                                reasoningId = id,
-                                                encryptedContent = encryptedContent,
-                                            ).toMetadata()
-                                        )
-                                    )
-                                ),
-                                finishReason = null,
-                            )
-                        )
-                    )
-                } else if (type == "image_generation_call") {
-                    val result = item["result"]?.jsonPrimitive?.content ?: error("result not found")
-                    return MessageChunk(
-                        id = item["id"]?.jsonPrimitive?.content ?: error("item_id not found"),
-                        model = "",
-                        choices = listOf(
-                            UIMessageChoice(
-                                index = 0,
-                                delta = UIMessage(
-                                    role = MessageRole.ASSISTANT,
-                                    parts = listOf(
-                                        UIMessagePart.Image(url = result)
-                                    )
-                                ),
-                                message = null,
-                                finishReason = null
-                            )
-                        )
-                    )
-                }
-            }
-
-            "response.function_call_arguments.done" -> {
-                // 兼容网关可能只带 call_id 或 output_index（#1948），统一经 resolver 归一
-                val toolCallId = toolCallIdResolver.resolveArgumentsId(jsonObject)
-                val arguments =
-                    jsonObject["arguments"]?.jsonPrimitive?.content ?: error("arguments not found")
-                return MessageChunk(
-                    id = toolCallId,
-                    model = "",
-                    choices = listOf(
-                        UIMessageChoice(
-                            index = 0,
-                            delta = UIMessage(
-                                role = MessageRole.ASSISTANT,
-                                parts = listOf(
-                                    UIMessagePart.Tool(
-                                        toolCallId = toolCallId,
-                                        toolName = "",
-                                        input = arguments,
-                                        output = emptyList()
-                                    )
-                                )
-                            ),
-                            message = null,
-                            finishReason = null
-                        )
-                    ),
-                )
-            }
-
-            "response.completed" -> {
-                return MessageChunk(
-                    id = jsonObject["item_id"]?.jsonPrimitive?.contentOrNull ?: "",
-                    model = "",
-                    choices = emptyList(),
-                    usage = parseTokenUsage(jsonObject["response"]?.jsonObject?.get("usage")?.jsonObject)
-                )
-            }
-
-            // 「有意的提前结束」：典型是撞输出上限
-            // `{"type":"response.incomplete","response":{"status":"incomplete",
-            //   "incomplete_details":{"reason":"max_output_tokens"},"usage":{...}}}`。
-            // 必须把 reason 填进 finishReason 并让调用方发 explicitEnd，否则：
-            // ① 下游看不到「已达输出上限」提示（只能发现回复戛然而止）；
-            // ② 更糟——没有显式结束标记，会被当成裸断流而**无条件**自动续写。
-            "response.incomplete" -> {
-                val response = jsonObject["response"]?.jsonObjectOrNull
-                val reason = response
-                    ?.get("incomplete_details")
-                    ?.jsonObjectOrNull
-                    ?.get("reason")
-                    ?.jsonPrimitiveOrNull
-                    ?.contentOrNull
-                    ?.takeIf { it.isNotBlank() }
-                return MessageChunk(
-                    id = response?.get("id")?.jsonPrimitiveOrNull?.contentOrNull ?: "",
-                    model = "",
-                    choices = listOf(
-                        UIMessageChoice(
-                            index = 0,
-                            delta = null,
-                            message = null,
-                            // reason 缺失时给一个非空值：至少保住「显式结束」语义，避免误续写
-                            finishReason = reason ?: INCOMPLETE_FALLBACK_FINISH_REASON,
-                        )
-                    ),
-                    usage = parseTokenUsage(response?.get("usage")?.jsonObjectOrNull),
-                )
-            }
-        }
-
-        return null
-    }
-
-    /**
-     * 把流失败事件（`response.failed` / `error`）归一成可抛出的异常。
-     *
-     * 事件形状不同，错误对象位置也不同：
-     * - `{"type":"response.failed","response":{"status":"failed","error":{"code":…,"message":…}}}`
-     *   ⇒ 错误在 `response.error`；
-     * - `{"type":"error","error":{"type":"…","message":…}}` ⇒ 错误在顶层 `error`。
-     *
-     * 缺详情时退化为带事件类型的通用异常（附截断后的原始事件，便于排查），绝不返回 null——
-     * 调用方用 `close(exception)` 结束流，静默 close 会被下游当成「裸断流」。
-     */
-    private fun parseStreamFailure(jsonObject: JsonObject?, eventType: String?): Throwable {
-        val errorElement = jsonObject?.get("response")
-            ?.jsonObjectOrNull
-            ?.get("error")
-            ?.takeIf { it !is JsonNull }
-            ?: jsonObject?.get("error")?.takeIf { it !is JsonNull }
-        return errorElement?.parseErrorDetail()
-            ?: IllegalStateException(
-                "Responses API stream $eventType without error detail: " +
-                    (jsonObject?.toString()?.take(MAX_FAILURE_DETAIL_CHARS) ?: "<non-json event>")
-            )
-    }
-
-    /**
-     * 服务端已执行的函数工具输出（上游 #2181 / `675e59f0d`）：挂到同 `call_id` 的工具 part 上。
-     *
-     * 复用 [UIMessagePart.Tool.merge] 的 `output = output + other.output` 语义，因此**不需要**
-     * 改流式合并层；工具是否已执行由 `output.isNotEmpty()` 自动判定。
-     */
-    private fun functionCallOutputChunk(item: JsonObject): MessageChunk? {
-        val callId = item["call_id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-            ?: return null
-        return MessageChunk(
-            id = callId,
-            model = "",
-            choices = listOf(
-                UIMessageChoice(
-                    index = 0,
-                    message = null,
-                    delta = UIMessage(
-                        role = MessageRole.ASSISTANT,
-                        parts = listOf(
-                            UIMessagePart.Tool(
-                                toolCallId = callId,
-                                toolName = "",
-                                input = "",
-                                output = listOf(UIMessagePart.Text(item.functionCallOutputText())),
-                            )
-                        )
-                    ),
-                    finishReason = null,
-                )
-            ),
-        )
-    }
-
-    internal fun parseResponseOutput(jsonObject: JsonObject): MessageChunk {
+    internal fun parseResponseOutput(jsonObject: JsonObject): TextGenerationResult {
         val outputs = jsonObject["output"]?.jsonArray ?: error("output not found")
         val parts = arrayListOf<UIMessagePart>()
 
@@ -1009,8 +656,12 @@ class ResponseAPI(
             val type = output["type"]?.jsonPrimitive?.content ?: error("output type not found")
             when (type) {
                 "reasoning" -> {
-                    val summary = output["summary"]?.jsonArray ?: error("summary not found")
-                    summary.map { it.jsonObject }.forEach { part ->
+                    val reasoningMetadata = OpenAIReasoningMetadata(
+                        reasoningId = output["id"]?.jsonPrimitive?.contentOrNull,
+                        encryptedContent = output["encrypted_content"]?.jsonPrimitive?.contentOrNull,
+                    ).toMetadata()
+                    val reasoningPartStart = parts.size
+                    output["summary"]?.jsonArray.orEmpty().map { it.jsonObject }.forEach { part ->
                         val partType = part["type"]?.jsonPrimitive?.content ?: error("part type not found")
                         when (partType) {
                             "summary_text" -> {
@@ -1019,11 +670,37 @@ class ResponseAPI(
                                     UIMessagePart.Reasoning(
                                         reasoning = text,
                                         createdAt = Clock.System.now(),
-                                        finishedAt = Clock.System.now()
+                                        finishedAt = Clock.System.now(),
+                                        metadata = reasoningMetadata,
+                                        reasoningType = ReasoningType.SUMMARY_TEXT,
                                     )
                                 )
                             }
                         }
+                    }
+                    output["content"]?.jsonArray.orEmpty().map { it.jsonObject }.forEach { part ->
+                        if (part["type"]?.jsonPrimitive?.contentOrNull == "reasoning_text") {
+                            parts.add(
+                                UIMessagePart.Reasoning(
+                                    reasoning = part["text"]?.jsonPrimitive?.content ?: error("text not found"),
+                                    createdAt = Clock.System.now(),
+                                    finishedAt = Clock.System.now(),
+                                    metadata = reasoningMetadata,
+                                    reasoningType = ReasoningType.REASONING_TEXT,
+                                )
+                            )
+                        }
+                    }
+                    if (parts.size == reasoningPartStart) {
+                        parts.add(
+                            UIMessagePart.Reasoning(
+                                reasoning = "",
+                                createdAt = Clock.System.now(),
+                                finishedAt = Clock.System.now(),
+                                metadata = reasoningMetadata,
+                                reasoningType = ReasoningType.REASONING_TEXT,
+                            )
+                        )
                     }
                 }
 
@@ -1042,7 +719,7 @@ class ResponseAPI(
                     )
                 }
 
-                // 服务端已执行函数工具的结果（#2181）：回填到对应工具，避免客户端重复执行
+                // 服务端已执行函数工具的结果（本仓 #2181）：回填到对应工具，避免客户端重复执行
                 "function_call_output" -> {
                     val callId = output["call_id"]?.jsonPrimitive?.content ?: error("call_id not found")
                     val index = parts.indexOfLast {
@@ -1063,35 +740,32 @@ class ResponseAPI(
                         when (partType) {
                             "output_text" -> {
                                 val text = part["text"]?.jsonPrimitive?.content ?: error("text not found")
-                                parts.add(
-                                    UIMessagePart.Text(
-                                        text = text
-                                    )
-                                )
+                                parts.add(UIMessagePart.Text(text = text))
                             }
 
                             else -> error("unknown part type $partType")
                         }
                     }
                 }
+
+                else -> if (isOpenAIServerToolCall(type)) {
+                    parts.add(output.toOpenAIServerTool())
+                }
             }
         }
 
-        return MessageChunk(
+        return TextGenerationResult(
             id = jsonObject["id"]?.jsonPrimitive?.contentOrNull ?: "",
             model = jsonObject["model"]?.jsonPrimitive?.contentOrNull ?: "",
-            choices = listOf(
-                UIMessageChoice(
-                    index = 0,
-                    message = UIMessage(
-                        role = MessageRole.ASSISTANT,
-                        parts = parts,
-                    ),
-                    finishReason = null,
-                    delta = null
-                )
+            message = UIMessage(
+                role = MessageRole.ASSISTANT,
+                parts = parts,
             ),
-            usage = parseTokenUsage(jsonObject["usage"]?.jsonObject)
+            // `status` 是 `completed`/`incomplete`/`failed`：只把真正的「非正常收尾」暴露给下游，
+            // 正常完成保持 null（对齐本仓非流式路径的既有语义，避免 finishReason 里出现 "completed"）
+            finishReason = jsonObject["status"]?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it != "completed" },
+            usage = parseTokenUsage(jsonObject["usage"]?.jsonObject),
         )
     }
 

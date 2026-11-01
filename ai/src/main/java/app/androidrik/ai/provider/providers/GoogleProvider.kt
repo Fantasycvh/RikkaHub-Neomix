@@ -41,15 +41,16 @@ import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.ai.provider.TextGenerationResult
+import app.androidrik.ai.provider.providers.google.GoogleStreamDecoder
+import app.androidrik.ai.provider.stream.SseEvent
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.provider.providers.vertex.ServiceAccountTokenProvider
 import app.androidrik.ai.registry.ModelRegistry
-import app.androidrik.ai.ui.terminalChunk
 import app.androidrik.ai.ui.GoogleThoughtMetadata
-import app.androidrik.ai.ui.MessageChunk
 import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
-import app.androidrik.ai.ui.UIMessageChoice
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.metadataAs
 import app.androidrik.ai.ui.toMetadata
@@ -177,7 +178,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         providerSetting: ProviderSetting.Google,
         messages: List<UIMessage>,
         params: TextGenerationParams,
-    ): MessageChunk = withContext(Dispatchers.IO) {
+    ): TextGenerationResult = withContext(Dispatchers.IO) {
         val requestBody = buildCompletionRequestBody(providerSetting, messages, params)
 
         val url = buildUrl(
@@ -219,28 +220,20 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         }
         val usage = bodyJson["usageMetadata"]?.jsonObject ?: JsonObject(emptyMap())
 
-        val messageChunk = MessageChunk(
+        TextGenerationResult(
             id = Uuid.random().toString(),
             model = params.model.modelId,
-            choices = candidates.map { candidate ->
-                UIMessageChoice(
-                    message = parseMessage(candidate.jsonObject),
-                    index = 0,
-                    finishReason = null,
-                    delta = null
-                )
-            },
-            usage = parseUsageMeta(usage)
+            message = parseMessage(candidates.first().jsonObject),
+            finishReason = null,
+            usage = parseUsageMeta(usage),
         )
-
-        messageChunk
     }
 
     override suspend fun streamText(
         providerSetting: ProviderSetting.Google,
         messages: List<UIMessage>,
         params: TextGenerationParams,
-    ): Flow<MessageChunk> = callbackFlow {
+    ): Flow<StreamChunk> = callbackFlow {
         val requestBody = buildCompletionRequestBody(providerSetting, messages, params)
 
         val url = buildUrl(
@@ -266,6 +259,13 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
 
         Log.i(TAG, "streamText: ${summarizeRequestBody(json, requestBody)}")
 
+        // 每条流一个解码器实例（对齐上游 #1648）；Gemini 没有独立终止事件，连接关闭时
+        // 由 decoder.onClosed() 产出 Finish。
+        val decoder = GoogleStreamDecoder(
+            responseId = Uuid.random().toString(),
+            model = params.model.modelId,
+        )
+
         val listener = object : EventSourceListener() {
             override fun onEvent(
                 eventSource: EventSource,
@@ -274,62 +274,17 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 data: String
             ) {
                 Log.i(TAG, "onEvent: chars=${data.length}")
-
                 try {
-                    val jsonData = json.parseToJsonElement(data).jsonObject
-                    val reason =
-                        jsonData["promptFeedback"]?.jsonObject?.get("blockReason")?.jsonPrimitiveOrNull?.contentOrNull
-                    if (reason != null) {
-                        close(RuntimeException("Prompt feedback: $reason"))
-                    }
-                    val candidates = jsonData["candidates"]?.jsonArray ?: return
-                    if (candidates.isEmpty()) return
-                    val usage = parseUsageMeta(jsonData["usageMetadata"] as? JsonObject)
-                    val messageChunk = MessageChunk(
-                        id = Uuid.random().toString(),
-                        model = params.model.modelId,
-                        choices = candidates.mapIndexed { index, candidate ->
-                            val candidateObj = candidate.jsonObject
-                            val content = candidateObj["content"]?.jsonObject
-                            val groundingMetadata = candidateObj["groundingMetadata"]?.jsonObject
-                            val finishReason =
-                                candidateObj["finishReason"]?.jsonPrimitive?.contentOrNull
-
-                            val message = content?.let {
-                                parseMessage(buildJsonObject {
-                                    put("role", JsonPrimitive("model"))
-                                    put("content", it)
-                                    groundingMetadata?.let { groundingMetadata ->
-                                        put("groundingMetadata", groundingMetadata)
-                                    }
-                                })
-                            }
-
-                            UIMessageChoice(
-                                index = index,
-                                delta = message,
-                                message = null,
-                                finishReason = finishReason
-                            )
-                        },
-                        usage = usage
-                    )
-
-                    trySend(messageChunk).onFailure { e ->
-                        Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
-                    }
-
-                    // Gemini 的流没有独立终止事件：带 finishReason 的末块即「显式结束」
-                    // （STOP / MAX_TOKENS / SAFETY 等）。缺它而连接关闭 = 裸断流，
-                    // 下游据「没见到标记」判定（见 MessageChunk.explicitEnd）。
-                    if (messageChunk.choices.any { !it.finishReason.isNullOrBlank() }) {
-                        trySend(terminalChunk()).onFailure { e ->
-                            Log.w(TAG, "onEvent: terminal marker dropped (${e?.message})")
+                    val result = decoder.accept(SseEvent(id = id, event = type, data = data))
+                    result.chunks.forEach { chunk ->
+                        trySend(chunk).onFailure { e ->
+                            Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
                         }
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    Log.w(TAG, "onEvent: parse error (${summarizeErrorBody(data)})")
+                    if (result.completed) close()
+                } catch (e: Throwable) {
+                    Log.w(TAG, "onEvent: decode error (${summarizeErrorBody(data)})")
+                    close(e)
                 }
             }
 
@@ -368,6 +323,15 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
 
             override fun onClosed(eventSource: EventSource) {
                 Log.d(TAG, "onClosed: connection closed")
+                try {
+                    decoder.onClosed().forEach { chunk ->
+                        trySend(chunk).onFailure { e ->
+                            Log.w(TAG, "onClosed: chunk dropped (${e?.message})")
+                        }
+                    }
+                } catch (e: Throwable) {
+                    Log.w(TAG, "onClosed: decode error (${e.message})")
+                }
                 close()
             }
         }

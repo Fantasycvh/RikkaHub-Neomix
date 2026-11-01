@@ -8,7 +8,7 @@ import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.providers.openai.ChatCompletionsAPI
 import app.androidrik.ai.provider.providers.openai.StreamingEventSourceTracker
 import app.androidrik.ai.provider.providers.openai.resetLearnedReasoningTextValidatorsForTest
-import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.util.KeyRoulette
 import kotlinx.coroutines.Dispatchers
@@ -63,7 +63,7 @@ class ChatCompletionsStreamRetryTest {
     fun `async structural failure resends once and the old source cannot poison the new stream`() = runBlocking {
         val factory = FakeEventSourceFactory()
         val api = api(factory)
-        val chunks = CopyOnWriteArrayList<MessageChunk>()
+        val chunks = CopyOnWriteArrayList<StreamChunk>()
         val job = launch(Dispatchers.Default) {
             api.streamText(provider(), listOf(UIMessage.user("hi")), params()).collect { chunks += it }
         }
@@ -90,7 +90,14 @@ class ChatCompletionsStreamRetryTest {
         second.listener.onClosed(second)
         job.join()
 
-        assertEquals("只应收到新 source 的 chunk（旧 source 的必须被丢弃）", 1, chunks.size)
+        // P1 后一个 chat 增量会展开成 TextStart + TextDelta；只应收到新 source 的内容增量
+        assertEquals("只应收到新 source 的 chunk（旧 source 的必须被丢弃）", 1, chunks.count {
+            it is StreamChunk.TextDelta
+        })
+        assertEquals(
+            "new",
+            chunks.filterIsInstance<StreamChunk.TextDelta>().single().text,
+        )
     }
 
     @Test

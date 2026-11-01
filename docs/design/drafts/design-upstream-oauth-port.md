@@ -350,15 +350,55 @@ chatgpt.com/backend-api/codex、grok 后端
 
 验证：`./gradlew :ai:compileDebugKotlin` 通过（三次增量均 0 错误）。
 
-### 12.2 后续步骤（下一阶段）
+### 12.2 接口与接线（阶段 2，工作区增量）
 
-1. **接口改造**：`Provider.generateText` 返回 `TextGenerationResult(message, usage)`；`Provider.streamText` 返回 `Flow<StreamChunk>`；`ProviderManager` 同步。
-2. **各 provider 接线**：把现有 SSE 解析替换为 decoder 驱动，保留本仓特性——Codex 能力体（`CODEX_CAPABILITIES`）、多 key 轮询、加密推理 metadata 回传、`response.output_item` 增量语义。
-3. **app 消费端**：`GenerationHandler`（1993 行）、`ChatService`（3405 行）、`ChatMessage`/`ChatMessageCot`/`ChatMessageTools`、`Export`、`LogPage`、`ProviderConnectionTester` 改用 `StreamChunkHandler`；裸断流判定改为「流结束但 handler.finished == false」；`explicitEnd` 语义保留。
-4. **单测**：移植 `ResponseApiStreamDecoderTest`/`ChatCompletions*Test`/`Claude*Test`/`Google*Test`；`trace-cli` 与 stream-traces 语料列为可选。
-5. **真机验证**：ChatGPT 订阅(codex)、OpenAI API Key、Claude、Google 各一次流式对话 + 工具调用 + 推理展示。
+**接口**
+- `Provider.generateText` → `TextGenerationResult(id, model, message, finishReason, usage)`；`Provider.streamText` → `Flow<StreamChunk>`。
+- `Message.kt` 新增 `List<UIMessage>.handleTextGenerationResult(result, model, providerName)`，内部复用 `handleMessageChunk` 的合并语义（同角色追加、Tool 按 id merge + 时间戳、ServerTool 状态更新、Reasoning 收尾），保证非流式与流式产物形态一致。
 
-### 12.3 风险提示（实施中发现）
+**四个 provider 全部改为 decoder 驱动**（本仓特性逐项保留）
 
-- 本仓 `MessageChunk` 的 `choices[].message` 支持「整段替换」语义（用于非增量结果合并），`StreamChunk` 没有对应事件；app 侧需把该路径改为 `handleTextGenerationResult`（非流式）或在 provider 内直接构造完整 `StreamChunk` 序列。
-- 本仓 `UIMessagePart.Tool` 比上游多 `startedAt`/`finishedAt`（执行窗口统计），`StreamChunkHandler` 已按上游语义不改这两个字段，app 侧执行工具时赋值逻辑需保持不变。
+| provider | 保留的本仓特性 | 新增/变化 |
+| --- | --- | --- |
+| `ResponseAPI` | codex 鉴权 + `Accept: text/event-stream` + `CodexSseContentTypeInterceptor`、proxy、`onFailure` 错误体解析、失败事件先送 `Usage` 再抛错、SSE `event:` 名与 payload `type` 双写归一 | 流式解析整体换 `ResponseApiStreamDecoder`；`parseResponseDelta`/`parseStreamFailure`/`functionCallOutputChunk` 删除；非流式解析升级为上游版（reasoning summary/content 两种 `reasoningType`、server tool、image gen），保留本仓 `function_call_output` 回填 |
+| `ChatCompletionsAPI` | 400 结构校验「自学习重发带回填」（`armBackfillRetry` + `StreamingEventSourceTracker` + 防旧 source 迟到回调）、多 key 轮询、`"error": null` 防护（下沉到 decoder） | 逐行 JSON 解析换 `ChatCompletionsStreamDecoder`（decoder 内部按行拆包），`[DONE]` 由 decoder 产出 `Finish` |
+| `ClaudeProvider` | thinking / `redacted_thinking`（`ClaudeReasoningMetadata.redactedData`）、server tool（ANTHROPIC_MESSAGES）、`stop_reason` 透出 | 换 `ClaudeStreamDecoder`；`message_stop` → `Finish`；event 名/payload type 双写归一 |
+| `GoogleProvider` | thought parts、grounding annotations、`usageMetadata`（含 `thoughtsTokenCount`）、`promptFeedback.blockReason` → 抛错 | 换 `GoogleStreamDecoder`；**无独立终止事件** ⇒ 连接关闭时「有 `finishReason` 才补 `Finish`」，无 `finishReason` 保持裸断流语义 |
+
+**app 消费端**
+- `GenerationHandler`：每步一个 `StreamChunkHandler(model, providerName)`；裸断流判定 = `!chunkHandler.finished`（等价旧的 `explicitEnd`）；`chunk.toGuardDelta()` 继续喂思考退化护栏；usage 仍按「本步 merge → 全轮累计」口径；非流式改 `handleTextGenerationResult`；翻译流式按**每次重试**重建 handler。
+- `ChatService`（标题/建议/压缩三处）、`OcrTransformer`、`ProviderConnectionTester`、`UsageRecorder`：改用 `result.message` / `StreamChunk.Usage`。
+
+**语义决策（需在 PR 说明中写清）**
+1. 成功路径的 `Finish` 一律由 decoder 在**显式终止事件**（`[DONE]` / `message_stop` / `response.completed|incomplete` / Google 带 `finishReason` 的末块）产出；`ChatCompletions`/`ResponseAPI`/`Claude` 的 `onClosed` **不补** `Finish`，否则裸断流会被误判为正常收尾。
+2. `Responses` 非流式 `finishReason` 只透出非 `completed` 状态（避免 `"completed"` 泄进 UI/续写判定，对齐旧行为）。
+3. `StreamChunkHandler` 在 `Finish` 上写 `finishedAt`/`finishReason`：相对旧路径「轮末统一写 `finishedAt`」提前到流结束瞬间；多步轮次开始时仍会清空，tok/s 卡片与 UI 终值行为不变。
+4. 旧 `MessageChunk`/`UIMessageChoice`/`terminalChunk`/`handleMessageChunk` 暂时保留（被 `handleTextGenerationResult` 内部复用），下一个增量删除。
+
+验证：`./gradlew :ai:compileDebugKotlin`、`:app:compileDebugKotlin` 均通过。
+
+**阶段 2 实施中发现并已修复的回归**（主代码，均为「换解码器时丢掉本仓语义」或「新链路把协议细节丢给上层」）：
+
+| 问题 | 根因 | 修复 |
+| --- | --- | --- |
+| Responses 流式 `function_call_output` 结果被丢弃（#2181 回归：服务端已执行的工具被客户端**重复执行**；且 `output_item.done` 缺 `item.id` 时崩溃） | 上游 `StreamChunk` 事件集没有「工具输出」通道 | 新增第 19 个事件 `StreamChunk.ToolCallOutput(id, output)`；`StreamChunkHandler` 按 id 合并进 Tool（复用 `Tool.merge` 的幂等去重，added/done 各带一份不会翻倍）；`ResponseApiStreamDecoder` 在 `output_item.added/done` **先于 id 解析**处理该类型，`call_id ?: item.id` 取 id，空输出也发（「已执行」信号本身） |
+| toolCallId 兜底丢失（兼容网关在 arguments 事件里只给 `call_id`/`output_index` → `item_id not found` 抛错） | 换解码器时本仓 `ResponseToolCallIdResolver` 未接入 | 解码器内部改用 `ResponseToolCallIdResolver.registerItem/resolveArgumentsId`（`item.id` 与 `call_id` 归一、`item_id → call_id → output_index` 回退），该类不再是 dead code |
+| `incomplete:<reason>` 前缀打穿截断判定（截断横幅/续写策略/content_filter 空响应路径全部失配） | 解码器按上游拼 `"incomplete:$reason"`，本仓 helper 只认裸值 | `Message.kt` 的 `isOutputLimitTruncation`/`isContentFilterTruncation` 统一走 `normalizeFinishReason()`（trim → 取 `:` 后最后一段 → lowercase），不改 decoder 输出、对其它 provider 无副作用 |
+| Claude 异常中转省略 `content_block_start` 时失真（旧解析容忍，新解码器直接抛 `Unknown content block index`） | 解码器要求先 start 才建 block | `ClaudeStreamDecoder.inferBlock()` 按 delta 类型懒创建 block 并补对应 Start 事件；`content_block_stop` 缺 block 静默跳过 |
+| Google 每条流都被判「正常收尾」（裸断流不可区分） | 上游 `GoogleStreamDecoder.accept()` 永不返回 `completed`，只能靠 provider `onClosed` 收尾 | `GoogleProvider.onClosed` 只在拿到过 `finishReason` 时补 `Finish`，否则保持裸断流语义；补 `GoogleStreamDecoderTest` 锁行为 |
+
+### 12.3 后续步骤
+
+1. **单测**（✅ 已完成）：ai 模块旧测试迁移到解码器 + 移植上游 `StreamChunkHandlerTest`（10 例）/`ResponseApiStreamDecoderTest`（9 例），新增 `GoogleStreamDecoderTest`（3 例）；`:ai:testDebugUnitTest` **421 例全绿、0 skip**。app 侧 5 个 `GenerationHandler` 相关测试迁移到 `StreamChunk` 脚本，`:app:testDebugUnitTest --tests 'app.androidrik.rikkahub.data.ai.*'` 1129 例全绿。
+2. **清理 legacy**：删除 `MessageChunk`/`UIMessageChoice`/`terminalChunk`/`handleMessageChunk`/`ResponseToolCallIdResolver`，`handleTextGenerationResult` 改为直接合并；`trace-cli`/`stream-traces` 语料可选。
+3. **真机验证**（部分完成）：ChatGPT 订阅(codex) 路径已真机通过（流式回复 + token/tok/s 统计 + provider lock 横幅，`6c841f95` / debug 包）；OpenAI API Key、Claude、Google 三条仍待真机各跑一次「流式对话 + 工具调用 + 推理展示 + 裸断流」，当前由解码器单测覆盖（含裸断流 / `incomplete` / 工具 id 归一 / 服务端工具输出）。
+4. **提交**：P1 独立 PR（接口改造 + 4 provider 接线 + app 消费端 + 单测），PR 说明附本表与语义决策。
+
+### 12.4 风险提示（实施中发现）
+
+- 本仓 `UIMessagePart.Tool` 比上游多 `startedAt`/`finishedAt`（执行窗口统计），`StreamChunkHandler` 按上游语义不改这两个字段，app 侧执行工具时的赋值逻辑保持不变（已核对未被本次改动触碰）。
+- `StreamChunk` 事件集**没有 Audio/Video 增量事件**：若某网关在 `/chat/completions` 流式下发 audio/video part，新链路会丢失（旧 `parseMessage` 有 Audio 分支）。上游同样不支持，按需在 P2 之后再补事件类型。
+- `Google` 的裸断流判定依赖「末块带 `finishReason`」；若网关把最后一块（含 `finishReason`）丢掉，会正确判 incomplete（符合预期），但若网关把 `finishReason` 放在被截断前的块里则不判 incomplete——与旧实现同款局限。
+- `Responses` 非流式解析现在会产出上游新增的 `Image`/`ServerTool`/`reasoningType` part：这些 part 在本仓 UI 已支持渲染，但**旧版本客户端**（如果存在跨版本同步/导入）可能不认识——本仓无跨版本消息互通，暂不处理。
+- `StreamChunk.ToolCallOutput` 是本仓在 18 类上游事件之外新增的第 19 类（`@SerialName("tool_call_output")`）；后续 P2 若上游再改事件集，需在每次变基时确认该事件仍有承载位置（上游没有对应语义，预计长期保留）。
+- `normalizeFinishReason` 取 `:` 后最后一段：若将来某 provider 的 reason 自身含 `:` 且最后一段恰为 `length`/`content_filter` 之类会误判；三家现行协议无此形状，单测已加负例（`completed`/`end_turn`/null 不命中）。

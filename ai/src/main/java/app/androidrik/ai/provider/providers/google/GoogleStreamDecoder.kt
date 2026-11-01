@@ -58,7 +58,15 @@ internal class GoogleStreamDecoder(
         return DecodeResult(chunks)
     }
 
-    override fun onClosed(): List<StreamChunk> = finish()
+    override fun onClosed(): List<StreamChunk> {
+        if (finished) return emptyList()
+        finished = true
+        val chunks = streamState.finish(finishReason, responseId, model)
+        // Gemini 没有独立终止事件：**带 finishReason 的末块**才是显式结束。
+        // 连接关闭时没有 finishReason = 裸断流（网关提前切连接），不能补 Finish，
+        // 否则下游会把截断当正常收尾（见 GenerationHandler 的 bare EOF 判定）。
+        return if (finishReason == null) chunks.filterNot { it is StreamChunk.Finish } else chunks
+    }
 
     private fun finish(): List<StreamChunk> {
         if (finished) return emptyList()

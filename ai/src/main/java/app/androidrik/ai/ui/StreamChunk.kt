@@ -131,6 +131,20 @@ sealed class StreamChunk {
     @SerialName("image_end")
     data class ImageEnd(val id: String) : StreamChunk()
 
+    /**
+     * 服务端已执行的函数工具输出（本仓 #2181 语义，上游事件集没有对应通道）。
+     *
+     * Responses API 在服务端执行函数工具后，会以 `function_call_output` output item 回传结果。
+     * 没有这个事件时 `StreamChunkHandler` 只能丢掉结果 ⇒ 工具 `isExecuted` 判定为 false ⇒
+     * 客户端重复执行（重复副作用）。消费端按 `id` 把输出挂到同名工具上。
+     */
+    @Serializable
+    @SerialName("tool_call_output")
+    data class ToolCallOutput(
+        val id: String,
+        val output: String,
+    ) : StreamChunk()
+
     @Serializable
     @SerialName("annotations")
     data class Annotations(val annotations: List<UIMessageAnnotation>) : StreamChunk()

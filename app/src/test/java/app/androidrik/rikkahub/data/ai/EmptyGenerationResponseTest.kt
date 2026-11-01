@@ -8,11 +8,9 @@ import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.ai.provider.TextGenerationParams
-import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.provider.TextGenerationResult
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
-import app.androidrik.ai.ui.UIMessageChoice
-import app.androidrik.ai.ui.UIMessagePart
-import app.androidrik.ai.ui.terminalChunk
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -27,22 +25,47 @@ class EmptyGenerationResponseTest {
     private val model = Model(modelId = "test", displayName = "test")
     private val providerSetting = ProviderSetting.OpenAI(models = listOf(model), apiKey = "test")
 
-    private class ScriptedProvider(private val script: (Int) -> List<MessageChunk>) : Provider<ProviderSetting.OpenAI> {
+    private class ScriptedProvider(
+        private val nonStreamingResult: ((Int) -> TextGenerationResult)? = null,
+        private val script: (Int) -> List<StreamChunk>,
+    ) : Provider<ProviderSetting.OpenAI> {
         var calls = 0
         override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> = emptyList()
         override suspend fun generateText(
             providerSetting: ProviderSetting.OpenAI, messages: List<UIMessage>, params: TextGenerationParams,
-        ): MessageChunk = script(calls++).first()
+        ): TextGenerationResult = nonStreamingResult?.invoke(calls++) ?: error("这些用例只走流式路径")
         override suspend fun streamText(
             providerSetting: ProviderSetting.OpenAI, messages: List<UIMessage>, params: TextGenerationParams,
-        ): Flow<MessageChunk> = flow { script(calls++).forEach { emit(it) } }
+        ): Flow<StreamChunk> = flow { script(calls++).forEach { emit(it) } }
     }
 
-    private fun chunk(vararg parts: UIMessagePart, reason: String? = "stop") = MessageChunk(
-        id = "test", model = "test", choices = listOf(UIMessageChoice(
-            index = 0, delta = UIMessage(role = MessageRole.ASSISTANT, parts = parts.toList()),
-            message = null, finishReason = reason,
-        )),
+    // ---- StreamChunk 脚本夹具（旧 chunk()/terminalChunk() 的新等价物） ----
+
+    /** 旧 `terminalChunk()` + `finishReason` 的合并等价物：唯一的显式结束事件。 */
+    private fun finish(finishReason: String? = null) = StreamChunk.Finish(finishReason = finishReason)
+
+    private fun textEvents(text: String, id: String = "text"): List<StreamChunk> = listOf(
+        StreamChunk.TextStart(id),
+        StreamChunk.TextDelta(id, text),
+        StreamChunk.TextEnd(id),
+    )
+
+    private fun reasoningEvents(
+        reasoning: String,
+        metadata: kotlinx.serialization.json.JsonObject? = null,
+        id: String = "reasoning",
+    ): List<StreamChunk> = listOf(
+        StreamChunk.ReasoningStart(id, metadata),
+        StreamChunk.ReasoningDelta(id, reasoning, metadata),
+        StreamChunk.ReasoningEnd(id),
+    )
+
+    /** 非流式：一条空助手消息（旧 `MessageChunk(choices = emptyList())` 的等价物）。 */
+    private fun emptyTextResult() = TextGenerationResult(
+        id = "test",
+        model = "test",
+        message = UIMessage(role = MessageRole.ASSISTANT, parts = emptyList()),
+        finishReason = null,
     )
 
     private fun run(
@@ -90,45 +113,54 @@ class EmptyGenerationResponseTest {
 
     @Test fun `redacted reasoning metadata is not mistaken for zero output`() {
         val provider = ScriptedProvider { call ->
-            val reasoning = UIMessagePart.Reasoning(reasoning = "").also {
-                it.metadata = kotlinx.serialization.json.buildJsonObject {
-                    put("data", kotlinx.serialization.json.JsonPrimitive("redacted-payload"))
-                }
+            if (call == 0) {
+                // 旧语义：空 reasoning + 非空 metadata 视为「有输出」；新事件模型里 metadata 挂在
+                // ReasoningStart/Delta 上，同样必须被算作内容（不能误判成零输出去重试）。
+                reasoningEvents(
+                    reasoning = "",
+                    metadata = kotlinx.serialization.json.buildJsonObject {
+                        put("data", kotlinx.serialization.json.JsonPrimitive("redacted-payload"))
+                    },
+                ) + finish("stop")
+            } else {
+                textEvents("answer") + finish("stop")
             }
-            listOf(if (call == 0) chunk(reasoning) else chunk(UIMessagePart.Text("answer")), terminalChunk())
         }
         run(provider)
         assertEquals(2, provider.calls)
     }
 
     @Test fun `terminal only stream is not a successful reply`() {
-        val provider = ScriptedProvider { listOf(terminalChunk()) }
+        val provider = ScriptedProvider { listOf(finish(finishReason = null)) }
         assertEmptyFailure { run(provider) }
         assertEquals(1, provider.calls)
     }
 
     @Test fun `empty assistant delta and whitespace fail`() {
-        for (parts in listOf(emptyArray(), arrayOf<UIMessagePart>(UIMessagePart.Text("  \n")))) {
-            val provider = ScriptedProvider { listOf(chunk(*parts), terminalChunk()) }
+        for (chunks in listOf(listOf(finish("stop")), textEvents("  \n") + finish("stop"))) {
+            val provider = ScriptedProvider { chunks }
             assertEmptyFailure { run(provider) }
         }
     }
 
     @Test fun `old assistant content cannot hide empty continuation`() {
-        val provider = ScriptedProvider { listOf(terminalChunk()) }
+        val provider = ScriptedProvider { listOf(finish(finishReason = null)) }
         assertEmptyFailure { run(provider, input = listOf(UIMessage.user("hello"), UIMessage.assistant("old output ".repeat(10)))) }
     }
 
     @Test fun `non streaming empty choices fail`() {
-        val provider = ScriptedProvider { listOf(MessageChunk(id = "empty", model = "test", choices = emptyList())) }
+        val provider = ScriptedProvider(
+            nonStreamingResult = { emptyTextResult() },
+            script = { emptyList() },
+        )
         assertEmptyFailure { run(provider, stream = false) }
         assertEquals(1, provider.calls)
     }
 
     @Test fun `reasoning only preserves one visible answer recovery`() {
         val provider = ScriptedProvider { call ->
-            listOf(if (call == 0) chunk(UIMessagePart.Reasoning(reasoning = "thinking"))
-                else chunk(UIMessagePart.Text("answer")), terminalChunk())
+            if (call == 0) reasoningEvents("thinking") + finish("stop")
+            else textEvents("answer") + finish("stop")
         }
         val snapshots = mutableListOf<List<UIMessage>>()
         run(provider, snapshots = snapshots)
@@ -136,16 +168,24 @@ class EmptyGenerationResponseTest {
         assertTrue(snapshots.last().last().toText().contains("answer"))
     }
 
-    @Test fun `audio output does not trigger visible text recovery`() {
-        val provider = ScriptedProvider { listOf(chunk(UIMessagePart.Audio(url = "https://example.com/a.mp3")), terminalChunk()) }
+    @Test fun `image output does not trigger visible text recovery`() {
+        // 旧用例验证「非文本的可见输出（Audio）不算零可见正文」。新事件模型没有 Audio 事件，
+        // 改用等价的可见非文本输出 Image：它同样满足 hasVisibleOutput，因此不该触发补答。
+        val provider = ScriptedProvider {
+            listOf(
+                StreamChunk.ImageStart(id = "img", mimeType = "image/png"),
+                StreamChunk.ImageDelta(id = "img", data = "iVBORw0KGgoAAAANSUhEUg=="),
+                StreamChunk.ImageEnd(id = "img"),
+                finish("stop"),
+            )
+        }
         run(provider)
         assertEquals(1, provider.calls)
     }
 
     @Test fun `terminal metadata is not discarded`() {
         val provider = ScriptedProvider {
-            listOf(chunk(UIMessagePart.Text("partial"), reason = null),
-                chunk(reason = "max_output_tokens").copy(explicitEnd = true))
+            textEvents("partial") + finish("max_output_tokens")
         }
         val snapshots = mutableListOf<List<UIMessage>>()
         run(provider, snapshots = snapshots)
@@ -155,7 +195,7 @@ class EmptyGenerationResponseTest {
     }
 
     @Test fun `explicit safety refusal is not retried or recovered`() {
-        val provider = ScriptedProvider { listOf(chunk(reason = "refusal"), terminalChunk()) }
+        val provider = ScriptedProvider { listOf(finish("refusal")) }
         val snapshots = mutableListOf<List<UIMessage>>()
         run(provider, snapshots = snapshots)
         assertEquals(1, provider.calls)

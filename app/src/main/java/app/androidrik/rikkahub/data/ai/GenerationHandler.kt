@@ -48,7 +48,9 @@ import app.androidrik.ai.ui.isEmptyUIMessage
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.ToolApprovalState
-import app.androidrik.ai.ui.handleMessageChunk
+import app.androidrik.ai.ui.StreamChunk
+import app.androidrik.ai.ui.StreamChunkHandler
+import app.androidrik.ai.ui.handleTextGenerationResult
 import app.androidrik.rikkahub.data.ai.prompts.isCompactionCheckpointPreamble
 import app.androidrik.rikkahub.data.ai.transformers.InputMessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
@@ -1394,11 +1396,15 @@ class GenerationHandler(
                 // 与进入本步前的累计值相加得到全轮口径，见 TokenUsage.plus
                 val roundBaseUsage = messages.last().usage ?: TokenUsage()
                 var stepUsage: TokenUsage? = null
-                // 流结束语义（见 MessageChunk.explicitEnd）：本次流是否见到 provider 的显式结束标记。
+                // 流结束语义：本次流是否见到 provider 的显式终止事件（[StreamChunk.Finish]：
+                // `[DONE]` / `message_stop` / `response.completed` / 带 finishReason 的末块）。
                 // 没有 = 裸断流（网关/中转提前切连接）——此前与「正常收尾」无法区分，整轮被当成功。
                 var sawExplicitEnd = false
                 var finishReason: String? = null
                 var receivedAssistantContent = false
+                // 每步一个 chunk 处理器（移植自上游 #1648）：内部维护 open text/reasoning/image 的
+                // 索引与 toolCallId → part 的映射，逐条把 StreamChunk 折叠进消息列表。
+                val chunkHandler = StreamChunkHandler(model = model, providerName = provider.name)
                 // 思考退化护栏：调用内逐字重复 ⇒ 从内部中止本次流（抛出沿链取消上游 SSE 连接），
                 // 已生成内容照常保留，由步骤循环收尾（见 [ThinkingDegenerationGuard]）。
                 degenerationGuard?.onCallStarted()
@@ -1409,22 +1415,17 @@ class GenerationHandler(
                             messages = requestMessages,
                             params = params
                         ).collect { chunk ->
-                            // A terminal chunk may also carry usage/finish metadata; never drop it.
-                            if (chunk.explicitEnd) sawExplicitEnd = true
-                            val output = chunk.choices.firstOrNull()?.let { it.delta ?: it.message }
-                            if (output?.role == MessageRole.ASSISTANT && output.parts.hasGenerationContent()) {
+                            if (chunk.hasGenerationContent()) {
                                 receivedAssistantContent = true
                             }
                             // "unknown" 是 chat/completions 解析层「字段缺失」的占位，归一成 null
-                            chunk.choices.firstOrNull()?.finishReason
+                            (chunk as? StreamChunk.Finish)?.finishReason
                                 ?.takeIf { it.isNotBlank() && it != "unknown" }
                                 ?.let { finishReason = it }
-                            messages = messages.handleMessageChunk(
-                                chunk = chunk,
-                                model = model,
-                                providerName = provider.name,
-                            )
-                            chunk.usage?.let { usage ->
+                            messages = chunkHandler.handle(messages, chunk)
+                            // 显式结束标记由 handler 记录（本次流已处理过 Finish）
+                            if (chunkHandler.finished) sawExplicitEnd = true
+                            (chunk as? StreamChunk.Usage)?.usage?.let { usage ->
                                 stepUsage = stepUsage.merge(usage)
                                 messages = messages.mapIndexed { index, message ->
                                     if (index == messages.lastIndex) {
@@ -1436,7 +1437,7 @@ class GenerationHandler(
                             }
                             onUpdateMessages(messages)
                             // 判定放在**本条已并入 messages 且已回调之后**：断流不丢已生成内容
-                            val deltaVerdict = degenerationGuard?.onDelta(chunk.choices.firstOrNull()?.delta)
+                            val deltaVerdict = degenerationGuard?.onDelta(chunk.toGuardDelta())
                             if (deltaVerdict is ThinkingDegenerationGuard.Verdict.Repeating) {
                                 Log.w(
                                     TAG,
@@ -1501,17 +1502,17 @@ class GenerationHandler(
                 val snapshot = messages
                 val roundBaseUsage = messages.last().usage ?: TokenUsage()
                 try {
-                    val chunk = providerImpl.generateText(
+                    val result = providerImpl.generateText(
                         providerSetting = provider,
                         messages = requestMessages,
                         params = params,
                     )
-                    messages = messages.handleMessageChunk(
-                        chunk = chunk,
+                    messages = messages.handleTextGenerationResult(
+                        result = result,
                         model = model,
                         providerName = provider.name,
                     )
-                    chunk.usage?.let { usage ->
+                    result.usage?.let { usage ->
                         messages = messages.mapIndexed { index, message ->
                             if (index == messages.lastIndex) {
                                 message.copy(
@@ -1522,15 +1523,14 @@ class GenerationHandler(
                             }
                         }
                     }
-                    val output = chunk.choices.firstOrNull()?.let { it.message ?: it.delta }
                     requireAssistantResponse(
-                        receivedContent = output?.role == MessageRole.ASSISTANT && output.parts.hasGenerationContent(),
-                        finishReason = chunk.choices.firstOrNull()?.finishReason,
+                        receivedContent = result.message.role == MessageRole.ASSISTANT &&
+                            result.message.parts.hasGenerationContent(),
+                        finishReason = result.finishReason,
                     )
                     // 非流式：整包返回（要么完整要么抛错）⇒ 不存在裸断流，只记 finish_reason
                     messages = messages.markLastFinish(
-                        reason = chunk.choices.firstOrNull()?.finishReason
-                            ?.takeIf { it.isNotBlank() && it != "unknown" },
+                        reason = result.finishReason?.takeIf { it.isNotBlank() && it != "unknown" },
                         incomplete = false,
                     )
                     onUpdateMessages(messages)
@@ -1744,6 +1744,8 @@ class GenerationHandler(
 
             withGenerationRetry(provider, settings, null) { provider ->
                 val snapshot = messages
+                // 重试会从头重放，处理器必须按尝试重建（保留跨尝试状态会让 open part 错位）
+                val chunkHandler = StreamChunkHandler(model = model)
                 try {
                     providerHandler.streamText(
                         providerSetting = provider,
@@ -1753,7 +1755,7 @@ class GenerationHandler(
                             reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
                         ),
                     ).collect { chunk ->
-                        messages = messages.handleMessageChunk(chunk)
+                        messages = chunkHandler.handle(messages, chunk)
                         translatedText = messages.lastOrNull()?.toText() ?: ""
 
                         if (translatedText.isNotBlank()) {
@@ -1770,7 +1772,7 @@ class GenerationHandler(
         } else {
             // Use Qwen MT model with special translation options
             val messages = listOf(UIMessage.user(sourceText))
-            val chunk = withGenerationRetry(provider, settings, null) { provider ->
+            val result = withGenerationRetry(provider, settings, null) { provider ->
                 providerHandler.generateText(
                     providerSetting = provider,
                     messages = messages,
@@ -1793,7 +1795,7 @@ class GenerationHandler(
                     ),
                 )
             }
-            val translatedText = chunk.choices.firstOrNull()?.message?.toText() ?: ""
+            val translatedText = result.message.toText()
 
             if (translatedText.isNotBlank()) {
                 onStreamUpdate?.invoke(translatedText)
@@ -1820,6 +1822,66 @@ internal class EmptyGenerationResponseException : java.io.IOException(
 
 private fun List<UIMessagePart>.hasGenerationContent(): Boolean =
     !isEmptyUIMessage() || any { it is UIMessagePart.Reasoning && it.metadata != null }
+
+/** 该流式事件是否带来**可渲染内容**（用于整步「空响应」判定，对齐旧 MessageChunk 口径）。 */
+private fun StreamChunk.hasGenerationContent(): Boolean = when (this) {
+    is StreamChunk.TextDelta -> text.isNotBlank()
+    is StreamChunk.ReasoningDelta -> text.isNotBlank() || metadata != null
+    is StreamChunk.ToolCallStart, is StreamChunk.ToolCallDelta, is StreamChunk.ToolCallEnd,
+    is StreamChunk.ToolCallOutput -> true
+    is StreamChunk.ServerToolStart, is StreamChunk.ServerToolInputDelta,
+    is StreamChunk.ServerToolInputEnd, is StreamChunk.ServerToolEnd -> true
+
+    is StreamChunk.ImageStart, is StreamChunk.ImageDelta, is StreamChunk.ImageSnapshot -> true
+    else -> false
+}
+
+/**
+ * 把流式事件归一成 [ThinkingDegenerationGuard] 认识的 delta 形态。
+ *
+ * 护栏只看「文本/推理增量」与「是否有工具增量」，故推理增量直接映射成 Text——
+ * 两者在 `onDelta` 里被拼进同一个字符串比较，语义等价。
+ */
+private fun StreamChunk.toGuardDelta(): UIMessage? {
+    val parts: List<UIMessagePart> = when (this) {
+        is StreamChunk.TextDelta -> listOf(UIMessagePart.Text(text))
+        is StreamChunk.ReasoningDelta -> listOf(UIMessagePart.Text(text))
+        is StreamChunk.ToolCallStart -> listOf(
+            UIMessagePart.Tool(toolCallId = id, toolName = toolName, input = "", output = emptyList())
+        )
+
+        is StreamChunk.ToolCallDelta -> listOf(
+            UIMessagePart.Tool(toolCallId = id, toolName = "", input = inputDelta, output = emptyList())
+        )
+
+        is StreamChunk.ToolCallEnd -> listOf(
+            UIMessagePart.Tool(toolCallId = id, toolName = "", input = "", output = emptyList())
+        )
+
+        is StreamChunk.ToolCallOutput -> listOf(
+            UIMessagePart.Tool(toolCallId = id, toolName = "", input = "", output = emptyList())
+        )
+
+        is StreamChunk.ServerToolStart -> listOf(
+            UIMessagePart.Tool(toolCallId = id, toolName = toolName, input = "", output = emptyList())
+        )
+
+        is StreamChunk.ServerToolInputDelta -> listOf(
+            UIMessagePart.Tool(toolCallId = id, toolName = "", input = inputDelta, output = emptyList())
+        )
+
+        is StreamChunk.ServerToolInputEnd -> listOf(
+            UIMessagePart.Tool(toolCallId = id, toolName = "", input = "", output = emptyList())
+        )
+
+        is StreamChunk.ServerToolEnd -> listOf(
+            UIMessagePart.Tool(toolCallId = id, toolName = "", input = "", output = emptyList())
+        )
+
+        else -> return null
+    }
+    return UIMessage(role = MessageRole.ASSISTANT, parts = parts)
+}
 
 internal fun requireAssistantResponse(receivedContent: Boolean, finishReason: String?) {
     // Preserve explicit safety outcomes so the UI can explain them without retrying the same prompt.

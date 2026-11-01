@@ -4,9 +4,8 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.providers.openai.ResponseAPI
-import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
-import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isContentFilterTruncation
 import app.androidrik.ai.ui.isOutputLimitTruncation
 import kotlinx.coroutines.flow.collect
@@ -34,8 +33,10 @@ import org.junit.Test
  *    一次截断放大成 4 次计费请求，且用户看不到「已达输出上限」；
  * 2. `response.failed` / `error` 被静默吞掉 ⇒ 生成“成功”但只有半截内容，用户拿不到失败原因。
  *
- * 事件形状取自 OpenAI Responses API 流式规范（`response.*` 事件名 + `response` 对象包 usage）。
- * 用 MockWebServer 走真实 SSE 连接，锁的是「事件序列 → provider 的 Flow 语义」而不是单个解析函数。
+ * P1（#1648 移植）后流接口从 `MessageChunk` 换成 `StreamChunk`：**显式结束**由一条
+ * `StreamChunk.Finish` 表达（旧的 `MessageChunk.explicitEnd` 标记已删除），
+ * finishReason / usage / 内容增量分别落在 `Finish`、`Usage`、`TextDelta` 上。
+ * 本测试用 MockWebServer 走真实 SSE 连接，锁的是「事件序列 → provider 的 Flow 语义」。
  */
 class ResponseAPIStreamFinishTest {
 
@@ -75,15 +76,15 @@ class ResponseAPIStreamFinishTest {
 
     private fun params(): TextGenerationParams = TextGenerationParams(model = Model(modelId = "gpt-5"))
 
-    private fun collect(): List<MessageChunk> = runBlocking {
+    private fun collect(): List<StreamChunk> = runBlocking {
         withTimeout(20_000) {
             api().streamText(setting(), listOf(UIMessage.user("hi")), params()).toList()
         }
     }
 
     /** 收集直到流失败，同时保留失败前已送达的 chunk（用于断言 usage/内容没被吞掉）。 */
-    private fun collectUntilFailure(): Pair<List<MessageChunk>, Throwable?> {
-        val chunks = mutableListOf<MessageChunk>()
+    private fun collectUntilFailure(): Pair<List<StreamChunk>, Throwable?> {
+        val chunks = mutableListOf<StreamChunk>()
         val error = runCatching {
             runBlocking {
                 withTimeout(20_000) {
@@ -95,15 +96,21 @@ class ResponseAPIStreamFinishTest {
         return chunks to error
     }
 
-    private fun finishReasons(chunks: List<MessageChunk>): List<String> =
-        chunks.flatMap { it.choices }.mapNotNull { it.finishReason }
+    /** provider 是否给出**显式结束**（P1 后即收到了 Finish 事件）。 */
+    private fun hasExplicitEnd(chunks: List<StreamChunk>): Boolean =
+        chunks.any { it is StreamChunk.Finish }
 
-    private fun textOf(chunks: List<MessageChunk>): String =
-        chunks.flatMap { it.choices }
-            .mapNotNull { it.delta }
-            .flatMap { it.parts }
-            .filterIsInstance<UIMessagePart.Text>()
-            .joinToString("") { it.text }
+    private fun finishes(chunks: List<StreamChunk>): List<StreamChunk.Finish> =
+        chunks.filterIsInstance<StreamChunk.Finish>()
+
+    private fun finishReasons(chunks: List<StreamChunk>): List<String> =
+        finishes(chunks).mapNotNull { it.finishReason }
+
+    private fun usages(chunks: List<StreamChunk>) =
+        chunks.filterIsInstance<StreamChunk.Usage>().map { it.usage }
+
+    private fun textOf(chunks: List<StreamChunk>): String =
+        chunks.filterIsInstance<StreamChunk.TextDelta>().joinToString("") { it.text }
 
     @Test
     fun `response completed is explicit end with usage`() {
@@ -122,10 +129,11 @@ class ResponseAPIStreamFinishTest {
         val chunks = collect()
 
         assertEquals("Hi", textOf(chunks))
-        assertTrue(chunks.any { it.explicitEnd })
-        // 正常完成没有截断语义
-        assertTrue(finishReasons(chunks).isEmpty())
-        assertEquals(7, chunks.mapNotNull { it.usage }.last().totalTokens)
+        assertTrue(hasExplicitEnd(chunks))
+        // 正常完成：Finish.finishReason 取 wire 上的 status（"completed" 不命中截断判定）
+        assertEquals(listOf("completed"), finishReasons(chunks))
+        assertEquals("resp_1", finishes(chunks).single().responseId)
+        assertEquals(7, usages(chunks).last().totalTokens)
     }
 
     @Test
@@ -146,18 +154,20 @@ class ResponseAPIStreamFinishTest {
         val chunks = collect()
 
         // 核心回归 ①：绝对不能是「裸断流」（否则下游无条件自动续写 3 次）
-        assertTrue(chunks.any { it.explicitEnd })
-        // 核心回归 ②：reason 必须到达下游，才能显示「已达输出上限」并走“只提示不自动续写”策略
+        assertTrue(hasExplicitEnd(chunks))
+        // 核心回归 ②：reason 必须到达下游，才能显示「已达输出上限」并走“只提示不自动续写”策略。
+        // 解码器给出 #1648 的 "incomplete:<reason>" 拼装格式；本仓 helper 会归一后判定，
+        // 故这里既要锁 wire 格式，也要锁「下游真的认得出截断」。
         val reason = finishReasons(chunks).single()
-        assertEquals("max_output_tokens", reason)
-        assertTrue(isOutputLimitTruncation(reason))
+        assertEquals("incomplete:max_output_tokens", reason)
+        assertTrue("撞输出上限必须能被 isOutputLimitTruncation 识别", isOutputLimitTruncation(reason))
         // 内容与 usage 照常保留
         assertEquals("partial", textOf(chunks))
-        assertEquals(69, chunks.mapNotNull { it.usage }.last().totalTokens)
+        assertEquals(69, usages(chunks).last().totalTokens)
     }
 
     @Test
-    fun `response incomplete content_filter is not output-limit truncation`() {
+    fun `response incomplete content_filter keeps content_filter reason`() {
         enqueueSse(
             sseEvent(
                 "response.incomplete",
@@ -166,11 +176,13 @@ class ResponseAPIStreamFinishTest {
             ),
         )
 
-        val reason = finishReasons(collect()).single()
+        val chunks = collect()
 
-        assertEquals("content_filter", reason)
-        assertTrue(isContentFilterTruncation(reason))
-        assertFalse(isOutputLimitTruncation(reason))
+        assertTrue(hasExplicitEnd(chunks))
+        val reason = finishReasons(chunks).single()
+        assertEquals("incomplete:content_filter", reason)
+        assertTrue("内容拦截必须能被 isContentFilterTruncation 识别", isContentFilterTruncation(reason))
+        assertFalse("内容拦截不得同时被判成输出上限", isOutputLimitTruncation(reason))
     }
 
     @Test
@@ -186,7 +198,7 @@ class ResponseAPIStreamFinishTest {
 
         val chunks = collect()
 
-        assertTrue(chunks.any { it.explicitEnd })
+        assertTrue(hasExplicitEnd(chunks))
         assertEquals("incomplete", finishReasons(chunks).single())
     }
 
@@ -211,10 +223,10 @@ class ResponseAPIStreamFinishTest {
         // 失败原因必须原样到达用户/上游（不能被静默丢弃成半截成功回复）
         assertTrue(error!!.message.orEmpty().contains("upstream exploded"))
         // 失败也可能已计费：usage 要在 close(error) 之前送出
-        assertEquals(8, chunks.mapNotNull { it.usage }.last().totalTokens)
+        assertEquals(8, usages(chunks).last().totalTokens)
         // 内容已流出（上游按半截输出策略处理），但绝不能被当成「显式结束」
         assertEquals("half", textOf(chunks))
-        assertFalse(chunks.any { it.explicitEnd })
+        assertFalse(hasExplicitEnd(chunks))
     }
 
     @Test
@@ -234,7 +246,7 @@ class ResponseAPIStreamFinishTest {
     }
 
     // ---- SSE event 名 / JSON type 只出现一种的兼容网关 ----
-    // `parseResponseDelta` 只读 JSON 的 type；若网关只发 `event:` 而 payload 没 type，
+    // 解码器只读 JSON 的 type；若网关只发 `event:` 而 payload 没 type，
     // 不把归一后的类型补进 payload 就会 error("chunk type not found") ⇒ 整条流失败。
 
     @Test
@@ -251,8 +263,8 @@ class ResponseAPIStreamFinishTest {
         val chunks = collect()
 
         assertEquals("Hi", textOf(chunks))
-        assertTrue(chunks.any { it.explicitEnd })
-        assertEquals(7, chunks.mapNotNull { it.usage }.last().totalTokens)
+        assertTrue(hasExplicitEnd(chunks))
+        assertEquals(7, usages(chunks).last().totalTokens)
     }
 
     @Test
@@ -267,8 +279,8 @@ class ResponseAPIStreamFinishTest {
 
         val chunks = collect()
 
-        assertTrue(chunks.any { it.explicitEnd })
-        assertEquals("max_output_tokens", finishReasons(chunks).single())
+        assertTrue(hasExplicitEnd(chunks))
+        assertEquals("incomplete:max_output_tokens", finishReasons(chunks).single())
     }
 
     @Test
@@ -284,7 +296,7 @@ class ResponseAPIStreamFinishTest {
 
         assertNotNull(error)
         assertTrue(error!!.message.orEmpty().contains("boom from gateway"))
-        assertFalse(chunks.any { it.explicitEnd })
+        assertFalse(hasExplicitEnd(chunks))
     }
 
     @Test
@@ -299,6 +311,6 @@ class ResponseAPIStreamFinishTest {
         val chunks = collect()
 
         assertEquals("Hi", textOf(chunks))
-        assertTrue(chunks.any { it.explicitEnd })
+        assertTrue(hasExplicitEnd(chunks))
     }
 }

@@ -271,6 +271,27 @@ class StreamChunkHandler(
 
             is StreamChunk.ImageEnd -> this.also { imagePartIndexes.remove(chunk.id) }
 
+            is StreamChunk.ToolCallOutput -> {
+                // 复用 Tool.merge 的幂等去重：Responses API 会在 added/done 各带一份完整结果
+                val delta = UIMessagePart.Tool(
+                    toolCallId = chunk.id,
+                    toolName = "",
+                    input = "",
+                    output = listOf(UIMessagePart.Text(chunk.output)),
+                )
+                val index = parts.indexOfFirst {
+                    it is UIMessagePart.Tool && it.toolCallId == chunk.id
+                }
+                if (index >= 0) {
+                    copy(parts = parts.toMutableList().apply {
+                        set(index, (get(index) as UIMessagePart.Tool).merge(delta))
+                    })
+                } else {
+                    // 容忍未先收到 ToolCallStart：直接落一个「已执行」的工具 part
+                    copy(parts = parts + delta)
+                }
+            }
+
             is StreamChunk.Annotations -> copy(annotations = (annotations + chunk.annotations).distinct())
 
             is StreamChunk.Usage -> copy(usage = usage.merge(chunk.usage))

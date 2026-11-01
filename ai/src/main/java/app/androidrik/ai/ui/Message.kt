@@ -8,6 +8,7 @@ import kotlinx.serialization.Transient
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.util.json
 import kotlin.math.roundToInt
 import kotlin.time.Clock
@@ -309,6 +310,34 @@ fun List<UIMessage>.handleMessageChunk(
         val last = this.last() + chunk
         return this.dropLast(1) + last
     }
+}
+
+/**
+ * 处理非流式生成结果（移植自上游 #1648 的 `handleTextGenerationResult`）。
+ *
+ * 复用 [handleMessageChunk] 的全部合并语义（同角色追加、Tool 按 id merge + 时间戳去重、
+ * ServerTool 状态更新、Reasoning 收尾），因此非流式与流式两条路径产出的消息形态一致。
+ */
+fun List<UIMessage>.handleTextGenerationResult(
+    result: TextGenerationResult,
+    model: Model? = null,
+    providerName: String? = null,
+): List<UIMessage> {
+    val chunk = MessageChunk(
+        id = result.id,
+        model = result.model,
+        choices = listOf(
+            UIMessageChoice(
+                index = 0,
+                delta = null,
+                message = result.message,
+                finishReason = result.finishReason,
+            )
+        ),
+        usage = result.usage,
+        explicitEnd = true,
+    )
+    return handleMessageChunk(chunk = chunk, model = model, providerName = providerName)
 }
 
 /**
@@ -738,10 +767,11 @@ fun <T> List<T>.migrateToolNodes(
  * Anthropic 用 `max_tokens`，Responses API 用 `max_output_tokens`，Google 用 `MAX_TOKENS`，
  * 部分兼容层写作 `token_limit`。统一在此判定，避免各调用点各写一份字符串比较而漂移。
  */
-fun isOutputLimitTruncation(finishReason: String?): Boolean = when (finishReason?.lowercase()) {
-    "length", "max_tokens", "max_output_tokens", "token_limit" -> true
-    else -> false
-}
+fun isOutputLimitTruncation(finishReason: String?): Boolean =
+    when (normalizeFinishReason(finishReason)) {
+        "length", "max_tokens", "max_output_tokens", "token_limit" -> true
+        else -> false
+    }
 
 /**
  * 输出是否被**内容安全策略**掐断（OpenAI `content_filter`、Anthropic `refusal`、
@@ -750,10 +780,24 @@ fun isOutputLimitTruncation(finishReason: String?): Boolean = when (finishReason
  * 语义上与 [isOutputLimitTruncation] 不同：**续写通常无意义**（同一内容会再次被拦），
  * 故 UI 只提示不提供「继续生成」。
  */
-fun isContentFilterTruncation(finishReason: String?): Boolean = when (finishReason?.uppercase()) {
-    "CONTENT_FILTER", "REFUSAL", "SAFETY", "PROHIBITED_CONTENT", "RECITATION", "BLOCKLIST", "SPII" -> true
-    else -> false
-}
+fun isContentFilterTruncation(finishReason: String?): Boolean =
+    when (normalizeFinishReason(finishReason)?.uppercase()) {
+        "CONTENT_FILTER", "REFUSAL", "SAFETY", "PROHIBITED_CONTENT", "RECITATION", "BLOCKLIST", "SPII" -> true
+        else -> false
+    }
+
+/**
+ * 归一化 provider 的 finish_reason：大小写不敏感、去掉 `<前缀>:`（如
+ * `incomplete:max_output_tokens`，Responses API 的 `response.incomplete` 形态）。
+ *
+ * 返回小写串；空串/纯空白返回 null。
+ */
+private fun normalizeFinishReason(finishReason: String?): String? = finishReason
+    ?.trim()
+    ?.substringAfterLast(':')
+    ?.trim()
+    ?.lowercase()
+    ?.takeIf { it.isNotEmpty() }
 
 @Serializable
 data class MessageChunk(

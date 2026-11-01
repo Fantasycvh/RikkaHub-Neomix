@@ -15,6 +15,7 @@ import app.androidrik.common.http.jsonObjectOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -34,7 +35,16 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
         if (state.finished) return DecodeResult(completed = true)
         if (event.data == "[DONE]") return DecodeResult(state.finish(), completed = true)
 
-        val payload = json.parseToJsonElement(event.data).jsonObject
+        val parsed = json.parseToJsonElement(event.data).jsonObject
+        // SSE 的 event 名与 payload 的 type 双写，且部分中转只发 `event:`：
+        // payload 缺少 type 时用 event 名兜底（对齐本仓既有归一逻辑）
+        val payloadType = parsed["type"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+        val eventName = event.event?.takeIf { it.isNotBlank() }
+        val payload = if (payloadType == null && eventName != null) {
+            JsonObject(parsed + ("type" to JsonPrimitive(eventName)))
+        } else {
+            parsed
+        }
         val eventType = payload["type"]?.jsonPrimitive?.contentOrNull
         val chunks = parseEvent(payload)
         val completed = eventType == "response.completed" || eventType == "response.incomplete" ||
@@ -96,17 +106,26 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             "response.output_item.added" -> {
                 val item = payload["item"]?.jsonObject ?: error("chunk item not found")
                 val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
+                // 服务端已执行函数工具的结果（#2181）：必须先于 id 解析——该项只保证有 call_id，
+                // item.id 可能缺失（旧解析正是因为强制要求 id 而崩溃）
+                if (type == "function_call_output") {
+                    return functionCallOutputChunks(item)
+                }
+                // item.id 规范上可缺（function_call 只有 call_id 必填），故回退到 call_id
+                val id = item["id"]?.jsonPrimitive?.contentOrNull
+                    ?: item["call_id"]?.jsonPrimitive?.contentOrNull
+                    ?: error("chunk id not found")
+                val canonicalId = state.toolCallIdResolver.registerItem(
+                    itemId = id,
+                    callId = item["call_id"]?.jsonPrimitive?.contentOrNull,
+                    outputIndex = payload["output_index"]?.jsonPrimitive?.intOrNull,
+                )
                 when (type) {
-                    "function_call" -> {
-                        val callId = item["call_id"]?.jsonPrimitive?.contentOrNull ?: id
-                        state.toolCallIdsByItemId[id] = callId
-                        state.startTool(
-                            id = callId,
-                            name = item["name"]?.jsonPrimitive?.contentOrNull ?: "",
-                            initialInput = item["arguments"]?.jsonPrimitive?.contentOrNull ?: "",
-                        )
-                    }
+                    "function_call" -> state.startTool(
+                        id = canonicalId,
+                        name = item["name"]?.jsonPrimitive?.contentOrNull ?: "",
+                        initialInput = item["arguments"]?.jsonPrimitive?.contentOrNull ?: "",
+                    )
 
                     "image_generation_call" -> state.startImage(id)
 
@@ -127,7 +146,17 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             "response.output_item.done" -> {
                 val item = payload["item"]?.jsonObject ?: error("chunk item not found")
                 val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
+                if (type == "function_call_output") {
+                    return functionCallOutputChunks(item)
+                }
+                val id = item["id"]?.jsonPrimitive?.contentOrNull
+                    ?: item["call_id"]?.jsonPrimitive?.contentOrNull
+                    ?: error("chunk id not found")
+                val canonicalId = state.toolCallIdResolver.registerItem(
+                    itemId = id,
+                    callId = item["call_id"]?.jsonPrimitive?.contentOrNull,
+                    outputIndex = payload["output_index"]?.jsonPrimitive?.intOrNull,
+                )
                 when (type) {
                     "reasoning" -> {
                         val metadata = OpenAIReasoningMetadata(
@@ -146,7 +175,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                         addAll(state.endImage(id))
                     }
 
-                    "function_call" -> state.endTool(state.toolCallIdsByItemId.remove(id) ?: id)
+                    "function_call" -> state.endTool(canonicalId)
 
                     else -> if (isOpenAIServerToolCall(type)) {
                         val tool = item.toOpenAIServerTool()
@@ -163,16 +192,14 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             }
 
             "response.function_call_arguments.delta" -> {
-                val requiredItemId = itemId ?: error("item_id not found")
                 state.toolDelta(
-                    state.toolCallIdsByItemId[requiredItemId] ?: requiredItemId,
+                    state.toolCallIdResolver.resolveArgumentsId(payload),
                     payload["delta"]?.jsonPrimitive?.contentOrNull ?: "",
                 )
             }
 
             "response.function_call_arguments.done" -> {
-                val requiredItemId = itemId ?: error("item_id not found")
-                val toolCallId = state.toolCallIdsByItemId[requiredItemId] ?: requiredItemId
+                val toolCallId = state.toolCallIdResolver.resolveArgumentsId(payload)
                 buildList {
                     if (toolCallId !in state.toolIdsWithInput) {
                         addAll(
@@ -204,6 +231,21 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             "error" -> failWithError(payload)
             else -> parseServerToolStatusEvent(chunkType, itemId)
         }
+    }
+
+    /**
+     * 服务端已执行函数工具的结果（本仓 #2181）→ [StreamChunk.ToolCallOutput]。
+     *
+     * Responses API 会在 `output_item.added` 与 `output_item.done` 各带一份**完整**结果，
+     * 这里两个事件都发；消费端 `Tool.merge` 会幂等去重（同内容只保留一份）。
+     */
+    private fun functionCallOutputChunks(item: JsonObject): List<StreamChunk> {
+        val callId = item["call_id"]?.jsonPrimitive?.contentOrNull
+            ?: item["id"]?.jsonPrimitive?.contentOrNull
+            ?: return emptyList()
+        // 空串/null 输出也要发：工具「已执行」的信号本身就是这个事件。
+        // 丢掉它会让 output 为空 ⇒ isExecuted=false ⇒ 客户端重复执行（#2181 的原始缺陷）。
+        return listOf(StreamChunk.ToolCallOutput(callId, item.functionCallOutputText()))
     }
 
     private fun parseTerminalResponse(payload: JsonObject): List<StreamChunk> {
@@ -271,7 +313,11 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
     }
 
     private class ResponseStreamState {
-        val toolCallIdsByItemId = mutableMapOf<String, String>()
+        /**
+         * toolCallId 归一（复用 [ResponseToolCallIdResolver]）：`item.id` 与 `call_id` 是两个标识，
+         * 回传下一轮必须用 `call_id`；兼容网关还会在 arguments 事件里只给 `call_id`/`output_index`。
+         */
+        val toolCallIdResolver = ResponseToolCallIdResolver()
         val toolIdsWithInput = mutableSetOf<String>()
         val reasoningMetadata = mutableMapOf<String, JsonObject>()
         private val openTextIds = linkedSetOf<String>()

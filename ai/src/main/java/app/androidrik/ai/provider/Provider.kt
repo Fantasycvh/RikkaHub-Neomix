@@ -4,10 +4,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import app.androidrik.ai.core.ReasoningLevel
+import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.ImageGenSize
 import app.androidrik.ai.ui.ImageGenerationItem
-import app.androidrik.ai.ui.MessageChunk
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
 
 // 提供商实现
@@ -23,13 +24,13 @@ interface Provider<T : ProviderSetting> {
         providerSetting: T,
         messages: List<UIMessage>,
         params: TextGenerationParams,
-    ): MessageChunk
+    ): TextGenerationResult
 
     suspend fun streamText(
         providerSetting: T,
         messages: List<UIMessage>,
         params: TextGenerationParams,
-    ): Flow<MessageChunk>
+    ): Flow<StreamChunk>
 
     suspend fun generateEmbedding(
         providerSetting: T,
@@ -52,6 +53,21 @@ interface Provider<T : ProviderSetting> {
         error("Image edit is not supported")
     }
 }
+
+/**
+ * 非流式生成结果（移植自上游 #1648）。
+ *
+ * 与 [StreamChunk] 体系配套：provider 的 `generateText` 返回完整消息 + 终态信息，
+ * 消费端用 `List<UIMessage>.handleTextGenerationResult(...)` 合并进消息列表。
+ */
+@Serializable
+data class TextGenerationResult(
+    val id: String = "",
+    val model: String = "",
+    val message: UIMessage,
+    val finishReason: String? = null,
+    val usage: TokenUsage? = null,
+)
 
 @Serializable
 data class TextGenerationParams(

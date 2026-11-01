@@ -39,11 +39,12 @@ import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
-import app.androidrik.ai.ui.terminalChunk
+import app.androidrik.ai.provider.TextGenerationResult
+import app.androidrik.ai.provider.providers.claude.ClaudeStreamDecoder
+import app.androidrik.ai.provider.stream.SseEvent
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.ImageGenerationItem
-import app.androidrik.ai.ui.MessageChunk
 import app.androidrik.ai.ui.UIMessage
-import app.androidrik.ai.ui.UIMessageChoice
 import app.androidrik.ai.ui.ClaudeReasoningMetadata
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.metadataAs
@@ -124,7 +125,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         providerSetting: ProviderSetting.Claude,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): MessageChunk = withContext(Dispatchers.IO) {
+    ): TextGenerationResult = withContext(Dispatchers.IO) {
         val requestBody = buildMessageRequest(providerSetting, messages, params)
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/messages")
@@ -152,18 +153,12 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         val stopReason = bodyJson["stop_reason"]?.jsonPrimitive?.contentOrNull ?: "unknown"
         val usage = parseTokenUsage(bodyJson)
 
-        MessageChunk(
+        TextGenerationResult(
             id = id,
             model = model,
-            choices = listOf(
-                UIMessageChoice(
-                    index = 0,
-                    delta = null,
-                    message = parseMessage(content),
-                    finishReason = stopReason
-                )
-            ),
-            usage = usage
+            message = parseMessage(content),
+            finishReason = stopReason,
+            usage = usage,
         )
     }
 
@@ -171,7 +166,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         providerSetting: ProviderSetting.Claude,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): Flow<MessageChunk> = callbackFlow {
+    ): Flow<StreamChunk> = callbackFlow {
         val requestBody = buildMessageRequest(providerSetting, messages, params, stream = true)
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/messages")
@@ -185,6 +180,9 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
 
         Log.i(TAG, "streamText: ${summarizeRequestBody(json, requestBody)}")
 
+        // 每条流一个解码器实例（对齐上游 #1648）
+        val decoder = ClaudeStreamDecoder()
+
         val listener = object : EventSourceListener() {
             override fun onEvent(
                 eventSource: EventSource,
@@ -193,67 +191,24 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 data: String
             ) {
                 Log.d(TAG, "onEvent: ${summarizeSseEvent(type, data, terminal = type == "message_stop" || type == "error")}")
-                if (data == "[DONE]") {
-                    return
-                }
-
-                val dataJson = json.parseToJsonElement(data).jsonObjectOrNull ?: return
-                // SSE 的 event 名与 JSON 的 type 双写，且都可能缺省/为空串：
-                // 空名（`event:` 空行）与缺失同样对待，否则 message_stop 认不出来
-                // （只能等连接关闭＝退化成裸断流）。
-                val eventType = type?.takeIf { it.isNotBlank() }
-                    ?: dataJson["type"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
-                val deltaMessage = parseMessage(buildJsonArray {
-                    val contentBlockObj = dataJson["content_block"]?.jsonObject
-                    val deltaObj = dataJson["delta"]?.jsonObject
-                    if (contentBlockObj != null) {
-                        add(contentBlockObj)
-                    }
-                    if (deltaObj != null) {
-                        add(deltaObj)
-                    }
-                })
-                // `message_delta` 是**唯一**携带 stop_reason 的事件：
-                // `{"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{...}}`。
-                // 早先这里恒填 null，于是 Anthropic 的 max_tokens / refusal 在下游完全不可见——
-                // 「已达输出上限」「内容被拦截」两类提示、手动/自动续写全部失效
-                // （见 `Message.isOutputLimitTruncation` / `isContentFilterTruncation`）。
-                val finishReason = dataJson["delta"]
-                    ?.jsonObjectOrNull
-                    ?.get("stop_reason")
-                    ?.jsonPrimitiveOrNull
-                    ?.contentOrNull
-                    ?.takeIf { it.isNotBlank() }
-                val tokenUsage = parseTokenUsage(dataJson)
-                val messageChunk = MessageChunk(
-                    id = id ?: "",
-                    model = "",
-                    choices = listOf(
-                        UIMessageChoice(
-                            index = 0,
-                            delta = deltaMessage,
-                            message = null,
-                            finishReason = finishReason
+                try {
+                    // 解码器内部处理 content_block_* / message_delta / message_stop / error，
+                    // 并把 [DONE] 视作正常收尾。
+                    val result = decoder.accept(
+                        SseEvent(
+                            id = id,
+                            event = type?.takeIf { it.isNotBlank() },
+                            data = data,
                         )
-                    ),
-                    usage = tokenUsage
-                )
-
-                trySend(messageChunk).onFailure { e ->
-                    Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
-                }
-
-                when (eventType) {
-                    "message_stop" -> {
-                        Log.d(TAG, "Stream ended")
-                        trySend(terminalChunk())
-                        close()
+                    )
+                    result.chunks.forEach { chunk ->
+                        trySend(chunk).onFailure { e ->
+                            Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                        }
                     }
-
-                    "error" -> {
-                        val error = dataJson["error"]?.parseErrorDetail()
-                        close(error)
-                    }
+                    if (result.completed) close()
+                } catch (e: Throwable) {
+                    close(e)
                 }
             }
 

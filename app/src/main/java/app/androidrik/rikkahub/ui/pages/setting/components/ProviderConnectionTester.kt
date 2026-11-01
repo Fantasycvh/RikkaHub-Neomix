@@ -43,6 +43,7 @@ import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Connect
@@ -150,7 +151,7 @@ fun ProviderConnectionTester(
                             launch {
                                 runCatching {
                                     nonStreamingState = UiState.Loading
-                                    val chunk = provider.generateText(
+                                    val result = provider.generateText(
                                         providerSetting = internalProvider,
                                         messages = listOf(UIMessage.system("You are a helpful assistant"), UIMessage.user("hello")),
                                         params = TextGenerationParams(
@@ -160,7 +161,7 @@ fun ProviderConnectionTester(
                                             reasoningLevel = ReasoningLevel.AUTO
                                         )
                                     )
-                                    val text = chunk.choices.firstOrNull()?.message?.parts
+                                    val text = result.message.parts
                                         ?.filterIsInstance<UIMessagePart.Text>()
                                         ?.joinToString("") { it.text } ?: ""
                                     nonStreamingState = UiState.Success(text)
@@ -180,9 +181,7 @@ fun ProviderConnectionTester(
                                         )
                                     )
                                     flow.collect { chunk ->
-                                        chunk.choices.firstOrNull()?.delta?.parts
-                                            ?.filterIsInstance<UIMessagePart.Text>()
-                                            ?.forEach { streamingText += it.text }
+                                        if (chunk is StreamChunk.TextDelta) streamingText += chunk.text
                                     }
                                     streamingState = UiState.Success("")
                                 }.onFailure { streamingState = UiState.Error(it) }
@@ -195,7 +194,7 @@ fun ProviderConnectionTester(
                                         description = "Get the current date and time.",
                                         execute = { emptyList() }
                                     )
-                                    val chunk = provider.generateText(
+                                    val generation = provider.generateText(
                                         providerSetting = internalProvider,
                                         messages = listOf(UIMessage.system("You are a helpful assistant"), UIMessage.user("Use the get_current_time tool.")),
                                         params = TextGenerationParams(
@@ -206,8 +205,8 @@ fun ProviderConnectionTester(
                                             reasoningLevel = ReasoningLevel.AUTO
                                         )
                                     )
-                                    val message = chunk.choices.firstOrNull()?.message
-                                    val toolCall = message?.parts
+                                    val message = generation.message
+                                    val toolCall = message.parts
                                         ?.filterIsInstance<UIMessagePart.Tool>()
                                         ?.firstOrNull()
                                     val result = if (toolCall != null) {
@@ -217,8 +216,8 @@ fun ProviderConnectionTester(
                                             toolCall.input
                                         )
                                     } else {
-                                        val text = message?.parts
-                                            ?.filterIsInstance<UIMessagePart.Text>()
+                                        val text = message.parts
+                                            .filterIsInstance<UIMessagePart.Text>()
                                             ?.joinToString("") { it.text } ?: ""
                                         resources.getString(
                                             R.string.setting_provider_page_test_tool_not_called,
