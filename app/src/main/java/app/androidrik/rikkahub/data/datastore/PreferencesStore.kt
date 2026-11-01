@@ -69,6 +69,7 @@ import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV1Migrati
 import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV2Migration
 import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
+import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.InjectionPosition
@@ -135,7 +136,8 @@ internal fun createSettingsDataStore(file: File): DataStore<Preferences> {
             PreferenceStoreV1Migration(),
             PreferenceStoreV2Migration(),
             PreferenceStoreV3Migration(),
-            PreferenceStoreV4Migration()
+            PreferenceStoreV4Migration(),
+            PreferenceStoreV5Migration()
         ),
         produceFile = { file },
     )
