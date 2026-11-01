@@ -996,7 +996,7 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 | `bdb2ddc73` | OpenAI 图像响应里空字符串 `b64_json` 视为没有、改用 `url` | **已吸收**（fork `aaa8d2883`）：`parseTask` 对 `b64_json`/`url` 都加 `takeIf { isNotBlank() }`；`MediaCreationService` 走 url 下载时补地址与字节数日志。带单测 `blankBase64FallsBackToUrl`（`mediagen` 该文件 11 例全过） |
 | `183a7da70` | 画笔落笔主动让窗口重画一帧（Android 13 OPPO 上画不出内容、撤销不可用，#2193） | **已吸收**（fork `e53536283`）：落笔且工具为画笔时 `view.invalidate()`。**注**：本机非该机型，只验证不破坏现有绘制，未复现原始故障 |
 | `43d9e30e1` | 思考内容字号跟随聊天字号设置 | **已吸收**（fork `d856ddf17`）：`ReasoningContent` 的 `bodySmall` 乘 `fontSizeRatio`（字号+行高），与正文口径一致 |
-| `318cffef6` | OAuth 订阅登录（ChatGPT / Grok 账号态，#2186） | **暂不吸收（用户决定）**：见下方专项，依赖本仓完全不存在的子系统，属新功能不是修复 |
+| `318cffef6` | OAuth 订阅登录（ChatGPT / Grok 账号态，#2186） | **暂不吸收（用户决定）**：见下方专项，依赖本仓完全不存在的子系统，属新功能不是修复。**2026-11-01 复审**：同功能改走「设备码登录 + 复用 OpenAI Provider」轻量路线，见 `docs/design/drafts/design-codex-subscription-login.md` |
 | `eeef60b22` | `bump version to 3.1.0` | **跳过**：本仓独立版本线（`1.0.28-beta.3` / 305） |
 | `e5bb70730` | 更新日志 skill 约定（`.agents/skills/publish-release`） | **跳过**：本仓无该 skill，属上游发版流程文档 |
 
@@ -1013,6 +1013,8 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 | DataStore 迁移 | 本仓停在 **V3**，上游已到 **V5** | V4/V5 需重编号接入，编号或键名错会洗掉用户设置 |
 
 **若将来要做**：单独立项、只做这一个特性，按「SSE 读取器 → 账号 + 配额数据层与迁移 → provider 与设置 UI」三段落地，每段跑 provider 层单测并做一次真实订阅账号的端到端验证。不要与日常上游同步混在一个提交里。
+
+> **2026-11-01 复审（结论变更）**：上述「缺的底座」评估成立，但**不必走 #2186 这条重路线**——上游 Draft PR [#1752](https://github.com/rikkahub/rikkahub/pull/1752)（+1389/−94）、二次修改版 `Lin-chpin/rikkahub-Jude`、`Inonvation/rikkahub` 已给出「设备授权登录塞进 OpenAI Provider」的实现：不需要 `oauth` 模块、loopback 回调服务器、前台服务，也不需要新 provider 子类型与 Streaming 重构；设备码端点已于 2026-11-01 用 curl 实测可用（`usercode` 200 / 轮询 403 pending）。落地设计与逐文件拆解见 **`docs/design/drafts/design-codex-subscription-login.md`**（估 5–7 人日、~1.5k 行；#2186 的 `CODEX_CAPABILITIES`、`parseCodexModels`、`parseCodexUsage` 仍作为请求体与额度语义的正确性参考）。
 
 ## 2026-10-20 专项吸收：用量统计流水（上游 `5a90c0548`）
 
