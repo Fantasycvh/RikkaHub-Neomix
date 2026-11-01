@@ -1335,15 +1335,51 @@ enum class AvatarFrameStyle {
     @SerialName("double") DOUBLE,
     @SerialName("dashed") DASHED,
     @SerialName("glow") GLOW,
+    /** 自定义图片框：用户导入的正方形透明中框素材（[DisplaySetting.avatarFrameImagePath]）。 */
+    @SerialName("custom_image") CUSTOM_IMAGE,
+    /** 自定义参数框：JSON 可导入导出的环参数（[DisplaySetting.avatarFrameParams]）。 */
+    @SerialName("custom_params") CUSTOM_PARAMS,
 }
 
-/** 思维链容器视觉样式（轻量个性化）：卡片=现状，引用条=透明底+左缘主色竖线，极简=无框无线。 */
+/** 思维链容器视觉样式（轻量个性化）：卡片=现状，引用条=透明底+左缘主色竖线，极简=无框无线，自定义=JSON 样式。 */
 @Serializable
 enum class ChainOfThoughtStyle {
     @SerialName("card") CARD,
     @SerialName("quote") QUOTE,
     @SerialName("minimal") MINIMAL,
+    @SerialName("custom") CUSTOM,
 }
+
+/**
+ * 自定义参数框（头像框 CUSTOM_PARAMS 档）。kind 用 String 而非枚举：JSON 导入
+ * 未知值按 ring 回退（lorebook 枚举大小写坑的规避），合法域 ring/gradient/double/dashed/glow。
+ * hex 均为 `#RRGGBB`，非法值渲染端回退主题色。
+ */
+@Serializable
+data class AvatarFrameParams(
+    val kind: String = "ring",
+    val colorHex: String = "#6750A4",
+    /** 渐变第二色/双环内环色；null = 用 colorHex 的明暗变体。 */
+    val secondaryColorHex: String? = null,
+    val strokeWidthDp: Float = 2f,
+    val dashDp: Float = 6f,
+    val gapDp: Float = 4f,
+)
+
+/**
+ * 思维链自定义样式（CUSTOM 档，JSON 可导入导出）。hex 非法/缺省回退主题派生色；
+ * 与三档枚举并存——CUSTOM 档读这里，其余档忽略。
+ */
+@Serializable
+data class ChainOfThoughtCustomStyle(
+    /** 容器色；null = 主题 surfaceContainerLow/High（随折叠态）。 */
+    val containerColorHex: String? = null,
+    /** 强调色：时间线/引用条/收起控制条；null = 主题派生。 */
+    val accentColorHex: String? = null,
+    val cornerRadiusDp: Float = 16f,
+    val timelineLineWidthDp: Float = 1f,
+    val showTimeline: Boolean = true,
+)
 
 @Serializable
 data class DisplaySetting(
@@ -1429,6 +1465,12 @@ data class DisplaySetting(
     val chatInputBackgroundOpacity: Float = 0.35f,
     /** 思维链容器视觉样式（见 design-light-personalization.md）。 */
     val chainOfThoughtStyle: ChainOfThoughtStyle = ChainOfThoughtStyle.CARD,
+    /** 头像框 CUSTOM_IMAGE 档的素材路径（managed avatar-frames/）。 */
+    val avatarFrameImagePath: String = "",
+    /** 头像框 CUSTOM_PARAMS 档的环参数（JSON 可导入导出）。 */
+    val avatarFrameParams: AvatarFrameParams? = null,
+    /** 思维链 CUSTOM 档的样式（JSON 可导入导出）。 */
+    val chainOfThoughtCustomStyle: ChainOfThoughtCustomStyle? = null,
 )
 
 @Serializable

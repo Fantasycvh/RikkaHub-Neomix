@@ -67,7 +67,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import app.androidrik.rikkahub.data.datastore.AvatarFrameStyle
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.datastore.AvatarFrameParams
+import app.androidrik.rikkahub.data.datastore.ChainOfThoughtCustomStyle
 import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
+import app.androidrik.rikkahub.ui.pages.setting.components.AvatarFrameParamsSheet
+import app.androidrik.rikkahub.ui.pages.setting.components.ChainOfThoughtCustomSheet
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import org.koin.compose.koinInject
 
@@ -107,6 +111,20 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
         uri ?: return@rememberLauncherForActivityResult
         launchInputBackgroundCrop(uri)
     }
+    // 头像框素材：不裁剪——框素材是带透明外圈的正方形 PNG，裁剪反而破坏取景
+    val avatarFrameImagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val saved = filesManager.createAvatarFrameImage(uri)
+        if (saved != null) {
+            updateDisplaySetting(displaySetting.copy(avatarFrameImagePath = saved.toString()))
+        } else {
+            toaster.show(inputBackgroundFailedMsg, type = ToastType.Error)
+        }
+    }
+    var showFrameParamsSheet by remember { mutableStateOf(false) }
+    var showCotCustomSheet by remember { mutableStateOf(false) }
 
     val importSuccessMsg = stringResource(R.string.setting_display_page_custom_font_import_success)
     val importFailedMsg = stringResource(R.string.setting_display_page_custom_font_import_failed)
@@ -465,6 +483,39 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                     )
                                 }
                             }
+                            when (displaySetting.avatarFrameStyle) {
+                                AvatarFrameStyle.CUSTOM_IMAGE -> Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = displaySetting.avatarFrameImagePath
+                                            .ifBlank { stringResource(R.string.setting_display_page_input_background_none) },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TextButton(onClick = { avatarFrameImagePicker.launch("image/*") }) {
+                                        Text(stringResource(R.string.setting_display_page_avatar_frame_pick_image))
+                                    }
+                                    if (displaySetting.avatarFrameImagePath.isNotBlank()) {
+                                        TextButton(onClick = {
+                                            updateDisplaySetting(displaySetting.copy(avatarFrameImagePath = ""))
+                                        }) {
+                                            Text(stringResource(R.string.setting_display_page_avatar_frame_clear_image))
+                                        }
+                                    }
+                                }
+                                AvatarFrameStyle.CUSTOM_PARAMS -> TextButton(onClick = {
+                                    showFrameParamsSheet = true
+                                }) {
+                                    Text(stringResource(R.string.setting_display_page_avatar_frame_edit_params))
+                                }
+                                else -> Unit
+                            }
                         },
                     )
                     // 输入栏背景图：与玻璃/模糊互斥（渲染端自动降级），managed 目录存图
@@ -511,6 +562,11 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                 optionToString = { cotStyleLabel(it) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                            if (displaySetting.chainOfThoughtStyle == ChainOfThoughtStyle.CUSTOM) {
+                                TextButton(onClick = { showCotCustomSheet = true }) {
+                                    Text(stringResource(R.string.setting_display_page_avatar_frame_edit_params))
+                                }
+                            }
                         },
                     )
                 }
@@ -560,6 +616,34 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                 }
             }
         }
+    }
+
+    if (showFrameParamsSheet) {
+        val current = displaySetting.avatarFrameParams ?: AvatarFrameParams()
+        AvatarFrameParamsSheet(
+            params = current,
+            onSave = {
+                updateDisplaySetting(displaySetting.copy(avatarFrameParams = it))
+                showFrameParamsSheet = false
+            },
+            onDismiss = { showFrameParamsSheet = false },
+        )
+    }
+    if (showCotCustomSheet) {
+        val current = displaySetting.chainOfThoughtCustomStyle ?: ChainOfThoughtCustomStyle()
+        ChainOfThoughtCustomSheet(
+            style = current,
+            onSave = {
+                updateDisplaySetting(
+                    displaySetting.copy(
+                        chainOfThoughtCustomStyle = it,
+                        // 保存即代表处于自定义档语义；档位仍由用户显式切换
+                    )
+                )
+                showCotCustomSheet = false
+            },
+            onDismiss = { showCotCustomSheet = false },
+        )
     }
 }
 
@@ -662,7 +746,6 @@ private fun deleteCustomChatFontInternal(context: Context, relativePath: String)
     }
 }
 
-
 @Composable
 private fun avatarFrameLabel(style: AvatarFrameStyle): String = stringResource(
     when (style) {
@@ -672,6 +755,8 @@ private fun avatarFrameLabel(style: AvatarFrameStyle): String = stringResource(
         AvatarFrameStyle.DOUBLE -> R.string.setting_display_page_avatar_frame_double
         AvatarFrameStyle.DASHED -> R.string.setting_display_page_avatar_frame_dashed
         AvatarFrameStyle.GLOW -> R.string.setting_display_page_avatar_frame_glow
+        AvatarFrameStyle.CUSTOM_IMAGE -> R.string.setting_display_page_avatar_frame_image
+        AvatarFrameStyle.CUSTOM_PARAMS -> R.string.setting_display_page_avatar_frame_custom
     }
 )
 
@@ -681,5 +766,6 @@ private fun cotStyleLabel(style: ChainOfThoughtStyle): String = stringResource(
         ChainOfThoughtStyle.CARD -> R.string.setting_display_page_cot_style_card
         ChainOfThoughtStyle.QUOTE -> R.string.setting_display_page_cot_style_quote
         ChainOfThoughtStyle.MINIMAL -> R.string.setting_display_page_cot_style_minimal
+        ChainOfThoughtStyle.CUSTOM -> R.string.setting_display_page_cot_style_custom
     }
 )

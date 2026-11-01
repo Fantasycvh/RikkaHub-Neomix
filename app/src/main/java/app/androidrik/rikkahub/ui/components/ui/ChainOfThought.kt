@@ -48,7 +48,9 @@ import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Sparkles
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.datastore.ChainOfThoughtCustomStyle
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
+import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 
 private val LocalCardColor = staticCompositionLocalOf { Color.White }
 
@@ -77,10 +79,12 @@ fun <T> ChainOfThought(
     collapsedVisibleCount: Int = 2,
     collapsedAdaptiveWidth: Boolean = false,
     // 思维链容器视觉样式（轻量个性化，design-light-personalization.md 决策 6/7）：
-    // CARD=现状；QUOTE=透明底+左缘主色竖线；MINIMAL=透明底+无时间线。
+    // CARD=现状；QUOTE=透明底+左缘主色竖线；MINIMAL=透明底+无时间线；
+    // CUSTOM=读 [custom]（JSON 可导入，容器色/强调色/圆角/线宽/开关时间线）。
     // 折叠/展开状态机与各步骤 UI 零改动。LocalCardColor 始终用原容器色——
     // 步骤图标靠它遮时间线，透明会漏线。
     style: ChainOfThoughtStyle = ChainOfThoughtStyle.CARD,
+    custom: ChainOfThoughtCustomStyle? = null,
     content: @Composable ChainOfThoughtScope.(T) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -90,14 +94,18 @@ fun <T> ChainOfThought(
     CompositionLocalProvider(
         LocalCardColor provides cardColors.containerColor
     ) {
+        val customContainer = custom?.containerColorHex?.toComposeColorOrNull()
+            ?.copy(alpha = cardColors.containerColor.alpha)
         Card(
             modifier = modifier,
-            colors = if (style == ChainOfThoughtStyle.CARD) {
-                cardColors
-            } else {
-                cardColors.copy(containerColor = Color.Transparent)
+            colors = when {
+                customContainer != null -> cardColors.copy(containerColor = customContainer)
+                style == ChainOfThoughtStyle.CARD -> cardColors
+                else -> cardColors.copy(containerColor = Color.Transparent)
             },
-            shape = RoundedCornerShape(if (style == ChainOfThoughtStyle.CARD) 16.dp else 8.dp),
+            shape = RoundedCornerShape(
+                (custom?.cornerRadiusDp ?: if (style == ChainOfThoughtStyle.CARD) 16f else 8f).dp
+            ),
         ) {
             Column(
                 modifier = Modifier
@@ -139,7 +147,8 @@ fun <T> ChainOfThought(
                                 imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = custom?.accentColorHex?.toComposeColorOrNull()
+                                    ?: MaterialTheme.colorScheme.primary,
                             )
                         }
 
@@ -155,25 +164,30 @@ fun <T> ChainOfThought(
                                 )
                             },
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = custom?.accentColorHex?.toComposeColorOrNull()
+                                ?: MaterialTheme.colorScheme.primary,
                         )
                     }
                 }
 
-                val lineColor = MaterialTheme.colorScheme.outlineVariant
-                val accentColor = MaterialTheme.colorScheme.primary
+                val lineColor = custom?.accentColorHex?.toComposeColorOrNull()
+                    ?: MaterialTheme.colorScheme.outlineVariant
+                val accentColor = custom?.accentColorHex?.toComposeColorOrNull()
+                    ?: MaterialTheme.colorScheme.primary
+                val timelineWidth = (custom?.timelineLineWidthDp ?: 1f).dp
                 val scope = remember { ChainOfThoughtScopeImpl() }
                 Box(
                     modifier = Modifier.drawBehind {
                         when (style) {
-                            ChainOfThoughtStyle.CARD -> {
+                            ChainOfThoughtStyle.CARD, ChainOfThoughtStyle.CUSTOM -> {
+                                if (style == ChainOfThoughtStyle.CUSTOM && custom?.showTimeline == false) return@drawBehind
                                 val x = 12.dp.toPx()
                                 val offsetPx = 18.dp.toPx()
                                 drawLine(
                                     color = lineColor,
                                     start = Offset(x, offsetPx),
                                     end = Offset(x, size.height - offsetPx),
-                                    strokeWidth = 1.dp.toPx()
+                                    strokeWidth = timelineWidth.toPx()
                                 )
                             }
                             // 引用条：左缘主色竖线贯穿全高

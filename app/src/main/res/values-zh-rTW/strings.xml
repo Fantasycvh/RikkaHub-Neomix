@@ -2838,5 +2838,29 @@
   <string name="setting_display_page_cot_style_card">卡片</string>
   <string name="setting_display_page_cot_style_quote">引用條</string>
   <string name="setting_display_page_cot_style_minimal">極簡</string>
+  <string name="setting_display_page_avatar_frame_image">圖片框</string>
+  <string name="setting_display_page_avatar_frame_custom">自定義</string>
+  <string name="setting_display_page_avatar_frame_pick_image">選擇素材</string>
+  <string name="setting_display_page_avatar_frame_clear_image">清除素材</string>
+  <string name="setting_display_page_avatar_frame_edit_params">編輯參數</string>
+  <string name="setting_display_page_avatar_frame_params_title">自定義參數框</string>
+  <string name="setting_display_page_avatar_frame_param_kind">樣式</string>
+  <string name="setting_display_page_avatar_frame_param_color">環色</string>
+  <string name="setting_display_page_avatar_frame_param_secondary">第二色</string>
+  <string name="setting_display_page_avatar_frame_param_width">描邊寬度</string>
+  <string name="setting_display_page_avatar_frame_param_dash">實線段</string>
+  <string name="setting_display_page_avatar_frame_param_gap">間隔</string>
+  <string name="setting_display_page_cot_style_custom">自定義</string>
+  <string name="setting_display_page_cot_custom_title">自定義思維鏈樣式</string>
+  <string name="setting_display_page_cot_custom_container">容器色</string>
+  <string name="setting_display_page_cot_custom_accent">強調色</string>
+  <string name="setting_display_page_cot_custom_corner">圓角</string>
+  <string name="setting_display_page_cot_custom_line_width">時間線寬度</string>
+  <string name="setting_display_page_cot_custom_show_timeline">顯示時間線</string>
+  <string name="setting_personalization_json_import">匯入 JSON</string>
+  <string name="setting_personalization_json_export">匯出 JSON</string>
+  <string name="setting_personalization_json_imported">已匯入</string>
+  <string name="setting_personalization_json_exported">已複製到剪貼簿</string>
+  <string name="setting_personalization_hex_optional">#RRGGBB，可留空</string>
 </resources>
 

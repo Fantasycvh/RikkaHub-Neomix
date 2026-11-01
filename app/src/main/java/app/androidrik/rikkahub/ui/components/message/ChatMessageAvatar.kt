@@ -48,6 +48,8 @@ fun ChatMessageUserAvatar(
                 value = avatar,
                 loading = false,
                 frame = settings.displaySetting.avatarFrameStyle,
+                frameImagePath = settings.displaySetting.avatarFrameImagePath,
+                frameParams = settings.displaySetting.avatarFrameParams,
             )
         }
     }
@@ -84,6 +86,8 @@ fun ChatMessageAssistantAvatar(
                         value = assistant.avatar,
                         loading = loading,
                         frame = settings.displaySetting.avatarFrameStyle,
+                frameImagePath = settings.displaySetting.avatarFrameImagePath,
+                frameParams = settings.displaySetting.avatarFrameParams,
                     )
                 }
                 Row(

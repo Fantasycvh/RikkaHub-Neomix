@@ -426,6 +426,8 @@ private fun MessagePartsBlock(
                     // ChainOfThought 内部用左缘竖线/无装饰表达层级），LocalCardColor 仍
                     // 走原容器色供步骤图标遮线
                     val cotStyle = settings.displaySetting.chainOfThoughtStyle
+                    val cotCustom = settings.displaySetting.chainOfThoughtCustomStyle
+                        ?.takeIf { cotStyle == ChainOfThoughtStyle.CUSTOM }
                     val cardColors = CardDefaults.cardColors(
                         containerColor = (if (block.canCollapse) {
                             MaterialTheme.colorScheme.surfaceContainerLow
@@ -496,6 +498,7 @@ private fun MessagePartsBlock(
                                 cardColors = cardColors,
                                 collapsedAdaptiveWidth = isReasoningOnlyBlock,
                                 style = cotStyle,
+                                custom = cotCustom,
                                 content = stepContent,
                             )
                         } else {
@@ -505,6 +508,7 @@ private fun MessagePartsBlock(
                                 collapsedAdaptiveWidth = isReasoningOnlyBlock,
                                 cardColors = cardColors,
                                 style = cotStyle,
+                                custom = cotCustom,
                                 content = stepContent,
                             )
                         }

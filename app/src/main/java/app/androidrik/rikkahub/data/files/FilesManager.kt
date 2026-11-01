@@ -241,6 +241,44 @@ class FilesManager(
     }
 
     /**
+     * 保存一张**头像框素材**图（轻量个性化的自定义图片框，正方形透明中框 PNG），
+     * 落 [FileFolders.AVATAR_FRAMES]。与头像/背景同生命周期语义（持久配置，
+     * 不能进可清理的 `upload/`，同 #2127）。
+     *
+     * @return 落盘后的 `file://` Uri；失败返回 null（调用方保持原框不变）。
+     */
+    fun createAvatarFrameImage(uri: Uri): Uri? {
+        val dir = context.filesDir.resolve(FileFolders.AVATAR_FRAMES)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return runCatching {
+            val sourceName = getFileNameFromUri(uri) ?: uri.lastPathSegment ?: "frame"
+            val sourceMime = getFileMimeType(uri)
+            val fileName = buildUuidFileName(displayName = sourceName, mimeType = sourceMime)
+            val file = dir.resolve(fileName)
+            val inputStream = context.contentResolver.openInputStream(uri)
+                ?: error("Failed to open input stream for $uri")
+            if (!inputStream.use { writeStreamAtomically(file, it) }) {
+                error("Failed to save avatar frame from $uri")
+            }
+            trackManagedFile(
+                folder = FileFolders.AVATAR_FRAMES,
+                file = file,
+                displayName = sourceName,
+                mimeType = sourceMime ?: guessMimeType(file, sourceName),
+            )
+            file.toUri()
+        }.onFailure {
+            Log.e(TAG, "createAvatarFrameImage: Failed to save avatar frame from $uri", it)
+            Logging.log(
+                TAG,
+                "createAvatarFrameImage: Failed to save avatar frame from $uri ${it.message}",
+            )
+        }.getOrNull()
+    }
+
+    /**
      * 保存一张**助手背景**图片，落 [FileFolders.BACKGROUNDS]。
      *
      * 与 [createAvatarImage] 同款问题（2026-10-31）：背景图此前经
@@ -863,6 +901,12 @@ object FileFolders {
      * `AvatarMigration` 在启动时搬进本目录并改写引用（搬不动的留在原处并打日志）。
      */
     const val AVATARS = "avatars"
+
+    /**
+     * 用户配置的**头像框素材**图（轻量个性化自定义图片框）。持久配置生命周期，
+     * 与 [AVATARS]/[BACKGROUNDS] 同理不可进 upload/。
+     */
+    const val AVATAR_FRAMES = "avatar-frames"
 
     /**
      * 用户配置的**助手聊天背景**图。

@@ -2852,5 +2852,29 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_display_page_cot_style_card">卡片</string>
   <string name="setting_display_page_cot_style_quote">引用条</string>
   <string name="setting_display_page_cot_style_minimal">极简</string>
+  <string name="setting_display_page_avatar_frame_image">图片框</string>
+  <string name="setting_display_page_avatar_frame_custom">自定义</string>
+  <string name="setting_display_page_avatar_frame_pick_image">选择素材</string>
+  <string name="setting_display_page_avatar_frame_clear_image">清除素材</string>
+  <string name="setting_display_page_avatar_frame_edit_params">编辑参数</string>
+  <string name="setting_display_page_avatar_frame_params_title">自定义参数框</string>
+  <string name="setting_display_page_avatar_frame_param_kind">样式</string>
+  <string name="setting_display_page_avatar_frame_param_color">环色</string>
+  <string name="setting_display_page_avatar_frame_param_secondary">第二色</string>
+  <string name="setting_display_page_avatar_frame_param_width">描边宽度</string>
+  <string name="setting_display_page_avatar_frame_param_dash">实线段</string>
+  <string name="setting_display_page_avatar_frame_param_gap">间隔</string>
+  <string name="setting_display_page_cot_style_custom">自定义</string>
+  <string name="setting_display_page_cot_custom_title">自定义思维链样式</string>
+  <string name="setting_display_page_cot_custom_container">容器色</string>
+  <string name="setting_display_page_cot_custom_accent">强调色</string>
+  <string name="setting_display_page_cot_custom_corner">圆角</string>
+  <string name="setting_display_page_cot_custom_line_width">时间线宽度</string>
+  <string name="setting_display_page_cot_custom_show_timeline">显示时间线</string>
+  <string name="setting_personalization_json_import">导入 JSON</string>
+  <string name="setting_personalization_json_export">导出 JSON</string>
+  <string name="setting_personalization_json_imported">已导入</string>
+  <string name="setting_personalization_json_exported">已复制到剪贴板</string>
+  <string name="setting_personalization_hex_optional">#RRGGBB，可留空</string>
 </resources>
 

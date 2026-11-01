@@ -54,6 +54,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Edit03
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.utils.normalizeLocalFileUrl
+import app.androidrik.rikkahub.data.datastore.AvatarFrameParams
 import app.androidrik.rikkahub.data.datastore.AvatarFrameStyle
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Avatar
@@ -98,8 +99,12 @@ fun UIAvatar(
     modifier: Modifier = Modifier,
     loading: Boolean = false,
     // 头像装饰框（轻量个性化）：聊天页双侧头像传入 DisplaySetting.avatarFrameStyle，
-    // 其余调用处默认 NONE 零变化（design-light-personalization.md 决策 2/3）
+    // 其余调用处默认 NONE 零变化（design-light-personalization.md 决策 2/3）。
+    // CUSTOM_IMAGE 档用 [frameImagePath]（正方形透明中框素材，与头像同尺寸叠放）；
+    // CUSTOM_PARAMS 档用 [frameParams]（JSON 可导入的环参数）。
     frame: AvatarFrameStyle = AvatarFrameStyle.NONE,
+    frameImagePath: String = "",
+    frameParams: AvatarFrameParams? = null,
     onUpdate: ((Avatar) -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
@@ -144,7 +149,7 @@ fun UIAvatar(
             shape = rememberAvatarShape(loading),
             modifier = Modifier
                 .fillMaxSize()
-                .padding(frame.contentInset()),
+                .padding(frame.contentInset(frameParams)),
             onClick = {
                 onClick?.invoke()
                 if (onUpdate != null) showPickOption = true
@@ -189,12 +194,29 @@ fun UIAvatar(
             }
         }
 
-        AvatarFrameOverlay(
-            style = frame,
-            primary = MaterialTheme.colorScheme.primary,
-            tertiary = MaterialTheme.colorScheme.tertiary,
-            modifier = Modifier.matchParentSize(),
-        )
+        when {
+            frame == AvatarFrameStyle.CUSTOM_IMAGE && frameImagePath.isNotBlank() -> {
+                AsyncImage(
+                    model = context.normalizeLocalFileUrl(frameImagePath),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+            frame == AvatarFrameStyle.CUSTOM_PARAMS && frameParams != null -> {
+                val fallbackPrimary = MaterialTheme.colorScheme.primary
+                val fallbackTertiary = MaterialTheme.colorScheme.tertiary
+                Canvas(modifier = Modifier.matchParentSize()) {
+                    drawAvatarFrameParams(frameParams, fallbackPrimary, fallbackTertiary)
+                }
+            }
+            else -> AvatarFrameOverlay(
+                style = frame,
+                primary = MaterialTheme.colorScheme.primary,
+                tertiary = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
 
         // Show edit icon when editable
         if (onUpdate != null) {

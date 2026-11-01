@@ -2851,5 +2851,29 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_display_page_cot_style_card">Card</string>
   <string name="setting_display_page_cot_style_quote">Quote bar</string>
   <string name="setting_display_page_cot_style_minimal">Minimal</string>
+  <string name="setting_display_page_avatar_frame_image">Image frame</string>
+  <string name="setting_display_page_avatar_frame_custom">Custom</string>
+  <string name="setting_display_page_avatar_frame_pick_image">Choose image</string>
+  <string name="setting_display_page_avatar_frame_clear_image">Clear image</string>
+  <string name="setting_display_page_avatar_frame_edit_params">Edit params</string>
+  <string name="setting_display_page_avatar_frame_params_title">Custom frame params</string>
+  <string name="setting_display_page_avatar_frame_param_kind">Kind</string>
+  <string name="setting_display_page_avatar_frame_param_color">Frame color</string>
+  <string name="setting_display_page_avatar_frame_param_secondary">Secondary color</string>
+  <string name="setting_display_page_avatar_frame_param_width">Stroke width</string>
+  <string name="setting_display_page_avatar_frame_param_dash">Dash length</string>
+  <string name="setting_display_page_avatar_frame_param_gap">Gap</string>
+  <string name="setting_display_page_cot_style_custom">Custom</string>
+  <string name="setting_display_page_cot_custom_title">Custom chain-of-thought style</string>
+  <string name="setting_display_page_cot_custom_container">Container color</string>
+  <string name="setting_display_page_cot_custom_accent">Accent color</string>
+  <string name="setting_display_page_cot_custom_corner">Corner radius</string>
+  <string name="setting_display_page_cot_custom_line_width">Timeline width</string>
+  <string name="setting_display_page_cot_custom_show_timeline">Show timeline</string>
+  <string name="setting_personalization_json_import">Import JSON</string>
+  <string name="setting_personalization_json_export">Export JSON</string>
+  <string name="setting_personalization_json_imported">Imported</string>
+  <string name="setting_personalization_json_exported">Exported to clipboard</string>
+  <string name="setting_personalization_hex_optional">#RRGGBB, optional</string>
 </resources>
 
