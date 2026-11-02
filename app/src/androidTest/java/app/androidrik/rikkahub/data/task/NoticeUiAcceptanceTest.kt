@@ -10,6 +10,7 @@ import app.androidrik.rikkahub.SketchTestHostActivity
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
@@ -33,6 +34,36 @@ class NoticeUiAcceptanceTest {
 
     @Test fun systemCarrierShowsSourceCard() = render(MessageRole.SYSTEM)
     @Test fun userCarrierShowsTheSameSourceCard() = render(MessageRole.USER)
+
+    @Test fun taskTreeShowsOwnedCommandsAndLetsUserApprove() {
+        val request = app.androidrik.rikkahub.data.ai.SubagentApprovalQueue.Request("tree-run", "Research task",
+            UIMessagePart.Tool("tree-call", "workspace_write_file", "{\"path\":\"report.md\"}",
+                approvalState = app.androidrik.ai.ui.ToolApprovalState.Pending), "tree-parent")
+        val card = TaskCard(TaskKey.Agent("tree-run"), TaskSource.AGENT, TaskState.WAITING_APPROVAL,
+            "Research task", "Produce a report", 1, null, true, 1)
+        val shell = TaskCard(TaskKey.Shell("root", "command"), TaskSource.SHELL, TaskState.RUNNING,
+            "Owned shell command", null, 1, null, true)
+        val snapshot = ConversationTaskSnapshot(listOf(ConversationTaskBranch(card,
+            listOf("workspace_read_file"), listOf(request), listOf(shell))))
+        var approved = false
+        compose.setContent {
+            MaterialTheme {
+                app.androidrik.rikkahub.ui.pages.taskcenter.ConversationTasksContent(snapshot,
+                    onOpen = {}, onCancel = {}, onDecision = { item, decision ->
+                        approved = item === request && decision
+                    })
+            }
+        }
+        compose.onNodeWithText("本会话任务").assertIsDisplayed()
+        compose.onNodeWithText("Owned shell command").assertIsDisplayed()
+        compose.onNodeWithText("批准").performClick()
+        compose.runOnIdle { org.junit.Assert.assertTrue(approved) }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.filesDir, "runtime-acceptance/p1b-task-tree.png")
+        file.parentFile!!.mkdirs()
+        file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap()
+            .compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+    }
 
     private fun render(role: MessageRole) {
         val message = UIMessage(role = role, isSynthetic = true,

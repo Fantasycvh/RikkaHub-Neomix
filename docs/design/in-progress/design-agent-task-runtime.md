@@ -1,7 +1,7 @@
 # Agent 任务控制面：子代理 / 无头 run / 后台任务的三合一与改进（design-agent-task-runtime）
 
 > 状态：**已拍板（2026-11-02）**；**P0 / P0.5 已全部落地**（`692ed04ad` / `23c977613` / `8df5a214b`），
-> P1a 数据底座已提交（`2cb90d45a`）；后台派发、投递泵、三端标记和 USER 回退已接入；GLM-4.7 专项验收通过，范围及遗留见附录 D。
+> P1a 已提交（最后验收提交 `ed060aac0`）；P1b 完成通知、会话任务树、后台 ASK 及父信封约束已实现并验证（本轮本地提交）；范围及遗留见附录 D。
 > 日期：2026-11-02。**rev2**（第一版经交叉评审后重写）。
 > 对象：本仓三套执行底座 + `AndyerNotFound/L3Hub-RikkaHub-Fork-WFadnf`（下称「L3Hub fork」，
 > 评审时 HEAD `e5f7e196`）。
@@ -600,7 +600,7 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 **i18n**：任务中心/notice 卡片/停止按钮需三语 strings；按 AGENTS.md「未明确要求可先不做」，
 实现时至少给 key 清单（`task_center_*` / `subagent_notice_*` / `scheduled_stop_*`），不阻塞本设计。
 
-## 附录 D：实施进度（P0 / P0.5 / P1a）
+## 附录 D：实施进度（P0 / P0.5 / P1a / P1b）
 
 > 规则：每项落地后在此打勾并写「提交短哈希 + 验证方式」；**未打勾即未验证**。
 >
@@ -623,7 +623,8 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 - [x] `SubagentRunner` 起 shell task 传 `turnOwner="run:<id>"` + 取消/超时级联 kill
   —— `692ed04ad`；`executeRun` 的取消与超时分支在 `NonCancellable` 里
   `killBackgroundTasksByOwner("run:<id>")`。**回滚开关未加用户设置**：P0 以「回退提交」为回滚单位，
-  `killShellTasksOnRunCancel` 开关列入 P1b 设置面（见附录 C）。
+  `killShellTasksOnRunCancel` 用户开关尚未实现，保留为独立设置面后续项（见附录 C）；
+  不计入本轮 §七 P1b 的三个体验层交付项。
 - [x] `WorkspaceTaskRegistry.snapshotFlow` + 任务中心读模型（`TaskCenter`）—— `8df5a214b`；
   `TaskRegistry` 在启动/kill/自然退出/淘汰各发一版不可变快照；`TaskCenter` 聚合
   `agent_run` + shell 快照 + 定时任务行 + 审批队列 + 定时运行注册表，映射为 `TaskCard`
@@ -678,8 +679,8 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 - [x] `dispatchBackground` 复用 `executeRun`；先占并发位、持久化账本，再启动 AppScope 独立 Job，
   返回 pending + run_id；终态/取消落库，详情页原有取消入口可用。
   `enableBackgroundSubagent` 持久化、**默认关**，仅 BACKGROUND 预设且有父会话时走后台；
-  工具清单显示实际生效模式，并明确接受后不轮询/重复派发。后台内部工具审批暂固定 DENY，
-  外层派发前的 `requireApproval` 保留；ASK 通知体验留到 P1b。无头信封恒剔除 `ask_user`。
+  工具清单显示实际生效模式，并明确接受后不轮询/重复派发。P1a 基线的后台内部工具审批固定 DENY，
+  P1b 已升级为渠道可用时支持 ASK（见下文）；外层派发前的 `requireApproval` 保留。无头信封恒剔除 `ask_user`。
 - [x] `appendExternalNotice` + `NoticeDelivery`：终态/设置变化、启动对账后、会话打开、生成空闲、
   压缩落地时 flush；busy/待审批/排队/上下文不足留库，父会话不存在标 orphaned。
   每批最多 8 个、每个结果最多 12000 字符（详情页保留全文），按 run_id 幂等；
@@ -713,11 +714,41 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
   临时 key 仅在主机回环代理内存中使用，测试结束后清理代理与转发。
 - [x] 附带生命周期修复：正常取消 Flow 订阅不再触发 `Runtime.halt(1)`，已加回归。
 
-### 已知未验证
+### P1b（通知、任务树、后台 ASK 已实现并验证）
+
+2026-11-02 本地提交 `feat(task-runtime): add P1b notifications task tree and background approvals`；
+详见[验收报告](../verification/agent-task-runtime-p1b-2026-11-02.md)。
+本期无 DB 版本变更，保留后台总开关默认关闭、无头 `ask_user` 剔除、深度 0 和不自动续跑父会话。
+
+- [x] 完成通知：手动与后台 run 的完成/失败/取消/超时按 runId 独立通知，点击进入原运行详情；
+  原子终态写入成功后才发，避免重复；打开详情仅撤自己的结果通知。前台本会话/运行详情/Agent 任务中心
+  可见时抑制通知，UI 使用计数租约避免多窗口互相撤销可见状态。权限/渠道不可用时静默，账本仍保留。
+- [x] 会话任务树：聊天页顶部树形入口；DAO 按 `parent_conversation_id` 的单个 Flow 查询，
+  与 shell owner 快照、待审批队列合流；展示 run、最近工具、审批参数及归属 shell，支持详情/停止/批准/拒绝。
+  scope_token 记录父 turn，shell 仍使用 `run:<id>` 归属；未知或别的会话 owner 不展示，不递归查库。
+- [x] 后台 ASK：派发时检测 POST 权限、应用通知总开关、渠道与渠道组；不可达时降级 DENY 并记录原因。
+  真正待批时再次检查和确认发送成功，失败立即拒绝；等待最多 5 分钟，超时拒绝，取消/完成清自己的队列与通知。
+  阻塞派发保留无通知时在前台详情答复的能力；过期 UI 请求按注册身份拒绝。
+- [x] 子信封 ≤ 父信封：工具实际派发时读取最终装配清单（含后装配的 MCP/插件），与子预设清单求交集；
+  工作区不同时剔除 workspace 段，防同名工具越过工作区边界；始终剔除 `dispatch_subagent` / `ask_user`。
+- [x] JVM：app **2819** 例（2 跳过）、workspace **161** 例（20 跳过），0 失败/错误；
+  覆盖超时/取消/并行审批、渠道发送失败、父信封交集、跨工作区、工具装配时序、会话归属与可见状态。
+  IME 审计 A=0、A'=0（既有 B/C 告警保留）。
+- [x] PJX110 / Android 15 隔离真机：通知平台 3 例、审批工具循环 3 场景、DB 8 例、Compose UI 3 例通过。
+  批准才执行工具；拒绝/通知权限关闭不执行，仍完成并投递 notice；并行通知 PendingIntent 与撤销互不影响。
+  后端为受控 SSE，未复用已轮换 key；正常提供商设置 SHA-256 前后相同，临时通知权限已恢复。
+
+本轮新增 UI 文案尚未三语化；后续 key 清单：`conversation_tasks_*` / `agent_run_completed_*` /
+`agent_run_approval_unavailable`。按 AGENTS.md，无明确本地化要求时不阻塞功能实现。
+
+### 已知未验证或后续项
 
 - 正式 Application 的完整聊天页人工导航、KeepAlive 前台服务与不同 ROM 的长时后台存活仍需扩展验证；
   当前已通过真实子模型 + 生产 session/投递入口的隔离验收和 notice 卡片 UI 验收，见报告中的边界。
-- 通知权限关闭时的 ASK 降级属于 P1b 体验验收；当前后台内部工具审批固定 DENY。
+- P1b 的五分钟审批超时使用协程虚拟时间验证；未在真机实等五分钟，也未人工点击系统通知动作或完整聊天页导航。
+  启动对账产生的 INTERRUPTED 通过 P1a notice 补投，本期不补发独立的历史完成通知。
+- 附录 C 的 `taskCenterEnabled` / `namespacedNotifications` / `dynamicRunGate` /
+  `killShellTasksOnRunCancel` 仍未成为用户设置；这些 P0 行为仍按提交回退，不宣称已完成全部开关矩阵。
 - 定时取消的真机时序：通知「停止」→ `ACTION_STOP` → Job.cancel → 终态 CANCELLED（单测已覆盖状态机，
   真机需验证服务生命周期与通知动作的竞态）。
 - 旧备份 ZIP → v58 的完整导入流程（独立库 57→58 迁移与 58→57 降级隔离已由上方真机测试覆盖）。

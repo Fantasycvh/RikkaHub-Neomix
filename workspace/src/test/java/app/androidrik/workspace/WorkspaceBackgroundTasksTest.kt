@@ -348,6 +348,8 @@ class WorkspaceBackgroundTasksTest {
         val registry = WorkspaceTaskRegistry(launcher)
         val thisTurn = registry.start(context(command = "make"), owner = "turn-1")
         val earlierTurn = registry.start(context(command = "sleep 1000"), owner = "turn-0")
+        assertEquals("turn-1", thisTurn.owner)
+        assertEquals("turn-0", earlierTurn.owner)
         val unowned = registry.start(context(command = "tail -f log"))
 
         assertEquals(1, registry.killByOwner("turn-1"))

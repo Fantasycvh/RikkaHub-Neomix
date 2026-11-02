@@ -56,9 +56,16 @@ data class SubagentRunResult(
  * 接口，工厂侧拿到的是**延迟解析的 provider**（`() -> SubagentDispatcher?`），环就断在
  * 那一个 lambda 上。
  */
+data class SubagentDispatchContext(
+    val parentToolEnvelope: Set<String>? = null,
+    val scopeToken: String? = null,
+    val parentWorkspaceId: kotlin.uuid.Uuid? = null,
+)
+
 interface SubagentDispatcher {
     suspend fun dispatchBackground(
         preset: SubagentPreset, goal: String, timeoutMillis: Long, parentConversationId: String,
+        context: SubagentDispatchContext = SubagentDispatchContext(),
     ): SubagentRunResult? = null
 
     /**
@@ -72,6 +79,7 @@ interface SubagentDispatcher {
         timeoutMillis: Long,
         /** 派发它的父会话 id（账本列，供详情页「回到对话」）；非对话入口传 null。 */
         parentConversationId: String? = null,
+        context: SubagentDispatchContext = SubagentDispatchContext(),
     ): SubagentRunResult?
 }
 
@@ -99,19 +107,25 @@ interface SubagentDispatcher {
 internal fun resolveSubagentEnvelope(
     segments: List<ToolSegment>,
     allowedTools: Set<String>?,
+    parentToolEnvelope: Set<String>? = null,
+    requestedWorkspaceId: kotlin.uuid.Uuid? = null,
+    parentWorkspaceId: kotlin.uuid.Uuid? = null,
 ): Set<String> {
-    val byCapability = segments
+    val scopedSegments = if (parentToolEnvelope != null && requestedWorkspaceId != parentWorkspaceId)
+        segments.filterNot { it.source == "workspace" } else segments
+    val byCapability = scopedSegments
         .filter { it.source in CAPABILITY_SOURCE_SEGMENTS }
         .flatMapTo(mutableSetOf()) { segment -> segment.tools.map { it.name } }
 
-    val assembled = segments.flatMapTo(mutableSetOf()) { segment -> segment.tools.map { it.name } }
+    val assembled = scopedSegments.flatMapTo(mutableSetOf()) { segment -> segment.tools.map { it.name } }
 
     val allowed = if (allowedTools == null) {
         byCapability
     } else {
         assembled.intersect(allowedTools)
     }
-    return allowed - setOf(SUBAGENT_DISPATCH_TOOL_NAME, "ask_user")
+    return (parentToolEnvelope?.let { allowed.intersect(it) } ?: allowed) -
+        setOf(SUBAGENT_DISPATCH_TOOL_NAME, "ask_user")
 }
 
 /**
@@ -142,6 +156,7 @@ fun createSubagentTools(
      */
     parentConversationId: String? = null,
     enableBackgroundSubagent: Boolean = false,
+    dispatchContext: () -> SubagentDispatchContext = { SubagentDispatchContext() },
 ): List<Tool> {
     if (presets.isEmpty()) return emptyList()
 
@@ -212,9 +227,9 @@ fun createSubagentTools(
                     preset.executionMode == app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND &&
                     parentConversationId != null
                 ) {
-                    dispatcher.dispatchBackground(preset, goal, preset.timeoutSeconds * 1000L, parentConversationId)
+                    dispatcher.dispatchBackground(preset, goal, preset.timeoutSeconds * 1000L, parentConversationId, dispatchContext())
                 } else {
-                    dispatcher.dispatchAndAwait(preset, goal, preset.timeoutSeconds * 1000L, parentConversationId)
+                    dispatcher.dispatchAndAwait(preset, goal, preset.timeoutSeconds * 1000L, parentConversationId, dispatchContext())
                 }
                 listOf(UIMessagePart.Text(formatSubagentResult(result)))
             },

@@ -86,6 +86,7 @@ class AgentRunReconcilerTest {
         override suspend fun getRun(id: String): AgentRunEntity? = null
         override fun observeRuns(): Flow<List<AgentRunEntity>> = emptyFlow()
         override fun observeRunsByScope(scopeToken: String): Flow<List<AgentRunEntity>> = emptyFlow()
+        override fun observeRunsByConversation(conversationId: String): Flow<List<AgentRunEntity>> = emptyFlow()
         override fun observePendingDeliveries(): Flow<List<AgentRunEntity>> = emptyFlow()
         override suspend fun finishRun(id: String, status: String, resultSummary: String?, error: String?, finishedAt: Long, cancelReason: String?): Int = 0
         override suspend fun markDelivered(ids: List<String>, deliveredAt: Long): Int = 0

@@ -31,6 +31,9 @@ interface AgentRunDAO {
     @Query("SELECT * FROM agent_run WHERE scope_token = :scopeToken ORDER BY created_at, id")
     fun observeRunsByScope(scopeToken: String): Flow<List<AgentRunEntity>>
 
+    @Query("SELECT * FROM agent_run WHERE parent_conversation_id = :conversationId ORDER BY created_at DESC, id")
+    fun observeRunsByConversation(conversationId: String): Flow<List<AgentRunEntity>>
+
     /** 只暴露已落终态的 notice；不能把半截生成投给父会话。 */
     @Query("""
         SELECT * FROM agent_run

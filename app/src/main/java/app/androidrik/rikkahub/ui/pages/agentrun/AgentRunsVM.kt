@@ -81,6 +81,8 @@ class AgentRunDetailVM(
         .map { it.assistants }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    fun onOpened(id: String) = runner.dismissCompletionNotification(id)
+
     fun observeRun(id: String) = agentRunDAO.observeRun(id)
 
     /**

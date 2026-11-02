@@ -63,6 +63,7 @@ class SubagentToolsTest {
             goal: String,
             timeoutMillis: Long,
             parentConversationId: String?,
+            context: SubagentDispatchContext,
         ): SubagentRunResult? = fn(preset, goal, timeoutMillis, parentConversationId)
     }
 
@@ -126,12 +127,12 @@ class SubagentToolsTest {
         var background = 0
         val dispatcher = object : SubagentDispatcher {
             override suspend fun dispatchAndAwait(preset: SubagentPreset, goal: String,
-                timeoutMillis: Long, parentConversationId: String?): SubagentRunResult {
+                timeoutMillis: Long, parentConversationId: String?, context: SubagentDispatchContext): SubagentRunResult {
                 awaited++
                 return SubagentRunResult("blocking", "completed", "answer", null)
             }
             override suspend fun dispatchBackground(preset: SubagentPreset, goal: String,
-                timeoutMillis: Long, parentConversationId: String): SubagentRunResult {
+                timeoutMillis: Long, parentConversationId: String, context: SubagentDispatchContext): SubagentRunResult {
                 background++
                 return SubagentRunResult("background", "pending", null, null)
             }
@@ -156,6 +157,46 @@ class SubagentToolsTest {
         val segments = listOf(segment("workspace", "ask_user", "workspace_read_file"))
         assertFalse("ask_user" in runToolCatalog(segments))
         assertFalse("ask_user" in resolveSubagentEnvelope(segments, setOf("ask_user", "workspace_read_file")))
+    }
+
+    @Test
+    fun `child envelope is the intersection with the assembled parent tools`() {
+        val segments = listOf(segment("workspace", "workspace_read_file", "workspace_write_file"),
+            segment("plugin:x", "external_write"))
+        assertEquals(setOf("workspace_read_file"), resolveSubagentEnvelope(segments, null, setOf("workspace_read_file")))
+        assertEquals(emptySet<String>(), resolveSubagentEnvelope(segments, setOf("external_write"), setOf("workspace_read_file")))
+        assertEquals(emptySet<String>(), resolveSubagentEnvelope(segments, null, emptySet()))
+        assertEquals(setOf("external_write"), resolveSubagentEnvelope(segments, setOf("external_write"), setOf("external_write")))
+    }
+
+    @Test
+    fun `same tool names cannot grant a different workspace`() {
+        val parent = Uuid.random()
+        val child = Uuid.random()
+        val segments = listOf(segment("workspace", "workspace_read_file"), segment("search", "search_web"))
+        val parentTools = setOf("workspace_read_file", "search_web")
+        assertEquals(setOf("search_web"), resolveSubagentEnvelope(segments, null, parentTools, child, parent))
+        assertEquals(parentTools, resolveSubagentEnvelope(segments, null, parentTools, parent, parent))
+    }
+
+    @Test fun `dispatch snapshots the final parent tools scope and workspace`() = runBlocking {
+        var captured: SubagentDispatchContext? = null
+        val parentTools = mutableSetOf("workspace_read_file")
+        val workspace = Uuid.random()
+        val dispatcher = object : SubagentDispatcher {
+            override suspend fun dispatchAndAwait(preset: SubagentPreset, goal: String, timeoutMillis: Long,
+                parentConversationId: String?, context: SubagentDispatchContext): SubagentRunResult {
+                captured = context
+                return SubagentRunResult("run", "completed", "answer", null)
+            }
+        }
+        val tool = createSubagentTools(listOf(preset("research")), dispatcher, "parent",
+            dispatchContext = { SubagentDispatchContext(parentTools.toSet(), "turn:parent", workspace) }).single()
+        parentTools += "plugin_last_assembled"
+        tool.execute(args("research"))
+        assertEquals(parentTools, captured!!.parentToolEnvelope)
+        assertEquals("turn:parent", captured!!.scopeToken)
+        assertEquals(workspace, captured!!.parentWorkspaceId)
     }
 
     // ---- 工具装配 ----

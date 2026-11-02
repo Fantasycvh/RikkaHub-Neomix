@@ -250,6 +250,8 @@ data class WorkspaceTaskSnapshot(
     /** 完整输出的落盘位置（**rootfs 内可见路径**，模型可用 `workspace_read_file` 读）；失败时为 null。 */
     val stdoutLogPath: String? = null,
     val stderrLogPath: String? = null,
+    /** Immutable ownership snapshot for the conversation task tree. */
+    val owner: String? = null,
 ) {
     val isRunning: Boolean get() = status == WorkspaceTaskStatus.RUNNING
 
@@ -645,6 +647,7 @@ class WorkspaceTaskRegistry(
             lifetimeLimitMillis = maxLifetimeMillis.coerceAtLeast(0L),
             stdoutLogPath = entry.stdoutLogPath,
             stderrLogPath = entry.stderrLogPath,
+            owner = entry.owner,
         )
     }
 }

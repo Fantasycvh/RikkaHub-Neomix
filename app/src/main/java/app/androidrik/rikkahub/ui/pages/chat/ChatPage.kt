@@ -44,6 +44,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.lifecycle.compose.LifecycleStartEffect
+import app.androidrik.rikkahub.data.task.TaskVisibility
+import app.androidrik.rikkahub.ui.pages.taskcenter.ConversationTasksSheet
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.ListTree
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberBottomSheetState
@@ -156,6 +161,10 @@ fun ChatPage(
     files: List<Uri>,
     nodeId: Uuid? = null,
 ) {
+    LifecycleStartEffect(id) {
+        val lease = TaskVisibility.acquire("conversation:$id")
+        onStopOrDispose { lease.close() }
+    }
     val vm: ChatVM = koinViewModel(
         parameters = {
             parametersOf(id.toString())
@@ -1179,6 +1188,7 @@ private fun TopBar(
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
+    var showTasks by remember(conversation.id) { mutableStateOf(false) }
     val titleState = useEditState<String> {
         onUpdateTitle(it)
     }
@@ -1248,6 +1258,7 @@ private fun TopBar(
             }
         },
         actions = {
+            IconButton(onClick = { showTasks = true }) { Icon(Lucide.ListTree, "本会话任务") }
             IconButton(
                 onClick = {
                     onClickMenu()
@@ -1273,6 +1284,7 @@ private fun TopBar(
             }
         },
     )
+    if (showTasks) ConversationTasksSheet(conversation.id) { showTasks = false }
     titleState.EditStateContent { title, onUpdate ->
         AlertDialog(
             onDismissRequest = {

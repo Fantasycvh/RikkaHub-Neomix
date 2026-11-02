@@ -144,6 +144,15 @@ class AgentRunDeliveryInstrumentedTest {
         assertEquals(0, dao.markDelivered(listOf("other"), 2000))
     }
 
+    @Test fun conversationTaskQueryNeverIncludesAnotherParent() = runBlocking {
+        val dao = openMemory().agentRunDao()
+        dao.insertRun(run("a").copy(parentConversationId = "one"))
+        dao.insertRun(run("b").copy(parentConversationId = "two"))
+        dao.insertRun(run("c").copy(parentConversationId = null))
+        assertEquals(listOf("a"), dao.observeRunsByConversation("one").first().map { it.id })
+        assertEquals(listOf("b"), dao.observeRunsByConversation("two").first().map { it.id })
+    }
+
     @Test
     fun restartMakesOldBackgroundRunsDeliverableWithoutTouchingCurrentRuns() = runBlocking {
         val dao = openMemory().agentRunDao()

@@ -59,7 +59,7 @@ object NotificationUtil {
      * 检查是否有通知权限
      */
     fun hasNotificationPermission(context: Context): Boolean {
-        return ActivityCompat.checkSelfPermission(
+        return Build.VERSION.SDK_INT < 33 || ActivityCompat.checkSelfPermission(
             context,
             Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED

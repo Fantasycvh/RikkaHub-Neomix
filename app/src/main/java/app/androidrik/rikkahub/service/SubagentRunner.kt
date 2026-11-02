@@ -32,6 +32,9 @@ import app.androidrik.rikkahub.data.ai.approvalRequestSummary
 import app.androidrik.rikkahub.data.ai.pendingApprovalTools
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
+import app.androidrik.rikkahub.data.task.backgroundApprovalDecision
+import app.androidrik.rikkahub.data.task.awaitRunApproval
+import app.androidrik.rikkahub.data.ai.tools.SubagentDispatchContext
 import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
 import app.androidrik.rikkahub.data.ai.tools.SubagentRunResult
 import app.androidrik.rikkahub.data.ai.tools.resolveSubagentEnvelope
@@ -98,6 +101,10 @@ class SubagentRunner(
     private val agentRunDAO: AgentRunDAO,
     private val workspaceRepository: WorkspaceRepository,
 ) : SubagentDispatcher {
+    private val runNotifications = RunNotifications(context)
+
+    fun dismissCompletionNotification(runId: String) = runNotifications.cancel(runId)
+
     /**
      * 并发闸：上限可配（设置 → 通用 → 护栏与预算），且**每次 acquire 现读设置**。
      *
@@ -176,7 +183,7 @@ class SubagentRunner(
             allowedTools = allowedTools,
             runId = runId,
             parentConversationId = null,
-        )
+        ).copy(deliveryMode = AgentRunEntity.DELIVERY_MODE_NOTIFY)
 
         val job = appScope.launch {
             try {
@@ -209,6 +216,7 @@ class SubagentRunner(
         goal: String,
         timeoutMillis: Long,
         parentConversationId: String?,
+        context: SubagentDispatchContext,
     ): SubagentRunResult? {
         if (goal.isBlank()) return null
 
@@ -222,7 +230,7 @@ class SubagentRunner(
             allowedTools = preset.allowedTools,
             runId = runId,
             parentConversationId = parentConversationId,
-        )
+        ).copy(scopeToken = context.scopeToken ?: "run:$runId")
 
         // **挂在调用方 Job 之下的子 Job**：既能"只取消这一个 run"（详情页的取消按钮），
         // 又能让"用户中断本轮对话"照旧级联取消它（父 Job 取消 → 子 Job 取消）。
@@ -239,6 +247,8 @@ class SubagentRunner(
                     timeoutMillis = timeoutMillis,
                     toolApproval = preset.toolApproval,
                     deliverables = preset.deliverables,
+                    parentToolEnvelope = context.parentToolEnvelope,
+                    parentWorkspaceId = context.parentWorkspaceId,
                 )
                 // 状态/失败原因以**落库结果**为准：超时、取消、异常这些路径只有账本知道
                 val stored = agentRunDAO.getRun(run.id)
@@ -261,42 +271,43 @@ class SubagentRunner(
         }
     }
 
-    /** 独立于父生成的 Job；先持久化后接受。P1a 后台审批恒为 DENY，ASK 留待 P1b。 */
+    /** 独立于父生成的 Job；先持久化后接受，后台 ASK 必须有可达的通知路径。 */
     override suspend fun dispatchBackground(
         preset: SubagentPreset,
         goal: String,
         timeoutMillis: Long,
         parentConversationId: String,
+        context: SubagentDispatchContext,
     ): SubagentRunResult? {
         if (!settingsStore.settingsFlow.value.enableBackgroundSubagent || goal.isBlank()) return null
         val parentId = runCatching { Uuid.parse(parentConversationId) }.getOrNull() ?: return null
         val runId = Uuid.random()
         if (!gate.tryAcquire(runId.toString())) return null
         val profile = preset.toRunProfile()
+        val approval = backgroundApprovalDecision(preset.toolApproval, runNotifications.approvalRouteAvailable())
+        val initialMessages = buildList {
+            approval.note?.let { add(UIMessage.system(it)) }
+            add(UIMessage.user(goal))
+        }
         val run = newRunEntity(
             AgentRunEntity.ENTRY_POINT_CHAT, profile, goal, preset.allowedTools, runId, parentId.toString(),
-        ).copy(deliveryMode = AgentRunEntity.DELIVERY_MODE_NOTICE)
+        ).copy(deliveryMode = AgentRunEntity.DELIVERY_MODE_NOTICE,
+            scopeToken = context.scopeToken ?: "run:$runId", transcript = newTranscript(initialMessages))
         try {
             // 调用方取消不会留下已占位但未登记/未启动的任务。
             withContext(NonCancellable) {
                 agentRunDAO.insertRun(run)
                 val job = appScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-                    try {
-                        executeRun(run, profile, preset.allowedTools, timeoutMillis,
-                            SubagentToolApproval.DENY, preset.deliverables)
-                    } finally {
-                        withContext(NonCancellable) {
-                            agentRunDAO.finishRun(run.id, AgentRunEntity.STATUS_CANCELLED, null, null,
-                                System.currentTimeMillis(), "Run cancelled before execution completed.")
-                        }
-                    }
+                    executeRun(run, profile, preset.allowedTools, timeoutMillis, approval.policy,
+                        preset.deliverables, context.parentToolEnvelope, context.parentWorkspaceId)
                 }
                 activeJobs[runId] = job
                 job.invokeOnCompletion { cause ->
                     if (cause != null) appScope.launch {
                         withContext(NonCancellable) {
-                            agentRunDAO.finishRun(run.id, AgentRunEntity.STATUS_CANCELLED, null, null,
-                                System.currentTimeMillis(), "Run cancelled before execution completed.")
+                            finishRun(runId, if (cause is CancellationException) AgentRunEntity.STATUS_CANCELLED
+                                else AgentRunEntity.STATUS_FAILED, null,
+                                if (cause is CancellationException) null else "exception: background run stopped")
                         }
                     }
                     gate.release(run.id)
@@ -393,6 +404,8 @@ class SubagentRunner(
         toolApproval: SubagentToolApproval,
         /** 交付物契约（预设给；运行页手动派发恒为 null = 不设闸），见 design-deliverable-gate.md §二。 */
         deliverables: List<String>? = null,
+        parentToolEnvelope: Set<String>? = null,
+        parentWorkspaceId: Uuid? = null,
     ): RunOutcome? {
         val runId = Uuid.parse(initial.id)
 
@@ -452,7 +465,8 @@ class SubagentRunner(
                 // 却继续吃 CPU/网络直到 30 分钟看门狗。取消 scope 时据此级联 killByOwner。
                 turnOwner = "run:$runId",
             )
-            val envelope = resolveSubagentEnvelope(segments, allowedTools)
+            val envelope = resolveSubagentEnvelope(segments, allowedTools, parentToolEnvelope,
+                profile.workspaceId, parentWorkspaceId)
             val tools = segments.flatMap { it.tools }.filter { it.name in envelope }
             update {
                 it.copy(
@@ -467,7 +481,9 @@ class SubagentRunner(
                 "run $runId envelope=${envelope.sorted()} (requested=${allowedTools?.sorted()})",
             )
 
-            var currentMessages = listOf(UIMessage.user(initial.goal))
+            var currentMessages = runCatching {
+                JsonInstant.decodeFromString<List<UIMessage>>(initial.transcript)
+            }.getOrDefault(listOf(UIMessage.user(initial.goal)))
 
             // 护栏实例**建在 run 上、跨"审批续跑"累积**：ASK 策略下每次批准都是一次新的
             // generateText 调用（与聊天路径的审批续跑同形），建在调用内会每次重置——
@@ -591,6 +607,7 @@ class SubagentRunner(
                             label = initial.profileName,
                             pending = pending,
                             parentConversationId = initial.parentConversationId,
+                            background = initial.deliveryMode == AgentRunEntity.DELIVERY_MODE_NOTICE,
                         )
                         currentMessages = applyApprovalDecisions(currentMessages, decisions)
                         update {
@@ -689,47 +706,28 @@ class SubagentRunner(
      * 而拒绝后模型还能继续用别的办法把任务做完（这正是 §9.2 的 denied 语义）。
      * 超时的措辞与用户手拒**分开**（见 `APPROVAL_TIMEOUT_REASON`）。
      *
-     * 无通知权限时不弹通知：此时只能靠运行详情页的卡片（前台场景），等待照旧。
+     * 后台通知不可达立即拒绝；对话内阻塞派发仍允许在运行详情页答复。
      */
     private suspend fun awaitHumanDecision(
         runId: String,
         label: String,
         pending: List<UIMessagePart.Tool>,
         parentConversationId: String?,
+        background: Boolean,
     ): Map<String, ToolApprovalState> {
-        val waiters = SubagentApprovalQueue.registerBatch(runId, label, pending, parentConversationId)
-        postApprovalNotification(runId, label, pending)
-        try {
-            withTimeoutOrNull(APPROVAL_TIMEOUT_MS) {
-                // 逐个 await：各工具的决定互相独立，谁先答谁先回填
-                waiters.values.forEach { it.await() }
-            }
-        } finally {
-            pending.forEach { SubagentApprovalQueue.forget(it.toolCallId) }
-            // 只撤本 run 的（runId 已命名空间化；并行 run 各撤各的）
-            cancelApprovalNotification(runId)
-        }
-
-        return pending.associate { tool ->
-            val waiter = waiters.getValue(tool.toolCallId)
-            when {
-                !waiter.isCompleted -> tool.toolCallId to ToolApprovalState.Denied(APPROVAL_TIMEOUT_REASON)
-                waiter.getCompleted() -> tool.toolCallId to ToolApprovalState.Approved
-                else -> tool.toolCallId to ToolApprovalState.Denied(USER_DENIED_REASON)
-            }
-        }
+        return awaitRunApproval(runId, label, pending, parentConversationId, background, APPROVAL_TIMEOUT_MS,
+            routeAvailable = { runNotifications.approvalRouteAvailable() },
+            postNotification = { postApprovalNotification(runId, label, pending) },
+            cancelNotification = { cancelApprovalNotification(runId) })
     }
 
     private fun postApprovalNotification(
         runId: String,
         label: String,
         pending: List<UIMessagePart.Tool>,
-    ) {
-        if (!NotificationUtil.hasNotificationPermission(context)) {
-            Logging.log(TAG, "no notification permission; approval can only be answered in the app")
-            return
-        }
-        runCatching {
+    ): Boolean {
+        if (!runNotifications.approvalRouteAvailable()) return false
+        return runCatching {
             context.sendNotification(
                 channelId = SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID,
                 // 按 runId 命名空间化：并行 run 各有各的通知条，不会互相覆盖；
@@ -757,7 +755,7 @@ class SubagentRunner(
                     intent = approvalDecisionIntent(runId, pending, approved = false),
                 )
             }
-        }.onFailure { Logging.log(TAG, "approval notification failed: $it") }
+        }.onFailure { Logging.log(TAG, "approval notification failed: $it") }.getOrDefault(false)
     }
 
     /**
@@ -823,7 +821,7 @@ class SubagentRunner(
     }
 
     private suspend fun finishRun(runId: Uuid, status: String, resultSummary: String?, error: String?) {
-        agentRunDAO.finishRun(
+        val changed = agentRunDAO.finishRun(
             id = runId.toString(),
             status = status,
             resultSummary = resultSummary,
@@ -831,6 +829,12 @@ class SubagentRunner(
             finishedAt = System.currentTimeMillis(),
             cancelReason = if (status == AgentRunEntity.STATUS_CANCELLED) "Run cancelled." else null,
         )
+        if (changed == 1) {
+            agentRunDAO.getRun(runId.toString())?.let { run ->
+                runCatching { runNotifications.completed(run) }
+                    .onFailure { Logging.log(TAG, "run completion notification failed: $it") }
+            }
+        }
     }
 
     private suspend fun failRun(runId: Uuid, errorKind: String, detail: String?) {

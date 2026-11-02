@@ -22,6 +22,8 @@ package app.androidrik.rikkahub.service
  * 进程重启后同一个 run 仍是同一个 id，因此"取消通知"不需要任何内存注册表。
  */
 object NotificationIds {
+    fun runCompleted(runId: String): Int = stableId("agent-run-completed", runId)
+    fun runCompletedDetail(runId: String): Int = stableId("agent-run-completed-detail", runId)
 
     /** 子代理审批通知的命名空间（一个 run 一条聚合通知）。 */
     private const val NAMESPACE_SUBAGENT_APPROVAL = "subagent-approval"

@@ -122,7 +122,7 @@ fun SubagentPresetsPage(vm: SubagentPresetsVM = koinViewModel()) {
                     )
                     item(
                         headlineContent = { Text("后台子代理（实验性）") },
-                        supportingContent = { Text("允许后台预设立即返回；结果在会话空闲时送达，不自动继续生成。后台工具审批暂按拒绝处理。") },
+                        supportingContent = { Text("允许后台预设立即返回；结果在会话空闲时送达，不自动继续生成。后台 ASK 仅在审批通知可达时等待；不可达或超时会拒绝工具执行。") },
                         trailingContent = {
                             Switch(settings.enableBackgroundSubagent, { vm.setBackgroundEnabled(it) })
                         },

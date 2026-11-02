@@ -311,6 +311,14 @@ class ChatToolFactory(
                         enableBackgroundSubagent = settings.enableBackgroundSubagent,
                         dispatcher = dispatcher,
                         parentConversationId = conversationId,
+                        dispatchContext = {
+                            SubagentDispatchContext(
+                                parentToolEnvelope = segments.filter { it.source != "subagent" }
+                                    .flatMap { it.tools }.map { it.name }.toSet(),
+                                scopeToken = turnOwner,
+                                parentWorkspaceId = assistant.workspaceId,
+                            )
+                        },
                     ),
                 )
             }

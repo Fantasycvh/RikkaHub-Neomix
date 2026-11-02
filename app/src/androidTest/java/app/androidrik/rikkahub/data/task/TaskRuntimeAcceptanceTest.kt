@@ -16,6 +16,12 @@ import app.androidrik.ai.ui.isSubagentNotice
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID
+import app.androidrik.rikkahub.data.ai.SubagentApprovalQueue
+import app.androidrik.rikkahub.data.model.SubagentToolApproval
+import app.androidrik.rikkahub.service.RunNotifications
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.db.AppDatabase
@@ -59,6 +65,7 @@ class TaskRuntimeAcceptanceTest {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         check(app.javaClass == Application::class.java && app.packageName.endsWith(".debug"))
         val scenario = args.getString("runtimeScenario") ?: "long"
+        val approvalMode = args.getString("runtimeApproval") ?: "none"
         val carrier = NoticeCarrier.fromStorage(args.getString("runtimeCarrier"))
         val evidence = File(app.filesDir, "runtime-acceptance").apply { mkdirs() }
         val db = Room.databaseBuilder(app, AppDatabase::class.java, "runtime-acceptance.db").build()
@@ -76,6 +83,11 @@ class TaskRuntimeAcceptanceTest {
                 }
             })
         }.koin
+        var notificationRunId: String? = null
+        val notifications = app.getSystemService(NotificationManager::class.java)
+        val hadApprovalChannel = notifications.getNotificationChannel(SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID) != null
+        if (approvalMode != "none" && !hadApprovalChannel) notifications.createNotificationChannel(NotificationChannel(
+            SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID, "Runtime approval", NotificationManager.IMPORTANCE_HIGH))
         try {
             val store = koin.get<SettingsStore>()
             store.awaitLoaded()
@@ -122,6 +134,7 @@ class TaskRuntimeAcceptanceTest {
                 override fun tools() = listOf(Tool(name = "runtime_acceptance_wait", description =
                     "Wait for the acceptance test barrier, then return a fixed test value. Call exactly once.",
                     executionTimeoutMillis = 240_000,
+                    needsApproval = { approvalMode != "none" },
                     execute = {
                         File(evidence, "tool.started").writeText("$scenario:$seconds")
                         toolStarted.complete(Unit)
@@ -137,11 +150,31 @@ class TaskRuntimeAcceptanceTest {
             val started = System.currentTimeMillis()
             val result = runner.dispatchBackground(SubagentPreset(name = "runtime-acceptance", modelId = model.id,
                 systemPrompt = "Call runtime_acceptance_wait exactly once, then reply only with the value returned by the tool.",
-                allowedTools = setOf("runtime_acceptance_wait"), executionMode = SubagentExecutionMode.BACKGROUND),
+                allowedTools = setOf("runtime_acceptance_wait"), executionMode = SubagentExecutionMode.BACKGROUND,
+                toolApproval = if (approvalMode != "none") SubagentToolApproval.ASK else SubagentToolApproval.DENY),
                 "Call runtime_acceptance_wait now. After it returns, output RUNTIME_ACCEPTANCE_OK.",
                 300_000, parent.id.toString())!!
+            notificationRunId = result.runId
             assertTrue(System.currentTimeMillis() - started < 10_000)
             File(evidence, "restart.ids").writeText("${parent.id}\n${result.runId}")
+            if (approvalMode != "none") {
+                if (approvalMode != "unavailable") {
+                    val request = withTimeout(30_000) { SubagentApprovalQueue.requests.first { list ->
+                        list.any { it.runId == result.runId }
+                    }.first { it.runId == result.runId } }
+                    assertEquals("awaiting_approval", dao.getRun(result.runId)!!.status)
+                    assertTrue(SubagentApprovalQueue.resolve(request, approvalMode == "approve"))
+                }
+                chat.startNoticeDelivery()
+                val terminal = withTimeout(60_000) { dao.observeRun(result.runId).first { it?.finishedAt != null }!! }
+                assertEquals(terminal.error, "completed", terminal.status)
+                assertEquals(approvalMode == "approve", toolStarted.isCompleted)
+                if (approvalMode == "unavailable") assertTrue(terminal.transcript.contains("notification is unavailable"))
+                withTimeout(30_000) { dao.observeRun(result.runId).first { it?.deliveryState == "delivered" } }
+                assertFalse(SubagentApprovalQueue.requests.value.any { it.runId == result.runId })
+                File(evidence, "approval-$approvalMode.passed").writeText("executed=${toolStarted.isCompleted};terminal=${terminal.status};delivered=true")
+                return@runBlocking
+            }
             withTimeout(60_000) { toolStarted.await() }
             if (scenario == "seed") {
                 File(evidence, "seed.ready").writeText("kill this process now")
@@ -172,6 +205,8 @@ class TaskRuntimeAcceptanceTest {
             Log.i("RuntimeAcceptance", "long run, busy defer, idle delivery passed")
         } finally {
             koin.get<AppScope>().coroutineContext[Job]!!.cancelAndJoin()
+            notificationRunId?.let { RunNotifications(app).cancel(it) }
+            if (approvalMode != "none" && !hadApprovalChannel) notifications.deleteNotificationChannel(SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID)
             db.close()
             stopKoin()
         }

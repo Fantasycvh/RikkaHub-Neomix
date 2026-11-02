@@ -32,6 +32,8 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
+import app.androidrik.rikkahub.data.task.TaskVisibility
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
@@ -66,6 +68,11 @@ fun AgentRunDetailPage(
     runId: String,
     vm: AgentRunDetailVM = koinViewModel(),
 ) {
+    LifecycleStartEffect(runId) {
+        val lease = TaskVisibility.acquire("run:$runId")
+        vm.onOpened(runId)
+        onStopOrDispose { lease.close() }
+    }
     val run by vm.observeRun(runId).collectAsStateWithLifecycle(null)
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current

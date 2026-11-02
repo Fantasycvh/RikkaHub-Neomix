@@ -31,6 +31,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
+import app.androidrik.rikkahub.data.task.TaskVisibility
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
@@ -68,6 +70,10 @@ fun TaskCenterPage(vm: TaskCenterVM = koinViewModel()) {
     val scope = rememberCoroutineScope()
     var filter by rememberSaveable { mutableStateOf<TaskSource?>(null) }
 
+    if (filter == null || filter == TaskSource.AGENT) LifecycleStartEffect(Unit) {
+        val lease = TaskVisibility.acquire("all")
+        onStopOrDispose { lease.close() }
+    }
     val visible = tasks.filter { filter == null || it.source == filter }
 
     Scaffold(
@@ -247,7 +253,7 @@ private fun TaskCenterCard(
 }
 
 @Composable
-private fun taskStateLabel(state: TaskState): String = stringResource(
+internal fun taskStateLabel(state: TaskState): String = stringResource(
     when (state) {
         TaskState.PENDING -> R.string.agent_run_status_pending
         TaskState.RUNNING -> R.string.agent_run_status_running
