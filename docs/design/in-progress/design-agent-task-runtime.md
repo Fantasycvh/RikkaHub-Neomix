@@ -810,7 +810,7 @@ P4b 的 `scheduledHeadlessEnabled` 同页、默认关（关闭 = 会话注入）
 ### P4（定时运行并入控制面：账本/取消 + 可选 headless）
 
 2026-11-02 本地提交：P4a `feat(task-runtime): 定时运行账本进入任务中心`（`080959094`）；
-P4b 本地提交 `feat(task-runtime): 定时任务可选 headless agent_run`（`ff35a90c9`）。无 DB 版本变更。
+P4b 本地提交 `feat(task-runtime): 定时任务可选 headless agent_run`（`4f5561052`）。无 DB 版本变更。
 
 - [x] 任务中心定时段改读运行账本：新增 `ScheduledTaskDAO.flowRecentRuns`（跨任务、有界 120 条）与
   `flowUnfinishedRuns`；`ScheduledTaskRepository` 暴露两条流，`TaskCenter` 先把「任务行 + 最近账本 +
