@@ -632,7 +632,7 @@ class ChatService(
             val used = maxOf(original.estimateWindowTokens(model),
                 app.androidrik.rikkahub.utils.estimateTokenCount(original.requestWindowMessages()))
             try {
-                app.androidrik.rikkahub.data.task.appendNoticeToSession(session, runs, contextLength, used) { updated, ids ->
+                app.androidrik.rikkahub.data.task.appendNoticeToSession(session, runs, contextLength, used, settings.noticeCarrier) { updated, ids ->
                     database.withTransaction {
                         if (!conversationRepo.existsConversationById(id)) throw NotFoundException("Parent conversation was deleted")
                         conversationRepo.updateConversation(updated)

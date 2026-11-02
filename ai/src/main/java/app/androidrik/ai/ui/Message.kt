@@ -422,7 +422,7 @@ private fun List<UIMessage>.alignContextStart(startIndex: Int): Int {
         // 如果当前消息包含未执行的tool call，往前查找对应的用户消息
         if (currentMessage.getTools().any { !it.isExecuted }) {
             for (i in adjustedStartIndex - 1 downTo 0) {
-                if (this[i].role == MessageRole.USER) {
+                if (this[i].semanticRole == MessageRole.USER) {
                     adjustedStartIndex = i
                     needsAdjustment = true
                     break
@@ -771,3 +771,16 @@ val UIMessage.isSubagentNotice: Boolean
     get() = annotations.any { it is UIMessageAnnotation.SubagentNotice }
 
 fun List<UIMessage>.messagesForAuxGeneration(): List<UIMessage> = filterNot { it.isSubagentNotice }
+
+/** USER 仅是兼容载体；注解决定语义角色，用户意图/导出应共用此判定。 */
+val UIMessage.semanticRole: MessageRole get() = if (isSubagentNotice) MessageRole.SYSTEM else role
+
+/** 中部 SYSTEM 无法渲染/发送时的回退载体，保留 USER 但明确 framing。 */
+fun List<UIMessage>.messagesForRequest(): List<UIMessage> = map { message ->
+    if (!message.isSubagentNotice || message.role != MessageRole.USER) message else {
+        message.copy(parts = message.parts.map { part ->
+            if (part !is UIMessagePart.Text || part.text.startsWith("<system-reminder>\n")) part else
+                part.copy(text = "<system-reminder>\n${part.text}\n</system-reminder>")
+        })
+    }
+}

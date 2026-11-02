@@ -81,6 +81,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.semanticRole
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isEmptyUIMessage
 import app.androidrik.ai.util.encodeBase64
@@ -598,7 +599,7 @@ private suspend fun exportToMarkdown(
         append("*Exported on ${LocalDateTime.now().toLocalString()}*\n\n")
 
         messages.forEach { message ->
-            val role = when (message.role) { MessageRole.USER -> "**User**"; MessageRole.SYSTEM -> "**System**"; else -> "**Assistant**" }
+            val role = when (message.semanticRole) { MessageRole.USER -> "**User**"; MessageRole.SYSTEM -> "**System**"; else -> "**Assistant**" }
             append("$role:\n\n")
             message.parts.forEach { part ->
                 when (part) {
@@ -865,9 +866,9 @@ private suspend fun exportToHtml(
     sb.append("<p class=\"meta\">Exported on ").append(LocalDateTime.now().toLocalString().escapeHtml()).append("</p>\n")
 
     messages.forEach { message ->
-        val isUser = message.role == MessageRole.USER
-        val roleClass = if (message.role == MessageRole.SYSTEM) "system" else if (isUser) "user" else "assistant"
-        val roleLabel = if (message.role == MessageRole.SYSTEM) "System" else if (isUser) "User" else "Assistant"
+        val isUser = message.semanticRole == MessageRole.USER
+        val roleClass = if (message.semanticRole == MessageRole.SYSTEM) "system" else if (isUser) "user" else "assistant"
+        val roleLabel = if (message.semanticRole == MessageRole.SYSTEM) "System" else if (isUser) "User" else "Assistant"
         sb.append("<div class=\"message ").append(roleClass).append("\">\n")
         sb.append("<div class=\"role\">").append(roleLabel).append("</div>\n")
         message.parts.forEach { part ->
@@ -1175,7 +1176,7 @@ private fun ExportedChatMessage(
                 .widthIn(max = (540 * 0.9).dp)
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start
+            horizontalAlignment = if (message.semanticRole == MessageRole.USER) Alignment.End else Alignment.Start
         ) {
             groupedParts.forEach { block ->
                 when (block) {
@@ -1223,7 +1224,7 @@ private fun ExportedChatMessage(
                             is UIMessagePart.Text -> {
                                 if (part.text.isNotBlank()) {
                                     ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
-                                        if (message.role == MessageRole.USER) {
+                                        if (message.semanticRole == MessageRole.USER) {
                                             // 与屏显同源：用户气泡走角色覆写（LocalUserBubbleColor），缺省 primaryContainer
                                             val userBubbleColor = LocalUserBubbleColor.current
                                                 ?: MaterialTheme.colorScheme.primaryContainer

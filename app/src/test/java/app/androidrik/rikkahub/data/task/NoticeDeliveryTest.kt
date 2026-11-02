@@ -19,6 +19,30 @@ import kotlinx.coroutines.Job
 import kotlin.uuid.Uuid
 
 class NoticeDeliveryTest {
+    @Test fun `carrier defaults and unknown stored values use system`() {
+        assertEquals(NoticeCarrier.SYSTEM, NoticeCarrier.fromStorage(null))
+        assertEquals(NoticeCarrier.SYSTEM, NoticeCarrier.fromStorage("invalid"))
+        assertEquals(NoticeCarrier.USER, NoticeCarrier.fromStorage("user"))
+        val json = app.androidrik.rikkahub.utils.JsonInstant
+        val old = json.decodeFromString<app.androidrik.rikkahub.data.datastore.Settings>("{}")
+        assertEquals(NoticeCarrier.SYSTEM, old.noticeCarrier)
+        assertEquals(NoticeCarrier.USER, json.decodeFromString<app.androidrik.rikkahub.data.datastore.Settings>(
+            """{"noticeCarrier":"user"}""").noticeCarrier)
+    }
+
+    @Test fun `fallback carrier retains source identity and raw output`() {
+        val row = run("fallback")
+        val system = subagentNotice(listOf(row))
+        val user = subagentNotice(listOf(row), NoticeCarrier.USER)
+        assertEquals(MessageRole.USER, user.role)
+        assertTrue(user.isSynthetic)
+        assertEquals(system.parts, user.parts)
+        assertEquals(system.annotations, user.annotations)
+        assertEquals(MessageRole.SYSTEM, app.androidrik.rikkahub.data.model.MessageNode(messages = listOf(user)).role)
+        assertTrue(user.messagesForAuxGenerationForTest().isEmpty())
+    }
+
+    private fun UIMessage.messagesForAuxGenerationForTest() = listOf(this).messagesForAuxGeneration()
     private fun run(id: String, parent: String? = "parent") = AgentRunEntity(
         id = id, entryPoint = "chat", status = "completed", profileAssistantId = "p", profileName = "research",
         modelId = null, modelName = null, goal = "goal", toolEnvelope = "[]", transcript = "[]",

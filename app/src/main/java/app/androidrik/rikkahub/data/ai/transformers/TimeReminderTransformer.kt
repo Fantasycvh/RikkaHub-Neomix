@@ -4,6 +4,7 @@ import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.ui.semanticRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.utils.toLocalDateTime
 import java.time.ZoneId
@@ -38,7 +39,7 @@ internal fun applyTimeReminder(
     var firstUserFound = false
     for (i in messages.indices) {
         val current = messages[i]
-        if (current.role == MessageRole.USER) {
+        if (current.semanticRole == MessageRole.USER) {
             val currInstant = current.createdAt.toInstant(tz)
             if (!firstUserFound) {
                 firstUserFound = true

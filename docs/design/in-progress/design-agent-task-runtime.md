@@ -1,7 +1,7 @@
 # Agent 任务控制面：子代理 / 无头 run / 后台任务的三合一与改进（design-agent-task-runtime）
 
 > 状态：**已拍板（2026-11-02）**；**P0 / P0.5 已全部落地**（`692ed04ad` / `23c977613` / `8df5a214b`），
-> P1a 数据底座已提交（`2cb90d45a`）；后台派发、投递泵和三端标记已接入，长时模型/生命周期整体验收待补。进度与遗留见附录 D。
+> P1a 数据底座已提交（`2cb90d45a`）；后台派发、投递泵、三端标记和 USER 回退已接入；GLM-4.7 专项验收通过，范围及遗留见附录 D。
 > 日期：2026-11-02。**rev2**（第一版经交叉评审后重写）。
 > 对象：本仓三套执行底座 + `AndyerNotFound/L3Hub-RikkaHub-Fork-WFadnf`（下称「L3Hub fork」，
 > 评审时 HEAD `e5f7e196`）。
@@ -650,9 +650,10 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
   `sendQueuedMessage` 用 `queued.turnOwner`、注册表不调 `chatService.`/`messageQueue.pause(`、
   `ACTION_STOP` 真的接到 `runRegistry.cancel`）；行为测试 `ScheduledRunRegistryTest`。
 
-### P1a（核心链路已接入，整体验收待补）
+### P1a（核心链路与专项验收已完成）
 
-数据底座提交：`2cb90d45a`；后续核心链路见本提交。**不代表 P1a 长时模型/生命周期整体验收通过**。
+数据底座：`2cb90d45a`；后台核心链路：`33a3506bb`。2026-11-02 补齐 USER 回退及 GLM-4.7 专项验收，
+详见[验收报告](../verification/agent-task-runtime-p1a-2026-11-02.md)。
 
 - [x] DB v58：`agent_run` 新增 §4.2 七列，保留逻辑父指针、无外键；
   `@ColumnInfo(defaultValue)`、AutoMigration 57→58、`58.json` 与 `SCHEMA_VERSION` 同步。
@@ -696,13 +697,27 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
   路径验证：下一条用户消息保存不删 notice；事务失败同时回滚消息与投递状态，随后重试只追加一次。
   JVM：app **2798** 例（2 跳过）、ai **478** 例，0 失败；IME 审计 A=0、A'=0。
   Web：`pnpm typecheck`、`pnpm exec tsx app/components/message/subagent-notice.test.mts` 通过。
-- [ ] P1a 长时模型/生命周期整体验收：真实模型后台运行约 3 分钟、父生成中完成后空闲补投、
-  杀进程后启动补投及 SYSTEM notice 的 Android UI 人工验收（当前真机测试覆盖隔离库/会话保存，
-  未运行付费模型或进行 Doze 验收）。`noticeCarrier=user` 回退开关尚未实现；当前固定 SYSTEM。
+- [x] `noticeCarrier=system|user` 回退开关（默认 SYSTEM）：预设页的后台总开关开启后可切换兼容模式；
+  USER 载体保留来源注解和 SYSTEM 语义角色，导出/分组不冒充用户；标题、建议、记忆整理过滤它。
+  请求副本加 `<system-reminder>` framing，避免套用普通用户模板/宏/插件正文改写。
+- [x] GLM-4.7 + PJX110 / Android 15 专项验收：SYSTEM 模式真实 run **189763ms**（工具等待 180 秒），
+  子 run 完成时父会话 busy 则留 pending，释放后一次补投且不自动续跑；外部杀进程后新进程
+  INTERRUPTED + delivered；USER 回退短任务 **12229ms** 及重启补投通过。
+  父 busy 使用生产 session 注册受控 Job，恢复使用隔离进程调用生产对账/投递入口，边界见报告。
+- [x] 强制 deep IDLE 验收：系统结束隔离测试进程，恢复后成功补投中断结果。
+  **不宣称 Doze 下无限存活**；测试恢复后已撤销强制 idle 和电池模拟状态。
+- [x] SYSTEM / USER Compose 卡片 2/2，截图已检查；更新后 JVM app **2804**（2 跳过）、
+  ai **479**，0 失败；IME A=0、A'=0。
+- [x] 验收数据隔离：专用 DB + 显式隔离 SettingsStore 文件，不读写正常提供商配置；
+  两批真实模型验收的正常设置文件 SHA-256 前后相同。早期夹具重写调试配置的问题已修正。
+  临时 key 仅在主机回环代理内存中使用，测试结束后清理代理与转发。
+- [x] 附带生命周期修复：正常取消 Flow 订阅不再触发 `Runtime.halt(1)`，已加回归。
 
 ### 已知未验证
 
-- Android 真机：后台 run 存活、Doze、通知权限关闭降级、SYSTEM notice 渲染（P1a 前必须补真机清单）。
+- 正式 Application 的完整聊天页人工导航、KeepAlive 前台服务与不同 ROM 的长时后台存活仍需扩展验证；
+  当前已通过真实子模型 + 生产 session/投递入口的隔离验收和 notice 卡片 UI 验收，见报告中的边界。
+- 通知权限关闭时的 ASK 降级属于 P1b 体验验收；当前后台内部工具审批固定 DENY。
 - 定时取消的真机时序：通知「停止」→ `ACTION_STOP` → Job.cancel → 终态 CANCELLED（单测已覆盖状态机，
   真机需验证服务生命周期与通知动作的竞态）。
 - 旧备份 ZIP → v58 的完整导入流程（独立库 57→58 迁移与 58→57 降级隔离已由上方真机测试覆盖）。

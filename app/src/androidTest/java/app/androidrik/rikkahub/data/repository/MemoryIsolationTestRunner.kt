@@ -1,7 +1,9 @@
 package app.androidrik.rikkahub.data.repository
 
 import android.app.Application
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import androidx.test.runner.AndroidJUnitRunner
 
 /**
@@ -12,4 +14,13 @@ import androidx.test.runner.AndroidJUnitRunner
 class MemoryIsolationTestRunner : AndroidJUnitRunner() {
     override fun newApplication(cl: ClassLoader, className: String, context: Context): Application =
         super.newApplication(cl, Application::class.java.name, context)
+
+    override fun newActivity(cl: ClassLoader, className: String, intent: Intent): Activity {
+        // Some OEMs restore the last launcher task when the screen wakes during Doze tests.
+        // Its production UI requires RikkaHubApp; this runner deliberately uses plain Application.
+        // Keep that unsolicited launch inside the existing empty debug-only test host.
+        val isolated = if (className == "app.androidrik.rikkahub.RouteActivity")
+            "app.androidrik.rikkahub.SketchTestHostActivity" else className
+        return super.newActivity(cl, isolated, intent)
+    }
 }

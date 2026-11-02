@@ -6,6 +6,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SubagentNoticeTest {
+    @Test fun `user carrier is framed once on request copies and keeps system semantics`() {
+        val notice = UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text("external value")),
+            annotations = listOf(UIMessageAnnotation.SubagentNotice(listOf("a"))))
+        assertEquals(MessageRole.SYSTEM, notice.semanticRole)
+        val request = listOf(notice).messagesForRequest()
+        assertEquals(MessageRole.USER, request.single().role)
+        assertEquals("<system-reminder>\nexternal value\n</system-reminder>", request.single().toText())
+        assertEquals(request, request.messagesForRequest())
+        assertEquals("external value", notice.toText())
+        val user = UIMessage.user("real input")
+        assertEquals(listOf(user), listOf(user).messagesForRequest())
+    }
     @Test fun `notice discriminator and source ids survive serialization`() {
         val notice = UIMessageAnnotation.SubagentNotice(listOf("a", "b"))
         val encoded = Json.encodeToString(UIMessageAnnotation.serializer(), notice)

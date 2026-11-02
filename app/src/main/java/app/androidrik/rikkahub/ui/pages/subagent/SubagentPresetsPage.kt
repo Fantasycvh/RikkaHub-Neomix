@@ -127,6 +127,16 @@ fun SubagentPresetsPage(vm: SubagentPresetsVM = koinViewModel()) {
                             Switch(settings.enableBackgroundSubagent, { vm.setBackgroundEnabled(it) })
                         },
                     )
+                    if (settings.enableBackgroundSubagent) item(
+                        headlineContent = { Text("结果消息兼容模式") },
+                        supportingContent = { Text("仅在 SYSTEM 结果显示或发送异常时开启。消息仍标为子代理结果，不计作用户输入。") },
+                        trailingContent = {
+                            Switch(settings.noticeCarrier == app.androidrik.rikkahub.data.task.NoticeCarrier.USER, {
+                                vm.setNoticeCarrier(if (it) app.androidrik.rikkahub.data.task.NoticeCarrier.USER else
+                                    app.androidrik.rikkahub.data.task.NoticeCarrier.SYSTEM)
+                            })
+                        },
+                    )
                 }
             }
 

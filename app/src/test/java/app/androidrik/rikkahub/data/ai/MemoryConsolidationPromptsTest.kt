@@ -28,6 +28,18 @@ import kotlin.uuid.Uuid
  * 单轮超预算也不许让某个会话永远轮不到、没有正文的轮次也要跨过去（否则它每 2 分钟被扫一次）。
  */
 class MemoryConsolidationPromptsTest {
+    @Test fun `user carrier notice never becomes user intent in memory consolidation`() {
+        val notice = UIMessage(role = MessageRole.USER, isSynthetic = true,
+            parts = listOf(UIMessagePart.Text("EXTERNAL_RESULT_MUST_NOT_BECOME_MEMORY")),
+            annotations = listOf(app.androidrik.ai.ui.UIMessageAnnotation.SubagentNotice(listOf("run"))))
+        val conversation = Conversation.ofId(Uuid.random(), Uuid.random()).copy(messageNodes = listOf(
+            MessageNode(messages = listOf(UIMessage.user("actual user intent"))),
+            MessageNode(messages = listOf(notice)),
+        ))
+        val result = buildConsolidationTranscript(listOf(conversation), emptyMap())
+        assertTrue(result.text.contains("actual user intent"))
+        assertFalse(result.text.contains("EXTERNAL_RESULT_MUST_NOT_BECOME_MEMORY"))
+    }
 
     @Test
     fun `custom prompt replaces base while runtime notes remain attached`() {

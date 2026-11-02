@@ -213,7 +213,8 @@ class AgentRunDeliveryInstrumentedTest {
         val isolatedFiles = File(context.cacheDir, "notice-repository-${Uuid.random()}").apply { mkdirs() }
         val isolated = object : ContextWrapper(context) { override fun getFilesDir() = isolatedFiles }
         try {
-            val files = FilesManager(isolated, FilesRepository(db.managedFileDao()), scope, SettingsStore(isolated, AppScope().apply { cancel() }))
+            val files = FilesManager(isolated, FilesRepository(db.managedFileDao()), scope,
+                SettingsStore(isolated, AppScope().apply { cancel() }, File(isolatedFiles, "settings.preferences_pb")))
             val repo = ConversationRepository(db.conversationDao(), db.messageNodeDao(), db.favoriteDao(), db,
                 files, MessageFtsManager(db), db.compressionCheckpointDao())
             val id = Uuid.random()

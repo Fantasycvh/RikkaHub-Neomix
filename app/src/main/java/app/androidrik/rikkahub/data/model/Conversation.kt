@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.isSubagentNotice
+import app.androidrik.ai.ui.semanticRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.finishReasoning
 import app.androidrik.ai.ui.UIMessagePart
@@ -357,7 +358,7 @@ data class MessageNode(
         messages[safeSelectIndex]
     }
 
-    val role get() = messages.firstOrNull()?.role ?: MessageRole.USER
+    val role get() = messages.firstOrNull()?.semanticRole ?: MessageRole.USER
 
     companion object {
         fun of(message: UIMessage) = MessageNode(

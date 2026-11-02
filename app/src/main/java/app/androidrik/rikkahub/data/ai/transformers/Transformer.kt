@@ -3,6 +3,8 @@ package app.androidrik.rikkahub.data.ai.transformers
 import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.ui.messagesForRequest
+import app.androidrik.ai.ui.isSubagentNotice
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
@@ -145,6 +147,8 @@ private suspend fun List<UIMessage>.transformsCollectingVolatileSpans(
     onTransformerTiming: ((index: Int, name: String, nanos: Long) -> Unit)? = null,
     collectAnnotations: Boolean = true,
 ): TransformedMessages {
+    val inputChain = transformers.any { it is InputMessageTransformer }
+    val notices = if (inputChain) filter { it.isSubagentNotice }.associateBy { it.id } else emptyMap()
     var result = this
     var spans: List<List<IntRange>> = List(result.size) { emptyList() }
     transformers.forEachIndexed { index, transformer ->
@@ -159,6 +163,8 @@ private suspend fun List<UIMessage>.transformsCollectingVolatileSpans(
                 onTransformerTiming(index, transformer.javaClass.simpleName, System.nanoTime() - started)
             }
         }
+        // 外部结果不套用户模板/宏/插件改写；只在最终请求副本上增加兼容 framing。
+        if (notices.isNotEmpty()) result = result.map { notices[it.id] ?: it }
         if (!collectAnnotations) return@forEachIndexed
         // Match by message id, not list index: transformers may insert/delete/reorder messages.
         val previous = before.withIndex().associateBy { it.value.id }
@@ -176,7 +182,7 @@ private suspend fun List<UIMessage>.transformsCollectingVolatileSpans(
                 mergeVolatileRanges(retained + extra, output.countingBody().length)
         }
     }
-    return TransformedMessages(result, spans)
+    return TransformedMessages(if (inputChain) result.messagesForRequest() else result, spans)
 }
 
 suspend fun List<UIMessage>.visualTransforms(

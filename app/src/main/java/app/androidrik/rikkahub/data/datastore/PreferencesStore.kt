@@ -242,6 +242,8 @@ internal fun JsonElement.isRetiredSearchService(): Boolean {
 class SettingsStore(
     context: Context,
     scope: AppScope,
+    /** Explicit store file for isolated test profiles; normal callers retain the existing settings file. */
+    dataStoreFile: File = context.preferencesDataStoreFile("settings"),
 ) : KoinComponent {
     /**
      * 串行化 update(fn) 的读-改-写（D5）：并发调用基于同一快照做 fn 会 lost update
@@ -408,6 +410,7 @@ class SettingsStore(
         // 对话内子代理派发（设计 §十）：开关 + 「按名称调度的模型+提示词」组合列表。
         // **必须进三件套**——它们是 Settings 的**顶层平铺字段**，不写进 DataStore 就只在内存里活着：
         // UI 能改、当前进程内生效，**一重启就回到默认值**（正是 2026-09-11 那条教训的形状）。
+        val NOTICE_CARRIER = stringPreferencesKey("subagent_notice_carrier")
         val ENABLE_BACKGROUND_SUBAGENT = booleanPreferencesKey("enable_background_subagent")
         val ENABLE_SUBAGENT_DISPATCH = booleanPreferencesKey("enable_subagent_dispatch")
         val SUBAGENT_PRESETS = stringPreferencesKey("subagent_presets")
@@ -423,7 +426,7 @@ class SettingsStore(
 
     }
 
-    private val dataStore = createSettingsDataStore(context.preferencesDataStoreFile("settings"))
+    private val dataStore = createSettingsDataStore(dataStoreFile)
 
     // 读取失败**绝不能**回退为空配置：空 Preferences 随后会被 update() 当成用户数据写回，
     // 把全部设置抹成默认值（上游 70b382f5 修的就是这个，用户表现为「升级后设置全丢」）。
@@ -621,6 +624,7 @@ class SettingsStore(
                 importedSources = preferences[IMPORTED_SOURCES]?.let {
                     JsonInstant.decodeFromString<Map<String, ImportSourceRecord>>(it)
                 } ?: emptyMap(),
+                noticeCarrier = app.androidrik.rikkahub.data.task.NoticeCarrier.fromStorage(preferences[NOTICE_CARRIER]),
                 enableBackgroundSubagent = preferences[ENABLE_BACKGROUND_SUBAGENT] ?: false,
                 enableSubagentDispatch = preferences[ENABLE_SUBAGENT_DISPATCH] ?: false,
                 subagentPresets = preferences[SUBAGENT_PRESETS]?.let {
@@ -895,6 +899,7 @@ class SettingsStore(
             preferences[GLOBAL_PROXY] = JsonInstant.encodeToString(settings.globalProxy)
             preferences[USAGE_DISPLAY_MODE] = settings.usageDisplayMode.name
             preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
+            preferences[NOTICE_CARRIER] = settings.noticeCarrier.storageValue
             preferences[ENABLE_BACKGROUND_SUBAGENT] = settings.enableBackgroundSubagent
             preferences[ENABLE_SUBAGENT_DISPATCH] = settings.enableSubagentDispatch
             preferences[SUBAGENT_PRESETS] = JsonInstant.encodeToString(settings.subagentPresets)
@@ -1302,6 +1307,7 @@ data class Settings(
      * （提示词预算）；②派发是**阻塞**的，模型可以按住本轮对话数分钟；③它是"模型自己决定
      * 再叫一个模型"，不该由更新替用户打开。开启入口在子代理管理页（与预设配置同一处）。
      */
+    val noticeCarrier: app.androidrik.rikkahub.data.task.NoticeCarrier = app.androidrik.rikkahub.data.task.NoticeCarrier.SYSTEM,
     val enableBackgroundSubagent: Boolean = false,
     val enableSubagentDispatch: Boolean = false,
     /**

@@ -38,6 +38,8 @@ class SubagentPresetsVM(
     val workspaces = workspaceRepository.listFlow()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    fun setNoticeCarrier(carrier: app.androidrik.rikkahub.data.task.NoticeCarrier) = update { it.copy(noticeCarrier = carrier) }
+
     fun setBackgroundEnabled(enabled: Boolean) = update { it.copy(enableBackgroundSubagent = enabled) }
 
     fun setDispatchEnabled(enabled: Boolean) = update { it.copy(enableSubagentDispatch = enabled) }

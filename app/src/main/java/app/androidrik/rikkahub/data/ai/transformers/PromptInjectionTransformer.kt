@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.ai.transformers
 
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.semanticRole
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Assistant
@@ -226,7 +227,7 @@ internal fun applyInjections(
     val topInjections = byPosition[InjectionPosition.TOP_OF_CHAT]
     if (!topInjections.isNullOrEmpty()) {
         // 重新计算索引（因为可能插入了系统消息）
-        var insertIndex = result.indexOfFirst { it.role == MessageRole.USER }
+        var insertIndex = result.indexOfFirst { it.semanticRole == MessageRole.USER }
             .takeIf { it >= 0 } ?: result.size
         insertIndex = findSafeInsertIndex(result, insertIndex)
         createMergedInjectionMessages(topInjections).forEach { message ->
@@ -348,7 +349,7 @@ internal fun findSafeInsertIndex(messages: List<UIMessage>, targetIndex: Int): I
         val currentMessage = messages.getOrNull(index)
 
         // 不能插入到 USER → ASSISTANT(含Tool) 之间
-        val isPrevUser = prevMessage?.role == MessageRole.USER
+        val isPrevUser = prevMessage?.semanticRole == MessageRole.USER
         val isCurrentAssistantWithTools = currentMessage?.role == MessageRole.ASSISTANT
             && currentMessage.getTools().isNotEmpty()
 
