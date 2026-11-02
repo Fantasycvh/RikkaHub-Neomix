@@ -611,10 +611,11 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 
 > 规则：每项落地后在此打勾并写「提交短哈希 + 验证方式」；**未打勾即未验证**。
 >
-> 2026-11-02 更新：P0 / P0.5 / P1a / P1b / P3 已落地。当前全量 JVM：**app 2819 例、
-> workspace 169 例，0 失败**（`./gradlew :app:testDebugUnitTest :workspace:testDebugUnitTest`）；
-> P1a/P1b/P3 的真机验收边界分别见各小节与验收报告。P0.5 的「pending 投递骨架」已随 P1a 的
-> v58 数据模型实施。
+> 2026-11-02 更新：P0 / P0.5 / P1a / P1b / P3 已落地。当前全量 JVM：**app 2823 例、
+> ai 479 例、workspace 169 例，0 失败**（`./gradlew :app:testDebugUnitTest :ai:testDebugUnitTest
+> :workspace:testDebugUnitTest`）；P1a/P1b/P3 的真机复核与验收边界见
+> [device-recheck-2026-11-02](../verification/agent-task-runtime-device-recheck-2026-11-02.md)。
+> P0.5 的「pending 投递骨架」已随 P1a 的 v58 数据模型实施。
 
 ### P0（无新数据模型，可独立回滚）
 

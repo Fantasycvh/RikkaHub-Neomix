@@ -4,16 +4,23 @@ import android.content.ContextWrapper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.rikkahub.AppScope
+import io.pebbletemplates.pebble.PebbleEngine
 import java.io.File
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.koin.core.context.GlobalContext
+import org.koin.core.context.startKoin
+import org.koin.core.context.stopKoin
+import org.koin.dsl.module
 
 /**
  * P0 回滚开关的真机落盘/回读验证（不进用户配置）。
@@ -25,6 +32,24 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class P0RollbackSwitchInstrumentedTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private var startedKoin = false
+
+    /**
+     * `SettingsStore.settingsFlowRaw` 的 `onEach` 会取 `PebbleEngine` 清模板缓存；
+     * 隔离 runner 故意不启动生产 Koin，这里只补这一个依赖，测完立即停掉。
+     */
+    @Before
+    fun startMinimalKoin() {
+        if (GlobalContext.getOrNull() == null) {
+            startKoin { modules(module { single { PebbleEngine.Builder().build() } }) }
+            startedKoin = true
+        }
+    }
+
+    @After
+    fun stopMinimalKoin() {
+        if (startedKoin) stopKoin()
+    }
 
     @Test
     fun rollbackSwitchesPersistAndReload() = runBlocking {
@@ -36,7 +61,9 @@ class P0RollbackSwitchInstrumentedTest {
         val settingsFile = File(files, "settings.preferences_pb")
         try {
             val store = SettingsStore(isolated, scope, settingsFile)
-            val initial = withTimeout(10_000) { store.settingsFlow.first() }
+            // 启动瞬间 settingsFlow 还是 dummy(init=true)，此时 update 会被守卫静默丢弃；
+            // 先等真实 DataStore 首帧，再读默认值/写入。
+            val initial = withTimeout(10_000) { store.settingsFlow.first { !it.init } }
             assertTrue(initial.taskCenterEnabled)
             assertTrue(initial.namespacedNotifications)
             assertTrue(initial.dynamicRunGate)
@@ -59,7 +86,7 @@ class P0RollbackSwitchInstrumentedTest {
             val reloadScope = AppScope()
             try {
                 val reloaded = SettingsStore(isolated, reloadScope, copy)
-                val persisted = withTimeout(10_000) { reloaded.settingsFlow.first() }
+                val persisted = withTimeout(10_000) { reloaded.settingsFlow.first { !it.init } }
                 assertFalse(persisted.taskCenterEnabled)
                 assertFalse(persisted.namespacedNotifications)
                 assertFalse(persisted.dynamicRunGate)
