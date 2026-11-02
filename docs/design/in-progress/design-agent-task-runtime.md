@@ -1,7 +1,8 @@
 # Agent 任务控制面：子代理 / 无头 run / 后台任务的三合一与改进（design-agent-task-runtime）
 
-> 状态：**已拍板（2026-11-02）**；**P0 / P0.5 已全部落地**（`692ed04ad` / `23c977613` / `8df5a214b`），
-> P1a 已提交（最后验收提交 `ed060aac0`）；P1b 完成通知、会话任务树、后台 ASK 及父信封约束已实现并验证（本轮本地提交）；范围及遗留见附录 D。
+> 状态：**已拍板（2026-11-02）**；**P0 / P0.5 / P1a / P1b / P3 已落地**（P0 `692ed04ad` /
+> `23c977613` / `8df5a214b`，P1a 最后验收 `ed060aac0`，P1b `cd8a7fd26`，P3 `da95fb49e`）；
+> P2 嵌套（默认关、需单层不够用的观测证据）与 P4 定时并入待启动；范围及遗留见附录 D。
 > 日期：2026-11-02。**rev2**（第一版经交叉评审后重写）。
 > 对象：本仓三套执行底座 + `AndyerNotFound/L3Hub-RikkaHub-Fork-WFadnf`（下称「L3Hub fork」，
 > 评审时 HEAD `e5f7e196`）。
@@ -411,8 +412,9 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
    数据层用 `observeRun`/`observeTasks`，不递归查库。
 3. **完成通知（P1b）**：手动/后台 run 结束发通知（现状手动 run **没有完成通知**）；失败/取消也发；
    点击深链详情页；按 `TaskKey` 分配 ID，结束撤销。
-4. **孤儿进程扫描（P3）**：应用启动时若注册表为空但 `/proc` 存在 `rikkahub-task-*` 后代进程 →
-   标「孤儿」并报告，是否自动杀由设置决定（默认只报告，避免误杀）。
+4. **孤儿进程扫描（P3，已实现）**：应用启动时扫全 `/proc` 找带 `rikkahub-task-*` 标记、
+   但本进程注册表不认识的进程（旧任务进程在应用重启后会 reparent 到 init，只看后代发现不了）→
+   日志报告；是否自动杀由设置决定（默认只报告，避免误杀）。
 5. **通知渠道降级矩阵**：`POST_NOTIFICATIONS` 已有（`AndroidManifest.xml:11`）；权限缺失/渠道关闭时
    `ASK → DENY`、完成通知静默（任务中心仍可见），不假装成功。
 
@@ -604,9 +606,10 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 
 > 规则：每项落地后在此打勾并写「提交短哈希 + 验证方式」；**未打勾即未验证**。
 >
-> 2026-11-02 更新：P0 / P0.5 全部落地，编译通过；全量单测 app 2783 例 + workspace 161 例 0 失败
-> （`./gradlew :app:testDebugUnitTest :workspace:testDebugUnitTest`）。P0.5 的「pending 投递骨架」
-> 依赖 P1a 的 v58 数据模型，拆到 P1a 实施。
+> 2026-11-02 更新：P0 / P0.5 / P1a / P1b / P3 已落地。当前全量 JVM：**app 2819 例、
+> workspace 169 例，0 失败**（`./gradlew :app:testDebugUnitTest :workspace:testDebugUnitTest`）；
+> P1a/P1b/P3 的真机验收边界分别见各小节与验收报告。P0.5 的「pending 投递骨架」已随 P1a 的
+> v58 数据模型实施。
 
 ### P0（无新数据模型，可独立回滚）
 
@@ -740,6 +743,33 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 
 本轮新增 UI 文案尚未三语化；后续 key 清单：`conversation_tasks_*` / `agent_run_completed_*` /
 `agent_run_approval_unavailable`。按 AGENTS.md，无明确本地化要求时不阻塞功能实现。
+
+### P3（后台命令并入控制面，本轮完成）
+
+2026-11-02 本地提交 `feat(task-runtime): 落地 P3 后台命令并入控制面`；无 DB 版本变更。
+
+- [x] `ExecutionScope` 统一归属类型（`workspace` 模块，纯 Kotlin）：wire 沿用账本格式
+  `turn:<token>` / `run:<runId>` / `sched:<runId>`，父链只存内存；`covers()` 判断级联，
+  `parse()` 兼容历史 `turn-<uuid>`。单测 `ExecutionScopeTest` 钉住「父链覆盖/兄弟隔离/
+  不是字符串前缀/空白拒绝」。
+- [x] `WorkspaceTaskRegistry` / `WorkspaceManager` / `WorkspaceRepository` 的 owner 改为
+  `ExecutionScope`；新增 `killByScope`（含子 scope 级联）与 `findOrphanMarkers`，
+  保留 `killByOwner(String)` 兼容入口；任务快照的 `owner` 仍输出 wire 字符串，P1b 任务树
+  匹配逻辑不变。单测：级联只杀本 scope+子 scope、兄弟 scope 存活、`run:ab` 不误伤 `run:abc`。
+- [x] 装配点类型化：`ChatToolFactory` / `WorkspaceTools` 的 `turnOwner` 改为
+  `ExecutionScope?`；`ChatService` 从 session 令牌解析；`SubagentRunner` 起 shell 仍归属
+  `run:<runId>`，取消/超时改走 `killBackgroundTasksByScope`。轮次令牌统一为 `turn:<uuid>`
+  （历史 `turn-` 只影响升级前旧行的任务树匹配）。
+- [x] 孤儿进程扫描：`WorkspaceTaskRegistry.findOrphanMarkers` 扫**全 `/proc`** 而不是只看本进程
+  后代——应用进程重启后旧任务进程 reparent 到 init，只看后代永远发现不了。启动时
+  `RikkaHubApp.reportOrphanBackgroundTasks()` 只记 WARN、**不自动杀**；`FakeProcFs` 单测覆盖
+  「注册表认识的不算孤儿、丢失的才报告」。
+- [x] 任务中心 shell 段：P0 已显示，本轮类型化不改变卡片键；任务树仍按 `owner` wire 关联。
+- 验证：`./gradlew :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin` 通过；
+  `./gradlew :app:testDebugUnitTest :workspace:testDebugUnitTest`：**app 2819 例、
+  workspace 169 例，0 失败/跳过**（本轮只跑 JVM；真机未跑）。
+- 已知未验证：真机上「杀进程 → 重启看到孤儿报告」未验收；自动杀开关按设计未做（默认只报告）；
+  级联目前只有父链，P2 嵌套落地后才有真实子 run 可验。
 
 ### 已知未验证或后续项
 
