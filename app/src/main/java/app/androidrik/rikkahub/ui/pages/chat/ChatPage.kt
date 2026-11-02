@@ -1258,7 +1258,7 @@ private fun TopBar(
             }
         },
         actions = {
-            IconButton(onClick = { showTasks = true }) { Icon(Lucide.ListTree, "本会话任务") }
+            IconButton(onClick = { showTasks = true }) { Icon(Lucide.ListTree, stringResource(R.string.conversation_tasks_title)) }
             IconButton(
                 onClick = {
                     onClickMenu()

@@ -121,15 +121,15 @@ fun SubagentPresetsPage(vm: SubagentPresetsVM = koinViewModel()) {
                         },
                     )
                     item(
-                        headlineContent = { Text("后台子代理（实验性）") },
-                        supportingContent = { Text("允许后台预设立即返回；结果在会话空闲时送达，不自动继续生成。后台 ASK 仅在审批通知可达时等待；不可达或超时会拒绝工具执行。") },
+                        headlineContent = { Text(stringResource(R.string.subagent_background_experimental)) },
+                        supportingContent = { Text(stringResource(R.string.subagent_background_experimental_desc)) },
                         trailingContent = {
                             Switch(settings.enableBackgroundSubagent, { vm.setBackgroundEnabled(it) })
                         },
                     )
                     if (settings.enableBackgroundSubagent) item(
-                        headlineContent = { Text("结果消息兼容模式") },
-                        supportingContent = { Text("仅在 SYSTEM 结果显示或发送异常时开启。消息仍标为子代理结果，不计作用户输入。") },
+                        headlineContent = { Text(stringResource(R.string.subagent_notice_carrier)) },
+                        supportingContent = { Text(stringResource(R.string.subagent_notice_carrier_desc)) },
                         trailingContent = {
                             Switch(settings.noticeCarrier == app.androidrik.rikkahub.data.task.NoticeCarrier.USER, {
                                 vm.setNoticeCarrier(if (it) app.androidrik.rikkahub.data.task.NoticeCarrier.USER else
@@ -566,7 +566,7 @@ private fun PresetEditorDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("后台执行（需开启实验性开关）")
+                    Text(stringResource(R.string.subagent_background_execution))
                     Switch(
                         checked = edited.executionMode == app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND,
                         onCheckedChange = { edited = edited.copy(executionMode = if (it)

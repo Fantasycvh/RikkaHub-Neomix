@@ -19,9 +19,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.ai.SubagentApprovalQueue
 import app.androidrik.rikkahub.data.db.dao.AgentRunDAO
@@ -52,16 +54,18 @@ fun ConversationTasksSheet(conversationId: Uuid, onDismiss: () -> Unit) {
     val nav = LocalNavController.current
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
+    val cancelUnavailable = stringResource(R.string.conversation_tasks_cancel_unavailable)
+    val approvalStale = stringResource(R.string.conversation_tasks_approval_stale)
     fun open(runId: String) { onDismiss(); nav.navigate(Screen.AgentRunDetail(runId)) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         ConversationTasksContent(snapshot, onOpen = ::open,
             onCancel = { key -> scope.launch {
                 if (center.cancel(key) != app.androidrik.rikkahub.data.task.TaskCancelResult.REQUESTED)
-                    toaster.show("任务已结束或不可取消")
+                    toaster.show(cancelUnavailable)
             } },
             onDecision = { request, approved ->
-                if (!SubagentApprovalQueue.resolve(request, approved)) toaster.show("审批已失效，请刷新任务")
+                if (!SubagentApprovalQueue.resolve(request, approved)) toaster.show(approvalStale)
             })
     }
 }
@@ -75,29 +79,32 @@ fun ConversationTasksContent(
 ) {
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 600.dp).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item(key = "heading") { Text("本会话任务", style = MaterialTheme.typography.titleLarge) }
+            item(key = "heading") { Text(stringResource(R.string.conversation_tasks_title), style = MaterialTheme.typography.titleLarge) }
             if (snapshot.runs.isEmpty() && snapshot.commands.isEmpty()) item(key = "empty") {
-                Text("当前没有关联任务", modifier = Modifier.padding(vertical = 16.dp))
+                Text(stringResource(R.string.conversation_tasks_empty), modifier = Modifier.padding(vertical = 16.dp))
             }
             items(snapshot.runs, key = { it.task.key.wire }) { branch ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         TaskRow(branch.task, onOpen = { onOpen((branch.task.key as TaskKey.Agent).runId) },
                             onCancel = { onCancel(branch.task.key) })
-                        if (branch.tools.isNotEmpty()) Text("工具：${branch.tools.joinToString(" → ")}",
+                        if (branch.tools.isNotEmpty()) Text(
+                            stringResource(R.string.conversation_tasks_tools, branch.tools.joinToString(" → ")),
                             style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         branch.approvals.forEach { request ->
                             Column {
-                                Text("待批准：${request.tool.toolName}", style = MaterialTheme.typography.labelLarge)
+                                Text(
+                                    stringResource(R.string.conversation_tasks_pending_approval, request.tool.toolName),
+                                    style = MaterialTheme.typography.labelLarge)
                                 Text(request.tool.input.take(1000), style = MaterialTheme.typography.bodySmall,
                                     maxLines = 6, overflow = TextOverflow.Ellipsis)
                                 Row {
                                     TextButton(onClick = {
                                         onDecision(request, true)
-                                    }) { Text("批准") }
+                                    }) { Text(stringResource(R.string.conversation_tasks_approve)) }
                                     TextButton(onClick = {
                                         onDecision(request, false)
-                                    }) { Text("拒绝") }
+                                    }) { Text(stringResource(R.string.conversation_tasks_deny)) }
                                 }
                             }
                         }
@@ -112,8 +119,10 @@ fun ConversationTasksContent(
             items(snapshot.commands, key = { it.key.wire }) { command ->
                 TaskRow(command, onCancel = { onCancel(command.key) })
             }
-            item(key = "footer") { Text("任务结束后不会自动续跑主助手", style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(vertical = 16.dp)) }
+            item(key = "footer") {
+                Text(stringResource(R.string.conversation_tasks_footer), style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 16.dp))
+            }
         }
 }
 
@@ -124,8 +133,8 @@ private fun TaskRow(task: TaskCard, onOpen: (() -> Unit)? = null, onCancel: () -
         task.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         Row {
             Text(taskStateLabel(task.state), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-            if (onOpen != null) TextButton(onClick = onOpen) { Text("详情") }
-            if (task.canCancel) TextButton(onClick = onCancel) { Text("停止") }
+            if (onOpen != null) TextButton(onClick = onOpen) { Text(stringResource(R.string.conversation_tasks_detail)) }
+            if (task.canCancel) TextButton(onClick = onCancel) { Text(stringResource(R.string.conversation_tasks_stop)) }
         }
     }
 }

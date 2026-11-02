@@ -59,6 +59,14 @@ data class TaskCard(
     val canCancel: Boolean,
     /** 该 run 当前待批工具数（>0 时给「批准」入口）；其他来源恒为 0。 */
     val pendingApprovalCount: Int = 0,
+    /**
+     * 是否「卡在人这里」（P0.6，对照 dsh-superagent 的 Ticket stage 表）。
+     *
+     * 目前只有两类事实会让人成为唯一解锁者：run 停在待批准、定时任务的目标/助手已经消失。
+     * 刻意不把 `INTERRUPTED` / `FAILED` 算进来——它们需要人判断，但 UI 的「最近」段足以
+     * 呈现，全部抬到「需要处理」会让崩溃一次就刷屏（设计 000 的「健康状态不占空间」）。
+     */
+    val needsPerson: Boolean = false,
 )
 
 /** 取消结果：UI 据此决定提示文案，不把「没在跑」假装成「已取消」。 */
@@ -155,7 +163,12 @@ class TaskCenter(
                 )
             }
         }.sortedWith(
-            compareByDescending<TaskCard> { it.state == TaskState.RUNNING || it.state == TaskState.WAITING_APPROVAL }
+            // 任务中心三段（§5.5）：需要人 → 进行中 → 最近。同一段内新任务在前。
+            compareByDescending<TaskCard> { it.needsPerson }
+                .thenByDescending {
+                    it.state == TaskState.RUNNING || it.state == TaskState.WAITING_APPROVAL ||
+                        it.state == TaskState.PENDING
+                }
                 .thenByDescending { it.startedAt ?: 0L },
         )
     }
@@ -218,6 +231,7 @@ internal fun agentTaskCard(run: AgentRunEntity, pendingApprovals: Int): TaskCard
         canCancel = state == TaskState.PENDING || state == TaskState.RUNNING ||
             state == TaskState.WAITING_APPROVAL,
         pendingApprovalCount = pendingApprovals,
+        needsPerson = state == TaskState.WAITING_APPROVAL || pendingApprovals > 0,
     )
 }
 
@@ -272,5 +286,7 @@ internal fun scheduledTaskCard(
         startedAt = ledgerRun?.startedAt ?: task.lastRunAt,
         finishedAt = if (running) null else ledgerRun?.finishedAt,
         canCancel = running,
+        // 目标会话/助手被删后，只有人能修任务或重建目标；调度器不会再重试。
+        needsPerson = summaryOnly,
     )
 }

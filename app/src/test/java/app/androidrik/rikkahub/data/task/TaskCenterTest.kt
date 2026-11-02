@@ -126,6 +126,12 @@ class TaskCenterTest {
         )
         assertEquals(TaskState.WAITING_APPROVAL, awaiting.state)
         assertTrue("等批也要能给取消（用户可能不想等了）", awaiting.canCancel)
+        assertTrue("停在待批准 = 只有人能解锁，必须进「需要处理」段", awaiting.needsPerson)
+        assertTrue("工具已待批但状态还没翻到 awaiting_approval 时，人也必须被叫醒", running.needsPerson)
+        assertFalse(
+            "没有待批的工具 run 不占「需要处理」段",
+            agentTaskCard(agentRun(), pendingApprovals = 0).needsPerson,
+        )
     }
 
     @Test
@@ -142,6 +148,7 @@ class TaskCenterTest {
         assertEquals(TaskState.TIMED_OUT, timedOut.state)
         assertFalse(timedOut.canCancel)
         assertEquals(500L, timedOut.finishedAt)
+        assertFalse("终态需要人判断，但不该和「待批准」抢同一段", timedOut.needsPerson)
 
         val interrupted = agentTaskCard(
             agentRun(status = AgentRunEntity.STATUS_INTERRUPTED, finishedAt = 600L),
@@ -149,6 +156,7 @@ class TaskCenterTest {
         )
         assertEquals(TaskState.INTERRUPTED, interrupted.state)
         assertFalse(interrupted.canCancel)
+        assertFalse("崩溃一次不该刷屏「需要处理」", interrupted.needsPerson)
     }
 
     @Test
@@ -195,6 +203,7 @@ class TaskCenterTest {
         val idle = scheduledTaskCard(task, activeRunId = null, latestRun = scheduledRun(id = "run-8"))
         assertEquals(TaskState.COMPLETED, idle.state)
         assertFalse(idle.canCancel)
+        assertFalse(idle.needsPerson)
         assertEquals("结束时间来自账本，任务中心不再永远 finishedAt=null", 1000L, idle.finishedAt)
         assertEquals(900L, idle.startedAt)
         assertEquals(TaskKey.Scheduled("task-1", "run-8"), idle.key)
@@ -229,5 +238,6 @@ class TaskCenterTest {
             latestRun = scheduledRun(status = TaskRunStatus.OK),
         )
         assertEquals(TaskState.FAILED, targetGone.state)
+        assertTrue("目标被删后调度器不会重试，只有人能修任务", targetGone.needsPerson)
     }
 }

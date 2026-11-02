@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -129,47 +130,58 @@ fun TaskCenterPage(vm: TaskCenterVM = koinViewModel()) {
                     )
                 }
             } else {
+                // 三段：需要人 → 进行中 → 最近（P0.6，对照 dsh-superagent 的 Ticket stage 表）。
+                // 只在有内容时出现段头；健康状态不占空间。
+                val needsYou = visible.filter { it.needsPerson }
+                val active = visible.filter { !it.needsPerson && !it.state.isTerminal }
+                val recent = visible.filter { !it.needsPerson && it.state.isTerminal }
+                val cardContent: @Composable (TaskCard) -> Unit = { card ->
+                    TaskCenterCard(
+                        card = card,
+                        onClick = {
+                            when (val key = card.key) {
+                                is app.androidrik.rikkahub.data.task.TaskKey.Agent ->
+                                    navController.navigate(Screen.AgentRunDetail(key.runId))
+
+                                is app.androidrik.rikkahub.data.task.TaskKey.Scheduled ->
+                                    navController.navigate(Screen.SettingScheduledTaskDetail(key.taskId))
+
+                                else -> Unit
+                            }
+                        },
+                        onCancel = {
+                            scope.launch {
+                                val result = vm.cancel(card.key)
+                                toaster.show(
+                                    resources.getString(
+                                        when (result) {
+                                            TaskCancelResult.REQUESTED -> R.string.task_center_cancel_requested
+                                            TaskCancelResult.NOT_ACTIVE -> R.string.task_center_cancel_not_active
+                                            TaskCancelResult.NOT_FOUND -> R.string.task_center_cancel_not_found
+                                        }
+                                    )
+                                )
+                            }
+                        },
+                        onReviewApproval = {
+                            val key = card.key
+                            if (key is app.androidrik.rikkahub.data.task.TaskKey.Agent) {
+                                navController.navigate(Screen.AgentRunDetail(key.runId))
+                            }
+                        },
+                    )
+                }
+                val sectionAttention = stringResource(R.string.task_center_section_attention)
+                val sectionActive = stringResource(R.string.task_center_section_active)
+                val sectionRecent = stringResource(R.string.task_center_section_recent)
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(visible, key = { it.key.wire }) { card ->
-                        TaskCenterCard(
-                            card = card,
-                            onClick = {
-                                when (val key = card.key) {
-                                    is app.androidrik.rikkahub.data.task.TaskKey.Agent ->
-                                        navController.navigate(Screen.AgentRunDetail(key.runId))
-
-                                    is app.androidrik.rikkahub.data.task.TaskKey.Scheduled ->
-                                        navController.navigate(Screen.SettingScheduledTaskDetail(key.taskId))
-
-                                    else -> Unit
-                                }
-                            },
-                            onCancel = {
-                                scope.launch {
-                                    val result = vm.cancel(card.key)
-                                    toaster.show(
-                                        resources.getString(
-                                            when (result) {
-                                                TaskCancelResult.REQUESTED -> R.string.task_center_cancel_requested
-                                                TaskCancelResult.NOT_ACTIVE -> R.string.task_center_cancel_not_active
-                                                TaskCancelResult.NOT_FOUND -> R.string.task_center_cancel_not_found
-                                            }
-                                        )
-                                    )
-                                }
-                            },
-                            onReviewApproval = {
-                                val key = card.key
-                                if (key is app.androidrik.rikkahub.data.task.TaskKey.Agent) {
-                                    navController.navigate(Screen.AgentRunDetail(key.runId))
-                                }
-                            },
-                        )
-                    }
+                    taskSection(sectionAttention, needsYou, cardContent)
+                    taskSection(sectionActive, active, cardContent)
+                    taskSection(sectionRecent, recent, cardContent)
                 }
             }
         }
@@ -265,3 +277,21 @@ internal fun taskStateLabel(state: TaskState): String = stringResource(
         TaskState.INTERRUPTED -> R.string.agent_run_status_interrupted
     }
 )
+
+/** 一个段头 + 该段的卡片；空段整体不出现（「健康状态不占空间」）。 */
+private fun LazyListScope.taskSection(
+    title: String,
+    cards: List<TaskCard>,
+    cardContent: @Composable (TaskCard) -> Unit,
+) {
+    if (cards.isEmpty()) return
+    item(key = "section:$title") {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+        )
+    }
+    items(cards, key = { it.key.wire }) { card -> cardContent(card) }
+}

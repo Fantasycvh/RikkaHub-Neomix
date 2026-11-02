@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.RouteActivity
 import app.androidrik.rikkahub.SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
@@ -54,16 +55,16 @@ class RunNotifications(private val context: Context) {
         val manager = NotificationManagerCompat.from(context)
         manager.createNotificationChannel(NotificationChannelCompat.Builder(
             AGENT_RUN_COMPLETED_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
-            .setName("Agent 任务结果").build())
+            .setName(context.getString(R.string.agent_run_completed_channel)).build())
         if (!notificationRouteAvailable(context, AGENT_RUN_COMPLETED_CHANNEL_ID)) return
         val state = TaskStateMappings.fromAgentRun(run.status, run.error)
-        val label = when (state) {
-            TaskState.COMPLETED -> "已完成"
-            TaskState.CANCELLED -> "已取消"
-            TaskState.TIMED_OUT -> "已超时"
-            TaskState.INTERRUPTED -> "已中断"
-            else -> "失败"
-        }
+        val label = context.getString(when (state) {
+            TaskState.COMPLETED -> R.string.agent_run_status_completed
+            TaskState.CANCELLED -> R.string.agent_run_status_cancelled
+            TaskState.TIMED_OUT -> R.string.agent_run_status_timeout
+            TaskState.INTERRUPTED -> R.string.agent_run_status_interrupted
+            else -> R.string.agent_run_status_failed
+        })
         val intent = Intent(context, RouteActivity::class.java).putExtra("runId", run.id)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         context.sendNotification(AGENT_RUN_COMPLETED_CHANNEL_ID, NotificationIds.runCompleted(run.id)) {

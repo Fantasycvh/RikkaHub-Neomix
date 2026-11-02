@@ -70,6 +70,11 @@ class TaskNotificationInstrumentedTest {
         assertEquals(2, posted.size)
         assertNotEquals(posted[0].notification.contentIntent, posted[1].notification.contentIntent)
         notifications.cancel(prefix + "a")
+        // cancel() 走 Binder，activeNotifications 快照可能晚一拍：轮询而不是立刻断言。
+        val cancelDeadline = android.os.SystemClock.elapsedRealtime() + 3000
+        while (manager.activeNotifications.any { it.id == NotificationIds.runCompleted(prefix + "a") } &&
+            android.os.SystemClock.elapsedRealtime() < cancelDeadline
+        ) Thread.sleep(20)
         assertTrue(manager.activeNotifications.any { it.id == NotificationIds.runCompleted(prefix + "b") })
         assertFalse(manager.activeNotifications.any { it.id == NotificationIds.runCompleted(prefix + "a") })
     }

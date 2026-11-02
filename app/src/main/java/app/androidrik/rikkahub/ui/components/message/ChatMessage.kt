@@ -151,7 +151,7 @@ fun ChatMessage(
             color = MaterialTheme.colorScheme.secondaryContainer,
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("子代理结果（${notice.runIds.size}）", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.subagent_notice_title, notice.runIds.size), style = MaterialTheme.typography.titleSmall)
                 SelectionContainer {
                     Text(message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text },
                         style = MaterialTheme.typography.bodySmall)
