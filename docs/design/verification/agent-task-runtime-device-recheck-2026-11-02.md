@@ -96,7 +96,7 @@ python scripts/verify_task_runtime.py --base-url http://127.0.0.1:19001/v1 --pro
 | 真机通知平台 | 手工 `adb install` → `pm grant POST_NOTIFICATIONS` → `am instrument -e class TaskNotificationInstrumentedTest` | **3/3 通过**；修正了取消通知的 Binder 快照竞态（见下） |
 | 真机 notice UI | 同上 `NoticeUiAcceptanceTest` | 3/3 通过（SYSTEM/USER 同卡、任务树批准） |
 | 真机工作区后台任务 | 同上 `WorkspaceBackgroundTaskInstrumentedTest` | 8 例执行、0 失败；无 rootfs 的用例按 `assumeTrue` 跳过 |
-| P1b 生产运行时验收 | `TaskRuntimeAcceptanceTest` | 跳过：需要 `runtimeBaseUrl` + 本机代理 + 上游 key（本轮无 key，沿用已归档的受控后端结果） |
+| P1b 生产运行时验收（受控后端） | `python scripts/verify_task_runtime_p1b.py --base-url http://127.0.0.1:19000/v1`（本机 fixture + `adb reverse`） | 全部通过：approve `executed=true`、deny `executed=false`、路由不可用 `executed=false`，三条均 `terminal=completed;delivered=true`；权限拒绝、DB+UI 均 passed；provider 设置指纹未变，通知权限已恢复 |
 
 ### 环境坑（下次照做）
 
@@ -107,6 +107,10 @@ python scripts/verify_task_runtime.py --base-url http://127.0.0.1:19001/v1 --pro
    `TaskNotificationInstrumentedTest` 已改为轮询 3s（`5c94e12c1`）。
 3. 重装 target 包会清掉设备上的工作区 rootfs，`WorkspaceBackgroundTaskInstrumentedTest` 因此整组
    `assumeTrue` 跳过；要真跑需先在应用内装好一个工作区。
+4. `verify_task_runtime_p1b.py` 用 `MemoryIsolationTestRunner`，Gradle 默认 APK 未声明它；必须先
+   `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -PmemoryIsolatedTests=true` 再 `adb install`，
+   否则报 `Unable to find instrumentation info`。
+5. 本轮 P1b 证据在 `.tmp/runtime-acceptance/p1b-2026-11-02-late/`（含 `results.json` 与任务树截图）。
 
 ### 真机待验清单（按优先级）
 

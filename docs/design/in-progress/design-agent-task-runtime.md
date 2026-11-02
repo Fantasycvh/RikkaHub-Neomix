@@ -852,13 +852,15 @@ P4b 本地提交 `feat(task-runtime): 定时任务可选 headless agent_run`（`
   （状态可能还没翻）、定时账本 `summaryOnly`（目标会话/助手被删，调度器不再重试）。任务中心据此分
   「需要处理 / 进行中 / 最近」三段，空段不显示；`observeTasks()` 排序同序。`INTERRUPTED`/`FAILED`
   刻意留在「最近」，避免崩溃一次就刷屏（§5.5「健康状态不占空间」）。
-- **三语**：新增/替换 P1b/P4 界面文案 21 个 key（任务树、通知渠道与终态标签、子代理结果卡、
-  后台子代理/结果消息兼容模式/后台执行），en / zh / zh-rTW 全量；通知终态复用既有
-  `agent_run_status_*`。`TaskCenterTest` 补 needsPerson 推导断言。
+- **三语**：新增/替换 P1b/P4 界面文案 18 个 key（任务树、通知渠道与终态标签、子代理结果卡、
+  后台子代理/结果消息兼容模式/后台执行），en / zh / zh-rTW 全量；同一提交另含 3 个任务中心段头
+  key（合计 21）。通知终态复用既有 `agent_run_status_*`。`TaskCenterTest` 补 needsPerson 推导断言。
 - **真机**：通知平台 3/3（`adb install` 后需 `pm grant POST_NOTIFICATIONS`；Gradle
   `connectedDebugAndroidTest` 会重装并复位运行时权限，故改为手工装包 + `am instrument`）、
-  NoticeUi 3/3、P0 开关 2/2、P1a DB 8/8；顺带把取消通知断言改为轮询（Binder 快照竞态，曾 1/3 偶发失败）。
-  清单与遗留见 `docs/design/verification/agent-task-runtime-device-recheck-2026-11-02.md`。
+  NoticeUi 3/3、P0 开关 2/2、P1a DB 8/8，以及 **P1b 受控后端全套**（approve/deny/路由不可用、
+  权限拒绝、DB+UI；设置指纹未变、通知权限恢复）复跑通过；顺带把取消通知断言改为轮询
+  （Binder 快照竞态，曾 1/3 偶发失败）。清单与遗留见
+  `docs/design/verification/agent-task-runtime-device-recheck-2026-11-02.md`。
 
 ### 已知未验证或后续项
 
