@@ -2043,6 +2043,14 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_page_guardrails_unit_runs">runs</string>
   <string name="setting_page_guardrails_task_duration">Background task time limit</string>
   <string name="setting_page_guardrails_task_duration_desc">Background tasks are stopped after this many minutes</string>
+  <string name="setting_page_task_center_enabled">Task center</string>
+  <string name="setting_page_task_center_enabled_desc">Show the unified task center. Off = use the legacy agent runs list only</string>
+  <string name="setting_page_namespaced_notifications">Namespaced approvals</string>
+  <string name="setting_page_namespaced_notifications_desc">Give each run its own approval notification and pending intent. Off = legacy fixed IDs (parallel runs overwrite each other)</string>
+  <string name="setting_page_dynamic_run_gate">Dynamic run limit</string>
+  <string name="setting_page_dynamic_run_gate_desc">Apply a changed subagent concurrency limit immediately. Off = freeze at the first read until restart</string>
+  <string name="setting_page_kill_shell_on_run_cancel">Stop run shells on cancel</string>
+  <string name="setting_page_kill_shell_on_run_cancel_desc">Kill background commands started by a run when that run is cancelled or times out</string>
   <string name="setting_page_guardrails_unit_minutes">min</string>
   <string name="close">Close</string>
   <string name="skills_page_builtin_badge">Built-in</string>

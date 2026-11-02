@@ -7,6 +7,7 @@ import argparse
 import getpass
 import http.server
 import json
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -19,7 +20,10 @@ def main():
     args = parser.parse_args()
     if urllib.parse.urlsplit(args.upstream).scheme != "https":
         parser.error("upstream must use HTTPS")
-    key = getpass.getpass("Temporary test key (not echoed): ").strip()
+    # 自动化时可用环境变量传入（不落盘、不进命令行）；交互终端仍走隐藏输入。
+    key = os.environ.get("TASK_RUNTIME_TEST_KEY", "").strip()
+    if not key:
+        key = getpass.getpass("Temporary test key (not echoed): ").strip()
     if not key:
         parser.error("empty test key")
 

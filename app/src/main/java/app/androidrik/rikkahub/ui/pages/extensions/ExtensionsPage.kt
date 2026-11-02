@@ -11,10 +11,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
 import app.androidrik.rikkahub.R
 import me.rerere.hugeicons.stroke.Book03
@@ -29,13 +31,17 @@ import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.pages.setting.SettingVM
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
+import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun ExtensionsPage() {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
+    // P0 回滚开关：关 = 隐藏任务中心入口，旧 Agent 运行列表保留
+    val settings by koinViewModel<SettingVM>().settings.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -83,12 +89,14 @@ fun ExtensionsPage() {
                         headlineContent = { Text(stringResource(R.string.extensions_page_workspace)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_workspace_desc)) },
                     )
-                    item(
-                        onClick = { navController.navigate(Screen.TaskCenter) },
-                        leadingContent = { Icon(HugeIcons.Rocket01, null) },
-                        headlineContent = { Text(stringResource(R.string.task_center_title)) },
-                        supportingContent = { Text(stringResource(R.string.task_center_desc)) },
-                    )
+                    if (settings.taskCenterEnabled) {
+                        item(
+                            onClick = { navController.navigate(Screen.TaskCenter) },
+                            leadingContent = { Icon(HugeIcons.Rocket01, null) },
+                            headlineContent = { Text(stringResource(R.string.task_center_title)) },
+                            supportingContent = { Text(stringResource(R.string.task_center_desc)) },
+                        )
+                    }
                     item(
                         onClick = { navController.navigate(Screen.AgentRuns) },
                         leadingContent = { Icon(HugeIcons.Rocket01, null) },

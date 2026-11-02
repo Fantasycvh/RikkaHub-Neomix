@@ -599,6 +599,11 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 | `autoResumeParent` | **关** | 不自动续跑（P2 才有） |
 | `nestingEnabled` | **关** | 深度恒 0 |
 
+四个 P0 开关（`taskCenterEnabled` / `namespacedNotifications` / `dynamicRunGate` /
+`killShellTasksOnRunCancel`）已于 2026-11-02 补进 **设置 → 通用 → 护栏与预算**，默认开；
+`enableBackgroundSubagent` / `noticeCarrier` 在子代理预设页。`namespacedNotifications` 只回滚
+**子代理审批通知**（4242/4243/4244）；P1b 完成通知没有旧 id 可回退，不受该开关影响。
+
 **i18n**：任务中心/notice 卡片/停止按钮需三语 strings；按 AGENTS.md「未明确要求可先不做」，
 实现时至少给 key 清单（`task_center_*` / `subagent_notice_*` / `scheduled_stop_*`），不阻塞本设计。
 
@@ -625,9 +630,9 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
   `ConcurrentRunGateTest` 钉住「活跃数与上限取自同一瞬间」）。
 - [x] `SubagentRunner` 起 shell task 传 `turnOwner="run:<id>"` + 取消/超时级联 kill
   —— `692ed04ad`；`executeRun` 的取消与超时分支在 `NonCancellable` 里
-  `killBackgroundTasksByOwner("run:<id>")`。**回滚开关未加用户设置**：P0 以「回退提交」为回滚单位，
-  `killShellTasksOnRunCancel` 用户开关尚未实现，保留为独立设置面后续项（见附录 C）；
-  不计入本轮 §七 P1b 的三个体验层交付项。
+  `killBackgroundTasksByOwner("run:<id>")`（P3 起改走 `ExecutionScope` 的
+  `killBackgroundTasksByScope`）。**回滚开关** `killShellTasksOnRunCancel` 已补进
+  设置→通用→护栏与预算（默认开，关 = 取消/超时不再级联 kill）。
 - [x] `WorkspaceTaskRegistry.snapshotFlow` + 任务中心读模型（`TaskCenter`）—— `8df5a214b`；
   `TaskRegistry` 在启动/kill/自然退出/淘汰各发一版不可变快照；`TaskCenter` 聚合
   `agent_run` + shell 快照 + 定时任务行 + 审批队列 + 定时运行注册表，映射为 `TaskCard`
@@ -635,8 +640,8 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
   不持有第三套并发准入。映射表驱动测试 `TaskCenterTest`、快照流测试在 workspace 模块。
 - [x] 任务中心页（含 shell / agent / scheduled 三段 + 取消/批准入口）—— `8df5a214b`；
   `Screen.TaskCenter` + Extensions 入口 + `TaskCenterPage`；筛选、状态、取消、待批跳详情；
-  Agent 详情 / 定时任务详情可点入；三语 strings。**回滚**：删路由/入口（`taskCenterEnabled`
-  用户开关仍未进设置页，回滚单位是提交）。
+  Agent 详情 / 定时任务详情可点入；三语 strings。**回滚**：`taskCenterEnabled` 已补进
+  设置→通用→护栏与预算（默认开，关 = 隐藏 Extensions 入口，旧列表保留）。
 
 ### P0.5（对账与定时取消）
 

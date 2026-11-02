@@ -710,6 +710,46 @@ private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
             },
         )
         item(
+            headlineContent = { Text(stringResource(R.string.setting_page_task_center_enabled)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_task_center_enabled_desc)) },
+            trailingContent = {
+                Switch(
+                    checked = settings.taskCenterEnabled,
+                    onCheckedChange = { vm.updateSettings(settings.copy(taskCenterEnabled = it)) },
+                )
+            },
+        )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_namespaced_notifications)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_namespaced_notifications_desc)) },
+            trailingContent = {
+                Switch(
+                    checked = settings.namespacedNotifications,
+                    onCheckedChange = { vm.updateSettings(settings.copy(namespacedNotifications = it)) },
+                )
+            },
+        )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_dynamic_run_gate)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_dynamic_run_gate_desc)) },
+            trailingContent = {
+                Switch(
+                    checked = settings.dynamicRunGate,
+                    onCheckedChange = { vm.updateSettings(settings.copy(dynamicRunGate = it)) },
+                )
+            },
+        )
+        item(
+            headlineContent = { Text(stringResource(R.string.setting_page_kill_shell_on_run_cancel)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_kill_shell_on_run_cancel_desc)) },
+            trailingContent = {
+                Switch(
+                    checked = settings.killShellTasksOnRunCancel,
+                    onCheckedChange = { vm.updateSettings(settings.copy(killShellTasksOnRunCancel = it)) },
+                )
+            },
+        )
+        item(
             headlineContent = { Text(stringResource(R.string.setting_page_tool_schema_compact_title)) },
             supportingContent = { Text(stringResource(R.string.setting_page_tool_schema_compact_desc)) },
             trailingContent = {

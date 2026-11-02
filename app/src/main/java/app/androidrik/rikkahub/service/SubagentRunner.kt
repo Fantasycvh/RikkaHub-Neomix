@@ -93,6 +93,17 @@ import kotlin.uuid.Uuid
  */
 private const val TAG = "SubagentRunner"
 
+/**
+ * 旧固定通知 id/requestCode（`namespacedNotifications` 关闭时回退用）。
+ *
+ * 默认走 [NotificationIds] 的按 runId 命名空间；保留这组常量只为 P0 回滚开关：
+ * 回退后并行 run 会重新互相覆盖，行为与升级前一致。
+ */
+private const val LEGACY_APPROVAL_NOTIFICATION_ID = 4242
+private const val LEGACY_APPROVAL_APPROVE_REQUEST_CODE = 4243
+private const val LEGACY_APPROVAL_DENY_REQUEST_CODE = 4244
+private const val LEGACY_APPROVAL_DETAIL_REQUEST_CODE = 4242
+
 class SubagentRunner(
     private val context: Context,
     private val appScope: AppScope,
@@ -116,8 +127,19 @@ class SubagentRunner(
      * 加载完成前用默认值 2——与旧行为一致，不会把 dummy 永久焊死。
      */
     private val gate = ConcurrentRunGate(
-        limitProvider = { settingsStore.settingsFlow.value.subagentMaxConcurrentRuns },
+        limitProvider = {
+            val settings = settingsStore.settingsFlow.value
+            // 回滚开关关闭时回到旧 `by lazy` 语义：上限冻结在首次读取，改设置需重启。
+            if (settings.dynamicRunGate) {
+                settings.subagentMaxConcurrentRuns
+            } else {
+                frozenGateLimit
+            }
+        },
     )
+
+    /** `dynamicRunGate=false` 时冻结用的首读值（只在回滚路径被读取）。 */
+    private val frozenGateLimit by lazy { settingsStore.settingsFlow.value.subagentMaxConcurrentRuns }
 
     /**
      * 并发闸的一致性快照（P0 `deviceLoad`）：任务中心「run 2/3」一类的读数直接取这里，
@@ -629,7 +651,7 @@ class SubagentRunner(
                         "run timeout (" + timeoutMillis + "ms)",
                     )
                     // run 已经结束，它起的后台 shell 任务不应再无限跑下去（与取消同款级联）。
-                    runCatching { workspaceRepository.killBackgroundTasksByScope(ExecutionScope.run(runId.toString())) }
+                    killShellTasksOfRun(runId)
                 }
                 return null
             } catch (e: CancellationException) {
@@ -640,7 +662,7 @@ class SubagentRunner(
                     cancelApprovalNotification(runId.toString())
                     // run 被取消后没人再轮询这些后台命令的结果，继续跑只是烧 CPU/网络；
                     // 与 cancelRun 的直杀互为兜底（覆盖超时/协程取消等旁路）。
-                    runCatching { workspaceRepository.killBackgroundTasksByScope(ExecutionScope.run(runId.toString())) }
+                    killShellTasksOfRun(runId)
                 }
                 throw e
             }
@@ -722,6 +744,40 @@ class SubagentRunner(
             cancelNotification = { cancelApprovalNotification(runId) })
     }
 
+    /**
+     * 级联收掉本 run 起的 shell task（P0 行为，`killShellTasksOnRunCancel` 可回滚）。
+     *
+     * 失败只记日志：run 的终态已经落库，清理失败不能反过来把主流程标成失败。
+     */
+    private suspend fun killShellTasksOfRun(runId: Uuid) {
+        if (!settingsStore.settingsFlow.value.killShellTasksOnRunCancel) return
+        runCatching {
+            workspaceRepository.killBackgroundTasksByScope(ExecutionScope.run(runId.toString()))
+        }.onFailure { Logging.log(TAG, "killShellTasksOfRun($runId) failed: $it") }
+    }
+
+    /** 待批通知 id：默认按 runId 命名空间（并行不覆盖）；回滚开关关闭时回旧固定 4242。 */
+    private fun approvalNotificationId(runId: String): Int =
+        if (settingsStore.settingsFlow.value.namespacedNotifications) {
+            NotificationIds.subagentApproval(runId)
+        } else {
+            LEGACY_APPROVAL_NOTIFICATION_ID
+        }
+
+    /** 审批动作的 PendingIntent requestCode；回滚时回旧固定 4242/4243/4244。 */
+    private fun approvalRequestCode(
+        runId: String,
+        action: NotificationIds.ApprovalAction,
+    ): Int = if (settingsStore.settingsFlow.value.namespacedNotifications) {
+        NotificationIds.subagentApprovalRequestCode(runId, action)
+    } else {
+        when (action) {
+            NotificationIds.ApprovalAction.APPROVE -> LEGACY_APPROVAL_APPROVE_REQUEST_CODE
+            NotificationIds.ApprovalAction.DENY -> LEGACY_APPROVAL_DENY_REQUEST_CODE
+            NotificationIds.ApprovalAction.OPEN_DETAIL -> LEGACY_APPROVAL_DETAIL_REQUEST_CODE
+        }
+    }
+
     private fun postApprovalNotification(
         runId: String,
         label: String,
@@ -733,7 +789,7 @@ class SubagentRunner(
                 channelId = SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID,
                 // 按 runId 命名空间化：并行 run 各有各的通知条，不会互相覆盖；
                 // 同一 run 的重复投递仍是同一条（原地更新）
-                notificationId = NotificationIds.subagentApproval(runId),
+                notificationId = approvalNotificationId(runId),
             ) {
                 title = context.getString(
                     R.string.subagent_approval_title,
@@ -766,7 +822,7 @@ class SubagentRunner(
      * 通知——用户那边看起来"审批消失了"，而 run 其实还停在 `awaiting_approval` 上等 5 分钟。
      */
     private fun cancelApprovalNotification(runId: String) {
-        runCatching { context.cancelNotification(NotificationIds.subagentApproval(runId)) }
+        runCatching { context.cancelNotification(approvalNotificationId(runId)) }
     }
 
     /** 点通知主体 → 运行详情页（在那里能看到入参全文与轨迹）。 */
@@ -778,7 +834,7 @@ class SubagentRunner(
             context,
             // 每个 run 一个 requestCode：并行 run 详情页的 PendingIntent 互不覆盖
             // （FLAG_UPDATE_CURRENT 会按 requestCode 覆写 extras）
-            NotificationIds.subagentApprovalRequestCode(
+            approvalRequestCode(
                 runId,
                 NotificationIds.ApprovalAction.OPEN_DETAIL,
             ),
@@ -808,7 +864,7 @@ class SubagentRunner(
             .putExtra(SubagentApprovalReceiver.EXTRA_APPROVED, approved)
         return PendingIntent.getBroadcast(
             context,
-            NotificationIds.subagentApprovalRequestCode(
+            approvalRequestCode(
                 runId,
                 if (approved) {
                     NotificationIds.ApprovalAction.APPROVE

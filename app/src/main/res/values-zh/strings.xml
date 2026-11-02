@@ -2072,6 +2072,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_guardrails_unit_runs">个</string>
   <string name="setting_page_guardrails_task_duration">后台任务时长上限</string>
   <string name="setting_page_guardrails_task_duration_desc">后台任务超过该时长后会被自动终止</string>
+  <string name="setting_page_task_center_enabled">任务中心</string>
+  <string name="setting_page_task_center_enabled_desc">显示统一任务中心。关闭 = 只保留旧的 Agent 运行列表</string>
+  <string name="setting_page_namespaced_notifications">审批通知按 run 隔离</string>
+  <string name="setting_page_namespaced_notifications_desc">每个 run 使用独立审批通知与 PendingIntent。关闭 = 回退固定 ID（并行 run 会互相覆盖）</string>
+  <string name="setting_page_dynamic_run_gate">并发上限即时生效</string>
+  <string name="setting_page_dynamic_run_gate_desc">修改子代理并发上限后立即按新值裁决。关闭 = 首读冻结，需重启进程</string>
+  <string name="setting_page_kill_shell_on_run_cancel">取消时终止 run 的后台命令</string>
+  <string name="setting_page_kill_shell_on_run_cancel_desc">run 被取消或超时后，级联终止它起的后台 shell 任务</string>
   <string name="setting_page_guardrails_unit_minutes">分钟</string>
   <string name="close">关闭</string>
   <string name="skills_page_builtin_badge">内置</string>

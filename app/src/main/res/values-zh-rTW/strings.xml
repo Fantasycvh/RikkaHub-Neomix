@@ -2058,6 +2058,14 @@
   <string name="setting_page_guardrails_unit_runs">個</string>
   <string name="setting_page_guardrails_task_duration">背景任務時長上限</string>
   <string name="setting_page_guardrails_task_duration_desc">背景任務超過該時長後會被自動終止</string>
+  <string name="setting_page_task_center_enabled">任務中心</string>
+  <string name="setting_page_task_center_enabled_desc">顯示統一任務中心。關閉 = 只保留舊的 Agent 執行列表</string>
+  <string name="setting_page_namespaced_notifications">審批通知按 run 隔離</string>
+  <string name="setting_page_namespaced_notifications_desc">每個 run 使用獨立審批通知與 PendingIntent。關閉 = 回退固定 ID（並行 run 會互相覆蓋）</string>
+  <string name="setting_page_dynamic_run_gate">並發上限即時生效</string>
+  <string name="setting_page_dynamic_run_gate_desc">修改子代理並發上限後立即按新值裁決。關閉 = 首讀凍結，需重新啟動程序</string>
+  <string name="setting_page_kill_shell_on_run_cancel">取消時終止 run 的背景命令</string>
+  <string name="setting_page_kill_shell_on_run_cancel_desc">run 被取消或逾時後，級聯終止它啟動的背景 shell 任務</string>
   <string name="setting_page_guardrails_unit_minutes">分鐘</string>
   <string name="close">關閉</string>
   <string name="skills_page_builtin_badge">內建</string>

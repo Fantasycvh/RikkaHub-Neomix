@@ -412,6 +412,14 @@ class SettingsStore(
         // UI 能改、当前进程内生效，**一重启就回到默认值**（正是 2026-09-11 那条教训的形状）。
         val NOTICE_CARRIER = stringPreferencesKey("subagent_notice_carrier")
         val ENABLE_BACKGROUND_SUBAGENT = booleanPreferencesKey("enable_background_subagent")
+        /** P0 回滚开关（附录 C）：关 = 隐藏任务中心页，旧运行列表保留。 */
+        val TASK_CENTER_ENABLED = booleanPreferencesKey("task_center_enabled")
+        /** P0 回滚开关：关 = 子代理审批通知回旧固定 id/requestCode。 */
+        val NAMESPACED_NOTIFICATIONS = booleanPreferencesKey("namespaced_notifications")
+        /** P0 回滚开关：关 = 并发闸回到 `by lazy` 首读冻结。 */
+        val DYNAMIC_RUN_GATE = booleanPreferencesKey("dynamic_run_gate")
+        /** P0 回滚开关：关 = run 取消/超时不再级联收它起的 shell task。 */
+        val KILL_SHELL_TASKS_ON_RUN_CANCEL = booleanPreferencesKey("kill_shell_tasks_on_run_cancel")
         val ENABLE_SUBAGENT_DISPATCH = booleanPreferencesKey("enable_subagent_dispatch")
         val SUBAGENT_PRESETS = stringPreferencesKey("subagent_presets")
         // 全局代理（两层代理设计的全局兜底层）；结构化 JSON 存储
@@ -627,6 +635,10 @@ class SettingsStore(
                 noticeCarrier = app.androidrik.rikkahub.data.task.NoticeCarrier.fromStorage(preferences[NOTICE_CARRIER]),
                 enableBackgroundSubagent = preferences[ENABLE_BACKGROUND_SUBAGENT] ?: false,
                 enableSubagentDispatch = preferences[ENABLE_SUBAGENT_DISPATCH] ?: false,
+                taskCenterEnabled = preferences[TASK_CENTER_ENABLED] ?: true,
+                namespacedNotifications = preferences[NAMESPACED_NOTIFICATIONS] ?: true,
+                dynamicRunGate = preferences[DYNAMIC_RUN_GATE] ?: true,
+                killShellTasksOnRunCancel = preferences[KILL_SHELL_TASKS_ON_RUN_CANCEL] ?: true,
                 subagentPresets = preferences[SUBAGENT_PRESETS]?.let {
                     JsonInstant.decodeFromString<List<SubagentPreset>>(it)
                 } ?: DEFAULT_SUBAGENT_PRESETS,
@@ -902,6 +914,10 @@ class SettingsStore(
             preferences[NOTICE_CARRIER] = settings.noticeCarrier.storageValue
             preferences[ENABLE_BACKGROUND_SUBAGENT] = settings.enableBackgroundSubagent
             preferences[ENABLE_SUBAGENT_DISPATCH] = settings.enableSubagentDispatch
+            preferences[TASK_CENTER_ENABLED] = settings.taskCenterEnabled
+            preferences[NAMESPACED_NOTIFICATIONS] = settings.namespacedNotifications
+            preferences[DYNAMIC_RUN_GATE] = settings.dynamicRunGate
+            preferences[KILL_SHELL_TASKS_ON_RUN_CANCEL] = settings.killShellTasksOnRunCancel
             preferences[SUBAGENT_PRESETS] = JsonInstant.encodeToString(settings.subagentPresets)
         }
         // 落盘成功后再广播内存态：edit 抛异常（序列化失败等）时内存与磁盘不分叉
@@ -1310,6 +1326,14 @@ data class Settings(
     val noticeCarrier: app.androidrik.rikkahub.data.task.NoticeCarrier = app.androidrik.rikkahub.data.task.NoticeCarrier.SYSTEM,
     val enableBackgroundSubagent: Boolean = false,
     val enableSubagentDispatch: Boolean = false,
+    /** P0 回滚开关（附录 C，默认开）：关 = 隐藏任务中心入口，旧 Agent 运行列表仍可进。 */
+    val taskCenterEnabled: Boolean = true,
+    /** P0 回滚开关：关 = 子代理审批通知回旧固定 4242/4243/4244。 */
+    val namespacedNotifications: Boolean = true,
+    /** P0 回滚开关：关 = 并发闸上限冻结在首读，改设置需重启。 */
+    val dynamicRunGate: Boolean = true,
+    /** P0 回滚开关：关 = run 取消/超时不再级联 kill 它起的 shell task。 */
+    val killShellTasksOnRunCancel: Boolean = true,
     /**
      * 子代理预设：**「按名称调度的模型 + 提示词」组合**列表。
      *

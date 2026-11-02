@@ -34,6 +34,28 @@ class PreferencesStoreTest {
     }
 
     @Test
+    fun `P0 rollback switches default enabled`() {
+        // 附录 C：四个开关默认开（= P0 新行为）；关掉才是回退路径，不能被默认值误关。
+        val settings = Settings()
+        org.junit.Assert.assertTrue(settings.taskCenterEnabled)
+        org.junit.Assert.assertTrue(settings.namespacedNotifications)
+        org.junit.Assert.assertTrue(settings.dynamicRunGate)
+        org.junit.Assert.assertTrue(settings.killShellTasksOnRunCancel)
+
+        // copy 往返必须保留关闭态：设置页与 DataStore 都靠 copy 写回
+        val rolledBack = settings.copy(
+            taskCenterEnabled = false,
+            namespacedNotifications = false,
+            dynamicRunGate = false,
+            killShellTasksOnRunCancel = false,
+        )
+        org.junit.Assert.assertFalse(rolledBack.taskCenterEnabled)
+        org.junit.Assert.assertFalse(rolledBack.namespacedNotifications)
+        org.junit.Assert.assertFalse(rolledBack.dynamicRunGate)
+        org.junit.Assert.assertFalse(rolledBack.killShellTasksOnRunCancel)
+    }
+
+    @Test
     fun `display setting glass theme defaults to false`() {
         val setting = DisplaySetting()
         org.junit.Assert.assertFalse(setting.enableGlassTheme)
