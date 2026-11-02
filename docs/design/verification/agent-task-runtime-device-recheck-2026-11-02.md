@@ -79,3 +79,44 @@ python scripts/verify_task_runtime.py --base-url http://127.0.0.1:19001/v1 --pro
 
 证据目录：`.tmp/runtime-acceptance/p1b/`、`glm-system-p1a/`、`glm-user-p1a/`、`p0-switches/`
 （gitignored，仅本地，不含 API key）。
+
+---
+
+## 2026-11-02 晚补充复跑（任务中心分段 / 三语 / 设备清单）
+
+变更起点：`5c94e12c1`（人优先分段 + P1b/P4 文案三语）。设备仍是 PJX110 / Android 15 / `6c841f95`。
+
+### 复跑结果
+
+| 验证项 | 命令 | 结果 |
+|---|---|---|
+| JVM 全量 | `:app:testDebugUnitTest :ai:testDebugUnitTest :workspace:testDebugUnitTest` | app **2830**（2 跳过）、ai **479**、workspace **169**（20 跳过），0 失败 0 错误 |
+| 真机 P1a 投递库 | `:app:connectedDebugAndroidTest` 指定 `AgentRunDeliveryInstrumentedTest`（Gradle 装包） | 8/8 通过 |
+| 真机 P0 开关 | 同上 `P0RollbackSwitchInstrumentedTest` | 2/2 通过（含 `scheduledHeadlessEnabled` 默认关/落盘/回读） |
+| 真机通知平台 | 手工 `adb install` → `pm grant POST_NOTIFICATIONS` → `am instrument -e class TaskNotificationInstrumentedTest` | **3/3 通过**；修正了取消通知的 Binder 快照竞态（见下） |
+| 真机 notice UI | 同上 `NoticeUiAcceptanceTest` | 3/3 通过（SYSTEM/USER 同卡、任务树批准） |
+| 真机工作区后台任务 | 同上 `WorkspaceBackgroundTaskInstrumentedTest` | 8 例执行、0 失败；无 rootfs 的用例按 `assumeTrue` 跳过 |
+| P1b 生产运行时验收 | `TaskRuntimeAcceptanceTest` | 跳过：需要 `runtimeBaseUrl` + 本机代理 + 上游 key（本轮无 key，沿用已归档的受控后端结果） |
+
+### 环境坑（下次照做）
+
+1. **Gradle `connectedDebugAndroidTest` 会重装 target 包，运行时权限被复位**：通知类用例必须手工装包后
+   `adb shell pm grant app.androidrik.rikkahub.debug android.permission.POST_NOTIFICATIONS`（+ `cmd appops set ... POST_NOTIFICATION allow`），
+   再 `adb shell am instrument -w -e class <Class> app.androidrik.rikkahub.debug.test/androidx.test.runner.AndroidJUnitRunner`。
+2. 这台 ROM 上 `NotificationManager.cancel()` 后的 `activeNotifications` 快照会晚一拍；
+   `TaskNotificationInstrumentedTest` 已改为轮询 3s（`5c94e12c1`）。
+3. 重装 target 包会清掉设备上的工作区 rootfs，`WorkspaceBackgroundTaskInstrumentedTest` 因此整组
+   `assumeTrue` 跳过；要真跑需先在应用内装好一个工作区。
+
+### 真机待验清单（按优先级）
+
+- [ ] **定时取消时序**：到点运行中在通知里点「停止」→ `ACTION_STOP` → `Job.cancel` → 账本 `CANCELLED`
+      （P4a/P0.5 单测已覆盖状态机；真机竞态未验）。
+- [ ] **五分钟审批超时**：真机实等一次（而非虚拟时间），确认无遗留待批、工具被拒绝且 run 收尾。
+- [ ] **系统通知动作人工点击**：批准/拒绝/停止由人手点一次（当前由测试调用生产队列）。
+- [ ] **启动 orphan 对账**：保留一条运行中 run，强杀进程后重启，确认任务中心/账本出现 `INTERRUPTED`
+      且不自动续跑父生成（P1a 已验投递，P3 扫描仅 JVM 报告）。
+- [ ] **旧备份 ZIP → v58 完整导入**：用真实旧版本备份走一遍导入（目前只验了独立库迁移与降级隔离）。
+- [ ] **完整聊天页人工导航**：会话内任务树入口 → 详情 → 返回；以及任务中心三段在真实数据下的滚动。
+- [ ] **KeepAlive / 不同 ROM 长时后台**：Doze、省电策略、厂商 ROM 杀后台后 run/通知是否存活。
+

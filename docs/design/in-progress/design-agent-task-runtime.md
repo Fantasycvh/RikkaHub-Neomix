@@ -3,7 +3,9 @@
 > 状态：**已拍板（2026-11-02）**；**P0 / P0.5 / P1a / P1b / P3 已落地**（P0 `692ed04ad` /
 > `23c977613` / `8df5a214b`，P1a 最后验收 `ed060aac0`，P1b `cd8a7fd26`，P3 `da95fb49e`）；
 > P2 嵌套（默认关、需单层不够用的观测证据）待启动；P4 已完成 **P4a 运行账本/取消进任务中心**
-> 与 **P4b 可选 `scheduled → agent_run`（默认关、可整体回退）**。范围及遗留见附录 D。
+> 与 **P4b 可选 `scheduled → agent_run`（默认关、可整体回退）**。体验层收尾（任务中心
+> 人优先分段 + P1b/P4 文案三语）见 `5c94e12c1`，与 `dsh-superagent-prototype` 的对照见附录 E。
+> 范围及遗留见附录 D。
 > 日期：2026-11-02。**rev2**（第一版经交叉评审后重写）。
 > 对象：本仓三套执行底座 + `AndyerNotFound/L3Hub-RikkaHub-Fork-WFadnf`（下称「L3Hub fork」，
 > 评审时 HEAD `e5f7e196`）。
@@ -844,6 +846,20 @@ P4b 本地提交 `feat(task-runtime): 定时任务可选 headless agent_run`（`
   其 agent run 卡（定时账本未存 agent runId，暂无互相跳转）。**真机只验了设置落盘，未验真实定时
   触发/取消时序**（P0.5 的定时取消真机时序仍是既有遗留）。
 
+### 体验层收尾（人优先分段 + 三语文案，2026-11-02 晚，`5c94e12c1`）
+
+- **人优先分段**：`TaskCard.needsPerson` 只由两类事实推导——run 停在 `WAITING_APPROVAL` 或有待批工具
+  （状态可能还没翻）、定时账本 `summaryOnly`（目标会话/助手被删，调度器不再重试）。任务中心据此分
+  「需要处理 / 进行中 / 最近」三段，空段不显示；`observeTasks()` 排序同序。`INTERRUPTED`/`FAILED`
+  刻意留在「最近」，避免崩溃一次就刷屏（§5.5「健康状态不占空间」）。
+- **三语**：新增/替换 P1b/P4 界面文案 21 个 key（任务树、通知渠道与终态标签、子代理结果卡、
+  后台子代理/结果消息兼容模式/后台执行），en / zh / zh-rTW 全量；通知终态复用既有
+  `agent_run_status_*`。`TaskCenterTest` 补 needsPerson 推导断言。
+- **真机**：通知平台 3/3（`adb install` 后需 `pm grant POST_NOTIFICATIONS`；Gradle
+  `connectedDebugAndroidTest` 会重装并复位运行时权限，故改为手工装包 + `am instrument`）、
+  NoticeUi 3/3、P0 开关 2/2、P1a DB 8/8；顺带把取消通知断言改为轮询（Binder 快照竞态，曾 1/3 偶发失败）。
+  清单与遗留见 `docs/design/verification/agent-task-runtime-device-recheck-2026-11-02.md`。
+
 ### 已知未验证或后续项
 
 - 正式 Application 的完整聊天页人工导航、KeepAlive 前台服务与不同 ROM 的长时后台存活仍需扩展验证；
@@ -858,4 +874,50 @@ P4b 本地提交 `feat(task-runtime): 定时任务可选 headless agent_run`（`
   真机需验证服务生命周期与通知动作的竞态；P4a 账本展示只跑 JVM；P4b 真机只验了
   `scheduledHeadlessEnabled` 的隔离 DataStore 落盘/回读，未验真实定时触发与取消时序）。
 - 旧备份 ZIP → v58 的完整导入流程（独立库 57→58 迁移与 58→57 降级隔离已由上方真机测试覆盖）。
+
+---
+
+## 附录 E：与 `dsh-superagent-prototype` 的对照（2026-11-02）
+
+对照对象：`deepseek-ai/dsh-superagent-prototype`（TypeScript 研究原型，MIT，本地 clone HEAD `6337fc8`，
+约 15.2k 行、794 个测试）。**只做概念对照，不引入依赖、不照搬代码**；该仓是研究原型，API 与生产语义
+均未定型。
+
+### E.1 结构对照
+
+| 原型 | 本仓 | 结论 |
+|---|---|---|
+| `Source → Trigger → Thread → Eval → Mandate/Ticket` 五段式 | 执行面保留三 adapter（子代理/无头 run、工作区命令、定时任务），控制面统一 `TaskKey`/`TaskState`/`TaskCard` | 同向；原型也没有把执行器合掉，只统一治理层 |
+| `Ticket` 用 **first-match stage 表** 推进状态 | 每个 adapter 自己的状态映射（`TaskStateMappings` / shell 状态 / `scheduledStatusForAgentRun`） | 现阶段不引入通用规则引擎；三套映射已够用，等 P2 出现多来源竞争再评估 |
+| `WorkerSlots`（含 +1 人位/预留位） | 设备级分池：模型 2 / shell 4 / scheduled 1，运行中动态闸 `frozenGateLimit`；满则拒绝不排队 | 同向；「+1 人位」暂不采纳——本仓没有可被抢占的人工执行槽，审批阻塞靠取消解锁 |
+| `Assignment` / `Report` / `Attention` | `TaskCard` 读模型 + `RunNotifications` + 会话任务树 + 任务中心「需要处理」段 | `Attention` 即 `needsPerson` 的雏形；本仓按「谁唯一能解锁」推导，而不是由执行器上报 |
+| `AgentDelivery` 确定性 message id | `SubagentNotice` 注解的 `runIds` + `appendNoticeToSession` 幂等 | 同向；本仓把幂等键放在消息注解而非投递层，重启后仍能去重（P1a 已验证） |
+| 通用 durable `effect` 队列（`(kind,key)` 唯一 + `Later` 重试） | `agent_run.delivery_state`（none/pending/delivered/orphaned）+ `NoticeDelivery.flush()` 批量 8 | 本仓只做单用途投递泵；单行 run 状态机 + 事务已覆盖唯一性收益，通用化留待出现第二种副作用 |
+| `outbox receipt` 回执 | `delivery_state=delivered` + `deliveredAt`；orphan 单独标记 | 同向，本仓不保留逐条回执日志 |
+| handoff / resume / interrupted 显式状态 | D6：不自动续跑父生成；P3 只做启动 orphan 扫描（report-only） | 刻意不同：本仓把「恢复」交给用户与下一轮输入，避免后台自动生成失控 |
+
+### E.2 可借鉴 / 不借鉴
+
+**值得借鉴（已部分体现）**
+
+1. **治理层与执行层分离**：原型最值得学的是把「谁来做、做到哪、要不要人」抽出来，而不是统一执行器；
+   本仓 P0 的统一读模型与三 adapter 是同一判断。
+2. **人作为一等阶段**：原型的 stage 表把「等人」当正常阶段而非错误状态；本仓 `needsPerson` 与三段式
+   任务中心即此意。
+3. **投递幂等优先于投递速度**：确定性 id / 唯一键让重试安全；本仓的注解去重与 `delivery_state` 同理。
+4. **显式 interrupted**：进程重启后旧 run 标 `INTERRUPTED` 并补投，比假装完成更诚实。
+
+**不借鉴**
+
+1. 通用 `effect` 队列与 outbox 全套基础设施：当前只有 notice 一种副作用，单行状态机更小、更可测。
+2. first-match 规则引擎：三套来源状态差异大，通用规则表先增加理解成本；等 P2 真的需要跨来源优先级时再说。
+3. handoff/自动 resume：与本仓 D6 冲突，且研究原型的语义未经过生产验证。
+4. 原型的 Ticket/Assignment 命名与对象模型：本仓已有 `TaskKey`/`TaskCard`，改名收益为零。
+
+### E.3 仍未对齐（P2 前不追）
+
+- 原型的 stage 表可表达「同一任务多次尝试、跨阶段历史」；本仓 `TaskCard` 是当前态快照，历史在
+  `agent_run` 账本与定时运行历史页。
+- 原型的注意力/通知策略（谁该被打扰、打扰几次）比本仓细；本仓目前只有「终态通知 + 待批通知 +
+  前台不打扰」。
 
