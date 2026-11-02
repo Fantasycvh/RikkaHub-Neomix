@@ -22,3 +22,6 @@ _mock_rule*
 # 度量用临时数据（含真机记忆库转储，绝不入库）
 _measure/
 .neomix-app-log.txt
+
+# 本轮调研用的临时克隆/笔记（fork 对照、设计底稿），不入库
+.tmp/
