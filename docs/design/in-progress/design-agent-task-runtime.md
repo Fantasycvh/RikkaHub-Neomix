@@ -1,7 +1,7 @@
 # Agent 任务控制面：子代理 / 无头 run / 后台任务的三合一与改进（design-agent-task-runtime）
 
-> 状态：**已拍板（2026-11-02）**；**P0 / P0.5 已落地（提交 `692ed04ad` + 后续补测）**，P1a 待启动；
-> 进度与遗留见附录 D。
+> 状态：**已拍板（2026-11-02）**；**P0 / P0.5 已全部落地**（`692ed04ad` / `23c977613` / `8df5a214b`），
+> P1a 待启动；进度与遗留见附录 D。
 > 日期：2026-11-02。**rev2**（第一版经交叉评审后重写）。
 > 对象：本仓三套执行底座 + `AndyerNotFound/L3Hub-RikkaHub-Fork-WFadnf`（下称「L3Hub fork」，
 > 评审时 HEAD `e5f7e196`）。
@@ -79,9 +79,10 @@
 5. **结果回传两种哲学**：run 明确否决事后注入（§10.4），定时任务的整个模型恰恰是事后注入。
    合并必须先选主轴，另一条降级为「结果去向」选项，不能双写。
 
-> **2026-11-02 实施状态**：缺口 2 的「并发闸首读冻结」、缺口 3 的「run 起的 shell 无归属 /
-> 定时无取消」、缺口 1 的「run 永远卡在 running」（启动对账）已修，见附录 D；缺口 1 的
-> 「一次查询看全设备在跑什么」（任务中心读模型）仍待下一轮。本节保留为设计时的现状基线。
+> **2026-11-02 实施状态**：缺口 1 的「一次查询看全设备在跑什么」（任务中心读模型 + 页面）、
+> 缺口 2 的「并发闸首读冻结」、缺口 3 的「run 起的 shell 无归属 / 定时无取消」、
+> 缺口 1 的「run 永远卡在 running」（启动对账）均已修，见附录 D。
+> 本节保留为设计时的现状基线。
 
 ### 1.3 既有决议
 
@@ -603,9 +604,9 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 
 > 规则：每项落地后在此打勾并写「提交短哈希 + 验证方式」；**未打勾即未验证**。
 >
-> 2026-11-02 更新：P0 / P0.5 主体已落地，全量单测 2774 例 0 失败
-> （`./gradlew :app:testDebugUnitTest`）。P0.5 的「pending 投递骨架」依赖 P1a 的 v58 数据模型，
-> 拆到 P1a 实施；P0 的任务中心读模型与页面留到下一轮（设计不变，只是尚未写代码）。
+> 2026-11-02 更新：P0 / P0.5 全部落地，编译通过；全量单测 app 2783 例 + workspace 161 例 0 失败
+> （`./gradlew :app:testDebugUnitTest :workspace:testDebugUnitTest`）。P0.5 的「pending 投递骨架」
+> 依赖 P1a 的 v58 数据模型，拆到 P1a 实施。
 
 ### P0（无新数据模型，可独立回滚）
 
@@ -623,8 +624,15 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
   —— `692ed04ad`；`executeRun` 的取消与超时分支在 `NonCancellable` 里
   `killBackgroundTasksByOwner("run:<id>")`。**回滚开关未加用户设置**：P0 以「回退提交」为回滚单位，
   `killShellTasksOnRunCancel` 开关列入 P1b 设置面（见附录 C）。
-- [ ] `WorkspaceTaskRegistry.snapshotFlow` + 任务中心读模型（`TaskCenter`）——**下一轮**
-- [ ] 任务中心页（含 shell / agent / scheduled 三段 + 取消/批准入口）——**下一轮**
+- [x] `WorkspaceTaskRegistry.snapshotFlow` + 任务中心读模型（`TaskCenter`）—— `8df5a214b`；
+  `TaskRegistry` 在启动/kill/自然退出/淘汰各发一版不可变快照；`TaskCenter` 聚合
+  `agent_run` + shell 快照 + 定时任务行 + 审批队列 + 定时运行注册表，映射为 `TaskCard`
+  （状态/能否取消/待批数）；取消按来源转发（Job.cancel / 进程树 SIGKILL / 定时 run），
+  不持有第三套并发准入。映射表驱动测试 `TaskCenterTest`、快照流测试在 workspace 模块。
+- [x] 任务中心页（含 shell / agent / scheduled 三段 + 取消/批准入口）—— `8df5a214b`；
+  `Screen.TaskCenter` + Extensions 入口 + `TaskCenterPage`；筛选、状态、取消、待批跳详情；
+  Agent 详情 / 定时任务详情可点入；三语 strings。**回滚**：删路由/入口（`taskCenterEnabled`
+  用户开关仍未进设置页，回滚单位是提交）。
 
 ### P0.5（对账与定时取消）
 
