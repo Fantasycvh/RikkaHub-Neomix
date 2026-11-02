@@ -414,6 +414,9 @@ class RikkaHubApp : Application() {
         // check workspace integrity (mark workspaces with missing files as broken after backup restore)
         checkWorkspaceIntegrity()
 
+        // P3 孤儿后台命令扫描：只报告不杀（注册表是内存态，进程重启后旧任务进程会 reparent 到 init）
+        reportOrphanBackgroundTasks()
+
         // sync upload files to DB
         syncManagedFiles()
 
@@ -527,6 +530,30 @@ class RikkaHubApp : Application() {
                 get<WorkspaceRepository>().checkIntegrity()
             }.onFailure {
                 Log.e(TAG, "checkWorkspaceIntegrity failed", it)
+            }
+        }
+    }
+
+    /**
+     * 报告上个进程遗留、本进程注册表不认识的 shell 任务进程（P3）。
+     *
+     * **只报告**：这些进程可能仍在正常产出（例如用户期待的长下载），注册表丢失不等于应当终止；
+     * 自动清理必须由用户设置显式开启，P3 先提供可见的诊断日志。
+     */
+    private fun reportOrphanBackgroundTasks() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                get<WorkspaceRepository>().findOrphanBackgroundTaskMarkers()
+            }.onSuccess { markers ->
+                if (markers.isNotEmpty()) {
+                    Log.w(
+                        TAG,
+                        "reportOrphanBackgroundTasks: ${markers.size} orphan shell task process(es) " +
+                            "from a previous process: ${markers.joinToString()}",
+                    )
+                }
+            }.onFailure {
+                Log.e(TAG, "reportOrphanBackgroundTasks failed", it)
             }
         }
     }

@@ -1889,8 +1889,8 @@ class ChatService(
                 model = model,
                 workspaceCwd = conversation.workspaceCwd,
                 conversationId = conversationId.toString(),
-                // 后台任务归属 = 本轮令牌（本轮被取消时按它精确收掉这一轮起的进程）
-                turnOwner = session.backgroundTaskOwner,
+                // 后台任务归属 = 本轮 scope（本轮被取消时按它精确收掉这一轮起的进程）
+                turnOwner = app.androidrik.workspace.ExecutionScope.parse(session.backgroundTaskOwner),
                 memoryDisabled = conversation.memoryDisabled,
             )
             Log.i(
@@ -3326,11 +3326,14 @@ class ChatService(
      * 「进程已启动、工具结果还没回填就被取消」这个靠 taskId 覆盖不到的窗口。
      */
     private fun killBackgroundTasksOfCancelledTurn(owner: String) {
+        // 回调层仍传 wire 字符串（ConversationSession 还承载 forced turn owner 的历史格式），
+        // 到控制面边界才还原成 ExecutionScope；解析失败=无归属，宁可不动手。
+        val scope = app.androidrik.workspace.ExecutionScope.parse(owner) ?: return
         appScope.launch {
-            runCatching { workspaceRepository.killBackgroundTasksByOwner(owner) }
+            runCatching { workspaceRepository.killBackgroundTasksByScope(scope) }
                 .onSuccess { count ->
                     if (count > 0) {
-                        Log.i(TAG, "cancelled turn killed $count background task(s) of $owner")
+                        Log.i(TAG, "cancelled turn killed $count background task(s) of ${scope.wire}")
                     }
                 }
                 .onFailure { Logging.log(TAG, "killBackgroundTasksOfCancelledTurn failed: $it") }

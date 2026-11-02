@@ -395,5 +395,5 @@ internal suspend fun afterPreviousGeneration(previous: Job?, block: suspend () -
     }
 }
 
-/** 新一轮后台任务归属令牌。只要求「同一会话内的两轮不同」，故用随机串而非计数（无跨进程状态）。 */
-private fun newTurnToken(): String = "turn-${Uuid.random()}"
+/** 新一轮后台任务归属 scope。只要求「同一会话内的两轮不同」，故用随机串而非计数（无跨进程状态）。 */
+private fun newTurnToken(): String = "turn:${Uuid.random()}"

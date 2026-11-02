@@ -60,6 +60,9 @@ private const val UNLIMITED_WAIT_SLICE_MS = 60 * 60 * 1000L
 /** 任务日志的保留时长：按修改时间淘汰更旧的文件（任务表重启即丢，日志不该无限堆积）。 */
 const val DEFAULT_TASK_LOG_RETENTION_MS = 24 * 60 * 60 * 1000L
 
+/** 孤儿扫描用的标记匹配（[TASK_MARKER_PREFIX] + 任务 id/随机后缀，in `/proc/<pid>/cmdline`）。 */
+private val TASK_MARKER_REGEX = Regex(Regex.escape(TASK_MARKER_PREFIX) + "[0-9A-Za-z_-]+")
+
 /** 尾部缓冲快照。 */
 data class TailSnapshot(
     /** 保留的尾部文本（最多 [capacity] 字符）。 */
@@ -347,8 +350,8 @@ class WorkspaceTaskRegistry(
         val marker: String,
         val stdout: TailBuffer,
         val stderr: TailBuffer,
-        /** 启动方标记（见 [WorkspaceTaskRegistry.start] 的 `owner`）；null = 无归属。 */
-        val owner: String? = null,
+        /** 启动方 scope（P3）；null = 无归属。 */
+        val scope: ExecutionScope? = null,
     ) {
         @Volatile
         var status: WorkspaceTaskStatus = WorkspaceTaskStatus.RUNNING
@@ -398,10 +401,10 @@ class WorkspaceTaskRegistry(
     /**
      * 启动一个后台任务；超出并发上限时抛 [IllegalStateException]（工具层转成可见错误）。
      *
-     * @param owner 启动方标记（模型侧传「本轮生成」的令牌）。用途只有一个：本轮被打断时
-     *   [killByOwner] 能把**这一轮起的任务**一起终止。为什么按 owner 而不是按「工具结果里的
-     *   taskId」：任务可能在「进程已启动、结果还没回填给模型」的窗口里就被取消，那时 taskId
-     *   根本没进对话，只有启动时就记下的归属能找到它。
+     * @param owner 启动方 scope（模型侧传「本轮生成」的令牌，P3 起是 [ExecutionScope]）。
+     *   用途只有一个：本轮被打断时 [killByScope] 能把**这一轮起的任务**一起终止。为什么按
+     *   scope 而不是按「工具结果里的 taskId」：任务可能在「进程已启动、结果还没回填给模型」
+     *   的窗口里就被取消，那时 taskId 根本没进对话，只有启动时就记下的归属能找到它。
      * @param onFinished 任务生命周期结束（进程退出被 reaper 收尾，或启动失败被置为
      *   [WorkspaceTaskStatus.FAILED]）后**恰好调用一次**的回调；用于释放调用方为任务持有的资源
      *   （本仓：只读快照代的租约，见 [ReadOnlyMountSnapshots.prepareLeased]）。回调异常被吞掉，
@@ -409,7 +412,7 @@ class WorkspaceTaskRegistry(
      */
     fun start(
         context: WorkspaceShellContext,
-        owner: String? = null,
+        owner: ExecutionScope? = null,
         onFinished: (() -> Unit)? = null,
     ): WorkspaceTaskSnapshot {
         // 释放回调必须**恰好**调用一次：成功路径由 reaper 线程 finally 调用，启动失败路径在返回前
@@ -440,7 +443,7 @@ class WorkspaceTaskRegistry(
                 marker = newTaskMarker(id),
                 stdout = TailBuffer(tailChars),
                 stderr = TailBuffer(tailChars),
-                owner = owner?.takeIf { it.isNotBlank() },
+                scope = owner,
             ).apply {
                 logFiles = taskLogsFor(context.filesDir, id)
             }
@@ -527,23 +530,53 @@ class WorkspaceTaskRegistry(
     }.count { kill(it) == WorkspaceKillResult.KILLED }
 
     /**
-     * 终止 [owner] 启动、且仍在运行的全部任务，返回终止数量。
+     * 终止 [scope] 及其**所有子 scope** 启动、且仍在运行的任务，返回终止数量（P3 级联）。
      *
-     * 用途：**本轮生成被打断时，把这一轮起的后台任务一并收掉**。否则它们会在设备上继续跑
+     * 用途：**本轮/本 run 被打断时，把它名下的后台任务一并收掉**。否则它们会在设备上继续跑
      * （吃 CPU/网络、继续写文件），直到 30 分钟时长看门狗才停——而模型已经拿不到结果、
      * 用户也不知道还有东西在跑。归属在 [start] 时记下（不是靠工具结果里的 taskId），
      * 才能覆盖「进程已启动、结果还没回填就被取消」这个窗口。
      *
-     * 空 owner 直接返回 0：宁可什么都不杀，也不能把「无归属」的任务当成一批误杀。
+     * 只按 scope 的父链判断，不按 wire 字符串前缀：`run:abc` 不能被 `run:ab` 误伤，
+     * 也不能让「字符串刚好是前缀」的无关 scope 被级联。无父链的旧 scope 只匹配自身。
      */
-    fun killByOwner(owner: String): Int {
-        if (owner.isBlank()) return 0
+    fun killByScope(scope: ExecutionScope): Int {
         val ids = synchronized(lock) {
             tasks.values
-                .filter { it.owner == owner && it.status == WorkspaceTaskStatus.RUNNING }
+                .filter { it.status == WorkspaceTaskStatus.RUNNING && scope.covers(it.scope) }
                 .map { it.id }
         }
         return ids.count { kill(it) == WorkspaceKillResult.KILLED }
+    }
+
+    /**
+     * 按 wire 字符串终止任务（兼容入口；内部走 [killByScope]）。
+     *
+     * 空 owner 直接返回 0：宁可什么都不杀，也不能把「无归属」的任务当成一批误杀。
+     */
+    fun killByOwner(owner: String): Int {
+        val scope = ExecutionScope.parse(owner) ?: return 0
+        return killByScope(scope)
+    }
+
+    /**
+     * 扫描 `/proc` 里带本注册表任务标记、但注册表已不认识（进程重启 / 任务表丢失）的进程（P3）。
+     *
+     * **只报告不擅自杀**：进程可能是用户此刻还在用的长任务，注册表丢失不等于它该终止；
+     * 自动终止必须由用户开关决定（P3 先提供可见性与日志，默认不动手）。
+     *
+     * 必须扫全表而不是只看本进程后代：应用进程重启后，旧任务进程会被 reparent 到 init，
+     * 在新进程里已经不在 `descendantsOf(self)` 里——只扫后代永远发现不了它们。
+     */
+    fun findOrphanMarkers(fs: ProcFs = RealProcFs): List<String> {
+        val known = synchronized(lock) { tasks.values.map { it.marker }.toSet() }
+        return fs.nodes().asSequence()
+            .mapNotNull { fs.cmdline(it.pid) }
+            .flatMap { line -> TASK_MARKER_REGEX.findAll(line) }
+            .map { it.value }
+            .filter { it !in known }
+            .distinct()
+            .toList()
     }
 
     private fun startReaper(entry: Entry, handle: WorkspaceBackgroundHandle, onFinished: () -> Unit) {
@@ -647,7 +680,7 @@ class WorkspaceTaskRegistry(
             lifetimeLimitMillis = maxLifetimeMillis.coerceAtLeast(0L),
             stdoutLogPath = entry.stdoutLogPath,
             stderrLogPath = entry.stderrLogPath,
-            owner = entry.owner,
+            owner = entry.scope?.wire,
         )
     }
 }

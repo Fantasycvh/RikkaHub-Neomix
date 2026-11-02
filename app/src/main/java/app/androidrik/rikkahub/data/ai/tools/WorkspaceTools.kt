@@ -22,6 +22,7 @@ import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.utils.generateUnifiedDiff
+import app.androidrik.workspace.ExecutionScope
 import app.androidrik.workspace.WorkspaceCommandResult
 import app.androidrik.workspace.WorkspaceFileEntry
 import app.androidrik.workspace.WorkspaceKillResult
@@ -107,10 +108,10 @@ suspend fun createWorkspaceTools(
     workspaceRepository: WorkspaceRepository,
     cwd: String? = null,
     /**
-     * 本轮生成令牌：写进后台任务的归属，供「本轮被打断」时精确收掉这一轮起的任务
-     * （见 [WorkspaceRepository.killBackgroundTasksByOwner]）。null = 不归属（子代理/预览等）。
+     * 本轮/本 run 的归属 scope（P3）：写进后台任务的归属，供取消时按 scope 级联收掉。
+     * null = 不归属（预览等）。
      */
-    turnOwner: String? = null,
+    turnOwner: ExecutionScope? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
     val layout = workspaceRepository.layout(workspaceId) ?: return emptyList()
@@ -576,7 +577,7 @@ private fun createRunBackgroundTool(
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
     defaultCwd: String? = null,
-    turnOwner: String? = null,
+    turnOwner: ExecutionScope? = null,
 ) = Tool(
     name = "workspace_run_background",
     description = buildString {

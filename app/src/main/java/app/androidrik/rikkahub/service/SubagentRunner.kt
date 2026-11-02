@@ -48,6 +48,7 @@ import app.androidrik.rikkahub.data.model.SubagentPreset
 import app.androidrik.rikkahub.data.model.SubagentToolApproval
 import app.androidrik.rikkahub.data.model.toRunProfile
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.workspace.ExecutionScope
 import app.androidrik.workspace.WorkspaceStorageArea
 import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.AppScope
@@ -462,8 +463,8 @@ class SubagentRunner(
                 explicitlyAllowedToolNames = allowedTools.orEmpty(),
                 // run 内起的后台 shell 任务归属到本 run（设计 §5.2 第 1 条）：以前这里不传，
                 // owner 落成 null ⇒ run 被取消后它的后台命令变孤儿——没人轮询输出、没人收进程，
-                // 却继续吃 CPU/网络直到 30 分钟看门狗。取消 scope 时据此级联 killByOwner。
-                turnOwner = "run:$runId",
+                // 却继续吃 CPU/网络直到 30 分钟看门狗。取消 scope 时据此级联 killByScope。
+                turnOwner = ExecutionScope.run(runId.toString()),
             )
             val envelope = resolveSubagentEnvelope(segments, allowedTools, parentToolEnvelope,
                 profile.workspaceId, parentWorkspaceId)
@@ -628,7 +629,7 @@ class SubagentRunner(
                         "run timeout (" + timeoutMillis + "ms)",
                     )
                     // run 已经结束，它起的后台 shell 任务不应再无限跑下去（与取消同款级联）。
-                    runCatching { workspaceRepository.killBackgroundTasksByOwner("run:$runId") }
+                    runCatching { workspaceRepository.killBackgroundTasksByScope(ExecutionScope.run(runId.toString())) }
                 }
                 return null
             } catch (e: CancellationException) {
@@ -639,7 +640,7 @@ class SubagentRunner(
                     cancelApprovalNotification(runId.toString())
                     // run 被取消后没人再轮询这些后台命令的结果，继续跑只是烧 CPU/网络；
                     // 与 cancelRun 的直杀互为兜底（覆盖超时/协程取消等旁路）。
-                    runCatching { workspaceRepository.killBackgroundTasksByOwner("run:$runId") }
+                    runCatching { workspaceRepository.killBackgroundTasksByScope(ExecutionScope.run(runId.toString())) }
                 }
                 throw e
             }

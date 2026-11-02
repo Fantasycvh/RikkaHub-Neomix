@@ -670,14 +670,15 @@ class WorkspaceRepository(
     /**
      * 启动后台命令（不阻塞对话轮）。任务表在 `WorkspaceManager` 内存里，进程重启即丢失。
      *
-     * @param owner 启动方标记（本轮生成令牌）。只用于 [killBackgroundTasksByOwner]：
-     *   本轮被打断时把这一轮起的任务一起收掉。**不改并发上限、不改工具可见性**。
+     * @param owner 启动方 scope（P3，本轮生成/run 的归属）。只用于
+     *   [killBackgroundTasksByScope]：本轮被打断时把这一轮起的任务一起收掉。
+     *   **不改并发上限、不改工具可见性**。
      */
     suspend fun startBackgroundCommand(
         id: String,
         command: String,
         cwd: String = "",
-        owner: String? = null,
+        owner: app.androidrik.workspace.ExecutionScope? = null,
     ): WorkspaceTaskSnapshot = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         require(workspace.capabilities().backgroundTasks) {
@@ -737,15 +738,30 @@ class WorkspaceRepository(
         }
 
     /**
-     * 终止 [owner] 启动的全部后台任务（跨工作空间），返回终止数量。
+     * 终止 [scope]（含子 scope）启动的全部后台任务（跨工作空间），返回终止数量。
      *
-     * **不走 [killBackgroundTask] 的根归属校验**：owner 令牌由本轮生成独占，命中的任务
-     * 天然属于该轮，而调用方（[app.androidrik.rikkahub.service.ChatService.stopGeneration]）
+     * **不走 [killBackgroundTask] 的根归属校验**：scope 令牌由本轮/本 run 独占，命中的任务
+     * 天然属于它，而调用方（[app.androidrik.rikkahub.service.ChatService.stopGeneration] 等）
      * 手上只有会话 id、不一定持有 workspace 行——为了一个「已经确定是这轮起的」集合再去查
-     * 一次工作区只会多一次可能失败的 IO。空 owner 由 [WorkspaceManager] 侧挡掉（返回 0）。
+     * 一次工作区只会多一次可能失败的 IO。
      */
+    suspend fun killBackgroundTasksByScope(scope: app.androidrik.workspace.ExecutionScope): Int =
+        withContext(Dispatchers.IO) {
+            manager.killBackgroundTasksByScope(scope)
+        }
+
+    /** 兼容入口：按 wire 字符串终止（历史调用/测试仍可传字符串）。 */
     suspend fun killBackgroundTasksByOwner(owner: String): Int = withContext(Dispatchers.IO) {
         manager.killBackgroundTasksByOwner(owner)
+    }
+
+    /**
+     * 扫描注册表不认识的旧任务进程标记（P3 孤儿进程扫描，默认只报告，不自动杀）。
+     *
+     * 返回的是进程标记（含随机后缀），不是 taskId；日志/诊断用，不要拿它当任务键。
+     */
+    suspend fun findOrphanBackgroundTaskMarkers(): List<String> = withContext(Dispatchers.IO) {
+        manager.findOrphanBackgroundTaskMarkers()
     }
 
     /** 工作区在执行环境内的目录约定；工作区不存在时返回 null */

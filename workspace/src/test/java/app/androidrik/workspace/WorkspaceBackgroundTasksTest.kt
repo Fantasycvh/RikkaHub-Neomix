@@ -346,8 +346,8 @@ class WorkspaceBackgroundTasksTest {
     fun `kill by owner only stops the tasks that owner started`() {
         val launcher = FakeLauncher()
         val registry = WorkspaceTaskRegistry(launcher)
-        val thisTurn = registry.start(context(command = "make"), owner = "turn-1")
-        val earlierTurn = registry.start(context(command = "sleep 1000"), owner = "turn-0")
+        val thisTurn = registry.start(context(command = "make"), owner = ExecutionScope.parse("turn-1"))
+        val earlierTurn = registry.start(context(command = "sleep 1000"), owner = ExecutionScope.parse("turn-0"))
         assertEquals("turn-1", thisTurn.owner)
         assertEquals("turn-0", earlierTurn.owner)
         val unowned = registry.start(context(command = "tail -f log"))
@@ -364,7 +364,7 @@ class WorkspaceBackgroundTasksTest {
     fun `kill by owner is idempotent and ignores finished or blank owners`() {
         val launcher = FakeLauncher()
         val registry = WorkspaceTaskRegistry(launcher)
-        val task = registry.start(context(command = "make"), owner = "turn-1")
+        val task = registry.start(context(command = "make"), owner = ExecutionScope.parse("turn-1"))
 
         assertEquals(1, registry.killByOwner("turn-1"))
         awaitFinished(registry, task.id)
@@ -378,12 +378,70 @@ class WorkspaceBackgroundTasksTest {
     }
 
     @Test
+    fun `kill by scope cascades to child scope but not siblings`() {
+        // P3：turn 取消要收掉它名下的 run 再收掉 shell；但另一轮（兄弟 scope）必须活着。
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        val turn = ExecutionScope.turn("t1")
+        val childRun = ExecutionScope.run("r1").let { turn.child(it.wire) }
+        val sibling = ExecutionScope.turn("t2")
+
+        val own = registry.start(context(command = "make"), owner = turn)
+        val child = registry.start(context(command = "sleep 1000"), owner = childRun)
+        val other = registry.start(context(command = "tail -f log"), owner = sibling)
+
+        assertEquals(2, registry.killByScope(turn))
+
+        assertEquals(WorkspaceTaskStatus.KILLED, awaitFinished(registry, own.id).status)
+        assertEquals(WorkspaceTaskStatus.KILLED, awaitFinished(registry, child.id).status)
+        assertEquals(WorkspaceTaskStatus.RUNNING, registry.snapshot(other.id)!!.status)
+    }
+
+    @Test
+    fun `scope matching is not string prefix matching`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        val short = registry.start(context(command = "a"), owner = ExecutionScope.parse("run:ab"))
+        val long = registry.start(context(command = "b"), owner = ExecutionScope.parse("run:abc"))
+
+        // run:abc 不能被 run:ab 误伤（旧实现若用 startsWith 就会踩这个坑）
+        assertEquals(1, registry.killByScope(ExecutionScope.parse("run:ab")!!))
+        assertEquals(WorkspaceTaskStatus.KILLED, awaitFinished(registry, short.id).status)
+        assertEquals(WorkspaceTaskStatus.RUNNING, registry.snapshot(long.id)!!.status)
+        assertEquals(1, registry.killByScope(ExecutionScope.parse("run:abc")!!))
+        assertEquals(WorkspaceTaskStatus.KILLED, awaitFinished(registry, long.id).status)
+    }
+
+    @Test
+    fun `orphan scan reports markers the registry no longer knows`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        registry.start(context(command = "make"))
+
+        // 真实 marker 不在快照里：直接从启动器参数取（与注册表内部生成的一致）
+        val knownMarker = launcher.lastMarker!!
+        val fs = FakeProcFs(
+            nodes = listOf(ProcNode(1, 0), ProcNode(100, 1), ProcNode(101, 1)),
+            cmdlines = mapOf(
+                100 to "sh $knownMarker",
+                101 to "sh ${TASK_MARKER_PREFIX}deadbeef-12345678",
+            ),
+        )
+
+        assertEquals(
+            "注册表认识的任务不算孤儿，只报告已丢失的",
+            listOf("${TASK_MARKER_PREFIX}deadbeef-12345678"),
+            registry.findOrphanMarkers(fs),
+        )
+    }
+
+    @Test
     fun `kill by owner spans workspace roots`() {
         val launcher = FakeLauncher()
         val registry = WorkspaceTaskRegistry(launcher)
         // 同一个助手可能绑了多个工作空间；取消一轮生成时这一轮起的所有任务都要收
-        val one = registry.start(context(command = "a", root = "ws-1"), owner = "turn-9")
-        val other = registry.start(context(command = "b", root = "ws-2"), owner = "turn-9")
+        val one = registry.start(context(command = "a", root = "ws-1"), owner = ExecutionScope.parse("turn-9"))
+        val other = registry.start(context(command = "b", root = "ws-2"), owner = ExecutionScope.parse("turn-9"))
 
         assertEquals(2, registry.killByOwner("turn-9"))
 
@@ -556,8 +614,17 @@ class WorkspaceBackgroundTasksTest {
         }
     }
 
-    private class FakeLauncher : WorkspaceTaskLauncher {
-        val startedProcesses = mutableListOf<FakeProcess>()
+    /** 假 `/proc`：只提供孤儿扫描需要的 pid/ppid/cmdline。 */
+    private class FakeProcFs(
+        private val nodes: List<ProcNode>,
+        private val cmdlines: Map<Int, String>,
+    ) : ProcFs {
+        override fun nodes(): List<ProcNode> = nodes
+        override fun cmdline(pid: Int): String? = cmdlines[pid]
+        override fun kill(pid: Int): Boolean = false
+    }
+
+    private class FakeLauncher : WorkspaceTaskLauncher {        val startedProcesses = mutableListOf<FakeProcess>()
 
         var failWith: String? = null
         var throwOnLaunch: Exception? = null
@@ -569,6 +636,7 @@ class WorkspaceBackgroundTasksTest {
         }
 
         var lastLogs: WorkspaceTaskLogs? = null
+        var lastMarker: String? = null
 
         override fun launch(
             context: WorkspaceShellContext,
@@ -578,6 +646,7 @@ class WorkspaceBackgroundTasksTest {
             stderr: TailBuffer,
         ): WorkspaceBackgroundHandle? {
             lastLogs = logs
+            lastMarker = marker
             throwOnLaunch?.let { throw it }
             failWith?.let {
                 stderr.append(it)

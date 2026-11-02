@@ -32,6 +32,7 @@ import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.data.plugin.PluginToolProvider
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginManager
+import app.androidrik.workspace.ExecutionScope
 import app.androidrik.workspace.WorkspaceShellStatus
 
 private const val TAG = "ChatToolFactory"
@@ -119,12 +120,12 @@ class ChatToolFactory(
          */
         conversationId: String? = null,
         /**
-         * 本轮生成令牌（后台任务归属，见 [createWorkspaceTools] 的 `turnOwner`）。
+         * 本轮/本 run 的归属 scope（P3，后台任务与子代理归属）。
          *
-         * **为什么从装配点透传**：令牌是「这一轮」的身份，只有 `ChatService` 知道它什么时候
+         * **为什么从装配点透传**：scope 是「这一轮」的身份，只有 `ChatService` 知道它什么时候
          * 换新（新一轮用户消息 / 重新生成 / 继续生成）。工具层拿不到轮次概念，只能被喂。
          */
-        turnOwner: String? = null,
+        turnOwner: ExecutionScope? = null,
         /** 会话级「不使用记忆」（隐身对话）：为真时不装配记忆工具，见 [createToolSegments] */
         memoryDisabled: Boolean = false,
     ): List<Tool> = createToolSegments(
@@ -163,11 +164,10 @@ class ChatToolFactory(
          */
         explicitlyAllowedToolNames: Set<String> = emptySet(),
         /**
-         * 本轮生成令牌：写进 `workspace_run_background` 起的任务，供「本轮被打断」时
-         * 精确收掉这一轮起的后台进程（见 `WorkspaceTaskRegistry.start` 的 `owner`）。
-         * 为 null 的装配方（子代理 / 预览）起的任务没有归属，不会被任何一轮的取消误杀。
+         * 本轮/本 run 的归属 scope（P3）：写进 `workspace_run_background` 起的任务与子代理
+         * 派发上下文，供取消时按 scope 精确/级联收掉。为 null 的装配方（预览）起的任务没有归属。
          */
-        turnOwner: String? = null,
+        turnOwner: ExecutionScope? = null,
         /**
          * 会话级「不使用记忆」（隐身对话；见 `docs/design/design-memory-discipline.md` §4.4）。
          * 为真时**不装配记忆工具**——它和「不注入记忆」是同一件事的两半：只关注入的话，
@@ -315,7 +315,7 @@ class ChatToolFactory(
                             SubagentDispatchContext(
                                 parentToolEnvelope = segments.filter { it.source != "subagent" }
                                     .flatMap { it.tools }.map { it.name }.toSet(),
-                                scopeToken = turnOwner,
+                                scopeToken = turnOwner?.wire,
                                 parentWorkspaceId = assistant.workspaceId,
                             )
                         },
@@ -516,7 +516,7 @@ class ChatToolFactory(
     private suspend fun createWorkspaceToolsIfReady(
         workspaceId: String?,
         cwd: String? = null,
-        turnOwner: String? = null,
+        turnOwner: ExecutionScope? = null,
     ): List<Tool> {
         if (workspaceId.isNullOrBlank()) return emptyList()
         val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
