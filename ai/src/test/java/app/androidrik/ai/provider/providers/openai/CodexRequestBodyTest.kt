@@ -1,11 +1,15 @@
 package app.androidrik.ai.provider.providers.openai
 
+import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.ai.ui.OpenAIReasoningMetadata
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.toMetadata
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -141,5 +145,47 @@ class CodexRequestBodyTest {
         }
         assertFalse("API Key 模式不写 developer 消息", roles.contains("developer"))
         assertNull(body["prompt_cache_key"])
+    }
+
+    /**
+     * 回归：Codex 后端要求 reasoning item 的 `summary` **字段存在**（空数组也算）。
+     *
+     * 2026-11-02 真机实测：只回传 `encrypted_content`、缺 `summary` 的请求全部 400，界面表现为
+     * "SSE stream failed without exception"（历史里有推理 + 工具的第二轮必炸）。
+     */
+    @Test
+    fun `回传加密推理时仍带 summary 字段（Codex 必需）`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(
+                    reasoning = "plaintext reasoning",
+                    metadata = OpenAIReasoningMetadata(
+                        reasoningId = "rs_1",
+                        encryptedContent = "enc-blob",
+                    ).toMetadata(),
+                )
+            ),
+        )
+        val body = api.buildRequestBody(
+            providerSetting = codexSetting(),
+            messages = listOf(UIMessage.system("sys"), UIMessage.user("q"), assistant),
+            params = TextGenerationParams(
+                model = Model(
+                    modelId = "gpt-5.1-codex",
+                    abilities = listOf(ModelAbility.TOOL, ModelAbility.REASONING),
+                ),
+                reasoningLevel = ReasoningLevel.HIGH,
+            ),
+            stream = true,
+        )
+
+        val item = (body["input"] as JsonArray).map { it.jsonObject }
+            .single { it["type"]?.jsonPrimitive?.content == "reasoning" }
+        assertEquals("rs_1", item["id"]?.jsonPrimitive?.content)
+        assertEquals("enc-blob", item["encrypted_content"]?.jsonPrimitive?.content)
+        assertTrue("summary 字段必须存在（可为空数组）", item.containsKey("summary"))
+        assertEquals("加密时不回放明文 summary", 0, item["summary"]!!.jsonArray.size)
+        assertFalse("加密时不回放明文 content", item.containsKey("content"))
     }
 }

@@ -295,7 +295,7 @@ class ResponseAPI(
                 } finally {
                     // ⚠️ close(null) 等于**正常结束**：HTTP 非 2xx 且错误体为空/解析失败时
                     // exception 仍是 null，必须给兜底，不能把失败当成功收尾
-                    close(exception ?: java.io.IOException("SSE stream failed without exception"))
+                    close(exception ?: java.io.IOException("SSE stream failed without exception (HTTP ${response?.code ?: "?"})"))
                 }
             }
 
@@ -701,17 +701,23 @@ class ResponseAPI(
             // 加密时按 #1719 **不回放明文**，改用占位文本满足结构校验（不泄漏推理内容）。
             // 非校验 host（如 OpenAI 官方）保持原样：加密时只回 encrypted_content，不塞未经
             // 验证的字段组合。
-            if (encryptedContent == null || reasoningTextRequired) {
-                val contentText = if (encryptedContent == null) text else REASONING_BACKFILL_PLACEHOLDER
+            // `summary` 是 reasoning item 的**规范必填**字段：只回传 encrypted_content 时也必须给
+            // （空数组即可），否则 Codex 后端直接 400（2026-11-02 真机：缺 summary 的历史推理请求
+            // 全部 400，表现为 "SSE stream failed without exception"）。
+            val replayText = encryptedContent == null || reasoningTextRequired
+            val contentText = if (encryptedContent == null) text else REASONING_BACKFILL_PLACEHOLDER
+            put("summary", buildJsonArray {
+                if (replayText) {
+                    add(buildJsonObject {
+                        put("type", "summary_text")
+                        put("text", contentText)
+                    })
+                }
+            })
+            if (replayText) {
                 put("content", buildJsonArray {
                     add(buildJsonObject {
                         put("type", "reasoning_text")
-                        put("text", contentText)
-                    })
-                })
-                put("summary", buildJsonArray {
-                    add(buildJsonObject {
-                        put("type", "summary_text")
                         put("text", contentText)
                     })
                 })

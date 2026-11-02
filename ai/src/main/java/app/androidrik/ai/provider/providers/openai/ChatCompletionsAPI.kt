@@ -280,7 +280,7 @@ class ChatCompletionsAPI(
                     // ⚠️ `close(exception)` 传 null 等于**正常结束**：onFailure 但既没有 Throwable
                     // 也没有可解析 body 时，必须给一个 IOException 兜底，不能把失败当成功。
                     val failure: Throwable =
-                        exception ?: IOException("SSE stream failed without exception")
+                        exception ?: IOException("SSE stream failed without exception (HTTP ${response?.code ?: "?"})")
                     // 结构校验失败 ⇒ 带着回填重发一次（此时**不**关闭流，调用方看不到这次失败）。
                     if (armBackfillRetry(failure)) {
                         try {

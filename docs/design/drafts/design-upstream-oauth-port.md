@@ -756,3 +756,32 @@ P5 文档 §16.6 留下的最后一条缺口，已按上游 #2186 移植：
 | 真机验证 | 待做：ChatGPT 订阅账号 + 联网工具连问两轮，确认第二轮还能引用第一轮检索结果；期间观察 logcat 无 400 |
 
 **验证**：`:oauth` 9/9、`:ai` 474（+7）、`:app` 2745（2 skipped）、`:app:assembleDebug` 通过。
+
+### 19. Codex 后端 400 根因：reasoning item 必须带 `summary`
+
+**现象**：ChatGPT 订阅（Codex）对话里，「推理 + 工具」的第二轮偶发失败，界面只显示
+`SSE stream failed without exception`，且失败后无法继续（`POST /backend-api/codex/responses` 返回 400）。
+
+**定位**（设备日志 `files/logs/rikkahub-logs.txt`，2026-11-02）：
+
+- 历史里**没有任何** reasoning item 的请求 → 全部 200；**凡是回传了 reasoning item 的请求全部 400**
+  （两处样本：`12:32:34` 与前一晚 `00:36:27`，后者在本仓 P6 构建之前就已复现 ⇒ 与本轮新增的
+  server-tool 回传无关，是 P1 起就存在的缺陷）。
+- 对照失败请求体：`{"type":"reasoning","id":"rs_…","encrypted_content":"gAAAA…"}` **没有 `summary` 字段**；
+  上游实现（`ResponseAPI` 的 reasoning item 构建）**无条件输出 `summary` 数组**（加密时为空数组）。
+
+**根因**：Responses 规范里 `summary` 是 reasoning item 的必填字段。本仓 P1 移植时把
+「已加密不回放明文」实现成了「连 `summary` 字段都不写」，Codex 后端按 schema 校验直接 400；
+官方 API Key 路径容忍度更高没暴露出来。而 SSE 的 400 响应体又被网络日志拦截器吃掉，
+`onFailure` 拿不到 body ⇒ 只能报笼统的 `SSE stream failed without exception`。
+
+**修复**：
+
+1. `addReasoningItem`：**始终输出 `summary`**（加密且 host 不要求回放文本时为空数组，仍不回放明文）；
+   `content` 仍只在未加密或 host 要求回放时写。
+2. SSE 兜底异常带上 HTTP 状态码：`SSE stream failed without exception (HTTP 400)`，三个 provider
+   （ResponseAPI / ChatCompletions / Claude）同步，便于后续直接从界面错误判断问题类型。
+3. 回归测试：`CodexRequestBodyTest` 新增「回传加密推理时仍带 summary 字段（Codex 必需）」。
+
+**验证**：`:ai` 474 → 475、`:app` 2745（2 skipped）、`:app:assembleDebug` 通过；
+真机复测：等安装新构建后在原会话再发一轮（历史里含推理 + 工具）确认 200。
