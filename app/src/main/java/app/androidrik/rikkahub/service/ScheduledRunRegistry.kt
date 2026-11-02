@@ -34,7 +34,11 @@ import kotlin.uuid.Uuid
  * 因此每个入口都在同一把锁下读写；[activeRunIds]/[cancelledRunIds] 供通知与等待循环观察。
  */
 class ScheduledRunRegistry {
-    private class Entry(val conversationId: Uuid?) {
+    private class Entry(
+        val conversationId: Uuid?,
+        /** 归属的定时任务行 id（P0 任务中心按 taskId 反查运行中 run；可空以兼容旧调用）。 */
+        val taskId: String?,
+    ) {
         /** 本轮 generation Job；null = 已登记但 Job 还没出现（排队中/尚未派发） */
         var job: Job? = null
 
@@ -59,13 +63,26 @@ class ScheduledRunRegistry {
     val cancelledRunIds: StateFlow<Set<String>> = _cancelledRunIds.asStateFlow()
 
     /** 登记一轮执行。重复登记同一 runId 视为无操作（保留原条目与取消标记）。 */
-    fun register(runId: String, conversationId: Uuid? = null): Boolean {
+    fun register(runId: String, conversationId: Uuid? = null, taskId: String? = null): Boolean {
         if (runId.isBlank()) return false
         return synchronized(lock) {
             if (entries.containsKey(runId)) return@synchronized false
-            entries[runId] = Entry(conversationId)
+            entries[runId] = Entry(conversationId, taskId)
             publishLocked()
             true
+        }
+    }
+
+    /**
+     * 某定时任务**当前这一轮**的 runId（没有运行中的轮次返回 null）。
+     *
+     * 任务中心从任务行出发要能取消「正在跑的那一轮」，而它手里只有 taskId；注册表在注入前
+     * 登记 runId 时顺带记下 taskId，才能做这个反查（同一 task 同时只允许一轮执行）。
+     */
+    fun activeRunIdOfTask(taskId: String): String? {
+        if (taskId.isBlank()) return null
+        return synchronized(lock) {
+            entries.entries.firstOrNull { it.value.taskId == taskId }?.key
         }
     }
 

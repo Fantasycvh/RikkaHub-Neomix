@@ -9,6 +9,9 @@ import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * 工作空间**后台任务**：让长命令（构建、下载、训练脚本）不再阻塞一轮对话。
@@ -379,6 +382,17 @@ class WorkspaceTaskRegistry(
     private val lock = Any()
     private val tasks = LinkedHashMap<String, Entry>()
 
+    private val _snapshots = MutableStateFlow<List<WorkspaceTaskSnapshot>>(emptyList())
+
+    /**
+     * 后台任务快照流（P0，design-agent-task-runtime §4.2）：每次任务表变化发一版**不可变**列表。
+     *
+     * 为什么在注册表里发而不是让 UI 轮询：状态变化的真实来源只有注册表自己（启动、kill、
+     * 回收线程收尾、淘汰），在这里发不会漏；轮询既有延迟也有「查的两次跨越状态变化」的
+     * 不一致。集合是 [WorkspaceTaskSnapshot] 拷贝，不暴露内部可变 [Entry]。
+     */
+    val snapshotFlow: StateFlow<List<WorkspaceTaskSnapshot>> = _snapshots.asStateFlow()
+
     /**
      * 启动一个后台任务；超出并发上限时抛 [IllegalStateException]（工具层转成可见错误）。
      *
@@ -429,6 +443,8 @@ class WorkspaceTaskRegistry(
                 logFiles = taskLogsFor(context.filesDir, id)
             }
             tasks[id] = entry
+            // 新任务进入任务表：立刻发一版，任务中心不用等一次轮询才看见"开始跑了"
+            publishSnapshotsLocked()
         }
 
         // 过期日志清理放在锁外：只是目录列举 + 删除，不影响任务表；每个新任务顺带清一次即可
@@ -449,12 +465,15 @@ class WorkspaceTaskRegistry(
             entry.finishedAtMillis = now()
             // 启动失败路径没有 reaper 线程，置终态之后必须在这里回调释放任务资源
             notifyFinished()
+            synchronized(lock) { publishSnapshotsLocked() }
             return snapshotOf(entry)
         }
 
         entry.handle = handle
         entry.stdoutLogPath = handle.stdoutLogPath
         entry.stderrLogPath = handle.stderrLogPath
+        // 日志路径就绪：再发一版，任务卡能直接给出"完整日志在哪"
+        synchronized(lock) { publishSnapshotsLocked() }
         // kill 可能在 handle 赋值前就被下发（见 kill()）：这里补一次，避免终止请求丢失
         if (entry.killRequested) handle.kill()
         startReaper(entry, handle) { notifyFinished() }
@@ -490,7 +509,10 @@ class WorkspaceTaskRegistry(
         if (entry.status == WorkspaceTaskStatus.RUNNING) {
             entry.status = WorkspaceTaskStatus.KILLED
             entry.finishedAtMillis = now()
-            synchronized(lock) { evictFinishedLocked() }
+            synchronized(lock) {
+                evictFinishedLocked()
+                publishSnapshotsLocked()
+            }
         }
         return WorkspaceKillResult.KILLED
     }
@@ -558,7 +580,10 @@ class WorkspaceTaskRegistry(
                     }
                 }
                 // 结束即淘汰：只在 start() 里淘汰会有一段时间超限（连续完成的旧任务还留着占内存）
-                synchronized(lock) { evictFinishedLocked() }
+                synchronized(lock) {
+                    evictFinishedLocked()
+                    publishSnapshotsLocked()
+                }
             } finally {
                 // 终态与退出码写完之后才释放：调用方按终态收尾时资源已经不再需要了
                 onFinished()
@@ -586,6 +611,18 @@ class WorkspaceTaskRegistry(
                 }
             }
         }
+    }
+
+    /**
+     * 必须在持 [lock] 时调用：把任务表投影成不可变快照列表并推给 [snapshotFlow]。
+     *
+     * 不单独加锁是刻意的：所有调用点本来就在状态变更的临界区里，再嵌一层只会让
+     * 「状态已改、版本已发」之间出现窗口。StateFlow 赋值不阻塞，不会把锁持有时间拉长。
+     */
+    private fun publishSnapshotsLocked() {
+        _snapshots.value = tasks.values
+            .map { snapshotOf(it) }
+            .sortedBy { it.startedAtMillis }
     }
 
     private fun snapshotOf(entry: Entry): WorkspaceTaskSnapshot {

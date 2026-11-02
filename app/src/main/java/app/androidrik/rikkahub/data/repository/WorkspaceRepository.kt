@@ -691,6 +691,16 @@ class WorkspaceRepository(
         )
     }
 
+    /**
+     * 全部工作空间的后台任务快照流（P0 任务中心读模型）。
+     *
+     * 直接透传 [WorkspaceManager.backgroundTaskSnapshots]：任务表的变更源只有注册表，
+     * 这里不再加一层轮询；任务卡自带 `root`，需要工作区名字时由 UI 侧按 root 映射。
+     * 未配置后台启动器时是空流（不会抛错，任务中心照常显示另外两段）。
+     */
+    fun observeBackgroundTasks(): Flow<List<WorkspaceTaskSnapshot>> =
+        manager.backgroundTaskSnapshots
+
     /** 该工作空间的后台任务列表（内存态，只含本次进程启动后创建的）。 */
     suspend fun listBackgroundTasks(id: String): List<WorkspaceTaskSnapshot> = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: return@withContext emptyList()
@@ -704,6 +714,16 @@ class WorkspaceRepository(
             if (!workspace.capabilities().backgroundTasks) return@withContext null
             manager.backgroundTask(taskId)?.takeIf { it.root == workspace.root }
         }
+
+    /**
+     * 按 taskId 终止后台任务（任务中心用；任务 id 全局唯一，不需要先知道工作区）。
+     *
+     * 与 [killBackgroundTask] 的区别：后者要求「工作区存在且支持后台任务」再做根归属校验；
+     * 任务中心手里只有快照里的 `root/taskId`，没有工作区 UUID，因此直接落到注册表。
+     * 找不到（进程重启后内存表清空）返回 NOT_FOUND，调用方如实提示。
+     */
+    suspend fun killBackgroundTaskByTaskId(taskId: String): WorkspaceKillResult =
+        withContext(Dispatchers.IO) { manager.killBackgroundTask(taskId) }
 
     suspend fun killBackgroundTask(id: String, taskId: String): WorkspaceKillResult =
         withContext(Dispatchers.IO) {

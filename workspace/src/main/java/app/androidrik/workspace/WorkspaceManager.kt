@@ -5,6 +5,9 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class WorkspaceManager(
     private val baseDir: File,
@@ -45,6 +48,16 @@ class WorkspaceManager(
                 maxLifetimeMillis = maxBackgroundTaskLifetimeMillis,
             )
         }
+
+    /** 没有后台启动器时的空流（任务中心仍要能拿到一个不会结束的 Flow，而不是 null）。 */
+    private val emptyTaskSnapshots = MutableStateFlow<List<WorkspaceTaskSnapshot>>(emptyList())
+
+    /**
+     * 后台任务快照流（P0）：任务表的唯一变更源在 [WorkspaceTaskRegistry]，这里只做透传；
+     * 未配置后台启动器（无 rootfs）时返回空流而不是异常。
+     */
+    val backgroundTaskSnapshots: StateFlow<List<WorkspaceTaskSnapshot>> =
+        backgroundTaskRegistry?.snapshotFlow ?: emptyTaskSnapshots.asStateFlow()
 
     // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
     private val sortedBindMounts = bindMounts.sortedByDescending { it.target.trimEnd('/').length }

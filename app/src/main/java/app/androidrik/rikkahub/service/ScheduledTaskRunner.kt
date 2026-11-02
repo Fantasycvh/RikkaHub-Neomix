@@ -136,7 +136,7 @@ class ScheduledTaskRunner(
         // P0.5 定时取消（design-agent-task-runtime §5.2 第 4 条）：**注入之前**登记本轮。
         // 取消入口（FGS 通知的「停止」）只有 runId，必须先能反查到这一轮；登记早于注入
         // ⇒ 取消窗口覆盖整个执行期。条目在 finally 移除，避免泄漏成「永远有运行中任务」。
-        runRegistry.register(runId, conversationId)
+        runRegistry.register(runId, conversationId, task.id)
         return try {
             runInjected(task, mode, conversationId, runId, settingsLoaded)
         } finally {

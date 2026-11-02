@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.service
 import kotlinx.coroutines.Job
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -123,6 +124,18 @@ class ScheduledRunRegistryTest {
         registry.attachJob("run-1", job)
         assertSame(job, registry.jobOf("run-1"))
         assertSame(null, registry.jobOf("run-2"))
+    }
+
+    @Test
+    fun `active run can be looked up by task id`() {
+        // P0 任务中心：手里的键是 taskId，取消要能反查到正在跑的那一轮 runId。
+        val registry = ScheduledRunRegistry()
+        registry.register("run-1", taskId = "task-1")
+        assertEquals("run-1", registry.activeRunIdOfTask("task-1"))
+        assertNull("未登记的任务不应给出一个假 runId", registry.activeRunIdOfTask("task-2"))
+
+        registry.unregister("run-1")
+        assertNull("终态落库后不应再反查到这一轮", registry.activeRunIdOfTask("task-1"))
     }
 
     @Test

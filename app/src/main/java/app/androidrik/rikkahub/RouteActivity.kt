@@ -124,6 +124,7 @@ import app.androidrik.rikkahub.ui.pages.plugins.PluginsPage
 import app.androidrik.rikkahub.ui.pages.extensions.PromptPage
 import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunsPage
 import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunDetailPage
+import app.androidrik.rikkahub.ui.pages.taskcenter.TaskCenterPage
 import app.androidrik.rikkahub.ui.pages.subagent.SubagentPresetsPage
 import app.androidrik.rikkahub.ui.pages.extensions.QuickMessagesPage
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillDetailPage
@@ -886,6 +887,11 @@ open class RouteActivity : ComponentActivity() {
                                 AgentRunsPage()
                             }
 
+                            // 任务中心（P0）：三段合一的只读聚合 + 取消/批准入口
+                            entry<Screen.TaskCenter> {
+                                TaskCenterPage()
+                            }
+
                             entry<Screen.AgentRunDetail> { key ->
                                 AgentRunDetailPage(runId = key.runId)
                             }
@@ -1233,6 +1239,10 @@ sealed interface Screen : NavKey {
     /** 无头 agent run 的账本列表（设计见 docs/design/design-subagent-context.md §9.3/9.4）。 */
     @Serializable
     data object AgentRuns : Screen
+
+    /** 任务中心（P0）：agent run / 后台命令 / 定时任务三段合一，见 design-agent-task-runtime §5.5。 */
+    @Serializable
+    data object TaskCenter : Screen
 
     /** 单个 run 的详情（状态 + 轨迹回放）。 */
     @Serializable

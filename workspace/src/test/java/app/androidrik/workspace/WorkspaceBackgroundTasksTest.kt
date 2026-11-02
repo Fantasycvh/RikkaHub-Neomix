@@ -123,6 +123,43 @@ class WorkspaceBackgroundTasksTest {
     }
 
     @Test
+    fun `snapshot flow publishes start and kill`() {
+        // P0 任务中心读模型：注册表是任务状态的唯一变更源，快照流必须覆盖「开始 / 终止」，
+        // 否则任务中心要自己轮询，且会看到「已 kill 但仍显示 RUNNING」的旧版本。
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        assertTrue("初始应为空", registry.snapshotFlow.value.isEmpty())
+
+        val task = registry.start(context(command = "make -j4"))
+        assertEquals(1, registry.snapshotFlow.value.size)
+        assertEquals(WorkspaceTaskStatus.RUNNING, registry.snapshotFlow.value.single().status)
+
+        registry.kill(task.id)
+        assertEquals(WorkspaceTaskStatus.KILLED, registry.snapshotFlow.value.single().status)
+    }
+
+    @Test
+    fun `snapshot flow publishes natural exit`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        val task = registry.start(context(command = "./train.sh"))
+
+        launcher.startedProcesses.single().finish(exitCode = 0)
+
+        val deadline = System.currentTimeMillis() + 2_000
+        var status: WorkspaceTaskStatus? = null
+        while (System.currentTimeMillis() < deadline) {
+            status = registry.snapshotFlow.value.singleOrNull()?.status
+            if (status == WorkspaceTaskStatus.EXITED) break
+            Thread.sleep(10)
+        }
+        assertEquals("回收线程收尾后必须把终态推给任务中心", WorkspaceTaskStatus.EXITED, status)
+        assertEquals(0, registry.snapshotFlow.value.single().exitCode)
+        assertNotNull(registry.snapshotFlow.value.single().finishedAtMillis)
+        assertTrue(registry.snapshotFlow.value.single().id == task.id)
+    }
+
+    @Test
     fun `exit code and status are recorded when the process ends`() {
         val launcher = FakeLauncher()
         val registry = WorkspaceTaskRegistry(launcher)

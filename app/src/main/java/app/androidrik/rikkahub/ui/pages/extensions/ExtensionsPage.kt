@@ -84,6 +84,12 @@ fun ExtensionsPage() {
                         supportingContent = { Text(stringResource(R.string.extensions_page_workspace_desc)) },
                     )
                     item(
+                        onClick = { navController.navigate(Screen.TaskCenter) },
+                        leadingContent = { Icon(HugeIcons.Rocket01, null) },
+                        headlineContent = { Text(stringResource(R.string.task_center_title)) },
+                        supportingContent = { Text(stringResource(R.string.task_center_desc)) },
+                    )
+                    item(
                         onClick = { navController.navigate(Screen.AgentRuns) },
                         leadingContent = { Icon(HugeIcons.Rocket01, null) },
                         headlineContent = { Text(stringResource(R.string.agent_runs_title)) },

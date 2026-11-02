@@ -140,6 +140,9 @@ class SubagentRunner(
     /** 有没有在跑的 run（列表页提示用；语义与"能否再开一个"分开，别混用）。 */
     fun hasActiveRun(): Boolean = gate.activeCount() > 0
 
+    /** 某个 run 是否仍在跑（任务中心据此决定「取消」按钮是否可用/是否已结束）。 */
+    fun isRunActive(id: Uuid): Boolean = gate.isActive(id.toString())
+
     /** 该 run 进度条目的起始时间（已存在则沿用，避免每步重置计时）。 */
     private fun progressStartedAt(runId: String): Long =
         _progress.value.firstOrNull { it.runId == runId }?.startedAt ?: System.currentTimeMillis()

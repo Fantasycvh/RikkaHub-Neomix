@@ -20,6 +20,7 @@ import app.androidrik.rikkahub.service.ScheduledTaskExecutor
 import app.androidrik.rikkahub.service.ScheduledTaskRunner
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
 import app.androidrik.rikkahub.service.ScheduledRunRegistry
+import app.androidrik.rikkahub.data.task.TaskCenter
 import app.androidrik.rikkahub.service.SubagentRunner
 import app.androidrik.rikkahub.utils.EmojiData
 import app.androidrik.rikkahub.utils.EmojiUtils
@@ -233,6 +234,17 @@ val appModule = module {
 
     single {
         ScheduledTaskSweeperKeeper(context = get())
+    }
+
+    // 任务中心读模型（P0）：三套底座只读聚合 + 取消转发；不持有并发准入。
+    single {
+        TaskCenter(
+            agentRunDAO = get(),
+            workspaceRepository = get(),
+            scheduledTaskRepository = get(),
+            scheduledRunRegistry = get(),
+            subagentRunner = get(),
+        )
     }
 
     // 三个触发入口（闹钟 / 一次性唤醒作业 / 15 分钟 sweep）共用同一个执行器：
