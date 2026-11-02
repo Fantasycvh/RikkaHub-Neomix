@@ -4,6 +4,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * `SCHEMA_VERSION` 防漂移的**编译期闸门**（设计稿 docs/design/design-db-downgrade-rebuild.md §0）。
@@ -19,6 +23,35 @@ import java.io.File
  * 运行时不会初始化 AppDatabase 类（其父类 RoomDatabase 依赖 Android 运行时）。
  */
 class SchemaVersionConsistencyTest {
+
+    @Test
+    fun `v58 adds only delivery metadata with backward compatible defaults`() {
+        val directory = sequenceOf("schemas", "app/schemas")
+            .map { File(it, "app.androidrik.rikkahub.data.db.AppDatabase") }
+            .first { it.isDirectory }
+        fun entities(version: Int) = Json.parseToJsonElement(File(directory, "$version.json").readText())
+            .jsonObject.getValue("database").jsonObject.getValue("entities").jsonArray
+            .associate { it.jsonObject.getValue("tableName").jsonPrimitive.content to it.jsonObject }
+        val old = entities(57)
+        val new = entities(58)
+        assertEquals(old.keys, new.keys)
+        old.filterKeys { it != "agent_run" }.forEach { (table, schema) ->
+            assertEquals("Unrelated table $table changed", schema, new.getValue(table))
+        }
+        fun fields(version: Map<String, kotlinx.serialization.json.JsonObject>) =
+            version.getValue("agent_run").getValue("fields").jsonArray
+                .associate { it.jsonObject.getValue("columnName").jsonPrimitive.content to it.jsonObject }
+        val previous = fields(old)
+        val current = fields(new)
+        previous.forEach { (column, schema) -> assertEquals(schema, current.getValue(column)) }
+        assertEquals(setOf("parent_run_id", "depth", "scope_token", "delivery_mode", "delivery_state",
+            "delivered_at", "cancel_reason"), current.keys - previous.keys)
+        mapOf("depth" to "0", "delivery_mode" to "'await'", "delivery_state" to "'none'")
+            .forEach { (column, default) ->
+                assertEquals(default, current.getValue(column).getValue("defaultValue").jsonPrimitive.content)
+                assertEquals("true", current.getValue(column).getValue("notNull").jsonPrimitive.content)
+            }
+    }
 
     @Test
     fun `SCHEMA_VERSION 与最新导出的 Room schema 一致`() {

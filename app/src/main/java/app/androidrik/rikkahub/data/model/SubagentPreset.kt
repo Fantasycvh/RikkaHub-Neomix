@@ -81,7 +81,15 @@ data class SubagentPreset(
      * 声明了 deliverables 但预设没绑 workspace ⇒ 降级为自检（不硬失败，§二.3.5）。
      */
     val deliverables: List<String>? = null,
+    /** 执行形态由预设作者决定；后台派发接线完成前仍保持既有阻塞入口。 */
+    val executionMode: SubagentExecutionMode = SubagentExecutionMode.BLOCKING,
 )
+
+@Serializable
+enum class SubagentExecutionMode {
+    @SerialName("blocking") BLOCKING,
+    @SerialName("background") BACKGROUND,
+}
 
 /**
  * 工具级审批策略（见 [SubagentPreset.toolApproval]）。

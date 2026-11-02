@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.serialization.encodeToString
 import kotlin.uuid.Uuid
 
 /**
@@ -18,6 +19,32 @@ import kotlin.uuid.Uuid
  * ③ 名字校验的三条边界（空/超长/重名，大小写不敏感，编辑时排除自己）。
  */
 class SubagentPresetTest {
+
+    @Test
+    fun `old preset JSON and built-ins keep blocking execution`() {
+        val restored = app.androidrik.rikkahub.utils.JsonInstant.decodeFromString<SubagentPreset>(
+            """{"name":"legacy","toolApproval":"ask"}""",
+        )
+        assertEquals(SubagentExecutionMode.BLOCKING, restored.executionMode)
+        assertEquals(SubagentToolApproval.ASK, restored.toolApproval)
+        DEFAULT_SUBAGENT_PRESETS.forEach {
+            assertEquals(SubagentExecutionMode.BLOCKING, it.executionMode)
+        }
+    }
+
+    @Test
+    fun `background preset JSON round trip preserves all existing settings`() {
+        val source = SubagentPreset(
+            name = "background-research",
+            executionMode = SubagentExecutionMode.BACKGROUND,
+            allowedTools = setOf("search_web"),
+            toolApproval = SubagentToolApproval.DENY,
+            deliverables = listOf("report.md"),
+        )
+        val encoded = app.androidrik.rikkahub.utils.JsonInstant.encodeToString(source)
+        assertTrue(encoded.contains("\"executionMode\":\"background\""))
+        assertEquals(source, app.androidrik.rikkahub.utils.JsonInstant.decodeFromString<SubagentPreset>(encoded))
+    }
 
     private fun preset(name: String = "research") = SubagentPreset(name = name)
 

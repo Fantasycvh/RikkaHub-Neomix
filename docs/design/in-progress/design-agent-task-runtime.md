@@ -1,7 +1,7 @@
 # Agent 任务控制面：子代理 / 无头 run / 后台任务的三合一与改进（design-agent-task-runtime）
 
 > 状态：**已拍板（2026-11-02）**；**P0 / P0.5 已全部落地**（`692ed04ad` / `23c977613` / `8df5a214b`），
-> P1a 待启动；进度与遗留见附录 D。
+> P1a 数据与持久化投递状态底座已落地（见附录 D）；后台派发与 notice 投递泵待接入。进度与遗留见附录 D。
 > 日期：2026-11-02。**rev2**（第一版经交叉评审后重写）。
 > 对象：本仓三套执行底座 + `AndyerNotFound/L3Hub-RikkaHub-Fork-WFadnf`（下称「L3Hub fork」，
 > 评审时 HEAD `e5f7e196`）。
@@ -600,7 +600,7 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 **i18n**：任务中心/notice 卡片/停止按钮需三语 strings；按 AGENTS.md「未明确要求可先不做」，
 实现时至少给 key 清单（`task_center_*` / `subagent_notice_*` / `scheduled_stop_*`），不阻塞本设计。
 
-## 附录 D：实施进度（P0 / P0.5）
+## 附录 D：实施进度（P0 / P0.5 / P1a）
 
 > 规则：每项落地后在此打勾并写「提交短哈希 + 验证方式」；**未打勾即未验证**。
 >
@@ -650,10 +650,39 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
   `sendQueuedMessage` 用 `queued.turnOwner`、注册表不调 `chatService.`/`messageQueue.pause(`、
   `ACTION_STOP` 真的接到 `runRegistry.cancel`）；行为测试 `ScheduledRunRegistryTest`。
 
+### P1a（进行中：数据与持久化投递状态底座）
+
+以下数据底座于 **2026-11-02 本地提交**，不代表 P1a 整体验收通过。
+
+- [x] DB v58：`agent_run` 新增 §4.2 七列，保留逻辑父指针、无外键；
+  `@ColumnInfo(defaultValue)`、AutoMigration 57→58、`58.json` 与 `SCHEMA_VERSION` 同步。
+  `SchemaVersionConsistencyTest` 检查七列增量、非空列默认值与无关表不变。
+- [x] DAO：`observeRunsByScope`、`observePendingDeliveries`、`finishRun`、
+  `markDelivered`、`markOrphaned`。`finishRun` 将终态与 `delivery_state=pending`
+  在同一 SQL 内提交；重复终态写入不覆盖已结束结果；投递确认只改投递列，且幂等。
+  **调用约束**：后续投递泵须在同一个 Room 事务内保存 notice 消息并确认投递，
+  单独调用 `markDelivered` 不提供跨消息表的幂等保障。
+- [x] 运行器接入原子终态写入，新 run 记录 `scope_token="run:<id>"`；
+  启动对账将上个进程遗留的 notice run 标为 INTERRUPTED + pending，并单列人读取消原因。
+  await/notify 模式不进入 notice 队列。
+- [x] `SubagentPreset.executionMode` 序列化模型（blocking/background，默认 blocking），
+  旧 JSON 与内置预设保持阻塞默认值；后台配置往返保留旧字段。
+  **尚未暴露 UI / 接入派发分支**，当前运行入口仍保持阻塞语义。
+- [x] 验证：`./gradlew :app:testDebugUnitTest --offline`：2786 例、0 失败、2 跳过；
+  `AgentRunDeliveryInstrumentedTest` 在 PJX110 / Android 15 真机 6 例全绿，覆盖：
+  v57 库打开并迁移至 v58（保留轨迹/结果，旧行不入投递队列）、v58 库被旧版 v57
+  降级隔离、关库重开保留队列/确认、各终态（含 failed+timeout）待投递、幂等确认/孤儿标记、
+  scope 隔离、重启对账不误伤本进程 run。测试使用独立数据库与隔离 Application。
+  **范围**：旧备份的整库迁移与降级隔离已验证，完整 ZIP 备份导入 UI 未做端到端验证。
+- [ ] `dispatchBackground` 复用 `executeRun` + 默认关闭的 `enableBackgroundSubagent` 开关。
+- [ ] `appendExternalNotice` + 投递泵（会话空闲/打开/启动 flush、上下文预算、孤儿处理）。
+- [ ] `SubagentNotice` 注解、Android/Web/导出标记、辅助生成与压缩等受影响路径守卫。
+- [ ] P1a 后台派发与 SYSTEM notice 的整体验收。
+
 ### 已知未验证
 
 - Android 真机：后台 run 存活、Doze、通知权限关闭降级、SYSTEM notice 渲染（P1a 前必须补真机清单）。
 - 定时取消的真机时序：通知「停止」→ `ACTION_STOP` → Job.cancel → 终态 CANCELLED（单测已覆盖状态机，
   真机需验证服务生命周期与通知动作的竞态）。
-- 旧备份 → v58 恢复（迁移落地时补）。
+- 旧备份 ZIP → v58 的完整导入流程（独立库 57→58 迁移与 58→57 降级隔离已由上方真机测试覆盖）。
 

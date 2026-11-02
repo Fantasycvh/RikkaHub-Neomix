@@ -36,6 +36,7 @@ class AgentRunReconciler(
             interruptedStatus = AgentRunEntity.STATUS_INTERRUPTED,
             reason = AgentRunEntity.ERROR_PROCESS_RESTART,
             unfinishedStatuses = UNFINISHED_STATUSES,
+            cancelReason = "Process restarted; generation cannot be resumed.",
         )
     }
 

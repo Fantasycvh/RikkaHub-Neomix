@@ -292,6 +292,7 @@ class SubagentRunner(
             createdAt = System.currentTimeMillis(),
             startedAt = null,
             finishedAt = null,
+            scopeToken = "run:$runId",
         )
     }
 
@@ -771,14 +772,13 @@ class SubagentRunner(
     }
 
     private suspend fun finishRun(runId: Uuid, status: String, resultSummary: String?, error: String?) {
-        val current = agentRunDAO.getRun(runId.toString()) ?: return
-        agentRunDAO.updateRun(
-            current.copy(
-                status = status,
-                resultSummary = resultSummary,
-                error = error,
-                finishedAt = System.currentTimeMillis(),
-            )
+        agentRunDAO.finishRun(
+            id = runId.toString(),
+            status = status,
+            resultSummary = resultSummary,
+            error = error,
+            finishedAt = System.currentTimeMillis(),
+            cancelReason = if (status == AgentRunEntity.STATUS_CANCELLED) "Run cancelled." else null,
         )
     }
 

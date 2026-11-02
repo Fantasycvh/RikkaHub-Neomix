@@ -43,6 +43,7 @@ class AgentRunReconcilerTest {
         assertEquals(AgentRunEntity.STATUS_INTERRUPTED, dao.interruptedStatus)
         assertEquals(AgentRunEntity.ERROR_PROCESS_RESTART, dao.reason)
         assertEquals(AgentRunReconciler.UNFINISHED_STATUSES, dao.unfinishedStatuses)
+        assertTrue(dao.cancelReason.isNotBlank())
     }
 
     @Test
@@ -76,6 +77,7 @@ class AgentRunReconcilerTest {
         var finishedAt: Long = -1
         var interruptedStatus: String = ""
         var reason: String = ""
+        var cancelReason: String = ""
         var unfinishedStatuses: List<String> = emptyList()
 
         override suspend fun insertRun(run: AgentRunEntity) = Unit
@@ -83,6 +85,11 @@ class AgentRunReconcilerTest {
         override fun observeRun(id: String): Flow<AgentRunEntity?> = emptyFlow()
         override suspend fun getRun(id: String): AgentRunEntity? = null
         override fun observeRuns(): Flow<List<AgentRunEntity>> = emptyFlow()
+        override fun observeRunsByScope(scopeToken: String): Flow<List<AgentRunEntity>> = emptyFlow()
+        override fun observePendingDeliveries(): Flow<List<AgentRunEntity>> = emptyFlow()
+        override suspend fun finishRun(id: String, status: String, resultSummary: String?, error: String?, finishedAt: Long, cancelReason: String?): Int = 0
+        override suspend fun markDelivered(ids: List<String>, deliveredAt: Long): Int = 0
+        override suspend fun markOrphaned(ids: List<String>): Int = 0
         override suspend fun deleteRun(id: String) = Unit
 
         override suspend fun markInterruptedBefore(
@@ -91,12 +98,14 @@ class AgentRunReconcilerTest {
             interruptedStatus: String,
             reason: String,
             unfinishedStatuses: List<String>,
+            cancelReason: String,
         ): Int {
             called = true
             this.processStartedAt = processStartedAt
             this.finishedAt = finishedAt
             this.interruptedStatus = interruptedStatus
             this.reason = reason
+            this.cancelReason = cancelReason
             this.unfinishedStatuses = unfinishedStatuses
             return 3
         }

@@ -59,8 +59,27 @@ data class AgentRunEntity(
     @ColumnInfo("created_at") val createdAt: Long,
     @ColumnInfo("started_at") val startedAt: Long?,
     @ColumnInfo("finished_at") val finishedAt: Long?,
+    /** 逻辑归属指针；父 run/会话删除不级联删除账本。P1 深度恒为 0。 */
+    @ColumnInfo("parent_run_id") val parentRunId: String? = null,
+    @ColumnInfo(name = "depth", defaultValue = "0") val depth: Int = 0,
+    @ColumnInfo("scope_token") val scopeToken: String? = null,
+    @ColumnInfo(name = "delivery_mode", defaultValue = "'await'")
+    val deliveryMode: String = DELIVERY_MODE_AWAIT,
+    @ColumnInfo(name = "delivery_state", defaultValue = "'none'")
+    val deliveryState: String = DELIVERY_STATE_NONE,
+    @ColumnInfo("delivered_at") val deliveredAt: Long? = null,
+    /** 人读取消原因，与 error 的机器前缀分开。 */
+    @ColumnInfo("cancel_reason") val cancelReason: String? = null,
 ) {
     companion object {
+        const val DELIVERY_MODE_AWAIT = "await"
+        const val DELIVERY_MODE_NOTICE = "notice"
+        const val DELIVERY_MODE_NOTIFY = "notify"
+        const val DELIVERY_STATE_NONE = "none"
+        const val DELIVERY_STATE_PENDING = "pending"
+        const val DELIVERY_STATE_DELIVERED = "delivered"
+        const val DELIVERY_STATE_ORPHANED = "orphaned"
+
         /** 运行页**手动派发**（选助手当 profile + 勾信封）。 */
         const val ENTRY_POINT_SUBAGENT = "subagent"
 

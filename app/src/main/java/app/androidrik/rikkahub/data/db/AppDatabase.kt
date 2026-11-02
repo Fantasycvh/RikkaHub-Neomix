@@ -86,7 +86,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 57,
+    version = 58,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -181,6 +181,8 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 56→57：工作区「一键配置国内镜像源」摘要（PackageMirrorSetup 的 JSON，默认空对象）。
         // NOT NULL DEFAULT '{}'，免 spec。仅本地 rootfs 工作区使用（SSH 工作区不写）。
         AutoMigration(from = 56, to = 57),
+        // 57→58：后台子代理的归属、投递模式与持久化投递状态。
+        AutoMigration(from = 57, to = 58),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -236,7 +238,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 57
+        const val SCHEMA_VERSION = 58
     }
 }
 
