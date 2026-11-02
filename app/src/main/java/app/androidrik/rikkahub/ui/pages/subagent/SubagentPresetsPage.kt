@@ -120,6 +120,13 @@ fun SubagentPresetsPage(vm: SubagentPresetsVM = koinViewModel()) {
                             )
                         },
                     )
+                    item(
+                        headlineContent = { Text("后台子代理（实验性）") },
+                        supportingContent = { Text("允许后台预设立即返回；结果在会话空闲时送达，不自动继续生成。后台工具审批暂按拒绝处理。") },
+                        trailingContent = {
+                            Switch(settings.enableBackgroundSubagent, { vm.setBackgroundEnabled(it) })
+                        },
+                    )
                 }
             }
 
@@ -541,6 +548,20 @@ private fun PresetEditorDialog(
                     Switch(
                         checked = edited.requireApproval,
                         onCheckedChange = { edited = edited.copy(requireApproval = it) },
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("后台执行（需开启实验性开关）")
+                    Switch(
+                        checked = edited.executionMode == app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND,
+                        onCheckedChange = { edited = edited.copy(executionMode = if (it)
+                            app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND else
+                            app.androidrik.rikkahub.data.model.SubagentExecutionMode.BLOCKING) },
                     )
                 }
 

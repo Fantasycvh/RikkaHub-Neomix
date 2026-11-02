@@ -143,6 +143,23 @@ fun ChatMessage(
     onEditReasoning: ((messageId: Uuid, reasoning: UIMessagePart.Reasoning, text: String) -> Unit)? = null,
 ) {
     val message = node.messages[node.safeSelectIndex]
+    val notice = message.annotations.filterIsInstance<UIMessageAnnotation.SubagentNotice>().firstOrNull()
+    if (notice != null) {
+        Surface(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("子代理结果（${notice.runIds.size}）", style = MaterialTheme.typography.titleSmall)
+                SelectionContainer {
+                    Text(message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text },
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        return
+    }
     val settings = LocalSettings.current.displaySetting
     val chatFontFamily = LocalChatFontFamily.current ?: rememberChatFontFamily(settings)
     val textStyle = LocalTextStyle.current.copy(

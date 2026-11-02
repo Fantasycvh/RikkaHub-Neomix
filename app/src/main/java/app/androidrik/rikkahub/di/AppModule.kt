@@ -182,6 +182,7 @@ val appModule = module {
 
     single {
         ChatService(
+            database = get(),
             context = get(),
             appScope = get(),
             appEventBus = get(),

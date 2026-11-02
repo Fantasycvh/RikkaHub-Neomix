@@ -308,6 +308,7 @@ class ChatToolFactory(
                     "subagent",
                     createSubagentTools(
                         presets = subagentPresets.map { it.copy(modelId = it.modelId ?: model.id) },
+                        enableBackgroundSubagent = settings.enableBackgroundSubagent,
                         dispatcher = dispatcher,
                         parentConversationId = conversationId,
                     ),

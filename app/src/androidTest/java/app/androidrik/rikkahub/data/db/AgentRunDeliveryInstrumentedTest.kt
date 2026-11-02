@@ -21,6 +21,25 @@ import app.androidrik.rikkahub.data.db.entity.AgentRunEntity.Companion.STATUS_RU
 import app.androidrik.rikkahub.data.task.AgentRunReconciler
 import app.androidrik.rikkahub.data.sync.DowngradeQuarantineStore
 import java.io.File
+import android.content.ContextWrapper
+import androidx.room.withTransaction
+import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.db.fts.MessageFtsManager
+import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.repository.FilesRepository
+import app.androidrik.rikkahub.data.repository.ConversationRepository
+import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.toMessageNode
+import app.androidrik.rikkahub.data.task.appendNoticeToSession
+import app.androidrik.rikkahub.data.task.AppendNoticeResult
+import app.androidrik.rikkahub.service.ConversationSession
+import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.isSubagentNotice
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.cancel
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -181,6 +200,71 @@ class AgentRunDeliveryInstrumentedTest {
             assertTrue(DowngradeQuarantineStore.recoverableEntries(root, 57).isEmpty())
         } finally {
             root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun noticeSurvivesTheNextRealRepositorySaveAndFailedTransactionCanRetry() = runBlocking {
+        val db = openMemory()
+        // Framework SQLite fixture: index persistence is real; tokenizer behavior is outside this test.
+        db.openHelper.writableDatabase.execSQL("CREATE TABLE message_fts (text TEXT, node_id TEXT, message_id TEXT, conversation_id TEXT)")
+        db.openHelper.writableDatabase.execSQL("CREATE TABLE message_fts_rowid (fts_rowid INTEGER PRIMARY KEY, conversation_id TEXT)")
+        val scope = AppScope()
+        val isolatedFiles = File(context.cacheDir, "notice-repository-${Uuid.random()}").apply { mkdirs() }
+        val isolated = object : ContextWrapper(context) { override fun getFilesDir() = isolatedFiles }
+        try {
+            val files = FilesManager(isolated, FilesRepository(db.managedFileDao()), scope, SettingsStore(isolated, AppScope().apply { cancel() }))
+            val repo = ConversationRepository(db.conversationDao(), db.messageNodeDao(), db.favoriteDao(), db,
+                files, MessageFtsManager(db), db.compressionCheckpointDao())
+            val id = Uuid.random()
+            val initial = Conversation.ofId(id, Uuid.random()).copy(messageNodes = listOf(UIMessage.user("original").toMessageNode()))
+            repo.insertConversation(initial)
+            val entry = run("deliver").copy(parentConversationId = id.toString())
+            db.agentRunDao().insertRun(entry)
+            db.agentRunDao().finishRun(entry.id, STATUS_COMPLETED, "result", null, 1000, null)
+            val session = ConversationSession(id, initial, scope, {})
+            val owner = session.backgroundTaskOwner
+            val revision = session.turnRevision.value
+            val failed = runCatching {
+                withContext(Dispatchers.Main) {
+                    appendNoticeToSession(session, listOf(entry), 100_000, 0) { updated, _ ->
+                        db.withTransaction {
+                            repo.updateConversation(updated)
+                            error("simulated commit failure")
+                        }
+                    }
+                }
+            }
+            assertTrue(failed.isFailure)
+            assertEquals(initial.messageNodes, repo.getConversationById(id)!!.messageNodes)
+            assertEquals(initial, session.state.value)
+            assertEquals(1, db.agentRunDao().observePendingDeliveries().first().size)
+            repeat(2) {
+                val result = withContext(Dispatchers.Main) {
+                    appendNoticeToSession(session, listOf(entry), 100_000, 0) { updated, ids ->
+                        db.withTransaction {
+                            repo.updateConversation(updated)
+                            db.agentRunDao().markDelivered(ids, 2000)
+                        }
+                    }
+                }
+                assertEquals(AppendNoticeResult.DELIVERED, result)
+            }
+            // This is the saveMessageNodes path that formerly deleted DB-only injected messages.
+            session.state.value = session.state.value.copy(
+                messageNodes = session.state.value.messageNodes + UIMessage.user("next question").toMessageNode(),
+            )
+            repo.updateConversation(session.state.value)
+            val loaded = repo.getConversationById(id)!!
+            assertEquals(1, loaded.currentMessages.count { it.isSubagentNotice })
+            assertEquals(3, loaded.messageNodes.size)
+            assertTrue(db.agentRunDao().observePendingDeliveries().first().isEmpty())
+            assertNull(session.getJob())
+            assertEquals(owner, session.backgroundTaskOwner)
+            assertEquals(revision, session.turnRevision.value)
+        } finally {
+            scope.cancel()
+            isolatedFiles.deleteRecursively()
         }
     }
 }

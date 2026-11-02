@@ -1,3 +1,4 @@
+import { SubagentNoticeCard } from "./subagent-notice";
 import * as React from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -537,6 +538,14 @@ export const ChatMessage = React.memo(({
     },
     [citationUrlMap],
   );
+
+  const notice = message.annotations?.find((annotation) => annotation.type === "subagent_notice");
+  if (notice?.type === "subagent_notice") {
+    return (
+      <SubagentNoticeCard runIds={notice.runIds} text={message.parts
+        .filter((part) => part.type === "text").map((part) => part.text).join("\n")} />
+    );
+  }
 
   return (
     <div

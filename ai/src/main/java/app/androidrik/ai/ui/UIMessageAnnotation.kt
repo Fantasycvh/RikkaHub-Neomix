@@ -8,6 +8,11 @@ import kotlin.uuid.Uuid
 
 @Serializable
 sealed class UIMessageAnnotation {
+    /** 后台 run 的外部结果；不是用户发言，不触发父生成。 */
+    @Serializable
+    @SerialName("subagent_notice")
+    data class SubagentNotice(val runIds: List<String>) : UIMessageAnnotation()
+
     @Serializable
     @SerialName("url_citation")
     data class UrlCitation(

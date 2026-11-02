@@ -57,6 +57,10 @@ data class SubagentRunResult(
  * 那一个 lambda 上。
  */
 interface SubagentDispatcher {
+    suspend fun dispatchBackground(
+        preset: SubagentPreset, goal: String, timeoutMillis: Long, parentConversationId: String,
+    ): SubagentRunResult? = null
+
     /**
      * 阻塞式派发：跑完（或被护栏/超时中止）才返回。
      *
@@ -107,7 +111,7 @@ internal fun resolveSubagentEnvelope(
     } else {
         assembled.intersect(allowedTools)
     }
-    return allowed - SUBAGENT_DISPATCH_TOOL_NAME
+    return allowed - setOf(SUBAGENT_DISPATCH_TOOL_NAME, "ask_user")
 }
 
 /**
@@ -119,7 +123,7 @@ internal fun resolveSubagentEnvelope(
 internal fun runToolCatalog(segments: List<ToolSegment>): List<String> =
     segments.flatMap { it.tools }
         .map { it.name }
-        .filter { it != SUBAGENT_DISPATCH_TOOL_NAME }
+        .filter { it != SUBAGENT_DISPATCH_TOOL_NAME && it != "ask_user" }
         .distinct()
         .sorted()
 
@@ -137,6 +141,7 @@ fun createSubagentTools(
      * 记进账本后，运行详情页才能给「回到对话」这个反向入口。
      */
     parentConversationId: String? = null,
+    enableBackgroundSubagent: Boolean = false,
 ): List<Tool> {
     if (presets.isEmpty()) return emptyList()
 
@@ -152,9 +157,9 @@ fun createSubagentTools(
 
                 Use this when a task is long, multi-step, or full of trial and error: done here, that noise would fill your context and stay there. Do not use it for a single lookup you could do yourself.
 
-                The call blocks until the subagent finishes, fails, or hits its timeout. If the result status is not "completed", decide yourself whether to retry with a better `goal` or to continue without it.
+                Execution mode is set by the preset author. For a background preset, the call returns a run_id immediately and its result arrives later as a system notice. Do not poll or dispatch it again. Other presets block until completion, failure, or timeout. For blocking calls, if the result status is not "completed", decide yourself whether to retry with a better `goal` or to continue without it.
             """.trimIndent(),
-            systemPrompt = { _, _ -> subagentCatalogBlock(presets) },
+            systemPrompt = { _, _ -> subagentCatalogBlock(presets, enableBackgroundSubagent) },
             parameters = {
                 InputSchema.Obj(
                     properties = buildJsonObject {
@@ -203,12 +208,14 @@ fun createSubagentTools(
                     error("goal is required: the subagent cannot see this conversation, so the task must be stated here.")
                 }
 
-                val result = dispatcher.dispatchAndAwait(
-                    preset = preset,
-                    goal = goal,
-                    timeoutMillis = preset.timeoutSeconds * 1000L,
-                    parentConversationId = parentConversationId,
-                )
+                val result = if (enableBackgroundSubagent &&
+                    preset.executionMode == app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND &&
+                    parentConversationId != null
+                ) {
+                    dispatcher.dispatchBackground(preset, goal, preset.timeoutSeconds * 1000L, parentConversationId)
+                } else {
+                    dispatcher.dispatchAndAwait(preset, goal, preset.timeoutSeconds * 1000L, parentConversationId)
+                }
                 listOf(UIMessagePart.Text(formatSubagentResult(result)))
             },
         )
@@ -221,7 +228,7 @@ fun createSubagentTools(
  * 清单是父模型**唯一**能知道"有哪些子代理、各自能干什么"的地方——
  * 所以派发工具的 schema 里只有名字与任务两个参数，不含任何预设配置。
  */
-internal fun subagentCatalogBlock(presets: List<SubagentPreset>): String = buildString {
+internal fun subagentCatalogBlock(presets: List<SubagentPreset>, enableBackgroundSubagent: Boolean = false): String = buildString {
     appendLine("**Subagents**")
     appendLine(
         "A subagent is a separate model call with its own context: it cannot see this conversation, " +
@@ -232,6 +239,9 @@ internal fun subagentCatalogBlock(presets: List<SubagentPreset>): String = build
     presets.forEach { preset ->
         appendLine("  <subagent>")
         appendLine("    <name>${preset.name}</name>")
+        val mode = if (enableBackgroundSubagent && preset.executionMode ==
+            app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND) "background" else "blocking"
+        appendLine("    <execution_mode>$mode</execution_mode>")
         if (preset.description.isNotBlank()) {
             appendLine("    <description>${preset.description}</description>")
         }
@@ -259,7 +269,7 @@ internal fun formatSubagentResult(result: SubagentRunResult?): String {
             put("status", JsonPrimitive(SUBAGENT_STATUS_UNAVAILABLE))
             put(
                 "error",
-                JsonPrimitive("The run limit is reached (at most 2 runs at a time, and they do not queue)."),
+                JsonPrimitive("The run could not be admitted (configured run limit reached or background dispatch unavailable). Runs do not queue."),
             )
             put(
                 "note",
@@ -271,6 +281,9 @@ internal fun formatSubagentResult(result: SubagentRunResult?): String {
     return buildJsonObject {
         put("status", JsonPrimitive(result.status))
         put("run_id", JsonPrimitive(result.runId))
+        if (result.status == "pending" || result.status == "running") {
+            put("note", "Accepted in background. The result will arrive as a system notice; do not poll or redispatch.")
+        }
         val summary = result.summary
         if (summary != null) {
             put("summary", JsonPrimitive(summary))

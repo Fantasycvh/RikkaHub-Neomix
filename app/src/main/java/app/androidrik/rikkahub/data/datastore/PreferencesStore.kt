@@ -408,6 +408,7 @@ class SettingsStore(
         // 对话内子代理派发（设计 §十）：开关 + 「按名称调度的模型+提示词」组合列表。
         // **必须进三件套**——它们是 Settings 的**顶层平铺字段**，不写进 DataStore 就只在内存里活着：
         // UI 能改、当前进程内生效，**一重启就回到默认值**（正是 2026-09-11 那条教训的形状）。
+        val ENABLE_BACKGROUND_SUBAGENT = booleanPreferencesKey("enable_background_subagent")
         val ENABLE_SUBAGENT_DISPATCH = booleanPreferencesKey("enable_subagent_dispatch")
         val SUBAGENT_PRESETS = stringPreferencesKey("subagent_presets")
         // 全局代理（两层代理设计的全局兜底层）；结构化 JSON 存储
@@ -620,6 +621,7 @@ class SettingsStore(
                 importedSources = preferences[IMPORTED_SOURCES]?.let {
                     JsonInstant.decodeFromString<Map<String, ImportSourceRecord>>(it)
                 } ?: emptyMap(),
+                enableBackgroundSubagent = preferences[ENABLE_BACKGROUND_SUBAGENT] ?: false,
                 enableSubagentDispatch = preferences[ENABLE_SUBAGENT_DISPATCH] ?: false,
                 subagentPresets = preferences[SUBAGENT_PRESETS]?.let {
                     JsonInstant.decodeFromString<List<SubagentPreset>>(it)
@@ -893,6 +895,7 @@ class SettingsStore(
             preferences[GLOBAL_PROXY] = JsonInstant.encodeToString(settings.globalProxy)
             preferences[USAGE_DISPLAY_MODE] = settings.usageDisplayMode.name
             preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
+            preferences[ENABLE_BACKGROUND_SUBAGENT] = settings.enableBackgroundSubagent
             preferences[ENABLE_SUBAGENT_DISPATCH] = settings.enableSubagentDispatch
             preferences[SUBAGENT_PRESETS] = JsonInstant.encodeToString(settings.subagentPresets)
         }
@@ -1299,6 +1302,7 @@ data class Settings(
      * （提示词预算）；②派发是**阻塞**的，模型可以按住本轮对话数分钟；③它是"模型自己决定
      * 再叫一个模型"，不该由更新替用户打开。开启入口在子代理管理页（与预设配置同一处）。
      */
+    val enableBackgroundSubagent: Boolean = false,
     val enableSubagentDispatch: Boolean = false,
     /**
      * 子代理预设：**「按名称调度的模型 + 提示词」组合**列表。

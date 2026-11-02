@@ -5,7 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { cn } from "~/lib/utils";
 import type { UIMessageAnnotation } from "~/types";
 
-function getCitationLabel(annotation: UIMessageAnnotation): string {
+function getCitationLabel(annotation: Extract<UIMessageAnnotation, { type: "url_citation" }>): string {
   if (annotation.title.trim().length > 0) {
     return annotation.title;
   }

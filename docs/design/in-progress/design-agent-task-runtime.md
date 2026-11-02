@@ -1,7 +1,7 @@
 # Agent 任务控制面：子代理 / 无头 run / 后台任务的三合一与改进（design-agent-task-runtime）
 
 > 状态：**已拍板（2026-11-02）**；**P0 / P0.5 已全部落地**（`692ed04ad` / `23c977613` / `8df5a214b`），
-> P1a 数据与持久化投递状态底座已落地（见附录 D）；后台派发与 notice 投递泵待接入。进度与遗留见附录 D。
+> P1a 数据底座已提交（`2cb90d45a`）；后台派发、投递泵和三端标记已接入，长时模型/生命周期整体验收待补。进度与遗留见附录 D。
 > 日期：2026-11-02。**rev2**（第一版经交叉评审后重写）。
 > 对象：本仓三套执行底座 + `AndyerNotFound/L3Hub-RikkaHub-Fork-WFadnf`（下称「L3Hub fork」，
 > 评审时 HEAD `e5f7e196`）。
@@ -650,9 +650,9 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
   `sendQueuedMessage` 用 `queued.turnOwner`、注册表不调 `chatService.`/`messageQueue.pause(`、
   `ACTION_STOP` 真的接到 `runRegistry.cancel`）；行为测试 `ScheduledRunRegistryTest`。
 
-### P1a（进行中：数据与持久化投递状态底座）
+### P1a（核心链路已接入，整体验收待补）
 
-以下数据底座于 **2026-11-02 本地提交**，不代表 P1a 整体验收通过。
+数据底座提交：`2cb90d45a`；后续核心链路见本提交。**不代表 P1a 长时模型/生命周期整体验收通过**。
 
 - [x] DB v58：`agent_run` 新增 §4.2 七列，保留逻辑父指针、无外键；
   `@ColumnInfo(defaultValue)`、AutoMigration 57→58、`58.json` 与 `SCHEMA_VERSION` 同步。
@@ -667,17 +667,38 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
   await/notify 模式不进入 notice 队列。
 - [x] `SubagentPreset.executionMode` 序列化模型（blocking/background，默认 blocking），
   旧 JSON 与内置预设保持阻塞默认值；后台配置往返保留旧字段。
-  **尚未暴露 UI / 接入派发分支**，当前运行入口仍保持阻塞语义。
+  预设编辑 sheet 已加入后台执行选项；全局开关关闭时仍走既有阻塞入口。
 - [x] 验证：`./gradlew :app:testDebugUnitTest --offline`：2786 例、0 失败、2 跳过；
   `AgentRunDeliveryInstrumentedTest` 在 PJX110 / Android 15 真机 6 例全绿，覆盖：
   v57 库打开并迁移至 v58（保留轨迹/结果，旧行不入投递队列）、v58 库被旧版 v57
   降级隔离、关库重开保留队列/确认、各终态（含 failed+timeout）待投递、幂等确认/孤儿标记、
   scope 隔离、重启对账不误伤本进程 run。测试使用独立数据库与隔离 Application。
   **范围**：旧备份的整库迁移与降级隔离已验证，完整 ZIP 备份导入 UI 未做端到端验证。
-- [ ] `dispatchBackground` 复用 `executeRun` + 默认关闭的 `enableBackgroundSubagent` 开关。
-- [ ] `appendExternalNotice` + 投递泵（会话空闲/打开/启动 flush、上下文预算、孤儿处理）。
-- [ ] `SubagentNotice` 注解、Android/Web/导出标记、辅助生成与压缩等受影响路径守卫。
-- [ ] P1a 后台派发与 SYSTEM notice 的整体验收。
+- [x] `dispatchBackground` 复用 `executeRun`；先占并发位、持久化账本，再启动 AppScope 独立 Job，
+  返回 pending + run_id；终态/取消落库，详情页原有取消入口可用。
+  `enableBackgroundSubagent` 持久化、**默认关**，仅 BACKGROUND 预设且有父会话时走后台；
+  工具清单显示实际生效模式，并明确接受后不轮询/重复派发。后台内部工具审批暂固定 DENY，
+  外层派发前的 `requireApproval` 保留；ASK 通知体验留到 P1b。无头信封恒剔除 `ask_user`。
+- [x] `appendExternalNotice` + `NoticeDelivery`：终态/设置变化、启动对账后、会话打开、生成空闲、
+  压缩落地时 flush；busy/待审批/排队/上下文不足留库，父会话不存在标 orphaned。
+  每批最多 8 个、每个结果最多 12000 字符（详情页保留全文），按 run_id 幂等；
+  `synchronized(session)` 内检查并追加内存态，消息持久化与投递确认使用同一 Room 事务。
+  不调用 `beginNewTurn`、不走用户输入正则/截断、不启动生成；保存失败回滚内存态。
+  预算公式：`max(usage 估算, 当前窗口文本估算) + notice tokens + 4096 < 有效窗口`，
+  有效窗口沿用模型/全局覆盖；不足时等待用户压缩或后续会话事件，**不额外发起自动压缩请求**。
+- [x] `SubagentNotice` 注解 + `messagesForAuxGeneration`：标题/建议/无工具辅助生成过滤 notice；
+  压缩摘要排除 notice，窗口跨过 notice 时仍带原文。Android/Web 显示独立结果卡，
+  Markdown/HTML 导出保留 SYSTEM 角色；Web 文本按 React 文本转义。三端均不冒充用户输入。
+- [x] 新增回归：工具派发分支与关闭回退、无头工具目录、投递泵并发/批量/孤儿/失败隔离、
+  会话忙碌/审批/上下文预算、重复追加、保存失败回滚、轮次令牌/replyMessageId 不变、
+  压缩保留 notice、注解序列化、Web 卡片转义与类型检查。
+  真机 `AgentRunDeliveryInstrumentedTest` **7/7**，新增真实 `ConversationRepository.saveMessageNodes`
+  路径验证：下一条用户消息保存不删 notice；事务失败同时回滚消息与投递状态，随后重试只追加一次。
+  JVM：app **2798** 例（2 跳过）、ai **478** 例，0 失败；IME 审计 A=0、A'=0。
+  Web：`pnpm typecheck`、`pnpm exec tsx app/components/message/subagent-notice.test.mts` 通过。
+- [ ] P1a 长时模型/生命周期整体验收：真实模型后台运行约 3 分钟、父生成中完成后空闲补投、
+  杀进程后启动补投及 SYSTEM notice 的 Android UI 人工验收（当前真机测试覆盖隔离库/会话保存，
+  未运行付费模型或进行 Doze 验收）。`noticeCarrier=user` 回退开关尚未实现；当前固定 SYSTEM。
 
 ### 已知未验证
 

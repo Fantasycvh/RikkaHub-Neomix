@@ -38,6 +38,8 @@ class SubagentPresetsVM(
     val workspaces = workspaceRepository.listFlow()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    fun setBackgroundEnabled(enabled: Boolean) = update { it.copy(enableBackgroundSubagent = enabled) }
+
     fun setDispatchEnabled(enabled: Boolean) = update { it.copy(enableSubagentDispatch = enabled) }
 
     /** 新增或覆盖（按 id 定位）；写入前钳制越界值并去掉名字两侧空白。 */

@@ -8,4 +8,9 @@ export interface UrlCitationAnnotation {
  * Union type for message annotations
  * @see ai/src/main/java/me/rerere/ai/ui/Message.kt - UIMessageAnnotation
  */
-export type UIMessageAnnotation = UrlCitationAnnotation;
+export interface SubagentNoticeAnnotation {
+  type: "subagent_notice";
+  runIds: string[];
+}
+
+export type UIMessageAnnotation = UrlCitationAnnotation | SubagentNoticeAnnotation;

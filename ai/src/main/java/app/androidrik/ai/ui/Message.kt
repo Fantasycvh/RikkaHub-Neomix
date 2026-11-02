@@ -765,3 +765,9 @@ private fun normalizeFinishReason(finishReason: String?): String? = finishReason
     ?.trim()
     ?.lowercase()
     ?.takeIf { it.isNotEmpty() }
+
+/** 外部任务结果参与主请求，但不参与标题、建议等辅助生成。 */
+val UIMessage.isSubagentNotice: Boolean
+    get() = annotations.any { it is UIMessageAnnotation.SubagentNotice }
+
+fun List<UIMessage>.messagesForAuxGeneration(): List<UIMessage> = filterNot { it.isSubagentNotice }

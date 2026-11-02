@@ -482,6 +482,7 @@ class RikkaHubApp : Application() {
             }.onFailure {
                 Log.e(TAG, "reconcileAgentRuns failed", it)
             }
+            get<app.androidrik.rikkahub.service.ChatService>().startNoticeDelivery()
         }
     }
 

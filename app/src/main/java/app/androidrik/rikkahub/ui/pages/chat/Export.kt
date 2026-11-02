@@ -598,7 +598,7 @@ private suspend fun exportToMarkdown(
         append("*Exported on ${LocalDateTime.now().toLocalString()}*\n\n")
 
         messages.forEach { message ->
-            val role = if (message.role == MessageRole.USER) "**User**" else "**Assistant**"
+            val role = when (message.role) { MessageRole.USER -> "**User**"; MessageRole.SYSTEM -> "**System**"; else -> "**Assistant**" }
             append("$role:\n\n")
             message.parts.forEach { part ->
                 when (part) {
@@ -866,8 +866,8 @@ private suspend fun exportToHtml(
 
     messages.forEach { message ->
         val isUser = message.role == MessageRole.USER
-        val roleClass = if (isUser) "user" else "assistant"
-        val roleLabel = if (isUser) "User" else "Assistant"
+        val roleClass = if (message.role == MessageRole.SYSTEM) "system" else if (isUser) "user" else "assistant"
+        val roleLabel = if (message.role == MessageRole.SYSTEM) "System" else if (isUser) "User" else "Assistant"
         sb.append("<div class=\"message ").append(roleClass).append("\">\n")
         sb.append("<div class=\"role\">").append(roleLabel).append("</div>\n")
         message.parts.forEach { part ->

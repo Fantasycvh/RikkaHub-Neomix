@@ -1,6 +1,13 @@
 package app.androidrik.rikkahub.service
 
 import android.app.Application
+import androidx.room.withTransaction
+import app.androidrik.rikkahub.data.db.AppDatabase
+import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
+import app.androidrik.rikkahub.data.task.AppendNoticeResult
+import app.androidrik.rikkahub.data.task.NoticeDelivery
+import app.androidrik.ai.ui.messagesForAuxGeneration
+import kotlinx.coroutines.channels.Channel
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
@@ -456,6 +463,7 @@ internal suspend fun <T> withPromptInspectionDispatcher(
 
 class ChatService(
     private val context: Application,
+    private val database: AppDatabase,
     private val appScope: AppScope,
     private val appEventBus: AppEventBus,
     private val settingsStore: SettingsStore,
@@ -580,6 +588,62 @@ class ChatService(
         sessions.clear()
     }
 
+    private val noticeRequests = Channel<Unit>(Channel.CONFLATED)
+    private var noticeDeliveryJob: Job? = null
+    private val noticeDelivery = NoticeDelivery(
+        enabled = { settingsStore.settingsFlow.value.enableBackgroundSubagent },
+        pending = { database.agentRunDao().observePendingDeliveries().first() },
+        orphan = { database.agentRunDao().markOrphaned(it) },
+        append = { parent, runs -> appendExternalNotice(parent, runs) },
+        onError = { Log.e(TAG, "Subagent notice delivery failed", it) },
+    )
+
+    /** 启动/设置变化/终态落库触发，不轮询。调用可重复。 */
+    @Synchronized
+    fun startNoticeDelivery() {
+        if (noticeDeliveryJob?.isActive == true) return
+        noticeDeliveryJob = appScope.launch {
+            launch {
+                combine(settingsStore.settingsFlow, database.agentRunDao().observePendingDeliveries()) { settings, runs ->
+                    settings.enableBackgroundSubagent to runs
+                }.collect { (enabled, _) -> if (enabled) noticeRequests.trySend(Unit) }
+            }
+            for (event in noticeRequests) {
+                try { noticeDelivery.flush() }
+                catch (error: CancellationException) { throw error }
+                catch (error: Throwable) { Log.e(TAG, "Notice delivery flush failed", error) }
+            }
+        }
+    }
+
+    /** 会话内存先追加再持久化；消息与投递确认同事务，避免后续 saveMessageNodes 删除 notice。 */
+    suspend fun appendExternalNotice(parent: String, runs: List<AgentRunEntity>): AppendNoticeResult =
+        withContext(Dispatchers.Main.immediate) {
+            if (!settingsStore.settingsFlow.value.enableBackgroundSubagent) return@withContext AppendNoticeResult.BUSY
+            val id = runCatching { Uuid.parse(parent) }.getOrNull() ?: return@withContext AppendNoticeResult.MISSING
+            if (!ensureConversationLoaded(id)) return@withContext AppendNoticeResult.MISSING
+            val session = getOrCreateSession(id)
+            val settings = settingsStore.settingsFlow.value
+            val original = session.state.value
+            val assistant = settings.getAssistantById(original.assistantId)
+            val model = settings.findModelById(assistant?.chatModelId ?: settings.chatModelId)
+            val contextLength = model?.effectiveContextLength(settings.contextLengthOverride)
+                ?: settings.contextLengthOverride ?: DEFAULT_CONTEXT_LENGTH
+            val used = maxOf(original.estimateWindowTokens(model),
+                app.androidrik.rikkahub.utils.estimateTokenCount(original.requestWindowMessages()))
+            try {
+                app.androidrik.rikkahub.data.task.appendNoticeToSession(session, runs, contextLength, used) { updated, ids ->
+                    database.withTransaction {
+                        if (!conversationRepo.existsConversationById(id)) throw NotFoundException("Parent conversation was deleted")
+                        conversationRepo.updateConversation(updated)
+                        database.agentRunDao().markDelivered(ids, System.currentTimeMillis())
+                    }
+                }
+            } catch (error: NotFoundException) {
+                AppendNoticeResult.MISSING
+            }
+        }
+
     // ---- Session 管理 ----
 
     @Synchronized
@@ -615,7 +679,10 @@ class ChatService(
                             context.getString(R.string.chat_page_voice_tool_approval)
                         )
                     }
-                    appScope.launch { dispatchNextQueuedMessage(sessionId) }
+                    appScope.launch {
+                        dispatchNextQueuedMessage(sessionId)
+                        noticeRequests.trySend(Unit)
+                    }
                 }
             )
         }
@@ -642,6 +709,7 @@ class ChatService(
 
     fun addConversationReference(conversationId: Uuid) {
         getOrCreateSession(conversationId).acquire()
+        noticeRequests.trySend(Unit)
     }
 
     fun removeConversationReference(conversationId: Uuid) {
@@ -2303,7 +2371,7 @@ class ChatService(
                     UIMessage.user(
                         prompt = settings.titlePrompt.applyPlaceholders(
                             "locale" to Locale.getDefault().displayName,
-                            "content" to conversation.currentMessages
+                            "content" to conversation.currentMessages.messagesForAuxGeneration()
                                 .takeLast(4).joinToString("\n\n") { it.summaryAsText(maxLength = 500) })
                     ),
                 ),
@@ -2391,7 +2459,7 @@ class ChatService(
                     UIMessage.user(
                         settings.suggestionPrompt.applyPlaceholders(
                             "locale" to Locale.getDefault().displayName,
-                            "content" to conversation.currentMessages
+                            "content" to conversation.currentMessages.messagesForAuxGeneration()
                                 .takeLast(8).joinToString("\n\n") { it.summaryAsText(maxLength = 500) }),
                     )
                 ),
@@ -2469,7 +2537,8 @@ class ChatService(
         )
         if (!plan.shouldCompress) return@runCatching null  // 无可压缩内容（非错误）
 
-        val messagesToCompress = plan.toCompress.map { it.currentMessage }
+        val messagesToCompress = plan.toCompress.map { it.currentMessage }.messagesForAuxGeneration()
+        if (messagesToCompress.isEmpty()) return@runCatching null
         val priorSummary = conversation.displayCompression()?.content.orEmpty()
         val priorContext = if (priorSummary.isNotBlank()) {
             "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n$priorSummary"
@@ -2562,6 +2631,7 @@ class ChatService(
         updateConversationState(conversationId) { latest ->
             latest.copy(compressionSummaries = listOf(saved))
         }
+        noticeRequests.trySend(Unit)
         saved
     }.onFailure {
         Log.e(TAG, "compressToCheckpoint failed for $conversationId", it)

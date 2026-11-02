@@ -120,6 +120,44 @@ class SubagentToolsTest {
         assertTrue("mcp_calendar_create_event" in catalog)
     }
 
+    @Test
+    fun `background mode requires both the feature flag and a parent`() = runBlocking {
+        var awaited = 0
+        var background = 0
+        val dispatcher = object : SubagentDispatcher {
+            override suspend fun dispatchAndAwait(preset: SubagentPreset, goal: String,
+                timeoutMillis: Long, parentConversationId: String?): SubagentRunResult {
+                awaited++
+                return SubagentRunResult("blocking", "completed", "answer", null)
+            }
+            override suspend fun dispatchBackground(preset: SubagentPreset, goal: String,
+                timeoutMillis: Long, parentConversationId: String): SubagentRunResult {
+                background++
+                return SubagentRunResult("background", "pending", null, null)
+            }
+        }
+        val presets = listOf(preset("research").copy(executionMode =
+            app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND))
+        val args = buildJsonObject { put("name", "research"); put("goal", "find evidence") }
+        createSubagentTools(presets, dispatcher, "parent", false).single().execute(args)
+        createSubagentTools(presets, dispatcher, null, true).single().execute(args)
+        val accepted = createSubagentTools(presets, dispatcher, "parent", true).single().execute(args)
+        assertEquals(2, awaited)
+        assertEquals(1, background)
+        val text = (accepted.single() as UIMessagePart.Text).text
+        assertTrue(text.contains("pending"))
+        assertTrue(text.contains("do not poll"))
+        assertTrue(subagentCatalogBlock(presets, false).contains("<execution_mode>blocking</execution_mode>"))
+        assertTrue(subagentCatalogBlock(presets, true).contains("<execution_mode>background</execution_mode>"))
+    }
+
+    @Test
+    fun `headless tools exclude ask user even when explicitly allowed`() {
+        val segments = listOf(segment("workspace", "ask_user", "workspace_read_file"))
+        assertFalse("ask_user" in runToolCatalog(segments))
+        assertFalse("ask_user" in resolveSubagentEnvelope(segments, setOf("ask_user", "workspace_read_file")))
+    }
+
     // ---- 工具装配 ----
 
     @Test

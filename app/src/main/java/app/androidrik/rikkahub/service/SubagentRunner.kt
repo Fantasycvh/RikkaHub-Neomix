@@ -261,6 +261,57 @@ class SubagentRunner(
         }
     }
 
+    /** 独立于父生成的 Job；先持久化后接受。P1a 后台审批恒为 DENY，ASK 留待 P1b。 */
+    override suspend fun dispatchBackground(
+        preset: SubagentPreset,
+        goal: String,
+        timeoutMillis: Long,
+        parentConversationId: String,
+    ): SubagentRunResult? {
+        if (!settingsStore.settingsFlow.value.enableBackgroundSubagent || goal.isBlank()) return null
+        val parentId = runCatching { Uuid.parse(parentConversationId) }.getOrNull() ?: return null
+        val runId = Uuid.random()
+        if (!gate.tryAcquire(runId.toString())) return null
+        val profile = preset.toRunProfile()
+        val run = newRunEntity(
+            AgentRunEntity.ENTRY_POINT_CHAT, profile, goal, preset.allowedTools, runId, parentId.toString(),
+        ).copy(deliveryMode = AgentRunEntity.DELIVERY_MODE_NOTICE)
+        try {
+            // 调用方取消不会留下已占位但未登记/未启动的任务。
+            withContext(NonCancellable) {
+                agentRunDAO.insertRun(run)
+                val job = appScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                    try {
+                        executeRun(run, profile, preset.allowedTools, timeoutMillis,
+                            SubagentToolApproval.DENY, preset.deliverables)
+                    } finally {
+                        withContext(NonCancellable) {
+                            agentRunDAO.finishRun(run.id, AgentRunEntity.STATUS_CANCELLED, null, null,
+                                System.currentTimeMillis(), "Run cancelled before execution completed.")
+                        }
+                    }
+                }
+                activeJobs[runId] = job
+                job.invokeOnCompletion { cause ->
+                    if (cause != null) appScope.launch {
+                        withContext(NonCancellable) {
+                            agentRunDAO.finishRun(run.id, AgentRunEntity.STATUS_CANCELLED, null, null,
+                                System.currentTimeMillis(), "Run cancelled before execution completed.")
+                        }
+                    }
+                    gate.release(run.id)
+                    activeJobs.remove(runId)
+                    clearProgress(run.id)
+                }
+                job.start()
+            }
+        } catch (error: Throwable) {
+            gate.release(run.id)
+            throw error
+        }
+        return SubagentRunResult(run.id, AgentRunEntity.STATUS_PENDING, null, null)
+    }
+
     /** 账本行的**初始**快照（信封列在装配后用实际结果覆盖，见 [executeRun]）。 */
     private fun newRunEntity(
         entryPoint: String,
