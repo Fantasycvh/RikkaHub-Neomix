@@ -60,6 +60,30 @@ class UpdateMessageReasoningTest {
     }
 
     @Test
+    fun `refuses to edit encrypted reasoning`() {
+        // OpenAI Responses 加密推理（ChatGPT/Grok 订阅）：回传的是密文，编辑后的文本不会被发送
+        val encrypted = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Reasoning(
+                    reasoning = "encrypted reasoning",
+                    createdAt = t0,
+                    finishedAt = t1,
+                    metadata = app.androidrik.ai.ui.OpenAIReasoningMetadata(
+                        reasoningId = "rs_1",
+                        encryptedContent = "enc-blob",
+                    ).toMetadata(),
+                ),
+                UIMessagePart.Text("answer"),
+            ),
+        )
+        assertNull(
+            "加密推理的编辑必须被拒绝（改了也不会进入请求）",
+            updateMessageReasoningInNodes(listOf(nodeOf(encrypted)), encrypted.id, t0, "edited"),
+        )
+    }
+
+    @Test
     fun `replaces only target reasoning text in place`() {
         val node = nodeOf(assistantMessage("old reasoning"))
         val target = node.messages[0].parts.filterIsInstance<UIMessagePart.Reasoning>()[0]

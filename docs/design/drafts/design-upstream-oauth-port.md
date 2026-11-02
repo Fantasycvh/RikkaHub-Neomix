@@ -785,3 +785,28 @@ P5 文档 §16.6 留下的最后一条缺口，已按上游 #2186 移植：
 
 **验证**：`:ai` 474 → 475、`:app` 2745（2 skipped）、`:app:assembleDebug` 通过；
 真机复测：等安装新构建后在原会话再发一轮（历史里含推理 + 工具）确认 200。
+
+### 20. 订阅会话禁止编辑推理（`isProviderSigned` 纳入加密推理）
+
+**问题**：聊天页的「思考过程」可以点铅笔编辑（#1929）。对订阅账号（ChatGPT / Grok）而言，推理正文是
+**服务端加密**的：请求里回传的是 `encrypted_content` 密文，本地改的文本**根本不会被发送** —— 允许编辑
+只会让用户误以为改动生效（而且严格后端还可能因结构不符拒绝）。
+
+**落法**：把「必须原样回传」的判据 `isProviderSigned()` 从「Claude 签名 / Gemini thoughtSignature」扩展到
+「`OpenAIReasoningMetadata.encryptedContent != null`」。这一个判据同时覆盖四处行为，不需要在 UI 里按
+提供商类型特判（也不依赖消息里是否还有提供商快照）：
+
+| 位置 | 行为 |
+| --- | --- |
+| `ChatMessageReasoning` 编辑入口 | 置灰 + 点击给出原因（`editDisabled`） |
+| `updateMessageReasoningInNodes` 纯函数核 | 直接拒绝改写（返回 null，不产生脏数据） |
+| `ReasoningEditDialog` | `providerSigned` 警示（本判据下入口已不可达，保留兜底） |
+| `ContextPurifier` | 加密推理 part「只看不碰」，不被裁剪/改写（保住 Codex 的加密历史） |
+
+**边界**：普通 Responses provider 的历史推理只有 `reasoning_id`、没有密文，编辑后的文本会真实回传，
+仍然可编辑；判据只看 metadata 是否加密，不看提供商类型。
+
+**测试**：`MessageMetadataTest`（加密 → signed、无密文 → 可编辑）、`UpdateMessageReasoningTest`
+（加密推理编辑被拒）。
+
+**验证**：`:ai` 475 → 476、`:app` 2746（2 skipped）、`:oauth` 9/9、`:app:assembleDebug` 通过。

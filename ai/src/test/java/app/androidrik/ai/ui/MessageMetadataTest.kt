@@ -171,12 +171,19 @@ class MessageMetadataTest {
     }
 
     @Test
-    fun `openai reasoning metadata is not signed`() {
-        // Responses 的 reasoning_id / encrypted_content 不参与签名校验 —— 编辑它不会被上游拒，
-        // 但它照样会随请求回传（includeHistoryReasoning 默认 true），故不属本判据。
+    fun `openai encrypted reasoning counts as provider signed`() {
+        // 加密推理回传的是 encrypted_content 密文：本地改文本不会进入请求（订阅后端还可能拒），
+        // 所以与签名块一样禁止编辑（2026-11-02 定位 Codex 400 后补）。
         val part = reasoningWith(
             OpenAIReasoningMetadata(reasoningId = "rs_1", encryptedContent = "enc").toMetadata()
         )
+        assertTrue(part.isProviderSigned())
+    }
+
+    @Test
+    fun `openai reasoning without encrypted content stays editable`() {
+        // 普通 Responses provider 的历史推理只有 reasoning_id、没有密文：编辑后的文本会真实回传，保持可编辑
+        val part = reasoningWith(OpenAIReasoningMetadata(reasoningId = "rs_1").toMetadata())
         assertFalse(part.isProviderSigned())
     }
 

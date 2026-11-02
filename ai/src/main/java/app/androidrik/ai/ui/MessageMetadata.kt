@@ -127,17 +127,21 @@ inline fun <reified T : PartMetadata> T.toMetadata(): JsonObject =
     json.encodeToJsonElement(this).jsonObject
 
 /**
- * 该推理块是否由**上游签名/加密**：Claude 的 `thinking` signature / `redacted_thinking` 数据，或 Gemini 的
- * `thoughtSignature`。
+ * 该推理块是否由**上游签名/加密**、本地编辑无效：
+ * - Claude 的 `thinking` signature / `redacted_thinking` 数据；
+ * - Gemini 的 `thoughtSignature`；
+ * - OpenAI Responses 的加密推理（`encrypted_content`）：回传的是**密文本身**，本地改的文本不会被发送
+ *   （ChatGPT/Grok 订阅后端还可能因结构不符拒绝）。
  *
- * 用途：上游规则是「**必须原样回传，修改过的块会被拒**」⇒ 对这类块**禁用编辑**
- * （2026-10-12 起：`ChatMessageReasoning` 的编辑入口置灰并给出原因；
- * `updateMessageReasoningInNodes` 的纯函数核也直接拒绝改写）。
+ * 用途：这类块的规则是「**必须原样回传**」⇒ **禁用编辑**
+ * （`ChatMessageReasoning` 的编辑入口置灰并给出原因；`updateMessageReasoningInNodes` 的纯函数核也拒绝改写）。
+ * 加密推理这一条是 2026-11-02 真机定位 Codex 400 后补的：用户改的推理文本根本不会进入请求，允许编辑只会误导。
  *
- * 注意与「会回传」不等价：OpenAI 兼容路径没有签名概念，但编辑后的推理同样会以 `reasoning_content`
- * 回传（`includeHistoryReasoning` 默认 true）——那是另一类影响（前缀缓存 / 内容污染），不在本判据范围内。
+ * 注意与「会回传」不等价：OpenAI 兼容路径没有签名/加密，编辑后的推理会以 `reasoning_content` 回传
+ * （`includeHistoryReasoning` 默认 true）——那是另一类影响（前缀缓存 / 内容污染），不在本判据范围内。
  */
 fun UIMessagePart.Reasoning.isProviderSigned(): Boolean =
     metadataAs<ClaudeReasoningMetadata>()?.let { it.signature != null || it.redactedData != null } == true ||
-        metadataAs<GoogleThoughtMetadata>()?.thoughtSignature != null
+        metadataAs<GoogleThoughtMetadata>()?.thoughtSignature != null ||
+        metadataAs<OpenAIReasoningMetadata>()?.encryptedContent != null
 
