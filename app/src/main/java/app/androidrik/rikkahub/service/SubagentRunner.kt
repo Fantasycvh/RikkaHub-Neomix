@@ -83,13 +83,16 @@ import kotlin.uuid.Uuid
  * run 自带护栏实例（[ToolCallLoopGuard] / [WorkspaceTurnBudget] / [DenialGuard]），
  * **run 自身就是「一轮」的边界**，跨审批累积的问题在这里不存在（无审批续跑）。
  *
- * **Phase 1 形态**：串行（同时至多一个活跃 run）、单层、无升级到人的审批（信封外的工具
+ * **当前形态**：并发可配（设置 `subagentMaxConcurrentRuns`，默认 2、范围 1–8；本类各入口共用
+ * 同一个进程级并发闸，满了**拒绝不排队**）、单层、无升级到人的审批（信封外的工具
  * **不装配**，`needsApproval` 工具自动策略拒绝，见 §9.2）。
  *
- * **§十（对话内派发）起的两个入口**：①运行页**手动派发**（[dispatchRun]，即发即忘）；
- * ②对话里模型通过 `dispatch_subagent` 工具**按预设调度**（[dispatchAndAwait]，阻塞到跑完）。
- * 两条路径共用同一份执行体 [executeRun]，因此账本、护栏、信封、完成判定完全一致——
- * 唯一差别是"谁在等结果"：UI 用 `appScope` 起独立 job，对话路径用父生成的协程。
+ * **§十（对话内派发）起的入口**：①运行页**手动派发**（[dispatchRun]，即发即忘）；
+ * ②对话里模型通过 `dispatch_subagent` 工具**按预设调度**（[dispatchAndAwait]，阻塞到跑完）；
+ * ③P4b 定时任务可选的 headless 派发（[dispatchScheduledAwait]，默认关）。
+ * 各入口共用同一份执行体 [executeRun]，因此账本、护栏、信封、完成判定完全一致——
+ * 差别只在"谁在等结果"：UI 用 `appScope` 起独立 job，对话路径用父生成的协程，
+ * 定时路径用调度服务的协程。
  */
 private const val TAG = "SubagentRunner"
 
@@ -187,12 +190,17 @@ class SubagentRunner(
     }
 
     /**
-     * 派发一个 run（**即发即忘**，运行页用）。有活跃 run 时返回 null（Phase 1 串行，UI 提示后重试）。
+     * 派发一个 run（**即发即忘**，运行页用）。
+     *
+     * 准入与 [dispatchAndAwait] / [dispatchScheduledAwait] 共用同一个进程级并发闸：上限取设置
+     * `subagentMaxConcurrentRuns`（默认 2、范围 1–8；`dynamicRunGate` 开时每次现读）。**达到
+     * 上限时返回 null**（调用方提示"已达并行上限"），不排队；`goal` 为空也返回 null。
      *
      * @param profile 复用现有 [Assistant] 当模板（系统提示/模型/工作区绑定来自它）
      * @param goal 任务目标，原样成为首条 user 消息
      * @param allowedTools 能力信封：**允许装配**的工具名集合（派发时快照；
      *   信封外工具不装配——`needsApproval` 无人头时拦不住，见 §9.2 第 2 条）
+     * @return 新 run 的 id；目标为空或已达并行上限时为 null
      */
     fun dispatchRun(profile: Assistant, goal: String, allowedTools: Set<String>): Uuid? {
         if (goal.isBlank()) return null
@@ -232,7 +240,7 @@ class SubagentRunner(
      * 2. **超时由预设给**（默认 10 分钟，短于手工路径的 30 分钟），父生成不该被按住太久；
      * 3. 返回值带上**完整**最终文本，父模型直接消费。
      *
-     * @return **null = 已有活跃 run**（串行闸；调用方把"忙"如实转达给模型，不要重试）
+     * @return `null` = 并发闸满（或目标为空）；调用方把"忙"如实转达给模型，不要重试
      */
     override suspend fun dispatchAndAwait(
         preset: SubagentPreset,
