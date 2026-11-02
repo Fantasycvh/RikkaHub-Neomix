@@ -1,6 +1,7 @@
 # Agent 任务控制面：子代理 / 无头 run / 后台任务的三合一与改进（design-agent-task-runtime）
 
-> 状态：**已拍板（2026-11-02）**；P0 起进入实施，进度见附录 D。
+> 状态：**已拍板（2026-11-02）**；**P0 / P0.5 已落地（提交 `692ed04ad` + 后续补测）**，P1a 待启动；
+> 进度与遗留见附录 D。
 > 日期：2026-11-02。**rev2**（第一版经交叉评审后重写）。
 > 对象：本仓三套执行底座 + `AndyerNotFound/L3Hub-RikkaHub-Fork-WFadnf`（下称「L3Hub fork」，
 > 评审时 HEAD `e5f7e196`）。
@@ -77,6 +78,10 @@
    （`:360-365`）记 **OK**，工具实际从未执行。**不是未核实，是判定路径确定**（真机未复现≠风险不存在）。
 5. **结果回传两种哲学**：run 明确否决事后注入（§10.4），定时任务的整个模型恰恰是事后注入。
    合并必须先选主轴，另一条降级为「结果去向」选项，不能双写。
+
+> **2026-11-02 实施状态**：缺口 2 的「并发闸首读冻结」、缺口 3 的「run 起的 shell 无归属 /
+> 定时无取消」、缺口 1 的「run 永远卡在 running」（启动对账）已修，见附录 D；缺口 1 的
+> 「一次查询看全设备在跑什么」（任务中心读模型）仍待下一轮。本节保留为设计时的现状基线。
 
 ### 1.3 既有决议
 
@@ -597,24 +602,50 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 ## 附录 D：实施进度（P0 / P0.5）
 
 > 规则：每项落地后在此打勾并写「提交短哈希 + 验证方式」；**未打勾即未验证**。
+>
+> 2026-11-02 更新：P0 / P0.5 主体已落地，全量单测 2774 例 0 失败
+> （`./gradlew :app:testDebugUnitTest`）。P0.5 的「pending 投递骨架」依赖 P1a 的 v58 数据模型，
+> 拆到 P1a 实施；P0 的任务中心读模型与页面留到下一轮（设计不变，只是尚未写代码）。
 
 ### P0（无新数据模型，可独立回滚）
 
-- [ ] `TaskStateMappings.kt` 三套状态映射 + `INTERRUPTED` 常量 + 单测
-- [ ] 通知命名空间修复（4242 / 40000 / 1 / live / hashCode 全清单，只撤自己的）
-- [ ] `ConcurrentRunGate` 动态读设置 + `deviceLoad` 快照 + 单测
-- [ ] `SubagentRunner` 起 shell task 传 scope（`turnOwner` 不再 null）+ 回滚开关
-- [ ] `WorkspaceTaskRegistry.snapshotFlow` + 任务中心读模型（`TaskCenter`）
-- [ ] 任务中心页（含 shell / agent / scheduled 三段 + 取消/批准入口）
+- [x] `TaskStateMappings` 三套状态映射 + `INTERRUPTED` 常量 + 单测
+  —— `692ed04ad`；实现为 `data/task/TaskState.kt`（文件名比设计稿短，避免与映射函数混淆），
+  表驱动测试 `TaskStateMappingsTest`（未知 status → FAILED、EXITED 看 exitCode、CANCELLED 不并进 FAILED）。
+- [x] 通知命名空间修复（子代理审批 4242/4243/4244 → `NotificationIds` 按 runId+动作生成）
+  —— `692ed04ad`；`NotificationIdsTest` 断言同 run 稳定、不同 run 不同、正整数、避开 `{1, 40000, 40010}`。
+  **不在 P0 变更面**：`ChatNotificationManager` 的 live id 与 `MediaCreationService` 的
+  `record.id.hashCode()` 保持原状（前者取值域按会话派生、后者是媒体记录，均不参与子代理审批路由）。
+- [x] `ConcurrentRunGate` 动态读设置 + `deviceLoad` 快照 + 单测
+  —— `692ed04ad`（动态读取）+ 后续补测（`load()` / `SubagentRunner.gateLoad()`，
+  `ConcurrentRunGateTest` 钉住「活跃数与上限取自同一瞬间」）。
+- [x] `SubagentRunner` 起 shell task 传 `turnOwner="run:<id>"` + 取消/超时级联 kill
+  —— `692ed04ad`；`executeRun` 的取消与超时分支在 `NonCancellable` 里
+  `killBackgroundTasksByOwner("run:<id>")`。**回滚开关未加用户设置**：P0 以「回退提交」为回滚单位，
+  `killShellTasksOnRunCancel` 开关列入 P1b 设置面（见附录 C）。
+- [ ] `WorkspaceTaskRegistry.snapshotFlow` + 任务中心读模型（`TaskCenter`）——**下一轮**
+- [ ] 任务中心页（含 shell / agent / scheduled 三段 + 取消/批准入口）——**下一轮**
 
 ### P0.5（对账与定时取消）
 
-- [ ] 进程启动时刻载体 + `INTERRUPTED` 启动对账 + pending 投递骨架
-- [ ] `QueuedMessage.turnOwner` 覆盖 + `ScheduledRunRegistry` + `ACTION_STOP` 接线
-- [ ] 定时取消不暂停用户队列的回归测试
+- [x] 进程启动时刻载体 + `INTERRUPTED` 启动对账 + 启动接线
+  —— `692ed04ad`；`ProcessStartClock`（首标记生效）+ `AgentRunReconciler`（boot<=0 时不动作，
+  防把本进程新 run 误标）+ `RikkaHubApp.postReadyInit` 接线；`AgentRunReconcilerTest` 覆盖
+  「只标上一进程」「finished_at 已写不碰」「boot 未记录时 0」。
+  **pending 投递骨架**：依赖 v58 `delivery_mode/delivery_state`，拆到 P1a，不在 P0.5 假装完成。
+- [x] `QueuedMessage.turnOwner` 覆盖 + `ScheduledRunRegistry` + `ACTION_STOP` 接线
+  —— `692ed04ad`；`ScheduledTaskRunner` 注入前登记、`finally` 反注册、等待循环并入
+  `cancelledRunIds`、取消终态 `CANCELLED` 不回落 OK；`ScheduledTaskRunService` 给 FGS 通知挂
+  「停止」动作并处理 `ACTION_STOP`；`ScheduledTaskSweeper` FGS id 改 40010。
+- [x] 定时取消不暂停用户队列的回归守卫
+  —— `ScheduledCancelIsolationGuardTest`（源码钉住：注入带 `sched:<runId>`、
+  `sendQueuedMessage` 用 `queued.turnOwner`、注册表不调 `chatService.`/`messageQueue.pause(`、
+  `ACTION_STOP` 真的接到 `runRegistry.cancel`）；行为测试 `ScheduledRunRegistryTest`。
 
 ### 已知未验证
 
 - Android 真机：后台 run 存活、Doze、通知权限关闭降级、SYSTEM notice 渲染（P1a 前必须补真机清单）。
+- 定时取消的真机时序：通知「停止」→ `ACTION_STOP` → Job.cancel → 终态 CANCELLED（单测已覆盖状态机，
+  真机需验证服务生命周期与通知动作的竞态）。
 - 旧备份 → v58 恢复（迁移落地时补）。
 

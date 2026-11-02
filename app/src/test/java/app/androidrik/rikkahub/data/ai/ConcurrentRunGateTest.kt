@@ -112,4 +112,25 @@ class ConcurrentRunGateTest {
         assertTrue(negative.tryAcquire("a"))
         assertFalse(negative.canAcquire())
     }
+
+    @Test
+    fun `load snapshot keeps active count and limit from the same instant`() {
+        // 任务中心「2/3」这类读数必须一致：分开读 activeCount() 与设置值可能跨过一次设置变更，
+        // 显示成不可能的 "3/2"。
+        var configured = 3
+        val gate = ConcurrentRunGate(limitProvider = { configured })
+        gate.tryAcquire("a")
+        gate.tryAcquire("b")
+
+        val busy = gate.load()
+        assertEquals(2, busy.activeCount)
+        assertEquals(3, busy.limit)
+        assertTrue(busy.canAcquire)
+
+        configured = 1
+        val shrunk = gate.load()
+        assertEquals(2, shrunk.activeCount)
+        assertEquals(1, shrunk.limit)
+        assertFalse("活跃 2 > 新上限 1 时 cannot start，但仍如实报时快照", shrunk.canAcquire)
+    }
 }

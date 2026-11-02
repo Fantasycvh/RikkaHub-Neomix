@@ -74,6 +74,18 @@ class ConcurrentRunGate(
     @Synchronized
     fun canAcquire(): Boolean = active.size < effectiveLimit()
 
+    /**
+     * 一致性快照（P0 `deviceLoad`，设计 §5.1/附录 D）：活跃数与上限在同一把锁下读取，
+     * 避免 UI 先读 `activeCount()` 再读 `limit()` 时两者来自不同瞬间，显示成不可能的 "3/2"。
+     */
+    @Synchronized
+    fun load(): Load = Load(activeCount = active.size, limit = effectiveLimit())
+
+    /** [load] 的结果；[canAcquire] 与闸门自身的裁决同源（`activeCount < limit`）。 */
+    data class Load(val activeCount: Int, val limit: Int) {
+        val canAcquire: Boolean get() = activeCount < limit
+    }
+
     /** provider 返回 0/负数时的兜底：闸至少允许一个 run，否则整个功能静默失效。 */
     private fun effectiveLimit(): Int = limitProvider().coerceAtLeast(1)
 

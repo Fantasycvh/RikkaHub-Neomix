@@ -111,6 +111,12 @@ class SubagentRunner(
         limitProvider = { settingsStore.settingsFlow.value.subagentMaxConcurrentRuns },
     )
 
+    /**
+     * 并发闸的一致性快照（P0 `deviceLoad`）：任务中心「run 2/3」一类的读数直接取这里，
+     * 不要在 UI 侧分别调 `activeCount()` 与设置值——两者可能来自不同瞬间。
+     */
+    fun gateLoad(): ConcurrentRunGate.Load = gate.load()
+
     /** runId → 它所在的协程 Job（取消用；两条入口都登记，这样才能"只取消这一个 run"）。 */
     private val activeJobs = ConcurrentHashMap<Uuid, Job>()
 
