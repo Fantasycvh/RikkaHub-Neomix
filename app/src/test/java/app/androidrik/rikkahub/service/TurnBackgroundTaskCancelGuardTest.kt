@@ -48,16 +48,16 @@ class TurnBackgroundTaskCancelGuardTest {
 
         val service = source("src/main/java/app/androidrik/rikkahub/service/ChatService.kt")
         assertTrue(
-            "真正装配请求工具的地方必须给 turnOwner = 本轮令牌",
-            "turnOwner = session.backgroundTaskOwner," in service,
+            "真正装配请求工具的地方必须把本轮令牌还原成 ExecutionScope",
+            "turnOwner = app.androidrik.workspace.ExecutionScope.parse(session.backgroundTaskOwner)" in service,
         )
         assertTrue(
             "onTurnCancelled 必须接到按 owner 收尾的实现上",
             "onTurnCancelled = { owner -> killBackgroundTasksOfCancelledTurn(owner) }" in service,
         )
         assertTrue(
-            "收尾必须真的调用仓库的 killBackgroundTasksByOwner",
-            "killBackgroundTasksByOwner(owner)" in service,
+            "收尾必须真的调用仓库的 killBackgroundTasksByScope（P3 类型化 scope）",
+            "killBackgroundTasksByScope(scope)" in service,
         )
     }
 
