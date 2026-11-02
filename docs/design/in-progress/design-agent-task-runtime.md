@@ -2,7 +2,8 @@
 
 > 状态：**已拍板（2026-11-02）**；**P0 / P0.5 / P1a / P1b / P3 已落地**（P0 `692ed04ad` /
 > `23c977613` / `8df5a214b`，P1a 最后验收 `ed060aac0`，P1b `cd8a7fd26`，P3 `da95fb49e`）；
-> P2 嵌套（默认关、需单层不够用的观测证据）与 P4 定时并入待启动；范围及遗留见附录 D。
+> P2 嵌套（默认关、需单层不够用的观测证据）待启动；P4 已完成「定时运行账本/取消进任务中心」，
+> `scheduled → agent_run` 可选项仍未做。范围及遗留见附录 D。
 > 日期：2026-11-02。**rev2**（第一版经交叉评审后重写）。
 > 对象：本仓三套执行底座 + `AndyerNotFound/L3Hub-RikkaHub-Fork-WFadnf`（下称「L3Hub fork」，
 > 评审时 HEAD `e5f7e196`）。
@@ -93,7 +94,7 @@
 | 信封 = 装配期过滤（§9.2） | **保留并推广** |
 | 满了拒绝、不排队（§12.1） | **保留** |
 | 阻塞派发为默认（§10.4） | **保留** |
-| 定时执行层只做注入 | **保留到 P4** |
+| 定时执行层只做注入 | **P4a 保留**：任务中心改读运行账本，执行层仍注入；`scheduled→agent_run` 未做 |
 | 工作区后台任务不持久化（workspace §二/§八） | **保留** |
 | 真无头不立项（proactive §五） | **保留** |
 | run 账本只做记录层（§9.3） | **修订**：记录层 + 控制面，仍不抽 Runner |
@@ -499,8 +500,13 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 
 ### P4：定时任务并入（最后）
 
-定时 run 取消/账本进任务中心；`scheduled → agent_run`（而非会话注入）作为可选项；外部触发复用同一控制面。
-**P4 前不碰 `ChatService` 注入路径**（P0.5 的取消除外）。
+**已实现（P4a，2026-11-02）**：定时卡改为读 `scheduled_task_runs` 运行账本——运行中一轮取注册表 +
+账本，结束一轮带真实 `finished_at`，未终态账本显示 `INTERRUPTED`；取消仍按 runId 转发
+`ScheduledRunRegistry.cancel`（P0.5 的同一控制面）。
+
+**仍待做**：`scheduled → agent_run`（而非会话注入）作为可选项；这一项会改变结果去向（不再写
+目标会话），需要单独立项定义投递/通知语义，当前不做。**P4 前不碰 `ChatService` 注入路径**
+（P0.5 的取消除外）仍然成立。
 
 ---
 
@@ -571,7 +577,7 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 | 同上 | §11 ASK、超时即拒 | **保留并推广**：后台默认 DENY；ASK 前置通知渠道 |
 | 同上 | §12 并行上限 2、满即拒 | **保留**；补动态读设置与设备视图 |
 | `design-workspace-background-tasks.md` | 不持久化/不跨进程/无通知 | **保留**；P3 只加孤儿报告/可杀 |
-| `design-scheduled-ai-tasks.md` | 执行层只做注入；任务挂会话 | **保留到 P4** |
+| `design-scheduled-ai-tasks.md` | 执行层只做注入；任务挂会话 | **P4a 保留**：只把账本/取消接入控制面，执行层不改 |
 | `design-proactive-task-management.md` | §五 真无头不立项 | **保留** |
 | 同上 | §3.2 无头走通知审批（:108-109，未实现） | **修正**：无头轮装配期剔除审批工具 + 停等路径 Deny；通知作为可选升级 |
 
@@ -611,9 +617,9 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 
 > 规则：每项落地后在此打勾并写「提交短哈希 + 验证方式」；**未打勾即未验证**。
 >
-> 2026-11-02 更新：P0 / P0.5 / P1a / P1b / P3 已落地。当前全量 JVM：**app 2823 例、
-> ai 479 例、workspace 169 例，0 失败**（`./gradlew :app:testDebugUnitTest :ai:testDebugUnitTest
-> :workspace:testDebugUnitTest`）；P1a/P1b/P3 的真机复核与验收边界见
+> 2026-11-02 更新：P0 / P0.5 / P1a / P1b / P3 已落地，P4 的定时运行账本/取消已落地。当前全量 JVM：
+> **app 2825 例、ai 479 例、workspace 169 例，0 失败**（`./gradlew :app:testDebugUnitTest
+> :ai:testDebugUnitTest :workspace:testDebugUnitTest`）；P1a/P1b/P3 的真机复核与验收边界见
 > [device-recheck-2026-11-02](../verification/agent-task-runtime-device-recheck-2026-11-02.md)。
 > P0.5 的「pending 投递骨架」已随 P1a 的 v58 数据模型实施。
 
@@ -777,6 +783,27 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 - 已知未验证：真机上「杀进程 → 重启看到孤儿报告」未验收；自动杀开关按设计未做（默认只报告）；
   级联目前只有父链，P2 嵌套落地后才有真实子 run 可验。
 
+### P4（定时运行并入控制面：账本/取消已完成）
+
+2026-11-02 本地提交 `feat(task-runtime): 定时运行账本进入任务中心`；无 DB 版本变更。
+
+- [x] 任务中心定时段改读运行账本：新增 `ScheduledTaskDAO.flowRecentRuns`（跨任务、有界 120 条）与
+  `flowUnfinishedRuns`；`ScheduledTaskRepository` 暴露两条流，`TaskCenter` 先把「任务行 + 最近账本 +
+  未终态账本」合成同一帧快照，再与 agent/shell/审批/注册表合并。定时卡的 `startedAt/finishedAt`
+  来自账本而不是任务行摘要，`TaskKey.Scheduled` 带上实际 runId。
+- [x] 状态以账本为准：结束轮的 `TaskRunStatus` 映射到统一态（账本 FAILED 不被任务行旧 OK 覆盖）；
+  `finished_at` 留空的未终态行显示 `INTERRUPTED`，不再把「进程死亡」画成 RUNNING/PENDING；
+  `TARGET_GONE` / `ASSISTANT_GONE` 是任务级摘要，不被更早的成功账本盖掉。
+- [x] 取消复用同一控制面：任务中心的「取消」仍按 runId 调 `ScheduledRunRegistry.cancel`，只取消本轮
+  generation Job，不 `pause` 用户消息队列；FGS 通知的 `ACTION_STOP` 同一条路径（P0.5 已验）。
+- [x] 单测：`TaskCenterTest` 5 例（运行中时间取账本、结束时间、FAILED 盖过旧 OK、未终态 INTERRUPTED、
+  TARGET_GONE 优先）；`ScheduledTaskRepositoryTest` 10 例（新增最近账本/未终态账本两条流）；
+  定向 `./gradlew :app:testDebugUnitTest --tests ...` 通过。
+- [ ] `scheduled → agent_run` 可选项**未做**：它把定时执行从「注入目标会话」改成独立 headless run，
+  结果去向/通知/目标会话语义都会变；按设计稿「作为可选项」单独立项，不在本轮假装完成。
+- 边界：任务中心只取全局最近 120 条账本 + 每任务最近一轮；更早历史仍在定时任务详情的运行历史页。
+  本轮只跑 JVM，未做真机定时触发/取消验收（P0.5 的定时取消真机时序仍是既有遗留）。
+
 ### 已知未验证或后续项
 
 - 正式 Application 的完整聊天页人工导航、KeepAlive 前台服务与不同 ROM 的长时后台存活仍需扩展验证；
@@ -784,8 +811,10 @@ notice 作为 SYSTEM 消息进入 `currentMessages` 后，以下路径会消费�
 - P1b 的五分钟审批超时使用协程虚拟时间验证；未在真机实等五分钟，也未人工点击系统通知动作或完整聊天页导航。
   启动对账产生的 INTERRUPTED 通过 P1a notice 补投，本期不补发独立的历史完成通知。
 - 附录 C 的 `taskCenterEnabled` / `namespacedNotifications` / `dynamicRunGate` /
-  `killShellTasksOnRunCancel` 仍未成为用户设置；这些 P0 行为仍按提交回退，不宣称已完成全部开关矩阵。
+  `killShellTasksOnRunCancel` 已在 2026-11-02 的 P0 回滚开关矩阵中补进
+  设置→通用→护栏与预算（默认开，三语），并由 `P0RollbackSwitchGuardTest` 与真机
+  隔离 DataStore 往返兜底；完整开关矩阵见复核报告。
 - 定时取消的真机时序：通知「停止」→ `ACTION_STOP` → Job.cancel → 终态 CANCELLED（单测已覆盖状态机，
-  真机需验证服务生命周期与通知动作的竞态）。
+  真机需验证服务生命周期与通知动作的竞态；P4 的账本展示本轮同样只跑 JVM）。
 - 旧备份 ZIP → v58 的完整导入流程（独立库 57→58 迁移与 58→57 降级隔离已由上方真机测试覆盖）。
 

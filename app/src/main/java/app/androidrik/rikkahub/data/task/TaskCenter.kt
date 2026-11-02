@@ -3,6 +3,9 @@ package app.androidrik.rikkahub.data.task
 import app.androidrik.rikkahub.data.ai.SubagentApprovalQueue
 import app.androidrik.rikkahub.data.db.dao.AgentRunDAO
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
+import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
 import app.androidrik.rikkahub.service.ScheduledRunRegistry
@@ -71,6 +74,18 @@ enum class TaskCancelResult {
 }
 
 /**
+ * 定时任务三源快照（任务行 / 最近账本 / 未终态账本）。
+ *
+ * 放在同一个快照里而不是分别 combine：同一帧里「任务行说 OK、账本说 FAILED」时，
+ * 映射函数能确定地用账本，不需要靠两次 emit 的时序碰运气。
+ */
+private data class ScheduledSnapshot(
+    val tasks: List<ScheduledTaskEntity>,
+    val recentRuns: List<ScheduledTaskRunEntity>,
+    val unfinishedRuns: List<ScheduledTaskRunEntity>,
+)
+
+/**
  * **任务中心读模型**（P0，`design-agent-task-runtime.md` §4.2）。
  *
  * 为什么是读模型而不是任务总表：三套执行器的状态机/生命周期载体都不同，写一张总表意味着
@@ -90,24 +105,54 @@ class TaskCenter(
 ) {
 
     /**
+     * 定时任务的三条流先合成一个快照，再与其余来源 combine。
+     *
+     * Kotlin 的 `combine` 只有 5 个参数的重载；这里把「任务行 + 最近账本 + 未终态账本」
+     * 收成一个，既避免 6 源嵌套，也让定时卡的映射拿到**同一帧**的数据。
+     */
+    private val scheduledSnapshot: Flow<ScheduledSnapshot> = combine(
+        scheduledTaskRepository.flowAll(),
+        scheduledTaskRepository.flowRecentRuns(),
+        scheduledTaskRepository.flowUnfinishedRuns(),
+    ) { tasks, recentRuns, unfinishedRuns ->
+        ScheduledSnapshot(tasks, recentRuns, unfinishedRuns)
+    }
+
+    /**
      * 三源 + 审批队列 + 定时运行注册表的合并流。
      *
-     * 定时注册表只提供「哪些 taskId 正在跑」的触发；任务卡本身的 `last_status` 仍来自任务行，
-     * 避免为了显示运行中而另建一张运行表。
+     * P4：定时任务卡不再只看任务行的 `last_status`，而是以**运行账本**为准——
+     * 运行中的一轮来自注册表 + 账本，结束的一轮带真实 `finished_at`；进程死亡留下的
+     * 未终态账本显示为 INTERRUPTED，而不是永远 RUNNING。
      */
     fun observeTasks(): Flow<List<TaskCard>> = combine(
         agentRunDAO.observeRuns(),
         workspaceRepository.observeBackgroundTasks(),
-        scheduledTaskRepository.flowAll(),
+        scheduledSnapshot,
         SubagentApprovalQueue.requests,
         scheduledRunRegistry.activeRunIds,
     ) { runs, shells, scheduled, approvals, _ ->
         val approvalsByRun = approvals.groupingBy { it.runId }.eachCount()
+        val recentRunsByTask = scheduled.recentRuns.groupBy { it.taskId }
+        val unfinishedRunsByTask = scheduled.unfinishedRuns.groupBy { it.taskId }
         buildList {
             runs.forEach { add(agentTaskCard(it, approvalsByRun[it.id] ?: 0)) }
             shells.forEach { add(shellTaskCard(it)) }
-            scheduled.forEach {
-                add(scheduledTaskCard(it, scheduledRunRegistry.activeRunIdOfTask(it.id)))
+            scheduled.tasks.forEach { task ->
+                val activeRunId = scheduledRunRegistry.activeRunIdOfTask(task.id)
+                // 注册表先于账本行插入也不会丢卡：优先用未终态账本，退而求其次查最近账本。
+                val activeRun = activeRunId?.let { id ->
+                    unfinishedRunsByTask[task.id]?.firstOrNull { it.id == id }
+                        ?: recentRunsByTask[task.id]?.firstOrNull { it.id == id }
+                }
+                add(
+                    scheduledTaskCard(
+                        task = task,
+                        activeRunId = activeRunId,
+                        activeRun = activeRun,
+                        latestRun = recentRunsByTask[task.id]?.firstOrNull(),
+                    )
+                )
             }
         }.sortedWith(
             compareByDescending<TaskCard> { it.state == TaskState.RUNNING || it.state == TaskState.WAITING_APPROVAL }
@@ -191,22 +236,41 @@ internal fun shellTaskCard(task: app.androidrik.workspace.WorkspaceTaskSnapshot)
 }
 
 internal fun scheduledTaskCard(
-    task: app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity,
+    task: ScheduledTaskEntity,
     activeRunId: String?,
+    activeRun: ScheduledTaskRunEntity? = null,
+    latestRun: ScheduledTaskRunEntity? = null,
 ): TaskCard {
-    val state = if (activeRunId != null) {
-        TaskState.RUNNING
-    } else {
-        TaskStateMappings.fromScheduledRun(task.lastStatus) ?: TaskState.PENDING
+    val running = activeRunId != null
+    // TARGET_GONE / ASSISTANT_GONE 是任务级摘要（目标被删，没有对应的执行轮次），
+    // 不能被更早的一条成功账本盖掉，否则任务失效在任务中心完全不可见。
+    val summaryOnly = task.lastStatus == TaskRunStatus.TARGET_GONE ||
+        task.lastStatus == TaskRunStatus.ASSISTANT_GONE
+    val ledgerRun = when {
+        running -> activeRun
+        summaryOnly -> null
+        else -> latestRun
+    }
+    val state = when {
+        running -> TaskState.RUNNING
+        ledgerRun == null -> TaskStateMappings.fromScheduledRun(task.lastStatus) ?: TaskState.PENDING
+        // 账本行没有终态 = 执行层进程中途死亡；没有对账写回，不能继续显示 PENDING。
+        ledgerRun.finishedAt == null || ledgerRun.status == null -> TaskState.INTERRUPTED
+        else -> TaskStateMappings.fromScheduledRun(ledgerRun.status) ?: TaskState.FAILED
     }
     return TaskCard(
-        key = TaskKey.Scheduled(task.id, activeRunId),
+        key = TaskKey.Scheduled(task.id, if (running) activeRunId else ledgerRun?.id),
         source = TaskSource.SCHEDULED,
         state = state,
         title = task.title,
-        subtitle = task.lastStatus?.takeIf { activeRunId == null },
-        startedAt = task.lastRunAt,
-        finishedAt = null,
-        canCancel = activeRunId != null,
+        subtitle = when {
+            running -> null
+            // 账本才是这一轮的事实；任务行 last_status 可能还停在上上轮。
+            ledgerRun != null -> ledgerRun.status
+            else -> task.lastStatus
+        },
+        startedAt = ledgerRun?.startedAt ?: task.lastRunAt,
+        finishedAt = if (running) null else ledgerRun?.finishedAt,
+        canCancel = running,
     )
 }

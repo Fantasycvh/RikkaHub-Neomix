@@ -177,6 +177,13 @@ class ScheduledTaskRepository(
     fun flowRuns(taskId: String, limit: Int = RUNS_KEEP_PER_TASK): Flow<List<ScheduledTaskRunEntity>> =
         dao.flowRuns(taskId, limit)
 
+    /** 任务中心：跨任务最近运行账本（新→旧，有界；状态/时间以它为准） */
+    fun flowRecentRuns(limit: Int = RECENT_RUNS_LIMIT): Flow<List<ScheduledTaskRunEntity>> =
+        dao.flowRecentRuns(limit)
+
+    /** 任务中心：未落终态的账本行（进程死亡证据，用于 INTERRUPTED 展示） */
+    fun flowUnfinishedRuns(): Flow<List<ScheduledTaskRunEntity>> = dao.flowUnfinishedRuns()
+
     /** 任务删除时清账本（表间无外键，靠调用方显式清） */
     suspend fun deleteRunsOfTask(taskId: String) = dao.deleteRunsOfTask(taskId)
 
@@ -206,5 +213,14 @@ class ScheduledTaskRepository(
     companion object {
         /** 每任务保留的账本行数上限（一天一次的任务 ≈ 两个月的完整历史） */
         const val RUNS_KEEP_PER_TASK = 60
+
+        /**
+         * 任务中心一次读多少条最近账本。
+         *
+         * 任务中心只需要「每个任务最近一轮」；取全量会导致大历史设备首帧很重，
+         * 取太小又会让久未运行的任务误显示成「从未运行」。120 条覆盖常见任务量，
+         * 单任务完整历史仍在详情页（[flowRuns]）。
+         */
+        const val RECENT_RUNS_LIMIT = 120
     }
 }

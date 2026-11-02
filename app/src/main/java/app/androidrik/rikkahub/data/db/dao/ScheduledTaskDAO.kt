@@ -101,6 +101,24 @@ interface ScheduledTaskDAO {
     )
     suspend fun allRunsOfTask(taskId: String): List<ScheduledTaskRunEntity>
 
+    /**
+     * 任务中心：全局最近运行账本（新→旧，有界）。
+     *
+     * P4 起任务卡的状态/时间以运行账本为准（`last_status` 只是任务表摘要），
+     * 需要一条跨任务、有界的流；单任务完整历史仍走 [flowRuns]。
+     */
+    @Query("SELECT * FROM scheduled_task_runs ORDER BY started_at DESC LIMIT :limit")
+    fun flowRecentRuns(limit: Int): Flow<List<ScheduledTaskRunEntity>>
+
+    /**
+     * 未落终态的账本行：进程死亡后 `finished_at` 会永久留空（没有对账写回），
+     * 任务中心据此显示 INTERRUPTED，而不是继续假装 RUNNING。
+     */
+    @Query(
+        "SELECT * FROM scheduled_task_runs WHERE finished_at IS NULL ORDER BY started_at DESC"
+    )
+    fun flowUnfinishedRuns(): Flow<List<ScheduledTaskRunEntity>>
+
     /** 任务删除时清账本（无外键，手动清；防孤儿行无限累积） */
     @Query("DELETE FROM scheduled_task_runs WHERE task_id = :taskId")
     suspend fun deleteRunsOfTask(taskId: String)

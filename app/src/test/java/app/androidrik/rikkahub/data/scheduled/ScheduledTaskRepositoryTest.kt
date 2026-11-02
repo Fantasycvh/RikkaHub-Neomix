@@ -10,6 +10,7 @@ import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -107,21 +108,34 @@ class ScheduledTaskRepositoryTest {
 
         override suspend fun insertRun(run: ScheduledTaskRunEntity) {
             runs[run.id] = run
+            bump()
         }
 
         override suspend fun finishRun(id: String, finishedAt: Long, status: String, gateRetries: Int) {
             runs[id] = runs[id]!!.copy(finishedAt = finishedAt, status = status, gateRetries = gateRetries)
+            bump()
         }
 
         override suspend fun updateRunConversation(id: String, conversationId: String) {
             runs[id] = runs[id]!!.copy(conversationId = conversationId)
+            bump()
         }
 
         override fun flowRuns(taskId: String, limit: Int): Flow<List<ScheduledTaskRunEntity>> =
-            MutableStateFlow(0L).map {
+            flow.map {
                 runs.values.filter { it.taskId == taskId }
                     .sortedByDescending { it.startedAt }
                     .take(limit)
+            }
+
+        override fun flowRecentRuns(limit: Int): Flow<List<ScheduledTaskRunEntity>> =
+            flow.map {
+                runs.values.sortedByDescending { it.startedAt }.take(limit)
+            }
+
+        override fun flowUnfinishedRuns(): Flow<List<ScheduledTaskRunEntity>> =
+            flow.map {
+                runs.values.filter { it.finishedAt == null }.sortedByDescending { it.startedAt }
             }
 
         override suspend fun allRunsOfTask(taskId: String): List<ScheduledTaskRunEntity> =
@@ -300,6 +314,25 @@ class ScheduledTaskRepositoryTest {
         val finished = dao.runs[runId]!!
         assertEquals("OK", finished.status)
         assertEquals(millis("2026-10-30T08:00"), finished.finishedAt)
+    }
+
+    @Test
+    fun `task center ledger flows expose recent runs and unfinished runs separately`() = runTest {
+        val dao = FakeScheduledTaskDAO()
+        val repo = repository(dao, now = millis("2026-10-30T08:00"))
+
+        val finished = repo.startRun("task-1", source = "alarm", conversationId = "c", startedAt = 100L)
+        repo.finishRun(finished, status = "OK", finishedAt = 150L)
+        val unfinished = repo.startRun("task-2", source = "worker", conversationId = null, startedAt = 200L)
+
+        // 最近账本：跨任务、新→旧，供任务中心取「每任务最近一轮」。
+        assertEquals(
+            listOf(unfinished, finished),
+            repo.flowRecentRuns().first().map { it.id },
+        )
+        // 未终态账本：只含 finished_at 留空的行；任务中心据此显示 INTERRUPTED，
+        // 而不是把「进程死亡」误画成 RUNNING（注册表重启后为空）。
+        assertEquals(listOf(unfinished), repo.flowUnfinishedRuns().first().map { it.id })
     }
 
     @Test

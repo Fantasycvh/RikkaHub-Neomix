@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.task
 
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
 import app.androidrik.workspace.WorkspaceTaskSnapshot
 import app.androidrik.workspace.WorkspaceTaskStatus
@@ -92,6 +93,23 @@ class TaskCenterTest {
         createdAt = 1L,
     )
 
+    private fun scheduledRun(
+        id: String = "run-1",
+        taskId: String = "task-1",
+        status: String? = TaskRunStatus.OK,
+        source: String = ScheduledTaskRunEntity.RunSource.ALARM,
+        startedAt: Long = 900L,
+        finishedAt: Long? = 1000L,
+    ) = ScheduledTaskRunEntity(
+        id = id,
+        taskId = taskId,
+        source = source,
+        conversationId = "conv-1",
+        startedAt = startedAt,
+        finishedAt = finishedAt,
+        status = status,
+    )
+
     @Test
     fun `agent card derives state, cancel affordance and approval count`() {
         val running = agentTaskCard(agentRun(), pendingApprovals = 2)
@@ -158,25 +176,58 @@ class TaskCenterTest {
     }
 
     @Test
-    fun `scheduled card prefers active run over last status`() {
-        val active = scheduledTaskCard(scheduledTask(lastStatus = TaskRunStatus.OK), "run-9")
+    fun `scheduled card prefers active run and reads timing from the run ledger`() {
+        val task = scheduledTask(lastStatus = TaskRunStatus.OK, lastRunAt = 800L)
+        val active = scheduledTaskCard(
+            task = task,
+            activeRunId = "run-9",
+            activeRun = scheduledRun(id = "run-9", status = null, startedAt = 950L, finishedAt = null),
+            latestRun = scheduledRun(id = "run-8", status = TaskRunStatus.OK, finishedAt = 900L),
+        )
         assertEquals(TaskState.RUNNING, active.state)
         assertTrue(active.canCancel)
         assertEquals(TaskKey.Scheduled("task-1", "run-9"), active.key)
         assertEquals("sched:task-1:run-9", active.key.wire)
+        assertEquals("运行中的开始时间来自账本，而不是任务行 last_run_at", 950L, active.startedAt)
         assertNull("运行中不显示旧状态说明", active.subtitle)
+        assertNull(active.finishedAt)
 
-        val idleOk = scheduledTaskCard(scheduledTask(lastStatus = TaskRunStatus.OK), null)
-        assertEquals(TaskState.COMPLETED, idleOk.state)
-        assertFalse(idleOk.canCancel)
+        val idle = scheduledTaskCard(task, activeRunId = null, latestRun = scheduledRun(id = "run-8"))
+        assertEquals(TaskState.COMPLETED, idle.state)
+        assertFalse(idle.canCancel)
+        assertEquals("结束时间来自账本，任务中心不再永远 finishedAt=null", 1000L, idle.finishedAt)
+        assertEquals(900L, idle.startedAt)
+        assertEquals(TaskKey.Scheduled("task-1", "run-8"), idle.key)
 
-        val neverRun = scheduledTaskCard(scheduledTask(lastStatus = null), null)
+        val neverRun = scheduledTaskCard(scheduledTask(lastStatus = null), activeRunId = null)
         assertEquals(TaskState.PENDING, neverRun.state)
+    }
 
-        val cancelled = scheduledTaskCard(
-            scheduledTask(lastStatus = TaskRunStatus.CANCELLED),
-            null,
+    @Test
+    fun `scheduled card lets the ledger win over the task summary`() {
+        // 任务行还是上一轮的 OK，账本已记 FAILED：状态和副标题都必须跟账本，不能显示成功。
+        val failed = scheduledTaskCard(
+            task = scheduledTask(lastStatus = TaskRunStatus.OK),
+            activeRunId = null,
+            latestRun = scheduledRun(status = TaskRunStatus.FAILED),
         )
-        assertEquals(TaskState.CANCELLED, cancelled.state)
+        assertEquals(TaskState.FAILED, failed.state)
+        assertEquals(TaskRunStatus.FAILED, failed.subtitle)
+
+        // 进程死亡：账本行没有终态，任务行可能还停在旧状态；必须显示 INTERRUPTED。
+        val interrupted = scheduledTaskCard(
+            task = scheduledTask(lastStatus = TaskRunStatus.OK),
+            activeRunId = null,
+            latestRun = scheduledRun(status = null, finishedAt = null),
+        )
+        assertEquals(TaskState.INTERRUPTED, interrupted.state)
+
+        // 目标被删是任务级摘要，不能被更早的成功账本盖掉。
+        val targetGone = scheduledTaskCard(
+            task = scheduledTask(lastStatus = TaskRunStatus.TARGET_GONE),
+            activeRunId = null,
+            latestRun = scheduledRun(status = TaskRunStatus.OK),
+        )
+        assertEquals(TaskState.FAILED, targetGone.state)
     }
 }
