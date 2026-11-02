@@ -54,6 +54,7 @@ import app.androidrik.ai.ui.toMetadata
 import app.androidrik.ai.util.KeyRoulette
 import app.androidrik.ai.util.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
+import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64
 import app.androidrik.ai.util.json
 import app.androidrik.ai.util.mergeCustomBody
@@ -134,6 +135,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader("x-api-key", keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString()))
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
+            .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
@@ -181,6 +183,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .addHeader("x-api-key", keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString()))
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .addHeader("Content-Type", "application/json")
+            .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()

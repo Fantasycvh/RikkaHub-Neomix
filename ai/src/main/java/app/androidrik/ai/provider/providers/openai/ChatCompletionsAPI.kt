@@ -54,6 +54,7 @@ import app.androidrik.ai.util.KeyRoulette
 import app.androidrik.ai.util.apiEndpoint
 import app.androidrik.ai.util.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
+import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64
 import app.androidrik.ai.util.json
 import app.androidrik.ai.util.mergeCustomBody
@@ -110,6 +111,7 @@ class ChatCompletionsAPI(
             .url(apiEndpoint(providerSetting.baseUrl, providerSetting.chatCompletionsPath))
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .apply { authenticator.authenticateApiKey(this, providerSetting) }
+            .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .configureReferHeaders(providerSetting.baseUrl)
             .applyCustomHeaders(providerSetting, params.customHeaders)
             .build()
@@ -206,6 +208,7 @@ class ChatCompletionsAPI(
                 .post(bodyJson.toRequestBody("application/json".toMediaType()))
                 .apply { authenticator.authenticateApiKey(this, providerSetting) }
                 .addHeader("Content-Type", "application/json")
+                .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
                 .configureReferHeaders(providerSetting.baseUrl)
                 .applyCustomHeaders(providerSetting, params.customHeaders)
                 .build()
@@ -390,6 +393,8 @@ class ChatCompletionsAPI(
 
             // open router适配
             if(host == "openrouter.ai") {
+                // OpenRouter 用 session_id 归并同一会话（上游 #2186）
+                params.sessionId?.let { put("session_id", it) }
                 if(params.model.outputModalities.contains(Modality.IMAGE)) {
                     put("modalities", buildJsonArray {
                         add("image")

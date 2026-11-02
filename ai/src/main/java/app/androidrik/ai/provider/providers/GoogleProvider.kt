@@ -59,6 +59,7 @@ import app.androidrik.ai.ui.toMetadata
 import app.androidrik.ai.util.KeyRoulette
 import app.androidrik.ai.util.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
+import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64
 import app.androidrik.ai.util.ensureArrayItems
 import app.androidrik.ai.util.json
@@ -199,6 +200,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     .post(
                     json.encodeToString(requestBody).toRequestBody("application/json".toMediaType())
                 )
+                .configureSessionHeaders(url.toString(), params.sessionId)
                 .configureReferHeaders(providerSetting.baseUrl)
                 .applyCustomHeaders(providerSetting, params.customHeaders)
                 .build()
@@ -259,6 +261,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     .post(
                     json.encodeToString(requestBody).toRequestBody("application/json".toMediaType())
                 )
+                .configureSessionHeaders(url.toString(), params.sessionId)
                 .configureReferHeaders(providerSetting.baseUrl)
                 .applyCustomHeaders(providerSetting, params.customHeaders)
                 .build()

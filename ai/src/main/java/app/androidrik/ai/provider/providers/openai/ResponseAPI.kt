@@ -59,6 +59,7 @@ import app.androidrik.ai.util.KeyRoulette
 import app.androidrik.ai.util.apiEndpoint
 import app.androidrik.ai.util.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
+import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64
 import app.androidrik.ai.util.json
 import app.androidrik.ai.util.mergeCustomBody
@@ -132,7 +133,8 @@ internal fun ProviderSetting.OpenAI.toResponsesEndpoint(
         url = endpointUrl,
         capabilities = resolveResponseProviderCapabilities(this),
         configureRequest = {
-            // 顺序与改造前一致：refer 头 → 自定义头 → 鉴权（鉴权最后写，自定义 Authorization 会被盖掉）
+            // 顺序与改造前一致：会话头 → refer 头 → 自定义头 → 鉴权（鉴权最后写，自定义 Authorization 会被盖掉）
+            configureSessionHeaders(endpointUrl, params.sessionId)
             configureReferHeaders(baseUrl)
             applyCustomHeaders(this@toResponsesEndpoint, params.customHeaders)
             authenticator.authenticateApiKey(this, this@toResponsesEndpoint)
@@ -572,6 +574,17 @@ class ResponseAPI(
                                 contentBuffer.add(part)
                             }
 
+                            // 服务端工具（web_search / shell / image_generation…）的 item 要原样回传给
+                            // Responses 后端：Codex 订阅后端 `store=false`，历史缺失 item 会丢上下文、
+                            // 甚至 400（对齐上游 server-tool 回传，§16.6 缺口）。
+                            is UIMessagePart.ServerTool -> {
+                                if (contentBuffer.isNotEmpty()) {
+                                    addContentItem(MessageRole.ASSISTANT, contentBuffer)
+                                    contentBuffer.clear()
+                                }
+                                addServerToolItem(part)
+                            }
+
                             else -> {}
                         }
                     }
@@ -705,6 +718,47 @@ class ResponseAPI(
             }
             encryptedContent?.let { put("encrypted_content", it) }
         })
+    }
+
+    /**
+     * 把历史里的服务端工具 item 回传给 Responses 后端（上游同名移植）。
+     *
+     * 优先用解码时原样存下的 `metadata.call`（保真：`web_search_call` 的 `action` 结构/未知字段不丢）；
+     * 没有原件（编辑/合成出来的 part）时按 `type={toolName}_call` + id/status/action/output 重建。
+     * 其它协议（Claude/Google 侧）的服务端工具不归这里管，直接跳过。
+     */
+    private fun JsonArrayBuilder.addServerToolItem(tool: UIMessagePart.ServerTool) {
+        val metadata = tool.metadataAs<ServerToolMetadata>()
+        val protocol = metadata?.protocol
+        if (protocol != null && protocol != ServerToolProtocol.OPENAI_RESPONSES) return
+
+        val rawCall = metadata?.call.takeIf { protocol == ServerToolProtocol.OPENAI_RESPONSES }
+        if (rawCall != null) {
+            add(rawCall)
+            return
+        }
+
+        add(buildJsonObject {
+            put("type", "${tool.toolName.removeSuffix("_call")}_call")
+            put("id", tool.toolCallId)
+            put("status", tool.status.toOpenAIStatus())
+            tool.input?.let { input ->
+                if (tool.toolName.removeSuffix("_call") == "web_search") {
+                    put("action", input)
+                } else if (input is JsonObject) {
+                    input.forEach { (key, value) -> put(key, value) }
+                } else {
+                    put("input", input)
+                }
+            }
+            tool.output?.let { put("output", it) }
+        })
+    }
+
+    private fun ServerToolStatus.toOpenAIStatus(): String = when (this) {
+        ServerToolStatus.IN_PROGRESS -> "in_progress"
+        ServerToolStatus.COMPLETED -> "completed"
+        ServerToolStatus.FAILED -> "failed"
     }
 
     private fun JsonArrayBuilder.addUserItems(message: UIMessage) {

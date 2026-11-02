@@ -547,7 +547,7 @@ P3 = 账号层基础设施：`oauth` 模块（loopback PKCE / 设备码 / 前台
 | `ResponsesEndpoint` 字段 | 只有 url/capabilities/configureRequest | 多 `reasoningOverride`/`proxy`/`forceEventStream` | 本仓 P2 提供商级思考强度兜底、P1 两层代理、Codex SSE 容错 |
 | Codex SSE 容错 | 改 common `newEventSource` 全局宽容 | 沿用 `CodexSseContentTypeInterceptor`（只补 Codex 端点）+ 显式 `Accept: text/event-stream` | 其它网关保持 OkHttp 严格校验，不放大全局宽容面 |
 | 旧 `buildRequestBody(ProviderSetting.OpenAI, …)` 重载 | 已删 | 保留 | 旧 Codex 设备码链路与 P1 既有单测仍在用；订阅态回填 `codexPromptCacheKey` 保证逐字不变 |
-| server-tool 回传 / 全局 session 头（含 Chat Completions 的 `session_id`） | 有 | **未移植** | 本仓 P1 起就没有 server-tool 回传能力（既有缺口，建议单开任务）；全局 session 头等 app 传 sessionId 后再评估 |
+| server-tool 回传 / 全局 session 头（含 Chat Completions 的 `session_id`） | 有 | **已移植**（P6，见 §18） | 补齐 P1 起既有缺口；app 层已传 `sessionId = conversationId`，会话头有实际作用 |
 | `ProviderAccountManager` 并发刷新测试 | 有 | 未移植（P3 已说明：无 Robolectric） | 并发/杀进程语义改为真机与代码审查覆盖 |
 | Account 类型字段 | 无 proxy/retry/reasoningOverride | 保留本仓扩展字段 | 账号类同样需要代理与重试覆盖（P2/P3 已有语义） |
 
@@ -728,3 +728,31 @@ P4 的两条登录路径都在真机走通（§17.1）后，旧 OpenAI 设备码
 
 - 导入后到首次凭据写回之前，token 以明文躺在本仓 DataStore（与上游一致，因为来源就是明文）；若要严格「落盘即加密」，可在恢复完成后统一补一次加密（当前未做，属可选增强）。
 - **反向不兼容**：本仓备份 → 上游恢复时，`v1:` 密文会被上游当成不透明 token 直接发出去（必然 401），且 `data_version = 5` 的账号类数据旧版本也不认识 —— 跨仓迁移只保证「上游 → 本仓」这一方向。
+
+### 18. 补齐 server-tool 回传与全局会话头（P6）
+
+P5 文档 §16.6 留下的最后一条缺口，已按上游 #2186 移植：
+
+**1）服务端工具 item 回传（`ResponseAPI`）**
+
+- 本仓解码时早已把 Responses 的 `web_search_call` 等 item 存进 `ServerToolMetadata.call`，但发下一轮请求时 `addAssistantItems` 的 content 分支把 `UIMessagePart.ServerTool` 落进 `else -> {}` 丢弃 ⇒ Codex/ChatGPT 订阅后端（`store=false`）下模型看不到自己上一轮的检索结果，严格后端还可能 400。
+- 现在 content 分支遇到 `ServerTool` 先 flush 文本、再 `addServerToolItem`：有原始 item（`protocol == OPENAI_RESPONSES`）就**原样回传**（`action`/未知字段不丢），没有原件（编辑/合成 part）就按 `type={toolName}_call` + `id/status` + `action`（web_search）或 `input` + `output` 重建，状态经 `toOpenAIStatus()` 映射为 `in_progress`/`completed`/`failed`。
+- 非 Responses 协议（Claude/Google 侧的服务端工具）跳过，不污染 OpenAI 请求。
+- 测试：`ResponseAPIServerToolEchoTest` 3 例（原样回传、无 metadata 重建、异协议不回传）。
+
+**2）全局会话头（`ai/util/Request.kt` + 各 provider 调用点）**
+
+- 新增 `configureSessionHeaders(url, sessionId)`：`X-Session-ID`；`opencode.ai` 额外 `x-opencode-session`；`sessionId == null`（无头 run）时请求逐字节不变。
+- 应用到 ChatCompletions（两个 builder：generate/stream）、ResponseAPI（`toResponsesEndpoint` 的 `configureRequest`）、ClaudeProvider（generate/stream）、GoogleProvider（generate/stream）；顺序在自定义头之前，用户显式同名头仍可覆盖。
+- Chat Completions 的 OpenRouter 专属 body 字段 `session_id` 一并补上。
+- 测试：`SessionHeadersTest` 4 例（有/无 sessionId、opencode 私有头、ChatCompletions 真实请求 wire 断言）。
+
+**决策与边界**
+
+| 项 | 决策 |
+| --- | --- |
+| `TextGenerationParams.sessionId` 默认值 | 保持 `null`（无头 run 不变），聊天路径由 app 传 `conversationId`（`ChatService` 已有） |
+| ChatGPT/Grok 私有头 | 沿用已有 `session-id` / `x-grok-conv-id`，不重复加 `X-Session-ID` |
+| 真机验证 | 待做：ChatGPT 订阅账号 + 联网工具连问两轮，确认第二轮还能引用第一轮检索结果；期间观察 logcat 无 400 |
+
+**验证**：`:oauth` 9/9、`:ai` 474（+7）、`:app` 2745（2 skipped）、`:app:assembleDebug` 通过。

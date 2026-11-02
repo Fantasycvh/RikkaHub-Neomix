@@ -74,6 +74,23 @@ fun Request.Builder.configureReferHeaders(url: String): Request.Builder {
 }
 
 /**
+ * 请求级会话语义头（移植自上游 #2186 `configureSessionHeaders`）：
+ * `X-Session-ID` 给支持它的网关做会话粘性/缓存归属；opencode 网关另需 `x-opencode-session`。
+ * 没有 sessionId（无头 run）时逐字节保持原请求。
+ *
+ * 与 [applyCustomHeaders] 一样用 `header()` 覆盖语义；调用方应在**自定义头之前**调用，
+ * 用户显式写的同名头仍能盖掉它。
+ */
+fun Request.Builder.configureSessionHeaders(url: String, sessionId: String?): Request.Builder = apply {
+    if (sessionId != null) {
+        header("X-Session-ID", sessionId)
+        if (url.toHttpUrl().host == "opencode.ai") {
+            header("x-opencode-session", sessionId)
+        }
+    }
+}
+
+/**
  * 执行请求并读出响应体；不是 2xx 时报错，带上路径、状态码和响应体（不带 query，里面可能有 key）。
  *
  * 移植自上游 #2186 `ai/util/Request.kt`：账号类提供商的模型目录/额度查询共用。
