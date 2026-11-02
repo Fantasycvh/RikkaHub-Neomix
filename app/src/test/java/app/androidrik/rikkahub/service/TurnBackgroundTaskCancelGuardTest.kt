@@ -80,7 +80,9 @@ class TurnBackgroundTaskCancelGuardTest {
         assertEquals(
             "beginNewTurn 的调用点应恰好三处：队列派发（新一轮用户消息）、重新生成、继续生成",
             3,
-            service.countOccurrences("session.beginNewTurn()"),
+            // P0.5 起队列派发那条带归属令牌参数（session.beginNewTurn(queued.turnOwner)），
+            // 故只匹配签名前缀，不限定无参形式。
+            service.countOccurrences("session.beginNewTurn("),
         )
         // 三处都必须在 appScope.launch 之前同步调用：协程体可能晚于 session.setJob(job) 才开始跑，
         // 那时令牌还没换新，setJob 捕获到的就是上一轮的令牌。
@@ -88,7 +90,7 @@ class TurnBackgroundTaskCancelGuardTest {
             val start = service.indexOf(marker)
             assertTrue("找不到 $marker", start >= 0)
             val body = service.substring(start, minOf(service.length, start + 1_500))
-            val turnAt = body.indexOf("session.beginNewTurn()")
+            val turnAt = body.indexOf("session.beginNewTurn(")
             val launchAt = body.indexOf("appScope.launch")
             assertTrue("$marker 里没调用 beginNewTurn：$body", turnAt >= 0)
             assertTrue(

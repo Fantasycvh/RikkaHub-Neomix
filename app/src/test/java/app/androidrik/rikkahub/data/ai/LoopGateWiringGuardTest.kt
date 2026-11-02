@@ -84,7 +84,8 @@ class LoopGateWiringGuardTest {
     @Test
     fun `new turn resets the gate`() {
         val session = session()
-        val begin = session.indexOf("fun beginNewTurn()")
+        // P0.5 起 beginNewTurn 带可选归属令牌参数（定时取消），断言签名前缀而非无参形式
+        val begin = session.indexOf("fun beginNewTurn(")
         val reset = session.indexOf("turnLoopGate = null")
         assertTrue("beginNewTurn 必须清闸（用户发起的下一轮不得继承上一轮闸门）", reset >= 0)
         assertTrue(

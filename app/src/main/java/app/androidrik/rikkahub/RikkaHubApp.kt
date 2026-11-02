@@ -29,6 +29,10 @@ import app.androidrik.rikkahub.data.files.EXPORT_TEMP_PREFIX
 import app.androidrik.rikkahub.data.files.exportRetentionCutoff
 import app.androidrik.rikkahub.data.files.isExportExpired
 import app.androidrik.rikkahub.data.db.AppDatabase
+import app.androidrik.rikkahub.data.db.dao.AgentRunDAO
+import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
+import app.androidrik.rikkahub.data.task.AgentRunReconciler
+import app.androidrik.rikkahub.data.task.ProcessStartClock
 import app.androidrik.rikkahub.data.sync.DowngradeQuarantineStore
 import app.androidrik.rikkahub.data.sync.PendingRestoreStore
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
@@ -118,6 +122,10 @@ class RikkaHubApp : Application() {
         // 全部应用初始化：isolatedProcess 无大部分系统服务（WorkManager 依赖的
         // JobScheduler 为 null 直接崩溃），Koin/DB/WorkManager 与编译无关
         if (isIsolatedProcess()) return
+
+        // 本次进程启动时刻（P0.5 启动对账的判据）：必须早于任何 run 创建；
+        // 放在通知渠道/DB 之前，重试 boot 也不会把它改晚。
+        ProcessStartClock.markStarted()
 
         // 这些步骤不依赖 Koin，且 Failed 态下也应当就绪（崩溃处理器/通知渠道）
         createNotificationChannel()
@@ -436,6 +444,9 @@ class RikkaHubApp : Application() {
         // Resume media generations interrupted by the last process death
         resumeMediaCreations()
 
+        // P0.5：上一个进程遗留的 run 标成 interrupted（账本不会自己变终态）
+        reconcileAgentRuns()
+
         // Increment launch count
         incrementLaunchCount()
 
@@ -448,6 +459,28 @@ class RikkaHubApp : Application() {
                 get<MediaCreationService>().resumePending()
             }.onFailure {
                 Log.e(TAG, "resumeMediaCreations failed", it)
+            }
+        }
+    }
+
+    /**
+     * P0.5 启动对账：把上一个进程遗留的 pending/running/awaiting_approval 标成
+     * [AgentRunEntity.STATUS_INTERRUPTED]。
+     *
+     * 只改状态，**不重试、不恢复半截生成**——生成协程已随进程消失，谎称「恢复」
+     * 比显示「已中断」更糟。失败只记日志：对账不是启动阻塞项，下一次启动还会再对。
+     */
+    private fun reconcileAgentRuns() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                val reconciled = AgentRunReconciler(
+                    agentRunDAO = get<AgentRunDAO>(),
+                ).reconcileProcessRestart()
+                if (reconciled > 0) {
+                    Log.i(TAG, "reconcileAgentRuns: $reconciled unfinished run(s) marked interrupted")
+                }
+            }.onFailure {
+                Log.e(TAG, "reconcileAgentRuns failed", it)
             }
         }
     }

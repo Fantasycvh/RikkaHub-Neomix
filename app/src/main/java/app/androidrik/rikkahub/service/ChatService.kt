@@ -671,6 +671,17 @@ class ChatService(
         return session.generationJob
     }
 
+    /**
+     * 该会话**当前轮次**的后台任务归属令牌（P0.5 定时取消的 Job 归属判据）；无 session → null。
+     *
+     * 为什么需要：`getGenerationJobStateFlow` 只回答「有没有 Job」，不回答「是谁的 Job」。
+     * 定时注入的消息排在用户当前轮次之后时，此刻的 Job 属于**用户那一轮**——取消定时任务
+     * 绝不能顺手把用户的生成停掉（那正是 `stopGeneration` 语义，本文刻意不用）。
+     * 归属令牌随队列项带入（[QueuedMessage.turnOwner]），`beginNewTurn` 在派发那一刻写好。
+     */
+    fun getTurnOwner(conversationId: Uuid): String? =
+        sessions[conversationId]?.backgroundTaskOwner
+
     fun getProcessingStatusFlow(conversationId: Uuid): StateFlow<String?> {
         val session = sessions[conversationId] ?: return MutableStateFlow(null)
         return session.processingStatus
@@ -889,6 +900,13 @@ class ChatService(
          * 无人盯着」的轮次显式传入。闸门随队列项走（见 [QueuedMessage.loopGate]）。
          */
         loopGate: LoopGateConfig? = null,
+        /**
+         * 本轮后台任务归属令牌的显式覆盖（P0.5 定时取消，design-agent-task-runtime §5.2.4）。
+         * **默认 null = 由 session 在派发时换新令牌**——聊天 UI、web/API、插队、语音等一切
+         * 用户发起的路径都不传，行为不变；只有定时任务执行层传 `sched:<runId>`，使「只知道
+         * runId」的取消入口能停掉这一轮起的东西（见 [QueuedMessage.turnOwner]）。
+         */
+        turnOwner: String? = null,
     ) {
         if (content.isEmptyInputMessage()) return
 
@@ -902,7 +920,13 @@ class ChatService(
             // 不该由「当时有没有在生成」这种状态悄悄替用户决定。
             // 队列内重排（把某条挪到队首）仍未做，属未立项。
             if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
-            session.messageQueue.enqueue(content, answer, annotations = annotations, loopGate = loopGate)
+            session.messageQueue.enqueue(
+                content,
+                answer,
+                annotations = annotations,
+                loopGate = loopGate,
+                turnOwner = turnOwner,
+            )
             dispatchNextQueuedMessage(conversationId)
         }
     }
@@ -932,6 +956,29 @@ class ChatService(
     fun removeQueuedMessage(conversationId: Uuid, messageId: Uuid) {
         sessions[conversationId]?.messageQueue?.remove(messageId)?.let(::cleanupQueuedAttachments)
         dispatchNextQueuedMessage(conversationId)
+    }
+
+    /**
+     * 按**归属令牌**撤下待发消息（P0.5 定时取消，design-agent-task-runtime §5.2.4）。
+     *
+     * 定时注入的消息可能排在用户当前轮次之后（FIFO）；此时 registry 里还没有 generation Job
+     * 可取消——只把取消标记写下来，那条消息仍会在用户轮次结束后被派发、照样烧一轮钱。
+     * 取消入口拿不到队列项 id，只能靠 [QueuedMessage.turnOwner] 认领，故这里按令牌过滤。
+     *
+     * 只动 **null 之外**的令牌（`sched:<runId>`），用户发起的队列项 turnOwner 恒为 null，
+     * 不会误伤。撤下后照常推进队列（与 [removeQueuedMessage] 一致）。
+     *
+     * @return 实际撤下的条数（0 = 已派发或已不在队列里，调用方自行处理 Job 侧取消）
+     */
+    fun removeQueuedMessagesOfTurn(conversationId: Uuid, turnOwner: String): Int {
+        if (turnOwner.isBlank()) return 0
+        val session = sessions[conversationId] ?: return 0
+        val ids = session.messageQueue.state.value.messages
+            .filter { it.turnOwner == turnOwner }
+            .map { it.id }
+        ids.forEach { id -> session.messageQueue.remove(id)?.let(::cleanupQueuedAttachments) }
+        if (ids.isNotEmpty()) dispatchNextQueuedMessage(conversationId)
+        return ids.size
     }
 
     fun beginEditQueuedMessage(conversationId: Uuid, messageId: Uuid): QueuedMessage? =
@@ -1019,7 +1066,9 @@ class ChatService(
         // 这是「轮」的真正边界——工具审批的续跑不走这里，故护栏的历史跨审批保留。
         // **必须在这里同步调用**（不能挪进下面的生成协程体）：`setJob` 注册取消回调时要捕获
         // 令牌，而协程体可能晚于 `session.setJob(job)` 才开始执行。
-        session.beginNewTurn()
+        // 归属令牌随队列项带入（P0.5 定时取消）：`sched:<runId>` 让取消入口只凭 runId 就能停；
+        // 用户路径恒为 null ⇒ 换新随机令牌，与过去逐位一致。
+        session.beginNewTurn(queued.turnOwner)
         // 闸门随本轮队列项带入（beginNewTurn 已清空，这里覆盖；用户发起的轮次恒为 null）
         session.turnLoopGate = queued.loopGate
         val job = appScope.launch {

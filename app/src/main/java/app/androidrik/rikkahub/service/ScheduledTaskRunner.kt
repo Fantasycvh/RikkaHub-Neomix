@@ -56,6 +56,8 @@ class ScheduledTaskRunner(
     private val taskRepository: ScheduledTaskRepository,
     private val settingsStore: SettingsStore,
     private val workspaceRepository: WorkspaceRepository,
+    /** P0.5 定时取消：FGS 通知的「停止」动作只有 runId，靠它反查并取消本轮 generation Job */
+    private val runRegistry: ScheduledRunRegistry,
 ) {
     /**
      * 执行一个**已认领**的任务，返回落 `last_status` 的状态值。
@@ -64,6 +66,11 @@ class ScheduledTaskRunner(
      * job 体**内**发出（`ChatService.kt:956` 等五处），等信号时 job 还没结束，「emit + job 空闲」
      * 永远凑不齐。而「发送后 job 立即非空或队列非空」（[ChatService.sendMessage] 同步入队 +
      * 派发），所以首个观测必然是活跃态，不会把「还没开始」误判成「已结束」。
+     *
+     * 取消（P0.5，D4）：本轮在注入前登记到 [ScheduledRunRegistry]，FGS 通知的「停止」按
+     * runId 反查 generation Job 并 `Job.cancel()`——**不走 [ChatService.stopGeneration]**，
+     * 后者会暂停目标会话里用户自己的消息队列。被取消的轮记 [TaskRunStatus.CANCELLED]，
+     * 绝不回落 OK/FAILED（取消不是故障）。
      *
      * 已知边界：任务消息排在用户当前轮次之后（FIFO），若前面排着长队，[GENERATION_TIMEOUT]
      * 从注入时刻起算，可能不够等到自己的轮次——此时记 [TaskRunStatus.TIMEOUT] 但**不取消**
@@ -126,6 +133,38 @@ class ScheduledTaskRunner(
             return TaskRunStatus.TARGET_GONE
         }
 
+        // P0.5 定时取消（design-agent-task-runtime §5.2 第 4 条）：**注入之前**登记本轮。
+        // 取消入口（FGS 通知的「停止」）只有 runId，必须先能反查到这一轮；登记早于注入
+        // ⇒ 取消窗口覆盖整个执行期。条目在 finally 移除，避免泄漏成「永远有运行中任务」。
+        runRegistry.register(runId, conversationId)
+        return try {
+            runInjected(task, mode, conversationId, runId, settingsLoaded)
+        } finally {
+            runRegistry.unregister(runId)
+        }
+    }
+
+    /**
+     * [runClaimed] 登记之后的执行主体：注入 → 等结束 → 记终态。
+     *
+     * 取消有两个落点：
+     * 1. 等待循环把 [ScheduledRunRegistry.cancelledRunIds] 并进 `combine`——用户点了停止就不必
+     *    等生成自然跑完（那还在烧钱），也不必等满 [GENERATION_TIMEOUT]；
+     * 2. 收场时再查一次 `isCancelled` 兜底（取消可能与「自然结束」同时到达）——
+     *    **取消一旦置位绝不回落 OK**。
+     */
+    private suspend fun runInjected(
+        task: ScheduledTaskEntity,
+        mode: TargetMode,
+        conversationId: Uuid,
+        runId: String,
+        settingsLoaded: Boolean,
+    ): String {
+        // 取消在「登记」与「注入」之间到达（通知动作先于执行层就位）：不发消息，直接记终态。
+        if (runRegistry.isCancelled(runId)) {
+            return finishCancelled(task, runId)
+        }
+
         val assistantCountBefore = assistantMessageCount(conversationId)
         val errorsBefore = chatService.errors.value.count { it.conversationId == conversationId }
         Log.i(
@@ -140,16 +179,32 @@ class ScheduledTaskRunner(
         // 收尾闸门（purrcat A1，design-deliverable-gate.md §三.2）：任务声明了交付物
         // （deliverables 非空）才挂闸；null = 行为与过去逐位一致。
         val loopGate = buildTaskLoopGate(task, conversationId)
+        // 归属令牌显式指定（P0.5）：取消入口只知道 runId，这一轮的令牌必须可被它反查；
+        // 同时它决定本轮起的后台 shell 任务的 owner（轮取消时由 onTurnCancelled 一并收掉）。
+        val turnOwner = scheduledRunTurnOwner(runId)
         chatService.sendMessage(
             conversationId,
             listOf(UIMessagePart.Text(buildTaskPrompt(task.prompt, task.withGoal, conversationGoal))),
             loopGate = loopGate,
+            turnOwner = turnOwner,
         )
+
+        // 把本轮 generation Job 登记进 registry：取消入口只有 runId，反查到 Job 才停得下来。
+        //
+        // **归属判据**：会话空闲时 `sendMessage` 同步派发，`beginNewTurn(sched:…)` 已把当前轮
+        // 令牌写成我们的，Job 就是本 run 的；消息排在用户当前轮次之后（FIFO）时，此刻 session
+        // 的 Job 是**用户那一轮**的——登记它会让「停止定时任务」把用户的生成一并停掉，绝不能登记。
+        // 排队场景不丢取消：取消标记先到，等待循环靠取消信号提前收场，届时再按归属反查（见下）。
+        if (chatService.getTurnOwner(conversationId) == turnOwner) {
+            withTimeoutOrNull(JOB_ATTACH_TIMEOUT) {
+                chatService.getGenerationJobStateFlow(conversationId).first { it != null }
+            }?.let { runRegistry.attachJob(runId, it) }
+        }
 
         // 等待结束期间打心跳：若进程被 ROM 的 cached-app freezer 冻住，日志会断一条明显的
         // 空档、回前台后继续——这是「后台不回复、切前台才续上」的判据（2026-10-30 真机）。
         val waitStartedAt = System.currentTimeMillis()
-        val quiesced = coroutineScope {
+        val reachedEnd = coroutineScope {
             val heartbeat = launch {
                 while (true) {
                     delay(HEARTBEAT_INTERVAL)
@@ -160,13 +215,33 @@ class ScheduledTaskRunner(
                 combine(
                     chatService.getGenerationJobStateFlow(conversationId),
                     chatService.getMessageQueueFlow(conversationId),
-                ) { job, queue -> job == null && queue.messages.isEmpty() }
-                    .first { it }
+                    runRegistry.cancelledRunIds,
+                ) { job, queue, cancelledRunIds ->
+                    // 取消 = 立刻收场：用户点了停止，不该等这一轮自然跑完，也不该等满超时。
+                    runId in cancelledRunIds || (job == null && queue.messages.isEmpty())
+                }.first { it }
             } != null
             heartbeat.cancel()
             done
         }
 
+        // 收场兜底：等待循环可能因「取消」与「自然结束」同时满足而退出，这里以取消标记为准。
+        if (runRegistry.isCancelled(runId)) {
+            // 消息可能还排在用户轮次之后（那时没有 Job 可登记）：撤下这条待发消息，否则用户
+            // 点了停止，它仍会在用户轮次结束后被派发、照样烧一整轮。
+            chatService.removeQueuedMessagesOfTurn(conversationId, turnOwner)
+            // 已派发且确实是本 run 的轮：补一次 Job 反查并取消（[ScheduledRunRegistry.attachJob]
+            // 见到取消标记会当场 cancel，所以先取消后 attach 也生效）。归属不符 = 当前是用户
+            // 自己的轮次，绝不能碰（见上面登记处的归属说明）。
+            if (chatService.getTurnOwner(conversationId) == turnOwner) {
+                chatService.getGenerationJobStateFlow(conversationId).first()?.let { job ->
+                    runRegistry.attachJob(runId, job)
+                }
+            }
+            return finishCancelled(task, runId)
+        }
+
+        val quiesced = reachedEnd
         val hasNewError = chatService.errors.value.count { it.conversationId == conversationId } > errorsBefore
         val producedReply = assistantMessageCount(conversationId) > assistantCountBefore
         val status = evaluateRunStatus(
@@ -191,6 +266,19 @@ class ScheduledTaskRunner(
             cleanupOldRunConversations(task)
         }
         return status
+    }
+
+    /**
+     * 用户经 FGS 通知「停止」主动取消的终态记账。
+     *
+     * [TaskRunStatus.CANCELLED] 与 FAILED/TIMEOUT 分开：这是**用户意志**而非故障，不参与失败率
+     * 口径；也**不发结果通知**——操作者就在场，再推一条「失败」只会误导。
+     */
+    private suspend fun finishCancelled(task: ScheduledTaskEntity, runId: String): String {
+        Log.i(TAG, "runClaimed: task=${task.title} -> ${TaskRunStatus.CANCELLED} (stopped by user)")
+        taskRepository.recordStatus(task.id, TaskRunStatus.CANCELLED)
+        taskRepository.finishRun(runId, TaskRunStatus.CANCELLED)
+        return TaskRunStatus.CANCELLED
     }
 
     /**
@@ -275,6 +363,9 @@ class ScheduledTaskRunner(
         status: String,
         loopGate: LoopGateConfig?,
     ) {
+        // 取消不发结果通知：是用户自己点的「停止」（见 finishCancelled 的 KDoc）。
+        // 这里再拦一次是防御：将来若有别的取消来源，也不能被归到 else 分支冒充「失败」。
+        if (status == TaskRunStatus.CANCELLED) return
         val (titleRes, contentRes) = when (status) {
             TaskRunStatus.OK ->
                 R.string.scheduled_task_notif_done_title to R.string.scheduled_task_notif_done_content
@@ -322,6 +413,16 @@ class ScheduledTaskRunner(
 
         /** 等待生成期间的诊断心跳间隔（debug 级日志；只用于排查「进程被冻」类问题） */
         val HEARTBEAT_INTERVAL = 30.seconds
+
+        /**
+         * 注入后等 generation Job 出现的上限（P0.5 取消登记）。
+         *
+         * 只在「当前轮归属令牌已是本 run」时才等——会话空闲时 `sendMessage` 已同步派发，几乎
+         * 立即命中；消息排在用户当前轮次之后时归属不符，**不会**在这里等（更不能登记用户那一轮
+         * 的 Job）。等不到并不丢取消：取消标记先到，等待循环的取消信号会提前收场并补一次按归属
+         * 的 Job 反查（见 `runInjected`）。
+         */
+        val JOB_ATTACH_TIMEOUT = 5.seconds
 
         /** 与 ChatNotificationManager 的会话通知 id（+10000）错开 */
         const val NOTIFICATION_ID_OFFSET = 30000

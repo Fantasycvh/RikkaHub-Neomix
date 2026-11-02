@@ -316,6 +316,8 @@ internal fun statusLabel(status: String): String = when (status) {
     TaskRunStatus.SKIPPED_MISSED -> stringResource(R.string.scheduled_task_status_skipped_missed)
     TaskRunStatus.TARGET_GONE -> stringResource(R.string.scheduled_task_status_target_gone)
     TaskRunStatus.ASSISTANT_GONE -> stringResource(R.string.scheduled_task_status_assistant_gone)
+    // P0.5 取消态：复用子代理 run 已有的「已取消」文案（同一语义，不再新造 key）
+    TaskRunStatus.CANCELLED -> stringResource(R.string.agent_run_status_cancelled)
     else -> status
 }
 

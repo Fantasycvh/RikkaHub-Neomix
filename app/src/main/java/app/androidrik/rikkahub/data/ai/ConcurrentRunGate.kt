@@ -1,7 +1,7 @@
 package app.androidrik.rikkahub.data.ai
 
 /**
- * **并发 run 闸**（设计 §十二）：同时最多允许 [limit] 个活跃 run。
+ * **并发 run 闸**（设计 §十二 / §5.1）：同时最多允许 `limit()` 个活跃 run。
  *
  * 为什么是"闸"而不是"信号量集合"：本仓 run 只有"启动 / 结束"两个动作，没有排队语义
  * ——满了就**如实拒绝**（调用方把"忙"转达给模型或用户），而不是排进队列等人放行。
@@ -11,11 +11,27 @@ package app.androidrik.rikkahub.data.ai
  * 是常态，在这里会同时压三份模型流 + 各自的工具进程。2 的意义是"一个在等审批时另一个能跑"，
  * 不是吞吐量。
  *
+ * **上限为什么是"每次实时读"而不是构造期固定**：上限来自用户设置（设置 → 通用 → 护栏与预算），
+ * 旧实现让调用方在 `by lazy` 里 `ConcurrentRunGate(limit)` 冻结首读值——用户改完设置必须重启
+ * 进程才生效，且首次读取若恰好发生在 DataStore 加载前，就会把默认值焊死。这里改成
+ * [limitProvider]：`tryAcquire` / `canAcquire` 每次现读，设置一变**下一个 run 立即按新上限裁决**
+ * （P0 设计明确要求"改设置立即生效"）。
+ *
  * 无 Android 依赖、纯状态机，可 JVM 单测。
  */
 class ConcurrentRunGate(
-    private val limit: Int = DEFAULT_MAX_CONCURRENT_RUNS,
+    /**
+     * 当前上限的**实时**来源（`coerceAtLeast(1)` 在读取处统一做，provider 返回 0/负数不会把闸焊死）。
+     */
+    private val limitProvider: () -> Int = { DEFAULT_MAX_CONCURRENT_RUNS },
 ) {
+    /**
+     * 固定上限的旧形态（保留给单测与"确实不需要动态"的调用方）。
+     *
+     * 新代码请用主构造的 [limitProvider]，否则又回到了"首读冻结"。
+     */
+    constructor(limit: Int) : this({ limit })
+
     private val active = mutableSetOf<String>()
 
     /**
@@ -26,7 +42,7 @@ class ConcurrentRunGate(
     @Synchronized
     fun tryAcquire(runId: String): Boolean {
         if (runId in active) return true
-        if (active.size >= limit) return false
+        if (active.size >= effectiveLimit()) return false
         active += runId
         return true
     }
@@ -47,9 +63,19 @@ class ConcurrentRunGate(
     @Synchronized
     fun activeIds(): Set<String> = active.toSet()
 
+    /**
+     * 此刻生效的上限（UI 显示"2/3"、任务中心设备视图用）。
+     *
+     * 每次调用都现读 provider，所以它可能比上一次 acquire 时看到的值新——这正是本类的目的。
+     */
+    fun limit(): Int = effectiveLimit()
+
     /** 还能不能再开一个（UI 侧按钮态、派发工具的先手判断）。 */
     @Synchronized
-    fun canAcquire(): Boolean = active.size < limit
+    fun canAcquire(): Boolean = active.size < effectiveLimit()
+
+    /** provider 返回 0/负数时的兜底：闸至少允许一个 run，否则整个功能静默失效。 */
+    private fun effectiveLimit(): Int = limitProvider().coerceAtLeast(1)
 
     companion object {
         /** 同时活跃 run 上限（设计 §八：手机端 2 已属激进）。 */

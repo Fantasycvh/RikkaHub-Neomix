@@ -87,8 +87,12 @@ class ScheduledTaskSweeperWorker(
     private companion object {
         const val TAG = "ScheduledTaskSweeper"
 
-        /** 与 ChatNotificationManager(+10000)/Runner(+30000) 错开 */
-        const val FGS_NOTIFICATION_ID = 40000
+        /**
+         * 与 ChatNotificationManager(+10000)/Runner(+30000) 错开，且与
+         * [ScheduledTaskRunService.FGS_NOTIFICATION_ID]（40000）错开——两者会同时在线
+         * （闹钟入口起 RunService，兜底 sweep 同时在跑），同 id 会互相覆盖通知。
+         */
+        const val FGS_NOTIFICATION_ID = 40010
     }
 }
 

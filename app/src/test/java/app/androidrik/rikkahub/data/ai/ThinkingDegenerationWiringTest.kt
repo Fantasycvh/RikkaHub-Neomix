@@ -69,7 +69,8 @@ class ThinkingDegenerationWiringTest {
             "generateText 必须用会话上的实例",
             chatService.contains("thinkingGuard = session.thinkingGuard"),
         )
-        val resets = Regex("""session\.beginNewTurn\(\)""").findAll(chatService).count()
+        // P0.5 起队列派发那条边界带归属令牌参数 ⇒ 匹配签名前缀，不限定无参形式
+        val resets = Regex("""session\.beginNewTurn\(""").findAll(chatService).count()
         assertTrue(
             "轮边界（新用户消息 / 重新生成 / 续写）都要 reset，实际 $resets 处",
             resets >= 3,
@@ -81,7 +82,8 @@ class ThinkingDegenerationWiringTest {
             !chatService.contains("session.thinkingGuard.reset()"),
         )
         val sessionSource = read("app/androidrik/rikkahub/service/ConversationSession.kt")
-        val beginStart = sessionSource.indexOf("fun beginNewTurn()")
+        // P0.5 起 beginNewTurn 带可选归属令牌参数（定时取消），断言签名前缀
+        val beginStart = sessionSource.indexOf("fun beginNewTurn(")
         assertTrue("ConversationSession 里找不到 beginNewTurn()", beginStart >= 0)
         val beginEnd = sessionSource.indexOf("\n    }", beginStart)
         val begin = sessionSource.substring(beginStart, if (beginEnd < 0) sessionSource.length else beginEnd)

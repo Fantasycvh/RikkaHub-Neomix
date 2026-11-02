@@ -99,13 +99,17 @@ class SubagentRunner(
     private val workspaceRepository: WorkspaceRepository,
 ) : SubagentDispatcher {
     /**
-     * 并发闸：上限可配（设置 → 通用 → 护栏与预算）。lazy 而非构造期读取——
-     * runner 是 Koin 单例，构造时 DataStore 可能还没加载完（settingsFlow.value 是
-     * 全默认值的 dummy），首次派发时读取则必然已加载。
+     * 并发闸：上限可配（设置 → 通用 → 护栏与预算），且**每次 acquire 现读设置**。
+     *
+     * 为什么不用旧的 `by lazy { ConcurrentRunGate(limit) }`：`lazy` 把上限冻结在"第一次
+     * 派发那一刻"，用户改完设置必须重启进程才生效（P0 设计 §5.1 要求"改设置立即生效"）。
+     * 构造 runner 时 DataStore 可能还没加载完（settingsFlow.value 是全默认值的 dummy），
+     * 但读取发生在 `tryAcquire`/`canAcquire` 调用时；设置加载完成后读到的是真实值，
+     * 加载完成前用默认值 2——与旧行为一致，不会把 dummy 永久焊死。
      */
-    private val gate by lazy {
-        ConcurrentRunGate(settingsStore.settingsFlow.value.subagentMaxConcurrentRuns)
-    }
+    private val gate = ConcurrentRunGate(
+        limitProvider = { settingsStore.settingsFlow.value.subagentMaxConcurrentRuns },
+    )
 
     /** runId → 它所在的协程 Job（取消用；两条入口都登记，这样才能"只取消这一个 run"）。 */
     private val activeJobs = ConcurrentHashMap<Uuid, Job>()
@@ -300,6 +304,9 @@ class SubagentRunner(
     fun cancelRun(id: Uuid) {
         if (!gate.isActive(id.toString())) return
         activeJobs[id]?.cancel()
+        // 后台 shell 任务不在这里收：`killBackgroundTasksByOwner` 是 suspend，而本方法是 UI/通知
+        // 直接调用的非挂起入口。取消 → CancellationException 路径会在 NonCancellable 里按
+        // `run:<id>` 级联收掉（见 executeRun 的取消分支），超时路径同款处理。
     }
 
     /** 删除 run 记录（运行中的先取消）。 */
@@ -379,6 +386,10 @@ class SubagentRunner(
                 model,
                 workspaceCwd = null,
                 explicitlyAllowedToolNames = allowedTools.orEmpty(),
+                // run 内起的后台 shell 任务归属到本 run（设计 §5.2 第 1 条）：以前这里不传，
+                // owner 落成 null ⇒ run 被取消后它的后台命令变孤儿——没人轮询输出、没人收进程，
+                // 却继续吃 CPU/网络直到 30 分钟看门狗。取消 scope 时据此级联 killByOwner。
+                turnOwner = "run:$runId",
             )
             val envelope = resolveSubagentEnvelope(segments, allowedTools)
             val tools = segments.flatMap { it.tools }.filter { it.name in envelope }
@@ -531,14 +542,26 @@ class SubagentRunner(
                 }
             } catch (e: TimeoutCancellationException) {
                 withContext(NonCancellable) {
-                    failRun(runId, AgentRunEntity.ERROR_EXCEPTION, "run timeout (" + timeoutMillis + "ms)")
+                    // 截止时间到 = 超时终止（不是 provider 异常）：用独立前缀，
+                    // 让 TaskStateMappings 能还原成 TIMED_OUT。
+                    failRun(
+                        runId,
+                        AgentRunEntity.ERROR_TIMEOUT,
+                        "run timeout (" + timeoutMillis + "ms)",
+                    )
+                    // run 已经结束，它起的后台 shell 任务不应再无限跑下去（与取消同款级联）。
+                    runCatching { workspaceRepository.killBackgroundTasksByOwner("run:$runId") }
                 }
                 return null
             } catch (e: CancellationException) {
                 // 用户取消（cancelRun / 中断对话）：withContext(NonCancellable) 保证取消路径能落库
                 withContext(NonCancellable) {
                     finishRun(runId, AgentRunEntity.STATUS_CANCELLED, resultSummary = null, error = null)
-                    cancelApprovalNotification()
+                    // 只撤**本 run** 的审批通知：固定 id 时代这里会把并行 run 的待批通知一起撤掉
+                    cancelApprovalNotification(runId.toString())
+                    // run 被取消后没人再轮询这些后台命令的结果，继续跑只是烧 CPU/网络；
+                    // 与 cancelRun 的直杀互为兜底（覆盖超时/协程取消等旁路）。
+                    runCatching { workspaceRepository.killBackgroundTasksByOwner("run:$runId") }
                 }
                 throw e
             }
@@ -622,7 +645,8 @@ class SubagentRunner(
             }
         } finally {
             pending.forEach { SubagentApprovalQueue.forget(it.toolCallId) }
-            cancelApprovalNotification()
+            // 只撤本 run 的（runId 已命名空间化；并行 run 各撤各的）
+            cancelApprovalNotification(runId)
         }
 
         return pending.associate { tool ->
@@ -647,7 +671,9 @@ class SubagentRunner(
         runCatching {
             context.sendNotification(
                 channelId = SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID,
-                notificationId = APPROVAL_NOTIFICATION_ID,
+                // 按 runId 命名空间化：并行 run 各有各的通知条，不会互相覆盖；
+                // 同一 run 的重复投递仍是同一条（原地更新）
+                notificationId = NotificationIds.subagentApproval(runId),
             ) {
                 title = context.getString(
                     R.string.subagent_approval_title,
@@ -673,8 +699,14 @@ class SubagentRunner(
         }.onFailure { Logging.log(TAG, "approval notification failed: $it") }
     }
 
-    private fun cancelApprovalNotification() {
-        runCatching { context.cancelNotification(APPROVAL_NOTIFICATION_ID) }
+    /**
+     * 撤掉某个 run 的待批通知。
+     *
+     * **必须按 runId 撤**：固定 id 时代任一 run 结束（含超时、取消）都会撤掉并行 run 的待批
+     * 通知——用户那边看起来"审批消失了"，而 run 其实还停在 `awaiting_approval` 上等 5 分钟。
+     */
+    private fun cancelApprovalNotification(runId: String) {
+        runCatching { context.cancelNotification(NotificationIds.subagentApproval(runId)) }
     }
 
     /** 点通知主体 → 运行详情页（在那里能看到入参全文与轨迹）。 */
@@ -684,7 +716,12 @@ class SubagentRunner(
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         return PendingIntent.getActivity(
             context,
-            APPROVAL_NOTIFICATION_ID,
+            // 每个 run 一个 requestCode：并行 run 详情页的 PendingIntent 互不覆盖
+            // （FLAG_UPDATE_CURRENT 会按 requestCode 覆写 extras）
+            NotificationIds.subagentApprovalRequestCode(
+                runId,
+                NotificationIds.ApprovalAction.OPEN_DETAIL,
+            ),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -694,7 +731,9 @@ class SubagentRunner(
      * 通知按钮的 PendingIntent：**显式组件 + exported=false 的 Receiver**。
      *
      * requestCode 必须区分（批准所有 / 拒绝所有），否则 `FLAG_UPDATE_CURRENT` 会让后者覆盖前者
-     * （两个按钮变成同一个动作——这是 PendingIntent 的经典坑）。
+     * （两个按钮变成同一个动作——这是 PendingIntent 的经典坑）。**同时还要按 runId 区分**：
+     * 固定 requestCode 下，后弹通知的 run 会把先弹的那个 run 的按钮动作整个覆写掉——
+     * 用户点的是 A run 的通知，批的却是 B run 的工具。
      */
     private fun approvalDecisionIntent(
         runId: String,
@@ -709,7 +748,14 @@ class SubagentRunner(
             .putExtra(SubagentApprovalReceiver.EXTRA_APPROVED, approved)
         return PendingIntent.getBroadcast(
             context,
-            if (approved) APPROVAL_APPROVE_REQUEST_CODE else APPROVAL_DENY_REQUEST_CODE,
+            NotificationIds.subagentApprovalRequestCode(
+                runId,
+                if (approved) {
+                    NotificationIds.ApprovalAction.APPROVE
+                } else {
+                    NotificationIds.ApprovalAction.DENY
+                },
+            ),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -758,9 +804,8 @@ class SubagentRunner(
          */
         const val MAX_APPROVAL_ROUNDS = 20
 
-        private const val APPROVAL_NOTIFICATION_ID = 4242
-        private const val APPROVAL_APPROVE_REQUEST_CODE = 4243
-        private const val APPROVAL_DENY_REQUEST_CODE = 4244
+        // 审批通知的 id / PendingIntent requestCode 不再放常量：固定值会让并行 run
+        // 互相覆盖、互相误撤。现由 NotificationIds 按 runId + 动作生成（设计 §4.4）。
 
         private fun newTranscript(messages: List<UIMessage>): String =
             JsonInstant.encodeToString(ListSerializer(serializer<UIMessage>()), messages)

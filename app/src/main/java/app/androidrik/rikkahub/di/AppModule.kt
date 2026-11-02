@@ -19,6 +19,7 @@ import app.androidrik.rikkahub.service.MediaCreationService
 import app.androidrik.rikkahub.service.ScheduledTaskExecutor
 import app.androidrik.rikkahub.service.ScheduledTaskRunner
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
+import app.androidrik.rikkahub.service.ScheduledRunRegistry
 import app.androidrik.rikkahub.service.SubagentRunner
 import app.androidrik.rikkahub.utils.EmojiData
 import app.androidrik.rikkahub.utils.EmojiUtils
@@ -213,6 +214,11 @@ val appModule = module {
 
     // 定时任务执行层：只做「注入 + 等结束 + 报结果」，生成本体走 ChatService 老管线。
     // settingsStore 用于冷启动等设置落盘（Settings.dummy() 陷阱，见 Runner KDoc）。
+    // runRegistry 是 P0.5 定时取消用的进程内注册表（FGS 通知「停止」靠 runId 反查 Job）。
+    single {
+        ScheduledRunRegistry()
+    }
+
     single {
         ScheduledTaskRunner(
             context = get(),
@@ -221,6 +227,7 @@ val appModule = module {
             taskRepository = get(),
             settingsStore = get(),
             workspaceRepository = get(),
+            runRegistry = get(),
         )
     }
 

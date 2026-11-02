@@ -92,6 +92,7 @@ fun statusLabel(status: String): String = stringResource(
         AgentRunEntity.STATUS_AWAITING_APPROVAL -> R.string.agent_run_status_awaiting_approval
         AgentRunEntity.STATUS_COMPLETED -> R.string.agent_run_status_completed
         AgentRunEntity.STATUS_FAILED -> R.string.agent_run_status_failed
+        AgentRunEntity.STATUS_INTERRUPTED -> R.string.agent_run_status_interrupted
         else -> R.string.agent_run_status_cancelled
     }
 )

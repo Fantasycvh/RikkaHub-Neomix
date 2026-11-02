@@ -86,10 +86,35 @@ data class AgentRunEntity(
         const val STATUS_FAILED = "failed"
         const val STATUS_CANCELLED = "cancelled"
 
+        /**
+         * **非自然中断**（P0.5 启动对账专用）：账本行停在 running/awaiting_approval，
+         * 但产生它的进程已经不存在（进程被杀/系统回收），run 不可能再往前走。
+         *
+         * 与 [STATUS_FAILED] 分开：这是「没跑完、不知道结果」而不是「跑完但失败」，
+         * UI 文案与统计口径都不同（设计 §4.3/§6.2）。**不由运行中的 runner 写入**，
+         * 只由启动对账写入——否则会和「正在优雅收尾」的 run 抢状态。
+         */
+        const val STATUS_INTERRUPTED = "interrupted"
+
         /** 失败原因细分（`error` 的机器可读前缀，展示层映射文案）。 */
         const val ERROR_NO_MODEL = "no_model"
         const val ERROR_LOOP_DETECTED = "loop_detected"
         const val ERROR_BUDGET_EXHAUSTED = "budget_exhausted"
+
+        /**
+         * 整体截止时间到（`SubagentRunner` 的 `withTimeout` 兜底）。
+         *
+         * 单独成前缀而不是复用 `exception`：`TaskStateMappings` 要把它还原成
+         * TIMED_OUT，展示层才能把「被 30 分钟截止时间收掉」和「provider 报错」分开。
+         */
+        const val ERROR_TIMEOUT = "timeout"
+
+        /**
+         * 进程重启对账写入的中断原因（P0.5）：产生该 run 的进程已不存在，
+         * 无法判定是正常收尾还是被杀。与 [ERROR_EXCEPTION] 分开，便于统计把
+         * 「系统回收/进程被杀」与「run 自身异常」区分开。
+         */
+        const val ERROR_PROCESS_RESTART = "process_restart"
 
         /**
          * 上下文预算耗尽（设计 §十二）：轨迹把窗口吃到剩下的不够产出一轮回答。

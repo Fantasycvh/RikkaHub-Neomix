@@ -26,6 +26,18 @@ data class QueuedMessage(
      * 执行层显式传入。挂在队列项上保证「这一轮用哪个闸门」由触发方决定，无跨轮残留。
      */
     val loopGate: LoopGateConfig? = null,
+    /**
+     * 本轮后台任务归属令牌的显式覆盖（P0.5 定时取消，design-agent-task-runtime §5.2.4）。
+     *
+     * **为什么挂在队列项上**：归属令牌原本由 `ConversationSession.beginNewTurn()` 随机生成，
+     * 只有「会话当前轮次」一个视角——定时任务的取消入口（FGS 通知的「停止」）却只知道
+     * `runId`。把令牌随队列项带进来，取消时才能用 `sched:<runId>` 反查这一轮起的后台任务，
+     * 且不依赖「当前是不是同一轮」这种会被后续发送覆盖的状态。
+     *
+     * null = 由 [ConversationSession.beginNewTurn] 生成新的 turn 令牌（**所有用户发起路径**，
+     * 行为与过去逐位一致）；非 null = 只有定时任务执行层显式指定，形如 `sched:<runId>`。
+     */
+    val turnOwner: String? = null,
 )
 
 data class MessageQueueState(
@@ -71,6 +83,8 @@ class MessageQueue {
         reply: CompletableDeferred<String?>? = null,
         annotations: List<UIMessageAnnotation> = emptyList(),
         loopGate: LoopGateConfig? = null,
+        /** 见 [QueuedMessage.turnOwner]；null = 派发时由 session 换新令牌（用户路径） */
+        turnOwner: String? = null,
     ) {
         if (parts.isEmptyInputMessage()) {
             reply?.complete(null)
@@ -83,6 +97,7 @@ class MessageQueue {
                 reply = reply,
                 annotations = annotations.toList(),
                 loopGate = loopGate,
+                turnOwner = turnOwner,
             ),
         )
     }

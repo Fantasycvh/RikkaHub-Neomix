@@ -143,6 +143,14 @@ object TaskRunStatus {
     const val SKIPPED_MISSED = "SKIPPED_MISSED"
     const val TARGET_GONE = "TARGET_GONE"
 
+    /**
+     * 用户经 FGS 通知的「停止」主动取消了本轮（P0.5，design-agent-task-runtime §5.2.4）。
+     *
+     * 与 [FAILED] 分开记：取消是**用户意志**，不是故障——不参与「失败率」口径，也不发
+     * 「任务失败」通知（操作者就在场）。与 [TIMEOUT] 也分开：那是等不到结束，不是被叫停。
+     */
+    const val CANCELLED = "CANCELLED"
+
     /** NEW_EACH_RUN / DEDICATED 的助手已删：任务自失效（与「会话没了」区分开，便于排查） */
     const val ASSISTANT_GONE = "ASSISTANT_GONE"
 }

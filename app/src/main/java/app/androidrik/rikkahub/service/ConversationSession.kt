@@ -186,14 +186,19 @@ class ConversationSession(
      * （新一轮用户消息）、[ChatService.regenerateAtMessage]、[ChatService.continueMessage]。
      * **必须在 `appScope.launch` 之前同步调用**：`setJob` 注册取消回调时要捕获令牌，
      * 令牌若在生成协程体内才换新，注册就可能先拿到上一轮的令牌。
+     *
+     * @param forcedTurnOwner 显式指定本轮的归属令牌（P0.5 定时取消）：定时任务执行层注入时
+     *   传 `sched:<runId>`，取消入口才可能「只知道 runId」就停掉这一轮（见
+     *   [QueuedMessage.turnOwner]）。null/空白 = 生成新的 turn 令牌，**所有用户发起路径都不传**，
+     *   行为与过去逐位一致。显式令牌同样只在轮边界换、跨审批续跑不换。
      */
-    fun beginNewTurn() {
+    fun beginNewTurn(forcedTurnOwner: String? = null) {
         replyMessageId.value = null
         toolLoopGuard.reset()
         workspaceTurnBudget.reset()
         thinkingGuard.reset()
         ruleEngine.reset()
-        backgroundTaskOwner = newTurnToken()
+        backgroundTaskOwner = forcedTurnOwner?.takeIf { it.isNotBlank() } ?: newTurnToken()
         turnLoopGate = null
         turnRevision.value++
     }

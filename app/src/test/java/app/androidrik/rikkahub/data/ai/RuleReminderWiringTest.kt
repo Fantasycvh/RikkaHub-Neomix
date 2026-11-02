@@ -26,9 +26,9 @@ class RuleReminderWiringTest {
 
     private fun source(relative: String): String = File(srcRoot(), relative).readText()
 
-    /** 截出 `fun beginNewTurn()` 的函数体（「轮」边界的唯一实现）。 */
+    /** 截出 `beginNewTurn(...)` 的函数体（「轮」边界的唯一实现）。 */
     private fun resetEntryBody(sessionSrc: String): String {
-        val start = sessionSrc.indexOf("fun beginNewTurn()")
+        val start = sessionSrc.indexOf("fun beginNewTurn(")
         check(start >= 0) { "ConversationSession 里找不到 beginNewTurn()" }
         val end = sessionSrc.indexOf("\n    }", start)
         return sessionSrc.substring(start, if (end < 0) sessionSrc.length else end)
@@ -96,7 +96,8 @@ class RuleReminderWiringTest {
     @Test
     fun `session engine is reset wherever the guard family is reset`() {
         val src = source(chatService)
-        val turnBoundaries = Regex("""session\.beginNewTurn\(\)""").findAll(src).count()
+        // P0.5 起队列派发那条边界带归属令牌参数 ⇒ 匹配签名前缀，不限定无参形式
+        val turnBoundaries = Regex("""session\.beginNewTurn\(""").findAll(src).count()
         assertTrue("没有任何轮边界调用 ⇒ 跨轮残留", turnBoundaries >= 3)
         assertEquals(
             "ChatService 里不应再有直接的护栏 reset（边界统一走 session.beginNewTurn()）",

@@ -428,6 +428,7 @@
   <string name="agent_run_status_completed">Completed</string>
   <string name="agent_run_status_failed">Failed</string>
   <string name="agent_run_status_cancelled">Cancelled</string>
+  <string name="agent_run_status_interrupted">Interrupted</string>
   <string name="agent_run_cancel">Cancel run</string>
   <string name="agent_run_delete">Delete record</string>
   <string name="agent_run_field_result">Result</string>

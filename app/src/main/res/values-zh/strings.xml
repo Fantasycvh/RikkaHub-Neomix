@@ -465,6 +465,7 @@
   <string name="agent_run_status_completed">已完成</string>
   <string name="agent_run_status_failed">已失败</string>
   <string name="agent_run_status_cancelled">已取消</string>
+  <string name="agent_run_status_interrupted">已中断</string>
   <string name="agent_run_cancel">取消运行</string>
   <string name="agent_run_delete">删除记录</string>
   <string name="agent_run_field_result">结果</string>
