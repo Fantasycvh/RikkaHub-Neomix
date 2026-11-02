@@ -22,6 +22,19 @@ class RunNotificationsTest {
         assertFalse(shouldNotifyRunCompletion(run("running").copy(finishedAt = null), false))
     }
 
+    @Test fun `scheduled headless cancellation stays silent but completion notifies`() {
+        assertFalse(
+            "用户自己按了停止，不再推「已取消」",
+            shouldNotifyRunCompletion(run("cancelled", entry = AgentRunEntity.ENTRY_POINT_SCHEDULED), false),
+        )
+        assertTrue(
+            shouldNotifyRunCompletion(run("completed", entry = AgentRunEntity.ENTRY_POINT_SCHEDULED), false),
+        )
+        assertTrue(
+            shouldNotifyRunCompletion(run("failed", entry = AgentRunEntity.ENTRY_POINT_SCHEDULED), false),
+        )
+    }
+
     @Test fun `completion ids do not overlap approval ids or other runs`() {
         val ids = (1..8).flatMap { id -> listOf(NotificationIds.runCompleted("$id"),
             NotificationIds.runCompletedDetail("$id"), NotificationIds.subagentApproval("$id")) }

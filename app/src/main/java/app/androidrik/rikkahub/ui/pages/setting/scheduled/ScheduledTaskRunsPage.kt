@@ -139,6 +139,7 @@ internal fun runStatusLabel(status: String): String = when (status) {
     TaskRunStatus.ASSISTANT_GONE -> stringResource(R.string.scheduled_task_run_assistant_gone)
     // P0.5 取消态：复用子代理 run 已有的「已取消」文案（同一语义，不再新造 key）
     TaskRunStatus.CANCELLED -> stringResource(R.string.agent_run_status_cancelled)
+    TaskRunStatus.INTERRUPTED -> stringResource(R.string.agent_run_status_interrupted)
     else -> status
 }
 

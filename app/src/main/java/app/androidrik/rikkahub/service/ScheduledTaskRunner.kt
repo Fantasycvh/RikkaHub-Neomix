@@ -9,18 +9,22 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.conversationIntent
+import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.datastore.getAssistantById
 import app.androidrik.rikkahub.data.ai.DeliverableChecker
 import app.androidrik.rikkahub.data.ai.LoopGateConfig
 import app.androidrik.rikkahub.data.ai.forcePassNote
+import app.androidrik.rikkahub.data.ai.tools.SubagentRunResult
+import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import app.androidrik.rikkahub.data.db.entity.TargetMode
-
 import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
 import app.androidrik.rikkahub.data.db.entity.targetModeOrDefault
+import app.androidrik.rikkahub.data.model.SubagentPreset
+import app.androidrik.rikkahub.data.model.SubagentToolApproval
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
@@ -30,18 +34,22 @@ import app.androidrik.workspace.WorkspaceStorageArea
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 定时任务的执行层（docs/design/design-scheduled-ai-tasks.md §六）。
  *
- * 只做「注入 + 等结束 + 报结果」，生成本体走 [ChatService] 老管线——transformer、工具、
- * MCP、流式落库全部复用，这里没有任何一条旁路生成通道。
+ * 默认只做「注入 + 等结束 + 报结果」，生成本体走 [ChatService] 老管线——transformer、工具、
+ * MCP、流式落库全部复用，这里没有任何一条旁路生成通道。P4b 的可选 headless 路径（默认关）
+ * 改为派发独立 agent run（[SubagentRunner]），仍复用同一账本/取消/通知控制面。
  *
  * 后台入口的两个**冷启动**前提（2026-10-30 真机事故的根因，缺一不可）：
  * 1. [SettingsStore.awaitLoaded]：`settingsFlow` 起手是 `Settings.dummy()`，进程刚被
@@ -58,6 +66,8 @@ class ScheduledTaskRunner(
     private val workspaceRepository: WorkspaceRepository,
     /** P0.5 定时取消：FGS 通知的「停止」动作只有 runId，靠它反查并取消本轮 generation Job */
     private val runRegistry: ScheduledRunRegistry,
+    /** P4b 可选 headless 执行：定时任务走独立 agent_run（默认关，见 Settings.scheduledHeadlessEnabled）。 */
+    private val subagentRunner: SubagentRunner,
 ) {
     /**
      * 执行一个**已认领**的任务，返回落 `last_status` 的状态值。
@@ -138,10 +148,137 @@ class ScheduledTaskRunner(
         // ⇒ 取消窗口覆盖整个执行期。条目在 finally 移除，避免泄漏成「永远有运行中任务」。
         runRegistry.register(runId, conversationId, task.id)
         return try {
-            runInjected(task, mode, conversationId, runId, settingsLoaded)
+            val settings = settingsStore.settingsFlow.value
+            // P4b：headless 是可选路径，且依赖后台子代理的 notice 投递通道；任一条件不满足
+            // 都退回历史行为（会话注入），而不是把任务记成成功/失败——回退必须是静默且完整的。
+            val headless = shouldUseHeadlessExecution(settingsLoaded, settings)
+            if (settings.scheduledHeadlessEnabled && !headless) {
+                Log.w(
+                    TAG,
+                    "runClaimed: headless requested but unavailable " +
+                        "(settingsLoaded=$settingsLoaded, background=${settings.enableBackgroundSubagent}); " +
+                        "fallback to conversation injection",
+                )
+            }
+            if (headless) {
+                runHeadless(task, mode, conversationId, runId)
+            } else {
+                runInjected(task, mode, conversationId, runId, settingsLoaded)
+            }
         } finally {
             runRegistry.unregister(runId)
         }
+    }
+
+    /**
+     * P4b：定时任务 headless 执行（默认关）。
+     *
+     * 与 [runInjected] 的区别只在「生成本体从哪里跑」：
+     * - 不往目标会话塞用户消息，也不等目标会话的 generation Job；
+     * - 派发独立 `agent_run`（`entry_point=scheduled`、`delivery_mode=notice`），结果由 P1a
+     *   投递泵写成目标会话的 SYSTEM notice，不触发父生成；
+     * - 取消仍走同一 [ScheduledRunRegistry]：attach 到 agent run 的 Job，`Job.cancel()` 会走
+     *   `executeRun` 的取消路径收掉它起的 shell task。
+     *
+     * 目标语义不变：先在 [runClaimed] 里完成 EXISTING/DEDICATED/NEW_EACH_RUN 的会话解析与
+     * 载入，因此 headless 仍能校验「目标会话/助手是否还在」；只是结果不再以 assistant 消息出现。
+     */
+    private suspend fun runHeadless(
+        task: ScheduledTaskEntity,
+        mode: TargetMode,
+        conversationId: Uuid,
+        runId: String,
+    ): String {
+        if (runRegistry.isCancelled(runId)) return finishCancelled(task, runId)
+
+        val settings = settingsStore.settingsFlow.value
+        val conversation = chatService.getConversationFlow(conversationId).value
+        val assistant = settings.getAssistantById(conversation.assistantId)
+        if (assistant == null) {
+            Log.i(TAG, "runHeadless: assistant gone for task=${task.title}")
+            taskRepository.recordStatus(task.id, TaskRunStatus.ASSISTANT_GONE)
+            taskRepository.finishRun(runId, TaskRunStatus.ASSISTANT_GONE)
+            taskRepository.markAssistantGone(task.id)
+            return TaskRunStatus.ASSISTANT_GONE
+        }
+
+        val goal = buildTaskPrompt(task.prompt, task.withGoal, conversation.goal)
+        val deliverables = task.deliverables
+            ?.let { raw ->
+                runCatching { JsonInstant.decodeFromString<List<String>>(raw) }
+                    .onFailure { Log.w(TAG, "deliverables parse failed for task=${task.id}", it) }
+                    .getOrDefault(emptyList())
+            }
+            ?.takeIf { it.isNotEmpty() }
+        // 用现有 Assistant 当模板：模型/系统提示/联网/工作区能力沿用目标会话的助手；
+        // 不装配 task_manage/记忆/正则等助手专属段（SubagentPreset.toRunProfile 只保留
+        // run 需要的字段），headless 定时任务没有「管理任务」的入口。
+        val preset = SubagentPreset(
+            name = assistant.name,
+            modelId = assistant.chatModelId,
+            systemPrompt = assistant.systemPrompt,
+            enableWebSearch = assistant.enableWebSearch,
+            workspaceId = assistant.workspaceId,
+            toolApproval = SubagentToolApproval.DENY,
+            deliverables = deliverables,
+        )
+
+        // 先取消后 attach：registry.cancel 可能发生在 dispatch 的账本行落库之前，回调里
+        // attachJob 见到取消标记会当场 cancel Job；dispatchScheduledAwait 会把账本收成 CANCELLED。
+        var agentRunId: String? = null
+        val result = try {
+            subagentRunner.dispatchScheduledAwait(
+                preset = preset,
+                goal = goal,
+                timeoutMillis = GENERATION_TIMEOUT.inWholeMilliseconds,
+                parentConversationId = conversationId.toString(),
+                scopeToken = scheduledRunTurnOwner(runId),
+                onStarted = { id, job ->
+                    agentRunId = id.toString()
+                    runRegistry.attachJob(runId, job)
+                },
+            )
+        } catch (e: CancellationException) {
+            if (runRegistry.isCancelled(runId)) return finishCancelled(task, runId)
+            // 从 run 详情/任务中心取消了**这条 agent run**（不是定时注册表）：账本已有
+            // CANCELLED 终态，定时账本也必须同轮收尾；服务/进程级取消没有终态写入，
+            // 继续抛出让 finished_at 留空，由任务中心按 INTERRUPTED 展示。
+            val externallyCancelled = agentRunId?.let { id ->
+                withContext(NonCancellable) {
+                    subagentRunner.runStatus(id) == AgentRunEntity.STATUS_CANCELLED
+                }
+            } == true
+            if (externallyCancelled) return finishCancelled(task, runId)
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "runHeadless failed for task=${task.title}", e)
+            null
+        }
+
+        // 取消可能在 result 返回之后、记账之前到达：以取消标记为准，绝不回落 OK。
+        if (runRegistry.isCancelled(runId)) return finishCancelled(task, runId)
+
+        val status = scheduledStatusForAgentRun(result)
+        Log.i(
+            TAG,
+            "runHeadless: task=${task.title} -> $status " +
+                "(runId=${result?.runId}, error=${result?.error})",
+        )
+        taskRepository.recordStatus(task.id, status)
+        taskRepository.finishRun(runId, status)
+        // 有 run 结果时完成通知由 RunNotifications 按 agent run 发（带摘要）；
+        // 只有「闸门忙/异常，根本没跑起来」才退回定时任务的通用失败通知，避免两条通知。
+        if (result == null) {
+            notifyResult(task, conversationId, status, loopGate = null)
+        }
+
+        // 自动清理与注入路径同规则：仅 NEW_EACH_RUN 且成功 + 保留数 > 0。
+        if (status == TaskRunStatus.OK && mode == TargetMode.NEW_EACH_RUN &&
+            task.keepLastConversations > 0
+        ) {
+            cleanupOldRunConversations(task)
+        }
+        return status
     }
 
     /**
@@ -464,6 +601,32 @@ internal fun evaluateRunStatus(
     !producedReply -> TaskRunStatus.FAILED
     else -> TaskRunStatus.OK
 }
+
+/**
+ * P4b：headless agent run 终态 → 定时账本状态（纯函数，单测覆盖）。
+ *
+ * `null` = 并发闸忙或派发异常，run 根本没起来，按失败记账；超时以 `error` 的机器前缀
+ * 区分（agent 层的超时也是 FAILED，只有错误串知道自己为什么失败）。
+ */
+internal fun scheduledStatusForAgentRun(result: SubagentRunResult?): String = when {
+    result == null -> TaskRunStatus.FAILED
+    result.status == AgentRunEntity.STATUS_COMPLETED -> TaskRunStatus.OK
+    result.status == AgentRunEntity.STATUS_CANCELLED -> TaskRunStatus.CANCELLED
+    result.status == AgentRunEntity.STATUS_INTERRUPTED -> TaskRunStatus.INTERRUPTED
+    result.error?.startsWith(AgentRunEntity.ERROR_TIMEOUT) == true -> TaskRunStatus.TIMEOUT
+    else -> TaskRunStatus.FAILED
+}
+
+/**
+ * P4b：是否走 headless 定时执行（纯函数，单测覆盖）。
+ *
+ * 三个条件缺一不可：设置已从 DataStore 载入（否则读到的是 dummy）、用户显式开启、
+ * 后台子代理通道可用（notice 投递泵与完成通知都以它为门）。任一不满足 = 保持历史注入。
+ */
+internal fun shouldUseHeadlessExecution(
+    settingsLoaded: Boolean,
+    settings: Settings,
+): Boolean = settingsLoaded && settings.scheduledHeadlessEnabled && settings.enableBackgroundSubagent
 
 /**
  * 自动清理的目标挑选（纯函数，单测覆盖，§4.2）。

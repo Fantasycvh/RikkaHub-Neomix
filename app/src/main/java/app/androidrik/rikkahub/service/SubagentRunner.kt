@@ -240,6 +240,72 @@ class SubagentRunner(
         timeoutMillis: Long,
         parentConversationId: String?,
         context: SubagentDispatchContext,
+    ): SubagentRunResult? = dispatchAwaitInternal(
+        preset = preset,
+        goal = goal,
+        timeoutMillis = timeoutMillis,
+        parentConversationId = parentConversationId,
+        context = context,
+        entryPoint = AgentRunEntity.ENTRY_POINT_CHAT,
+        deliveryMode = AgentRunEntity.DELIVERY_MODE_AWAIT,
+        scopeToken = context.scopeToken,
+        onStarted = { _, _ -> },
+    )
+
+    /**
+     * 定时任务 headless 派发（P4b，`design-agent-task-runtime.md` §7 P4，默认关闭）。
+     *
+     * 与 [dispatchAndAwait] 共用同一套执行/账本/取消语义，差别只在账本归属：
+     * - `entry_point = scheduled`，与手动/对话内 run 可区分；
+     * - `delivery_mode = notice`：结果由 P1a 投递泵写成目标会话的 SYSTEM notice，
+     *   不冒充用户消息，也不触发父生成；
+     * - `scope_token = sched:<scheduledRunId>`：任务中心/任务树按定时轮次反查。
+     *
+     * [onStarted] 在账本行落库后回调（拿得到 agent runId 与 Job），让
+     * [ScheduledRunRegistry] 能把「定时 run」的停止动作转成对这个 Job 的取消；
+     * 若回调当场取消 Job（先取消后 attach），本方法会把账本行收成 CANCELLED 再返回。
+     */
+    suspend fun dispatchScheduledAwait(
+        preset: SubagentPreset,
+        goal: String,
+        timeoutMillis: Long,
+        parentConversationId: String?,
+        scopeToken: String,
+        onStarted: (Uuid, Job) -> Unit = { _, _ -> },
+    ): SubagentRunResult? = dispatchAwaitInternal(
+        preset = preset,
+        goal = goal,
+        timeoutMillis = timeoutMillis,
+        parentConversationId = parentConversationId,
+        context = SubagentDispatchContext(scopeToken = scopeToken),
+        entryPoint = AgentRunEntity.ENTRY_POINT_SCHEDULED,
+        deliveryMode = AgentRunEntity.DELIVERY_MODE_NOTICE,
+        scopeToken = scopeToken,
+        onStarted = onStarted,
+    )
+
+    /**
+     * 只读账本状态（P4b 定时执行器用）：run 从**别的入口**被取消时，调用方只拿到
+     * `CancellationException`，无法区分「用户取消了这条 run」与「服务/进程级取消」；
+     * 读一下终态才知道该把定时账本收成 CANCELLED 还是留给启动对账显示 INTERRUPTED。
+     */
+    suspend fun runStatus(runId: String): String? = agentRunDAO.getRun(runId)?.status
+
+    /**
+     * [dispatchAndAwait] / [dispatchScheduledAwait] 的唯一实现：手工创建的 runJob 是
+     * 「可单取消、也能被调用方级联取消」的关键；入口只决定账本字段，不复制执行逻辑。
+     */
+    private suspend fun dispatchAwaitInternal(
+        preset: SubagentPreset,
+        goal: String,
+        timeoutMillis: Long,
+        parentConversationId: String?,
+        context: SubagentDispatchContext,
+        entryPoint: String,
+        deliveryMode: String,
+        /** null = 沿用 `run:<runId>`；定时入口传 `sched:<scheduledRunId>`。 */
+        scopeToken: String?,
+        onStarted: (Uuid, Job) -> Unit,
     ): SubagentRunResult? {
         if (goal.isBlank()) return null
 
@@ -247,13 +313,16 @@ class SubagentRunner(
         val runId = Uuid.random()
         if (!gate.tryAcquire(runId.toString())) return null
         val run = newRunEntity(
-            entryPoint = AgentRunEntity.ENTRY_POINT_CHAT,
+            entryPoint = entryPoint,
             profile = profile,
             goal = goal,
             allowedTools = preset.allowedTools,
             runId = runId,
             parentConversationId = parentConversationId,
-        ).copy(scopeToken = context.scopeToken ?: "run:$runId")
+        ).copy(
+            deliveryMode = deliveryMode,
+            scopeToken = scopeToken ?: "run:$runId",
+        )
 
         // **挂在调用方 Job 之下的子 Job**：既能"只取消这一个 run"（详情页的取消按钮），
         // 又能让"用户中断本轮对话"照旧级联取消它（父 Job 取消 → 子 Job 取消）。
@@ -263,6 +332,26 @@ class SubagentRunner(
         return try {
             withContext(runJob) {
                 agentRunDAO.insertRun(run)
+                // 账本行已落库，调用方此刻才拿得到 runId/Job；先取消后 attach 的语义由调用方
+                // （ScheduledRunRegistry.attachJob）保证，这里只检查 Job 是否被当场取消。
+                onStarted(runId, runJob)
+                if (!runJob.isActive) {
+                    // 取消发生在 executeRun 之前：没有取消路径会替我们收账，必须自己落终态。
+                    withContext(NonCancellable) {
+                        finishRun(
+                            runId,
+                            AgentRunEntity.STATUS_CANCELLED,
+                            null,
+                            "scheduled run cancelled before start",
+                        )
+                    }
+                    return@withContext SubagentRunResult(
+                        runId = runId.toString(),
+                        status = AgentRunEntity.STATUS_CANCELLED,
+                        summary = null,
+                        error = null,
+                    )
+                }
                 val outcome = executeRun(
                     initial = run,
                     profile = profile,

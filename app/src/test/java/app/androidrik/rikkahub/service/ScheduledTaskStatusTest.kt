@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.service
 
+import app.androidrik.rikkahub.data.ai.tools.SubagentRunResult
+import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -49,5 +52,57 @@ class ScheduledTaskStatusTest {
             TaskRunStatus.TIMEOUT,
             evaluateRunStatus(quiesced = false, hasNewError = true, producedReply = false),
         )
+    }
+
+    @Test
+    fun `headless agent status maps to the scheduled ledger vocabulary`() {
+        fun result(status: String, error: String? = null) = SubagentRunResult(
+            runId = "run-1",
+            status = status,
+            summary = null,
+            error = error,
+        )
+
+        assertEquals(TaskRunStatus.FAILED, scheduledStatusForAgentRun(null))
+        assertEquals(
+            TaskRunStatus.OK,
+            scheduledStatusForAgentRun(result(AgentRunEntity.STATUS_COMPLETED)),
+        )
+        assertEquals(
+            TaskRunStatus.CANCELLED,
+            scheduledStatusForAgentRun(result(AgentRunEntity.STATUS_CANCELLED)),
+        )
+        assertEquals(
+            "进程死亡要与取消/失败分开，任务中心才能显示 INTERRUPTED",
+            TaskRunStatus.INTERRUPTED,
+            scheduledStatusForAgentRun(result(AgentRunEntity.STATUS_INTERRUPTED)),
+        )
+        assertEquals(
+            "agent 层超时也是 FAILED，必须靠 error 前缀还原成 TIMEOUT",
+            TaskRunStatus.TIMEOUT,
+            scheduledStatusForAgentRun(
+                result(AgentRunEntity.STATUS_FAILED, "${AgentRunEntity.ERROR_TIMEOUT}: deadline"),
+            ),
+        )
+        assertEquals(
+            TaskRunStatus.FAILED,
+            scheduledStatusForAgentRun(
+                result(AgentRunEntity.STATUS_FAILED, "${AgentRunEntity.ERROR_EXCEPTION}: boom"),
+            ),
+        )
+    }
+
+    @Test
+    fun `headless requires loaded settings, explicit opt-in and the background channel`() {
+        val off = Settings()
+        val on = off.copy(scheduledHeadlessEnabled = true, enableBackgroundSubagent = true)
+
+        org.junit.Assert.assertFalse("设置没载入时读到的是 dummy，不能走 headless", shouldUseHeadlessExecution(false, on))
+        org.junit.Assert.assertFalse("默认关 = 历史注入", shouldUseHeadlessExecution(true, off))
+        org.junit.Assert.assertFalse(
+            "没有后台子代理就没有 notice 投递/完成通知通道",
+            shouldUseHeadlessExecution(true, on.copy(enableBackgroundSubagent = false)),
+        )
+        org.junit.Assert.assertTrue(shouldUseHeadlessExecution(true, on))
     }
 }

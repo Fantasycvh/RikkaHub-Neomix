@@ -91,6 +91,12 @@ data class AgentRunEntity(
          */
         const val ENTRY_POINT_CHAT = "chat"
 
+        /**
+         * 定时任务 headless 派发（P4b，`design-agent-task-runtime.md` §7 P4）：
+         * 不再把 prompt 注入目标会话，而是独立跑一个 run，结果按 `notice` 投递 + 完成通知。
+         */
+        const val ENTRY_POINT_SCHEDULED = "scheduled"
+
         const val STATUS_PENDING = "pending"
         const val STATUS_RUNNING = "running"
 

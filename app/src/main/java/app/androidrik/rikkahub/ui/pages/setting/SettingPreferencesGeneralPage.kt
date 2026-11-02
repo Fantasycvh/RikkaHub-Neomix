@@ -750,6 +750,16 @@ private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
             },
         )
         item(
+            headlineContent = { Text(stringResource(R.string.setting_page_scheduled_headless)) },
+            supportingContent = { Text(stringResource(R.string.setting_page_scheduled_headless_desc)) },
+            trailingContent = {
+                Switch(
+                    checked = settings.scheduledHeadlessEnabled,
+                    onCheckedChange = { vm.updateSettings(settings.copy(scheduledHeadlessEnabled = it)) },
+                )
+            },
+        )
+        item(
             headlineContent = { Text(stringResource(R.string.setting_page_tool_schema_compact_title)) },
             supportingContent = { Text(stringResource(R.string.setting_page_tool_schema_compact_desc)) },
             trailingContent = {

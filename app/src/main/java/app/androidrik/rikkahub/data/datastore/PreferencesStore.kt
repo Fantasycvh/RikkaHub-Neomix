@@ -420,6 +420,8 @@ class SettingsStore(
         val DYNAMIC_RUN_GATE = booleanPreferencesKey("dynamic_run_gate")
         /** P0 回滚开关：关 = run 取消/超时不再级联收它起的 shell task。 */
         val KILL_SHELL_TASKS_ON_RUN_CANCEL = booleanPreferencesKey("kill_shell_tasks_on_run_cancel")
+        /** P4b 可选执行路径：定时任务改为独立 headless run（默认关，回退为会话注入）。 */
+        val SCHEDULED_HEADLESS_ENABLED = booleanPreferencesKey("scheduled_headless_enabled")
         val ENABLE_SUBAGENT_DISPATCH = booleanPreferencesKey("enable_subagent_dispatch")
         val SUBAGENT_PRESETS = stringPreferencesKey("subagent_presets")
         // 全局代理（两层代理设计的全局兜底层）；结构化 JSON 存储
@@ -639,6 +641,7 @@ class SettingsStore(
                 namespacedNotifications = preferences[NAMESPACED_NOTIFICATIONS] ?: true,
                 dynamicRunGate = preferences[DYNAMIC_RUN_GATE] ?: true,
                 killShellTasksOnRunCancel = preferences[KILL_SHELL_TASKS_ON_RUN_CANCEL] ?: true,
+                scheduledHeadlessEnabled = preferences[SCHEDULED_HEADLESS_ENABLED] ?: false,
                 subagentPresets = preferences[SUBAGENT_PRESETS]?.let {
                     JsonInstant.decodeFromString<List<SubagentPreset>>(it)
                 } ?: DEFAULT_SUBAGENT_PRESETS,
@@ -918,6 +921,7 @@ class SettingsStore(
             preferences[NAMESPACED_NOTIFICATIONS] = settings.namespacedNotifications
             preferences[DYNAMIC_RUN_GATE] = settings.dynamicRunGate
             preferences[KILL_SHELL_TASKS_ON_RUN_CANCEL] = settings.killShellTasksOnRunCancel
+            preferences[SCHEDULED_HEADLESS_ENABLED] = settings.scheduledHeadlessEnabled
             preferences[SUBAGENT_PRESETS] = JsonInstant.encodeToString(settings.subagentPresets)
         }
         // 落盘成功后再广播内存态：edit 抛异常（序列化失败等）时内存与磁盘不分叉
@@ -1334,6 +1338,12 @@ data class Settings(
     val dynamicRunGate: Boolean = true,
     /** P0 回滚开关：关 = run 取消/超时不再级联 kill 它起的 shell task。 */
     val killShellTasksOnRunCancel: Boolean = true,
+    /**
+     * P4b 可选执行路径：开启且后台子代理可用时，定时任务不再注入目标会话，而是派发一个
+     * 独立 headless `agent_run`；结果由 notice 投递泵写回目标会话 + 完成通知。**默认关**
+     * ——关闭时行为与历史完全一致（会话注入），也便于按设置整体回退。
+     */
+    val scheduledHeadlessEnabled: Boolean = false,
     /**
      * 子代理预设：**「按名称调度的模型 + 提示词」组合**列表。
      *

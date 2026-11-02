@@ -2066,6 +2066,8 @@
   <string name="setting_page_dynamic_run_gate_desc">修改子代理並發上限後立即按新值裁決。關閉 = 首讀凍結，需重新啟動程序</string>
   <string name="setting_page_kill_shell_on_run_cancel">取消時終止 run 的背景命令</string>
   <string name="setting_page_kill_shell_on_run_cancel_desc">run 被取消或逾時後，級聯終止它啟動的背景 shell 任務</string>
+  <string name="setting_page_scheduled_headless">定時任務無頭執行</string>
+  <string name="setting_page_scheduled_headless_desc">定時任務改為獨立 agent run，不再注入目標會話；結果以 notice 投遞並通知。需要開啟背景子代理；關閉 = 保持會話注入</string>
   <string name="setting_page_guardrails_unit_minutes">分鐘</string>
   <string name="close">關閉</string>
   <string name="skills_page_builtin_badge">內建</string>

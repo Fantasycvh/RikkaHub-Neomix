@@ -118,9 +118,8 @@ object TaskStateMappings {
         status == TaskRunStatus.TARGET_GONE -> TaskState.FAILED
         status == TaskRunStatus.ASSISTANT_GONE -> TaskState.FAILED
         status == TaskRunStatus.CANCELLED -> TaskState.CANCELLED
-        // 与 AgentRunEntity 的字符串对齐（TaskRunStatus 暂无 INTERRUPTED 常量；
-        // 这里是调度账本的防御分支，P4 并入时再统一）。
-        status == "INTERRUPTED" -> TaskState.INTERRUPTED
+        // P4b：定时账本已补 INTERRUPTED 常量（旧数据的字符串值相同，仍走同一分支）。
+        status == TaskRunStatus.INTERRUPTED -> TaskState.INTERRUPTED
         else -> TaskState.FAILED
     }
 }

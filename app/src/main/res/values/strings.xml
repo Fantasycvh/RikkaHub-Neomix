@@ -2051,6 +2051,8 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_page_dynamic_run_gate_desc">Apply a changed subagent concurrency limit immediately. Off = freeze at the first read until restart</string>
   <string name="setting_page_kill_shell_on_run_cancel">Stop run shells on cancel</string>
   <string name="setting_page_kill_shell_on_run_cancel_desc">Kill background commands started by a run when that run is cancelled or times out</string>
+  <string name="setting_page_scheduled_headless">Run scheduled tasks headlessly</string>
+  <string name="setting_page_scheduled_headless_desc">Run scheduled tasks as independent agent runs instead of injecting into the target conversation; results arrive as a notice. Requires background subagent; off = keep conversation injection</string>
   <string name="setting_page_guardrails_unit_minutes">min</string>
   <string name="close">Close</string>
   <string name="skills_page_builtin_badge">Built-in</string>

@@ -23,9 +23,9 @@ import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 
 /**
- * P0 回滚开关的真机落盘/回读验证（不进用户配置）。
+ * P0 回滚开关（及 P4b `scheduledHeadlessEnabled`）的真机落盘/回读验证（不进用户配置）。
  *
- * 为什么要在 instrumentation 里跑：四个开关的值走 DataStore protobuf，JVM 单测只能验
+ * 为什么要在 instrumentation 里跑：这些开关的值走 DataStore protobuf，JVM 单测只能验
  * `Settings` 默认值与 copy；这里用隔离 `settings.preferences_pb` 真正写一次、重开一次，
  * 确认 key 映射与 `Settings` 字段没有接错——这类"设置页点了没生效"的错位只有真机路径能抓到。
  */
@@ -52,8 +52,7 @@ class P0RollbackSwitchInstrumentedTest {
     }
 
     @Test
-    fun rollbackSwitchesPersistAndReload() = runBlocking {
-        val files = File(context.cacheDir, "rollback-switch-${Uuid.random()}").apply { mkdirs() }
+    fun rollbackSwitchesPersistAndReload() = runBlocking {        val files = File(context.cacheDir, "rollback-switch-${Uuid.random()}").apply { mkdirs() }
         val isolated = object : ContextWrapper(context) {
             override fun getFilesDir(): File = files
         }
@@ -91,6 +90,42 @@ class P0RollbackSwitchInstrumentedTest {
                 assertFalse(persisted.namespacedNotifications)
                 assertFalse(persisted.dynamicRunGate)
                 assertFalse(persisted.killShellTasksOnRunCancel)
+            } finally {
+                reloadScope.cancel()
+            }
+        } finally {
+            scope.cancel()
+            files.deleteRecursively()
+        }
+    }
+
+    /**
+     * P4b 的 headless 开关同样必须真正落盘：默认关（历史注入），开启后重开仍是开。
+     * 这里只验证设置路径，不触发真实定时执行（执行链路由 JVM 纯函数/源码守卫覆盖）。
+     */
+    @Test
+    fun headlessSwitchDefaultsOffPersistsAndReloads() = runBlocking {
+        val files = File(context.cacheDir, "headless-switch-${Uuid.random()}").apply { mkdirs() }
+        val isolated = object : ContextWrapper(context) {
+            override fun getFilesDir(): File = files
+        }
+        val scope = AppScope()
+        val settingsFile = File(files, "settings.preferences_pb")
+        try {
+            val store = SettingsStore(isolated, scope, settingsFile)
+            val initial = withTimeout(10_000) { store.settingsFlow.first { !it.init } }
+            assertFalse("默认关，否则升级会悄悄改变定时任务结果去向", initial.scheduledHeadlessEnabled)
+
+            store.update { it.copy(scheduledHeadlessEnabled = true) }
+            assertTrue(withTimeout(10_000) { store.settingsFlow.first() }.scheduledHeadlessEnabled)
+
+            val copy = File(files, "settings-copy.preferences_pb")
+            settingsFile.copyTo(copy, overwrite = true)
+            val reloadScope = AppScope()
+            try {
+                val reloaded = SettingsStore(isolated, reloadScope, copy)
+                val persisted = withTimeout(10_000) { reloaded.settingsFlow.first { !it.init } }
+                assertTrue("key 映射不对会表现为重开后开关自己弹回", persisted.scheduledHeadlessEnabled)
             } finally {
                 reloadScope.cancel()
             }

@@ -151,6 +151,9 @@ object TaskRunStatus {
      */
     const val CANCELLED = "CANCELLED"
 
+    /** 非自然中断（P4b headless run 终态映射用；未终态定时账本由任务中心按空 finished_at 展示）。 */
+    const val INTERRUPTED = "INTERRUPTED"
+
     /** NEW_EACH_RUN / DEDICATED 的助手已删：任务自失效（与「会话没了」区分开，便于排查） */
     const val ASSISTANT_GONE = "ASSISTANT_GONE"
 }

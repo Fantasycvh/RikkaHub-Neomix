@@ -177,4 +177,18 @@ class ScheduledTaskGuardTest {
             "evaluateRunStatus(" in runner,
         )
     }
+
+    @Test
+    fun `headless path is opt-in and keeps the injection fallback`() {
+        val runner = source("src/main/java/app/androidrik/rikkahub/service/ScheduledTaskRunner.kt")
+        assertTrue("headless 必须是显式设置（默认关）", "scheduledHeadlessEnabled" in runner)
+        assertTrue("没有后台子代理 notice 通道时不能走 headless", "enableBackgroundSubagent" in runner)
+        assertTrue("headless 派发必须复用 SubagentRunner 的定时入口", "dispatchScheduledAwait(" in runner)
+        assertTrue("取消必须 attach 到同一 ScheduledRunRegistry", "runRegistry.attachJob(runId, job)" in runner)
+        assertTrue(
+            "从 run 详情外部取消时，定时账本必须能区分「用户取消」与「进程级中断」",
+            "subagentRunner.runStatus(" in runner,
+        )
+        assertTrue("关闭/不可用时必须保留历史注入路径", "runInjected(task, mode, conversationId, runId, settingsLoaded)" in runner)
+    }
 }

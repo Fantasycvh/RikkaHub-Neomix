@@ -230,6 +230,7 @@ val appModule = module {
             settingsStore = get(),
             workspaceRepository = get(),
             runRegistry = get(),
+            subagentRunner = get(),
         )
     }
 

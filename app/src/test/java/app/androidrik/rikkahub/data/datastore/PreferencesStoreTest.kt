@@ -56,6 +56,17 @@ class PreferencesStoreTest {
     }
 
     @Test
+    fun `P4b scheduled headless defaults off and survives copy`() {
+        // 默认关 = 历史行为（会话注入）；显式开启才走 agent_run，关闭即整体回退。
+        val settings = Settings()
+        org.junit.Assert.assertFalse(settings.scheduledHeadlessEnabled)
+        org.junit.Assert.assertTrue(settings.copy(scheduledHeadlessEnabled = true).scheduledHeadlessEnabled)
+        org.junit.Assert.assertFalse(settings.copy(scheduledHeadlessEnabled = true).copy(
+            scheduledHeadlessEnabled = false,
+        ).scheduledHeadlessEnabled)
+    }
+
+    @Test
     fun `display setting glass theme defaults to false`() {
         val setting = DisplaySetting()
         org.junit.Assert.assertFalse(setting.enableGlassTheme)

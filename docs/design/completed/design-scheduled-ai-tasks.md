@@ -3,6 +3,8 @@
 > 状态：**P1 已实现（2026-10-30），真机验证中**。范围：到点自动向指定会话注入一条 prompt 并跑完整生成，
 > 结果落在会话里 + 完成通知。存续档位：**Alarm 主唤醒 + WorkManager 双层兜底（revision 4）**，
 > 准点性取决于「闹钟和提醒」授权与电池优化白名单，缺失时按 §6.2 的降级路径执行。
+> **2026-11-02 补充**：可选 headless 执行（`scheduled → agent_run`，默认关、设置可整体回退）已落地，
+> 见 `design-agent-task-runtime.md` §7 P4b；默认路径仍是本文的会话注入，语义不变。
 > 与 `design-workspace-background-tasks`（workspace shell 后台命令，进程级、非定时）是两个正交特性，命名刻意区分。
 >
 > **revision 2（2026-10-30）**：按 `purrcat-analysis.md` §五.A4 并入两个语义——

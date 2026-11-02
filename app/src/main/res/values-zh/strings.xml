@@ -2080,6 +2080,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_dynamic_run_gate_desc">修改子代理并发上限后立即按新值裁决。关闭 = 首读冻结，需重启进程</string>
   <string name="setting_page_kill_shell_on_run_cancel">取消时终止 run 的后台命令</string>
   <string name="setting_page_kill_shell_on_run_cancel_desc">run 被取消或超时后，级联终止它起的后台 shell 任务</string>
+  <string name="setting_page_scheduled_headless">定时任务无头执行</string>
+  <string name="setting_page_scheduled_headless_desc">定时任务改为独立 agent run，不再注入目标会话；结果以 notice 投递并通知。需要开启后台子代理；关闭 = 保持会话注入</string>
   <string name="setting_page_guardrails_unit_minutes">分钟</string>
   <string name="close">关闭</string>
   <string name="skills_page_builtin_badge">内置</string>
