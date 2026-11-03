@@ -65,6 +65,9 @@ import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.datastore.isNotConfigured
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.ui.permission.LocalNetworkPermissionCard
+import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
+import app.androidrik.rikkahub.ui.components.ui.permission.rememberLocalNetworkPermissionState
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.ui.pages.setting.search.SettingSearchBar
@@ -85,6 +88,8 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val navController = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val filesManager: FilesManager = koinInject()
+    val localNetworkPermission = rememberLocalNetworkPermissionState()
+    localNetworkPermission?.let { PermissionManager(it) }
 
     Scaffold(
         topBar = {
@@ -117,6 +122,15 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             if (settings.isNotConfigured()) {
                 item {
                     ProviderConfigWarningCard(navController)
+                }
+            }
+
+            if (localNetworkPermission?.allRequiredPermissionsGranted == false) {
+                item("localNetworkPermission") {
+                    LocalNetworkPermissionCard(
+                        permissionState = localNetworkPermission,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
                 }
             }
 
