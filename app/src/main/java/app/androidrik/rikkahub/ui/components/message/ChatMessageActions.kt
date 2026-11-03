@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -17,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -250,53 +253,32 @@ fun ChatMessageActionsSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
-        modifier = Modifier.heightIn(max = maxSheetHeight),
+        dragHandle = null,
+        contentWindowInsets = { WindowInsets(0) },
     ) {
+        // 限制内容而非外层 modifier，避免缩小 Material3 计算底部锚点时使用的窗口高度。
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f, fill = false)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .heightIn(max = maxSheetHeight)
+                .navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Select and Copy
-            Card(
-                onClick = {
-                    onDismissRequest()
-                    onSelectAndCopy()
-                },
-                shape = MaterialTheme.shapes.medium
+            BottomSheetDefaults.DragHandle()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = HugeIcons.TextSelection,
-                        contentDescription = null,
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.select_and_copy),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
-
-            // WebView Preview (only show if message has text content)
-            val hasTextContent = message.parts.filterIsInstance<UIMessagePart.Text>()
-                .any { it.text.isNotBlank() }
-
-            if (hasTextContent) {
+                // Select and Copy
                 Card(
                     onClick = {
                         onDismissRequest()
-                        onWebViewPreview()
+                        onSelectAndCopy()
                     },
                     shape = MaterialTheme.shapes.medium
                 ) {
@@ -308,62 +290,120 @@ fun ChatMessageActionsSheet(
                             .fillMaxWidth()
                     ) {
                         Icon(
-                            imageVector = HugeIcons.WebDesign01,
+                            imageVector = HugeIcons.TextSelection,
                             contentDescription = null,
                             modifier = Modifier.padding(4.dp)
                         )
                         Text(
-                            text = stringResource(R.string.render_with_webview),
+                            text = stringResource(R.string.select_and_copy),
                             style = MaterialTheme.typography.titleMedium,
                         )
                     }
                 }
-            }
 
-            // #1906 引用：只对可引用（有文本）的消息显示
-            val quotable = remember(message) { message.toQuotedMessage() != null }
-            if (quotable) {
-                Card(
-                    onClick = {
-                        onDismissRequest()
-                        onQuote()
-                    },
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.QuoteUp,
-                            contentDescription = null,
-                            modifier = Modifier.padding(4.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.chat_message_quote),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                }
-            }
+                // WebView Preview (only show if message has text content)
+                val hasTextContent = message.parts.filterIsInstance<UIMessagePart.Text>()
+                    .any { it.text.isNotBlank() }
 
-            // Edit。多文本段消息（工具轮续跑形状「文本-工具卡-文本」）按段列出编辑入口——
-            // 否则编辑只能落到最后一段（更早的文本永远改不了，且用户会以为编辑的是前面那段）。
-            val textSegments = remember(message) {
-                message.parts.withIndex()
-                    .filter { (it.value as? UIMessagePart.Text)?.text?.isNotBlank() == true }
-            }
-            if (onEditSegment != null && textSegments.size > 1) {
-                textSegments.forEachIndexed { ordinal, (index, part) ->
-                    val fullText = (part as UIMessagePart.Text).text.trim()
-                    val snippet = if (fullText.length > 24) fullText.take(24) + "…" else fullText
+                if (hasTextContent) {
                     Card(
                         onClick = {
                             onDismissRequest()
-                            onEditSegment(message, index)
+                            onWebViewPreview()
+                        },
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.WebDesign01,
+                                contentDescription = null,
+                                modifier = Modifier.padding(4.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.render_with_webview),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+                }
+
+                // #1906 引用：只对可引用（有文本）的消息显示
+                val quotable = remember(message) { message.toQuotedMessage() != null }
+                if (quotable) {
+                    Card(
+                        onClick = {
+                            onDismissRequest()
+                            onQuote()
+                        },
+                        shape = MaterialTheme.shapes.medium,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.QuoteUp,
+                                contentDescription = null,
+                                modifier = Modifier.padding(4.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.chat_message_quote),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+                }
+
+                // Edit。多文本段消息（工具轮续跑形状「文本-工具卡-文本」）按段列出编辑入口——
+                // 否则编辑只能落到最后一段（更早的文本永远改不了，且用户会以为编辑的是前面那段）。
+                val textSegments = remember(message) {
+                    message.parts.withIndex()
+                        .filter { (it.value as? UIMessagePart.Text)?.text?.isNotBlank() == true }
+                }
+                if (onEditSegment != null && textSegments.size > 1) {
+                    textSegments.forEachIndexed { ordinal, (index, part) ->
+                        val fullText = (part as UIMessagePart.Text).text.trim()
+                        val snippet = if (fullText.length > 24) fullText.take(24) + "…" else fullText
+                        Card(
+                            onClick = {
+                                onDismissRequest()
+                                onEditSegment(message, index)
+                            },
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = HugeIcons.Edit01,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(4.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.chat_message_edit_segment, ordinal + 1, snippet),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Card(
+                        onClick = {
+                            onDismissRequest()
+                            onEdit()
                         },
                         shape = MaterialTheme.shapes.medium
                     ) {
@@ -380,99 +420,18 @@ fun ChatMessageActionsSheet(
                                 modifier = Modifier.padding(4.dp)
                             )
                             Text(
-                                text = stringResource(R.string.chat_message_edit_segment, ordinal + 1, snippet),
+                                text = stringResource(R.string.edit),
                                 style = MaterialTheme.typography.titleMedium,
                             )
                         }
                     }
                 }
-            } else {
+
+                // Share
                 Card(
                     onClick = {
                         onDismissRequest()
-                        onEdit()
-                    },
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Edit01,
-                            contentDescription = null,
-                            modifier = Modifier.padding(4.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.edit),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                }
-            }
-
-            // Share
-            Card(
-                onClick = {
-                    onDismissRequest()
-                    onShare()
-                },
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = HugeIcons.Share04,
-                        contentDescription = null,
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.share),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
-
-            // Create a Fork
-            Card(
-                onClick = {
-                    onDismissRequest()
-                    onFork()
-                },
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = HugeIcons.GitFork,
-                        contentDescription = null,
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.create_fork),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
-
-            if (onToggleFavorite != null) {
-                Card(
-                    onClick = {
-                        onDismissRequest()
-                        onToggleFavorite()
+                        onShare()
                     },
                     shape = MaterialTheme.shapes.medium,
                 ) {
@@ -484,56 +443,111 @@ fun ChatMessageActionsSheet(
                             .fillMaxWidth()
                     ) {
                         Icon(
-                            imageVector = HugeIcons.FavouriteCircle,
+                            imageVector = HugeIcons.Share04,
                             contentDescription = null,
                             modifier = Modifier.padding(4.dp)
                         )
                         Text(
-                            text = stringResource(
-                                if (isFavorite) R.string.chat_message_remove_favorite
-                                else R.string.chat_message_add_favorite
-                            ),
+                            text = stringResource(R.string.share),
                             style = MaterialTheme.typography.titleMedium,
                         )
                     }
                 }
-            }
 
-            // Delete
-            Card(
-                onClick = {
-                    onDismissRequest()
-                    onDelete()
-                },
-                shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                )
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
+                // Create a Fork
+                Card(
+                    onClick = {
+                        onDismissRequest()
+                        onFork()
+                    },
+                    shape = MaterialTheme.shapes.medium,
                 ) {
-                    Icon(
-                        imageVector = HugeIcons.Delete01,
-                        contentDescription = null,
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.delete),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.GitFork,
+                            contentDescription = null,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.create_fork),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
                 }
-            }
 
-            // Message Info
-            ProvideTextStyle(MaterialTheme.typography.labelSmall) {
-                Text(message.createdAt.toJavaLocalDateTime().toLocalString())
-                if (model != null) {
-                    Text(model.displayName)
+                if (onToggleFavorite != null) {
+                    Card(
+                        onClick = {
+                            onDismissRequest()
+                            onToggleFavorite()
+                        },
+                        shape = MaterialTheme.shapes.medium,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.FavouriteCircle,
+                                contentDescription = null,
+                                modifier = Modifier.padding(4.dp)
+                            )
+                            Text(
+                                text = stringResource(
+                                    if (isFavorite) R.string.chat_message_remove_favorite
+                                    else R.string.chat_message_add_favorite
+                                ),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+                }
+
+                // Delete
+                Card(
+                    onClick = {
+                        onDismissRequest()
+                        onDelete()
+                    },
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Delete01,
+                            contentDescription = null,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.delete),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+
+                // Message Info
+                ProvideTextStyle(MaterialTheme.typography.labelSmall) {
+                    Text(message.createdAt.toJavaLocalDateTime().toLocalString())
+                    if (model != null) {
+                        Text(model.displayName)
+                    }
                 }
             }
         }
