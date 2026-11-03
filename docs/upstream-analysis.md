@@ -1676,6 +1676,16 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - debug 应用与 androidTest APK 构建通过；IME 审计 A=0、A'=0（B=5/C=29 均既有告警），`git diff --check` 通过。
 - 设备使用隔离测试 runner，不启动生产 Application/DI；从相册/文件管理器选择真实附件、选择助手、发送给实际模型的完整人工验收尚未执行。
 
+## 2026-11-03 #2288 复查：收藏重复 key 的根因与持久化验证
+
+用户指定再次排查。实时 GitHub API 核对：#2288 仍 open、无评论；原报告为 RikkaHub 3.1.1 / Android 12 / Huawei P50 Pro。异常明确为 `Key "favorite:a40c316e-6506-40bd-ae33-33e218697be9" was already used`，指向模型选择器的收藏区，不是消息收藏页。
+
+- **触发机制**：旧版收藏点击回调捕获上一帧的 `favorite=false`；在列表重组前连续触发时，两次追加均走 `favorites + model.id`，可产生重复 UUID。Web 全量收藏替换或导入的脏配置也能带入重复项。旧读取链只删失效引用，渲染 `mapNotNull` 保留重复，最终生成相同的 `favorite:<UUID>` Lazy key。报告缺少操作步骤/原始配置，不能断言报告者具体走了其中哪条入口。
+- **本仓覆盖**：`800f9bbcf` 已在读取和写入路径统一 `normalizeFavoriteModelIds`；写入磁盘与 `settingsFlow.value` 都使用 corrected 收藏列表；UI 对持久化/拖动局部顺序另作 distinct，追加操作幂等。Web、导入和备份/同步经同一读写层处理。拖动只改变顺序，不会绕过最终渲染去重。收藏区与普通模型区使用不同 key 空间（prefixed String / UUID），同一模型在两区出现不构成本次重复 key。
+- **新增真实持久化回归**：`FavoriteModelsInstrumentedTest` 使用随机 cache 子目录和隔离 SettingsStore，直接 seed protobuf 偏好数据（重复 ID、失效 ID），验证旧列表算法会形成报告同款重复 key，而当前真实 settings 读取路径保持顺序并去重；另验证重复设置更新后的即时内存态、磁盘原始 favorites JSON 和新 SettingsStore 重载状态一致。
+- **执行结果**：原 `FavoriteModelsTest` 3 项 JVM 测试通过；新集成测试在 Android 15 真机通过 **2/2**，app debug 主代码和 androidTest APK 编译通过；`git diff --check` 通过。使用隔离 runner/临时配置，不读写用户实际偏好。
+- **结论**：当前本仓这条崩溃路径已由既有修复覆盖，本轮仅补测试和记录，无新增生产代码修改；未复现报告者 Android 12 机型上的完整操作过程。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)
