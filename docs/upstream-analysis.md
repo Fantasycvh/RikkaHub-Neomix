@@ -2,6 +2,8 @@
 
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.14 (316)`（预发布，2026-10-31 发）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产；tag 触发的 CI 发版流水线自 `beta.14` 起启用）。
 
+> **同步点（2026-11-03 更新）**：已评估到上游 **`903e058b9`**，`a5db9c9b7` 之后共 **3 提交**；issue 扫描到 **#2290**。按用户指定分四批落地：收藏重复 key 防崩、设置页局域网权限入口、OCR 配置失效明确报错、多关键词模型搜索。`20e9ddcc5`（配色库去 submodule）暂缓；后台 shell PR #2268 仍未合并，继续专项观察。详见文末「2026-11-03 同步评估与四批吸收」。
+
 > **同步点（2026-10-31 更新）**：已评估到上游 **`a5db9c9b7`**（2026-10-29，上游 HEAD，版本 `3.1.1`+dev），本批 `ad2c4430d`..`a5db9c9b7` 共 **10 提交**（逐条见「2026-10-31 同步评估」）：**两条 P1 已吸收（fork `beb6fb1fb`）**——`1575d179d`（空 role 崩溃容错 + 3 条回归用例）、`79f4b6fb2`（SAF 导出防闪退两处）；**余吸收候选**：`a046505a6`（加号面板滚动，P2）、`a5db9c9b7`（Tinyfish purpose，P2）、`eb530b0ff` 的 LatexText 行距正则（P3）、`281c9525a`（停止后队列卡住，P2 待核）、`a1c61c3cb`+`fa5d5f3f6`+`20c24e7d3`（构建/依赖小件，P3 一批）；已等价 3 条（`2c4d1979c` 本仓 10-25 已修同根因、`50bb57857` 决策 8 覆盖更强、`4af510624` 前批已结）；不跟 4 条（BetterText 迁移、ANSI 色块等）。**未合入分支 `feat/background-shell` 两条（shell 后台命令 + 会话收件箱）记账观察**。issue 扫描至 #2275，**#2271（Mistral 422 reasoning_content，open）本仓同构风险**。
 > **同步点（2026-11-01 更新）**：按用户指定吸收 2026-10-24 起挂起的最后一条候选 **`41ce12f66`（models.dev 模型元数据）**，fork **`b9a95f0d4`**——ai 侧 `ModelsDevCatalog` + 注册表 catalog 优先、app 侧 `ModelsDevUpdater` + 内置快照（每日 ETag 刷新）+ 本仓补上的 `contextLength` 消费全部落地。数据覆盖核对与取舍见文末「2026-11-01 models.dev 模型元数据落地」一节。
 > **同步点（2026-10-16 晚间更新）**：逐条评估已跟进到上游 **`cfb503d8c`（2026-10-16 的 master HEAD）**，上游版本仍是 **`2.5.6`**（后续提交均未发版）。最新一节见下方「2026-10-16 同步」；再前一节为「2026-10-15 同步」。
@@ -1611,6 +1613,51 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - `:ai:testDebugUnitTest`：**377 项，0 失败/错误/跳过**（新增 `ModelsDevCatalogTest` 7 项、`ModelRegistryCatalogTest` 4 项；`ModelRegistryTest` 只加 `@After` 复位 catalog，防同 JVM 下的执行顺序污染，断言一条未改）。
 - `:app:testDebugUnitTest`：**2,658 项，0 失败/错误，2 skipped（均既有）**（新增 `ModelsDevAssetTest`：读内置快照解码后断言 `gpt-4o` 视觉输入 + 上下文 128K、`claude-sonnet-4-5` 支持 TOOL）。
 - `:app:compileDebugKotlin` 通过；`git diff --check` 通过。未另行打包/真机验证（本次是纯元数据/启动期装载，不涉 UI 布局）。
+
+## 2026-11-03 同步评估与四批吸收
+
+本轮基准为 10-31 的完整评估点 `a5db9c9b7` / issue #2275；11-01 的 models.dev 落地不改变该基准。实时 fetch 和 GitHub API 核对：master HEAD `903e058b9`（11-02），新增 3 提交；新增 issue #2276–#2290 共 15 条（8 open / 7 closed）。正式版仍为 3.1.1。
+
+### 提交评估
+
+| 上游提交 | 内容 | 结论 |
+|---|---|---|
+| `5ad19405c` | 模型多关键词 AND 搜索，关闭 #2283 | 本批吸收：抽出 `filterByKeywords`，聊天选择器与提供商模型页共用；保留本仓 `selectableOf` 的类型/启停过滤 |
+| `20e9ddcc5` | material-color-utilities 去 submodule，内置源码 | 暂缓：本仓子模块固定在 `6fd88eb3`，上游内置来源为 `5b3618b1`，不能直接视为配色行为不变；非功能修复 |
+| `903e058b9` | 设置页本地网络权限提示，关联 #2289 | 第二批吸收，见下表 |
+
+### 四批落地（用户指定顺序，本地 Git 提交）
+
+| 批次 | 本仓提交 | 行为与验证范围 |
+|---|---|---|
+| 1 收藏防崩 | `800f9bbcf` | 设置读取、持久化和同步发布时去重并过滤失效模型 ID；UI 收藏列表另行去重，追加操作幂等。保留收藏顺序，不删除隐藏模型的收藏。新增 `FavoriteModelsTest` 3 项 |
+| 2 局域网权限 | `1cca0d0e4` | Android 17+ 未授权时在设置页显示权限卡，复用现有申请/拒绝/跳转系统设置流程；权限管理器常驻页面，避免 Lazy item 离屏影响说明弹窗；英文、简中、繁中说明均更新为涵盖局域网提供商和 Web 服务（locale-tui） |
+| 3 OCR 配置报错 | `c5e82dd66` | 使用本轮 `TransformerContext.settings`；缺失/已删除 OCR 模型直接抛出可见聊天错误，提示 Settings > Models，不再静默替换为 `[Image]`；保留 provider override 与隐藏模型语义，取消异常继续上抛。新增 `OcrTransformerTest` 3 项 |
+| 4 模型搜索 | 随本节提交 | 忽略大小写及多余空格，关键词无顺序要求、AND 匹配 ID 或显示名称；两处入口共用逻辑。移植并适配上游 `ModelFilterTest` 6 项 |
+
+### issue 跟进
+
+- **#2288（open）**：重复 `favorite:<UUID>` key 崩溃，本仓存在同构路径，已由第一批防护；未声称完成上游设备问题的实机复现。
+- **#2289（closed）**：Android 17 局域网网关无法连接，第二批补齐本仓入口。
+- **#2276（模板自动关闭）/#2277（撤回）**：关闭不代表技术修复；本仓同款 `[Image]` 返回已在第三批处理。
+- **#2283（closed）**：已落实为第四批多关键词搜索。
+- **#2281/#2282（open）**：模型目录统一刷新与已选模型缺失提醒，记为后续功能；与 models.dev 能力元数据更新不同。
+- **#2279（open，#2278 为已关闭同题）**：图片/文件系统分享，本仓确有缺口，需附件/URI 接收链路，不能只改 Manifest。
+- **#2287（open，#2286 为已关闭同题）**：SSH 跳板机，本仓无 jump 配置；作者给出 fork 实现和验证声明，尚未独立核验。
+- **#2285（open，#2284 为已撤回旧报告）**：单波浪线删除线差异，记回归样例；本仓渲染架构已分叉，不直接套上游结论。
+- **#2280（open）**：增量备份，记产品需求。
+- **#2290（open）**：默认助手重复/后台闪退，缺日志和复现步骤，观察。
+- **旧项 #2271**：仍 open、0 评论，无新修法，继续观察。
+
+**PR #2268**：仍 open、非 draft、未合并，HEAD `068dea491`；分支重写后当前共 5 条独有提交，新增面板、user 节点通知、Rootfs 重装/重生成/压缩时序修复。本仓已有后台任务和通知系统，后续应专项审查投递时机、取消语义和 PRoot 进程清理，不整支移植。
+
+### 验证
+
+- `:app:testDebugUnitTest --tests '*FavoriteModelsTest' --tests '*OcrTransformerTest'` 与 `:ai:testDebugUnitTest --tests '*ModelFilterTest'` 联合执行成功：共 **12 项，0 失败/错误/跳过**，同时完成 app/ai debug 主代码与测试代码编译。
+- `python scripts/audit_ime_trap.py`：**A=0、A'=0**；B=5、C=29 为其他既有位置的非阻断告警。
+- `git diff --check` 通过；三语资源经 Android 资源编译验证。
+- 本机构建使用 Android Studio 的 JetBrains JDK 21 与 `D:/A-projects-relaygradle` 缓存。Gradle 的 JitPack 下载曾超时，验证时通过临时 init script 读取从同一官方 JitPack URL 下载的 HugeIcons 1.3 AAR/POM/module；AAR SHA256 与官方 module 元数据一致，仓库依赖声明未改。临时仓库还补入 HugeIcons POM 引用的 Compose BOM 2026.02.01。
+- 未运行设备端权限交互或 OCR 真机验收；上述结论为编译、JVM 回归测试与静态审计。四批仅本地提交，未推送。
 
 ## 关联
 

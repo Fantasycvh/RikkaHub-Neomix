@@ -100,7 +100,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.fastFilter
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.CoroutineScope
@@ -109,6 +108,7 @@ import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.filterByKeywords
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.ProviderManager
@@ -1355,17 +1355,7 @@ private fun ModelPicker(
             sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
         ) {
             var filterText by remember { mutableStateOf("") }
-            val filterKeywords = filterText.split(" ").filter { it.isNotBlank() }
-            val filteredModels = models.fastFilter {
-                if (filterKeywords.isEmpty()) {
-                    true
-                } else {
-                    filterKeywords.all { keyword ->
-                        it.modelId.contains(keyword, ignoreCase = true) ||
-                            it.displayName.contains(keyword, ignoreCase = true)
-                    }
-                }
-            }
+            val filteredModels = models.filterByKeywords(filterText)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()

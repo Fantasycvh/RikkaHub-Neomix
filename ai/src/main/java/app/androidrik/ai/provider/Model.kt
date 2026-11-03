@@ -41,6 +41,18 @@ data class Model(
     val providerOverwrite: ProviderSetting? = null,
 )
 
+/** 空格分隔、顺序无关的 AND 搜索，每个关键词可匹配模型 ID 或显示名称。 */
+fun List<Model>.filterByKeywords(query: String): List<Model> {
+    val keywords = query.split(" ").filter { it.isNotBlank() }
+    if (keywords.isEmpty()) return this
+    return filter { model ->
+        keywords.all { keyword ->
+            model.modelId.contains(keyword, ignoreCase = true) ||
+                model.displayName.contains(keyword, ignoreCase = true)
+        }
+    }
+}
+
 @Serializable
 enum class ModelType {
     CHAT,

@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.filterByKeywords
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.ProviderSetting
@@ -375,11 +376,8 @@ private fun ColumnScope.ModelList(
         }
     }
 
-    val searchFilteredModelsByProvider = remember(providers, modelType, searchKeywords) {
-        providers.associate { provider ->
-            provider.id to provider.models.selectableOf(modelType)
-                .filter { it.displayName.contains(searchKeywords, true) }
-        }
+    val searchFilteredModelsByProvider = remember(typeFilteredModelsByProvider, searchKeywords) {
+        typeFilteredModelsByProvider.mapValues { (_, models) -> models.filterByKeywords(searchKeywords) }
     }
 
     // 折叠只影响**渲染与定位**，不改 item 数量以外的任何东西；
