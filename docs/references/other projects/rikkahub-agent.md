@@ -48,7 +48,7 @@ README 自述 "Your phone, automated"——把 RikkaHub 改成端侧 Agent：80+
 | 提交 | 内容 | 本仓落点 |
 |---|---|---|
 | `349f2908f` | 流式解码器 image data URI 改 mime 无关解析，非 data/http 跳过而不抛 | `ai/.../ChatCompletionsStreamDecoder.kt:142-143` 仍是 `require(data:image)` + png 硬编码 substring——中转返 https 图会**整轮生成中断**；非流式 `ChatCompletionsAPI.kt:913-937` 已于 10-16 修好同两因，流式漏了。**✅ 已落地 `064a8b772`（2026-11-03）** |
-| `e1a51b93e` | 渐变背景 30fps 限速时间源 + 绘制期读相位 + `STARTED` 外暂停 | `ui/pages/chat/MeshGradientBackground.kt:40-55` 与修前逐字相同；需与 BiliPai `ReduceMotion` 一起做（自驱循环不再自动遵循系统减弱动效）。**✅ 已落地 `3254e33b0`（2026-11-03）** |
+| `e1a51b93e` | 渐变背景 30fps 限速时间源 + 绘制期读相位 + `STARTED` 外暂停 | `ui/pages/chat/MeshGradientBackground.kt:40-55` 与修前逐字相同；需与 BiliPai `ReduceMotion` 一起做（自驱循环不再自动遵循系统减弱动效）。**✅ 已落地 `3254e33b0`，渐变节流真机验证通过（2026-11-03）** |
 | `f85ab6670`（前半） | 标题/建议生成 `AuxJobRegistry` 按会话单飞，新生成/重生成前取消在飞请求 | `service/ChatService.kt:2195-2201` 现为裸 fire-and-forget，连点会重复请求、顶掉本地 prompt cache。**✅ 已落地 `90da13861`（2026-11-03）** |
 
 ### 候选（6）
