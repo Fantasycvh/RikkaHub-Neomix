@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import java.io.File
 import java.io.OutputStream
-import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
@@ -106,10 +105,16 @@ internal object WorkspaceBackupHelper {
                 count += addDirRecursive(zipOut, rootDir, file, entryPrefix, onBytes)
             } else if (file.isFile) {
                 val relative = file.relativeTo(rootDir).invariantSeparatorsPath
-                zipOut.putNextEntry(ZipEntry("$entryPrefix$relative"))
-                // 边拷贝边上报：大文件内部也推进进度（工作区里可能有 GB 级克隆）
-                file.inputStream().use { copyReporting(it, zipOut, onBytes) }
-                zipOut.closeEntry()
+                // 复用 AppFilesPacking 的条目写入（含「不可压缩 → STORED」采样策略，见 BackupZipStrategy）：
+                // 此前工作区直接 putNextEntry，2.8GB git pack 仍按 DEFLATE 白烧数分钟 CPU。
+                // 边拷贝边上报，大文件内部也推进进度（工作区里可能有 GB 级克隆）。
+                addFileToZip(
+                    zipOut = zipOut,
+                    file = file,
+                    entryName = "$entryPrefix$relative",
+                    onBytes = onBytes,
+                    onLog = { message -> Log.i(TAG, message) },
+                )
                 count++
             }
         }

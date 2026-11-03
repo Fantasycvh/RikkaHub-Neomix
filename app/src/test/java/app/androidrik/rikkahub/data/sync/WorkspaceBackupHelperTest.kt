@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.sync
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -7,6 +8,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.Random
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 /**
  * 工作区备份的安全边界（zip 路径映射 / root 名校验 / zip-slip 防护）。
@@ -97,5 +102,36 @@ class WorkspaceBackupHelperTest {
         // 前缀须与 upload/skills/fonts/tool_outputs 区分，恢复时靠前缀分派
         assertTrue(WorkspaceBackupHelper.ZIP_PREFIX.startsWith("workspace"))
         assertTrue(WorkspaceBackupHelper.ZIP_PREFIX.endsWith("/"))
+    }
+
+    @Test
+    fun `incompressible workspace files use STORED instead of DEFLATE`() {
+        // P0 回归：工作区打包此前直接 putNextEntry，2.8GB git pack 仍走 DEFLATE（24MB/s 烧核数分钟）。
+        // 现在复用 AppFilesPacking.addFileToZip ⇒ 采样判不可压缩时用 STORED，且内容必须逐字节一致。
+        val dir = File(base, "stored-${System.nanoTime()}").absoluteFile
+        try {
+            val root = "root1"
+            val filesDir = File(dir, "$root/files").apply { mkdirs() }
+            val payload = ByteArray(256 * 1024).also { Random(7).nextBytes(it) }
+            File(filesDir, "clone.pack").writeBytes(payload)
+
+            val zip = File(dir, "ws.zip")
+            ZipOutputStream(zip.outputStream()).use { out ->
+                WorkspaceBackupHelper.addWorkspaceFilesToZip(
+                    zipOut = out,
+                    workspaceBaseDir = dir,
+                    roots = listOf(root),
+                    onBytes = {},
+                )
+            }
+
+            ZipFile(zip).use { zf ->
+                val entry = requireNotNull(zf.getEntry("workspace_files/$root/clone.pack"))
+                assertTrue("不可压缩的工作区大文件应为 STORED", entry.method == ZipEntry.STORED)
+                assertArrayEquals(payload, zf.getInputStream(entry).readBytes())
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 }

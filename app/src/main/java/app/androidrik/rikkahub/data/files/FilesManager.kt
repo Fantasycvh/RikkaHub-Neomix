@@ -944,6 +944,15 @@ object FileFolders {
      * 不进备份（见 `EXCLUDED_FILE_FOLDERS`）。
      */
     const val SAFETY_BACKUP = "safety_backup"
+
+    /**
+     * 增量备份的**本地索引**（哈希缓存 + 每个远端目的地的快照状态）。
+     *
+     * 纯派生数据：删掉只会导致下次备份重新计算内容哈希，不影响备份完整性，故不进备份
+     * （见 `BackupFolderRegistry.kt` 的 `EXCLUDED_FILE_FOLDERS`）。P1 起由
+     * `IncrementalBackupEngine` 使用，见 `docs/design/drafts/design-incremental-backup.md` §5.6。
+     */
+    const val BACKUP_INDEX = "backup_index"
 }
 
 suspend fun FilesManager.saveUploadFromUri(

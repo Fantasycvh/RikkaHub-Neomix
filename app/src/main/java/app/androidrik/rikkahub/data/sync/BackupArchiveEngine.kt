@@ -269,48 +269,36 @@ internal class BackupArchiveEngine(
             // 第一遍对这两类条目只记账、不写任何用户文件（见下方 else 分支注释）。
             fun restoreUserFileEntry(zipIn: ZipInputStream, zipEntry: ZipEntry) {
                 val bounded = boundedEntryStream(zipIn)
-                when {
-                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.UPLOAD}/") -> {
-                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.UPLOAD)
+                // 恢复分派由 BackupFolderRegistry 的规格驱动：新增目录只要登记就会自动获得恢复分支，
+                // 避免旧实现「打包清单 / 恢复 when / 测试集合」三份清单漂移（backgrounds 曾因此恢复丢文件）。
+                val spec = backupFolderSpecFor(zipEntry.name)
+                if (spec != null && BackupItem.FILES in items) {
+                    when (spec.restoreKind) {
+                        BackupRestoreKind.FLAT -> restoreFlatEntry(bounded, zipEntry.name, spec.folder)
+                        BackupRestoreKind.FONTS -> restoreFontEntry(bounded, zipEntry.name)
+                        BackupRestoreKind.SKILLS -> restoreSkillEntry(bounded, zipEntry.name)
                     }
-                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.IMAGES}/") -> {
-                        // images（imggen 产物）此前不进备份——旧备份无此条目自然跳过
-                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.IMAGES)
-                    }
-                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.AVATARS}/") -> {
-                        // avatars（助手/用户头像）2026-10-13 从 upload/ 独立出来（#2127）；
-                        // **旧备份里头像在 upload/ 下**，由上面那条分支照常恢复到 upload/，
-                        // 再于下次启动被 AvatarMigration 搬进 avatars/ ⇒ 新旧备份都能恢复出头像
-                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.AVATARS)
-                    }
-                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.SKILLS}/") -> {
-                        restoreSkillEntry(bounded, zipEntry.name)
-                    }
-                    BackupItem.FILES in items &&
-                        zipEntry.name.startsWith("${FileFolders.MEDIA_CREATION}/") -> {
-                        // 媒体创作产物：media_creation/<sessionId>/… 递归；复用带 zip-slip 防护的平铺写入
-                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.MEDIA_CREATION)
-                    }
-                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.FONTS}/") -> {
-                        restoreFontEntry(bounded, zipEntry.name)
-                    }
-                    BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.TOOL_OUTPUTS}/") -> {
-                        // 仅兼容旧备份（新备份已不含它）；恢复后也会在下次启动被 cleanup 清掉
-                        restoreFlatEntry(bounded, zipEntry.name, FileFolders.TOOL_OUTPUTS)
-                    }
-                    BackupItem.WORKSPACE_FILES in items &&
-                        zipEntry.name.startsWith(WorkspaceBackupHelper.ZIP_PREFIX) -> {
-                        val restored = WorkspaceBackupHelper.restoreEntry(
-                            context = context,
-                            workspaceBaseDir = WorkspaceBackupHelper.workspacesDir(context),
-                            zipEntryName = zipEntry.name,
-                        ) { output -> bounded.copyTo(output) }
-                        if (restored) {
-                            workspaceFilesRestored++
-                            Log.i(TAG, "restoreFromBackupFile: restored workspace file ${zipEntry.name}")
-                        } else {
-                            Log.w(TAG, "restoreFromBackupFile: skipped workspace entry ${zipEntry.name}")
-                        }
+                    return
+                }
+                // legacy：旧备份里可能有 tool_outputs/（2026-09-15 起移出备份），仅兼容旧包；
+                // 新备份不含它，恢复后下次启动也会被 cleanup 清掉。
+                if (BackupItem.FILES in items && zipEntry.name.startsWith("${FileFolders.TOOL_OUTPUTS}/")) {
+                    restoreFlatEntry(bounded, zipEntry.name, FileFolders.TOOL_OUTPUTS)
+                    return
+                }
+                if (BackupItem.WORKSPACE_FILES in items &&
+                    zipEntry.name.startsWith(WorkspaceBackupHelper.ZIP_PREFIX)
+                ) {
+                    val restored = WorkspaceBackupHelper.restoreEntry(
+                        context = context,
+                        workspaceBaseDir = WorkspaceBackupHelper.workspacesDir(context),
+                        zipEntryName = zipEntry.name,
+                    ) { output -> bounded.copyTo(output) }
+                    if (restored) {
+                        workspaceFilesRestored++
+                        Log.i(TAG, "restoreFromBackupFile: restored workspace file ${zipEntry.name}")
+                    } else {
+                        Log.w(TAG, "restoreFromBackupFile: skipped workspace entry ${zipEntry.name}")
                     }
                 }
             }
@@ -691,7 +679,8 @@ internal class BackupArchiveEngine(
         }
 
     /**
-     * files 下由 [BACKED_UP_FILE_FOLDERS] 声明的用户数据目录（平铺：upload/fonts；递归：skills/images）。
+     * files 下由 [BACKED_UP_FILE_FOLDERS] 声明的用户数据目录（打包形态/递归由
+     * `BackupFolderRegistry` 的 `BACKUP_FOLDER_SPECS` 单一真源决定；恢复分派同理）。
      *
      * **不含 tool_outputs**（2026-09-15 决策，选项①）：它是会话级临时产物——[cleanupToolOutputs]
      * 在每次启动时清空该目录，恢复流程末尾必然重启，刚恢复的文件立刻又被删；打包它只是徒增

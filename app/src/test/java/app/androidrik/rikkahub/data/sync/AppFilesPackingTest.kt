@@ -33,6 +33,10 @@ class AppFilesPackingTest {
         File(filesDir, "${FileFolders.IMAGES}/1788750812843_vendor").mkdirs()
         File(filesDir, "${FileFolders.IMAGES}/1788750812843_vendor/model_0.png").writeText("legacy-img")
         File(filesDir, FileFolders.FONTS).apply { mkdirs() }.resolve("f.ttf").writeText("font")
+        // 2026-11-03（P0）：这两类此前分别是「打包但恢复丢」与「静默不备份」，现在都进备份，
+        // 用本测试钉住它们落在自己的前缀下。
+        File(filesDir, FileFolders.BACKGROUNDS).apply { mkdirs() }.resolve("bg.png").writeText("bg")
+        File(filesDir, FileFolders.AVATAR_FRAMES).apply { mkdirs() }.resolve("frame.png").writeText("frame")
         File(filesDir, "${FileFolders.SKILLS}/my-skill").apply { mkdirs() }.resolve("SKILL.md").writeText("skill")
         return filesDir
     }
@@ -51,6 +55,8 @@ class AppFilesPackingTest {
 
         assertEquals(
             listOf(
+                "avatar-frames/frame.png",
+                "backgrounds/bg.png",
                 "fonts/f.ttf",
                 "images/pic.png",
                 // 遗留子目录按原层级保留（换设备恢复后仍能按旧形态找回）

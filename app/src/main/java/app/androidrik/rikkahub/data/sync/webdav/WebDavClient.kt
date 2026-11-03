@@ -26,37 +26,27 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.File
 import java.io.InputStream
 import java.io.StringReader
-import java.net.URLEncoder
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 private const val TAG = "WebDavClient"
 
-/**
- * WebDAV 路径段 percent-encode（UTF-8，空格用 %20 而非 +）。
- * 文件名含空格/中文/#/?/& 时 URL 非法会导致同步失败。
- */
-internal fun encodeWebDavPathSegment(segment: String): String =
-    URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
+// 路径编码/拆段/拼接见 WebDavPaths.kt（纯 JVM，可单测）。
 
 class WebDavClient(
     private val config: WebDavConfig,
     private val httpClient: HttpClient,
 ) {
-    private fun WebDavConfig.buildUrl(vararg segments: String): String {
-        val base = url.trimEnd('/')
-        val pathSegments = listOfNotNull(
-            path.takeIf { it.isNotBlank() }?.trim('/'),
-            *segments.map { it.trim('/') }.toTypedArray()
-        ).filter { it.isNotEmpty() }
+    /**
+     * 拼接远端 URL：`config.path` 与每个参数都按 `/` 拆段后再逐段编码。
+     *
+     * 旧实现把两者各当成**一整段**，`config.path = "v3/objects"` 会变成 `v3%2Fobjects`，
+     * 多级目录永远建不出来也用不了（增量仓库需要 `v3/objects/<aa>/`，设计稿 §2.4）。
+     */
+    private fun WebDavConfig.buildUrl(vararg segments: String): String =
+        buildWebDavUrl(url, webDavPathSegments(path, segments.toList()))
 
-        return if (pathSegments.isEmpty()) {
-            base
-        } else {
-            "$base/${pathSegments.joinToString("/") { encodeWebDavPathSegment(it) }}"
-        }
-    }
     suspend fun put(
         path: String,
         data: ByteArray,
@@ -248,9 +238,16 @@ class WebDavClient(
         }
     }
 
-    suspend fun mkcol(path: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun mkcol(path: String): Result<Unit> = mkcolAt(config.buildUrl(path))
+
+    /**
+     * 对**已拼好的完整 URL** 发 MKCOL。
+     *
+     * [mkdirs] 逐级创建时手上只有前缀 URL，不能再经过 `buildUrl`（那会把 `config.path`
+     * 再拼一遍）。除了入参换成 URL，鉴权/状态码处理与原先完全一致。
+     */
+    private suspend fun mkcolAt(url: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val url = config.buildUrl(path)
             Log.d(TAG, "MKCOL: $url")
 
             val response: HttpResponse = httpClient.request(url) {
@@ -265,7 +262,7 @@ class WebDavClient(
                 throw WebDavException("Failed to create collection: ${response.status}", response.status.value, errorBody)
             }
 
-            Log.d(TAG, "mkcol success: $path")
+            Log.d(TAG, "mkcol success: $url")
             Unit
         }
     }
@@ -273,9 +270,14 @@ class WebDavClient(
     suspend fun propfind(
         path: String = "",
         depth: Int = 1,
+    ): Result<List<WebDavResourceInfo>> = propfindAt(config.buildUrl(path), depth)
+
+    /** 对完整 URL 发 PROPFIND（[mkdirs] 逐级探测用；解析/鉴权与 [propfind] 完全相同）。 */
+    private suspend fun propfindAt(
+        url: String,
+        depth: Int,
     ): Result<List<WebDavResourceInfo>> = withContext(Dispatchers.IO) {
         runCatching {
-            val url = config.buildUrl(path)
             Log.d(TAG, "PROPFIND: $url, depth: $depth")
 
             val propfindBody = """<?xml version="1.0" encoding="UTF-8"?>
@@ -315,22 +317,30 @@ class WebDavClient(
         return head(path).isSuccess
     }
 
-    suspend fun ensureCollectionExists(path: String = ""): Result<Unit> = withContext(Dispatchers.IO) {
+    /**
+     * 逐级确保远端目录存在：`config.path` 的各层 + [path] 的各层。
+     *
+     * 为什么需要它：增量仓库要写 `v3/objects/<aa>/<hash>` 这类多级路径，而 WebDAV 的
+     * MKCOL 只能逐级创建（父目录不存在时服务端返回 409），旧的 ensureCollectionExists
+     * 只会建最后一层。每级先 PROPFIND depth=0 判存在，缺失才 MKCOL（405 视为已存在）。
+     */
+    suspend fun mkdirs(path: String = ""): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val targetUrl = config.buildUrl(path)
-            Log.d(TAG, "Ensuring collection exists: $targetUrl")
-
-            // Try propfind first to check if it exists
-            val propfindResult = propfind(path, depth = 0)
-            if (propfindResult.isSuccess) {
-                Log.d(TAG, "Collection already exists: $targetUrl")
-                return@runCatching
+            val segments = webDavPathSegments(config.path, listOf(path))
+            for (prefix in cumulativeSegments(segments)) {
+                val url = buildWebDavUrl(config.url, prefix)
+                if (propfindAt(url, depth = 0).isSuccess) {
+                    Log.d(TAG, "Collection already exists: $url")
+                    continue
+                }
+                mkcolAt(url).getOrThrow()
             }
-
-            // Create collection if not exists
-            mkcol(path).getOrThrow()
+            Unit
         }
     }
+
+    /** 保持既有签名（[WebDavSync] 仍调 `ensureCollectionExists()`），语义改为逐级创建。 */
+    suspend fun ensureCollectionExists(path: String = ""): Result<Unit> = mkdirs(path)
 
     suspend fun list(path: String = ""): Result<List<WebDavResourceInfo>> = withContext(Dispatchers.IO) {
         runCatching {

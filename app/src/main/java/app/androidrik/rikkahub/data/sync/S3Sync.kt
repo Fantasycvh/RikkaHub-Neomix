@@ -76,12 +76,13 @@ class S3Sync(
 
     suspend fun listBackupFiles(config: S3Config): List<S3BackupItem> = withContext(Dispatchers.IO) {
         val client = getS3Client(config)
-        val result = client.listObjects(
+        // 翻页取全量：只取首页 1000 条时，>1000 对象的桶里旧备份会静默不可见。
+        val objects = client.listAllObjects(
             prefix = "rikkahub_plus_backups/",
             maxKeys = 1000
         ).getOrThrow()
 
-        result.objects
+        objects
             .filter { it.key.startsWith("rikkahub_plus_backups/backup_") && it.key.endsWith(".zip") }
             .map { obj ->
                 S3BackupItem(

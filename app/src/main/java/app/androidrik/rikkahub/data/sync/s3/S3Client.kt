@@ -530,6 +530,23 @@ class S3Client(
         return headObject(key).isSuccess
     }
 
+    /**
+     * 翻页列举**全部**对象（各页 `objects` 拍平）。
+     *
+     * 旧调用方只取首页 1000 条，超过后旧备份静默不可见；这里循环 continuationToken
+     * 直到服务端不再截断。`commonPrefixes`/`keyCount` 对备份列表没有意义，故丢弃。
+     * 任一页失败即整体失败（`getOrThrow`），不会返回「半份列表」让用户误以为备份缺失。
+     */
+    suspend fun listAllObjects(
+        prefix: String = "",
+        delimiter: String = "",
+        maxKeys: Int = 1000,
+    ): Result<List<S3Object>> = runCatching {
+        collectS3Pages { token ->
+            listObjects(prefix, delimiter, maxKeys, token).getOrThrow()
+        }.flatMap { page -> page.objects }
+    }
+
     fun getPublicUrl(key: String): String {
         val path = "/${key.trimStart('/')}"
         return if (config.pathStyle) {
