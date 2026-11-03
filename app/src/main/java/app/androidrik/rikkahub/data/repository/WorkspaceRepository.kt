@@ -93,6 +93,9 @@ class WorkspaceRepository(
 
     suspend fun getById(id: String): WorkspaceEntity? = dao.getById(id)
 
+    /** 任务中心：后台命令快照只有 root，跳工作区详情前用它反查 id。 */
+    suspend fun getByRoot(root: String): WorkspaceEntity? = withContext(Dispatchers.IO) { dao.getByRoot(root) }
+
     suspend fun create(name: String): WorkspaceEntity {
         val id = Uuid.random().toString()
         val now = System.currentTimeMillis()

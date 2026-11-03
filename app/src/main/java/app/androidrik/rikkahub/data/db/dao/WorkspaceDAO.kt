@@ -15,6 +15,10 @@ interface WorkspaceDAO {
     @Query("SELECT * FROM workspaces WHERE id = :id")
     suspend fun getById(id: String): WorkspaceEntity?
 
+    /** 任务中心的后台命令卡只有 root、没有工作区 UUID；详情页跳转前用它反查。 */
+    @Query("SELECT * FROM workspaces WHERE root = :root LIMIT 1")
+    suspend fun getByRoot(root: String): WorkspaceEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(workspace: WorkspaceEntity)
 

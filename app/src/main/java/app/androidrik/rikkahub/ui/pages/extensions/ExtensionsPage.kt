@@ -96,13 +96,15 @@ fun ExtensionsPage() {
                             headlineContent = { Text(stringResource(R.string.task_center_title)) },
                             supportingContent = { Text(stringResource(R.string.task_center_desc)) },
                         )
+                    } else {
+                        // 任务中心开启后子代理运行/后台命令/定时任务统一进任务中心；旧列表仅回滚态可见
+                        item(
+                            onClick = { navController.navigate(Screen.AgentRuns) },
+                            leadingContent = { Icon(HugeIcons.Rocket01, null) },
+                            headlineContent = { Text(stringResource(R.string.agent_runs_title)) },
+                            supportingContent = { Text(stringResource(R.string.agent_runs_desc)) },
+                        )
                     }
-                    item(
-                        onClick = { navController.navigate(Screen.AgentRuns) },
-                        leadingContent = { Icon(HugeIcons.Rocket01, null) },
-                        headlineContent = { Text(stringResource(R.string.agent_runs_title)) },
-                        supportingContent = { Text(stringResource(R.string.agent_runs_desc)) },
-                    )
                     item(
                         onClick = { navController.navigate(Screen.SubagentPresets) },
                         leadingContent = { Icon(HugeIcons.Robot01, null) },

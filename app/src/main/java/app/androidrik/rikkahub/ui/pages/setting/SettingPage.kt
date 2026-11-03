@@ -221,12 +221,15 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         supportingContent = { Text(stringResource(R.string.setting_page_kb_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_kb)) },
                     )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingScheduledTasks) },
-                        leadingContent = { Icon(HugeIcons.Time02, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_scheduled_tasks_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_scheduled_tasks)) },
-                    )
+                    // 任务中心开启后定时任务管理入口迁入任务中心（二级详情页），设置页不再重复
+                    if (!settings.taskCenterEnabled) {
+                        item(
+                            onClick = { navController.navigate(Screen.SettingScheduledTasks) },
+                            leadingContent = { Icon(HugeIcons.Time02, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_scheduled_tasks_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_scheduled_tasks)) },
+                        )
+                    }
                 }
             }
 

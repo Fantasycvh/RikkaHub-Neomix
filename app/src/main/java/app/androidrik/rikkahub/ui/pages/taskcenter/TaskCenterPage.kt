@@ -14,6 +14,9 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -44,7 +47,12 @@ import app.androidrik.rikkahub.data.task.TaskState
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunsVM
+import app.androidrik.rikkahub.ui.pages.agentrun.DispatchDialog
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Rocket01
+import me.rerere.hugeicons.stroke.Time02
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import java.time.Instant
@@ -70,6 +78,10 @@ fun TaskCenterPage(vm: TaskCenterVM = koinViewModel()) {
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     var filter by rememberSaveable { mutableStateOf<TaskSource?>(null) }
+    // 任务中心是入口收敛后的唯一入口：新建运行（旧 Agent 运行页的 FAB 迁到这里）
+    val agentRunsVm: AgentRunsVM = koinViewModel()
+    val assistants by agentRunsVm.assistants.collectAsStateWithLifecycle()
+    var showDispatch by rememberSaveable { mutableStateOf(false) }
 
     if (filter == null || filter == TaskSource.AGENT) LifecycleStartEffect(Unit) {
         val lease = TaskVisibility.acquire("all")
@@ -82,8 +94,36 @@ fun TaskCenterPage(vm: TaskCenterVM = koinViewModel()) {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.task_center_title)) },
                 navigationIcon = { BackButton() },
+                // 定时任务管理页（旧设置页入口迁到这里，作为任务中心的二级详情页）
+                actions = {
+                    IconButton(onClick = { navController.navigate(Screen.SettingScheduledTasks) }) {
+                        Icon(
+                            imageVector = HugeIcons.Time02,
+                            contentDescription = stringResource(R.string.setting_page_scheduled_tasks),
+                        )
+                    }
+                },
                 colors = CustomColors.topBarColors,
             )
+        },
+        // 新建运行（旧 Agent 运行页的 FAB 迁到这里）
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    if (!agentRunsVm.canStartRun()) {
+                        toaster.show(
+                            resources.getString(R.string.agent_run_dispatch_busy, agentRunsVm.activeRunCount())
+                        )
+                    } else {
+                        showDispatch = true
+                    }
+                },
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Rocket01,
+                    contentDescription = stringResource(R.string.agent_run_dispatch_title),
+                )
+            }
         },
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
@@ -146,7 +186,16 @@ fun TaskCenterPage(vm: TaskCenterVM = koinViewModel()) {
                                 is app.androidrik.rikkahub.data.task.TaskKey.Scheduled ->
                                     navController.navigate(Screen.SettingScheduledTaskDetail(key.taskId))
 
-                                else -> Unit
+                                is app.androidrik.rikkahub.data.task.TaskKey.Shell -> scope.launch {
+                                    val workspaceId = vm.workspaceIdByRoot(key.root)
+                                    if (workspaceId != null) {
+                                        // 后台命令的详情面 = 工作区详情里的后台任务卡（含输出）
+                                        navController.navigate(Screen.WorkspaceDetail(workspaceId))
+                                    } else {
+                                        // 工作区已删：命令只活在进程内注册表，没有详情可看
+                                        navController.navigate(Screen.Workspaces)
+                                    }
+                                }
                             }
                         },
                         onCancel = {
@@ -176,7 +225,8 @@ fun TaskCenterPage(vm: TaskCenterVM = koinViewModel()) {
                 val sectionRecent = stringResource(R.string.task_center_section_recent)
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+                    // 底部留出 FAB（新建运行）的空间，最后一张卡不被遮
+                    contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     taskSection(sectionAttention, needsYou, cardContent)
@@ -185,6 +235,25 @@ fun TaskCenterPage(vm: TaskCenterVM = koinViewModel()) {
                 }
             }
         }
+    }
+
+    if (showDispatch) {
+        DispatchDialog(
+            assistants = assistants,
+            catalogProvider = agentRunsVm::toolCatalog,
+            onDismiss = { showDispatch = false },
+            onDispatch = { profile, goal, tools ->
+                val id = agentRunsVm.dispatch(profile, goal, tools)
+                if (id == null) {
+                    // 与旧运行列表一致：带活跃数，避免 `%1$d` 字面显示
+                    toaster.show(
+                        resources.getString(R.string.agent_run_dispatch_busy, agentRunsVm.activeRunCount())
+                    )
+                } else {
+                    showDispatch = false
+                }
+            },
+        )
     }
 }
 

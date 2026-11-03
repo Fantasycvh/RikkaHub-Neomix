@@ -258,7 +258,7 @@ private fun RunCard(run: AgentRunEntity, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DispatchDialog(
+internal fun DispatchDialog(
     assistants: List<Assistant>,
     catalogProvider: suspend (Assistant) -> List<String>,
     onDismiss: () -> Unit,

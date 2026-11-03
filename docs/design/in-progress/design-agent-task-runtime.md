@@ -926,3 +926,14 @@ P4b 本地提交 `feat(task-runtime): 定时任务可选 headless agent_run`（`
 - 原型的注意力/通知策略（谁该被打扰、打扰几次）比本仓细；本仓目前只有「终态通知 + 待批通知 +
   前台不打扰」。
 
+### E.4 2026-11-03 入口收敛（任务中心开启时）
+
+`taskCenterEnabled = true` 时不再保留分散入口，三源各归其位（关闭后行为完全回退）：
+
+- **扩展页**：只显示「任务中心」，旧「Agent 运行」列表隐藏；`SubagentPresets`（配置面）仍留扩展页。
+- **任务中心顶栏**：「定时任务」管理页入口（原设置页入口迁入，作为二级详情页）；设置页在开关开启时不显示该入口。
+- **任务中心 FAB**：「新建运行」——原 Agent 运行页的派发弹窗迁入（分发逻辑复用 `AgentRunsVM`）。
+- **后台命令卡**：点击 → 工作区详情（`Screen.WorkspaceDetail`，后台任务卡含输出）；工作区已删则回落工作区列表。
+- 实现锚点：`TaskCenterPage.kt`（actions / floatingActionButton / shell 跳转 / `DispatchDialog`）、
+  `TaskCenterVM.workspaceIdByRoot`、`WorkspaceDAO.getByRoot`、`ExtensionsPage` / `SettingPage` 条件入口。
+
