@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.ai.transformers
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -10,12 +11,13 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderManager
+import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.common.cache.LruCache
 import app.androidrik.common.cache.SingleFileCacheStore
-import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.ai.UsageRecorder
@@ -27,6 +29,16 @@ import java.io.File
 import kotlin.time.Duration.Companion.days
 
 private const val TAG = "OcrTransformer"
+
+internal fun resolveOcrConfiguration(settings: Settings): Pair<Model, ProviderSetting> {
+    val model = checkNotNull(settings.findModelById(settings.ocrModelId)) {
+        "OCR model is not configured or no longer exists. Select an OCR model in Settings > Models before sending images to a text-only model."
+    }
+    val provider = checkNotNull(model.findProvider(settings.providers)) {
+        "The OCR model's provider no longer exists. Select an OCR model in Settings > Models."
+    }
+    return model to provider
+}
 
 object OcrTransformer : InputMessageTransformer, KoinComponent {
     private val cache by lazy {
@@ -68,7 +80,7 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
                         parts = message.parts.map { part ->
                             when {
                                 part is UIMessagePart.Image && part.url.startsWith("file:") -> {
-                                    UIMessagePart.Text(performOcr(part))
+                                    UIMessagePart.Text(performOcr(part, ctx.settings))
                                 }
 
                                 else -> part
@@ -82,49 +94,51 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         }
     }
 
-    suspend fun performOcr(part: UIMessagePart.Image): String = runCatching {
-        // Check cache first
-        cache.get(part.url)?.let { cachedResult ->
-            Log.i(TAG, "performOcr: Using cached result for ${part.url}")
-            return cachedResult
+    suspend fun performOcr(part: UIMessagePart.Image, settings: Settings): String {
+        // 配置错误向上传递到聊天错误卡，不能用占位文本替换图片后继续请求模型。
+        val (model, providerSetting) = resolveOcrConfiguration(settings)
+        return runCatching {
+            // Check cache first
+            cache.get(part.url)?.let { cachedResult ->
+                Log.i(TAG, "performOcr: Using cached result for ${part.url}")
+                return@runCatching cachedResult
+            }
+
+            // OCR 也是真实请求：包一层流水（source=OCR），否则这部分花费在统计里完全不可见
+            val provider = get<UsageRecorder>().wrap(
+                get<ProviderManager>().getProviderByType(providerSetting),
+                UsageTag(UsageSource.OCR),
+            )
+            val result = provider.generateText(
+                providerSetting = providerSetting,
+                messages = listOf(
+                    UIMessage.system(settings.ocrPrompt),
+                    UIMessage(
+                        role = MessageRole.USER,
+                        parts = listOf(UIMessagePart.Image(part.url))
+                    )
+                ),
+                params = TextGenerationParams(
+                    model = model,
+                    customHeaders = model.customHeaders,
+                    customBody = model.customBodies,
+                ),
+            )
+            val content = result.message.toText().ifBlank { "[ERROR, OCR failed]" }
+            Log.i(TAG, "performOcr: $content")
+            val ocrResult = """
+                <image_file_ocr>
+                   $content
+                </image_file_ocr>
+                * The image_file_ocr tag contains a description of an image that the user uploaded to you, not the user's prompt.
+            """.trimIndent()
+
+            // Cache the result
+            cache.put(part.url, ocrResult)
+            ocrResult
+        }.getOrElse {
+            if (it is CancellationException) throw it
+            "[ERROR, OCR failed: $it]"
         }
-
-        val settings = get<SettingsStore>().settingsFlow.value
-        val model = settings.findModelById(settings.ocrModelId) ?: return "[Image]"
-        val providerSetting = model.findProvider(settings.providers) ?: return "[Image]"
-        // OCR 也是真实请求：包一层流水（source=OCR），否则这部分花费在统计里完全不可见
-        val provider = get<UsageRecorder>().wrap(
-            get<ProviderManager>().getProviderByType(providerSetting),
-            UsageTag(UsageSource.OCR),
-        )
-        val result = provider.generateText(
-            providerSetting = providerSetting,
-            messages = listOf(
-                UIMessage.system(settings.ocrPrompt),
-                UIMessage(
-                    role = MessageRole.USER,
-                    parts = listOf(UIMessagePart.Image(part.url))
-                )
-            ),
-            params = TextGenerationParams(
-                model = model,
-                customHeaders = model.customHeaders,
-                customBody = model.customBodies,
-            ),
-        )
-        val content = result.message.toText().ifBlank { "[ERROR, OCR failed]" }
-        Log.i(TAG, "performOcr: $content")
-        val ocrResult = """
-            <image_file_ocr>
-               $content
-            </image_file_ocr>
-            * The image_file_ocr tag contains a description of an image that the user uploaded to you, not the user's prompt.
-        """.trimIndent()
-
-        // Cache the result
-        cache.put(part.url, ocrResult)
-        return ocrResult
-    }.getOrElse {
-        "[ERROR, OCR failed: $it]"
     }
 }
