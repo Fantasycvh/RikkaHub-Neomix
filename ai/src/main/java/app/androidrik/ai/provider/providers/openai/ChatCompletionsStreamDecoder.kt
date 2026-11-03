@@ -105,7 +105,7 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
         return streamState.finish(finishReason, responseId, responseModel)
     }
 
-    private fun parseMessage(payload: JsonObject): UIMessage {
+    internal fun parseMessage(payload: JsonObject): UIMessage {
         val role = MessageRole.valueOf(
             payload["role"]?.jsonPrimitive?.contentOrNull?.uppercase() ?: "ASSISTANT"
         )
@@ -139,8 +139,14 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
                     if (imageObject["type"]?.jsonPrimitive?.contentOrNull != "image_url") return@forEach
                     val url = imageObject["image_url"]?.jsonObjectOrNull
                         ?.get("url")?.jsonPrimitive?.contentOrNull ?: return@forEach
-                    require(url.startsWith("data:image")) { "Only data uri is supported" }
-                    add(UIMessagePart.Image(url.substringAfter("data:image/png;base64,")))
+                    // 与 `ChatCompletionsAPI.parseMessage` 的非流式路径一致：`data:` / `http(s)` 原样存，
+                    // 其余形态跳过而不是抛——这里在流式解析链上，畸形输入不该杀掉整轮。
+                    // 旧实现 `require(data:image)` 会让「中转回一张 https 图」变成整轮生成中断；
+                    // `substringAfter("data:image/png;base64,")` 会把 jpeg/webp 的 data URI 切成裸 base64
+                    // （transformer 与 encodeBase64 都不认）。两个历史问题同因，见 2026-10-16 非流式修复。
+                    if (url.startsWith("data:") || url.startsWith("http")) {
+                        add(UIMessagePart.Image(url))
+                    }
                 }
             },
             annotations = parseAnnotations(payload["annotations"]?.jsonArrayOrNull ?: JsonArray(emptyList())),

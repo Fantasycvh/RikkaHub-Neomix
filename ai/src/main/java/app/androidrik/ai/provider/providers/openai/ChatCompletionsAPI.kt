@@ -554,6 +554,10 @@ class ChatCompletionsAPI(
             }
 
             if (params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()) {
+                // 网关兼容：省略 tool_choice 时部分中转/聚合端点会把 tool_calls 的 name 翻译成空串，
+                // 工具一个都跑不起来（NMoi-Agent 2026-11-03 真机定位；bigeye 亦无条件发送）。
+                // 规范上省略等于 auto，但实现不保证；有工具时显式声明。
+                put("tool_choice", "auto")
                 putJsonArray("tools") {
                     params.tools.forEach { tool ->
                         add(buildJsonObject {

@@ -997,6 +997,7 @@ private fun AssistantRegexCard(
                         )
                     },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     label = { Text(stringResource(R.string.assistant_page_regex_name)) }
                 )
 
@@ -1018,6 +1019,7 @@ private fun AssistantRegexCard(
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(stringResource(R.string.assistant_page_regex_find_regex)) },
                     placeholder = { Text("e.g., \\b\\w+@\\w+\\.\\w+\\b") },
+                    maxLines = 8,
                 )
 
                 OutlinedTextField(
@@ -1037,7 +1039,8 @@ private fun AssistantRegexCard(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(stringResource(R.string.assistant_page_regex_replace_string)) },
-                    placeholder = { Text("e.g., [EMAIL]") }
+                    placeholder = { Text("e.g., [EMAIL]") },
+                    maxLines = 8,
                 )
 
                 // 配置体检（只在编辑期提示，不改运行时行为）：这三类问题的共同点是
