@@ -96,13 +96,6 @@
       <meta-data
         android:name="android.app.shortcuts"
         android:resource="@xml/shortcuts" />
-      <intent-filter>
-        <action android:name="android.intent.action.SEND" />
-
-        <category android:name="android.intent.category.DEFAULT" />
-
-        <data android:mimeType="text/plain" />
-      </intent-filter>
       <!-- PROCESS_TEXT（划词）已迁至 ProcessTextTranslatorActivity：轻弹窗直翻，不再打开整个 App -->
       <intent-filter>
         <action android:name="app.androidrik.rikkahub.action.TRANSLATE" />
@@ -114,6 +107,52 @@
         <action android:name="app.androidrik.rikkahub.action.IMAGE_GEN" />
 
         <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity>
+    <!-- Sharing stays available when the launcher preset disables RouteActivity. -->
+    <activity
+      android:name=".ui.activity.ShareReceiverActivity"
+      android:exported="true"
+      android:configChanges="keyboardHidden|orientation|screenSize"
+      android:theme="@style/Theme.Rikkahub"
+      android:windowSoftInputMode="adjustResize">
+      <intent-filter>
+        <action android:name="android.intent.action.SEND" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="image/*" />
+        <data android:mimeType="audio/*" />
+        <data android:mimeType="video/*" />
+        <data android:mimeType="text/*" />
+        <data android:mimeType="application/pdf" />
+        <data android:mimeType="application/json" />
+        <data android:mimeType="application/xml" />
+        <data android:mimeType="application/javascript" />
+        <data android:mimeType="application/msword" />
+        <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+        <data android:mimeType="application/vnd.ms-excel" />
+        <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+        <data android:mimeType="application/vnd.ms-powerpoint" />
+        <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+        <data android:mimeType="application/epub+zip" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.SEND_MULTIPLE" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="image/*" />
+        <data android:mimeType="audio/*" />
+        <data android:mimeType="video/*" />
+        <data android:mimeType="text/*" />
+        <data android:mimeType="application/pdf" />
+        <data android:mimeType="application/json" />
+        <data android:mimeType="application/xml" />
+        <data android:mimeType="application/javascript" />
+        <data android:mimeType="application/msword" />
+        <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+        <data android:mimeType="application/vnd.ms-excel" />
+        <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+        <data android:mimeType="application/vnd.ms-powerpoint" />
+        <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+        <data android:mimeType="application/epub+zip" />
       </intent-filter>
     </activity>
     <!--

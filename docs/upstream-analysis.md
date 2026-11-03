@@ -1642,7 +1642,7 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - **#2276（模板自动关闭）/#2277（撤回）**：关闭不代表技术修复；本仓同款 `[Image]` 返回已在第三批处理。
 - **#2283（closed）**：已落实为第四批多关键词搜索。
 - **#2281/#2282（open）**：模型目录统一刷新与已选模型缺失提醒，记为后续功能；与 models.dev 能力元数据更新不同。
-- **#2279（open，#2278 为已关闭同题）**：图片/文件系统分享，本仓确有缺口，需附件/URI 接收链路，不能只改 Manifest。
+- **#2279（open，#2278 为已关闭同题）**：已于本日追加实现，见下节「系统图片/文件分享落地」。
 - **#2287（open，#2286 为已关闭同题）**：SSH 跳板机，本仓无 jump 配置；作者给出 fork 实现和验证声明，尚未独立核验。
 - **#2285（open，#2284 为已撤回旧报告）**：单波浪线删除线差异，记回归样例；本仓渲染架构已分叉，不直接套上游结论。
 - **#2280（open）**：增量备份，记产品需求。
@@ -1658,6 +1658,23 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - `git diff --check` 通过；三语资源经 Android 资源编译验证。
 - 本机构建使用 Android Studio 的 JetBrains JDK 21 与 `D:/A-projects-relaygradle` 缓存。Gradle 的 JitPack 下载曾超时，验证时通过临时 init script 读取从同一官方 JitPack URL 下载的 HugeIcons 1.3 AAR/POM/module；AAR SHA256 与官方 module 元数据一致，仓库依赖声明未改。临时仓库还补入 HugeIcons POM 引用的 Compose BOM 2026.02.01。
 - 未运行设备端权限交互或 OCR 真机验收；上述结论为编译、JVM 回归测试与静态审计。四批仅本地提交，未推送。
+
+## 2026-11-03 系统图片/文件分享落地（#2279）
+
+用户指定继续实现，随本节作本地提交：
+
+- 增加始终启用的 `ShareReceiverActivity`（继承公共路由），将分享 intent-filter 与桌面图标预置分离；支持 SEND/SEND_MULTIPLE 的图片、音视频、文本及 PDF/Office/EPUB 等现有附件类型。相机的显式 RouteActivity 分享和文本分享继续兼容。
+- 统一读取单项 Parcelable URI、相机的 String URI、多项 EXTRA_STREAM 与全部 ClipData，按原顺序去重。外部接收入口只接受 content URI，不从任意 file/HTTP 路径读取。临时授权在接收 Activity 所在任务有效期间使用；不申请持久授权或额外存储权限。
+- 分享页保留附带文本、图片预览和助手选择，并展示文件名。选择助手后进入新会话草稿，**不自动发送**。
+- 聊天初始化在 IO 线程逐件读取元数据并通过 `saveManagedFromUri` 原子复制到 app 私有 upload 目录，登记托管文件，转换为 Image/Audio/Video/Document 输入。文档不再被静默遗漏，失败项不会错位影响后续文件类型；读取失败和不支持类型使用现有错误 toast。
+- 导入有可取消提示，底层复制按块响应取消并清理未完成临时文件；文本提前填入，附件追加而不覆盖现有编辑。ViewModel 记录已应用的导航载荷，配置变化不重复导入。原有单 URI 导航字段保留以兼容旧保存状态。
+
+验证：
+
+- `:app:testDebugUnitTest --tests '*SharedAttachmentsTest'`：**4 项，0 失败/错误/跳过**；覆盖首项失败后 PDF/图片分类、重复去除、不支持文件、元数据权限失败与取消传播。
+- Android 15 真机（PJX110）运行 `ShareIntentTest`：**4 项全部通过**；验证 Parcelable/旧 String URI、多项 extras 与 ClipData 去重、ClipData-only/非 content scheme 拒绝；通过设备系统解析器验证 SEND/SEND_MULTIPLE × 图片/PDF/文本/DOCX 共 8 种入口匹配。
+- debug 应用与 androidTest APK 构建通过；IME 审计 A=0、A'=0（B=5/C=29 均既有告警），`git diff --check` 通过。
+- 设备使用隔离测试 runner，不启动生产 Application/DI；从相册/文件管理器选择真实附件、选择助手、发送给实际模型的完整人工验收尚未执行。
 
 ## 关联
 

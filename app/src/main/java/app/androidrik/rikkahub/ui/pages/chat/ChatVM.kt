@@ -86,6 +86,9 @@ class ChatVM(
 
     // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
     val inputState = ChatInputState()
+    // Navigation payloads are applied once per ViewModel, including configuration changes.
+    internal var initializedShareText: String? = null
+    internal var initializedShareFiles: List<android.net.Uri>? = null
 
     // 异步任务 (从ChatService获取，响应式)
     val conversationJob: StateFlow<Job?> =

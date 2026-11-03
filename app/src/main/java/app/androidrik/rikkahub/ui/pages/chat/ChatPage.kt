@@ -82,10 +82,15 @@ import app.androidrik.rikkahub.ui.components.haze.hazeSourceCompat
 import app.androidrik.rikkahub.ui.components.haze.liquidGlassChromeEffect
 import app.androidrik.rikkahub.ui.components.haze.rememberRecoverableHazeState
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import app.androidrik.rikkahub.ui.pages.share.handler.SharedFileInfo
+import app.androidrik.rikkahub.ui.pages.share.handler.importSharedAttachments
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
@@ -258,30 +263,63 @@ fun ChatPage(
 
     val inputState = vm.inputState
 
+    val shareContext = LocalContext.current
+    val shareToaster = LocalToaster.current
+
+    var sharedImportJob by remember { mutableStateOf<Job?>(null) }
+    if (sharedImportJob != null) {
+        AlertDialog(
+            onDismissRequest = { sharedImportJob?.cancel() },
+            text = { Text("Importing attachments…") },
+            confirmButton = {
+                TextButton(onClick = { sharedImportJob?.cancel() }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
     // 初始化输入状态（处理传入的 files 和 text 参数）
     LaunchedEffect(files, text) {
-        if (files.isNotEmpty()) {
-            val localFiles = filesManager.createChatFilesByContents(files)
-            val contentTypes = files.mapNotNull { file ->
-                filesManager.getFileMimeType(file)
-            }
-            val parts = buildList {
-                localFiles.forEachIndexed { index, file ->
-                    val type = contentTypes.getOrNull(index)
-                    if (type?.startsWith("image/") == true) {
-                        add(UIMessagePart.Image(url = file.toString()))
-                    } else if (type?.startsWith("video/") == true) {
-                        add(UIMessagePart.Video(url = file.toString()))
-                    } else if (type?.startsWith("audio/") == true) {
-                        add(UIMessagePart.Audio(url = file.toString()))
-                    }
-                }
-            }
-            inputState.messageContent = parts
+        if (vm.initializedShareText != text) {
+            text?.base64Decode()?.takeIf { it.isNotEmpty() }?.let { inputState.setMessageText(it) }
+            vm.initializedShareText = text
         }
-        text?.base64Decode()?.let { decodedText ->
-            if (decodedText.isNotEmpty()) {
-                inputState.setMessageText(decodedText)
+        if (files.isNotEmpty() && vm.initializedShareFiles != files) {
+            sharedImportJob = currentCoroutineContext().job
+            try {
+                val imported = withContext(Dispatchers.IO) {
+                    importSharedAttachments(
+                        sources = files.map { it.toString() },
+                        describe = { source ->
+                            val uri = source.toUri()
+                            val name = filesManager.getFileNameFromUri(uri) ?: "file"
+                            SharedFileInfo(
+                                name = name,
+                                mime = filesManager.getFileMimeType(uri)
+                                    ?: android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())
+                                    ?: "application/octet-stream",
+                            )
+                        },
+                        copy = { source ->
+                            val saved = filesManager.saveManagedFromUri(
+                                app.androidrik.rikkahub.data.files.FileFolders.UPLOAD, source.toUri(),
+                            )
+                            filesManager.getFile(saved).toUri().toString()
+                        },
+                    )
+                }
+                inputState.messageContent = inputState.messageContent + imported.parts
+                vm.initializedShareFiles = files
+                imported.failures.forEach { failure ->
+                    shareToaster.show(
+                        shareContext.getString(
+                            if (failure.unsupported) R.string.chat_input_unsupported_file_type else R.string.chat_input_file_read_failed,
+                            failure.name,
+                        ),
+                        type = ToastType.Error,
+                    )
+                }
+            } finally {
+                sharedImportJob = null
             }
         }
     }

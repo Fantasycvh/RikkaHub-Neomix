@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import app.androidrik.rikkahub.ui.pages.share.handler.readSharedUris
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -413,21 +414,9 @@ open class RouteActivity : ComponentActivity() {
     }
 
     /**
-     * 兼容读取分享 Intent 的 EXTRA_STREAM：部分系统/App 以 Parcelable Uri 传递
-     * （getStringExtra 返回 null → 图片/文件丢失），多图分享时 Uri 在 clipData 而非 extra。
-     * 依次尝试：String extra → Parcelable Uri extra → clipData 第一项。
-     */
-    private fun Intent?.readShareStreamUri(): String? {
-        if (this == null) return null
-        return getStringExtra(Intent.EXTRA_STREAM)
-            ?: getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.toString()
-            ?: clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri?.toString()
-    }
-
-    /**
      * 统一 Intent 入口（对齐上游 513b784c）：冷启动/onNewIntent 都走这里；
      * 导航栈未就绪时排队（AppRoutes SideEffect flush）；末尾去重防连点。
-     * fork 适配：ACTION_SEND 的 streamUri 保留 readShareStreamUri 三级兜底（D6/D7）；
+     * fork 适配：单项/多项分享统一合并 EXTRA_STREAM 和 ClipData，保留相机 URI 字符串兼容；
      * 文本换行归一（F6：\r\n → \n，防 Windows 来源文本残留 \r）。
      */
     private fun handleIntent(intent: Intent) {
@@ -442,9 +431,9 @@ open class RouteActivity : ComponentActivity() {
                 openNewMediaCreation(backStack)
                 null
             }
-            Intent.ACTION_SEND -> Screen.ShareHandler(
-                text = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty().normalizeNewlines(),
-                streamUri = intent.readShareStreamUri(),
+            Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> Screen.ShareHandler(
+                text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty().normalizeNewlines(),
+                streamUris = intent.readSharedUris(),
             )
             Intent.ACTION_PROCESS_TEXT -> Screen.ShareHandler(
                 text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty().normalizeNewlines(),
@@ -644,7 +633,7 @@ open class RouteActivity : ComponentActivity() {
                             entry<Screen.ShareHandler> { key ->
                                 ShareHandlerPage(
                                     text = key.text,
-                                    image = key.streamUri
+                                    files = (listOfNotNull(key.streamUri) + key.streamUris).distinct()
                                 )
                             }
 
@@ -1041,7 +1030,11 @@ sealed interface Screen : NavKey {
     ) : Screen
 
     @Serializable
-    data class ShareHandler(val text: String, val streamUri: String? = null) : Screen
+    data class ShareHandler(
+        val text: String,
+        val streamUri: String? = null, // Legacy saved navigation state.
+        val streamUris: List<String> = emptyList(),
+    ) : Screen
 
     @Serializable
     data object History : Screen
