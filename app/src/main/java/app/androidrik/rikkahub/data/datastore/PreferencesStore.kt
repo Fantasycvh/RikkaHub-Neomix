@@ -97,6 +97,12 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "PreferencesStore"
 
+/** 收藏既要保留顺序，也必须保证 ID 唯一，否则模型选择器的 LazyColumn 会因重复 key 崩溃。 */
+internal fun normalizeFavoriteModelIds(ids: List<Uuid>, providers: List<ProviderSetting>): List<Uuid> {
+    val modelIds = providers.flatMap { it.models }.map { it.id }.toSet()
+    return ids.distinct().filter { it in modelIds }
+}
+
 /** 读取失败的重试上限（退避 100ms × 2^n）；超限后向上抛，绝不回退空配置。 */
 private const val READ_MAX_RETRIES = 3
 
@@ -734,9 +740,7 @@ class SettingsStore(
                 selectedASRProviderId = settings.selectedASRProviderId
                     ?.takeIf { id -> asrProviders.any { provider -> provider.id == id } }
                     ?: asrProviders.firstOrNull()?.id,
-                favoriteModels = settings.favoriteModels.filter { uuid ->
-                    settings.providers.flatMap { it.models }.any { it.id == uuid }
-                },
+                favoriteModels = normalizeFavoriteModelIds(settings.favoriteModels, settings.providers),
                 promptPresets = settings.promptPresets
                     .distinctBy { it.id }
                     // 预设内的条目也要去重（同 id 重复会让同一注入生效两次）
@@ -801,7 +805,10 @@ class SettingsStore(
         // 安全策略：Web 鉴权**恒开**。备份恢复 / 同步 / 增量更新都可能把存量
         // `webServerJwtEnabled=false` 带进来，这里在广播与落盘前统一纠正——否则
         // settingsFlow 会短暂出现「不鉴权」快照，而 WebApiModule 只在服务启动时读一次。
-        val corrected = settings.copy(webServerJwtEnabled = true)
+        val corrected = settings.copy(
+            webServerJwtEnabled = true,
+            favoriteModels = normalizeFavoriteModelIds(settings.favoriteModels, settings.providers),
+        )
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[DYNAMIC_COLOR_SEED] = settings.dynamicColorSeedColor?.toString() ?: ""
@@ -812,7 +819,7 @@ class SettingsStore(
             preferences[AVATAR_FRAME_SCHEMES] = JsonInstant.encodeToString(settings.avatarFrameSchemes)
             preferences[COT_STYLE_SCHEMES] = JsonInstant.encodeToString(settings.cotStyleSchemes)
 
-            preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
+            preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(corrected.favoriteModels)
             preferences[SELECT_MODEL] = settings.chatModelId.toString()
             settings.fallbackChatModelId?.let {
                 preferences[FALLBACK_CHAT_MODEL] = it.toString()

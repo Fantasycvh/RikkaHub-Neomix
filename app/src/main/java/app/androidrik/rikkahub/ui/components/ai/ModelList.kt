@@ -341,7 +341,7 @@ private fun ColumnScope.ModelList(
     // 拖动排序时先改这份本地顺序，松手再写回设置。设置是异步回到界面的，拖到边缘自动滚动时拖拽库每帧都会按
     // 旧布局再算一次移动，直接改设置会让顺序被反复改回去，看起来就是来回抽搐（上游 395a0ee0，#2229）
     var draggingFavoriteOrder by remember { mutableStateOf<List<Uuid>?>(null) }
-    val favoriteModels = (draggingFavoriteOrder ?: settings.value.favoriteModels).mapNotNull { modelId ->
+    val favoriteModels = (draggingFavoriteOrder ?: settings.value.favoriteModels).distinct().mapNotNull { modelId ->
         val model = settings.value.providers.findModelById(modelId) ?: return@mapNotNull null
         if (model.type != modelType) return@mapNotNull null
         // 停用的模型同样从收藏区移除：收藏只是「取用捷径」，不该绕过「不再提供」的语义
@@ -658,7 +658,7 @@ private fun ColumnScope.ModelList(
 
                                         } else {
                                             settings.copy(
-                                                favoriteModels = settings.favoriteModels + model.id
+                                                favoriteModels = (settings.favoriteModels + model.id).distinct()
                                             )
                                         }
                                     }
