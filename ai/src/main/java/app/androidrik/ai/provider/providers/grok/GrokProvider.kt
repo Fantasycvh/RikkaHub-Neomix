@@ -5,6 +5,9 @@ import app.androidrik.ai.provider.AccountCredentialProvider
 import app.androidrik.ai.provider.CustomHeader
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.*
+import app.androidrik.ai.util.mergeCustomHeaders
+import app.androidrik.ai.util.configureClientWithProxy
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderQuota
@@ -28,6 +31,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -92,16 +96,22 @@ class GrokProvider(
     private val client = client.withAccountAuthenticator(credentials)
     private val responseAPI = ResponseAPI(this.client)
 
-    override suspend fun listModels(providerSetting: ProviderSetting.Grok): List<Model> = coroutineScope {
-        // 两个目录拿到一个就够用
-        val cliRequest = async {
-            runCatching { getJson(providerSetting, "$GROK_CLI_BASE_URL/models-v2", grokCli = true) }
+    override suspend fun fetchModelCatalog(providerSetting: ProviderSetting.Grok): CatalogFetchResult = coroutineScope {
+        val scope = CatalogScope(providerSetting.id.toString(), listOf("grok-cli", "grok-api"))
+        try {
+            val credential = credentials.catalogCredential(providerSetting)
+            suspend fun fetch(url: String, cli: Boolean): CatalogFetchResult = collectCatalogPages(scope) {
+                val request = Request.Builder().url(url).get().headers(providerSetting.mergeCustomHeaders())
+                    .header("Authorization", "Bearer ${credential.accessToken}")
+                    .apply { if (cli) header("X-XAI-Token-Auth", "xai-grok-cli") }.build()
+                parseGrokCatalog(client.configureClientWithProxy(providerSetting.proxy).catalogJson(request))
+            }
+            val cli = async { fetch("$GROK_CLI_BASE_URL/models-v2", true) }
+            val api = async { fetch("$XAI_BASE_URL/models", false) }
+            mergeGrokCatalogResults(scope, cli.await(), api.await())
+        } catch (e: Exception) {
+            catalogFailure(e)
         }
-        val apiRequest = async { runCatching { getJson(providerSetting, "$XAI_BASE_URL/models") } }
-        val cli = cliRequest.await()
-        val api = apiRequest.await()
-        if (cli.isFailure && api.isFailure) throw cli.exceptionOrNull()!!
-        parseGrokModels(cliCatalog = cli.getOrNull(), apiCatalog = api.getOrNull())
     }
 
     override suspend fun getQuota(providerSetting: ProviderSetting.Grok): ProviderQuota {
@@ -246,3 +256,33 @@ private fun JsonElement.number(): Double? = jsonPrimitiveOrNull?.contentOrNull?.
 private fun JsonObject.instant(key: String): Instant? = string(
     key
 )?.let { runCatching { Instant.parse(it) }.getOrNull() }
+
+internal fun parseGrokCatalog(root: JsonObject): CatalogPage {
+    val candidates = parseGrokModels(root, null).associateBy { it.modelId }
+    val page = root.catalogPage("data") { row ->
+        val meta = row["_meta"] as? JsonObject
+        val id = row.catalogString("model") ?: row.catalogString("modelId") ?: row.catalogString("id")
+            ?: meta?.catalogString("model") ?: meta?.catalogString("modelId")
+        id?.let {
+            candidates[id]?.let { CatalogEntry.fromModel(it) } ?: CatalogEntry(id, selectable = false)
+        }
+    }
+    return if ((root["has_more"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull == true ||
+        listOf("next", "next_page", "nextPageToken").any { root[it] != null && root[it] != kotlinx.serialization.json.JsonNull })
+        page.copy(incomplete = IncompleteReason.PAGINATION) else page
+}
+
+internal fun mergeGrokCatalogResults(scope: CatalogScope, cli: CatalogFetchResult, api: CatalogFetchResult): CatalogFetchResult {
+    fun CatalogFetchResult.entriesOrNull(): List<CatalogEntry>? = when (this) {
+        is CatalogFetchResult.Complete -> entries
+        is CatalogFetchResult.Partial -> entries
+        else -> null
+    }
+    val observations = listOfNotNull(cli.entriesOrNull(), api.entriesOrNull())
+    if (observations.isEmpty()) return if (cli is CatalogFetchResult.Failed) cli else api
+    val entries = observations.flatten().distinctBy { it.modelId }
+    return if (cli is CatalogFetchResult.Complete && api is CatalogFetchResult.Complete)
+        CatalogFetchResult.Complete(entries, scope)
+    else CatalogFetchResult.Partial(entries, scope, IncompleteReason.SOURCE_FAILED,
+        listOf(cli, api).filterIsInstance<CatalogFetchResult.Failed>().firstOrNull()?.error)
+}

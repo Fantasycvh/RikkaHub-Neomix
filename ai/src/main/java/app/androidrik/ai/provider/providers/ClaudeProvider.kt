@@ -35,6 +35,7 @@ import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
 import app.androidrik.ai.provider.ImageGenerationParams
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.*
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderQuota
@@ -68,6 +69,7 @@ import app.androidrik.common.http.jsonPrimitiveOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.sse.EventSource
@@ -86,34 +88,18 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
     // LRU 保留为可选（未来配置切换），当前统一走默认顺序
     private val keyRoulette = KeyRoulette.default()
 
-    override suspend fun listModels(providerSetting: ProviderSetting.Claude): List<Model> =
+    override suspend fun fetchModelCatalog(providerSetting: ProviderSetting.Claude): CatalogFetchResult =
         withContext(Dispatchers.IO) {
-            val request = Request.Builder()
-                .url("${providerSetting.baseUrl}/models")
-                .addHeader("x-api-key", keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString()))
-                .addHeader("anthropic-version", ANTHROPIC_VERSION)
-                .get()
-                .applyCustomHeaders(providerSetting)
-                .build()
-
-            val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).execute()
-            if (!response.isSuccessful) {
-                error("Failed to get models: ${response.code} ${response.body?.string()}")
-            }
-
-            val bodyStr = response.body?.string() ?: ""
-            val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
-            val data = bodyJson["data"]?.jsonArray ?: return@withContext emptyList()
-
-            data.mapNotNull { modelJson ->
-                val modelObj = modelJson.jsonObject
-                val id = modelObj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                val displayName = modelObj["display_name"]?.jsonPrimitive?.contentOrNull ?: id
-
-                Model(
-                    modelId = id,
-                    displayName = displayName,
-                )
+            val scope = CatalogScope(providerSetting.id.toString(), listOf("claude"))
+            val key = keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
+            collectCatalogPages(scope) { cursor ->
+                val url = "${providerSetting.baseUrl}/models".toHttpUrl()
+                    .newBuilder().addQueryParameter("limit", "100")
+                    .apply { cursor?.let { addQueryParameter("after_id", it) } }.build()
+                val request = Request.Builder().url(url).get()
+                    .addHeader("x-api-key", key).addHeader("anthropic-version", ANTHROPIC_VERSION)
+                    .applyCustomHeaders(providerSetting).build()
+                parseStandardCatalog(client.configureClientWithProxy(providerSetting.proxy).catalogJson(request), cursorPagination = true)
             }
         }
 

@@ -36,6 +36,7 @@ import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.*
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.Provider
@@ -133,47 +134,22 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         }
     }
 
-    override suspend fun listModels(providerSetting: ProviderSetting.Google): List<Model> =
+    override suspend fun fetchModelCatalog(providerSetting: ProviderSetting.Google): CatalogFetchResult =
         withContext(Dispatchers.IO) {
-            // Vertex 的模型列表端点是 publishers/google/models（与 generateContent 同一前缀），
-            // 裸 "models" 会拼出 aiplatform.../v1/models —— Vertex 上必然 404
-            val listPath =
-                if (providerSetting.vertexAI) "publishers/google/models?pageSize=100" else "models?pageSize=100"
-            val url = buildUrl(providerSetting = providerSetting, path = listPath)
-            val request = transformRequest(
-                providerSetting = providerSetting,
-                request = Request.Builder()
-                    .url(url)
-                    .get()
-                    .applyCustomHeaders(providerSetting)
-                    .build()
-            )
-            val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
-            if (response.isSuccessful) {
-                val body = response.body?.string() ?: error("empty body")
-                Log.d(TAG, "listModels: ${summarizeErrorBody(body)}")
-                val bodyObject = json.parseToJsonElement(body).jsonObject
-                val models = bodyObject["models"]?.jsonArray ?: return@withContext emptyList()
-
-                models.mapNotNull {
-                    val modelObject = it.jsonObject
-
-                    // 忽略非chat/embedding模型
-                    val supportedGenerationMethods =
-                        modelObject["supportedGenerationMethods"]!!.jsonArray
-                            .map { method -> method.jsonPrimitive.content }
-                    if ("generateContent" !in supportedGenerationMethods && "embedContent" !in supportedGenerationMethods) {
-                        return@mapNotNull null
-                    }
-
-                    Model(
-                        modelId = modelObject["name"]!!.jsonPrimitive.content.substringAfter("/"),
-                        displayName = modelObject["displayName"]!!.jsonPrimitive.content,
-                        type = if ("generateContent" in supportedGenerationMethods) ModelType.CHAT else ModelType.EMBEDDING,
-                    )
+            val scope = CatalogScope(providerSetting.id.toString(), listOf(if (providerSetting.vertexAI) "vertex" else "google"))
+            try {
+                val path = if (providerSetting.vertexAI) "publishers/google/models" else "models"
+                // Pin the authenticated request once so every page uses the same credential.
+                val initial = transformRequest(providerSetting, Request.Builder()
+                    .url(buildUrl(providerSetting, path).newBuilder().addQueryParameter("pageSize", "100").build())
+                    .get().applyCustomHeaders(providerSetting).build())
+                collectCatalogPages(scope) { cursor ->
+                    val url = initial.url.newBuilder().apply { cursor?.let { setQueryParameter("pageToken", it) } }.build()
+                    parseGoogleCatalog(client.configureClientWithProxy(providerSetting.proxy)
+                        .catalogJson(initial.newBuilder().url(url).build()), providerSetting.vertexAI)
                 }
-            } else {
-                emptyList()
+            } catch (e: Exception) {
+                catalogFailure(e)
             }
         }
 

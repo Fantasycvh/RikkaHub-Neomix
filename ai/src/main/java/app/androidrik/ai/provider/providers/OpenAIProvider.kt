@@ -24,6 +24,7 @@ import app.androidrik.ai.provider.EmbeddingGenerationResult
 import app.androidrik.ai.provider.ImageEditParams
 import app.androidrik.ai.provider.ImageGenerationParams
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.*
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderQuota
 import app.androidrik.ai.provider.ProviderSetting
@@ -141,34 +142,14 @@ class OpenAIProvider(
         ResponseAPI(client = client, keyRoulette = keyRoulette)
 
 
-    override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> =
+    override suspend fun fetchModelCatalog(providerSetting: ProviderSetting.OpenAI): CatalogFetchResult =
         withContext(Dispatchers.IO) {
-            val url = providerSetting.modelsUrl()
-            val requestBuilder = Request.Builder()
-                .url(url)
-                .get()
-                .applyCustomHeaders(providerSetting)
-            authenticator.authenticateApiKey(requestBuilder, providerSetting)
-            val request = requestBuilder.build()
-
-            val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
-            if (!response.isSuccessful) {
-                error("Failed to get models: ${response.code} ${response.body?.string()}")
-            }
-
-            val bodyStr = response.body?.string() ?: ""
-            val bodyJson = json.parseToJsonElement(bodyStr).jsonObjectOrNull
-                ?: error("Models API response is not a JSON object: ${bodyStr.take(200)}")
-            val data = bodyJson["data"]?.jsonArray ?: return@withContext emptyList()
-
-            data.mapNotNull { modelJson ->
-                val modelObj = modelJson.jsonObject
-                val id = modelObj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-
-                Model(
-                    modelId = id,
-                    displayName = id,
-                )
+            val scope = CatalogScope(providerSetting.id.toString(), listOf("openai"))
+            collectCatalogPages(scope) {
+                val request = Request.Builder().url(providerSetting.modelsUrl()).get()
+                    .applyCustomHeaders(providerSetting)
+                    .apply { authenticator.authenticateApiKey(this, providerSetting) }.build()
+                parseStandardCatalog(client.configureClientWithProxy(providerSetting.proxy).catalogJson(request), cursorPagination = false)
             }
         }
 

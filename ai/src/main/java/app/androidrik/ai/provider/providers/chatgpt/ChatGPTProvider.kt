@@ -4,6 +4,10 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.AccountCredentialProvider
 import app.androidrik.ai.provider.CustomHeader
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.*
+import app.androidrik.ai.util.mergeCustomHeaders
+import app.androidrik.ai.util.configureClientWithProxy
+import kotlinx.serialization.json.*
 import app.androidrik.ai.provider.OPENAI_CODEX_BASE_URL
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderQuota
@@ -81,13 +85,17 @@ class ChatGPTProvider(
     private val client = client.withAccountAuthenticator(credentials)
     private val responseAPI = ResponseAPI(this.client)
 
-    override suspend fun listModels(providerSetting: ProviderSetting.ChatGPT): List<Model> {
-        val request = Request.Builder()
-            .url("$CODEX_BASE_URL/models?client_version=$CODEX_CLIENT_VERSION")
-            .apply { configureAuth(providerSetting) }
-            .get()
-            .build()
-        return parseCodexModels(client.fetchBody(request))
+    override suspend fun fetchModelCatalog(providerSetting: ProviderSetting.ChatGPT): CatalogFetchResult {
+        val scope = CatalogScope(providerSetting.id.toString(), listOf("chatgpt"))
+        return collectCatalogPages(scope) {
+            // Obtain/refresh once, then pin this catalog request to that account credential.
+            val credential = credentials.catalogCredential(providerSetting)
+            val request = Request.Builder().url("$CODEX_BASE_URL/models?client_version=$CODEX_CLIENT_VERSION")
+                .headers(providerSetting.mergeCustomHeaders()).header("Authorization", "Bearer ${credential.accessToken}")
+                .apply { credential.accountId?.let { header("ChatGPT-Account-ID", it) } }
+                .header("originator", CODEX_ORIGINATOR).get().build()
+            parseCodexCatalog(client.configureClientWithProxy(providerSetting.proxy).catalogJson(request))
+        }
     }
 
     override suspend fun getQuota(providerSetting: ProviderSetting.ChatGPT): ProviderQuota {
@@ -151,4 +159,17 @@ class ChatGPTProvider(
         credential.accountId?.let { header("ChatGPT-Account-ID", it) }
         header("originator", CODEX_ORIGINATOR)
     }
+}
+
+internal fun parseCodexCatalog(root: JsonObject): CatalogPage {
+    val candidates = parseCodexModels(root.toString()).associateBy { it.modelId }
+    val page = root.catalogPage("models") { row ->
+        row.catalogString("slug")?.let { id ->
+            candidates[id]?.let { CatalogEntry.fromModel(it) }
+                ?: CatalogEntry(id, row.catalogString("display_name") ?: id, selectable = false)
+        }
+    }
+    return if ((root["has_more"] as? JsonPrimitive)?.booleanOrNull == true ||
+        listOf("next", "next_page", "nextPageToken").any { root[it] != null && root[it] != JsonNull })
+        page.copy(incomplete = IncompleteReason.PAGINATION) else page
 }
