@@ -793,6 +793,22 @@ class GenerationHandler(
                             LoopGateVerdict.Pass -> Unit
                         }
                     }
+
+                    // 出口审计 R1（bigeye `action_chain.py` 动作对账，见 RuleEngine.unverifiedCompletionHint）：
+                    // 声称完成、但最后一次写之后没有「跑一次 / 读回」的证据 ⇒ 注入一条提醒再给一轮机会。
+                    // 不拦截：模型可以补验证，也可以明说未验证；每轮最多一次（引擎内 latch）。
+                    val answerText = last?.parts.orEmpty()
+                        .filterIsInstance<UIMessagePart.Text>()
+                        .joinToString("\n") { it.text }
+                    val completionEvidenceHint = ruleEngine.unverifiedCompletionHint(answerText)
+                    if (completionEvidenceHint != null) {
+                        Log.i(TAG, "streamText: unverified completion claim, injecting verification reminder")
+                        // 与收尾闸门同理：提醒后的补验证不是失控，别让轮次循环护栏误判成打转
+                        loopGuard.reset()
+                        messages = messages + UIMessage.user(completionEvidenceHint)
+                        emit(GenerationChunk.Messages(messages))
+                        continue
+                    }
                     break
                 }
 

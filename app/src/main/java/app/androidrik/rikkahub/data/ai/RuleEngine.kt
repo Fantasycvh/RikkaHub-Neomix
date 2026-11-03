@@ -3,6 +3,33 @@ package app.androidrik.rikkahub.data.ai
 import kotlinx.serialization.json.JsonElement
 
 /**
+ * 出口审计 R1（bigeye `task/action_chain.py:373 _r_unverified_done`）的写类工具：
+ * 产生**持久化文件改变**的行为。只收文件写，不把「记计划 / 问用户」算成写——它们不需要验证。
+ */
+private val COMPLETION_WRITE_TOOLS = setOf(
+    "workspace_write_file",
+    "workspace_edit_file",
+)
+
+/** R1 验证类工具：跑一次（shell）或读回（read）。与 bigeye 对 `bash`/`read_file` 的口径一致。 */
+private val COMPLETION_VERIFY_TOOLS = setOf(
+    "workspace_shell",
+    "workspace_read_file",
+)
+
+/** 「声称完成」的措辞（英文 + 中文）。只在**最后一次写之后无验证证据**时才用。 */
+private val COMPLETION_CLAIM = Regex(
+    """\b(done|completed?|finished|fixed|implemented|resolved|all set)\b|完成|改好|搞定|修好|修复|已实现|已改|已更新""",
+    RegexOption.IGNORE_CASE,
+)
+
+/** 模型已经明说「未验证 / 未完成」⇒ 诚实收尾，不再提醒。 */
+private val EXPLICITLY_UNVERIFIED = Regex(
+    """\b(unverified|not verified|couldn'?t verify|cannot verify|not (?:yet )?complete)\b|未验证|无法验证|没能验证|未完成""",
+    RegexOption.IGNORE_CASE,
+)
+
+/**
  * 规则提醒的灵敏度三档（沿用 [LoopGuardSensitivity] 的既有形态：**只做档位、不做自由数字**）。
  *
  * 为什么不做自由数字：窗口与阈值调松会让这条守卫形同虚设，而它的全部价值就在"及时打断打转"；
@@ -105,6 +132,15 @@ class RuleEngine(
     private var toolCallsThisTurn = 0
 
     /**
+     * R1 证据游标：最后一次写之后是否出现过「跑一次 / 读回」。
+     * null = 最后一次写已被验证（或本轮还没写过）；非 null = 尚未验证的写工具名。
+     */
+    private var pendingWriteSinceVerify: String? = null
+
+    /** R1 每轮最多注入一次，避免「提醒 → 模型调查提醒」的自指循环。 */
+    private var completionAuditFired = false
+
+    /**
      * 每次工具调用后记录。
      *
      * 调用点与 `loopGuard.record(...)` 同处 —— 那里已经保证「同一响应里的重复下发只记一次」
@@ -113,6 +149,12 @@ class RuleEngine(
     fun record(toolName: String, arguments: JsonElement?) {
         toolCallsThisTurn += 1
         window.record(classifyToolEffect(toolName, arguments))
+        // R1 证据游标：写 → 待验证；跑/读回 → 视为已验证。
+        // 失败时撤回证据的路径暂不做（记录发生在执行前）：宁可漏提醒，也不要拿失败调用当证据。
+        when (toolName) {
+            in COMPLETION_WRITE_TOOLS -> pendingWriteSinceVerify = toolName
+            in COMPLETION_VERIFY_TOOLS -> pendingWriteSinceVerify = null
+        }
     }
 
     /**
@@ -150,6 +192,47 @@ class RuleEngine(
         window.clear()
         toolCallsThisTurn = 0
         fired.clear()
+        pendingWriteSinceVerify = null
+        completionAuditFired = false
+    }
+
+    /**
+     * 出口审计 R1（bigeye `task/action_chain.py:373 _r_unverified_done`，2026-10-29）：
+     * 模型在收尾轮声称「完成」，但**最后一次写之后**没有跑一次或读回的证据 ⇒ 返回提醒文本。
+     *
+     * 判据（与 bigeye 一致）：
+     * - 本轮必须**真的写过**（`workspace_write_file` / `workspace_edit_file`）——只是问问题/只读的
+     *   会话没有「完成」可验，不能被打扰；
+     * - 最后一次写之后出现过 `workspace_shell`（跑一次）或 `workspace_read_file`（读回）即视为已验证；
+     * - 模型已明说「未验证 / 未完成」⇒ 诚实收尾，不再提醒；
+     * - **每轮最多注入一次**（bigeye 是每话题 MAX_INJECTS=4 + 冷却，本仓取最保守值：一轮一次）。
+     *
+     * 「改前先读一眼」**不算**验证证据：读了 → 改了 → 说好了，中间的改从没被跑过，
+     * 这是最常见的糊弄形态，也是 bigeye 把 R1 单列出来的原因。
+     *
+     * 交付方式：由 [app.androidrik.rikkahub.data.ai.GenerationHandler] 在**自然出口**
+     * （模型无工具调用）前作为合成 user 消息注入——不落库、不插 system。
+     */
+    fun unverifiedCompletionHint(answerText: String): String? {
+        if (!enabled || completionAuditFired) return null
+        val lastWrite = pendingWriteSinceVerify ?: return null
+        if (answerText.isBlank()) return null
+        if (!COMPLETION_CLAIM.containsMatchIn(answerText)) return null
+        if (EXPLICITLY_UNVERIFIED.containsMatchIn(answerText)) return null
+
+        completionAuditFired = true
+        return buildString {
+            appendLine(
+                "You say this is done, but after your last write (`$lastWrite`) there was no " +
+                    "run or read-back verification."
+            )
+            appendLine(
+                "Before finishing: run it once, or read the changed file back and confirm the change " +
+                    "is actually there. If verification is genuinely impossible, say explicitly that it is unverified."
+            )
+            appendLine("Do not mention this note or any internal mechanism to the user.")
+            append("If this turn was only a report (nothing was actually changed), ignore this note.")
+        }
     }
 
     /** 仅测试与日志：窗口内容的可读快照（不进提示词） */
