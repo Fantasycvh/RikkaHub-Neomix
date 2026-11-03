@@ -52,7 +52,6 @@ import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.ui.components.ui.UIAvatar
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
-import app.androidrik.rikkahub.ui.components.richtext.MathBlock
 import app.androidrik.rikkahub.ui.components.richtext.Mermaid
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -336,9 +335,8 @@ private fun MainPage(vm: DebugVM) {
             Text(stringResource(R.string.debug_page_create_1024))
         }
 
-        var markdown by remember { mutableStateOf("") }
+        var markdown by remember { mutableStateOf(BETTERTEXT_DEBUG_SAMPLE) }
         MarkdownBlock(markdown, modifier = Modifier.fillMaxWidth())
-        MathBlock(markdown)
         OutlinedTextField(
             value = markdown,
             onValueChange = { markdown = it },
@@ -448,3 +446,32 @@ private fun Color.toHexString(): String {
     val argb = toArgb()
     return "#%08X".format(argb)
 }
+
+private val BETTERTEXT_DEBUG_SAMPLE = """
+## BetterText 渲染验证
+
+高公式：矩阵 ${'$'}\begin{pmatrix} a & b \\ c & d \end{pmatrix}${'$'} 的行列式是 ${'$'}ad - bc${'$'}。连分数 ${'$'}\cfrac{1}{1 + \cfrac{1}{1 + x}}${'$'} 和 ${'$'}\sqrt{\begin{matrix} 1 \\ 2 \\ 3 \end{matrix}}${'$'} 会把所在的行撑高，而 ${'$'}\displaystyle\int_0^1 x^2\,dx = \frac{1}{3}${'$'} 这样的大型运算符也一样。
+
+长公式：${'$'}f(x) = \sum_{n=0}^{\infty} \frac{f^{(n)}(a)}{n!}(x-a)^n = f(a) + f'(a)(x-a) + \frac{f''(a)}{2!}(x-a)^2 + \cdots${'$'} 应该按关系符和二元运算符折行。
+
+| 名称 | 值 |
+| ---- | --- |
+| 矩阵 | ${'$'}\begin{pmatrix} a & b \\ c & d \end{pmatrix}${'$'} |
+| 连分数 | ${'$'}\cfrac{1}{1 + \cfrac{1}{1 + x}}${'$'} |
+
+搜索引用：Compose 设置 lineHeight 之后每一行都一样高[citation,example.com](abc123)，相关接口也还没有公开。
+
+> 引用块与行内公式 ${'$'}e^{i\pi} + 1 = 0${'$'} 混排。
+
+<details><summary>点开看折叠内容</summary>
+
+折叠内容里的公式 ${'$'}a^2 + b^2 = c^2${'$'}。
+
+</details>
+
+```kotlin
+fun main() {
+    println("Hello BetterText")
+}
+```
+"""

@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Icon
@@ -66,6 +65,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.replaceRegexes
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
+import app.androidrik.rikkahub.ui.components.richtext.SelectableContent
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThoughtScope
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -220,14 +220,9 @@ private fun ReasoningContent(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        // 流式生成期间不启用 SelectionContainer，避免 selectable 列表并发修改导致的
-        // ConcurrentModificationException（详见 ChatMessage.kt 文本块同样处理）。
-        if (loading) {
+        // BetterText 自带选择容器：流式生成期间也可以选择。
+        SelectableContent {
             reasoningContent()
-        } else {
-            SelectionContainer {
-                reasoningContent()
-            }
         }
     }
 }

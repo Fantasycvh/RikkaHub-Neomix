@@ -29,7 +29,6 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 - **ai**: AI SDK abstraction layer for different providers (OpenAI, Google, Anthropic)
 - **common**: Common utilities and extensions
 - **document**: Document parsing module for handling PDF, DOCX, PPTX, and EPUB files
-- **highlight**: Code syntax highlighting implementation
 - **material3**: Material color utility extensions used by the app UI
 - **search**: Search functionality SDK for multiple providers (Exa, Tavily, Zhipu, Bing, Brave, SearXNG, and others)
 - **speech**: Speech module for TTS and ASR implementations

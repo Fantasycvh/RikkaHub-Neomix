@@ -185,12 +185,14 @@ internal fun buildSystemBlocks(
             content = """For TikZ diagrams, wrap the ENTIRE environment in a CLOSED $$...$$ block: open with $$ immediately before \begin{tikzpicture} (or \begin{tikzcd} or \begin{axis}), and close with $$ immediately after the matching \end{...}. Never omit the closing $$, and never put anything between the closing \end{...} and the closing $$. Example: $$\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}$$. Full TikZ/pgf is supported (positioning, calc, pgfplots, tikz-cd, all standard libraries) with CJK text — do not simplify or avoid advanced syntax. Math macros inside node text are supported too: amsmath and amssymb are loaded (\dfrac, \tfrac, \binom, \text, \operatorname, \mathbb, \mathfrak, \checkmark and the rest), so use them directly instead of downgrading to plain \frac forms or avoiding notation. Diagrams render as inline vector graphics. Colors: use color names (blue, red, gray) optionally with opacity (blue!30); do NOT use #hex colors inside options like fill=#4A90D9 — the # is a TeX parameter token and breaks pgf option parsing (renders as source) PGF Math trigonometry: radians MUST use sin(deg(x)) or sin(x*pi/180) — sin(x rad) and sin(x r) are NOT supported and abort rendering.""",
         )
     }
-    // 数学公式提示（启用 LaTeX 渲染时）：引导模型用 \(...\) / $...$ 输出公式并触发 jlatexmath。
+    // 数学公式提示（启用 LaTeX 渲染时）：引导模型用 \(...\) / $...$ 输出公式并触发 BetterText/KaTeX 公式渲染。
     // 注意：定界符内不能有空格（$ x^2 $ 不会被识别为公式）；括号形式 \(x^2\) 更稳妥。
+    // 中文必须用 \text{...} 包住或放在公式外：\ 后直接跟中文会被当成 control symbol
+    //（\质能方程），BetterText 的 KaTeX 移植按“不支持的命令”标红并继续渲染剩余部分。
     if (settings.displaySetting.enableLatexRendering) {
         blocks += SystemBlock(
             SystemBlockSource.MATH_HINT,
-            content = """For math formulas, wrap them in \( ... \) (preferred) or $...$ with NO whitespace immediately after the opening delimiter and before the closing delimiter, e.g. \(x^2 + y^2 = r^2\) or $\frac{a}{b}$ or $\sqrt{x}$. They render as inline math symbols.""",
+            content = """For math formulas, wrap them in \( ... \) (preferred) or $...$ with NO whitespace immediately after the opening delimiter and before the closing delimiter, e.g. \(x^2 + y^2 = r^2\) or $\frac{a}{b}$ or $\sqrt{x}$. They render as inline math symbols. If a formula contains Chinese text, put the Chinese inside \text{...} (e.g. \(\text{质能方程}: E = mc^2\)), or keep it outside the formula (质能方程：\(E = mc^2\)). NEVER write a backslash directly before a Chinese character: \质能方程 is invalid LaTeX and renders as red error text.""",
         )
     }
     return blocks

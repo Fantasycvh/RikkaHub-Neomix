@@ -44,7 +44,7 @@ import kotlinx.serialization.json.longOrNull
 import app.androidrik.ai.ui.DiffMetadata
 import app.androidrik.ai.ui.metadataAs
 import app.androidrik.common.http.jsonObjectOrNull
-import app.androidrik.highlight.CodeHighlightText
+import app.androidrik.rikkahub.ui.components.richtext.CodeHighlightText
 import androidx.compose.ui.res.stringResource
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ComputerTerminal01

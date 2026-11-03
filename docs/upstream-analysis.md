@@ -1521,7 +1521,7 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 | `ad2c4430d` | chore: bump 3.1.1 | 不适用 |
 | `2c4d1979c` | fix(quota): 非英文系统余额报数字格式错误（#2245） | **已等价，不跟**——本仓 10-25 修 #2245 时已全链 `Locale.ROOT`（`JsonExpression.kt:368` 数字摄取 + `OpenAIProvider` 单/多接口两处显示格式化），与上游同根因同修法；上游另做的「读值阶段不舍入、显示时 Double 解析」属精度优化，本仓保留读值舍入但解析已安全，可忽略 |
 | `a7d1e6efb` | docs: README 图标 512x512 | 不适用 |
-| `24a742270` | refactor(markdown): 迁移 BetterText，保留选择/折叠 | **不跟**——宿主是上游「渲染收敛 ui 模块」大重构（与 `db4982283` 结论同源：本仓 MarkdownNew/intellij-markdown 已分叉，迁移=重写整套渲染，且本仓有 TikZ 桥要保） |
+| `24a742270` | refactor(markdown): 迁移 BetterText，保留选择/折叠 | ✅ **已迁移（fork，2026-11-03）**——用户拍板：接受 BetterText + 统一选择容器、保留 TikZ。落地面：BetterText v0.1.3（text/markdown/latex/highlight）替换旧 Compose `Text`+`InlineTextContent` 链；`MarkdownBlock` 重写（`LatexInline`/`LatexBlock`、citation `ComposableInline`、表格/details、TikZ 继续 `TikzJax`），消息/推理选择改 `SelectableContent`，代码块逐行 BetterText；删除 `Markdown.kt`/`MarkdownNew.kt`/`SimpleHtmlBlock.kt`/`MarkdownStreaming.kt`/`LatexText.kt`/`MathBlock.kt`、jlatexmath 与旧 `:highlight` 模块；导出 HTML 的 `generateMarkdownHtml` 抽到 `MarkdownHtml.kt` 保留。验证：编译 ✅ · `:app:testDebugUnitTest` ✅ · debug 装机渲染/选择已验（Debug Mode 样例保留） |
 | `e0914b20f` | feat(markdown): 颜色代码前显示色块 | **不跟（P3 观望）**——宿主为上游新 Markdown.kt 渲染管线（+83 行 ANSI 解析+色块 InlineText）；有需求时可移植到本仓 MarkdownNew |
 | `a1c61c3cb` | chore(baselineprofile): 移除 Markdown 性能对比基准 | **不适用**——本仓 `app/baselineprofile` 只有 BaselineProfileGenerator + StartupBenchmarks，从未引入 MarkdownBenchmarks/MockOpenAIServer，无可删项 |
 | `79f4b6fb2` | fix(export): 部分 ROM SAF 导出闪退（#2263/#2264，openOutputStream 抛 FileNotFoundException 未捕获） | **已吸收（fork `beb6fb1fb`，2026-10-31）**——本仓同款两处：`ui/components/message/ChatMessageEditedFiles.kt`（开流移 IO 协程 + runCatching）+ `data/export/ExportHooks.kt` writeToUri（补 runCatching） |
@@ -1569,7 +1569,7 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 
 **验证**：全模块 `compileDebugKotlin` + `assembleDebug` + `assembleRelease`（R8）通过；release 包装机冷启动 0 FATAL。本机 SDK 目录命名不规范会有 CXX5304 警告（`platforms;android-37` vs `android-37.0`），非致命、不影响 CI（CI 的 SDK 布局干净）；嫌烦可 `sdkmanager "platforms;android-37"` 重装规范目录名。
 
-**确认不跟的构建差异**（盘点结论，勿重复评估）：flavor 双渠道（play 版无需求）、Firebase 全家桶（本仓已移除，回不去）、`ui` 模块与 `build-logic` 上游版（宿主重构不跟，见 `24a742270`/`db4982283` 结论；本仓保留自有 build-logic）、iText/Objectbox 仓库（上游 PDF 替换方案依赖）。
+**确认不跟的构建差异**（盘点结论，勿重复评估）：flavor 双渠道（play 版无需求）、Firebase 全家桶（本仓已移除，回不去）、`ui` 模块与 `build-logic` 上游版（宿主重构不跟，见 `db4982283` 结论；`24a742270` 的 BetterText 渲染部分已另行迁移；本仓保留自有 build-logic）、iText/Objectbox 仓库（上游 PDF 替换方案依赖）。
 
 ## 2026-11-01 models.dev 模型元数据落地（上游 `41ce12f66`，fork `b9a95f0d4`）
 

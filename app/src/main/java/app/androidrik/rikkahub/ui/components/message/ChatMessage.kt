@@ -86,6 +86,7 @@ import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.replaceRegexes
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
+import app.androidrik.rikkahub.ui.components.richtext.SelectableContent
 import app.androidrik.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import app.androidrik.rikkahub.ui.components.richtext.buildMarkdownPreviewHtml
 import app.androidrik.rikkahub.ui.components.webview.WebViewContentCache
@@ -601,16 +602,10 @@ private fun MessagePartsBlock(
                             }
                         }
 
-                        // 流式生成期间不启用 SelectionContainer：Markdown 在不断重渲染，
-                        // 内部可选择的 Text 会频繁注册/注销，与 Compose 选择工具栏在绘制阶段
-                        // 对 selectable 列表的排序产生并发修改，导致 ConcurrentModificationException。
-                        // 生成结束后内容稳定，再启用文本选择。
-                        if (loading) {
+                        // BetterText 自带选择容器：流式生成期间也可以选择（Compose Text 的
+                        // ConcurrentModificationException 问题不再适用），不再需要等生成结束。
+                        SelectableContent {
                             textContent()
-                        } else {
-                            SelectionContainer {
-                                textContent()
-                            }
                         }
                     }
 

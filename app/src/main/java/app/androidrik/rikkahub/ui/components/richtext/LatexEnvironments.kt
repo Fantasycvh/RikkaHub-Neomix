@@ -61,7 +61,7 @@ internal object LatexEnvironments {
     )
 
     /**
-     * 环境名重写表：只保留 KaTeX 与 jlatexmath 都能吃下的等价环境。
+     * 环境名重写表：只保留 KaTeX（BetterText latex 移植）能处理的等价环境。
      *
      * 不改写 tikzpicture / tikzcd / axis —— 它们要原样交给 TikZ 编译器。
      */

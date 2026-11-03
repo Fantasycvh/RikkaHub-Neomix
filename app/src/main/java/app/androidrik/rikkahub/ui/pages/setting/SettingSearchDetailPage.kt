@@ -46,7 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import app.androidrik.highlight.LocalCodeHighlighter
+import me.rerere.bettertext.highlight.LocalCodeHighlighter
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.richtext.HighlightCodeVisualTransformation

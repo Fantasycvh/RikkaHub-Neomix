@@ -652,6 +652,9 @@ class PromptAssemblyTest {
         assertTrue("render hints should be part of the system block", systemText.length > "SYS".length)
         assertTrue(systemText.contains("For TikZ diagrams"))
         assertTrue(systemText.contains("For math formulas"))
+        // 中文公式必须引导模型用 \text{...} 或放在公式外，禁止 \ 后直接跟中文
+        assertTrue(systemText.contains("\\text{"))
+        assertTrue(systemText.contains("NEVER write a backslash directly before a Chinese character"))
     }
 
     @Test

@@ -36,7 +36,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "rikkahub"
 include(":app")
-include(":highlight")
 include(":ai")
 include(":search")
 include(":speech")

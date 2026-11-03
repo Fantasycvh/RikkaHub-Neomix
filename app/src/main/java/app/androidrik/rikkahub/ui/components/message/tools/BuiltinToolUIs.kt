@@ -55,7 +55,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import app.androidrik.common.http.jsonObjectOrNull
-import app.androidrik.highlight.CodeHighlightText
+import app.androidrik.rikkahub.ui.components.richtext.CodeHighlightText
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.ChartLineData01
