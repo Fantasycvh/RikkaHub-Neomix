@@ -17,6 +17,7 @@
 | 文档 | 内容 |
 |---|---|
 | [`design-plugin-composable-runtime.md`](design/drafts/design-plugin-composable-runtime.md) | 可组合插件运行时设计 **rev2**（2026-11-03 晚重议）：契约化装配优先、动态运行时降为 P1 决策门后的条件项；含 Superagent 与 dsh-Go 固定提交源码分析、服务契约、生命周期、配置迁移与分期验收，§8.1 并列 JS 运行时候选基准（WebView/QuickJS/Hermes/winterjs2，未启用）；尚未实施 |
+| [`design-dshgo-kotlin-migration-assessment.md`](design/drafts/design-dshgo-kotlin-migration-assessment.md) | **dsh-go → Kotlin 迁移评估**（2026-11-03）：只重构插件设计、复用现有 Compose UI、BetterText 承接富文本；实测规模账本、T-A…T-E 分层成本（全量 137–218 人日，点 ~177）、接缝取舍、决策门与风险；结论为「插件设计重构先行（35–55 人日、2–3 人 6–8 周），引擎托管独立立项」。评估稿，未立项 |
 | [`design-auto-compaction.md`](design/design-auto-compaction.md) | 自动上下文压缩（harness 式检查点、可回看可编辑） |
 | [`design-backup-workspace-files.md`](design/design-backup-workspace-files.md) | 备份纳入工作区文件 |
 | [`design-incremental-backup.md`](design/drafts/design-incremental-backup.md) | **增量备份设计草稿**：自包含快照清单 + 内容寻址对象；P1 文件区增量（复用现有恢复引擎）、P2 DB 对象级增量；含实测体积构成、传输层缺口、分阶段计划与风险。**P0 前置修复已落地（2026-11-03），P1/P2 未实施** |
