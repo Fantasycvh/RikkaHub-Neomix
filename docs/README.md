@@ -19,6 +19,7 @@
 | [`design-plugin-composable-runtime.md`](design/drafts/design-plugin-composable-runtime.md) | 可组合插件运行时设计草稿：借鉴 DeepSeek Harness；含 Superagent 原型固定版本源码分析、服务契约、作用域、配置修订、分期迁移与验收；尚未实施 |
 | [`design-auto-compaction.md`](design/design-auto-compaction.md) | 自动上下文压缩（harness 式检查点、可回看可编辑） |
 | [`design-backup-workspace-files.md`](design/design-backup-workspace-files.md) | 备份纳入工作区文件 |
+| [`design-incremental-backup.md`](design/drafts/design-incremental-backup.md) | **增量备份设计草稿**：自包含快照清单 + 内容寻址对象；P1 文件区增量（复用现有恢复引擎）、P2 DB 对象级增量；含实测体积构成、传输层缺口、分阶段计划与风险。**P0 前置修复已落地（2026-11-03），P1/P2 未实施** |
 | [`design-compress-presets.md`](design/design-compress-presets.md) | 压缩参数预设档 |
 | [`design-conversation-import-export.md`](design/design-conversation-import-export.md) | 对话导入导出与附件往返 |
 | [`design-conversation-manual-order.md`](design/design-conversation-manual-order.md) | 会话手动排序 |
