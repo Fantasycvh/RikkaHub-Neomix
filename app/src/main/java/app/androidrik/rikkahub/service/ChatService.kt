@@ -486,6 +486,13 @@ class ChatService(
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
 
     /**
+     * 标题 / 建议生成的单飞注册表（借鉴 rikkahub-agent `AuxJobRegistry`）：
+     * 同会话同类型只保留最新一个，连点「停止→重发→重新生成」不再叠并发请求、
+     * 也不再把本地后端的 prompt cache 顶掉。
+     */
+    private val auxJobs = AuxJobRegistry()
+
+    /**
      * 插件提供的**输入**转换器。
      *
      * 两道门:插件已启用 + 持有 [PluginCapability.PROMPT_TRANSFORM]。
@@ -726,6 +733,16 @@ class ChatService(
         } finally {
             removeConversationReference(conversationId)
         }
+    }
+
+    /** 辅助生成（标题/建议）单飞：同键 cancel-and-replace，任务结束自动注销。 */
+    private fun launchAuxJob(
+        conversationId: Uuid,
+        kind: AuxJobRegistry.Kind,
+        block: suspend () -> Unit,
+    ) {
+        val job = launchWithConversationReference(conversationId, block)
+        auxJobs.replace(conversationId, kind, job)
     }
 
     // ---- 对话状态访问 ----
@@ -1127,6 +1144,8 @@ class ChatService(
 
     private fun sendQueuedMessage(session: ConversationSession, queued: QueuedMessage): Job {
         val conversationId = session.id
+        // 新一轮开始：上一轮还在飞的标题/建议直接作废（用户已经在发新消息，旧结果没有意义）
+        auxJobs.cancelAll(conversationId)
         val content = queued.parts
         val answer = queued.answer
         val previousAssistantIds = session.state.value.currentMessages.map { it.id }.toSet()
@@ -1254,6 +1273,8 @@ class ChatService(
     ) {
         val session = getOrCreateSession(conversationId)
         session.getJob()?.cancel()
+        // 重新生成：上一轮的标题/建议在飞请求一并作废（连点不再叠并发、不白烧 token）
+        auxJobs.cancelAll(conversationId)
 
         // 重新生成 = 用户发起的**新一轮尝试**（往往正是因为上一轮卡住/不满意）：
         // 护栏历史一并清空，让新尝试从干净的额度开始，避免上一轮的重复记录误伤本次。
@@ -2193,10 +2214,10 @@ class ChatService(
                     Logging.log(TAG, "handleMessageComplete: save failed: $saveError")
                 }
 
-            launchWithConversationReference(conversationId) {
+            launchAuxJob(conversationId, AuxJobRegistry.Kind.TITLE) {
                 generateTitle(conversationId, finalConversation)
             }
-            launchWithConversationReference(conversationId) {
+            launchAuxJob(conversationId, AuxJobRegistry.Kind.SUGGESTION) {
                 generateSuggestion(conversationId, finalConversation)
             }
         }
