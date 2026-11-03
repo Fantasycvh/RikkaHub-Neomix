@@ -126,8 +126,8 @@ migration not found 崩溃；现在降级时清库重建」。实现只 **2 处 
 
 | 提交 | 内容 | 本仓落点 |
 |---|---|---|
-| `0fdc96f33`（AMOLED 部分） | AMOLED 下补 `surfaceDim`/`surfaceContainerLowest/Low/High/Highest` 纯黑或近黑，否则设置卡片仍是深灰「开关像没反应」 | `ui/theme/Theme.kt:102-111` 现只压 `background`/`surface`；约 10+8 行；注意角色覆写（`:86-101`）在 AMOLED 之前生效，压黑需一并决定 |
-| `3300d0400` | 正则编辑框 `singleLine` + `maxLines=8`，防整段 HTML 替换串撑爆布局 | `ui/pages/assistant/detail/AssistantPromptPage.kt:1003-1041` 同一张卡无约束，4 行；属 `AGENTS.md` TextField 坑族 |
+| `0fdc96f33`（AMOLED 部分） | AMOLED 下补 `surfaceDim`/`surfaceContainerLowest/Low/High/Highest` 纯黑或近黑，否则设置卡片仍是深灰「开关像没反应」 | `ui/theme/Theme.kt:102-111` 现只压 `background`/`surface`；约 10+8 行；注意角色覆写（`:86-101`）在 AMOLED 之前生效，压黑需一并决定。**✅ 已落地 `064a8b772`（2026-11-03）** |
+| `3300d0400` | 正则编辑框 `singleLine` + `maxLines=8`，防整段 HTML 替换串撑爆布局 | `ui/pages/assistant/detail/AssistantPromptPage.kt:1003-1041` 同一张卡无约束，4 行；属 `AGENTS.md` TextField 坑族。**✅ 已落地 `064a8b772`（2026-11-03）** |
 
 ### 候选（6）
 

@@ -42,7 +42,7 @@
 
 ### 吸收（1）
 
-`e3cbed8`：有 tools 时**显式**发 `tool_choice:"auto"`。省略时该网关走另一条翻译路径，`tool_calls.name` 全程空串、工具全废（真机 2026-11-03 定位）；bigeye `llm.py:983` 独立同证。本仓 `*.kt` grep `tool_choice` **0 命中**，落点 `ai/.../ChatCompletionsAPI.kt:556` tools 块后 +1 行 + 单测（tools 为空时不得发）。
+`e3cbed8`：有 tools 时**显式**发 `tool_choice:"auto"`。省略时该网关走另一条翻译路径，`tool_calls.name` 全程空串、工具全废（真机 2026-11-03 定位）；bigeye `llm.py:983` 独立同证。本仓 `*.kt` grep `tool_choice` **0 命中**，落点 `ai/.../ChatCompletionsAPI.kt:556` tools 块后 +1 行 + 单测（tools 为空时不得发）。**✅ 已落地 `064a8b772`（2026-11-03）：`ChatCompletionsToolChoiceTest` 钉住「有 tools 必发 / 无 tools 不发」。**
 
 ### 候选（3）
 
