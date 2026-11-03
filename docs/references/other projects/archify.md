@@ -43,3 +43,12 @@
 **结论：archify 对本仓的价值是"契约与参考"，不是"可安装的技能"。** Node 那半在 Android 宿主上是死的；
 但 JSON IR + 校验 + 原子替换 + 自包含 HTML 这套，正是 #2123 评论串里所有人共同卡住的**交付**那一半的成熟答案。
 若要吸收：**抄契约、不抄运行时** —— 模型直接产 HTML/IR，宿主负责校验、存、显示，失败给修复清单。
+
+## 2026-10-16 → 10-31 增量评估（2026-11-03，210 提交）
+
+约 155 条为站点/explainer 版式/截图证据/发行与 pages 上传（与契约无关）；许可证 MIT → **Apache-2.0**（保留历史 MIT 授权；本仓不摘代码，仅记账）。契约层实质变化 2 条：
+
+- **C1 第二产物族落到同一契约**（`272ab1108`）：`archify/explainer/validate.mjs` + `explainer.schema.json`（793 行）+ `explainer/check.mjs`，诊断仍带稳定 code `explainer/*` 与 `supportedFixes`；新增**受限 Markdown 草稿 → parser 归一化到同一 typed IR**（收敛模型直写 JSON 的失败面）。
+- **C2 嵌套产物用子收据递归校验**（`272ab1108`）：内嵌原生图走自己的 checker，父收据只认子收据的 `sha256/bytes` 与 composition；`finalize` 默认串 `validate → deliver → check`，浏览器检查 opt-in。「schema → 生成 validator」这条链基线前已存在，本轮增量只是第二产物族接入同一生成链。
+
+**结论**：「抄契约、不抄运行时」不变，补两点操作经验（允许受限 Markdown 输入层；嵌套产物只用子收据核对哈希与字节，不重跑子校验）。Node 运行时在 Android 仍不可用。

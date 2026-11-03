@@ -1,7 +1,7 @@
 # PurrCat（PurrPod/purrcat）借鉴评估
 
 > **本仓说明**：本文写于私有开发仓的评估流程中，恢复时已按本仓实际改写；`<work>` 等尖括号串是路径占位符。
-> 本文**只记录结论与建议顺序，未改动任何代码**（状态：**评估完成、未落地**，2026-10-30）。提交/发布按 `AGENTS.md` 授权规则执行。
+> 本文**只记录结论与建议顺序，未改动任何代码**（原状态：评估完成、未落地，2026-10-30；**2026-11-03 状态回写：A1 收尾闸门 / A3 交付物契约 / A4.1 idle 门控 / A4.2 会话级目标已在本仓落地，仅 A2 能力生产线仍未动工**）。提交/发布按 `AGENTS.md` 授权规则执行。
 
 > **系列位置**：同类应用借鉴评估之一；系列索引与跨应用汇总见 [`peer-apps-benchmark.md`](peer-apps-benchmark.md)（其余应用的评估原文在 [`references/other projects/`](references/other%20projects/)）。
 >
@@ -205,7 +205,7 @@ PurrCat 的"全量库 + 少量注入"与本仓"记录 + 清单 + 按需读"是**
 
 ## 五、值得吸收（按价值排序）
 
-### A1. 收尾闸门（loop-end gate）—— 🟡 限定场景
+### A1. 收尾闸门（loop-end gate）—— ✅ 已落地（`ae382c8c1`，2026-10-31；限定场景）
 
 - **需求**：让"没真的交付就不许结束"从提示词自觉变成可判定的闸门。本仓当前靠 `RuleEngine` 的 `budget_near_limit` 提醒（注入式），模型可以不理。
 - **本仓现状**：`RuleEngine.remember()` 三条规则全部"只提醒不拦截"；`ToolCallLoopGuard` 只做**优雅停止**（结果照常回填），不做"打回重试"。
@@ -215,7 +215,7 @@ PurrCat 的"全量库 + 少量注入"与本仓"记录 + 清单 + 按需读"是**
 - **工程量**：小（约 1 天 + 单测）。窗口/阈值沿用三档 `Sensitivity` 惯例，不开放自由数字。
 - **验收**：闸门未通过时本轮继续且注入提示措辞可见；达上限强制放行不卡死；聊天模式行为逐位不变（回归测试）。
 
-### A2. 能力生产线（能力 → 校验 → 合并 → 回滚）—— ✅ 设计层吸收
+### A2. 能力生产线（能力 → 校验 → 合并 → 回滚）—— ✅ 设计层吸收（**仍未动工**，2026-11-03 复核无 `ArtifactValidator`/版本表）
 
 - **需求**：让"AI 自己产出的技能/插件"有隔离起草、可复核、可回滚的路径。这是 `docs/roadmap.md` 里"外部插件包生态"缺口的正解。
 - **本仓现状**：`save_skill` 直接落 `skills/`（有 `saveSkillFilesAtomically`，无隔离/无校验/无版本）；插件为编译期 + QuickJS 规则，导入靠 `JsPluginInstaller`（安装前逐项确认能力，但无"生产"环节）。
@@ -228,7 +228,7 @@ PurrCat 的"全量库 + 少量注入"与本仓"记录 + 清单 + 按需读"是**
 - **工程量**：中（3–5 天：校验器 + 版本表 + 合并审批 UI + 单测）。
 - **验收**：坏产物在合并前被拦且给出可操作原因；合并后可一键回滚到上一版；旧数据无迁移风险（版本表新增，不动既有 schema）。
 
-### A3. 子代理交付物契约 —— ✅ 小件
+### A3. 子代理交付物契约 —— ✅ 已落地（`ae382c8c1`：`LoopGate.deliverables` + `TaskManageTools`，2026-10-31）
 
 - **需求**：后台跑飞的子代理最难判"真完成"。文件系统是天然验收器，本仓工作区正好有。
 - **本仓现状**：`SubagentRunner.kt:753` `RunOutcome.Completed(summary)` 只要求最终文本非空（`:798` 注释明确"空响应不得记成 COMPLETED"）。
@@ -238,7 +238,7 @@ PurrCat 的"全量库 + 少量注入"与本仓"记录 + 清单 + 按需读"是**
 - **工程量**：小（半天–1 天 + 单测）。
 - **验收**：声明了 deliverables 但未产出 → 不记 COMPLETED；未声明 → 行为逐位不变。
 
-### A4. 定时任务的两个补充语义 —— 🟡 并入既有设计稿
+### A4. 定时任务的两个补充语义 —— ✅ 已落地（`ScheduledTaskExecutor.kt:51` idle 门控；`Conversation.goal` DB v52 + `withGoal` 注入，`2517d47cf`/`792d2cf22`）
 
 - **不新增设计**，只建议把两条并入 `docs/design/completed/design-scheduled-ai-tasks.md`：
   1. **idle 门控**：per-task 可选"仅当该会话无进行中生成时才注入"（当前设计是 FIFO 排队）。价值：避免周期性任务把用户的即时对话挤到后面。
@@ -363,3 +363,9 @@ grep -rn "get(\"trigger\")" src/agent/                                        # 
 function-calling 循环（256 步）· 逐工具审批与挂起续跑 · `ToolCallLoopGuard`/`DenialGuard`/`WorkspaceTurnBudget` · 8 个 workspace 工具 · PRoot 沙箱 + fd 级路径锚定 · 后台任务三件套（4 并发 / 30min / `.tasks/` 落盘 / 8KB 尾部）· 子代理（独立上下文 / 能力信封 / 禁嵌套 / 并发 2 / 升级到人 / `agent_run` 账本）· 记忆三类 + L0–L3 注入 + 评分预算 + 整理器 + 纪律兜底 + 渐进披露 · RAG 知识库 · 世界书/mode/preset/ST 宏 · 15 个 transformer · `SKILL.md` 技能（内置、AI 自装、AI 自存）· MCP（SSE / StreamableHTTP / OAuth / mTLS / schema 折叠）· `ask_user` · `todo_write` · 自动上下文压缩（80% / 40% / 2000 token）· 真 BPE tokenizer · 提示词拼装诊断 · Ktor Web + React SPA + SSE · 实验性插件（JSON 规则 + QuickJS）· 中断 → 合成 tool result（`ToolResultBalancingTransformer`）。
 
 **本仓真正空着的方向**（PurrCat 之外的独立结论）：定时/周期任务（有设计稿无实现）、跨任务编排、外部能力生态、守护态后台进程、per-tool 网络与资源配额。
+
+## 附录 E：2026-11-03 增量评估与状态回写
+
+- **状态回写**：A1 收尾闸门 + A3 交付物契约 → `ae382c8c1`（`LoopGate.kt` + `TaskManageTools`，2026-10-31）；A4.1 idle 门控 → `ScheduledTaskExecutor.kt:51`；A4.2 会话级目标 → `2517d47cf`/`792d2cf22`（`Conversation.goal` + DB v52 + `withGoal` 注入）。A2 能力生产线仍空（全文 grep `ArtifactValidator`/版本表零命中）。
+- **2026-10-26 → 10-31 新增 6 提交（`efc9fb6..adbba56`）**：`53f5847` 会话级 `plan.md`（BrainStorm 每次调用整体覆盖刷新总计划，`@PLAN` 作为注入别名在任意位置展开）→ **候选**（本仓 `Conversation.goal` 是用户手填；缺「模型工具自动刷新」与注入别名，落点 `ConversationEntity.kt:52` + `ScheduledTaskEntity.kt:79`）；`adbba56` 插件后端子进程生命周期跟随面板标签 → 不适用（本仓插件是编译期 Kotlin + QuickJS，无后端子进程形态）；其余 4 条为 UI/CDP 回落/前端修复 → 不适用（平台面）。
+- 证据级别：本地源码（commit `efc9fb6` 起），逐条读 diff。

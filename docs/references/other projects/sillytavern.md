@@ -594,3 +594,7 @@ system 里仍贡献换行的逐字节契约由 `PromptAssemblyTest` 锁着）；
 **关联**：`701361d8`（上下文构成诊断日志，真实构成与 3.4% 精度实测）、§6.12 Tier 4。
 
 关联文档：[upstream-analysis.md](../../upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](../../design/design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）、[本页索引](../../peer-apps-benchmark.md)。
+
+## 2026-11-03 增量核查
+
+公开仓 `release` 仍为 `06bde939f`（v1.19.0，2026-09-14，与本地一致）；`staging` 自 09-14 仅 12 条：文档 / PR 模板 / 拼写修正、`API` 按钮文案 credit→charge、若干模型清单补充（GPT-6 Sol/Luna、Opus 5.5、Gemini 3.8 Flash）。**无注入/预设/世界书面变化**，本文件 §六 结论维持；模型清单本仓由 models.dev 快照维护，不需要跟。

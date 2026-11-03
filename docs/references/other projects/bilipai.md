@@ -64,3 +64,11 @@ GLASS 走 `hazeGlass` + `GlassStyle.Material3`（`ChatInputHaze.kt`，铺底 + 3
    时代的父子拓扑闪退；haze 2.0.1 + 门控层下把 ChatList 玻璃层改回**父子层**（blur 挂包含 LazyColumn 的父容器，仍只采背景），
    真机初测无闪退——「blur 容器不能含可滚动子节点」约束疑似已解除。观察期后若稳定，2.4.10~2.4.12 的历史教训应改写为「alpha05 时代的约束」。
 5. 真机验证待办：blur/glass 在 ≥31 真机冒烟一遍（后台→回前台往返是历史闪退场景，重点回归）；父子层玻璃同样需过这轮。
+
+## 2026-10-31 → 11-02 增量评估（2026-11-03，`8486dbf7d..7fec7694`，50 提交）
+
+50 条中 38 条为 B 站播放器/信息流/评论/空间域（不适用）；路径过滤命中 12 条玻璃/动效/门控，精读 6 条。**门控层核心 `core/ui/blur/RecoverableVisualEffects.kt` 本批未变**。总评：**吸收 1 / 候选 1 / 其余不适用**。
+
+- **吸收：`ReduceMotion.kt` + `VisualWorkPolicy.kt`**（`67a81ff4f` 等批次使用）。前者 40 行读 `Settings.Global.ANIMATOR_DURATION_SCALE` 并用 `ContentObserver` 实时跟随（注册后再同步一次防窗口期漏变）；后者 20 行纯函数 `shouldRunVisualWork(pageActive, resumed, focused)`，消费方 `DecorativeAnimationGate` 组合「组件开关 && !系统减弱动效 && 窗口聚焦 && 可视」。本仓 `ui/components/haze/RecoverableVisualEffects.kt:55-60` 只有 `userEnabled && !background`，全仓无「系统移除动画」/窗口焦点判断（grep 零命中）。建议：`ReduceMotion` 整件移植；焦点 gate 先只用于装饰动效、模糊侧观察一版再加（避免焦点抖动闪断）；补一条 gate 组合表纯 JVM 单测。
+- **候选：玻璃参数实时预览**（`LiquidGlassLivePreview` 同面板调参 + 当前参数渲染）。本仓玻璃设置页 5 组，改完要退出看聊天页；建议预览用静态采样背景，不新增 HazeState 消费点。
+- **不适用**：弹性弹窗 / 液态形变（`5c44a5a45` `ElasticPopupMotion.kt` 156 行）· 同窗玻璃弹窗（`71892cc2c`，玻璃弹窗必须同 Window 才能采到 Activity 内容）· 联动玻璃底栏（`f57790887` 386 行）· 重力高光传感器（`0ecc4146c`）· 手写渐进模糊 `RenderEffect`（`OfficialProgressiveTopBlur.kt`——**本仓三版闪退坑族**，只在将来做顶栏渐进模糊时参考其 shader/效果缓存写法）。

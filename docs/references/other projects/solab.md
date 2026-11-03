@@ -47,3 +47,7 @@ Flutter（Kelivo 底座：世界书/记忆/指令注入/多 provider）+ Kotlin 
 7. 小件：frosted 毛玻璃组件、thinking_sheen 思考光泽动效、token_detail_popup。
 
 （新增 Dart 目录 `lib/features/chat/widgets/frosted/`、`test/goldens/`、`test/perf/`；Kotlin 新增 ApkArchiveTool/ApkZipCache/AsmFastIndex/PpPostings 等均为逆向引擎性能件。）
+
+## 2026-11-03 增量核查
+
+远端 `origin/master` 与本地 `72d28b1` 一致，**无远端新提交**。本地 `2.3.0` 快照之后的 30 条（2026-09-06~09-12）为 fork 侧改动：MCP 大任务超时治理（异步超时不占通道冷却、`mcp_task_status cancel`、schema `timeoutSeconds`）、存储页「应用私有目录/文件视角」、APK 签名密钥库（JKS/BKS/P12）与 AXML 属性改写。判定：MCP 超时治理与存储文件视角**已有等价**（本仓后台任务 30 分钟看门狗 + `TIMED_OUT`；缓存管理设计稿 Phase 1+2 已实现），签名/AXML 属逆向域**不适用**。无可吸收项。

@@ -515,3 +515,15 @@ Yuihub 把消息统计行改为图标化（tokens/缓存图标）。fork 的 ner
 （用户编辑后想只修正这一段，与角色无关），**仅 scope B（含后续）要求确认**，并把原设想的
 「自动分支」改为 **snackbar 撤销**（fork 会物理复制附件 + 副本丢检查点，代价不对等）。
 设计稿见 **`design-regenerate-scope.md`**。
+
+## 附录 F、2026-11-03 增量判据（billion-context）
+
+> 来源：[`billion-context.md` §11.4 J](../../references/other%20projects/billion-context.md)。**判据补记，未改实现**；落点见各条。
+
+1. **折叠身份用顺序，不用内容哈希**（`6a9d40390` #3641）：本仓 `Conversation.kt:190-199` 的区域指纹（节点 id + 选中消息 id 拼接哈希）现在同时承担「覆盖区间是否还在」和「内容是否被改写」两件事。应拆两步：先用 id/顺序确认边界仍在（便宜），再用内容证据判「是否真被改写」（贵）；只有后者成立才回退全量。id 重铸但内容未变不应判为损坏。
+2. **换模型 ⇒ usage 基线作废**（`041c32b00` #4288）：本仓 `usage.promptTokens` 优先的锚点估算 + 「陈旧判定只看检查点时间戳」，没有 model/contextLength 维度；换到更小窗口的模型后旧基线恒高于新窗口 ⇒ 压缩/截断判定可能永不触发（或反向过触发）。补一条：模型 id 或 contextLength 变化时弃用旧 usage 锚点，改走本地估算。
+3. **紧急截断 latch 到下一次折叠 + 每次严格变短**（`b9bae8990`/`54bb967c6`）：`GenerationHandler` 的 85% 紧急卸载是请求期投影、每请求重算，token 估算在阈值附近抖动 ⇒ 每次请求字节漂移；且 clip 必须严格短于原文（对方实测 4001→4064 越截越长，反写坏前缀缓存）。
+4. **保护锚点须跳过注入的伪 user 块**（`e7fe9c098` #5109）：若实现「保护最近一轮」，不能按「最后一条 role=USER」取锚——`{{cur_date}}`/模式注入/工作区提醒都占 user 通道；锚点应跳过注入 carrier。
+5. 边界：以上只改判据、不动现有检查点结构。B2（持久单调 seq）与 B6（覆盖率闸 + 幂等 no-op）需 schema/流程改动，单独立项。
+
+**关联**：[`design-multi-pass-compression.md` §1.2](../in-progress/design-multi-pass-compression.md)（同一 token 估算口径问题）、[`design-tool-output-budget.md` §8](../drafts/design-tool-output-budget.md)（B9 出口字节预算）。

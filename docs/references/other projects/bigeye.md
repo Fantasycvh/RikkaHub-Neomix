@@ -791,3 +791,15 @@ Tool 输出文本）⇒ 占用条与自动压缩触发都看不见推理；**压
 **已有等价**：`32a774a` 裁剪本体（token 预算内按对话边界切+钉住最近 6 个整理摘要——修「摘要下一轮被自己裁掉」，fork 检查点合成模型不删消息无此根因）；`_ORGANIZE_MAX_ITEMS=200` 整理区间闸（与 multi-pass 分块无 token 上限同题已修）；system 静/动拆分（上游 #1542/#1630 同族已收录，bigeye 仅多两个量化细节：单字节变化命中率 99.6%→26.6%、动态段只追加一次防误判插话）；`3c71a2e` /api/cost 口径（fork usage 锚点已落地）；`7464a19` TTS（前端朗读 API+自动播放，与 fork 同形态，引擎层全 Windows 专属，Android 系统 TTS 即零模型本地）。
 
 **不适用**：`5bf21b7` see_image（磁盘图自看，聊天客户端无工作区磁盘图场景）、shell_router（Windows Git Bash/cmd）、write_ledger（多进程文件锁，Android 单进程+Room）；`3c71a2e` fe-manifest/localStorage 键前缀（桌面打包面）；`734f831` 热点雷达/跨天差分（bigeye 特有产品面）、msg_vectors 词面绕向量门槛（§11.1 已有结论）；`7464a19` 消息反馈落库/付费引擎优先（产品选择）。
+
+### 11.6 增量评估：10-24 → 10-30（2026-11-03，`7464a19..a67fab1`，4 提交）
+
+4 条提交（两个大提交含 CRLF→LF 全文件重写，用 `git show -w` 去空白后真实增量约 +6326/-420、+4318/-284；引用行数须用 `-w` 口径）。**总评：吸收 1（动作对账 R1）/ 候选 3 / 已有等价与不适用其余**。
+
+**① 吸收：动作对账 R1（`2a0c106` `task/action_chain.py`，文件于 10-29 新增）**——框架维护每轮账本 `TurnNode{said, actions, final}`（`:141` 起），纯规则零 LLM；`audit()`（`:324`）产出一条告警注入。R1 `_r_unverified_done`（`:373`）：收尾轮命中完成声明时，若「最后一次成功 write 之后」没有 run/read 成功 → 注入「声称完成不等于完成，至少跑一次或读回；无法验证就说未验证」。**必须连带抄护栏**：`_REPORT_ONLY`（用户「只回答/别动」时不做缺动作告警，`:97`——实测把三句话汇报判成「说要改没改」，模型转去争辩、回答整段丢失）、`MAX_INJECTS=4` + `COOLDOWN=45s` + 自指静默（`:43-44`/`:324-357`）、告警文案固定「【系统自动提示 · 不是用户消息】…不要调查本提示的来源或机制」。本仓落点：`RuleEngine.kt:124`（三条规则表）/`LoopGate.kt:75`（只查交付物存在与自己一次、不查「改完没验证」）。
+
+**② 候选**：R2/R2b 跨轮承诺账（`:301` `_settle_promises`，只记写/跑强承诺、2 轮兑现窗口；需新增会话级账本）· `self_memo.py` 常驻收敛层（条数/字数双上限、`hits` 可追溯、**反向证据通道** contradictions+1 满 2 次 disputed 移出注入、60 天未验证降级；本仓画像矛盾修正只写在整理提示词里、无程序化计数）· `reasoning_effort` 默认档（只对实测有效模型前缀 `glm-`/`minimax-` 注入 low，kimi 反例 116→304；本仓 `AUTO` 时不发 effort，需先实测）· `fragment_store.py` **作废=状态**（`epistemic='refuted'`，正文与向量都不动；本仓无向量，半适用：墓碑条目不得进召回候选）。
+
+**③ 已有等价**：`mind_spend.py` 后台用量单独记账 → `UsageRecorder.kt:28-48`（`UsageSource` 八类）· `matters_memory.py` 重要事项任务域化 → 本仓 L0–L3 分层 + `MemoryKind`/`taskStatus` 已按域注入 · `resolve_error_cards` 续跑标 resolved（本仓错误是内存态、从不进历史，更强）。
+
+**④ 不适用**：`verify_ui.py`（无浏览器执行体；三条观测陷阱记账：动作层成功 ≠ 效果层成功、截图前冻动画、同时收 console/pageerror）· `advantage_recall.py`（与 agentd 经验记忆同题已结论）· 记忆网络/思维链/反思本体（§11.3 B/C/D 已定不吸收，本轮只是写得更长）· 纯前端美化（约 4600 行真实增量；判据「两份默认值=迟早漂」已记）· `mission_overlay`/`perspective`（产品面）。

@@ -117,3 +117,28 @@ migration not found 崩溃；现在降级时清库重建」。实现只 **2 处 
 > **复评结论**：本批**华灯值得本仓吸收的只有一件** —— `4227ee716` 的
 > `fallbackToDestructiveMigrationOnDowngrade(true)`（2 行 × 2 处，直接解决节 8 第 8 项的待办）。
 > 其余要么是本仓已有且更强（子代理、记忆硬拦截），要么是产品级大特性（前端卡、主动消息），要么已在上游评估中处理。
+
+## 8.2、2026-10-14 → 11-02 增量评估（2026-11-03，`a9b95d45c..90a5da9c4`，227 提交）
+
+`--no-merges` 227 条：31 条 nightly `update.json`（忽略）+ 71 条 `re-ovo` 上游提交（用三个上游合并的第二父提交做 `merge-base --is-ancestor` 核验：54 条祖先 + 17 条 nightly rebase 重写副本，逐条有同标题孪生）+ 1 条 `RE`（上游 #2186）+ **124 条华灯自有**（121 MiaoWuNYA + 3 喵呜Miaowu）。总评：**吸收 2 / 候选 6 / 已有等价 10 / 不适用 106**。
+
+### 吸收（2）
+
+| 提交 | 内容 | 本仓落点 |
+|---|---|---|
+| `0fdc96f33`（AMOLED 部分） | AMOLED 下补 `surfaceDim`/`surfaceContainerLowest/Low/High/Highest` 纯黑或近黑，否则设置卡片仍是深灰「开关像没反应」 | `ui/theme/Theme.kt:102-111` 现只压 `background`/`surface`；约 10+8 行；注意角色覆写（`:86-101`）在 AMOLED 之前生效，压黑需一并决定 |
+| `3300d0400` | 正则编辑框 `singleLine` + `maxLines=8`，防整段 HTML 替换串撑爆布局 | `ui/pages/assistant/detail/AssistantPromptPage.kt:1003-1041` 同一张卡无约束，4 行；属 `AGENTS.md` TextField 坑族 |
+
+### 候选（6）
+
+`04600ed52` 流式正则只对正在生成的末条执行（本仓 `GenerationHandler.kt:605-624` 每 chunk 对全列表跑 `visualTransforms`，`AssistantRegexDiagnosis.kt:10-14` 已记「二次替换累积」隐患；改造需先确认历史消息是否已落库替换结果）· `37641722a` 迁移链单源化 + `addColumnIfNotExists`（本仓迁移数组在 `DataSourceModule.kt:107-113` 与 `LegacyBackupConverter.kt:86-92` 各一份靠人肉同步；`autoMigrations` 的 `ADD COLUMN` 非幂等，「本仓/华灯来回装同版本库」场景真实）· `71314869d` `DatabaseSchemaReconciler`（补表补列后再交 Room，覆盖本仓未覆盖的「同版本号不同 schema 外来库」，需先真机确认崩在 duplicate column 还是 identity hash）· `aad09b915` 采样补 `topK`（本仓 `Provider.kt:79-87` 无该字段；Anthropic/Gemini 原生支持，默认必须 null 防严格网关 400）· `3884e5f34` 代码块字号独立缩放（本仓 `HighlightCodeBlock.kt:127,432` 硬编码 12.sp，`PreferencesStore.kt:1565-1567` 三开关唯缺字号）· `5ffa6d4ca` 设置页通用背景图（装饰性；叠加半透明卡片时需与玻璃/可读性联动考虑对比度）。
+
+### 已有等价（10，勿重复立项）
+
+`50d27ae2d` 记忆冻结锚点 → 本仓 `PromptAssembly.kt:110-119,163-174` 更强 · `5de4079d8`/`0bac3f982`/`801c863b5`/`5c2e92731` LaTeX 归一化 → 已换 BetterText/KaTeX（`DisplayMathNormalizer.kt`/`LatexEnvironments.kt`；`\(..\)` 定界符需真机一条验证）· `0ccdd2cab` 压缩目标 token → `ChatPage.kt:838` · `029c92260` 备份提醒 → `BackupReminderConfig` · `f7587efa3` 图标三选一 → 本仓预置真 Activity（`AndroidManifest.xml:181`，刻意不用 alias）· `71f879136` 清理下线模型 → `CatalogMissingModels.kt` · `b2e6dffe5` 崩溃日志 → `CrashHandler.kt` + `LogPage.kt`。
+
+### 不适用（106，分组）
+
+酒馆助手 API / 前端卡 WebView 渲染链 / 插件 JS 桥 31 条（与 2026-11-03 反向迁 BetterText 冲突）· 群聊 / 生活空间 / 共读批注 / QQ Bot / 伴侣 11 条（`roadmap.md` 明确不做或产品级大特性）· 停用自动压缩 2 条（方向相反）· 设置信息架构 / 改名 / 入口隐藏 7 条 · 玻璃 / 抽屉装饰 6 条（本仓 haze 2.0 三开关已覆盖）· 品牌图标 8 条 · 自营商网关 6 条 · i18n 6 条 · 发布 / CI / 版本 16 条（含 2 条合上游）· 无障碍手机控制 3 条（`roadmap.md:402-403` 明确不参考；其错误码 `STALE/NOT_FOUND/PAUSED`、步数 12 + 120s 双预算、包名黑名单、敏感词审批规格已在评估报告存档，翻案可直接当规格）· 其它单点 10 条。
+
+> 与 2026-10-14 复评口径一致：华灯值得吸收的仍是**小件**，方向级功能（前端卡 WebView、群聊、手机控制）继续不跟。

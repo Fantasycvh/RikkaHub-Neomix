@@ -38,3 +38,27 @@ README 自述 "Your phone, automated"——把 RikkaHub 改成端侧 Agent：80+
 6. **多策略降级 Edit 工具**：`ExactReplacer → line_trimmed → block_anchor` 三级匹配（容忍缩进漂移/锚点块），命中多处报错并教模型"加上下文或 replace_all"——错误文案即修复指令；`ReplaceTextResult` 回传实际策略供模型自省。
 7. **ChatGenerationForegroundService 握手**：`shouldRun` AtomicBoolean + `CompletableDeferred` readiness 门闩 + WakeLock——先起 FGS、await ready、再开流式 socket（`startForegroundService()` 不保证 Home 后的时序）；stale stop 与新 Send 竞态靠共享标志变 no-op；被 OEM 杀死时 `markUnavailable()` 让等待方立刻感知。
 8. 小件：工作流 4 种 `SKIPPED_*` 语义状态（可观测"为什么没跑"）；FTS5 + simple 中文分词；Telegram 轮询三档自愈（重启循环 → 升级告警）；三家对称 KeyStore 加密 OAuth（Codex 伪装 CLI 的 PKCE localhost 回调 / Grok 设备流）。
+
+## 三、2026-08-22 → 09-24 增量评估（2026-11-03，`e8f10b70..a88f5854`，169 提交）
+
+`e8f10b70`（上次评估点 08-22）→ `a88f5854`（09-24，`2.5.1-agent.1`）。`--no-merges` 169 条中 **129 条为上游 rikkahub 提交**（re-ovo 120 条里 73 条在 `upstream-analysis.md` 被直引，余 47 条落在批次表/版本类；其他作者另有 5 条直引），按「上游已评估」不重复；**ExTv 自有 35 条**为本轮新面（全部读 stat，20 条精读 patch）。总评：**吸收 3 / 候选 6 / 已有等价 5 / 不适用 12 组**。
+
+### 吸收（3）
+
+| 提交 | 内容 | 本仓落点 |
+|---|---|---|
+| `349f2908f` | 流式解码器 image data URI 改 mime 无关解析，非 data/http 跳过而不抛 | `ai/.../ChatCompletionsStreamDecoder.kt:142-143` 仍是 `require(data:image)` + png 硬编码 substring——中转返 https 图会**整轮生成中断**；非流式 `ChatCompletionsAPI.kt:913-937` 已于 10-16 修好同两因，流式漏了 |
+| `e1a51b93e` | 渐变背景 30fps 限速时间源 + 绘制期读相位 + `STARTED` 外暂停 | `ui/pages/chat/MeshGradientBackground.kt:40-55` 与修前逐字相同；需与 BiliPai `ReduceMotion` 一起做（自驱循环不再自动遵循系统减弱动效） |
+| `f85ab6670`（前半） | 标题/建议生成 `AuxJobRegistry` 按会话单飞，新生成/重生成前取消在飞请求 | `service/ChatService.kt:2195-2201` 现为裸 fire-and-forget，连点会重复请求、顶掉本地 prompt cache |
+
+### 候选（6）
+
+`f088df5a1` 工具结果图片整批 lift 到 `role:"user"`（本仓 `ChatCompletionsAPI.kt:646-655`/`:817-865` 仍把图塞进 `role:"tool"` 数组 content，部分 provider 400；中）· `1913333a6` 被中断的 Auto 工具不重跑（本仓 `UIMessagePart.Tool.startedAt` 已有字段但无消费方；需先确认进程重启后是否真的恢复工具循环）· `a6b25c624` 标题兜底为首条用户首行（本仓失败走错误卡、标题保持空，空标题会让重试反复触发）· `9c91af7f8` 子代理 `no_result`（本仓终稿仍进父上下文；后台通知也要同步抑制）· `83e6a6f84` 单图模型逐张调用（本仓已走 `/images/generations`，缺口仅 `n>1` 与宽高比）· `f85ab6670` 后半插件类 `onGenerationFinish` 在停止时执行（本仓停止落库已手工补齐 `finishReasoning`/base64 落文件，插件 transformer 仍不跑，P3）。
+
+### 已有等价（5）
+
+同批 Auto 工具执行 / 取消上抛（`GenerationHandler.kt:237-238`/`:1063`）· MCP 工具名集中（`McpNameSanitizer.kt:53-70`）· 模型名含 `/` 不拼文件名（`GeneratedImage.kt:27,51`）· 压缩重放 / 合成摘要身份 / 压缩模型回退（`Conversation.kt:177-230`、`PreferencesStore.kt:1693`）· 停止落库（`ChatService.kt:3446-3465`）。
+
+### 不适用（12 组）
+
+shizuku 三件 · termux 两件 · 设备工具（本仓无无障碍设备工具体系）· Gemini Code Assist/Antigravity（本仓无 Cloud Code 通道）· DB 30→31 迁移（本仓迁移体系分叉，且有 staged restore 启动 gate）· zip 中文条目名（本仓只读自产归档）· 内置技能删除记录（本仓内置技能只读）· 文件 move/copy 流关闭（本仓无对应文件管理器工具）· 工作区导出 500 条上限 · MCP 无工具可调（本仓命名/状态已集中）· i18n/发版/docs · 前端 web-ui 样式两条（本仓 web-ui 版本分叉）。

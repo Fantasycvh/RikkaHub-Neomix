@@ -26,3 +26,12 @@
 **不借**：SSH/服务器运维/屏幕流/PTY 终端（领域不同）；Tauri 桌面客户端。
 
 **建议**：①信用记账理念并入记忆 V2 的评估（见 `roadmap.md` 2026-10-08 节）；②审批卡「理由行」小且用户可见，可独立做；③委员会与经验记忆**只记账**，等有真实需求（如高风险工具误改）再立项。
+
+### 9.4 增量评估：10-08 → 10-13（2026-11-03，26 提交）
+
+26 条全读 message，6 条关键拉 diff。**总评：补记判据 3 / 已有等价 1 / 不适用其余**。
+
+- **A1 prompt block 按 volatility 排序保前缀缓存**（`bfe105ad7` `src/agentd/context.py` + `loop.py`）：user 块顺序 history → state → recall，最易变者置尾；history 在 episode 内只追加（预算只丢最旧）；recall 一回合只快照一次，不每步重查；propose 调用与 choose/历史共享最长前缀，测试按字节钉住 system 前缀。**与本仓 §504/506「#1542 窄义止血」同族**，给出两条可执行规则：易变块（时间/注入/模式）一律排尾；同一回合内只采样一次。本仓 `{{cur_date}}` 在 system（`PreferencesStore.kt:823`）+ `PlaceholderTransformer` 每请求重算正是反例。
+- **A2 审批权移出模型可写参数**（`a1ae9b925`/`eb554bfa9`）：`approved` 曾是工具**参数**（模型自批），改为可信调用上下文属性并从 schema 删除；MCP 预授权需显式开关；拒绝文案不得点名越权参数（旧文案教模型「retry with approved=true」）。**本仓已有等价**：审批在 UI/`ToolApprovalState` 侧挂起，模型参数无 approved；仅补一条「拒绝文案不得点名越权参数」。
+- **A3 终态不可自报成功**（`eb554bfa9`）：`ops finish` 记为不可验证终态（reward None），否则会学成「立刻 call finish」。可平移判据：模型声明的完成不能直接当成功；落点子代理交付/定时任务验收、`TodoTools` 只有 completed 无 verified。
+- **不适用**：fleet 多机/council 桌面/JitRL demo（运维域）· MCP 读超时与 stderr 环形缓冲（本仓 MCP client 未立项，记账「算了 deadline 就必须用」「子进程 stderr 不抽干会死锁」）· 审计锁/轮转与日志脱敏（脱敏已等价 `LogRedaction.kt`）· 能力探测 TTL（模型目录刷新已按 A/B/C/D 落地，结论一致）· Python 事件循环/toolbus 协议化（无对应构件）。

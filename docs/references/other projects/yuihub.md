@@ -227,3 +227,7 @@ Yuihub 记忆改动是**架构换代**：写入带 keywords/weight(1-4)/kind、d
 **本仓适配层（非移植）**：`RootfsPatcher.ensureAptMirror` 装机默认切 TUNA（`AptSources.isExplicit` 短路，不覆盖用户显式选择；本仓的 CA 证书/并发锁是既有改造）；`RootfsInstaller` 补 UA；DB 56→57 `workspaces.package_mirrors`；`WorkspaceRepository.configurePackageMirrors`（写后带 6×2s 锁重试跑 `apt-get update`，失败不回滚只回传状态）/ `clearPackageMirrors`（重装 rootfs 必清摘要）；SSH 工作区一律拒绝；`WorkspaceReminderTransformer` 注入 `<package_mirrors>` 段；详情页「国内镜像源」卡 + 装机对话框测速与逐源回退 + 三语文案。
 
 **许可**：Yuihub 与本仓同为 AGPL-3.0，逐文件移植合规；出处已在 README「借鉴与参考」表与发布说明 `1.0.28-beta.14` 中标注。
+
+## 四.10、2026-11-03 增量核查
+
+`v3.0.0 → v3.0.1`（`08825f5a`，2026-10-26）仅 `README.md` 与 `app/build.gradle.kts` 版本 bump（3 行），无功能/设计变化。本轮无新可评估项；工作区镜像站两件套（`9ec9ec79`）仍为最近一次实质落地。

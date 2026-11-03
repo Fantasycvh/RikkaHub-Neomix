@@ -33,3 +33,29 @@
 - **已有等价**：三级截断+截断告知（行 2000/256KiB/单行 4KiB + remaining 计数 + 恢复提示——fork 批次 1 同款且阈值动态化更细）；`force_full` 逃生口优先级最高（fork read_file 分页可覆盖，可顺手补一个同名参数，小）；路径安全 resolve/ensure_inside（fork SkillPaths + zip-slip 防护同族）；unique-match edit + AmbiguousMatch（fork edit 工具同款）；上下文分界线（fork 检查点模型无此概念且无意引入）；protected/pinned/locked 三标记（fork 无多级编辑锁需求；注意其反直觉决策 Q7/D11：locked 允许压缩）。
 - **不适用**：Rust/FFI 架构（C ABI + panic 不跨界 + JNI 桥 + 符号一致性 CI 脚本——工程上漂亮但前提是业务逻辑在 Rust）；crates/cli doctor（fork 无独立可执行诊断入口的形态）；**Android 壳整体**（stage 0 骨架）；NativeEditText 决策记为**已知问题参照**而非借鉴项——BasicTextField 横屏全屏提取编辑退格残留/密码框明文闪（其文档自认依赖 Compose foundation 版本、非独立可证），fork 纯 Compose 遇到再回来查；D146 返回键分层（fork 已有等价 BackHandler 分层）。
 - **不照搬**：启动校验 L0-L3 全套 + 隔离区/undo 双审计表（fork 恢复走 safety_backup 全量回滚路线，行级 quarantine 是另一套哲学；但 **L0 的 WAL 取证一条值得记**：主库缺失而 -wal/-shm 还在 = 同步撕裂 → 拒开；0 字节主库 + WAL 存在 → 拒开（SQLite 会静默丢 WAL）——fork 恢复路径已清陈旧 sidecar，但**启动路径**无此检查，记账备查）。
+
+## 13.3、2026-10-26 → 11-03 增量评估（2026-11-03，`6149f2a..1dd1a24`，155 提交）
+
+155 条全为 NickEntry、0 merge，按 9 组主题评估（Rust/FFI/桌面/Android 壳本身不移植）。总评：**吸收 1 / 候选 3 / 已有等价 7 / 记账与不适用其余**。
+
+**阶段判断（修正）**：`README.md` 仍写「stage 0（地基）」、`docs/PLAN.md` S0 仍进行中——正式阶段**未晋升**；但功能面已从「写了没接线」推进到 Android 0.15 可用聊天（`turn_run` 真发请求/逐字流式/消息·版本·助手·会话·模型编辑/代理/容器壳）。变化最大的是**过程纪律**（PLAN 每条三态化 + `docs/verification.md` V1–V58 真机清单，commit body 普遍写明「真机 Vxx 未走」）⇒ 结论改判为「**接线率大幅提升，但大量处于已实现未真机验证**」，借鉴仍取判据不取代码。
+
+### 吸收（1）
+
+`e3cbed8`：有 tools 时**显式**发 `tool_choice:"auto"`。省略时该网关走另一条翻译路径，`tool_calls.name` 全程空串、工具全废（真机 2026-11-03 定位）；bigeye `llm.py:983` 独立同证。本仓 `*.kt` grep `tool_choice` **0 命中**，落点 `ai/.../ChatCompletionsAPI.kt:556` tools 块后 +1 行 + 单测（tools 为空时不得发）。
+
+### 候选（3）
+
+`ddd2860`（D199）零字流退回非流式重发一次（已有正文不重发，否则会拼出不存在的回答；本仓无此回落，需先实测 EventSource 对「忽略 stream 的端点」的实际行为）· `ed39bf2`（D185）压缩摘要尾附「历史已结清。当前任务：<原样复述用户指令>」（本仓 `CompressPrompt.kt` 无此字段；不概括、不新增消息，避免 `last_user` 指到锚点）· 主题聚类中的其余候选均已有等价或记账（见下）。
+
+### 已有等价（7，勿重复立项）
+
+逐字输出开关 = `Assistant.streamOutput` · 多会话并发 + 发送队列 = `ChatService.kt:737/778/1116` · 压缩窗口读回 = `Conversation.kt:177-194` · 过程块折叠 = `ChatMessageThinkingSteps.kt:39-46` · tool_call 空 id 兜底 = `ChatCompletionsStreamDecoder.kt:232` · 备份带 workspace = `BackupArchiveEngine.kt:120-128` · 重试保留上一版 = `GenerationHandler.kt:1494-1496`。
+
+### 修正既有结论（§13.1）
+
+- **⑤ D46「工具循环一律非流式」存疑**：NMoi 本轮已把**每轮**都改成流式（含工具轮），根因最终定位到网关缺 `tool_choice` 与零字流，而非「流式本身丢 tool_calls」。⇒ 建议改判为「显式 `tool_choice` + 零字退回非流式重发一次后，流式可用」；D46 的原始证据是否同因待核。
+- **⑥ 消息编辑分层 D148 已被作者真机两次撤回**：v6 双覆盖层（后改顶掉先改）→ v8「一版两正文列 `origin_message`/`tooledit_message`」，编辑就地改当前显示组。本仓无「AI/工具改消息」层，**不应再作借鉴目标**；可借判据只剩 D150「显示的那一组是唯一真相」。
+- **D231–D233 per-conversation workspace 当天回退**：负面样本（迁进去等于把老文件藏起来）——老数据默认留共享、迁移须增量可回退。
+
+> 记账：`0.15an` 并行工具批次、`0.15ax`「吞块」、`0.15ay` 容器覆盖安装均标「未动工」，不要当已实现引用；`0.15ap` 世界书、`0.15aq` 档位设置同。

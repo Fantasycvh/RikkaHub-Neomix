@@ -106,3 +106,7 @@ fork 现状对照：我们已有**文件版近似**（tool_outputs 落盘 + 32KB
 | `db34914c` 懒加载消息虚拟化 | 名不符实：MessageList 早已 react-virtuoso，本次只是 `React.lazy`+Suspense 切出首屏 bundle | **不适用**：fork ChatPage 用 LazyColumn，虚拟化内建于 Compose |
 | `e6a51461`/`4a83dae1` workspace/桌面 runtime | 多 workspace 服务端宿主、Electron 内嵌 server 子进程、交互面重构 | **不适用（架构/基础设施）** |
 | `2298b67c` 等 | MCP stdio 隔离、gVisor CI、测试门、依赖加固 | **不适用**（无机制） |
+
+### 7.6 增量评估：10-21 → 11-02（v1.20.0 → v1.21.3，2026-11-03，`ab011ee0..614b1117`，12 提交）
+
+12 条中去重 8 条（`4a83dae1`/`db34914c`/`c5b691d5` 已被 §7.5 覆盖；`e20fa0a1`/`6a7a8d8b`/`5f31f0ca`/`614b1117` 为 release bump），实质 4 条：桌面包 smoke 移除/升级路径归一、Android APK 必须签名、沙箱发布身份与构建边界加固、`ToolSearch` 增「工具契约回执」（`toolContractReceipts` + `retainDeliveredToolContractReceipts`：压缩后只有 description digest 仍匹配才继续算「已交付」，否则要求重取；新增 `tool_preparation` 协议）。**总评：无翻案，无可吸收项**——前三条全为 CI/发布/桌面面；契约回执的前提是「schema 投递一次后被上下文压缩掉」，本仓 schema **每请求重发**（`ChatCompletionsAPI.kt:556`），不存在该形态。§7.1/§7.5 结论维持。

@@ -134,3 +134,15 @@ App，比轻弹窗**重得多也慢得多**（起完整导航栈）。
   - `android:priority="100"` 加在 filter 上（Miffan 同款），不影响解析但可能影响排序，保留。
   - 注意包名随分支变（applicationId per-branch），`pm list packages | grep rikkahub` 会漏掉
     `app.androidrik.neomix(.debug)` 这类包名。
+
+## 2026-10-31 → 11-03 增量评估（2026-11-03，114 提交）
+
+基线快照 `8988130`（10-31）→ 远端 11-03；`gh api` 返回 115 条含基线，实质新增 **114**（Ayuilos 112 + re-ovo 2）。总评：**无可吸收项**。
+
+- relay / 云电脑 / IM 4.0 及其合并 · 屏文案翻译 **94 条** → 不适用（用户已明示不吸收该域）。
+- 版本 bump / feature 分支 merge 13 条 → 不适用。
+- 应用更新体验重做 1 条（`0c4ec3864` 删 `UpdateCard` 345 行、改 Worker + 通知栏安装 + R2 发布）→ 不适用（本仓无应用自更新通道）。
+- 上游提交 2 条（`9b7cad09f` = 上游 `1575d179d`，已吸收 `beb6fb1fb`；`bc38edac3` = 上游 `2c4d1979c`，已等价不跟）→ 不重复。
+- 已有等价 2 条：`e39a8c2e4` 附件面板矮屏可滚动（`FilesPicker.kt:153-157` 已有 `verticalScroll`）、`e98c4586a` 导出写文件离主线程（`ExportHooks.kt:66-77` 已有 `Dispatchers.IO` + `runCatching`）。
+
+> 证据级别：本批只拉标题 + 命中文件级 patch（无本地克隆），结论限机制/文件级；relay 域按标题分桶（全部含 relay/connector/quota/snapshot）。
