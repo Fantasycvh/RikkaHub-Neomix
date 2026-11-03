@@ -8,6 +8,17 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 class UpstreamConfigControlsTest {
+    @Test fun customReasoningSelectionIsFrozenAndCanBeClearedIndependently() {
+        val config = UpstreamConversationConfig(reasoningLevel = ReasoningLevel.HIGH, reasoningPresetId = "deep")
+        val effective = config.applyTo(Assistant(reasoningPresetId = "global"))
+        assertEquals("deep", effective.reasoningPresetId)
+        val cleared = effective.copy(reasoningPresetId = null)
+        assertEquals(config.copy(reasoningPresetId = null), config.withAssistantChanges(effective, cleared))
+        val replaced = effective.copy(reasoningPresetId = "fast", reasoningLevel = ReasoningLevel.LOW)
+        assertEquals(config.copy(reasoningPresetId = "fast", reasoningLevel = ReasoningLevel.LOW),
+            config.withAssistantChanges(effective, replaced))
+    }
+
     @Test fun changingOneGlobalFieldDoesNotThawOtherSnapshotFields() {
         val global = Assistant(
             chatModelId = Uuid.random(), enableWebSearch = true,

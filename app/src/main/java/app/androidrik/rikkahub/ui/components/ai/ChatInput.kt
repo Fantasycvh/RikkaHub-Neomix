@@ -96,6 +96,8 @@ import kotlin.math.roundToInt
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.datastore.findProvider
+import app.androidrik.ai.core.reasoningPresets
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
 import app.androidrik.rikkahub.utils.formatContextLength
@@ -464,8 +466,16 @@ fun ChatInput(
                             if (model?.abilities?.contains(ModelAbility.REASONING) == true) {
                                 ReasoningButton(
                                     reasoningLevel = assistant.reasoningLevel,
+                                    presets = reasoningPresets(model, model.findProvider(settings.providers)),
+                                    selectedPresetId = assistant.reasoningPresetId,
+                                    onSelectPreset = { preset ->
+                                        onUpdateAssistant(assistant.copy(
+                                            reasoningLevel = preset?.level ?: assistant.reasoningLevel,
+                                            reasoningPresetId = preset?.id,
+                                        ))
+                                    },
                                     onUpdateReasoningLevel = {
-                                        onUpdateAssistant(assistant.copy(reasoningLevel = it))
+                                        onUpdateAssistant(assistant.copy(reasoningLevel = it, reasoningPresetId = null))
                                     },
                                     onlyIcon = true,
                                 )

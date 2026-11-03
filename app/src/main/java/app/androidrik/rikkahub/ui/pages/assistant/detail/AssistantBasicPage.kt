@@ -35,6 +35,8 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.androidrik.ai.core.reasoningPresets
+import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
@@ -461,10 +463,19 @@ internal fun AssistantBasicContent(
                     Text(stringResource(R.string.assistant_page_thinking_budget))
                 },
             ) {
+                val reasoningModel = providers.flatMap { it.models }.find { it.id == assistant.chatModelId }
                 ReasoningButton(
                     reasoningLevel = assistant.reasoningLevel,
+                    presets = reasoningModel?.let { reasoningPresets(it, it.findProvider(providers)) }.orEmpty(),
+                    selectedPresetId = assistant.reasoningPresetId,
+                    onSelectPreset = { preset ->
+                        onUpdate(assistant.copy(
+                            reasoningLevel = preset?.level ?: assistant.reasoningLevel,
+                            reasoningPresetId = preset?.id,
+                        ))
+                    },
                     onUpdateReasoningLevel = { level ->
-                        onUpdate(assistant.copy(reasoningLevel = level))
+                        onUpdate(assistant.copy(reasoningLevel = level, reasoningPresetId = null))
                     }
                 )
             }

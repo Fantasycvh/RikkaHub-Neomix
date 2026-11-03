@@ -24,6 +24,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.core.resolveReasoningPreset
+import app.androidrik.ai.core.withReasoningPreset
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.core.TokenUsage
@@ -1371,13 +1373,14 @@ class GenerationHandler(
         debugKey?.let { PromptDebugState.recordRequest(it, requestMessages) }
 
         var messages: List<UIMessage> = messages
+        val reasoningPreset = resolveReasoningPreset(model, provider, assistant.reasoningPresetId)
         val params = TextGenerationParams(
-            model = model,
+            model = model.withReasoningPreset(reasoningPreset),
             temperature = assistant.temperature,
             topP = assistant.topP,
             maxTokens = assistant.maxTokens,
             tools = requestTools,
-            reasoningLevel = assistant.reasoningLevel,
+            reasoningLevel = reasoningPreset?.level ?: assistant.reasoningLevel,
             customHeaders = buildList {
                 addAll(assistant.customHeaders)
                 addAll(model.customHeaders)

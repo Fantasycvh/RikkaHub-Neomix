@@ -20,6 +20,7 @@ import kotlin.uuid.Uuid
 data class UpstreamConversationConfig(
     val chatModelId: Uuid? = null,
     val reasoningLevel: ReasoningLevel = ReasoningLevel.AUTO,
+    val reasoningPresetId: String? = null,
     val enableWebSearch: Boolean = false,
     val builtInSearch: Boolean = false,
     val mcpServers: Set<Uuid> = emptySet(),
@@ -29,6 +30,7 @@ data class UpstreamConversationConfig(
     fun applyTo(assistant: Assistant): Assistant = assistant.copy(
         chatModelId = chatModelId,
         reasoningLevel = reasoningLevel,
+        reasoningPresetId = reasoningPresetId,
         enableWebSearch = enableWebSearch,
         mcpServers = mcpServers,
         workspaceId = workspaceId,

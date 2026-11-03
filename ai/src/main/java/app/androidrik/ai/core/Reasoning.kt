@@ -4,6 +4,7 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.uuid.Uuid
 
 @Serializable
 enum class ReasoningLevel(
@@ -51,10 +52,39 @@ data class ReasoningOverride(
     val effort: String? = null,
     /** 覆盖 budget 数值（thinking_budget / thinkingBudget） */
     val budgetTokens: Int? = null,
+    /** Named, independently selectable mappings; legacy scalar overrides remain unchanged. */
+    val presets: List<ReasoningPreset> = emptyList(),
+)
+
+@Serializable
+data class ReasoningPreset(
+    val id: String = Uuid.random().toString(),
+    val name: String = "",
+    val level: ReasoningLevel = ReasoningLevel.HIGH,
+    val effort: String? = null,
+    val budgetTokens: Int? = null,
+)
+
+/** Model mappings take precedence over provider mappings with the same persistent ID. */
+fun reasoningPresets(model: Model, provider: ProviderSetting?): List<ReasoningPreset> =
+    (model.reasoningOverride?.presets.orEmpty() + provider?.reasoningOverride?.presets.orEmpty())
+        .distinctBy { it.id }
+
+/** Resolve per request, so edits/deletions and model switches cannot leave stale parameter values. */
+fun resolveReasoningPreset(model: Model, provider: ProviderSetting?, id: String?): ReasoningPreset? =
+    id?.let { selected -> reasoningPresets(model, provider).find { it.id == selected } }
+
+fun Model.withReasoningPreset(preset: ReasoningPreset?): Model = if (preset == null) this else copy(
+    reasoningOverride = ReasoningOverride(effort = preset.effort, budgetTokens = preset.budgetTokens),
 )
 
 /** 解析生效的覆盖：模型级优先，提供商级兜底，都为空返回 null（= 全跟随内置映射） */
 fun resolveReasoningOverride(
     model: Model,
     providerSetting: ProviderSetting?,
-): ReasoningOverride? = model.reasoningOverride ?: providerSetting?.reasoningOverride
+): ReasoningOverride? = model.reasoningOverride.scalarOverride() ?: providerSetting?.reasoningOverride.scalarOverride()
+
+/** A list of presets alone must not mask the provider's legacy fallback. */
+fun ReasoningOverride?.scalarOverride(): ReasoningOverride? = this?.takeUnless {
+    it.presets.isNotEmpty() && it.effort == null && it.budgetTokens == null
+}

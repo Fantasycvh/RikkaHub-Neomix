@@ -1,6 +1,10 @@
 package app.androidrik.rikkahub.ui.components.ai
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
+import app.androidrik.ai.core.ReasoningPreset
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +60,9 @@ fun ReasoningButton(
     onlyIcon: Boolean = false,
     reasoningLevel: ReasoningLevel,
     onUpdateReasoningLevel: (ReasoningLevel) -> Unit,
+    presets: List<ReasoningPreset> = emptyList(),
+    selectedPresetId: String? = null,
+    onSelectPreset: (ReasoningPreset?) -> Unit = {},
 ) {
     var showPicker by remember { mutableStateOf(false) }
 
@@ -63,7 +70,10 @@ fun ReasoningButton(
         ReasoningPicker(
             reasoningLevel = reasoningLevel,
             onDismissRequest = { showPicker = false },
-            onUpdateReasoningLevel = onUpdateReasoningLevel
+            onUpdateReasoningLevel = onUpdateReasoningLevel,
+            presets = presets,
+            selectedPresetId = selectedPresetId,
+            onSelectPreset = onSelectPreset,
         )
     }
 
@@ -83,7 +93,8 @@ fun ReasoningButton(
             ) {
                 ReasoningIcon(reasoningLevel)
             }
-            if (!onlyIcon) Text(stringResource(R.string.setting_provider_page_reasoning))
+            if (!onlyIcon) Text(presets.find { it.id == selectedPresetId }?.name
+                ?: stringResource(R.string.setting_provider_page_reasoning))
         }
     }
 }
@@ -93,7 +104,11 @@ fun ReasoningPicker(
     reasoningLevel: ReasoningLevel,
     onDismissRequest: () -> Unit = {},
     onUpdateReasoningLevel: (ReasoningLevel) -> Unit,
+    presets: List<ReasoningPreset> = emptyList(),
+    selectedPresetId: String? = null,
+    onSelectPreset: (ReasoningPreset?) -> Unit = {},
 ) {
+    val selectedPreset = presets.find { it.id == selectedPresetId }
     val currentIndex = levels.indexOf(reasoningLevel).coerceAtLeast(0)
     // material3 1.5.0-beta02 起移除了 value-overload，改走 SliderState（上游 20c24e7d3 同款）
     val sliderState = remember {
@@ -115,6 +130,7 @@ fun ReasoningPicker(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -161,7 +177,7 @@ fun ReasoningPicker(
                     tint = iconColor,
                 )
                 Text(
-                    text = reasoningLevel.label(),
+                    text = selectedPreset?.name ?: reasoningLevel.label(),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
@@ -204,8 +220,20 @@ fun ReasoningPicker(
                     }
                 )
 
+                if (presets.isNotEmpty()) {
+                    Text("自定义档位", style = MaterialTheme.typography.titleSmall)
+                }
+                presets.forEach { preset ->
+                    FilterChip(
+                        selected = selectedPresetId == preset.id,
+                        onClick = { onSelectPreset(preset) },
+                        label = { Text(preset.name) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
                 ReasoningScale(
-                    selectedLevel = reasoningLevel,
+                    selectedLevel = reasoningLevel.takeIf { selectedPreset == null },
                     onSelect = { level ->
                         sliderState.value = levels.indexOf(level).toFloat()
                         onUpdateReasoningLevel(level)
@@ -218,7 +246,7 @@ fun ReasoningPicker(
 
 @Composable
 private fun ReasoningScale(
-    selectedLevel: ReasoningLevel,
+    selectedLevel: ReasoningLevel?,
     onSelect: (ReasoningLevel) -> Unit,
 ) {
     Row(
@@ -287,7 +315,7 @@ private fun ReasoningIcon(level: ReasoningLevel) {
 }
 
 @Composable
-private fun ReasoningLevel.label(): String = when (this) {
+internal fun ReasoningLevel.label(): String = when (this) {
     ReasoningLevel.OFF -> stringResource(R.string.reasoning_off)
     ReasoningLevel.AUTO -> stringResource(R.string.reasoning_auto)
     ReasoningLevel.LOW -> stringResource(R.string.reasoning_light)

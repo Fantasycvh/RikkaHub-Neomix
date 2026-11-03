@@ -29,6 +29,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
+import app.androidrik.ai.core.scalarOverride
 import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
@@ -416,7 +417,7 @@ class ResponseAPI(
             if (reasoningModel) {
                 val level = params.reasoningLevel
                 // 本仓 P1：思考强度覆盖（模型级优先、提供商级兜底），只作用于「选中具体档位」时
-                val effectiveOverride = (params.model.reasoningOverride ?: reasoningOverride)
+                val effectiveOverride = (params.model.reasoningOverride.scalarOverride() ?: reasoningOverride.scalarOverride())
                     ?.takeIf { level.isEnabled && level != ReasoningLevel.AUTO }
                 val reasoning = buildJsonObject {
                     if (capabilities.supportsReasoningSummary) {

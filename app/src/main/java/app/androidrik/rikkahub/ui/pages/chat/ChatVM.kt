@@ -64,6 +64,7 @@ internal fun Conversation.effectiveAssistant(settings: Settings): Assistant {
 internal fun UpstreamConversationConfig.withAssistantChanges(old: Assistant, new: Assistant) = copy(
     chatModelId = if (old.chatModelId != new.chatModelId) new.chatModelId else chatModelId,
     reasoningLevel = if (old.reasoningLevel != new.reasoningLevel) new.reasoningLevel else reasoningLevel,
+    reasoningPresetId = if (old.reasoningPresetId != new.reasoningPresetId) new.reasoningPresetId else reasoningPresetId,
     enableWebSearch = if (old.enableWebSearch != new.enableWebSearch) new.enableWebSearch else enableWebSearch,
     mcpServers = if (old.mcpServers != new.mcpServers) new.mcpServers else mcpServers,
     workspaceId = if (old.workspaceId != new.workspaceId) new.workspaceId else workspaceId,
@@ -187,6 +188,7 @@ class ChatVM(
                     if (global.id == updated.id) updated.copy(
                         chatModelId = global.chatModelId,
                         reasoningLevel = global.reasoningLevel,
+                        reasoningPresetId = global.reasoningPresetId,
                         enableWebSearch = global.enableWebSearch,
                         mcpServers = global.mcpServers,
                         workspaceId = global.workspaceId,

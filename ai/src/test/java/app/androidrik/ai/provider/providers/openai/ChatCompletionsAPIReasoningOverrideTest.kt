@@ -4,6 +4,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import app.androidrik.ai.core.ReasoningPreset
+import app.androidrik.ai.core.withReasoningPreset
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.ai.provider.Model
@@ -78,6 +80,17 @@ class ChatCompletionsAPIReasoningOverrideTest {
     private fun JsonObject.effort(): String? = this["reasoning_effort"]?.jsonPrimitive?.content
 
     private fun JsonObject.budget(): Int? = this["thinking_budget"]?.jsonPrimitive?.int
+
+    @Test
+    fun `custom presets route distinct effort and budget to actual request fields`() {
+        val fast = ReasoningPreset(name = "fast", level = ReasoningLevel.LOW, effort = "minimal", budgetTokens = 128)
+        val deep = ReasoningPreset(name = "deep", level = ReasoningLevel.HIGH, effort = "ultra", budgetTokens = 64000)
+        for (preset in listOf(fast, deep)) {
+            val override = Model().withReasoningPreset(preset).reasoningOverride
+            assertEquals(preset.effort, buildRequest("https://api.openai.com/v1", preset.level, override).effort())
+            assertEquals(preset.budgetTokens, buildRequest("https://dashscope.aliyuncs.com/compatible-mode/v1", preset.level, override).budget())
+        }
+    }
 
     // ==================== OpenAI 官方（else 分支：reasoning_effort） ====================
 
