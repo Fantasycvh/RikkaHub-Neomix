@@ -62,7 +62,7 @@ class SettingsStoreResilienceTest {
         // 放一个「用户数据」键，验证损坏后它确实丢失（损坏必然丢数据，重点是能恢复可用）
         val launchCountKey = androidx.datastore.preferences.core.intPreferencesKey("launch_count")
 
-        val store = createSettingsDataStore(file)
+        val store = createSettingsDataStore(file) {}
         val prefs = store.data.first() // 不应抛异常（由 corruptionHandler 兜住）
 
         // 原文件必须留一份备份供人工抢救，且内容与原损坏内容一致
@@ -81,7 +81,7 @@ class SettingsStoreResilienceTest {
     @Test
     fun `valid settings file round-trips untouched`() = runBlocking {
         val file = File(tempFolder.root, "settings.preferences_pb")
-        val store = createSettingsDataStore(file)
+        val store = createSettingsDataStore(file) {}
 
         // 正常写入再读出：既验证未误触损坏处理，也守住「文件位置/格式未变」的兼容契约
         store.updateData { prefs ->

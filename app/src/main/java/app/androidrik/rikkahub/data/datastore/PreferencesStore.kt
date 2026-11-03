@@ -71,6 +71,9 @@ import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV2Migrati
 import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
+import app.androidrik.rikkahub.data.datastore.migration.PreferenceStoreV6Migration
+import app.androidrik.rikkahub.data.db.AppDatabase
+import app.androidrik.rikkahub.data.db.mergeDefaultAssistantReferences
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.InjectionPosition
@@ -128,7 +131,10 @@ internal fun shouldRetrySettingsRead(cause: Throwable, attempt: Long): Boolean =
  * 这正是上游 `70b382f5` 的核心：把「文件损坏」与「瞬时读取失败」分开处理，
  * 后者由 [SettingsStore.settingsFlowRaw] 的重试负责。
  */
-internal fun createSettingsDataStore(file: File): DataStore<Preferences> {
+internal fun createSettingsDataStore(
+    file: File,
+    moveAssistantReferences: suspend () -> Unit,
+): DataStore<Preferences> {
     return PreferenceDataStoreFactory.create(
         corruptionHandler = ReplaceFileCorruptionHandler { exception ->
             Log.e(TAG, "Settings datastore corrupted, resetting", exception)
@@ -144,7 +150,8 @@ internal fun createSettingsDataStore(file: File): DataStore<Preferences> {
             PreferenceStoreV2Migration(),
             PreferenceStoreV3Migration(),
             PreferenceStoreV4Migration(),
-            PreferenceStoreV5Migration()
+            PreferenceStoreV5Migration(),
+            PreferenceStoreV6Migration(moveAssistantReferences),
         ),
         produceFile = { file },
     )
@@ -315,6 +322,7 @@ class SettingsStore(
         // 已删除的内置提供商（墓碑：默认回填跳过）
         val REMOVED_BUILTIN_PROVIDERS = stringPreferencesKey("removed_builtin_providers")
         val REMOVED_ASSISTANTS = stringPreferencesKey("removed_assistants")
+        val LEGACY_DEFAULT_ASSISTANT_MERGED = booleanPreferencesKey("legacy_default_assistant_merged")
 
         // 助手
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
@@ -444,7 +452,12 @@ class SettingsStore(
 
     }
 
-    private val dataStore = createSettingsDataStore(dataStoreFile)
+    @Volatile
+    private var legacyReferencesMigrated = false
+
+    private val dataStore = createSettingsDataStore(dataStoreFile) {
+        get<AppDatabase>().mergeDefaultAssistantReferences()
+    }
 
     // 读取失败**绝不能**回退为空配置：空 Preferences 随后会被 update() 当成用户数据写回，
     // 把全部设置抹成默认值（上游 70b382f5 修的就是这个，用户表现为「升级后设置全丢」）。
@@ -515,6 +528,7 @@ class SettingsStore(
                 removedBuiltInProviderIds = preferences.readRemovedIds(REMOVED_BUILTIN_PROVIDERS),
                 removedTtsProviderIds = preferences.readRemovedIds(REMOVED_TTS_PROVIDERS),
                 removedAssistantIds = preferences.readRemovedIds(REMOVED_ASSISTANTS),
+                legacyDefaultAssistantMerged = preferences[LEGACY_DEFAULT_ASSISTANT_MERGED] ?: false,
                 retrySetting = preferences[RETRY_SETTING]?.let { JsonInstant.decodeFromString(it) }
                     ?: RetrySetting(),
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
@@ -752,7 +766,15 @@ class SettingsStore(
                 quickMessages = settings.quickMessages.distinctBy { it.id },
             )
         }
-        .map { settings -> settings.copy(providers = settings.providers.ensureCatalogSessions(legacy = true)) }
+        .map { settings ->
+            // Backup databases are staged until restart, after settings have already been restored.
+            // Replay the idempotent reference migration on the first read of each process as well.
+            if (settings.legacyDefaultAssistantMerged && !legacyReferencesMigrated) {
+                get<AppDatabase>().mergeDefaultAssistantReferences()
+                legacyReferencesMigrated = true
+            }
+            settings.copy(providers = settings.providers.ensureCatalogSessions(legacy = true))
+        }
         .onEach {
             get<PebbleEngine>().templateCache.invalidateAll()
         }
@@ -809,7 +831,9 @@ class SettingsStore(
         // 安全策略：Web 鉴权**恒开**。备份恢复 / 同步 / 增量更新都可能把存量
         // `webServerJwtEnabled=false` 带进来，这里在广播与落盘前统一纠正——否则
         // settingsFlow 会短暂出现「不鉴权」快照，而 WebApiModule 只在服务启动时读一次。
-        val corrected = settings.copy(
+        val corrected = settings.mergeLegacyDefaultAssistant {
+            get<AppDatabase>().mergeDefaultAssistantReferences()
+        }.copy(
             webServerJwtEnabled = true,
             providers = settings.providers.ensureCatalogSessions(),
             favoriteModels = normalizeFavoriteModelIds(settings.favoriteModels, settings.providers),
@@ -861,12 +885,13 @@ class SettingsStore(
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(corrected.providers)
             preferences.writeRemovedIds(REMOVED_BUILTIN_PROVIDERS, settings.removedBuiltInProviderIds)
-            preferences.writeRemovedIds(REMOVED_ASSISTANTS, settings.removedAssistantIds)
+            preferences.writeRemovedIds(REMOVED_ASSISTANTS, corrected.removedAssistantIds)
+            preferences[LEGACY_DEFAULT_ASSISTANT_MERGED] = corrected.legacyDefaultAssistantMerged
             preferences.writeRemovedIds(REMOVED_TTS_PROVIDERS, settings.removedTtsProviderIds)
             preferences[RETRY_SETTING] = JsonInstant.encodeToString(settings.retrySetting)
 
-            preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
-            preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
+            preferences[ASSISTANTS] = JsonInstant.encodeToString(corrected.assistants)
+            preferences[SELECT_ASSISTANT] = corrected.assistantId.toString()
             preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
             preferences[FAVORITE_TAGS] = JsonInstant.encodeToString(settings.favoriteTags)
 
@@ -1187,6 +1212,8 @@ data class Settings(
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,
     /** 用户显式删除的内置助手 id（墓碑）——默认回填逻辑跳过这些（与提供商墓碑同款） */
     val removedAssistantIds: Set<Uuid> = emptySet(),
+    /** Replay reference migration after a staged backup database is installed on restart. */
+    val legacyDefaultAssistantMerged: Boolean = false,
     /**
      * 已删除的**内置 TTS 提供商** id（墓碑）。
      *
@@ -1738,26 +1765,6 @@ internal val DEFAULT_ASSISTANTS = listOf(
         id = DEFAULT_ASSISTANT_ID,
         name = "",
         systemPrompt = ""
-    ),
-    // 缓存提示：此种子刻意**不含 {{cur_date}}**——system 在请求位置 0，每日变化的内容
-    // 会让整段前缀缓存每天作废（#1542 复核 Tier A）。需要日期的用户自行添加并接受该代价。
-    Assistant(
-        id = Uuid.parse("3d47790c-c415-4b90-9388-751128adb0a0"),
-        name = "",
-        systemPrompt = """
-            You are a helpful assistant, called {{char}}, based on model {{model_name}}.
-
-            ## Info
-            - Locale: {{locale}}
-            - Timezone: {{timezone}}
-            - Device Info: {{device_info}}
-            - System Version: {{system_version}}
-            - User Nickname: {{user}}
-
-            ## Hint
-            - If the user does not specify a language, reply in the user's primary language.
-            - Remember to use Markdown syntax for formatting, and use latex for mathematical expressions.
-        """.trimIndent()
     ),
 )
 
