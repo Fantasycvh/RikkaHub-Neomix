@@ -885,13 +885,16 @@ P4b 本地提交 `feat(task-runtime): 定时任务可选 headless agent_run`（`
 约 15.2k 行、794 个测试）。**只做概念对照，不引入依赖、不照搬代码**；该仓是研究原型，API 与生产语义
 均未定型。
 
+2026-11-03 固定提交源码复核与插件架构增补，见[可组合插件运行时设计 §九](../drafts/design-plugin-composable-runtime.md)。
+该增补不改变本文已批准的执行面划分、权限上限及 D6 默认行为。
+
 ### E.1 结构对照
 
 | 原型 | 本仓 | 结论 |
 |---|---|---|
 | `Source → Trigger → Thread → Eval → Mandate/Ticket` 五段式 | 执行面保留三 adapter（子代理/无头 run、工作区命令、定时任务），控制面统一 `TaskKey`/`TaskState`/`TaskCard` | 同向；原型也没有把执行器合掉，只统一治理层 |
-| `Ticket` 用 **first-match stage 表** 推进状态 | 每个 adapter 自己的状态映射（`TaskStateMappings` / shell 状态 / `scheduledStatusForAgentRun`） | 现阶段不引入通用规则引擎；三套映射已够用，等 P2 出现多来源竞争再评估 |
-| `WorkerSlots`（含 +1 人位/预留位） | 设备级分池：模型 2 / shell 4 / scheduled 1，运行中动态闸 `frozenGateLimit`；满则拒绝不排队 | 同向；「+1 人位」暂不采纳——本仓没有可被抢占的人工执行槽，审批阻塞靠取消解锁 |
+| `ticketStage()` 用 **first-match 规则派生展示阶段**，实际状态写入由 Engine 负责 | 每个 adapter 自己的状态映射（`TaskStateMappings` / shell 状态 / `scheduledStatusForAgentRun`） | 同为事实派生读模型；不把阶段分类函数当成通用调度规则引擎 |
+| `WorkerSlots` 为真人后续消息唤醒允许额外 1 个 worker 槽，await 前同步预留 | 设备级分池：模型 2 / shell 4 / scheduled 1，运行中动态闸 `frozenGateLimit`；满则拒绝不排队 | 借鉴准入原子性；不增加设备硬上限。这不是人员操作槽，也不涉及抢占式调度 |
 | `Assignment` / `Report` / `Attention` | `TaskCard` 读模型 + `RunNotifications` + 会话任务树 + 任务中心「需要处理」段 | `Attention` 即 `needsPerson` 的雏形；本仓按「谁唯一能解锁」推导，而不是由执行器上报 |
 | `AgentDelivery` 确定性 message id | `SubagentNotice` 注解的 `runIds` + `appendNoticeToSession` 幂等 | 同向；本仓把幂等键放在消息注解而非投递层，重启后仍能去重（P1a 已验证） |
 | 通用 durable `effect` 队列（`(kind,key)` 唯一 + `Later` 重试） | `agent_run.delivery_state`（none/pending/delivered/orphaned）+ `NoticeDelivery.flush()` 批量 8 | 本仓只做单用途投递泵；单行 run 状态机 + 事务已覆盖唯一性收益，通用化留待出现第二种副作用 |
@@ -912,14 +915,14 @@ P4b 本地提交 `feat(task-runtime): 定时任务可选 headless agent_run`（`
 **不借鉴**
 
 1. 通用 `effect` 队列与 outbox 全套基础设施：当前只有 notice 一种副作用，单行状态机更小、更可测。
-2. first-match 规则引擎：三套来源状态差异大，通用规则表先增加理解成本；等 P2 真的需要跨来源优先级时再说。
+2. 通用工单治理引擎：三套来源状态差异大，现有映射足够；原型的 first-match stage 只是展示分类，不是驱动所有转换的规则引擎。
 3. handoff/自动 resume：与本仓 D6 冲突，且研究原型的语义未经过生产验证。
 4. 原型的 Ticket/Assignment 命名与对象模型：本仓已有 `TaskKey`/`TaskCard`，改名收益为零。
 
 ### E.3 仍未对齐（P2 前不追）
 
-- 原型的 stage 表可表达「同一任务多次尝试、跨阶段历史」；本仓 `TaskCard` 是当前态快照，历史在
-  `agent_run` 账本与定时运行历史页。
+- 原型用 Ticket / Assignment 区分「持续业务任务 / 多次执行尝试」，stage 是由当前事实派生的视图；
+  本仓 `TaskCard` 是当前态快照，历史在 `agent_run` 账本与定时运行历史页。
 - 原型的注意力/通知策略（谁该被打扰、打扰几次）比本仓细；本仓目前只有「终态通知 + 待批通知 +
   前台不打扰」。
 

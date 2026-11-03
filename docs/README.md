@@ -16,7 +16,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [`design-plugin-composable-runtime.md`](design/drafts/design-plugin-composable-runtime.md) | 可组合插件运行时设计草稿：借鉴 DeepSeek Harness，包含服务契约、作用域、配置修订、分期迁移与验收；尚未实施 |
+| [`design-plugin-composable-runtime.md`](design/drafts/design-plugin-composable-runtime.md) | 可组合插件运行时设计草稿：借鉴 DeepSeek Harness；含 Superagent 原型固定版本源码分析、服务契约、作用域、配置修订、分期迁移与验收；尚未实施 |
 | [`design-auto-compaction.md`](design/design-auto-compaction.md) | 自动上下文压缩（harness 式检查点、可回看可编辑） |
 | [`design-backup-workspace-files.md`](design/design-backup-workspace-files.md) | 备份纳入工作区文件 |
 | [`design-compress-presets.md`](design/design-compress-presets.md) | 压缩参数预设档 |

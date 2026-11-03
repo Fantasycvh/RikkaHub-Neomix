@@ -4,6 +4,7 @@
 > 日期：2026-11-03。代码基线：`50ae353cc`。
 > 推荐方向：**原生 Android 宿主 + 可组合 Kotlin 运行时 + 受控 JS / MCP 扩展**。
 > 与既有设计的关系：演进现有插件系统；保留 Agent 任务控制面的执行器划分与已确认行为。
+> 增补：2026-11-03，§九按固定提交复核 `dsh-superagent-prototype`，分析其业务插件边界与可迁移机制。
 
 ## 一、目标与范围
 
@@ -34,6 +35,9 @@ Android 生命周期、系统权限、凭据保管、授权校验和恢复入口
 | Agent 级作用域和能力组合 | 助手配置派生运行时组合，实际可变状态按会话/Agent 隔离 |
 | profile / preset 配置组装 | 有版本的组合定义、解析后的不可变修订 |
 | Agent 接口与默认循环实现分开 | 先以适配器包住现有循环，再逐步拆策略 |
+
+业务组合的具体案例见 §九：`dsh-superagent-prototype` 在 Harness 上组装来源、授权、工单和执行能力。
+其领域核心内部并未把每个对象都改成动态插件，这为本设计的插件粒度提供了参考。
 
 参考：[Cordis Primer](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cordis-primer.md)、
 [Architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md)、
@@ -260,6 +264,7 @@ UI 首先开放设置、工具结果、附件渲染和受控入口；复杂原�
 6. 旧助手、JSON / JS 插件、历史工具结果和备份往返可读取；插件缺失有兜底展示。
 7. 输入顺序、工具 schema、模型请求与压缩回写保持基线语义，预览/预热不产生额外副作用。
 8. 禁用插件后协程、监听器、WebView 和服务引用按约定释放；必需依赖不会被提前销毁。
+9. 同 id 插件卸载再启用后，旧实例的延迟回调和清理句柄不能修改或撤销新实例的注册。
 
 验证按阶段执行：公共运行时使用 JVM 合约测试；WebView 与生命周期使用 instrumented 测试；
 工具审批、IME、后台恢复进行真机检查。记录首 token 延迟、装配耗时、内存、WebView 创建次数和构建成本。
@@ -301,3 +306,184 @@ P0 需要落实的实施决策：
 
 建议先按 P0/P1 验证“替换搜索实现不修改中央类”，再决定后续实施范围。
 本文尚未启动任何阶段，也未改变既有插件或任务运行行为。
+
+## 九、增补：`dsh-superagent-prototype` 源码分析
+
+### 9.1 复核范围与定位
+
+复核日期：2026-11-03。远端 HEAD 与现有本地只读副本一致：
+`6337fc823ce20251c8de8085948165c81aaa701e`，下列源码链接均固定到该提交。
+分析覆盖 bundle、插件入口、Source 注册、领域核心、执行适配、授权、可靠投递及相关测试源码；
+未安装依赖、未启动监听、未执行其部署流程或测试，不把仓内测试存在视为生产验证通过。
+
+[项目 README](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/README.md)
+明确将其定位为研究原型，公开版本与内部版本、文章描述不完全一致。
+代码实际面向单个 GitHub 仓库，支持 GitHub 与可选飞书来源，依赖 DSH 服务运行。
+它是**使用 Harness 能力构建的业务 bundle**，不是另一个通用模型循环实现，也不能作为 Android 后端直接移植。
+
+当前架构是主 Session 承担评估/路由，工作 Session 承担工单执行；工作 Session 还可通过 preset 调用子代理。
+本次检查没有发现需要本项目照搬的通用对等 Agent 通信网络。主要扩展点是来源接入、领域端口和角色能力组合。
+
+### 9.2 从插件组装到业务执行
+
+```text
+cordis.patch.yml
+    ├─ dsh-superagent：构建 Runtime，提供 orchestrator 服务
+    ├─ github-watch / feishu-watch：注册 SourceKind，启动受控监听
+    └─ router / worker presets：组合角色工具与模型运行能力
+
+来源事件 → Trigger 去重与接收范围过滤 → Eval / Policy → Decision
+                                                        │ accept
+                                                        ▼
+                                               Mandate + Ticket
+                                                        │
+                                                Assignment / Input
+                                                        │
+                                             DshExecutor → 工作 Session
+                                                        │
+                                                Report / Attention
+                                                        │
+                              人员处理面板 / 主 Session / 来源渠道回复
+```
+
+| 代码边界 | 已核实的实现 | 对本设计的意义 |
+|---|---|---|
+| `cordis.patch.yml`、`src/index.ts` | bundle 插入主插件、来源插件、角色 presets；主插件声明 DSH 服务依赖并绑定停止清理 | 产品形态可以由少量高内聚插件组合，无需每个类都成为插件 |
+| `src/app/runtime.ts` | 构造 Store、Engine、Sessions、Executor 等，负责初始化、目录锁与关闭 | 组合根负责装配与资源所有权，业务规则另有归属 |
+| `src/core/engine.ts` | 单一事务写入口，内部直接构造 Intake、Evals、Tickets、Assignments、Replies | 领域不变量集中维护；这些内部类并不是可随意热替换的 Cordis 插件 |
+| `src/core/ports.ts` | 核心依赖 Repositories、Policy、SourceScope、Assessor、Executor、Outbox 等窄端口 | 将外部实现与业务规则分开；不应把所有方法都改成事件监听 |
+| `src/sources/kind.ts`、`registry.ts` | 来源同时声明 schema、表单字段、健康项、渠道、上下文读取与策略扩展 | 一个扩展点要覆盖配置、运行、诊断和展示，不能只留下执行函数 |
+| `src/app/sessions.ts`、`src/executor/dsh.ts` | 按角色选模型/preset，工作目录与执行、输入交付、恢复由适配层负责 | 运行职责与业务身份分开，保留本仓不同执行器的语义 |
+
+**粒度结论：** 对外稳定边界采用插件/端口；内部共同维护同一事务不变量的规则保持内聚。
+因此不建议把任务状态的每个转换、每种审批检查或每个数据库操作独立插件化。
+否则一次业务命令需要跨大量插件协调，反而难以保证一致性和定位失败。
+
+### 9.3 可直接吸收的运行时机制
+
+**A. 业务扩展完整描述与注册所有权。**
+
+SourceKind 将配置 schema、声明式字段、健康状态和实际行为放在同一个扩展描述里。
+SourceRegistry 拒绝重复 kind 和健康项占用，注册返回清理函数；卸载后配置仍保留，缺失插件可展示为未安装。
+健康回调持有原注册的句柄，旧监听器卸载后的迟到上报不会污染重新注册的实例。
+来源监听的 AbortController 与等待退出也通过 `ctx.effect` 绑定生命周期。
+
+本项目 P1 应采用同样的“注册属于实例”语义：句柄绑定 owner / generation，清理只作用于该实例；
+旧回调、旧 disposer 不能仅凭 plugin id 修改新注册。配置缺失插件的保留和兜底按 §5.2 执行。
+外部表单沿用现有宿主组件渲染，业务流程不向用户暴露服务键、依赖图等实现细节。
+
+SourceContext 是受限的工程接口，但仍暴露 commands、状态访问及业务查询。
+这些类型约束不是对恶意插件的权限沙箱；本项目外部 JS 只能获得宿主代理后的允许能力，
+来源身份、接收范围、可读取数据必须在调用时校验。
+
+**B. 领域命令与外部副作用分离。**
+
+Engine 同步执行命令，在仓储事务里改变事实，通过端口登记后续工作；真正异步模型调用、
+会话交付、渠道发信在事务提交后由适配器执行。不要把“调用了外部服务”当成数据库原子事务的一部分。
+
+这里有两种不同的 effect，必须区分：
+
+| 名称 | 实际作用 | 本项目归属 |
+|---|---|---|
+| Cordis `ctx.effect()` | 注册资源与清理函数，管理插件生命周期 | P1 的注册句柄与作用域 |
+| `app/Effects` | SQLite 持久化待执行业务动作，支持重试和重启恢复 | 有真实业务需求时再建设的交付基础设施 |
+
+二者不能合成一个“万能 effect API”。卸载插件可以撤销注册，却不能抹掉已承诺的业务结果或假装撤回远端动作。
+持久化动作归宿主业务账本所有，插件卸载时按动作规则暂停、取消或等待替代处理器，不能随实例内存一起丢失。
+
+**C. 重试、版本栅栏与交付回执。**
+
+Effects 使用 `(kind, key)` 唯一行合并待执行动作；更新时增加 generation，完成时匹配 seq / generation，
+防止旧尝试完成后删除后来更新的载荷。无可用槽位抛出 Later，只延期，不增加真实故障次数；
+普通错误采用指数退避，部分有序类别会被队首失败阻塞。
+
+Outbox 将回执与 reply effect 原子登记，渠道关闭或不再允许接收时记为 dropped，停用/未安装时等待。
+AgentDelivery 则结合确定性消息 id、会话历史与待处理 inbox 去重，flush 后才确认交付；
+来源标识是插件来源，不能因底层使用 user 角色就将其视为真人授权。
+GitHub 发送端用评论标记查重，飞书发送端传递幂等键。
+
+这些机制支持可恢复重试，**不能据此宣称任意外部副作用 exactly-once**。
+远端成功而本地确认前崩溃的窗口仍需发送端幂等或对账处理；普通 shell 命令不能因排进队列就安全重放。
+本仓目前继续使用 notice 的单用途投递泵。只有引入第二类需要持久化恢复的副作用，
+并确认其幂等、撤权与取消语义后，才讨论共用交付队列；插件数量增加本身不是触发条件。
+
+### 9.4 授权、恢复和资源策略的差异
+
+**准入授权不等于工具权限。** Policy 先区分允许发起者、明确请求与推断候选，
+主动模式包含 off / observe / auto；observe 可以记录“本会接受”而不实际受理。
+Mandate 保留业务范围、发起依据与策略版本，恢复已结束工单前重新校验。
+策略变化会重新处理评估，并向受影响的活跃工单添加 policy-changed 输入。
+
+但这不是每次工具执行的强制撤权机制：`Sessions.ensure()` 明确设置 `danger-full-access`，
+router preset 虽隐藏文件写工具，仍有 shell；不能据此认定其拥有系统级只读权限。
+本项目保留 §4.3 的实时权限交集、工具执行校验和凭据路由约束，不沿用其全权限执行默认值。
+来源插件提供的 human / addressed 信息应由可信适配器从来源身份推导，不能相信外部正文自行声明。
+
+**自动恢复是该原型的产品选择。** Runtime 启动会调用 executor.resume；
+对未结清执行，Assignments 会根据已有报告与已交付输入决定重启，附上先检查工作树和远端状态的恢复提示。
+提示词减少重复操作风险，但不构成外部副作用去重保证。
+本仓依旧遵循中断状态可见、用户决定恢复、后台结果不自动续跑父生成；
+不因借鉴原型就扩大已批准的自主性或开启嵌套。
+
+**资源预留需要适配设备上限。** WorkerSlots 在 await 前同步预留容量，并允许真人后续消息唤醒使用额外一个槽。
+这是额外的 worker 容量，不是人员实际操作槽，也不是抢占式调度。
+本仓保留设备分池和硬预算；可借鉴准入原子性与真人请求优先响应，但不能直接把模型并发上限加一。
+
+**轮询时钟不适合照搬到 Android。** 原型依赖常驻 Node、CLI 和周期 pass；
+需要长期监听时，应通过符合 Android 生命周期的调度适配器或远端服务承载。
+WorkManager、系统后台约束与桌面守护进程不是等价执行环境，不把秒级后台常驻列为插件运行时承诺。
+
+### 9.5 工单、报告与“需要人”的派生视图
+
+Ticket 表示持续的业务工作，Assignment 表示其中一次执行尝试；Report 表达工作者报告，
+Attention 表达需要人回答的问题。`ticketStage()` 按优先级从这些事实派生展示阶段，
+它是**纯分类函数，不是驱动全部状态转换的通用工作流引擎**。
+ready 报告也不总等于工单完成：关联 PR 等线程时，还需要看线程是否关闭及是否仍有后续工作。
+
+可借鉴的是区分“模型停止生成”“产物可审阅”“业务已完成”。本仓已有 TaskKey / TaskCard 与 needsPerson，
+保留其命名与各 adapter 状态映射；只有引入跨多次 run 的持续目标时，才新增独立业务工作身份，
+不能把每个会话直接改名为 Ticket，也不将 shell 退出误判为用户目标达成。
+
+原型强调只有需要决定或有可用结果时才通知，面板优先显示待人处理项。
+本仓已有任务中心人优先分段，不重新实现一套面板。后续可在读模型中增加原因、唯一可解锁者、
+所需操作与产物引用；普通进展保留在任务详情，通知按有意义的变化去重，避免逐步广播。
+
+### 9.6 对本设计的增量决议建议
+
+| 建议 | 时机与范围 | 验收 |
+|---|---|---|
+| 保持内聚的领域规则，插件化外部能力边界 | P0 明确服务归属；现有循环先适配 | 新来源/提供者无需修改领域内部事务规则 |
+| 注册句柄绑定实例代次，区分真实故障与容量等待 | P1 生命周期与诊断 | 旧回调/旧清理不影响新实例；满槽不误报插件故障 |
+| 补齐配置、诊断与展示的扩展描述 | P1 试点，UI 随后演进 | 一个能力可完成安装配置、使用、停用与故障定位 |
+| 准入与执行权限分开；机器输入保留来源 | P2/P4 需要来源能力时 | 伪造身份、取消订阅、撤权后均不能获得额外执行权限 |
+| 外部来源可通过后续事件适配器扩展 | 有明确用户需求后另立范围 | 来源去重与可靠接收、准入、任务关联、回复均走宿主边界 |
+| 持久化交付队列仅在多类副作用需求成立后评估 | 不增加为 P1 前置条件 | 崩溃窗口、幂等、重试、取消、卸载和回执逐项可验证 |
+
+这里的“事件适配器”是未来职责描述，不直接使用本仓已存在的 `TaskSource` 枚举名称作为新接口。
+不照搬 Ticket 全对象模型、自动恢复、full-access 默认值、秒级轮询或通用队列。
+因此此次增补**不扩大 P0/P1 实施范围，不改变原投入估算**；后续若新增外部事件和自主工作流，单独估算与授权。
+
+扩展验收样例：同来源重复事件不重复受理；候选可见但未获准时不启动工作；
+插件替换后旧回调失效；入队动作更新期间旧尝试完成不覆盖新载荷；容量等待不计为故障；
+远端动作成功、本地回执未写时重启能查证结果；等待人处理与业务完成分别展示。
+其中 P1 只实现与注册生命周期有关的样例，其余随相应能力启用再落实。
+
+### 9.7 固定版本证据索引
+
+下列是本次实际阅读的关键源码。相关 `registry.spec.ts`、`queue.spec.ts` 等仅用于理解其验证意图，未运行。
+
+| 主题 | 固定提交链接 |
+|---|---|
+| bundle 与角色能力 | [cordis.patch.yml](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/cordis.patch.yml) |
+| 插件入口与停用清理 | [src/index.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/index.ts) |
+| Source 契约与注册所有权 | [kind.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/sources/kind.ts)、[registry.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/sources/registry.ts)、[source-context.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/app/source-context.ts) |
+| 事务核心与外部端口 | [engine.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/core/engine.ts)、[ports.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/core/ports.ts) |
+| 持久化动作与回执 | [effects.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/app/effects.ts)、[outbox.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/app/outbox.ts) |
+| 会话输入去重 | [delivery.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/app/delivery.ts) |
+| 渠道幂等实现 | [github-channel.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/sources/github-channel.ts)、[feishu-channel.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/sources/feishu-channel.ts) |
+| 授权与配置变化 | [policy.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/policy.ts)、[tickets.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/core/tickets.ts) |
+| 执行权限、容量与恢复 | [sessions.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/app/sessions.ts)、[dsh.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/executor/dsh.ts)、[assignments.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/core/assignments.ts) |
+| 生命周期与业务阶段 | [runtime.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/app/runtime.ts)、[stage.ts](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/src/core/stage.ts) |
+
+任务控制面已有[附录 E](../in-progress/design-agent-task-runtime.md)的领域对照继续有效；
+本节增补插件架构与运行时语义，并澄清 stage 分类、worker 预留容量和自动恢复的实际含义。
