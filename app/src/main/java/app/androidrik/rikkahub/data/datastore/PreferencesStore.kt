@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.datastore
 
 import android.content.Context
+import app.androidrik.rikkahub.data.ai.account.ensureCatalogSessions
 import android.util.Log
 import androidx.datastore.core.CorruptionException
 import androidx.datastore.core.DataStore
@@ -749,6 +750,7 @@ class SettingsStore(
                 quickMessages = settings.quickMessages.distinctBy { it.id },
             )
         }
+        .map { settings -> settings.copy(providers = settings.providers.ensureCatalogSessions(legacy = true)) }
         .onEach {
             get<PebbleEngine>().templateCache.invalidateAll()
         }
@@ -807,6 +809,7 @@ class SettingsStore(
         // settingsFlow 会短暂出现「不鉴权」快照，而 WebApiModule 只在服务启动时读一次。
         val corrected = settings.copy(
             webServerJwtEnabled = true,
+            providers = settings.providers.ensureCatalogSessions(),
             favoriteModels = normalizeFavoriteModelIds(settings.favoriteModels, settings.providers),
         )
         dataStore.edit { preferences ->
@@ -853,7 +856,7 @@ class SettingsStore(
             preferences[COMPRESS_MODEL] = settings.compressModelId?.toString() ?: ""
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
 
-            preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
+            preferences[PROVIDERS] = JsonInstant.encodeToString(corrected.providers)
             preferences.writeRemovedIds(REMOVED_BUILTIN_PROVIDERS, settings.removedBuiltInProviderIds)
             preferences.writeRemovedIds(REMOVED_ASSISTANTS, settings.removedAssistantIds)
             preferences.writeRemovedIds(REMOVED_TTS_PROVIDERS, settings.removedTtsProviderIds)

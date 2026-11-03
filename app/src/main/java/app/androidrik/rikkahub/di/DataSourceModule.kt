@@ -63,6 +63,8 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_47_48
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.network.RikkaProxyAuthenticator
 import app.androidrik.rikkahub.data.remote.ModelsDevUpdater
+import app.androidrik.rikkahub.data.ai.catalog.ProviderModelCatalogRepository
+import app.androidrik.rikkahub.data.ai.catalog.FileCatalogSnapshotStore
 import app.androidrik.rikkahub.data.network.SettingsProxyAuthenticator
 import app.androidrik.rikkahub.data.network.SettingsProxySelector
 import app.androidrik.rikkahub.data.network.SocksCredentialRegistry
@@ -324,6 +326,17 @@ val dataSourceModule = module {
             context = get(),
             // 显式按实现类型取：接口无单独 definition，裸 get() 会 NoDefinitionFound
             accountCredentials = get<ProviderAccountManager>(),
+        )
+    }
+
+    single(createdAtStart = true) {
+        val context: Context = get()
+        val manager: ProviderManager = get()
+        ProviderModelCatalogRepository(
+            settings = get<SettingsStore>().settingsFlow,
+            store = FileCatalogSnapshotStore(java.io.File(context.noBackupFilesDir, "model-catalog")),
+            parentScope = get<AppScope>(),
+            fetch = { setting -> manager.getProviderByType(setting).fetchModelCatalog(setting) },
         )
     }
 

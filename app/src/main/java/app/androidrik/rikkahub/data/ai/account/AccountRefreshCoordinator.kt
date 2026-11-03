@@ -47,7 +47,7 @@ internal class AccountRefreshCoordinator(
             val refreshToken = credential.refreshToken
                 ?: error("${latest.name}: session expired, please sign in again")
             val refreshed = try {
-                refresh(latest, refreshToken)
+                refresh(latest, refreshToken).copy(loginSessionId = credential.loginSessionId)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -1,6 +1,6 @@
 # 统一模型目录刷新与缺失提醒
 
-> 状态：A 已实施并验证，B 实施中；C/D 尚未实施。日期：2026-11-03。
+> 状态：A/B 已实施并验证，C/D 尚未实施。日期：2026-11-03。
 > 源码核对基线：`58b9661fb`。用户已授权实施 A/B，并分别验证及本地提交。
 > 需求来源：[#2281](https://github.com/rikkahub/rikkahub/issues/2281)、[#2282](https://github.com/rikkahub/rikkahub/issues/2282)，本次通过 GitHub API 确认均为 open。
 
@@ -158,3 +158,15 @@ TTL 过期不删除历史证据，只改变为「上次检查」；从其他入�
 - 新增 `ModelCatalogTest` 14 项：MockWebServer 实际请求、分页凭据/参数、HTTP 分类、缺字段/坏条目、未知分页、游标循环、保护上限、取消、超时、双源合并与隐藏 ID。
 - `:ai:testDebugUnitTest` 全量 **505 项，失败 0、错误 0、跳过 0**；`:app:compileDebugKotlin` 通过。构建沿用本机 JetBrains JDK 21、既有 Gradle 缓存及临时官方 HugeIcons 本地镜像 init script（仓库依赖声明未改）。
 - 分页核对来源：上文 Google/Claude 官方文档，以及 [OpenAI Models API](https://developers.openai.com/api/reference/resources/models/methods/list)。
+
+### B：共享仓库与凭据范围（2026-11-03）
+
+- 新增 `ProviderModelCatalogRepository` 单例，进程级受监督 IO scope 持有请求；UI 取消等待不取消共享任务。同配置合并请求，跨入口共用并发上限 3；手动绕过 TTL，自动请求遵守 6 小时有效期和 60 秒失败冷却；整次请求超时 30 秒。启动只加载本地，不发网络请求。
+- 状态拆为上次完整目录和本次尝试；失败/部分结果保留上次完整目录及其检查时间。配置变更、切号、删除会取消旧请求，发布时再核对实时配置指纹和请求 ID；批量中单项取消不取消其他配置。
+- `FileCatalogSnapshotStore` 在 `noBackupFilesDir/model-catalog/` 按 provider UUID 原子保存有版本快照；坏缓存回未知，重启把未完成状态改为中断，删除配置清理缓存。写盘失败独立通过 `cacheWriteFailed` 暴露，网络成功数据仍在内存可读。现有备份只打包 filesDir 下允许的目录，该 noBackupFilesDir 路径不进入手工备份。
+- 范围采用本机随机盐的 HMAC-SHA256。输入包含协议稳定标签、实际请求配置、优先 key、全部自定义头（保留重复值与顺序）、代理和账号会话；不包含模型列表/别名/排序。非法头不会让观察器终止；不把凭据、端点或头值复制进快照。
+- `OAuthCredential.loginSessionId` 是本地账号会话代；新登录和备份恢复生成新代，token 续期及加密/解密保留原代。旧凭据读取时从原持久化内容派生稳定 legacy 代，下一次设置写回时持久化；无需额外启动期写入设置。获取目录前核对实际取得的登录代，并拒绝空 token，避免在新账号下完成旧请求。
+- 补强目录端非法/未知分页信号的保守处理：字符串或 null 的 `has_more` 不认定为完整终页。
+- 新增仓库回归 18 项、会话迁移回归 3 项，账号续期补 1 项，ai 目录回归补 2 项。最终相关 app 测试 **44 项全部通过**，ai 全量 **507 项全部通过**；app 主代码与测试代码编译通过。
+- app 全量巡检：**2859 项，11 失败、2 跳过**。在隔离检出 `9290a611b` 上复跑失败的四个类（跳过无关的 `:web:buildWebUi`），按类名和用例名逐一确认同样 11 项失败：`PurgeObservationStoreTest` 6 项、`SettingsStoreResilienceTest` 2 项、`SkillAtomicWriteTest` 1 项、`FilesRoutesPathScopeTest` 2 项。不能将全量结果报告为全绿；B 的相关测试均通过，基线问题本批未改。
+- `git diff --check` 通过。没有新增 UI、自动刷新设置开关或缺失提示：它们分别属于 C/D。没有设备端验收或真实账号目录请求。

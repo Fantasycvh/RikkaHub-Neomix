@@ -267,8 +267,7 @@ internal fun parseGrokCatalog(root: JsonObject): CatalogPage {
             candidates[id]?.let { CatalogEntry.fromModel(it) } ?: CatalogEntry(id, selectable = false)
         }
     }
-    return if ((root["has_more"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull == true ||
-        listOf("next", "next_page", "nextPageToken").any { root[it] != null && root[it] != kotlinx.serialization.json.JsonNull })
+    return if (root.hasUnknownCatalogPagination())
         page.copy(incomplete = IncompleteReason.PAGINATION) else page
 }
 

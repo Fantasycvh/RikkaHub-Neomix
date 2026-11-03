@@ -72,7 +72,11 @@ internal class CatalogFetchException(val error: CatalogError) : IOException(erro
 
 internal suspend fun AccountCredentialProvider.catalogCredential(setting: ProviderSetting.Account): OAuthCredential =
     try {
-        getCredential(setting, null)
+        getCredential(setting, null).also { credential ->
+            check(credential.accessToken.isNotBlank()) { "Catalog is not signed in" }
+            val expected = setting.credential?.loginSessionId
+            check(expected == null || credential.loginSessionId == expected) { "Catalog login changed" }
+        }
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
@@ -159,6 +163,15 @@ internal fun JsonObject.catalogRows(key: String): JsonArray {
     return this[key] as? JsonArray ?: throw IllegalArgumentException("Missing catalog collection")
 }
 
+/** Unrecognised or malformed continuation hints cannot establish that the directory ended. */
+internal fun JsonObject.hasUnknownCatalogPagination(): Boolean {
+    val more = this["has_more"]
+    return more != null && (more !is JsonPrimitive || more.isString || more.booleanOrNull != false) ||
+        listOf("next", "next_page", "nextPageToken", "next_page_token").any {
+            this[it] != null && this[it] != JsonNull && this[it] != JsonPrimitive("")
+        }
+}
+
 internal fun JsonObject.catalogPage(key: String, entry: (JsonObject) -> CatalogEntry?): CatalogPage {
     var malformed = false
     val entries = catalogRows(key).mapNotNull { element ->
@@ -175,11 +188,10 @@ internal fun parseStandardCatalog(root: JsonObject, cursorPagination: Boolean): 
     } }
     val more = root["has_more"]
     // OpenAI's endpoint is unpaginated. Unknown gateway pagination must not become negative evidence.
-    if (!cursorPagination) return if (more != null && (more as? JsonPrimitive)?.booleanOrNull != false ||
-        listOf("next", "next_page", "nextPageToken", "next_page_token").any { root[it] != null && root[it] != JsonNull })
+    if (!cursorPagination) return if (root.hasUnknownCatalogPagination())
         page.copy(incomplete = IncompleteReason.PAGINATION) else page
     if (more == null) return page // compatible unpaginated proxies
-    val hasMore = (more as? JsonPrimitive)?.booleanOrNull
+    val hasMore = (more as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
         ?: return page.copy(incomplete = IncompleteReason.PAGINATION)
     if (!hasMore) return page
     val next = root.catalogString("last_id") ?: return page.copy(incomplete = IncompleteReason.PAGINATION)

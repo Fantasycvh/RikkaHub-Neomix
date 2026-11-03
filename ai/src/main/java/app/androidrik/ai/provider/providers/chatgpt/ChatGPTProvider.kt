@@ -169,7 +169,6 @@ internal fun parseCodexCatalog(root: JsonObject): CatalogPage {
                 ?: CatalogEntry(id, row.catalogString("display_name") ?: id, selectable = false)
         }
     }
-    return if ((root["has_more"] as? JsonPrimitive)?.booleanOrNull == true ||
-        listOf("next", "next_page", "nextPageToken").any { root[it] != null && root[it] != JsonNull })
+    return if (root.hasUnknownCatalogPagination())
         page.copy(incomplete = IncompleteReason.PAGINATION) else page
 }

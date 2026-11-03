@@ -192,4 +192,28 @@ class ModelCatalogTest {
         assertFalse(page.entries.single().selectable)
     }
 
+    @Test fun `account switched before credential acquisition cannot issue a catalog request under the new account`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val credentials = AccountCredentialProvider { _, _ -> OAuthCredential("new-token", loginSessionId = "new-login") }
+            val result = ChatGPTProvider(rewrittenClient(server), credentials).fetchModelCatalog(
+                ProviderSetting.ChatGPT(credential = OAuthCredential("old-token", loginSessionId = "old-login")),
+            ) as CatalogFetchResult.Failed
+            assertEquals(CatalogErrorKind.AUTHENTICATION, result.error.kind)
+            assertEquals(0, server.requestCount)
+        }
+    }
+
+    @Test fun `malformed continuation flags are not treated as a terminal page`() {
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"data":[{"id":"one"}],"has_more":"false"}"""
+        ) as kotlinx.serialization.json.JsonObject
+        assertEquals(IncompleteReason.PAGINATION, parseStandardCatalog(root, false).incomplete)
+        assertEquals(IncompleteReason.PAGINATION, parseStandardCatalog(root, true).incomplete)
+        val codex = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"models":[{"slug":"one"}],"has_more":null}"""
+        ) as kotlinx.serialization.json.JsonObject
+        assertEquals(IncompleteReason.PAGINATION, app.androidrik.ai.provider.providers.chatgpt.parseCodexCatalog(codex).incomplete)
+    }
+
 }

@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.sync
 
 import android.content.Context
 import android.util.Log
+import app.androidrik.rikkahub.data.ai.account.renewCatalogSessions
 import app.androidrik.rikkahub.data.DataOperation
 import app.androidrik.rikkahub.data.DataOperationLock
 import app.androidrik.rikkahub.data.datastore.migration.SettingsCompatDecoder
@@ -434,7 +435,7 @@ internal class BackupArchiveEngine(
                         // 原版 3.1.0 可能带本应用没有的多态子类（chatgpt/grok/volcengine…）：
                         // 逐条降级丢弃而不是整份失败，否则连会话都恢复不了
                         val decoded = SettingsCompatDecoder.decode(json, migratedJson)
-                        settingsStore.update(decoded.settings)
+                        settingsStore.update(decoded.settings.copy(providers = decoded.settings.providers.renewCatalogSessions()))
                         settingsWarnings += decoded.droppedEntries
                         if (decoded.droppedEntries.isNotEmpty()) {
                             Log.w(

@@ -249,7 +249,7 @@ class ProviderAccountManager(
     }.onFailure { Log.w(TAG, "Failed to fetch Grok userinfo", it) }.getOrNull()
 
     private suspend fun persistCredential(providerId: Uuid, credential: OAuthCredential?) {
-        val stored = credential?.encrypted(cipher)
+        val stored = credential?.copy(loginSessionId = Uuid.random().toString())?.encrypted(cipher)
         settingsStore.update { old ->
             old.copy(
                 providers = old.providers.map { provider ->
@@ -270,7 +270,7 @@ class ProviderAccountManager(
         credential: OAuthCredential,
     ): Boolean {
         var replaced = false
-        val stored = credential.encrypted(cipher)
+        val stored = credential.copy(loginSessionId = expected.loginSessionId).encrypted(cipher)
         settingsStore.update { old ->
             old.copy(
                 providers = old.providers.map { provider ->

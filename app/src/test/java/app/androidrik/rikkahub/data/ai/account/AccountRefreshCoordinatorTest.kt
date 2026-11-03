@@ -198,4 +198,16 @@ class AccountRefreshCoordinatorTest {
             assertTrue(e.message!!.contains("not signed in"))
         }
     }
+    @Test
+    fun `automatic token renewal preserves the login epoch even if adapter omits it`() = runTest {
+        val state = AtomicReference<ProviderSetting.Account?>(account(
+            credential("expired", expiresAt = 1L).copy(loginSessionId = "original-session"),
+        ))
+        val store = FakeStore(state)
+        val result = store.coordinator { _, _ -> credential("renewed").copy(loginSessionId = "wrong-session") }
+            .refreshIfNeeded(state.get()!!, null)
+        assertEquals("original-session", result.loginSessionId)
+        assertEquals("original-session", state.get()!!.credential!!.loginSessionId)
+    }
+
 }

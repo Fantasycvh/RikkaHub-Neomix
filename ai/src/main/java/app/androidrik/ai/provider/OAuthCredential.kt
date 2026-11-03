@@ -20,6 +20,8 @@ data class OAuthCredential(
     // 以下仅用于界面展示
     val email: String? = null,
     val plan: String? = null,
+    /** Local login epoch; token renewal preserves it, new sign-in replaces it. */
+    val loginSessionId: String? = null,
 ) {
     override fun toString(): String =
         "OAuthCredential(accessToken=${accessToken.masked()}, refreshToken=${refreshToken?.masked()}, " +
