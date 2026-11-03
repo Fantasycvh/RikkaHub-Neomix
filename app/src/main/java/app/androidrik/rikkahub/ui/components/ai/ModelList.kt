@@ -38,6 +38,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.BadgedBox
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -199,6 +200,7 @@ fun ModelSelector(
         type = type,
     )
     val model = state.currentModel
+    val owner = model?.let { selected -> providers.firstOrNull { provider -> provider.models.any { it.id == selected.id } } }
 
     if (!onlyIcon) {
         Row(
@@ -222,8 +224,10 @@ fun ModelSelector(
                     text = model?.displayName ?: stringResource(R.string.model_list_select_model),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                if (owner != null) CatalogModelMarker(owner, model, iconOnly = true)
             }
             if (allowClear && model != null) {
                 IconButton(
@@ -245,11 +249,13 @@ fun ModelSelector(
             },
         ) {
             if (model != null) {
-                AutoAIIcon(
-                    modifier = Modifier.size(36.dp),
-                    name = model.modelId,
-                    color = Color.Transparent
-                )
+                BadgedBox(badge = { if (owner != null) CatalogModelMarker(owner, model, iconOnly = true) }) {
+                    AutoAIIcon(
+                        modifier = Modifier.size(36.dp),
+                        name = model.modelId,
+                        color = Color.Transparent
+                    )
+                }
             } else {
                 Icon(
                     imageVector = HugeIcons.Brain02,
@@ -310,6 +316,11 @@ fun ModelListSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
+            }
+            state.currentModel?.let { selected ->
+                state.providers.firstOrNull { p -> p.models.any { it.id == selected.id } }?.let { owner ->
+                    CatalogModelMarker(owner, selected)
+                }
             }
             CatalogBatchControls(state.providers)
             ModelList(
@@ -600,38 +611,38 @@ private fun ColumnScope.ModelList(
             val collapsed = isCollapsed(providerSetting)
             stickyHeader(key = "header:${providerSetting.id}") {
                 Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.small)
-                        .clickable { toggleCollapsed(providerSetting) }
-                        .padding(horizontal = 8.dp)
-                        .padding(bottom = 4.dp, top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Icon(
-                        imageVector = if (collapsed) HugeIcons.ArrowRight01 else HugeIcons.ArrowDown01,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable { toggleCollapsed(providerSetting) }
+                            .padding(horizontal = 8.dp)
+                            .padding(bottom = 4.dp, top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (collapsed) HugeIcons.ArrowRight01 else HugeIcons.ArrowDown01,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
 
-                    Text(
-                        text = providerSetting.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                        Text(
+                            text = providerSetting.name,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
 
-                    Spacer(modifier = Modifier.weight(1f))
+                        Spacer(modifier = Modifier.weight(1f))
 
-                    ProviderQuotaText(
-                        providerSetting = providerSetting,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                CatalogProviderStatus(providerSetting, compact = true)
+                        ProviderQuotaText(
+                            providerSetting = providerSetting,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    CatalogProviderStatus(providerSetting, compact = true)
                 }
             }
 
@@ -807,6 +818,8 @@ private fun ModelItem(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+
+                    CatalogModelMarker(providerSetting, model)
 
                     FlowRow(
                         modifier = Modifier

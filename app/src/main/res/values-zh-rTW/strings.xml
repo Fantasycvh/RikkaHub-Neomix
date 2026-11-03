@@ -2973,5 +2973,16 @@
   <string name="catalog_error_server">模型目錄服務傳回錯誤</string>
   <string name="catalog_error_parse">模型目錄回應格式無效</string>
   <string name="catalog_error_unknown">無法重新整理模型列表</string>
+  <string name="catalog_model_missing">未在上次完整目錄中找到</string>
+  <string name="catalog_model_independent">獨立模型設定 · 未依此目錄檢查</string>
+  <string name="catalog_missing_count">%1$d 個已新增模型未在目錄中找到</string>
+  <string name="catalog_missing_details">未列出的模型</string>
+  <string name="catalog_missing_explanation">這些 ID 未出現在對應憑據的上次完整目錄中，可能已下架、改名或目前帳號無權查看。這不代表一定無法呼叫；模型及其設定仍會保留。</string>
+  <string name="catalog_missing_unknown">目前設定尚無完整目錄，請重新整理後檢查</string>
+  <string name="catalog_missing_historical">以下提醒依據上次完整檢查；請重新整理以確認目前目錄。</string>
+  <string name="catalog_missing_none">沒有需要提醒的缺失項目</string>
+  <string name="catalog_checked_at">檢查時間：%1$s</string>
+  <string name="catalog_missing_acknowledge">知道了</string>
+  <string name="catalog_missing_acknowledged">已知悉 · 行內標記仍可查看</string>
 </resources>
 

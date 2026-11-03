@@ -290,4 +290,89 @@ class ProviderModelCatalogRepositoryTest {
         assertNull(repo.currentState(provider.id))
     }
 
+    @Test fun `missing acknowledgements persist across refresh and restart but reset after recovery`() = runTest {
+        val missing = Model(modelId = "missing", displayName = "Alias")
+        val p = provider.copy(models = listOf(missing))
+        val config = settings(p)
+        val directory = temp.newFolder()
+        var entries = emptyList<CatalogEntry>()
+        val repo = repository(config, FileCatalogSnapshotStore(directory)) {
+            CatalogFetchResult.Complete(entries, CatalogScope(it.id.toString(), listOf("test")))
+        }
+        val initial = repo.refresh(p.id)!!
+        val oldId = initial.missingIncidents.values.single().incidentId
+        repo.acknowledgeMissing(p.id, initial.scopeFingerprint, setOf(oldId))
+        assertFalse(catalogMissingReport(p, repo.currentState(p.id))!!.needsAttention)
+        val repeated = repo.refresh(p.id)!!
+        assertTrue(repeated.missingIncidents.values.single().acknowledged)
+        val reopened = repository(config, FileCatalogSnapshotStore(directory))
+        runCurrent()
+        assertFalse(catalogMissingReport(p, reopened.currentState(p.id))!!.needsAttention)
+        entries = listOf(CatalogEntry("missing", selectable = false))
+        assertTrue(repo.refresh(p.id)!!.missingIncidents.isEmpty())
+        entries = emptyList()
+        val again = repo.refresh(p.id)!!
+        assertNotEquals(oldId, again.missingIncidents.values.single().incidentId)
+        repo.acknowledgeMissing(p.id, again.scopeFingerprint, setOf(oldId))
+        assertTrue(catalogMissingReport(p, repo.currentState(p.id))!!.needsAttention)
+    }
+
+    @Test fun `local rename API id and override edits recompute warnings without issuing a request`() = runTest {
+        val local = Model(modelId = "absent", displayName = "Old name")
+        val p = provider.copy(models = listOf(local))
+        val config = settings(p)
+        var calls = 0
+        val repo = repository(config) { calls++; complete(it, "present") }
+        val initial = repo.refresh(p.id)!!
+        config.value = config.value.copy(providers = listOf(p.copy(models = listOf(local.copy(displayName = "New name")))))
+        runCurrent()
+        val report = catalogMissingReport(config.value.providers.single(), repo.currentState(p.id))!!
+        assertEquals("New name", report.models.single().model.displayName)
+        assertEquals(initial.missingIncidents.values.single().incidentId, report.models.single().incident.incidentId)
+        config.value = config.value.copy(providers = listOf(p.copy(models = listOf(local.copy(modelId = "present")))))
+        runCurrent()
+        assertTrue(repo.currentState(p.id)!!.missingIncidents.isEmpty())
+        config.value = config.value.copy(providers = listOf(p.copy(models = listOf(local.copy(providerOverwrite = ProviderSetting.OpenAI())))))
+        runCurrent()
+        assertTrue(repo.currentState(p.id)!!.missingIncidents.isEmpty())
+        assertEquals(1, calls)
+    }
+
+    @Test fun `failure and partial results do not create new missing incidents`() = runTest {
+        val a = Model(modelId = "a")
+        val b = Model(modelId = "b")
+        val p = provider.copy(models = listOf(a, b))
+        var next: CatalogFetchResult = CatalogFetchResult.Complete(listOf(CatalogEntry("a")), CatalogScope(p.id.toString(), listOf("test")))
+        val repo = repository(settings(p)) { next }
+        val initial = repo.refresh(p.id)!!.missingIncidents
+        next = CatalogFetchResult.Failed(CatalogError(CatalogErrorKind.NETWORK, "network"))
+        assertEquals(initial, repo.refresh(p.id)!!.missingIncidents)
+        next = CatalogFetchResult.Partial(emptyList(), CatalogScope(p.id.toString(), listOf("test")), IncompleteReason.LIMIT)
+        assertEquals(initial, repo.refresh(p.id)!!.missingIncidents)
+    }
+
+    @Test fun `acknowledging a dialog from old credentials cannot dismiss new scope evidence`() = runTest {
+        val local = Model(modelId = "absent")
+        val p = provider.copy(models = listOf(local))
+        val config = settings(p)
+        val repo = repository(config)
+        val initial = repo.refresh(p.id)!!
+        config.value = config.value.copy(providers = listOf(p.copy(apiKey = "new-scope")))
+        val latest = repo.refresh(p.id)!!
+        repo.acknowledgeMissing(p.id, initial.scopeFingerprint, initial.missingIncidents.values.map { it.incidentId }.toSet())
+        assertEquals(latest, repo.currentState(p.id))
+        assertTrue(catalogMissingReport(config.value.providers.single(), repo.currentState(p.id))!!.needsAttention)
+    }
+
+    @Test fun `leaving a page immediately after starting a batch does not discard unqueued targets`() = runTest {
+        val providers = (1..6).map { provider.copy(id = Uuid.random()) }
+        var calls = 0
+        val repo = repository(settings(*providers.toTypedArray())) { calls++; complete(it) }
+        val page = launch(start = CoroutineStart.UNDISPATCHED) { repo.refreshAll() }
+        page.cancel()
+        runCurrent()
+        assertEquals(6, calls)
+        assertEquals(6, repo.states.value.values.count { it.lastAttempt?.status == CatalogAttemptStatus.COMPLETE })
+    }
+
 }

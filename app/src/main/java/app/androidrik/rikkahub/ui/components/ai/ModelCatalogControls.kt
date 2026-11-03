@@ -99,6 +99,7 @@ fun CatalogProviderStatus(provider: ProviderSetting, modifier: Modifier = Modifi
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             CatalogStatusContent(state, compact)
+            CatalogMissingSummary(provider)
             if (!compact) Text(stringResource(if (provider is ProviderSetting.Account) R.string.catalog_scope_account else R.string.catalog_scope_key), style = MaterialTheme.typography.labelSmall)
         }
         IconButton(onClick = { scope.launch { repository.refresh(provider.id) } }, enabled = !state.isRefreshing) {
@@ -135,6 +136,7 @@ fun CatalogBatchControls(providers: List<ProviderSetting>, showAutoSwitch: Boole
         }
         Text(stringResource(R.string.catalog_summary, ready, partial, problems, running, targets.size),
             style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp))
+        providers.filter { it.id in targets }.forEach { CatalogMissingSummary(it, showProviderName = true) }
         if (showAutoSwitch) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.catalog_auto_refresh), style = MaterialTheme.typography.bodySmall)

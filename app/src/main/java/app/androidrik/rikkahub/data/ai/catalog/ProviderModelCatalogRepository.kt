@@ -17,7 +17,7 @@ enum class CatalogRefreshTrigger { MANUAL, AUTOMATIC, BATCH }
 enum class CatalogAttemptStatus { QUEUED, RUNNING, COMPLETE, PARTIAL, FAILED, UNSUPPORTED, INTERRUPTED, SKIPPED }
 
 @Serializable
-data class CatalogSnapshot(val catalog: CatalogFetchResult.Complete, val checkedAt: Long)
+data class CatalogSnapshot(val catalog: CatalogFetchResult.Complete, val checkedAt: Long, val snapshotId: String = "")
 
 @Serializable
 data class CatalogAttempt(
@@ -37,6 +37,7 @@ data class ProviderCatalogState(
     val lastComplete: CatalogSnapshot? = null,
     val lastAttempt: CatalogAttempt? = null,
     val cacheWriteFailed: Boolean = false,
+    val missingIncidents: Map<String, CatalogMissingIncident> = emptyMap(),
 )
 
 /** Process-owned jobs are shared by every view. Caller cancellation only cancels that caller's wait. */
@@ -110,10 +111,28 @@ class ProviderModelCatalogRepository internal constructor(
         }
     }
 
-    suspend fun refreshAll(providerIds: Set<Uuid>? = null): Map<Uuid, ProviderCatalogState?> = supervisorScope {
-        val current = settings.first { !it.init }
-        val targets = current.providers.filter { it.enabled && (providerIds == null || it.id in providerIds) }.map { it.id }
-        targets.map { id -> async { id to refresh(id, CatalogRefreshTrigger.BATCH) } }.awaitAll().toMap()
+    /** Acknowledgements are conditional on the evidence the user actually saw. */
+    suspend fun acknowledgeMissing(providerId: Uuid, fingerprint: String, incidentIds: Set<String>) = withContext(dispatcher) {
+        mutex.withLock {
+            reconcile(settings.value)
+            val state = currentState(providerId)?.takeIf { it.scopeFingerprint == fingerprint } ?: return@withLock
+            val incidents = state.missingIncidents.mapValues { (_, incident) ->
+                if (incident.incidentId in incidentIds) incident.copy(acknowledged = true) else incident
+            }
+            if (incidents != state.missingIncidents) save(providerId, state.copy(missingIncidents = incidents))
+        }
+    }
+
+    suspend fun refreshAll(providerIds: Set<Uuid>? = null): Map<Uuid, ProviderCatalogState?> {
+        // Own the entire batch, including work not yet queued when a page leaves composition.
+        val batch = scope.async {
+            supervisorScope {
+                val current = settings.first { !it.init }
+                val targets = current.providers.filter { it.enabled && (providerIds == null || it.id in providerIds) }.map { it.id }
+                targets.map { id -> async { id to refresh(id, CatalogRefreshTrigger.BATCH) } }.awaitAll().toMap()
+            }
+        }
+        return batch.await()
     }
 
     private suspend fun execute(id: Uuid, fingerprint: String, requestId: String, trigger: CatalogRefreshTrigger): ProviderCatalogState? {
@@ -150,7 +169,7 @@ class ProviderModelCatalogRepository internal constructor(
                         is CatalogFetchResult.Complete -> {
                             if (result.scope.providerId != id.toString()) return@withLock finish(id, fingerprint, requestId, CatalogAttemptStatus.FAILED,
                                 CatalogError(CatalogErrorKind.UNKNOWN, "Catalog configuration changed"))
-                            current.copy(lastComplete = CatalogSnapshot(result, clock()),
+                            current.copy(lastComplete = CatalogSnapshot(result, clock(), requestId),
                                 lastAttempt = attempt.copy(status = CatalogAttemptStatus.COMPLETE, finishedAt = clock()))
                         }
                         is CatalogFetchResult.Partial -> {
@@ -189,7 +208,9 @@ class ProviderModelCatalogRepository internal constructor(
     }
 
     private fun save(id: Uuid, state: ProviderCatalogState): ProviderCatalogState {
-        val clean = state.copy(cacheWriteFailed = false)
+        val provider = settings.value.providers.find { it.id == id }
+        val clean = state.copy(cacheWriteFailed = false,
+            missingIncidents = provider?.let { reconcileMissingIncidents(it, state) }.orEmpty())
         val updated = clean.copy(cacheWriteFailed = !store.save(id, clean))
         mutableStates.value = mutableStates.value + (id to updated)
         return updated
@@ -206,7 +227,11 @@ class ProviderModelCatalogRepository internal constructor(
             val id = provider.id
             val fingerprint = catalogScopeFingerprint(provider, current.globalProxy, store.salt)
             val state = mutableStates.value[id]
-            if (state?.scopeFingerprint == fingerprint) return@forEach
+            if (state?.scopeFingerprint == fingerprint) {
+                val incidents = reconcileMissingIncidents(provider, state)
+                if (incidents != state.missingIncidents) save(id, state.copy(missingIncidents = incidents))
+                return@forEach
+            }
             jobs.remove(id)?.result?.cancel()
             val restored = if (state == null) store.load(id)?.takeIf { it.scopeFingerprint == fingerprint } else null
             val normalized = restored?.let { cached ->

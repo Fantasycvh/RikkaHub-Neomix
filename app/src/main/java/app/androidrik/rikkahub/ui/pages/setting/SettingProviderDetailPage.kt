@@ -113,6 +113,7 @@ import app.androidrik.rikkahub.data.ai.catalog.catalogCandidateModels
 import app.androidrik.rikkahub.data.ai.catalog.isRefreshing
 import app.androidrik.rikkahub.ui.components.ai.CatalogAutoRefreshEffect
 import app.androidrik.rikkahub.ui.components.ai.CatalogProviderStatus
+import app.androidrik.rikkahub.ui.components.ai.CatalogModelMarker
 import app.androidrik.rikkahub.ui.components.ai.rememberCatalogState
 import app.androidrik.rikkahub.utils.reorderForDragByKey
 import app.androidrik.ai.provider.filterByKeywords
@@ -1741,6 +1742,7 @@ private fun ModelCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    CatalogModelMarker(parentProvider, model)
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),

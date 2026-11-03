@@ -2986,5 +2986,16 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="catalog_error_server">Model list service returned an error</string>
   <string name="catalog_error_parse">Invalid model list response</string>
   <string name="catalog_error_unknown">Unable to refresh the model list</string>
+  <string name="catalog_model_missing">Not found in the last complete list</string>
+  <string name="catalog_model_independent">Independent configuration · not checked against this list</string>
+  <string name="catalog_missing_count">%1$d added models are missing from the list</string>
+  <string name="catalog_missing_details">Models not listed</string>
+  <string name="catalog_missing_explanation">These IDs were absent from the last complete list for these credentials. They may have been removed, renamed or hidden from this account. This does not prove they cannot be called. Models and their settings are kept.</string>
+  <string name="catalog_missing_unknown">No complete list is available for this configuration. Refresh to check.</string>
+  <string name="catalog_missing_historical">These reminders use the last complete check. Refresh to check the current list.</string>
+  <string name="catalog_missing_none">There are no missing models to show.</string>
+  <string name="catalog_checked_at">Checked: %1$s</string>
+  <string name="catalog_missing_acknowledge">Got it</string>
+  <string name="catalog_missing_acknowledged">Acknowledged · inline markers remain available</string>
 </resources>
 

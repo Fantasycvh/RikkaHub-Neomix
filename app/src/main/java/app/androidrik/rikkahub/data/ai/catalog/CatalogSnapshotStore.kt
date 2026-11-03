@@ -21,7 +21,7 @@ internal interface CatalogSnapshotStore {
 @Serializable
 private data class CatalogCacheFile(val version: Int = 1, val state: ProviderCatalogState)
 
-/** Private noBackupFilesDir storage; no Settings, user model UUIDs or credentials are copied here. */
+/** Private noBackupFilesDir storage; no Settings or credentials; local model UUIDs are used only for missing-incident acknowledgements. */
 internal class FileCatalogSnapshotStore(private val directory: File) : CatalogSnapshotStore {
     private val json = Json { ignoreUnknownKeys = true }
     override val salt: ByteArray = runCatching {
