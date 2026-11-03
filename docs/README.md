@@ -16,7 +16,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [`design-plugin-composable-runtime.md`](design/drafts/design-plugin-composable-runtime.md) | 可组合插件运行时设计 **rev2**（2026-11-03 晚重议）：契约化装配优先、动态运行时降为 P1 决策门后的条件项；含 Superagent 原型固定版本源码分析、服务契约、生命周期、配置迁移与分期验收；尚未实施 |
+| [`design-plugin-composable-runtime.md`](design/drafts/design-plugin-composable-runtime.md) | 可组合插件运行时设计 **rev2**（2026-11-03 晚重议）：契约化装配优先、动态运行时降为 P1 决策门后的条件项；含 Superagent 与 dsh-Go 固定提交源码分析、服务契约、生命周期、配置迁移与分期验收，§8.1 并列 JS 运行时候选基准（WebView/QuickJS/Hermes/winterjs2，未启用）；尚未实施 |
 | [`design-auto-compaction.md`](design/design-auto-compaction.md) | 自动上下文压缩（harness 式检查点、可回看可编辑） |
 | [`design-backup-workspace-files.md`](design/design-backup-workspace-files.md) | 备份纳入工作区文件 |
 | [`design-incremental-backup.md`](design/drafts/design-incremental-backup.md) | **增量备份设计草稿**：自包含快照清单 + 内容寻址对象；P1 文件区增量（复用现有恢复引擎）、P2 DB 对象级增量；含实测体积构成、传输层缺口、分阶段计划与风险。**P0 前置修复已落地（2026-11-03），P1/P2 未实施** |

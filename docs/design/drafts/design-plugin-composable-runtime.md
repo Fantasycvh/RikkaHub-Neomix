@@ -6,7 +6,8 @@
 > 条件选项**，外部扩展继续走受控 JS / MCP。rev2 依据见 §2.3，修订摘要见 §十。
 > 与既有设计的关系：演进现有插件系统；保留 Agent 任务控制面的执行器划分与已确认行为；
 > 不重写已完成的记忆、压缩、标题与生成循环（原 P3 已退出主线，见 §六）。
-> 增补：2026-11-03，§九按固定提交复核 `dsh-superagent-prototype`，分析其业务插件边界与可迁移机制。
+> 增补：2026-11-03，§九按固定提交复核 `dsh-superagent-prototype`，分析其业务插件边界与可迁移机制；
+> §十一按固定提交复核 `ccch1mneyyy/dsh-Go` 的声明式原生插件协议，§8.1 增列 JS 运行时候选基准。
 
 ## 一、目标与范围
 
@@ -408,7 +409,7 @@ P0 需要落实的实施决策：
 - **P1 决策门判据**：什么证据支持进入第二层（第三方扩展必须不随 APK 发布 / 同能力需运行时切换 /
   热修复需求）？没有证据则停在第一层，不再为运行时对象预付成本。
 - 模型目录 / Provider 契约的归属：继续留在 app 内 repository，还是升为运行时服务？以 P4 对照为准。
-- JS 性能与隔离是否需要升级；默认继续使用现有受控运行时。
+- JS 性能与隔离是否需要升级：候选与判据见 §8.1；默认继续使用现有受控运行时，出现证据再评估。
 - 第三方 API 稳定承诺、分发渠道和 UI 开放程度；试点不为这些未确定目标预付完整平台成本。
 
 建议先按 P0/P1 验证「新增/替换一个转换器不修改 `ChatService` 手写链，且停用无残留」，
@@ -416,6 +417,26 @@ P0 需要落实的实施决策：
 MCP host 模式（导出本仓工具给外部客户端）仍是独立未立项项，本文不并入；若启动，其工具
 schema / 审批 / 网关应与 P2 复用同一契约。
 本文尚未启动任何阶段，也未改变既有插件或任务运行行为。
+
+### 8.1 JS 运行时候选基准（rev2 增补；不改变结论）
+
+现行 `JsPluginRuntime` 每次求值新建并销毁 WebView（§2.2），这是基线，不是候选。
+只有出现「token 级高频钩子」或「WebView 内存 / 主线程事故」的实测证据，才按本节做基准实测；
+本轮不迁移、不引依赖、不改现有 JS 插件契约。
+
+| 候选 | 集成形态 | 已知事实 | 主要风险 | 位置 |
+|---|---|---|---|---|
+| WebView（现状） | 系统组件、进程内；每次求值重建 | `JsPluginRuntime` 466 行；调用点能力校验、审批、网络/存储桥齐备 | 主线程创建开销、内存抖动、无硬隔离 | 基线 |
+| QuickJS | 进程内 JNI（社区绑定） | 引擎体积小（dsh-Go 评估估约 1–2MB/ABI）；Android 绑定维护不一致（据其 2026-10-25 评估：`flutter_js` 停在 2021，`quickjs_engine`/`flutter_qjs_next` 单作者） | 无 Web/Node API，要自建桥；绑定维护与调试 | 若必须嵌入，首个评估对象 |
+| Hermes | 进程内引擎（RN 生态 AAR） | 成熟度高、经大厂验证；仅 JS 引擎，无 Web/Node 内建 | 需自建运行时与 fetch/storage/审批桥；bytecode 构建链更重 | 备选 |
+| winterjs2 | CLI 二进制、无 lib API；需子进程 | Bun-like `node:` 兼容（fs/net/http2/child_process/worker_threads…）、`--allow-*` opt-in 沙箱、MPL-2.0、纯 Rust + mozjs；发布资产 39–61MB/平台；Android 交叉编译已有但无运行冒烟 | 嵌入需 spawn + 绕 Android exec 限制；体积；项目自述实验性（12★） | 列入候选、优先级最低 |
+
+统一判据（实测时逐项）：单次调用冷/热延迟、驻留内存、APK 增量、超时/取消的硬中断能力、
+宿主桥与权限门、现有插件脚本兼容性、真机稳定性、许可与维护活跃度。
+
+结论：**rev2 不升级**。四项只作为将来的评估清单；winterjs2 因「node 兼容 + 权限沙箱」
+入选第 4 项，但 CLI-only / 体积 / 未冒烟使其优先级最低。§十一 的 dsh-Go 也以其自身理由
+放弃内嵌 JS 引擎（安全边界、绑定维护、自建沙箱），可作交叉印证。
 
 ## 九、增补：`dsh-superagent-prototype` 源码分析
 
@@ -608,7 +629,8 @@ P2 = 工具来源/审批统一（已收窄）；P4 = 助手组合与绑定（条
 
 ## 十、rev2 修订记录（2026-11-03 晚）
 
-复核基线 `7f46f4238`。本次只改结论与分期，不扩大 §九 增补结论，也未启动任何实施。
+复核基线 `7f46f4238`。本次改结论与分期，并补两处外部参照（§8.1、§十一）；
+不扩大 §九 增补结论，也未启动任何实施。
 
 | 位置 | 修订 |
 |---|---|
@@ -623,10 +645,112 @@ P2 = 工具来源/审批统一（已收窄）；P4 = 助手组合与绑定（条
 | §5.4 | 补 BetterText 渲染栈约束 |
 | §六 | 重排阶段：P1 决策门、P2 收窄、P3 取消、P4 条件、P5 暂缓；验收场景 2/3 标注第二层适用，新增 10–12 |
 | §八 | 估算拆三层并给出继续/停止判据；风险补「并行迁移」与「隐性动态化」；待决策事项更新 |
+| §8.1 | 新增 JS 运行时候选基准（WebView / QuickJS / Hermes / winterjs2）；明确不升级、不改结论 |
 | §5.3/§六/§9.4/§9.5 | 按代码复核收紧：嵌套写「未实现」、gate/信封/恢复边界、AgentDriver 只包 `generateText`、`needsPerson` 派生来源；§9.4 两条「既有约束」改为「目标 / 现状」 |
 | §九.6 | 补阶段名对应关系与单用途 notice 泵说明；§九 的源码分析结论未改 |
+| §十一 | 新增 dsh-Go 声明式原生插件协议参照（固定提交 `8e36cdbf3`）；P5 暂缓、市场不并入 |
 
 未改动：§2.1 借鉴依据、§三.2 三种扩展机制、§三.3 概念接口草图、§四 具体清理/审批语义、
 §七 可观测性、§九 的固定版本证据索引。
 后续若启动 P0，先把「服务归属表 + 配置/备份迁移结论」写进本文，再改代码。
 本地提交只验证文档结构、链接与差异，不代表批准实施。
+
+## 十一、外部参照：dsh-Go 的声明式原生插件协议
+
+### 11.1 复核范围与定位
+
+复核日期：2026-11-03 晚。固定提交：`8e36cdbf3b151ea819a53ecd88f7be91b497254a`（`main`，2026-11-03），
+仓库 [ccch1mneyyy/dsh-Go](https://github.com/ccch1mneyyy/dsh-Go)（README 写作 `dsh-go`）。复核时
+6.8k star / 333 fork；主体 AGPL-3.0，`sdk/` 与 `examples/` 为 MIT，名称与吉祥物素材不在开源授权内。
+下列链接均固定到该提交。
+
+定位：**Flutter App + Kotlin 平台层 + PRoot 里运行的真实 DSH 引擎**（`dsh web`），
+不是同类客户端架构，插件形态也不能直接移植。本文只取它的**原生插件协议**——在 Android 上，
+「App 不执行外来代码、插件声明视图、宿主渲染」最完整的公开样本；关系集中在 §5.4 与 P5 条件项。
+
+范围：README、`docs/architecture.md`、`docs/plugins/*`、`docs/design/native-plugins*.md`、
+`docs/design/plugin-market.md`、`market/*`、`sdk/plugin-kit/*`；**未安装依赖、未运行 App、未执行其测试**。
+其协议 v1 于 2026-10-25 冻结，v1.1/v1.2/v1.3 均为「只加可选能力」的增量。
+
+结论先行：它证明「声明式协议 + 宿主渲染」在 Android 可用且能撑起市场，也摊开了成本——
+协议冻结、SDK、检查/预览工具、市场审核、主机矩阵、版本兼容，合计是一个独立产品的工作量。
+这支持 rev2 的「P5 暂缓、不建市场」，并为 P5 若激活提供首选形态。
+
+### 11.2 协议分层与关键机制
+
+```text
+插件包（npm，DSH 插件；逻辑跑在引擎的 Node 里）
+ ├─ package.json "dshGo" 清单（≤ 16 KiB）：4 个插槽 + wants + minApp
+ ├─ 宿主半侧 ctx.dshGo（可选）：on / strip / panel / refresh；emit 数据
+ └─ 工具 output.presentationMeta → { "dsh-go/view": View }
+        │
+   dsh-go-bridge（引擎侧 HTTP/WS：contributions / views / stream / invoke / assets）
+        │
+   App：固定组件目录渲染（JSON 视图）+ 动作白名单 + 署名 + 用户覆盖
+```
+
+| 维度 | 规格（固定提交） |
+|---|---|
+| 插槽 | `composer.actions` ≤2、`message.actions` ≤2、`composer.strip` ≤1、`panels` ≤4；label 上限 10/12/24/16 字；图标 162 个 |
+| 清单 | `dshGo` 序列化 ≤16 KiB；协议 `v`、`minApp`、`wants`（draft/clipboard/message，各 ≤16 KiB） |
+| 视图 | JSON 组件树 ≤32 KiB、节点 ≤120、深度 ≤8；视图格式 v1/v2 并存；未知组件画灰色占位 |
+| 数据 | 每次 emit 整份，桥接算 Merge Patch；patch ≤16 KiB 否则整份 ≤32 KiB；每源 ≤4 Hz |
+| 交互 | invoke 3 秒窗口；效果白名单（8 种）；v1.1 支持延后效果 |
+| 降级 | 单项错误只丢该项；连续 5 次违规本次运行降级网页版；只有装了桥接的主机才有插槽 |
+| 工具卡 | `presentationMeta` ≤8 KiB；随对话记录持久化，跨主机、重放历史；只增不删 |
+| 版本 | NA v1 只加可选字段；v1.1 延后效果 / v1.2 可选能力协商 / v1.3 选择文件；view v2 独立分支；`caps` + `adaptView` |
+| 署名 | 每个插槽显示插件身份；工具卡在工具行；「插件内容」标记不可覆盖 |
+| 市场 | 独立目录 + worker：只索引、只做静态检查（OSI 许可、精确版本、压缩与展开均 ≤50 MiB、SHA-512、启发式风险标记），不托管、不执行插件代码 |
+
+关键设计取舍（其 `native-plugins.md` §2.1/§2.6）：Flutter release 没有 Dart 解释器，不能加载外来
+Flutter/Dart；于是在「网页岛 / ui.json / 服务端驱动原生组件 / 内嵌 JS 引擎」四条路线中选第三条，
+并明确放弃内嵌 JS 引擎——理由不是做不到，而是「插件最终仍输出同一棵组件树，只多离线逻辑与零往返；
+代价是主机下发的代码进入 App 进程、社区绑定维护、自建沙箱/超时/内存上限」。其自估投入：
+第 0 期 3–4 人日、第一期 15–19、第二期 16–22，且它已有约 5.3k 行 `dsh-ui` 渲染器。
+
+### 11.3 可吸收的协议原则（只取原则，不引代码）
+
+1. **固定组件目录 + 有界样式**：宿主只认一套组件；透明度/渐变/任意尺寸/圆角/定位/动画/外链图/SVG/文字内链接/HTML/自定义组件一律不开放，改用枚举样式、语义色与按钮动作。
+2. **能力协商 + 显式降级**：`caps` 告知 App 能画什么、有哪些插槽、什么语言；`adaptView` 降级；未知组件占位不崩；旧 App 忽略新字段。
+3. **协议只做加法**：v1 内只加可选字段；破坏性变更才升主版本；视图格式独立版本；`minApp` 与 `engines.dsh` 双向约束。
+4. **硬上限 + 违规降级**：清单/视图/数据/效果都有字节与频率上限；超限记问题并降级，不整页崩溃；连续违规降级到兼容形态。
+5. **署名与归属不可覆盖**：每个插槽显示插件身份，工具卡在工具行；「插件内容」标记由宿主控制。
+6. **持久化视图永久兼容**：工具卡写进对话记录，只增不删、只用稳定组件、不放临时链接——历史重放不依赖插件当前安装。
+7. **主机矩阵显式声明**：工具卡全主机（随记录走），插槽仅装有桥接的主机；中转主机明确不支持。
+8. **作者工具链是一等公民**：SDK 类型 + 组件构造器 + 测试宿主 + `check` 命令（清单/视图/文字长度/未知组件/中英文各量）+ 机器可读 schema + 本地预览；零代码起步（工具卡只加一个 `presentationMeta`）。
+9. **市场只做索引与静态检查**：许可/版本/体积/哈希/启发式风险标记；明确「风险标记不等于安全证明、不解析依赖树」——运行时强制边界仍在宿主。
+
+### 11.4 不照搬的边界
+
+- **没有引擎宿主**：dsh-Go 的插件是 npm/DSH 插件，逻辑跑在引擎的 Node 里，桥接只是渲染与事件通道；
+  本仓外部能力是 JS（WebView）/MCP/JSON 规则，没有 npm 插件宿主。等价物只能落在「JS 插件 + 声明式视图 + Compose 渲染器」。
+- **不建市场**：其市场是独立仓库 + worker + 审核策略；本文 §一 与 §六 仍明确不建设，也不把市场并入运行时。
+- **成本量级**：它已有渲染器仍自估 3.5–4.5 人周；本仓若做 UI 插槽需自建渲染器、协议、SDK、检查/预览器与文档，量级只多不少——这是 P5 暂缓的直接依据。
+- **许可与素材**：其主体 AGPL-3.0（与本仓相同，但本文不复制代码）；名称、标识与吉祥物受限，任何引用只做协议对照。
+- **它自己也明确不做**：内嵌 JS 引擎、替换官方界面/主题、任意绘制与动画——与本仓「首轮不开放 UI 插槽、不替换核心策略」同向。
+
+### 11.5 对本设计的增量决议
+
+| 建议 | 时机与范围 | 验收 |
+|---|---|---|
+| P5 保持暂缓；若激活，首选「声明式原生插件协议」形态 | P5 条件项 | 先出工具卡最小视图，再谈插槽 |
+| 若做 UI 插槽，采用「固定组件目录 + 有界样式 + caps 协商 + 加法版本」 | P5 | 未知组件占位不崩；旧版本仍能画旧视图 |
+| 工具结果优先走「随记录持久化的声明式视图」，而不是运行时代码 | P2/P5 交接处 | 历史重放、跨主机、模型不可见 |
+| 市场/审核不并入运行时；将来需要则独立立项 | 不排期 | 只做索引与静态检查，不执行插件代码 |
+| JS 运行时升级维持 §8.1 结论 | 不排期 | 出现证据再实测；其放弃内嵌引擎的论证可交叉印证 |
+
+本节不扩大 P0/P1 范围，不改 rev2 的结论与 §八 估算（与 §九 的约束相同）。
+
+### 11.6 固定版本证据索引
+
+| 主题 | 固定提交链接 |
+|---|---|
+| 项目定位与运行方式 | [README](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/README.md)、[architecture](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/architecture.md) |
+| 插件作者文档 | [plugins README](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/plugins/README.md)、[slots](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/plugins/slots.md)、[versions](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/plugins/versions.md)、[hosts](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/plugins/hosts.md)、[design-rules](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/plugins/design-rules.md)、[components](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/plugins/components.md)、[actions](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/plugins/actions.md) |
+| 协议与设计取舍 | [native-plugins](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/design/native-plugins.md)、[native-plugins-protocol](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/design/native-plugins-protocol.md)、[native-plugins-views](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/design/native-plugins-views.md) |
+| 市场 | [plugin-market](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/docs/design/plugin-market.md)、[market README](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/market/README.md)、[policy.json](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/market/policy.json) |
+| 作者工具链 | [sdk/plugin-kit README](https://github.com/ccch1mneyyy/dsh-Go/blob/8e36cdbf3b151ea819a53ecd88f7be91b497254a/sdk/plugin-kit/README.md) |
+| 桥接与 App 渲染 | [dsh-go-bridge](https://github.com/ccch1mneyyy/dsh-Go/tree/8e36cdbf3b151ea819a53ecd88f7be91b497254a/runtime/bridge/dsh-go-bridge)、[app/lib/plugins](https://github.com/ccch1mneyyy/dsh-Go/tree/8e36cdbf3b151ea819a53ecd88f7be91b497254a/app/lib/plugins) |
+
+相关 schema 与 `check` 实现在 `sdk/plugin-kit/schema`、`sdk/plugin-kit/bin/check.mjs`，
+本次未逐行阅读、未运行；市场检查规则的边界与误报说明以 market README 为准。
