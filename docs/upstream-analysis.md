@@ -1643,7 +1643,7 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - **#2283（closed）**：已落实为第四批多关键词搜索。
 - **#2281/#2282（open）**：模型目录统一刷新与已选模型缺失提醒，记为后续功能；与 models.dev 能力元数据更新不同。
 - **#2279（open，#2278 为已关闭同题）**：已于本日追加实现，见下节「系统图片/文件分享落地」。
-- **#2287（open，#2286 为已关闭同题）**：SSH 跳板机，本仓无 jump 配置；作者给出 fork 实现和验证声明，尚未独立核验。
+- **#2287（open，#2286 为已关闭同题）**：已专项核验并在本仓实现，见文末「SSH 单跳跳板机落地」。
 - **#2285（open，#2284 为已撤回旧报告）**：单波浪线删除线差异，记回归样例；本仓渲染架构已分叉，不直接套上游结论。
 - **#2280（open）**：增量备份，记产品需求。
 - **#2290（open）**：默认助手重复/后台闪退，缺日志和复现步骤，观察。
@@ -1685,6 +1685,32 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - **新增真实持久化回归**：`FavoriteModelsInstrumentedTest` 使用随机 cache 子目录和隔离 SettingsStore，直接 seed protobuf 偏好数据（重复 ID、失效 ID），验证旧列表算法会形成报告同款重复 key，而当前真实 settings 读取路径保持顺序并去重；另验证重复设置更新后的即时内存态、磁盘原始 favorites JSON 和新 SettingsStore 重载状态一致。
 - **执行结果**：原 `FavoriteModelsTest` 3 项 JVM 测试通过；新集成测试在 Android 15 真机通过 **2/2**，app debug 主代码和 androidTest APK 编译通过；`git diff --check` 通过。使用隔离 runner/临时配置，不读写用户实际偏好。
 - **结论**：当前本仓这条崩溃路径已由既有修复覆盖，本轮仅补测试和记录，无新增生产代码修改；未复现报告者 Android 12 机型上的完整操作过程。
+
+## 2026-11-03 SSH 单跳跳板机落地（#2287）
+
+用户指定核验参考实现并在本仓落地。参考来源：[xiaoyueRX/rikkahub 的 `99f62daab7f414374b3e277ab0041ba0076fcb42`](https://github.com/xiaoyueRX/rikkahub/commit/99f62daab7f414374b3e277ab0041ba0076fcb42)，共 10 文件 +977/-24；通过 GitHub API 逐文件核对，不沿用作者「35 项测试/Android 16」的结论作为本仓验证证据。
+
+### 实现与适配
+
+- 新增可空 `SshJumpConfig` / `SshJumpSettings` / `SshJumpDraft`；旧 JSON 缺失 jump 时仍直连，无数据库 schema 迁移。本次支持一层跳板，不含多级 ProxyJump 链。
+- 先独立连接并认证跳板机，经 `direct-tcpip` 建立到目标地址的 TCP 通道，再独立握手并认证目标机。不开放额外本地监听端口，不依赖远端 shell 拼接代理命令。exec/SFTP/PTY 都复用该目标 session，连接池配置比较包含 jump。
+- 两端 host key 独立保存/确认；跳板指纹异常标记 `isJumpHost`，编辑页分别展示跳板/目标确认弹窗和指纹。密码、私钥、口令均沿用 Android Keystore 加密，配置草稿/编辑状态 toString 不输出明文凭据；相同跳板端点留空沿用旧密文，host/port/user/auth 变化后不复用已保存凭据。
+- 编辑页补充开关、地址/端口/用户名、密码/私钥/口令与导入入口；详情页展示跳板地址。新增 5 key（英文、简中、繁中，经 locale-tui）；整个编辑表单由 LazyColumn 改为常驻 Column+verticalScroll+imePadding，避免新增长表单重踩 IME 宿主问题。
+- 保留参考实现的 IDN hostname 归一化，并核对 ASCII/IPv6 原有路径不变。
+
+### 核验中修正的点
+
+- 参考代理仅在 `direct.connect` 成功后登记 channel，连接中发生超时/取消时 `close` 可能看不到正在打开的通道。本仓在连接前通过 lifecycle lock 登记，并记录 closed 状态，关闭和建连完成交错时均拒绝继续使用。
+- 隧道没有本地 Socket，JSch socket timeout 无法兜住目标不发 banner 的情况。保留总时限看门狗，明确使用 SocketTimeoutException，避免把真实超时误判为用户线程取消。
+- 参考跳板测试依赖宿主 /bin/sh 和 POSIX 目录，无法直接在 Windows 验证。本仓使用嵌入式 SSHD + 虚拟 SFTP 根和固定命令响应器，不跳过新跳板测试；另补双端私钥、exec/PTY、连接池关闭后两端 session 释放的测试。
+
+### 验证与边界
+
+- SSH 专项 `:workspace:testDebugUnitTest --tests '*ssh.*'`：最后完整运行 **40 项，24 通过，0 失败，16 跳过**（含新可选 device fixture 的默认跳过）；此前不含该 fixture 时为 39 项，24 通过，0 失败，15 跳过（原有 POSIX/外部真实服务器条件）。其中跳板 **9/9**、IDN **5/5**；原有 backend 测试 10 通过/13 跳过，原有 live-server 测试 2 跳过。随后将私钥测试的服务端校验收紧为两端各自固定公钥，并加入互换私钥应失败的断言，单独重跑该项通过。
+- 新增可选 `deviceFixtureWhenRequested` 用于本机双 SSHD 夹具；默认无环境变量时跳过。通过 adb reverse **只转发跳板端口**，目标地址由跳板端访问；Android 15 真机 `SshJumpSettingsInstrumentedTest` **2/2 通过**：独立两端指纹、SFTP 写入/读回、exec/PTY，以及临时 Room 库中的凭据加解密、留空沿用、换端点不复用、关闭 jump 和旧 JSON 兼容、编辑状态指纹失效。测试数据仅在隔离缓存目录和内存数据库，未使用用户 SSH 配置。
+- 本地 fixture 和设备临时反向端口转发已清理。设备侧 exec/PTY 验证的是 SSH 通道与固定响应器，不声称完成外部 OpenSSH 服务器下的交互式 shell 人工验收。
+- app debug / androidTest APK 构建通过。IME 审计 A=0/A'=0，B 告警由 5 降为 4（本编辑页不再是 Lazy 表单）；C=29。`git diff --check` 通过。
+- 扩大运行 workspace 全量曾得 183 项、2 失败、20 跳过：一项为新 exec 测试的 Windows 命令夹具，修正后 SSH 专项全绿；另一项 `WorkspaceFileMutationTest.imports may land in an in-root directory alias but never escape` 在 Windows 的别名路径断言期望 usr/bin、实际 bin，该文件及其文件系统链路均未被本次修改。**未声明 workspace 全量测试通过**。
 
 ## 关联
 

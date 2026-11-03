@@ -2984,5 +2984,10 @@
   <string name="catalog_checked_at">檢查時間：%1$s</string>
   <string name="catalog_missing_acknowledge">知道了</string>
   <string name="catalog_missing_acknowledged">已知悉 · 行內標記仍可查看</string>
+  <string name="workspace_ssh_editor_jump">跳板機</string>
+  <string name="workspace_ssh_editor_jump_desc">透過跳板機轉送連線（SSH ProxyJump）。目標主機金鑰仍會分別驗證。</string>
+  <string name="workspace_ssh_editor_jump_auth">跳板機驗證</string>
+  <string name="workspace_ssh_editor_jump_host_key">跳板機主機金鑰</string>
+  <string name="workspace_ssh_editor_jump_host_key_changed_title">跳板機主機金鑰已變更</string>
 </resources>
 

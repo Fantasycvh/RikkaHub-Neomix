@@ -945,6 +945,12 @@ private fun SshConnectionCard(
                 Text(settings?.let { "${it.username}@${it.host}:${it.port}" } ?: stringResource(R.string.workspace_detail_ssh_config_missing))
             },
         )
+        settings?.jump?.let { jump ->
+            item(
+                headlineContent = { Text(stringResource(R.string.workspace_ssh_editor_jump)) },
+                supportingContent = { Text("${jump.username}@${jump.host}:${jump.port}") },
+            )
+        }
         item(
             leadingContent = { CardGroupIcon(HugeIcons.Folder01) },
             headlineContent = { Text(stringResource(R.string.workspace_detail_ssh_remote_dir)) },

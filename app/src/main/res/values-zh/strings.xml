@@ -2998,5 +2998,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="catalog_checked_at">检查时间：%1$s</string>
   <string name="catalog_missing_acknowledge">知道了</string>
   <string name="catalog_missing_acknowledged">已知晓 · 行内标记仍可查看</string>
+  <string name="workspace_ssh_editor_jump">跳板机</string>
+  <string name="workspace_ssh_editor_jump_desc">通过跳板机转发连接（SSH ProxyJump）。目标机主机密钥仍会单独校验。</string>
+  <string name="workspace_ssh_editor_jump_auth">跳板机认证</string>
+  <string name="workspace_ssh_editor_jump_host_key">跳板机主机密钥</string>
+  <string name="workspace_ssh_editor_jump_host_key_changed_title">跳板机主机密钥已变更</string>
 </resources>
 

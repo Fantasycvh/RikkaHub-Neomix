@@ -2997,5 +2997,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="catalog_checked_at">Checked: %1$s</string>
   <string name="catalog_missing_acknowledge">Got it</string>
   <string name="catalog_missing_acknowledged">Acknowledged · inline markers remain available</string>
+  <string name="workspace_ssh_editor_jump">Jump host</string>
+  <string name="workspace_ssh_editor_jump_desc">Route this connection through a bastion server (SSH ProxyJump). The target host key is verified separately.</string>
+  <string name="workspace_ssh_editor_jump_auth">Jump host authentication</string>
+  <string name="workspace_ssh_editor_jump_host_key">Jump host key</string>
+  <string name="workspace_ssh_editor_jump_host_key_changed_title">Jump host key changed</string>
 </resources>
 

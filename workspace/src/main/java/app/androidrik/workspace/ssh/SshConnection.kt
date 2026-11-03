@@ -1,13 +1,16 @@
 package app.androidrik.workspace.ssh
 
+import com.jcraft.jsch.ChannelDirectTCPIP
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelSftp
 import com.jcraft.jsch.HostKey
 import com.jcraft.jsch.HostKeyRepository
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.JSchException
+import com.jcraft.jsch.Proxy
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.SftpException
+import com.jcraft.jsch.SocketFactory
 import com.jcraft.jsch.UIKeyboardInteractive
 import com.jcraft.jsch.UserInfo
 import app.androidrik.workspace.StreamCollector
@@ -15,7 +18,10 @@ import app.androidrik.workspace.StreamWriter
 import app.androidrik.workspace.WorkspaceCommandResult
 import java.io.Closeable
 import java.io.IOException
+import java.io.InputStream
 import java.io.InterruptedIOException
+import java.io.OutputStream
+import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.Base64
 import java.util.concurrent.CompletableFuture
@@ -23,6 +29,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.locks.ReentrantLock
 
 /**
@@ -36,6 +44,8 @@ internal class SshConnection private constructor(
     private val session: Session,
     val hostKey: SshHostKey,
     private val channelTimeoutMillis: Int,
+    private val jumpSession: Session? = null,
+    private val proxy: JumpChannelProxy? = null,
 ) : Closeable {
     private val sftpLock = ReentrantLock()
     private var sftpChannel: ChannelSftp? = null
@@ -155,7 +165,14 @@ internal class SshConnection private constructor(
 
     // 不等 SFTP 锁: 断开 session 会关闭所有 channel, 卡住的 SFTP 操作随之失败并释放锁
     override fun close() {
-        session.disconnect()
+        // 先断目标 session (会经 proxy 关 channel), 再断跳板; 无 jump 时与原行为完全一致
+        if (jumpSession == null) {
+            session.disconnect()
+        } else {
+            runCatching { session.disconnect() }
+            proxy?.close()
+            runCatching { jumpSession?.disconnect() }
+        }
     }
 
     private inline fun <T> openChannel(block: () -> T): T = try {
@@ -218,7 +235,10 @@ internal class SshConnection private constructor(
         // Channel.sendChannelOpen 失败时的异常信息, 此时 exec 请求还没发出
         private val CHANNEL_OPEN_FAILURE_MESSAGES = setOf("session is down", "channel is not opened.")
 
-        fun open(config: SshConnectionConfig, channelTimeoutMillis: Int = DEFAULT_CHANNEL_TIMEOUT_MS): SshConnection {
+        fun open(config: SshConnectionConfig, channelTimeoutMillis: Int = DEFAULT_CHANNEL_TIMEOUT_MS): SshConnection =
+            if (config.jump == null) openDirect(config, channelTimeoutMillis) else openViaJump(config, channelTimeoutMillis)
+
+        private fun openDirect(config: SshConnectionConfig, channelTimeoutMillis: Int): SshConnection {
             val jsch = JSch()
             when (config.authType) {
                 SshAuthType.PASSWORD -> {
@@ -242,7 +262,7 @@ internal class SshConnection private constructor(
             }
 
             val hostKeys = TrustedHostKeyRepository(config.hostKey)
-            val session = jsch.getSession(config.username, config.host, config.port).apply {
+            val session = jsch.getSession(config.username, normalizeSshHost(config.host), config.port).apply {
                 setHostKeyRepository(hostKeys)
                 setConfig("StrictHostKeyChecking", "yes")
                 when (config.authType) {
@@ -268,6 +288,152 @@ internal class SshConnection private constructor(
                 throw IOException("SSH server did not present a host key")
             }
             return SshConnection(config, session, hostKey, channelTimeoutMillis)
+        }
+
+        /**
+         * 经跳板机连目标: 跳板只用作 TCP 通道 (direct-tcpip), 不参与目标认证;
+         * 目标主机指纹独立校验, 跳板和目标的信任互相独立。
+         * 失败时按 目标 session -> proxy channel -> 跳板 session 的顺序清理, 不留悬挂的远端 channel。
+         */
+        private fun openViaJump(config: SshConnectionConfig, channelTimeoutMillis: Int): SshConnection {
+            val jump = config.jump!!
+            val jumpJsch = JSch()
+            when (jump.authType) {
+                SshAuthType.PASSWORD -> {
+                    if (jump.password.isNullOrEmpty()) throw IOException("SSH jump host password is required")
+                }
+
+                SshAuthType.PRIVATE_KEY -> {
+                    val privateKey = jump.privateKey?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: throw IOException("SSH jump host private key is required")
+                    try {
+                        jumpJsch.addIdentity(
+                            "rikkahub",
+                            "$privateKey\n".toByteArray(),
+                            null,
+                            jump.passphrase?.takeIf { it.isNotEmpty() }?.toByteArray(),
+                        )
+                    } catch (e: JSchException) {
+                        throw IOException("Invalid SSH jump host private key or passphrase: ${e.message}", e)
+                    }
+                }
+            }
+
+            val jumpHostKeys = TrustedHostKeyRepository(jump.hostKey, isJumpHost = true)
+            val jumpSession = jumpJsch.getSession(jump.username, normalizeSshHost(jump.host), jump.port).apply {
+                setHostKeyRepository(jumpHostKeys)
+                setConfig("StrictHostKeyChecking", "yes")
+                when (jump.authType) {
+                    SshAuthType.PASSWORD -> {
+                        setConfig("PreferredAuthentications", "password,keyboard-interactive")
+                        setPassword(jump.password)
+                        userInfo = PasswordUserInfo(jump.password!!)
+                    }
+
+                    SshAuthType.PRIVATE_KEY -> setConfig("PreferredAuthentications", "publickey")
+                }
+                setServerAliveInterval(KEEPALIVE_INTERVAL_MS)
+                serverAliveCountMax = KEEPALIVE_COUNT_MAX
+            }
+            try {
+                jumpSession.connect(CONNECT_TIMEOUT_MS)
+            } catch (e: JSchException) {
+                // 建连失败 (含指纹被拒) 也要释放半建好的跳板连接
+                runCatching { jumpSession.disconnect() }
+                jumpHostKeys.rejection?.let { throw it }
+                throw IOException("SSH jump host connection to ${jump.address} failed: ${e.message}", e)
+            } catch (e: Throwable) {
+                // 非 JSch 异常同样要释放半建好的跳板连接
+                runCatching { jumpSession.disconnect() }
+                throw e
+            }
+
+            // 跳板建好之后任何一步失败都要清理跳板连接, 不留悬挂的 Session
+            try {
+                return openTargetViaJump(config, jumpSession, channelTimeoutMillis)
+            } catch (e: Exception) {
+                runCatching { jumpSession.disconnect() }
+                throw e
+            }
+        }
+
+        private fun openTargetViaJump(
+            config: SshConnectionConfig,
+            jumpSession: Session,
+            channelTimeoutMillis: Int,
+        ): SshConnection {
+            val jsch = JSch()
+            when (config.authType) {
+                SshAuthType.PASSWORD -> {
+                    if (config.password.isNullOrEmpty()) throw IOException("SSH password is required")
+                }
+
+                SshAuthType.PRIVATE_KEY -> {
+                    val privateKey = config.privateKey?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: throw IOException("SSH private key is required")
+                    try {
+                        jsch.addIdentity(
+                            "rikkahub",
+                            "$privateKey\n".toByteArray(),
+                            null,
+                            config.passphrase?.takeIf { it.isNotEmpty() }?.toByteArray(),
+                        )
+                    } catch (e: JSchException) {
+                        throw IOException("Invalid SSH private key or passphrase: ${e.message}", e)
+                    }
+                }
+            }
+
+            val hostKeys = TrustedHostKeyRepository(config.hostKey)
+            val session = jsch.getSession(config.username, normalizeSshHost(config.host), config.port).apply {
+                setHostKeyRepository(hostKeys)
+                setConfig("StrictHostKeyChecking", "yes")
+                when (config.authType) {
+                    SshAuthType.PASSWORD -> {
+                        setConfig("PreferredAuthentications", "password,keyboard-interactive")
+                        setPassword(config.password)
+                        userInfo = PasswordUserInfo(config.password!!)
+                    }
+
+                    SshAuthType.PRIVATE_KEY -> setConfig("PreferredAuthentications", "publickey")
+                }
+                setServerAliveInterval(KEEPALIVE_INTERVAL_MS)
+                serverAliveCountMax = KEEPALIVE_COUNT_MAX
+            }
+            val proxy = JumpChannelProxy(jumpSession, normalizeSshHost(config.host), config.port, channelTimeoutMillis)
+            session.setProxy(proxy)
+            try {
+                // 建连整体放到看门狗线程池上并限时: direct-tcpip 之后没有本地 Socket, JSch 无法用
+                // SO 超时兜住目标服务器不回 banner 的情况, 超时后从外部断开把卡住的读管道叫醒
+                awaitInterruptiblyWithDeadline(
+                    step = { session.connect(CONNECT_TIMEOUT_MS) },
+                    deadlineMillis = (CONNECT_TIMEOUT_MS + channelTimeoutMillis).toLong(),
+                    abort = {
+                        runCatching { session.disconnect() }
+                        proxy.close()
+                    },
+                )
+            } catch (e: JSchException) {
+                runCatching { session.disconnect() }
+                proxy.close()
+                hostKeys.rejection?.let { throw it }
+                throw IOException("SSH connection to ${config.address} failed: ${e.message}", e)
+            } catch (e: InterruptedException) {
+                runCatching { session.disconnect() }
+                proxy.close()
+                throw e
+            } catch (e: IOException) {
+                // 看门狗超时
+                runCatching { session.disconnect() }
+                proxy.close()
+                throw e
+            }
+            val hostKey = hostKeys.presented ?: run {
+                runCatching { session.disconnect() }
+                proxy.close()
+                throw IOException("SSH server did not present a host key")
+            }
+            return SshConnection(config, session, hostKey, channelTimeoutMillis, jumpSession, proxy)
         }
 
         /** 用一条临时连接验证配置, 并取回远程环境的基本信息 */
@@ -321,6 +487,39 @@ internal fun <T> awaitInterruptibly(
     }
 }
 
+/**
+ * 带总时限的可中断等待: [step] 超时或等待被取消时调用 [abort] 从外部中断 [step] 卡住的网络操作,
+ * [step] 之后仍然成功的话结果交给 [onAbandoned] 清理。
+ *
+ * direct-tcpip 隧道上没有本地 Socket, JSch 的 connectTimeout 兜不住目标服务器迟迟不回 banner 的情况,
+ * 跳板机连接用它, 避免建连线程无限挂起。
+ */
+internal fun <T> awaitInterruptiblyWithDeadline(
+    step: () -> T,
+    deadlineMillis: Long,
+    abort: () -> Unit,
+    onAbandoned: (T) -> Unit = { abort() },
+): T {
+    if (Thread.interrupted()) {
+        abort()
+        throw InterruptedException()
+    }
+    val future = CompletableFuture.supplyAsync({ step() }, blockingSteps)
+    try {
+        return future.get(deadlineMillis, TimeUnit.MILLISECONDS)
+    } catch (e: ExecutionException) {
+        throw e.cause ?: e
+    } catch (e: TimeoutException) {
+        future.whenComplete { result, error -> if (error == null) onAbandoned(result) }
+        abort()
+        throw SocketTimeoutException("SSH connection timed out after $deadlineMillis ms")
+    } catch (e: InterruptedException) {
+        future.whenComplete { result, error -> if (error == null) onAbandoned(result) }
+        abort()
+        throw e
+    }
+}
+
 /** 是否因线程中断而失败: JSch 会把读管道时的 InterruptedIOException 包进 SftpException 等异常里 */
 internal fun Throwable.isInterruption(): Boolean = generateSequence(this) { it.cause }.any {
     it is InterruptedException || it is InterruptedIOException && it !is SocketTimeoutException
@@ -351,11 +550,70 @@ internal fun ChannelSftp.statOrNull(path: String) = try {
 internal fun String.sftpQuote(): String =
     replace("\\", "\\\\").replace("*", "\\*").replace("?", "\\?")
 
+/** 把目标 Session 的收发接进跳板机的 direct-tcpip channel, 等价 OpenSSH ProxyJump */
+private class JumpChannelProxy(
+    private val jumpSession: Session,
+    private val targetHost: String,
+    private val targetPort: Int,
+    private val channelTimeoutMillis: Int,
+) : Proxy {
+    private val lifecycleLock = Any()
+    private var closed = false
+    private var channel: ChannelDirectTCPIP? = null
+    private lateinit var input: InputStream
+    private lateinit var output: OutputStream
+
+    override fun connect(socketFactory: SocketFactory?, host: String, port: Int, timeout: Int) {
+        val direct = jumpSession.openChannel("direct-tcpip") as ChannelDirectTCPIP
+        synchronized(lifecycleLock) {
+            if (closed) {
+                direct.disconnect()
+                throw IOException("Jump channel was closed")
+            }
+            channel = direct
+        }
+        direct.setHost(targetHost)
+        direct.setPort(targetPort)
+        direct.setOrgIPAddress("127.0.0.1")
+        direct.setOrgPort(0)
+        // 流在 connect 前取: Channel.getInputStream 会把 channel 数据接到新管道
+        input = direct.inputStream
+        output = direct.outputStream
+        try {
+            direct.connect(channelTimeoutMillis)
+        } catch (e: JSchException) {
+            runCatching { direct.disconnect() }
+            throw IOException("Cannot open jump channel to $targetHost:$targetPort: ${e.message}", e)
+        }
+        synchronized(lifecycleLock) {
+            if (closed) {
+                direct.disconnect()
+                throw IOException("Jump channel was closed")
+            }
+        }
+    }
+
+    override fun getInputStream(): InputStream = input
+
+    override fun getOutputStream(): OutputStream = output
+
+    // direct-tcpip 没有本地 Socket; Session 对 null socket 会跳过 setSoTimeout/close
+    override fun getSocket(): Socket? = null
+
+    override fun close() {
+        val current = synchronized(lifecycleLock) {
+            closed = true
+            channel.also { channel = null }
+        }
+        current?.let { runCatching { it.disconnect() } }
+    }
+}
+
 /**
  * 只认用户确认过的那一把主机公钥。校验发生在认证之前,
  * 未知或不一致时连接直接失败, 密码不会发给未经确认的服务器。
  */
-private class TrustedHostKeyRepository(private val trusted: SshHostKey?) : HostKeyRepository {
+private class TrustedHostKeyRepository(private val trusted: SshHostKey?, private val isJumpHost: Boolean = false) : HostKeyRepository {
     @Volatile
     var presented: SshHostKey? = null
 
@@ -368,7 +626,7 @@ private class TrustedHostKeyRepository(private val trusted: SshHostKey?) : HostK
         presented = actual
         return when {
             trusted == null -> {
-                rejection = SshUnknownHostKeyException(actual)
+                rejection = SshUnknownHostKeyException(actual, isJumpHost)
                 HostKeyRepository.NOT_INCLUDED
             }
 
@@ -378,7 +636,7 @@ private class TrustedHostKeyRepository(private val trusted: SshHostKey?) : HostK
             }
 
             else -> {
-                rejection = SshHostKeyChangedException(trusted, actual)
+                rejection = SshHostKeyChangedException(trusted, actual, isJumpHost)
                 HostKeyRepository.CHANGED
             }
         }
