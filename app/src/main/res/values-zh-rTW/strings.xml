@@ -2945,5 +2945,33 @@
   <string name="setting_provider_page_usage_limit_minutes">%1$d 分鐘上限</string>
   <string name="setting_provider_page_chatgpt_disclaimer">透過 Codex 後端使用您的 ChatGPT 訂閱。實驗性：OpenAI 可能隨時變更或限制此功能。</string>
   <string name="setting_provider_page_grok_disclaimer">以 Grok CLI 的方式登入，使用你的 SuperGrok 訂閱。實驗性功能：xAI 可能隨時變更或限制此功能。</string>
+  <string name="catalog_refresh">重新整理模型列表</string>
+  <string name="catalog_refresh_all">重新整理所有模型列表</string>
+  <string name="catalog_details">模型目錄狀態</string>
+  <string name="catalog_auto_refresh">進入頁面時重新整理過期目錄</string>
+  <string name="catalog_auto_hint">目錄有效期六小時，僅在進入頁面時檢查</string>
+  <string name="catalog_idle">尚未取得模型列表</string>
+  <string name="catalog_queued">等待重新整理</string>
+  <string name="catalog_running">正在取得模型列表…</string>
+  <string name="catalog_complete">模型列表取得成功：%1$d 個模型</string>
+  <string name="catalog_partial">本次模型列表不完整</string>
+  <string name="catalog_unsupported">模型目錄端點不存在或不支援</string>
+  <string name="catalog_interrupted">上次重新整理已中斷</string>
+  <string name="catalog_skipped">已略過停用設定</string>
+  <string name="catalog_last_complete">上次完整目錄：%1$s · %2$d 個模型</string>
+  <string name="catalog_cached">目前顯示上次完整目錄</string>
+  <string name="catalog_partial_candidates">目前僅有部分結果，無法判斷模型是否缺失</string>
+  <string name="catalog_save_failed">本機快取儲存失敗</string>
+  <string name="catalog_scope_key">本目錄依據目前優先金鑰，其他金鑰的結果可能不同</string>
+  <string name="catalog_scope_account">本目錄僅對應目前登入帳號</string>
+  <string name="catalog_summary">目錄：%1$d 成功 · %2$d 不完整 · %3$d 異常 · %4$d 進行中 / 共 %5$d 項</string>
+  <string name="catalog_error_auth">模型目錄驗證失敗</string>
+  <string name="catalog_error_login">請先登入再取得模型列表</string>
+  <string name="catalog_error_timeout">模型目錄請求逾時</string>
+  <string name="catalog_error_network">無法連線至模型目錄端點</string>
+  <string name="catalog_error_rate_limit">模型目錄請求受到流量限制</string>
+  <string name="catalog_error_server">模型目錄服務傳回錯誤</string>
+  <string name="catalog_error_parse">模型目錄回應格式無效</string>
+  <string name="catalog_error_unknown">無法重新整理模型列表</string>
 </resources>
 

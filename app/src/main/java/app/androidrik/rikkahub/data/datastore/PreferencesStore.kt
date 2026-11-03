@@ -276,6 +276,7 @@ class SettingsStore(
         val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
 
         // 模型选择
+        val CATALOG_AUTO_REFRESH = booleanPreferencesKey("catalog_auto_refresh")
         val FAVORITE_MODELS = stringPreferencesKey("favorite_models")
         val SELECT_MODEL = stringPreferencesKey("chat_model")
         val FALLBACK_CHAT_MODEL = stringPreferencesKey("fallback_chat_model")
@@ -467,6 +468,7 @@ class SettingsStore(
                 storedSelected = preferences[SEARCH_SELECTED] ?: 0,
             )
             Settings(
+                catalogAutoRefresh = preferences[CATALOG_AUTO_REFRESH] ?: false,
                 favoriteModels = preferences[FAVORITE_MODELS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
@@ -822,6 +824,7 @@ class SettingsStore(
             preferences[AVATAR_FRAME_SCHEMES] = JsonInstant.encodeToString(settings.avatarFrameSchemes)
             preferences[COT_STYLE_SCHEMES] = JsonInstant.encodeToString(settings.cotStyleSchemes)
 
+            preferences[CATALOG_AUTO_REFRESH] = settings.catalogAutoRefresh
             preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(corrected.favoriteModels)
             preferences[SELECT_MODEL] = settings.chatModelId.toString()
             settings.fallbackChatModelId?.let {
@@ -1130,6 +1133,7 @@ data class Settings(
     val avatarFrameSchemes: List<AvatarFrameScheme> = emptyList(),
     /** 思维链自定义样式方案（CUSTOM 档的命名预设）。 */
     val cotStyleSchemes: List<ChainOfThoughtScheme> = emptyList(),
+    val catalogAutoRefresh: Boolean = false,
     val favoriteModels: List<Uuid> = emptyList(),
     val chatModelId: Uuid = Uuid.random(),
     val fallbackChatModelId: Uuid? = null, // 主模型整轮失败后切换的备用模型（助手未配 fallback 时生效）

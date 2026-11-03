@@ -108,6 +108,13 @@ import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
+import app.androidrik.rikkahub.data.ai.catalog.ProviderModelCatalogRepository
+import app.androidrik.rikkahub.data.ai.catalog.catalogCandidateModels
+import app.androidrik.rikkahub.data.ai.catalog.isRefreshing
+import app.androidrik.rikkahub.ui.components.ai.CatalogAutoRefreshEffect
+import app.androidrik.rikkahub.ui.components.ai.CatalogProviderStatus
+import app.androidrik.rikkahub.ui.components.ai.rememberCatalogState
+import app.androidrik.rikkahub.utils.reorderForDragByKey
 import app.androidrik.ai.provider.filterByKeywords
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ModelType
@@ -145,7 +152,6 @@ import app.androidrik.rikkahub.ui.pages.setting.components.resetBaseUrlToDefault
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.extendColors
 import app.androidrik.rikkahub.utils.DragOrderState
-import app.androidrik.rikkahub.utils.UiState
 import app.androidrik.rikkahub.utils.formatContextLength
 import app.androidrik.rikkahub.utils.parseContextLengthInput
 import app.androidrik.rikkahub.utils.plus
@@ -608,31 +614,11 @@ private fun ModelList(
     providerSetting: ProviderSetting,
     onUpdateProvider: (ProviderSetting) -> Unit
 ) {
-    val providerManager = koinInject<ProviderManager>()
-    val clipboard = LocalClipboard.current
-    val toaster = LocalToaster.current
+    val catalogRepository = koinInject<ProviderModelCatalogRepository>()
+    val catalogState = rememberCatalogState(providerSetting.id)
     val scope = rememberCoroutineScope()
-    val copySuccessMsg = stringResource(R.string.setting_provider_page_fetch_models_copy_success)
-    var fetchState by remember { mutableStateOf<UiState<List<Model>>>(UiState.Idle) }
-    var refreshTrigger by remember { mutableIntStateOf(0) }
-    LaunchedEffect(providerSetting, refreshTrigger) {
-        fetchState = UiState.Loading
-        runCatching {
-            providerManager.getProviderByType(providerSetting)
-                .listModels(providerSetting)
-                .sortedBy { it.modelId }
-                .toList()
-        }.onSuccess {
-            fetchState = UiState.Success(it)
-        }.onFailure {
-            it.printStackTrace()
-            fetchState = UiState.Error(it)
-        }
-    }
-    val candidateModels = when (val state = fetchState) {
-        is UiState.Success -> state.data
-        else -> emptyList()
-    }
+    CatalogAutoRefreshEffect(listOf(providerSetting))
+    val candidateModels = remember(catalogState?.lastComplete, catalogState?.lastAttempt?.partial) { catalogCandidateModels(catalogState) }
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
     // 拖动只改本地顺序、松手才落盘：onUpdateProvider 最终走 DataStore 异步回流，
@@ -641,7 +627,7 @@ private fun ModelList(
     val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
         modelDragOrder.onMove(providerSetting.models) { list ->
             // 与 ProviderSetting.moveMove 同构的列表移动
-            list.toMutableList().apply { add(to.index, removeAt(from.index)) }
+            list.reorderForDragByKey(from.key, to.key) { it.id }
         }
     }
     LaunchedEffect(providerSetting.models) { modelDragOrder.syncFromSource(providerSetting.models) }
@@ -667,95 +653,12 @@ private fun ModelList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             state = lazyListState
         ) {
-            // 模型列表
+            item("catalog-status") { CatalogProviderStatus(providerSetting) }
             if (providerSetting.models.isEmpty()) {
-                when (val state = fetchState) {
-                    is UiState.Loading -> item {
-                        Column(
-                            modifier = Modifier
-                                .fillParentMaxHeight(0.8f)
-                                .fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            CircularProgressIndicator()
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = stringResource(R.string.setting_provider_page_fetch_models_loading),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    is UiState.Error -> item {
-                        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = stringResource(
-                                        R.string.setting_provider_page_fetch_models_error,
-                                        state.error.message ?: "Unknown"
-                                    ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    TextButton(onClick = { refreshTrigger++ }) {
-                                        Text(stringResource(R.string.setting_provider_page_fetch_models_retry))
-                                    }
-                                    TextButton(
-                                        onClick = {
-                                            scope.launch {
-                                                clipboard.setClipEntry(
-                                                    ClipEntry(
-                                                        ClipData.newPlainText(
-                                                            "Error",
-                                                            state.error.message ?: "Unknown"
-                                                        )
-                                                    )
-                                                )
-                                            }
-                                            toaster.show(copySuccessMsg)
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = HugeIcons.Copy01,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(stringResource(R.string.setting_provider_page_fetch_models_copy))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    else -> item {
-                        Column(
-                            modifier = Modifier
-                                .fillParentMaxHeight(0.8f)
-                                .fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = stringResource(R.string.setting_provider_page_no_models),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = stringResource(R.string.setting_provider_page_add_models_hint),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                        }
+                item("empty-models") {
+                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.setting_provider_page_no_models))
+                        Text(stringResource(R.string.setting_provider_page_add_models_hint), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             } else {
@@ -863,8 +766,8 @@ private fun ModelList(
                         }
                     }
                 } else {
-                    FilledIconButton(onClick = { refreshTrigger++ }) {
-                        if (fetchState is UiState.Loading) {
+                    FilledIconButton(onClick = { scope.launch { catalogRepository.refresh(providerSetting.id) } }, enabled = !catalogState.isRefreshing) {
+                        if (catalogState.isRefreshing) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
                                 strokeWidth = 2.dp
@@ -1187,6 +1090,7 @@ private fun AddModelButton(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ModelPicker(
+            provider = parentProvider,
             models = models,
             selectedModels = selectedModels,
             onModelSelected = { model ->
@@ -1341,6 +1245,7 @@ private fun AddModelButton(
 
 @Composable
 private fun ModelPicker(
+    provider: ProviderSetting,
     models: List<Model>,
     selectedModels: List<Model>,
     onModelSelected: (Model) -> Unit,
@@ -1350,6 +1255,7 @@ private fun ModelPicker(
 ) {
     var showModal by remember { mutableStateOf(false) }
     if (showModal) {
+        CatalogAutoRefreshEffect(listOf(provider))
         ModalBottomSheet(
             onDismissRequest = { showModal = false },
             sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
@@ -1364,6 +1270,7 @@ private fun ModelPicker(
                     .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                CatalogProviderStatus(provider)
                 // 标题栏和添加所有按钮
                 Row(
                     modifier = Modifier

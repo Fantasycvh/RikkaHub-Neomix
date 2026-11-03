@@ -2959,5 +2959,33 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_usage_limit_minutes">%1$d 分钟限额</string>
   <string name="setting_provider_page_chatgpt_disclaimer">通过 Codex 后端使用你的 ChatGPT 订阅。实验性功能：OpenAI 可能随时更改或限制此功能。</string>
   <string name="setting_provider_page_grok_disclaimer">以 Grok CLI 的方式登录，使用你的 SuperGrok 订阅。实验性功能：xAI 可能随时更改或限制此功能。</string>
+  <string name="catalog_refresh">刷新模型列表</string>
+  <string name="catalog_refresh_all">刷新全部模型列表</string>
+  <string name="catalog_details">模型目录状态</string>
+  <string name="catalog_auto_refresh">进入页面时刷新过期目录</string>
+  <string name="catalog_auto_hint">目录有效期六小时，仅在进入页面时检查</string>
+  <string name="catalog_idle">尚未获取模型列表</string>
+  <string name="catalog_queued">等待刷新</string>
+  <string name="catalog_running">正在获取模型列表…</string>
+  <string name="catalog_complete">模型列表获取成功：%1$d 个模型</string>
+  <string name="catalog_partial">本次模型列表不完整</string>
+  <string name="catalog_unsupported">模型目录端点不存在或不支持</string>
+  <string name="catalog_interrupted">上次刷新已中断</string>
+  <string name="catalog_skipped">已跳过停用配置</string>
+  <string name="catalog_last_complete">上次完整目录：%1$s · %2$d 个模型</string>
+  <string name="catalog_cached">当前显示上次完整目录</string>
+  <string name="catalog_partial_candidates">当前仅有部分结果，无法判断模型是否缺失</string>
+  <string name="catalog_save_failed">本地缓存保存失败</string>
+  <string name="catalog_scope_key">本目录基于当前优先密钥，其他密钥的结果可能不同</string>
+  <string name="catalog_scope_account">本目录仅对应当前登录账号</string>
+  <string name="catalog_summary">目录：%1$d 成功 · %2$d 不完整 · %3$d 异常 · %4$d 进行中 / 共 %5$d 项</string>
+  <string name="catalog_error_auth">模型目录鉴权失败</string>
+  <string name="catalog_error_login">请先登录再获取模型列表</string>
+  <string name="catalog_error_timeout">模型目录请求超时</string>
+  <string name="catalog_error_network">无法连接模型目录端点</string>
+  <string name="catalog_error_rate_limit">模型目录请求被限流</string>
+  <string name="catalog_error_server">模型目录服务返回错误</string>
+  <string name="catalog_error_parse">模型目录响应格式无效</string>
+  <string name="catalog_error_unknown">无法刷新模型列表</string>
 </resources>
 

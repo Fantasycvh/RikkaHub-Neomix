@@ -2958,5 +2958,33 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_provider_page_usage_limit_minutes">%1$d-minute limit</string>
   <string name="setting_provider_page_chatgpt_disclaimer">Uses your ChatGPT subscription through the Codex backend. Experimental: OpenAI may change or restrict this at any time.</string>
   <string name="setting_provider_page_grok_disclaimer">Uses your SuperGrok subscription by signing in like the Grok CLI. Experimental: xAI may change or restrict this at any time.</string>
+  <string name="catalog_refresh">Refresh model list</string>
+  <string name="catalog_refresh_all">Refresh all model lists</string>
+  <string name="catalog_details">Model list status</string>
+  <string name="catalog_auto_refresh">Refresh stale lists when opening pages</string>
+  <string name="catalog_auto_hint">Lists expire after six hours. No background polling.</string>
+  <string name="catalog_idle">Model list has not been fetched</string>
+  <string name="catalog_queued">Waiting to refresh</string>
+  <string name="catalog_running">Fetching model list…</string>
+  <string name="catalog_complete">Model list fetched: %1$d models</string>
+  <string name="catalog_partial">Model list is incomplete</string>
+  <string name="catalog_unsupported">Model list endpoint is unavailable or unsupported</string>
+  <string name="catalog_interrupted">Previous refresh was interrupted</string>
+  <string name="catalog_skipped">Disabled configuration skipped</string>
+  <string name="catalog_last_complete">Last complete list: %1$s · %2$d models</string>
+  <string name="catalog_cached">Showing the previous complete list</string>
+  <string name="catalog_partial_candidates">Showing partial results; absence cannot be checked</string>
+  <string name="catalog_save_failed">Local cache could not be saved</string>
+  <string name="catalog_scope_key">This list uses the current priority key; other keys may differ.</string>
+  <string name="catalog_scope_account">This list applies to the current signed-in account.</string>
+  <string name="catalog_summary">Lists: %1$d ready · %2$d incomplete · %3$d issues · %4$d running / %5$d total</string>
+  <string name="catalog_error_auth">Model list authentication failed</string>
+  <string name="catalog_error_login">Sign in to fetch the model list</string>
+  <string name="catalog_error_timeout">Model list request timed out</string>
+  <string name="catalog_error_network">Unable to connect to the model list endpoint</string>
+  <string name="catalog_error_rate_limit">Model list request was rate limited</string>
+  <string name="catalog_error_server">Model list service returned an error</string>
+  <string name="catalog_error_parse">Invalid model list response</string>
+  <string name="catalog_error_unknown">Unable to refresh the model list</string>
 </resources>
 

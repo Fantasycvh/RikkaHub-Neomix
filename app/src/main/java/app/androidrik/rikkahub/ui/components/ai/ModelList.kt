@@ -276,6 +276,7 @@ fun ModelListSheet(
 ) {
     if (!state.visible) return
 
+    CatalogAutoRefreshEffect(state.providers)
     val coroutineScope = rememberCoroutineScope()
     val sheetState = rememberBottomSheetState(
         initialValue = SheetValue.Hidden,
@@ -310,6 +311,7 @@ fun ModelListSheet(
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
             }
+            CatalogBatchControls(state.providers)
             ModelList(
                 currentModel = state.modelId,
                 providers = state.filteredProviders,
@@ -597,6 +599,7 @@ private fun ColumnScope.ModelList(
         providers.fastForEach { providerSetting ->
             val collapsed = isCollapsed(providerSetting)
             stickyHeader(key = "header:${providerSetting.id}") {
+                Column {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -627,6 +630,8 @@ private fun ColumnScope.ModelList(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
+                }
+                CatalogProviderStatus(providerSetting, compact = true)
                 }
             }
 

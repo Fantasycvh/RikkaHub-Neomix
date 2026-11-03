@@ -68,6 +68,16 @@ class ProviderModelCatalogRepository internal constructor(
         }
     }
 
+    /** Hide old evidence synchronously, before the settings collector has processed a scope change. */
+    fun currentState(providerId: Uuid): ProviderCatalogState? {
+        val current = settings.value
+        if (current.init) return null
+        val provider = current.providers.find { it.id == providerId } ?: return null
+        return states.value[providerId]?.takeIf {
+            it.scopeFingerprint == catalogScopeFingerprint(provider, current.globalProxy, store.salt)
+        }
+    }
+
     /** Manual ignores TTL. AUTOMATIC is opt-in by the caller (the UI switch is introduced in stage C). */
     suspend fun refresh(providerId: Uuid, trigger: CatalogRefreshTrigger = CatalogRefreshTrigger.MANUAL): ProviderCatalogState? = withContext(dispatcher) {
         settings.first { !it.init }

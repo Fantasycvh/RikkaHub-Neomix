@@ -58,6 +58,9 @@ import androidx.compose.ui.util.fastForEachIndexed
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.ui.components.ai.CatalogAutoRefreshEffect
+import app.androidrik.rikkahub.ui.components.ai.CatalogBatchControls
+import app.androidrik.rikkahub.ui.components.ai.CatalogProviderStatus
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
@@ -77,6 +80,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 @Composable
 fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
+    CatalogAutoRefreshEffect(settings.providers)
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var searchQuery by remember { mutableStateOf("") }
@@ -173,6 +177,7 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
                 shape = CircleShape,
             )
 
+            CatalogBatchControls(settings.providers, showAutoSwitch = true, modifier = Modifier.padding(horizontal = 16.dp))
 
             LazyColumn(
                 modifier = Modifier
@@ -375,6 +380,7 @@ private fun ProviderItem(
                         }
                     }
                 }
+                CatalogProviderStatus(provider, compact = true)
             }
             dragHandle()
         }

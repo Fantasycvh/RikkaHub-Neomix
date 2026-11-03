@@ -281,4 +281,13 @@ class ProviderModelCatalogRepositoryTest {
         assertEquals(CatalogAttemptStatus.COMPLETE, repo.refresh(provider.id)?.lastAttempt?.status)
     }
 
+    @Test fun `UI cannot read evidence for old credentials before the settings observer catches up`() = runTest {
+        val config = settings(provider)
+        val repo = repository(config)
+        repo.refresh(provider.id)
+        assertNotNull(repo.currentState(provider.id)?.lastComplete)
+        config.value = config.value.copy(providers = listOf(provider.copy(apiKey = "new-key")))
+        assertNull(repo.currentState(provider.id))
+    }
+
 }
