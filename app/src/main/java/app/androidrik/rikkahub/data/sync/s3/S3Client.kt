@@ -385,6 +385,7 @@ class S3Client(
     suspend fun downloadObjectToFile(
         key: String,
         targetFile: File,
+        maxBytes: Long = Long.MAX_VALUE,
         onProgress: ((downloaded: Long, total: Long?) -> Unit)? = null,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
@@ -410,6 +411,7 @@ class S3Client(
                 }
 
                 val total = response.headers["Content-Length"]?.toLongOrNull()
+                require(maxBytes >= 0 && (total == null || total <= maxBytes)) { "Download exceeds size budget" }
                 response.bodyAsChannel().toInputStream().use { input ->
                     targetFile.outputStream().use { output ->
                         val buffer = ByteArray(8192)
@@ -417,6 +419,7 @@ class S3Client(
                         while (true) {
                             val n = input.read(buffer)
                             if (n <= 0) break
+                            require(n.toLong() <= maxBytes - downloaded) { "Download exceeds size budget" }
                             output.write(buffer, 0, n)
                             downloaded += n
                             onProgress?.invoke(downloaded, total)

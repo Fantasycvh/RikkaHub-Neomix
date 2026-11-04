@@ -12,6 +12,7 @@ internal class S3BackupObjectStore(private val client: S3Client, override val de
     override suspend fun listChildren(prefix: String): List<BackupStoredObject> {
         val fullPrefix = root + prefix.let { if (it.isEmpty()) "" else "$it/" }
         return client.listAllObjects(prefix = fullPrefix).getOrThrow().mapNotNull {
+            require(it.key.startsWith(fullPrefix)) { "S3 returned a key outside the requested prefix" }
             val relative = it.key.removePrefix(root)
             if (!relative.removePrefix(if (prefix.isEmpty()) "" else "$prefix/").contains('/')) BackupStoredObject(relative, it.size) else null
         }
@@ -26,7 +27,7 @@ internal class S3BackupObjectStore(private val client: S3Client, override val de
     override suspend fun get(key: String, target: File, maxBytes: Long, onBytes: (Long) -> Unit) {
         validateKey(key)
         var previous = 0L
-        client.downloadObjectToFile(root + key, target) { downloaded, total ->
+        client.downloadObjectToFile(root + key, target, maxBytes = maxBytes) { downloaded, total ->
             require(downloaded <= maxBytes && (total == null || total <= maxBytes)) { "Remote object exceeds size budget" }
             onBytes(downloaded - previous); previous = downloaded
         }.getOrThrow()
@@ -45,16 +46,11 @@ internal class S3BackupObjectStore(private val client: S3Client, override val de
 internal class WebDavBackupObjectStore(private val client: WebDavClient, override val destinationId: String) : BackupObjectStore {
     override val allowNonEmptyInitialization = true
     override suspend fun listChildren(prefix: String): List<BackupStoredObject> {
-        // PROPFIND order is not guaranteed; never assume the parent is the first response.
-        val resources = client.propfind(path = prefix, depth = 1).fold(onSuccess = { it }, onFailure = {
+        val resources = client.list(path = prefix).fold(onSuccess = { it }, onFailure = {
             if (it is WebDavException && it.statusCode == 404) return emptyList() else throw it
         })
-        return resources.mapNotNull { item ->
-            val uriPath = java.net.URI(item.href).path.trimEnd('/')
-            val name = uriPath.substringAfterLast('/')
-            if (prefix.isNotEmpty() && (uriPath == prefix || uriPath.endsWith("/$prefix"))) null
-            else if (name.isBlank()) null
-            else BackupStoredObject((if (prefix.isEmpty()) "" else "$prefix/") + name, item.contentLength, item.isCollection)
+        return resources.map { item ->
+            BackupStoredObject((if (prefix.isEmpty()) "" else "$prefix/") + item.displayName, item.contentLength, item.isCollection)
         }
     }
     override suspend fun stat(key: String): BackupStoredObject? {
@@ -65,7 +61,7 @@ internal class WebDavBackupObjectStore(private val client: WebDavClient, overrid
     override suspend fun get(key: String, target: File, maxBytes: Long, onBytes: (Long) -> Unit) {
         validateKey(key)
         var previous = 0L
-        client.downloadToFile(key, target) { downloaded, total ->
+        client.downloadToFile(key, target, maxBytes = maxBytes) { downloaded, total ->
             require(downloaded <= maxBytes && (total == null || total <= maxBytes)) { "Remote object exceeds size budget" }
             onBytes(downloaded - previous); previous = downloaded
         }.getOrThrow()

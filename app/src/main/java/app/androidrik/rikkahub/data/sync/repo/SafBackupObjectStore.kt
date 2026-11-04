@@ -29,9 +29,13 @@ internal class AndroidBackupDocumentAccess(private val resolver: ContentResolver
         val query = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent)
         return requireNotNull(resolver.query(query, arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME,
             Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE), null, null, null)) { "Cannot list backup folder" }.use { cursor ->
+            val id = cursor.getColumnIndexOrThrow(Document.COLUMN_DOCUMENT_ID)
+            val name = cursor.getColumnIndexOrThrow(Document.COLUMN_DISPLAY_NAME)
+            val mime = cursor.getColumnIndexOrThrow(Document.COLUMN_MIME_TYPE)
+            val size = cursor.getColumnIndexOrThrow(Document.COLUMN_SIZE)
             buildList {
-                while (cursor.moveToNext()) add(SafDocument(cursor.getString(0), cursor.getString(1),
-                    cursor.getString(2) == Document.MIME_TYPE_DIR, if (cursor.isNull(3)) null else cursor.getLong(3)))
+                while (cursor.moveToNext()) add(SafDocument(cursor.getString(id), cursor.getString(name),
+                    cursor.getString(mime) == Document.MIME_TYPE_DIR, if (cursor.isNull(size)) null else cursor.getLong(size)))
             }
         }
     }

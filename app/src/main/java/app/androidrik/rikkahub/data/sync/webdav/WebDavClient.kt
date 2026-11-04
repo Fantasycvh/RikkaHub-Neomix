@@ -154,6 +154,7 @@ class WebDavClient(
     suspend fun downloadToFile(
         path: String,
         targetFile: File,
+        maxBytes: Long = Long.MAX_VALUE,
         onProgress: ((downloaded: Long, total: Long?) -> Unit)? = null,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
@@ -172,6 +173,7 @@ class WebDavClient(
 
                 // 总量优先取响应头 Content-Length（可能缺失，如 chunked）
                 val total = response.headers["Content-Length"]?.toLongOrNull()
+                require(maxBytes >= 0 && (total == null || total <= maxBytes)) { "Download exceeds size budget" }
                 val channel = response.bodyAsChannel()
                 var downloaded = 0L
                 targetFile.outputStream().use { outputStream ->
@@ -179,6 +181,7 @@ class WebDavClient(
                     while (!channel.isClosedForRead) {
                         val bytesRead = channel.readAvailable(buffer)
                         if (bytesRead > 0) {
+                            require(bytesRead.toLong() <= maxBytes - downloaded) { "Download exceeds size budget" }
                             outputStream.write(buffer, 0, bytesRead)
                             downloaded += bytesRead
                             onProgress?.invoke(downloaded, total)
@@ -329,11 +332,18 @@ class WebDavClient(
             val segments = webDavPathSegments(config.path, listOf(path))
             for (prefix in cumulativeSegments(segments)) {
                 val url = buildWebDavUrl(config.url, prefix)
-                if (propfindAt(url, depth = 0).isSuccess) {
+                val existing = propfindAt(url, depth = 0)
+                if (existing.isSuccess) {
+                    require(existing.getOrThrow().singleOrNull()?.isCollection == true) { "WebDAV path is not a directory: $url" }
                     Log.d(TAG, "Collection already exists: $url")
                     continue
                 }
+                val failure = existing.exceptionOrNull()
+                if (failure !is WebDavException || failure.statusCode != 404) throw requireNotNull(failure)
                 mkcolAt(url).getOrThrow()
+                require(propfindAt(url, depth = 0).getOrThrow().singleOrNull()?.isCollection == true) {
+                    "WebDAV did not create the requested directory: $url"
+                }
             }
             Unit
         }
@@ -344,13 +354,7 @@ class WebDavClient(
 
     suspend fun list(path: String = ""): Result<List<WebDavResourceInfo>> = withContext(Dispatchers.IO) {
         runCatching {
-            val result = propfind(path, depth = 1).getOrThrow()
-            // Filter out the parent directory itself (first entry)
-            if (result.isNotEmpty()) {
-                result.drop(1)
-            } else {
-                emptyList()
-            }
+            directWebDavChildren(config.buildUrl(path), propfind(path, depth = 1).getOrThrow())
         }
     }
 

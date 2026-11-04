@@ -21,15 +21,17 @@ android {
     }
 
     defaultConfig {
-        applicationId = "app.androidrik.rikkahub"
+        // Synthetic backup acceptance must never install over an existing user/debug profile.
+        val backupIsolatedTests = providers.gradleProperty("backupIsolatedTests").orNull == "true"
+        applicationId = if (backupIsolatedTests) "app.androidrik.rikkahub.backupverification" else "app.androidrik.rikkahub"
         minSdk = 26
         targetSdk = 37
         versionCode = 320
         versionName = "1.0.28-beta.17"
 
-        // Database-only tests can opt out of production Application/DI/background initialization.
+        // Database/storage tests can opt out of production Application/DI/background initialization.
         // The regular UI test runner remains the default.
-        testInstrumentationRunner = if (providers.gradleProperty("memoryIsolatedTests").orNull == "true") {
+        testInstrumentationRunner = if (backupIsolatedTests || providers.gradleProperty("memoryIsolatedTests").orNull == "true") {
             "app.androidrik.rikkahub.data.repository.MemoryIsolationTestRunner"
         } else {
             "androidx.test.runner.AndroidJUnitRunner"
