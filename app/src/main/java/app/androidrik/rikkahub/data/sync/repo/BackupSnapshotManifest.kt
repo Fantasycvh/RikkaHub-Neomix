@@ -17,21 +17,43 @@ internal const val METADATA_LIMIT = 32L * 1024 * 1024
 internal const val ENTRY_LIMIT = 100_000
 internal const val RESERVE_BYTES = 64L * 1024 * 1024
 
+/** 快照格式 v1：整库作为 `rikka_hub.db` 文件对象（P1）。 */
+internal const val SNAPSHOT_FORMAT_V1 = 1
+
+/** 快照格式 v2：数据库拆成逻辑对象（P2），不再携带整库文件。 */
+internal const val SNAPSHOT_FORMAT_V2 = 2
+internal const val SNAPSHOT_FORMAT_VERSION = SNAPSHOT_FORMAT_V2
+
 @Serializable
 internal data class BackupRepositoryInfo(val version: Int = REPO_VERSION, val repoId: String, val createdAt: String)
 
 @Serializable
 internal enum class SnapshotDatabaseState { NOT_SELECTED, ABSENT, PRESENT }
 
+internal interface SnapshotObjectRef {
+    val key: String
+    val sha256: String
+    val size: Long
+}
+
 @Serializable
-internal data class SnapshotFileEntry(val path: String, val sha256: String, val size: Long) {
-    val key: String get() = "v3/objects/${sha256.take(2)}/$sha256"
+internal data class SnapshotFileEntry(val path: String, override val sha256: String, override val size: Long) : SnapshotObjectRef {
+    override val key: String get() = "v3/objects/${sha256.take(2)}/$sha256"
+}
+
+/**
+ * P2 数据库逻辑对象引用。`objectKey` 是稳定逻辑键（`conversation:<uuid>` / `table:<name>`），
+ * 仓库里仍按内容 sha256 去重存储：会话没变就不重新上传。
+ */
+@Serializable
+internal data class SnapshotDbObject(val objectKey: String, override val sha256: String, override val size: Long) : SnapshotObjectRef {
+    override val key: String get() = "v3/objects/${sha256.take(2)}/$sha256"
 }
 
 /** A complete view: references never depend on a previous manifest. */
 @Serializable
 internal data class BackupSnapshotManifest(
-    val formatVersion: Int = REPO_VERSION,
+    val formatVersion: Int = SNAPSHOT_FORMAT_VERSION,
     val snapshotId: String,
     val repoId: String,
     val createdAt: String,
@@ -41,10 +63,12 @@ internal data class BackupSnapshotManifest(
     val items: List<BackupItem>,
     val databaseState: SnapshotDatabaseState,
     val files: List<SnapshotFileEntry>,
+    val dbObjects: List<SnapshotDbObject> = emptyList(),
 ) {
     val manifestKey get() = "v3/snapshots/$snapshotId.json.gz"
     val completionKey get() = "v3/snapshots/$snapshotId.complete.json"
-    val logicalBytes get() = files.sumOf { it.size }
+    val logicalBytes get() = files.sumOf { it.size } + dbObjects.sumOf { it.size }
+    val objects: List<SnapshotObjectRef> get() = files + dbObjects
 }
 
 @Serializable
@@ -64,7 +88,9 @@ internal fun validateKey(key: String) {
 }
 
 internal fun validateSnapshot(snapshot: BackupSnapshotManifest) {
-    if (snapshot.formatVersion != REPO_VERSION) throw UnsupportedOperationException("Unsupported snapshot version; update the app")
+    if (snapshot.formatVersion != SNAPSHOT_FORMAT_V1 && snapshot.formatVersion != SNAPSHOT_FORMAT_V2) {
+        throw UnsupportedOperationException("Unsupported snapshot version; update the app")
+    }
     require(validUuid(snapshot.snapshotId) && validUuid(snapshot.repoId) && validUuid(snapshot.deviceId)) { "Invalid snapshot identity" }
     java.time.Instant.parse(snapshot.createdAt)
     require(snapshot.dbVersion > 0 && snapshot.items.distinct() == snapshot.items) { "Invalid backup scope" }
@@ -101,8 +127,34 @@ internal fun validateSnapshot(snapshot: BackupSnapshotManifest) {
         }
     }
     require("settings.json" in seen) { "Missing settings" }
-    require(("rikka_hub.db" in seen) == (snapshot.databaseState == SnapshotDatabaseState.PRESENT)) { "Missing database" }
-    require((BackupItem.DATABASE in snapshot.items) == (snapshot.databaseState != SnapshotDatabaseState.NOT_SELECTED)) { "Invalid database state" }
+    val databaseSelected = snapshot.databaseState != SnapshotDatabaseState.NOT_SELECTED
+    require((BackupItem.DATABASE in snapshot.items) == databaseSelected) { "Invalid database state" }
+    when (snapshot.formatVersion) {
+        SNAPSHOT_FORMAT_V1 -> {
+            require(snapshot.dbObjects.isEmpty()) { "Legacy snapshot must not contain database objects" }
+            require(("rikka_hub.db" in seen) == (snapshot.databaseState == SnapshotDatabaseState.PRESENT)) { "Missing database" }
+        }
+        else -> {
+            // v2：数据库不再以整库文件出现，而是完整逻辑对象视图（含空表对象），保证恢复时可整体替换。
+            require("rikka_hub.db" !in seen) { "Snapshot database must be captured as logical objects" }
+            require(snapshot.dbObjects.size <= ENTRY_LIMIT) { "Too many database objects" }
+            val objectKeys = HashSet<String>()
+            snapshot.dbObjects.forEach { obj ->
+                validateDbObjectKey(obj.objectKey)
+                require(objectKeys.add(obj.objectKey)) { "Duplicate database object" }
+                require(validHash(obj.sha256) && obj.size in 0..BackupManifest.MAX_ENTRY_BYTES) { "Invalid database object metadata" }
+                if (dbObjectKind(obj.objectKey) == "table") {
+                    require(!isConversationObjectTable(dbObjectValue(obj.objectKey))) {
+                        "Conversation tables must be captured per conversation"
+                    }
+                }
+                total = Math.addExact(total, obj.size)
+                require(total <= BackupManifest.MAX_TOTAL_BYTES) { "Backup exceeds restore size limit" }
+            }
+            val expectsObjects = snapshot.databaseState == SnapshotDatabaseState.PRESENT
+            require(expectsObjects == snapshot.dbObjects.isNotEmpty()) { "Missing database objects" }
+        }
+    }
 }
 
 internal fun fileSha256(file: File): String = MessageDigest.getInstance("SHA-256").let { digest ->

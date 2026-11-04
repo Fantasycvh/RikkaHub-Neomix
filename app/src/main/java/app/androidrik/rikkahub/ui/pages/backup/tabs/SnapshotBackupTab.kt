@@ -116,7 +116,7 @@ fun SnapshotBackupTab(vm: BackupVM) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(java.time.Instant.parse(snapshot.createdAt).atZone(java.time.ZoneId.systemDefault())
                         .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                    Text("${snapshot.files.size} 个文件 · ${snapshot.logicalBytes.fileSizeToString()}")
+                    Text("${snapshot.files.size + snapshot.dbObjects.size} 个对象 · ${snapshot.logicalBytes.fileSizeToString()}")
                     Text("设备 ${snapshot.deviceId.take(8)}", style = MaterialTheme.typography.bodySmall)
                     FlowRow {
                         TextButton(enabled = enabled, onClick = { restoring = snapshot }) { Text("恢复") }
@@ -133,7 +133,9 @@ fun SnapshotBackupTab(vm: BackupVM) {
             title = { Text("确认增量备份") },
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("预计新增写入 ${current.uploadBytes.fileSizeToString()}，复用 ${current.reusedBytes.fileSizeToString()}")
-                Text("数据库 ${current.snapshot.files.singleOrNull { it.path == "rikka_hub.db" }?.size?.fileSizeToString() ?: "未包含"}（原始大小）")
+                val databaseBytes = current.snapshot.files.singleOrNull { it.path == "rikka_hub.db" }?.size
+                    ?: current.snapshot.dbObjects.takeIf { it.isNotEmpty() }?.sumOf { it.size }
+                Text("数据库 ${databaseBytes?.fileSizeToString() ?: "未包含"}（对象原始大小）")
                 Text("已固定本次内容。计划在 30 分钟后失效；取消不会提交到仓库。")
             } },
             confirmButton = { TextButton(enabled = !busy, onClick = vm::commitSnapshot) { Text("开始备份") } },

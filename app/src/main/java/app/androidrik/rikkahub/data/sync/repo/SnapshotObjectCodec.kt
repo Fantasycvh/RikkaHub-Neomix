@@ -29,7 +29,7 @@ internal object SnapshotObjectCodec {
         }
     }
 
-    fun decode(encoded: File, raw: File, entry: SnapshotFileEntry, tick: (Long) -> Unit = {}) {
+    fun decode(encoded: File, raw: File, entry: SnapshotObjectRef, tick: (Long) -> Unit = {}) {
         encoded.inputStream().buffered().use { input ->
             when (input.read()) {
                 0 -> raw.outputStream().use { require(copyBounded(input, it, entry.size, tick) == entry.size) }
@@ -45,6 +45,6 @@ internal object SnapshotObjectCodec {
                 else -> error("Unsupported object encoding")
             }
         }
-        require(fileSha256(raw) == entry.sha256) { "Backup object checksum mismatch: ${entry.path}" }
+        require(fileSha256(raw) == entry.sha256) { "Backup object checksum mismatch: ${entry.key}" }
     }
 }

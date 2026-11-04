@@ -35,6 +35,8 @@ import app.androidrik.rikkahub.data.task.AgentRunReconciler
 import app.androidrik.rikkahub.data.task.ProcessStartClock
 import app.androidrik.rikkahub.data.sync.DowngradeQuarantineStore
 import app.androidrik.rikkahub.data.sync.PendingRestoreStore
+import app.androidrik.rikkahub.data.sync.repo.FtsRebuildPending
+import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
 import com.whl.quickjs.android.QuickJSLoader
 import java.util.concurrent.atomic.AtomicBoolean
@@ -220,8 +222,23 @@ class RikkaHubApp : Application() {
             } else emptyList(),
         )
         _startupState.value = StartupState.Ready
+        // P2：逻辑对象快照恢复后 FTS 需要按当前数据重建（不阻塞 Ready，失败保留标记下轮重试）。
+        rebuildSearchIndexIfPending()
         // 原 onCreate 里 startKoin 之后的所有步骤原样后移（依赖 Koin 或 Ready 语义）
         withContext(Dispatchers.Main) { postReadyInit() }
+    }
+
+    /** 逻辑对象快照不含 FTS，恢复换库后由这里全量重建搜索索引。 */
+    private fun rebuildSearchIndexIfPending() {
+        if (!FtsRebuildPending.isPending(filesDir)) return
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching { get<ConversationRepository>().rebuildAllIndexes() }
+                .onSuccess {
+                    FtsRebuildPending.clear(filesDir)
+                    Log.i(TAG, "search index rebuilt after snapshot restore")
+                }
+                .onFailure { Log.e(TAG, "search index rebuild after snapshot restore failed", it) }
+        }
     }
 
     /**

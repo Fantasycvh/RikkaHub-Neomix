@@ -144,20 +144,29 @@ class IncrementalBackupService(
                     val inputs = collectSnapshotFiles(context.filesDir, WorkspaceBackupHelper.workspacesDir(context), current.backupItems).toMutableList()
                     val settingsFile = File(sourceDir, "settings.json").apply { writeText(json.encodeToString(current)) }
                     inputs += SnapshotInput("settings.json", settingsFile)
-                    val state = if (BackupItem.DATABASE !in current.backupItems) SnapshotDatabaseState.NOT_SELECTED
-                    else if (!context.getDatabasePath(AppDatabase.NAME).exists()) SnapshotDatabaseState.ABSENT
-                    else {
-                        val snapshot = File(sourceDir, "database.db")
+                    val dbObjects: List<SnapshotDbObjectInput>
+                    val state: SnapshotDatabaseState
+                    if (BackupItem.DATABASE !in current.backupItems) {
+                        dbObjects = emptyList()
+                        state = SnapshotDatabaseState.NOT_SELECTED
+                    } else if (!context.getDatabasePath(AppDatabase.NAME).exists()) {
+                        dbObjects = emptyList()
+                        state = SnapshotDatabaseState.ABSENT
+                    } else {
+                        val snapshotFile = File(sourceDir, "database.db")
                         val size = context.getDatabasePath(AppDatabase.NAME).length()
-                        check(context.cacheDir.usableSpace >= size * 3 + RESERVE_BYTES) { "Not enough space for database snapshot" }
+                        check(context.cacheDir.usableSpace >= size * 4 + RESERVE_BYTES) { "Not enough space for database snapshot" }
                         // Unlike legacy ZIP export, incremental snapshots NEVER fall back to copying a live DB.
-                        database.openHelper.writableDatabase.execSQL("VACUUM main INTO ?", arrayOf(snapshot.absolutePath))
-                        check(snapshot.isFile && snapshot.length() > 0) { "Consistent database snapshot failed" }
-                        inputs += SnapshotInput("rikka_hub.db", snapshot)
-                        SnapshotDatabaseState.PRESENT
+                        database.openHelper.writableDatabase.execSQL("VACUUM main INTO ?", arrayOf(snapshotFile.absolutePath))
+                        check(snapshotFile.isFile && snapshotFile.length() > 0) { "Consistent database snapshot failed" }
+                        // P2：整库不直接上传，改为从同一一致性快照导出按会话/按表的逻辑对象。
+                        val staging = File(sourceDir, "db-objects").also { check(it.mkdir()) }
+                        dbObjects = DatabaseObjectCapture.capture(snapshotFile, staging)
+                        snapshotFile.delete()
+                        state = SnapshotDatabaseState.PRESENT
                     }
                     protocol.plan(targetStore, inputs, current.backupItems,
-                        state, deviceId(), AppDatabase.SCHEMA_VERSION, BuildConfig.VERSION_CODE).also { captured = it }
+                        state, deviceId(), AppDatabase.SCHEMA_VERSION, BuildConfig.VERSION_CODE, dbObjects).also { captured = it }
                 } finally { sourceDir.deleteRecursively() }
             }
         }
@@ -180,10 +189,25 @@ class IncrementalBackupService(
     internal suspend fun restore(destination: BackupDestination, snapshot: BackupSnapshotManifest, onProgress: (BackupProgress) -> Unit): RestoreOutcome = withContext(Dispatchers.IO) {
         mutex.withLock {
             val zip = DataOperationLock.runWaiting(DataOperation.RESTORE) {
-                engine(onProgress).assemble(store(destination), snapshot, AppDatabase.SCHEMA_VERSION)
+                engine(onProgress).assemble(store(destination), snapshot, AppDatabase.SCHEMA_VERSION) { objects, dir ->
+                    // P2：以当前库的 VACUUM 副本为底，把快照对象整表替换进去；未覆盖表（FTS/本机进度）保留。
+                    val base = File(dir, "restore-base.db")
+                    try {
+                        database.openHelper.writableDatabase.execSQL("VACUUM main INTO ?", arrayOf(base.absolutePath))
+                        check(base.isFile && base.length() > 0) { "Failed to copy the current database for restore" }
+                        DatabaseObjectMerge.merge(base, objects.map { it.objectKey to it.raw }, snapshot.dbVersion)
+                        base
+                    } catch (failure: Throwable) {
+                        base.delete()
+                        throw failure
+                    }
+                }
             }
             try {
-                BackupArchiveEngine(settings, json, context, database).restoreFromBackupFile(zip, snapshot.items, onProgress)
+                val outcome = BackupArchiveEngine(settings, json, context, database).restoreFromBackupFile(zip, snapshot.items, onProgress)
+                // 逻辑对象快照不含 FTS；换库后由启动期按当前数据重建搜索索引。
+                if (snapshot.dbObjects.isNotEmpty()) FtsRebuildPending.mark(context.filesDir)
+                outcome
             } finally { zip.parentFile?.deleteRecursively() }
         }
     }
