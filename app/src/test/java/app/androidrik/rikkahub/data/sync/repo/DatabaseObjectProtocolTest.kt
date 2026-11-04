@@ -1,10 +1,12 @@
 package app.androidrik.rikkahub.data.sync.repo
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -120,5 +122,87 @@ class DatabaseObjectProtocolTest {
         val header = Json.parseToJsonElement(lines.single()).jsonObject
         assertEquals(1, header["v"]!!.jsonPrimitive.content.toInt())
         assertEquals(1, header["tables"]!!.jsonObject.size)
+    }
+    /** 把物化后的 JsonElement 行还原成「绑定值」形态，便于比较不同写入器的产物。 */
+    private fun bindable(rows: List<List<JsonElement>>): List<List<Any?>> = rows.map { row ->
+        row.map { value ->
+            when {
+                value is JsonNull -> null
+                value is JsonPrimitive && value.isString -> value.content
+                value is JsonPrimitive -> value.longOrNull ?: when (value.content) {
+                    "true" -> 1L
+                    "false" -> 0L
+                    else -> value.content.toDouble()
+                }
+                else -> {
+                    dbBlobBytes(value.jsonObject)?.toList() ?: dbRealValue(value.jsonObject)
+                }
+            }
+        }
+    }
+
+    @Test fun fastWriterRoundTripAllValueKinds() {
+        val key = tableObjectKey("usage_record")
+        val schema = listOf(DbTableSchema("usage_record", listOf("id", "text", "value", "blob", "flag")))
+        val rows = listOf(
+            listOf(dbLong(1), dbText("plain"), dbReal(1.5), dbNull(), dbLong(1)),
+            listOf(dbLong(2), dbText("quote \" backslash \\ newline \n tab \t cr \r ctrl \u0001 emoji \uD83D\uDE00"), dbReal(Double.NaN), dbBlob(byteArrayOf(0, 1, 2, -1)), dbLong(0)),
+            listOf(dbLong(3), dbText(""), dbReal(Double.POSITIVE_INFINITY), dbBlob(ByteArray(0)), dbNull()),
+            listOf(dbLong(4), dbText("中文标题"), dbReal(-0.0), dbBlob(byteArrayOf(7)), dbLong(-1)),
+        )
+        val slow = writePayload(key, schema) { writer -> rows.forEach { writer.row("usage_record", it) } }
+        val fast = temp.newFile("${UUID.randomUUID()}.jsonl")
+        DbObjectPayloadFastWriter(fast, key).use { writer ->
+            writer.start(schema)
+            rows.forEach { row ->
+                writer.row("usage_record") { appender ->
+                    row.forEach { value ->
+                        when {
+                            value is JsonNull -> appender.appendNull()
+                            value is JsonPrimitive && value.isString -> appender.appendText(value.content)
+                            value is JsonPrimitive -> value.longOrNull?.let(appender::appendLong)
+                                ?: run {
+                                    val content = value.content
+                                    when (content) {
+                                        "true" -> appender.appendLong(1)
+                                        "false" -> appender.appendLong(0)
+                                        else -> appender.appendDouble(content.toDouble())
+                                    }
+                                }
+                            else -> {
+                                val blob = dbBlobBytes(value.jsonObject)
+                                if (blob != null) appender.appendBlob(blob)
+                                else appender.appendDouble(requireNotNull(dbRealValue(value.jsonObject)))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val slowPayload = readDbObjectPayload(slow)
+        val fastPayload = readDbObjectPayload(fast)
+        assertEquals(slowPayload.objectKey, fastPayload.objectKey)
+        assertEquals(slowPayload.tables.keys, fastPayload.tables.keys)
+        slowPayload.tables.keys.forEach { table ->
+            assertEquals(
+                bindable(slowPayload.tables.getValue(table).rows),
+                bindable(fastPayload.tables.getValue(table).rows),
+            )
+        }
+    }
+
+    @Test fun fastWriterRejectsWidthMismatch() {
+        assertThrows(IllegalArgumentException::class.java) {
+            DbObjectPayloadFastWriter(temp.newFile(), tableObjectKey("folderentity")).use { writer ->
+                writer.start(listOf(DbTableSchema("folderentity", listOf("id", "name"))))
+                writer.row("folderentity") { it.appendText("only-one") }
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            DbObjectPayloadFastWriter(temp.newFile(), tableObjectKey("folderentity")).use { writer ->
+                writer.start(listOf(DbTableSchema("folderentity", listOf("id"))))
+                writer.row("other") { it.appendLong(1) }
+            }
+        }
     }
 }

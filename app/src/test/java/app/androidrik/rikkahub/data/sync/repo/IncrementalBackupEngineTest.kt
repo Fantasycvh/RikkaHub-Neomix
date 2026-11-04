@@ -263,8 +263,9 @@ class IncrementalBackupEngineTest {
 
 internal class MemoryBackupStore : BackupObjectStore {
     override val destinationId = "memory"
-    val data = linkedMapOf<String, ByteArray>()
-    val puts = mutableListOf<String>()
+    // 引擎对独立对象并行 stat/put/get；测试替身也必须按「并发安全」实现（真实 store 同约定）。
+    val data = java.util.Collections.synchronizedMap(linkedMapOf<String, ByteArray>())
+    val puts = java.util.Collections.synchronizedList(mutableListOf<String>())
     var failPut: String? = null
     var loseResponse: String? = null
     var failStat = false

@@ -450,6 +450,128 @@ append-only 流水游标、真实 S3/WebDAV/SAF 远端网络上传与 UI 入口�
 真实 S3/WebDAV/SAF 远端网络上传与 UI 入口冒烟、GC 的跨设备协调与自动触发、
 列改名/语义变化的自动迁移（只能告警）。
 
+### 0.8 增量备份性能（速度）优化落地记录（2026-11-04，工作树未提交）
+
+> 接 §0.7。用户要求「增量备份的性能（速度）优化」。先真机测全链路基线，再按阶段改；
+> 以下只描述**工作树改动与实测数据**（AGENTS.md 提交授权另议）。
+> 测量工具：`A/androidTest/.../repo/IncrementalPerformanceMeasurement.kt`（手工触发，不在常规
+> instrumented 套件里；只读真实 debug 数据、临时文件跑完即删；tag `PerfMeasure`）。
+
+**测量口径**：PJX110 / Android 15 / debug 包（未清数据）；269 会话 / 7,588 节点 /
+`conversation:<uuid>` 290 个对象、payload 55,706,027 B；`VACUUM main INTO` 快照 → 捕获 →
+plan → commit → 再捕获/plan（预热）→ assemble（含 merge 回调）→ 解压 + 校验 zip 内 DB →
+FTS 全量重建。DB 此时约 208.6–240.4 MB（多轮测试/重建后含空闲页，文件会缓慢变大）。
+
+| 阶段 | 优化前 | 优化后 | 变化 |
+| --- | ---: | ---: | --- |
+| `VACUUM main INTO` 一致性快照 | 654–938 ms | 763–1327 ms | 平台 IO 波动，非本轮目标 |
+| 捕获（290 对象，55.7 MB payload） | 2,807 ms | 2,259 ms | −20% |
+| 捕获（数据未变的第二次） | 2,623 ms | 2,182 ms | −17% |
+| 哈希全部对象（SHA-256） | 155 ms | 169 ms | 持平（已并行） |
+| `plan` 新仓库（291 上传 / 19.97 MB） | 3,313 ms | 886 ms | **−73%** |
+| `commit` 新仓库（上传 291 对象） | 7,708 ms | 762 ms | **−90%** |
+| `plan` 复用快照（0 上传） | 761 ms | 183 ms | **−76%** |
+| merge（55.7 MB JSONL → 当前库副本） | 3,603 ms | 3,669 ms | 持平（实验见下） |
+| `assemble` 总计（下载/解码/合并/zip） | 13,529 ms | 5,361–5,646 ms | **−58%～−60%** |
+| 其中 zip 内 DB 条目 | 压缩（zip 86.0 MB） | STORED（zip 208.6–240.4 MB） | 体积换 CPU，见取舍 #2 |
+| 解压 zip（恢复暂存侧） | — | 339–399 ms | 新增测量 |
+| 校验解压出的 DB | — | 199–206 ms（`integrity_check=ok`、269 会话） | 新增测量 |
+| FTS 全量重建（7,762 行） | 19,907 ms | 10,115–11,366 ms | **−43%～−49%** |
+
+组合口径：首份快照「捕获 + plan + commit」约 **13.8 s → 3.9 s（约 3.5×）**；
+恢复端「下载/解码/merge/zip」约 **13.5 s → 5.4–5.6 s（约 2.4×）**；恢复后搜索索引重建
+**19.9 s → 10.1–11.4 s（约 1.8×）**。数据未变的日常增量快照上传量仍为 0 B（语义未变）。
+
+**1. 捕获（`DatabaseObjectCapture`）**
+
+- 新增 `DbObjectPayloadFastWriter`：直接 `StringBuilder` 拼 JSONL 行（表名/字符串转义一次，
+  整数/浮点/blob 直写），不再为每个单元格构造 `JsonElement`、每行构造 `JsonObject/JsonArray`；
+  语义与旧写入器一致（同一 reader 可读，边界值有 JVM 回归测试）。
+- 会话对象按 id 列表分给固定线程池（`min(4, 核数)`）并行导出，每个 worker 独立只读连接；
+  结果按原顺序组装，对象顺序/哈希仍确定。表对象小，仍顺序导出。
+- 剩余瓶颈：从一致性快照读 55.7 MB + 写 55.7 MB JSONL，受 SQLite 游标逐列取值与磁盘 IO 限制；
+  并行收益仅 −20%，未再强推。
+
+**2. plan（`IncrementalBackupEngine.plan`）**
+
+- DB 逻辑对象是本次捕获刚写出的不可变暂存文件：直接原地哈希/压缩，删掉原来每对象
+  `raw-*` 的 55.7 MB 级重复拷贝。
+- 哈希、`store.stat`（远端是 HEAD 网络往返，串行 290 次在真机是十几秒）、复用校验、
+  DEFLATE 全部按对象并行（`PARALLEL_OBJECTS = 4`）；`store.ensureDir` 与目录解析保持顺序。
+- 去重仍按内容寻址 key（`v3/objects/<sha[:2]>/<sha>`）判定，`uploads` map 的键改为内容 key，
+  清单条目顺序保持输入顺序。
+
+**3. commit（`IncrementalBackupEngine.commit`）**
+
+- 上传改为并行（目录先顺序预建，避免 SAF 并发创建同父目录）；进度用 `AtomicLong`。
+- **去掉「上传后逐对象整份回读 + 解码 + SHA」**：首备 20 MB 对象下载回来校验约占 7.7 s 里的
+  6 s，远端仓库还要再下一遍。改为「本地编码文件解码 + SHA 校验（证明编码产物正确）+
+  发布前对所有对象 `stat` 复检存在性/类型」；传输层（TLS / S3 签名 / SAF 写入成功）保证字节完整，
+  恢复端仍逐对象 SHA-256 校验（设计稿 §8.1 R8），最终一致性不降级。失败/疑似部分写的对象
+  仍走 `verifyObject` 的完整回读路径。
+
+**4. assemble（`IncrementalBackupEngine.assemble`）**
+
+- DB 对象与文件对象都「并行下载 + 解码」到唯一临时文件，再单线程写 zip（`ZipOutputStream`
+  非并发安全）；本地 SAF 仓库逐对象解析目录的往返、远端仓库的网络往返都被并行化。
+- **DB 条目在对象恢复 zip 里改为 STORED**：换库恢复会立即解压回来，省掉 208 MB 级 DEFLATE
+  （以及恢复端 inflate）；zip 临时体积变大（见取舍 #2），`BackupSpaceCheck` 仍按未压缩总量预检。
+- 保留 v2 manifest 语义（`databaseSha256`/`databaseBytes` 仍按原始 DB 计算），
+  现有 `restoreFromBackupFile` 零改动。
+
+**5. FTS 重建（`ConversationRepository.rebuildAllIndexes` + `MessageFtsManager`）**
+
+- 整段包进**一个** Room 事务（嵌套 `withTransaction` 加入外层），把 269 次 WAL 提交合成一次；
+- 重建路径 `indexConversation(conversation, incremental = false)` 跳过「先查旧行 + 反向差集」
+  的整轮查询（索引刚被清空，旧行必然为空）。
+
+**6. 并发契约**
+
+`BackupObjectStore` 文档新增约定：引擎会对相互独立对象并行调用 `stat/put/get/ensureDir`，
+实现必须可并发（SAF ContentResolver / S3 / WebDAV 满足；测试替身 `MemoryBackupStore` 改用
+`synchronizedMap/List`）。
+
+**做过但回退的实验（保留记录，避免重复踩）**
+
+- **流式 merge 解析器**：手写 JSONL 线性扫描 + 直接绑定 `SQLiteStatement`，意图省掉
+  `readDbObjectPayload` 的 `JsonElement` 树。实测 merge **3.6 s → 7.4 s（更慢）**：
+  手写扫描在 55 MB / 7.6k 行上比 kotlinx 解析器慢约 2×（解析样本 293 ms vs 166 ms），
+  且解析与插入交错后插入侧也变慢。**已整体回退**（保留旧物化解析路径）。
+- **并行 FTS 抽取**：`buildFtsIndexRows` 在 4 线程并行 + 批量写入。实测 **10.1 s → 11.2 s
+  （无收益，噪声级变差）**：Room/SQLite 单连接把 DAO 读取串行化，抽取不是唯一瓶颈；
+  FTS5 `simple` 分词 + 插入仍是串行主体。已回退为「顺序抽取 + 单事务批量写」，代码更简单。
+
+**取舍与风险**
+
+1. **commit 不再逐对象回读**：备份成功的「远端字节 = 上传字节」由传输层保证，不再由备份端证明；
+   恢复端对每个对象解码 + SHA-256，仍能发现损坏并拒绝恢复。若未来接入不自带完整性保证的
+   传输层，可在 `commit` 恢复完整回读（或只对抽样对象回读）。
+2. **对象恢复 zip 的 DB 条目 STORED**：本次 zip 86.0 MB → 208.6–240.4 MB（DB 原始大小；多轮测试后 DB 含空闲页会变大），
+   换取 assemble 少一次 208 MB DEFLATE；恢复暂存解压 339 ms、校验 206 ms。空间预检
+   （`BackupSpaceCheck`）按未压缩总量判定，常规设备可通过；若遇到 cache 紧张的 2.8 GB 级
+   DB，可按 DB 大小阈值回退 DEFLATE 或改 level-1（设计稿 §5.8 原「统一 DEFLATE」的折中）。
+3. **捕获写入器字节变化**：快速写入器与旧 kotlinx 写入器**语义一致但字节不同**，升级后
+   所有对象 SHA 变化 → 首次快照会全量重传一次（本次约 20 MB 对象），之后恢复增量；
+   恢复兼容性不变（读取端同一格式、同校验）。
+4. **并行 object store 契约**：自研 `BackupObjectStore` 实现必须自行加锁；不支持并发的
+   远端可在实现内串行化（引擎不强制并发）。
+5. **FTS 重建仍是恢复后最大单点（~10 s）**：后续若继续优化，方向是减少写入文本量
+   （按消息长度/类型分级）或评估分词器成本，而非并行 DAO 读取。
+
+**验证**
+
+- JVM：全量 `:app:testDebugUnitTest` **3017 项通过，0 失败/错误，2 跳过**（新增
+  `DatabaseObjectProtocolTest` 快速写入器往返/宽度拒绝 2 项）；`git diff --check` 通过。
+- 真机 instrumented（PJX110，debug 包）：`DatabaseObjectCaptureMergeInstrumentedTest` 3/3、
+  `DatabaseObjectCrossSchemaMergeInstrumentedTest` 3/3、`DatabaseObjectRealSchemaInstrumentedTest` 1/1、
+  `IncrementalStorageInstrumentedTest` 6/6（含 assemble zip 内容回归），共 **13/13**。
+- 真机性能测量（`PerfMeasure`，两轮）：见上表；assemble 产物解压后 DB `integrity_check=ok`、
+  `conversationentity` 269 行，说明 STORED 条目 + 并行下载/解码链路正确。
+- `:app:assembleDebug` / `:app:assembleDebugAndroidTest` 通过。
+
+**本轮仍明确未做**：merge 的进一步加速（物化解析已是当前最优）、捕获端更激进的格式/分批优化、
+FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本地 SAF/目录仓库已验证并发正确性）。
+
 ## 1. 问题与目标
 
 ### 1.1 现状与痛点（实测/代码事实）
@@ -855,18 +977,24 @@ suspend fun commit(plan, onProgress): BackupSnapshotRef
 5. 输出 `BackupSnapshotPlan`：候选清单 + 待传对象/pack + 复用字节/待传字节（UI 预估）。
 6. `plan` 不写远端、不改本地状态；用户取消零副作用。
 
+> 性能实现（2026-11-04，§0.8）：DB 逻辑对象直接原地哈希/压缩（不再复制 `raw-*`），
+> 哈希/`store.stat`/复用校验/DEFLATE 按对象并行（`PARALLEL_OBJECTS = 4`）；`ensureDir` 保序。
+
 `commit`：
 
 1. 生成 pack（cacheDir 临时 zip，算文件哈希即得 pack 名）、大对象（cacheDir 临时文件，自描述头）。
 2. 逐个上传 pack/对象（串行，失败可重试该对象；不做整包断点）；进度按字节上报。
 3. 组装并上传快照清单（**最后写**）→ 成功即提交。
 4. 写本地 `state.json`（lastSnapshot + hashCache）。
-5. 保留策略：列出本设备快照，超过 `keepLastN`（默认 5）删最旧清单；
+5. 保留策略：列出本设备快照，超过 `keepLastN`（默认 10）删最旧清单；
    然后 GC：被删清单的引用集 − 保留清单引用集 = 可删对象/pack（**不列举远端全量对象**，
    所以不会误删别的设备/未知对象；孤儿对象留给「深度清理」，见 §5.8）。
 6. `onProgress` 阶段：`SCANNING`（枚举+哈希）→ `UPLOADING`（对象/pack）→ `COMMITTING`（清单）→
    可复用 `BackupProgress`；`BackupProgressRow` 只显示字节/百分比，不依赖阶段文案（`:13-18` 注释），
    新增枚举值零 UI 改动。
+
+**并发与校验（性能实现，§0.8）**：上传按对象并行（目录先顺序预建）；上传后不再逐对象
+回读，改为「本地编码文件解码 + SHA + 发布前 `stat` 复检」，恢复端仍逐对象校验 SHA-256。
 
 **失败语义**：
 - 清单上传失败 = 本次快照不存在，已传对象成为孤儿；下次计划只与「最新快照」diff → 孤儿会重新上传（浪费一次），
@@ -903,8 +1031,9 @@ suspend fun commit(plan, onProgress): BackupSnapshotRef
 - 代价：多一次本地写 zip（2.8 GB 级约数分钟）与两次 zip 读；P2 的原生恢复可省掉。
 
 **组装细节（实现约束）**：
-- zip 条目用 `ZipOutputStream` 写入（DEFLATE 或按采样 STORED；STORED 需预置 CRC，实现上二选一，
-  推荐 P1 统一 DEFLATE 求稳，后续再用采样优化）；
+- zip 条目用 `ZipOutputStream` 写入（DEFLATE 或按采样 STORED；STORED 需预置 CRC，实现上二选一）；
+  对象恢复路径实测（§0.8）：文件/DB 对象**并行下载 + 解码**后单线程写 zip，DB 条目用 STORED
+  （换库恢复会立即解压，省一次 208 MB 级 DEFLATE；临时 zip 体积 ≈ DB 原始大小，空间预检照旧）；
 - 每个条目写入前完成对象哈希校验（失败立即中止，不产生「部分 zip」）；
 - 条目名来自清单 → 必须用与现有恢复同一套 `classifyBackupEntry` + 路径安全规则做二次校验；
 - 单文件 > 2 GB 直接拒绝（现有恢复上限）。
@@ -1188,6 +1317,8 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 | R14 | SAF 授权失效、卷移除、provider 断连/写满 | 本地任务中断 | 状态分型、重新关联、完成标记、成功时间不提前更新；§5.14 |
 | R15 | SAF 查询开销、自动改名、重名 document、大小未知 | 慢或引用歧义 | 按层批量查询、任务缓存、严格名称检查、流式校验；有歧义不提交 |
 | R16 | 仓库搬迁后 URI 变化/误选其他目录 | 本地索引串用 | repoId 与 URI 分离；新目录验证后关联，缓存重建，不修改源仓库 |
+| R17 | 对象恢复 zip 的 DB 条目 STORED，临时 zip ≈ DB 原始大小 | cache 空间紧张（2.8 GB 级 DB） | `BackupSpaceCheck` 按未压缩总量预检；实测 208 MB DB 解压 339 ms；必要时按 DB 大小阈值回退 DEFLATE/level-1（§0.8 取舍 #2） |
+| R18 | commit 不再逐对象回读（只校验本地编码产物 + 发布前 stat） | 依赖传输层完整性 | 恢复端仍逐对象解码 + SHA-256，损坏即拒绝恢复；不自带完整性保证的传输层需恢复回读（§0.8 取舍 #1） |
 
 ### 8.2 已确认范围与后续决策
 

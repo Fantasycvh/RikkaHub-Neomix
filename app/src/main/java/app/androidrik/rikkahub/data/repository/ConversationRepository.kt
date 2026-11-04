@@ -594,15 +594,19 @@ class ConversationRepository(
     ) = messageFtsManager.search(keyword, sort)
 
     suspend fun rebuildAllIndexes(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }) {
-        messageFtsManager.deleteAll()
-        val allIds = conversationDAO.getAllIds()
-        val total = allIds.size
-        allIds.forEachIndexed { index, id ->
-            val entity = conversationDAO.getConversationById(id) ?: return@forEachIndexed
-            val nodes = loadMessageNodes(entity.id)
-            val conversation = conversationEntityToConversation(entity, nodes)
-            messageFtsManager.indexConversation(conversation)
-            onProgress(index + 1, total)
+        // 整段包在**一个** Room 事务里：indexConversation/deleteAll 内部再 withTransaction 会加入
+        // 外层事务，避免每个会话都提交一次 WAL（真机 269 次提交约 10s 级开销）。
+        database.withTransaction {
+            messageFtsManager.deleteAll()
+            val allIds = conversationDAO.getAllIds()
+            val total = allIds.size
+            allIds.forEachIndexed { index, id ->
+                val entity = conversationDAO.getConversationById(id) ?: return@forEachIndexed
+                val nodes = loadMessageNodes(entity.id)
+                val conversation = conversationEntityToConversation(entity, nodes)
+                messageFtsManager.indexConversation(conversation, incremental = false)
+                onProgress(index + 1, total)
+            }
         }
     }
 

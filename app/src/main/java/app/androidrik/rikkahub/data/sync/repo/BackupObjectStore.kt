@@ -5,6 +5,13 @@ import java.io.File
 internal data class BackupStoredObject(val key: String, val bytes: Long?, val directory: Boolean = false)
 
 /** null stat means missing; permission, transport and query failures MUST throw. */
+/**
+ * 备份对象存储边界。
+ *
+ * 并发约定：引擎会**并行**调用相互独立的对象的 [stat]/[put]/[get]/[ensureDir]（同一次扫描/提交内，
+ * 并发度见 `PARALLEL_OBJECTS`）。实现必须保证这些调用可并发执行（SAF ContentResolver、S3/WebDAV
+ * 的 HTTP 客户端天然满足；自研实现请加锁，不要依赖调用方串行化）。
+ */
 internal interface BackupObjectStore {
     val destinationId: String
     val allowNonEmptyInitialization: Boolean get() = false

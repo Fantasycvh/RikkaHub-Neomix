@@ -76,30 +76,38 @@ class MessageFtsManager(private val database: AppDatabase) {
      * 增量更新会话的索引：只重写新增或内容变了的消息，删掉已不存在的消息。
      * 每次保存会话都会调用，长会话里大部分消息没变，不必整份删掉重新分词。
      */
-    suspend fun indexConversation(conversation: Conversation) = database.withTransaction {
+    /**
+     * @param incremental 正常保存时为 true：只重写新增/内容变化的消息；全量重建（索引刚清空）时
+     *   为 false，跳过「先查旧行 + 反向差集」的整轮查询——重建大库时 269 次查询纯属浪费。
+     */
+    suspend fun indexConversation(conversation: Conversation, incremental: Boolean = true) = database.withTransaction {
         val conversationId = conversation.id.toString()
-        val indexed = HashMap<String, IndexedMessage>()
+        val indexed = if (incremental) HashMap<String, IndexedMessage>() else null
         val stale = mutableListOf<Long>()
-        db.query(
-            """
-            SELECT f.rowid, f.node_id, f.message_id, f.text
-            FROM message_fts_rowid AS r JOIN message_fts AS f ON f.rowid = r.fts_rowid
-            WHERE r.conversation_id = ?
-            """.trimIndent(),
-            arrayOf(conversationId)
-        ).use {
-            while (it.moveToNext()) {
-                val row = IndexedMessage(it.getLong(0), it.getString(1), it.getString(3))
-                if (indexed.putIfAbsent(it.getString(2), row) != null) stale.add(row.rowid)
+        if (indexed != null) {
+            db.query(
+                """
+                SELECT f.rowid, f.node_id, f.message_id, f.text
+                FROM message_fts_rowid AS r JOIN message_fts AS f ON f.rowid = r.fts_rowid
+                WHERE r.conversation_id = ?
+                """.trimIndent(),
+                arrayOf(conversationId)
+            ).use {
+                while (it.moveToNext()) {
+                    val row = IndexedMessage(it.getLong(0), it.getString(1), it.getString(3))
+                    if (indexed.putIfAbsent(it.getString(2), row) != null) stale.add(row.rowid)
+                }
             }
         }
         conversation.messageNodes.forEach { node ->
             val nodeId = node.id.toString()
             node.messages.forEach { message ->
                 val text = message.extractFtsText()
-                val existing = indexed.remove(message.id.toString())
-                if (existing != null && existing.nodeId == nodeId && existing.text == text) return@forEach
-                existing?.let { stale.add(it.rowid) }
+                if (indexed != null) {
+                    val existing = indexed.remove(message.id.toString())
+                    if (existing != null && existing.nodeId == nodeId && existing.text == text) return@forEach
+                    existing?.let { stale.add(it.rowid) }
+                }
                 if (text.isNotBlank()) {
                     db.execSQL(
                         "INSERT INTO message_fts(text, node_id, message_id, conversation_id) VALUES (?, ?, ?, ?)",
@@ -112,7 +120,7 @@ class MessageFtsManager(private val database: AppDatabase) {
                 }
             }
         }
-        indexed.values.forEach { stale.add(it.rowid) }
+        indexed?.values?.forEach { stale.add(it.rowid) }
         stale.forEach { rowid ->
             db.execSQL("DELETE FROM message_fts WHERE rowid = ?", arrayOf(rowid))
             db.execSQL("DELETE FROM message_fts_rowid WHERE fts_rowid = ?", arrayOf(rowid))

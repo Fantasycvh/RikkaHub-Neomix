@@ -84,8 +84,9 @@ internal fun addFileToZip(
     entryName: String,
     onBytes: (Long) -> Unit = {},
     onLog: (String) -> Unit = {},
+    forceStored: Boolean = false,
 ) {
-    val entry = prepareZipEntry(file, entryName, onLog)
+    val entry = prepareZipEntry(file, entryName, onLog, forceStored)
     FileInputStream(file).use { fis ->
         zipOut.putNextEntry(entry)
         // 边拷贝边上报：单个大文件（85MB DB / 2.8GB 克隆）内部也要推进，否则进度条会冻住
@@ -103,15 +104,15 @@ internal fun addFileToZip(
  * 该预读是纯顺序读（无 DEFLATE CPU），远比「1 次读 + 压缩」便宜；进度只按写入
  * 遍计（预读不报，避免双倍计数）。
  */
-private fun prepareZipEntry(file: File, entryName: String, onLog: (String) -> Unit): ZipEntry {
+private fun prepareZipEntry(file: File, entryName: String, onLog: (String) -> Unit, forceStored: Boolean): ZipEntry {
     val entry = ZipEntry(entryName)
-    if (file.length() < BackupZipStrategy.SAMPLE_SIZE) return entry
+    if (!forceStored && file.length() < BackupZipStrategy.SAMPLE_SIZE) return entry
     val sample = FileInputStream(file).use { input ->
         val buf = ByteArray(BackupZipStrategy.SAMPLE_SIZE)
         val read = input.read(buf)
         if (read <= 0) null else buf.copyOf(read)
     } ?: return entry
-    if (!BackupZipStrategy.shouldStoreUncompressed(sample)) return entry
+    if (!forceStored && !BackupZipStrategy.shouldStoreUncompressed(sample)) return entry
 
     val crc = java.util.zip.CRC32()
     var size = 0L

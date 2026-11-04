@@ -17,6 +17,9 @@ internal const val METADATA_LIMIT = 32L * 1024 * 1024
 internal const val ENTRY_LIMIT = 100_000
 internal const val RESERVE_BYTES = 64L * 1024 * 1024
 
+/** 对象级并行度（哈希/stat/压缩/下载/上传）：独立对象可并发，低端机也不至于打满 IO。 */
+internal const val PARALLEL_OBJECTS = 4
+
 /** 快照格式 v1：整库作为 `rikka_hub.db` 文件对象（P1）。 */
 internal const val SNAPSHOT_FORMAT_V1 = 1
 

@@ -120,6 +120,119 @@ internal fun dbRealValue(value: JsonObject): Double? {
 
 internal data class DbTableSchema(val name: String, val columns: List<String>)
 
+/** JSON 字符串转义（与 kotlinx 输出语义一致；供快速写入器直接拼 JSONL 行，省掉 JsonElement 树分配）。 */
+internal fun appendJsonString(out: StringBuilder, value: String) {
+    out.append('"')
+    var index = 0
+    while (index < value.length) {
+        val c = value[index]
+        when (c) {
+            '"' -> out.append("\\\"")
+            '\\' -> out.append("\\\\")
+            '\n' -> out.append("\\n")
+            '\r' -> out.append("\\r")
+            '\t' -> out.append("\\t")
+            '\b' -> out.append("\\b")
+            '\u000C' -> out.append("\\f")
+            else -> if (c < ' ') {
+                out.append("\\u00")
+                out.append(HEX_DIGITS[(c.code shr 4) and 0xF])
+                out.append(HEX_DIGITS[c.code and 0xF])
+            } else out.append(c)
+        }
+        index++
+    }
+    out.append('"')
+}
+
+private const val HEX_DIGITS = "0123456789abcdef"
+
+/** [DbObjectPayloadFastWriter.row] 的单行值输出口：按列顺序 append，避免每行构造 List<JsonElement>。 */
+internal class DbRowAppender(private val out: StringBuilder) {
+    var count: Int = 0
+        private set
+
+    private fun separator() {
+        if (count > 0) out.append(',')
+        count++
+    }
+
+    fun appendNull() { separator(); out.append("null") }
+    fun appendLong(value: Long) { separator(); out.append(value) }
+    fun appendDouble(value: Double) {
+        separator()
+        if (value.isFinite()) out.append(value.toString())
+        else {
+            out.append("{\"\$real\":")
+            appendJsonString(out, value.toString())
+            out.append('}')
+        }
+    }
+
+    fun appendText(value: String) { separator(); appendJsonString(out, value) }
+    fun appendBlob(value: ByteArray) {
+        separator()
+        out.append("{\"\$blob\":")
+        appendJsonString(out, Base64.getEncoder().encodeToString(value))
+        out.append('}')
+    }
+}
+
+/**
+ * 与 [DbObjectPayloadWriter] 输出同一 JSONL 格式的快速写入器：直接用 StringBuilder 拼行，
+ * 每行只做一次字符串转义，不做 JsonElement/JsonArray/JsonObject 分配。
+ *
+ * 语义完全一致（同一 reader 可读），字节不保证与旧写入器逐字节相同；快照哈希因此变化时
+ * 只影响一次全量对象重传，恢复兼容性不变。
+ */
+internal class DbObjectPayloadFastWriter(file: File, private val objectKey: String) : Closeable {
+    private val out = BufferedWriter(OutputStreamWriter(FileOutputStream(file), Charsets.UTF_8), 1 shl 16)
+    private val declared = HashMap<String, Int>()
+    private val line = StringBuilder(512)
+    private var started = false
+    private var rowCount = 0L
+
+    fun start(tables: List<DbTableSchema>) {
+        require(!started) { "Payload header already written" }
+        require(tables.isNotEmpty()) { "A database object must contain at least one table" }
+        val header = buildJsonObject {
+            put("v", JsonPrimitive(DB_OBJECT_FORMAT_VERSION))
+            put("objectKey", JsonPrimitive(objectKey))
+            put("tables", buildJsonObject {
+                tables.forEach { table ->
+                    require(validDbTableName(table.name)) { "Invalid table name" }
+                    require(table.columns.isNotEmpty() && table.columns.distinct() == table.columns) { "Invalid table columns" }
+                    declared[table.name] = table.columns.size
+                    put(table.name, JsonArray(table.columns.map(::JsonPrimitive)))
+                }
+            })
+        }
+        out.write(header.toString())
+        out.write("\n")
+        started = true
+    }
+
+    fun row(table: String, write: (DbRowAppender) -> Unit) {
+        check(started) { "Payload header missing" }
+        val width = requireNotNull(declared[table]) { "Row references an undeclared table" }
+        rowCount = Math.addExact(rowCount, 1)
+        require(rowCount <= 50_000_000L) { "Too many rows in database object" }
+        line.setLength(0)
+        line.append("{\"t\":")
+        appendJsonString(line, table)
+        line.append(",\"r\":[")
+        val appender = DbRowAppender(line)
+        write(appender)
+        require(appender.count == width) { "Row width does not match its declared table" }
+        line.append("]}\n")
+        out.write(line.toString())
+    }
+
+    override fun close() {
+        out.close()
+    }
+}
+
 /**
  * 流式写对象载荷：先写 header，再逐行写。行按表顺序写入即可，读取端不要求同一表连续，
  * 但恢复端实现按 header 的表集合处理。
