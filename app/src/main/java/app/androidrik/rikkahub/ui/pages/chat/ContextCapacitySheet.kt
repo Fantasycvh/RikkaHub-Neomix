@@ -99,6 +99,14 @@ fun ContextCapacitySheet(
 
         UsageCard(capacity)
 
+        if (!capacity?.omittedTransformers.isNullOrEmpty()) {
+            Text(
+                text = "本地估算未执行：${capacity!!.omittedTransformers.joinToString("、")}。实际请求与 token 数可能不同。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         capacity?.let { EstimateCard(it) }
 
         Text(

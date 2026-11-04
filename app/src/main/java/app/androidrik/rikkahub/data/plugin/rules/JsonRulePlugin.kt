@@ -5,7 +5,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.transformers.TransformerContext
-import app.androidrik.rikkahub.data.plugin.PluginInputTransformer
+import app.androidrik.rikkahub.data.plugin.PreviewSafePluginInputTransformer
 import app.androidrik.rikkahub.data.plugin.PluginOutputTransformer
 
 /**
@@ -20,7 +20,7 @@ import app.androidrik.rikkahub.data.plugin.PluginOutputTransformer
  */
 class JsonRulePlugin(
     val definition: JsonRuleDefinition,
-) : PluginInputTransformer, PluginOutputTransformer {
+) : PreviewSafePluginInputTransformer, PluginOutputTransformer {
 
     override val id: String = definition.id
     override val displayName: String = definition.name

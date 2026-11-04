@@ -265,6 +265,13 @@ private fun SummaryCard(inspection: app.androidrik.rikkahub.data.ai.PromptInspec
                 text = stringResource(R.string.prompt_inspect_summary),
                 style = MaterialTheme.typography.titleSmallEmphasized,
             )
+            if (inspection.omittedTransformers.isNotEmpty()) {
+                Text(
+                    text = "预览未执行：${inspection.omittedTransformers.joinToString("、")}。实际请求与 token 数可能不同。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             MetaRow(
                 label = stringResource(R.string.prompt_inspect_segments),
                 value = inspection.segments.size.toString(),

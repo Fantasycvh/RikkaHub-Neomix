@@ -51,6 +51,7 @@ data class ContextCapacity(
     /** 还能容纳约多少轮；样本不足（< [MIN_ROUNDS_FOR_ESTIMATE]）时为 null。 */
     val estimatedRounds: Int?,
     val roundSampleCount: Int,
+    val omittedTransformers: List<String> = emptyList(),
 ) {
     /** 单列项（工具 schema / 工具输出 / 压缩检查点）合计——差值法的减数之一。 */
     val itemizedTokens: Int get() = toolSchemaTokens + toolResultTokens + checkpointTokens

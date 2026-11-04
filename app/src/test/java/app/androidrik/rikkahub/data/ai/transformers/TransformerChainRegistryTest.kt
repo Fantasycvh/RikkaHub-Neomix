@@ -51,17 +51,20 @@ class TransformerChainRegistryTest {
         assertEquals(expectedOutput.take(3), defaultOutputTransformers)
     }
 
-    @Test fun `warmup excludes plugins while preview preserves the request chain`() {
+    @Test fun `preview and warmup omit unreviewed plugins OCR and workspace probing`() {
         val registry = defaultTransformerChainRegistry(template, workspace)
         val plugin = Plugin("effects")
         val plugins = listOf(info(plugin))
         val request = registry.snapshot(plugins)
         val preview = registry.snapshot(plugins, TransformerUse.PREVIEW)
         val warmup = registry.snapshot(plugins, TransformerUse.WARMUP)
-        assertEquals(request.inputs, preview.inputs)
-        assertEquals(request.outputs, preview.outputs)
-        assertEquals(request.inputTransformers.filterNot { it === plugin }, warmup.inputTransformers)
-        assertEquals(defaultOutputTransformers, warmup.outputTransformers)
+        assertEquals(request.inputTransformers.filterNot {
+            it === plugin || it === OcrTransformer || it === workspace
+        }, preview.inputTransformers)
+        assertEquals(preview.inputs, warmup.inputs)
+        assertTrue(preview.outputs.isEmpty())
+        assertTrue(warmup.outputs.isEmpty())
+        assertEquals(listOf("builtin.ocr", "builtin.workspace_reminder", "plugin:effects:input"), preview.omittedInputs.map { it.id })
         assertSame(ToolResultBalancingTransformer, warmup.inputTransformers.last())
     }
 
@@ -202,5 +205,31 @@ class TransformerChainRegistryTest {
             "first.visual", "second.visual", "plugin.visual",
             "first.finish", "second.finish", "plugin.finish",
         ), trace)
+    }
+
+    @Test fun `only host reviewed rule plugins can join preview and cannot join warmup`() {
+        val rule = app.androidrik.rikkahub.data.plugin.rules.JsonRulePlugin(
+            app.androidrik.rikkahub.data.plugin.rules.JsonRuleDefinition(
+                id = "rules.preview", name = "规则", target = app.androidrik.rikkahub.data.plugin.rules.RuleTarget.INPUT,
+            ),
+        )
+        val registry = defaultTransformerChainRegistry(template, workspace)
+        val plugins = listOf(PluginInfo(rule, true, rule.capabilities))
+        assertTrue(registry.snapshot(plugins, TransformerUse.PREVIEW).inputTransformers.contains(rule))
+        assertFalse(registry.snapshot(plugins, TransformerUse.WARMUP).inputTransformers.contains(rule))
+        assertFalse(registry.snapshot(plugins, TransformerUse.PREVIEW).omittedInputs.any { it.id.contains("rules.preview") })
+    }
+
+    @Test fun `omission relevance distinguishes text vision local image and bound workspace`() {
+        val text = listOf(UIMessage.user("text"))
+        val image = listOf(UIMessage(role = MessageRole.USER, parts = listOf(app.androidrik.ai.ui.UIMessagePart.Image("file:///test.png"))))
+        val ocr = TransformerOmission("builtin.ocr", "OCR")
+        val textModel = Model(inputModalities = listOf(app.androidrik.ai.provider.Modality.TEXT))
+        assertFalse(ocr.appliesTo(textModel, Assistant(), text))
+        assertTrue(ocr.appliesTo(textModel, Assistant(), image))
+        assertFalse(ocr.appliesTo(Model(inputModalities = listOf(app.androidrik.ai.provider.Modality.IMAGE)), Assistant(), image))
+        val workspaceOmission = TransformerOmission("builtin.workspace_reminder", "Workspace")
+        assertFalse(workspaceOmission.appliesTo(textModel, Assistant(), text))
+        assertTrue(workspaceOmission.appliesTo(textModel, Assistant(workspaceId = kotlin.uuid.Uuid.random()), text))
     }
 }

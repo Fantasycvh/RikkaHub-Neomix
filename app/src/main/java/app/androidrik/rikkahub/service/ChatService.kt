@@ -1565,7 +1565,7 @@ class ChatService(
     /**
      * 组装一次「这次请求会发什么」的只读预览，按来源分段。
      *
-     * 宿主不保存对话、不发送模型请求；输入插件自身仍可能访问网络/存储。
+     * 不执行脚本等未审核为只读的输入插件、OCR 或工作区环境探测；省略项随结果返回。
      * 与真实发送共用 [buildInternalMessages] 与
      * 同一个 transformer 链、同一套工具装配（[chatToolFactory]），因此预览与实际请求一致
      * ——避免预览自己另写一套组装而随时间漂移（`docs/peer-apps-benchmark.md` §6.7 ③）。
@@ -1661,6 +1661,10 @@ class ChatService(
                     )
 
                     timing.mark("tools")
+                    val transformerChains = transformerRegistry.snapshot(
+                        pluginManager.plugins.value,
+                        if (includePluginTransformers) TransformerUse.PREVIEW else TransformerUse.WARMUP,
+                    )
                     inspectPrompt(
                         context = context,
                         settings = settings,
@@ -1669,11 +1673,8 @@ class ChatService(
                         conversation = conversation,
                         memories = memories,
                         tools = tools,
-                        // 预览保留插件；预热排除插件。这里只装配，不执行第二条影子链。
-                        inputTransformers = transformerRegistry.snapshot(
-                            pluginManager.plugins.value,
-                            if (includePluginTransformers) TransformerUse.PREVIEW else TransformerUse.WARMUP,
-                        ).inputTransformers,
+                        inputTransformers = transformerChains.inputTransformers,
+                        omittedTransformers = transformerChains.omittedInputs,
                         labels = labels,
                         timing = timing,
                         approximateTokens = approximateTokens,

@@ -21,6 +21,9 @@ import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRenderer
  */
 interface PluginInputTransformer : RikkaPlugin, InputMessageTransformer
 
+/** 宿主审核过的只读原生输入转换；不得发请求、启动脚本或修改业务/插件存储。外部清单不能授予此标记。 */
+interface PreviewSafePluginInputTransformer : PluginInputTransformer
+
 interface PluginOutputTransformer : RikkaPlugin, OutputMessageTransformer
 
 interface PluginToolProvider : RikkaPlugin {

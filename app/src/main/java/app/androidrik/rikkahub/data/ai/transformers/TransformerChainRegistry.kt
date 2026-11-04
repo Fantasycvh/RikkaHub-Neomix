@@ -4,6 +4,12 @@ import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginInfo
 import app.androidrik.rikkahub.data.plugin.PluginInputTransformer
 import app.androidrik.rikkahub.data.plugin.PluginOutputTransformer
+import app.androidrik.rikkahub.data.plugin.PreviewSafePluginInputTransformer
+import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.Modality
+import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.model.Assistant
 
 /** 阶段由宿主决定；插件只能进入 PLUGIN，协议配平始终由宿主追加。 */
 internal enum class TransformerStage { CORE, TEMPLATE, WORKSPACE, PLUGIN, FINALIZER }
@@ -15,12 +21,26 @@ internal data class TransformerContribution<T : MessageTransformer>(
     val stage: TransformerStage,
     val transformer: T,
     val allowWarmup: Boolean = true,
+    val allowPreview: Boolean = false,
+    val previewLabel: String = id,
 )
+
+/** 预览只报告对当前请求可能有影响的省略项，不把纯文本请求标成缺少 OCR。 */
+data class TransformerOmission(val id: String, val label: String) {
+    fun appliesTo(model: Model, assistant: Assistant, messages: List<UIMessage>): Boolean = when (id) {
+        "builtin.ocr" -> Modality.IMAGE !in model.inputModalities && messages.any { message ->
+            message.parts.any { it is UIMessagePart.Image && it.url.startsWith("file:") }
+        }
+        "builtin.workspace_reminder" -> assistant.workspaceId != null
+        else -> true
+    }
+}
 
 /** 一次装配只读取一份插件状态；构建快照不执行任何转换器。 */
 internal class TransformerChains(
     val inputs: List<TransformerContribution<InputMessageTransformer>>,
     val outputs: List<TransformerContribution<OutputMessageTransformer>>,
+    val omittedInputs: List<TransformerOmission> = emptyList(),
 ) {
     val inputTransformers = inputs.map { it.transformer }
     val outputTransformers = outputs.map { it.transformer }
@@ -53,27 +73,38 @@ internal class TransformerChainRegistry(
             plugins.filter { it.enabled }.forEach { info ->
                 val plugin = info.plugin
                 if (plugin is PluginInputTransformer && info.hasCapability(PluginCapability.PROMPT_TRANSFORM)) {
-                    pluginInputs += TransformerContribution("plugin:${plugin.id}:input", TransformerStage.PLUGIN, plugin, false)
+                    pluginInputs += TransformerContribution(
+                        "plugin:${plugin.id}:input", TransformerStage.PLUGIN, plugin, false,
+                        allowPreview = plugin is PreviewSafePluginInputTransformer, previewLabel = plugin.displayName,
+                    )
                 }
                 if (plugin is PluginOutputTransformer && info.hasCapability(PluginCapability.OUTPUT_TRANSFORM)) {
                     pluginOutputs += TransformerContribution("plugin:${plugin.id}:output", TransformerStage.PLUGIN, plugin, false)
                 }
             }
         }
-        val inputChain = ordered(inputs, use) + pluginInputs + TransformerContribution<InputMessageTransformer>(
+        val omitted = (inputs + pluginInputs).filter { use != TransformerUse.REQUEST && !it.allowPreview }
+            .map { TransformerOmission(it.id, it.previewLabel) }
+        val inputChain = ordered(inputs, use) + ordered(pluginInputs, use) + TransformerContribution<InputMessageTransformer>(
             "builtin.tool_result_balancing", TransformerStage.FINALIZER, ToolResultBalancingTransformer,
         )
-        val outputChain = ordered(outputs, use) + pluginOutputs
+        val outputChain = ordered(outputs, use) + ordered(pluginOutputs, use)
         validateIds(inputChain)
         validateIds(outputChain)
-        return TransformerChains(inputChain, outputChain)
+        return TransformerChains(inputChain, outputChain, omitted)
     }
 
     private fun <T : MessageTransformer> ordered(
         contributions: List<TransformerContribution<T>>,
         use: TransformerUse,
     ): List<TransformerContribution<T>> {
-        val selected = contributions.filter { use != TransformerUse.WARMUP || it.allowWarmup }
+        val selected = contributions.filter {
+            when (use) {
+                TransformerUse.REQUEST -> true
+                TransformerUse.PREVIEW -> it.allowPreview
+                TransformerUse.WARMUP -> it.allowWarmup && it.allowPreview
+            }
+        }
         return if (registeredAssembly) selected.sortedBy { it.stage } else selected
     }
 
@@ -106,15 +137,15 @@ internal fun defaultTransformerChainRegistry(
     registeredAssembly: Boolean = USE_REGISTERED_TRANSFORMER_ASSEMBLY,
 ): TransformerChainRegistry = TransformerChainRegistry(
     inputs = listOf(
-        TransformerContribution("builtin.time_reminder", TransformerStage.CORE, TimeReminderTransformer),
-        TransformerContribution("builtin.prompt_injection", TransformerStage.CORE, PromptInjectionTransformer),
-        TransformerContribution("builtin.tavern_macro", TransformerStage.CORE, TavernMacroTransformer),
-        TransformerContribution("builtin.placeholder", TransformerStage.CORE, PlaceholderTransformer),
-        TransformerContribution("builtin.document_prompt", TransformerStage.CORE, DocumentAsPromptTransformer),
-        TransformerContribution("builtin.ocr", TransformerStage.CORE, OcrTransformer),
-        TransformerContribution("builtin.quote", TransformerStage.CORE, QuoteTransformer),
-        TransformerContribution("builtin.template", TransformerStage.TEMPLATE, template),
-        TransformerContribution("builtin.workspace_reminder", TransformerStage.WORKSPACE, workspaceReminder),
+        TransformerContribution("builtin.time_reminder", TransformerStage.CORE, TimeReminderTransformer, allowPreview = true),
+        TransformerContribution("builtin.prompt_injection", TransformerStage.CORE, PromptInjectionTransformer, allowPreview = true),
+        TransformerContribution("builtin.tavern_macro", TransformerStage.CORE, TavernMacroTransformer, allowPreview = true),
+        TransformerContribution("builtin.placeholder", TransformerStage.CORE, PlaceholderTransformer, allowPreview = true),
+        TransformerContribution("builtin.document_prompt", TransformerStage.CORE, DocumentAsPromptTransformer, allowPreview = true),
+        TransformerContribution("builtin.ocr", TransformerStage.CORE, OcrTransformer, false, previewLabel = "图片文字识别（OCR）"),
+        TransformerContribution("builtin.quote", TransformerStage.CORE, QuoteTransformer, allowPreview = true),
+        TransformerContribution("builtin.template", TransformerStage.TEMPLATE, template, allowPreview = true),
+        TransformerContribution("builtin.workspace_reminder", TransformerStage.WORKSPACE, workspaceReminder, false, previewLabel = "工作区环境提醒"),
     ),
     registeredAssembly = registeredAssembly,
 )

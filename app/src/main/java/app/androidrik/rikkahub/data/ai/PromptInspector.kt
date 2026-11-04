@@ -12,6 +12,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.ToolSchemaSize
 import app.androidrik.rikkahub.data.ai.prompts.isCompactionCheckpointPreamble
 import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
+import app.androidrik.rikkahub.data.ai.transformers.TransformerOmission
 import app.androidrik.rikkahub.data.ai.transformers.collectInjections
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.model.InjectionPosition
@@ -39,9 +40,8 @@ import kotlin.uuid.Uuid
  * 用来优化预设」。本仓此前唯一可见途径是 `LogPage` 里的原始 HTTP JSON——需先开两个开关、
  * 是 provider 协议形状（看不出哪段来自哪）、且必须真发一次请求才能看。
  *
- * **不漂移的关键**：本文件不自己组装消息，而是调用 [buildInternalMessages]（与真实请求
- * `GenerationHandler.generateInternal` 同一个函数），并施加**同一个** transformer 链。
- * 因此「预览看到的」与「实际发出的」在结构上一致。
+ * 本文件调用与真实请求同源的 [buildInternalMessages]，应用宿主选出的只读转换子集。
+ * 脚本、OCR 和环境探测等省略项显式随结果返回；预览不承诺包含这些转换后的实发内容。
  */
 
 /** 预览中一段的可读来源标签。 */
@@ -238,6 +238,8 @@ data class PromptInspection(
     val sentHistoryCount: Int,
     /** 会话消息总数（与 [sentHistoryCount] 对比可见 limitContext/压缩的裁剪量） */
     val totalMessageCount: Int,
+    /** 预览未执行的转换；即便 BPE 已精确计数，也不能视为完整实发请求。 */
+    val omittedTransformers: List<String> = emptyList(),
 )
 
 /** [PromptInspection] 的本地化标签集合（Inspector 不依赖 Android 资源字符串，便于单测）。 */
@@ -270,11 +272,10 @@ data class PromptInspectionLabels(
 )
 
 /**
- * 执行一次**只读**拼装：走真实路径同样的 [buildInternalMessages] + transformer 链，
- * 再把结果按来源标注成段。**不落库、不发请求**。
+ * 执行一次预览拼装：走真实路径同源的 [buildInternalMessages]，再按来源标注成段。
  *
- * @param inputTransformers 必须与 `ChatService` 传给生成的是**同一个链**（含 template /
- *   workspace reminder 等），否则预览会与实际请求不一致。
+ * @param inputTransformers 由宿主选择只读子集；本函数不会自行运行被省略的转换。
+ * @param omittedTransformers 省略项随结果显示，区分精确分词与完整实发内容。
  */
 suspend fun inspectPrompt(
     context: Context,
@@ -289,6 +290,7 @@ suspend fun inspectPrompt(
     timing: PromptInspectionTiming? = null,
     /** 首屏快速模式：长文本用字符启发式计数，随后由 [refineTokens] 覆盖成精确值。 */
     approximateTokens: Boolean = false,
+    omittedTransformers: List<TransformerOmission> = emptyList(),
 ): PromptInspection {
     val windowMessages = conversation.currentMessages
 
@@ -545,6 +547,7 @@ suspend fun inspectPrompt(
                 it.segmentKind() == PromptSegmentKind.COMPRESSION_CHECKPOINT
         },
         totalMessageCount = windowMessages.size,
+        omittedTransformers = omittedTransformers.filter { it.appliesTo(model, assistant, transformed) }.map { it.label },
     )
 }
 

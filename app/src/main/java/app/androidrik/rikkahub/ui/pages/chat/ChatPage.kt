@@ -980,7 +980,7 @@ private fun ChatContextCapacitySheet(
                 sentHistoryCount = it.sentHistoryCount,
                 totalMessageCount = it.totalMessageCount,
                 localTotalTokens = it.totalTokens,
-            )
+            ).copy(omittedTransformers = it.omittedTransformers)
         }
     }
     val sheetState = rememberBottomSheetState(
