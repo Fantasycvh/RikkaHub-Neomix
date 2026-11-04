@@ -120,6 +120,7 @@ import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartGate
 import app.androidrik.rikkahub.ui.pages.backup.components.SearchIndexRebuildBanner
 import app.androidrik.rikkahub.ui.pages.chat.ChatPage
 import app.androidrik.rikkahub.ui.pages.debug.DebugPage
+import app.androidrik.rikkahub.ui.pages.debug.PerfOverlay
 import app.androidrik.rikkahub.ui.pages.extensions.ExtensionsPage
 import app.androidrik.rikkahub.ui.pages.plugins.PluginDetailPage
 import app.androidrik.rikkahub.ui.pages.plugins.PluginsPage
@@ -928,6 +929,12 @@ open class RouteActivity : ComponentActivity() {
                                 StatsPage()
                             }
                         }
+                    )
+                    // 性能采样浮层：覆盖所有 App 页面（Debug 页自身除外，避免与 Perf 页重复），
+                    // 采样进行中才显示，点 × 原地停止。
+                    PerfOverlay(
+                        visible = backStack.lastOrNull() !is Screen.Debug,
+                        modifier = Modifier.align(Alignment.TopEnd),
                     )
                     if (BuildConfig.DEBUG) {
                         Text(

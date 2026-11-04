@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.di
 import kotlinx.serialization.json.Json
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
+import app.androidrik.rikkahub.data.perf.PerformanceSampler
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.image.ImageGenerationRunner
 import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
@@ -37,6 +38,9 @@ val appModule = module {
     single {
         AppEventBus()
     }
+
+    // Debug Mode 性能采样器：进程级单例，切到其他界面/离开 Debug 页后仍可继续采样（浮层用）。
+    single { PerformanceSampler() }
 
     single {
         LocalTools(get(), get(), get(), get())

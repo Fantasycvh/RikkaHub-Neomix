@@ -78,7 +78,7 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
             )
         }
     ) { contentPadding ->
-        val state = rememberPagerState { 4 }
+        val state = rememberPagerState { 5 }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -131,6 +131,17 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                         Text("Recovery")
                     }
                 )
+                Tab(
+                    selected = state.currentPage == 4,
+                    onClick = {
+                        scope.launch {
+                            state.animateScrollToPage(4)
+                        }
+                    },
+                    text = {
+                        Text("Perf")
+                    }
+                )
             }
             HorizontalPager(
                 state = state,
@@ -143,6 +154,7 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                     1 -> ColorsPage()
                     2 -> Box {}
                     3 -> RecoveryPage(vm)
+                    4 -> PerfPage()
                 }
             }
         }

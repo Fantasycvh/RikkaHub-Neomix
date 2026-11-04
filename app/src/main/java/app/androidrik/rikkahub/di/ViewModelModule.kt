@@ -7,6 +7,7 @@ import app.androidrik.rikkahub.ui.pages.backup.BackupVM
 import app.androidrik.rikkahub.ui.pages.chat.ChatDrawerVM
 import app.androidrik.rikkahub.ui.pages.chat.ChatVM
 import app.androidrik.rikkahub.ui.pages.debug.DebugVM
+import app.androidrik.rikkahub.ui.pages.debug.PerfVM
 import app.androidrik.rikkahub.ui.pages.favorite.FavoriteVM
 import app.androidrik.rikkahub.ui.pages.search.SearchVM
 import app.androidrik.rikkahub.ui.pages.history.HistoryVM
@@ -72,6 +73,7 @@ val viewModelModule = module {
         )
     }
     viewModelOf(::DebugVM)
+    viewModelOf(::PerfVM)
     viewModelOf(::HistoryVM)
     viewModelOf(::AgentRunsVM)
     viewModelOf(::TaskCenterVM)
