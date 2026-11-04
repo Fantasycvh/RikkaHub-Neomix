@@ -89,20 +89,9 @@ import app.androidrik.rikkahub.data.ai.UsageTag
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.ai.tools.shouldUseExternalWebSearch
-import app.androidrik.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
-import app.androidrik.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
-import app.androidrik.rikkahub.data.ai.transformers.InputMessageTransformer
-import app.androidrik.rikkahub.data.ai.transformers.OcrTransformer
-import app.androidrik.rikkahub.data.ai.transformers.OutputMessageTransformer
-import app.androidrik.rikkahub.data.ai.transformers.PlaceholderTransformer
-import app.androidrik.rikkahub.data.ai.transformers.PromptInjectionTransformer
-import app.androidrik.rikkahub.data.ai.transformers.RegexOutputTransformer
-import app.androidrik.rikkahub.data.ai.transformers.QuoteTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
-import app.androidrik.rikkahub.data.ai.transformers.ThinkTagTransformer
-import app.androidrik.rikkahub.data.ai.transformers.TavernMacroTransformer
-import app.androidrik.rikkahub.data.ai.transformers.TimeReminderTransformer
-import app.androidrik.rikkahub.data.ai.transformers.ToolResultBalancingTransformer
+import app.androidrik.rikkahub.data.ai.transformers.TransformerUse
+import app.androidrik.rikkahub.data.ai.transformers.defaultTransformerChainRegistry
 import app.androidrik.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
@@ -116,8 +105,6 @@ import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.data.datastore.resolveCompressionModel
 import app.androidrik.rikkahub.data.files.FilesManager
-import app.androidrik.rikkahub.data.plugin.PluginInputTransformer
-import app.androidrik.rikkahub.data.plugin.PluginOutputTransformer
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
@@ -414,26 +401,6 @@ class WorkspaceBudgetExhaustedException(
     val by: WorkspaceTurnBudget.ExceedReason,
 ) : Exception("workspace budget: $usedChars/$budgetChars chars, $steps steps")
 
-private val inputTransformers by lazy {
-    listOf(
-        TimeReminderTransformer,
-        PromptInjectionTransformer,
-        TavernMacroTransformer,
-        PlaceholderTransformer,
-        DocumentAsPromptTransformer,
-        OcrTransformer,
-        QuoteTransformer,
-    )
-}
-
-internal val outputTransformers by lazy {
-    listOf(
-        ThinkTagTransformer,
-        Base64ImageToLocalFileTransformer,
-        RegexOutputTransformer,
-    )
-}
-
 /**
  * 拼装预览 / 上下文容量面板的**重活统一调度器**。
  *
@@ -470,8 +437,8 @@ class ChatService(
     private val conversationRepo: ConversationRepository,
     private val memoryRepository: MemoryRepository,
     private val generationHandler: GenerationHandler,
-    private val templateTransformer: TemplateTransformer,
-    /** 插件注册表:转换管线接入点(见 [buildInputTransformerChain] / [pluginOutputTransformers]) */
+    templateTransformer: TemplateTransformer,
+    /** 转换链装配与预览失效检测共用的插件状态真相源。 */
     private val pluginManager: PluginManager,
     private val providerManager: ProviderManager,
     private val chatToolFactory: ChatToolFactory,
@@ -482,8 +449,9 @@ class ChatService(
     /** 标题 / 建议 / 压缩这些不走 GenerationHandler 的请求，在这里包一层记用量流水 */
     private val usageRecorder: UsageRecorder,
 ) {
-    // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
-    private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
+    private val transformerRegistry = defaultTransformerChainRegistry(
+        templateTransformer, WorkspaceReminderTransformer(workspaceRepository),
+    )
 
     /**
      * 标题 / 建议生成的单飞注册表（借鉴 rikkahub-agent `AuxJobRegistry`）：
@@ -491,49 +459,6 @@ class ChatService(
      * 也不再把本地后端的 prompt cache 顶掉。
      */
     private val auxJobs = AuxJobRegistry()
-
-    /**
-     * 插件提供的**输入**转换器。
-     *
-     * 两道门:插件已启用 + 持有 [PluginCapability.PROMPT_TRANSFORM]。
-     * 能力在调用点校验(而非启用时一次性判断),撤销能力后立即从管线消失。
-     */
-    private fun pluginInputTransformers(): List<InputMessageTransformer> =
-        pluginManager.plugins.value
-            .filter { it.enabled && it.hasCapability(PluginCapability.PROMPT_TRANSFORM) }
-            .mapNotNull { it.plugin as? PluginInputTransformer }
-
-    /** 插件提供的**输出**转换器;门槛同 [pluginInputTransformers]。 */
-    private fun pluginOutputTransformers(): List<OutputMessageTransformer> =
-        pluginManager.plugins.value
-            .filter { it.enabled && it.hasCapability(PluginCapability.OUTPUT_TRANSFORM) }
-            .mapNotNull { it.plugin as? PluginOutputTransformer }
-
-    /**
-     * 输入转换链(实发与拼装预览共用,保证预览与真实请求一致)。
-     *
-     * 顺序:内置 → 模板 → 工作区提醒 → 插件 → 工具结果配平(必须是最后一环)。
-     */
-    private fun buildInputTransformerChain(): List<InputMessageTransformer> = buildList {
-        addAll(inputTransformers)
-        add(templateTransformer)
-        add(workspaceReminderTransformer)
-        addAll(pluginInputTransformers())
-        // 配平必须看到最终形态:前面任何一环(含插件)都可能改动消息。
-        add(ToolResultBalancingTransformer)
-    }
-
-    /**
-     * 与 [buildInputTransformerChain] 相同但**不含插件段**。
-     *
-     * 只给"进会话预热"用：预热不该替用户触发插件（可能发网络/写存储），而内置链才是文本量的主体。
-     */
-    private fun buildInputTransformerChainWithoutPlugins(): List<InputMessageTransformer> = buildList {
-        addAll(inputTransformers)
-        add(templateTransformer)
-        add(workspaceReminderTransformer)
-        add(ToolResultBalancingTransformer)
-    }
 
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
@@ -1744,12 +1669,11 @@ class ChatService(
                         conversation = conversation,
                         memories = memories,
                         tools = tools,
-                        // 与实发链同款装配(含插件段),预览与真实请求一致
-                        inputTransformers = if (includePluginTransformers) {
-                            buildInputTransformerChain()
-                        } else {
-                            buildInputTransformerChainWithoutPlugins()
-                        },
+                        // 预览保留插件；预热排除插件。这里只装配，不执行第二条影子链。
+                        inputTransformers = transformerRegistry.snapshot(
+                            pluginManager.plugins.value,
+                            if (includePluginTransformers) TransformerUse.PREVIEW else TransformerUse.WARMUP,
+                        ).inputTransformers,
                         labels = labels,
                         timing = timing,
                         approximateTokens = approximateTokens,
@@ -1944,6 +1868,7 @@ class ChatService(
             // 新一轮生成：清掉上一轮遗留的「未确认回填」快照（见 ConversationSession.lastCommittedMessages）。
             // 不清的话，本轮若在**任何工具回填之前**被取消，停止路径会把上一轮的旧快照并进内存态。
             session.lastCommittedMessages.value = null
+            val transformerChains = transformerRegistry.snapshot(pluginManager.plugins.value)
             generationHandler.generateText(
                 settings = settings,
                 model = model,
@@ -1990,9 +1915,8 @@ class ChatService(
                 frozenAnchorIds = frozenAnchorIds,
                 // GenerationHandler logs the actual shared plan; no second selection/tokenization for logs.
                 memories = loadedMemories,
-                // 内置 → 模板 → 工作区提醒 → 插件 → 工具结果配平(末环);见 buildInputTransformerChain
-                inputTransformers = buildInputTransformerChain(),                // 插件输出转换器接在末尾:内置的 ThinkTag 等先规整,插件处理最终文本
-                outputTransformers = outputTransformers + pluginOutputTransformers(),
+                inputTransformers = transformerChains.inputTransformers,
+                outputTransformers = transformerChains.outputTransformers,
                 // 工具装配集中到 ChatToolFactory（记忆 + 搜索 + 本地 + 对话 + 工作区 + 技能 + MCP）；
                 // 已在上面取好并计时（assembledTools）
                 tools = assembledTools,

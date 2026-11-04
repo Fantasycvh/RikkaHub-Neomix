@@ -16,7 +16,7 @@ import app.androidrik.rikkahub.data.plugin.PluginOutputTransformer
  * 同一套启用开关、能力授权、插件中心展示与生命周期,没有第五套存储。
  *
  * 能力校验在宿主侧完成:只有插件启用且持有对应能力时,
- * ChatService 才会把它挂进输入/输出管线(见 `buildInputTransformerChain`)。
+ * 宿主转换链注册表才会把它挂进输入/输出管线(见 `TransformerChainRegistry`)。
  */
 class JsonRulePlugin(
     val definition: JsonRuleDefinition,

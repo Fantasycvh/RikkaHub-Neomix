@@ -32,6 +32,7 @@ import app.androidrik.rikkahub.data.ai.approvalRequestSummary
 import app.androidrik.rikkahub.data.ai.pendingApprovalTools
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
+import app.androidrik.rikkahub.data.ai.transformers.defaultOutputTransformers
 import app.androidrik.rikkahub.data.task.backgroundApprovalDecision
 import app.androidrik.rikkahub.data.task.awaitRunApproval
 import app.androidrik.rikkahub.data.ai.tools.SubagentDispatchContext
@@ -644,7 +645,7 @@ class SubagentRunner(
                             messages = currentMessages,
                             compressionWindow = null,
                             inputTransformers = emptyList(),
-                            outputTransformers = outputTransformers,
+                            outputTransformers = defaultOutputTransformers,
                             assistant = runProfile,
                             memories = emptyList(),
                             tools = tools,
