@@ -4,6 +4,10 @@ import androidx.datastore.core.CorruptionException
 import androidx.datastore.core.IOException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -62,39 +66,60 @@ class SettingsStoreResilienceTest {
         // 放一个「用户数据」键，验证损坏后它确实丢失（损坏必然丢数据，重点是能恢复可用）
         val launchCountKey = androidx.datastore.preferences.core.intPreferencesKey("launch_count")
 
-        val store = createSettingsDataStore(file) {}
-        val prefs = store.data.first() // 不应抛异常（由 corruptionHandler 兜住）
+        val job = SupervisorJob()
+        try {
+            val store = createSettingsDataStore(file, scope = CoroutineScope(Dispatchers.IO + job), storage = preferencesTestStorage(file)) {}
+            val prefs = store.data.first() // 不应抛异常（由 corruptionHandler 兜住）
 
-        // 原文件必须留一份备份供人工抢救，且内容与原损坏内容一致
-        val backups = tempFolder.root.listFiles()?.filter { it.name.contains(".corrupt-") }.orEmpty()
-        assertEquals("原文件必须留一份备份", 1, backups.size)
-        assertTrue("备份内容应与原损坏文件一致", garbage.contentEquals(backups.first().readBytes()))
+            // 原文件必须留一份备份供人工抢救，且内容与原损坏内容一致
+            val backups = tempFolder.root.listFiles()?.filter { it.name.contains(".corrupt-") }.orEmpty()
+            assertEquals("原文件必须留一份备份", 1, backups.size)
+            assertTrue("备份内容应与原损坏文件一致", garbage.contentEquals(backups.first().readBytes()))
 
-        // 恢复后是「迁移过的全新状态」：用户键已不存在，但库可用（迁移会写入 data_version 等）
-        assertNull("损坏后用户数据不可恢复（可预期）", prefs[launchCountKey])
-        assertNotNull(
-            "重建后的空库应立即跑完迁移（data_version 已写入 ⇒ store 恢复可用）",
-            prefs[SettingsStore.VERSION],
-        )
+            // 恢复后是「迁移过的全新状态」：用户键已不存在，但库可用（迁移会写入 data_version 等）
+            assertNull("损坏后用户数据不可恢复（可预期）", prefs[launchCountKey])
+            assertNotNull(
+                "重建后的空库应立即跑完迁移（data_version 已写入 ⇒ store 恢复可用）",
+                prefs[SettingsStore.VERSION],
+            )
+        } finally {
+            job.cancelAndJoin()
+        }
     }
 
     @Test
     fun `valid settings file round-trips untouched`() = runBlocking {
         val file = File(tempFolder.root, "settings.preferences_pb")
-        val store = createSettingsDataStore(file) {}
+        val job = SupervisorJob()
+        try {
+            val store = createSettingsDataStore(file, scope = CoroutineScope(Dispatchers.IO + job), storage = preferencesTestStorage(file)) {}
 
-        // 正常写入再读出：既验证未误触损坏处理，也守住「文件位置/格式未变」的兼容契约
-        store.updateData { prefs ->
-            prefs.toMutablePreferences().apply {
-                set(androidx.datastore.preferences.core.intPreferencesKey("launch_count"), 7)
+            // 正常写入再读出：既验证未误触损坏处理，也守住「文件位置/格式未变」的兼容契约
+            store.updateData { prefs ->
+                prefs.toMutablePreferences().apply {
+                    set(androidx.datastore.preferences.core.intPreferencesKey("launch_count"), 7)
+                }
             }
+            val read = store.data.first()
+            assertEquals(
+                7,
+                read[androidx.datastore.preferences.core.intPreferencesKey("launch_count")],
+            )
+            val backups = tempFolder.root.listFiles()?.filter { it.name.contains(".corrupt-") }.orEmpty()
+            assertTrue("正常写入不应产生损坏备份", backups.isEmpty())
+        } finally {
+            job.cancelAndJoin()
         }
-        val read = store.data.first()
-        assertEquals(
-            7,
-            read[androidx.datastore.preferences.core.intPreferencesKey("launch_count")],
-        )
-        val backups = tempFolder.root.listFiles()?.filter { it.name.contains(".corrupt-") }.orEmpty()
-        assertTrue("正常写入不应产生损坏备份", backups.isEmpty())
+
+        // The host-compatible fixture must preserve the production protobuf format and migration state.
+        val readerJob = SupervisorJob()
+        try {
+            val reopened = createSettingsDataStore(file, scope = CoroutineScope(Dispatchers.IO + readerJob)) {}
+            val prefs = reopened.data.first()
+            assertEquals(7, prefs[androidx.datastore.preferences.core.intPreferencesKey("launch_count")])
+            assertEquals(6, prefs[SettingsStore.VERSION])
+        } finally {
+            readerJob.cancelAndJoin()
+        }
     }
 }

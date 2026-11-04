@@ -27,12 +27,13 @@ import app.androidrik.rikkahub.ui.pages.backup.tabs.ImportExportTab
 import app.androidrik.rikkahub.ui.pages.backup.tabs.ReminderTab
 import app.androidrik.rikkahub.ui.pages.backup.tabs.S3Tab
 import app.androidrik.rikkahub.ui.pages.backup.tabs.WebDavTab
+import app.androidrik.rikkahub.ui.pages.backup.tabs.SnapshotBackupTab
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun BackupPage(vm: BackupVM = koinViewModel()) {
-    val pagerState = rememberPagerState { 4 }
+    val pagerState = rememberPagerState { 5 }
     val scope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -82,6 +83,11 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     onClick = { scope.launch { pagerState.animateScrollToPage(3) } },
                     text = { Text(stringResource(R.string.backup_page_reminder)) }
                 )
+                Tab(
+                    selected = pagerState.currentPage == 4,
+                    onClick = { scope.launch { pagerState.animateScrollToPage(4) } },
+                    text = { Text("增量备份") }
+                )
             }
 
             HorizontalPager(
@@ -115,6 +121,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     3 -> {
                         ReminderTab(vm = vm)
                     }
+                    4 -> SnapshotBackupTab(vm)
                 }
             }
         }

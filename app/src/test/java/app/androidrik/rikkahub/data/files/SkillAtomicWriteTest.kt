@@ -73,4 +73,21 @@ class SkillAtomicWriteTest {
         assertEquals("不应抛出，应返回 false", false, result.getOrNull())
         assertEquals("原有文件必须完好", "I am a file", blocker.readText())
     }
+
+    @Test
+    fun `partial stream failure preserves existing content and removes staging file`() {
+        val target = File(tempFolder.root, "existing.bin").apply { writeText("original") }
+        val input = object : java.io.InputStream() {
+            private var reads = 0
+            override fun read(): Int = throw UnsupportedOperationException()
+            override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                if (reads++ > 0) throw java.io.IOException("source disconnected")
+                bytes[offset] = 42
+                return 1
+            }
+        }
+        input.use { assertFalse(writeStreamAtomically(target, it)) }
+        assertEquals("original", target.readText())
+        assertEquals(listOf("existing.bin"), tempFolder.root.listFiles()!!.map { it.name })
+    }
 }

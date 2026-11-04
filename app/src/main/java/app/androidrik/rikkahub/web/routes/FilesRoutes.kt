@@ -241,9 +241,11 @@ internal fun resolveWebReadableFile(filesDir: File, relativePath: String): File?
     val rootName = segments.first()
     if (rootName !in WEB_READABLE_FILE_FOLDERS) return null
 
-    val canonicalFilesDir = runCatching { filesDir.canonicalFile }.getOrNull() ?: return null
+    // File.canonicalFile does not resolve Windows symlinks. Resolve existing paths using NIO on every host.
+    val canonicalFilesDir = runCatching { filesDir.toPath().toRealPath().toFile() }.getOrNull() ?: return null
     val expectedRoot = File(canonicalFilesDir, rootName)
-    val canonicalRoot = runCatching { expectedRoot.canonicalFile }.getOrNull()
+    if (java.nio.file.Files.isSymbolicLink(expectedRoot.toPath()) || !expectedRoot.isDirectory) return null
+    val canonicalRoot = runCatching { expectedRoot.toPath().toRealPath().toFile() }.getOrNull()
         ?: return null
     // 根本身必须是**真实目录**，不能是软链：若 `filesDir/upload` 整个软链到 `filesDir/datastore`，
     // 则 canonicalRoot 会等于 datastore 路径（仍在 filesDir 前缀内），仅靠下面的前缀校验就会被绕过。
@@ -251,7 +253,7 @@ internal fun resolveWebReadableFile(filesDir: File, relativePath: String): File?
     if (canonicalRoot.path != expectedRoot.path) return null
 
     val candidate = File(canonicalFilesDir, segments.joinToString("/"))
-    val canonicalCandidate = runCatching { candidate.canonicalFile }.getOrNull() ?: return null
+    val canonicalCandidate = runCatching { candidate.toPath().toRealPath().toFile() }.getOrNull() ?: return null
     if (!canonicalCandidate.path.startsWith(canonicalRoot.path + File.separator)) return null
 
     return canonicalCandidate

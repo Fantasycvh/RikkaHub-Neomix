@@ -4,6 +4,8 @@ import android.util.Log
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 private const val TAG = "AtomicFileWrite"
 
@@ -23,8 +25,8 @@ internal const val ATOMIC_TEMP_PREFIX = "atomic-"
  * 在 IO 协程里没有 try/catch ⇒ 异常冒到 viewModelScope，**保存失败 = 应用崩溃**；
  * 且直接写目标会留下半截文件（原内容已毁）。
  *
- * **与上游的一处差异**：这里检查 `renameTo` 的返回值（上游忽略）。本函数存在的意义就是
- * 「把保存失败如实报出去」，忽略返回值会让失败静默变成成功。
+ * 同目录原子替换使用 NIO ATOMIC_MOVE；File.renameTo 在 Windows 上不能替换已有文件。
+ * 不支持原子替换时如实失败，不先删除目标或退化为拷贝，保留旧内容。
  *
  * 临时文件由 [createAtomicTempFile] 生成**唯一名**（不是固定 `.name.tmp`）：并发写同一
  * 目标时两个写入者不会共用/互删临时文件，见该函数注释。
@@ -84,7 +86,8 @@ private inline fun writeAtomically(target: File, write: (File) -> Unit): Boolean
         val temp = createAtomicTempFile(target)
         tempFile = temp
         write(temp)
-        temp.renameTo(target)
+        Files.move(temp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        true
     } catch (e: Exception) {
         Log.w(TAG, "failed to save ${target.absolutePath}", e)
         false

@@ -79,7 +79,7 @@ class PreferenceStoreV6MigrationTest {
         ) {
             val job = SupervisorJob()
             val store = PreferenceDataStoreFactory.create(
-                scope = CoroutineScope(Dispatchers.IO + job), migrations = migrations, produceFile = { file },
+                scope = CoroutineScope(Dispatchers.IO + job), migrations = migrations, storage = preferencesTestStorage(file),
             )
             try {
                 action(store)

@@ -4,6 +4,7 @@ import android.content.Context
 import app.androidrik.rikkahub.data.ai.account.ensureCatalogSessions
 import android.util.Log
 import androidx.datastore.core.CorruptionException
+import androidx.datastore.core.Storage
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.IOException
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
@@ -22,6 +23,8 @@ import app.androidrik.common.settings.refillBuiltIns
 import app.androidrik.common.settings.resolveSelected
 import io.pebbletemplates.pebble.PebbleEngine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -133,27 +136,32 @@ internal fun shouldRetrySettingsRead(cause: Throwable, attempt: Long): Boolean =
  */
 internal fun createSettingsDataStore(
     file: File,
+    scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    storage: Storage<Preferences>? = null,
     moveAssistantReferences: suspend () -> Unit,
 ): DataStore<Preferences> {
-    return PreferenceDataStoreFactory.create(
-        corruptionHandler = ReplaceFileCorruptionHandler { exception ->
-            Log.e(TAG, "Settings datastore corrupted, resetting", exception)
-            runCatching {
-                file.copyTo(File(file.parentFile, "${file.name}.corrupt-${System.currentTimeMillis()}"))
-            }.onFailure {
-                Log.e(TAG, "Failed to back up corrupted settings file", it)
-            }
-            emptyPreferences()
-        },
-        migrations = listOf(
-            PreferenceStoreV1Migration(),
-            PreferenceStoreV2Migration(),
-            PreferenceStoreV3Migration(),
-            PreferenceStoreV4Migration(),
-            PreferenceStoreV5Migration(),
-            PreferenceStoreV6Migration(moveAssistantReferences),
-        ),
-        produceFile = { file },
+    val corruptionHandler = ReplaceFileCorruptionHandler<Preferences> { exception ->
+        Log.e(TAG, "Settings datastore corrupted, resetting", exception)
+        runCatching {
+            file.copyTo(File(file.parentFile, "${file.name}.corrupt-${System.currentTimeMillis()}"))
+        }.onFailure {
+            Log.e(TAG, "Failed to back up corrupted settings file", it)
+        }
+        emptyPreferences()
+    }
+    val migrations = listOf(
+        PreferenceStoreV1Migration(),
+        PreferenceStoreV2Migration(),
+        PreferenceStoreV3Migration(),
+        PreferenceStoreV4Migration(),
+        PreferenceStoreV5Migration(),
+        PreferenceStoreV6Migration(moveAssistantReferences),
+    )
+    // JVM tests inject a host-compatible real storage; Android retains the default FileStorage backend.
+    return if (storage == null) PreferenceDataStoreFactory.create(
+        corruptionHandler = corruptionHandler, migrations = migrations, scope = scope, produceFile = { file },
+    ) else PreferenceDataStoreFactory.create(
+        storage = storage, corruptionHandler = corruptionHandler, migrations = migrations, scope = scope,
     )
 }
 

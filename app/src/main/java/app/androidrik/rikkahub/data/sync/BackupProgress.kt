@@ -14,6 +14,8 @@ import java.util.zip.ZipFile
  * 设计见 `docs/design/design-backup-workspace-files.md` §9.1。
  */
 enum class BackupPhase {
+    SCANNING,
+    COMMITTING,
     /** 打包：读取源文件写入 zip */
     PACKING,
 

@@ -42,6 +42,10 @@ import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 import app.androidrik.rikkahub.utils.UiState
 import java.io.File
+import android.net.Uri
+import app.androidrik.rikkahub.data.sync.repo.*
+import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
+import kotlinx.coroutines.CancellationException
 
 private const val TAG = "BackupVM"
 
@@ -51,7 +55,94 @@ class BackupVM(
     private val s3Sync: S3Sync,
     private val conversationRepository: ConversationRepository,
     private val filesManager: FilesManager,
+    private val incrementalBackup: IncrementalBackupService,
 ) : ViewModel() {
+    internal val snapshotDestination = MutableStateFlow(BackupDestination.LOCAL)
+    internal val localBackupTarget = MutableStateFlow<LocalBackupTarget?>(null)
+    internal val snapshots = MutableStateFlow<List<BackupSnapshotManifest>>(emptyList())
+    internal val snapshotBusy = MutableStateFlow(false)
+    internal val snapshotError = MutableStateFlow<String?>(null)
+    internal val snapshotNotice = MutableStateFlow<String?>(null)
+    internal val snapshotPlan = MutableStateFlow<BackupSnapshotPlan?>(null)
+
+    private fun snapshotTask(block: suspend () -> Unit) {
+        if (snapshotBusy.value) return
+        snapshotBusy.value = true
+        snapshotError.value = null
+        viewModelScope.launch {
+            try { block() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { snapshotError.value = failure.message ?: "备份操作失败" }
+            finally { snapshotBusy.value = false; clearProgress() }
+        }
+    }
+
+    internal fun loadSnapshots() = snapshotTask {
+        localBackupTarget.value = withContext(Dispatchers.IO) { incrementalBackup.localTarget() }
+        snapshots.value = if (snapshotDestination.value == BackupDestination.LOCAL && localBackupTarget.value == null) emptyList()
+        else incrementalBackup.list(snapshotDestination.value)
+    }
+
+    internal fun selectSnapshotDestination(destination: BackupDestination) {
+        if (snapshotBusy.value || snapshotPlan.value != null) return
+        snapshotDestination.value = destination
+        snapshots.value = emptyList()
+        loadSnapshots()
+    }
+
+    internal fun attachBackupFolder(uri: Uri, flags: Int) = snapshotTask {
+        localBackupTarget.value = incrementalBackup.attachLocal(uri, flags)
+        snapshots.value = incrementalBackup.list(BackupDestination.LOCAL)
+    }
+
+    internal fun detachBackupFolder() = snapshotTask {
+        incrementalBackup.detachLocal()
+        localBackupTarget.value = null
+        snapshots.value = emptyList()
+    }
+
+    internal fun prepareSnapshot() = snapshotTask {
+        withContext(Dispatchers.IO) { snapshotPlan.value?.close() }
+        snapshotPlan.value = null
+        snapshotPlan.value = incrementalBackup.plan(snapshotDestination.value, ::reportProgress)
+    }
+
+    internal fun cancelSnapshotPlan() {
+        if (snapshotBusy.value) return
+        val plan = snapshotPlan.value
+        snapshotPlan.value = null
+        viewModelScope.launch(Dispatchers.IO) { plan?.close() }
+    }
+
+    internal fun commitSnapshot() {
+        val plan = snapshotPlan.value ?: return
+        snapshotTask {
+            snapshotPlan.value = null
+            try {
+                incrementalBackup.commit(plan, ::reportProgress)
+                recordBackupTime()
+                snapshotNotice.value = "增量备份完成"
+            } finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { plan.close() } }
+            localBackupTarget.value = withContext(Dispatchers.IO) { incrementalBackup.localTarget() }
+            snapshots.value = incrementalBackup.list(snapshotDestination.value)
+        }
+    }
+
+    internal fun restoreSnapshot(snapshot: BackupSnapshotManifest) = snapshotTask {
+        val outcome = incrementalBackup.restore(snapshotDestination.value, snapshot, ::reportProgress)
+        if (outcome.settingsWarnings.isNotEmpty()) snapshotNotice.value = outcome.settingsWarnings.joinToString("\n")
+        RestoreRestartSignal.requestRestart()
+    }
+
+    internal fun deleteSnapshot(snapshot: BackupSnapshotManifest) = snapshotTask {
+        incrementalBackup.delete(snapshotDestination.value, snapshot)
+        snapshots.value = incrementalBackup.list(snapshotDestination.value)
+    }
+
+    override fun onCleared() {
+        snapshotPlan.value?.let { plan -> java.util.concurrent.ForkJoinPool.commonPool().execute { plan.close() } }
+        super.onCleared()
+    }
     val settings = settingsStore.settingsFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,

@@ -379,6 +379,12 @@ val dataSourceModule = module {
         )
     }
 
+    single {
+        app.androidrik.rikkahub.data.sync.repo.IncrementalBackupService(
+            context = get(), settings = get(), database = get(), httpClient = get(), json = get(),
+        )
+    }
+
     // 这里原本有一个指向 `https://api.rikka-ai.com`（上游作者自己的中转）的 Retrofit 与
     // `RikkaHubAPI`（**空接口**，全仓零调用）。那个内置供应商已从出厂默认移除 ⇒ 两者都是死代码，
     // 一并删掉：留着等于把一个已经不再提供的上游服务地址继续编进包里。

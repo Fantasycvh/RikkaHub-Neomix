@@ -473,7 +473,7 @@ class S3Client(
             }
 
             if (!response.status.isSuccess()) {
-                throw S3Exception("Object not found: ${response.status}", "")
+                throw S3Exception("Object not found: ${response.status}", "", response.status.value)
             }
 
             S3ObjectMetadata(
@@ -727,4 +727,5 @@ data class S3ListResult(
 class S3Exception(
     message: String,
     val responseBody: String,
+    val statusCode: Int? = null,
 ) : Exception(message)
