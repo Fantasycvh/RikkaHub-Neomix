@@ -13,6 +13,8 @@ data class PluginInfo(
     val plugin: RikkaPlugin,
     val enabled: Boolean,
     val grants: Set<PluginCapability>,
+    /** 最近一次生命周期错误；失败实例保持不可调用，允许用户重试启用。 */
+    val failure: Throwable? = null,
 ) {
     fun hasCapability(capability: PluginCapability): Boolean = capability in grants
 }
@@ -27,6 +29,11 @@ data class PluginInfo(
  * 观察者只应做同步注册/注销;耗时工作交给插件自己的 [RikkaPlugin.onEnable]。
  */
 interface PluginLifecycleObserver {
+    /** 新的宿主贡献必须通过 resources 安装，不能按名字清除其他实例的贡献。 */
+    suspend fun onPluginEnabled(plugin: RikkaPlugin, resources: PluginResources) {
+        onPluginEnabled(plugin)
+    }
+
     suspend fun onPluginEnabled(plugin: RikkaPlugin) {}
 
     suspend fun onPluginDisabled(plugin: RikkaPlugin) {}

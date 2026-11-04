@@ -8,6 +8,7 @@ import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.api.RikkaPlugin
 import app.androidrik.plugin.manager.PluginLifecycleObserver
 import app.androidrik.plugin.manager.PluginManager
+import app.androidrik.plugin.manager.PluginResources
 import app.androidrik.rikkahub.data.ai.transformers.TransformerContext
 import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRegistry
 
@@ -30,15 +31,11 @@ val builtInPlugins: List<RikkaPlugin> = listOf(
  * 注册时机与注销时机应由宿主统一保证——禁用后残留的渲染器会让"已关闭的插件"继续影响界面。
  */
 private object PluginToolUIObserver : PluginLifecycleObserver {
-    override suspend fun onPluginEnabled(plugin: RikkaPlugin) {
+    override suspend fun onPluginEnabled(plugin: RikkaPlugin, resources: PluginResources) {
         if (plugin is PluginToolUIRendererProvider) {
-            plugin.toolRenderers.forEach(ToolUIRegistry::register)
-        }
-    }
-
-    override suspend fun onPluginDisabled(plugin: RikkaPlugin) {
-        if (plugin is PluginToolUIRendererProvider) {
-            plugin.toolRenderers.forEach { ToolUIRegistry.unregister(it.toolName) }
+            plugin.toolRenderers.forEach { renderer ->
+                resources.register { ToolUIRegistry.register(renderer) }
+            }
         }
     }
 }

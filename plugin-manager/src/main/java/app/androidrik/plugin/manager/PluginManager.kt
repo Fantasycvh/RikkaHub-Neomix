@@ -3,10 +3,16 @@ package app.androidrik.plugin.manager
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.api.RikkaPlugin
 import java.util.concurrent.CopyOnWriteArrayList
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,8 +30,8 @@ import kotlinx.coroutines.sync.withLock
  * 3. 插件中心调用 [setEnabled] / [setApprovedCapabilities],状态即时落盘。
  *
  * 线程模型:所有读走 [plugins] 的 StateFlow 快照;写操作经 [mutex] 串行化。
- * 插件的 [RikkaPlugin.onEnable]/[onDisable] 在锁内调用,插件实现不得反过来
- * 调用管理器(会死锁)——这是刻意从窄的契约。
+ * 生命周期在全局锁外、按注册实例串行执行。启用成功后才发布 enabled；停用立即撤销贡献资格。
+ * 回调可查询状态和修改授权；同实例的递归生命周期操作会显式拒绝，避免等待自身死锁。
  */
 class PluginManager(
     private val scope: CoroutineScope,
@@ -34,7 +40,25 @@ class PluginManager(
     private val mutex = Mutex()
 
     /** 已注册插件(保持注册顺序,决定插件中心展示顺序)。 */
-    private val registered = LinkedHashMap<String, RikkaPlugin>()
+    private class Entry(val plugin: RikkaPlugin) {
+        val lifecycle = Mutex()
+        var activation: Activation? = null
+    }
+
+    private class Activation {
+        val resources = PluginResources()
+        var started = false
+        var completed = false
+        var cleaned = false
+        val notified = mutableListOf<PluginLifecycleObserver>()
+    }
+
+    private class LifecycleCall(val entry: Entry, val parent: LifecycleCall?) : AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<LifecycleCall>
+        fun contains(target: Entry): Boolean = entry === target || parent?.contains(target) == true
+    }
+
+    private val registered = LinkedHashMap<String, Entry>()
 
     /** 当前视图,按注册顺序排序。 */
     private val infos = LinkedHashMap<String, PluginInfo>()
@@ -49,17 +73,18 @@ class PluginManager(
 
     private val observers = CopyOnWriteArrayList<PluginLifecycleObserver>()
 
-    private val ready = CompletableDeferred<Unit>()
-
     private val loadJob = scope.async(start = CoroutineStart.LAZY) {
-        val persisted = runCatching { stateStore.read() }.getOrDefault(emptyMap())
+        val persisted = try {
+            stateStore.read()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyMap()
+        }
         mutex.withLock {
             states.clear()
             states.putAll(persisted)
-            // 注册若抢先发生(理论上不会,register 会先 await),这里补一次解析。
-            registered.values.forEach { plugin -> resolveLocked(plugin) }
         }
-        ready.complete(Unit)
     }
 
     /** 启动持久化状态加载(幂等;不调用也会在首次 [awaitReady] 时隐式启动)。 */
@@ -75,33 +100,46 @@ class PluginManager(
     }
 
     /** 注册一个内置插件(重复 id 静默忽略)。 */
-    suspend fun register(plugin: RikkaPlugin) {
+    suspend fun register(plugin: RikkaPlugin): PluginRegistration {
         awaitReady()
-        mutex.withLock {
-            if (registered.containsKey(plugin.id)) return
-            registered[plugin.id] = plugin
-            resolveLocked(plugin)
+        val entry = Entry(plugin)
+        val activation = mutex.withLock {
+            // 重复 id 保持 no-op；返回的句柄不拥有已有注册。
+            if (registered.containsKey(plugin.id)) return PluginRegistration { false }
+            registered[plugin.id] = entry
+            val state = states[plugin.id]
+            val activation = if (state?.enabled ?: plugin.enabledByDefault) Activation() else null
+            entry.activation = activation
+            publishLocked(plugin.id, PluginInfo(plugin, false, resolveGrants(plugin, state)))
+            activation
         }
-        val info = infos[plugin.id] ?: return
-        if (info.enabled) {
-            plugin.onEnable()
-            notifyObservers(plugin, enabled = true)
-        }
+        if (activation != null) activate(entry, activation)
+        return PluginRegistration { unregisterEntry(plugin.id, entry) }
     }
 
     /** 启用/禁用插件并落盘。 */
     suspend fun setEnabled(pluginId: String, enabled: Boolean) {
         awaitReady()
-        val plugin = mutex.withLock {
+        val (entry, previous, next) = mutex.withLock {
             val info = infos[pluginId] ?: return
-            if (info.enabled == enabled) return
-            states[pluginId] = (states[pluginId] ?: PluginState()).copy(enabled = enabled)
-            persistLocked()
-            publishLocked(pluginId, info.copy(enabled = enabled))
-            info.plugin
+            val entry = registered.getValue(pluginId)
+            checkNotReentrant(entry)
+            if (enabled && entry.activation != null) return
+            if (!enabled && entry.activation == null &&
+                !(states[pluginId]?.enabled ?: entry.plugin.enabledByDefault)
+            ) return
+            val updated = (states[pluginId] ?: PluginState()).copy(enabled = enabled)
+            stateStore.write(states.toMap() + (pluginId to updated))
+            states[pluginId] = updated
+            val previous = entry.activation
+            previous?.resources?.invalidate()
+            val next = if (enabled) Activation() else null
+            entry.activation = next
+            publishLocked(pluginId, info.copy(enabled = false, failure = null))
+            Triple(entry, previous, next)
         }
-        if (enabled) plugin.onEnable() else plugin.onDisable()
-        notifyObservers(plugin, enabled)
+        if (previous != null) deactivate(entry, previous)
+        if (next != null) activate(entry, next)
     }
 
     /**
@@ -148,17 +186,23 @@ class PluginManager(
      */
     suspend fun unregister(pluginId: String): Boolean {
         awaitReady()
-        val (plugin, wasEnabled) = mutex.withLock {
-            val info = infos[pluginId] ?: return false
+        return unregisterEntry(pluginId, null)
+    }
+
+    private suspend fun unregisterEntry(pluginId: String, expected: Entry?): Boolean {
+        val (entry, activation) = mutex.withLock {
+            val entry = registered[pluginId] ?: return false
+            if (expected != null && entry !== expected) return false
+            checkNotReentrant(entry)
+            val activation = entry.activation
+            activation?.resources?.invalidate()
+            entry.activation = null
             infos.remove(pluginId)
             registered.remove(pluginId)
             _plugins.value = registered.keys.mapNotNull { id -> infos[id] }
-            info.plugin to info.enabled
+            entry to activation
         }
-        if (wasEnabled) {
-            runCatching { plugin.onDisable() }
-            notifyObservers(plugin, enabled = false)
-        }
+        if (activation != null) deactivate(entry, activation)
         return true
     }
 
@@ -176,17 +220,6 @@ class PluginManager(
         _plugins.value.filter { it.enabled }.map { it.plugin }.filterIsInstance(type)
 
     // ---- 内部 ----
-
-    private fun resolveLocked(plugin: RikkaPlugin) {
-        val state = states[plugin.id]
-        val enabled = state?.enabled ?: plugin.enabledByDefault
-        val info = PluginInfo(
-            plugin = plugin,
-            enabled = enabled,
-            grants = resolveGrants(plugin, state),
-        )
-        publishLocked(plugin.id, info)
-    }
 
     private fun publishLocked(pluginId: String, info: PluginInfo) {
         infos[pluginId] = info
@@ -213,17 +246,103 @@ class PluginManager(
         publishLocked(pluginId, info.copy(grants = resolveGrants(info.plugin, updated)))
     }
 
-    private suspend fun persistLocked() {
-        // 传快照:写盘期间不暴露可变 Map;失败不回滚内存态(下次操作会再写)。
-        val snapshot = states.toMap()
-        runCatching { stateStore.write(snapshot) }
+    private suspend fun checkNotReentrant(entry: Entry) {
+        check(coroutineContext[LifecycleCall]?.contains(entry) != true) {
+            "Recursive plugin lifecycle operation: ${entry.plugin.id}"
+        }
     }
 
-    private suspend fun notifyObservers(plugin: RikkaPlugin, enabled: Boolean) {
-        observers.forEach { observer ->
-            runCatching {
-                if (enabled) observer.onPluginEnabled(plugin) else observer.onPluginDisabled(plugin)
+    private suspend fun activate(entry: Entry, activation: Activation) {
+        try {
+            entry.lifecycle.withLock {
+                withContext(LifecycleCall(entry, coroutineContext[LifecycleCall])) {
+                    if (!activation.resources.isActive) return@withContext
+                    try {
+                        activation.started = true
+                        entry.plugin.onEnable()
+                        for (observer in observers) {
+                            if (!activation.resources.isActive) break
+                            activation.notified += observer
+                            observer.onPluginEnabled(entry.plugin, activation.resources)
+                        }
+                        mutex.withLock {
+                            if (registered[entry.plugin.id] === entry && entry.activation === activation &&
+                                activation.resources.isActive
+                            ) {
+                                activation.completed = true
+                                publishLocked(entry.plugin.id, infos.getValue(entry.plugin.id).copy(enabled = true))
+                            }
+                        }
+                    } catch (failure: Throwable) {
+                        activation.resources.invalidate()
+                        withContext(NonCancellable) {
+                            mutex.withLock {
+                                if (registered[entry.plugin.id] === entry && entry.activation === activation) {
+                                    entry.activation = null
+                                    publishLocked(entry.plugin.id, infos.getValue(entry.plugin.id).copy(
+                                        enabled = false, failure = failure,
+                                    ))
+                                }
+                            }
+                            try { cleanup(entry, activation) } catch (error: Throwable) {
+                                if (error !== failure) failure.addSuppressed(error)
+                            }
+                        }
+                        throw failure
+                    }
+                    if (!activation.resources.isActive) withContext(NonCancellable) { cleanup(entry, activation) }
+                }
+            }
+        } catch (failure: Throwable) {
+            // Cancellation may occur while waiting for this instance's previous lifecycle callback.
+            activation.resources.invalidate()
+            withContext(NonCancellable) {
+                mutex.withLock {
+                    if (registered[entry.plugin.id] === entry && entry.activation === activation) {
+                        entry.activation = null
+                        publishLocked(entry.plugin.id, infos.getValue(entry.plugin.id).copy(enabled = false, failure = failure))
+                    }
+                }
+                try { deactivate(entry, activation) } catch (error: Throwable) {
+                    if (error !== failure) failure.addSuppressed(error)
+                }
+            }
+            throw failure
+        }
+    }
+
+    private suspend fun deactivate(entry: Entry, activation: Activation) {
+        withContext(NonCancellable) {
+            try {
+                entry.lifecycle.withLock {
+                    withContext(LifecycleCall(entry, coroutineContext[LifecycleCall])) { cleanup(entry, activation) }
+                }
+            } catch (failure: Throwable) {
+                mutex.withLock {
+                    if (registered[entry.plugin.id] === entry && entry.activation == null) {
+                        publishLocked(entry.plugin.id, infos.getValue(entry.plugin.id).copy(failure = failure))
+                    }
+                }
+                throw failure
             }
         }
+        coroutineContext.ensureActive()
+    }
+
+    /** 尝试所有清理项，错误汇总后抛出；每次启用的清理最多执行一次。 */
+    private suspend fun cleanup(entry: Entry, activation: Activation) {
+        if (activation.cleaned) return
+        activation.cleaned = true
+        var failure: Throwable? = null
+        suspend fun attempt(block: suspend () -> Unit) {
+            try { block() } catch (error: Throwable) {
+                if (failure == null) failure = error else if (failure !== error) failure.addSuppressed(error)
+            }
+        }
+        attempt { activation.resources.close() }
+        if (activation.started) attempt { entry.plugin.onDisable() }
+        val targets = if (activation.completed) observers.toList() else activation.notified.toList()
+        targets.forEach { observer -> attempt { observer.onPluginDisabled(entry.plugin) } }
+        failure?.let { throw it }
     }
 }

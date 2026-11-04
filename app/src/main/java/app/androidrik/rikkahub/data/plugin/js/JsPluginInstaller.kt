@@ -107,21 +107,21 @@ class JsPluginInstaller(
      * 网络能力用**闭包**在调用点查询:撤销 NETWORK 后立即失效,
      * 不必等插件重启(设计教训 #1:「每个能力在调用点校验」)。
      */
-    private fun newPlugin(definition: JsPluginDefinition) = JsPlugin(
-        definition = definition,
-        context = context,
-        gateway = gateway,
-        networkGranted = {
-            manager.plugins.value
-                .firstOrNull { it.plugin.id == definition.id }
-                ?.let { it.enabled && it.hasCapability(PluginCapability.NETWORK) } == true
-        },
-        keyValueStore = keyValueStore,
-        capabilityGranted = { capability ->
-            manager.plugins.value.firstOrNull { it.plugin.id == definition.id }
-                ?.let { it.enabled && it.hasCapability(capability) } == true
-        },
-    )
+    private fun newPlugin(definition: JsPluginDefinition): JsPlugin {
+        lateinit var plugin: JsPlugin
+        fun granted(capability: PluginCapability): Boolean = manager.plugins.value.any {
+            it.plugin === plugin && it.enabled && it.hasCapability(capability)
+        }
+        plugin = JsPlugin(
+            definition = definition,
+            context = context,
+            gateway = gateway,
+            networkGranted = { granted(PluginCapability.NETWORK) },
+            keyValueStore = keyValueStore,
+            capabilityGranted = ::granted,
+        )
+        return plugin
+    }
 
     private companion object {
         const val MAX_FETCH_BYTES = 512 * 1024

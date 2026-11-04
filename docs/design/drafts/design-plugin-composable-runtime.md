@@ -1,6 +1,6 @@
 # 可组合插件运行时设计：借鉴 DeepSeek Harness
 
-> 状态：**设计草稿 rev2，尚未实施**。本次授权范围仍为形成设计稿并本地提交，不代表批准实现或启动重构。
+> 状态：**rev2，P1a 代码与本地单测完成，尚未完成整期验收**。2026-11-04 完成 §十二启动准备，后获「开始实施」授权推进 §十三；P1a 本地提交已获授权，推送未授权。
 > 日期：2026-11-03（初稿同日早间；rev2 为晚间复核）。代码基线：初稿 `50ae353cc`，rev2 `7f46f4238`。
 > 推荐方向（rev2）：**原生 Android 宿主内的「契约化装配」优先；「动态运行时」降级为 P1 决策门后的
 > 条件选项**，外部扩展继续走受控 JS / MCP。rev2 依据见 §2.3，修订摘要见 §十。
@@ -416,7 +416,7 @@ P0 需要落实的实施决策：
 再按决策门决定是否继续；「替换搜索实现」不再是验证目标（搜索已是服务形态，见 §5.1）。
 MCP host 模式（导出本仓工具给外部客户端）仍是独立未立项项，本文不并入；若启动，其工具
 schema / 审批 / 网关应与 P2 复用同一契约。
-本文尚未启动任何阶段，也未改变既有插件或任务运行行为。
+P0 启动准备及基线见 §十二；后续 P1a 生命周期实现进展见 §十三，转换链尚未切换。
 
 ### 8.1 JS 运行时候选基准（rev2 增补；不改变结论）
 
@@ -652,7 +652,7 @@ P2 = 工具来源/审批统一（已收窄）；P4 = 助手组合与绑定（条
 
 未改动：§2.1 借鉴依据、§三.2 三种扩展机制、§三.3 概念接口草图、§四 具体清理/审批语义、
 §七 可观测性、§九 的固定版本证据索引。
-后续若启动 P0，先把「服务归属表 + 配置/备份迁移结论」写进本文，再改代码。
+P0 启动准备已在 §十二补入「服务归属表 + 配置/备份迁移结论」；验收证据尚未齐备，不能据此宣布 P0 完成。
 本地提交只验证文档结构、链接与差异，不代表批准实施。
 
 ## 十一、外部参照：dsh-Go 的声明式原生插件协议
@@ -754,3 +754,142 @@ Flutter/Dart；于是在「网页岛 / ui.json / 服务端驱动原生组件 / �
 
 相关 schema 与 `check` 实现在 `sdk/plugin-kit/schema`、`sdk/plugin-kit/bin/check.mjs`，
 本次未逐行阅读、未运行；市场检查规则的边界与误报说明以 market README 为准。
+
+## 十二、P0 启动准备（2026-11-04）
+
+本节以本地 HEAD `113772825` 为代码基线，工作区开始时干净。用户要求「准备推进插件化重构」，
+本轮落实代码盘点、边界决策与实施拆分；文件保持本地草稿，产品行为未切换。§一至§十一的
+外部项目资料沿用历史记录，本轮未重新核验上游，不据此新增依赖或平台承诺。
+
+### 12.1 首批范围与类型归属
+
+继续采用 rev2 第一层。P1 先沿用现有模块，在 app 内抽出转换链装配器；公共契约先形成源码草图，
+有实际独立消费者后再决定 Gradle 提取，不先创建 `runtime-api` / `plugin-runtime` 空模块。
+
+| 类型或能力 | P0/P1 归属与实例范围 | 选择、覆盖与兼容规则 |
+|---|---|---|
+| `UIMessage` / `UIMessagePart` / 消息角色 | 继续归 `ai`；运行内传递现有消息值 | 不复制消息模型、不改历史序列化类型；提取纯 Kotlin 模块另行评估传递依赖 |
+| `Tool` / `InputSchema` | 继续归 `ai/core`，宿主按 Run 装配 | `Tool` 含执行闭包、模型和消息依赖，并非可直接外发的纯 schema；P2 再分离外部描述与宿主执行 |
+| `RikkaPlugin` / 能力清单 | 继续归 `plugin-api`，Host 注册 | 保留 Compose 设置入口；该模块与 `ai` 都依赖 Android/Compose，不能宣称公共 API 已平台无关 |
+| `PluginManager` / 状态与授权 | `plugin-manager` 的 Host 单例 | 唯一插件注册表；P1 增实例代次与清理所有权，保持当前启停及授权入口 |
+| 输入/输出转换器、`TransformerContext` | app 内受信任契约；每次执行构造上下文 | 多实现有序集合；Context、Settings、Assistant 不对外暴露；外部 JS 继续使用既有受控桥 |
+| 转换链装配器 | app 宿主长期服务，按调用构建链快照 | 显式阶段与稳定贡献 id；旧插件段先保留注册顺序，不能直接改成 id 排序导致语义变化 |
+| 时间、模板、工作区提醒与协议配平 | 宿主提供贡献；时间提醒作首个注册化样例 | 先完整保持链序；工具结果配平固定为宿主末阶段，插件不能覆盖或跨越 |
+| 工具 UI 注册与通用兜底 | app UI，Host 注册、插件实例拥有贡献 | 清理句柄必须绑定 owner/generation；缺插件沿用通用渲染，不改历史工具名 |
+| 搜索、MCP、Skills、工作区 | 各现有模块/宿主服务，权限按现有执行边界 | 保留现有选择和配置；首批不允许插件替换宿主网关或审批策略 |
+| 模型目录与 Provider 路由 | `ai` Provider 契约 + app 目录仓库/缓存 | 仍按 ProviderSetting/凭据作用域选择；本期只作对照评审，不开动态 Provider 注册 |
+| 记忆、压缩、标题、生成循环与任务控制 | 现有 app 服务；会话/Run 隔离沿用现状 | 保持内置实现与现有参数，不增加覆盖层或新的状态真相源 |
+
+P1 契约草图：贡献描述至少有 `id`、输入/输出方向、阶段、稳定顺序、预热适用性和所有者；
+注册返回可幂等释放的句柄，句柄捕获实例代次。装配器返回现有 transformer 列表，
+继续调用 `transformsCollectingVolatileSpans` / `visualTransforms` / `onGenerationFinish`。
+这只是仓内装配接口，不是第三方稳定 SDK；依赖图、修订持有、热更新不进入本批。
+
+### 12.2 必须固定的行为样例
+
+源码锚点：`ChatService.kt` 的 `inputTransformers`、`outputTransformers`、
+`buildInputTransformerChain`、`buildInputTransformerChainWithoutPlugins`、`assemblePipeline`；
+`Transformer.kt` 的三个执行入口；`BuiltInPlugins.kt` 的 `PluginToolUIObserver`。
+
+| 场景 | 当前事实 / P1 验收要求 |
+|---|---|
+| 实发输入顺序 | TimeReminder → PromptInjection → TavernMacro → Placeholder → DocumentAsPrompt → Ocr → Quote → Template → WorkspaceReminder → 插件注册顺序 → ToolResultBalancing；迁移前后相同 |
+| 输出顺序 | ThinkTag → Base64ImageToLocalFile → RegexOutput → 插件注册顺序；存储转换、视觉转换、生成结束分别验证，不能合并钩子 |
+| 预热与预览 | 预热传 `includePluginTransformers=false`；`assemblePipeline` 默认 true，预览与实发共链可能执行插件。先固定两种基线；安全预览要另列行为变更，不能作为重构顺带改变 |
+| 预览安全的待决策点 | §5.1 的「预览/预热不执行副作用钩子」是目标，当前尚未完全满足；P1 需定义可执行钩子标记及预览不完整提示，再启用新预览策略 |
+| token 与易变区段 | 保持消息 id 对齐、UTF-16 范围重定位和 token 计数；保留子代理 notice 恢复与 `messagesForRequest` 收尾 |
+| 授权撤销 | 输入/输出构链时保留 enabled + grants 过滤；工具、HTTP、存储继续执行时检查，不把注册时授权当作长期许可 |
+| 同 id 重装 | 旧 onEnable/onDisable、延迟观察者与旧 dispose 都不能登记或清除新实例的贡献；测试用挂起屏障构造交错，不靠延时碰运气 |
+| 启动失败与取消 | 插件 onEnable 或贡献安装中途失败不得留下已发布的可用贡献；协程取消原样传播；失败清理后可再次安装 |
+
+本轮确认的两个实施风险：`PluginManager` 的类注释称回调在锁内，实际 register/setEnabled/
+unregister 在释放锁后调用生命周期与观察者；不能按注释推导并发安全。工具 UI 观察者用
+`unregister(toolName)` 清理，尚无实例归属；仅给 manager 加代次而不改贡献清理仍不能闭环。
+P1a 必须同时覆盖生产者回调、消费者登记和清理，避免只修一个 Map。
+
+### 12.3 配置、迁移与备份结论
+
+1. P1 不增持久化字段；插件启用/授权继续只有 `plugin_states` 一份真相源，规则/JS 定义继续各自保存。
+2. P4 的助手绑定沿主 Settings 迁移链扩展，同时实现备份导入的 `data/datastore/migration/SettingsJsonMigrator.kt`。
+   当前是 V1–V6，V7 仅为当前候选号；实施时重新检查是否被其他功能占用，不把版本号当作预留锁。
+3. 插件定义、启停/授权和插件持久化存储需要显式备份覆盖与恢复语义。`BackupFolderRegistry`
+   管理 `FileFolders` 目录，不能靠给它加一行就声称独立 Preferences DataStore 已覆盖；
+   需要备份引擎的逻辑条目/导出导入及往返测试。P1 不借此改备份格式。
+4. 模型目录快照仍是可重建缓存，不进备份；新增持久化文件目录登记 registry 并补覆盖测试。
+5. `ignoreUnknownKeys` 只能保证读取，不保证旧版回写保留新绑定。降级探测、缺插件保留配置、
+   旧备份无授权记录时的恢复策略须在 P4 明确，未定之前不声称配置降级无损或备份可恢复。
+
+### 12.4 第一批实施拆分与退出条件
+
+| 批次 | 具体交付 | 合入前证据 |
+|---|---|---|
+| P0 剩余基线 | 固定上述样例、现有合约单测与同条件设备性能采样 | 记录命令、结果、设备/样本和阈值；源码盘点不能替代运行证据 |
+| P1a 注册所有权 | manager 实例代次/句柄、生命周期失败清理、工具 UI 按归属释放；修正线程模型注释 | 同 id 重装交错、旧回调/清理、重复 dispose、失败重试、取消与既有授权测试通过 |
+| P1b 链装配抽取 | 内置/插件统一贡献描述与装配器；TimeReminder 试点；ChatService 只消费链结果 | 旧链与新链纯数据样例一致，新增转换器只改注册定义；配平末位不可被插件重排 |
+| P1c 行为验收 | 输出三类钩子、token/notice、预热、预览策略与旧 JSON/JS 插件兼容 | 不重复执行有副作用的旧/新路径；WebView/生命周期实机验证，设备性能与 P0 同条件对照 |
+| P1 决策记录 | 记录目录契约对照结论和是否需要第二层 | 无新的运行时消费者证据则停在第一层，验收回滚窗口后移除旧链和试点开关 |
+
+P1a 的注册身份由 manager 生成，释放时比较身份而非只比较插件 id/工具名；待实现时选定
+串行生命周期或受代次保护的状态机，不能通过持有全局 Mutex 调用任意插件回调造成反向调用死锁。
+P1b 起每次调用只选一条装配路径，保留临时宿主开关以便回滚；该开关不授予插件额外权限。
+
+### 12.5 本轮验证与未完成项
+
+- 已复核上述本地源码和模块构建文件；本轮改动仅为本设计草稿。
+- 尝试命令：`./gradlew.bat :plugin-manager:testDebugUnitTest --console=plain`。
+  首次失败于 Gradle 启动阶段，自动下载 JBR 21.0.10 的 HEAD 请求失败。
+  本机实际已有 PATH 中的 Temurin 21.0.12，以及 Android Studio 自带的 JetBrains JDK 21.0.8；
+  仓库固定 `toolchainVendor=JETBRAINS`，首次未发现本机 JBR，不能将下载失败等同于未安装 JDK 21。
+  本轮不修改仓库 toolchain 要求，通过当前命令进程的环境与显式发现路径复用本机工具链：
+
+  ```powershell
+  $env:JAVA_HOME='D:\android-studio-2025.2.2.8-windows\jbr'
+  $env:GRADLE_USER_HOME='D:\A-projects-relaygradle'
+  .\gradlew.bat '-Dorg.gradle.java.installations.paths=D:\android-studio-2025.2.2.8-windows\jbr' :plugin-manager:testDebugUnitTest --console=plain
+  ```
+
+- 重试结果：`BUILD SUCCESSFUL`（1m 3s）；`PluginManagerTest` 实际执行 14 项，失败 0、错误 0、跳过 0。
+  JDK 发现问题已解决，后续验证沿用上述本机环境。此结果只覆盖插件管理器现有单测。
+- 尚需补齐：转换链等其余相关单测基线、P0 行为样例的执行证据及设备性能基线。
+  因此本轮完成的是 P0 启动准备，P0 验收与 P1 实现均未完成。
+
+## 十三、P1a 实施记录（2026-11-04）
+
+用户明确要求「开始实施」后进入本批；§十二保留启动准备当时的结论。本批先完成注册所有权，
+不以本批替代 P0 的转换链/性能基线，也不宣称 P1 全部验收完成。
+
+### 13.1 实现边界
+
+- `PluginManager.register` 返回注册实例句柄，重复 id 仍为 no-op；旧句柄释放时比较 Entry 身份，
+  不能卸载同 id 的新实例。每次重新启用创建独立 Activation 资源容器，身份对象承担代次语义。
+- 全局 Mutex 只保护状态；生命周期回调按 Entry 串行、在全局锁外执行。启动完成后才发布
+  `enabled=true`，停用或卸载先撤销贡献资格，再等待已有回调退出。回调可操作其他插件和授权，
+  递归等待自身或祖先生命周期会显式失败，不依赖全局锁避免竞态。
+- 新宿主观察者使用 `PluginResources.register` 安装短小同步贡献。关闭后延迟回调不能安装；
+  清理逆序、幂等且逐项尝试，聚合异常继续上抛。旧观察者签名保留作源码兼容，新增贡献必须走资源容器。
+- 启动/观察者失败或取消会撤回本次资源并尝试 onDisable；保留失败插件的不可调用视图及
+  `PluginInfo.failure`，支持重新启用。启停写盘成功后才改变内存意图；失败后仍可明确禁用并持久化。
+- 工具 UI 返回单次注册句柄，关闭旧句柄不会删除新贡献；覆盖项释放后恢复仍有效的上一项或内置渲染器。
+  旧宿主按名注销入口保留，但插件观察者已不再使用它。
+- JS 的网络/工具/存储授权闭包同时核对注册的插件对象身份，阻止旧对象借同 id 新实例获得授权。
+
+本批仍是受信任宿主契约，不是原生恶意代码沙箱。停用会等待挂起的生命周期回调收尾，
+未引入强杀原生回调、热更新依赖图或配置修订。UI 实机验收及后续转换链试点仍需分别记录。
+
+### 13.2 验证记录
+
+沿用 §12.5 的本机 JBR 与 Gradle 缓存，最终命令：
+
+```powershell
+.\gradlew.bat '-Dorg.gradle.java.installations.paths=D:\android-studio-2025.2.2.8-windows\jbr' :plugin-manager:testDebugUnitTest :app:testDebugUnitTest --tests 'app.androidrik.rikkahub.data.plugin.*' --console=plain
+```
+
+结果：`BUILD SUCCESSFUL`；管理器 27 项（既有 14 + 新增生命周期/资源测试 13），app 插件相关
+99 项（含新增工具 UI 注册测试 2），共 **126 项，失败 0、错误 0、跳过 0**。
+app Kotlin/Java 编译通过；`git diff --check` 通过。未安装 APK、未执行 WebView instrumented
+或 UI 实机验收，不能据此声明 Android 生命周期整体验收完成。
+
+新增测试用 `CompletableDeferred` 屏障覆盖同 id 重装、挂起观察者、启动/安装失败与重试、
+启用取消、停用取消、启停交错、清理失败继续释放、写盘失败、旧句柄幂等及嵌套生命周期等待环；
+工具 UI 验证同一 renderer 对象重复注册时的旧清理隔离与覆盖项释放后的回退。
+下一批为 P1b 转换链装配抽取，仍需先固定对应行为基线；本批没有引入运行时模块或更改持久化 schema。

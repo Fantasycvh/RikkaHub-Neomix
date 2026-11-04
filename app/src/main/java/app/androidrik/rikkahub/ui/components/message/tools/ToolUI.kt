@@ -106,7 +106,7 @@ private object DefaultToolUIRenderer : ToolUIRenderer {
  * `resolve` 读取该版本号 ⇒ 注册/注销后读取过它的 Compose 内容自动重组。
  */
 object ToolUIRegistry {
-    private val renderers: MutableMap<String, ToolUIRenderer> = listOf(
+    private val renderers: Map<String, ToolUIRenderer> = listOf(
         MemoryToolUI,
         SearchWebToolUI,
         ScrapeWebToolUI,
@@ -131,27 +131,36 @@ object ToolUIRegistry {
         TaskStatusToolUI,
         KillTaskToolUI,
         GenerateImageToolUI,
-    ).associateBy { it.toolName }.toMutableMap()
+    ).associateBy { it.toolName }
+
+    private class Contribution(val renderer: ToolUIRenderer)
+    private val contributions = mutableMapOf<String, MutableList<Contribution>>()
 
     private val versionState = mutableIntStateOf(0)
 
     /** 注册表版本号;Compose 内容读取它即可在动态注册/注销后重组。 */
     val version: Int get() = versionState.intValue
 
-    /** 注册(或覆盖)一个渲染器;插件启用时调用。 */
-    fun register(renderer: ToolUIRenderer) {
-        synchronized(this) {
-            renderers[renderer.toolName] = renderer
-            versionState.intValue += 1
+    /** 返回只释放本次贡献的句柄；释放覆盖项后恢复仍存活的前一项或内置渲染器。 */
+    fun register(renderer: ToolUIRenderer): AutoCloseable = synchronized(this) {
+        val contribution = Contribution(renderer)
+        contributions.getOrPut(renderer.toolName) { mutableListOf() }.add(contribution)
+        versionState.intValue += 1
+        AutoCloseable {
+            synchronized(this) {
+                val entries = contributions[renderer.toolName]
+                if (entries?.remove(contribution) == true) {
+                    if (entries.isEmpty()) contributions.remove(renderer.toolName)
+                    versionState.intValue += 1
+                }
+            }
         }
     }
 
-    /** 注销渲染器;插件禁用时调用(未注册时无副作用)。 */
-    fun unregister(toolName: String) {
-        synchronized(this) {
-            if (renderers.remove(toolName) != null) {
-                versionState.intValue += 1
-            }
+    /** 兼容宿主按名清除动态贡献；插件必须使用 register 返回的句柄。 */
+    fun unregister(toolName: String) = synchronized(this) {
+        if (contributions.remove(toolName) != null) {
+            versionState.intValue += 1
         }
     }
 
@@ -159,7 +168,9 @@ object ToolUIRegistry {
     fun resolve(toolName: String): ToolUIRenderer {
         // 读取版本号:动态注册后读取方(Compose)重组,否则新渲染器要等页面重建才生效
         versionState.intValue
-        return renderers[toolName] ?: DefaultToolUIRenderer
+        return synchronized(this) {
+            contributions[toolName]?.lastOrNull()?.renderer ?: renderers[toolName] ?: DefaultToolUIRenderer
+        }
     }
 }
 
