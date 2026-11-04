@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.AtomicFile
+import android.util.Log
 import app.androidrik.rikkahub.BuildConfig
 import app.androidrik.rikkahub.data.DataOperation
 import app.androidrik.rikkahub.data.DataOperationLock
@@ -29,6 +30,13 @@ import java.util.UUID
 
 internal enum class BackupDestination { LOCAL, WEBDAV, S3 }
 
+/** 增量快照保留份数上限（按设备、按 createdAt 保留最新 N 份；0 = 不限）。 */
+internal const val DEFAULT_SNAPSHOT_RETENTION = 10
+
+/** 本机增量备份仓库设置（与 Settings 分开存：不改变已提交设置 schema，读写都在服务层）。 */
+@Serializable
+internal data class SnapshotRetentionConfig(val keep: Int = DEFAULT_SNAPSHOT_RETENTION)
+
 @Serializable
 internal data class LocalBackupTarget(val treeUri: String, val repoId: String?, val name: String, val canWrite: Boolean = true)
 
@@ -44,7 +52,29 @@ class IncrementalBackupService(
     private val cache = File(context.cacheDir, "incremental_backup")
     private val stateDir = File(context.filesDir, FileFolders.BACKUP_INDEX)
     private val targetFile get() = File(stateDir, "local-target.json")
+    private val retentionFile get() = File(stateDir, "snapshot-retention.json")
     private var cacheInitialized = false
+
+    /** 当前应用 DB schema 版本；UI 用于提示「旧版本快照将按当前结构恢复」。 */
+    internal val currentSchemaVersion: Int get() = AppDatabase.SCHEMA_VERSION
+
+    internal fun snapshotRetention(): Int = if (retentionFile.exists()) {
+        runCatching { json.decodeFromString<SnapshotRetentionConfig>(retentionFile.readText()).keep }
+            .getOrDefault(DEFAULT_SNAPSHOT_RETENTION)
+    } else DEFAULT_SNAPSHOT_RETENTION
+
+    internal fun setSnapshotRetention(keep: Int) {
+        val normalized = if (keep <= 0) 0 else keep.coerceIn(1, 100)
+        check(stateDir.isDirectory || stateDir.mkdirs())
+        val atomic = AtomicFile(retentionFile)
+        val stream = atomic.startWrite()
+        try {
+            stream.write(json.encodeToString(SnapshotRetentionConfig(normalized)).toByteArray())
+            atomic.finishWrite(stream)
+        } catch (failure: Throwable) {
+            atomic.failWrite(stream); throw failure
+        }
+    }
 
     /** Only once per singleton lifetime, before any live plan exists. Interrupted previous-process tasks are disposable. */
     private fun engine(onProgress: (BackupProgress) -> Unit = {}): IncrementalBackupEngine {
@@ -179,23 +209,51 @@ class IncrementalBackupService(
     internal suspend fun commit(plan: BackupSnapshotPlan, onProgress: (BackupProgress) -> Unit): BackupSnapshotManifest = withContext(Dispatchers.IO) {
         mutex.withLock {
             DataOperationLock.runWaiting(DataOperation.BACKUP) {
-                val result = engine(onProgress).commit(plan)
+                val engine = engine(onProgress)
+                val result = engine.commit(plan)
                 localTarget()?.takeIf { it.treeUri == plan.store.destinationId }?.let { saveTarget(it.copy(repoId = result.repoId)) }
+                // 保留策略：提交成功后按「本设备最新 N 份」清理旧快照清单；对象留给手动 GC。
+                runCatching { engine.pruneSnapshots(plan.store, deviceId(), snapshotRetention()) }
+                    .onFailure { Log.w("IncrementalBackup", "prune snapshots failed", it) }
                 result
+            }
+        }
+    }
+
+    /** 手动按保留策略清理旧快照（不动对象）。 */
+    internal suspend fun prune(destination: BackupDestination): SnapshotPruneResult = withContext(Dispatchers.IO) {
+        mutex.withLock { engine().pruneSnapshots(store(destination), deviceId(), snapshotRetention()) }
+    }
+
+    /** 手动回收未引用对象；只允许单设备仓库，失败即停止（见引擎实现）。 */
+    internal suspend fun garbageCollect(destination: BackupDestination): ObjectGcResult = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            DataOperationLock.runWaiting(DataOperation.STORAGE_CLEANUP) {
+                engine().garbageCollect(store(destination))
             }
         }
     }
 
     internal suspend fun restore(destination: BackupDestination, snapshot: BackupSnapshotManifest, onProgress: (BackupProgress) -> Unit): RestoreOutcome = withContext(Dispatchers.IO) {
         mutex.withLock {
+            val warnings = ArrayList<String>()
             val zip = DataOperationLock.runWaiting(DataOperation.RESTORE) {
                 engine(onProgress).assemble(store(destination), snapshot, AppDatabase.SCHEMA_VERSION) { objects, dir ->
                     // P2：以当前库的 VACUUM 副本为底，把快照对象整表替换进去；未覆盖表（FTS/本机进度）保留。
+                    // 跨 schema：快照 dbVersion 可以比当前旧，列交集/新增列默认值由 DatabaseObjectMerge 兜底。
                     val base = File(dir, "restore-base.db")
                     try {
                         database.openHelper.writableDatabase.execSQL("VACUUM main INTO ?", arrayOf(base.absolutePath))
                         check(base.isFile && base.length() > 0) { "Failed to copy the current database for restore" }
-                        DatabaseObjectMerge.merge(base, objects.map { it.objectKey to it.raw }, snapshot.dbVersion)
+                        DatabaseObjectMerge.merge(
+                            baseDb = base,
+                            objects = objects.map { it.objectKey to it.raw },
+                            currentDbVersion = AppDatabase.SCHEMA_VERSION,
+                            snapshotDbVersion = snapshot.dbVersion,
+                        ) { warning ->
+                            warnings += warning
+                            Log.w("IncrementalBackup", "restore merge: $warning")
+                        }
                         base
                     } catch (failure: Throwable) {
                         base.delete()
@@ -207,6 +265,7 @@ class IncrementalBackupService(
                 val outcome = BackupArchiveEngine(settings, json, context, database).restoreFromBackupFile(zip, snapshot.items, onProgress)
                 // 逻辑对象快照不含 FTS；换库后由启动期按当前数据重建搜索索引。
                 if (snapshot.dbObjects.isNotEmpty()) FtsRebuildPending.mark(context.filesDir)
+                if (warnings.isNotEmpty()) Log.i("IncrementalBackup", "restore cross-schema warnings=${warnings.size}")
                 outcome
             } finally { zip.parentFile?.deleteRecursively() }
         }

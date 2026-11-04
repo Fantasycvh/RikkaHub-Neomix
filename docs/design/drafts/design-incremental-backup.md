@@ -1,10 +1,12 @@
 # 增量备份设计稿：文件区内容寻址 + DB 分层增量
 
-> 状态：**设计草稿（2026-11-03）**。**P0 前置修复已落地**（2026-11-03，见 §2.4）；
-> **P1 首版代码已实现（2026-11-04，见 §0.2），尚待真实目录/provider 与云端验收**；P2 未实施。
+> 状态：**设计草稿（2026-11-03 起，2026-11-04 更新）**。**P0 前置修复已落地**（2026-11-03，见 §2.4）；
+> **P1 已完成**（2026-11-04，见 §0.2–§0.5；存储端加固与 Android 框架验收见 §0.4）；
+> **P2 已落地（工作树未提交，见 §0.6–§0.7）**：DB 逻辑对象增量、跨 schema 恢复、FTS 重建进度 UX、
+> 对象 GC/保留策略均已实现；更细对象、append-only 游标与真实远端 UI 冒烟仍未实施。
 > 本稿是「如何实现增量备份」的完整设计输入，不是已完成功能的记录。
 > **2026-11-04 复核**：新增 §0.1，记录当前代码核对和协议修订。与后文原方案冲突时以 §0.1 为准；
-> P1 暂不包含自动保留/对象 GC，P2 逻辑恢复尚未达到可实施状态。
+> 其中「P1 暂不包含自动保留/对象 GC」是 P1 阶段的决策，P2 已按 §0.7 补齐（GC 限单设备仓库）。
 > **2026-11-04 已确认范围**：用户接受本地目录仓库，选择一个“备份文件夹”，与 S3/WebDAV 共用增量协议；
 > 详见 §5.14。此后用户已要求开始 P1 实现，当前落地范围与验证结果见 §0.2。
 >
@@ -224,6 +226,229 @@
   **30 项全部通过**。`:app:assembleDebug` 与 `git diff --check` 同样通过。
 
 §0.2 的失败数字保留为当时的基线记录，当前不再有这 12 项失败。上述回归不替代 P1 真机验收。
+
+### 0.4 P1 存储端加固与 Android 框架集成验证（2026-11-04）
+
+本轮继续收尾 P1，不推进共享对象 GC 或 P2。以下改动不改变已提交的快照格式：
+
+- WebDAV 只在目录 PROPFIND 返回 404 时创建目录，鉴权/网络/其他错误直接失败；创建后再次验证
+  确为目录，避免将 405 或同名文件误认为建目录成功。
+- WebDAV 列表按请求集合的 URI 识别直接子项，不依赖响应顺序或 `displayname`。
+  支持编码后的空格/中文，拒绝跨集合、跨站、重复解码名称和非直接子项；旧 ZIP 列表同步使用此规则。
+  S3 列举也检查响应 key 确实位于请求前缀内。
+- SAF 按返回 Cursor 的列名读取 document ID、名称、类型和大小，不假定列顺序。
+- S3/WebDAV 下载原语接受 `maxBytes`，在响应头已超限时拒绝，在未知长度时逐块检查后才写盘。
+  增量仓库将清单/对象预算直接传到下载原语；旧 ZIP 调用保留原有默认行为。
+
+**新增验证**：
+
+- 新增 4 项 JVM WebDAV 列表测试，覆盖父集合位于末尾、显示名不等于文件名、编码与越界/重复响应。
+- 最终 `:app:testDebugUnitTest`：**2992 项，0 失败/错误，2 跳过**；常规应用 ID 的
+  `:app:assembleDebug` 和 `git diff --check` 通过。
+- 在 Android 15 / API 35 真机运行 `IncrementalStorageInstrumentedTest`：**6 项通过，0 失败/跳过**。
+  SAF 使用真实 `DocumentsContract`、Cursor 和文件描述符，经 `ContentResolver.wrap` 接入测试
+  `DocumentsProvider`（重排返回列且大小未知）；包含首备、零变化复用、修改后增量、旧/新快照恢复与删除。
+  另验证提供方故障和自动改名不会被当作正常提交。
+- 同一真机上使用实际 Ktor/OkHttp、Android XML 解析与 S3/WebDAV 客户端访问 **127.0.0.1 回环夹具**，
+  验证三轮备份、旧/新恢复、403 时不 MKCOL、带/不带 Content-Length 时的下载预算。
+  S3 夹具只检查存在签名请求，不验证 AWS 身份认证或厂商实现，也未覆盖 multipart 上传。
+- 使用 `-PbackupIsolatedTests=true` 构建独立包
+  `app.androidrik.rikkahub.backupverification.debug`，复用隔离 runner，避免安装覆盖已有用户/Debug 配置；
+  全部输入为自造内容，不读取设置、对话或备份凭据。测试命令：
+
+```text
+gradlew :app:connectedDebugAndroidTest -PbackupIsolatedTests=true -Pandroid.testInstrumentationRunnerArguments.class=app.androidrik.rikkahub.data.sync.repo.IncrementalStorageInstrumentedTest
+```
+
+**仍待验收**：系统目录选择与持久授权、真实 DocumentsUI/第三方 provider、可移动卷与进程中断、
+真实 S3/WebDAV 厂商及大文件 multipart、应用恢复后重启/回滚；以上框架和回环测试不替代这些场景。
+
+### 0.5 P1 完成结论（2026-11-04）
+
+用户确认 P1 完成。完成时的验收边界：
+
+- **已通过**：全量 JVM 单测 **2992 项，0 失败/错误，2 跳过**（2026-11-04 复核重跑）；
+  `:app:assembleDebug` 通过；新增 WebDAV 列表（4 项）、S3 前缀校验、SAF 假 provider（41 项）
+  等 JVM 测试；Android 15 真机 `IncrementalStorageInstrumentedTest` **6 项通过**（§0.4），
+  含真实 `DocumentsContract`/Cursor 与 loopback Ktor/OkHttp 夹具。
+- **未覆盖（不阻塞 P1 完成，按 §0.2/§0.4 记录）**：真实第三方 DocumentsUI provider/可移动卷/
+  进程中断，真实 S3/WebDAV 厂商与大文件 multipart，恢复后重启与回滚矩阵；共享对象 GC、
+  自动保留、定时备份、加密按设计明确不包含在 P1。
+- **后续**：P2（DB 对象级增量）未启动；P1.5 可在需要时评估对象 GC、pack 引用与哈希缓存。
+
+### 0.6 P2 首版落地记录（2026-11-04，工作树未提交）
+
+> 用户已要求开始 P2。本记录只描述**已写进工作树、尚未提交**的首版实现与验证；
+> 是否提交/推送需另行授权（AGENTS.md）。
+
+**范围与决策（首版收窄，先跑通再扩）**：
+
+- **快照格式 v2**：`BackupSnapshotManifest` 新增 `dbObjects: List<SnapshotDbObject>`；
+  新快照不再包含 `rikka_hub.db` 文件对象，而是若干逻辑 DB 对象（内容寻址、可跨快照去重）。
+  v1 清单仍可读、可恢复（`formatVersion` 缺省为 1；v1 继续允许 `dbVersion <= 当前`）。
+- **对象集合（首版只做两类，覆盖 98% 字节）**：
+  - `conversation:<uuid>`：该会话的 `ConversationEntity` 行 + 其全部 `message_node` 行 +
+    `compression_checkpoint` 行，三者放在同一个 JSONL 对象里（会话是硬删 + CASCADE，
+    按会话整体替换最贴近现有语义）；
+  - `table:<name>`：其余**全部非排除表**整表导出（含空表）——首版用「整表替换」换正确性，
+    不按 assistant/游标拆对象。
+  - **排除**：`message_fts*`（含 `message_fts_rowid`，派生可重建）、`room_master_table`/
+    `android_metadata`/`sqlite_*`（库簿记）、`memory_review_cursor`（本机复核水位，可重建）。
+    注意 `memory_consolidation` **不能排除**：它挂 CASCADE 外键指向 `conversationentity`，
+    排除后合并会留下孤儿进度行并让 `foreign_key_check` 失败，所以它作为整表对象随快照替换
+    （体积可忽略）。排除清单集中在 `DatabaseObjectProtocol.EXCLUDED_DB_TABLES`。
+- **payload 格式**（`DatabaseObjectProtocol.kt`）：每对象一个 JSONL 文件，首行 header
+  `{"v":1,"objectKey":...,"tables":{"<实际表名>":["列",...]}}`，其后每行
+  `{"t":"<表>","r":[值...]}`。值编码：JSON null、整数/浮点（保留 INTEGER/FLOAT 亲和性）、
+  TEXT 字符串、`{"$blob":base64}`、`{"$real":"NaN|Infinity|-Infinity"}`。
+  压缩仍复用 `SnapshotObjectCodec`（整对象 DEFLATE），对象 sha256/大小与文件对象同一套去重协议。
+- **捕获**（`DatabaseObjectCapture.kt`）：`VACUUM main INTO` 出的**一致性快照**上，
+  用平台 `android.database.sqlite` 只读普通表（先过滤排除表再读列，避免 FTS 分词器在
+  无 `libsimple` 的进程里被解析），会话对象按 `id`/`conversation_id` 过滤，表对象按主键
+  （否则 rowid）排序；payload 写完即删快照与 `-wal/-shm`。
+- **恢复合并**（`DatabaseObjectMerge.kt`）：以**当前库的 `VACUUM INTO` 副本**为基底
+  （当前 schema，天然含新表/新列），`PRAGMA foreign_keys=OFF` + 单事务：先清空快照覆盖的
+  全部表，再按对象表顺序插入；插入列 = payload 列 ∩ 当前表列（新列取默认值，旧列忽略），
+  最后 `PRAGMA foreign_key_check`，有违例则整份丢弃、恢复失败；`journal_mode=DELETE` 后
+  交给现有 staged restore。**FTS 表故意不重建**：随基底保留，启动后整库重建。
+- **拼 zip 复用现有恢复**（`IncrementalBackupEngine.assemble` 增加 `mergeDatabase` 回调）：
+  v2 快照恢复时先下载/解码 db 对象 → 合并出 `rikka_hub.db` → 与 settings/files 一起拼成
+  **标准 v2 zip**（`DATABASE` section 的字节数/哈希按合并后的文件填）→ 原样调用
+  `BackupArchiveEngine.restoreFromBackupFile`。破坏性恢复、`PendingRestoreStore`、
+  safety backup、重启换库全部零改动。
+- **FTS 重建**：恢复成功后写 `files/backup_index/fts_rebuild_pending` 标记
+  （`FtsRebuildPending`）；`RikkaHubApp` 在 `StartupState.Ready` 之后用 `AppScope` 后台调
+  `ConversationRepository.rebuildAllIndexes()`，成功清标记、失败保留以便下次启动重试。
+- **版本闸门**：v2 快照要求 `snapshot.dbVersion <= 当前 AppDatabase.SCHEMA_VERSION`；更新版本快照拒绝。
+  跨 schema 的合并语义（清空范围、列交集/默认值、跳过已删除表并告警）与验证见 §0.7；v1 同样 `<=`。
+- **UI**：快照对象数/数据库大小按 `files + dbObjects` 汇总显示（`SnapshotBackupTab`）。
+
+**验证**：
+
+- JVM：`:app:testDebugUnitTest` **3008 项通过，0 失败/错误，2 跳过**（新增 16 项：
+  `DatabaseObjectProtocolTest` 6、`IncrementalDatabaseBackupTest` 8、`FtsRebuildPendingTest` 2，
+  另有既有 repo 测试覆盖 v1 兼容/损坏对象/版本闸门等）。
+- Android 15 真机（PJX110）：
+  - `DatabaseObjectCaptureMergeInstrumentedTest` **3/3**：合成库捕获→合并、清空/插入顺序、
+    FK 违例拒绝、版本不匹配拒绝、额外本机表保留、列交集默认值；
+  - `DatabaseObjectRealSchemaInstrumentedTest` **1/1**：真实 Room schema（含 `libsimple` FTS）
+    捕获→合并，平台 SQLite `integrity_check=ok`、`foreign_key_check` 无违例、Room 可正常打开，
+    即与恢复暂存校验同款检查通过。含「快照里没有的旧会话 + 其记忆整理进度」用例：验证
+    `memory_consolidation` 必须随快照整表替换，否则孤儿进度行会让 FK 校验失败。
+  - 另在真机空库（当前 schema）做了一次只读捕获冒烟：21 个表对象、payload 4.3 KB、
+    FTS 对象 0、`memory_consolidation` 正常导出。
+- **真实数据补测（2026-11-04 19:20–19:22，debug 库 269 会话 / 7,588 节点 / 113.5 MiB）**：
+  用 `adb shell am instrument` 直接跑一次性测量（只 VACUUM 副本，不改 app 数据）：
+  - 现库 118,989,824 B（+ WAL 17,848 B）→ VACUUM 快照 118,990,848 B / **537 ms**；
+  - 捕获 **3.06 s** → 290 个对象（269 会话 + 21 整表）；payload **55,706,027 B（53.1 MiB，
+    占 DB 46.8%）**；其中会话对象 54,645,349 B、表对象 1,060,678 B（`usage_record` 855 KB、
+    `MemoryEntity` 160 KB 为主）；FTS 对象 0、`memory_consolidation` 正常导出；
+  - 首份 v2 快照上传体积估算（逐对象 DEFLATE，2.3 s）：**19,956,998 B（19.0 MiB）**，
+    同数据 P1 整库压缩态约 50 MB ⇒ **约 -60%**；单会话改动上传约 **KB～0.7 MB**
+    （最大的 5 个会话压缩后 527–727 KB，`usage_record` 表 75 KB）；
+  - 同 schema 合并回当前库副本 **3.57 s**：merged 118,866,944 B；`integrity_check=ok`、
+    `foreign_key_check` 0 违例、`user_version=58`；会话/节点/检查点/记忆整理行数与现库完全一致，
+    逐表 payload 行数 vs 合并结果 mismatch=0；
+  - FTS 重建端到端实测：预置 `fts_rebuild_pending` 后冷启动，**20 s 内标记被清除**，
+    logcat 出现 `RikkaHubApp: search index rebuilt after snapshot restore`（重建本身约 15 s，
+    非此前担心的分钟级），启动钩子链路验证通过。
+- **真实数据全链路 e2e（2026-11-04 19:29–19:33，同一 debug 库，跑了两轮）**：
+  一次性 instrumentation 用测试本地内容寻址目录实现 `BackupObjectStore`（与 SAF/S3/WebDAV 同一
+  `v3/` 布局，避开 UI/SAF 授权依赖），走真实 `plan→commit→assemble(merge)→restoreFromBackupFile
+  →标记 FTS→冷启动换库`，并在备份后插入 canary 会话验证回滚：
+  - 首份快照：290 对象 / payload 55,706,027 B，内容寻址对象实际上传 `60,665,061 B（57.9 MiB，
+    含 FILES 对象）`，其中 DB 逻辑对象 19.96 MB（上条前测）；
+  - 数据未变的第二份快照：**内容对象上传 0 B**（`uploadBytes=0`，仅提交新的快照 manifest），
+    即增量语义在真实仓库上成立；
+  - 组装 + 合并：**12.6～13.8 s**，产出 zip 114–127 MB；`restoreFromBackupFile` 暂存换库
+    **20.2～22.2 s**（`workspaceFilesRestored=3`、`settingsWarnings=[]`、`pending=true`）；
+  - 冷启动（instrumentation 起进程）：boot 应用暂存换库 → Ready → FTS 重建完成，
+    从 tokenizer 安装到 `search index rebuilt` 约 **20～21 s**；
+  - 校验（两轮均通过）：会话/节点/检查点/记忆整理行数与字节数与快照基线**完全一致**
+    （269/7,588/2/6，`messageBytes=32,966,764`、`nodesBytes=538`），canary 会话/节点均为 0 行，
+    `message_fts` **7,762 行**，`integrity_check=ok`、无 FK 违例。
+- `:app:assembleDebug` / `:app:assembleDebugAndroidTest` 通过；`git diff --check` 通过。
+
+**首版边界（其中前三项已在 §0.7 补齐）**：~~跨 schema 对象恢复~~、~~FTS 重建进度 UX~~、
+~~对象 GC/保留策略~~（均已实现，见 §0.7）；仍未做：`memory_store:<assistantId>` 等更细对象、
+append-only 流水游标、真实 S3/WebDAV/SAF 远端网络上传与 UI 入口冒烟
+（本轮 e2e 用本地目录 store 验证同一协议与恢复链路）、GC 跨设备协调。
+
+### 0.7 P2 后续三项落地记录（2026-11-04，工作树未提交）
+
+> 接 §0.6。用户要求继续处理「跨 schema 恢复、FTS 重建进度 UX、对象 GC/保留策略」。
+> 以下只描述**已写进工作树、尚未提交/推送**的实现与验证（AGENTS.md 提交授权另议）。
+
+**1. 跨 schema 恢复**
+
+- **版本闸门**：`assemble` 对 v2 只要求 `snapshot.dbVersion <= 当前 AppDatabase.SCHEMA_VERSION`；
+  更新版本的快照仍直接拒绝（「Snapshot database is from a newer app version」）。
+  首版保守的 `==` 已放开（见 §5.9 对应条目）。
+- **合并语义**（`DatabaseObjectMerge.merge(baseDb, objects, currentDbVersion, snapshotDbVersion, onWarning)`）：
+  - 基底仍是当前库的 `VACUUM INTO` 副本，且基底 `user_version` 必须等于当前版本；
+  - `snapshotDbVersion < currentDbVersion` 时**清空所有非排除表**——旧快照不含新版本新增的表，
+    保留当前内容会与新恢复的会话产生悬空引用（FK 校验失败）；清空等价于「旧版本全新库 → 走 Room 迁移」；
+    同版本时只清快照覆盖的表，保留本机/新增表（与原行为一致）；
+  - 插入列 = payload 列 ∩ 当前表列：新增列取默认值并告警，已删除列忽略；快照里有而当前库没有的**表/对象**
+    跳过并告警（不中断恢复）；空插入列但有行等非法 payload 仍拒绝；
+  - 合并后 `foreign_key_check`，有违例整份放弃；`journal_mode=DELETE` 后交给现有 staged restore。
+- **无法自动迁移**：列改名/语义变化只能靠告警（设计稿 §8.1 R12）。恢复确认框与快照卡片都显示
+  「快照 vN → 当前 vM」提示，让用户在覆盖前看到风险。
+- 调用方传入 `currentDbVersion = AppDatabase.SCHEMA_VERSION`、`snapshotDbVersion = snapshot.dbVersion`，
+  合并 warning 汇总进 logcat。
+
+**2. FTS 重建进度 UX**
+
+- 新增 `A/data/db/fts/SearchIndexRebuildState.kt`：`Idle / Running(done,total) / Succeeded(conversations) /
+  Failed(message)` + `SearchIndexRebuildSignal`（StateFlow；started/progress/succeeded/failed/reset）。
+- `RikkaHubApp.rebuildSearchIndexIfPending()` 在 `StartupState.Ready` 后发 started/progress/succeeded/failed；
+  成功清 `fts_rebuild_pending`，失败保留标记并在状态里给出原因；新增 `retrySearchIndexRebuild()`
+  （仅 Ready 时允许，重置状态后重跑）。
+- 新增 `SearchIndexRebuildBanner`（根 UI 覆盖层，`RouteActivity` 用它包住 `AppStartupGateContent`）：
+  重建中显示「正在重建搜索索引 done/total 个会话」；失败显示错误 + 「重试」。任何页面可见，成功自动消失。
+- `SnapshotBackupTab` 同步显示同一状态（运行中/失败/已重建 N 个会话），便于在备份页确认重建是否完成。
+- 横幅只做可见化，不改变恢复链路；失败标记仍保留，下次冷启动自动重试。
+
+**3. 对象 GC / 快照保留策略**
+
+- **保留策略**：按**本设备**保留最新 N 份快照（默认 `DEFAULT_SNAPSHOT_RETENTION = 10`，0=不限），存
+  `files/backup_index/snapshot-retention.json`（AtomicFile + `SnapshotRetentionConfig`）；
+  `commit` 成功后自动 `pruneSnapshots(store, deviceId, keep)`——只删本设备旧快照的清单+完成标记，
+  **不删对象**（对象留给 GC 统一回收，避免动到其它设备/快照共享的对象）。
+- **手动 GC**：`garbageCollect(store)` 严格可达性——
+  - 先用 `snapshotsStrict` 读**所有**已完成快照，任何清单损坏/校验失败立即放弃（宁可少删）；
+  - 只允许**单设备仓库**：发现多个 `deviceId` 直接拒绝（跨设备回收需要协调协议，见 §0.1 第 5 条）；
+  - 校验对象键必须是 `v3/objects/<sha[:2]>/<sha>` 且哈希合法，任何意外对象/目录都失败而不是删除；
+  - 删除无任何快照引用的对象，返回 `ObjectGcResult(deleted, freedBytes, kept)`。
+- **递归列举**：`BackupObjectStore` 新增 `listAll(prefix)`（默认逐层 `listChildren` 递归；S3 覆盖为
+  `listAllObjects` 一次前缀列举），保证 GC 在 S3（无目录概念）与 SAF/WebDAV（有目录项）拿到一致的对象集合。
+- **UI**：快照 tab 增加「保留策略」选择（不限/5/10/20 份，写回服务）、「回收未引用对象」确认框
+  （说明单设备限制与失败即停）、回收结果 notice；删除快照对话框文案改为「保留策略只删清单，对象需手动回收」。
+- **服务 API**：`prune(destination)` / `garbageCollect(destination)` 走 `DataOperationLock` 的
+  `STORAGE_CLEANUP`；`snapshotRetention()` / `setSnapshotRetention(keep)`。
+
+**验证**
+
+- JVM：全量 `:app:testDebugUnitTest` **3015 项通过，0 失败/错误，2 跳过**。新增
+  `IncrementalBackupRetentionTest` 6 项（保留策略只删本设备旧快照、0=不限、GC 只删未引用对象、
+  多设备仓库拒绝、清单损坏 fail-stop 不误删、删最后一份快照后全量回收）、
+  `SearchIndexRebuildSignalTest` 1 项、`IncrementalDatabaseBackupTest` 跨版本闸门用例
+  （旧版本允许且需 merge 回调、新版本拒绝）。
+- 真机（PJX110，debug 包，未清用户数据）：
+  - `DatabaseObjectCrossSchemaMergeInstrumentedTest` **3/3**：旧快照合并进当前 schema——新增列取默认值、
+    当前版本新增表被清空、已删除表/对象告警跳过、`integrity_check=ok`、`foreign_key_check` 干净；
+    更新版本快照拒绝；基础库版本不匹配拒绝；
+  - `DatabaseObjectCaptureMergeInstrumentedTest` **3/3**、`DatabaseObjectRealSchemaInstrumentedTest` **1/1**
+    回归通过（共 7 项）。
+- 真机 UX：预置 `fts_rebuild_pending` 后冷启动，首页横幅显示「正在重建搜索索引 29 / 269 个会话」，
+  约 18 s 后标记清除、logcat 出现 `search index rebuilt after snapshot restore: 269 conversations`；
+  快照 tab 显示「搜索索引已重建（269 个会话）」与保留策略行/按钮；点「保留 5 份」后
+  `snapshot-retention.json` 落盘 `{"keep":5}`。
+- `:app:assembleDebug` / `:app:assembleDebugAndroidTest` 通过；`git diff --check` 通过。
+
+**本轮仍明确未做**：`memory_store:<assistantId>` 等更细对象、append-only 流水游标、
+真实 S3/WebDAV/SAF 远端网络上传与 UI 入口冒烟、GC 的跨设备协调与自动触发、
+列改名/语义变化的自动迁移（只能告警）。
 
 ## 1. 问题与目标
 
@@ -691,6 +916,9 @@ suspend fun commit(plan, onProgress): BackupSnapshotRef
 
 > 目标：备份上传量里仍占大头的 DB 快照（P1 约 50 MB/次压缩后）进一步降到「改动的会话」。
 > **P2 不是 P1 的前置**；P1 上线并测量后，按数据决定是否做。
+>
+> **首版落地记录见 §0.6**：v2 快照改用逻辑对象、按会话/整表替换、恢复走合并 + 启动重建 FTS；
+> 下面保留原始设计中的细粒度方案（跨 schema、按 assistant/游标拆对象）作为后续增强。
 
 **数据事实（实测，§2.1）**：DB 98.9% = `message_node` + 可重建 FTS；对象元数据 0.7%。
 FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:596-607`、
@@ -706,7 +934,7 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 | `favorites` / `workspaces` / `conversation_folder` | 小表整表 | 行序列 | P2（<0.1 MB，收益小） |
 | append-only 流水（`usage_record`/`translation_history`/`scheduled_task_runs`） | 自增 id/时间游标之后的行 | 游标 + 行数 | P2（注意 trim 会删尾，游标必须容忍） |
 | `media_creation_*` / `scheduled_tasks` / `knowledge_*` / `agent_run` | 按对象整份 | 行序列/`update_at` | P2 视体积 |
-| **排除** | `message_fts*`（派生）、`room_master_table`/`android_metadata`/`sqlite_sequence`（库簿记）、`memory_consolidation`/`memory_review_cursor`（进度可重建） | — | — |
+| **排除** | `message_fts*`（派生）、`room_master_table`/`android_metadata`/`sqlite_sequence`（库簿记）、`memory_review_cursor`（进度可重建；`memory_consolidation` 因挂会话外键必须随快照，见 §0.6） | — | — |
 
 **变更检测**：备份时对每个对象算哈希（会话用 node signatures；总量 ~50 MB 文本，SHA-256 秒级），
 与最新快照清单比对；**不引入触发器、不依赖 `updatedAt`**——
@@ -759,7 +987,7 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 | 设置持久化 | `Settings` 新增 `backupConfig`（`enabled`, `keepLastN`, `hashCache` 开关）字段；
 旧 JSON 缺省取默认；未知新字段由 `ignoreUnknownKeys` 丢弃（降级不炸） |
 | 回滚 | 关闭增量开关即回到全量；`v3/` 数据可保留或删除；DB schema **无变更**，无需迁移 |
-| 保留策略删除 | 默认只删**本设备**的旧快照；跨设备快照需手动删；GC 只删「已知未被保留快照引用」的对象 |
+| 保留策略删除 | 自动保留只删**本设备**的旧快照清单；手动 GC 做全仓可达性分析、仅单设备仓库执行、失败即停（§0.7） |
 
 ### 5.11 UI / UX
 
@@ -771,12 +999,15 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
    取消零副作用。
 4. **快照列表**：时间 / 逻辑总大小 / 本次上传 / 设备 / 项目（sections）；操作：恢复、删除、
    导出为完整 zip（可选，复用拼包）。旧全量 zip 列表保留（分 tab 或分组）。
-5. **保留设置**：P1 不限保留，仅手动删除快照清单与完成标记；对象保留。
-   `keepLastN` 和“清理未引用对象”属于后续安全 GC 协议完成后的 UI，不在首版显示。
-6. **进度**：复用 `BackupProgressRow`（只显示字节/百分比，阶段枚举新增值零 UI 改动）。
+5. **保留设置与 GC**（已实现，§0.7）：默认按本设备保留最新 10 份（0=不限，选择 0/5/10/20），
+   提交后自动清理旧清单；「回收未引用对象」手动触发（确认框说明单设备限制、失败即停）。
+6. **进度**：备份/恢复复用 `BackupProgressRow`；恢复后 FTS 重建在根 UI 显示横幅（done/total、失败重试），
+   快照 tab 同步显示重建状态（§0.7）。
 7. **错误文案**：WebDAV 不支持多级目录 / 清单版本过新 / DB 版本过新 / 单文件 >2 GB /
    空间不足（需多少/有多少）——沿用现有错误风格。
 8. 字符串：若实施，按 `locale-tui-localization` 补 en/zh/zh-TW。
+9. **跨 schema 提示**（已实现，§0.7）：快照卡片显示 `数据库 vN`，旧版本快照在卡片与恢复确认框提示
+   「按当前 vM 结构恢复，新增字段用默认值，已删除表/列跳过」。
 
 ### 5.12 代码落点与改动清单
 
@@ -952,7 +1183,7 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 | R9 | 单文件 >2 GB | 恢复拒绝 | 与现有上限一致；预检明确报错 |
 | R10 | 进程被杀（viewModelScope 无 WorkManager） | 长备份中断 | 明确「失败可重试」；P1.5 可选前台服务；不承诺断点续传 |
 | R11 | WebDAV 服务端差异（MKCOL/多级路径/大小上限） | 首备失败 | 能力探测（1 B 探针 + 明确错误）；文档列出已测服务端 |
-| R12 | P2 跨 schema 对象合并语义 | 静默数据丢失 | 三组实验 + 列交集 + integrity_check + 失败退回 P1；快照 `dbVersion` 闸门 |
+| R12 | P2 跨 schema 对象合并语义 | 静默数据丢失 | 已实现：版本闸门（旧允许/新拒绝）+ 跨 schema 清空/列交集/默认值/跳过表告警 + `foreign_key_check` + 失败整份放弃；改名/改义仍无法自动迁移（§0.7） |
 | R13 | 快照清单含敏感信息（路径/大小） | 隐私 | 与现有备份同级（远端已有全量 zip）；加密独立立项 |
 | R14 | SAF 授权失效、卷移除、provider 断连/写满 | 本地任务中断 | 状态分型、重新关联、完成标记、成功时间不提前更新；§5.14 |
 | R15 | SAF 查询开销、自动改名、重名 document、大小未知 | 慢或引用歧义 | 按层批量查询、任务缓存、严格名称检查、流式校验；有歧义不提交 |
@@ -960,13 +1191,14 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 
 ### 8.2 已确认范围与后续决策
 
-1. **范围已确认（2026-11-04）**：本地目录仓库 + WebDAV/S3；用户选择“备份文件夹”，原有完整 ZIP 导入/导出保留，详见 §5.14。用户随后要求开始 P1，首版状态见 §0.2。
+1. **范围已确认（2026-11-04）**：本地目录仓库 + WebDAV/S3；用户选择“备份文件夹”，原有完整 ZIP 导入/导出保留，详见 §5.14。用户随后要求开始 P1，完成结论见 §0.5。
 2. **P1 是否接受「DB 仍每次整库（~50 MB 压缩）」**，还是一开始就投入 P2 的 DB 对象增量？
-3. **保留/GC 后续决策**：P1 按 §0.1 默认不限保留，手动删除快照不删共享对象；安全回收协议完成后再决定自动保留默认值。
+3. **保留/GC 已定（2026-11-04，§0.7）**：默认按设备保留最新 10 份（0=不限），提交后自动 prune 清单；
+   手动 GC 只允许单设备仓库、严格可达性、失败即停。跨设备自动回收仍未做。
 4. **多设备**：是否要求两台设备备份到同一 WebDAV/S3 目录并互不干扰（本稿只保证不损坏，不做合并）？
 5. **加密**是否要并入本批（否则快照里的 DB/settings 与现有 zip 一样明文）？
 6. **是否需要「把快照导出成完整 zip」**（便于交给旧版 App / 归档）？
-7. **实现时机**：用户已要求开始 P1，首版代码已落地；真实 provider/云端与恢复重启矩阵待验收，见 §0.2。
+7. **实现时机**：P1 已完成（2026-11-04，见 §0.2–§0.5）；真实 provider/云端与恢复重启矩阵作为后续验收项记录在 §0.4，不阻塞 P1 完成。P2 首版及后续三项（跨 schema、FTS 重建进度 UX、对象 GC/保留）已落地（§0.6–§0.7，工作树未提交）。
 
 ## 9. 明确不做（与既有决策对齐）
 

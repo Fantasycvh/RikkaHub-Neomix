@@ -20,7 +20,7 @@
 | [`design-dshgo-kotlin-migration-assessment.md`](design/drafts/design-dshgo-kotlin-migration-assessment.md) | **dsh-go → Kotlin 迁移评估**（2026-11-03）：只重构插件设计、复用现有 Compose UI、BetterText 承接富文本；实测规模账本、T-A…T-E 分层成本（全量 137–218 人日，点 ~177）、接缝取舍、决策门与风险；结论为「插件设计重构先行（35–55 人日、2–3 人 6–8 周），引擎托管独立立项」。评估稿，未立项 |
 | [`design-auto-compaction.md`](design/design-auto-compaction.md) | 自动上下文压缩（harness 式检查点、可回看可编辑） |
 | [`design-backup-workspace-files.md`](design/design-backup-workspace-files.md) | 备份纳入工作区文件 |
-| [`design-incremental-backup.md`](design/drafts/design-incremental-backup.md) | **增量备份设计草稿**：自包含快照清单 + 内容寻址对象；P1 文件区增量（复用现有恢复引擎）、P2 DB 对象级增量；含实测体积构成、传输层缺口、分阶段计划与风险。**P0 前置修复已落地（2026-11-03），P1/P2 未实施** |
+| [`design-incremental-backup.md`](design/drafts/design-incremental-backup.md) | **增量备份设计稿**：自包含快照清单 + 内容寻址对象；P1 文件区增量（2026-11-04）、P2 DB 逻辑对象增量 + 跨 schema 恢复 + FTS 重建进度 UX + 对象 GC/保留策略均已实现（P2 代码工作树未提交，§0.6–§0.7）；含实测体积构成、协议、分阶段计划与风险。**P0/P1 已完成（2026-11-04），P2 首版及后续三项已落地（未提交）** |
 | [`design-compress-presets.md`](design/design-compress-presets.md) | 压缩参数预设档 |
 | [`design-conversation-import-export.md`](design/design-conversation-import-export.md) | 对话导入导出与附件往返 |
 | [`design-conversation-manual-order.md`](design/design-conversation-manual-order.md) | 会话手动排序 |

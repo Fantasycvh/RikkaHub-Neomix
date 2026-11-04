@@ -109,9 +109,15 @@ class IncrementalDatabaseBackupTest {
         }
     }
 
-    @Test fun logicalSnapshotsRequireSameDatabaseVersion() = runBlocking<Unit> {
+    @Test fun crossSchemaLogicalSnapshotGate() = runBlocking<Unit> {
         val saved = save(listOf(conversationObject(UUID.randomUUID().toString(), "x")))
+        // 旧快照（58 <= 当前 59）允许恢复：缺 merge 回调仍报错，提供回调即可组装。
         assertThrows(IllegalArgumentException::class.java) { runBlocking { engine().assemble(store, saved, 59) } }
+        val zip = engine().assemble(store, saved, 59) { _, _ ->
+            temp.newFile("merged.db").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        }
+        ZipFile(zip).use { assertNotNull(it.getEntry("rikka_hub.db")) }
+        // 更新版本的快照仍然拒绝。
         assertThrows(IllegalArgumentException::class.java) { runBlocking { engine().assemble(store, saved, 57) } }
     }
 

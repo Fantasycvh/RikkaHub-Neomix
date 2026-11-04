@@ -41,6 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 import app.androidrik.rikkahub.utils.UiState
+import app.androidrik.rikkahub.utils.fileSizeToString
 import java.io.File
 import android.net.Uri
 import app.androidrik.rikkahub.data.sync.repo.*
@@ -64,6 +65,11 @@ class BackupVM(
     internal val snapshotError = MutableStateFlow<String?>(null)
     internal val snapshotNotice = MutableStateFlow<String?>(null)
     internal val snapshotPlan = MutableStateFlow<BackupSnapshotPlan?>(null)
+    /** 本机保留策略：按设备保留最新 N 份快照（0 = 不限）。 */
+    internal val snapshotRetention = MutableStateFlow(DEFAULT_SNAPSHOT_RETENTION)
+
+    /** 当前 DB schema，用于在列表里标注「旧版本快照将按当前结构恢复」。 */
+    internal val snapshotSchemaVersion: Int get() = incrementalBackup.currentSchemaVersion
 
     private fun snapshotTask(block: suspend () -> Unit) {
         if (snapshotBusy.value) return
@@ -79,8 +85,25 @@ class BackupVM(
 
     internal fun loadSnapshots() = snapshotTask {
         localBackupTarget.value = withContext(Dispatchers.IO) { incrementalBackup.localTarget() }
+        snapshotRetention.value = withContext(Dispatchers.IO) { incrementalBackup.snapshotRetention() }
         snapshots.value = if (snapshotDestination.value == BackupDestination.LOCAL && localBackupTarget.value == null) emptyList()
         else incrementalBackup.list(snapshotDestination.value)
+    }
+
+    internal fun selectSnapshotRetention(keep: Int) = snapshotTask {
+        withContext(Dispatchers.IO) { incrementalBackup.setSnapshotRetention(keep) }
+        snapshotRetention.value = incrementalBackup.snapshotRetention()
+        if (snapshotDestination.value != BackupDestination.LOCAL || localBackupTarget.value != null) {
+            withContext(Dispatchers.IO) { incrementalBackup.prune(snapshotDestination.value) }
+            snapshots.value = incrementalBackup.list(snapshotDestination.value)
+        }
+    }
+
+    /** 手动回收未被任何已提交快照引用的对象（只允许单设备仓库）。 */
+    internal fun garbageCollectSnapshots() = snapshotTask {
+        val result = incrementalBackup.garbageCollect(snapshotDestination.value)
+        snapshotNotice.value = "回收 ${result.deletedObjects} 个未引用对象，释放 ${result.freedBytes.fileSizeToString()}"
+        snapshots.value = incrementalBackup.list(snapshotDestination.value)
     }
 
     internal fun selectSnapshotDestination(destination: BackupDestination) {

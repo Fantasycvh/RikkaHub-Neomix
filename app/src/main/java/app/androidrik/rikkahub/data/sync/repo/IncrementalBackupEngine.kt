@@ -27,6 +27,12 @@ internal data class SnapshotDbObjectInput(val objectKey: String, val file: File)
 /** 恢复端下载并解码后的对象载荷；由平台层合并进当前库副本。 */
 internal data class DecodedDbObject(val objectKey: String, val raw: File)
 
+/** 按保留策略清理旧快照的结果（只删清单/完成标记，对象由 [IncrementalBackupEngine.garbageCollect] 回收）。 */
+internal data class SnapshotPruneResult(val deletedSnapshots: Int, val keptSnapshots: Int)
+
+/** 未引用对象回收结果。 */
+internal data class ObjectGcResult(val deletedObjects: Int, val freedBytes: Long, val keptObjects: Int)
+
 internal class BackupSnapshotPlan(
     val store: BackupObjectStore,
     val snapshot: BackupSnapshotManifest,
@@ -305,8 +311,10 @@ internal class IncrementalBackupEngine(
             require(snapshot == selected) { "Snapshot changed; refresh the list" }
             when (snapshot.formatVersion) {
                 SNAPSHOT_FORMAT_V1 -> require(snapshot.dbVersion <= maxDbVersion) { "Database version is newer than this app" }
-                else -> require(snapshot.dbVersion == maxDbVersion) {
-                    "Logical database snapshots can only be restored into the same database schema version"
+                // v2 跨 schema：旧快照按当前 schema 合并（列交集 + 新增列默认值 + 已删表忽略），
+                // 由 DatabaseObjectMerge 负责语义兜底；**更新版本**的快照仍然拒绝。
+                else -> require(snapshot.dbVersion <= maxDbVersion) {
+                    "Snapshot database is from a newer app version (${snapshot.dbVersion} > $maxDbVersion); update the app first"
                 }
             }
             // Objects + decoded file + output ZIP + restore DB + safety backup, conservatively budgeted.
@@ -371,6 +379,81 @@ internal class IncrementalBackupEngine(
                 mergedDatabase?.delete()
             }
         } catch (failure: Throwable) { dir.deleteRecursively(); throw failure }
+    }
+
+    suspend fun snapshotExists(store: BackupObjectStore, snapshotId: String): Boolean =
+        store.stat("v3/snapshots/$snapshotId.complete.json")?.directory == false
+
+    /**
+     * 严格列举：任何一份已提交快照的标记/清单读不出来都直接失败。
+     *
+     * GC 不能用宽容的 [list]（坏清单会被静默跳过），否则会把坏快照仍引用的对象当垃圾删掉。
+     * 删除权限（保留策略/GC）必须先过这一关，实现「失败即停止」。
+     */
+    suspend fun snapshotsStrict(store: BackupObjectStore): List<BackupSnapshotManifest> {
+        val repo = requireNotNull(inspectRepository(store)) { "Missing repository" }
+        val dir = taskDir()
+        try {
+            val markers = store.listChildren("v3/snapshots").filter { !it.directory && it.key.endsWith(".complete.json") }
+            return markers.map { marker ->
+                currentCoroutineContext().ensureActive()
+                val id = marker.key.substringAfterLast('/').removeSuffix(".complete.json")
+                require(validUuid(id)) { "Invalid snapshot marker: ${marker.key}" }
+                readSnapshot(store, id, repo.repoId, dir)
+            }.sortedByDescending { it.createdAt }
+        } finally { dir.deleteRecursively() }
+    }
+
+    /**
+     * 保留策略：只删**本设备**最旧的快照清单（按 createdAt 降序保留 [keep] 份；[keep] <= 0 表示不限）。
+     *
+     * 不删对象、不动其他设备的快照——共享对象的可达性由 [garbageCollect] 统一判断。
+     */
+    suspend fun pruneSnapshots(store: BackupObjectStore, deviceId: String, keep: Int): SnapshotPruneResult {
+        val snapshots = snapshotsStrict(store)
+        val owned = snapshots.filter { it.deviceId == deviceId }
+        if (keep <= 0 || owned.size <= keep) return SnapshotPruneResult(0, owned.size)
+        val stale = owned.drop(keep)
+        stale.forEach { snapshot ->
+            currentCoroutineContext().ensureActive()
+            deleteSnapshot(store, snapshot)
+        }
+        return SnapshotPruneResult(stale.size, owned.size - stale.size)
+    }
+
+    /**
+     * 未引用对象 GC：先从所有已提交快照（严格列举）求可达 sha256 集合，再逐个删除
+     * `v3/objects/` 下不在可达集里的对象；任何列举/删除失败即停止（不静默跳过）。
+     *
+     * **只允许单设备仓库**：多设备时「另一台设备刚上传对象、快照还没提交」的窗口无法用
+     * 仓库内信息排除，删除可能破坏它正在进行的备份。跨设备回收需要协调协议，明确不做。
+     */
+    suspend fun garbageCollect(store: BackupObjectStore): ObjectGcResult {
+        val snapshots = snapshotsStrict(store)
+        val devices = snapshots.map { it.deviceId }.distinct()
+        require(devices.size <= 1) {
+            "仓库包含 ${devices.size} 台设备的快照，暂不支持回收未引用对象（需跨设备协调）；可先手动删除旧快照"
+        }
+        val referenced = snapshots.flatMap { it.objects }.map { it.sha256 }.toHashSet()
+        var deleted = 0
+        var freed = 0L
+        var kept = 0
+        store.listAll("v3/objects").forEach { objectRef ->
+            currentCoroutineContext().ensureActive()
+            require(!objectRef.directory) { "Unexpected directory in object bucket: ${objectRef.key}" }
+            val sha = objectRef.key.substringAfterLast('/')
+            require(validHash(sha) && objectRef.key == "v3/objects/${sha.take(2)}/$sha") {
+                "Unexpected object layout: ${objectRef.key}"
+            }
+            if (sha in referenced) {
+                kept++
+            } else {
+                store.delete(objectRef.key)
+                deleted++
+                freed += objectRef.bytes ?: 0L
+            }
+        }
+        return ObjectGcResult(deleted, freed, kept)
     }
 
     suspend fun deleteSnapshot(store: BackupObjectStore, snapshot: BackupSnapshotManifest) {

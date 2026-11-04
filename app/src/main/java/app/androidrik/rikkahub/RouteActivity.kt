@@ -117,6 +117,7 @@ import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantPromptPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantRequestPage
 import app.androidrik.rikkahub.ui.pages.backup.BackupPage
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartGate
+import app.androidrik.rikkahub.ui.pages.backup.components.SearchIndexRebuildBanner
 import app.androidrik.rikkahub.ui.pages.chat.ChatPage
 import app.androidrik.rikkahub.ui.pages.debug.DebugPage
 import app.androidrik.rikkahub.ui.pages.extensions.ExtensionsPage
@@ -249,7 +250,7 @@ open class RouteActivity : ComponentActivity() {
                 // 本进程不重启就会继续在旧库上写、写入在下次启动被覆盖（审计 #16）。
                 // 闸门放根 UI 外层，用户离开备份页也无法绕过。
                 StartupState.Ready -> RikkahubTheme {
-                    RestoreRestartGate { AppStartupGateContent() }
+                    RestoreRestartGate { SearchIndexRebuildBanner { AppStartupGateContent() } }
                     // 降级告知 / 恢复提示（design-db-downgrade-rebuild.md §4.5/§5）
                     DowngradeDialogs(startupApp)
                 }

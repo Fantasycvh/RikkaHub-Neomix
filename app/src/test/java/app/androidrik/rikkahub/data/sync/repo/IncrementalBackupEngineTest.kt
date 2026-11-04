@@ -275,6 +275,8 @@ internal class MemoryBackupStore : BackupObjectStore {
     override suspend fun listChildren(prefix: String) = data.keys.filter {
         it.startsWith(if (prefix.isEmpty()) "" else "$prefix/") && !it.removePrefix(if (prefix.isEmpty()) "" else "$prefix/").contains('/')
     }.map { BackupStoredObject(it, data.getValue(it).size.toLong()) }
+    override suspend fun listAll(prefix: String) = data.keys.filter { it.startsWith("$prefix/") }
+        .map { BackupStoredObject(it, data.getValue(it).size.toLong()) }
     override suspend fun get(key: String, target: File, maxBytes: Long, onBytes: (Long) -> Unit) {
         val bytes = data[key] ?: throw java.io.FileNotFoundException(key)
         target.outputStream().use { copyBounded(bytes.inputStream(), it, maxBytes, onBytes) }

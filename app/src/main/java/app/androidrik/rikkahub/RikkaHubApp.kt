@@ -36,6 +36,7 @@ import app.androidrik.rikkahub.data.task.ProcessStartClock
 import app.androidrik.rikkahub.data.sync.DowngradeQuarantineStore
 import app.androidrik.rikkahub.data.sync.PendingRestoreStore
 import app.androidrik.rikkahub.data.sync.repo.FtsRebuildPending
+import app.androidrik.rikkahub.data.db.fts.SearchIndexRebuildSignal
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
 import com.whl.quickjs.android.QuickJSLoader
@@ -228,17 +229,36 @@ class RikkaHubApp : Application() {
         withContext(Dispatchers.Main) { postReadyInit() }
     }
 
-    /** 逻辑对象快照不含 FTS，恢复换库后由这里全量重建搜索索引。 */
+    /** 逻辑对象快照不含 FTS，恢复换库后由这里全量重建搜索索引；状态经 [SearchIndexRebuildSignal] 上报 UI。 */
     private fun rebuildSearchIndexIfPending() {
         if (!FtsRebuildPending.isPending(filesDir)) return
         get<AppScope>().launch(Dispatchers.IO) {
-            runCatching { get<ConversationRepository>().rebuildAllIndexes() }
+            SearchIndexRebuildSignal.started(0)
+            var total = 0
+            runCatching {
+                get<ConversationRepository>().rebuildAllIndexes { done, count ->
+                    total = count
+                    SearchIndexRebuildSignal.progress(done, count)
+                }
+            }
                 .onSuccess {
                     FtsRebuildPending.clear(filesDir)
-                    Log.i(TAG, "search index rebuilt after snapshot restore")
+                    SearchIndexRebuildSignal.succeeded(total)
+                    Log.i(TAG, "search index rebuilt after snapshot restore: $total conversations")
                 }
-                .onFailure { Log.e(TAG, "search index rebuild after snapshot restore failed", it) }
+                .onFailure {
+                    SearchIndexRebuildSignal.failed(it.message ?: "search index rebuild failed")
+                    Log.e(TAG, "search index rebuild after snapshot restore failed", it)
+                }
         }
+    }
+
+    /** 备份页「重试」入口：仅在已 Ready 且标记仍在时重新触发（失败标记保留，冷启动也会重试）。 */
+    fun retrySearchIndexRebuild(): Boolean {
+        if (_startupState.value !is StartupState.Ready) return false
+        SearchIndexRebuildSignal.reset()
+        rebuildSearchIndexIfPending()
+        return true
     }
 
     /**

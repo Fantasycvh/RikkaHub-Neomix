@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.androidrik.rikkahub.data.db.fts.SearchIndexRebuildSignal
+import app.androidrik.rikkahub.data.db.fts.SearchIndexRebuildState
 import app.androidrik.rikkahub.data.sync.repo.BackupDestination
 import app.androidrik.rikkahub.data.sync.repo.BackupSnapshotManifest
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -52,8 +54,12 @@ fun SnapshotBackupTab(vm: BackupVM) {
     val notice by vm.snapshotNotice.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val retention by vm.snapshotRetention.collectAsStateWithLifecycle()
+    val ftsState by SearchIndexRebuildSignal.state.collectAsStateWithLifecycle()
+    val schemaVersion = vm.snapshotSchemaVersion
     var restoring by remember { mutableStateOf<BackupSnapshotManifest?>(null) }
     var deleting by remember { mutableStateOf<BackupSnapshotManifest?>(null) }
+    var confirmingGc by remember { mutableStateOf(false) }
     val toaster = LocalToaster.current
     LaunchedEffect(Unit) { vm.loadSnapshots() }
     LaunchedEffect(notice) { notice?.let { toaster.show(it, type = ToastType.Success); vm.snapshotNotice.value = null } }
@@ -108,7 +114,38 @@ fun SnapshotBackupTab(vm: BackupVM) {
                     BackupProgressRow(progress)
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Text("历史备份会一直保留。手动删除恢复点不会立即释放全部占用空间。", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "保留策略：按本设备最新 ${if (retention == 0) "不限" else "$retention 份"} 自动清理旧恢复点（只删清单，不删对象）。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0, 5, 10, 20).forEach { keep ->
+                        OutlinedButton(
+                            enabled = enabled && (destination != BackupDestination.LOCAL || target != null),
+                            onClick = { vm.selectSnapshotRetention(keep) },
+                        ) {
+                            Text(if (keep == 0) "不限" else "保留 $keep 份")
+                        }
+                    }
+                    OutlinedButton(enabled = enabled && writable, onClick = { confirmingGc = true }) { Text("回收未引用对象") }
+                }
+                when (val current = ftsState) {
+                    is SearchIndexRebuildState.Running -> Text(
+                        "正在重建搜索索引 ${current.done}/${current.total}（期间搜索结果可能不全）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    is SearchIndexRebuildState.Failed -> Text(
+                        "搜索索引重建失败：${current.message}（重启应用或点上方横幅重试）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    is SearchIndexRebuildState.Succeeded -> Text(
+                        "搜索索引已重建（${current.conversations} 个会话）",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    SearchIndexRebuildState.Idle -> Unit
+                }
             }
         }
         items(snapshots, key = { it.snapshotId }) { snapshot ->
@@ -117,7 +154,14 @@ fun SnapshotBackupTab(vm: BackupVM) {
                     Text(java.time.Instant.parse(snapshot.createdAt).atZone(java.time.ZoneId.systemDefault())
                         .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
                     Text("${snapshot.files.size + snapshot.dbObjects.size} 个对象 · ${snapshot.logicalBytes.fileSizeToString()}")
-                    Text("设备 ${snapshot.deviceId.take(8)}", style = MaterialTheme.typography.bodySmall)
+                    Text("设备 ${snapshot.deviceId.take(8)} · 数据库 v${snapshot.dbVersion}", style = MaterialTheme.typography.bodySmall)
+                    if (snapshot.dbVersion < schemaVersion) {
+                        Text(
+                            "旧版本快照：将按当前 v$schemaVersion 结构恢复，新增字段使用默认值，已删除的表/列会跳过",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                     FlowRow {
                         TextButton(enabled = enabled, onClick = { restoring = snapshot }) { Text("恢复") }
                         TextButton(enabled = enabled && writable, onClick = { deleting = snapshot }) { Text("删除快照") }
@@ -143,7 +187,28 @@ fun SnapshotBackupTab(vm: BackupVM) {
         )
     }
     restoring?.let { snapshot ->
-        RestoreConfirmDialog(snapshot.items, onConfirm = { restoring = null; vm.restoreSnapshot(snapshot) }, onDismissRequest = { restoring = null })
+        val databaseWarning = if (snapshot.dbVersion < schemaVersion) {
+            "数据库版本：快照 v${snapshot.dbVersion} → 当前 v$schemaVersion。将按当前结构恢复，新增字段使用默认值，已删除的表/列会跳过；无法自动迁移改名/改义字段。"
+        } else null
+        RestoreConfirmDialog(
+            items = snapshot.items,
+            onConfirm = { restoring = null; vm.restoreSnapshot(snapshot) },
+            onDismissRequest = { restoring = null },
+            databaseWarning = databaseWarning,
+        )
+    }
+    if (confirmingGc) {
+        AlertDialog(
+            onDismissRequest = { confirmingGc = false },
+            title = { Text("回收未引用对象？") },
+            text = { Text(
+                "会读取仓库中所有已提交快照，删除没有任何快照引用的对象文件。\n" +
+                    "仅支持单设备仓库（多设备会拒绝）；请确保当前没有正在进行的备份。\n" +
+                    "已删除快照引用的对象会在这里释放。"
+            ) },
+            confirmButton = { TextButton(onClick = { confirmingGc = false; vm.garbageCollectSnapshots() }) { Text("回收") } },
+            dismissButton = { TextButton(onClick = { confirmingGc = false }) { Text("取消") } },
+        )
     }
     deleting?.let { snapshot ->
         AlertDialog(onDismissRequest = { deleting = null }, title = { Text("删除此快照？") },

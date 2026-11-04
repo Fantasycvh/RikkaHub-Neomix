@@ -17,6 +17,13 @@ internal class S3BackupObjectStore(private val client: S3Client, override val de
             if (!relative.removePrefix(if (prefix.isEmpty()) "" else "$prefix/").contains('/')) BackupStoredObject(relative, it.size) else null
         }
     }
+    override suspend fun listAll(prefix: String): List<BackupStoredObject> {
+        val fullPrefix = root + prefix.let { if (it.isEmpty()) "" else "$it/" }
+        return client.listAllObjects(prefix = fullPrefix).getOrThrow().map {
+            require(it.key.startsWith(fullPrefix)) { "S3 returned a key outside the requested prefix" }
+            BackupStoredObject(it.key.removePrefix(root), it.size)
+        }
+    }
     override suspend fun stat(key: String): BackupStoredObject? {
         validateKey(key)
         return client.headObject(root + key).fold(

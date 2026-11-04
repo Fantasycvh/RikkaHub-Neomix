@@ -20,12 +20,15 @@ import app.androidrik.rikkahub.data.sync.BackupItem
  * 将被覆盖的内容范围。
  *
  * @param items 本次恢复会处理的项（= 当前「备份内容」勾选）
+ * @param databaseWarning 数据库跨版本恢复提示（null = 同版本）；旧版本快照按当前结构恢复，
+ *   新增/改名字段无法自动迁移，必须让用户看到。
  */
 @Composable
 fun RestoreConfirmDialog(
     items: List<BackupItem>,
     onConfirm: () -> Unit,
     onDismissRequest: () -> Unit,
+    databaseWarning: String? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -41,6 +44,13 @@ fun RestoreConfirmDialog(
                         text = "• " + backupItemLabel(item),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                databaseWarning?.let { warning ->
+                    Text(
+                        text = warning,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
                 Text(
