@@ -87,7 +87,7 @@ import app.androidrik.ai.ui.isEmptyUIMessage
 import app.androidrik.ai.util.encodeBase64
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
-import app.androidrik.rikkahub.data.datastore.findModelById
+import app.androidrik.rikkahub.data.export.resolveExportModelLabel
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.message.ChatMessageNarrationStep
 import app.androidrik.rikkahub.ui.components.message.ChatMessageServerToolStep
@@ -378,7 +378,7 @@ fun ChatExportSheet(
                             // 原先无 runCatching 且函数内部吞异常 → 写盘失败也报成功。
                             // 现在失败会冒泡，这里统一报错、不上报成功。
                             runCatching {
-                                exportToMarkdown(context, conversation, exportMessages)
+                                exportToMarkdown(context, conversation, exportMessages, settings)
                             }.onSuccess { deliver(it) }
                                 .onFailure {
                                     toaster.show(
@@ -408,7 +408,7 @@ fun ChatExportSheet(
                         // TikZ 导出走 native 编译（阻塞数秒/图），协程化避免卡 UI
                         scope.launch {
                             runCatching {
-                                exportToHtml(context, conversation, exportMessages)
+                                exportToHtml(context, conversation, exportMessages, settings)
                             }.onSuccess { deliver(it) }
                                 .onFailure {
                                     toaster.show(
@@ -590,7 +590,8 @@ private suspend fun writeExportBytes(
 private suspend fun exportToMarkdown(
     context: Context,
     conversation: Conversation,
-    messages: List<UIMessage>
+    messages: List<UIMessage>,
+    settings: Settings,
 ): ExportedFile {
     val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.md"
 
@@ -600,7 +601,17 @@ private suspend fun exportToMarkdown(
 
         messages.forEach { message ->
             val role = when (message.semanticRole) { MessageRole.USER -> "**User**"; MessageRole.SYSTEM -> "**System**"; else -> "**Assistant**" }
-            append("$role:\n\n")
+            // 提供商 / 模型标签：与 PNG / HTML 同一份全局配置。空串 = 不显示（含「不显示」档、非 assistant）
+            val label = resolveExportModelLabel(
+                message = message,
+                providers = settings.providers,
+                config = settings.exportDisplayConfig,
+            ).label
+            if (label.isNotBlank()) {
+                append("$role ($label):\n\n")
+            } else {
+                append("$role:\n\n")
+            }
             message.parts.forEach { part ->
                 when (part) {
                     is UIMessagePart.Text -> {
@@ -831,7 +842,8 @@ private suspend fun renderMarkdownWithTikz(context: Context, content: String): S
 private suspend fun exportToHtml(
     context: Context,
     conversation: Conversation,
-    messages: List<UIMessage>
+    messages: List<UIMessage>,
+    settings: Settings,
 ): ExportedFile {
     val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.html"
 
@@ -848,6 +860,7 @@ private suspend fun exportToHtml(
         .message.user { background: #e8f0fe; border-left: 4px solid #4285f4; }
         .message.assistant { background: #ffffff; border-left: 4px solid #b0b0b0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .role { font-weight: 700; margin-bottom: 6px; font-size: 0.9em; }
+        .model-label { font-weight: 400; color: #888; margin-left: 8px; font-size: 0.85em; }
         .message.user .role { color: #1a5dc7; }
         .message.assistant .role { color: #555; }
         .tool { background: #fafafa; border: 1px solid #e5e5e5; border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
@@ -870,7 +883,17 @@ private suspend fun exportToHtml(
         val roleClass = if (message.semanticRole == MessageRole.SYSTEM) "system" else if (isUser) "user" else "assistant"
         val roleLabel = if (message.semanticRole == MessageRole.SYSTEM) "System" else if (isUser) "User" else "Assistant"
         sb.append("<div class=\"message ").append(roleClass).append("\">\n")
-        sb.append("<div class=\"role\">").append(roleLabel).append("</div>\n")
+        // 提供商 / 模型标签：与 PNG / Markdown 同一份全局配置；用户可自定义文案，必须转义
+        val label = resolveExportModelLabel(
+            message = message,
+            providers = settings.providers,
+            config = settings.exportDisplayConfig,
+        ).label
+        sb.append("<div class=\"role\">").append(roleLabel)
+        if (label.isNotBlank()) {
+            sb.append("<span class=\"model-label\">").append(label.escapeHtml()).append("</span>")
+        }
+        sb.append("</div>\n")
         message.parts.forEach { part ->
             when (part) {
                 is UIMessagePart.Text -> {
@@ -1157,14 +1180,14 @@ private fun ExportedChatMessage(
     if (message.parts.isEmptyUIMessage()) return
     val context = LocalContext.current
     val settings = LocalSettings.current
-    val model = message.modelId?.let { settings.findModelById(it) }
-    // Always show model icon for assistant messages in exported images
-    val showModelIcon = message.role == MessageRole.ASSISTANT && prevMessage?.role == MessageRole.USER
-    val iconLabel = when {
-        model?.modelId?.isNotBlank() == true -> model.modelId
-        model?.displayName?.isNotBlank() == true -> model.displayName
-        else -> "AI"
+    // 导出标签统一走全局「导出显示」配置（PNG / Markdown / HTML 同一份解析，见
+    // data/export/ExportDisplayLabel.kt）。图标种子与显示文案**分开**：自定义文案不能拿去选图标。
+    val exportLabel = remember(message, settings.providers, settings.exportDisplayConfig) {
+        resolveExportModelLabel(message, settings.providers, settings.exportDisplayConfig)
     }
+    val showModelLabel = message.role == MessageRole.ASSISTANT &&
+        prevMessage?.role == MessageRole.USER &&
+        exportLabel.label.isNotBlank()
     // 导出是静态图：解说也进思考链一起展示（export 内 collapse 关掉，全部步骤都渲染），
     // 角色守卫照旧生效，用户消息里掺的工具调用不会被折进链里。
     val groupedParts = remember(message.parts, message.role) {
@@ -1287,23 +1310,28 @@ private fun ExportedChatMessage(
         }
     }
 
-    if (showModelIcon) {
+    if (showModelLabel) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(top = 8.dp)
         ) {
             AutoAIIcon(
-                name = iconLabel,
+                // 图标只认模型身份；显示文案可能被用户改成任意文字
+                name = exportLabel.iconSeed ?: exportLabel.label,
                 modifier = Modifier
                     .padding(top = 8.dp)
                     .size(36.dp)
             )
 
             Text(
-                text = iconLabel,
+                text = exportLabel.label,
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 8.dp)
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .weight(1f, fill = false)
             )
         }
     }

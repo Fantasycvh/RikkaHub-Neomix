@@ -83,6 +83,10 @@ import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
 import app.androidrik.rikkahub.ui.components.ui.drawAvatarFrameParams
 import app.androidrik.rikkahub.ui.pages.setting.components.AvatarFrameParamsSheet
 import app.androidrik.rikkahub.ui.pages.setting.components.ChainOfThoughtCustomSheet
+import app.androidrik.rikkahub.ui.pages.setting.components.ExportDisplaySchemeSheet
+import app.androidrik.rikkahub.ui.pages.setting.components.label
+import app.androidrik.rikkahub.data.export.ExportDisplayScheme
+import app.androidrik.rikkahub.data.export.previewExportModelLabel
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 import org.koin.compose.koinInject
@@ -140,6 +144,9 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     // 方案删除二次确认（分立列表，各自持有一个待删项）
     var deletingFrameScheme by remember { mutableStateOf<AvatarFrameScheme?>(null) }
     var deletingCotScheme by remember { mutableStateOf<ChainOfThoughtScheme?>(null) }
+    // 导出显示（提供商 / 模型）编辑面板与方案删除确认
+    var showExportDisplaySheet by remember { mutableStateOf(false) }
+    var deletingExportScheme by remember { mutableStateOf<ExportDisplayScheme?>(null) }
 
     val schemeSavedMsg = stringResource(R.string.setting_personalization_scheme_saved)
     val importSuccessMsg = stringResource(R.string.setting_display_page_custom_font_import_success)
@@ -728,6 +735,86 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                     )
                 }
             }
+
+            // 导出显示（提供商 / 模型）：全局配置，PNG / Markdown / HTML 共用；JSON 归档不受影响
+            item {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.setting_display_page_export_model_title)) },
+                ) {
+                    item(
+                        onClick = { showExportDisplaySheet = true },
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_display_page_export_model_mode_title))
+                        },
+                        supportingContent = {
+                            // 多个条件内容必须 Column 包一层：ListItem 的 supportingContent 只渲染首个直接子节点
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.setting_display_page_export_model_summary,
+                                        settings.exportDisplayConfig.mode.label(),
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    text = previewExportModelLabel(settings.exportDisplayConfig)
+                                        .ifBlank {
+                                            stringResource(R.string.setting_display_page_export_model_preview_hidden)
+                                        },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = stringResource(R.string.setting_display_page_export_model_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        trailingContent = {
+                            TextButton(onClick = { showExportDisplaySheet = true }) {
+                                Text(stringResource(R.string.setting_display_page_export_model_edit))
+                            }
+                        },
+                    )
+                }
+            }
+
+            // 已保存的导出显示方案：点行套用，尾部按钮删除（方案不是真相源，删档不改当前配置）
+            if (settings.exportDisplaySchemes.isNotEmpty()) {
+                item {
+                    CardGroup(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        title = {
+                            Text(stringResource(R.string.setting_display_page_export_model_schemes_title))
+                        },
+                    ) {
+                        settings.exportDisplaySchemes.forEach { scheme ->
+                            item(
+                                onClick = {
+                                    vm.updateSettings { it.copy(exportDisplayConfig = scheme.config) }
+                                },
+                                headlineContent = { Text(scheme.name) },
+                                supportingContent = {
+                                    Text(
+                                        text = previewExportModelLabel(scheme.config).ifBlank {
+                                            stringResource(R.string.setting_display_page_export_model_preview_hidden)
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                                trailingContent = {
+                                    IconButton(onClick = { deletingExportScheme = scheme }) {
+                                        Icon(HugeIcons.Delete02, contentDescription = null)
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -793,6 +880,39 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                 deletingCotScheme = null
             },
             onDismiss = { deletingCotScheme = null },
+        )
+    }
+    if (showExportDisplaySheet) {
+        ExportDisplaySchemeSheet(
+            config = settings.exportDisplayConfig,
+            onSave = { config ->
+                vm.updateSettings { it.copy(exportDisplayConfig = config) }
+                showExportDisplaySheet = false
+            },
+            onSaveScheme = { name, config ->
+                vm.updateSettings {
+                    it.copy(
+                        exportDisplaySchemes = it.exportDisplaySchemes +
+                            ExportDisplayScheme(name = name, config = config)
+                    )
+                }
+                toaster.show(schemeSavedMsg)
+            },
+            onDismiss = { showExportDisplaySheet = false },
+        )
+    }
+    deletingExportScheme?.let { scheme ->
+        SchemeDeleteDialog(
+            name = scheme.name,
+            onConfirm = {
+                vm.updateSettings { settings ->
+                    settings.copy(
+                        exportDisplaySchemes = settings.exportDisplaySchemes.filterNot { it.id == scheme.id }
+                    )
+                }
+                deletingExportScheme = null
+            },
+            onDismiss = { deletingExportScheme = null },
         )
     }
 }

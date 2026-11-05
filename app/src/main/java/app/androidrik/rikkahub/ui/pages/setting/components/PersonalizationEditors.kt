@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -45,6 +46,9 @@ import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.AvatarFrameParams
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtCustomStyle
+import app.androidrik.rikkahub.data.export.ExportDisplayConfig
+import app.androidrik.rikkahub.data.export.ExportModelLabelMode
+import app.androidrik.rikkahub.data.export.previewExportModelLabel
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.components.ui.drawAvatarFrameParams
 import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
@@ -63,7 +67,7 @@ import kotlinx.serialization.encodeToString
  */
 
 @Composable
-private fun JsonImportExportButtons(
+internal fun JsonImportExportButtons(
     exportJson: () -> String,
     onImported: () -> Unit,
     decode: (String) -> Unit,
@@ -142,7 +146,7 @@ private fun JsonImportExportButtons(
 }
 
 @Composable
-private fun SchemeNameDialog(
+internal fun SchemeNameDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -475,3 +479,157 @@ fun ChainOfThoughtCustomSheet(
         )
     }
 }
+
+/**
+ * 导出显示（提供商 / 模型）编辑面板：模式 + 自定义文案 + 实时预览 + 方案保存 / JSON 交换。
+ *
+ * 为什么在 ModalBottomSheet 而不是页面内联：自定义文案是 TextField，设置页是 LazyColumn，
+ * 键盘收缩视口会把内联输入框裁出列表（AGENTS.md TextField Host Rules）。
+ * 本面板与 [AvatarFrameParamsSheet] / [ChainOfThoughtCustomSheet] 同一套路。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExportDisplaySchemeSheet(
+    config: ExportDisplayConfig,
+    onSave: (ExportDisplayConfig) -> Unit,
+    onSaveScheme: (String, ExportDisplayConfig) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+    )
+    var mode by remember { mutableStateOf(config.mode) }
+    var template by remember { mutableStateOf(config.customTemplate) }
+    var showSchemeNameDialog by remember { mutableStateOf(false) }
+
+    fun snapshot(): ExportDisplayConfig = ExportDisplayConfig(
+        mode = mode,
+        customTemplate = template.trim(),
+    )
+
+    // 自定义档文案为空 = 什么都不显示（与「不显示」档视觉等价），挡住保存避免静默失效
+    val canSave = mode != ExportModelLabelMode.CUSTOM || template.isNotBlank()
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.setting_display_page_export_model_sheet_title),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                text = stringResource(R.string.setting_display_page_export_model_sheet_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Text(
+                text = stringResource(R.string.setting_display_page_export_model_mode_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ExportModelLabelMode.entries.forEach { candidate ->
+                    FilterChip(
+                        selected = mode == candidate,
+                        onClick = { mode = candidate },
+                        label = { Text(candidate.label()) },
+                    )
+                }
+            }
+
+            if (mode == ExportModelLabelMode.CUSTOM) {
+                OutlinedTextField(
+                    value = template,
+                    onValueChange = { template = it },
+                    label = {
+                        Text(stringResource(R.string.setting_display_page_export_model_template_label))
+                    },
+                    supportingText = {
+                        Text(stringResource(R.string.setting_display_page_export_model_template_hint))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 4,
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.setting_display_page_export_model_preview_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            val preview = previewExportModelLabel(snapshot())
+            Text(
+                text = preview.ifBlank {
+                    stringResource(R.string.setting_display_page_export_model_preview_hidden)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (preview.isBlank()) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+            )
+
+            JsonImportExportButtons(
+                exportJson = { JsonInstant.encodeToString(snapshot()) },
+                // 导入后保持 sheet 打开：decode 写的是本面板的本地态，用户确认无误再点保存
+                onImported = {},
+                decode = { text ->
+                    val imported = JsonInstant.decodeFromString<ExportDisplayConfig>(text)
+                    mode = imported.mode
+                    template = imported.customTemplate
+                },
+            )
+
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { showSchemeNameDialog = true },
+                    enabled = canSave,
+                ) {
+                    Text(stringResource(R.string.setting_personalization_save_as_scheme))
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+                Button(onClick = { onSave(snapshot()) }, enabled = canSave) {
+                    Text(stringResource(R.string.setting_theme_page_save))
+                }
+            }
+        }
+    }
+
+    if (showSchemeNameDialog) {
+        SchemeNameDialog(
+            onConfirm = { name -> onSaveScheme(name, snapshot()) },
+            onDismiss = { showSchemeNameDialog = false },
+        )
+    }
+}
+
+/** 模式标签（页面摘要与编辑面板共用）。 */
+@Composable
+internal fun ExportModelLabelMode.label(): String = stringResource(
+    when (this) {
+        ExportModelLabelMode.HIDDEN -> R.string.setting_display_page_export_model_mode_hidden
+        ExportModelLabelMode.MODEL -> R.string.setting_display_page_export_model_mode_model
+        ExportModelLabelMode.PROVIDER_MODEL ->
+            R.string.setting_display_page_export_model_mode_provider_model
+        ExportModelLabelMode.CUSTOM -> R.string.setting_display_page_export_model_mode_custom
+    }
+)
+

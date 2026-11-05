@@ -649,6 +649,13 @@ object SettingSearchIndex {
             section = R.string.setting_page_message_display_settings
         ),
         entry(
+            title = R.string.setting_display_page_export_model_title,
+            description = R.string.setting_display_page_export_model_desc,
+            route = Screen.SettingPreferencesUI,
+            pageTitle = R.string.setting_page_preferences_ui,
+            keywords = listOf("导出", "export", "模型名", "提供商", "隐私", "privacy", "markdown", "html", "png")
+        ),
+        entry(
             title = R.string.setting_display_page_show_datetime_in_message_title,
             description = R.string.setting_display_page_show_datetime_in_message_desc,
             route = Screen.SettingPreferencesUI,

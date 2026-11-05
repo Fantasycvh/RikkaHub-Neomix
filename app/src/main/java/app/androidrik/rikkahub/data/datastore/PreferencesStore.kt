@@ -55,6 +55,8 @@ import app.androidrik.rikkahub.data.ai.DEFAULT_MEMORY_BUDGET_TOKENS
 import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_SYSTEM_PROMPT
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT
 import app.androidrik.rikkahub.data.files.DEFAULT_EXPORT_RETENTION_DAYS
+import app.androidrik.rikkahub.data.export.ExportDisplayConfig
+import app.androidrik.rikkahub.data.export.ExportDisplayScheme
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.CompressPreset
 import app.androidrik.rikkahub.data.model.ImportSourceRecord
@@ -426,6 +428,9 @@ class SettingsStore(
         val AUTO_COMPRESS_THRESHOLD_PERCENT = intPreferencesKey("auto_compress_threshold_percent")
         val AUTO_COMPRESS_RETAIN_PERCENT = intPreferencesKey("auto_compress_retain_percent")
         val EXPORT_RETENTION_DAYS = intPreferencesKey("export_retention_days")
+        // 导出「提供商 / 模型」标签的全局配置与命名方案（设计见 data/export/ExportDisplayLabel.kt）
+        val EXPORT_DISPLAY_CONFIG = stringPreferencesKey("export_display_config")
+        val EXPORT_DISPLAY_SCHEMES = stringPreferencesKey("export_display_schemes")
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
         // 自定义压缩配置档（用户命名、可增改删；单 key 存 JSON 列表，与 modeInjections 同款）
         val COMPRESS_PRESETS = stringPreferencesKey("compress_presets")
@@ -657,6 +662,12 @@ class SettingsStore(
                     ?: DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
                 exportRetentionDays = preferences[EXPORT_RETENTION_DAYS]
                     ?: DEFAULT_EXPORT_RETENTION_DAYS,
+                exportDisplayConfig = preferences[EXPORT_DISPLAY_CONFIG]?.let {
+                    JsonInstant.decodeFromString<ExportDisplayConfig>(it)
+                } ?: ExportDisplayConfig(),
+                exportDisplaySchemes = preferences[EXPORT_DISPLAY_SCHEMES]?.let {
+                    JsonInstant.decodeFromString<List<ExportDisplayScheme>>(it)
+                } ?: emptyList(),
                 autoCompressTargetTokens = preferences[AUTO_COMPRESS_TARGET_TOKENS]
                     ?: DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
                 compressPresets = preferences[COMPRESS_PRESETS]?.let {
@@ -953,6 +964,8 @@ class SettingsStore(
             preferences[AUTO_COMPRESS_THRESHOLD_PERCENT] = settings.autoCompressThresholdPercent
             preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
             preferences[EXPORT_RETENTION_DAYS] = settings.exportRetentionDays
+            preferences[EXPORT_DISPLAY_CONFIG] = JsonInstant.encodeToString(settings.exportDisplayConfig)
+            preferences[EXPORT_DISPLAY_SCHEMES] = JsonInstant.encodeToString(settings.exportDisplaySchemes)
             preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
             preferences[COMPRESS_PRESETS] = JsonInstant.encodeToString(settings.compressPresets)
             preferences[IMPORTED_SOURCES] = JsonInstant.encodeToString(settings.importedSources)
@@ -1349,6 +1362,13 @@ data class Settings(
      * 启动时按此清理过期导出（见 `docs/design/design-export-retention.md` §4.3）。
      */
     val exportRetentionDays: Int = DEFAULT_EXPORT_RETENTION_DAYS,
+    /**
+     * 导出时「提供商 / 模型」标签的**全局配置**（PNG 图片、Markdown、HTML 三种只读导出共用；
+     * JSON 归档不读它）。见 `data/export/ExportDisplayLabel.kt`。
+     */
+    val exportDisplayConfig: ExportDisplayConfig = ExportDisplayConfig(),
+    /** 用户命名的导出显示方案（一键套用到 [exportDisplayConfig]；删档不改当前值）。 */
+    val exportDisplaySchemes: List<ExportDisplayScheme> = emptyList(),
     /** 摘要目标 token（默认 2000） */
     val autoCompressTargetTokens: Int = DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
     /**
