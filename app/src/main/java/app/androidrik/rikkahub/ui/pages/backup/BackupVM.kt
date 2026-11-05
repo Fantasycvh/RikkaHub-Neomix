@@ -211,7 +211,7 @@ class BackupVM(
         }
     }
 
-    /** 手动回收未被任何已提交快照引用的对象（只允许单设备仓库）。 */
+    /** 手动回收未被任何已提交快照引用的对象与 pack（跨设备仓库也允许，带租约/宽限期保护）。 */
     internal fun garbageCollectSnapshots() {
         if (snapshotBusy.value || backupRun.state.value != null) return
         snapshotError.value = null
@@ -220,7 +220,12 @@ class BackupVM(
                 val result = backupRun.await(BackupRunKind.SNAPSHOT_GC) { _ ->
                     incrementalBackup.garbageCollect(snapshotDestination.value)
                 }
-                snapshotNotice.value = "回收 ${result.deletedObjects} 个未引用对象，释放 ${result.freedBytes.fileSizeToString()}"
+                snapshotNotice.value = buildString {
+                    append("回收 ${result.deletedObjects} 个未引用对象")
+                    if (result.deletedPacks > 0) append("、${result.deletedPacks} 个 pack")
+                    append("，释放 ${result.freedBytes.fileSizeToString()}")
+                    if (result.skippedRecent > 0) append("；保留 ${result.skippedRecent} 个最近修改/时间未知条目")
+                }
                 refreshSnapshots()
             } catch (cancelled: CancellationException) {
                 if (isActive) snapshotNotice.value = "已取消" else throw cancelled

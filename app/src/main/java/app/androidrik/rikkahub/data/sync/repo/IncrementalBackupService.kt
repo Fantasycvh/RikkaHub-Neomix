@@ -225,11 +225,11 @@ class IncrementalBackupService(
         mutex.withLock { engine().pruneSnapshots(store(destination), deviceId(), snapshotRetention()) }
     }
 
-    /** 手动回收未引用对象；只允许单设备仓库，失败即停止（见引擎实现）。 */
+    /** 手动回收未引用对象/pack；跨设备仓库执行全仓可达性分析，失败即停止（见引擎实现）。 */
     internal suspend fun garbageCollect(destination: BackupDestination): ObjectGcResult = withContext(Dispatchers.IO) {
         mutex.withLock {
             DataOperationLock.runWaiting(DataOperation.STORAGE_CLEANUP) {
-                engine().garbageCollect(store(destination))
+                engine().garbageCollect(store(destination), deviceId())
             }
         }
     }

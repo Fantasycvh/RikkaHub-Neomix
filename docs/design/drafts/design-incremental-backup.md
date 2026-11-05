@@ -104,6 +104,7 @@
    P1 默认不限保留，不自动删除清单或共享对象；手动删除快照只移除其提交标记和清单。
    后续 GC 至少需要全仓可达性分析、失败即停止，以及明确的跨设备写入/回收协调协议。
    宽限期只降低竞争概率，不能独自提供安全保证；“不列举全量对象”也不等于“不误删”。
+   （2026-11-05 已按此实现：全设备可达集 + mtime 宽限期 + 仓库租约 + 删除前复核 + 提交前 stat 兜底，见 §0.10。）
 
 6. **P1 数据库对象与现有回退路径不兼容（修订 §5.7、§5.8）**。
    P1 只有一个 database 引用、恢复不含 WAL；不能直接复用热拷回退后只保留主库，
@@ -417,7 +418,8 @@ append-only 流水游标、真实 S3/WebDAV/SAF 远端网络上传与 UI 入口�
   **不删对象**（对象留给 GC 统一回收，避免动到其它设备/快照共享的对象）。
 - **手动 GC**：`garbageCollect(store)` 严格可达性——
   - 先用 `snapshotsStrict` 读**所有**已完成快照，任何清单损坏/校验失败立即放弃（宁可少删）；
-  - 只允许**单设备仓库**：发现多个 `deviceId` 直接拒绝（跨设备回收需要协调协议，见 §0.1 第 5 条）；
+  - 只允许**单设备仓库**：发现多个 `deviceId` 直接拒绝（跨设备回收需要协调协议，见 §0.1 第 5 条；
+    该限制已被 §0.10 的多设备 GC 取代）；
   - 校验对象键必须是 `v3/objects/<sha[:2]>/<sha>` 且哈希合法，任何意外对象/目录都失败而不是删除；
   - 删除无任何快照引用的对象，返回 `ObjectGcResult(deleted, freedBytes, kept)`。
 - **递归列举**：`BackupObjectStore` 新增 `listAll(prefix)`（默认逐层 `listChildren` 递归；S3 覆盖为
@@ -597,7 +599,91 @@ FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本�
   导出经 coordinator 成功、扫描中离开备份页时 FGS 通知 `id=2004` 为 `ONGOING|FOREGROUND_SERVICE`+
   「取消」action、回页后计划仍在、确认提交完成并刷新列表 ✅。
 - **仍未做**：进程被杀后的断点续传（无 WorkManager，明确不承诺）；真实 S3/WebDAV 长任务手测；
-  快照导出完整 ZIP / pack / 多设备 GC（后续单独立项）。
+  快照导出完整 ZIP（后续单独立项）；pack 与多设备 GC 已在 §0.10 完成。
+
+### 0.10 pack 打包与多设备 GC 落地记录（2026-11-05，工作树未提交）
+
+> 接 §0.9。用户要求「pack 与多设备 GC」；本轮只做这两项（快照导出完整 ZIP 仍未做）。
+> 以下只描述**工作树实现与真机验证**（AGENTS.md 提交授权另议）。
+
+**1. pack 文件（快照格式 v3）**
+
+- **动机**：小文件逐个对象上传时每个文件都要 stat + put（SAF/S3/WebDAV 都是请求级开销），
+  一次备份几百个小文件时请求数主导耗时。pack 把「一次备份里新增/变更的小文件」打成 zip，
+  请求数从 N 降到 1，而 pack 本身内容寻址 → 内容不变可整包复用。
+- **格式**：`v3/packs/<sha256>.zip`，文件名 = 整个 zip 字节的 SHA-256；条目名 = 对象内容的 SHA-256
+  （与对象同一个内容寻址键，清单里的 `sha256` 直接对应条目名），条目时间固定为 1980-01-01
+  （`PACK_FIXED_TIME`）保证「同样输入 → 同样 pack 字节」；只有 `size < PACK_ENTRY_LIMIT`(256 KB)
+  的对象进 pack，单 pack 原始总量 ≤ `PACK_TARGET_BYTES`(32 MB)，按 sha 排序分批；
+  同样内容的 pack 在一批里会被去重（同一 zip 字节只写一次）。
+- **清单 v3**：`SNAPSHOT_FORMAT_V3`；`SnapshotObjectRef` 新增可选 `val pack: String?`（**裸 pack 内容 SHA**，
+  不是路径——布局只由引擎计算，清单不耦合路径），`storageKey`/`packKey` 由 sha 推导。
+  校验：v3+ 才允许 `pack`、`pack` 必须合法 64 hex、声明在 pack 里的对象 `size` 必须小于阈值
+  （防止把大对象塞进 pack 破坏「大对象独立」的语义）；v1/v2 清单行为不变。
+- **复用策略**：plan 只信任**本设备最新快照**的引用——
+  - 信任引用存在（`stat` 非空且 size 相同）→ 直接复用原引用（保留原 pack 指针，不再读内容）；
+  - 不受信的独立对象若已存在 → 完整回读 + 解码 + SHA-256 校验后才复用（防「上次上传失败留下半截对象」
+    被新快照引用）；
+  - 否则上传。**只有 upload 候选进入新 pack**；未变化的引用继续指向旧 pack，旧 pack 只要仍被引用就整包保留
+    （pack 内单条无法单独回收 → 空间放大，见 §8.1 R5）。
+- **恢复**：按下发引用分组，同一个 pack 只下载一次并整体校验 SHA-256，再用 `ZipFile` 按条目名抽取、
+  逐条核对 sha/size；独立对象仍走 `v3/objects` 解码；v2 快照（无 pack 字段）完全兼容。
+- 代码：新增 `A/data/sync/repo/SnapshotPacking.kt`（`write`/`verify`/`extractAll`/`downloadLimit`）；
+  `AppFilesPacking.addFileToZip` 增加 `entryTime` 参数供确定性打包；`IncrementalBackupEngine.plan/commit/assemble`
+  接入 pack；`BackupSnapshotManifest` 增加 v3 与 pack 校验。
+
+**2. 多设备仓库 GC（安全协议）**
+
+- 旧实现发现多个 `deviceId` 直接拒绝。现在 `garbageCollect` 用 `snapshotsStrict` 读**所有设备**的已提交快照
+  求可达集（任一清单损坏/校验失败即放弃），引用集同时覆盖 `v3/objects/<aa>/<sha>` 与 `v3/packs/<sha>.zip`
+  （pack 被引用则整包保留）。§0.1 第 5 条要求的「跨设备协调协议」落为下面四条：
+  1. **mtime 宽限期**：对象扫描新增 `lastModified`（SAF `COLUMN_LAST_MODIFIED`、S3 `Last-Modified`、
+     WebDAV `getlastmodified`）；只删「时间已知且早于 `GC_GRACE`(默认 10 分钟)」的候选，
+     另一台设备刚上传、清单还没提交的对象不会被删；拿不到时间的 provider 一律保留并计入 `skippedRecent`。
+  2. **仓库租约**：`v3/gc.json` 存 `GcLease(deviceId, repoId, startedAt)`，TTL 30 分钟。回收开始先读：
+     别的设备的**新鲜**租约 → 抛「另一台设备正在回收未引用对象，请稍后重试」。`commit` 前也做同样检查，
+     避免与并发回收抢「刚上传、尚未被清单引用」的对象。租约是可变文件，走新增的
+     `BackupObjectStore.putOverwrite`（SAF 用 `"wt"` 截断重写；`put` 仍保持内容寻址不可变语义）；
+     `finally` 在 `NonCancellable` 中释放，且**只删自己的租约**（本机回收超时、别家接手后不能把别家租约删掉）；
+     崩溃遗留的旧租约由下一次 `putOverwrite` 覆盖，不会永久锁死仓库。
+  3. **删除前静默复核**：删之前再严格列举一次快照 id 集合，与开始时不一致即中止（fail-stop：
+     说明别的设备正在提交）。
+  4. **兜底**：即使极端窗口下误删了别的设备刚上传的对象，它提交前的 `stat` 存在性复检会失败
+     → 只会提交失败，不会产出坏快照（R18 同一思路）。
+- `ObjectGcResult` 增加 `deletedPacks` / `skippedRecent`；UI 提示补「、N 个 pack」「保留 N 个最近修改/时间未知条目」，
+  快照卡片显示「N 个 pack」；GC 确认框文案改为多设备可达性 + 宽限期说明。
+
+**3. 真机暴露的两个性能问题（已修）**
+
+- `SafBackupObjectStore` 原先只有默认 `listAll`：每个对象目录都用 `resolve` 重走整条路径（4 次 provider 查询
+  + 1 次列出），真机仓库 111 个对象文件 / 91 个分片目录时整次 GC 要数分钟（初看像卡死）。
+  改为覆盖 `listAll`：按目录 id 逐层列举（1 次查询/目录），同一层兄弟目录 8 路并行；
+  **不做递归并行**（每层各自持许可会互相等待）。
+- 删除原先逐条串行（每条 delete 又要 `resolve` 一次路径），上百孤儿对象要一分多钟；改为按对象并行删除。
+- 结果：真机同一仓库 GC 从分钟级降到数秒级（111 → 22 个对象，二次 GC 0 删除 < 8 s）。
+
+**验证**
+
+- JVM：全量 `:app:testDebugUnitTest` **3064 项 0 失败/错误、2 跳过** ✅。新增
+  `SnapshotPackingTest` 8 项（确定性字节、verify 拒绝篡改/缺条目、extractAll 校验、引擎打包 + 恢复、
+  大对象留独立对象、未变备份 `uploadBytes == 0` 复用、变更对象进新包、v2 清单拒绝 pack 指针/非法 pack 哈希）；
+  `IncrementalBackupRetentionTest` +2 项（崩溃遗留同设备租约可覆盖回收、过期别家租约可接手且收尾只删自己的）；
+  `SafBackupObjectStoreTest` +3 项（嵌套 `listAll` 只回文件、`putOverwrite` 覆盖语义、覆盖创建缺失文件）。
+- 真机（PJX110 / Android 15，debug 包，SAF 仓库 `/sdcard/Rikkahub_plus/debug/test`）：
+  - 混合仓库：旧 v2 快照与新 v3 快照共存，新快照卡片显示「22 个对象 · 36.5 KB · 1 个 pack」；
+    从设备 pull 回 pack 与清单核对：pack 文件 SHA-256 = 文件名、zip 内条目名 = settings 的清单 sha、
+    解压内容 SHA 一致 ✅。
+  - 从 v3 快照恢复：下载 pack → 整包校验 → 按条目抽取校验 → 组装 → 换库重启成功 ✅。
+  - GC：111 → 22 个对象（其余均不可达），被引用的 `1 个 pack` 保留，租约 `v3/gc.json` 回收后消失；
+    再次 GC 提示「回收 0 个未引用对象，释放 0B」且 < 8 s ✅。
+  - instrumented：包 `data.sync.repo` **15/15** ✅，新增
+    `IncrementalStorageInstrumentedTest.nativeSafGarbageCollectionReclaimsUnreferencedContentAndReleasesLease`
+    （真实 DocumentsProvider：编辑产生新 pack、删快照后回收旧 pack、租约释放、剩余快照仍能组装还原）。
+- `:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` ✅；`git diff --check` 通过。
+
+**仍未做**：pack 级增量回收（pack 内单条不可达也不会拆包，被引用就整包保留 → 空间放大，§8.1 R5）；
+pack 之间并行上传（现在仍按对象并行）；真实 S3/WebDAV 上的 pack + GC 手测；跨设备 GC 的自动触发（仍手动）；
+快照导出完整 ZIP（未授权，保持不做）。
 
 ## 1. 问题与目标
 
@@ -826,6 +912,9 @@ P1 用整对象 + SHA-256 门控（未变则不上传），P2 再考虑按 key �
 | `v3/packs/<sha256>.zip` | 一批小文件（zip，条目名=备份内相对路径） | **内容哈希**（= 文件字节的 SHA-256） | 清单之前 |
 | `v3/objects/<aa>/<sha256>` | 单文件/DB/settings 对象 | **原始内容 SHA-256**（`aa` = 前两位，分片目录） | 清单之前 |
 
+> **实际落地（2026-11-05）**：快照文件为 `<uuid>.json.gz` + `<uuid>.complete.json`（§0.1 第 4 条），
+> pack 条目名是对象内容 SHA 而非备份内路径，清单 v3 用逐引用 `pack` 字段，详见 §0.10。
+
 - **提交语义**：先传所有对象/pack，再传清单；清单存在 = 快照有效。中断只留下未引用对象/pack，
   由 GC 清理；**不需要 MOVE、不需要条件写、不需要最新指针**（每份快照可独立列出/恢复）。
 - **列举快照**：WebDAV `PROPFIND Depth:1 v3/snapshots/`；S3 `ListObjectsV2(prefix, 翻页)`；
@@ -917,6 +1006,10 @@ byte 1..: 编码后的 payload
 - pack 文件名 = **整个 zip 字节的 SHA-256**；清单 `SnapshotRef.Pack(pack, entry)`。
 - 大文件（≥256 KB）走单对象（`0x00`/`0x01` 自描述），避免把 GB 级 git pack 塞进 zip 再读一遍。
 - 恢复：每个被引用的 pack 下载到 cacheDir 一次，用 `ZipFile` 逐条抽；同一 pack 只下载一次。
+
+> **实际落地（2026-11-05，§0.10）**：条目名取对象内容 SHA（同一内容寻址键，清单 `sha256` 直接对应条目名），
+> 条目时间固定 1980-01-01 以获得确定性字节；清单 v3 在每条引用上加可选 `pack = <zip 字节 SHA-256>`，
+> 而不是 `SnapshotRef` 联合类型；256 KB 阈值与 32 MB/批不变，pack 之间不再按路径分批而是按 sha 排序分批。
 
 **边界**：沿用现有恢复上限（单条目 2 GB、总量 8 GB，`A/data/sync/BackupManifest.kt:31-35`）——
 超过 2 GB 的单文件在现有 zip 恢复里也会失败，增量恢复保持一致并在预检时报错。
@@ -1332,8 +1425,8 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 | R2 | WebDAV 小文件 PUT 放大（首备 1 万文件） | 首备慢/失败 | pack 批量（≤32 MB/批）+ 串行重试；限并发 2～4；错误可重试单批 |
 | R3 | 组装 zip 的临时空间 + 时间 | 恢复慢/空间不足 | `BackupSpaceCheck` 预检；P2 原生恢复省掉 |
 | R4 | P1 仍每次上传 ~50 MB DB（聊天型用户收益变小） | 增量收益打折 | P2（对象级）；P1 先做 DB 哈希门控（未变不上传，但通常每次都会变） |
-| R5 | 中断留下孤儿对象/pack | 远端体积涨 | 深度清理（列举删除未引用）；常规 GC 不依赖列举 |
-| R6 | 多设备共用同一目录 | 快照互相覆盖/保留误删 | `deviceId` 隔离保留；UI 警告「多设备同目录不合并」；P1 不做合并 |
+| R5 | 中断留下孤儿对象/pack；pack 内单条不可达也不会拆包 | 远端体积涨 | 已实现多设备 GC（§0.10：全设备可达集 + mtime 宽限期 + 租约 + 删除前复核）；pack 只要仍被引用就整包保留 → 单条放大已知可接受，需要时再加拆包 |
+| R6 | 多设备共用同一目录 | 快照互相覆盖/保留误删 | `deviceId` 隔离保留；补：GC 已跨设备求可达集 + mtime 宽限期 + 租约串行（§0.10）；仍不做合并 |
 | R7 | 恢复后 mtime 重置导致哈希缓存失效 | 首次增量重算全量 | 可接受（与今天读一遍同量级）；UI 说明；「重建索引」入口 |
 | R8 | 清单/对象被篡改 | 数据损坏 | 每对象 SHA-256 + 恢复前统一校验；与现有 v2 同信任级；加密独立立项 |
 | R9 | 单文件 >2 GB | 恢复拒绝 | 与现有上限一致；预检明确报错 |
@@ -1352,8 +1445,10 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 1. **范围已确认（2026-11-04）**：本地目录仓库 + WebDAV/S3；用户选择“备份文件夹”，原有完整 ZIP 导入/导出保留，详见 §5.14。用户随后要求开始 P1，完成结论见 §0.5。
 2. **P1 是否接受「DB 仍每次整库（~50 MB 压缩）」**，还是一开始就投入 P2 的 DB 对象增量？
 3. **保留/GC 已定（2026-11-04，§0.7）**：默认按设备保留最新 10 份（0=不限），提交后自动 prune 清单；
-   手动 GC 只允许单设备仓库、严格可达性、失败即停。跨设备自动回收仍未做。
-4. **多设备**：是否要求两台设备备份到同一 WebDAV/S3 目录并互不干扰（本稿只保证不损坏，不做合并）？
+   手动 GC 严格可达性、失败即停；跨设备回收已实现（2026-11-05，§0.10：mtime 宽限期 + 仓库租约 +
+   删除前复核，仍为手动触发）。
+4. **多设备**：已支持多台设备备份到同一 WebDAV/S3/SAF 目录并互不干扰：保留/回收按 `deviceId` 隔离，
+   GC 跨所有设备求可达集并用租约/宽限期串行（§0.10）；仍不做合并（§1.3）。
 5. **加密**是否要并入本批（否则快照里的 DB/settings 与现有 zip 一样明文）？
 6. **是否需要「把快照导出成完整 zip」**（便于交给旧版 App / 归档）？
 7. **实现时机**：P1 已完成（2026-11-04，见 §0.2–§0.5）；真实 provider/云端与恢复重启矩阵作为后续验收项记录在 §0.4，不阻塞 P1 完成。P2 首版及后续三项（跨 schema、FTS 重建进度 UX、对象 GC/保留）已落地（§0.6–§0.7，工作树未提交）。

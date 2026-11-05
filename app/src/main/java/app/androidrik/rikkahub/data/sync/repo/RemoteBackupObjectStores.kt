@@ -5,6 +5,12 @@ import app.androidrik.rikkahub.data.sync.s3.S3Exception
 import app.androidrik.rikkahub.data.sync.webdav.WebDavClient
 import app.androidrik.rikkahub.data.sync.webdav.WebDavException
 import java.io.File
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+
+/** HTTP 头（HEAD/`Last-Modified`）的 RFC 1123 时间；解析失败一律当未知（GC 保守保留）。 */
+private fun parseHttpInstant(value: String?): Instant? =
+    value?.let { runCatching { DateTimeFormatter.RFC_1123_DATE_TIME.parse(it, Instant::from) }.getOrNull() }
 
 internal class S3BackupObjectStore(private val client: S3Client, override val destinationId: String) : BackupObjectStore {
     private val root = "rikkahub_plus_backups/"
@@ -14,20 +20,20 @@ internal class S3BackupObjectStore(private val client: S3Client, override val de
         return client.listAllObjects(prefix = fullPrefix).getOrThrow().mapNotNull {
             require(it.key.startsWith(fullPrefix)) { "S3 returned a key outside the requested prefix" }
             val relative = it.key.removePrefix(root)
-            if (!relative.removePrefix(if (prefix.isEmpty()) "" else "$prefix/").contains('/')) BackupStoredObject(relative, it.size) else null
+            if (!relative.removePrefix(if (prefix.isEmpty()) "" else "$prefix/").contains('/')) BackupStoredObject(relative, it.size, lastModified = it.lastModified) else null
         }
     }
     override suspend fun listAll(prefix: String): List<BackupStoredObject> {
         val fullPrefix = root + prefix.let { if (it.isEmpty()) "" else "$it/" }
         return client.listAllObjects(prefix = fullPrefix).getOrThrow().map {
             require(it.key.startsWith(fullPrefix)) { "S3 returned a key outside the requested prefix" }
-            BackupStoredObject(it.key.removePrefix(root), it.size)
+            BackupStoredObject(it.key.removePrefix(root), it.size, lastModified = it.lastModified)
         }
     }
     override suspend fun stat(key: String): BackupStoredObject? {
         validateKey(key)
         return client.headObject(root + key).fold(
-            onSuccess = { BackupStoredObject(key, it.size) },
+            onSuccess = { BackupStoredObject(key, it.size, lastModified = parseHttpInstant(it.lastModified)) },
             onFailure = { if (it is S3Exception && it.statusCode == 404) null else throw it },
         )
     }
@@ -57,12 +63,12 @@ internal class WebDavBackupObjectStore(private val client: WebDavClient, overrid
             if (it is WebDavException && it.statusCode == 404) return emptyList() else throw it
         })
         return resources.map { item ->
-            BackupStoredObject((if (prefix.isEmpty()) "" else "$prefix/") + item.displayName, item.contentLength, item.isCollection)
+            BackupStoredObject((if (prefix.isEmpty()) "" else "$prefix/") + item.displayName, item.contentLength, item.isCollection, item.lastModified)
         }
     }
     override suspend fun stat(key: String): BackupStoredObject? {
         validateKey(key)
-        return client.head(key).fold(onSuccess = { BackupStoredObject(key, it.contentLength) },
+        return client.head(key).fold(onSuccess = { BackupStoredObject(key, it.contentLength, lastModified = it.lastModified) },
             onFailure = { if (it is WebDavException && it.statusCode == 404) null else throw it })
     }
     override suspend fun get(key: String, target: File, maxBytes: Long, onBytes: (Long) -> Unit) {

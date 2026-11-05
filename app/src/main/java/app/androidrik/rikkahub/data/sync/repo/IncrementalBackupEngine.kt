@@ -9,6 +9,7 @@ import app.androidrik.rikkahub.data.sync.BackupSectionStats
 import app.androidrik.rikkahub.data.sync.classifyBackupEntry
 import app.androidrik.rikkahub.data.sync.addFileToZip
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -16,11 +17,15 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.Closeable
 import java.io.File
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipOutputStream
@@ -37,7 +42,18 @@ internal data class DecodedDbObject(val objectKey: String, val raw: File)
 internal data class SnapshotPruneResult(val deletedSnapshots: Int, val keptSnapshots: Int)
 
 /** 未引用对象回收结果。 */
-internal data class ObjectGcResult(val deletedObjects: Int, val freedBytes: Long, val keptObjects: Int)
+internal data class ObjectGcResult(
+    val deletedObjects: Int,
+    val freedBytes: Long,
+    val keptObjects: Int,
+    val deletedPacks: Int = 0,
+    /** 因「最近修改/时间未知」被保守跳过的候选数（并发写入窗口保护）。 */
+    val skippedRecent: Int = 0,
+)
+
+/** 仓库级 GC 租约：多设备共用同一目录时避免两台设备同时回收。 */
+@Serializable
+internal data class GcLease(val deviceId: String, val repoId: String, val startedAt: String)
 
 internal class BackupSnapshotPlan(
     val store: BackupObjectStore,
@@ -132,13 +148,16 @@ internal class IncrementalBackupEngine(
         dbVersion: Int,
         appVersionCode: String,
         databaseObjects: List<SnapshotDbObjectInput> = emptyList(),
+        /** v3 小对象打包；测试可关闭以单独验证对象层语义。 */
+        packing: Boolean = true,
     ): BackupSnapshotPlan {
         val dir = taskDir()
         try {
             val repo = repository(store)
             val trusted = list(store).firstOrNull { it.deviceId == deviceId }?.objects?.associateBy { it.sha256 }.orEmpty()
             val usesLogicalDatabase = databaseObjects.isNotEmpty()
-            require(!usesLogicalDatabase || inputs.none { it.path == "rikka_hub.db" }) {
+            val legacyDatabaseFile = inputs.any { it.path == "rikka_hub.db" }
+            require(!usesLogicalDatabase || !legacyDatabaseFile) {
                 "Database must be captured once, either as a file or as logical objects"
             }
             require(!usesLogicalDatabase || databaseState == SnapshotDatabaseState.PRESENT) {
@@ -147,7 +166,8 @@ internal class IncrementalBackupEngine(
             require(inputs.size <= ENTRY_LIMIT && databaseObjects.size <= ENTRY_LIMIT) { "Too many files" }
             val plannedRaw = inputs.sumOf { it.file.length() } + databaseObjects.sumOf { it.file.length() }
             require(plannedRaw <= BackupManifest.MAX_TOTAL_BYTES) { "Backup exceeds restore size limit" }
-            check(cache.usableSpace >= Math.addExact(Math.multiplyExact(plannedRaw, 2), RESERVE_BYTES)) { "Not enough cache space to capture backup" }
+            // v3 需要同时放：原始捕获副本 + pack zip（或独立对象编码），预留 3 倍原始量。
+            check(cache.usableSpace >= Math.addExact(Math.multiplyExact(plannedRaw, 3), RESERVE_BYTES)) { "Not enough cache space to capture backup" }
             val entries = ArrayList<SnapshotFileEntry>()
             val dbEntries = ArrayList<SnapshotDbObject>()
             val uploads = linkedMapOf<String, File>()
@@ -189,60 +209,59 @@ internal class IncrementalBackupEngine(
                 work += WorkItem(source.file, size, source.objectKey, databaseObject = true)
             }
 
-            // 2) 哈希、去重判定与压缩都可以按对象并行：每个对象独立、输出确定；远程 stat 是网络往返，
-            //    串行 290 次 HEAD 在真机上就是十几秒。
+            // 2) 哈希按对象并行；每个唯一内容只判定一次处置，避免 290 次串行远端 HEAD。
             val hashes = parallelMap(work) { fileSha256(it.raw) }
-            // 内容寻址 key 决定去重与上传目标（同内容对象共用一份）；逻辑 key 只用于清单/恢复映射。
-            val refs: List<SnapshotObjectRef> = work.mapIndexed { index, item ->
-                if (item.databaseObject) SnapshotDbObject(item.logicalKey, hashes[index], item.size)
-                else SnapshotFileEntry(item.logicalKey, hashes[index], item.size)
-            }
-            val firstIndexByKey = LinkedHashMap<String, Int>()
-            work.forEachIndexed { index, _ -> firstIndexByKey.putIfAbsent(refs[index].key, index) }
-            val actionByKey = HashMap<String, ObjectAction>()
-            parallelMap(firstIndexByKey.keys.toList()) { key ->
-                val index = firstIndexByKey.getValue(key)
+            val firstIndexBySha = LinkedHashMap<String, Int>()
+            work.forEachIndexed { index, _ -> firstIndexBySha.putIfAbsent(hashes[index], index) }
+            val decisions: Map<String, ObjectDecision> = parallelMap(firstIndexBySha.entries.toList()) { (sha, index) ->
                 val item = work[index]
-                val ref = refs[index]
-                val existing = store.stat(key)
-                val action = when {
-                    existing != null && trusted[ref.sha256]?.size == item.size -> ObjectAction.Reuse
-                    existing != null -> {
-                        // Uncommitted objects can be partial writes left by a failed attempt.
-                        require(!existing.directory) { "Object is a directory" }
-                        verifyObject(store, ref, dir)
-                        ObjectAction.Reuse
+                val trustedRef = trusted[sha]
+                val decision = when {
+                    // 沿用本设备上一份快照的引用（可能已在 pack 里）：pack/对象都是内容寻址不可变的。
+                    trustedRef != null && trustedRef.size == item.size && store.stat(trustedRef.key)?.directory == false ->
+                        ObjectDecision.Reuse(trustedRef.pack)
+                    // 仓库里已有、但不是本设备快照引用的对象（跨设备共享/上次失败留下）：
+                    // 不能只信「存在」，先完整回读校验，避免把部分写入的孤儿对象带进新快照。
+                    trustedRef == null && store.stat(objectKeyFor(sha))?.directory == false -> {
+                        verifyObject(store, sha, item.size, dir)
+                        ObjectDecision.Reuse(null)
                     }
-                    else -> {
-                        val encoded = File(dir, "object-$index-${ref.sha256.take(12)}")
-                        SnapshotObjectCodec.encode(item.raw, encoded) { coroutine.ensureActive() }
-                        ObjectAction.Upload(encoded)
-                    }
+                    else -> ObjectDecision.Upload
                 }
-                synchronized(actionByKey) { actionByKey[key] = action }
+                sha to decision
+            }.toMap()
+            // 3) 新内容：小的（含 DB 逻辑对象）进内容寻址 pack，大的单独编码成对象。
+            val usePacking = packing && !legacyDatabaseFile
+            val packCandidates = ArrayList<Pair<String, File>>()
+            firstIndexBySha.forEach { (sha, index) ->
+                if (decisions.getValue(sha) !is ObjectDecision.Upload) return@forEach
+                val item = work[index]
+                if (usePacking && item.size < PACK_ENTRY_LIMIT) {
+                    packCandidates += sha to item.raw
+                } else {
+                    val encoded = File(dir, "object-$index-${sha.take(12)}")
+                    SnapshotObjectCodec.encode(item.raw, encoded) { coroutine.ensureActive() }
+                    uploads[objectKeyFor(sha)] = encoded
+                }
             }
-            // 3) 组装清单（保持输入顺序）并统计复用/上传。
+            val packed = SnapshotPacking.write(dir, packCandidates) { coroutine.ensureActive() }
+            packed.files.forEach { (key, file) -> uploads[key] = file }
+            // 4) 组装清单（保持输入顺序）；pack 指针来自「复用」或本次新 pack。
             work.forEachIndexed { index, item ->
-                val ref = refs[index]
-                val key = ref.key
+                val sha = hashes[index]
                 totalRaw = Math.addExact(totalRaw, item.size)
                 require(totalRaw <= BackupManifest.MAX_TOTAL_BYTES) { "Backup grew beyond the size limit" }
-                when (ref) {
-                    is SnapshotDbObject -> dbEntries += ref
-                    is SnapshotFileEntry -> entries += ref
+                val pack = when (val decision = decisions.getValue(sha)) {
+                    is ObjectDecision.Reuse -> decision.pack
+                    ObjectDecision.Upload -> packed.shaToPack[sha]
                 }
-                if (firstIndexByKey.getValue(key) == index) {
-                    when (val action = actionByKey.getValue(key)) {
-                        ObjectAction.Reuse -> reused += item.size
-                        is ObjectAction.Upload -> uploads[key] = action.file
-                    }
-                } else {
-                    reused += item.size
-                }
+                if (item.databaseObject) dbEntries += SnapshotDbObject(item.logicalKey, sha, item.size, pack)
+                else entries += SnapshotFileEntry(item.logicalKey, sha, item.size, pack)
             }
-            val formatVersion = if (databaseObjects.isEmpty() && inputs.none { it.path == "rikka_hub.db" }) {
-                SNAPSHOT_FORMAT_VERSION
-            } else if (usesLogicalDatabase) SNAPSHOT_FORMAT_VERSION else SNAPSHOT_FORMAT_V1
+            firstIndexBySha.forEach { (sha, index) ->
+                if (decisions.getValue(sha) is ObjectDecision.Reuse) reused += work[index].size
+            }
+            val formatVersion = if (legacyDatabaseFile) SNAPSHOT_FORMAT_V1 else SNAPSHOT_FORMAT_VERSION
             val snapshot = BackupSnapshotManifest(
                 formatVersion = formatVersion,
                 snapshotId = UUID.randomUUID().toString(), repoId = repo.repoId, createdAt = Instant.now().toString(),
@@ -265,25 +284,29 @@ internal class IncrementalBackupEngine(
             store.put("repo.json", infoFile)
             require(inspectRepository(store) == info) { "Repository initialization was not confirmed" }
         } else require(repository.repoId == plan.snapshot.repoId) { "Backup destination changed" }
+        ensureNoForeignGcLease(store, plan.snapshot.deviceId)
         val coroutine = currentCoroutineContext()
-        val references = plan.snapshot.objects.associateBy { it.key }
-        val uploaded = java.util.concurrent.atomic.AtomicLong()
-        // 目录先顺序建好（并发创建同一父目录在 SAF 上会互相干扰），对象本身再并行上传。
+        val uploaded = AtomicLong()
+        // 目录先顺序建好（并发创建同一父目录在 SAF 上会互相干扰），对象/pack 再并行上传。
         plan.uploads.keys.map { it.substringBeforeLast('/') }.distinct()
             .forEach { store.ensureDir(it) }
+        val refsByKey = plan.snapshot.objects.groupBy { it.key }
         parallelMap(plan.uploads.entries.toList()) { (key, file) ->
-            val entry = requireNotNull(references[key]) { "Uploaded object is not referenced by the snapshot" }
+            val packSha = packShaFromKey(key)
+            if (packSha != null) {
+                // pack 的本地完整性（整份 SHA + 每个条目 SHA）在上传前校验，不做远端回读。
+                SnapshotPacking.verify(file, packSha, requireNotNull(refsByKey[key]) { "Uploaded pack is not referenced" }, plan.directory)
+            }
+            val entry = if (packSha == null) {
+                requireNotNull(refsByKey[key]?.singleOrNull()) { "Uploaded object is not referenced by the snapshot" }
+            } else null
             store.put(key, file) { n ->
                 coroutine.ensureActive()
                 progress(BackupProgress(BackupPhase.UPLOADING, uploaded.addAndGet(n), plan.uploadBytes))
             }
-            // 首备时把每个对象整份下载回来校验，等于再传一遍（实测 7.7s 里约 6s 是这次回读）。
-            // 改为校验**本地编码文件**可解码且 SHA 匹配 + 发布前复检远端存在性/类型；
-            // 传输层（TLS/S3/SAF）保证写入成功即字节完整，恢复端仍逐对象校验 SHA-256（设计稿 R8），
-            // 最终一致性不变。失败重试时仍走 verifyObject 的完整回读路径。
-            verifyLocalEncodedObject(entry, file, plan.directory)
+            if (entry != null) verifyLocalEncodedObject(entry, file, plan.directory)
         }
-        // Recheck reused references immediately before publication; missing objects never produce a snapshot.
+        // Recheck reused references immediately before publication; missing objects/packs never produce a snapshot.
         parallelMap(plan.snapshot.objects.distinctBy { it.key }) { entry ->
             require(store.stat(entry.key)?.directory == false) { "Backup object disappeared; scan again" }
         }
@@ -321,13 +344,14 @@ internal class IncrementalBackupEngine(
         }
     }
 
-    private suspend fun verifyObject(store: BackupObjectStore, entry: SnapshotObjectRef, dir: File) {
-        val encoded = File(dir, "verify-encoded-${entry.sha256.take(16)}-${System.nanoTime()}")
-        val raw = File(dir, "verify-raw-${entry.sha256.take(16)}-${System.nanoTime()}")
+    /** 本设备上一份快照没有引用、但仓库里已存在的独立对象：完整回读并校验后再复用。 */
+    private suspend fun verifyObject(store: BackupObjectStore, sha256: String, size: Long, dir: File) {
+        val encoded = File(dir, "verify-encoded-${sha256.take(16)}-${System.nanoTime()}")
+        val raw = File(dir, "verify-raw-${sha256.take(16)}-${System.nanoTime()}")
         try {
-            store.get(entry.key, encoded, encodedLimit(entry))
+            store.get(objectKeyFor(sha256), encoded, size + size / 100 + 1024 * 1024)
             val coroutine = currentCoroutineContext()
-            SnapshotObjectCodec.decode(encoded, raw, entry) { coroutine.ensureActive() }
+            SnapshotObjectCodec.decode(encoded, raw, PlainObjectRef(sha256, size)) { coroutine.ensureActive() }
         } finally { encoded.delete(); raw.delete() }
     }
 
@@ -365,47 +389,25 @@ internal class IncrementalBackupEngine(
             var processed = 0L
             val decodedFiles = java.util.concurrent.ConcurrentLinkedQueue<File>()
             // DB 对象与文件对象是连续两段下载：共用同一个计数，避免 DOWNLOAD 阶段进度回跳。
-            val downloaded = java.util.concurrent.atomic.AtomicLong()
+            val downloaded = AtomicLong()
             var mergedDatabase: File? = null
             try {
-                if (snapshot.formatVersion == SNAPSHOT_FORMAT_V2 && snapshot.databaseState == SnapshotDatabaseState.PRESENT) {
+                if (snapshot.formatVersion != SNAPSHOT_FORMAT_V1 && snapshot.databaseState == SnapshotDatabaseState.PRESENT) {
                     val merge = requireNotNull(mergeDatabase) { "This build cannot restore logical database snapshots" }
-                    // 对象相互独立：并行下载 + 解码；本地仓库的逐文件 SAF 查询和远程仓库的往返都在这里省掉。
-                    val decodedObjects = parallelMap(snapshot.dbObjects.withIndex().toList()) { (index, entry) ->
-                        coroutine.ensureActive()
-                        val encoded = File(dir, "db-encoded-$index")
-                        val raw = File(dir, "db-payload-$index")
-                        decodedFiles += raw
-                        store.get(entry.key, encoded, encodedLimit(entry)) { n ->
-                            coroutine.ensureActive()
-                            progress(BackupProgress(BackupPhase.DOWNLOADING, downloaded.addAndGet(n), snapshot.logicalBytes))
-                        }
-                        SnapshotObjectCodec.decode(encoded, raw, entry) { coroutine.ensureActive() }
-                        encoded.delete()
-                        DecodedDbObject(entry.objectKey, raw)
-                    }
+                    val raws = downloadObjects(store, snapshot.dbObjects, dir, "db", downloaded, snapshot.logicalBytes)
+                    decodedFiles.addAll(raws)
+                    val decodedObjects = raws.mapIndexed { index, raw -> DecodedDbObject(snapshot.dbObjects[index].objectKey, raw) }
                     mergedDatabase = requireNotNull(merge(decodedObjects, dir)) { "Database merge produced no database" }.also {
                         require(it.isFile && it.length() > 0) { "Database merge produced no database" }
                     }
                 }
-                // 文件同样先并行下载+解码，再单线程写 ZIP（ZipOutputStream 不是并发安全的）。
-                val decodedFilesList = parallelMap(snapshot.files.withIndex().toList()) { (index, entry) ->
-                    coroutine.ensureActive()
-                    val encoded = File(dir, "file-encoded-$index")
-                    val raw = File(dir, "file-raw-$index")
-                    decodedFiles += raw
-                    store.get(entry.key, encoded, encodedLimit(entry)) { n ->
-                        coroutine.ensureActive()
-                        progress(BackupProgress(BackupPhase.DOWNLOADING, downloaded.addAndGet(n), snapshot.logicalBytes))
-                    }
-                    SnapshotObjectCodec.decode(encoded, raw, entry) { coroutine.ensureActive() }
-                    encoded.delete()
-                    entry to raw
-                }
+                // 文件先并行下载+解包，再单线程写 ZIP（ZipOutputStream 不是并发安全的）。
+                val decodedFileRaws = downloadObjects(store, snapshot.files, dir, "file", downloaded, snapshot.logicalBytes)
+                decodedFiles.addAll(decodedFileRaws)
                 ZipOutputStream(zip.outputStream().buffered()).use { out ->
-                    decodedFilesList.forEach { (entry, raw) ->
+                    snapshot.files.forEachIndexed { index, entry ->
                         coroutine.ensureActive()
-                        addFileToZip(out, raw, entry.path, { coroutine.ensureActive() })
+                        addFileToZip(out, decodedFileRaws[index], entry.path, { coroutine.ensureActive() })
                         processed += entry.size
                         progress(BackupProgress(BackupPhase.EXTRACTING, processed, snapshot.logicalBytes))
                     }
@@ -432,6 +434,59 @@ internal class IncrementalBackupEngine(
                 mergedDatabase?.delete()
             }
         } catch (failure: Throwable) { dir.deleteRecursively(); throw failure }
+    }
+
+    /**
+     * 下载一批引用：独立对象并行下载+解码；pack 按 pack 分组，每个 pack 只下载一次，
+     * 再按条目 SHA 解出原始载荷。返回与 [refs] 顺序一致的原始文件。
+     */
+    private suspend fun downloadObjects(
+        store: BackupObjectStore,
+        refs: List<SnapshotObjectRef>,
+        dir: File,
+        tag: String,
+        downloaded: AtomicLong,
+        totalBytes: Long,
+    ): List<File> {
+        if (refs.isEmpty()) return emptyList()
+        val coroutine = currentCoroutineContext()
+        val raws = arrayOfNulls<File>(refs.size)
+        val packGroups = LinkedHashMap<String, MutableList<Int>>()
+        val singles = ArrayList<Int>()
+        refs.forEachIndexed { index, ref ->
+            val packKey = ref.packKey
+            if (packKey == null) singles += index else packGroups.getOrPut(packKey) { ArrayList() } += index
+        }
+        val batches: List<Pair<String?, List<Int>>> =
+            packGroups.map { (packKey, indices) -> packKey to indices.toList() } + singles.map { null to listOf(it) }
+        parallelMap(batches) { (packKey, indices) ->
+            coroutine.ensureActive()
+            if (packKey == null) {
+                val index = indices.single()
+                val ref = refs[index]
+                val encoded = File(dir, "$tag-encoded-$index")
+                val raw = File(dir, "$tag-raw-$index").also { raws[index] = it }
+                store.get(ref.storageKey, encoded, encodedLimit(ref)) { n ->
+                    coroutine.ensureActive()
+                    progress(BackupProgress(BackupPhase.DOWNLOADING, downloaded.addAndGet(n), totalBytes))
+                }
+                SnapshotObjectCodec.decode(encoded, raw, ref) { coroutine.ensureActive() }
+                encoded.delete()
+            } else {
+                val packRefs = indices.map { refs[it] }
+                val packSha = requireNotNull(packShaFromKey(packKey)) { "Invalid pack path" }
+                val packFile = File(dir, "$tag-pack-$packSha")
+                store.get(packKey, packFile, SnapshotPacking.downloadLimit(packRefs)) { n ->
+                    coroutine.ensureActive()
+                    progress(BackupProgress(BackupPhase.DOWNLOADING, downloaded.addAndGet(n), totalBytes))
+                }
+                require(fileSha256(packFile) == packSha) { "Backup pack checksum mismatch" }
+                val targets = indices.map { index -> File(dir, "$tag-raw-$index").also { raws[index] = it } }
+                SnapshotPacking.extractAll(packFile, packRefs, targets)
+                packFile.delete()
+            }
+        }
+        return raws.map { requireNotNull(it) { "Backup object was not downloaded" } }
     }
 
     suspend fun snapshotExists(store: BackupObjectStore, snapshotId: String): Boolean =
@@ -475,38 +530,122 @@ internal class IncrementalBackupEngine(
     }
 
     /**
-     * 未引用对象 GC：先从所有已提交快照（严格列举）求可达 sha256 集合，再逐个删除
-     * `v3/objects/` 下不在可达集里的对象；任何列举/删除失败即停止（不静默跳过）。
+     * 未引用对象/pack GC：严格读取**仓库内所有设备**的已提交快照求可达集，再删除
+     * `v3/objects/` 与 `v3/packs/` 下不可达的条目；任何列举/读取/删除失败即停止。
      *
-     * **只允许单设备仓库**：多设备时「另一台设备刚上传对象、快照还没提交」的窗口无法用
-     * 仓库内信息排除，删除可能破坏它正在进行的备份。跨设备回收需要协调协议，明确不做。
+     * 多设备共用一个目录时的并发保护（仓库内信息无法完全排除「另一台设备刚上传、清单还没提交」）：
+     * 1. `v3/gc.json` 租约：别的设备的回收在 30 分钟内进行时直接拒绝；
+     * 2. 删除前重新严格列举快照，集合变化即中止（fail-stop）；
+     * 3. 只删「最后修改时间已知且早于 [grace]」的候选——正在上传的对象不会被删，
+     *    拿不到 mtime 的 provider 一律保守保留并计入 [ObjectGcResult.skippedRecent]。
+     * 即使极端窗口下误删了别的设备刚上传的对象，其提交前的存在性复检会失败（不会产生坏快照）。
      */
-    suspend fun garbageCollect(store: BackupObjectStore): ObjectGcResult {
-        val snapshots = snapshotsStrict(store)
-        val devices = snapshots.map { it.deviceId }.distinct()
-        require(devices.size <= 1) {
-            "仓库包含 ${devices.size} 台设备的快照，暂不支持回收未引用对象（需跨设备协调）；可先手动删除旧快照"
-        }
-        val referenced = snapshots.flatMap { it.objects }.map { it.sha256 }.toHashSet()
-        var deleted = 0
-        var freed = 0L
-        var kept = 0
-        store.listAll("v3/objects").forEach { objectRef ->
-            currentCoroutineContext().ensureActive()
-            require(!objectRef.directory) { "Unexpected directory in object bucket: ${objectRef.key}" }
-            val sha = objectRef.key.substringAfterLast('/')
-            require(validHash(sha) && objectRef.key == "v3/objects/${sha.take(2)}/$sha") {
-                "Unexpected object layout: ${objectRef.key}"
+    suspend fun garbageCollect(
+        store: BackupObjectStore,
+        deviceId: String,
+        grace: Duration = GC_GRACE,
+    ): ObjectGcResult {
+        val repo = requireNotNull(inspectRepository(store)) { "Missing repository" }
+        acquireGcLease(store, deviceId, repo.repoId)
+        try {
+            val snapshots = snapshotsStrict(store)
+            val referencedObjects = HashSet<String>()
+            val referencedPacks = HashSet<String>()
+            snapshots.forEach { snapshot ->
+                snapshot.objects.forEach { ref ->
+                    val packKey = ref.packKey
+                    if (packKey != null) referencedPacks += packKey else referencedObjects += ref.storageKey
+                }
             }
-            if (sha in referenced) {
-                kept++
-            } else {
-                store.delete(objectRef.key)
-                deleted++
-                freed += objectRef.bytes ?: 0L
+            var keptObjects = 0
+            val objectCandidates = ArrayList<BackupStoredObject>()
+            store.listAll("v3/objects").forEach { stored ->
+                currentCoroutineContext().ensureActive()
+                require(!stored.directory) { "Unexpected directory in object bucket: ${stored.key}" }
+                val sha = stored.key.substringAfterLast('/')
+                require(validHash(sha) && stored.key == objectKeyFor(sha)) { "Unexpected object layout: ${stored.key}" }
+                if (stored.key in referencedObjects) keptObjects++ else objectCandidates += stored
+            }
+            val packCandidates = ArrayList<BackupStoredObject>()
+            store.listChildren(PACK_DIR).forEach { stored ->
+                currentCoroutineContext().ensureActive()
+                require(!stored.directory && packShaFromKey(stored.key) != null) { "Unexpected pack layout: ${stored.key}" }
+                if (stored.key in referencedPacks) Unit else packCandidates += stored
+            }
+            // 删除前复核：回收期间若有快照新增/删除，说明别的设备正在提交，整次回收中止。
+            val confirmed = snapshotsStrict(store).map { it.snapshotId }.toSet()
+            require(confirmed == snapshots.map { it.snapshotId }.toSet()) {
+                "Repository changed while collecting garbage; retry later"
+            }
+            val objectDeletes = objectCandidates.filter { olderThan(it, grace) }
+            val packDeletes = packCandidates.filter { olderThan(it, grace) }
+            val skippedRecent = objectCandidates.size - objectDeletes.size + packCandidates.size - packDeletes.size
+            // 删除也要按对象并行：SAF 每个 delete 都要重新解析路径，串行时上百个孤儿对象能跑一分多钟。
+            parallelMap(objectDeletes) { stored ->
+                currentCoroutineContext().ensureActive()
+                store.delete(stored.key)
+            }
+            parallelMap(packDeletes) { stored ->
+                currentCoroutineContext().ensureActive()
+                store.delete(stored.key)
+            }
+            val freed = objectDeletes.sumOf { it.bytes ?: 0L } + packDeletes.sumOf { it.bytes ?: 0L }
+            return ObjectGcResult(objectDeletes.size, freed, keptObjects, packDeletes.size, skippedRecent)
+        } finally {
+            withContext(NonCancellable) { releaseGcLease(store, deviceId) }
+        }
+    }
+
+    /** 候选删除条件：mtime 已知且早于宽限期；未知时间一律保留（防并发上传窗口）。 */
+    private fun olderThan(stored: BackupStoredObject, grace: Duration): Boolean {
+        val modified = stored.lastModified ?: return false
+        return Duration.between(modified, Instant.now()) >= grace
+    }
+
+    private suspend fun readGcLease(store: BackupObjectStore): GcLease? {
+        if (store.stat(GC_LEASE_KEY)?.directory != false) return null
+        val dir = taskDir()
+        return try {
+            val file = File(dir, "gc.json")
+            store.get(GC_LEASE_KEY, file, 4096)
+            runCatching { json.decodeFromString<GcLease>(file.readText()) }.getOrNull()
+        } finally { dir.deleteRecursively() }
+    }
+
+    private suspend fun acquireGcLease(store: BackupObjectStore, deviceId: String, repoId: String) {
+        readGcLease(store)?.let { lease ->
+            val started = runCatching { Instant.parse(lease.startedAt) }.getOrNull()
+            if (lease.repoId == repoId && lease.deviceId != deviceId && started != null &&
+                Duration.between(started, Instant.now()) < GC_LEASE_TTL
+            ) {
+                throw IllegalStateException("另一台设备正在回收未引用对象，请稍后重试")
             }
         }
-        return ObjectGcResult(deleted, freed, kept)
+        val dir = taskDir()
+        try {
+            val file = File(dir, "gc.json").apply {
+                writeText(json.encodeToString(GcLease(deviceId, repoId, Instant.now().toString())))
+            }
+            store.ensureDir("v3")
+            store.putOverwrite(GC_LEASE_KEY, file)
+        } finally { dir.deleteRecursively() }
+    }
+
+    private suspend fun releaseGcLease(store: BackupObjectStore, deviceId: String) {
+        // 只删自己的租约：回收超过 TTL 后可能有别的设备接手，别把它的租约删掉。
+        runCatching {
+            val lease = readGcLease(store) ?: return@runCatching
+            if (lease.deviceId == deviceId) store.delete(GC_LEASE_KEY)
+        }
+    }
+
+    /** 提交前检查：别的设备正在回收时，避免与它抢「刚上传、尚未被清单引用」的对象。 */
+    private suspend fun ensureNoForeignGcLease(store: BackupObjectStore, deviceId: String) {
+        val lease = readGcLease(store) ?: return
+        val started = runCatching { Instant.parse(lease.startedAt) }.getOrNull() ?: return
+        require(lease.deviceId == deviceId || Duration.between(started, Instant.now()) >= GC_LEASE_TTL) {
+            "另一台设备正在回收未引用对象，请稍后重试"
+        }
     }
 
     suspend fun deleteSnapshot(store: BackupObjectStore, snapshot: BackupSnapshotManifest) {
@@ -519,9 +658,24 @@ internal class IncrementalBackupEngine(
 
     private fun encodedLimit(entry: SnapshotObjectRef) = entry.size + entry.size / 100 + 1024 * 1024
 
-    private sealed interface ObjectAction {
-        data object Reuse : ObjectAction
-        data class Upload(val file: File) : ObjectAction
+    /** 一次计划里某个唯一内容的处置：复用已有引用（可能带 pack 指针）或上传新内容。 */
+    private sealed interface ObjectDecision {
+        data class Reuse(val pack: String?) : ObjectDecision
+        data object Upload : ObjectDecision
+    }
+
+    /** 仅用于解码校验的最小引用（不写清单）。 */
+    private data class PlainObjectRef(override val sha256: String, override val size: Long) : SnapshotObjectRef {
+        override val pack: String? get() = null
+    }
+
+    private companion object {
+        /** 仓库级 GC 租约路径与有效期（多设备共用目录时避免同时回收）。 */
+        const val GC_LEASE_KEY = "v3/gc.json"
+        val GC_LEASE_TTL: Duration = Duration.ofMinutes(30)
+
+        /** 只回收「已静默（mtime 早于宽限期）」的候选，保护另一台设备正在上传的对象。 */
+        val GC_GRACE: Duration = Duration.ofMinutes(10)
     }
 
     /** 对象级并行（哈希/stat/压缩/校验独立）；并发度固定保守值，避免把低端机 IO 打满。 */

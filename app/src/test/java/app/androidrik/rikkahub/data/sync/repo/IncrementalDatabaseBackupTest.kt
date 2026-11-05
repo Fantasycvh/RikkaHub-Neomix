@@ -51,6 +51,8 @@ class IncrementalDatabaseBackupTest {
     ): BackupSnapshotPlan = engine().plan(
         store, inputs, listOf(BackupItem.FILES, BackupItem.DATABASE),
         SnapshotDatabaseState.PRESENT, device, 58, "1", databaseObjects,
+        // 对象层断言（数量/复用）用独立对象更直观；pack 行为由 SnapshotPacking/引擎 pack 测试覆盖。
+        packing = false,
     )
 
     private suspend fun save(databaseObjects: List<SnapshotDbObjectInput>): BackupSnapshotManifest =
@@ -63,7 +65,7 @@ class IncrementalDatabaseBackupTest {
             tableObject("folderentity", UUID.randomUUID().toString()),
         )
         val saved = save(objects)
-        assertEquals(SNAPSHOT_FORMAT_V2, saved.formatVersion)
+        assertEquals(SNAPSHOT_FORMAT_V3, saved.formatVersion)
         assertTrue(saved.files.none { it.path == "rikka_hub.db" })
         assertEquals(2, saved.dbObjects.size)
         assertEquals(3, saved.objects.size)

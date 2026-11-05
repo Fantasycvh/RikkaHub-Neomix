@@ -74,6 +74,31 @@ class IncrementalStorageInstrumentedTest {
         return provider to SafBackupObjectStore(AndroidBackupDocumentAccess(resolver, tree), tree.toString())
     }
 
+    @Test fun nativeSafGarbageCollectionReclaimsUnreferencedContentAndReleasesLease() = runBlocking<Unit> {
+        val (_, store) = nativeStore()
+        val engine = IncrementalBackupEngine(File(root, "cache"))
+        val settings = File(root, "settings.json").apply { writeText("{}") }
+        val file = File(root, "source.txt").apply { writeText("first version") }
+        suspend fun plan() = engine.plan(
+            store, listOf(SnapshotInput("settings.json", settings), SnapshotInput("upload/test.txt", file)),
+            listOf(BackupItem.FILES), SnapshotDatabaseState.NOT_SELECTED, device, 58, "test",
+        )
+        val first = plan().use { engine.commit(it) }
+        file.writeText("second version")
+        val second = plan().use { engine.commit(it) }
+        engine.deleteSnapshot(store, second)
+
+        // fixture 的 mtime 来自真实文件：零宽限期即可回收不可达对象/pack。
+        val result = engine.garbageCollect(store, device, grace = java.time.Duration.ZERO)
+        assertEquals(1, result.deletedObjects + result.deletedPacks)
+        assertNull(store.stat("v3/gc.json"))
+        assertTrue(first.objects.all { store.stat(it.key) != null })
+        // 剩下的快照仍能完整还原（pack 下载/校验走真实 DocumentsProvider）。
+        ZipFile(engine.assemble(store, first, 58)).use { zip ->
+            assertEquals("first version", zip.getInputStream(zip.getEntry("upload/test.txt")).reader().readText())
+        }
+    }
+
     @Test fun safNativeDocumentsContractRoundTripWithReorderedColumnsAndUnknownSize() = runBlocking<Unit> {
         val (_, store) = nativeStore()
         roundTrip(store)
@@ -157,9 +182,11 @@ private class FixtureDocumentsProvider(private val root: File) : DocumentsProvid
     }
     private fun id(file: File) = if (file == root) "root" else "root/" + file.relativeTo(root).invariantSeparatorsPath
     // Deliberately ignore requested column order: callers must resolve names from the returned cursor.
-    private fun cursor(files: List<File>): Cursor = MatrixCursor(arrayOf(Document.COLUMN_MIME_TYPE,
-        Document.COLUMN_SIZE, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_DOCUMENT_ID, Document.COLUMN_FLAGS)).apply {
-        files.forEach { file -> addRow(arrayOf<Any?>(if (file.isDirectory) Document.MIME_TYPE_DIR else "application/octet-stream",
+    private fun cursor(files: List<File>): Cursor = MatrixCursor(arrayOf(Document.COLUMN_LAST_MODIFIED,
+        Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE, Document.COLUMN_DISPLAY_NAME,
+        Document.COLUMN_DOCUMENT_ID, Document.COLUMN_FLAGS)).apply {
+        files.forEach { file -> addRow(arrayOf<Any?>(file.lastModified(),
+            if (file.isDirectory) Document.MIME_TYPE_DIR else "application/octet-stream",
             null, file.name, id(file), Document.FLAG_SUPPORTS_WRITE or Document.FLAG_SUPPORTS_DELETE or Document.FLAG_DIR_SUPPORTS_CREATE)) }
     }
     override fun queryRoots(projection: Array<out String>?) = MatrixCursor(arrayOf(DocumentsContract.Root.COLUMN_ROOT_ID))

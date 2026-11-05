@@ -85,8 +85,11 @@ internal fun addFileToZip(
     onBytes: (Long) -> Unit = {},
     onLog: (String) -> Unit = {},
     forceStored: Boolean = false,
+    entryTime: Long = -1L,
 ) {
     val entry = prepareZipEntry(file, entryName, onLog, forceStored)
+    // 内容寻址 pack 需要可复现的 zip 字节（条目顺序 + 时间戳都固定），否则同一批内容每次哈希都变。
+    if (entryTime >= 0) entry.time = entryTime
     FileInputStream(file).use { fis ->
         zipOut.putNextEntry(entry)
         // 边拷贝边上报：单个大文件（85MB DB / 2.8GB 克隆）内部也要推进，否则进度条会冻住

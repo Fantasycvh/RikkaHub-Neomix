@@ -25,7 +25,9 @@ class IncrementalBackupEngineTest {
     private fun source(path: String, content: String): SnapshotInput = SnapshotInput(path, temp.newFile().apply { writeText(content) })
     private fun settings() = source("settings.json", "{}")
     private suspend fun plan(inputs: List<SnapshotInput>, state: SnapshotDatabaseState = SnapshotDatabaseState.NOT_SELECTED,
-        items: List<BackupItem> = listOf(BackupItem.FILES)) = engine().plan(store, inputs, items, state, device, 58, "1")
+        items: List<BackupItem> = listOf(BackupItem.FILES)) =
+        // 本测试类聚焦对象层语义（对象数量/复用/孤儿校验），关掉 pack 让断言直观；pack 行为由 SnapshotPacking 测试覆盖。
+        engine().plan(store, inputs, items, state, device, 58, "1", packing = false)
     private suspend fun save(inputs: List<SnapshotInput>): BackupSnapshotManifest = plan(inputs).use { engine().commit(it) }
 
     @Test fun firstBackupAndUnchangedBackupReuseObjects() = runBlocking<Unit> {
@@ -210,7 +212,7 @@ class IncrementalBackupEngineTest {
             if (!changed) { changed = true; input.file.appendText("changed") }
         })
         assertThrows(IllegalArgumentException::class.java) { runBlocking {
-            mutating.plan(store, listOf(input, settings()), listOf(BackupItem.FILES), SnapshotDatabaseState.NOT_SELECTED, device, 58, "1").close()
+            mutating.plan(store, listOf(input, settings()), listOf(BackupItem.FILES), SnapshotDatabaseState.NOT_SELECTED, device, 58, "1", packing = false).close()
         } }
         assertTrue(store.data.isEmpty())
     }
@@ -246,7 +248,7 @@ class IncrementalBackupEngineTest {
         val inputs = listOf(settings())
         val first = save(inputs)
         val secondDevice = UUID.randomUUID().toString()
-        engine().plan(store, inputs, listOf(BackupItem.FILES), SnapshotDatabaseState.NOT_SELECTED, secondDevice, 58, "1").use { second ->
+        engine().plan(store, inputs, listOf(BackupItem.FILES), SnapshotDatabaseState.NOT_SELECTED, secondDevice, 58, "1", packing = false).use { second ->
             assertEquals(0L, second.uploadBytes)
             val saved = engine().commit(second)
             engine().deleteSnapshot(store, first)
@@ -266,18 +268,27 @@ internal class MemoryBackupStore : BackupObjectStore {
     // 引擎对独立对象并行 stat/put/get；测试替身也必须按「并发安全」实现（真实 store 同约定）。
     val data = java.util.Collections.synchronizedMap(linkedMapOf<String, ByteArray>())
     val puts = java.util.Collections.synchronizedList(mutableListOf<String>())
+    val modified = java.util.Collections.synchronizedMap(linkedMapOf<String, java.time.Instant>())
     var failPut: String? = null
     var loseResponse: String? = null
     var failStat = false
+    /** 让写入看起来「已经放了一阵子」，用于 GC 宽限期测试。 */
+    var ageOnPut: java.time.Duration = java.time.Duration.ZERO
+    /** 模拟拿不到 mtime 的 provider：GC 必须保守保留。 */
+    var unknownMtime = false
+    private fun stored(key: String) = BackupStoredObject(
+        key,
+        data.getValue(key).size.toLong(),
+        lastModified = if (unknownMtime) null else modified[key],
+    )
     override suspend fun stat(key: String): BackupStoredObject? {
         if (failStat) throw java.io.IOException("query failed")
-        return data[key]?.let { BackupStoredObject(key, it.size.toLong()) }
+        return data[key]?.let { stored(key) }
     }
     override suspend fun listChildren(prefix: String) = data.keys.filter {
         it.startsWith(if (prefix.isEmpty()) "" else "$prefix/") && !it.removePrefix(if (prefix.isEmpty()) "" else "$prefix/").contains('/')
-    }.map { BackupStoredObject(it, data.getValue(it).size.toLong()) }
-    override suspend fun listAll(prefix: String) = data.keys.filter { it.startsWith("$prefix/") }
-        .map { BackupStoredObject(it, data.getValue(it).size.toLong()) }
+    }.map { stored(it) }
+    override suspend fun listAll(prefix: String) = data.keys.filter { it.startsWith("$prefix/") }.map { stored(it) }
     override suspend fun get(key: String, target: File, maxBytes: Long, onBytes: (Long) -> Unit) {
         val bytes = data[key] ?: throw java.io.FileNotFoundException(key)
         target.outputStream().use { copyBounded(bytes.inputStream(), it, maxBytes, onBytes) }
@@ -286,8 +297,9 @@ internal class MemoryBackupStore : BackupObjectStore {
         if (failPut == key) throw java.io.IOException("write failed")
         puts += key
         data[key] = source.readBytes(); onBytes(source.length())
+        modified[key] = java.time.Instant.now().minus(ageOnPut)
         if (loseResponse == key) throw java.io.IOException("response lost")
     }
-    override suspend fun delete(key: String) { data.remove(key) }
+    override suspend fun delete(key: String) { data.remove(key); modified.remove(key) }
     override suspend fun ensureDir(prefix: String) = Unit
 }

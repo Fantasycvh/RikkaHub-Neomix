@@ -157,7 +157,10 @@ fun SnapshotBackupTab(vm: BackupVM) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(java.time.Instant.parse(snapshot.createdAt).atZone(java.time.ZoneId.systemDefault())
                         .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                    Text("${snapshot.files.size + snapshot.dbObjects.size} 个对象 · ${snapshot.logicalBytes.fileSizeToString()}")
+                    Text(buildString {
+                        append("${snapshot.files.size + snapshot.dbObjects.size} 个对象 · ${snapshot.logicalBytes.fileSizeToString()}")
+                        if (snapshot.packs.isNotEmpty()) append(" · ${snapshot.packs.size} 个 pack")
+                    })
                     Text("设备 ${snapshot.deviceId.take(8)} · 数据库 v${snapshot.dbVersion}", style = MaterialTheme.typography.bodySmall)
                     if (snapshot.dbVersion < schemaVersion) {
                         Text(
@@ -206,8 +209,8 @@ fun SnapshotBackupTab(vm: BackupVM) {
             onDismissRequest = { confirmingGc = false },
             title = { Text("回收未引用对象？") },
             text = { Text(
-                "会读取仓库中所有已提交快照，删除没有任何快照引用的对象文件。\n" +
-                    "仅支持单设备仓库（多设备会拒绝）；请确保当前没有正在进行的备份。\n" +
+                "会读取仓库中所有设备已提交的快照，删除没有任何快照引用的对象与打包文件。\n" +
+                    "多设备共用一个目录时会先写回收租约；最近 10 分钟内上传/修改的对象会保留，拿不到修改时间的条目也会跳过。\n" +
                     "已删除快照引用的对象会在这里释放。"
             ) },
             confirmButton = { TextButton(onClick = { confirmingGc = false; vm.garbageCollectSnapshots() }) { Text("回收") } },

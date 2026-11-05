@@ -82,6 +82,46 @@ class SafBackupObjectStoreTest {
             assertThrows(IllegalArgumentException::class.java) { runBlocking { store.stat(it) } }
         }
     }
+
+    @Test fun listAllWalksNestedDirectoriesAndReturnsOnlyFiles() = runBlocking<Unit> {
+        store.ensureDir("v3/objects/aa")
+        store.ensureDir("v3/objects/bb")
+        store.ensureDir("v3/objects/cc/deep")
+        store.put("v3/objects/aa/one", source())
+        store.put("v3/objects/bb/two", source())
+        store.put("v3/objects/cc/deep/three", source())
+
+        val listed = store.listAll("v3/objects")
+        assertEquals(
+            setOf("v3/objects/aa/one", "v3/objects/bb/two", "v3/objects/cc/deep/three"),
+            listed.map { it.key }.toSet(),
+        )
+        assertFalse(listed.any { it.directory })
+        assertTrue(store.listAll("missing").isEmpty())
+    }
+
+    @Test fun overwriteRewritesMutableMetadataWhilePutsStayImmutable() = runBlocking<Unit> {
+        store.ensureDir("v3")
+        store.putOverwrite("v3/gc.json", temp.newFile().apply { writeText("lease-1") })
+        store.putOverwrite("v3/gc.json", temp.newFile().apply { writeText("lease-2-longer") })
+
+        val output = temp.newFile()
+        store.get("v3/gc.json", output, 100)
+        assertEquals("lease-2-longer", output.readText())
+        assertEquals(1, access.content.size)
+        // 内容寻址对象仍然是不可变的：put 改内容必须失败。
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { store.put("v3/gc.json", temp.newFile().apply { writeText("lease-3") }) }
+        }
+    }
+
+    @Test fun overwriteCreatesMissingMetadataFile() = runBlocking<Unit> {
+        store.ensureDir("v3")
+        store.putOverwrite("v3/gc.json", temp.newFile().apply { writeText("lease-1") })
+        val output = temp.newFile()
+        store.get("v3/gc.json", output, 100)
+        assertEquals("lease-1", output.readText())
+    }
 }
 
 internal class FakeBackupDocuments : BackupDocumentAccess {

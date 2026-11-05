@@ -25,7 +25,10 @@ internal const val SNAPSHOT_FORMAT_V1 = 1
 
 /** 快照格式 v2：数据库拆成逻辑对象（P2），不再携带整库文件。 */
 internal const val SNAPSHOT_FORMAT_V2 = 2
-internal const val SNAPSHOT_FORMAT_VERSION = SNAPSHOT_FORMAT_V2
+
+/** 快照格式 v3：小对象可进 `v3/packs/<sha>.zip`（内容寻址打包），清单按 pack 指针复用。 */
+internal const val SNAPSHOT_FORMAT_V3 = 3
+internal const val SNAPSHOT_FORMAT_VERSION = SNAPSHOT_FORMAT_V3
 
 @Serializable
 internal data class BackupRepositoryInfo(val version: Int = REPO_VERSION, val repoId: String, val createdAt: String)
@@ -34,24 +37,41 @@ internal data class BackupRepositoryInfo(val version: Int = REPO_VERSION, val re
 internal enum class SnapshotDatabaseState { NOT_SELECTED, ABSENT, PRESENT }
 
 internal interface SnapshotObjectRef {
-    val key: String
     val sha256: String
     val size: Long
+
+    /** v3：该对象所在 pack 的 SHA-256（null = 独立对象）。 */
+    val pack: String?
+
+    /** 独立对象的仓库路径（`v3/objects/<aa>/<sha>`）。 */
+    val storageKey: String get() = objectKeyFor(sha256)
+
+    /** pack 的仓库路径（`v3/packs/<sha>.zip`）；未打包时为 null。 */
+    val packKey: String? get() = pack?.let(::packKeyFor)
+
+    /** 该引用在仓库里的实际路径（pack 或独立对象），用于存在性检查/错误信息。 */
+    val key: String get() = packKey ?: storageKey
 }
 
 @Serializable
-internal data class SnapshotFileEntry(val path: String, override val sha256: String, override val size: Long) : SnapshotObjectRef {
-    override val key: String get() = "v3/objects/${sha256.take(2)}/$sha256"
-}
+internal data class SnapshotFileEntry(
+    val path: String,
+    override val sha256: String,
+    override val size: Long,
+    override val pack: String? = null,
+) : SnapshotObjectRef
 
 /**
  * P2 数据库逻辑对象引用。`objectKey` 是稳定逻辑键（`conversation:<uuid>` / `table:<name>`），
  * 仓库里仍按内容 sha256 去重存储：会话没变就不重新上传。
  */
 @Serializable
-internal data class SnapshotDbObject(val objectKey: String, override val sha256: String, override val size: Long) : SnapshotObjectRef {
-    override val key: String get() = "v3/objects/${sha256.take(2)}/$sha256"
-}
+internal data class SnapshotDbObject(
+    val objectKey: String,
+    override val sha256: String,
+    override val size: Long,
+    override val pack: String? = null,
+) : SnapshotObjectRef
 
 /** A complete view: references never depend on a previous manifest. */
 @Serializable
@@ -72,6 +92,9 @@ internal data class BackupSnapshotManifest(
     val completionKey get() = "v3/snapshots/$snapshotId.complete.json"
     val logicalBytes get() = files.sumOf { it.size } + dbObjects.sumOf { it.size }
     val objects: List<SnapshotObjectRef> get() = files + dbObjects
+
+    /** 本快照引用到的 pack（去重）；GC 可达性与恢复下载都用它。 */
+    val packs: Set<String> get() = objects.mapNotNull { it.pack }.toSet()
 }
 
 @Serializable
@@ -91,7 +114,7 @@ internal fun validateKey(key: String) {
 }
 
 internal fun validateSnapshot(snapshot: BackupSnapshotManifest) {
-    if (snapshot.formatVersion != SNAPSHOT_FORMAT_V1 && snapshot.formatVersion != SNAPSHOT_FORMAT_V2) {
+    if (snapshot.formatVersion !in SNAPSHOT_FORMAT_V1..SNAPSHOT_FORMAT_V3) {
         throw UnsupportedOperationException("Unsupported snapshot version; update the app")
     }
     require(validUuid(snapshot.snapshotId) && validUuid(snapshot.repoId) && validUuid(snapshot.deviceId)) { "Invalid snapshot identity" }
@@ -104,6 +127,7 @@ internal fun validateSnapshot(snapshot: BackupSnapshotManifest) {
         validateKey(entry.path)
         require(entry.path.length <= 4096 && seen.add(entry.path)) { "Duplicate or excessive backup path" }
         require(validHash(entry.sha256) && entry.size in 0..BackupManifest.MAX_ENTRY_BYTES) { "Invalid object metadata" }
+        validatePackedRef(snapshot.formatVersion, entry)
         total = Math.addExact(total, entry.size)
         require(total <= BackupManifest.MAX_TOTAL_BYTES) { "Backup exceeds restore size limit" }
         when (entry.path) {
@@ -146,6 +170,7 @@ internal fun validateSnapshot(snapshot: BackupSnapshotManifest) {
                 validateDbObjectKey(obj.objectKey)
                 require(objectKeys.add(obj.objectKey)) { "Duplicate database object" }
                 require(validHash(obj.sha256) && obj.size in 0..BackupManifest.MAX_ENTRY_BYTES) { "Invalid database object metadata" }
+                validatePackedRef(snapshot.formatVersion, obj)
                 if (dbObjectKind(obj.objectKey) == "table") {
                     require(!isConversationObjectTable(dbObjectValue(obj.objectKey))) {
                         "Conversation tables must be captured per conversation"
@@ -158,6 +183,14 @@ internal fun validateSnapshot(snapshot: BackupSnapshotManifest) {
             require(expectsObjects == snapshot.dbObjects.isNotEmpty()) { "Missing database objects" }
         }
     }
+}
+
+/** v3 pack 引用校验：老格式不得出现 pack；新格式的 pack 名必须是内容 SHA，且条目大小在阈值内。 */
+private fun validatePackedRef(formatVersion: Int, ref: SnapshotObjectRef) {
+    val pack = ref.pack ?: return
+    require(formatVersion >= SNAPSHOT_FORMAT_V3) { "Packed objects require snapshot format v3" }
+    require(validHash(pack)) { "Invalid pack checksum" }
+    require(ref.size in 0 until PACK_ENTRY_LIMIT) { "Packed object exceeds the pack entry limit" }
 }
 
 internal fun fileSha256(file: File): String = MessageDigest.getInstance("SHA-256").let { digest ->
