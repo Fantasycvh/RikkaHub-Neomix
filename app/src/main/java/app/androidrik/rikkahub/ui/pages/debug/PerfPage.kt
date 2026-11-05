@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.ui.pages.debug
 
 import android.content.ClipData
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,22 +17,32 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.data.perf.PerformanceState
 import app.androidrik.rikkahub.data.perf.ThreadLoad
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.floating.PerfFloatingWindows
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import java.util.Locale
 
 /**
@@ -48,6 +60,14 @@ import java.util.Locale
 @Composable
 fun PerfPage(vm: PerfVM = koinViewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val perfFloating = koinInject<PerfFloatingWindows>()
+    val systemOverlayEnabled by perfFloating.enabled.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var canDrawOverlays by remember { mutableStateOf(perfFloating.hasPermission()) }
+    LifecycleResumeEffect(Unit) {
+        canDrawOverlays = perfFloating.hasPermission()
+        onPauseOrDispose {}
+    }
     val toaster = LocalToaster.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -78,6 +98,38 @@ fun PerfPage(vm: PerfVM = koinViewModel()) {
                 },
                 enabled = state.samples > 0,
             ) { Text("复制报告") }
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("系统浮层（其他 App 之上）", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    if (canDrawOverlays) {
+                        "开始采样后显示在屏幕顶部；切到别的 App 也能看，可复制/停止。"
+                    } else {
+                        "未授权：打开开关会跳系统设置授予「显示在其他应用上层」。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = systemOverlayEnabled && canDrawOverlays,
+                onCheckedChange = { on ->
+                    if (on && !canDrawOverlays) {
+                        context.startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                "package:${context.packageName}".toUri(),
+                            )
+                        )
+                    } else {
+                        perfFloating.setEnabled(on)
+                    }
+                },
+            )
         }
 
         if (state.samples == 0) {

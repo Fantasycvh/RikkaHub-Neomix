@@ -14,6 +14,7 @@ import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.plugin.manager.PluginStateStore
 import app.androidrik.rikkahub.service.ChatFloatingTracker
 import app.androidrik.rikkahub.ui.floating.ChatFloatingWindows
+import app.androidrik.rikkahub.ui.floating.PerfFloatingWindows
 import app.androidrik.rikkahub.service.ChatNotificationManager
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.MediaCreationService
@@ -41,6 +42,15 @@ val appModule = module {
 
     // Debug Mode 性能采样器：进程级单例，切到其他界面/离开 Debug 页后仍可继续采样（浮层用）。
     single { PerformanceSampler() }
+
+    // 系统级性能浮层（其他 App 之上）：复用聊天浮窗的 SYSTEM_ALERT_WINDOW 权限与 FloatingX 设施。
+    single {
+        PerfFloatingWindows(
+            context = get(),
+            appScope = get(),
+            sampler = get(),
+        )
+    }
 
     single {
         LocalTools(get(), get(), get(), get())

@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.data.perf.PerformanceSampler
+import app.androidrik.rikkahub.ui.floating.PerfFloatingWindows
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
 import com.composables.icons.lucide.Lucide
@@ -49,7 +50,9 @@ fun PerfOverlay(
     sampler: PerformanceSampler = koinInject(),
 ) {
     val state by sampler.state.collectAsStateWithLifecycle()
-    if (!visible || !state.running) return
+    // 系统级浮层已挂在屏幕上时让位，避免 App 内出现两份。
+    val systemOverlayActive by koinInject<PerfFloatingWindows>().active.collectAsStateWithLifecycle()
+    if (!visible || systemOverlayActive || !state.running) return
     val toaster = LocalToaster.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -58,7 +61,7 @@ fun PerfOverlay(
         modifier = modifier
             .statusBarsPadding()
             .padding(top = 8.dp, end = 8.dp)
-            .widthIn(max = 340.dp),
+            .widthIn(max = 380.dp),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         tonalElevation = 4.dp,
