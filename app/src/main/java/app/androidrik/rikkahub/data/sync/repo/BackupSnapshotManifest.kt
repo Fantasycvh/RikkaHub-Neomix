@@ -106,6 +106,11 @@ internal data class SnapshotCompletion(
     val manifestBytes: Long,
 )
 
+/** 拆包改写清单时的「旧清单备份」目录；崩溃后由 GC 的 repair 按完成标记回滚。 */
+internal const val REWRITE_DIR = "v3/rewrite"
+
+internal fun snapshotRewriteKey(snapshotId: String) = "$REWRITE_DIR/$snapshotId.json.gz"
+
 internal fun validUuid(value: String): Boolean = runCatching { UUID.fromString(value).toString() == value }.getOrDefault(false)
 internal fun validHash(value: String) = value.matches(Regex("[a-f0-9]{64}"))
 internal fun validateKey(key: String) {

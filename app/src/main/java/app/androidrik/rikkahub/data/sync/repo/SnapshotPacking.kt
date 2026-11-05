@@ -104,6 +104,25 @@ internal object SnapshotPacking {
         }
     }
 
+    /** 读已下载 pack 的条目名 → 条目原始字节数（`-1` = zip 头未记录大小）。 */
+    fun entrySizes(pack: File): Map<String, Long> = ZipFile(pack).use { zip ->
+        zip.entries().asSequence().associate { it.name to it.size }
+    }
+
+    /** 把 pack 里的指定条目解到 [targets]（按 [entries] 顺序；调用方应先校验整包 SHA）。 */
+    fun extract(pack: File, entries: List<Pair<String, Long>>, targets: List<File>) {
+        require(entries.size == targets.size) { "Pack extraction targets mismatch" }
+        ZipFile(pack).use { zip ->
+            entries.forEachIndexed { index, (sha256, size) ->
+                val entry = requireNotNull(zip.getEntry(sha256)) { "Missing packed object $sha256" }
+                require(entry.size in setOf(-1L, size)) { "Packed object size mismatch" }
+                zip.getInputStream(entry).use { input ->
+                    targets[index].outputStream().use { output -> copyBounded(input, output, size) }
+                }
+            }
+        }
+    }
+
     /** pack 下载预算：原始总字节 + 最坏压缩/头部开销，防止伪造清单撑爆缓存。 */
     fun downloadLimit(refs: List<SnapshotObjectRef>): Long =
         Math.addExact(Math.multiplyExact(refs.sumOf { it.size }, 2L), Math.multiplyExact(refs.size.toLong(), 4096L) + 1024 * 1024)

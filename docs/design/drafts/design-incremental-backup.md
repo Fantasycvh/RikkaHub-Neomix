@@ -681,9 +681,8 @@ FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本�
     （真实 DocumentsProvider：编辑产生新 pack、删快照后回收旧 pack、租约释放、剩余快照仍能组装还原）。
 - `:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` ✅；`git diff --check` 通过。
 
-**仍未做**：pack 级增量回收（pack 内单条不可达也不会拆包，被引用就整包保留 → 空间放大，§8.1 R5）；
-pack 之间并行上传（现在仍按对象并行）；真实 S3/WebDAV 上的 pack + GC 手测；跨设备 GC 的自动触发（仍手动）；
-快照导出完整 ZIP（已在 §0.11 完成）。
+**仍未做**：pack 之间并行上传（现在仍按对象并行）；真实 S3/WebDAV 上的 pack + GC 手测；
+跨设备 GC 的自动触发（仍手动）；快照导出完整 ZIP（已在 §0.11 完成）；pack 内单条回收/拆包（已在 §0.12 完成）。
 
 ### 0.11 快照导出完整 ZIP 落地记录（2026-11-05，工作树未提交）
 
@@ -713,6 +712,53 @@ pack 之间并行上传（现在仍按对象并行）；真实 S3/WebDAV 上的 
   settings 对象 SHA（`aa03edd…`），`databaseSha256`/`databaseBytes` 与 ZIP 内 DB 一致；随后删除测试文件 ✅。
 - **未做**：批量导出多个快照；导出后自动校验可导入性（只靠既有 ZIP 校验/恢复路径）；旧版 App 实测导入；
   导出进度 UI（仅通知栏进度）。
+
+### 0.12 pack 内单条回收（拆包）落地记录（2026-11-05，工作树未提交）
+
+> 接 §0.10/§0.11。用户要求「pack 内单条回收（拆包）」——解决 §8.1 R5 记录的放大：
+> pack 只要还有任意条目被引用就整包保留，删旧快照后 pack 里的不可达条目永远占着空间。
+> 本轮把「拆包」并入现有手动 GC（不新增按钮/任务类型），协议上唯一的突破是**在租约内改写已提交快照的清单**。
+
+- **触发条件**：GC 先按全部已提交快照算出每个 pack 里仍被引用的条目（sha→大小）；对「被引用条目数 < pack 内条目数」
+  的 pack 才拆包。删除阶段原有的 mtime 宽限期同样用于拆包：pack 本身必须已「静默」（早于 10 分钟）才动它，
+  刚提交/刚上传的 pack 先不拆（否则会为一份新 pack 白改快照）。
+- **流程**（都在 `v3/gc.json` 租约内）：
+  1. 下载旧 pack（上限 = 单 pack 原始量上限 32 MB + 8 MB 开销），整包 SHA-256 校验；
+  2. `SnapshotPacking.entrySizes` 读条目表，确认每个被引用条目都在且大小一致（缺条目 → fail-stop，仓库异常）；
+  3. 只把仍被引用的条目抽到临时文件（`SnapshotPacking.extract`），逐条复核原始 SHA；
+  4. `SnapshotPacking.write` 重新打成内容寻址 pack（条目名 = 对象 SHA、固定条目时间 → 确定性字节）；
+     同一批内容若已存在（上次中断已上传）则直接复用，不重复上传；
+  5. 对**所有**引用旧 pack 的快照改写清单：`files[]`/`dbObjects[]` 的 `pack` 指针旧→新，
+     其余字段（逻辑路径、sha256、size、createdAt、deviceId…）原样保留，`validateSnapshot` 复核；
+  6. 改写完成后再做一次严格列举，校验「快照 id 集合不变、独立对象集合不变、pack 指针等于预期替换映射」，
+     任一不符即中止（fail-stop，别的设备正在提交）；
+  7. 旧 pack 回到普通删除阶段，仍受 mtime 宽限期保护，被并行删除。
+- **崩溃安全（清单是可变文件——本协议唯一的例外面）**：发布顺序为
+  「① 旧清单备份到 `v3/rewrite/<id>.json.gz` → ② 覆盖清单 → ③ 覆盖完成标记 → ④ 回读校验 → ⑤ 删备份」。
+  `snapshotsStrict` 读取前先做 repair：
+  - 完成标记匹配当前清单 → 改写已完成/未开始，删备份；
+  - 完成标记匹配旧备份、但当前清单对不上 → 退回到 ②–③ 之间的中断，覆盖写回旧清单（旧标记仍然匹配），删备份；
+  - 两者都不匹配 → 直接报错（仓库需要人工检查），不会继续删任何东西。
+  因此读侧只会看到「旧清单+旧标记」或「新清单+新标记」，不会把别的快照误判为损坏。
+- **并发语义**：拆包写清单需要租约，`commit` 检查别家新鲜租约、`pruneSnapshots` 现在也检查（避免和别家 GC 的
+  改写/回滚互相踩）；另一台设备若在拆包完成后用旧列表恢复，`assemble` 的「快照与当前发布一致」检查会失败并提示刷新，
+  不会用坏数据。极端窗口误删旧 pack 也被同一检查拦住。
+- **结果/UI**：`ObjectGcResult.repackedPacks`；`freedBytes` = 删除对象/旧 pack 字节 − 本次新上传的 pack 字节（净释放，下限 0）。
+  GC 提示补「、重构 N 个 pack」，确认框补「打包文件里只剩部分条目仍被引用时，会把它拆包重写成更小的 pack
+  （会改写受影响快照的清单，需要写入权限）」。
+- **代码**：`SnapshotPacking` 新增 `entrySizes`/`extract`；引擎新增 `reachability`、`listPacks`、
+  `repackPacks`、`rewriteSnapshotPacks`、`repairSnapshotRewrites`、`readCompletion`（拆分自 `readSnapshot`），
+  `snapshotsStrict` 与 `commit` 会先 repair；`BackupSnapshotManifest.kt` 新增 `REWRITE_DIR`/`snapshotRewriteKey`。
+- **验证**：JVM 全量 `:app:testDebugUnitTest` **3069 项 0 失败/错误、2 跳过** ✅；`IncrementalBackupRetentionTest`
+  16 项通过（新增 5 项：部分引用 pack 拆包并恢复、全引用不拆、宽限期不拆、清单中途写坏可回滚、
+  改写完成后的遗留备份会清理）。真机 instrumented（隔离包 `-PbackupIsolatedTests=true`，不覆盖调试包）：
+  `IncrementalStorageInstrumentedTest.nativeSafGarbageCollectionRepacksPartiallyReferencedPacks` 在真实
+  DocumentsProvider/`SafBackupObjectStore` 上通过（覆盖写清单/标记走 `putOverwrite`），该包 16 项中仅
+  既有 `IncrementalPerformanceMeasurement.measure` 因隔离 runner 无 `RikkaHubApp` 失败（与本次无关）；
+  真机默认包 GC 冒烟：无拆分需求时 0 删除、`v3/rewrite` 无残留、租约释放。
+- **未做**：拆包进度提示（仍在通知栏显示 GC 进度）；S3/WebDAV 上的拆包手测；拆包失败的自动重试；
+  单快照内多个大 pack 的并行拆包（现在串行，pack 通常很小）；「pack 内条目很多但只删少数」时是否值得拆的成本模型
+  （目前只要可拆就拆，收益 = 旧包大小 − 新包大小）。
 
 ## 1. 问题与目标
 
@@ -1038,7 +1084,8 @@ byte 1..: 编码后的 payload
 
 > **实际落地（2026-11-05，§0.10）**：条目名取对象内容 SHA（同一内容寻址键，清单 `sha256` 直接对应条目名），
 > 条目时间固定 1980-01-01 以获得确定性字节；清单 v3 在每条引用上加可选 `pack = <zip 字节 SHA-256>`，
-> 而不是 `SnapshotRef` 联合类型；256 KB 阈值与 32 MB/批不变，pack 之间不再按路径分批而是按 sha 排序分批。
+> 而不是 `SnapshotRef` 联合类型；256 KB 阈值与 32 MB/批不变，pack 之间不再按路径分批而是按 sha 排序分批；
+> 部分条目失效时 GC 会在租约内拆包重写（§0.12）。
 
 **边界**：沿用现有恢复上限（单条目 2 GB、总量 8 GB，`A/data/sync/BackupManifest.kt:31-35`）——
 超过 2 GB 的单文件在现有 zip 恢复里也会失败，增量恢复保持一致并在预检时报错。
@@ -1454,7 +1501,7 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 | R2 | WebDAV 小文件 PUT 放大（首备 1 万文件） | 首备慢/失败 | pack 批量（≤32 MB/批）+ 串行重试；限并发 2～4；错误可重试单批 |
 | R3 | 组装 zip 的临时空间 + 时间 | 恢复慢/空间不足 | `BackupSpaceCheck` 预检；P2 原生恢复省掉 |
 | R4 | P1 仍每次上传 ~50 MB DB（聊天型用户收益变小） | 增量收益打折 | P2（对象级）；P1 先做 DB 哈希门控（未变不上传，但通常每次都会变） |
-| R5 | 中断留下孤儿对象/pack；pack 内单条不可达也不会拆包 | 远端体积涨 | 已实现多设备 GC（§0.10：全设备可达集 + mtime 宽限期 + 租约 + 删除前复核）；pack 只要仍被引用就整包保留 → 单条放大已知可接受，需要时再加拆包 |
+| R5 | 中断留下孤儿对象/pack；pack 内单条不可达不拆包 | 远端体积涨 | 已实现多设备 GC（§0.10：全设备可达集 + mtime 宽限期 + 租约 + 删除前复核）；**拆包已实现（§0.12）**：部分引用的 pack 在租约内重打包并改写快照清单，带旧清单备份/回滚 |
 | R6 | 多设备共用同一目录 | 快照互相覆盖/保留误删 | `deviceId` 隔离保留；补：GC 已跨设备求可达集 + mtime 宽限期 + 租约串行（§0.10）；仍不做合并 |
 | R7 | 恢复后 mtime 重置导致哈希缓存失效 | 首次增量重算全量 | 可接受（与今天读一遍同量级）；UI 说明；「重建索引」入口 |
 | R8 | 清单/对象被篡改 | 数据损坏 | 每对象 SHA-256 + 恢复前统一校验；与现有 v2 同信任级；加密独立立项 |

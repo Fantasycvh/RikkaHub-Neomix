@@ -14,6 +14,7 @@ import org.junit.rules.TemporaryFolder
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.zip.ZipFile
 
 /** 与引擎内部租约路径一致（引擎侧是 private companion，测试直接构造仓库内容）。 */
 private const val GC_LEASE_KEY_PATH = "v3/gc.json"
@@ -203,5 +204,99 @@ class IncrementalBackupRetentionTest {
         val result = engine().garbageCollect(store, deviceA, grace = Duration.ZERO)
         assertEquals(objectsBefore, result.deletedObjects)
         assertEquals(0, store.data.keys.count { it.startsWith("v3/objects/") })
+    }
+
+    // --- 拆包：pack 内单条回收 ---------------------------------------------------
+
+    private suspend fun saveFiles(files: Map<String, String>): BackupSnapshotManifest = engine().plan(
+        store,
+        files.map { (path, content) -> SnapshotInput(path, temp.newFile().apply { writeText(content) }) },
+        listOf(BackupItem.FILES), SnapshotDatabaseState.NOT_SELECTED, deviceA, 58, "1",
+    ).use { engine().commit(it) }
+
+    private fun packKeys(): List<String> = store.data.keys.filter { it.startsWith("$PACK_DIR/") }.sorted()
+
+    @Test fun garbageCollectRepacksPacksWithPartiallyReferencedEntries() = runBlocking<Unit> {
+        val first = saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa", "upload/b.txt" to "bbbb"))
+        assertTrue(first.files.all { it.pack != null })
+        assertEquals(1, packKeys().size)
+        val oldPack = requireNotNull(first.files.first().pack)
+        Thread.sleep(5)
+        val second = saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa"))
+        // 第二份快照复用旧 pack 里的 settings/a；b.txt 只属于第一份。
+        assertEquals(listOf(packKeyFor(oldPack)), packKeys())
+        assertTrue(second.files.all { it.pack == oldPack })
+        engine().deleteSnapshot(store, first)
+
+        val result = engine().garbageCollect(store, deviceA, grace = Duration.ZERO)
+
+        assertEquals(0, result.deletedObjects)
+        assertEquals(1, result.repackedPacks)
+        assertEquals(1, result.deletedPacks)
+        assertNull(store.data[GC_LEASE_KEY_PATH])
+        assertNull(store.data[snapshotRewriteKey(second.snapshotId)])
+        val newPackKey = packKeys().single()
+        assertTrue(newPackKey != packKeyFor(oldPack))
+        val repacked = engine().list(store).single()
+        assertTrue(repacked.files.all { it.pack != null && it.pack != oldPack })
+        ZipFile(engine().assemble(store, repacked, 58)).use { zip ->
+            assertEquals("{}", zip.getInputStream(zip.getEntry("settings.json")).reader().readText())
+            assertEquals("aaaa", zip.getInputStream(zip.getEntry("upload/a.txt")).reader().readText())
+            assertNull(zip.getEntry("upload/b.txt"))
+        }
+    }
+
+    @Test fun garbageCollectDoesNotRepackFullyReferencedPacks() = runBlocking<Unit> {
+        val saved = saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa"))
+        val manifestBefore = store.data.getValue(saved.manifestKey).copyOf()
+        val packsBefore = packKeys()
+        val result = engine().garbageCollect(store, deviceA, grace = Duration.ZERO)
+        assertEquals(0, result.repackedPacks)
+        assertEquals(0, result.deletedPacks)
+        assertEquals(packsBefore, packKeys())
+        // 无需拆包时清单保持原样（没有改写快照）。
+        assertTrue(manifestBefore.contentEquals(store.data.getValue(saved.manifestKey)))
+        assertNull(store.data[snapshotRewriteKey(saved.snapshotId)])
+    }
+
+    @Test fun garbageCollectDefersRepackOfRecentlyWrittenPacks() = runBlocking<Unit> {
+        val first = saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa", "upload/b.txt" to "bbbb"))
+        val oldPack = requireNotNull(first.files.first().pack)
+        Thread.sleep(5)
+        val second = saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa"))
+        engine().deleteSnapshot(store, first)
+
+        // 宽限期内的 pack 先不拆（删除也要等它静默）。
+        val result = engine().garbageCollect(store, deviceA, grace = Duration.ofHours(1))
+        assertEquals(0, result.repackedPacks)
+        assertEquals(0, result.deletedPacks)
+        assertTrue(engine().list(store).single().files.all { it.pack == oldPack })
+        assertEquals(oldPack, second.files.first().pack)
+    }
+
+    @Test fun snapshotsStrictRollsBackInterruptedPackRewrite() = runBlocking<Unit> {
+        val saved = saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa"))
+        val originalManifest = store.data.getValue(saved.manifestKey).copyOf()
+        // 模拟「旧清单已备份、清单已覆盖、完成标记尚未更新」的中断状态（此时清单哈希与标记不符）。
+        store.data[snapshotRewriteKey(saved.snapshotId)] = originalManifest.copyOf()
+        store.data[saved.manifestKey] = "half-written".toByteArray()
+
+        val repaired = engine().snapshotsStrict(store)
+
+        assertEquals(listOf(saved.snapshotId), repaired.map { it.snapshotId })
+        assertEquals(saved, repaired.single())
+        assertTrue(originalManifest.contentEquals(store.data.getValue(saved.manifestKey)))
+        assertNull(store.data[snapshotRewriteKey(saved.snapshotId)])
+        // 修复后 GC 不会把仓库判成损坏。
+        engine().garbageCollect(store, deviceA, grace = Duration.ZERO)
+    }
+
+    @Test fun snapshotsStrictDropsStaleRewriteJournalWhenSnapshotMatches() = runBlocking<Unit> {
+        val saved = saveFiles(mapOf("settings.json" to "{}"))
+        val original = store.data.getValue(saved.manifestKey).copyOf()
+        store.data[snapshotRewriteKey(saved.snapshotId)] = original.copyOf()
+        assertEquals(1, engine().snapshotsStrict(store).size)
+        assertNull(store.data[snapshotRewriteKey(saved.snapshotId)])
+        assertTrue(original.contentEquals(store.data.getValue(saved.manifestKey)))
     }
 }

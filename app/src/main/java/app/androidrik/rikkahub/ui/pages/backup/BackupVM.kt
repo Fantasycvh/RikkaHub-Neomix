@@ -223,6 +223,7 @@ class BackupVM(
                 snapshotNotice.value = buildString {
                     append("回收 ${result.deletedObjects} 个未引用对象")
                     if (result.deletedPacks > 0) append("、${result.deletedPacks} 个 pack")
+                    if (result.repackedPacks > 0) append("、重构 ${result.repackedPacks} 个 pack")
                     append("，释放 ${result.freedBytes.fileSizeToString()}")
                     if (result.skippedRecent > 0) append("；保留 ${result.skippedRecent} 个最近修改/时间未知条目")
                 }

@@ -99,6 +99,36 @@ class IncrementalStorageInstrumentedTest {
         }
     }
 
+    @Test fun nativeSafGarbageCollectionRepacksPartiallyReferencedPacks() = runBlocking<Unit> {
+        val (_, store) = nativeStore()
+        val engine = IncrementalBackupEngine(File(root, "cache"))
+        val settings = File(root, "settings.json").apply { writeText("{}") }
+        fun file(name: String, text: String) = File(root, name).apply { writeText(text) }
+        suspend fun plan(inputs: List<SnapshotInput>) =
+            engine.plan(store, inputs, listOf(BackupItem.FILES), SnapshotDatabaseState.NOT_SELECTED, device, 58, "test")
+        val first = plan(listOf(
+            SnapshotInput("settings.json", settings),
+            SnapshotInput("upload/a.txt", file("a.txt", "aaaa")),
+            SnapshotInput("upload/b.txt", file("b.txt", "bbbb")),
+        )).use { engine.commit(it) }
+        val oldPack = requireNotNull(first.files.first().pack)
+        val second = plan(listOf(
+            SnapshotInput("settings.json", settings),
+            SnapshotInput("upload/a.txt", file("a.txt", "aaaa")),
+        )).use { engine.commit(it) }
+        engine.deleteSnapshot(store, first)
+        // fixture 的 mtime 来自真实文件 → 零宽限期即可拆包；SAF 上清单/标记走 putOverwrite 覆盖写。
+        val result = engine.garbageCollect(store, device, grace = java.time.Duration.ZERO)
+        assertEquals(1, result.repackedPacks)
+        assertNull(store.stat("v3/gc.json"))
+        val repacked = engine.list(store).single()
+        assertTrue(repacked.files.all { it.pack != null && it.pack != oldPack })
+        ZipFile(engine.assemble(store, repacked, 58)).use { zip ->
+            assertEquals("aaaa", zip.getInputStream(zip.getEntry("upload/a.txt")).reader().readText())
+            assertNull(zip.getEntry("upload/b.txt"))
+        }
+    }
+
     @Test fun safNativeDocumentsContractRoundTripWithReorderedColumnsAndUnknownSize() = runBlocking<Unit> {
         val (_, store) = nativeStore()
         roundTrip(store)

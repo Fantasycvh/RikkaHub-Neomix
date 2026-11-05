@@ -221,6 +221,7 @@ fun SnapshotBackupTab(vm: BackupVM) {
             text = { Text(
                 "会读取仓库中所有设备已提交的快照，删除没有任何快照引用的对象与打包文件。\n" +
                     "多设备共用一个目录时会先写回收租约；最近 10 分钟内上传/修改的对象会保留，拿不到修改时间的条目也会跳过。\n" +
+                    "打包文件里只剩部分条目仍被引用时，会把它拆包重写成更小的 pack（会改写受影响快照的清单，需要写入权限）。\n" +
                     "已删除快照引用的对象会在这里释放。"
             ) },
             confirmButton = { TextButton(onClick = { confirmingGc = false; vm.garbageCollectSnapshots() }) { Text("回收") } },

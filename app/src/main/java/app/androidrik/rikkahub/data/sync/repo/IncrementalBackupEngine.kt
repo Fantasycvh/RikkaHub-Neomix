@@ -49,6 +49,8 @@ internal data class ObjectGcResult(
     val deletedPacks: Int = 0,
     /** 因「最近修改/时间未知」被保守跳过的候选数（并发写入窗口保护）。 */
     val skippedRecent: Int = 0,
+    /** 拆包重构的 pack 数（pack 里部分条目已不可达，重打包并改写快照清单）。 */
+    val repackedPacks: Int = 0,
 )
 
 /** 仓库级 GC 租约：多设备共用同一目录时避免两台设备同时回收。 */
@@ -117,19 +119,25 @@ internal class IncrementalBackupEngine(
     }
 
     private suspend fun readSnapshot(store: BackupObjectStore, id: String, repoId: String, dir: File): BackupSnapshotManifest {
-        val markerFile = File(dir, "complete.json")
-        store.get("v3/snapshots/$id.complete.json", markerFile, 4096)
-        val marker = json.decodeFromString<SnapshotCompletion>(markerFile.readText())
-        require(marker.version == REPO_VERSION && marker.snapshotId == id && marker.repoId == repoId &&
-            validHash(marker.manifestSha256) && marker.manifestBytes in 1..METADATA_LIMIT) { "Invalid completion marker" }
-        val manifest = File(dir, "manifest.json.gz")
+        val marker = readCompletion(store, id, repoId, dir)
+        val manifest = File(dir, "manifest-$id.json.gz")
         store.get("v3/snapshots/$id.json.gz", manifest, marker.manifestBytes)
         require(manifest.length() == marker.manifestBytes && fileSha256(manifest) == marker.manifestSha256) { "Snapshot checksum mismatch" }
-        val raw = File(dir, "manifest.json")
+        val raw = File(dir, "manifest-$id.json")
         GZIPInputStream(manifest.inputStream()).use { input -> raw.outputStream().use { copyBounded(input, it, METADATA_LIMIT) } }
         return json.decodeFromString<BackupSnapshotManifest>(raw.readText()).also {
             validateSnapshot(it)
             require(it.snapshotId == id && it.repoId == repoId) { "Snapshot identity mismatch" }
+        }
+    }
+
+    /** 只读完成标记（拆包改写/修复用它判断当前发布状态）。 */
+    private suspend fun readCompletion(store: BackupObjectStore, id: String, repoId: String, dir: File): SnapshotCompletion {
+        val markerFile = File(dir, "completion-$id.json")
+        store.get("v3/snapshots/$id.complete.json", markerFile, 4096)
+        return json.decodeFromString<SnapshotCompletion>(markerFile.readText()).also {
+            require(it.version == REPO_VERSION && it.snapshotId == id && it.repoId == repoId &&
+                validHash(it.manifestSha256) && it.manifestBytes in 1..METADATA_LIMIT) { "Invalid completion marker" }
         }
     }
 
@@ -285,6 +293,10 @@ internal class IncrementalBackupEngine(
             require(inspectRepository(store) == info) { "Repository initialization was not confirmed" }
         } else require(repository.repoId == plan.snapshot.repoId) { "Backup destination changed" }
         ensureNoForeignGcLease(store, plan.snapshot.deviceId)
+        // 上次拆包改写若中断，先回滚再提交，避免半写快照被当成损坏。
+        val repairDir = taskDir()
+        try { repairSnapshotRewrites(store, repository?.repoId ?: plan.snapshot.repoId, repairDir) }
+        finally { repairDir.deleteRecursively() }
         val coroutine = currentCoroutineContext()
         val uploaded = AtomicLong()
         // 目录先顺序建好（并发创建同一父目录在 SAF 上会互相干扰），对象/pack 再并行上传。
@@ -502,6 +514,8 @@ internal class IncrementalBackupEngine(
         val repo = requireNotNull(inspectRepository(store)) { "Missing repository" }
         val dir = taskDir()
         try {
+            // 拆包改写若在「覆盖清单」与「覆盖完成标记」之间中断，先按旧清单备份回滚，再严格读取。
+            repairSnapshotRewrites(store, repo.repoId, dir)
             val markers = store.listChildren("v3/snapshots").filter { !it.directory && it.key.endsWith(".complete.json") }
             return markers.map { marker ->
                 currentCoroutineContext().ensureActive()
@@ -518,6 +532,8 @@ internal class IncrementalBackupEngine(
      * 不删对象、不动其他设备的快照——共享对象的可达性由 [garbageCollect] 统一判断。
      */
     suspend fun pruneSnapshots(store: BackupObjectStore, deviceId: String, keep: Int): SnapshotPruneResult {
+        // 别家正在回收/拆包时不要动快照清单，避免与它的改写/回滚互相踩。
+        ensureNoForeignGcLease(store, deviceId)
         val snapshots = snapshotsStrict(store)
         val owned = snapshots.filter { it.deviceId == deviceId }
         if (keep <= 0 || owned.size <= keep) return SnapshotPruneResult(0, owned.size)
@@ -547,16 +563,10 @@ internal class IncrementalBackupEngine(
     ): ObjectGcResult {
         val repo = requireNotNull(inspectRepository(store)) { "Missing repository" }
         acquireGcLease(store, deviceId, repo.repoId)
+        val dir = taskDir()
         try {
-            val snapshots = snapshotsStrict(store)
-            val referencedObjects = HashSet<String>()
-            val referencedPacks = HashSet<String>()
-            snapshots.forEach { snapshot ->
-                snapshot.objects.forEach { ref ->
-                    val packKey = ref.packKey
-                    if (packKey != null) referencedPacks += packKey else referencedObjects += ref.storageKey
-                }
-            }
+            val snapshots = snapshotsStrict(store) // 内部会先修复上次未完成的拆包改写
+            val reachable = reachability(snapshots)
             var keptObjects = 0
             val objectCandidates = ArrayList<BackupStoredObject>()
             store.listAll("v3/objects").forEach { stored ->
@@ -564,19 +574,20 @@ internal class IncrementalBackupEngine(
                 require(!stored.directory) { "Unexpected directory in object bucket: ${stored.key}" }
                 val sha = stored.key.substringAfterLast('/')
                 require(validHash(sha) && stored.key == objectKeyFor(sha)) { "Unexpected object layout: ${stored.key}" }
-                if (stored.key in referencedObjects) keptObjects++ else objectCandidates += stored
+                if (stored.key in reachable.objects) keptObjects++ else objectCandidates += stored
             }
-            val packCandidates = ArrayList<BackupStoredObject>()
-            store.listChildren(PACK_DIR).forEach { stored ->
-                currentCoroutineContext().ensureActive()
-                require(!stored.directory && packShaFromKey(stored.key) != null) { "Unexpected pack layout: ${stored.key}" }
-                if (stored.key in referencedPacks) Unit else packCandidates += stored
-            }
-            // 删除前复核：回收期间若有快照新增/删除，说明别的设备正在提交，整次回收中止。
-            val confirmed = snapshotsStrict(store).map { it.snapshotId }.toSet()
-            require(confirmed == snapshots.map { it.snapshotId }.toSet()) {
+            // 拆包：先重打包并改写快照清单（「部分条目仍被引用」的 pack 才能释放空间），再统一删除。
+            val repack = repackPacks(store, repo.repoId, snapshots, reachable.packs, grace, dir)
+            val confirmed = snapshotsStrict(store)
+            val confirmedReachable = reachability(confirmed)
+            require(confirmed.map { it.snapshotId }.toSet() == snapshots.map { it.snapshotId }.toSet()) {
                 "Repository changed while collecting garbage; retry later"
             }
+            val expectedPacks = reachable.packs.entries.associate { (sha, entries) -> (repack.replacements[sha] ?: sha) to entries }
+            require(confirmedReachable.objects == reachable.objects && confirmedReachable.packs == expectedPacks) {
+                "Repository changed while collecting garbage; retry later"
+            }
+            val packCandidates = listPacks(store).filter { packShaFromKey(it.key) !in confirmedReachable.packs }
             val objectDeletes = objectCandidates.filter { olderThan(it, grace) }
             val packDeletes = packCandidates.filter { olderThan(it, grace) }
             val skippedRecent = objectCandidates.size - objectDeletes.size + packCandidates.size - packDeletes.size
@@ -589,10 +600,176 @@ internal class IncrementalBackupEngine(
                 currentCoroutineContext().ensureActive()
                 store.delete(stored.key)
             }
-            val freed = objectDeletes.sumOf { it.bytes ?: 0L } + packDeletes.sumOf { it.bytes ?: 0L }
-            return ObjectGcResult(objectDeletes.size, freed, keptObjects, packDeletes.size, skippedRecent)
+            val freed = (
+                objectDeletes.sumOf { it.bytes ?: 0L } + packDeletes.sumOf { it.bytes ?: 0L } - repack.uploadedBytes
+                ).coerceAtLeast(0)
+            return ObjectGcResult(objectDeletes.size, freed, keptObjects, packDeletes.size, skippedRecent, repack.replacements.size)
         } finally {
             withContext(NonCancellable) { releaseGcLease(store, deviceId) }
+            dir.deleteRecursively()
+        }
+    }
+
+    /** 快照可达集：独立对象路径 + 每个 pack 里仍被引用的条目（sha → 原始大小）。 */
+    private class Reachability(val objects: Set<String>, val packs: Map<String, Map<String, Long>>)
+
+    private fun reachability(snapshots: List<BackupSnapshotManifest>): Reachability {
+        val objects = HashSet<String>()
+        val packs = LinkedHashMap<String, LinkedHashMap<String, Long>>()
+        snapshots.forEach { snapshot ->
+            snapshot.objects.forEach { ref ->
+                val packSha = ref.pack
+                if (packSha != null) {
+                    val entries = packs.getOrPut(packSha) { LinkedHashMap() }
+                    val previous = entries.put(ref.sha256, ref.size)
+                    require(previous == null || previous == ref.size) { "Inconsistent object metadata: ${ref.sha256}" }
+                } else objects += ref.storageKey
+            }
+        }
+        return Reachability(objects, packs)
+    }
+
+    private suspend fun listPacks(store: BackupObjectStore): List<BackupStoredObject> =
+        store.listChildren(PACK_DIR).map { stored ->
+            require(!stored.directory && packShaFromKey(stored.key) != null) { "Unexpected pack layout: ${stored.key}" }
+            stored
+        }
+
+    private class RepackResult(val replacements: Map<String, String>, val uploadedBytes: Long)
+
+    /**
+     * 拆包：对「仍被快照引用、但 pack 里有条目已不可达」的 pack，把仍被引用的条目重新打成一个
+     * 内容寻址 pack，并改写相关快照清单的 pack 指针；旧 pack 随后由删除阶段回收。
+     *
+     * 崩溃安全：改写前把旧清单备份到 `v3/rewrite/<id>.json.gz`，先覆盖清单再覆盖完成标记，
+     * 任一步中断都由 [repairSnapshotRewrites] 按标记回滚——读侧永远看到旧清单或新清单的完整状态。
+     */
+    private suspend fun repackPacks(
+        store: BackupObjectStore,
+        repoId: String,
+        snapshots: List<BackupSnapshotManifest>,
+        referencedPacks: Map<String, Map<String, Long>>,
+        grace: Duration,
+        dir: File,
+    ): RepackResult {
+        if (referencedPacks.isEmpty()) return RepackResult(emptyMap(), 0)
+        val storedPacks = listPacks(store).associateBy { requireNotNull(packShaFromKey(it.key)) }
+        val replacements = LinkedHashMap<String, String>()
+        var uploadedBytes = 0L
+        referencedPacks.forEach { (packSha, entries) ->
+            currentCoroutineContext().ensureActive()
+            val stored = requireNotNull(storedPacks[packSha]) { "Referenced pack is missing: $packSha" }
+            // 只对「已经静默」的 pack 拆包：刚提交的 pack 先不动，避免与刚上传的内容互相踩。
+            if (!olderThan(stored, grace)) return@forEach
+            val packFile = File(dir, "repack-$packSha.zip")
+            store.get(stored.key, packFile, REPACK_DOWNLOAD_LIMIT)
+            require(fileSha256(packFile) == packSha) { "Referenced pack checksum mismatch: $packSha" }
+            val sizes = SnapshotPacking.entrySizes(packFile)
+            entries.forEach { (sha, size) -> require(sizes[sha] == size) { "Packed object missing from pack: $sha" } }
+            if (sizes.keys.all { it in entries }) { packFile.delete(); return@forEach }
+            // 只把仍被引用的条目重新打包；内容寻址保证「同一批内容」不会重复占空间。
+            val kept = entries.keys.sorted()
+            val extracted = kept.map { sha -> File(dir, "repack-entry-$sha") }
+            SnapshotPacking.extract(packFile, kept.map { it to requireNotNull(entries[it]) }, extracted)
+            extracted.forEachIndexed { index, file ->
+                require(fileSha256(file) == kept[index]) { "Packed object checksum mismatch: ${kept[index]}" }
+            }
+            val packed = SnapshotPacking.write(dir, kept.mapIndexed { index, sha -> sha to extracted[index] })
+            val (newKey, newPack) = packed.files.entries.singleOrNull() ?: error("Repacked pack must fit in one file")
+            val newPackSha = requireNotNull(packShaFromKey(newKey))
+            val existing = store.stat(newKey)
+            if (existing != null) {
+                require(!existing.directory && (existing.bytes == null || existing.bytes == newPack.length())) {
+                    "Conflicting repacked pack content"
+                }
+                newPack.delete()
+            } else {
+                store.ensureDir(PACK_DIR)
+                store.put(newKey, newPack)
+                uploadedBytes = Math.addExact(uploadedBytes, newPack.length())
+            }
+            extracted.forEach(File::delete)
+            packFile.delete()
+            replacements[packSha] = newPackSha
+        }
+        if (replacements.isNotEmpty()) rewriteSnapshotPacks(store, repoId, snapshots, replacements, dir)
+        return RepackResult(replacements, uploadedBytes)
+    }
+
+    /** 把快照清单里指向旧 pack 的引用改成新 pack，两阶段覆盖清单与完成标记。 */
+    private suspend fun rewriteSnapshotPacks(
+        store: BackupObjectStore,
+        repoId: String,
+        snapshots: List<BackupSnapshotManifest>,
+        replacements: Map<String, String>,
+        dir: File,
+    ) {
+        snapshots.forEach { snapshot ->
+            currentCoroutineContext().ensureActive()
+            fun updatedPack(pack: String?): String? = pack?.let { replacements[it] ?: it }
+            val updated = snapshot.copy(
+                files = snapshot.files.map { it.copy(pack = updatedPack(it.pack)) },
+                dbObjects = snapshot.dbObjects.map { it.copy(pack = updatedPack(it.pack)) },
+            )
+            if (updated == snapshot) return@forEach
+            validateSnapshot(updated)
+            val oldManifest = File(dir, "old-${snapshot.snapshotId}.json.gz")
+            store.get(snapshot.manifestKey, oldManifest, METADATA_LIMIT)
+            val marker = readCompletion(store, snapshot.snapshotId, repoId, dir)
+            require(marker.manifestBytes == oldManifest.length() && marker.manifestSha256 == fileSha256(oldManifest)) {
+                "Snapshot changed while repacking; retry later"
+            }
+            // 两阶段改写：备份旧清单 → 覆盖清单 → 覆盖完成标记 → 回读校验 → 删除备份。
+            val journalKey = snapshotRewriteKey(snapshot.snapshotId)
+            store.ensureDir(REWRITE_DIR)
+            store.putOverwrite(journalKey, oldManifest)
+            val text = json.encodeToString(updated).toByteArray(Charsets.UTF_8)
+            require(text.size <= METADATA_LIMIT) { "Snapshot manifest exceeds size limit" }
+            val newManifest = File(dir, "new-${snapshot.snapshotId}.json.gz")
+            GZIPOutputStream(newManifest.outputStream()).use { it.write(text) }
+            store.putOverwrite(snapshot.manifestKey, newManifest)
+            val completion = SnapshotCompletion(
+                snapshotId = snapshot.snapshotId,
+                repoId = repoId,
+                manifestSha256 = fileSha256(newManifest),
+                manifestBytes = newManifest.length(),
+            )
+            val markerFile = File(dir, "marker-${snapshot.snapshotId}.json").apply { writeText(json.encodeToString(completion)) }
+            store.putOverwrite(snapshot.completionKey, markerFile)
+            readSnapshot(store, snapshot.snapshotId, repoId, dir)
+            store.delete(journalKey)
+        }
+    }
+
+    /**
+     * 修复拆包改写中断：`v3/rewrite/<id>.json.gz` 是改写前的旧清单。
+     * - 完成标记匹配旧清单、但当前清单已被覆盖：回滚旧清单（标记无需改），再删备份；
+     * - 当前清单与标记一致（改写完成或尚未开始）：删备份；
+     * - 两种都不匹配：不断言、直接报错（仓库需要人工检查）。
+     */
+    private suspend fun repairSnapshotRewrites(store: BackupObjectStore, repoId: String, dir: File) {
+        val journals = runCatching { store.listChildren(REWRITE_DIR) }.getOrNull().orEmpty().filter { !it.directory }
+        journals.forEach { journal ->
+            currentCoroutineContext().ensureActive()
+            val id = journal.key.substringAfterLast('/').removeSuffix(".json.gz")
+            require(validUuid(id) && journal.key == snapshotRewriteKey(id)) { "Unexpected rewrite journal: ${journal.key}" }
+            val marker = runCatching { readCompletion(store, id, repoId, dir) }.getOrNull()
+            if (marker == null) { store.delete(journal.key); return@forEach }
+            val backup = File(dir, "journal.json.gz")
+            store.get(journal.key, backup, METADATA_LIMIT)
+            val current = File(dir, "current.json.gz")
+            val currentRead = runCatching {
+                store.get("v3/snapshots/$id.json.gz", current, METADATA_LIMIT)
+                current.length() == marker.manifestBytes && fileSha256(current) == marker.manifestSha256
+            }.getOrDefault(false)
+            when {
+                fileSha256(backup) == marker.manifestSha256 && backup.length() == marker.manifestBytes -> {
+                    if (!currentRead) store.putOverwrite("v3/snapshots/$id.json.gz", backup)
+                    store.delete(journal.key)
+                }
+                currentRead -> store.delete(journal.key)
+                else -> throw IllegalStateException("Snapshot rewrite journal does not match repository state: ${journal.key}")
+            }
         }
     }
 
@@ -676,6 +853,9 @@ internal class IncrementalBackupEngine(
 
         /** 只回收「已静默（mtime 早于宽限期）」的候选，保护另一台设备正在上传的对象。 */
         val GC_GRACE: Duration = Duration.ofMinutes(10)
+
+        /** 拆包时下载旧 pack 的上限：单 pack 原始量上限 + zip 头/压缩最坏开销。 */
+        val REPACK_DOWNLOAD_LIMIT: Long = PACK_TARGET_BYTES + 8L * 1024 * 1024
     }
 
     /** 对象级并行（哈希/stat/压缩/校验独立）；并发度固定保守值，避免把低端机 IO 打满。 */
