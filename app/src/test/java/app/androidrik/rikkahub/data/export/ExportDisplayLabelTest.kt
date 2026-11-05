@@ -255,4 +255,35 @@ class ExportDisplayLabelTest {
             ),
         )
     }
+
+    @Test
+    fun `conversation override wins over the global config`() {
+        val global = ExportDisplayConfig(mode = ExportModelLabelMode.MODEL)
+        val override = ExportDisplayConfig(mode = ExportModelLabelMode.HIDDEN)
+        assertEquals(
+            override,
+            effectiveExportDisplayConfig(conversationOverride = override, global = global),
+        )
+    }
+
+    @Test
+    fun `null conversation override falls back to the global config`() {
+        val global = ExportDisplayConfig(mode = ExportModelLabelMode.PROVIDER_MODEL)
+        assertEquals(
+            global,
+            effectiveExportDisplayConfig(conversationOverride = null, global = global),
+        )
+    }
+
+    @Test
+    fun `per-conversation override round-trips through json`() {
+        val config = ExportDisplayConfig(
+            mode = ExportModelLabelMode.CUSTOM,
+            customTemplate = "{model} · {date}",
+        )
+        val decoded = kotlinx.serialization.json.Json.decodeFromString<ExportDisplayConfig>(
+            kotlinx.serialization.json.Json.encodeToString(config)
+        )
+        assertEquals(config, decoded)
+    }
 }

@@ -192,7 +192,9 @@ class AgentRunDeliveryInstrumentedTest {
         try {
             val backup = File(root, "databases/rikka_hub").apply { parentFile!!.mkdirs() }
             SQLiteDatabase.openOrCreateDatabase(backup, null).use {
-                it.version = AppDatabase.SCHEMA_VERSION
+                // 模拟「比 57 新一版」的备份：v58 提升时本测试写成 SCHEMA_VERSION，
+                // 而它要验证的是「新版本备份被旧版本隔离」这一语义，故固定为 58。
+                it.version = 58
                 it.execSQL("CREATE TABLE evidence (value TEXT)")
                 it.execSQL("INSERT INTO evidence VALUES ('preserved')")
             }

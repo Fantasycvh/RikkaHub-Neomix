@@ -122,6 +122,7 @@ import app.androidrik.rikkahub.data.ai.compression.effectiveMinKeep
 import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.runCompressionLadder
 import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
+import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.model.markGeneratingNodeIncomplete
 import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
@@ -2757,6 +2758,23 @@ class ChatService(
             conversationId = conversationId,
             update = { it.copy(hidden = hidden) },
             persist = { conversationRepo.updateConversationHidden(conversationId, hidden) },
+        )
+    }
+
+    /**
+     * 设置**本会话**的导出显示覆盖（`null` = 恢复跟随全局设置；只影响 PNG/Markdown/HTML 渲染）。
+     *
+     * 与 [setConversationHidden] 同款：走统一元数据原语，内存态与库各写一次、用同一个值。
+     * 只写单列的原因是列表轻投影不带该列 —— 见 `ConversationDAO.updateExportDisplayConfig`。
+     */
+    suspend fun setConversationExportDisplayConfig(
+        conversationId: Uuid,
+        config: ExportDisplayConfig?,
+    ) {
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(exportDisplayConfig = config) },
+            persist = { conversationRepo.updateConversationExportDisplayConfig(conversationId, config) },
         )
     }
 

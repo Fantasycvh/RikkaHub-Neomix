@@ -178,6 +178,17 @@ fun resolveExportModelLabel(
     return ResolvedExportModelLabel(iconSeed = iconSeed, label = label.trim())
 }
 
+/**
+ * **会话级覆盖优先，否则跟随全局**（会话导出显示的唯一决策点）。
+ *
+ * 单独抽成函数是为了让「本会话设置 ⇄ 全局设置」的分支可单测，且导出侧三处
+ * （Markdown / HTML / PNG）共用同一份语义——不要在调用点各写一次 `?:`。
+ */
+fun effectiveExportDisplayConfig(
+    conversationOverride: ExportDisplayConfig?,
+    global: ExportDisplayConfig,
+): ExportDisplayConfig = conversationOverride ?: global
+
 /** 用示例值渲染一份预览文案（设置页展示用；[ExportModelLabelMode.HIDDEN] 返回空串）。 */
 fun previewExportModelLabel(config: ExportDisplayConfig): String = when (config.mode) {
     ExportModelLabelMode.HIDDEN -> ""

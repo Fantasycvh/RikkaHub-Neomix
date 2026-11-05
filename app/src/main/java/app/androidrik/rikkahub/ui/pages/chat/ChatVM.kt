@@ -32,6 +32,7 @@ import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
 import app.androidrik.rikkahub.utils.effectiveContextLength
+import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
@@ -541,6 +542,16 @@ class ChatVM(
     fun setHidden(conversation: Conversation, hidden: Boolean) {
         viewModelScope.launch {
             chatService.setConversationHidden(conversation.id, hidden)
+        }
+    }
+
+    /**
+     * 本会话导出显示覆盖（`null` = 恢复跟随全局）。走 ChatService 统一元数据原语，
+     * 理由同 [setHidden]：只改 DB 单列会被整对象保存用旧内存值盖回。
+     */
+    fun setExportDisplayConfig(conversation: Conversation, config: ExportDisplayConfig?) {
+        viewModelScope.launch {
+            chatService.setConversationExportDisplayConfig(conversation.id, config)
         }
     }
 

@@ -548,6 +548,10 @@
   <string name="chat_page_export_include_all_versions">包含全部版本（含分支/編輯歷史）</string>
   <string name="chat_page_export_json">對話封存（可再匯入）</string>
   <string name="chat_page_export_json_desc">含分支、壓縮與附件的完整對話（.zip），可再匯入回本應用</string>
+  <string name="chat_page_export_session_display_title">匯出顯示（本對話）</string>
+  <string name="chat_page_export_session_display_desc">只影響本對話的 PNG / Markdown / HTML 匯出；全域設定與 JSON 封存檔不受影響。</string>
+  <string name="chat_page_export_session_display_follow_global">跟隨全域：%1$s</string>
+  <string name="chat_page_export_session_display_override">本對話：%1$s</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">將對話匯出為markdown檔案</string>
   <string name="chat_page_export_html">匯出為 HTML</string>
@@ -1051,6 +1055,7 @@
   <string name="setting_display_page_export_model_desc">作用於 PNG 圖片、Markdown 與 HTML 匯出；JSON 封存檔保持原樣。</string>
   <string name="setting_display_page_export_model_edit">編輯</string>
   <string name="setting_display_page_export_model_preview_hidden">不顯示</string>
+  <string name="setting_display_page_export_model_reset_to_global">恢復跟隨全域</string>
   <string name="setting_display_page_export_model_sheet_title">匯出顯示文案</string>
   <string name="setting_display_page_export_model_sheet_desc">選擇在 PNG、Markdown、HTML 匯出中助手名稱旁顯示什麼。JSON 封存檔不受影響。</string>
   <string name="setting_display_page_export_model_mode_hidden">不顯示</string>

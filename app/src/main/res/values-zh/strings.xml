@@ -551,6 +551,10 @@
   <string name="chat_page_export_include_all_versions">包含全部版本（含分支/编辑历史）</string>
   <string name="chat_page_export_json">对话归档（可再导入）</string>
   <string name="chat_page_export_json_desc">含分支、压缩与附件的完整对话（.zip），可再导入回本应用</string>
+  <string name="chat_page_export_session_display_title">导出显示（本会话）</string>
+  <string name="chat_page_export_session_display_desc">只影响本会话的 PNG / Markdown / HTML 导出；全局设置与 JSON 归档不受影响。</string>
+  <string name="chat_page_export_session_display_follow_global">跟随全局：%1$s</string>
+  <string name="chat_page_export_session_display_override">本会话：%1$s</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">将对话导出为markdown文件</string>
   <string name="chat_page_export_html">导出为 HTML</string>
@@ -1082,6 +1086,7 @@
   <string name="setting_display_page_export_model_desc">作用于 PNG 图片、Markdown 与 HTML 导出；JSON 归档保持原样。</string>
   <string name="setting_display_page_export_model_edit">编辑</string>
   <string name="setting_display_page_export_model_preview_hidden">不显示</string>
+  <string name="setting_display_page_export_model_reset_to_global">恢复跟随全局</string>
   <string name="setting_display_page_export_model_sheet_title">导出显示文案</string>
   <string name="setting_display_page_export_model_sheet_desc">选择在 PNG、Markdown、HTML 导出中助手名称旁显示什么。JSON 归档不受影响。</string>
   <string name="setting_display_page_export_model_mode_hidden">不显示</string>

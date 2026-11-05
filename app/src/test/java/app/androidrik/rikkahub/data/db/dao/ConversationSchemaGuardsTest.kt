@@ -67,6 +67,10 @@ class ConversationSchemaGuardsTest {
         val columns = conversationColumns()
         assertTrue("会话表缺少 sort_order（自定义顺序的位置值）", "sort_order" in columns)
         assertTrue("会话表缺少 last_message_at（行内「最近活跃」）", "last_message_at" in columns)
+        assertTrue(
+            "会话表缺少 export_display_config（会话级导出显示覆盖，DB v58→59）",
+            "export_display_config" in columns,
+        )
     }
 
     @Test
@@ -78,7 +82,10 @@ class ConversationSchemaGuardsTest {
         // - frozen_anchors：**只**由 updateFrozenAnchors / updateFrozenAnchorsOfAssistant 写
         //   （L1 锚点快照；理由同 sort_order —— 它在「会话开始冻结」与「记忆页固化」两处
         //   写库，而那两处之后调用方手里的 Conversation 可能仍是旧副本，放进这里会被写回 null）
-        val exempt = setOf("nodes", "sort_order", "frozen_anchors")
+        // - export_display_config：**只**由 updateExportDisplayConfig 写（会话级导出显示覆盖；
+        //   列表轻投影（LightConversationEntity）不带该列，置顶/改标题等元信息保存若带上它，
+        //   就会把用户刚设好的覆盖静默写回 null）
+        val exempt = setOf("nodes", "sort_order", "frozen_anchors", "export_display_config")
 
         val sql = daoSource()
             .substringAfter("UPDATE conversationentity SET", "")

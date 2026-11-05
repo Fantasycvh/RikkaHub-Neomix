@@ -499,7 +499,19 @@ fun ChainOfThoughtCustomSheet(
 fun ExportDisplaySchemeSheet(
     config: ExportDisplayConfig,
     onSave: (ExportDisplayConfig) -> Unit,
-    onSaveScheme: (String, ExportDisplayConfig) -> Unit,
+    /**
+     * 保存命名方案。`null` = 不提供入口（会话级覆盖没有「方案」语义——方案是全局的）。
+     * 默认非空保持设置页行为不变。
+     */
+    onSaveScheme: ((String, ExportDisplayConfig) -> Unit)? = null,
+    /**
+     * 「恢复跟随全局」（`null` = 不显示此按钮）。只有会话级覆盖才有「重置」可言：
+     * 全局配置本身就是真相源。
+     */
+    onReset: (() -> Unit)? = null,
+    /** 覆盖标题 / 说明（会话级复用本面板时改口径；null = 设置页文案）。 */
+    titleOverride: String? = null,
+    descriptionOverride: String? = null,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberBottomSheetState(
@@ -529,11 +541,13 @@ fun ExportDisplaySchemeSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = stringResource(R.string.setting_display_page_export_model_sheet_title),
+                text = titleOverride
+                    ?: stringResource(R.string.setting_display_page_export_model_sheet_title),
                 style = MaterialTheme.typography.titleLarge,
             )
             Text(
-                text = stringResource(R.string.setting_display_page_export_model_sheet_desc),
+                text = descriptionOverride
+                    ?: stringResource(R.string.setting_display_page_export_model_sheet_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -632,13 +646,22 @@ fun ExportDisplaySchemeSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedButton(
-                    onClick = { showSchemeNameDialog = true },
-                    enabled = canSave,
-                ) {
-                    Text(stringResource(R.string.setting_personalization_save_as_scheme))
+                // 「保存为方案」只在有全局设置上下文时出现（会话级覆盖不走命名方案）
+                onSaveScheme?.let {
+                    OutlinedButton(
+                        onClick = { showSchemeNameDialog = true },
+                        enabled = canSave,
+                    ) {
+                        Text(stringResource(R.string.setting_personalization_save_as_scheme))
+                    }
                 }
                 Spacer(Modifier.weight(1f))
+                // 「恢复跟随全局」只在会话已有覆盖时出现（null = 跟随全局，本身就是重置目标）
+                onReset?.let { reset ->
+                    TextButton(onClick = reset) {
+                        Text(stringResource(R.string.setting_display_page_export_model_reset_to_global))
+                    }
+                }
                 TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
                 Button(onClick = { onSave(snapshot()) }, enabled = canSave) {
                     Text(stringResource(R.string.setting_theme_page_save))
@@ -648,10 +671,14 @@ fun ExportDisplaySchemeSheet(
     }
 
     if (showSchemeNameDialog) {
-        SchemeNameDialog(
-            onConfirm = { name -> onSaveScheme(name, snapshot()) },
-            onDismiss = { showSchemeNameDialog = false },
-        )
+        // onSaveScheme 非空才可能把 showSchemeNameDialog 置 true
+        val saveScheme = onSaveScheme
+        if (saveScheme != null) {
+            SchemeNameDialog(
+                onConfirm = { name -> saveScheme(name, snapshot()) },
+                onDismiss = { showSchemeNameDialog = false },
+            )
+        }
     }
 }
 

@@ -13,6 +13,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.InstantSerializer
 import app.androidrik.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
+import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import java.time.Instant
@@ -83,6 +84,19 @@ data class Conversation(
      * 手动切换（移出 = 收养进列表，可再移入）；不进任何执行路径判断。
      */
     val hidden: Boolean = false,
+    /**
+     * **本会话的导出显示覆盖**（PNG / Markdown / HTML 导出标签；`null` = 跟随全局
+     * `Settings.exportDisplayConfig`）。
+     *
+     * 为什么要会话级：导出图常按会话用途分享（公开帖 / 技术群 vs 内部记录），
+     * 逐个会话改全局开关既麻烦，又会让上一次的选择漏到下一个会话。
+     * 只影响渲染层，JSON 归档不受影响（与全局配置同一条纪律）。
+     *
+     * 持久化：conversations 表 `export_display_config`（DB v58→59，可空纯列 ⇒ 无需回填）。
+     * **写入点唯一** = `ConversationDAO.updateExportDisplayConfig`，理由同 `frozen_anchors`：
+     * 列表轻投影（LightConversationEntity）不带本列，走整行 UPDATE 会被旧快照写回 null。
+     */
+    val exportDisplayConfig: ExportDisplayConfig? = null,
     /**
      * **冻结的锚点集合**（L1）：会话开始时一次 + 用户手动「固化记忆」时重写。
      *

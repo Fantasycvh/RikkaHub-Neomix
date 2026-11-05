@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -87,6 +89,9 @@ import app.androidrik.ai.ui.isEmptyUIMessage
 import app.androidrik.ai.util.encodeBase64
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.export.ExportDisplayConfig
+import app.androidrik.rikkahub.data.export.effectiveExportDisplayConfig
+import app.androidrik.rikkahub.data.export.previewExportModelLabel
 import app.androidrik.rikkahub.data.export.resolveExportModelLabel
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.message.ChatMessageNarrationStep
@@ -109,6 +114,7 @@ import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import com.dokar.sonner.rememberToasterState
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.pages.setting.components.ExportDisplaySchemeSheet
 import app.androidrik.rikkahub.ui.theme.LocalUserBubbleColor
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
@@ -163,6 +169,13 @@ fun ChatExportSheet(
      *   [onExported]。留存区那份始终存在，故取消另存也不会丢内容。
      */
     saveToDocument: Boolean = false,
+    /**
+     * 本会话导出显示覆盖的写入回调（`null` = 恢复跟随全局）。
+     *
+     * 传 null 时不显示「本会话导出显示」入口（抽屉/列表的快捷导出没有会话上下文写入口，
+     * 它们继续只读全局配置）。
+     */
+    onUpdateExportDisplayConfig: ((ExportDisplayConfig?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -177,6 +190,16 @@ fun ChatExportSheet(
     // 附件合计超软上限时的待确认计划（非空 = 显示确认弹窗）。确认后原样重跑导出。
     var oversizePlan by remember { mutableStateOf<AttachmentPlan?>(null) }
     var oversizeConfirmed by remember { mutableStateOf(false) }
+    // 本会话导出显示的编辑面板（不新建第二个 bottom sheet：默认值从会话覆盖/全局配置起步）
+    var showSessionDisplayEditor by remember { mutableStateOf(false) }
+    // 生效配置：会话覆盖优先，否则全局（三处导出共用同一个决策点）
+    val displayConfig = effectiveExportDisplayConfig(
+        conversationOverride = conversation.exportDisplayConfig,
+        global = settings.exportDisplayConfig,
+    )
+    // 行内摘要（按示例值预览；「不显示」档给固定文案，避免空白行）
+    val displayConfigSummary = previewExportModelLabel(displayConfig)
+        .ifBlank { stringResource(R.string.setting_display_page_export_model_preview_hidden) }
     val saveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*"),
     ) { uri ->
@@ -310,6 +333,9 @@ fun ChatExportSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // 条目变多后（会话级导出显示入口）不再可能一屏放完：滚起来，
+                    // 否则底部的「导出为图片」按钮会被挤出屏幕、无法点击
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -327,6 +353,47 @@ fun ChatExportSheet(
                         )
                     }
                 )
+
+                // 本会话导出显示覆盖（默认跟随全局；只影响本会话的 PNG/Markdown/HTML 渲染）。
+                // 抽屉/列表的快捷导出不传回调 ⇒ 不显示本入口（那里没有写回会话的通道）。
+                if (onUpdateExportDisplayConfig != null) {
+                    OutlinedCard(
+                        onClick = { showSessionDisplayEditor = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        ListItem(
+                            headlineContent = {
+                                Text(stringResource(R.string.chat_page_export_session_display_title))
+                            },
+                            supportingContent = {
+                                // ListItem.supportingContent 只渲染第一个直接子节点 ⇒ Column 包一层
+                                Column {
+                                    Text(
+                                        text = if (conversation.exportDisplayConfig == null) {
+                                            stringResource(
+                                                R.string.chat_page_export_session_display_follow_global,
+                                                displayConfigSummary,
+                                            )
+                                        } else {
+                                            stringResource(
+                                                R.string.chat_page_export_session_display_override,
+                                                displayConfigSummary,
+                                            )
+                                        },
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.chat_page_export_session_display_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            trailingContent = {
+                                Text(stringResource(R.string.setting_display_page_export_model_edit))
+                            },
+                        )
+                    }
+                }
 
                 HorizontalDivider()
 
@@ -502,6 +569,33 @@ fun ChatExportSheet(
             }
         }
     }
+
+    // ---- 本会话导出显示的编辑面板 ----
+    // 沿用设置页同一套编辑器（模式 / 内置预设 / 自定义模板 / 预览），但：
+    // - 不提供「保存为方案」（方案是全局的，会话级覆盖没有这个语义）；
+    // - 只有已有覆盖时才提供「恢复跟随全局」（null = 跟随全局）。
+    val updateDisplayConfig = onUpdateExportDisplayConfig
+    if (showSessionDisplayEditor && updateDisplayConfig != null) {
+        ExportDisplaySchemeSheet(
+            config = displayConfig,
+            titleOverride = stringResource(R.string.chat_page_export_session_display_title),
+            descriptionOverride = stringResource(R.string.chat_page_export_session_display_desc),
+            onSave = { config ->
+                updateDisplayConfig(config)
+                showSessionDisplayEditor = false
+            },
+            onSaveScheme = null,
+            onReset = if (conversation.exportDisplayConfig != null) {
+                {
+                    updateDisplayConfig(null)
+                    showSessionDisplayEditor = false
+                }
+            } else {
+                null
+            },
+            onDismiss = { showSessionDisplayEditor = false },
+        )
+    }
 }
 
 /**
@@ -594,6 +688,11 @@ private suspend fun exportToMarkdown(
     settings: Settings,
 ): ExportedFile {
     val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.md"
+    // 会话级覆盖优先，否则跟随全局（三个导出器共用同一决策点）
+    val displayConfig = effectiveExportDisplayConfig(
+        conversationOverride = conversation.exportDisplayConfig,
+        global = settings.exportDisplayConfig,
+    )
 
     val sb = buildAnnotatedString {
         append("# ${conversation.title}\n\n")
@@ -606,11 +705,11 @@ private suspend fun exportToMarkdown(
             ?.takeIf { it.isNotBlank() }
         messages.forEach { message ->
             val role = when (message.semanticRole) { MessageRole.USER -> "**User**"; MessageRole.SYSTEM -> "**System**"; else -> "**Assistant**" }
-            // 提供商 / 模型标签：与 PNG / HTML 同一份全局配置。空串 = 不显示（含「不显示」档、非 assistant）
+            // 提供商 / 模型标签：与 PNG / HTML 同一份配置（会话覆盖优先，否则全局）。空串 = 不显示（含「不显示」档、非 assistant）
             val label = resolveExportModelLabel(
                 message = message,
                 providers = settings.providers,
-                config = settings.exportDisplayConfig,
+                config = displayConfig,
                 assistantName = assistantName,
             ).label
             if (label.isNotBlank()) {
@@ -889,16 +988,21 @@ private suspend fun exportToHtml(
         .find { it.id == conversation.assistantId }
         ?.name
         ?.takeIf { it.isNotBlank() }
+    // 会话级覆盖优先，否则跟随全局（三个导出器共用同一决策点）
+    val displayConfig = effectiveExportDisplayConfig(
+        conversationOverride = conversation.exportDisplayConfig,
+        global = settings.exportDisplayConfig,
+    )
     messages.forEach { message ->
         val isUser = message.semanticRole == MessageRole.USER
         val roleClass = if (message.semanticRole == MessageRole.SYSTEM) "system" else if (isUser) "user" else "assistant"
         val roleLabel = if (message.semanticRole == MessageRole.SYSTEM) "System" else if (isUser) "User" else "Assistant"
         sb.append("<div class=\"message ").append(roleClass).append("\">\n")
-        // 提供商 / 模型标签：与 PNG / Markdown 同一份全局配置；用户可自定义文案，必须转义
+        // 提供商 / 模型标签：与 PNG / Markdown 同一份配置（会话覆盖优先）；用户可自定义文案，必须转义
         val label = resolveExportModelLabel(
             message = message,
             providers = settings.providers,
-            config = settings.exportDisplayConfig,
+            config = displayConfig,
             assistantName = assistantName,
         ).label
         sb.append("<div class=\"role\">").append(roleLabel)
@@ -1012,12 +1116,18 @@ private suspend fun exportToImage(
         .find { it.id == conversation.assistantId }
         ?.name
         ?.takeIf { it.isNotBlank() }
+    // 会话级覆盖优先，否则跟随全局（三个导出器共用同一决策点）
+    val displayConfig = effectiveExportDisplayConfig(
+        conversationOverride = conversation.exportDisplayConfig,
+        global = settings.exportDisplayConfig,
+    )
     val exportContent: @Composable () -> Unit = {
         CompositionLocalProvider(LocalSettings provides settings) {
             ExportedChatImage(
                 conversation = conversation,
                 messages = messages,
                 assistantName = assistantName,
+                displayConfig = displayConfig,
                 options = options
             )
         }
@@ -1120,6 +1230,8 @@ private fun ExportedChatImage(
     conversation: Conversation,
     messages: List<UIMessage>,
     assistantName: String? = null,
+    /** 生效的导出显示配置（会话覆盖优先，否则全局；解析点在 [exportToImage]）。 */
+    displayConfig: ExportDisplayConfig,
     options: ImageExportOptions = ImageExportOptions()
 ) {
     val navBackStack = remember { mutableStateListOf<NavKey>() }
@@ -1171,6 +1283,7 @@ private fun ExportedChatImage(
                         ExportedChatMessage(
                             message = message,
                             assistantName = assistantName,
+                            displayConfig = displayConfig,
                             options = options,
                             prevMessage = messages.getOrNull(messages.indexOf(message) - 1)
                         )
@@ -1196,18 +1309,19 @@ private fun ExportedChatMessage(
     message: UIMessage,
     prevMessage: UIMessage? = null,
     assistantName: String? = null,
+    displayConfig: ExportDisplayConfig,
     options: ImageExportOptions = ImageExportOptions()
 ) {
     if (message.parts.isEmptyUIMessage()) return
     val context = LocalContext.current
     val settings = LocalSettings.current
-    // 导出标签统一走全局「导出显示」配置（PNG / Markdown / HTML 同一份解析，见
+    // 导出标签统一走「会话覆盖优先、否则全局」的生效配置（PNG / Markdown / HTML 同一份解析，见
     // data/export/ExportDisplayLabel.kt）。图标种子与显示文案**分开**：自定义文案不能拿去选图标。
-    val exportLabel = remember(message, settings.providers, settings.exportDisplayConfig, assistantName) {
+    val exportLabel = remember(message, settings.providers, displayConfig, assistantName) {
         resolveExportModelLabel(
             message = message,
             providers = settings.providers,
-            config = settings.exportDisplayConfig,
+            config = displayConfig,
             assistantName = assistantName,
         )
     }

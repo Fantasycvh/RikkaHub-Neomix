@@ -514,6 +514,10 @@
   <string name="chat_page_export_include_all_versions">Include all versions (branches &amp; edit history)</string>
   <string name="chat_page_export_json">Conversation archive (re-importable)</string>
   <string name="chat_page_export_json_desc">Full conversation with branches, compression and attachments, as a .zip you can import back</string>
+  <string name="chat_page_export_session_display_title">Export display (this chat)</string>
+  <string name="chat_page_export_session_display_desc">Only affects the PNG / Markdown / HTML exports of this chat; the global setting and JSON archives stay unchanged.</string>
+  <string name="chat_page_export_session_display_follow_global">Following global: %1$s</string>
+  <string name="chat_page_export_session_display_override">This chat: %1$s</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">Export conversation as a markdown file</string>
   <string name="chat_page_export_html">Export as HTML</string>
@@ -1050,6 +1054,7 @@
   <string name="setting_display_page_export_model_desc">Applies to PNG image, Markdown and HTML exports. JSON archives keep their original format.</string>
   <string name="setting_display_page_export_model_edit">Edit</string>
   <string name="setting_display_page_export_model_preview_hidden">Not shown</string>
+  <string name="setting_display_page_export_model_reset_to_global">Follow global setting</string>
   <string name="setting_display_page_export_model_sheet_title">Export display label</string>
   <string name="setting_display_page_export_model_sheet_desc">Choose what is shown next to the assistant name in PNG, Markdown and HTML exports. JSON archives are not affected.</string>
   <string name="setting_display_page_export_model_mode_hidden">Hide</string>

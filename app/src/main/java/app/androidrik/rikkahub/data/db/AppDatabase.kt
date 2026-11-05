@@ -86,7 +86,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 58,
+    version = 59,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -183,6 +183,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 56, to = 57),
         // 57→58：后台子代理的归属、投递模式与持久化投递状态。
         AutoMigration(from = 57, to = 58),
+        // 58→59：会话级导出显示覆盖（conversations.export_display_config，**可空纯列** ⇒ 免 spec、
+        // 无需回填：null = 跟随全局 `Settings.exportDisplayConfig`，行为与改动前一致）。
+        // 见 ConversationEntity / Conversation.exportDisplayConfig 的 kdoc。
+        AutoMigration(from = 58, to = 59),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -238,7 +242,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 58
+        const val SCHEMA_VERSION = 59
     }
 }
 

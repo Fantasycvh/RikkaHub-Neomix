@@ -888,6 +888,10 @@ private fun ChatPageContent(
                 // 只有用户真正选定位置并写盘成功才续作 scope B；取消另存 = 不续作
                 // （内容已在留存区，见 docs/design/design-export-retention.md §二 决策 1）。
                 saveToDocument = exportThenRegenerateFor != null,
+                // 本会话导出显示覆盖：写回会话（null = 恢复跟随全局）。只影响本会话的导出渲染。
+                onUpdateExportDisplayConfig = { config ->
+                    vm.setExportDisplayConfig(conversation, config)
+                },
                 onExported = {
                     exportThenRegenerateFor?.let { pending ->
                         exportThenRegenerateFor = null

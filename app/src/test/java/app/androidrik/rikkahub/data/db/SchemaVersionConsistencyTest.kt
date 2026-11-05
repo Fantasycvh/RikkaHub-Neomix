@@ -54,6 +54,35 @@ class SchemaVersionConsistencyTest {
     }
 
     @Test
+    fun `v59 adds only the nullable per-conversation export display column`() {
+        val directory = sequenceOf("schemas", "app/schemas")
+            .map { File(it, "app.androidrik.rikkahub.data.db.AppDatabase") }
+            .first { it.isDirectory }
+        fun entities(version: Int) = Json.parseToJsonElement(File(directory, "$version.json").readText())
+            .jsonObject.getValue("database").jsonObject.getValue("entities").jsonArray
+            .associate { it.jsonObject.getValue("tableName").jsonPrimitive.content to it.jsonObject }
+        val old = entities(58)
+        val new = entities(59)
+        assertEquals(old.keys, new.keys)
+        // 只允许 conversations 表变化（其余表逐字节一致）
+        old.filterKeys { it != "ConversationEntity" }.forEach { (table, schema) ->
+            assertEquals("Unrelated table $table changed", schema, new.getValue(table))
+        }
+        fun fields(version: Map<String, kotlinx.serialization.json.JsonObject>) =
+            version.getValue("ConversationEntity").getValue("fields").jsonArray
+                .associate { it.jsonObject.getValue("columnName").jsonPrimitive.content to it.jsonObject }
+        val previous = fields(old)
+        val current = fields(new)
+        previous.forEach { (column, schema) -> assertEquals(schema, current.getValue(column)) }
+        assertEquals(setOf("export_display_config"), current.keys - previous.keys)
+        // 可空纯列 ⇒ AutoMigration 免 spec、无需回填：Room 导出的字段 schema 里没有
+        // notNull / defaultValue（null 就是默认），行为与改动前一致
+        val added = current.getValue("export_display_config")
+        assertTrue("export_display_config 应为可空列（无 notNull）", "notNull" !in added)
+        assertTrue("export_display_config 不应有默认值（null 就是默认）", "defaultValue" !in added)
+    }
+
+    @Test
     fun `SCHEMA_VERSION 与最新导出的 Room schema 一致`() {
         val schemaDir = sequenceOf("schemas", "app/schemas")
             .map { File(it, "app.androidrik.rikkahub.data.db.AppDatabase") }

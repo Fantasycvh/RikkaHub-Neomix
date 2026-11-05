@@ -95,4 +95,12 @@ data class ConversationEntity(
     /** Upstream 3.1 frozen configuration; null keeps native conversations following the assistant. */
     @ColumnInfo("upstream_config")
     val upstreamConfig: String? = null,
+    /**
+     * 会话级导出显示覆盖（`ExportDisplayConfig` 的 JSON；null = 跟随全局设置）。
+     *
+     * DB v58→59：可空纯列 ⇒ AutoMigration 免 spec、无需回填。
+     * 写入点唯一 = [app.androidrik.rikkahub.data.db.dao.ConversationDAO.updateExportDisplayConfig]。
+     */
+    @ColumnInfo("export_display_config")
+    val exportDisplayConfig: String? = null,
 )

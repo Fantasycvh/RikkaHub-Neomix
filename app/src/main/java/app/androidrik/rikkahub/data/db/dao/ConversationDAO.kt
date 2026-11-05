@@ -121,6 +121,9 @@ interface ConversationDAO {
      * `frozen_anchors` 与 `sort_order` 同款**不在本清单内**（见 [updateFrozenAnchors]）：
      * 它由会话开始冻结 / 记忆页固化两处专用语句写，而那两处都可能发生在调用方手里的
      * 内存快照之后 ⇒ 放进这里就有「拿旧快照把刚冻结的值写回 null」的静默回退。
+     *
+     * `export_display_config` 同理**不在本清单内**（见 [updateExportDisplayConfig]）：
+     * 列表轻投影不带该列，元信息保存会把会话级覆盖写回 null。
      */
     @Query(
         """
@@ -242,6 +245,18 @@ interface ConversationDAO {
      */
     @Query("UPDATE conversationentity SET frozen_anchors = :frozen WHERE id = :id")
     suspend fun updateFrozenAnchors(id: String, frozen: String?)
+
+    /**
+     * **会话级导出显示覆盖**的唯一写入点（`null` = 恢复跟随全局设置）。
+     *
+     * 为什么不进 [updateMetadata]：列表页/抽屉的导出入口持有的是
+     * `LightConversationEntity` 投影（**不带本列**），一次置顶/改标题/移动文件夹的元信息
+     * 保存就会把用户刚设好的覆盖静默写回 null —— 与 [updateFrozenAnchors] 同一条教训。
+     *
+     * **不用 COALESCE**：`null`（跟随全局）是有效取值，不能被「没传」吞掉。
+     */
+    @Query("UPDATE conversationentity SET export_display_config = :config WHERE id = :id")
+    suspend fun updateExportDisplayConfig(id: String, config: String?)
 
     /**
      * 一次性重写**某助手全部会话**的锚点集合 —— 记忆页「固化记忆」的手动刷新点。

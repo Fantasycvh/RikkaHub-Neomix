@@ -26,6 +26,7 @@ import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
 import app.androidrik.rikkahub.data.db.entity.CompressionCheckpointEntity
 import app.androidrik.rikkahub.data.db.entity.ConversationEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
+import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.decideTierMove
 import app.androidrik.rikkahub.data.model.TierMoveAction
@@ -641,6 +642,7 @@ class ConversationRepository(
             hidden = conversation.hidden,
             frozenAnchors = conversation.frozenAnchors,
             upstreamConfig = conversation.upstreamConfig?.let { JsonInstant.encodeToString(it) },
+            exportDisplayConfig = conversation.exportDisplayConfig?.let { JsonInstant.encodeToString(it) },
             // 行内「最近活跃」= 末尾消息的 createdAt。消息在内存里（本映射点的入参就带 messageNodes）
             // 时按实际算；元信息保存（轻量 Conversation 无消息）时返回 null，
             // 由 DAO 的 COALESCE 保留库里原值（见 updateMetadata 注释）。
@@ -680,6 +682,7 @@ class ConversationRepository(
             hidden = conversationEntity.hidden,
             frozenAnchors = conversationEntity.frozenAnchors,
             upstreamConfig = conversationEntity.upstreamConfig?.let { JsonInstant.decodeFromString(it) },
+            exportDisplayConfig = conversationEntity.exportDisplayConfig?.let { JsonInstant.decodeFromString(it) },
         )
     }
 
@@ -877,6 +880,22 @@ class ConversationRepository(
      */
     suspend fun updateFrozenAnchorsForAssistant(assistantId: Uuid, frozen: String?): Int =
         conversationDAO.updateFrozenAnchorsOfAssistant(assistantId.toString(), frozen)
+
+    /**
+     * 会话级导出显示覆盖的**单列**写入点（`null` = 恢复跟随全局设置）。
+     *
+     * 只写 `export_display_config` 一列 —— 不走 [updateConversation]，理由同
+     * [updateConversationFrozenAnchors]：列表轻投影不带该列，整对象保存会把覆盖写回 null。
+     */
+    suspend fun updateConversationExportDisplayConfig(
+        conversationId: Uuid,
+        config: ExportDisplayConfig?,
+    ) {
+        conversationDAO.updateExportDisplayConfig(
+            id = conversationId.toString(),
+            config = config?.let { JsonInstant.encodeToString(it) },
+        )
+    }
 
     private fun conversationSummaryToConversation(entity: LightConversationEntity): Conversation {
         return Conversation(
