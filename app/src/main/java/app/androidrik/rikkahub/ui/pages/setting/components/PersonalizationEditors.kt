@@ -46,6 +46,13 @@ import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.AvatarFrameParams
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtCustomStyle
+import app.androidrik.rikkahub.data.export.BUILT_IN_EXPORT_DISPLAY_PRESETS
+import app.androidrik.rikkahub.data.export.EXPORT_PRESET_ASSISTANT_MODEL
+import app.androidrik.rikkahub.data.export.EXPORT_PRESET_HIDDEN
+import app.androidrik.rikkahub.data.export.EXPORT_PRESET_MODEL
+import app.androidrik.rikkahub.data.export.EXPORT_PRESET_MODEL_DATE
+import app.androidrik.rikkahub.data.export.EXPORT_PRESET_MODEL_PROVIDER
+import app.androidrik.rikkahub.data.export.EXPORT_PRESET_PROVIDER_MODEL
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.export.ExportModelLabelMode
 import app.androidrik.rikkahub.data.export.previewExportModelLabel
@@ -548,6 +555,33 @@ fun ExportDisplaySchemeSheet(
                 }
             }
 
+            Text(
+                text = stringResource(R.string.setting_display_page_export_model_presets_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            // 内置预设：一键套用常见口径，套完仍可继续改，或存成自己的命名方案
+            val presetConfig = snapshot()
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                BUILT_IN_EXPORT_DISPLAY_PRESETS.forEach { preset ->
+                    val selected = presetConfig.mode == preset.mode &&
+                        (preset.mode != ExportModelLabelMode.CUSTOM ||
+                            presetConfig.customTemplate.trim() == preset.template.trim())
+                    FilterChip(
+                        selected = selected,
+                        onClick = {
+                            mode = preset.mode
+                            if (preset.mode == ExportModelLabelMode.CUSTOM) {
+                                template = preset.template
+                            }
+                        },
+                        label = { Text(exportDisplayPresetLabel(preset.id)) },
+                    )
+                }
+            }
+
             if (mode == ExportModelLabelMode.CUSTOM) {
                 OutlinedTextField(
                     value = template,
@@ -630,6 +664,23 @@ internal fun ExportModelLabelMode.label(): String = stringResource(
         ExportModelLabelMode.PROVIDER_MODEL ->
             R.string.setting_display_page_export_model_mode_provider_model
         ExportModelLabelMode.CUSTOM -> R.string.setting_display_page_export_model_mode_custom
+    }
+)
+
+/** 内置预设的名字（数据层只存 id，文案走三语资源）。 */
+@Composable
+internal fun exportDisplayPresetLabel(id: String): String = stringResource(
+    when (id) {
+        EXPORT_PRESET_HIDDEN -> R.string.setting_display_page_export_model_preset_hidden
+        EXPORT_PRESET_MODEL -> R.string.setting_display_page_export_model_preset_model
+        EXPORT_PRESET_PROVIDER_MODEL ->
+            R.string.setting_display_page_export_model_preset_provider_model
+        EXPORT_PRESET_MODEL_PROVIDER ->
+            R.string.setting_display_page_export_model_preset_model_provider
+        EXPORT_PRESET_ASSISTANT_MODEL ->
+            R.string.setting_display_page_export_model_preset_assistant_model
+        EXPORT_PRESET_MODEL_DATE -> R.string.setting_display_page_export_model_preset_model_date
+        else -> R.string.setting_display_page_export_model_preset_model
     }
 )
 

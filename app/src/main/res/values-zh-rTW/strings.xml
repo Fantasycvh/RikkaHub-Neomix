@@ -1058,7 +1058,14 @@
   <string name="setting_display_page_export_model_mode_provider_model">提供商 · 模型</string>
   <string name="setting_display_page_export_model_mode_custom">自訂</string>
   <string name="setting_display_page_export_model_template_label">自訂文案</string>
-  <string name="setting_display_page_export_model_template_hint">佔位符：{provider} 提供商、{model} 模型、{modelId} 模型 ID</string>
+  <string name="setting_display_page_export_model_template_hint">佔位符：{provider} 提供商、{model} 模型、{modelId} 模型 ID、{assistant} 助手、{date} 日期、{time} 時間、{tokens} 用量。取不到的自動清理。</string>
+  <string name="setting_display_page_export_model_presets_title">內建預設</string>
+  <string name="setting_display_page_export_model_preset_hidden">不顯示</string>
+  <string name="setting_display_page_export_model_preset_model">僅模型</string>
+  <string name="setting_display_page_export_model_preset_provider_model">提供商 · 模型</string>
+  <string name="setting_display_page_export_model_preset_model_provider">模型 · 提供商</string>
+  <string name="setting_display_page_export_model_preset_assistant_model">助手 · 模型</string>
+  <string name="setting_display_page_export_model_preset_model_date">模型 · 日期</string>
   <string name="setting_display_page_export_model_preview_title">預覽</string>
   <string name="setting_display_page_export_model_schemes_title">已儲存的匯出顯示方案</string>
   <string name="setting_display_page_show_model_name_title">顯示模型名稱</string>

@@ -1057,7 +1057,14 @@
   <string name="setting_display_page_export_model_mode_provider_model">Provider · model</string>
   <string name="setting_display_page_export_model_mode_custom">Custom</string>
   <string name="setting_display_page_export_model_template_label">Custom template</string>
-  <string name="setting_display_page_export_model_template_hint">Placeholders: {provider} provider, {model} model, {modelId} model ID</string>
+  <string name="setting_display_page_export_model_template_hint">Placeholders: {provider}, {model}, {modelId}, {assistant}, {date}, {time}, {tokens}. Empty ones are cleaned up automatically.</string>
+  <string name="setting_display_page_export_model_presets_title">Built-in presets</string>
+  <string name="setting_display_page_export_model_preset_hidden">Hide</string>
+  <string name="setting_display_page_export_model_preset_model">Model only</string>
+  <string name="setting_display_page_export_model_preset_provider_model">Provider · model</string>
+  <string name="setting_display_page_export_model_preset_model_provider">Model · provider</string>
+  <string name="setting_display_page_export_model_preset_assistant_model">Assistant · model</string>
+  <string name="setting_display_page_export_model_preset_model_date">Model · date</string>
   <string name="setting_display_page_export_model_preview_title">Preview</string>
   <string name="setting_display_page_export_model_schemes_title">Saved export display schemes</string>
   <string name="setting_display_page_show_model_name_title">Show Model Name</string>

@@ -1,9 +1,11 @@
 package app.androidrik.rikkahub.data.export
 
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.ui.UIMessage
+import kotlinx.datetime.LocalDateTime
 import kotlin.uuid.Uuid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -148,6 +150,109 @@ class ExportDisplayLabelTest {
         assertTrue(
             previewExportModelLabel(ExportDisplayConfig(mode = ExportModelLabelMode.PROVIDER_MODEL))
                 .isNotBlank()
+        )
+    }
+
+    // ---- Phase D：额外占位符（{assistant} / {date} / {time} / {tokens}）与内置预设 ----
+
+    private fun assistantWithMeta(
+        assistantName: String? = null,
+        usage: TokenUsage? = TokenUsage(
+            promptTokens = 1000,
+            completionTokens = 234,
+            totalTokens = 1234,
+        ),
+    ) = resolveExportModelLabel(
+        message = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = emptyList(),
+            modelId = model.id,
+            createdAt = LocalDateTime(2026, 1, 31, 9, 41),
+            usage = usage,
+        ),
+        providers = providers,
+        config = ExportDisplayConfig(
+            mode = ExportModelLabelMode.CUSTOM,
+            customTemplate = "{assistant} · {model} · {date} {time} · {tokens}",
+        ),
+        assistantName = assistantName,
+    )
+
+    @Test
+    fun `custom template renders assistant date time and tokens`() {
+        assertEquals(
+            "Rikka · GPT-4o · 2026-01-31 09:41 · 1234",
+            assistantWithMeta(assistantName = "Rikka").label,
+        )
+    }
+
+    @Test
+    fun `missing assistant name and token usage collapse cleanly`() {
+        // 助手名缺失 + 无用量：占位符按空串处理，重复分隔符/尾部分隔符必须被收干净
+        assertEquals("GPT-4o · 2026-01-31 09:41", assistantWithMeta(usage = null).label)
+    }
+
+    @Test
+    fun `token placeholder falls back to prompt plus completion`() {
+        val resolved = assistantWithMeta(
+            assistantName = "Rikka",
+            usage = TokenUsage(promptTokens = 120, completionTokens = 34, totalTokens = 0),
+        )
+        assertTrue(resolved.label.endsWith("· 154"))
+    }
+
+    @Test
+    fun `zero token usage hides the placeholder`() {
+        val resolved = assistantWithMeta(
+            assistantName = "Rikka",
+            usage = TokenUsage(),
+        )
+        assertEquals("Rikka · GPT-4o · 2026-01-31 09:41", resolved.label)
+    }
+
+    @Test
+    fun `built-in presets carry the expected modes`() {
+        val byId = BUILT_IN_EXPORT_DISPLAY_PRESETS.associateBy { it.id }
+        assertEquals(
+            ExportModelLabelMode.HIDDEN,
+            byId.getValue(EXPORT_PRESET_HIDDEN).mode,
+        )
+        assertEquals(
+            ExportModelLabelMode.PROVIDER_MODEL,
+            byId.getValue(EXPORT_PRESET_PROVIDER_MODEL).mode,
+        )
+        assertEquals(
+            ExportModelLabelMode.CUSTOM,
+            byId.getValue(EXPORT_PRESET_MODEL_PROVIDER).mode,
+        )
+        assertEquals(
+            "{model} · {provider}",
+            byId.getValue(EXPORT_PRESET_MODEL_PROVIDER).template,
+        )
+    }
+
+    @Test
+    fun `applying a preset produces its rendered label`() {
+        val preset = BUILT_IN_EXPORT_DISPLAY_PRESETS
+            .first { it.id == EXPORT_PRESET_MODEL_PROVIDER }
+        val resolved = resolveExportModelLabel(
+            message = assistant(),
+            providers = providers,
+            config = preset.config,
+        )
+        assertEquals("GPT-4o · OpenAI", resolved.label)
+    }
+
+    @Test
+    fun `preview substitutes assistant and token samples`() {
+        assertEquals(
+            "Rikka · GPT-4o · 1234",
+            previewExportModelLabel(
+                ExportDisplayConfig(
+                    mode = ExportModelLabelMode.CUSTOM,
+                    customTemplate = "{assistant} · {model} · {tokens}",
+                )
+            ),
         )
     }
 }

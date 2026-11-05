@@ -891,10 +891,20 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
             },
             onSaveScheme = { name, config ->
                 vm.updateSettings {
-                    it.copy(
-                        exportDisplaySchemes = it.exportDisplaySchemes +
-                            ExportDisplayScheme(name = name, config = config)
-                    )
+                    // 同名 = 覆盖更新（用户改完方案可以直接存回原名，不会攒出一堆同名档）
+                    val existing = it.exportDisplaySchemes.find { scheme -> scheme.name == name }
+                    if (existing != null) {
+                        it.copy(
+                            exportDisplaySchemes = it.exportDisplaySchemes.map { scheme ->
+                                if (scheme.id == existing.id) scheme.copy(config = config) else scheme
+                            }
+                        )
+                    } else {
+                        it.copy(
+                            exportDisplaySchemes = it.exportDisplaySchemes +
+                                ExportDisplayScheme(name = name, config = config)
+                        )
+                    }
                 }
                 toaster.show(schemeSavedMsg)
             },

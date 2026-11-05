@@ -599,6 +599,11 @@ private suspend fun exportToMarkdown(
         append("# ${conversation.title}\n\n")
         append("*Exported on ${LocalDateTime.now().toLocalString()}*\n\n")
 
+        // 会话所属助手名（自定义文案的 {assistant} 占位符）：整篇导出只解析一次
+        val assistantName = settings.assistants
+            .find { it.id == conversation.assistantId }
+            ?.name
+            ?.takeIf { it.isNotBlank() }
         messages.forEach { message ->
             val role = when (message.semanticRole) { MessageRole.USER -> "**User**"; MessageRole.SYSTEM -> "**System**"; else -> "**Assistant**" }
             // 提供商 / 模型标签：与 PNG / HTML 同一份全局配置。空串 = 不显示（含「不显示」档、非 assistant）
@@ -606,6 +611,7 @@ private suspend fun exportToMarkdown(
                 message = message,
                 providers = settings.providers,
                 config = settings.exportDisplayConfig,
+                assistantName = assistantName,
             ).label
             if (label.isNotBlank()) {
                 append("$role ($label):\n\n")
@@ -878,6 +884,11 @@ private suspend fun exportToHtml(
     sb.append("<h1>").append(conversation.title.escapeHtml()).append("</h1>\n")
     sb.append("<p class=\"meta\">Exported on ").append(LocalDateTime.now().toLocalString().escapeHtml()).append("</p>\n")
 
+    // 会话所属助手名（自定义文案的 {assistant} 占位符）：整篇导出只解析一次
+    val assistantName = settings.assistants
+        .find { it.id == conversation.assistantId }
+        ?.name
+        ?.takeIf { it.isNotBlank() }
     messages.forEach { message ->
         val isUser = message.semanticRole == MessageRole.USER
         val roleClass = if (message.semanticRole == MessageRole.SYSTEM) "system" else if (isUser) "user" else "assistant"
@@ -888,6 +899,7 @@ private suspend fun exportToHtml(
             message = message,
             providers = settings.providers,
             config = settings.exportDisplayConfig,
+            assistantName = assistantName,
         ).label
         sb.append("<div class=\"role\">").append(roleLabel)
         if (label.isNotBlank()) {
@@ -995,11 +1007,17 @@ private suspend fun exportToImage(
         compileTikzToSvg(context, code)
     }
 
+    // 会话所属助手名（自定义文案的 {assistant} 占位符）：逐页捕获共用同一份
+    val assistantName = settings.assistants
+        .find { it.id == conversation.assistantId }
+        ?.name
+        ?.takeIf { it.isNotBlank() }
     val exportContent: @Composable () -> Unit = {
         CompositionLocalProvider(LocalSettings provides settings) {
             ExportedChatImage(
                 conversation = conversation,
                 messages = messages,
+                assistantName = assistantName,
                 options = options
             )
         }
@@ -1101,6 +1119,7 @@ data class ImageExportOptions(val expandReasoning: Boolean = false)
 private fun ExportedChatImage(
     conversation: Conversation,
     messages: List<UIMessage>,
+    assistantName: String? = null,
     options: ImageExportOptions = ImageExportOptions()
 ) {
     val navBackStack = remember { mutableStateListOf<NavKey>() }
@@ -1151,6 +1170,7 @@ private fun ExportedChatImage(
                     messages.forEach { message ->
                         ExportedChatMessage(
                             message = message,
+                            assistantName = assistantName,
                             options = options,
                             prevMessage = messages.getOrNull(messages.indexOf(message) - 1)
                         )
@@ -1175,6 +1195,7 @@ private fun ExportedChatImage(
 private fun ExportedChatMessage(
     message: UIMessage,
     prevMessage: UIMessage? = null,
+    assistantName: String? = null,
     options: ImageExportOptions = ImageExportOptions()
 ) {
     if (message.parts.isEmptyUIMessage()) return
@@ -1182,8 +1203,13 @@ private fun ExportedChatMessage(
     val settings = LocalSettings.current
     // 导出标签统一走全局「导出显示」配置（PNG / Markdown / HTML 同一份解析，见
     // data/export/ExportDisplayLabel.kt）。图标种子与显示文案**分开**：自定义文案不能拿去选图标。
-    val exportLabel = remember(message, settings.providers, settings.exportDisplayConfig) {
-        resolveExportModelLabel(message, settings.providers, settings.exportDisplayConfig)
+    val exportLabel = remember(message, settings.providers, settings.exportDisplayConfig, assistantName) {
+        resolveExportModelLabel(
+            message = message,
+            providers = settings.providers,
+            config = settings.exportDisplayConfig,
+            assistantName = assistantName,
+        )
     }
     val showModelLabel = message.role == MessageRole.ASSISTANT &&
         prevMessage?.role == MessageRole.USER &&
