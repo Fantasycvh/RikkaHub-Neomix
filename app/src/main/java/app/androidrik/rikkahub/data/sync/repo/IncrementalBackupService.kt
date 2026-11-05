@@ -26,6 +26,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.FileInputStream
 import java.util.UUID
 
 internal enum class BackupDestination { LOCAL, WEBDAV, S3 }
@@ -241,24 +242,7 @@ class IncrementalBackupService(
                 engine(onProgress).assemble(store(destination), snapshot, AppDatabase.SCHEMA_VERSION) { objects, dir ->
                     // P2：以当前库的 VACUUM 副本为底，把快照对象整表替换进去；未覆盖表（FTS/本机进度）保留。
                     // 跨 schema：快照 dbVersion 可以比当前旧，列交集/新增列默认值由 DatabaseObjectMerge 兜底。
-                    val base = File(dir, "restore-base.db")
-                    try {
-                        database.openHelper.writableDatabase.execSQL("VACUUM main INTO ?", arrayOf(base.absolutePath))
-                        check(base.isFile && base.length() > 0) { "Failed to copy the current database for restore" }
-                        DatabaseObjectMerge.merge(
-                            baseDb = base,
-                            objects = objects.map { it.objectKey to it.raw },
-                            currentDbVersion = AppDatabase.SCHEMA_VERSION,
-                            snapshotDbVersion = snapshot.dbVersion,
-                        ) { warning ->
-                            warnings += warning
-                            Log.w("IncrementalBackup", "restore merge: $warning")
-                        }
-                        base
-                    } catch (failure: Throwable) {
-                        base.delete()
-                        throw failure
-                    }
+                    mergeSnapshotDatabase(snapshot, objects, dir, warnings)
                 }
             }
             try {
@@ -268,6 +252,62 @@ class IncrementalBackupService(
                 if (warnings.isNotEmpty()) Log.i("IncrementalBackup", "restore cross-schema warnings=${warnings.size}")
                 outcome
             } finally { zip.parentFile?.deleteRecursively() }
+        }
+    }
+
+    /**
+     * 把快照导出成完整 ZIP（与恢复时组装的 ZIP 相同：settings + 文件 + 合并后的数据库 + manifest）。
+     *
+     * 供归档或交给「完整 ZIP 导入」入口使用；生成与写入都在任务生命周期内完成，
+     * 中途离开页面/取消不会留下半份目标文件或临时 ZIP。旧版 App 只有在数据库版本兼容时才能导入。
+     */
+    internal suspend fun exportSnapshot(
+        destination: BackupDestination,
+        snapshot: BackupSnapshotManifest,
+        target: Uri,
+        onProgress: (BackupProgress) -> Unit,
+    ): Unit = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            DataOperationLock.runWaiting(DataOperation.BACKUP) {
+                val warnings = ArrayList<String>()
+                val zip = engine(onProgress).assemble(store(destination), snapshot, AppDatabase.SCHEMA_VERSION) { objects, dir ->
+                    mergeSnapshotDatabase(snapshot, objects, dir, warnings)
+                }
+                try {
+                    val output = requireNotNull(context.contentResolver.openOutputStream(target)) { "无法写入所选文件" }
+                    output.use { out -> FileInputStream(zip).use { it.copyTo(out) } }
+                    if (warnings.isNotEmpty()) Log.i("IncrementalBackup", "snapshot export cross-schema warnings=${warnings.size}")
+                } finally {
+                    withContext(kotlinx.coroutines.NonCancellable) { zip.parentFile?.deleteRecursively() }
+                }
+            }
+        }
+    }
+
+    /** 用快照的逻辑数据库对象覆盖**当前库副本**中被覆盖的表，返回可写入恢复/导出 ZIP 的数据库文件。 */
+    private suspend fun mergeSnapshotDatabase(
+        snapshot: BackupSnapshotManifest,
+        objects: List<DecodedDbObject>,
+        dir: File,
+        warnings: MutableList<String>,
+    ): File {
+        val base = File(dir, "restore-base.db")
+        try {
+            database.openHelper.writableDatabase.execSQL("VACUUM main INTO ?", arrayOf(base.absolutePath))
+            check(base.isFile && base.length() > 0) { "Failed to copy the current database for restore" }
+            DatabaseObjectMerge.merge(
+                baseDb = base,
+                objects = objects.map { it.objectKey to it.raw },
+                currentDbVersion = AppDatabase.SCHEMA_VERSION,
+                snapshotDbVersion = snapshot.dbVersion,
+            ) { warning ->
+                warnings += warning
+                Log.w("IncrementalBackup", "restore merge: $warning")
+            }
+            return base
+        } catch (failure: Throwable) {
+            base.delete()
+            throw failure
         }
     }
 

@@ -41,6 +41,7 @@ enum class BackupRunKind {
     SNAPSHOT_COMMIT,
     SNAPSHOT_RESTORE,
     SNAPSHOT_GC,
+    SNAPSHOT_EXPORT,
 }
 
 /** 正在进行的长任务（UI 据此显示「任务进行中」与进度；通知栏同步）。 */
@@ -249,6 +250,7 @@ class BackupRunCoordinator(
         BackupRunKind.SNAPSHOT_COMMIT -> "正在写入备份仓库"
         BackupRunKind.SNAPSHOT_RESTORE -> "正在恢复备份快照"
         BackupRunKind.SNAPSHOT_GC -> "正在回收未引用对象"
+        BackupRunKind.SNAPSHOT_EXPORT -> "正在导出快照"
     }
 
     private fun finishedTextFor(kind: BackupRunKind): String = when (kind) {
@@ -257,6 +259,7 @@ class BackupRunCoordinator(
         BackupRunKind.EXPORT_BACKUP -> "备份导出完成"
         BackupRunKind.SNAPSHOT_PLAN -> "扫描完成，回到应用确认备份"
         BackupRunKind.SNAPSHOT_GC -> "回收完成"
+        BackupRunKind.SNAPSHOT_EXPORT -> "快照导出完成"
     }
 
     private fun progressText(progress: BackupProgress?): String {

@@ -69,6 +69,12 @@ fun SnapshotBackupTab(vm: BackupVM) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) result.data?.let { data -> data.data?.let { vm.attachBackupFolder(it, data.flags) } }
     }
+    var pendingExport by remember { mutableStateOf<BackupSnapshotManifest?>(null) }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val snapshot = pendingExport
+        pendingExport = null
+        if (uri != null && snapshot != null) vm.exportSnapshot(snapshot, uri)
+    }
     val enabled = !busy && plan == null
     val writable = destination != BackupDestination.LOCAL || target?.canWrite == true
     LazyColumn(
@@ -171,6 +177,10 @@ fun SnapshotBackupTab(vm: BackupVM) {
                     }
                     FlowRow {
                         TextButton(enabled = enabled, onClick = { restoring = snapshot }) { Text("恢复") }
+                        TextButton(enabled = enabled, onClick = {
+                            pendingExport = snapshot
+                            exporter.launch(exportFileName(snapshot))
+                        }) { Text("导出 ZIP") }
                         TextButton(enabled = enabled && writable, onClick = { deleting = snapshot }) { Text("删除快照") }
                     }
                 }
@@ -223,4 +233,12 @@ fun SnapshotBackupTab(vm: BackupVM) {
             confirmButton = { TextButton(onClick = { deleting = null; vm.deleteSnapshot(snapshot) }) { Text("删除") } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消") } })
     }
+}
+
+/** 导出文件名：`snapshot_<本地时间>.zip`，与快照列表显示的时间一致。 */
+private fun exportFileName(snapshot: BackupSnapshotManifest): String {
+    val stamp = java.time.Instant.parse(snapshot.createdAt)
+        .atZone(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+    return "snapshot_$stamp.zip"
 }

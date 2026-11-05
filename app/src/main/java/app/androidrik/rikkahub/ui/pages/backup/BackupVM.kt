@@ -235,6 +235,24 @@ class BackupVM(
         }
     }
 
+    /** 把快照导出成完整 ZIP（与恢复时组装的 ZIP 相同），供归档或走「完整 ZIP 导入」入口。 */
+    internal fun exportSnapshot(snapshot: BackupSnapshotManifest, uri: Uri) {
+        if (snapshotBusy.value || backupRun.state.value != null) return
+        snapshotError.value = null
+        viewModelScope.launch {
+            try {
+                backupRun.await(BackupRunKind.SNAPSHOT_EXPORT) { report ->
+                    incrementalBackup.exportSnapshot(snapshotDestination.value, snapshot, uri, report)
+                }
+                snapshotNotice.value = "快照已导出为完整 ZIP"
+            } catch (cancelled: CancellationException) {
+                if (isActive) snapshotNotice.value = "已取消" else throw cancelled
+            } catch (failure: Exception) {
+                snapshotError.value = failure.message ?: "导出失败"
+            }
+        }
+    }
+
     internal fun deleteSnapshot(snapshot: BackupSnapshotManifest) = snapshotTask {
         incrementalBackup.delete(snapshotDestination.value, snapshot)
         snapshots.value = incrementalBackup.list(snapshotDestination.value)

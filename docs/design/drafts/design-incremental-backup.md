@@ -683,7 +683,36 @@ FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本�
 
 **仍未做**：pack 级增量回收（pack 内单条不可达也不会拆包，被引用就整包保留 → 空间放大，§8.1 R5）；
 pack 之间并行上传（现在仍按对象并行）；真实 S3/WebDAV 上的 pack + GC 手测；跨设备 GC 的自动触发（仍手动）；
-快照导出完整 ZIP（未授权，保持不做）。
+快照导出完整 ZIP（已在 §0.11 完成）。
+
+### 0.11 快照导出完整 ZIP 落地记录（2026-11-05，工作树未提交）
+
+> 接 §0.10。用户要求「快照导出完整 ZIP」（此前 §1.3/§8.2 第 6 条一直列为待定项）。
+> 本轮只加导出，不改变仓库协议与恢复链路。
+
+- **做法**：复用恢复用的 `IncrementalBackupEngine.assemble`——它本来就把快照重组成既有 v2 ZIP
+  （settings + FILES + WORKSPACE + `rikka_hub.db` + 末条目 `manifest.json`）。导出只是在拼好后把 ZIP
+  写进用户选的 SAF 文档，不新增第二套打包逻辑。
+- `IncrementalBackupService.exportSnapshot(destination, snapshot, target, onProgress)`：
+  `DataOperationLock(BACKUP)` + 服务互斥 → `assemble`（v2+ 快照用「当前库 VACUUM 副本 + 对象合并」得到
+  `rikka_hub.db`，与恢复同一路径）→ 流式拷到 `ContentResolver.openOutputStream(target)` →
+  `finally`（`NonCancellable`）删任务目录；失败不会留下半份临时 ZIP，目标文件由系统文档提供方管理。
+  merge 逻辑抽成 `mergeSnapshotDatabase(...)`，restore / export 共用。
+- `BackupRunCoordinator` 新增 `SNAPSHOT_EXPORT`（通知标题「正在导出快照」/完成「快照导出完成」），
+  导出与其他长任务一样可离页、可通知栏取消、串行互斥。
+- UI：快照卡片新增「导出 ZIP」；走 `ActivityResultContracts.CreateDocument("application/zip")`，
+  默认文件名 `snapshot_<本地时间>.zip`（与卡片显示时间一致）；完成 toast「快照已导出为完整 ZIP」。
+- **语义与边界**：导出的 ZIP 与「恢复时组装出来的 ZIP」完全相同，因此可走 App 自己的
+  「完整 ZIP 导入」入口恢复；`rikka_hub.db` 是**当前 schema + 快照数据**（跨 schema 快照导出时
+  旧表/旧列按合并规则处理，与恢复一致），所以**旧版 App 只有在数据库版本兼容时才能导入**，
+  UI 不承诺旧版兼容。导出是只读操作（不写仓库），可与恢复并发？——受同一服务互斥与
+  `DataOperationLock(BACKUP)` 约束，不与写入类任务并行。
+- 验证：`:app:compileDebugKotlin` ✅；真机（PJX110/SAF 仓库）对含 pack 的 v3 快照导出成功，
+  文件 114,971 B，ZIP 内 `settings.json`(33,099) / `rikka_hub.db`(103,424) / `manifest.json`(419)；
+  回读校验：`manifest.json` 的 `settingsSha256` = 实际 settings 文件 SHA-256 = 快照清单里的
+  settings 对象 SHA（`aa03edd…`），`databaseSha256`/`databaseBytes` 与 ZIP 内 DB 一致；随后删除测试文件 ✅。
+- **未做**：批量导出多个快照；导出后自动校验可导入性（只靠既有 ZIP 校验/恢复路径）；旧版 App 实测导入；
+  导出进度 UI（仅通知栏进度）。
 
 ## 1. 问题与目标
 
@@ -1450,7 +1479,8 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 4. **多设备**：已支持多台设备备份到同一 WebDAV/S3/SAF 目录并互不干扰：保留/回收按 `deviceId` 隔离，
    GC 跨所有设备求可达集并用租约/宽限期串行（§0.10）；仍不做合并（§1.3）。
 5. **加密**是否要并入本批（否则快照里的 DB/settings 与现有 zip 一样明文）？
-6. **是否需要「把快照导出成完整 zip」**（便于交给旧版 App / 归档）？
+6. **是否要「把快照导出成完整 zip」**：已实现（2026-11-05，§0.11）——复用恢复组装链路输出 v2 ZIP，
+   可走 App 自己的完整 ZIP 导入入口；旧版 App 仅数据库版本兼容时可导入。
 7. **实现时机**：P1 已完成（2026-11-04，见 §0.2–§0.5）；真实 provider/云端与恢复重启矩阵作为后续验收项记录在 §0.4，不阻塞 P1 完成。P2 首版及后续三项（跨 schema、FTS 重建进度 UX、对象 GC/保留）已落地（§0.6–§0.7，工作树未提交）。
 
 ## 9. 明确不做（与既有决策对齐）
