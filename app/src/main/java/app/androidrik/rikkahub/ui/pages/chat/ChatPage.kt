@@ -892,6 +892,10 @@ private fun ChatPageContent(
                 onUpdateExportDisplayConfig = { config ->
                     vm.setExportDisplayConfig(conversation, config)
                 },
+                // 按消息覆盖（多选）：整张 map 替换，空 map = 全部清除
+                onUpdateExportDisplayOverrides = { overrides ->
+                    vm.setExportDisplayOverrides(conversation, overrides)
+                },
                 onExported = {
                     exportThenRegenerateFor?.let { pending ->
                         exportThenRegenerateFor = null

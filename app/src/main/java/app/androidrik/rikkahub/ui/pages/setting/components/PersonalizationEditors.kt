@@ -512,6 +512,8 @@ fun ExportDisplaySchemeSheet(
     /** 覆盖标题 / 说明（会话级复用本面板时改口径；null = 设置页文案）。 */
     titleOverride: String? = null,
     descriptionOverride: String? = null,
+    /** 覆盖「重置」按钮文案（消息级是「清除所选覆盖」；null = 「恢复跟随全局」）。 */
+    resetLabel: String? = null,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberBottomSheetState(
@@ -659,7 +661,10 @@ fun ExportDisplaySchemeSheet(
                 // 「恢复跟随全局」只在会话已有覆盖时出现（null = 跟随全局，本身就是重置目标）
                 onReset?.let { reset ->
                     TextButton(onClick = reset) {
-                        Text(stringResource(R.string.setting_display_page_export_model_reset_to_global))
+                        Text(
+                            resetLabel
+                                ?: stringResource(R.string.setting_display_page_export_model_reset_to_global)
+                        )
                     }
                 }
                 TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }

@@ -286,4 +286,69 @@ class ExportDisplayLabelTest {
         )
         assertEquals(config, decoded)
     }
+
+    @Test
+    fun `message override wins over the resolved conversation config`() {
+        val conversationConfig = ExportDisplayConfig(mode = ExportModelLabelMode.PROVIDER_MODEL)
+        val messageOverride = ExportDisplayConfig(mode = ExportModelLabelMode.HIDDEN)
+        assertEquals(
+            messageOverride,
+            messageExportDisplayConfig(base = conversationConfig, messageOverride = messageOverride),
+        )
+    }
+
+    @Test
+    fun `null message override keeps the resolved conversation config`() {
+        val conversationConfig = ExportDisplayConfig(mode = ExportModelLabelMode.MODEL)
+        assertEquals(
+            conversationConfig,
+            messageExportDisplayConfig(base = conversationConfig, messageOverride = null),
+        )
+    }
+
+    @Test
+    fun `three-level priority is message then conversation then global`() {
+        val global = ExportDisplayConfig(mode = ExportModelLabelMode.MODEL)
+        val conversationOverride = ExportDisplayConfig(mode = ExportModelLabelMode.HIDDEN)
+        val messageOverride = ExportDisplayConfig(mode = ExportModelLabelMode.PROVIDER_MODEL)
+        // 消息级生效时压过会话级
+        assertEquals(
+            messageOverride,
+            messageExportDisplayConfig(
+                base = effectiveExportDisplayConfig(conversationOverride, global),
+                messageOverride = messageOverride,
+            ),
+        )
+        // 没有消息级 ⇒ 会话级
+        assertEquals(
+            conversationOverride,
+            messageExportDisplayConfig(
+                base = effectiveExportDisplayConfig(conversationOverride, global),
+                messageOverride = null,
+            ),
+        )
+        // 也没有会话级 ⇒ 全局
+        assertEquals(
+            global,
+            messageExportDisplayConfig(
+                base = effectiveExportDisplayConfig(null, global),
+                messageOverride = null,
+            ),
+        )
+    }
+
+    @Test
+    fun `per-message overrides map round-trips through json`() {
+        val overrides = mapOf(
+            "11111111-1111-1111-1111-111111111111" to ExportDisplayConfig(mode = ExportModelLabelMode.HIDDEN),
+            "22222222-2222-2222-2222-222222222222" to ExportDisplayConfig(
+                mode = ExportModelLabelMode.CUSTOM,
+                customTemplate = "{model} · {tokens}",
+            ),
+        )
+        val decoded = kotlinx.serialization.json.Json.decodeFromString<Map<String, ExportDisplayConfig>>(
+            kotlinx.serialization.json.Json.encodeToString(overrides)
+        )
+        assertEquals(overrides, decoded)
+    }
 }

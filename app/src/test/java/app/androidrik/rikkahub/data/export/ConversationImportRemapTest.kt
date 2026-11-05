@@ -415,4 +415,33 @@ class ConversationImportRemapTest {
         assertEquals(setOf(modeId), imported.modeInjectionIds)
         assertEquals(setOf(lorebookId), imported.lorebookIds)
     }
+
+    @Test
+    fun `per-message export display overrides are remapped to the new message ids`() {
+        // 覆盖键是 messageId；导入会换掉全部消息 id ⇒ 键必须跟着换，否则覆盖立刻失效
+        val source = conversation()
+        val targetMessage = source.messageNodes[1].currentMessage
+        val override = ExportDisplayConfig(mode = ExportModelLabelMode.HIDDEN)
+        val imported = source.copy(exportDisplayOverrides = mapOf(targetMessage.id.toString() to override))
+            .remapForImport(targetAssistant)
+
+        val importedMessageId = imported.messageNodes[1].currentMessage.id.toString()
+        assertEquals(override, imported.exportDisplayOverrides[importedMessageId])
+        assertNull(
+            "旧 messageId 的键必须清掉（否则残留永远不生效的配置）",
+            imported.exportDisplayOverrides[targetMessage.id.toString()],
+        )
+    }
+
+    @Test
+    fun `dangling per-message override keys are dropped on import`() {
+        // 覆盖目标消息在导出时就不在文件里（被删/被压缩截断）⇒ 导入后直接丢弃
+        val source = conversation().copy(
+            exportDisplayOverrides = mapOf(
+                Uuid.random().toString() to ExportDisplayConfig(mode = ExportModelLabelMode.MODEL),
+            ),
+        )
+        val imported = source.remapForImport(targetAssistant)
+        assertTrue("悬空键应被丢弃", imported.exportDisplayOverrides.isEmpty())
+    }
 }

@@ -83,6 +83,33 @@ class SchemaVersionConsistencyTest {
     }
 
     @Test
+    fun `v60 adds only the nullable per-message export display overrides column`() {
+        val directory = sequenceOf("schemas", "app/schemas")
+            .map { File(it, "app.androidrik.rikkahub.data.db.AppDatabase") }
+            .first { it.isDirectory }
+        fun entities(version: Int) = Json.parseToJsonElement(File(directory, "$version.json").readText())
+            .jsonObject.getValue("database").jsonObject.getValue("entities").jsonArray
+            .associate { it.jsonObject.getValue("tableName").jsonPrimitive.content to it.jsonObject }
+        val old = entities(59)
+        val new = entities(60)
+        assertEquals(old.keys, new.keys)
+        old.filterKeys { it != "ConversationEntity" }.forEach { (table, schema) ->
+            assertEquals("Unrelated table $table changed", schema, new.getValue(table))
+        }
+        fun fields(version: Map<String, kotlinx.serialization.json.JsonObject>) =
+            version.getValue("ConversationEntity").getValue("fields").jsonArray
+                .associate { it.jsonObject.getValue("columnName").jsonPrimitive.content to it.jsonObject }
+        val previous = fields(old)
+        val current = fields(new)
+        previous.forEach { (column, schema) -> assertEquals(schema, current.getValue(column)) }
+        assertEquals(setOf("export_display_overrides"), current.keys - previous.keys)
+        // 可空纯列 ⇒ AutoMigration 免 spec、无需回填（null/{} = 没有覆盖）
+        val added = current.getValue("export_display_overrides")
+        assertTrue("export_display_overrides 应为可空列（无 notNull）", "notNull" !in added)
+        assertTrue("export_display_overrides 不应有默认值（null 就是默认）", "defaultValue" !in added)
+    }
+
+    @Test
     fun `SCHEMA_VERSION 与最新导出的 Room schema 一致`() {
         val schemaDir = sequenceOf("schemas", "app/schemas")
             .map { File(it, "app.androidrik.rikkahub.data.db.AppDatabase") }

@@ -189,6 +189,18 @@ fun effectiveExportDisplayConfig(
     global: ExportDisplayConfig,
 ): ExportDisplayConfig = conversationOverride ?: global
 
+/**
+ * **消息级覆盖优先，否则沿用 [base]**（[base] 已按「会话覆盖优先、否则全局」决议过）。
+ *
+ * 三级优先级的完整形态：消息覆盖 > 会话覆盖 > 全局。这里只多做一层 `?:`，是为了让
+ * PNG / Markdown / HTML 三处导出对「某条消息是否单独设置过」保持同一份语义 ——
+ * 特别是 PNG 逐条渲染时 base 只算一次。
+ */
+fun messageExportDisplayConfig(
+    base: ExportDisplayConfig,
+    messageOverride: ExportDisplayConfig?,
+): ExportDisplayConfig = messageOverride ?: base
+
 /** 用示例值渲染一份预览文案（设置页展示用；[ExportModelLabelMode.HIDDEN] 返回空串）。 */
 fun previewExportModelLabel(config: ExportDisplayConfig): String = when (config.mode) {
     ExportModelLabelMode.HIDDEN -> ""

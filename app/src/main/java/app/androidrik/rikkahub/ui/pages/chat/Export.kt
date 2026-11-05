@@ -91,6 +91,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.export.effectiveExportDisplayConfig
+import app.androidrik.rikkahub.data.export.messageExportDisplayConfig
 import app.androidrik.rikkahub.data.export.previewExportModelLabel
 import app.androidrik.rikkahub.data.export.resolveExportModelLabel
 import app.androidrik.rikkahub.data.model.Conversation
@@ -176,6 +177,12 @@ fun ChatExportSheet(
      * 它们继续只读全局配置）。
      */
     onUpdateExportDisplayConfig: ((ExportDisplayConfig?) -> Unit)? = null,
+    /**
+     * 按消息覆盖导出显示的写入回调（整张 `messageId → config` map 替换；空 map = 全部清除）。
+     *
+     * 传 null 时同样不显示「按消息覆盖」入口（抽屉/列表的快捷导出没有会话上下文写入口）。
+     */
+    onUpdateExportDisplayOverrides: ((Map<String, ExportDisplayConfig>) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -192,6 +199,8 @@ fun ChatExportSheet(
     var oversizeConfirmed by remember { mutableStateOf(false) }
     // 本会话导出显示的编辑面板（不新建第二个 bottom sheet：默认值从会话覆盖/全局配置起步）
     var showSessionDisplayEditor by remember { mutableStateOf(false) }
+    // 按消息覆盖的多选面板
+    var showMessageOverrideSheet by remember { mutableStateOf(false) }
     // 生效配置：会话覆盖优先，否则全局（三处导出共用同一个决策点）
     val displayConfig = effectiveExportDisplayConfig(
         conversationOverride = conversation.exportDisplayConfig,
@@ -200,6 +209,19 @@ fun ChatExportSheet(
     // 行内摘要（按示例值预览；「不显示」档给固定文案，避免空白行）
     val displayConfigSummary = previewExportModelLabel(displayConfig)
         .ifBlank { stringResource(R.string.setting_display_page_export_model_preview_hidden) }
+    // 会话所属助手名（按消息覆盖面板的 {assistant} 文案用；导出器内部各算一次，保持同名）
+    val assistantName = remember(settings.assistants, conversation.assistantId) {
+        settings.assistants
+            .find { it.id == conversation.assistantId }
+            ?.name
+            ?.takeIf { it.isNotBlank() }
+    }
+    // 已覆盖的消息数：只数「当前会导出的消息」，悬空键（被删的分支）不算
+    val overriddenMessageCount = remember(selectedMessages, includeAllVersions, conversation) {
+        val messages = if (includeAllVersions) conversation.messageNodes.flatMap { it.messages }
+        else selectedMessages
+        messages.count { conversation.exportDisplayOverrides.containsKey(it.id.toString()) }
+    }
     val saveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*"),
     ) { uri ->
@@ -390,6 +412,42 @@ fun ChatExportSheet(
                             },
                             trailingContent = {
                                 Text(stringResource(R.string.setting_display_page_export_model_edit))
+                            },
+                        )
+                    }
+                }
+
+                // 按消息覆盖（多选）：同一个写通道才显示（抽屉/列表快捷导出没有会话上下文）
+                if (onUpdateExportDisplayOverrides != null) {
+                    OutlinedCard(
+                        onClick = { showMessageOverrideSheet = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        ListItem(
+                            headlineContent = {
+                                Text(stringResource(R.string.chat_page_export_message_override_title))
+                            },
+                            supportingContent = {
+                                Column {
+                                    Text(
+                                        text = if (overriddenMessageCount > 0) {
+                                            stringResource(
+                                                R.string.chat_page_export_message_override_count,
+                                                overriddenMessageCount,
+                                            )
+                                        } else {
+                                            stringResource(R.string.chat_page_export_message_override_none)
+                                        },
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.chat_page_export_message_override_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            trailingContent = {
+                                Text(stringResource(R.string.chat_page_export_message_override_manage))
                             },
                         )
                     }
@@ -596,6 +654,22 @@ fun ChatExportSheet(
             onDismiss = { showSessionDisplayEditor = false },
         )
     }
+
+    // ---- 按消息覆盖（多选）面板 ----
+    // 只有可写通道时才有内容可编辑；列表用默认导出消息集合（与三种导出默认口径一致）。
+    val updateMessageOverrides = onUpdateExportDisplayOverrides
+    if (updateMessageOverrides != null) {
+        ExportMessageOverrideSheet(
+            visible = showMessageOverrideSheet,
+            conversation = conversation,
+            messages = exportMessages,
+            settings = settings,
+            assistantName = assistantName,
+            baseDisplayConfig = displayConfig,
+            onOverridesChange = updateMessageOverrides,
+            onDismissRequest = { showMessageOverrideSheet = false },
+        )
+    }
 }
 
 /**
@@ -688,8 +762,9 @@ private suspend fun exportToMarkdown(
     settings: Settings,
 ): ExportedFile {
     val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.md"
-    // 会话级覆盖优先，否则跟随全局（三个导出器共用同一决策点）
-    val displayConfig = effectiveExportDisplayConfig(
+    // 会话级覆盖优先，否则跟随全局（三个导出器共用同一决策点）；
+    // 每个消息再叠一层「消息级覆盖」（三级：消息 > 会话 > 全局）
+    val baseDisplayConfig = effectiveExportDisplayConfig(
         conversationOverride = conversation.exportDisplayConfig,
         global = settings.exportDisplayConfig,
     )
@@ -705,11 +780,15 @@ private suspend fun exportToMarkdown(
             ?.takeIf { it.isNotBlank() }
         messages.forEach { message ->
             val role = when (message.semanticRole) { MessageRole.USER -> "**User**"; MessageRole.SYSTEM -> "**System**"; else -> "**Assistant**" }
-            // 提供商 / 模型标签：与 PNG / HTML 同一份配置（会话覆盖优先，否则全局）。空串 = 不显示（含「不显示」档、非 assistant）
+            // 提供商 / 模型标签：与 PNG / HTML 同一套三级优先级（消息 > 会话 > 全局）。
+            // 空串 = 不显示（含「不显示」档、非 assistant）
             val label = resolveExportModelLabel(
                 message = message,
                 providers = settings.providers,
-                config = displayConfig,
+                config = messageExportDisplayConfig(
+                    base = baseDisplayConfig,
+                    messageOverride = conversation.exportDisplayOverrides[message.id.toString()],
+                ),
                 assistantName = assistantName,
             ).label
             if (label.isNotBlank()) {
@@ -988,8 +1067,9 @@ private suspend fun exportToHtml(
         .find { it.id == conversation.assistantId }
         ?.name
         ?.takeIf { it.isNotBlank() }
-    // 会话级覆盖优先，否则跟随全局（三个导出器共用同一决策点）
-    val displayConfig = effectiveExportDisplayConfig(
+    // 会话级覆盖优先，否则跟随全局（三个导出器共用同一决策点）；
+    // 每个消息再叠一层「消息级覆盖」（三级：消息 > 会话 > 全局）
+    val baseDisplayConfig = effectiveExportDisplayConfig(
         conversationOverride = conversation.exportDisplayConfig,
         global = settings.exportDisplayConfig,
     )
@@ -998,11 +1078,14 @@ private suspend fun exportToHtml(
         val roleClass = if (message.semanticRole == MessageRole.SYSTEM) "system" else if (isUser) "user" else "assistant"
         val roleLabel = if (message.semanticRole == MessageRole.SYSTEM) "System" else if (isUser) "User" else "Assistant"
         sb.append("<div class=\"message ").append(roleClass).append("\">\n")
-        // 提供商 / 模型标签：与 PNG / Markdown 同一份配置（会话覆盖优先）；用户可自定义文案，必须转义
+        // 提供商 / 模型标签：与 PNG / Markdown 同一套三级优先级；用户可自定义文案，必须转义
         val label = resolveExportModelLabel(
             message = message,
             providers = settings.providers,
-            config = displayConfig,
+            config = messageExportDisplayConfig(
+                base = baseDisplayConfig,
+                messageOverride = conversation.exportDisplayOverrides[message.id.toString()],
+            ),
             assistantName = assistantName,
         ).label
         sb.append("<div class=\"role\">").append(roleLabel)
@@ -1116,7 +1199,8 @@ private suspend fun exportToImage(
         .find { it.id == conversation.assistantId }
         ?.name
         ?.takeIf { it.isNotBlank() }
-    // 会话级覆盖优先，否则跟随全局（三个导出器共用同一决策点）
+    // 会话级覆盖优先，否则跟随全局（三个导出器共用同一决策点）；
+    // 逐条消息再叠「消息级覆盖」（三级：消息 > 会话 > 全局），由 ExportedChatMessage 取用
     val displayConfig = effectiveExportDisplayConfig(
         conversationOverride = conversation.exportDisplayConfig,
         global = settings.exportDisplayConfig,
@@ -1128,6 +1212,7 @@ private suspend fun exportToImage(
                 messages = messages,
                 assistantName = assistantName,
                 displayConfig = displayConfig,
+                messageOverrides = conversation.exportDisplayOverrides,
                 options = options
             )
         }
@@ -1232,6 +1317,8 @@ private fun ExportedChatImage(
     assistantName: String? = null,
     /** 生效的导出显示配置（会话覆盖优先，否则全局；解析点在 [exportToImage]）。 */
     displayConfig: ExportDisplayConfig,
+    /** 按消息覆盖（messageId → config）；逐条消息优先于 [displayConfig]。 */
+    messageOverrides: Map<String, ExportDisplayConfig> = emptyMap(),
     options: ImageExportOptions = ImageExportOptions()
 ) {
     val navBackStack = remember { mutableStateListOf<NavKey>() }
@@ -1284,6 +1371,7 @@ private fun ExportedChatImage(
                             message = message,
                             assistantName = assistantName,
                             displayConfig = displayConfig,
+                            messageOverrides = messageOverrides,
                             options = options,
                             prevMessage = messages.getOrNull(messages.indexOf(message) - 1)
                         )
@@ -1310,18 +1398,23 @@ private fun ExportedChatMessage(
     prevMessage: UIMessage? = null,
     assistantName: String? = null,
     displayConfig: ExportDisplayConfig,
+    messageOverrides: Map<String, ExportDisplayConfig> = emptyMap(),
     options: ImageExportOptions = ImageExportOptions()
 ) {
     if (message.parts.isEmptyUIMessage()) return
     val context = LocalContext.current
     val settings = LocalSettings.current
-    // 导出标签统一走「会话覆盖优先、否则全局」的生效配置（PNG / Markdown / HTML 同一份解析，见
-    // data/export/ExportDisplayLabel.kt）。图标种子与显示文案**分开**：自定义文案不能拿去选图标。
-    val exportLabel = remember(message, settings.providers, displayConfig, assistantName) {
+    // 导出标签统一走三级优先级的生效配置（消息 > 会话 > 全局；PNG / Markdown / HTML 同一份解析，
+    // 见 data/export/ExportDisplayLabel.kt）。图标种子与显示文案**分开**：自定义文案不能拿去选图标。
+    val messageDisplayConfig = messageExportDisplayConfig(
+        base = displayConfig,
+        messageOverride = messageOverrides[message.id.toString()],
+    )
+    val exportLabel = remember(message, settings.providers, messageDisplayConfig, assistantName) {
         resolveExportModelLabel(
             message = message,
             providers = settings.providers,
-            config = displayConfig,
+            config = messageDisplayConfig,
             assistantName = assistantName,
         )
     }

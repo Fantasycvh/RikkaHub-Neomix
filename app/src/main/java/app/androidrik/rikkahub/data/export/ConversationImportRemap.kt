@@ -69,6 +69,13 @@ fun Conversation.remapForImport(targetAssistantId: Uuid): Conversation {
         // 源环境的归属/路径不继承（见上：悬空的 folderId 会让会话在抽屉里消失）
         folderId = null,
         workspaceCwd = null,
+        // 按消息的导出显示覆盖键是 messageId：消息 id 全部换新 ⇒ 键必须跟着换，
+        // 匹配不到原消息的悬空键直接丢弃（否则导入后会残留永远不生效的配置）
+        exportDisplayOverrides = exportDisplayOverrides.mapNotNull { (oldId, config) ->
+            val oldUuid = runCatching { Uuid.parse(oldId) }.getOrNull() ?: return@mapNotNull null
+            val newId = messageIdMap[oldUuid] ?: return@mapNotNull null
+            newId.toString() to config
+        }.toMap(),
     )
     return remapped.copy(
         compressionSummaries = remapCompressionSummaries(

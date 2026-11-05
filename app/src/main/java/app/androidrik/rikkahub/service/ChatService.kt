@@ -2779,6 +2779,23 @@ class ChatService(
     }
 
     /**
+     * 设置**按消息覆盖的导出显示**（`messageId → config` 整张 map 替换；空 map = 全部清除）。
+     *
+     * 多选设置/清除都以整张 map 一次写入：要么全生效、要么全不生效，不会留下「半套覆盖」。
+     * 优先级仍是 消息覆盖 > 会话覆盖 > 全局（见 `data/export/ExportDisplayLabel.kt`）。
+     */
+    suspend fun setConversationExportDisplayOverrides(
+        conversationId: Uuid,
+        overrides: Map<String, ExportDisplayConfig>,
+    ) {
+        updateConversationMetadata(
+            conversationId = conversationId,
+            update = { it.copy(exportDisplayOverrides = overrides) },
+            persist = { conversationRepo.updateConversationExportDisplayOverrides(conversationId, overrides) },
+        )
+    }
+
+    /**
      * **L1 锚点集合：会话开始冻结**（`docs/design/design-memory-injection-tiering.md` §5）。
      *
      * 已冻结（非 null）⇒ 原样返回，本会话内不再漂移；未冻结（null）⇒ 记下当前的锚点 id、

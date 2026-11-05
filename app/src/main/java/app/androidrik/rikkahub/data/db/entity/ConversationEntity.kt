@@ -103,4 +103,13 @@ data class ConversationEntity(
      */
     @ColumnInfo("export_display_config")
     val exportDisplayConfig: String? = null,
+    /**
+     * 按消息覆盖导出显示（`Map<messageId, ExportDisplayConfig>` 的 JSON；null/`{}` = 无覆盖）。
+     *
+     * 优先级：本列（按消息）> [exportDisplayConfig]（本会话）> 全局设置。
+     * DB v59→60：可空纯列 ⇒ AutoMigration 免 spec、无需回填。
+     * 写入点唯一 = [app.androidrik.rikkahub.data.db.dao.ConversationDAO.updateExportDisplayOverrides]。
+     */
+    @ColumnInfo("export_display_overrides")
+    val exportDisplayOverrides: String? = null,
 )

@@ -643,6 +643,10 @@ class ConversationRepository(
             frozenAnchors = conversation.frozenAnchors,
             upstreamConfig = conversation.upstreamConfig?.let { JsonInstant.encodeToString(it) },
             exportDisplayConfig = conversation.exportDisplayConfig?.let { JsonInstant.encodeToString(it) },
+            // 空 map 存 null（列里「没有覆盖」的规范形态），解码时 null ⇒ emptyMap
+            exportDisplayOverrides = conversation.exportDisplayOverrides
+                .takeIf { it.isNotEmpty() }
+                ?.let { JsonInstant.encodeToString(it) },
             // 行内「最近活跃」= 末尾消息的 createdAt。消息在内存里（本映射点的入参就带 messageNodes）
             // 时按实际算；元信息保存（轻量 Conversation 无消息）时返回 null，
             // 由 DAO 的 COALESCE 保留库里原值（见 updateMetadata 注释）。
@@ -683,6 +687,9 @@ class ConversationRepository(
             frozenAnchors = conversationEntity.frozenAnchors,
             upstreamConfig = conversationEntity.upstreamConfig?.let { JsonInstant.decodeFromString(it) },
             exportDisplayConfig = conversationEntity.exportDisplayConfig?.let { JsonInstant.decodeFromString(it) },
+            exportDisplayOverrides = conversationEntity.exportDisplayOverrides
+                ?.let { JsonInstant.decodeFromString<Map<String, ExportDisplayConfig>>(it) }
+                ?: emptyMap(),
         )
     }
 
@@ -894,6 +901,22 @@ class ConversationRepository(
         conversationDAO.updateExportDisplayConfig(
             id = conversationId.toString(),
             config = config?.let { JsonInstant.encodeToString(it) },
+        )
+    }
+
+    /**
+     * **按消息覆盖导出显示**的整列写入点（`messageId → config`；空 map 存 null）。
+     *
+     * 多选设置/清除用整列替换，保证「一次操作要么全生效、要么全不生效」。
+     * 理由同 [updateConversationExportDisplayConfig]：列表轻投影不带该列。
+     */
+    suspend fun updateConversationExportDisplayOverrides(
+        conversationId: Uuid,
+        overrides: Map<String, ExportDisplayConfig>,
+    ) {
+        conversationDAO.updateExportDisplayOverrides(
+            id = conversationId.toString(),
+            overrides = overrides.takeIf { it.isNotEmpty() }?.let { JsonInstant.encodeToString(it) },
         )
     }
 

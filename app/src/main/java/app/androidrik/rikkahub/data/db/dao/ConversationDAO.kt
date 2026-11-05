@@ -124,6 +124,7 @@ interface ConversationDAO {
      *
      * `export_display_config` 同理**不在本清单内**（见 [updateExportDisplayConfig]）：
      * 列表轻投影不带该列，元信息保存会把会话级覆盖写回 null。
+     * `export_display_overrides`（按消息覆盖）同理，见 [updateExportDisplayOverrides]。
      */
     @Query(
         """
@@ -257,6 +258,19 @@ interface ConversationDAO {
      */
     @Query("UPDATE conversationentity SET export_display_config = :config WHERE id = :id")
     suspend fun updateExportDisplayConfig(id: String, config: String?)
+
+    /**
+     * **按消息覆盖导出显示**的唯一写入点（`Map<messageId, ExportDisplayConfig>` 的 JSON；
+     * `null`/`{}` = 无覆盖）。
+     *
+     * 为什么不进 [updateMetadata]：同 [updateExportDisplayConfig] —— 列表轻投影不带该列，
+     * 整行元信息保存会把按消息覆盖写回 null。
+     *
+     * 为什么整张 map 一次写：多选设置/清除要**原子**生效，逐条 UPDATE 会出现「半套覆盖」
+     * 的中间态；整列替换也让「清除选中」等价于「map 减去这些键」。
+     */
+    @Query("UPDATE conversationentity SET export_display_overrides = :overrides WHERE id = :id")
+    suspend fun updateExportDisplayOverrides(id: String, overrides: String?)
 
     /**
      * 一次性重写**某助手全部会话**的锚点集合 —— 记忆页「固化记忆」的手动刷新点。

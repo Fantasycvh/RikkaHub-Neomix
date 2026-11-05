@@ -556,6 +556,20 @@ class ChatVM(
     }
 
     /**
+     * 按消息覆盖导出显示（整张 `messageId → config` map 替换；空 map = 全部清除）。
+     *
+     * 与 [setExportDisplayConfig] 同一条路：内存态 + 单列持久化写同一个值，避免整对象保存回滚。
+     */
+    fun setExportDisplayOverrides(
+        conversation: Conversation,
+        overrides: Map<String, ExportDisplayConfig>,
+    ) {
+        viewModelScope.launch {
+            chatService.setConversationExportDisplayOverrides(conversation.id, overrides)
+        }
+    }
+
+    /**
      * 会话级「固化记忆」：让**这一条**会话立刻采纳当前的锚点集合（设计稿 §5）。
      *
      * 与记忆页的助手指级入口分工：这里只让选中的这一条付出一次前缀失效，那里一次改完

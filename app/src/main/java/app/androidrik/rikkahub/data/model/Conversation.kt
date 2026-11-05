@@ -98,6 +98,23 @@ data class Conversation(
      */
     val exportDisplayConfig: ExportDisplayConfig? = null,
     /**
+     * **按消息覆盖导出显示**：`messageId`（字符串形式的 [Uuid]）→ 该消息的导出标签配置。
+     *
+     * 优先级：消息覆盖 > [exportDisplayConfig] > 全局 `Settings.exportDisplayConfig`
+     * （决议点见 `data/export/ExportDisplayLabel.kt`：先 `effectiveExportDisplayConfig`
+     * 得会话级，再逐条 `messageExportDisplayConfig` 叠消息级）。
+     * 只影响 PNG / Markdown / HTML 渲染；JSON 归档不受影响。
+     *
+     * 为什么挂在会话上而不是 `UIMessage` 里：`UIMessage` 是 ai 模块的线上消息模型，加导出专用的
+     * 展示字段会污染归档/发送路径；而按会话存一份 map 只要**一次**单列写，多选批量设置天然原子。
+     * 悬空键（消息被删/分支未选中）只是匹配不到，导出侧按「当前导出消息集合」取交集计数。
+     *
+     * 持久化：conversations 表 `export_display_overrides`（DB v59→60，可空纯列 ⇒ 无需回填）。
+     * **写入点唯一** = `ConversationDAO.updateExportDisplayOverrides`，理由同
+     * [exportDisplayConfig]：列表轻投影不带本列，整行 UPDATE 会被旧快照写回 null。
+     */
+    val exportDisplayOverrides: Map<String, ExportDisplayConfig> = emptyMap(),
+    /**
      * **冻结的锚点集合**（L1）：会话开始时一次 + 用户手动「固化记忆」时重写。
      *
      * 存的是**锚点 id（逗号分隔）**，不是锚点文本 —— 文本按当前内容实时渲染。理由：记忆库

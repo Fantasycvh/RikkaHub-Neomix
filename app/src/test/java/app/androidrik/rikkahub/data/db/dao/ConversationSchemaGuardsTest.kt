@@ -71,6 +71,10 @@ class ConversationSchemaGuardsTest {
             "会话表缺少 export_display_config（会话级导出显示覆盖，DB v58→59）",
             "export_display_config" in columns,
         )
+        assertTrue(
+            "会话表缺少 export_display_overrides（按消息覆盖导出显示，DB v59→60）",
+            "export_display_overrides" in columns,
+        )
     }
 
     @Test
@@ -85,7 +89,15 @@ class ConversationSchemaGuardsTest {
         // - export_display_config：**只**由 updateExportDisplayConfig 写（会话级导出显示覆盖；
         //   列表轻投影（LightConversationEntity）不带该列，置顶/改标题等元信息保存若带上它，
         //   就会把用户刚设好的覆盖静默写回 null）
-        val exempt = setOf("nodes", "sort_order", "frozen_anchors", "export_display_config")
+        // - export_display_overrides：**只**由 updateExportDisplayOverrides 写（按消息覆盖；
+        //   理由同上，而且它多选整列替换，被旧快照写回 null 会一次丢光整批覆盖）
+        val exempt = setOf(
+            "nodes",
+            "sort_order",
+            "frozen_anchors",
+            "export_display_config",
+            "export_display_overrides",
+        )
 
         val sql = daoSource()
             .substringAfter("UPDATE conversationentity SET", "")
@@ -195,5 +207,27 @@ class ConversationSchemaGuardsTest {
             2,
             writers.size,
         )
+    }
+
+    /**
+     * 导出显示两个覆盖列的写入点护栏（同 `frozen_anchors` 那条）：
+     * 通用元信息保存一旦带上它们，列表轻投影（不带这两列）会用旧快照把用户刚设的覆盖写回 null，
+     * 而且是**静默**的。会话级覆盖与按消息覆盖各自恰好一个专用写入点。
+     */
+    @Test
+    fun `export display overrides are written only by their dedicated statements`() {
+        val source = daoSource()
+        val metadataSql = source
+            .substringAfter("UPDATE conversationentity SET", "")
+            .substringBefore("WHERE id = :id")
+        assertTrue("没能定位 updateMetadata 的 SQL（护栏失效，需修测试）", metadataSql.isNotBlank())
+        for (column in listOf("export_display_config", "export_display_overrides")) {
+            assertFalse(
+                "updateMetadata 不得写 $column：列表轻投影不带该列，元信息保存会把覆盖写回 null",
+                metadataSql.contains(column),
+            )
+            val writers = codeLines(source).filter { it.contains("SET $column") }
+            assertEquals("$column 的写入点必须唯一，实际发现：$writers", 1, writers.size)
+        }
     }
 }

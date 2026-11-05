@@ -86,7 +86,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 59,
+    version = 60,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -187,6 +187,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 无需回填：null = 跟随全局 `Settings.exportDisplayConfig`，行为与改动前一致）。
         // 见 ConversationEntity / Conversation.exportDisplayConfig 的 kdoc。
         AutoMigration(from = 58, to = 59),
+        // 59→60：按消息覆盖导出显示（conversations.export_display_overrides，
+        // `Map<messageId, ExportDisplayConfig>` 的 JSON；**可空纯列** ⇒ 免 spec、无需回填：
+        // null/`{}` = 没有覆盖，行为与改动前一致）。见 Conversation.exportDisplayOverrides 的 kdoc。
+        AutoMigration(from = 59, to = 60),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -242,7 +246,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 59
+        const val SCHEMA_VERSION = 60
     }
 }
 
