@@ -3,7 +3,11 @@ package app.androidrik.rikkahub.ui.pages.backup
 import app.androidrik.rikkahub.data.sync.BackupInspection
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupProgress
+import app.androidrik.rikkahub.data.sync.BackupRunCoordinator
+import app.androidrik.rikkahub.data.sync.BackupRunKind
+import app.androidrik.rikkahub.data.sync.BackupRunState
 import app.androidrik.rikkahub.data.sync.RestoreOutcome
+import android.app.Application
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -38,11 +42,16 @@ import app.androidrik.rikkahub.utils.JsonInstant
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 import app.androidrik.rikkahub.utils.UiState
 import app.androidrik.rikkahub.utils.fileSizeToString
 import java.io.File
+import java.io.FileInputStream
 import android.net.Uri
 import app.androidrik.rikkahub.data.sync.repo.*
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
@@ -51,12 +60,14 @@ import kotlinx.coroutines.CancellationException
 private const val TAG = "BackupVM"
 
 class BackupVM(
+    private val context: Application,
     private val settingsStore: SettingsStore,
     private val webDavSync: WebDavSync,
     private val s3Sync: S3Sync,
     private val conversationRepository: ConversationRepository,
     private val filesManager: FilesManager,
     private val incrementalBackup: IncrementalBackupService,
+    private val backupRun: BackupRunCoordinator,
 ) : ViewModel() {
     internal val snapshotDestination = MutableStateFlow(BackupDestination.LOCAL)
     internal val localBackupTarget = MutableStateFlow<LocalBackupTarget?>(null)
@@ -64,7 +75,7 @@ class BackupVM(
     internal val snapshotBusy = MutableStateFlow(false)
     internal val snapshotError = MutableStateFlow<String?>(null)
     internal val snapshotNotice = MutableStateFlow<String?>(null)
-    internal val snapshotPlan = MutableStateFlow<BackupSnapshotPlan?>(null)
+    internal val snapshotPlan = backupRun.pendingPlan
     /** 本机保留策略：按设备保留最新 N 份快照（0 = 不限）。 */
     internal val snapshotRetention = MutableStateFlow(DEFAULT_SNAPSHOT_RETENTION)
 
@@ -72,22 +83,35 @@ class BackupVM(
     internal val snapshotSchemaVersion: Int get() = incrementalBackup.currentSchemaVersion
 
     private fun snapshotTask(block: suspend () -> Unit) {
-        if (snapshotBusy.value) return
+        if (snapshotBusy.value || backupRun.state.value != null) return
         snapshotBusy.value = true
         snapshotError.value = null
         viewModelScope.launch {
             try { block() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { snapshotError.value = failure.message ?: "备份操作失败" }
-            finally { snapshotBusy.value = false; clearProgress() }
+            finally { snapshotBusy.value = false }
         }
     }
 
-    internal fun loadSnapshots() = snapshotTask {
-        localBackupTarget.value = withContext(Dispatchers.IO) { incrementalBackup.localTarget() }
-        snapshotRetention.value = withContext(Dispatchers.IO) { incrementalBackup.snapshotRetention() }
-        snapshots.value = if (snapshotDestination.value == BackupDestination.LOCAL && localBackupTarget.value == null) emptyList()
-        else incrementalBackup.list(snapshotDestination.value)
+    internal fun loadSnapshots() {
+        // 只读列表，不和长任务互斥（长任务进行中回到页面也能看到已有恢复点）。
+        if (snapshotBusy.value) return
+        snapshotBusy.value = true
+        viewModelScope.launch {
+            try {
+                localBackupTarget.value = withContext(Dispatchers.IO) { incrementalBackup.localTarget() }
+                snapshotRetention.value = withContext(Dispatchers.IO) { incrementalBackup.snapshotRetention() }
+                snapshots.value = if (snapshotDestination.value == BackupDestination.LOCAL && localBackupTarget.value == null) emptyList()
+                else incrementalBackup.list(snapshotDestination.value)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                snapshotError.value = failure.message ?: "读取快照列表失败"
+            } finally {
+                snapshotBusy.value = false
+            }
+        }
     }
 
     internal fun selectSnapshotRetention(keep: Int) = snapshotTask {
@@ -99,15 +123,8 @@ class BackupVM(
         }
     }
 
-    /** 手动回收未被任何已提交快照引用的对象（只允许单设备仓库）。 */
-    internal fun garbageCollectSnapshots() = snapshotTask {
-        val result = incrementalBackup.garbageCollect(snapshotDestination.value)
-        snapshotNotice.value = "回收 ${result.deletedObjects} 个未引用对象，释放 ${result.freedBytes.fileSizeToString()}"
-        snapshots.value = incrementalBackup.list(snapshotDestination.value)
-    }
-
     internal fun selectSnapshotDestination(destination: BackupDestination) {
-        if (snapshotBusy.value || snapshotPlan.value != null) return
+        if (snapshotBusy.value || backupRun.state.value != null || snapshotPlan.value != null) return
         snapshotDestination.value = destination
         snapshots.value = emptyList()
         loadSnapshots()
@@ -124,37 +141,93 @@ class BackupVM(
         snapshots.value = emptyList()
     }
 
-    internal fun prepareSnapshot() = snapshotTask {
-        withContext(Dispatchers.IO) { snapshotPlan.value?.close() }
-        snapshotPlan.value = null
-        snapshotPlan.value = incrementalBackup.plan(snapshotDestination.value, ::reportProgress)
-    }
-
-    internal fun cancelSnapshotPlan() {
-        if (snapshotBusy.value) return
-        val plan = snapshotPlan.value
-        snapshotPlan.value = null
-        viewModelScope.launch(Dispatchers.IO) { plan?.close() }
-    }
-
-    internal fun commitSnapshot() {
-        val plan = snapshotPlan.value ?: return
-        snapshotTask {
-            snapshotPlan.value = null
+    /**
+     * 扫描并预估。扫描在进程级 coordinator 里跑：离开备份页也会跑完并把计划留着，
+     * 回来可直接确认（计划 30 分钟后自动释放）。
+     */
+    internal fun prepareSnapshot() {
+        if (snapshotBusy.value || backupRun.state.value != null) return
+        snapshotError.value = null
+        viewModelScope.launch {
             try {
-                incrementalBackup.commit(plan, ::reportProgress)
-                recordBackupTime()
-                snapshotNotice.value = "增量备份完成"
-            } finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { plan.close() } }
-            localBackupTarget.value = withContext(Dispatchers.IO) { incrementalBackup.localTarget() }
-            snapshots.value = incrementalBackup.list(snapshotDestination.value)
+                val destination = snapshotDestination.value
+                backupRun.await(BackupRunKind.SNAPSHOT_PLAN) { report ->
+                    backupRun.storePlan(incrementalBackup.plan(destination, report))
+                }
+            } catch (cancelled: CancellationException) {
+                if (isActive) snapshotNotice.value = "已取消" else throw cancelled
+            } catch (failure: Exception) {
+                snapshotError.value = failure.message ?: "扫描失败"
+            }
         }
     }
 
-    internal fun restoreSnapshot(snapshot: BackupSnapshotManifest) = snapshotTask {
-        val outcome = incrementalBackup.restore(snapshotDestination.value, snapshot, ::reportProgress)
-        if (outcome.settingsWarnings.isNotEmpty()) snapshotNotice.value = outcome.settingsWarnings.joinToString("\n")
-        RestoreRestartSignal.requestRestart()
+    internal fun cancelSnapshotPlan() {
+        if (snapshotBusy.value || backupRun.state.value != null) return
+        backupRun.clearPlan()
+    }
+
+    /** 提交扫描计划；提交过程中离开页面不会中断，结束后由通知栏报告结果。 */
+    internal fun commitSnapshot() {
+        val plan = snapshotPlan.value ?: return
+        if (snapshotBusy.value || backupRun.state.value != null) return
+        snapshotError.value = null
+        viewModelScope.launch {
+            try {
+                backupRun.await(BackupRunKind.SNAPSHOT_COMMIT) { report ->
+                    try {
+                        incrementalBackup.commit(plan, report)
+                    } finally {
+                        withContext(NonCancellable) { backupRun.clearPlan(plan) }
+                    }
+                    recordBackupTime()
+                }
+                snapshotNotice.value = "增量备份完成"
+                refreshSnapshots()
+            } catch (cancelled: CancellationException) {
+                if (isActive) snapshotNotice.value = "已取消" else throw cancelled
+            } catch (failure: Exception) {
+                snapshotError.value = failure.message ?: "备份失败"
+            }
+        }
+    }
+
+    internal fun restoreSnapshot(snapshot: BackupSnapshotManifest) {
+        if (snapshotBusy.value || backupRun.state.value != null) return
+        snapshotError.value = null
+        viewModelScope.launch {
+            try {
+                val outcome = backupRun.await(BackupRunKind.SNAPSHOT_RESTORE) { report ->
+                    incrementalBackup.restore(snapshotDestination.value, snapshot, report)
+                }
+                if (outcome.settingsWarnings.isNotEmpty()) snapshotNotice.value = outcome.settingsWarnings.joinToString("\n")
+                RestoreRestartSignal.requestRestart()
+                refreshSnapshots()
+            } catch (cancelled: CancellationException) {
+                if (isActive) snapshotNotice.value = "已取消" else throw cancelled
+            } catch (failure: Exception) {
+                snapshotError.value = failure.message ?: "恢复失败"
+            }
+        }
+    }
+
+    /** 手动回收未被任何已提交快照引用的对象（只允许单设备仓库）。 */
+    internal fun garbageCollectSnapshots() {
+        if (snapshotBusy.value || backupRun.state.value != null) return
+        snapshotError.value = null
+        viewModelScope.launch {
+            try {
+                val result = backupRun.await(BackupRunKind.SNAPSHOT_GC) { _ ->
+                    incrementalBackup.garbageCollect(snapshotDestination.value)
+                }
+                snapshotNotice.value = "回收 ${result.deletedObjects} 个未引用对象，释放 ${result.freedBytes.fileSizeToString()}"
+                refreshSnapshots()
+            } catch (cancelled: CancellationException) {
+                if (isActive) snapshotNotice.value = "已取消" else throw cancelled
+            } catch (failure: Exception) {
+                snapshotError.value = failure.message ?: "回收失败"
+            }
+        }
     }
 
     internal fun deleteSnapshot(snapshot: BackupSnapshotManifest) = snapshotTask {
@@ -162,8 +235,16 @@ class BackupVM(
         snapshots.value = incrementalBackup.list(snapshotDestination.value)
     }
 
+    private suspend fun refreshSnapshots() {
+        runCatching {
+            localBackupTarget.value = withContext(Dispatchers.IO) { incrementalBackup.localTarget() }
+            snapshots.value = if (snapshotDestination.value == BackupDestination.LOCAL && localBackupTarget.value == null) emptyList()
+            else incrementalBackup.list(snapshotDestination.value)
+        }
+    }
+
     override fun onCleared() {
-        snapshotPlan.value?.let { plan -> java.util.concurrent.ForkJoinPool.commonPool().execute { plan.close() } }
+        // 扫描计划归进程级 coordinator 所有（离开页面后仍保留待确认），这里不关闭。
         super.onCleared()
     }
     val settings = settingsStore.settingsFlow.stateIn(
@@ -176,19 +257,24 @@ class BackupVM(
     val s3BackupItems = MutableStateFlow<UiState<List<S3BackupItem>>>(UiState.Idle)
 
     /**
-     * 当前备份/恢复的进度（null = 无进行中任务）。UI 收集用于显示百分比。
-     *
-     * 用 StateFlow 而非在引擎上挂状态：引擎被两个 singleton 各持一份，挂共享状态有并发串扰风险；
-     * 这里由 VM 单点接收回调（回调在 IO 线程，StateFlow 本身线程安全）。
+     * 长任务（备份/恢复/导出）状态：由进程级 coordinator 提供。
+     * 离开备份页后任务继续，回到页面仍能看到进行中的任务与进度。
      */
-    val progress = MutableStateFlow<BackupProgress?>(null)
+    internal val taskState: StateFlow<BackupRunState?> = backupRun.state
 
-    private fun reportProgress(p: BackupProgress) {
-        progress.value = p
-    }
+    /** 长任务是否进行中（UI 用它禁用按钮并显示加载态）。 */
+    internal val taskRunning: StateFlow<Boolean> = backupRun.state
+        .map { it != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    private fun clearProgress() {
-        progress.value = null
+    /** 当前长任务进度（null = 无进度或总量未知）。 */
+    val progress: StateFlow<BackupProgress?> = backupRun.state
+        .map { it?.progress }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** 取消当前长任务（与通知栏「取消」等价）。 */
+    internal fun cancelBackupTask() {
+        backupRun.cancel()
     }
 
     init {
@@ -223,42 +309,54 @@ class BackupVM(
         webDavSync.testConnection(settings.value.webDavConfig)
     }
 
+    /** WebDAV 全量备份；离开页面/切后台会继续跑，结果由通知栏报告。 */
     suspend fun backup() {
-        try {
-            webDavSync.backup(settings.value.webDavConfig, ::reportProgress)
+        backupRun.await(BackupRunKind.FULL_BACKUP) { report ->
+            webDavSync.backup(settings.value.webDavConfig, report)
             recordBackupTime()
-        } finally {
-            clearProgress()
         }
     }
 
-    suspend fun restore(item: WebDavBackupItem): RestoreOutcome {
-        try {
-            return webDavSync.restore(config = settings.value.webDavConfig, item = item, onProgress = ::reportProgress)
-        } finally {
-            clearProgress()
+    suspend fun restore(item: WebDavBackupItem): RestoreOutcome =
+        backupRun.await(BackupRunKind.FULL_RESTORE) { report ->
+            webDavSync.restore(config = settings.value.webDavConfig, item = item, onProgress = report)
         }
-    }
 
     suspend fun deleteWebDavBackupFile(item: WebDavBackupItem) {
         webDavSync.deleteBackupFile(settings.value.webDavConfig, item)
     }
 
-    suspend fun exportToFile(): File {
-        return try {
-            val file = webDavSync.prepareBackupFile(settings.value.webDavConfig, ::reportProgress)
-            recordBackupTime()
-            file
-        } finally {
-            clearProgress()
+    /**
+     * 导出完整 ZIP 到用户选定的 URI。生成 + 拷贝都在 coordinator 里完成：
+     * 用户在导出中途离开页面也不会留下半份文件或临时文件。
+     */
+    suspend fun exportToUri(uri: Uri) {
+        backupRun.await(BackupRunKind.EXPORT_BACKUP) { report ->
+            val file = webDavSync.prepareBackupFile(settings.value.webDavConfig, report)
+            try {
+                withContext(Dispatchers.IO) {
+                    val output = context.contentResolver.openOutputStream(uri) ?: error("无法写入所选文件")
+                    output.use { out -> FileInputStream(file).use { it.copyTo(out) } }
+                }
+                recordBackupTime()
+            } finally {
+                withContext(NonCancellable + Dispatchers.IO) { file.delete() }
+            }
         }
     }
 
+    /** 从本地 ZIP 恢复；临时文件的删除移到与任务同生命周期，避免任务仍在读时被页面删掉。 */
     suspend fun restoreFromLocalFile(file: File): RestoreOutcome {
-        try {
-            return webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig, ::reportProgress)
-        } finally {
-            clearProgress()
+        if (backupRun.state.value != null) {
+            file.delete()
+            error("已有备份任务正在进行")
+        }
+        return backupRun.await(BackupRunKind.FULL_RESTORE) { report ->
+            try {
+                webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig, report)
+            } finally {
+                withContext(NonCancellable + Dispatchers.IO) { file.delete() }
+            }
         }
     }
 
@@ -491,21 +589,16 @@ class BackupVM(
     }
 
     suspend fun backupToS3() {
-        try {
-            s3Sync.backupToS3(settings.value.s3Config, ::reportProgress)
+        backupRun.await(BackupRunKind.FULL_BACKUP) { report ->
+            s3Sync.backupToS3(settings.value.s3Config, report)
             recordBackupTime()
-        } finally {
-            clearProgress()
         }
     }
 
-    suspend fun restoreFromS3(item: S3BackupItem): RestoreOutcome {
-        try {
-            return s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, onProgress = ::reportProgress)
-        } finally {
-            clearProgress()
+    suspend fun restoreFromS3(item: S3BackupItem): RestoreOutcome =
+        backupRun.await(BackupRunKind.FULL_RESTORE) { report ->
+            s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, onProgress = report)
         }
-    }
 
     suspend fun deleteS3BackupFile(item: S3BackupItem) {
         s3Sync.deleteS3BackupFile(settings.value.s3Config, item)

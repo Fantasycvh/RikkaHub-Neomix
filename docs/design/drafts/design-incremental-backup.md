@@ -572,6 +572,33 @@ FTS 全量重建。DB 此时约 208.6–240.4 MB（多轮测试/重建后含空�
 **本轮仍明确未做**：merge 的进一步加速（物化解析已是当前最优）、捕获端更激进的格式/分批优化、
 FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本地 SAF/目录仓库已验证并发正确性）。
 
+### 0.9 备份任务前台服务 / 离页与后台继续落地记录（2026-11-05，本地提交未推送）
+
+> 用户要求「备份离页/后台继续（前台服务）」；本轮只做这一项（快照导出完整 ZIP、pack 与多设备
+> GC 明确稍后再说）。R10 的长任务中断风险由此关闭（进程被杀仍不续传，见下）。
+
+- 新增 `data/sync/BackupRunCoordinator`（Koin 单例，任务跑在 `AppScope`）：
+  - `await(kind, block)`：**调用方取消不取消任务**（页面 ViewModel 销毁后任务继续跑完）；
+  - 单任务串行：已有一个长任务时第二个 `await` 立即抛 `IllegalStateException`（UI 同步禁用入口）；
+  - 进度 `StateFlow` 供页面与通知共用；`cancel()` 供页面/通知栏取消；
+  - 扫描计划放进程级（30 分钟 TTL，替换/过期时关闭并清理临时文件），离开备份页不再丢计划。
+- 新增 `service/BackupForegroundService`（`foregroundServiceType="dataSync"`、
+  `stopWithTask="false"`、通知 id 2004、`START_NOT_STICKY`）：只负责前台优先级与进度/结果通知
+  （标题按任务类型、进度条、取消 action），任务状态仍由 coordinator 单点持有；超时/被回收只退前台。
+- `RikkaHubApp` 新增 `backup` 通知渠道（IMPORTANCE_LOW、静默、无角标）；Manifest 与 Koin 注册。
+- `BackupVM` 全部长任务改走 coordinator：增量扫描/提交/恢复/GC、WebDAV/S3 全量备份与恢复、
+  本地 ZIP 恢复、导出；导出收敛为 `exportToUri(uri)`（生成 + 写入 SAF 同任务生命周期，临时文件由
+  任务 `finally` 删除）；`onCleared` 不再关闭快照计划。
+- UI：增量备份 tab 显示「任务进行中：可以离开此页或切到后台，通知栏会继续显示进度，也可以在那里
+  取消」+「取消任务」；WebDAV/S3/本地导入导出按全局任务状态禁用重复入口，任务结束自动刷新列表。
+- 验证：`:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` ✅；全量
+  `:app:testDebugUnitTest` **3048 项 0 失败/错误、2 跳过** ✅；真机 PJX110
+  `BackupRunCoordinatorTest` **4/4** ✅（调用方取消后任务继续、单任务拒绝、进度、cancel）；真机手测：
+  导出经 coordinator 成功、扫描中离开备份页时 FGS 通知 `id=2004` 为 `ONGOING|FOREGROUND_SERVICE`+
+  「取消」action、回页后计划仍在、确认提交完成并刷新列表 ✅。
+- **仍未做**：进程被杀后的断点续传（无 WorkManager，明确不承诺）；真实 S3/WebDAV 长任务手测；
+  快照导出完整 ZIP / pack / 多设备 GC（后续单独立项）。
+
 ## 1. 问题与目标
 
 ### 1.1 现状与痛点（实测/代码事实）
@@ -1310,7 +1337,7 @@ FTS 不备份，恢复后重建（`A/data/repository/ConversationRepository.kt:5
 | R7 | 恢复后 mtime 重置导致哈希缓存失效 | 首次增量重算全量 | 可接受（与今天读一遍同量级）；UI 说明；「重建索引」入口 |
 | R8 | 清单/对象被篡改 | 数据损坏 | 每对象 SHA-256 + 恢复前统一校验；与现有 v2 同信任级；加密独立立项 |
 | R9 | 单文件 >2 GB | 恢复拒绝 | 与现有上限一致；预检明确报错 |
-| R10 | 进程被杀（viewModelScope 无 WorkManager） | 长备份中断 | 明确「失败可重试」；P1.5 可选前台服务；不承诺断点续传 |
+| R10 | 进程被杀（无 WorkManager） | 长备份中断 | 已实现 P1.5 前台服务（`BackupForegroundService`，dataSync）：任务挂在应用级作用域，离页/切后台/划掉最近任务不中断，通知栏显示进度与取消；进程被杀仍不续传（不承诺断点续传） |
 | R11 | WebDAV 服务端差异（MKCOL/多级路径/大小上限） | 首备失败 | 能力探测（1 B 探针 + 明确错误）；文档列出已测服务端 |
 | R12 | P2 跨 schema 对象合并语义 | 静默数据丢失 | 已实现：版本闸门（旧允许/新拒绝）+ 跨 schema 清空/列交集/默认值/跳过表告警 + `foreign_key_check` + 失败整份放弃；改名/改义仍无法自动迁移（§0.7） |
 | R13 | 快照清单含敏感信息（路径/大小） | 隐私 | 与现有备份同级（远端已有全量 zip）；加密独立立项 |

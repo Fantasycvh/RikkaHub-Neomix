@@ -42,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +60,7 @@ import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.WebDavConfig
+import app.androidrik.rikkahub.data.sync.BackupRunKind
 import app.androidrik.rikkahub.data.sync.webdav.WebDavBackupItem
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -86,9 +88,18 @@ fun WebDavTab(
     val scope = rememberCoroutineScope()
     var showBackupFiles by remember { mutableStateOf(false) }
     var restoringItemId by remember { mutableStateOf<String?>(null) }
-    var isBackingUp by remember { mutableStateOf(false) }
+    // 长任务跑在进程级 coordinator：离开页面也继续，按钮/进度按全局任务状态渲染。
+    val task by vm.taskState.collectAsStateWithLifecycle()
+    val busy = task != null
+    val isBackingUp = task?.kind == BackupRunKind.FULL_BACKUP
     // 恢复前确认：恢复是覆盖且不可逆
     var pendingRestoreItem by remember { mutableStateOf<WebDavBackupItem?>(null) }
+    // 任务结束（无论成功/失败/取消）后刷新远端文件列表，兜住「离开页面期间完成」的情况。
+    var hadTask by remember { mutableStateOf(false) }
+    LaunchedEffect(task) {
+        if (hadTask && task == null) vm.loadBackupFileItems()
+        hadTask = task != null
+    }
 
     fun updateWebDavConfig(newConfig: WebDavConfig) {
         vm.updateSettings(settings.copy(webDavConfig = newConfig))
@@ -96,6 +107,7 @@ fun WebDavTab(
 
     /** 实际执行恢复（经确认后调用） */
     fun performRestore(restoreItem: WebDavBackupItem) {
+        if (busy) return
         scope.launch {
             restoringItemId = restoreItem.displayName
             runCatching {
@@ -280,10 +292,8 @@ fun WebDavTab(
             Button(
                 onClick = {
                     scope.launch {
-                        isBackingUp = true
                         runCatching {
                             vm.backup()
-                            vm.loadBackupFileItems()
                             toaster.show(
                                 resources.getString(R.string.backup_page_backup_success),
                                 type = ToastType.Success
@@ -295,10 +305,9 @@ fun WebDavTab(
                                 type = ToastType.Error
                             )
                         }
-                        isBackingUp = false
                     }
                 },
-                enabled = !isBackingUp
+                enabled = !busy
             ) {
                 if (isBackingUp) {
                     CircularWavyProgressIndicator(
@@ -354,6 +363,7 @@ fun WebDavTab(
                             WebDavBackupItemCard(
                                 item = item,
                                 isRestoring = restoringItemId == item.displayName,
+                                buttonsEnabled = !busy,
                                 onDelete = {
                                     scope.launch {
                                         runCatching {
@@ -453,6 +463,7 @@ private fun BackupStatusCard(
 private fun WebDavBackupItemCard(
     item: WebDavBackupItem,
     isRestoring: Boolean = false,
+    buttonsEnabled: Boolean = true,
     onDelete: (WebDavBackupItem) -> Unit = {},
     onRestore: (WebDavBackupItem) -> Unit = {},
 ) {
@@ -492,7 +503,7 @@ private fun WebDavBackupItemCard(
                             onClick = {
                                 onDelete(item)
                             },
-                            enabled = !isRestoring
+                            enabled = buttonsEnabled && !isRestoring
                         ) {
                             Text(stringResource(R.string.backup_page_delete))
                         }
@@ -500,7 +511,7 @@ private fun WebDavBackupItemCard(
                             onClick = {
                                 onRestore(item)
                             },
-                            enabled = !isRestoring
+                            enabled = buttonsEnabled && !isRestoring
                         ) {
                             if (isRestoring) {
                                 CircularWavyProgressIndicator(

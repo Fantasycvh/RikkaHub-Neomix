@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
 import app.androidrik.rikkahub.data.perf.PerformanceSampler
+import app.androidrik.rikkahub.data.sync.BackupRunCoordinator
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.image.ImageGenerationRunner
 import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
@@ -49,6 +50,15 @@ val appModule = module {
             context = get(),
             appScope = get(),
             sampler = get(),
+        )
+    }
+
+    // 备份 / 恢复长任务的进程级执行器：任务挂在应用作用域，离开备份页/切后台后继续，
+    // 并由 BackupForegroundService 提供前台优先级与进度通知。
+    single {
+        BackupRunCoordinator(
+            context = get(),
+            appScope = get(),
         )
     }
 

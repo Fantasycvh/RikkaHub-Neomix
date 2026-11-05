@@ -312,6 +312,16 @@
       android:foregroundServiceType="dataSync" />
 
     <!--
+      备份 / 恢复（dataSync）：任务由 Koin 单例 BackupRunCoordinator 持有（应用级作用域），
+      stopWithTask=false 让用户划掉任务后备份仍继续；本服务只提供前台优先级与进度通知。
+    -->
+    <service
+      android:name=".service.BackupForegroundService"
+      android:exported="false"
+      android:stopWithTask="false"
+      android:foregroundServiceType="dataSync" />
+
+    <!--
       子代理审批（设计 §十一）：通知栏「批准 / 拒绝」按钮的落点。
       exported=false —— 审批是权限动作，不给外部任何入口；Intent 只带 toolCallId 与布尔。
     -->

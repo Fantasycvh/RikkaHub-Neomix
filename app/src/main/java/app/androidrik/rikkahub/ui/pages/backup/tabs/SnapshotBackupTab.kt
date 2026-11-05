@@ -48,7 +48,10 @@ fun SnapshotBackupTab(vm: BackupVM) {
     val destination by vm.snapshotDestination.collectAsStateWithLifecycle()
     val target by vm.localBackupTarget.collectAsStateWithLifecycle()
     val snapshots by vm.snapshots.collectAsStateWithLifecycle()
-    val busy by vm.snapshotBusy.collectAsStateWithLifecycle()
+    val quickBusy by vm.snapshotBusy.collectAsStateWithLifecycle()
+    val task by vm.taskState.collectAsStateWithLifecycle()
+    // 长任务（扫描/提交/恢复/回收）跑在进程级 coordinator 上：离开页面也继续，回来仍是「进行中」。
+    val busy = quickBusy || task != null
     val plan by vm.snapshotPlan.collectAsStateWithLifecycle()
     val error by vm.snapshotError.collectAsStateWithLifecycle()
     val notice by vm.snapshotNotice.collectAsStateWithLifecycle()
@@ -109,9 +112,10 @@ fun SnapshotBackupTab(vm: BackupVM) {
                     Button(onClick = vm::prepareSnapshot, enabled = enabled && writable) { Text("扫描并预估") }
                     OutlinedButton(onClick = vm::loadSnapshots, enabled = enabled) { Text("刷新快照") }
                 }
-                if (busy) {
-                    Text("处理中，请保持应用在前台")
+                if (task != null) {
+                    Text("任务进行中：可以离开此页或切到后台，通知栏会继续显示进度，也可以在那里取消。")
                     BackupProgressRow(progress)
+                    TextButton(onClick = vm::cancelBackupTask) { Text("取消任务") }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text(

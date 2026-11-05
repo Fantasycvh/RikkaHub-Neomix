@@ -44,6 +44,7 @@ import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.sync.BackupInspection
+import app.androidrik.rikkahub.data.sync.BackupRunKind
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.CardGroupScope
 import app.androidrik.rikkahub.ui.components.ui.StickyHeader
@@ -51,7 +52,6 @@ import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.pages.backup.BackupVM
 import app.androidrik.rikkahub.utils.copyUriToTempFile
 import java.io.File
-import java.io.FileInputStream
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.uuid.Uuid
@@ -67,7 +67,10 @@ fun ImportExportTab(
     val resources = LocalResources.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
-    var isExporting by remember { mutableStateOf(false) }
+    val task by vm.taskState.collectAsStateWithLifecycle()
+    // 导出/恢复由进程级备份任务执行：离开页面后仍在跑，回来后按钮状态与进度照样正确。
+    val isExporting = task?.kind == BackupRunKind.EXPORT_BACKUP
+    val taskBusy = task != null
     var isRestoring by remember { mutableStateOf(false) }
 
     // 当前正在进行的导入格式（卡片 spinner 与 SAF 回调分发都用它）。
@@ -127,16 +130,10 @@ fun ImportExportTab(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         uri?.let { targetUri ->
+            // 生成 + 写入都在备份任务协调器里：导出中途离开页面/切后台也会写完整份文件。
             scope.launch {
-                isExporting = true
                 runCatching {
-                    val exportFile = vm.exportToFile()
-                    context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
-                        FileInputStream(exportFile).use { inputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                    }
-                    exportFile.delete()
+                    vm.exportToUri(targetUri)
                     toaster.show(
                         resources.getString(R.string.backup_page_backup_success),
                         type = ToastType.Success
@@ -145,7 +142,6 @@ fun ImportExportTab(
                     e.printStackTrace()
                     toastFailure(e)
                 }
-                isExporting = false
             }
         }
     }
@@ -285,7 +281,7 @@ fun ImportExportTab(
         item {
             CardGroup {
                 item(
-                    onClick = if (!isExporting) {
+                    onClick = if (!isExporting && !taskBusy) {
                         {
                             val timestamp = LocalDateTime.now()
                                 .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
@@ -315,7 +311,7 @@ fun ImportExportTab(
                 importItem(
                     spec = specOf(ImportFormat.LOCAL_BACKUP),
                     busy = isRestoring && pendingFormat == ImportFormat.LOCAL_BACKUP,
-                    enabled = !isRestoring,
+                    enabled = !isRestoring && !taskBusy,
                     onClick = { pendingLocalImport = true },
                 )
             }
@@ -326,7 +322,7 @@ fun ImportExportTab(
                 importItem(
                     spec = specOf(ImportFormat.CONVERSATION),
                     busy = isRestoring && pendingFormat == ImportFormat.CONVERSATION,
-                    enabled = !isRestoring,
+                    enabled = !isRestoring && !taskBusy,
                     onClick = { launchPicker(ImportFormat.CONVERSATION) },
                 )
             }
@@ -346,7 +342,7 @@ fun ImportExportTab(
                         importItem(
                             spec = spec,
                             busy = isRestoring && pendingFormat == spec.format,
-                            enabled = !isRestoring,
+                            enabled = !isRestoring && !taskBusy,
                             onClick = { launchPicker(spec.format) },
                         )
                     }
@@ -448,7 +444,7 @@ fun ImportExportTab(
                         e.printStackTrace()
                         toastFailure(e)
                     } finally {
-                        file.delete()
+                        // 临时文件由恢复任务自己删除（任务可能比页面活得久）
                         isRestoring = false
                     }
                 }

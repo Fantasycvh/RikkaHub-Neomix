@@ -89,6 +89,9 @@ const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
 const val KEEP_ALIVE_NOTIFICATION_CHANNEL_ID = "keep_alive"
 const val MEDIA_CREATION_NOTIFICATION_CHANNEL_ID = "media_creation"
 
+/** 备份/恢复长任务的通知渠道：进度常驻、静默（前台服务需要可见通知）。 */
+const val BACKUP_NOTIFICATION_CHANNEL_ID = "backup"
+
 /**
  * 子代理「需要批准」通知渠道（设计 §十一）。
  *
@@ -852,6 +855,15 @@ class RikkaHubApp : Application() {
             .setName(getString(R.string.media_creation_title))
             .build()
         notificationManager.createNotificationChannel(mediaCreationChannel)
+
+        val backupChannel = NotificationChannelCompat
+            .Builder(BACKUP_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+            .setName("备份与恢复")
+            .setDescription("备份 / 恢复任务进度；离开备份页后任务继续运行")
+            .setVibrationEnabled(false)
+            .setShowBadge(false)
+            .build()
+        notificationManager.createNotificationChannel(backupChannel)
 
         val subagentApprovalChannel = NotificationChannelCompat
             .Builder(
