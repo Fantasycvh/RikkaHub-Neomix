@@ -166,7 +166,7 @@ fun WebDavTab(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             BackupStatusCard(
-                title = stringResource(R.string.backup_page_webdav_backup),
+                title = stringResource(R.string.backup_page_status),
                 lastBackupText = lastBackupText,
                 fileSummaryText = backupFileSummary
             )

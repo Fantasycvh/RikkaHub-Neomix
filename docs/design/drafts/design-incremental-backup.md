@@ -177,7 +177,8 @@
 **已实现代码**：`A/data/sync/repo/` 新增完整清单/完成标记、原始内容 SHA-256、对象编码、
 固定内容的 plan/commit、引用存在性检查、仓库身份验证、快照列举/删除与 v2 ZIP 恢复组装器；
 接入 `SafBackupObjectStore`、`S3BackupObjectStore`、`WebDavBackupObjectStore` 和共享服务。
-备份页增加独立“增量备份（实验）”tab，可选择本地文件夹、WebDAV、S3，扫描预估后确认执行，
+备份页增加独立“增量备份（实验）”入口（2026-11-05 起备份页改为二级列表 + 三级详情页，见 §0.13），
+可选择本地文件夹、WebDAV、S3，扫描预估后确认执行，
 列出恢复点、确认覆盖恢复或删除快照。原有 ZIP 按钮继续走原路径，没有自动切换其行为。
 
 **首版取舍**：
@@ -759,6 +760,42 @@ FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本�
 - **未做**：拆包进度提示（仍在通知栏显示 GC 进度）；S3/WebDAV 上的拆包手测；拆包失败的自动重试；
   单快照内多个大 pack 的并行拆包（现在串行，pack 通常很小）；「pack 内条目很多但只删少数」时是否值得拆的成本模型
   （目前只要可拆就拆，收益 = 旧包大小 − 新包大小）。
+
+### 0.13 备份页结构：顶栏 tab → 二级列表 + 三级详情页（2026-11-05，本地提交）
+
+**背景**：备份页从 P1 起用顶栏 `SecondaryScrollableTabRow` + `HorizontalPager` 承载
+「本地 / WebDAV备份 / S3备份 / 提醒 / 增量备份」五节。问题：
+① 横向 tab 与大标题折叠（`exitUntilCollapsedScrollBehavior`）抢手势，横滑翻页和竖向滚动容易误触；
+② 五节共用一个 `BackupVM` 与同一层返回栈，深链/恢复状态无法区分「当前在哪一节」；
+③ 与设置页其他二级页（CardGroup 列表 → 独立详情页）交互不一致。
+
+**改动**：
+- `BackupPage` 只保留二级列表：大标题 + 三个 CardGroup（备份方式 / 自动化 / 实验功能），
+  每行是图标 + 标题 + 一句说明，点击进入对应三级详情页；本页不再创建 `BackupVM`。
+- 新增 5 个三级页 `BackupImportExportPage` / `BackupWebDavPage` / `BackupS3Page` /
+  `BackupReminderPage` / `BackupSnapshotPage`（`ui/pages/backup/BackupDetailPages.kt`），
+  共用私有 `BackupDetailScaffold`（`LargeFlexibleTopAppBar` + `BackButton` + 让出 contentPadding），
+  内容直接复用原 tab 组件（`ImportExportTab` 等），tab 组件本身不改滚动/交互。
+- `RouteActivity` 增加 `Screen.BackupImportExport/BackupWebDav/BackupS3/BackupReminder/BackupSnapshot`
+  五个 `@Serializable data object` 路由与 entry；`Screen.Backup` 仍是入口。
+- 去重：原 tab 内容里的自绘标题与页面顶栏重复，删掉 `SnapshotBackupTab` 的
+  "增量备份（实验）"标题行，WebDAV/S3 的状态卡标题从「WebDAV备份/S3备份」改为「备份状态」。
+- 新增字符串（values / values-zh / values-zh-rTW）：`backup_page_section_methods`
+  （备份方式）、`backup_page_section_automation`、`backup_page_section_experimental`、
+  `backup_page_import_export_title/desc`、`backup_page_webdav_desc`、`backup_page_s3_desc`、
+  `backup_page_reminder_desc`、`backup_page_snapshot_title/desc`、`backup_page_status`。
+
+**代价与取舍**：
+- 导航库按 entry 分配 ViewModelStore，因此每个三级页各自 `koinViewModel()` 一个 `BackupVM`；
+  长任务状态来自进程级 `BackupRunCoordinator`（离开页面继续跑），设置来自共享 `SettingsStore`，
+  所以进度/配置不丢；代价是每进一个三级页 `BackupVM.init` 都会重新拉一次 WebDAV/S3 文件列表
+  （与旧版打开备份页一次等价，反复进出会多几次只读列举）。
+- 三级页返回即销毁对应 VM，恢复点列表/扫描计划不跨页保留（扫描计划在 coordinator，仍保留）。
+
+**验证**：编译 ✅；全量 `:app:testDebugUnitTest` **3081 项 0 失败/错误、2 跳过** ✅；
+`python scripts/audit_ime_trap.py` A/A' = 0 ✅；真机 PJX110 手测：设置 → 数据备份进入列表页，
+五个条目逐页进入/返回（各自独立顶栏与滚动位置），增量备份页读回 `test` 文件夹关联与
+`2026-11-05 20:43:46` 快照（22 个对象 · 36.5 KB · 1 个 pack），WebDAV/S3 页状态卡不再与标题重复。
 
 ## 1. 问题与目标
 

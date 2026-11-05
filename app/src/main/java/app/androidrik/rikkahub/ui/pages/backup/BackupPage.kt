@@ -1,41 +1,45 @@
 package app.androidrik.rikkahub.ui.pages.backup
 
-import androidx.compose.foundation.layout.Column
+import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.theme.CustomColors
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SecondaryScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
-import app.androidrik.rikkahub.R
-import app.androidrik.rikkahub.ui.components.nav.BackButton
-import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
-import app.androidrik.rikkahub.ui.pages.backup.tabs.ImportExportTab
-import app.androidrik.rikkahub.ui.pages.backup.tabs.ReminderTab
-import app.androidrik.rikkahub.ui.pages.backup.tabs.S3Tab
-import app.androidrik.rikkahub.ui.pages.backup.tabs.WebDavTab
-import app.androidrik.rikkahub.ui.pages.backup.tabs.SnapshotBackupTab
-import app.androidrik.rikkahub.ui.theme.CustomColors
-import org.koin.androidx.compose.koinViewModel
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Database02
+import me.rerere.hugeicons.stroke.File01
+import me.rerere.hugeicons.stroke.Notification01
+import me.rerere.hugeicons.stroke.ServerStack01
+import me.rerere.hugeicons.stroke.Upload02
+import app.androidrik.rikkahub.utils.plus
 
+/**
+ * 数据备份入口页（二级）：只列「有哪些备份方式」，点进去才是具体功能页（三级）。
+ *
+ * 此前这一页用顶栏 tab（本地 / WebDAV / S3 / 提醒 / 增量）承载全部内容，tab 横滑与
+ * 大标题折叠互相抢手势、返回栈也看不出当前在哪一节；改成与设置页其他二级页一致的
+ * CardGroup 列表 + 独立详情页后，每节可以有自己的标题、返回与滚动位置。
+ */
 @Composable
-fun BackupPage(vm: BackupVM = koinViewModel()) {
-    val pagerState = rememberPagerState { 5 }
-    val scope = rememberCoroutineScope()
+fun BackupPage() {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val navController = LocalNavController.current
 
     Scaffold(
         topBar = {
@@ -53,75 +57,62 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor
     ) { contentPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(contentPadding)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding + PaddingValues(8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            SecondaryScrollableTabRow(
-                selectedTabIndex = pagerState.currentPage,
-                containerColor = CustomColors.topBarColors.containerColor,
-                edgePadding = 4.dp,
-            ) {
-                Tab(
-                    selected = pagerState.currentPage == 0,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                    text = { Text(stringResource(R.string.backup_page_import_export)) }
-                )
-                Tab(
-                    selected = pagerState.currentPage == 1,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                    text = { Text(stringResource(R.string.backup_page_webdav_backup)) }
-                )
-                Tab(
-                    selected = pagerState.currentPage == 2,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
-                    text = { Text(stringResource(R.string.backup_page_s3_backup)) }
-                )
-                Tab(
-                    selected = pagerState.currentPage == 3,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(3) } },
-                    text = { Text(stringResource(R.string.backup_page_reminder)) }
-                )
-                Tab(
-                    selected = pagerState.currentPage == 4,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(4) } },
-                    text = { Text("增量备份") }
-                )
+            item("backupMethods") {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.backup_page_section_methods)) },
+                ) {
+                    item(
+                        onClick = { navController.navigate(Screen.BackupImportExport) },
+                        leadingContent = { Icon(HugeIcons.File01, null) },
+                        headlineContent = { Text(stringResource(R.string.backup_page_import_export_title)) },
+                        supportingContent = { Text(stringResource(R.string.backup_page_import_export_desc)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.BackupWebDav) },
+                        leadingContent = { Icon(HugeIcons.Upload02, null) },
+                        headlineContent = { Text(stringResource(R.string.backup_page_webdav_backup)) },
+                        supportingContent = { Text(stringResource(R.string.backup_page_webdav_desc)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.BackupS3) },
+                        leadingContent = { Icon(HugeIcons.ServerStack01, null) },
+                        headlineContent = { Text(stringResource(R.string.backup_page_s3_backup)) },
+                        supportingContent = { Text(stringResource(R.string.backup_page_s3_desc)) },
+                    )
+                }
             }
 
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) { page ->
-                when (page) {
-                    0 -> {
-                        ImportExportTab(
-                            vm = vm,
-                            onShowRestartDialog = { RestoreRestartSignal.requestRestart() }
-                        )
-                    }
+            item("backupAutomation") {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.backup_page_section_automation)) },
+                ) {
+                    item(
+                        onClick = { navController.navigate(Screen.BackupReminder) },
+                        leadingContent = { Icon(HugeIcons.Notification01, null) },
+                        headlineContent = { Text(stringResource(R.string.backup_page_reminder_title)) },
+                        supportingContent = { Text(stringResource(R.string.backup_page_reminder_desc)) },
+                    )
+                }
+            }
 
-                    1 -> {
-                        WebDavTab(
-                            vm = vm,
-                            onShowRestartDialog = { RestoreRestartSignal.requestRestart() }
-                        )
-                    }
-
-                    2 -> {
-                        S3Tab(
-                            vm = vm,
-                            onShowRestartDialog = { RestoreRestartSignal.requestRestart() }
-                        )
-                    }
-
-                    3 -> {
-                        ReminderTab(vm = vm)
-                    }
-                    4 -> SnapshotBackupTab(vm)
+            item("backupExperimental") {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.backup_page_section_experimental)) },
+                ) {
+                    item(
+                        onClick = { navController.navigate(Screen.BackupSnapshot) },
+                        leadingContent = { Icon(HugeIcons.Database02, null) },
+                        headlineContent = { Text(stringResource(R.string.backup_page_snapshot_title)) },
+                        supportingContent = { Text(stringResource(R.string.backup_page_snapshot_desc)) },
+                    )
                 }
             }
         }

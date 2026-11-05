@@ -82,7 +82,7 @@ fun SnapshotBackupTab(vm: BackupVM) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("增量备份（实验）", style = MaterialTheme.typography.titleMedium)
+            // 页面标题由三级详情页顶栏负责，这里只留说明，避免标题重复。
             Text("首次完整写入，之后只保存新增或变化的内容。数据库仍为完整快照；恢复会覆盖设置和所选数据。完整 ZIP 导入、导出仍在原入口。")
         }
         item {

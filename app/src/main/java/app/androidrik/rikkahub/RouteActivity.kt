@@ -115,7 +115,12 @@ import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantMcpPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantMemoryPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantPromptPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantRequestPage
+import app.androidrik.rikkahub.ui.pages.backup.BackupImportExportPage
 import app.androidrik.rikkahub.ui.pages.backup.BackupPage
+import app.androidrik.rikkahub.ui.pages.backup.BackupReminderPage
+import app.androidrik.rikkahub.ui.pages.backup.BackupS3Page
+import app.androidrik.rikkahub.ui.pages.backup.BackupSnapshotPage
+import app.androidrik.rikkahub.ui.pages.backup.BackupWebDavPage
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartGate
 import app.androidrik.rikkahub.ui.pages.backup.components.SearchIndexRebuildBanner
 import app.androidrik.rikkahub.ui.pages.chat.ChatPage
@@ -698,6 +703,27 @@ open class RouteActivity : ComponentActivity() {
                                 BackupPage()
                             }
 
+                            // 备份二级入口页里的具体功能页（三级）：原来的顶栏 tab 拆成独立路由。
+                            entry<Screen.BackupImportExport> {
+                                BackupImportExportPage()
+                            }
+
+                            entry<Screen.BackupWebDav> {
+                                BackupWebDavPage()
+                            }
+
+                            entry<Screen.BackupS3> {
+                                BackupS3Page()
+                            }
+
+                            entry<Screen.BackupReminder> {
+                                BackupReminderPage()
+                            }
+
+                            entry<Screen.BackupSnapshot> {
+                                BackupSnapshotPage()
+                            }
+
                             entry<Screen.ImageGen> {
                                 ImageGenPage()
                             }
@@ -1089,6 +1115,22 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Backup : Screen
+
+    /** 备份页（二级列表）里的各功能详情页（三级）。 */
+    @Serializable
+    data object BackupImportExport : Screen
+
+    @Serializable
+    data object BackupWebDav : Screen
+
+    @Serializable
+    data object BackupS3 : Screen
+
+    @Serializable
+    data object BackupReminder : Screen
+
+    @Serializable
+    data object BackupSnapshot : Screen
 
     @Serializable
     data object ImageGen : Screen
