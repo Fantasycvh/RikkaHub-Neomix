@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.components.ai
 
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
@@ -538,6 +539,10 @@ private fun ColumnScope.ModelList(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
+                        // 吸顶标题必须不透明：列表滚动时卡片会从标题下穿过，透明标题会让两段文字叠在一起
+                        // （「获取模型列表」后标题多出目录状态行，尤其明显）
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
                         .padding(bottom = 4.dp, top = 8.dp)
                 )
             }
@@ -610,7 +615,12 @@ private fun ColumnScope.ModelList(
         providers.fastForEach { providerSetting ->
             val collapsed = isCollapsed(providerSetting)
             stickyHeader(key = "header:${providerSetting.id}") {
-                Column {
+                // 吸顶标题不透明，避免下方卡片滚动时从标题（含目录状态行）里透出来
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
