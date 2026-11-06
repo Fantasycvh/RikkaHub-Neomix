@@ -42,4 +42,39 @@ class CatalogPresentationTest {
         assertEquals(listOf(second, first), models.reorderForDragByKey(first.id, second.id) { it.id })
         assertEquals(models, models.reorderForDragByKey("catalog-status", second.id) { it.id })
     }
+
+    @Test fun `batch missing notices collapse to providers that still need attention`() {
+        val listed = Model(modelId = "listed")
+        val missing = Model(modelId = "missing")
+        val missingProvider = ProviderSetting.OpenAI(name = "Missing", models = listOf(listed, missing))
+        fun snapshot(provider: ProviderSetting, ids: List<String>) = CatalogSnapshot(
+            CatalogFetchResult.Complete(ids.map { CatalogEntry(it) }, CatalogScope(provider.id.toString(), listOf("test"))),
+            123,
+        )
+        val missingState = ProviderCatalogState(
+            "scope",
+            snapshot(missingProvider, listOf("listed")),
+            CatalogAttempt("r", CatalogRefreshTrigger.MANUAL, CatalogAttemptStatus.COMPLETE, 0),
+        )
+        val report = catalogMissingReport(missingProvider, missingState)!!
+        val acknowledgedState = missingState.copy(
+            missingIncidents = report.models.associate { it.model.id.toString() to it.incident.copy(acknowledged = true) },
+        )
+        // 目录完整、无缺失的提供商不产生汇总行；停用配置不在刷新目标里，即使有缺失也不计入
+        val cleanProvider = ProviderSetting.Google(name = "Clean", models = listOf(listed))
+        val disabledProvider = ProviderSetting.Google(name = "Disabled", enabled = false, models = listOf(missing))
+        val states = mapOf(
+            missingProvider.id to missingState,
+            cleanProvider.id to ProviderCatalogState("scope", snapshot(cleanProvider, listOf("listed"))),
+            disabledProvider.id to missingState,
+        )
+        val providers = listOf(missingProvider, cleanProvider, disabledProvider)
+        val targets = catalogRefreshTargetIds(providers)
+
+        assertEquals(listOf(missingProvider.id), catalogProvidersNeedingAttention(providers, targets) { states[it] }.map { it.first.id })
+        // 折叠汇总的计数：条数=提供商数，模型数=各报告之和
+        assertEquals(1, catalogProvidersNeedingAttention(providers, targets) { states[it] }[0].second.models.size)
+        // 已确认后该提供商退出汇总（单条提醒的「知道了」语义保持不变）
+        assertTrue(catalogProvidersNeedingAttention(providers, targets) { if (it == missingProvider.id) acknowledgedState else states[it] }.isEmpty())
+    }
 }

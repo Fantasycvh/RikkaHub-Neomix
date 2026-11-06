@@ -3045,6 +3045,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="catalog_model_missing">未在上次完整目录中找到</string>
   <string name="catalog_model_independent">独立模型配置 · 未按此目录检查</string>
   <string name="catalog_missing_count">%1$d 个已添加模型未在目录中找到</string>
+  <string name="catalog_missing_aggregate">%1$d 个提供商 · %2$d 个已添加模型未在目录中找到</string>
   <string name="catalog_missing_details">未列出的模型</string>
   <string name="catalog_missing_explanation">这些 ID 未出现在对应凭据的上次完整目录中，可能已下架、改名或当前账号无权查看。这不代表一定无法调用；模型及其配置仍会保留。</string>
   <string name="catalog_missing_unknown">当前配置尚无完整目录，请刷新后检查</string>

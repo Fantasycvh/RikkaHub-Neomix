@@ -3031,6 +3031,7 @@
   <string name="catalog_model_missing">未在上次完整目錄中找到</string>
   <string name="catalog_model_independent">獨立模型設定 · 未依此目錄檢查</string>
   <string name="catalog_missing_count">%1$d 個已新增模型未在目錄中找到</string>
+  <string name="catalog_missing_aggregate">%1$d 個提供商 · %2$d 個已新增模型未在目錄中找到</string>
   <string name="catalog_missing_details">未列出的模型</string>
   <string name="catalog_missing_explanation">這些 ID 未出現在對應憑據的上次完整目錄中，可能已下架、改名或目前帳號無權查看。這不代表一定無法呼叫；模型及其設定仍會保留。</string>
   <string name="catalog_missing_unknown">目前設定尚無完整目錄，請重新整理後檢查</string>

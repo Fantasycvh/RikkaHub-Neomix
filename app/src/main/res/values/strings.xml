@@ -3044,6 +3044,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="catalog_model_missing">Not found in the last complete list</string>
   <string name="catalog_model_independent">Independent configuration · not checked against this list</string>
   <string name="catalog_missing_count">%1$d added models are missing from the list</string>
+  <string name="catalog_missing_aggregate">%1$d providers · %2$d added models are missing from the list</string>
   <string name="catalog_missing_details">Models not listed</string>
   <string name="catalog_missing_explanation">These IDs were absent from the last complete list for these credentials. They may have been removed, renamed or hidden from this account. This does not prove they cannot be called. Models and their settings are kept.</string>
   <string name="catalog_missing_unknown">No complete list is available for this configuration. Refresh to check.</string>

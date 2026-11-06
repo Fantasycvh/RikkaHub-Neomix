@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.ai
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -7,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -14,9 +16,12 @@ import app.androidrik.ai.provider.*
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.catalog.*
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import com.composables.icons.lucide.ChevronDown
+import com.composables.icons.lucide.ChevronRight
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.RefreshCw
 import com.composables.icons.lucide.ListChecks
+import com.composables.icons.lucide.TriangleAlert
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import org.koin.compose.koinInject
@@ -123,6 +128,13 @@ fun CatalogBatchControls(providers: List<ProviderSetting>, showAutoSwitch: Boole
     val partial = attempts.count { it == CatalogAttemptStatus.PARTIAL }
     val running = attempts.count { it in listOf(CatalogAttemptStatus.QUEUED, CatalogAttemptStatus.RUNNING) }
     val problems = attempts.count { it in listOf(CatalogAttemptStatus.FAILED, CatalogAttemptStatus.UNSUPPORTED, CatalogAttemptStatus.INTERRUPTED) }
+    // 每个提供商各一条缺失提醒时，这些行会常驻在**不可滚动**的区块里：10 家提供商能把总览页顶掉半屏
+    // （聊天模型选择面板同理，面板高度本来就只有 80%）。默认折叠成一行汇总，展开后进入限高滚动区；
+    // 单个提供商的详情入口不变（点行仍打开缺失详情）。
+    val missingProviders = remember(states, settings, providers) {
+        catalogProvidersNeedingAttention(providers, targets) { repository.currentState(it) }
+    }
+    var missingExpanded by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { scope.launch { repository.refreshAll(targets) } }, enabled = targets.isNotEmpty()) {
@@ -136,7 +148,50 @@ fun CatalogBatchControls(providers: List<ProviderSetting>, showAutoSwitch: Boole
         }
         Text(stringResource(R.string.catalog_summary, ready, partial, problems, running, targets.size),
             style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp))
-        providers.filter { it.id in targets }.forEach { CatalogMissingSummary(it, showProviderName = true) }
+        if (missingProviders.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.small)
+                    .clickable { missingExpanded = !missingExpanded }
+                    .heightIn(min = 40.dp)
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Lucide.TriangleAlert, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = stringResource(
+                        R.string.catalog_missing_aggregate,
+                        missingProviders.size,
+                        missingProviders.sumOf { it.second.models.size },
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = if (missingExpanded) Lucide.ChevronDown else Lucide.ChevronRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (missingExpanded) {
+                // 只留约三行的高度，其余在面板内部滚动：展开也不该把下方列表挤出屏幕
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 96.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    missingProviders.forEach { (provider, _) ->
+                        CatalogMissingSummary(provider, showProviderName = true, dense = true)
+                    }
+                }
+            }
+        }
         if (showAutoSwitch) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.catalog_auto_refresh), style = MaterialTheme.typography.bodySmall)
