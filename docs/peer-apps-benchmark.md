@@ -8,6 +8,8 @@
 
 > **2026-11-03 增量同步**：对全部 14 个应用 + 上游做了一轮新增提交增量评估（各应用文件末新增「2026-11-03 增量」节；上游无新提交，同步点仍 `903e058b9`）。本轮判定 **吸收 9 / 候选 19 / 已有等价 27 / 补记判据 11 / 不适用约 130 组**；其中 **P1 八项已于同日实现**（`064a8b772` / `3254e33b0` / `90da13861` / `cf37a5292`）；**AMOLED 容器族、渐变节流已真机验证通过（2026-11-03）**，标题连点单飞与 R1 提醒措辞待验。其余未实施。需修正的既有结论：`nmoi-agent.md` §13.1⑤ D46 改判存疑、§13.1⑥ D148 已被作者撤回；`purrcat-analysis.md` §五 三项建议状态已回写（A1/A3/A4.1/A4.2 已落地，A2 仍空）。
 
+> **2026-11-06 新增 #15 dsh-Go**：固定提交 `cf2f7c861e1098661a3a2039b3a4cb1633790102`（2026-11-06）正式评估，深度 文档+源码抽样；判定「不同架构、代码可移植 ≈ 0」，可借的是**运行时安装事务/更新契约、危险操作分级 +「问 AI」、协议/SDK 工程纪律**；插件协议已由设计稿 §十一 系统复盘，**不新增立项**。原文 [`dsh-go.md`](references/other%20projects/dsh-go.md)。
+
 **怎么读这份文档**：
 
 1. 要**做事** → 直接看 §三「落地顺序与状态」（唯一口径的当前状态）。
@@ -18,7 +20,7 @@
 
 ## 一、应用清单（索引）
 
-**评估深度**：`源码` = 本地逐条读源码核验；`远端` = 仅远端仓库 / README / 论文与 CHANGELOG；`二手` = 转述他人或自己的笔记。
+**评估深度**：`源码` = 本地逐条读源码核验；`远端` = 仅远端仓库 / README / 论文与 CHANGELOG；`二手` = 转述他人或自己的笔记；`文档+源码抽样` = 全量读其文档、按源码目录抽样核对关键实现（本次 dsh-Go）。
 
 | # | 应用 | 域 / 形态 | 深度 | 评估日期 | 结论一句话 | 文件 |
 |---|---|---|---|---|---|---|
@@ -37,6 +39,7 @@
 | — | 上游 `3a533a6a` | 上游工作区终端后台运行 + 多 Tab | 源码 | 2026-08-28 | 多 Tab 底座以吸收上游为准（见 §二） | [upstream-analysis.md](upstream-analysis.md) |
 | 13 | BiliPai | B 站第三方客户端，液态玻璃工程化参照系 | 源码 | 2026-10-31 | **门控层 + 可读性 + 回归测试**是本仓液态玻璃缺的防线；haze 2.0.1 / SDK 分级 / 前后台 gate / 51 个 UI 回归 | [bilipai.md](references/other%20projects/bilipai.md) |
 | 14 | Miffan（Ayuilos/Miffan） | 同源 RikkaHub fork，划词翻译 / IM 模式 / 云电脑 | 源码 | 2026-10-31 | 跨应用划词翻译的**零权限正解**（PROCESS_TEXT 对话框 Activity）；本仓已有 90% 底层，缺口仅弹窗壳，半天级移植 | [miffan.md](references/other%20projects/miffan.md) |
+| 15 | dsh-Go（ccch1mneyyy/dsh-Go） | DeepSeek Harness 的 Android 客户端：Flutter + 纯 Dart DSH 客户端 + PRoot 里跑 DSH 引擎（本机 / SSH / 中继三档主机） | 文档+源码抽样 | 2026-11-06 | **不同架构、代码可移植 ≈ 0**；可借运行时安装事务与更新契约、危险操作分级 +「问 AI」、协议工程纪律；插件协议已在设计稿 §十一，不新增立项 | [dsh-go.md](references/other%20projects/dsh-go.md) |
 
 > **2026-11-03 增量**：14 个应用全部做了一轮新增提交评估（各文件末新增「2026-11-03 增量」节，Miffan 为其首轮增量）；本轮判定吸收 9 / 候选 19 / 已有等价 27 / 补记判据 11；**P1 八项已实现**（2026-11-03），其余未动。
 >
@@ -112,6 +115,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 
 - `源码`：8 个（rikkahub-agent、SoLab、Yuihub、SillyTavern、华灯、bigeye、NMoi-Agent、PurrCat —— 其中 bigeye 是逐模块精读 8410 行、Yuihub 是四批增量同步）。
 - `远端`：4 个（senera、agentd、billion-context、archify）——**结论一律限定在「机制/判据」层面，不当实现细节依据**。
+- `文档+源码抽样`：1 个（dsh-Go，2026-11-06）——全量读其 30 篇设计文档 + 用户指南，按源码目录核对关键实现；**未安装、未真机，运行期行为不背书**。
 - `二手`：零星出现（如 `design-subagent-context.md` 里的 rikkahub-agent 子代理三层结构），文内已显式标「属二手，未逐行核对」。
 
 **三条教训**：
@@ -132,6 +136,8 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 | 需要 Node 运行时的「技能」 | archify | Android 宿主无 Node，装上去就是「命令跑不通」的技能 |
 | Android 壳层 / FFI 架构移植 | NMoi-Agent §13.2 | Rust 前置，且其 Android 壳是 stage 0 骨架 |
 | MCP host 模式（手机当桌面工具箱） | SoLab ⑥ | 成本高、按需；一旦立项即成为**第 4 个工具装配方** |
+| 内嵌 Linux/Node 引擎宿主（DSH 一类） | [dsh-go.md §三](references/other%20projects/dsh-go.md) | ~750 MB rootfs + 194 MB APK + `targetSdk 28` 规避 exec 限制；本仓 AI 层是 API 抽象，不宿主 Node |
+| 手机操控（无障碍读屏 / 点按） | [dsh-go.md §三](references/other%20projects/dsh-go.md) | 无障碍 + 悬浮窗 + 系统权限，合规 / 风险边界不同；只借其披露与白名单判据，不立项 |
 
 ---
 
@@ -161,6 +167,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 | §11.5 | 10-18 → 10-24 增量（bigeye） | [bigeye.md](references/other%20projects/bigeye.md) 末尾 |
 | §13、§13.1–§13.2 | NMoi-Agent | [nmoi-agent.md](references/other%20projects/nmoi-agent.md) |
 | —（按 §六 新约定直接入 §一 #14） | Miffan 划词翻译评估（2026-10-31） | [miffan.md](references/other%20projects/miffan.md) |
+| —（按 §六 新约定直接入 §一 #15） | dsh-Go 评估（2026-11-06，固定提交 `cf2f7c86`） | [dsh-go.md](references/other%20projects/dsh-go.md) |
 | —（独立成文，未纳入本次拆分） | PurrCat 借鉴评估（2026-10-30） | [purrcat-analysis.md](purrcat-analysis.md) |
 
 **编号为什么是乱的**：原文按评估时间追加，`§11.4` 是插进 bigeye 序列里的另一个应用、`§十` 从未存在、`§六`/`§七` 的小节号与 `§6.x`/`§7.x` 混用。拆分时**保留原编号**（便于旧引用与提交历史对账），不做重排。
