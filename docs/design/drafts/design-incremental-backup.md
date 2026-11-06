@@ -758,7 +758,8 @@ FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本�
   既有 `IncrementalPerformanceMeasurement.measure` 因隔离 runner 无 `RikkaHubApp` 失败（与本次无关）；
   真机默认包 GC 冒烟：无拆分需求时 0 删除、`v3/rewrite` 无残留、租约释放。
 - **未做**：拆包进度提示（仍在通知栏显示 GC 进度）；S3/WebDAV 上的拆包手测；拆包失败的自动重试；
-  单快照内多个大 pack 的并行拆包（现在串行，pack 通常很小）；「pack 内条目很多但只删少数」时是否值得拆的成本模型
+  单快照内多个大 pack 的并行拆包（已在 §0.14 实现：准备阶段并行、上传阶段串行去重）；
+  「pack 内条目很多但只删少数」时是否值得拆的成本模型
   （目前只要可拆就拆，收益 = 旧包大小 − 新包大小）。
 
 ### 0.13 备份页结构：顶栏 tab → 二级列表 + 三级详情页（2026-11-05，本地提交）
@@ -796,6 +797,36 @@ FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本�
 `python scripts/audit_ime_trap.py` A/A' = 0 ✅；真机 PJX110 手测：设置 → 数据备份进入列表页，
 五个条目逐页进入/返回（各自独立顶栏与滚动位置），增量备份页读回 `test` 文件夹关联与
 `2026-11-05 20:43:46` 快照（22 个对象 · 36.5 KB · 1 个 pack），WebDAV/S3 页状态卡不再与标题重复。
+
+### 0.14 单次回收内并行拆包（2026-11-06，工作树未提交）
+
+**背景**：§0.12 的拆包按 `referencedPacks` 串行处理；一份快照里新对象超过 32 MB 就会产生多个 pack，
+删旧快照后可能同时有多个 pack 变成「部分不可达」。串行时每个 pack 都要完整下载 + 整包 SHA-256 +
+解压 + 重压缩，多个 pack 时回收耗时线性叠加。
+
+**改动**（`IncrementalBackupEngine`）：
+- 拆包拆成「准备」与「提交」两阶段：
+  1. **准备（并行）**：`repackOnePack` 做下载 → 整包 SHA 校验 → 条目表核对 → 抽出仍被引用条目并逐条校验 SHA
+     → `SnapshotPacking.write` 重新打成确定性新 pack；每个 pack 用独立临时文件名（`repack-<sha>.zip`、
+     `repack-entry-<objsha>`、`SnapshotPacking.write` 内部 `createTempFile`），互不共享可变状态。
+     并行度用 `REPACK_PARALLEL = 3`（比对象级 `PARALLEL_OBJECTS = 4` 保守一档：拆包同时有下载 + 解压 +
+     重压缩，低端机上并发压缩流太多会抢 IO/内存）；`parallelMap` 增加可选 `parallelism` 参数。
+  2. **提交（串行）**：准备阶段全部成功后才上传新 pack。按新 pack 的 SHA 去重后逐个 `stat` → 缺失才
+     `put`，避免「同一批对象在不同设备各自打进不同 pack」时两个任务同时创建同一个内容寻址文档
+     （也避免重复上传）。任一准备失败则不进入上传阶段：此次只留下任务目录里的临时 zip，不产生半套新 pack。
+- 清单改写仍在所有替换关系就绪后进行（`rewriteSnapshotPacks` 按快照遍历）：**一份快照可能同时引用多个
+  被拆的 pack，只改写一次**，避免同一清单被覆盖两遍、减少崩溃窗口。
+- 语义变化：仅耗时/并发路径；`ObjectGcResult` 字段、mtime 宽限期、租约、复核逻辑、崩溃回滚（§0.12）不变。
+
+**验证**：编译 ✅；全量 `:app:testDebugUnitTest` **3082 项 0 失败/错误、2 跳过** ✅；
+`IncrementalBackupRetentionTest` **17 项**通过（新增「一份快照引用两个部分可达 pack → 一次 GC 并行拆两个、
+只改写一份清单、恢复结果正确」）；真机 instrumented 隔离包（`-PbackupIsolatedTests=true`，不覆盖调试包）
+`nativeSafGarbageCollectionRepacksMultiplePacksOfOneSnapshot` 在真实 `DocumentsProvider`/`SafBackupObjectStore`
+上通过（并行下载/上传/覆盖写清单），该包 16 项中仍只有既有 `IncrementalPerformanceMeasurement.measure`
+因隔离 runner 无 `RikkaHubApp` 失败（与本次无关）。
+
+**未做**：拆包进度提示（仍在通知栏显示 GC 总进度）；快照清单的并行改写（改写是几个 KB 的元数据写，
+通常只有 1–2 份，未单独并行）；S3/WebDAV 上的并行拆包手测；按 pack 大小/网络类型动态调并行度。
 
 ## 1. 问题与目标
 

@@ -637,9 +637,16 @@ internal class IncrementalBackupEngine(
 
     private class RepackResult(val replacements: Map<String, String>, val uploadedBytes: Long)
 
+    /** 已本地重打包、尚未上传的新 pack（[newFile] 在 GC 任务目录里，随任务目录清理）。 */
+    private class RepackedPack(val oldSha: String, val newSha: String, val newFile: File)
+
     /**
      * 拆包：对「仍被快照引用、但 pack 里有条目已不可达」的 pack，把仍被引用的条目重新打成一个
      * 内容寻址 pack，并改写相关快照清单的 pack 指针；旧 pack 随后由删除阶段回收。
+     *
+     * 多个 pack 的下载/校验/解压/重打包是独立的文件操作，按 [REPACK_PARALLEL] 并行执行
+     * （一份快照引用多个被拆 pack 时收益最大）；新 pack 的上传在准备阶段全部成功后再按
+     * 新 SHA 去重、串行执行，避免两个任务同时创建同一个内容寻址文档。
      *
      * 崩溃安全：改写前把旧清单备份到 `v3/rewrite/<id>.json.gz`，先覆盖清单再覆盖完成标记，
      * 任一步中断都由 [repairSnapshotRewrites] 按标记回滚——读侧永远看到旧清单或新清单的完整状态。
@@ -654,46 +661,76 @@ internal class IncrementalBackupEngine(
     ): RepackResult {
         if (referencedPacks.isEmpty()) return RepackResult(emptyMap(), 0)
         val storedPacks = listPacks(store).associateBy { requireNotNull(packShaFromKey(it.key)) }
+        val prepared = parallelMap(
+            referencedPacks.entries.toList(),
+            parallelism = REPACK_PARALLEL,
+        ) { (packSha, entries) ->
+            repackOnePack(store, storedPacks[packSha], packSha, entries, grace, dir)
+        }.filterNotNull()
+        if (prepared.isEmpty()) return RepackResult(emptyMap(), 0)
+
+        // 所有本地准备都成功后才开始上传：中途失败只留下任务目录里的临时 zip，不产生半套新 pack。
         val replacements = LinkedHashMap<String, String>()
+        prepared.forEach { replacements[it.oldSha] = it.newSha }
         var uploadedBytes = 0L
-        referencedPacks.forEach { (packSha, entries) ->
+        // 不同旧 pack 可能抽出同一批对象（同一 SHA 在不同设备各自打进不同 pack），新 pack 内容寻址相同，只传一次。
+        prepared.groupBy { it.newSha }.forEach { (newSha, sameContent) ->
             currentCoroutineContext().ensureActive()
-            val stored = requireNotNull(storedPacks[packSha]) { "Referenced pack is missing: $packSha" }
-            // 只对「已经静默」的 pack 拆包：刚提交的 pack 先不动，避免与刚上传的内容互相踩。
-            if (!olderThan(stored, grace)) return@forEach
-            val packFile = File(dir, "repack-$packSha.zip")
-            store.get(stored.key, packFile, REPACK_DOWNLOAD_LIMIT)
+            val newPack = sameContent.first().newFile
+            val newKey = packKeyFor(newSha)
+            val existing = store.stat(newKey)
+            if (existing != null) {
+                require(!existing.directory && (existing.bytes == null || existing.bytes == newPack.length())) {
+                    "Conflicting repacked pack content"
+                }
+            } else {
+                store.ensureDir(PACK_DIR)
+                store.put(newKey, newPack)
+                uploadedBytes = Math.addExact(uploadedBytes, newPack.length())
+            }
+        }
+        // 同一份快照可能引用多个被拆的 pack，清单只改写一次。
+        rewriteSnapshotPacks(store, repoId, snapshots, replacements, dir)
+        return RepackResult(replacements, uploadedBytes)
+    }
+
+    /**
+     * 单个 pack 的拆包准备：下载整包并校验 SHA、确认被引用条目齐全、抽出仍被引用条目并逐条校验、
+     * 重新打成确定性 pack。返回 null = 该 pack 无需拆包（全引用）或还不够「静默」。
+     */
+    private suspend fun repackOnePack(
+        store: BackupObjectStore,
+        stored: BackupStoredObject?,
+        packSha: String,
+        entries: Map<String, Long>,
+        grace: Duration,
+        dir: File,
+    ): RepackedPack? {
+        currentCoroutineContext().ensureActive()
+        val pack = requireNotNull(stored) { "Referenced pack is missing: $packSha" }
+        // 只对「已经静默」的 pack 拆包：刚提交的 pack 先不动，避免与刚上传的内容互相踩。
+        if (!olderThan(pack, grace)) return null
+        val packFile = File(dir, "repack-$packSha.zip")
+        val kept = entries.keys.sorted()
+        val extracted = kept.map { sha -> File(dir, "repack-entry-$sha") }
+        try {
+            store.get(pack.key, packFile, REPACK_DOWNLOAD_LIMIT)
             require(fileSha256(packFile) == packSha) { "Referenced pack checksum mismatch: $packSha" }
             val sizes = SnapshotPacking.entrySizes(packFile)
             entries.forEach { (sha, size) -> require(sizes[sha] == size) { "Packed object missing from pack: $sha" } }
-            if (sizes.keys.all { it in entries }) { packFile.delete(); return@forEach }
-            // 只把仍被引用的条目重新打包；内容寻址保证「同一批内容」不会重复占空间。
-            val kept = entries.keys.sorted()
-            val extracted = kept.map { sha -> File(dir, "repack-entry-$sha") }
+            if (sizes.keys.all { it in entries }) return null
+            // 只把仍被引用的条目重新打包；pack 是内容寻址的，未变内容不会重复占空间。
             SnapshotPacking.extract(packFile, kept.map { it to requireNotNull(entries[it]) }, extracted)
             extracted.forEachIndexed { index, file ->
                 require(fileSha256(file) == kept[index]) { "Packed object checksum mismatch: ${kept[index]}" }
             }
             val packed = SnapshotPacking.write(dir, kept.mapIndexed { index, sha -> sha to extracted[index] })
             val (newKey, newPack) = packed.files.entries.singleOrNull() ?: error("Repacked pack must fit in one file")
-            val newPackSha = requireNotNull(packShaFromKey(newKey))
-            val existing = store.stat(newKey)
-            if (existing != null) {
-                require(!existing.directory && (existing.bytes == null || existing.bytes == newPack.length())) {
-                    "Conflicting repacked pack content"
-                }
-                newPack.delete()
-            } else {
-                store.ensureDir(PACK_DIR)
-                store.put(newKey, newPack)
-                uploadedBytes = Math.addExact(uploadedBytes, newPack.length())
-            }
-            extracted.forEach(File::delete)
+            return RepackedPack(packSha, requireNotNull(packShaFromKey(newKey)), newPack)
+        } finally {
             packFile.delete()
-            replacements[packSha] = newPackSha
+            extracted.forEach(File::delete)
         }
-        if (replacements.isNotEmpty()) rewriteSnapshotPacks(store, repoId, snapshots, replacements, dir)
-        return RepackResult(replacements, uploadedBytes)
     }
 
     /** 把快照清单里指向旧 pack 的引用改成新 pack，两阶段覆盖清单与完成标记。 */
@@ -856,13 +893,23 @@ internal class IncrementalBackupEngine(
 
         /** 拆包时下载旧 pack 的上限：单 pack 原始量上限 + zip 头/压缩最坏开销。 */
         val REPACK_DOWNLOAD_LIMIT: Long = PACK_TARGET_BYTES + 8L * 1024 * 1024
+
+        /**
+         * 单次回收内并行拆包的 pack 数。拆包是「下载 + 解压 + 重压缩」，比对象级操作更重，
+         * 并发度比 [PARALLEL_OBJECTS] 再保守一档，避免低端机同时开太多压缩流/下载把内存与 IO 打满。
+         */
+        const val REPACK_PARALLEL = 3
     }
 
     /** 对象级并行（哈希/stat/压缩/校验独立）；并发度固定保守值，避免把低端机 IO 打满。 */
-    private suspend fun <T, R> parallelMap(items: List<T>, block: suspend (T) -> R): List<R> =
+    private suspend fun <T, R> parallelMap(
+        items: List<T>,
+        parallelism: Int = PARALLEL_OBJECTS,
+        block: suspend (T) -> R,
+    ): List<R> =
         if (items.size <= 1) items.map { block(it) }
         else coroutineScope {
-            val permits = Semaphore(minOf(PARALLEL_OBJECTS, items.size))
+            val permits = Semaphore(minOf(parallelism, items.size))
             items.map { item -> async(Dispatchers.IO) { permits.withPermit { block(item) } } }.awaitAll()
         }
 }

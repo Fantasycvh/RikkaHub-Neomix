@@ -99,7 +99,7 @@ class IncrementalStorageInstrumentedTest {
         }
     }
 
-    @Test fun nativeSafGarbageCollectionRepacksPartiallyReferencedPacks() = runBlocking<Unit> {
+    @Test fun nativeSafGarbageCollectionRepacksMultiplePacksOfOneSnapshot() = runBlocking<Unit> {
         val (_, store) = nativeStore()
         val engine = IncrementalBackupEngine(File(root, "cache"))
         val settings = File(root, "settings.json").apply { writeText("{}") }
@@ -111,21 +111,35 @@ class IncrementalStorageInstrumentedTest {
             SnapshotInput("upload/a.txt", file("a.txt", "aaaa")),
             SnapshotInput("upload/b.txt", file("b.txt", "bbbb")),
         )).use { engine.commit(it) }
-        val oldPack = requireNotNull(first.files.first().pack)
         val second = plan(listOf(
             SnapshotInput("settings.json", settings),
             SnapshotInput("upload/a.txt", file("a.txt", "aaaa")),
+            SnapshotInput("upload/c.txt", file("c.txt", "cccc")),
+            SnapshotInput("upload/d.txt", file("d.txt", "dddd")),
         )).use { engine.commit(it) }
+        val third = plan(listOf(
+            SnapshotInput("settings.json", settings),
+            SnapshotInput("upload/a.txt", file("a.txt", "aaaa")),
+            SnapshotInput("upload/c.txt", file("c.txt", "cccc")),
+        )).use { engine.commit(it) }
+        // 第三份快照同时引用两个 pack：s1 的 （settings,a,b）与 s2 的 （c,d）。
+        val oldPacks = third.files.mapNotNull { it.pack }.toSet()
+        assertEquals(2, oldPacks.size)
         engine.deleteSnapshot(store, first)
+        engine.deleteSnapshot(store, second)
         // fixture 的 mtime 来自真实文件 → 零宽限期即可拆包；SAF 上清单/标记走 putOverwrite 覆盖写。
         val result = engine.garbageCollect(store, device, grace = java.time.Duration.ZERO)
-        assertEquals(1, result.repackedPacks)
+        assertEquals(2, result.repackedPacks)
         assertNull(store.stat("v3/gc.json"))
         val repacked = engine.list(store).single()
-        assertTrue(repacked.files.all { it.pack != null && it.pack != oldPack })
+        val newPacks = repacked.files.mapNotNull { it.pack }.toSet()
+        assertEquals(2, newPacks.size)
+        assertTrue(newPacks.none { it in oldPacks })
         ZipFile(engine.assemble(store, repacked, 58)).use { zip ->
             assertEquals("aaaa", zip.getInputStream(zip.getEntry("upload/a.txt")).reader().readText())
+            assertEquals("cccc", zip.getInputStream(zip.getEntry("upload/c.txt")).reader().readText())
             assertNull(zip.getEntry("upload/b.txt"))
+            assertNull(zip.getEntry("upload/d.txt"))
         }
     }
 

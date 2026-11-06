@@ -246,6 +246,48 @@ class IncrementalBackupRetentionTest {
         }
     }
 
+    @Test fun garbageCollectRepacksMultiplePacksOfOneSnapshotInOnePass() = runBlocking<Unit> {
+        // s1 的 pack 含 settings/a/b；s2 新增 c/d 后成第二个 pack；s3 只保留 settings/a/c。
+        // 删掉 s1、s2 后 s3 同时引用两个「部分不可达」的 pack → 一次 GC 并行拆两个 pack、只改写 s3 一份清单。
+        val first = saveFiles(
+            mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa", "upload/b.txt" to "bbbb"),
+        )
+        Thread.sleep(5)
+        val second = saveFiles(
+            mapOf(
+                "settings.json" to "{}", "upload/a.txt" to "aaaa",
+                "upload/c.txt" to "cccc", "upload/d.txt" to "dddd",
+            ),
+        )
+        Thread.sleep(5)
+        val third = saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa", "upload/c.txt" to "cccc"))
+        assertEquals(2, packKeys().size)
+        val oldPacks = third.files.mapNotNull { it.pack }.toSet()
+        assertEquals(2, oldPacks.size)
+        engine().deleteSnapshot(store, first)
+        engine().deleteSnapshot(store, second)
+
+        val result = engine().garbageCollect(store, deviceA, grace = Duration.ZERO)
+
+        assertEquals(2, result.repackedPacks)
+        assertEquals(2, result.deletedPacks)
+        assertEquals(0, result.deletedObjects)
+        assertNull(store.data[GC_LEASE_KEY_PATH])
+        assertNull(store.data[snapshotRewriteKey(third.snapshotId)])
+        assertEquals(2, packKeys().size)
+        val repacked = engine().list(store).single()
+        val newPacks = repacked.files.mapNotNull { it.pack }.toSet()
+        assertEquals(2, newPacks.size)
+        assertTrue(newPacks.none { it in oldPacks })
+        ZipFile(engine().assemble(store, repacked, 58)).use { zip ->
+            assertEquals("{}", zip.getInputStream(zip.getEntry("settings.json")).reader().readText())
+            assertEquals("aaaa", zip.getInputStream(zip.getEntry("upload/a.txt")).reader().readText())
+            assertEquals("cccc", zip.getInputStream(zip.getEntry("upload/c.txt")).reader().readText())
+            assertNull(zip.getEntry("upload/b.txt"))
+            assertNull(zip.getEntry("upload/d.txt"))
+        }
+    }
+
     @Test fun garbageCollectDoesNotRepackFullyReferencedPacks() = runBlocking<Unit> {
         val saved = saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa"))
         val manifestBefore = store.data.getValue(saved.manifestKey).copyOf()
