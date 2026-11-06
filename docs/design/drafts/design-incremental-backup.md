@@ -798,7 +798,7 @@ FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本�
 五个条目逐页进入/返回（各自独立顶栏与滚动位置），增量备份页读回 `test` 文件夹关联与
 `2026-11-05 20:43:46` 快照（22 个对象 · 36.5 KB · 1 个 pack），WebDAV/S3 页状态卡不再与标题重复。
 
-### 0.14 单次回收内并行拆包（2026-11-06，工作树未提交）
+### 0.14 单次回收内并行拆包（2026-11-06，本地提交，未推送）
 
 **背景**：§0.12 的拆包按 `referencedPacks` 串行处理；一份快照里新对象超过 32 MB 就会产生多个 pack，
 删旧快照后可能同时有多个 pack 变成「部分不可达」。串行时每个 pack 都要完整下载 + 整包 SHA-256 +
@@ -825,8 +825,53 @@ FTS 分词器层优化、真实 S3/WebDAV 网络下的并发收益实测（本�
 上通过（并行下载/上传/覆盖写清单），该包 16 项中仍只有既有 `IncrementalPerformanceMeasurement.measure`
 因隔离 runner 无 `RikkaHubApp` 失败（与本次无关）。
 
-**未做**：拆包进度提示（仍在通知栏显示 GC 总进度）；快照清单的并行改写（改写是几个 KB 的元数据写，
-通常只有 1–2 份，未单独并行）；S3/WebDAV 上的并行拆包手测；按 pack 大小/网络类型动态调并行度。
+**未做**：快照清单的并行改写（改写是几个 KB 的元数据写，通常只有 1–2 份，未单独并行）；
+S3/WebDAV 上的并行拆包手测；按 pack 大小/网络类型动态调并行度。拆包/回收进度已在 §0.15 补齐。
+
+### 0.15 拆包与回收进度提示（2026-11-06，本地提交，未推送）
+
+**背景**：§0.12/§0.14 的回收在 UI 上只有一个粗粒度阶段跳变。拆包要「下载整包 + 整包 SHA +
+解压抽条目 + 重压缩」，多 pack 并行时可持续数十秒到数分钟；此前通知栏只显示「备份中」，
+快照页的 `BackupProgressRow` 按 §9.1 又只允许显示数值（不塞阶段文案），用户看到字节数长时间
+不动或阶段不明，容易以为任务卡死。
+
+**改动**：
+- `BackupProgress.BackupPhase` 增加 `REPACKING`、`CLEANUP` 两个阶段；`BackupRunCoordinator.progressText()`
+  把它们映射为「拆包」「清理」，通知栏与页面共用同一套阶段文案。
+- `IncrementalBackupEngine.garbageCollect` 新增私有 `GcProgress`（`synchronized` + `ProgressThrottle`
+  1 % / 100 ms）：并行拆包（`REPACK_PARALLEL = 3`）与并行删除（`PARALLEL_OBJECTS = 4`）里多个协程
+  各自累加字节，由它汇总后节流回调，避免 coordinator `_state.value` 的读-改-写竞争与高频刷屏。
+  - **拆包阶段**总量 = 被拆 pack 的压缩字节 + 其中仍被引用条目的原始字节（下载与重打包两层都计入）；
+    `repackOnePack` 在「下载」「整包仍被引用、直接记 `keptBytes`」「重压缩」三处上报。总量无法预知
+    时 `total = null`，进度行只显示已处理字节。
+  - **删除阶段**总量 = 待删对象字节 + 旧 pack 的 `stored.bytes` 之和；任一大小未知则 `total = null`。
+  - 阶段切换时重置计数并立即上报一次：进度条会跳，但每段都从 0 递增且终点必到 100 %。
+- 快照页（`SnapshotBackupTab`）：仅当运行任务 `kind == SNAPSHOT_GC` 时，在既有 `BackupProgressRow`
+  上方加一行 `gcPhaseHint(progress)`（`bodySmall` + primary），把当前阶段翻成用户语句——扫描仓库 /
+  拆包 / 上传新 pack / 改写清单 / 删除未引用对象；其它任务不显示，避免与备份阶段文案重复。
+
+**代价与取舍**：
+- 字节口径混用「压缩后 pack 大小」与「条目原始大小」，只保证单调递增与终点 100 %，不是精确的
+  IO 字节统计；重压缩前解压的读放大没有计入。
+- 单 pack 部分可达时耗时短，`REPACKING` 提示可能一闪而过；未再加「是否值得显示」的判断。
+- 阶段切换重置计数带来的进度条回跳只在「拆包 → 上传 → 改写 → 清理」几个边界出现，用户可感知
+  为「进入下一段」，与备份任务已有的阶段跳变行为一致。
+
+**验证**：编译 ✅；全量 `:app:testDebugUnitTest` **3083 项 0 失败/错误、2 跳过** ✅；
+`IncrementalBackupRetentionTest` 增至 **18 项**（新增 `garbageCollectReportsRepackProgress`：
+捕获回调序列，断言首阶段 `SCANNING`、`REPACKING` 单调且最大 fraction = 1、`UPLOADING` 终点 1、
+`COMMITTING` 出现、`CLEANUP` 最后且 `processed == total > 0`，同时 `result.repackedPacks == 2`）；
+instrumented 隔离包 `nativeSafGarbageCollectionRepacksMultiplePacksOfOneSnapshot` 扩展为构造
+`progress = { reports += it }` 并断言五个阶段均出现、租约释放、2 个新 pack、恢复结果正确（该包
+16 项仍只有既有 `IncrementalPerformanceMeasurement.measure` 失败）。真机 PJX110 手测：临时向
+`files/images/bulk` 写 180 个 200 KB 文件 → 生成含两个大 pack 的快照 → 删 10 个源文件再生成快照
+并删旧快照 → 回收：截图确认「正在扫描仓库中的快照与对象…」→「正在拆包：把仍被引用的内容重新打成
+更小的 pack…」（36.4 MB / 66.8 MB · 54 %）→「正在改写受影响快照的清单…」依次出现，完成通知
+「回收 0 个未引用对象、2 个 pack、重构 2 个 pack，释放 1.92 MB」；旧 pack 被两个新 pack 替换、
+`v3/rewrite` 与 `v3/gc.json` 清空，随后删除测试快照并再次回收把 34 MB 测试对象清回 11 KB 旧 pack。
+
+**未做**：ETA / 速率估算；阶段历史（结束后不保留每次回收的阶段耗时）；WebDAV/S3 上的真机进度手测
+（隔离包用 SAF 覆盖了同一代码路径）；把阶段文案拆成 i18n 字符串（沿用本页既有中文硬编码风格）。
 
 ## 1. 问题与目标
 

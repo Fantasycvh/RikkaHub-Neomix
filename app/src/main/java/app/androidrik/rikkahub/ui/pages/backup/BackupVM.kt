@@ -217,8 +217,8 @@ class BackupVM(
         snapshotError.value = null
         viewModelScope.launch {
             try {
-                val result = backupRun.await(BackupRunKind.SNAPSHOT_GC) { _ ->
-                    incrementalBackup.garbageCollect(snapshotDestination.value)
+                val result = backupRun.await(BackupRunKind.SNAPSHOT_GC) { report ->
+                    incrementalBackup.garbageCollect(snapshotDestination.value, report)
                 }
                 snapshotNotice.value = buildString {
                     append("回收 ${result.deletedObjects} 个未引用对象")

@@ -6,6 +6,7 @@ import app.androidrik.rikkahub.data.sync.BackupManifestSection
 import app.androidrik.rikkahub.data.sync.BackupPhase
 import app.androidrik.rikkahub.data.sync.BackupProgress
 import app.androidrik.rikkahub.data.sync.BackupSectionStats
+import app.androidrik.rikkahub.data.sync.ProgressThrottle
 import app.androidrik.rikkahub.data.sync.classifyBackupEntry
 import app.androidrik.rikkahub.data.sync.addFileToZip
 import kotlinx.coroutines.Dispatchers
@@ -561,6 +562,8 @@ internal class IncrementalBackupEngine(
         deviceId: String,
         grace: Duration = GC_GRACE,
     ): ObjectGcResult {
+        val gcProgress = GcProgress(progress)
+        gcProgress.start(BackupPhase.SCANNING, null)
         val repo = requireNotNull(inspectRepository(store)) { "Missing repository" }
         acquireGcLease(store, deviceId, repo.repoId)
         val dir = taskDir()
@@ -577,7 +580,9 @@ internal class IncrementalBackupEngine(
                 if (stored.key in reachable.objects) keptObjects++ else objectCandidates += stored
             }
             // 拆包：先重打包并改写快照清单（「部分条目仍被引用」的 pack 才能释放空间），再统一删除。
-            val repack = repackPacks(store, repo.repoId, snapshots, reachable.packs, grace, dir)
+            val repack = repackPacks(store, repo.repoId, snapshots, reachable.packs, grace, dir, gcProgress)
+            // 复核前重新严格读一遍快照（读的是改写后的清单），顺便把阶段切回「扫描」。
+            gcProgress.start(BackupPhase.SCANNING, null)
             val confirmed = snapshotsStrict(store)
             val confirmedReachable = reachability(confirmed)
             require(confirmed.map { it.snapshotId }.toSet() == snapshots.map { it.snapshotId }.toSet()) {
@@ -591,14 +596,22 @@ internal class IncrementalBackupEngine(
             val objectDeletes = objectCandidates.filter { olderThan(it, grace) }
             val packDeletes = packCandidates.filter { olderThan(it, grace) }
             val skippedRecent = objectCandidates.size - objectDeletes.size + packCandidates.size - packDeletes.size
+            // 删除阶段按待删字节推进进度；拿不到全部字节数时退化为不确定进度条。
+            val deleteEntries = objectDeletes + packDeletes
+            val cleanupTotal = if (deleteEntries.isNotEmpty() && deleteEntries.all { it.bytes != null }) {
+                deleteEntries.sumOf { it.bytes ?: 0L }
+            } else null
+            gcProgress.start(BackupPhase.CLEANUP, cleanupTotal)
             // 删除也要按对象并行：SAF 每个 delete 都要重新解析路径，串行时上百个孤儿对象能跑一分多钟。
             parallelMap(objectDeletes) { stored ->
                 currentCoroutineContext().ensureActive()
                 store.delete(stored.key)
+                gcProgress.add(stored.bytes ?: 0L)
             }
             parallelMap(packDeletes) { stored ->
                 currentCoroutineContext().ensureActive()
                 store.delete(stored.key)
+                gcProgress.add(stored.bytes ?: 0L)
             }
             val freed = (
                 objectDeletes.sumOf { it.bytes ?: 0L } + packDeletes.sumOf { it.bytes ?: 0L } - repack.uploadedBytes
@@ -641,12 +654,43 @@ internal class IncrementalBackupEngine(
     private class RepackedPack(val oldSha: String, val newSha: String, val newFile: File)
 
     /**
+     * 仓库回收的进度上报：并行拆包任务会从多个协程同时上报，这里把「阶段 + 字节」聚合成单条进度并
+     * 串行节流，避免并发写 StateFlow/通知栏与进度回退；阶段切换时清零并立即上报一次。
+     */
+    private class GcProgress(private val sink: (BackupProgress) -> Unit) {
+        private val lock = Any()
+        private var phase: BackupPhase? = null
+        private var total: Long? = null
+        private var processed = 0L
+        private var throttle = ProgressThrottle()
+
+        fun start(newPhase: BackupPhase, newTotal: Long?) = synchronized(lock) {
+            phase = newPhase
+            total = newTotal
+            processed = 0L
+            throttle = ProgressThrottle()
+            sink(BackupProgress(newPhase, 0L, newTotal))
+        }
+
+        /** 累计已处理字节；总量未知时只推进计数（进度条不确定）。 */
+        fun add(delta: Long) = synchronized(lock) {
+            val current = phase ?: return@synchronized
+            if (delta <= 0L) return@synchronized
+            processed += delta
+            val value = BackupProgress(current, processed, total)
+            if (throttle.shouldEmit(value)) sink(value)
+        }
+    }
+
+    /**
      * 拆包：对「仍被快照引用、但 pack 里有条目已不可达」的 pack，把仍被引用的条目重新打成一个
      * 内容寻址 pack，并改写相关快照清单的 pack 指针；旧 pack 随后由删除阶段回收。
      *
      * 多个 pack 的下载/校验/解压/重打包是独立的文件操作，按 [REPACK_PARALLEL] 并行执行
      * （一份快照引用多个被拆 pack 时收益最大）；新 pack 的上传在准备阶段全部成功后再按
      * 新 SHA 去重、串行执行，避免两个任务同时创建同一个内容寻址文档。
+     *
+     * 进度按 [GcProgress] 上报：REPACKING（下载 + 重打包字节）→ UPLOADING（新 pack 字节）→ COMMITTING。
      *
      * 崩溃安全：改写前把旧清单备份到 `v3/rewrite/<id>.json.gz`，先覆盖清单再覆盖完成标记，
      * 任一步中断都由 [repairSnapshotRewrites] 按标记回滚——读侧永远看到旧清单或新清单的完整状态。
@@ -658,73 +702,93 @@ internal class IncrementalBackupEngine(
         referencedPacks: Map<String, Map<String, Long>>,
         grace: Duration,
         dir: File,
+        gcProgress: GcProgress,
     ): RepackResult {
         if (referencedPacks.isEmpty()) return RepackResult(emptyMap(), 0)
         val storedPacks = listPacks(store).associateBy { requireNotNull(packShaFromKey(it.key)) }
-        val prepared = parallelMap(
-            referencedPacks.entries.toList(),
-            parallelism = REPACK_PARALLEL,
-        ) { (packSha, entries) ->
-            repackOnePack(store, storedPacks[packSha], packSha, entries, grace, dir)
+        // 先确认所有被引用的 pack 都在（fail-stop）；只有「已经静默」的 pack 才拆，避免与刚提交的内容互相踩。
+        referencedPacks.forEach { (sha, _) -> requireNotNull(storedPacks[sha]) { "Referenced pack is missing: $sha" } }
+        val candidates = referencedPacks.mapNotNull { (sha, entries) ->
+            storedPacks[sha]?.takeIf { olderThan(it, grace) }?.let { Triple(sha, entries, it) }
+        }
+        if (candidates.isEmpty()) return RepackResult(emptyMap(), 0)
+        // 总工作量口径 = 下载旧 pack + 写出新 pack；拿不到旧 pack 字节数时总量未知（进度条不确定）。
+        // 全引用的 pack 不写新 pack，由 [repackOnePack] 在确认无需拆包时一次性计入，保证整体仍能到 100%。
+        val repackTotal = if (candidates.all { it.third.bytes != null }) {
+            candidates.sumOf { (it.third.bytes ?: 0L) + it.second.values.sum() }
+        } else null
+        gcProgress.start(BackupPhase.REPACKING, repackTotal)
+        val prepared = parallelMap(candidates, parallelism = REPACK_PARALLEL) { (packSha, entries, stored) ->
+            repackOnePack(store, stored, packSha, entries, dir, gcProgress)
         }.filterNotNull()
         if (prepared.isEmpty()) return RepackResult(emptyMap(), 0)
 
-        // 所有本地准备都成功后才开始上传：中途失败只留下任务目录里的临时 zip，不产生半套新 pack。
         val replacements = LinkedHashMap<String, String>()
         prepared.forEach { replacements[it.oldSha] = it.newSha }
-        var uploadedBytes = 0L
-        // 不同旧 pack 可能抽出同一批对象（同一 SHA 在不同设备各自打进不同 pack），新 pack 内容寻址相同，只传一次。
-        prepared.groupBy { it.newSha }.forEach { (newSha, sameContent) ->
-            currentCoroutineContext().ensureActive()
-            val newPack = sameContent.first().newFile
-            val newKey = packKeyFor(newSha)
-            val existing = store.stat(newKey)
-            if (existing != null) {
-                require(!existing.directory && (existing.bytes == null || existing.bytes == newPack.length())) {
+        // 不同旧 pack 可能抽出同一批对象（同一 SHA 在不同设备各自打进不同 pack），新 pack 内容寻址相同只传一次；
+        // 内容已存在（上次中断后的重试）直接跳过，避免重复上传。
+        val missing = LinkedHashMap<String, RepackedPack>()
+        prepared.associateBy { it.newSha }.forEach { (newSha, pack) ->
+            val existing = store.stat(packKeyFor(newSha))
+            if (existing == null) {
+                missing[newSha] = pack
+            } else {
+                require(!existing.directory && (existing.bytes == null || existing.bytes == pack.newFile.length())) {
                     "Conflicting repacked pack content"
                 }
-            } else {
+            }
+        }
+        var uploadedBytes = 0L
+        if (missing.isNotEmpty()) {
+            gcProgress.start(BackupPhase.UPLOADING, missing.values.sumOf { it.newFile.length() })
+            missing.values.forEach { pack ->
+                currentCoroutineContext().ensureActive()
                 store.ensureDir(PACK_DIR)
-                store.put(newKey, newPack)
-                uploadedBytes = Math.addExact(uploadedBytes, newPack.length())
+                store.put(packKeyFor(pack.newSha), pack.newFile) { gcProgress.add(it) }
+                uploadedBytes = Math.addExact(uploadedBytes, pack.newFile.length())
             }
         }
         // 同一份快照可能引用多个被拆的 pack，清单只改写一次。
+        gcProgress.start(BackupPhase.COMMITTING, null)
         rewriteSnapshotPacks(store, repoId, snapshots, replacements, dir)
         return RepackResult(replacements, uploadedBytes)
     }
 
     /**
      * 单个 pack 的拆包准备：下载整包并校验 SHA、确认被引用条目齐全、抽出仍被引用条目并逐条校验、
-     * 重新打成确定性 pack。返回 null = 该 pack 无需拆包（全引用）或还不够「静默」。
+     * 重新打成确定性 pack。返回 null = 该 pack 无需拆包（全部条目仍被引用）。
      */
     private suspend fun repackOnePack(
         store: BackupObjectStore,
-        stored: BackupStoredObject?,
+        pack: BackupStoredObject,
         packSha: String,
         entries: Map<String, Long>,
-        grace: Duration,
         dir: File,
+        gcProgress: GcProgress,
     ): RepackedPack? {
         currentCoroutineContext().ensureActive()
-        val pack = requireNotNull(stored) { "Referenced pack is missing: $packSha" }
-        // 只对「已经静默」的 pack 拆包：刚提交的 pack 先不动，避免与刚上传的内容互相踩。
-        if (!olderThan(pack, grace)) return null
         val packFile = File(dir, "repack-$packSha.zip")
         val kept = entries.keys.sorted()
+        val keptBytes = entries.values.sum()
         val extracted = kept.map { sha -> File(dir, "repack-entry-$sha") }
         try {
-            store.get(pack.key, packFile, REPACK_DOWNLOAD_LIMIT)
+            store.get(pack.key, packFile, REPACK_DOWNLOAD_LIMIT) { gcProgress.add(it) }
             require(fileSha256(packFile) == packSha) { "Referenced pack checksum mismatch: $packSha" }
             val sizes = SnapshotPacking.entrySizes(packFile)
             entries.forEach { (sha, size) -> require(sizes[sha] == size) { "Packed object missing from pack: $sha" } }
-            if (sizes.keys.all { it in entries }) return null
+            if (sizes.keys.all { it in entries }) {
+                // 全引用：下载完即可确认无需拆包；把「不存在的写工作量」也记入进度，保证整体仍能到 100%。
+                gcProgress.add(keptBytes)
+                return null
+            }
             // 只把仍被引用的条目重新打包；pack 是内容寻址的，未变内容不会重复占空间。
             SnapshotPacking.extract(packFile, kept.map { it to requireNotNull(entries[it]) }, extracted)
             extracted.forEachIndexed { index, file ->
                 require(fileSha256(file) == kept[index]) { "Packed object checksum mismatch: ${kept[index]}" }
             }
-            val packed = SnapshotPacking.write(dir, kept.mapIndexed { index, sha -> sha to extracted[index] })
+            val packed = SnapshotPacking.write(dir, kept.mapIndexed { index, sha -> sha to extracted[index] }) {
+                gcProgress.add(it)
+            }
             val (newKey, newPack) = packed.files.entries.singleOrNull() ?: error("Repacked pack must fit in one file")
             return RepackedPack(packSha, requireNotNull(packShaFromKey(newKey)), newPack)
         } finally {

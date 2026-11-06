@@ -272,6 +272,8 @@ class BackupRunCoordinator(
             BackupPhase.UPLOADING -> "上传"
             BackupPhase.DOWNLOADING -> "下载"
             BackupPhase.EXTRACTING -> "解压"
+            BackupPhase.REPACKING -> "拆包"
+            BackupPhase.CLEANUP -> "清理"
         }
         val percent = progress.fraction?.let { "${(it * 100).toInt()}%" }.orEmpty()
         return if (percent.isEmpty()) phase else "$phase $percent"

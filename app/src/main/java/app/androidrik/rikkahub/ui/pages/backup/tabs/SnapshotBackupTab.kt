@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.data.db.fts.SearchIndexRebuildSignal
 import app.androidrik.rikkahub.data.db.fts.SearchIndexRebuildState
+import app.androidrik.rikkahub.data.sync.BackupPhase
+import app.androidrik.rikkahub.data.sync.BackupProgress
+import app.androidrik.rikkahub.data.sync.BackupRunKind
 import app.androidrik.rikkahub.data.sync.repo.BackupDestination
 import app.androidrik.rikkahub.data.sync.repo.BackupSnapshotManifest
 import app.androidrik.rikkahub.ui.context.LocalToaster
@@ -120,6 +123,12 @@ fun SnapshotBackupTab(vm: BackupVM) {
                 }
                 if (task != null) {
                     Text("任务进行中：可以离开此页或切到后台，通知栏会继续显示进度，也可以在那里取消。")
+                    // 进度行刻意只显示数字与百分比；回收/拆包这类阶段较多的任务补一句「在做什么」。
+                    if (task?.kind == BackupRunKind.SNAPSHOT_GC) {
+                        gcPhaseHint(progress)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
                     BackupProgressRow(progress)
                     TextButton(onClick = vm::cancelBackupTask) { Text("取消任务") }
                 }
@@ -242,4 +251,14 @@ private fun exportFileName(snapshot: BackupSnapshotManifest): String {
         .atZone(java.time.ZoneId.systemDefault())
         .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
     return "snapshot_$stamp.zip"
+}
+
+/** 回收/拆包各阶段的提示文案（通知栏已有阶段名，应用内补一行，避免只有进度数字看不出在做什么）。 */
+private fun gcPhaseHint(progress: BackupProgress?): String? = when (progress?.phase) {
+    BackupPhase.SCANNING -> "正在扫描仓库中的快照与对象…"
+    BackupPhase.REPACKING -> "正在拆包：把仍被引用的内容重新打成更小的 pack…"
+    BackupPhase.UPLOADING -> "正在上传拆包后的新 pack…"
+    BackupPhase.COMMITTING -> "正在改写受影响快照的清单…"
+    BackupPhase.CLEANUP -> "正在删除未引用对象与旧 pack…"
+    else -> null
 }

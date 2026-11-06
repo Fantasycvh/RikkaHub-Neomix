@@ -14,6 +14,8 @@ import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.rikkahub.data.datastore.WebDavConfig
 import app.androidrik.rikkahub.data.sync.BackupItem
+import app.androidrik.rikkahub.data.sync.BackupPhase
+import app.androidrik.rikkahub.data.sync.BackupProgress
 import app.androidrik.rikkahub.data.sync.s3.S3Client
 import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.data.sync.webdav.WebDavClient
@@ -101,7 +103,8 @@ class IncrementalStorageInstrumentedTest {
 
     @Test fun nativeSafGarbageCollectionRepacksMultiplePacksOfOneSnapshot() = runBlocking<Unit> {
         val (_, store) = nativeStore()
-        val engine = IncrementalBackupEngine(File(root, "cache"))
+        val reports = java.util.Collections.synchronizedList(ArrayList<BackupProgress>())
+        val engine = IncrementalBackupEngine(File(root, "cache"), progress = { reports += it })
         val settings = File(root, "settings.json").apply { writeText("{}") }
         fun file(name: String, text: String) = File(root, name).apply { writeText(text) }
         suspend fun plan(inputs: List<SnapshotInput>) =
@@ -130,6 +133,13 @@ class IncrementalStorageInstrumentedTest {
         // fixture 的 mtime 来自真实文件 → 零宽限期即可拆包；SAF 上清单/标记走 putOverwrite 覆盖写。
         val result = engine.garbageCollect(store, device, grace = java.time.Duration.ZERO)
         assertEquals(2, result.repackedPacks)
+        // 真机 provider 上进度也要按阶段上报（拆包/上传/改写/清理）。
+        val phases = reports.map { it.phase }.toSet()
+        assertTrue(BackupPhase.SCANNING in phases)
+        assertTrue(BackupPhase.REPACKING in phases)
+        assertTrue(BackupPhase.UPLOADING in phases)
+        assertTrue(BackupPhase.COMMITTING in phases)
+        assertTrue(BackupPhase.CLEANUP in phases)
         assertNull(store.stat("v3/gc.json"))
         val repacked = engine.list(store).single()
         val newPacks = repacked.files.mapNotNull { it.pack }.toSet()

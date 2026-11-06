@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.data.sync.repo
 
 import app.androidrik.rikkahub.data.sync.BackupItem
+import app.androidrik.rikkahub.data.sync.BackupPhase
+import app.androidrik.rikkahub.data.sync.BackupProgress
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -286,6 +288,42 @@ class IncrementalBackupRetentionTest {
             assertNull(zip.getEntry("upload/b.txt"))
             assertNull(zip.getEntry("upload/d.txt"))
         }
+    }
+
+    @Test fun garbageCollectReportsRepackProgress() = runBlocking<Unit> {
+        val first = saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa", "upload/b.txt" to "bbbb"))
+        Thread.sleep(5)
+        val second = saveFiles(
+            mapOf(
+                "settings.json" to "{}", "upload/a.txt" to "aaaa",
+                "upload/c.txt" to "cccc", "upload/d.txt" to "dddd",
+            ),
+        )
+        Thread.sleep(5)
+        saveFiles(mapOf("settings.json" to "{}", "upload/a.txt" to "aaaa", "upload/c.txt" to "cccc"))
+        engine().deleteSnapshot(store, first)
+        engine().deleteSnapshot(store, second)
+        val reports = java.util.Collections.synchronizedList(ArrayList<BackupProgress>())
+        val engine = IncrementalBackupEngine(temp.root.resolve("cache"), progress = { reports += it })
+
+        val result = engine.garbageCollect(store, deviceA, grace = Duration.ZERO)
+
+        assertEquals(2, result.repackedPacks)
+        assertEquals(BackupPhase.SCANNING, reports.first().phase)
+        val repacking = reports.filter { it.phase == BackupPhase.REPACKING }
+        assertTrue(repacking.isNotEmpty())
+        assertTrue(requireNotNull(repacking.first().totalBytes) > 0L)
+        // 拆包阶段的已处理字节单调递增，且最终到 100%（全引用的 pack 会补记未发生的写工作量）。
+        assertEquals(repacking.map { it.processedBytes }.sorted(), repacking.map { it.processedBytes })
+        assertEquals(1f, repacking.maxOf { requireNotNull(it.fraction) }, 0f)
+        val uploading = reports.filter { it.phase == BackupPhase.UPLOADING }
+        assertTrue(uploading.isNotEmpty())
+        assertEquals(1f, uploading.maxOf { requireNotNull(it.fraction) }, 0f)
+        assertTrue(reports.any { it.phase == BackupPhase.COMMITTING })
+        val cleanup = reports.filter { it.phase == BackupPhase.CLEANUP }
+        assertTrue(cleanup.isNotEmpty())
+        assertEquals(cleanup.last().totalBytes, cleanup.last().processedBytes)
+        assertTrue(requireNotNull(cleanup.last().totalBytes) > 0L)
     }
 
     @Test fun garbageCollectDoesNotRepackFullyReferencedPacks() = runBlocking<Unit> {
